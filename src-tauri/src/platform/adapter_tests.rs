@@ -109,15 +109,19 @@ async fn injection_wires_the_storage_ports_into_the_application_services() {
         Arc::ptr_eq(&services.tunnels, &tunnels),
         "应用服务持有的隧道仓储必须是宿主注入的那一个实例"
     );
-    let shared = services
-        .settings
-        .read_settings()
+    // D1 收尾后：设置用例由 datazen-modules 拥有，经 adapter 直接暴露。
+    // 同一条端到端证据仍然成立——模块服务读到的必须是同一个 DesktopRepository
+    // 事实，而不是另一份缓存或默认实现。
+    let shared = adapter
+        .require_settings_service()
+        .expect("注入后必须取得到模块设置服务")
+        .read()
         .await
-        .expect("应用服务持有的设置仓储必须可读");
+        .expect("模块设置服务必须可读");
     assert_eq!(
         shared,
         store.get_settings().await.shared_settings(),
-        "设置端口必须读取同一个 DesktopRepository 事实"
+        "模块设置服务必须读取同一个 DesktopRepository 事实"
     );
     // 全部接线成功时没有任何降级项：降级表不是「永远非空」的摆设。
     assert!(

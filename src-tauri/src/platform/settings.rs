@@ -85,7 +85,7 @@ mod tests {
                 .expect("desktop repository should initialize"),
         );
         let adapter = DesktopSettingsRepository::new(store.clone());
-        let service = datazen_modules::settings::SettingsService::new(&adapter);
+        let service = datazen_modules::settings::SettingsService::new(std::sync::Arc::new(adapter));
 
         let mut shared = service.read().await.expect("module read should succeed");
         shared.preferences.language = "zh-CN".into();

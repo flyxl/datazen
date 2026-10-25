@@ -101,6 +101,3 @@ pub use secret::SecretProvider;
 pub use session_directory::SessionDirectory;
 pub use token::SubmissionTokenIssuer;
 pub use tunnel::TunnelRepository;
-
-pub mod settings;
-pub use settings::SettingsRepository;

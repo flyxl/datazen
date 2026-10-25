@@ -118,6 +118,18 @@ pub fn require_application_services(
         .map_err(into_command_error)
 }
 
+/// D1 后的设置用例入口：`datazen-modules::settings` 由宿主 adapter 直接持有，
+/// 不再经 `ApplicationServices` 转发；命令从这里取同一个服务实例。
+pub fn require_settings_service(
+    state: &AppState,
+) -> Result<Arc<datazen_modules::settings::SettingsService>, CommandError> {
+    state
+        .platform_require()
+        .map_err(into_command_error)?
+        .require_settings_service()
+        .map_err(into_command_error)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

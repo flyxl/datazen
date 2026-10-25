@@ -27,7 +27,7 @@ impl DatabaseToolHost for crate::commands::AppState {
             .map(|(config, _)| config)
             .ok_or_else(|| "Profile unavailable".to_string())
     }
-    async fn execution_settings(&self) -> datazen_platform_api::settings::ExecutionSettings {
+    async fn execution_settings(&self) -> datazen_modules::settings::ExecutionSettings {
         self.store.execution_settings().await
     }
     async fn profile_config(&self, id: &str) -> Result<ConnectionConfig, String> {

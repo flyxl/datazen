@@ -25,9 +25,8 @@ pub(crate) async fn save_groups_impl(
 }
 
 pub(crate) async fn get_settings_impl(state: &AppState) -> Result<AppSettings, CommandError> {
-    let services = crate::platform::ipc::require_application_services(state)?;
-    let value = services
-        .settings_service()
+    let settings_service = crate::platform::ipc::require_settings_service(state)?;
+    let value = settings_service
         .read_app_settings()
         .await
         .map_err(|_| CommandError::Internal("Unable to read settings".into()))?;
@@ -45,11 +44,10 @@ pub(crate) async fn save_settings_impl(
         .apply_shared_settings(shared)
         .map_err(CommandError::Validation)?;
     tracing::debug!(theme_mode = %settings.theme.mode, "save_settings");
-    let services = crate::platform::ipc::require_application_services(state)?;
+    let settings_service = crate::platform::ipc::require_settings_service(state)?;
     let value = serde_json::to_value(&settings)
         .map_err(|_| CommandError::Internal("Unable to persist settings".into()))?;
-    services
-        .settings_service()
+    settings_service
         .save_app_settings(value)
         .await
         .map_err(|_| CommandError::Internal("Unable to persist settings".into()))?;
@@ -74,25 +72,24 @@ pub(crate) async fn save_settings_impl(
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SaveSharedSettingsRequest {
-    pub settings: datazen_platform_api::settings::SharedSettings,
+    pub settings: datazen_modules::settings::SharedSettings,
 }
 
 #[tauri::command]
 pub async fn get_shared_settings(
     state: State<'_, AppState>,
-) -> Result<datazen_platform_api::settings::SharedSettings, CommandError> {
+) -> Result<datazen_modules::settings::SharedSettings, CommandError> {
     get_shared_settings_impl(state.inner()).await
 }
 
 pub(crate) async fn get_shared_settings_impl(
     state: &AppState,
-) -> Result<datazen_platform_api::settings::SharedSettings, CommandError> {
-    // 设置用例归位到应用层（§5.1.2 第二步）：仓储由 `ApplicationServices` 持有，
-    // 命令只调用例。这里**不得**再直读宿主 store——宿主直读会把「应用层自己跑
-    // 用例」退化成「宿主替它跑」，并在装配失败时留下第二条事实源。
-    let services = crate::platform::ipc::require_application_services(state)?;
-    services
-        .settings_service()
+) -> Result<datazen_modules::settings::SharedSettings, CommandError> {
+    // 设置用例自 D1 收尾后由 `datazen-modules::settings` 拥有，宿主 adapter
+    // 持有同一个服务实例，命令只调用例。这里**不得**再直读宿主 store——
+    // 宿主直读会留下第二条事实源。
+    let settings_service = crate::platform::ipc::require_settings_service(state)?;
+    settings_service
         .read()
         .await
         .map_err(|_| CommandError::Internal("Unable to read settings".into()))
@@ -102,18 +99,17 @@ pub(crate) async fn get_shared_settings_impl(
 pub async fn save_shared_settings(
     state: State<'_, AppState>,
     request: SaveSharedSettingsRequest,
-) -> Result<datazen_platform_api::settings::SharedSettings, CommandError> {
+) -> Result<datazen_modules::settings::SharedSettings, CommandError> {
     save_shared_settings_impl(state.inner(), request.settings).await
 }
 
 pub(crate) async fn save_shared_settings_impl(
     state: &AppState,
-    settings: datazen_platform_api::settings::SharedSettings,
-) -> Result<datazen_platform_api::settings::SharedSettings, CommandError> {
-    // 同上：写入也走应用层用例，宿主的 store 只作为端口实现被注入。
-    let services = crate::platform::ipc::require_application_services(state)?;
-    let saved = services
-        .settings_service()
+    settings: datazen_modules::settings::SharedSettings,
+) -> Result<datazen_modules::settings::SharedSettings, CommandError> {
+    // 同上：写入也走模块用例，宿主的 store 只作为端口实现被注入。
+    let settings_service = crate::platform::ipc::require_settings_service(state)?;
+    let saved = settings_service
         .save(settings)
         .await
         .map_err(|error| match error {

@@ -536,7 +536,7 @@ fn custom_max_context_bytes_limits_output() {
 
 #[test]
 fn global_strict_policy_tightens_an_unconfigured_profile_gate() {
-    let mut policy = datazen_platform_api::settings::ExecutionSettings {
+    let mut policy = datazen_modules::settings::ExecutionSettings {
         limit_select_results: false,
         query_result_limit: 5000,
         safe_mode: true,

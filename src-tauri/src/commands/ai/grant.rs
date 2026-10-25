@@ -222,7 +222,7 @@ impl DatabaseToolHost for AiRequestHost<'_> {
         DatabaseToolHost::get_session_config(self.state, id).await
     }
 
-    async fn execution_settings(&self) -> datazen_platform_api::settings::ExecutionSettings {
+    async fn execution_settings(&self) -> datazen_modules::settings::ExecutionSettings {
         DatabaseToolHost::execution_settings(self.state).await
     }
 

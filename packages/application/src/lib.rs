@@ -21,12 +21,11 @@
 //! | [`dto`] | 用例请求 DTO、持久化记录，以及 platform-api 契约 DTO 的再导出 |
 //! | [`target`] | §4.3 六步目标计算 |
 //! | [`identity_policy`] | §5.1 身份与授权判定顺序 |
-//! | [`settings`] | 跨形态设置校验与仓储用例 |
 //! | [`sessions`] | [`ConnectionUseCases`](sessions::ConnectionUseCases) 用例面 |
 //! | [`capability`] | 计划第 93 行的可选能力注册与运行时能力降低机制 |
 //!
 //! [`ApplicationServices`] 按 §6.2 第 7 步的顺序组装：
-//! `target → identity_policy → sessions → settings → tunnels → known_hosts → connections →
+//! `target → identity_policy → sessions → tunnels → known_hosts → connections →
 //! named_views → dashboard → dashboard_runs → schema_diff_profiles`，能力注册表由
 //! [`with_capabilities`](ApplicationServices::with_capabilities) 在其后补挂，
 //! 缺省是**全不可用**的注册表。构造函数对桌面与团队两种形态**完全相同**，
@@ -34,8 +33,7 @@
 //!
 //! ## 注入的存储端口
 //!
-//! `settings`、`tunnels`、`known_hosts` 与 `connections` 是**形态中立的存储端口**。
-//! 设置端口由 `datazen-modules::settings` 所属功能拥有，其余共享端口住在
+//! `tunnels`、`known_hosts` 与 `connections` 是**形态中立的存储端口**，住在
 //! `datazen-platform-api::ports`：应用层**持有**它们，而不是反过来
 //! 借用宿主的 store。端口是**构造参数**而不是可选字段——漏注入是**编译错误**，
 //! 不是运行时的 `None`。桌面由宿主 adapter 注入同一个持久化事实，
@@ -43,9 +41,9 @@
 //!
 //! 端口契约有两个合法来源，**不是**「只能来自 platform-api」：
 //!
-//! * 形态中立的**存储端口**按功能拥有者分布（设置在
-//!   `datazen-modules::settings`，隧道、known-hosts、连接目录、制品、预算等在
-//!   `datazen-platform-api::ports`）。
+//! * 形态中立的**存储端口**按功能拥有者分布（隧道、known-hosts、连接目录、
+//!   制品、预算等在 `datazen-platform-api::ports`；设置已由
+//!   `datazen-modules::settings` 拥有，宿主直接消费，不再经本 crate 转发）。
 //! * P3 起，命令族的**领域端口**住在领域包自己那里（如
 //!   `datazen_feature_core::services::named_views::NamedViewRepository` 与仪表盘的两个仓储）。
 //!
@@ -63,12 +61,10 @@ pub mod error;
 pub mod frontend_bridge;
 pub mod identity_policy;
 pub mod sessions;
-pub mod settings;
 pub mod target;
 
 use std::sync::Arc;
 
-use datazen_modules::settings::{SettingsRepository, SettingsService};
 use datazen_platform_api::ports::known_hosts::KnownHostsRepository;
 use datazen_platform_api::ports::{ConnectionCatalog, MigrationProfileReader, TunnelRepository};
 
@@ -91,11 +87,6 @@ pub struct ApplicationServices {
     pub identity_policy: IdentityPolicy,
     /// 连接用例面（实现在组装层注入）。
     pub sessions: Arc<dyn ConnectionUseCases>,
-    /// D1 设置模块的跨形态仓储端口（组装层注入）。
-    ///
-    /// 桌面实现是宿主的 `DesktopSettingsRepository`（加密落盘 `{appData}`）；将来的
-    /// web 形态由服务端 host 实现。**事实只有一份**：本字段与宿主持有的必须是同一个实例。
-    pub settings: Arc<dyn SettingsRepository>,
     /// 隧道定义的存储端口（组装层注入）。
     ///
     /// 隧道定义是独立聚合：连接侧只存 `tunnelId`，解引用发生在建连时。
@@ -152,7 +143,6 @@ impl ApplicationServices {
         target: TargetResolver,
         identity_policy: IdentityPolicy,
         sessions: Arc<dyn ConnectionUseCases>,
-        settings: Arc<dyn SettingsRepository>,
         tunnels: Arc<dyn TunnelRepository>,
         known_hosts: Arc<dyn KnownHostsRepository>,
         connections: Arc<dyn ConnectionCatalog>,
@@ -166,7 +156,6 @@ impl ApplicationServices {
             target,
             identity_policy,
             sessions,
-            settings,
             tunnels,
             known_hosts,
             connections,
@@ -183,15 +172,6 @@ impl ApplicationServices {
     pub fn with_capabilities(mut self, capabilities: CapabilityRegistry) -> Self {
         self.capabilities = capabilities;
         self
-    }
-
-    /// D1 跨形态设置用例入口。
-    ///
-    /// 仓库由本聚合**持有**（不是借用宿主的 store），因此设置用例可以在没有
-    /// Tauri 的进程里跑。桌面与将来的 web 形态走**同一个**入口，只有注入的
-    /// [`SettingsRepository`] 实现不同。
-    pub fn settings_service(&self) -> SettingsService<'_> {
-        SettingsService::new(self.settings.as_ref())
     }
 }
 
@@ -375,15 +355,12 @@ mod tests {
         let code = crate_root_code();
         assert!(
             code.contains("use datazen_platform_api::ports")
-                && code.contains("use datazen_modules::settings")
                 && code.contains("ConnectionCatalog")
-                && code.contains("SettingsRepository")
                 && code.contains("TunnelRepository")
                 && code.contains("MigrationProfileReader"),
             "存储端口必须直接引其拥有模块的那一份"
         );
         for port in [
-            "SettingsRepository",
             "TunnelRepository",
             "KnownHostsRepository",
             "NamedViewRepository",
@@ -405,17 +382,12 @@ mod tests {
     fn the_aggregate_holds_the_form_neutral_storage_ports() {
         let code = crate_root_code();
         for field in [
-            "pub settings: Arc<dyn SettingsRepository>",
             "pub tunnels: Arc<dyn TunnelRepository>",
             "pub known_hosts: Arc<dyn KnownHostsRepository>",
             "pub connections: Arc<dyn ConnectionCatalog>",
         ] {
             assert!(code.contains(field), "聚合必须持有该存储端口字段：{field}");
         }
-        assert!(
-            !code.contains("pub settings: Option<"),
-            "settings 端口不得是 Option：漏注入必须是编译错误"
-        );
         assert!(
             !code.contains("pub tunnels: Option<"),
             "tunnels 端口不得是 Option：漏注入必须是编译错误"
@@ -431,7 +403,6 @@ mod tests {
             .and_then(|rest| rest.split(") -> Self").next())
             .expect("必须能取到 new 的参数表");
         for parameter in [
-            "settings: Arc<dyn SettingsRepository>",
             "tunnels: Arc<dyn TunnelRepository>",
             "known_hosts: Arc<dyn KnownHostsRepository>",
             "connections: Arc<dyn ConnectionCatalog>",
@@ -446,6 +417,32 @@ mod tests {
                 signature.split_whitespace().collect::<Vec<_>>().join(" ")
             );
         }
+    }
+
+    /// D1 收尾清理后的边界：设置用例已由 `datazen-modules::settings` 拥有，
+    /// 宿主直接消费；本 crate 不再转发它，也不再持有它的仓储端口。
+    ///
+    /// 后续阶段若按过渡模式（ddd-refactor/02 §5.5）重新引入对 modules 的依赖，
+    /// 必须显式改写本断言并在 hub/阶段文档里具名登记，而不是静默把这条边加回来。
+    #[test]
+    fn the_crate_no_longer_forwards_the_settings_use_case() {
+        let code = crate_root_code();
+        for banned in [
+            "SettingsService",
+            "SettingsRepository",
+            "settings_service",
+            "pub mod settings",
+        ] {
+            assert!(
+                !code.contains(banned),
+                "设置用例已归 `datazen-modules::settings` 拥有，本 crate 不得再出现：{banned}"
+            );
+        }
+        let manifest = include_str!("../Cargo.toml");
+        assert!(
+            !manifest.contains("datazen-modules"),
+            "本 crate 不再依赖 datazen-modules：设置消费者已改由宿主直接引模块"
+        );
     }
 
     #[test]
@@ -466,10 +463,10 @@ mod tests {
                 "frontend_bridge",
                 "identity_policy",
                 "sessions",
-                "settings",
                 "target",
             ],
-            "本 crate 的对外模块面是封闭的八单元：多一个或少一个 `pub mod` 都必须在这里显式表态，\
+            "本 crate 的对外模块面是封闭的七单元（设置用例已归 datazen-modules）：\
+             多一个或少一个 `pub mod` 都必须在这里显式表态，\
              并同步 lib.rs 顶部的模块表与架构文档"
         );
         assert_eq!(

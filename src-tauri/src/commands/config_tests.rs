@@ -123,11 +123,13 @@ async fn get_log_path_honors_custom_log_path_setting() {
 /// §5.1.2 设置命令族的验收断言：设置与分组只走应用层聚合。
 ///
 /// 这两条命令原来自行拼服务——`SettingsService::new(state.store.as_ref())`。
-/// 那种写法让「设置用例归位到应用层」在源码上根本没发生：命令仍然是服务的
-/// 构造者与持有者，`ApplicationServices::settings` 只是被注入却没人用。
+/// 那种写法让「设置用例归位」在源码上根本没发生：命令仍然是服务的
+/// 构造者与持有者。
 ///
-/// 改成经 `ApplicationServices::settings_service()` 之后，宿主 store 只作为端口
-/// 实现被注入，不再出现在调用点。**这条断言盯的就是「不再出现」**：只要有人
+/// D1 收尾后设置用例由 `datazen-modules::settings` 拥有，宿主 adapter 持有
+/// 服务实例，命令经 `platform::ipc::require_settings_service` 取用例。
+/// 宿主 store 只作为端口实现被注入，不再出现在调用点。
+/// **这条断言盯的就是「不再出现」**：只要有人
 /// 为了「装配失败时也能读设置」把直连加回来，它就红。
 #[test]
 fn shared_settings_commands_read_the_aggregate_not_the_host_store() {
@@ -138,11 +140,11 @@ fn shared_settings_commands_read_the_aggregate_not_the_host_store() {
         .expect("config.rs 必有生产半边");
     assert!(
         !production.contains("SettingsService::new("),
-        "设置命令不得自己拼 SettingsService：应当经 ApplicationServices::settings_service() 取用例"
+        "设置命令不得自己拼 SettingsService：应当经 platform::ipc::require_settings_service 取宿主装配的用例"
     );
     assert!(
         !production.contains("state.store.as_ref()"),
-        "设置命令不得直连宿主 store：设置仓储由 ApplicationServices 持有"
+        "设置命令不得直连宿主 store：设置仓储由模块服务经端口持有"
     );
     assert_eq!(
         production.matches("settings_service()").count(),

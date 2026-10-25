@@ -7,7 +7,7 @@ use datazen_platform_api::dto::execution::ResultChunk;
 use datazen_platform_api::dto::session::SessionHandle;
 use datazen_platform_api::error::ApiError;
 use datazen_platform_api::id::{ArtifactId, Counter};
-use datazen_platform_api::settings::ExecutionSettings;
+use datazen_modules::settings::ExecutionSettings;
 use datazen_platform_api::target::ExecutionTarget;
 use std::sync::Arc;
 #[async_trait::async_trait]

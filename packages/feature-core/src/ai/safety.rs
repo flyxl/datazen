@@ -342,7 +342,7 @@ pub fn redact_for_gate(value: &str, gate: &AiSafetyGateConfig) -> String {
 /// Global execution policy can tighten a model profile's egress level.
 pub fn effective_safety_gate(
     settings: &datazen_ai_api::AiSettingsConfig,
-    policy: &datazen_platform_api::settings::ExecutionSettings,
+    policy: &datazen_modules::settings::ExecutionSettings,
 ) -> AiSafetyGateConfig {
     let mut gate = settings
         .selected_profile()

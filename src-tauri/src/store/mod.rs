@@ -434,7 +434,7 @@ impl DesktopRepository {
         cache.settings.clone()
     }
 
-    pub async fn execution_settings(&self) -> datazen_platform_api::settings::ExecutionSettings {
+    pub async fn execution_settings(&self) -> datazen_modules::settings::ExecutionSettings {
         self.cache.read().await.settings.shared_settings().execution
     }
 

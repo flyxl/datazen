@@ -79,7 +79,6 @@ pub(super) const SOURCE_FILES: &[(&str, &str)] = &[
         "session_directory.rs",
         include_str!("../session_directory.rs"),
     ),
-    ("settings.rs", include_str!("../settings.rs")),
     ("token.rs", include_str!("../token.rs")),
     ("tunnel.rs", include_str!("../tunnel.rs")),
 ];

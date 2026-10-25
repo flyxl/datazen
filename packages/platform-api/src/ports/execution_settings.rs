@@ -2,9 +2,9 @@
 //!
 //! ## 它与 `SettingsRepository` 的分工
 //!
-//! [`SettingsRepository`](crate::ports::settings::SettingsRepository) 是**跨形态设置的
+//! [`SettingsRepository`](datazen_modules::settings::SettingsRepository) 是**跨形态设置的
 //! 读写仓储**：整份 `SharedSettings`（用户偏好 + 执行设置），并且带写方法。
-//! 执行路径只关心其中**两项**，却因此要拿到一个「能改设置」的端口。
+//! 它由 `datazen-modules::settings` 拥有；执行路径只关心其中**两项**，却因此要拿到一个「能改设置」的端口。
 //!
 //! 本端口只投影执行期**真正要读**的两项：
 //!
@@ -15,7 +15,7 @@
 //!
 //! **刻意不含**：MCP 开关、AI 出站策略、驱动私有设置、用户偏好，以及连接池大小
 //! ——后者全仓只有写入方（`src-tauri/src/store/settings.rs`），**没有任何执行期读取方**。
-//! 它们由 `SettingsRepository` 或各自的窄端口提供。
+//! 它们由 `SettingsRepository`（`datazen-modules::settings`）或各自的窄端口提供。
 //!
 //! ## 同一份事实的**三个**取法（别把它误判成三份重复实现）
 //!
@@ -23,7 +23,7 @@
 //!
 //! | 取法 | 位置 | 给什么 |
 //! |---|---|---|
-//! | `SettingsRepository::read_settings` | 本包（platform-api） | 整份 `SharedSettings`（含用户偏好）**+ 写方法** |
+//! | `SettingsRepository::read_settings` | `datazen-modules::settings` | 整份 `SharedSettings`（含用户偏好）**+ 写方法** |
 //! | `DatabaseToolHost::execution_settings` | `packages/feature-core`（feature-core 层的既有 trait，**不是** platform-api 端口） | 整份 `ExecutionSettings` |
 //! | `ExecutionSettingsReader::read` | 本包（本端口） | 执行期两项的投影，**只读** |
 //!
@@ -43,6 +43,8 @@
 //! * 端口**不重试、不鉴权、不缓存**：设置快照的取用由实现方负责，端口只给事实。
 
 use async_trait::async_trait;
+
+use datazen_modules::settings::ExecutionSettings;
 
 use crate::context::RequestContext;
 use crate::error::PortError;
@@ -64,7 +66,7 @@ impl ExecutionPolicy {
     ///
     /// 结果上限沿用 `ExecutionSettings::result_limit()` 的判定：`limit_select_results`
     /// 关闭或上限为 0 时**不封顶**（`None`），而不是把上限解释成 0 行。
-    pub fn from_settings(settings: &crate::settings::ExecutionSettings) -> Self {
+    pub fn from_settings(settings: &ExecutionSettings) -> Self {
         Self {
             safe_mode: settings.safe_mode,
             result_limit: settings.result_limit(),
@@ -111,8 +113,8 @@ mod tests {
         )
     }
 
-    fn settings(safe_mode: bool, limit: bool, rows: u32) -> crate::settings::ExecutionSettings {
-        crate::settings::ExecutionSettings {
+    fn settings(safe_mode: bool, limit: bool, rows: u32) -> ExecutionSettings {
+        ExecutionSettings {
             limit_select_results: limit,
             query_result_limit: rows,
             safe_mode,

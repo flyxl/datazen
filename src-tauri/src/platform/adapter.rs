@@ -102,6 +102,9 @@ pub struct PlatformAdapter {
     identity: DesktopIdentity,
     handles: Arc<SessionHandleRegistry>,
     services: std::sync::OnceLock<Arc<ApplicationServices>>,
+    /// D1 后的设置用例：`datazen-modules::settings` 由宿主直接消费，
+    /// 不再经 `ApplicationServices` 转发。装配期创建一次，进程内共享。
+    settings_service: std::sync::OnceLock<Arc<datazen_modules::settings::SettingsService>>,
     runtime: std::sync::OnceLock<Arc<datazen_runtime::application::RuntimeConnectionUseCases>>,
     profiles: std::sync::OnceLock<Arc<super::repositories::DesktopProfiles>>,
     /// 执行身份解析器（`IdentityResolver` 端口的桌面实现）。
@@ -138,6 +141,7 @@ impl PlatformAdapter {
             identity: DesktopIdentity::from_desktop_user(client_instance_id)?,
             handles: Arc::new(SessionHandleRegistry::new()),
             services: std::sync::OnceLock::new(),
+            settings_service: std::sync::OnceLock::new(),
             runtime: std::sync::OnceLock::new(),
             profiles: std::sync::OnceLock::new(),
             identities: std::sync::OnceLock::new(),
@@ -157,6 +161,7 @@ impl PlatformAdapter {
             identity,
             handles: Arc::new(SessionHandleRegistry::new()),
             services: std::sync::OnceLock::new(),
+            settings_service: std::sync::OnceLock::new(),
             runtime: std::sync::OnceLock::new(),
             profiles: std::sync::OnceLock::new(),
             identities: std::sync::OnceLock::new(),
@@ -276,6 +281,25 @@ impl PlatformAdapter {
 
     pub fn application_services(&self) -> Option<Arc<ApplicationServices>> {
         self.services.get().cloned()
+    }
+
+    /// D1 后的设置用例入口：设置已由 `datazen-modules::settings` 拥有，
+    /// 宿主直接消费模块用例，不再经 `ApplicationServices` 转发。
+    pub fn settings_service(&self) -> Option<Arc<datazen_modules::settings::SettingsService>> {
+        self.settings_service.get().cloned()
+    }
+
+    /// 需要设置用例时调用；未注入 ⇒ 明确报错，不回落旧路径。
+    pub fn require_settings_service(
+        &self,
+    ) -> Result<Arc<datazen_modules::settings::SettingsService>, ApiError> {
+        self.settings_service().ok_or_else(|| {
+            ApiError::new(
+                ApiErrorCode::CapabilityUnsupported,
+                "SettingsService 未注入：启动装配尚未调用 PlatformAdapter::inject，\
+                 或在注入完成前就发起了设置用例调用；此处不做回落，也不得直读宿主 store",
+            )
+        })
     }
 
     /// 需要应用服务时调用；未注入 ⇒ 明确报错，不回落旧路径。
@@ -489,23 +513,25 @@ impl PlatformAdapter {
         let target = super::target_metadata::resolver(target_metadata.clone());
         // §6.2 第 7 步：**形态中立的存储端口在这里注入**。
         //
-        // * `settings`：跨形态设置仓储。桌面实现是本宿主的
-        //   `DesktopSettingsRepository`，内部复用同一个 `DesktopRepository`。
-        //   （`store/tunnels.rs`）。
         // * `tunnels`：隧道定义的存储端口。实例与会话后端用的是**同一个**
         //   （建连时解引用 `tunnelId` 要读它），所以这里传 `clone` 而不是新建。
         //
-        // 两个端口都是**构造参数**（不是 `Option`）：漏注入是编译错误，而不是
-        // 运行时的 `None`。将来的 web 形态把这两个实现换成服务端 host 的版本，
+        // 端口是**构造参数**（不是 `Option`）：漏注入是编译错误，而不是
+        // 运行时的 `None`。将来的 web 形态把实现换成服务端 host 的版本，
         // **用例代码一行不改**。
-        let settings = Arc::new(super::settings::DesktopSettingsRepository::new(
-            store.clone(),
-        ));
+        //
+        // 设置用例自 D1 收尾后不再走 `ApplicationServices`：
+        // `datazen-modules::settings::SettingsService` 由本 adapter 直接持有
+        // （桌面仓储实现是 `DesktopSettingsRepository`，内部复用同一个
+        // `DesktopRepository` 的缓存、加密与原子写入）。
+        let settings = Arc::new(datazen_modules::settings::SettingsService::new(Arc::new(
+            super::settings::DesktopSettingsRepository::new(store.clone()),
+        )));
+        let _ = self.settings_service.set(settings);
         let services = Arc::new(ApplicationServices::new(
             target,
             datazen_application::identity_policy::IdentityPolicy::new(),
             runtime.clone(),
-            settings,
             tunnels.clone(),
             known_hosts.clone(),
             // 连接目录端口（§5.1.2 第六步）：桌面实现就是同一个 `DesktopRepository`

@@ -1,5 +1,7 @@
 //! Settings application use cases.
 
+use std::sync::Arc;
+
 use super::domain::{SettingsRepository, SettingsRepositoryError, SharedSettings};
 
 #[derive(Debug, thiserror::Error)]
@@ -10,12 +12,17 @@ pub enum SettingsError {
     Repository(#[from] SettingsRepositoryError),
 }
 
-pub struct SettingsService<'a> {
-    repository: &'a dyn SettingsRepository,
+/// 拥有仓储注入（`Arc<dyn SettingsRepository>`）的设置用例。
+///
+/// 宿主（desktop / web）在装配期创建一次、进程内共享；用例本身无状态，
+/// 所有事实都经仓储端口取用。拥有而不是借用，是为了让宿主能把同一个服务
+/// 实例挂在装配根上长期复用。
+pub struct SettingsService {
+    repository: Arc<dyn SettingsRepository>,
 }
 
-impl<'a> SettingsService<'a> {
-    pub fn new(repository: &'a dyn SettingsRepository) -> Self {
+impl SettingsService {
+    pub fn new(repository: Arc<dyn SettingsRepository>) -> Self {
         Self { repository }
     }
 
@@ -183,7 +190,7 @@ mod tests {
             stored: Mutex::new(sample_settings()),
             fail: false,
         };
-        let service = SettingsService::new(&repository);
+        let service = SettingsService::new(Arc::new(repository));
         assert_eq!(
             service.read().await.expect("read should succeed"),
             sample_settings()
@@ -205,7 +212,7 @@ mod tests {
             stored: Mutex::new(sample_settings()),
             fail: false,
         };
-        let service = SettingsService::new(&repository);
+        let service = SettingsService::new(Arc::new(repository));
         let mut invalid = sample_settings();
         invalid.preferences.theme.mode = "neon".into();
 
@@ -231,7 +238,7 @@ mod tests {
             stored: Mutex::new(sample_settings()),
             fail: false,
         };
-        let service = SettingsService::new(&repository);
+        let service = SettingsService::new(Arc::new(repository));
         let mut settings = sample_settings();
         settings.execution.connection_pool_size = 1000;
 
@@ -245,7 +252,7 @@ mod tests {
             stored: Mutex::new(sample_settings()),
             fail: true,
         };
-        let service = SettingsService::new(&repository);
+        let service = SettingsService::new(Arc::new(repository));
 
         let error = service
             .read()
