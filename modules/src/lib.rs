@@ -19,6 +19,10 @@ pub mod named_views;
 #[cfg(feature = "settings")]
 pub mod settings;
 
+/// 跨模块基础词汇（ID/上下文/错误信封）。常驻编译，不设 feature 门
+/// （§5.1：形成归属契约的最小 ID/引用值在 shared 唯一定义）。
+pub mod shared;
+
 #[cfg(test)]
 mod tests {
     #[test]

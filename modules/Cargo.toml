@@ -7,12 +7,11 @@ description = "DataZen feature modules: domain vocabulary, repository boundaries
 
 [features]
 default = []
-settings = ["dep:async-trait", "dep:serde", "dep:serde_json", "dep:thiserror"]
+settings = ["dep:async-trait", "dep:serde_json"]
 # D2：连接目录（配置 + 分组）的领域词汇与用例。形状复用 driver-api 的
 # ConnectionConfig（每个形态都已链接的那一份，且是连接表单的 IPC 载荷）。
 connection = [
     "dep:async-trait",
-    "dep:thiserror",
     "dep:serde_json",
     "dep:datazen-driver-api",
 ]
@@ -20,9 +19,7 @@ connection = [
 # driver-api 提供 filters 词汇（NamedView 的载荷）。
 named_views = [
     "dep:async-trait",
-    "dep:serde",
     "dep:serde_json",
-    "dep:thiserror",
     "dep:chrono",
     "dep:datazen-driver-api",
 ]
@@ -31,9 +28,7 @@ named_views = [
 # （如仅契约不带 reqwest），届时再拆，不提前建空档。
 ai = [
     "dep:async-trait",
-    "dep:serde",
     "dep:serde_json",
-    "dep:thiserror",
     "dep:inventory",
     "dep:tokio",
     "dep:tokio-util",
@@ -45,9 +40,10 @@ ai = [
 
 [dependencies]
 async-trait = { version = "0.1", optional = true }
-serde = { version = "1", features = ["derive"], optional = true }
+# shared 常驻（id/context/error 词汇），serde 与 thiserror 因此非可选。
+serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", optional = true }
-thiserror = { version = "1", optional = true }
+thiserror = "1"
 # ai feature：契约层链接期工厂注册
 inventory = { version = "0.3", optional = true }
 # ai feature：providers 的并发与流式传输
@@ -65,6 +61,8 @@ datazen-driver-api = { path = "../packages/driver-api", optional = true }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"], optional = true }
 
 [dev-dependencies]
+# shared 词汇单测（Counter 序列化、RequestContext 往返等）需要 serde_json。
+serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 wiremock = "0.6"
 tracing-subscriber = "0.3"
