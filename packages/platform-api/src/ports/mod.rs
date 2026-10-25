@@ -90,7 +90,7 @@ pub use inventory::PORT_TRAITS;
 pub use job::JobRepository;
 pub use known_hosts::{KnownHostEntry, KnownHostsRepository};
 pub use master_key::MasterKeyProvider;
-pub use migration_profile::MigrationProfileReader;
+pub use migration_profile::{MigrationProfileReader, MigrationProfileSummary};
 pub use monitor_grant::MonitorGrantReader;
 pub use network::NetworkProvider;
 pub use policy::PolicyService;

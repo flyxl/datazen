@@ -9,6 +9,7 @@ pub(crate) mod history_db;
 pub(crate) mod key_backend;
 mod key_codec;
 mod key_store;
+mod migration_profile_reader;
 mod models;
 mod named_views;
 pub(crate) mod platform_profiles;

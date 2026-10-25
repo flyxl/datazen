@@ -15,6 +15,7 @@ pub mod operations;
 pub mod plan;
 pub mod plan_request;
 pub mod profile;
+pub mod profile_repository;
 pub mod reviewed;
 pub mod transaction;
 pub mod types;
@@ -30,4 +31,5 @@ pub use deploy::{execute_schema_diff_deploy, execute_schema_diff_deploy_at, Depl
 pub use object_identity::SchemaObjectIdentity;
 pub use plan::{build_column_plan, build_schema_diff_plan, PlanOptions};
 pub use profile::SchemaDiffProfile;
+pub use profile_repository::{SchemaDiffProfileRepository, SchemaDiffProfileRepositoryError};
 pub use types::*;
