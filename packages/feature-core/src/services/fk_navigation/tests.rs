@@ -162,6 +162,7 @@ fn request(columns: &[&str], values: Vec<Value>) -> ResolveForeignKeyTargetsRequ
         constraint_name: None,
         values,
         limit: None,
+        browse: false,
     }
 }
 
@@ -665,5 +666,6 @@ fn find_fk_prefers_the_constraint_name_and_falls_back_to_the_ordered_columns() {
     assert!(find_fk(&foreign_keys, &["b".to_string(), "a".to_string()], None).is_none());
 }
 
+mod browse_candidates;
 mod probe_statement;
 mod target_resolution;

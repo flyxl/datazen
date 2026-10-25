@@ -1,9 +1,10 @@
 import { memo, useCallback } from 'react';
-import { ArrowUpRight } from 'lucide-react';
+import { ArrowUpRight, ChevronDown } from 'lucide-react';
 import type { ColumnDef } from './TableHeader';
 import { CellRenderer } from './CellRenderer';
 import { Spinner } from '../ui/Spinner';
 import { fkJumpLabel, fkResolvingLabel } from './fkCellText';
+import { fkSelectorLabel } from './fkSelectorText';
 import { cn } from '../../lib/cn';
 import type { CellType } from '../../lib/cellTypes';
 import type { CellEditingContext, ColumnEditorInfo } from '../../lib/cellEditorKind';
@@ -36,6 +37,13 @@ export interface FkCellAffordance {
   navigable: boolean;
   /** A resolution for this target is in flight. */
   resolving: boolean;
+  /**
+   * This cell offers the in-cell selector (DB-20): a single-column key on a
+   * cell the grid can write. It is column-level, not row-level — the picker
+   * exists precisely to fill a cell whose key has no value yet. Absent means
+   * the cell was built before the selector existed: not pickable.
+   */
+  pickable?: boolean;
 }
 
 export interface GridCellProps {
@@ -189,6 +197,8 @@ export const GridCell = memo(function GridCell({
    * that it goes somewhere.
    */
   const fkTitle = fk ? (fk.resolving ? fkResolvingLabel() : fkJumpLabel(fk.targetLabel)) : null;
+  /** The wording of the pick entry: where the dropdown's values come from. */
+  const pickTitle = fk ? fkSelectorLabel(fk.targetLabel) : null;
   return (
     <div
       id={id}
@@ -253,6 +263,10 @@ export const GridCell = memo(function GridCell({
           onCommit={commitValue}
           onCancel={onCellEditCancel}
           loadCandidates={editor?.loadCandidates}
+          // The selector's editor (DB-20): a pickable foreign-key cell edits
+          // as a candidates dropdown, not as a plain input — the same editor
+          // the enumeration columns take, fed from the target table.
+          editorKindOverride={editing && fk?.pickable ? 'enum' : undefined}
         />
       </div>
       {fk?.navigable && !editing && (
@@ -283,6 +297,28 @@ export const GridCell = memo(function GridCell({
           onDoubleClick={(e) => e.stopPropagation()}
         >
           {fk.resolving ? <Spinner size="xs" /> : <ArrowUpRight className="h-3 w-3" />}
+        </button>
+      )}
+      {fk?.pickable && !editing && (
+        // The in-cell selector's entry (DB-20): opens the cell editor, which
+        // for a pickable key is the candidates dropdown fed from the target
+        // table. It shares the double-click path — one way to open an editor,
+        // whatever opens it — and needs no value in the cell, because filling
+        // an empty key is its whole point.
+        <button
+          type="button"
+          data-dt-fk-pick="true"
+          aria-label={pickTitle ?? undefined}
+          title={pickTitle ?? undefined}
+          className="ml-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded text-fg-muted hover:bg-surface-raised hover:text-accent"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onCellDoubleClick(rowIndex, column.name);
+          }}
+          onDoubleClick={(e) => e.stopPropagation()}
+        >
+          <ChevronDown className="h-3 w-3" />
         </button>
       )}
       {dirty && (

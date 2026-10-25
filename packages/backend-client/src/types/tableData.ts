@@ -479,6 +479,13 @@ export interface ResolveForeignKeyTargetsRequest {
   /** The local column values, positionally paired with `columns`. */
   values: TableValue[];
   limit?: number;
+  /**
+   * Browse mode (DB-20): the in-cell selector asks for what the target table
+   * **offers** — the first `limit + 1` rows of the referenced columns —
+   * instead of looking the current value up. The key `values` are ignored on
+   * this path, so the selector may open before anything is picked.
+   */
+  browse?: boolean;
 }
 
 /**

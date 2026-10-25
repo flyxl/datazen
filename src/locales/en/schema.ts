@@ -152,9 +152,12 @@ const pack = {
   'privileges.allPrivileges': 'all privileges',
   'schema.loadDbFailed': 'Failed to load databases',
   'schema.loadTablesFailed': 'Failed to load tables',
-  'metadata.temporaryResultInvalidated': 'Temporary result invalidated: its runtime session or configuration changed.',
-  'metadata.staleResultProvenance': 'This result was produced under a different connection, configuration revision, or target.',
-  'metadata.cacheBucketIsolated': 'Metadata cache entries are isolated by connection, configuration revision, and target.',
+  'metadata.temporaryResultInvalidated':
+    'Temporary result invalidated: its runtime session or configuration changed.',
+  'metadata.staleResultProvenance':
+    'This result was produced under a different connection, configuration revision, or target.',
+  'metadata.cacheBucketIsolated':
+    'Metadata cache entries are isolated by connection, configuration revision, and target.',
   'objectFilter.hideSystemSchemas': 'Hide system schemas and databases',
   'objectFilter.include': 'Table name include',
   'objectFilter.exclude': 'Table name exclude',
@@ -315,12 +318,20 @@ const pack = {
   'fkNav.forward': 'Forward',
   'fkNav.stackTruncated': 'Earlier navigation steps were dropped',
   'fkNav.targetMissing': 'The referenced row no longer exists',
-  'fkNav.notUniqueWarning': '{columns} is not a primary or unique key; the jump may return many rows',
+  'fkNav.notUniqueWarning':
+    '{columns} is not a primary or unique key; the jump may return many rows',
   'fkNav.error.shapeMismatch': "This foreign key's columns do not line up",
   'fkNav.error.unknownConstraint': 'The foreign key changed; refresh the table structure',
   'fkNav.error.valueNull': 'Part of the composite key is NULL',
-  'fkNav.error.targetUnresolved': 'Cannot reach {target}; it may be missing, in another database, or not readable',
+  'fkNav.error.targetUnresolved':
+    'Cannot reach {target}; it may be missing, in another database, or not readable',
   'fkNav.error.probeFailed': 'The target table was found but could not be read',
   'fkNav.error.unknown': 'Foreign key navigation failed',
+  // The in-cell foreign-key selector (DB-20): the dropdown that writes a
+  // referenced value into a foreign-key cell. The words are the selector's,
+  // not the jump's — hence their own namespace next to `fkNav.*`.
+  'fkSelector.pickFrom': 'Pick a referenced value from {target}',
+  'fkSelector.notUnique':
+    'The referenced columns are not unique, so a value cannot be picked safely',
 } as const;
 export default pack;

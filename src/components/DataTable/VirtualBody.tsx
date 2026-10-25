@@ -376,10 +376,16 @@ const VirtualRow = memo(function VirtualRow({
         targetLabel: group.targetLabel,
         navigable: fkNavigable?.has(columnName) ?? false,
         resolving: foreignKeys.resolving?.has(`${vRow.index}:${columnName}`) ?? false,
+        // The selector (DB-20) is a column-level offer: one single-column
+        // key, on a cell the grid can write. The write path arrives either
+        // as the tri-state callback of the editing context or as the legacy
+        // per-cell callback — a grid with neither is read-only.
+        pickable:
+          group.localColumns.length === 1 && Boolean(cellEditing?.onCellValue ?? onCellEdit),
       });
     }
     return map;
-  }, [foreignKeys, fkNavigable, vRow.index]);
+  }, [cellEditing, foreignKeys, fkNavigable, onCellEdit, vRow.index]);
 
   return (
     <div

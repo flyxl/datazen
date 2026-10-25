@@ -37,6 +37,8 @@ import { TableFkBreadcrumb } from './TableFkBreadcrumb';
 import { TableFkErrorBanner } from './TableFkErrorBanner';
 import { useTableActions } from './useTableActions';
 import { useTableForeignKeyNavigation } from './useTableForeignKeyNavigation';
+import { useTableForeignKeys } from '../../hooks/useTableForeignKeys';
+import { indexFkCandidateSources } from '../../lib/fkSelector';
 import { useDirtyIndex } from './useDirtyIndex';
 import { PendingPlanDialog } from './PendingPlanDialog';
 import { useTableDraftRows } from './useTableDraftRows';
@@ -305,6 +307,19 @@ export function TableView({
 
   const columns = ts?.columns ?? EMPTY_COLUMNS;
   /**
+   * The foreign keys of the table (DB-20): the in-cell selector needs the
+   * single-column keys to route its candidate loads. The navigation hook
+   * below reads the same schema — the cache makes the second read free.
+   */
+  const fkMeta = useTableForeignKeys({
+    dbSessionId,
+    tableName,
+    database,
+    schema: schema ?? null,
+    connectionId: connectionId ?? null,
+  });
+  const fkSources = useMemo(() => indexFkCandidateSources(fkMeta.index.entries()), [fkMeta.index]);
+  /**
    * The editing wiring of the panel (DB-05): the editor facts of every
    * column, the write path and the "Set Value" entries.
    */
@@ -318,6 +333,7 @@ export function TableView({
     columns,
     connectionReadOnly: isConnectionReadOnly,
     mountReason: readOnlyReasonProp,
+    fkSources,
   });
 
   /**
