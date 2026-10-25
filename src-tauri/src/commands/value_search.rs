@@ -16,7 +16,7 @@ use super::error::CommandError;
 use super::AppState;
 use datazen_feature_core::services::schema_scope::{embedded_schema_of, metadata_schema};
 use datazen_feature_core::services::value_search::{
-    search_table_values, SearchTableValuesRequest, SearchTableValuesResult,
+    SearchTableValuesRequest, SearchTableValuesResult,
 };
 use tauri::State;
 
@@ -44,15 +44,16 @@ pub(crate) async fn search_table_values_impl(
         .await
         .ok_or_else(|| CommandError::NotFound("connection profile is unavailable".to_string()))?;
 
-    // The same fallback ladder the grid's own reads climb, so a searched
-    // table and an opened one can never land on two scopes.
+    // The same fallback ladder the grid's own reads climb (the `schema.rs`
+    // shape: request → connection profile → "default"), so a searched table
+    // and an opened one can never land on two databases.
     let database = request
         .database
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty())
-        .or_else(|| config.database.as_deref().map(str::to_string))
-        .unwrap_or_else(|| "default".to_string());
+        .or(config.database.as_deref())
+        .unwrap_or("default");
     let schema = metadata_schema(
         resolved.driver.as_ref(),
         request.schema.as_deref(),
@@ -60,10 +61,13 @@ pub(crate) async fn search_table_values_impl(
         config.schema.as_deref(),
     );
 
-    let result = search_table_values(
+    // Fully qualified so the shared function and the `#[tauri::command]`
+    // wrapper of the same name below never collide (the `fk_navigation.rs`
+    // convention).
+    let result = datazen_feature_core::services::value_search::search_table_values(
         resolved.driver.as_ref(),
         &resolved.handle,
-        &database,
+        database,
         schema.as_deref(),
         &request,
     )
