@@ -79,7 +79,7 @@ beforeEach(() => {
 });
 
 describe('searchableColumns', () => {
-  it('keeps the text-ish columns and drops the rest', () => {
+  it('keeps columns the grid renders as text and drops the rest', () => {
     expect(searchableColumns(columns(TEXT, NUMBER))).toEqual(['name']);
     expect(searchableColumns(columns(NUMBER))).toEqual([]);
   });

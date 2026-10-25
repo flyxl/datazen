@@ -11,11 +11,11 @@ use super::AppState;
 use datazen_feature_core::services::fk_navigation::{
     ForeignKeyTargetResolution, ResolveForeignKeyTargetsRequest,
 };
-use datazen_feature_core::services::referenced_by::{
-    InboundForeignKeyCatalog, ListInboundForeignKeysRequest,
-};
 use datazen_feature_core::services::ports::{
     FkSessionBinding, FkSessionError, ForeignKeyNavigationSource,
+};
+use datazen_feature_core::services::referenced_by::{
+    InboundForeignKeyCatalog, ListInboundForeignKeysRequest,
 };
 use tauri::State;
 

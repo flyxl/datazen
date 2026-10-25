@@ -143,7 +143,7 @@ impl SearchStatement {
 }
 
 /// Build the count statement of one value search.
-pub fn build_search_statement(
+pub(crate) fn build_search_statement(
     dialect: &dyn SqlDialect,
     table: &str,
     columns: &[String],

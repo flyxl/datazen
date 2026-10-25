@@ -168,7 +168,7 @@ function JsonTreeNode({
     ) : typeof value === 'string' ? (
       <span className="text-success">&quot;{value}&quot;</span>
     ) : typeof value === 'number' ? (
-      <span className="text-info">{value}</span>
+      <span className="text-dt-number">{value}</span>
     ) : typeof value === 'boolean' ? (
       <span className="text-accent">{String(value)}</span>
     ) : null;

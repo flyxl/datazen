@@ -31,12 +31,9 @@ pub(crate) async fn search_table_values_impl(
         return Err(CommandError::Validation("value is required".into()));
     }
 
-    let resolved = super::driver_command::resolve_command_driver(
-        state,
-        Some(&request.db_session_id),
-        None,
-    )
-    .await?;
+    let resolved =
+        super::driver_command::resolve_command_driver(state, Some(&request.db_session_id), None)
+            .await?;
     let session = resolved
         .session
         .as_ref()
@@ -45,9 +42,7 @@ pub(crate) async fn search_table_values_impl(
         .store
         .get_connection(session.connection_id.as_str())
         .await
-        .ok_or_else(|| {
-            CommandError::NotFound("connection profile is unavailable".to_string())
-        })?;
+        .ok_or_else(|| CommandError::NotFound("connection profile is unavailable".to_string()))?;
 
     // The same fallback ladder the grid's own reads climb, so a searched
     // table and an opened one can never land on two scopes.
