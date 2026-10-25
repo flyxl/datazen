@@ -2,7 +2,8 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, act } from '@testing-library/react';
 import { useGridClipboard } from '../useGridClipboard';
 import type { UseGridClipboardResult } from '../useGridClipboard';
-import type { CellPasteWrite, StagePasteWritesResult } from '../../types';
+import type { CellPasteWrite } from '../../lib/tableChanges';
+import type { StagePasteWritesResult } from '../../stores/tableData/pendingEditActions';
 
 /**
  * The HTML branch of `copySelectedCellsAs` (DB-10): the clipboard carries the
