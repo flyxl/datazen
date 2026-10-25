@@ -1,6 +1,6 @@
 //! Reusable AI tool definitions, dispatch and tool-loop limits.
 use crate::services::ports::{ConnectionCatalog, DatabaseToolHost};
-use datazen_ai_api::{ChatMessage, MessageRole, TokenUsage, ToolCall, ToolDefinition};
+use datazen_ai_providers::{ChatMessage, MessageRole, TokenUsage, ToolCall, ToolDefinition};
 pub fn db_tool_definitions() -> Vec<ToolDefinition> {
     vec![
         ToolDefinition {

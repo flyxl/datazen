@@ -37,7 +37,7 @@ inventory::collect!(&'static dyn AiProviderFactory);
 /// ```ignore
 /// struct MyProviderFactory;
 /// impl AiProviderFactory for MyProviderFactory { ... }
-/// datazen_ai_api::register_ai_provider!(&MyProviderFactory);
+/// crate::register_ai_provider!(&MyProviderFactory);
 /// ```
 #[macro_export]
 macro_rules! register_ai_provider {

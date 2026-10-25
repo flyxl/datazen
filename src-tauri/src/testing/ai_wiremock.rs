@@ -2,7 +2,7 @@
 
 use std::sync::{Arc, OnceLock};
 
-use datazen_ai_api::{AiProviderConfig, AiProviderType};
+use datazen_ai_providers::{AiProviderConfig, AiProviderType};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use wiremock::matchers::{header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};

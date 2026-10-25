@@ -3,7 +3,7 @@
 use crate::ai::prompt_resolver::PromptResolver;
 use crate::ai::response::{inject_language_hint, parse_ai_json};
 use crate::error::FeatureError;
-use datazen_ai_api::{AiProvider, ChatMessage, CompletionRequest, MessageRole};
+use datazen_ai_providers::{AiProvider, ChatMessage, CompletionRequest, MessageRole};
 use datazen_driver_api::filters::{FilterCondition, FilterOperator};
 use datazen_driver_api::{ColumnSchema, DatabaseDriver, PromptScenario, Value};
 use std::collections::{HashMap, HashSet};

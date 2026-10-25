@@ -2,7 +2,7 @@
 
 use crate::http::HttpClient;
 use async_trait::async_trait;
-use datazen_ai_api::*;
+use crate::*;
 use tokio::sync::{mpsc, RwLock};
 
 use super::protocol::{self, ProtocolConfig};

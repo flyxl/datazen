@@ -184,7 +184,7 @@ export const RULES = Object.freeze([
     subjects: ['platform-api'],
     // Same allow-list inversion as F-01; §2.3 draws platform-api depending on
     // the driver API and the AI API and nothing else.
-    allowedLayers: ['platform-api', 'driver-api', 'ai-api', 'modules'],
+    allowedLayers: ['platform-api', 'driver-api', 'ai-providers', 'modules'],
     forbiddenCrates: [],
     specTokens: ['packages/platform-api', 'src-tauri'],
     note: 'platform-api points at ports, not at the implementation',
@@ -269,7 +269,7 @@ export const RULES = Object.freeze([
       'platform-api',
       'platform-infra',
       'driver-api',
-      'ai-api',
+      'ai-providers',
       'data-transfer',
       'data-sync',
       'schema-diff',

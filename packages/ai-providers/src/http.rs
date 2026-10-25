@@ -1,5 +1,5 @@
 //! AI HTTP egress boundary, separate from database route/tunnel resolution.
-use datazen_ai_api::AiError;
+use crate::AiError;
 use reqwest::{Method, Response, Url};
 use serde::Serialize;
 use std::{

@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use crate::http::HttpClient;
 use async_trait::async_trait;
-use datazen_ai_api::*;
+use crate::*;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, RwLock};
 

@@ -22,7 +22,7 @@ pbkdf2 = "0.12"
 sha1 = "0.10"
 datazen-schema-diff = { workspace = true }
 datazen-driver-api = { workspace = true }
-datazen-ai-api = { path = "../ai-api" }
+datazen-ai-providers = { path = "../ai-providers" }
 datazen-platform-api = { workspace = true }
 # 设置词汇（ExecutionSettings 等）自 D1 起由 datazen-modules::settings 拥有。
 datazen-modules = { workspace = true, features = ["settings"] }

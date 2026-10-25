@@ -4,7 +4,7 @@
 //! so the frontend receives the same format as the previous `Result<T, String>`.
 
 use crate::store::DesktopRepositoryError;
-use datazen_ai_api::AiError;
+use datazen_ai_providers::AiError;
 use datazen_driver_api::DriverError;
 use datazen_feature_core::services::FilterRejection;
 

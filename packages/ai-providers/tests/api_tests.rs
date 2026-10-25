@@ -1,4 +1,4 @@
-use datazen_ai_api::*;
+use datazen_ai_providers::*;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 

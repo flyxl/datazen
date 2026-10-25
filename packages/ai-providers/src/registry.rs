@@ -1,6 +1,6 @@
 //! AI Provider registry — resolves `AiProviderType` to a concrete `AiProvider`.
 
-use datazen_ai_api::*;
+use crate::*;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;

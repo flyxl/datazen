@@ -1,6 +1,6 @@
 //! Provider metadata shared by host configuration surfaces.
 
-use datazen_ai_api::AiProviderType;
+use crate::AiProviderType;
 
 /// Return the built-in endpoint and protocol defaults displayed for a provider.
 /// This describes existing providers only; it does not affect provider registration.

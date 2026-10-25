@@ -3,7 +3,6 @@ resolver = "2"
 members = [
     "src-tauri",
     "packages/driver-api",
-    "packages/ai-api",
     "packages/platform-api",
     "packages/platform-infra",
     "packages/application",

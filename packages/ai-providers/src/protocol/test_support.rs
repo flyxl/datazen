@@ -1,7 +1,7 @@
 //! Shared helpers for protocol HTTP unit tests (wiremock).
 
 use crate::http::HttpClient;
-use datazen_ai_api::*;
+use crate::*;
 use tokio::sync::mpsc;
 
 use super::ProtocolConfig;

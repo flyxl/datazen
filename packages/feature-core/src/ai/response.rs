@@ -1,6 +1,6 @@
 use super::safety::redact_for_gate;
 use crate::error::FeatureError as CommandError;
-use datazen_ai_api::{AiSafetyGateConfig, ChatMessage, MessageRole};
+use datazen_ai_providers::{AiSafetyGateConfig, ChatMessage, MessageRole};
 pub fn language_hint(lang: &str) -> String {
     let lang_name = match lang {
         "zh-CN" => "Chinese (Simplified)",

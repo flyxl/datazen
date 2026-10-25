@@ -2,7 +2,7 @@
 #[derive(Debug, thiserror::Error)]
 pub enum FeatureError {
     #[error(transparent)]
-    Ai(#[from] datazen_ai_api::AiError),
+    Ai(#[from] datazen_ai_providers::AiError),
     #[error("{0}")]
     Validation(String),
     #[error("{0}")]

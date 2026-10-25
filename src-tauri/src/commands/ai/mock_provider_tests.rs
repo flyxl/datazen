@@ -2,7 +2,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use datazen_ai_api::{ChatMessage, MessageRole, ToolCall};
+use datazen_ai_providers::{ChatMessage, MessageRole, ToolCall};
 
 use super::*;
 use crate::testing::app_state::TestAppState;

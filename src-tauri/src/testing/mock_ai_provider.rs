@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use datazen_ai_api::{
+use datazen_ai_providers::{
     AiError, AiProvider, AiProviderConfig, AiProviderType, CompletionRequest, CompletionResponse,
     StreamChunk, TokenUsage, ToolCall,
 };

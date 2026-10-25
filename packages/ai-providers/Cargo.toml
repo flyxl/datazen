@@ -2,12 +2,14 @@
 name = "datazen-ai-providers"
 version = "0.0.1"
 edition = "2021"
-description = "DataZen AI provider protocol adapters — transport-facing implementations of the datazen-ai-api contracts"
+description = "DataZen AI provider contracts (trait, types, factory) and vendor protocol adapters"
 license = "GPL-3.0-or-later"
 
 [dependencies]
-datazen-ai-api = { path = "../ai-api" }
 datazen-platform-infra = { path = "../platform-infra" }
+# 契约层（自 datazen-ai-api 并入）：链接期工厂注册与流式传输工具
+inventory = "0.3"
+tokio-util = { version = "0.7", features = ["rt"] }
 async-trait = "0.1"
 futures-util = "0.3"
 reqwest = { version = "0.13.3", default-features = false, features = ["rustls", "json", "stream", "cookies", "query", "form"] }

@@ -102,7 +102,7 @@ FEATURES="$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-
 cargo test -p datazen-driver-api --lib || fail "cargo test driver-api 失败"
 cargo test -p datazen --lib --features "$FEATURES" || fail "cargo test datazen 核心失败"
 cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --lib || fail "驱动契约单测失败"
-cargo test -p datazen-ai-api --lib || fail "cargo test ai-api 失败"
+cargo test -p datazen-ai-providers --lib || fail "cargo test ai-providers 失败"
 
 node scripts/driver-file-stash.mjs restore || fail "driver-file-stash restore 失败"
 

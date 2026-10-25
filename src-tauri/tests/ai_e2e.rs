@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use datazen_ai_api::{ChatMessage, MessageRole};
+use datazen_ai_providers::{ChatMessage, MessageRole};
 use datazen_driver_api::PromptScenario;
 use datazen_feature_core::ai::prompt_resolver::{self, PromptResolver};
 
@@ -130,7 +130,7 @@ fn load_deepseek_config() -> Option<DeepSeekTestConfig> {
 
 mod provider_tests {
     use super::*;
-    use datazen_ai_api::*;
+    use datazen_ai_providers::*;
 
     async fn create_provider(
         provider_type: &str,
@@ -671,7 +671,7 @@ mod provider_tests {
         };
 
         let (tx, mut rx) =
-            tokio::sync::mpsc::channel::<Result<StreamChunk, datazen_ai_api::AiError>>(32);
+            tokio::sync::mpsc::channel::<Result<StreamChunk, datazen_ai_providers::AiError>>(32);
         let result = provider.stream_complete(&request, tx).await;
         assert!(result.is_ok(), "stream_complete failed: {:?}", result.err());
 
@@ -700,7 +700,7 @@ mod provider_tests {
 // ─── DeepSeek Workflow Tool Calling Tests ─────────────────────────────────
 mod deepseek_workflow_tests {
     use super::*;
-    use datazen_ai_api::*;
+    use datazen_ai_providers::*;
 
     fn workflow_tools() -> Vec<ToolDefinition> {
         vec![
