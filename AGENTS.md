@@ -18,7 +18,7 @@ docs/                features、architecture、development、blogs、已核实�
 
 ## DDD 重构目标
 
-权威方案：[DDD 模块化重构](docs/development/ddd-refactor-plan.md)。该文区分当前事实与目标设计，不能把目标目录写成已实现。
+权威方案：[DDD 模块化重构](docs/development/ddd-refactor-plan.md)（总纲；实施细节按主题在同目录 `ddd-refactor/` 下，细节文件保留原 §2–§14 编号）。该方案区分当前事实与目标设计，不能把目标目录写成已实现。
 
 - 最终以一个 `modules/` crate 按功能组织 `application` / `domain`；目标 package 为 `datazen-modules`。
 - `src-tauri` 是 Desktop 宿主；目标 Web 宿主是 `web/` / `datazen-web`。
