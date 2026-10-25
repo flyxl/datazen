@@ -278,6 +278,12 @@ async fn the_request_database_is_read_without_switching_the_session() {
 
     let mut request = request("target-read-pin-db", &conn_id);
     request.context.database = Some("analytics".into());
+    // The mock answers a whole statement batch as one `COUNT(*)` result (it
+    // never splits batches), so a batched exact count would swallow the data
+    // statement this test must see. Skipping the count leaves the single
+    // SELECT this regression locks on; the count plan is not what BUG-002
+    // is about.
+    request.skip_count = Some(true);
     let data = table_target::read(&test.state, request)
         .await
         .expect("the read succeeds");
