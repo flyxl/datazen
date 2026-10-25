@@ -1,15 +1,6 @@
-use crate::store::DesktopRepository;
 use datazen_driver_api::{ConnectionConfig, DatabaseDriver};
-use datazen_feature_core::services::ports::{ConnectionCatalog, DatabaseToolHost};
+use datazen_feature_core::services::ports::DatabaseToolHost;
 use std::sync::Arc;
-
-#[async_trait::async_trait]
-impl ConnectionCatalog for DesktopRepository {
-    async fn get_connections(&self) -> Vec<ConnectionConfig> {
-        self.get_connections().await
-    }
-}
-
 #[async_trait::async_trait]
 impl DatabaseToolHost for crate::commands::AppState {
     async fn get_session_config(&self, id: &str) -> Result<ConnectionConfig, String> {

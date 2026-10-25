@@ -28,11 +28,6 @@ pub trait DatabaseToolHost: Send + Sync {
     }
     async fn execution_settings(&self) -> ExecutionSettings;
 }
-#[async_trait::async_trait]
-pub trait ConnectionCatalog: Send + Sync {
-    async fn get_connections(&self) -> Vec<ConnectionConfig>;
-}
-
 /// Why a live session could not be bound for a foreign-key navigation probe.
 ///
 /// This is not a navigation rule failure: the `grid.fk.*` codes cover the
@@ -176,13 +171,6 @@ impl<T: DatabaseToolHost + ?Sized> DatabaseToolHost for Arc<T> {
         (**self).execution_settings().await
     }
 }
-#[async_trait::async_trait]
-impl<T: ConnectionCatalog + ?Sized> ConnectionCatalog for Arc<T> {
-    async fn get_connections(&self) -> Vec<ConnectionConfig> {
-        (**self).get_connections().await
-    }
-}
-
 /// Session-to-connection identity offered by the form that owns the sessions.
 ///
 /// This is a *consumer-defined* port: the shared layer only knows the question

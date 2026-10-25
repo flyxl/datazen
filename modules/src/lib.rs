@@ -10,6 +10,9 @@
 #[cfg(feature = "ai")]
 pub mod ai;
 
+#[cfg(feature = "connection")]
+pub mod connection;
+
 #[cfg(feature = "settings")]
 pub mod settings;
 

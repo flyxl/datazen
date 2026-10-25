@@ -105,6 +105,10 @@ pub struct PlatformAdapter {
     /// D1 后的设置用例：`datazen-modules::settings` 由宿主直接消费，
     /// 不再经 `ApplicationServices` 转发。装配期创建一次，进程内共享。
     settings_service: std::sync::OnceLock<Arc<datazen_modules::settings::SettingsService>>,
+    /// D2 后的连接目录用例：`datazen-modules::connection` 由宿主直接消费。
+    /// 桌面仓储是 `DesktopConnectionStore`（复用同一个 `DesktopRepository`
+    /// 的缓存、写锁与密钥）。
+    connection_service: std::sync::OnceLock<Arc<datazen_modules::connection::ConnectionService>>,
     runtime: std::sync::OnceLock<Arc<datazen_runtime::application::RuntimeConnectionUseCases>>,
     profiles: std::sync::OnceLock<Arc<super::repositories::DesktopProfiles>>,
     /// 执行身份解析器（`IdentityResolver` 端口的桌面实现）。
@@ -142,6 +146,7 @@ impl PlatformAdapter {
             handles: Arc::new(SessionHandleRegistry::new()),
             services: std::sync::OnceLock::new(),
             settings_service: std::sync::OnceLock::new(),
+            connection_service: std::sync::OnceLock::new(),
             runtime: std::sync::OnceLock::new(),
             profiles: std::sync::OnceLock::new(),
             identities: std::sync::OnceLock::new(),
@@ -162,6 +167,7 @@ impl PlatformAdapter {
             handles: Arc::new(SessionHandleRegistry::new()),
             services: std::sync::OnceLock::new(),
             settings_service: std::sync::OnceLock::new(),
+            connection_service: std::sync::OnceLock::new(),
             runtime: std::sync::OnceLock::new(),
             profiles: std::sync::OnceLock::new(),
             identities: std::sync::OnceLock::new(),
@@ -287,6 +293,25 @@ impl PlatformAdapter {
     /// 宿主直接消费模块用例，不再经 `ApplicationServices` 转发。
     pub fn settings_service(&self) -> Option<Arc<datazen_modules::settings::SettingsService>> {
         self.settings_service.get().cloned()
+    }
+
+    /// D2 后的连接目录用例入口：连接配置 + 分组的用例归
+    /// `datazen-modules::connection`，宿主直接消费。
+    pub fn connection_service(&self) -> Option<Arc<datazen_modules::connection::ConnectionService>> {
+        self.connection_service.get().cloned()
+    }
+
+    /// 需要连接目录用例时调用；未注入 ⇒ 明确报错，不回落旧路径。
+    pub fn require_connection_service(
+        &self,
+    ) -> Result<Arc<datazen_modules::connection::ConnectionService>, ApiError> {
+        self.connection_service().ok_or_else(|| {
+            ApiError::new(
+                ApiErrorCode::CapabilityUnsupported,
+                "ConnectionService 未注入：启动装配尚未调用 PlatformAdapter::inject，\
+                 或在注入完成前就发起了连接目录用例调用；此处不做回落，也不得直读宿主 store",
+            )
+        })
     }
 
     /// 需要设置用例时调用；未注入 ⇒ 明确报错，不回落旧路径。
@@ -528,16 +553,16 @@ impl PlatformAdapter {
             super::settings::DesktopSettingsRepository::new(store.clone()),
         )));
         let _ = self.settings_service.set(settings);
+        let connections = Arc::new(datazen_modules::connection::ConnectionService::new(Arc::new(
+            super::connections::DesktopConnectionStore::new(store.clone()),
+        )));
+        let _ = self.connection_service.set(connections);
         let services = Arc::new(ApplicationServices::new(
             target,
             datazen_application::identity_policy::IdentityPolicy::new(),
             runtime.clone(),
             tunnels.clone(),
             known_hosts.clone(),
-            // 连接目录端口（§5.1.2 第六步）：桌面实现就是同一个 `DesktopRepository`
-            // （`impl ConnectionCatalog for DesktopRepository`，落盘
-            // `{appData}/connections.json` 与 `groups.json`）。
-            store.clone(),
             // 命名视图端口（P3 第一条命令族）：桌面实现就是同一个
             // `DesktopRepository`（`impl NamedViewRepository for DesktopRepository`，
             // 落盘 `{appData}/named_views.json`）。

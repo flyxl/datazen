@@ -31,10 +31,11 @@ pub fn inject_language_hint(messages: &mut [ChatMessage], lang: &str) {
 }
 
 pub async fn build_connections_context(
-    catalog: &dyn crate::services::ports::ConnectionCatalog,
+    catalog: &dyn datazen_modules::connection::domain::ConnectionRepository,
+    scope: &datazen_modules::connection::domain::ConnectionScope,
     lang: &str,
 ) -> String {
-    let conns = catalog.get_connections().await;
+    let conns = catalog.list(scope).await.unwrap_or_default();
     if conns.is_empty() {
         return String::new();
     }

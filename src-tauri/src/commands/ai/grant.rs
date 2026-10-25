@@ -257,9 +257,16 @@ impl AiToolLoopHost for AiRequestHost<'_> {
     }
 
     async fn execute_db_tool(&self, call: &datazen_modules::ai::ToolCall) -> String {
-        let raw =
-            datazen_feature_core::ai::tools::execute_db_tool(self, self.state.store.as_ref(), call)
-                .await;
+        let raw = match self.state.connection_scope() {
+            Ok(scope) => {
+                let catalog = crate::platform::connections::DesktopConnectionStore::new(
+                    self.state.store.clone(),
+                );
+                datazen_feature_core::ai::tools::execute_db_tool(self, &catalog, &scope, call)
+                    .await
+            }
+            Err(_) => "Error: connection scope unavailable".into(),
+        };
         datazen_feature_core::ai::ownership::attach_tool_attribution(raw, &self.claim)
     }
 

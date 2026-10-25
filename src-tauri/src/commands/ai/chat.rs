@@ -66,13 +66,21 @@ pub(crate) async fn execute_mcp_tool(
 }
 
 pub(crate) async fn execute_db_tool(state: &AppState, tool_call: &ToolCall) -> String {
-    datazen_feature_core::ai::tools::execute_db_tool(state, state.store.as_ref(), tool_call).await
+    let Ok(scope) = state.connection_scope() else {
+        return "Error: connection scope unavailable".into();
+    };
+    let catalog = crate::platform::connections::DesktopConnectionStore::new(state.store.clone());
+    datazen_feature_core::ai::tools::execute_db_tool(state, &catalog, &scope, tool_call).await
 }
 
 #[async_trait::async_trait]
 impl datazen_feature_core::ai::tool_loop::AiToolLoopHost for AppState {
     async fn egress_summary(&self) -> String {
-        datazen_feature_core::ai::tools::build_egress_summary(self.store.as_ref()).await
+        let Ok(scope) = self.connection_scope() else {
+            return "No database connections configured.".into();
+        };
+        let catalog = crate::platform::connections::DesktopConnectionStore::new(self.store.clone());
+        datazen_feature_core::ai::tools::build_egress_summary(&catalog, &scope).await
     }
     async fn execute_db_tool(&self, call: &ToolCall) -> String {
         execute_db_tool(self, call).await

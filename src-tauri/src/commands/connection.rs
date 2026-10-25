@@ -1,6 +1,7 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
 use datazen_driver_api::{ConnectionConfig, DriverCategory, ServerInfo};
+use datazen_modules::connection::ConnectionError;
 use datazen_platform_api::error::ApiErrorCode;
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -20,71 +21,28 @@ pub struct ConnectionSessionRef {
     pub db_session_id: String,
 }
 
-fn redact_connection_secrets(config: &mut ConnectionConfig) {
-    config.password = None;
-    if let Some(ssh) = config.ssh_tunnel.as_mut() {
-        redact_ssh_secrets(ssh);
-    }
-    if let Some(proxy) = config.http_proxy_tunnel.as_mut() {
-        proxy.password = None;
-        proxy.headers = None;
-    }
-    if let Some(websocket) = config.websocket_tunnel.as_mut() {
-        websocket.auth_token = None;
-        websocket.headers = None;
-    }
+/// 宿主组织作用域 → 模块连接作用域。
+fn scope_modules(
+    scope: &datazen_platform_api::ports::scope::OrganizationScope,
+) -> datazen_modules::connection::ConnectionScope {
+    datazen_modules::connection::ConnectionScope::new(scope.organization_id().as_str())
 }
 
-fn redact_ssh_secrets(ssh: &mut datazen_driver_api::SshTunnelConfig) {
-    ssh.password = None;
-    ssh.passphrase = None;
-    if let Some(jump) = ssh.jump.as_deref_mut() {
-        redact_ssh_secrets(jump);
-    }
-}
-
-fn merge_missing_connection_secrets(config: &mut ConnectionConfig, saved: ConnectionConfig) {
-    if config.password.is_none() {
-        config.password = saved.password;
-    }
-    if let (Some(current), Some(previous)) = (config.ssh_tunnel.as_mut(), saved.ssh_tunnel) {
-        merge_missing_ssh_secrets(current, previous);
-    }
-    if let (Some(current), Some(previous)) =
-        (config.http_proxy_tunnel.as_mut(), saved.http_proxy_tunnel)
-    {
-        if current.password.is_none() {
-            current.password = previous.password;
-        }
-        if current.headers.is_none() {
-            current.headers = previous.headers;
-        }
-    }
-    if let (Some(current), Some(previous)) =
-        (config.websocket_tunnel.as_mut(), saved.websocket_tunnel)
-    {
-        if current.auth_token.is_none() {
-            current.auth_token = previous.auth_token;
-        }
-        if current.headers.is_none() {
-            current.headers = previous.headers;
-        }
-    }
-}
-
-fn merge_missing_ssh_secrets(
-    current: &mut datazen_driver_api::SshTunnelConfig,
-    saved: datazen_driver_api::SshTunnelConfig,
-) {
-    if current.password.is_none() {
-        current.password = saved.password;
-    }
-    if current.passphrase.is_none() {
-        current.passphrase = saved.passphrase;
-    }
-    if let (Some(current_jump), Some(saved_jump)) = (current.jump.as_deref_mut(), saved.jump) {
-        merge_missing_ssh_secrets(current_jump, *saved_jump);
-    }
+/// `ConnectionError` → `CommandError`（与 `port_cmd` 同形：`NotFound` 保留，
+/// 其余降为内部错误；映射前记一条脱敏日志）。
+pub(crate) fn conn_cmd<T>(
+    result: Result<T, ConnectionError>,
+    cmd: &'static str,
+) -> Result<T, CommandError> {
+    result.map_err(|error| {
+        let err = match error {
+            ConnectionError::NotFound(entity) => CommandError::NotFound(entity),
+            other => CommandError::Internal(other.to_string()),
+        };
+        let redacted = datazen_infra::redaction::redact_secrets_for_log(&err.to_string());
+        tracing::error!(cmd, error = %redacted);
+        err
+    })
 }
 
 /// 概要 §6.2 第 8 步：把本次 IPC 调用组装出的身份记进结构化日志。
@@ -109,15 +67,9 @@ fn log_ipc_identity(state: &AppState, command: &'static str) {
 pub(crate) async fn get_connections_impl(
     state: &AppState,
 ) -> Result<Vec<ConnectionConfig>, CommandError> {
-    let scope = state.organization_scope()?;
-    let services = crate::platform::ipc::require_application_services(state)?;
-    let mut list = crate::commands::port_call::port_cmd(
-        services.connections.list(&scope).await,
-        "get_connections",
-    )?;
-    for config in &mut list {
-        redact_connection_secrets(config);
-    }
+    let scope = state.connection_scope()?;
+    let service = crate::platform::ipc::require_connection_service(state)?;
+    let list = conn_cmd(service.list_redacted(&scope).await, "get_connections")?;
     tracing::debug!(count = list.len(), "get_connections");
     Ok(list)
 }
@@ -127,23 +79,15 @@ pub(crate) async fn save_connection_impl(
     config: ConnectionConfig,
     clear_missing_credentials: bool,
 ) -> Result<(), CommandError> {
-    let mut config = config;
     tracing::info!(id = %config.id, name = %config.name, "save_connection");
-    let scope = state.organization_scope()?;
-    let services = crate::platform::ipc::require_application_services(state)?;
-    if !clear_missing_credentials {
-        // `None` 也是合法输入：新建连接时本来就没有「已保存的那一份」。
-        let saved = crate::commands::port_call::port_cmd(
-            services.connections.get(&scope, &config.id).await,
-            "save_connection",
-        )?;
-        if let Some(saved) = saved {
-            merge_missing_connection_secrets(&mut config, saved);
-        }
-    }
+    let scope = state.connection_scope()?;
+    let service = crate::platform::ipc::require_connection_service(state)?;
     let connection_id = config.id.clone();
-    crate::commands::port_call::port_cmd(
-        services.connections.save(&scope, config).await,
+    // 表单回显把密文/密钥置 None：合并语义（不覆盖已存密钥）由模块用例承担。
+    conn_cmd(
+        service
+            .save_merged(&scope, config, clear_missing_credentials)
+            .await,
         "save_connection",
     )?;
     // 保存新配置后让该 profile 的旧会话退休（PR #116 的语义）：端口只负责落盘，
@@ -158,18 +102,10 @@ pub(crate) async fn duplicate_connection_impl(
     new_id: String,
     new_name: String,
 ) -> Result<(), CommandError> {
-    let scope = state.organization_scope()?;
-    let services = crate::platform::ipc::require_application_services(state)?;
-    let mut config = crate::commands::port_call::port_cmd(
-        services.connections.get(&scope, &source_id).await,
-        "duplicate_connection",
-    )?
-    .ok_or_else(|| CommandError::NotFound(format!("connection '{source_id}' not found")))?;
-    config.id = new_id;
-    config.name = new_name;
-    config.last_connected_at = None;
-    crate::commands::port_call::port_cmd(
-        services.connections.save(&scope, config).await,
+    let scope = state.connection_scope()?;
+    let service = crate::platform::ipc::require_connection_service(state)?;
+    conn_cmd(
+        service.duplicate(&scope, &source_id, &new_id, &new_name).await,
         "duplicate_connection",
     )
 }
@@ -179,27 +115,24 @@ pub(crate) async fn delete_connection_impl(
     id: String,
 ) -> Result<(), CommandError> {
     tracing::info!(%id, "delete_connection");
-    let scope = state.organization_scope()?;
-    let services = crate::platform::ipc::require_application_services(state)?;
-    crate::commands::port_call::port_cmd(
-        services.connections.delete(&scope, &id).await,
-        "delete_connection",
-    )
+    let scope = state.connection_scope()?;
+    let service = crate::platform::ipc::require_connection_service(state)?;
+    conn_cmd(service.delete(&scope, &id).await, "delete_connection")
 }
 
 pub(crate) async fn test_connection_impl(
     state: &AppState,
     config: ConnectionConfig,
 ) -> Result<ServerInfo, CommandError> {
-    let mut config = config;
     let scope = state.organization_scope()?;
     let services = crate::platform::ipc::require_application_services(state)?;
-    let saved = crate::commands::port_call::port_cmd(
-        services.connections.get(&scope, &config.id).await,
+    let connection_service = crate::platform::ipc::require_connection_service(state)?;
+    let mut config = config;
+    if let Some(saved) = conn_cmd(
+        connection_service.get(&scope_modules(&scope), &config.id).await,
         "test_connection",
-    )?;
-    if let Some(saved) = saved {
-        merge_missing_connection_secrets(&mut config, saved);
+    )? {
+        datazen_modules::connection::merge_missing_secrets(&mut config, saved);
     }
     tracing::info!(
         name = %config.name,
@@ -228,15 +161,14 @@ pub(crate) async fn connect_impl(
 ) -> Result<ConnectionSessionRef, CommandError> {
     log_ipc_identity(state, "connect");
     tracing::info!(%connection_id, "connect");
-    let scope = state.organization_scope()?;
-    let services = crate::platform::ipc::require_application_services(state)?;
-    let config = crate::commands::port_call::port_cmd(
-        services.connections.get(&scope, &connection_id).await,
+    let scope = state.connection_scope()?;
+    let connection_service = crate::platform::ipc::require_connection_service(state)?;
+    let config = conn_cmd(
+        connection_service.get(&scope, &connection_id).await,
         "connect",
     )?
     .ok_or_else(|| CommandError::NotFound(format!("connection '{connection_id}' not found")))?;
-    if let Err(e) = services
-        .connections
+    if let Err(e) = connection_service
         .touch_last_connected_at(&scope, &connection_id)
         .await
     {
@@ -272,21 +204,20 @@ pub(crate) async fn connect_dedicated_impl(
     // An explicit `database` pins the session; otherwise fall back to the
     // profile. Both may be unset — the driver then resolves its own default,
     // exactly as on the shared `connect` path.
-    let scope = state.organization_scope()?;
-    let services = crate::platform::ipc::require_application_services(state)?;
+    let scope = state.connection_scope()?;
+    let connection_service = crate::platform::ipc::require_connection_service(state)?;
     let database =
         match crate::services::migration_endpoint::normalize_database(database.as_deref()) {
             Some(database) => Some(database),
             // 取不到配置（越组织 / 已被删除）时保持 `None`：驱动会解析自己的默认库，
             // 与「配置里没写 database」是同一档语义。
-            None => crate::commands::port_call::port_cmd(
-                services.connections.get(&scope, &connection_id).await,
+            None => conn_cmd(
+                connection_service.get(&scope, &connection_id).await,
                 "connect_dedicated",
             )?
             .and_then(|config| config.database),
         };
-    if let Err(e) = services
-        .connections
+    if let Err(e) = connection_service
         .touch_last_connected_at(&scope, &connection_id)
         .await
     {
@@ -602,12 +533,9 @@ pub async fn reorder_connections(
     ordered_ids: Vec<String>,
 ) -> Result<(), CommandError> {
     tracing::info!(count = ordered_ids.len(), "reorder_connections");
-    let scope = state.organization_scope()?;
-    let services = crate::platform::ipc::require_application_services(&state)?;
-    crate::commands::port_call::port_cmd(
-        services.connections.reorder(&scope, ordered_ids).await,
-        "reorder_connections",
-    )
+    let scope = state.connection_scope()?;
+    let service = crate::platform::ipc::require_connection_service(&state)?;
+    conn_cmd(service.reorder(&scope, ordered_ids).await, "reorder_connections")
 }
 
 #[tauri::command]
@@ -1305,30 +1233,28 @@ mod coverage_tests {
     /// `connect_dedicated_impl` 里的 `.store` 曾经跨行书写，所以断言不能用「逐行 grep」
     /// 的口径来写。
     #[test]
-    fn the_command_shell_reads_the_aggregate_not_the_host_store() {
+    fn the_command_shell_reads_the_module_service_not_the_host_store() {
         let source = include_str!("connection.rs");
         let production = source.split("#[cfg(test)]").next().unwrap_or(source);
         assert_eq!(
             production.matches("state.store").count(),
             0,
-            "连接目录命令必须走 ApplicationServices 的 ConnectionCatalog 端口"
+            "连接目录命令必须走模块连接服务，不得直读宿主 store"
         );
+        // D2 后：连接用例归 datazen-modules::connection，经
+        // require_connection_service 取宿主装配的同一个服务实例。
+        // 聚合（require_application_services）只服务隧道测试等仍住在
+        // application 层的端口：测试连接 1、连接 1、指定库连接 1。
         assert_eq!(
-            production.matches("require_application_services").count(),
+            production.matches("require_connection_service").count(),
             8,
-            "列表 / 保存 / 复制 / 删除 / 测试连接 / 连接 / 指定库连接 / 重排 各取一次聚合"
+            "列表 / 保存 / 复制 / 删除 / 测试连接 / 连接 / 指定库连接 / 重排 各取一次模块服务"
         );
-        // 文本口径：`services.connections` 与 `services\n.connections` 两种排版都算，
-        // 所以这里数的是「端口被取用的次数」而不是「同一行出现次数」。
         assert_eq!(
-            production.matches("connections.list").count()
-                + production.matches("connections.get").count()
-                + production.matches("connections.save").count()
-                + production.matches("connections.delete").count()
-                + production.matches("connections.reorder").count()
-                + production.matches("connections\n").count(),
-            12,
-            "端口调用点：列表 1、保存 2（取旧配置 + 落盘）、复制 2、删除 1、测试连接 1、             连接 2（取配置 + 记时间戳）、指定库连接 2、重排 1"
+            production.matches("merge_missing_secrets").count()
+                + production.matches("redact_secrets").count(),
+            2,
+            "合并缺失密钥与脱敏投影必须复用模块的纯函数，不得在命令层另写一份"
         );
     }
 }

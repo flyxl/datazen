@@ -25,7 +25,7 @@
 //! | [`capability`] | 计划第 93 行的可选能力注册与运行时能力降低机制 |
 //!
 //! [`ApplicationServices`] 按 §6.2 第 7 步的顺序组装：
-//! `target → identity_policy → sessions → tunnels → known_hosts → connections →
+//! `target → identity_policy → sessions → tunnels → known_hosts →
 //! named_views → dashboard → dashboard_runs → schema_diff_profiles`，能力注册表由
 //! [`with_capabilities`](ApplicationServices::with_capabilities) 在其后补挂，
 //! 缺省是**全不可用**的注册表。构造函数对桌面与团队两种形态**完全相同**，
@@ -33,7 +33,7 @@
 //!
 //! ## 注入的存储端口
 //!
-//! `tunnels`、`known_hosts` 与 `connections` 是**形态中立的存储端口**，住在
+//! `tunnels` 与 `known_hosts` 是**形态中立的存储端口**，住在
 //! `datazen-platform-api::ports`：应用层**持有**它们，而不是反过来
 //! 借用宿主的 store。端口是**构造参数**而不是可选字段——漏注入是**编译错误**，
 //! 不是运行时的 `None`。桌面由宿主 adapter 注入同一个持久化事实，
@@ -66,7 +66,7 @@ pub mod target;
 use std::sync::Arc;
 
 use datazen_platform_api::ports::known_hosts::KnownHostsRepository;
-use datazen_platform_api::ports::{ConnectionCatalog, MigrationProfileReader, TunnelRepository};
+use datazen_platform_api::ports::{MigrationProfileReader, TunnelRepository};
 
 use datazen_feature_core::dashboard::repository::DashboardRepository;
 use datazen_feature_core::dashboard::runs::DashboardRunRepository;
@@ -103,7 +103,6 @@ pub struct ApplicationServices {
     /// 连接配置与分组同住一个聚合；词汇表是 `datazen_driver_api::ConnectionConfig`
     /// 本身（IPC 载荷逐字不变），端口是明文语义——脱敏在 IPC 与日志边界。
     /// 桌面实现同样是 `DesktopRepository`。
-    pub connections: Arc<dyn ConnectionCatalog>,
     /// 命名视图的存储端口（组装层注入）。
     ///
     /// 这是 P3「按命令族搬编排」的第一条领域端口：端口与规则住在
@@ -145,7 +144,6 @@ impl ApplicationServices {
         sessions: Arc<dyn ConnectionUseCases>,
         tunnels: Arc<dyn TunnelRepository>,
         known_hosts: Arc<dyn KnownHostsRepository>,
-        connections: Arc<dyn ConnectionCatalog>,
         named_views: Arc<dyn NamedViewRepository>,
         dashboard: Arc<dyn DashboardRepository>,
         dashboard_runs: Arc<dyn DashboardRunRepository>,
@@ -158,7 +156,6 @@ impl ApplicationServices {
             sessions,
             tunnels,
             known_hosts,
-            connections,
             named_views,
             dashboard,
             dashboard_runs,
@@ -355,10 +352,15 @@ mod tests {
         let code = crate_root_code();
         assert!(
             code.contains("use datazen_platform_api::ports")
-                && code.contains("ConnectionCatalog")
                 && code.contains("TunnelRepository")
                 && code.contains("MigrationProfileReader"),
             "存储端口必须直接引其拥有模块的那一份"
+        );
+        // D2 起：连接目录端口已归 `datazen-modules::connection::domain` 拥有，
+        // 本包不再持有它（宿主直接消费模块服务），此处反向断言它不再出现。
+        assert!(
+            !code.contains("ConnectionCatalog"),
+            "连接目录端口已归 datazen-modules::connection 拥有，本包不得再持有或转发"
         );
         for port in [
             "TunnelRepository",
@@ -384,7 +386,6 @@ mod tests {
         for field in [
             "pub tunnels: Arc<dyn TunnelRepository>",
             "pub known_hosts: Arc<dyn KnownHostsRepository>",
-            "pub connections: Arc<dyn ConnectionCatalog>",
         ] {
             assert!(code.contains(field), "聚合必须持有该存储端口字段：{field}");
         }
@@ -405,7 +406,6 @@ mod tests {
         for parameter in [
             "tunnels: Arc<dyn TunnelRepository>",
             "known_hosts: Arc<dyn KnownHostsRepository>",
-            "connections: Arc<dyn ConnectionCatalog>",
             "dashboard: Arc<dyn DashboardRepository>",
             "dashboard_runs: Arc<dyn DashboardRunRepository>",
             "schema_diff_profiles: Arc<dyn SchemaDiffProfileRepository>",

@@ -7,8 +7,7 @@
 
 ## 全局状态
 
-- 当前阶段：**D1 已完成**（settings 切片 `d9d6a868b` + 收尾清理见下表）；下一步 **D2 连接领域**，
-  以及用户新增的三条架构原则落地（见「架构原则更新」）。
+- 当前阶段：**D2 进行中**（连接目录第一切片已落地：modules::connection + DesktopConnectionStore + 旧端口删除；剩余 Profile/revision 统一）。
 - 阶段与 PR 粒度：计划按 **D0–D8 九个阶段**推进（无 "wave" 概念，wave 仅是 coordinator 的
   并行批次术语）；每阶段可拆多个小 PR，每 PR 必须可构建、有真实消费者和测试。预估全程
   ~15–25 个 PR（D5 三件套各一个、D6 每功能族单独交付）。
@@ -35,19 +34,22 @@
 |---|---|---|
 | 2026-10-25 | `d9d6a868b` | D1 settings 切片：`datazen-modules::settings`（domain/application）、桌面仓储适配 `src-tauri/src/platform/settings.rs`、旧包过渡再导出、门禁脚本扩展（详见总纲 §3 / 07-stages.md D1 小节） |
 | 2026-10-26 | `eafaf87e1` | 计划书拆分：总纲（原路径）+ `ddd-refactor/` 10 个细节文件（01–10 对应原 §2–§14，保留编号）；AGENTS.md、docs/README.md 同步；验证脚本逐行比对零丢失 |
-| 2026-10-26 | 本次 | D1 收尾清理：删除 `datazen_platform_api::settings::*`、`platform_api::ports::SettingsRepository`、`datazen_application::settings` 门面与 `ApplicationServices` 设置字段；`SettingsService` 改为持有 `Arc<dyn SettingsRepository>`；宿主 adapter 直接持有模块设置服务（`require_settings_service`），命令经 `platform::ipc` 取用例；feature-core/platform-api 直接依赖 `datazen-modules`（settings） |
+| 2026-10-26 | `b9ce44cd0` | D1 收尾清理：删除 `datazen_platform_api::settings::*`、`platform_api::ports::SettingsRepository`、`datazen_application::settings` 门面与 `ApplicationServices` 设置字段；`SettingsService` 改为持有 `Arc<dyn SettingsRepository>`；宿主 adapter 直接持有模块设置服务（`require_settings_service`），命令经 `platform::ipc` 取用例；feature-core/platform-api 直接依赖 `datazen-modules`（settings） |
 
 ## 下一步（按计划顺序）
 
-1. **计划文档更新**（小 PR）：把三条架构原则写进 01-target-architecture.md（§3.2 四类
-   组织单元、§3.3 目录示意）与 07-stages.md（D6 AI 小节、新增 infra 说明）。
-2. **AI crate 合并**（两个 PR）：① `ai-api` 并入 `ai-providers`；② 合并后的
-   `ai-providers` 整体并入 `modules/src/ai/`，删除两个独立 crate。
-3. **platform-infra → infra**（一个 PR）：改名 + 审计 drivers/modules/web/desktop
-   共享代码收拢进 infra。
-4. **D2 连接领域与宿主仓储**（07-stages.md D2）：connection domain/application、
+1. **D2 连接领域与宿主仓储**（07-stages.md D2）：connection domain/application、
    DesktopConnectionStore 抽取、目录消费者收口；参考 04-repositories-and-security.md §7.2/§7.3。
-5. D3 起按 07-stages.md 顺序推进；每阶段开工前先读 08-pr-playbook.md §11.1。
+2. D3 起按 07-stages.md 顺序推进；每阶段开工前先读 08-pr-playbook.md §11.1。
+
+### D1.5 已完成（2026-10-26）
+
+| 提交 | 内容 |
+|---|---|
+| `46dc15ba6` | ai-api 并入 ai-providers（第一步） |
+| `e02d60d2c` | ai-providers 整体并入 modules/src/ai（第二步）；F-09 退役、F-14 豁免 reqwest |
+| `a6d4b38fe` | platform-infra 改名 infra（第三步）+ 四类消费者共享审计结论 |
+| 本次 | D2 第一切片：`datazen-modules::connection`（domain/application + 7 用例测试）；桌面 `DesktopConnectionStore`；删除 platform-api `ConnectionCatalog` 与 feature-core 重复 trait；`ApplicationServices` 去 connections；连接/分组/导入导出/schema diff/AI/MCP 消费者全部收口到模块服务 |
 
 ## 会话恢复要点
 

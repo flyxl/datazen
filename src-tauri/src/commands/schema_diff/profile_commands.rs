@@ -1,7 +1,6 @@
 //! Schema Diff profile IPC commands (list / save / delete).
 
 use super::{AppState, CommandError, SchemaDiffProfile, State};
-use crate::commands::port_call::port_cmd;
 use crate::platform::ipc::require_application_services;
 use datazen_schema_diff::SchemaDiffProfileRepositoryError;
 
@@ -47,29 +46,25 @@ pub(super) async fn validate_schema_diff_profile_connections(
     state: &AppState,
     profile: &SchemaDiffProfile,
 ) -> Result<(), CommandError> {
-    let scope = state.organization_scope()?;
-    let services = require_application_services(state)?;
-    if port_cmd(
-        services
-            .connections
-            .get(&scope, &profile.source_connection_id)
-            .await,
-        "save_schema_diff_profile",
-    )?
-    .is_none()
+    let scope = state.connection_scope()?;
+    let connection_service = crate::platform::ipc::require_connection_service(state)?;
+    if connection_service
+        .get(&scope, &profile.source_connection_id)
+        .await
+        .ok()
+        .flatten()
+        .is_none()
     {
         return Err(CommandError::Validation(
             "schema diff profile source connection no longer exists".into(),
         ));
     }
-    if port_cmd(
-        services
-            .connections
-            .get(&scope, &profile.target_connection_id)
-            .await,
-        "save_schema_diff_profile",
-    )?
-    .is_none()
+    if connection_service
+        .get(&scope, &profile.target_connection_id)
+        .await
+        .ok()
+        .flatten()
+        .is_none()
     {
         return Err(CommandError::Validation(
             "schema diff profile target connection no longer exists".into(),
@@ -111,8 +106,8 @@ mod tests {
             "list/save/delete must all use the injected Schema Diff profile port"
         );
         assert!(
-            production.contains(".connections") && production.contains(".get("),
-            "profile validation must use the injected connection catalog"
+            production.contains("connection_service") && production.contains(".get("),
+            "profile validation must use the module connection service (D2), not the host store"
         );
     }
 

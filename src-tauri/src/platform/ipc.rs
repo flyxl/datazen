@@ -130,6 +130,18 @@ pub fn require_settings_service(
         .map_err(into_command_error)
 }
 
+/// D2 后的连接目录用例入口：`datazen-modules::connection` 由宿主 adapter
+/// 直接持有；命令从这里取同一个服务实例。
+pub fn require_connection_service(
+    state: &AppState,
+) -> Result<Arc<datazen_modules::connection::ConnectionService>, CommandError> {
+    state
+        .platform_require()
+        .map_err(into_command_error)?
+        .require_connection_service()
+        .map_err(into_command_error)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

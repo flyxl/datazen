@@ -6,9 +6,15 @@ use std::path::PathBuf;
 use tauri::State;
 
 pub(crate) async fn get_groups_impl(state: &AppState) -> Result<Vec<String>, CommandError> {
-    let scope = state.organization_scope()?;
-    let services = crate::platform::ipc::require_application_services(state)?;
-    crate::commands::port_call::port_cmd(services.connections.groups(&scope).await, "get_groups")
+    let scope = state.connection_scope()?;
+    let service = crate::platform::ipc::require_connection_service(state)?;
+    match service.groups(&scope).await {
+        Ok(groups) => Ok(groups),
+        Err(datazen_modules::connection::ConnectionError::NotFound(entity)) => {
+            Err(CommandError::NotFound(entity))
+        }
+        Err(other) => Err(CommandError::Internal(other.to_string())),
+    }
 }
 
 pub(crate) async fn save_groups_impl(
@@ -16,12 +22,15 @@ pub(crate) async fn save_groups_impl(
     groups: Vec<String>,
 ) -> Result<(), CommandError> {
     tracing::info!(count = groups.len(), "save_groups");
-    let scope = state.organization_scope()?;
-    let services = crate::platform::ipc::require_application_services(state)?;
-    crate::commands::port_call::port_cmd(
-        services.connections.save_groups(&scope, groups).await,
-        "save_groups",
-    )
+    let scope = state.connection_scope()?;
+    let service = crate::platform::ipc::require_connection_service(state)?;
+    match service.save_groups(&scope, groups).await {
+        Ok(()) => Ok(()),
+        Err(datazen_modules::connection::ConnectionError::NotFound(entity)) => {
+            Err(CommandError::NotFound(entity))
+        }
+        Err(other) => Err(CommandError::Internal(other.to_string())),
+    }
 }
 
 pub(crate) async fn get_settings_impl(state: &AppState) -> Result<AppSettings, CommandError> {

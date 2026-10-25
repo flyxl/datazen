@@ -64,7 +64,11 @@ pub(crate) async fn resolve_ai(
 }
 
 pub(crate) async fn build_connections_context(state: &AppState, lang: &str) -> String {
-    datazen_feature_core::ai::response::build_connections_context(state.store.as_ref(), lang).await
+    let Ok(scope) = state.connection_scope() else {
+        return String::new();
+    };
+    let catalog = crate::platform::connections::DesktopConnectionStore::new(state.store.clone());
+    datazen_feature_core::ai::response::build_connections_context(&catalog, &scope, lang).await
 }
 
 /// Resolve an AI command's runtime session and borrow its already-open driver

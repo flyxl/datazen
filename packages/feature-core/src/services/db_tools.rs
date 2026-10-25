@@ -4,7 +4,7 @@ pub const MCP_QUERY_DEFAULT_LIMIT: u32 = 100;
 pub const MCP_QUERY_MAX_LIMIT: u32 = 50_000;
 
 use super::{
-    ports::{ConnectionCatalog, DatabaseToolHost},
+    ports::DatabaseToolHost,
     schema_scope::metadata_schema,
 };
 use crate::mcp::permission::{self, McpPermissionMode};
@@ -40,8 +40,11 @@ pub async fn resolve_metadata_target(
 }
 
 /// List all configured connections as a JSON string.
-pub async fn list_connections(store: &dyn ConnectionCatalog) -> Result<String, String> {
-    let connections = store.get_connections().await;
+pub async fn list_connections(
+    store: &dyn datazen_modules::connection::domain::ConnectionRepository,
+    scope: &datazen_modules::connection::domain::ConnectionScope,
+) -> Result<String, String> {
+    let connections = store.list(scope).await.map_err(|e| e.to_string())?;
     let result: Vec<serde_json::Value> = connections
         .iter()
         .map(|c| {

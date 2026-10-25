@@ -1,5 +1,6 @@
 //! Reusable AI tool definitions, dispatch and tool-loop limits.
-use crate::services::ports::{ConnectionCatalog, DatabaseToolHost};
+use crate::services::ports::DatabaseToolHost;
+use datazen_modules::connection::domain::{ConnectionRepository, ConnectionScope};
 use datazen_modules::ai::{ChatMessage, MessageRole, TokenUsage, ToolCall, ToolDefinition};
 pub fn db_tool_definitions() -> Vec<ToolDefinition> {
     vec![
@@ -233,8 +234,14 @@ impl Default for ToolLoopGuard {
 /// Builds a brief egress summary string describing the connections the AI has
 /// tool-based access to. Sent as the first chunk before the AI reply begins
 /// (FR-13). Does NOT include full connection details — only counts and types.
-pub async fn build_egress_summary(catalog: &dyn ConnectionCatalog) -> String {
-    let connections = catalog.get_connections().await;
+pub async fn build_egress_summary(
+    catalog: &dyn ConnectionRepository,
+    scope: &ConnectionScope,
+) -> String {
+    let connections = catalog
+        .list(scope)
+        .await
+        .unwrap_or_default();
     let connection_count = connections.len();
     if connection_count == 0 {
         return "No database connections configured.".into();
@@ -287,7 +294,8 @@ pub fn mcp_needs_confirm(tool_name: &str, input_schema: &serde_json::Value) -> b
 
 pub async fn execute_db_tool(
     host: &dyn DatabaseToolHost,
-    catalog: &dyn ConnectionCatalog,
+    catalog: &dyn ConnectionRepository,
+    scope: &ConnectionScope,
     tool_call: &ToolCall,
 ) -> String {
     let args: serde_json::Value = serde_json::from_str(&tool_call.arguments).unwrap_or_default();
@@ -296,7 +304,9 @@ pub async fn execute_db_tool(
 
     let cm = host;
     let result = match tool_call.name.as_str() {
-        "list_connections" => crate::services::db_tools::list_connections(catalog).await,
+        "list_connections" => {
+            crate::services::db_tools::list_connections(catalog, scope).await
+        }
         "list_databases" => {
             let connection_id = args["connection_id"].as_str().unwrap_or("");
             crate::services::db_tools::list_databases(cm, connection_id).await

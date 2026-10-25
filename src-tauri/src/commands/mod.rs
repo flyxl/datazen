@@ -275,6 +275,16 @@ impl AppState {
         Ok(self.organization_scope.clone())
     }
 
+    /// 模块连接目录的作用域（D2）：连接用例归
+    /// `datazen-modules::connection`，作用域是模块自己的词汇。
+    pub fn connection_scope(
+        &self,
+    ) -> Result<datazen_modules::connection::ConnectionScope, CommandError> {
+        Ok(datazen_modules::connection::ConnectionScope::new(
+            self.organization_scope.organization_id().as_str(),
+        ))
+    }
+
     /// Lazily register AI providers + load prompt templates.
     /// Does not run during GUI startup — only on first AI / prompt use.
     pub async fn ensure_ai_ready(&self) {

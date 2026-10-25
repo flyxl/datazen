@@ -1,4 +1,5 @@
 pub mod adapter;
+pub mod connections;
 pub mod artifact_export;
 mod diagnostics;
 pub mod error;

@@ -54,7 +54,6 @@
 pub mod artifact;
 pub mod budget;
 pub mod clock;
-pub mod connection_catalog;
 pub mod event;
 pub mod execution_settings;
 pub mod execution_target;
@@ -81,7 +80,6 @@ pub use budget::{
     BudgetCoordinator, ClusterNodeBudgetPort, ControlResourcePort, DriverPoolBudgetPort,
 };
 pub use clock::{Clock, FixedClock, SystemClock};
-pub use connection_catalog::ConnectionCatalog;
 pub use event::EventSink;
 pub use execution_settings::ExecutionSettingsReader;
 pub use execution_target::ExecutionTargetResolver;

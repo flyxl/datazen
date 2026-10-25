@@ -9,7 +9,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use datazen_driver_api::{ConnectionConfig, SavedTunnel, SavedTunnelSummary, TunnelUsage};
+use datazen_driver_api::{SavedTunnel, SavedTunnelSummary, TunnelUsage};
 use datazen_feature_core::services::named_views::{NamedView, NamedViewError, NamedViewRepository};
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::event::EventSequence;
@@ -23,7 +23,7 @@ use datazen_platform_api::id::{ConnectionId, ExecutionId, StreamId};
 use datazen_platform_api::ports::event::EventSubscription;
 use datazen_platform_api::ports::known_hosts::{KnownHostEntry, KnownHostsRepository};
 use datazen_platform_api::ports::scope::OrganizationScope;
-use datazen_platform_api::ports::{ConnectionCatalog, MigrationProfileReader, TunnelRepository};
+use datazen_platform_api::ports::{MigrationProfileReader, TunnelRepository};
 use datazen_platform_api::target::{TargetNamespaceShape, TargetRequirements};
 use datazen_platform_api::PortError;
 use datazen_schema_diff::{
@@ -256,68 +256,6 @@ impl NamedViewRepository for EmptyNamedViews {
     }
 }
 
-/// 连接目录端口：本模块不测连接目录的落盘行为，只需要一个能满足构造的实例。
-#[derive(Debug, Default)]
-struct EmptyConnectionCatalog;
-
-#[async_trait::async_trait]
-impl ConnectionCatalog for EmptyConnectionCatalog {
-    async fn list(&self, _scope: &OrganizationScope) -> Result<Vec<ConnectionConfig>, PortError> {
-        Ok(Vec::new())
-    }
-
-    async fn get(
-        &self,
-        _scope: &OrganizationScope,
-        _connection_id: &str,
-    ) -> Result<Option<ConnectionConfig>, PortError> {
-        Ok(None)
-    }
-
-    async fn save(
-        &self,
-        _scope: &OrganizationScope,
-        _config: ConnectionConfig,
-    ) -> Result<(), PortError> {
-        Ok(())
-    }
-
-    async fn delete(
-        &self,
-        _scope: &OrganizationScope,
-        _connection_id: &str,
-    ) -> Result<(), PortError> {
-        Ok(())
-    }
-
-    async fn reorder(
-        &self,
-        _scope: &OrganizationScope,
-        _ordered_ids: Vec<String>,
-    ) -> Result<(), PortError> {
-        Ok(())
-    }
-
-    async fn touch_last_connected_at(
-        &self,
-        _scope: &OrganizationScope,
-        _connection_id: &str,
-    ) -> Result<(), PortError> {
-        Ok(())
-    }
-
-    async fn groups(&self, _scope: &OrganizationScope) -> Result<Vec<String>, PortError> {
-        Ok(Vec::new())
-    }
-
-    async fn save_groups(
-        &self,
-        _scope: &OrganizationScope,
-        _groups: Vec<String>,
-    ) -> Result<(), PortError> {
-        Ok(())
-    }
-}
 
 /// Schema Diff profile repository: this module only exercises construction of
 /// the aggregate, so reaching this port is a test failure rather than a benign
@@ -399,7 +337,6 @@ fn services_with_known_hosts(
         Arc::new(UnusedConnectionUseCases),
         tunnels,
         known_hosts,
-        Arc::new(EmptyConnectionCatalog),
         Arc::new(EmptyNamedViews),
         Arc::new(EmptyDashboards),
         Arc::new(EmptyDashboardRuns),

@@ -110,6 +110,19 @@ monitor reload 与 tray 同步仍由原命令路径执行。
 
 **回滚**：恢复旧适配调用，不需要转换配置文件。不得在旧新实现之间双写。
 
+**第一切片已完成（2026-10-26）**：`datazen-modules::connection` 落地
+（domain：`ConnectionScope` / `ConnectionRepository` / `ConnectionRepositoryError`；
+application：`ConnectionService`，吸收表单回显的密钥合并、脱敏投影与复制流程，
+含 7 条用例测试）。桌面实现 `src-tauri/src/platform/connections.rs` 的
+`DesktopConnectionStore`（复用同一 `DesktopRepository` 的缓存、写锁与密钥）。
+`platform-api::ports::ConnectionCatalog` 与 feature-core 的重复 trait 定义均已删除
+（PORT_TRAITS / §6.4 端口表 / inventory 解析清单同步）；`ApplicationServices`
+不再持有 connections 字段；连接命令、分组命令、导入/导出、schema diff 校验、
+AI 工具（egress 摘要 / db_tools / 连接上下文）与 MCP 的目录读取全部改为经
+`require_connection_service` 消费模块服务（无 scope 的旧消费者改为显式作用域）。
+剩余：Profile/revision 词汇统一（`ProfileRepository` 服务端词汇 vs
+`ConnectionConfig` 表单词汇的归并）与 DesktopRepository 连接存储的更深抽取。
+
 ## D3：Execution 拆分与资源机制归位
 
 **输入**：D2；既有连接管理和 fake-runtime 测试契约。

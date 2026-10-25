@@ -2174,6 +2174,7 @@ name = "datazen-modules"
 version = "0.0.1"
 dependencies = [
  "async-trait",
+ "datazen-driver-api",
  "datazen-infra",
  "futures-util",
  "inventory",
