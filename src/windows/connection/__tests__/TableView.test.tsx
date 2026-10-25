@@ -88,10 +88,21 @@ vi.mock('../../../components/DataTable/DataTable', () => ({
     onCellDoubleClick?: (row: number, col: string) => void;
     headerActions?: React.ReactNode;
     emptyPlaceholder?: React.ReactNode;
+    onCellEdit?: unknown;
+    enableSetNull?: boolean;
+    onDeleteRows?: unknown;
   }) => (
     <div data-testid="mock-data-table">
       <div data-testid="mock-data-table-columns">{props.columns?.map((c) => c.name).join(',')}</div>
       <div data-testid="mock-data-table-actions">{props.headerActions}</div>
+      {/* DB-16 entrance gates, exposed as attributes so the assertion can be
+          string-level: "was the callback withdrawn at the entrance?" */}
+      <div
+        data-testid="mock-data-table-gates"
+        data-cell-edit={props.onCellEdit != null ? 'on' : 'off'}
+        data-set-null={props.enableSetNull ? 'on' : 'off'}
+        data-delete-rows={props.onDeleteRows != null ? 'on' : 'off'}
+      />
       {props.emptyPlaceholder}
       <button
         type="button"
@@ -565,5 +576,60 @@ describe('TableView no-primary-key escape hatch (DB-16)', () => {
     // must not promise an escape hatch the connection refuses to honor.
     expect(screen.getByText('defaultSort.noPrimaryKey')).toBeInTheDocument();
     expect(screen.queryByTestId('table-no-primary-key-edit-in-sql')).toBeNull();
+  });
+
+  it('withdraws the in-place write entrances on a writable keyless table (no click-then-fail paths)', () => {
+    seedNoPkPanel();
+
+    renderTable();
+
+    // DB-16 entrance hardening: cell edits, "Set NULL" and row deletes are
+    // withdrawn even without the SQL exit threaded — the data cannot be
+    // addressed, so no entrance may look usable and fail at stage time.
+    const gates = screen.getByTestId('mock-data-table-gates');
+    expect(gates).toHaveAttribute('data-cell-edit', 'off');
+    expect(gates).toHaveAttribute('data-set-null', 'off');
+    expect(gates).toHaveAttribute('data-delete-rows', 'off');
+  });
+
+  it('keeps the write entrances live on a writable table that has a primary key', () => {
+    seedPanel(contextOf(), {
+      columns: [{ name: 'id', dataType: 'int', nullable: false, isPrimaryKey: true }],
+      rows: [{ id: 1 }],
+      totalRows: 1,
+    });
+
+    renderTable();
+
+    const gates = screen.getByTestId('mock-data-table-gates');
+    expect(gates).toHaveAttribute('data-cell-edit', 'on');
+    expect(gates).toHaveAttribute('data-set-null', 'on');
+    expect(gates).toHaveAttribute('data-delete-rows', 'on');
+  });
+
+  it('keeps the write entrances withdrawn on a read-only connection with a primary key', () => {
+    seedPanel(contextOf(), {
+      columns: [{ name: 'id', dataType: 'int', nullable: false, isPrimaryKey: true }],
+      rows: [{ id: 1 }],
+      totalRows: 1,
+    });
+
+    render(
+      <TableView
+        panelId={PANEL}
+        dbSessionId="c1"
+        database="app"
+        tableName="users"
+        databaseType="postgresql"
+        readOnly={true}
+      />,
+    );
+
+    // The pre-existing read-only wiring, re-pinned so the keyless hardening
+    // cannot regress the plain read-only path.
+    const gates = screen.getByTestId('mock-data-table-gates');
+    expect(gates).toHaveAttribute('data-cell-edit', 'off');
+    expect(gates).toHaveAttribute('data-set-null', 'off');
+    expect(gates).toHaveAttribute('data-delete-rows', 'off');
   });
 });

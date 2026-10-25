@@ -395,6 +395,19 @@ export function TableView({
     columns.length > 0 &&
     columns.every((column) => !column.isPrimaryKey);
 
+  /**
+   * DB-16 (entrance hardening): a keyless table cannot address existing rows,
+   * so every write that targets one — cell edits, row deletes, pastes into
+   * loaded rows — is withdrawn at the **entrance** instead of failing at
+   * stage time (PRD DB-16: no path may look clickable and then fail).
+   * This is a fact about the data, not about the SQL exit: it holds even
+   * when no `onEditInSql` handler is threaded. Draft inserts stay enabled —
+   * an INSERT needs no row locator.
+   */
+  const noPkWriteBlocker = columns.length > 0 && columns.every((column) => !column.isPrimaryKey);
+  /** In-place writes need both a writable connection and a locatable row identity. */
+  const cellWritesEnabled = isEditable && !noPkWriteBlocker;
+
   /** The saved-views menu, or nothing when this backend cannot serve it. */
   const namedView = useNamedViewMenu({
     connectionId,
@@ -524,10 +537,12 @@ export function TableView({
     panelId,
     ts,
     actions,
-    isEditable,
+    isEditable: cellWritesEnabled,
     columnOrder: displayedColumns.map((column) => column.name),
     tableLabel: tableName,
-    onReadOnlyPaste: () => showReadOnlyTip('connectionReadOnly'),
+    // A refused paste has one of two panel-level reasons; the tip must say which.
+    onReadOnlyPaste: () =>
+      showReadOnlyTip(noPkWriteBlocker ? 'noPrimaryKey' : 'connectionReadOnly'),
   });
   const editingCell = ts?.editingCell ?? null;
   const detailRowIndex = ts?.detailRowIndex ?? null;
@@ -598,8 +613,8 @@ export function TableView({
   }, [panelId, ts?.highlightedNewRowKey]);
 
   useEffect(() => {
-    if (!isEditable && editingCell) actions.cancelEdit();
-  }, [actions, editingCell, isEditable]);
+    if (!cellWritesEnabled && editingCell) actions.cancelEdit();
+  }, [actions, editingCell, cellWritesEnabled]);
 
   const handlePreviewPendingChanges = useCallback(async () => {
     if (driverReadOnly || pendingBusy || !hasWork) return;
@@ -853,11 +868,11 @@ export function TableView({
         onPageChange={actions.setPage}
         onPageSizeChange={actions.setPageSize}
         onCellDoubleClick={handleCellDoubleClick}
-        onCellEdit={isEditable ? handleCellEdit : undefined}
+        onCellEdit={cellWritesEnabled ? handleCellEdit : undefined}
         onCellEditCancel={actions.cancelEdit}
         cellEditing={editing.cellEditing}
         cellTypeHints={editing.cellTypeHints}
-        enableSetNull={isEditable}
+        enableSetNull={cellWritesEnabled}
         onRowSelect={actions.selectRow}
         onSelectAll={actions.toggleSelectAll}
         onRowClick={actions.setDetailRow}
@@ -889,7 +904,7 @@ export function TableView({
         dbSessionId={dbSessionId}
         dataExportCapability={dataExportCapability}
         primaryKeyColumns={columns.filter((c) => c.isPrimaryKey).map((c) => c.name)}
-        onDeleteRows={isEditable ? handleDeleteRows : undefined}
+        onDeleteRows={cellWritesEnabled ? handleDeleteRows : undefined}
         headerActions={
           <TableColumnFilter
             columns={columns}
