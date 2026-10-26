@@ -29,6 +29,10 @@ pub mod named_views;
 #[cfg(feature = "migration_common")]
 pub mod migration_common;
 
+/// D5：Schema Diff 引擎（比较/审查/计划/部署 + job handler）。
+#[cfg(feature = "schema_diff")]
+pub mod schema_diff;
+
 /// D4-d：表编辑写链路（ChangeSet/insert plan/行身份/写执行）。
 #[cfg(feature = "table-editing")]
 pub mod table_editing;

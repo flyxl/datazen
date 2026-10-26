@@ -6,21 +6,21 @@
 
 use std::sync::Arc;
 
-use datazen_platform_api::dto::execution::{EffectOutcome, ExecutionErrorCode};
-use datazen_platform_api::dto::job::{
+use crate::execution::domain::{EffectOutcome, ExecutionErrorCode};
+use crate::jobs::job::{
     Checkpoint, CommitBoundary, JobDomainResult, JobProgress, JobResultCounter, JobResultItem,
 };
-use datazen_platform_api::id::{ArtifactId, Counter, StageId, Timestamp};
-use datazen_platform_api::ports::{Clock, SystemClock};
+use crate::shared::clock::{Clock, SystemClock};
+use crate::shared::id::{ArtifactId, Counter, StageId, Timestamp};
 
-use datazen_kernel::job::{
+use crate::jobs::{
     CancelToken, JobError, JobHandler, RecoveryVerdict, StageOutcome, StageSpec, StageTerminal,
 };
 
-use crate::job::backend::{ApplyRequest, PrepareRequest, SchemaDiffJobBackend};
-use crate::job::plan::{fnv1a64_hex, PlanRepository, SchemaDiffPlanError, StoredPlan};
-use crate::job::recovery::decide_recovery;
-use crate::types::{DeployStatus, SchemaDiffDeployResult};
+use crate::schema_diff::job::backend::{ApplyRequest, PrepareRequest, SchemaDiffJobBackend};
+use crate::schema_diff::job::plan::{fnv1a64_hex, PlanRepository, SchemaDiffPlanError, StoredPlan};
+use crate::schema_diff::job::recovery::decide_recovery;
+use crate::schema_diff::types::{DeployStatus, SchemaDiffDeployResult};
 
 /// handler 角色：prepare 与 apply 是两个 kind。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -103,8 +103,8 @@ impl<B: SchemaDiffJobBackend> SchemaDiffHandler<B> {
         }
     }
 
-    fn check_versions(plan: &datazen_kernel::job::FrozenPlan) -> Result<(), JobError> {
-        let expected = datazen_kernel::job::SUPPORTED_PLAN_MAJOR;
+    fn check_versions(plan: &crate::jobs::FrozenPlan) -> Result<(), JobError> {
+        let expected = crate::jobs::SUPPORTED_PLAN_MAJOR;
         for got in [
             plan.plan_version,
             plan.handler_version,
@@ -210,7 +210,7 @@ impl<B: SchemaDiffJobBackend> SchemaDiffHandler<B> {
             }),
         };
         // D4：deploy 不提供执行 ID，按稳定映射推导（每条被执行语句一条）。
-        let execution_ids: Vec<datazen_platform_api::id::ExecutionId> = deploy
+        let execution_ids: Vec<crate::shared::id::ExecutionId> = deploy
             .statement_results
             .iter()
             .map(|r| {
@@ -221,7 +221,7 @@ impl<B: SchemaDiffJobBackend> SchemaDiffHandler<B> {
                         .take(8)
                         .collect::<String>()
                 );
-                datazen_platform_api::id::ExecutionId::new(id)
+                crate::shared::id::ExecutionId::new(id)
             })
             .collect();
         StageOutcome {
@@ -346,10 +346,7 @@ impl<B: SchemaDiffJobBackend> JobHandler for SchemaDiffHandler<B> {
         1
     }
 
-    fn validate_plan(
-        &self,
-        plan: &datazen_kernel::job::FrozenPlan,
-    ) -> Result<Vec<StageSpec>, JobError> {
+    fn validate_plan(&self, plan: &crate::jobs::FrozenPlan) -> Result<Vec<StageSpec>, JobError> {
         Self::check_versions(plan)?;
         match self.role {
             HandlerRole::Prepare => Ok(vec![StageSpec {
@@ -464,13 +461,17 @@ impl<B: SchemaDiffJobBackend> JobHandler for SchemaDiffHandler<B> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::job::backend::SchemaDiffJobBackend;
-    use crate::job::backend::{ApplyRequest, PrepareRequest, PreparedPlan, ReadOnlyVerdict};
-    use crate::job::plan::{PlanRepository, SchemaDiffFrozenPlan, SchemaDiffPlanError};
-    use crate::types::{SchemaDiffPlan, StatementExecResult};
-    use datazen_platform_api::dto::job::JobResultItem;
-    use datazen_platform_api::id::Counter;
-    use datazen_platform_api::ports::FixedClock;
+    use crate::jobs::job::JobResultItem;
+    use crate::schema_diff::job::backend::SchemaDiffJobBackend;
+    use crate::schema_diff::job::backend::{
+        ApplyRequest, PrepareRequest, PreparedPlan, ReadOnlyVerdict,
+    };
+    use crate::schema_diff::job::plan::{
+        PlanRepository, SchemaDiffFrozenPlan, SchemaDiffPlanError,
+    };
+    use crate::schema_diff::types::{SchemaDiffPlan, StatementExecResult};
+    use crate::shared::clock::FixedClock;
+    use crate::shared::id::Counter;
 
     struct UnusedBackend;
 

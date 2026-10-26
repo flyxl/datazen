@@ -4,7 +4,7 @@ use super::types::{
     DdlAtomicity, DeployStatus, SchemaDiffDeployResult, SchemaDiffPlan, StatementExecResult,
     StatementRisk,
 };
-use crate::transaction::TransactionScope;
+use crate::schema_diff::transaction::TransactionScope;
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver, SchemaMigration, SqlTarget};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -471,7 +471,7 @@ pub const DESTRUCTIVE_CONFIRM_TOKEN: &str = "DEPLOY";
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{PlanStatement, RollbackCompleteness, StatementRisk};
+    use crate::schema_diff::types::{PlanStatement, RollbackCompleteness, StatementRisk};
     use std::sync::Mutex;
 
     struct ScriptedExecutor {

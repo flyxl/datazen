@@ -212,7 +212,7 @@ fn typed_type_table_fk_trigger_chain_is_topologically_ordered() {
         table: "public.orders".into(),
         columns: vec![
             super::tests::snap("user_id"),
-            crate::types::ColumnSnapshot {
+            crate::schema_diff::types::ColumnSnapshot {
                 name: "status".into(),
                 data_type: "public.order_status".into(),
                 nullable: false,
@@ -386,7 +386,7 @@ fn basename_only_fk_trigger_and_type_references_fail_closed() {
     };
     let table_operation = MigrationOperation::CreateTable {
         table: "public.orders".into(),
-        columns: vec![crate::types::ColumnSnapshot {
+        columns: vec![crate::schema_diff::types::ColumnSnapshot {
             name: "status".into(),
             data_type: "order_status".into(),
             nullable: false,

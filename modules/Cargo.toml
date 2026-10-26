@@ -49,6 +49,21 @@ schema = ["dep:tokio", "dep:datazen-infra", "execution"]
 "table-browsing" = ["dep:serde_json", "schema"]
 # D4-d：表编辑写链路（依赖 schema 缓存 + execution 产物读取词汇）。
 "table-editing" = ["dep:async-trait", "dep:serde_json", "dep:uuid", "schema", "execution"]
+# D5：Schema Diff 引擎（原 schema-diff crate 整体归位；三件套之一）。
+# 词汇来自 driver-api；Profile 仓储 trait 在本模块（实现在宿主）；
+# job handler 走 jobs 契约；schema 缓存与 execution 执行词汇随依赖进入。
+schema_diff = [
+    "dep:async-trait",
+    "dep:serde_json",
+    "dep:chrono",
+    "dep:tokio",
+    "dep:tracing",
+    "dep:uuid",
+    "dep:datazen-driver-api",
+    "jobs",
+    "schema",
+    "execution",
+]
 # D5：迁移三件套的共享纯算法（原 migration-common crate 整体归位）。
 # 不依赖三件套或 execution（01 §4.2）；driver-api 提供分类学词汇。
 migration_common = ["dep:datazen-driver-api", "dep:serde_json"]
@@ -91,7 +106,7 @@ sha2 = { version = "0.10", optional = true }
 hmac = { version = "0.12", optional = true }
 libc = { version = "0.2", optional = true }
 # table-editing feature：变更集 ID 生成
-uuid = { version = "1", features = ["v4"], optional = true }
+uuid = { version = "1", features = ["v4", "serde"], optional = true }
 # ai feature：契约层链接期工厂注册
 inventory = { version = "0.3", optional = true }
 # ai feature：providers 的并发与流式传输

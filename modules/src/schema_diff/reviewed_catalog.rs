@@ -1,6 +1,6 @@
 //! Exact dependency-catalog comparisons retained by reviewed schema plans.
 
-use crate::object_identity::{
+use crate::schema_diff::object_identity::{
     SchemaObjectDependencySnapshot, SchemaObjectIdentity, SequenceDependencyUsage,
     TypeDependencyUsage,
 };

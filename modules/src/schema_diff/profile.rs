@@ -158,7 +158,7 @@ impl SchemaDiffProfile {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_platform_api::ports::{Clock, FixedClock};
+    use crate::shared::clock::{Clock, FixedClock};
 
     /// fixture 的时刻由固定时钟给定：测试不再随真实时间漂移，
     /// 而时刻本身仍经平台时钟端口取（不新增第二处直接读系统时间）。

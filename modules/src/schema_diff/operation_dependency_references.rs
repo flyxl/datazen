@@ -75,7 +75,7 @@ fn type_reference_parts(raw: &str) -> Vec<String> {
 }
 
 pub(super) fn column_uses_type(
-    column: &crate::types::ColumnSnapshot,
+    column: &crate::schema_diff::types::ColumnSnapshot,
     type_def: &datazen_driver_api::MigrationType,
 ) -> bool {
     let actual = type_reference_parts(&column.data_type);
@@ -98,7 +98,7 @@ pub(super) fn column_uses_type(
 }
 
 fn matching_selected_types(
-    column: &crate::types::ColumnSnapshot,
+    column: &crate::schema_diff::types::ColumnSnapshot,
     operations: &[MigrationOperation],
 ) -> std::collections::BTreeSet<String> {
     operations
@@ -119,7 +119,7 @@ fn matching_selected_types(
 }
 
 fn matching_selected_types_exact(
-    column: &crate::types::ColumnSnapshot,
+    column: &crate::schema_diff::types::ColumnSnapshot,
     operations: &[MigrationOperation],
 ) -> std::collections::BTreeSet<String> {
     operations
@@ -140,7 +140,7 @@ fn matching_selected_types_exact(
 }
 
 fn column_type_may_match(
-    column: &crate::types::ColumnSnapshot,
+    column: &crate::schema_diff::types::ColumnSnapshot,
     type_def: &datazen_driver_api::MigrationType,
 ) -> bool {
     let actual = type_reference_parts(&column.data_type);

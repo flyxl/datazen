@@ -313,7 +313,7 @@ mod tests {
         assert_eq!(
             MigrationOperation::DropColumn {
                 table: "t".into(),
-                column: crate::types::ColumnSnapshot {
+                column: crate::schema_diff::types::ColumnSnapshot {
                     name: "x".into(),
                     data_type: "int".into(),
                     nullable: true,

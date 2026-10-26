@@ -18,7 +18,7 @@ fn type_overrides_are_applied_before_custom_type_dependency_validation() {
     );
     assert!(matches!(
         &overridden[0],
-        crate::operations::MigrationOperation::CreateTable { columns, .. }
+        crate::schema_diff::operations::MigrationOperation::CreateTable { columns, .. }
             if columns[0].data_type == "integer"
     ));
 }
@@ -54,15 +54,17 @@ fn type_override_filters_only_catalog_edges_used_exclusively_by_overridden_colum
     let make_snapshot = |usage| SchemaObjectDependencySnapshot {
         identity: table_identity.clone(),
         dependencies: Some(vec![custom_type.clone()]),
-        type_dependency_usages: Some(vec![crate::object_identity::TypeDependencyUsage {
-            dependency: custom_type.clone(),
-            usage,
-            column_name: matches!(
+        type_dependency_usages: Some(vec![
+            crate::schema_diff::object_identity::TypeDependencyUsage {
+                dependency: custom_type.clone(),
                 usage,
-                crate::object_identity::TypeDependencyUsageKind::ColumnType
-            )
-            .then(|| "state".into()),
-        }]),
+                column_name: matches!(
+                    usage,
+                    crate::schema_diff::object_identity::TypeDependencyUsageKind::ColumnType
+                )
+                .then(|| "state".into()),
+            },
+        ]),
         sequence_dependency_usages: None,
     };
     let build_plan = |snapshot: SchemaObjectDependencySnapshot, source: TableSchema| {
@@ -91,7 +93,7 @@ fn type_override_filters_only_catalog_edges_used_exclusively_by_overridden_colum
     };
 
     let column_only = build_plan(
-        make_snapshot(crate::object_identity::TypeDependencyUsageKind::ColumnType),
+        make_snapshot(crate::schema_diff::object_identity::TypeDependencyUsageKind::ColumnType),
         source.clone(),
     );
     assert!(
@@ -109,14 +111,14 @@ fn type_override_filters_only_catalog_edges_used_exclusively_by_overridden_colum
             identity: table_identity,
             dependencies: Some(vec![custom_type.clone()]),
             type_dependency_usages: Some(vec![
-                crate::object_identity::TypeDependencyUsage {
+                crate::schema_diff::object_identity::TypeDependencyUsage {
                     dependency: custom_type.clone(),
-                    usage: crate::object_identity::TypeDependencyUsageKind::ColumnType,
+                    usage: crate::schema_diff::object_identity::TypeDependencyUsageKind::ColumnType,
                     column_name: Some("state".into()),
                 },
-                crate::object_identity::TypeDependencyUsage {
+                crate::schema_diff::object_identity::TypeDependencyUsage {
                     dependency: custom_type,
-                    usage: crate::object_identity::TypeDependencyUsageKind::Expression,
+                    usage: crate::schema_diff::object_identity::TypeDependencyUsageKind::Expression,
                     column_name: None,
                 },
             ]),

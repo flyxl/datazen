@@ -19,6 +19,7 @@ pub mod error;
 pub mod hash;
 /// 归属校验纯函数（`check_owner`）：共享身份词汇上的运算。
 pub mod policy;
+pub mod scope;
 // `id` 用宏批量生成 ID newtype，宏调用点的 `///` 会被 rustc 判为未使用的文档注释
 //（rustdoc 仍会在展开后的类型上生效），故在此局部放行。
 #[allow(unused_doc_comments)]

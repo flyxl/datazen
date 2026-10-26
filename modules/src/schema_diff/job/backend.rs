@@ -6,10 +6,10 @@
 
 use async_trait::async_trait;
 
-use datazen_kernel::job::CancelToken;
+use crate::jobs::CancelToken;
 
-use crate::job::plan::{SchemaDiffFrozenPlan, SchemaDiffPlanError};
-use crate::types::SchemaDiffDeployResult;
+use crate::schema_diff::job::plan::{SchemaDiffFrozenPlan, SchemaDiffPlanError};
+use crate::schema_diff::types::SchemaDiffDeployResult;
 
 /// 准备请求：与既有 prepare_* IPC 相同的稳定输入，但由 handler 统一执行。
 #[derive(Debug, Clone)]
@@ -25,7 +25,7 @@ pub enum PrepareRequest {
         target_schema: Option<String>,
         allow_destructive: bool,
         include_indexes: Option<bool>,
-        type_overrides: Vec<crate::types::ColumnTypeOverride>,
+        type_overrides: Vec<crate::schema_diff::types::ColumnTypeOverride>,
     },
     /// 统一对象（unified plan：表 + view/function/procedure/trigger/sequence/type）。
     Unified {
@@ -40,7 +40,7 @@ pub enum PrepareRequest {
         target_schema: Option<String>,
         allow_destructive: bool,
         include_indexes: Option<bool>,
-        type_overrides: Vec<crate::types::ColumnTypeOverride>,
+        type_overrides: Vec<crate::schema_diff::types::ColumnTypeOverride>,
     },
 }
 
@@ -48,7 +48,7 @@ pub enum PrepareRequest {
 #[derive(Debug)]
 pub struct PreparedPlan {
     pub meta: SchemaDiffFrozenPlan,
-    pub plan: crate::types::SchemaDiffPlan,
+    pub plan: crate::schema_diff::types::SchemaDiffPlan,
     pub body_digest: String,
 }
 
@@ -96,14 +96,14 @@ pub trait SchemaDiffJobBackend: Send + Sync {
     /// 执行前：重读目标结构并与 before fingerprint 比对（§4.2 PlanStale）。
     async fn read_target_fingerprint(
         &self,
-        plan: &crate::types::SchemaDiffPlan,
+        plan: &crate::schema_diff::types::SchemaDiffPlan,
         plan_meta: &SchemaDiffFrozenPlan,
     ) -> Result<String, SchemaDiffPlanError>;
 
     /// 按 DAG 拓扑执行；transaction group 固定目标 Lease；返回 driver 实际终态。
     async fn deploy(
         &self,
-        plan: &crate::types::SchemaDiffPlan,
+        plan: &crate::schema_diff::types::SchemaDiffPlan,
         request: &ApplyRequest,
         cancel: &CancelToken,
     ) -> Result<SchemaDiffDeployResult, SchemaDiffPlanError>;

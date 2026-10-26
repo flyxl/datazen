@@ -5,10 +5,10 @@
 //! is isolated; the command layer only supplies the current scope and maps the
 //! repository result onto its transport error.
 
+use crate::shared::scope::OrganizationScope;
 use async_trait::async_trait;
-use datazen_platform_api::ports::scope::OrganizationScope;
 
-use crate::profile::SchemaDiffProfile;
+use crate::schema_diff::profile::SchemaDiffProfile;
 
 /// Why a Schema Diff profile repository operation failed.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

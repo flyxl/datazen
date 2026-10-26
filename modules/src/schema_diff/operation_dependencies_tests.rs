@@ -1,12 +1,12 @@
 use super::*;
-use crate::operations::MigrationOperation;
+use crate::schema_diff::operations::MigrationOperation;
 
 #[test]
 fn ordering_places_create_before_index_and_drop() {
     let ops = vec![
         MigrationOperation::DropColumn {
             table: "t".into(),
-            column: crate::types::ColumnSnapshot {
+            column: crate::schema_diff::types::ColumnSnapshot {
                 name: "old".into(),
                 data_type: "int".into(),
                 nullable: true,
@@ -28,7 +28,7 @@ fn ordering_places_create_before_index_and_drop() {
         },
         MigrationOperation::AddColumn {
             table: "t".into(),
-            column: crate::types::ColumnSnapshot {
+            column: crate::schema_diff::types::ColumnSnapshot {
                 name: "new".into(),
                 data_type: "int".into(),
                 nullable: true,
@@ -55,8 +55,8 @@ fn ordering_places_create_before_index_and_drop() {
     );
 }
 
-pub(super) fn snap(name: &str) -> crate::types::ColumnSnapshot {
-    crate::types::ColumnSnapshot {
+pub(super) fn snap(name: &str) -> crate::schema_diff::types::ColumnSnapshot {
+    crate::schema_diff::types::ColumnSnapshot {
         name: name.into(),
         data_type: "int".into(),
         nullable: true,

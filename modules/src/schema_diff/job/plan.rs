@@ -7,9 +7,9 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use datazen_platform_api::id::Timestamp;
+use crate::shared::id::Timestamp;
 
-use crate::types::SchemaDiffPlan;
+use crate::schema_diff::types::SchemaDiffPlan;
 
 /// 当前受理的计划格式 major。未知 major 拒绝（§2.2 / §10.1.1）。
 pub const SUPPORTED_PLAN_MAJOR: u64 = 1;
@@ -287,7 +287,7 @@ mod tests {
                 statements: vec![],
                 warnings: vec![],
                 requirements: vec![],
-                rollback_completeness: crate::types::RollbackCompleteness {
+                rollback_completeness: crate::schema_diff::types::RollbackCompleteness {
                     complete: true,
                     missing: vec![],
                 },

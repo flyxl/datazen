@@ -2241,16 +2241,12 @@ name = "datazen-schema-diff"
 version = "0.0.1"
 dependencies = [
  "async-trait",
- "chrono",
  "datazen-driver-api",
  "datazen-kernel",
+ "datazen-modules",
  "datazen-platform-api",
- "serde",
  "serde_json",
- "thiserror 1.0.69",
  "tokio",
- "tracing",
- "uuid",
 ]
 
 [[package]]

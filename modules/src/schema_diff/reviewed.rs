@@ -35,9 +35,9 @@ use super::{
     objects::SchemaObjectSnapshot,
     types::SchemaDiffPlan,
 };
+use crate::shared::scope::OrganizationScope;
 use async_trait::async_trait;
 use datazen_driver_api::{ConnectionConfig, ConnectionHandle, TableSchema};
-use datazen_platform_api::ports::scope::OrganizationScope;
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::sync::Mutex;
@@ -618,8 +618,8 @@ fn normalized_scope(value: Option<&str>) -> Option<&str> {
 /// Configuration identity is a conservative local check; driver-provided physical
 /// identity is required to recognize aliases and distinct tunnels to one server.
 pub fn same_endpoint(source: &ConnectionConfig, target: &ConnectionConfig) -> bool {
-    let source_dialect = crate::types::normalize_dialect(&source.database_type);
-    let target_dialect = crate::types::normalize_dialect(&target.database_type);
+    let source_dialect = crate::schema_diff::types::normalize_dialect(&source.database_type);
+    let target_dialect = crate::schema_diff::types::normalize_dialect(&target.database_type);
     if source_dialect != target_dialect {
         return false;
     }
@@ -650,8 +650,8 @@ pub fn physical_database_scope(
     source_schema_identity: Option<&str>,
     target_schema_identity: Option<&str>,
 ) -> PhysicalDatabaseScope {
-    let source_dialect = crate::types::normalize_dialect(&source.database_type);
-    let target_dialect = crate::types::normalize_dialect(&target.database_type);
+    let source_dialect = crate::schema_diff::types::normalize_dialect(&source.database_type);
+    let target_dialect = crate::schema_diff::types::normalize_dialect(&target.database_type);
     if source_dialect != target_dialect {
         return PhysicalDatabaseScope::Different;
     }

@@ -1,6 +1,6 @@
 use super::*;
-use crate::operations::MigrationOperation as HostMigrationOperation;
-use crate::types::ColumnSnapshot;
+use crate::schema_diff::operations::MigrationOperation as HostMigrationOperation;
+use crate::schema_diff::types::ColumnSnapshot;
 use std::collections::{BTreeSet, HashMap};
 
 fn dependency_snapshot(
@@ -25,7 +25,7 @@ fn inspect_source_dependencies(
     let node_keys = vec!["table:public.items".to_owned(); operations.len()];
     let mut edges = Vec::new();
     let mut requirements = Vec::new();
-    crate::unified_validation::validate_table_catalog_dependencies(
+    crate::schema_diff::unified_validation::validate_table_catalog_dependencies(
         std::slice::from_ref(snapshot),
         operations,
         target_catalog,
@@ -143,7 +143,7 @@ fn test_tester_table_drop_catalog_orders_dependents_and_requires_selected_foreig
     }];
     let mut edges = Vec::new();
     let mut requirements = Vec::new();
-    crate::unified_validation::validate_table_drop_catalog(
+    crate::schema_diff::unified_validation::validate_table_drop_catalog(
         &parent_only,
         &target_dependencies,
         &mut edges,
@@ -165,7 +165,7 @@ fn test_tester_table_drop_catalog_orders_dependents_and_requires_selected_foreig
     ];
     edges.clear();
     requirements.clear();
-    crate::unified_validation::validate_table_drop_catalog(
+    crate::schema_diff::unified_validation::validate_table_drop_catalog(
         &child_and_parent,
         &target_dependencies,
         &mut edges,
@@ -188,7 +188,7 @@ fn test_tester_table_drop_catalog_orders_dependents_and_requires_selected_foreig
     ];
     edges.clear();
     requirements.clear();
-    crate::unified_validation::validate_table_drop_catalog(
+    crate::schema_diff::unified_validation::validate_table_drop_catalog(
         &foreign_key_only,
         &target_dependencies,
         &mut edges,
@@ -211,7 +211,7 @@ fn test_tester_custom_type_drop_requires_a_complete_catalog_and_removes_users_fi
     };
     let mut edges = Vec::new();
     let mut requirements = Vec::new();
-    crate::unified_validation::validate_custom_type_drops(
+    crate::schema_diff::unified_validation::validate_custom_type_drops(
         std::slice::from_ref(&drop_type),
         &[],
         &mut edges,
@@ -228,7 +228,7 @@ fn test_tester_custom_type_drop_requires_a_complete_catalog_and_removes_users_fi
     )];
     edges.clear();
     requirements.clear();
-    crate::unified_validation::validate_custom_type_drops(
+    crate::schema_diff::unified_validation::validate_custom_type_drops(
         std::slice::from_ref(&drop_type),
         &dependent_table,
         &mut edges,
@@ -247,7 +247,7 @@ fn test_tester_custom_type_drop_requires_a_complete_catalog_and_removes_users_fi
     ];
     edges.clear();
     requirements.clear();
-    crate::unified_validation::validate_custom_type_drops(
+    crate::schema_diff::unified_validation::validate_custom_type_drops(
         &remove_table_first,
         &dependent_table,
         &mut edges,
@@ -275,7 +275,7 @@ fn test_tester_custom_type_drop_requires_a_complete_catalog_and_removes_users_fi
     )];
     edges.clear();
     requirements.clear();
-    crate::unified_validation::validate_custom_type_drops(
+    crate::schema_diff::unified_validation::validate_custom_type_drops(
         &ambiguous_types,
         &unqualified_user,
         &mut edges,

@@ -1,6 +1,6 @@
 use super::*;
-use crate::object_identity::SchemaObjectIdentity;
-use crate::operations::MigrationOperation as HostMigrationOperation;
+use crate::schema_diff::object_identity::SchemaObjectIdentity;
+use crate::schema_diff::operations::MigrationOperation as HostMigrationOperation;
 use datazen_driver_api::{
     CheckConstraint, ColumnSchema, ForeignKeyDeferrability, ForeignKeyInfo, MigrationOperation,
     MigrationRisk, MigrationStatement, ObjectKind, TableOptions, TableSchema,
@@ -796,7 +796,7 @@ fn test_tester_unified_object_diff_emits_exact_replace_and_drop_operations() {
         SchemaObjectSnapshot::view(Some("public"), "retired_view", "SELECT 0"),
     ];
 
-    let batch = crate::unified_objects::diff_schema_objects_to_operations(
+    let batch = crate::schema_diff::unified_objects::diff_schema_objects_to_operations(
         &source,
         &target,
         "postgresql",
@@ -835,7 +835,7 @@ fn test_tester_unified_object_diff_emits_exact_replace_and_drop_operations() {
 #[test]
 fn test_tester_unified_object_diff_blocks_invalid_scopes_and_unapproved_drops() {
     let source_view = SchemaObjectSnapshot::view(Some("public"), "active_view", "SELECT 1");
-    let cross_dialect = crate::unified_objects::diff_schema_objects_to_operations(
+    let cross_dialect = crate::schema_diff::unified_objects::diff_schema_objects_to_operations(
         &[source_view.clone()],
         &[],
         "postgresql",
@@ -853,7 +853,7 @@ fn test_tester_unified_object_diff_blocks_invalid_scopes_and_unapproved_drops() 
         "orders_id_seq",
         "CREATE SEQUENCE orders_id_seq AS bigint",
     );
-    let invalid = crate::unified_objects::diff_schema_objects_to_operations(
+    let invalid = crate::schema_diff::unified_objects::diff_schema_objects_to_operations(
         &[table_as_object, unnamed_view, missing_sequence_schema],
         &[],
         "postgresql",
@@ -863,7 +863,7 @@ fn test_tester_unified_object_diff_blocks_invalid_scopes_and_unapproved_drops() 
     assert!(invalid.operations.is_empty());
     assert_eq!(invalid.requirements.len(), 3, "{:?}", invalid.requirements);
 
-    let duplicate = crate::unified_objects::diff_schema_objects_to_operations(
+    let duplicate = crate::schema_diff::unified_objects::diff_schema_objects_to_operations(
         &[source_view.clone(), source_view.clone()],
         &[],
         "postgresql",
@@ -872,7 +872,7 @@ fn test_tester_unified_object_diff_blocks_invalid_scopes_and_unapproved_drops() 
     );
     assert!(format!("{:?}", duplicate.requirements).contains("duplicate object identities"));
 
-    let skipped_drop = crate::unified_objects::diff_schema_objects_to_operations(
+    let skipped_drop = crate::schema_diff::unified_objects::diff_schema_objects_to_operations(
         &[],
         &[source_view.clone()],
         "postgresql",

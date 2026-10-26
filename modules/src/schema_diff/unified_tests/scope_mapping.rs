@@ -1,5 +1,5 @@
 use super::*;
-use crate::unified_scope::MySqlViewScopeContext;
+use crate::schema_diff::unified_scope::MySqlViewScopeContext;
 use datazen_driver_api::{
     DatabaseObject, MySqlViewMetadata, SchemaObjectScopeDependency, SchemaObjectScopeMapping,
 };

@@ -4,8 +4,8 @@
 //! 「一次部署只消费一次」与「越组织读不到」。
 
 use super::*;
+use crate::shared::id::OrganizationId;
 use async_trait::async_trait;
-use datazen_platform_api::id::OrganizationId;
 use std::collections::HashMap;
 use tokio::sync::Mutex;
 

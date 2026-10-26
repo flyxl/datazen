@@ -1,8 +1,8 @@
 use super::*;
-use crate::object_identity::{
+use crate::schema_diff::object_identity::{
     SchemaObjectDependencySnapshot, SequenceDependencyUsage, SequenceDependencyUsageKind,
 };
-use crate::operations::MigrationOperation as HostMigrationOperation;
+use crate::schema_diff::operations::MigrationOperation as HostMigrationOperation;
 use datazen_driver_api::{
     MigrationOperation as DriverMigrationOperation, MigrationSequence, MigrationStatement,
 };

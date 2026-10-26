@@ -1,35 +1,7 @@
-//! Schema diff planning and deploy (source = desired state → target).
+//! Schema Diff 引擎迁移垫片（D5，2026-10-26）。
+//!
+//! 唯一定义自 D5 起在 `datazen-modules::schema_diff`。本 crate 只再导出，
+//! `datazen_schema_diff::*` 既有路径不变（drivers 的方言测试、application
+//! 的装配测试、feature-core 经此消费）；D8 退役本 crate 时删除。
 
-pub mod compare;
-pub mod dependencies;
-pub mod dependency_graph;
-pub mod deploy;
-pub mod ir;
-pub mod job;
-pub mod object_identity;
-pub mod object_selection;
-pub mod objects;
-mod operation_dependencies;
-mod operation_dependency_references;
-pub mod operations;
-pub mod plan;
-pub mod plan_request;
-pub mod profile;
-pub mod profile_repository;
-pub mod reviewed;
-pub mod transaction;
-pub mod types;
-pub mod unified;
-mod unified_objects;
-pub mod unified_scope;
-mod unified_sequence;
-mod unified_type_validation;
-mod unified_validation;
-
-pub use compare::diff_table_schemas;
-pub use deploy::{execute_schema_diff_deploy, execute_schema_diff_deploy_at, DeployOptions};
-pub use object_identity::SchemaObjectIdentity;
-pub use plan::{build_column_plan, build_schema_diff_plan, PlanOptions};
-pub use profile::SchemaDiffProfile;
-pub use profile_repository::{SchemaDiffProfileRepository, SchemaDiffProfileRepositoryError};
-pub use types::*;
+pub use datazen_modules::schema_diff::*;
