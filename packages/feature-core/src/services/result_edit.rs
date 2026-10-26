@@ -625,7 +625,7 @@ pub fn build_result_cell_change_plan(
         delete_marked: false,
         insert_marked: false,
     };
-    build_row_change_plan(driver, table, std::slice::from_ref(&change), columns)
+    build_row_change_plan(driver, table, std::slice::from_ref(&change), columns).map_err(Into::into)
 }
 
 #[cfg(test)]

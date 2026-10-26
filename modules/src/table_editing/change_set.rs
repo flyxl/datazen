@@ -5,9 +5,9 @@
 //! the guards and the fingerprint payload here is what makes a future web host
 //! produce byte-identical plans instead of a second implementation.
 
-use crate::error::FeatureError;
+use crate::schema::CachedColumns;
+use crate::table_editing::error::TableEditingError as FeatureError;
 use datazen_driver_api::{BoundSqlStatement, DatabaseDriver, Value};
-use datazen_kernel::schema_cache::CachedColumns;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -74,7 +74,7 @@ pub struct RowChangePlan {
     pub plan_id: String,
     pub fingerprint: String,
     #[serde(default)]
-    pub config_revision: Option<datazen_platform_api::id::Counter>,
+    pub config_revision: Option<crate::shared::id::Counter>,
     pub table: RowChangeTableContext,
     pub updates: Vec<PlannedStatement>,
     pub deletes: Vec<PlannedStatement>,

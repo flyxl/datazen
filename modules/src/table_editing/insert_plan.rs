@@ -5,7 +5,7 @@
 //! same plan object and keeps its own rules.
 
 use super::change_set::{PendingRowChange, PlannedStatement};
-use crate::error::FeatureError;
+use crate::table_editing::error::TableEditingError as FeatureError;
 use datazen_driver_api::{BoundSqlStatement, DatabaseDriver, Value};
 use std::collections::{BTreeMap, HashSet};
 

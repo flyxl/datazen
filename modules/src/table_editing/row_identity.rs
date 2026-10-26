@@ -9,9 +9,9 @@
 //! indistinguishable from a guard that passed.
 
 use super::change_set::{PendingRowChange, RowChangeTableContext};
-use crate::error::FeatureError;
+use crate::schema::CachedColumns;
+use crate::table_editing::error::TableEditingError as FeatureError;
 use datazen_driver_api::Value;
-use datazen_kernel::schema_cache::CachedColumns;
 
 /// Reject a row change that cannot address exactly one existing row.
 ///

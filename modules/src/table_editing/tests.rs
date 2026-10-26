@@ -10,9 +10,9 @@ use super::change_set::{
     validate_immutable_plan, PendingRowChange, RowChangePlan, RowChangeTableContext,
 };
 use super::{validate_connection_facts, ConnectionFacts};
+use crate::schema::CachedColumns;
 use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
 use datazen_driver_api::{ColumnSchema, Value};
-use datazen_kernel::schema_cache::CachedColumns;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -129,7 +129,7 @@ fn plan_for(
     table: RowChangeTableContext,
     changes: &[PendingRowChange],
     columns: &CachedColumns,
-) -> Result<RowChangePlan, crate::error::FeatureError> {
+) -> Result<RowChangePlan, crate::table_editing::error::TableEditingError> {
     build_row_change_plan(driver().as_ref(), table, changes, columns)
 }
 

@@ -2,8 +2,8 @@ use super::convert;
 use crate::execution::runtime::registry::backend::ResourceExecution;
 use crate::execution::{
     ConnectionEvent, ConnectionEventEnvelope, EffectOutcome, EventEnvelope, ExecutionErrorCode,
-    ExecutionState, ExecutionView, ResultChunkEvent, ResultCompleteness, ResultProvenance,
-    RuntimeResultBinding, SessionHandle, StatementResultSource, StreamId, WritableMapping,
+    ExecutionState, ExecutionView, ResultChunkEvent, ResultCompleteness, RuntimeResultBinding,
+    SessionHandle, StatementResultSource, StreamId, WritableMapping,
 };
 use crate::shared::context::RequestContext;
 use crate::shared::error::{ApiError, ApiErrorCode};

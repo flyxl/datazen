@@ -6,8 +6,7 @@ pub use crate::execution::ARTIFACT_BYTE_QUOTA;
 
 use crate::execution::domain::artifact_repository::*;
 use crate::execution::domain::{
-    AbortReason, ArtifactChunk, ArtifactLifecycle, ArtifactMetadata, ArtifactSummary,
-    ResultCompleteness,
+    AbortReason, ArtifactChunk, ArtifactLifecycle, ArtifactMetadata, ResultCompleteness,
 };
 use crate::shared::context::RequestContext;
 use crate::shared::error::PortError;

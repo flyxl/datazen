@@ -451,6 +451,21 @@ mod tests {
     }
 }
 
+impl From<datazen_modules::table_editing::TableEditingError> for CommandError {
+    fn from(error: datazen_modules::table_editing::TableEditingError) -> Self {
+        use datazen_modules::table_editing::TableEditingError;
+        match error {
+            TableEditingError::Validation(message) => Self::Validation(message),
+            TableEditingError::NotFound(message) => Self::NotFound(message),
+            TableEditingError::NotConfigured(message) => Self::NotConfigured(message),
+            TableEditingError::Internal(message) => Self::Internal(message),
+            TableEditingError::Driver(error) => Self::from(error),
+            TableEditingError::Io(error) => Self::Io(error),
+            TableEditingError::Json(error) => Self::Json(error),
+        }
+    }
+}
+
 impl From<datazen_modules::schema::application::SchemaError> for CommandError {
     fn from(error: datazen_modules::schema::application::SchemaError) -> Self {
         use datazen_modules::schema::application::SchemaError;

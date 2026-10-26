@@ -1,19 +1,17 @@
-use datazen_driver_api::{
-    ConnectionConfig, ConnectionHandle, DatabaseDriver, TableInfo, TableSchema,
-};
+use datazen_driver_api::{ConnectionConfig, ConnectionHandle, DatabaseDriver};
 
 // D4-b（2026-10-26）：schema 元数据端口迁入 datazen-modules::schema::application，
 // 这里再导出保持 `services::ports::*` 既有路径不变。
 pub use datazen_modules::schema::application::ports::{
     LogicalSchemaContextSource, PhysicalSchemaContextSource,
 };
+// D4-d：ArtifactChunkReader 迁入 table_editing（其消费者），这里再导出保旧路径。
 use datazen_modules::settings::ExecutionSettings;
+pub use datazen_modules::table_editing::ports::ArtifactChunkReader;
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::artifact::BackupOutput;
-use datazen_platform_api::dto::execution::ResultChunk;
 use datazen_platform_api::dto::session::SessionHandle;
 use datazen_platform_api::error::ApiError;
-use datazen_platform_api::id::{ArtifactId, Counter};
 use datazen_platform_api::target::ExecutionTarget;
 use std::sync::Arc;
 #[async_trait::async_trait]
@@ -126,23 +124,6 @@ pub trait SessionConnectionLookup: Send + Sync {
     /// The connection that owns `session_id`, or `None` when the session is
     /// unknown, closed, or no longer attached to its directory entry.
     fn connection_id_for_session(&self, session_id: &str) -> Option<String>;
-}
-
-/// 结果块读取（消费者定义端口）。
-///
-/// `ConnectionUseCases` 覆盖会话与执行面，**不**覆盖结果内容：读一块要过授权、
-/// 要按 sink 的发布水位分页，那是 runtime 的内建能力。共享层若直接命名
-/// `datazen_runtime::application::RuntimeConnectionUseCases`，R1 立刻失守；这个
-/// 端口把问题交给**持有 Runtime 门面的那一侧**回答，共享层只认契约类型
-/// [`ResultChunk`]。
-#[async_trait::async_trait]
-pub trait ArtifactChunkReader: Send + Sync + 'static {
-    async fn read_chunk(
-        &self,
-        ctx: &RequestContext,
-        artifact: &ArtifactId,
-        index: Counter,
-    ) -> Result<ResultChunk, ApiError>;
 }
 
 /// 备份输出绑定（消费者定义端口）。

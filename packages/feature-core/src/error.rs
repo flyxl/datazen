@@ -72,3 +72,19 @@ impl From<datazen_platform_api::error::ApiError> for FeatureError {
         }
     }
 }
+
+// D4-d：写链路错误自 table_editing 迁入后，留守消费者仍以 FeatureError 汇聚。
+impl From<datazen_modules::table_editing::TableEditingError> for FeatureError {
+    fn from(error: datazen_modules::table_editing::TableEditingError) -> Self {
+        use datazen_modules::table_editing::TableEditingError;
+        match error {
+            TableEditingError::Validation(message) => Self::Validation(message),
+            TableEditingError::NotFound(message) => Self::NotFound(message),
+            TableEditingError::NotConfigured(message) => Self::NotConfigured(message),
+            TableEditingError::Internal(message) => Self::Internal(message),
+            TableEditingError::Driver(error) => Self::Driver(error),
+            TableEditingError::Io(error) => Self::Io(error),
+            TableEditingError::Json(error) => Self::Json(error),
+        }
+    }
+}

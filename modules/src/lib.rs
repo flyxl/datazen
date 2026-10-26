@@ -20,6 +20,10 @@ pub mod execution;
 #[cfg(feature = "named_views")]
 pub mod named_views;
 
+/// D4-d：表编辑写链路（ChangeSet/insert plan/行身份/写执行）。
+#[cfg(feature = "table-editing")]
+pub mod table_editing;
+
 /// D4-c：表浏览读链路（浏览/分页/执行器）。
 #[cfg(feature = "table-browsing")]
 pub mod table_browsing;

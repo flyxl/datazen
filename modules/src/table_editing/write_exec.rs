@@ -28,17 +28,16 @@ use super::change_set::{
     bound_statement_for_plan, CommitPendingChangesResponse, RowChangePlan, RowCommitStatementResult,
 };
 use super::insert_plan::bound_insert_statement_for_plan;
-use crate::error::FeatureError;
-use crate::services::ports::ArtifactChunkReader;
+use crate::connection::domain::NamespaceTarget;
+use crate::execution::application::use_cases::ConnectionUseCases;
+use crate::execution::domain::ExecutionTarget;
+use crate::execution::requests::*;
+use crate::execution::{IdempotentOperation, SessionHandle};
+use crate::shared::context::{OwnerRef, RequestContext};
+use crate::shared::id::ConnectionId;
+use crate::table_editing::error::TableEditingError as FeatureError;
+use crate::table_editing::ports::ArtifactChunkReader;
 use datazen_driver_api::DatabaseDriver;
-use datazen_platform_api::dto::requests::*;
-use datazen_platform_api::use_cases::ConnectionUseCases;
-use datazen_platform_api::{
-    context::{OwnerRef, RequestContext},
-    dto::{idempotency::IdempotentOperation, session::SessionHandle},
-    id::ConnectionId,
-    target::{ExecutionTarget, NamespaceTarget},
-};
 use std::sync::Arc;
 
 struct TableSession {
@@ -123,7 +122,7 @@ impl TableSession {
             }
             tokio::time::sleep(std::time::Duration::from_millis(25)).await;
         };
-        if view.state != datazen_platform_api::dto::execution::ExecutionState::Succeeded {
+        if view.state != crate::execution::ExecutionState::Succeeded {
             return Err(FeatureError::Validation(format!(
                 "Table execution failed: {:?}; effect outcome: {:?}",
                 view.error_code, view.effect_outcome
@@ -132,11 +131,7 @@ impl TableSession {
         for artifact in view.artifact_ids {
             let first = self
                 .artifacts
-                .read_chunk(
-                    &self.context,
-                    &artifact,
-                    datazen_platform_api::id::Counter::ZERO,
-                )
+                .read_chunk(&self.context, &artifact, crate::shared::id::Counter::ZERO)
                 .await
                 .map_err(FeatureError::from)?;
             for index in 0..first.published_chunk_count.get() {
@@ -145,7 +140,7 @@ impl TableSession {
                     .read_chunk(
                         &self.context,
                         &artifact,
-                        datazen_platform_api::id::Counter::new(index),
+                        crate::shared::id::Counter::new(index),
                     )
                     .await
                     .map_err(FeatureError::from)?;
@@ -207,7 +202,7 @@ pub async fn execute_plan(
             || view.observed_context.namespace.schema != plan.table.schema
             || !matches!(
                 view.observed_context.transaction_state,
-                datazen_platform_api::dto::session::TransactionState::Active
+                crate::execution::TransactionState::Active
             )
         {
             return Err(stale_manual_target_error());

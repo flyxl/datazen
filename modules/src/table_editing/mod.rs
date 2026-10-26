@@ -22,12 +22,19 @@ pub use change_set::{
 pub use insert_plan::bound_insert_statement_for_plan;
 pub use write_exec::execute_plan;
 
-use crate::error::FeatureError;
+pub mod error;
+pub mod ports;
+
+pub use error::TableEditingError;
+pub use ports::ArtifactChunkReader;
+
+use crate::execution::application::use_cases::ConnectionUseCases;
+use crate::execution::SessionHandle;
+use crate::schema::CachedColumns;
+use crate::shared::id::Counter;
+use crate::table_editing::error::TableEditingError as FeatureError;
 use async_trait::async_trait;
 use datazen_driver_api::DatabaseDriver;
-use datazen_kernel::schema_cache::CachedColumns;
-use datazen_platform_api::use_cases::ConnectionUseCases;
-use datazen_platform_api::{dto::session::SessionHandle, id::Counter};
 use std::sync::Arc;
 
 /// Catalog port: the host answers with the table's columns and primary key.
@@ -100,8 +107,8 @@ pub async fn commit_changes(
     columns: &dyn TableColumnSource,
     manual_handle: Option<SessionHandle>,
     runtime: Arc<dyn ConnectionUseCases>,
-    artifacts: Arc<dyn crate::services::ports::ArtifactChunkReader>,
-    context: datazen_platform_api::context::RequestContext,
+    artifacts: Arc<dyn crate::table_editing::ports::ArtifactChunkReader>,
+    context: crate::shared::context::RequestContext,
 ) -> Result<CommitPendingChangesResponse, FeatureError> {
     validate_table_context(&request.plan.table)?;
     validate_connection_facts(facts, &request.plan.table)?;

@@ -47,6 +47,8 @@ execution = [
 schema = ["dep:tokio", "dep:datazen-infra", "execution"]
 # D4-c：表浏览读链路（依赖 schema 的 SchemaCache）。
 "table-browsing" = ["dep:serde_json", "schema"]
+# D4-d：表编辑写链路（依赖 schema 缓存 + execution 产物读取词汇）。
+"table-editing" = ["dep:async-trait", "dep:serde_json", "dep:uuid", "schema", "execution"]
 # D1.5：AI Provider 契约与适配整体并入（原 datazen-ai-api → datazen-ai-providers）。
 # 单一 feature 承载 domain 契约 + providers 适配；若 D7 的 Web 形态需要拆分
 # （如仅契约不带 reqwest），届时再拆，不提前建空档。
@@ -75,6 +77,8 @@ indexmap = { version = "2", optional = true }
 sha2 = { version = "0.10", optional = true }
 hmac = { version = "0.12", optional = true }
 libc = { version = "0.2", optional = true }
+# table-editing feature：变更集 ID 生成
+uuid = { version = "1", features = ["v4"], optional = true }
 # ai feature：契约层链接期工厂注册
 inventory = { version = "0.3", optional = true }
 # ai feature：providers 的并发与流式传输
