@@ -49,6 +49,9 @@ schema = ["dep:tokio", "dep:datazen-infra", "execution"]
 "table-browsing" = ["dep:serde_json", "schema"]
 # D4-d：表编辑写链路（依赖 schema 缓存 + execution 产物读取词汇）。
 "table-editing" = ["dep:async-trait", "dep:serde_json", "dep:uuid", "schema", "execution"]
+# D5：迁移三件套的共享纯算法（原 migration-common crate 整体归位）。
+# 不依赖三件套或 execution（01 §4.2）；driver-api 提供分类学词汇。
+migration_common = ["dep:datazen-driver-api", "dep:serde_json"]
 # D5：Job 运行时（domain/application/engine 三分；原 kernel::job 与
 # platform-api 的 Job/时钟/原生工具词汇）。依赖 execution 的预算账本。
 jobs = [

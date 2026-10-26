@@ -25,6 +25,10 @@ pub mod jobs;
 #[cfg(feature = "named_views")]
 pub mod named_views;
 
+/// D5：迁移三件套共享纯算法（pairing/recordset_bounds）。
+#[cfg(feature = "migration_common")]
+pub mod migration_common;
+
 /// D4-d：表编辑写链路（ChangeSet/insert plan/行身份/写执行）。
 #[cfg(feature = "table-editing")]
 pub mod table_editing;

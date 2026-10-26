@@ -2167,8 +2167,7 @@ dependencies = [
 name = "datazen-migration-common"
 version = "0.0.1"
 dependencies = [
- "datazen-driver-api",
- "serde_json",
+ "datazen-modules",
 ]
 
 [[package]]
