@@ -566,7 +566,7 @@ pub async fn authorize_monitor_widget_schedule(
     dashboard_id: String,
     widget_id: String,
     ttl_secs: u32,
-) -> Result<datazen_feature_core::dashboard::schedule_grant::MonitorGrant, CommandError> {
+) -> Result<datazen_modules::monitor::domain::MonitorGrant, CommandError> {
     crate::monitor::grants::authorize(&state, &dashboard_id, &widget_id, ttl_secs)
         .await
         .map_err(CommandError::Validation)
@@ -585,7 +585,7 @@ pub async fn get_monitor_widget_schedule_grant(
     state: State<'_, AppState>,
     dashboard_id: String,
     widget_id: String,
-) -> Result<Option<datazen_feature_core::dashboard::schedule_grant::MonitorGrant>, CommandError> {
+) -> Result<Option<datazen_modules::monitor::domain::MonitorGrant>, CommandError> {
     let call = state
         .platform_require()
         .map_err(|_| CommandError::Validation("platform unavailable".into()))?

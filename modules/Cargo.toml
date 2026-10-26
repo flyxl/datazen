@@ -76,6 +76,7 @@ workflow = [
 # 与 execution（schedule_grant 的 ExecutionTarget）；tokio/tokio-util 撑刷新
 # 监控引擎，uuid 铸运行/组件 id，serde_json 走归档字节解析。
 dashboard = [
+    "monitor",
     "workflow",
     "execution",
     "dep:async-trait",
@@ -83,6 +84,19 @@ dashboard = [
     "dep:sqlparser",
     "dep:tokio",
     "dep:tokio-util",
+    "dep:uuid",
+]
+# D6 Monitor: shared grant/revision rules and scheduler. Its application
+# implementation is compiled with the dashboard feature because it consumes
+# dashboard widget records; the domain grant is independently reusable.
+monitor = [
+    "execution",
+    "dep:async-trait",
+    "dep:serde_json",
+    "dep:sqlparser",
+    "dep:tokio",
+    "dep:tokio-util",
+    "dep:tracing",
     "dep:uuid",
 ]
 # D2：连接目录（配置 + 分组）的领域词汇与用例。形状复用 driver-api 的

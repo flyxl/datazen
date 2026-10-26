@@ -17,7 +17,7 @@ impl DesktopPolicy {
     fn grant(
         &self,
         ctx: &RequestContext,
-    ) -> Result<datazen_feature_core::dashboard::schedule_grant::MonitorGrant, PortError> {
+    ) -> Result<datazen_modules::monitor::domain::MonitorGrant, PortError> {
         crate::monitor::grants::current(&self.store, ctx).map_err(|_| PortError::TokenInvalid)
     }
 }
@@ -108,7 +108,7 @@ impl PolicyService for DesktopPolicy {
         }
         if action != AuthorizationAction::Connect {
             let sql = input["sql"].as_str().ok_or(PortError::TokenInvalid)?;
-            datazen_feature_core::dashboard::schedule_grant::validate_read_only_sql(sql)
+            datazen_modules::monitor::domain::validate_read_only_sql(sql)
                 .map_err(|_| PortError::TokenInvalid)?;
         }
         self.authorize(ctx, subject, action).await

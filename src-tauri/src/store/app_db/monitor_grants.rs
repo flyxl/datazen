@@ -1,5 +1,5 @@
 use super::{AppDb, AppDbError};
-use datazen_feature_core::dashboard::schedule_grant::MonitorGrant;
+use datazen_modules::monitor::domain::MonitorGrant;
 use rusqlite::{params, OptionalExtension};
 impl AppDb {
     pub(crate) fn list_monitor_grants(&self) -> Result<Vec<MonitorGrant>, AppDbError> {

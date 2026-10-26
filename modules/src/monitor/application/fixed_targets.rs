@@ -1,6 +1,6 @@
-//! Freeze only the fixed, flat read-query targets approved for a Monitor grant.
-//! This is Monitor admission metadata, not a Workflow block execution adapter.
-use datazen_feature_core::workflow::{
+//! Fixed target normalization for scheduled monitor definitions.
+
+use crate::workflow::{
     context::WorkflowContext,
     executable::TargetDeclaration,
     model::{WorkflowDefinition, WorkflowStep},
@@ -8,7 +8,7 @@ use datazen_feature_core::workflow::{
     WorkflowError,
 };
 
-pub(super) fn prepare_definition(
+pub fn prepare_definition(
     definition: &WorkflowDefinition,
     context: &WorkflowContext,
 ) -> Result<WorkflowDefinition, WorkflowError> {
