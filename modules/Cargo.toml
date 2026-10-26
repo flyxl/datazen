@@ -153,6 +153,8 @@ jobs = [
 ai = [
     "dep:async-trait",
     "dep:serde_json",
+    "dep:serde_yaml",
+    "dep:regex",
     "dep:inventory",
     "dep:tokio",
     "dep:tokio-util",
@@ -160,6 +162,9 @@ ai = [
     "dep:reqwest",
     "dep:tracing",
     "dep:datazen-infra",
+    "dep:datazen-driver-api",
+    "settings",
+    "connection",
 ]
 
 # D6 item 4 切片一：MCP 业务规则（权限模式/连接白名单/表描述格式化）。
@@ -220,7 +225,7 @@ datazen-driver-api = { path = "../packages/driver-api", optional = true }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 # workflow feature：定义 YAML 编解码（registry encode/decode）。
 serde_yaml = { version = "0.9", optional = true }
-# workflow feature：上下文模板 {{var}} 解析。
+# workflow feature：上下文模板 {{var}} 解析；ai feature：脱敏正则。
 regex = { version = "1", optional = true }
 
 [dev-dependencies]

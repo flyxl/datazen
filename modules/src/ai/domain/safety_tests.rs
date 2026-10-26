@@ -536,7 +536,7 @@ fn custom_max_context_bytes_limits_output() {
 
 #[test]
 fn global_strict_policy_tightens_an_unconfigured_profile_gate() {
-    let mut policy = datazen_modules::settings::ExecutionSettings {
+    let mut policy = crate::settings::ExecutionSettings {
         limit_select_results: false,
         query_result_limit: 5000,
         safe_mode: true,
@@ -547,7 +547,7 @@ fn global_strict_policy_tightens_an_unconfigured_profile_gate() {
         driver_settings: serde_json::Map::new(),
         ai_strict_egress: true,
     };
-    let config = datazen_modules::ai::AiSettingsConfig::default();
+    let config = AiSettingsConfig::default();
     assert_eq!(
         effective_safety_gate(&config, &policy).data_egress_level,
         AiDataEgressLevel::Strict

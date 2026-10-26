@@ -414,6 +414,9 @@ pub enum AiError {
     #[error("cancelled: {0}")]
     Cancelled(String),
 
+    #[error("{0}")]
+    Validation(String),
+
     #[error("Timeout after {0}s")]
     Timeout(u64),
 

@@ -215,6 +215,7 @@ async fn complete_json<T: serde::de::DeserializeOwned>(
         response.finish_reason.as_deref(),
         operation,
     )
+    .map_err(FeatureError::from)
 }
 
 #[cfg(test)]
