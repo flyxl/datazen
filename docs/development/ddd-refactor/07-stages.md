@@ -146,6 +146,26 @@ AI 工具（egress 摘要 / db_tools / 连接上下文）与 MCP 的目录读取
 
 **输入**：D2；既有连接管理和 fake-runtime 测试契约。
 
+**第一切片已完成（2026-10-26）——execution 词汇归位**：
+`modules::execution` 建立（feature `execution`，依赖 `connection`）。
+- `execution::domain`：`SessionHandle`/会话状态机/`SessionContext`
+  （session.rs）、`ExecutionState`（含 `resolve_cancel` 终态规则）/`CancelOutcome`/
+  `ExecutionErrorCode`/`CapabilitySnapshot`/`ResultProvenance`/
+  `StatementResultSource`（execution.rs）、`ExecutionTarget`+`ObjectTarget`
+  （target.rs，ObjectTarget 按 §5.1 最终归 schema、D4 落位）、
+  产物词汇 `ArtifactChunk`/`ArtifactLifecycle`/`ArtifactMetadata`/
+  `ArtifactProvenance`（artifact.rs）。
+- `execution::application`：`SessionView`/`ExecutionView`/回执家族/
+  `ResultChunk`/`BackupOutput`（views.rs）、请求家族（requests.rs）、
+  事件家族 `EventEnvelope`/`ConnectionEvent`/`ArchivedEnvelope`（events.rs）、
+  `IdempotentOperation`/`SubmissionToken`（idempotency.rs）。
+- platform-api `dto/{session,execution,event,artifact,requests,idempotency}`
+  与 `target.rs` 执行侧改为再导出垫片；全部旧 import 路径不变。
+- 待后续切片：执行端口（session_directory/execution_settings/
+  execution_target/identity/token/event/artifact）、会话 actor/lease/队列/
+  等待/回收/预算账本/driver registry 机制、`RuntimeConnectionUseCases` 三分
+  与旧 facade 委托、桌面关停接入。
+
 **工作**：
 
 1. 拆开 RuntimeConnectionUseCases 的应用编排、领域状态和私有机制。

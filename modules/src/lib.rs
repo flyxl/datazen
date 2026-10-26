@@ -13,6 +13,10 @@ pub mod ai;
 #[cfg(feature = "connection")]
 pub mod connection;
 
+/// D3：执行域词汇（状态机/目标/产物）与应用边界 DTO；机制与编排后续切片迁入。
+#[cfg(feature = "execution")]
+pub mod execution;
+
 #[cfg(feature = "named_views")]
 pub mod named_views;
 

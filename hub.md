@@ -7,7 +7,7 @@
 
 ## 全局状态
 
-- 当前阶段：**D2 完成（目录切片 + Profile/revision 词汇统一 + modules::shared 建立）+ D6 item 1（named_views）完成**；下一步 **D3 Execution 拆分**（runtime 90k 行，多切片）。
+- 当前阶段：**D3 进行中（第一切片：execution 词汇归位 modules::execution 已完成）**；D2 完成 + D6 item 1（named_views）完成；下一步 D3 第二切片：执行端口迁移（session_directory/execution_settings/execution_target/identity/token/event/artifact）。
 - 阶段与 PR 粒度：计划按 **D0–D8 九个阶段**推进（无 "wave" 概念，wave 仅是 coordinator 的
   并行批次术语）；每阶段可拆多个小 PR，每 PR 必须可构建、有真实消费者和测试。预估全程
   ~15–25 个 PR（D5 三件套各一个、D6 每功能族单独交付）。
@@ -54,7 +54,8 @@
 | `a6d4b38fe` | platform-infra 改名 infra（第三步）+ 四类消费者共享审计结论 |
 | `a15b228ba` | D2 第一切片：`datazen-modules::connection`（domain/application + 7 用例测试）；桌面 `DesktopConnectionStore`；删除 platform-api `ConnectionCatalog` 与 feature-core 重复 trait；`ApplicationServices` 去 connections；连接/分组/导入导出/schema diff/AI/MCP 消费者全部收口到模块服务 |
 | `731c3b2d1` | D2 第二切片前半：platform-api 的 id/context/error（含全部单测）迁入 `modules::shared`（常驻，无 feature 门）；platform-api 原路径改再导出垫片 |
-| 本次 | D2 第二切片后半：Profile/namespace 词汇归位 `modules::connection`（domain::profile 双端口 + domain::target + application::profile_view 投影）；platform-api ports/dto/target 垫片化；PORT_TRAITS 口径扩展（声明或再导出）；4 个 to_view 调用点改 from_record；connection 模块转目录结构（domain/{catalog,profile,target}、application/{service,profile_view}） |
+| `d740a3624` | D2 第二切片后半：Profile/namespace 词汇归位 `modules::connection`（domain::profile 双端口 + domain::target + application::profile_view 投影）；platform-api ports/dto/target 垫片化；PORT_TRAITS 口径扩展（声明或再导出）；4 个 to_view 调用点改 from_record；connection 模块转目录结构（domain/{catalog,profile,target}、application/{service,profile_view}） |
+| 本次 | D3 第一切片：`modules::execution` 建立（feature 依赖 connection）。domain 四文件（session/execution/target/artifact：句柄、状态机含 resolve_cancel 终态规则、能力快照、来源、ExecutionTarget+ObjectTarget、产物家族）；application 四文件（views/requests/events/idempotency：视图、回执、请求、事件信封、提交令牌）。platform-api dto 六文件 + target.rs 执行侧垫片化；测试随迁（modules 112 / platform-api 195） |
 
 ## 会话恢复要点
 

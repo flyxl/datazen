@@ -27,6 +27,10 @@ use crate::id::ConnectionId;
 // 初始 NamespaceTarget 归 connection::domain）。这里只再导出同一类型；
 // D8 退役本 crate 时一并删除。
 pub use datazen_modules::connection::domain::{NamespaceTarget, TargetNamespaceLayer};
+// 执行侧目标（`ExecutionTarget` / `ObjectTarget`）的唯一定义自 D3（2026-10-26）
+// 起在 `datazen-modules::execution::domain::target`（§5.1：ExecutionTarget 组合
+// 连接侧 namespace）。这里只再导出；ObjectTarget 按 §5.1 最终归 schema（D4 落位）。
+pub use datazen_modules::execution::domain::{ExecutionTarget, ObjectTarget};
 
 /// 本次请求所使用的命名空间形状：声明**哪些层必填**、哪些层存在但可省。
 ///
@@ -263,60 +267,7 @@ impl TargetRequirements {
 }
 
 
-/// 对象身份。必须传完整身份，**不能把未指定 schema 猜成 `public`/`dbo`**（§4.4）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ObjectTarget {
-    pub kind: String,
-    pub name: String,
-    /// 签名（如 table|view），无法确定时为 `null`。
-    pub signature: Option<String>,
-}
 
-impl ObjectTarget {
-    pub fn new(kind: impl Into<String>, name: impl Into<String>) -> Self {
-        Self {
-            kind: kind.into(),
-            name: name.into(),
-            signature: None,
-        }
-    }
-
-    pub fn with_signature(mut self, signature: impl Into<String>) -> Self {
-        self.signature = Some(signature.into());
-        self
-    }
-}
-
-/// 请求提交的目标：`connectionId` + 命名空间 + 可选对象。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ExecutionTarget {
-    pub connection_id: ConnectionId,
-    pub namespace: NamespaceTarget,
-    pub object: Option<ObjectTarget>,
-}
-
-impl ExecutionTarget {
-    pub fn new(connection_id: ConnectionId, namespace: NamespaceTarget) -> Self {
-        Self {
-            connection_id,
-            namespace,
-            object: None,
-        }
-    }
-
-    pub fn with_object(mut self, object: ObjectTarget) -> Self {
-        self.object = Some(object);
-        self
-    }
-
-    /// 提交态命名空间的稳定指纹（未规范化）。规范化后的身份一律用
-    /// [`CanonicalTarget::namespace_fingerprint`]，两者不可混用。
-    pub fn namespace_fingerprint(&self) -> String {
-        self.namespace.namespace_fingerprint()
-    }
-}
 
 /// 驱动规范化后的命名空间标识。
 ///
@@ -448,28 +399,6 @@ impl CanonicalTarget {
 mod tests {
     use super::*;
     use serde_json::json;
-
-    #[test]
-    fn execution_target_round_trips_with_and_without_object() {
-        let bare = ExecutionTarget::new(
-            ConnectionId::new("conn-1"),
-            NamespaceTarget::database("app"),
-        );
-        let value = serde_json::to_value(&bare).expect("serialize");
-        assert_eq!(value["object"], json!(null));
-        let back: ExecutionTarget = serde_json::from_value(value).expect("deserialize");
-        assert_eq!(back, bare);
-
-        let with_object = bare
-            .clone()
-            .with_object(ObjectTarget::new("table", "users").with_signature("table"));
-        let value = serde_json::to_value(&with_object).expect("serialize");
-        assert_eq!(value["object"]["signature"], json!("table"));
-        assert_eq!(
-            serde_json::from_value::<ExecutionTarget>(value).expect("deserialize"),
-            with_object
-        );
-    }
 
     #[test]
     fn namespace_shape_declares_layers() {
