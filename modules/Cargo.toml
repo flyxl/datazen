@@ -17,6 +17,19 @@ history = ["dep:async-trait", "dep:tracing"]
 # D6 item 3 第一切片 a：workflow 模型词汇（step/block/输出/错误策略/执行结果）。
 # 纯 wire 词汇，仅 serde；执行器/注册表/调度器随后续切片归位。
 workflow = []
+# D6 item 2：Dashboard 家族。依赖 workflow（组件绑定/归档引用 WorkflowDefinition）
+# 与 execution（schedule_grant 的 ExecutionTarget）；tokio/tokio-util 撑刷新
+# 监控引擎，uuid 铸运行/组件 id，serde_json 走归档字节解析。
+dashboard = [
+    "workflow",
+    "execution",
+    "dep:async-trait",
+    "dep:serde_json",
+    "dep:sqlparser",
+    "dep:tokio",
+    "dep:tokio-util",
+    "dep:uuid",
+]
 # D2：连接目录（配置 + 分组）的领域词汇与用例。形状复用 driver-api 的
 # ConnectionConfig（每个形态都已链接的那一份，且是连接表单的 IPC 载荷）。
 connection = [
@@ -157,6 +170,8 @@ hmac = { version = "0.12", optional = true }
 libc = { version = "0.2", optional = true }
 # table-editing feature：变更集 ID 生成
 uuid = { version = "1", features = ["v4", "serde"], optional = true }
+# dashboard schedule_grant 的只读 SQL 校验（解析/AST/visitor）。
+sqlparser = { version = "0.59", features = ["visitor"], optional = true }
 # ai feature：契约层链接期工厂注册
 inventory = { version = "0.3", optional = true }
 # ai feature：providers 的并发与流式传输

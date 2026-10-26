@@ -167,6 +167,29 @@ fn scanned_crates() -> Vec<(&'static str, std::path::PathBuf)> {
 /// 其余模块目录（shared/connection/execution/…）照扫。
 const MODULES_EXEMPT: &[&str] = &["src/ai"];
 
+/// **词级窄域豁免**：`(被扫文件, 形态词)` 对。登记在这里的命中不构成违规。
+///
+/// 这里的两条是 Dashboard 告警渠道的 **wire 词汇**（D6 item 2 随家族迁入）
+/// `AlertChannel::Desk`+`top` 变体——serde `rename_all = "lowercase"` 把它
+/// 序列化成前端消费的那个渠道字面量。它是**通知投递渠道名**（OS 通知 vs
+/// webhook vs email），不是「宿主形态」假设；改名等于改 IPC 契约，且字面量
+/// 本身仍会落在序列化输出里。豁免只允许窄到（文件，词）级——新增条目必须
+/// 像这里一样说明为什么它是 wire 词汇而不是形态假设。
+///
+/// 形态词用 `concat!` 拆开拼：本文件自己也在被扫范围里，完整的形态名
+/// 字面量会被闸门自己的自证测试点红（见 the_scan_covers…尾部）。
+const ALLOWED_WIRE_VOCABULARY: &[(&str, &str)] = &[
+    ("modules:src/dashboard/domain/types.rs", concat!("desk", "top")),
+    ("modules:src/dashboard/application/alert.rs", concat!("desk", "top")),
+];
+
+/// `rel`（`label:path` 形式）里的 `word` 是否被词级豁免登记。
+fn is_allowed_wire_vocabulary(rel: &str, word: &str) -> bool {
+    ALLOWED_WIRE_VOCABULARY
+        .iter()
+        .any(|(allowed_rel, allowed_word)| *allowed_rel == rel && *allowed_word == word)
+}
+
 /// 两个共享 crate 的 `src/` 下全部 `.rs` 源码，形如 `runtime:src/job/mod.rs`。
 fn source_files_on_disk() -> Vec<String> {
     let mut out = Vec::new();
@@ -270,7 +293,15 @@ fn the_kernel_has_no_form_name_in_its_code_or_literals() {
     for rel in source_files_on_disk() {
         let source = read_scanned_file(&rel);
         for (where_, hit) in violations(&source, &forbidden) {
-            bad.push(format!("{rel}: {where_} → {hit:?}"));
+            let unallowed: Vec<String> = hit
+                .iter()
+                .filter(|word| !is_allowed_wire_vocabulary(&rel, word))
+                .cloned()
+                .collect();
+            if unallowed.is_empty() {
+                continue;
+            }
+            bad.push(format!("{rel}: {where_} → {unallowed:?}"));
         }
     }
     assert!(
@@ -280,6 +311,25 @@ fn the_kernel_has_no_form_name_in_its_code_or_literals() {
          任何把形态写进名字的地方都会让另一半形态用不了。",
         bad.join("\n")
     );
+}
+
+/// 豁免清单自证：每一条登记都必须**仍然命中**它登记的文件——登记一个已不存在的
+/// 命中就是清单漂移（词汇被删/改后豁免变成永久后门）。
+#[test]
+fn every_wire_vocabulary_exemption_still_matches_its_file() {
+    let forbidden = forbidden_words();
+    for (rel, word) in ALLOWED_WIRE_VOCABULARY {
+        let (label, path) = rel
+            .split_once(':')
+            .unwrap_or_else(|| panic!("豁免登记 {rel} 不是 label:path 形式"));
+        let source = read_scanned(label, path);
+        assert!(
+            violations(&source, &forbidden)
+                .iter()
+                .any(|(_, hit)| hit.iter().any(|w| w.as_str() == *word)),
+            "豁免登记 {rel} 里的 {word} 已不再命中 —— 词汇被删/改后豁免成了永久后门，请删掉这条登记"
+        );
+    }
 }
 
 #[test]

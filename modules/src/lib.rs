@@ -49,6 +49,10 @@ pub mod history;
 #[cfg(feature = "workflow")]
 pub mod workflow;
 
+/// D6 item 2：Dashboard（仪表盘/组件/运行历史：词汇/端口/用例规则）。
+#[cfg(feature = "dashboard")]
+pub mod dashboard;
+
 /// D4-d：表编辑写链路（ChangeSet/insert plan/行身份/写执行）。
 #[cfg(feature = "table-editing")]
 pub mod table_editing;
