@@ -41,9 +41,9 @@ pub trait EventSink: Send + Sync + 'static {
 
 #[cfg(test)]
 mod tests {
-    use crate::execution::application::EventEnvelope;
     use super::*;
     use crate::execution::application::ConnectionEvent;
+    use crate::execution::application::EventEnvelope;
     use crate::execution::domain::SessionHandle;
     use crate::shared::id::{
         ClientInstanceId, Counter, DbSessionId, OrganizationId, PrincipalId, RequestId,

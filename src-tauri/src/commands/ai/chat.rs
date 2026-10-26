@@ -6,10 +6,10 @@ use super::util::{
 };
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
-use datazen_modules::ai::*;
 use datazen_feature_core::ai::budget;
 use datazen_feature_core::ai::safety::redact_for_gate;
 use datazen_feature_core::ai::schema_pipeline::{PromptSeed, SchemaContextPipeline};
+use datazen_modules::ai::*;
 use std::sync::Arc;
 use tauri::{State, WebviewWindow};
 
@@ -369,10 +369,10 @@ pub async fn ai_chat(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_modules::ai::TokenUsage;
     use datazen_feature_core::ai::tools::{
         classify_tool, is_readonly_db_tool, mcp_needs_confirm, ToolKind, ToolLoopGuard,
     };
+    use datazen_modules::ai::TokenUsage;
 
     // ── ToolLoopGuard unit tests [tester] ──
 

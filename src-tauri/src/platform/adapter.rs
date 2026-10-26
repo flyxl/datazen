@@ -303,7 +303,9 @@ impl PlatformAdapter {
 
     /// D2 后的连接目录用例入口：连接配置 + 分组的用例归
     /// `datazen-modules::connection`，宿主直接消费。
-    pub fn connection_service(&self) -> Option<Arc<datazen_modules::connection::ConnectionService>> {
+    pub fn connection_service(
+        &self,
+    ) -> Option<Arc<datazen_modules::connection::ConnectionService>> {
         self.connection_service.get().cloned()
     }
 
@@ -579,9 +581,11 @@ impl PlatformAdapter {
             super::settings::DesktopSettingsRepository::new(store.clone()),
         )));
         let _ = self.settings_service.set(settings);
-        let connections = Arc::new(datazen_modules::connection::ConnectionService::new(Arc::new(
-            super::connections::DesktopConnectionStore::new(store.clone()),
-        )));
+        let connections = Arc::new(datazen_modules::connection::ConnectionService::new(
+            Arc::new(super::connections::DesktopConnectionStore::new(
+                store.clone(),
+            )),
+        ));
         let _ = self.connection_service.set(connections);
         let named_views = Arc::new(datazen_modules::named_views::NamedViewService::new(
             store.clone(),

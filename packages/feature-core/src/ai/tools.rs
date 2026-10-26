@@ -1,7 +1,7 @@
 //! Reusable AI tool definitions, dispatch and tool-loop limits.
 use crate::services::ports::DatabaseToolHost;
-use datazen_modules::connection::domain::{ConnectionRepository, ConnectionScope};
 use datazen_modules::ai::{ChatMessage, MessageRole, TokenUsage, ToolCall, ToolDefinition};
+use datazen_modules::connection::domain::{ConnectionRepository, ConnectionScope};
 pub fn db_tool_definitions() -> Vec<ToolDefinition> {
     vec![
         ToolDefinition {
@@ -238,10 +238,7 @@ pub async fn build_egress_summary(
     catalog: &dyn ConnectionRepository,
     scope: &ConnectionScope,
 ) -> String {
-    let connections = catalog
-        .list(scope)
-        .await
-        .unwrap_or_default();
+    let connections = catalog.list(scope).await.unwrap_or_default();
     let connection_count = connections.len();
     if connection_count == 0 {
         return "No database connections configured.".into();
@@ -304,9 +301,7 @@ pub async fn execute_db_tool(
 
     let cm = host;
     let result = match tool_call.name.as_str() {
-        "list_connections" => {
-            crate::services::db_tools::list_connections(catalog, scope).await
-        }
+        "list_connections" => crate::services::db_tools::list_connections(catalog, scope).await,
         "list_databases" => {
             let connection_id = args["connection_id"].as_str().unwrap_or("");
             crate::services::db_tools::list_databases(cm, connection_id).await

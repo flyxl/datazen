@@ -12,8 +12,8 @@
 //!    每张 permit 记下自己落在哪一槽；核销时必须退回**同一**槽。
 //!    如果核销永远退回共享，保留额度的空位就会凭空漂移到别人头上，这条会被断言抓到。
 
-use crate::shared::id::{ConnectionId, OrganizationId, PrincipalId, WorkerId};
 use crate::execution::application::budget::{ResourceClass, ServiceQuota};
+use crate::shared::id::{ConnectionId, OrganizationId, PrincipalId, WorkerId};
 
 /// 一次准入申请的完整上下文。
 ///

@@ -244,8 +244,8 @@ pub fn provenance_fingerprint(provenance: &ResultProvenance) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::execution::domain::ArtifactLifecycle;
     use super::*;
+    use crate::execution::domain::ArtifactLifecycle;
     use crate::execution::domain::ResultCompleteness;
     use crate::execution::domain::{CanonicalNamespace, CanonicalTarget};
     use crate::shared::id::{ConnectionId, StreamId};

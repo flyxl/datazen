@@ -35,15 +35,15 @@ impl DataZenMcpServer {
     )]
     pub(crate) async fn list_connections(&self) -> Result<String, McpError> {
         let connections = match crate::platform::ipc::require_connection_service(self.app_state) {
-                Ok(service) => match service
-                    .list(&crate::platform::connections::local_connection_scope())
-                    .await
-                {
-                    Ok(list) => list,
-                    Err(error) => return Err(McpError::internal_error(error.to_string(), None)),
-                },
+            Ok(service) => match service
+                .list(&crate::platform::connections::local_connection_scope())
+                .await
+            {
+                Ok(list) => list,
                 Err(error) => return Err(McpError::internal_error(error.to_string(), None)),
-            };
+            },
+            Err(error) => return Err(McpError::internal_error(error.to_string(), None)),
+        };
         let result: Vec<serde_json::Value> = connections
             .iter()
             .filter(|c| allowlist::is_connection_allowed(&c.id, &self.allowed_connection_ids))

@@ -88,18 +88,15 @@ pub(crate) async fn persisted_connection(
 ) -> Result<Option<datazen_driver_api::ConnectionConfig>, CommandError> {
     let scope = state.connection_scope()?;
     let service = crate::platform::ipc::require_connection_service(state)?;
-    service
-        .get(&scope, connection_id)
-        .await
-        .map_err(|error| {
-            let err = match error {
-                datazen_modules::connection::ConnectionError::NotFound(entity) => {
-                    CommandError::NotFound(entity)
-                }
-                other => CommandError::Internal(other.to_string()),
-            };
-            let redacted = datazen_infra::redaction::redact_secrets_for_log(&err.to_string());
-            tracing::error!(command, error = %redacted);
-            err
-        })
+    service.get(&scope, connection_id).await.map_err(|error| {
+        let err = match error {
+            datazen_modules::connection::ConnectionError::NotFound(entity) => {
+                CommandError::NotFound(entity)
+            }
+            other => CommandError::Internal(other.to_string()),
+        };
+        let redacted = datazen_infra::redaction::redact_secrets_for_log(&err.to_string());
+        tracing::error!(command, error = %redacted);
+        err
+    })
 }

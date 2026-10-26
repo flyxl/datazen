@@ -19,7 +19,8 @@ impl DataZenMcpServer {
         uri: &str,
     ) -> Result<ReadResourceResult, McpError> {
         if uri == "datazen://connections" {
-            let connections = match crate::platform::ipc::require_connection_service(self.app_state) {
+            let connections = match crate::platform::ipc::require_connection_service(self.app_state)
+            {
                 Ok(service) => match service
                     .list(&crate::platform::connections::local_connection_scope())
                     .await

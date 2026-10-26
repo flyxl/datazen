@@ -56,9 +56,8 @@ pub(super) async fn read(
                 Ok(batch) => batch,
                 Err(DriverError::Unsupported(_) | DriverError::NotSupported(_)) => HashMap::new(),
                 Err(error) => {
-                    let message = datazen_infra::redaction::redact_secrets_for_log(
-                        &error.to_string(),
-                    );
+                    let message =
+                        datazen_infra::redaction::redact_secrets_for_log(&error.to_string());
                     for relation in missing {
                         values.insert(
                             relation,

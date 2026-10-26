@@ -18,10 +18,10 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::execution::application::budget::BudgetPermit;
 use crate::shared::id::{
     ConnectionId, DbSessionId, LeaseId, OrganizationId, PrincipalId, WorkerId,
 };
-use crate::execution::application::budget::BudgetPermit;
 
 use crate::execution::runtime::budget::classes::{BudgetClaim, SlotKind};
 use crate::execution::runtime::budget::dispatch::pick_slot;

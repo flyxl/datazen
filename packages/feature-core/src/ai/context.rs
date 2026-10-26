@@ -6,8 +6,8 @@
 //! comments.
 
 use crate::services::ports::LogicalSchemaContextSource;
-use datazen_modules::ai::SqlGenerationContext;
 use datazen_driver_api::TableSchema;
+use datazen_modules::ai::SqlGenerationContext;
 use std::sync::Arc;
 
 /// Format host-read context-file entries as a stable AI prompt block.

@@ -21,9 +21,7 @@
 use super::super::*;
 use super::fixtures::*;
 use chrono::Utc;
-use datazen_modules::named_views::{
-    list_named_views, save_named_view, NamedView, NamedViewScope,
-};
+use datazen_modules::named_views::{list_named_views, save_named_view, NamedView, NamedViewScope};
 
 fn scope(table: &str) -> NamedViewScope {
     NamedViewScope {

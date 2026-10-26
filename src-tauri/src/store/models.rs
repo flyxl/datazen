@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use datazen_modules::ai::AiProviderConfig;
 use datazen_driver_api::{ConnectionConfig, SavedTunnel};
+use datazen_modules::ai::AiProviderConfig;
 
 use super::settings::AppSettings;
 

@@ -19,9 +19,11 @@
 
 use async_trait::async_trait;
 
+use crate::execution::application::budget::dimension::{
+    BudgetDimension, QuotaVerdict, ResourceClass,
+};
 use crate::shared::error::PortError;
 use crate::shared::id::{Counter, OrganizationId, Timestamp, WorkerId};
-use crate::execution::application::budget::dimension::{BudgetDimension, QuotaVerdict, ResourceClass};
 
 /// 节点额度与全局 permit 的二选一（§9.3 原文「多 worker 使用节点额度或全局 permit」）。
 ///
@@ -121,7 +123,9 @@ impl NodeCharge {
         self.dimension
             .capped_by()
             .iter()
-            .map(|dimension| crate::execution::application::budget::QuotaKey::new(dimension.clone(), self.class))
+            .map(|dimension| {
+                crate::execution::application::budget::QuotaKey::new(dimension.clone(), self.class)
+            })
             .collect()
     }
 }

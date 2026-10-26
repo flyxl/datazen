@@ -75,6 +75,10 @@ futures-util = "0.3"
 
 # Driver crates — injected by resolve-drivers.mjs at build time; do NOT add manually.
 # <<driver-dependencies>>
+datazen-driver-postgres = { path = "../packages/drivers/postgres", optional = true }
+datazen-driver-mysql = { path = "../packages/drivers/mysql", optional = true }
+datazen-driver-sqlite = { path = "../packages/drivers/sqlite", optional = true }
+datazen-driver-redis = { path = "../packages/drivers/redis", optional = true }
 # <</driver-dependencies>>
 rmcp = { version = "2.2.0", features = ["server", "client", "transport-io", "transport-child-process", "transport-streamable-http-server", "macros", "schemars"] }
 schemars = "1.2.2"
@@ -107,12 +111,16 @@ objc2 = { version = "0.6.4", optional = true }
 objc2-app-kit = { version = "0.3.2", optional = true }
 
 [features]
-default = []
+default = ["driver-postgres", "driver-mysql", "driver-sqlite", "driver-redis"]
 webdriver = ["tauri-plugin-webdriver", "dep:objc2", "dep:objc2-app-kit", "datazen-data-transfer/webdriver"]
 # Enables `datazen::test_harness` for src-tauri/tests/ IPC migration integration tests.
 test-harness = []
 # Driver features — injected by resolve-drivers.mjs at build time; do NOT add manually.
 # <<driver-features>>
+driver-postgres = ["dep:datazen-driver-postgres"]
+driver-mysql = ["dep:datazen-driver-mysql"]
+driver-sqlite = ["dep:datazen-driver-sqlite"]
+driver-redis = ["dep:datazen-driver-redis"]
 # <</driver-features>>
 
 

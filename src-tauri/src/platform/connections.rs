@@ -79,7 +79,10 @@ impl ConnectionRepository for DesktopConnectionStore {
         if !is_local(scope) {
             return Err(ConnectionRepositoryError::NotFound("connection".into()));
         }
-        self.store.save_connection(config).await.map_err(backend_error)
+        self.store
+            .save_connection(config)
+            .await
+            .map_err(backend_error)
     }
 
     async fn delete(
@@ -140,7 +143,9 @@ impl ConnectionRepository for DesktopConnectionStore {
         groups: Vec<String>,
     ) -> Result<(), ConnectionRepositoryError> {
         if !is_local(scope) {
-            return Err(ConnectionRepositoryError::NotFound("connection group".into()));
+            return Err(ConnectionRepositoryError::NotFound(
+                "connection group".into(),
+            ));
         }
         self.store.save_groups(groups).await.map_err(backend_error)
     }

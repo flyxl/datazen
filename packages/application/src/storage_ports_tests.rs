@@ -345,10 +345,7 @@ fn the_aggregate_holds_the_injected_instances_themselves() {
 #[test]
 fn the_aggregate_holds_the_injected_known_hosts_port() {
     let known_hosts: Arc<dyn KnownHostsRepository> = Arc::new(MemoryKnownHosts::default());
-    let services = services_with_known_hosts(
-        Arc::new(EmptyTunnelRepository),
-        known_hosts.clone(),
-    );
+    let services = services_with_known_hosts(Arc::new(EmptyTunnelRepository), known_hosts.clone());
 
     assert!(
         Arc::ptr_eq(&services.known_hosts, &known_hosts),

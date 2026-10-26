@@ -275,10 +275,8 @@ async fn write_connections_export(
         service.list_plain(&scope).await,
         "export_connections",
     )?;
-    let groups = crate::commands::connection::conn_cmd(
-        service.groups(&scope).await,
-        "export_connections",
-    )?;
+    let groups =
+        crate::commands::connection::conn_cmd(service.groups(&scope).await, "export_connections")?;
     let count = connections.len() as u32;
 
     materialize_tunnel_refs(state, &mut connections).await;
@@ -397,10 +395,8 @@ pub(crate) async fn apply_connection_import_impl(
         )?;
     }
 
-    let existing_groups = crate::commands::connection::conn_cmd(
-        service.groups(&scope).await,
-        "import_connections",
-    )?;
+    let existing_groups =
+        crate::commands::connection::conn_cmd(service.groups(&scope).await, "import_connections")?;
     let (merged_groups, groups_added) = merge_group_lists(&existing_groups, &incoming_groups);
     crate::commands::connection::conn_cmd(
         service.save_groups(&scope, merged_groups).await,

@@ -1,6 +1,6 @@
 pub mod adapter;
-pub mod connections;
 pub mod artifact_export;
+pub mod connections;
 mod diagnostics;
 pub mod error;
 pub mod event_sink;

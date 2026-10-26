@@ -7,12 +7,12 @@ use super::util::{
 };
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
-use datazen_modules::ai::*;
 use datazen_feature_core::ai::budget;
 use datazen_feature_core::ai::safety::redact_for_gate;
 use datazen_feature_core::ai::schema_pipeline::{
     compose_schema_system_suffix, SchemaContextPipeline,
 };
+use datazen_modules::ai::*;
 use tauri::{State, WebviewWindow};
 use tokio::sync::mpsc;
 

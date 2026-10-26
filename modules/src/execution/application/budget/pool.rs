@@ -10,16 +10,16 @@
 
 use async_trait::async_trait;
 
+use crate::execution::application::budget::coordinator::{DrainScope, DrainStatus};
+use crate::execution::application::budget::dimension::{
+    BudgetDimension, BudgetUsage, PhysicalOccupancy, QuotaKey, QuotaVerdict, ResourceClass,
+};
 use crate::shared::context::OwnerRef;
 use crate::shared::error::PortError;
 use crate::shared::id::{
     ConfigRevision, ConnectionId, Counter, CredentialRevision, DriverResourceKey,
     ExecutionIdentityKey, LeaseId, NetworkRouteRevision, OrganizationId, PolicyIsolationKey,
     ResourceId, Timestamp,
-};
-use crate::execution::application::budget::coordinator::{DrainScope, DrainStatus};
-use crate::execution::application::budget::dimension::{
-    BudgetDimension, BudgetUsage, PhysicalOccupancy, QuotaKey, QuotaVerdict, ResourceClass,
 };
 
 /// 池键（§9.6）。
@@ -343,7 +343,9 @@ pub trait DriverPoolBudgetPort: Send + Sync + 'static {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shared::id::{BlockId, ClientInstanceId, EditorSessionId, JobId, PrincipalId, StageId};
+    use crate::shared::id::{
+        BlockId, ClientInstanceId, EditorSessionId, JobId, PrincipalId, StageId,
+    };
 
     fn key() -> PoolKey {
         PoolKey {

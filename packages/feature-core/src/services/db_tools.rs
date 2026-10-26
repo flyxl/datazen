@@ -3,10 +3,7 @@
 pub const MCP_QUERY_DEFAULT_LIMIT: u32 = 100;
 pub const MCP_QUERY_MAX_LIMIT: u32 = 50_000;
 
-use super::{
-    ports::DatabaseToolHost,
-    schema_scope::metadata_schema,
-};
+use super::{ports::DatabaseToolHost, schema_scope::metadata_schema};
 use crate::mcp::permission::{self, McpPermissionMode};
 use datazen_driver_api::DatabaseDriver;
 use std::sync::Arc;

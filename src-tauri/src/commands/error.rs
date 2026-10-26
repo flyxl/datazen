@@ -4,9 +4,9 @@
 //! so the frontend receives the same format as the previous `Result<T, String>`.
 
 use crate::store::DesktopRepositoryError;
-use datazen_modules::ai::AiError;
 use datazen_driver_api::DriverError;
 use datazen_feature_core::services::FilterRejection;
+use datazen_modules::ai::AiError;
 
 #[derive(Debug)]
 pub enum CommandError {
@@ -242,8 +242,7 @@ impl<T, E: Into<CommandError>> CmdExt<T> for Result<T, E> {
     fn cmd_err(self, cmd: &str) -> Result<T, CommandError> {
         self.map_err(|e| {
             let err: CommandError = e.into();
-            let redacted =
-                datazen_infra::redaction::redact_secrets_for_log(&err.to_string());
+            let redacted = datazen_infra::redaction::redact_secrets_for_log(&err.to_string());
             tracing::error!(cmd, error = %redacted);
             err
         })

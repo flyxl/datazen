@@ -2,8 +2,8 @@
 
 use std::sync::{Arc, Mutex};
 
-use datazen_modules::ai::{ChatMessage, MessageRole, ToolCall};
 use datazen_driver_api::PromptScenario;
+use datazen_modules::ai::{ChatMessage, MessageRole, ToolCall};
 
 use super::chat::execute_db_tool;
 use super::*;
@@ -1286,7 +1286,8 @@ async fn ai_chat_mcp_and_db_same_round() {
     test.state.store.save_settings(settings).await.unwrap();
     let mut ai_settings = test.state.store.get_ai_settings_config().await;
     for profile in &mut ai_settings.profiles {
-        profile.safety_gate.data_egress_level = datazen_modules::ai::AiDataEgressLevel::Unrestricted;
+        profile.safety_gate.data_egress_level =
+            datazen_modules::ai::AiDataEgressLevel::Unrestricted;
     }
     test.state
         .store

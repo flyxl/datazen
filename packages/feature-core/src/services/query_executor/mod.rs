@@ -28,7 +28,6 @@ pub use datazen_driver_api::filters::{
 pub use filter_sql::{FilterRejection, MAX_REGEX_PATTERN_LENGTH};
 pub use table_read_sql::PagedSelectSql;
 
-
 #[derive(Debug, Clone)]
 pub struct OrderBy {
     pub column: String,

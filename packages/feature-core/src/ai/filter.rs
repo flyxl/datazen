@@ -3,9 +3,9 @@
 use crate::ai::prompt_resolver::PromptResolver;
 use crate::ai::response::{inject_language_hint, parse_ai_json};
 use crate::error::FeatureError;
-use datazen_modules::ai::{AiProvider, ChatMessage, CompletionRequest, MessageRole};
 use datazen_driver_api::filters::{FilterCondition, FilterOperator};
 use datazen_driver_api::{ColumnSchema, DatabaseDriver, PromptScenario, Value};
+use datazen_modules::ai::{AiProvider, ChatMessage, CompletionRequest, MessageRole};
 use std::collections::{HashMap, HashSet};
 
 /// Ask an AI provider to turn natural language into validated table filters.

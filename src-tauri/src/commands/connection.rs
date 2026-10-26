@@ -105,7 +105,9 @@ pub(crate) async fn duplicate_connection_impl(
     let scope = state.connection_scope()?;
     let service = crate::platform::ipc::require_connection_service(state)?;
     conn_cmd(
-        service.duplicate(&scope, &source_id, &new_id, &new_name).await,
+        service
+            .duplicate(&scope, &source_id, &new_id, &new_name)
+            .await,
         "duplicate_connection",
     )
 }
@@ -129,7 +131,9 @@ pub(crate) async fn test_connection_impl(
     let connection_service = crate::platform::ipc::require_connection_service(state)?;
     let mut config = config;
     if let Some(saved) = conn_cmd(
-        connection_service.get(&scope_modules(&scope), &config.id).await,
+        connection_service
+            .get(&scope_modules(&scope), &config.id)
+            .await,
         "test_connection",
     )? {
         datazen_modules::connection::merge_missing_secrets(&mut config, saved);
@@ -535,7 +539,10 @@ pub async fn reorder_connections(
     tracing::info!(count = ordered_ids.len(), "reorder_connections");
     let scope = state.connection_scope()?;
     let service = crate::platform::ipc::require_connection_service(&state)?;
-    conn_cmd(service.reorder(&scope, ordered_ids).await, "reorder_connections")
+    conn_cmd(
+        service.reorder(&scope, ordered_ids).await,
+        "reorder_connections",
+    )
 }
 
 #[tauri::command]
