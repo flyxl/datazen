@@ -23,6 +23,7 @@ pub use datazen_modules::shared::hash;
 /// P5 JobRuntime 内核：接受/幂等 receipt/planId 唯一消费/claim fencing/handler 协议/
 /// 多端原子预算/阶段调度与取消意图/效果结局聚合（data-migration-jobs.md 全文口径）。
 pub mod job;
-/// Schema 元数据缓存：列级 / 表级两层缓存与 schema 世代号失效闸门，
-/// 外加 DDL 前缀判定 `sql_may_mutate_schema`。自 `src-tauri/src/cache/` 迁入。
-pub mod schema_cache;
+// Schema 元数据缓存自 D4 起唯一定义在 `datazen-modules::schema`
+// （cache + mutate）；这里再导出保持 `datazen_kernel::schema_cache::…`
+// 既有路径不变（§5.5 单向委托）。D8 退役本 crate 时删除。
+pub use datazen_modules::schema as schema_cache;

@@ -8,7 +8,7 @@
 //!
 //! When the full schema is cached, the columns tier is also satisfied from it.
 
-use crate::driver_registry::DriverRegistry;
+use crate::execution::runtime::driver_registry::DriverRegistry;
 use datazen_driver_api::{CatalogReader, ColumnSchema, ConnectionHandle, DriverError, TableSchema};
 use std::collections::HashMap;
 use std::sync::{

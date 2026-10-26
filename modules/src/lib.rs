@@ -20,6 +20,10 @@ pub mod execution;
 #[cfg(feature = "named_views")]
 pub mod named_views;
 
+/// D4：Schema 元数据（缓存机制已迁入；应用服务后续切片）。
+#[cfg(feature = "schema")]
+pub mod schema;
+
 #[cfg(feature = "settings")]
 pub mod settings;
 

@@ -408,7 +408,7 @@ fn the_scan_covers_the_whole_kernel_crate() {
         "modules:src/execution/runtime/connection/testing/fixtures.rs",
         // 机制内核：留在 kernel 的 job/schema_cache 与本 crate 的机制都必须被扫
         "kernel:src/job/host.rs",
-        "kernel:src/schema_cache/schema_cache.rs",
+        "modules:src/schema/cache.rs",
         "modules:src/execution/runtime/budget/quotas.rs",
         "modules:src/execution/domain/sql_guard/mod.rs",
         "modules:src/execution/runtime/driver_registry/registry.rs",
