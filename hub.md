@@ -36,6 +36,7 @@
 | 2026-10-25 | `d9d6a868b` | D1 settings 切片：`datazen-modules::settings`（domain/application）、桌面仓储适配 `src-tauri/src/platform/settings.rs`、旧包过渡再导出、门禁脚本扩展（详见总纲 §3 / 07-stages.md D1 小节） |
 | 2026-10-26 | `eafaf87e1` | 计划书拆分：总纲（原路径）+ `ddd-refactor/` 10 个细节文件（01–10 对应原 §2–§14，保留编号）；AGENTS.md、docs/README.md 同步；验证脚本逐行比对零丢失 |
 | 2026-10-26 | `b9ce44cd0` | D1 收尾清理：删除 `datazen_platform_api::settings::*`、`platform_api::ports::SettingsRepository`、`datazen_application::settings` 门面与 `ApplicationServices` 设置字段；`SettingsService` 改为持有 `Arc<dyn SettingsRepository>`；宿主 adapter 直接持有模块设置服务（`require_settings_service`），命令经 `platform::ipc` 取用例；feature-core/platform-api 直接依赖 `datazen-modules`（settings） |
+| 2026-10-26 | 评审修复系列（3 个提交） | 独立 review 发现并修复：① `delete_connection`/`reorder_connections` 补齐 store 级 `write_lock` 并改用 `persist_connections_locked`（与 `save_connection` 锁口径对齐，消除并发旧快照覆写窗口），删除孤儿化的非 locked `persist_connections`；② connection_import 两处平台条件编译警告用 `cfg_attr(not(macos))` 精确放行（macOS 行为不变）；③ 修复 D3 第三切片 a 的 platform-api 自检测试编译破损：budget 垫片 glob 改命名再导出（inventory 文本抽取需要）、`SOURCE_FILES` 收敛 7 个已迁走的 budget 子文件条目、`lease_manager.rs` 与 runtime 测试共 3 处深层路径 `ports::budget::coordinator::` 改顶层、`job_kernel.rs` 清理 D3 迁移遗留的 3 组 unused imports。验证：platform-api / modules(454) / application / runtime lib(517) / job_kernel(19) / budget_cm65(14) 全绿；三道门禁 PASS；feature-core 警告清零 |
 
 ## 下一步（按计划顺序）
 
