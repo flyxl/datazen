@@ -4,7 +4,10 @@ pub mod fk_navigation;
 pub mod migration_endpoint;
 pub mod ports;
 pub mod referenced_by;
-pub mod result_edit;
+// D4-e（2026-10-26）：result_edit 写回规则迁入 datazen-modules::table_editing::result_edit，
+// 这里按旧模块名再导出（§5.5），`datazen_feature_core::services::result_edit::*`
+// 既有路径不变（桌面 result_origin / result_write 与集成测试经此消费）。
+pub use datazen_modules::table_editing::result_edit;
 pub mod schema_context;
 pub mod value_search;
 

@@ -9,13 +9,13 @@ use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Instant;
 
+use crate::schema::CachedColumns;
 use datazen_driver_api::{
     async_trait, BoundSqlStatement, ColumnSchema, ConnectionConfig, ConnectionHandle,
     DatabaseDriver, DatabaseType, DriverError, MultiQueryResult, QueryResult, ResultColumnOrigin,
     ResultObjectKind, ResultOrigin, ResultOriginDetail, ResultShape, ResultTableRef, ServerInfo,
     TableInfo, TableSchema, Value,
 };
-use datazen_kernel::schema_cache::CachedColumns;
 
 use super::*;
 
@@ -779,9 +779,9 @@ fn every_read_only_reason_maps_to_a_contract_code() {
 }
 
 /// A session context as one projection spells it.
-fn write_context() -> datazen_platform_api::dto::session::SessionContext {
-    datazen_platform_api::dto::session::SessionContext {
-        namespace: datazen_platform_api::target::NamespaceTarget::new(
+fn write_context() -> crate::execution::SessionContext {
+    crate::execution::SessionContext {
+        namespace: crate::connection::domain::NamespaceTarget::new(
             Some("app".into()),
             None,
             Some("public".into()),
@@ -789,9 +789,9 @@ fn write_context() -> datazen_platform_api::dto::session::SessionContext {
         ),
         search_path: Some(vec!["public".into()]),
         effective_identity: Some("app_user".into()),
-        transaction_state: datazen_platform_api::dto::session::TransactionState::None,
+        transaction_state: crate::execution::TransactionState::None,
         autocommit: Some(true),
-        confidence: datazen_platform_api::dto::session::ContextConfidence::Confirmed,
+        confidence: crate::execution::ContextConfidence::Confirmed,
     }
 }
 
@@ -803,11 +803,11 @@ fn write_context() -> datazen_platform_api::dto::session::SessionContext {
 #[test]
 fn write_target_ignores_the_session_mode() {
     let before = write_context();
-    let after = datazen_platform_api::dto::session::SessionContext {
-        transaction_state: datazen_platform_api::dto::session::TransactionState::Active,
+    let after = crate::execution::SessionContext {
+        transaction_state: crate::execution::TransactionState::Active,
         autocommit: Some(false),
         search_path: Some(vec!["public".into(), "other".into()]),
-        confidence: datazen_platform_api::dto::session::ContextConfidence::Partial,
+        confidence: crate::execution::ContextConfidence::Partial,
         ..write_context()
     };
     assert_eq!(WriteTarget::of(&before), WriteTarget::of(&after));
@@ -816,17 +816,17 @@ fn write_target_ignores_the_session_mode() {
 /// "No identity was reported" has one meaning under two spellings.
 #[test]
 fn write_target_treats_an_empty_identity_as_absence() {
-    let absent = datazen_platform_api::dto::session::SessionContext {
+    let absent = crate::execution::SessionContext {
         effective_identity: None,
         ..write_context()
     };
-    let empty = datazen_platform_api::dto::session::SessionContext {
+    let empty = crate::execution::SessionContext {
         effective_identity: Some(String::new()),
         ..write_context()
     };
     assert_eq!(WriteTarget::of(&absent), WriteTarget::of(&empty));
 
-    let other = datazen_platform_api::dto::session::SessionContext {
+    let other = crate::execution::SessionContext {
         effective_identity: Some("other_user".into()),
         ..write_context()
     };
@@ -843,8 +843,8 @@ fn write_target_treats_an_empty_identity_as_absence() {
 fn write_target_names_the_namespace() {
     let base = write_context();
     for changed in [
-        datazen_platform_api::dto::session::SessionContext {
-            namespace: datazen_platform_api::target::NamespaceTarget::new(
+        crate::execution::SessionContext {
+            namespace: crate::connection::domain::NamespaceTarget::new(
                 Some("other_app".into()),
                 None,
                 Some("public".into()),
@@ -852,8 +852,8 @@ fn write_target_names_the_namespace() {
             ),
             ..write_context()
         },
-        datazen_platform_api::dto::session::SessionContext {
-            namespace: datazen_platform_api::target::NamespaceTarget::new(
+        crate::execution::SessionContext {
+            namespace: crate::connection::domain::NamespaceTarget::new(
                 Some("app".into()),
                 None,
                 Some("other_schema".into()),
@@ -861,8 +861,8 @@ fn write_target_names_the_namespace() {
             ),
             ..write_context()
         },
-        datazen_platform_api::dto::session::SessionContext {
-            namespace: datazen_platform_api::target::NamespaceTarget::new(
+        crate::execution::SessionContext {
+            namespace: crate::connection::domain::NamespaceTarget::new(
                 None,
                 Some("app_catalog".into()),
                 Some("public".into()),
@@ -870,8 +870,8 @@ fn write_target_names_the_namespace() {
             ),
             ..write_context()
         },
-        datazen_platform_api::dto::session::SessionContext {
-            namespace: datazen_platform_api::target::NamespaceTarget::new(
+        crate::execution::SessionContext {
+            namespace: crate::connection::domain::NamespaceTarget::new(
                 Some("app".into()),
                 None,
                 Some("public".into()),
@@ -891,12 +891,12 @@ fn write_target_names_the_namespace() {
 /// An absent level and a level projected to `""` are the same namespace.
 #[test]
 fn write_target_treats_empty_levels_as_absent() {
-    let absent = datazen_platform_api::dto::session::SessionContext {
-        namespace: datazen_platform_api::target::NamespaceTarget::new(None, None, None, Vec::new()),
+    let absent = crate::execution::SessionContext {
+        namespace: crate::connection::domain::NamespaceTarget::new(None, None, None, Vec::new()),
         ..write_context()
     };
-    let empty = datazen_platform_api::dto::session::SessionContext {
-        namespace: datazen_platform_api::target::NamespaceTarget::new(
+    let empty = crate::execution::SessionContext {
+        namespace: crate::connection::domain::NamespaceTarget::new(
             Some(String::new()),
             Some(String::new()),
             Some(String::new()),

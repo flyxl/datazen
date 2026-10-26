@@ -21,17 +21,15 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::schema::CachedColumns;
 use datazen_driver_api::{
     DatabaseDriver, ResultObjectKind, ResultOrigin, ResultOriginDetail, ResultShape,
     ResultTableRef, Value,
 };
-use datazen_kernel::schema_cache::CachedColumns;
 use serde::{Deserialize, Serialize};
 
-use crate::data_browsing::{
-    build_row_change_plan, PendingRowChange, RowChangePlan, RowChangeTableContext,
-};
-use crate::error::FeatureError;
+use super::error::TableEditingError;
+use super::{build_row_change_plan, PendingRowChange, RowChangePlan, RowChangeTableContext};
 
 /// Why a result cannot be written back.
 ///
@@ -424,7 +422,7 @@ pub fn read_only_error_code(reason: GridReadOnlyReason) -> ResultErrorCode {
 /// against a moved target.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WriteTarget {
-    pub namespace: datazen_platform_api::target::NamespaceTarget,
+    pub namespace: crate::connection::domain::NamespaceTarget,
     /// The identity the write executes as. `None` and an empty string are the
     /// same fact — "the backend reported no identity" — and normalize to
     /// `None`, because two projections spelled that fact differently.
@@ -436,12 +434,12 @@ impl WriteTarget {
     ///
     /// Empty strings are treated as "not reported": an absent level and a
     /// level that projected to `""` are the same namespace, not two.
-    pub fn of(context: &datazen_platform_api::dto::session::SessionContext) -> Self {
+    pub fn of(context: &crate::execution::SessionContext) -> Self {
         fn value(value: Option<&String>) -> Option<String> {
             value.filter(|value| !value.is_empty()).cloned()
         }
         Self {
-            namespace: datazen_platform_api::target::NamespaceTarget::new(
+            namespace: crate::connection::domain::NamespaceTarget::new(
                 value(context.namespace.database.as_ref()),
                 value(context.namespace.catalog.as_ref()),
                 value(context.namespace.schema.as_ref()),
@@ -496,16 +494,18 @@ pub struct ResultCellChangeRequest {
 /// or no row at all. A statement without a `WHERE` would touch every row of
 /// the table, so these checks are not a nicety: they are the difference
 /// between a write and a disaster.
-pub fn validate_result_cell_request(request: &ResultCellChangeRequest) -> Result<(), FeatureError> {
+pub fn validate_result_cell_request(
+    request: &ResultCellChangeRequest,
+) -> Result<(), TableEditingError> {
     if request.row_count != 1 {
-        return Err(FeatureError::Validation(format!(
+        return Err(TableEditingError::Validation(format!(
             "{}: editing many query-result rows at once is not supported; the request writes {} row(s)",
             ResultErrorCode::MultiRowNotAllowed,
             request.row_count
         )));
     }
     if request.row_identity.is_empty() {
-        return Err(FeatureError::Validation(format!(
+        return Err(TableEditingError::Validation(format!(
             "{}: the request carries no row identity, so no column can locate the row",
             ResultErrorCode::RowNotAddressable
         )));
@@ -521,7 +521,7 @@ pub fn validate_result_cell_request(request: &ResultCellChangeRequest) -> Result
         .map(|(column, _)| column.as_str())
         .collect();
     if !null_columns.is_empty() {
-        return Err(FeatureError::Validation(format!(
+        return Err(TableEditingError::Validation(format!(
             "{}: the row identity has NULL value(s) in column(s) {}; a NULL cannot address one row",
             ResultErrorCode::RowNotAddressable,
             null_columns.join(", ")
@@ -541,14 +541,14 @@ pub fn build_result_cell_change_plan(
     request: &ResultCellChangeRequest,
     editability: &ResultEditability,
     columns: &CachedColumns,
-) -> Result<RowChangePlan, FeatureError> {
+) -> Result<RowChangePlan, TableEditingError> {
     validate_result_cell_request(request)?;
     if !editability.writable {
         let reason = editability
             .reason
             .unwrap_or(GridReadOnlyReason::UnknownOrigin);
         let code = read_only_error_code(reason);
-        return Err(FeatureError::Validation(format!(
+        return Err(TableEditingError::Validation(format!(
             "{code}: this result cannot be written back ({reason:?})"
         )));
     }
@@ -562,7 +562,7 @@ pub fn build_result_cell_change_plan(
         .collect();
     let submitted: BTreeSet<&str> = request.row_identity.keys().map(String::as_str).collect();
     if expected != submitted {
-        return Err(FeatureError::Validation(format!(
+        return Err(TableEditingError::Validation(format!(
             "{}: the request's row identity does not match the result's key columns; expected ({}) but got ({})",
             ResultErrorCode::RowNotAddressable,
             expected.into_iter().collect::<Vec<_>>().join(", "),
@@ -576,7 +576,7 @@ pub fn build_result_cell_change_plan(
         .iter()
         .find(|column| column.column == request.column)
     else {
-        return Err(FeatureError::Validation(format!(
+        return Err(TableEditingError::Validation(format!(
             "{}: column '{}' is not a writable column of '{}'",
             ResultErrorCode::WriteDenied,
             request.column,
@@ -584,7 +584,7 @@ pub fn build_result_cell_change_plan(
         )));
     };
     if editable.source_column != request.source_column {
-        return Err(FeatureError::Validation(format!(
+        return Err(TableEditingError::Validation(format!(
             "{}: column '{}' of '{}' is the base column '{}', not '{}'",
             ResultErrorCode::WriteDenied,
             request.column,
@@ -625,7 +625,7 @@ pub fn build_result_cell_change_plan(
         delete_marked: false,
         insert_marked: false,
     };
-    build_row_change_plan(driver, table, std::slice::from_ref(&change), columns).map_err(Into::into)
+    build_row_change_plan(driver, table, std::slice::from_ref(&change), columns)
 }
 
 #[cfg(test)]

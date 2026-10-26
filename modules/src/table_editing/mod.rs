@@ -24,6 +24,7 @@ pub use write_exec::execute_plan;
 
 pub mod error;
 pub mod ports;
+pub mod result_edit;
 
 pub use error::TableEditingError;
 pub use ports::ArtifactChunkReader;
