@@ -1763,24 +1763,18 @@ name = "datazen-data-sync"
 version = "0.0.1"
 dependencies = [
  "async-trait",
- "base64 0.22.1",
  "chrono",
  "datazen-driver-api",
  "datazen-driver-mysql",
  "datazen-driver-postgres",
  "datazen-driver-sqlite",
  "datazen-kernel",
- "datazen-migration-common",
+ "datazen-modules",
  "datazen-platform-api",
- "rusqlite",
  "serde",
  "serde_json",
- "sha2 0.10.9",
  "tempfile",
- "thiserror 1.0.69",
  "tokio",
- "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -2175,8 +2169,12 @@ name = "datazen-modules"
 version = "0.0.1"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "chrono",
  "datazen-driver-api",
+ "datazen-driver-mysql",
+ "datazen-driver-postgres",
+ "datazen-driver-sqlite",
  "datazen-infra",
  "futures-util",
  "hmac 0.12.1",
@@ -2184,6 +2182,7 @@ dependencies = [
  "inventory",
  "libc",
  "reqwest",
+ "rusqlite",
  "serde",
  "serde_json",
  "sha2 0.10.9",

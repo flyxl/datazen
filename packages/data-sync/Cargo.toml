@@ -6,27 +6,21 @@ description = "Data Synchronization domain engine for DataZen: gate, compare, ch
 license = "GPL-3.0-or-later"
 
 [dependencies]
-# 机制内核（job / budget / sql_guard / schema_cache / driver_registry）：领域包只用机制，
-# 不依赖「连接资源运行时」整包（DDD 计划 P2 的落点）。
-datazen-kernel = { workspace = true }
-datazen-driver-api = { workspace = true }
-datazen-migration-common = { workspace = true }
-datazen-platform-api = { workspace = true }
-async-trait = "0.1"
-base64 = "0.22"
-chrono = { version = "0.4", features = ["serde"] }
-serde = { version = "1", features = ["derive"] }
-rusqlite = { version = "0.32.1", features = ["bundled"] }
-serde_json = "1"
-uuid = { version = "1", features = ["v4", "serde"] }
-sha2 = "0.10"
-thiserror = "1"
-tokio = { version = "1", features = ["sync", "rt-multi-thread", "macros"] }
-tracing = "0.1"
-
+# D5：唯一定义在 datazen-modules::data_sync；本 crate 只再导出垫片。
+datazen-modules = { workspace = true, features = ["data_sync"] }
 [dev-dependencies]
 tempfile = "3"
 datazen-driver-postgres = { path = "../drivers/postgres" }
 datazen-driver-mysql = { path = "../drivers/mysql" }
 datazen-driver-sqlite = { path = "../drivers/sqlite" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+# 集成测试（cm43…cm46 / filter_operator_refusal / handler_plan_guard）直接
+# use 的 crate——原来由本 crate 的 [dependencies] 提供，垫片化后改挂
+# dev-deps（cargo 对 integration test 同时暴露两类依赖）。
+datazen-kernel = { workspace = true }
+datazen-driver-api = { workspace = true }
+datazen-platform-api = { workspace = true }
+async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }

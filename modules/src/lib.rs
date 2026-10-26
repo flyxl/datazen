@@ -33,6 +33,10 @@ pub mod migration_common;
 #[cfg(feature = "schema_diff")]
 pub mod schema_diff;
 
+/// D5：Data Sync 引擎（比较/审查/变更集/SQL 预览/执行 + job handler）。
+#[cfg(feature = "data_sync")]
+pub mod data_sync;
+
 /// D4-d：表编辑写链路（ChangeSet/insert plan/行身份/写执行）。
 #[cfg(feature = "table-editing")]
 pub mod table_editing;

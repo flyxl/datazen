@@ -17,6 +17,7 @@ pub mod context;
 pub mod error;
 /// FNV-1a 64 位指纹：Job 内核与连接运行时共用的纯算法（§5.3）。
 pub mod hash;
+pub mod migration;
 /// 归属校验纯函数（`check_owner`）：共享身份词汇上的运算。
 pub mod policy;
 pub mod scope;

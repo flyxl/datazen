@@ -64,6 +64,25 @@ schema_diff = [
     "schema",
     "execution",
 ]
+# D5：Data Sync 引擎（原 data-sync crate 整体归位；三件套之二）。
+# rusqlite（bundled）随 comparison_store/plan_store 的 SQLite 侧实现进入——
+# 形态中立（非平台 API）；D7 Web 装配时再评估是否上收宿主。
+data_sync = [
+    "dep:async-trait",
+    "dep:base64",
+    "dep:chrono",
+    "dep:rusqlite",
+    "dep:serde_json",
+    "dep:uuid",
+    "dep:sha2",
+    "dep:tokio",
+    "dep:tracing",
+    "dep:datazen-driver-api",
+    "migration_common",
+    "jobs",
+    "schema",
+    "execution",
+]
 # D5：迁移三件套的共享纯算法（原 migration-common crate 整体归位）。
 # 不依赖三件套或 execution（01 §4.2）；driver-api 提供分类学词汇。
 migration_common = ["dep:datazen-driver-api", "dep:serde_json"]
@@ -103,6 +122,9 @@ thiserror = "1"
 # 这里不重复声明。
 indexmap = { version = "2", optional = true }
 sha2 = { version = "0.10", optional = true }
+# D5 data_sync：comparison_store / plan_store 的 SQLite 侧实现所需。
+rusqlite = { version = "0.32.1", features = ["bundled"], optional = true }
+base64 = { version = "0.22", optional = true }
 hmac = { version = "0.12", optional = true }
 libc = { version = "0.2", optional = true }
 # table-editing feature：变更集 ID 生成
@@ -131,3 +153,9 @@ tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "test-util"] }
 wiremock = "0.6"
 tracing-subscriber = "0.3"
+# data_sync 测试：家族归一化（sync_family_of）走 inventory 链接期工厂，
+# 测试二进制必须链接 driver crate 才有工厂可查（与原 data-sync crate 的
+# dev-deps 对齐，否则 mysql/mariadb、tidb 等别名判定退化成异构对）。
+datazen-driver-postgres = { path = "../packages/drivers/postgres" }
+datazen-driver-mysql = { path = "../packages/drivers/mysql" }
+datazen-driver-sqlite = { path = "../packages/drivers/sqlite" }
