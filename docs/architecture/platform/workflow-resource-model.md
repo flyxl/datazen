@@ -43,13 +43,13 @@
 
 ### 2.1 模块结构
 
-`src-tauri/src/workflow/` 当前有 8 个源文件。共享执行语义（`conditions.rs`、`data_step.rs`、`model.rs`、`executor.rs`、`registry.rs`、`history.rs` 等）已下沉到 `packages/feature-core/src/workflow/`；宿主 `mod.rs` 只声明真正环境相关的部分——`command_runtime`（Driver Command 运行时桥的桌面绑定）、`history`（本地历史库绑定）、`registry`（`AppDb` 绑定）、`scheduler`（桌面调度适配）、`host`（共享端口的桌面实现：`WorkflowHost` 与 `ResourceExecutionHost`）。规则本身——显式 `database`/`schema` 校验、connection 继承解析、命令派发——都在 `packages/feature-core/src/workflow/command_runtime.rs`，宿主那三个函数只把 `AppState` 传进去。宿主不再保留任何 workflow 的 re-export 门面文件：共享类型的调用点直接引用 `datazen_feature_core::workflow::…`。`[已实现的 Workflow 架构](../backend/workflow.md)` 已按此分层更新。
+`src-tauri/src/workflow/` 当前有 8 个源文件。共享执行语义（`conditions.rs`、`data_step.rs`、`model.rs`、`executor.rs`、`registry.rs`、`history.rs` 等）已随 D6 workflow 切片归位 `modules/src/workflow/`（domain/application/engine 三分）；宿主 `mod.rs` 只声明真正环境相关的部分——`command_runtime`（Driver Command 运行时桥的桌面绑定）、`history`（本地历史库绑定）、`registry`（`AppDb` 绑定）、`scheduler`（桌面调度适配）、`host`（共享端口的桌面实现：`WorkflowHost` 与 `ResourceExecutionHost`）。规则本身——显式 `database`/`schema` 校验、connection 继承解析、命令派发——都在 `modules/src/workflow/application/command_runtime.rs`，宿主那三个函数只把 `AppState` 传进去。`packages/feature-core/src/workflow/` 只剩纯再导出迁移垫片（唯一定义在 `datazen_modules::workflow`，旧路径 `datazen_feature_core::workflow::*` 暂时保持可用，feature-core 退役时随垫片一并删除）。`[已实现的 Workflow 架构](../backend/workflow.md)` 已按此分层更新。
 
-`packages/feature-core/src/workflow/data_step.rs` **不涉及任何数据库资源**，内容是 `merge` / `transform` 的行集合并与表达式求值（`run_merge`、`run_transform`、`evaluate_expression`）。`context.rs` 负责变量与模板上下文，`conditions.rs` 负责条件比较。
+`modules/src/workflow/application/data_step.rs` **不涉及任何数据库资源**，内容是 `merge` / `transform` 的行集合并与表达式求值（`run_merge`、`run_transform`、`evaluate_expression`）。同目录的 `context.rs` 负责变量与模板上下文，`conditions.rs` 负责条件比较。
 
 ### 2.2 定义模型
 
-[`model.rs`](../../../packages/feature-core/src/workflow/model.rs) 的 `WorkflowDefinition` 为扁平结构：顶层 `connection`（默认连接，可为 `{{var}}` 模板）与 `database`（默认库）被 step 继承；**没有任何 block 层级字段**。`WorkflowStep` 用 `#[serde(tag = "type")]` 区分 `query` / `command` / `ai` / `condition` / `foreach` / `merge` / `transform`。
+[`model.rs`](../../../modules/src/workflow/domain/model.rs) 的 `WorkflowDefinition` 为扁平结构：顶层 `connection`（默认连接，可为 `{{var}}` 模板）与 `database`（默认库）被 step 继承；**没有任何 block 层级字段**。`WorkflowStep` 用 `#[serde(tag = "type")]` 区分 `query` / `command` / `ai` / `condition` / `foreach` / `merge` / `transform`。
 
 | 观察 | 证据 |
 | --- | --- |
@@ -64,16 +64,16 @@
 
 `version` 字段**现已被严格校验**（本节早前版本称它「只被写入、从未被读取」，那是 `packages/feature-core` 落地**之前**的基线事实，现已不成立）：
 
-- 版本解析在 `packages/feature-core/src/workflow/executable.rs:35` 的 `WorkflowVersion::parse`：**未声明**按 `V1` 处理；**空串**、**非 `^\d+$`**（严格 ASCII 数字，`u32::from_str` 还会接受 `"+2"`，那不是声明的格式）、以及**超过 `HIGHEST_SUPPORTED_VERSION = 2`**（`executable.rs:20`）的版本**一律拒绝**，报 `WorkflowError::UnsupportedDefinitionVersion`。
+- 版本解析在 `modules/src/workflow/domain/executable.rs:35` 的 `WorkflowVersion::parse`：**未声明**按 `V1` 处理；**空串**、**非 `^\d+$`**（严格 ASCII 数字，`u32::from_str` 还会接受 `"+2"`，那不是声明的格式）、以及**超过 `HIGHEST_SUPPORTED_VERSION = 2`**（`executable.rs:20`）的版本**一律拒绝**，报 `WorkflowError::UnsupportedDefinitionVersion`。
 - 按版本分派在 `executable.rs:50-54`（`Ok(1) => V1`、`Ok(2) => V2`）。
 - 校验发生在**生产路径**上：`src-tauri/src/monitor/grants.rs:105` 在把 workflow 变成可执行对象时调用 `into_executable()`（`executable.rs:236`），未知或越界版本在这里被拒（"workflow version invalid"）。因此**版本号不是"写了没人看"的装饰字段**。
-- 写入点：`modules/src/dashboard/application/create.rs:40` 的 `version: None` 字面量（未声明 ⇒ 按 V1 执行），其余在测试代码内（宿主侧 `workflow/host.rs:170/211/246`、`workflow/registry.rs:226`、`commands/dashboard.rs:482`、`commands/ai/integration_tests.rs:377/932/1070/1123`；共享包侧 `packages/feature-core/src/workflow/registry.rs:437`、`packages/feature-core/src/workflow/scheduler.rs:220`、`modules/src/dashboard/application/archive.rs:197`），其中仅 `integration_tests.rs:377` 写 `Some("1")`。三个内建 YAML 均未设置该字段，按 V1 执行。
+- 写入点：`modules/src/dashboard/application/create.rs:40` 的 `version: None` 字面量（未声明 ⇒ 按 V1 执行），其余在测试代码内（宿主侧 `workflow/host.rs:170/211/246`、`workflow/registry.rs:226`、`commands/dashboard.rs:482`、`commands/ai/integration_tests.rs:377/932/1070/1123`；共享包侧 `modules/src/workflow/application/registry.rs:344`、`modules/src/workflow/engine/scheduler.rs:220`、`modules/src/dashboard/application/archive.rs:197`），其中仅 `integration_tests.rs:377` 写 `Some("1")`。三个内建 YAML 均未设置该字段，按 V1 执行。
 
 对比：仓库中其他"定义版本"同样有校验——`packages/schema-diff/src/profile.rs` 的 `CURRENT_VERSION` 并在遇到未知版本时报 "unsupported ... version"；`data_sync::SyncProfile`、`data_transfer::profile.rs` 同样有 `CURRENT_VERSION`；`store/favorites/migrate.rs` 有 `MIGRATION_VERSION`。**Workflow 现在也在其中**：它的版本由 `WorkflowVersion::parse` 校验，未知/空白/非整数/越界版本**拒绝执行**。另需注意 `store/settings.rs:15` 的 `OnboardingState.version` 同样只写不读（生产路径只读 `completed`）——那**是**一个尚未校验的版本字段。
 
 ### 2.4 目标解析与资源获取
 
-[`executor.rs:130-131`](../../../packages/feature-core/src/workflow/executor.rs)：
+[`executor.rs:117-118`](../../../modules/src/workflow/engine/executor.rs)：
 
 ```rust
 let workflow_connection = workflow.connection.as_deref().or(connection_id);
@@ -82,14 +82,14 @@ let workflow_database = workflow.database.as_deref();
 
 `connection_id` 是**调用方传入的运行时参数**，由 IPC / MCP / 调度器决定，是 P6 要消除的隐式目标来源。当前优先级因此只有两级：step 显式 → (workflow 默认 → 调用方 connectionId)。
 
-query 分支（[executor.rs](../../../packages/feature-core/src/workflow/executor.rs)）：
+query 分支（[executor.rs](../../../modules/src/workflow/engine/executor.rs)）：
 
 1. `step_database = step.database`（可为 `{{var}}`，先做模板解析）；
 2. `inherited_database = workflow_database`；
 3. `resolved_database = step_database.or(inherited_database)`；
 4. 仅当 `resolved_database.is_none()` 且 `database_is_required(connection_database, driver_has_multi_database)` 时报 `MissingDatabase`；该判定只对多库驱动生效，PostgreSQL 驱动在 `resolve_connect_database` 中硬编码 `"postgres"`。
 
-command 分支（[command_runtime.rs`](../../../packages/feature-core/src/workflow/command_runtime.rs)）：
+command 分支（[command_runtime.rs](../../../modules/src/workflow/application/command_runtime.rs)）：
 
 1. `resolve_connection_id(step, workflow_connection)` → `step.effective_connection(workflow_connection)`，缺失报 `MissingConnection { step_id }`；
 2. `inject_inherited_database(input, workflow_database)`：显式非空 `input.database` 优先，空白串按未设置处理，trim，非对象则空操作；
@@ -113,7 +113,7 @@ command 分支（[command_runtime.rs`](../../../packages/feature-core/src/workfl
 
 ### 2.6 错误与事务
 
-`error.rs` 的 `WorkflowError` 共 22 个变体（`packages/feature-core/src/workflow/error.rs`，按 `#[error(...)]` 计）。IPC 边界仍用 `into_ipc_string()` **把错误拍平成字符串**：执行入口 `executor.rs` 的 `execute_with_options` 返回 `Result<WorkflowExecutionResult, String>`，宿主 IPC、MCP、调度器、Dashboard 与 Monitor 拿到的都是同一条消息。**没有结构化 `ExecutionErrorCode`**——该类型属于 `packages/platform-api/src/dto/execution.rs` 的执行终态契约，runtime 与迁移三件套在用，Workflow 路径不产出它。目标化取值则已落在**变体**层面：`UnsupportedPlan` / `CapabilityUnsupported`（`plan_guard.rs` 的 `PlanVerdict::rejection_error()`，该函数目前只有测试调用，执行器尚未接线）与 `TargetRequired` / `TargetConflict` / `TargetUnsupported`（`target_plan.rs` 的 `resolve()`，调用方含 `src-tauri/src/monitor/fixed_targets.rs`）都是现成的 `WorkflowError` 变体；**`OutcomeUnknown` 仍不是** `WorkflowError` 的变体。
+`error.rs` 的 `WorkflowError` 共 22 个变体（`modules/src/workflow/domain/error.rs`，按 `#[error(...)]` 计）。IPC 边界仍用 `into_ipc_string()` **把错误拍平成字符串**：执行入口 `executor.rs` 的 `execute_with_options` 返回 `Result<WorkflowExecutionResult, String>`，宿主 IPC、MCP、调度器、Dashboard 与 Monitor 拿到的都是同一条消息。**没有结构化 `ExecutionErrorCode`**——该类型属于 `packages/platform-api/src/dto/execution.rs` 的执行终态契约，runtime 与迁移三件套在用，Workflow 路径不产出它。目标化取值则已落在**变体**层面：`UnsupportedPlan` / `CapabilityUnsupported`（`plan_guard.rs` 的 `PlanVerdict::rejection_error()`，该函数目前只有测试调用，执行器尚未接线）与 `TargetRequired` / `TargetConflict` / `TargetUnsupported`（`target_plan.rs` 的 `resolve()`，调用方含 `src-tauri/src/monitor/fixed_targets.rs`）都是现成的 `WorkflowError` 变体；**`OutcomeUnknown` 仍不是** `WorkflowError` 的变体。
 
 事务：Workflow 执行路径**完全不管理事务**。`packages/schema-diff/src/transaction.rs` 的 `TransactionScope` 目前唯一的生产消费者是 `packages/schema-diff/src/deploy.rs`。
 
@@ -753,7 +753,7 @@ v1 定义的映射规则是机械的、无歧义的：
 | 回归项 | 断言 | 对应本文 |
 | --- | --- | --- |
 | R1 继承链等价 | v1 定义在 v2 runtime 下，`connection` / `database` 继承结果与现状一致 | [§10.4](#104-旧定义在目标-runtime-下的默认语义) |
-| R2 显式覆盖 | step 显式目标覆盖 workflow 默认（[现状 `effective_connection`](../../../packages/feature-core/src/workflow/command.rs) 行为保持） | [§4.1](#41-四级链) |
+| R2 显式覆盖 | step 显式目标覆盖 workflow 默认（[现状 `effective_connection`](../../../modules/src/workflow/domain/command.rs) 行为保持） | [§4.1](#41-四级链) |
 | R3 `input.database` 优先级 | 显式非空 `input.database` 优先，空白按未设置 | [§4.2](#42-解析算法) |
 | R4 多库缺 database | 仍报 `TargetRequired`（现为 `MissingDatabase`），仅多库驱动 | [§4.3](#43-冲突处理) |
 | R5 缺连接 | 仍报缺失连接（现为 `MissingConnection`），且错误升级为结构化 code | [§4.2](#42-解析算法) |
@@ -766,7 +766,7 @@ v1 定义的映射规则是机械的、无歧义的：
 
 | 测试 | 落点 |
 | --- | --- |
-| v1 → 独立 step 映射（纯函数） | `packages/feature-core/src/workflow/` 单元测试 |
+| v1 → 独立 step 映射（纯函数） | `modules/src/workflow/` 单元测试 |
 | 目标四级链与冲突 | 同上，含 `TargetConflict` / `TargetRequired` 断言 |
 | 计划预校验：受控 Command / 任意 SQL 拒绝 / 能力缺失 | 宿主单元 + 各驱动 crate `tests/` |
 | block 资源获取、跨 step 状态保留、块结束释放 | 假驱动 fake resource（[连接管理 §15.1 基础夹具](connection-management.md#151-基础夹具)） |
