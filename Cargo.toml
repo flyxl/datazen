@@ -12,7 +12,6 @@ members = [
     "packages/feature-core",
     "packages/schema-diff",
     "packages/data-sync",
-    "packages/migration-common",
     "packages/data-transfer",
     "modules",
     "packages/drivers/*",
@@ -29,7 +28,6 @@ datazen-application = { path = "packages/application" }
 datazen-kernel = { path = "packages/kernel" }
 datazen-feature-core = { path = "packages/feature-core" }
 datazen-schema-diff = { path = "packages/schema-diff" }
-datazen-migration-common = { path = "packages/migration-common" }
 datazen-data-sync = { path = "packages/data-sync" }
 datazen-data-transfer = { path = "packages/data-transfer" }
 datazen-modules = { path = "modules", default-features = false }

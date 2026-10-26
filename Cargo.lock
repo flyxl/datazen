@@ -2145,13 +2145,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "datazen-migration-common"
-version = "0.0.1"
-dependencies = [
- "datazen-modules",
-]
-
-[[package]]
 name = "datazen-modules"
 version = "0.0.1"
 dependencies = [

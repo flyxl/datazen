@@ -62,7 +62,6 @@ const DOMAIN_PACKAGES = [
   'datazen-schema-diff',
   'datazen-data-sync',
   'datazen-data-transfer',
-  'datazen-migration-common',
   'datazen-tunnel',
 ];
 
