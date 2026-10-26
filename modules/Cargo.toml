@@ -145,6 +145,16 @@ ai = [
     "dep:datazen-infra",
 ]
 
+# D6 item 4 切片一：MCP 业务规则（权限模式/连接白名单/表描述格式化）。
+# permission 的 SQL 分级依赖 execution::domain::sql_guard（不另立判据）；
+# check_tool_call 的参数面需要 serde_json，describe 消费 driver-api 的
+# TableSchema。
+mcp = [
+    "execution",
+    "dep:serde_json",
+    "dep:datazen-driver-api",
+]
+
 # D5 data_transfer：debug 构建 + webdriver E2E 的故障注入 seam（commit-ack 丢失）。
 # 纯 cfg 开关无依赖；src-tauri 的 webdriver feature 经 datazen-data-transfer
 # 垫片转发进来（原 data-transfer crate 同名 feature 的语义原样承接）。

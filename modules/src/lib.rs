@@ -25,6 +25,10 @@ pub mod jobs;
 #[cfg(feature = "named_views")]
 pub mod named_views;
 
+/// D6 item 4 切片一：MCP 业务规则（权限模式/连接白名单/表描述格式化）。
+#[cfg(feature = "mcp")]
+pub mod mcp;
+
 /// D5：迁移三件套共享纯算法（pairing/recordset_bounds）。
 #[cfg(feature = "migration_common")]
 pub mod migration_common;
