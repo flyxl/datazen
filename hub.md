@@ -7,7 +7,7 @@
 
 ## 全局状态
 
-- 当前阶段：**D3 进行中（词汇 + 端口 + 机制内核 + 连接资源运行时机制/编排整体均已迁入 modules::execution）**；D2 完成 + D6 item 1（named_views）完成；下一步 **D3-3c：RuntimeConnectionUseCases 三分**（execution::application 编排 / domain 状态 / runtime 私有机制）与 D3 收尾验收（等待能力封装 + 桌面关停）。
+- 当前阶段：**D3 基本完成**（词汇/端口/机制内核/连接资源运行时机制/编排归位 + wait_for_execution 第一步）；D2 完成 + D6 item 1 完成；下一步 **D4：Schema、表读写与 SQL 消费者**（kernel schema_cache → modules::schema；feature-core data_browsing/query_executor → table_browsing/table_editing；参考 06-first-slice-table-browsing.md）。
 - 既有 flake 备注：`p4_usecase_journeys` 两用例在弱 CPU 沙箱偶发超时（D1 基线可复现、单跑通过、CI 绿），随 runtime 机制切片处理等待语义时一并解决。
 - 阶段与 PR 粒度：计划按 **D0–D8 九个阶段**推进（无 "wave" 概念，wave 仅是 coordinator 的
   并行批次术语）；每阶段可拆多个小 PR，每 PR 必须可构建、有真实消费者和测试。预估全程
@@ -61,6 +61,7 @@
 | `7eb386c1b` | D3 第二切片：七个执行端口归位——domain：SessionDirectory、ArtifactRepository（含 ChunkPayload/ByteRange/导出/吊销/配额与指纹函数）+ CanonicalTarget 家族；application：ExecutionSettingsReader/ExecutionTargetResolver/IdentityResolver/SubmissionTokenIssuer/EventSink。platform-api ports 七垫片；include_str 自检测试改指新文件名；modules 167 / platform-api 145 / runtime 517 全绿 |
 | `317a1be3b` | D3 第三切片 a：机制内核先行——budget 端口家族→execution::application::budget、账本/调度→execution::runtime::budget、driver_registry→execution::runtime、sql_guard→execution::domain、hash→shared；kernel 再导出保旧路径、platform-api ports/budget 垫片；test-harness feature 链贯通；形态中立闸门扩到 modules（豁免 src/ai） |
 | 本次 | D3 第三切片 b：connection/registry/gateway/resource/directory/tunnel/artifact/latency + RuntimeConnectionUseCases 编排整体迁入 execution::runtime（application/ 过渡期整块）；network/policy/secret 端口、ConnectionUseCases 签名、check_owner、TargetNamespaceShape 家族随迁；platform-api target.rs 全垫片化；runtime 只余 native_tool（D5）+ bin + tests + 再导出 facade；路径敏感自检测试全部重定位；modules 872 / runtime 444+9 / platform-api 46 / kernel 34 / feature-core 765 全绿 |
+| 本次（D3-3c） | 编排归位 execution::application::orchestration；§6.4 等待能力第一步 wait_for_execution + WaitOutcome（超时≠取消，零 wire 变化）+ 三态行为测试（p4）；桌面关停装配显式延后至 D7/D8 宿主装配 |
 
 ## 会话恢复要点
 

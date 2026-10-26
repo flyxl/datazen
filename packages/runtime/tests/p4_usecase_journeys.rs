@@ -1173,3 +1173,108 @@ mod export_output;
 mod idle_activity;
 #[path = "fixtures/p4_session_transactions.rs"]
 mod session_transactions;
+
+
+// ---------------------------------------------------------------------------
+// §6.4 等待能力：第一步（轮询封装进机制）。三态语义钉死：
+// 终态幂等 / 超时不是取消 / 缺失映射 NotFound。
+// ---------------------------------------------------------------------------
+
+/// 重复等待已完成执行返回同一终态，不重新执行（backend 收到的执行 ID 不再增加）。
+#[tokio::test(start_paused = true)]
+async fn wait_on_a_terminal_execution_returns_the_same_terminal_state() {
+    use datazen_runtime::application::WaitOutcome;
+    use std::time::Duration;
+
+    let (service, backend, _, _) = setup();
+    let c = ctx("u", "c");
+    let opened = open(&service, &c, "editor").await;
+    let receipt = execute(&service, &c, &opened.session.handle, "query").await;
+
+    let first = service
+        .wait_for_execution(&c, receipt.execution_id.clone(), Duration::from_secs(30))
+        .await
+        .unwrap();
+    let view = match first {
+        WaitOutcome::Terminal(view) => view,
+        other => panic!("已完成执行必须立刻返回终态，却得到 {other:?}"),
+    };
+    assert!(view.state.is_terminal());
+    let executed_after_first = backend.ids.lock().unwrap().len();
+
+    // 第二次等待：同一终态，且没有新执行被发起。
+    let second = service
+        .wait_for_execution(&c, receipt.execution_id, Duration::from_secs(30))
+        .await
+        .unwrap();
+    match second {
+        WaitOutcome::Terminal(again) => assert_eq!(again.execution_id, view.execution_id),
+        other => panic!("重复等待必须返回同一终态，却得到 {other:?}"),
+    }
+    assert_eq!(
+        backend.ids.lock().unwrap().len(),
+        executed_after_first,
+        "等待不得重新执行已完成的执行"
+    );
+}
+
+/// 超时只说明等待超时：执行保持在原状态继续跑，不被伪造成取消；
+/// 释放后再次等待拿到真实终态。
+#[tokio::test(start_paused = true)]
+async fn wait_deadline_is_a_timeout_report_not_a_cancellation() {
+    use datazen_runtime::application::WaitOutcome;
+    use std::time::Duration;
+
+    let (service, backend, _, _) = setup();
+    let c = ctx("u", "c");
+    let opened = open(&service, &c, "editor").await;
+    let receipt = execute(&service, &c, &opened.session.handle, "hold").await;
+
+    // hold 不会被释放：等待必然超时（paused 时钟下自动推进，无真实 sleep）。
+    let outcome = service
+        .wait_for_execution(&c, receipt.execution_id.clone(), Duration::from_millis(75))
+        .await
+        .unwrap();
+    match outcome {
+        WaitOutcome::DeadlineExceeded { waited_ms } => {
+            assert!(waited_ms >= 75, "超时回报必须不早于截止期：{waited_ms}ms");
+        }
+        other => panic!("未完成的执行不得返回终态，却得到 {other:?}"),
+    }
+
+    // 超时之后执行仍在跑——没有被伪造成取消或失败。
+    let still = service
+        .get_execution(&c, receipt.execution_id.clone())
+        .await
+        .unwrap();
+    assert!(
+        !still.state.is_terminal(),
+        "等待超时不得改变执行状态，却看到 {still:?}"
+    );
+
+    // 释放 hold：再次等待拿到真实终态。
+    backend.release.notify_one();
+    let done = service
+        .wait_for_execution(&c, receipt.execution_id, Duration::from_secs(30))
+        .await
+        .unwrap();
+    assert!(
+        matches!(done, WaitOutcome::Terminal(_)),
+        "释放后的执行必须到达终态，却得到 {done:?}"
+    );
+}
+
+/// 等待不存在的执行映射既有 NotFound，不吞错。
+#[tokio::test(start_paused = true)]
+async fn wait_on_a_missing_execution_maps_the_existing_not_found() {
+    use datazen_platform_api::id::ExecutionId;
+    use std::time::Duration;
+
+    let (service, _, _, _) = setup();
+    let c = ctx("u", "c");
+    let error = service
+        .wait_for_execution(&c, ExecutionId::new("no-such-exec"), Duration::from_secs(1))
+        .await
+        .unwrap_err();
+    assert_eq!(error.code, datazen_platform_api::ApiErrorCode::NotFound);
+}

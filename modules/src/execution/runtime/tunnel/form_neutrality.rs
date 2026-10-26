@@ -414,7 +414,7 @@ fn the_scan_covers_the_whole_kernel_crate() {
         "modules:src/execution/runtime/driver_registry/registry.rs",
         "modules:src/shared/id.rs",
         // 用例编排随机制迁入本 crate（过渡期整块），继续被扫
-        "modules:src/execution/runtime/application/mod.rs",
+        "modules:src/execution/application/orchestration/mod.rs",
         // runtime 留守面（native_tool + 集成测试夹具）也必须被扫
         "runtime:src/native_tool/handler.rs",
         // 豁免必须真的生效：src/ai 不得出现在清单里

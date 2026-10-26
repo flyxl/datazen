@@ -22,10 +22,11 @@ pub use datazen_modules::execution::runtime::{
     artifact, connection, directory, gateway, latency, registry, resource, tunnel,
 };
 
-// 用例编排（RuntimeConnectionUseCases）D3-3b 起随机制一同住在
-// modules::execution::runtime::application（过渡期整块迁移保持 pub(crate) 语义；
-// D3-3c 按 §5.3 拆分为 execution::application 编排与 domain 状态）。
-pub use datazen_modules::execution::runtime::application;
+// 用例编排（RuntimeConnectionUseCases）自 D3-3c 起住在
+// modules::execution::application::orchestration（§5.3：请求编排归
+// execution::application，不整块留在 runtime 目录）。这里按旧名再导出，
+// `datazen_runtime::application::…` 既有路径不变。
+pub use datazen_modules::execution::application::orchestration as application;
 pub mod native_tool;
 
 /// 夹具门控开关的单一事实源。

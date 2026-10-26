@@ -12,6 +12,8 @@ pub mod events;
 pub mod idempotency;
 pub mod identity;
 pub mod network;
+/// `RuntimeConnectionUseCases` 编排（原 runtime::application，D3-3c 归位）。
+pub mod orchestration;
 pub mod policy;
 pub mod use_cases;
 pub mod requests;
@@ -32,6 +34,7 @@ pub use policy::{
     AuthorizationAction, AuthorizationDecision, AuthorizationSubject, DelegationGrant,
     PolicyService, PolicyVersionChange,
 };
+pub use orchestration::RuntimeConnectionUseCases;
 pub use use_cases::ConnectionUseCases;
 pub use network::{endpoint_scheme, NetworkProvider, RoutePlan, TunnelBinding, TunnelSpec};
 pub use requests::*;

@@ -216,6 +216,21 @@ AI 工具（egress 摘要 / db_tools / 连接上下文）与 MCP 的目录读取
   kernel 34 / feature-core 765 / application 95 / schema-diff 179 全绿
   （p4_usecase_journeys 2 例为下述既有 flake）。
 
+**第三切片 c 已完成（2026-10-26）——编排归位与等待能力**：
+- `RuntimeConnectionUseCases` 编排自 `execution::runtime::application` 归位
+  `execution::application::orchestration`（§5.3：请求编排归 application，
+  不整块留在 runtime 目录；runtime facade 按旧名再导出，路径不变）。
+- §6.4 等待能力第一步：`wait_for_execution`（轮询封装进机制，25ms 与桌面
+  既有口径一致）+ `WaitOutcome`（Terminal / DeadlineExceeded——超时不是
+  错误、更不是取消证据；不新增 ApiErrorCode 变体，wire 契约零变化）。
+  三态行为测试钉死：终态幂等不重执行 / 超时后执行保持原状态 / 缺失映射
+  NotFound（p4_usecase_journeys，paused 时钟无真实 sleep）。
+- 桌面关停：桌面宿主当前无全局关停钩子（会话级 drain 已有）；关停顺序
+  装配随 D7 Web 宿主与 D8 宿主装配统一落地，不在本切片盲改不可本地编译
+  的 src-tauri。
+- D3 剩余：runtime 私有化与装配入口收敛至 D8（过渡期 facade 需 pub，
+  §5.5 具名例外）；通知式等待为第二步，随 registry 终态观察切片交付。
+
 **已知既有 flake（非本切片引入）**：`p4_usecase_journeys` 的
 `execution_receipt_driver_live_chunks…` 与 `unsubscribe_unblocks_consumer…`
 在弱 CPU 沙箱并发全文件运行时因 `terminal()` 忙等 1000 次 yield 上限偶发

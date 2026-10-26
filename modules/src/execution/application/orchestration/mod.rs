@@ -38,6 +38,8 @@ use crate::shared::id::*;
 use crate::execution::*;
 use results::lock;
 pub use results::{RuntimeArtifactChunk, RuntimeResultSink};
+pub mod wait;
+pub use wait::WaitOutcome;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
