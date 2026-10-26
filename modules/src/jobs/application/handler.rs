@@ -7,18 +7,18 @@
 //!   已确认提交边界、executionIds、Artifact 引用与阶段进度；`verify_recovery`
 //!   依据 checkpoint 决定续跑/拒绝/人工核验。
 //! * handler **不**直接改 JobState、不自续租、在未知效果后不自动重试（§2.3）。
-//! * handler 不申请未计数资源：预算由 [`crate::job::JobRuntime`] 在 claim 前全组预留。
+//! * handler 不申请未计数资源：预算由 [`crate::jobs::JobRuntime`] 在 claim 前全组预留。
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use datazen_platform_api::dto::execution::{EffectOutcome, ExecutionErrorCode};
-use datazen_platform_api::dto::job::{Checkpoint, CommitBoundary, JobDomainResult, JobProgress};
-use datazen_platform_api::id::{ArtifactId, ExecutionId, StageId};
+use crate::execution::domain::{EffectOutcome, ExecutionErrorCode};
+use crate::jobs::domain::job::{Checkpoint, CommitBoundary, JobDomainResult, JobProgress};
+use crate::shared::id::{ArtifactId, ExecutionId, StageId};
 
-use crate::job::error::JobError;
-use crate::job::plan::FrozenPlan;
+use crate::jobs::domain::error::JobError;
+use crate::jobs::domain::plan::FrozenPlan;
 
 /// 取消信号。内核那一位原子位的持有者：`dispatch` 创建它，阶段执行期间由并发看守者
 /// 在读到的取消意图为真时翻转，handler 只读它、不自建取消通道。阶段内取消的检查点由
@@ -160,7 +160,7 @@ pub trait JobHandler: Send + Sync {
         &self,
         spec: &StageSpec,
         cancel: &CancelToken,
-        _owner: crate::job::StageOwnerPermit,
+        _owner: crate::jobs::StageOwnerPermit,
     ) -> Result<StageOutcome, JobError> {
         self.run_stage(spec, cancel).await
     }

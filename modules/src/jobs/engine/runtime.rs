@@ -13,18 +13,20 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::dto::execution::EffectOutcome;
-use datazen_platform_api::dto::job::{Checkpoint, JobProgress, JobState, StageRecord};
-use datazen_platform_api::error::PortError;
-use datazen_platform_api::id::{JobId, WorkerId};
+use crate::execution::domain::EffectOutcome;
+use crate::jobs::domain::job::{Checkpoint, JobProgress, JobState, StageRecord};
+use crate::shared::context::RequestContext;
+use crate::shared::error::PortError;
+use crate::shared::id::{JobId, WorkerId};
 
-use crate::budget::ledger::BudgetLedger;
-use crate::job::budget::{EndpointRef, MultiEndpointPermits};
-use crate::job::handler::{CancelToken, HandlerRegistry, StageOutcome, StageSpec, StageTerminal};
-use crate::job::plan::project_frozen_plan;
-use crate::job::runtime_repository::JobRuntimeRepository;
-use crate::job::time::JobClock;
+use crate::execution::runtime::budget::ledger::BudgetLedger;
+use crate::jobs::application::handler::{
+    CancelToken, HandlerRegistry, StageOutcome, StageSpec, StageTerminal,
+};
+use crate::jobs::domain::budget::{EndpointRef, MultiEndpointPermits};
+use crate::jobs::domain::plan::project_frozen_plan;
+use crate::jobs::domain::runtime_repository::JobRuntimeRepository;
+use crate::jobs::domain::time::JobClock;
 
 /// 阶段内取消看守者的轮询间隔。
 ///
@@ -169,7 +171,7 @@ impl JobRuntime {
         let permits = match MultiEndpointPermits::reserve(
             self.ledger.clone(),
             endpoints,
-            datazen_platform_api::ports::budget::ResourceClass::Job,
+            crate::execution::application::budget::ResourceClass::Job,
             &ctx.organization_id,
             &ctx.principal_id,
             self.clock_ms,
@@ -206,8 +208,8 @@ impl JobRuntime {
         ctx: &RequestContext,
         job_id: &JobId,
         worker: &WorkerId,
-        handler: Arc<dyn crate::job::handler::JobHandler>,
-        stages: &[crate::job::handler::StageSpec],
+        handler: Arc<dyn crate::jobs::application::handler::JobHandler>,
+        stages: &[crate::jobs::application::handler::StageSpec],
     ) -> Result<JobResult, PortError> {
         let claim = self.repo.claim(ctx, job_id.clone(), worker.clone()).await?;
         let cancel = CancelToken::new();
@@ -399,8 +401,8 @@ impl JobRuntime {
         &self,
         ctx: &RequestContext,
         job_id: &JobId,
-        claim: &datazen_platform_api::dto::job::JobClaim,
-        handler: Arc<dyn crate::job::handler::JobHandler>,
+        claim: &crate::jobs::domain::job::JobClaim,
+        handler: Arc<dyn crate::jobs::application::handler::JobHandler>,
         spec: &StageSpec,
         cancel: &CancelToken,
     ) -> Result<StageOutcome, StageRunFailure> {
@@ -414,7 +416,7 @@ impl JobRuntime {
         let handler_for_stage = handler.clone();
         let stage_spec = spec.clone();
         let stage_cancel = cancel.clone();
-        let owner = crate::job::StageOwnerPermit::new(
+        let owner = crate::jobs::StageOwnerPermit::new(
             self.repo.clone(),
             ctx.clone(),
             claim.clone(),

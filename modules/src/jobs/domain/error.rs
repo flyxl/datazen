@@ -36,9 +36,9 @@ pub enum JobError {
     RecoveryRejected(String),
 }
 
-impl From<JobError> for datazen_platform_api::error::PortError {
+impl From<JobError> for crate::shared::error::PortError {
     fn from(e: JobError) -> Self {
-        use datazen_platform_api::error::PortError;
+        use crate::shared::error::PortError;
         match e {
             JobError::NotFound(s) => PortError::NotFound(s),
             JobError::IdempotencyConflict => PortError::IdempotencyConflict,

@@ -8,14 +8,14 @@
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
-use datazen_platform_api::id::{ConnectionId, OrganizationId, PrincipalId};
-use datazen_platform_api::ports::budget::ResourceClass;
+use crate::execution::application::budget::ResourceClass;
+use crate::shared::id::{ConnectionId, OrganizationId, PrincipalId};
 
-use crate::budget::classes::BudgetClaim;
-use crate::budget::ledger::BudgetLedger;
-use crate::budget::records::{PermitRecord, ReleaseResult};
+use crate::execution::runtime::budget::classes::BudgetClaim;
+use crate::execution::runtime::budget::ledger::BudgetLedger;
+use crate::execution::runtime::budget::records::{PermitRecord, ReleaseResult};
 
-use crate::job::error::JobError;
+use crate::jobs::domain::error::JobError;
 
 /// 端点在迁移任务中的角色。同一服务上整个 Job 周期占一个 reader/writer（§6.2）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

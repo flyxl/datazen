@@ -8,13 +8,11 @@
 //! * 幂等回执按 `(组织, 主体, 键)` 作用域：同一个键在另一个组织不是重放。
 use super::*;
 
-use datazen_platform_api::dto::job::{JobClaim, JobFilter, JobState};
-use datazen_platform_api::id::{
-    ClientInstanceId, IdempotencyKey, OrganizationId, PrincipalId, RequestId,
-};
-use datazen_platform_api::OwnerRef;
+use crate::jobs::domain::job::{JobClaim, JobFilter, JobState};
+use crate::shared::id::{ClientInstanceId, IdempotencyKey, OrganizationId, PrincipalId, RequestId};
+use crate::shared::OwnerRef;
 
-use crate::job::time::SharedClock;
+use crate::jobs::domain::time::SharedClock;
 
 fn organization_context(organization: &str) -> RequestContext {
     RequestContext::new(

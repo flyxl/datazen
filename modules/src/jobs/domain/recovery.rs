@@ -1,8 +1,8 @@
 //! Explicit, asynchronous recovery verification with freshly authorized resources.
 
-use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::dto::job::{JobRecoveryRequest, JobRecoveryVerification};
-use datazen_platform_api::error::PortError;
+use crate::jobs::domain::job::{JobRecoveryRequest, JobRecoveryVerification};
+use crate::shared::context::RequestContext;
+use crate::shared::error::PortError;
 
 /// Read-only verifier supplied by a domain adapter after it has established fresh access.
 /// The host persists its result but never dispatches the interrupted side-effecting job.

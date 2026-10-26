@@ -32,7 +32,7 @@ impl InMemoryJobRepository {
             Err(PortError::StaleClaim)
         }
     }
-    pub(in crate::job) fn validate_owner_claim(
+    pub(in crate::jobs) fn validate_owner_claim(
         &self,
         ctx: &RequestContext,
         claim: &JobClaim,

@@ -1,17 +1,17 @@
 //! Runtime extension implementation for the in-memory contract repository.
 
-use async_trait::async_trait;
-use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::dto::execution::EffectOutcome;
-use datazen_platform_api::dto::job::{
+use crate::execution::domain::EffectOutcome;
+use crate::jobs::domain::job::{
     Checkpoint, CommitBoundary, JobClaim, JobDetails, JobDomainResult, JobProgress, JobRecord,
     JobRecoveryResult, JobRecoveryVerification, JobState,
 };
-use datazen_platform_api::error::PortError;
-use datazen_platform_api::id::{ArtifactId, IdempotencyKey, JobId, JobStateVersion};
+use crate::shared::context::RequestContext;
+use crate::shared::error::PortError;
+use crate::shared::id::{ArtifactId, IdempotencyKey, JobId, JobStateVersion};
+use async_trait::async_trait;
 
-use crate::job::repository::{CancelPollSnapshot, InMemoryJobRepository};
-use crate::job::runtime_repository::JobRuntimeRepository;
+use crate::jobs::domain::runtime_repository::JobRuntimeRepository;
+use crate::jobs::engine::memory_repository::{CancelPollSnapshot, InMemoryJobRepository};
 
 #[async_trait]
 impl JobRuntimeRepository for InMemoryJobRepository {
@@ -19,7 +19,7 @@ impl JobRuntimeRepository for InMemoryJobRepository {
         &self,
         ctx: &RequestContext,
         claim: &JobClaim,
-        stage: &datazen_platform_api::id::StageId,
+        stage: &crate::shared::id::StageId,
     ) -> Result<(), PortError> {
         self.validate_owner_claim(ctx, claim, stage)
     }

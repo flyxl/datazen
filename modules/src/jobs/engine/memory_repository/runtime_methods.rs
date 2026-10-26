@@ -1,19 +1,19 @@
 use super::{lock_inner, scoped_idempotency_key, InMemoryJobRepository};
-use crate::job::runtime_repository::{safe_result_marker, validate_job_domain_result};
-use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::dto::execution::EffectOutcome;
-use datazen_platform_api::dto::job::{
+use crate::execution::domain::EffectOutcome;
+use crate::jobs::domain::job::{
     JobDetails, JobDomainResult, JobProgress, JobRecoveryResult, JobRecoveryTarget,
     JobRecoveryVerdict, JobRecoveryVerification, JobState,
 };
-use datazen_platform_api::error::PortError;
-use datazen_platform_api::id::{ArtifactId, IdempotencyKey, JobId, JobStateVersion};
+use crate::jobs::domain::runtime_repository::{safe_result_marker, validate_job_domain_result};
+use crate::shared::context::RequestContext;
+use crate::shared::error::PortError;
+use crate::shared::id::{ArtifactId, IdempotencyKey, JobId, JobStateVersion};
 
 impl InMemoryJobRepository {
     pub fn record_progress(
         &self,
         ctx: &RequestContext,
-        claim: &datazen_platform_api::dto::job::JobClaim,
+        claim: &crate::jobs::domain::job::JobClaim,
         progress: JobProgress,
     ) -> Result<(), PortError> {
         let mut inner = lock_inner(&self.inner)?;
@@ -30,7 +30,7 @@ impl InMemoryJobRepository {
     pub fn record_artifacts(
         &self,
         ctx: &RequestContext,
-        claim: &datazen_platform_api::dto::job::JobClaim,
+        claim: &crate::jobs::domain::job::JobClaim,
         artifacts: &[ArtifactId],
     ) -> Result<(), PortError> {
         let mut inner = lock_inner(&self.inner)?;
@@ -70,14 +70,14 @@ impl InMemoryJobRepository {
     pub fn finish(
         &self,
         ctx: &RequestContext,
-        claim: &datazen_platform_api::dto::job::JobClaim,
+        claim: &crate::jobs::domain::job::JobClaim,
         expected: JobStateVersion,
         state: JobState,
         outcome: EffectOutcome,
         progress: JobProgress,
         error_code: Option<String>,
         pending_reason: Option<String>,
-    ) -> Result<datazen_platform_api::dto::job::JobRecord, PortError> {
+    ) -> Result<crate::jobs::domain::job::JobRecord, PortError> {
         if !state.is_terminal() {
             return Err(PortError::BackendUnavailable(
                 "job finish requires a terminal state".into(),
@@ -139,7 +139,7 @@ impl InMemoryJobRepository {
     pub fn record_domain_result(
         &self,
         ctx: &RequestContext,
-        claim: &datazen_platform_api::dto::job::JobClaim,
+        claim: &crate::jobs::domain::job::JobClaim,
         result: JobDomainResult,
     ) -> Result<(), PortError> {
         validate_job_domain_result(&result)?;

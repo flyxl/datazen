@@ -2,16 +2,16 @@
 //! 仓储与 runtime 只消费 [`JobClock`]，测试用固定/可推进时钟，生产路径由组装层提供。
 //!
 //! 生产实现在这里**不再自己读系统时间**：[`SystemJobClock`] 只是平台契约
-//! [`datazen_platform_api::ports::Clock`] 的 `SystemClock` 在 job 侧的别名，
+//! [`crate::shared::clock::Clock`] 的 `SystemClock` 在 job 侧的别名，
 //! 因此「job 时间戳的形状」只有一处定义（契约层的定宽 RFC3339 毫秒 UTC）。
 //! 需要把任意 [`Clock`] 接进来的装配层用 [`PortJobClock`]。
 
 use std::sync::{Arc, Mutex};
 
-use datazen_platform_api::id::Timestamp;
-use datazen_platform_api::ports::{Clock, SystemClock};
+use crate::shared::clock::{Clock, SystemClock};
+use crate::shared::id::Timestamp;
 
-use crate::job::error::JobError;
+use crate::jobs::domain::error::JobError;
 
 /// 时间源。
 pub trait JobClock: Send + Sync + 'static {
@@ -110,7 +110,7 @@ mod tests {
 
     #[test]
     fn an_injected_port_clock_drives_the_job_clock() {
-        use datazen_platform_api::ports::FixedClock;
+        use crate::shared::clock::FixedClock;
 
         let fixed = FixedClock::at("2026-05-05T00:00:00.000Z");
         let clock = PortJobClock::new(fixed.clone());

@@ -13,23 +13,23 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use async_trait::async_trait;
-use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::dto::execution::EffectOutcome;
-use datazen_platform_api::dto::job::{
+use crate::execution::domain::EffectOutcome;
+use crate::jobs::domain::job::{
     Checkpoint, CommitBoundary, JobClaim, JobDefinition, JobDomainResult, JobFilter, JobRecord,
     JobRecoveryResult, JobRecoveryVerdict, JobState, RecoveryFilter, StageRecord,
 };
-use datazen_platform_api::error::PortError;
-use datazen_platform_api::id::{
+use crate::shared::context::RequestContext;
+use crate::shared::error::PortError;
+use crate::shared::id::{
     Counter, IdempotencyKey, JobId, JobStateVersion, OrganizationId, StageId, Timestamp, WorkerId,
 };
+use async_trait::async_trait;
 
-use crate::hash::fnv1a64_hex;
-use crate::job::error::JobError;
-use crate::job::plan::project_frozen_plan;
-use crate::job::time::{after_seconds, JobClock};
-use datazen_platform_api::ports::job::JobRepository;
+use crate::jobs::domain::error::JobError;
+use crate::jobs::domain::plan::project_frozen_plan;
+use crate::jobs::domain::repository::JobRepository;
+use crate::jobs::domain::time::{after_seconds, JobClock};
+use crate::shared::hash::fnv1a64_hex;
 
 mod owner_claims;
 mod runtime_methods;
@@ -498,7 +498,7 @@ impl JobRepository for InMemoryJobRepository {
         }
         let now = self.clock.now();
         let record = JobRecord {
-            view: datazen_platform_api::dto::job::JobView {
+            view: crate::jobs::domain::job::JobView {
                 job_id: definition.job_id.clone(),
                 kind: definition.kind.clone(),
                 state: JobState::Queued,
@@ -748,7 +748,7 @@ impl JobRepository for InMemoryJobRepository {
     ///
     /// `renew` 自身不属于上面任何一种：它只凭 claim 判定，不做组织比对。
     /// 端口契约的同一表述见
-    /// `datazen_platform_api::ports::job::JobRepository::renew`。
+    /// `crate::jobs::domain::repository::JobRepository::renew`。
     async fn renew(&self, claim: &JobClaim) -> Result<JobClaim, PortError> {
         let mut inner = lock_inner(&self.inner)?;
         let now = self.clock.now();

@@ -17,6 +17,11 @@ pub mod connection;
 #[cfg(feature = "execution")]
 pub mod execution;
 
+/// D5：Job 运行时（domain/application/engine 三分；仓储 trait 在 domain，
+/// 实现在宿主——§4.1 第 5 条）。
+#[cfg(feature = "jobs")]
+pub mod jobs;
+
 #[cfg(feature = "named_views")]
 pub mod named_views;
 

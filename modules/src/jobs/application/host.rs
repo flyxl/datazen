@@ -12,24 +12,24 @@
 use std::panic::AssertUnwindSafe;
 use std::sync::{Arc, Mutex};
 
-use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::dto::execution::EffectOutcome;
-use datazen_platform_api::dto::job::{JobClaim, JobDomainResult};
-use datazen_platform_api::dto::job::{
+use crate::execution::domain::EffectOutcome;
+use crate::jobs::domain::job::{JobClaim, JobDomainResult};
+use crate::jobs::domain::job::{
     JobDefinition, JobDetails, JobFilter, JobRecord, JobRecoveryRequest, JobRecoveryResult,
     JobRecoveryVerdict, JobRecoveryVerification, JobState, RecoveryFilter,
 };
-use datazen_platform_api::error::PortError;
-use datazen_platform_api::id::{IdempotencyKey, JobId, Timestamp, WorkerId};
+use crate::shared::context::RequestContext;
+use crate::shared::error::PortError;
+use crate::shared::id::{IdempotencyKey, JobId, Timestamp, WorkerId};
 use futures_util::FutureExt;
 
-use crate::budget::ledger::BudgetLedger;
-use crate::job::budget::EndpointRef;
-use crate::job::handler::{HandlerRegistry, JobHandler};
-use crate::job::recovery::JobRecoveryVerifier;
-use crate::job::runtime::{JobResult, JobRuntime};
-use crate::job::runtime_repository::JobRuntimeRepository;
-use crate::job::time::JobClock;
+use crate::execution::runtime::budget::ledger::BudgetLedger;
+use crate::jobs::application::handler::{HandlerRegistry, JobHandler};
+use crate::jobs::domain::budget::EndpointRef;
+use crate::jobs::domain::recovery::JobRecoveryVerifier;
+use crate::jobs::domain::runtime_repository::JobRuntimeRepository;
+use crate::jobs::domain::time::JobClock;
+use crate::jobs::engine::runtime::{JobResult, JobRuntime};
 
 /// Shared, transport-neutral API for host-side job adapters.
 pub struct JobHost {

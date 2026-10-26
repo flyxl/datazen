@@ -4,20 +4,20 @@
 //! needed while a handler is running (especially by the cancel watcher), or to persist
 //! the runtime's result projection. Persistent identifiers and DTOs only cross this API.
 
-use async_trait::async_trait;
-use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::dto::execution::EffectOutcome;
-use datazen_platform_api::dto::job::{
+use crate::execution::domain::EffectOutcome;
+use crate::jobs::domain::job::{
     Checkpoint, CommitBoundary, JobDetails, JobDomainResult, JobProgress, JobRecord,
     JobRecoveryResult, JobRecoveryVerification, JobState,
 };
-use datazen_platform_api::error::PortError;
-use datazen_platform_api::id::{IdempotencyKey, JobId, JobStateVersion};
+use crate::shared::context::RequestContext;
+use crate::shared::error::PortError;
+use crate::shared::id::{IdempotencyKey, JobId, JobStateVersion};
+use async_trait::async_trait;
 
-use crate::job::repository::CancelPollSnapshot;
-use datazen_platform_api::dto::job::JobClaim;
-use datazen_platform_api::id::ArtifactId;
-use datazen_platform_api::ports::job::JobRepository;
+use crate::jobs::domain::job::JobClaim;
+use crate::jobs::domain::repository::JobRepository;
+use crate::jobs::engine::memory_repository::CancelPollSnapshot;
+use crate::shared::id::ArtifactId;
 
 /// Operations consumed by `JobRuntime` and the desktop Job host.
 ///
@@ -30,7 +30,7 @@ pub trait JobRuntimeRepository: JobRepository {
         &self,
         _ctx: &RequestContext,
         _claim: &JobClaim,
-        _stage: &datazen_platform_api::id::StageId,
+        _stage: &crate::shared::id::StageId,
     ) -> Result<(), PortError> {
         Err(PortError::StaleClaim)
     }

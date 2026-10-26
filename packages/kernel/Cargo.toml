@@ -15,7 +15,7 @@ datazen-driver-api = { workspace = true }
 # ID newtype 与端口词汇的唯一来源。方向是 kernel → platform-api，与本包其余层一致。
 datazen-platform-api = { workspace = true }
 # D3：budget/driver_registry/sql_guard/hash 已迁入 modules；本包再导出保持旧路径。
-datazen-modules = { workspace = true, features = ["execution", "schema"] }
+datazen-modules = { workspace = true, features = ["execution", "schema", "jobs"] }
 chrono = { version = "0.4", default-features = false }
 indexmap = "2"
 serde = { version = "1", features = ["derive"] }

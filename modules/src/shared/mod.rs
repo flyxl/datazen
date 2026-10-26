@@ -12,6 +12,7 @@
 //! Moved here in D2 (2026-10-26) from `datazen-platform-api`, which now only
 //! re-exports the same types until its retirement in D8.
 
+pub mod clock;
 pub mod context;
 pub mod error;
 /// FNV-1a 64 位指纹：Job 内核与连接运行时共用的纯算法（§5.3）。

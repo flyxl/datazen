@@ -49,6 +49,16 @@ schema = ["dep:tokio", "dep:datazen-infra", "execution"]
 "table-browsing" = ["dep:serde_json", "schema"]
 # D4-d：表编辑写链路（依赖 schema 缓存 + execution 产物读取词汇）。
 "table-editing" = ["dep:async-trait", "dep:serde_json", "dep:uuid", "schema", "execution"]
+# D5：Job 运行时（domain/application/engine 三分；原 kernel::job 与
+# platform-api 的 Job/时钟/原生工具词汇）。依赖 execution 的预算账本。
+jobs = [
+    "dep:async-trait",
+    "dep:serde_json",
+    "dep:chrono",
+    "dep:tokio",
+    "dep:futures-util",
+    "execution",
+]
 # D1.5：AI Provider 契约与适配整体并入（原 datazen-ai-api → datazen-ai-providers）。
 # 单一 feature 承载 domain 契约 + providers 适配；若 D7 的 Web 形态需要拆分
 # （如仅契约不带 reqwest），届时再拆，不提前建空档。

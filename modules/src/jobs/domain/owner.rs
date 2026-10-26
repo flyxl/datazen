@@ -1,13 +1,11 @@
 //! Runtime-issued authority for Job handlers. This capability is minted
 //! only after JobRuntime acquires a fenced claim and is never serialized.
-use super::JobRuntimeRepository;
-use datazen_platform_api::error::ApiError;
-use datazen_platform_api::{
-    context::RequestContext,
-    dto::job::JobClaim,
-    id::{JobId, StageId},
-    ports::native_tool::NativeToolSelection,
-};
+use super::job::JobClaim;
+use super::native_tool::NativeToolSelection;
+use super::runtime_repository::JobRuntimeRepository;
+use crate::shared::context::RequestContext;
+use crate::shared::error::ApiError;
+use crate::shared::id::{JobId, StageId};
 use std::sync::Arc;
 
 #[derive(Clone)]

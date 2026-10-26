@@ -406,9 +406,11 @@ fn the_scan_covers_the_whole_kernel_crate() {
         "modules:src/execution/runtime/tunnel/form_neutrality.rs",
         "modules:src/execution/runtime/artifact/mod.rs",
         "modules:src/execution/runtime/connection/testing/fixtures.rs",
-        // 机制内核：留在 kernel 的 job/schema_cache 与本 crate 的机制都必须被扫
-        "kernel:src/job/host.rs",
+        // 机制内核（D5 起 job 全家与本 crate 的机制都在被扫范围内；
+        // schema_cache/ 时钟随 D4/D5 归位 modules）
         "modules:src/schema/cache.rs",
+        "modules:src/jobs/application/host.rs",
+        "modules:src/shared/clock.rs",
         "modules:src/execution/runtime/budget/quotas.rs",
         "modules:src/execution/domain/sql_guard/mod.rs",
         "modules:src/execution/runtime/driver_registry/registry.rs",
