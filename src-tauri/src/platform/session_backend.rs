@@ -96,9 +96,9 @@ pub struct DesktopSessionBackend {
     ///
     /// 建连时用它把连接侧的 `tunnelId` 解引用回内联配置（解引用发生在**建连时**，
     /// 不是打开表单时）。
-    tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
+    tunnels: Arc<dyn datazen_modules::tunnel::TunnelRepository>,
     /// SSH known-hosts 的存储端口（宿主注入）。
-    known_hosts: Arc<dyn datazen_platform_api::ports::known_hosts::KnownHostsRepository>,
+    known_hosts: Arc<dyn datazen_modules::tunnel::KnownHostsRepository>,
     /// 查询历史写入端口（D6 第一切片：仓储 trait 归
     /// `datazen-modules::history` 的 domain，桌面注入同一 `HistoryDb` 的适配器；
     /// 会话执行路径不再经 `DesktopRepository` 的领域门面）。
@@ -115,8 +115,8 @@ impl DesktopSessionBackend {
         registry: Arc<DriverRegistry>,
         store: Arc<DesktopRepository>,
         physical_limit: u32,
-        tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
-        known_hosts: Arc<dyn datazen_platform_api::ports::known_hosts::KnownHostsRepository>,
+        tunnels: Arc<dyn datazen_modules::tunnel::TunnelRepository>,
+        known_hosts: Arc<dyn datazen_modules::tunnel::KnownHostsRepository>,
         history: Arc<dyn datazen_modules::history::QueryHistoryRepository>,
     ) -> Self {
         Self::new_scoped(
@@ -139,8 +139,8 @@ impl DesktopSessionBackend {
         physical_limit: u32,
         organization: datazen_platform_api::id::OrganizationId,
         principal: datazen_platform_api::id::PrincipalId,
-        tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
-        known_hosts: Arc<dyn datazen_platform_api::ports::known_hosts::KnownHostsRepository>,
+        tunnels: Arc<dyn datazen_modules::tunnel::TunnelRepository>,
+        known_hosts: Arc<dyn datazen_modules::tunnel::KnownHostsRepository>,
         history: Arc<dyn datazen_modules::history::QueryHistoryRepository>,
     ) -> Self {
         Self {

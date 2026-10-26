@@ -1687,7 +1687,6 @@ dependencies = [
  "datazen-platform-api",
  "datazen-runtime",
  "datazen-schema-diff",
- "datazen-tunnel",
  "dirs 6.0.0",
  "flate2",
  "futures-util",
@@ -1747,6 +1746,7 @@ dependencies = [
  "async-trait",
  "datazen-driver-api",
  "datazen-feature-core",
+ "datazen-modules",
  "datazen-platform-api",
  "datazen-schema-diff",
  "proc-macro2",
@@ -2165,6 +2165,7 @@ dependencies = [
  "regex",
  "reqwest",
  "rusqlite",
+ "russh",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -2173,10 +2174,14 @@ dependencies = [
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
+ "tokio-rustls 0.26.4",
+ "tokio-tungstenite",
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "url",
  "uuid",
+ "webpki-roots 0.26.11",
  "wiremock",
  "zip 2.4.2",
 ]
@@ -2231,28 +2236,6 @@ dependencies = [
  "datazen-platform-api",
  "serde_json",
  "tokio",
-]
-
-[[package]]
-name = "datazen-tunnel"
-version = "0.0.1"
-dependencies = [
- "datazen-driver-api",
- "datazen-platform-api",
- "futures-util",
- "russh",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tokio-rustls 0.26.4",
- "tokio-tungstenite",
- "tokio-util",
- "tracing",
- "url",
- "uuid",
- "webpki-roots 0.26.11",
 ]
 
 [[package]]

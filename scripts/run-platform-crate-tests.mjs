@@ -203,10 +203,9 @@ export const FEATURE_TESTS = Object.freeze({
     'ai',
     'connection',
     'named_views',
-    // D6 Monitor's domain-only feature and the dashboard/application closure
-    // are both exercised; the latter is the real Desktop scheduler build.
     'monitor',
     'dashboard',
+    'tunnel',
   ]),
 });
 

@@ -40,7 +40,6 @@ pub(super) const SOURCE_FILES: &[(&str, &str)] = &[
         include_str!("../inventory/parser.rs"),
     ),
     ("job.rs", include_str!("../job.rs")),
-    ("known_hosts.rs", include_str!("../known_hosts.rs")),
     ("master_key.rs", include_str!("../master_key.rs")),
     (
         "migration_profile.rs",
@@ -60,7 +59,6 @@ pub(super) const SOURCE_FILES: &[(&str, &str)] = &[
         include_str!("../session_directory.rs"),
     ),
     ("token.rs", include_str!("../token.rs")),
-    ("tunnel.rs", include_str!("../tunnel.rs")),
 ];
 
 /// 端口模块头（`ports/mod.rs`）与 crate 头（`lib.rs`）。

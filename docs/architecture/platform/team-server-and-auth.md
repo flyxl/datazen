@@ -675,7 +675,7 @@ flowchart TD
 | 解析后校验 | 拒绝环回（除显式放行的执行节点本机）、link-local、云元数据地址、未授权私网段、节点自身管理地址 |
 | DNS rebinding | 校验通过后**固定已校验 IP**用于本次连接，连接期间不再重新解析 |
 | 重定向 | 首版禁用自动跟随；跨跳由显式二次请求触发完整校验 |
-| 隧道目标 | SSH 隧道（[`packages/tunnel/src/ssh.rs`](../../../packages/tunnel/src/ssh.rs) 的 `SshTunnel`）与代理隧道（`packages/tunnel/src/` 的 `HttpProxyTunnel`、`WebSocketTunnel`）的最终目标走同一校验；隧道端点本身是管理员配置的 `networkRouteRef`，不接受请求体提供 |
+| 隧道目标 | SSH 隧道（[`modules/src/tunnel/ssh.rs`](../../../modules/src/tunnel/ssh.rs) 的 `SshTunnel`）与代理隧道（`modules/src/tunnel/` 的 `HttpProxyTunnel`、`WebSocketTunnel`）的最终目标走同一校验；隧道端点本身是管理员配置的 `networkRouteRef`，不接受请求体提供 |
 | `localhost` 的含义 | `localhost` 指**执行节点自身**。这是明确约定而非绕过：私网可达性通过把执行节点部署在可达网络解决，而不是靠 SSRF 洞。是否允许字面 `localhost` 由组织级 `egressPolicy.loopback` 决定，默认 `deny` |
 | 工具与证书路径 | TLS 证书、私钥、备份/dump 工具二进制路径改为**配置引用或 artifact 引用**；不接受请求体路径；规范化后必须落在允许根目录内，拒绝符号链接逃逸 |
 | 失败表达 | 一律 `ApiError.code = PermissionDenied` + 审计事件，不回显被拒地址的内部结构 |
@@ -722,7 +722,7 @@ flowchart TB
 | --- | --- |
 | 管理数据库 | **PostgreSQL**（[概要 §6.4](system-overview.md#64-repositories-与环境-ports) 已给结论：管理组织、配置版本、任务、审计和额度，不与用户业务数据库混用），独立实例/独立库 |
 | TLS | 进程内 rustls 或前置代理终止；**同源 HTTPS**，浏览器只看到一个 origin（Wapp 静态资源除外） |
-| rustls 初始化 | 进程级 `CryptoProvider` 选择与 `packages/tunnel/src/crypto.rs` 同源（宿主 `src-tauri/src/tls.rs` 只是再导出与宿主接线守卫），但 server 独立初始化（不能依赖桌面 host 的入口） |
+| rustls 初始化 | 进程级 `CryptoProvider` 选择与 `modules/src/tunnel/crypto.rs` 同源（宿主 `src-tauri/src/tls.rs` 只是再导出与宿主接线守卫），但 server 独立初始化（不能依赖桌面 host 的入口） |
 | 资源额度 | 组织/用户/数据库三级 + 控制与 cluster 资源统计，进程内会计 |
 | 客户端一致性 | 同一用例经 IPC（桌面）与 HTTP（Web）运行，断言结果与错误语义一致（CI 门禁） |
 | 不承诺 | 会话无损故障转移、跨服务器原子事务、浏览器代理数据库流量、驱动后端直迁 |

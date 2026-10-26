@@ -304,6 +304,11 @@ AI 工具（egress 摘要 / db_tools / 连接上下文）与 MCP 的目录读取
 4. AI / MCP：Provider 契约与适配已在 D1.5 并入 `modules::ai`；本阶段迁入的是 feature-core 中 Provider-neutral 的业务（会话编排、工具循环、安全策略）与 MCP 业务分发；认证/stdio/HTTP 登录/事件传输在宿主，授权数据库工具走同一执行入口。
 5. Monitor、Export、Backup/Restore、Wapps、Tunnel：按各自模型迁移，保留 grant、文件安全、恢复锁、沙箱桥与网络限制。
 
+**Tunnel 已完成（2026-10-26）**：机制、TLS provider、TOFU 规则和
+`TunnelRepository` / `KnownHostsRepository` 已归位 `modules::tunnel`；Desktop
+存储与网络装配保留在宿主。旧 `datazen-tunnel` crate、platform-api 隧道端口和
+对应兼容路径已删除，66 个模块隧道测试与 Desktop lib 测试通过。
+
 每个功能的验收都包含取消/失败、宿主依赖缺失、当前协议兼容和一次用户旅程。最后移除 DesktopRepository 的领域业务方法；它若只剩装配与基础设施，改为用途明确的宿主对象或删除。
 
 **回滚**：每个功能单独 revert；不随重构变更用户数据布局。

@@ -17,9 +17,9 @@
 
 use async_trait::async_trait;
 use datazen_driver_api::{SavedTunnel, SavedTunnelSummary, TunnelUsage};
+use datazen_modules::tunnel::TunnelRepository;
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::ports::scope::OrganizationScope;
-use datazen_platform_api::ports::tunnel::TunnelRepository;
 
 use super::{DesktopRepository, DesktopRepositoryError};
 

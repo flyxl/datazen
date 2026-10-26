@@ -65,8 +65,9 @@ pub mod target;
 
 use std::sync::Arc;
 
-use datazen_platform_api::ports::known_hosts::KnownHostsRepository;
-use datazen_platform_api::ports::{MigrationProfileReader, TunnelRepository};
+use datazen_modules::tunnel::KnownHostsRepository;
+use datazen_modules::tunnel::TunnelRepository;
+use datazen_platform_api::ports::MigrationProfileReader;
 
 use datazen_feature_core::dashboard::repository::DashboardRepository;
 use datazen_feature_core::dashboard::runs::DashboardRunRepository;
@@ -93,7 +94,7 @@ pub struct ApplicationServices {
     pub tunnels: Arc<dyn TunnelRepository>,
     /// SSH known-hosts 的存储端口（组装层注入）。
     ///
-    /// 端口与词汇表住在 `datazen_platform_api::ports::known_hosts`；**文件 I/O** 是
+    /// 端口与词汇表住在 `datazen_modules::tunnel::domain`；**文件 I/O** 是
     /// 形态的事（桌面读 `{appData}/ssh_known_hosts.json`）。事实只有一份：本字段与
     /// 注给会话后端的是同一个实例。
     pub known_hosts: Arc<dyn KnownHostsRepository>,
@@ -420,8 +421,8 @@ mod tests {
     /// D1 收尾清理后的边界：设置用例已由 `datazen-modules::settings` 拥有，
     /// 宿主直接消费；本 crate 不再转发它，也不再持有它的仓储端口。
     ///
-    /// 后续阶段若按过渡模式（ddd-refactor/02 §5.5）重新引入对 modules 的依赖，
-    /// 必须显式改写本断言并在 hub/阶段文档里具名登记，而不是静默把这条边加回来。
+    /// Tunnel 领域端口已在 D6 归 `datazen-modules::tunnel` 唯一定义；因此本 crate
+    /// 可以有一个只启用 tunnel 的窄依赖，但不能借此把已迁出的 settings 用例带回来。
     #[test]
     fn the_crate_no_longer_forwards_the_settings_use_case() {
         let code = crate_root_code();
@@ -438,8 +439,12 @@ mod tests {
         }
         let manifest = include_str!("../Cargo.toml");
         assert!(
-            !manifest.contains("datazen-modules"),
-            "本 crate 不再依赖 datazen-modules：设置消费者已改由宿主直接引模块"
+            manifest.contains("datazen-modules = { workspace = true, features = [\"tunnel\"] }"),
+            "隧道端口必须直接来自 datazen-modules::tunnel"
+        );
+        assert!(
+            !manifest.contains("features = [\"settings\"]"),
+            "设置消费者已改由宿主直接引模块，本 crate 不得启用 settings feature"
         );
     }
 

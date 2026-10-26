@@ -180,7 +180,7 @@ flowchart TD
 | F-09 | ~~已退役（2026-10-26，D1.5）~~：`ai-api` 并入 `ai-providers` 后整体并入 `modules::ai`，主体不复存在；「AI 代码不得拖入 `tauri*` 或宿主」的约束由 F-14 对 `modules` 的断言继续承担 | 主体消失后规则空转，保留只会掩盖真正的边界 |
 | F-11 | `packages/infra` 的 normal + build 工作区依赖只允许自身；不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react`。改名与定位扩展见 §2.5.1 | 公共基础设施一旦依赖任一上层 crate 或平台传输，就从「垫底」退化成所有形态被迫共同链接的耦合中枢 |
 | F-12 | `packages/feature-core` 的 normal + build 依赖闭包不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react`，不依赖桌面宿主层；仅依赖共享 runtime/application/领域包、契约与 D1 功能模块兼容导出层 | Workflow、AI、Monitor、导出与 Workspace App 内核逻辑重新绑定桌面或服务端传输 |
-| F-13 | `packages/tunnel` 的 normal + build 依赖闭包不含任何 `tauri*` crate，且不含 `datazen` 宿主 crate | 隧道机制（HTTP `CONNECT` 代理 / WebSocket 中继 / SSH 转发）是形态中立件：一旦拖进 Tauri 或宿主 crate，桌面端与将来的 Web 端就无法共用同一份实现 |
+| F-13 | ~~已退役（2026-10-26，D6 Tunnel）~~：隧道机制已并入 `modules::tunnel`；其形态中立依赖由 F-14 的 modules 闭包统一检查 | 避免为 modules 内部 feature 保留一套与 modules 重复的 crate 级边界规则 |
 | F-14 | `modules` 的 normal + build 依赖闭包不含 src-tauri、`datazen-runtime`、`datazen-kernel`、`datazen-feature-core`、`datazen-platform-api`，也不含 `tauri*`、`axum`、`actix-web`、`warp`、`tonic`；`reqwest` 自 D1.5 起豁免——AI Provider 适配（出站 HTTP 客户端）随 ai feature 住在 `modules::ai::providers`，这是 2026-10-26 的用户决策，不是传输框架渗入 | 功能模块必须由自身 domain/application 契约承载，不能把桌面宿主、旧横向运行时或传输实现带回模块 crate |
 **F-01 的作用域同时覆盖两侧：manifest 声明边与解析闭包。** 上面"crate 依赖闭包"若按字面只理解为 `cargo metadata` 的 `resolve` 图，是**不够的**：那个图是 **feature-resolved 的**，只含当前 feature 解析下真正被链接的边。无人启用的 feature 背后的 optional 依赖根本不在 `resolve.nodes[].deps[]` 里，任何闭包遍历都看不见它。因此 F-01 也约束 `Cargo.toml` 的**声明边**——声明了、但当前 feature 解析不链接的边，同样算违反。两侧任一出现即违规。
 
@@ -296,9 +296,10 @@ export / backup）并列。根 `Cargo.toml` 的 `members` 相应移除 `packages
 
 > **尚未实现**：仓库 `vitest.config.ts` 的 `include` 通配与 `resolve.alias` 未覆盖 `packages/backend-client`（两者都在 CI 轨道的改动范围）。P1 的 40 条前端单测用临时 vitest 配置在本地跑通，合并后需把该包的测试纳入默认 `npx vitest run`。
 
-#### 2.5.2 形态中立隧道层 `packages/tunnel`（已实现）
+#### 2.5.2 形态中立隧道层 `modules/src/tunnel`（已实现）
 
-根 `Cargo.toml` 的 `members` 新增 `packages/tunnel`，crate 名 `datazen-tunnel`。这一层装的是**隧道机制本身**：
+根 `Cargo.toml` 的 `members` 新增 `modules`，crate 名 `datazen-modules`；`modules::tunnel`
+是其中的功能模块。这一层装的是**隧道机制本身**：
 HTTP `CONNECT` 代理隧道、WebSocket 中继隧道、SSH 转发隧道，以及它们依赖的 SSH known-hosts 存储与进程级
 rustls provider 选择。
 
@@ -306,12 +307,12 @@ rustls provider 选择。
 仍然留在宿主（它含 `resolve_tunnel_kind` / `start_for_connection` / `test_tunnel` 与形态相关的接线），
 `network_provider.rs` 里的 `DesktopTunnelHost` 仍是桌面形态专属。
 
-边界由 F-13 断言：normal + build 依赖闭包不含 `tauri*`、不含宿主 crate `datazen`。依赖方向是
-host → tunnel，与 F-13 禁止的 tunnel → host 相反；该层的单元测试由 `run-platform-crate-tests.mjs` 的
-`TESTED_LAYERS` 纳入 CI。
+边界由 F-14 断言：modules 的 normal + build 依赖闭包不含 `tauri*`、不含宿主 crate `datazen`。
+依赖方向是 host → modules，宿主装配不会反向进入模块；tunnel feature 的单元测试由
+`run-platform-crate-tests.mjs` 的 feature 矩阵纳入 CI。
 
 > **两处宿主符号随之改属**：① 进程级 rustls provider 的选择函数 `install_default_crypto_provider`
-> 原本住在 `src-tauri/src/tls.rs`，其**实现体**下移到 `packages/tunnel/src/crypto.rs`——因为 `https://`
+> 原本住在 `src-tauri/src/tls.rs`，其**实现体**下移到 `modules/src/tunnel/crypto.rs`——因为 `https://`
 > 代理腿与 `wss://` 中继腿都要建**自动探测**的 `ClientConfig`，这个决策不能留在宿主边界之后。宿主侧
 > `src-tauri/src/tls.rs` 保留模块文档、宿主接线守卫（`main()` 必须在解析 argv 前安装）与全部测试，并以
 > `pub use` 原样再导出该函数，因此 `datazen::install_default_crypto_provider()` 这条对外路径、调用时机与
@@ -322,8 +323,8 @@ host → tunnel，与 F-13 禁止的 tunnel → host 相反；该层的单元测
 > `host_key_id` / `verify_host_key` / `mismatch_error_message`）；读 `{appData}/ssh_known_hosts.json` 的实现
 > 在宿主（`src-tauri/src/platform/known_hosts.rs`），web 形态由服务端 host 实现（服务端存储目录 /
 > 组织级存储）。**共享包不再读本机文件。**
-> **端口本身已不在本层**（S5，2026-10-23）：`KnownHostsRepository` 与 `KnownHostEntry` 迁入
-> `packages/platform-api/src/ports/known_hosts.rs`，本层只 `pub use` 再导出，见 §4.3 那一条。
+> **端口本身由本领域拥有**（D6 Tunnel）：`KnownHostsRepository`、`KnownHostEntry` 与
+> `TunnelRepository` 位于 `modules/src/tunnel/domain/`；platform-api 不再声明或再导出这组端口。
 
 ### 2.6 待办：runtime 去重（超出 P1 交付范围）
 
@@ -489,7 +490,7 @@ pub enum PortError {
 
 ### 4.2 端口方法语义的对齐来源
 
-[概要 §6.4 repositories 与环境 ports](system-overview.md#64-repositories-与环境-ports) 已给出那组端口的**方法语义**（谁提供什么、什么不得序列化、什么禁止落盘）。本节的 Rust 签名是那张表的类型化结果：§6.4 表中的那些 + 本文新增的 `IdentityResolver`（§4.3 末）+ P2 新增的物理预算端口（§4.6）+ 隧道定义仓储 `TunnelRepository`（§4.3 末）——**确切条目见 `packages/platform-api/src/ports/inventory.rs` 的 `PORT_TRAITS`**（机器可读清单，由 `datazen-platform-api` 的单测核对它与源码里真实的 `pub trait` 声明、[概要 §6.4](system-overview.md#64-repositories-与环境-ports) 的端口表、`ports/mod.rs` 模块头的构成说明一致），因为本节的代码块并不逐条列出全部端口：§6.4 表里最后一行是 `BudgetCoordinator`，`IdentityResolver` 不在其中（名字已见于[连接 §9.6](connection-management.md#96-poolkey版本与缓存的生产者) 的 PoolKey 维度表中 `executionIdentityKey` 一行，但 §6.4 的端口表没有它）；它与 §6.4 的 `SecretProvider` 行还有一处职责再划分，见下方第三条。
+[概要 §6.4 repositories 与环境 ports](system-overview.md#64-repositories-与环境-ports) 已给出那组端口的**方法语义**（谁提供什么、什么不得序列化、什么禁止落盘）。本节的 Rust 签名是那张表的类型化结果：§6.4 表中的那些 + 本文新增的 `IdentityResolver`（§4.3 末）+ P2 新增的物理预算端口（§4.6）。隧道端口自 D6 由 `modules::tunnel::domain` 拥有，不再属于 platform-api 的 `PORT_TRAITS` 清单；其完整签名与测试以模块源码为准。platform-api 的清单仍由 `datazen-platform-api` 单测核对它与剩余 `src/ports/` trait、[概要 §6.4](system-overview.md#64-repositories-与环境-ports) 的端口表和 `ports/mod.rs` 模块头一致。本文的代码块不逐条列出全部端口；`IdentityResolver` 的职责再划分见下方第三条。
 
 - 签名**不得收窄** [§6.4](system-overview.md#64-repositories-与环境-ports) 列出的语义；该表没写的方法名以本文为准。
 - 端口之间允许协作（如 `ProfileRepository::disable` 后由 `PolicyService` 感知），但**不合并 trait**，以免实现方被迫实现不相关方法。
@@ -622,25 +623,13 @@ pub trait TunnelRepository: Send + Sync + 'static {
   由实现方负责。
 - **桌面实现**：`src-tauri/src/store/tunnels.rs` 的 `impl TunnelRepository for DesktopRepository`
   （全仓唯一的实现体），加密落盘 `{appData}/tunnels.json`，与连接密码同源的那把
-  AES-256-GCM 主密钥。实例在**组装期**创建一次（`bootstrap/app_state.rs`），既进
-  `AppState`，也注入会话后端（建连时解引用 `tunnelId`）。**没有进程级全局。**
+  AES-256-GCM 主密钥。实例在**组装期**创建一次（`bootstrap/app_state.rs`），注入
+  `ApplicationServices` 与会话后端（建连时解引用 `tunnelId`）。**没有进程级全局。**
 
-**`KnownHostsRepository`（SSH known-hosts 存储）**：`packages/platform-api/src/ports/known_hosts.rs`。
-能力只有两条：**读出全部条目 / 保存全部条目**。
-
-> **归属改过一次，这里记录为什么改。** 它原先住在 `packages/tunnel`（理由：词汇表跟着机制走、
-> 消费者只有一个、形状不同）。S5（2026-10-23）把它搬进 `platform-api`，因为那三条理由各自
-> 都站不住，而留在机制包里有一笔实打实的代价：
->
-> - **端口族不可清单化**：`ports/inventory.rs` 只收本包 `src/ports/` 下的 `pub trait`，住在
->   领域包里的端口既不进 `PORT_TRAITS` 也不进 §6.4 表，于是「有哪些端口、谁实现它」无法机器
->   核对（附录 A.5 的「无外部实现 12/24」也因此只覆盖本包）。这条代价是**可验证缺口**，
->   另两条只是措辞：`KnownHostEntry` 本来就是序列化友好的三个字符串（不依赖 `russh` 类型，
->   协议回调拿到的是 `PublicKey`，落盘的是这三列）；「消费者只有一个」恰恰是端口该住契约层的
->   理由——消费者会变，契约不该跟着变。
->
-> **搬走的是契约，不是实现**：文件 I/O 仍在宿主 `src-tauri/src/platform/known_hosts.rs`，
-> 机制包只 `pub use` 再导出。`packages/tunnel` 因此不再因为「要填一个端口」而被宿主依赖。
+**`KnownHostsRepository`（SSH known-hosts 存储）**：
+`modules/src/tunnel/domain/known_hosts.rs`。能力只有两条：**读出全部条目 / 保存全部条目**。
+其 `load` 失败降级为空集合、`save` 返回 `PortError` 的语义由领域端口拥有；文件 I/O 仍在
+宿主 `src-tauri/src/platform/known_hosts.rs`，并由 `ApplicationServices` 与会话后端共享同一实例。
 
 > **同一笔缺口在 P3 里被有意识地留着**（2026-10-23）：`NamedViewRepository`、
 > `DashboardRepository`、`DashboardRunRepository` 与 Schema Diff 的
@@ -1391,7 +1380,7 @@ F-07 是唯一不经过 `cargo metadata` 的规则：它的主体没有 `Cargo.t
 | F-09 · `packages/ai-providers` 闭包无 `tauri*`、无 `datazen` 宿主 crate | `RULES` 里的 `F-09` 条目 | `forbiddenLayers:['host']` + `forbiddenCrates:['tauri']` + `specSubsetOnly:true`（§2.4 行里多写的 `datazen` 由 host 层覆盖），与 F-02 同形态 | ✅ 已武装，实测 `ok F-09: datazen-ai-providers`（无真空） |
 | F-11 · `packages/platform-infra` 只依赖自身 | `RULES` 里的 `F-11` 条目 | 反向白名单 `allowedLayers:['platform-infra']`（垫底层不允许依赖任何其它层，新加一层当天即被禁）+ `forbiddenCrates:'spec'`，`specCrates` 与 F-08 同 | ✅ 已武装，实测 `ok F-11: datazen-platform-infra`（无真空） |
 | F-12 · `packages/feature-core` 不依赖桌面宿主层与传输框架 | `RULES` 里的 `F-12` 条目 | 反向白名单 `allowedLayers` 列出 11 个允许层（feature-core / runtime / application / platform-api / platform-infra / driver-api / ai-api / data-transfer / data-sync / schema-diff / migration-common）+ `forbiddenCrates:'spec'`，`specCrates` 同 F-08；宿主层由 `allowedLayers` 挡掉，故不把 `datazen` 当家族 | ✅ 已武装，实测 `ok F-12: datazen-feature-core`（无真空） |
-| F-13 · `packages/tunnel` 闭包无 `tauri*`、无 `datazen` 宿主 crate | `RULES` 里的 `F-13` 条目 | 同 F-02 形态：`forbiddenLayers:['host']` + `forbiddenCrates:['tauri']` + `specSubsetOnly:true`（§2.4 行里多写的 `datazen` 由 host 层覆盖） | ✅ 已武装，实测 `ok F-13: datazen-tunnel`（无真空） |
+| F-13 · 隧道独立 crate 边界 | ~~`RULES` 里的 F-13 条目~~ | D6 Tunnel 已并入 `modules::tunnel`，由 F-14 的 modules 闭包统一覆盖；旧 F-13 规则删除，避免重复门禁 | ✅ 已退役（2026-10-26） |
 
 仍然真空或刻意不判的部分（不要读成 pass）：
 

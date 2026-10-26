@@ -419,8 +419,8 @@ impl PlatformAdapter {
         &self,
         store: Arc<crate::store::DesktopRepository>,
         registry: Arc<datazen_runtime::driver_registry::DriverRegistry>,
-        tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
-        known_hosts: Arc<dyn datazen_platform_api::ports::known_hosts::KnownHostsRepository>,
+        tunnels: Arc<dyn datazen_modules::tunnel::TunnelRepository>,
+        known_hosts: Arc<dyn datazen_modules::tunnel::KnownHostsRepository>,
     ) -> Result<(), ApiError> {
         if self.services.get().is_some() {
             return Ok(());

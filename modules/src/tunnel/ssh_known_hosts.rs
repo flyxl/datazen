@@ -7,7 +7,7 @@
 //!
 //! 换句话说：**共享包不再读本机文件**。
 
-pub use datazen_platform_api::ports::known_hosts::KnownHostEntry;
+pub use super::domain::KnownHostEntry;
 use russh::keys::ssh_key::{HashAlg, PublicKey};
 
 /// 主机密钥判定结果（TOFU：首次使用即信任，之后必须一致）。

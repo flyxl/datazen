@@ -8,10 +8,10 @@
 
 use super::fixtures::*;
 use datazen_driver_api::{HttpProxyTunnelConfig, SavedTunnel, TunnelKind};
+use datazen_modules::tunnel::TunnelRepository;
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::OrganizationId;
 use datazen_platform_api::ports::scope::OrganizationScope;
-use datazen_platform_api::ports::tunnel::TunnelRepository;
 
 /// The desktop's own organization (an installation-level constant).
 fn local_scope() -> OrganizationScope {

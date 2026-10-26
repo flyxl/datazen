@@ -60,6 +60,6 @@ pub use ports::{
     DriverPoolBudgetPort, EventSink, ExecutionSettingsReader, ExecutionTargetResolver, FixedClock,
     IdentityResolver, JobRepository, MasterKeyProvider, MigrationProfileReader, MonitorGrantReader,
     NetworkProvider, OrganizationScope, PolicyService, ProfileReader, ProfileRepository,
-    SecretProvider, SessionDirectory, SubmissionTokenIssuer, SystemClock, TunnelRepository,
+    SecretProvider, SessionDirectory, SubmissionTokenIssuer, SystemClock,
 };
 pub use use_cases::ConnectionUseCases;

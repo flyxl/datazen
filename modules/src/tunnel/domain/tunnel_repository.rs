@@ -35,8 +35,8 @@
 use async_trait::async_trait;
 use datazen_driver_api::{SavedTunnel, SavedTunnelSummary, TunnelUsage};
 
-use crate::error::PortError;
-use crate::ports::scope::OrganizationScope;
+use crate::shared::error::PortError;
+use crate::shared::scope::OrganizationScope;
 
 /// 隧道定义的持久化端口。
 ///
@@ -81,7 +81,7 @@ pub trait TunnelRepository: Send + Sync + 'static {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::id::OrganizationId;
+    use crate::shared::id::OrganizationId;
 
     fn scope() -> OrganizationScope {
         OrganizationScope::new(OrganizationId::new("org-1"))

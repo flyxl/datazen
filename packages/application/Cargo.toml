@@ -12,6 +12,7 @@ test-harness = []
 
 [dependencies]
 datazen-platform-api = { workspace = true }
+datazen-modules = { workspace = true, features = ["tunnel"] }
 datazen-feature-core = { workspace = true }
 datazen-schema-diff = { workspace = true }
 async-trait = "0.1"

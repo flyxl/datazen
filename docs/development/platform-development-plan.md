@@ -201,40 +201,21 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
    第六步按命令族完成——命令不再从 `AppState` 取领域端口，而是从聚合取。
    容器：`SyncRepositoryPorts` 已随第三步改为聚合侧装配。
 
-**第五步——known-hosts 存储端口归位进 platform-api（已落地 2026-10-23）**
+**第五步——Tunnel 整体归位 `modules`（D6，2026-10-26）**
 
-搬走：`datazen_tunnel::KnownHostsRepository`（`packages/tunnel/src/known_hosts_repository.rs`）→
-`datazen_platform_api::ports::known_hosts::{KnownHostsRepository, KnownHostEntry}`。**改名部分已由 PR #102 完成**
-（`KnownHostsStore` → `KnownHostsRepository`），本步做的是**归位 + 错型替换 + 宿主态收敛**：
+隧道机制、SSH known-hosts 规则、TLS provider 和两个领域仓储端口整体迁入
+`modules::tunnel`：机制位于 `modules/src/tunnel/`，端口唯一位于
+`modules/src/tunnel/domain/`。Desktop 的加密落盘、known-hosts 文件 I/O 与
+`DesktopTunnelHost` 仍留在宿主；ApplicationServices、会话后端和测试直接使用
+`datazen_modules::tunnel`，不再经 platform-api 或独立 `datazen-tunnel` crate 转发。
 
-- **端口搬进契约包**：新文件 `packages/platform-api/src/ports/known_hosts.rs`（trait + 词汇 + 一个内存实现的自证用例）。
-  `packages/tunnel/src/known_hosts_repository.rs` 删除，`packages/tunnel/src/lib.rs` 改为 `pub use` 再导出，
-  因此 `datazen_tunnel::KnownHostsRepository` 这条路径**仍然可用但已降级为转发**，调用点按新路径逐个改正。
-- **错误类型统一**：`KnownHostsRepositoryError` 删除，改用 `PortError`（`save` 失败 → `PortError::BackendUnavailable`；
-  `load` 按契约**不失败**，读不到即空集合）。`packages/tunnel/src/ssh_known_hosts.rs` 与宿主
-  `src-tauri/src/platform/known_hosts.rs` 同步改型；**文件格式、字段名与两条 warn 文案一字未动**。
-- **四处登记**：`ports/inventory.rs` 的 `PORT_TRAITS`（24 → 25）、`ports/inventory/parser.rs` 的 `SOURCE_FILES`、
-  `ports/mod.rs` 模块头点名（含同步与 `load` 不失败两处形状差异）、本文 §5.1.2。
-- **端口实例归应用层**：`ApplicationServices` 增加第 6 个构造参数 `known_hosts: Arc<dyn KnownHostsRepository>`
-  与同名字段；`src-tauri/src/platform/adapter.rs::inject` 用注给会话后端的**同一个实例**构造聚合。
-- **宿主态收敛（本步的字段账）**：`AppState` 的 `known_hosts` 字段删除（构造期仍有局部变量交给 `inject`），
-  命令侧改经 `ApplicationServices::known_hosts`：`commands/tunnel.rs::test_tunnel_impl`、
-  `commands/connection.rs::test_connection_impl`、`commands/mcp.rs::clone_app_state`。字段数 **24 → 23**
-  （`app_state_shape_tests.rs` 的 `BASELINE_FIELD_COUNT` 同步）。
-- **新增守卫**（都在 `commands/app_state_shape_tests.rs`，与第三步的 `state.tunnels` 守卫同形）：
-  1. `the_known_hosts_repository_is_no_longer_reachable_from_the_host_state` —— 全 `src-tauri/src` 扫 `state.known_hosts`，0 命中；
-  2. `the_known_hosts_port_is_declared_in_platform_api_only` —— `packages/tunnel/src` 里不得再出现
-     `pub trait KnownHostsRepository`，且 `known_hosts_repository.rs` 不得回来；
-  3. `app_state_definition_has_no_status_store_fields` —— 定义体里既无 `pub tunnels` 也无 `pub known_hosts`；
-  4. `packages/application/src/lib.rs` 的端口断言表与构造签名表加入 `known_hosts`。
+本步删除旧 `packages/tunnel` workspace 成员及 platform-api 的隧道端口文件，更新模块
+feature 矩阵、边界门禁和架构链接。`TunnelRepository` 的摘要/全量分档、组织隔离，
+`KnownHostsRepository::load` 失败降级与 `save` 错误语义、文件格式和 TLS 初始化时机均保持不变。
 
-实测：`cargo test -p datazen-platform-api --lib` 257 passed（含端口清单三条交叉断言）、
-`cargo test -p datazen-tunnel` 27 passed、`cargo test -p datazen --lib` 见下方门禁、`cargo check -p datazen --all-targets` EXIT=0。
-
-风险（已发生并处理）：`packages/tunnel` 的公开 trait 换位置是**破坏性 API 变更**，必须一次迁完
-（含 `packages/tunnel/src/ssh.rs`、`src-tauri/src/tunnel/{mod,network_provider}.rs`、
-`src-tauri/src/platform/{adapter,session_backend,known_hosts}.rs` 与测试装置）。本机钥匙串 /
-`{appData}/ssh_known_hosts.json` 的文件 I/O 仍在宿主实现里，**不进**中立层。
+实测：`cargo test -p datazen-modules --no-default-features --features tunnel` 66 passed；
+`cargo test -p datazen --lib` 1477 passed、9 ignored；modules、platform-api、application
+与 Desktop `cargo check` 均通过。
 
 **第六步——`AppState.store` 的归位（按命令族分期；基线 145 处，本期开工时生产半边 104 处）**
 

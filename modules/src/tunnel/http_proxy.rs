@@ -179,7 +179,7 @@ where
     // in and no process default exists (tunnel-backend-BUG-004). Installing one
     // is idempotent, so this is safe on every connection and also covers library
     // and test embedders that never go through `main()`.
-    crate::install_default_crypto_provider();
+    super::install_default_crypto_provider();
 
     let roots = RootCertStore {
         roots: webpki_roots::TLS_SERVER_ROOTS.iter().cloned().collect(),

@@ -10,6 +10,8 @@
 use std::sync::{Arc, Mutex};
 
 use datazen_driver_api::{SavedTunnel, SavedTunnelSummary, TunnelUsage};
+use datazen_modules::tunnel::TunnelRepository;
+use datazen_modules::tunnel::{KnownHostEntry, KnownHostsRepository};
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::event::EventSequence;
 use datazen_platform_api::dto::execution::{ExecutionReceipt, ExecutionView};
@@ -20,9 +22,8 @@ use datazen_platform_api::dto::session::{
 };
 use datazen_platform_api::id::{ConnectionId, ExecutionId, StreamId};
 use datazen_platform_api::ports::event::EventSubscription;
-use datazen_platform_api::ports::known_hosts::{KnownHostEntry, KnownHostsRepository};
 use datazen_platform_api::ports::scope::OrganizationScope;
-use datazen_platform_api::ports::{MigrationProfileReader, TunnelRepository};
+use datazen_platform_api::ports::MigrationProfileReader;
 use datazen_platform_api::target::{TargetNamespaceShape, TargetRequirements};
 use datazen_platform_api::PortError;
 use datazen_schema_diff::{

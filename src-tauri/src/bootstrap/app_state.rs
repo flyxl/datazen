@@ -194,13 +194,13 @@ pub(crate) fn finish_app_state(
     // * `tunnels`：隧道定义的仓储。桌面实现就是存储层本身（`DesktopRepository` 实现了
     //   `TunnelRepository`：加密落盘 `{appData}/tunnels.json`）。
     // * `known_hosts`：SSH known-hosts 的存储。端口契约住在形态中立的
-    //   `packages/tunnel`，**文件 I/O** 留在宿主（桌面读
+    //   `modules/src/tunnel`，**文件 I/O** 留在宿主（桌面读
     //   `{appData}/ssh_known_hosts.json`）。
     //
     // 同一份实例既注入会话后端（建连时解引用 `tunnelId`、启动隧道），也进
     // `AppState`（命令侧取用）：整个进程只有一份，存储的生命周期由宿主决定。
-    let tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository> = store.clone();
-    let known_hosts: Arc<dyn datazen_platform_api::ports::known_hosts::KnownHostsRepository> =
+    let tunnels: Arc<dyn datazen_modules::tunnel::TunnelRepository> = store.clone();
+    let known_hosts: Arc<dyn datazen_modules::tunnel::KnownHostsRepository> =
         crate::platform::known_hosts::desktop_known_hosts_repository(&data_dir);
     // 平台装配必须**先于**依赖它的功能绑定：共享的元数据源要拿到 Runtime 门面
     // （解析会话归属）与执行宿主（profile / 驱动 / 命令执行），两者都出自装配。

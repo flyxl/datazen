@@ -10,9 +10,9 @@
 //! permitted`), so the tunnel tests need a *live* SSH endpoint to exercise the
 //! real `SshTunnel::start` path.
 //!
-//! The tunnel mechanisms now live in the shared crate `datazen-tunnel`, which
-//! keeps its own copy of the fixture for its own tests
-//! (`packages/tunnel/src/ssh.rs`, gated on `#[cfg(test)]`). This file is the
+//! The tunnel mechanisms now live in `datazen-modules::tunnel`, which keeps
+//! its own copy of the fixture for its own tests (`modules/src/tunnel/ssh.rs`,
+//! gated on `#[cfg(test)]`). This file is the
 //! host's copy, because the host's test suite drives the fixture across the
 //! crate boundary and Cargo cannot hand the host's lib-test target a
 //! differently-featured build of a crate the host also depends on normally:
@@ -304,8 +304,8 @@ mod tests {
         // The shared crate keeps its own copy for its own tests, and that copy
         // must stay behind `#[cfg(test)]` as well — no host-opened feature may
         // pull it into a production artifact.
-        let tunnel_ssh = std::fs::read_to_string(repo_root.join("packages/tunnel/src/ssh.rs"))
-            .expect("read packages/tunnel/src/ssh.rs");
+        let tunnel_ssh = std::fs::read_to_string(repo_root.join("modules/src/tunnel/ssh.rs"))
+            .expect("read modules/src/tunnel/ssh.rs");
         let fixture_mod = tunnel_ssh
             .find("mod test_fixture {")
             .expect("the shared crate keeps its own fixture module");

@@ -70,7 +70,7 @@
 
 /// The **decision** — which provider wins the process-wide rustls slot, and
 /// how the race against the updater's competing `ring` install is settled —
-/// lives in the shared `datazen-tunnel` crate (`datazen_tunnel::crypto`),
+/// lives in the shared `datazen-modules::tunnel` crate (`datazen_modules::tunnel::crypto`),
 /// because the TLS legs of the tunnel mechanisms (`https://` HTTP `CONNECT`
 /// proxy, `wss://` WebSocket relay) build an **auto-detecting**
 /// `ClientConfig`, and auto-detection panics when both provider features are
@@ -83,7 +83,7 @@
 ///
 /// The function is re-exported unchanged, so `datazen::install_default_crypto_provider()`
 /// — what `main()` calls — is the very same function the tunnel crate calls.
-pub use datazen_tunnel::install_default_crypto_provider;
+pub use datazen_modules::tunnel::install_default_crypto_provider;
 
 #[cfg(test)]
 mod tests {

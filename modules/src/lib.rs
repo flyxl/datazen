@@ -13,6 +13,10 @@ pub mod backup;
 #[cfg(feature = "wapps")]
 pub mod wapps;
 
+/// D6 item 5：隧道领域端口、known-hosts 规则与形态中立网络机制。
+#[cfg(feature = "tunnel")]
+pub mod tunnel;
+
 #[cfg(feature = "export")]
 pub mod export;
 

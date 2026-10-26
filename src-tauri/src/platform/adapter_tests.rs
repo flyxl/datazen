@@ -77,7 +77,7 @@ fn completing_step_seven_advances_the_machine_to_fully_wired() {
 #[tokio::test]
 async fn injection_wires_the_storage_ports_into_the_application_services() {
     use crate::store::{DesktopRepository, KeyBackend};
-    use datazen_platform_api::ports::tunnel::TunnelRepository;
+    use datazen_modules::tunnel::TunnelRepository;
 
     let temp = tempfile::tempdir().expect("临时目录");
     let store = Arc::new(
@@ -148,7 +148,7 @@ async fn injection_wires_the_storage_ports_into_the_application_services() {
 #[tokio::test]
 async fn optional_wiring_failure_degrades_only_its_own_capability() {
     use crate::store::{DesktopRepository, KeyBackend};
-    use datazen_platform_api::ports::tunnel::TunnelRepository;
+    use datazen_modules::tunnel::TunnelRepository;
 
     let temp = tempfile::tempdir().expect("临时目录");
     let store = Arc::new(

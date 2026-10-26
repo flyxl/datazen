@@ -187,6 +187,23 @@ data_transfer = [
     "schema",
     "execution",
 ]
+# D6 item 5：隧道配置/known-hosts 领域端口与形态中立的 SSH、HTTP CONNECT、WebSocket
+# 机制整体归位。网络出口与文件持久化仍由宿主注入；本 feature 不依赖 platform-api。
+tunnel = [
+    "dep:async-trait",
+    "dep:futures-util",
+    "dep:russh",
+    "dep:tokio",
+    "dep:tokio-rustls",
+    "dep:tokio-tungstenite",
+    "dep:tokio-util",
+    "dep:url",
+    "dep:webpki-roots",
+    "dep:tracing",
+    "dep:datazen-driver-api",
+    "dep:serde_json",
+    "dep:uuid",
+]
 # D5：迁移三件套的共享纯算法（原 migration-common crate 整体归位）。
 # 不依赖三件套或 execution（01 §4.2）；driver-api 提供分类学词汇。
 migration_common = ["dep:datazen-driver-api", "dep:serde_json"]
@@ -273,6 +290,11 @@ inventory = { version = "0.3", optional = true }
 tokio = { version = "1", features = ["rt", "sync", "time", "macros", "net", "fs", "io-util"], optional = true }
 tokio-util = { version = "0.7", features = ["rt"], optional = true }
 futures-util = { version = "0.3", optional = true }
+russh = { version = "0.60", optional = true }
+tokio-rustls = { version = "0.26", optional = true }
+tokio-tungstenite = { version = "0.26", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"], optional = true }
+url = { version = "2", optional = true }
+webpki-roots = { version = "0.26", optional = true }
 reqwest = { version = "0.13.3", default-features = false, features = ["rustls", "json", "stream", "cookies", "query", "form"], optional = true }
 tracing = { version = "0.1", optional = true }
 # ai feature：URL 脱敏等工具，来自垫底的 datazen-infra（drivers/modules/web/desktop 共用）
