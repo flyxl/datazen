@@ -18,9 +18,9 @@
 //! the implementation that owns the session) and answers the logical surface
 //! from the physical one.
 
-use crate::services::ports::{LogicalSchemaContextSource, PhysicalSchemaContextSource};
+use crate::schema::application::ports::{LogicalSchemaContextSource, PhysicalSchemaContextSource};
 use datazen_driver_api::{DatabaseDriver, TableInfo, TableSchema};
-use datazen_kernel::schema_cache::SchemaCache;
+use crate::schema::SchemaCache;
 use std::sync::Arc;
 
 /// Presents a physical metadata source through the logical port.
@@ -95,7 +95,7 @@ mod tests {
         mock_driver::{MockDriver, MockDriverOptions},
         ConnectionHandle, DatabaseDriver, TableInfo, TableType,
     };
-    use datazen_kernel::driver_registry::DriverRegistry;
+    use crate::execution::runtime::driver_registry::DriverRegistry;
 
     /// A physical source that owns a handle and a driver.
     struct PhysicalSource {

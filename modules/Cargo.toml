@@ -44,7 +44,7 @@ execution = [
     "settings",
 ]
 # D4：Schema 元数据缓存与 DDL 判定（依赖 execution 的 driver_registry）。
-schema = ["dep:tokio", "execution"]
+schema = ["dep:tokio", "dep:datazen-infra", "execution"]
 # D1.5：AI Provider 契约与适配整体并入（原 datazen-ai-api → datazen-ai-providers）。
 # 单一 feature 承载 domain 契约 + providers 适配；若 D7 的 Web 形态需要拆分
 # （如仅契约不带 reqwest），届时再拆，不提前建空档。

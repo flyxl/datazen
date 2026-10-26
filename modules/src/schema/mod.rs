@@ -6,6 +6,7 @@
 //! and the DDL-prefix classifier. Application services and the schema-scoped
 //! vocabulary follow in later D4 slices.
 
+pub mod application;
 /// 私有元数据缓存机制（列级/表级两层 + schema 世代号失效闸门）。
 pub mod cache;
 /// DDL 前缀判定（`sql_may_mutate_schema`）。

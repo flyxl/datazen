@@ -451,6 +451,21 @@ mod tests {
     }
 }
 
+impl From<datazen_modules::schema::SchemaError> for CommandError {
+    fn from(error: datazen_modules::schema::SchemaError) -> Self {
+        use datazen_modules::schema::SchemaError;
+        match error {
+            SchemaError::Validation(message) => Self::Validation(message),
+            SchemaError::NotFound(message) => Self::NotFound(message),
+            SchemaError::NotConfigured(message) => Self::NotConfigured(message),
+            SchemaError::Internal(message) => Self::Internal(message),
+            SchemaError::Driver(error) => Self::from(error),
+            SchemaError::Io(error) => Self::Io(error),
+            SchemaError::Json(error) => Self::Json(error),
+        }
+    }
+}
+
 impl From<datazen_feature_core::error::FeatureError> for CommandError {
     fn from(error: datazen_feature_core::error::FeatureError) -> Self {
         use datazen_feature_core::error::FeatureError;
