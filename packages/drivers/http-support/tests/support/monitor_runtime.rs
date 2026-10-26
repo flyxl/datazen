@@ -14,6 +14,7 @@ use datazen_platform_api::{
     ports::{policy::*, profile::*},
     RequestContext,
 };
+use datazen_runtime::driver_mapping as mapping;
 use datazen_runtime::{
     connection as rt,
     registry::{backend::*, SessionBackend},
@@ -22,8 +23,6 @@ use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc,
 };
-#[path = "../../../../../src-tauri/src/platform/resource_mapping.rs"]
-mod mapping;
 struct Profiles {
     revision: AtomicU64,
 }

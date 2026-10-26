@@ -27,6 +27,7 @@ pub use datazen_modules::execution::runtime::{
 // execution::application，不整块留在 runtime 目录）。这里按旧名再导出，
 // `datazen_runtime::application::…` 既有路径不变。
 pub use datazen_modules::execution::application::orchestration as application;
+pub mod driver_mapping;
 pub mod native_tool;
 
 /// 夹具门控开关的单一事实源。
