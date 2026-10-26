@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 use zip::ZipArchive;
 
-use crate::workspace_apps::manifest::{
+use crate::wapps::manifest::{
     allowed_wapp_file_ext, parse_manifest, validate_manifest, validate_wapp_dir, WappManifest,
     MAX_WAPP_FILES, MAX_WAPP_UNCOMPRESSED,
 };
@@ -110,8 +110,8 @@ fn finalize_staged_package(staging_root: &Path, wapps_dir: &Path) -> Result<Wapp
     let manifest_path = pack_root.join("manifest.json");
     let content =
         fs::read_to_string(&manifest_path).map_err(|e| format!("read manifest.json: {e}"))?;
-    let manifest = crate::workspace_apps::manifest::parse_manifest(&content)?;
-    crate::workspace_apps::manifest::validate_manifest(&manifest, &pack_root)?;
+    let manifest = crate::wapps::manifest::parse_manifest(&content)?;
+    crate::wapps::manifest::validate_manifest(&manifest, &pack_root)?;
 
     let dest = wapps_dir.join(&manifest.id);
     atomic_replace_dir(&dest, &pack_root)?;

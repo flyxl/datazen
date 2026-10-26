@@ -6,23 +6,22 @@
 //! product reasons. Reads the fixture relative to `CARGO_MANIFEST_DIR` so the
 //! check runs both locally and in CI without any setup.
 //!
-//! `CARGO_MANIFEST_DIR` is now `packages/feature-core/`, so the repo-root
-//! paths below are rebased one level deeper; `../wapps` is still the **JS**
-//! source package of runtime apps/themes (`packages/wapps/`), which is a
-//! different thing from this crate.
+//! `CARGO_MANIFEST_DIR` is now `modules/` (D6 item 5 切片 c 迁移，距 repo
+//! root 一级)；`../packages/wapps` 是 runtime apps/themes 的 **JS** 源包，
+//! 与本 crate 是两回事。
 
 use std::fs;
 use std::path::PathBuf;
 
-use crate::workspace_apps::install::install_from_dir;
-use crate::workspace_apps::manifest::{parse_manifest, validate_manifest, validate_wapp_dir};
-use crate::workspace_apps::WAPP_API_VERSION;
+use crate::wapps::install::install_from_dir;
+use crate::wapps::manifest::{parse_manifest, validate_manifest, validate_wapp_dir};
+use crate::wapps::WAPP_API_VERSION;
 
 fn sample_wapp_fixture() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../e2e/fixtures/sample-wapp")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../e2e/fixtures/sample-wapp")
 }
 
-fn load_fixture_manifest() -> (PathBuf, crate::workspace_apps::WappManifest) {
+fn load_fixture_manifest() -> (PathBuf, crate::wapps::WappManifest) {
     let dir = sample_wapp_fixture();
     let content = fs::read_to_string(dir.join("manifest.json"))
         .unwrap_or_else(|e| panic!("read fixture manifest.json: {e}"));
@@ -96,7 +95,7 @@ fn e2e_sample_wapp_fixture_installs_through_the_real_path() {
 
 /// Source tree for repo-bundled extension packages (`packages/wapps/`).
 fn wapps_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../wapps")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../packages/wapps")
 }
 
 /// Guards every shipped extension package against rot: each directory under

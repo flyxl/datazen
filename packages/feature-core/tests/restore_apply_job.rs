@@ -270,7 +270,7 @@ mod tests {
     }
 
     mod no_write_outcomes {
-        include!("restore_job_rejection_tests.rs");
+        include!("restore_apply/rejection_tests.rs");
     }
     #[tokio::test]
     async fn unknown_gateway_effects_stay_unknown() {

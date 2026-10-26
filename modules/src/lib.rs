@@ -10,6 +10,9 @@
 #[cfg(feature = "backup")]
 pub mod backup;
 
+#[cfg(feature = "wapps")]
+pub mod wapps;
+
 #[cfg(feature = "export")]
 pub mod export;
 

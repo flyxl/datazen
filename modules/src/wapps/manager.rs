@@ -1,4 +1,4 @@
-use crate::workspace_apps::{is_valid_wapp_id, validate_wapp_dir, WappManifest};
+use crate::wapps::{is_valid_wapp_id, validate_wapp_dir, WappManifest};
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};

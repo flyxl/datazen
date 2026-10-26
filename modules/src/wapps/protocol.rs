@@ -1,5 +1,5 @@
 //! Shared workspace-app URI grammar, access decisions and package asset routing.
-use crate::workspace_apps::{is_valid_wapp_id, manager::WappManager};
+use crate::wapps::{is_valid_wapp_id, manager::WappManager};
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 use std::fs;

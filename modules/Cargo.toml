@@ -22,6 +22,18 @@ backup = [
     "dep:datazen-driver-api",
     "export",
 ]
+# D6 item 5 切片 c：Workspace App 形态中立内核自 feature-core 归位
+# （manifest 模式与校验、ZIP/目录安装、按 wapp 隔离的键值存储、注册表、
+# URI 语法与路由判定）。zip-slip 防护沿用 infra::path_safety；regex 校验
+# wapp id 与清单字段；uuid 铸安装实例 id；tracing 记注册表告警。
+wapps = [
+    "dep:serde_json",
+    "dep:regex",
+    "dep:zip",
+    "dep:uuid",
+    "dep:tracing",
+    "dep:datazen-infra",
+]
 # D6 item 5 切片 a：表导出与文件产物作业（FileArtifactJob）自 feature-core
 # 归位。zip 承载多文件归档；SQL 只读校验沿用 execution::domain::sql_guard，
 # job 词汇来自 jobs；uuid 铸产物执行 id，chrono 已常驻。
