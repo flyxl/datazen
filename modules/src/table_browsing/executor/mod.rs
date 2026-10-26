@@ -4,12 +4,12 @@
 //! validated filter list into statements and hands the refusals back to the
 //! caller.
 
+use crate::schema::SchemaCache;
 use datazen_driver_api::keyset::{CursorValue, KeysetUnavailableReason, PagingMode};
 use datazen_driver_api::{
     ColumnSchema, ConnectionHandle, CountStrategy, DatabaseDriver, DriverError,
     LegacyCatalogReader, LegacySqlDialect, SqlDialect, SqlTarget, TableDataResult, Value,
 };
-use crate::schema::SchemaCache;
 use std::sync::Arc;
 
 use crate::table_browsing::browsing;

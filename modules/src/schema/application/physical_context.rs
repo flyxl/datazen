@@ -19,8 +19,8 @@
 //! from the physical one.
 
 use crate::schema::application::ports::{LogicalSchemaContextSource, PhysicalSchemaContextSource};
-use datazen_driver_api::{DatabaseDriver, TableInfo, TableSchema};
 use crate::schema::SchemaCache;
+use datazen_driver_api::{DatabaseDriver, TableInfo, TableSchema};
 use std::sync::Arc;
 
 /// Presents a physical metadata source through the logical port.
@@ -91,11 +91,11 @@ impl LogicalSchemaContextSource for PhysicalSchemaContextAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::execution::runtime::driver_registry::DriverRegistry;
     use datazen_driver_api::{
         mock_driver::{MockDriver, MockDriverOptions},
         ConnectionHandle, DatabaseDriver, TableInfo, TableType,
     };
-    use crate::execution::runtime::driver_registry::DriverRegistry;
 
     /// A physical source that owns a handle and a driver.
     struct PhysicalSource {

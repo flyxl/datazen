@@ -80,10 +80,7 @@ mod default_order_sources {
     #[test]
     fn pk_source_disagreement_is_reported() {
         let columns = vec![make_column("col_a", false)];
-        assert!(browsing::pk_sources_disagree(
-            &columns,
-            &["id".to_string()]
-        ));
+        assert!(browsing::pk_sources_disagree(&columns, &["id".to_string()]));
         assert!(!browsing::pk_sources_disagree(&columns, &[]));
         let flagged = vec![make_column("id", true)];
         assert!(!browsing::pk_sources_disagree(
