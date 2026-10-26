@@ -32,13 +32,17 @@ use datazen_runtime::{
     connection as rt,
     registry::{audit::CapabilityVersions, backend::*, SessionBackend},
 };
-/// The test fake answers the consumer-defined lookup with the real facade:
-/// the trait is local to this crate, so the implementor lives here and the
-/// production half never names the runtime facade type.
-impl SessionConnectionLookup for RuntimeConnectionUseCases {
+/// The test fake answers the consumer-defined lookup with the real facade.
+///
+/// D6 item 4 收尾：`SessionConnectionLookup` 的唯一定义随实现迁入
+/// modules::ai::application，外部 trait 与外部类型不能再直接 impl（孤儿
+/// 规则），所以这里用本地包装转发——与下方 `RuntimeChunks` 同一模式，
+/// 生产半边（宿主装配）同样只依赖端口，不点名门面类型。
+struct RuntimeLookup(Arc<RuntimeConnectionUseCases>);
+impl SessionConnectionLookup for RuntimeLookup {
     fn connection_id_for_session(&self, session_id: &str) -> Option<String> {
         RuntimeConnectionUseCases::connection_id_for_session(
-            self,
+            &self.0,
             &rt::DbSessionId::new(session_id),
         )
         .map(|connection| connection.as_str().to_owned())
@@ -494,7 +498,7 @@ fn schema_payload() -> serde_json::Value {
 async fn get_session_refuses_to_hand_out_a_physical_handle() {
     let fixture = runtime_with(tables_payload());
     let source = RuntimeSchemaContextSource::new(
-        fixture.runtime.clone(),
+        Arc::new(RuntimeLookup(fixture.runtime.clone())),
         Arc::new(FakeHost::new(fixture.runtime.clone())),
     );
     let error = expect_error(
@@ -511,7 +515,7 @@ async fn get_session_refuses_to_hand_out_a_physical_handle() {
 async fn an_unknown_session_has_no_connection_owner() {
     let fixture = runtime_with(tables_payload());
     let source = RuntimeSchemaContextSource::new(
-        fixture.runtime.clone(),
+        Arc::new(RuntimeLookup(fixture.runtime.clone())),
         Arc::new(FakeHost::new(fixture.runtime.clone())),
     );
     let error = expect_error(
@@ -526,7 +530,10 @@ async fn an_unknown_session_has_no_connection_owner() {
 async fn the_session_is_mapped_to_its_owning_connection() {
     let fixture = runtime_with(tables_payload());
     let host = Arc::new(FakeHost::new(fixture.runtime.clone()));
-    let source = RuntimeSchemaContextSource::new(fixture.runtime.clone(), host.clone());
+    let source = RuntimeSchemaContextSource::new(
+        Arc::new(RuntimeLookup(fixture.runtime.clone())),
+        host.clone(),
+    );
     let session = open_session(&fixture.runtime).await;
 
     let driver = source
@@ -547,7 +554,7 @@ async fn the_session_schema_comes_from_the_connection_profile() {
     let session = open_session(&fixture.runtime).await;
 
     let with_schema = RuntimeSchemaContextSource::new(
-        fixture.runtime.clone(),
+        Arc::new(RuntimeLookup(fixture.runtime.clone())),
         Arc::new(FakeHost::new(fixture.runtime.clone()).with_schema(Some("public"))),
     );
     assert_eq!(
@@ -556,7 +563,7 @@ async fn the_session_schema_comes_from_the_connection_profile() {
     );
 
     let without_schema = RuntimeSchemaContextSource::new(
-        fixture.runtime.clone(),
+        Arc::new(RuntimeLookup(fixture.runtime.clone())),
         Arc::new(FakeHost::new(fixture.runtime.clone()).with_schema(None)),
     );
     assert_eq!(without_schema.session_schema(&session).await, None);
@@ -568,7 +575,7 @@ async fn a_missing_or_disabled_profile_is_reported_as_unavailable() {
     let session = open_session(&fixture.runtime).await;
 
     let missing = RuntimeSchemaContextSource::new(
-        fixture.runtime.clone(),
+        Arc::new(RuntimeLookup(fixture.runtime.clone())),
         Arc::new(FakeHost::new(fixture.runtime.clone()).without_profile()),
     );
     assert_eq!(
@@ -580,7 +587,7 @@ async fn a_missing_or_disabled_profile_is_reported_as_unavailable() {
     );
 
     let disabled = RuntimeSchemaContextSource::new(
-        fixture.runtime.clone(),
+        Arc::new(RuntimeLookup(fixture.runtime.clone())),
         Arc::new(FakeHost::new(fixture.runtime.clone()).disabled()),
     );
     assert_eq!(
@@ -598,7 +605,7 @@ async fn an_unavailable_driver_keeps_the_host_wording() {
     let fixture = runtime_with(tables_payload());
     let session = open_session(&fixture.runtime).await;
     let source = RuntimeSchemaContextSource::new(
-        fixture.runtime.clone(),
+        Arc::new(RuntimeLookup(fixture.runtime.clone())),
         Arc::new(FakeHost::new(fixture.runtime.clone()).without_driver()),
     );
     assert_eq!(
@@ -615,7 +622,7 @@ async fn tables_are_read_through_the_shared_execution_gateway() {
     let fixture = runtime_with(tables_payload());
     let session = open_session(&fixture.runtime).await;
     let source = RuntimeSchemaContextSource::new(
-        fixture.runtime.clone(),
+        Arc::new(RuntimeLookup(fixture.runtime.clone())),
         Arc::new(FakeHost::new(fixture.runtime.clone())),
     );
 
@@ -634,7 +641,7 @@ async fn a_table_schema_is_read_through_the_shared_execution_gateway() {
     let fixture = runtime_with(schema_payload());
     let session = open_session(&fixture.runtime).await;
     let source = RuntimeSchemaContextSource::new(
-        fixture.runtime.clone(),
+        Arc::new(RuntimeLookup(fixture.runtime.clone())),
         Arc::new(FakeHost::new(fixture.runtime.clone())),
     );
 
@@ -653,7 +660,7 @@ async fn a_malformed_table_schema_fails_with_the_payload_error() {
     let fixture = runtime_with(json!({ "schema": "not-a-schema" }));
     let session = open_session(&fixture.runtime).await;
     let source = RuntimeSchemaContextSource::new(
-        fixture.runtime.clone(),
+        Arc::new(RuntimeLookup(fixture.runtime.clone())),
         Arc::new(FakeHost::new(fixture.runtime.clone())),
     );
 

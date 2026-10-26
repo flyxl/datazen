@@ -1,11 +1,14 @@
 //! Runtime-backed metadata source: session identity plus independent metadata reads.
+//!
+//! D6 item 4 收尾自 feature-core `services::schema_context` 归位（唯一定义在
+//! 此；行为用例留在 feature-core 垫片层——它们持有 datazen-runtime 的
+//! dev-dep，与 D5 data_sync 垫片保留集成测试同一先例）。
 
-use crate::services::ports::{
-    LogicalSchemaContextSource, PhysicalSchemaContextSource, SessionConnectionLookup,
-};
-use crate::workflow::command::WorkflowCommandStep;
-use crate::workflow::error::WorkflowError;
-use crate::workflow::resource_execution::{self, ResourceExecutionHost};
+use super::ports::SessionConnectionLookup;
+use crate::schema::application::ports::{LogicalSchemaContextSource, PhysicalSchemaContextSource};
+use crate::workflow::application::resource_execution::{self, ResourceExecutionHost};
+use crate::workflow::domain::command::WorkflowCommandStep;
+use crate::workflow::domain::error::WorkflowError;
 use datazen_driver_api::{
     ConnectionConfig, ConnectionHandle, DatabaseDriver, TableInfo, TableSchema,
 };

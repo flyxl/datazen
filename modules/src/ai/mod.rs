@@ -14,8 +14,12 @@
 //!   the shared [`providers::http`] client, and the
 //!   [`providers::registry::AiProviderRegistry`];
 //! - [`application`]: the provider-neutral business — prompt resolution and
-//!   response text handling (slice 3, 2026-10-26); chat orchestration, tool
-//!   loop and session ownership migrate in the following slices.
+//!   response text handling (slice 3, 2026-10-26); chat orchestration
+//!   (chat_request / sql_generation / single_turn / filter / schema_doc /
+//!   schema_pipeline / context), the tool loop (tools / tool_loop / db_tools
+//!   + the DatabaseToolHost port), the cancellation registry, session
+//!   ownership grants and the runtime-backed schema context source
+//!   (item 4 closeout, 2026-10-26);
 //!
 //! Hosts provide persistence and directories; this module has no dependency
 //! on Tauri or any host.

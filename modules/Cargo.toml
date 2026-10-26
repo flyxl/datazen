@@ -150,6 +150,11 @@ jobs = [
 # D1.5：AI Provider 契约与适配整体并入（原 datazen-ai-api → datazen-ai-providers）。
 # 单一 feature 承载 domain 契约 + providers 适配；若 D7 的 Web 形态需要拆分
 # （如仅契约不带 reqwest），届时再拆，不提前建空档。
+# D6 item 4 收尾：会话编排/工具循环/安全策略（chat_request、tool_loop、tools、
+# cancel、ownership、single_turn 家族、schema 上下文管道）自 feature-core 归位
+# application 层。新增依赖：mcp（db_tools 的 SQL 分级与白名单判据）、
+# workflow（schema_context 经 ResourceExecutionHost 走共享执行网关；
+# workflow 已传递 execution/schema/table-editing）、uuid（请求 id 铸造）。
 ai = [
     "dep:async-trait",
     "dep:serde_json",
@@ -163,8 +168,11 @@ ai = [
     "dep:tracing",
     "dep:datazen-infra",
     "dep:datazen-driver-api",
+    "dep:uuid",
     "settings",
     "connection",
+    "mcp",
+    "workflow",
 ]
 
 # D6 item 4 切片一：MCP 业务规则（权限模式/连接白名单/表描述格式化）。

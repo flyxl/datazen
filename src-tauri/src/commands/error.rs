@@ -507,6 +507,26 @@ impl From<datazen_feature_core::error::FeatureError> for CommandError {
     }
 }
 
+// D6 item 4 收尾：AI 用例（chat_request/single_turn/filter/schema_doc/
+// tool_loop 等）自 feature-core 归位 modules::ai::application 后，函数签名
+// 携 AiUseCaseError；同桶映射保证与旧 From<FeatureError> 路径相同的 IPC
+// 文案与失败类别。
+impl From<datazen_modules::ai::application::AiUseCaseError> for CommandError {
+    fn from(error: datazen_modules::ai::application::AiUseCaseError) -> Self {
+        use datazen_modules::ai::application::AiUseCaseError;
+        match error {
+            AiUseCaseError::Ai(error) => Self::Ai(error),
+            AiUseCaseError::Validation(message) => Self::Validation(message),
+            AiUseCaseError::NotFound(message) => Self::NotFound(message),
+            AiUseCaseError::NotConfigured(message) => Self::NotConfigured(message),
+            AiUseCaseError::Internal(message) => Self::Internal(message),
+            AiUseCaseError::Driver(error) => Self::from(error),
+            AiUseCaseError::Io(error) => Self::Io(error),
+            AiUseCaseError::Json(error) => Self::Json(error),
+        }
+    }
+}
+
 /// Map a named-view rejection onto the IPC envelope.
 ///
 /// The two rule failures keep their `grid.view.*` prefix, and the prefix is

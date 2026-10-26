@@ -1,4 +1,4 @@
-use datazen_driver_api::{ConnectionConfig, ConnectionHandle, DatabaseDriver};
+use datazen_driver_api::{ConnectionHandle, DatabaseDriver};
 
 // D4-b（2026-10-26）：schema 元数据端口迁入 datazen-modules::schema::application，
 // 这里再导出保持 `services::ports::*` 既有路径不变。
@@ -6,32 +6,17 @@ pub use datazen_modules::schema::application::ports::{
     LogicalSchemaContextSource, PhysicalSchemaContextSource,
 };
 // D4-d：ArtifactChunkReader 迁入 table_editing（其消费者），这里再导出保旧路径。
-use datazen_modules::settings::ExecutionSettings;
 pub use datazen_modules::table_editing::ports::ArtifactChunkReader;
+// D6 item 4 收尾：AI 消费者端口（DatabaseToolHost / SessionConnectionLookup）
+// 迁入 modules::ai::application::ports（其消费者），这里再导出保旧路径；
+// Arc 前转实现随端口唯一定义在模块内（孤儿规则）。
+pub use datazen_modules::ai::application::ports::{DatabaseToolHost, SessionConnectionLookup};
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::artifact::BackupOutput;
 use datazen_platform_api::dto::session::SessionHandle;
 use datazen_platform_api::error::ApiError;
 use datazen_platform_api::target::ExecutionTarget;
 use std::sync::Arc;
-#[async_trait::async_trait]
-pub trait DatabaseToolHost: Send + Sync {
-    async fn get_session_config(&self, session_id: &str) -> Result<ConnectionConfig, String>;
-    async fn profile_config(&self, id: &str) -> Result<ConnectionConfig, String> {
-        self.get_session_config(id).await
-    }
-    async fn driver_for_connection(&self, id: &str) -> Result<Arc<dyn DatabaseDriver>, String>;
-    async fn execute_target(
-        &self,
-        id: &str,
-        command: &str,
-        input: serde_json::Value,
-    ) -> Result<datazen_driver_api::CommandResult, String> {
-        let _ = (id, command, input);
-        Err("DatabaseToolHost does not support target execution".into())
-    }
-    async fn execution_settings(&self) -> ExecutionSettings;
-}
 /// Why a live session could not be bound for a foreign-key navigation probe.
 ///
 /// This is not a navigation rule failure: the `grid.fk.*` codes cover the
@@ -84,46 +69,6 @@ pub struct FkSessionBinding {
 pub trait ForeignKeyNavigationSource: Send + Sync {
     /// Bind the live session behind `db_session_id`.
     async fn bind_session(&self, db_session_id: &str) -> Result<FkSessionBinding, FkSessionError>;
-}
-
-#[async_trait::async_trait]
-impl<T: DatabaseToolHost + ?Sized> DatabaseToolHost for Arc<T> {
-    async fn get_session_config(&self, id: &str) -> Result<ConnectionConfig, String> {
-        (**self).get_session_config(id).await
-    }
-    async fn profile_config(&self, id: &str) -> Result<ConnectionConfig, String> {
-        (**self).profile_config(id).await
-    }
-    async fn driver_for_connection(&self, id: &str) -> Result<Arc<dyn DatabaseDriver>, String> {
-        (**self).driver_for_connection(id).await
-    }
-    async fn execute_target(
-        &self,
-        id: &str,
-        command: &str,
-        input: serde_json::Value,
-    ) -> Result<datazen_driver_api::CommandResult, String> {
-        (**self).execute_target(id, command, input).await
-    }
-    async fn execution_settings(&self) -> ExecutionSettings {
-        (**self).execution_settings().await
-    }
-}
-/// Session-to-connection identity offered by the form that owns the sessions.
-///
-/// This is a *consumer-defined* port: the shared layer only knows the question
-/// ("which connection owns this runtime session?"), and the host that owns the
-/// Runtime facade answers it. Defining the trait here — instead of naming
-/// `datazen_runtime::application::RuntimeConnectionUseCases` — keeps the shared
-/// feature layer free of the runtime application facade, whose use-case surface
-/// is already available through [`ConnectionUseCases`](datazen_platform_api::use_cases::ConnectionUseCases).
-///
-/// It is deliberately synchronous and session-id based: metadata reads resolve
-/// identity before any await point and never hold a handle across one.
-pub trait SessionConnectionLookup: Send + Sync {
-    /// The connection that owns `session_id`, or `None` when the session is
-    /// unknown, closed, or no longer attached to its directory entry.
-    fn connection_id_for_session(&self, session_id: &str) -> Option<String>;
 }
 
 /// 备份输出绑定（消费者定义端口）。

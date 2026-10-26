@@ -88,3 +88,22 @@ impl From<datazen_modules::table_editing::TableEditingError> for FeatureError {
         }
     }
 }
+
+// D6 item 4 收尾：AI 用例错误自 feature-core::ai 归位 modules::ai::application
+// 后，旧路径的函数签名改携 AiUseCaseError；同桶映射保证同一失败在传输层
+// 的文案与类别不变。
+impl From<datazen_modules::ai::application::AiUseCaseError> for FeatureError {
+    fn from(error: datazen_modules::ai::application::AiUseCaseError) -> Self {
+        use datazen_modules::ai::application::AiUseCaseError;
+        match error {
+            AiUseCaseError::Ai(error) => Self::Ai(error),
+            AiUseCaseError::Validation(message) => Self::Validation(message),
+            AiUseCaseError::NotFound(message) => Self::NotFound(message),
+            AiUseCaseError::NotConfigured(message) => Self::NotConfigured(message),
+            AiUseCaseError::Internal(message) => Self::Internal(message),
+            AiUseCaseError::Driver(error) => Self::Driver(error),
+            AiUseCaseError::Io(error) => Self::Io(error),
+            AiUseCaseError::Json(error) => Self::Json(error),
+        }
+    }
+}
