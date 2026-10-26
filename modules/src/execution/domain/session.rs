@@ -117,10 +117,7 @@ mod tests {
 
     #[test]
     fn session_handle_round_trips_with_camel_case_keys() {
-        let handle = SessionHandle::new(
-            DbSessionId::new("sess-1"),
-            RuntimeEpoch::new("epoch-1"),
-        );
+        let handle = SessionHandle::new(DbSessionId::new("sess-1"), RuntimeEpoch::new("epoch-1"));
         let value = serde_json::to_value(&handle).expect("serialize");
         assert_eq!(value["dbSessionId"], json!("sess-1"));
         assert_eq!(value["runtimeEpoch"], json!("epoch-1"));

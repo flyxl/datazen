@@ -1,8 +1,8 @@
 //! Anthropic (Claude) AI provider — delegates to `protocol::anthropic`.
 
 use crate::ai::http::HttpClient;
-use async_trait::async_trait;
 use crate::ai::*;
+use async_trait::async_trait;
 use tokio::sync::{mpsc, RwLock};
 
 use super::protocol::{self, ProtocolConfig};

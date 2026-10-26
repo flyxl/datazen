@@ -422,10 +422,7 @@ mod tests {
     #[test]
     fn the_reader_declares_no_write_path() {
         let source = code_only(include_str!("profile.rs"));
-        let production = source
-            .split("#[cfg(test)]")
-            .next()
-            .unwrap_or_default();
+        let production = source.split("#[cfg(test)]").next().unwrap_or_default();
         let declaration = production
             .split("pub trait ProfileReader")
             .nth(1)
@@ -457,10 +454,7 @@ mod tests {
         // 没有另起一份同义形状。
         let source = code_only(include_str!("profile.rs"));
         // 只扫生产代码：`#[cfg(test)]` 之后是测试自身，避免自引用误计。
-        let production = source
-            .split("#[cfg(test)]")
-            .next()
-            .unwrap_or_default();
+        let production = source.split("#[cfg(test)]").next().unwrap_or_default();
         assert!(production.contains("use super::target::NamespaceTarget;"));
         assert_eq!(
             production.matches("pub struct ProfileScope").count(),

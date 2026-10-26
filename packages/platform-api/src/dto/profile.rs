@@ -12,15 +12,13 @@
 //! 留在本文件的是会话/执行事件信封（`ConnectionEvent` / `ResultChunkEvent`）
 //! 与回执别名：它们是 execution 侧词汇，随 D3 迁移。
 
-pub use datazen_modules::execution::application::{ConnectionEvent, ResultChunkEvent};
 use crate::id::{DbSessionId, ExecutionId, StageId, StreamId, Timestamp};
 use crate::target::ExecutionTarget;
+pub use datazen_modules::execution::application::{ConnectionEvent, ResultChunkEvent};
 
 // Profile 词汇：唯一定义在 datazen-modules::connection（D2）。
 pub use datazen_modules::connection::application::ProfileView;
-pub use datazen_modules::connection::domain::{
-    ProfileDraft, ProfileDraftPatch, ProfilePatch,
-};
+pub use datazen_modules::connection::domain::{ProfileDraft, ProfileDraftPatch, ProfilePatch};
 
 /// 创建会话的回执（附件令牌仅发给原 owner）。
 pub type ProfileOpenSessionReceipt = crate::dto::session::OpenSessionReceipt;
@@ -54,11 +52,7 @@ mod tests {
     fn re_exported_profile_view_is_the_modules_type() {
         // 编译期保证：再导出与 modules 定义是同一个类型，不是两份形状。
         const _: fn(ProfileView) -> datazen_modules::connection::ProfileView = |view| view;
-        let view = ProfileView::new(
-            crate::id::ConnectionId::new("conn-1"),
-            "prod",
-            "postgres",
-        );
+        let view = ProfileView::new(crate::id::ConnectionId::new("conn-1"), "prod", "postgres");
         let json = serde_json::to_string(&view).expect("serialize");
         assert!(json.contains("conn-1"));
     }

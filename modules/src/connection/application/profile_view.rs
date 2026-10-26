@@ -267,9 +267,7 @@ mod tests {
     fn profile_view_helpers_are_reachable_without_mutating_callers() {
         let view = ProfileView::new(ConnectionId::new("conn-1"), "prod", "postgres")
             .with_config_revision(Counter::new(1))
-            .with_initial_namespace(
-                crate::connection::domain::NamespaceTarget::database("app"),
-            )
+            .with_initial_namespace(crate::connection::domain::NamespaceTarget::database("app"))
             .with_public_option("sslMode", json!("require"))
             .with_credential_configured()
             .with_enabled(false);

@@ -113,10 +113,7 @@ mod tests {
         // 清单必须有序（字母序）。
         let mut sorted = PORT_TRAITS.to_vec();
         sorted.sort_unstable();
-        assert_eq!(
-            sorted, PORT_TRAITS,
-            "清单必须按 trait 名字字母序维护"
-        );
+        assert_eq!(sorted, PORT_TRAITS, "清单必须按 trait 名字字母序维护");
 
         // 清单里每个名字都有事实源：声明或再导出。
         let missing: Vec<&&str> = PORT_TRAITS

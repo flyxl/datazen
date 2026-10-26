@@ -166,7 +166,6 @@ macro_rules! version_id {
     };
 }
 
-
 /// 64 位计数器。JSON 编码为**十进制字符串**（CM-01）：
 /// JavaScript 的 `number` 超过 2^53 会丢精度，计数器必须原样穿过前端。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]

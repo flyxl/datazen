@@ -121,7 +121,10 @@ pub struct NamedViewService {
 }
 
 impl NamedViewService {
-    pub fn new(repository: Arc<dyn NamedViewRepository>, minter: Arc<dyn NamedViewIdMinter>) -> Self {
+    pub fn new(
+        repository: Arc<dyn NamedViewRepository>,
+        minter: Arc<dyn NamedViewIdMinter>,
+    ) -> Self {
         Self { repository, minter }
     }
 

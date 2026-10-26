@@ -161,10 +161,21 @@ AI 工具（egress 摘要 / db_tools / 连接上下文）与 MCP 的目录读取
   `IdempotentOperation`/`SubmissionToken`（idempotency.rs）。
 - platform-api `dto/{session,execution,event,artifact,requests,idempotency}`
   与 `target.rs` 执行侧改为再导出垫片；全部旧 import 路径不变。
-- 待后续切片：执行端口（session_directory/execution_settings/
-  execution_target/identity/token/event/artifact）、会话 actor/lease/队列/
-  等待/回收/预算账本/driver registry 机制、`RuntimeConnectionUseCases` 三分
-  与旧 facade 委托、桌面关停接入。
+**第二切片已完成（2026-10-26）——执行端口归位**：
+- `execution::domain`：`SessionDirectory`（含 `SessionOwner`/替换/失效/关闭
+  词汇与 owner 匹配自由函数）、`ArtifactRepository`（含
+  `ArtifactSpec`/`ArtifactWriter`/`ChunkPayload`/`ByteRange`/导出/吊销与
+  `ARTIFACT_BYTE_QUOTA`、`provenance_fingerprint`）；
+  规范化目标 `CanonicalNamespace(Id)`/`CanonicalTarget` 亦自 platform-api
+  target.rs 归位 `execution::domain::target`（执行身份词汇）。
+- `execution::application`：`ExecutionSettingsReader`（读 settings 模块的
+  ExecutionSettings）、`ExecutionTargetResolver`、`IdentityResolver`、
+  `SubmissionTokenIssuer`、`EventSink`。
+- platform-api 对应七个 ports 文件改再导出垫片；驱动能力元数据
+  （TargetNamespaceShape/CaseRules/TargetRequirements）留守 target.rs 随
+  机制迁移。
+- 待后续切片：会话 actor/lease/队列/等待/回收/预算账本/driver registry
+  机制、`RuntimeConnectionUseCases` 三分与旧 facade 委托、桌面关停接入。
 
 **工作**：
 

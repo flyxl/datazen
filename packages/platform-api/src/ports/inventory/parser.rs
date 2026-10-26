@@ -543,10 +543,7 @@ pub(super) fn modules_reexported_names() -> Vec<String> {
         while let Some(offset) = code[cursor..].find("pub use datazen_modules::") {
             let start = cursor + offset;
             cursor = start + "pub use datazen_modules::".len();
-            let tail: String = code[cursor..]
-                .chars()
-                .take_while(|c| *c != ';')
-                .collect();
+            let tail: String = code[cursor..].chars().take_while(|c| *c != ';').collect();
             cursor += tail.chars().count();
             if let Some(brace) = tail.find('{') {
                 // `::{A, B, C}` 形态：逐项取导出名（`X as Y` 取 Y）。
@@ -559,8 +556,7 @@ pub(super) fn modules_reexported_names() -> Vec<String> {
                         Some((_, alias)) => alias.trim(),
                         None => item,
                     };
-                    let name: String =
-                        exported.chars().take_while(|c| is_ident_char(*c)).collect();
+                    let name: String = exported.chars().take_while(|c| is_ident_char(*c)).collect();
                     if !name.is_empty() {
                         names.push(name);
                     }

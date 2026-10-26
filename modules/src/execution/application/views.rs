@@ -13,14 +13,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::execution::domain::target::ExecutionTarget;
 use crate::execution::domain::{
-    CancelDisposition, EffectOutcome, ExecutionErrorCode, ExecutionState, ResourceRelease,
-    ResultCompleteness, ResultProvenance, SessionContext, SessionHandle, SessionState,
-    StatementResultSource, AttachmentState,
+    AttachmentState, CancelDisposition, EffectOutcome, ExecutionErrorCode, ExecutionState,
+    ResourceRelease, ResultCompleteness, ResultProvenance, SessionContext, SessionHandle,
+    SessionState, StatementResultSource,
 };
 use crate::shared::context::OwnerRef;
 use crate::shared::id::{
-    ArtifactId, ConnectionId, Counter, DbSessionId, ExecutionId, ResourceId, StreamId, Timestamp,
-    AttachmentToken,
+    ArtifactId, AttachmentToken, ConnectionId, Counter, DbSessionId, ExecutionId, ResourceId,
+    StreamId, Timestamp,
 };
 
 /// 会话视图：客户端可见的会话全貌。`activeExecutionId` 在执行中指向唯一执行
@@ -162,8 +162,9 @@ pub struct ResultChunk {
 
 /// 备份输出的**接收回调**：runtime 在每次推进备份时调用它，回调把字节写进
 /// 调用方自己的暂存文件（原 platform-api `dto/artifact.rs`，D3 随视图家族迁入）。
-pub type BackupOutput =
-    std::sync::Arc<dyn Fn(serde_json::Value) -> Result<(), crate::shared::error::ApiError> + Send + Sync>;
+pub type BackupOutput = std::sync::Arc<
+    dyn Fn(serde_json::Value) -> Result<(), crate::shared::error::ApiError> + Send + Sync,
+>;
 
 #[cfg(test)]
 mod tests {
@@ -434,7 +435,8 @@ mod tests {
 
     #[test]
     fn an_unknown_cancel_outcome_surfaces_as_non_terminal_state() {
-        let resolved = ExecutionState::CancelRequested.resolve_cancel(CancelOutcome::OutcomeUnknown);
+        let resolved =
+            ExecutionState::CancelRequested.resolve_cancel(CancelOutcome::OutcomeUnknown);
         let view = ExecutionView {
             state: resolved,
             effect_outcome: EffectOutcome::Unknown,

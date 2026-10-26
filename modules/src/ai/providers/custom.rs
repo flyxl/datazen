@@ -5,8 +5,8 @@
 use std::time::Duration;
 
 use crate::ai::http::HttpClient;
-use async_trait::async_trait;
 use crate::ai::*;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, RwLock};
 

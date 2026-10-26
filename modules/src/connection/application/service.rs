@@ -306,10 +306,8 @@ mod tests {
             ordered_ids: Vec<String>,
         ) -> Result<(), ConnectionRepositoryError> {
             let mut connections = self.connections.lock().unwrap();
-            let mut by_id: std::collections::HashMap<String, ConnectionConfig> = connections
-                .drain(..)
-                .map(|c| (c.id.clone(), c))
-                .collect();
+            let mut by_id: std::collections::HashMap<String, ConnectionConfig> =
+                connections.drain(..).map(|c| (c.id.clone(), c)).collect();
             for id in &ordered_ids {
                 if let Some(c) = by_id.remove(id) {
                     connections.push(c);
@@ -442,7 +440,10 @@ mod tests {
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].password, None);
         assert_eq!(
-            listed[0].ssh_tunnel.as_ref().and_then(|s| s.password.clone()),
+            listed[0]
+                .ssh_tunnel
+                .as_ref()
+                .and_then(|s| s.password.clone()),
             None
         );
         // The stored copy keeps the real secrets for the connect path.

@@ -147,7 +147,7 @@ mod tests {
     use super::*;
     use crate::connection::domain::NamespaceTarget;
     use crate::execution::domain::{
-        ExecutionTarget, SessionContext, TransactionState, ContextConfidence, WritableMapping,
+        ContextConfidence, ExecutionTarget, SessionContext, TransactionState, WritableMapping,
     };
     use crate::shared::id::ConnectionId;
     use serde_json::json;

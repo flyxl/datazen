@@ -25,7 +25,7 @@ named_views = [
 ]
 # D3：执行域词汇与应用边界 DTO。依赖 connection 的 NamespaceTarget（§4.2：
 # execution 使用 connection 的执行配置读取契约）。
-execution = ["dep:serde_json", "connection"]
+execution = ["dep:async-trait", "dep:serde_json", "connection", "settings"]
 # D1.5：AI Provider 契约与适配整体并入（原 datazen-ai-api → datazen-ai-providers）。
 # 单一 feature 承载 domain 契约 + providers 适配；若 D7 的 Web 形态需要拆分
 # （如仅契约不带 reqwest），届时再拆，不提前建空档。

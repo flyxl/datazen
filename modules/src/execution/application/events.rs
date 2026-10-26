@@ -86,13 +86,9 @@ pub struct ResultChunkEvent {
 )]
 pub enum ConnectionEvent {
     /// 会话变化（状态、上下文、attachment）。
-    SessionChanged {
-        session: SessionView,
-    },
+    SessionChanged { session: SessionView },
     /// 执行状态变化。
-    ExecutionChanged {
-        execution: ExecutionView,
-    },
+    ExecutionChanged { execution: ExecutionView },
     /// 结果块到达。
     ResultChunk(ResultChunkEvent),
     /// 流已失效，客户端必须重新订阅；**不得**据此推断执行未发生。

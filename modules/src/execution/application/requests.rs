@@ -19,11 +19,11 @@
 //!   在 Rust 侧退化为「字段不可为空字符串」，见 [`validate_namespace_target`]。
 //! * 目标规范化（别名合并、driver 规范化、操作级要求）不在本模块，见 `platform_api::target`。
 
-use crate::shared::context::OwnerRef;
-use crate::execution::domain::{SessionHandle, SessionState};
-use crate::shared::id::{AttachmentToken, ConnectionId, Counter, IdempotencyKey, RuntimeEpoch};
 use crate::connection::domain::NamespaceTarget;
 use crate::execution::domain::ExecutionTarget;
+use crate::execution::domain::{SessionHandle, SessionState};
+use crate::shared::context::OwnerRef;
+use crate::shared::id::{AttachmentToken, ConnectionId, Counter, IdempotencyKey, RuntimeEpoch};
 
 use crate::shared::error::{ApiError, ApiErrorCode};
 
@@ -412,12 +412,12 @@ pub fn ensure_session_executable(state: SessionState) -> Result<(), ApiError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::connection::domain::TargetNamespaceLayer;
     use crate::shared::context::{OwnerRef, RequestContext};
     use crate::shared::id::{
         AuthenticationSessionId, ClientInstanceId, DbSessionId, DelegationId, EditorSessionId,
         OrganizationId, PrincipalId, RequestId,
     };
-    use crate::connection::domain::TargetNamespaceLayer;
     use std::collections::BTreeMap;
 
     fn code_only(source: &str) -> String {

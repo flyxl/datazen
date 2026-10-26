@@ -8,13 +8,19 @@
 //! namespace vocabulary — never on application, hosts, or the legacy crates.
 
 pub mod artifact;
+pub mod artifact_repository;
 pub mod execution;
 pub mod session;
+pub mod session_directory;
 pub mod target;
 
 pub use artifact::{
     AbortReason, ArtifactChunk, ArtifactLifecycle, ArtifactMetadata, ArtifactProvenance,
     ArtifactSummary,
+};
+pub use artifact_repository::{
+    provenance_fingerprint, ArtifactRepository, ArtifactSpec, ArtifactWriter, ByteRange,
+    ChunkIndex, ChunkPayload, ExportReceipt, ExportSink, RevokeReason, ARTIFACT_BYTE_QUOTA,
 };
 pub use execution::{
     CancelOutcome, CapabilitySnapshot, EffectOutcome, ExecutionErrorCode, ExecutionState,
@@ -24,7 +30,14 @@ pub use session::{
     AttachmentState, CancelDisposition, ContextConfidence, ResourceRelease, SessionContext,
     SessionHandle, SessionState, TransactionState,
 };
-pub use target::{ExecutionTarget, ObjectTarget};
+pub use session_directory::{
+    has_active_execution, owner_matches_client, owner_matches_job, CloseDisposition,
+    InvalidationReason, ReplacementCommit, ReplacementOperation, ReplacementOutcome,
+    SessionDirectory, SessionOwner,
+};
+pub use target::{
+    CanonicalNamespace, CanonicalNamespaceId, CanonicalTarget, ExecutionTarget, ObjectTarget,
+};
 
 /// 执行侧拥有的 shared ID（§5.1：唯一定义在 `shared::id`，领域再导出同一类型）。
 pub use crate::shared::id::{DbSessionId, ExecutionId, ResourceId, RuntimeEpoch, StreamId};

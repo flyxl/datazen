@@ -7,7 +7,7 @@
 
 ## 全局状态
 
-- 当前阶段：**D3 进行中（第一切片：execution 词汇归位 modules::execution 已完成）**；D2 完成 + D6 item 1（named_views）完成；下一步 D3 第二切片：执行端口迁移（session_directory/execution_settings/execution_target/identity/token/event/artifact）。
+- 当前阶段：**D3 进行中（第一切片词汇 + 第二切片端口均已归位 modules::execution）**；D2 完成 + D6 item 1（named_views）完成；下一步 D3 第三切片：执行机制迁移（runtime 的 connection/registry/gateway/resource/directory → execution::runtime）与 RuntimeConnectionUseCases 三分。
 - 阶段与 PR 粒度：计划按 **D0–D8 九个阶段**推进（无 "wave" 概念，wave 仅是 coordinator 的
   并行批次术语）；每阶段可拆多个小 PR，每 PR 必须可构建、有真实消费者和测试。预估全程
   ~15–25 个 PR（D5 三件套各一个、D6 每功能族单独交付）。
@@ -55,7 +55,8 @@
 | `a15b228ba` | D2 第一切片：`datazen-modules::connection`（domain/application + 7 用例测试）；桌面 `DesktopConnectionStore`；删除 platform-api `ConnectionCatalog` 与 feature-core 重复 trait；`ApplicationServices` 去 connections；连接/分组/导入导出/schema diff/AI/MCP 消费者全部收口到模块服务 |
 | `731c3b2d1` | D2 第二切片前半：platform-api 的 id/context/error（含全部单测）迁入 `modules::shared`（常驻，无 feature 门）；platform-api 原路径改再导出垫片 |
 | `d740a3624` | D2 第二切片后半：Profile/namespace 词汇归位 `modules::connection`（domain::profile 双端口 + domain::target + application::profile_view 投影）；platform-api ports/dto/target 垫片化；PORT_TRAITS 口径扩展（声明或再导出）；4 个 to_view 调用点改 from_record；connection 模块转目录结构（domain/{catalog,profile,target}、application/{service,profile_view}） |
-| 本次 | D3 第一切片：`modules::execution` 建立（feature 依赖 connection）。domain 四文件（session/execution/target/artifact：句柄、状态机含 resolve_cancel 终态规则、能力快照、来源、ExecutionTarget+ObjectTarget、产物家族）；application 四文件（views/requests/events/idempotency：视图、回执、请求、事件信封、提交令牌）。platform-api dto 六文件 + target.rs 执行侧垫片化；测试随迁（modules 112 / platform-api 195） |
+| `3d1da4df7` | D3 第一切片：`modules::execution` 建立（feature 依赖 connection）。domain 四文件（session/execution/target/artifact：句柄、状态机含 resolve_cancel 终态规则、能力快照、来源、ExecutionTarget+ObjectTarget、产物家族）；application 四文件（views/requests/events/idempotency：视图、回执、请求、事件信封、提交令牌）。platform-api dto 六文件 + target.rs 执行侧垫片化；测试随迁（modules 112 / platform-api 195） |
+| 本次 | D3 第二切片：七个执行端口归位——domain：SessionDirectory、ArtifactRepository（含 ChunkPayload/ByteRange/导出/吊销/配额与指纹函数）+ CanonicalTarget 家族；application：ExecutionSettingsReader/ExecutionTargetResolver/IdentityResolver/SubmissionTokenIssuer/EventSink。platform-api ports 七垫片；include_str 自检测试改指新文件名；modules 167 / platform-api 145 / runtime 517 全绿 |
 
 ## 会话恢复要点
 

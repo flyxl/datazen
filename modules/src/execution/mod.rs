@@ -12,17 +12,27 @@ pub mod domain;
 
 pub use application::{
     ArchivedEnvelope, BackupOutput, CancelReceipt, CloseReceipt, ConnectionEvent,
-    ConnectionEventEnvelope, ContextChangeReceipt, EventEnvelope, EventSequence,
-    ExecutionReceipt, ExecutionView, IdempotentOperation, OpenSessionReceipt, ResultChunk,
-    ResultChunkEvent, RuntimeResultBinding, SessionView, SubmissionToken,
+    ConnectionEventEnvelope, ContextChangeReceipt, EventEnvelope, EventSequence, ExecutionReceipt,
+    ExecutionView, IdempotentOperation, OpenSessionReceipt, ResultChunk, ResultChunkEvent,
+    RuntimeResultBinding, SessionView, SubmissionToken,
+};
+pub use application::{
+    EventSink, EventSubscription, ExecutionIdentity, ExecutionPolicy, ExecutionSettingsReader,
+    ExecutionTargetResolver, IdentityResolver, SubmissionPresentation, SubmissionTokenIssuer,
+    TargetResolution, VerifiedSubmission,
 };
 pub use domain::{
+    has_active_execution, owner_matches_client, owner_matches_job, provenance_fingerprint,
     AbortReason, ArtifactChunk, ArtifactLifecycle, ArtifactMetadata, ArtifactProvenance,
-    ArtifactSummary, AttachmentState, CancelDisposition, CancelOutcome, CapabilitySnapshot,
-    ContextConfidence, DbSessionId, EffectOutcome, ExecutionErrorCode, ExecutionId,
-    ExecutionState, ExecutionTarget, ObjectTarget, ResourceId, ResourceRelease, ResultCompleteness,
-    ResultProvenance, RuntimeEpoch, SessionContext, SessionHandle, SessionState, StatementResultSource,
-    StreamId, TransactionState, WritableMapping,
+    ArtifactRepository, ArtifactSpec, ArtifactSummary, ArtifactWriter, AttachmentState, ByteRange,
+    CancelDisposition, CancelOutcome, CanonicalNamespace, CanonicalNamespaceId, CanonicalTarget,
+    CapabilitySnapshot, ChunkIndex, ChunkPayload, CloseDisposition, ContextConfidence, DbSessionId,
+    EffectOutcome, ExecutionErrorCode, ExecutionId, ExecutionState, ExecutionTarget, ExportReceipt,
+    ExportSink, InvalidationReason, ObjectTarget, ReplacementCommit, ReplacementOperation,
+    ReplacementOutcome, ResourceId, ResourceRelease, ResultCompleteness, ResultProvenance,
+    RevokeReason, RuntimeEpoch, SessionContext, SessionDirectory, SessionHandle, SessionOwner,
+    SessionState, StatementResultSource, StreamId, TransactionState, WritableMapping,
+    ARTIFACT_BYTE_QUOTA,
 };
 
 /// 应用层请求 DTO（`CommandCall` / `OpenSessionRequest` / …）经

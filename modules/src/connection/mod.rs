@@ -12,6 +12,6 @@ pub use application::{
 };
 pub use domain::{
     ConnectionRepository, ConnectionRepositoryError, ConnectionScope, NamespaceTarget,
-    ProfileDraft, ProfileDraftPatch, ProfilePatch, ProfileReader, ProfileRecord,
-    ProfileRepository, ProfileScope, TargetNamespaceLayer,
+    ProfileDraft, ProfileDraftPatch, ProfilePatch, ProfileReader, ProfileRecord, ProfileRepository,
+    ProfileScope, TargetNamespaceLayer,
 };
