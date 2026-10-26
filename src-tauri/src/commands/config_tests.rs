@@ -149,7 +149,9 @@ fn shared_settings_commands_read_the_aggregate_not_the_host_store() {
     // D2 起调用形态统一为 `crate::platform::ipc::require_settings_service(state)`，
     // 守卫盯同一约定（四条命令各取一次模块服务）。
     assert_eq!(
-        production.matches("require_settings_service(state)").count(),
+        production
+            .matches("require_settings_service(state)")
+            .count(),
         4,
         "完整设置读写与共享设置读写都必须经聚合取用例"
     );
