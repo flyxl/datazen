@@ -1,9 +1,7 @@
 use async_trait::async_trait;
-use datazen_feature_core::dashboard::{
-    monitor::{MonitorEngine, MonitorHost},
-    schedule_grant::{MonitorGrant, MonitorScope},
-    types::*,
-};
+use datazen_feature_core::dashboard::types::*;
+use datazen_modules::monitor::application::engine::{MonitorEngine, MonitorHost};
+use datazen_modules::monitor::domain::{MonitorGrant, MonitorScope};
 use datazen_platform_api::{
     id::ConnectionId,
     target::{ExecutionTarget, NamespaceTarget},
@@ -237,7 +235,7 @@ fn service_grant_cannot_be_attached_to_a_user_or_another_client() {
 
 #[test]
 fn scheduled_sql_accepts_queries_but_rejects_writes_hidden_in_query_shapes() {
-    use datazen_feature_core::dashboard::schedule_grant::validate_read_only_sql;
+    use datazen_modules::monitor::domain::validate_read_only_sql;
     for sql in [
         "SELECT 1",
         "SELECT 'DELETE' AS keyword",
@@ -260,7 +258,7 @@ fn scheduled_sql_accepts_queries_but_rejects_writes_hidden_in_query_shapes() {
 
 #[test]
 fn scheduled_read_only_queries_use_a_closed_function_policy() {
-    use datazen_feature_core::dashboard::schedule_grant::validate_read_only_sql;
+    use datazen_modules::monitor::domain::validate_read_only_sql;
     for sql in [
         "SELECT count(*), sum(value), avg(value), min(value), max(value) FROM metrics",
         "SELECT COALESCE(ROUND(AVG(value), 2), 0) FROM metrics",
@@ -310,7 +308,7 @@ fn scheduled_read_only_queries_use_a_closed_function_policy() {
 
 #[test]
 fn scheduled_sql_rejects_qualified_relations_at_every_query_depth() {
-    use datazen_feature_core::dashboard::schedule_grant::validate_read_only_sql;
+    use datazen_modules::monitor::domain::validate_read_only_sql;
     // Qualification is refused regardless of case or quoting, including names
     // that could match the approved target. No textual namespace comparison.
     for relation in [
@@ -348,7 +346,7 @@ fn scheduled_sql_rejects_qualified_relations_at_every_query_depth() {
 
 #[test]
 fn scheduled_sql_preserves_unqualified_relations_aliases_and_column_qualification() {
-    use datazen_feature_core::dashboard::schedule_grant::validate_read_only_sql;
+    use datazen_modules::monitor::domain::validate_read_only_sql;
     for sql in [
         "SELECT * FROM metrics",
         "SELECT m.id FROM metrics AS m",

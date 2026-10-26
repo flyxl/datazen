@@ -26,5 +26,6 @@ datazen-feature-core = { path = "../../feature-core" }
 datazen-runtime = { path = "../../runtime" }
 datazen-application = { path = "../../application" }
 datazen-platform-api = { path = "../../platform-api" }
+datazen-modules = { workspace = true, features = ["monitor"] }
 sha2 = "0.10"
 tempfile = "3"

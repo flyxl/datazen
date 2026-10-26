@@ -4,10 +4,8 @@
 mod runtime;
 use datazen_application::sessions::ConnectionUseCases as _;
 use datazen_driver_api::{resource::ResourceProvider, ConnectionConfig, DatabaseDriver};
-use datazen_feature_core::{
-    dashboard::schedule_grant::{MonitorGrant, MonitorScope},
-    workflow::{resource_execution, WorkflowCommandStep},
-};
+use datazen_feature_core::workflow::{resource_execution, WorkflowCommandStep};
+use datazen_modules::monitor::domain::{MonitorGrant, MonitorScope};
 use datazen_platform_api::{
     dto::execution::{EffectOutcome, ExecutionState},
     id::ConnectionId,

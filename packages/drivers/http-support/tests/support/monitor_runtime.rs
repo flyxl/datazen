@@ -2,13 +2,11 @@
 //! Real ResourceProviders execute SQL; this does not model desktop receipts or scheduling.
 use async_trait::async_trait;
 use datazen_driver_api::{resource as dr, session as ds};
-use datazen_feature_core::{
-    dashboard::schedule_grant::MonitorGrant,
-    workflow::{
-        error::WorkflowError,
-        resource_execution::{PreparedExecution, ResourceExecutionHost},
-    },
+use datazen_feature_core::workflow::{
+    error::WorkflowError,
+    resource_execution::{PreparedExecution, ResourceExecutionHost},
 };
+use datazen_modules::monitor::domain::MonitorGrant;
 use datazen_platform_api::target::ExecutionTarget;
 use datazen_platform_api::{
     error::PortError,
@@ -154,7 +152,7 @@ impl PolicyService for Policy {
             return Err(PortError::TokenInvalid);
         }
         if action != AuthorizationAction::Connect {
-            datazen_feature_core::dashboard::schedule_grant::validate_read_only_sql(
+            datazen_modules::monitor::domain::validate_read_only_sql(
                 input["sql"].as_str().ok_or(PortError::TokenInvalid)?,
             )
             .map_err(|_| PortError::TokenInvalid)?;
