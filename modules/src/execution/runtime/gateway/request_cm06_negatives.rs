@@ -27,11 +27,11 @@
 /// 负例：把 `owner` 塞进 `ExecutionRequest` 的结构体字面量 → E0560。
 ///
 /// ```compile_fail,E0560
-/// use datazen_runtime::connection::{CommandCall, Counter, DbSessionId};
-/// use datazen_runtime::gateway::{ExecutionRequest, ExecutionSource};
+/// use datazen_modules::execution::runtime::connection::{CommandCall, Counter, DbSessionId};
+/// use datazen_modules::execution::runtime::gateway::{ExecutionRequest, ExecutionSource};
 ///
 /// let request = ExecutionRequest {
-///     handle: datazen_runtime::connection::SessionHandle {
+///     handle: datazen_modules::execution::runtime::connection::SessionHandle {
 ///         db_session_id: DbSessionId::new("dbse_a"),
 ///         runtime_epoch: Counter(0),
 ///     },
@@ -39,7 +39,7 @@
 ///     call: CommandCall { command: "select 1".to_owned(), input: Default::default() },
 ///     idempotency_key: "k".to_owned(),
 ///     source: ExecutionSource::new(
-///         datazen_runtime::gateway::SourceKind::Editor,
+///         datazen_modules::execution::runtime::gateway::SourceKind::Editor,
 ///         "w",
 ///         None,
 ///         None,
@@ -55,11 +55,11 @@
 /// 签名变了），这条负例就是空断言。
 ///
 /// ```
-/// use datazen_runtime::connection::{CommandCall, Counter, DbSessionId};
-/// use datazen_runtime::gateway::{ExecutionRequest, ExecutionSource};
+/// use datazen_modules::execution::runtime::connection::{CommandCall, Counter, DbSessionId};
+/// use datazen_modules::execution::runtime::gateway::{ExecutionRequest, ExecutionSource};
 ///
 /// let request = ExecutionRequest {
-///     handle: datazen_runtime::connection::SessionHandle {
+///     handle: datazen_modules::execution::runtime::connection::SessionHandle {
 ///         db_session_id: DbSessionId::new("dbse_a"),
 ///         runtime_epoch: Counter(0),
 ///     },
@@ -67,7 +67,7 @@
 ///     call: CommandCall { command: "select 1".to_owned(), input: Default::default() },
 ///     idempotency_key: "k".to_owned(),
 ///     source: ExecutionSource::new(
-///         datazen_runtime::gateway::SourceKind::Editor,
+///         datazen_modules::execution::runtime::gateway::SourceKind::Editor,
 ///         "w",
 ///         None,
 ///         None,
@@ -80,11 +80,11 @@
 /// 负例：伪造 `organization_id` → E0560。
 ///
 /// ```compile_fail,E0560
-/// use datazen_runtime::connection::{CommandCall, Counter, DbSessionId};
-/// use datazen_runtime::gateway::{ExecutionRequest, ExecutionSource};
+/// use datazen_modules::execution::runtime::connection::{CommandCall, Counter, DbSessionId};
+/// use datazen_modules::execution::runtime::gateway::{ExecutionRequest, ExecutionSource};
 ///
 /// let request = ExecutionRequest {
-///     handle: datazen_runtime::connection::SessionHandle {
+///     handle: datazen_modules::execution::runtime::connection::SessionHandle {
 ///         db_session_id: DbSessionId::new("dbse_a"),
 ///         runtime_epoch: Counter(0),
 ///     },
@@ -92,7 +92,7 @@
 ///     call: CommandCall { command: "select 1".to_owned(), input: Default::default() },
 ///     idempotency_key: "k".to_owned(),
 ///     source: ExecutionSource::new(
-///         datazen_runtime::gateway::SourceKind::Editor,
+///         datazen_modules::execution::runtime::gateway::SourceKind::Editor,
 ///         "w",
 ///         None,
 ///         None,
@@ -114,11 +114,11 @@
 ///    所以字段类型必须与形参**逐一对上**，让字段私有成为唯一可能的错误。
 ///
 /// ```compile_fail,E0616
-/// use crate::shared::id::{DbSessionId, OrganizationId, PrincipalId};
-/// use datazen_runtime::gateway::RequestPrincipal;
+/// use datazen_modules::shared::id::{DbSessionId, OrganizationId, PrincipalId};
+/// use datazen_modules::execution::runtime::gateway::RequestPrincipal;
 ///
 /// mod payload {
-///     use crate::shared::id::{DbSessionId, OrganizationId, PrincipalId};
+///     use datazen_modules::shared::id::{DbSessionId, OrganizationId, PrincipalId};
 ///
 ///     /// body 反序列化出来的形状：三种**不同的** newtype。
 ///     pub struct Body {
@@ -153,11 +153,11 @@
 /// 若对照组编不过，上面那条 `compile_fail` 就是因无关原因失败。
 ///
 /// ```
-/// use crate::shared::id::{DbSessionId, OrganizationId, PrincipalId};
-/// use datazen_runtime::gateway::RequestPrincipal;
+/// use datazen_modules::shared::id::{DbSessionId, OrganizationId, PrincipalId};
+/// use datazen_modules::execution::runtime::gateway::RequestPrincipal;
 ///
 /// mod payload {
-///     use crate::shared::id::{DbSessionId, OrganizationId, PrincipalId};
+///     use datazen_modules::shared::id::{DbSessionId, OrganizationId, PrincipalId};
 ///
 ///     pub struct Body {
 ///         principal_id: PrincipalId,
@@ -194,11 +194,11 @@
 /// 负例：`ExecutionRequest` 上没有 `Deserialize` ⇒ body 反序列化不是一条路 → E0277。
 ///
 /// ```compile_fail,E0277
-/// use datazen_runtime::connection::{CommandCall, Counter};
-/// use datazen_runtime::gateway::{ExecutionRequest, ExecutionSource};
+/// use datazen_modules::execution::runtime::connection::{CommandCall, Counter};
+/// use datazen_modules::execution::runtime::gateway::{ExecutionRequest, ExecutionSource};
 ///
-/// let handle = datazen_runtime::connection::SessionHandle {
-///     db_session_id: datazen_runtime::connection::DbSessionId::new("dbse_a"),
+/// let handle = datazen_modules::execution::runtime::connection::SessionHandle {
+///     db_session_id: datazen_modules::execution::runtime::connection::DbSessionId::new("dbse_a"),
 ///     runtime_epoch: Counter(0),
 /// };
 /// let request = ExecutionRequest::new(
@@ -207,7 +207,7 @@
 ///     CommandCall { command: "select 1".to_owned(), input: Default::default() },
 ///     "k",
 ///     ExecutionSource::new(
-///         datazen_runtime::gateway::SourceKind::Editor,
+///         datazen_modules::execution::runtime::gateway::SourceKind::Editor,
 ///         "w",
 ///         None,
 ///         None,
@@ -223,7 +223,7 @@
 /// 不在作用域、调用形态写错之类无关原因失败。
 ///
 /// ```
-/// # use crate::shared::id::DbSessionId;
+/// # use datazen_modules::shared::id::DbSessionId;
 /// let from_body: DbSessionId = serde_json::from_str(r#""dbse_a""#).expect("可反序列化的对照类型");
 /// let _ = from_body;
 /// ```
