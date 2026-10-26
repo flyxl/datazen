@@ -1,8 +1,11 @@
 //! Shared backup and SQL restore use cases. Paths and progress delivery are supplied by hosts.
 //!
-//! D6 item 5 切片 a 自 feature-core `backup` 归位。错误信封沿用
-//! `export::ExportError`（备份/恢复是导出到文件族的成员，同一失败类别
-//! 语义；见 export::error 模块文档）。
+//! D6 item 5 切片 a + b 自 feature-core `backup`/`backup_gateway`/
+//! `restore_job`/`restore_gateway` 归位。错误信封沿用 `export::ExportError`
+//! （备份/恢复是导出到文件族的成员，同一失败类别语义；见 export::error
+//! 模块文档）。恢复走 jobs 的 apply-job 模型（RestoreApplyJob）与同一
+//! Runtime 会话/执行网关（RuntimeRestoreGateway）；BackupOutputBinder
+//! 端口在 [`ports`]，由宿主提供绑定实现。
 use crate::export::ExportError as CommandError;
 use datazen_driver_api::{
     BackupDialect, BackupDumpOptions, BackupRestoreOptions, ConnectionConfig, ConnectionHandle,
@@ -15,6 +18,19 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
+pub mod backup_gateway;
+pub mod ports;
+pub mod restore_gateway;
+pub mod restore_job;
+
+pub use backup_gateway::backup_to_path;
+pub use ports::{BackupOutputBinder, BackupOutputGuard};
+pub use restore_gateway::{RestoreAuthorization, RuntimeRestoreGateway};
+pub use restore_job::{
+    RestoreApplyJob, RestoreEvidence, RestoreGateway, RestoreInput, RestorePlan, RestoreRejection,
+    UnsupportedRestoreGateway, RESTORE_APPLY_KIND,
+};
+
 #[async_trait::async_trait]
 pub trait BackupSource: Send + Sync {
     async fn resolve_source(
