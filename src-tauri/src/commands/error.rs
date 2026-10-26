@@ -451,9 +451,9 @@ mod tests {
     }
 }
 
-impl From<datazen_modules::schema::SchemaError> for CommandError {
-    fn from(error: datazen_modules::schema::SchemaError) -> Self {
-        use datazen_modules::schema::SchemaError;
+impl From<datazen_modules::schema::application::SchemaError> for CommandError {
+    fn from(error: datazen_modules::schema::application::SchemaError) -> Self {
+        use datazen_modules::schema::application::SchemaError;
         match error {
             SchemaError::Validation(message) => Self::Validation(message),
             SchemaError::NotFound(message) => Self::NotFound(message),
