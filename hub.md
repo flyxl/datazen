@@ -64,12 +64,13 @@
 
 | 提交 | 内容 |
 |---|---|
-| `ea4e38670` | fmt 收敛（D4 前两切片 rustfmt 漂移 7 文件，前一会话推送但主检出未含） |
+| `ea4e38670` | fmt 收敛（D4 前两切片 rustfmt 漂移 7 文件；前一会话推送、主检出未含，随 rebase 收编） |
 | `dda9cc051` | fix(commands)：SchemaError From 路径补齐——728e33e 后 src-tauri 仍引用不存在的顶层 schema::SchemaError，改指 application::SchemaError（前一会话推送） |
 | `1844ee8fb` | D4 第一切片：schema 元数据缓存归位 `modules::schema`（kernel schema_cache + LegacyCatalogReader 分层词汇 → schema::application 的 metadata/physical_context/scope/ports + CachedColumns/SchemaCache）；platform-api 对应路径垫片化；缓存 key 含组织/连接/目标/revision 隔离维度 |
 | `728e33e5e` | D4 第二切片：schema 应用服务归位 modules::schema::application；feature-core services 按 §5.5 再导出垫片 |
 | `730ce27e4` | D4 第三切片：表浏览读链路归位 modules::table_browsing（query_executor 全套 + browsing + paging；keyset/count/筛选排序）；feature-core 再导出垫片；读链路无 FeatureError 依赖 |
 | `a8ca8cc39` | D4 第四切片：表编辑写链路归位 modules::table_editing（data_browsing 全套：ChangeSet/insert_plan/row_identity/write_exec/tests）；新 error.rs（TableEditingError，逐字兼容）+ ports.rs（ArtifactChunkReader 消费者端口）；feature-core data_browsing 改再导出垫片 + From<TableEditingError>；宿主 CommandError From 接线；顺手收敛 D3 遗留 unused import ×3 + fmt 漂移 6 文件；modules 1160 / feature-core 518+14×3 全绿；六道门禁 PASS |
+| `4f5f62da9` | D4 第五切片：结果网格写回规则归位 table_editing::result_edit（DB-14 全套判定 + WriteTarget）；宿主依赖改指模块词汇（schema/connection/execution）；FeatureError→TableEditingError 仅 Validation 族；feature-core 垫片再导出，桌面 result_origin/result_write 与集成测试零改动；modules 1178（+18）/ feature-core 518 / reasons 4 / locating 3 全绿；D4 工作项 1-4 模块侧完成，工作项 5（方言测试留 driver、UI 行为 Host E2E）归 CI/E2E 验收 |
 
 ## 会话恢复要点
 
