@@ -61,37 +61,6 @@ impl DesktopRepository {
         Ok(connections)
     }
 
-    async fn persist_connections(
-        &self,
-        connections: &[ConnectionConfig],
-    ) -> Result<(), DesktopRepositoryError> {
-        let mut to_disk = Vec::with_capacity(connections.len());
-
-        for conn in connections {
-            let mut c = conn.clone();
-            if let Some(pw) = &c.password {
-                c.password = Some(self.encrypt(pw)?);
-            }
-            if let Some(ref mut ssh) = c.ssh_tunnel {
-                if let Some(pw) = &ssh.password {
-                    if !pw.is_empty() {
-                        ssh.password = Some(self.encrypt(pw)?);
-                    }
-                }
-                if let Some(pp) = &ssh.passphrase {
-                    if !pp.is_empty() {
-                        ssh.passphrase = Some(self.encrypt(pp)?);
-                    }
-                }
-            }
-            to_disk.push(c);
-        }
-
-        let metadata = self.cache.read().await.platform_profiles.clone();
-        let records = super::platform_profiles::encode_records(to_disk, &metadata)?;
-        self.save_json_file("connections.json", &records).await
-    }
-
     /// Persist while the caller already holds `write_lock`. Must NOT go
     /// through `save_json_file` — it re-acquires the same tokio Mutex and
     /// would self-deadlock. Writes atomically via `write_file_atomic`.
@@ -215,6 +184,13 @@ impl DesktopRepository {
     }
 
     pub async fn delete_connection(&self, id: &str) -> Result<(), DesktopRepositoryError> {
+        // Serialize the whole delete→snapshot→persist sequence under the
+        // store-wide write lock, mirroring save_connection: without it a
+        // concurrent save/touch could persist a snapshot that still contains
+        // the deleted row after this delete already wrote the file (lost
+        // delete — the same stale-snapshot race the save path fixed).
+        let _guard = self.write_lock.lock().await;
+
         {
             let mut cache = self.cache.write().await;
             cache.connections.retain(|c| c.id != id);
@@ -225,7 +201,8 @@ impl DesktopRepository {
             cache.connections.clone()
         };
 
-        self.persist_connections(&snapshot).await
+        // Already holding write_lock — use the non-locking persist variant.
+        self.persist_connections_locked(&snapshot).await
     }
 
     /// Returns the union of persisted custom groups and groups found on connections.
@@ -262,6 +239,10 @@ impl DesktopRepository {
         &self,
         ordered_ids: Vec<String>,
     ) -> Result<(), DesktopRepositoryError> {
+        // Same doctrine as save_connection: the reorder→snapshot→persist
+        // sequence must be atomic against every other connection writer.
+        let _guard = self.write_lock.lock().await;
+
         {
             let mut cache = self.cache.write().await;
             let mut by_id: std::collections::HashMap<String, ConnectionConfig> = cache
@@ -283,7 +264,8 @@ impl DesktopRepository {
             let cache = self.cache.read().await;
             cache.connections.clone()
         };
-        self.persist_connections(&snapshot).await
+        // Already holding write_lock — use the non-locking persist variant.
+        self.persist_connections_locked(&snapshot).await
     }
 
     pub fn decrypt_password(&self, encrypted: &str) -> Result<String, DesktopRepositoryError> {
