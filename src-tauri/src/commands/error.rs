@@ -7,6 +7,7 @@ use crate::store::DesktopRepositoryError;
 use datazen_driver_api::DriverError;
 use datazen_feature_core::services::FilterRejection;
 use datazen_modules::ai::AiError;
+use datazen_modules::history::HistoryError;
 
 #[derive(Debug)]
 pub enum CommandError {
@@ -81,6 +82,15 @@ impl serde::Serialize for CommandError {
 impl From<DesktopRepositoryError> for CommandError {
     fn from(e: DesktopRepositoryError) -> Self {
         Self::Store(e)
+    }
+}
+
+/// History 存储失败（modules::history 仓储端口）：history 存储按敏感审计
+/// 日志对待，错误消息不含 SQL/宿主路径，宿主没有更细的处置可给，按内部
+/// 失败透传消息。
+impl From<HistoryError> for CommandError {
+    fn from(e: HistoryError) -> Self {
+        Self::Internal(e.to_string())
     }
 }
 

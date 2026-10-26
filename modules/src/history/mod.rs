@@ -24,7 +24,7 @@ pub use domain::migration_run::{
     MigrationProfileRef, MigrationRunFilter, MigrationRunPage, MigrationRunRecord,
 };
 pub use domain::query::QueryHistoryEntry;
-pub use domain::repository::{MigrationRunRepository, QueryHistoryRepository};
+pub use domain::repository::{HistoryError, MigrationRunRepository, QueryHistoryRepository};
 pub use domain::scope::{
     HistoryOrder, HistoryScope, QueryHistoryFilter, QueryHistoryPage, DEFAULT_HISTORY_PAGE_SIZE,
     MAX_MIGRATION_RUN_HISTORY, MAX_QUERY_HISTORY, MAX_WORKFLOW_HISTORY,
