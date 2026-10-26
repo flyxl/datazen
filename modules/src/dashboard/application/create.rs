@@ -2,10 +2,10 @@
 use crate::dashboard::domain::types::{
     ChartConfig, Dashboard, DashboardWidget, RefreshMode, RefreshPolicy, ViewMode, WidgetLayout,
 };
+use crate::shared::scope::OrganizationScope;
 use crate::workflow::domain::model::{
     WorkflowDefinition, WorkflowStep, WorkflowVisibility as WfVisibility,
 };
-use crate::shared::scope::OrganizationScope;
 use uuid::Uuid;
 pub fn default_chart_config() -> ChartConfig {
     ChartConfig::default()

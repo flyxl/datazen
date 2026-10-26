@@ -179,8 +179,14 @@ const MODULES_EXEMPT: &[&str] = &["src/ai"];
 /// 形态词用 `concat!` 拆开拼：本文件自己也在被扫范围里，完整的形态名
 /// 字面量会被闸门自己的自证测试点红（见 the_scan_covers…尾部）。
 const ALLOWED_WIRE_VOCABULARY: &[(&str, &str)] = &[
-    ("modules:src/dashboard/domain/types.rs", concat!("desk", "top")),
-    ("modules:src/dashboard/application/alert.rs", concat!("desk", "top")),
+    (
+        "modules:src/dashboard/domain/types.rs",
+        concat!("desk", "top"),
+    ),
+    (
+        "modules:src/dashboard/application/alert.rs",
+        concat!("desk", "top"),
+    ),
 ];
 
 /// `rel`（`label:path` 形式）里的 `word` 是否被词级豁免登记。

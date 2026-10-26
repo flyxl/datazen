@@ -12,10 +12,10 @@ pub enum DashboardArchiveError {
     Validation(String),
 }
 
-use DashboardArchiveError as DashboardExportError;
 use crate::workflow::domain::model::{WorkflowDefinition, WorkflowVisibility};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use DashboardArchiveError as DashboardExportError;
 pub const FORMAT: &str = "datazen.dashboard";
 pub const VERSION: u32 = 2;
 #[derive(Debug, Serialize, Deserialize)]
