@@ -40,9 +40,8 @@
 
 ## 下一步（按计划顺序）
 
-1. **D4 收尾（第五切片）**：SQL 编辑器/结果写回接入应用入口（07-stages.md D4 工作项 4）——result_edit/SQL 消费者改走 table_editing 模块入口，保留风险确认、只读与取消规则；真实方言测试留 driver crate，公共 UI 行为在 Host E2E。
-2. **D5 Jobs 与迁移三件套**（07-stages.md D5）：jobs domain/application/engine + 宿主 JobRepository 接线；Schema Diff → Data Sync → Data Transfer 各自完整路径；runtime 的 native_tool 归位。
-3. **D6/D7/D8** 按 07-stages.md 顺序推进；每阶段开工前先读 08-pr-playbook.md §11.1。
+1. **D5 后续切片**：migration_common crate → modules::migration_common；随后 Schema Diff → Data Sync → Data Transfer 三 crate 逐个归位 modules（07-stages.md D5 工作项 2/5）；runtime 的 native_tool 模块勘察归位。
+2. **D6/D7/D8** 按 07-stages.md 顺序推进；每阶段开工前先读 08-pr-playbook.md §11.1。
 
 ### D1.5 已完成（2026-10-26）
 
@@ -71,6 +70,13 @@
 | `730ce27e4` | D4 第三切片：表浏览读链路归位 modules::table_browsing（query_executor 全套 + browsing + paging；keyset/count/筛选排序）；feature-core 再导出垫片；读链路无 FeatureError 依赖 |
 | `a8ca8cc39` | D4 第四切片：表编辑写链路归位 modules::table_editing（data_browsing 全套：ChangeSet/insert_plan/row_identity/write_exec/tests）；新 error.rs（TableEditingError，逐字兼容）+ ports.rs（ArtifactChunkReader 消费者端口）；feature-core data_browsing 改再导出垫片 + From<TableEditingError>；宿主 CommandError From 接线；顺手收敛 D3 遗留 unused import ×3 + fmt 漂移 6 文件；modules 1160 / feature-core 518+14×3 全绿；六道门禁 PASS |
 | `4f5f62da9` | D4 第五切片：结果网格写回规则归位 table_editing::result_edit（DB-14 全套判定 + WriteTarget）；宿主依赖改指模块词汇（schema/connection/execution）；FeatureError→TableEditingError 仅 Validation 族；feature-core 垫片再导出，桌面 result_origin/result_write 与集成测试零改动；modules 1178（+18）/ feature-core 518 / reasons 4 / locating 3 全绿；D4 工作项 1-4 模块侧完成，工作项 5（方言测试留 driver、UI 行为 Host E2E）归 CI/E2E 验收 |
+| `3507e0c08` | fix(table_columns)：宿主适配器随 D4 契约迁移——TableColumnSource 签名改回 TableEditingError（前一会话推送、主检出未含，随 rebase 收编） |
+
+### D5 已完成（2026-10-26，进行中）
+
+| 提交 | 内容 |
+|---|---|
+| `aee5cafc0` | D5 第一切片：jobs 三分归位 modules::jobs——kernel::job 全家（17 文件）+ platform-api Job 词汇（ports/job、dto/job）+ 时基端口（→shared::clock，常驻）+ native_tool 词汇（→jobs::domain::native_tool）；kernel/platform-api 垫片化；kernel/src/schema_cache 孤儿目录删除；jobs/mod.rs 镜像旧扁平名与深路径；form_neutrality 闸门清单随迁。验证：modules 1221 / runtime 9+32 / platform-api 25 / feature-core 500 / schema-diff 179 / data-sync 12 / data-transfer 253 全绿；五道门禁 PASS |
 
 ## 会话恢复要点
 
