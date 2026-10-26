@@ -11,15 +11,15 @@ use datazen_feature_core::dashboard::types::{
 
 const WEBHOOK_TIMEOUT: Duration = Duration::from_secs(10);
 
-pub use datazen_feature_core::dashboard::notifications::{AlertPayload, PendingNotification};
+pub use datazen_modules::monitor::application::notifications::{AlertPayload, PendingNotification};
 pub struct AlertChannelState {
-    core: datazen_feature_core::dashboard::notifications::AlertChannelState,
+    core: datazen_modules::monitor::application::notifications::AlertChannelState,
     http_client: reqwest::Client,
 }
 impl AlertChannelState {
     pub fn new() -> Self {
         Self {
-            core: datazen_feature_core::dashboard::notifications::AlertChannelState::new(),
+            core: datazen_modules::monitor::application::notifications::AlertChannelState::new(),
             http_client: reqwest::Client::builder()
                 .timeout(WEBHOOK_TIMEOUT)
                 .build()

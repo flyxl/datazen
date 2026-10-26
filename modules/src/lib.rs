@@ -38,6 +38,10 @@ pub mod named_views;
 #[cfg(feature = "mcp")]
 pub mod mcp;
 
+/// D6 Monitor: grants, fixed targets, scheduling and notification rules.
+#[cfg(feature = "monitor")]
+pub mod monitor;
+
 /// D5：迁移三件套共享纯算法（pairing/recordset_bounds）。
 #[cfg(feature = "migration_common")]
 pub mod migration_common;

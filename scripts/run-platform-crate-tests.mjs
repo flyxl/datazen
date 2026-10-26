@@ -198,7 +198,16 @@ export const EXTRA_TARGETS = Object.freeze({
  * test alone would compile only the empty module root and miss the real service.
  */
 export const FEATURE_TESTS = Object.freeze({
-  'datazen-modules': Object.freeze(['settings', 'ai', 'connection', 'named_views']),
+  'datazen-modules': Object.freeze([
+    'settings',
+    'ai',
+    'connection',
+    'named_views',
+    // D6 Monitor's domain-only feature and the dashboard/application closure
+    // are both exercised; the latter is the real Desktop scheduler build.
+    'monitor',
+    'dashboard',
+  ]),
 });
 
 /**

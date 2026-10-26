@@ -1,21 +1,17 @@
 //! Local schedule grants are issued by a desktop user and held as backend metadata.
 use crate::{commands::AppState, store::DesktopRepository};
-use datazen_feature_core::{
-    dashboard::schedule_grant::{MonitorGrant, MonitorScope},
-    workflow::{
-        context::WorkflowContext,
-        model::{WorkflowDefinition, WorkflowStep},
-    },
+use datazen_modules::monitor::application::fixed_targets;
+pub(crate) use datazen_modules::monitor::domain::revision;
+use datazen_modules::monitor::domain::{MonitorGrant, MonitorScope};
+use datazen_modules::workflow::{
+    context::WorkflowContext,
+    model::{WorkflowDefinition, WorkflowStep},
 };
 use datazen_platform_api::{
     context::RequestContext,
     id::{ConnectionId, Counter},
     target::{ExecutionTarget, NamespaceTarget},
 };
-use sha2::{Digest, Sha256};
-pub(crate) fn revision(yaml: &str) -> String {
-    format!("{:x}", Sha256::digest(yaml.as_bytes()))
-}
 
 pub(crate) fn current(
     store: &DesktopRepository,
@@ -107,11 +103,9 @@ pub(crate) async fn authorize(
         .clone()
         .into_executable()
         .map_err(|_| "workflow version invalid")?;
-    let normalized = super::fixed_targets::prepare_definition(
-        &workflow,
-        &WorkflowContext::new(&serde_json::json!({})),
-    )
-    .map_err(|_| "explicit workflow targets required")?;
+    let normalized =
+        fixed_targets::prepare_definition(&workflow, &WorkflowContext::new(&serde_json::json!({})))
+            .map_err(|_| "explicit workflow targets required")?;
     let mut scopes = Vec::new();
     for step in &normalized.steps {
         let (command, sql, connection, database, schema) = match step {
@@ -144,7 +138,7 @@ pub(crate) async fn authorize(
         if sql.contains("{{") || sql.contains("${") {
             return Err("scheduled SQL must not contain dynamic templates".into());
         }
-        datazen_feature_core::dashboard::schedule_grant::validate_read_only_sql(sql)
+        datazen_modules::monitor::domain::validate_read_only_sql(sql)
             .map_err(|_| "scheduled monitor requires read-only SQL")?;
         let connection = connection.ok_or("explicit connection required")?;
         let database = database

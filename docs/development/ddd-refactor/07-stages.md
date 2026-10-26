@@ -290,8 +290,15 @@ AI 工具（egress 摘要 / db_tools / 连接上下文）与 MCP 的目录读取
 1. Settings 剩余路径、Named Views、History：共享业务进各模块；窗口位置、桌面路径等仍是宿主专属配置。
    **Named Views 已完成（2026-10-26）**：`datazen-modules::named_views`（domain：DTO/规则/端口/IdMinter；
    application：三个用例 + `NamedViewService` 门面）。`SortCondition` 随迁 `driver-api::filters`
-   （feature-core 经再导出保持旧路径）。feature-core 的 `services::named_views` 模块删除，
-   `ApplicationServices` 移除 named_views 字段，命令经 `require_named_views_service` 消费。
+    （feature-core 经再导出保持旧路径）。feature-core 的 `services::named_views` 模块删除，
+    `ApplicationServices` 移除 named_views 字段，命令经 `require_named_views_service` 消费。
+   **Monitor 已完成（2026-10-26，本轨）**：`datazen-modules::monitor` 现在拥有
+   MonitorGrant/MonitorScope、grant identity/revocation/expiry 校验、工作流 revision、
+   固定只读目标归一化、只读 SQL 规则、occurrence schedule/definition/idempotency 身份、
+   bounded evidence stages、调度引擎和通知状态规则。Desktop 仅实现 `MonitorHost`、
+   SQLite grant/run/job 持久化、执行/驱动/策略/身份适配、tray 与 Tauri notification/event
+   交付；旧 `feature-core::dashboard::{monitor,schedule_grant,notifications}` 路径仅为
+   兼容再导出，唯一消费者是迁移期 feature-core/外部驱动测试，按 D8 删除。
 2. Dashboard：保存/组件创建/运行历史/导入导出规则进入 application/domain，管理库实现留宿主。文件对话框留宿主交互层，应用服务接收已选择的内容/受控文件能力，不能把 GUI 对话框作为 Web 必填依赖。
 3. Workflow：保留 step/session/transaction block 的资源边界，调用 execution 与 jobs。
 4. AI / MCP：Provider 契约与适配已在 D1.5 并入 `modules::ai`；本阶段迁入的是 feature-core 中 Provider-neutral 的业务（会话编排、工具循环、安全策略）与 MCP 业务分发；认证/stdio/HTTP 登录/事件传输在宿主，授权数据库工具走同一执行入口。
