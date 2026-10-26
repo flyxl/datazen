@@ -80,7 +80,11 @@ pub(crate) async fn record_sql_command_outcome(
     };
     // Persistence failures must not break query execution, but silently
     // dropping history (disk full / locked db) is undebuggable — log it.
-    if let Err(e) = state.store.add_query_history(entry).await {
-        tracing::warn!(error = %e, "add_query_history failed");
+    // D6 item 1：写入经模块服务（服务内部同样按告警降级，不向上抛错）。
+    match crate::platform::ipc::require_history_service(state) {
+        Ok(service) => service.add_query_history(entry).await,
+        Err(error) => {
+            tracing::warn!(%error, "add_query_history failed: history service not injected")
+        }
     }
 }

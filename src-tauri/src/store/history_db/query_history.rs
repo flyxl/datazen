@@ -7,8 +7,8 @@
 //! so a truncated page can never read as "that's all there is".
 
 use super::{
-    HistoryDb, HistoryDbError, QueryHistoryEntry, QueryHistoryFilter, QueryHistoryPage,
-    MAX_QUERY_HISTORY,
+    order_by_sql, HistoryDb, HistoryDbError, QueryHistoryEntry, QueryHistoryFilter,
+    QueryHistoryPage, MAX_QUERY_HISTORY,
 };
 use chrono::{DateTime, Utc};
 use rusqlite::params;
@@ -236,7 +236,7 @@ impl HistoryDb {
                 "SELECT id, connection_id, database, schema, sql, executed_at, \
                  execution_time_ms, rows_affected, success, error_message \
                  FROM query_history {where_sql} ORDER BY {} LIMIT ?{}",
-                filter.order.order_by(),
+                order_by_sql(filter.order),
                 bound.len(),
             );
             let mut stmt = conn.prepare(&sql)?;

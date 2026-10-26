@@ -1,5 +1,6 @@
 use super::*;
 use datazen_driver_api::CommandCatalog;
+use datazen_modules::history::QueryHistoryRepository as _;
 impl DesktopSessionBackend {
     pub(super) async fn execute_resource(
         &self,
@@ -459,7 +460,9 @@ impl DesktopSessionBackend {
                         None
                     },
                 };
-                if self.store.add_query_history(entry).await.is_err() {
+                // D6 第一切片：写入经模块仓储端口（与命令路径同一份
+                // `HistoryDb` 适配器）；失败仅告警，不阻断执行回执。
+                if self.history.add(entry).await.is_err() {
                     tracing::warn!("query history persistence failed");
                 }
             }

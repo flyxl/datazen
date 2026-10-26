@@ -558,9 +558,10 @@ pub(crate) async fn ai_analyze_queries_impl(
     } else {
         None
     };
-    let history = state
-        .store
-        .get_query_history(200, owner_connection_id.as_deref(), None, None)
+    // D6 第一切片：读取经模块服务（同一 `HistoryDb`）；未注入是装配错误，
+    // 向上抛 CommandError 而不是仍装成空历史。
+    let history = crate::platform::ipc::require_history_service(state)?
+        .recent_query_history(200, owner_connection_id.as_deref(), None, None)
         .await;
     let filtered: Vec<_> = history.iter().collect();
 

@@ -73,11 +73,11 @@ impl DataZenMcpServer {
                     "[]", uri,
                 )]));
             }
-            let history = self
-                .app_state
-                .store
-                .get_query_history(50, None, None, None)
-                .await;
+            // D6 第一切片：读取经模块服务（同一 `HistoryDb`）。服务未注入是
+            // 装配错误，按 fail-closed 上报 MCP 内部错误，不仍装成空历史。
+            let service = crate::platform::ipc::require_history_service(&self.app_state)
+                .map_err(|error| McpError::internal_error(error.to_string(), None))?;
+            let history = service.recent_query_history(50, None, None, None).await;
             let filtered: Vec<_> = history
                 .into_iter()
                 .filter(|entry| {

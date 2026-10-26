@@ -6,25 +6,9 @@ use datazen_modules::ai::AiProviderConfig;
 
 use super::settings::AppSettings;
 
-/// Record of a executed SQL statement.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QueryHistoryEntry {
-    pub id: String,
-    /// Owning persisted connection id (config).
-    pub connection_id: String,
-    /// Session-active logical database when the statement ran ("" = unknown/legacy rows).
-    pub database: String,
-    /// Schema namespace when known (PG search_path is not session-tracked yet → usually None).
-    #[serde(default)]
-    pub schema: Option<String>,
-    pub sql: String,
-    pub executed_at: DateTime<Utc>,
-    pub execution_time_ms: u64,
-    pub rows_affected: Option<u64>,
-    pub success: bool,
-    pub error_message: Option<String>,
-}
+// D6 第一切片：查询历史条目的唯一定义在 `datazen-modules::history`
+// （domain::query），本模块只再导出，序列化形状（camelCase）钉在模块单测。
+pub use datazen_modules::history::QueryHistoryEntry;
 
 /// A saved SQL favorite, backed by one `.sql` file under the favorites root.
 ///

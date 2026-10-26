@@ -230,7 +230,9 @@ async fn mcp_read_resource_inner_paths() {
     }
 
     // Seed one row so the resource contract below is exercised on real output.
-    test.store
+    // D6 第一切片：写入经模块服务（与生产路径同一装配）。
+    crate::platform::ipc::require_history_service(&test.state)
+        .unwrap()
         .add_query_history(crate::store::QueryHistoryEntry {
             id: "hist-1".into(),
             connection_id: "res-inner".into(),
@@ -243,8 +245,7 @@ async fn mcp_read_resource_inner_paths() {
             success: true,
             error_message: None,
         })
-        .await
-        .expect("add_query_history");
+        .await;
 
     let hist = server
         .read_resource_inner("datazen://query-history")
@@ -517,7 +518,8 @@ async fn mcp_query_history_read_only_returns_empty() {
 
     let test = TestAppState::with_tables_and_resource_provider().await;
     test.save_connection("hist-ro").await;
-    test.store
+    crate::platform::ipc::require_history_service(&test.state)
+        .unwrap()
         .add_query_history(QueryHistoryEntry {
             id: "hist-ro-1".into(),
             connection_id: "hist-ro".into(),
@@ -530,8 +532,7 @@ async fn mcp_query_history_read_only_returns_empty() {
             success: true,
             error_message: None,
         })
-        .await
-        .expect("add_query_history");
+        .await;
 
     let server = mcp_server_allowing(Arc::new(test.state), &["hist-ro"])
         .with_permission_mode(McpPermissionMode::ReadOnly);
@@ -565,7 +566,8 @@ async fn mcp_query_history_respects_connection_allowlist() {
     test.save_connection("hist-allowed").await;
     test.save_connection("hist-blocked").await;
     for (id, sql) in [("hist-a", "SELECT 1"), ("hist-b", "SELECT 2")] {
-        test.store
+        crate::platform::ipc::require_history_service(&test.state)
+            .unwrap()
             .add_query_history(QueryHistoryEntry {
                 id: id.into(),
                 connection_id: if id == "hist-a" {
@@ -582,8 +584,7 @@ async fn mcp_query_history_respects_connection_allowlist() {
                 success: true,
                 error_message: None,
             })
-            .await
-            .expect("add_query_history");
+            .await;
     }
 
     let server = DataZenMcpServer::new(Arc::new(test.state))

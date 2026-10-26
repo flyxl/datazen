@@ -180,8 +180,9 @@ async fn ai_analyze_queries_with_history() {
     let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
     let (_, conn_id) = test.save_and_connect("hist-cfg").await;
 
-    test.state
-        .store
+    // D6 第一切片：写入经模块服务（与生产路径同一装配）。
+    crate::platform::ipc::require_history_service(&test.state)
+        .unwrap()
         .add_query_history(crate::store::QueryHistoryEntry {
             id: uuid::Uuid::new_v4().to_string(),
             connection_id: "hist-cfg".into(),
@@ -194,8 +195,7 @@ async fn ai_analyze_queries_with_history() {
             success: true,
             error_message: None,
         })
-        .await
-        .unwrap();
+        .await;
 
     mock.mount_chat_completion_text(
         r#"{"summary":"Light reads","categories":[{"name":"SELECT","count":1,"examples":["SELECT 1"]}],"insights":["simple"],"frequentTables":["users"],"recommendations":[]}"#,
@@ -717,8 +717,9 @@ async fn execute_db_tool_list_databases() {
 async fn ai_analyze_queries_all_history() {
     let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
     let (_, _conn_id) = test.save_and_connect("all-hist").await;
-    test.state
-        .store
+    // D6 第一切片：写入经模块服务（与生产路径同一装配）。
+    crate::platform::ipc::require_history_service(&test.state)
+        .unwrap()
         .add_query_history(crate::store::QueryHistoryEntry {
             id: uuid::Uuid::new_v4().to_string(),
             connection_id: "all-hist".into(),
@@ -731,8 +732,7 @@ async fn ai_analyze_queries_all_history() {
             success: true,
             error_message: None,
         })
-        .await
-        .unwrap();
+        .await;
 
     mock.mount_chat_completion_text(
         r#"{"summary":"ok","categories":[],"insights":[],"frequentTables":[],"recommendations":[]}"#,

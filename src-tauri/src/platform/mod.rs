@@ -19,6 +19,7 @@ pub mod resource_mapping;
 pub mod scope;
 pub mod session_backend;
 pub mod session_commands;
+pub mod history;
 pub mod settings;
 mod target_metadata;
 

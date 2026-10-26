@@ -99,6 +99,10 @@ pub struct DesktopSessionBackend {
     tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
     /// SSH known-hosts 的存储端口（宿主注入）。
     known_hosts: Arc<dyn datazen_platform_api::ports::known_hosts::KnownHostsRepository>,
+    /// 查询历史写入端口（D6 第一切片：仓储 trait 归
+    /// `datazen-modules::history` 的 domain，桌面注入同一 `HistoryDb` 的适配器；
+    /// 会话执行路径不再经 `DesktopRepository` 的领域门面）。
+    history: Arc<dyn datazen_modules::history::QueryHistoryRepository>,
 }
 impl DesktopSessionBackend {
     pub(crate) fn physical_budget(
@@ -113,6 +117,7 @@ impl DesktopSessionBackend {
         physical_limit: u32,
         tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
         known_hosts: Arc<dyn datazen_platform_api::ports::known_hosts::KnownHostsRepository>,
+        history: Arc<dyn datazen_modules::history::QueryHistoryRepository>,
     ) -> Self {
         Self::new_scoped(
             registry,
@@ -124,6 +129,7 @@ impl DesktopSessionBackend {
             }),
             tunnels,
             known_hosts,
+            history,
         )
     }
     #[allow(clippy::too_many_arguments)]
@@ -135,6 +141,7 @@ impl DesktopSessionBackend {
         principal: datazen_platform_api::id::PrincipalId,
         tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
         known_hosts: Arc<dyn datazen_platform_api::ports::known_hosts::KnownHostsRepository>,
+        history: Arc<dyn datazen_modules::history::QueryHistoryRepository>,
     ) -> Self {
         Self {
             registry,
@@ -155,6 +162,7 @@ impl DesktopSessionBackend {
             export_output: RwLock::new(None),
             tunnels,
             known_hosts,
+            history,
         }
     }
     pub fn set_publisher(&self, publisher: ResultPublisher) -> Result<(), rc::ProviderError> {

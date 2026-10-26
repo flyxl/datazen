@@ -41,6 +41,10 @@ pub mod data_sync;
 #[cfg(feature = "data_transfer")]
 pub mod data_transfer;
 
+/// D6 item 1：查询历史与迁移运行历史（词汇/仓储端口/用例门面）。
+#[cfg(feature = "history")]
+pub mod history;
+
 /// D4-d：表编辑写链路（ChangeSet/insert plan/行身份/写执行）。
 #[cfg(feature = "table-editing")]
 pub mod table_editing;

@@ -454,12 +454,17 @@ async fn 接线后借出真的走到端口并交回那一份活资源() {
 
     let tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository> = store.clone();
     let known_hosts = super::super::known_hosts::desktop_known_hosts_repository(store.data_dir());
+    // D6 第一切片：会话后端的查询历史写端口——同一 `HistoryDb` 的模块适配器。
+    let history: Arc<dyn datazen_modules::history::QueryHistoryRepository> = Arc::new(
+        super::super::history::DesktopHistoryRepositories::new(store.history_db()),
+    );
     let backend = Arc::new(super::super::session_backend::DesktopSessionBackend::new(
         Arc::clone(&registry),
         Arc::clone(&store),
         8,
         tunnels,
         known_hosts,
+        history,
     ));
     let recording = Arc::new(RecordingSource {
         inner: DesktopLiveConnectionSource::new(
@@ -645,12 +650,17 @@ async fn wired_pool_maintenance_harness(driver_opts: MockDriverOptions) -> PoolM
     // 分开建的两个比如同两个 runtime，一边打开另一边永远 SessionNotFound。
     let tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository> = store.clone();
     let known_hosts = super::super::known_hosts::desktop_known_hosts_repository(store.data_dir());
+    // D6 第一切片：会话后端的查询历史写端口——同一 `HistoryDb` 的模块适配器。
+    let history: Arc<dyn datazen_modules::history::QueryHistoryRepository> = Arc::new(
+        super::super::history::DesktopHistoryRepositories::new(store.history_db()),
+    );
     let backend = Arc::new(super::super::session_backend::DesktopSessionBackend::new(
         Arc::clone(&registry),
         Arc::clone(&store),
         8,
         tunnels,
         known_hosts,
+        history,
     ));
     let recording = Arc::new(DesktopLiveConnectionSource::new(
         Arc::clone(&registry),

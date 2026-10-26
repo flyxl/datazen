@@ -113,6 +113,10 @@ pub struct PlatformAdapter {
     /// 桌面仓储是同一个 `DesktopRepository`（`impl NamedViewRepository for
     /// DesktopRepository`），id 由 `HostViewIdMinter` 铸造。
     named_views_service: std::sync::OnceLock<Arc<datazen_modules::named_views::NamedViewService>>,
+    /// D6 item 1 后的历史用例：查询历史与迁移运行历史的词汇/端口归
+    /// `datazen-modules::history`；桌面仓储是同一个 `HistoryDb`
+    /// （`DesktopHistoryRepositories` 适配两个端口）。
+    history_service: std::sync::OnceLock<Arc<datazen_modules::history::HistoryService>>,
     runtime: std::sync::OnceLock<Arc<datazen_runtime::application::RuntimeConnectionUseCases>>,
     profiles: std::sync::OnceLock<Arc<super::repositories::DesktopProfiles>>,
     /// 执行身份解析器（`IdentityResolver` 端口的桌面实现）。
@@ -152,6 +156,7 @@ impl PlatformAdapter {
             settings_service: std::sync::OnceLock::new(),
             connection_service: std::sync::OnceLock::new(),
             named_views_service: std::sync::OnceLock::new(),
+            history_service: std::sync::OnceLock::new(),
             runtime: std::sync::OnceLock::new(),
             profiles: std::sync::OnceLock::new(),
             identities: std::sync::OnceLock::new(),
@@ -174,6 +179,7 @@ impl PlatformAdapter {
             settings_service: std::sync::OnceLock::new(),
             connection_service: std::sync::OnceLock::new(),
             named_views_service: std::sync::OnceLock::new(),
+            history_service: std::sync::OnceLock::new(),
             runtime: std::sync::OnceLock::new(),
             profiles: std::sync::OnceLock::new(),
             identities: std::sync::OnceLock::new(),
@@ -316,6 +322,24 @@ impl PlatformAdapter {
         self.named_views_service.get().cloned()
     }
 
+    /// D6 item 1 后的历史用例入口。
+    pub fn history_service(&self) -> Option<Arc<datazen_modules::history::HistoryService>> {
+        self.history_service.get().cloned()
+    }
+
+    /// 需要历史用例时调用；未注入 ⇒ 明确报错，不回落旧路径。
+    pub fn require_history_service(
+        &self,
+    ) -> Result<Arc<datazen_modules::history::HistoryService>, ApiError> {
+        self.history_service().ok_or_else(|| {
+            ApiError::new(
+                ApiErrorCode::CapabilityUnsupported,
+                "HistoryService 未注入：启动装配尚未调用 PlatformAdapter::inject，\
+                 或在注入完成前就发起了历史用例调用；此处不做回落，也不得直读宿主 store",
+            )
+        })
+    }
+
     /// 需要命名视图用例时调用；未注入 ⇒ 明确报错，不回落旧路径。
     pub fn require_named_views_service(
         &self,
@@ -403,6 +427,18 @@ impl PlatformAdapter {
         }
         let profiles = Arc::new(super::repositories::DesktopProfiles::new(store.clone()));
         let policy = Arc::new(super::policy::DesktopPolicy::new(store.clone()));
+        // D6 item 1：历史用例（查询历史 + 迁移运行历史）归模块；桌面仓储是
+        // 同一个 `HistoryDb`，经 `DesktopHistoryRepositories` 适配两个端口。
+        // 构造提前到会话后端装配之前：后端的执行路径写查询历史、命令路径读写
+        // 历史，共享同一份仓储实例（不再经 `DesktopRepository` 的领域门面）。
+        let history_repositories = Arc::new(super::history::DesktopHistoryRepositories::new(
+            store.history_db(),
+        ));
+        let history = Arc::new(datazen_modules::history::HistoryService::new(
+            history_repositories.clone(),
+            history_repositories.clone(),
+        ));
+        let _ = self.history_service.set(history);
         // ---- 失败半径：内核 vs 可选接线 --------------------------------------
         //
         // 本函数装配的东西分两档，两档的失败语义**不同**，改动前先读完这段。
@@ -453,6 +489,7 @@ impl PlatformAdapter {
             self.identity.principal_id().clone(),
             tunnels.clone(),
             known_hosts.clone(),
+            history_repositories.clone(),
         ));
         let native =
             super::native_tool::deployment::NativeDeployment::from_build(backend.physical_budget());

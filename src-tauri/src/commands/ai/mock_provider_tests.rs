@@ -178,8 +178,9 @@ async fn mock_provider_analyze_queries() {
     let (test, mock) = TestAppState::with_mock_ai_tables().await;
     let (_, conn_id) = test.save_and_connect("mock-hist").await;
 
-    test.state
-        .store
+    // D6 第一切片：写入经模块服务（与生产路径同一装配）。
+    crate::platform::ipc::require_history_service(&test.state)
+        .unwrap()
         .add_query_history(crate::store::QueryHistoryEntry {
             id: uuid::Uuid::new_v4().to_string(),
             connection_id: "mock-hist".into(),
@@ -192,8 +193,7 @@ async fn mock_provider_analyze_queries() {
             success: true,
             error_message: None,
         })
-        .await
-        .unwrap();
+        .await;
 
     mock.push_text(
         r#"{"summary":"Light","categories":[{"name":"SELECT","count":1,"examples":["SELECT 1"]}],"insights":[],"frequentTables":[],"recommendations":[]}"#,

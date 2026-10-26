@@ -155,9 +155,10 @@ pub(crate) async fn get_query_history_impl(
     database: Option<String>,
     schema: Option<String>,
 ) -> Result<Vec<QueryHistoryEntry>, CommandError> {
-    Ok(state
-        .store
-        .get_query_history(
+    // D6 item 1：查询历史用例经模块服务；未注入时报错而非回落直读 store。
+    let service = crate::platform::ipc::require_history_service(state)?;
+    Ok(service
+        .recent_query_history(
             limit,
             connection_id.as_deref(),
             database.as_deref(),
@@ -168,10 +169,10 @@ pub(crate) async fn get_query_history_impl(
 
 pub(crate) async fn clear_query_history_impl(state: &AppState) -> Result<(), CommandError> {
     tracing::info!("clear_query_history");
-    state
-        .store
+    crate::platform::ipc::require_history_service(state)?
         .clear_query_history()
         .await
+        .map(|_| ())
         .cmd_err("clear_query_history")
 }
 
@@ -251,9 +252,8 @@ pub(crate) async fn get_query_history_page_impl(
     request: HistoryPageRequest,
 ) -> Result<QueryHistoryPage, CommandError> {
     let filter = request.to_filter()?;
-    state
-        .store
-        .get_query_history_page(&filter)
+    crate::platform::ipc::require_history_service(state)?
+        .query_history_page(&filter)
         .await
         .cmd_err("get_query_history_page")
 }
@@ -264,8 +264,7 @@ pub(crate) async fn delete_query_history_impl(
     state: &AppState,
     id: String,
 ) -> Result<u64, CommandError> {
-    state
-        .store
+    crate::platform::ipc::require_history_service(state)?
         .delete_query_history(&id)
         .await
         .cmd_err("delete_query_history")

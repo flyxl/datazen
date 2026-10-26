@@ -439,10 +439,9 @@ async fn executes_query_command_through_ipc() {
             || result.data.get("columns").is_some()
             || result.data.is_object()
     );
-    let history = test
-        .state
-        .store
-        .get_query_history(10, None, None, None)
+    let history = crate::platform::ipc::require_history_service(&test.state)
+        .unwrap()
+        .recent_query_history(10, None, None, None)
         .await;
     assert!(history.iter().any(|e| e.success));
 }

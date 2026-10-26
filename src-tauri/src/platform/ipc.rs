@@ -153,6 +153,17 @@ pub fn require_named_views_service(
         .map_err(into_command_error)
 }
 
+/// D6 item 1 后的历史用例入口：查询历史与迁移运行历史经模块服务消费。
+pub fn require_history_service(
+    state: &AppState,
+) -> Result<Arc<datazen_modules::history::HistoryService>, CommandError> {
+    state
+        .platform_require()
+        .map_err(into_command_error)?
+        .require_history_service()
+        .map_err(into_command_error)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
