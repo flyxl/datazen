@@ -527,6 +527,24 @@ impl From<datazen_modules::ai::application::AiUseCaseError> for CommandError {
     }
 }
 
+// D6 item 5 切片 a：导出/文件产物作业/备份恢复族归位 modules::export 与
+// modules::backup 后，旧路径的函数签名改携 ExportError；同桶映射保证与旧
+// From<FeatureError> 路径相同的 IPC 文案与失败类别。
+impl From<datazen_modules::export::ExportError> for CommandError {
+    fn from(error: datazen_modules::export::ExportError) -> Self {
+        use datazen_modules::export::ExportError;
+        match error {
+            ExportError::Validation(message) => Self::Validation(message),
+            ExportError::NotFound(message) => Self::NotFound(message),
+            ExportError::NotConfigured(message) => Self::NotConfigured(message),
+            ExportError::Internal(message) => Self::Internal(message),
+            ExportError::Driver(error) => Self::from(error),
+            ExportError::Io(error) => Self::Io(error),
+            ExportError::Json(error) => Self::Json(error),
+        }
+    }
+}
+
 /// Map a named-view rejection onto the IPC envelope.
 ///
 /// The two rule failures keep their `grid.view.*` prefix, and the prefix is

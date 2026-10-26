@@ -7,6 +7,12 @@
 //! HTTP client (`reqwest`) and the bottom-layer `datazen-infra` utilities are
 //! deliberate, user-decided exceptions recorded in the refactor plan.
 
+#[cfg(feature = "backup")]
+pub mod backup;
+
+#[cfg(feature = "export")]
+pub mod export;
+
 #[cfg(feature = "ai")]
 pub mod ai;
 

@@ -3,7 +3,8 @@ use super::*;
 use datazen_application::{dto::requests::*, sessions::ConnectionUseCases};
 use datazen_driver_mysql as _;
 use datazen_driver_postgres as _;
-use datazen_feature_core::{error::FeatureError, file_job::*};
+use datazen_feature_core::file_job::*;
+use datazen_modules::export::ExportError as FeatureError;
 use datazen_platform_api::{
     context::OwnerRef,
     dto::{

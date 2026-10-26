@@ -107,3 +107,20 @@ impl From<datazen_modules::ai::application::AiUseCaseError> for FeatureError {
         }
     }
 }
+
+// D6 item 5 切片 a：导出/文件产物作业族归位 modules::export 后，旧路径的
+// 函数签名改携 ExportError；同桶映射保证同一失败在传输层的文案与类别不变。
+impl From<datazen_modules::export::ExportError> for FeatureError {
+    fn from(error: datazen_modules::export::ExportError) -> Self {
+        use datazen_modules::export::ExportError;
+        match error {
+            ExportError::Validation(message) => Self::Validation(message),
+            ExportError::NotFound(message) => Self::NotFound(message),
+            ExportError::NotConfigured(message) => Self::NotConfigured(message),
+            ExportError::Internal(message) => Self::Internal(message),
+            ExportError::Driver(error) => Self::Driver(error),
+            ExportError::Io(error) => Self::Io(error),
+            ExportError::Json(error) => Self::Json(error),
+        }
+    }
+}

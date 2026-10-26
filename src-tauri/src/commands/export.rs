@@ -16,19 +16,19 @@ impl ExportSource for DesktopExportSource {
     async fn resolve_source(
         &self,
         id: &str,
-    ) -> Result<(Arc<dyn DatabaseDriver>, bool, bool), datazen_feature_core::error::FeatureError>
+    ) -> Result<(Arc<dyn DatabaseDriver>, bool, bool), datazen_modules::export::ExportError>
     {
         let (_, config, _) = self
             .runtime
             .profile_for_session(id)
             .await
-            .map_err(datazen_feature_core::error::FeatureError::Internal)?;
+            .map_err(datazen_modules::export::ExportError::Internal)?;
         let driver = self
             .registry
             .get(&config.database_type)
             .await
             .ok_or_else(|| {
-                datazen_feature_core::error::FeatureError::Validation(
+                datazen_modules::export::ExportError::Validation(
                     "Export driver unavailable".into(),
                 )
             })?;
@@ -44,7 +44,7 @@ impl ExportSource for DesktopExportSource {
         sql: &str,
         target: datazen_driver_api::SqlTarget<'_>,
         callback: datazen_driver_api::QueryStreamCallback,
-    ) -> Result<(), datazen_feature_core::error::FeatureError> {
+    ) -> Result<(), datazen_modules::export::ExportError> {
         self.stream_runtime_query(id, sql, target, callback).await
     }
 }
@@ -63,7 +63,7 @@ impl datazen_feature_core::file_job::FileJobOperation for ExportOperation {
         cancel: &datazen_runtime::job::CancelToken,
     ) -> Result<
         datazen_feature_core::file_job::FileJobOutput,
-        datazen_feature_core::error::FeatureError,
+        datazen_modules::export::ExportError,
     > {
         let (plans, zip) = prepare_export(&self.request)?;
         let path = self.staging.path().join(if zip {
@@ -152,7 +152,7 @@ mod tests {
     use super::*;
     use datazen_driver_api::ColumnInfo;
     use datazen_driver_api::Value;
-    use datazen_feature_core::error::FeatureError as CommandError;
+    use datazen_modules::export::ExportError as CommandError;
     use std::sync::Mutex;
 
     #[tokio::test]

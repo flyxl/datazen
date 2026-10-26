@@ -10,6 +10,32 @@ default = []
 # 夹具门控：沿用旧 kernel/runtime 的 test-harness 语义（过渡期；D8 收敛）。
 test-harness = []
 settings = ["dep:async-trait", "dep:serde_json"]
+# D6 item 5 切片 a：备份与 SQL 恢复用例（BackupSource/BackupEvents 端口 +
+# dump/restore 编排 + .sql/.sql.gz 流式恢复）。错误信封复用 export::
+# ExportError（文件产物族共用）；flate2 承载 .sql.gz；SQL 只读校验沿用
+# execution::domain::sql_guard。
+backup = [
+    "dep:async-trait",
+    "dep:flate2",
+    "dep:tokio",
+    "dep:tracing",
+    "dep:datazen-driver-api",
+    "export",
+]
+# D6 item 5 切片 a：表导出与文件产物作业（FileArtifactJob）自 feature-core
+# 归位。zip 承载多文件归档；SQL 只读校验沿用 execution::domain::sql_guard，
+# job 词汇来自 jobs；uuid 铸产物执行 id，chrono 已常驻。
+export = [
+    "dep:serde_json",
+    "dep:zip",
+    "dep:tokio",
+    "dep:tokio-util",
+    "dep:tracing",
+    "dep:uuid",
+    "dep:datazen-driver-api",
+    "execution",
+    "jobs",
+]
 # D6 item 1：查询历史与迁移运行历史（词汇/仓储端口/用例门面）。
 # 轻量：serde/chrono 常驻（B248e153 后 chrono 为常驻依赖）+ async-trait（端口）
 # + tracing（降级告警）。
@@ -205,6 +231,8 @@ sha2 = { version = "0.10", optional = true }
 # D5 data_sync：comparison_store / plan_store 的 SQLite 侧实现所需。
 rusqlite = { version = "0.32.1", features = ["bundled"], optional = true }
 base64 = { version = "0.22", optional = true }
+# D6 item 5 切片 a：export 模块的多文件归档（仅 deflate，与 feature-core 同款）。
+zip = { version = "2", default-features = false, features = ["deflate"], optional = true }
 # D5 data_transfer：sql_file 的 gzip 读写（.sql.gz 导入导出）。
 flate2 = { version = "1.1.9", optional = true }
 hmac = { version = "0.12", optional = true }
@@ -216,7 +244,7 @@ sqlparser = { version = "0.59", features = ["visitor"], optional = true }
 # ai feature：契约层链接期工厂注册
 inventory = { version = "0.3", optional = true }
 # ai feature：providers 的并发与流式传输
-tokio = { version = "1", features = ["rt", "sync", "time", "macros", "net"], optional = true }
+tokio = { version = "1", features = ["rt", "sync", "time", "macros", "net", "fs", "io-util"], optional = true }
 tokio-util = { version = "0.7", features = ["rt"], optional = true }
 futures-util = { version = "0.3", optional = true }
 reqwest = { version = "0.13.3", default-features = false, features = ["rustls", "json", "stream", "cookies", "query", "form"], optional = true }

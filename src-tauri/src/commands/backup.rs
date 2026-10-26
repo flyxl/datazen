@@ -34,18 +34,18 @@ impl datazen_feature_core::backup::BackupSource for DesktopBackupSource {
         id: &str,
     ) -> Result<
         (Arc<dyn DatabaseDriver>, ConnectionConfig),
-        datazen_feature_core::error::FeatureError,
+        datazen_modules::export::ExportError,
     > {
         let adapter = self.platform.require().map_err(|error| {
-            datazen_feature_core::error::FeatureError::Internal(error.to_string())
+            datazen_modules::export::ExportError::Internal(error.to_string())
         })?;
         let runtime = adapter.runtime().map_err(|error| {
-            datazen_feature_core::error::FeatureError::Internal(error.to_string())
+            datazen_modules::export::ExportError::Internal(error.to_string())
         })?;
         let owner = runtime
             .connection_id_for_session(&datazen_runtime::connection::DbSessionId::new(id))
             .ok_or_else(|| {
-                datazen_feature_core::error::FeatureError::Validation(
+                datazen_modules::export::ExportError::Validation(
                     "Backup session is unavailable".into(),
                 )
             })?;
@@ -55,7 +55,7 @@ impl datazen_feature_core::backup::BackupSource for DesktopBackupSource {
             .await
             .filter(|(_, metadata)| metadata.enabled)
             .ok_or_else(|| {
-                datazen_feature_core::error::FeatureError::Validation(
+                datazen_modules::export::ExportError::Validation(
                     "Backup profile unavailable".into(),
                 )
             })?;
@@ -64,7 +64,7 @@ impl datazen_feature_core::backup::BackupSource for DesktopBackupSource {
             .get(&config.database_type)
             .await
             .ok_or_else(|| {
-                datazen_feature_core::error::FeatureError::Validation(
+                datazen_modules::export::ExportError::Validation(
                     "Backup driver unavailable".into(),
                 )
             })?;
@@ -150,10 +150,10 @@ impl datazen_feature_core::file_job::FileJobOperation for BackupFileOperation {
         cancel: &datazen_runtime::job::CancelToken,
     ) -> Result<
         datazen_feature_core::file_job::FileJobOutput,
-        datazen_feature_core::error::FeatureError,
+        datazen_modules::export::ExportError,
     > {
         if cancel.is_cancelled() {
-            return Err(datazen_feature_core::error::FeatureError::Validation(
+            return Err(datazen_modules::export::ExportError::Validation(
                 "fileJobCancelled".into(),
             ));
         }
@@ -167,7 +167,7 @@ impl datazen_feature_core::file_job::FileJobOperation for BackupFileOperation {
             self.options.as_deref().unwrap_or_default(),
         )?;
         let unavailable = || {
-            datazen_feature_core::error::FeatureError::Validation("runtimeBackupUnavailable".into())
+            datazen_modules::export::ExportError::Validation("runtimeBackupUnavailable".into())
         };
         let adapter = self.source.platform.require().map_err(|_| unavailable())?;
         let runtime = adapter.runtime().map_err(|_| unavailable())?;
@@ -195,7 +195,7 @@ impl datazen_feature_core::file_job::FileJobOperation for BackupFileOperation {
             .confirmed
             .contains_key(datazen_driver_api::sql_dump::stream::BACKUP_CAPABILITY)
         {
-            return Err(datazen_feature_core::error::FeatureError::Validation(
+            return Err(datazen_modules::export::ExportError::Validation(
                 "runtimeBackupUnsupported".into(),
             ));
         }
@@ -260,7 +260,7 @@ impl datazen_feature_core::file_job::FileJobOperation for BackupFileOperation {
         .await?;
         if cancel.is_cancelled() {
             let _ = tokio::fs::remove_file(output).await;
-            return Err(datazen_feature_core::error::FeatureError::Validation(
+            return Err(datazen_modules::export::ExportError::Validation(
                 "fileJobCancelled".into(),
             ));
         }

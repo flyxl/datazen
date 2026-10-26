@@ -1,7 +1,7 @@
 //! Host-only lossless adapter from one Runtime query to the existing formatter.
 use super::*;
 use datazen_application::{dto::requests::*, sessions::ConnectionUseCases};
-use datazen_feature_core::error::FeatureError;
+use datazen_modules::export::ExportError as FeatureError;
 use datazen_platform_api::{
     dto::{execution::ExecutionState, idempotency::IdempotentOperation, session::ResourceRelease},
     id::{ConfigRevision, ConnectionId, Counter, ExecutionId},
