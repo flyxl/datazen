@@ -101,6 +101,12 @@
 | `b248e153a` / `b53702f50` | （前一会话推送、本轮 rebase 收编）rust job 首次 CI 三处编译修复（shared/scope doctest 视角、chrono 转常驻依赖并收敛各 feature 清单、webdriver feature 补声明）；零消费方的 datazen-migration-common 垫片提前退役 |
 | `81a38480c` | D6 第一切片（item 1 后半）：History 归位 `modules::history`——domain（query/migration_run/scope/repository 端口）+ application（HistoryService）；仓储 trait 归模块 domain（§7.1/§7.3），桌面 SQLite 实现经 `platform/history.rs DesktopHistoryRepositories` 适配同一 `HistoryDb`；`DesktopSessionBackend` 构造注入 `QueryHistoryRepository` 端口（执行路径写历史不再经 DesktopRepository 门面）；消费者全收口（commands history/query/driver_command/ai、MCP resources、AI 分析、全部相关测试）；`DesktopRepository` 历史门面方法删除（store/history.rs 只剩 favorites）；platform-api dto::migration 垫片化。验证：history 10 / 全 feature-lite 1234 / platform-api 21 全绿 |
 | `8f3e97014` | fix：history feature 对齐 chrono 常驻化（81a3848 rebase 到 b248e153 后残留 `dep:chrono` 导致非可选依赖报错，收敛为 `dep:async-trait + dep:tracing`） |
+| `0291f8e27` | D6 第一切片 a / item 3 前半：Workflow 领域词汇归位 `modules::workflow::domain`（model/error/executable：step/block/输出/错误策略/执行结果，纯 wire 词汇仅 serde）。执行器/注册表/调度器等应用层留待后续切片 b |
+| `78e8f882d` | style：rustfmt 收敛 history 切片随迁文件格式漂移 |
+| `7923998fd` | fix(history)：补齐 D6 第一切片宿主集成缺口——HistoryError 从模块平铺导出 + 宿主 CommandError From 转换 |
+| `1e9b7e959` | D6 第二切片 / item 2：Dashboard 家族归位 `modules::dashboard`——词源 feature-core::dashboard 全家族（11 文件）逐字迁移，分层 domain（records/types 含 serde 形状钉单测/repository 端口/schedule_grant）+ application（create/runs/alert/archive/execute/monitor/notifications）；feature-core 11 文件垫片化；Monitor 授权元数据的 ExecutionTarget/sql_guard 改指模块内定义；形态中立闸门配套词级窄域豁免（ALLOWED_WIRE_VOCABULARY）+ 豁免自证测试。验证：dashboard 48 / feature-lite 1306 / feature-core 429 全绿 |
+| `943de5540` / `4c0875a4d` | （前一会话推送、本轮 rebase 收编）rustfmt 收敛 dashboard 切片与 form_neutrality 格式漂移；fix(mcp)：history seed 提前到 server 构建之前（AppState 所有权先取服务后移交） |
+| `21d940450` | **形态中立收口（用户 2026-10-26 指令：形态字面量若需改前端则一并改）**：`AlertChannel::Desktop → App`，wire 值 `"desktop" → "app"`；序列化只写新值，旧持久化字面量经自定义 Deserialize 拆开拼接收映射到 App（不破坏已存告警规则）；form_neutrality 的 ALLOWED_WIRE_VOCABULARY 清空（机制保留）；src-tauri 分发臂/测试样例、前端类型与默认渠道（仅两处消费，grep 审计无遗漏）、shared-boundaries-and-ports.md 文档同步。验证：dashboard 51 / form_neutrality 6 / feature-lite 1310 / feature-core 429 全绿；module-layers/ddd-layers/id-terminology 门禁通过；前端 typecheck/vitest 归 PR CI |
 
 ## 范围决策更新（用户 2026-10-26 指令，第二次）
 
@@ -112,14 +118,20 @@
 的 web/ 目标命名（待实现）保留为未来约定。模块 feature 中立性（无 Tauri 泄入
 共享层）仍由门禁持续守护。D8 在桌面单宿主范围内进行。
 
-## D6 下一步（按 07-stages 顺序）
+## D6 下一步（按 07-stages 顺序；item 1/2 已完成，形态字面量已收口）
 
-1. **Dashboard**（item 2）：保存/组件创建/运行历史/导入导出规则进
-   application/domain，管理库实现留宿主；文件对话框留宿主交互层。
-2. **Workflow**（item 3）：保留 step/session/transaction block 资源边界，
-   调用 execution 与 jobs；workflow_history 词汇属本族。
-3. **AI / MCP**（item 4）：feature-core 中 Provider-neutral 业务（会话编排、
-   工具循环、安全策略）与 MCP 业务分发。
-4. **Monitor、Export、Backup/Restore、Wapps、Tunnel**（item 5）。
+1. **Workflow 切片 b**（item 3 后半）：feature-core/src/workflow 20 文件
+   （command/command_runtime/conditions/context/data_step/executor/history/
+   host/plan_guard/registry/resource_execution/results/scheduler/target_plan
+   等）归位 modules::workflow——保留 step/session/transaction block 资源
+   边界，调用 execution 与 jobs；workflow_history 词汇属本族。domain 词汇
+   已就位（0291f8e27），本切片迁应用/运行时层。
+2. **AI / MCP**（item 4）：feature-core 中 Provider-neutral 业务（会话编排、
+   工具循环、安全策略）与 MCP 业务分发；认证/stdio/HTTP 登录/事件传输在
+   宿主。
+3. **Monitor、Export、Backup/Restore、Wapps、Tunnel**（item 5）：按各自
+   模型迁移，保留 grant、文件安全、恢复锁、沙箱桥与网络限制。
+4. **connection_import / services 残余**（fk_navigation/referenced_by/
+   value_search/db_tools/migration_endpoint 等）随 item 5 一并评估归位。
 5. 收尾：移除 DesktopRepository 残余领域业务方法（favorites 尚在，属宿主
-   文件存储还是迁模块随 item 2-5 顺带评估）。
+   文件存储还是迁模块随上述切片顺带评估）。
