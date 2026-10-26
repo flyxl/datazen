@@ -37,7 +37,9 @@ pub use session_directory::{
     SessionDirectory, SessionOwner,
 };
 pub use target::{
-    CanonicalNamespace, CanonicalNamespaceId, CanonicalTarget, ExecutionTarget, ObjectTarget,
+    CanonicalNamespace, CanonicalNamespaceId, CanonicalTarget, ExecutionTarget, LayerRequirement,
+    ObjectTarget, TargetCanonicalIdRules, TargetCanonicalizationError, TargetCaseFolding,
+    TargetCaseRules, TargetNamespacePathSegment, TargetNamespaceShape, TargetRequirements,
 };
 
 /// 执行侧拥有的 shared ID（§5.1：唯一定义在 `shared::id`，领域再导出同一类型）。

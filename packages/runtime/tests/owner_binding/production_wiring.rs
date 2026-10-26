@@ -66,14 +66,14 @@ const PRUNED_DIRS: &[&str] = &[
 /// 允许出现这两个名字的**唯一**文件：它们自己的定义点。
 /// 导入语句已被剥掉，所以 `pub use` 重导出不会命中；剩下的定义必须显式豁免。
 /// 豁免本身由 `the_definition_site_exemption_is_still_a_real_definition` 钉住。
-const DEFINITION_SITE: &str = "packages/runtime/src/gateway/provenance.rs";
+const DEFINITION_SITE: &str = "modules/src/execution/runtime/gateway/provenance.rs";
 
 /// 完整性守卫：这些文件必须真的被扫到，否则「一条违规都没有」可能只是**没扫到**。
 const MUST_VISIT: &[&str] = &[
-    "packages/runtime/src/gateway/mod.rs",
-    "packages/runtime/src/gateway/provenance.rs",
-    "packages/runtime/src/gateway/owner_binding.rs",
-    "packages/runtime/src/connection/types.rs",
+    "modules/src/execution/runtime/gateway/mod.rs",
+    "modules/src/execution/runtime/gateway/provenance.rs",
+    "modules/src/execution/runtime/gateway/owner_binding.rs",
+    "modules/src/execution/runtime/connection/types.rs",
     "packages/platform-api/src/context.rs",
     "src-tauri/src/platform/identity.rs",
 ];
@@ -481,8 +481,8 @@ fn the_wiring_scan_actually_covers_the_gateway_and_the_host() {
 
     // 住在生产目录里、实为单测的两个文件必须被判成测试，否则这条守卫早就红了。
     for test_module in [
-        "packages/runtime/src/gateway/facade_support.rs",
-        "packages/runtime/src/gateway/facade_tests.rs",
+        "modules/src/execution/runtime/gateway/facade_support.rs",
+        "modules/src/execution/runtime/gateway/facade_tests.rs",
     ] {
         assert!(
             is_test_only(Path::new(test_module), &root),

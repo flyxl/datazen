@@ -7,7 +7,7 @@
 
 ## 全局状态
 
-- 当前阶段：**D3 进行中（词汇 + 七端口 + 机制内核先行均已归位 modules::execution）**；D2 完成 + D6 item 1（named_views）完成；下一步 D3 第三切片 b：runtime 机制迁移（connection/registry/gateway/resource/directory → execution::runtime）与 RuntimeConnectionUseCases 三分。
+- 当前阶段：**D3 进行中（词汇 + 端口 + 机制内核 + 连接资源运行时机制/编排整体均已迁入 modules::execution）**；D2 完成 + D6 item 1（named_views）完成；下一步 **D3-3c：RuntimeConnectionUseCases 三分**（execution::application 编排 / domain 状态 / runtime 私有机制）与 D3 收尾验收（等待能力封装 + 桌面关停）。
 - 既有 flake 备注：`p4_usecase_journeys` 两用例在弱 CPU 沙箱偶发超时（D1 基线可复现、单跑通过、CI 绿），随 runtime 机制切片处理等待语义时一并解决。
 - 阶段与 PR 粒度：计划按 **D0–D8 九个阶段**推进（无 "wave" 概念，wave 仅是 coordinator 的
   并行批次术语）；每阶段可拆多个小 PR，每 PR 必须可构建、有真实消费者和测试。预估全程
@@ -59,7 +59,8 @@
 | `d740a3624` | D2 第二切片后半：Profile/namespace 词汇归位 `modules::connection`（domain::profile 双端口 + domain::target + application::profile_view 投影）；platform-api ports/dto/target 垫片化；PORT_TRAITS 口径扩展（声明或再导出）；4 个 to_view 调用点改 from_record；connection 模块转目录结构（domain/{catalog,profile,target}、application/{service,profile_view}） |
 | `3d1da4df7` | D3 第一切片：`modules::execution` 建立（feature 依赖 connection）。domain 四文件（session/execution/target/artifact：句柄、状态机含 resolve_cancel 终态规则、能力快照、来源、ExecutionTarget+ObjectTarget、产物家族）；application 四文件（views/requests/events/idempotency：视图、回执、请求、事件信封、提交令牌）。platform-api dto 六文件 + target.rs 执行侧垫片化；测试随迁（modules 112 / platform-api 195） |
 | `7eb386c1b` | D3 第二切片：七个执行端口归位——domain：SessionDirectory、ArtifactRepository（含 ChunkPayload/ByteRange/导出/吊销/配额与指纹函数）+ CanonicalTarget 家族；application：ExecutionSettingsReader/ExecutionTargetResolver/IdentityResolver/SubmissionTokenIssuer/EventSink。platform-api ports 七垫片；include_str 自检测试改指新文件名；modules 167 / platform-api 145 / runtime 517 全绿 |
-| 本次 | D3 第三切片 a：机制内核先行——budget 端口家族→execution::application::budget、账本/调度→execution::runtime::budget、driver_registry→execution::runtime、sql_guard→execution::domain、hash→shared；kernel 再导出保旧路径、platform-api ports/budget 垫片；test-harness feature 链贯通；形态中立闸门扩到 modules（豁免 src/ai）；modules 337 / kernel 34 / runtime lib 517 + 集成 444 全绿（2 既有 flake 见备注） |
+| `317a1be3b` | D3 第三切片 a：机制内核先行——budget 端口家族→execution::application::budget、账本/调度→execution::runtime::budget、driver_registry→execution::runtime、sql_guard→execution::domain、hash→shared；kernel 再导出保旧路径、platform-api ports/budget 垫片；test-harness feature 链贯通；形态中立闸门扩到 modules（豁免 src/ai） |
+| 本次 | D3 第三切片 b：connection/registry/gateway/resource/directory/tunnel/artifact/latency + RuntimeConnectionUseCases 编排整体迁入 execution::runtime（application/ 过渡期整块）；network/policy/secret 端口、ConnectionUseCases 签名、check_owner、TargetNamespaceShape 家族随迁；platform-api target.rs 全垫片化；runtime 只余 native_tool（D5）+ bin + tests + 再导出 facade；路径敏感自检测试全部重定位；modules 872 / runtime 444+9 / platform-api 46 / kernel 34 / feature-core 765 全绿 |
 
 ## 会话恢复要点
 

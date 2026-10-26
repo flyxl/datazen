@@ -320,8 +320,8 @@ fn cell_two_is_a_resource_permit_cell_not_a_tunnel_cell() {
 #[test]
 fn last_cell_refuses_to_keep_a_second_tally() {
     let resource_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("src")
-        .join("resource");
+        .join("../..")
+        .join("modules/src/execution/runtime/resource");
     let findings = single_tally_audit::audit(&resource_dir);
     assert!(
         findings.is_empty(),

@@ -176,7 +176,7 @@ fn production_lines(source: &str) -> Vec<(usize, String)> {
 #[test]
 fn gateway_sources_obey_the_locked_invariants() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let dir = root.join("src/gateway");
+    let dir = root.join("../../modules/src/execution/runtime/gateway");
     let mut names: Vec<String> = std::fs::read_dir(&dir)
         .expect("src/gateway 可读")
         .filter_map(|entry| entry.ok())

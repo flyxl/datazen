@@ -33,24 +33,24 @@ use datazen_runtime::directory::{InMemorySessionDirectory, SessionHandle};
 
 /// 目录模块的源码全集。路径相对本文件（`packages/runtime/tests/`）。
 const SOURCES: &[(&str, &str)] = &[
-    ("mod.rs", include_str!("../src/directory/mod.rs")),
+    ("mod.rs", include_str!("../../../modules/src/execution/runtime/directory/mod.rs")),
     (
         "directory.rs",
-        include_str!("../src/directory/directory.rs"),
+        include_str!("../../../modules/src/execution/runtime/directory/directory.rs"),
     ),
-    ("entry.rs", include_str!("../src/directory/entry.rs")),
+    ("entry.rs", include_str!("../../../modules/src/execution/runtime/directory/entry.rs")),
     (
         "lifecycle.rs",
-        include_str!("../src/directory/lifecycle.rs"),
+        include_str!("../../../modules/src/execution/runtime/directory/lifecycle.rs"),
     ),
     (
         "attachment.rs",
-        include_str!("../src/directory/attachment.rs"),
+        include_str!("../../../modules/src/execution/runtime/directory/attachment.rs"),
     ),
-    ("commit.rs", include_str!("../src/directory/commit.rs")),
-    ("ttl.rs", include_str!("../src/directory/ttl.rs")),
-    ("id.rs", include_str!("../src/directory/id.rs")),
-    ("tests.rs", include_str!("../src/directory/tests.rs")),
+    ("commit.rs", include_str!("../../../modules/src/execution/runtime/directory/commit.rs")),
+    ("ttl.rs", include_str!("../../../modules/src/execution/runtime/directory/ttl.rs")),
+    ("id.rs", include_str!("../../../modules/src/execution/runtime/directory/id.rs")),
+    ("tests.rs", include_str!("../../../modules/src/execution/runtime/directory/tests.rs")),
 ];
 
 /// 任何一种落盘手段的痕迹。出现任意一个就是「目录开始写盘了」。
@@ -76,7 +76,7 @@ fn directory_source_never_touches_the_filesystem() {
         for (label, needle) in FORBIDDEN {
             assert!(
                 !source.contains(needle),
-                "src/directory/{file} 里出现了{label}（`{needle}`）：目录只做内存路由，不得落盘"
+                "../../modules/src/execution/runtime/directory/{file} 里出现了{label}（`{needle}`）：目录只做内存路由，不得落盘"
             );
         }
     }
@@ -95,7 +95,7 @@ fn every_directory_source_file_is_scanned() {
 
 /// `src/directory/` 下实际存在的 `.rs` 文件名集合。
 fn source_file_names() -> BTreeSet<String> {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/directory");
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../modules/src/execution/runtime/directory");
     std::fs::read_dir(&dir)
         .unwrap_or_else(|err| panic!("读不到 {}：{err}", dir.display()))
         .flatten()

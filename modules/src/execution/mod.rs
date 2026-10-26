@@ -19,9 +19,10 @@ pub use application::{
     RuntimeResultBinding, SessionView, SubmissionToken,
 };
 pub use application::{
-    EventSink, EventSubscription, ExecutionIdentity, ExecutionPolicy, ExecutionSettingsReader,
-    ExecutionTargetResolver, IdentityResolver, SubmissionPresentation, SubmissionTokenIssuer,
-    TargetResolution, VerifiedSubmission,
+    endpoint_scheme, EventSink, EventSubscription, ExecutionIdentity, ExecutionPolicy,
+    ExecutionSettingsReader, ExecutionTargetResolver, IdentityResolver, NetworkProvider,
+    RoutePlan, SubmissionPresentation, SubmissionTokenIssuer, TargetResolution, TunnelBinding,
+    TunnelSpec, VerifiedSubmission,
 };
 pub use domain::{
     has_active_execution, owner_matches_client, owner_matches_job, provenance_fingerprint,

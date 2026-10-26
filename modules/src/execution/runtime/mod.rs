@@ -8,5 +8,15 @@
 //! 按目标设计（§4.3），最终只经模块装配入口暴露服务与关停句柄，机制
 //! 类型在 D8 收敛为非公开。
 
+pub mod application;
+pub mod artifact;
 pub mod budget;
+pub mod connection;
+pub mod directory;
 pub mod driver_registry;
+pub mod gateway;
+/// 门禁开销的测量口径（分位数算法 + 逐请求求和）。
+pub mod latency;
+pub mod registry;
+pub mod resource;
+pub mod tunnel;

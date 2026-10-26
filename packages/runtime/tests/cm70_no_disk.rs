@@ -73,59 +73,59 @@ use gateway_fixtures as fx;
 
 /// 网关层的源码全集。路径相对本文件（`packages/runtime/tests/`）。
 const SOURCES: &[(&str, &str)] = &[
-    ("mod.rs", include_str!("../src/gateway/mod.rs")),
+    ("mod.rs", include_str!("../../../modules/src/execution/runtime/gateway/mod.rs")),
     // 从 mod.rs 搬出来的 ExecutionGateway 固有方法。必须登记：漏登记不是「少测一个文件」，
     // 而是 `gateway_source_never_touches_the_filesystem` 的反面证据在这半个网关上直接失效。
-    ("execution.rs", include_str!("../src/gateway/execution.rs")),
-    ("request.rs", include_str!("../src/gateway/request.rs")),
+    ("execution.rs", include_str!("../../../modules/src/execution/runtime/gateway/execution.rs")),
+    ("request.rs", include_str!("../../../modules/src/execution/runtime/gateway/request.rs")),
     (
         "owner_binding.rs",
-        include_str!("../src/gateway/owner_binding.rs"),
+        include_str!("../../../modules/src/execution/runtime/gateway/owner_binding.rs"),
     ),
     (
         "request_cm06_negatives.rs",
-        include_str!("../src/gateway/request_cm06_negatives.rs"),
+        include_str!("../../../modules/src/execution/runtime/gateway/request_cm06_negatives.rs"),
     ),
     (
         "idempotency.rs",
-        include_str!("../src/gateway/idempotency.rs"),
+        include_str!("../../../modules/src/execution/runtime/gateway/idempotency.rs"),
     ),
-    ("token.rs", include_str!("../src/gateway/token.rs")),
-    ("retention.rs", include_str!("../src/gateway/retention.rs")),
-    ("events.rs", include_str!("../src/gateway/events.rs")),
-    ("cancel.rs", include_str!("../src/gateway/cancel.rs")),
+    ("token.rs", include_str!("../../../modules/src/execution/runtime/gateway/token.rs")),
+    ("retention.rs", include_str!("../../../modules/src/execution/runtime/gateway/retention.rs")),
+    ("events.rs", include_str!("../../../modules/src/execution/runtime/gateway/events.rs")),
+    ("cancel.rs", include_str!("../../../modules/src/execution/runtime/gateway/cancel.rs")),
     (
         "provenance.rs",
-        include_str!("../src/gateway/provenance.rs"),
+        include_str!("../../../modules/src/execution/runtime/gateway/provenance.rs"),
     ),
-    ("timing.rs", include_str!("../src/gateway/timing.rs")),
+    ("timing.rs", include_str!("../../../modules/src/execution/runtime/gateway/timing.rs")),
     (
         "facade_support.rs",
-        include_str!("../src/gateway/facade_support.rs"),
+        include_str!("../../../modules/src/execution/runtime/gateway/facade_support.rs"),
     ),
     (
         "testing_support.rs",
-        include_str!("../src/gateway/testing_support.rs"),
+        include_str!("../../../modules/src/execution/runtime/gateway/testing_support.rs"),
     ),
     (
         "token_tests.rs",
-        include_str!("../src/gateway/token_tests.rs"),
+        include_str!("../../../modules/src/execution/runtime/gateway/token_tests.rs"),
     ),
     (
         "retention_tests.rs",
-        include_str!("../src/gateway/retention_tests.rs"),
+        include_str!("../../../modules/src/execution/runtime/gateway/retention_tests.rs"),
     ),
     (
         "cancel_event_tests.rs",
-        include_str!("../src/gateway/cancel_event_tests.rs"),
+        include_str!("../../../modules/src/execution/runtime/gateway/cancel_event_tests.rs"),
     ),
     (
         "event_repository_tests.rs",
-        include_str!("../src/gateway/event_repository_tests.rs"),
+        include_str!("../../../modules/src/execution/runtime/gateway/event_repository_tests.rs"),
     ),
     (
         "facade_tests.rs",
-        include_str!("../src/gateway/facade_tests.rs"),
+        include_str!("../../../modules/src/execution/runtime/gateway/facade_tests.rs"),
     ),
 ];
 
@@ -171,7 +171,7 @@ fn gateway_source_never_touches_the_filesystem() {
         for (label, needle) in FORBIDDEN {
             assert!(
                 !source.contains(needle),
-                "src/gateway/{file} 里出现了{label}（`{needle}`）：令牌与回执只在内存里，不得落盘"
+                "../../modules/src/execution/runtime/gateway/{file} 里出现了{label}（`{needle}`）：令牌与回执只在内存里，不得落盘"
             );
         }
     }
@@ -190,7 +190,7 @@ fn every_gateway_source_file_is_scanned() {
 
 /// `src/gateway/` 下实际存在的 `.rs` 文件名集合。
 fn source_file_names() -> BTreeSet<String> {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/gateway");
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../modules/src/execution/runtime/gateway");
     std::fs::read_dir(&dir)
         .unwrap_or_else(|err| panic!("读不到 {}：{err}", dir.display()))
         .flatten()

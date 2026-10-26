@@ -65,7 +65,7 @@
 | D1 | 新 modules 与第一条可运行小切片 | 已完成：settings 切片 + 收尾清理（旧过渡导出已删，详见 07-stages.md D1 小节） |
 | D1.5 | AI crate 收拢与 infra 改名（2026-10-26 追加） | 已完成：三步合并/改名 + 共享审计结论见 07-stages.md D1.5 小节 |
 | D2 | 连接领域与宿主仓储 | 已完成：目录切片 + Profile/revision 词汇统一 + modules::shared 建立（见 07-stages.md D2 小节）；桌面 UI 旅程验证依赖 PR CI |
-| D3 | Execution 拆分与资源机制归位 | 进行中：词汇 + 七端口 + 机制内核先行（budget/driver_registry/sql_guard/hash → modules）已完成；runtime 机制与编排拆分待做 |
+| D3 | Execution 拆分与资源机制归位 | 进行中：词汇 + 端口 + 机制内核 + 连接资源运行时机制与编排整体（D3-3b）已迁入 modules::execution；待做：RuntimeConnectionUseCases 三分拆分（D3-3c）与桌面关停验收 |
 | D4 | Schema、表读写与 SQL 消费者 | 未开始 |
 | D5 | Jobs 与迁移三件套 | 未开始 |
 | D6 | 其余功能与旧宿主业务移除 | 进行中：item 1（named_views）已迁移 modules |

@@ -11,7 +11,11 @@ pub mod event_sink;
 pub mod events;
 pub mod idempotency;
 pub mod identity;
+pub mod network;
+pub mod policy;
+pub mod use_cases;
 pub mod requests;
+pub mod secret;
 pub mod settings_reader;
 pub mod submission;
 pub mod target_resolver;
@@ -24,7 +28,14 @@ pub use events::{
 };
 pub use idempotency::{IdempotentOperation, SubmissionToken};
 pub use identity::{ExecutionIdentity, IdentityResolver};
+pub use policy::{
+    AuthorizationAction, AuthorizationDecision, AuthorizationSubject, DelegationGrant,
+    PolicyService, PolicyVersionChange,
+};
+pub use use_cases::ConnectionUseCases;
+pub use network::{endpoint_scheme, NetworkProvider, RoutePlan, TunnelBinding, TunnelSpec};
 pub use requests::*;
+pub use secret::{ResolvedCredential, SecretPurpose, SecretProvider};
 pub use settings_reader::{ExecutionPolicy, ExecutionSettingsReader};
 pub use submission::{SubmissionPresentation, SubmissionTokenIssuer, VerifiedSubmission};
 pub use target_resolver::{ExecutionTargetResolver, TargetResolution};

@@ -13,26 +13,20 @@
 // 资源运行时无关。这里的 `pub use` 保持 `datazen_runtime::job::…` 等既有路径不变。
 pub use datazen_kernel::{budget, driver_registry, job, schema_cache, sql_guard};
 
-pub mod application;
-pub mod artifact;
-pub mod connection;
-/// 会话目录端口（`SessionDirectory`）的单进程实现：owner / runtimeEpoch / TTL 路由。
-/// 只存路由信息，不存连接、不存凭据、不落盘。
-pub mod directory;
-pub mod gateway;
-/// 门禁开销的测量口径（分位数算法 + 逐请求求和）。
-pub mod latency;
+// D3（2026-10-26）起，连接资源运行时机制的唯一定义在
+// `datazen-modules::execution::runtime`。本 crate 的机制目录整体迁出，
+// 以下再导出保持 `datazen_runtime::connection::…` 等既有路径（§5.5 单向
+// 委托）；本 crate 保留 application（用例编排，D3-3c 拆分）、native_tool
+// （依赖 Job 词汇，随 D5 jobs 迁移）与 bin/。D8 退役本 crate。
+pub use datazen_modules::execution::runtime::{
+    artifact, connection, directory, gateway, latency, registry, resource, tunnel,
+};
+
+// 用例编排（RuntimeConnectionUseCases）D3-3b 起随机制一同住在
+// modules::execution::runtime::application（过渡期整块迁移保持 pub(crate) 语义；
+// D3-3c 按 §5.3 拆分为 execution::application 编排与 domain 状态）。
+pub use datazen_modules::execution::runtime::application;
 pub mod native_tool;
-/// 会话登记表接缝：`SessionPort` 的**唯一**契约面，Wave 2 的 registry 实现它、gateway 消费它。
-pub mod registry;
-/// 宿主资源台账与生命周期裁决：物理连接表、`PoolKey` 索引、
-/// 租约状态机、归池前的宿主侧检查、候选替换提交闸门。不做驱动 `Clean` 判定，不导出物理句柄。
-pub mod resource;
-/// 隧道共享与引用计数：把 platform-api **已冻结**的
-/// `NetworkProvider::{ensure_tunnel, release_tunnel}` 契约落成实现方。
-/// 共享身份是 `TunnelSpec` 全等值（全系统**唯一**一份引用计数就在 `TunnelLedger`）；
-/// 物理开法是注入式接缝 —— 本模块不认识 SSH / 代理 / WebSocket 任何一种。
-pub mod tunnel;
 
 /// 夹具门控开关的单一事实源。
 ///

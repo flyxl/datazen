@@ -233,7 +233,7 @@ async fn cm06_a_job_owner_carries_no_principal_so_same_organization_peers_pass_t
 /// 变红信息即要求把上面的对偶断言补齐。字段表从 `types.rs` 原文抠出，不靠记忆。
 #[test]
 fn cm06_the_job_owner_variant_field_list_is_pinned() {
-    let src = include_str!("../src/connection/types.rs");
+    let src = include_str!("../../../modules/src/execution/runtime/connection/types.rs");
     let anchor = "    Job {";
     let start = src
         .find(anchor)
@@ -400,7 +400,7 @@ fn cm06_the_request_dto_has_no_field_to_forge_an_identity_into() {
 }
 
 fn request_source() -> &'static str {
-    include_str!("../src/gateway/request.rs")
+    include_str!("../../../modules/src/execution/runtime/gateway/request.rs")
 }
 
 /// 抠出 `pub struct ExecutionRequest { … }` 在括号深度 1 上的全部 `pub` 字段名。

@@ -27,7 +27,22 @@ named_views = [
 ]
 # D3：执行域词汇与应用边界 DTO。依赖 connection 的 NamespaceTarget（§4.2：
 # execution 使用 connection 的执行配置读取契约）。
-execution = ["dep:async-trait", "dep:serde_json", "dep:tokio", "dep:tracing", "connection", "settings"]
+# D3：执行域词汇、应用边界 DTO 与机制内核（runtime 机制 D3-3b 起迁入：
+# connection/registry/gateway/resource/directory/tunnel/artifact/latency）。
+execution = [
+    "dep:async-trait",
+    "dep:serde_json",
+    "dep:tokio",
+    "dep:tracing",
+    "dep:indexmap",
+    "dep:futures-util",
+    "dep:chrono",
+    "dep:sha2",
+    "dep:hmac",
+    "dep:libc",
+    "connection",
+    "settings",
+]
 # D1.5：AI Provider 契约与适配整体并入（原 datazen-ai-api → datazen-ai-providers）。
 # 单一 feature 承载 domain 契约 + providers 适配；若 D7 的 Web 形态需要拆分
 # （如仅契约不带 reqwest），届时再拆，不提前建空档。
@@ -49,6 +64,13 @@ async-trait = { version = "0.1", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", optional = true }
 thiserror = "1"
+# execution feature：机制代码（会话 actor/账本/产物/隧道）。
+# futures-util / chrono 已在下方 ai / named_views 区声明（同名 optional dep），
+# 这里不重复声明。
+indexmap = { version = "2", optional = true }
+sha2 = { version = "0.10", optional = true }
+hmac = { version = "0.12", optional = true }
+libc = { version = "0.2", optional = true }
 # ai feature：契约层链接期工厂注册
 inventory = { version = "0.3", optional = true }
 # ai feature：providers 的并发与流式传输
@@ -68,6 +90,8 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "serd
 [dev-dependencies]
 # shared 词汇单测（Counter 序列化、RequestContext 往返等）需要 serde_json。
 serde_json = "1"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+# 机制测试（产物落盘恢复等）需要临时目录。
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "test-util"] }
 wiremock = "0.6"
 tracing-subscriber = "0.3"

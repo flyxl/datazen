@@ -195,6 +195,27 @@ AI 工具（egress 摘要 / db_tools / 连接上下文）与 MCP 的目录读取
   connection/registry/gateway/resource/directory）、
   `RuntimeConnectionUseCases` 三分与旧 facade 委托、桌面关停接入。
 
+**第三切片 b 已完成（2026-10-26）——连接资源运行时机制整体迁入**：
+- runtime 的 connection / registry / gateway / resource / directory / tunnel /
+  artifact / latency 整体迁入 `execution::runtime`；用例编排
+  （`RuntimeConnectionUseCases` 全家）过渡期整块迁入
+  `execution::runtime::application`（保持 pub(crate) 语义；D3-3c 按 §5.3
+  拆分为 execution::application 编排与 domain 状态）。
+- 随迁端口与词汇：network（`NetworkProvider`/`TunnelSpec` 家族）与
+  policy（`PolicyService`/授权词汇）、secret（`SecretProvider`）、
+  `ConnectionUseCases` 签名、`check_owner`（→ shared::policy）、
+  `TargetNamespaceShape` 等驱动能力元数据（→ execution::domain::target，
+  platform-api target.rs 至此全部垫片化）。platform-api 对应文件均改再导出。
+- runtime crate 只余：native_tool（依赖 Job 词汇，随 D5 迁移）、
+  bin/cm60-bench、tests/（集成测试面）与全量再导出 facade
+  （`datazen_runtime::connection::…` 等既有路径不变，§5.5 单向委托）。
+- 路径敏感的自检/审计测试全部重定位（epoch 单实现扫描、隧道单账审计
+  AUDITED 表、形态中立闸门扫描根、catalog_guard 文档真源、
+  runtime 测试的 include_str 与 MANIFEST_DIR 路径）。
+- 验证：modules 872 / runtime lib 9 + 集成 444 / platform-api 46 /
+  kernel 34 / feature-core 765 / application 95 / schema-diff 179 全绿
+  （p4_usecase_journeys 2 例为下述既有 flake）。
+
 **已知既有 flake（非本切片引入）**：`p4_usecase_journeys` 的
 `execution_receipt_driver_live_chunks…` 与 `unsubscribe_unblocks_consumer…`
 在弱 CPU 沙箱并发全文件运行时因 `terminal()` 忙等 1000 次 yield 上限偶发
