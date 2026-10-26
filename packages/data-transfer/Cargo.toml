@@ -6,7 +6,9 @@ description = "Data Transfer domain engine for DataZen: heterogeneous IR migrati
 license = "GPL-3.0-or-later"
 
 [features]
-webdriver = []
+# 转发到 modules 的故障注入 seam cfg（src-tauri webdriver E2E 经此传导，
+# 原 data-transfer crate 的同名 feature 语义：仅作 cfg 开关，无依赖）。
+webdriver = ["datazen-modules/webdriver"]
 
 [dependencies]
 # D5：唯一定义在 datazen-modules::data_transfer；本 crate 只再导出垫片。

@@ -22,7 +22,6 @@ connection = [
 named_views = [
     "dep:async-trait",
     "dep:serde_json",
-    "dep:chrono",
     "dep:datazen-driver-api",
 ]
 # D3：执行域词汇与应用边界 DTO。依赖 connection 的 NamespaceTarget（§4.2：
@@ -36,7 +35,6 @@ execution = [
     "dep:tracing",
     "dep:indexmap",
     "dep:futures-util",
-    "dep:chrono",
     "dep:sha2",
     "dep:hmac",
     "dep:libc",
@@ -55,7 +53,6 @@ schema = ["dep:tokio", "dep:datazen-infra", "execution"]
 schema_diff = [
     "dep:async-trait",
     "dep:serde_json",
-    "dep:chrono",
     "dep:tokio",
     "dep:tracing",
     "dep:uuid",
@@ -70,7 +67,6 @@ schema_diff = [
 data_sync = [
     "dep:async-trait",
     "dep:base64",
-    "dep:chrono",
     "dep:rusqlite",
     "dep:serde_json",
     "dep:uuid",
@@ -89,7 +85,6 @@ data_sync = [
 data_transfer = [
     "dep:async-trait",
     "dep:base64",
-    "dep:chrono",
     "dep:flate2",
     "dep:inventory",
     "dep:serde_json",
@@ -111,7 +106,6 @@ migration_common = ["dep:datazen-driver-api", "dep:serde_json"]
 jobs = [
     "dep:async-trait",
     "dep:serde_json",
-    "dep:chrono",
     "dep:tokio",
     "dep:futures-util",
     "execution",
@@ -130,6 +124,11 @@ ai = [
     "dep:tracing",
     "dep:datazen-infra",
 ]
+
+# D5 data_transfer：debug 构建 + webdriver E2E 的故障注入 seam（commit-ack 丢失）。
+# 纯 cfg 开关无依赖；src-tauri 的 webdriver feature 经 datazen-data-transfer
+# 垫片转发进来（原 data-transfer crate 同名 feature 的语义原样承接）。
+webdriver = []
 
 [dependencies]
 async-trait = { version = "0.1", optional = true }
@@ -164,8 +163,11 @@ datazen-infra = { path = "../packages/infra", optional = true }
 
 # connection / named_views features：连接配置形状与 filters 词汇（driver 契约 crate，允许的依赖边）
 datazen-driver-api = { path = "../packages/driver-api", optional = true }
-# named_views feature：created_at / updated_at 时间戳
-chrono = { version = "0.4", default-features = false, features = ["clock", "serde"], optional = true }
+# shared::clock 的 SystemClock 生产实现常驻需要 chrono（D5 随 shared 自
+# platform-api 归位）。不再是可选依赖：shared 无 feature 门，且
+# run-platform-crate-tests.mjs 的单 feature 矩阵腿（settings/connection 等）
+# 不带 named_views，若可选则默认/单 feature 构建在 clock.rs 处编译破损。
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 
 [dev-dependencies]
 # shared 词汇单测（Counter 序列化、RequestContext 往返等）需要 serde_json。
