@@ -11,8 +11,9 @@ default = []
 test-harness = []
 settings = ["dep:async-trait", "dep:serde_json"]
 # D6 item 1：查询历史与迁移运行历史（词汇/仓储端口/用例门面）。
-# 轻量：serde（常驻）+ chrono（时间戳）+ async-trait（端口）+ tracing（降级告警）。
-history = ["dep:async-trait", "dep:chrono", "dep:tracing"]
+# 轻量：serde/chrono 常驻（B248e153 后 chrono 为常驻依赖）+ async-trait（端口）
+# + tracing（降级告警）。
+history = ["dep:async-trait", "dep:tracing"]
 # D2：连接目录（配置 + 分组）的领域词汇与用例。形状复用 driver-api 的
 # ConnectionConfig（每个形态都已链接的那一份，且是连接表单的 IPC 载荷）。
 connection = [
