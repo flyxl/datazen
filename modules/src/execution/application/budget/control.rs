@@ -19,11 +19,11 @@
 
 use async_trait::async_trait;
 
-use crate::error::PortError;
-use crate::id::{
+use crate::shared::error::PortError;
+use crate::shared::id::{
     ConnectionId, Counter, ExecutionId, LeaseId, OrganizationId, ResourceId, Timestamp,
 };
-use crate::ports::budget::dimension::{
+use crate::execution::application::budget::dimension::{
     BudgetDimension, BudgetUsage, QuotaKey, QuotaVerdict, ResourceClass,
 };
 
@@ -121,7 +121,7 @@ impl ControlBudgetHeadroom {
 #[async_trait]
 pub trait ControlResourcePort: Send + Sync + 'static {
     /// 申请一条控制连接。额度不足时返回
-    /// [`QuotaDenial::Insufficient`](crate::ports::budget::QuotaDenial::Insufficient)，
+    /// [`QuotaDenial::Insufficient`](crate::execution::application::budget::QuotaDenial::Insufficient)，
     /// 而不是借用共享额度。
     async fn acquire_control(
         &self,
@@ -146,7 +146,7 @@ pub trait ControlResourcePort: Send + Sync + 'static {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::id::{PrincipalId, WorkerId};
+    use crate::shared::id::{PrincipalId, WorkerId};
 
     fn lease() -> ControlResourceLease {
         ControlResourceLease {
@@ -228,10 +228,10 @@ mod tests {
     }
 
     #[test]
-    fn the_desktop_control_reserve_of_one_is_honoured() {
-        // §9.2：桌面形态 control 保留 1。开满一条之后立刻不可再开。
-        let desktop = ControlBudgetHeadroom::new(1, 1);
-        assert!(!desktop.can_open());
+    fn the_reference_control_reserve_of_one_is_honoured() {
+        // §9.2：参考形态（单进程宿主）control 保留 1。开满一条之后立刻不可再开。
+        let reserve = ControlBudgetHeadroom::new(1, 1);
+        assert!(!reserve.can_open());
         assert_eq!(ControlBudgetHeadroom::new(1, 0).available(), 1);
     }
 
@@ -253,7 +253,7 @@ mod tests {
     fn a_node_lost_denial_is_available_for_control_requests() {
         // §9.3：多 worker 协调权丢失即停止发放新资源，这一条对控制连接同样成立。
         let denial = QuotaVerdict::<ControlResourceLease>::Denied(
-            crate::ports::budget::QuotaDenial::NodeLost {
+            crate::execution::application::budget::QuotaDenial::NodeLost {
                 worker_id: WorkerId::new("w-3"),
             },
         );

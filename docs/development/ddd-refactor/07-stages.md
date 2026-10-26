@@ -174,8 +174,32 @@ AI 工具（egress 摘要 / db_tools / 连接上下文）与 MCP 的目录读取
 - platform-api 对应七个 ports 文件改再导出垫片；驱动能力元数据
   （TargetNamespaceShape/CaseRules/TargetRequirements）留守 target.rs 随
   机制迁移。
-- 待后续切片：会话 actor/lease/队列/等待/回收/预算账本/driver registry
-  机制、`RuntimeConnectionUseCases` 三分与旧 facade 委托、桌面关停接入。
+**第三切片 a 已完成（2026-10-26）——机制内核先行归位**：
+- `datazen-kernel` 的 budget（账本/协调器/队列/配额）、driver_registry、
+  sql_guard（纯规则）、hash（FNV-1a）迁入 modules：budget 端口家族
+  （BudgetCoordinator/DriverPoolBudgetPort/ControlResourcePort/
+  ClusterNodeBudgetPort + pool_ledger 参考账本）→
+  `execution::application::budget`；账本/调度机制 →
+  `execution::runtime::budget`；driver_registry →
+  `execution::runtime::driver_registry`；SQL Guard 纯规则 →
+  `execution::domain::sql_guard`；hash → `shared::hash`。
+- kernel 只余 job/schema_cache（随 D5 Jobs 与 D4 Schema 迁移）并再导出
+  modules 保持 `datazen_kernel::budget::…` 旧路径；platform-api
+  ports/budget 改再导出垫片。
+- `test-harness` feature 链条贯通（modules 声明 → kernel 转发 →
+  runtime 既有自引用 dev-dep）；runtime 形态中立闸门扩展扫描 modules
+  （豁免 src/ai——Provider 适配合法处理 web 工具名/URL，D1.5 决策）。
+- 形态名清理：budget 测试符号 desktop_* → reference_*；target_resolver
+  自检禁词表拆词拼接。
+- 待后续切片：会话 actor/lease/队列/等待/回收机制（runtime 的
+  connection/registry/gateway/resource/directory）、
+  `RuntimeConnectionUseCases` 三分与旧 facade 委托、桌面关停接入。
+
+**已知既有 flake（非本切片引入）**：`p4_usecase_journeys` 的
+`execution_receipt_driver_live_chunks…` 与 `unsubscribe_unblocks_consumer…`
+在弱 CPU 沙箱并发全文件运行时因 `terminal()` 忙等 1000 次 yield 上限偶发
+超时；单测通过、D1 基线（d9d6a868b）即可复现，CI 硬件全绿。随 runtime
+机制迁移（下一切片）一并处理等待语义，不在词汇/端口切片顺手改。
 
 **工作**：
 

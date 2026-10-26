@@ -9,13 +9,13 @@
 //! - **排空不抢占**。`drain` 只停止接受新的 permit，并报出手上还有多少；已建立的固定会话、
 //!   活跃事务、游标一个都不动。
 
-use datazen_platform_api::id::{ConnectionId, DbSessionId, OrganizationId, PrincipalId, WorkerId};
-use datazen_platform_api::ports::budget::{
+use crate::shared::id::{ConnectionId, DbSessionId, OrganizationId, PrincipalId, WorkerId};
+use crate::execution::application::budget::{
     BudgetSnapshot, DrainScope, DrainStatus, NodeLease, PhysicalOccupancy,
 };
 
-use crate::budget::ledger::{BudgetLedger, DenialReason, DrainReport, SessionScope};
-use crate::budget::records::{counter, mono_timestamp, SessionRecord};
+use crate::execution::runtime::budget::ledger::{BudgetLedger, DenialReason, DrainReport, SessionScope};
+use crate::execution::runtime::budget::records::{counter, mono_timestamp, SessionRecord};
 
 impl BudgetLedger {
     // ------------------------------------------------------------ 逻辑会话
@@ -114,12 +114,12 @@ impl BudgetLedger {
 
     /// 物理连接占用。
     pub fn physical(&self, connection_id: &ConnectionId) -> u32 {
-        crate::budget::records::physical_of(self, connection_id)
+        crate::execution::runtime::budget::records::physical_of(self, connection_id)
     }
 
     /// 单用户在该服务上的已连接数（「已连接编辑器」口径）。
     pub fn user_connected(&self, connection_id: &ConnectionId, principal: &PrincipalId) -> u32 {
-        crate::budget::records::connected_of(self, connection_id, principal)
+        crate::execution::runtime::budget::records::connected_of(self, connection_id, principal)
     }
 
     // ------------------------------------------------------------ 物理会话
@@ -141,7 +141,7 @@ impl BudgetLedger {
             return Ok(());
         }
         let cap = self.config.service_physical_connections;
-        let physical = crate::budget::records::physical_of(self, &record.connection_id);
+        let physical = crate::execution::runtime::budget::records::physical_of(self, &record.connection_id);
         if physical >= cap {
             return Err(DenialReason::PhysicalExhausted {
                 connection_id: record.connection_id.clone(),
@@ -150,7 +150,7 @@ impl BudgetLedger {
         }
         let editor_cap = self.config.per_user_connected_editors;
         let connected =
-            crate::budget::records::connected_of(self, &record.connection_id, &record.principal);
+            crate::execution::runtime::budget::records::connected_of(self, &record.connection_id, &record.principal);
         if connected >= editor_cap {
             return Err(DenialReason::ConnectedEditorsExhausted {
                 principal: record.principal.clone(),

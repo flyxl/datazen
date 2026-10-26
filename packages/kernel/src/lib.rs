@@ -14,15 +14,15 @@
 //!
 //! 硬约束与 runtime 相同：不依赖 `tauri*`，不引入 HTTP 框架，不引入 UI 运行时。
 
-pub mod budget;
-pub mod driver_registry;
-pub mod hash;
+// D3（2026-10-26）起，budget / driver_registry / sql_guard / hash 的唯一定义在
+// datazen-modules（execution::runtime / execution::domain / shared）。这里再导出
+// 保持 `datazen_kernel::budget::…` 等既有路径不变；D8 退役本 crate 时删除。
+pub use datazen_modules::execution::domain::sql_guard;
+pub use datazen_modules::execution::runtime::{budget, driver_registry};
+pub use datazen_modules::shared::hash;
 /// P5 JobRuntime 内核：接受/幂等 receipt/planId 唯一消费/claim fencing/handler 协议/
 /// 多端原子预算/阶段调度与取消意图/效果结局聚合（data-migration-jobs.md 全文口径）。
 pub mod job;
 /// Schema 元数据缓存：列级 / 表级两层缓存与 schema 世代号失效闸门，
 /// 外加 DDL 前缀判定 `sql_may_mutate_schema`。自 `src-tauri/src/cache/` 迁入。
 pub mod schema_cache;
-/// SQL 安全门网：注释剥离扫描、主关键字分类、参数绑定与 Safe Mode / 只读校验。
-/// 宿主与未来的服务端入口共用这一份实现。
-pub mod sql_guard;

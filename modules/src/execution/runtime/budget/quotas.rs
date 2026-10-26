@@ -10,7 +10,7 @@
 //!   用同一个字段名 [`BudgetConfig::acquire_timeout_ms`] 把它变成可注入的参数：
 //!   调用方不改逻辑就能改期限，逻辑里也不需要出现「10 秒」这种魔法值。
 
-use datazen_platform_api::ports::budget::{ResourceClass, ServiceQuota};
+use crate::execution::application::budget::{ResourceClass, ServiceQuota};
 
 /// 可调默认值。集中成常量，让「配置」有唯一来源。
 ///
@@ -47,7 +47,7 @@ pub mod defaults {
     /// acquire 等待上限的默认配置值（10s，可取消）。
     ///
     /// 这是**默认值**不是硬编码：调用方可以用 [`BudgetConfig::with_acquire_timeout_ms`] 覆盖，
-    /// 也可以由 [`BudgetRequest::acquire_timeout_ms`](datazen_platform_api::ports::budget::BudgetRequest)
+    /// 也可以由 [`BudgetRequest::acquire_timeout_ms`](crate::execution::application::budget::BudgetRequest)
     /// 逐次覆盖。
     pub const ACQUIRE_TIMEOUT_MS: u64 = 10_000;
 

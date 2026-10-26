@@ -9,6 +9,8 @@
 
 pub mod application;
 pub mod domain;
+/// 私有机制（过渡期公开供旧包再导出；见模块头说明）。
+pub mod runtime;
 
 pub use application::{
     ArchivedEnvelope, BackupOutput, CancelReceipt, CloseReceipt, ConnectionEvent,

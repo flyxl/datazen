@@ -10,15 +10,15 @@
 
 use async_trait::async_trait;
 
-use crate::context::OwnerRef;
-use crate::error::PortError;
-use crate::id::{
+use crate::shared::context::OwnerRef;
+use crate::shared::error::PortError;
+use crate::shared::id::{
     ConfigRevision, ConnectionId, Counter, CredentialRevision, DriverResourceKey,
     ExecutionIdentityKey, LeaseId, NetworkRouteRevision, OrganizationId, PolicyIsolationKey,
     ResourceId, Timestamp,
 };
-use crate::ports::budget::coordinator::{DrainScope, DrainStatus};
-use crate::ports::budget::dimension::{
+use crate::execution::application::budget::coordinator::{DrainScope, DrainStatus};
+use crate::execution::application::budget::dimension::{
     BudgetDimension, BudgetUsage, PhysicalOccupancy, QuotaKey, QuotaVerdict, ResourceClass,
 };
 
@@ -28,7 +28,7 @@ use crate::ports::budget::dimension::{
 ///
 /// | 分量 | 生产方 |
 /// | --- | --- |
-/// | `organization_id` | [`RequestContext`](crate::context::RequestContext) |
+/// | `organization_id` | [`RequestContext`](crate::shared::context::RequestContext) |
 /// | `connection_id` | 同上（配置身份） |
 /// | `config_revision` | [`ProfileRepository`](crate::ports::ProfileRepository) CAS |
 /// | `credential_revision` | [`SecretProvider`](crate::ports::SecretProvider) 的不透明版本 |
@@ -78,7 +78,7 @@ pub struct PoolAcquireRequest {
     /// 所以它是一次性的批量数量，没有「先给 1 条剩下的排队」这种中间态。
     pub requested_physical: u32,
     /// 等待上限（毫秒）。`None` 走 §9.2 的 10 秒默认；期限到了就是
-    /// [`QuotaDenial::WaitTimeout`](crate::ports::budget::QuotaDenial::WaitTimeout)。
+    /// [`QuotaDenial::WaitTimeout`](crate::execution::application::budget::QuotaDenial::WaitTimeout)。
     pub acquire_timeout_ms: Option<u64>,
 }
 
@@ -103,7 +103,7 @@ pub struct PoolLease {
     /// 本租约一次占用的物理条数（§9.5 的批量预留）。
     pub physical_count: u32,
     /// 当前占用状态。只会是 `Opening / InUse / Cleaning / IdlePooled / Quarantined`；
-    /// `ControlSocket` 只出现在 [`ControlResourceLease`](crate::ports::budget::ControlResourceLease)。
+    /// `ControlSocket` 只出现在 [`ControlResourceLease`](crate::execution::application::budget::ControlResourceLease)。
     pub occupancy: PhysicalOccupancy,
     pub acquired_at: Timestamp,
 }
@@ -343,7 +343,7 @@ pub trait DriverPoolBudgetPort: Send + Sync + 'static {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::id::{BlockId, ClientInstanceId, EditorSessionId, JobId, PrincipalId, StageId};
+    use crate::shared::id::{BlockId, ClientInstanceId, EditorSessionId, JobId, PrincipalId, StageId};
 
     fn key() -> PoolKey {
         PoolKey {

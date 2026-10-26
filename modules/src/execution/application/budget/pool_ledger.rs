@@ -1,6 +1,6 @@
 //! driver pool 物理预算的**进程内记账实现**。
 //!
-//! 契约仍然留在 [`crate::ports::budget::pool`]：类型、[`PoolReturnVerdict::decide`] 之类
+//! 契约仍然留在 [`crate::execution::application::budget::pool`]：类型、[`PoolReturnVerdict::decide`] 之类
 //! 规则判定与错误形状都不在这里重写一遍。本文件只补契约里没有的那件事——
 //! 按 §9.3 记账「每条物理连接占着哪些额度格」，并按 §9.6 让同一个 [`PoolKey`] 的
 //! 连接能被下一条租约复用。
@@ -12,8 +12,8 @@
 //!   [`DriverPoolBudgetPort::return_to_pool`] 只改 `occupancy`（`IdlePooled` / `Cleaning`）。
 //! * **control 类别只有保留额度**。本实现**拒绝**用池端口申请
 //!   [`ResourceClass::Control`]——§9.5 的 control socket 归
-//!   [`ControlResourcePort`](crate::ports::budget::control::ControlResourcePort)，
-//!   [`ControlResourceLease`](crate::ports::budget::control::ControlResourceLease)
+//!   [`ControlResourcePort`](crate::execution::application::budget::control::ControlResourcePort)，
+//!   [`ControlResourceLease`](crate::execution::application::budget::control::ControlResourceLease)
 //!   连 `class` 字段都没有，池端口无权代发。
 //! * **保留额度不可借用**。[`ResourceClass::may_borrow_reserved`] 恒为 `false`，
 //!   共享部分只以 [`ServiceQuota::capacity_of`] 的形状计入上限，外加一道维度总额封顶，
@@ -35,14 +35,14 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use async_trait::async_trait;
 
-use crate::error::PortError;
-use crate::id::{Counter, LeaseId, ResourceId, Timestamp};
-use crate::ports::budget::coordinator::{DrainScope, DrainStatus};
-use crate::ports::budget::dimension::{
+use crate::shared::error::PortError;
+use crate::shared::id::{Counter, LeaseId, ResourceId, Timestamp};
+use crate::execution::application::budget::coordinator::{DrainScope, DrainStatus};
+use crate::execution::application::budget::dimension::{
     BudgetDimension, BudgetUsage, PhysicalOccupancy, QuotaDenial, QuotaKey, ResourceClass,
     ServiceQuota,
 };
-use crate::ports::budget::pool::{
+use crate::execution::application::budget::pool::{
     DriverPoolBudgetPort, PoolAcquireRequest, PoolAcquisition, PoolKey, PoolLease, PoolReturnCheck,
     PoolReturnVerdict, PoolStats, QuarantineReason, ReleaseDisposition, ReleaseReceipt,
     ReleaseSource,

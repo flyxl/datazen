@@ -4,8 +4,8 @@
 //! 因此 `use super::*` 拿到的就是实现本身，没有第二份契约。
 
 use super::*;
-use crate::context::OwnerRef;
-use crate::id::{
+use crate::shared::context::OwnerRef;
+use crate::shared::id::{
     ClientInstanceId, ConfigRevision, ConnectionId, CredentialRevision, DriverResourceKey,
     EditorSessionId, ExecutionIdentityKey, LeaseId, NetworkRouteRevision, OrganizationId,
     PolicyIsolationKey, PrincipalId, WorkerId,

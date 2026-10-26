@@ -10,14 +10,14 @@
 //! 保留额度不参与轮转：它是按类**专属**的，谁空谁拿（首版不可借用）。
 //!
 //! 队列满（每类每服务 32、每用户 32）直接 `QueueFull`，绝不静默阻塞——见
-//! [`crate::budget::ledger::BudgetLedger::enqueue`]。
+//! [`crate::execution::runtime::budget::ledger::BudgetLedger::enqueue`]。
 
 use std::collections::VecDeque;
 
-use datazen_platform_api::id::{ConnectionId, OrganizationId, PrincipalId};
-use datazen_platform_api::ports::budget::ResourceClass;
+use crate::shared::id::{ConnectionId, OrganizationId, PrincipalId};
+use crate::execution::application::budget::ResourceClass;
 
-use crate::budget::classes::shared_members;
+use crate::execution::runtime::budget::classes::shared_members;
 
 /// 排队者的身份。permit 带 id 一样，waiter 也带 id：取消与放行都按 id 精确命中，
 /// 不存在「按位置猜是哪一个」这种会让额度泄漏的做法。
@@ -90,7 +90,7 @@ impl ClassQueue {
     /// 取出下一个主体队首，并把这主体轮转到环尾（若它还有人等）。
     ///
     /// 环上按约定不该出现空 lane；万一出现就跳过并摘掉它——绝不把「环首是空的」
-    /// 变成一个 `None` 交回给 [`crate::budget::dispatch`] 的放行循环空转。
+    /// 变成一个 `None` 交回给 [`crate::execution::runtime::budget::dispatch`] 的放行循环空转。
     pub fn pop(&mut self) -> Option<Waiter> {
         while let Some(lane) = self.lanes.front_mut() {
             if lane.waiters.is_empty() {
@@ -130,7 +130,7 @@ impl ClassQueue {
     ///
     /// lane 的存废以「过滤后是否还有等待者」为准：只要还剩一个就留在环里。
     /// （判据不能写成「过滤前后长度是否变化」——那样一次**什么都没摘掉**的
-    /// [`crate::budget::ledger::BudgetLedger::pump`] 会把整条队列的 lane 清空，
+    /// [`crate::execution::runtime::budget::ledger::BudgetLedger::pump`] 会把整条队列的 lane 清空，
     /// 而 `depth` 仍是原值，随后 `pop` 永远返回 `None`，等待者就此人间蒸发。）
     pub fn expire(&mut self, now_ms: u64) -> Vec<Waiter> {
         let mut expired = Vec::new();

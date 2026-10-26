@@ -6,6 +6,7 @@
 //! platform-api 只再导出。编排服务（`RuntimeConnectionUseCases` 的拆分）在
 //! D3 后续切片迁入。
 
+pub mod budget;
 pub mod event_sink;
 pub mod events;
 pub mod idempotency;

@@ -8,12 +8,14 @@ license = "GPL-3.0-or-later"
 [features]
 # 测试缝开关：`job` 的故障注入与计数只在测试或显式开启时编译。
 default = []
-test-harness = []
+test-harness = ["datazen-modules/test-harness"]
 
 [dependencies]
 datazen-driver-api = { workspace = true }
 # ID newtype 与端口词汇的唯一来源。方向是 kernel → platform-api，与本包其余层一致。
 datazen-platform-api = { workspace = true }
+# D3：budget/driver_registry/sql_guard/hash 已迁入 modules；本包再导出保持旧路径。
+datazen-modules = { workspace = true, features = ["execution"] }
 chrono = { version = "0.4", default-features = false }
 indexmap = "2"
 serde = { version = "1", features = ["derive"] }
@@ -26,3 +28,9 @@ tracing = "0.1"
 
 [dev-dependencies]
 tempfile = "3"
+# 夹具（driver_registry 的 register_test_driver 等）由
+# `#[cfg(any(test, feature = "test-harness"))]` 门控，而被测代码在
+# datazen-modules 里（D3 迁入）——集成/单测把 modules 当普通依赖编译时
+# cfg(test) 不生效，只能靠这条自引用 dev-dependency 把 feature 链条打开
+# （modules/test-harness 经本 crate 的 feature 转发）。自引用不构成环。
+datazen-kernel = { path = ".", features = ["test-harness"] }

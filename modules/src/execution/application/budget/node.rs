@@ -8,7 +8,7 @@
 //! ## 为什么只有三个方法
 //!
 //! 协调租约的**续期**不在这里：它已经是 P1 [`BudgetCoordinator::renew_node_lease`]
-//! （[`NodeLease`](crate::ports::budget::NodeLease)），重复声明只会造出两个续约真相。
+//! （[`NodeLease`](crate::execution::application::budget::NodeLease)），重复声明只会造出两个续约真相。
 //! 本模块只补上 P1 没有的那一半——**节点能持有多少物理连接**、**现在还能不能新建**。
 //!
 //! ## 一条最容易被写错的规则
@@ -19,9 +19,9 @@
 
 use async_trait::async_trait;
 
-use crate::error::PortError;
-use crate::id::{Counter, OrganizationId, Timestamp, WorkerId};
-use crate::ports::budget::dimension::{BudgetDimension, QuotaVerdict, ResourceClass};
+use crate::shared::error::PortError;
+use crate::shared::id::{Counter, OrganizationId, Timestamp, WorkerId};
+use crate::execution::application::budget::dimension::{BudgetDimension, QuotaVerdict, ResourceClass};
 
 /// 节点额度与全局 permit 的二选一（§9.3 原文「多 worker 使用节点额度或全局 permit」）。
 ///
@@ -58,7 +58,7 @@ impl NodeBudgetState {
 
 /// 一个 worker 节点的额度。
 ///
-/// 物理与逻辑分开，与 [`BudgetUsage`](crate::ports::budget::BudgetUsage) 同一个理由：
+/// 物理与逻辑分开，与 [`BudgetUsage`](crate::execution::application::budget::BudgetUsage) 同一个理由：
 /// §9.2 的「每用户/每组织逻辑 session」与「总目标连接」是两套额度。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeQuota {
@@ -117,11 +117,11 @@ pub struct NodeCharge {
 
 impl NodeCharge {
     /// 本笔要扣账的全部额度格，由外到内。
-    pub fn quota_keys(&self) -> Vec<crate::ports::budget::QuotaKey> {
+    pub fn quota_keys(&self) -> Vec<crate::execution::application::budget::QuotaKey> {
         self.dimension
             .capped_by()
             .iter()
-            .map(|dimension| crate::ports::budget::QuotaKey::new(dimension.clone(), self.class))
+            .map(|dimension| crate::execution::application::budget::QuotaKey::new(dimension.clone(), self.class))
             .collect()
     }
 }
@@ -142,7 +142,7 @@ pub trait ClusterNodeBudgetPort: Send + Sync + 'static {
     async fn node_budget_state(&self, worker_id: &WorkerId) -> Result<NodeBudgetState, PortError>;
 
     /// 在节点上记一笔物理扣账。额度不足时返回
-    /// [`QuotaDenial::Insufficient`](crate::ports::budget::QuotaDenial::Insufficient)；
+    /// [`QuotaDenial::Insufficient`](crate::execution::application::budget::QuotaDenial::Insufficient)；
     /// 准许时返回扣账后的额度快照。
     async fn charge_node_physical(
         &self,
@@ -156,7 +156,7 @@ pub trait ClusterNodeBudgetPort: Send + Sync + 'static {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::id::PrincipalId;
+    use crate::shared::id::PrincipalId;
 
     fn charge() -> NodeCharge {
         NodeCharge {
@@ -230,13 +230,13 @@ mod tests {
         assert_eq!(
             keys,
             vec![
-                crate::ports::budget::QuotaKey::new(
+                crate::execution::application::budget::QuotaKey::new(
                     BudgetDimension::Organization {
                         organization_id: OrganizationId::new("org-1")
                     },
                     ResourceClass::Interactive,
                 ),
-                crate::ports::budget::QuotaKey::new(
+                crate::execution::application::budget::QuotaKey::new(
                     BudgetDimension::Principal {
                         organization_id: OrganizationId::new("org-1"),
                         principal_id: PrincipalId::new("u-7"),

@@ -12,8 +12,8 @@
 
 use async_trait::async_trait;
 
-use crate::error::PortError;
-use crate::id::{ConnectionId, Counter, OrganizationId, Timestamp, WorkerId};
+use crate::shared::error::PortError;
+use crate::shared::id::{ConnectionId, Counter, OrganizationId, Timestamp, WorkerId};
 
 /// 申请理由。用途取值来自运行时对「是终端用户请求还是后台任务」的判断。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,7 +52,7 @@ impl BudgetRequest {
 /// 额度许可。**持有许可 = 占用额度**，归还必须幂等。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BudgetPermit {
-    pub permit_id: crate::id::LeaseId,
+    pub permit_id: crate::shared::id::LeaseId,
     pub organization_id: OrganizationId,
     pub connection_id: ConnectionId,
     pub granted_at: Timestamp,
@@ -81,7 +81,7 @@ impl BudgetPermitSet {
 /// 节点额度租约。持有者向协调者证明自己仍在线。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodeLease {
-    pub lease_id: crate::id::LeaseId,
+    pub lease_id: crate::shared::id::LeaseId,
     pub worker_id: WorkerId,
     pub expires_at: Timestamp,
 }
@@ -150,7 +150,7 @@ pub trait BudgetCoordinator: Send + Sync + 'static {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::id::LeaseId;
+    use crate::shared::id::LeaseId;
 
     fn request() -> BudgetRequest {
         BudgetRequest::new(

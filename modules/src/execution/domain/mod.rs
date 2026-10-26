@@ -12,6 +12,7 @@ pub mod artifact_repository;
 pub mod execution;
 pub mod session;
 pub mod session_directory;
+pub mod sql_guard;
 pub mod target;
 
 pub use artifact::{
@@ -41,3 +42,6 @@ pub use target::{
 
 /// 执行侧拥有的 shared ID（§5.1：唯一定义在 `shared::id`，领域再导出同一类型）。
 pub use crate::shared::id::{DbSessionId, ExecutionId, ResourceId, RuntimeEpoch, StreamId};
+
+// SQL Guard 纯规则（原 datazen-kernel::sql_guard，D3 归位 execution::domain）。
+pub use sql_guard as guard;

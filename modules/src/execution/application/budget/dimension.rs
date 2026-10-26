@@ -15,7 +15,7 @@
 //! [`BudgetDimension::capped_by`] 给出夹住关系：主体发起的连接同时占用它所在组织的额度。
 //! 组织额度是**最外层封顶**，所以它在链首；只有它自己不封顶别人。
 
-use crate::id::{ConnectionId, Counter, JobId, OrganizationId, PrincipalId, WorkerId};
+use crate::shared::id::{ConnectionId, Counter, JobId, OrganizationId, PrincipalId, WorkerId};
 
 /// 预算维度：额度算在谁头上（§9.3 的五个）。
 ///
@@ -43,7 +43,7 @@ pub enum BudgetDimension {
         worker_id: WorkerId,
     },
     /// 一个任务。**不含阶段**：§10.1 的「Job 资源 owner 是 jobId/stageId」中 stage 属于归属
-    /// （[`crate::context::OwnerRef::Job`]），而 §9.5 要求多端申请一次预留全部许可，
+    /// （[`crate::shared::context::OwnerRef::Job`]），而 §9.5 要求多端申请一次预留全部许可，
     /// 所以计数按 job 汇总，不按阶段切分。
     Job {
         organization_id: OrganizationId,
@@ -264,7 +264,7 @@ impl PhysicalOccupancy {
     ///
     /// 写成恒真的方法不是废话：它把「idle pool 也占着」这条规则变成一条可被单测遍历钉死的
     /// 断言，而不是散落在实现里的一句注释。额度释放的唯一出口是
-    /// [`crate::ports::budget::ReleaseDisposition::releases_physical_budget`]。
+    /// [`crate::execution::application::budget::ReleaseDisposition::releases_physical_budget`]。
     pub const fn counts_against_budget(self) -> bool {
         true
     }
@@ -587,8 +587,8 @@ mod tests {
     }
 
     #[test]
-    fn desktop_quota_shape_from_the_design_doc() {
-        // §9.2：桌面总目标连接 16，保留 1/1/2，共享 12。
+    fn reference_quota_shape_from_the_design_doc() {
+        // §9.2：参考形态总目标连接 16，保留 1/1/2，共享 12。
         let quota = ServiceQuota::new(16, [1, 2, 1, 0]).expect_ok();
         assert_eq!(quota.shared, 12);
         assert_eq!(quota.reserved_of(ResourceClass::Interactive), 2);

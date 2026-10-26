@@ -7,6 +7,8 @@ description = "DataZen feature modules: domain vocabulary, repository boundaries
 
 [features]
 default = []
+# 夹具门控：沿用旧 kernel/runtime 的 test-harness 语义（过渡期；D8 收敛）。
+test-harness = []
 settings = ["dep:async-trait", "dep:serde_json"]
 # D2：连接目录（配置 + 分组）的领域词汇与用例。形状复用 driver-api 的
 # ConnectionConfig（每个形态都已链接的那一份，且是连接表单的 IPC 载荷）。
@@ -25,7 +27,7 @@ named_views = [
 ]
 # D3：执行域词汇与应用边界 DTO。依赖 connection 的 NamespaceTarget（§4.2：
 # execution 使用 connection 的执行配置读取契约）。
-execution = ["dep:async-trait", "dep:serde_json", "connection", "settings"]
+execution = ["dep:async-trait", "dep:serde_json", "dep:tokio", "dep:tracing", "connection", "settings"]
 # D1.5：AI Provider 契约与适配整体并入（原 datazen-ai-api → datazen-ai-providers）。
 # 单一 feature 承载 domain 契约 + providers 适配；若 D7 的 Web 形态需要拆分
 # （如仅契约不带 reqwest），届时再拆，不提前建空档。

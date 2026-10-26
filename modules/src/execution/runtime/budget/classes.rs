@@ -1,19 +1,19 @@
 //! 资源类别与每类桶。
 //!
 //! 这一层只做**记账形状**的职责划分：谁在占、占的是保留还是共享、钉住没有。
-//! 放不放行是 [`crate::budget::ledger`] 的决定，轮转顺序是 [`crate::budget::queues`] 的决定。
+//! 放不放行是 [`crate::execution::runtime::budget::ledger`] 的决定，轮转顺序是 [`crate::execution::runtime::budget::queues`] 的决定。
 //!
 //! 两条硬规则落在本文件的数据形状上而不是注释里：
 //!
 //! 1. **类别由服务端决定，调用方不能自报优先级**——`BudgetClaim` 只能由用例层构造。
 //!    端口的 `BudgetRequest` 结构里根本没有 `class` 字段，调用方能表达的只有 `purpose`；
-//!    `class` 的取值由 `crate::budget::coordinator::classify` 从 `purpose` 推导。
+//!    `class` 的取值由 `crate::execution::runtime::budget::coordinator::classify` 从 `purpose` 推导。
 //! 2. **首版保留不可被其他类借用**——名额被拆成 `Reserved` / `Shared` 两种槽位，
 //!    每张 permit 记下自己落在哪一槽；核销时必须退回**同一**槽。
 //!    如果核销永远退回共享，保留额度的空位就会凭空漂移到别人头上，这条会被断言抓到。
 
-use datazen_platform_api::id::{ConnectionId, OrganizationId, PrincipalId, WorkerId};
-use datazen_platform_api::ports::budget::{ResourceClass, ServiceQuota};
+use crate::shared::id::{ConnectionId, OrganizationId, PrincipalId, WorkerId};
+use crate::execution::application::budget::{ResourceClass, ServiceQuota};
 
 /// 一次准入申请的完整上下文。
 ///
@@ -177,7 +177,7 @@ pub fn shared_members() -> [ResourceClass; 3] {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_platform_api::ports::budget::ServiceQuota;
+    use crate::execution::application::budget::ServiceQuota;
 
     fn quota() -> ServiceQuota {
         ServiceQuota::new(8, [1, 1, 1, 0]).expect("夹具额度合法")

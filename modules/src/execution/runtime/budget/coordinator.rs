@@ -22,21 +22,21 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Instant;
 
-use datazen_platform_api::error::PortError;
-use datazen_platform_api::id::{OrganizationId, PrincipalId};
-use datazen_platform_api::ports::budget::coordinator::{
+use crate::shared::error::PortError;
+use crate::shared::id::{OrganizationId, PrincipalId};
+use crate::execution::application::budget::coordinator::{
     BudgetCoordinator, BudgetPermit, BudgetPermitSet, BudgetRequest, BudgetSnapshot, DrainScope,
     DrainStatus, NodeLease, ReleaseOutcome,
 };
-use datazen_platform_api::ports::budget::{BudgetPurpose, ResourceClass};
+use crate::execution::application::budget::{BudgetPurpose, ResourceClass};
 use tokio::sync::Notify;
 
-use crate::budget::classes::BudgetClaim;
-use crate::budget::ledger::{
+use crate::execution::runtime::budget::classes::BudgetClaim;
+use crate::execution::runtime::budget::ledger::{
     AdmitOutcome, BudgetLedger, DenialReason, PermitRecord, PumpReport, ReleaseResult,
 };
-use crate::budget::queues::WaiterId;
-use crate::budget::quotas::BudgetConfig;
+use crate::execution::runtime::budget::queues::WaiterId;
+use crate::execution::runtime::budget::quotas::BudgetConfig;
 
 // ------------------------------------------------------------------ 时钟
 
@@ -562,8 +562,8 @@ impl BudgetCoordinator for InProcessBudgetCoordinator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::budget::ledger::QueueScope;
-    use datazen_platform_api::id::ConnectionId;
+    use crate::execution::runtime::budget::ledger::QueueScope;
+    use crate::shared::id::ConnectionId;
 
     #[test]
     fn purpose_maps_to_a_class_server_side() {

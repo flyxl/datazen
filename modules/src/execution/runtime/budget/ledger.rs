@@ -3,8 +3,8 @@
 //! **本文件不含任何时间源**。每个入口都接受 `now_ms: u64`（单调毫秒），由调用方注入。
 //! 于是整条调度链可以在假时钟上**同步**跑完：没有 `sleep`，没有真实等待，没有定时器竞态。
 //!
-//! 轮转/放行在 [`crate::budget::dispatch`]，逻辑与物理会话在 [`crate::budget::sessions`]，
-//! 值类型在 [`crate::budget::records`]。本文件只留「额度准入 + 记账 + 核销」这一条主干。
+//! 轮转/放行在 [`crate::execution::runtime::budget::dispatch`]，逻辑与物理会话在 [`crate::execution::runtime::budget::sessions`]，
+//! 值类型在 [`crate::execution::runtime::budget::records`]。本文件只留「额度准入 + 记账 + 核销」这一条主干。
 //!
 //! 四条账本级硬规则：
 //!
@@ -18,18 +18,18 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use datazen_platform_api::id::{
+use crate::shared::id::{
     ConnectionId, DbSessionId, LeaseId, OrganizationId, PrincipalId, WorkerId,
 };
-use datazen_platform_api::ports::budget::BudgetPermit;
+use crate::execution::application::budget::BudgetPermit;
 
-use crate::budget::classes::{BudgetClaim, SlotKind};
-use crate::budget::dispatch::pick_slot;
-use crate::budget::queues::{Waiter, WaiterId};
-use crate::budget::quotas::BudgetConfig;
+use crate::execution::runtime::budget::classes::{BudgetClaim, SlotKind};
+use crate::execution::runtime::budget::dispatch::pick_slot;
+use crate::execution::runtime::budget::queues::{Waiter, WaiterId};
+use crate::execution::runtime::budget::quotas::BudgetConfig;
 
 // 值类型搬到了 `records.rs`，但**原路径必须继续可用**——本模块是它们对外的唯一门面。
-pub use crate::budget::records::{
+pub use crate::execution::runtime::budget::records::{
     AdmitOutcome, DenialReason, DrainReport, PermitRecord, PumpReport, QueueScope, ReleaseResult,
     Retirement, ServiceState, SessionRecord, SessionScope,
 };
@@ -118,7 +118,7 @@ impl BudgetLedger {
     pub fn reserved_headroom(
         &self,
         connection_id: &ConnectionId,
-        class: datazen_platform_api::ports::budget::ResourceClass,
+        class: crate::execution::application::budget::ResourceClass,
     ) -> u32 {
         self.services.get(connection_id).map_or_else(
             || self.config.service_quota.reserved_of(class),
@@ -135,7 +135,7 @@ impl BudgetLedger {
     pub fn queue_depth(
         &self,
         connection_id: &ConnectionId,
-        class: datazen_platform_api::ports::budget::ResourceClass,
+        class: crate::execution::application::budget::ResourceClass,
     ) -> usize {
         self.services
             .get(connection_id)
@@ -153,7 +153,7 @@ impl BudgetLedger {
     pub fn served(
         &self,
         connection_id: &ConnectionId,
-        class: datazen_platform_api::ports::budget::ResourceClass,
+        class: crate::execution::application::budget::ResourceClass,
     ) -> u64 {
         self.services
             .get(connection_id)
@@ -361,7 +361,7 @@ impl BudgetLedger {
     /// 所以取消之后共享池水位必须与取消前逐位相同。
     pub fn cancel(&mut self, waiter: WaiterId) -> bool {
         for service in self.services.values_mut() {
-            for class in datazen_platform_api::ports::budget::ResourceClass::ALL {
+            for class in crate::execution::application::budget::ResourceClass::ALL {
                 if service.queues[class.index()].cancel(waiter).is_some() {
                     return true;
                 }

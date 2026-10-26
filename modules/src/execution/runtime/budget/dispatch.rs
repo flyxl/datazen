@@ -11,13 +11,13 @@
 //! 保留额先于共享池是可证明的不抢占：只要某类还有自己的保留空位，它就不会去挤共享池；
 //! 反过来共享池排空也不会把保留额借走（`may_borrow_reserved()` 恒 `false`）。
 
-use datazen_platform_api::ports::budget::ServiceQuota;
+use crate::execution::application::budget::ServiceQuota;
 
-use crate::budget::classes::{BudgetClaim, SlotKind};
-use crate::budget::ledger::BudgetLedger;
-use crate::budget::queues::Waiter;
-use crate::budget::quotas::BudgetConfig;
-use crate::budget::records::{PumpReport, ServiceState};
+use crate::execution::runtime::budget::classes::{BudgetClaim, SlotKind};
+use crate::execution::runtime::budget::ledger::BudgetLedger;
+use crate::execution::runtime::budget::queues::Waiter;
+use crate::execution::runtime::budget::quotas::BudgetConfig;
+use crate::execution::runtime::budget::records::{PumpReport, ServiceState};
 
 impl BudgetLedger {
     /// 推进调度：先摘超时，再按本类保留额放行，最后共享池 `4:2:1` 轮转。
@@ -32,7 +32,7 @@ impl BudgetLedger {
             let Some(mut service) = self.services.remove(&connection_id) else {
                 continue;
             };
-            for class in datazen_platform_api::ports::budget::ResourceClass::ALL {
+            for class in crate::execution::application::budget::ResourceClass::ALL {
                 report.timed_out.extend(
                     service.queues[class.index()]
                         .expire(now_ms)
@@ -59,13 +59,13 @@ impl BudgetLedger {
 /// 先走保留额（本类专属，不参与轮转），再走共享池 `4:2:1`。
 fn dispatch_service(
     ledger: &mut BudgetLedger,
-    connection_id: &datazen_platform_api::id::ConnectionId,
+    connection_id: &crate::shared::id::ConnectionId,
     service: &mut ServiceState,
     config: &BudgetConfig,
     now_ms: u64,
     report: &mut PumpReport,
 ) {
-    use datazen_platform_api::ports::budget::ResourceClass;
+    use crate::execution::application::budget::ResourceClass;
     // 保留额按类专属：哪类有空位就放行哪类，不参与轮转。`ResourceClass::index()` 顺序是
     // Control → Interactive → Metadata → Job，所以排空时 control 天然先拿。
     loop {
@@ -151,7 +151,7 @@ fn claim_of(waiter: Waiter) -> BudgetClaim {
 pub(crate) fn pick_slot(
     service: &ServiceState,
     quota: &ServiceQuota,
-    class: datazen_platform_api::ports::budget::ResourceClass,
+    class: crate::execution::application::budget::ResourceClass,
 ) -> Option<SlotKind> {
     if service
         .classes

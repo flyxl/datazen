@@ -1,8 +1,8 @@
 //! 账本的值类型与计数器：准入结果、permit 记录、拒绝理由、排空/轮转报告、服务状态。
 //!
 //! 这一层**只描述形状，不做决策**：它不持有时间源、不访问 I/O，也不自行改动任何计数。
-//! 决策全部在 [`crate::budget::ledger`]（准入）、[`crate::budget::dispatch`]（轮转）与
-//! [`crate::budget::sessions`]（逻辑/物理会话）里完成。
+//! 决策全部在 [`crate::execution::runtime::budget::ledger`]（准入）、[`crate::execution::runtime::budget::dispatch`]（轮转）与
+//! [`crate::execution::runtime::budget::sessions`]（逻辑/物理会话）里完成。
 //!
 //! 把它们与账本主体分开放，是为了让「返回值长什么样」这件事可以被单独读懂：
 //! [`DenialReason`] 的每个变体都对应一条可写进断言的约束，
@@ -10,14 +10,14 @@
 
 use std::collections::BTreeMap;
 
-use datazen_platform_api::id::{
+use crate::shared::id::{
     ConnectionId, Counter, DbSessionId, LeaseId, OrganizationId, PrincipalId, Timestamp, WorkerId,
 };
-use datazen_platform_api::ports::budget::{BudgetPermit, DrainScope};
+use crate::execution::application::budget::{BudgetPermit, DrainScope};
 
-use crate::budget::classes::{ServiceClasses, SlotKind};
-use crate::budget::ledger::BudgetLedger;
-use crate::budget::queues::{ClassQueue, SharedRoundRobin, WaiterId};
+use crate::execution::runtime::budget::classes::{ServiceClasses, SlotKind};
+use crate::execution::runtime::budget::ledger::BudgetLedger;
+use crate::execution::runtime::budget::queues::{ClassQueue, SharedRoundRobin, WaiterId};
 
 /// 队列满了：「任一满即返回 `QueueFull`，不得静默阻塞」。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,7 +53,7 @@ pub enum DenialReason {
     /// 本类的保留额与共享额都已用尽。
     Exhausted {
         connection_id: ConnectionId,
-        class: datazen_platform_api::ports::budget::ResourceClass,
+        class: crate::execution::application::budget::ResourceClass,
         capacity: u32,
     },
     /// 服务正在排空：不接新 permit（drain）。
@@ -137,7 +137,7 @@ pub struct PermitRecord {
     pub organization_id: OrganizationId,
     pub connection_id: ConnectionId,
     pub principal: PrincipalId,
-    pub class: datazen_platform_api::ports::budget::ResourceClass,
+    pub class: crate::execution::application::budget::ResourceClass,
     pub slot: SlotKind,
     pub pinned: bool,
     pub worker: Option<WorkerId>,
@@ -247,7 +247,7 @@ pub struct SessionRecord {
     pub principal: PrincipalId,
     pub connection_id: ConnectionId,
     /// `None` = `New`：没有 socket，**只**计逻辑。
-    pub occupancy: Option<datazen_platform_api::ports::budget::PhysicalOccupancy>,
+    pub occupancy: Option<crate::execution::application::budget::PhysicalOccupancy>,
     pub connected_editor: bool,
 }
 

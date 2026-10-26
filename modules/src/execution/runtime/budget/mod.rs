@@ -1,6 +1,6 @@
 //! 进程内预算与调度。
 //!
-//! 本模块实现 [`datazen_platform_api::ports::budget::coordinator::BudgetCoordinator`]，
+//! 本模块实现 [`crate::execution::application::budget::coordinator::BudgetCoordinator`]，
 //! 落在 `packages/runtime` 内部：单进程共享一份账本，不引入任何新的 crate 依赖。
 //!
 //! ## 为什么模块内部分成这几个文件
@@ -60,11 +60,11 @@ pub use ledger::{
 pub use quotas::{BudgetConfig, BudgetConfigError};
 
 // 端口侧的取值一律**转出**而不是重定义（协调者裁定 #1：跨轨道共享类型只 re-export）。
-pub use datazen_platform_api::ports::budget::coordinator::{
+pub use crate::execution::application::budget::coordinator::{
     BudgetPermit, BudgetPermitSet, BudgetRequest, BudgetSnapshot, DrainScope, DrainStatus,
     NodeLease, ReleaseOutcome,
 };
-pub use datazen_platform_api::ports::budget::{
+pub use crate::execution::application::budget::{
     BudgetDimension, BudgetPurpose, BudgetUsage, PhysicalOccupancy, QuotaDenial, QuotaKey,
     ResourceClass, ServiceQuota,
 };

@@ -2150,6 +2150,8 @@ dependencies = [
  "async-trait",
  "chrono",
  "datazen-driver-api",
+ "datazen-kernel",
+ "datazen-modules",
  "datazen-platform-api",
  "futures-util",
  "indexmap 2.14.0",

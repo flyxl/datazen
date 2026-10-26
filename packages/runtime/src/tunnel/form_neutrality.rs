@@ -143,16 +143,27 @@ fn violations(source: &str, forbidden: &[String]) -> Vec<(String, Vec<String>)> 
     out
 }
 
-/// 被扫的共享 crate 根：本 crate 与 `datazen-kernel`。
+/// 被扫的共享 crate 根：本 crate、`datazen-kernel` 与 `modules`（DDD 迁移 D3 起
+/// 机制内核的落位处）。
 ///
 /// 机制内核（job / budget / sql_guard / schema_cache / driver_registry）从本 crate
 /// 分出去以后，「形态中立」的理由一字未变——它同时服务多种形态。若闸门只扫本 crate，
 /// 拆分就会安静地把那一片移出覆盖范围，而闸门仍然全绿（少扫等于没扫）。
+/// D3 起 budget / sql_guard / driver_registry 的唯一定义在 `datazen-modules`，
+/// 那一片必须跟着搬进扫描范围。
 fn scanned_crates() -> Vec<(&'static str, std::path::PathBuf)> {
     let here = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf();
     let kernel = here.join("../kernel");
-    vec![("runtime", here), ("kernel", kernel)]
+    let modules = here.join("../../modules");
+    vec![("runtime", here), ("kernel", kernel), ("modules", modules)]
 }
+
+/// `modules` crate 里**豁免**的子树：`src/ai`。
+///
+/// AI Provider 适配（D1.5 并入）合法地处理 `web_search` 这类**工具名**与外部
+/// URL——那是协议词汇，不是「哪种形态」的假设；豁免必须**只窄到这一棵子树**，
+/// 其余模块目录（shared/connection/execution/…）照扫。
+const MODULES_EXEMPT: &[&str] = &["src/ai"];
 
 /// 两个共享 crate 的 `src/` 下全部 `.rs` 源码，形如 `runtime:src/job/mod.rs`。
 fn source_files_on_disk() -> Vec<String> {
@@ -163,7 +174,12 @@ fn source_files_on_disk() -> Vec<String> {
             "闸门找不到 {label} crate 的目录 {root:?} —— 少扫一片比不扫更危险：它还会报绿"
         );
         let mut files = Vec::new();
-        collect_rs(&root.join(SRC), &root, &mut files);
+        let exempt: Vec<String> = if label == "modules" {
+            MODULES_EXEMPT.iter().map(|s| s.to_string()).collect()
+        } else {
+            Vec::new()
+        };
+        collect_rs_with_exemptions(&root.join(SRC), &root, &mut files, &exempt);
         assert!(
             !files.is_empty(),
             "{label} crate 的 src/ 下一个源码文件都没枚举到 —— 递归枚举断了"
@@ -176,14 +192,27 @@ fn source_files_on_disk() -> Vec<String> {
     out
 }
 
-fn collect_rs(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<String>) {
+fn collect_rs_with_exemptions(
+    dir: &std::path::Path,
+    root: &std::path::Path,
+    out: &mut Vec<String>,
+    exempt: &[String],
+) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            collect_rs(&path, root, out);
+            let rel = path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            if exempt.iter().any(|e| rel.starts_with(e.as_str())) {
+                continue;
+            }
+            collect_rs_with_exemptions(&path, root, out, exempt);
         } else if path.extension().is_some_and(|ext| ext == "rs") {
             out.push(
                 path.strip_prefix(root)
@@ -372,11 +401,20 @@ fn the_scan_covers_the_whole_kernel_crate() {
         "runtime:src/tunnel/form_neutrality.rs",
         "runtime:src/artifact/mod.rs",
         "runtime:src/connection/testing/fixtures.rs",
-        // 机制内核（`datazen-kernel`）：拆出去的那一片也必须被扫
-        "kernel:src/budget/quotas.rs",
+        // 机制内核：留在 kernel 的 job/schema_cache 与已迁入 modules 的机制都必须被扫
         "kernel:src/job/host.rs",
-        "kernel:src/sql_guard/mod.rs",
+        "kernel:src/schema_cache/schema_cache.rs",
+        "modules:src/execution/runtime/budget/quotas.rs",
+        "modules:src/execution/domain/sql_guard/mod.rs",
+        "modules:src/execution/runtime/driver_registry/registry.rs",
+        "modules:src/shared/id.rs",
+        // 豁免必须真的生效：src/ai 不得出现在清单里
+        // （若豁免失效，ai 子树的文件会出现在 files 里并被形态词点红）。
     ] {
+        assert!(
+            !files.iter().any(|f| f.starts_with("modules:src/ai/")),
+            "modules:src/ai 应被豁免却出现在扫描清单里"
+        );
         assert!(files.iter().any(|f| f == required), "闸门没覆盖 {required}");
     }
     // 闸门自己也在被扫范围内：它自己的**字面量**里若有完整的形态名，
