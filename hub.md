@@ -40,12 +40,9 @@
 
 ## 下一步（按计划顺序）
 
-1. **D3 Execution 拆分与资源机制归位**（07-stages.md D3）：`RuntimeConnectionUseCases`
-   三分（application 编排 / domain 状态 / 私有机制）；`DbSessionId`/`SessionHandle`/
-   `ExecutionId`/`ExecutionTarget` → `execution::domain`；会话 actor、lease、队列、
-   等待、空闲回收、资源预算账本、driver registry → `execution::runtime`；旧 facade
-   委托新服务。多切片交付，参考 03-execution-and-jobs.md。
-2. D4 起按 07-stages.md 顺序推进；每阶段开工前先读 08-pr-playbook.md §11.1。
+1. **D4 收尾（第五切片）**：SQL 编辑器/结果写回接入应用入口（07-stages.md D4 工作项 4）——result_edit/SQL 消费者改走 table_editing 模块入口，保留风险确认、只读与取消规则；真实方言测试留 driver crate，公共 UI 行为在 Host E2E。
+2. **D5 Jobs 与迁移三件套**（07-stages.md D5）：jobs domain/application/engine + 宿主 JobRepository 接线；Schema Diff → Data Sync → Data Transfer 各自完整路径；runtime 的 native_tool 归位。
+3. **D6/D7/D8** 按 07-stages.md 顺序推进；每阶段开工前先读 08-pr-playbook.md §11.1。
 
 ### D1.5 已完成（2026-10-26）
 
@@ -60,8 +57,19 @@
 | `3d1da4df7` | D3 第一切片：`modules::execution` 建立（feature 依赖 connection）。domain 四文件（session/execution/target/artifact：句柄、状态机含 resolve_cancel 终态规则、能力快照、来源、ExecutionTarget+ObjectTarget、产物家族）；application 四文件（views/requests/events/idempotency：视图、回执、请求、事件信封、提交令牌）。platform-api dto 六文件 + target.rs 执行侧垫片化；测试随迁（modules 112 / platform-api 195） |
 | `7eb386c1b` | D3 第二切片：七个执行端口归位——domain：SessionDirectory、ArtifactRepository（含 ChunkPayload/ByteRange/导出/吊销/配额与指纹函数）+ CanonicalTarget 家族；application：ExecutionSettingsReader/ExecutionTargetResolver/IdentityResolver/SubmissionTokenIssuer/EventSink。platform-api ports 七垫片；include_str 自检测试改指新文件名；modules 167 / platform-api 145 / runtime 517 全绿 |
 | `317a1be3b` | D3 第三切片 a：机制内核先行——budget 端口家族→execution::application::budget、账本/调度→execution::runtime::budget、driver_registry→execution::runtime、sql_guard→execution::domain、hash→shared；kernel 再导出保旧路径、platform-api ports/budget 垫片；test-harness feature 链贯通；形态中立闸门扩到 modules（豁免 src/ai） |
-| 本次 | D3 第三切片 b：connection/registry/gateway/resource/directory/tunnel/artifact/latency + RuntimeConnectionUseCases 编排整体迁入 execution::runtime（application/ 过渡期整块）；network/policy/secret 端口、ConnectionUseCases 签名、check_owner、TargetNamespaceShape 家族随迁；platform-api target.rs 全垫片化；runtime 只余 native_tool（D5）+ bin + tests + 再导出 facade；路径敏感自检测试全部重定位；modules 872 / runtime 444+9 / platform-api 46 / kernel 34 / feature-core 765 全绿 |
-| 本次（D3-3c） | 编排归位 execution::application::orchestration；§6.4 等待能力第一步 wait_for_execution + WaitOutcome（超时≠取消，零 wire 变化）+ 三态行为测试（p4）；桌面关停装配显式延后至 D7/D8 宿主装配 |
+| `667b9ff30` | D3 第三切片 b：connection/registry/gateway/resource/directory/tunnel/artifact/latency + RuntimeConnectionUseCases 编排整体迁入 execution::runtime（application/ 过渡期整块）；network/policy/secret 端口、ConnectionUseCases 签名、check_owner、TargetNamespaceShape 家族随迁；platform-api target.rs 全垫片化；runtime 只余 native_tool（D5）+ bin + tests + 再导出 facade；路径敏感自检测试全部重定位；modules 872 / runtime 444+9 / platform-api 46 / kernel 34 / feature-core 765 全绿 |
+| `028d9d0b0` | D3 第三切片 c：编排归位 execution::application::orchestration；§6.4 等待能力第一步 wait_for_execution + WaitOutcome（超时≠取消，零 wire 变化）+ 三态行为测试（p4）；桌面关停装配显式延后至 D7/D8 宿主装配 |
+
+### D4 已完成（2026-10-26，四切片）
+
+| 提交 | 内容 |
+|---|---|
+| `ea4e38670` | fmt 收敛（D4 前两切片 rustfmt 漂移 7 文件，前一会话推送但主检出未含） |
+| `dda9cc051` | fix(commands)：SchemaError From 路径补齐——728e33e 后 src-tauri 仍引用不存在的顶层 schema::SchemaError，改指 application::SchemaError（前一会话推送） |
+| `1844ee8fb` | D4 第一切片：schema 元数据缓存归位 `modules::schema`（kernel schema_cache + LegacyCatalogReader 分层词汇 → schema::application 的 metadata/physical_context/scope/ports + CachedColumns/SchemaCache）；platform-api 对应路径垫片化；缓存 key 含组织/连接/目标/revision 隔离维度 |
+| `728e33e5e` | D4 第二切片：schema 应用服务归位 modules::schema::application；feature-core services 按 §5.5 再导出垫片 |
+| `730ce27e4` | D4 第三切片：表浏览读链路归位 modules::table_browsing（query_executor 全套 + browsing + paging；keyset/count/筛选排序）；feature-core 再导出垫片；读链路无 FeatureError 依赖 |
+| `a8ca8cc39` | D4 第四切片：表编辑写链路归位 modules::table_editing（data_browsing 全套：ChangeSet/insert_plan/row_identity/write_exec/tests）；新 error.rs（TableEditingError，逐字兼容）+ ports.rs（ArtifactChunkReader 消费者端口）；feature-core data_browsing 改再导出垫片 + From<TableEditingError>；宿主 CommandError From 接线；顺手收敛 D3 遗留 unused import ×3 + fmt 漂移 6 文件；modules 1160 / feature-core 518+14×3 全绿；六道门禁 PASS |
 
 ## 会话恢复要点
 
