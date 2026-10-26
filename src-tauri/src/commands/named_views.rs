@@ -110,7 +110,8 @@ mod tests {
         );
     }
 
-    /// 生产半边不再出现宿主 store（P3 第一条命令族）。
+    /// 生产半边不再出现宿主 store（P3 第一条命令族；D6 item 1 后命令改经
+    /// `require_named_views_service` 取模块服务，守卫随迁）。
     ///
     /// 计数而不是「有没有」：端口宿主 store 的直读曾经是三条命令各一处，
     /// 只要有人把 `.as_ref()` 换回 `state.store.as_ref()`，这里会先红。
@@ -121,14 +122,14 @@ mod tests {
         assert_eq!(
             production.matches("state.store").count(),
             0,
-            "named views 命令必须走 ApplicationServices 的命名视图端口"
+            "named views 命令必须走模块服务，不得直读宿主 store"
         );
         assert_eq!(
             production
-                .matches("require_application_services(state)")
+                .matches("require_named_views_service(state)")
                 .count(),
             3,
-            "三条命令各取一次聚合"
+            "三条命令各取一次模块服务"
         );
     }
 
