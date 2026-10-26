@@ -399,7 +399,9 @@ fn flatten_plist_connections(value: serde_json::Value) -> Vec<serde_json::Value>
 
 fn plist_xml_from_bytes(
     bytes: &[u8],
-    path: Option<&std::path::Path>,
+    // `path` 只在 macOS 的 plutil 分支使用；Linux 编译时判为未用——用 cfg_attr
+    // 只在非 macOS 放行，macOS 侧名字与用法保持不变。
+    #[cfg_attr(not(target_os = "macos"), allow(unused_variables))] path: Option<&std::path::Path>,
 ) -> Result<String, FeatureError> {
     if bytes.starts_with(b"bplist") {
         #[cfg(target_os = "macos")]

@@ -278,6 +278,9 @@ fn default_roots(app: ImportApp, ctx: &PathContext) -> Vec<PathBuf> {
             ctx.data.join("tableplus"),
         ],
         ImportApp::Navicat => {
+            // macOS 追加 Container 目录（下方 cfg 块 push），Linux 编译时该块
+            // 不存在，mut 会被判为多余——用 cfg_attr 只在非 macOS 放行。
+            #[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
             let mut roots = vec![
                 ctx.data.join("PremiumSoft CyberTech"),
                 ctx.data.join("PremiumSoft"),
