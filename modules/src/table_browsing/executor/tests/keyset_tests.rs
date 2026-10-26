@@ -14,8 +14,8 @@
 use super::keyset_refusal;
 use super::*;
 use datazen_driver_api::keyset::{CursorValue, KeysetUnavailableReason, OrderColumn, PagingMode};
-use datazen_kernel::driver_registry::DriverRegistry;
-use datazen_kernel::schema_cache::SchemaCache;
+use crate::execution::runtime::driver_registry::DriverRegistry;
+use crate::schema::SchemaCache;
 
 /// A column that is not nullable — the shape a key column has.
 fn key_column(name: &str) -> ColumnSchema {
@@ -39,7 +39,7 @@ fn order_spec(columns: Vec<(String, bool)>, unique_key: Vec<String>) -> OrderSpe
             .into_iter()
             .map(|(column, descending)| OrderColumn { column, descending })
             .collect(),
-        source: crate::services::table_paging::OrderSource::ExplicitSort,
+        source: crate::table_browsing::paging::OrderSource::ExplicitSort,
         unique_key,
     }
 }
@@ -228,8 +228,8 @@ mod seek_statement {
     fn keyset_always_orders_by_appended_primary_key() {
         let columns = vec![key_column("id"), plain_column("name", false)];
         let order = order_spec(vec![("name".to_string(), false)], vec!["id".to_string()]);
-        let decision = crate::services::table_paging::keyset_decision(order, &columns);
-        let crate::services::table_paging::KeysetSeek::Eligible { order } = decision.seek else {
+        let decision = crate::table_browsing::paging::keyset_decision(order, &columns);
+        let crate::table_browsing::paging::KeysetSeek::Eligible { order } = decision.seek else {
             panic!("the key makes the order total");
         };
         assert_eq!(
@@ -859,7 +859,7 @@ mod refusals {
     fn a_stale_cursor_is_refused_as_an_invalidated_cursor() {
         let columns = vec![key_column("id"), plain_column("name", false)];
         let order = order_spec(vec![("name".to_string(), false)], vec!["id".to_string()]);
-        let decision = crate::services::table_paging::keyset_decision(order, &columns);
+        let decision = crate::table_browsing::paging::keyset_decision(order, &columns);
         let stale = vec![CursorValue::Integer(2)];
         let driver = MockDriver::new(
             "postgres",
@@ -873,7 +873,7 @@ mod refusals {
             &decision,
             Some(&stale),
             1,
-            &crate::services::query_executor::tests::DEFAULT,
+            &crate::table_browsing::executor::tests::DEFAULT,
             50,
         );
         assert_eq!(

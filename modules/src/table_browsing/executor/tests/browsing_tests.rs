@@ -7,8 +7,8 @@
 //! many rows** it says there are.
 
 use super::*;
-use datazen_kernel::driver_registry::DriverRegistry;
-use datazen_kernel::schema_cache::SchemaCache;
+use crate::execution::runtime::driver_registry::DriverRegistry;
+use crate::schema::SchemaCache;
 
 /// The order of a read whose table has a primary key.
 ///
@@ -80,13 +80,13 @@ mod default_order_sources {
     #[test]
     fn pk_source_disagreement_is_reported() {
         let columns = vec![make_column("col_a", false)];
-        assert!(table_browsing::pk_sources_disagree(
+        assert!(browsing::pk_sources_disagree(
             &columns,
             &["id".to_string()]
         ));
-        assert!(!table_browsing::pk_sources_disagree(&columns, &[]));
+        assert!(!browsing::pk_sources_disagree(&columns, &[]));
         let flagged = vec![make_column("id", true)];
-        assert!(!table_browsing::pk_sources_disagree(
+        assert!(!browsing::pk_sources_disagree(
             &flagged,
             &["id".to_string()]
         ));
@@ -134,7 +134,7 @@ mod default_order_sources {
     #[test]
     fn default_order_override_empty_array_emits_no_order_by() {
         let columns = vec![make_column("id", true)];
-        let default_order = table_browsing::resolve_default_order(
+        let default_order = browsing::resolve_default_order(
             mock_driver().as_ref(),
             &columns,
             &["id".to_string()],
@@ -159,7 +159,7 @@ mod default_order_sources {
     #[test]
     fn default_order_override_columns_are_emitted_ascending() {
         let columns = vec![make_column("id", true), make_column("name", false)];
-        let default_order = table_browsing::resolve_default_order(
+        let default_order = browsing::resolve_default_order(
             mock_driver().as_ref(),
             &columns,
             &["id".to_string()],

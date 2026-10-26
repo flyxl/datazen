@@ -9,11 +9,11 @@ use datazen_driver_api::{
     ColumnSchema, ConnectionHandle, CountStrategy, DatabaseDriver, DriverError,
     LegacyCatalogReader, LegacySqlDialect, SqlDialect, SqlTarget, TableDataResult, Value,
 };
-use datazen_kernel::schema_cache::SchemaCache;
+use crate::schema::SchemaCache;
 use std::sync::Arc;
 
-use crate::services::table_browsing;
-use crate::services::table_paging::{cursor_from_row, keyset_decision, resolve_order_spec_multi};
+use crate::table_browsing::browsing;
+use crate::table_browsing::paging::{cursor_from_row, keyset_decision, resolve_order_spec_multi};
 
 pub mod filter_sql;
 pub mod table_read_sql;
@@ -21,7 +21,7 @@ pub mod table_read_sql;
 #[cfg(test)]
 mod tests;
 
-pub use crate::services::table_paging::{KeysetDecision, KeysetSeek, OrderSource, OrderSpec};
+pub use crate::table_browsing::paging::{KeysetDecision, KeysetSeek, OrderSource, OrderSpec};
 pub use datazen_driver_api::filters::{
     FilterCondition, FilterConnector, FilterOperator, SortCondition,
 };
@@ -125,12 +125,12 @@ impl QueryExecutor {
         // holds. The column flags are a second, possibly stale, copy of the
         // same fact, and a driver that fills one and not the other used to
         // lose its key here and fall back to the first column.
-        table_browsing::report_pk_source_disagreement(
+        browsing::report_pk_source_disagreement(
             &cached.table_name,
             &cached.columns,
             &cached.primary_keys,
         );
-        let default_order = table_browsing::resolve_default_order(
+        let default_order = browsing::resolve_default_order(
             driver.as_ref(),
             &cached.columns,
             &cached.primary_keys,
@@ -195,11 +195,11 @@ impl QueryExecutor {
             });
         }
 
-        let strategy = table_browsing::resolve_count_strategy(
+        let strategy = browsing::resolve_count_strategy(
             driver.as_ref(),
             count_strategy,
             false,
-            table_browsing::has_effective_filters(filters.as_deref()),
+            browsing::has_effective_filters(filters.as_deref()),
             database,
             schema,
             table,
@@ -250,7 +250,7 @@ impl QueryExecutor {
                     .first()
                     .and_then(|row| row.first())
                     .and_then(|cell| cell.as_ref())
-                    .and_then(table_browsing::exact_count_cell);
+                    .and_then(browsing::exact_count_cell);
 
                 let paging = paging_info(
                     &plan,
@@ -302,7 +302,7 @@ impl QueryExecutor {
                             .first()
                             .and_then(|row| row.first())
                             .and_then(|cell| cell.as_ref());
-                        cell.and_then(table_browsing::estimated_count_cell)
+                        cell.and_then(browsing::estimated_count_cell)
                     }
                     Err(error) => {
                         tracing::warn!(
@@ -345,8 +345,8 @@ impl QueryExecutor {
                                     .first()
                                     .and_then(|row| row.first())
                                     .and_then(|cell| cell.as_ref());
-                                table_browsing::rescued_exact_count(
-                                    cell.and_then(table_browsing::target_count_cell),
+                                browsing::rescued_exact_count(
+                                    cell.and_then(browsing::target_count_cell),
                                 )
                             }
                             Err(error) => {
@@ -407,7 +407,7 @@ impl QueryExecutor {
                     .first()
                     .and_then(|row| row.first())
                     .and_then(|cell| cell.as_ref());
-                Ok(cell.and_then(table_browsing::estimated_count_cell))
+                Ok(cell.and_then(browsing::estimated_count_cell))
             }
             Err(error) => {
                 // "Cannot estimate" is an answer, not a failure: the caller

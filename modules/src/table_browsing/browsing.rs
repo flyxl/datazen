@@ -28,8 +28,8 @@
 
 use datazen_driver_api::{ColumnSchema, CountStrategy, DatabaseDriver, Value};
 
-use super::query_executor::filter_sql::filter_is_complete;
-use super::query_executor::FilterCondition;
+use crate::table_browsing::executor::filter_sql::filter_is_complete;
+use crate::table_browsing::executor::FilterCondition;
 
 /// The row-count strategy a read actually uses.
 ///
@@ -254,7 +254,7 @@ pub fn rescued_exact_count(count: Option<i64>) -> (Option<i64>, CountStrategy) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::query_executor::FilterCondition;
+    use crate::table_browsing::executor::FilterCondition;
     use datazen_driver_api::filters::FilterOperator;
     use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
 

@@ -20,6 +20,10 @@ pub mod execution;
 #[cfg(feature = "named_views")]
 pub mod named_views;
 
+/// D4-c：表浏览读链路（浏览/分页/执行器）。
+#[cfg(feature = "table-browsing")]
+pub mod table_browsing;
+
 /// D4：Schema 元数据（缓存机制已迁入；应用服务后续切片）。
 #[cfg(feature = "schema")]
 pub mod schema;

@@ -23,7 +23,7 @@ use datazen_driver_api::keyset::{KeysetUnavailableReason, OrderColumn, PagingMod
 use datazen_driver_api::{ColumnSchema, SqlDialect, Value};
 
 use super::filter_sql::{self, FilterRejection};
-use crate::services::table_paging::OrderSpec;
+use crate::table_browsing::paging::OrderSpec;
 
 /// The statement of one page, and what it took to build it.
 #[derive(Debug, Clone)]

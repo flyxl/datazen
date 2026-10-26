@@ -4,7 +4,7 @@
 //! and so the filter tests sit next to the filter module they cover.
 
 use super::*;
-use crate::services::table_browsing;
+use crate::table_browsing::browsing;
 use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
 use datazen_driver_api::{BoundParameterLimit, PaginationSyntax, Value};
 use std::sync::Arc;
@@ -109,7 +109,7 @@ fn make_column(name: &str, is_pk: bool) -> ColumnSchema {
 /// derived from the column flags, so the assertion they carry is still the
 /// old behaviour's assertion — reached through the new chain.
 fn host_default_order(columns: &[ColumnSchema], primary_keys: &[String]) -> Vec<String> {
-    table_browsing::resolve_default_order(mock_driver().as_ref(), columns, primary_keys, None)
+    browsing::resolve_default_order(mock_driver().as_ref(), columns, primary_keys, None)
 }
 
 /// A driver that declares nothing of its own, so the trait defaults decide.
@@ -361,7 +361,7 @@ fn build_count_sql_with_eq_filter() {
 // read minus the paging frame: same columns, same WHERE, same ORDER BY.
 mod unbounded_select_sql {
     use super::*;
-    use crate::services::table_paging::OrderSource;
+    use crate::table_browsing::paging::OrderSource;
     use datazen_driver_api::keyset::OrderColumn;
 
     fn order_spec(columns: Vec<(&str, bool)>) -> OrderSpec {
