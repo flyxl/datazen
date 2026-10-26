@@ -256,7 +256,7 @@ mcp = [
 ]
 
 # D5 data_transfer：debug 构建 + webdriver E2E 的故障注入 seam（commit-ack 丢失）。
-# 纯 cfg 开关无依赖；src-tauri 的 webdriver feature 经 datazen-data-transfer
+# 纯 cfg 开关无依赖；src-tauri 的 webdriver feature 直接转发到 data_transfer
 # 垫片转发进来（原 data-transfer crate 同名 feature 的语义原样承接）。
 webdriver = []
 

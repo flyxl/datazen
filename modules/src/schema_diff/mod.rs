@@ -1,7 +1,7 @@
 //! Schema diff planning and deploy (source = desired state → target).
 //!
-//! D5（2026-10-26）自独立 crate `datazen-schema-diff` 整体归位；旧 crate 改
-//! 再导出垫片（§5.5），`datazen_schema_diff::*` 既有路径不变，D8 退役时删除。
+//! D5（2026-10-26）自独立 crate `datazen-schema-diff` 整体归位；旧 crate 已在
+//! D8 退役，本模块保留唯一实现。
 
 pub mod compare;
 pub mod dependencies;

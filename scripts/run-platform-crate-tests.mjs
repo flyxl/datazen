@@ -134,10 +134,7 @@ export const TESTED_LAYERS = Object.freeze([
   // It now lives in `feature-core` as the `feature_core::workspace_apps`
   // module, so its unit tests travel with that layer.
   'feature-core',
-  'schema-diff',
   'migration-common',
-  'data-sync',
-  'data-transfer',
 ]);
 
 /**

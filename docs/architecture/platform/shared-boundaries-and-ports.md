@@ -163,7 +163,7 @@ flowchart TD
 > 契约层再抄一份：两份摘要类型只会在两处之间慢慢漂移，而 IPC 载荷必须逐字不变。
 > F-04 允许这条边（它禁的是 `application` / `runtime` / 领域包 / `src-tauri`）。
 
-`packages/schema-diff` 的生产路径通过 `datazen-driver-api::create_driver` 查询 inventory registry，再调用驱动提供的 `migration_renderer()`、`migration_capabilities()` 与 `type_normalizer()`；这些契约已覆盖 MySQL、PostgreSQL 和 SQLite 的结构迁移能力，无需在领域包绑定具体驱动。领域包的普通依赖与测试依赖均不包含具体 driver crate。方言 SQL 与真实 normalizer 的集成测试分别位于 `packages/drivers/{mysql,postgres,sqlite}/tests/schema_diff_*.rs`，由各驱动的 dev-dependency 引用领域包并链接自身注册；领域包保留纯逻辑测试与假 renderer 测试。
+`modules/src/schema_diff` 的生产路径通过 `datazen-driver-api::create_driver` 查询 inventory registry，再调用驱动提供的 `migration_renderer()`、`migration_capabilities()` 与 `type_normalizer()`；这些契约已覆盖 MySQL、PostgreSQL 和 SQLite 的结构迁移能力，无需在领域包绑定具体驱动。领域包的普通依赖与测试依赖均不包含具体 driver crate。方言 SQL 与真实 normalizer 的集成测试分别位于 `packages/drivers/{mysql,postgres,sqlite}/tests/schema_diff_*.rs`，由各驱动的 dev-dependency 引用领域包并链接自身注册；领域包保留纯逻辑测试与假 renderer 测试。
 
 ### 2.4 禁止的反向依赖（可被门禁直接检查的断言）
 
@@ -394,7 +394,7 @@ CI）。它扫内核 crate 的 `src/`，两层都查——**字面量**（对外
 | --- | --- | --- |
 | `StoredPlan` / `StoredSyncPlan` / `StoredTransferPlan` / `StoredSelection` | schema-diff / data-sync / data-transfer / 宿主 | `Stored` 是**过去分词**（已存储的**数据**）：它们是装在仓储里的东西，不是仓储本身 |
 | `StoreCache` | `src-tauri/src/store/models.rs` | 缓存类型，不是存储抽象；`Store` 指宿主持久化层（层名保留） |
-| `StoreOwnerMarker` | `packages/data-sync/src/comparison_store/recovery.rs` | 落盘 marker 的**记录载荷**，不是抽象；`store-owner.json` 是冻结的落盘格式 |
+| `StoreOwnerMarker` | `modules/src/data_sync/src/comparison_store/recovery.rs` | 落盘 marker 的**记录载荷**，不是抽象；`store-owner.json` 是冻结的落盘格式 |
 | `CommandError::Store` 等错误**变体** | 宿主 | 变体名不是类型名；错误文案是前端可见的 IPC 错误串，不在本节范围 |
 | `RootCertStore` | rustls | 第三方类型 |
 | 前端 Zustand 的 `*Store`（`useXxxStore`、`src/stores/*.Store.ts`） | 前端 `src/stores/` | **前端生态约定**，不是存储抽象：`useXxxStore` 是 React 社区与 zustand 官方文档的标准叫法，本规约不适用 |
@@ -635,7 +635,7 @@ pub trait TunnelRepository: Send + Sync + 'static {
 > `DashboardRepository`、`DashboardRunRepository` 与 Schema Diff 的
 > `SchemaDiffProfileRepository` 四个端口由领域包
 > （`packages/feature-core` 的 `services::named_views` / `dashboard::repository` /
-> `dashboard::runs` / `packages/schema-diff::profile_repository`）定义，被
+> `dashboard::runs` / `modules/src/schema_diff::profile_repository`）定义，被
 > `ApplicationServices` 持有，宿主 `DesktopRepository` / `AppDb` 实现。
 > 它们**不进** `PORT_TRAITS`，因为把它们搬进 `platform-api` 会违反 F-04
 > （`platform-api` 不得依赖领域包，而端口签名里全是领域模型：`DashboardRecord`、
@@ -909,7 +909,7 @@ pub struct FixedClock { /* … */ }    // 测试替身：at(ts) / set(ts)，克�
   5. `packages/runtime/src/artifact/mod.rs::now` —— 产物记账用的是 **epoch 秒整数**，端口产出的是格式化字符串；接端口要先解析回数值，而契约层刻意不解析时刻（`id.rs` 的 `Timestamp` 约定），改造要先动记账类型。
   6. `packages/runtime/src/directory/mod.rs::SystemDirectoryClock::new` —— **第二份系统时钟**（`Instant` 量经过时间 + `SystemTime` 钉 UTC 起点）。本端口只有 UTC 一个维度，装不下单调维度；收编即契约扩展，不在本次范围。
 - **宿主层不在本端口范围内**：`src-tauri/` 有大量生产直调墙上时钟（`Utc::now` / `Local::now` / `SystemTime::now`）：同一条 grep 在 `src-tauri/src` 下命中 **93 行 / 41 个文件**（排除 `*_tests.rs`、`/tests/`）；验证方按另一口径测得 40 处 / 28 个文件——**数字随口径变化**，故本节只给命令与上面的逐条清单，不写「全仓唯一」这类会被下一次 grep 推翻的话。该层属宿主侧独立变更。
-- **形状切换不改变 `expires_at < now` 的逐案判定（实测 + 常驻断言）**：schema-diff handler 的时间来源由秒级形状换成端口的毫秒形状，**这不是行为变更**（早先的提交说明写成「更严、到秒即过期」，方向是反的，以本节为准）。字典序下：同一整秒内，秒级 `expires_at` 的下一位是 `'Z'`(0x5A)、毫秒级 `now` 的下一位是 `'.'`(0x2E)，`'Z' > '.'` ⇒ `expires_at > now` ⇒ 判**未过期**，与秒级 `now` 逐案相同；下一秒才判过期。常驻断言：`packages/schema-diff/src/job/plan.rs` 的 `expiry_verdict_is_unchanged_by_the_second_to_millisecond_shape_switch`（同一整秒：秒级 / 毫秒级 now 各一遍 → 未过期；下一秒：两种形状各一遍 → 过期）。若要「整秒即过期」，改的是 `expires_at` 的生产形状（`src-tauri/src/commands/schema_diff/job.rs`）或比较前归一，**不是**把 `now` 毫秒化。
+- **形状切换不改变 `expires_at < now` 的逐案判定（实测 + 常驻断言）**：schema-diff handler 的时间来源由秒级形状换成端口的毫秒形状，**这不是行为变更**（早先的提交说明写成「更严、到秒即过期」，方向是反的，以本节为准）。字典序下：同一整秒内，秒级 `expires_at` 的下一位是 `'Z'`(0x5A)、毫秒级 `now` 的下一位是 `'.'`(0x2E)，`'Z' > '.'` ⇒ `expires_at > now` ⇒ 判**未过期**，与秒级 `now` 逐案相同；下一秒才判过期。常驻断言：`modules/src/schema_diff/src/job/plan.rs` 的 `expiry_verdict_is_unchanged_by_the_second_to_millisecond_shape_switch`（同一整秒：秒级 / 毫秒级 now 各一遍 → 未过期；下一秒：两种形状各一遍 → 过期）。若要「整秒即过期」，改的是 `expires_at` 的生产形状（`src-tauri/src/commands/schema_diff/job.rs`）或比较前归一，**不是**把 `now` 毫秒化。
 - **已知遗留（形状）**：`packages/kernel/src/job/time.rs::after_seconds` 不读系统时间、只做算术，但产出秒级形状（chrono 模板 `%Y-%m-%dT%H:%M:%SZ`），与毫秒形状同列排序存在整秒翻转；收口前不要把它与 `Clock` 的输出放进同一排序。
 
 ### 4.10 窄端口（应用装配用，已实现于 `packages/platform-api/src/ports/`）
@@ -1393,7 +1393,7 @@ F-07 是唯一不经过 `cargo metadata` 的规则：它的主体没有 `Cargo.t
    > **判定按主体范围，不按工作区。** F-01 的主体是 `driver` 层（`packages/drivers/*`），**两侧都按主体范围判定**：驱动里的休眠 `tauri*` 边是 violation；宿主 `datazen` 的休眠 `tauri*` 边**不是** F-01 的事（宿主本来就该依赖 Tauri），只报成 advisory。宿主那条见下注 4。
    >
    > **豁免必须显式。** 规则表的 `exemptions` 列表（成员 + 家族 + 理由）是唯一的放行通道，空即无豁免；过期条目（成员不是本规则主体、或家族不是本规则禁的）报 **error**。**没有**"降级成 advisory 就放过"这种口子。
-4. **`tauri-plugin-webdriver` 是同一个盲点，且长在宿主自己身上。** `src-tauri/Cargo.toml` 里的 `tauri-plugin-webdriver = { version = "0.2", optional = true }`，由该文件 `webdriver` feature 数组里的 `tauri-plugin-webdriver` 门控，不在 `resolve.deps[]` 里。该 feature 数组共 **4** 项：`webdriver = ["tauri-plugin-webdriver", "dep:objc2", "dep:objc2-app-kit", "datazen-data-transfer/webdriver"]`——只有第一项属 tauri 家族，`dep:objc2` / `dep:objc2-app-kit` 是 macOS 静默 E2E 的两个支撑 crate，第四项把 `datazen-data-transfer` 的 `webdriver` feature 一并打开；`default = []`，所以整条数组都在默认 feature 之外。宿主 manifest 一直"看起来干净"，只是因为里面没有任何 tauri 边可达，不代表它干净。**F-01 武装后它仍然合法**：宿主不在 F-01 的主体范围内，这条边只报 advisory。
+4. **`tauri-plugin-webdriver` 是同一个盲点，且长在宿主自己身上。** `src-tauri/Cargo.toml` 里的 `tauri-plugin-webdriver = { version = "0.2", optional = true }`，由该文件 `webdriver` feature 数组里的 `tauri-plugin-webdriver` 门控，不在 `resolve.deps[]` 里。该 feature 数组共 **4** 项：`webdriver = ["tauri-plugin-webdriver", "dep:objc2", "dep:objc2-app-kit", "datazen-modules::data_transfer/webdriver"]`——只有第一项属 tauri 家族，`dep:objc2` / `dep:objc2-app-kit` 是 macOS 静默 E2E 的两个支撑 crate，第四项把 `datazen-modules::data_transfer` 的 `webdriver` feature 一并打开；`default = []`，所以整条数组都在默认 feature 之外。宿主 manifest 一直"看起来干净"，只是因为里面没有任何 tauri 边可达，不代表它干净。**F-01 武装后它仍然合法**：宿主不在 F-01 的主体范围内，这条边只报 advisory。
 5. **怎么读 declared-minus-resolved 这类告警（别只记"共几条"）。** 对某个成员，令 D = manifest 声明的 tauri 家族集合，R = normal+build 闭包解析到的 tauri 家族集合：
    - `D∖R`（声明了但当前 feature 解析不链接的**休眠边**）**才是信号**，且只有 manifest 扫描看得见；
    - `R∖D`（解析到了但未声明 = **传递依赖**）**不是信号**——任何有传递依赖的 crate 都成立，拿它告警会天天误报。

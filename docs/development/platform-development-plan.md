@@ -107,7 +107,7 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 - `AssemblyState::missing_steps()` 里 §6.2-7 的目标状态由 `AwaitingApplicationServices` 改为 `FullyWired`——旧值与当前档位同级，导致「补完第 7 步」在机器上永远不前进。
 - 机器可校验的不变式：`packages/application` 侧 6 条（形状 3 条 + 行为 3 条），宿主侧 11 条（装配状态机 2 条 + `AppState` 形状 3 条 + 装配降级 2 条 + 第三步与第五步的宿主态收敛守卫 4 条，见 §5.1.2 的 D1 裁定、第三步与第五步）。
 
-**依赖边结论（为什么 application 层不能直接持有领域包端口）**：`datazen-runtime` 依赖 `datazen-application`，而 `datazen-schema-diff` / `datazen-data-sync` / `datazen-data-transfer` 都依赖 `datazen-runtime`。因此 `application → 领域包` 会闭成 Cargo 环（`cargo metadata` 报 `cyclic package dependency`），门禁连跑都跑不起来。F-02/F-03/F-05 只禁宿主、传输框架与前端标识，**不禁**这条边——挡住它的是依赖图本身，不是门禁。F-04 另外禁止 `platform-api` 依赖领域包，因此「把领域端口搬进 `platform-api`」这条路也要靠**新写窄端口**而不是靠依赖。结论：**领域端口只能由宿主在组装期包成 `platform-api` 层的窄端口再注入**。这一条已写成断言（`the_crate_does_not_depend_on_the_domain_packages`）。
+**依赖边结论（为什么 application 层不能直接持有领域包端口）**：`datazen-runtime` 依赖 `datazen-application`，而 `datazen-modules::schema_diff` / `datazen-modules::data_sync` / `datazen-modules::data_transfer` 都依赖 `datazen-runtime`。因此 `application → 领域包` 会闭成 Cargo 环（`cargo metadata` 报 `cyclic package dependency`），门禁连跑都跑不起来。F-02/F-03/F-05 只禁宿主、传输框架与前端标识，**不禁**这条边——挡住它的是依赖图本身，不是门禁。F-04 另外禁止 `platform-api` 依赖领域包，因此「把领域端口搬进 `platform-api`」这条路也要靠**新写窄端口**而不是靠依赖。结论：**领域端口只能由宿主在组装期包成 `platform-api` 层的窄端口再注入**。这一条已写成断言（`the_crate_does_not_depend_on_the_domain_packages`）。
 
 **没有做、也不许顺手做的事**：现有 145 处 `state.store.…` 调用点一个都没搬；命令的签名、载荷与错误文案一个都没改；`AppState` 没有新增 `pub` 字段（字段数上限由断言钉住，当前基线 23：25 起，第三步与第五步各 -1）。
 
@@ -172,9 +172,9 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 **第四步——领域包端口的窄化**
 
 搬走／新增：在 `packages/platform-api/src/ports/` 新增三个**窄端口**（纯 trait，不依赖领域包）：
-- `ReviewedPlanRepository`（schema-diff 的评审计划存储，现契约在 `packages/schema-diff/src/reviewed.rs`）；
-- `SyncPlanRepository`（data-sync 的计划注册表，现契约在 `packages/data-sync/src/plan_store/repository.rs`）；
-- `TransferPlanRepository`（data-transfer 的不可变计划与检查点，现契约在 `packages/data-transfer/src/plan_store/port.rs`）。
+- `ReviewedPlanRepository`（schema-diff 的评审计划存储，现契约在 `modules/src/schema_diff/src/reviewed.rs`）；
+- `SyncPlanRepository`（data-sync 的计划注册表，现契约在 `modules/src/data_sync/src/plan_store/repository.rs`）；
+- `TransferPlanRepository`（data-transfer 的不可变计划与检查点，现契约在 `modules/src/data_transfer/src/plan_store/port.rs`）。
 
 宿主在组装期实现这些窄端口（转发到领域包端口的实例），再注入给 `ApplicationServices`。
 
@@ -439,7 +439,7 @@ pnpm e2e:skip-build -- --spec packages/drivers/postgres/e2e/connection-pool-rota
 已落地事实：
 
 - 桌面 `AppDb` 使用 SQLite v2 Job 仓储；共享 `JobHost` 提供 durable accept、幂等 receipt、状态/进度/结果、取消、恢复核验和后台 dispatch。
-- Schema Diff、Data Sync、Data Transfer 的准备与应用均接入 JobRuntime。领域实现位于 `packages/schema-diff`、`packages/data-sync`、`packages/data-transfer`；Tauri IPC 与桌面适配保留在 `src-tauri/src/commands/`。
+- Schema Diff、Data Sync、Data Transfer 的准备与应用均接入 JobRuntime。领域实现位于 `modules/src/schema_diff`、`modules/src/data_sync`、`modules/src/data_transfer`；Tauri IPC 与桌面适配保留在 `src-tauri/src/commands/`。
 - Job 结果记录提交边界和 `effectOutcome`，区分未开始、已回滚、部分提交、未知和完成；apply `planId` 单次消费，worker 写入受 claim 代次校验。
 - 任务窗口关闭后，后台 Job 继续运行；窗口重开可读取任务状态和结果。应用重启不会自动重放旧 worker：运行中的任务进入待核验，未派发任务标记为未执行。
 - 迁移三件套独立测试和冒烟测试通过，P5 退出门槛已关闭。

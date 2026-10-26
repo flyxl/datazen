@@ -1,5 +1,5 @@
 use datazen_driver_api::{ColumnSchema, TableSchema};
-use datazen_schema_diff::{
+use datazen_modules::schema_diff::{
     diff_table_schemas, ir::diff_to_operations, operations::MigrationOperation,
 };
 

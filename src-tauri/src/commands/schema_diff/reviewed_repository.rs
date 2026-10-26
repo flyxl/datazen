@@ -29,12 +29,12 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use datazen_platform_api::id::OrganizationId;
-use datazen_platform_api::ports::scope::OrganizationScope;
-use datazen_schema_diff::reviewed::{
+use datazen_modules::schema_diff::reviewed::{
     InMemoryReviewedPlanRepository, ReviewedPlan, ReviewedPlanRepository,
     ReviewedPlanRepositoryError,
 };
+use datazen_platform_api::id::OrganizationId;
+use datazen_platform_api::ports::scope::OrganizationScope;
 
 use crate::commands::{AppState, CommandError};
 use crate::platform::PlatformEntry;
@@ -147,9 +147,9 @@ pub(crate) fn reviewed_scope(state: &AppState) -> Result<OrganizationScope, Comm
 #[cfg(test)]
 mod tests {
     use super::*;
+    use datazen_modules::schema_diff::reviewed::ReviewedPlan;
+    use datazen_modules::schema_diff::types::SchemaDiffPlan;
     use datazen_platform_api::id::OrganizationId;
-    use datazen_schema_diff::reviewed::ReviewedPlan;
-    use datazen_schema_diff::types::SchemaDiffPlan;
 
     fn scope(organization: &str) -> OrganizationScope {
         OrganizationScope::new(OrganizationId::new(organization))
@@ -513,7 +513,7 @@ mod tests {
         let mut frozen = plan("plan-1");
         frozen.target_session = "session".into();
         frozen.target_pool = "pool".into();
-        frozen.target_identity = datazen_schema_diff::reviewed::identity(&cfg);
+        frozen.target_identity = datazen_modules::schema_diff::reviewed::identity(&cfg);
         frozen.target_database_scope = cfg.database.clone();
         frozen.target_schema_scope = Some("public".into());
         store
@@ -522,7 +522,7 @@ mod tests {
             .expect("put plan");
 
         let (a, b) = tokio::join!(
-            datazen_schema_diff::reviewed::consume(
+            datazen_modules::schema_diff::reviewed::consume(
                 &store,
                 &owner,
                 &frozen.plan,
@@ -532,7 +532,7 @@ mod tests {
                 cfg.database.as_deref(),
                 Some("public"),
             ),
-            datazen_schema_diff::reviewed::consume(
+            datazen_modules::schema_diff::reviewed::consume(
                 &store,
                 &owner,
                 &frozen.plan,

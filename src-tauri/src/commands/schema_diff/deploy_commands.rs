@@ -1,7 +1,7 @@
 //! Schema Diff deploy execution and cancellation.
 
 use datazen_driver_api::SchemaMigration as _;
-use datazen_schema_diff::types::PlanRequirement;
+use datazen_modules::schema_diff::types::PlanRequirement;
 
 use super::job;
 use super::unified_plan;

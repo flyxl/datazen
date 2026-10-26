@@ -166,7 +166,7 @@ Review
 Deploy on target
 ```
 
-Schema Diff 领域代码位于 `packages/schema-diff/src/`：
+Schema Diff 领域代码位于 `modules/src/schema_diff/src/`：
 
 - `compare.rs`：列、PK、索引差异。
 - `ir.rs`：Snapshot → dialect-neutral `MigrationOperation`。
@@ -188,9 +188,9 @@ Source 是 desired state，Target 是 apply site。例如 source 为 `VARCHAR(25
 
 | 能力 | 目的 | 当前实现 |
 |---|---|---|
-| Schema Diff | 修改目标结构 | `packages/schema-diff/` |
-| Data Sync | 同族数据库按行比较并同步 | `packages/data-sync/` |
-| Data Transfer | 异构数据库/映射/结构+数据迁移 | `packages/data-transfer/` + `packages/migration-common/` |
+| Schema Diff | 修改目标结构 | `modules/src/schema_diff/` |
+| Data Sync | 同族数据库按行比较并同步 | `modules/src/data_sync/` |
+| Data Transfer | 异构数据库/映射/结构+数据迁移 | `modules/src/data_transfer/` + `packages/migration-common/` |
 
 Data Sync 使用 Compare → Review → Preview → Execute，生产 compare 路径支持 keyset pagination 和 job cancellation，执行阶段使用参数化 SQL、事务和失败/取消 rollback。
 

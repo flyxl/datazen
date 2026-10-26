@@ -19,11 +19,10 @@ cbc = "0.1"
 hmac = "0.12"
 pbkdf2 = "0.12"
 sha1 = "0.10"
-datazen-schema-diff = { workspace = true }
 datazen-driver-api = { workspace = true }
 datazen-platform-api = { workspace = true }
 # 设置词汇（ExecutionSettings 等）自 D1 起由 datazen-modules::settings 拥有。
-datazen-modules = { workspace = true, features = ["settings", "ai", "connection", "named_views", "schema", "table-browsing", "table-editing", "execution", "workflow", "dashboard", "monitor", "mcp", "export", "backup", "wapps"] }
+datazen-modules = { workspace = true, features = ["settings", "ai", "connection", "named_views", "schema", "schema_diff", "table-browsing", "table-editing", "execution", "workflow", "dashboard", "monitor", "mcp", "export", "backup", "wapps"] }
 datazen-infra = { path = "../infra" }
 async-trait = "0.1"
 futures-util = "0.3"

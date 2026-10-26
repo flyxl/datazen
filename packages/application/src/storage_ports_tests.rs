@@ -10,6 +10,9 @@
 use std::sync::{Arc, Mutex};
 
 use datazen_driver_api::{SavedTunnel, SavedTunnelSummary, TunnelUsage};
+use datazen_modules::schema_diff::{
+    SchemaDiffProfile, SchemaDiffProfileRepository, SchemaDiffProfileRepositoryError,
+};
 use datazen_modules::tunnel::TunnelRepository;
 use datazen_modules::tunnel::{KnownHostEntry, KnownHostsRepository};
 use datazen_platform_api::context::RequestContext;
@@ -26,9 +29,6 @@ use datazen_platform_api::ports::scope::OrganizationScope;
 use datazen_platform_api::ports::MigrationProfileReader;
 use datazen_platform_api::target::{TargetNamespaceShape, TargetRequirements};
 use datazen_platform_api::PortError;
-use datazen_schema_diff::{
-    SchemaDiffProfile, SchemaDiffProfileRepository, SchemaDiffProfileRepositoryError,
-};
 
 use crate::dto::profile::ProfileView;
 use crate::dto::requests::{

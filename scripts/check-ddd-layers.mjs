@@ -59,9 +59,6 @@ const MODULES_FORBIDDEN = [
  * 所以 `application → 领域包` 的安全前提就是「领域包闭包里没有 application」。
  */
 const DOMAIN_PACKAGES = [
-  'datazen-schema-diff',
-  'datazen-data-sync',
-  'datazen-data-transfer',
 ];
 
 /**

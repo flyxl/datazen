@@ -83,7 +83,7 @@ Controller 将既有 wire 请求映射为 `table_browsing::application` 的读�
    同时钉住设置/分组不得直读 store 与四条设置读写路径必须经过聚合。
 - **第五条命令族（Schema Diff profile 与 owner 配置读取）**：Schema Diff 领域包新增
   `SchemaDiffProfileRepository`，端口与 `SchemaDiffProfile` 词汇同住
-  `packages/schema-diff`；`ApplicationServices` 持有该端口，桌面实现仍是同一个加密
+  `modules/src/schema_diff`；`ApplicationServices` 持有该端口，桌面实现仍是同一个加密
   `DesktopRepository`。`profile_commands.rs` 的 profile 增删查、部署前的持久化只读检查、
   Job capability / target database / target schema 的 owner 配置读取统一经
   `ApplicationServices.connections`，`commands/schema_diff/` 生产半边的 `state.store`

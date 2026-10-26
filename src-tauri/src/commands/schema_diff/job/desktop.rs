@@ -2,6 +2,8 @@
 
 use std::sync::Arc;
 
+use datazen_modules::schema_diff::job::{ApplyRequest, PrepareRequest, SchemaDiffHandler};
+use datazen_modules::schema_diff::types::{DeployStatus, SchemaDiffDeployResult};
 use datazen_platform_api::context::RequestContext;
 use datazen_platform_api::dto::execution::EffectOutcome;
 use datazen_platform_api::dto::job::{
@@ -12,8 +14,6 @@ use datazen_platform_api::dto::job::{
 use datazen_platform_api::error::PortError;
 use datazen_platform_api::id::{Counter, IdempotencyKey, JobId, StageId, WorkerId};
 use datazen_runtime::job::{EndpointRef, JobHandler, JobHost, JobRecoveryVerifier};
-use datazen_schema_diff::job::{ApplyRequest, PrepareRequest, SchemaDiffHandler};
-use datazen_schema_diff::types::{DeployStatus, SchemaDiffDeployResult};
 use serde::Serialize;
 use tauri::State;
 
@@ -557,7 +557,7 @@ fn prepare_endpoints(request: &PrepareRequest) -> (String, String, Vec<String>) 
     }
 }
 
-fn plan_objects(meta: &datazen_schema_diff::job::SchemaDiffFrozenPlan) -> Vec<String> {
+fn plan_objects(meta: &datazen_modules::schema_diff::job::SchemaDiffFrozenPlan) -> Vec<String> {
     meta.endpoint_evidence
         .iter()
         .find_map(|evidence| evidence.strip_prefix("planTables:"))

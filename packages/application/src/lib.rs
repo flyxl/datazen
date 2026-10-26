@@ -71,7 +71,7 @@ use datazen_platform_api::ports::MigrationProfileReader;
 
 use datazen_feature_core::dashboard::repository::DashboardRepository;
 use datazen_feature_core::dashboard::runs::DashboardRunRepository;
-use datazen_schema_diff::SchemaDiffProfileRepository;
+use datazen_modules::schema_diff::SchemaDiffProfileRepository;
 
 use crate::capability::CapabilityRegistry;
 use crate::identity_policy::IdentityPolicy;

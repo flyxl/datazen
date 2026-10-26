@@ -2,7 +2,7 @@
 
 use super::{AppState, CommandError, SchemaDiffProfile, State};
 use crate::platform::ipc::require_application_services;
-use datazen_schema_diff::SchemaDiffProfileRepositoryError;
+use datazen_modules::schema_diff::SchemaDiffProfileRepositoryError;
 
 fn profile_repository_error(error: SchemaDiffProfileRepositoryError) -> CommandError {
     match error {

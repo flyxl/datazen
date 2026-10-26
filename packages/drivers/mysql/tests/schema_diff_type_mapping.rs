@@ -1,7 +1,7 @@
 // Dialect integration tests: the driver owns registration and SQL rendering.
 extern crate datazen_driver_mysql;
 
-use datazen_schema_diff::plan::*;
+use datazen_modules::schema_diff::plan::*;
 
 mod schema_diff_support;
 use schema_diff_support::{col, schema};

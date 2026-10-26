@@ -143,8 +143,7 @@ fn violations(source: &str, forbidden: &[String]) -> Vec<(String, Vec<String>)> 
     out
 }
 
-/// 被扫的共享 crate 根：本 crate、`datazen-kernel` 与 `modules`（DDD 迁移 D3 起
-/// 机制内核的落位处）。
+/// 被扫的共享 crate 根：`modules` 与 runtime 留守的宿主无关源码。
 ///
 /// 机制内核（job / budget / sql_guard / schema_cache / driver_registry）从本 crate
 /// 分出去以后，「形态中立」的理由一字未变——它同时服务多种形态。若闸门只扫本 crate，
@@ -153,11 +152,10 @@ fn violations(source: &str, forbidden: &[String]) -> Vec<(String, Vec<String>)> 
 /// 那一片必须跟着搬进扫描范围。
 fn scanned_crates() -> Vec<(&'static str, std::path::PathBuf)> {
     // D3 迁移后本文件住在 modules；机制（tunnel/budget/…）也在这里，
-    // 用例编排与集成测试仍在 datazen-runtime，job/schema_cache 仍在 kernel。
+    // 用例编排与集成测试仍在 datazen-runtime。
     let here = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf();
-    let kernel = here.join("../packages/kernel");
     let runtime = here.join("../packages/runtime");
-    vec![("modules", here), ("kernel", kernel), ("runtime", runtime)]
+    vec![("modules", here), ("runtime", runtime)]
 }
 
 /// `modules` crate 里**豁免**的子树：`src/ai`。
@@ -284,7 +282,7 @@ fn planted_other_form() -> String {
 }
 
 #[test]
-fn the_kernel_has_no_form_name_in_its_code_or_literals() {
+fn shared_runtime_sources_have_no_form_name_in_code_or_literals() {
     let forbidden = forbidden_words();
     let mut bad: Vec<String> = Vec::new();
     for rel in source_files_on_disk() {
@@ -439,7 +437,7 @@ fn read_scanned_file(labeled: &str) -> String {
 }
 
 #[test]
-fn the_scan_covers_the_whole_kernel_crate() {
+fn the_scan_covers_all_shared_runtime_sources() {
     // 「没发现问题」必须建立在「确实看了全部文件」之上。
     let files = source_files_on_disk();
     assert!(
@@ -453,8 +451,7 @@ fn the_scan_covers_the_whole_kernel_crate() {
         "modules:src/execution/runtime/tunnel/form_neutrality.rs",
         "modules:src/execution/runtime/artifact/mod.rs",
         "modules:src/execution/runtime/connection/testing/fixtures.rs",
-        // 机制内核（D5 起 job 全家与本 crate 的机制都在被扫范围内；
-        // schema_cache/ 时钟随 D4/D5 归位 modules）
+        // 共享机制（D5 起 job 全家与本 crate 的机制都在被扫范围内）
         "modules:src/schema/cache.rs",
         "modules:src/jobs/application/host.rs",
         "modules:src/shared/clock.rs",

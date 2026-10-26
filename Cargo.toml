@@ -8,9 +8,6 @@ members = [
     "packages/application",
     "packages/runtime",
     "packages/feature-core",
-    "packages/schema-diff",
-    "packages/data-sync",
-    "packages/data-transfer",
     "modules",
     "packages/drivers/*",
 ]
@@ -24,9 +21,6 @@ datazen-driver-api = { path = "packages/driver-api" }
 datazen-platform-api = { path = "packages/platform-api" }
 datazen-application = { path = "packages/application" }
 datazen-feature-core = { path = "packages/feature-core" }
-datazen-schema-diff = { path = "packages/schema-diff" }
-datazen-data-sync = { path = "packages/data-sync" }
-datazen-data-transfer = { path = "packages/data-transfer" }
 datazen-modules = { path = "modules", default-features = false }
 
 [profile.dev]

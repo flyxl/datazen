@@ -21,7 +21,7 @@ futures-util = "0.3"
 
 [dev-dependencies]
 flate2 = "1"
-datazen-schema-diff = { path = "../../schema-diff" }
+datazen-modules = { workspace = true, features = ["schema_diff"] }
 datazen-feature-core = { path = "../../feature-core" }
 datazen-runtime = { path = "../../runtime" }
 datazen-application = { path = "../../application" }

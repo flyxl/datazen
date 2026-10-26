@@ -2,8 +2,8 @@
 extern crate datazen_driver_mysql;
 
 use datazen_driver_api::{ForeignKeyDeferrability, ForeignKeyInfo, IndexInfo};
-use datazen_schema_diff::plan::*;
-use datazen_schema_diff::types::*;
+use datazen_modules::schema_diff::plan::*;
+use datazen_modules::schema_diff::types::*;
 
 mod schema_diff_support;
 use schema_diff_support::{col, schema};
@@ -323,7 +323,7 @@ fn type_mapper_failure_becomes_unsupported_not_executable() {
     assert!(plan.requirements.iter().any(|r| {
         matches!(
             r,
-            datazen_schema_diff::types::PlanRequirement::Unsupported { operation, reason }
+            datazen_modules::schema_diff::types::PlanRequirement::Unsupported { operation, reason }
             if operation.contains("payload") && reason.contains("jsonb")
         )
     }));
@@ -358,7 +358,7 @@ fn create_table_type_mapper_failure_becomes_unsupported() {
     assert!(plan.requirements.iter().any(|r| {
         matches!(
             r,
-            datazen_schema_diff::types::PlanRequirement::Unsupported { reason, .. }
+            datazen_modules::schema_diff::types::PlanRequirement::Unsupported { reason, .. }
             if reason.contains("hstore")
         )
     }));

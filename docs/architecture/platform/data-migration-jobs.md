@@ -10,9 +10,9 @@
 
 | 引擎 | 当前领域包 | 桌面 host adapter | host 保留职责 |
 | --- | --- | --- | --- |
-| Schema Diff | `packages/schema-diff/` | `src-tauri/src/commands/schema_diff/` | IPC、窗口与用户确认 |
-| Data Sync | `packages/data-sync/` | `src-tauri/src/commands/sync/` | IPC、任务记录与窗口 |
-| Data Transfer | `packages/data-transfer/` | `src-tauri/src/commands/data_transfer/` | IPC、文件选择、原生工具环境 |
+| Schema Diff | `modules/src/schema_diff/` | `src-tauri/src/commands/schema_diff/` | IPC、窗口与用户确认 |
+| Data Sync | `modules/src/data_sync/` | `src-tauri/src/commands/sync/` | IPC、任务记录与窗口 |
+| Data Transfer | `modules/src/data_transfer/` | `src-tauri/src/commands/data_transfer/` | IPC、文件选择、原生工具环境 |
 
 三个领域包和对应桌面 Job adapter 已由 P5 落地。`src-tauri/src/lib.rs` 将领域包导出给 Host；Driver 方言、DDL renderer、类型适配和专属测试留在 driver 包。领域引擎不引用 Tauri、HTTP、窗口 Store 或 driver 实现库类型。
 
@@ -79,7 +79,7 @@ sequenceDiagram
 
 Handler 以 kind + handlerVersion 注册，接口语义是 `validatePlan`、`runStage`、`verifyRecovery`。runStage 由 runtime 提供当前 claim、冻结输入、取消信号与受控资源访问；返回阶段结果、executionIds、已确认提交边界及 Artifact 引用。handler 不直接修改 Job 状态，不自行续租或在未知效果后自动重试。
 
-取消信号由 runtime 单独送达，handler 只读它、不自建取消通道。`dispatch` 为一次派发创建一个 `CancelToken`：进入每个阶段前重读 `cancel_requested`，并在阶段执行期间由一个并发看守者持续重读同一事实，看守者把结果翻译成这一个令牌的翻转，阶段拿到的是同一个 `CancelToken`（`CancelToken::flag()` 可取出其底层原子位交给批次/分页循环）。看守者每轮只读两个 bool（内存仓储的 `cancel_poll`），不克隆整条 `JobRecord`。阶段返回错误或 panic 时，runtime 收敛为 `Failed/Unknown`，保留此前已确认边界与 checkpoint，并使用固定安全原因码，不从缺少边界推断 rollback。阶段任务由受监控的 task 执行；runtime 等待阶段完成后终止并等待看守者，因此派发返回时不会留下仍持有仓储或请求上下文的游离任务。handler panic 使用 `handlerPanickedUnknown`，不会让 Job 悬在 `Running`。验证 panic/拒绝、无效冻结计划、未注册 handler 和预算拒绝发生于派发前时收敛为 failed + notStarted。取消阻止启动下一阶段；阶段报告的失败或取消效果由 handler 的实际证据决定，无提交边界本身不证明 rolledBack。轮询读失败时的取舍写在 `packages/kernel/src/job/runtime.rs`：记录一条告警并停止轮询，阶段不受影响；若这个 Job 还有下一个阶段，取消意图会在那个边界被重新读到，否则本次运行可能在不感知取消的情况下走完。data-transfer 侧真正的单阶段 Job 是 `prepare`、SQL 文件目标的 `apply`，以及 `data` 模式的 `apply`；仅结构模式展开为 structure → foreignKeys，`structureAndData` 模式展开为 structure → data → foreignKeys，因此**有**下一个边界，取消意图会在这些阶段边界被重新读到（阶段展开见 `packages/data-transfer/src/job/handler.rs` 的 `validate_plan`，由 `packages/data-transfer/src/job/tests/stage_shape.rs` 钉死）。读失败不得据此伪造失败，也不得静默：告警带 jobId 与错误原文。
+取消信号由 runtime 单独送达，handler 只读它、不自建取消通道。`dispatch` 为一次派发创建一个 `CancelToken`：进入每个阶段前重读 `cancel_requested`，并在阶段执行期间由一个并发看守者持续重读同一事实，看守者把结果翻译成这一个令牌的翻转，阶段拿到的是同一个 `CancelToken`（`CancelToken::flag()` 可取出其底层原子位交给批次/分页循环）。看守者每轮只读两个 bool（内存仓储的 `cancel_poll`），不克隆整条 `JobRecord`。阶段返回错误或 panic 时，runtime 收敛为 `Failed/Unknown`，保留此前已确认边界与 checkpoint，并使用固定安全原因码，不从缺少边界推断 rollback。阶段任务由受监控的 task 执行；runtime 等待阶段完成后终止并等待看守者，因此派发返回时不会留下仍持有仓储或请求上下文的游离任务。handler panic 使用 `handlerPanickedUnknown`，不会让 Job 悬在 `Running`。验证 panic/拒绝、无效冻结计划、未注册 handler 和预算拒绝发生于派发前时收敛为 failed + notStarted。取消阻止启动下一阶段；阶段报告的失败或取消效果由 handler 的实际证据决定，无提交边界本身不证明 rolledBack。轮询读失败时的取舍写在 `packages/kernel/src/job/runtime.rs`：记录一条告警并停止轮询，阶段不受影响；若这个 Job 还有下一个阶段，取消意图会在那个边界被重新读到，否则本次运行可能在不感知取消的情况下走完。data-transfer 侧真正的单阶段 Job 是 `prepare`、SQL 文件目标的 `apply`，以及 `data` 模式的 `apply`；仅结构模式展开为 structure → foreignKeys，`structureAndData` 模式展开为 structure → data → foreignKeys，因此**有**下一个边界，取消意图会在这些阶段边界被重新读到（阶段展开见 `modules/src/data_transfer/src/job/handler.rs` 的 `validate_plan`，由 `modules/src/data_transfer/src/job/tests/stage_shape.rs` 钉死）。读失败不得据此伪造失败，也不得静默：告警带 jobId 与错误原文。
 
 取消不制造提交边界。看守者只翻转令牌，不写入任何东西；阶段是否回滚在途批次、是否给出 `Cancelled`，仍完全由 handler 决定（data-transfer 在 execute 之后、commit 之前检查并回滚在途批次，该批次因此不产生提交边界）。
 

@@ -171,9 +171,10 @@ impl Default for QueryExecutionRegistry {
 #[derive(Clone)]
 pub struct SyncRepositoryPorts {
     /// 计划注册表端口。签发 / 查看 / 绑定端点身份 / 认领。
-    pub plan_store: Arc<dyn datazen_data_sync::plan_store::SyncPlanRepository>,
+    pub plan_store: Arc<dyn datazen_modules::data_sync::plan_store::SyncPlanRepository>,
     /// 比较存储根端口。决定比较结果写到哪个目录。
-    pub comparison_root: Arc<dyn datazen_data_sync::comparison_store::ComparisonStorageRoot>,
+    pub comparison_root:
+        Arc<dyn datazen_modules::data_sync::comparison_store::ComparisonStorageRoot>,
 }
 
 impl SyncRepositoryPorts {
@@ -183,10 +184,12 @@ impl SyncRepositoryPorts {
     pub fn desktop() -> Self {
         let organization = OrganizationId::new(crate::platform::identity::LOCAL_ORGANIZATION_ID);
         Self {
-            plan_store: Arc::new(datazen_data_sync::plan_store::InMemorySyncPlanRepository::new()),
+            plan_store: Arc::new(
+                datazen_modules::data_sync::plan_store::InMemorySyncPlanRepository::new(),
+            ),
             comparison_root: Arc::new(
-                datazen_data_sync::comparison_store::LocalComparisonStorageRoot::new(
-                    datazen_data_sync::comparison_store::default_comparison_storage_root(),
+                datazen_modules::data_sync::comparison_store::LocalComparisonStorageRoot::new(
+                    datazen_modules::data_sync::comparison_store::default_comparison_storage_root(),
                     organization,
                 ),
             ),

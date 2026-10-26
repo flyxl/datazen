@@ -2,8 +2,8 @@
 extern crate datazen_driver_postgres;
 
 use datazen_driver_api::{ForeignKeyDeferrability, ForeignKeyInfo};
-use datazen_schema_diff::plan::*;
-use datazen_schema_diff::types::*;
+use datazen_modules::schema_diff::plan::*;
+use datazen_modules::schema_diff::types::*;
 
 mod schema_diff_support;
 use schema_diff_support::{col, schema};
@@ -120,7 +120,7 @@ fn test_tester_target_only_empty_identifier_is_not_executable() {
     assert!(plan.requirements.iter().any(|requirement| {
         matches!(
             requirement,
-            datazen_schema_diff::types::PlanRequirement::Unsupported { .. }
+            datazen_modules::schema_diff::types::PlanRequirement::Unsupported { .. }
         )
     }));
 }
@@ -147,7 +147,7 @@ fn target_only_blank_control_or_invalid_identifier_is_not_executable() {
             plan.requirements.iter().any(|requirement| {
                 matches!(
                     requirement,
-                    datazen_schema_diff::types::PlanRequirement::Unsupported { .. }
+                    datazen_modules::schema_diff::types::PlanRequirement::Unsupported { .. }
                 )
             }),
             "{table:?}"
