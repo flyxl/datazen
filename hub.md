@@ -73,11 +73,15 @@
 | `4f5f62da9` | D4 第五切片：结果网格写回规则归位 table_editing::result_edit（DB-14 全套判定 + WriteTarget）；宿主依赖改指模块词汇（schema/connection/execution）；FeatureError→TableEditingError 仅 Validation 族；feature-core 垫片再导出，桌面 result_origin/result_write 与集成测试零改动；modules 1178（+18）/ feature-core 518 / reasons 4 / locating 3 全绿；D4 工作项 1-4 模块侧完成，工作项 5（方言测试留 driver、UI 行为 Host E2E）归 CI/E2E 验收 |
 | `3507e0c08` | fix(table_columns)：宿主适配器随 D4 契约迁移——TableColumnSource 签名改回 TableEditingError（前一会话推送、主检出未含，随 rebase 收编） |
 
-### D5 已完成（2026-10-26，进行中）
+### D5 已完成（2026-10-26，收官）
 
 | 提交 | 内容 |
 |---|---|
 | `aee5cafc0` | D5 第一切片：jobs 三分归位 modules::jobs——kernel::job 全家（17 文件）+ platform-api Job 词汇（ports/job、dto/job）+ 时基端口（→shared::clock，常驻）+ native_tool 词汇（→jobs::domain::native_tool）；kernel/platform-api 垫片化；kernel/src/schema_cache 孤儿目录删除；jobs/mod.rs 镜像旧扁平名与深路径；form_neutrality 闸门清单随迁。验证：modules 1221 / runtime 9+32 / platform-api 25 / feature-core 500 / schema-diff 179 / data-sync 12 / data-transfer 253 全绿；五道门禁 PASS |
+| `d16e0a9c2` | D5 第二切片：migration-common 共享纯算法归位 modules::migration_common（07-stages D5 工作项 5 后半） |
+| `46db92507` | D5 第三切片：Schema Diff 引擎归位 modules::schema_diff（三件套之一） |
+| `2fd65d74f` | D5 第四切片：Data Sync 引擎归位 modules::data_sync（三件套之二；41 文件）。modules 新增 data_sync feature（rusqlite bundled 随 SQLite 侧实现）；垫片保留集成测试（cm43–cm46 等持有 driver dev-deps）；modules 内联单测的家族归一化经 dev-deps + `#[cfg(test)] extern crate` force-link 三驱动（cargo 允许 dev-dep 成环）；shared::migration（EndpointIdentity）随迁自 platform-api。验证：modules 242 / 垫片 25 全绿 |
+| `3694cfd94` | D5 第五切片：Data Transfer 引擎归位 modules::data_transfer（三件套之三；56 文件）。flate2 随 sql_file gzip、inventory 随 transfer 适配器自注册进入 feature；引用收口：kernel::job→jobs、kernel::budget→execution::runtime::budget、platform-api id/context/ports/dto→shared/jobs/execution 各归位点、migration_common 指模块内；垫片保留 filter_operator_refusal 集成测试（补 driver-api dev-dep）。验证：modules 250 / 垫片 3 全绿 / workspace check 通过。**D5 收官**（jobs 三分 + migration_common + 三件套 + native_tool 全部归位；退出准则中的真实驱动/UI 旅程证据归 CI/E2E 验收） |
 
 ## 会话恢复要点
 
