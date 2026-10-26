@@ -83,6 +83,26 @@ data_sync = [
     "schema",
     "execution",
 ]
+# D5：Data Transfer 引擎（原 data-transfer crate 整体归位；三件套之三）。
+# flate2 随 sql_file 的 gzip 读写进入（形态中立）；inventory 随 transfer
+# 适配器的链接期自注册进入（与 ai feature 共用同一 optional dep）。
+data_transfer = [
+    "dep:async-trait",
+    "dep:base64",
+    "dep:chrono",
+    "dep:flate2",
+    "dep:inventory",
+    "dep:serde_json",
+    "dep:uuid",
+    "dep:sha2",
+    "dep:tokio",
+    "dep:tracing",
+    "dep:datazen-driver-api",
+    "migration_common",
+    "jobs",
+    "schema",
+    "execution",
+]
 # D5：迁移三件套的共享纯算法（原 migration-common crate 整体归位）。
 # 不依赖三件套或 execution（01 §4.2）；driver-api 提供分类学词汇。
 migration_common = ["dep:datazen-driver-api", "dep:serde_json"]
@@ -125,6 +145,8 @@ sha2 = { version = "0.10", optional = true }
 # D5 data_sync：comparison_store / plan_store 的 SQLite 侧实现所需。
 rusqlite = { version = "0.32.1", features = ["bundled"], optional = true }
 base64 = { version = "0.22", optional = true }
+# D5 data_transfer：sql_file 的 gzip 读写（.sql.gz 导入导出）。
+flate2 = { version = "1.1.9", optional = true }
 hmac = { version = "0.12", optional = true }
 libc = { version = "0.2", optional = true }
 # table-editing feature：变更集 ID 生成

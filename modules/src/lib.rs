@@ -37,6 +37,10 @@ pub mod schema_diff;
 #[cfg(feature = "data_sync")]
 pub mod data_sync;
 
+/// D5：Data Transfer 引擎（单向复制/迁移：映射/预览/断点续传 + job pipeline）。
+#[cfg(feature = "data_transfer")]
+pub mod data_transfer;
+
 /// D4-d：表编辑写链路（ChangeSet/insert plan/行身份/写执行）。
 #[cfg(feature = "table-editing")]
 pub mod table_editing;

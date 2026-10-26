@@ -1781,26 +1781,13 @@ dependencies = [
 name = "datazen-data-transfer"
 version = "0.0.1"
 dependencies = [
- "async-trait",
- "base64 0.22.1",
- "chrono",
  "datazen-driver-api",
  "datazen-driver-mysql",
  "datazen-driver-postgres",
  "datazen-driver-sqlite",
- "datazen-kernel",
- "datazen-migration-common",
- "datazen-platform-api",
- "flate2",
- "inventory",
- "serde",
- "serde_json",
- "sha2 0.10.9",
+ "datazen-modules",
  "tempfile",
- "thiserror 1.0.69",
  "tokio",
- "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -2176,6 +2163,7 @@ dependencies = [
  "datazen-driver-postgres",
  "datazen-driver-sqlite",
  "datazen-infra",
+ "flate2",
  "futures-util",
  "hmac 0.12.1",
  "indexmap 2.14.0",
