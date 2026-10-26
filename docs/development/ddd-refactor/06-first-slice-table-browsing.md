@@ -113,4 +113,4 @@ Controller 将既有 wire 请求映射为 `table_browsing::application` 的读�
 
 ## 9.6 这条切片的完成标准
 
-宿主表浏览命令不再访问 Store / AppDb / driver registry / runtime internals；两个入口共享同一应用流程；配置与资源状态只有一份；领域规则独立可测；桌面运行旅程通过。D7 再对同一公共用例执行 Web 集成验证，不能重新写一份 Web 表读取算法。
+宿主表浏览命令不再访问 Store / AppDb / driver registry / runtime internals；两个入口共享同一应用流程；配置与资源状态只有一份；领域规则独立可测；桌面运行旅程通过。Web 集成验证随 D7 延后（2026-10-26 决策移出本次范围），届时对同一公共用例执行，不能重新写一份 Web 表读取算法。

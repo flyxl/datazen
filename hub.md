@@ -92,3 +92,33 @@
   `~/.cargo/registry/src` 可随时清（自动从 cache 重解压）。
 - 简报落点参考：06-first-slice-table-browsing.md §9.4 的命令族台账记录了 P3 阶段命令族
   迁移事实（历史，勿混淆为 D 阶段）。
+
+### D6 进行中（2026-10-26，续）
+
+| 提交 | 内容 |
+|---|---|
+| `b248e153a` / `b53702f50` | （前一会话推送、本轮 rebase 收编）rust job 首次 CI 三处编译修复（shared/scope doctest 视角、chrono 转常驻依赖并收敛各 feature 清单、webdriver feature 补声明）；零消费方的 datazen-migration-common 垫片提前退役 |
+| `81a38480c` | D6 第一切片（item 1 后半）：History 归位 `modules::history`——domain（query/migration_run/scope/repository 端口）+ application（HistoryService）；仓储 trait 归模块 domain（§7.1/§7.3），桌面 SQLite 实现经 `platform/history.rs DesktopHistoryRepositories` 适配同一 `HistoryDb`；`DesktopSessionBackend` 构造注入 `QueryHistoryRepository` 端口（执行路径写历史不再经 DesktopRepository 门面）；消费者全收口（commands history/query/driver_command/ai、MCP resources、AI 分析、全部相关测试）；`DesktopRepository` 历史门面方法删除（store/history.rs 只剩 favorites）；platform-api dto::migration 垫片化。验证：history 10 / 全 feature-lite 1234 / platform-api 21 全绿 |
+| `8f3e97014` | fix：history feature 对齐 chrono 常驻化（81a3848 rebase 到 b248e153 后残留 `dep:chrono` 导致非可选依赖报错，收敛为 `dep:async-trait + dep:tracing`） |
+
+## 范围决策更新（用户 2026-10-26 指令，第二次）
+
+**Web 功能移出本次重构范围**：本次不开发 Web 功能，Web 宿主（原 D7）延后到
+后续版本另立阶段交付。已修订：07-stages.md（D7 整段标注移出 + D8 输入改桌面
+单宿主）、10-checks-and-release.md（§13.3 web 命令延后注释、§14.2 验收项改
+"桌面单宿主模块化版本"表述）、总纲阶段表（D7 移出 + D4/D5 状态同步）、
+06-first-slice（Web 集成验证延后）、05-host-assembly §8.4。01-target-architecture
+的 web/ 目标命名（待实现）保留为未来约定。模块 feature 中立性（无 Tauri 泄入
+共享层）仍由门禁持续守护。D8 在桌面单宿主范围内进行。
+
+## D6 下一步（按 07-stages 顺序）
+
+1. **Dashboard**（item 2）：保存/组件创建/运行历史/导入导出规则进
+   application/domain，管理库实现留宿主；文件对话框留宿主交互层。
+2. **Workflow**（item 3）：保留 step/session/transaction block 资源边界，
+   调用 execution 与 jobs；workflow_history 词汇属本族。
+3. **AI / MCP**（item 4）：feature-core 中 Provider-neutral 业务（会话编排、
+   工具循环、安全策略）与 MCP 业务分发。
+4. **Monitor、Export、Backup/Restore、Wapps、Tunnel**（item 5）。
+5. 收尾：移除 DesktopRepository 残余领域业务方法（favorites 尚在，属宿主
+   文件存储还是迁模块随 item 2-5 顺带评估）。

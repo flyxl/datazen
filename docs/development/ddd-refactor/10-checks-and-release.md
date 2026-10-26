@@ -58,7 +58,7 @@ Rust 链接确属内存不足时，可以用 `CARGO_BUILD_JOBS=1 RUSTFLAGS='-C d
 
 ### 13.3 modules / web 建立后的新增验证
 
-**以下是 D1/D7 必须接入 CI 的目标命令；当前没有对应 crate，不应现在运行后把“不存在”当成代码回归。** feature 片段与[§8.3](05-host-assembly.md)一致：
+**以下是 D1/D7 必须接入 CI 的目标命令；当前没有对应 crate，不应现在运行后把“不存在”当成代码回归。** feature 片段与[§8.3](05-host-assembly.md)一致。**web 宿主相关命令随 D7 移出本次范围（2026-10-26 决策），延后到后续版本接入；桌面范围内的 modules 矩阵照常执行：**
 
 ```bash
 run_check cargo check -p datazen-modules --no-default-features
@@ -66,6 +66,7 @@ run_check cargo test -p datazen-modules --no-default-features --features setting
 run_check cargo test -p datazen-modules --no-default-features --features connection
 run_check cargo test -p datazen-modules --no-default-features --features table-browsing
 run_check cargo test -p datazen-modules --all-features
+# 以下两条随 D7 延后（web 宿主不在本次范围）
 run_check cargo test -p datazen-web
 run_check cargo build -p datazen-web --release
 ```
@@ -123,12 +124,12 @@ Pro 发行仅在对应独立扩展已装配并授权的环境运行其构建和�
 - [ ] Repository trait 由各领域拥有，生产持久化实现在 src-tauri / web；没有全局仓储全集或另一个总 application 层。
 - [ ] runtime 私有地归属 execution；Job、Schema cache 等归属对应功能；不存在每个消费者一份资源账本。
 - [ ] Controller 只进入应用服务；宿主基础设施与装配可以引用必要领域契约，不被错误的层门禁阻挡。
-- [ ] Desktop 与 Web 能独立选择、装配和编译自己的功能集合；未启用功能无需假依赖。
+- [ ] Desktop 能独立选择、装配和编译自己的功能集合；未启用功能无需假依赖。Web 侧随 D7 延后（2026-10-26 决策），不宣称双宿主完成，也不因此放松共享层的形态中立要求。
 - [ ] IPC / wire DTO / error / Driver 协议与存储兼容有测试证据；任何行为变化已单独说明和验收。
 - [ ] owner/scope/epoch/revision、事务、取消、幂等、资源清理及计划恢复语义没有因移动而削弱。
 - [ ] [§12](09-acceptance-tests.md)验收要求都有真实测试映射，最小 feature、全功能、真实宿主和驱动测试没有漏收集。
 - [ ] 依赖与模块门禁在合成违规/合法样例上有鉴别力；临时兼容例外清零。
-- [ ] D7 的真实 Web 接缝完成；如仅交付桌面阶段，明确不宣称双宿主方案全部完成。
+- [ ] D7 已移出本次范围（2026-10-26 决策）：本次交付明确标注为**桌面单宿主模块化版本**，Web 接缝延后到后续版本验收，不宣称双宿主方案完成。
 - [ ] 正式架构文档逐节改成实现事实，索引与代码路径可达；阶段台账在合并收尾删除。
 - [ ] 发布矩阵、安装/升级与回滚演练符合所声明版本；没有未解释的失败和未运行检查。
 

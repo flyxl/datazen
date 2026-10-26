@@ -66,10 +66,10 @@
 | D1.5 | AI crate 收拢与 infra 改名（2026-10-26 追加） | 已完成：三步合并/改名 + 共享审计结论见 07-stages.md D1.5 小节 |
 | D2 | 连接领域与宿主仓储 | 已完成：目录切片 + Profile/revision 词汇统一 + modules::shared 建立（见 07-stages.md D2 小节）；桌面 UI 旅程验证依赖 PR CI |
 | D3 | Execution 拆分与资源机制归位 | 基本完成：词汇/端口/机制/编排全部归位 modules::execution，等待能力第一步（wait_for_execution）已交付；收尾项（通知式等待第二步、runtime 私有化）随 D8 收敛 |
-| D4 | Schema、表读写与 SQL 消费者 | 未开始 |
-| D5 | Jobs 与迁移三件套 | 未开始 |
-| D6 | 其余功能与旧宿主业务移除 | 进行中：item 1（named_views）已迁移 modules |
-| D7 | 真实 Web 装配与功能选择验收 | 未开始 |
-| D8 | 旧包退役与发布收尾 | 未开始 |
+| D4 | Schema、表读写与 SQL 消费者 | 已完成：schema 缓存/应用服务、表浏览读链路、表编辑写链路、结果写回规则五切片归位（见 07-stages.md D4 小节）；方言测试留 driver、UI 行为 Host E2E 归 CI 验收 |
+| D5 | Jobs 与迁移三件套 | 已完成：jobs 三分 + migration_common + schema_diff / data_sync / data_transfer 三件套 + native_tool 归位（见 07-stages.md D5 小节）；真实驱动/UI 旅程证据归 CI/E2E 验收 |
+| D6 | 其余功能与旧宿主业务移除 | 进行中：item 1 前半（named_views、history）已迁移 modules |
+| D7 | 真实 Web 装配与功能选择验收 | **移出本次范围**（2026-10-26 用户决策）：Web 版延后到后续版本交付，本分支不执行；模块 feature 中立性仍由门禁持续守护 |
+| D8 | 旧包退役与发布收尾 | 未开始（桌面单宿主范围内进行） |
 
 状态列是随阶段推进更新的快照；逐 PR 的验证证据记录在 PR 描述中，不另建长期进度文件。
