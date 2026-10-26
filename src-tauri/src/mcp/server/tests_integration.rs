@@ -216,6 +216,9 @@ async fn mcp_read_resource_inner_paths() {
 
     let test = TestAppState::with_tables_and_resource_provider().await;
     test.save_connection("res-inner").await;
+    // D6 第一切片：写入经模块服务（与生产路径同一装配）。先取服务再构建 server
+    // ——后者拿走 AppState 的所有权，返回的 Arc 不与该借用挂钩。
+    let history = crate::platform::ipc::require_history_service(&test.state).unwrap();
     let server = mcp_server_allowing(Arc::new(test.state), &["res-inner"]);
 
     let conns = server
@@ -231,8 +234,7 @@ async fn mcp_read_resource_inner_paths() {
 
     // Seed one row so the resource contract below is exercised on real output.
     // D6 第一切片：写入经模块服务（与生产路径同一装配）。
-    crate::platform::ipc::require_history_service(&test.state)
-        .unwrap()
+    history
         .add_query_history(crate::store::QueryHistoryEntry {
             id: "hist-1".into(),
             connection_id: "res-inner".into(),
