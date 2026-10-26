@@ -109,6 +109,10 @@
 | `21d940450` | **形态中立收口（用户 2026-10-26 指令：形态字面量若需改前端则一并改）**：`AlertChannel::Desktop → App`，wire 值 `"desktop" → "app"`；序列化只写新值，旧持久化字面量经自定义 Deserialize 拆开拼接收映射到 App（不破坏已存告警规则）；form_neutrality 的 ALLOWED_WIRE_VOCABULARY 清空（机制保留）；src-tauri 分发臂/测试样例、前端类型与默认渠道（仅两处消费，grep 审计无遗漏）、shared-boundaries-and-ports.md 文档同步。验证：dashboard 51 / form_neutrality 6 / feature-lite 1310 / feature-core 429 全绿；module-layers/ddd-layers/id-terminology 门禁通过；前端 typecheck/vitest 归 PR CI |
 | `90dce3343` / `2d3a30c9e` | （前一会话推送、本轮 rebase 收编）fix(workflow)：文档行号守卫随 D6 dashboard 切片改指 modules 新位置；rustfmt 收敛 dashboard/domain/types.rs（21d9404 随迁漂移） |
 | `42abe43e2` | D6 第三切片 / item 3 收官：Workflow 引擎与用例归位 `modules::workflow`——feature-core::workflow 剩余 14 文件逐字迁移合成三层（domain：command/history/plan_guard/target_plan/repository 端口；application：host/context/conditions/data_step/command_runtime/resource_execution 经 execution 端口派发保留 block 资源边界/registry serde_yaml 定义编解码/results；engine：executor 步骤归一 Driver Command 派发 + scheduler tick/在途守卫/取消）。同波次 item 4 切片二：MCP 命令准备策略 `feature-core::services::command_policy → modules::mcp::application::command_policy`（权限档位映射/命令定义解析含 schema 元数据命令合成/调用校验/SQL 参数绑定/信封目标注入；宿主 driver_command 适配器与 workflow resource_execution 共用）；mcp feature 补 schema 依赖。feature-core workflow 14 文件 + services/command_policy 垫片化（旧路径不变，src-tauri 零改动）；workflow feature 接线（serde_yaml/regex 新 optional + execution/schema/table-editing/mcp）。验证：modules feature-lite 含 jobs 1303（workflow 102 随迁）/ feature-core 407（lib 318 + 集成 89）/ module-layers + id-terminology 门禁 PASS / rustfmt 收敛；ddd-layers 全量 metadata 门禁与 src-tauri 编译归 PR CI（沙箱缺 brotli 等约 14 包，既有决策：不下载，PR CI 兜底） |
+| `101a87152` | D6 item 4 切片三：AI 规则与解析层归位 modules::ai——domain 补 budget（token 预算）/ctx_yaml（表组上下文）/safety（提示词脱敏 + effective_safety_gate）；application 建 prompt_resolver（模板解析/覆盖源/内置场景回退）+ response（语言提示注入/JSON 解析/围栏剥离/脱敏投影）；feature-core 对应 5 文件垫片化；src-tauri 零改动 |
+| `ad58f9705` | D6 item 4 收官：AI 会话编排/工具循环/取消/所有权与 schema 上下文管道归位 modules::ai::application——11 文件（chat_request/sql_generation/single_turn/filter/schema_doc/schema_pipeline/context + tools/tool_loop + cancel + ownership）+ db_tools + DatabaseToolHost/SessionConnectionLookup 消费者端口 + schema_context 实现（经 workflow::ResourceExecutionHost 走共享网关）；AiUseCaseError 与 FeatureError 逐字同构（同桶 From 保 IPC 文案不变）；ai feature 补 mcp/workflow/uuid 依赖（无 crate 环）；schema_context 行为用例与 parse_ai_json 等留守测试留 feature-core 垫片层（runtime dev-dep 先例）。验证：feature-lite 全量 1423（+120）/ feature-core lib 198 + 集成 89 + fk 26 全绿 / 桌面 grep 审计零改动（error.rs 加 From） |
+| `f8f14052b` | D6 item 5 切片 a：Export/Backup 用例族归位——modules::export（表导出词汇/FileSink/zip 归档 + format 纯规则 + file_job 文件产物作业 FileArtifactJob）与 modules::backup（BackupSource/Events + dump/restore 编排 + .sql.gz 流式恢复）；ExportError 文件产物族共用信封；file_job 行为用例剥离 tests/file_artifact_job.rs。桌面 4 文件错误别名替换（方法体零改动）。验证：feature-lite 1423 / feature-core lib 195 + 集成 89 + file_artifact_job 3 |
+| `f0c59bdac` | D6 item 5 切片 b：Restore/Backup 网关归位——restore_job（apply-job：RestorePlan 指纹/SHA256/ACL 校验 + 永不自动重放）+ restore_gateway（RuntimeRestoreGateway 同一会话/执行网关）+ backup_gateway（backup_to_path + staging writer）+ BackupOutputBinder 端口随迁 modules::backup::ports；restore 行为用例 11 个剥离 tests/restore_apply_job.rs。桌面零改动（? 同类型直通）。验证：feature-core lib 184 + restore_apply_job 11 全绿 / feature-lite 1423 |
 
 ## 范围决策更新（用户 2026-10-26 指令，第二次）
 
@@ -120,19 +124,25 @@
 的 web/ 目标命名（待实现）保留为未来约定。模块 feature 中立性（无 Tauri 泄入
 共享层）仍由门禁持续守护。D8 在桌面单宿主范围内进行。
 
-## D6 下一步（按 07-stages 顺序；item 1/2/3 已完成，item 4 已完成两切片）
+## D6 下一步（item 1/2/3/4 已完成；item 5 已完成 5a/5b 两切片）
 
-1. **AI / MCP 剩余**（item 4 收尾）：feature-core 中 Provider-neutral 业务
-   （会话编排、工具循环、安全策略）与 MCP 业务分发残余；认证/stdio/
-   HTTP 登录/事件传输在宿主。已归位：mcp 三文件业务规则（66c88bdaa）+
-   command_policy（42abe43e2）。
-2. **Monitor、Export、Backup/Restore、Wapps、Tunnel**（item 5）：按各自
-   模型迁移，保留 grant、文件安全、恢复锁、沙箱桥与网络限制。注：
-   Monitor 刷新引擎已随 dashboard 切片入模块（1e9b7e959），此处余项为
-   宿主侧监控装配与残余词汇。
-3. **connection_import / services 残余**（fk_navigation/referenced_by/
-   value_search/db_tools/migration_endpoint 等）随 item 5 一并评估归位。
-4. 收尾：移除 DesktopRepository 残余领域业务方法（favorites 尚在，属宿主
+1. **AI / MCP（item 4）已完成**：mcp 业务规则（66c88bdaa）+
+   command_policy（42abe43e2）+ AI 规则与解析层（101a87152）+ **收尾
+   切片（ad58f9705）**——feature-core::ai 剩余 11 文件（会话编排/工具
+   循环/取消/所有权/schema 上下文管道）+ db_tools + DatabaseToolHost/
+   SessionConnectionLookup 端口 + schema_context 实现全部归位
+   modules::ai::application；AiUseCaseError 与 FeatureError 逐字同构。
+2. **item 5a 已完成（f8f14052b）**：export（表导出/format/file_job/
+   FileArtifactJob）+ backup（BackupSource/Events + dump/restore 编排 +
+   .sql.gz 流式恢复）归位；ExportError 为文件产物族共用信封。
+3. **item 5b 已完成（f0c59bdac）**：restore_job（apply-job 模型）+
+   restore_gateway/backup_gateway（双网关）+ BackupOutputBinder 端口
+   归位 modules::backup。
+4. **item 5 余项**：Wapps（workspace_apps 2.5K）、Tunnel crate（2.65K）、
+   connection_import（4.65K）、services 残余（fk_navigation/referenced_by/
+   value_search/migration_endpoint 2K）。注：Monitor 刷新引擎已随
+   dashboard 切片入模块（1e9b7e959），余项为宿主侧监控装配。
+5. 收尾：移除 DesktopRepository 残余领域业务方法（favorites 尚在，属宿主
    文件存储还是迁模块随上述切片顺带评估）。
 
 ### 会话恢复备忘（本轮实测）
@@ -145,6 +155,6 @@
   origin remote 已内嵌 PAT。
 - feature-lite 全量口径 = settings,history,workflow,dashboard,
   connection,named_views,execution,schema,migration_common,ai,mcp,
-  webdriver,jobs（本轮 1303）。
+  webdriver,jobs,export,backup（本轮 1423）。
 - ddd-layers 门禁需全量 metadata（缺 brotli 等约 14 包）：本地跳过，
   PR CI 兜底（用户 2026-10-26 决策）。
