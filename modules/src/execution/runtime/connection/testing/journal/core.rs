@@ -9,7 +9,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use crate::execution::runtime::connection::execution::{EffectOutcome, ExecutionErrorCode, TruncationRecord};
+use crate::execution::runtime::connection::execution::{
+    EffectOutcome, ExecutionErrorCode, TruncationRecord,
+};
 use crate::execution::runtime::connection::port::{BudgetClass, PermitId, PermitReason};
 use crate::execution::runtime::connection::session::SessionHandleRef;
 use crate::execution::runtime::connection::types::{

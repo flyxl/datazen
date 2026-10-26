@@ -1,11 +1,11 @@
 use super::*;
-use async_trait::async_trait;
-use crate::execution::{EventSequence, IdempotentOperation, SubmissionToken, EventSubscription};
 use crate::connection::ProfileScope;
-use crate::execution::CloseDisposition;
 use crate::connection::ProfileView;
-use crate::execution::requests::*;
 use crate::execution::application::use_cases::ConnectionUseCases;
+use crate::execution::requests::*;
+use crate::execution::CloseDisposition;
+use crate::execution::{EventSequence, EventSubscription, IdempotentOperation, SubmissionToken};
+use async_trait::async_trait;
 impl RuntimeConnectionUseCases {
     async fn enqueue(
         &self,
@@ -335,10 +335,13 @@ pub(super) fn utc_now() -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0);
-    crate::execution::runtime::directory::ClockBase::new(crate::execution::runtime::directory::MonoInstant::ZERO, millis)
-        .project(crate::execution::runtime::directory::MonoInstant::ZERO)
-        .as_str()
-        .to_owned()
+    crate::execution::runtime::directory::ClockBase::new(
+        crate::execution::runtime::directory::MonoInstant::ZERO,
+        millis,
+    )
+    .project(crate::execution::runtime::directory::MonoInstant::ZERO)
+    .as_str()
+    .to_owned()
 }
 fn gateway_error(error: GatewayError) -> ApiError {
     match error {

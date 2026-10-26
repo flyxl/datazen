@@ -155,7 +155,9 @@ impl ExecutionRequest {
     /// 端口请求体。
     ///
     /// `idempotencyKey` 原样透传：registry 侧若也维护幂等，两边看到的是同一个键。
-    pub fn to_port_request(&self) -> crate::execution::runtime::connection::ExecuteInSessionRequest {
+    pub fn to_port_request(
+        &self,
+    ) -> crate::execution::runtime::connection::ExecuteInSessionRequest {
         crate::execution::runtime::connection::ExecuteInSessionRequest {
             handle: self.handle.clone(),
             expected_context_revision: self.expected_context_revision,

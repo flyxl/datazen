@@ -4,15 +4,15 @@ mod execution;
 /// 已发布字节配额：定义在 `crate::execution::domain::artifact_repository`（契约值）。
 pub use crate::execution::ARTIFACT_BYTE_QUOTA;
 
-use async_trait::async_trait;
+use crate::execution::domain::artifact_repository::*;
 use crate::execution::domain::{
     AbortReason, ArtifactChunk, ArtifactLifecycle, ArtifactMetadata, ArtifactSummary,
     ResultCompleteness,
 };
-use crate::execution::domain::artifact_repository::*;
 use crate::shared::context::RequestContext;
 use crate::shared::error::PortError;
 use crate::shared::id::*;
+use async_trait::async_trait;
 pub(crate) use execution::ExecutionArtifactScope;
 use serde::{Deserialize, Serialize};
 use std::{

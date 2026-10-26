@@ -8,23 +8,35 @@ use crate::execution::runtime::connection::testing::fixtures;
 
 fn owner() -> OwnerRef {
     OwnerRef::Editor {
-        organization_id: crate::execution::runtime::connection::types::OrganizationId::new("org-alpha"),
-        principal_id: crate::execution::runtime::connection::types::PrincipalId::new("user-alpha-1"),
-        connection_id: crate::execution::runtime::connection::types::ConnectionId::new("conn-fixture-p"),
-        client_instance_id: crate::execution::runtime::connection::types::ClientInstanceId::new("cli-1"),
-        editor_session_id: crate::execution::runtime::connection::types::EditorSessionId::new("ed-1"),
+        organization_id: crate::execution::runtime::connection::types::OrganizationId::new(
+            "org-alpha",
+        ),
+        principal_id: crate::execution::runtime::connection::types::PrincipalId::new(
+            "user-alpha-1",
+        ),
+        connection_id: crate::execution::runtime::connection::types::ConnectionId::new(
+            "conn-fixture-p",
+        ),
+        client_instance_id: crate::execution::runtime::connection::types::ClientInstanceId::new(
+            "cli-1",
+        ),
+        editor_session_id: crate::execution::runtime::connection::types::EditorSessionId::new(
+            "ed-1",
+        ),
     }
 }
 
 fn pool_key() -> PoolKeyFingerprint {
-    PoolKeyFingerprint::derive(&crate::execution::runtime::connection::types::PoolKeyInputs {
-        connection_id: fixtures::PROFILE_P.into(),
-        config_revision: crate::execution::runtime::connection::types::ConfigRevision::new(7),
-        driver_id: "fake".into(),
-        namespace: crate::execution::runtime::connection::types::NamespaceTarget::default(),
-        execution_identity_key: fixtures::IDENTITY_SHARED.into(),
-        policy_isolation_key: "policy-alpha-1".into(),
-    })
+    PoolKeyFingerprint::derive(
+        &crate::execution::runtime::connection::types::PoolKeyInputs {
+            connection_id: fixtures::PROFILE_P.into(),
+            config_revision: crate::execution::runtime::connection::types::ConfigRevision::new(7),
+            driver_id: "fake".into(),
+            namespace: crate::execution::runtime::connection::types::NamespaceTarget::default(),
+            execution_identity_key: fixtures::IDENTITY_SHARED.into(),
+            policy_isolation_key: "policy-alpha-1".into(),
+        },
+    )
 }
 
 fn resource(tag: &str) -> ResourceId {

@@ -358,7 +358,10 @@ mod tests {
         let re_export_block = exported
             .split("mod cleanup;")
             .nth(1)
-            .and_then(|rest| rest.split("use crate::execution::runtime::connection::RuntimeError;").next())
+            .and_then(|rest| {
+                rest.split("use crate::execution::runtime::connection::RuntimeError;")
+                    .next()
+            })
             .unwrap_or_default();
         assert!(
             !re_export_block.contains("PhysicalHandle"),

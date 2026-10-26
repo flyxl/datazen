@@ -6,7 +6,9 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use crate::execution::runtime::connection::types::{ConfigRevision, ConnectionId, OrganizationId, PrincipalId};
+use crate::execution::runtime::connection::types::{
+    ConfigRevision, ConnectionId, OrganizationId, PrincipalId,
+};
 
 /// 两个组织。
 pub const ORG_A: &str = "org-alpha";

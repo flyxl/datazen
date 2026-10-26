@@ -21,9 +21,13 @@ use serde_json::{json, Value as JsonValue};
 
 use crate::execution::runtime::connection::error::ProviderError;
 use crate::execution::runtime::connection::execution::SessionCommand;
-use crate::execution::runtime::connection::port::{BudgetClass, CloseReceipt, CloseResourceRequest, ResourceHandle};
+use crate::execution::runtime::connection::port::{
+    BudgetClass, CloseReceipt, CloseResourceRequest, ResourceHandle,
+};
 use crate::execution::runtime::connection::testing::journal::{HandleAction, JournalEntry};
-use crate::execution::runtime::connection::types::{Counter, DbSessionId, HandleId, LeaseId, OwnerRef, ResourceId};
+use crate::execution::runtime::connection::types::{
+    Counter, DbSessionId, HandleId, LeaseId, OwnerRef, ResourceId,
+};
 
 use super::{FakeHarness, GatewayError};
 
@@ -114,7 +118,9 @@ impl FakeHarness {
         self.barrier().arrive(&race.release_close);
         self.barrier().release(&race.release_close);
         let close = self.evict_idle_resource(&acquired.handle)?;
-        if close.resource_release != crate::execution::runtime::connection::port::ResourceRelease::Confirmed {
+        if close.resource_release
+            != crate::execution::runtime::connection::port::ResourceRelease::Confirmed
+        {
             return Err(GatewayError::Provider(ProviderError::CleanupFailed(
                 format!(
                     "R1 关闭未确认（{:?}），无法进入恢复路径",

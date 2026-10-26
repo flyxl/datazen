@@ -209,8 +209,10 @@ impl FakeResourceProvider {
         // 宿主登记册里永远不会有它，孤立句柄不变式在关闭回收之前必然不成立。
         if let Some(reason) = orphan_reason {
             let execution_id = self.ids.next_execution_id(&request.db_session_id);
-            let handle_id =
-                crate::execution::runtime::connection::types::HandleId::new(format!("hdl_{}", execution_id.as_str()));
+            let handle_id = crate::execution::runtime::connection::types::HandleId::new(format!(
+                "hdl_{}",
+                execution_id.as_str()
+            ));
             self.orphan_handle(&resource_id, HandleKind::Transaction, handle_id, reason)?;
         }
 

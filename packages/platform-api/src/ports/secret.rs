@@ -7,5 +7,5 @@
 //! crate 时一并删除。
 
 pub use datazen_modules::execution::application::secret::{
-    ResolvedCredential, SecretPurpose, SecretProvider,
+    ResolvedCredential, SecretProvider, SecretPurpose,
 };

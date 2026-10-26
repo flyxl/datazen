@@ -17,13 +17,17 @@ use super::{
     first_handle_id, harness_for, owner, EvictionRaceOutcome, EvictionRaceReport, GatewayError,
 };
 use crate::execution::runtime::connection::error::ProviderError;
-use crate::execution::runtime::connection::execution::{EffectOutcome, ExecutionErrorCode, SessionCommand};
+use crate::execution::runtime::connection::execution::{
+    EffectOutcome, ExecutionErrorCode, SessionCommand,
+};
 use crate::execution::runtime::connection::port::BudgetClass;
 use crate::execution::runtime::connection::session::{HandleKind, TransactionState};
 use crate::execution::runtime::connection::testing::fake_resource::{FaultKind, ResourceOp};
 use crate::execution::runtime::connection::testing::fixtures::{NS_A_KEY, NS_B_KEY};
 use crate::execution::runtime::connection::testing::harness::fixture_target;
-use crate::execution::runtime::connection::testing::journal::{HandleAction, JournalEntry, ResourceEvent};
+use crate::execution::runtime::connection::testing::journal::{
+    HandleAction, JournalEntry, ResourceEvent,
+};
 use crate::execution::runtime::connection::types::HandleId;
 
 // ---------------------------------------------------------------------------

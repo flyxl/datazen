@@ -23,11 +23,9 @@
 //! 唯一能“复活”条目的方式是 rollback，而 rollback 只作用在**还没提交**的替换上。
 
 use crate::execution::SessionHandle;
+use crate::execution::{CloseDisposition, InvalidationReason, SessionOwner};
 use crate::shared::error::PortError;
 use crate::shared::id::{DbSessionId, ExecutionId, RuntimeEpoch, Timestamp};
-use crate::execution::{
-    CloseDisposition, InvalidationReason, SessionOwner,
-};
 
 use super::ttl::{DeadlineKind, DeadlineSet};
 use super::{DirectoryClock, MonoInstant};
@@ -259,9 +257,7 @@ impl DirectoryEntry {
     }
 
     pub fn has_active_execution(&self) -> bool {
-        crate::execution::has_active_execution(
-            self.active_execution.as_ref(),
-        )
+        crate::execution::has_active_execution(self.active_execution.as_ref())
     }
 
     pub fn registered_at(&self) -> MonoInstant {

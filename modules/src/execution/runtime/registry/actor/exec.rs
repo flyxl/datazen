@@ -27,7 +27,9 @@ use crate::execution::runtime::connection::{
     ExecutionReceipt, ExecutionState, RuntimeError, SessionState,
 };
 use crate::execution::runtime::registry::audit::{AuditKind, Outcome};
-use crate::execution::runtime::registry::backend::{CancelHandleSink, ExecuteOnResource, ResourceExecution};
+use crate::execution::runtime::registry::backend::{
+    CancelHandleSink, ExecuteOnResource, ResourceExecution,
+};
 
 use super::{check_epoch, emit, handle_exec, ActorState, AuditFacts, InFlight, Reply};
 

@@ -148,17 +148,19 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use async_trait::async_trait;
+use crate::execution::{
+    ReplacementCommit, ReplacementOperation, ReplacementOutcome, SessionDirectory, SessionOwner,
+};
 use crate::shared::error::PortError;
 use crate::shared::id::{
     AttachmentToken, ClientInstanceId, DbSessionId, PrincipalId, RuntimeEpoch as PlatformEpoch,
 };
-use crate::execution::{
-    ReplacementCommit, ReplacementOperation, ReplacementOutcome, SessionDirectory, SessionOwner,
-};
+use async_trait::async_trait;
 use tracing::warn;
 
-use crate::execution::runtime::connection::{CloseMode, ExecutionTarget, RuntimeError, SessionHandle, SessionView};
+use crate::execution::runtime::connection::{
+    CloseMode, ExecutionTarget, RuntimeError, SessionHandle, SessionView,
+};
 use crate::execution::runtime::directory::{
     AttachmentRejection, CommitStatus, InMemorySessionDirectory, ReplacementOperationKey,
     SessionHandle as DirectoryHandle,

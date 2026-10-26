@@ -11,7 +11,9 @@
 
 use crate::execution::runtime::connection::error::ProviderError;
 use crate::execution::runtime::connection::execution::EffectOutcome;
-use crate::execution::runtime::connection::port::{CloseOutcome, CloseReceipt, CloseResourceRequest, ResourceRelease};
+use crate::execution::runtime::connection::port::{
+    CloseOutcome, CloseReceipt, CloseResourceRequest, ResourceRelease,
+};
 use crate::execution::runtime::connection::session::SessionState;
 use crate::execution::runtime::connection::testing::journal::{HandleAction, ResourceEvent};
 use crate::execution::runtime::connection::types::DbSessionId;

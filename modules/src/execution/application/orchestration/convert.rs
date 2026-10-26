@@ -1,10 +1,10 @@
+use crate::connection::domain::NamespaceTarget;
+use crate::execution as pa;
+use crate::execution::domain::ExecutionTarget as PaExecutionTarget;
 use crate::execution::runtime::connection as rt;
 use crate::execution::runtime::registry::epoch::epoch_string;
-use crate::shared::error::{ApiError, ApiErrorCode};
 use crate::shared::context::{OwnerRef, RequestContext};
-use crate::execution as pa;
-use crate::connection::domain::NamespaceTarget;
-use crate::execution::domain::ExecutionTarget as PaExecutionTarget;
+use crate::shared::error::{ApiError, ApiErrorCode};
 
 pub(super) fn namespace(value: &NamespaceTarget) -> Result<rt::NamespaceTarget, ApiError> {
     // The legacy kernel scalar path cannot represent arbitrary hierarchical IDs losslessly.

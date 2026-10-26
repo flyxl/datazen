@@ -40,7 +40,9 @@ use crate::execution::runtime::connection::testing::fake_resource::FakeResourceP
 use crate::execution::runtime::connection::testing::fixtures::{self, NS_A_KEY};
 use crate::execution::runtime::connection::testing::harness::fixture_target;
 use crate::execution::runtime::connection::testing::journal::{JournalEntry, ResourceEvent};
-use crate::execution::runtime::connection::types::{HandleId, JobId, OrganizationId, OwnerRef, ResourceId, WorkerId};
+use crate::execution::runtime::connection::types::{
+    HandleId, JobId, OrganizationId, OwnerRef, ResourceId, WorkerId,
+};
 
 /// 持有事务的线程停在哪一个 barrier tag 上。
 const HOLDER_PARKED: &str = "cm73-real-thread-holder-parked";

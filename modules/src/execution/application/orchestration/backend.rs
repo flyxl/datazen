@@ -59,7 +59,9 @@ impl SessionBackend for ObservedBackend {
     /// 这一层是 `SessionBackend` 的装饰器，而 trait 方法带默认实现（默认 `None`）：
     /// 忘记转发不会编译失败，只会让应用层的快照**永远为空**——那正是"加了口却读不到"
     /// 的静默失败。下方 `observed_backend_forwards_the_observability_snapshot` 钉住它。
-    async fn observability_snapshot(&self) -> Option<crate::execution::runtime::resource::RuntimeObservabilityReport> {
+    async fn observability_snapshot(
+        &self,
+    ) -> Option<crate::execution::runtime::resource::RuntimeObservabilityReport> {
         self.inner.observability_snapshot().await
     }
     async fn execute(&self, r: ExecuteOnResource) -> Result<ResourceExecution, ProviderError> {

@@ -13,13 +13,13 @@
 
 use std::time::Duration;
 
+use crate::execution::SessionOwner;
 use crate::shared::context::OwnerRef;
 use crate::shared::error::PortError;
 use crate::shared::id::{
     AttachmentToken, ClientInstanceId, ConnectionId, DbSessionId, ExecutionId, JobId,
     OrganizationId, PrincipalId, RuntimeEpoch, Timestamp, WorkerId,
 };
-use crate::execution::SessionOwner;
 
 use super::attachment::{AttachmentOutcome, AttachmentRejection, AttachmentRequest};
 use super::commit::{CommitStatus, RecordState, ReplacementOperationKey, UnknownCommitOutcome};

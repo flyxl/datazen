@@ -10,12 +10,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::execution::{InvalidationReason, SessionOwner};
 use crate::shared::context::OwnerRef;
 use crate::shared::id::{
     ClientInstanceId, ConnectionId, DbSessionId, ExecutionId, OrganizationId, PrincipalId,
     RuntimeEpoch, Timestamp, WorkerId,
 };
-use crate::execution::{InvalidationReason, SessionOwner};
 
 use super::entry::{Adjudication, ClosureReason, DirectoryEntry, RouteRejection, RoutingState};
 use super::id::{
@@ -325,10 +325,7 @@ fn exhausted_collision_budget_fails_instead_of_returning_a_taken_id() {
         .generate_distinct(|_| true, MAX_ID_GENERATION_ATTEMPTS)
         .expect_err("永远被占用时必须失败");
     assert!(
-        matches!(
-            err,
-            crate::shared::error::PortError::BackendUnavailable(_)
-        ),
+        matches!(err, crate::shared::error::PortError::BackendUnavailable(_)),
         "耗尽重试只能落到 BackendUnavailable，实得 {err:?}"
     );
     assert_eq!(

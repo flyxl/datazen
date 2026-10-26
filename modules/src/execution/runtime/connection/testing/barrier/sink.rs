@@ -1,6 +1,8 @@
 //! 供 provider / 测试使用的 `ResultSink` 载体。
 
-use crate::execution::runtime::connection::execution::{ExecutionErrorCode, ResultSink, SinkWrite, TruncationReason};
+use crate::execution::runtime::connection::execution::{
+    ExecutionErrorCode, ResultSink, SinkWrite, TruncationReason,
+};
 use crate::execution::runtime::connection::types::ExecutionId;
 
 // ---------------------------------------------------------------------------

@@ -22,12 +22,12 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use super::entry::RouteRejection;
 use crate::execution::SessionHandle;
-use crate::shared::error::PortError;
-use crate::shared::id::{DbSessionId, RuntimeEpoch, Timestamp};
 use crate::execution::{
     CloseDisposition, InvalidationReason, ReplacementCommit, ReplacementOperation,
     ReplacementOutcome, SessionDirectory, SessionOwner,
 };
+use crate::shared::error::PortError;
+use crate::shared::id::{DbSessionId, RuntimeEpoch, Timestamp};
 
 use super::commit::{
     RecordState, ReplacementOperationKey, ReplacementRecord, UnknownCommitOutcome,
@@ -114,10 +114,7 @@ impl InMemorySessionDirectory {
     ///
     /// 领到就作废上一次的：worker 重启之后旧句柄一律显式失败（`StaleEpoch`），
     /// 目录**不会**拿着旧 `dbSessionId` 回配置里翻一个「看起来差不多的」会话顶上。
-    pub fn start_worker_epoch(
-        &self,
-        worker_id: &crate::shared::id::WorkerId,
-    ) -> RuntimeEpoch {
+    pub fn start_worker_epoch(&self, worker_id: &crate::shared::id::WorkerId) -> RuntimeEpoch {
         let epoch = self.epochs.start_worker_epoch(worker_id);
         match self.current_epoch.lock() {
             Ok(mut slot) => *slot = Some(epoch.clone()),

@@ -58,11 +58,13 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use async_trait::async_trait;
+use crate::execution::application::network::{
+    NetworkProvider, RoutePlan, TunnelBinding, TunnelSpec,
+};
 use crate::shared::context::RequestContext;
 use crate::shared::error::PortError;
 use crate::shared::id::{NetworkRouteRef, NetworkRouteRevision};
-use crate::execution::application::network::{NetworkProvider, RoutePlan, TunnelBinding, TunnelSpec};
+use async_trait::async_trait;
 
 use super::error::TunnelError;
 use super::ledger::TunnelLedger;

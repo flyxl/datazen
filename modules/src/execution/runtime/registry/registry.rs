@@ -54,7 +54,9 @@ use crate::execution::runtime::connection::{
 use crate::execution::runtime::registry::actor::{
     spawn_actor, AuditOutbox, ControlCommand, ExecCommand, OpenRequest, SessionActor,
 };
-use crate::execution::runtime::registry::audit::{AuditKind, AuditLog, Outcome, RegistryAuditEntry};
+use crate::execution::runtime::registry::audit::{
+    AuditKind, AuditLog, Outcome, RegistryAuditEntry,
+};
 use crate::execution::runtime::registry::backend::{CapabilityProvenance, SessionBackend};
 use crate::execution::runtime::registry::epoch::RuntimeEpoch;
 use crate::execution::runtime::registry::port::SessionPort;

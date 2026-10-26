@@ -18,8 +18,12 @@ use crate::execution::runtime::resource::cleanup::{
 use crate::execution::runtime::resource::harness::{
     pool_key_inputs, workflow_owner, Fault, RecordingTransport, TestClock, TransportEvent,
 };
-use crate::execution::runtime::resource::lease::{LeasePurpose, LeaseRecord, LeaseRequest, LeaseState};
-use crate::execution::runtime::resource::{MonotonicSource, ResourceManager, EMPTY_POOL_METADATA_LRU_LIMIT};
+use crate::execution::runtime::resource::lease::{
+    LeasePurpose, LeaseRecord, LeaseRequest, LeaseState,
+};
+use crate::execution::runtime::resource::{
+    MonotonicSource, ResourceManager, EMPTY_POOL_METADATA_LRU_LIMIT,
+};
 
 struct Fixture {
     manager: ResourceManager,

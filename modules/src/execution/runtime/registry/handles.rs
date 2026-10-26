@@ -355,8 +355,10 @@ mod tests {
         let drained = registry.drain_handles();
         assert_eq!(drained.len(), 1);
         assert!(registry.is_empty());
-        assert!(crate::execution::runtime::registry::backend::ready_to_return_to_pool(
-            registry.handle_count()
-        ));
+        assert!(
+            crate::execution::runtime::registry::backend::ready_to_return_to_pool(
+                registry.handle_count()
+            )
+        );
     }
 }

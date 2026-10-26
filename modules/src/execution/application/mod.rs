@@ -15,12 +15,12 @@ pub mod network;
 /// `RuntimeConnectionUseCases` 编排（原 runtime::application，D3-3c 归位）。
 pub mod orchestration;
 pub mod policy;
-pub mod use_cases;
 pub mod requests;
 pub mod secret;
 pub mod settings_reader;
 pub mod submission;
 pub mod target_resolver;
+pub mod use_cases;
 pub mod views;
 
 pub use event_sink::{EventSink, EventSubscription};
@@ -30,18 +30,18 @@ pub use events::{
 };
 pub use idempotency::{IdempotentOperation, SubmissionToken};
 pub use identity::{ExecutionIdentity, IdentityResolver};
+pub use network::{endpoint_scheme, NetworkProvider, RoutePlan, TunnelBinding, TunnelSpec};
+pub use orchestration::RuntimeConnectionUseCases;
 pub use policy::{
     AuthorizationAction, AuthorizationDecision, AuthorizationSubject, DelegationGrant,
     PolicyService, PolicyVersionChange,
 };
-pub use orchestration::RuntimeConnectionUseCases;
-pub use use_cases::ConnectionUseCases;
-pub use network::{endpoint_scheme, NetworkProvider, RoutePlan, TunnelBinding, TunnelSpec};
 pub use requests::*;
-pub use secret::{ResolvedCredential, SecretPurpose, SecretProvider};
+pub use secret::{ResolvedCredential, SecretProvider, SecretPurpose};
 pub use settings_reader::{ExecutionPolicy, ExecutionSettingsReader};
 pub use submission::{SubmissionPresentation, SubmissionTokenIssuer, VerifiedSubmission};
 pub use target_resolver::{ExecutionTargetResolver, TargetResolution};
+pub use use_cases::ConnectionUseCases;
 pub use views::{
     BackupOutput, CancelReceipt, CloseReceipt, ContextChangeReceipt, ExecutionReceipt,
     ExecutionView, OpenSessionReceipt, ResultChunk, RuntimeResultBinding, SessionView,

@@ -123,11 +123,10 @@ pub struct PolicyVersionChange {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::execution::application::secret::SecretPurpose;
     use crate::shared::id::{
         ClientInstanceId, DelegationId, OrganizationId, PrincipalId, RequestId, Timestamp,
     };
-    use crate::execution::application::secret::SecretPurpose;
-    
 
     fn context() -> RequestContext {
         RequestContext::new(

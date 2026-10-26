@@ -228,8 +228,8 @@ impl RuntimeResultSink {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::execution::{ContextConfidence, SessionContext, TransactionState};
     use crate::connection::domain::NamespaceTarget;
+    use crate::execution::{ContextConfidence, SessionContext, TransactionState};
     use serde_json::json;
 
     fn fixture() -> (RuntimeResultSink, ExportOutputBinding, ExecutionId) {

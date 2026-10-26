@@ -275,12 +275,16 @@ fn the_scan_primitives_see_the_shapes_they_claim() {
         "夹具端口文件必须有且只有 `tallies` 一份折法"
     );
     assert_eq!(
-        fold_functions(&blank(source("../packages/runtime/tests/cm28_concurrent_tunnel.rs"))),
+        fold_functions(&blank(source(
+            "../packages/runtime/tests/cm28_concurrent_tunnel.rs"
+        ))),
         vec!["tally".to_owned()],
         "并发轨端口文件必须有且只有 `tally` 一份折法"
     );
     assert_eq!(
-        fold_functions(&blank(source("../packages/runtime/tests/tunnel_refcount_contract.rs"))),
+        fold_functions(&blank(source(
+            "../packages/runtime/tests/tunnel_refcount_contract.rs"
+        ))),
         vec!["tally".to_owned()],
         "接缝契约轨端口文件必须有且只有 `tally` 一份折法"
     );

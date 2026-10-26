@@ -68,8 +68,8 @@
 
 use std::sync::Arc;
 
-use crate::shared::id::{NetworkRouteRef, NetworkRouteRevision};
 use crate::execution::application::network::TunnelSpec;
+use crate::shared::id::{NetworkRouteRef, NetworkRouteRevision};
 
 use super::error::TunnelError;
 

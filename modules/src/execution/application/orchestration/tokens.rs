@@ -115,7 +115,10 @@ impl RuntimeConnectionUseCases {
             .and_then(|v| v.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|v| v.as_millis() as i64)
             .unwrap_or(0);
-        let clock = crate::execution::runtime::directory::ClockBase::new(crate::execution::runtime::directory::MonoInstant::ZERO, expires);
+        let clock = crate::execution::runtime::directory::ClockBase::new(
+            crate::execution::runtime::directory::MonoInstant::ZERO,
+            expires,
+        );
         Ok(SubmissionToken {
             idempotency_key: IdempotencyKey::new(key),
             expires_at: clock.project(crate::execution::runtime::directory::MonoInstant::ZERO),

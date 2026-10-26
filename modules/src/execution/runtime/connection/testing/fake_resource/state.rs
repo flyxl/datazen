@@ -19,7 +19,9 @@ use crate::execution::runtime::connection::execution::ExecutionErrorCode;
 use crate::execution::runtime::connection::port::{
     BudgetClass, CloseOutcome, PermitId, PermitReason, PermitSet, ResourceHandle, ResourceHealth,
 };
-use crate::execution::runtime::connection::session::{HandleKind, SessionContext, SessionHandleRef, TransactionState};
+use crate::execution::runtime::connection::session::{
+    HandleKind, SessionContext, SessionHandleRef, TransactionState,
+};
 use crate::execution::runtime::connection::types::{
     Counter, DbSessionId, ExecutionTarget, OwnerRef, PoolKeyFingerprint, ResourceId,
 };

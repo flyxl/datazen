@@ -11,7 +11,9 @@ use super::{first_handle_id, harness_for, owner};
 use crate::execution::runtime::connection::execution::SessionCommand;
 use crate::execution::runtime::connection::port::{BudgetClass, CloseResourceRequest};
 use crate::execution::runtime::connection::testing::fixtures::NS_A_KEY;
-use crate::execution::runtime::connection::testing::journal::{HandleAction, JournalEntry, ResourceEvent};
+use crate::execution::runtime::connection::testing::journal::{
+    HandleAction, JournalEntry, ResourceEvent,
+};
 
 // ---------------------------------------------------------------------------
 // 释放顺序（竞态用例编排表；淘汰是宿主行为）

@@ -53,15 +53,15 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use crate::shared::id::Timestamp;
 
 pub use crate::execution::SessionHandle;
+pub use crate::execution::{
+    CloseDisposition, InvalidationReason, ReplacementCommit, ReplacementOperation,
+    ReplacementOutcome, SessionDirectory, SessionOwner,
+};
 /// 契约层没有的 ID 类型在这里补上：**目录自己生成 `dbSessionId`**。
 /// 类型本身来自 platform-api（跨 crate 唯一），本模块只负责**生成规则**。
 pub use crate::shared::id::{
     AttachmentToken, BlockId, ClientInstanceId, ConnectionId, DbSessionId, EditorSessionId,
     ExecutionId, JobId, OrganizationId, PrincipalId, RuntimeEpoch, StageId, WorkerId,
-};
-pub use crate::execution::{
-    CloseDisposition, InvalidationReason, ReplacementCommit, ReplacementOperation,
-    ReplacementOutcome, SessionDirectory, SessionOwner,
 };
 
 pub use attachment::{

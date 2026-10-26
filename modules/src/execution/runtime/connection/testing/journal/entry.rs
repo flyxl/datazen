@@ -7,10 +7,14 @@
 //! 日志脱敏：条目里没有任何可以承载 `Secret` 的字段 —— 凭据、附件令牌与
 //! 幂等 nonce 没有入口，结构上无法被误记。
 
-use crate::execution::runtime::connection::execution::{EffectOutcome, ExecutionErrorCode, TruncationRecord};
+use crate::execution::runtime::connection::execution::{
+    EffectOutcome, ExecutionErrorCode, TruncationRecord,
+};
 use crate::execution::runtime::connection::port::{BudgetClass, PermitId, PermitReason};
 use crate::execution::runtime::connection::session::HandleKind;
-use crate::execution::runtime::connection::types::{Counter, ExecutionId, OwnerRef, PoolKeyFingerprint, ResourceId};
+use crate::execution::runtime::connection::types::{
+    Counter, ExecutionId, OwnerRef, PoolKeyFingerprint, ResourceId,
+};
 
 pub(crate) fn live_resources_in(entries: &[JournalEntry]) -> Vec<ResourceId> {
     let mut live: Vec<ResourceId> = Vec::new();

@@ -150,7 +150,8 @@ impl FakeResourceProvider {
         };
         handle.closed = true;
         if handle.kind == HandleKind::Transaction {
-            resource.transaction_state = crate::execution::runtime::connection::session::TransactionState::None;
+            resource.transaction_state =
+                crate::execution::runtime::connection::session::TransactionState::None;
         }
         self.journal
             .record_handle(&handle, super::super::journal::HandleAction::Closed, reason);

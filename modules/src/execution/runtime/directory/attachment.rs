@@ -14,9 +14,9 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
+use crate::execution::{owner_matches_client, owner_matches_job};
 use crate::shared::context::OwnerRef;
 use crate::shared::id::{AttachmentToken, ClientInstanceId, JobId, PrincipalId, Timestamp};
-use crate::execution::{owner_matches_client, owner_matches_job};
 
 use super::entry::{DirectoryEntry, RouteRejection};
 use super::id::hex_encode;

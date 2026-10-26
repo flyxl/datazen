@@ -1,9 +1,9 @@
 //! Compatibility transaction controls use the same actor/resource handle ledger
 //! as SQL execution. No driver TransactionHandle escapes into a transport map.
 use super::*;
-use crate::execution::IdempotentOperation;
-use crate::execution::requests::{CommandCall, ExecuteInSessionRequest};
 use crate::execution::application::use_cases::ConnectionUseCases;
+use crate::execution::requests::{CommandCall, ExecuteInSessionRequest};
+use crate::execution::IdempotentOperation;
 
 #[derive(Clone, Copy)]
 pub enum SessionTransactionOperation {

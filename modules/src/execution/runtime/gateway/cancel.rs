@@ -41,7 +41,9 @@ use crate::execution::runtime::connection::capability::PreciseCancel;
 // 取消处置三态的唯一权威定义。冻结面 `connection::port` 里那一份是**本模块
 // 直接引用的那个**，不是拷贝——拷贝会让两个定义处各自漂移。
 pub use crate::execution::runtime::connection::port::CancelDisposition;
-use crate::execution::runtime::connection::{ExecutionId, ExecutionState, ResourceId, RuntimeError, SessionHandle};
+use crate::execution::runtime::connection::{
+    ExecutionId, ExecutionState, ResourceId, RuntimeError, SessionHandle,
+};
 use crate::execution::runtime::gateway::provenance::{ExecutionSource, RequestPrincipal};
 
 /// 取消绑定：三方必须一致。

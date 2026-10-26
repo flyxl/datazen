@@ -22,7 +22,9 @@ use crate::execution::runtime::connection::{
     ConfigRevision, ConnectionId, DbSessionId, ExecutionId, LeaseId, NamespaceTarget, OwnerRef,
     PoolKeyInputs, ResourceId,
 };
-use crate::execution::runtime::resource::cleanup::{PhysicalTransport, ResetDisposition, SharedTransport};
+use crate::execution::runtime::resource::cleanup::{
+    PhysicalTransport, ResetDisposition, SharedTransport,
+};
 use crate::execution::runtime::resource::lease::{LeasePurpose, LeaseRecord, LeaseRequest};
 use crate::execution::runtime::resource::publication::{
     DirectoryFault, DirectoryPublisher, Publication, ReplacementReceipt,

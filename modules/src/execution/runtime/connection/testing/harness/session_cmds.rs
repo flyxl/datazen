@@ -102,7 +102,13 @@ impl FakeHarness {
     pub(crate) fn next_handle_id(
         &self,
         resource: &ResourceHandle,
-    ) -> Result<(crate::execution::runtime::connection::types::ExecutionId, HandleId), GatewayError> {
+    ) -> Result<
+        (
+            crate::execution::runtime::connection::types::ExecutionId,
+            HandleId,
+        ),
+        GatewayError,
+    > {
         let slot = self
             .provider()
             .resource(&resource.resource_id)

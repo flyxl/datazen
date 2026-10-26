@@ -1,12 +1,12 @@
 use super::convert;
 use crate::execution::runtime::registry::backend::ResourceExecution;
-use crate::shared::error::{ApiError, ApiErrorCode};
-use crate::shared::context::RequestContext;
 use crate::execution::{
-    ConnectionEventEnvelope, ConnectionEvent, EventEnvelope, ResultChunkEvent, SessionHandle,
-    ExecutionView, ExecutionState, EffectOutcome, ResultCompleteness, RuntimeResultBinding,
-    StreamId, StatementResultSource, ExecutionErrorCode, ResultProvenance, WritableMapping,
+    ConnectionEvent, ConnectionEventEnvelope, EffectOutcome, EventEnvelope, ExecutionErrorCode,
+    ExecutionState, ExecutionView, ResultChunkEvent, ResultCompleteness, ResultProvenance,
+    RuntimeResultBinding, SessionHandle, StatementResultSource, StreamId, WritableMapping,
 };
+use crate::shared::context::RequestContext;
+use crate::shared::error::{ApiError, ApiErrorCode};
 use crate::shared::id::*;
 use std::{
     collections::HashMap,
@@ -89,7 +89,9 @@ impl RuntimeResultSink {
             )
         })
     }
-    fn store(&self) -> Result<Arc<crate::execution::runtime::artifact::FileArtifactRepository>, ApiError> {
+    fn store(
+        &self,
+    ) -> Result<Arc<crate::execution::runtime::artifact::FileArtifactRepository>, ApiError> {
         self.1
             .get_or_init(|| {
                 let root = std::env::temp_dir().join(format!(
@@ -98,7 +100,8 @@ impl RuntimeResultSink {
                         .generate()
                         .as_str()
                 ));
-                crate::execution::runtime::artifact::FileArtifactRepository::open(root).map(Arc::new)
+                crate::execution::runtime::artifact::FileArtifactRepository::open(root)
+                    .map(Arc::new)
             })
             .clone()
             .map_err(convert::port)
@@ -232,7 +235,10 @@ impl RuntimeResultSink {
                 fingerprint,
             );
             let (artifact_id, writer) =
-                match crate::execution::runtime::artifact::ExecutionArtifactScope::admitted(&entry.ctx, id.clone()) {
+                match crate::execution::runtime::artifact::ExecutionArtifactScope::admitted(
+                    &entry.ctx,
+                    id.clone(),
+                ) {
                     Some(scope) => store.create_execution_sync(scope, spec),
                     None => store.create_sync(&entry.ctx, spec),
                 }
@@ -286,10 +292,7 @@ impl RuntimeResultSink {
             ));
         }
         store
-            .append_sync(
-                writer,
-                crate::execution::ChunkPayload::new(bytes),
-            )
+            .append_sync(writer, crate::execution::ChunkPayload::new(bytes))
             .map_err(convert::port)?;
         entry.bytes = writer.published_byte_size.get();
         entry.event(ConnectionEvent::ResultChunk(ResultChunkEvent {
@@ -400,9 +403,7 @@ impl RuntimeResultSink {
             if let Some(writer) = entry.writer.take() {
                 let reason = match entry.view.state {
                     ExecutionState::Succeeded => None,
-                    ExecutionState::Cancelled => {
-                        Some(crate::execution::AbortReason::Cancelled)
-                    }
+                    ExecutionState::Cancelled => Some(crate::execution::AbortReason::Cancelled),
                     _ => Some(crate::execution::AbortReason::ExecutionFailed),
                 };
                 if self

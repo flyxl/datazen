@@ -228,7 +228,10 @@ fn a_failed_close_is_never_retried_behind_the_callers_back() {
             .transport
             .journal()
             .iter()
-            .filter(|event| matches!(event, crate::execution::runtime::tunnel::harness::TunnelEvent::Close(_)))
+            .filter(|event| matches!(
+                event,
+                crate::execution::runtime::tunnel::harness::TunnelEvent::Close(_)
+            ))
             .count(),
         0,
         "a refused close is never retried implicitly"

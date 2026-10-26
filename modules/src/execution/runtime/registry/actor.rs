@@ -60,7 +60,9 @@ use crate::execution::runtime::connection::{
     SessionView, Timestamp, WorkerId,
 };
 
-use crate::execution::runtime::registry::audit::{AuditKind, CapabilityVersions, Outcome, RegistryAuditEntry};
+use crate::execution::runtime::registry::audit::{
+    AuditKind, CapabilityVersions, Outcome, RegistryAuditEntry,
+};
 use crate::execution::runtime::registry::backend::{
     CapabilityProvenance, OpenResource, ResourceExecution, SessionBackend,
 };

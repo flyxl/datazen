@@ -53,7 +53,9 @@ use crate::execution::application::network::TunnelSpec;
 
 use crate::execution::runtime::connection::LeaseId;
 use crate::execution::runtime::resource::cleanup::CleanupDisposition;
-use crate::execution::runtime::resource::{LeaseRecord, LeaseState, ResourceError, ResourceManager};
+use crate::execution::runtime::resource::{
+    LeaseRecord, LeaseState, ResourceError, ResourceManager,
+};
 use crate::execution::runtime::tunnel::{TunnelLedger, TunnelTransport};
 
 /// 一次归还/隔离之后，隧道引用的处置结果。
@@ -242,9 +244,17 @@ impl ResourceManager {
 /// 把隧道侧的失败原因压成一条稳定的日志尾巴（不外泄 spec 明文之外的任何东西）。
 fn error_detail(error: &crate::execution::runtime::tunnel::TunnelError) -> &'static str {
     match error {
-        crate::execution::runtime::tunnel::TunnelError::Transport { .. } => "tunnel transport refused the open",
-        crate::execution::runtime::tunnel::TunnelError::NotShareable { .. } => "tunnel is not shareable",
-        crate::execution::runtime::tunnel::TunnelError::AlreadyHeld { .. } => "lease already holds this tunnel",
-        crate::execution::runtime::tunnel::TunnelError::RevisionUnavailable => "tunnel route revision unavailable",
+        crate::execution::runtime::tunnel::TunnelError::Transport { .. } => {
+            "tunnel transport refused the open"
+        }
+        crate::execution::runtime::tunnel::TunnelError::NotShareable { .. } => {
+            "tunnel is not shareable"
+        }
+        crate::execution::runtime::tunnel::TunnelError::AlreadyHeld { .. } => {
+            "lease already holds this tunnel"
+        }
+        crate::execution::runtime::tunnel::TunnelError::RevisionUnavailable => {
+            "tunnel route revision unavailable"
+        }
     }
 }

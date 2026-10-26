@@ -10,7 +10,9 @@
 
 use crate::execution::runtime::connection::port::CancelDisposition;
 use crate::execution::runtime::connection::{ConfigRevision, ExecutionId, LeaseId};
-use crate::execution::runtime::resource::cleanup::{CancellationOutcome, DriverCleanVerdict, HostConditionSnapshot};
+use crate::execution::runtime::resource::cleanup::{
+    CancellationOutcome, DriverCleanVerdict, HostConditionSnapshot,
+};
 use crate::execution::runtime::resource::generation::{CacheFillOutcome, RotationKind};
 use crate::execution::runtime::resource::harness::{Fault, Stage};
 use crate::execution::runtime::resource::lease::LeaseState;

@@ -7,7 +7,9 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use super::*;
-use crate::execution::runtime::connection::execution::{ExecutionErrorCode, ResultSink, SinkWrite, TruncationReason};
+use crate::execution::runtime::connection::execution::{
+    ExecutionErrorCode, ResultSink, SinkWrite, TruncationReason,
+};
 use crate::execution::runtime::connection::testing::clock::FakeClock;
 use crate::execution::runtime::connection::types::{Counter, ExecutionId};
 

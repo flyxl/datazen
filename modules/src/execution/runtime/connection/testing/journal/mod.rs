@@ -28,7 +28,9 @@ pub use entry::{HandleAction, HandleRecord, JournalEntry, PermitEvent, ResourceE
 // 测试沿用「`use super::*` 即可拿到上下文类型」的写法，这里集中再导出一次，
 // 避免子模块各自重复一长串 use。
 pub use super::clock::FakeClock;
-pub use crate::execution::runtime::connection::execution::{EffectOutcome, ExecutionErrorCode, TruncationRecord};
+pub use crate::execution::runtime::connection::execution::{
+    EffectOutcome, ExecutionErrorCode, TruncationRecord,
+};
 pub use crate::execution::runtime::connection::port::{BudgetClass, PermitId, PermitReason};
 pub use crate::execution::runtime::connection::session::{HandleKind, SessionHandleRef};
 pub use crate::execution::runtime::connection::types::{

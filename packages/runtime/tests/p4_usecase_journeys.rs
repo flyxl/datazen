@@ -1174,7 +1174,6 @@ mod idle_activity;
 #[path = "fixtures/p4_session_transactions.rs"]
 mod session_transactions;
 
-
 // ---------------------------------------------------------------------------
 // §6.4 等待能力：第一步（轮询封装进机制）。三态语义钉死：
 // 终态幂等 / 超时不是取消 / 缺失映射 NotFound。

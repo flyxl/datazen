@@ -6,7 +6,9 @@
 //! 这里只用 `events` 的**公开**接口（`pub` 方法与 `pub` 类型），因此它测的
 //! 是事件水位本身的行为，而不是任何测试专用旁路。
 
-use crate::execution::runtime::connection::{ContextConfidence, Counter, DbSessionId, ExecutionId, ExecutionState};
+use crate::execution::runtime::connection::{
+    ContextConfidence, Counter, DbSessionId, ExecutionId, ExecutionState,
+};
 use crate::execution::runtime::gateway::events::{
     EventDisposition, EventRepository, ExecutionEvent, ExecutionEventKind,
 };
@@ -305,11 +307,13 @@ fn a_stale_snapshot_never_lowers_the_observed_context_revision() {
     ));
     assert_eq!(store.context_revision(), Counter::new(30));
 
-    store.recover_from_snapshot(&crate::execution::runtime::gateway::testing_support::ready_view(
-        DbSessionId::new("dbse_a"),
-        Counter::new(5),
-        Counter::new(11),
-    ));
+    store.recover_from_snapshot(
+        &crate::execution::runtime::gateway::testing_support::ready_view(
+            DbSessionId::new("dbse_a"),
+            Counter::new(5),
+            Counter::new(11),
+        ),
+    );
     assert_eq!(store.context_revision(), Counter::new(30));
 }
 
@@ -322,11 +326,13 @@ fn a_snapshot_keeps_a_terminal_state() {
             state: ExecutionState::Succeeded,
         },
     ));
-    store.recover_from_snapshot(&crate::execution::runtime::gateway::testing_support::ready_view(
-        DbSessionId::new("dbse_a"),
-        Counter::new(5),
-        Counter::new(42),
-    ));
+    store.recover_from_snapshot(
+        &crate::execution::runtime::gateway::testing_support::ready_view(
+            DbSessionId::new("dbse_a"),
+            Counter::new(5),
+            Counter::new(42),
+        ),
+    );
 
     assert_eq!(store.execution_state(), ExecutionState::Succeeded);
     assert_eq!(store.last_sequence().map(Counter::get), Some(1));
@@ -344,11 +350,13 @@ fn a_snapshot_keeps_the_observed_row_count() {
             },
         ));
     }
-    store.recover_from_snapshot(&crate::execution::runtime::gateway::testing_support::ready_view(
-        DbSessionId::new("dbse_a"),
-        Counter::new(5),
-        Counter::new(42),
-    ));
+    store.recover_from_snapshot(
+        &crate::execution::runtime::gateway::testing_support::ready_view(
+            DbSessionId::new("dbse_a"),
+            Counter::new(5),
+            Counter::new(42),
+        ),
+    );
 
     assert_eq!(store.row_count(), 12);
 }
@@ -363,11 +371,13 @@ fn a_snapshot_keeps_the_chunk_dedupe_set() {
             rows: 5,
         },
     ));
-    store.recover_from_snapshot(&crate::execution::runtime::gateway::testing_support::ready_view(
-        DbSessionId::new("dbse_a"),
-        Counter::new(5),
-        Counter::new(42),
-    ));
+    store.recover_from_snapshot(
+        &crate::execution::runtime::gateway::testing_support::ready_view(
+            DbSessionId::new("dbse_a"),
+            Counter::new(5),
+            Counter::new(42),
+        ),
+    );
 
     assert_eq!(
         store.apply(&event(
@@ -393,11 +403,13 @@ fn a_snapshot_never_rebinds_the_store() {
             state: ExecutionState::Running,
         },
     ));
-    store.recover_from_snapshot(&crate::execution::runtime::gateway::testing_support::ready_view(
-        DbSessionId::new("dbse_OTHER"),
-        Counter::new(77),
-        Counter::new(42),
-    ));
+    store.recover_from_snapshot(
+        &crate::execution::runtime::gateway::testing_support::ready_view(
+            DbSessionId::new("dbse_OTHER"),
+            Counter::new(77),
+            Counter::new(42),
+        ),
+    );
 
     assert_eq!(
         store.bound_session().map(|id| id.as_str().to_owned()),

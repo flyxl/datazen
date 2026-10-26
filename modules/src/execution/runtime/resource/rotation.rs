@@ -9,10 +9,14 @@
 //! 因此独立成文件以保持单个职责清晰。
 
 use crate::execution::runtime::connection::{ConfigRevision, ConnectionId};
-use crate::execution::runtime::resource::cleanup::{CancellationOutcome, ExecutionCancellationRecord};
+use crate::execution::runtime::resource::cleanup::{
+    CancellationOutcome, ExecutionCancellationRecord,
+};
 use crate::execution::runtime::resource::generation::{RotationKind, RotationOutcome};
 use crate::execution::runtime::resource::lease::{LeaseRequest, LeaseState};
-use crate::execution::runtime::resource::table::{DisableOutcome, QueueDrain, QueuedLease, RotationReport};
+use crate::execution::runtime::resource::table::{
+    DisableOutcome, QueueDrain, QueuedLease, RotationReport,
+};
 use crate::execution::runtime::resource::{ResourceError, NANOS_PER_SECOND};
 
 impl super::manager::ResourceManager {

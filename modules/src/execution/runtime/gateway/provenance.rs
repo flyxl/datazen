@@ -25,7 +25,9 @@ use std::sync::Arc;
 
 use serde_json::{json, Value};
 
-use crate::execution::runtime::connection::{DbSessionId, OrganizationId, PrincipalId, SessionView};
+use crate::execution::runtime::connection::{
+    DbSessionId, OrganizationId, PrincipalId, SessionView,
+};
 
 /// 发起一次执行的来源类别。
 ///

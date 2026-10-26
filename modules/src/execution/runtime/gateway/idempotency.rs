@@ -15,7 +15,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use crate::execution::runtime::connection::types::fnv1a64_hex;
-use crate::execution::runtime::connection::{CommandCall, Counter, DbSessionId, ExecutionId, SessionHandle};
+use crate::execution::runtime::connection::{
+    CommandCall, Counter, DbSessionId, ExecutionId, SessionHandle,
+};
 use crate::execution::runtime::gateway::provenance::ExecutionSource;
 
 /// 幂等键的作用域：会话内唯一。

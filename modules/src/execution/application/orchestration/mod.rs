@@ -20,31 +20,31 @@ pub use live::{
     LiveConnectionRequest, LiveConnectionSource, LiveConnections, LivePurpose, LiveRelease,
 };
 
+use crate::connection::{ProfileRecord, ProfileRepository};
+use crate::execution::application::policy::{
+    AuthorizationAction, AuthorizationSubject, PolicyService,
+};
+use crate::execution::domain::ExecutionTarget;
 use crate::execution::runtime::{
     connection as rt,
     directory::{DbSessionIdGenerator, InMemorySessionDirectory},
     gateway::*,
     registry::{ContextReplacer, SessionBackend, SessionPort, SessionRegistry},
 };
-use crate::shared::error::{ApiError, ApiErrorCode};
-use crate::execution::application::policy::{
-    AuthorizationAction, AuthorizationSubject, PolicyService,
-};
-use crate::connection::{ProfileRecord, ProfileRepository};
 use crate::execution::SessionDirectory;
-use crate::execution::domain::ExecutionTarget;
-use crate::shared::context::{OwnerRef, RequestContext};
-use crate::shared::id::*;
 use crate::execution::*;
+use crate::shared::context::{OwnerRef, RequestContext};
+use crate::shared::error::{ApiError, ApiErrorCode};
+use crate::shared::id::*;
 use results::lock;
 pub use results::{RuntimeArtifactChunk, RuntimeResultSink};
 pub mod wait;
-pub use wait::WaitOutcome;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
     time::Instant,
 };
+pub use wait::WaitOutcome;
 
 #[derive(Clone)]
 pub struct RuntimeConnectionUseCases {
@@ -260,7 +260,9 @@ impl RuntimeConnectionUseCases {
         }
     }
     /// registry 在册会话 id（只读投影）。异常路径「没留下登记行」就靠它断言。
-    pub fn registered_session_ids(&self) -> Vec<crate::execution::runtime::connection::DbSessionId> {
+    pub fn registered_session_ids(
+        &self,
+    ) -> Vec<crate::execution::runtime::connection::DbSessionId> {
         self.inner.registry.registered_ids()
     }
     /// registry 是否仍登记着这个会话。
@@ -689,19 +691,17 @@ impl RuntimeConnectionUseCases {
         let registration = self
             .inner
             .directory
-            .register(
-                crate::execution::SessionOwner {
-                    db_session_id: id.clone(),
-                    organization_id: ctx.organization_id.clone(),
-                    principal_id: ctx.principal_id.clone(),
-                    connection_id: target.connection_id.clone(),
-                    owner: owner.clone(),
-                    worker_id: WorkerId::new("local-runtime"),
-                    runtime_epoch: handle.runtime_epoch.clone(),
-                    resource_epoch: view.handle.runtime_epoch.get(),
-                    last_business_activity: Timestamp::new("1970-01-01T00:00:00.000Z"),
-                },
-            )
+            .register(crate::execution::SessionOwner {
+                db_session_id: id.clone(),
+                organization_id: ctx.organization_id.clone(),
+                principal_id: ctx.principal_id.clone(),
+                connection_id: target.connection_id.clone(),
+                owner: owner.clone(),
+                worker_id: WorkerId::new("local-runtime"),
+                runtime_epoch: handle.runtime_epoch.clone(),
+                resource_epoch: view.handle.runtime_epoch.get(),
+                last_business_activity: Timestamp::new("1970-01-01T00:00:00.000Z"),
+            })
             .await;
         if let Err(error) = registration {
             let _ = self

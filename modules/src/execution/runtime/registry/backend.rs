@@ -277,7 +277,9 @@ pub trait SessionBackend: Send + Sync + 'static {
     ///
     /// 默认 `None`：没实现的后端（测试替身、server 内部实现）不因此失败。实现方
     /// 只允许**投影**自有台账，不得为了这个口另建计数（CM-32 单账铁律）。
-    async fn observability_snapshot(&self) -> Option<crate::execution::runtime::resource::RuntimeObservabilityReport> {
+    async fn observability_snapshot(
+        &self,
+    ) -> Option<crate::execution::runtime::resource::RuntimeObservabilityReport> {
         None
     }
 }

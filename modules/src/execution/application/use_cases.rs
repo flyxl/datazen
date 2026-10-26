@@ -34,16 +34,16 @@
 
 use async_trait::async_trait;
 
-use crate::shared::context::RequestContext;
 use crate::execution::EventSequence;
-use crate::execution::{ExecutionReceipt, ExecutionView};
-use crate::execution::{IdempotentOperation, SubmissionToken};
+use crate::execution::EventSubscription;
 use crate::execution::{
     CancelReceipt, CloseReceipt, ContextChangeReceipt, OpenSessionReceipt, SessionHandle,
     SessionView,
 };
+use crate::execution::{ExecutionReceipt, ExecutionView};
+use crate::execution::{IdempotentOperation, SubmissionToken};
+use crate::shared::context::RequestContext;
 use crate::shared::id::{ExecutionId, StreamId};
-use crate::execution::EventSubscription;
 
 use crate::connection::ProfileView;
 use crate::execution::requests::{

@@ -26,8 +26,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::shared::error::ApiError;
 use crate::execution::{CloseDisposition, SessionDirectory};
+use crate::shared::error::ApiError;
 
 use super::convert;
 use super::{results::lock, RuntimeConnectionUseCases};

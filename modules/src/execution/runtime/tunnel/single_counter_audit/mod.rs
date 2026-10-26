@@ -93,12 +93,30 @@ use port_audit::{
 /// 少一个文件就得改这张表，而 `the_audit_registry_covers_every_tunnel_module` 会先把
 /// 「`tunnel/mod.rs` 新增了模块却没登记」这种裁小行为点红。
 const AUDITED: &[(&str, &str)] = &[
-    ("src/execution/runtime/tunnel/mod.rs", include_str!("../mod.rs")),
-    ("src/execution/runtime/tunnel/ledger.rs", include_str!("../ledger.rs")),
-    ("src/execution/runtime/tunnel/route.rs", include_str!("../route.rs")),
-    ("src/execution/runtime/tunnel/transport.rs", include_str!("../transport.rs")),
-    ("src/execution/runtime/tunnel/error.rs", include_str!("../error.rs")),
-    ("src/execution/runtime/tunnel/harness.rs", include_str!("../harness.rs")),
+    (
+        "src/execution/runtime/tunnel/mod.rs",
+        include_str!("../mod.rs"),
+    ),
+    (
+        "src/execution/runtime/tunnel/ledger.rs",
+        include_str!("../ledger.rs"),
+    ),
+    (
+        "src/execution/runtime/tunnel/route.rs",
+        include_str!("../route.rs"),
+    ),
+    (
+        "src/execution/runtime/tunnel/transport.rs",
+        include_str!("../transport.rs"),
+    ),
+    (
+        "src/execution/runtime/tunnel/error.rs",
+        include_str!("../error.rs"),
+    ),
+    (
+        "src/execution/runtime/tunnel/harness.rs",
+        include_str!("../harness.rs"),
+    ),
     (
         "src/execution/runtime/tunnel/source_scan.rs",
         include_str!("../source_scan.rs"),

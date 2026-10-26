@@ -129,7 +129,8 @@ impl FakeHarness {
         PoolKeyFingerprint::derive(&PoolKeyInputs {
             connection_id: target.connection_id.clone(),
             config_revision: self.provider.config_revision(),
-            driver_id: crate::execution::runtime::connection::testing::fake_resource::PROVIDER_ID.to_owned(),
+            driver_id: crate::execution::runtime::connection::testing::fake_resource::PROVIDER_ID
+                .to_owned(),
             namespace: target.namespace.clone(),
             execution_identity_key: self.provider.execution_identity().to_owned(),
             policy_isolation_key: policy_isolation_key.to_owned(),
@@ -232,8 +233,9 @@ impl FakeHarness {
                 self.begin_transaction_unregistered(resource_handle)?
             }
             SessionCommand::CommitWithStaleHandle => {
-                let stale_epoch =
-                    crate::execution::runtime::connection::types::Counter::new(u64_field(&input, "runtimeEpoch")?);
+                let stale_epoch = crate::execution::runtime::connection::types::Counter::new(
+                    u64_field(&input, "runtimeEpoch")?,
+                );
                 self.commit_with_stale_epoch(
                     resource_handle,
                     &handle_id_field(&input)?,
@@ -351,7 +353,9 @@ pub fn first_handle_id(result: &CommandResult) -> String {
 }
 
 /// 供 `session_cmds` 组装输出用的最小 json 帮助函数。
-pub(crate) fn handle_payload(handle: &crate::execution::runtime::connection::session::SessionHandleRef) -> JsonValue {
+pub(crate) fn handle_payload(
+    handle: &crate::execution::runtime::connection::session::SessionHandleRef,
+) -> JsonValue {
     json!({
         "handleId": handle.handle_id.as_str(),
         "kind": handle.kind.as_str(),

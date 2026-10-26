@@ -24,9 +24,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::execution::runtime::connection::capability::ResetForReuse;
 use crate::execution::runtime::connection::port::CancelDisposition;
-use crate::execution::runtime::connection::{ExecutionId, HandleId, HandleKind, LeaseId, ResourceId, SessionHandleRef};
+use crate::execution::runtime::connection::{
+    ExecutionId, HandleId, HandleKind, LeaseId, ResourceId, SessionHandleRef,
+};
 
-use crate::execution::runtime::resource::lease::{LeasePurpose, LeaseRecord, LeaseRequest, LeaseState};
+use crate::execution::runtime::resource::lease::{
+    LeasePurpose, LeaseRecord, LeaseRequest, LeaseState,
+};
 use crate::execution::runtime::resource::tunnel_wiring::TunnelDisposition;
 use crate::execution::runtime::resource::ResourceError;
 

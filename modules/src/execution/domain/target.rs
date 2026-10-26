@@ -568,5 +568,4 @@ mod tests {
         assert!(!LayerRequirement::Forbidden.accepts_value());
         assert!(LayerRequirement::Required.accepts_value());
     }
-
 }

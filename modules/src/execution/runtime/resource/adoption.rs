@@ -4,9 +4,15 @@
 //! 立即不再执行，且只能**取回同一份**新回执。提交成功但目录发布失败时返回
 //! `CandidateNotPublished`，绝不允许出现「成功却没有目录记录」的回执。
 
-use crate::execution::runtime::connection::{ConfigRevision, ConnectionId, DbSessionId, LeaseId, ResourceId};
-use crate::execution::runtime::resource::lease::{LeasePurpose, LeaseRecord, LeaseRequest, LeaseState};
-use crate::execution::runtime::resource::publication::{CommitBarrier, PublishOutcome, ReplacementReceipt};
+use crate::execution::runtime::connection::{
+    ConfigRevision, ConnectionId, DbSessionId, LeaseId, ResourceId,
+};
+use crate::execution::runtime::resource::lease::{
+    LeasePurpose, LeaseRecord, LeaseRequest, LeaseState,
+};
+use crate::execution::runtime::resource::publication::{
+    CommitBarrier, PublishOutcome, ReplacementReceipt,
+};
 use crate::execution::runtime::resource::replacement::BeginOutcome;
 use crate::execution::runtime::resource::ResourceError;
 

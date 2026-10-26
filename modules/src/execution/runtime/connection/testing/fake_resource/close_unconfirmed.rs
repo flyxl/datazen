@@ -19,9 +19,13 @@ use super::{
 };
 use crate::execution::runtime::connection::error::ProviderError;
 use crate::execution::runtime::connection::execution::EffectOutcome;
-use crate::execution::runtime::connection::port::{CloseOutcome, ResourceRelease, TransactionOperation};
+use crate::execution::runtime::connection::port::{
+    CloseOutcome, ResourceRelease, TransactionOperation,
+};
 use crate::execution::runtime::connection::session::{HandleKind, SessionState};
-use crate::execution::runtime::connection::testing::journal::{HandleAction, JournalEntry, ResourceEvent};
+use crate::execution::runtime::connection::testing::journal::{
+    HandleAction, JournalEntry, ResourceEvent,
+};
 use crate::execution::runtime::connection::types::HandleId;
 
 // ---------------------------------------------------------------------------

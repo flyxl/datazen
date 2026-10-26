@@ -51,13 +51,17 @@ use crate::execution::runtime::connection::capability::CapabilitySnapshot;
 use crate::execution::runtime::connection::error::ProviderError;
 use crate::execution::runtime::connection::port::PermitId;
 #[cfg(test)]
-use crate::execution::runtime::connection::port::{AcquireResourceRequest, BudgetClass, CloseResourceRequest};
+use crate::execution::runtime::connection::port::{
+    AcquireResourceRequest, BudgetClass, CloseResourceRequest,
+};
 use crate::execution::runtime::connection::testing::clock::FakeClock;
 use crate::execution::runtime::connection::testing::ids::FakeIds;
 use crate::execution::runtime::connection::testing::journal::CommandJournal;
 #[cfg(test)]
 use crate::execution::runtime::connection::testing::journal::{JournalEntry, ResourceEvent};
-use crate::execution::runtime::connection::types::{ConfigRevision, ExecutionTarget, LeaseId, ResourceId, WorkerId};
+use crate::execution::runtime::connection::types::{
+    ConfigRevision, ExecutionTarget, LeaseId, ResourceId, WorkerId,
+};
 #[cfg(test)]
 use crate::execution::runtime::connection::types::{
     ConnectionId, JobId, NamespaceTarget, OrganizationId, OwnerRef, PoolKeyFingerprint,
@@ -128,7 +132,8 @@ impl FakeResourceProvider {
             id_counter: AtomicU64::new(0),
             worker_id: Some(worker_id),
             target,
-            execution_identity: crate::execution::runtime::connection::types::UNKNOWN_SENTINEL.to_owned(),
+            execution_identity: crate::execution::runtime::connection::types::UNKNOWN_SENTINEL
+                .to_owned(),
             config_revision: ConfigRevision::new(DEFAULT_CONFIG_REVISION),
         }
     }
@@ -275,7 +280,9 @@ pub(crate) fn target() -> ExecutionTarget {
 #[cfg(test)]
 pub(crate) fn owner() -> OwnerRef {
     OwnerRef::Job {
-        organization_id: OrganizationId::new(crate::execution::runtime::connection::testing::fixtures::ORG_A),
+        organization_id: OrganizationId::new(
+            crate::execution::runtime::connection::testing::fixtures::ORG_A,
+        ),
         job_id: JobId::new("job_org-alpha_0001"),
         stage_id: "job:job_org-alpha_0001/stage:1".to_owned(),
     }
@@ -291,7 +298,9 @@ pub(crate) fn pool_key(
     policy_isolation_key: &str,
 ) -> PoolKeyFingerprint {
     PoolKeyFingerprint::derive(&PoolKeyInputs {
-        connection_id: ConnectionId::new(crate::execution::runtime::connection::testing::fixtures::PROFILE_P),
+        connection_id: ConnectionId::new(
+            crate::execution::runtime::connection::testing::fixtures::PROFILE_P,
+        ),
         config_revision: provider.config_revision(),
         driver_id: PROVIDER_ID.to_owned(),
         namespace: NamespaceTarget {
@@ -308,8 +317,9 @@ pub(crate) fn pool_key(
 /// 默认假提供方：假时钟与 journal 共享同一个 `FakeClock`。
 #[cfg(test)]
 pub(crate) fn provider() -> FakeResourceProvider {
-    FakeResourceProvider::new(WorkerId::new("w1"), target())
-        .with_execution_identity(crate::execution::runtime::connection::testing::fixtures::IDENTITY_SHARED)
+    FakeResourceProvider::new(WorkerId::new("w1"), target()).with_execution_identity(
+        crate::execution::runtime::connection::testing::fixtures::IDENTITY_SHARED,
+    )
 }
 
 /// 走一次 `acquire`。

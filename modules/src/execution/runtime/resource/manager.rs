@@ -21,8 +21,12 @@ use crate::execution::runtime::resource::cleanup::{
     CleanupDisposition, CleanupPlan, CleanupReport, DriverCleanVerdict, HostConditionSnapshot,
     ResetDisposition, ReturnDecision, ReturnReason, SharedTransport,
 };
-use crate::execution::runtime::resource::generation::{CacheFillOutcome, CacheRevision, GenerationRegistry};
-use crate::execution::runtime::resource::lease::{LeaseRecord, LeaseRequest, LeaseState, PoolKeyGeneration};
+use crate::execution::runtime::resource::generation::{
+    CacheFillOutcome, CacheRevision, GenerationRegistry,
+};
+use crate::execution::runtime::resource::lease::{
+    LeaseRecord, LeaseRequest, LeaseState, PoolKeyGeneration,
+};
 use crate::execution::runtime::resource::publication::DirectoryPublisher;
 use crate::execution::runtime::resource::replacement::ReplacementLedger;
 use crate::execution::runtime::resource::table::{ConfigRevisionDrift, QueuedLease, ResourceTable};
@@ -392,7 +396,8 @@ impl ResourceManager {
         let reason = ReturnReason::DriverDiscardedReset;
         tracing::info!(
             lease_id = lease_id.as_str(),
-            reset_disposition = crate::execution::runtime::resource::ResetDisposition::Discard.disposition_code(),
+            reset_disposition =
+                crate::execution::runtime::resource::ResetDisposition::Discard.disposition_code(),
             "the driver did not prove the reset (ResetForReuse::Unsupported is the norm in this \
              release): §9.4/§7.3 park the idle return and close the resource instead"
         );

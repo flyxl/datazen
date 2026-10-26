@@ -578,7 +578,10 @@ async fn 关闭后的会话设期限得到UnknownSession且不重建() {
     let handle = register_with_handle(&registry).await;
 
     registry
-        .close_registered(&handle, crate::execution::runtime::connection::CloseMode::RollbackAndClose)
+        .close_registered(
+            &handle,
+            crate::execution::runtime::connection::CloseMode::RollbackAndClose,
+        )
         .await
         .expect("关闭必须成功：这是本用例的前提");
     assert!(
@@ -615,7 +618,8 @@ async fn 关闭后的会话设期限得到UnknownSession且不重建() {
 async fn epoch不匹配时设期限得到UnknownSession() {
     let registry = SessionRegistry::new(Arc::new(ConfirmedCloseBackend), 4);
     let mut stale = register_with_handle(&registry).await;
-    stale.runtime_epoch = crate::execution::runtime::connection::Counter::new(stale.runtime_epoch.get() + 1);
+    stale.runtime_epoch =
+        crate::execution::runtime::connection::Counter::new(stale.runtime_epoch.get() + 1);
 
     let error = registry
         .set_idle_deadline(&stale, Some(TIMELINE_FAR))
