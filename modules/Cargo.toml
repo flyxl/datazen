@@ -14,6 +14,9 @@ settings = ["dep:async-trait", "dep:serde_json"]
 # 轻量：serde/chrono 常驻（B248e153 后 chrono 为常驻依赖）+ async-trait（端口）
 # + tracing（降级告警）。
 history = ["dep:async-trait", "dep:tracing"]
+# D6 item 3 第一切片 a：workflow 模型词汇（step/block/输出/错误策略/执行结果）。
+# 纯 wire 词汇，仅 serde；执行器/注册表/调度器随后续切片归位。
+workflow = []
 # D2：连接目录（配置 + 分组）的领域词汇与用例。形状复用 driver-api 的
 # ConnectionConfig（每个形态都已链接的那一份，且是连接表单的 IPC 载荷）。
 connection = [
@@ -176,6 +179,8 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "serd
 [dev-dependencies]
 # shared 词汇单测（Counter 序列化、RequestContext 往返等）需要 serde_json。
 serde_json = "1"
+# workflow 模型词汇单测（YAML 往返——workflow 在宿主侧以 YAML 落盘/导出）。
+serde_yaml = "0.9"
 # 机制测试（产物落盘恢复等）需要临时目录。
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "test-util"] }

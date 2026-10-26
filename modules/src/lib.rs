@@ -45,6 +45,10 @@ pub mod data_transfer;
 #[cfg(feature = "history")]
 pub mod history;
 
+/// D6 item 3 第一切片 a：workflow 模型词汇（step/block/输出/错误策略/执行结果）。
+#[cfg(feature = "workflow")]
+pub mod workflow;
+
 /// D4-d：表编辑写链路（ChangeSet/insert plan/行身份/写执行）。
 #[cfg(feature = "table-editing")]
 pub mod table_editing;
