@@ -22,12 +22,7 @@
 //! （`DriverPoolBudgetPort` / `ControlResourcePort` / `ClusterNodeBudgetPort`，见 [`budget`]）
 //! 设置仓储已迁入 `datazen-modules::settings`；本包保留兼容导出。
 //! + `NativeToolPort`（受控原生版本探针与清理事实）
-//! + 隧道定义仓储 `TunnelRepository`（见 [`tunnel`]；隧道定义是独立聚合，
-//!   名单不带密钥，单条取用才给全量）
 //! + 时基端口 `Clock`（见 [`clock`]；§6.4 也没有这一行——时刻不是仓库，是一个原语）
-//! + SSH known-hosts 仓储 `KnownHostsRepository`（见 [`known_hosts`]；**同步**端口，因为
-//!   它跑在 `russh` 的 `check_server_key` 回调里；`load` 按契约不失败、读不到即空集合，
-//!   `save` 失败报 `PortError::BackendUnavailable`）
 //! + **窄端口**（见 §4.10）：`ProfileReader` / `MonitorGrantReader` /
 //!   `ExecutionSettingsReader` / `ExecutionTargetResolver` / `MasterKeyProvider` /
 //!   `MigrationProfileReader`。
@@ -60,7 +55,6 @@ pub mod execution_target;
 pub mod identity;
 pub mod inventory;
 pub mod job;
-pub mod known_hosts;
 pub mod master_key;
 pub mod migration_profile;
 pub mod monitor_grant;
@@ -73,7 +67,6 @@ pub mod scope;
 pub mod secret;
 pub mod session_directory;
 pub mod token;
-pub mod tunnel;
 
 pub use artifact::ArtifactRepository;
 pub use budget::{
@@ -86,7 +79,6 @@ pub use execution_target::ExecutionTargetResolver;
 pub use identity::IdentityResolver;
 pub use inventory::PORT_TRAITS;
 pub use job::JobRepository;
-pub use known_hosts::{KnownHostEntry, KnownHostsRepository};
 pub use master_key::MasterKeyProvider;
 pub use migration_profile::{MigrationProfileReader, MigrationProfileSummary};
 pub use monitor_grant::MonitorGrantReader;
@@ -98,4 +90,3 @@ pub use scope::OrganizationScope;
 pub use secret::SecretProvider;
 pub use session_directory::SessionDirectory;
 pub use token::SubmissionTokenIssuer;
-pub use tunnel::TunnelRepository;

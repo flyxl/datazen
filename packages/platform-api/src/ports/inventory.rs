@@ -56,7 +56,6 @@ pub const PORT_TRAITS: &[&str] = &[
     "ExecutionTargetResolver",
     "IdentityResolver",
     "JobRepository",
-    "KnownHostsRepository",
     "MasterKeyProvider",
     "MigrationProfileReader",
     "MonitorGrantReader",
@@ -68,7 +67,6 @@ pub const PORT_TRAITS: &[&str] = &[
     "SecretProvider",
     "SessionDirectory",
     "SubmissionTokenIssuer",
-    "TunnelRepository",
 ];
 
 #[cfg(test)]

@@ -2,7 +2,7 @@
 //!
 //! # 为什么在契约包，而不是隧道的机制包
 //!
-//! 这个端口原先住在 `packages/tunnel`（与「隧道机制」同处一包），理由是「端口住在需要它的
+//! 这个端口原先住在 `modules/src/tunnel`（与「隧道机制」同处一包），理由是「端口住在需要它的
 //! 那个包里」。它在这个位置有两个代价，都是在 `ddd-refactor-plan` 的 R3（端口只在内层）
 //! 下暴露出来的：
 //!
@@ -14,7 +14,7 @@
 //!   宿主实现端口就必须同时依赖机制包——而宿主依赖机制包的理由本该是「要用隧道机制」，
 //!   不是「要填一个端口」。
 //!
-//! 搬家后 `packages/tunnel` 仍是机制与**纯逻辑**（指纹、TOFU 判定、错误文案）的家，
+//! 搬家后 `modules/src/tunnel` 仍是机制与**纯逻辑**（指纹、TOFU 判定、错误文案）的家，
 //! 只是把「存哪儿」的契约交出来，与本包其它端口同住（规模由 [`inventory`] 派生，不在任何模块头手写）。
 //!
 //! # 这条端口与其它端口的两处形状差异（都是刻意的）
@@ -33,7 +33,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::PortError;
+use crate::shared::error::PortError;
 
 /// 一条已知主机记录：指纹、算法与 OpenSSH 公钥文本。
 ///

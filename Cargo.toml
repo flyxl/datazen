@@ -8,7 +8,6 @@ members = [
     "packages/application",
     "packages/runtime",
     "packages/kernel",
-    "packages/tunnel",
     "packages/feature-core",
     "packages/schema-diff",
     "packages/data-sync",

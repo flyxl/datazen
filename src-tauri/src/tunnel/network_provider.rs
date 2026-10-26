@@ -37,12 +37,12 @@
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use datazen_modules::tunnel::KnownHostsRepository;
 use datazen_platform_api::id::{NetworkRouteRef, NetworkRouteRevision};
 use datazen_platform_api::ports::network::{NetworkProvider, TunnelSpec};
 use datazen_runtime::tunnel::{
     RouteCatalog, RouteNetworkProvider, TunnelError, TunnelFault, TunnelHandle, TunnelTransport,
 };
-use datazen_tunnel::KnownHostsRepository;
 use tracing::{debug, warn};
 
 use crate::tunnel::{start_for_connection, Tunnel};

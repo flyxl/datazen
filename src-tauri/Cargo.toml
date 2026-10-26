@@ -21,7 +21,7 @@ datazen-driver-api = { workspace = true }
 # 与 F-02 禁止的 application → host 相反，因此不受 crate 边界门禁限制。
 # 两个包都不依赖 Tauri / HTTP，desktop adapter 只在 host 侧引用它们。
 datazen-platform-api = { path = "../packages/platform-api" }
-datazen-modules = { workspace = true, features = ["settings", "ai", "connection", "named_views", "history", "execution", "schema", "table-browsing", "table-editing", "export", "backup", "wapps"] }
+datazen-modules = { workspace = true, features = ["settings", "ai", "connection", "named_views", "history", "execution", "schema", "table-browsing", "table-editing", "export", "backup", "wapps", "tunnel"] }
 # P5 JobRuntime 内核（§2/§5）：prepare/apply 经 runtime 受理，desktop 只做适配。
 datazen-runtime = { path = "../packages/runtime" }
 datazen-application = { path = "../packages/application" }
@@ -31,9 +31,6 @@ datazen-infra = { path = "../packages/infra" }
 datazen-schema-diff = { path = "../packages/schema-diff" }
 datazen-data-sync = { path = "../packages/data-sync" }
 datazen-data-transfer = { path = "../packages/data-transfer" }
-# 形态中立的隧道机制内核（HTTP CONNECT 代理 / WebSocket 中继 / SSH 转发）。
-# 方向是 host → tunnel，与 F-13 禁止的 tunnel → host 相反。
-datazen-tunnel = { path = "../packages/tunnel" }
 # Wave-2 B1：Workspace App 形态中立内核（manifest 规则 / 安装 / 存储）已并入
 # datazen-feature-core（feature_core::workspace_apps 模块），此处不再单独依赖。
 inventory = "0.3"

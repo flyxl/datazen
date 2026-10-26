@@ -8,12 +8,12 @@
 //!    through the SSH session and pipe data bidirectionally.
 //! 5. Return the local port so DB drivers can connect to 127.0.0.1:<local>.
 
-use crate::ssh_known_hosts::{
+use super::domain::KnownHostsRepository;
+use super::ssh_known_hosts::{
     host_key_id, known_host_entry_from_key, mismatch_error_message, verify_host_key,
     HostKeyDecision, KnownHostEntry,
 };
 use datazen_driver_api::{DriverError, SshTunnelConfig};
-use datazen_platform_api::ports::known_hosts::KnownHostsRepository;
 use russh::client::{self, AuthResult};
 use russh::keys::{self, ssh_key, PrivateKeyWithHashAlg};
 use std::collections::HashMap;
@@ -410,11 +410,11 @@ fn expand_home(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::ssh_known_hosts::{
+    use super::super::ssh_known_hosts::{
         format_public_key_fingerprint, host_key_id, known_host_entry_from_key, verify_host_key,
         HostKeyDecision, KnownHostEntry,
     };
+    use super::*;
     use russh::keys::ssh_key::PublicKey;
     use std::collections::HashMap;
     use std::str::FromStr;
@@ -440,9 +440,9 @@ mod tests {
         fn save(
             &self,
             entries: &HashMap<String, KnownHostEntry>,
-        ) -> Result<(), datazen_platform_api::error::PortError> {
+        ) -> Result<(), crate::shared::error::PortError> {
             let mut guard = self.entries.lock().map_err(|_| {
-                datazen_platform_api::error::PortError::BackendUnavailable(
+                crate::shared::error::PortError::BackendUnavailable(
                     "known hosts lock poisoned".into(),
                 )
             })?;

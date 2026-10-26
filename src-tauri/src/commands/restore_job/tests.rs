@@ -78,7 +78,7 @@ async fn host() -> (
     )
     .unwrap();
     let adapter = Arc::new(crate::platform::PlatformAdapter::with_identity(identity));
-    let tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository> = store.clone();
+    let tunnels: Arc<dyn datazen_modules::tunnel::TunnelRepository> = store.clone();
     let known_hosts =
         crate::platform::known_hosts::desktop_known_hosts_repository(store.data_dir());
     adapter
