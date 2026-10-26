@@ -5,10 +5,10 @@ mod runtime;
 use datazen_application::sessions::ConnectionUseCases as _;
 use datazen_driver_api::{resource::ResourceProvider, ConnectionConfig, DatabaseDriver};
 use datazen_feature_core::workflow::{resource_execution, WorkflowCommandStep};
-use datazen_modules::monitor::domain::{MonitorGrant, MonitorScope};
 use datazen_platform_api::{
+    context::RequestContext,
     dto::execution::{EffectOutcome, ExecutionState},
-    id::ConnectionId,
+    id::{ClientInstanceId, ConnectionId, DelegationId, OrganizationId, PrincipalId, RequestId},
     target::{ExecutionTarget, NamespaceTarget},
 };
 use futures_util::FutureExt;
@@ -51,27 +51,21 @@ pub async fn run(
             ConnectionId::new("p"),
             NamespaceTarget::new(config.database.clone(), None, config.schema.clone(), vec![]),
         );
-        let grant = MonitorGrant {
-            id: "live-query-grant".into(),
-            dashboard_id: "live-dashboard".into(),
-            widget_id: "live-widget".into(),
-            workflow_id: "live-workflow".into(),
-            workflow_revision: "live-frozen-definition".into(),
-            organization_id: "live-monitor-org".into(),
-            service_principal: "monitor-service:live-query-grant".into(),
-            approved_by: "fixture-owner".into(),
-            scopes: vec![MonitorScope {
-                target: target.clone(),
-                config_revision: 1,
-                command: "query".into(),
-            }],
-            actions: vec!["connect".into(), "query".into()],
-            read_only: true,
-            expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
-            revocation_version: 1,
-            revoked: false,
-        };
-        let host = runtime::host(config.clone(), driver.clone(), provider, grant);
+        let context = RequestContext::new(
+            OrganizationId::new("live-monitor-org"),
+            PrincipalId::new("monitor-service"),
+            None,
+            ClientInstanceId::new("monitor-live-client"),
+            RequestId::new("monitor-live-request"),
+            Some(DelegationId::new("live-query-grant")),
+        );
+        let host = runtime::host(
+            config.clone(),
+            driver.clone(),
+            provider,
+            context,
+            target.clone(),
+        );
         let sql = format!("SELECT COUNT(*) AS n, SUM(id) AS total FROM {table}");
         let step = WorkflowCommandStep::new(
             "scheduled-query",
@@ -160,7 +154,7 @@ pub async fn run(
                 .await
                 .is_err()
         );
-        host.policy.grant.write().unwrap().revoked = true;
+        host.policy.revoked.store(true, Ordering::SeqCst);
         assert!(host
             .runtime
             .read_artifact_chunk(
