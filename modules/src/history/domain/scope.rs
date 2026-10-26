@@ -119,7 +119,10 @@ mod tests {
     #[test]
     fn scope_parses_only_known_words() {
         assert_eq!(HistoryScope::parse("query"), Some(HistoryScope::Query));
-        assert_eq!(HistoryScope::parse("workflow"), Some(HistoryScope::Workflow));
+        assert_eq!(
+            HistoryScope::parse("workflow"),
+            Some(HistoryScope::Workflow)
+        );
         assert_eq!(HistoryScope::parse("all"), Some(HistoryScope::All));
         assert_eq!(HistoryScope::parse("Query"), None);
         assert_eq!(HistoryScope::parse(""), None);

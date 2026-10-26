@@ -48,14 +48,19 @@ pub trait QueryHistoryRepository: Send + Sync {
     ) -> Result<Vec<QueryHistoryEntry>, HistoryError>;
 
     /// 分页读取：过滤器在 `limit` 之前生效，返回含截断前 `total` 的页。
-    async fn page(&self, filter: &QueryHistoryFilter<'_>) -> Result<QueryHistoryPage, HistoryError>;
+    async fn page(&self, filter: &QueryHistoryFilter<'_>)
+        -> Result<QueryHistoryPage, HistoryError>;
 
     /// 删除一条；`Ok(0)` 表示 id 已不存在（幂等，不是错误）。
     async fn delete(&self, id: &str) -> Result<u64, HistoryError>;
 
     /// 按作用域清除历史；`retain_days` 为 `None` 时全清。
     /// 返回受影响行数。
-    async fn purge(&self, scope: HistoryScope, retain_days: Option<u32>) -> Result<u64, HistoryError>;
+    async fn purge(
+        &self,
+        scope: HistoryScope,
+        retain_days: Option<u32>,
+    ) -> Result<u64, HistoryError>;
 }
 
 /// 迁移运行历史仓储（Data Sync / Data Transfer / Schema Diff 共享）。

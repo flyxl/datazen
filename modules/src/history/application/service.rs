@@ -9,7 +9,9 @@
 
 use std::sync::Arc;
 
-use crate::history::domain::migration_run::{MigrationRunFilter, MigrationRunPage, MigrationRunRecord};
+use crate::history::domain::migration_run::{
+    MigrationRunFilter, MigrationRunPage, MigrationRunRecord,
+};
 use crate::history::domain::query::QueryHistoryEntry;
 use crate::history::domain::repository::{MigrationRunRepository, QueryHistoryRepository};
 use crate::history::domain::scope::{HistoryScope, QueryHistoryFilter, QueryHistoryPage};
@@ -272,7 +274,13 @@ mod tests {
         let service = HistoryService::new(fake.clone(), fake.clone());
         // fail_reads=false 的默认路径：追加→窄读取可见。
         service.add_query_history(entry("h1")).await;
-        assert_eq!(service.recent_query_history(10, None, None, None).await.len(), 1);
+        assert_eq!(
+            service
+                .recent_query_history(10, None, None, None)
+                .await
+                .len(),
+            1
+        );
     }
 
     #[tokio::test]
@@ -283,7 +291,10 @@ mod tests {
         service.add_query_history(entry("h2")).await;
         let removed = service.clear_query_history().await.unwrap();
         assert_eq!(removed, 2);
-        assert!(service.recent_query_history(10, None, None, None).await.is_empty());
+        assert!(service
+            .recent_query_history(10, None, None, None)
+            .await
+            .is_empty());
     }
 
     #[tokio::test]

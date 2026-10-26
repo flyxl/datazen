@@ -18,6 +18,7 @@
 pub mod application;
 pub mod domain;
 
+pub use application::service::HistoryService;
 pub use domain::migration_run;
 pub use domain::migration_run::{
     MigrationProfileRef, MigrationRunFilter, MigrationRunPage, MigrationRunRecord,
@@ -25,8 +26,6 @@ pub use domain::migration_run::{
 pub use domain::query::QueryHistoryEntry;
 pub use domain::repository::{MigrationRunRepository, QueryHistoryRepository};
 pub use domain::scope::{
-    HistoryOrder, HistoryScope, QueryHistoryFilter, QueryHistoryPage,
-    DEFAULT_HISTORY_PAGE_SIZE, MAX_MIGRATION_RUN_HISTORY, MAX_QUERY_HISTORY,
-    MAX_WORKFLOW_HISTORY,
+    HistoryOrder, HistoryScope, QueryHistoryFilter, QueryHistoryPage, DEFAULT_HISTORY_PAGE_SIZE,
+    MAX_MIGRATION_RUN_HISTORY, MAX_QUERY_HISTORY, MAX_WORKFLOW_HISTORY,
 };
-pub use application::service::HistoryService;

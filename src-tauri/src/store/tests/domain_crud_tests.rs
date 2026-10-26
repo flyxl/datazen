@@ -31,7 +31,11 @@ async fn query_history_dedup_and_clear() {
         .await
         .unwrap();
     assert_eq!(
-        repositories.recent(10, None, None, None).await.unwrap().len(),
+        repositories
+            .recent(10, None, None, None)
+            .await
+            .unwrap()
+            .len(),
         2
     );
 

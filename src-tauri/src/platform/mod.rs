@@ -7,6 +7,7 @@ pub mod event_sink;
 pub mod execution_identity;
 pub mod feature_ports;
 pub mod handles;
+pub mod history;
 pub mod identity;
 pub mod ipc;
 pub mod known_hosts;
@@ -19,7 +20,6 @@ pub mod resource_mapping;
 pub mod scope;
 pub mod session_backend;
 pub mod session_commands;
-pub mod history;
 pub mod settings;
 mod target_metadata;
 
