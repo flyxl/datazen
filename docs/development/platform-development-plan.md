@@ -98,7 +98,7 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 | 字段 | 端口类型 | 桌面实现 | 注入点 |
 | --- | --- | --- | --- |
 | `settings` | `datazen_platform_api::ports::SettingsRepository` | `DesktopRepository`（`src-tauri/src/store/mod.rs`） | `PlatformAdapter::inject`（`src-tauri/src/platform/adapter.rs`） |
-| `tunnels` | `datazen_platform_api::ports::tunnel::TunnelRepository` | `DesktopRepository`（`src-tauri/src/store/tunnels.rs`） | 同上（与注入给会话后端的是**同一个实例**） |
+| `tunnels` | `datazen_modules::tunnel::TunnelRepository` | `DesktopRepository`（`src-tauri/src/store/tunnels.rs`） | 同上（与注入给会话后端的是**同一个实例**） |
 
 要点：
 

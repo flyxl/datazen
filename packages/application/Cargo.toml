@@ -23,7 +23,7 @@ tracing = "0.1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-# 隧道端口（`datazen_platform_api::ports::TunnelRepository`）的方法签名引用驱动
+# 隧道端口（`datazen_modules::tunnel::TunnelRepository`）的方法签名引用驱动
 # 契约 crate 的隧道类型（`SavedTunnel` / `SavedTunnelSummary` / `TunnelUsage`）。
 # 生产代码只持有 `Arc<dyn TunnelRepository>`，**不点名**那些类型，因此不需要这条
 # 依赖；只有测试里实现该端口的替身时才需要。它是 dev-dependency ⇒ 不进
