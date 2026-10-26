@@ -107,6 +107,8 @@
 | `1e9b7e959` | D6 第二切片 / item 2：Dashboard 家族归位 `modules::dashboard`——词源 feature-core::dashboard 全家族（11 文件）逐字迁移，分层 domain（records/types 含 serde 形状钉单测/repository 端口/schedule_grant）+ application（create/runs/alert/archive/execute/monitor/notifications）；feature-core 11 文件垫片化；Monitor 授权元数据的 ExecutionTarget/sql_guard 改指模块内定义；形态中立闸门配套词级窄域豁免（ALLOWED_WIRE_VOCABULARY）+ 豁免自证测试。验证：dashboard 48 / feature-lite 1306 / feature-core 429 全绿 |
 | `943de5540` / `4c0875a4d` | （前一会话推送、本轮 rebase 收编）rustfmt 收敛 dashboard 切片与 form_neutrality 格式漂移；fix(mcp)：history seed 提前到 server 构建之前（AppState 所有权先取服务后移交） |
 | `21d940450` | **形态中立收口（用户 2026-10-26 指令：形态字面量若需改前端则一并改）**：`AlertChannel::Desktop → App`，wire 值 `"desktop" → "app"`；序列化只写新值，旧持久化字面量经自定义 Deserialize 拆开拼接收映射到 App（不破坏已存告警规则）；form_neutrality 的 ALLOWED_WIRE_VOCABULARY 清空（机制保留）；src-tauri 分发臂/测试样例、前端类型与默认渠道（仅两处消费，grep 审计无遗漏）、shared-boundaries-and-ports.md 文档同步。验证：dashboard 51 / form_neutrality 6 / feature-lite 1310 / feature-core 429 全绿；module-layers/ddd-layers/id-terminology 门禁通过；前端 typecheck/vitest 归 PR CI |
+| `90dce3343` / `2d3a30c9e` | （前一会话推送、本轮 rebase 收编）fix(workflow)：文档行号守卫随 D6 dashboard 切片改指 modules 新位置；rustfmt 收敛 dashboard/domain/types.rs（21d9404 随迁漂移） |
+| `42abe43e2` | D6 第三切片 / item 3 收官：Workflow 引擎与用例归位 `modules::workflow`——feature-core::workflow 剩余 14 文件逐字迁移合成三层（domain：command/history/plan_guard/target_plan/repository 端口；application：host/context/conditions/data_step/command_runtime/resource_execution 经 execution 端口派发保留 block 资源边界/registry serde_yaml 定义编解码/results；engine：executor 步骤归一 Driver Command 派发 + scheduler tick/在途守卫/取消）。同波次 item 4 切片二：MCP 命令准备策略 `feature-core::services::command_policy → modules::mcp::application::command_policy`（权限档位映射/命令定义解析含 schema 元数据命令合成/调用校验/SQL 参数绑定/信封目标注入；宿主 driver_command 适配器与 workflow resource_execution 共用）；mcp feature 补 schema 依赖。feature-core workflow 14 文件 + services/command_policy 垫片化（旧路径不变，src-tauri 零改动）；workflow feature 接线（serde_yaml/regex 新 optional + execution/schema/table-editing/mcp）。验证：modules feature-lite 含 jobs 1303（workflow 102 随迁）/ feature-core 407（lib 318 + 集成 89）/ module-layers + id-terminology 门禁 PASS / rustfmt 收敛；ddd-layers 全量 metadata 门禁与 src-tauri 编译归 PR CI（沙箱缺 brotli 等约 14 包，既有决策：不下载，PR CI 兜底） |
 
 ## 范围决策更新（用户 2026-10-26 指令，第二次）
 
@@ -118,20 +120,31 @@
 的 web/ 目标命名（待实现）保留为未来约定。模块 feature 中立性（无 Tauri 泄入
 共享层）仍由门禁持续守护。D8 在桌面单宿主范围内进行。
 
-## D6 下一步（按 07-stages 顺序；item 1/2 已完成，形态字面量已收口）
+## D6 下一步（按 07-stages 顺序；item 1/2/3 已完成，item 4 已完成两切片）
 
-1. **Workflow 切片 b**（item 3 后半）：feature-core/src/workflow 20 文件
-   （command/command_runtime/conditions/context/data_step/executor/history/
-   host/plan_guard/registry/resource_execution/results/scheduler/target_plan
-   等）归位 modules::workflow——保留 step/session/transaction block 资源
-   边界，调用 execution 与 jobs；workflow_history 词汇属本族。domain 词汇
-   已就位（0291f8e27），本切片迁应用/运行时层。
-2. **AI / MCP**（item 4）：feature-core 中 Provider-neutral 业务（会话编排、
-   工具循环、安全策略）与 MCP 业务分发；认证/stdio/HTTP 登录/事件传输在
-   宿主。
-3. **Monitor、Export、Backup/Restore、Wapps、Tunnel**（item 5）：按各自
-   模型迁移，保留 grant、文件安全、恢复锁、沙箱桥与网络限制。
-4. **connection_import / services 残余**（fk_navigation/referenced_by/
+1. **AI / MCP 剩余**（item 4 收尾）：feature-core 中 Provider-neutral 业务
+   （会话编排、工具循环、安全策略）与 MCP 业务分发残余；认证/stdio/
+   HTTP 登录/事件传输在宿主。已归位：mcp 三文件业务规则（66c88bdaa）+
+   command_policy（42abe43e2）。
+2. **Monitor、Export、Backup/Restore、Wapps、Tunnel**（item 5）：按各自
+   模型迁移，保留 grant、文件安全、恢复锁、沙箱桥与网络限制。注：
+   Monitor 刷新引擎已随 dashboard 切片入模块（1e9b7e959），此处余项为
+   宿主侧监控装配与残余词汇。
+3. **connection_import / services 残余**（fk_navigation/referenced_by/
    value_search/db_tools/migration_endpoint 等）随 item 5 一并评估归位。
-5. 收尾：移除 DesktopRepository 残余领域业务方法（favorites 尚在，属宿主
+4. 收尾：移除 DesktopRepository 残余领域业务方法（favorites 尚在，属宿主
    文件存储还是迁模块随上述切片顺带评估）。
+
+### 会话恢复备忘（本轮实测）
+
+- 磁盘极紧（9.9G 总量，target 7G+）：feature-core 全量集成测试需**逐目标**
+  编译-运行-删除（`--test <name>` 循环，每轮删 deps 下 >10M 无扩展名
+  二进制）；一次性 `cargo test -p datazen-feature-core` 会打满磁盘致
+  rust-lld 崩溃。
+- 网络抖动：GitHub TLS 频繁中断，fetch/push 需重试与 `--depth=N` 渐进；
+  origin remote 已内嵌 PAT。
+- feature-lite 全量口径 = settings,history,workflow,dashboard,
+  connection,named_views,execution,schema,migration_common,ai,mcp,
+  webdriver,jobs（本轮 1303）。
+- ddd-layers 门禁需全量 metadata（缺 brotli 等约 14 包）：本地跳过，
+  PR CI 兜底（用户 2026-10-26 决策）。
