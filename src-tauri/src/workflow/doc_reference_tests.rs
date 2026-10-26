@@ -140,9 +140,10 @@ const LINE_REFERENCES: &[(&str, usize, &str)] = &[
         71,
         "WorkflowExecutor::execute(",
     ),
-    // §2.3：逐条核对过仍正确的若干处（抽样）。
+    // §2.3：逐条核对过仍正确的若干处（抽样）。dashboard 的 create/archive
+    // 已随 D6 第二切片归位 modules::dashboard（feature-core 只剩垫片）。
     (
-        "packages/feature-core/src/dashboard/create.rs",
+        "modules/src/dashboard/application/create.rs",
         40,
         "version: None,",
     ),
@@ -157,8 +158,8 @@ const LINE_REFERENCES: &[(&str, usize, &str)] = &[
         "version: None,",
     ),
     (
-        "packages/feature-core/src/dashboard/archive.rs",
-        185,
+        "modules/src/dashboard/application/archive.rs",
+        197,
         "version: None,",
     ),
     (
