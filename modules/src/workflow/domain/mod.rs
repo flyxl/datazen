@@ -1,14 +1,20 @@
-//! Workflow 领域层：模型词汇、错误信封与定义分派（D6 第一切片 a）。
+//! Workflow 领域层：模型词汇、错误信封、定义分派、命令步骤与运行记录词汇、
+//! 计划预校验、目标解析链与定义仓储端口。
 //!
-//! 词源：`datazen-feature-core::workflow` 的 model / error / executable 三文件
-//! 逐字迁移（serde 形状与公开 API 不变）。executable 是纯函数层（版本分派 +
-//! 静态校验 + 可执行形态，自述「不碰资源、连接与 Job」），随词汇一起归位
-//! domain；执行器/注册表/调度器/资源执行仍留 feature-core（后续切片）。
+//! 词源：`datazen-feature-core::workflow`（切片 a：model/error/executable；
+//! 切片 b：command/history/plan_guard/target_plan + registry 端口半）。全部是
+//! 纯词汇与纯规则——判据只依赖入参，宿主与未来其他形态用同一份答案。
 
+pub mod command;
 pub mod error;
 pub mod executable;
+pub mod history;
 pub mod model;
+pub mod plan_guard;
+pub mod repository;
+pub mod target_plan;
 
+pub use command::WorkflowCommandStep;
 pub use error::WorkflowError;
 pub use executable::{
     ExecutableBlock, ExecutableStep, ExecutableWorkflow, TargetDeclaration, WorkflowVersion,

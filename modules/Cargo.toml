@@ -14,9 +14,26 @@ settings = ["dep:async-trait", "dep:serde_json"]
 # 轻量：serde/chrono 常驻（B248e153 后 chrono 为常驻依赖）+ async-trait（端口）
 # + tracing（降级告警）。
 history = ["dep:async-trait", "dep:tracing"]
-# D6 item 3 第一切片 a：workflow 模型词汇（step/block/输出/错误策略/执行结果）。
-# 纯 wire 词汇，仅 serde；执行器/注册表/调度器随后续切片归位。
-workflow = []
+# D6 item 3：workflow 全家族（切片 a 词汇 + 切片 b 引擎）。依赖 execution
+# （目标/会话/SQL 分级词汇与请求 DTO）、schema（元数据命令合成）、
+# table_editing（ArtifactChunkReader 端口）与 mcp（权限模式 + 命令准备策略）；
+# serde_yaml 承载定义 YAML 编解码，tokio/tokio-util/futures-util 撑调度与
+# 取消，tracing 记登记/调度告警，chrono 已常驻。
+workflow = [
+    "dep:async-trait",
+    "dep:serde_json",
+    "dep:serde_yaml",
+    "dep:regex",
+    "dep:datazen-driver-api",
+    "dep:tokio",
+    "dep:tokio-util",
+    "dep:futures-util",
+    "dep:tracing",
+    "execution",
+    "schema",
+    "table-editing",
+    "mcp",
+]
 # D6 item 2：Dashboard 家族。依赖 workflow（组件绑定/归档引用 WorkflowDefinition）
 # 与 execution（schedule_grant 的 ExecutionTarget）；tokio/tokio-util 撑刷新
 # 监控引擎，uuid 铸运行/组件 id，serde_json 走归档字节解析。
@@ -151,6 +168,7 @@ ai = [
 # TableSchema。
 mcp = [
     "execution",
+    "schema",
     "dep:serde_json",
     "dep:datazen-driver-api",
 ]
@@ -200,6 +218,10 @@ datazen-driver-api = { path = "../packages/driver-api", optional = true }
 # run-platform-crate-tests.mjs 的单 feature 矩阵腿（settings/connection 等）
 # 不带 named_views，若可选则默认/单 feature 构建在 clock.rs 处编译破损。
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+# workflow feature：定义 YAML 编解码（registry encode/decode）。
+serde_yaml = { version = "0.9", optional = true }
+# workflow feature：上下文模板 {{var}} 解析。
+regex = { version = "1", optional = true }
 
 [dev-dependencies]
 # shared 词汇单测（Counter 序列化、RequestContext 往返等）需要 serde_json。

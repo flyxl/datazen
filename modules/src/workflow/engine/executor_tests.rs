@@ -1,9 +1,10 @@
 //! Tests for the shared executor's pure decision rules.
 //!
-//! These rules live in `executor.rs`; the cases are kept in a sibling file so
-//! the executor itself stays readable (the same split `ai/safety.rs` uses).
+//! These rules live in `application/command_runtime.rs` (D6 item 3 切片 b
+//! 起从 executor 随「共享命令规则」归位)；the cases are kept in a sibling
+//! file so the engine stays readable (the same split `ai/safety.rs` uses).
 
-use super::database_is_required;
+use crate::workflow::application::command_runtime::database_is_required;
 
 #[test]
 fn requires_a_database_for_an_unpinned_multi_db_connection() {

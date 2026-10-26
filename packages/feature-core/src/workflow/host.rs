@@ -1,16 +1,6 @@
-use super::{command::WorkflowCommandStep, error::WorkflowError};
-use crate::mcp::permission::McpPermissionMode;
-use datazen_driver_api::CommandResult;
+//! Workflow 宿主服务端口（WorkflowHost）迁移垫片（D6 item 3 切片 b，2026-10-26）。
+//!
+//! 唯一定义自本切片起在 `datazen-modules::workflow::application::host`。
+//! 本模块只再导出，旧路径不变；feature-core 退役时（D8）随垫片删除。
 
-#[async_trait::async_trait]
-pub trait WorkflowHost: Send + Sync {
-    async fn connection_name(&self, connection_id: &str) -> Result<String, WorkflowError>;
-    async fn execute_command(
-        &self,
-        step: &WorkflowCommandStep,
-        workflow_connection: Option<&str>,
-        permission_mode: Option<McpPermissionMode>,
-        deadline: Option<tokio::time::Instant>,
-    ) -> Result<CommandResult, WorkflowError>;
-    async fn complete_ai(&self, prompt: String) -> Result<String, WorkflowError>;
-}
+pub use datazen_modules::workflow::application::host::*;
