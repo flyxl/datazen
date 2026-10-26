@@ -15,8 +15,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use datazen_platform_api::id::{ConnectionId, OrganizationId, PrincipalId};
-use datazen_platform_api::ports::budget::coordinator::BudgetRequest;
-use datazen_platform_api::ports::budget::{ResourceClass, ServiceQuota};
+use datazen_platform_api::ports::budget::{BudgetRequest, ResourceClass, ServiceQuota};
 
 use datazen_runtime::budget::{
     AdmitOutcome, BudgetClaim, BudgetClock, BudgetConfig, BudgetLedger, DenialReason,

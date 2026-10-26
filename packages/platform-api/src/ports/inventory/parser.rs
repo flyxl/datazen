@@ -19,26 +19,10 @@ use std::path::Path;
 /// _include_list` 用一次目录扫描把这件事钉死。
 pub(super) const SOURCE_FILES: &[(&str, &str)] = &[
     ("artifact.rs", include_str!("../artifact.rs")),
-    ("budget/control.rs", include_str!("../budget/control.rs")),
-    (
-        "budget/coordinator.rs",
-        include_str!("../budget/coordinator.rs"),
-    ),
-    (
-        "budget/dimension.rs",
-        include_str!("../budget/dimension.rs"),
-    ),
+    // budget 子文件（control/coordinator/dimension/node/pool/pool_ledger）已随
+    // D3 第三切片 a 迁入 `modules::execution::application::budget`，垫片只剩
+    // budget/mod.rs 一个命名再导出文件；条目随之收敛，目录扫描自检仍双向钉死。
     ("budget/mod.rs", include_str!("../budget/mod.rs")),
-    ("budget/node.rs", include_str!("../budget/node.rs")),
-    ("budget/pool.rs", include_str!("../budget/pool.rs")),
-    (
-        "budget/pool_ledger.rs",
-        include_str!("../budget/pool_ledger.rs"),
-    ),
-    (
-        "budget/pool_ledger/tests.rs",
-        include_str!("../budget/pool_ledger/tests.rs"),
-    ),
     ("clock.rs", include_str!("../clock.rs")),
     ("event.rs", include_str!("../event.rs")),
     (
