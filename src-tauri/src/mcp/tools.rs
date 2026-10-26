@@ -34,9 +34,9 @@ impl DataZenMcpServer {
         description = "List all configured database connections. Returns connection IDs, names, database types, and hosts."
     )]
     pub(crate) async fn list_connections(&self) -> Result<String, McpError> {
-        let connections = match crate::platform::ipc::require_connection_service(self.app_state) {
+        let connections = match crate::platform::ipc::require_connection_service(&self.app_state) {
             Ok(service) => match service
-                .list(&crate::platform::connections::local_connection_scope())
+                .list_redacted(&crate::platform::connections::local_connection_scope())
                 .await
             {
                 Ok(list) => list,

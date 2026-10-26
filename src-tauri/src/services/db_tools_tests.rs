@@ -47,7 +47,13 @@ mod tests {
     async fn list_connections_serializes_saved_configs() {
         let test = test_stack().await;
         test.save_connection("c1").await;
-        let json = list_connections(&test.store).await.unwrap();
+        let store = crate::platform::connections::DesktopConnectionStore::new(test.store.clone());
+        let json = list_connections(
+            &store,
+            &crate::platform::connections::local_connection_scope(),
+        )
+        .await
+        .unwrap();
         assert!(json.contains("\"id\": \"c1\""));
         assert!(json.contains("Test c1"));
     }
