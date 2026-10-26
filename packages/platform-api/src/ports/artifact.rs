@@ -382,7 +382,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn chunk_index_is_a_decimal_string_counter_not_a_raw_usize() {
         // JS 侧读到的必须是字符串，避免 >2^53 精度丢失。
         let index: ChunkIndex = Counter::new(9007199254740993);

@@ -64,7 +64,7 @@
 | D0 | 建立可信基线 | 已完成：基线核对见文首状态行 |
 | D1 | 新 modules 与第一条可运行小切片 | 已完成：settings 切片 + 收尾清理（旧过渡导出已删，详见 07-stages.md D1 小节） |
 | D1.5 | AI crate 收拢与 infra 改名（2026-10-26 追加） | 已完成：三步合并/改名 + 共享审计结论见 07-stages.md D1.5 小节 |
-| D2 | 连接领域与宿主仓储 | 进行中：目录第一切片已完成（见 07-stages.md D2 小节）；Profile/revision 统一待做 |
+| D2 | 连接领域与宿主仓储 | 已完成：目录切片 + Profile/revision 词汇统一 + modules::shared 建立（见 07-stages.md D2 小节）；桌面 UI 旅程验证依赖 PR CI |
 | D3 | Execution 拆分与资源机制归位 | 未开始 |
 | D4 | Schema、表读写与 SQL 消费者 | 未开始 |
 | D5 | Jobs 与迁移三件套 | 未开始 |

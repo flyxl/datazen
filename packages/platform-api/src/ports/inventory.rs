@@ -80,14 +80,17 @@ mod tests {
     use std::path::Path;
 
     use super::parser::{
-        collect_rs_files, declared_port_traits, header_named_traits, module_header, scale_counts,
-        section_6_4_table, CRATE_HEADER, MODULE_HEADER, SOURCE_FILES, SYSTEM_OVERVIEW,
+        collect_rs_files, declared_port_traits, header_named_traits, module_header,
+        modules_reexported_names, scale_counts, section_6_4_table, CRATE_HEADER, MODULE_HEADER,
+        SOURCE_FILES, SYSTEM_OVERVIEW,
     };
     use super::PORT_TRAITS;
 
-    /// 人工清单必须与代码里真实的 `pub trait` 声明**逐项一致**（多一个、少一个、顺序错都红）。
+    /// 人工清单必须与代码事实**逐项一致**：每个端口 trait 要么在 `src/ports/` 里
+    /// `pub trait` 声明，要么经 `pub use datazen_modules::…` 再导出（DDD 迁移 D2
+    /// 起的垫片形态）。多一个、少一个、顺序错都红。
     #[test]
-    fn the_manual_inventory_lists_exactly_the_declared_port_traits() {
+    fn the_manual_inventory_lists_exactly_the_real_port_traits() {
         let declared = declared_port_traits();
         let unique: BTreeSet<&String> = declared.iter().collect();
         assert_eq!(
@@ -95,10 +98,47 @@ mod tests {
             declared.len(),
             "同一个端口 trait 被声明了多次：{declared:?}",
         );
+        let reexported = modules_reexported_names();
+
+        // 声明与再导出不得同时出现同一名字（两份事实源只能有一份）。
+        let both: Vec<&String> = declared
+            .iter()
+            .filter(|name| reexported.contains(*name))
+            .collect();
+        assert!(
+            both.is_empty(),
+            "端口 trait 同时被声明与再导出（应只剩一处事实）：{both:?}"
+        );
+
+        // 清单必须有序（字母序）。
+        let mut sorted = PORT_TRAITS.to_vec();
+        sorted.sort_unstable();
         assert_eq!(
-            declared, PORT_TRAITS,
-            "端口清单与代码里的 `pub trait` 声明不一致。\
-             清单是唯一的人工清单，代码是事实来源：增删端口 trait 时两处都要改。",
+            sorted, PORT_TRAITS,
+            "清单必须按 trait 名字字母序维护"
+        );
+
+        // 清单里每个名字都有事实源：声明或再导出。
+        let missing: Vec<&&str> = PORT_TRAITS
+            .iter()
+            .filter(|name| {
+                !declared.iter().any(|d| d.as_str() == **name)
+                    && !reexported.iter().any(|r| r.as_str() == **name)
+            })
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "清单里的端口 trait 既无 `pub trait` 声明也无 modules 再导出：{missing:?}"
+        );
+
+        // 代码里声明的每个端口 trait 都在清单里。
+        let undeclared: Vec<&String> = declared
+            .iter()
+            .filter(|name| !PORT_TRAITS.contains(&name.as_str()))
+            .collect();
+        assert!(
+            undeclared.is_empty(),
+            "`src/ports/` 里声明的 trait 不在清单里：{undeclared:?}"
         );
     }
 

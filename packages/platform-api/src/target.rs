@@ -22,35 +22,11 @@ use std::collections::BTreeMap;
 
 use crate::id::ConnectionId;
 
-/// 命名空间层级。`path` 表示 database/catalog/schema 之外的扩展层级，
-/// 承载的是驱动 namespace ID，**不是文件系统路径**（§4.3）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum TargetNamespaceLayer {
-    Database,
-    Catalog,
-    Schema,
-    Path,
-}
-
-impl TargetNamespaceLayer {
-    /// 全部层级，供遍历与校验使用。
-    pub const ALL: [TargetNamespaceLayer; 4] =
-        [Self::Database, Self::Catalog, Self::Schema, Self::Path];
-
-    /// 协议字面量，与 `#[serde(rename_all = "camelCase")]` 派生出的线格式逐字一致。
-    ///
-    /// 用途与 `packages/runtime/src/connection/error.rs` 的 `ApiErrorCode::as_str()` 相同：
-    /// 让错误信息里的层级名与实际序列化结果一致，**不是**重新声明一份协议字面量。
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            TargetNamespaceLayer::Database => "database",
-            TargetNamespaceLayer::Catalog => "catalog",
-            TargetNamespaceLayer::Schema => "schema",
-            TargetNamespaceLayer::Path => "path",
-        }
-    }
-}
+// 命名空间目标词汇（`NamespaceTarget` / `TargetNamespaceLayer`）的唯一定义
+// 自 D2（2026-10-26）起在 `datazen-modules::connection::domain::target`（§5.1：
+// 初始 NamespaceTarget 归 connection::domain）。这里只再导出同一类型；
+// D8 退役本 crate 时一并删除。
+pub use datazen_modules::connection::domain::{NamespaceTarget, TargetNamespaceLayer};
 
 /// 本次请求所使用的命名空间形状：声明**哪些层必填**、哪些层存在但可省。
 ///
@@ -286,81 +262,6 @@ impl TargetRequirements {
     }
 }
 
-/// 命名空间目标。**四个字段都必须出现在请求里**（§4.4 字段校验），空字符串非法。
-///
-/// 存在的层级未指定时为 `null`；只有 `optional` 允许留空。
-/// `path` 是驱动命名空间 ID，不是文件路径；重复表达同一层级必须一致，否则 `TargetConflict`。
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NamespaceTarget {
-    pub database: Option<String>,
-    pub catalog: Option<String>,
-    pub schema: Option<String>,
-    pub path: Vec<String>,
-}
-
-impl NamespaceTarget {
-    pub fn new(
-        database: Option<String>,
-        catalog: Option<String>,
-        schema: Option<String>,
-        path: Vec<String>,
-    ) -> Self {
-        Self {
-            database,
-            catalog,
-            schema,
-            path,
-        }
-    }
-
-    pub fn database(name: impl Into<String>) -> Self {
-        Self {
-            database: Some(name.into()),
-            ..Self::default()
-        }
-    }
-
-    pub fn get(&self, layer: TargetNamespaceLayer) -> Option<&str> {
-        match layer {
-            TargetNamespaceLayer::Database => self.database.as_deref(),
-            TargetNamespaceLayer::Catalog => self.catalog.as_deref(),
-            TargetNamespaceLayer::Schema => self.schema.as_deref(),
-            TargetNamespaceLayer::Path => None,
-        }
-    }
-
-    /// 该层级是否带了非 null 值。`path` 只要非空即视为带了值。
-    pub fn has_value(&self, layer: TargetNamespaceLayer) -> bool {
-        match layer {
-            TargetNamespaceLayer::Path => !self.path.is_empty(),
-            other => self.get(other).is_some(),
-        }
-    }
-
-    /// 写入单个层级。`Path` 在这里是单值形态（写入 `path` 的唯一一项），
-    /// 与「`NamespaceTarget.path` 是列表」的形状不冲突：清空即传 `None`。
-    pub fn set(&mut self, layer: TargetNamespaceLayer, value: Option<String>) -> &mut Self {
-        match layer {
-            TargetNamespaceLayer::Database => self.database = value,
-            TargetNamespaceLayer::Catalog => self.catalog = value,
-            TargetNamespaceLayer::Schema => self.schema = value,
-            TargetNamespaceLayer::Path => self.path = value.into_iter().collect(),
-        }
-        self
-    }
-
-    /// 稳定指纹：层次用 `/` 拼接，不存在的层级留空段。
-    /// 用途是「同一目标」的比较与 checkpoint 记录，**不是**权限凭据。
-    pub fn namespace_fingerprint(&self) -> String {
-        let mut parts: Vec<&str> = Vec::with_capacity(3 + self.path.len());
-        parts.push(self.database.as_deref().unwrap_or_default());
-        parts.push(self.catalog.as_deref().unwrap_or_default());
-        parts.push(self.schema.as_deref().unwrap_or_default());
-        parts.extend(self.path.iter().map(String::as_str));
-        parts.join("/")
-    }
-}
 
 /// 对象身份。必须传完整身份，**不能把未指定 schema 猜成 `public`/`dbo`**（§4.4）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -549,36 +450,6 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn namespace_target_round_trips_camel_case_with_null_layers() {
-        let original = NamespaceTarget::new(
-            Some("app".into()),
-            None,
-            Some("public".into()),
-            vec!["tenant_a".into(), "tenant_b".into()],
-        );
-        let value = serde_json::to_value(&original).expect("serialize");
-        assert_eq!(
-            value,
-            json!({
-                "database": "app",
-                "catalog": null,
-                "schema": "public",
-                "path": ["tenant_a", "tenant_b"],
-            })
-        );
-        let back: NamespaceTarget = serde_json::from_value(value).expect("deserialize");
-        assert_eq!(back, original);
-    }
-
-    #[test]
-    fn namespace_target_path_is_a_list_not_a_string() {
-        // runtime 的 `NamespaceTarget.path` 当前是 `String`，与契约的 `readonly string[]` 冲突。
-        let value = serde_json::to_value(NamespaceTarget::default()).expect("serialize");
-        assert!(value["path"].is_array(), "path 必须是数组，JSON={}", value);
-        assert!(value["database"].is_null(), "不存在的层级只能是 null");
-    }
-
-    #[test]
     fn execution_target_round_trips_with_and_without_object() {
         let bare = ExecutionTarget::new(
             ConnectionId::new("conn-1"),
@@ -729,15 +600,5 @@ mod tests {
         );
         // 展示名与规范化 ID 数值不同，但只有规范化 ID 进入身份。
         assert_ne!(submitted.database.as_deref(), Some("app"));
-    }
-
-    #[test]
-    fn has_value_distinguishes_absent_from_empty_path() {
-        let target = NamespaceTarget::default();
-        assert!(!target.has_value(TargetNamespaceLayer::Database));
-        assert!(!target.has_value(TargetNamespaceLayer::Path));
-
-        let with_path = NamespaceTarget::new(None, None, None, vec!["a".into()]);
-        assert!(with_path.has_value(TargetNamespaceLayer::Path));
     }
 }

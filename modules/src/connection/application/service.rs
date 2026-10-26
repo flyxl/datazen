@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use datazen_driver_api::ConnectionConfig;
 
-use super::domain::{ConnectionRepository, ConnectionRepositoryError, ConnectionScope};
+use crate::connection::domain::{ConnectionRepository, ConnectionRepositoryError, ConnectionScope};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConnectionError {

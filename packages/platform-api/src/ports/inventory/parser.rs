@@ -530,6 +530,61 @@ pub(super) fn declared_port_traits() -> Vec<String> {
     names
 }
 
+/// 端口源码里经 `pub use datazen_modules::…` 再导出的名字（去重后按字母序）。
+///
+/// DDD 迁移（D2 起）中，端口 trait 的唯一定义迁入 `datazen-modules` 后，
+/// `src/ports/` 的原文件只再导出同一类型。这里抽出**再导出的全部名字**
+///（含非 trait 的类型：是否是端口由清单断言裁决，不在此处猜）。
+pub(super) fn modules_reexported_names() -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    for (_, source) in SOURCE_FILES {
+        let code = code_shape(source);
+        let mut cursor = 0usize;
+        while let Some(offset) = code[cursor..].find("pub use datazen_modules::") {
+            let start = cursor + offset;
+            cursor = start + "pub use datazen_modules::".len();
+            let tail: String = code[cursor..]
+                .chars()
+                .take_while(|c| *c != ';')
+                .collect();
+            cursor += tail.chars().count();
+            if let Some(brace) = tail.find('{') {
+                // `::{A, B, C}` 形态：逐项取导出名（`X as Y` 取 Y）。
+                for item in tail[brace + 1..].split(',') {
+                    let item = item.trim();
+                    if item.is_empty() {
+                        continue;
+                    }
+                    let exported = match item.split_once(" as ") {
+                        Some((_, alias)) => alias.trim(),
+                        None => item,
+                    };
+                    let name: String =
+                        exported.chars().take_while(|c| is_ident_char(*c)).collect();
+                    if !name.is_empty() {
+                        names.push(name);
+                    }
+                }
+            } else {
+                // `::Name` 形态：取最后一个路径段。
+                let name: String = tail
+                    .rsplit("::")
+                    .next()
+                    .unwrap_or_default()
+                    .chars()
+                    .take_while(|c| is_ident_char(*c))
+                    .collect();
+                if !name.is_empty() {
+                    names.push(name);
+                }
+            }
+        }
+    }
+    names.sort();
+    names.dedup();
+    names
+}
+
 /// 递归收集目录下的 `.rs` 文件（相对路径）。
 pub(super) fn collect_rs_files(root: &Path, dir: &Path, out: &mut Vec<String>) {
     let entries = std::fs::read_dir(dir)

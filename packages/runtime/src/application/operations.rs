@@ -373,7 +373,7 @@ impl ConnectionUseCases for RuntimeConnectionUseCases {
             .map_err(convert::port)?
             .into_iter()
             .filter(|p| p.organization_id == ctx.organization_id && p.enabled)
-            .map(|p| p.to_view())
+            .map(|p| ProfileView::from_record(&p))
             .collect())
     }
     async fn issue_submission_token(

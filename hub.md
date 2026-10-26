@@ -7,7 +7,7 @@
 
 ## 全局状态
 
-- 当前阶段：**D2 目录切片完成 + D6 item 1（named_views）完成**；下一步 D3 Execution 拆分或 D2 剩余（Profile/revision，依赖 ID 词汇先行迁移 modules::shared）。
+- 当前阶段：**D2 完成（目录切片 + Profile/revision 词汇统一 + modules::shared 建立）+ D6 item 1（named_views）完成**；下一步 **D3 Execution 拆分**（runtime 90k 行，多切片）。
 - 阶段与 PR 粒度：计划按 **D0–D8 九个阶段**推进（无 "wave" 概念，wave 仅是 coordinator 的
   并行批次术语）；每阶段可拆多个小 PR，每 PR 必须可构建、有真实消费者和测试。预估全程
   ~15–25 个 PR（D5 三件套各一个、D6 每功能族单独交付）。
@@ -38,9 +38,12 @@
 
 ## 下一步（按计划顺序）
 
-1. **D2 连接领域与宿主仓储**（07-stages.md D2）：connection domain/application、
-   DesktopConnectionStore 抽取、目录消费者收口；参考 04-repositories-and-security.md §7.2/§7.3。
-2. D3 起按 07-stages.md 顺序推进；每阶段开工前先读 08-pr-playbook.md §11.1。
+1. **D3 Execution 拆分与资源机制归位**（07-stages.md D3）：`RuntimeConnectionUseCases`
+   三分（application 编排 / domain 状态 / 私有机制）；`DbSessionId`/`SessionHandle`/
+   `ExecutionId`/`ExecutionTarget` → `execution::domain`；会话 actor、lease、队列、
+   等待、空闲回收、资源预算账本、driver registry → `execution::runtime`；旧 facade
+   委托新服务。多切片交付，参考 03-execution-and-jobs.md。
+2. D4 起按 07-stages.md 顺序推进；每阶段开工前先读 08-pr-playbook.md §11.1。
 
 ### D1.5 已完成（2026-10-26）
 
@@ -49,11 +52,16 @@
 | `46dc15ba6` | ai-api 并入 ai-providers（第一步） |
 | `e02d60d2c` | ai-providers 整体并入 modules/src/ai（第二步）；F-09 退役、F-14 豁免 reqwest |
 | `a6d4b38fe` | platform-infra 改名 infra（第三步）+ 四类消费者共享审计结论 |
-| 本次 | D2 第一切片：`datazen-modules::connection`（domain/application + 7 用例测试）；桌面 `DesktopConnectionStore`；删除 platform-api `ConnectionCatalog` 与 feature-core 重复 trait；`ApplicationServices` 去 connections；连接/分组/导入导出/schema diff/AI/MCP 消费者全部收口到模块服务 |
+| `a15b228ba` | D2 第一切片：`datazen-modules::connection`（domain/application + 7 用例测试）；桌面 `DesktopConnectionStore`；删除 platform-api `ConnectionCatalog` 与 feature-core 重复 trait；`ApplicationServices` 去 connections；连接/分组/导入导出/schema diff/AI/MCP 消费者全部收口到模块服务 |
+| `731c3b2d1` | D2 第二切片前半：platform-api 的 id/context/error（含全部单测）迁入 `modules::shared`（常驻，无 feature 门）；platform-api 原路径改再导出垫片 |
+| 本次 | D2 第二切片后半：Profile/namespace 词汇归位 `modules::connection`（domain::profile 双端口 + domain::target + application::profile_view 投影）；platform-api ports/dto/target 垫片化；PORT_TRAITS 口径扩展（声明或再导出）；4 个 to_view 调用点改 from_record；connection 模块转目录结构（domain/{catalog,profile,target}、application/{service,profile_view}） |
 
 ## 会话恢复要点
 
 - 分支 `feat/ddd-modules-migration`，与远端同步；主检出即工作区（本轮文档工作未用 worktree）。
 - 代码级开发（D2 起）按 coordinator 技能走 worktree + Coder/Tester 派发；Rust 编译验证依赖 CI。
+- 沙箱磁盘 9.9G 极易打满：`CARGO_INCREMENTAL=0` 必开；测试二进制（deps 下无扩展名大文件）
+  跑完即删（`find target/debug/deps -maxdepth 1 -type f -size +30M ! -name "*.rlib" ! -name "*.rmeta" ! -name "*.d" -delete`）；
+  `~/.cargo/registry/src` 可随时清（自动从 cache 重解压）。
 - 简报落点参考：06-first-slice-table-browsing.md §9.4 的命令族台账记录了 P3 阶段命令族
   迁移事实（历史，勿混淆为 D 阶段）。

@@ -1,18 +1,12 @@
-//! Connection domain vocabulary and the repository boundary owned by the module.
+//! 连接目录（表单词汇）的仓储边界：配置 + 分组。
 //!
 //! The connection aggregate is the persisted connection configuration plus its
 //! groups. Its shape is [`ConnectionConfig`] from `datazen-driver-api` — the
 //! one form every host already links and the exact IPC payload of the
 //! connection form. This module deliberately does **not** re-project it: the
 //! form must echo back verbatim, and a second projection type would drift
-//! into user-visible data loss.
-//!
-//! Plaintext semantics: credentials flow in and out of the repository in
-//! memory as-is. Encryption at rest is the implementor's business (desktop:
-//! AES-256-GCM keyed with the connection password key source). Redaction is a
-//! *presentation* concern applied by the application layer for summaries —
-//! never inside the repository, or the connect path could not obtain the real
-//! password.
+//! into user-visible data loss. The server-side profile vocabulary of the
+//! same aggregate lives in [`super::profile`].
 
 use async_trait::async_trait;
 use datazen_driver_api::ConnectionConfig;

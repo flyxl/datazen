@@ -9,7 +9,7 @@ use datazen_platform_api::{
     dto::{
         event::ConnectionEventEnvelope,
         idempotency::IdempotentOperation,
-        profile::{ProfileDraft, ProfilePatch},
+        profile::{ProfileDraft, ProfilePatch, ProfileView},
     },
     id::*,
     ports::profile::ProfileRepository,
@@ -274,14 +274,13 @@ pub async fn platform_create_profile(
 ) -> Result<serde_json::Value, ApiError> {
     let adapter = adapter(&state)?;
     let call = adapter.begin_call();
-    encode(
-        adapter
+    encode(ProfileView::from_record(
+        &adapter
             .profiles()?
             .create(call.context(), request.draft, &request.idempotency_key)
             .await
-            .map_err(port_error)?
-            .to_view(),
-    )
+            .map_err(port_error)?,
+    ))
 }
 #[tauri::command]
 pub async fn platform_update_profile(
@@ -291,17 +290,18 @@ pub async fn platform_update_profile(
     let adapter = adapter(&state)?;
     let call = adapter.begin_call();
     let connection_id = request.connection_id.clone();
-    let view = adapter
-        .profiles()?
-        .compare_and_set(
-            call.context(),
-            request.connection_id,
-            request.expected_config_revision,
-            request.patch,
-        )
-        .await
-        .map_err(port_error)?
-        .to_view();
+    let view = ProfileView::from_record(
+        &adapter
+            .profiles()?
+            .compare_and_set(
+                call.context(),
+                request.connection_id,
+                request.expected_config_revision,
+                request.patch,
+            )
+            .await
+            .map_err(port_error)?,
+    );
     // A profile edit bumps the config revision, which invalidates every session
     // on that connection; a grant pinned to the old revision must not survive it.
     let revoked = state
@@ -321,12 +321,13 @@ pub async fn platform_disable_profile(
     let adapter = adapter(&state)?;
     let call = adapter.begin_call();
     let connection_id = request.connection_id.clone();
-    let view = adapter
-        .profiles()?
-        .disable(call.context(), request.connection_id)
-        .await
-        .map_err(port_error)?
-        .to_view();
+    let view = ProfileView::from_record(
+        &adapter
+            .profiles()?
+            .disable(call.context(), request.connection_id)
+            .await
+            .map_err(port_error)?,
+    );
     let revoked = state
         .ai_grants
         .revoke_for_connection(connection_id.as_str())

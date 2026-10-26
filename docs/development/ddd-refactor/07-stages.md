@@ -120,8 +120,27 @@ application：`ConnectionService`，吸收表单回显的密钥合并、脱敏�
 不再持有 connections 字段；连接命令、分组命令、导入/导出、schema diff 校验、
 AI 工具（egress 摘要 / db_tools / 连接上下文）与 MCP 的目录读取全部改为经
 `require_connection_service` 消费模块服务（无 scope 的旧消费者改为显式作用域）。
-剩余：Profile/revision 词汇统一（`ProfileRepository` 服务端词汇 vs
-`ConnectionConfig` 表单词汇的归并）与 DesktopRepository 连接存储的更深抽取。
+
+**第二切片已完成（2026-10-26）——Profile/revision 词汇统一**：
+- `modules::shared` 建立（常驻，不设 feature 门）：全部 ID newtype、`RequestContext`
+  /`OwnerRef`/`DelegationRef`、`PortError`/`ApiError` 错误信封唯一定义于此
+  （platform-api 的 `id`/`context`/`error` 改为再导出垫片，约 210 个消费者路径不变）。
+- `modules::connection::domain::profile`：`ProfileScope`/`ProfileRecord`/
+  `ProfileDraft`/`ProfilePatch`/`ProfileRepository`/`ProfileReader` 归位
+  （读写端口同文件、按读写切分不合并；源码自检测试随迁）。
+- `modules::connection::domain::target`：`NamespaceTarget`/`TargetNamespaceLayer`
+  归位；驱动能力元数据（shape/case/requirements）与 `ExecutionTarget` 留在
+  platform-api，随 D3/D4 迁移。
+- `modules::connection::application::profile_view`：`ProfileView` 与投影
+  `ProfileView::from_record`（原 `ProfileRecord::to_view`，响应形状归 application，
+  domain 不反向依赖）；`is_sensitive_option` 脱敏黑名单随迁。
+- platform-api `ports/profile`/`ports/profile_reader`/`dto/profile`/`target` 改为
+  再导出垫片；PORT_TRAITS 清单口径扩展为「`pub trait` 声明或 modules 再导出」
+  两种事实源（inventory 解析器新增再导出识别）。
+- 桌面 `DesktopProfiles` 与 `DesktopConnectionStore` 已共用同一
+  `DesktopRepository` 存储事实（platform_profile 读写路径），无第二份存储。
+- 4 个 `to_view()` 调用点（runtime operations、桌面 session_commands ×3）改为
+  `ProfileView::from_record(&…)`。
 
 ## D3：Execution 拆分与资源机制归位
 
