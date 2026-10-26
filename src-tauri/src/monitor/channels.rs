@@ -1,4 +1,4 @@
-//! Alert notification channels: desktop, webhook, email stub.
+//! Alert notification channels: app (host notification surface), webhook, email stub.
 
 use std::time::Duration;
 
@@ -85,7 +85,7 @@ async fn dispatch_channels(
 ) {
     for channel in channels {
         match channel {
-            AlertChannel::Desktop => {
+            AlertChannel::App => {
                 if let Some(app) = app {
                     notify_desktop(app, title, body).await;
                 }

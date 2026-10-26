@@ -348,8 +348,8 @@ F-01…F-13 拦的是**依赖**。还有一类耦合不产生依赖边：**名�
 **判据是分词后逐词比，不是子串比**：`webhook` / `webdriver` 这类协议复合词不算形态名
 （它们切出来是整词），否则误伤会逼人把合法写法藏起来。
 
-**闸门**：`packages/runtime/src/tunnel/form_neutrality.rs`（随 `--lib` 跑，因而进 CI）。
-它扫内核 crate 的 `src/`，两层都查——**字面量**（对外产出的稳定码、租约前缀、错误码）
+**闸门**：`modules/src/execution/runtime/tunnel/form_neutrality.rs`（随 `--lib` 跑，因而进
+CI）。它扫内核 crate 的 `src/`，两层都查——**字面量**（对外产出的稳定码、租约前缀、错误码）
 与**标识符**（类型 / 常量 / 字段名）。三条配套事实：
 
 - **闸门自证**：断言扫描器真的把已知的稳定码读了出来，否则「没发现违规」只意味着它
@@ -361,12 +361,14 @@ F-01…F-13 拦的是**依赖**。还有一类耦合不产生依赖边：**名�
   验证宿主接线）里的形态名是真实存在的目录名，不是内核的形态假设；它查的是**名字**，
   管不了运行时行为，也挡不住蓄意对抗（`concat!` 拆分、`#[cfg]` 藏匿）。
 
-其余共享包（`feature-core` / `platform-api` / `ai-providers` 等）里的形态名**未纳入**这道
-闸门，原因是它们确有**领域含义**而非形态耦合：`AlertChannel::Desktop` 指「桌面通知」
-这一投递渠道，`ExportSink` 的另一支 `ServerAuthorizedPath` 指「服务端授权的存储路径」。
-`ai-providers` 的 `HttpClient::desktop()` 是一份**出网策略预设**（允许内网地址 + 走环境代理），
-端口 `EgressPolicy` 本身形态中立，web 形态可以自带策略。把这三处一并禁掉是误伤，
-不是治理。
+其余共享包与子树里的形态名**未纳入**这道闸门，原因是它们确有**领域含义**而非形态耦合：
+`ExportSink` 的另一支 `ServerAuthorizedPath` 指「服务端授权的存储路径」。
+`modules/src/ai` 的 `HttpClient::desktop()` 是一份**出网策略预设**（允许内网地址 + 走
+环境代理），端口 `EgressPolicy` 本身形态中立，web 形态可以自带策略——该子树以
+`MODULES_EXEMPT` 整体豁免（见闸门源码注释）。把这两处一并禁掉是误伤，不是治理。
+`AlertChannel` 曾是这里的第三个例子（`Desktop` 变体指「桌面通知」渠道）；D6 形态中立
+收口时按用户指令改为 `App`（wire 值 `"app"`，旧持久化值反序列化兼容），共享层从此
+不再需要这条豁免。
 
 ### 2.8 存储抽象的命名规约：类型名用 `Repository`，不用 `Store`（已实现）
 

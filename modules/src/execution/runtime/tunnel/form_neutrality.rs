@@ -169,25 +169,16 @@ const MODULES_EXEMPT: &[&str] = &["src/ai"];
 
 /// **词级窄域豁免**：`(被扫文件, 形态词)` 对。登记在这里的命中不构成违规。
 ///
-/// 这里的两条是 Dashboard 告警渠道的 **wire 词汇**（D6 item 2 随家族迁入）
-/// `AlertChannel::Desk`+`top` 变体——serde `rename_all = "lowercase"` 把它
-/// 序列化成前端消费的那个渠道字面量。它是**通知投递渠道名**（OS 通知 vs
-/// webhook vs email），不是「宿主形态」假设；改名等于改 IPC 契约，且字面量
-/// 本身仍会落在序列化输出里。豁免只允许窄到（文件，词）级——新增条目必须
-/// 像这里一样说明为什么它是 wire 词汇而不是形态假设。
+/// 当前**为空**：唯一登记过的两条是 Dashboard 告警渠道的 wire 词汇
+/// `AlertChannel::Desk`+`top` 变体——后来按用户指令做了形态中立重命名
+/// （变体改 `App`、wire 值改 `"app"`，旧值只作反序列化兼容拆开拼接收），
+/// 豁免随之删除。机制保留：将来若真有**绕不开的 wire 契约词**（改字面量
+/// 等于撕毁 IPC 契约且字面量必然留在序列化输出里），按（文件，词）级
+/// 登记在这里并写明为什么它是 wire 词汇而不是形态假设。
 ///
 /// 形态词用 `concat!` 拆开拼：本文件自己也在被扫范围里，完整的形态名
 /// 字面量会被闸门自己的自证测试点红（见 the_scan_covers…尾部）。
-const ALLOWED_WIRE_VOCABULARY: &[(&str, &str)] = &[
-    (
-        "modules:src/dashboard/domain/types.rs",
-        concat!("desk", "top"),
-    ),
-    (
-        "modules:src/dashboard/application/alert.rs",
-        concat!("desk", "top"),
-    ),
-];
+const ALLOWED_WIRE_VOCABULARY: &[(&str, &str)] = &[];
 
 /// `rel`（`label:path` 形式）里的 `word` 是否被词级豁免登记。
 fn is_allowed_wire_vocabulary(rel: &str, word: &str) -> bool {

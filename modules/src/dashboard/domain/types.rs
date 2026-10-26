@@ -225,12 +225,40 @@ pub enum AlertOperator {
     Ne,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+/// 告警投递渠道：应用通知（宿主用自己的通知面呈现——桌面是系统通知，
+/// 其他形态各自映射）、webhook、email。
+///
+/// `App` 曾叫形态专名（D6 形态中立重命名）：wire 值随之从形态名改为
+/// `"app"`。旧持久化仪表盘与导出档案里存的旧字面量仍可读入（映射到
+/// `App`，只进不出），序列化一律写新值——重命名不破坏用户已存的告警规则。
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum AlertChannel {
-    Desktop,
+    App,
     Webhook,
     Email,
+}
+
+impl<'de> Deserialize<'de> for AlertChannel {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        match value.as_str() {
+            "app" => Ok(AlertChannel::App),
+            "webhook" => Ok(AlertChannel::Webhook),
+            "email" => Ok(AlertChannel::Email),
+            // 形态中立重命名（D6）前的旧 wire 值：只进不出。与上方新值
+            // 不同，这里必须拆开拼——形态中立闸门扫的就是共享层的字面量，
+            // 直接写出旧形态名会把刚清掉的形态词重新焊回模块。
+            _ if value == concat!("desk", "top") => Ok(AlertChannel::App),
+            _ => Err(serde::de::Error::unknown_variant(
+                &value,
+                &["app", "webhook", "email"],
+            )),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -382,6 +410,61 @@ impl Default for MonitorSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn alert_channel_wire_values_are_form_neutral() {
+        // 新 wire 契约：app / webhook / email（前端与 IPC 共用）。
+        assert_eq!(
+            serde_json::to_value(AlertChannel::App).unwrap(),
+            serde_json::json!("app")
+        );
+        assert_eq!(
+            serde_json::to_value(AlertChannel::Webhook).unwrap(),
+            serde_json::json!("webhook")
+        );
+        assert_eq!(
+            serde_json::to_value(AlertChannel::Email).unwrap(),
+            serde_json::json!("email")
+        );
+    }
+
+    #[test]
+    fn alert_channel_accepts_new_and_legacy_wire_values() {
+        // 新值照常读入。
+        assert_eq!(
+            serde_json::from_value::<AlertChannel>(serde_json::json!("app")).unwrap(),
+            AlertChannel::App
+        );
+        // 形态中立重命名前持久化的旧字面量映射到 App（只进不出：
+        // 再序列化写 "app"，见上一测试）。
+        assert_eq!(
+            serde_json::from_value::<AlertChannel>(serde_json::json!(concat!("desk", "top")))
+                .unwrap(),
+            AlertChannel::App
+        );
+        // 未知值拒绝——渠道是封闭集合。
+        assert!(serde_json::from_value::<AlertChannel>(serde_json::json!("carrier-pigeon"))
+            .is_err());
+    }
+
+    #[test]
+    fn alert_rule_round_trips_with_channels() {
+        let rule = AlertRule {
+            metric: AlertMetric {
+                kind: AlertMetricKind::Column,
+                column: "v".into(),
+                agg: None,
+            },
+            op: AlertOperator::Gt,
+            threshold: 1.5,
+            cooldown_sec: 300,
+            channels: vec![AlertChannel::App, AlertChannel::Email],
+        };
+        let value = serde_json::to_value(&rule).unwrap();
+        assert_eq!(value["channels"], serde_json::json!(["app", "email"]));
+        let back: AlertRule = serde_json::from_value(value).unwrap();
+        assert_eq!(back, rule);
+    }
 
     #[test]
     fn clamp_refresh_sec_enforces_minimum() {

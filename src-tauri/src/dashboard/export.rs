@@ -210,7 +210,7 @@ mod tests {
                     op: AlertOperator::Gt,
                     threshold: 1.0,
                     cooldown_sec: 300,
-                    channels: vec![AlertChannel::Desktop, AlertChannel::Webhook],
+                    channels: vec![AlertChannel::App, AlertChannel::Webhook],
                 }),
                 enabled: true,
             }],

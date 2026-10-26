@@ -136,7 +136,7 @@ mod tests {
             op: AlertOperator::Gt,
             threshold: 0.0,
             cooldown_sec: 300,
-            channels: vec![AlertChannel::Desktop],
+            channels: vec![AlertChannel::App],
         }
     }
 
