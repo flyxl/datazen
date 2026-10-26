@@ -443,8 +443,9 @@ mod tests {
             AlertChannel::App
         );
         // 未知值拒绝——渠道是封闭集合。
-        assert!(serde_json::from_value::<AlertChannel>(serde_json::json!("carrier-pigeon"))
-            .is_err());
+        assert!(
+            serde_json::from_value::<AlertChannel>(serde_json::json!("carrier-pigeon")).is_err()
+        );
     }
 
     #[test]
