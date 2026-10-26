@@ -158,7 +158,7 @@ export const RULES = Object.freeze([
   },
   {
     id: 'F-02',
-    subjects: ['application', 'runtime', 'kernel', 'platform-api'],
+    subjects: ['application', 'runtime', 'platform-api'],
     subjectsFromSpec: true,
     forbiddenLayers: ['host'],
     forbiddenCrates: ['tauri'],
@@ -169,7 +169,7 @@ export const RULES = Object.freeze([
   },
   {
     id: 'F-03',
-    subjects: ['application', 'runtime', 'kernel'],
+    subjects: ['application', 'runtime'],
     subjectsFromSpec: true,
     forbiddenLayers: [],
     forbiddenCrates: 'spec',
@@ -191,7 +191,7 @@ export const RULES = Object.freeze([
   },
   {
     id: 'F-05',
-    subjects: ['application', 'runtime', 'kernel', 'platform-api'],
+    subjects: ['application', 'runtime', 'platform-api'],
     subjectsFromSpec: true,
     forbiddenLayers: [],
     forbiddenCrates: 'spec',
@@ -254,7 +254,6 @@ export const RULES = Object.freeze([
     allowedLayers: [
       'feature-core',
       'runtime',
-      'kernel',
       'application',
       'platform-api',
       'infra',
@@ -276,7 +275,7 @@ export const RULES = Object.freeze([
     id: 'F-14',
     subjects: ['modules'],
     subjectsFromSpec: true,
-    forbiddenLayers: ['host', 'runtime', 'kernel', 'feature-core', 'platform-api'],
+    forbiddenLayers: ['host', 'runtime', 'feature-core', 'platform-api'],
     // D1.5（2026-10-26）：AI Provider 适配（含 reqwest 出站 HTTP）随 ai feature
     // 并入 modules::ai::providers，reqwest 不再对 modules 全 crate 禁用；
     // Web 框架与 Tauri 仍禁止。

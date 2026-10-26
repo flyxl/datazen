@@ -9,8 +9,8 @@ mod tests {
         RestoreApplyJob, RestoreEvidence, RestoreGateway, RestoreInput, RestorePlan,
         RestoreRejection, UnsupportedRestoreGateway, RESTORE_APPLY_KIND,
     };
-    use datazen_kernel::budget::{ledger::BudgetLedger, quotas::BudgetConfig};
-    use datazen_kernel::job::{
+    use datazen_modules::execution::runtime::budget::{ledger::BudgetLedger, quotas::BudgetConfig};
+    use datazen_modules::jobs::{
         project_frozen_plan, CancelToken, InMemoryJobRepository, JobClock, JobHandler,
         RecoveryVerdict, StageSpec, StageTerminal, SystemJobClock,
     };
@@ -361,7 +361,7 @@ mod tests {
     }
     #[tokio::test]
     async fn durable_restore_job_records_unsupported_under_target_writer_budget() {
-        use datazen_kernel::job::{EndpointRef, EndpointRole, JobHost};
+        use datazen_modules::jobs::{EndpointRef, EndpointRole, JobHost};
         let (_dir, store, plan) = input().await;
         let clock = Arc::new(SystemJobClock);
         let repository = Arc::new(InMemoryJobRepository::new(clock.clone(), 60));

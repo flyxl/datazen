@@ -20,7 +20,7 @@ use datazen_feature_core::data_browsing::{
     build_row_change_plan, plan_changes, preview_changes, validate_connection_facts,
     ConnectionFacts, PendingRowChange, RowChangeTableContext, TableColumnSource,
 };
-use datazen_kernel::schema_cache::CachedColumns;
+use datazen_modules::schema::CachedColumns;
 use datazen_modules::table_editing::TableEditingError as FeatureError;
 use std::collections::BTreeMap;
 use std::time::Instant;

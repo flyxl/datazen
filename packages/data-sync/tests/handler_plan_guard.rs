@@ -17,7 +17,7 @@ use std::sync::Arc;
 use datazen_data_sync::job::body::{apply_payload, prepare_payload, APPLY_KIND, PREPARE_KIND};
 use datazen_data_sync::job::{ApplySpec, DataSyncHandler, DataSyncHost, PrepareSpec};
 use datazen_data_sync::model::{SyncOptions, TableMapping};
-use datazen_kernel::job::{
+use datazen_modules::jobs::{
     project_frozen_plan, CancelToken, FrozenPlan, JobError, JobHandler, RecoveryVerdict, StageSpec,
 };
 use datazen_platform_api::dto::job::Checkpoint;

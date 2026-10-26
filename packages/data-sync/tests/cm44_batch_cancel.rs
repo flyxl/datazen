@@ -13,7 +13,7 @@ use std::sync::Arc;
 use datazen_data_sync::job::{ApplySpec, DataSyncHandler, DataSyncHost, PrepareSpec};
 use datazen_data_sync::model::{Row, SyncOptions, TableMapping};
 use datazen_driver_api::Value;
-use datazen_kernel::job::{CancelToken, JobHandler, StageOutcome, StageSpec, StageTerminal};
+use datazen_modules::jobs::{CancelToken, JobHandler, StageOutcome, StageSpec, StageTerminal};
 use datazen_platform_api::dto::execution::{EffectOutcome, ExecutionErrorCode};
 use datazen_platform_api::id::StageId;
 

@@ -17,7 +17,6 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 # 集成测试（cm43…cm46 / filter_operator_refusal / handler_plan_guard）直接
 # use 的 crate——原来由本 crate 的 [dependencies] 提供，垫片化后改挂
 # dev-deps（cargo 对 integration test 同时暴露两类依赖）。
-datazen-kernel = { workspace = true }
 datazen-driver-api = { workspace = true }
 datazen-platform-api = { workspace = true }
 async-trait = "0.1"

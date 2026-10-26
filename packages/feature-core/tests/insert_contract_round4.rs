@@ -19,7 +19,7 @@ use datazen_feature_core::data_browsing::{
     build_row_change_plan, canonicalize_changes, validate_connection_facts, ConnectionFacts,
     PendingRowChange, RowChangeTableContext,
 };
-use datazen_kernel::schema_cache::CachedColumns;
+use datazen_modules::schema::CachedColumns;
 use std::collections::BTreeMap;
 use std::time::Instant;
 

@@ -7,7 +7,6 @@ members = [
     "packages/infra",
     "packages/application",
     "packages/runtime",
-    "packages/kernel",
     "packages/feature-core",
     "packages/schema-diff",
     "packages/data-sync",
@@ -24,7 +23,6 @@ exclude = [
 datazen-driver-api = { path = "packages/driver-api" }
 datazen-platform-api = { path = "packages/platform-api" }
 datazen-application = { path = "packages/application" }
-datazen-kernel = { path = "packages/kernel" }
 datazen-feature-core = { path = "packages/feature-core" }
 datazen-schema-diff = { path = "packages/schema-diff" }
 datazen-data-sync = { path = "packages/data-sync" }

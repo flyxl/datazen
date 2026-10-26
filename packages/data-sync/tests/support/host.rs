@@ -18,7 +18,7 @@ use datazen_data_sync::model::{ChangeOperation, Endpoint, Row, RowChange, SyncOp
 use datazen_data_sync::sql::SqlStatement;
 use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver, TableSchema, Value};
-use datazen_kernel::job::CancelToken;
+use datazen_modules::jobs::CancelToken;
 
 use super::executor::{ExecHook, FakeExecutor, SharedRepository, StatementRows, TargetRepository};
 use super::page_source::FakePageSource;

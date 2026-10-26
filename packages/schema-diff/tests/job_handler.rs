@@ -12,8 +12,8 @@ use datazen_platform_api::id::{
 };
 use datazen_platform_api::ports::job::JobRepository;
 
-use datazen_kernel::budget::{BudgetConfig, BudgetLedger};
-use datazen_kernel::job::{
+use datazen_modules::execution::runtime::budget::{BudgetConfig, BudgetLedger};
+use datazen_modules::jobs::{
     CancelToken, EndpointRef, EndpointRole, HandlerRegistry, InMemoryJobRepository, JobHandler,
     JobRuntime, RecoveryVerdict, SharedClock, StageSpec, StageTerminal,
 };
@@ -262,7 +262,7 @@ async fn cm41_expired_plan_is_rejected_before_any_effect() {
         1,
         apply_request(),
     );
-    let plan = datazen_kernel::job::FrozenPlan {
+    let plan = datazen_modules::jobs::FrozenPlan {
         kind: "schemaDiffApply".into(),
         is_apply: true,
         consumed_plan_id: Some("plan-old".into()),
@@ -288,7 +288,7 @@ async fn cm41_selection_revision_mismatch_is_rejected() {
         2,
         apply_request(),
     );
-    let plan = datazen_kernel::job::FrozenPlan {
+    let plan = datazen_modules::jobs::FrozenPlan {
         kind: "schemaDiffApply".into(),
         is_apply: true,
         consumed_plan_id: Some("plan-1".into()),

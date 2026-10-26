@@ -8,8 +8,8 @@
 #[cfg(test)]
 mod tests {
     use datazen_feature_core::file_job::{FileArtifactJob, FileJobOperation, FileJobOutput};
-    use datazen_kernel::job::{CancelToken, JobHandler, StageSpec, StageTerminal};
     use datazen_modules::export::ExportError as FeatureError;
+    use datazen_modules::jobs::{CancelToken, JobHandler, StageSpec, StageTerminal};
     use datazen_platform_api::id::StageId;
     use datazen_platform_api::{
         context::RequestContext,

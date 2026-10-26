@@ -1768,7 +1768,6 @@ dependencies = [
  "datazen-driver-mysql",
  "datazen-driver-postgres",
  "datazen-driver-sqlite",
- "datazen-kernel",
  "datazen-modules",
  "datazen-platform-api",
  "serde",
@@ -2090,7 +2089,6 @@ dependencies = [
  "chrono",
  "datazen-driver-api",
  "datazen-infra",
- "datazen-kernel",
  "datazen-modules",
  "datazen-platform-api",
  "datazen-runtime",
@@ -2124,26 +2122,6 @@ version = "0.1.0"
 dependencies = [
  "regex",
  "url",
-]
-
-[[package]]
-name = "datazen-kernel"
-version = "0.0.1"
-dependencies = [
- "async-trait",
- "chrono",
- "datazen-driver-api",
- "datazen-kernel",
- "datazen-modules",
- "datazen-platform-api",
- "futures-util",
- "indexmap 2.14.0",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -2209,7 +2187,6 @@ dependencies = [
  "async-trait",
  "chrono",
  "datazen-driver-api",
- "datazen-kernel",
  "datazen-modules",
  "datazen-platform-api",
  "datazen-runtime",
@@ -2233,7 +2210,6 @@ version = "0.0.1"
 dependencies = [
  "async-trait",
  "datazen-driver-api",
- "datazen-kernel",
  "datazen-modules",
  "datazen-platform-api",
  "serde_json",

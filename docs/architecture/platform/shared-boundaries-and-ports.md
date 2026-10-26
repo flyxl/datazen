@@ -30,7 +30,7 @@
 | `packages/application` | **已实现**，`datazen-application`，Cargo 成员 |
 | `packages/backend-client` | **已实现**，TS 包，**不是** Cargo 成员，接线三处已补齐（§2.5） |
 | `packages/runtime` | 已存在于基线，但**其 ID / DTO 类型尚未迁移**到 `platform-api`（见 §2.6「待办：runtime 去重」） |
-| `packages/kernel` | **已实现**，`datazen-kernel`，Cargo 成员：Job 运行时、预算、SQL 安全门、Schema 缓存、驱动登记表从 `runtime` 分出（领域包用它而不是「连接运行时」整包） |
+| `packages/kernel` | ~~已退役（D8，2026-10-26）~~：Job、预算、SQL 安全门、Schema 缓存、驱动登记表已归 `modules`；旧 kernel crate 与 workspace 成员已删除 |
 | `server/` | **不存在**，目标设计 |
 
 `datazen-application` 的 normal + build 依赖闭包为 32 个 crate，`datazen-platform-api` 为 31 个；两者都不含 `tauri*`、不含宿主 crate `datazen`、不含 `axum`/`actix-web`/`warp`/`tonic`（`cargo metadata --format-version 1` 解析 `resolve.nodes` 闭包，见 F-02 / F-03 / F-04）。
@@ -43,7 +43,7 @@
 | --- | --- | --- | --- |
 | `packages/platform-api` | 无平台依赖的最底层契约：ID newtype、`RequestContext`、全部 port trait、port 错误、跨边界错误类型与用例端口签名 | ID 类型、身份上下文、端口签名、`PortError` / `ApiError` / `ApiErrorCode` / `RetryDisposition`、请求 DTO（`dto/requests.rs`）、用例端口 `ConnectionUseCases`（`use_cases/`）、归属校验纯函数 `check_owner`（`policy.rs`） | 任何用例逻辑、任何 I/O；实现只允许**形态中立、无副作用、无传输的进程内原语**（现状两处：`ports/clock.rs` 的 `SystemClock` / `FixedClock`、`ports/budget/pool_ledger.rs` 的进程内参考账本，见 §4.9） |
 | `packages/application` | 用例编排：目标解析、授权顺序、DTO 校验、错误归一、前端桥注入端口 | 目标解析（`TargetResolver`）、身份判定顺序（`IdentityPolicy`，其中 `check_owner` 委托 platform-api）、用例服务与 `ApplicationServices`、前端桥窄端口（`FrontendBridge`）与注入缝隙；`ApiError` / 请求 DTO / `ConnectionUseCases` 只做**再导出**（定义在 platform-api） | 会话状态、物理资源、驱动类型分支、任何具体传输实现 |
-| `packages/kernel` | 与连接无关的**共享机制**：Job 运行时、多端预算、SQL 安全门、Schema 元数据缓存、驱动登记表、稳定指纹 | `JobHost` / `JobRepository` / 阶段调度与 fencing、`BudgetLedger`、`sql_guard`、`SchemaCache`、`DriverRegistry`、`fnv1a64_hex` | 会话状态、物理连接、租约、`Execution` 登记（这些仍属 `runtime`）；任何 I/O 与宿主词汇 |
+| `modules`（原 `packages/kernel`） | 与连接无关的**共享机制**：Job 运行时、多端预算、SQL 安全门、Schema 元数据缓存、驱动登记表、稳定指纹 | `modules::jobs`、`execution::runtime::budget`、`execution::domain::sql_guard`、`schema`、`execution::runtime::driver_registry`、`shared::hash` | 会话状态、物理连接、租约、`Execution` 登记（这些属 `modules::execution`）；任何 I/O 与宿主词汇 |
 | `packages/runtime` | 连接运行时：session actor、资源与 lease、预算记账、execution 登记、事件 | `DbSession`、`ResourceLease`、`Execution`、Job 阶段 runtime 状态 | 权限判定来源、持久化介质、网络出口 |
 | `packages/backend-client` | TypeScript 侧传输无关契约：DTO 镜像、client 接口、transport 接口 | `Id`/`Counter`/`Timestamp` 镜像、`BackendClient` 接口、`PlatformServices` 接口 | Tauri/HTTP/fetch 任何具体实现 |
 
@@ -170,10 +170,10 @@ flowchart TD
 | 编号 | 断言 | 违背后果 |
 | --- | --- | --- |
 | F-01 | `packages/drivers/*` 的 crate 依赖闭包不含 `datazen`、`datazen-runtime`、`datazen-application`、`datazen-platform-api`、`datazen-modules`（AI 契约自 D1.5 起住在 modules），且不含任何 `tauri*` crate；闭包侧与声明边侧任一出现即违规，**已武装为阻断门禁** | 驱动反向引用宿主或宿主框架，Web 端与宿主无关的构建被拖垮 |
-| F-02 | `packages/application`、`packages/runtime`、`packages/kernel`、`packages/platform-api` 的 normal + build 依赖闭包不含任何 `tauri*` crate，且不含 `datazen` 宿主 crate | 内核无法在没有 Tauri 的进程（测试、server worker）中编译 |
-| F-03 | `packages/application`、`packages/runtime`、`packages/kernel` 不含 `axum`、`actix-web`、`warp`、`tonic` 等 HTTP/传输框架 | 传输策略渗入业务内核 |
+| F-02 | `packages/application`、`packages/runtime`、`packages/platform-api` 的 normal + build 依赖闭包不含任何 `tauri*` crate，且不含 `datazen` 宿主 crate | 内核无法在没有 Tauri 的进程（测试、server worker）中编译 |
+| F-03 | `packages/application`、`packages/runtime` 不含 `axum`、`actix-web`、`warp`、`tonic` 等 HTTP/传输框架 | 传输策略渗入业务内核 |
 | F-04 | `packages/platform-api` 不依赖 `application` / `runtime` / 领域包 / `src-tauri`；D1 期间允许依赖功能模块的兼容导出层 `modules`，以及垫底的无业务工具层 `infra`（workspace 统一 feature 解析下经 `modules` 的 ai feature 传递出现） | ports 与用例循环依赖 |
-| F-05 | `packages/application`、`packages/runtime`、`packages/kernel`、`packages/platform-api` 不出现 `react`、`@tauri-apps/api` 等前端标识（Rust 侧通过 crate 名与 `build.rs` 依赖检查，前端侧由 §7 的字符串扫描补齐） | UI 运行时进入后端依赖图 |
+| F-05 | `packages/application`、`packages/runtime`、`packages/platform-api` 不出现 `react`、`@tauri-apps/api` 等前端标识（Rust 侧通过 crate 名与 `build.rs` 依赖检查，前端侧由 §7 的字符串扫描补齐） | UI 运行时进入后端依赖图 |
 | F-06 | `server` 的 normal + build 依赖闭包不含 `tauri*` 与 `datazen` 宿主 crate | server 无法独立构建 |
 | F-07 | `packages/backend-client` 不含 `@tauri-apps/` 前缀、`fetch(`、`XMLHttpRequest` 字面量 | 传输无关契约被具体传输污染 |
 | F-08 | `packages/migration-common` 的 normal + build 工作区依赖只允许自身与 driver-api；不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react` | 公共算法反向依赖领域引擎、runtime 或平台传输，重新形成耦合 |

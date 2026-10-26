@@ -9,9 +9,12 @@
 //! 夹具（`connection::testing`）由 `#[cfg(any(test, feature = "test-harness"))]` 门控，
 //! 生产构建默认不含夹具代码；`src-tauri` 的 `datazen` crate 也不依赖它。
 
-// 机制内核已归 `datazen-kernel`（DDD 计划 P2）：域包要用这些机制，而它们与连接
-// 资源运行时无关。这里的 `pub use` 保持 `datazen_runtime::job::…` 等既有路径不变。
-pub use datazen_kernel::{budget, driver_registry, job, schema_cache, sql_guard};
+// 机制内核已归 `datazen-modules`（DDD 计划 P2/D8）：这里的 `pub use` 保持
+// `datazen_runtime::job::…` 等过渡路径，直到 runtime 本身退役。
+pub use datazen_modules::execution::domain::sql_guard;
+pub use datazen_modules::execution::runtime::{budget, driver_registry};
+pub use datazen_modules::jobs as job;
+pub use datazen_modules::schema as schema_cache;
 
 // D3（2026-10-26）起，连接资源运行时机制的唯一定义在
 // `datazen-modules::execution::runtime`。本 crate 的机制目录整体迁出，

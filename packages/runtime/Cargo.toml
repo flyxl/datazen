@@ -15,7 +15,7 @@ exclude = ["src/connection/testing/**"]
 # fake-runtime-fixtures.md §12: 夹具跨 crate 暴露时沿用 src-tauri 已有的 feature 名，
 # 避免「同一个概念两个名字」。生产构建不含此 feature，夹具模块即被 cfg 剔除。
 default = []
-test-harness = ["datazen-kernel/test-harness", "datazen-modules/test-harness"]
+test-harness = ["datazen-modules/test-harness"]
 
 [dependencies]
 datazen-driver-api = { workspace = true }
@@ -24,10 +24,9 @@ datazen-driver-api = { workspace = true }
 datazen-platform-api = { workspace = true }
 # 机制内核（job / budget / sql_guard / schema_cache / driver_registry）：
 # 这些机制与连接资源运行时无关，领域包也要用，所以单独成包；本包通过 `pub use` 再导出。
-datazen-kernel = { workspace = true }
 # D3：连接资源运行时机制已迁入 modules（execution::runtime）；本 crate 再导出
 # 保持既有路径（§5.5 单向委托），application/native_tool 仍在本 crate。
-datazen-modules = { workspace = true, features = ["execution"] }
+datazen-modules = { workspace = true, features = ["execution", "jobs", "schema"] }
 chrono = { version = "0.4", default-features = false }
 indexmap = "2"
 serde = { version = "1", features = ["derive"] }
