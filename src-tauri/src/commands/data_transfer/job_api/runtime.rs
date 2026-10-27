@@ -6,19 +6,19 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use datazen_platform_api::context::OwnerRef;
-use datazen_platform_api::dto::execution::EffectOutcome;
-use datazen_platform_api::dto::job::{
+use datazen_modules::execution::EffectOutcome;
+use datazen_modules::jobs::domain::job::{
     CommitBoundary, JobDefinition, JobDetails, JobProgress, JobRecoveryResult, JobRecoveryVerdict,
     JobState,
 };
-use datazen_platform_api::id::{
+use datazen_modules::jobs::{EndpointRef, EndpointRole, JobHandler, JobHost, RecoveryVerdict};
+use datazen_modules::shared::context::OwnerRef;
+use datazen_modules::shared::id::{
     ArtifactId, ClientInstanceId, IdempotencyKey, JobId, OrganizationId, PrincipalId, RequestId,
     Timestamp, WorkerId,
 };
-use datazen_platform_api::ports::scope::OrganizationScope;
-use datazen_platform_api::{PortError, RequestContext};
-use datazen_runtime::job::{EndpointRef, EndpointRole, JobHandler, JobHost, RecoveryVerdict};
+use datazen_modules::shared::scope::OrganizationScope;
+use datazen_modules::{PortError, RequestContext};
 
 use crate::commands::error::CommandError;
 use crate::commands::AppState;

@@ -1,6 +1,6 @@
 use super::super::AppState;
 use datazen_driver_api::ConnectionHandle;
-pub(crate) use datazen_feature_core::services::command_policy::{
+pub(crate) use datazen_modules::mcp::application::command_policy::{
     inject_sql_target_fields, nonempty, query_rows_affected, sql_from_input,
 };
 
@@ -53,7 +53,7 @@ pub(crate) async fn record_sql_command_outcome(
         return;
     };
     let Some(connection_id) = runtime.connection_id_for_session(
-        &datazen_runtime::connection::DbSessionId::new(db_session_id),
+        &datazen_modules::execution::runtime::connection::DbSessionId::new(db_session_id),
     ) else {
         tracing::warn!(db_session_id, "Skipping history: no owning connectionId");
         return;

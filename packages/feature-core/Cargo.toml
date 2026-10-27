@@ -20,7 +20,6 @@ hmac = "0.12"
 pbkdf2 = "0.12"
 sha1 = "0.10"
 datazen-driver-api = { workspace = true }
-datazen-platform-api = { workspace = true }
 # 设置词汇（ExecutionSettings 等）自 D1 起由 datazen-modules::settings 拥有。
 datazen-modules = { workspace = true, features = ["settings", "ai", "connection", "named_views", "schema", "schema_diff", "table-browsing", "table-editing", "execution", "workflow", "dashboard", "monitor", "mcp", "export", "backup", "wapps"] }
 datazen-infra = { path = "../infra" }
@@ -45,5 +44,4 @@ flate2 = "1"
 # 只有测试可以点名 Runtime 门面：`schema_context` 的行为用例需要一个真实
 # `RuntimeConnectionUseCases`（fakes 的端口实现无法覆盖它的分页/可见性语义）。
 # 生产依赖里已无它——R1 要求领域包不得依赖连接运行时。
-datazen-runtime = { path = "../runtime" }
 tempfile = "3"

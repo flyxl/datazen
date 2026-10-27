@@ -9,7 +9,7 @@ pub(crate) async fn get_connection_commands_impl(
     let resolved =
         super::resolve::resolve_command_driver(state, Some(&db_session_id), None).await?;
     Ok(
-        datazen_feature_core::services::command_policy::discovery_definitions(
+        datazen_modules::mcp::application::command_policy::discovery_definitions(
             resolved.driver.as_ref(),
         ),
     )
@@ -24,5 +24,5 @@ pub(crate) async fn get_driver_type_commands_impl(
         .get(&driver_type)
         .await
         .ok_or_else(|| CommandError::NotFound(format!("Driver not found: {driver_type}")))?;
-    Ok(datazen_feature_core::services::command_policy::discovery_definitions(driver.as_ref()))
+    Ok(datazen_modules::mcp::application::command_policy::discovery_definitions(driver.as_ref()))
 }

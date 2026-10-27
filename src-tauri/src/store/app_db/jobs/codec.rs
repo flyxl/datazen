@@ -1,12 +1,12 @@
-use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::dto::job::{
+use datazen_modules::jobs::domain::job::{
     JobDefinition, JobProgress, JobRecord, JobState, StageRecord,
 };
-use datazen_platform_api::error::PortError;
-use datazen_platform_api::id::{
+use datazen_modules::shared::context::RequestContext;
+use datazen_modules::shared::error::PortError;
+use datazen_modules::shared::id::{
     ArtifactId, ExecutionId, JobId, JobStateVersion, StageId, Timestamp, WorkerId,
 };
-use datazen_platform_api::OwnerRef;
+use datazen_modules::OwnerRef;
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -26,7 +26,7 @@ pub(super) fn decode<T: DeserializeOwned>(value: &str) -> Result<T, PortError> {
 }
 
 pub(super) fn durable_plan(kind: &str, payload: &Value) -> Result<Value, PortError> {
-    datazen_runtime::job::project_frozen_plan(kind, payload)
+    datazen_modules::jobs::project_frozen_plan(kind, payload)
         .map_err(|_| PortError::BackendUnavailable("job plan is invalid".into()))?;
     if kind == datazen_feature_core::restore_job::RESTORE_APPLY_KIND {
         let projected = super::restore_projection::project(payload)?;
@@ -158,7 +158,7 @@ fn validate_plan_value(kind: &str, key: &str, value: &Value) -> Result<(), PortE
 
 fn validate_native_selection(value: &Value) -> bool {
     let Ok(selection) = serde_json::from_value::<
-        datazen_platform_api::ports::native_tool::NativeToolSelection,
+        datazen_modules::jobs::domain::native_tool::NativeToolSelection,
     >(value.clone()) else {
         return false;
     };
@@ -606,7 +606,7 @@ fn build_record(
     let progress: JobProgress = decode(&raw.progress)?;
     let stages = read_stages(conn, job_id)?;
     Ok(JobRecord {
-        view: datazen_platform_api::dto::job::JobView {
+        view: datazen_modules::jobs::domain::job::JobView {
             job_id: job_id.clone(),
             kind: raw.kind.clone(),
             state,
@@ -623,7 +623,7 @@ fn build_record(
         },
         definition: JobDefinition {
             job_id: job_id.clone(),
-            organization_id: datazen_platform_api::id::OrganizationId::new(raw.organization_id),
+            organization_id: datazen_modules::shared::id::OrganizationId::new(raw.organization_id),
             kind: raw.kind,
             owner,
             payload,

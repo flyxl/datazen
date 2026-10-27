@@ -29,7 +29,7 @@
 | 当前入口 | 已确认事实 | 目标改造 |
 | --- | --- | --- |
 | [AppState](../../../src-tauri/src/commands/mod.rs) | 聚合连接、事务、任务、AI、Workflow 等服务 | 组装留在 host，应用服务只接收必要依赖 |
-| [Runtime session registry](../../../packages/runtime/src/registry/registry.rs) + [desktop session backend](../../../src-tauri/src/platform/session_backend.rs) | 管理 dbSessionId、owner、生命周期与物理资源；过期会话明确失效，不以同一 ID 透明重连 | 统一预算、资源释放与会话状态；到期关闭前回滚事务，关闭不确定时保留隔离状态 |
+| [Runtime session registry](../../../modules/src/execution/runtime/registry/registry.rs) + [desktop session backend](../../../src-tauri/src/platform/session_backend.rs) | 管理 dbSessionId、owner、生命周期与物理资源；过期会话明确失效，不以同一 ID 透明重连 | 统一预算、资源释放与会话状态；到期关闭前回滚事务，关闭不确定时保留隔离状态 |
 | [Driver API](../../../packages/driver-api/src/traits.rs) | 提供 DatabaseDriver、Command、迁移等能力 | 增加固定执行资源契约、可选能力接口 |
 | [Factory](../../../packages/driver-api/src/factory.rs) | inventory 编译期注册 | 桌面与 server 使用同一注册入口 |
 | [前端 Command SDK](../../../packages/driver-sdk/src/ipc/driverCommands.ts) | 直接导入 Tauri invoke/Channel | 注入传输无关 BackendClient |
@@ -94,10 +94,9 @@ flowchart TD
 > 状态说明（2026-10-21 复核）：桌面形态的 Rust 共享包**已创建并加入 workspace**（`Cargo.toml` members 实测），本节的 crate 拆分不再是「尚未创建」目标；真正未落地的只剩 `server/` HTTP host 与 `packages/themes/` 的目标主题资源。下面按当前事实标注。
 
 ```text
-packages/application/        Rust 用例、DTO、错误、授权编排        【已落地，workspace member】
-packages/runtime/            Rust session、lease、资源调度、execution、job【已落地，workspace member】
-packages/platform-api/       Rust ports 与环境适配（SessionDirectory/BudgetCoordinator 接口）【已落地】
-packages/platform-infra/     形态中立基础设施原语（脱敏、路径安全）      【已落地】
+modules/        Rust domain/application、DTO、错误、授权编排、执行运行时与 Jobs【已落地，workspace member】
+modules/src/platform_api/       迁入的传输无关 ports 与契约命名空间【已落地】
+packages/infra/              形态中立基础设施原语（脱敏、路径安全）      【已落地】
 modules/src/schema_diff/        共享 Schema Diff 领域引擎                  【已落地】
 modules/src/data_sync/          共享 Data Sync 领域引擎                    【已落地】
 modules/src/data_transfer/      共享 Data Transfer 领域引擎                【已落地】

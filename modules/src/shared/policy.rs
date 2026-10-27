@@ -5,7 +5,7 @@
 //! 函数只吃契约类型（`RequestContext` / `OwnerRef` / `JobId`）并返回 `ApiError`，
 //! 无状态、无端口、无 I/O——因此是契约层可以承载的**不变量**，不是编排。
 //!
-//! `application::identity_policy::IdentityPolicy::check_owner` 保留同名入口并委托到本函数，
+//! `application::identity_shared::policy::IdentityPolicy::check_owner` 保留同名入口并委托到本函数，
 //! 宿主的既有调用点因此逐字不变。
 
 use crate::shared::context::{OwnerRef, RequestContext};
@@ -23,10 +23,10 @@ use crate::shared::id::JobId;
 ///
 /// 1. **生产调用点只有两处，且都只比 `clientInstanceId`**：
 ///    `src-tauri/src/mcp/tools.rs`（MCP 会话归属）与
-///    `packages/runtime/src/application/convert.rs`（请求转换，`authorized_job` 传 `None`
+///    `modules/src/execution/application/convert.rs`（请求转换，`authorized_job` 传 `None`
 ///    ⇒ `Job` / `WorkflowBlock` 变体一律拒绝）。「上层已经挡住了」的结论仍不成立。
-/// 2. **这里的 `OwnerRef` 与 `packages/runtime` 里那个同名类型不是同一个东西。**
-///    本侧是 `datazen_platform_api::context::OwnerRef`：它的 `Editor` 只有
+/// 2. **这里的 `OwnerRef` 与 `modules` 里那个同名类型不是同一个东西。**
+///    本侧是 `datazen_modules::shared::context::OwnerRef`：它的 `Editor` 只有
 ///    `client_instance_id` / `editor_session_id`，`Job` 只有 `job_id` / `stage_id`
 ///    （且 `stage_id` 是 `crate::shared::id::StageId`，网关侧同名字段是 `String`）——**两侧都没有
 ///    `organization_id` / `principal_id`**。因此本函数在结构上**看不到组织与主体**，
@@ -36,7 +36,7 @@ use crate::shared::id::JobId;
 ///    是否相等」，这是**这个 job 有没有被授权**，不是**这是不是同一个人**——与
 ///    CM-06「U1 指向 U2 的 job」的跨用户语义不是同一件事，不能互相顶替。
 ///
-/// 两条同名类型由网关侧 `packages/runtime/src/gateway/owner_binding.rs` 的模块头
+/// 两条同名类型由网关侧 `modules/src/execution/runtime/gateway/owner_binding.rs` 的模块头
 /// 同样登记在案。统一它们是跨 crate 的契约改动，不在网关轨内单方面做。
 pub fn check_owner(
     ctx: &RequestContext,

@@ -13,7 +13,7 @@ use crate::platform::scope::is_local_scope;
 use crate::store::{AppDb, AppDbError};
 use datazen_feature_core::dashboard::records::WidgetRunRecord;
 use datazen_feature_core::dashboard::runs::{DashboardRunRepository, DashboardRunsError};
-use datazen_platform_api::ports::scope::OrganizationScope;
+use datazen_modules::shared::scope::OrganizationScope;
 
 fn run_error(error: AppDbError) -> DashboardRunsError {
     DashboardRunsError::Db(error.to_string())
@@ -63,7 +63,7 @@ mod tests {
     use super::*;
     use datazen_feature_core::dashboard::runs::{get_run, list_run_index, write_run};
     use datazen_feature_core::dashboard::types::{MonitorSettings, WidgetRun, WidgetRunStatus};
-    use datazen_platform_api::id::OrganizationId;
+    use datazen_modules::shared::id::OrganizationId;
 
     fn open_db() -> std::sync::Arc<AppDb> {
         let db = AppDb::open_in_memory().unwrap();

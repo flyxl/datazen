@@ -300,7 +300,7 @@ mod tests {
     ///
     /// 双向赋值只有在两侧同类型时才编译得过——若本 crate 保留了本地枚举定义，
     /// 下面第二行的类型标注就会立刻 `mismatched types` 编译失败。
-    /// application 侧有对称的一条 `packages/application/src/error.rs`，两者都指向
+    /// application 侧有对称的一条 `modules/src/application/error.rs`，两者都指向
     /// 同一个第三方类型 `crate::shared::error::ApiErrorCode`，因此彼此同类型。
     #[test]
     fn api_error_code_is_the_platform_api_type_not_a_local_copy() {

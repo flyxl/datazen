@@ -22,8 +22,8 @@ use crate::data_sync::{
 };
 use async_trait::async_trait;
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver, TransactionHandle, Value};
-use datazen_platform_api::dto::execution::EffectOutcome;
-use datazen_platform_api::dto::job::JobState;
+use datazen_modules::execution::EffectOutcome;
+use datazen_modules::jobs::domain::job::JobState;
 use futures_util::FutureExt;
 #[cfg(feature = "webdriver")]
 use std::sync::atomic::AtomicU8;
@@ -196,13 +196,13 @@ async fn validate_plan_context_sessions(
     let source_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         source_session_id,
-        datazen_runtime::application::LivePurpose::Inspection,
+        datazen_modules::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let target_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         target_session_id,
-        datazen_runtime::application::LivePurpose::Inspection,
+        datazen_modules::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let source_config = source_context.config.clone();
@@ -561,7 +561,7 @@ pub(crate) async fn start_data_sync_apply_job_impl(
     source_db_session_id: String,
     target_db_session_id: String,
     mut request: SyncRunRequest,
-) -> Result<datazen_platform_api::dto::job::JobView, CommandError> {
+) -> Result<datazen_modules::jobs::domain::job::JobView, CommandError> {
     if request.plan_id.trim().is_empty() {
         return Err(CommandError::Validation(
             "apply requires a comparison plan; compare again".into(),
@@ -844,7 +844,7 @@ pub(crate) async fn execute_data_sync_impl(
     let context = crate::services::migration_endpoint::runtime_session_context(
         state,
         &target_db_session_id,
-        datazen_runtime::application::LivePurpose::CommandExecution,
+        datazen_modules::execution::application::LivePurpose::CommandExecution,
     )
     .await?;
     let config = context.config;

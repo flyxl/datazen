@@ -3,8 +3,8 @@ use datazen_feature_core::{
     restore_gateway::{RestoreAuthorization, RuntimeRestoreGateway},
     restore_job::*,
 };
-use datazen_platform_api::RequestContext;
-use datazen_runtime::job::CancelToken;
+use datazen_modules::jobs::CancelToken;
+use datazen_modules::RequestContext;
 use std::sync::Arc;
 
 pub(super) struct DesktopRestoreGateway {
@@ -74,8 +74,8 @@ impl RestoreGateway for DesktopRestoreGateway {
         let Ok(runtime) = self.adapter.runtime() else {
             return RestoreEvidence {
                 rejection: Some(RestoreRejection::RuntimeUnavailable),
-                terminal: datazen_runtime::job::StageTerminal::Failed,
-                effects: datazen_platform_api::dto::execution::EffectOutcome::NotStarted,
+                terminal: datazen_modules::jobs::StageTerminal::Failed,
+                effects: datazen_modules::execution::EffectOutcome::NotStarted,
                 progress: Default::default(),
                 executions: vec![],
                 boundaries: vec![],

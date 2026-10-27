@@ -2,13 +2,13 @@
     // server/tests_integration.rs is at the per-file size cap.
     use crate::mcp::session::DEFAULT_TTL;
     use crate::testing::app_state::TestAppState;
-    use datazen_application::identity_policy::IdentityPolicy;
-    use datazen_platform_api::context::OwnerRef;
-    use datazen_platform_api::dto::session::SessionHandle;
-    use datazen_platform_api::id::{
+    use datazen_modules::application::identity_policy::IdentityPolicy;
+    use datazen_modules::shared::context::OwnerRef;
+    use datazen_modules::execution::SessionHandle;
+    use datazen_modules::shared::id::{
         ClientInstanceId, Counter, DbSessionId, JobId, RuntimeEpoch, StageId,
     };
-    use datazen_platform_api::error::ApiErrorCode;
+    use datazen_modules::shared::error::ApiErrorCode;
     use rmcp::handler::server::wrapper::Parameters;
     use std::time::{Duration, Instant};
 

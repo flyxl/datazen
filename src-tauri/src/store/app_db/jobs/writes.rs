@@ -1,10 +1,10 @@
-use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::dto::job::JobClaim;
-use datazen_platform_api::dto::job::{
+use datazen_modules::jobs::domain::job::JobClaim;
+use datazen_modules::jobs::domain::job::{
     Checkpoint, CommitBoundary, JobRecord, JobState, StageRecord,
 };
-use datazen_platform_api::error::PortError;
-use datazen_platform_api::id::{ExecutionId, JobStateVersion, Timestamp};
+use datazen_modules::shared::context::RequestContext;
+use datazen_modules::shared::error::PortError;
+use datazen_modules::shared::id::{ExecutionId, JobStateVersion, Timestamp};
 use rusqlite::params;
 
 use super::access::{db_read_error, db_write_error};

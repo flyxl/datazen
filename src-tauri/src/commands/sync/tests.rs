@@ -84,8 +84,8 @@ async fn runtime_physical_resource_count(state: &crate::commands::AppState) -> u
 /// 宿主这一侧也必须真的成立，不能只靠端口实现单方面保证。
 #[tokio::test]
 async fn desktop_sync_store_ports_admit_only_the_local_organization() {
-    use datazen_platform_api::id::OrganizationId;
-    use datazen_platform_api::ports::scope::OrganizationScope;
+    use datazen_modules::shared::id::OrganizationId;
+    use datazen_modules::shared::scope::OrganizationScope;
 
     let test = crate::testing::app_state::TestAppState::new().await;
     let scope = test

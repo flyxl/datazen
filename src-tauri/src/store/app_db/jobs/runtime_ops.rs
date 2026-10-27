@@ -1,16 +1,16 @@
-use datazen_modules::jobs::domain::time::after_seconds;
-use datazen_modules::jobs::engine::memory_repository::CancelPollSnapshot;
-use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::dto::execution::EffectOutcome;
-use datazen_platform_api::dto::job::{
+use datazen_modules::execution::EffectOutcome;
+use datazen_modules::jobs::domain::job::{
     Checkpoint, CommitBoundary, JobClaim, JobDetails, JobDomainResult, JobProgress, JobRecord,
     JobRecoveryResult, JobRecoveryVerdict, JobRecoveryVerification, JobState,
 };
-use datazen_platform_api::error::PortError;
-use datazen_platform_api::id::{
+use datazen_modules::jobs::domain::time::after_seconds;
+use datazen_modules::jobs::engine::memory_repository::CancelPollSnapshot;
+use datazen_modules::jobs::runtime_repository::JobRuntimeRepository;
+use datazen_modules::shared::context::RequestContext;
+use datazen_modules::shared::error::PortError;
+use datazen_modules::shared::id::{
     ArtifactId, IdempotencyKey, JobId, JobStateVersion, StageId, Timestamp, WorkerId,
 };
-use datazen_runtime::job::runtime_repository::JobRuntimeRepository;
 use rusqlite::{params, OptionalExtension, Transaction};
 
 use super::access::{db_read_error, db_write_error, prune_expired_artifacts};
@@ -524,7 +524,7 @@ impl SqliteJobRepository {
                 stage_id: StageId::new(stage_id),
                 worker_id: worker,
                 claimed_at: now,
-                claim_generation: datazen_platform_api::id::Counter::new(u64::try_from(generation).map_err(|_| PortError::BackendUnavailable("claim generation invalid".into()))?),
+                claim_generation: datazen_modules::shared::id::Counter::new(u64::try_from(generation).map_err(|_| PortError::BackendUnavailable("claim generation invalid".into()))?),
                 expires_at: expiry,
             })
         })
@@ -548,7 +548,7 @@ impl SqliteJobRepository {
     ///
     /// `renew` 自身不属于上面任何一种：它只凭 claim 判定，不做组织比对。
     /// 端口契约的同一表述见
-    /// `datazen_platform_api::ports::job::JobRepository::renew`。
+    /// `datazen_modules::jobs::domain::repository::JobRepository::renew`。
     pub(super) async fn renew_claim(&self, claim: &JobClaim) -> Result<JobClaim, PortError> {
         let now = self.clock.now();
         let expiry = after_seconds(&now, self.claim_ttl_secs).map_err(PortError::from)?;

@@ -2,14 +2,16 @@
 //! No desktop scheduler, occurrence admission or duplicate-tick receipt is simulated.
 #[path = "monitor_runtime.rs"]
 mod runtime;
-use datazen_application::sessions::ConnectionUseCases as _;
 use datazen_driver_api::{resource::ResourceProvider, ConnectionConfig, DatabaseDriver};
 use datazen_feature_core::workflow::{resource_execution, WorkflowCommandStep};
-use datazen_platform_api::{
-    context::RequestContext,
-    dto::execution::{EffectOutcome, ExecutionState},
-    id::{ClientInstanceId, ConnectionId, DelegationId, OrganizationId, PrincipalId, RequestId},
-    target::{ExecutionTarget, NamespaceTarget},
+use datazen_modules::application::sessions::ConnectionUseCases as _;
+use datazen_modules::{
+    execution::target::{ExecutionTarget, NamespaceTarget},
+    execution::{EffectOutcome, ExecutionState},
+    shared::context::RequestContext,
+    shared::id::{
+        ClientInstanceId, ConnectionId, DelegationId, OrganizationId, PrincipalId, RequestId,
+    },
 };
 use futures_util::FutureExt;
 use std::sync::{atomic::Ordering, Arc};
@@ -160,7 +162,7 @@ pub async fn run(
             .read_artifact_chunk(
                 &host.context,
                 artifact,
-                datazen_platform_api::id::Counter::ZERO
+                datazen_modules::shared::id::Counter::ZERO
             )
             .await
             .is_err());

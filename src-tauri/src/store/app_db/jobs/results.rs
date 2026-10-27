@@ -1,10 +1,10 @@
-use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::dto::job::{
+use datazen_modules::jobs::domain::job::{
     JobClaim, JobDomainResult, JobRecoveryVerdict, JobRecoveryVerification,
 };
-use datazen_platform_api::error::PortError;
-use datazen_platform_api::id::{JobId, JobStateVersion};
-use datazen_runtime::job::runtime_repository::{safe_result_marker, validate_job_domain_result};
+use datazen_modules::jobs::runtime_repository::{safe_result_marker, validate_job_domain_result};
+use datazen_modules::shared::context::RequestContext;
+use datazen_modules::shared::error::PortError;
+use datazen_modules::shared::id::{JobId, JobStateVersion};
 use rusqlite::{params, OptionalExtension};
 
 use super::access::{db_read_error, db_write_error};
@@ -110,7 +110,7 @@ impl SqliteJobRepository {
                 .flatten();
             let pending_verdict = persisted_recovery
                 .as_deref()
-                .and_then(|value| serde_json::from_str::<datazen_platform_api::dto::job::JobRecoveryResult>(value).ok())
+                .and_then(|value| serde_json::from_str::<datazen_modules::jobs::domain::job::JobRecoveryResult>(value).ok())
                 .is_some_and(|result| result.verdict == JobRecoveryVerdict::PendingVerification);
             if current.0 != "failed"
                 || current.1.is_none()

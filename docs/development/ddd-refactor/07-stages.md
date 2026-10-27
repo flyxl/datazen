@@ -45,12 +45,12 @@ Desktop 的 `get_shared_settings` / `save_shared_settings` 以及完整设置读
 复用既有 `DesktopRepository` 的缓存、JSON 格式、原子写入和错误边界；Redis 刷新、
 monitor reload 与 tray 同步仍由原命令路径执行。
 
-**D1 收尾清理已完成（2026-10-26）**：`datazen_platform_api::settings::*`、
+**D1 收尾清理已完成（2026-10-26）**：`datazen_modules::platform_api::settings::*`、
 `platform_api::ports::SettingsRepository`、`datazen_application::settings` 过渡导出
 与 `ApplicationServices` 的设置门面字段均已删除。`SettingsService` 改为持有
 `Arc<dyn SettingsRepository>`（宿主可在装配根长期共享同一服务实例）；桌面宿主的
 `PlatformAdapter` 直接持有模块设置服务并以 `require_settings_service` 暴露，
-命令经 `platform::ipc::require_settings_service` 取用例。`datazen-platform-api`
+命令经 `platform::ipc::require_settings_service` 取用例。`datazen-modules::platform_api`
 与 `datazen-feature-core` 显式依赖 `datazen-modules`（settings feature）以直接
 消费设置词汇。设置事实仍只有一份：模块服务与宿主持有的是同一个仓储实例。
 

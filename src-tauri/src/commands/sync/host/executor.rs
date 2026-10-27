@@ -2,7 +2,7 @@
 //! lease: the keyset reader and the batch target executor.
 //!
 //! Both hold the `Arc<AtomicBool>` handed down by
-//! [`CancelToken::flag`](datazen_runtime::job::CancelToken::flag) — that is the
+//! [`CancelToken::flag`](datazen_modules::jobs::CancelToken::flag) — that is the
 //! kernel's own bit, not a copy of it, so a cancel recorded by
 //! `JobRepository::request_cancel` reaches these checkpoints while the stage is
 //! still running (runtime.rs:362 `watch_cancel_request`).

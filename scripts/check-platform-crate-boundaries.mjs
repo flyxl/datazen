@@ -158,7 +158,7 @@ export const RULES = Object.freeze([
   },
   {
     id: 'F-02',
-    subjects: ['application', 'runtime', 'platform-api'],
+    subjects: ['modules'],
     subjectsFromSpec: true,
     forbiddenLayers: ['host'],
     forbiddenCrates: ['tauri'],
@@ -169,7 +169,7 @@ export const RULES = Object.freeze([
   },
   {
     id: 'F-03',
-    subjects: ['application', 'runtime'],
+    subjects: ['modules'],
     subjectsFromSpec: true,
     forbiddenLayers: [],
     forbiddenCrates: 'spec',
@@ -180,18 +180,8 @@ export const RULES = Object.freeze([
     note: 'no HTTP/transport framework in the business core',
   },
   {
-    id: 'F-04',
-    subjects: ['platform-api'],
-    // Same allow-list inversion as F-01; §2.3 draws platform-api depending on
-    // the driver API and the AI API and nothing else.
-    allowedLayers: ['platform-api', 'driver-api', 'modules', 'infra'],
-    forbiddenCrates: [],
-    specTokens: ['packages/platform-api', 'src-tauri'],
-    note: 'platform-api points at ports, not at the implementation',
-  },
-  {
     id: 'F-05',
-    subjects: ['application', 'runtime', 'platform-api'],
+    subjects: ['modules'],
     subjectsFromSpec: true,
     forbiddenLayers: [],
     forbiddenCrates: 'spec',
@@ -249,13 +239,10 @@ export const RULES = Object.freeze([
   },
   {
     id: 'F-12',
-    subjects: ['feature-core'],
+    subjects: ['feature-core', 'modules'],
     subjectsFromSpec: true,
     allowedLayers: [
       'feature-core',
-      'runtime',
-      'application',
-      'platform-api',
       'infra',
       'driver-api',
       'migration-common',
@@ -272,7 +259,7 @@ export const RULES = Object.freeze([
     id: 'F-14',
     subjects: ['modules'],
     subjectsFromSpec: true,
-    forbiddenLayers: ['host', 'runtime', 'feature-core', 'platform-api'],
+    forbiddenLayers: ['host', 'runtime', 'feature-core'],
     // D1.5（2026-10-26）：AI Provider 适配（含 reqwest 出站 HTTP）随 ai feature
     // 并入 modules::ai::providers，reqwest 不再对 modules 全 crate 禁用；
     // Web 框架与 Tauri 仍禁止。

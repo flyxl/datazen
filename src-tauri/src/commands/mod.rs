@@ -85,16 +85,16 @@ use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use crate::workflow::history::WorkflowHistoryManager;
 use crate::workflow::registry::WorkflowRegistry;
 use crate::workflow::scheduler::WorkflowScheduler;
-use datazen_application::error::ApiError;
 use datazen_driver_api::QueryExecutionId;
 use datazen_feature_core::ai::context::SchemaContextBuilder;
 use datazen_feature_core::ai::prompt_resolver::PromptResolver;
 use datazen_feature_core::workspace_apps::manager::WappManager;
 use datazen_modules::ai::AiProviderRegistry;
-use datazen_platform_api::id::OrganizationId;
-use datazen_platform_api::ports::scope::OrganizationScope;
-use datazen_runtime::driver_registry::registry::DriverRegistry;
-use datazen_runtime::schema_cache::SchemaCache;
+use datazen_modules::execution::runtime::driver_registry::registry::DriverRegistry;
+use datazen_modules::schema::cache::SchemaCache;
+use datazen_modules::shared::error::ApiError;
+use datazen_modules::shared::id::OrganizationId;
+use datazen_modules::shared::scope::OrganizationScope;
 use std::collections::{hash_map::Entry, HashMap};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -220,7 +220,7 @@ pub struct AppState {
     /// P5 Wave-1：Schema Diff 的 JobRuntime 基础设施（仓储/预算/计划库）。
     pub schema_diff_jobs: Arc<crate::commands::schema_diff::job::SchemaDiffJobInfra>,
     /// P5 本机持久化 Job facade，所有迁移 Host 共用 `{appData}/datazen.sqlite`。
-    pub desktop_job_host: Arc<datazen_runtime::job::JobHost>,
+    pub desktop_job_host: Arc<datazen_modules::jobs::JobHost>,
     /// Schema Diff 评审计划的存储实例（宿主在组装期创建并注入）。
     ///
     /// 评审计划**不**再寄居在包里的进程级全局变量上：实例由宿主持有，访问按

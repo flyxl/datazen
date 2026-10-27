@@ -324,13 +324,13 @@ impl RecordingSource {
 }
 
 #[async_trait]
-impl datazen_runtime::application::LiveConnectionSource for RecordingSource {
+impl datazen_modules::execution::application::LiveConnectionSource for RecordingSource {
     async fn open_live(
         &self,
-        request: datazen_runtime::application::LiveConnectionRequest,
+        request: datazen_modules::execution::application::LiveConnectionRequest,
     ) -> Result<
-        datazen_runtime::application::LiveConnection,
-        datazen_runtime::application::LiveConnectionError,
+        datazen_modules::execution::application::LiveConnection,
+        datazen_modules::execution::application::LiveConnectionError,
     > {
         lock(&self.calls).push((
             request.handle.db_session_id.as_str().to_owned(),
@@ -396,12 +396,12 @@ async fn seed_profile(store: &crate::store::DesktopRepository, config: &Connecti
 /// 次数没变（没有新建物理连接）。任何一条不成立都说明接线只是摆设。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn 接线后借出真的走到端口并交回那一份活资源() {
-    use datazen_application::sessions::ConnectionUseCases;
     use datazen_driver_api::DatabaseDriverFactory;
-    use datazen_platform_api::{
-        context::{OwnerRef, RequestContext},
-        dto::idempotency::IdempotentOperation,
-        id::*,
+    use datazen_modules::application::sessions::ConnectionUseCases;
+    use datazen_modules::{
+        execution::application::idempotency::IdempotentOperation,
+        shared::context::{OwnerRef, RequestContext},
+        shared::id::*,
     };
 
     let temp = tempfile::tempdir().expect("temp dir");
@@ -440,7 +440,8 @@ async fn 接线后借出真的走到端口并交回那一份活资源() {
         provider: Arc::clone(&provider),
         driver: MockDriver::new("test-live", MockDriverOptions::default()),
     }));
-    let registry = Arc::new(datazen_runtime::driver_registry::DriverRegistry::new());
+    let registry =
+        Arc::new(datazen_modules::execution::runtime::driver_registry::DriverRegistry::new());
     // 驱动先注册：`ensure_type` 见 `drivers` 里已有就直接返回，不再走 inventory
     // 扫描（`Box::leak` 出来的工厂不进 inventory，扫不到）。factory 仍要注册——
     // `resource_provider` 只认 factories 这张表，driver 本身不带 provider。
@@ -477,7 +478,7 @@ async fn 接线后借出真的走到端口并交回那一份活资源() {
 
     // 走**真的** runtime 用例：不直接调 DesktopLiveConnectionSource。
     let service = Arc::new(
-        datazen_runtime::application::RuntimeConnectionUseCases::new(
+        datazen_modules::execution::application::RuntimeConnectionUseCases::new(
             Arc::new(super::super::repositories::DesktopProfiles::new(
                 store.clone(),
             )),
@@ -517,10 +518,10 @@ async fn 接线后借出真的走到端口并交回那一份活资源() {
     let opened = service
         .open_session(
             &ctx,
-            datazen_application::dto::requests::OpenSessionRequest::new(
-                datazen_platform_api::target::ExecutionTarget::new(
-                    datazen_platform_api::id::ConnectionId::new("conn-1"),
-                    datazen_platform_api::target::NamespaceTarget::database("app"),
+            datazen_modules::execution::application::requests::OpenSessionRequest::new(
+                datazen_modules::execution::target::ExecutionTarget::new(
+                    datazen_modules::shared::id::ConnectionId::new("conn-1"),
+                    datazen_modules::execution::target::NamespaceTarget::database("app"),
                 ),
                 OwnerRef::Editor {
                     client_instance_id: ctx.client_instance_id.clone(),
@@ -538,7 +539,7 @@ async fn 接线后借出真的走到端口并交回那一份活资源() {
         .borrow_live_connection(
             &ctx,
             &handle,
-            datazen_runtime::application::LivePurpose::CommandExecution,
+            datazen_modules::execution::application::LivePurpose::CommandExecution,
         )
         .await
         .expect("port must lend a live connection");
@@ -593,19 +594,19 @@ async fn 接线后借出真的走到端口并交回那一份活资源() {
 /// 桌面会话后端、真 `RuntimeConnectionUseCases` 并注入 live 源），只是把 open 出的
 /// `dbSessionId` 一起交回。driver 选项由调用方给，让断言贴着被测行为走。
 struct PoolMaintenanceWiring {
-    service: Arc<datazen_runtime::application::RuntimeConnectionUseCases>,
+    service: Arc<datazen_modules::execution::application::RuntimeConnectionUseCases>,
     driver: Arc<MockDriver>,
-    ctx: datazen_platform_api::context::RequestContext,
+    ctx: datazen_modules::shared::context::RequestContext,
     db_session_id: String,
 }
 
 async fn wired_pool_maintenance_harness(driver_opts: MockDriverOptions) -> PoolMaintenanceWiring {
-    use datazen_application::sessions::ConnectionUseCases;
     use datazen_driver_api::DatabaseDriverFactory;
-    use datazen_platform_api::{
-        context::{OwnerRef, RequestContext},
-        dto::idempotency::IdempotentOperation,
-        id::*,
+    use datazen_modules::application::sessions::ConnectionUseCases;
+    use datazen_modules::{
+        execution::application::idempotency::IdempotentOperation,
+        shared::context::{OwnerRef, RequestContext},
+        shared::id::*,
     };
 
     let temp = tempfile::tempdir().expect("temp dir");
@@ -640,7 +641,8 @@ async fn wired_pool_maintenance_harness(driver_opts: MockDriverOptions) -> PoolM
         driver: Arc::clone(&driver),
         provider: CountingProvider::new("test-live-provider"),
     }));
-    let registry = Arc::new(datazen_runtime::driver_registry::DriverRegistry::new());
+    let registry =
+        Arc::new(datazen_modules::execution::runtime::driver_registry::DriverRegistry::new());
     registry
         .register_test_driver("test-live", Arc::clone(&driver) as Arc<dyn DatabaseDriver>)
         .await;
@@ -669,7 +671,7 @@ async fn wired_pool_maintenance_harness(driver_opts: MockDriverOptions) -> PoolM
     ));
 
     let service = Arc::new(
-        datazen_runtime::application::RuntimeConnectionUseCases::new(
+        datazen_modules::execution::application::RuntimeConnectionUseCases::new(
             Arc::new(super::super::repositories::DesktopProfiles::new(
                 store.clone(),
             )),
@@ -704,10 +706,10 @@ async fn wired_pool_maintenance_harness(driver_opts: MockDriverOptions) -> PoolM
     let opened = service
         .open_session(
             &ctx,
-            datazen_application::dto::requests::OpenSessionRequest::new(
-                datazen_platform_api::target::ExecutionTarget::new(
-                    datazen_platform_api::id::ConnectionId::new("pool-conn"),
-                    datazen_platform_api::target::NamespaceTarget::database("app"),
+            datazen_modules::execution::application::requests::OpenSessionRequest::new(
+                datazen_modules::execution::target::ExecutionTarget::new(
+                    datazen_modules::shared::id::ConnectionId::new("pool-conn"),
+                    datazen_modules::execution::target::NamespaceTarget::database("app"),
                 ),
                 OwnerRef::Editor {
                     client_instance_id: ctx.client_instance_id.clone(),
@@ -795,7 +797,7 @@ async fn close_database_rejects_an_empty_database_name_before_touching_the_drive
         .close_database(&wiring.ctx, &wiring.db_session_id, "   ")
         .await
         .expect_err("empty name is refused");
-    use datazen_platform_api::error::ApiErrorCode;
+    use datazen_modules::shared::error::ApiErrorCode;
     assert_eq!(error.code, ApiErrorCode::InvalidArgument);
     assert!(
         wiring.driver.close_database_calls().is_empty(),
@@ -808,7 +810,7 @@ async fn close_database_rejects_an_empty_database_name_before_touching_the_drive
 /// 不直接在断言里写 `7`：那个数字是 `SessionRegistry` 内部的 `epoch_seq`，
 /// 与本文件无关，写死会让测试跟着 registry 的发号策略一起脆。解析而不是硬编码，
 /// 也让「epoch 真的被端口看到了」这件事仍然可断言。
-fn epoch_number(handle: &datazen_platform_api::dto::session::SessionHandle) -> u64 {
+fn epoch_number(handle: &datazen_modules::execution::SessionHandle) -> u64 {
     handle
         .runtime_epoch
         .as_str()

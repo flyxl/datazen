@@ -1,8 +1,8 @@
 //! Durable query commands for the shared desktop Job host.
 
-use datazen_platform_api::dto::job::{JobDetails, JobFilter, JobState, JobView};
-use datazen_platform_api::id::JobId;
-use datazen_platform_api::PortError;
+use datazen_modules::jobs::domain::job::{JobDetails, JobFilter, JobState, JobView};
+use datazen_modules::shared::id::JobId;
+use datazen_modules::PortError;
 use tauri::State;
 
 use crate::commands::error::{CmdExt, CommandError};
@@ -113,7 +113,7 @@ pub(crate) async fn read_transfer_job_details(
 }
 
 pub(crate) fn select(
-    records: &[datazen_platform_api::dto::job::JobRecord],
+    records: &[datazen_modules::jobs::domain::job::JobRecord],
     query: &JobQuery,
 ) -> Vec<JobView> {
     let mut views = records

@@ -83,7 +83,7 @@ impl TunnelError {
     /// 唯一的拒绝出口：记日志 + 转成既有 `RuntimeError`。**任何拒绝都不允许静默**。
     pub fn rejected<T>(self, operation: &'static str) -> Result<T, RuntimeError> {
         tracing::warn!(
-            target: "datazen_runtime::tunnel",
+            target: "datazen_modules::execution::runtime::tunnel",
             operation,
             reason = self.reason(),
             "tunnel ledger refused the request"

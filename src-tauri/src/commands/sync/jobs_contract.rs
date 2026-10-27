@@ -20,8 +20,8 @@ use std::sync::Arc;
 
 use datazen_driver_api::mock_driver::MockDriver;
 use datazen_driver_api::{ColumnSchema, DatabaseDriver, TableSchema};
-use datazen_platform_api::dto::execution::EffectOutcome;
-use datazen_platform_api::dto::job::JobState;
+use datazen_modules::execution::EffectOutcome;
+use datazen_modules::jobs::domain::job::JobState;
 
 use crate::data_sync::api::SyncComparisonRequest;
 use crate::data_sync::job::body::{ApplySpec, PrepareSpec};

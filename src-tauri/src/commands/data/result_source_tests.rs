@@ -16,26 +16,26 @@
 use super::result_write::{commit_query_result_cell_impl, ResultCellWrite};
 use crate::testing::app_state::TestAppState;
 use crate::testing::mock_driver::MockDriverOptions;
-use datazen_application::{
-    dto::requests::{CommandCall, ExecuteInSessionRequest, OpenSessionRequest},
-    sessions::ConnectionUseCases,
-};
 use datazen_driver_api::{
     namespace::NamespaceTarget as DriverNamespace,
     session::{ObservationConfidence, SessionContext as DriverContext, TransactionState},
     ColumnSchema, TableSchema, Value,
 };
-use datazen_platform_api::{
-    context::OwnerRef,
-    dto::{
-        execution::{ExecutionState, RuntimeResultBinding, StatementResultSource},
-        idempotency::IdempotentOperation,
-        session::{ContextConfidence, SessionHandle, TransactionState as PlatformTransactionState},
-    },
-    id::ConnectionId,
-    target::{ExecutionTarget, NamespaceTarget},
+use datazen_modules::application::sessions::ConnectionUseCases;
+use datazen_modules::execution::application::requests::{
+    CommandCall, ExecuteInSessionRequest, OpenSessionRequest,
 };
-use datazen_runtime::application::RuntimeArtifactChunk;
+use datazen_modules::execution::application::RuntimeArtifactChunk;
+use datazen_modules::{
+    execution::application::idempotency::IdempotentOperation,
+    execution::target::{ExecutionTarget, NamespaceTarget},
+    execution::{
+        ContextConfidence, ExecutionState, RuntimeResultBinding, SessionHandle,
+        StatementResultSource, TransactionState as PlatformTransactionState,
+    },
+    shared::context::OwnerRef,
+    shared::id::ConnectionId,
+};
 
 /// The table the fixture query reads. `SELECT *` is what the Host can map.
 const TABLE: &str = "users";
@@ -239,7 +239,7 @@ async fn run_select(
             .read_artifact_chunk(
                 &context,
                 artifact.clone(),
-                datazen_platform_api::id::Counter::ZERO,
+                datazen_modules::shared::id::Counter::ZERO,
             )
             .await
             .expect("the artifact chunk is readable");
@@ -249,7 +249,7 @@ async fn run_select(
                     .read_artifact_chunk(
                         &context,
                         artifact.clone(),
-                        datazen_platform_api::id::Counter::new(index),
+                        datazen_modules::shared::id::Counter::new(index),
                     )
                     .await
                     .expect("the artifact chunk is readable"),
@@ -281,8 +281,7 @@ fn statement_source(chunks: &[RuntimeArtifactChunk]) -> &StatementResultSource {
         .iter()
         .map(|chunk| &chunk.source)
         .find(|source| {
-            source.writable_mapping
-                == datazen_platform_api::dto::execution::WritableMapping::Verified
+            source.writable_mapping == datazen_modules::execution::WritableMapping::Verified
         })
         .expect("the driver confirmed the relation, so the source must be verified")
 }
@@ -320,7 +319,7 @@ async fn a_confirmed_result_carries_the_observed_context_without_compressing_it(
 
     assert_eq!(
         source.writable_mapping,
-        datazen_platform_api::dto::execution::WritableMapping::Verified
+        datazen_modules::execution::WritableMapping::Verified
     );
     // Field by field against the observation, not against a second copy of the
     // mapping function: the assertion has to fail when a field is dropped.
@@ -390,7 +389,7 @@ async fn a_verified_mapping_writes_the_cell_through_its_live_session() {
     let (binding, chunks) = run_select(&test, &handle, "writable result").await;
     assert_eq!(
         statement_source(&chunks).writable_mapping,
-        datazen_platform_api::dto::execution::WritableMapping::Verified
+        datazen_modules::execution::WritableMapping::Verified
     );
     let before = test.mock.query_calls();
 
@@ -414,7 +413,7 @@ async fn a_result_without_a_verified_mapping_is_refused() {
     let (binding, chunks) = run_select(&test, &handle, "writable result").await;
     assert!(
         chunks.iter().all(|chunk| chunk.source.writable_mapping
-            != datazen_platform_api::dto::execution::WritableMapping::Verified),
+            != datazen_modules::execution::WritableMapping::Verified),
         "without a driver confirmation nothing may be marked verified"
     );
     let before = test.mock.query_calls();
@@ -480,7 +479,7 @@ async fn a_probe_that_cannot_answer_degrades_instead_of_failing_the_query() {
         );
         assert!(
             chunks.iter().all(|chunk| chunk.source.writable_mapping
-                != datazen_platform_api::dto::execution::WritableMapping::Verified),
+                != datazen_modules::execution::WritableMapping::Verified),
             "{case}: a probe that cannot answer must leave the result read-only"
         );
         assert!(
@@ -508,7 +507,7 @@ async fn an_unreported_autocommit_does_not_make_a_verified_result_unwritable() {
     let source = statement_source(&chunks);
     assert_eq!(
         source.writable_mapping,
-        datazen_platform_api::dto::execution::WritableMapping::Verified
+        datazen_modules::execution::WritableMapping::Verified
     );
     // The context is carried verbatim: "the driver cannot tell" stays unknown.
     assert_eq!(source.context.autocommit, None);
@@ -531,7 +530,7 @@ async fn an_empty_identity_is_the_same_absence_as_no_identity() {
     let source = statement_source(&chunks);
     assert_eq!(
         source.writable_mapping,
-        datazen_platform_api::dto::execution::WritableMapping::Verified
+        datazen_modules::execution::WritableMapping::Verified
     );
     assert_eq!(source.context.effective_identity.as_deref(), Some(""));
 
@@ -559,7 +558,7 @@ async fn a_mode_change_during_the_statement_keeps_the_result_writable() {
     let source = statement_source(&chunks);
     assert_eq!(
         source.writable_mapping,
-        datazen_platform_api::dto::execution::WritableMapping::Verified
+        datazen_modules::execution::WritableMapping::Verified
     );
     assert_eq!(
         source.context.transaction_state,
@@ -589,7 +588,7 @@ async fn a_real_target_change_refuses_the_write_and_sends_nothing() {
     let (binding, chunks) = run_select(&test, &handle, "target change").await;
     assert_eq!(
         statement_source(&chunks).writable_mapping,
-        datazen_platform_api::dto::execution::WritableMapping::Verified
+        datazen_modules::execution::WritableMapping::Verified
     );
     let calls_before = test.mock.query_calls();
 

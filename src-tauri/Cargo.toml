@@ -20,11 +20,8 @@ datazen-driver-api = { workspace = true }
 # Platform adapter (P1, 开发计划 :77)。方向是 host → platform-api / application，
 # 与 F-02 禁止的 application → host 相反，因此不受 crate 边界门禁限制。
 # 两个包都不依赖 Tauri / HTTP，desktop adapter 只在 host 侧引用它们。
-datazen-platform-api = { path = "../packages/platform-api" }
-datazen-modules = { workspace = true, features = ["settings", "ai", "connection", "named_views", "history", "execution", "schema", "schema_diff", "data_sync", "data_transfer", "table-browsing", "table-editing", "dashboard", "monitor", "export", "backup", "wapps", "tunnel"] }
+datazen-modules = { workspace = true, features = ["application", "settings", "ai", "connection", "named_views", "history", "execution", "schema", "schema_diff", "data_sync", "data_transfer", "table-browsing", "table-editing", "dashboard", "monitor", "export", "backup", "wapps", "tunnel"] }
 # P5 JobRuntime 内核（§2/§5）：prepare/apply 经 runtime 受理，desktop 只做适配。
-datazen-runtime = { path = "../packages/runtime" }
-datazen-application = { path = "../packages/application" }
 # 形态中立的跨形态基础设施原语（脱敏 / 路径安全），零 datazen-* 依赖（F-11 反向 allow-list 兜底）。
 datazen-infra = { path = "../packages/infra" }
 # 迁移三件套各自以 Job 受理 prepare/apply，host 只做 adapter。
@@ -104,7 +101,7 @@ objc2-app-kit = { version = "0.3.2", optional = true }
 default = []
 webdriver = ["tauri-plugin-webdriver", "dep:objc2", "dep:objc2-app-kit", "datazen-modules/webdriver"]
 # Enables `datazen::test_harness` for src-tauri/tests/ IPC migration integration tests.
-test-harness = []
+test-harness = ["datazen-modules/test-harness"]
 # Driver features — injected by resolve-drivers.mjs at build time; do NOT add manually.
 # <<driver-features>>
 # <</driver-features>>
@@ -116,10 +113,9 @@ sqlx = { version = "=0.8.6", features = ["runtime-tokio", "tls-rustls", "postgre
 datazen-driver-postgres = { path = "../packages/drivers/postgres" }
 datazen-driver-mysql = { path = "../packages/drivers/mysql" }
 datazen-driver-sqlite = { path = "../packages/drivers/sqlite" }
+datazen-modules = { workspace = true, features = ["test-harness"] }
 # Host tests drive `DriverRegistry::register_test_driver*` / `register_test_factory*`, which the
-# registry now exposes from `datazen-runtime` behind `#[cfg(any(test, feature = "test-harness"))]`.
 # Dev-only: `resolver = "2"` keeps this feature out of normal `cargo build` of the host.
-datazen-runtime = { path = "../packages/runtime", features = ["test-harness"] }
 
 [[test]]
 name = "driver_command_ipc"

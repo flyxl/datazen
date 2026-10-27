@@ -1,4 +1,4 @@
-use super::{context::WorkflowContext, model::MergeSource};
+use super::{shared::context::WorkflowContext, model::MergeSource};
 use datazen_driver_api::MultiQueryResult;
 pub(super) fn resolve_json_templates(
     value: &serde_json::Value,

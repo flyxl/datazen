@@ -10,7 +10,7 @@
 //! [`redact_secrets_for_log`](datazen_infra::redaction::redact_secrets_for_log)，
 //! 与全局 IPC 错误载荷同一条规则。
 
-use datazen_platform_api::error::PortError;
+use datazen_modules::shared::error::PortError;
 
 use crate::commands::error::CommandError;
 

@@ -14,10 +14,10 @@
 //! * **越组织访问一律按「不存在」处理**（返回 `None` / 空列表），不返回「无权限」
 //!   ——后者会泄漏「存在但无权」（CM-05）。
 //! * 作用域**只表达组织维度**。连接档案的可见性是另一回事，见
-//!   [`crate::ports::profile::ProfileScope`]（它限定的是某组织的连接档案）。
+//!   [`crate::connection::domain::ProfileScope`]（它限定的是某组织的连接档案）。
 //!
 //! 取用方式（宿主也可经 platform-api 再导出消费，路径
-//! `datazen_platform_api::ports::scope`；本 crate 是唯一定义，示例按
+//! `datazen_modules::scope`；本 crate 是唯一定义，示例按
 //! crate 内路径编译校验）：
 //!
 //! ```

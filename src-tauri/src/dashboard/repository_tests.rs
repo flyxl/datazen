@@ -11,8 +11,8 @@ use datazen_feature_core::dashboard::types::{
     AggregationType, ChartConfig, ChartSortBy, ChartType, Dashboard, DashboardLayout,
     DashboardWidget, RefreshMode, RefreshPolicy, ViewMode, WidgetLayout,
 };
-use datazen_platform_api::id::OrganizationId;
-use datazen_platform_api::ports::scope::OrganizationScope;
+use datazen_modules::shared::id::OrganizationId;
+use datazen_modules::shared::scope::OrganizationScope;
 
 /// 桌面自己的组织作用域。
 fn local_scope() -> OrganizationScope {

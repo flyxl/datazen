@@ -68,11 +68,11 @@
 //!    **第一个生产接线者**就是触发它的人。
 //!    守卫自证不成立的方式有两处，都实测过红：
 //!    (a) 合成反例——内存夹具，见 `production_wiring.rs` 模块头的「反证」一节；
-//!    (b) **落在真实文件上的探针**——往 `packages/runtime/src/gateway/mod.rs` 的
+//!    (b) **落在真实文件上的探针**——往 `modules/src/execution/runtime/gateway/mod.rs` 的
 //!    `pub(crate) mod testing_support;` 之后插入一行 `pub fn
 //!    planted_authorizer_for_guard_bypass() -> … { …AlwaysAllow) }`，
-//!    跑 `cargo test -p datazen-runtime --test owner_binding`，
-//!    报 `packages/runtime/src/gateway/mod.rs`，退出码 101。
+//!    跑 `cargo test -p datazen-modules --test owner_binding`，
+//!    报 `modules/src/execution/runtime/gateway/mod.rs`，退出码 101。
 //!    （`request.rs` **不是**反例：实测它没有任何 `AlwaysAllow`/`AlwaysDeny` 命中。）
 //!
 //! 缓解程度要说准：`authorizer` 无默认值 ⇒ 漏传是**编译错误**（不会静默降级），
@@ -86,7 +86,7 @@
 //! **不含 `principal_id`**（`connection/types.rs`），同组织的 U1 与 U2 在该变体上**完全同形**，
 //! `Authorizer` 的入参里也没有「本次请求被授权操作哪个 job」。
 //!
-//! **上层没有兜底。** `packages/application/src/identity_policy.rs` 的 `check_owner`
+//! **上层没有兜底。** `modules/src/application/identity_policy.rs` 的 `check_owner`
 //! 常被当成这个缺口的补法，但实测它**全仓没有任何生产调用点**（只有定义本身、几处文档
 //! 引用、以及它自己文件内的单测），`src-tauri/src/platform/identity.rs` 也不调用它；
 //! 而且它比的是调用方**显式传入**的 `authorized_job` 与 `owner.job_id`，那是「这个 job 有没有
@@ -101,14 +101,14 @@
 //!
 //! ## 契约债：仓库里有**两个同名** `OwnerRef`
 //!
-//! `crate::execution::runtime::connection::OwnerRef`（`packages/runtime/src/connection/types.rs`）与
-//! `crate::shared::context::OwnerRef`（`packages/platform-api/src/context.rs`）
+//! `crate::execution::runtime::connection::OwnerRef`（`modules/src/execution/runtime/connection/types.rs`）与
+//! `crate::shared::context::OwnerRef`（`modules/src/shared/context.rs`）
 //! **变体名一模一样，字段类型不一样，且没有任何一侧校验另一侧**：
 //!
 //! | | 网关侧（本模块） | 应用层 |
 //! |---|---|---|
 //! | `Editor` | `organization_id` + `principal_id` + … | 只有 `client_instance_id` |
-//! | `Job` | `stage_id: String` | `stage_id: crate::id::StageId` |
+//! | `Job` | `stage_id: String` | `stage_id: crate::shared::id::StageId` |
 //! | `ClientSession` | 只有 `client_instance_id` | 多一个 `purpose: String` |
 //!
 //! 后果：应用层的 `check_owner` 在**结构上看不到组织与主体**（那两层的 `Editor`/`Job`

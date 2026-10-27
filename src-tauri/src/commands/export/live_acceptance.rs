@@ -1,22 +1,20 @@
 //! Host-generic export lifecycle; SQL fixtures use only common PG/MySQL syntax.
 use super::*;
-use datazen_application::{dto::requests::*, sessions::ConnectionUseCases};
 use datazen_driver_mysql as _;
 use datazen_driver_postgres as _;
 use datazen_feature_core::file_job::*;
+use datazen_modules::application::sessions::ConnectionUseCases;
+use datazen_modules::execution::application::requests::*;
+use datazen_modules::execution::runtime::artifact::FileArtifactRepository;
 use datazen_modules::export::ExportError as FeatureError;
-use datazen_platform_api::{
-    context::OwnerRef,
-    dto::{
-        artifact::ArtifactLifecycle, idempotency::IdempotentOperation, session::ResourceRelease,
-    },
-    id::*,
-    ports::artifact::ArtifactRepository,
-    target::*,
-};
-use datazen_runtime::{
-    artifact::FileArtifactRepository,
-    job::{JobHandler, StageSpec, StageTerminal},
+use datazen_modules::jobs::{JobHandler, StageSpec, StageTerminal};
+use datazen_modules::{
+    execution::application::idempotency::IdempotentOperation,
+    execution::domain::ArtifactRepository,
+    execution::target::*,
+    execution::{ArtifactLifecycle, ResourceRelease},
+    shared::context::OwnerRef,
+    shared::id::*,
 };
 use futures_util::FutureExt;
 use std::sync::{
@@ -97,7 +95,7 @@ struct Operation {
 impl FileJobOperation for Operation {
     async fn run(
         &self,
-        cancel: &datazen_runtime::job::CancelToken,
+        cancel: &datazen_modules::jobs::CancelToken,
     ) -> Result<FileJobOutput, FeatureError> {
         let source = Source {
             desktop: DesktopExportSource {
@@ -141,7 +139,8 @@ async fn journey(prefix: &str, driver_id: &str) {
     settings.limit_select_results = true;
     settings.query_result_limit = 32;
     store.save_settings(settings).await.unwrap();
-    let registry = Arc::new(datazen_runtime::driver_registry::DriverRegistry::new());
+    let registry =
+        Arc::new(datazen_modules::execution::runtime::driver_registry::DriverRegistry::new());
     let mut config = crate::testing::app_state::sample_postgres_config("export-live");
     config.database_type = driver_id.into();
     config.host = Some(setting(prefix, "HOST"));
@@ -269,7 +268,7 @@ async fn journey(prefix: &str, driver_id: &str) {
             };
             let result = tokio::time::timeout(
                 std::time::Duration::from_secs(30),
-                job.run_stage(&stage, &datazen_runtime::job::CancelToken::new()),
+                job.run_stage(&stage, &datazen_modules::jobs::CancelToken::new()),
             )
             .await
             .expect("bounded export completion")

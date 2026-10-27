@@ -5,7 +5,7 @@
 //! 生产端）。本模块只再导出，旧路径不变；**行为用例留在本垫片层**
 //! （`#[cfg(test)] mod tests`）——它们需要一个真实
 //! `RuntimeConnectionUseCases`（fakes 的端口实现无法覆盖分页/可见性
-//! 语义），持有 datazen-runtime dev-dep，与 D5 data_sync 垫片保留集成
+//! 语义），持有 datazen-modules dev-dep，与 D5 data_sync 垫片保留集成
 //! 测试同一先例；D8 退役 feature-core 时随垫片一并处置。
 //!
 //! The AI feature needs database metadata (tables, columns, types, schema) for

@@ -1,7 +1,7 @@
 //! 阶段投影形状：钉死 `validate_plan` 把一个 Job 展开成哪几个阶段。
 //!
 //! 为什么这张表值得单独立一个文件：`docs/architecture/platform/data-migration-jobs.md` 与
-//! `packages/runtime/src/job/runtime.rs` 的注释都把「data-transfer 的哪些 Job 是单阶段」
+//! `modules/src/jobs/runtime.rs` 的注释都把「data-transfer 的哪些 Job 是单阶段」
 //! 当作事实来引用——阶段内轮询读失败后，只有「下一个阶段边界」能把漏掉的取消意图捡回来。
 //! 这条事实一旦被 `handler.rs` 的重构悄悄改掉，两处注释会一起变成假话，而没有任何用例会
 //! 变红。所以整张映射表在这里钉死，注释与测试同源。

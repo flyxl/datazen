@@ -14,7 +14,7 @@ use datazen_feature_core::workflow::model::{
 use datazen_feature_core::workflow::registry::{
     WorkflowDefinitionRecord, WorkflowDefinitionRepository, WorkflowRegistry as CoreRegistry,
 };
-use datazen_platform_api::ports::scope::OrganizationScope;
+use datazen_modules::shared::scope::OrganizationScope;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -215,7 +215,7 @@ mod tests {
     use super::*;
     use chrono::Utc;
     use datazen_feature_core::workflow::model::WorkflowStep;
-    use datazen_platform_api::id::OrganizationId;
+    use datazen_modules::shared::id::OrganizationId;
 
     fn sample_def(id: &str, visibility: WorkflowVisibility) -> WorkflowDefinition {
         WorkflowDefinition {

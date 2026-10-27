@@ -27,8 +27,8 @@
 
 use std::time::Duration;
 
-use datazen_platform_api::dto::execution::EffectOutcome;
-use datazen_platform_api::dto::job::{JobProgress, JobState};
+use datazen_modules::execution::EffectOutcome;
+use datazen_modules::jobs::domain::job::{JobProgress, JobState};
 
 use super::super::cancel::{cancel_data_transfer_job, job_cancel_requested};
 use super::super::queries::read_job;
@@ -366,7 +366,7 @@ async fn an_apply_command_returns_while_the_write_it_owes_is_still_blocked() {
 async fn poll_until_terminal(
     state: &crate::commands::AppState,
     job_id: &str,
-) -> datazen_platform_api::dto::job::JobView {
+) -> datazen_modules::jobs::domain::job::JobView {
     let deadline = Duration::from_secs(30);
     let poll = Duration::from_millis(20);
     let started = std::time::Instant::now();

@@ -3,7 +3,7 @@ import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
 /**
  * Run `cargo test` for the platform core crates.
  *
- * Closes the gap at platform-development-plan.md:269 — `datazen-runtime` was
+ * Closes the gap at platform-development-plan.md:269 — the shared runtime was
  * linked by CI (`cargo test --lib -p datazen --lib`) but never tested, so the
  * one crate the server will be built on could compile clean and still be wrong.
  *
@@ -12,8 +12,8 @@ import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
  * Precedent: ci.yml:96 carries the comment 「驱动集合只写在
  * `run-unit-driver-set.mjs`，不要内联到这里」 for the driver test set. The same
  * argument applies with more force here, because the platform crates are *being
- * written right now* by another track — `packages/application` and
- * `packages/platform-api` are landing in a parallel branch. A `-p` list in
+ * written right now* by another track — `modules` is now the single shared
+ * business crate. A `-p` list in
  * ci.yml would have to be edited the day they merge; a list derived from the
  * same LAYERS table the boundary guard uses is edited never, and cannot drift
  * from the guard's idea of what a core crate is.
@@ -125,9 +125,6 @@ export const PREFIX = '[platform-crate-tests]';
  */
 export const TESTED_LAYERS = Object.freeze([
   'modules',
-  'runtime',
-  'application',
-  'platform-api',
   'infra',
   'server',
   // The Workspace App kernel used to be the standalone `workspace-apps` layer.
@@ -156,7 +153,7 @@ export const TESTED_LAYERS = Object.freeze([
  * invocation structurally cannot reach is a target whose assertions refuse the
  * debug profile:
  *
- * - `packages/runtime/src/bin/cm60-bench/` is a **binary** target whose unit
+ * - `modules/src/bin/cm60-bench/` is a **binary** target whose unit
  *   tests live in the bin's own test binary — that much `cargo test -p …`
  * *does* reach — but `cm60-bench/main.rs` **has to** be built and run
  * `--release`: it exits 2 under `debug_assertions`, which is a deliberate
@@ -178,9 +175,12 @@ export const TESTED_LAYERS = Object.freeze([
  * discovered are skipped instead — no crate, no target.
  */
 export const EXTRA_TARGETS = Object.freeze({
-  'datazen-runtime': Object.freeze([
+  'datazen-modules': Object.freeze([
     // §11.3 latency half: the bench binary's own unit tests, release only.
-    Object.freeze({ release: true, args: Object.freeze(['--bin', 'cm60-bench']) }),
+    Object.freeze({
+      release: true,
+      args: Object.freeze(['--features', 'execution,jobs', '--bin', 'cm60-bench']),
+    }),
   ]),
 });
 

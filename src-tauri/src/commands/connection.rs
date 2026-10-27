@@ -2,7 +2,7 @@ use super::error::{CmdExt, CommandError};
 use super::AppState;
 use datazen_driver_api::{ConnectionConfig, DriverCategory, ServerInfo};
 use datazen_modules::connection::ConnectionError;
-use datazen_platform_api::error::ApiErrorCode;
+use datazen_modules::shared::error::ApiErrorCode;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -23,7 +23,7 @@ pub struct ConnectionSessionRef {
 
 /// 宿主组织作用域 → 模块连接作用域。
 fn scope_modules(
-    scope: &datazen_platform_api::ports::scope::OrganizationScope,
+    scope: &datazen_modules::shared::scope::OrganizationScope,
 ) -> datazen_modules::connection::ConnectionScope {
     datazen_modules::connection::ConnectionScope::new(scope.organization_id().as_str())
 }
@@ -251,7 +251,7 @@ pub(crate) async fn ping_connection_impl(
         crate::services::migration_endpoint::runtime_session_context(
             state,
             &db_session_id,
-            datazen_runtime::application::LivePurpose::Inspection,
+            datazen_modules::execution::application::LivePurpose::Inspection,
         )
         .await
         .is_ok(),
@@ -390,7 +390,7 @@ pub(crate) async fn get_connection_info_impl(
     let config = crate::services::migration_endpoint::runtime_session_context(
         state,
         &db_session_id,
-        datazen_runtime::application::LivePurpose::Inspection,
+        datazen_modules::execution::application::LivePurpose::Inspection,
     )
     .await?
     .config;
@@ -814,7 +814,7 @@ mod tests {
             .register_test_driver_with_capabilities(
                 "postgres",
                 test.mock.clone(),
-                datazen_runtime::driver_registry::DriverCapabilities {
+                datazen_modules::execution::runtime::driver_registry::DriverCapabilities {
                     has_multi_database: false,
                     supports_cancel_query: true,
                     supports_query_execution_cancel: true,

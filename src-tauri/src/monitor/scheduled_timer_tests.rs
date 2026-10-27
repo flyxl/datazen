@@ -2,7 +2,7 @@ use super::*;
 use crate::testing::{app_state::TestAppState, mock_driver::MockDriverOptions};
 use datazen_feature_core::dashboard::repository::save_dashboard;
 use datazen_feature_core::dashboard::types::*;
-use datazen_platform_api::dto::job::{JobFilter, JobState};
+use datazen_modules::jobs::domain::job::{JobFilter, JobState};
 use std::time::Duration;
 
 // The shared Host mock defaults to the legacy test type "postgres"; this

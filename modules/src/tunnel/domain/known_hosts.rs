@@ -67,7 +67,7 @@ mod tests {
     use super::*;
 
     /// 形态中立、无副作用、无传输的进程内原语：内存实现随端口一起提供
-    /// （先例：平台文档 §4 的 `ports::budget::pool_ledger`）。
+    /// （先例：平台文档 §4 的 `execution::application::budget::pool_ledger`）。
     #[derive(Default)]
     struct MemoryKnownHosts {
         entries: Mutex<HashMap<String, KnownHostEntry>>,

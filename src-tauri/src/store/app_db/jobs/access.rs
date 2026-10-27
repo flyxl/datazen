@@ -1,10 +1,10 @@
-use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::dto::job::{
+use datazen_modules::jobs::domain::job::{
     CommitBoundary, JobDetails, JobDomainResult, JobFilter, JobRecord, JobRecoveryResult,
     JobRecoveryTarget, RecoveryFilter,
 };
-use datazen_platform_api::error::PortError;
-use datazen_platform_api::id::{JobId, Timestamp};
+use datazen_modules::shared::context::RequestContext;
+use datazen_modules::shared::error::PortError;
+use datazen_modules::shared::id::{JobId, Timestamp};
 use rusqlite::{params, OptionalExtension};
 
 use super::codec::{decode, read_record};
@@ -13,7 +13,7 @@ use super::SqliteJobRepository;
 const MAX_JOB_PAGE: u32 = 500;
 
 impl SqliteJobRepository {
-    pub(super) async fn get(
+    pub(crate) async fn get(
         &self,
         ctx: &RequestContext,
         job_id: JobId,

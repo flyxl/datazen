@@ -13,8 +13,8 @@
 //! has no notion of a job kind at all. So `kind` and `limit` are applied here,
 //! host-side, and each of them gets its own assertion below.
 
-use datazen_platform_api::dto::execution::EffectOutcome;
-use datazen_platform_api::dto::job::{JobProgress, JobState, JobView};
+use datazen_modules::execution::EffectOutcome;
+use datazen_modules::jobs::domain::job::{JobProgress, JobState, JobView};
 
 use super::super::queries::{read_job, read_jobs};
 use super::super::runtime::{APPLY_KIND, PREPARE_KIND};

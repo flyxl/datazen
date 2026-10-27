@@ -18,14 +18,14 @@
 //! 翻成 true 之后，data-transfer 的管道真的会**停下来**，而且停在第一次 commit 之前。
 //! 它证明不了前半段——「这一位究竟有没有被翻」。
 //!
-//! 前半段在 `packages/runtime/tests/job_cancel_watch.rs` 的
+//! 前半段在 `modules/tests/job_cancel_watch.rs` 的
 //! `mid_stage_cancel_without_prior_boundary_rolls_back`（runtime 侧 C1），那里读得到
 //! 内存仓储的 `get_calls()`，能够断言轮询次数真的在涨。
 //!
 //! 为什么这里读不到：`get_calls()` / `fail_get()` 是
 //! `#[cfg(any(test, feature = "test-harness"))]` 缝，而 `datazen-data-transfer` 的
 //! `[features]` 只有 `webdriver = []`——**没有 `test-harness`**（runtime 是靠一条
-//! 自引用的 dev-dependency 才拿到的：`datazen-runtime = { path = ".", features =
+//! 自引用的 dev-dependency 才拿到的：`datazen-modules = { path = ".", features =
 //! ["test-harness"] }`）。给它补一个 feature 意味着动本 crate 的 feature 面，
 //! 远超本组测试的职责，所以此处只能用 `WATCHER_SLACK` 那样的一段有界等待，
 //! 让断言落在**终态**上。

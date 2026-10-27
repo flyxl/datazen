@@ -4,8 +4,8 @@ use crate::commands::error::CommandError;
 use crate::commands::AppState;
 use datazen_modules::ai::AiProviderConfig;
 use datazen_modules::ai::*;
-use datazen_platform_api::dto::session::SessionView;
-use datazen_runtime::application::{LiveConnectionLease, LivePurpose};
+use datazen_modules::execution::application::{LiveConnectionLease, LivePurpose};
+use datazen_modules::execution::SessionView;
 use std::sync::Arc;
 use tauri::{Emitter, WebviewWindow};
 

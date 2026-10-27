@@ -13,7 +13,7 @@
 //!
 //! ## 已实现契约（[共享边界 §4.6](../shared-boundaries-and-ports.md#46-结果与事件端口)）
 //!
-//! 以下行为由 `datazen-runtime::artifact::FileArtifactRepository` 实现，并由 runtime 的
+//! 以下行为由 `datazen-modules::artifact::FileArtifactRepository` 实现，并由 runtime 的
 //! artifact journey 与 `p3_live_port` 测试覆盖。其他 host 可以提供自己的实现，但必须遵守同一端口契约。
 //!
 //! * 生命周期 `writing → complete | truncated`，另有 `revoked/expired` 不可读终态。

@@ -13,7 +13,7 @@ use datazen_feature_core::dashboard::types::{Dashboard, DashboardWidget, WidgetR
 use datazen_modules::monitor::application::evidence;
 use datazen_modules::monitor::application::{MonitorEngine as CoreEngine, MonitorHost};
 use datazen_modules::monitor::domain::MonitorGrant;
-use datazen_platform_api::ports::scope::OrganizationScope;
+use datazen_modules::shared::scope::OrganizationScope;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 struct DesktopMonitorHost {

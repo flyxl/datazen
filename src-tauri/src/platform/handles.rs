@@ -9,7 +9,7 @@
 //!
 //! ## 选型说明
 //!
-//! * `OwnerRef`（`datazen_platform_api::context`）只派生 `Clone + PartialEq + Eq`，
+//! * `OwnerRef`（`datazen_modules::context`）只派生 `Clone + PartialEq + Eq`，
 //!   没有 `Hash` / `Ord`。给它补派生属于改 platform-api 契约，会和其他 track 的实现面
 //!   撞车，因此这里用 `Vec` + 线性查。登记条目数 = 活跃会话上的活跃事务句柄，
 //!   桌面形态是个位数，线性查不构成热点。若将来 `OwnerRef` 补上 `Hash`，换
@@ -18,9 +18,9 @@
 //!   记日志：登记表里是纯数据，每次加锁期间只做**一次** `push` 或 `retain`，
 //!   不存在"改到一半"的可观测中间态，恢复不会破坏不变量。
 
-use datazen_platform_api::context::OwnerRef;
-use datazen_platform_api::error::PortError;
-use datazen_platform_api::id::{DbSessionId, RuntimeEpoch};
+use datazen_modules::shared::context::OwnerRef;
+use datazen_modules::shared::error::PortError;
+use datazen_modules::shared::id::{DbSessionId, RuntimeEpoch};
 
 /// owner + 会话 的复合键。**两维缺一不可**：只有 `dbSessionId` 就是旧共享 session。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -164,7 +164,7 @@ impl SessionHandleRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_platform_api::id::{BlockId, ClientInstanceId, EditorSessionId, JobId, StageId};
+    use datazen_modules::shared::id::{BlockId, ClientInstanceId, EditorSessionId, JobId, StageId};
 
     fn editor(client: &str) -> OwnerRef {
         OwnerRef::Editor {
@@ -385,8 +385,8 @@ mod tests {
             ("error.rs", include_str!("error.rs")),
             ("handles.rs", include_str!("handles.rs")),
             (
-                "frontend_bridge.rs (packages/application)",
-                include_str!("../../../packages/application/src/frontend_bridge.rs"),
+                "frontend_bridge.rs (modules)",
+                include_str!("../../../modules/src/application/frontend_bridge.rs"),
             ),
             ("adapter.rs", include_str!("adapter.rs")),
             ("mod.rs", include_str!("mod.rs")),

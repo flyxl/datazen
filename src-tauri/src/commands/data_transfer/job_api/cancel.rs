@@ -1,7 +1,7 @@
 //! Cancellation against the shared durable Job host.
 
-use datazen_platform_api::id::JobId;
-use datazen_platform_api::PortError;
+use datazen_modules::shared::id::JobId;
+use datazen_modules::PortError;
 
 use crate::commands::error::CommandError;
 use crate::commands::AppState;

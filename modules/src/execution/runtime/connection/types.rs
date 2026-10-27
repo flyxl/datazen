@@ -11,11 +11,11 @@ use serde::{Deserialize, Serialize};
 use crate::execution::runtime::connection::error::{ApiError, ApiErrorCode};
 
 // ---------------------------------------------------------------------------
-// ID newtype 与计数器：全项目唯一定义处在 `datazen-platform-api::id`。
+// ID newtype 与计数器：全项目唯一定义处在 `datazen-modules::platform_api::id`。
 // ---------------------------------------------------------------------------
 //
 // 本文件**不再**重复定义 `string_id!` 与 `Counter`。同一批 newtype 在
-// `packages/platform-api/src/id.rs` 里已有一套等价实现；两处并存会让
+// `modules/src/shared/id.rs` 里已有一套等价实现；两处并存会让
 // `ConnectionId` / `DbSessionId` 各自拥有两个互不相干的类型，
 // ID 术语规范要求的编译期保障也就落空了。
 //
@@ -42,7 +42,7 @@ pub use crate::shared::id::{
     StreamId, Timestamp, WorkerId,
 };
 
-/// 命名空间层与形状的**唯一**定义在 `datazen-platform-api::target`。
+/// 命名空间层与形状的**唯一**定义在 `datazen-modules::platform_api::target`。
 ///
 /// 本文件原先**重复定义**了这两个类型，代价是两份 JSON 形态（`optional` 的 `#[serde(default)]`
 /// 只有 runtime 一侧有）与两套 `database_and_schema()` 语义同时在线。现已删除本地副本。
@@ -88,7 +88,7 @@ pub fn schema_required_shape() -> TargetNamespaceShape {
 // `schema_required_shape()` 显式承载。
 //
 // 另有两处同名物不在本文件、也不适合跨 crate 合并：
-// `ApiError` / `ApiErrorCode` 的规范定义在 `packages/application/src/error.rs`
+// `ApiError` / `ApiErrorCode` 的规范定义在 `modules/src/application/error.rs`
 // （4 字段结构体），`CapabilitySnapshot` 两边是**不同概念**——本 crate 的
 // `connection/capability.rs` 描述驱动能力矩阵（`confirmed: bool` + 10 个能力枚举），
 // `platform-api/src/dto/execution.rs` 描述执行审计记录（`confirmed: BTreeMap<_, _>`）。

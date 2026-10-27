@@ -47,8 +47,8 @@ use datazen_driver_api::{
     DriverCategory, DriverError, MultiQueryResult, QueryResult, ServerInfo, TableInfo, TableSchema,
     TransactionHandle, Value,
 };
-use datazen_platform_api::dto::execution::EffectOutcome;
-use datazen_platform_api::dto::job::JobState;
+use datazen_modules::execution::EffectOutcome;
+use datazen_modules::jobs::domain::job::JobState;
 use tokio::sync::{mpsc, Semaphore};
 
 use crate::data_sync::job::body::ApplySpec;

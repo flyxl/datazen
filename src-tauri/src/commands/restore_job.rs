@@ -4,13 +4,13 @@ use super::{AppState, CommandError};
 use datazen_feature_core::restore_job::{
     RestoreApplyJob, UnsupportedRestoreGateway, RESTORE_APPLY_KIND,
 };
-use datazen_platform_api::{
-    context::OwnerRef,
-    dto::job::{JobDefinition, JobState},
-    id::{ConnectionId, IdempotencyKey, JobId, WorkerId},
-    target::{ExecutionTarget, NamespaceTarget},
+use datazen_modules::jobs::{EndpointRef, EndpointRole, JobHandler};
+use datazen_modules::{
+    execution::target::{ExecutionTarget, NamespaceTarget},
+    jobs::domain::job::{JobDefinition, JobState},
+    shared::context::OwnerRef,
+    shared::id::{ConnectionId, IdempotencyKey, JobId, WorkerId},
 };
-use datazen_runtime::job::{EndpointRef, EndpointRole, JobHandler};
 use std::{path::PathBuf, sync::Arc};
 use tauri::{AppHandle, Emitter};
 
@@ -31,7 +31,9 @@ pub(crate) async fn restore_from_native_file(
         .runtime()
         .map_err(crate::platform::into_command_error)?;
     let owner = runtime
-        .connection_id_for_session(&datazen_runtime::connection::DbSessionId::new(session))
+        .connection_id_for_session(
+            &datazen_modules::execution::runtime::connection::DbSessionId::new(session),
+        )
         .map(|id| id.as_str().to_owned())
         .ok_or_else(|| {
             CommandError::Validation("Restore session has no owning connection".into())
@@ -213,7 +215,7 @@ pub(crate) async fn restore_from_native_file(
     }
     Ok(())
 }
-fn storage_error(_: datazen_platform_api::PortError) -> CommandError {
+fn storage_error(_: datazen_modules::PortError) -> CommandError {
     CommandError::Internal(
         "Restore artifact or Job storage unavailable; inspect Job status before retrying".into(),
     )

@@ -34,8 +34,8 @@ fn the_audit_registry_covers_every_tunnel_module() {
         "src/execution/runtime/tunnel/single_counter_audit/gate_self_audit.rs",
         "src/execution/runtime/tunnel/single_counter_audit/port_audit.rs",
         "src/execution/runtime/tunnel/source_scan.rs",
-        "../packages/runtime/tests/tunnel_refcount_contract.rs",
-        "../packages/runtime/tests/cm28_concurrent_tunnel.rs",
+        "tests/tunnel_refcount_contract.rs",
+        "tests/cm28_concurrent_tunnel.rs",
     ] {
         assert!(
             AUDITED.iter().any(|(path, _)| *path == required),
@@ -148,8 +148,7 @@ fn port_files_on_disk() -> Vec<String> {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut out = Vec::new();
     collect_port_files(&root.join("src"), root, &mut out);
-    // 集成测试面仍在 datazen-runtime（D3 迁移后）。
-    collect_port_files(&root.join("../packages/runtime/tests"), root, &mut out);
+    collect_port_files(&root.join("tests"), root, &mut out);
     out.sort();
     out
 }
@@ -275,16 +274,12 @@ fn the_scan_primitives_see_the_shapes_they_claim() {
         "夹具端口文件必须有且只有 `tallies` 一份折法"
     );
     assert_eq!(
-        fold_functions(&blank(source(
-            "../packages/runtime/tests/cm28_concurrent_tunnel.rs"
-        ))),
+        fold_functions(&blank(source("tests/cm28_concurrent_tunnel.rs"))),
         vec!["tally".to_owned()],
         "并发轨端口文件必须有且只有 `tally` 一份折法"
     );
     assert_eq!(
-        fold_functions(&blank(source(
-            "../packages/runtime/tests/tunnel_refcount_contract.rs"
-        ))),
+        fold_functions(&blank(source("tests/tunnel_refcount_contract.rs"))),
         vec!["tally".to_owned()],
         "接缝契约轨端口文件必须有且只有 `tally` 一份折法"
     );

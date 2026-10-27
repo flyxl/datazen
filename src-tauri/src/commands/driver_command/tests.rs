@@ -9,7 +9,7 @@ use datazen_driver_api::{
     CommandAccessLevel, QueryExecutionId, QueryStreamCallback, QueryStreamEvent,
 };
 use datazen_feature_core::mcp::permission::McpPermissionMode;
-use datazen_feature_core::services::command_policy::access_level_for_mode;
+use datazen_modules::mcp::application::command_policy::access_level_for_mode;
 
 #[test]
 fn request_uses_camel_case_wire_format() {

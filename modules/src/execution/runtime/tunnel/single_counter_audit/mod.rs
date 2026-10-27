@@ -154,20 +154,20 @@ const AUDITED: &[(&str, &str)] = &[
         include_str!("../journey_single_counter.rs"),
     ),
     (
-        "../packages/runtime/tests/tunnel_refcount_contract.rs",
-        include_str!("../../../../../../packages/runtime/tests/tunnel_refcount_contract.rs"),
+        "tests/tunnel_refcount_contract.rs",
+        include_str!("../../../../../tests/tunnel_refcount_contract.rs"),
     ),
     (
-        "../packages/runtime/tests/cm28_concurrent_tunnel.rs",
-        include_str!("../../../../../../packages/runtime/tests/cm28_concurrent_tunnel.rs"),
+        "tests/cm28_concurrent_tunnel.rs",
+        include_str!("../../../../../tests/cm28_concurrent_tunnel.rs"),
     ),
     (
-        "../packages/runtime/tests/tunnel_arch_support/mod.rs",
-        include_str!("../../../../../../packages/runtime/tests/tunnel_arch_support/mod.rs"),
+        "tests/tunnel_arch_support/mod.rs",
+        include_str!("../../../../../tests/tunnel_arch_support/mod.rs"),
     ),
     (
-        "../packages/runtime/tests/tunnel_route_network_provider.rs",
-        include_str!("../../../../../../packages/runtime/tests/tunnel_route_network_provider.rs"),
+        "tests/tunnel_route_network_provider.rs",
+        include_str!("../../../../../tests/tunnel_route_network_provider.rs"),
     ),
     (
         "src/execution/runtime/tunnel/form_neutrality.rs",

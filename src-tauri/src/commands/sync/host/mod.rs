@@ -23,8 +23,8 @@ use async_trait::async_trait;
 use datazen_driver_api::{
     DatabaseType, SyncKeyContract, SyncSourceAdapter, SyncTargetAdapter, TableSchema,
 };
-use datazen_runtime::application::{LiveConnectionLease, LivePurpose};
-use datazen_runtime::job::CancelToken;
+use datazen_modules::execution::application::{LiveConnectionLease, LivePurpose};
+use datazen_modules::jobs::CancelToken;
 
 use crate::data_sync::job::artifact::{ChangeSetArtifact, RelationIdentity};
 use crate::data_sync::job::host::{
@@ -75,8 +75,8 @@ struct Slot {
 }
 
 pub(crate) struct HostDataSync {
-    runtime: Arc<datazen_runtime::application::RuntimeConnectionUseCases>,
-    call_context: datazen_platform_api::context::RequestContext,
+    runtime: Arc<datazen_modules::execution::application::RuntimeConnectionUseCases>,
+    call_context: datazen_modules::shared::context::RequestContext,
     store: Arc<crate::store::DesktopRepository>,
     adapters: Arc<SyncAdapterRegistry>,
     source: Endpoint,
@@ -98,8 +98,8 @@ fn invalid(message: impl Into<String>) -> DataSyncError {
 
 impl HostDataSync {
     pub(crate) fn new(
-        runtime: Arc<datazen_runtime::application::RuntimeConnectionUseCases>,
-        call_context: datazen_platform_api::context::RequestContext,
+        runtime: Arc<datazen_modules::execution::application::RuntimeConnectionUseCases>,
+        call_context: datazen_modules::shared::context::RequestContext,
         store: Arc<crate::store::DesktopRepository>,
         adapters: Arc<SyncAdapterRegistry>,
         source: Endpoint,

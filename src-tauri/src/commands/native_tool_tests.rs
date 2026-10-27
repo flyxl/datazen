@@ -2,9 +2,8 @@
 //! No env, database server, real pg_dump/mysqldump or arbitrary client process.
 use super::*;
 use crate::platform::{PlatformAdapter, PlatformEntry};
-use datazen_platform_api::{
-    dto::{execution::EffectOutcome, job::JobState},
-    id::PrincipalId,
+use datazen_modules::{
+    execution::EffectOutcome, jobs::domain::job::JobState, shared::id::PrincipalId,
 };
 use sha2::{Digest, Sha256};
 use std::{
@@ -28,7 +27,7 @@ async fn state(path: &Path) -> AppState {
     );
     crate::finish_app_state(
         store,
-        Arc::new(datazen_runtime::driver_registry::init_drivers()),
+        Arc::new(datazen_modules::execution::runtime::driver_registry::init_drivers()),
         Arc::new(crate::transfer::adapter_registry::SyncAdapterRegistry::new()),
         None,
     )
@@ -36,7 +35,7 @@ async fn state(path: &Path) -> AppState {
 fn attach(
     state: &mut AppState,
     manifest: &serde_json::Value,
-) -> Result<(), datazen_application::error::ApiError> {
+) -> Result<(), datazen_modules::shared::error::ApiError> {
     let mut adapter = PlatformAdapter::new_launch(&uuid::Uuid::new_v4().to_string())?;
     adapter.inject(
         state.store.clone(),

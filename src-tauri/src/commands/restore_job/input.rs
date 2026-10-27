@@ -1,11 +1,11 @@
 //! Native-selected file staging and owner-bound restore Artifact upload.
 use super::{storage_error, CommandError};
 use datazen_feature_core::restore_job::RestorePlan;
-use datazen_platform_api::{
-    dto::artifact::AbortReason,
-    id::{Counter, ExecutionId},
-    ports::artifact::{ArtifactRepository, ArtifactSpec, ChunkPayload},
-    target::ExecutionTarget,
+use datazen_modules::{
+    execution::domain::{ArtifactRepository, ArtifactSpec, ChunkPayload},
+    execution::target::ExecutionTarget,
+    execution::AbortReason,
+    shared::id::{Counter, ExecutionId},
     RequestContext,
 };
 use sha2::{Digest, Sha256};

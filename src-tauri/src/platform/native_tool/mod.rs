@@ -3,7 +3,7 @@
 pub(crate) mod deployment;
 #[cfg(unix)]
 mod process;
-use datazen_platform_api::{error::PortError, ports::native_tool::*};
+use datazen_modules::{jobs::domain::native_tool::*, shared::error::PortError};
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,

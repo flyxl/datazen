@@ -43,7 +43,7 @@ pub use datazen_modules::history::{
     DEFAULT_HISTORY_PAGE_SIZE, MAX_MIGRATION_RUN_HISTORY, MAX_QUERY_HISTORY, MAX_WORKFLOW_HISTORY,
 };
 
-pub use datazen_platform_api::dto::migration::{
+pub use datazen_modules::history::domain::migration_run::{
     MigrationProfileRef, MigrationRunFilter, MigrationRunPage, MigrationRunRecord,
 };
 

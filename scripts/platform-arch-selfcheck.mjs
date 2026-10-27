@@ -327,7 +327,7 @@ export const MUTATIONS = [
   {
     id: 'M1',
     rule: 'F-01',
-    title: 'a driver crate takes a dependency on datazen-runtime',
+    title: 'a driver crate takes a dependency on datazen-modules',
     crate: 'datazen-driver-arch-probe',
     apply(snapshot) {
       // `packages/drivers/*` is a glob, so a new directory is a member with no
@@ -336,96 +336,54 @@ export const MUTATIONS = [
         snapshot,
         'packages/drivers/zz-arch-probe',
         'datazen-driver-arch-probe',
-        `[dependencies]\ndatazen-runtime = { path = "${join(REPO_ROOT, 'packages/runtime')}" }\n`,
+         `[dependencies]\ndatazen-modules = { path = "${join(REPO_ROOT, 'modules')}" }\n`,
       );
-      return () => readOrEmpty('packages/drivers/zz-arch-probe/Cargo.toml').includes('datazen-runtime');
+       return () => readOrEmpty('packages/drivers/zz-arch-probe/Cargo.toml').includes('datazen-modules');
     },
   },
   {
     id: 'M2',
     rule: 'F-02',
     title: 'the platform kernel takes a dependency on a tauri* crate',
-    crate: 'datazen-runtime',
+    crate: 'datazen-modules',
     apply(snapshot, scratch) {
       addDependencyTo(
         snapshot,
-        'packages/runtime/Cargo.toml',
+         'modules/Cargo.toml',
         'dependencies',
         `tauri = { path = "${stubCrate('tauri', scratch)}" }`,
       );
-      return () => declaredInTable(readOrEmpty('packages/runtime/Cargo.toml'), 'tauri', 'dependencies');
+       return () => declaredInTable(readOrEmpty('modules/Cargo.toml'), 'tauri', 'dependencies');
     },
   },
   {
     id: 'M3',
     rule: 'F-03',
     title: 'the platform kernel takes a dependency on an HTTP framework',
-    crate: 'datazen-runtime',
+    crate: 'datazen-modules',
     apply(snapshot, scratch) {
       addDependencyTo(
         snapshot,
-        'packages/runtime/Cargo.toml',
+         'modules/Cargo.toml',
         'dependencies',
         `axum = { path = "${stubCrate('axum', scratch)}" }`,
       );
-      return () => declaredInTable(readOrEmpty('packages/runtime/Cargo.toml'), 'axum', 'dependencies');
-    },
-  },
-  {
-    id: 'M4',
-    rule: 'F-04',
-    title: 'platform-api takes a dependency outside its allowed layers',
-    crate: 'datazen-platform-api',
-    apply(snapshot) {
-      // The back-edge into `datazen-runtime` that this used to add is not
-      // reachable by any probe: `platform-api → runtime` closes the cycle
-      // `runtime → application → platform-api`, and cargo refuses a normal
-      // dependency cycle outright — `cargo metadata` exits 101 with "cyclic
-      // package dependency" before the guard reads a package. The probe proved
-      // nothing about F-04 and reported the cargo error instead.
-      //
-      // Every layer outside F-04's allow-list is either that cycle
-      // (`datazen-runtime`, `datazen-application`, `datazen`) or a crate that
-      // drags the whole host into the closure, so the edge is stood up against
-      // a throwaway `server` crate instead. `server` is a declared layer that
-      // ships nothing yet, and this run is the one place where it exists —
-      // which is what the vacuous F-06 line in the baseline already reported.
-      //
-      // `packages/platform-api` is a real package, so back its manifest up
-      // rather than register the package directory for removal: the revert here
-      // is an `rm -rf`, and registering a real package deleted its 26 tracked
-      // files.
-      addMembers(snapshot, ['server']);
-      addMemberDir(snapshot, 'server', 'datazen-server-probe', '[dependencies]\n');
-      addDependencyTo(
-        snapshot,
-        'packages/platform-api/Cargo.toml',
-        'dependencies',
-        `datazen-server-probe = { path = "${join(REPO_ROOT, 'server')}" }`,
-      );
-      return () =>
-        readOrEmpty('Cargo.toml').includes('"server",') &&
-        readOrEmpty('server/Cargo.toml').includes('name = "datazen-server-probe"') &&
-        declaredInTable(
-          readOrEmpty('packages/platform-api/Cargo.toml'),
-          'datazen-server-probe',
-          'dependencies',
-        );
+       return () => declaredInTable(readOrEmpty('modules/Cargo.toml'), 'axum', 'dependencies');
     },
   },
   {
     id: 'M5',
     rule: 'F-05',
     title: 'the platform kernel takes a dependency on a UI-runtime crate',
-    crate: 'datazen-runtime',
+    crate: 'datazen-modules',
     apply(snapshot, scratch) {
       addDependencyTo(
         snapshot,
-        'packages/runtime/Cargo.toml',
+         'modules/Cargo.toml',
         'dependencies',
         `react = { path = "${stubCrate('react', scratch)}" }`,
       );
-      return () => declaredInTable(readOrEmpty('packages/runtime/Cargo.toml'), 'react', 'dependencies');
+       return () => declaredInTable(readOrEmpty('modules/Cargo.toml'), 'react', 'dependencies');
     },
   },
   {

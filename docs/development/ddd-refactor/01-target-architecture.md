@@ -43,10 +43,10 @@ Java `interface` 和 Rust `trait` 是语言提供的接口机制；Port 描述�
 
 以下是当前事实，不是最终设计：
 
-- 根 `Cargo.toml` 仍列有 `packages/application`、`packages/platform-api`、`packages/runtime`、`packages/kernel`、`packages/feature-core` 和迁移领域包；尚无根目录 `modules/`、`web/` 成员。
-- `packages/application/src/lib.rs` 的 `ApplicationServices` 持有多个仓储和会话接口；这不等于所有命令的业务编排已经进入应用层。
-- `packages/platform-api/src/ports/` 集中存放 Profile、连接目录、设置、Job 等接口；领域仓储也有一部分位于各自领域包。
-- `packages/runtime/src/application/mod.rs` 的 `RuntimeConnectionUseCases` 同时持有 Profile / Policy、registry、gateway 和资源状态，需要按职责拆开。
+- 根 `Cargo.toml` 仍列有 `modules`、`modules/src/platform_api`、`modules`、`packages/kernel`、`packages/feature-core` 和迁移领域包；尚无根目录 `modules/`、`web/` 成员。
+- `modules/src/application/lib.rs` 的 `ApplicationServices` 持有多个仓储和会话接口；这不等于所有命令的业务编排已经进入应用层。
+- `modules/src/platform_api/src/ports/` 集中存放 Profile、连接目录、设置、Job 等接口；领域仓储也有一部分位于各自领域包。
+- `modules/src/execution/application/mod.rs` 的 `RuntimeConnectionUseCases` 同时持有 Profile / Policy、registry、gateway 和资源状态，需要按职责拆开。
 - `packages/kernel/src/lib.rs` 导出 Job、budget、schema cache、SQL guard 和 driver registry，不应整包复制成新公共模块。
 - `src-tauri/src/commands/table_target.rs` 仍从 Store 读取 Profile、选择 Driver、提交执行、每 25ms 查询终态并读取结果块，是首批完整迁移链路。
 

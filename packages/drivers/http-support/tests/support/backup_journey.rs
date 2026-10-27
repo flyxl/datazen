@@ -5,8 +5,8 @@
 mod host;
 use datazen_driver_api::*;
 use datazen_feature_core::{backup::BackupEvents, backup_gateway::backup_to_path};
-use datazen_platform_api::{id::*, target::*, RequestContext};
-use datazen_runtime::job::CancelToken;
+use datazen_modules::jobs::CancelToken;
+use datazen_modules::{execution::target::*, shared::id::*, RequestContext};
 use std::{
     io::Read,
     sync::{atomic::Ordering, Arc},
@@ -120,7 +120,7 @@ pub async fn run(
     )
     .await;
     assert!(result.is_ok(), "Runtime backup succeeds");
-    let execution = datazen_application::sessions::ConnectionUseCases::get_execution(
+    let execution = datazen_modules::application::sessions::ConnectionUseCases::get_execution(
         &*runtime,
         &ctx,
         result.unwrap(),
@@ -133,7 +133,7 @@ pub async fn run(
     );
     assert_eq!(
         execution.state,
-        datazen_platform_api::dto::execution::ExecutionState::Succeeded
+        datazen_modules::execution::ExecutionState::Succeeded
     );
     let mut dump = String::new();
     flate2::read::GzDecoder::new(std::fs::File::open(&path).unwrap())

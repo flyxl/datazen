@@ -43,7 +43,7 @@ use crate::jobs::domain::time::JobClock;
 /// 两侧测试的观察窗口必须从它推导，而不是各自写死一个「大概差不多」的毫秒数：
 /// 写死的观察窗口在间隔被调大后会**静默失效**——窗口比一个轮询周期还短时，
 /// 「读次数不再增长」这句话恒成立，看门狗是死是活都测不出来。
-/// 改这里之前先看 `packages/runtime/tests/job_cancel_watch/poll_interval.rs`
+/// 改这里之前先看 `modules/tests/job_cancel_watch/poll_interval.rs`
 /// 里的两条需求边界断言。
 pub const CANCEL_POLL_INTERVAL: Duration = Duration::from_millis(50);
 

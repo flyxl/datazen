@@ -236,7 +236,7 @@ impl Ledger {
                 //
                 // 是否要改成「可观测的过量核销」（夹位之外额外记一笔 metric / warn），
                 // 属本 crate 的裁定范围，不在 CM-28 轨内。CM-28 侧的「预算不负数」证据
-                // 见 `packages/runtime/tests/cm28_concurrent_release.rs`：
+                // 见 `modules/tests/cm28_concurrent_release.rs`：
                 // 那里的探测器**允许** `outstanding` 变负并记录 `underflows`，
                 // 以免探测器与被测对象同源而把断言变成同义反复。
                 *used = Counter::new(used.get().saturating_sub(u64::from(count)));

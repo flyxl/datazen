@@ -613,7 +613,7 @@ pub async fn webdriver_monitor_evidence(
     widget_id: String,
     tick: bool,
 ) -> Result<serde_json::Value, CommandError> {
-    use datazen_platform_api::dto::job::JobFilter;
+    use datazen_modules::jobs::domain::job::JobFilter;
     let grant =
         get_monitor_widget_schedule_grant(state.clone(), dashboard_id.clone(), widget_id.clone())
             .await?
@@ -685,6 +685,6 @@ pub async fn webdriver_monitor_evidence(
     Ok(
         serde_json::json!({ "tickAccepted": tick_accepted, "receipts": receipts,
         "physicalDispatches": physical_dispatches,
-        "stage": crate::monitor::evidence::stage(&dashboard_id, &widget_id) }),
+        "stage": datazen_modules::monitor::application::evidence::stage(&dashboard_id, &widget_id) }),
     )
 }

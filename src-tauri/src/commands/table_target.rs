@@ -2,10 +2,6 @@
 use super::{AppState, CommandError, RowChangeTableContext};
 use crate::platform::into_command_error;
 use crate::services::{table_browsing, FilterCondition, QueryExecutor, SortCondition};
-use datazen_application::{
-    dto::requests::{CommandCall, ExecuteAtTargetRequest},
-    sessions::ConnectionUseCases,
-};
 use datazen_driver_api::keyset::CursorValue;
 use datazen_driver_api::{
     CountStrategy, DatabaseDriver, SqlDialect, TableDataResult, TableSchema, Value,
@@ -15,20 +11,23 @@ use datazen_feature_core::services::query_executor::{
     keyset_refusal, paging_info, resolve_paging, PagingPlan,
 };
 use datazen_feature_core::services::table_paging::{keyset_decision, resolve_order_spec_multi};
-use datazen_platform_api::{
-    context::RequestContext,
-    dto::{execution::ExecutionState, idempotency::IdempotentOperation},
-    id::{ConnectionId, Counter},
-    target::{ExecutionTarget, NamespaceTarget, ObjectTarget},
+use datazen_modules::application::sessions::ConnectionUseCases;
+use datazen_modules::execution::application::requests::{CommandCall, ExecuteAtTargetRequest};
+use datazen_modules::execution::application::RuntimeConnectionUseCases;
+use datazen_modules::{
+    execution::application::idempotency::IdempotentOperation,
+    execution::target::{ExecutionTarget, NamespaceTarget, ObjectTarget},
+    execution::ExecutionState,
+    shared::context::RequestContext,
+    shared::id::{ConnectionId, Counter},
 };
-use datazen_runtime::application::RuntimeConnectionUseCases;
 use serde::Deserialize;
 use serde_json::{json, Value as Json};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TableReadRequest {
-    pub manual_handle: Option<datazen_platform_api::dto::session::SessionHandle>,
+    pub manual_handle: Option<datazen_modules::execution::SessionHandle>,
     pub context: RowChangeTableContext,
     pub page: u32,
     pub page_size: u32,
@@ -256,7 +255,7 @@ async fn execute(
     context: &RequestContext,
     target: &ExecutionTarget,
     revision: Counter,
-    manual_handle: Option<&datazen_platform_api::dto::session::SessionHandle>,
+    manual_handle: Option<&datazen_modules::execution::SessionHandle>,
     command: &str,
     input: Json,
 ) -> Result<Vec<Json>, CommandError> {
@@ -280,7 +279,7 @@ async fn execute(
         runtime
             .execute_in_session(
                 context,
-                datazen_application::dto::requests::ExecuteInSessionRequest {
+                datazen_modules::execution::application::requests::ExecuteInSessionRequest {
                     handle: handle.clone(),
                     expected_context_revision: Some(session.context_revision),
                     call: CommandCall {
@@ -368,7 +367,7 @@ async fn fetch_table_schema(
     call_context: &RequestContext,
     target: &ExecutionTarget,
     revision: Counter,
-    manual_handle: Option<&datazen_platform_api::dto::session::SessionHandle>,
+    manual_handle: Option<&datazen_modules::execution::SessionHandle>,
     table: &str,
     database: &str,
     schema: Option<&str>,
@@ -665,7 +664,7 @@ pub async fn read(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TableReadPreviewRequest {
-    pub manual_handle: Option<datazen_platform_api::dto::session::SessionHandle>,
+    pub manual_handle: Option<datazen_modules::execution::SessionHandle>,
     pub context: RowChangeTableContext,
     pub page: u32,
     pub page_size: u32,

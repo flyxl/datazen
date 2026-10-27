@@ -1,7 +1,7 @@
 use super::{DesktopRepository, DesktopRepositoryError};
 use crate::schema_diff::SchemaDiffProfile;
 use datazen_modules::schema_diff::{SchemaDiffProfileRepository, SchemaDiffProfileRepositoryError};
-use datazen_platform_api::ports::scope::OrganizationScope;
+use datazen_modules::shared::scope::OrganizationScope;
 use serde_json::Value;
 
 const FILE_NAME: &str = "schema_diff_profiles.enc";
@@ -308,8 +308,8 @@ mod tests {
         let store = DesktopRepository::init_with_path(temp.path(), crate::store::KeyBackend::File)
             .await
             .expect("store");
-        let foreign = datazen_platform_api::ports::scope::OrganizationScope::new(
-            datazen_platform_api::id::OrganizationId::new("foreign-org"),
+        let foreign = datazen_modules::shared::scope::OrganizationScope::new(
+            datazen_modules::shared::id::OrganizationId::new("foreign-org"),
         );
 
         assert!(SchemaDiffProfileRepository::list(&store, &foreign)

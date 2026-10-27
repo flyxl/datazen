@@ -3,10 +3,7 @@ resolver = "2"
 members = [
     "src-tauri",
     "packages/driver-api",
-    "packages/platform-api",
     "packages/infra",
-    "packages/application",
-    "packages/runtime",
     "packages/feature-core",
     "modules",
     "packages/drivers/*",
@@ -18,8 +15,6 @@ exclude = [
 
 [workspace.dependencies]
 datazen-driver-api = { path = "packages/driver-api" }
-datazen-platform-api = { path = "packages/platform-api" }
-datazen-application = { path = "packages/application" }
 datazen-feature-core = { path = "packages/feature-core" }
 datazen-modules = { path = "modules", default-features = false }
 

@@ -2,6 +2,7 @@
 
 pub mod evidence;
 pub mod fixed_targets;
+pub mod grant_reader;
 pub mod notifications;
 pub mod occurrence;
 

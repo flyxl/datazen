@@ -30,7 +30,7 @@ let app = dialog.ok_or_else(|| {
 
 Priority areas when touching Host Rust:
 
-- `packages/runtime/src/connection/session.rs` 与 `src-tauri/src/platform/session_backend.rs` — session lifecycle
+- `modules/src/execution/runtime/connection/session.rs` 与 `src-tauri/src/platform/session_backend.rs` — session lifecycle
 - `store/**` — encryption and persistence (most modules already use `with_conn` + `map_err`)
 - `commands/**` — Tauri IPC entry points, especially streaming/export paths
 

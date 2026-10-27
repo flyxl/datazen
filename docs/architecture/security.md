@@ -10,8 +10,8 @@
 | **密码派生** | Argon2id KDF（替代双轮 SHA-256），用于连接导入/导出文件与敏感字段的字段级加密 | `packages/feature-core/src/connection_import/datazen.rs::derive_argon2_key` |
 | **AI Key 加密** | 随 Store 整体 AES-256-GCM 加密 | `src-tauri/src/store/ai_config.rs`（`ai_config.enc`） |
 | **连接池管理** | sqlx 连接池 + 超时清理 | 各数据库驱动 |
-| **空闲会话与资源回收** | Runtime 默认 30 分钟会话期限；桌面每 15 秒扫描，detached grace 为 60 秒；到期显式关闭而不透明重连 | `packages/runtime/src/application/idle.rs`、`src-tauri/src/platform/adapter.rs` |
-| **连接生命周期** | 物理连接全部经 runtime 会话层租约借出（按用途授权、显式归还是常态路径），不是裸句柄长持有 | `packages/runtime/src/application/live.rs` |
+| **空闲会话与资源回收** | Runtime 默认 30 分钟会话期限；桌面每 15 秒扫描，detached grace 为 60 秒；到期显式关闭而不透明重连 | `modules/src/execution/application/idle.rs`、`src-tauri/src/platform/adapter.rs` |
+| **连接生命周期** | 物理连接全部经 runtime 会话层租约借出（按用途授权、显式归还是常态路径），不是裸句柄长持有 | `modules/src/execution/application/live.rs` |
 | **结果集内存控制（按面生效）** | 分面限制：Workflow 单查询 `query_row_limit`（默认 1000 行）；AI 边界对 `rows`/`data` 等 payload 字段整体剔除（§4） | `packages/feature-core/src/workflow/executor.rs`、`packages/feature-core/src/ai/safety.rs` |
 | **SQL 注入防护** | 参数化查询 | `query_with_params` |
 | **TLS 加密后端** | 进程级 rustls `CryptoProvider` 显式安装（`aws-lc-rs`） | 实现体在 `modules/src/tunnel/crypto.rs`，宿主 `src-tauri/src/tls.rs` 保留接线守卫与再导出 |

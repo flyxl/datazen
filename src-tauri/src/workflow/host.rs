@@ -116,7 +116,7 @@ impl ResourceExecutionHost for AppState {
         _id: &str,
         revision: u64,
         command: &str,
-        target: datazen_platform_api::target::ExecutionTarget,
+        target: datazen_modules::execution::target::ExecutionTarget,
     ) -> Result<PreparedExecution, WorkflowError> {
         let adapter = self
             .platform_require()
@@ -128,7 +128,7 @@ impl ResourceExecutionHost for AppState {
         let canonical = adapter
             .resolve_execution_target(
                 call.context(),
-                datazen_platform_api::id::Counter::new(revision),
+                datazen_modules::shared::id::Counter::new(revision),
                 command,
                 &target,
             )

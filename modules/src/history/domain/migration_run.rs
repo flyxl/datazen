@@ -1,4 +1,4 @@
-//! 迁移运行历史词汇（原 `datazen-platform-api::dto::migration`，逐字迁移）。
+//! 迁移运行历史词汇（原 `datazen-modules::platform_api::dto::migration`，逐字迁移）。
 //!
 //! `MigrationRunRecord` 同时被 Data Sync / Data Transfer / Schema Diff 三类
 //! 运行写入（`operation` 区分），是三件套共享的运行历史形状；归位 history

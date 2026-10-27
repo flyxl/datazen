@@ -7,7 +7,6 @@
 
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
-use datazen_application::sessions::ConnectionUseCases;
 pub use datazen_feature_core::ai::ownership::AiGrantService;
 use datazen_feature_core::ai::ownership::{
     verify_session_ownership, AiGrantIssue, AiGrantReceipt, AiGrantRejection, AiTargetClaim,
@@ -15,8 +14,9 @@ use datazen_feature_core::ai::ownership::{
 use datazen_feature_core::ai::tool_loop::AiToolLoopHost;
 use datazen_feature_core::services::ports::DatabaseToolHost;
 use datazen_feature_core::workflow::command::WorkflowCommandStep;
-use datazen_platform_api::dto::session::SessionHandle;
-use datazen_platform_api::id::{ClientInstanceId, EditorSessionId};
+use datazen_modules::application::sessions::ConnectionUseCases;
+use datazen_modules::execution::SessionHandle;
+use datazen_modules::shared::id::{ClientInstanceId, EditorSessionId};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
@@ -98,7 +98,7 @@ pub async fn ai_grant_editor_session(
     .map_err(|rejection| CommandError::Validation(rejection_message(rejection)))?;
 
     let owner_fingerprint = match &owner {
-        datazen_platform_api::context::OwnerRef::Editor {
+        datazen_modules::shared::context::OwnerRef::Editor {
             client_instance_id,
             editor_session_id,
         } => format!(

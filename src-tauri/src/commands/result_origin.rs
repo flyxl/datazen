@@ -20,7 +20,7 @@ use datazen_feature_core::services::result_edit::{
     build_result_cell_change_plan, evaluate_result_editability, read_only_error_code,
     GridReadOnlyReason, ResultCellChangeRequest, ResultEditability,
 };
-use datazen_runtime::schema_cache::CachedColumns;
+use datazen_modules::schema::cache::CachedColumns;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 

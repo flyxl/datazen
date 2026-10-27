@@ -9,7 +9,7 @@ use crate::store::AppSettings;
 use datazen_feature_core::dashboard::types::{DashboardWidget, WidgetRun};
 use datazen_feature_core::workflow::executor::WorkflowExecutor;
 use datazen_feature_core::workflow::model::WorkflowExecutionResult;
-use datazen_platform_api::ports::scope::OrganizationScope;
+use datazen_modules::shared::scope::OrganizationScope;
 
 use datazen_feature_core::dashboard::execute::build_error_run;
 

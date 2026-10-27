@@ -1,14 +1,14 @@
 //! Desktop durable admission uses the exact RestorePlan::payload entry point.
 use super::{jobs::SqliteJobRepository, AppDb};
 use datazen_feature_core::restore_job::{RestorePlan, RESTORE_APPLY_KIND};
-use datazen_platform_api::{
-    dto::job::JobDefinition,
-    id::*,
-    ports::job::JobRepository,
-    target::{ExecutionTarget, NamespaceTarget},
+use datazen_modules::jobs::SharedClock;
+use datazen_modules::{
+    execution::target::{ExecutionTarget, NamespaceTarget},
+    jobs::domain::job::JobDefinition,
+    jobs::domain::repository::JobRepository,
+    shared::id::*,
     OwnerRef, RequestContext,
 };
-use datazen_runtime::job::SharedClock;
 use serde_json::json;
 use std::sync::Arc;
 

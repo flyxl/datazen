@@ -65,7 +65,7 @@ pub(crate) async fn execute_driver_command_stream_impl(
         CommandError::Validation("command 'query_stream' requires string input 'sql'".into())
     })?;
 
-    datazen_feature_core::services::command_policy::bind_sql_params(&mut request.input)
+    datazen_modules::mcp::application::command_policy::bind_sql_params(&mut request.input)
         .map_err(CommandError::Validation)?;
     let mut sql = request
         .input
@@ -126,7 +126,7 @@ pub(crate) async fn execute_driver_command_stream_impl(
         false
     };
     let safe_mode = state.store.execution_settings().await.safe_mode;
-    datazen_runtime::sql_guard::check_sql(&sql, read_only, safe_mode)
+    datazen_modules::execution::domain::sql_guard::check_sql(&sql, read_only, safe_mode)
         .map_err(CommandError::Validation)?;
 
     // Every stream gets a fresh opaque execution identity. The driver's
@@ -214,7 +214,7 @@ pub(crate) async fn execute_driver_command_stream_impl(
                 )
                 .await;
             }
-            if datazen_runtime::schema_cache::sql_may_mutate_schema(&sql) {
+            if datazen_modules::schema::sql_may_mutate_schema(&sql) {
                 state.schema_cache.clear_connection(db_session_id).await;
             }
             Ok(())

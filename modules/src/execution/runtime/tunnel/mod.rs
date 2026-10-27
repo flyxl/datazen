@@ -29,10 +29,10 @@
 //!
 //!   ★ 登记项 F（本轨更正）：上面那两个文件**进 CI**。原先记在这里的
 //!   「CI 不会跑本轨新增测试」是**错的**——CI 的 crate 测试脚本不带任何 target
-//!   选择器，cargo 因此跑选中 crate 的**全部** target，`packages/runtime` 顶层
+//!   选择器，cargo 因此跑选中 crate 的**全部** target，`modules` 顶层
 //!   全部集成二进制（含上面那两个）再加上 `--lib` 那条产出的库单测二进制都在内；
 //!   `--lib` 与 `--release` 两条**保留**，是叠加不是替代。crate 是按 layer 表
-//!   （`packages/runtime` → crate `datazen-runtime`）发现并选择的，字面 crate 名
+//!   （`modules` → crate `datazen-modules`）发现并选择的，字面 crate 名
 //!   不出现在命令里是设计如此，不是漏跑。
 //! * **不在本模块、且此前被误记在这里**的一格：「可确认关闭的资源许可
 //!   归零」。该格的主语是**资源许可**，不是隧道引用，已由三处闭合并各自带测试：
@@ -58,7 +58,7 @@
 //!   `tunnel_wiring.rs` 的 `settle_tunnel_reference`（预算不释放则隧道引用原样保留、
 //!   连台账都不碰），处置矩阵由 `tests/tunnel_budget_pairing.rs` 钉住。
 //!   两格现在都是「有生产接线可断言」，不再是「实现缺失」。
-//! * 两格当初缺的那根线早已接上。以下命令可复算，工作目录是 `packages/runtime`：
+//! * 两格当初缺的那根线早已接上。以下命令可复算，工作目录是 `modules`：
 //!   `grep -rn TunnelLedger src --include=*.rs | grep -v '^src/tunnel/'`
 //!   `| grep -vE ':\s*(///|//!|//)'`。`src/tunnel/` 之外的**生产**调用方只分布在
 //!   `resource/manager.rs` 与 `resource/tunnel_wiring.rs` 两个文件。基线 `b096ffbb4`

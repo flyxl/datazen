@@ -1,7 +1,9 @@
 #[cfg(test)]
 mod tests {
     use datazen_driver_api::iter_driver_factories;
-    use datazen_runtime::driver_registry::{DriverRegistry, ResourceProviderLookup};
+    use datazen_modules::execution::runtime::driver_registry::{
+        DriverRegistry, ResourceProviderLookup,
+    };
     use std::sync::Arc;
 
     /// Every factory linked into this build resolves or explains itself, and

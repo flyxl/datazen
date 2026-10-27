@@ -382,8 +382,8 @@ feature-resolved 图，而 `dtolnay/rust-toolchain@stable` 只装在 rust job；
 （`ci.yml` §2.1）没有 Rust 工具链。并进那一步只会得到一个必然失败的步骤。
 
 **为什么这里没有任何 crate 名单**：`scripts/lib/cargoWorkspace.mjs` 的 `LAYERS` 表把
-`manifest_path` 映射到层，规则的主体由 §2.4 的路径推出。因此 `packages/application`、
-`packages/platform-api`、`server/` 一旦被加进 workspace `members`，立刻自动入网——
+`manifest_path` 映射到层，规则的主体由 §2.4 的路径推出。因此 `modules`、
+`modules/src/platform_api`、`server/` 一旦被加进 workspace `members`，立刻自动入网——
 **新增内核 crate 不需要改 `ci.yml`，也不需要改 `package.json`**。列不出来的 member 是
 **error** 不是 pass：门禁无法分类的成员，就是没有任何规则覆盖的成员。
 
@@ -392,7 +392,7 @@ feature-resolved 图，而 `dtolnay/rust-toolchain@stable` 只装在 rust job；
 `cargo test -p …`（lib 单测、bin 单测、全部 `tests/` 集成 target 与 doc test 一次
 覆盖；`EXTRA_TARGETS` 只补 release-only 条目——此前多跑的那次 `--lib` 是它的严格
 子集，实测让 2,537 个测试函数每轮执行两遍）。它补上的是计划 :269 的空缺：
-`datazen-runtime` 当时带着 130 个通过的 Rust 单测，而 CI 里没有任何一步执行它们。
+`datazen-modules` 当时带着 130 个通过的 Rust 单测，而 CI 里没有任何一步执行它们。
 `--require-layers=<ids>` 可在某个阶段把「层存在但没被测到」从静默变成报错。
 
 **变异自证**：`scripts/platform-arch-selfcheck.mjs` 临时改写 `Cargo.toml` / 新增探针 crate，

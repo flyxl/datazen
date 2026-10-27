@@ -1,7 +1,7 @@
 //! Shared physical identity for migration admission; profile IDs only own budget accounting.
 use datazen_driver_api::DatabaseDriver;
 use datazen_modules::schema_diff::normalize_dialect;
-use datazen_platform_api::id::ConnectionId;
+use datazen_modules::shared::id::ConnectionId;
 use sha2::{Digest, Sha256};
 use std::borrow::Cow;
 
@@ -10,7 +10,7 @@ use datazen_driver_api::ConnectionConfig;
 /// `service_key` 的命名空间前缀，让传输 Job 的位置键不会和别的子系统撞车。
 const SERVICE_KEY_PREFIX: &str = "data-migration";
 
-pub use datazen_platform_api::migration::EndpointIdentity;
+pub use datazen_modules::shared::migration::EndpointIdentity;
 
 /// 位置不可指认时交出的身份：没有位置键，只剩配置 id 这一条证据。
 #[cfg(test)]

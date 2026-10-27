@@ -27,7 +27,7 @@ use datazen_driver_api::DdlAtomicity;
 /// `DdlAtomicitySupport::by_operation` has no canonical key vocabulary in
 /// `driver-api` — the contract only says an unknown key must fail closed. The
 /// keys used here are the snake_case names of
-/// `datazen_driver_api::schema_migration::MigrationOperation`, the same
+/// `datazen_driver_api::schema::migration::MigrationOperation`, the same
 /// provider-local convention the sibling mysql/sqlite providers use.
 ///
 /// MongoDB files under nothing: it has no DDL at all, so every key maps to

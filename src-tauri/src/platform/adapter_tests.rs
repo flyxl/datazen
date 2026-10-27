@@ -3,7 +3,7 @@
 //! 由 `adapter.rs` 以 `#[path]` 在 `#[cfg(test)]` 下装载：`super::` 因此仍指向 `adapter` 模块，
 //! 且本文件与 `adapter.rs` 同目录，`include_str!("adapter.rs")` 的解析基准与拆出前逐字节一致。
 use super::*;
-use datazen_platform_api::id::{ClientInstanceId, EditorSessionId, JobId, StageId};
+use datazen_modules::shared::id::{ClientInstanceId, EditorSessionId, JobId, StageId};
 
 fn adapter() -> PlatformAdapter {
     PlatformAdapter::with_identity(
@@ -91,7 +91,7 @@ async fn injection_wires_the_storage_ports_into_the_application_services() {
     adapter
         .inject(
             store.clone(),
-            Arc::new(datazen_runtime::driver_registry::DriverRegistry::new()),
+            Arc::new(datazen_modules::execution::runtime::driver_registry::DriverRegistry::new()),
             tunnels.clone(),
             crate::platform::known_hosts::desktop_known_hosts_repository(temp.path()),
         )
@@ -164,7 +164,7 @@ async fn optional_wiring_failure_degrades_only_its_own_capability() {
     adapter
         .inject(
             store,
-            Arc::new(datazen_runtime::driver_registry::DriverRegistry::new()),
+            Arc::new(datazen_modules::execution::runtime::driver_registry::DriverRegistry::new()),
             tunnels.clone(),
             crate::platform::known_hosts::desktop_known_hosts_repository(temp.path()),
         )
@@ -270,7 +270,7 @@ fn owned_call_accepts_the_current_instance_editor_owner() {
         .expect("同实例 editor owner 应通过");
     assert!(matches!(
         owner,
-        datazen_platform_api::context::OwnerRef::Editor { .. }
+        datazen_modules::shared::context::OwnerRef::Editor { .. }
     ));
     assert_eq!(scope.context().client_instance_id.as_str(), "client-1");
 }
@@ -326,7 +326,7 @@ fn failing_requirements_never_fall_back_to_the_legacy_path() {
 
 /// 注入点常量必须指向真实符号，否则"可定位"的承诺是假的。
 ///
-/// 这条断言随注入缝隙一起搬到了 `packages/application/src/frontend_bridge.rs`，
+/// 这条断言随注入缝隙一起搬到了 `modules/src/application/frontend_bridge.rs`，
 /// 但它校验的是**宿主侧**符号，所以留在 adapter 的用例里：常量在用例层，
 /// 被指名的 `pub fn set_bridge_injection` 在组装层，两端必须同时可读。
 #[test]
@@ -365,8 +365,8 @@ fn no_shell_implementation_of_the_thirteen_use_cases_exists() {
 /// `ConfigRevisionMismatch` 判定会永久失效。本测试把这个事实钉住。
 #[test]
 fn profile_view_defaults_are_placeholders_and_must_not_be_used_on_the_desktop_path() {
-    use datazen_platform_api::dto::profile::ProfileView;
-    use datazen_platform_api::id::{ConnectionId, Counter};
+    use datazen_modules::connection::dto::ProfileView;
+    use datazen_modules::shared::id::{ConnectionId, Counter};
 
     let view = ProfileView::new(ConnectionId::new("c-1"), "本地", "postgres");
     // 没有任何真实版本源时，唯一能拿到的就是 ZERO —— 一个编造值。

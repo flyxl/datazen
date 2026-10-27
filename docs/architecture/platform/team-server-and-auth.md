@@ -1,6 +1,6 @@
 # DataZen 团队 Web 服务：Server Host、认证授权与安全设计
 
-> 状态：P7 团队 Web 服务仍是目标设计，`server/` 团队服务 host、认证授权与 PostgreSQL adapters 尚未实现。`packages/platform-api`、`packages/runtime`、`packages/backend-client` 等共享契约已存在；桌面 P5 迁移三件套已接入本机 AppDb `JobHost`，但它不是团队服务仓储，也不提供多用户或多 worker 语义。本文以下定义服务端目标，不表示这些服务端能力已落地。
+> 状态：P7 团队 Web 服务仍是目标设计，`server/` 团队服务 host、认证授权与 PostgreSQL adapters 尚未实现。`modules/src/platform_api`、`modules`、`packages/backend-client` 等共享契约已存在；桌面 P5 迁移三件套已接入本机 AppDb `JobHost`，但它不是团队服务仓储，也不提供多用户或多 worker 语义。本文以下定义服务端目标，不表示这些服务端能力已落地。
 > 读者：负责《分阶段开发计划》P7 的实现者。本文定义**怎么组、怎么鉴权、怎么限流、怎么映射错误**；连接 DTO 与错误码表以[连接与会话管理](connection-management.md)为权威，管理库表结构以[持久化模型](persistence-model.md)为权威，出现时一律以链接为准。
 > 配套：[系统概要设计](system-overview.md)（分层、领域对象、v1 HTTP 路由表、安全总纲）、[连接与会话管理](connection-management.md)（DTO、错误表、幂等、CM-01～74）、[持久化模型](persistence-model.md)（管理库表结构与迁移策略）、[共享应用边界与端口](shared-boundaries-and-ports.md)（端口签名与装配差异）、[P0 runtime fake 夹具](fake-runtime-fixtures.md)（transport-neutral fake 资源、故障/竞态注入与 CM-60 基准 harness）、[分阶段开发计划 §11 P7](../../development/platform-development-plan.md#11-p7单实例团队-web-服务)（阶段交付与退出门槛）。
 
@@ -61,9 +61,9 @@ server/
 `server` 允许的依赖方向：
 
 ```text
-server ──→ packages/application, packages/runtime
-      ├──→ packages/platform-api（SessionDirectory / BudgetCoordinator 等 ports）
-      ├──→ packages/driver-api、packages/ai-api；异构三件套经 packages/runtime 暴露的 port 访问宿主内 src-tauri/src/{schema_diff,data_sync,data_transfer}
+server ──→ modules, modules
+      ├──→ modules/src/platform_api（SessionDirectory / BudgetCoordinator 等 ports）
+      ├──→ packages/driver-api、packages/ai-api；异构三件套经 modules 暴露的 port 访问宿主内 src-tauri/src/{schema_diff,data_sync,data_transfer}
       └──→ HTTP 框架、tokio、管理库客户端、序列化
 
 application/runtime ──→ platform-api / driver-api；driver ──→ driver-api

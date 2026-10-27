@@ -1,10 +1,10 @@
 use super::identity::{local_principal, LOCAL_ORGANIZATION_ID};
 use async_trait::async_trait;
-use datazen_platform_api::{
-    context::{DelegationRef, RequestContext},
-    error::PortError,
-    id::PolicyIsolationKey,
-    ports::policy::*,
+use datazen_modules::{
+    execution::application::policy::*,
+    shared::context::{DelegationRef, RequestContext},
+    shared::error::PortError,
+    shared::id::PolicyIsolationKey,
 };
 
 pub struct DesktopPolicy {
@@ -81,7 +81,7 @@ impl PolicyService for DesktopPolicy {
         ctx: &RequestContext,
         subject: AuthorizationSubject,
         action: AuthorizationAction,
-        target: &datazen_platform_api::target::ExecutionTarget,
+        target: &datazen_modules::execution::target::ExecutionTarget,
         command: &str,
         input: &serde_json::Value,
     ) -> Result<AuthorizationDecision, PortError> {
@@ -141,7 +141,7 @@ impl PolicyService for DesktopPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_platform_api::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
+    use datazen_modules::shared::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
 
     /// 桌面策略只放行**本机桌面身份**。这三条用例把这条契约钉住：
     ///

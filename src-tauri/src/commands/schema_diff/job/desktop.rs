@@ -2,18 +2,18 @@
 
 use std::sync::Arc;
 
-use datazen_modules::schema_diff::job::{ApplyRequest, PrepareRequest, SchemaDiffHandler};
-use datazen_modules::schema_diff::types::{DeployStatus, SchemaDiffDeployResult};
-use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::dto::execution::EffectOutcome;
-use datazen_platform_api::dto::job::{
+use datazen_modules::execution::EffectOutcome;
+use datazen_modules::jobs::domain::job::{
     JobDefinition, JobDetails, JobDomainResult, JobFilter, JobProgress, JobRecoveryRequest,
     JobRecoveryResult, JobRecoveryVerdict, JobRecoveryVerification, JobResultCounter,
     JobResultItem, JobState, JobView,
 };
-use datazen_platform_api::error::PortError;
-use datazen_platform_api::id::{Counter, IdempotencyKey, JobId, StageId, WorkerId};
-use datazen_runtime::job::{EndpointRef, JobHandler, JobHost, JobRecoveryVerifier};
+use datazen_modules::jobs::{EndpointRef, JobHandler, JobHost, JobRecoveryVerifier};
+use datazen_modules::schema_diff::job::{ApplyRequest, PrepareRequest, SchemaDiffHandler};
+use datazen_modules::schema_diff::types::{DeployStatus, SchemaDiffDeployResult};
+use datazen_modules::shared::context::RequestContext;
+use datazen_modules::shared::error::PortError;
+use datazen_modules::shared::id::{Counter, IdempotencyKey, JobId, StageId, WorkerId};
 use serde::Serialize;
 use tauri::State;
 

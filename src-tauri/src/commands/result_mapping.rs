@@ -1,9 +1,9 @@
 //! Conservative query-result mapping. SQL identifies a candidate relation only;
 //! the driver must confirm it on the original pinned resource before verification.
 use datazen_driver_api::{ColumnInfo, TableSchema};
-use datazen_platform_api::{
-    id::ConnectionId,
-    target::{ExecutionTarget, NamespaceTarget, ObjectTarget},
+use datazen_modules::{
+    execution::target::{ExecutionTarget, NamespaceTarget, ObjectTarget},
+    shared::id::ConnectionId,
 };
 use serde_json::Value;
 use std::collections::HashSet;

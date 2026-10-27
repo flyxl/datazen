@@ -4,13 +4,13 @@
 //! know the concrete Data Sync / Data Transfer / Schema Diff persistence files,
 //! so this module adapts the three desktop stores to the narrow platform port.
 
-use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::id::{ConnectionId, Timestamp};
-use datazen_platform_api::ports::migration_profile::{
+use datazen_modules::application::migration_profile::{
     MigrationProfileReader, MigrationProfileSummary,
 };
-use datazen_platform_api::ports::scope::OrganizationScope;
-use datazen_platform_api::PortError;
+use datazen_modules::shared::context::RequestContext;
+use datazen_modules::shared::id::{ConnectionId, Timestamp};
+use datazen_modules::shared::scope::OrganizationScope;
+use datazen_modules::PortError;
 
 use super::DesktopRepository;
 
@@ -133,7 +133,7 @@ impl MigrationProfileReader for DesktopRepository {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_platform_api::id::OrganizationId;
+    use datazen_modules::shared::id::OrganizationId;
 
     #[tokio::test]
     async fn the_desktop_reader_returns_empty_for_local_and_foreign_scopes() {
@@ -147,13 +147,13 @@ mod tests {
             "test-client",
         )
         .expect("identity");
-        let local = adapter.request_context(datazen_platform_api::id::RequestId::new("request"));
+        let local = adapter.request_context(datazen_modules::shared::id::RequestId::new("request"));
         let foreign = RequestContext::new(
             OrganizationId::new("foreign-org"),
-            datazen_platform_api::id::PrincipalId::new("test-user"),
+            datazen_modules::shared::id::PrincipalId::new("test-user"),
             None,
-            datazen_platform_api::id::ClientInstanceId::new("test-client"),
-            datazen_platform_api::id::RequestId::new("foreign-request"),
+            datazen_modules::shared::id::ClientInstanceId::new("test-client"),
+            datazen_modules::shared::id::RequestId::new("foreign-request"),
             None,
         );
 

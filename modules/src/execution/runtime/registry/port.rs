@@ -148,7 +148,7 @@ fn assert_object_safe(port: Arc<dyn SessionPort>) -> Arc<dyn SessionPort> {
 ///
 /// **它覆盖的是哪个构建档位**：这个钉子必须住在 `#[cfg(test)]` **之外**。
 /// 住在里面时它只在 `cargo test` 生效——把本函数的返回类型改成 `Result<(), _>`
-/// 之后实测 `cargo build -p datazen-runtime` 仍然 `EXIT=0`，只有 `cargo test --lib`
+/// 之后实测 `cargo build -p datazen-modules` 仍然 `EXIT=0`，只有 `cargo test --lib`
 /// 以 `E0308` 失败。也就是说「机械保证」这句话此前只在测试档位成立，
 /// 而发布出去的二进制是 `cargo build` 产物。
 ///
@@ -662,7 +662,7 @@ mod tests {
     /// 2. 钉子对**具体的 `impl SessionPort`** 与对 `dyn SessionPort` 同样成立。
     ///    只在替身上成立的那种「形状」不是形状。
     ///
-    /// 档位那一半由 `cargo build -p datazen-runtime` 把关：
+    /// 档位那一半由 `cargo build -p datazen-modules` 把关：
     /// 钉子已移出 `#[cfg(test)]`，改签会让 dev 档位直接编译失败，而不是等到跑测试才发现。
     #[tokio::test]
     async fn the_cancel_shape_pin_holds_for_the_concrete_port_implementation() {

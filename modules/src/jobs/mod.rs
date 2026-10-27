@@ -1,7 +1,7 @@
 //! D5：Job 运行时（07-stages.md D5 工作项 1）。
 //!
 //! 原 `datazen-kernel::job` 全家（机制内核）与 platform-api 的 Job 端口/DTO 家族
-//! （`ports::job::JobRepository`、`dto::job::*`、`ports::clock`、`ports::native_tool`
+//! （`jobs::domain::repository::JobRepository`、`jobs::domain::job::*`、`ports::clock`、`ports::native_tool`
 //! 词汇）整体归位本模块，三分如下（01-target-architecture.md §4.1）：
 //!
 //! * `domain`——Job 聚合词汇与规则：plan（FrozenPlan 投影）、owner（StageOwnerPermit）、
@@ -40,6 +40,7 @@ pub use domain::error::JobError;
 pub use domain::owner::StageOwnerPermit;
 pub use domain::plan::{project_frozen_plan, FrozenPlan, APPLY_KINDS, SUPPORTED_PLAN_MAJOR};
 pub use domain::recovery::JobRecoveryVerifier;
+pub use domain::repository::JobRepository;
 pub use domain::runtime_repository::JobRuntimeRepository;
 pub use domain::time::{JobClock, PortJobClock, SharedClock, SystemJobClock};
 pub use engine::memory_repository::{CancelPollSnapshot, InMemoryJobRepository};

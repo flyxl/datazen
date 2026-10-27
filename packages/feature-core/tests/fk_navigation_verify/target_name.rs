@@ -114,7 +114,7 @@ async fn the_target_namespace_is_the_referenced_one_not_the_source_tables() {
 
 #[test]
 fn a_schema_qualified_target_name_cannot_survive_the_drivers_qualification() {
-    use datazen_driver_api::sql_target::{qualify_sql_with, QualifierQuote};
+    use datazen_driver_api::sql_execution::target::{qualify_sql_with, QualifierQuote};
     use sqlparser::dialect::PostgreSqlDialect;
 
     // The probe SQL the resolver builds for a PostgreSQL target whose

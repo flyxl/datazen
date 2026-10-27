@@ -9,15 +9,14 @@ use datazen_driver_api::{
     DatabaseDriver, DatabaseDriverFactory,
 };
 use datazen_feature_core::restore_job::{RestoreGateway, RestorePlan};
-use datazen_platform_api::{
-    dto::{artifact::ArtifactLifecycle, execution::EffectOutcome},
-    id::*,
-    ports::{artifact::ArtifactRepository, job::JobRepository},
+use datazen_modules::execution::runtime::budget::{BudgetConfig, BudgetLedger};
+use datazen_modules::jobs::{JobHost, SharedClock};
+use datazen_modules::{
+    execution::domain::ArtifactRepository,
+    execution::{ArtifactLifecycle, EffectOutcome},
+    jobs::domain::repository::JobRepository,
+    shared::id::*,
     RequestContext,
-};
-use datazen_runtime::{
-    budget::{BudgetConfig, BudgetLedger},
-    job::{JobHost, SharedClock},
 };
 use sha2::{Digest, Sha256};
 use std::sync::Mutex;
@@ -63,7 +62,8 @@ async fn host() -> (
         provider,
         driver: MockDriver::new("restore-host-fixture", MockDriverOptions::default()),
     }));
-    let registry = Arc::new(datazen_runtime::driver_registry::DriverRegistry::new());
+    let registry =
+        Arc::new(datazen_modules::execution::runtime::driver_registry::DriverRegistry::new());
     registry
         .register_test_driver("restore-host-fixture", factory.driver.clone())
         .await;
@@ -243,7 +243,7 @@ async fn desktop_restore_uploaded_input_reaches_durable_job_and_desktop_session_
         reopened.get(&ctx, id.clone()).await.unwrap().view.state,
         JobState::Succeeded
     );
-    let persisted = datazen_runtime::job::JobRuntimeRepository::get_details(&reopened, &ctx, id)
+    let persisted = datazen_modules::jobs::JobRuntimeRepository::get_details(&reopened, &ctx, id)
         .await
         .unwrap();
     assert_eq!(persisted.commit_boundaries, details.commit_boundaries);

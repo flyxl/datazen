@@ -65,7 +65,7 @@
 //! ## 两种句柄
 //!
 //! runtime 内部用 `connection::SessionHandle`（`dbSessionId` + `Counter`），
-//! 目录用 `dto::session::SessionHandle`（`dbSessionId` + 字符串 `RuntimeEpoch`）。
+//! 目录用 `execution::SessionHandle`（`dbSessionId` + 字符串 `RuntimeEpoch`）。
 //! 二者是既有事实，本模块在边界上做一次**确定性**换算：operation key 由前者派生，
 //! 因此重试必然命中同一个 key。
 //!

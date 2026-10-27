@@ -190,7 +190,7 @@ impl DatabaseDriver for PostgresDriver {
     /// (`"schema"."t"`). The database dimension is **not** inlined — PG cannot
     /// reference another database in one statement — so the `*_at` methods
     /// below serve it by routing to that database's pool instead. Parse
-    /// failures pass SQL through unchanged. See `sql_target::qualify_sql`.
+    /// failures pass SQL through unchanged. See `sql_execution::target::qualify_sql`.
     fn qualify_sql_target(
         &self,
         sql: &str,

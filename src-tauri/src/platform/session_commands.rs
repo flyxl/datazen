@@ -1,18 +1,14 @@
 use crate::commands::AppState;
-use datazen_application::{
-    dto::requests::*,
-    error::{ApiError, ApiErrorCode},
-    sessions::ConnectionUseCases,
-};
-use datazen_platform_api::{
-    context::OwnerRef,
-    dto::{
-        event::ConnectionEventEnvelope,
-        idempotency::IdempotentOperation,
-        profile::{ProfileDraft, ProfilePatch, ProfileView},
-    },
-    id::*,
-    ports::profile::ProfileRepository,
+use datazen_modules::application::sessions::ConnectionUseCases;
+use datazen_modules::execution::application::requests::*;
+use datazen_modules::shared::error::{ApiError, ApiErrorCode};
+use datazen_modules::{
+    connection::domain::ProfileRepository,
+    connection::dto::{ProfileDraft, ProfilePatch, ProfileView},
+    execution::application::events::ConnectionEventEnvelope,
+    execution::application::idempotency::IdempotentOperation,
+    shared::context::OwnerRef,
+    shared::id::*,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -38,7 +34,7 @@ fn encode<T: Serialize>(value: T) -> Result<serde_json::Value, ApiError> {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HandleRequest {
-    pub handle: datazen_platform_api::dto::session::SessionHandle,
+    pub handle: datazen_modules::execution::SessionHandle,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,13 +45,13 @@ pub struct ExecutionRequest {
 #[serde(rename_all = "camelCase")]
 pub struct CancelExecutionRequest {
     pub execution_id: ExecutionId,
-    pub submission_token: datazen_platform_api::dto::idempotency::SubmissionToken,
+    pub submission_token: datazen_modules::execution::application::idempotency::SubmissionToken,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenRequest {
     pub operation: IdempotentOperation,
-    pub handle: Option<datazen_platform_api::dto::session::SessionHandle>,
+    pub handle: Option<datazen_modules::execution::SessionHandle>,
     pub scope: Option<TokenScope>,
     pub connection_id: Option<ConnectionId>,
     pub owner: Option<OwnerRef>,
@@ -63,7 +59,7 @@ pub struct TokenRequest {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenScope {
-    pub handle: Option<datazen_platform_api::dto::session::SessionHandle>,
+    pub handle: Option<datazen_modules::execution::SessionHandle>,
 }
 #[tauri::command]
 pub async fn get_platform_identity(
@@ -255,13 +251,13 @@ pub struct UpdateProfileRequest {
 pub struct ProfileRequest {
     pub connection_id: ConnectionId,
 }
-fn port_error(error: datazen_platform_api::error::PortError) -> ApiError {
+fn port_error(error: datazen_modules::shared::error::PortError) -> ApiError {
     match error {
-        datazen_platform_api::error::PortError::CasConflict { .. } => ApiError::new(
+        datazen_modules::shared::error::PortError::CasConflict { .. } => ApiError::new(
             ApiErrorCode::ConfigRevisionMismatch,
             "profile revision changed",
         ),
-        datazen_platform_api::error::PortError::NotFound(_) => {
+        datazen_modules::shared::error::PortError::NotFound(_) => {
             ApiError::new(ApiErrorCode::NotFound, "profile unavailable")
         }
         _ => ApiError::new(ApiErrorCode::ServiceUnavailable, "profile operation failed"),

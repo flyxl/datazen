@@ -7,7 +7,7 @@ use crate::{
 };
 use datazen_feature_core::workflow::executor::WorkflowExecutor;
 use datazen_feature_core::workflow::model::{StepStatus, WorkflowDefinition};
-use datazen_runtime::driver_registry::registry::DriverRegistry;
+use datazen_modules::execution::runtime::driver_registry::registry::DriverRegistry;
 use futures_util::FutureExt;
 use std::sync::Arc;
 // Link actual inventory factories even without production driver feature injection.

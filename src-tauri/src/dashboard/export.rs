@@ -11,7 +11,7 @@ use datazen_feature_core::dashboard::repository::{
 };
 use datazen_feature_core::dashboard::types::Dashboard;
 use datazen_feature_core::workflow::model::{WorkflowDefinition, WorkflowVisibility};
-use datazen_platform_api::ports::scope::OrganizationScope;
+use datazen_modules::shared::scope::OrganizationScope;
 
 #[derive(Debug, Error)]
 pub enum DashboardExportError {

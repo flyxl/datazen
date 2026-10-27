@@ -4,22 +4,22 @@ use super::server::{DataZenMcpServer, MCP_SESSION_PURPOSE};
 use super::session::{sanitize_ttl, SessionBinding};
 use super::types::*;
 use crate::mcp::tool_help;
-use datazen_application::dto::requests::{
-    CloseMode, CloseSessionRequest, CommandCall, ExecuteInSessionRequest, OpenSessionRequest,
-};
-use datazen_application::identity_policy::IdentityPolicy;
-use datazen_application::sessions::ConnectionUseCases;
 use datazen_feature_core::mcp::allowlist;
 use datazen_feature_core::mcp::permission;
 use datazen_feature_core::workflow::executor::{
     WorkflowExecuteOptions, WorkflowExecutor, WORKFLOW_QUERY_ROW_LIMIT,
 };
-use datazen_platform_api::context::{OwnerRef, RequestContext};
-use datazen_platform_api::dto::execution::{ExecutionState, ExecutionView};
-use datazen_platform_api::dto::idempotency::IdempotentOperation;
-use datazen_platform_api::id::{ArtifactId, ClientInstanceId, ConnectionId, Counter};
-use datazen_platform_api::target::{ExecutionTarget, NamespaceTarget, TargetNamespaceLayer};
-use datazen_runtime::application::RuntimeConnectionUseCases;
+use datazen_modules::application::identity_policy::IdentityPolicy;
+use datazen_modules::application::sessions::ConnectionUseCases;
+use datazen_modules::execution::application::idempotency::IdempotentOperation;
+use datazen_modules::execution::application::requests::{
+    CloseMode, CloseSessionRequest, CommandCall, ExecuteInSessionRequest, OpenSessionRequest,
+};
+use datazen_modules::execution::application::RuntimeConnectionUseCases;
+use datazen_modules::execution::target::{ExecutionTarget, NamespaceTarget, TargetNamespaceLayer};
+use datazen_modules::execution::{ExecutionState, ExecutionView};
+use datazen_modules::shared::context::{OwnerRef, RequestContext};
+use datazen_modules::shared::id::{ArtifactId, ClientInstanceId, ConnectionId, Counter};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::{tool, tool_router, ErrorData as McpError};
 use serde_json::json;
@@ -405,9 +405,7 @@ impl DataZenMcpServer {
             // The mapping is kept on failure so the client can retry; dropping it
             // here would leak the database session with no way left to close it.
             .map_err(|error| McpError::internal_error(error.to_string(), None))?;
-        if receipt.resource_release
-            != datazen_platform_api::dto::session::ResourceRelease::Confirmed
-        {
+        if receipt.resource_release != datazen_modules::execution::ResourceRelease::Confirmed {
             self.sessions
                 .revoke(&input.client_session_ref, self.client_instance_id());
             self.start_session_cleanup();

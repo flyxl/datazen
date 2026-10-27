@@ -2,7 +2,7 @@
 //!
 //! # 这条闸门为什么存在
 //!
-//! 内核（`datazen-runtime`）是 web 与桌面**共用**的那一半。形态名一旦写进内核，
+//! 内核（`datazen-modules`）是 web 与桌面**共用**的那一半。形态名一旦写进内核，
 //! 就等于把「只有桌面才成立」的假设焊进共享代码：桌面形态存在时看不出问题，
 //! 换成 web 形态才发现那一半根本用不了。
 //!
@@ -143,7 +143,7 @@ fn violations(source: &str, forbidden: &[String]) -> Vec<(String, Vec<String>)> 
     out
 }
 
-/// 被扫的共享 crate 根：`modules` 与 runtime 留守的宿主无关源码。
+/// 被扫的共享 crate 根：`modules` 内的全部宿主无关源码。
 ///
 /// 机制内核（job / budget / sql_guard / schema_cache / driver_registry）从本 crate
 /// 分出去以后，「形态中立」的理由一字未变——它同时服务多种形态。若闸门只扫本 crate，
@@ -152,10 +152,9 @@ fn violations(source: &str, forbidden: &[String]) -> Vec<(String, Vec<String>)> 
 /// 那一片必须跟着搬进扫描范围。
 fn scanned_crates() -> Vec<(&'static str, std::path::PathBuf)> {
     // D3 迁移后本文件住在 modules；机制（tunnel/budget/…）也在这里，
-    // 用例编排与集成测试仍在 datazen-runtime。
+    // 用例编排、Job 与连接运行时均已归入 modules。
     let here = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf();
-    let runtime = here.join("../packages/runtime");
-    vec![("modules", here), ("runtime", runtime)]
+    vec![("modules", here)]
 }
 
 /// `modules` crate 里**豁免**的子树：`src/ai`。
@@ -461,8 +460,8 @@ fn the_scan_covers_all_shared_runtime_sources() {
         "modules:src/shared/id.rs",
         // 用例编排随机制迁入本 crate（过渡期整块），继续被扫
         "modules:src/execution/application/orchestration/mod.rs",
-        // runtime 留守面（native_tool + 集成测试夹具）也必须被扫
-        "runtime:src/native_tool/handler.rs",
+        // Job native-tool 应用面也必须被扫
+        "modules:src/jobs/application/native_tool/handler.rs",
         // 豁免必须真的生效：src/ai 不得出现在清单里
         // （若豁免失效，ai 子树的文件会出现在 files 里并被形态词点红）。
     ] {

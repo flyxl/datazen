@@ -83,7 +83,7 @@ async fn preview_sql_file_target(
     let src_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         &job.source.db_session_id,
-        datazen_runtime::application::LivePurpose::Inspection,
+        datazen_modules::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let src_config = src_context.config.clone();
@@ -478,13 +478,13 @@ pub(crate) async fn preview_data_transfer_impl(
     let src_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         &job.source.db_session_id,
-        datazen_runtime::application::LivePurpose::Inspection,
+        datazen_modules::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let tgt_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         &target.db_session_id,
-        datazen_runtime::application::LivePurpose::Inspection,
+        datazen_modules::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let src_config = src_context.config.clone();

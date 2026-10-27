@@ -3,20 +3,20 @@
 use async_trait::async_trait;
 use datazen_driver_api::{resource as dr, session as ds};
 use datazen_feature_core::workflow::{
-    error::WorkflowError,
     resource_execution::{PreparedExecution, ResourceExecutionHost},
+    shared::error::WorkflowError,
 };
-use datazen_platform_api::target::ExecutionTarget;
-use datazen_platform_api::{
-    error::PortError,
-    id::*,
-    ports::{policy::*, profile::*},
-    RequestContext,
-};
-use datazen_runtime::driver_mapping as mapping;
-use datazen_runtime::{
+use datazen_modules::execution::runtime::driver_mapping as mapping;
+use datazen_modules::execution::runtime::{
     connection as rt,
     registry::{backend::*, SessionBackend},
+};
+use datazen_modules::execution::target::ExecutionTarget;
+use datazen_modules::{
+    ports::{profile::*, shared::policy::*},
+    shared::error::PortError,
+    shared::id::*,
+    RequestContext,
 };
 use std::sync::{
     atomic::{AtomicU64, Ordering},
@@ -47,7 +47,7 @@ impl ProfileRepository for Profiles {
     async fn create(
         &self,
         _: &RequestContext,
-        _: datazen_platform_api::dto::profile::ProfileDraft,
+        _: datazen_modules::connection::dto::ProfileDraft,
         _: &IdempotencyKey,
     ) -> Result<ProfileRecord, PortError> {
         unreachable!()
@@ -57,7 +57,7 @@ impl ProfileRepository for Profiles {
         _: &RequestContext,
         _: ConnectionId,
         _: ConfigRevision,
-        _: datazen_platform_api::dto::profile::ProfilePatch,
+        _: datazen_modules::connection::dto::ProfilePatch,
     ) -> Result<ProfileRecord, PortError> {
         unreachable!()
     }
@@ -80,7 +80,7 @@ impl ProfileRepository for Profiles {
 pub struct Policy {
     pub revoked: std::sync::atomic::AtomicBool,
     target: ExecutionTarget,
-    delegation: datazen_platform_api::context::DelegationRef,
+    delegation: datazen_modules::shared::context::DelegationRef,
     config_revision: u64,
 }
 impl Policy {
@@ -96,7 +96,7 @@ impl Policy {
             self.delegation.principal_id.clone(),
             None,
             self.delegation.client_instance_id.clone(),
-            datazen_platform_api::id::RequestId::new("monitor-live-request"),
+            datazen_modules::shared::id::RequestId::new("monitor-live-request"),
             Some(self.delegation.delegation_id.clone()),
         )
     }
@@ -135,7 +135,7 @@ impl PolicyService for Policy {
     async fn verify_delegation(
         &self,
         ctx: &RequestContext,
-        delegation: datazen_platform_api::context::DelegationRef,
+        delegation: datazen_modules::shared::context::DelegationRef,
     ) -> Result<DelegationGrant, PortError> {
         self.current(ctx)?;
         let grant = self.resolve_delegation(ctx).await?;
@@ -186,7 +186,7 @@ pub struct Lifecycle {
     pub execution_ids: std::sync::Mutex<Vec<ExecutionId>>,
 }
 pub struct Host {
-    pub runtime: Arc<datazen_runtime::application::RuntimeConnectionUseCases>,
+    pub runtime: Arc<datazen_modules::execution::application::RuntimeConnectionUseCases>,
     pub policy: Arc<Policy>,
     pub lifecycle: Arc<Lifecycle>,
     config: datazen_driver_api::ConnectionConfig,
@@ -202,7 +202,7 @@ pub fn host(
     target: ExecutionTarget,
 ) -> Host {
     let lifecycle = Arc::new(Lifecycle::default());
-    let delegation = datazen_platform_api::context::DelegationRef {
+    let delegation = datazen_modules::shared::context::DelegationRef {
         delegation_id: context
             .delegation_id
             .clone()
@@ -211,7 +211,7 @@ pub fn host(
         principal_id: context.principal_id.clone(),
         client_instance_id: context.client_instance_id.clone(),
         scope: "monitor-live".into(),
-        expires_at: datazen_platform_api::id::Timestamp::new("2099-01-01T00:00:00Z"),
+        expires_at: datazen_modules::shared::id::Timestamp::new("2099-01-01T00:00:00Z"),
     };
     let policy = Arc::new(Policy {
         revoked: std::sync::atomic::AtomicBool::new(false),
@@ -221,7 +221,7 @@ pub fn host(
     });
     let publisher = Arc::new(std::sync::Mutex::new(None));
     let runtime = Arc::new(
-        datazen_runtime::application::RuntimeConnectionUseCases::new(
+        datazen_modules::execution::application::RuntimeConnectionUseCases::new(
             Arc::new(Profiles {
                 revision: AtomicU64::new(1),
             }),
@@ -240,7 +240,10 @@ pub fn host(
     runtime
         .result_sink()
         .with_artifact_store(Arc::new(
-            datazen_runtime::artifact::FileArtifactRepository::open(artifacts_dir.path()).unwrap(),
+            datazen_modules::execution::runtime::artifact::FileArtifactRepository::open(
+                artifacts_dir.path(),
+            )
+            .unwrap(),
         ))
         .unwrap();
     *publisher.lock().unwrap() = Some(runtime.result_sink());
@@ -310,14 +313,12 @@ impl datazen_feature_core::services::ports::ArtifactChunkReader for NoArtifactCh
     async fn read_chunk(
         &self,
         _ctx: &RequestContext,
-        _artifact: &datazen_platform_api::id::ArtifactId,
-        _index: datazen_platform_api::id::Counter,
-    ) -> Result<
-        datazen_platform_api::dto::execution::ResultChunk,
-        datazen_platform_api::error::ApiError,
-    > {
-        Err(datazen_platform_api::error::ApiError::new(
-            datazen_platform_api::error::ApiErrorCode::CapabilityUnsupported,
+        _artifact: &datazen_modules::shared::id::ArtifactId,
+        _index: datazen_modules::shared::id::Counter,
+    ) -> Result<datazen_modules::execution::ResultChunk, datazen_modules::shared::error::ApiError>
+    {
+        Err(datazen_modules::shared::error::ApiError::new(
+            datazen_modules::shared::error::ApiErrorCode::CapabilityUnsupported,
             "monitor test does not read result artifacts",
         ))
     }
@@ -365,7 +366,8 @@ struct Backend {
     lifecycle: Arc<Lifecycle>,
     config: datazen_driver_api::ConnectionConfig,
     provider: Arc<dyn dr::ResourceProvider>,
-    publisher: Arc<std::sync::Mutex<Option<datazen_runtime::application::RuntimeResultSink>>>,
+    publisher:
+        Arc<std::sync::Mutex<Option<datazen_modules::execution::application::RuntimeResultSink>>>,
     resources: tokio::sync::Mutex<std::collections::HashMap<String, (dr::ResourceHandle, u64)>>,
     budget: Arc<dyn dr::BudgetPort>,
 }
@@ -402,7 +404,10 @@ impl SessionBackend for Backend {
         Ok(OpenedResource {
             context: mapping::context(&observed.context),
             resource_id: id,
-            capabilities: datazen_runtime::registry::audit::CapabilityVersions::new("1", "1"),
+            capabilities:
+                datazen_modules::execution::runtime::registry::audit::CapabilityVersions::new(
+                    "1", "1",
+                ),
             capability_snapshot: CapabilityProvenance::new(self.provider.provider_id(), "test", 1),
             driver_supports_cancel: false,
         })

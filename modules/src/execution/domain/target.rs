@@ -203,7 +203,7 @@ impl CanonicalTarget {
 /// The host maps every declared level, path segment, case rule, canonical-ID rule, and alias into
 /// this transport type before the application resolver runs.
 ///
-/// `packages/runtime` 不持有副本：它通过 `pub use datazen_platform_api::target::TargetNamespaceShape`
+/// `modules` 不持有副本：它通过 `pub use datazen_modules::execution::target::TargetNamespaceShape`
 /// 把这一份直接暴露出去，因此平台侧与 runtime 侧永远编译成同一个类型。
 ///
 /// The runtime re-exports this type directly. `required` stays mandatory in serialized requests;

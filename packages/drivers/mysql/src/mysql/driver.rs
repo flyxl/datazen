@@ -126,7 +126,7 @@ impl DatabaseDriver for MysqlDriver {
     /// F7: qualify unqualified table references with the target database
     /// (`` `db`.`t` ``), shared by the mysql/mariadb/doris/starrocks/
     /// manticore/ob_oracle variants. Parse failures pass SQL through
-    /// unchanged; see `sql_target::qualify_sql`.
+    /// unchanged; see `sql_execution::target::qualify_sql`.
     fn qualify_sql_target(
         &self,
         sql: &str,

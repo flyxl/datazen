@@ -17,22 +17,20 @@ use datazen_feature_core::{
         resource_execution::{PreparedExecution, ResourceExecutionHost},
     },
 };
+use datazen_modules::jobs::{
+    CancelToken, EndpointRef, EndpointRole, JobError, JobHandler, RecoveryVerdict, StageOutcome,
+    StageSpec, StageTerminal,
+};
 #[cfg(feature = "webdriver")]
 use datazen_modules::monitor::application::evidence;
 use datazen_modules::monitor::application::occurrence;
 use datazen_modules::monitor::domain::MonitorGrant;
-use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::{
-    context::OwnerRef,
-    dto::{
-        execution::EffectOutcome,
-        job::{Checkpoint, JobDefinition, JobDomainResult, JobProgress, JobResultItem},
-    },
-    id::{JobId, StageId, WorkerId},
-};
-use datazen_runtime::job::{
-    CancelToken, EndpointRef, EndpointRole, JobError, JobHandler, RecoveryVerdict, StageOutcome,
-    StageSpec, StageTerminal,
+use datazen_modules::shared::context::RequestContext;
+use datazen_modules::{
+    execution::EffectOutcome,
+    jobs::domain::job::{Checkpoint, JobDefinition, JobDomainResult, JobProgress, JobResultItem},
+    shared::context::OwnerRef,
+    shared::id::{JobId, StageId, WorkerId},
 };
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -83,7 +81,7 @@ impl ResourceExecutionHost for ScheduledWorkflowHost<'_> {
         id: &str,
         revision: u64,
         command: &str,
-        target: datazen_platform_api::target::ExecutionTarget,
+        target: datazen_modules::execution::target::ExecutionTarget,
     ) -> Result<PreparedExecution, WorkflowError> {
         validate(self.state, self.grant)
             .await
@@ -95,7 +93,7 @@ impl ResourceExecutionHost for ScheduledWorkflowHost<'_> {
         let canonical = adapter
             .resolve_execution_target(
                 &self.context,
-                datazen_platform_api::id::Counter::new(revision),
+                datazen_modules::shared::id::Counter::new(revision),
                 command,
                 &target,
             )
@@ -179,9 +177,8 @@ impl WidgetExecutionHost for ScheduledWidgetHost<'_> {
     }
     async fn persist_run(&self, run: &WidgetRun) -> Result<(), String> {
         // 运行记录落在授予它的那个组织里：作用域取自 grant 自带的请求上下文。
-        let scope = datazen_platform_api::ports::scope::OrganizationScope::from_context(
-            &self.grant.context(),
-        );
+        let scope =
+            datazen_modules::shared::scope::OrganizationScope::from_context(&self.grant.context());
         datazen_feature_core::dashboard::runs::write_run(
             &scope,
             &*self.state.store.app_db(),
@@ -446,7 +443,7 @@ impl JobHandler for MonitorOccurrenceHandler {
 
     fn validate_plan(
         &self,
-        plan: &datazen_runtime::job::FrozenPlan,
+        plan: &datazen_modules::jobs::FrozenPlan,
     ) -> Result<Vec<StageSpec>, JobError> {
         if plan.kind != self.kind()
             || plan.is_apply

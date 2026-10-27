@@ -4,13 +4,13 @@ use datazen_modules::monitor::application::fixed_targets;
 pub(crate) use datazen_modules::monitor::domain::revision;
 use datazen_modules::monitor::domain::{MonitorGrant, MonitorScope};
 use datazen_modules::workflow::{
-    context::WorkflowContext,
+    application::context::WorkflowContext,
     model::{WorkflowDefinition, WorkflowStep},
 };
-use datazen_platform_api::{
-    context::RequestContext,
-    id::{ConnectionId, Counter},
-    target::{ExecutionTarget, NamespaceTarget},
+use datazen_modules::{
+    execution::target::{ExecutionTarget, NamespaceTarget},
+    shared::context::RequestContext,
+    shared::id::{ConnectionId, Counter},
 };
 
 pub(crate) fn current(

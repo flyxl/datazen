@@ -89,9 +89,28 @@ pub mod schema;
 #[cfg(feature = "settings")]
 pub mod settings;
 
+/// D8：原 `datazen-modules::application` 用例编排已归入 modules，宿主只负责装配。
+#[cfg(feature = "application")]
+pub mod application;
+
 /// 跨模块基础词汇（ID/上下文/错误信封）。常驻编译，不设 feature 门
 /// （§5.1：形成归属契约的最小 ID/引用值在 shared 唯一定义）。
 pub mod shared;
+
+// Stable crate-level conveniences for host adapters. Definitions remain in
+// their owning vertical slices; these exports avoid recreating a horizontal
+// platform-api namespace.
+#[cfg(feature = "connection")]
+pub use connection::{ProfileDraft, ProfileDraftPatch, ProfilePatch, ProfileReader, ProfileView};
+#[cfg(feature = "execution")]
+pub use execution::*;
+#[cfg(feature = "jobs")]
+pub use jobs::{
+    CancelToken, JobClock, JobError, JobHandler, JobHost, JobRepository, JobRuntime,
+    JobRuntimeRepository, RecoveryVerdict, SharedClock, StageOutcome, StageSpec, StageTerminal,
+};
+pub use shared::id::*;
+pub use shared::{ApiError, ApiErrorCode, DelegationRef, OwnerRef, PortError, RequestContext};
 
 #[cfg(test)]
 mod tests {

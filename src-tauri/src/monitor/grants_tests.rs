@@ -1,9 +1,9 @@
 use super::*;
 use crate::platform::policy::DesktopPolicy;
-use datazen_platform_api::{
-    id::ConnectionId,
-    ports::policy::{AuthorizationAction, AuthorizationSubject, PolicyService},
-    target::{ExecutionTarget, NamespaceTarget},
+use datazen_modules::{
+    execution::application::policy::{AuthorizationAction, AuthorizationSubject, PolicyService},
+    execution::target::{ExecutionTarget, NamespaceTarget},
+    shared::id::ConnectionId,
 };
 use std::sync::Arc;
 fn config() -> datazen_driver_api::ConnectionConfig {
@@ -255,7 +255,7 @@ async fn grant_missing_expiry_revocation_schedule_disable_and_definition_change_
     }
     store.app_db().save_monitor_grant(&original).unwrap();
     let mut missing = context.clone();
-    missing.delegation_id = Some(datazen_platform_api::id::DelegationId::new("missing"));
+    missing.delegation_id = Some(datazen_modules::shared::id::DelegationId::new("missing"));
     assert!(policy.resolve_delegation(&missing).await.is_err());
     let mut dashboard = store.app_db().get_dashboard("d").unwrap();
     dashboard.enabled = false;

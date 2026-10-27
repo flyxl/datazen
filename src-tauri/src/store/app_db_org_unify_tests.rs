@@ -28,13 +28,13 @@
 //! 迁移后的读取路径才被真正跑到。
 use super::jobs::SqliteJobRepository;
 use super::{AppDb, SCHEMA_VERSION};
-use datazen_platform_api::context::{OwnerRef, RequestContext};
-use datazen_platform_api::dto::job::{JobDefinition, JobFilter};
-use datazen_platform_api::id::{
+use datazen_modules::jobs::domain::job::{JobDefinition, JobFilter};
+use datazen_modules::jobs::domain::repository::JobRepository;
+use datazen_modules::jobs::{JobClock, SharedClock};
+use datazen_modules::shared::context::{OwnerRef, RequestContext};
+use datazen_modules::shared::id::{
     ClientInstanceId, IdempotencyKey, JobId, OrganizationId, PrincipalId, RequestId, Timestamp,
 };
-use datazen_platform_api::ports::job::JobRepository;
-use datazen_runtime::job::{JobClock, SharedClock};
 use rusqlite::params;
 use serde_json::json;
 use std::path::Path;

@@ -11,6 +11,7 @@ pub mod event_sink;
 pub mod events;
 pub mod idempotency;
 pub mod identity;
+pub mod master_key;
 pub mod network;
 /// `RuntimeConnectionUseCases` 编排（原 runtime::application，D3-3c 归位）。
 pub mod orchestration;
@@ -31,7 +32,12 @@ pub use events::{
 pub use idempotency::{IdempotentOperation, SubmissionToken};
 pub use identity::{ExecutionIdentity, IdentityResolver};
 pub use network::{endpoint_scheme, NetworkProvider, RoutePlan, TunnelBinding, TunnelSpec};
-pub use orchestration::RuntimeConnectionUseCases;
+pub use orchestration::{
+    BackupOutputBinding, IdlePolicy, IdleReclaimer, LiveConnection, LiveConnectionError,
+    LiveConnectionLease, LiveConnectionLedger, LiveConnectionRequest, LiveConnectionSource,
+    LivePurpose, LiveRelease, RuntimeArtifactChunk, RuntimeConnectionUseCases, RuntimeResultSink,
+    SessionTransactionOperation, WaitOutcome,
+};
 pub use policy::{
     AuthorizationAction, AuthorizationDecision, AuthorizationSubject, DelegationGrant,
     PolicyService, PolicyVersionChange,

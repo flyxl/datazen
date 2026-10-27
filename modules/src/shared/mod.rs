@@ -9,7 +9,7 @@
 //! and the cross-boundary error envelopes
 //! ([`PortError`](error::PortError) / [`ApiError`](error::ApiError)).
 //!
-//! Moved here in D2 (2026-10-26) from `datazen-platform-api`, which now only
+//! Moved here in D2 (2026-10-26) from `datazen-modules::platform_api`, which now only
 //! re-exports the same types until its retirement in D8.
 
 pub mod clock;

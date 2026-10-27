@@ -4,8 +4,8 @@ use super::super::error::CommandError;
 use super::super::AppState;
 use super::helpers::{nonempty, unbound_handle};
 use datazen_driver_api::{ConnectionHandle, DatabaseDriver};
-use datazen_platform_api::dto::session::SessionView;
-use datazen_runtime::application::LiveConnectionLease;
+use datazen_modules::execution::application::LiveConnectionLease;
+use datazen_modules::execution::SessionView;
 
 pub(crate) struct ResolvedCommandDriver {
     pub(crate) driver: Arc<dyn DatabaseDriver>,
@@ -32,11 +32,11 @@ pub(crate) async fn resolve_command_driver(
             .borrow_live_connection_by_id(
                 call.context(),
                 id,
-                datazen_runtime::application::LivePurpose::CommandExecution,
+                datazen_modules::execution::application::LivePurpose::CommandExecution,
             )
             .await
             .map_err(|error| {
-                if error.code == datazen_application::error::ApiErrorCode::SessionNotFound {
+                if error.code == datazen_modules::shared::error::ApiErrorCode::SessionNotFound {
                     CommandError::NotFound(format!("DB session {id} is unavailable"))
                 } else {
                     crate::platform::into_command_error(error)

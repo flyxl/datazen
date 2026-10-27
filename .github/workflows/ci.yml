@@ -387,7 +387,7 @@ jobs:
       # 断言的是提交态的 workspace 清单，与本地开发者看到的一致。
       #
       # 门禁本身不带 crate 名单：清单来自 workspace membership + §2.4 的路径，
-      # 新 crate 落到 packages/application / packages/platform-api / server 下就自动入网，
+       # 新 crate 落到 modules / server 下就自动入网，
       # 不需要在这里改任何一处列表。列不出来的 member 是 error 不是 pass。
       - name: Platform crate dependency boundaries
         run: pnpm test:platform-arch
@@ -422,7 +422,7 @@ jobs:
       - name: Driver type isolation (T-01..T-03)
         run: pnpm test:driver-types
 
-      # 计划 :269 的 datazen-runtime CI 空缺：core crate 及其后继的 Rust 单测
+      # 计划 :269 的共享运行时 CI 空缺：core crate 及其后继的 Rust 单测
       # 在此统一执行。crate 集合同样由脚本发现，新增 core crate 无需改 CI。
       - name: Rust unit tests (platform core crates)
         run: pnpm test:platform-crates
@@ -442,7 +442,7 @@ jobs:
       # rustc 版本在**运行前**取：产物 build 段要记编译器版本，编完再取就晚了。
       - name: CM-60 latency benchmark (release)
         run: |
-          DZ_CM60_RUSTC_VERSION="$(rustc --version)" cargo run --release -p datazen-runtime --bin cm60-bench -- \
+           DZ_CM60_RUSTC_VERSION="$(rustc --version)" cargo run --release -p datazen-modules --features contracts,execution,jobs --bin cm60-bench -- \
             --vcpus 4 --mem-bytes 8589934592 --out target/bench
       # 基准产物不在版本控制里（/target 被 gitignore），不存成 artifact 就等于
       # 没人能复核一次红灯。`if: always()` 是因为上面那步红的时候这一步照样要跑。

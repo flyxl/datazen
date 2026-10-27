@@ -9,27 +9,27 @@ mod tests {
         RestoreApplyJob, RestoreEvidence, RestoreGateway, RestoreInput, RestorePlan,
         RestoreRejection, UnsupportedRestoreGateway, RESTORE_APPLY_KIND,
     };
+    use datazen_modules::execution::runtime::artifact::FileArtifactRepository;
     use datazen_modules::execution::runtime::budget::{ledger::BudgetLedger, quotas::BudgetConfig};
+    use datazen_modules::execution::{EffectOutcome, ExecutionErrorCode};
     use datazen_modules::jobs::{
         project_frozen_plan, CancelToken, InMemoryJobRepository, JobClock, JobHandler,
         RecoveryVerdict, StageSpec, StageTerminal, SystemJobClock,
     };
-    use datazen_platform_api::dto::execution::{EffectOutcome, ExecutionErrorCode};
-    use datazen_platform_api::{
-        context::OwnerRef,
-        dto::job::{Checkpoint, JobDefinition},
-        id::{
-            ArtifactId, ClientInstanceId, ConnectionId, Counter, ExecutionId, IdempotencyKey,
-            JobId, OrganizationId, PrincipalId, RequestId,
-        },
+    use datazen_modules::{
+        execution::target::ExecutionTarget,
+        jobs::domain::job::{Checkpoint, JobDefinition},
         ports::{
             artifact::{ArtifactRepository, ArtifactSpec, ChunkPayload},
             job::JobRepository,
         },
-        target::ExecutionTarget,
+        shared::context::OwnerRef,
+        shared::id::{
+            ArtifactId, ClientInstanceId, ConnectionId, Counter, ExecutionId, IdempotencyKey,
+            JobId, OrganizationId, PrincipalId, RequestId,
+        },
         RequestContext,
     };
-    use datazen_runtime::artifact::FileArtifactRepository;
     use sha2::{Digest, Sha256};
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
@@ -56,7 +56,7 @@ mod tests {
                     ExecutionId::new("upload"),
                     RestorePlan::target_fingerprint(&ExecutionTarget::new(
                         ConnectionId::new("profile"),
-                        datazen_platform_api::target::NamespaceTarget::new(
+                        datazen_modules::execution::target::NamespaceTarget::new(
                             Some("app".into()),
                             None,
                             None,
@@ -76,7 +76,7 @@ mod tests {
             plan_id: "plan".into(),
             target: ExecutionTarget::new(
                 ConnectionId::new("profile"),
-                datazen_platform_api::target::NamespaceTarget::new(
+                datazen_modules::execution::target::NamespaceTarget::new(
                     Some("app".into()),
                     None,
                     None,
@@ -205,7 +205,7 @@ mod tests {
             if change_connection {
                 plan.target.connection_id = ConnectionId::new("other-profile");
             } else {
-                plan.target.namespace = datazen_platform_api::target::NamespaceTarget::new(
+                plan.target.namespace = datazen_modules::execution::target::NamespaceTarget::new(
                     Some("other-database".into()),
                     None,
                     None,
@@ -300,7 +300,7 @@ mod tests {
             plan_id: "plan".into(),
             target: ExecutionTarget::new(
                 ConnectionId::new("profile"),
-                datazen_platform_api::target::NamespaceTarget::new(None, None, None, vec![]),
+                datazen_modules::execution::target::NamespaceTarget::new(None, None, None, vec![]),
             ),
             config_revision: Counter::new(1),
             artifact_id: ArtifactId::new("input"),
@@ -312,7 +312,7 @@ mod tests {
         let job = RestoreApplyJob::new(context, plan, store, Arc::new(UnsupportedRestoreGateway));
         let checkpoint = Checkpoint {
             job_id: JobId::new("job"),
-            state_version: datazen_platform_api::id::JobStateVersion::new(1),
+            state_version: datazen_modules::shared::id::JobStateVersion::new(1),
             stable_target_fingerprint: "target".into(),
             committed: vec![],
             verification_evidence: vec![],
@@ -356,7 +356,7 @@ mod tests {
                     &IdempotencyKey::new("key2")
                 )
                 .await,
-            Err(datazen_platform_api::PortError::PlanAlreadyConsumed(_))
+            Err(datazen_modules::shared::error::PortError::PlanAlreadyConsumed(_))
         ));
     }
     #[tokio::test]
@@ -405,7 +405,7 @@ mod tests {
         host.dispatch(
             &context,
             &job_id,
-            &datazen_platform_api::id::WorkerId::new("worker"),
+            &datazen_modules::shared::id::WorkerId::new("worker"),
             &endpoints,
             handler,
         )
@@ -414,7 +414,7 @@ mod tests {
         let details = host.details(&context, job_id).await.unwrap();
         assert_eq!(
             details.job.state,
-            datazen_platform_api::dto::job::JobState::Failed
+            datazen_modules::jobs::domain::job::JobState::Failed
         );
         assert_eq!(details.job.effect_outcome, Some(EffectOutcome::NotStarted));
         assert_eq!(details.domain_results[0].result_code, "restoreUnsupported");

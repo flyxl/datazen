@@ -6,7 +6,7 @@ use datazen_feature_core::dashboard::types::{ChartConfig, Dashboard, ViewMode};
 use datazen_feature_core::workflow::model::{
     WorkflowDefinition, WorkflowVisibility as WfVisibility,
 };
-use datazen_platform_api::ports::scope::OrganizationScope;
+use datazen_modules::shared::scope::OrganizationScope;
 struct DesktopCreationHost<'a> {
     app_db: &'a AppDb,
     registry: Option<&'a WorkflowRegistry>,
@@ -146,8 +146,8 @@ mod tests {
     use datazen_feature_core::dashboard::repository::save_dashboard;
     use datazen_feature_core::dashboard::types::DashboardLayout;
     use datazen_feature_core::workflow::model::WorkflowStep;
-    use datazen_platform_api::id::OrganizationId;
-    use datazen_platform_api::ports::scope::OrganizationScope;
+    use datazen_modules::shared::id::OrganizationId;
+    use datazen_modules::shared::scope::OrganizationScope;
     use std::sync::Arc;
 
     /// 别的组织的作用域。

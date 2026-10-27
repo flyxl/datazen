@@ -10,13 +10,13 @@ use crate::store::DesktopRepository;
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use crate::{mcp, redis_flush_gate, workflow};
 use datazen_feature_core::ai::context::SchemaContextBuilder;
-use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::dto::job::RecoveryFilter;
-use datazen_platform_api::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
-use datazen_runtime::budget::{BudgetConfig, BudgetLedger};
-use datazen_runtime::driver_registry::init_drivers;
-use datazen_runtime::job::{JobClock, SystemJobClock};
-use datazen_runtime::schema_cache::SchemaCache;
+use datazen_modules::execution::runtime::budget::{BudgetConfig, BudgetLedger};
+use datazen_modules::execution::runtime::driver_registry::init_drivers;
+use datazen_modules::jobs::domain::job::RecoveryFilter;
+use datazen_modules::jobs::{JobClock, SystemJobClock};
+use datazen_modules::schema::cache::SchemaCache;
+use datazen_modules::shared::context::RequestContext;
+use datazen_modules::shared::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
 
 use super::helpers::unique_driver_types;
 
@@ -82,13 +82,13 @@ pub(super) async fn build_app_state(
 
 pub(crate) fn build_desktop_job_host(
     app_db: Arc<crate::store::AppDb>,
-) -> Arc<datazen_runtime::job::JobHost> {
+) -> Arc<datazen_modules::jobs::JobHost> {
     let clock: Arc<dyn JobClock> = Arc::new(SystemJobClock);
-    let repository: Arc<dyn datazen_runtime::job::JobRuntimeRepository> = Arc::new(
+    let repository: Arc<dyn datazen_modules::jobs::JobRuntimeRepository> = Arc::new(
         crate::store::app_db::jobs::SqliteJobRepository::new(app_db, clock.clone(), 300),
     );
     let ledger = Arc::new(Mutex::new(BudgetLedger::new(BudgetConfig::team_default())));
-    Arc::new(datazen_runtime::job::JobHost::new(
+    Arc::new(datazen_modules::jobs::JobHost::new(
         repository, ledger, clock,
     ))
 }
@@ -166,7 +166,7 @@ pub(crate) async fn recover_desktop_jobs_at_startup(state: &AppState) -> Result<
 
 pub(crate) fn finish_app_state(
     store: Arc<DesktopRepository>,
-    registry: Arc<datazen_runtime::driver_registry::DriverRegistry>,
+    registry: Arc<datazen_modules::execution::runtime::driver_registry::DriverRegistry>,
     sync_adapters: Arc<crate::transfer::adapter_registry::SyncAdapterRegistry>,
     prompts_dir: Option<PathBuf>,
 ) -> AppState {

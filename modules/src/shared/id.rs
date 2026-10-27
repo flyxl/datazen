@@ -10,7 +10,7 @@
 //! 序列化统一 `#[serde(transparent)]` + camelCase 字段名（见各 DTO 模块），
 //! JSON 形态与 `connection-management.md` §4 的 TypeScript 契约逐字段一致。
 //!
-//! 迁移提示（不属于本 crate 的范围）：`packages/runtime/src/connection/types.rs` 目前自带一份
+//! 迁移提示（不属于本 crate 的范围）：`modules/src/execution/runtime/connection/types.rs` 目前自带一份
 //! 同名 ID 定义。等 runtime 迁移完成后应改为 `pub use datazen_modules::shared::id::*`；在此之前
 //! 两份定义不可互换，因此**不得跨 crate 传递**这两套 ID 的值。
 

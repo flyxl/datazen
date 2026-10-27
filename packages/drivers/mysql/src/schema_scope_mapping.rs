@@ -259,7 +259,7 @@ fn location_to_byte(sql: &str, location: sqlparser::tokenizer::Location) -> Opti
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::migration::MysqlMigrationRenderer;
+    use crate::shared::migration::MysqlMigrationRenderer;
     use datazen_driver_api::{
         DatabaseObject, MigrationOperation, MigrationRenderer, MigrationView,
     };

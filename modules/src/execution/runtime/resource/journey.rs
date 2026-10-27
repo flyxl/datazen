@@ -334,7 +334,7 @@ fn a_reset_that_does_not_succeed_quarantines_the_lease_instead_of_closing_it() {
 /// * 关闭这一步被确认 ⇒ 预算当场核销（§9.3「只有实际 close 才释放」）；隧道引用的
 ///   结算读的是**最终**处置（`Closed`），不是 `CleanupPlan::of` 的初值（`ReturnedToPool`），
 ///   所以不会出现「预算没核销而引用先还了」的错拍。配对证据见
-///   `packages/runtime/tests/tunnel_budget_pairing.rs` 的同名用例。
+///   `modules/tests/tunnel_budget_pairing.rs` 的同名用例。
 #[test]
 fn a_reset_that_fails_during_the_idle_return_closes_the_lease_instead_of_parking_it() {
     let mut fixture = Fixture::new();

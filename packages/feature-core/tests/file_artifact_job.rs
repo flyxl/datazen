@@ -8,16 +8,16 @@
 #[cfg(test)]
 mod tests {
     use datazen_feature_core::file_job::{FileArtifactJob, FileJobOperation, FileJobOutput};
+    use datazen_modules::execution::runtime::artifact::FileArtifactRepository;
     use datazen_modules::export::ExportError as FeatureError;
     use datazen_modules::jobs::{CancelToken, JobHandler, StageSpec, StageTerminal};
-    use datazen_platform_api::id::StageId;
-    use datazen_platform_api::{
-        context::RequestContext,
-        dto::artifact::ArtifactLifecycle,
-        id::{ClientInstanceId, Counter, OrganizationId, PrincipalId, RequestId},
-        ports::artifact::ArtifactRepository,
+    use datazen_modules::shared::id::StageId;
+    use datazen_modules::{
+        execution::domain::ArtifactRepository,
+        execution::ArtifactLifecycle,
+        shared::context::RequestContext,
+        shared::id::{ClientInstanceId, Counter, OrganizationId, PrincipalId, RequestId},
     };
-    use datazen_runtime::artifact::FileArtifactRepository;
     use std::path::PathBuf;
     use std::sync::Arc;
     struct Output {

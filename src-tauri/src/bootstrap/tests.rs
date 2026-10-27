@@ -198,7 +198,7 @@ fn should_auto_start_embedded_mcp_follows_setting() {
 async fn finish_app_state_wires_core_services() {
     use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
     use crate::transfer::adapter_registry::SyncAdapterRegistry;
-    use datazen_runtime::driver_registry::registry::DriverRegistry;
+    use datazen_modules::execution::runtime::driver_registry::registry::DriverRegistry;
 
     let temp = tempfile::tempdir().unwrap();
     let store = Arc::new(
@@ -234,7 +234,7 @@ async fn finish_app_state_shares_one_app_db_between_the_registry_and_the_store()
     use crate::store::WorkflowVisibility as DbVisibility;
     use crate::transfer::adapter_registry::SyncAdapterRegistry;
     use datazen_feature_core::workflow::model::{WorkflowDefinition, WorkflowVisibility};
-    use datazen_runtime::driver_registry::registry::DriverRegistry;
+    use datazen_modules::execution::runtime::driver_registry::registry::DriverRegistry;
 
     let temp = tempfile::tempdir().unwrap();
     let store = Arc::new(
@@ -307,7 +307,7 @@ async fn finish_app_state_shares_one_app_db_between_the_registry_and_the_store()
 async fn test_tester_finish_app_state_initializes_wapps_and_registry() {
     use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
     use crate::transfer::adapter_registry::SyncAdapterRegistry;
-    use datazen_runtime::driver_registry::registry::DriverRegistry;
+    use datazen_modules::execution::runtime::driver_registry::registry::DriverRegistry;
 
     let temp = tempfile::tempdir().unwrap();
     let store = Arc::new(

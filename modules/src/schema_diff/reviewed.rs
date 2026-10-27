@@ -13,7 +13,7 @@
 //! （`get` → `None`、`remove` → `false`），**不得**返回「无权限」错误——那会泄漏
 //! 「存在但无权」（CM-05）。**越组织的写入结果由实现形态决定**（本包的内存实现按
 //! 组织分桶落库，宿主的单租户实现直接丢弃），端口契约要求每个实现写明自己的
-//! 语义。作用域类型由 `datazen-platform-api` 提供，本包不自造。
+//! 语义。作用域类型由 `datazen-modules::platform_api` 提供，本包不自造。
 //!
 //! # 时间基准
 //!
@@ -28,7 +28,7 @@
 //! # 存储实现
 //!
 //! 本包随端口一起提供 [`InMemoryReviewedPlanRepository`]：形态中立、无副作用、无传输的
-//! 进程内原语（先例：平台文档 §4 的 `ports::budget::pool_ledger`）。落盘实现由宿主
+//! 进程内原语（先例：平台文档 §4 的 `execution::application::budget::pool_ledger`）。落盘实现由宿主
 //! 另给；桌面在其之上叠加**单租户**收窄。
 use super::{
     object_identity::{SchemaObjectDependencySnapshot, SchemaObjectIdentity},
@@ -110,7 +110,7 @@ struct PlanKey {
 /// 进程内存的评审计划存储：按**组织**分桶。
 ///
 /// 形态中立、无副作用、无传输的进程内原语，因此随端口一起提供（先例：平台文档 §4
-/// 的 `ports::budget::pool_ledger`）。落盘实现由宿主另给。
+/// 的 `execution::application::budget::pool_ledger`）。落盘实现由宿主另给。
 ///
 /// * 条目按 `(organization_id, plan_id)` 分桶：**不同组织的计划互不可见**——
 ///   越组织**读取**按「不存在」处理（`get` → `None`、`remove` → `false`），

@@ -33,8 +33,8 @@ use datazen_modules::schema_diff::reviewed::{
     InMemoryReviewedPlanRepository, ReviewedPlan, ReviewedPlanRepository,
     ReviewedPlanRepositoryError,
 };
-use datazen_platform_api::id::OrganizationId;
-use datazen_platform_api::ports::scope::OrganizationScope;
+use datazen_modules::shared::id::OrganizationId;
+use datazen_modules::shared::scope::OrganizationScope;
 
 use crate::commands::{AppState, CommandError};
 use crate::platform::PlatformEntry;
@@ -149,7 +149,7 @@ mod tests {
     use super::*;
     use datazen_modules::schema_diff::reviewed::ReviewedPlan;
     use datazen_modules::schema_diff::types::SchemaDiffPlan;
-    use datazen_platform_api::id::OrganizationId;
+    use datazen_modules::shared::id::OrganizationId;
 
     fn scope(organization: &str) -> OrganizationScope {
         OrganizationScope::new(OrganizationId::new(organization))
@@ -333,8 +333,8 @@ mod tests {
     /// 的计划进入存储。
     #[tokio::test]
     async fn desktop_store_assembly_denies_every_organization_when_platform_failed() {
-        let failed = PlatformEntry::failed(datazen_application::error::ApiError::new(
-            datazen_application::error::ApiErrorCode::Unauthenticated,
+        let failed = PlatformEntry::failed(datazen_modules::shared::error::ApiError::new(
+            datazen_modules::shared::error::ApiErrorCode::Unauthenticated,
             "桌面本地身份不可用",
         ));
         let store = desktop_reviewed_plan_repository(&failed);

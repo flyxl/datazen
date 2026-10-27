@@ -3,7 +3,7 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
 use datazen_driver_api::{SavedTunnel, SavedTunnelSummary, TunnelUsage};
-use datazen_platform_api::error::PortError;
+use datazen_modules::shared::error::PortError;
 use tauri::State;
 
 /// 端口失败 → 命令错误：**原文保留**。

@@ -25,13 +25,13 @@ pub enum CommandError {
     DataSyncPartiallyApplied(u64),
     DataSyncOutcomeUnknown(String),
     Internal(String),
-    RestoreOutcome(Box<datazen_platform_api::dto::job::JobDetails>),
+    RestoreOutcome(Box<datazen_modules::jobs::domain::job::JobDetails>),
 }
 
 impl std::fmt::Display for CommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::RestoreOutcome(details) if details.job.effect_outcome == Some(datazen_platform_api::dto::execution::EffectOutcome::NotStarted)
+            Self::RestoreOutcome(details) if details.job.effect_outcome == Some(datazen_modules::execution::EffectOutcome::NotStarted)
                 && details.domain_results.iter().any(|result| result.result_code == "restoreUnsupported") => write!(f, "Restore Unsupported: no verified retained-resource binding; no database write was submitted; inspect Job {}; automatic retry is forbidden", details.job.job_id.as_str()),
             Self::RestoreOutcome(details) => write!(f, "Restore ended {:?}, effects {:?}; inspect Job {} before creating a new restore; automatic retry is forbidden", details.job.state, details.job.effect_outcome, details.job.job_id.as_str()),
             Self::DataSyncPartiallyApplied(count) => write!(f, "{count} rows committed before execution stopped; compare current data before continuing"),
@@ -62,7 +62,7 @@ impl serde::Serialize for CommandError {
                     "message": self.to_string(),
                     "details": details,
                     "automaticRetryAllowed": false,
-                    "unsupported": details.job.effect_outcome == Some(datazen_platform_api::dto::execution::EffectOutcome::NotStarted)
+                    "unsupported": details.job.effect_outcome == Some(datazen_modules::execution::EffectOutcome::NotStarted)
                         && details.domain_results.iter().any(|result| result.result_code == "restoreUnsupported"),
                 }),
                 serializer,
@@ -593,7 +593,7 @@ impl From<datazen_feature_core::services::fk_navigation::FkNavigationError> for 
 #[cfg(test)]
 mod resource_busy_tests {
     use super::*;
-    use datazen_application::error::{ApiError, ApiErrorCode};
+    use datazen_modules::shared::error::{ApiError, ApiErrorCode};
 
     #[test]
     fn resource_busy_keeps_the_actionable_message() {

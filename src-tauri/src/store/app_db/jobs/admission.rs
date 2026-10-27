@@ -1,8 +1,8 @@
-use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::dto::job::{JobDefinition, JobProgress, JobRecord};
-use datazen_platform_api::error::PortError;
-use datazen_platform_api::id::{IdempotencyKey, JobId, JobStateVersion};
-use datazen_runtime::job::project_frozen_plan;
+use datazen_modules::jobs::domain::job::{JobDefinition, JobProgress, JobRecord};
+use datazen_modules::jobs::project_frozen_plan;
+use datazen_modules::shared::context::RequestContext;
+use datazen_modules::shared::error::PortError;
+use datazen_modules::shared::id::{IdempotencyKey, JobId, JobStateVersion};
 use rusqlite::{params, OptionalExtension};
 use serde_json::json;
 
@@ -155,7 +155,7 @@ impl SqliteJobRepository {
 }
 
 #[async_trait::async_trait]
-impl datazen_platform_api::ports::job::JobRepository for SqliteJobRepository {
+impl datazen_modules::jobs::domain::repository::JobRepository for SqliteJobRepository {
     async fn accept(
         &self,
         ctx: &RequestContext,
@@ -172,7 +172,7 @@ impl datazen_platform_api::ports::job::JobRepository for SqliteJobRepository {
     async fn list(
         &self,
         ctx: &RequestContext,
-        filter: datazen_platform_api::dto::job::JobFilter,
+        filter: datazen_modules::jobs::domain::job::JobFilter,
     ) -> Result<Vec<JobRecord>, PortError> {
         SqliteJobRepository::list(self, ctx, filter).await
     }
@@ -180,8 +180,8 @@ impl datazen_platform_api::ports::job::JobRepository for SqliteJobRepository {
     async fn record_stage(
         &self,
         ctx: &RequestContext,
-        claim: &datazen_platform_api::dto::job::JobClaim,
-        stage: datazen_platform_api::dto::job::StageRecord,
+        claim: &datazen_modules::jobs::domain::job::JobClaim,
+        stage: datazen_modules::jobs::domain::job::StageRecord,
     ) -> Result<(), PortError> {
         self.write_stage(ctx, claim, stage).await
     }
@@ -189,8 +189,8 @@ impl datazen_platform_api::ports::job::JobRepository for SqliteJobRepository {
     async fn record_commit_boundary(
         &self,
         ctx: &RequestContext,
-        claim: &datazen_platform_api::dto::job::JobClaim,
-        boundary: datazen_platform_api::dto::job::CommitBoundary,
+        claim: &datazen_modules::jobs::domain::job::JobClaim,
+        boundary: datazen_modules::jobs::domain::job::CommitBoundary,
     ) -> Result<(), PortError> {
         self.write_boundary(ctx, claim, boundary).await
     }
@@ -198,9 +198,9 @@ impl datazen_platform_api::ports::job::JobRepository for SqliteJobRepository {
     async fn compare_and_set_state(
         &self,
         ctx: &RequestContext,
-        claim: &datazen_platform_api::dto::job::JobClaim,
+        claim: &datazen_modules::jobs::domain::job::JobClaim,
         expected: JobStateVersion,
-        next: datazen_platform_api::dto::job::JobState,
+        next: datazen_modules::jobs::domain::job::JobState,
     ) -> Result<JobRecord, PortError> {
         self.cas_state(ctx, claim, expected, next).await
     }
@@ -209,23 +209,23 @@ impl datazen_platform_api::ports::job::JobRepository for SqliteJobRepository {
         &self,
         ctx: &RequestContext,
         job_id: JobId,
-        worker: datazen_platform_api::id::WorkerId,
-    ) -> Result<datazen_platform_api::dto::job::JobClaim, PortError> {
+        worker: datazen_modules::shared::id::WorkerId,
+    ) -> Result<datazen_modules::jobs::domain::job::JobClaim, PortError> {
         self.claim_job(ctx, job_id, worker).await
     }
 
     async fn renew(
         &self,
-        claim: &datazen_platform_api::dto::job::JobClaim,
-    ) -> Result<datazen_platform_api::dto::job::JobClaim, PortError> {
+        claim: &datazen_modules::jobs::domain::job::JobClaim,
+    ) -> Result<datazen_modules::jobs::domain::job::JobClaim, PortError> {
         self.renew_claim(claim).await
     }
 
     async fn save_checkpoint(
         &self,
         ctx: &RequestContext,
-        claim: &datazen_platform_api::dto::job::JobClaim,
-        cp: datazen_platform_api::dto::job::Checkpoint,
+        claim: &datazen_modules::jobs::domain::job::JobClaim,
+        cp: datazen_modules::jobs::domain::job::Checkpoint,
     ) -> Result<(), PortError> {
         self.write_checkpoint(ctx, claim, cp).await
     }
@@ -233,7 +233,7 @@ impl datazen_platform_api::ports::job::JobRepository for SqliteJobRepository {
     async fn list_recoverable(
         &self,
         ctx: &RequestContext,
-        filter: datazen_platform_api::dto::job::RecoveryFilter,
+        filter: datazen_modules::jobs::domain::job::RecoveryFilter,
     ) -> Result<Vec<JobRecord>, PortError> {
         SqliteJobRepository::list_recoverable(self, ctx, filter).await
     }

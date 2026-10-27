@@ -8,7 +8,7 @@ use datazen_feature_core::workflow::{
     error::WorkflowError,
     resource_execution::{PreparedExecution, ResourceExecutionHost},
 };
-use datazen_runtime::driver_registry::DriverRegistry;
+use datazen_modules::execution::runtime::driver_registry::DriverRegistry;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -38,7 +38,9 @@ impl RuntimeCommandSource {
         let adapter = self.platform.require().map_err(|error| error.to_string())?;
         let runtime = adapter.runtime().map_err(|error| error.to_string())?;
         let owner = runtime
-            .connection_id_for_session(&datazen_runtime::connection::DbSessionId::new(session_id))
+            .connection_id_for_session(
+                &datazen_modules::execution::runtime::connection::DbSessionId::new(session_id),
+            )
             .ok_or_else(|| "Runtime session is unavailable".to_owned())?;
         let (config, metadata) = self
             .store
@@ -150,7 +152,7 @@ impl ResourceExecutionHost for WappReadOnlyHost<'_> {
         id: &str,
         revision: u64,
         command: &str,
-        target: datazen_platform_api::target::ExecutionTarget,
+        target: datazen_modules::execution::target::ExecutionTarget,
     ) -> Result<PreparedExecution, WorkflowError> {
         self.0.prepare(id, revision, command, target).await
     }
@@ -188,7 +190,7 @@ impl ResourceExecutionHost for RuntimeCommandSource {
         _id: &str,
         revision: u64,
         command: &str,
-        target: datazen_platform_api::target::ExecutionTarget,
+        target: datazen_modules::execution::target::ExecutionTarget,
     ) -> Result<PreparedExecution, WorkflowError> {
         let adapter = self
             .platform
@@ -201,7 +203,7 @@ impl ResourceExecutionHost for RuntimeCommandSource {
         let canonical = adapter
             .resolve_execution_target(
                 call.context(),
-                datazen_platform_api::id::Counter::new(revision),
+                datazen_modules::shared::id::Counter::new(revision),
                 command,
                 &target,
             )

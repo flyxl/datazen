@@ -30,7 +30,7 @@ impl TargetNamespaceLayer {
 
     /// 协议字面量，与 `#[serde(rename_all = "camelCase")]` 派生出的线格式逐字一致。
     ///
-    /// 用途与 `packages/runtime/src/connection/error.rs` 的 `ApiErrorCode::as_str()` 相同：
+    /// 用途与 `modules/src/execution/runtime/connection/error.rs` 的 `ApiErrorCode::as_str()` 相同：
     /// 让错误信息里的层级名与实际序列化结果一致，**不是**重新声明一份协议字面量。
     pub const fn as_str(self) -> &'static str {
         match self {

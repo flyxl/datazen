@@ -1,6 +1,6 @@
 //! Restore admits only its typed frozen metadata, never scripts or local paths.
 use datazen_feature_core::restore_job::RestorePlan;
-use datazen_platform_api::error::PortError;
+use datazen_modules::shared::error::PortError;
 use serde_json::Value;
 
 use super::codec::safe_identifier;

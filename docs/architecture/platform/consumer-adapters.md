@@ -139,7 +139,7 @@ PostgreSQL 与 MySQL 的 driver 专属 `tests/monitor_scheduled_query.rs` 现提
 
 ### 2026-10-19 NativeTool kernel 与桌面版本探针（当前实现边界）
 
-`packages/platform-api/src/ports/native_tool.rs` 定义 NativeToolPort；请求只含 toolId/version，不含客户端 executable、argv、env、工作目录或凭据。`packages/runtime/src/native_tool/` 在真实 JobRuntime stage capability 下执行：先核对活动 claim，再校验受信端口给出的进程/DB socket 上限；当前只接受一个有证明的进程，任一未知上限或缺目标均失败关闭。OS 进程名额单独计数，完整声明的 DB socket cost 在 spawn 前通过宿主共享 InProcessBudgetCoordinator 的 Job 类一次原子预留，不能将一个进程记成一个 socket。宿主须在环境级复用同一个 NativeToolRuntime；native handler 的 endpoints 不重复声明该物理预留。有效 owner 在执行中持续重验，撤销/取消只通知原进程，不能启动替代进程。
+`modules/src/platform_api/src/ports/native_tool.rs` 定义 NativeToolPort；请求只含 toolId/version，不含客户端 executable、argv、env、工作目录或凭据。`modules/src/native_tool/` 在真实 JobRuntime stage capability 下执行：先核对活动 claim，再校验受信端口给出的进程/DB socket 上限；当前只接受一个有证明的进程，任一未知上限或缺目标均失败关闭。OS 进程名额单独计数，完整声明的 DB socket cost 在 spawn 前通过宿主共享 InProcessBudgetCoordinator 的 Job 类一次原子预留，不能将一个进程记成一个 socket。宿主须在环境级复用同一个 NativeToolRuntime；native handler 的 endpoints 不重复声明该物理预留。有效 owner 在执行中持续重验，撤销/取消只通知原进程，不能启动替代进程。
 
 桌面 `src-tauri/src/platform/native_tool/` **仅实现 POSIX 固定版本探针**：显式部署登记 SHA-256 钉定的 `postgres.pg-dump-version` / `mysql.mysqldump-version` 和对应精确版本行；空注册表拒绝全部请求，不搜索 PATH。唯一 argv 是 `--version`，声明零 DB sockets；数据导出、导入、native backup/restore、任意自定义命令与 Windows adapter 均未启用。请求类型本身无法指定路径。运行前复验部署 binary，验证字节复制到私有临时可执行快照，防止检查后替换路径；生产拒绝脚本，测试仅使用 cfg(test) 合成脚本夹具。工作目录是独立私有目录，stdin 为 null，env_clear 后只设置 LANG/LC_ALL/TZ 常量，不继承 HOME、PGOPTIONS、MYSQL_*、动态加载路径或凭据。
 

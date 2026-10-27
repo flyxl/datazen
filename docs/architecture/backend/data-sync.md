@@ -75,7 +75,7 @@ Data Sync 的两处存储都是**端口**：规则与实现留在共享包内，
 
 比较结果的落盘实现（私有目录、帧式行文件、索引校验、崩溃回收）留在 `modules/src/data_sync/src/comparison_store/`：本地文件系统是形态中立的，搬进宿主只会让第二个形态再抄一遍；宿主注入的只有**存储根从哪来**。桌面形态的默认根是 `{temp}/datazen-sync-comparisons/`（`comparison_store::default_comparison_storage_root()`），每个比较独占其下的一个私有目录（0700），目录里有一份 owner 标记与一份 SQLite 独占租约；进程退出后租约由 SQLite 释放，下一个进程据此证明 owner 已死并回收这些陈旧目录。
 
-计划注册表过去是包内的 `static STORE`（进程级全局可变状态），现由 `AppState.sync_stores` 持有的实例承担。端口方法都带 `datazen_platform_api::ports::scope::OrganizationScope`：越组织访问按「**不存在**」处理（CM-05），端口返回与「计划不存在」完全一样的措辞，不返回「无权限」。注册表的键是 **(组织, 计划 id)**——组织维度进键，「按组织分区」是结构而不是约定。桌面是单租户——组织维度是进程常量 `LOCAL_ORGANIZATION_ID`。
+计划注册表过去是包内的 `static STORE`（进程级全局可变状态），现由 `AppState.sync_stores` 持有的实例承担。端口方法都带 `datazen_modules::platform_api::ports::scope::OrganizationScope`：越组织访问按「**不存在**」处理（CM-05），端口返回与「计划不存在」完全一样的措辞，不返回「无权限」。注册表的键是 **(组织, 计划 id)**——组织维度进键，「按组织分区」是结构而不是约定。桌面是单租户——组织维度是进程常量 `LOCAL_ORGANIZATION_ID`。
 
 ## 4. Execute
 

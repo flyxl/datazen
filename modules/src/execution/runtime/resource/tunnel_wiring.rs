@@ -229,7 +229,7 @@ impl ResourceManager {
                 retained.state = LeaseState::Quarantined;
                 self.table.insert(lease.resource_id.clone(), retained);
                 tracing::warn!(
-                    target: "datazen_runtime::resource",
+                    target: "datazen_modules::execution::runtime::resource",
                     lease = %lease.lease_id.as_str(),
                     reason = error.reason(),
                     "tunnel stage failed and the compensating close is unconfirmed; \

@@ -1,23 +1,19 @@
 //! Result edits use immutable provenance and the original live runtime resource.
 use super::{AppState, CommandError};
 use crate::platform::into_command_error;
-use datazen_application::{
-    dto::requests::{CommandCall, ExecuteInSessionRequest},
-    sessions::ConnectionUseCases,
-};
 use datazen_driver_api::{ColumnInfo, LegacySqlDialect, SqlDialect, TableSchema, Value};
 use datazen_feature_core::services::result_edit::{
     read_only_error_code, GridReadOnlyReason, WriteTarget,
 };
-use datazen_platform_api::{
-    context::RequestContext,
-    dto::{
-        execution::{ExecutionState, RuntimeResultBinding, WritableMapping},
-        idempotency::IdempotentOperation,
-    },
-    id::Counter,
+use datazen_modules::application::sessions::ConnectionUseCases;
+use datazen_modules::execution::application::requests::{CommandCall, ExecuteInSessionRequest};
+use datazen_modules::execution::application::{RuntimeArtifactChunk, RuntimeConnectionUseCases};
+use datazen_modules::{
+    execution::application::idempotency::IdempotentOperation,
+    execution::{ExecutionState, RuntimeResultBinding, WritableMapping},
+    shared::context::RequestContext,
+    shared::id::Counter,
 };
-use datazen_runtime::application::{RuntimeArtifactChunk, RuntimeConnectionUseCases};
 use serde::Deserialize;
 use serde_json::json;
 use tauri::State;
@@ -35,7 +31,7 @@ pub struct ResultCellWrite {
 async fn chunks(
     runtime: &RuntimeConnectionUseCases,
     context: &RequestContext,
-    execution: datazen_platform_api::id::ExecutionId,
+    execution: datazen_modules::shared::id::ExecutionId,
 ) -> Result<Vec<RuntimeArtifactChunk>, CommandError> {
     let view = runtime
         .get_execution(context, execution)
@@ -65,7 +61,7 @@ async fn execute(
     runtime: &RuntimeConnectionUseCases,
     context: &RequestContext,
     binding: &RuntimeResultBinding,
-    expected_context: &datazen_platform_api::dto::session::SessionContext,
+    expected_context: &datazen_modules::execution::SessionContext,
     command: &str,
     input: serde_json::Value,
 ) -> Result<Vec<RuntimeArtifactChunk>, CommandError> {

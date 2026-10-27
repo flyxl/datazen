@@ -15,7 +15,7 @@ pub(crate) fn validate_backup_filter_extension(extension: &str) -> Result<String
 #[derive(Clone)]
 struct DesktopBackupSource {
     platform: crate::platform::PlatformEntry,
-    registry: Arc<datazen_runtime::driver_registry::DriverRegistry>,
+    registry: Arc<datazen_modules::execution::runtime::driver_registry::DriverRegistry>,
     store: Arc<crate::store::DesktopRepository>,
 }
 impl DesktopBackupSource {
@@ -32,18 +32,19 @@ impl datazen_feature_core::backup::BackupSource for DesktopBackupSource {
     async fn resolve_source(
         &self,
         id: &str,
-    ) -> Result<
-        (Arc<dyn DatabaseDriver>, ConnectionConfig),
-        datazen_modules::export::ExportError,
-    > {
-        let adapter = self.platform.require().map_err(|error| {
-            datazen_modules::export::ExportError::Internal(error.to_string())
-        })?;
-        let runtime = adapter.runtime().map_err(|error| {
-            datazen_modules::export::ExportError::Internal(error.to_string())
-        })?;
+    ) -> Result<(Arc<dyn DatabaseDriver>, ConnectionConfig), datazen_modules::export::ExportError>
+    {
+        let adapter = self
+            .platform
+            .require()
+            .map_err(|error| datazen_modules::export::ExportError::Internal(error.to_string()))?;
+        let runtime = adapter
+            .runtime()
+            .map_err(|error| datazen_modules::export::ExportError::Internal(error.to_string()))?;
         let owner = runtime
-            .connection_id_for_session(&datazen_runtime::connection::DbSessionId::new(id))
+            .connection_id_for_session(
+                &datazen_modules::execution::runtime::connection::DbSessionId::new(id),
+            )
             .ok_or_else(|| {
                 datazen_modules::export::ExportError::Validation(
                     "Backup session is unavailable".into(),
@@ -64,9 +65,7 @@ impl datazen_feature_core::backup::BackupSource for DesktopBackupSource {
             .get(&config.database_type)
             .await
             .ok_or_else(|| {
-                datazen_modules::export::ExportError::Validation(
-                    "Backup driver unavailable".into(),
-                )
+                datazen_modules::export::ExportError::Validation("Backup driver unavailable".into())
             })?;
         Ok((driver, config))
     }
@@ -147,11 +146,9 @@ struct BackupFileOperation {
 impl datazen_feature_core::file_job::FileJobOperation for BackupFileOperation {
     async fn run(
         &self,
-        cancel: &datazen_runtime::job::CancelToken,
-    ) -> Result<
-        datazen_feature_core::file_job::FileJobOutput,
-        datazen_modules::export::ExportError,
-    > {
+        cancel: &datazen_modules::jobs::CancelToken,
+    ) -> Result<datazen_feature_core::file_job::FileJobOutput, datazen_modules::export::ExportError>
+    {
         if cancel.is_cancelled() {
             return Err(datazen_modules::export::ExportError::Validation(
                 "fileJobCancelled".into(),
@@ -166,15 +163,16 @@ impl datazen_feature_core::file_job::FileJobOperation for BackupFileOperation {
         let options = datazen_feature_core::backup::parse_backup_options(
             self.options.as_deref().unwrap_or_default(),
         )?;
-        let unavailable = || {
-            datazen_modules::export::ExportError::Validation("runtimeBackupUnavailable".into())
-        };
+        let unavailable =
+            || datazen_modules::export::ExportError::Validation("runtimeBackupUnavailable".into());
         let adapter = self.source.platform.require().map_err(|_| unavailable())?;
         let runtime = adapter.runtime().map_err(|_| unavailable())?;
         let connection = runtime
-            .connection_id_for_session(&datazen_runtime::connection::DbSessionId::new(
-                &self.session_id,
-            ))
+            .connection_id_for_session(
+                &datazen_modules::execution::runtime::connection::DbSessionId::new(
+                    &self.session_id,
+                ),
+            )
             .ok_or_else(unavailable)?;
         let (config, metadata) = self
             .source
@@ -216,24 +214,29 @@ impl datazen_feature_core::file_job::FileJobOperation for BackupFileOperation {
             None,
             config.schema.as_deref(),
         );
-        let target = datazen_platform_api::target::ExecutionTarget::new(
-            datazen_platform_api::id::ConnectionId::new(connection.as_str()),
-            datazen_platform_api::target::NamespaceTarget::new(database, None, schema, vec![]),
+        let target = datazen_modules::execution::target::ExecutionTarget::new(
+            datazen_modules::shared::id::ConnectionId::new(connection.as_str()),
+            datazen_modules::execution::target::NamespaceTarget::new(
+                database,
+                None,
+                schema,
+                vec![],
+            ),
         );
         let context = adapter.begin_call().context().clone();
         let canonical = adapter
             .resolve_execution_target(
                 &context,
-                datazen_platform_api::id::Counter::new(metadata.config_revision),
+                datazen_modules::shared::id::Counter::new(metadata.config_revision),
                 datazen_driver_api::sql_dump::stream::BACKUP_COMMAND,
                 &target,
             )
             .await
             .map_err(|_| unavailable())?;
         let namespace = canonical.namespace;
-        let target = datazen_platform_api::target::ExecutionTarget::new(
+        let target = datazen_modules::execution::target::ExecutionTarget::new(
             canonical.connection_id,
-            datazen_platform_api::target::NamespaceTarget::new(
+            datazen_modules::execution::target::NamespaceTarget::new(
                 namespace.database.map(|v| v.as_str().to_owned()),
                 namespace.catalog.map(|v| v.as_str().to_owned()),
                 namespace.schema.map(|v| v.as_str().to_owned()),

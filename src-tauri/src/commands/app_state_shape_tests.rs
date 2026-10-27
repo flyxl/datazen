@@ -167,7 +167,7 @@ fn the_tunnel_ports_are_declared_in_the_modules_domain_only() {
         tunnel.contains("pub trait TunnelRepository"),
         "TunnelRepository 必须由 modules::tunnel::domain 唯一定义"
     );
-    let platform_ports = root.join("packages/platform-api/src/ports");
+    let platform_ports = root.join("modules/src");
     assert!(
         !platform_ports.join("known_hosts.rs").exists()
             && !platform_ports.join("tunnel.rs").exists(),

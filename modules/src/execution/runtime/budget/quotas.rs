@@ -6,7 +6,7 @@
 //!   在**装配期**拒绝，不允许运行到一半才发现额度非法。
 //! - acquire 等待上限必须是配置：端口测试
 //!   `acquire_timeout_is_configuration_not_a_hardcoded_constant`
-//!   （`packages/platform-api/src/ports/budget/coordinator.rs`）守住端口侧，本模块在实现侧
+//!   （`modules/src/execution/application/budget/coordinator.rs`）守住端口侧，本模块在实现侧
 //!   用同一个字段名 [`BudgetConfig::acquire_timeout_ms`] 把它变成可注入的参数：
 //!   调用方不改逻辑就能改期限，逻辑里也不需要出现「10 秒」这种魔法值。
 

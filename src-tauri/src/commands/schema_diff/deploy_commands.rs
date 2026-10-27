@@ -134,7 +134,7 @@ pub(crate) async fn execute_schema_diff_deploy_impl_with_cancel(
     let target_context = match crate::services::migration_endpoint::runtime_session_context(
         &state,
         &target_db_session_id,
-        datazen_runtime::application::LivePurpose::LongLivedHostWork,
+        datazen_modules::execution::application::LivePurpose::LongLivedHostWork,
     )
     .await
     {

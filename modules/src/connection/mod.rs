@@ -6,6 +6,7 @@
 
 pub mod application;
 pub mod domain;
+pub mod dto;
 
 pub use application::{
     merge_missing_secrets, redact_secrets, ConnectionError, ConnectionService, ProfileView,

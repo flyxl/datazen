@@ -2,9 +2,9 @@ use async_trait::async_trait;
 use datazen_feature_core::dashboard::types::*;
 use datazen_modules::monitor::application::engine::{MonitorEngine, MonitorHost};
 use datazen_modules::monitor::domain::{MonitorGrant, MonitorScope};
-use datazen_platform_api::{
-    id::ConnectionId,
-    target::{ExecutionTarget, NamespaceTarget},
+use datazen_modules::{
+    execution::target::{ExecutionTarget, NamespaceTarget},
+    shared::id::ConnectionId,
 };
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -226,10 +226,11 @@ fn service_grant_cannot_be_attached_to_a_user_or_another_client() {
     let grant = grant();
     let mut context = grant.context();
     assert!(grant.validate(&context, chrono::Utc::now()).is_ok());
-    context.principal_id = datazen_platform_api::id::PrincipalId::new("desktop-user");
+    context.principal_id = datazen_modules::shared::id::PrincipalId::new("desktop-user");
     assert!(grant.validate(&context, chrono::Utc::now()).is_err());
     context = grant.context();
-    context.client_instance_id = datazen_platform_api::id::ClientInstanceId::new("another-client");
+    context.client_instance_id =
+        datazen_modules::shared::id::ClientInstanceId::new("another-client");
     assert!(grant.validate(&context, chrono::Utc::now()).is_err());
 }
 

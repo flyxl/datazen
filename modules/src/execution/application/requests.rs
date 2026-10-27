@@ -8,10 +8,10 @@
 //!
 //! 概要 §5.1 的硬约束一：身份**只能**由 adapter 构造的 `RequestContext` 提供，入口不得
 //! 从请求体读取 `organizationId` / `principalId`。所以本模块每个请求结构体都满足
-//! 「不含身份字段」，用用例签名上的 `&RequestContext` 承载身份（见 `datazen_application::ConnectionUseCases`）。
+//! 「不含身份字段」，用用例签名上的 `&RequestContext` 承载身份（见 `datazen_modules::application::ConnectionUseCases`）。
 //! `owner` 是 `OwnerRef`（枚举），不是自由文本：它表达**归属**，并且必须由 adapter 校验
 //! 「当前 client 确实是该 editor 的 owner」「该 job 确实属于已授权的 Job」（概要 §5.1 第三条），
-//! 校验逻辑在 `datazen_application::identity_policy`。
+//! 校验逻辑在 `datazen_modules::application::identity_policy`。
 //!
 //! ## 字段校验的边界
 //!

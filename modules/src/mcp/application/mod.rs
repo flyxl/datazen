@@ -3,5 +3,4 @@
 pub mod command_policy;
 pub mod describe;
 
-pub use command_policy::*;
 pub use describe::format_table_description;

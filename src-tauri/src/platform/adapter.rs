@@ -20,15 +20,15 @@
 
 use std::sync::Arc;
 
-use datazen_application::error::{ApiError, ApiErrorCode};
-use datazen_application::frontend_bridge::{self, BridgeInjection, FrontendBridge};
-use datazen_application::ApplicationServices;
 use datazen_driver_api::CommandCatalog;
-use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::{
-    id::{Counter, RequestId},
-    ports::profile::ProfileRepository,
-    target::{CanonicalTarget, ExecutionTarget},
+use datazen_modules::application::frontend_bridge::{self, BridgeInjection, FrontendBridge};
+use datazen_modules::application::ApplicationServices;
+use datazen_modules::shared::context::RequestContext;
+use datazen_modules::shared::error::{ApiError, ApiErrorCode};
+use datazen_modules::{
+    connection::domain::ProfileRepository,
+    execution::target::{CanonicalTarget, ExecutionTarget},
+    shared::id::{Counter, RequestId},
 };
 
 use super::handles::SessionHandleRegistry;
@@ -117,14 +117,18 @@ pub struct PlatformAdapter {
     /// `datazen-modules::history`；桌面仓储是同一个 `HistoryDb`
     /// （`DesktopHistoryRepositories` 适配两个端口）。
     history_service: std::sync::OnceLock<Arc<datazen_modules::history::HistoryService>>,
-    runtime: std::sync::OnceLock<Arc<datazen_runtime::application::RuntimeConnectionUseCases>>,
+    runtime: std::sync::OnceLock<
+        Arc<datazen_modules::execution::application::RuntimeConnectionUseCases>,
+    >,
     profiles: std::sync::OnceLock<Arc<super::repositories::DesktopProfiles>>,
     /// 执行身份解析器（`IdentityResolver` 端口的桌面实现）。
     ///
     /// 放在 `OnceLock` 里而不是构造参数：它是**装配期**决定的事（派生盐取自宿主
     /// 主密钥），而查询方在装配完成前拿不到它——与 `profiles` / `live` 同理。
     identities: std::sync::OnceLock<Arc<super::execution_identity::DesktopIdentityResolver>>,
-    driver_registry: std::sync::OnceLock<Arc<datazen_runtime::driver_registry::DriverRegistry>>,
+    driver_registry: std::sync::OnceLock<
+        Arc<datazen_modules::execution::runtime::driver_registry::DriverRegistry>,
+    >,
     target_metadata: std::sync::OnceLock<super::target_metadata::TargetMetadataCache>,
     target_metadata_gate: std::sync::Mutex<()>,
     /// 出向端口适配器。未接线是配置事实（`None`），不是故障。
@@ -141,8 +145,11 @@ pub struct PlatformAdapter {
     /// 的所有权问题。`IdleReclaimer::Drop` 本身就会 stop + abort，因此即使
     /// 漏了显式 `stop`，任务也不会泄漏——这里仍显式停，是为了让停止**发生在一个
     /// 确定的时刻**，而不是等某个不可预测的析构点。
-    idle_reclaimer: std::sync::Mutex<Option<datazen_runtime::application::IdleReclaimer>>,
-    artifacts: std::sync::OnceLock<Arc<datazen_runtime::artifact::FileArtifactRepository>>,
+    idle_reclaimer:
+        std::sync::Mutex<Option<datazen_modules::execution::application::IdleReclaimer>>,
+    artifacts: std::sync::OnceLock<
+        Arc<datazen_modules::execution::runtime::artifact::FileArtifactRepository>,
+    >,
     native: std::sync::OnceLock<Arc<super::native_tool::deployment::NativeDeployment>>,
 }
 
@@ -198,7 +205,8 @@ impl PlatformAdapter {
     /// frontend request paths are never accepted as an ExportSink.
     pub(crate) fn artifact_store(
         &self,
-    ) -> Result<Arc<datazen_runtime::artifact::FileArtifactRepository>, ApiError> {
+    ) -> Result<Arc<datazen_modules::execution::runtime::artifact::FileArtifactRepository>, ApiError>
+    {
         self.artifacts.get().cloned().ok_or_else(|| {
             ApiError::new(
                 ApiErrorCode::ServiceUnavailable,
@@ -282,7 +290,7 @@ impl PlatformAdapter {
     pub fn begin_owned_call(
         &self,
         intent: &OwnerIntent,
-    ) -> Result<(CallScope, datazen_platform_api::context::OwnerRef), ApiError> {
+    ) -> Result<(CallScope, datazen_modules::shared::context::OwnerRef), ApiError> {
         let owner = intent.admit(&self.identity)?;
         Ok((self.begin_call(), owner))
     }
@@ -418,7 +426,7 @@ impl PlatformAdapter {
     pub fn inject(
         &self,
         store: Arc<crate::store::DesktopRepository>,
-        registry: Arc<datazen_runtime::driver_registry::DriverRegistry>,
+        registry: Arc<datazen_modules::execution::runtime::driver_registry::DriverRegistry>,
         tunnels: Arc<dyn datazen_modules::tunnel::TunnelRepository>,
         known_hosts: Arc<dyn datazen_modules::tunnel::KnownHostsRepository>,
     ) -> Result<(), ApiError> {
@@ -496,24 +504,25 @@ impl PlatformAdapter {
         // 制品存储同上：打不开只关闭「结果制品持久化」这一项，会话与设置照常。
         // 打不开的真实原因通常是 `{dataDir}` 不可写或同名路径不是目录——都是环境事实，
         // 不是「平台装配坏了」。
-        let artifacts = match datazen_runtime::artifact::FileArtifactRepository::open(
-            store.data_dir().join("result-artifacts"),
-        ) {
-            Ok(artifacts) => Some(Arc::new(artifacts)),
-            Err(_) => {
-                tracing::warn!(
-                    "artifact storage initialization failed; result artifacts unsupported"
-                );
-                None
-            }
-        };
+        let artifacts =
+            match datazen_modules::execution::runtime::artifact::FileArtifactRepository::open(
+                store.data_dir().join("result-artifacts"),
+            ) {
+                Ok(artifacts) => Some(Arc::new(artifacts)),
+                Err(_) => {
+                    tracing::warn!(
+                        "artifact storage initialization failed; result artifacts unsupported"
+                    );
+                    None
+                }
+            };
         let live = Arc::new(super::live_source::DesktopLiveConnectionSource::new(
             registry.clone(),
             store.clone(),
             backend.clone(),
         ));
         let runtime = Arc::new(
-            datazen_runtime::application::RuntimeConnectionUseCases::new(
+            datazen_modules::execution::application::RuntimeConnectionUseCases::new(
                 profiles.clone(),
                 policy.clone(),
                 backend.clone(),
@@ -526,7 +535,7 @@ impl PlatformAdapter {
         // 就是数据池 + 控制池）。15 秒一跳让宽限名副其实，也让 §9.2 的 30 分钟期限到期后
         // 不再多留最多 3 分钟。
         runtime.with_idle_policy(
-            datazen_runtime::application::IdlePolicy::default()
+            datazen_modules::execution::application::IdlePolicy::default()
                 .with_scan_interval(std::time::Duration::from_secs(15)),
         );
         // 出向端口在此接线。放在 `runtime` 构造之后、`services` 之前：端口是**宿主
@@ -575,7 +584,7 @@ impl PlatformAdapter {
                         Ok(None) => return Ok(()),
                         Ok(Some(output)) => output,
                         Err(_) => {
-                            return Err(datazen_runtime::connection::ProviderError::ProtocolError(
+                            return Err(datazen_modules::execution::runtime::connection::ProviderError::ProtocolError(
                                 "export publication rejected".into(),
                             ))
                         }
@@ -587,7 +596,7 @@ impl PlatformAdapter {
                         None => sink.publish_output(&id, output),
                     };
                     result.map_err(|_| {
-                        datazen_runtime::connection::ProviderError::ProtocolError(
+                        datazen_modules::execution::runtime::connection::ProviderError::ProtocolError(
                             "result publication rejected".into(),
                         )
                     })
@@ -631,7 +640,7 @@ impl PlatformAdapter {
         let _ = self.named_views_service.set(named_views);
         let services = Arc::new(ApplicationServices::new(
             target,
-            datazen_application::identity_policy::IdentityPolicy::new(),
+            datazen_modules::application::identity_policy::IdentityPolicy::new(),
             runtime.clone(),
             tunnels.clone(),
             known_hosts.clone(),
@@ -792,7 +801,8 @@ impl PlatformAdapter {
     }
     pub fn runtime(
         &self,
-    ) -> Result<Arc<datazen_runtime::application::RuntimeConnectionUseCases>, ApiError> {
+    ) -> Result<Arc<datazen_modules::execution::application::RuntimeConnectionUseCases>, ApiError>
+    {
         self.runtime
             .get()
             .cloned()
@@ -917,7 +927,7 @@ impl PlatformAdapter {
             &target.connection_id,
             &target.namespace,
             target.object.as_ref(),
-            &datazen_application::target::TargetSource::Request,
+            &datazen_modules::application::target::TargetSource::Request,
         );
         cache
             .write()

@@ -1,6 +1,6 @@
 //! 执行身份解析的宿主单测。
 //!
-//! 端口 `packages/platform-api/src/ports/identity.rs` 自带的 5 条语义在这里逐条重验。
+//! 执行身份端口自带的 5 条语义在这里逐条重验。
 //! 每条都写成**会自己变红**的断言：改坏实现（把 principal 拼进身份键、把凭据版本
 //! 混进身份键、让委托路径转调本人路径）时，下面每一条都会点红。
 //!
@@ -25,19 +25,19 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use datazen_modules::monitor::domain::{MonitorGrant, MonitorScope};
-use datazen_platform_api::{
-    dto::profile::{ProfileDraft, ProfilePatch},
-    id::{
-        ClientInstanceId, ConfigRevision, IdempotencyKey, PrincipalId, RequestId, SecretRef,
-        Timestamp,
-    },
-    ports::policy::{
+use datazen_modules::{
+    connection::domain::ProfileScope,
+    connection::dto::{ProfileDraft, ProfilePatch},
+    execution::application::policy::{
         AuthorizationAction, AuthorizationDecision, AuthorizationSubject, DelegationGrant,
         PolicyChangeStream,
     },
-    ports::profile::ProfileScope,
-    ports::secret::{ResolvedCredential, SecretPurpose},
-    target::NamespaceTarget,
+    execution::application::secret::{ResolvedCredential, SecretPurpose},
+    execution::target::NamespaceTarget,
+    shared::id::{
+        ClientInstanceId, ConfigRevision, IdempotencyKey, PrincipalId, RequestId, SecretRef,
+        Timestamp,
+    },
 };
 
 use super::*;

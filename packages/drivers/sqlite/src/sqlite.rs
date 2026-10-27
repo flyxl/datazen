@@ -291,7 +291,7 @@ impl DatabaseDriver for SqliteDriver {
     /// (`"alias"."t"`). A DataZen SQLite connection is a single file
     /// (`main`), so this is a no-op unless the caller targets an explicit
     /// non-`main` database — i.e. a session where that database was
-    /// `ATTACH`ed under the same alias; see `sql_target::qualify_sql`.
+    /// `ATTACH`ed under the same alias; see `sql_execution::target::qualify_sql`.
     /// Parse failures pass SQL through unchanged.
     fn qualify_sql_target(
         &self,

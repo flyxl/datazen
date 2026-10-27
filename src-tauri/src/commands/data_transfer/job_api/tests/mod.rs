@@ -8,9 +8,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use datazen_platform_api::dto::job::JobState;
-use datazen_platform_api::id::ConnectionId;
-use datazen_runtime::job::{project_frozen_plan, EndpointRole};
+use datazen_modules::jobs::domain::job::JobState;
+use datazen_modules::jobs::{project_frozen_plan, EndpointRole};
+use datazen_modules::shared::id::ConnectionId;
 
 use super::admission::{admit_apply_plan, ApplyPlanRequest, PlanAdmission, PlanAvailability};
 use super::runtime::{endpoint_refs, APPLY_KIND, PREPARE_KIND};
@@ -44,7 +44,7 @@ fn plan_store() -> Arc<dyn TransferPlanRepositoryPort> {
 }
 
 /// The scope the desktop plan registry is keyed by.
-fn plan_scope() -> &'static datazen_platform_api::ports::scope::OrganizationScope {
+fn plan_scope() -> &'static datazen_modules::shared::scope::OrganizationScope {
     crate::commands::data_transfer::plan_scope::desktop_organization_scope()
 }
 
@@ -465,8 +465,8 @@ fn endpoints_carry_their_own_identity_and_sql_file_has_no_writer() {
 fn job_kinds_are_the_documented_names() {
     assert_eq!(PREPARE_KIND, "dataTransferPrepare");
     assert_eq!(APPLY_KIND, "dataTransferApply");
-    assert!(datazen_runtime::job::APPLY_KINDS.contains(&APPLY_KIND));
-    assert!(!datazen_runtime::job::APPLY_KINDS.contains(&PREPARE_KIND));
+    assert!(datazen_modules::jobs::APPLY_KINDS.contains(&APPLY_KIND));
+    assert!(!datazen_modules::jobs::APPLY_KINDS.contains(&PREPARE_KIND));
 }
 
 #[test]
@@ -723,7 +723,7 @@ async fn one_saved_connection_two_databases_is_not_a_self_overlap() {
             crate::services::migration_endpoint::runtime_session_context(
                 &test.state,
                 session,
-                datazen_runtime::application::LivePurpose::Inspection,
+                datazen_modules::execution::application::LivePurpose::Inspection,
             )
             .await
             .ok()
@@ -835,8 +835,8 @@ fn the_desktop_scope_is_the_only_organization_the_plan_registry_sees() {
         )
         .expect("plan issue");
 
-    let foreign = datazen_platform_api::ports::scope::OrganizationScope::new(
-        datazen_platform_api::id::OrganizationId::new("p5dt-foreign-organization"),
+    let foreign = datazen_modules::shared::scope::OrganizationScope::new(
+        datazen_modules::shared::id::OrganizationId::new("p5dt-foreign-organization"),
     );
     let unknown = store
         .peek(&foreign, "no-such-plan")

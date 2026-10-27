@@ -98,7 +98,7 @@ pub(crate) async fn commit_pending_changes_impl(
 async fn commit_pending_changes_with_handle(
     state: &AppState,
     request: CommitPendingChangesRequest,
-    manual_handle: Option<datazen_platform_api::dto::session::SessionHandle>,
+    manual_handle: Option<datazen_modules::execution::SessionHandle>,
 ) -> Result<CommitPendingChangesResponse, CommandError> {
     tracing::info!(
         db_session_id = %request.db_session_id,
@@ -158,7 +158,7 @@ async fn commit_pending_changes_with_handle(
 pub async fn commit_pending_changes(
     state: State<'_, AppState>,
     db_session_id: String,
-    manual_handle: Option<datazen_platform_api::dto::session::SessionHandle>,
+    manual_handle: Option<datazen_modules::execution::SessionHandle>,
     plan: RowChangePlan,
     fingerprint: String,
 ) -> Result<CommitPendingChangesResponse, CommandError> {

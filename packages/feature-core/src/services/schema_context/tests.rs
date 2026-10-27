@@ -17,20 +17,22 @@ use crate::workflow::resource_execution::{PreparedExecution, ResourceExecutionHo
 use async_trait::async_trait;
 use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
 use datazen_driver_api::{ConnectionConfig, DatabaseDriver};
-use datazen_platform_api::dto::requests::OpenSessionRequest;
-use datazen_platform_api::use_cases::ConnectionUseCases;
-use datazen_platform_api::{
-    context::{DelegationRef, OwnerRef, RequestContext},
-    dto::{idempotency::IdempotentOperation, profile::ProfileDraft, profile::ProfilePatch},
-    error::PortError,
-    id::*,
-    ports::{policy::*, profile::*},
-    target::{ExecutionTarget, NamespaceTarget},
-};
-use datazen_runtime::{
-    application::{RuntimeConnectionUseCases, RuntimeResultSink},
+use datazen_modules::execution::application::requests::OpenSessionRequest;
+use datazen_modules::execution::application::use_cases::ConnectionUseCases;
+use datazen_modules::execution::application::{RuntimeConnectionUseCases, RuntimeResultSink};
+use datazen_modules::execution::runtime::{
     connection as rt,
     registry::{audit::CapabilityVersions, backend::*, SessionBackend},
+};
+use datazen_modules::{
+    connection::domain::*,
+    connection::dto::{ProfileDraft, ProfilePatch},
+    execution::application::idempotency::IdempotentOperation,
+    execution::application::policy::*,
+    execution::target::{ExecutionTarget, NamespaceTarget},
+    shared::context::{DelegationRef, OwnerRef, RequestContext},
+    shared::error::PortError,
+    shared::id::*,
 };
 /// The test fake answers the consumer-defined lookup with the real facade.
 ///
@@ -62,13 +64,11 @@ struct RuntimeChunks(Arc<RuntimeConnectionUseCases>);
 impl ArtifactChunkReader for RuntimeChunks {
     async fn read_chunk(
         &self,
-        ctx: &datazen_platform_api::context::RequestContext,
-        artifact: &datazen_platform_api::id::ArtifactId,
-        index: datazen_platform_api::id::Counter,
-    ) -> Result<
-        datazen_platform_api::dto::execution::ResultChunk,
-        datazen_platform_api::error::ApiError,
-    > {
+        ctx: &datazen_modules::shared::context::RequestContext,
+        artifact: &datazen_modules::shared::id::ArtifactId,
+        index: datazen_modules::shared::id::Counter,
+    ) -> Result<datazen_modules::execution::ResultChunk, datazen_modules::shared::error::ApiError>
+    {
         self.0
             .read_artifact_chunk(ctx, artifact.clone(), index)
             .await

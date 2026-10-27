@@ -26,11 +26,11 @@ pub(crate) use datazen_modules::tunnel::verify_websocket_upstream;
 use datazen_driver_api::{
     ConnectionConfig, DriverError, HttpProxyTunnelConfig, TunnelKind, WebSocketTunnelConfig,
 };
+use datazen_modules::execution::runtime::driver_registry::registry::DriverRegistry;
+use datazen_modules::shared::scope::OrganizationScope;
 use datazen_modules::tunnel::KnownHostsRepository;
 use datazen_modules::tunnel::SshTunnel;
 use datazen_modules::tunnel::TunnelRepository;
-use datazen_platform_api::ports::scope::OrganizationScope;
-use datazen_runtime::driver_registry::registry::DriverRegistry;
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::time::Duration;

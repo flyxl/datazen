@@ -255,7 +255,7 @@ pub enum SinkWrite {
 /// 实现约定：本 trait 是**同步**的。端口契约只要求「带字节大小的
 /// 写入/完成/失败方法」与「写入等待表示背压」这两个可观测语义，并明确禁止暴露 Tokio channel 类型；
 /// 夹具保持同步签名即可完整表达背压、截断与 `protocolDrained` 三个可观测点，
-/// 也让 `packages/runtime` 不必引入异步运行时。真实异步 sink 由驱动契约 crate 提供。
+/// 也让 `modules` 不必引入异步运行时。真实异步 sink 由驱动契约 crate 提供。
 pub trait ResultSink {
     fn write(
         &mut self,

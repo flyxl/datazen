@@ -13,7 +13,7 @@
 //!
 //! ## 与 `application` 侧 `TargetResolver` 的分工
 //!
-//! `application` 侧的 `TargetResolver`（`packages/application/src/target.rs`）是
+//! `application` 侧的 `TargetResolver`（`modules/src/application/target.rs`）是
 //! §4.3 六步计算的**纯函数部分**：形状合法性、别名折叠、操作级要求校验。
 //! 本端口是它缺的**环境部分**：目标所属连接的驱动形状与命令要求**从哪来**
 //! （桌面 = driver registry + 目标元数据缓存；服务端 = 另一份来源）。

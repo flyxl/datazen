@@ -31,8 +31,8 @@
 
 use std::sync::Arc;
 
-use datazen_application::ApplicationServices;
-use datazen_platform_api::context::{OwnerRef, RequestContext};
+use datazen_modules::application::ApplicationServices;
+use datazen_modules::shared::context::{OwnerRef, RequestContext};
 
 use super::adapter::CallScope;
 use super::error::into_command_error;
@@ -167,7 +167,7 @@ pub fn require_history_service(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_platform_api::id::ClientInstanceId;
+    use datazen_modules::shared::id::ClientInstanceId;
     use serde_json::json;
 
     /// 既有 IPC 外观的**冻结签名**。
@@ -356,7 +356,7 @@ mod tests {
             include_str!("ipc.rs"),
             include_str!("identity.rs"),
             include_str!("handles.rs"),
-            include_str!("../../../packages/application/src/frontend_bridge.rs"),
+            include_str!("../../../modules/src/application/frontend_bridge.rs"),
             include_str!("../commands/mod.rs"),
             include_str!("../bootstrap/app_state.rs"),
         ];

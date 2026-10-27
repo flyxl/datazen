@@ -17,7 +17,7 @@ use crate::store::{AppDb, AppDbError, AppSettings};
 use datazen_feature_core::dashboard::records::{DashboardRecord, WidgetRecord};
 use datazen_feature_core::dashboard::repository::{DashboardRepository, DashboardRepositoryError};
 use datazen_feature_core::dashboard::types::{DashboardWorkflowRef, MonitorSettings};
-use datazen_platform_api::ports::scope::OrganizationScope;
+use datazen_modules::shared::scope::OrganizationScope;
 
 /// The monitor settings the desktop host persists in its settings file.
 pub fn load_monitor_settings(settings: &AppSettings) -> MonitorSettings {

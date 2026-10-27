@@ -3,13 +3,14 @@ mod opening;
 mod release;
 #[cfg(feature = "webdriver")]
 pub(crate) mod webdriver_dispatch;
-use super::{resource_budget::DesktopResourceBudget, resource_mapping as map};
+use super::resource_budget::DesktopResourceBudget;
 use crate::store::DesktopRepository;
 use async_trait::async_trait;
 use datazen_driver_api::{resource as dr, session as ds, QueryExecutionId};
-use datazen_platform_api::ports::budget::BudgetCoordinator as _;
-use datazen_runtime::driver_registry::DriverRegistry;
-use datazen_runtime::{
+use datazen_modules::execution::application::budget::BudgetCoordinator as _;
+use datazen_modules::execution::runtime::driver_mapping as map;
+use datazen_modules::execution::runtime::driver_registry::DriverRegistry;
+use datazen_modules::execution::runtime::{
     connection as rc,
     registry::{audit::CapabilityVersions, backend::*},
 };
@@ -51,8 +52,10 @@ pub(super) struct Resource {
     /// this Arc alive; only confirmed physical-resource removal releases it.
     _tunnel: Option<Arc<crate::tunnel::Tunnel>>,
     _budget_scope: Arc<dyn dr::BudgetPort>,
-    logical: std::sync::Mutex<Option<datazen_runtime::resource::LogicalSessionPermit>>,
-    purpose: datazen_runtime::resource::LeasePurpose,
+    logical: std::sync::Mutex<
+        Option<datazen_modules::execution::runtime::resource::LogicalSessionPermit>,
+    >,
+    purpose: datazen_modules::execution::runtime::resource::LeasePurpose,
 }
 
 impl Resource {
@@ -74,10 +77,10 @@ impl Resource {
 pub struct DesktopSessionBackend {
     registry: Arc<DriverRegistry>,
     store: Arc<DesktopRepository>,
-    budget: Arc<datazen_runtime::budget::InProcessBudgetCoordinator>,
-    organization: datazen_platform_api::id::OrganizationId,
-    principal: datazen_platform_api::id::PrincipalId,
-    leases: datazen_runtime::resource::ProductionLeaseManager,
+    budget: Arc<datazen_modules::execution::runtime::budget::InProcessBudgetCoordinator>,
+    organization: datazen_modules::shared::id::OrganizationId,
+    principal: datazen_modules::shared::id::PrincipalId,
+    leases: datazen_modules::execution::runtime::resource::ProductionLeaseManager,
     resources: tokio::sync::RwLock<HashMap<String, Arc<Resource>>>,
     /// dbSessionId → 已打开的物理 resource_id。**出向端口唯一能用的反向索引。**
     ///
@@ -107,7 +110,7 @@ pub struct DesktopSessionBackend {
 impl DesktopSessionBackend {
     pub(crate) fn physical_budget(
         &self,
-    ) -> Arc<datazen_runtime::budget::InProcessBudgetCoordinator> {
+    ) -> Arc<datazen_modules::execution::runtime::budget::InProcessBudgetCoordinator> {
         self.budget.clone()
     }
 
@@ -123,9 +126,11 @@ impl DesktopSessionBackend {
             registry,
             store,
             physical_limit,
-            datazen_platform_api::id::OrganizationId::new(super::identity::LOCAL_ORGANIZATION_ID),
+            datazen_modules::shared::id::OrganizationId::new(
+                super::identity::LOCAL_ORGANIZATION_ID,
+            ),
             super::identity::local_principal().unwrap_or_else(|| {
-                datazen_platform_api::id::PrincipalId::new("unresolved-desktop-user")
+                datazen_modules::shared::id::PrincipalId::new("unresolved-desktop-user")
             }),
             tunnels,
             known_hosts,
@@ -137,8 +142,8 @@ impl DesktopSessionBackend {
         registry: Arc<DriverRegistry>,
         store: Arc<DesktopRepository>,
         physical_limit: u32,
-        organization: datazen_platform_api::id::OrganizationId,
-        principal: datazen_platform_api::id::PrincipalId,
+        organization: datazen_modules::shared::id::OrganizationId,
+        principal: datazen_modules::shared::id::PrincipalId,
         tunnels: Arc<dyn datazen_modules::tunnel::TunnelRepository>,
         known_hosts: Arc<dyn datazen_modules::tunnel::KnownHostsRepository>,
         history: Arc<dyn datazen_modules::history::QueryHistoryRepository>,
@@ -146,16 +151,21 @@ impl DesktopSessionBackend {
         Self {
             registry,
             store,
-            budget: Arc::new(datazen_runtime::budget::InProcessBudgetCoordinator::new(
-                // PostgreSQL metadata admission requires a data connection and
-                // a control connection atomically. Reserve a complete lease
-                // so retained editors cannot consume its remaining slot.
-                datazen_runtime::budget::BudgetConfig::from_parts(physical_limit, [1, 2, 2, 0]),
-                organization.clone(),
-            )),
+            budget: Arc::new(
+                datazen_modules::execution::runtime::budget::InProcessBudgetCoordinator::new(
+                    // PostgreSQL metadata admission requires a data connection and
+                    // a control connection atomically. Reserve a complete lease
+                    // so retained editors cannot consume its remaining slot.
+                    datazen_modules::execution::runtime::budget::BudgetConfig::from_parts(
+                        physical_limit,
+                        [1, 2, 2, 0],
+                    ),
+                    organization.clone(),
+                ),
+            ),
             organization,
             principal,
-            leases: datazen_runtime::resource::LeaseManager::production(),
+            leases: datazen_modules::execution::runtime::resource::LeaseManager::production(),
             resources: tokio::sync::RwLock::new(HashMap::new()),
             by_session: tokio::sync::RwLock::new(HashMap::new()),
             publisher: RwLock::new(None),
@@ -299,7 +309,7 @@ impl SessionBackend for DesktopSessionBackend {
     /// 时同样不给半真半假的报告。
     async fn observability_snapshot(
         &self,
-    ) -> Option<datazen_runtime::resource::RuntimeObservabilityReport> {
+    ) -> Option<datazen_modules::execution::runtime::resource::RuntimeObservabilityReport> {
         let ledger = self.leases.snapshot()?;
         let limit = self
             .budget
@@ -393,12 +403,13 @@ impl DesktopSessionBackend {
             let Ok(resource) = self.resource(id.as_str()).await else {
                 continue;
             };
-            let host = datazen_runtime::resource::HostConditionSnapshot::default();
+            let host =
+                datazen_modules::execution::runtime::resource::HostConditionSnapshot::default();
             if self
                 .leases
                 .returning(
                     &id,
-                    datazen_runtime::resource::DriverCleanVerdict::reported_unclean(),
+                    datazen_modules::execution::runtime::resource::DriverCleanVerdict::reported_unclean(),
                     &host,
                 )
                 .is_err()

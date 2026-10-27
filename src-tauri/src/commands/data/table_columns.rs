@@ -9,8 +9,8 @@
 use super::*;
 use async_trait::async_trait;
 use datazen_feature_core::data_browsing::TableColumnSource;
+use datazen_modules::schema::cache::CachedColumns;
 use datazen_modules::table_editing::TableEditingError;
-use datazen_runtime::schema_cache::CachedColumns;
 
 pub(super) struct HostTableColumns<'a> {
     state: &'a AppState,

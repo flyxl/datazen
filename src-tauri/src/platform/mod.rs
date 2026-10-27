@@ -16,7 +16,6 @@ pub mod native_tool;
 pub mod policy;
 pub mod repositories;
 pub mod resource_budget;
-pub mod resource_mapping;
 pub mod scope;
 pub mod session_backend;
 pub mod session_commands;

@@ -1,7 +1,7 @@
 //! SchemaDiffJobHandler 接入 JobRuntime（P5 Wave-1 `p5-schema-diff` 轨）。
 //!
 //! 三件套的领域包不直接引用 Tauri；JobHandler 协议与 runtime 契约见
-//! `packages/runtime/src/job/`。
+//! `modules/src/jobs/`。
 //!
 //! * [`plan`]：§2.2 冻结计划元数据、版本守卫、PlanRepository（planId 一次消费）。
 //! * [`backend`]：物理资源接缝（prepare/verify_authorization/fingerprint/deploy/read_only_verify）。

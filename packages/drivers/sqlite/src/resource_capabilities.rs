@@ -27,7 +27,7 @@ use datazen_driver_api::DdlAtomicity;
 /// `DdlAtomicitySupport::by_operation` has no canonical key vocabulary in
 /// `driver-api` — the contract only says an unknown key must fail closed. The
 /// keys used here are the snake_case names of
-/// `datazen_driver_api::schema_migration::MigrationOperation`, which is the only
+/// `datazen_driver_api::schema::migration::MigrationOperation`, which is the only
 /// in-tree convention (`driver-api/tests/support` uses `create_table`). Any other
 /// key falls closed to `Unknown`, never to `Transactional`.
 const MIGRATION_OPERATIONS: [&str; 33] = [

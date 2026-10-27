@@ -698,7 +698,7 @@ impl ResourceManager {
                 // 只能看到墓碑并被拒绝。
                 //
                 // 契约测试（数的是物理端口上的 close 尝试数与确认数）：
-                // `packages/runtime/tests/cm28_concurrent_release.rs`。
+                // `modules/tests/cm28_concurrent_release.rs`。
                 if let Some(entry) = self.table.lease_mut(lease_id) {
                     let _ = entry.move_to(LeaseState::Quarantined);
                 }

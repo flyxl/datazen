@@ -2,16 +2,14 @@ use super::identity::LOCAL_ORGANIZATION_ID;
 use crate::store::{platform_profiles::ProfileMetadata, DesktopRepository};
 use async_trait::async_trait;
 use datazen_driver_api::ConnectionConfig;
-use datazen_platform_api::{
-    context::RequestContext,
-    dto::profile::{ProfileDraft, ProfilePatch},
-    error::PortError,
-    id::*,
-    ports::{
-        profile::{ProfileRecord, ProfileRepository, ProfileScope},
-        secret::{ResolvedCredential, SecretProvider, SecretPurpose},
-    },
-    target::NamespaceTarget,
+use datazen_modules::{
+    connection::domain::{ProfileRecord, ProfileRepository, ProfileScope},
+    connection::dto::{ProfileDraft, ProfilePatch},
+    execution::application::secret::{ResolvedCredential, SecretProvider, SecretPurpose},
+    execution::target::NamespaceTarget,
+    shared::context::RequestContext,
+    shared::error::PortError,
+    shared::id::*,
 };
 use std::{collections::BTreeMap, sync::Arc};
 

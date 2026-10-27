@@ -1,7 +1,7 @@
 //! 进程内预算与调度。
 //!
 //! 本模块实现 [`crate::execution::application::budget::coordinator::BudgetCoordinator`]，
-//! 落在 `packages/runtime` 内部：单进程共享一份账本，不引入任何新的 crate 依赖。
+//! 落在 `modules` 内部：单进程共享一份账本，不引入任何新的 crate 依赖。
 //!
 //! ## 为什么模块内部分成这几个文件
 //!

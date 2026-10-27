@@ -1,6 +1,6 @@
 //! `BudgetCoordinator` 的进程内实现。
 //!
-//! 契约来源 `platform-api::ports::budget::coordinator`（**7 个方法**，签名冻结不可改）。
+//! 契约来源 `platform-api::execution::application::budget::coordinator`（**7 个方法**，签名冻结不可改）。
 //! 本文件只做「适配」：把端口的异步语义落到 [`BudgetLedger`] 的同步语义上。
 //!
 //! ## 时间从哪来

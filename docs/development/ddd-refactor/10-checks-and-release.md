@@ -43,8 +43,8 @@ run_check node scripts/check-module-layers.mjs
 run_check node scripts/check-id-terminology.mjs
 run_check node scripts/check-shared-crate-panic-policy.mjs
 run_check node scripts/run-platform-crate-tests.mjs --dry-run
-run_check cargo test -p datazen-application -p datazen-platform-api --lib
-run_check cargo test -p datazen-runtime
+run_check cargo test -p datazen-modules --no-default-features --features contracts,application --lib
+run_check cargo test -p datazen-modules --all-features
 run_check cargo test -p datazen --lib
 run_check pnpm typecheck
 run_check pnpm exec vitest run src/platform/__tests__/tauriBackendTransport.tableData.test.ts
@@ -58,12 +58,13 @@ Rust 链接确属内存不足时，可以用 `CARGO_BUILD_JOBS=1 RUSTFLAGS='-C d
 
 ### 13.3 modules / web 建立后的新增验证
 
-**以下是 D1/D7 必须接入 CI 的目标命令；当前没有对应 crate，不应现在运行后把“不存在”当成代码回归。** feature 片段与[§8.3](05-host-assembly.md)一致。**web 宿主相关命令随 D7 移出本次范围（2026-10-26 决策），延后到后续版本接入；桌面范围内的 modules 矩阵照常执行：**
+**modules 已是当前共享业务 crate；契约 bundle 使用 `contracts` feature，不能再创建名为 `platform_api` 的 crate feature。** web 宿主相关命令随 D7 移出本次范围，桌面范围内的 modules 矩阵照常执行：
 
 ```bash
 run_check cargo check -p datazen-modules --no-default-features
 run_check cargo test -p datazen-modules --no-default-features --features settings
 run_check cargo test -p datazen-modules --no-default-features --features connection
+run_check cargo test -p datazen-modules --no-default-features --features monitor
 run_check cargo test -p datazen-modules --no-default-features --features table-browsing
 run_check cargo test -p datazen-modules --all-features
 # 以下两条随 D7 延后（web 宿主不在本次范围）

@@ -292,7 +292,7 @@ impl NetworkProvider for RouteNetworkProvider {
                 // 这里回 `Err` 反而危险——它会诱使调用方重试释放，而重试在台账里
                 // 只是一次无副作用的早退，并不会真的把隧道拆掉。
                 tracing::warn!(
-                    target: "datazen_runtime::tunnel",
+                    target: "datazen_modules::execution::runtime::tunnel",
                     reason = "tunnelTeardownUnconfirmed",
                     "隧道关闭未证实：台账条目保留，等待后续观察"
                 );

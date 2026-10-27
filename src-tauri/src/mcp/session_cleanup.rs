@@ -1,10 +1,8 @@
 //! One owner-bound cleanup worker per MCP client, independent of transport lifetime.
 use super::server::DataZenMcpServer;
-use datazen_application::{
-    dto::requests::{CloseMode, CloseSessionRequest},
-    sessions::ConnectionUseCases,
-};
-use datazen_platform_api::dto::session::ResourceRelease;
+use datazen_modules::application::sessions::ConnectionUseCases;
+use datazen_modules::execution::application::requests::{CloseMode, CloseSessionRequest};
+use datazen_modules::execution::ResourceRelease;
 use std::{
     sync::atomic::Ordering,
     time::{Duration, Instant},
@@ -34,11 +32,11 @@ impl DataZenMcpServer {
                         if let Ok(runtime) = adapter.runtime() {
                             // Reconstruct only the backend-owned client identity. Never accept an
                             // owner or handle from the caller, or scan by connectionId.
-                            let context = datazen_platform_api::context::RequestContext::new(
+                            let context = datazen_modules::shared::context::RequestContext::new(
                                 adapter.identity().organization_id().clone(),
                                 adapter.identity().principal_id().clone(),
                                 None,
-                                datazen_platform_api::id::ClientInstanceId::new(client.clone()),
+                                datazen_modules::shared::id::ClientInstanceId::new(client.clone()),
                                 crate::platform::identity::new_request_id(),
                                 None,
                             );
@@ -156,11 +154,11 @@ mod tests {
             .unwrap()
             .runtime()
             .unwrap();
-        assert!(
-            !runtime.is_registered(&datazen_runtime::connection::DbSessionId::new(
+        assert!(!runtime.is_registered(
+            &datazen_modules::execution::runtime::connection::DbSessionId::new(
                 binding.handle.db_session_id.as_str()
-            ))
-        );
+            )
+        ));
         let snapshot = runtime.observability_snapshot().await.unwrap();
         assert_eq!(snapshot.budget_in_use, 0);
         assert_eq!(snapshot.in_use_total, 0);
@@ -180,12 +178,12 @@ mod tests {
         test.save_connection("mcp-cleanup").await;
         let server = DataZenMcpServer::new(Arc::new(test.state))
             .with_allowed_connections(&["mcp-cleanup".into()]);
-        use datazen_application::dto::requests::OpenSessionRequest;
-        use datazen_platform_api::{
-            context::OwnerRef,
-            dto::idempotency::IdempotentOperation,
-            id::ConnectionId,
-            target::{ExecutionTarget, NamespaceTarget},
+        use datazen_modules::execution::application::requests::OpenSessionRequest;
+        use datazen_modules::{
+            execution::application::idempotency::IdempotentOperation,
+            execution::target::{ExecutionTarget, NamespaceTarget},
+            shared::context::OwnerRef,
+            shared::id::ConnectionId,
         };
         let adapter = server.app_state.platform_require().unwrap();
         let runtime = adapter.runtime().unwrap();
@@ -360,16 +358,16 @@ mod tests {
         cleaned(&server).await;
         assert_eq!(mock.open_transaction_count(), 0);
         assert_eq!(mock.commit_calls(), 0);
-        assert!(
-            !runtime.is_registered(&datazen_runtime::connection::DbSessionId::new(
+        assert!(!runtime.is_registered(
+            &datazen_modules::execution::runtime::connection::DbSessionId::new(
                 binding.handle.db_session_id.as_str()
-            ))
-        );
-        assert!(
-            runtime.is_registered(&datazen_runtime::connection::DbSessionId::new(
+            )
+        ));
+        assert!(runtime.is_registered(
+            &datazen_modules::execution::runtime::connection::DbSessionId::new(
                 foreign.handle.db_session_id.as_str()
-            ))
-        );
+            )
+        ));
         assert!(other
             .sessions
             .lookup(
@@ -417,11 +415,11 @@ mod tests {
             .unwrap()
             .runtime()
             .unwrap();
-        assert!(
-            !runtime.is_registered(&datazen_runtime::connection::DbSessionId::new(
+        assert!(!runtime.is_registered(
+            &datazen_modules::execution::runtime::connection::DbSessionId::new(
                 binding.handle.db_session_id.as_str()
-            ))
-        );
+            )
+        ));
         let adapter = server.app_state.platform_require().unwrap();
         let receipt = runtime
             .close_session(
@@ -433,7 +431,7 @@ mod tests {
         assert_eq!(receipt.resource_release, ResourceRelease::Quarantined);
         assert_eq!(
             receipt.effect_outcome,
-            datazen_platform_api::dto::execution::EffectOutcome::Unknown
+            datazen_modules::execution::EffectOutcome::Unknown
         );
         // Physical capacity is held while release is undecidable: MCP must not
         // invent a free budget slot or erase the retained cleanup record.

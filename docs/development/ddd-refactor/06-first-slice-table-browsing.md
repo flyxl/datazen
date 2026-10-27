@@ -9,7 +9,7 @@
 - `src/commands/database.ts` 的表数据请求与 `src/platform/tauriBackendTransport.ts` 的 transport 映射。
 - `src-tauri/src/commands/data.rs` 的 `get_table_data_at_target` 与 `commands/table_target.rs` 的 `read` / `execute`。
 - `packages/feature-core/src/services/query_executor/` 的旧查询服务及 `commands/schema.rs` 的旧 `get_table_data`。
-- `packages/runtime/src/application/` 的执行、事务与结果实现。
+- `modules/src/execution/application/` 的执行、事务与结果实现。
 - `src/stores/tableDataStore.ts` 的分页、结果合并和前端状态处理。
 
 旧链路不等于可以直接删除的死代码。实施前搜索全部前端、MCP、Workflow、测试和注册入口，确认是否存在只提供 session 的调用方。
@@ -48,7 +48,7 @@ Controller 将既有 wire 请求映射为 `table_browsing::application` 的读�
     `APP → feature-core → kernel/platform-api` 是正确方向，而「用例层不得依赖领域包」
     那条 manifest 禁令的理由（`APP → 领域包 → RT → APP` 的 Cargo 环）已经不存在。
     该禁令改写成新断言 `the_crate_may_depend_on_the_shared_feature_layer_but_not_on_the_runtime`
-    —— 保留 `datazen-runtime` / `tauri` 两条真禁令，环的判定交给门禁按**当前**图求值。
+    —— 保留 `datazen-modules` / `tauri` 两条真禁令，环的判定交给门禁按**当前**图求值。
   - `scripts/check-ddd-layers.mjs` 的镜像不变量不再硬编码「消费者一定依赖 application」，
     而是**按当前图求值**（消费者此刻确实依赖 application 时才判环），并补了双向自证
     （仍互依赖的合成图必须报警、单向图必须不报警）。
@@ -63,7 +63,7 @@ Controller 将既有 wire 请求映射为 `table_browsing::application` 的读�
 - **第三条命令族（2026-10-23，连接目录）**：这一族与上两族的差别是**端口住在哪里**。
   连接配置的形状 `ConnectionConfig` 住在 `datazen-driver-api`（每个形态都已链接的那一份，
   且是 IPC 载荷与前端表单的唯一形状），所以端口没有进领域包，而是进
-  `datazen_platform_api::ports::connection_catalog`——`platform-api` 本来就依赖 driver-api
+  `datazen_modules::platform_api::ports::connection_catalog`——`platform-api` 本来就依赖 driver-api
   （`TunnelRepository` 同理），端口里出现 `ConnectionConfig` 不构成新依赖。
   `ApplicationServices` 增加 `connections: Arc<dyn ConnectionCatalog>`，桌面实现是
   `DesktopRepository`；`commands/connection.rs` 与 `commands/connection_import/ipc.rs`

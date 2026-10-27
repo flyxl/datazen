@@ -14,9 +14,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use sha2::{Digest, Sha256};
 
-use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
-use datazen_runtime::job::{EndpointRef, EndpointRole};
+use datazen_modules::jobs::{EndpointRef, EndpointRole};
+use datazen_modules::shared::context::RequestContext;
+use datazen_modules::shared::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
 
 use datazen_modules::schema_diff::job::{
     ApplyRequest, PlanRepository, PrepareRequest, PreparedPlan, ReadOnlyVerdict,
@@ -84,7 +84,9 @@ async fn owner_connection_id(state: &AppState, session_id: &str) -> Result<Strin
         .runtime()
         .map_err(crate::platform::into_command_error)?;
     runtime
-        .connection_id_for_session(&datazen_runtime::connection::DbSessionId::new(session_id))
+        .connection_id_for_session(
+            &datazen_modules::execution::runtime::connection::DbSessionId::new(session_id),
+        )
         .map(|id| id.to_string())
         .ok_or_else(|| CommandError::Validation("Migration connection owner is unavailable".into()))
 }
@@ -141,7 +143,7 @@ impl SchemaDiffJobBackend for AppStateBackend {
     async fn prepare_plan(
         &self,
         request: &PrepareRequest,
-        _cancel: &datazen_runtime::job::CancelToken,
+        _cancel: &datazen_modules::jobs::CancelToken,
     ) -> Result<PreparedPlan, SchemaDiffPlanError> {
         let (plan, tgt_sess, target_db, target_schema) = match request {
             PrepareRequest::Table {
@@ -246,10 +248,10 @@ impl SchemaDiffJobBackend for AppStateBackend {
             handler_version: 1,
             checkpoint_version: 1,
             selection_revision: 1,
-            created_at: datazen_platform_api::id::Timestamp::new(
+            created_at: datazen_modules::shared::id::Timestamp::new(
                 chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
             ),
-            expires_at: datazen_platform_api::id::Timestamp::new(
+            expires_at: datazen_modules::shared::id::Timestamp::new(
                 (chrono::Utc::now() + chrono::Duration::hours(2))
                     .format("%Y-%m-%dT%H:%M:%SZ")
                     .to_string(),
@@ -337,7 +339,7 @@ impl SchemaDiffJobBackend for AppStateBackend {
         &self,
         plan: &SchemaDiffPlan,
         request: &ApplyRequest,
-        cancel: &datazen_runtime::job::CancelToken,
+        cancel: &datazen_modules::jobs::CancelToken,
     ) -> Result<SchemaDiffDeployResult, SchemaDiffPlanError> {
         let result = crate::commands::schema_diff::execute_schema_diff_deploy_impl_with_cancel(
             &self.state,
@@ -469,8 +471,8 @@ async fn target_schema_from_config(state: &AppState, session: &str) -> Option<St
         .and_then(|c| c.schema)
 }
 
-pub(super) fn owner_ref(_state_unused: &AppState) -> datazen_platform_api::OwnerRef {
-    datazen_platform_api::OwnerRef::ClientSession {
+pub(super) fn owner_ref(_state_unused: &AppState) -> datazen_modules::OwnerRef {
+    datazen_modules::OwnerRef::ClientSession {
         // 描述性字段：与本链 ctx 的客户端实例取值一致（落在 `owner_json` 里，从不被比对）。
         client_instance_id: ClientInstanceId::new("datazen-local-client"),
         purpose: "migration".into(),
@@ -528,7 +530,7 @@ mod tests {
     use datazen_modules::schema_diff::types::{
         PlanRequirement, PlanStatement, RollbackCompleteness, StatementRisk,
     };
-    use datazen_platform_api::id::Timestamp;
+    use datazen_modules::shared::id::Timestamp;
 
     #[test]
     fn apply_payload_persists_only_allowlisted_schema_diff_receipt_fields() {
@@ -670,10 +672,10 @@ pub async fn register_plan_for_apply(
         handler_version: 1,
         checkpoint_version: 1,
         selection_revision: 1,
-        created_at: datazen_platform_api::id::Timestamp::new(
+        created_at: datazen_modules::shared::id::Timestamp::new(
             chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
         ),
-        expires_at: datazen_platform_api::id::Timestamp::new(
+        expires_at: datazen_modules::shared::id::Timestamp::new(
             (chrono::Utc::now() + chrono::Duration::hours(2))
                 .format("%Y-%m-%dT%H:%M:%SZ")
                 .to_string(),

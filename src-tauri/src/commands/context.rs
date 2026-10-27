@@ -573,8 +573,8 @@ mod tests {
         use datazen_feature_core::ai::context::SchemaContextBuilder;
         use datazen_feature_core::ai::prompt_resolver::PromptResolver;
         use datazen_modules::ai::AiProviderRegistry;
-        use datazen_runtime::driver_registry::DriverRegistry;
-        use datazen_runtime::schema_cache::SchemaCache;
+        use datazen_modules::execution::runtime::driver_registry::DriverRegistry;
+        use datazen_modules::schema::cache::SchemaCache;
         use std::sync::Arc;
 
         let dir = tempfile::tempdir().unwrap();
@@ -654,8 +654,8 @@ mod tests {
         use datazen_feature_core::ai::context::SchemaContextBuilder;
         use datazen_feature_core::ai::prompt_resolver::PromptResolver;
         use datazen_modules::ai::AiProviderRegistry;
-        use datazen_runtime::driver_registry::DriverRegistry;
-        use datazen_runtime::schema_cache::SchemaCache;
+        use datazen_modules::execution::runtime::driver_registry::DriverRegistry;
+        use datazen_modules::schema::cache::SchemaCache;
         use std::sync::Arc;
 
         let dir = tempfile::tempdir().unwrap();

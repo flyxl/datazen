@@ -8,16 +8,15 @@ mod stream;
 struct DesktopExportSource {
     platform: crate::platform::PlatformEntry,
     runtime: crate::services::runtime_command_source::RuntimeCommandSource,
-    registry: Arc<datazen_runtime::driver_registry::DriverRegistry>,
-    cancel: datazen_runtime::job::CancelToken,
+    registry: Arc<datazen_modules::execution::runtime::driver_registry::DriverRegistry>,
+    cancel: datazen_modules::jobs::CancelToken,
 }
 #[async_trait::async_trait]
 impl ExportSource for DesktopExportSource {
     async fn resolve_source(
         &self,
         id: &str,
-    ) -> Result<(Arc<dyn DatabaseDriver>, bool, bool), datazen_modules::export::ExportError>
-    {
+    ) -> Result<(Arc<dyn DatabaseDriver>, bool, bool), datazen_modules::export::ExportError> {
         let (_, config, _) = self
             .runtime
             .profile_for_session(id)
@@ -28,9 +27,7 @@ impl ExportSource for DesktopExportSource {
             .get(&config.database_type)
             .await
             .ok_or_else(|| {
-                datazen_modules::export::ExportError::Validation(
-                    "Export driver unavailable".into(),
-                )
+                datazen_modules::export::ExportError::Validation("Export driver unavailable".into())
             })?;
         Ok((
             driver,
@@ -50,7 +47,7 @@ impl ExportSource for DesktopExportSource {
 }
 struct ExportOperation {
     store: Arc<crate::store::DesktopRepository>,
-    registry: Arc<datazen_runtime::driver_registry::DriverRegistry>,
+    registry: Arc<datazen_modules::execution::runtime::driver_registry::DriverRegistry>,
     platform: crate::platform::PlatformEntry,
     request: ExportTablesRequest,
     app: AppHandle,
@@ -60,11 +57,9 @@ struct ExportOperation {
 impl datazen_feature_core::file_job::FileJobOperation for ExportOperation {
     async fn run(
         &self,
-        cancel: &datazen_runtime::job::CancelToken,
-    ) -> Result<
-        datazen_feature_core::file_job::FileJobOutput,
-        datazen_modules::export::ExportError,
-    > {
+        cancel: &datazen_modules::jobs::CancelToken,
+    ) -> Result<datazen_feature_core::file_job::FileJobOutput, datazen_modules::export::ExportError>
+    {
         let (plans, zip) = prepare_export(&self.request)?;
         let path = self.staging.path().join(if zip {
             "export.zip".to_string()
@@ -168,7 +163,7 @@ mod tests {
                 test.state.platform.clone(),
             ),
             registry: test.state.driver_registry.clone(),
-            cancel: datazen_runtime::job::CancelToken::new(),
+            cancel: datazen_modules::jobs::CancelToken::new(),
         };
         let rows = Arc::new(Mutex::new(0usize));
         let observed = rows.clone();
@@ -192,7 +187,9 @@ mod tests {
                 .expect("platform is ready")
                 .runtime()
                 .expect("runtime is ready")
-                .connection_id_for_session(&datazen_runtime::connection::DbSessionId::new(&session))
+                .connection_id_for_session(
+                    &datazen_modules::execution::runtime::connection::DbSessionId::new(&session)
+                )
                 .is_some(),
             "export must leave the runtime session open"
         );

@@ -502,11 +502,10 @@ mod tests {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
         let needle: String = ["\"rte-", "{:08"].concat();
         let mut hits: Vec<String> = Vec::new();
-        // D3 迁移后：机制在本 crate（modules）的 src/execution 下；用例编排与
-        // 集成测试仍在 datazen-runtime（../../packages/runtime）。
+        // D8 迁移后：机制、用例编排与集成测试均在 modules crate。
         let registry_root = root.join("src/execution/runtime/registry");
         collect_epoch_format_literals(&registry_root, &registry_root, &needle, false, &mut hits);
-        let application_root = root.join("../packages/runtime/src/application");
+        let application_root = root.join("src/execution/application");
         collect_epoch_format_literals(
             &application_root,
             &application_root,
@@ -514,7 +513,7 @@ mod tests {
             false,
             &mut hits,
         );
-        let tests_root = root.join("../packages/runtime/tests");
+        let tests_root = root.join("tests");
         collect_epoch_format_literals(&tests_root, &tests_root, &needle, true, &mut hits);
         assert!(
             hits.is_empty(),

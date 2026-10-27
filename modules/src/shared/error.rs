@@ -353,7 +353,7 @@ pub enum RetryDisposition {
 // 用例层失败类型：`ApiError`
 // ---------------------------------------------------------------------------
 //
-// 它为什么在本包（而不是 `application`）：`datazen-runtime` 要实现用例端口
+// 它为什么在本包（而不是 `application`）：`datazen-modules` 要实现用例端口
 // `ConnectionUseCases` 并返回 `ApiError`，而 runtime 不得依赖 application
 // （R2：`application` 与 `runtime` 是兄弟，互不依赖，且两者都不许闭成 Cargo 环）。
 // 端口签名里出现的每个类型都只能落在本包——`PortError`、`ApiErrorCode`、

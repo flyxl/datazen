@@ -6,8 +6,8 @@ mod host_tests {
     #[tokio::test]
     async fn get_table_data_uses_schema_cache_and_returns_total() {
         use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
-        use datazen_runtime::driver_registry::registry::DriverRegistry;
-        use datazen_runtime::schema_cache::SchemaCache;
+        use datazen_modules::execution::runtime::driver_registry::registry::DriverRegistry;
+        use datazen_modules::schema::cache::SchemaCache;
 
         let registry = Arc::new(DriverRegistry::new());
         let mock = MockDriver::new(
