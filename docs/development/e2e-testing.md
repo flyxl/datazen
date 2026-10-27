@@ -214,9 +214,9 @@ node scripts/generate-menu-labels.mjs && node scripts/with-driver-inject.mjs --d
 
 # 2) 确认产物
 ls dist/index.html
-ls target/debug/datazen
+ls target/debug/datazen_desktop
 # macOS 另有：
-ls target/debug/bundle/macos/DataZen.app/Contents/MacOS/datazen
+ls target/debug/bundle/macos/DataZen.app/Contents/MacOS/datazen_desktop
 
 # 3) 跑指定用例
 pnpm e2e:skip-build -- --spec e2e/specs/main-window.ts

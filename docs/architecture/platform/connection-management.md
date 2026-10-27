@@ -1090,7 +1090,7 @@ CM-60 使用 release 构建、无数据库网络、单进程固定 fake command 
 **首版执行结果（2026-10）**：断言拆成两半，各落在能看住它的那一层。
 
 - **数值半（并发资源不超过上限）由 H 层承担**：`modules/tests/pool_capacity_budget.rs`（池容量与预算台账不漂移、无状态键永不驻留、被隔离的租约不占空闲容量）。首版所有发布驱动都声明 `ResetForReuse::Unsupported`，空闲池恒为空（见 CM-67），所以"驻留上限"在真实驱动上没有可触发状态。
-- **「不为每 tab 建连接」与「编辑器资源/上下文不变」由真实 UI 断言**：`e2e/specs/journeys/table-pool-contention-journey.ts`。它逐个打开并刷新表 tab，每次采样都要求物理资源数不越预算、且不超过基线 + 2（一个编辑器 retained session 的余量），最后回到编辑器确认仍能执行且观察上下文未变。
+- **「不为每 tab 建连接」与「编辑器资源/上下文不变」由真实 UI 断言**：`e2e/specs/journeys/table-pool-contention-journey.ts`。它逐个打开并刷新表 tab，每次采样都要求物理资源数不越预算、瞬时不超过基线 + 3（刷新过渡里同时存在的旧租约、新租约与导航树元数据租约，都是短租约；基线里没有空闲资源可复用时三者都会以新资源出现），收尾后必须回落到基线 + 2 以内——刚刚刷过 4 个表 tab 还挂着基线 + tab 数就说明按 tab 留了连接，这条才是「不为每 tab 建连接」的硬约束；最后回到编辑器确认仍能执行且观察上下文未变。
 - **计数必须由 Runtime 自己回答**：数据库活动视图无法说明某个连接属于哪个 Runtime pool 或租约状态，因此不能用 `pg_stat_activity` 推算 Runtime 预算。桌面只读口 `runtime_observability_snapshot` 经 `SessionBackend::observability_snapshot` → `ProductionLeaseManager::snapshot`（`modules/src/execution/runtime/resource/observability.rs`）投影 Runtime 租约台账（每池键在借/空闲/关闭中/隔离 + 台账总数），池策略来自 `PoolManager`，并附预算上限与在用量；**不新建第二本计数**（CM-32 单账铁律）。载荷里没有凭据、连接串或原始库名——池键只是摘要（指纹本身已是 FNV 摘要，再补凭据代与路由代）。未实现该端口后端返回 `null`，不是全零；台账被毒化同样返回 `null`。该口是带默认实现（默认 `None`）的 trait 方法，应用层的装饰器 `ObservedBackend` 必须**显式转发**（`modules/src/execution/application/backend.rs`）：忘记转发不会编译失败，症状只是"快照永远为 `null`"——本轮就是这样被 E2E 抓住的，并已由 `observed_backend_forwards_the_observability_snapshot` 钉住。
 
 **CM-34 表编辑事务范围（H/D/F）**
