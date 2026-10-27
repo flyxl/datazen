@@ -1,7 +1,7 @@
 {
   "_comment": [
     "The canonical completeness table shared by the shared layer and the host.",
-    "Read by packages/feature-core/tests/filter_empty_bounds_recheck.rs (Rust) and by",
+    "Read by modules/tests/filter_empty_bounds_recheck.rs (Rust) and by",
     "src/stores/tableData/__tests__/filterCompletenessParity.test.ts (TypeScript), so",
     "both sides judge the SAME inputs against the SAME expectation. A divergence on",
     "any row makes one of the two sides red.",
