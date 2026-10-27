@@ -125,7 +125,7 @@
 //!    而 `Ok(None)` 在登记表侧是一次**不动任何东西**的空操作。候选发布之后就是普通
 //!    在册会话，这条是它不被并发驱逐的唯一支点，所以它有独立用例
 //!    （`tests/registry_evict_replacement.rs` 的
-//!    `发布后的候选没有空闲期限_驱逐对它是不动`）：把 `None` 改成 `Some(..)`，
+//!    `a_published_candidate_has_no_idle_deadline_eviction_leaves_it_alone`）：把 `None` 改成 `Some(..)`，
 //!    那条用例立刻红，上面这句论断同时失效。
 //!
 //! **可达的那一半不是「终结到新资源」，而是驱逐的答复怎么记账。** 屏障期间
@@ -137,7 +137,7 @@
 //! 人处置**：既不落在旧 resource，也不落在新 resource，而是悬空。这正是判据
 //! 「或明确失败」要排除的形状。该格由
 //! `tests/registry_evict_replacement.rs` 的
-//! `屏障期间到来的驱逐不得摘行_旧句柄仍由替换例程在原资源终结` 钉住（探针站在
+//! `an_eviction_during_the_barrier_must_not_unlink_the_replacement_still_finalizes_the_old_handle` 钉住（探针站在
 //! `Prepared` 提交那一刻，即屏障内部；不靠时间推进制造窗口）。
 //!
 //! 为什么这里写结论而不是留一个用例：可达的部分已有用例，不可达的部分**构造不出来**。
@@ -374,7 +374,7 @@ impl ContextReplacer {
                 //
                 // 「被调用方关掉的候选会不会自己活回来」不由这一格负责，它在更早一步就撞上
                 // 这一格：宿主关候选时一并注销那一行，于是先问出「没有宿主入口」。那一侧由
-                // `tests/directory_replacement.rs` 的「查状态不得复活已关闭的候选」钉住——
+                // `tests/directory_replacement.rs` 的「a_status_lookup_must_not_resurrect_a_closed_candidate」钉住——
                 // 它证明的是补放行不会把终态条目拉回可路由，因此这一格拦住的确实是死的。
                 match self.registry.epoch_of(&handle.db_session_id) {
                     Ok(epoch) if epoch_string(epoch.get()) == handle.runtime_epoch.as_str() => {}

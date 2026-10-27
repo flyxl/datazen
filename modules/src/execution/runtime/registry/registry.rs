@@ -536,7 +536,7 @@ impl SessionRegistry {
     /// 能造出 `Err` 的只剩 actor 任务异常终止（panic / abort 把 `exec_rx` 一起丢掉）。
     /// 现实里最常见的一种是**驱动回调把 actor 任务带走**：释放例程在任务内部直接
     /// `await backend.close(..)`，回调一崩，展开就在回执发出去之前把它丢掉，
-    /// `control()` 于是拿到 `Err`（这一格由 `投递失败保留表项_额度不挂stale等重投` 钉住）。
+    /// `control()` 于是拿到 `Err`（这一格由 `a_delivery_failure_keeps_the_row_the_quota_is_not_marked_stale_awaiting_redelivery` 钉住）。
     /// 类型系统挡不住这件事，注释也挡不住。所以这里选择把「正常路径不可能」
     /// 写成**分支**而不是注释：`Err` 时保留表项并留下可查的痕迹。
     /// 代价是那条会话仍然显示为「已登记」——这个取舍与本模块「宁可留一条会诱发

@@ -24,12 +24,12 @@
 //!
 //! 覆盖的用例：
 //!
-//! - 替换成功_旧句柄在原资源上终结后旧资源才关闭
-//! - 回执里的令牌在新会话上作数且旧令牌立即失效
-//! - 屏障上的候选一律拒签令牌
-//! - 提交前失败_候选销毁且旧会话恢复可用
-//! - 重试同一旧句柄返回同一份回执且不重建候选
-//! - 重试不换令牌_第一次那枚在重试之后仍然作数
+//! - the_old_handle_is_finalized_on_its_original_resource_before_that_resource_closes
+//! - the_receipt_token_counts_on_the_new_session_and_the_old_token_is_revoked_immediately
+//! - candidates_on_the_barrier_are_all_denied_a_token
+//! - a_pre_commit_failure_destroys_the_candidate_and_restores_the_old_session
+//! - retrying_the_same_old_handle_returns_the_same_receipt_and_rebuilds_no_candidate
+//! - a_retry_does_not_rotate_the_token_the_first_one_still_counts_after_the_retry
 //! - driver 少报已终结句柄时替换仍发布但旧会话判失
 //!
 //! **拒绝侧**（修订号不符、候选发布失败撞号、新会话已关闭后同键重放）在
@@ -168,7 +168,7 @@ fn registry_with(backend: &Arc<ScriptedBackend>) -> Arc<SessionRegistry> {
 // ---------------------------------------------------------------------------------------------
 
 #[tokio::test]
-async fn 替换成功_旧句柄在原资源上终结后旧资源才关闭() {
+async fn the_old_handle_is_finalized_on_its_original_resource_before_that_resource_closes() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
             .handles(vec![handle_ref("h1", "res_1"), handle_ref("h2", "res_1")])
@@ -270,7 +270,7 @@ async fn 替换成功_旧句柄在原资源上终结后旧资源才关闭() {
 // ---------------------------------------------------------------------------------------------
 
 #[tokio::test]
-async fn 回执里的令牌在新会话上作数且旧令牌立即失效() {
+async fn the_receipt_token_counts_on_the_new_session_and_the_old_token_is_revoked_immediately() {
     let backend = ScriptedBackend::new(BackendPlan::default()).await;
     let registry = registry_with(&backend);
     let (_clock, directory) = common::cycling_directory(64);
@@ -337,11 +337,11 @@ async fn 回执里的令牌在新会话上作数且旧令牌立即失效() {
 }
 
 // ---------------------------------------------------------------------------------------------
-// T3：屏障上的候选一律拒签令牌（`Prepared` 阶段）
+// T3：candidates_on_the_barrier_are_all_denied_a_token（`Prepared` 阶段）
 // ---------------------------------------------------------------------------------------------
 
 #[tokio::test]
-async fn 屏障上的候选一律拒签令牌() {
+async fn candidates_on_the_barrier_are_all_denied_a_token() {
     let (_clock, directory) = common::cycling_directory(64);
     let old = directory
         .register(old_owner())
@@ -470,7 +470,7 @@ impl ReplacementDirectory for FailOnCommitDirectory {
 }
 
 #[tokio::test]
-async fn 提交前失败_候选销毁且旧会话恢复可用() {
+async fn a_pre_commit_failure_destroys_the_candidate_and_restores_the_old_session() {
     let backend = ScriptedBackend::new(BackendPlan::default()).await;
     let registry = registry_with(&backend);
     let (_clock, directory) = common::cycling_directory(64);
@@ -578,7 +578,7 @@ async fn 提交前失败_候选销毁且旧会话恢复可用() {
 // ---------------------------------------------------------------------------------------------
 
 #[tokio::test]
-async fn 重试同一旧句柄返回同一份回执且不重建候选() {
+async fn retrying_the_same_old_handle_returns_the_same_receipt_and_rebuilds_no_candidate() {
     let backend = ScriptedBackend::new(BackendPlan::default()).await;
     let registry = registry_with(&backend);
     let (_clock, directory) = common::cycling_directory(64);
@@ -663,7 +663,7 @@ async fn 重试同一旧句柄返回同一份回执且不重建候选() {
 // ---------------------------------------------------------------------------------------------
 
 #[tokio::test]
-async fn 重试不换令牌_第一次那枚在重试之后仍然作数() {
+async fn a_retry_does_not_rotate_the_token_the_first_one_still_counts_after_the_retry() {
     let backend = ScriptedBackend::new(BackendPlan::default()).await;
     let registry = registry_with(&backend);
     let (_clock, directory) = common::cycling_directory(64);
@@ -732,7 +732,7 @@ async fn 重试不换令牌_第一次那枚在重试之后仍然作数() {
 // ---------------------------------------------------------------------------------------------
 
 #[tokio::test]
-async fn driver少报句柄时替换仍发布但旧会话判失() {
+async fn when_the_driver_underreports_handles_the_replacement_still_publishes_but_the_old_session_is_judged_lost() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
             .handles(vec![handle_ref("h1", "res_1"), handle_ref("h2", "res_1")])

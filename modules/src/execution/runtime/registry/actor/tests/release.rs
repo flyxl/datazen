@@ -16,7 +16,7 @@ use crate::execution::runtime::registry::backend::HandleDisposition;
 /// 注意 `close_calls() == 1`：判定不可知**不**意味着跳过第 3 步，物理资源
 /// 照样要关掉，只是回执改成一笔「结果不可知」。
 #[tokio::test(start_paused = true)]
-async fn 驱动报干净但宿主仍有句柄时判定不可知() {
+async fn a_clean_driver_report_with_host_handles_outstanding_yields_an_unknown_verdict() {
     let backend = FakeBackend::new(FakeOutcome::default().finalizes(0, 0)).await;
     let (actor, view, mut audit) = spawn_ready(backend.clone()).await;
     let handle = handle_of(&view);
@@ -83,7 +83,7 @@ async fn 驱动报干净但宿主仍有句柄时判定不可知() {
 /// 单独写是因为证据来源不同：这里不可知的是**驱动关资源的回报**，
 /// 另一个不可知的是**宿主的句柄计数**。两条路径都必须落到同一份结论上。
 #[tokio::test(start_paused = true)]
-async fn 关闭回报不可知时如实回报会话丢失() {
+async fn an_unknown_close_outcome_reports_the_session_loss_as_is() {
     let backend = FakeBackend::new(FakeOutcome::default().close_undecidable()).await;
     let (actor, view, mut audit) = spawn_ready(backend.clone()).await;
     let handle = handle_of(&view);
@@ -119,7 +119,7 @@ async fn 关闭回报不可知时如实回报会话丢失() {
 /// （按首次出现）与批次纯净性——每批只带自己的句柄，不许捎带别的资源。
 /// 这条错了，上面的用例在多资源下就会漏发句柄，而且照样是绿的。
 #[test]
-fn 句柄按资源分组且批次纯净() {
+fn handles_are_grouped_by_resource_and_batches_stay_pure() {
     let handles = vec![
         handle_ref("h_1", "res_2"),
         handle_ref("h_2", "res_1"),
@@ -154,7 +154,7 @@ fn 句柄按资源分组且批次纯净() {
 
 /// 正常关闭的第二段：两批句柄都被下发、账目对平、资源被关。
 #[tokio::test(start_paused = true)]
-async fn 关闭时逐资源下发句柄且计数对平() {
+async fn close_dispatches_handles_per_resource_and_the_counts_reconcile() {
     // 驱动报的终结数必须与**宿主自己的登记数**对上（归池前检查第 2 步）。
     // 这里登记 2 个、驱动也报 2 个，是「一致且干净」的正例。
     let backend = FakeBackend::new(FakeOutcome::default().finalizes(2, 0)).await;
@@ -197,7 +197,7 @@ async fn 关闭时逐资源下发句柄且计数对平() {
 /// 不是错误）；到期限时才动手；动手时下发的是回滚而不是提交，且资源 id 是
 /// 当前那个 `res_7` 而不是任何新资源。
 #[tokio::test(start_paused = true)]
-async fn 空闲驱逐先在原资源回滚再关资源() {
+async fn an_idle_eviction_first_rolls_back_on_the_original_resource_then_closes_it() {
     let backend = FakeBackend::new(FakeOutcome::default().finalizes(1, 0)).await;
     let (actor, view, _audit) = spawn_ready(backend.clone()).await;
     let handle = handle_of(&view);
@@ -244,7 +244,7 @@ async fn 空闲驱逐先在原资源回滚再关资源() {
 ///
 /// 关键是**什么都没做**：既不下发句柄、也不关资源——拒绝必须是零副作用的。
 #[tokio::test(start_paused = true)]
-async fn 有在飞事务时要求无事务关闭被明确拒绝且零副作用() {
+async fn a_no_transaction_close_request_with_transactions_in_flight_is_rejected_with_zero_side_effects() {
     let backend = FakeBackend::new(FakeOutcome::default().finalizes(1, 0)).await;
     let (actor, view, _audit) = spawn_ready(backend.clone()).await;
     let handle = handle_of(&view);
@@ -281,7 +281,7 @@ async fn 有在飞事务时要求无事务关闭被明确拒绝且零副作用()
 /// 关资源是要拿回句柄的，所以在飞行执行还没落地时动手，顺序就错了。
 /// 证据是飞行途中 `close_calls() == 0` 且回执还没到；等执行落地后它才被回答。
 #[tokio::test(start_paused = true)]
-async fn 飞行执行期间到来的关闭被推迟到执行之后() {
+async fn a_close_arriving_during_an_in_flight_execution_is_deferred_until_after_it() {
     let backend = FakeBackend::new(FakeOutcome::default().with_script(Script::Silent)).await;
     let (actor, view, _audit) = spawn_ready(backend.clone()).await;
     let handle = handle_of(&view);

@@ -38,7 +38,7 @@ impl SessionRegistry {
     ///
     /// - 把 `Ok(None)` 并进「已丢失」⇒ 未到期的会话被当成已关而摘掉、额度白还一格，
     ///   且 `session_view` 从此查不到一个还在服务的会话。这正是「只补后两路」会连带点红
-    ///   `未设空闲期限的会话永不被驱逐`、`空闲到期才驱逐_未到期一律不动手` 两条既有用例的成因。
+    ///   `a_session_without_an_idle_deadline_is_never_evicted`、`eviction_happens_only_at_idle_expiry_nothing_moves_before_it` 两条既有用例的成因。
     /// - 把 `Err(CloseRejected(_))` 并进「已丢失」⇒ 一次**派发前**被拒的驱逐会凭空造出
     ///   一格额度：物理资源与已登记句柄原封不动，表项却没了，随后替换编排里那一步的
     ///   `close_registered` 定位不到旧会话，**旧物理资源再也没人去关**。

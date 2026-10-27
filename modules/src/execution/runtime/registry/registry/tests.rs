@@ -5,9 +5,9 @@
 //!
 //! | `control()` | 用例 | 造法 |
 //! | --- | --- | --- |
-//! | `Ok(true)` | `送达即作废_摘行并把额度挂成stale` | 登记后直接租约失效 |
-//! | `Ok(false)` | `否定答复仍算送达_已无物理资源的会话照常摘行` | 候选走完销毁之后仍被发布进可见表（见该用例注释） |
-//! | `Err(_)` | `投递失败保留表项_额度不挂stale等重投` | 驱动回调在 `close()` 里 panic，把 actor 任务带走 |
+//! | `Ok(true)` | `a_delivered_invalidation_unlinks_the_row_and_marks_the_quota_stale` | 登记后直接租约失效 |
+//! | `Ok(false)` | `a_negative_reply_still_counts_as_delivered_a_session_without_physical_resources_unlinks` | 候选走完销毁之后仍被发布进可见表（见该用例注释） |
+//! | `Err(_)` | `a_delivery_failure_keeps_the_row_the_quota_is_not_marked_stale_awaiting_redelivery` | 驱动回调在 `close()` 里 panic，把 actor 任务带走 |
 //!
 //! 后两格都不是「造出来的假象」：第三格是驱动侧崩溃打穿 actor 任务的**生产事故形状**，
 //! 两格都不需要改生产代码。
@@ -21,12 +21,12 @@
 //! 驱逐改为逐向判别（`SessionLost` ⇒ 摘表还额度）之后这条路不再产生该状态，所以本组
 //! 改用**候选原语**造它：销毁过的候选被发布进可见表，同样是「在册但已无物理资源」。
 //! **判定的三态一个字没改，改的只是造法**；驱逐那一格现在的正确行为由
-//! `不可判定的驱逐摘表还额度_不留僵尸行` 一例钉住——它钉的正是修好之后的形状，
+//! `an_undeterminable_eviction_unlinks_and_returns_quota_leaving_no_zombie_row` 一例钉住——它钉的正是修好之后的形状，
 //! 与 `tests/registry_release.rs` 里同一形状的端到端断言互为正反。
 //!
 //! 另有一条**结构事实**决定第三格不是「摘表项」造成的：`SessionRecord` 按值持有
 //! `SessionActor`，`owned_by` 又是按值克隆，于是 `.await` 期间一定有一份活着的发送端；
-//! 摘行丢的只是表里那一份。这条事实由 `摘行丢不掉活着的发送端` 一例钉住。
+//! 摘行丢的只是表里那一份。这条事实由 `unlinking_a_row_cannot_drop_a_live_sender` 一例钉住。
 
 use async_trait::async_trait;
 
@@ -214,7 +214,7 @@ fn observe(registry: &SessionRegistry, lost: &[DbSessionId]) -> Classification {
 
 /// 三态表第一格：`Ok(true)`——送达，且确属这个 worker，会话已在 actor 里回滚关闭。
 #[tokio::test]
-async fn 送达即作废_摘行并把额度挂成stale() {
+async fn a_delivered_invalidation_unlinks_the_row_and_marks_the_quota_stale() {
     let registry = SessionRegistry::new(Arc::new(ConfirmedCloseBackend), 4);
     registry
         .register_session(open_request())
@@ -244,13 +244,13 @@ async fn 送达即作废_摘行并把额度挂成stale() {
     );
 }
 
-/// 摘行丢不掉活着的发送端——`Err` 分支不能由「摘表项」触发。
+/// unlinking_a_row_cannot_drop_a_live_sender——`Err` 分支不能由「摘表项」触发。
 ///
 /// `owned_by` 是按值克隆出 `SessionRecord` 的，克隆里的 `actor` 在 `.await`
 /// 期间就是一份活着的发送端；摘行丢掉的只是表里那一份。这是第三格
 /// （`Err` 保留表项）与「第二格照常摘行」能同时成立的结构前提。
 #[tokio::test]
-async fn 摘行丢不掉活着的发送端() {
+async fn unlinking_a_row_cannot_drop_a_live_sender() {
     let registry = SessionRegistry::new(Arc::new(ConfirmedCloseBackend), 4);
     registry
         .register_session(open_request())
@@ -288,7 +288,7 @@ async fn 摘行丢不掉活着的发送端() {
 /// 造成——那是驱逐侧的一处缺陷（收不到成功视图就跳过摘行）留下的残留格。缺陷已闭合，
 /// 所以造法改成候选原语；**判定的三态一个字没改**，见本文件头 ★ 段。
 #[tokio::test]
-async fn 否定答复仍算送达_已无物理资源的会话照常摘行() {
+async fn a_negative_reply_still_counts_as_delivered_a_session_without_physical_resources_unlinks() {
     let registry = SessionRegistry::new(Arc::new(ConfirmedCloseBackend), 4);
     let (actor, view, runtime_epoch) = registry
         .open_candidate(open_request())
@@ -338,7 +338,7 @@ async fn 否定答复仍算送达_已无物理资源的会话照常摘行() {
 /// 反向也钉：`Err` **不改写**给调用方的语义——这里驱逐如实回「没有干净视图」，
 /// 空手而归。把不可判定的会话混进 `evicted` 返回值，等于替它报「已驱逐」。
 #[tokio::test]
-async fn 不可判定的驱逐摘表还额度_不留僵尸行() {
+async fn an_undeterminable_eviction_unlinks_and_returns_quota_leaving_no_zombie_row() {
     let registry = SessionRegistry::new(Arc::new(UndecidableCloseBackend), 4);
     registry
         .register_session(open_request())
@@ -376,10 +376,10 @@ async fn 不可判定的驱逐摘表还额度_不留僵尸行() {
 /// 不证明「资源已关」。此时摘行还额度，等于把一格额度发给一个物理资源可能还活着的
 /// 连接，而那条会话从此既不在册也没人负责——比僵尸行更糟，因为它连重投的机会都没了。
 ///
-/// 与 `不可判定的驱逐摘表还额度_不留僵尸行` 成对：两条合起来才说明分类不是
+/// 与 `an_undeterminable_eviction_unlinks_and_returns_quota_leaving_no_zombie_row` 成对：两条合起来才说明分类不是
 /// 「凡是 Err 都摘」或「凡是 Err 都留」这种偷懒的两态。
 #[tokio::test]
-async fn 驱逐请求没送达时保留表项_不归还额度() {
+async fn an_undelivered_eviction_request_keeps_the_row_and_holds_the_quota() {
     let registry = SessionRegistry::new(Arc::new(CrashingCloseBackend), 4);
     registry
         .register_session(open_request())
@@ -409,7 +409,7 @@ async fn 驱逐请求没送达时保留表项_不归还额度() {
 /// 就不在了。tokio 捕获任务里的 panic，`JoinHandle` 又被 `spawn_actor` 丢弃，
 /// 所以测试进程不受影响——stderr 上那一行 panic 消息是**预期的**，不是失败。
 #[tokio::test]
-async fn 投递失败保留表项_额度不挂stale等重投() {
+async fn a_delivery_failure_keeps_the_row_the_quota_is_not_marked_stale_awaiting_redelivery() {
     let registry = SessionRegistry::new(Arc::new(CrashingCloseBackend), 4);
     registry
         .register_session(open_request())
@@ -473,7 +473,7 @@ async fn register_with_handle(registry: &SessionRegistry) -> SessionHandle {
 /// `open_request()` 里那个 `Some(IDLE_DEADLINE_MS)` 会让它在 `TIMELINE_SOON`
 /// 时刻照样被驱逐（`IDLE_DEADLINE_MS == TIMELINE_SOON`，正是边界）——本用例因此红。
 #[tokio::test]
-async fn 期限设到未来则驱逐不动手_去掉公开入口前它不可能被设() {
+async fn a_future_deadline_freezes_eviction_unsettable_until_the_public_entry_point_is_removed() {
     let registry = SessionRegistry::new(Arc::new(ConfirmedCloseBackend), 4);
     let handle = register_with_handle(&registry).await;
 
@@ -498,10 +498,10 @@ async fn 期限设到未来则驱逐不动手_去掉公开入口前它不可能�
 
 /// 同一会话，同一个入口，把期限改回**过去** ⇒ 驱逐立刻动手。
 ///
-/// 与 `期限设到未来则驱逐不动手_去掉公开入口前它不可能被设` 成对：一正一反
+/// 与 `a_future_deadline_freezes_eviction_unsettable_until_the_public_entry_point_is_removed` 成对：一正一反
 /// 才说明差别来自期限本身，而不是「registry 恰好没扫到这一行」。
 #[tokio::test]
-async fn 期限改回过去则驱逐动手_摘行还额度() {
+async fn moving_the_deadline_back_to_the_past_lets_eviction_unlink_the_row_and_return_quota() {
     let registry = SessionRegistry::new(Arc::new(ConfirmedCloseBackend), 4);
     let handle = register_with_handle(&registry).await;
 
@@ -537,11 +537,11 @@ async fn 期限改回过去则驱逐动手_摘行还额度() {
 
 /// `None` 是**配置事实**（本会话不参与回收），不是「清空成 0」。
 ///
-/// 这一条与 `未设期限的会话永不被驱逐`（既有用例）互为表里：既有那条证明
+/// 这一条与 `a_session_without_an_idle_deadline_is_never_evicted`（既有用例）互为表里：既有那条证明
 /// `open_request` 从不设期限时不动手，这一条证明**显式设成 `None`** 也是同一种
 /// 语义。把 `None` 当 0 处理的最短后果是「所有会话一开就到期」，比不回收糟得多。
 #[tokio::test]
-async fn 设成None表示不参与回收_不是把期限清成零() {
+async fn setting_none_opts_out_of_reaping_rather_than_zeroing_the_deadline() {
     let registry = SessionRegistry::new(Arc::new(ConfirmedCloseBackend), 4);
     let handle = register_with_handle(&registry).await;
 
@@ -573,7 +573,7 @@ async fn 设成None表示不参与回收_不是把期限清成零() {
 /// 「不认识」与「已关闭」在这里由调用方能否重试来区分，而这个入口两者都重试无意义，
 /// 因此同形是更诚实的选择。
 #[tokio::test]
-async fn 关闭后的会话设期限得到UnknownSession且不重建() {
+async fn setting_a_deadline_on_a_closed_session_yields_unknown_session_without_recreating_it() {
     let registry = SessionRegistry::new(Arc::new(ConfirmedCloseBackend), 4);
     let handle = register_with_handle(&registry).await;
 
@@ -615,7 +615,7 @@ async fn 关闭后的会话设期限得到UnknownSession且不重建() {
 /// INV-07 的最后一格：旧 epoch 的句柄连期限都改不了。放行它等于允许
 /// 「用一个已经被取代的会话句柄去动新会话的驱逐表」。
 #[tokio::test]
-async fn epoch不匹配时设期限得到UnknownSession() {
+async fn an_epoch_mismatch_when_setting_a_deadline_yields_unknown_session() {
     let registry = SessionRegistry::new(Arc::new(ConfirmedCloseBackend), 4);
     let mut stale = register_with_handle(&registry).await;
     stale.runtime_epoch =

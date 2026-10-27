@@ -12,8 +12,8 @@
 //! | 冻结端口自带 `None` 也走同一条校验 | 端口不是旁路 |
 //! | 取消先于句柄公布先受理后兑现 | 排队 + `deliver_published` |
 //! | driver 无独立控制路径回 `unsupported` | 正常返回 |
-//! | 后端取消失败不得塌缩成已取消 | `Err` |
-//! | 从未绑定的执行当场拒绝 | `unboundExecution` |
+//! | a_backend_cancel_failure_must_not_collapse_into_cancelled | `Err` |
+//! | an_execution_that_was_never_bound_is_rejected_on_the_spot | `unboundExecution` |
 //! | 已终结的执行终态优先 | `alreadyFinished` |
 //! | 旧世代句柄连后端都碰不到 | epoch 先判 |
 
@@ -101,7 +101,7 @@ fn assert_cancel_failed(error: &RuntimeError, reason: &str) {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 正常取消回执形状自洽且绑定逐字命中() {
+async fn a_normal_cancel_receipt_is_self_consistent_and_its_binding_matches_verbatim() {
     let (backend, gate, registry, view, execution) =
         published_execution(BackendPlan::default()).await;
     let handle = handle_of(&view);
@@ -130,7 +130,7 @@ async fn 正常取消回执形状自洽且绑定逐字命中() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 伪造取消绑定当场拒绝且零后端调用() {
+async fn a_forged_cancel_binding_is_rejected_on_the_spot_with_zero_backend_calls() {
     let (backend, gate, registry, view, execution) =
         published_execution(BackendPlan::default()).await;
     let handle = handle_of(&view);
@@ -156,7 +156,7 @@ async fn 伪造取消绑定当场拒绝且零后端调用() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 冻结端口自带空绑定也走同一条校验() {
+async fn a_frozen_port_with_an_empty_binding_goes_through_the_same_validation() {
     let (backend, gate, registry, view, execution) =
         published_execution(BackendPlan::default()).await;
     let handle = handle_of(&view);
@@ -193,7 +193,7 @@ async fn 冻结端口自带空绑定也走同一条校验() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 取消先到先受理_句柄公布后必须兑现() {
+async fn a_cancel_arriving_first_is_accepted_and_must_be_honored_once_the_handle_is_published() {
     let backend = ScriptedBackend::new(BackendPlan::default().with_script(Script::TwoStage)).await;
     let gate = backend.gate();
     let registry = registry_with(&backend);
@@ -253,7 +253,7 @@ async fn 取消先到先受理_句柄公布后必须兑现() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 驱动无独立控制路径回不支持且状态不许说谎() {
+async fn a_driver_without_a_control_path_reports_unsupported_and_the_state_must_not_lie() {
     let (backend, gate, registry, view, execution) =
         published_execution(BackendPlan::default().driver_without_cancel()).await;
     let handle = handle_of(&view);
@@ -279,7 +279,7 @@ async fn 驱动无独立控制路径回不支持且状态不许说谎() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 后端取消失败不得塌缩成已取消() {
+async fn a_backend_cancel_failure_must_not_collapse_into_cancelled() {
     let (backend, gate, registry, view, execution) =
         published_execution(BackendPlan::default().cancel_fails()).await;
     let handle = handle_of(&view);
@@ -300,7 +300,7 @@ async fn 后端取消失败不得塌缩成已取消() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 从未绑定的执行当场拒绝() {
+async fn an_execution_that_was_never_bound_is_rejected_on_the_spot() {
     let backend = ScriptedBackend::new(BackendPlan::default()).await;
     let registry = registry_with(&backend);
     let view = register_ready(&registry, db_session_id()).await;
@@ -315,7 +315,7 @@ async fn 从未绑定的执行当场拒绝() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 已终结的执行终态优先不被改写() {
+async fn an_already_finalized_execution_keeps_its_terminal_state_unrewritten() {
     let backend = ScriptedBackend::new(BackendPlan::default()).await;
     let registry = registry_with(&backend);
     let view = register_ready(&registry, db_session_id()).await;
@@ -344,7 +344,7 @@ async fn 已终结的执行终态优先不被改写() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 旧世代句柄的取消连后端都碰不到() {
+async fn a_cancel_with_a_stale_generation_handle_never_even_reaches_the_backend() {
     let (backend, gate, registry, view, execution) =
         published_execution(BackendPlan::default()).await;
     let stale = stale_handle(&view);

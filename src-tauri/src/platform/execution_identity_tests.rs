@@ -449,7 +449,7 @@ async fn real_fixture() -> &'static RealFixture {
 /// 隔离键被固定，因此这条断言真正测的是「主体没有进派生输入」：
 /// 若实现把 `principal` 拼进身份键，两个主体的身份键就会不同。
 #[tokio::test]
-async fn 身份键不随请求主体变化() {
+async fn the_identity_key_does_not_change_with_the_request_principal() {
     let fixture = fixture();
     let resolver = fixture.resolver();
 
@@ -485,7 +485,7 @@ async fn 身份键不随请求主体变化() {
 ///
 /// 这是结构性断言：只测行为的话，把主体拼进派生再在某个分支里抵消掉也能过。
 #[test]
-fn 派生入口的入参里没有主体与凭据() {
+fn the_derivation_entry_point_takes_no_principal_and_no_credentials() {
     let production = crate::platform::production_source(include_str!("execution_identity.rs"));
     let lists = crate::platform::fn_parameter_lists(&production);
     let derivations: Vec<&str> = lists
@@ -521,7 +521,7 @@ fn 派生入口的入参里没有主体与凭据() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn 同一输入两次解析得到同一身份键() {
+async fn resolving_the_same_input_twice_yields_the_same_identity_key() {
     let fixture = fixture();
     let resolver = fixture.resolver();
 
@@ -547,7 +547,7 @@ async fn 同一输入两次解析得到同一身份键() {
 /// 这条覆盖「安装级稳定」：主密钥跨进程重启不变 ⇒ 身份键跨重启不变，
 /// 否则会话连续性（INV-02）与池复用都不成立。
 #[tokio::test]
-async fn 换一把解析器实例身份键仍然相同() {
+async fn the_identity_key_stays_the_same_across_parser_instances() {
     let fixture = real_fixture().await;
     let policy = Arc::new(FixedPolicy::new(
         PolicyIsolationKey::new("test-isolation"),
@@ -580,7 +580,7 @@ async fn 换一把解析器实例身份键仍然相同() {
 
 /// 不同组织 ⇒ 不同身份键（组织维度必须进派生）。
 #[test]
-fn 不同组织派生不同身份键() {
+fn different_organizations_derive_different_identity_keys() {
     let derivation = test_derivation_key();
     let connection = ConnectionId::new("conn-1");
     let isolation = PolicyIsolationKey::new("iso-1");
@@ -605,7 +605,7 @@ fn 不同组织派生不同身份键() {
 
 /// 不同连接 ⇒ 不同身份键。
 #[test]
-fn 不同连接派生不同身份键() {
+fn different_connections_derive_different_identity_keys() {
     let derivation = test_derivation_key();
     let organization = OrganizationId::new("org-a");
     let isolation = PolicyIsolationKey::new("iso-1");
@@ -630,7 +630,7 @@ fn 不同连接派生不同身份键() {
 
 /// 不同隔离键 ⇒ 不同身份键（策略撤销必须立刻换键）。
 #[test]
-fn 不同隔离键派生不同身份键() {
+fn different_isolation_keys_derive_different_identity_keys() {
     let derivation = test_derivation_key();
     let organization = OrganizationId::new("org-a");
     let connection = ConnectionId::new("conn-1");
@@ -655,7 +655,7 @@ fn 不同隔离键派生不同身份键() {
 
 /// 跨组织的连接查不到配置 ⇒ 不发执行身份（CM-05：不泄漏「存在但无权」）。
 #[tokio::test]
-async fn 跨组织的连接拿不到执行身份() {
+async fn a_cross_organization_connection_obtains_no_execution_identity() {
     let fixture = fixture();
     let resolver = fixture.resolver();
     let foreign = RequestContext::new(
@@ -686,7 +686,7 @@ async fn 跨组织的连接拿不到执行身份() {
 /// 走真 `DesktopProfiles::compare_and_set`（真落盘），因此这条断言的是**真实**行为：
 /// 轮换推进 `credential_revision`，而身份键的输入里没有凭据版本。
 #[tokio::test]
-async fn 轮换凭据只推进版本不动身份键() {
+async fn rotating_credentials_advances_only_the_version_not_the_identity_key() {
     let fixture = real_fixture().await;
     let policy = Arc::new(FixedPolicy::new(
         PolicyIsolationKey::new("test-isolation"),
@@ -738,12 +738,12 @@ async fn 轮换凭据只推进版本不动身份键() {
     );
 }
 
-/// 替身层面的同一条性质：凭据版本推进时身份键不动。
+/// 替身层面的同一条性质：the_identity_key_stays_put_when_the_credential_version_advances。
 ///
 /// 真轮换那条已经覆盖集成面；这条把「版本变了 ⇒ 键不变」单独钉在解析器上，
 /// 读的是 `SecretProvider::revision` 这条通路。
 #[tokio::test]
-async fn 凭据版本推进时身份键不动() {
+async fn the_identity_key_stays_put_when_the_credential_version_advances() {
     let fixture = fixture();
     let resolver = fixture.resolver();
 
@@ -773,7 +773,7 @@ async fn 凭据版本推进时身份键不动() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn 委托身份与本人身份不同且未授权委托失败关闭() {
+async fn delegated_identities_differ_from_the_principal_and_unauthorized_ones_fail_closed() {
     let fixture = fixture();
     let granted = delegation("del-1", LOCAL_ORGANIZATION_ID);
     let resolver = fixture.resolver_with(FixedPolicy::new(
@@ -808,12 +808,12 @@ async fn 委托身份与本人身份不同且未授权委托失败关闭() {
     );
 }
 
-/// 委托上下文不得走本人路径。
+/// a_delegation_context_must_not_take_the_principal_path。
 ///
 /// 「两条独立路径」若只停在方法签名上，实现完全可以让 `resolve` 在委托上下文里
 /// 照样产出身份——那正是 CM-06 要防的「委托主体继承本人权限」。
 #[tokio::test]
-async fn 委托上下文不得走本人路径() {
+async fn a_delegation_context_must_not_take_the_principal_path() {
     let fixture = fixture();
     let granted = delegation("del-1", LOCAL_ORGANIZATION_ID);
     let resolver = fixture.resolver_with(FixedPolicy::new(
@@ -833,7 +833,7 @@ async fn 委托上下文不得走本人路径() {
 
 /// 跨组织的委托引用一律拒绝。
 #[tokio::test]
-async fn 跨组织的委托引用被拒绝() {
+async fn a_cross_organization_delegation_reference_is_rejected() {
     let fixture = fixture();
     let granted = delegation("del-1", LOCAL_ORGANIZATION_ID);
     let resolver = fixture.resolver_with(FixedPolicy::new(
@@ -852,9 +852,9 @@ async fn 跨组织的委托引用被拒绝() {
     );
 }
 
-/// 两条路径的域标签不同 ⇒ 同样的字段值也派生出不同的身份键。
+/// the_two_paths_use_different_domain_labels ⇒ 同样的字段值也派生出不同的身份键。
 #[test]
-fn 两条路径的域标签不同() {
+fn the_two_paths_use_different_domain_labels() {
     assert_ne!(IDENTITY_KEY_DOMAIN, DELEGATION_KEY_DOMAIN);
 
     let derivation = test_derivation_key();
@@ -885,7 +885,7 @@ fn 两条路径的域标签不同() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn 执行身份不含秘密材料() {
+async fn the_execution_identity_contains_no_secret_material() {
     let fixture = fixture();
     let resolver = fixture.resolver();
     let identity = resolver
@@ -905,7 +905,7 @@ async fn 执行身份不含秘密材料() {
 
 /// 派生盐本身也不得进日志：它的 `Debug` 必须脱敏。
 #[test]
-fn 派生盐的调试输出脱敏() {
+fn the_derivation_salt_debug_output_is_redacted() {
     let derivation = test_derivation_key();
     let debug = format!("{derivation:?}");
     assert_eq!(debug, "IdentityDerivationKey(<redacted>)");
@@ -979,7 +979,7 @@ fn permissive_resolver(fixture: &Fixture) -> DesktopIdentityResolver {
 /// 编码里每字段前面带 `u32` 长度；没有它，`("ab","c")` 与 `("a","bc")` 会拼成
 /// 同样的字节串，于是两个不同的连接配置会拿到**同一个**身份键。
 #[test]
-fn 长度前缀让字段切分不撞车() {
+fn the_length_prefix_keeps_field_splitting_from_colliding() {
     let derivation = test_derivation_key();
 
     // 消息层面：两种切分不得撞成同一条消息。
@@ -1018,7 +1018,7 @@ fn 长度前缀让字段切分不撞车() {
 /// 2. 即使把域标签强行改成同一个，委托路径多出来的 `delegation_id` 与 `scope`
 ///    也让两条消息不同——所以「域标签不同」不是唯一的护栏。
 #[test]
-fn 委托路径的消息必然不同于本人路径() {
+fn the_delegation_path_message_always_differs_from_the_principal_path() {
     let organization = OrganizationId::new("org-a");
     let connection = ConnectionId::new("conn-1");
     let isolation = PolicyIsolationKey::new("iso-1");
@@ -1060,7 +1060,7 @@ fn 委托路径的消息必然不同于本人路径() {
 ///
 /// 否则两个不同权限范围的委托会共用同一个身份键，池与缓存会把它们混用。
 #[tokio::test]
-async fn 委托身份键绑定委托标识与授权作用域() {
+async fn the_delegated_identity_key_binds_the_delegation_id_and_the_authorized_scope() {
     let fixture = fixture();
     let resolver = permissive_resolver(&fixture);
 
@@ -1099,7 +1099,7 @@ async fn 委托身份键绑定委托标识与授权作用域() {
 /// 这条专门钉解析器内部那道跨组织检查——首版用例里策略替身会顺带拒掉跨组织
 /// 委托，于是那道检查删掉也没有任何用例变红。
 #[tokio::test]
-async fn 跨组织委托即便策略放行也被拒() {
+async fn a_cross_organization_delegation_is_rejected_even_when_the_policy_allows_it() {
     let fixture = fixture();
     let resolver = permissive_resolver(&fixture);
 
@@ -1122,7 +1122,7 @@ async fn 跨组织委托即便策略放行也被拒() {
 /// `resolve_delegation` 的函数体里不得出现 `self.resolve(`，也不得走本人路径
 /// 的派生函数。
 #[test]
-fn 委托路径不转调本人路径() {
+fn the_delegation_path_does_not_forward_to_the_principal_path() {
     let production = crate::platform::production_source(include_str!("execution_identity.rs"));
     let start = production
         .find("async fn resolve_delegation(")
@@ -1156,7 +1156,7 @@ fn 委托路径不转调本人路径() {
 /// 主密钥取不到时 `for_desktop` 直接返回 `Err`（失败关闭），装配层据此拒绝接线，
 /// 没有兜底的常量盐。
 #[tokio::test]
-async fn 桌面装配的派生盐来自宿主主密钥() {
+async fn the_desktop_assembly_derives_its_salt_from_the_host_master_key() {
     let fixture = real_fixture().await;
     let isolation = PolicyIsolationKey::new("test-isolation");
     let policy = Arc::new(FixedPolicy::new(isolation.clone(), None));
@@ -1208,7 +1208,7 @@ async fn 桌面装配的派生盐来自宿主主密钥() {
 /// 身份键是子钥对输入字段的 HMAC 摘要：摘要不可逆推主密钥，也不可逆推密码。
 /// 这条把「主密钥/子钥都不进入身份键」从注释里的断言变成可执行的断言。
 #[test]
-fn 身份键不含主密钥与派生盐() {
+fn the_identity_key_contains_neither_the_master_key_nor_the_derivation_salt() {
     let master = [7u8; 32];
     let derivation = IdentityDerivationKey::from_master_key(&master).expect("派生盐");
     let key = derive_identity_key(
@@ -1322,7 +1322,7 @@ async fn seed_monitor_grant(store: &DesktopRepository, grant: &MonitorGrant, wor
 /// 一个执行身份只对应一个连接；一份授权单跨连接无法映射成单一身份 ⇒ 必须拒绝，
 /// 绝不「取第一个了事」。首版用例全部走替身，这段生产逻辑没有任何断言。
 #[tokio::test]
-async fn 授权单覆盖多个连接时失败关闭() {
+async fn a_single_authorization_covering_multiple_connections_fails_closed() {
     let fixture = real_fixture().await;
     let yaml = "id: wf-monitor-identity\nname: Fixed\n";
     let scope_of = |connection: &str| MonitorScope {
@@ -1397,7 +1397,7 @@ async fn 授权单覆盖多个连接时失败关闭() {
 /// 域标签是派生链的输入，不是「只要彼此不同就行」：改一个字面量就是一次全量
 /// 身份键轮换（连接池与缓存整体失效）。
 #[test]
-fn 域标签的字面值与文档一致() {
+fn the_domain_label_literals_match_the_documentation() {
     assert_eq!(
         IDENTITY_KEY_DOMAIN,
         b"datazen.execution-identity.key.v1".as_slice(),
@@ -1420,7 +1420,7 @@ fn 域标签的字面值与文档一致() {
 /// 期望值在用例里**手写**，不复用被测的 `encode_message` 自己——否则等于拿尺子
 /// 量尺子，换掉尺子就看不见了。
 #[test]
-fn 消息编码的字节布局是域标签加长度前缀加字段内容() {
+fn the_message_encoding_lays_out_domain_label_then_length_prefixes_then_field_contents() {
     let mut expected = Vec::from(b"datazen.test".as_slice());
     expected.extend_from_slice(&2u32.to_be_bytes());
     expected.extend_from_slice(b"ab");
@@ -1439,7 +1439,7 @@ fn 消息编码的字节布局是域标签加长度前缀加字段内容() {
 /// 两条消息会撞成一样的字节，再用生产编码证明它们必须分开。少了前半段，这条
 /// 用例就只是在复述生产代码。
 #[test]
-fn 没有长度前缀时两种字段切分会撞车() {
+fn without_the_length_prefix_the_two_field_splittings_would_collide() {
     let without_prefix = |parts: &[&str]| -> Vec<u8> {
         let mut message = Vec::from(b"datazen.test".as_slice());
         for part in parts {
@@ -1468,7 +1468,7 @@ fn 没有长度前缀时两种字段切分会撞车() {
 /// 这条同时钉住「子钥域标签 + 本人路径域标签 + 消息编码 + 委托路径域标签」四处：
 /// 任何一处变了，键值就变——也就是一次全量身份键轮换。
 #[test]
-fn 身份键的黄金值() {
+fn the_identity_key_golden_value() {
     let derivation = test_derivation_key();
 
     let personal = derive_identity_key(
@@ -1481,7 +1481,7 @@ fn 身份键的黄金值() {
     assert_eq!(
         personal.as_str(),
         "mZfi6omatc6ygld69Tr4GdFZr0VOQhcRzYwxO0EFOpA",
-        "本人身份键的黄金值变了：要么派生链被改，要么编码/域标签被改——两者都要求全量轮换身份键"
+        "本人the_identity_key_golden_value变了：要么派生链被改，要么编码/域标签被改——两者都要求全量轮换身份键"
     );
 
     let delegated = derive_delegation_identity_key(
@@ -1496,7 +1496,7 @@ fn 身份键的黄金值() {
     assert_eq!(
         delegated.as_str(),
         "9aYFoFtEr9AKXB6rtfOtB-Qcveigx5Ga_msMWg8API4",
-        "委托身份键的黄金值变了：同上"
+        "委托the_identity_key_golden_value变了：同上"
     );
 }
 
@@ -1508,7 +1508,7 @@ fn 身份键的黄金值() {
 /// 当前仓库没有主密钥轮换路径（`store/key_store.rs` 只有 load-or-create），
 /// 所以这条不是「轮换功能」的测试，而是**派生链对主密钥敏感**的测试。
 #[test]
-fn 主密钥一换全部身份键都变() {
+fn changing_the_master_key_changes_every_identity_key() {
     let key_for = |master: [u8; 32]| {
         let derivation = IdentityDerivationKey::from_master_key(&master).expect("派生盐");
         derive_identity_key(
@@ -1545,7 +1545,7 @@ fn 主密钥一换全部身份键都变() {
 /// 用例写的是**关系**，所以这条分类对用例来说是「看不见」的：只有把「值」与
 /// 「关系」分开断言，才能把分类本身钉住。
 #[test]
-fn 换域标签只改键的值不改键的关系() {
+fn changing_the_domain_label_alters_key_values_but_not_key_relations() {
     let derivation = test_derivation_key();
     let org = OrganizationId::new("org-a");
     let org_b = OrganizationId::new("org-b");
