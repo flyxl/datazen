@@ -11,7 +11,7 @@
 | Host 前端单测 | ✅ `basic`：`pnpm test:unit`；`all`：`pnpm test:unit:driver-set`（**收窄至 codegen 敏感文件**，硬门禁，理由见 §2.1.1） | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit` / `pnpm test:unit:driver-set` |
 | 驱动 UI 单测 | ✅ `pnpm test:unit:drivers` | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit:drivers` |
 | TypeScript | ✅ `pnpm typecheck`（**单引擎**：`tsrs` = TS 7.1-dev，见 §2.1.4） | 同上（`union-typecheck` **也是**只跑 `tsrs`，见 §6.2） | `pnpm typecheck` / `pnpm typecheck:tsc` / `pnpm typecheck:tsrs` |
-| Host Rust lib | ✅ `cargo test -p datazen_desktop --lib`（basic features） | 完整 release 构建 | `cargo test -p datazen_desktop --lib` |
+| Host Rust lib | ✅ `cargo test -p datazen_desktop --lib`（basic features + `datazen/test-harness`，与平台腿 feature 对齐以共享 datazen 编译，见 §2.2） | 完整 release 构建 | 同 PR CI 形 |
 | driver-api | ✅ `cargo test -p datazen-driver-api`（lib + tests/ 4 文件 + doc test，2026-10-27 由 `--lib` 扩充） | 随构建链接 | `cargo test -p datazen-driver-api` |
 | modules（datazen）单 feature 腿 | ✅ `pnpm test:platform-crates` 的 `FEATURE_TESTS` 逐腿编译（ai 腿已覆盖 ai-api 退役前的那步组合闭包；原 `--features settings,ai,connection,named_views` 组合步于 2026-10-27 删除，理由见 §2.2） | 随构建链接 | `pnpm test:platform-crates` |
 | 平台内核 crate（`runtime` / `application` / `platform-api` / `server`） | ✅ `pnpm test:platform-crates`，集合由脚本发现 | 随构建链接 | `pnpm test:platform-crates` |
@@ -361,9 +361,13 @@ cargo test -p datazen-driver-api
 # 压过豁免。（实测：不加前缀 EXIT=101，42 个 live 层测试翻转；命令不带
 # --no-fail-fast，cargo 在第一个失败的 binary 就停。）
 DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --tests
-# datazen 需要 features 选择注入的驱动
+# datazen 需要 features 选择注入的驱动；2026-10-27 起追加 datazen/test-harness
+# （限定语法，只开 datazen 的同名 feature）：宿主腿与 platform-crates 的无选择器
+# 腿由此编译同一 feature 集的 datazen（全 feature 减 default/webdriver），lib 从
+# 每轮两份编译共享为一份。等式由 run-platform-crate-tests 的测试对两份真实
+# manifest 钉死，任何一侧单独增删 feature 会先红测试而不是悄悄退回双份编译。
 FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
-cargo test -p datazen_desktop --lib --features "$FEATURES"
+cargo test -p datazen_desktop --lib --features "$FEATURES,datazen/test-harness"
 # 恢复被 inject 的 tracked 文件，确保后续步骤工作在干净状态
 node scripts/driver-file-stash.mjs restore
 # 此处曾有 `cargo test -p datazen-ai-api --lib`，后又改为
@@ -372,6 +376,12 @@ node scripts/driver-file-stash.mjs restore
 # `named_views` 腿，modules/src 无 cfg(all(feature)) 组合门控，全部 ~1,317 个
 # 测试函数都在那两条腿里再跑一遍——零覆盖增益，却多付一次完整 datazen lib
 # 编译。恢复前先读 ci.yml 同位置的墓碑注释。
+# 此处还曾有「CM-60 latency benchmark (release)」步（cargo run --release …
+# --bin cm60-bench -- --vcpus 4 …）及其 artifact 上传；2026-10-27 删除
+# （维护者决策：CI 不做性能测试）。它是 rust job 唯一按 release profile
+# （fat LTO）编译 datazen 全部 dev-dependencies 的腿；cm60-bench 的 53 个
+# 单元测试是合成算术断言，已由 platform-crates 无选择器腿在 debug 下覆盖。
+# 判据口径见 connection-management.md CM-60，需要实测时本地复跑同一命令。
 pnpm test:platform-arch
 pnpm test:platform-crates
 pnpm test:platform-arch:mutations
@@ -394,11 +404,23 @@ feature-resolved 图，而 `dtolnay/rust-toolchain@stable` 只装在 rust job；
 
 `pnpm test:platform-crates`（`scripts/run-platform-crate-tests.mjs`）用同一张 `LAYERS` 表
 发现 `TESTED_LAYERS` 各层里真实存在的 crate，并跑**不带目标选择器**的
-`cargo test -p …`（lib 单测、bin 单测、全部 `tests/` 集成 target 与 doc test 一次
-覆盖；`EXTRA_TARGETS` 只补 release-only 条目——此前多跑的那次 `--lib` 是它的严格
-子集，实测让 2,537 个测试函数每轮执行两遍）。它补上的是计划 :269 的空缺：
-`datazen` 当时带着 130 个通过的 Rust 单测，而 CI 里没有任何一步执行它们。
-`--require-layers=<ids>` 可在某个阶段把「层存在但没被测到」从静默变成报错。
+`cargo test --no-default-features --features <显式清单> -p …`（lib 单测、bin 单测、
+全部 `tests/` 集成 target 与 doc test 一次覆盖）。2026-10-27 两处变化：
+
+1. **无选择器腿由 `--all-features` 改为与宿主腿对齐的显式清单**（全 feature 减
+   `default` 与 `webdriver`）：宿主腿同日追加了 `datazen/test-harness`，两腿由此
+   编译同一份 datazen——~20.9 万行 lib 从每轮两份编译共享为一份。等式（宿主闭包
+   ∪ {test-harness} = 全 feature 减 default/webdriver）由 runner 的测试对两份真实
+   manifest 钉死；`webdriver` 排除的前提（空 cfg 开关、E2E 专用缝，门控在 cfg(test)
+   下恒开）由 runner 运行时校验，feature 变非空即红。
+2. **`EXTRA_TARGETS` 的 CM-60 release 条目删除**（维护者决策：CI 不做性能测试）：
+   cm60-bench 的 53 个单测是合成算术断言，已由无选择器腿在 debug 下覆盖；
+   被删的是 release 重跑与全 job 唯一的 release-profile dev-deps 编译（fat LTO）。
+
+更早删除的那次 `--lib` 是无选择器调用的严格子集（实测让 2,537 个测试函数每轮
+执行两遍）。它补上的是计划 :269 的空缺：`datazen` 当时带着 130 个通过的 Rust
+单测，而 CI 里没有任何一步执行它们。`--require-layers=<ids>` 可在某个阶段把
+「层存在但没被测到」从静默变成报错。
 
 **变异自证**：`scripts/platform-arch-selfcheck.mjs` 临时改写 `Cargo.toml` / 新增探针 crate，
 逐条运行门禁并断言退出码非零 + 输出点名了预期规则与 crate，再逐条还原；末尾断言
@@ -586,6 +608,12 @@ driver-protocol / boundaries / i18n keys）、`pnpm test:unit`、
 普通 runner，E2E 需要带 WebDriver 与真实数据库服务的 runner（还要窗口系统），
 两者成本不同量级，所以 E2E 留在 CI 之外跑，不在本文档承诺范围内。
 任何「E2E 全绿」的结论只对本地那次运行有效，不得当作合并门禁。
+
+**2026-10-27 起这是长期政策，不再是待议取舍**：维护者决策——CI 不做性能测试、
+不需要 WebDriver、不跑 E2E（同日据此删除了 rust job 的 CM-60 基准步与
+platform-crates 的 release 条目，并把无选择器腿改为排除 `webdriver` 的对齐清单）。
+任何把 WDIO 或基准接回 workflow 的提议默认与本政策冲突；要推翻它，需在 PR 里
+说明 runner 成本与窗口系统 / 性能噪声的获取与控制方式，并更新本节。
 
 ### 5.2 `pnpm e2e` 实际跑什么、跳过什么
 

@@ -123,8 +123,11 @@ cargo test -p datazen-driver-api || fail "cargo test driver-api"
 DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --tests || fail "cargo test basic drivers --tests"
 
 # --------------------------------------------------------------------------
-step "8/11 Rust unit tests (datazen --lib --features $FEATURES)"
-cargo test -p datazen_desktop --lib --features "$FEATURES" || fail "cargo test datazen"
+# 与 ci.yml 的宿主腿同步：追加 datazen/test-harness（限定语法），使本地与
+# platform-crates 无选择器腿编译同一 feature 集的 datazen（等式由
+# run-platform-crate-tests 的对齐测试钉死），lib 编译共享为一份。
+step "8/11 Rust unit tests (datazen desktop host --lib --features $FEATURES,datazen/test-harness)"
+cargo test -p datazen_desktop --lib --features "$FEATURES,datazen/test-harness" || fail "cargo test datazen desktop host"
 
 # --------------------------------------------------------------------------
 step "9/11 Restore managed files (driver-file-stash restore)"
