@@ -27,12 +27,82 @@ import {
   teardownTransferFixture,
 } from '../lib/dataTransferFixtures.js';
 
-async function clickNext(label: string) {
-  const next = await $('[data-testid="data-transfer-next"]');
-  await next.waitForClickable({ timeout: 10000 });
-  await next.click();
+/** 失败现场的取证：向导停在哪个步骤、Next 是否在位/可用、可见哪些 testid。 */
+async function describeTransferState(): Promise<string> {
+  return browser.execute(() => {
+    const button = document.querySelector(
+      '[data-testid="data-transfer-next"]',
+    ) as HTMLButtonElement | null;
+    const testIds = Array.from(document.querySelectorAll('[data-testid]'))
+      .map((node) => node.getAttribute('data-testid') ?? '')
+      .filter((id) => id.startsWith('data-transfer'))
+      .slice(0, 40)
+      .join(',');
+    return [
+      `next=${button ? `present disabled=${button.disabled}` : 'absent'}`,
+      `testids=${testIds}`,
+      `text=${(document.body.innerText ?? '').replace(/\s+/g, ' ').slice(0, 1200)}`,
+    ].join(' || ');
+  });
+}
+
+/**
+ * 点 Next 之前先等它**真的可用**。
+ *
+ * 向导的 Next 由 `canNext && !loading` 决定：端点步要先等双向探测（pairing）返回，
+ * 每步 Next 又会触发一次异步准备，期间按钮被禁用。固定 10s 的 `waitForClickable`
+ * 会把「探测还没回来」当成「按钮不可点」直接失败，实测同一用例时而红在端点步、
+ * 时而红在推进循环里。这里换成显式条件等待（默认 60s），失败时把现场一起抛出。
+ */
+async function clickNext(label: string, timeout = 60000) {
+  try {
+    await browser.waitUntil(
+      async () => {
+        const button = await $('[data-testid="data-transfer-next"]');
+        if (!(await button.isExisting().catch(() => false))) return false;
+        return (await button.isEnabled().catch(() => false)) === true;
+      },
+      { timeout, timeoutMsg: 'data-transfer-next 一直不可用' },
+    );
+  } catch (error) {
+    throw new Error(
+      `ID:data-transfer-diverse-types|${label}|${(error as Error).message} :: ${await describeTransferState()}`,
+    );
+  }
+  await (await $('[data-testid="data-transfer-next"]')).click();
   await browser.pause(1200);
   await captureJourneyStep(label, 0, true);
+}
+
+/**
+ * 一直推进到执行步。每轮先看执行按钮在不在——向导到预览步时 Next 已经没了，
+ * 再等它就是等一个不存在的元素（实测超时信息里 `next=absent`，页面停在预览步）。
+ */
+async function advanceToExecute(label: string, timeoutMs = 120000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let clicks = 0;
+  for (;;) {
+    if (
+      await $('[data-testid="data-transfer-execute"]')
+        .isExisting()
+        .catch(() => false)
+    )
+      return;
+    if (Date.now() > deadline) {
+      throw new Error(
+        `ID:data-transfer-diverse-types|${label}|${timeoutMs}ms 内没到执行步 :: ${await describeTransferState()}`,
+      );
+    }
+    const next = await $('[data-testid="data-transfer-next"]');
+    const ready =
+      (await next.isExisting().catch(() => false)) && (await next.isEnabled().catch(() => false));
+    if (ready) {
+      await clickNext(`${label}-${clicks}`);
+      clicks += 1;
+      continue;
+    }
+    await browser.pause(500);
+  }
 }
 
 async function runDataTransferWizard(sourceName: string, targetName: string, tableName: string) {
@@ -53,13 +123,10 @@ async function runDataTransferWizard(sourceName: string, targetName: string, tab
   if (!(await checkbox.isSelected())) await checkbox.click();
   await clickNext('dt-comp-objects');
 
-  for (let i = 0; i < 10; i++) {
-    const execute = await $('[data-testid="data-transfer-execute"]');
-    if (await execute.isExisting().catch(() => false)) break;
-    const next = await $('[data-testid="data-transfer-next"]');
-    if (!(await next.isEnabled())) await browser.pause(1000);
-    await clickNext(`dt-comp-advance-${i}`);
-  }
+  // 对象步 → 映射步 → 预览 → 执行。到执行步 Next 就不存在了，所以循环的
+  // 终止条件必须是「执行按钮出现」而不是「点满 N 次」：盲点会把已经到位的
+  // 向导再点一次，随后等一个不存在的 Next 直到超时。
+  await advanceToExecute('dt-comp-advance');
 
   const execute = await $('[data-testid="data-transfer-execute"]');
   const pageText = (await $('body').getText()).slice(-1800);
