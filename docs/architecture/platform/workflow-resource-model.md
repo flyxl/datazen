@@ -113,7 +113,7 @@ command 分支（[command_runtime.rs](../../../modules/src/workflow/application/
 
 ### 2.6 错误与事务
 
-`error.rs` 的 `WorkflowError` 共 22 个变体（`modules/src/workflow/domain/error.rs`，按 `#[error(...)]` 计）。IPC 边界仍用 `into_ipc_string()` **把错误拍平成字符串**：执行入口 `executor.rs` 的 `execute_with_options` 返回 `Result<WorkflowExecutionResult, String>`，宿主 IPC、MCP、调度器、Dashboard 与 Monitor 拿到的都是同一条消息。**没有结构化 `ExecutionErrorCode`**——该类型属于 `modules/src/platform_api/src/dto/execution.rs` 的执行终态契约，runtime 与迁移三件套在用，Workflow 路径不产出它。目标化取值则已落在**变体**层面：`UnsupportedPlan` / `CapabilityUnsupported`（`plan_guard.rs` 的 `PlanVerdict::rejection_error()`，该函数目前只有测试调用，执行器尚未接线）与 `TargetRequired` / `TargetConflict` / `TargetUnsupported`（`target_plan.rs` 的 `resolve()`，调用方含 `src-tauri/src/monitor/fixed_targets.rs`）都是现成的 `WorkflowError` 变体；**`OutcomeUnknown` 仍不是** `WorkflowError` 的变体。
+`error.rs` 的 `WorkflowError` 共 22 个变体（`modules/src/workflow/domain/error.rs`，按 `#[error(...)]` 计）。IPC 边界仍用 `into_ipc_string()` **把错误拍平成字符串**：执行入口 `executor.rs` 的 `execute_with_options` 返回 `Result<WorkflowExecutionResult, String>`，宿主 IPC、MCP、调度器、Dashboard 与 Monitor 拿到的都是同一条消息。**没有结构化 `ExecutionErrorCode`**——该类型属于 `modules/src/application/dto/execution.rs` 的执行终态契约，runtime 与迁移三件套在用，Workflow 路径不产出它。目标化取值则已落在**变体**层面：`UnsupportedPlan` / `CapabilityUnsupported`（`plan_guard.rs` 的 `PlanVerdict::rejection_error()`，该函数目前只有测试调用，执行器尚未接线）与 `TargetRequired` / `TargetConflict` / `TargetUnsupported`（`target_plan.rs` 的 `resolve()`，调用方含 `modules/src/monitor/application/fixed_targets.rs`）都是现成的 `WorkflowError` 变体；**`OutcomeUnknown` 仍不是** `WorkflowError` 的变体。
 
 事务：Workflow 执行路径**完全不管理事务**。`modules/src/migration/schema_diff/transaction.rs` 的 `TransactionScope` 目前唯一的生产消费者是 `modules/src/migration/schema_diff/deploy.rs`。
 

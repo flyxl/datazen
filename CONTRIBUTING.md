@@ -87,7 +87,7 @@ E2E is **not** in PR CI but is required when you change Host UI paths — see [`
 
 Changes to MCP tools/resources, Tauri IPC shapes, driver/AI protocol versions, or persisted JSON keys may break downstream clients and plugins. Read [`docs/development/external-contract-policy.md`](docs/development/external-contract-policy.md) before merging contract-touching PRs.
 
-Frontend IPC args use `snake_case` keys to match the Rust commands. Do not edit generated files (`src/plugins/generated.ts`, `src/plugins/generated-locales.ts`, `src-tauri/src/driver_init.rs`); they are gitignored and written by `pnpm install` / `resolve-drivers`.
+Frontend IPC args use `snake_case` keys to match the Rust commands. Do not edit generated files (`src/extensions/generated.ts`, `src/extensions/generated-pro.ts`, `src-tauri/src/driver_init.rs`); they are gitignored and written by `pnpm install` / `resolve-drivers`.
 
 ## Plugins
 

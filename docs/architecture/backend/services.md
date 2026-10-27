@@ -10,9 +10,9 @@ Services 是 DataZen backend 中复用性的运行时服务层，不承担 Tauri
 |---|---|---|
 | Runtime sessions/resources | `modules/src/execution/application/`, `registry/`, `resource/` | session 状态、owner、空闲期限、物理资源、预算与释放 |
 | DesktopSessionBackend | `src-tauri/src/platform/session_backend.rs` | Store / DriverRegistry 的桌面适配，打开和关闭 Runtime 物理资源，持有隧道生命周期 |
-| QueryExecutor | `modules/src/services/query_executor.rs` | 查询参数、过滤、排序和执行辅助 |
+| QueryExecutor | `modules/src/table_browsing/executor/`（`datazen::services::query_executor` 为其再导出） | 查询参数、过滤、排序和执行辅助 |
 | Schema metadata | `src-tauri/src/services/schema_metadata.rs` | 精确关系身份、列批量读取与缓存刷新 |
-| DbTools | `modules/src/services/db_tools.rs` | 共享 database tools 及 Runtime 执行端口 |
+| DbTools | `modules/src/ai/application/db_tools.rs` | 共享 database tools 及 Runtime 执行端口 |
 | JobRegistry | `src-tauri/src/services/job_registry.rs` | 兼容长任务的进程内生命周期与取消注册 |
 | Runtime 事务 | `modules` 的 `session_transaction` / `session_transaction_status` | 会话级事务控制、句柄与状态；Host 不再持有事务表（见 [2.3](#23-事务与隧道边界)） |
 

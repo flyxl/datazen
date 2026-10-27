@@ -38,7 +38,7 @@ src-tauri/src/workflow/
 
 宿主不再保留任何 workflow 的 re-export 门面文件：共享类型的调用点直接引用 `datazen::workflow::…`。
 
-宿主侧的 Command 桥只做「同一条链的桌面绑定」：显式 `database`/`schema` 校验、connection 继承解析、命令派发这三条规则都在 `modules/src/workflow/command_runtime.rs`，宿主那三个函数只把 `AppState` 传进去。
+宿主侧的 Command 桥只做「同一条链的桌面绑定」：显式 `database`/`schema` 校验、connection 继承解析、命令派发这三条规则都在 `modules/src/workflow/application/command_runtime.rs`，宿主那三个函数只把 `AppState` 传进去。
 
 ## 执行模型
 
