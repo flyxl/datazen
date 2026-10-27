@@ -184,7 +184,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn 本机桌面主体放行() {
+    async fn the_local_desktop_principal_is_allowed() {
         let policy = desktop_policy().await;
         let principal = local_principal().expect("桌面主体应当存在");
         let decision = policy
@@ -203,7 +203,7 @@ mod tests {
     /// 这条是本文件最承重的一条：桌面主体改成「进程内只解析一次」之后，
     /// 「请求里的主体」与「本进程的桌面主体」仍然逐次比对，不匹配就没有理由放行。
     #[tokio::test]
-    async fn 主体不匹配必须被拒() {
+    async fn a_principal_mismatch_must_be_rejected() {
         let policy = desktop_policy().await;
         let principal = local_principal().expect("桌面主体应当存在");
         let impostor = format!("{}-impostor", principal.as_str());
@@ -230,7 +230,7 @@ mod tests {
 
     /// **组织不匹配 ⇒ 必须被拒。**
     #[tokio::test]
-    async fn 组织不匹配必须被拒() {
+    async fn an_organization_mismatch_must_be_rejected() {
         let policy = desktop_policy().await;
         let principal = local_principal().expect("桌面主体应当存在");
         let decision = policy

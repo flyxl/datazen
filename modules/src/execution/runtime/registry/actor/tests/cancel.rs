@@ -15,7 +15,7 @@ use crate::execution::runtime::registry::CancelReceipt;
 /// 实现只能先把意图记在 actor 上，等句柄真发布出来再补发——而**不能**谎称已经取消。
 /// 证据是两侧的数字：此刻后端 cancel 调用数是 0；闸门放行、句柄发布之后是 1。
 #[tokio::test(start_paused = true)]
-async fn 句柄未发布时的取消先记意图发布后补发一次() {
+async fn a_cancel_before_handle_publication_records_intent_and_replays_once_published() {
     let backend = FakeBackend::new(FakeOutcome::default().with_script(Script::TwoStage)).await;
     let (actor, view, mut audit) = spawn_ready(backend.clone()).await;
     let handle = handle_of(&view);
@@ -67,7 +67,7 @@ async fn 句柄未发布时的取消先记意图发布后补发一次() {
 
 /// 句柄已发布时取消必须**立刻**下发，而且用的是登记绑定。
 #[tokio::test(start_paused = true)]
-async fn 已发布句柄的取消立刻下发且用的是登记绑定() {
+async fn a_cancel_of_a_published_handle_dispatches_immediately_using_the_registry_binding() {
     let backend = FakeBackend::new(FakeOutcome::default().with_script(Script::TwoStage)).await;
     let (actor, view, _audit) = spawn_ready(backend.clone()).await;
     let handle = handle_of(&view);
@@ -106,7 +106,7 @@ async fn 已发布句柄的取消立刻下发且用的是登记绑定() {
 /// 「驱动不支持」误当成「取消失败」；把状态改写成 `CancelRequested` 则是凭空
 /// 捏造了一个没发生过的状态转移。
 #[tokio::test(start_paused = true)]
-async fn 驱动不支持取消时正常返回不支持且状态不动() {
+async fn a_driver_without_cancel_support_reports_unsupported_and_keeps_state_intact() {
     let backend = FakeBackend::new(
         FakeOutcome::default()
             .with_script(Script::Silent)
@@ -152,7 +152,7 @@ async fn 驱动不支持取消时正常返回不支持且状态不动() {
 /// 上一次执行留下的 `cancelHandle` 拿着去取消新的执行，是这类事故的原型。
 /// 断言两件事：回执是 `Err`，以及驱动的 cancel 调用数仍是 0。
 #[tokio::test(start_paused = true)]
-async fn 拿旧句柄取消新执行被拒且没有下发到驱动() {
+async fn cancelling_a_new_execution_with_an_old_handle_is_rejected_without_reaching_the_driver() {
     let backend = FakeBackend::new(FakeOutcome::default().with_script(Script::TwoStage)).await;
     let (actor, view, _audit) = spawn_ready(backend.clone()).await;
     let handle = handle_of(&view);
@@ -205,7 +205,7 @@ async fn 拿旧句柄取消新执行被拒且没有下发到驱动() {
 /// 执行已经终结后再取消，回执是 `alreadyFinished`，
 /// 并且**逐字**带回当时的终态，而不是笼统的 `cancelled`。
 #[tokio::test(start_paused = true)]
-async fn 已终结执行的取消回执是已完结并逐字带回终态() {
+async fn cancelling_a_finalized_execution_yields_a_finalized_receipt_echoing_the_terminal_state() {
     let backend = FakeBackend::new(FakeOutcome::default()).await;
     let (actor, view, mut audit) = spawn_ready(backend.clone()).await;
     let handle = handle_of(&view);
@@ -248,7 +248,7 @@ async fn 已终结执行的取消回执是已完结并逐字带回终态() {
 /// 这条最危险——把驱动的报错吞掉、改写成 `requested` 回执，上层就会对着一个
 /// 还在跑的语句显示「已取消」。所以既断言 `Err`，也断言审计结论是 `rejected`。
 #[tokio::test(start_paused = true)]
-async fn 取消失败如实报错且审计结论是否决() {
+async fn a_failed_cancel_reports_the_error_as_is_and_audits_the_outcome_as_rejected() {
     let backend = FakeBackend::new(
         FakeOutcome::default()
             .with_script(Script::TwoStage)
@@ -296,7 +296,7 @@ async fn 取消失败如实报错且审计结论是否决() {
 /// 另外把三种 disposition 的线上字面量钉死：它们必须与执行终态那套字面量
 /// **不相交**，否则两套词汇混在一起就再也分不清「控制结论」和「执行结论」。
 #[tokio::test(start_paused = true)]
-async fn 取消审计只带能力版本且处置字面量与执行状态不相交() {
+async fn cancel_audits_carry_only_the_capability_version_and_disjoint_disposal_literals() {
     const DISPOSITIONS: [&str; 3] = ["requested", "unsupported", "alreadyFinished"];
     const EXECUTION_STATES: [&str; 6] = [
         "queued",

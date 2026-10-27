@@ -395,7 +395,7 @@ fn profile_view_defaults_are_placeholders_and_must_not_be_used_on_the_desktop_pa
 /// `optional_wiring_failure_degrades_only_its_own_capability` 覆盖——两者是
 /// 不同状态，不能用一个断言代替另一个。
 #[test]
-fn 未注入时各访问器的错误码与注释写的一致() {
+fn without_injection_every_accessor_error_code_matches_its_documented_comment() {
     let adapter = adapter();
 
     let service_unavailable: Vec<(&str, Result<(), ApiError>)> = vec![

@@ -8,13 +8,13 @@
 //! | 用例 | 分支 |
 //! | --- | --- |
 //! | 句柄先在原资源上终结再关物理资源 | 四步顺序 |
-//! | 同资源的多个句柄合并为一个终结批次 | 按 resource_id 分组 |
+//! | multiple_handles_on_the_same_resource_merge_into_one_finalize_batch | 按 resource_id 分组 |
 //! | 回滚关闭把 disposition 写成 Rollback | 模式决定处置 |
 //! | 有活句柄要求无事务关闭当场拒绝 | 派发前拒绝 |
 //! | 无登记句柄时直接关资源 | 无需终结 |
 //! | 登记数对不上时墓碑不得报已关闭 | 不可判定 → `Lost` |
 //! | 空闲到期才驱逐并归还额度 | 注入时钟 |
-//! | 未设空闲期限的会话永不被驱逐 | 无期限即不驱逐 |
+//! | a_session_without_an_idle_deadline_is_never_evicted | 无期限即不驱逐 |
 //! | 租约失效作废后额度扣住不外发 | 两段式 |
 //! | 归池前的登记句柄检查一律不放行 | 归池前 |
 //! | 归池时 driver 报 Clean 但宿主仍有登记句柄不得算归池成功 | 归池时 |
@@ -73,7 +73,7 @@ async fn session_with_handles(registry: &Arc<SessionRegistry>) -> SessionHandle 
 }
 
 #[tokio::test(start_paused = true)]
-async fn 句柄先在登记时的资源上终结再关当前物理资源() {
+async fn handles_finalize_where_they_registered_before_the_current_physical_resource_closes() {
     // 执行在 `res_1` 上签发两个句柄；释放必须先在该资源上终结它们，再关闭资源。
     let backend = ScriptedBackend::new(
         BackendPlan::default()
@@ -116,7 +116,7 @@ async fn 句柄先在登记时的资源上终结再关当前物理资源() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 同资源的多个句柄合并为一个终结批次() {
+async fn multiple_handles_on_the_same_resource_merge_into_one_finalize_batch() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
             .handles(vec![
@@ -146,7 +146,7 @@ async fn 同资源的多个句柄合并为一个终结批次() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 回滚关闭把终结处置写成回滚() {
+async fn a_rollback_close_records_the_finalization_disposal_as_a_rollback() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
             .handles(vec![handle_ref("h1", "res_1")])
@@ -169,7 +169,7 @@ async fn 回滚关闭把终结处置写成回滚() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 有活句柄要求无事务关闭当场拒绝且零后端动作() {
+async fn a_no_transaction_close_with_live_handles_is_rejected_with_zero_backend_actions() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
             .handles(vec![handle_ref("h1", "res_1")])
@@ -208,7 +208,7 @@ async fn 有活句柄要求无事务关闭当场拒绝且零后端动作() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 无登记句柄时直接关资源不经终结() {
+async fn with_no_registered_handles_the_resource_closes_directly_without_finalization() {
     let backend = ScriptedBackend::new(BackendPlan::default()).await;
     let registry = registry_with(&backend);
     let view = register_ready(&registry, db_session_id()).await;
@@ -235,7 +235,7 @@ async fn 无登记句柄时直接关资源不经终结() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 宿主登记数与后端确认数对不上时墓碑不得报已关闭() {
+async fn when_registration_and_confirmation_counts_disagree_the_tombstone_must_not_report_closed() {
     // 宿主登记 2 个句柄，后端只确认终结 1 个：剩下那一个的命运已经不可知。
     let backend = ScriptedBackend::new(
         BackendPlan::default()
@@ -284,7 +284,7 @@ async fn 宿主登记数与后端确认数对不上时墓碑不得报已关闭()
 /// 两种 `Err` 不是一回事：
 ///
 /// * `CloseRejected` 是**派发前**的拒绝，物理资源原封不动 → 行与额度都留着
-///   （见 `有活句柄要求无事务关闭当场拒绝且零后端动作`）；
+///   （见 `a_no_transaction_close_with_live_handles_is_rejected_with_zero_backend_actions`）；
 /// * `SessionLost` 是四步**跑完**之后写出来的：句柄已终结、物理资源已关闭、
 ///   绑定已作废。不可判定的是某个句柄的命运，不是「有没有关掉」。
 ///
@@ -293,7 +293,7 @@ async fn 宿主登记数与后端确认数对不上时墓碑不得报已关闭()
 /// 所以本用例把「还能再登记一个会话」也一起断掉——只查 `remaining_quota` 的数字
 /// 未必够，**证明这个额度真的能发出去**才算。
 #[tokio::test(start_paused = true)]
-async fn 不可判定的关闭仍必须注销并归还额度() {
+async fn an_undeterminable_close_must_still_deregister_and_return_the_quota() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
             .handles(vec![handle_ref("h1", "res_1"), handle_ref("h2", "res_1")])
@@ -340,7 +340,7 @@ async fn 不可判定的关闭仍必须注销并归还额度() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 空闲到期才驱逐_未到期一律不动手() {
+async fn eviction_happens_only_at_idle_expiry_nothing_moves_before_it() {
     let backend = ScriptedBackend::new(BackendPlan::default()).await;
     let registry = registry_with(&backend);
     let _view = register_ready(&registry, db_session_id()).await;
@@ -374,7 +374,7 @@ async fn 空闲到期才驱逐_未到期一律不动手() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 未设空闲期限的会话永不被驱逐() {
+async fn a_session_without_an_idle_deadline_is_never_evicted() {
     let backend = ScriptedBackend::new(BackendPlan::default()).await;
     let registry = registry_with(&backend);
     let mut request = open_request(db_session_id());
@@ -393,7 +393,7 @@ async fn 未设空闲期限的会话永不被驱逐() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 租约失效立即作废_额度扣住不外发_隔离确认后才归还() {
+async fn an_expired_lease_is_invalidated_at_once_the_quota_is_held_until_quarantine_confirms() {
     let backend = ScriptedBackend::new(BackendPlan::default()).await;
     let registry = registry_with(&backend);
     let doomed = register_ready(&registry, db_session_id()).await;
@@ -457,7 +457,7 @@ async fn 租约失效立即作废_额度扣住不外发_隔离确认后才归还
 }
 
 #[test]
-fn 归池前检查有登记句柄一律不放行() {
+fn the_pre_pool_check_refuses_to_pass_with_any_registered_handle() {
     assert!(ready_to_return_to_pool(0), "账上空了才谈得上归池");
     assert!(!ready_to_return_to_pool(1));
     assert!(!ready_to_return_to_pool(usize::MAX));
@@ -465,7 +465,7 @@ fn 归池前检查有登记句柄一律不放行() {
 
 /// 归池路径上的宿主检查：driver 报 Clean 但宿主仍有登记句柄时，**不得**算归池成功。
 ///
-/// 这条比上面那个 helper 级断言强一档，也不重复 `宿主登记数与后端确认数对不上时墓碑不得报已关闭`
+/// 这条比上面那个 helper 级断言强一档，也不重复 `when_registration_and_confirmation_counts_disagree_the_tombstone_must_not_report_closed`
 /// （那条走的是 `close_registered`）。区别在于**出口的形状**：
 ///
 /// * `close_registered` 拿到 `Err` 就自己兜底，R-01 明确要求它注销行、归还额度；
@@ -488,7 +488,7 @@ fn 归池前检查有登记句柄一律不放行() {
 ///    **恒为 0**，第 3 步的请求形状因此替缺陷作证；现在它是这条判据在后端请求形状上的
 ///    可观测面，也是本用例能区分「宿主真的自己数了一遍」与「检查恒真」的地方。
 #[tokio::test(start_paused = true)]
-async fn 归池时driver报clean但宿主仍有登记句柄不得算归池成功() {
+async fn pooling_with_a_clean_driver_report_but_host_handles_still_registered_must_not_succeed() {
     // 宿主登记 2 个句柄，driver 只确认终结 1 个——它对已交出的句柄没有可见性，
     // 所以这个 Clean 是**空口**的：「driver 对已交出的句柄没有可见性，
     // 其 Clean 不构成事务终结的证据」。
@@ -571,7 +571,7 @@ async fn 归池时driver报clean但宿主仍有登记句柄不得算归池成功
 /// driver 明确报告批次仍有一个句柄时，宿主必须保留整批登记项并判失。
 /// 一次执行返回的句柄绑定到当前物理资源；未逐项确认整个批次前，不能只注销其中一部分。
 #[tokio::test(start_paused = true)]
-async fn driver报告仍有句柄时宿主账保留整批并判失() {
+async fn when_the_driver_still_reports_handles_the_host_keeps_the_batch_and_judges_it_lost() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
             .handles(vec![handle_ref("h1", "res_1"), handle_ref("h2", "res_1")])
@@ -610,7 +610,7 @@ async fn driver报告仍有句柄时宿主账保留整批并判失() {
 /// 驱动多报终结数时，宿主不得注销任何未被逐项确认的句柄，即使它声称
 /// `remaining == 0`。宿主账必须保留整批句柄，关闭请求也必须带上真实计数。
 #[tokio::test(start_paused = true)]
-async fn driver多报终结数时宿主账未清空仍判不可知() {
+async fn an_overreported_driver_finalization_count_with_an_undrained_host_ledger_stays_unknown() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
             .handles(vec![handle_ref("h1", "res_1"), handle_ref("h2", "res_1")])
@@ -651,7 +651,7 @@ async fn driver多报终结数时宿主账未清空仍判不可知() {
 /// 没有这条，上面那条就只是「归池总是失败」也能变绿。对照组把差异钉在
 /// **登记数与 driver 确认数是否一致**这一个变量上。
 #[tokio::test(start_paused = true)]
-async fn 归池时driver如实终结全部句柄则正常归还额度() {
+async fn pooling_with_a_faithful_full_finalization_returns_the_quota_normally() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
             .handles(vec![handle_ref("h1", "res_1"), handle_ref("h2", "res_1")])

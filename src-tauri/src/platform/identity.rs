@@ -338,7 +338,7 @@ mod tests {
     /// 本用例自己会写一次进程级 env（因此必须还原）；它只影响 env 的**当前值**，
     /// 不影响已经解析出来的主体。
     #[test]
-    fn 桌面主体在进程内只解析一次() {
+    fn the_desktop_principal_is_resolved_once_per_process() {
         let resolved = local_principal().expect("桌面主体应当存在");
         let previous = std::env::var("DATAZEN_DESKTOP_USER").ok();
         std::env::set_var("DATAZEN_DESKTOP_USER", "datazen-identity-probe");

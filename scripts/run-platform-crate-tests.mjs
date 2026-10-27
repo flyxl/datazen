@@ -133,34 +133,30 @@ export const TESTED_LAYERS = Object.freeze([
  * Cargo target selectors that must also be tested, per crate, in a profile the
  * default invocation does not build.
  *
- * ## Why this table now only holds `release: true` entries
+ * ## Why this table is empty
  *
- * `cargo test -p <crate>` with no target selector already builds and runs,
- * per the Cargo Book's target-selection rules for `cargo test`:
+ * Its last entry — the CM-60 release run (`--release -p datazen --features
+ * execution,jobs,test-harness --bin cm60-bench`) — was removed on 2026-10-27
+ * by maintainer decision（CI 不做性能测试），together with the ci.yml step that
+ * ran the bench itself and uploaded its artifacts. What that entry added over
+ * the selector-free invocation was only a **release-profile re-run** of the
+ * bench binary's 53 unit tests:
  *
- *   - the lib target **as a unit test** (its `test = true` default),
- *   - every bin target as unit tests (`test = true` default),
- *   - every `tests/*.rs` integration binary, and
- *   - the lib's doc tests.
+ * - those tests are synthetic-arithmetic assertions (e.g. `Percentiles::of` on
+ *   hand-constructed samples proving the p95 bookkeeping), not wall-clock
+ *   measurements — the release profile carries no extra signal for them;
+ * - the no-selector invocation below already compiles the bin as a test target
+ *   (its `required-features` of execution/jobs/test-harness are all in the
+ *   named feature list) and runs those 53 tests in debug.
  *
- * A debug-profile extra bolted onto that run can therefore only ever RE-RUN a
- * target the no-selector invocation already covers. The one thing the default
- * invocation structurally cannot reach is a target whose assertions refuse the
- * debug profile:
+ * What the entry cost was the single most expensive leg in the rust job: the
+ * only place in PR CI that compiled datazen's dev-dependencies in the release
+ * profile, with `lto = true`, `codegen-units = 1`, `opt-level = "z"` (the
+ * workspace `[profile.release]`) over the whole closure.
  *
- * - `modules/src/bin/cm60-bench/` is a **binary** target whose unit
- *   tests live in the bin's own test binary — that much `cargo test -p …`
- * *does* reach — but `cm60-bench/main.rs` **has to** be built and run
- * `--release`: it exits 2 under `debug_assertions`, which is a deliberate
- * guard against a debug-profile benchmark quietly becoming the measurement.
- *   A profile flag is a property of the whole invocation, so the release run
- *   gets its own invocation built by {@link buildCargoArgv} rather than a flag
- *   folded onto the shared argv.
- *
- * The debug `--test cm60_pressure_drain` entry this table used to carry was
- * removed for the reason above: the §11.4 pressure half is an integration
- * binary, the no-selector call compiles and runs every integration binary
- * unconditionally, and the old placement only guaranteed it executed twice.
+ * The mechanism is retained — not deleted — because "a target whose assertions
+ * refuse the debug profile" is a structural category that may recur, and the
+ * target-not-found failure mode below is what keeps a future table honest.
  *
  * ## Adding an entry
  *
@@ -169,14 +165,31 @@ export const TESTED_LAYERS = Object.freeze([
  * into a no-op without turning the gate red. Entries for a crate that was not
  * discovered are skipped instead — no crate, no target.
  */
-export const EXTRA_TARGETS = Object.freeze({
-  'datazen': Object.freeze([
-    // §11.3 latency half: the bench binary's own unit tests, release only.
-    Object.freeze({
-      release: true,
-      args: Object.freeze(['--features', 'execution,jobs,test-harness', '--bin', 'cm60-bench']),
-    }),
-  ]),
+export const EXTRA_TARGETS = Object.freeze({});
+
+/**
+ * Features the selector-free invocation deliberately does NOT name.
+ *
+ * `default` is handled structurally by `--no-default-features` (see {@link
+ * buildCargoArgv}); this table covers the rest. Every entry must stay an
+ * **empty cfg switch** — an exclusion is only valid while enabling the feature
+ * changes nothing the test build compiles — so {@link buildCargoArgv}
+ * verifies, per crate, that a named exclusion which exists in the metadata
+ * feature table still maps to an empty array, and aborts otherwise. A feature
+ * that grows real dependencies makes the exclusion stale silently otherwise:
+ * the tests stay green while the leg quietly stops compiling code
+ * `--all-features` used to compile.
+ */
+export const EXCLUDED_TEST_FEATURES = Object.freeze({
+  webdriver:
+    'E2E-only fault-injection seam (D5, modules/Cargo.toml: `webdriver = []`). ' +
+    'Its gates in modules/src are `cfg(any(test, all(debug_assertions, feature = "webdriver")))`, ' +
+    'so every cargo-test build compiles the seam in via cfg(test) with the feature off; ' +
+    'the feature itself is only needed by the WDIO E2E binaries ' +
+    '(pnpm tauri:build:webdriver), which CI never builds (maintainer decision ' +
+    '2026-10-27: CI 不做性能测试、不需要 WebDriver、不跑 E2E). Excluding it lets this ' +
+    'leg compile datazen with the exact feature set the datazen_desktop host leg uses, ' +
+    'so the ~209k-line lib is compiled once per CI run instead of twice.',
 });
 
 /**
@@ -200,13 +213,69 @@ export const FEATURE_TESTS = Object.freeze({
 });
 
 /**
+ * Verify the exclusion table still describes no-op switches, and that every
+ * crate carries the feature table the argv needs. Throws (rather than
+ * returning a degraded argv) so both this module's direct callers and `runCli`
+ * fail closed; `runCli` maps the throw to exit 2.
+ *
+ * @param {ReadonlyArray<{ name: string, features?: object }>} crates
+ */
+function assertFeatureAssumptions(crates) {
+  for (const crate of crates) {
+    if (typeof crate.features !== 'object' || crate.features === null) {
+      throw new Error(
+        `crate ${crate.name} carries no feature table — buildCargoArgv refuses to guess ` +
+          `what to enable. discoverCoreCrates attaches it from cargo metadata; a hand-built ` +
+          `crate list must carry it too (see the test suite's fixtures).`,
+      );
+    }
+    for (const [feature, reason] of Object.entries(EXCLUDED_TEST_FEATURES)) {
+      const enables = crate.features[feature];
+      if (Array.isArray(enables) && enables.length > 0) {
+        throw new Error(
+          `EXCLUDED_TEST_FEATURES is stale: ${crate.name}'s "${feature}" now enables ` +
+            `[${enables.join(', ')}]. The exclusion was only valid while it was an empty cfg ` +
+            `switch. Reason recorded at exclusion time: ${reason}`,
+        );
+      }
+    }
+  }
+}
+
+/**
  * Build the full list of `cargo` invocations for a discovered crate set.
  *
  * Pure and exported so the argv can be asserted on directly. It returns a
- * no-selector run that reaches every target of every crate, one invocation for
- * each required feature profile, and a single `--release` one for release extras. Returns an empty list
- * only when there is nothing at all to run, which `runCli` already guards
- * against.
+ * no-selector run that reaches every target of every crate, and one invocation
+ * for each required feature profile. Returns an empty list only when there is
+ * nothing at all to run, which `runCli` already guards against.
+ *
+ * ## Why the no-selector run is `--no-default-features --features <explicit
+ * list>` and not `--all-features` (changed 2026-10-27)
+ *
+ * The list names every feature of every tested crate except `default` and the
+ * {@link EXCLUDED_TEST_FEATURES} table. For datazen that is 27 of its 29
+ * features, and — this is the point — **exactly the feature set the
+ * datazen_desktop host leg compiles datazen with** (ci.yml appends
+ * `datazen/test-harness` to the host step for this reason): the host's
+ * dependency closure over modules/Cargo.toml plus test-harness equals
+ * all-features minus {default, webdriver}. That equality is not a hope — the
+ * test suite parses both real manifests and pins it, so a datazen feature
+ * added without being wired into the host goes red here instead of silently
+ * un-sharing the compile.
+ *
+ * Before this change the leg was `--all-features`, whose set differs from the
+ * host's by exactly those two empty switches — and because a different feature
+ * set is a different compilation unit, datazen's ~209k-line lib was compiled
+ * **twice** per CI run (once for the host leg, once here) for want of two
+ * no-op flags. Naming the list keeps the alignment auditable, and the
+ * exclusion table's emptiness check in {@link assertFeatureAssumptions} is
+ * what stops it from rotting silently.
+ *
+ * `default` is excluded structurally (not via the table) because the host
+ * consumes datazen through the workspace template's `default-features = false`
+ * — `--no-default-features` mirrors that, and naming `default` back in would
+ * re-diverge the two sets.
  *
  * ## Why there is no `--lib` (or `--tests`) invocation any more
  *
@@ -238,15 +307,30 @@ export const FEATURE_TESTS = Object.freeze({
  *     target list in this file that `Cargo.toml` owns: a new `tests/*.rs`
  *     would join the crate silently and stay untested. Cargo already knows
  *     the list; the gate should not keep a second one.
- * So: keep the no-selector call exactly as it was, keep the release extras,
- * and drop the invocation that only re-ran what the second one covers.
+ * So: keep the no-selector call selector-free, keep the feature-profile legs,
+ * and let EXTRA_TARGETS stay empty until a target that refuses the debug
+ * profile earns its way back in.
  *
- * @param {ReadonlyArray<{ name: string }>} crates
+ * @param {ReadonlyArray<{ name: string, features?: object }>} crates
  * @returns {string[][]}
  */
 export function buildCargoArgv(crates) {
   if (crates.length === 0) return [];
+  assertFeatureAssumptions(crates);
   const names = crates.map((c) => c.name);
+  // Package-qualified (`datazen/ai`, not bare `ai`): tested crates are selected
+  // together in one invocation, and a bare name would silently apply to
+  // whichever crate defines it — ambiguous the day two tested crates grow a
+  // same-named feature. Metadata key order (manifest declaration order) is
+  // preserved, so the argv is deterministic and diffable.
+  const namedFeatures = [];
+  for (const crate of crates) {
+    for (const feature of Object.keys(crate.features)) {
+      if (feature === 'default') continue;
+      if (feature in EXCLUDED_TEST_FEATURES) continue;
+      namedFeatures.push(`${crate.name}/${feature}`);
+    }
+  }
   const featureInvocations = [];
   for (const name of names) {
     for (const features of FEATURE_TESTS[name] ?? []) {
@@ -268,11 +352,18 @@ export function buildCargoArgv(crates) {
     }
   }
   return [
-    // Unconditional, and reads no table: this is the invocation the gate's
-    // "a table edit cannot delete the run" invariant now rests on. It reaches
-    // lib unit tests, bin unit tests, every tests/*.rs integration binary and
-    // the lib doc tests, with no target list maintained on this side.
-    ['test', '--all-features', ...names.flatMap((n) => ['-p', n])],
+    // Unconditional, and reads no table for its target selection: this is the
+    // invocation the gate's "a table edit cannot delete the run" invariant
+    // rests on. It reaches lib unit tests, bin unit tests, every tests/*.rs
+    // integration binary and the lib doc tests, with no target list
+    // maintained on this side — and its feature list is the host-aligned set
+    // documented above.
+    [
+      'test',
+      '--no-default-features',
+      ...(namedFeatures.length > 0 ? ['--features', namedFeatures.join(',')] : []),
+      ...names.flatMap((n) => ['-p', n]),
+    ],
     ...featureInvocations,
     ...(releaseEntries.length > 0
       ? [
@@ -298,10 +389,14 @@ export function discoverCoreCrates({ root, env, log = () => {} }) {
   const metadata = runCargoMetadata({ cwd: root, env, log });
   const index = buildWorkspaceIndex(metadata);
   const unclassified = index.unclassified.map((u) => u.reason);
+  // The feature table travels with the crate: buildCargoArgv names features
+  // explicitly (see its doc comment) and refuses a crate without one.
+  const featuresById = new Map(metadata.packages.map((p) => [p.id, p.features]));
   const found = new Map();
   for (const layerId of TESTED_LAYERS) {
     for (const member of index.members.values()) {
-      if (member.layer === layerId) found.set(member.name, member);
+      if (member.layer === layerId)
+        found.set(member.name, { ...member, features: featuresById.get(member.id) });
     }
   }
   return { crates: [...found.values()], unclassified, index };
@@ -375,7 +470,13 @@ export function runCli({ argv = process.argv.slice(2), env = process.env } = {})
     return 1;
   }
 
-  const invocations = buildCargoArgv(crates);
+  let invocations;
+  try {
+    invocations = buildCargoArgv(crates);
+  } catch (cause) {
+    err(`${PREFIX} ${cause.message}`);
+    return 2;
+  }
   for (const argvList of invocations) out(`${PREFIX} cargo ${argvList.join(' ')}`);
   if (args.dryRun) {
     out(

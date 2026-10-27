@@ -333,7 +333,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn 默认策略是接线的且期限为三十分钟() {
+    fn default_policy_is_wired_with_a_thirty_minute_deadline() {
         let policy = IdlePolicy::default();
         assert!(policy.is_enabled());
         assert_eq!(
@@ -344,21 +344,21 @@ mod tests {
     }
 
     #[test]
-    fn 关闭策略写不出期限因此永不触发() {
+    fn a_disabled_policy_cannot_express_a_deadline_so_it_never_fires() {
         let policy = IdlePolicy::disabled();
         assert!(!policy.is_enabled());
         assert_eq!(policy.deadline_ms(), None);
     }
 
     #[test]
-    fn 自定义策略同时改期限与扫描间隔() {
+    fn a_custom_policy_overrides_both_deadline_and_scan_interval() {
         let policy = IdlePolicy::with_deadline(Duration::from_millis(30), Duration::from_millis(5));
         assert_eq!(policy.deadline_ms(), Some(30));
         assert_eq!(policy.scan_interval(), Duration::from_millis(5));
     }
 
     #[test]
-    fn 默认策略给摘挂载宽限一分钟() {
+    fn the_default_policy_grants_a_one_minute_unmount_grace() {
         let policy = IdlePolicy::default();
         assert_eq!(
             policy.detached_grace_ms(),
@@ -367,12 +367,12 @@ mod tests {
     }
 
     #[test]
-    fn 关闭策略不给摘挂载宽限() {
+    fn a_disabled_policy_grants_no_unmount_grace() {
         assert_eq!(IdlePolicy::disabled().detached_grace_ms(), None);
     }
 
     #[test]
-    fn 摘挂载宽限可单独覆盖() {
+    fn the_unmount_grace_can_be_overridden_alone() {
         let tightened = IdlePolicy::default().with_detached_grace(Some(Duration::from_millis(250)));
         assert_eq!(tightened.detached_grace_ms(), Some(250));
         assert_eq!(
@@ -387,7 +387,7 @@ mod tests {
     }
 
     #[test]
-    fn 扫描间隔可单独调短且不动期限() {
+    fn the_scan_interval_can_be_shortened_alone_without_touching_the_deadline() {
         let policy = IdlePolicy::default().with_scan_interval(Duration::from_secs(15));
         assert_eq!(policy.scan_interval(), Duration::from_secs(15));
         assert_eq!(

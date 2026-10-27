@@ -391,3 +391,11 @@ tracing-subscriber = "0.3"
 datazen-driver-postgres = { path = "../packages/drivers/postgres" }
 datazen-driver-mysql = { path = "../packages/drivers/mysql" }
 datazen-driver-sqlite = { path = "../packages/drivers/sqlite" }
+
+[lints.rust]
+# 标识符只许 ASCII：中文测试名（2026-10-27 存量 160 个已全部改英文，
+# 见 test/ascii-test-identifiers 分支）会触发 rustc 的 non_snake_case
+# 告警刷屏 CI 日志；deny 让新增非 ASCII 标识符直接红编译，而不是等
+# 日志里再冒出来。注释与字符串字面量里的中文不受此 lint 影响。
+# （cm70_no_disk.rs 的 `fn 落盘` 是探测器自证样本 raw string，非标识符。）
+non_ascii_idents = "deny"

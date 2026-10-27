@@ -675,14 +675,14 @@ pub trait TunnelRepository: Send + Sync + 'static {
 - **确定性**：派生不含随机数、时间戳或进程内计数器，因此同一 `(organization, connection, isolation)` 跨进程重启返回同一身份键（INV-02 的会话连续性与池复用依赖这一点）。
 - **凭据轮换只推进 `credential_revision`**：凭据版本取自 `SecretProvider::revision(secretRef)`（无凭据配置的连接退回配置记录上的版本），身份键的输入里没有凭据版本，因此轮换不动身份键。
 - **两条独立路径**：`resolve` 与 `resolve_delegation` 的域标签与输入集都不同（委托路径额外绑定委托 id 与授权作用域），委托身份因此**不可能**等于本人身份；`resolve_delegation` 先经 `PolicyService::verify_delegation` 校验，校验不过失败关闭、**不降级**为调用者本人的权限（CM-06）；`resolve` 在委托上下文上一律拒绝。
-- **委托的目标来自宿主协作者**：端口的 `resolve_delegation` 不接收 `ExecutionTarget`，而 `ExecutionIdentity` 必须带 `connectionId`，因此桌面侧由 `DelegationScopeBinding` 给出授权单登记的目标；授权单覆盖多个连接时失败关闭，不取第一个了事。
+- **委托的目标来自宿主协作者**：端口的 `resolve_delegation` 不接收 `ExecutionTarget`，而 `ExecutionIdentity` 必须带 `connectionId`，因此桌面侧由 `DelegationScopeBinding` 给出授权单登记的目标；a_single_authorization_covering_multiple_connections_fails_closed，不取第一个了事。
 
 > **改这块之前先看变异**：上面这些性质里，**长度前缀、域分离、跨组织委托的显式检查、多连接失败关闭**这几条，用例若只写「正常路径的行为」，是**钉不住的**。但它们被破坏时的后果**分两类**，不能笼统说「输出不变」：
 >
 > - **进 HMAC 输入的那些**（域标签、长度前缀、子钥域分离、派生盐的来源）：改它们 ⇒ **每个正常路径调用的身份键值都变** ⇒ 等价于一次**全量身份键轮换**（连接池与缓存整体失效）。正常路径用例断言的**关系**（同输入同键、跨组织不同键、委托身份 ≠ 本人身份）**不变**，所以它们照绿。
 > - **不在派生路径上的那些**（跨组织委托的显式检查、多连接失败关闭）：改它们 ⇒ 正常路径的输出**完全不变**，正常路径用例照绿。
 >
-> 两种情况下「用例全绿」都**不是**「没被破坏」的证据——前者把键的**值**换掉了，后者把失败关闭放开了。首版 16 条用例就漏了这些性质，是靠变异（去输入 / 去长度前缀 / 去域分离 / 放宽失败关闭）才暴露出来的；随后两轮共补 13 条针对性用例（长度前缀防撞车与反事实撞车、消息编码字节布局、域标签字面值、黄金值独立复算、身份键不含主密钥与派生盐、主密钥一换全部键都变、委托消息不可能等于本人、委托键绑定委托 id 与授权 scope、跨组织委托即便策略放行也被拒、委托路径不转调本人路径、授权单覆盖多连接失败关闭）。**改派生编码、域标签或失败关闭分支时，请连带跑变异，而不是只看用例是否全绿。**
+> 两种情况下「用例全绿」都**不是**「没被破坏」的证据——前者把键的**值**换掉了，后者把失败关闭放开了。首版 16 条用例就漏了这些性质，是靠变异（去输入 / 去长度前缀 / 去域分离 / 放宽失败关闭）才暴露出来的；随后两轮共补 13 条针对性用例（长度前缀防撞车与反事实撞车、消息编码字节布局、域标签字面值、黄金值独立复算、the_identity_key_contains_neither_the_master_key_nor_the_derivation_salt、主密钥一换全部键都变、委托消息不可能等于本人、委托键绑定委托 id 与授权 scope、a_cross_organization_delegation_is_rejected_even_when_the_policy_allows_it、the_delegation_path_does_not_forward_to_the_principal_path、授权单覆盖多连接失败关闭）。**改派生编码、域标签或失败关闭分支时，请连带跑变异，而不是只看用例是否全绿。**
 
 **端口命名来源（已统一）**：全仓统一用 `PolicyService`（[概要 §4](system-overview.md#4-模块职责与边界)、[概要 §6.4](system-overview.md#64-repositories-与环境-ports)）。此前只有[连接 §9.6](connection-management.md#96-poolkey版本与缓存的生产者) 把 `policyIsolationKey` 的生产者写作 `AuthorizationService`，与本节 `PolicyService::isolation_key` 是**同一职责的两种叫法**（组织/用户/策略版本与只读限制），不是两个服务——`authorize`/`verify_delegation` 也落在本节同一 trait。该处**已改写为 `PolicyService`**，`AuthorizationService` 在文档与代码中归零，也没有拆分出新服务；[persistence-model §4.3](persistence-model.md#43-只存在于服务端的字段) 的生产者表本就记在 `PolicyService` 名下，三方现为同一名字。
 

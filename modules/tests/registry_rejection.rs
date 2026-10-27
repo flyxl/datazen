@@ -8,10 +8,10 @@
 //!
 //! | 用例 | 分支 |
 //! | --- | --- |
-//! | 修订号不符一律拒绝且旧会话一点不动 | 乐观并发闸门 |
-//! | 候选发布失败时额度回到原值且撞号的那一行不动 | 提交后退款 |
-//! | 目录记着已提交但注册表已无该行时同键重放不得签发回执也不得凭空重开 | 幂等短路的孤儿态判据（`Err` 分支） |
-//! | 新会话已从目录里作废后同键重放不得发回死令牌 | 幂等回放的存活性复核 |
+//! | a_revision_mismatch_is_always_rejected_and_the_old_session_stays_untouched | 乐观并发闸门 |
+//! | on_publication_failure_the_quota_is_refunded_and_the_colliding_row_stays_put | 提交后退款 |
+//! | a_same_key_replay_after_the_registry_row_is_gone_neither_issues_a_receipt_nor_reopens | 幂等短路的孤儿态判据（`Err` 分支） |
+//! | after_directory_invalidation_a_same_key_replay_must_not_hand_back_a_dead_token | 幂等回放的存活性复核 |
 //!
 //! 闸门的依据就是那两行，没有第三处：`configRevision/contextRevision`
 //! 「用于版本与上下文冲突，**不能证明物理资源连续性**」——所以拿它当乐观闸门是正当用途；
@@ -149,7 +149,7 @@ fn registry_with(backend: &Arc<ScriptedBackend>) -> Arc<SessionRegistry> {
 // ---------------------------------------------------------------------------------------------
 
 #[tokio::test]
-async fn 修订号不符一律拒绝且旧会话一点不动() {
+async fn a_revision_mismatch_is_always_rejected_and_the_old_session_stays_untouched() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
             .handles(vec![handle_ref("h1", "res_1"), handle_ref("h2", "res_1")])
@@ -222,7 +222,7 @@ async fn 修订号不符一律拒绝且旧会话一点不动() {
 // ---------------------------------------------------------------------------------------------
 
 #[tokio::test]
-async fn 候选发布失败时额度回到原值且撞号的那一行不动() {
+async fn on_publication_failure_the_quota_is_refunded_and_the_colliding_row_stays_put() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
             .handles(vec![handle_ref("h1", "res_1"), handle_ref("h2", "res_1")])
@@ -344,7 +344,7 @@ async fn 候选发布失败时额度回到原值且撞号的那一行不动() {
 /// 报错还必须是**同一个**错。调用方据此才能把「重试永远不会有回执」和「再试一次也许会好」
 /// 分开：前者要去查 worker/登记表的健康度，后者只要重发。
 #[tokio::test]
-async fn 目录记着已提交但注册表已无该行时同键重放不得签发回执也不得凭空重开() {
+async fn a_same_key_replay_after_the_registry_row_is_gone_neither_issues_a_receipt_nor_reopens() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
             .handles(vec![handle_ref("h1", "res_1"), handle_ref("h2", "res_1")])
@@ -481,9 +481,9 @@ async fn 目录记着已提交但注册表已无该行时同键重放不得签�
 /// 那一道门不是白设的：换成旧实现，重放会在问册子之前先把被关闭的候选重新放行，于是它既
 /// 回到可路由名单、又让复核判定为「还在」，重放顺理成章地把那枚挂不上的令牌发回。补放行
 /// 只对还卡在屏障里的候选动手就是为堵这个洞，那一侧由 `tests/directory_replacement.rs` 的
-/// 「查状态不得复活已关闭的候选」钉住。
+/// 「a_status_lookup_must_not_resurrect_a_closed_candidate」钉住。
 #[tokio::test]
-async fn 新会话已从目录里作废后同键重放不得发回死令牌() {
+async fn after_directory_invalidation_a_same_key_replay_must_not_hand_back_a_dead_token() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
             .handles(vec![handle_ref("h1", "res_1"), handle_ref("h2", "res_1")])

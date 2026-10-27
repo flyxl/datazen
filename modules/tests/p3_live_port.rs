@@ -10,21 +10,21 @@
 //!
 //! | 测试 | 钉住的契约句 |
 //! | --- | --- |
-//! | `期限开着时到期会话被回收_且四本账都干净` | §6.4 空闲 ⇒ 断开；应用层登记同步清理 |
-//! | `期限关闭时到期会话不会被回收` | `idle_deadline_ms == None` 是配置事实，不是「计数器为 0」 |
-//! | `周期扫描器自己会驱动回收_宿主不必再挂定时器` | 驱动器归应用层所有 |
-//! | `起的扫描器停后任务真的退出_不泄漏task` | 起得也要停得；不泄漏 task |
-//! | `借了还再借_台账计数回到同一格且端口真的被查了两次` | 端口被真的查询（不是回放缓存） |
-//! | `回收会作废在外的借用_持有者拿到的是已作废引用` | 被回收 ⇒ 旧借用立刻失效 |
-//! | `未接线时借出得到服务不可用_且不留登记行` | 没接线是配置事实，不登记 |
-//! | `宿主拒绝出借时不留下空登记行` | 拒绝路径不得留下孤儿行 |
-//! | `正常归还后台账归零` | 归还恰好一次 |
-//! | `凭证被丢弃时兜底归还` | `Drop` 就是归还 |
-//! | `超时打断持有者时兜底归还` | 超时路径与正常路径不分叉 |
-//! | `打开失败不留任何登记行` | 异常打开不得留下登记 |
-//! | `取消与未知效果路径关闭后不留登记行` | 取消/未知效果后清理仍幂等 |
-//! | `关闭会话会作废在外的借用_且关闭后不留登记行` | 关闭 ⇒ 在借引用作废 + 四本账干净 |
-//! | `会话关闭后不能再借出` | INV-07/INV-08：不得透明重建 |
+//! | `with_the_deadline_on_expired_sessions_are_reclaimed_and_all_four_ledgers_stay_clean` | §6.4 空闲 ⇒ 断开；应用层登记同步清理 |
+//! | `with_the_deadline_off_expired_sessions_are_not_reclaimed` | `idle_deadline_ms == None` 是配置事实，不是「计数器为 0」 |
+//! | `the_periodic_scanner_drives_reaping_itself_the_host_needs_no_extra_timer` | 驱动器归应用层所有 |
+//! | `a_started_scanner_really_exits_after_stop_leaking_no_task` | 起得也要停得；不泄漏 task |
+//! | `borrow_return_borrow_again_ledger_back_to_the_same_slot_and_port_probed_twice` | 端口被真的查询（不是回放缓存） |
+//! | `reaping_invalidates_outstanding_borrows_the_holder_receives_an_invalidated_reference` | 被回收 ⇒ 旧借用立刻失效 |
+//! | `borrowing_without_wiring_yields_service_unavailable_and_leaves_no_registry_row` | 没接线是配置事实，不登记 |
+//! | `a_host_refusal_to_lend_leaves_no_empty_registry_row` | 拒绝路径不得留下孤儿行 |
+//! | `the_ledger_returns_to_zero_after_a_normal_return` | 归还恰好一次 |
+//! | `dropping_the_guard_triggers_a_fallback_return` | `Drop` 就是归还 |
+//! | `a_timeout_interrupting_the_holder_triggers_a_fallback_return` | 超时路径与正常路径不分叉 |
+//! | `an_open_failure_leaves_no_registry_row_at_all` | 异常打开不得留下登记 |
+//! | `the_cancel_and_unknown_outcome_paths_leave_no_registry_row_after_the_close` | 取消/未知效果后清理仍幂等 |
+//! | `closing_a_session_invalidates_outstanding_borrows_and_leaves_no_registry_row_afterwards` | 关闭 ⇒ 在借引用作废 + 四本账干净 |
+//! | `no_further_borrows_after_the_session_closes` | INV-07/INV-08：不得透明重建 |
 
 use async_trait::async_trait;
 use datazen::execution::runtime::registry::{backend::*, SessionBackend};
@@ -426,7 +426,7 @@ async fn close(service: &RuntimeConnectionUseCases, c: &RequestContext, h: &pa::
 // ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn 期限开着时到期会话被回收_且四本账都干净() {
+async fn with_the_deadline_on_expired_sessions_are_reclaimed_and_all_four_ledgers_stay_clean() {
     let (service, _, _) = setup();
     service.with_idle_policy(IdlePolicy::with_deadline(SHORT, Duration::from_secs(180)));
     let c = ctx("u", "c");
@@ -449,7 +449,7 @@ async fn 期限开着时到期会话被回收_且四本账都干净() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn 期限关闭时到期会话不会被回收() {
+async fn with_the_deadline_off_expired_sessions_are_not_reclaimed() {
     let (service, _, _) = setup();
     service.with_idle_policy(IdlePolicy::disabled());
     let c = ctx("u", "c");
@@ -470,7 +470,7 @@ async fn 期限关闭时到期会话不会被回收() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn 周期扫描器自己会驱动回收_宿主不必再挂定时器() {
+async fn the_periodic_scanner_drives_reaping_itself_the_host_needs_no_extra_timer() {
     let (service, _, _) = setup();
     service.with_idle_policy(IdlePolicy::with_deadline(SHORT, Duration::from_millis(30)));
     let c = ctx("u", "c");
@@ -500,7 +500,7 @@ async fn 周期扫描器自己会驱动回收_宿主不必再挂定时器() {
 /// 与上一条的分工：上一条证明「扫描器真的会回收」，这一条证明「扫完能停下」。
 /// 合起来才覆盖驱动器完整生命周期，缺一条都只测了一半。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn 起的扫描器停后任务真的退出_不泄漏task() {
+async fn a_started_scanner_really_exits_after_stop_leaking_no_task() {
     let (service, _, _) = setup();
     // 期限开着、扫描间隔 5 ms：这一条不关心回收谁，只关心起停本身。
     service.with_idle_policy(IdlePolicy::with_deadline(SHORT, Duration::from_millis(5)));
@@ -543,7 +543,7 @@ async fn 起的扫描器停后任务真的退出_不泄漏task() {
 /// 「第二轮回放缓存」是这条路最像成功的失败形状：计数对、内容也对，但端口压根
 /// 没被问。因此 `host.requests` 的条数必须等于轮数，而不是 ≤ 轮数。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn 借了还再借_台账计数回到同一格且端口真的被查了两次() {
+async fn borrow_return_borrow_again_ledger_back_to_the_same_slot_and_port_probed_twice() {
     let (service, _, host) = setup();
     let c = ctx("u", "c");
     let opened = open(&service, &c, "e").await;
@@ -577,7 +577,7 @@ async fn 借了还再借_台账计数回到同一格且端口真的被查了两�
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn 回收会作废在外的借用_持有者拿到的是已作废引用() {
+async fn reaping_invalidates_outstanding_borrows_the_holder_receives_an_invalidated_reference() {
     let (service, _, _) = setup();
     service.with_idle_policy(IdlePolicy::with_deadline(SHORT, Duration::from_secs(180)));
     let c = ctx("u", "c");
@@ -611,7 +611,7 @@ async fn 回收会作废在外的借用_持有者拿到的是已作废引用() {
 // ---------------------------------------------------------------------------
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn 未接线时借出得到服务不可用_且不留登记行() {
+async fn borrowing_without_wiring_yields_service_unavailable_and_leaves_no_registry_row() {
     let backend = Arc::new(Backend::default());
     let service = RuntimeConnectionUseCases::new(
         Arc::new(Profiles {
@@ -644,7 +644,7 @@ async fn 未接线时借出得到服务不可用_且不留登记行() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn 宿主拒绝出借时不留下空登记行() {
+async fn a_host_refusal_to_lend_leaves_no_empty_registry_row() {
     let (service, _, host) = setup();
     let c = ctx("u", "c");
     let opened = open(&service, &c, "e").await;
@@ -667,7 +667,7 @@ async fn 宿主拒绝出借时不留下空登记行() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn 正常归还后台账归零() {
+async fn the_ledger_returns_to_zero_after_a_normal_return() {
     let (service, _, host) = setup();
     let c = ctx("u", "c");
     let opened = open(&service, &c, "e").await;
@@ -690,7 +690,7 @@ async fn 正常归还后台账归零() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn 凭证被丢弃时兜底归还() {
+async fn dropping_the_guard_triggers_a_fallback_return() {
     let (service, _, _) = setup();
     let c = ctx("u", "c");
     let opened = open(&service, &c, "e").await;
@@ -707,7 +707,7 @@ async fn 凭证被丢弃时兜底归还() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn 超时打断持有者时兜底归还() {
+async fn a_timeout_interrupting_the_holder_triggers_a_fallback_return() {
     let (service, _, _) = setup();
     let c = ctx("u", "c");
     let opened = open(&service, &c, "e").await;
@@ -730,7 +730,7 @@ async fn 超时打断持有者时兜底归还() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn 打开失败不留任何登记行() {
+async fn an_open_failure_leaves_no_registry_row_at_all() {
     let (service, backend, _) = setup();
     backend.fail_open.store(true, Ordering::SeqCst);
     let c = ctx("u", "c");
@@ -767,7 +767,7 @@ async fn 打开失败不留任何登记行() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn 取消与未知效果路径关闭后不留登记行() {
+async fn the_cancel_and_unknown_outcome_paths_leave_no_registry_row_after_the_close() {
     let (service, backend, _) = setup();
     let c = ctx("u", "c");
     let opened = open(&service, &c, "e").await;
@@ -808,7 +808,7 @@ async fn 取消与未知效果路径关闭后不留登记行() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn 关闭会话会作废在外的借用_且关闭后不留登记行() {
+async fn closing_a_session_invalidates_outstanding_borrows_and_leaves_no_registry_row_afterwards() {
     let (service, backend, _) = setup();
     let c = ctx("u", "c");
     let opened = open(&service, &c, "e").await;
@@ -834,7 +834,7 @@ async fn 关闭会话会作废在外的借用_且关闭后不留登记行() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn 会话关闭后不能再借出() {
+async fn no_further_borrows_after_the_session_closes() {
     let (service, _, host) = setup();
     let c = ctx("u", "c");
     let opened = open(&service, &c, "e").await;
