@@ -44,7 +44,7 @@ DDL 具有不可逆风险，计划必须显示新增、修改和删除，执行�
 
 ## Transfer 与中间表示
 
-异构传输需要处理类型、标识符、NULL、默认值和目标方言差异。`packages/data-transfer/` 使用 IR 适配器把源数据和结构映射到中间模型，再生成目标 DDL/DML。
+异构传输需要处理类型、标识符、NULL、默认值和目标方言差异。`modules/src/migration/data_transfer/` 使用 IR 适配器把源数据和结构映射到中间模型，再生成目标 DDL/DML。
 
 Transfer 是单向搬运或转换，不承诺同族同步的“差异归零”语义，也不应被拿来绕过 Data Sync 的同族门闸。
 

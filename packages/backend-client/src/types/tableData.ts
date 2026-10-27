@@ -10,7 +10,7 @@
  *
  * The primary source of truth for the *frontend* half is
  * `src/lib/tableChanges.ts` (the desktop mirror of the shared Rust change set
- * in `packages/feature-core/src/data_browsing`). This file is that mirror's
+ * in `modules/src/table_editing`). This file is that mirror's
  * counterpart inside the transport-agnostic package, and the two are held
  * together by a compile-time parity assertion in
  * `packages/backend-client/__tests__/tableData.test.ts` — a drift between them

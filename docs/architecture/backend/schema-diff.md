@@ -1,6 +1,6 @@
 # Schema Diff 架构
 
-> P5 桌面 JobRuntime 接入已完成；迁移三件套独立测试与冒烟测试通过。Source of truth: `packages/schema-diff/`, `src-tauri/src/commands/schema_diff/`, `src-tauri/src/commands/schema_diff.rs`, `packages/driver-api/src/schema_migration.rs`。
+> P5 桌面 JobRuntime 接入已完成；迁移三件套独立测试与冒烟测试通过。Source of truth: `modules/src/migration/schema_diff/`, `src-tauri/src/commands/schema_diff/`, `src-tauri/src/commands/schema_diff.rs`, `packages/driver-api/src/schema_migration.rs`。
 
 Schema Diff 的职责是把源库结构视为 **desired state**，比较目标结构，生成可审阅的迁移计划，并在目标库执行。
 
@@ -33,15 +33,15 @@ Host 不直接拼接 PostgreSQL/MySQL/SQLite 的 DDL。方言实现位于 Driver
 
 | 文件 | 职责 |
 |---|---|
-| `packages/schema-diff/src/compare.rs` | 列、PK、索引差异；支持 `TypeNormalizer` |
-| `packages/schema-diff/src/ir.rs` | Snapshot → `MigrationOperation` |
-| `packages/schema-diff/src/operations.rs` | 方言无关操作及风险 |
-| `packages/schema-diff/src/dependencies.rs` | 操作依赖与执行顺序 |
-| `packages/schema-diff/src/plan.rs` | 能力检查、DDL 渲染、计划生成 |
-| `packages/schema-diff/src/deploy.rs` | 目标库部署及事务/部分失败结果 |
-| `packages/schema-diff/src/types.rs` | Snapshot、Diff、Plan DTO |
-| `packages/schema-diff/src/profile_repository.rs` | 持久化 Schema Diff profile 的领域存储端口 |
-| `packages/schema-diff/src/reviewed.rs` | 评审计划的**规则**（身份指纹、目标快照复核、依赖目录比对）与存储端口 `ReviewedPlanRepository` |
+| `modules/src/migration/schema_diff/compare.rs` | 列、PK、索引差异；支持 `TypeNormalizer` |
+| `modules/src/migration/schema_diff/ir.rs` | Snapshot → `MigrationOperation` |
+| `modules/src/migration/schema_diff/operations.rs` | 方言无关操作及风险 |
+| `modules/src/migration/schema_diff/dependencies.rs` | 操作依赖与执行顺序 |
+| `modules/src/migration/schema_diff/plan.rs` | 能力检查、DDL 渲染、计划生成 |
+| `modules/src/migration/schema_diff/deploy.rs` | 目标库部署及事务/部分失败结果 |
+| `modules/src/migration/schema_diff/types.rs` | Snapshot、Diff、Plan DTO |
+| `modules/src/migration/schema_diff/profile_repository.rs` | 持久化 Schema Diff profile 的领域存储端口 |
+| `modules/src/migration/schema_diff/reviewed.rs` | 评审计划的**规则**（身份指纹、目标快照复核、依赖目录比对）与存储端口 `ReviewedPlanRepository` |
 | `src-tauri/src/commands/schema_diff/` | Tauri IPC 与桌面 Job adapter |
 
 Host 侧 `src-tauri/src/commands/schema_diff.rs` 只是模块门面（模块声明 + re-export），
@@ -150,11 +150,11 @@ Schema Diff 的 prepare/apply 请求以 `sourceDbSessionId` / `targetDbSessionId
 
 | 位置 | 职责 |
 |---|---|
-| `packages/schema-diff/src/reviewed.rs` | **规则**：配置身份指纹、目标快照复核、依赖目录比对、计划有效期；并定义存储端口 `ReviewedPlanRepository` 与随端口提供的进程内实现 `InMemoryReviewedPlanRepository`（按组织分桶） |
+| `modules/src/migration/schema_diff/reviewed.rs` | **规则**：配置身份指纹、目标快照复核、依赖目录比对、计划有效期；并定义存储端口 `ReviewedPlanRepository` 与随端口提供的进程内实现 `InMemoryReviewedPlanRepository`（按组织分桶） |
 | `src-tauri/src/commands/schema_diff/reviewed_repository.rs` | **存储实现**：桌面形态的实例，在包内进程内实现之上叠加**单租户**收窄 |
 
 - **包内没有进程级全局可变状态**。计划寄居在宿主注入的实例里（`AppState.schema_diff_reviewed_plans`），不再寄居在包里的 `static` 上：多租户宿主可以按组织分桶，A 组织的计划不会被 B 组织读到、顶掉或提前消费掉。
-- **端口方法一律带 `scope: &OrganizationScope`**（`datazen_platform_api::ports::scope`）。**越组织访问按「不存在」处理**——取不到、删不掉，也**不**返回「无权限」错误，那会泄漏「存在但无权」（CM-05）。
+- **端口方法一律带 `scope: &OrganizationScope`**（`datazen::platform_api::ports::scope`）。**越组织访问按「不存在」处理**——取不到、删不掉，也**不**返回「无权限」错误，那会泄漏「存在但无权」（CM-05）。
 - **端口的行类型是领域词汇 `ReviewedPlan`**，不另造一份计划结构；存储实现不得把规则的判定（有效期、身份比对）搬走。
 - **桌面是单租户**：只承认自己那一个组织（`DesktopIdentity::organization_id()`），别的组织一律按「不存在」处理（越组织**写入直接丢弃**）。桌面身份不可用时该存储**不承认任何组织**，不编造组织身份。
 - 计划的**有效期**（30 分钟）与**容量上限**由包给出常量（`REVIEWED_PLAN_TTL` / `REVIEWED_PLAN_MAX_ENTRIES`），存储实现据此裁剪；桌面沿用**进程内存**。
@@ -164,7 +164,7 @@ Schema Diff 的 prepare/apply 请求以 `sourceDbSessionId` / `targetDbSessionId
 
 ## 8. Tests
 
-- Rust unit tests：`packages/schema-diff/**`
+- Rust unit tests：`modules/src/migration/schema_diff/**`
 - Frontend：`src/windows/schema-diff/__tests__/`
 - E2E：`e2e/specs/schema-diff-*.ts` 与 journey tests
 

@@ -4,29 +4,29 @@ use super::server::{DataZenMcpServer, MCP_SESSION_PURPOSE};
 use super::session::{sanitize_ttl, SessionBinding};
 use super::types::*;
 use crate::mcp::tool_help;
-use datazen_application::dto::requests::{
+use datazen::application::identity_policy::IdentityPolicy;
+use datazen::application::sessions::ConnectionUseCases;
+use datazen::execution::application::idempotency::IdempotentOperation;
+use datazen::execution::application::requests::{
     CloseMode, CloseSessionRequest, CommandCall, ExecuteInSessionRequest, OpenSessionRequest,
 };
-use datazen_application::identity_policy::IdentityPolicy;
-use datazen_application::sessions::ConnectionUseCases;
-use datazen_feature_core::mcp::allowlist;
-use datazen_feature_core::mcp::permission;
-use datazen_feature_core::workflow::executor::{
+use datazen::execution::application::RuntimeConnectionUseCases;
+use datazen::execution::target::{ExecutionTarget, NamespaceTarget, TargetNamespaceLayer};
+use datazen::execution::{ExecutionState, ExecutionView};
+use datazen::mcp::allowlist;
+use datazen::mcp::permission;
+use datazen::shared::context::{OwnerRef, RequestContext};
+use datazen::shared::id::{ArtifactId, ClientInstanceId, ConnectionId, Counter};
+use datazen::workflow::executor::{
     WorkflowExecuteOptions, WorkflowExecutor, WORKFLOW_QUERY_ROW_LIMIT,
 };
-use datazen_platform_api::context::{OwnerRef, RequestContext};
-use datazen_platform_api::dto::execution::{ExecutionState, ExecutionView};
-use datazen_platform_api::dto::idempotency::IdempotentOperation;
-use datazen_platform_api::id::{ArtifactId, ClientInstanceId, ConnectionId, Counter};
-use datazen_platform_api::target::{ExecutionTarget, NamespaceTarget, TargetNamespaceLayer};
-use datazen_runtime::application::RuntimeConnectionUseCases;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::{tool, tool_router, ErrorData as McpError};
 use serde_json::json;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-pub(crate) use datazen_feature_core::mcp::describe::format_table_description;
+pub(crate) use datazen::mcp::describe::format_table_description;
 
 #[tool_router(vis = "pub(crate)")]
 impl DataZenMcpServer {
@@ -34,7 +34,16 @@ impl DataZenMcpServer {
         description = "List all configured database connections. Returns connection IDs, names, database types, and hosts."
     )]
     pub(crate) async fn list_connections(&self) -> Result<String, McpError> {
-        let connections = self.app_state.store.get_connections().await;
+        let connections = match crate::platform::ipc::require_connection_service(&self.app_state) {
+            Ok(service) => match service
+                .list_redacted(&crate::platform::connections::local_connection_scope())
+                .await
+            {
+                Ok(list) => list,
+                Err(error) => return Err(McpError::internal_error(error.to_string(), None)),
+            },
+            Err(error) => return Err(McpError::internal_error(error.to_string(), None)),
+        };
         let result: Vec<serde_json::Value> = connections
             .iter()
             .filter(|c| allowlist::is_connection_allowed(&c.id, &self.allowed_connection_ids))
@@ -141,7 +150,7 @@ impl DataZenMcpServer {
             .map_err(|e| tool_help::tool_error("query", &e))?;
         let mut command_input = serde_json::json!({
             "sql": input.sql,
-            "limit": datazen_feature_core::services::db_tools::resolve_query_limit(input.limit),
+            "limit": datazen::services::db_tools::resolve_query_limit(input.limit),
         });
         self.app_state
             .store
@@ -396,9 +405,7 @@ impl DataZenMcpServer {
             // The mapping is kept on failure so the client can retry; dropping it
             // here would leak the database session with no way left to close it.
             .map_err(|error| McpError::internal_error(error.to_string(), None))?;
-        if receipt.resource_release
-            != datazen_platform_api::dto::session::ResourceRelease::Confirmed
-        {
+        if receipt.resource_release != datazen::execution::ResourceRelease::Confirmed {
             self.sessions
                 .revoke(&input.client_session_ref, self.client_instance_id());
             self.start_session_cleanup();

@@ -1,11 +1,13 @@
 pub mod adapter;
 pub mod artifact_export;
+pub mod connections;
 mod diagnostics;
 pub mod error;
 pub mod event_sink;
 pub mod execution_identity;
 pub mod feature_ports;
 pub mod handles;
+pub mod history;
 pub mod identity;
 pub mod ipc;
 pub mod known_hosts;
@@ -14,10 +16,10 @@ pub mod native_tool;
 pub mod policy;
 pub mod repositories;
 pub mod resource_budget;
-pub mod resource_mapping;
 pub mod scope;
 pub mod session_backend;
 pub mod session_commands;
+pub mod settings;
 mod target_metadata;
 
 /// 宿主侧的**组织作用域形态中立闸门**：生产代码里不得直读桌面的安装级组织常量。

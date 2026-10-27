@@ -2,8 +2,8 @@
 
 use super::server::DataZenMcpServer;
 use super::types::*;
+use datazen::ai::prompt_resolver;
 use datazen_driver_api::PromptScenario;
-use datazen_feature_core::ai::prompt_resolver;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::*;
 use rmcp::{prompt, prompt_router, ErrorData as McpError};
@@ -30,7 +30,7 @@ impl DataZenMcpServer {
             self,
             &args.connection_id,
             db,
-            datazen_feature_core::ai::budget::FALLBACK_DDL,
+            datazen::ai::budget::FALLBACK_DDL,
         )
         .await?;
 

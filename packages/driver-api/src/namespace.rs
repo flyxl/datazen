@@ -21,7 +21,7 @@ use crate::resource::ResourceError;
 /// canonicalizes via `canonicalize()` / `resolve_alias()`.
 ///
 /// The platform side describes a different question — what one request declares
-/// — as `datazen_platform_api::target::TargetNamespaceShape`. Its layer enum is
+/// — as `datazen::execution::target::TargetNamespaceShape`. Its layer enum is
 /// `TargetNamespaceLayer` (`Database` / `Catalog` / `Schema` / `Path`), it carries only
 /// the `required` / `optional` sets plus the `declares()` / `is_required()`
 /// predicates, and it has no case, alias or canonical-id data. `Path` is
@@ -264,7 +264,7 @@ impl NamespaceShape {
         // a real identifier once the driver quotes it. This runs before the
         // level checks so an empty field is rejected as itself rather than as a
         // non-existent or missing level, and it mirrors
-        // `datazen_application::dto::requests::validate_namespace_target`, which
+        // `datazen::application::dto::requests::validate_namespace_target`, which
         // applies the same rule to the same fields.
         for (kind, value) in [
             (NamespaceLevelKind::Database, target.database.as_deref()),

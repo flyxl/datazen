@@ -24,5 +24,4 @@ futures-util = "0.3"
 libsqlite3-sys = "=0.30.1"
 
 [dev-dependencies]
-datazen-data-transfer = { path = "../../data-transfer" }
-datazen-schema-diff = { path = "../../schema-diff" }
+datazen = { workspace = true, features = ["schema_diff", "data_transfer"] }

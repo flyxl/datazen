@@ -1,14 +1,12 @@
 //! Desktop bindings for shared workflow execution.
 use crate::commands::AppState;
-use datazen_ai_api::{ChatMessage, CompletionRequest, MessageRole};
+use datazen::ai::{ChatMessage, CompletionRequest, MessageRole};
+use datazen::mcp::permission::McpPermissionMode;
+use datazen::workflow::command::WorkflowCommandStep;
+use datazen::workflow::error::WorkflowError;
+use datazen::workflow::host::WorkflowHost;
+use datazen::workflow::resource_execution::{PreparedExecution, ResourceExecutionHost};
 use datazen_driver_api::{ConnectionConfig, DatabaseDriver};
-use datazen_feature_core::mcp::permission::McpPermissionMode;
-use datazen_feature_core::workflow::command::WorkflowCommandStep;
-use datazen_feature_core::workflow::error::WorkflowError;
-use datazen_feature_core::workflow::host::WorkflowHost;
-use datazen_feature_core::workflow::resource_execution::{
-    PreparedExecution, ResourceExecutionHost,
-};
 use std::sync::Arc;
 
 #[async_trait::async_trait]
@@ -51,11 +49,11 @@ impl WorkflowHost for AppState {
             .get(&config.provider_type)
             .await
             .ok_or_else(|| WorkflowError::Ai("AI provider not available".into()))?;
-        let gate = datazen_feature_core::ai::safety::effective_safety_gate(
+        let gate = datazen::ai::safety::effective_safety_gate(
             &self.store.get_ai_settings_config().await,
             &self.store.execution_settings().await,
         );
-        let prompt = datazen_feature_core::ai::safety::redact_for_gate(&prompt, &gate);
+        let prompt = datazen::ai::safety::redact_for_gate(&prompt, &gate);
         let request = CompletionRequest {
             request_id: uuid::Uuid::new_v4().to_string(),
             model: config.model.clone(),
@@ -84,7 +82,7 @@ impl WorkflowHost for AppState {
 ///
 /// The rules — what a step may dispatch, how the target is resolved and which
 /// commands are allowed in a workflow — live in
-/// `datazen_feature_core::workflow::resource_execution`. This binding only
+/// `datazen::workflow::resource_execution`. This binding only
 /// supplies the desktop primitives: the persisted profile, the driver
 /// registry, the safe-mode policy and the platform's canonical target.
 #[async_trait::async_trait]
@@ -116,7 +114,7 @@ impl ResourceExecutionHost for AppState {
         _id: &str,
         revision: u64,
         command: &str,
-        target: datazen_platform_api::target::ExecutionTarget,
+        target: datazen::execution::target::ExecutionTarget,
     ) -> Result<PreparedExecution, WorkflowError> {
         let adapter = self
             .platform_require()
@@ -128,7 +126,7 @@ impl ResourceExecutionHost for AppState {
         let canonical = adapter
             .resolve_execution_target(
                 call.context(),
-                datazen_platform_api::id::Counter::new(revision),
+                datazen::shared::id::Counter::new(revision),
                 command,
                 &target,
             )
@@ -146,14 +144,14 @@ impl ResourceExecutionHost for AppState {
 
 /// The shared executor running on the desktop host.
 ///
-/// The executor itself lives in `datazen_feature_core::workflow::executor`;
+/// The executor itself lives in `datazen::workflow::executor`;
 /// what these tests pin down is that the desktop host binding of it (the
 /// `WorkflowHost` impl above) carries a workflow's default connection into
 /// its steps and runs data steps without a database.
 #[cfg(test)]
 mod host_execution_tests {
-    use datazen_feature_core::workflow::executor::WorkflowExecutor;
-    use datazen_feature_core::workflow::model::{
+    use datazen::workflow::executor::WorkflowExecutor;
+    use datazen::workflow::model::{
         MergeSource, StepStatus, TransformColumn, WorkflowDefinition, WorkflowStep,
     };
 

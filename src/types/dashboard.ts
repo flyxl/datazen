@@ -35,7 +35,13 @@ export interface AlertMetric {
 
 export type AlertOperator = '>' | '>=' | '<' | '<=' | '==' | '!=';
 
-export type AlertChannel = 'desktop' | 'webhook' | 'email';
+/**
+ * Alert delivery channels. `app` is the host's own notification surface
+ * (OS notification on desktop). Renamed from a form-specific literal during
+ * the D6 form-neutrality pass; persisted values from older versions are
+ * mapped to `app` on load by the backend.
+ */
+export type AlertChannel = 'app' | 'webhook' | 'email';
 
 export interface AlertRule {
   metric: AlertMetric;

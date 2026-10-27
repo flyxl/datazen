@@ -10,7 +10,7 @@
 //!   --features test-harness --test driver_command_ipc
 //! ```
 
-use datazen::test_harness::{
+use datazen_desktop::test_harness::{
     connect, execute_driver_command, get_connection_commands, get_connections,
     ExecuteDriverCommandRequest, TestAppState,
 };

@@ -105,15 +105,15 @@ impl DesktopRepository {
         id: &str,
         expected: Option<u64>,
         mutate: F,
-    ) -> Result<(ConnectionConfig, ProfileMetadata), datazen_platform_api::error::PortError>
+    ) -> Result<(ConnectionConfig, ProfileMetadata), datazen::shared::error::PortError>
     where
         F: FnOnce(
                 Option<ConnectionConfig>,
                 &mut ProfileMetadata,
-            ) -> Result<ConnectionConfig, datazen_platform_api::error::PortError>
+            ) -> Result<ConnectionConfig, datazen::shared::error::PortError>
             + Send,
     {
-        use datazen_platform_api::error::PortError;
+        use datazen::shared::error::PortError;
         let _guard = self.write_lock.lock().await;
         let mut cache = self.cache.write().await;
         let previous = cache.connections.iter().find(|c| c.id == id).cloned();

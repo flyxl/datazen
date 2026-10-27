@@ -3,7 +3,7 @@
 //! 由 `adapter.rs` 以 `#[path]` 在 `#[cfg(test)]` 下装载：`super::` 因此仍指向 `adapter` 模块，
 //! 且本文件与 `adapter.rs` 同目录，`include_str!("adapter.rs")` 的解析基准与拆出前逐字节一致。
 use super::*;
-use datazen_platform_api::id::{ClientInstanceId, EditorSessionId, JobId, StageId};
+use datazen::shared::id::{ClientInstanceId, EditorSessionId, JobId, StageId};
 
 fn adapter() -> PlatformAdapter {
     PlatformAdapter::with_identity(
@@ -77,7 +77,7 @@ fn completing_step_seven_advances_the_machine_to_fully_wired() {
 #[tokio::test]
 async fn injection_wires_the_storage_ports_into_the_application_services() {
     use crate::store::{DesktopRepository, KeyBackend};
-    use datazen_platform_api::ports::tunnel::TunnelRepository;
+    use datazen::tunnel::TunnelRepository;
 
     let temp = tempfile::tempdir().expect("临时目录");
     let store = Arc::new(
@@ -86,13 +86,12 @@ async fn injection_wires_the_storage_ports_into_the_application_services() {
             .expect("临时存储"),
     );
     let tunnels: Arc<dyn TunnelRepository> = store.clone();
-    let expected_settings: Arc<dyn datazen_platform_api::ports::SettingsRepository> = store.clone();
 
     let adapter = adapter();
     adapter
         .inject(
-            store,
-            Arc::new(datazen_runtime::driver_registry::DriverRegistry::new()),
+            store.clone(),
+            Arc::new(datazen::execution::runtime::driver_registry::DriverRegistry::new()),
             tunnels.clone(),
             crate::platform::known_hosts::desktop_known_hosts_repository(temp.path()),
         )
@@ -110,9 +109,19 @@ async fn injection_wires_the_storage_ports_into_the_application_services() {
         Arc::ptr_eq(&services.tunnels, &tunnels),
         "应用服务持有的隧道仓储必须是宿主注入的那一个实例"
     );
-    assert!(
-        Arc::ptr_eq(&services.settings, &expected_settings),
-        "应用服务持有的设置仓储必须是宿主注入的那一个实例"
+    // D1 收尾后：设置用例由 datazen 拥有，经 adapter 直接暴露。
+    // 同一条端到端证据仍然成立——模块服务读到的必须是同一个 DesktopRepository
+    // 事实，而不是另一份缓存或默认实现。
+    let shared = adapter
+        .require_settings_service()
+        .expect("注入后必须取得到模块设置服务")
+        .read()
+        .await
+        .expect("模块设置服务必须可读");
+    assert_eq!(
+        shared,
+        store.get_settings().await.shared_settings(),
+        "模块设置服务必须读取同一个 DesktopRepository 事实"
     );
     // 全部接线成功时没有任何降级项：降级表不是「永远非空」的摆设。
     assert!(
@@ -139,7 +148,7 @@ async fn injection_wires_the_storage_ports_into_the_application_services() {
 #[tokio::test]
 async fn optional_wiring_failure_degrades_only_its_own_capability() {
     use crate::store::{DesktopRepository, KeyBackend};
-    use datazen_platform_api::ports::tunnel::TunnelRepository;
+    use datazen::tunnel::TunnelRepository;
 
     let temp = tempfile::tempdir().expect("临时目录");
     let store = Arc::new(
@@ -155,7 +164,7 @@ async fn optional_wiring_failure_degrades_only_its_own_capability() {
     adapter
         .inject(
             store,
-            Arc::new(datazen_runtime::driver_registry::DriverRegistry::new()),
+            Arc::new(datazen::execution::runtime::driver_registry::DriverRegistry::new()),
             tunnels.clone(),
             crate::platform::known_hosts::desktop_known_hosts_repository(temp.path()),
         )
@@ -261,7 +270,7 @@ fn owned_call_accepts_the_current_instance_editor_owner() {
         .expect("同实例 editor owner 应通过");
     assert!(matches!(
         owner,
-        datazen_platform_api::context::OwnerRef::Editor { .. }
+        datazen::shared::context::OwnerRef::Editor { .. }
     ));
     assert_eq!(scope.context().client_instance_id.as_str(), "client-1");
 }
@@ -317,7 +326,7 @@ fn failing_requirements_never_fall_back_to_the_legacy_path() {
 
 /// 注入点常量必须指向真实符号，否则"可定位"的承诺是假的。
 ///
-/// 这条断言随注入缝隙一起搬到了 `packages/application/src/frontend_bridge.rs`，
+/// 这条断言随注入缝隙一起搬到了 `modules/src/application/frontend_bridge.rs`，
 /// 但它校验的是**宿主侧**符号，所以留在 adapter 的用例里：常量在用例层，
 /// 被指名的 `pub fn set_bridge_injection` 在组装层，两端必须同时可读。
 #[test]
@@ -356,8 +365,8 @@ fn no_shell_implementation_of_the_thirteen_use_cases_exists() {
 /// `ConfigRevisionMismatch` 判定会永久失效。本测试把这个事实钉住。
 #[test]
 fn profile_view_defaults_are_placeholders_and_must_not_be_used_on_the_desktop_path() {
-    use datazen_platform_api::dto::profile::ProfileView;
-    use datazen_platform_api::id::{ConnectionId, Counter};
+    use datazen::connection::dto::ProfileView;
+    use datazen::shared::id::{ConnectionId, Counter};
 
     let view = ProfileView::new(ConnectionId::new("c-1"), "本地", "postgres");
     // 没有任何真实版本源时，唯一能拿到的就是 ZERO —— 一个编造值。

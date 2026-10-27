@@ -32,7 +32,7 @@ async fn save_json_file_leaves_no_tmp_artifacts() {
 
 #[tokio::test]
 async fn save_ai_config_uses_atomic_encrypted_write() {
-    use datazen_ai_api::{AiProviderConfig, AiProviderType};
+    use datazen::ai::{AiProviderConfig, AiProviderType};
 
     let dir = tempfile::tempdir().unwrap();
     let store = init_store_for_test(dir.path()).await;
@@ -59,7 +59,7 @@ async fn save_ai_config_uses_atomic_encrypted_write() {
 
 #[tokio::test]
 async fn delete_ai_config_removes_file() {
-    use datazen_ai_api::{AiProviderConfig, AiProviderType};
+    use datazen::ai::{AiProviderConfig, AiProviderType};
 
     let dir = tempfile::tempdir().unwrap();
     let store = init_store_for_test(dir.path()).await;

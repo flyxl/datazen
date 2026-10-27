@@ -34,8 +34,13 @@ pub(crate) async fn start_migration_run(
         rollback_outcome: "notRequired".into(),
         error_summary: None,
     };
-    if let Err(error) = state.store.save_migration_run(&run).await {
-        tracing::warn!(%error, operation, "failed to persist migration run start");
+    match crate::platform::ipc::require_history_service(state) {
+        Ok(service) => {
+            if let Err(error) = service.save_migration_run(&run).await {
+                tracing::warn!(%error, operation, "failed to persist migration run start");
+            }
+        }
+        Err(error) => tracing::warn!(%error, operation, "history service not injected"),
     }
     run
 }
@@ -77,8 +82,13 @@ pub(crate) async fn finish_migration_run(
         run.error_summary =
             Some("Execution failed; details are available in the application log".into());
     }
-    if let Err(error) = state.store.save_migration_run(&run).await {
-        tracing::warn!(%error, "failed to persist migration run completion");
+    match crate::platform::ipc::require_history_service(state) {
+        Ok(service) => {
+            if let Err(error) = service.save_migration_run(&run).await {
+                tracing::warn!(%error, "failed to persist migration run completion");
+            }
+        }
+        Err(error) => tracing::warn!(%error, "history service not injected"),
     }
 }
 
@@ -147,8 +157,13 @@ pub(crate) async fn finish_data_sync_migration_run(
                 .into(),
         ),
     };
-    if let Err(error) = state.store.save_migration_run(&run).await {
-        tracing::warn!(%error, "failed to persist Data Sync migration run completion");
+    match crate::platform::ipc::require_history_service(state) {
+        Ok(service) => {
+            if let Err(error) = service.save_migration_run(&run).await {
+                tracing::warn!(%error, "failed to persist Data Sync migration run completion");
+            }
+        }
+        Err(error) => tracing::warn!(%error, "history service not injected"),
     }
 }
 
@@ -160,8 +175,7 @@ pub(crate) async fn purge_history_impl(
     let scope = HistoryScope::parse(&scope)
         .ok_or_else(|| CommandError::Validation(format!("Invalid history scope: {scope}")))?;
     tracing::info!(?scope, ?retain_days, "purge_history");
-    state
-        .store
+    crate::platform::ipc::require_history_service(state)?
         .purge_history(scope, retain_days)
         .await
         .cmd_err("purge_history")
@@ -183,8 +197,7 @@ pub async fn list_migration_runs(
     offset: Option<u64>,
     limit: Option<u64>,
 ) -> Result<MigrationRunPage, CommandError> {
-    state
-        .store
+    crate::platform::ipc::require_history_service(&state)?
         .list_migration_runs(
             &filter.unwrap_or_default(),
             offset.unwrap_or(0),
@@ -199,8 +212,7 @@ pub async fn get_migration_run(
     state: State<'_, AppState>,
     run_id: String,
 ) -> Result<MigrationRunRecord, CommandError> {
-    state
-        .store
+    crate::platform::ipc::require_history_service(&state)?
         .get_migration_run(&run_id)
         .await
         .cmd_err("get_migration_run")?
@@ -313,18 +325,18 @@ mod tests {
     #[tokio::test]
     async fn purge_history_clear_all_query_scope() {
         let test = TestAppState::new().await;
-        test.store
+        crate::platform::ipc::require_history_service(&test.state)
+            .unwrap()
             .add_query_history(sample_entry("SELECT 1"))
-            .await
-            .unwrap();
+            .await;
 
         let deleted = purge_history_impl(&test.state, "query".into(), None)
             .await
             .unwrap();
         assert_eq!(deleted, 1);
-        assert!(test
-            .store
-            .get_query_history(10, None, None, None)
+        assert!(crate::platform::ipc::require_history_service(&test.state)
+            .unwrap()
+            .recent_query_history(10, None, None, None)
             .await
             .is_empty());
     }
@@ -369,8 +381,8 @@ mod tests {
 
         finish_data_sync_migration_run(&test.state, run, &response, false).await;
 
-        let stored = test
-            .store
+        let stored = crate::platform::ipc::require_history_service(&test.state)
+            .unwrap()
             .get_migration_run(&run_id)
             .await
             .unwrap()
@@ -378,8 +390,8 @@ mod tests {
         assert_eq!(stored.outcome, "unknown");
         assert_eq!(stored.rollback_outcome, "unknown");
         assert_eq!(stored.profile_id.as_deref(), Some("sync-profile-a"));
-        let page = test
-            .store
+        let page = crate::platform::ipc::require_history_service(&test.state)
+            .unwrap()
             .list_migration_runs(
                 &MigrationRunFilter {
                     operation: Some("dataSync".into()),
@@ -491,8 +503,8 @@ mod tests {
             run.source_connection_id = Some("source-stable-id".into());
             run.target_connection_id = Some("target-stable-id".into());
             finish_data_sync_migration_run(&test.state, run, &response, cancelled).await;
-            let saved = test
-                .store
+            let saved = crate::platform::ipc::require_history_service(&test.state)
+                .unwrap()
                 .get_migration_run(&run_id)
                 .await
                 .unwrap()

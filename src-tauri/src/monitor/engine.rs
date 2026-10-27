@@ -5,12 +5,15 @@ use crate::dashboard::{
 };
 use crate::monitor::channels::{dispatch_notifications, AlertChannelState};
 use crate::{commands::AppState, store::DesktopRepository};
-use datazen_feature_core::dashboard::monitor::{MonitorEngine as CoreEngine, MonitorHost};
-use datazen_feature_core::dashboard::repository::{
+use datazen::dashboard::repository::{
     list_dashboards, set_dashboard_refresh_paused, DashboardRepositoryError,
 };
-use datazen_feature_core::dashboard::types::{Dashboard, DashboardWidget, WidgetRun};
-use datazen_platform_api::ports::scope::OrganizationScope;
+use datazen::dashboard::types::{Dashboard, DashboardWidget, WidgetRun};
+#[cfg(feature = "webdriver")]
+use datazen::monitor::application::evidence;
+use datazen::monitor::application::{MonitorEngine as CoreEngine, MonitorHost};
+use datazen::monitor::domain::MonitorGrant;
+use datazen::shared::scope::OrganizationScope;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 struct DesktopMonitorHost {
@@ -173,13 +176,9 @@ impl MonitorHost for DesktopMonitorHost {
         &self,
         dashboard_id: &str,
         widget: &DashboardWidget,
-    ) -> Result<datazen_feature_core::dashboard::schedule_grant::MonitorGrant, String> {
+    ) -> Result<MonitorGrant, String> {
         #[cfg(feature = "webdriver")]
-        super::evidence::note(
-            dashboard_id,
-            &widget.id,
-            super::evidence::Stage::GrantChecking,
-        );
+        evidence::note(dashboard_id, &widget.id, evidence::Stage::GrantChecking);
         let grant = self
             .store
             .app_db()
@@ -194,26 +193,18 @@ impl MonitorHost for DesktopMonitorHost {
             .ok_or("Monitor app state unavailable")?;
         if let Err(error) = super::scheduled::validate(&state, &grant).await {
             #[cfg(feature = "webdriver")]
-            super::evidence::note(
-                dashboard_id,
-                &widget.id,
-                super::evidence::Stage::GrantRejected,
-            );
+            evidence::note(dashboard_id, &widget.id, evidence::Stage::GrantRejected);
             return Err(error);
         }
         #[cfg(feature = "webdriver")]
-        super::evidence::note(
-            dashboard_id,
-            &widget.id,
-            super::evidence::Stage::GrantValidated,
-        );
+        evidence::note(dashboard_id, &widget.id, evidence::Stage::GrantValidated);
         Ok(grant)
     }
     async fn execute_scheduled_widget(
         &self,
         dashboard_id: &str,
         widget: &DashboardWidget,
-        grant: &datazen_feature_core::dashboard::schedule_grant::MonitorGrant,
+        grant: &MonitorGrant,
     ) -> Result<WidgetRun, String> {
         let state = self
             .state

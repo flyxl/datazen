@@ -2,9 +2,9 @@
 
 use super::server::DataZenMcpServer;
 use crate::services::runtime_command_source::RuntimeCommandSource;
+use datazen::ai::budget;
+use datazen::ai::context::format_compact_ddl;
 use datazen_driver_api::{DatabaseDriver, TableSchema};
-use datazen_feature_core::ai::budget;
-use datazen_feature_core::ai::context::format_compact_ddl;
 use rmcp::ErrorData as McpError;
 use std::sync::Arc;
 

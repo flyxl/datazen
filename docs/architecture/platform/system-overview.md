@@ -4,6 +4,8 @@
 > 本文按用户明确要求保存设计文档，不把规划表述为当前功能。实现后逐节改写为事实，删除已失效的过渡约定。基线复核：§2 引用文件的连接/调用语义变化、`PROTOCOL_VERSION` 变化、任一阶段开始落地时，必须重新核对相关事实与跨文档契约。
 > 配套：[连接管理详细设计](connection-management.md)、[分阶段开发计划](../../development/platform-development-plan.md)。
 
+> **2026-10-24 目标代码组织更新**：以 [DDD 模块化指南](../../development/ddd-refactor-plan.md) 替代本文旧的横向 crate 拆分目标：共享业务收敛到单一 modules crate，功能内含 application/domain，执行机制位于 execution/runtime，桌面与 `web/` 宿主分别实现基础设施并按需装配。三种产品形态、协议与安全目标不变；以下旧包图不能作为新布局已落地的证明。
+
 ## 1. 目标与范围
 
 同一套 React 产品和 Rust 业务内核支持三种方式：
@@ -27,11 +29,11 @@
 | 当前入口 | 已确认事实 | 目标改造 |
 | --- | --- | --- |
 | [AppState](../../../src-tauri/src/commands/mod.rs) | 聚合连接、事务、任务、AI、Workflow 等服务 | 组装留在 host，应用服务只接收必要依赖 |
-| [Runtime session registry](../../../packages/runtime/src/registry/registry.rs) + [desktop session backend](../../../src-tauri/src/platform/session_backend.rs) | 管理 dbSessionId、owner、生命周期与物理资源；过期会话明确失效，不以同一 ID 透明重连 | 统一预算、资源释放与会话状态；到期关闭前回滚事务，关闭不确定时保留隔离状态 |
+| [Runtime session registry](../../../modules/src/execution/runtime/registry/registry.rs) + [desktop session backend](../../../src-tauri/src/platform/session_backend.rs) | 管理 dbSessionId、owner、生命周期与物理资源；过期会话明确失效，不以同一 ID 透明重连 | 统一预算、资源释放与会话状态；到期关闭前回滚事务，关闭不确定时保留隔离状态 |
 | [Driver API](../../../packages/driver-api/src/traits.rs) | 提供 DatabaseDriver、Command、迁移等能力 | 增加固定执行资源契约、可选能力接口 |
 | [Factory](../../../packages/driver-api/src/factory.rs) | inventory 编译期注册 | 桌面与 server 使用同一注册入口 |
 | [前端 Command SDK](../../../packages/driver-sdk/src/ipc/driverCommands.ts) | 直接导入 Tauri invoke/Channel | 注入传输无关 BackendClient |
-| [Workflow Command runtime](../../../packages/feature-core/src/workflow/command_runtime.rs) | 解析 connectionId，传递目标 database/schema | 明确 step/session/transaction 三种资源范围 |
+| [Workflow Command runtime](../../../modules/src/workflow/command_runtime.rs) | 解析 connectionId，传递目标 database/schema | 明确 step/session/transaction 三种资源范围 |
 | [dedicatedDbSession](../../../src/lib/dedicatedDbSession.ts) | 三件套准备会话由前端创建、释放 | 执行资源由后端 Job 持有 |
 
 Driver 公共类型继续遵守[驱动依赖边界](../../development/driver-api-dependency-boundary.md)。基线 `packages/driver-api/src/lib.rs` 的 `PROTOCOL_VERSION` 为 6、最低版本为 1；实现时重新核对，不能从旧架构说明复制版本数字。
@@ -92,15 +94,14 @@ flowchart TD
 > 状态说明（2026-10-21 复核）：桌面形态的 Rust 共享包**已创建并加入 workspace**（`Cargo.toml` members 实测），本节的 crate 拆分不再是「尚未创建」目标；真正未落地的只剩 `server/` HTTP host 与 `packages/themes/` 的目标主题资源。下面按当前事实标注。
 
 ```text
-packages/application/        Rust 用例、DTO、错误、授权编排        【已落地，workspace member】
-packages/runtime/            Rust session、lease、资源调度、execution、job【已落地，workspace member】
-packages/platform-api/       Rust ports 与环境适配（SessionDirectory/BudgetCoordinator 接口）【已落地】
-packages/platform-infra/     形态中立基础设施原语（脱敏、路径安全）      【已落地】
-packages/schema-diff/        共享 Schema Diff 领域引擎                  【已落地】
-packages/data-sync/          共享 Data Sync 领域引擎                    【已落地】
-packages/data-transfer/      共享 Data Transfer 领域引擎                【已落地】
-packages/migration-common/   迁移引擎共享的 pair/recordset 边界          【已落地】
-packages/feature-core/       共享 feature（Workflow/AI/MCP/Dashboard/导出/备份恢复/Wapp 内核）【已落地】
+modules/        Rust domain/application、DTO、错误、授权编排、执行运行时与 Jobs【已落地，workspace member】
+modules/src/platform_api/       迁入的传输无关 ports 与契约命名空间【已落地】
+packages/infra/              形态中立基础设施原语（脱敏、路径安全）      【已落地】
+modules/src/migration/schema_diff/        共享 Schema Diff 领域引擎                  【已落地】
+modules/src/migration/data_sync/          共享 Data Sync 领域引擎                    【已落地】
+modules/src/migration/data_transfer/      共享 Data Transfer 领域引擎                【已落地】
+modules/src/migration/common/   迁移引擎共享的 pair/recordset 边界          【已落地】
+modules/       共享 feature（Workflow/AI/MCP/Dashboard/导出/备份恢复/Wapp 内核）【已落地】
 packages/driver-api/         现有 Driver API 与可选能力
 packages/driver-sdk/         现有驱动前端元数据/方言/Command SDK
 packages/ai-api/             现有 AI Provider trait、工厂与调用协议
@@ -118,7 +119,7 @@ src/                         共享 React 产品与平台桥
 
 `server/` 与 `packages/themes/` 在实施阶段才加入 workspace/build 配置；`packages/themes` 当前目录仍是旧 v1 ThemePack 存档，目标主题资源与其并存，迁移前不改旧目录。桌面 multi-worker 的编排目标（worker 隔离、drain、RuntimeRouter 投入使用）也未落地：当前桌面是单进程组装，依赖方向与下面段落一致。
 
-依赖方向：host → application/runtime/领域包；application/runtime → platform-api/driver-api；driver → driver-api。`SessionDirectory` 与 `BudgetCoordinator` 的接口归 `platform-api`，SessionRegistry/ResourceManager 只依赖这些 port；桌面/单进程先用内存适配，多 worker 再替换目录和全局预算适配。领域引擎归 `packages/schema-diff`、`packages/data-sync`、`packages/data-transfer`；Tauri 命令、窗口与文件选择留在 `src-tauri` adapter。领域包不得反向 import host。JobRuntime 通过注册的 JobHandler 调用领域引擎，避免 runtime 与领域 crate 循环依赖。
+依赖方向：host → application/runtime/领域包；application/runtime → platform-api/driver-api；driver → driver-api。`SessionDirectory` 与 `BudgetCoordinator` 的接口归 `platform-api`，SessionRegistry/ResourceManager 只依赖这些 port；桌面/单进程先用内存适配，多 worker 再替换目录和全局预算适配。领域引擎归 `modules/src/migration/schema_diff`、`modules/src/migration/data_sync`、`modules/src/migration/data_transfer`；Tauri 命令、窗口与文件选择留在 `src-tauri` adapter。领域包不得反向 import host。JobRuntime 通过注册的 JobHandler 调用领域引擎，避免 runtime 与领域 crate 循环依赖。
 
 ## 5. 统一领域对象
 
@@ -259,9 +260,8 @@ interface ArtifactChunk {
 | EventSink | 发布带 sequence 的事件、受控订阅；终态可从 repository 重建 |
 | NetworkProvider | 按路由策略建立直连/隧道、端点校验、共享引用 |
 | BudgetCoordinator | 申请节点额度、续期、drain；失联时停止新增资源 |
-| ConnectionCatalog | 连接配置与分组的 list/get/save、只改最后连接时间的 touch；词汇表复用 `ConnectionConfig`，端口为明文语义 |
 
-本表不含 `IdentityResolver`（它已在 §4 模块职责表中引入）：执行身份解析（`executionIdentityKey` 的生产者）由 `IdentityResolver` 承担，`SecretProvider` 只负责版本化秘密材料的读取与轮换；边界见共享边界详细设计。
+本表不含 `ConnectionCatalog`（D2 起已归 `datazen::connection::domain::ConnectionRepository` 拥有，宿主 desktop/web 各自实现同一 domain trait；词汇表复用 `ConnectionConfig`，端口为明文语义），也不含 `IdentityResolver`（它已在 §4 模块职责表中引入）：执行身份解析（`executionIdentityKey` 的生产者）由 `IdentityResolver` 承担，`SecretProvider` 只负责版本化秘密材料的读取与轮换；边界见共享边界详细设计。
 
 `IdentityResolver` 的桌面实现**已落地**（`src-tauri/src/platform/execution_identity.rs` 的 `DesktopIdentityResolver`，装配于 `PlatformAdapter::inject`）：身份键由 `(organizationId, connectionId, policyIsolationKey)` 加一把服务端固定盐（宿主主密钥经 HMAC 域分离派生的子钥）确定性派生，因此同一三元组恒得同一键、凭据轮换只推进 `credentialRevision`；委托走独立入口 `resolve_delegation`，域标签与输入集都与本人路径不同，校验不过失败关闭、不降级为调用者权限（CM-06）；**`resolve` 在委托上下文上一律拒绝**——委托身份只能由 `resolve_delegation` 产出。客户端传入的用户名、角色与 `principal` 不参与派生（CM §4.1）。
 

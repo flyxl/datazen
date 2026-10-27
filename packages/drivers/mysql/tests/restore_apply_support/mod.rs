@@ -1,22 +1,26 @@
 //! Test host ports; database effects always come from the real MySQL provider.
 use async_trait::async_trait;
-use datazen_driver_api::{resource as dr, session as ds};
-use datazen_platform_api::{
-    error::PortError,
-    id::*,
-    ports::{policy::*, profile::*},
-    RequestContext,
-};
-use datazen_runtime::{
+use datazen::execution::application::policy::{DelegationGrant, PolicyChangeStream};
+use datazen::execution::runtime::driver_mapping as mapping;
+use datazen::execution::runtime::{
     connection as rt,
     registry::{backend::*, SessionBackend},
 };
+use datazen::{
+    connection::{ProfileRecord, ProfileRepository, ProfileScope},
+    execution::application::{
+        AuthorizationAction, AuthorizationDecision, AuthorizationSubject, PolicyService,
+    },
+    shared::error::PortError,
+    shared::id::*,
+    shared::policy::*,
+    RequestContext,
+};
+use datazen_driver_api::{resource as dr, session as ds};
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
 };
-#[path = "../../../../../src-tauri/src/platform/resource_mapping.rs"]
-mod mapping;
 struct Profiles {
     revision: AtomicU64,
 }
@@ -42,7 +46,7 @@ impl ProfileRepository for Profiles {
     async fn create(
         &self,
         _: &RequestContext,
-        _: datazen_platform_api::dto::profile::ProfileDraft,
+        _: datazen::connection::dto::ProfileDraft,
         _: &IdempotencyKey,
     ) -> Result<ProfileRecord, PortError> {
         unreachable!()
@@ -52,7 +56,7 @@ impl ProfileRepository for Profiles {
         _: &RequestContext,
         _: ConnectionId,
         _: ConfigRevision,
-        _: datazen_platform_api::dto::profile::ProfilePatch,
+        _: datazen::connection::dto::ProfilePatch,
     ) -> Result<ProfileRecord, PortError> {
         unreachable!()
     }
@@ -95,7 +99,7 @@ impl PolicyService for Policy {
     async fn verify_delegation(
         &self,
         _: &RequestContext,
-        _: datazen_platform_api::context::DelegationRef,
+        _: datazen::shared::context::DelegationRef,
     ) -> Result<DelegationGrant, PortError> {
         unreachable!()
     }
@@ -115,9 +119,9 @@ pub struct Lifecycle {
 pub fn runtime(
     config: datazen_driver_api::ConnectionConfig,
     lifecycle: Arc<Lifecycle>,
-) -> Arc<datazen_runtime::application::RuntimeConnectionUseCases> {
+) -> Arc<datazen::execution::application::RuntimeConnectionUseCases> {
     Arc::new(
-        datazen_runtime::application::RuntimeConnectionUseCases::new(
+        datazen::execution::application::RuntimeConnectionUseCases::new(
             Arc::new(Profiles {
                 revision: AtomicU64::new(1),
             }),
@@ -216,7 +220,9 @@ impl SessionBackend for Backend {
         Ok(OpenedResource {
             context: mapping::context(&observed.context),
             resource_id: id,
-            capabilities: datazen_runtime::registry::audit::CapabilityVersions::new("1", "1"),
+            capabilities: datazen::execution::runtime::registry::audit::CapabilityVersions::new(
+                "1", "1",
+            ),
             capability_snapshot: CapabilityProvenance::new("mysql", "test", 1),
             driver_supports_cancel: false,
         })

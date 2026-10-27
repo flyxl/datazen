@@ -1,0 +1,216 @@
+//! Runtime-side operations that extend the transport-neutral JobRepository port.
+//!
+//! These methods are deliberately separate from `platform-api::JobRepository`: they are
+//! needed while a handler is running (especially by the cancel watcher), or to persist
+//! the runtime's result projection. Persistent identifiers and DTOs only cross this API.
+
+use crate::execution::domain::EffectOutcome;
+use crate::jobs::domain::job::{
+    Checkpoint, CommitBoundary, JobDetails, JobDomainResult, JobProgress, JobRecord,
+    JobRecoveryResult, JobRecoveryVerification, JobState,
+};
+use crate::shared::context::RequestContext;
+use crate::shared::error::PortError;
+use crate::shared::id::{IdempotencyKey, JobId, JobStateVersion};
+use async_trait::async_trait;
+
+use crate::jobs::domain::job::JobClaim;
+use crate::jobs::domain::repository::JobRepository;
+use crate::jobs::engine::memory_repository::CancelPollSnapshot;
+use crate::shared::id::ArtifactId;
+
+/// Operations consumed by `JobRuntime` and the desktop Job host.
+///
+/// 这些方法都在 `JobRepository` 之上追加运行时需要的能力，**每一个都必须按
+/// `ctx` 的组织隔离**：读到的行必须属于当前组织，越组织按「不存在 / 空」处理；
+/// 写入必须先过 claim fencing（含组织核对），否则按「旧 claim」拒绝。
+#[async_trait]
+pub trait JobRuntimeRepository: JobRepository {
+    async fn validate_stage_owner(
+        &self,
+        _ctx: &RequestContext,
+        _claim: &JobClaim,
+        _stage: &crate::shared::id::StageId,
+    ) -> Result<(), PortError> {
+        Err(PortError::StaleClaim)
+    }
+
+    async fn cancel_poll(
+        &self,
+        ctx: &RequestContext,
+        job_id: &JobId,
+    ) -> Result<CancelPollSnapshot, PortError>;
+
+    async fn request_cancel(
+        &self,
+        ctx: &RequestContext,
+        job_id: &JobId,
+    ) -> Result<JobRecord, PortError>;
+
+    async fn confirm_cancelled_not_started(
+        &self,
+        ctx: &RequestContext,
+        job_id: &JobId,
+        outcome: EffectOutcome,
+    ) -> Result<JobRecord, PortError>;
+
+    async fn mark_failed_unstarted(
+        &self,
+        ctx: &RequestContext,
+        job_id: &JobId,
+        reason_code: &str,
+    ) -> Result<JobRecord, PortError>;
+
+    async fn mark_pending_verification(
+        &self,
+        ctx: &RequestContext,
+        job_id: &JobId,
+        reason_code: &str,
+    ) -> Result<JobRecord, PortError>;
+
+    async fn record_progress(
+        &self,
+        ctx: &RequestContext,
+        claim: &JobClaim,
+        progress: JobProgress,
+    ) -> Result<(), PortError>;
+
+    async fn record_artifacts(
+        &self,
+        ctx: &RequestContext,
+        claim: &JobClaim,
+        artifacts: &[ArtifactId],
+    ) -> Result<(), PortError>;
+
+    /// Persist one bounded handler result under the active claim fence.
+    async fn record_domain_result(
+        &self,
+        ctx: &RequestContext,
+        claim: &JobClaim,
+        result: JobDomainResult,
+    ) -> Result<(), PortError>;
+
+    async fn append_external_artifacts(
+        &self,
+        ctx: &RequestContext,
+        job_id: &JobId,
+        artifacts: &[ArtifactId],
+    ) -> Result<(), PortError>;
+
+    async fn finish(
+        &self,
+        ctx: &RequestContext,
+        claim: &JobClaim,
+        expected: JobStateVersion,
+        state: JobState,
+        outcome: EffectOutcome,
+        progress: JobProgress,
+        error_code: Option<String>,
+        pending_verification_reason: Option<String>,
+    ) -> Result<JobRecord, PortError>;
+
+    async fn persist_recovery(
+        &self,
+        ctx: &RequestContext,
+        job_id: &JobId,
+        recovery: JobRecoveryResult,
+    ) -> Result<(), PortError>;
+
+    /// Atomically apply an explicit verifier's safe verdict and newly confirmed facts.
+    async fn persist_recovery_verification(
+        &self,
+        ctx: &RequestContext,
+        job_id: &JobId,
+        expected: JobStateVersion,
+        verification: JobRecoveryVerification,
+    ) -> Result<(), PortError>;
+
+    async fn receipt_for(
+        &self,
+        ctx: &RequestContext,
+        key: &IdempotencyKey,
+    ) -> Result<Option<JobId>, PortError>;
+
+    async fn committed_boundaries(
+        &self,
+        ctx: &RequestContext,
+        job_id: &JobId,
+    ) -> Result<Vec<CommitBoundary>, PortError>;
+
+    async fn latest_checkpoint(
+        &self,
+        ctx: &RequestContext,
+        job_id: &JobId,
+    ) -> Result<Option<Checkpoint>, PortError>;
+
+    async fn get_details(
+        &self,
+        ctx: &RequestContext,
+        job_id: JobId,
+    ) -> Result<JobDetails, PortError>;
+}
+
+/// Validate the field-level safety and resource bounds shared by all repository implementations.
+pub fn validate_job_domain_result(result: &JobDomainResult) -> Result<(), PortError> {
+    if !safe_result_marker(result.stage_id.as_str())
+        || !safe_result_marker(&result.result_code)
+        || !safe_result_marker(&result.outcome_code)
+        || result.counters.len() > 32
+        || result.items.len() > 4096
+        || result.artifact_ids.len() > 4096
+    {
+        return Err(PortError::BackendUnavailable(
+            "job domain result is outside the safe format".into(),
+        ));
+    }
+    let mut counter_codes = std::collections::HashSet::new();
+    if result
+        .counters
+        .iter()
+        .any(|counter| !safe_result_marker(&counter.code) || !counter_codes.insert(&counter.code))
+    {
+        return Err(PortError::BackendUnavailable(
+            "job result counters are invalid".into(),
+        ));
+    }
+    let mut item_ids = std::collections::HashSet::new();
+    if result.items.iter().any(|item| {
+        !safe_result_marker(&item.item_id)
+            || !safe_result_marker(&item.outcome_code)
+            || item
+                .reason_code
+                .as_deref()
+                .is_some_and(|code| !safe_result_marker(code))
+            || !item_ids.insert(&item.item_id)
+    }) || result
+        .artifact_ids
+        .iter()
+        .any(|artifact| !safe_result_marker(artifact.as_str()))
+    {
+        return Err(PortError::BackendUnavailable(
+            "job result items are invalid".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Result codes and opaque IDs use a narrow alphabet and reject secret/session/SQL labels.
+pub fn safe_result_marker(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    !value.is_empty()
+        && value.len() <= 512
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"._:-".contains(&byte))
+        && ![
+            "password",
+            "passwd",
+            "credential",
+            "secret",
+            "token",
+            "session",
+            "sql",
+        ]
+        .iter()
+        .any(|label| lower.contains(label))
+}

@@ -54,7 +54,7 @@ Preview 包含：
 
 目标为 read-only、表映射不兼容、自覆盖等情况时 Execute 会被阻止。
 
-跨方言结构通过 `packages/data-transfer/src/transfer/` 的 IR adapter 转换，目标 DDL 由 target adapter 生成。数据值同样在 IR 路径中转换。
+跨方言结构通过 `modules/src/migration/data_transfer/transfer/` 的 IR adapter 转换，目标 DDL 由 target adapter 生成。数据值同样在 IR 路径中转换。
 
 ## 结构阶段覆盖范围
 
@@ -86,7 +86,7 @@ Data Transfer 当前主要面向基表。它不承诺迁移视图、函数、触
 
 ## 代码位置
 
-- 传输引擎与任务管道：`packages/data-transfer/src/`
-- IR / DDL：`packages/data-transfer/src/structure.rs` 与对应 Driver adapter
+- 传输引擎与任务管道：`modules/src/migration/data_transfer/`
+- IR / DDL：`modules/src/migration/data_transfer/structure.rs` 与对应 Driver adapter
 - IPC：`src-tauri/src/commands/data_transfer/`
 - Frontend：`src/windows/data-transfer/`

@@ -1,4 +1,5 @@
 use super::*;
+use datazen::history::QueryHistoryRepository as _;
 use datazen_driver_api::CommandCatalog;
 impl DesktopSessionBackend {
     pub(super) async fn execute_resource(
@@ -21,7 +22,7 @@ impl DesktopSessionBackend {
                     .ok_or_else(|| {
                         rc::ProviderError::HostRejected("SQL input unavailable".into())
                     })?;
-                let bound_sql = datazen_runtime::sql_guard::apply_params(sql, &params)
+                let bound_sql = datazen::execution::domain::sql_guard::apply_params(sql, &params)
                     .map_err(rc::ProviderError::HostRejected)?;
                 if let Some(object) = input.as_object_mut() {
                     object.insert("sql".into(), serde_json::Value::String(bound_sql));
@@ -74,7 +75,7 @@ impl DesktopSessionBackend {
                 .get("sql")
                 .and_then(serde_json::Value::as_str)
                 .ok_or_else(|| rc::ProviderError::HostRejected("SQL input unavailable".into()))?;
-            datazen_runtime::sql_guard::check_sql(
+            datazen::execution::domain::sql_guard::check_sql(
                 sql,
                 config.read_only,
                 self.store.execution_settings().await.safe_mode,
@@ -459,7 +460,9 @@ impl DesktopSessionBackend {
                         None
                     },
                 };
-                if self.store.add_query_history(entry).await.is_err() {
+                // D6 第一切片：写入经模块仓储端口（与命令路径同一份
+                // `HistoryDb` 适配器）；失败仅告警，不阻断执行回执。
+                if self.history.add(entry).await.is_err() {
                     tracing::warn!("query history persistence failed");
                 }
             }
@@ -492,7 +495,7 @@ fn verified_source(
     completion: &ds::ExecutionCompletion,
     mapping_probe: Option<&(ds::SessionContext, serde_json::Value)>,
     connection_id: &str,
-) -> Option<datazen_platform_api::dto::execution::StatementResultSource> {
+) -> Option<datazen::execution::StatementResultSource> {
     // One statement, and a context the driver actually confirmed — a batch or
     // an unobserved context can never name a single writable relation.
     if completion.statement_results.len() != 1
@@ -536,13 +539,11 @@ fn verified_source(
     )?;
     // The context is projected from the driver observation *field by field*; it
     // must never be rebuilt by serializing one shape and deserializing another.
-    Some(
-        datazen_platform_api::dto::execution::StatementResultSource {
-            execution_id: execution_id.clone(),
-            statement_index,
-            context: map::platform_context(observed),
-            relation: Some(relation),
-            writable_mapping: datazen_platform_api::dto::execution::WritableMapping::Verified,
-        },
-    )
+    Some(datazen::execution::StatementResultSource {
+        execution_id: execution_id.clone(),
+        statement_index,
+        context: map::platform_context(observed),
+        relation: Some(relation),
+        writable_mapping: datazen::execution::WritableMapping::Verified,
+    })
 }

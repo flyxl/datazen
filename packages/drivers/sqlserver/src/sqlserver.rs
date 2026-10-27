@@ -214,7 +214,7 @@ impl DatabaseDriver for SqlServerDriver {
     /// A database-only target is never inlined — a two-part `[db].t` would
     /// mean *schema* db in T-SQL — so the caller must supply the schema. Temp
     /// tables are skipped. Parse failures pass SQL through unchanged; see
-    /// `sql_target::qualify_sql`.
+    /// `sql_execution::target::qualify_sql`.
     fn qualify_sql_target(
         &self,
         sql: &str,

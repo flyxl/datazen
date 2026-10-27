@@ -2,10 +2,10 @@
 //! the runtime is driving, and the recovery verdict an apply Job publishes over
 //! its own commit boundaries.
 
-use datazen_platform_api::context::OwnerRef;
-use datazen_platform_api::dto::execution::EffectOutcome;
-use datazen_platform_api::dto::job::{JobDefinition, JobProgress, JobState};
-use datazen_platform_api::id::{ClientInstanceId, IdempotencyKey, JobId};
+use datazen::execution::EffectOutcome;
+use datazen::jobs::domain::job::{JobDefinition, JobProgress, JobState};
+use datazen::shared::context::OwnerRef;
+use datazen::shared::id::{ClientInstanceId, IdempotencyKey, JobId};
 
 use super::super::cancel::{cancel_data_transfer_job, job_cancel_requested};
 use super::super::runtime::{now_timestamp, request_context, PREPARE_KIND};

@@ -103,7 +103,7 @@ async fn resolve_task_endpoint(
     let context = match crate::services::migration_endpoint::runtime_session_context(
         state,
         &db_session_id,
-        datazen_runtime::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await
     {

@@ -1,8 +1,11 @@
-//! The store facade's per-domain CRUD, exercised through `DesktopRepository` rather than
-//! through the SQLite layer directly (that is `history_db`'s own suite).
+//! Per-domain CRUD across the store's real production wiring.
 //!
-//! What is asserted here is the facade's behaviour: history dedup keys on the
-//! most recent row, a favorite survives a restart because its SQL is a file.
+//! History (D6 item 1) goes through the module-owned repository port
+//! (`datazen::history`) adapted onto the same `HistoryDb`
+//! (`platform::history::DesktopHistoryRepositories`) — the same shape every
+//! command now uses. Favorites stay on the `DesktopRepository` facade. What is
+//! asserted here: history dedup keys on the most recent row, a favorite
+//! survives a restart because its SQL is a file.
 
 use super::super::*;
 use super::fixtures::*;
@@ -13,28 +16,43 @@ async fn query_history_dedup_and_clear() {
     let dir = tempfile::tempdir().unwrap();
     let store = init_store_for_test(dir.path()).await;
 
-    store
-        .add_query_history(sample_history_entry("SELECT 1"))
+    // D6 第一切片：仓储 trait 归模块 domain，桌面适配同一 `HistoryDb`。
+    use datazen::history::QueryHistoryRepository as _;
+    let repositories = std::sync::Arc::new(
+        crate::platform::history::DesktopHistoryRepositories::new(store.history_db()),
+    );
+
+    repositories
+        .add(sample_history_entry("SELECT 1"))
         .await
         .unwrap();
-    store
-        .add_query_history(sample_history_entry("SELECT 2"))
+    repositories
+        .add(sample_history_entry("SELECT 2"))
         .await
         .unwrap();
-    assert_eq!(store.get_query_history(10, None, None, None).await.len(), 2);
+    assert_eq!(
+        repositories
+            .recent(10, None, None, None)
+            .await
+            .unwrap()
+            .len(),
+        2
+    );
 
     // Dedup only applies when SQL matches the most recent entry.
     let mut dup = sample_history_entry("SELECT 2");
     dup.execution_time_ms = 99;
-    store.add_query_history(dup).await.unwrap();
-    let history = store.get_query_history(10, None, None, None).await;
+    repositories.add(dup).await.unwrap();
+    let history = repositories.recent(10, None, None, None).await.unwrap();
     assert_eq!(history.len(), 2);
     assert_eq!(history[0].execution_time_ms, 99);
 
-    store.clear_query_history().await.unwrap();
-    assert!(store
-        .get_query_history(10, None, None, None)
+    // clear = purge 的 Query 作用域（服务口径 `clear_query_history` 的直写等价）。
+    repositories.purge(HistoryScope::Query, None).await.unwrap();
+    assert!(repositories
+        .recent(10, None, None, None)
         .await
+        .unwrap()
         .is_empty());
 }
 

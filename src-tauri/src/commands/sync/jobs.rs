@@ -12,20 +12,20 @@ use std::sync::Arc;
 use std::sync::{LazyLock, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use datazen_platform_api::context::{OwnerRef, RequestContext};
-use datazen_platform_api::dto::execution::EffectOutcome;
-use datazen_platform_api::dto::job::{
+use datazen::execution::EffectOutcome;
+use datazen::jobs::domain::job::{
     JobDefinition, JobRecoveryResult, JobRecoveryVerdict, JobState, JobView,
 };
-use datazen_platform_api::id::{
+use datazen::jobs::{EndpointRef, JobHandler};
+#[cfg(test)]
+use datazen::jobs::{EndpointRole, HandlerRegistry, JobClock, JobRuntime};
+use datazen::shared::context::{OwnerRef, RequestContext};
+use datazen::shared::id::{
     ClientInstanceId, IdempotencyKey, JobId, OrganizationId, PrincipalId, RequestId, WorkerId,
 };
 #[cfg(test)]
-use datazen_platform_api::JobRepository;
-use datazen_platform_api::PortError;
-use datazen_runtime::job::{EndpointRef, JobHandler};
-#[cfg(test)]
-use datazen_runtime::job::{EndpointRole, HandlerRegistry, JobClock, JobRuntime};
+use datazen::JobRepository;
+use datazen::PortError;
 use futures_util::FutureExt;
 #[cfg(test)]
 use std::sync::atomic::Ordering;
@@ -226,7 +226,7 @@ impl Drop for DispatchClaim {
 }
 
 async fn record_dispatch_failure(
-    host: &datazen_runtime::job::JobHost,
+    host: &datazen::jobs::JobHost,
     ctx: &RequestContext,
     job_id: &JobId,
     _reason: &str,
@@ -310,7 +310,7 @@ pub(crate) async fn list_durable_jobs(state: &AppState) -> Result<Vec<JobView>, 
         .desktop_job_host
         .list(
             &ctx,
-            datazen_platform_api::dto::job::JobFilter {
+            datazen::jobs::domain::job::JobFilter {
                 organization_id: ctx.organization_id.clone(),
                 states: Vec::new(),
                 owner: None,
@@ -339,7 +339,7 @@ pub(crate) async fn find_apply_receipt_for_plan(
         .desktop_job_host
         .list(
             &ctx,
-            datazen_platform_api::dto::job::JobFilter {
+            datazen::jobs::domain::job::JobFilter {
                 organization_id: ctx.organization_id.clone(),
                 states: Vec::new(),
                 owner: None,
@@ -379,7 +379,7 @@ pub(crate) async fn wait_for_durable_terminal(
 pub(crate) async fn details_durable_job(
     state: &AppState,
     job_id: &str,
-) -> Result<datazen_platform_api::dto::job::JobDetails, CommandError> {
+) -> Result<datazen::jobs::domain::job::JobDetails, CommandError> {
     let ctx = durable_context();
     let mut details = state
         .desktop_job_host
@@ -402,8 +402,8 @@ pub(crate) async fn details_durable_job(
 pub(crate) async fn verify_durable_recovery(
     state: &AppState,
     job_id: &str,
-    verifier: Arc<dyn datazen_runtime::job::JobRecoveryVerifier>,
-) -> Result<datazen_platform_api::dto::job::JobDetails, CommandError> {
+    verifier: Arc<dyn datazen::jobs::JobRecoveryVerifier>,
+) -> Result<datazen::jobs::domain::job::JobDetails, CommandError> {
     let ctx = durable_context();
     state
         .desktop_job_host

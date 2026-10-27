@@ -67,7 +67,7 @@ const DEFAULT_ALERT: NonNullable<DashboardWidget['alert']> = {
   op: '>',
   threshold: 0,
   cooldownSec: 300,
-  channels: ['desktop'],
+  channels: ['app'],
 };
 
 function emptyDraft(): DashboardWidget {

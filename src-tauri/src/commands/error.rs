@@ -4,9 +4,10 @@
 //! so the frontend receives the same format as the previous `Result<T, String>`.
 
 use crate::store::DesktopRepositoryError;
-use datazen_ai_api::AiError;
+use datazen::ai::AiError;
+use datazen::history::HistoryError;
+use datazen::services::FilterRejection;
 use datazen_driver_api::DriverError;
-use datazen_feature_core::services::FilterRejection;
 
 #[derive(Debug)]
 pub enum CommandError {
@@ -24,13 +25,13 @@ pub enum CommandError {
     DataSyncPartiallyApplied(u64),
     DataSyncOutcomeUnknown(String),
     Internal(String),
-    RestoreOutcome(Box<datazen_platform_api::dto::job::JobDetails>),
+    RestoreOutcome(Box<datazen::jobs::domain::job::JobDetails>),
 }
 
 impl std::fmt::Display for CommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::RestoreOutcome(details) if details.job.effect_outcome == Some(datazen_platform_api::dto::execution::EffectOutcome::NotStarted)
+            Self::RestoreOutcome(details) if details.job.effect_outcome == Some(datazen::execution::EffectOutcome::NotStarted)
                 && details.domain_results.iter().any(|result| result.result_code == "restoreUnsupported") => write!(f, "Restore Unsupported: no verified retained-resource binding; no database write was submitted; inspect Job {}; automatic retry is forbidden", details.job.job_id.as_str()),
             Self::RestoreOutcome(details) => write!(f, "Restore ended {:?}, effects {:?}; inspect Job {} before creating a new restore; automatic retry is forbidden", details.job.state, details.job.effect_outcome, details.job.job_id.as_str()),
             Self::DataSyncPartiallyApplied(count) => write!(f, "{count} rows committed before execution stopped; compare current data before continuing"),
@@ -61,19 +62,19 @@ impl serde::Serialize for CommandError {
                     "message": self.to_string(),
                     "details": details,
                     "automaticRetryAllowed": false,
-                    "unsupported": details.job.effect_outcome == Some(datazen_platform_api::dto::execution::EffectOutcome::NotStarted)
+                    "unsupported": details.job.effect_outcome == Some(datazen::execution::EffectOutcome::NotStarted)
                         && details.domain_results.iter().any(|result| result.result_code == "restoreUnsupported"),
                 }),
                 serializer,
             );
         }
         // Redact secrets so IPC payloads never leak credentials (M9/B8).
-        let redacted = datazen_platform_infra::redaction::redact_secrets_for_log(&self.to_string());
+        let redacted = datazen_infra::redaction::redact_secrets_for_log(&self.to_string());
         // …and the absolute paths: an IPC payload is not a log line, and it
         // travels further than the machine it was produced on (AGENTS.md:
         // "全局 IPC 错误 Payload 自动脱敏凭据与绝对路径"). The file name
         // survives; the directories do not.
-        let redacted = datazen_platform_infra::redaction::redact_paths_for_ipc(&redacted);
+        let redacted = datazen_infra::redaction::redact_paths_for_ipc(&redacted);
         serializer.serialize_str(&redacted)
     }
 }
@@ -81,6 +82,15 @@ impl serde::Serialize for CommandError {
 impl From<DesktopRepositoryError> for CommandError {
     fn from(e: DesktopRepositoryError) -> Self {
         Self::Store(e)
+    }
+}
+
+/// History 存储失败（modules::history 仓储端口）：history 存储按敏感审计
+/// 日志对待，错误消息不含 SQL/宿主路径，宿主没有更细的处置可给，按内部
+/// 失败透传消息。
+impl From<HistoryError> for CommandError {
+    fn from(e: HistoryError) -> Self {
+        Self::Internal(e.to_string())
     }
 }
 
@@ -151,34 +161,28 @@ impl From<crate::data_transfer::TransferError> for CommandError {
     }
 }
 
-impl From<datazen_feature_core::dashboard::repository::DashboardRepositoryError> for CommandError {
-    fn from(e: datazen_feature_core::dashboard::repository::DashboardRepositoryError) -> Self {
+impl From<datazen::dashboard::repository::DashboardRepositoryError> for CommandError {
+    fn from(e: datazen::dashboard::repository::DashboardRepositoryError) -> Self {
         match e {
-            datazen_feature_core::dashboard::repository::DashboardRepositoryError::NotFound(id) => {
+            datazen::dashboard::repository::DashboardRepositoryError::NotFound(id) => {
                 Self::NotFound(id)
             }
-            datazen_feature_core::dashboard::repository::DashboardRepositoryError::Parse(msg) => {
+            datazen::dashboard::repository::DashboardRepositoryError::Parse(msg) => {
                 Self::Validation(msg)
             }
-            datazen_feature_core::dashboard::repository::DashboardRepositoryError::Db(msg) => {
+            datazen::dashboard::repository::DashboardRepositoryError::Db(msg) => {
                 Self::Internal(msg)
             }
         }
     }
 }
 
-impl From<datazen_feature_core::dashboard::runs::DashboardRunsError> for CommandError {
-    fn from(e: datazen_feature_core::dashboard::runs::DashboardRunsError) -> Self {
+impl From<datazen::dashboard::runs::DashboardRunsError> for CommandError {
+    fn from(e: datazen::dashboard::runs::DashboardRunsError) -> Self {
         match e {
-            datazen_feature_core::dashboard::runs::DashboardRunsError::NotFound(id) => {
-                Self::NotFound(id)
-            }
-            datazen_feature_core::dashboard::runs::DashboardRunsError::Parse(msg) => {
-                Self::Validation(msg)
-            }
-            datazen_feature_core::dashboard::runs::DashboardRunsError::Db(msg) => {
-                Self::Internal(msg)
-            }
+            datazen::dashboard::runs::DashboardRunsError::NotFound(id) => Self::NotFound(id),
+            datazen::dashboard::runs::DashboardRunsError::Parse(msg) => Self::Validation(msg),
+            datazen::dashboard::runs::DashboardRunsError::Db(msg) => Self::Internal(msg),
         }
     }
 }
@@ -242,8 +246,7 @@ impl<T, E: Into<CommandError>> CmdExt<T> for Result<T, E> {
     fn cmd_err(self, cmd: &str) -> Result<T, CommandError> {
         self.map_err(|e| {
             let err: CommandError = e.into();
-            let redacted =
-                datazen_platform_infra::redaction::redact_secrets_for_log(&err.to_string());
+            let redacted = datazen_infra::redaction::redact_secrets_for_log(&err.to_string());
             tracing::error!(cmd, error = %redacted);
             err
         })
@@ -452,9 +455,39 @@ mod tests {
     }
 }
 
-impl From<datazen_feature_core::error::FeatureError> for CommandError {
-    fn from(error: datazen_feature_core::error::FeatureError) -> Self {
-        use datazen_feature_core::error::FeatureError;
+impl From<datazen::table_editing::TableEditingError> for CommandError {
+    fn from(error: datazen::table_editing::TableEditingError) -> Self {
+        use datazen::table_editing::TableEditingError;
+        match error {
+            TableEditingError::Validation(message) => Self::Validation(message),
+            TableEditingError::NotFound(message) => Self::NotFound(message),
+            TableEditingError::NotConfigured(message) => Self::NotConfigured(message),
+            TableEditingError::Internal(message) => Self::Internal(message),
+            TableEditingError::Driver(error) => Self::from(error),
+            TableEditingError::Io(error) => Self::Io(error),
+            TableEditingError::Json(error) => Self::Json(error),
+        }
+    }
+}
+
+impl From<datazen::schema::application::SchemaError> for CommandError {
+    fn from(error: datazen::schema::application::SchemaError) -> Self {
+        use datazen::schema::application::SchemaError;
+        match error {
+            SchemaError::Validation(message) => Self::Validation(message),
+            SchemaError::NotFound(message) => Self::NotFound(message),
+            SchemaError::NotConfigured(message) => Self::NotConfigured(message),
+            SchemaError::Internal(message) => Self::Internal(message),
+            SchemaError::Driver(error) => Self::from(error),
+            SchemaError::Io(error) => Self::Io(error),
+            SchemaError::Json(error) => Self::Json(error),
+        }
+    }
+}
+
+impl From<datazen::error::FeatureError> for CommandError {
+    fn from(error: datazen::error::FeatureError) -> Self {
+        use datazen::error::FeatureError;
         match error {
             FeatureError::Ai(error) => Self::Ai(error),
             FeatureError::Validation(message) => Self::Validation(message),
@@ -468,6 +501,44 @@ impl From<datazen_feature_core::error::FeatureError> for CommandError {
     }
 }
 
+// D6 item 4 收尾：AI 用例（chat_request/single_turn/filter/schema_doc/
+// tool_loop 等）自 modules 归位 modules::ai::application 后，函数签名
+// 携 AiUseCaseError；同桶映射保证与旧 From<FeatureError> 路径相同的 IPC
+// 文案与失败类别。
+impl From<datazen::ai::application::AiUseCaseError> for CommandError {
+    fn from(error: datazen::ai::application::AiUseCaseError) -> Self {
+        use datazen::ai::application::AiUseCaseError;
+        match error {
+            AiUseCaseError::Ai(error) => Self::Ai(error),
+            AiUseCaseError::Validation(message) => Self::Validation(message),
+            AiUseCaseError::NotFound(message) => Self::NotFound(message),
+            AiUseCaseError::NotConfigured(message) => Self::NotConfigured(message),
+            AiUseCaseError::Internal(message) => Self::Internal(message),
+            AiUseCaseError::Driver(error) => Self::from(error),
+            AiUseCaseError::Io(error) => Self::Io(error),
+            AiUseCaseError::Json(error) => Self::Json(error),
+        }
+    }
+}
+
+// D6 item 5 切片 a：导出/文件产物作业/备份恢复族归位 modules::export 与
+// modules::backup 后，旧路径的函数签名改携 ExportError；同桶映射保证与旧
+// From<FeatureError> 路径相同的 IPC 文案与失败类别。
+impl From<datazen::export::ExportError> for CommandError {
+    fn from(error: datazen::export::ExportError) -> Self {
+        use datazen::export::ExportError;
+        match error {
+            ExportError::Validation(message) => Self::Validation(message),
+            ExportError::NotFound(message) => Self::NotFound(message),
+            ExportError::NotConfigured(message) => Self::NotConfigured(message),
+            ExportError::Internal(message) => Self::Internal(message),
+            ExportError::Driver(error) => Self::from(error),
+            ExportError::Io(error) => Self::Io(error),
+            ExportError::Json(error) => Self::Json(error),
+        }
+    }
+}
+
 /// Map a named-view rejection onto the IPC envelope.
 ///
 /// The two rule failures keep their `grid.view.*` prefix, and the prefix is
@@ -477,9 +548,9 @@ impl From<datazen_feature_core::error::FeatureError> for CommandError {
 ///
 /// The rule messages carry **no user-supplied text**: what the user typed
 /// must not travel into the IPC payload or the host's log lines (D1).
-impl From<datazen_feature_core::services::named_views::NamedViewError> for CommandError {
-    fn from(error: datazen_feature_core::services::named_views::NamedViewError) -> Self {
-        use datazen_feature_core::services::named_views::NamedViewError;
+impl From<datazen::named_views::NamedViewError> for CommandError {
+    fn from(error: datazen::named_views::NamedViewError) -> Self {
+        use datazen::named_views::NamedViewError;
         match &error {
             NamedViewError::NameExists { .. } | NamedViewError::Invalid(_) => {
                 Self::Validation(error.to_string())
@@ -495,10 +566,10 @@ impl From<datazen_feature_core::services::named_views::NamedViewError> for Comma
 /// classifies on that prefix and then shows the reason behind it, so the code
 /// must stay the first thing in the string. A session failure is not a
 /// navigation rule failure and therefore carries no grid prefix.
-impl From<datazen_feature_core::services::fk_navigation::FkNavigationError> for CommandError {
-    fn from(error: datazen_feature_core::services::fk_navigation::FkNavigationError) -> Self {
-        use datazen_feature_core::services::fk_navigation::FkNavigationError;
-        use datazen_feature_core::services::ports::FkSessionError;
+impl From<datazen::services::fk_navigation::FkNavigationError> for CommandError {
+    fn from(error: datazen::services::fk_navigation::FkNavigationError) -> Self {
+        use datazen::services::fk_navigation::FkNavigationError;
+        use datazen::services::ports::FkSessionError;
         match error {
             FkNavigationError::Coded { code, message } => {
                 Self::Validation(format!("{code}: {message}"))
@@ -516,7 +587,7 @@ impl From<datazen_feature_core::services::fk_navigation::FkNavigationError> for 
 #[cfg(test)]
 mod resource_busy_tests {
     use super::*;
-    use datazen_application::error::{ApiError, ApiErrorCode};
+    use datazen::shared::error::{ApiError, ApiErrorCode};
 
     #[test]
     fn resource_busy_keeps_the_actionable_message() {

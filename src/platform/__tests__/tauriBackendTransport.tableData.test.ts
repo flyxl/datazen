@@ -28,7 +28,13 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 import { createDesktopBackendTransport } from '../tauriBackendTransport';
-import { createBackendClient, type Counter, type Id, type MethodMap, type RowChangePlan } from '@datazen/backend-client';
+import {
+  createBackendClient,
+  type Counter,
+  type Id,
+  type MethodMap,
+  type RowChangePlan,
+} from '@datazen/backend-client';
 
 afterEach(() => {
   vi.clearAllMocks();

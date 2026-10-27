@@ -1664,66 +1664,41 @@ checksum = "4583a4551df46e2792f82ceeac45e850d2e2d5debba0b91f102385cda5b11f06"
 
 [[package]]
 name = "datazen"
-version = "0.2.3"
+version = "0.0.1"
 dependencies = [
  "aes 0.8.4",
  "aes-gcm 0.10.3",
- "anyhow",
  "argon2",
  "async-trait",
  "base64 0.22.1",
  "cbc 0.1.2",
  "chrono",
- "datazen-ai-api",
- "datazen-ai-providers",
- "datazen-application",
- "datazen-data-sync",
- "datazen-data-transfer",
  "datazen-driver-api",
  "datazen-driver-mysql",
  "datazen-driver-postgres",
  "datazen-driver-sqlite",
- "datazen-feature-core",
- "datazen-platform-api",
- "datazen-platform-infra",
- "datazen-runtime",
- "datazen-schema-diff",
- "datazen-tunnel",
- "dirs 6.0.0",
+ "datazen-infra",
+ "dirs 5.0.1",
  "flate2",
  "futures-util",
  "hmac 0.12.1",
+ "indexmap 2.14.0",
  "inventory",
- "keyring",
  "libc",
- "objc2",
- "objc2-app-kit",
- "open",
  "pbkdf2 0.12.2",
+ "proc-macro2",
  "rand 0.8.7",
  "regex",
  "reqwest",
- "rmcp",
  "rusqlite",
  "russh",
- "schemars 1.2.2",
  "serde",
  "serde_json",
  "serde_yaml",
  "sha1 0.10.7",
  "sha2 0.10.9",
- "sqlx",
- "sys-locale",
- "sysinfo",
- "tauri",
- "tauri-build",
- "tauri-plugin-clipboard-manager",
- "tauri-plugin-dialog",
- "tauri-plugin-notification",
- "tauri-plugin-os",
- "tauri-plugin-process",
- "tauri-plugin-updater",
- "tauri-plugin-webdriver",
+ "sqlparser",
+ "syn 2.0.119",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
@@ -1731,114 +1706,12 @@ dependencies = [
  "tokio-tungstenite",
  "tokio-util",
  "tracing",
- "tracing-appender",
  "tracing-subscriber",
  "url",
- "urlencoding",
  "uuid",
  "webpki-roots 0.26.11",
  "wiremock",
  "zip 2.4.2",
-]
-
-[[package]]
-name = "datazen-ai-api"
-version = "0.0.7"
-dependencies = [
- "async-trait",
- "inventory",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tokio",
- "tokio-util",
-]
-
-[[package]]
-name = "datazen-ai-providers"
-version = "0.0.1"
-dependencies = [
- "async-trait",
- "datazen-ai-api",
- "datazen-platform-infra",
- "futures-util",
- "reqwest",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "wiremock",
-]
-
-[[package]]
-name = "datazen-application"
-version = "0.0.1"
-dependencies = [
- "async-trait",
- "datazen-driver-api",
- "datazen-feature-core",
- "datazen-platform-api",
- "datazen-schema-diff",
- "proc-macro2",
- "serde",
- "serde_json",
- "syn 2.0.119",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "datazen-data-sync"
-version = "0.0.1"
-dependencies = [
- "async-trait",
- "base64 0.22.1",
- "chrono",
- "datazen-driver-api",
- "datazen-driver-mysql",
- "datazen-driver-postgres",
- "datazen-driver-sqlite",
- "datazen-kernel",
- "datazen-migration-common",
- "datazen-platform-api",
- "rusqlite",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "datazen-data-transfer"
-version = "0.0.1"
-dependencies = [
- "async-trait",
- "base64 0.22.1",
- "chrono",
- "datazen-driver-api",
- "datazen-driver-mysql",
- "datazen-driver-postgres",
- "datazen-driver-sqlite",
- "datazen-kernel",
- "datazen-migration-common",
- "datazen-platform-api",
- "flate2",
- "inventory",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -1963,12 +1836,8 @@ version = "0.0.10"
 dependencies = [
  "async-trait",
  "chrono",
- "datazen-application",
+ "datazen",
  "datazen-driver-api",
- "datazen-feature-core",
- "datazen-platform-api",
- "datazen-runtime",
- "datazen-schema-diff",
  "flate2",
  "futures-util",
  "rust_decimal",
@@ -1989,12 +1858,8 @@ version = "0.0.10"
 dependencies = [
  "async-trait",
  "chrono",
- "datazen-application",
+ "datazen",
  "datazen-driver-api",
- "datazen-feature-core",
- "datazen-platform-api",
- "datazen-runtime",
- "datazen-schema-diff",
  "flate2",
  "futures-util",
  "rust_decimal",
@@ -2033,7 +1898,7 @@ name = "datazen-driver-rqlite"
 version = "0.0.10"
 dependencies = [
  "async-trait",
- "datazen-data-transfer",
+ "datazen",
  "datazen-driver-api",
  "datazen-driver-http-support",
  "reqwest",
@@ -2050,9 +1915,8 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chrono",
- "datazen-data-transfer",
+ "datazen",
  "datazen-driver-api",
- "datazen-schema-diff",
  "futures-util",
  "libsqlite3-sys",
  "same-file",
@@ -2086,7 +1950,7 @@ name = "datazen-driver-turso"
 version = "0.0.10"
 dependencies = [
  "async-trait",
- "datazen-data-transfer",
+ "datazen",
  "datazen-driver-api",
  "datazen-driver-http-support",
  "reqwest",
@@ -2127,87 +1991,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "datazen-feature-core"
-version = "0.0.1"
-dependencies = [
- "aes 0.8.4",
- "aes-gcm 0.10.3",
- "argon2",
- "async-trait",
- "base64 0.22.1",
- "cbc 0.1.2",
- "chrono",
- "datazen-ai-api",
- "datazen-driver-api",
- "datazen-kernel",
- "datazen-platform-api",
- "datazen-platform-infra",
- "datazen-runtime",
- "datazen-schema-diff",
- "dirs 5.0.1",
- "flate2",
- "futures-util",
- "hmac 0.12.1",
- "pbkdf2 0.12.2",
- "rand 0.8.7",
- "regex",
- "rusqlite",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha1 0.10.7",
- "sha2 0.10.9",
- "sqlparser",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tokio-util",
- "tracing",
- "uuid",
- "zip 2.4.2",
-]
-
-[[package]]
-name = "datazen-kernel"
-version = "0.0.1"
-dependencies = [
- "async-trait",
- "chrono",
- "datazen-driver-api",
- "datazen-platform-api",
- "futures-util",
- "indexmap 2.14.0",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "datazen-migration-common"
-version = "0.0.1"
-dependencies = [
- "datazen-driver-api",
- "serde_json",
-]
-
-[[package]]
-name = "datazen-platform-api"
-version = "0.0.1"
-dependencies = [
- "async-trait",
- "chrono",
- "datazen-driver-api",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tokio",
-]
-
-[[package]]
-name = "datazen-platform-infra"
+name = "datazen-infra"
 version = "0.1.0"
 dependencies = [
  "regex",
@@ -2215,56 +1999,58 @@ dependencies = [
 ]
 
 [[package]]
-name = "datazen-runtime"
-version = "0.0.1"
+name = "datazen_desktop"
+version = "0.2.3"
 dependencies = [
+ "aes 0.8.4",
+ "aes-gcm 0.10.3",
+ "anyhow",
+ "argon2",
  "async-trait",
+ "base64 0.22.1",
+ "cbc 0.1.2",
  "chrono",
+ "datazen",
  "datazen-driver-api",
- "datazen-kernel",
- "datazen-platform-api",
- "datazen-runtime",
+ "datazen-driver-mysql",
+ "datazen-driver-postgres",
+ "datazen-driver-sqlite",
+ "datazen-infra",
+ "dirs 6.0.0",
+ "flate2",
  "futures-util",
  "hmac 0.12.1",
- "indexmap 2.14.0",
+ "inventory",
+ "keyring",
  "libc",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "syn 2.0.119",
- "tempfile",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
-]
-
-[[package]]
-name = "datazen-schema-diff"
-version = "0.0.1"
-dependencies = [
- "async-trait",
- "chrono",
- "datazen-driver-api",
- "datazen-kernel",
- "datazen-platform-api",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
-name = "datazen-tunnel"
-version = "0.0.1"
-dependencies = [
- "datazen-driver-api",
- "datazen-platform-api",
- "futures-util",
+ "objc2",
+ "objc2-app-kit",
+ "open",
+ "pbkdf2 0.12.2",
+ "rand 0.8.7",
+ "regex",
+ "reqwest",
+ "rmcp",
+ "rusqlite",
  "russh",
+ "schemars 1.2.2",
  "serde",
  "serde_json",
+ "serde_yaml",
+ "sha1 0.10.7",
+ "sha2 0.10.9",
+ "sqlx",
+ "sys-locale",
+ "sysinfo",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-clipboard-manager",
+ "tauri-plugin-dialog",
+ "tauri-plugin-notification",
+ "tauri-plugin-os",
+ "tauri-plugin-process",
+ "tauri-plugin-updater",
+ "tauri-plugin-webdriver",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
@@ -2272,9 +2058,14 @@ dependencies = [
  "tokio-tungstenite",
  "tokio-util",
  "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
  "url",
+ "urlencoding",
  "uuid",
  "webpki-roots 0.26.11",
+ "wiremock",
+ "zip 2.4.2",
 ]
 
 [[package]]

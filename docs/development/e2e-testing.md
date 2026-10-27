@@ -8,7 +8,7 @@
 | 规则 | 说明 |
 |------|------|
 | **必须用 Tauri CLI 构建** | 经 `e2e/run.mjs` → `scripts/e2e-tauri-build.mjs`（`--debug` + `webdriver` + `.driver-features.json` 驱动 feature） |
-| **禁止裸 `cargo build`** | `cargo build -p datazen --features webdriver` 常导致运行时报 `asset not found: index.html`（未走 `beforeBuildCommand` / 资源嵌入流程） |
+| **禁止裸 `cargo build`** | `cargo build -p datazen_desktop --features webdriver` 常导致运行时报 `asset not found: index.html`（未走 `beforeBuildCommand` / 资源嵌入流程） |
 | **必须开 `webdriver` feature** | 否则 4445 端口不会监听，WDIO 连不上 |
 | **必须启用驱动 Cargo feature** | 仅 `--features webdriver` 不会链接 path 驱动；inventory 注册依赖 `-f driver-postgres,...`（由 `.driver-features.json` 提供） |
 | **前端产物 `dist/`** | 由 `pnpm build`（Tauri `beforeBuildCommand`）生成；`frontendDist` 为 `../dist` |

@@ -7,11 +7,11 @@
 
 use super::super::error::{resolve_override_path, CmdExt, CommandError, OVERRIDE_DISABLED_MSG};
 use super::super::AppState;
-use datazen_driver_api::{ConnectionConfig, TunnelKind};
-use datazen_feature_core::connection_import::{
+use datazen::connection_import::{
     build_tableplus_export, detect_import_path, format_label, parse_from_app, parse_import_file,
     ImportApp, ParsedImport, PathContext,
 };
+use datazen_driver_api::{ConnectionConfig, TunnelKind};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashSet};
 use std::path::PathBuf;
@@ -269,16 +269,14 @@ async fn write_connections_export(
     password: &str,
     dest: PathBuf,
 ) -> Result<u32, CommandError> {
-    let scope = state.organization_scope()?;
-    let services = crate::platform::ipc::require_application_services(state)?;
-    let mut connections = crate::commands::port_call::port_cmd(
-        services.connections.list(&scope).await,
+    let scope = state.connection_scope()?;
+    let service = crate::platform::ipc::require_connection_service(state)?;
+    let mut connections = crate::commands::connection::conn_cmd(
+        service.list_plain(&scope).await,
         "export_connections",
     )?;
-    let groups = crate::commands::port_call::port_cmd(
-        services.connections.groups(&scope).await,
-        "export_connections",
-    )?;
+    let groups =
+        crate::commands::connection::conn_cmd(service.groups(&scope).await, "export_connections")?;
     let count = connections.len() as u32;
 
     materialize_tunnel_refs(state, &mut connections).await;
@@ -381,32 +379,27 @@ pub(crate) async fn apply_connection_import_impl(
     skipped: Vec<String>,
     source_format: String,
 ) -> Result<ImportConnectionsResult, CommandError> {
-    let scope = state.organization_scope()?;
-    let services = crate::platform::ipc::require_application_services(state)?;
-    let existing = crate::commands::port_call::port_cmd(
-        services.connections.list(&scope).await,
+    let scope = state.connection_scope()?;
+    let service = crate::platform::ipc::require_connection_service(state)?;
+    let existing = crate::commands::connection::conn_cmd(
+        service.list_plain(&scope).await,
         "import_connections",
     )?;
     let existing_ids: HashSet<String> = existing.iter().map(|c| c.id.clone()).collect();
     let (imported, overwritten) = merge_connection_import_stats(&existing_ids, &incoming);
 
     for conn in incoming {
-        crate::commands::port_call::port_cmd(
-            services.connections.save(&scope, conn).await,
+        crate::commands::connection::conn_cmd(
+            service.save(&scope, conn).await,
             "import_connections",
         )?;
     }
 
-    let existing_groups = crate::commands::port_call::port_cmd(
-        services.connections.groups(&scope).await,
-        "import_connections",
-    )?;
+    let existing_groups =
+        crate::commands::connection::conn_cmd(service.groups(&scope).await, "import_connections")?;
     let (merged_groups, groups_added) = merge_group_lists(&existing_groups, &incoming_groups);
-    crate::commands::port_call::port_cmd(
-        services
-            .connections
-            .save_groups(&scope, merged_groups)
-            .await,
+    crate::commands::connection::conn_cmd(
+        service.save_groups(&scope, merged_groups).await,
         "import_connections",
     )?;
 

@@ -1,5 +1,5 @@
+use datazen::migration::schema_diff::diff_table_schemas;
 use datazen_driver_api::{ColumnSchema, TableSchema};
-use datazen_schema_diff::diff_table_schemas;
 
 fn col(name: &str, ty: &str) -> ColumnSchema {
     ColumnSchema {

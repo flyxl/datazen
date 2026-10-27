@@ -6,12 +6,12 @@ use crate::commands::AppState;
 use crate::dashboard::repository::load_monitor_settings;
 use crate::store::AppDb;
 use crate::store::AppSettings;
-use datazen_feature_core::dashboard::types::{DashboardWidget, WidgetRun};
-use datazen_feature_core::workflow::executor::WorkflowExecutor;
-use datazen_feature_core::workflow::model::WorkflowExecutionResult;
-use datazen_platform_api::ports::scope::OrganizationScope;
+use datazen::dashboard::types::{DashboardWidget, WidgetRun};
+use datazen::shared::scope::OrganizationScope;
+use datazen::workflow::executor::WorkflowExecutor;
+use datazen::workflow::model::WorkflowExecutionResult;
 
-use datazen_feature_core::dashboard::execute::build_error_run;
+use datazen::dashboard::execute::build_error_run;
 
 #[derive(Debug, thiserror::Error)]
 pub enum DashboardExecuteError {
@@ -19,10 +19,10 @@ pub enum DashboardExecuteError {
     Workflow(String),
 
     #[error("Runs error: {0}")]
-    Runs(#[from] datazen_feature_core::dashboard::runs::DashboardRunsError),
+    Runs(#[from] datazen::dashboard::runs::DashboardRunsError),
 
     #[error("Store error: {0}")]
-    Store(#[from] datazen_feature_core::dashboard::repository::DashboardRepositoryError),
+    Store(#[from] datazen::dashboard::repository::DashboardRepositoryError),
 }
 
 /// Build and persist an error-status run using monitor retention settings.
@@ -49,7 +49,7 @@ pub(crate) fn persist_error_run(
         error,
     );
     let retention = load_monitor_settings(settings);
-    datazen_feature_core::dashboard::runs::write_run(scope, app_db, &run, &retention)?;
+    datazen::dashboard::runs::write_run(scope, app_db, &run, &retention)?;
     Ok(run)
 }
 
@@ -60,7 +60,7 @@ struct DesktopWidgetHost<'a> {
     scope: &'a OrganizationScope,
 }
 #[async_trait::async_trait]
-impl datazen_feature_core::dashboard::execute::WidgetExecutionHost for DesktopWidgetHost<'_> {
+impl datazen::dashboard::execute::WidgetExecutionHost for DesktopWidgetHost<'_> {
     async fn execute_workflow(&self, id: &str) -> Result<WorkflowExecutionResult, String> {
         let workflow = self
             .app_state
@@ -71,7 +71,7 @@ impl datazen_feature_core::dashboard::execute::WidgetExecutionHost for DesktopWi
         WorkflowExecutor::execute(&workflow, self.app_state, None, &serde_json::json!({})).await
     }
     async fn persist_run(&self, run: &WidgetRun) -> Result<(), String> {
-        datazen_feature_core::dashboard::runs::write_run(
+        datazen::dashboard::runs::write_run(
             self.scope,
             self.app_db,
             run,
@@ -88,7 +88,7 @@ pub async fn execute_widget_once(
     dashboard_id: &str,
     widget: &DashboardWidget,
 ) -> Result<WidgetRun, DashboardExecuteError> {
-    datazen_feature_core::dashboard::execute::execute_widget_once(
+    datazen::dashboard::execute::execute_widget_once(
         &DesktopWidgetHost {
             app_state,
             app_db,
@@ -106,17 +106,13 @@ pub async fn execute_widget_once(
 mod tests {
     use super::*;
     use crate::store::AppSettings;
-    use datazen_feature_core::dashboard::execute::{
+    use datazen::dashboard::execute::{
         build_timeout_run, extract_table_from_execution, parse_final_output_as_table,
         parse_step_result_value, DEFAULT_QUERY_TIMEOUT_SEC,
     };
-    use datazen_feature_core::dashboard::runs::{get_run, list_run_index};
-    use datazen_feature_core::dashboard::types::{
-        RefreshPolicy, ViewMode, WidgetLayout, WidgetRunStatus,
-    };
-    use datazen_feature_core::workflow::model::{
-        StepExecutionResult, StepStatus, WorkflowExecutionResult,
-    };
+    use datazen::dashboard::runs::{get_run, list_run_index};
+    use datazen::dashboard::types::{RefreshPolicy, ViewMode, WidgetLayout, WidgetRunStatus};
+    use datazen::workflow::model::{StepExecutionResult, StepStatus, WorkflowExecutionResult};
 
     fn sample_widget() -> DashboardWidget {
         DashboardWidget {

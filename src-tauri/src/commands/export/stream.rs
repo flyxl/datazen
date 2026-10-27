@@ -1,14 +1,17 @@
 //! Host-only lossless adapter from one Runtime query to the existing formatter.
 use super::*;
-use datazen_application::{dto::requests::*, sessions::ConnectionUseCases};
-use datazen_feature_core::error::FeatureError;
-use datazen_platform_api::{
-    dto::{execution::ExecutionState, idempotency::IdempotentOperation, session::ResourceRelease},
-    id::{ConfigRevision, ConnectionId, Counter, ExecutionId},
-    target::{ExecutionTarget, NamespaceTarget},
+use datazen::application::sessions::ConnectionUseCases;
+use datazen::execution::application::requests::*;
+use datazen::execution::application::RuntimeConnectionUseCases;
+use datazen::export::ExportError as FeatureError;
+use datazen::{
+    execution::application::idempotency::IdempotentOperation,
+    execution::target::{ExecutionTarget, NamespaceTarget},
+    execution::ExecutionState,
+    execution::ResourceRelease,
+    shared::id::{ConfigRevision, ConnectionId, Counter, ExecutionId},
     OwnerRef, RequestContext,
 };
-use datazen_runtime::application::RuntimeConnectionUseCases;
 
 fn unavailable() -> FeatureError {
     FeatureError::Validation("runtimeExportUnavailable".into())
@@ -16,7 +19,7 @@ fn unavailable() -> FeatureError {
 struct Cleanup {
     runtime: Arc<RuntimeConnectionUseCases>,
     ctx: RequestContext,
-    handle: Option<datazen_platform_api::dto::session::SessionHandle>,
+    handle: Option<datazen::execution::SessionHandle>,
     execution: Option<ExecutionId>,
     watcher: Option<tokio::task::JoinHandle<()>>,
 }
@@ -230,7 +233,7 @@ impl DesktopExportSource {
                     _ = tokio::time::sleep(std::time::Duration::from_millis(20)) => {
                         let view = runtime.get_execution(&ctx, receipt.execution_id.clone()).await.map_err(|_| unavailable())?;
                         if view.state.is_terminal() {
-                            if view.state != ExecutionState::Succeeded || view.effect_outcome == datazen_platform_api::dto::execution::EffectOutcome::Unknown { return Err(unavailable()); }
+                            if view.state != ExecutionState::Succeeded || view.effect_outcome == datazen::execution::EffectOutcome::Unknown { return Err(unavailable()); }
                             // Terminal is set only after every producer send completed.
                             // Drain the one queued batch before publishing Done.
                             while let Ok(value) = binding.try_recv() {

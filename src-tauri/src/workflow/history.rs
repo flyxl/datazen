@@ -1,12 +1,12 @@
 //! Persists workflow execution history for auditing and replay.
 //!
 //! The shape of a run record is shared vocabulary
-//! (`datazen_feature_core::workflow::history`); the SQLite rows it lives in
+//! (`datazen::workflow::history`); the SQLite rows it lives in
 //! are the desktop host's own.
 
 use crate::store::HistoryDb;
-use datazen_feature_core::workflow::history::{new_run_id, WorkflowRunListItem, WorkflowRunRecord};
-use datazen_feature_core::workflow::model::WorkflowExecutionResult;
+use datazen::workflow::history::{new_run_id, WorkflowRunListItem, WorkflowRunRecord};
+use datazen::workflow::model::WorkflowExecutionResult;
 use std::sync::Arc;
 
 pub struct WorkflowHistoryManager {
@@ -69,7 +69,7 @@ impl WorkflowHistoryManager {
 mod tests {
     use super::*;
     use crate::store::HistoryDb;
-    use datazen_feature_core::workflow::model::{StepExecutionResult, StepStatus};
+    use datazen::workflow::model::{StepExecutionResult, StepStatus};
 
     fn make_test_result(success: bool) -> WorkflowExecutionResult {
         WorkflowExecutionResult {

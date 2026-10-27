@@ -43,8 +43,8 @@ pub(crate) use cancel::{cancel_data_transfer_job, job_cancel_requested};
 
 use std::sync::Arc;
 
-use datazen_platform_api::dto::execution::EffectOutcome;
-use datazen_platform_api::dto::job::{CommitBoundary, JobProgress, JobState};
+use datazen::execution::EffectOutcome;
+use datazen::jobs::domain::job::{CommitBoundary, JobProgress, JobState};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::State;
@@ -247,7 +247,7 @@ pub(crate) async fn apply_detached(
                 cmd = "apply_data_transfer",
                 plan_id = %plan_id,
                 job_id = %job_id,
-                error = %datazen_platform_infra::redaction::redact_secrets_for_log(&error.to_string()),
+                error = %datazen_infra::redaction::redact_secrets_for_log(&error.to_string()),
             );
         }
     });
@@ -271,7 +271,7 @@ pub(crate) struct ApplyDrive {
     plan_digest: String,
     selection_revision: u64,
     sql_file_destination: Option<std::path::PathBuf>,
-    host: Arc<datazen_runtime::job::JobHost>,
+    host: Arc<datazen::jobs::JobHost>,
     run: runtime::BoxedJobRun,
 }
 
@@ -296,13 +296,13 @@ impl ApplyDrive {
             let artifacts = host_artifacts
                 .iter()
                 .cloned()
-                .map(datazen_platform_api::id::ArtifactId::new)
+                .map(datazen::shared::id::ArtifactId::new)
                 .collect::<Vec<_>>();
             self.host
                 .repository()
                 .append_external_artifacts(
                     &runtime::request_context(),
-                    &datazen_platform_api::id::JobId::new(outcome.job_id.clone()),
+                    &datazen::shared::id::JobId::new(outcome.job_id.clone()),
                     &artifacts,
                 )
                 .await

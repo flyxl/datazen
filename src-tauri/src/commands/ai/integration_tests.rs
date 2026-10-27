@@ -2,7 +2,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use datazen_ai_api::{ChatMessage, MessageRole, ToolCall};
+use datazen::ai::{ChatMessage, MessageRole, ToolCall};
 use datazen_driver_api::PromptScenario;
 
 use super::chat::execute_db_tool;
@@ -10,8 +10,8 @@ use super::*;
 use crate::commands::{workflow_execute_impl, workflow_list_impl};
 use crate::testing::ai_wiremock::WiremockAi;
 use crate::testing::app_state::TestAppState;
-use datazen_feature_core::ai::prompt_resolver::PromptOverrideEntry;
-use datazen_feature_core::ai::tools::{classify_tool, ToolKind};
+use datazen::ai::prompt_resolver::PromptOverrideEntry;
+use datazen::ai::tools::{classify_tool, ToolKind};
 
 fn collecting_stream_callback() -> (StreamCallback, Arc<Mutex<Vec<(String, bool)>>>) {
     let log = Arc::new(Mutex::new(Vec::new()));
@@ -124,7 +124,7 @@ async fn ai_parse_filter_normalizes_null_operators() {
     .await
     .unwrap();
 
-    use datazen_feature_core::services::query_executor::FilterOperator;
+    use datazen::services::query_executor::FilterOperator;
     assert_eq!(filters.len(), 2);
     assert!(matches!(filters[0].operator, FilterOperator::IsNull));
     assert!(matches!(filters[1].operator, FilterOperator::Gt));
@@ -180,8 +180,9 @@ async fn ai_analyze_queries_with_history() {
     let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
     let (_, conn_id) = test.save_and_connect("hist-cfg").await;
 
-    test.state
-        .store
+    // D6 第一切片：写入经模块服务（与生产路径同一装配）。
+    crate::platform::ipc::require_history_service(&test.state)
+        .unwrap()
         .add_query_history(crate::store::QueryHistoryEntry {
             id: uuid::Uuid::new_v4().to_string(),
             connection_id: "hist-cfg".into(),
@@ -194,8 +195,7 @@ async fn ai_analyze_queries_with_history() {
             success: true,
             error_message: None,
         })
-        .await
-        .unwrap();
+        .await;
 
     mock.mount_chat_completion_text(
         r#"{"summary":"Light reads","categories":[{"name":"SELECT","count":1,"examples":["SELECT 1"]}],"insights":["simple"],"frequentTables":["users"],"recommendations":[]}"#,
@@ -333,7 +333,7 @@ async fn ai_chat_workflow_scenario_builds_system_prompt() {
 
 #[tokio::test]
 async fn prompt_override_round_trip() {
-    use datazen_feature_core::ai::prompt_resolver::PromptSource;
+    use datazen::ai::prompt_resolver::PromptSource;
 
     let test = TestAppState::new().await;
     let entry = PromptOverrideEntry {
@@ -361,7 +361,7 @@ async fn prompt_override_round_trip() {
 
 #[tokio::test]
 async fn workflow_save_list_get_delete() {
-    use datazen_feature_core::workflow::model::{WorkflowDefinition, WorkflowStep};
+    use datazen::workflow::model::{WorkflowDefinition, WorkflowStep};
 
     let test = TestAppState::new().await;
     test.state
@@ -717,8 +717,9 @@ async fn execute_db_tool_list_databases() {
 async fn ai_analyze_queries_all_history() {
     let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
     let (_, _conn_id) = test.save_and_connect("all-hist").await;
-    test.state
-        .store
+    // D6 第一切片：写入经模块服务（与生产路径同一装配）。
+    crate::platform::ipc::require_history_service(&test.state)
+        .unwrap()
         .add_query_history(crate::store::QueryHistoryEntry {
             id: uuid::Uuid::new_v4().to_string(),
             connection_id: "all-hist".into(),
@@ -731,8 +732,7 @@ async fn ai_analyze_queries_all_history() {
             success: true,
             error_message: None,
         })
-        .await
-        .unwrap();
+        .await;
 
     mock.mount_chat_completion_text(
         r#"{"summary":"ok","categories":[],"insights":[],"frequentTables":[],"recommendations":[]}"#,
@@ -914,7 +914,7 @@ data: [DONE]
 
 #[tokio::test]
 async fn workflow_execute_ai_step_with_wiremock() {
-    use datazen_feature_core::workflow::model::{WorkflowDefinition, WorkflowStep};
+    use datazen::workflow::model::{WorkflowDefinition, WorkflowStep};
 
     let (test, mock) = TestAppState::with_wiremock_ai().await;
     test.state
@@ -1052,7 +1052,7 @@ async fn ai_chat_connected_english_schema_message() {
 
 #[tokio::test]
 async fn workflow_history_clear_after_execute() {
-    use datazen_feature_core::workflow::model::{WorkflowDefinition, WorkflowStep};
+    use datazen::workflow::model::{WorkflowDefinition, WorkflowStep};
 
     let (test, mock) = TestAppState::with_wiremock_ai().await;
     test.state
@@ -1103,9 +1103,7 @@ async fn workflow_history_clear_after_execute() {
 
 #[tokio::test]
 async fn dashboard_hidden_workflow_execute_skips_history() {
-    use datazen_feature_core::workflow::model::{
-        WorkflowDefinition, WorkflowStep, WorkflowVisibility,
-    };
+    use datazen::workflow::model::{WorkflowDefinition, WorkflowStep, WorkflowVisibility};
 
     let (test, mock) = TestAppState::with_wiremock_ai().await;
     test.state
@@ -1219,7 +1217,7 @@ async fn register_echo_test_mcp(
 
 #[tokio::test]
 async fn ai_chat_mcp_tool_roundtrip() {
-    use datazen_ai_api::{MessageRole, StreamChunk, ToolCall};
+    use datazen::ai::{MessageRole, StreamChunk, ToolCall};
 
     let (test, mock) = TestAppState::with_mock_ai().await;
     let _mcp_calls = register_echo_test_mcp(&test.state).await;
@@ -1275,7 +1273,7 @@ async fn ai_chat_mcp_tool_roundtrip() {
 
 #[tokio::test]
 async fn ai_chat_mcp_and_db_same_round() {
-    use datazen_ai_api::{MessageRole, StreamChunk, ToolCall};
+    use datazen::ai::{MessageRole, StreamChunk, ToolCall};
     use std::sync::atomic::Ordering;
 
     let (test, mock) = TestAppState::with_mock_ai_tables().await;
@@ -1286,7 +1284,7 @@ async fn ai_chat_mcp_and_db_same_round() {
     test.state.store.save_settings(settings).await.unwrap();
     let mut ai_settings = test.state.store.get_ai_settings_config().await;
     for profile in &mut ai_settings.profiles {
-        profile.safety_gate.data_egress_level = datazen_ai_api::AiDataEgressLevel::Unrestricted;
+        profile.safety_gate.data_egress_level = datazen::ai::AiDataEgressLevel::Unrestricted;
     }
     test.state
         .store
@@ -1367,7 +1365,7 @@ async fn ai_chat_mcp_and_db_same_round() {
 
 #[tokio::test]
 async fn ai_chat_ask_questions_with_executable_runs_tools_then_stops() {
-    use datazen_ai_api::{MessageRole, StreamChunk, ToolCall};
+    use datazen::ai::{MessageRole, StreamChunk, ToolCall};
     use std::sync::atomic::Ordering;
 
     let (test, mock) = TestAppState::with_mock_ai_tables().await;

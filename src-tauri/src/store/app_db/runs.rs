@@ -3,13 +3,13 @@
 
 use super::{AppDb, AppDbError};
 use chrono::Utc;
-pub use datazen_feature_core::dashboard::records::WidgetRunRecord;
+pub use datazen::dashboard::records::WidgetRunRecord;
 use rusqlite::params;
 
 /// Rows kept per widget. The shared dashboard core declares a constant of the
 /// same name and value; the two must agree, or the dashboard truncates to one
 /// number while the database stores another.
-pub const MAX_RUN_ROWS: usize = datazen_feature_core::dashboard::execute::MAX_RUN_ROWS;
+pub const MAX_RUN_ROWS: usize = datazen::dashboard::execute::MAX_RUN_ROWS;
 
 impl AppDb {
     pub fn write_run(

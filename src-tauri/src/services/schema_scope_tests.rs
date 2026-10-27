@@ -3,8 +3,8 @@ mod tests {
     use std::sync::Arc;
 
     use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+    use datazen::services::schema_scope::*;
     use datazen_driver_api::DatabaseDriver;
-    use datazen_feature_core::services::schema_scope::*;
 
     fn schema_aware() -> Arc<dyn DatabaseDriver> {
         MockDriver::new(

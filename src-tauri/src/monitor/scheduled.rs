@@ -4,11 +4,18 @@ use crate::{
     commands::AppState,
     workflow::{WorkflowCommandStep, WorkflowError},
 };
-use datazen_driver_api::{CommandResult, ConnectionConfig, DatabaseDriver};
-use datazen_feature_core::{
+use datazen::jobs::{
+    CancelToken, EndpointRef, EndpointRole, JobError, JobHandler, RecoveryVerdict, StageOutcome,
+    StageSpec, StageTerminal,
+};
+#[cfg(feature = "webdriver")]
+use datazen::monitor::application::evidence;
+use datazen::monitor::application::occurrence;
+use datazen::monitor::domain::MonitorGrant;
+use datazen::shared::context::RequestContext;
+use datazen::{
     dashboard::{
         execute::WidgetExecutionHost,
-        schedule_grant::MonitorGrant,
         types::{DashboardWidget, WidgetRun},
     },
     workflow::{
@@ -18,20 +25,13 @@ use datazen_feature_core::{
         resource_execution::{PreparedExecution, ResourceExecutionHost},
     },
 };
-use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::{
-    context::OwnerRef,
-    dto::{
-        execution::EffectOutcome,
-        job::{Checkpoint, JobDefinition, JobDomainResult, JobProgress, JobResultItem},
-    },
-    id::{IdempotencyKey, JobId, StageId, WorkerId},
+use datazen::{
+    execution::EffectOutcome,
+    jobs::domain::job::{Checkpoint, JobDefinition, JobDomainResult, JobProgress, JobResultItem},
+    shared::context::OwnerRef,
+    shared::id::{JobId, StageId, WorkerId},
 };
-use datazen_runtime::job::{
-    CancelToken, EndpointRef, EndpointRole, JobError, JobHandler, RecoveryVerdict, StageOutcome,
-    StageSpec, StageTerminal,
-};
-use sha2::{Digest, Sha256};
+use datazen_driver_api::{CommandResult, ConnectionConfig, DatabaseDriver};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -81,7 +81,7 @@ impl ResourceExecutionHost for ScheduledWorkflowHost<'_> {
         id: &str,
         revision: u64,
         command: &str,
-        target: datazen_platform_api::target::ExecutionTarget,
+        target: datazen::execution::target::ExecutionTarget,
     ) -> Result<PreparedExecution, WorkflowError> {
         validate(self.state, self.grant)
             .await
@@ -93,7 +93,7 @@ impl ResourceExecutionHost for ScheduledWorkflowHost<'_> {
         let canonical = adapter
             .resolve_execution_target(
                 &self.context,
-                datazen_platform_api::id::Counter::new(revision),
+                datazen::shared::id::Counter::new(revision),
                 command,
                 &target,
             )
@@ -131,16 +131,13 @@ impl WorkflowHost for ScheduledWorkflowHost<'_> {
         &self,
         step: &WorkflowCommandStep,
         connection: Option<&str>,
-        _: Option<datazen_feature_core::mcp::permission::McpPermissionMode>,
+        _: Option<datazen::mcp::permission::McpPermissionMode>,
         deadline: Option<tokio::time::Instant>,
     ) -> Result<CommandResult, WorkflowError> {
         let id = step
             .effective_connection(connection)
             .ok_or_else(|| WorkflowError::Validation("scheduled target required".into()))?;
-        datazen_feature_core::workflow::resource_execution::execute(
-            self, step, id, None, deadline, true,
-        )
-        .await
+        datazen::workflow::resource_execution::execute(self, step, id, None, deadline, true).await
     }
     async fn complete_ai(&self, _: String) -> Result<String, WorkflowError> {
         Err(WorkflowError::Validation("scheduled AI unsupported".into()))
@@ -177,10 +174,8 @@ impl WidgetExecutionHost for ScheduledWidgetHost<'_> {
     }
     async fn persist_run(&self, run: &WidgetRun) -> Result<(), String> {
         // 运行记录落在授予它的那个组织里：作用域取自 grant 自带的请求上下文。
-        let scope = datazen_platform_api::ports::scope::OrganizationScope::from_context(
-            &self.grant.context(),
-        );
-        datazen_feature_core::dashboard::runs::write_run(
+        let scope = datazen::shared::scope::OrganizationScope::from_context(&self.grant.context());
+        datazen::dashboard::runs::write_run(
             &scope,
             &*self.state.store.app_db(),
             run,
@@ -198,10 +193,10 @@ pub(crate) async fn execute(
     grant: &MonitorGrant,
 ) -> Result<WidgetRun, String> {
     #[cfg(feature = "webdriver")]
-    super::evidence::note(
+    evidence::note(
         dashboard_id,
         &widget.id,
-        super::evidence::Stage::OccurrencePreparing,
+        evidence::Stage::OccurrencePreparing,
     );
     validate(state, grant).await?;
     if dashboard_id != grant.dashboard_id
@@ -223,10 +218,10 @@ pub(crate) async fn execute(
     let refresh_interval_seconds = u64::from(refresh_sec);
     let context = grant.context();
     let requested_job_id = JobId::new(uuid::Uuid::new_v4().to_string());
-    let schedule_id = occurrence_schedule_id(dashboard_id, &widget.id);
-    let definition_revision = occurrence_definition_revision(grant, refresh_interval_seconds)?;
+    let schedule_id = occurrence::schedule_id(dashboard_id, &widget.id);
+    let definition_revision = occurrence::definition_revision(grant, refresh_interval_seconds)?;
     let idempotency_key =
-        occurrence_idempotency_key(&schedule_id, &definition_revision, scheduled_at);
+        occurrence::idempotency_key(&schedule_id, &definition_revision, scheduled_at);
     let payload = serde_json::json!({
         "planVersion": 1,
         "handlerVersion": 1,
@@ -262,22 +257,14 @@ pub(crate) async fn execute(
         .ensure_endpoint_services(&endpoints)
         .map_err(|_| "monitor job budget unavailable")?;
     #[cfg(feature = "webdriver")]
-    super::evidence::note(
-        dashboard_id,
-        &widget.id,
-        super::evidence::Stage::JobAdmission,
-    );
+    evidence::note(dashboard_id, &widget.id, evidence::Stage::JobAdmission);
     let accepted = state
         .desktop_job_host
         .accept(&context, definition, &idempotency_key)
         .await
         .map_err(|_| {
             #[cfg(feature = "webdriver")]
-            super::evidence::note(
-                dashboard_id,
-                &widget.id,
-                super::evidence::Stage::AdmissionRejected,
-            );
+            evidence::note(dashboard_id, &widget.id, evidence::Stage::AdmissionRejected);
             tracing::warn!(
                 stage = "jobAdmission",
                 code = "admissionRejected",
@@ -286,7 +273,7 @@ pub(crate) async fn execute(
             "monitor occurrence admission failed"
         })?;
     #[cfg(feature = "webdriver")]
-    super::evidence::note(dashboard_id, &widget.id, super::evidence::Stage::Admitted);
+    evidence::note(dashboard_id, &widget.id, evidence::Stage::Admitted);
     if accepted.view.job_id != requested_job_id {
         // An idempotency receipt already exists for this scheduled slot. A
         // restart or duplicate tick must never turn it into another query.
@@ -300,11 +287,7 @@ pub(crate) async fn execute(
         grant.clone(),
     ));
     #[cfg(feature = "webdriver")]
-    super::evidence::note(
-        dashboard_id,
-        &widget.id,
-        super::evidence::Stage::Dispatching,
-    );
+    evidence::note(dashboard_id, &widget.id, evidence::Stage::Dispatching);
     let dispatch = state
         .desktop_job_host
         .dispatch(
@@ -318,78 +301,18 @@ pub(crate) async fn execute(
     match handler.take_run() {
         Some(run) => {
             #[cfg(feature = "webdriver")]
-            super::evidence::note(dashboard_id, &widget.id, super::evidence::Stage::RunReady);
+            evidence::note(dashboard_id, &widget.id, evidence::Stage::RunReady);
             Ok(run)
         }
         None => {
             #[cfg(feature = "webdriver")]
-            super::evidence::note(
-                dashboard_id,
-                &widget.id,
-                super::evidence::Stage::DispatchFailed,
-            );
+            evidence::note(dashboard_id, &widget.id, evidence::Stage::DispatchFailed);
             match dispatch {
                 Ok(_) => Err("monitor occurrence has no run receipt".into()),
                 Err(_) => Err("monitor occurrence dispatch failed".into()),
             }
         }
     }
-}
-
-fn occurrence_schedule_id(dashboard_id: &str, widget_id: &str) -> String {
-    format!("monitor:{dashboard_id}:{widget_id}")
-}
-
-fn occurrence_definition_revision(
-    grant: &MonitorGrant,
-    refresh_interval_seconds: u64,
-) -> Result<String, String> {
-    let mut scopes = grant.scopes.clone();
-    scopes.sort_by(|left, right| {
-        left.target
-            .connection_id
-            .cmp(&right.target.connection_id)
-            .then_with(|| {
-                left.target
-                    .namespace
-                    .namespace_fingerprint()
-                    .cmp(&right.target.namespace.namespace_fingerprint())
-            })
-            .then_with(|| left.command.cmp(&right.command))
-            .then_with(|| left.config_revision.cmp(&right.config_revision))
-    });
-    let identity = serde_json::json!({
-        "dashboardId": grant.dashboard_id,
-        "widgetId": grant.widget_id,
-        "workflowId": grant.workflow_id,
-        "workflowRevision": grant.workflow_revision,
-        "grantId": grant.id,
-        "grantVersion": grant.revocation_version,
-        "refreshIntervalSeconds": refresh_interval_seconds,
-        "scopes": scopes,
-    });
-    let identity =
-        serde_json::to_vec(&identity).map_err(|_| "scheduled definition revision unavailable")?;
-    Ok(format!("sha256:{:x}", Sha256::digest(identity)))
-}
-
-fn occurrence_idempotency_key(
-    schedule_id: &str,
-    definition_revision: &str,
-    scheduled_at: i64,
-) -> IdempotencyKey {
-    let identity = format!(
-        "{}:{}{}:{}{}",
-        schedule_id.len(),
-        schedule_id,
-        definition_revision.len(),
-        definition_revision,
-        scheduled_at
-    );
-    IdempotencyKey::new(format!(
-        "monitor-occurrence:{:x}",
-        Sha256::digest(identity.as_bytes())
-    ))
 }
 
 async fn occurrence_endpoints(
@@ -417,8 +340,7 @@ async fn occurrence_endpoints(
             .get(&config.database_type)
             .await
             .ok_or("monitor driver unavailable")?;
-        let identity =
-            datazen_feature_core::services::migration_endpoint::identify(&config, driver.as_ref());
+        let identity = datazen::services::migration_endpoint::identify(&config, driver.as_ref());
         by_connection.insert(
             connection_id.to_owned(),
             EndpointRef {
@@ -450,11 +372,11 @@ async fn execute_widget_once(
         .app_db()
         .get_workflow(&grant.workflow_id)
         .map_err(|_| "workflow missing")?;
-    if grants::revision(&record.definition_yaml) != grant.workflow_revision {
+    if datazen::monitor::domain::revision(&record.definition_yaml) != grant.workflow_revision {
         return Err("scheduled workflow revision changed".into());
     }
     let workflow = serde_yaml::from_str(&record.definition_yaml).map_err(|_| "workflow invalid")?;
-    datazen_feature_core::dashboard::execute::execute_widget_once(
+    datazen::dashboard::execute::execute_widget_once(
         &ScheduledWidgetHost {
             state,
             grant,
@@ -512,10 +434,7 @@ impl JobHandler for MonitorOccurrenceHandler {
         1
     }
 
-    fn validate_plan(
-        &self,
-        plan: &datazen_runtime::job::FrozenPlan,
-    ) -> Result<Vec<StageSpec>, JobError> {
+    fn validate_plan(&self, plan: &datazen::jobs::FrozenPlan) -> Result<Vec<StageSpec>, JobError> {
         if plan.kind != self.kind()
             || plan.is_apply
             || plan.plan_version != 1
@@ -573,15 +492,10 @@ impl JobHandler for MonitorOccurrenceHandler {
             result = execute_widget_once(&self.state, &self.dashboard_id, &self.widget, &self.grant) => result,
         };
         let (terminal, effect_outcome) = match &run {
-            Ok(run)
-                if run.status == datazen_feature_core::dashboard::types::WidgetRunStatus::Ok =>
-            {
+            Ok(run) if run.status == datazen::dashboard::types::WidgetRunStatus::Ok => {
                 (StageTerminal::Succeeded, EffectOutcome::Completed)
             }
-            Ok(run)
-                if run.status
-                    == datazen_feature_core::dashboard::types::WidgetRunStatus::Timeout =>
-            {
+            Ok(run) if run.status == datazen::dashboard::types::WidgetRunStatus::Timeout => {
                 (StageTerminal::Unknown, EffectOutcome::Unknown)
             }
             Ok(_) => (StageTerminal::Failed, EffectOutcome::NotStarted),
@@ -616,9 +530,9 @@ impl JobHandler for MonitorOccurrenceHandler {
             .as_ref()
             .cloned()?;
         let status = match run.status {
-            datazen_feature_core::dashboard::types::WidgetRunStatus::Ok => "ok",
-            datazen_feature_core::dashboard::types::WidgetRunStatus::Error => "error",
-            datazen_feature_core::dashboard::types::WidgetRunStatus::Timeout => "timeout",
+            datazen::dashboard::types::WidgetRunStatus::Ok => "ok",
+            datazen::dashboard::types::WidgetRunStatus::Error => "error",
+            datazen::dashboard::types::WidgetRunStatus::Timeout => "timeout",
         };
         Some(JobDomainResult {
             stage_id: outcome.stage_id.clone(),
@@ -646,11 +560,10 @@ async fn wait_for_cancel(cancel: &CancelToken) {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        occurrence_definition_revision, occurrence_idempotency_key, occurrence_schedule_id,
+    use datazen::monitor::application::occurrence::{
+        definition_revision, idempotency_key, schedule_id,
     };
-    use crate::monitor::grants::revision;
-    use datazen_feature_core::dashboard::schedule_grant::MonitorGrant;
+    use datazen::monitor::domain::{revision, MonitorGrant};
 
     fn grant() -> MonitorGrant {
         MonitorGrant {
@@ -674,35 +587,33 @@ mod tests {
     #[test]
     fn occurrence_idempotency_uses_schedule_definition_and_scheduled_time() {
         let original = grant();
-        let schedule = occurrence_schedule_id(&original.dashboard_id, &original.widget_id);
-        let definition = occurrence_definition_revision(&original, 60).expect("definition hash");
+        let schedule = schedule_id(&original.dashboard_id, &original.widget_id);
+        let definition = definition_revision(&original, 60).expect("definition hash");
         assert_eq!(
-            occurrence_idempotency_key(&schedule, &definition, 1_800),
-            occurrence_idempotency_key(&schedule, &definition, 1_800)
+            idempotency_key(&schedule, &definition, 1_800),
+            idempotency_key(&schedule, &definition, 1_800)
         );
         assert_ne!(
-            occurrence_idempotency_key(&schedule, &definition, 1_800),
-            occurrence_idempotency_key(&schedule, &definition, 1_860)
+            idempotency_key(&schedule, &definition, 1_800),
+            idempotency_key(&schedule, &definition, 1_860)
         );
 
         let mut revoked = original.clone();
         revoked.revocation_version += 1;
         assert_ne!(
             definition,
-            occurrence_definition_revision(&revoked, 60).expect("revoked definition hash")
+            definition_revision(&revoked, 60).expect("revoked definition hash")
         );
 
         let mut changed_workflow = original.clone();
         changed_workflow.workflow_revision = revision("id: changed");
         assert_ne!(
             definition,
-            occurrence_definition_revision(&changed_workflow, 60)
-                .expect("changed workflow definition hash")
+            definition_revision(&changed_workflow, 60).expect("changed workflow definition hash")
         );
         assert_ne!(
             definition,
-            occurrence_definition_revision(&original, 120)
-                .expect("changed schedule definition hash")
+            definition_revision(&original, 120).expect("changed schedule definition hash")
         );
     }
 }

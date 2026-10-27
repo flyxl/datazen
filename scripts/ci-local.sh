@@ -121,14 +121,14 @@ cargo test --lib -p datazen-driver-api -p datazen-driver-postgres -p datazen-dri
 
 # --------------------------------------------------------------------------
 step "8/11 Rust unit tests (datazen --lib --features $FEATURES)"
-cargo test -p datazen --lib --features "$FEATURES" || fail "cargo test datazen"
+cargo test -p datazen_desktop --lib --features "$FEATURES" || fail "cargo test datazen"
 
 # --------------------------------------------------------------------------
 step "9/11 Restore managed files (driver-file-stash restore)"
 node scripts/driver-file-stash.mjs restore || fail "driver-file-stash restore"
 
 # --------------------------------------------------------------------------
-step "10/11 Rust unit tests (datazen-ai-api --lib)"
-cargo test -p datazen-ai-api --lib || fail "cargo test ai-api"
+step "10/11 Rust unit tests (datazen --features ai --lib)"
+cargo test -p datazen --features ai --lib || fail "cargo test modules ai"
 
 printf '\n\033[1;32m[ci-local] 全部 CI 检查通过 ✔\033[0m\n'

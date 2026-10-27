@@ -158,7 +158,7 @@ export const RULES = Object.freeze([
   },
   {
     id: 'F-02',
-    subjects: ['application', 'runtime', 'kernel', 'platform-api'],
+    subjects: ['modules'],
     subjectsFromSpec: true,
     forbiddenLayers: ['host'],
     forbiddenCrates: ['tauri'],
@@ -169,7 +169,7 @@ export const RULES = Object.freeze([
   },
   {
     id: 'F-03',
-    subjects: ['application', 'runtime', 'kernel'],
+    subjects: ['modules'],
     subjectsFromSpec: true,
     forbiddenLayers: [],
     forbiddenCrates: 'spec',
@@ -180,18 +180,8 @@ export const RULES = Object.freeze([
     note: 'no HTTP/transport framework in the business core',
   },
   {
-    id: 'F-04',
-    subjects: ['platform-api'],
-    // Same allow-list inversion as F-01; §2.3 draws platform-api depending on
-    // the driver API and the AI API and nothing else.
-    allowedLayers: ['platform-api', 'driver-api', 'ai-api'],
-    forbiddenCrates: [],
-    specTokens: ['packages/platform-api', 'src-tauri'],
-    note: 'platform-api points at ports, not at the implementation',
-  },
-  {
     id: 'F-05',
-    subjects: ['application', 'runtime', 'kernel', 'platform-api'],
+    subjects: ['modules'],
     subjectsFromSpec: true,
     forbiddenLayers: [],
     forbiddenCrates: 'spec',
@@ -222,77 +212,32 @@ export const RULES = Object.freeze([
     note: 'the browser client stays transport-agnostic',
   },
   {
-    id: 'F-08',
-    subjects: ['migration-common'],
-    subjectsFromSpec: true,
-    allowedLayers: ['migration-common', 'driver-api'],
-    forbiddenCrates: 'spec',
-    specTokens: ['packages/migration-common'],
-    specCrates: ['tauri', 'axum', 'actix-web', 'warp', 'tonic', 'react'],
-    note: 'shared migration algorithms cannot depend on domain engines, runtime or transports',
-  },
-  {
-    id: 'F-09',
-    subjects: ['ai-providers'],
-    subjectsFromSpec: true,
-    forbiddenLayers: ['host'],
-    forbiddenCrates: ['tauri'],
-    specSubsetOnly: true,
-    specTokens: ['tauri'],
-    note: 'the shared AI provider cores stay webview-free',
-  },
-  {
     id: 'F-11',
-    subjects: ['platform-infra'],
+    subjects: ['infra'],
     subjectsFromSpec: true,
-    // Inverted allow-list on purpose. platform-infra is the shared
+    // Inverted allow-list on purpose. infra is the shared
     // infrastructure kernel: redaction, path safety, clock, transport
     // policy. The moment it may depend on ANY other layer it stops being
     // a foundation and becomes the coupling hub every form must link,
     // which is exactly the `common` crate this repo must not grow. A
     // deny-list would silently permit every layer added from now on.
-    allowedLayers: ['platform-infra'],
+    allowedLayers: ['infra'],
     forbiddenCrates: 'spec',
-    specTokens: ['packages/platform-infra'],
+    specTokens: ['packages/infra'],
     specCrates: ['tauri', 'axum', 'actix-web', 'warp', 'tonic', 'react'],
     note: 'the infrastructure kernel depends on no other layer and no platform transport',
   },
   {
-    id: 'F-12',
-    subjects: ['feature-core'],
+    id: 'F-14',
+    subjects: ['modules'],
     subjectsFromSpec: true,
-    allowedLayers: [
-      'feature-core',
-      'runtime',
-      'kernel',
-      'application',
-      'platform-api',
-      'platform-infra',
-      'driver-api',
-      'ai-api',
-      'data-transfer',
-      'data-sync',
-      'schema-diff',
-      'migration-common',
-    ],
-    forbiddenCrates: 'spec',
-    specTokens: ['packages/feature-core'],
-    // Host crates are rejected by allowedLayers. Treating `datazen` as a
-    // family would also reject every permitted `datazen-*` shared crate.
-    specCrates: ['tauri', 'axum', 'actix-web', 'warp', 'tonic', 'react'],
-    note: 'portable feature services depend on shared domain/runtime ports, never the desktop or a server transport',
-  },
-  {
-    id: 'F-13',
-    subjects: ['tunnel'],
-    subjectsFromSpec: true,
-    forbiddenLayers: ['host'],
-    forbiddenCrates: ['tauri'],
-    // Same form as F-02 / F-09: the §2.4 row also names `datazen`, which the
-    // host layer already covers.
-    specSubsetOnly: true,
-    specTokens: ['tauri'],
-    note: 'the shared tunnel mechanisms stay form-neutral, so desktop and web link the same code',
+    forbiddenLayers: ['host', 'runtime'],
+    // D1.5（2026-10-26）：AI Provider 适配（含 reqwest 出站 HTTP）随 ai feature
+    // 并入 modules::ai::providers，reqwest 不再对 modules 全 crate 禁用；
+    // Web 框架与 Tauri 仍禁止。
+    forbiddenCrates: ['tauri', 'axum', 'actix-web', 'warp', 'tonic'],
+    specTokens: ['modules', 'tauri'],
+    note: 'feature modules stay independent of host, legacy runtime, and transport layers',
   },
 ]);
 
@@ -311,7 +256,7 @@ export const RULES = Object.freeze([
  * package a missing layer. `server` stays unarmed on purpose: `datazen-server`
  * has not landed, and F-06 remains honestly vacuous until it does.
  */
-export const DEFAULT_REQUIRED_LAYERS = ['backend-client'];
+export const DEFAULT_REQUIRED_LAYERS = ['backend-client', 'modules'];
 
 function specLayerId(pathToken) {
   const normalised = pathToken.replace(/\/\*$/, '/*');
@@ -337,7 +282,7 @@ export function parseSpecRow(row) {
   for (const match of row.matchAll(/`([^`]+)`/g)) {
     const token = match[1].trim();
     if (token === '') continue;
-    if (/^(packages\/|src-tauri$|server$)/.test(token)) paths.push(token);
+    if (/^(packages\/|src-tauri$|server$|modules$)/.test(token)) paths.push(token);
     else if (token.includes('@') || token.includes('(') || token.includes('.'))
       frontend.push(token);
     else crates.push(token);

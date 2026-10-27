@@ -1,7 +1,8 @@
 //! Read-only resource owner admission under current persisted claim and stage.
 use super::{access::db_read_error, SqliteJobRepository};
-use datazen_platform_api::{
-    context::RequestContext, dto::job::JobClaim, error::PortError, id::StageId,
+use datazen::{
+    jobs::domain::job::JobClaim, shared::context::RequestContext, shared::error::PortError,
+    shared::id::StageId,
 };
 use rusqlite::{params, Connection, OptionalExtension};
 impl SqliteJobRepository {

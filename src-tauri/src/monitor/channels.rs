@@ -1,25 +1,23 @@
-//! Alert notification channels: desktop, webhook, email stub.
+//! Alert notification channels: app (host notification surface), webhook, email stub.
 
 use std::time::Duration;
 
 use tauri::AppHandle;
 use tauri_plugin_notification::NotificationExt;
 
-use datazen_feature_core::dashboard::types::{
-    AlertChannel, DashboardWidget, MonitorSettings, WidgetRun,
-};
+use datazen::dashboard::types::{AlertChannel, DashboardWidget, MonitorSettings, WidgetRun};
 
 const WEBHOOK_TIMEOUT: Duration = Duration::from_secs(10);
 
-pub use datazen_feature_core::dashboard::notifications::{AlertPayload, PendingNotification};
+pub use datazen::monitor::application::notifications::{AlertPayload, PendingNotification};
 pub struct AlertChannelState {
-    core: datazen_feature_core::dashboard::notifications::AlertChannelState,
+    core: datazen::monitor::application::notifications::AlertChannelState,
     http_client: reqwest::Client,
 }
 impl AlertChannelState {
     pub fn new() -> Self {
         Self {
-            core: datazen_feature_core::dashboard::notifications::AlertChannelState::new(),
+            core: datazen::monitor::application::notifications::AlertChannelState::new(),
             http_client: reqwest::Client::builder()
                 .timeout(WEBHOOK_TIMEOUT)
                 .build()
@@ -85,7 +83,7 @@ async fn dispatch_channels(
 ) {
     for channel in channels {
         match channel {
-            AlertChannel::Desktop => {
+            AlertChannel::App => {
                 if let Some(app) = app {
                     notify_desktop(app, title, body).await;
                 }
@@ -94,8 +92,8 @@ async fn dispatch_channels(
                 if let Some(url) = settings.default_webhook_url.as_deref() {
                     if let Err(e) = notify_webhook(client, url, payload).await {
                         tracing::warn!(
-                            error = %datazen_platform_infra::redaction::redact_secrets_for_log(&e.to_string()),
-                            url = %datazen_platform_infra::redaction::redact_url_for_log(url),
+                            error = %datazen_infra::redaction::redact_secrets_for_log(&e.to_string()),
+                            url = %datazen_infra::redaction::redact_url_for_log(url),
                             "webhook alert failed"
                         );
                     }

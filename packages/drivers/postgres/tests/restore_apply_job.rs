@@ -3,21 +3,25 @@
 #[path = "../../http-support/tests/support/migration_gate.rs"]
 mod migration_gate;
 mod restore_apply_support;
-use datazen_driver_api::{DatabaseDriver, Value};
-use datazen_feature_core::{restore_gateway::*, restore_job::*};
-use datazen_platform_api::{
-    context::OwnerRef,
-    dto::{execution::EffectOutcome, job::*},
-    id::*,
-    ports::{artifact::*, job::JobRepository},
-    target::*,
-    RequestContext,
-};
-use datazen_runtime::{
+use datazen::execution::runtime::{
     artifact::FileArtifactRepository,
     budget::{BudgetConfig, BudgetLedger},
-    job::*,
 };
+use datazen::{
+    backup::{restore_gateway::*, restore_job::*},
+    execution::domain::{ArtifactRepository, ArtifactSpec, ChunkPayload},
+    execution::target::*,
+    execution::EffectOutcome,
+    jobs::{
+        domain::job::{Checkpoint, JobDefinition, JobState},
+        domain::repository::JobRepository,
+        *,
+    },
+    shared::context::OwnerRef,
+    shared::id::*,
+    RequestContext,
+};
+use datazen_driver_api::{DatabaseDriver, Value};
 use sha2::{Digest, Sha256};
 use std::sync::{Arc, Mutex};
 struct Authorization;

@@ -1,97 +1,19 @@
+//! DesktopRepository 的 favorites 门面。
+//!
+//! D6 第一切片（2026-10-26）后本文件不再承载历史门面：查询历史与迁移运行
+//! 历史的词汇、仓储端口与用例归 `datazen::history`；桌面 SQLite 实现经
+//! `platform::history::DesktopHistoryRepositories` 适配，所有消费者（命令、
+//! MCP 资源、AI 分析、会话执行路径）走 `require_history_service` / 注入的
+//! `QueryHistoryRepository` 端口。`HistoryDb` 本体（SQL、schema 迁移环、保留
+//! 截断）仍在 `store::history_db`。
+
 use std::sync::Arc;
 
 use super::favorites::NewFavorite;
-use super::models::{FavoriteQuery, QueryHistoryEntry};
-use super::{
-    DesktopRepository, DesktopRepositoryError, MigrationRunFilter, MigrationRunPage,
-    MigrationRunRecord,
-};
+use super::models::FavoriteQuery;
+use super::{DesktopRepository, DesktopRepositoryError};
 
 impl DesktopRepository {
-    pub async fn save_migration_run(
-        &self,
-        run: &MigrationRunRecord,
-    ) -> Result<(), DesktopRepositoryError> {
-        self.history_db
-            .save_migration_run(run)
-            .map_err(|error| DesktopRepositoryError::WriteError(error.to_string()))
-    }
-
-    pub async fn get_migration_run(
-        &self,
-        id: &str,
-    ) -> Result<Option<MigrationRunRecord>, DesktopRepositoryError> {
-        self.history_db
-            .get_migration_run(id)
-            .map_err(|error| DesktopRepositoryError::ReadError(error.to_string()))
-    }
-
-    pub async fn list_migration_runs(
-        &self,
-        filter: &MigrationRunFilter,
-        offset: u64,
-        limit: u64,
-    ) -> Result<MigrationRunPage, DesktopRepositoryError> {
-        self.history_db
-            .list_migration_runs(filter, offset, limit)
-            .map_err(|error| DesktopRepositoryError::ReadError(error.to_string()))
-    }
-    pub async fn add_query_history(
-        &self,
-        entry: QueryHistoryEntry,
-    ) -> Result<(), DesktopRepositoryError> {
-        self.history_db
-            .add_query_history(entry)
-            .map_err(|e| DesktopRepositoryError::WriteError(e.to_string()))
-    }
-
-    pub async fn get_query_history(
-        &self,
-        limit: usize,
-        connection_id: Option<&str>,
-        database: Option<&str>,
-        schema: Option<&str>,
-    ) -> Vec<QueryHistoryEntry> {
-        self.history_db
-            .get_query_history(limit, connection_id, database, schema)
-            .unwrap_or_else(|e| {
-                tracing::warn!(error = %e, "Failed to read query history from SQLite");
-                Vec::new()
-            })
-    }
-
-    pub async fn clear_query_history(&self) -> Result<(), DesktopRepositoryError> {
-        self.purge_history(super::HistoryScope::Query, None).await?;
-        Ok(())
-    }
-
-    /// Paged history read carrying the untruncated match count.
-    pub async fn get_query_history_page(
-        &self,
-        filter: &super::history_db::QueryHistoryFilter<'_>,
-    ) -> Result<super::history_db::QueryHistoryPage, DesktopRepositoryError> {
-        self.history_db
-            .query_history_page(filter)
-            .map_err(|e| DesktopRepositoryError::WriteError(e.to_string()))
-    }
-
-    /// Delete one history row. `Ok(0)` means the id was already gone.
-    pub async fn delete_query_history(&self, id: &str) -> Result<u64, DesktopRepositoryError> {
-        self.history_db
-            .delete_query_history(id)
-            .map_err(|e| DesktopRepositoryError::WriteError(e.to_string()))
-    }
-
-    pub async fn purge_history(
-        &self,
-        scope: super::HistoryScope,
-        retain_days: Option<u32>,
-    ) -> Result<u64, DesktopRepositoryError> {
-        self.history_db
-            .purge(scope, retain_days)
-            .map_err(|e| DesktopRepositoryError::WriteError(e.to_string()))
-    }
-
     // ── Favorites (file-backed, see `store::favorites`) ───────────────────
 
     /// Directory the favorites are read from. Surfaced in the UI so the user

@@ -2,14 +2,14 @@
 
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
-use datazen_ai_api::AiProviderConfig;
-use datazen_ai_api::*;
-use datazen_platform_api::dto::session::SessionView;
-use datazen_runtime::application::{LiveConnectionLease, LivePurpose};
+use datazen::ai::AiProviderConfig;
+use datazen::ai::*;
+use datazen::execution::application::{LiveConnectionLease, LivePurpose};
+use datazen::execution::SessionView;
 use std::sync::Arc;
 use tauri::{Emitter, WebviewWindow};
 
-pub(crate) use datazen_feature_core::ai::response::language_hint;
+pub(crate) use datazen::ai::response::language_hint;
 
 /// Delivers streaming chunks to the UI (or test collector).
 pub(crate) type StreamCallback = Arc<dyn Fn(&str, Result<StreamChunk, AiError>) + Send + Sync>;
@@ -26,7 +26,7 @@ pub(crate) fn window_stream_callback(window: &WebviewWindow) -> StreamCallback {
 /// Falls back to a relaxed gate (credentials only) when no profile is found,
 /// matching the previous `ai_strict_egress = false` default behavior.
 pub(crate) async fn resolve_safety_gate(state: &AppState) -> AiSafetyGateConfig {
-    datazen_feature_core::ai::safety::effective_safety_gate(
+    datazen::ai::safety::effective_safety_gate(
         &state.store.get_ai_settings_config().await,
         &state.store.execution_settings().await,
     )
@@ -46,7 +46,7 @@ pub(crate) async fn resolve_ai(
     let safe_endpoint = config
         .endpoint
         .as_deref()
-        .map(datazen_platform_infra::redaction::redact_url_for_log);
+        .map(datazen_infra::redaction::redact_url_for_log);
     tracing::debug!(
         provider = %config.provider_type,
         model = %config.model,
@@ -64,7 +64,11 @@ pub(crate) async fn resolve_ai(
 }
 
 pub(crate) async fn build_connections_context(state: &AppState, lang: &str) -> String {
-    datazen_feature_core::ai::response::build_connections_context(state.store.as_ref(), lang).await
+    let Ok(scope) = state.connection_scope() else {
+        return String::new();
+    };
+    let catalog = crate::platform::connections::DesktopConnectionStore::new(state.store.clone());
+    datazen::ai::response::build_connections_context(&catalog, &scope, lang).await
 }
 
 /// Resolve an AI command's runtime session and borrow its already-open driver
@@ -123,7 +127,7 @@ pub(crate) fn parse_ai_json<T: serde::de::DeserializeOwned>(
     finish_reason: Option<&str>,
     cmd: &str,
 ) -> Result<T, CommandError> {
-    datazen_feature_core::ai::response::parse_ai_json(raw, finish_reason, cmd).map_err(Into::into)
+    datazen::ai::response::parse_ai_json(raw, finish_reason, cmd).map_err(Into::into)
 }
 
 pub(crate) fn emit_stream_chunk_or_error<R: tauri::Runtime>(
@@ -162,9 +166,7 @@ pub(crate) fn emit_stream_chunk_or_error<R: tauri::Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_feature_core::ai::response::{
-        find_first_balanced_json, repair_json, strip_fences_all,
-    };
+    use datazen::ai::response::{find_first_balanced_json, repair_json, strip_fences_all};
 
     // ── find_first_balanced_json ──
 

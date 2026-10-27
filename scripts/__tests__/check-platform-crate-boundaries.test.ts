@@ -93,9 +93,9 @@ function fixture(
 }
 
 const CORE = [
-  { name: 'datazen', dir: 'src-tauri' },
+  { name: 'datazen_desktop', dir: 'src-tauri' },
   { name: 'datazen-driver-api', dir: 'packages/driver-api' },
-  { name: 'datazen-runtime', dir: 'packages/runtime' },
+  { name: 'datazen', dir: 'modules' },
   { name: 'datazen-driver-redis', dir: 'packages/drivers/redis' },
 ];
 
@@ -150,13 +150,15 @@ describe('classifyMemberDir', () => {
     for (const dir of [
       'src-tauri',
       'server',
-      'packages/application',
-      'packages/runtime',
-      'packages/platform-api',
+      'modules',
+      'packages/infra',
+      'packages/driver-api',
+      'packages/drivers/redis',
+      'packages/backend-client',
     ]) {
       expect(classifyMemberDir(dir).unclassified).toBeUndefined();
     }
-    expect(layerIdOf('packages/application')).toBe('application');
+    expect(layerIdOf('modules')).toBe('modules');
     expect(layerIdOf('packages/drivers/redis')).toBe('driver');
   });
 
@@ -198,12 +200,9 @@ describe('parseSpecRow', () => {
     expect(matchesCrateFamily('tauri-plugin', f06.crates[0].replace(/\*$/, ''))).toBe(true);
   });
 
-  it('reads F-03 as three subject paths and four crate names', () => {
-    // `packages/kernel` 是 2026-10-23 从 `runtime` 分出的机制内核，同属「不得引入
-    // HTTP 框架」的核心层；主体多一个路径，这条断言必须跟着走，否则它就变成
-    // 「只要 spec 不动，多出来的包不会被检查」的免检声明。
+  it('reads F-03 as the modules subject and four crate names', () => {
     const f03 = parseSpecRow(specRow('F-03'));
-    expect(f03.paths).toEqual(['packages/application', 'packages/runtime', 'packages/kernel']);
+    expect(f03.paths).toEqual(['modules']);
     expect(f03.crates).toEqual(['axum', 'actix-web', 'warp', 'tonic']);
   });
 
@@ -231,11 +230,9 @@ describe('ruleVerdict', () => {
   it('says fail for a rule one of whose violations is attributed to it', () => {
     // Both producer shapes: the closure walk and the F-07 scan open with
     // `<id>  `, the spec cross-check with `<id>: `.
-    expect(
-      ruleVerdict('F-11', [
-        'F-11  datazen-platform-infra (packages/platform-infra/Cargo.toml) → x',
-      ]),
-    ).toBe('fail');
+    expect(ruleVerdict('F-11', ['F-11  datazen-infra (packages/infra/Cargo.toml) → x'])).toBe(
+      'fail',
+    );
     expect(ruleVerdict('F-11', ['F-11: subjects disagree with §2.4'])).toBe('fail');
   });
 
@@ -266,10 +263,7 @@ describe('checkSpecConsistency', () => {
   });
 
   it('fails when the spec adds a subject the guard does not check', () => {
-    const widened = SPEC.replace(
-      '| F-03 | `packages/application`、`packages/runtime`、`packages/kernel` ',
-      '| F-03 | `packages/application`、`packages/runtime`、`packages/kernel`、`packages/server` ',
-    );
+    const widened = SPEC.replace('| F-03 | `modules` ', '| F-03 | `modules`、`packages/server` ');
     expect(checkSpecConsistency(widened).join('\n')).toContain('F-03');
   });
 
@@ -282,7 +276,7 @@ describe('checkSpecConsistency', () => {
 });
 
 describe('checkPlatformCrateBoundaries', () => {
-  const clean = { 'datazen-runtime': ['datazen-driver-api'] };
+  const clean = { datazen: ['datazen-driver-api'] };
 
   it('passes a workspace that respects every rule', () => {
     const result = run(fixture(CORE, clean));
@@ -309,9 +303,16 @@ describe('checkPlatformCrateBoundaries', () => {
     expect(result.violations.join('\n')).toMatch(/F-01.*datazen-driver-redis.*→ datazen/);
   });
 
-  it('F-01: a driver reaching datazen-runtime is a violation', () => {
-    const result = run(fixture(CORE, { ...clean, 'datazen-driver-redis': ['datazen-runtime'] }));
-    expect(result.violations.join('\n')).toMatch(/F-01.*datazen-driver-redis.*→ datazen-runtime/);
+  it('F-14: modules reaching the desktop host are rejected', () => {
+    const result = run(fixture(CORE, { ...clean, datazen: ['datazen_desktop'] }), SPEC, {
+      requireLayers: ['modules'],
+    });
+    expect(result.violations.join('\n')).toMatch(/F-14.*datazen.*datazen_desktop/);
+  });
+
+  it('F-01: a driver reaching datazen is a violation', () => {
+    const result = run(fixture(CORE, { ...clean, 'datazen-driver-redis': ['datazen'] }));
+    expect(result.violations.join('\n')).toMatch(/F-01.*datazen-driver-redis.*→ datazen/);
   });
 
   it('F-01: a build-kind edge is walked, not just a normal one', () => {
@@ -401,7 +402,7 @@ describe('checkPlatformCrateBoundaries', () => {
     const result = run(fixture(CORE, { ...clean }));
     expect(result.violations.filter((v) => v.startsWith('F-01'))).toEqual([]);
     expect(result.advisories.join('\n')).toMatch(
-      /datazen \(src-tauri\/Cargo\.toml\) declares .*tauri-plugin-webdriver/,
+      /datazen_desktop \(src-tauri\/Cargo\.toml\) declares .*tauri-plugin-webdriver/,
     );
     expect(result.advisories.join('\n')).toMatch(/Not blocking: F-01's subjects are/);
   });
@@ -425,9 +426,9 @@ describe('checkPlatformCrateBoundaries', () => {
 
   it('F-02: a tauri crate in a core crate closure is a violation', () => {
     const result = run(
-      fixture(CORE, { ...clean, 'datazen-runtime': ['tauri-plugin'] }, [{ name: 'tauri-plugin' }]),
+      fixture(CORE, { ...clean, datazen: ['tauri-plugin'] }, [{ name: 'tauri-plugin' }]),
     );
-    expect(result.violations.join('\n')).toMatch(/F-02.*datazen-runtime.*→ tauri-plugin/);
+    expect(result.violations.join('\n')).toMatch(/F-02.*datazen.*→ tauri-plugin/);
   });
 
   it('F-02: a tauri crate reached transitively is still a violation', () => {
@@ -441,11 +442,11 @@ describe('checkPlatformCrateBoundaries', () => {
     const result = run(
       fixture(
         members,
-        { 'datazen-runtime': ['datazen-driver-postgres'], 'datazen-driver-postgres': ['tauri'] },
+        { datazen: ['datazen-driver-postgres'], 'datazen-driver-postgres': ['tauri'] },
         [{ name: 'tauri' }],
       ),
     );
-    expect(result.violations.join('\n')).toMatch(/F-02.*datazen-runtime.*→ tauri/);
+    expect(result.violations.join('\n')).toMatch(/F-02.*datazen.*→ tauri/);
   });
 
   it('a manifest that cannot be read is an error, not a silent skip', () => {
@@ -476,39 +477,21 @@ describe('checkPlatformCrateBoundaries', () => {
 
   it('F-02: a dev-dependency does not count as a shippable edge', () => {
     const result = run(
-      fixture(CORE, { ...clean, 'datazen-runtime': ['tauri'] }, [{ name: 'tauri' }], {
-        'datazen-runtime->tauri': 'dev',
+      fixture(CORE, { ...clean, datazen: ['tauri'] }, [{ name: 'tauri' }], {
+        'datazen->tauri': 'dev',
       }),
     );
     expect(result.violations).toEqual([]);
   });
 
   it('F-03: an HTTP framework in the core is a violation', () => {
-    const result = run(
-      fixture(CORE, { ...clean, 'datazen-runtime': ['axum'] }, [{ name: 'axum' }]),
-    );
+    const result = run(fixture(CORE, { ...clean, datazen: ['axum'] }, [{ name: 'axum' }]));
     expect(result.violations.join('\n')).toMatch(/F-03.*axum/);
   });
 
   it('F-05: a UI-runtime crate in the core is a violation', () => {
-    const result = run(
-      fixture(CORE, { ...clean, 'datazen-runtime': ['react'] }, [{ name: 'react' }]),
-    );
+    const result = run(fixture(CORE, { ...clean, datazen: ['react'] }, [{ name: 'react' }]));
     expect(result.violations.join('\n')).toMatch(/F-05.*react/);
-  });
-
-  it('F-04: platform-api depending on datazen-runtime is a violation', () => {
-    const members = [...CORE, { name: 'datazen-platform-api', dir: 'packages/platform-api' }];
-    const result = run(fixture(members, { ...clean, 'datazen-platform-api': ['datazen-runtime'] }));
-    expect(result.violations.join('\n')).toMatch(/F-04.*datazen-platform-api.*→ datazen-runtime/);
-  });
-
-  it('F-04: platform-api depending on driver-api is allowed (§2.3)', () => {
-    const members = [...CORE, { name: 'datazen-platform-api', dir: 'packages/platform-api' }];
-    const result = run(
-      fixture(members, { ...clean, 'datazen-platform-api': ['datazen-driver-api'] }),
-    );
-    expect(result.violations).toEqual([]);
   });
 
   it('F-06: a tauri crate in the server closure is a violation', () => {
@@ -546,7 +529,7 @@ describe('checkPlatformCrateBoundaries', () => {
  *     depend on `tauri*` is still forbidden from depending on the host.
  */
 describe('F-01 exemptions', () => {
-  const clean = { 'datazen-runtime': ['datazen-driver-api'] };
+  const clean = { datazen: ['datazen-driver-api'] };
 
   /** The production rule table with F-01's exemption list replaced. */
   function withExemptions(exemptions: Array<{ member: string; family: string; reason: string }>) {
@@ -620,7 +603,7 @@ describe('F-07 TypeScript literals', () => {
   const BACKEND_CLIENT = { name: 'datazen-backend-client', dir: 'packages/backend-client' };
   // Same shape as the `clean` map inside the crate-graph describe: runtime is
   // the only member with an edge, and it is a legal one.
-  const CLEAN: Record<string, string[]> = { 'datazen-runtime': ['datazen-driver-api'] };
+  const CLEAN: Record<string, string[]> = { datazen: ['datazen-driver-api'] };
 
   function scanWith(source: string, filename = 'probe.ts') {
     const root = mkdtempSync(join(tmpdir(), 'datazen-f07-'));
@@ -709,7 +692,7 @@ describe('F-07 TypeScript literals', () => {
  * quietly added it as a member would keep passing after the fix were reverted.
  */
 describe('subject presence', () => {
-  const CLEAN: Record<string, string[]> = { 'datazen-runtime': ['datazen-driver-api'] };
+  const CLEAN: Record<string, string[]> = { datazen: ['datazen-driver-api'] };
 
   /** Guard run against a throwaway tree. `files` is what lands under `packages/backend-client/src`. */
   function withTree(files: Record<string, string> | null, requireLayers: string[] = []) {
@@ -814,8 +797,8 @@ describe('F-07 transport tokens respect identifier boundaries', () => {
         root,
         metadata: fixture(
           [
-            { name: 'datazen', dir: 'src-tauri' },
-            { name: 'datazen-runtime', dir: 'packages/runtime' },
+            { name: 'datazen_desktop', dir: 'src-tauri' },
+            { name: 'datazen', dir: 'modules' },
           ],
           {},
         ),
@@ -954,51 +937,5 @@ describe('declaredDependencies — the manifest-side scan', () => {
     expect(declaredDependencies('[dependencies]\n# tauri = "2"\nredis = "0.27"\n')).toEqual([
       { name: 'redis', kind: 'dependencies', target: null, form: 'inline', renamed: false },
     ]);
-  });
-});
-
-// Shared migration algorithms must stay below every domain and platform host.
-describe('F-08 shared migration algorithms', () => {
-  const common = { name: 'datazen-migration-common', dir: 'packages/migration-common' };
-  const transfer = { name: 'datazen-data-transfer', dir: 'packages/data-transfer' };
-
-  it('allows the driver contract and excludes dev-only domain dependencies', () => {
-    const result = run(
-      fixture(
-        [...CORE, common, transfer],
-        {
-          'datazen-migration-common': ['datazen-driver-api', 'datazen-data-transfer'],
-        },
-        [],
-        { 'datazen-migration-common->datazen-data-transfer': 'dev' },
-      ),
-    );
-    expect(result.violations.filter((v) => v.startsWith('F-08'))).toEqual([]);
-    expect(result.evaluated.some((e) => e.rule === 'F-08')).toBe(true);
-  });
-
-  it('rejects a reverse dependency on a migration domain engine', () => {
-    const result = run(
-      fixture([...CORE, common, transfer], {
-        'datazen-migration-common': ['datazen-data-transfer'],
-      }),
-    );
-    expect(result.violations.join('\n')).toMatch(
-      /F-08.*datazen-migration-common.*→ datazen-data-transfer/,
-    );
-  });
-
-  it('rejects transport dependencies reached indirectly through driver-api', () => {
-    const result = run(
-      fixture(
-        [...CORE, common],
-        {
-          'datazen-migration-common': ['datazen-driver-api'],
-          'datazen-driver-api': ['tauri'],
-        },
-        [{ name: 'tauri' }],
-      ),
-    );
-    expect(result.violations.join('\n')).toMatch(/F-08.*datazen-migration-common.*→ tauri/);
   });
 });

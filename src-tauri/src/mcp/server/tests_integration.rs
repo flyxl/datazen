@@ -216,6 +216,9 @@ async fn mcp_read_resource_inner_paths() {
 
     let test = TestAppState::with_tables_and_resource_provider().await;
     test.save_connection("res-inner").await;
+    // D6 第一切片：写入经模块服务（与生产路径同一装配）。先取服务再构建 server
+    // ——后者拿走 AppState 的所有权，返回的 Arc 不与该借用挂钩。
+    let history = crate::platform::ipc::require_history_service(&test.state).unwrap();
     let server = mcp_server_allowing(Arc::new(test.state), &["res-inner"]);
 
     let conns = server
@@ -230,7 +233,8 @@ async fn mcp_read_resource_inner_paths() {
     }
 
     // Seed one row so the resource contract below is exercised on real output.
-    test.store
+    // D6 第一切片：写入经模块服务（与生产路径同一装配）。
+    history
         .add_query_history(crate::store::QueryHistoryEntry {
             id: "hist-1".into(),
             connection_id: "res-inner".into(),
@@ -243,8 +247,7 @@ async fn mcp_read_resource_inner_paths() {
             success: true,
             error_message: None,
         })
-        .await
-        .expect("add_query_history");
+        .await;
 
     let hist = server
         .read_resource_inner("datazen://query-history")
@@ -304,7 +307,7 @@ async fn mcp_call_tool_inner_unknown_tool_includes_help() {
 #[tokio::test]
 async fn mcp_call_tool_inner_disabled_tool_includes_help() {
     use crate::testing::app_state::TestAppState;
-    use datazen_feature_core::mcp::permission::McpPermissionMode;
+    use datazen::mcp::permission::McpPermissionMode;
     use std::sync::Arc;
 
     let test = TestAppState::new().await;
@@ -376,7 +379,7 @@ async fn mcp_call_tool_inner_allowlist_error_includes_help() {
 #[tokio::test]
 async fn mcp_query_rejects_disallowed_sql_in_readonly() {
     use crate::testing::app_state::TestAppState;
-    use datazen_feature_core::mcp::permission::McpPermissionMode;
+    use datazen::mcp::permission::McpPermissionMode;
     use std::sync::Arc;
 
     let test = TestAppState::with_tables_and_resource_provider().await;
@@ -415,7 +418,7 @@ async fn mcp_get_info_exposes_capabilities() {
 #[tokio::test]
 async fn mcp_disabled_tools_and_permission_mode() {
     use crate::testing::app_state::TestAppState;
-    use datazen_feature_core::mcp::permission::McpPermissionMode;
+    use datazen::mcp::permission::McpPermissionMode;
     use std::sync::Arc;
 
     let test = TestAppState::new().await;
@@ -425,7 +428,7 @@ async fn mcp_disabled_tools_and_permission_mode() {
 
     let mut router = DataZenMcpServer::tool_router();
     for name in MCP_ALL_TOOLS {
-        if !datazen_feature_core::mcp::permission::is_tool_listed(
+        if !datazen::mcp::permission::is_tool_listed(
             name,
             McpPermissionMode::ReadOnly,
             &server.disabled_tools,
@@ -512,12 +515,13 @@ async fn mcp_run_workflow_not_found() {
 async fn mcp_query_history_read_only_returns_empty() {
     use crate::store::QueryHistoryEntry;
     use crate::testing::app_state::TestAppState;
-    use datazen_feature_core::mcp::permission::McpPermissionMode;
+    use datazen::mcp::permission::McpPermissionMode;
     use std::sync::Arc;
 
     let test = TestAppState::with_tables_and_resource_provider().await;
     test.save_connection("hist-ro").await;
-    test.store
+    crate::platform::ipc::require_history_service(&test.state)
+        .unwrap()
         .add_query_history(QueryHistoryEntry {
             id: "hist-ro-1".into(),
             connection_id: "hist-ro".into(),
@@ -530,8 +534,7 @@ async fn mcp_query_history_read_only_returns_empty() {
             success: true,
             error_message: None,
         })
-        .await
-        .expect("add_query_history");
+        .await;
 
     let server = mcp_server_allowing(Arc::new(test.state), &["hist-ro"])
         .with_permission_mode(McpPermissionMode::ReadOnly);
@@ -565,7 +568,8 @@ async fn mcp_query_history_respects_connection_allowlist() {
     test.save_connection("hist-allowed").await;
     test.save_connection("hist-blocked").await;
     for (id, sql) in [("hist-a", "SELECT 1"), ("hist-b", "SELECT 2")] {
-        test.store
+        crate::platform::ipc::require_history_service(&test.state)
+            .unwrap()
             .add_query_history(QueryHistoryEntry {
                 id: id.into(),
                 connection_id: if id == "hist-a" {
@@ -582,8 +586,7 @@ async fn mcp_query_history_respects_connection_allowlist() {
                 success: true,
                 error_message: None,
             })
-            .await
-            .expect("add_query_history");
+            .await;
     }
 
     let server = DataZenMcpServer::new(Arc::new(test.state))

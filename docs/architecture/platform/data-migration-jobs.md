@@ -10,13 +10,13 @@
 
 | 引擎 | 当前领域包 | 桌面 host adapter | host 保留职责 |
 | --- | --- | --- | --- |
-| Schema Diff | `packages/schema-diff/` | `src-tauri/src/commands/schema_diff/` | IPC、窗口与用户确认 |
-| Data Sync | `packages/data-sync/` | `src-tauri/src/commands/sync/` | IPC、任务记录与窗口 |
-| Data Transfer | `packages/data-transfer/` | `src-tauri/src/commands/data_transfer/` | IPC、文件选择、原生工具环境 |
+| Schema Diff | `modules/src/migration/schema_diff/` | `src-tauri/src/commands/schema_diff/` | IPC、窗口与用户确认 |
+| Data Sync | `modules/src/migration/data_sync/` | `src-tauri/src/commands/sync/` | IPC、任务记录与窗口 |
+| Data Transfer | `modules/src/migration/data_transfer/` | `src-tauri/src/commands/data_transfer/` | IPC、文件选择、原生工具环境 |
 
 三个领域包和对应桌面 Job adapter 已由 P5 落地。`src-tauri/src/lib.rs` 将领域包导出给 Host；Driver 方言、DDL renderer、类型适配和专属测试留在 driver 包。领域引擎不引用 Tauri、HTTP、窗口 Store 或 driver 实现库类型。
 
-公共代码的实际归属：三套引擎共享 `runtime` 的 JobHandler/JobRuntime 和 `platform-api` 的任务 DTO；SQL 标识符引用与旧 family-based 表名限定工具位于 `driver-api::sql_identifiers`。`packages/migration-common` 只提供记录集边界值规范化/比较和端点 category/family 配对规则，不依赖领域引擎、runtime 或平台传输。Data Sync 与 Data Transfer 直接依赖它，Data Transfer 不再依赖 Data Sync。Data Sync 的 `recordset_bounds`、`sync_pairing` 和 `sql` 工具旧路径保留为转导出，只有一份实现。
+公共代码的实际归属：三套引擎共享 `runtime` 的 JobHandler/JobRuntime 和 `platform-api` 的任务 DTO；SQL 标识符引用与旧 family-based 表名限定工具位于 `driver-api::sql_identifiers`。`modules/src/migration/common` 只提供记录集边界值规范化/比较和端点 category/family 配对规则，不依赖领域引擎、runtime 或平台传输。Data Sync 与 Data Transfer 直接依赖它，Data Transfer 不再依赖 Data Sync。Data Sync 的 `recordset_bounds`、`sync_pairing` 和 `sql` 工具旧路径保留为转导出，只有一份实现。
 
 领域语义仍分别拥有：Schema Diff 的结构差异与操作依赖图、Data Sync 的同族门闸与 ChangeSet、Data Transfer 的异构 IR 转换与续传策略。共享配对规则只分类端点；各领域继续执行自己的能力限制（例如 Transfer 拒绝缺少适配器的 Redis 配对）。`qualify_relation_sql` 保留既有 family-based 兼容语义；驱动自有 SQL 重写继续使用 `DatabaseDriver::qualified_sql`，本次不改变驱动 trait、协议版本或执行行为。
 
@@ -79,7 +79,7 @@ sequenceDiagram
 
 Handler 以 kind + handlerVersion 注册，接口语义是 `validatePlan`、`runStage`、`verifyRecovery`。runStage 由 runtime 提供当前 claim、冻结输入、取消信号与受控资源访问；返回阶段结果、executionIds、已确认提交边界及 Artifact 引用。handler 不直接修改 Job 状态，不自行续租或在未知效果后自动重试。
 
-取消信号由 runtime 单独送达，handler 只读它、不自建取消通道。`dispatch` 为一次派发创建一个 `CancelToken`：进入每个阶段前重读 `cancel_requested`，并在阶段执行期间由一个并发看守者持续重读同一事实，看守者把结果翻译成这一个令牌的翻转，阶段拿到的是同一个 `CancelToken`（`CancelToken::flag()` 可取出其底层原子位交给批次/分页循环）。看守者每轮只读两个 bool（内存仓储的 `cancel_poll`），不克隆整条 `JobRecord`。阶段返回错误或 panic 时，runtime 收敛为 `Failed/Unknown`，保留此前已确认边界与 checkpoint，并使用固定安全原因码，不从缺少边界推断 rollback。阶段任务由受监控的 task 执行；runtime 等待阶段完成后终止并等待看守者，因此派发返回时不会留下仍持有仓储或请求上下文的游离任务。handler panic 使用 `handlerPanickedUnknown`，不会让 Job 悬在 `Running`。验证 panic/拒绝、无效冻结计划、未注册 handler 和预算拒绝发生于派发前时收敛为 failed + notStarted。取消阻止启动下一阶段；阶段报告的失败或取消效果由 handler 的实际证据决定，无提交边界本身不证明 rolledBack。轮询读失败时的取舍写在 `packages/kernel/src/job/runtime.rs`：记录一条告警并停止轮询，阶段不受影响；若这个 Job 还有下一个阶段，取消意图会在那个边界被重新读到，否则本次运行可能在不感知取消的情况下走完。data-transfer 侧真正的单阶段 Job 是 `prepare`、SQL 文件目标的 `apply`，以及 `data` 模式的 `apply`；仅结构模式展开为 structure → foreignKeys，`structureAndData` 模式展开为 structure → data → foreignKeys，因此**有**下一个边界，取消意图会在这些阶段边界被重新读到（阶段展开见 `packages/data-transfer/src/job/handler.rs` 的 `validate_plan`，由 `packages/data-transfer/src/job/tests/stage_shape.rs` 钉死）。读失败不得据此伪造失败，也不得静默：告警带 jobId 与错误原文。
+取消信号由 runtime 单独送达，handler 只读它、不自建取消通道。`dispatch` 为一次派发创建一个 `CancelToken`：进入每个阶段前重读 `cancel_requested`，并在阶段执行期间由一个并发看守者持续重读同一事实，看守者把结果翻译成这一个令牌的翻转，阶段拿到的是同一个 `CancelToken`（`CancelToken::flag()` 可取出其底层原子位交给批次/分页循环）。看守者每轮只读两个 bool（内存仓储的 `cancel_poll`），不克隆整条 `JobRecord`。阶段返回错误或 panic 时，runtime 收敛为 `Failed/Unknown`，保留此前已确认边界与 checkpoint，并使用固定安全原因码，不从缺少边界推断 rollback。阶段任务由受监控的 task 执行；runtime 等待阶段完成后终止并等待看守者，因此派发返回时不会留下仍持有仓储或请求上下文的游离任务。handler panic 使用 `handlerPanickedUnknown`，不会让 Job 悬在 `Running`。验证 panic/拒绝、无效冻结计划、未注册 handler 和预算拒绝发生于派发前时收敛为 failed + notStarted。取消阻止启动下一阶段；阶段报告的失败或取消效果由 handler 的实际证据决定，无提交边界本身不证明 rolledBack。轮询读失败时的取舍写在 `packages/kernel/src/job/runtime.rs`：记录一条告警并停止轮询，阶段不受影响；若这个 Job 还有下一个阶段，取消意图会在那个边界被重新读到，否则本次运行可能在不感知取消的情况下走完。data-transfer 侧真正的单阶段 Job 是 `prepare`、SQL 文件目标的 `apply`，以及 `data` 模式的 `apply`；仅结构模式展开为 structure → foreignKeys，`structureAndData` 模式展开为 structure → data → foreignKeys，因此**有**下一个边界，取消意图会在这些阶段边界被重新读到（阶段展开见 `modules/src/migration/data_transfer/job/handler.rs` 的 `validate_plan`，由 `modules/src/migration/data_transfer/job/tests/stage_shape.rs` 钉死）。读失败不得据此伪造失败，也不得静默：告警带 jobId 与错误原文。
 
 取消不制造提交边界。看守者只翻转令牌，不写入任何东西；阶段是否回滚在途批次、是否给出 `Cancelled`，仍完全由 handler 决定（data-transfer 在 execute 之后、commit 之前检查并回滚在途批次，该批次因此不产生提交边界）。
 
@@ -137,7 +137,7 @@ Schema Diff / Data Sync / Data Transfer 的 prepare/apply 是**后台任务**：
 
 每次成功的非事务语句记录真实执行 ID、目标/载荷摘要和提交边界；单事务只在确认 COMMIT 后记录一个边界。失败立即停止；已提交边界保留，传输/提交/回滚不确定为 Unknown。取消独立于效果，回滚使用独立清理令牌，只有成功的自有 ROLLBACK 才报告 RolledBack。旧 path helper 只在 Host 测试编译，不是生产回退。
 
-PostgreSQL 的 `packages/drivers/postgres/tests/restore_apply_job.rs` 通过安全 live launcher 的 `--test restore_apply_job` 运行。该旅程使用真实 disposable migration fixture、私有 ArtifactRepository、JobRuntime 的 TargetWriter 预算与单次 plan 消费，复用桌面委托的 `feature-core::restore_gateway::RuntimeRestoreGateway`，由 Runtime Session / ExecutionGateway 调用真正 PostgreSQL ResourceProvider；断言 COMMIT 执行 ID/摘要边界及独立连接读回两行，并验证 COPY、客户端指令、输入摘要/目标替换和配置 revision 失效在写入前失败；事务内建表后写不存在 relation 的 SQL 失败证明自有 ROLLBACK、无残表和 provider close 完成。测试宿主的 Profile/Policy/SessionBackend 是驱动测试接缝；不覆盖桌面 picker、Store、DesktopSessionBackend 的接线，MySQL 的独立旅程见下文。共享 orchestrator 的授权端口在桌面仍重查 Store 的 enabled/revision/readOnly/safeMode 与目标授权。
+PostgreSQL 的 `packages/drivers/postgres/tests/restore_apply_job.rs` 通过安全 live launcher 的 `--test restore_apply_job` 运行。该旅程使用真实 disposable migration fixture、私有 ArtifactRepository、JobRuntime 的 TargetWriter 预算与单次 plan 消费，复用桌面委托的 `modules::restore_gateway::RuntimeRestoreGateway`，由 Runtime Session / ExecutionGateway 调用真正 PostgreSQL ResourceProvider；断言 COMMIT 执行 ID/摘要边界及独立连接读回两行，并验证 COPY、客户端指令、输入摘要/目标替换和配置 revision 失效在写入前失败；事务内建表后写不存在 relation 的 SQL 失败证明自有 ROLLBACK、无残表和 provider close 完成。测试宿主的 Profile/Policy/SessionBackend 是驱动测试接缝；不覆盖桌面 picker、Store、DesktopSessionBackend 的接线，MySQL 的独立旅程见下文。共享 orchestrator 的授权端口在桌面仍重查 Store 的 enabled/revision/readOnly/safeMode 与目标授权。
 
 MySQL 的 `packages/drivers/mysql/tests/restore_apply_job.rs` 使用同一安全 launcher、disposable migration gate、私有 ArtifactRepository、JobRuntime 与生产 `RuntimeRestoreGateway`，通过 Runtime Session / ExecutionGateway 调用 factory 注册的真实 MysqlResourceProvider。`IMPLICIT_COMMIT` 配合 `single_transaction=false`：成功 CREATE/INSERT 逐句记录执行 ID、目标和语句摘要边界，独立连接读回两行；LOAD DATA、SOURCE、输入摘要不符、冻结目标替换及配置 revision 失效均在资源获取/写入前拒绝，NotStarted、attempted=0，且无表、无执行 ID；各拒绝路径均断言 Runtime resource open 计数不变。另一脚本先建表，再向不存在的表 INSERT，失败立即停止；独立连接证明 DDL 表仍存在、后续 CREATE 未运行，再清理残表。驱动 SQL 错误当前不提供本语句的确定效果证据，因此总体效果保守为 Unknown，同时保留已确认的 CREATE 提交边界及 committed=1，不能宣称跨 DDL/DML 原子性、RolledBack 或确定的 PartiallyApplied。测试宿主替代 Profile/Policy/SessionBackend 接线，不覆盖桌面 picker、Store 与 DesktopSessionBackend。
 

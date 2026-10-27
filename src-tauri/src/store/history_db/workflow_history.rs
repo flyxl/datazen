@@ -5,8 +5,8 @@
 //! executor grows and a projection here would have to be migrated every time.
 
 use super::{HistoryDb, HistoryDbError, MAX_WORKFLOW_HISTORY};
-use datazen_feature_core::workflow::history::{WorkflowRunListItem, WorkflowRunRecord};
-use datazen_feature_core::workflow::model::WorkflowExecutionResult;
+use datazen::workflow::history::{WorkflowRunListItem, WorkflowRunRecord};
+use datazen::workflow::model::WorkflowExecutionResult;
 use rusqlite::params;
 
 impl HistoryDb {

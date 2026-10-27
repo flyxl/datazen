@@ -1,13 +1,13 @@
 #[cfg(test)]
 mod host_tests {
+    use datazen::services::query_executor::*;
     use datazen_driver_api::{ConnectionHandle, Value};
-    use datazen_feature_core::services::query_executor::*;
     use std::sync::Arc;
     #[tokio::test]
     async fn get_table_data_uses_schema_cache_and_returns_total() {
         use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
-        use datazen_runtime::driver_registry::registry::DriverRegistry;
-        use datazen_runtime::schema_cache::SchemaCache;
+        use datazen::execution::runtime::driver_registry::registry::DriverRegistry;
+        use datazen::schema::cache::SchemaCache;
 
         let registry = Arc::new(DriverRegistry::new());
         let mock = MockDriver::new(

@@ -1,16 +1,14 @@
 //! Desktop identity, durable job admission and native delivery for portable file jobs.
 use super::{AppState, CommandError};
-use datazen_feature_core::file_job::{FileArtifactJob, FileJobOperation};
-use datazen_platform_api::{
-    context::OwnerRef,
-    dto::{
-        artifact::ArtifactLifecycle,
-        job::{JobDefinition, JobState},
-    },
-    id::{IdempotencyKey, JobId, LeaseId, WorkerId},
-    ports::artifact::{ArtifactRepository, ExportSink},
+use datazen::file_job::{FileArtifactJob, FileJobOperation};
+use datazen::jobs::{EndpointRef, EndpointRole, JobHandler};
+use datazen::{
+    execution::domain::{ArtifactRepository, ExportSink},
+    execution::ArtifactLifecycle,
+    jobs::domain::job::{JobDefinition, JobState},
+    shared::context::OwnerRef,
+    shared::id::{IdempotencyKey, JobId, LeaseId, WorkerId},
 };
-use datazen_runtime::job::{EndpointRef, EndpointRole, JobHandler};
 use std::{
     path::PathBuf,
     sync::{atomic::AtomicBool, Arc},
@@ -129,8 +127,8 @@ async fn file_job_identity(
     state: &AppState,
     session: &str,
     database: Option<&str>,
-) -> Result<datazen_feature_core::services::migration_endpoint::EndpointIdentity, CommandError> {
-    use datazen_feature_core::services::migration_endpoint::{checked_identify, normalized};
+) -> Result<datazen::services::migration_endpoint::EndpointIdentity, CommandError> {
+    use datazen::services::migration_endpoint::{checked_identify, normalized};
 
     let adapter = state
         .platform_require()
@@ -139,7 +137,9 @@ async fn file_job_identity(
         .runtime()
         .map_err(crate::platform::into_command_error)?;
     let owner = runtime
-        .connection_id_for_session(&datazen_runtime::connection::DbSessionId::new(session))
+        .connection_id_for_session(&datazen::execution::runtime::connection::DbSessionId::new(
+            session,
+        ))
         .ok_or_else(|| CommandError::Validation("File job session unavailable".into()))?;
     let (mut config, metadata) = state
         .store
@@ -156,7 +156,7 @@ async fn file_job_identity(
         config.database = normalized(Some(database))
             .or_else(|| normalized(config.database.as_deref()))
             .map(str::to_owned);
-        config.schema = datazen_feature_core::services::schema_scope::metadata_schema(
+        config.schema = datazen::services::schema_scope::metadata_schema(
             driver.as_ref(),
             None,
             None,
@@ -176,7 +176,7 @@ async fn file_job_identity(
 /// genuinely down, and the E2E suite could not either. The port error is
 /// already sanitized (`PortError` carries no credentials), so pass it through
 /// with the file-job prefix instead of discarding it.
-fn unavailable(error: datazen_platform_api::PortError) -> CommandError {
+fn unavailable(error: datazen::PortError) -> CommandError {
     tracing::warn!(%error, "file job port failure");
     CommandError::Internal(format!("file job storage or dispatch unavailable: {error}"))
 }
@@ -186,7 +186,7 @@ fn unavailable(error: datazen_platform_api::PortError) -> CommandError {
 pub async fn get_file_job(
     state: tauri::State<'_, AppState>,
     job_id: JobId,
-) -> Result<datazen_platform_api::dto::job::JobDetails, CommandError> {
+) -> Result<datazen::jobs::domain::job::JobDetails, CommandError> {
     let adapter = state
         .platform_require()
         .map_err(crate::platform::into_command_error)?;
@@ -208,7 +208,7 @@ pub async fn get_file_job(
 pub async fn cancel_file_job(
     state: tauri::State<'_, AppState>,
     job_id: JobId,
-) -> Result<datazen_platform_api::dto::job::JobView, CommandError> {
+) -> Result<datazen::jobs::domain::job::JobView, CommandError> {
     let adapter = state
         .platform_require()
         .map_err(crate::platform::into_command_error)?;

@@ -22,7 +22,7 @@
 #   node scripts/with-driver-inject.mjs --drivers=basic -- node scripts/e2e-tauri-build.mjs
 #   → tauri build --debug -f webdriver,driver-postgres,... （自带 webdriver feature 与
 #   `.driver-features.json` 检查；beforeBuildCommand 负责生成 dist 并嵌入资产）。
-#   禁止裸 `cargo build -p datazen --features webdriver`（会报 asset not found 或
+#   禁止裸 `cargo build -p datazen_desktop --features webdriver`（会报 asset not found 或
 #   4445 不监听）。底层 cargo 天然增量编译并尊重既有 CARGO_TARGET_DIR；
 #   --skip-build 可跳过构建复用既有产物。
 #

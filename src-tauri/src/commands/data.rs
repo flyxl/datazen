@@ -1,20 +1,20 @@
 //! Table ChangeSet IPC adapter.
 //!
 //! The plan, its guards, the fingerprint and the transaction orchestration live
-//! in `datazen_feature_core::data_browsing`, shared with any future web host.
+//! in `datazen::data_browsing`, shared with any future web host.
 //! This module only deserializes IPC payloads, fetches the connection profile,
 //! resolves the driver, lends the feature layer its catalog and runtime handles,
 //! and maps the result back to `CommandError`.
 
 use super::error::CommandError;
 use super::AppState;
-use datazen_driver_api::Value;
-use datazen_feature_core::data_browsing::{
+use datazen::data_browsing::{
     commit_changes, preview_changes, validate_table_context, ConnectionFacts,
 };
+use datazen_driver_api::Value;
 use tauri::State;
 
-pub use datazen_feature_core::data_browsing::{
+pub use datazen::data_browsing::{
     CommitPendingChangesRequest, CommitPendingChangesResponse, PendingRowChange, RowChangePlan,
     RowChangeTableContext,
 };
@@ -98,7 +98,7 @@ pub(crate) async fn commit_pending_changes_impl(
 async fn commit_pending_changes_with_handle(
     state: &AppState,
     request: CommitPendingChangesRequest,
-    manual_handle: Option<datazen_platform_api::dto::session::SessionHandle>,
+    manual_handle: Option<datazen::execution::SessionHandle>,
 ) -> Result<CommitPendingChangesResponse, CommandError> {
     tracing::info!(
         db_session_id = %request.db_session_id,
@@ -158,7 +158,7 @@ async fn commit_pending_changes_with_handle(
 pub async fn commit_pending_changes(
     state: State<'_, AppState>,
     db_session_id: String,
-    manual_handle: Option<datazen_platform_api::dto::session::SessionHandle>,
+    manual_handle: Option<datazen::execution::SessionHandle>,
     plan: RowChangePlan,
     fingerprint: String,
 ) -> Result<CommitPendingChangesResponse, CommandError> {

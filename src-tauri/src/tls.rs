@@ -70,7 +70,7 @@
 
 /// The **decision** — which provider wins the process-wide rustls slot, and
 /// how the race against the updater's competing `ring` install is settled —
-/// lives in the shared `datazen-tunnel` crate (`datazen_tunnel::crypto`),
+/// lives in the shared `datazen::tunnel` crate (`datazen::tunnel::crypto`),
 /// because the TLS legs of the tunnel mechanisms (`https://` HTTP `CONNECT`
 /// proxy, `wss://` WebSocket relay) build an **auto-detecting**
 /// `ClientConfig`, and auto-detection panics when both provider features are
@@ -81,9 +81,9 @@
 /// host-wiring guards below (`main()` must install before it parses argv), and
 /// the tests that observe the process global from a genuinely fresh process.
 ///
-/// The function is re-exported unchanged, so `datazen::install_default_crypto_provider()`
+/// The function is re-exported unchanged, so `datazen_desktop::install_default_crypto_provider()`
 /// — what `main()` calls — is the very same function the tunnel crate calls.
-pub use datazen_tunnel::install_default_crypto_provider;
+pub use datazen::tunnel::install_default_crypto_provider;
 
 #[cfg(test)]
 mod tests {
@@ -492,7 +492,7 @@ mod tests {
     fn main_installs_before_anything_else_and_both_entry_points_run_through_it() {
         let main_rs = include_str!("main.rs");
         let install_at = main_rs
-            .find("datazen::install_default_crypto_provider()")
+            .find("datazen_desktop::install_default_crypto_provider()")
             .expect("main() must install the process-wide provider");
         let args_at = main_rs
             .find("let args: Vec<String> = std::env::args().collect();")
@@ -502,8 +502,8 @@ mod tests {
             "the install must be main()'s first statement, before any TLS user"
         );
         // Both entry points funnel through main(): GUI and `--mcp-stdio`.
-        assert!(main_rs.contains("datazen::run_mcp_stdio()"));
-        assert!(main_rs.contains("datazen::run()"));
+        assert!(main_rs.contains("datazen_desktop::run_mcp_stdio()"));
+        assert!(main_rs.contains("datazen_desktop::run()"));
 
         let lib_rs = include_str!("lib.rs");
         assert!(lib_rs.contains("mod tls;"));

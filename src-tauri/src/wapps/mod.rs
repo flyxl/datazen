@@ -6,13 +6,13 @@
 //!
 //! The **kernel** — manifest schema and rules 1–7, ZIP and directory install,
 //! per-wapp key-value storage, the installed-app registry, URI grammar and
-//! routing decisions — lives in `packages/feature-core` as the
-//! `feature_core::workspace_apps` module. Call sites reference that module
+//! routing decisions — lives in `modules` as the
+//! `modules::workspace_apps` module. Call sites reference that module
 //! directly; this module no longer re-exports shared-package names.
 //!
 //! What stays here is **form-specific**: [`protocol`], the `datazen://` bridge
 //! that speaks Tauri IPC. [`WappManager`] is a kernel type now, reached via
-//! `datazen_feature_core::workspace_apps::manager::WappManager`.
+//! `datazen::workspace_apps::manager::WappManager`.
 pub mod protocol;
 
 #[cfg(test)]

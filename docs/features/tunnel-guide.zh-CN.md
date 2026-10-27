@@ -1,6 +1,6 @@
 # 隧道连接（SSH / HTTP Proxy / WebSocket）
 
-> 对应代码：`packages/tunnel/src/`（隧道机制内核）、`src-tauri/src/tunnel/`（宿主装配层）、连接表单 Advanced → Tunnel。
+> 对应代码：`modules/src/tunnel/`（隧道机制内核）、`src-tauri/src/tunnel/`（宿主装配层）、连接表单 Advanced → Tunnel。
 > 架构文档：[docs/architecture/backend/tunnel.md](../architecture/backend/tunnel.md)。
 
 ## 1. 概述

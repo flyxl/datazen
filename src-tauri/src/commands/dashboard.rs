@@ -11,16 +11,14 @@ use crate::dashboard::create::{
 };
 use crate::dashboard::export::{export_dashboard_json, import_dashboard};
 use crate::platform::ipc::require_application_services;
-use datazen_feature_core::dashboard::repository::{
+use datazen::dashboard::repository::{
     delete_dashboard as store_delete_dashboard, find_workflow_refs,
     get_dashboard as store_get_dashboard, list_dashboards as store_list_dashboards,
     save_dashboard as store_save_dashboard,
     set_dashboard_refresh_paused as store_set_refresh_paused,
 };
-use datazen_feature_core::dashboard::runs::{get_run, list_run_index};
-use datazen_feature_core::dashboard::types::{
-    ChartConfig, Dashboard, RunIndexEntry, ViewMode, WidgetRun,
-};
+use datazen::dashboard::runs::{get_run, list_run_index};
+use datazen::dashboard::types::{ChartConfig, Dashboard, RunIndexEntry, ViewMode, WidgetRun};
 
 pub(crate) async fn list_dashboards_impl(state: &AppState) -> Result<Vec<Dashboard>, CommandError> {
     let scope = state.organization_scope()?;
@@ -89,7 +87,7 @@ pub(crate) async fn set_dashboard_refresh_paused_impl(
 pub(crate) fn find_dashboard_workflow_refs_impl(
     state: &AppState,
     workflow_id: String,
-) -> Result<Vec<datazen_feature_core::dashboard::types::DashboardWorkflowRef>, CommandError> {
+) -> Result<Vec<datazen::dashboard::types::DashboardWorkflowRef>, CommandError> {
     let scope = state.organization_scope()?;
     let app_db = require_application_services(state)?.dashboard.clone();
     find_workflow_refs(&scope, &*app_db, &workflow_id).cmd_err("find_dashboard_workflow_refs")
@@ -134,7 +132,7 @@ pub async fn set_dashboard_refresh_paused(
 pub fn find_dashboard_workflow_refs(
     state: State<'_, AppState>,
     workflow_id: String,
-) -> Result<Vec<datazen_feature_core::dashboard::types::DashboardWorkflowRef>, CommandError> {
+) -> Result<Vec<datazen::dashboard::types::DashboardWorkflowRef>, CommandError> {
     find_dashboard_workflow_refs_impl(&state, workflow_id)
 }
 
@@ -407,7 +405,7 @@ mod tests {
 
     use crate::store::{AppDb, WorkflowRecord, WorkflowVisibility};
     use chrono::Utc;
-    use datazen_feature_core::dashboard::types::{
+    use datazen::dashboard::types::{
         DashboardLayout, DashboardWidget, RefreshMode, RefreshPolicy, WidgetLayout,
     };
 
@@ -505,7 +503,7 @@ mod tests {
     #[tokio::test]
     async fn run_dashboard_widget_with_workflow() {
         use crate::testing::app_state::TestAppState;
-        use datazen_feature_core::workflow::model::{WorkflowDefinition, WorkflowStep};
+        use datazen::workflow::model::{WorkflowDefinition, WorkflowStep};
 
         let test = TestAppState::with_tables_and_resource_provider().await;
         test.save_connection("widget-cfg").await;
@@ -548,10 +546,7 @@ mod tests {
             .await
             .unwrap();
         assert!(!run.id.is_empty());
-        assert_eq!(
-            run.status,
-            datazen_feature_core::dashboard::types::WidgetRunStatus::Ok
-        );
+        assert_eq!(run.status, datazen::dashboard::types::WidgetRunStatus::Ok);
 
         let runs = list_widget_runs_impl(&test.state, "dash-run".into(), "w1".into(), 10)
             .await
@@ -566,7 +561,7 @@ pub async fn authorize_monitor_widget_schedule(
     dashboard_id: String,
     widget_id: String,
     ttl_secs: u32,
-) -> Result<datazen_feature_core::dashboard::schedule_grant::MonitorGrant, CommandError> {
+) -> Result<datazen::monitor::domain::MonitorGrant, CommandError> {
     crate::monitor::grants::authorize(&state, &dashboard_id, &widget_id, ttl_secs)
         .await
         .map_err(CommandError::Validation)
@@ -585,7 +580,7 @@ pub async fn get_monitor_widget_schedule_grant(
     state: State<'_, AppState>,
     dashboard_id: String,
     widget_id: String,
-) -> Result<Option<datazen_feature_core::dashboard::schedule_grant::MonitorGrant>, CommandError> {
+) -> Result<Option<datazen::monitor::domain::MonitorGrant>, CommandError> {
     let call = state
         .platform_require()
         .map_err(|_| CommandError::Validation("platform unavailable".into()))?
@@ -613,7 +608,7 @@ pub async fn webdriver_monitor_evidence(
     widget_id: String,
     tick: bool,
 ) -> Result<serde_json::Value, CommandError> {
-    use datazen_platform_api::dto::job::JobFilter;
+    use datazen::jobs::domain::job::JobFilter;
     let grant =
         get_monitor_widget_schedule_grant(state.clone(), dashboard_id.clone(), widget_id.clone())
             .await?
@@ -685,6 +680,6 @@ pub async fn webdriver_monitor_evidence(
     Ok(
         serde_json::json!({ "tickAccepted": tick_accepted, "receipts": receipts,
         "physicalDispatches": physical_dispatches,
-        "stage": crate::monitor::evidence::stage(&dashboard_id, &widget_id) }),
+        "stage": datazen::monitor::application::evidence::stage(&dashboard_id, &widget_id) }),
     )
 }

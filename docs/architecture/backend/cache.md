@@ -234,7 +234,7 @@ impl CacheWarmupStrategy {
 ### 1.3 优化的查询执行流程
 
 ```rust
-// packages/feature-core/src/services/query_executor.rs
+// modules/src/services/query_executor.rs
 
 use datazen_driver_api::*;
 use datazen_runtime::schema_cache::SchemaCache;

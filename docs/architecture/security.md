@@ -7,14 +7,14 @@
 | 安全措施 | 实现方式 | 位置 |
 |----------|----------|------|
 | **密码加密存储** | AES-256-GCM；主密钥在 OS 钥匙串或 `{appData}/.key`（见 `key_store`） | `DesktopRepository::encrypt/decrypt` + `src-tauri/src/store/key_store.rs` |
-| **密码派生** | Argon2id KDF（替代双轮 SHA-256），用于连接导入/导出文件与敏感字段的字段级加密 | `packages/feature-core/src/connection_import/datazen.rs::derive_argon2_key` |
+| **密码派生** | Argon2id KDF（替代双轮 SHA-256），用于连接导入/导出文件与敏感字段的字段级加密 | `modules/src/connection_import/datazen.rs::derive_argon2_key` |
 | **AI Key 加密** | 随 Store 整体 AES-256-GCM 加密 | `src-tauri/src/store/ai_config.rs`（`ai_config.enc`） |
 | **连接池管理** | sqlx 连接池 + 超时清理 | 各数据库驱动 |
-| **空闲会话与资源回收** | Runtime 默认 30 分钟会话期限；桌面每 15 秒扫描，detached grace 为 60 秒；到期显式关闭而不透明重连 | `packages/runtime/src/application/idle.rs`、`src-tauri/src/platform/adapter.rs` |
-| **连接生命周期** | 物理连接全部经 runtime 会话层租约借出（按用途授权、显式归还是常态路径），不是裸句柄长持有 | `packages/runtime/src/application/live.rs` |
-| **结果集内存控制（按面生效）** | 分面限制：Workflow 单查询 `query_row_limit`（默认 1000 行）；AI 边界对 `rows`/`data` 等 payload 字段整体剔除（§4） | `packages/feature-core/src/workflow/executor.rs`、`packages/feature-core/src/ai/safety.rs` |
+| **空闲会话与资源回收** | Runtime 默认 30 分钟会话期限；桌面每 15 秒扫描，detached grace 为 60 秒；到期显式关闭而不透明重连 | `modules/src/execution/application/idle.rs`、`src-tauri/src/platform/adapter.rs` |
+| **连接生命周期** | 物理连接全部经 runtime 会话层租约借出（按用途授权、显式归还是常态路径），不是裸句柄长持有 | `modules/src/execution/application/live.rs` |
+| **结果集内存控制（按面生效）** | 分面限制：Workflow 单查询 `query_row_limit`（默认 1000 行）；AI 边界对 `rows`/`data` 等 payload 字段整体剔除（§4） | `modules/src/workflow/executor.rs`、`modules/src/ai/safety.rs` |
 | **SQL 注入防护** | 参数化查询 | `query_with_params` |
-| **TLS 加密后端** | 进程级 rustls `CryptoProvider` 显式安装（`aws-lc-rs`） | 实现体在 `packages/tunnel/src/crypto.rs`，宿主 `src-tauri/src/tls.rs` 保留接线守卫与再导出 |
+| **TLS 加密后端** | 进程级 rustls `CryptoProvider` 显式安装（`aws-lc-rs`） | 实现体在 `modules/src/tunnel/crypto.rs`，宿主 `src-tauri/src/tls.rs` 保留接线守卫与再导出 |
 | **CSP** | Content Security Policy | `src-tauri/tauri.conf.json` |
 | **路径遍历防护** | 路径校验 | `src-tauri/src/commands/file.rs` |
 | **SQL 安全（Safe Mode / 只读）** | 启发式语句分类 + 连接级拦截 | `packages/kernel/src/sql_guard`（宿主经 `datazen_runtime` 再导出或直接依赖 kernel 调用） |
@@ -84,7 +84,7 @@ CSP 以对象形式写在 `src-tauri/tauri.conf.json` 的 `security.csp`，当�
 AI 请求经过两个边界：
 
 1. **前端组装边界**：`src/lib/aiQueryActions.ts` 和 `src/stores/aiStore.ts` 在构造诊断上下文、发送 IPC 前，先清理 SQL、错误文本和 schema context。这个边界保证正常 UI 路径不会把明显的凭据直接传下去。
-2. **Rust Provider 边界**：`packages/feature-core/src/ai/safety.rs` 的 `redact_for_gate` 是唯一公开脱敏入口；宿主调用点直接引用该共享模块。每个 AI 用例在把 caller 内容交给 Provider 前都会再处理一次，直接调用 IPC、绕过 UI 或未来新增调用方都不能仅依赖前端脱敏。
+2. **Rust Provider 边界**：`modules/src/ai/safety.rs` 的 `redact_for_gate` 是唯一公开脱敏入口；宿主调用点直接引用该共享模块。每个 AI 用例在把 caller 内容交给 Provider 前都会再处理一次，直接调用 IPC、绕过 UI 或未来新增调用方都不能仅依赖前端脱敏。
 
 最终发送给 Provider 的内容由具体 AI 场景决定，但允许的数据库上下文原则上只有：
 
@@ -232,7 +232,7 @@ Safe Mode 额外约束：
 
 Safe Mode 开启时，Schema 树会隐藏 Truncate/Drop 等高危菜单项；关闭 Safe Mode 后，Query Panel 对 `DROP` / `TRUNCATE` 语句弹出二次确认，后端不再拦截此类语句。
 
-**限制**：`WHERE 1=1` 等恒真条件可通过检查；多语句脚本中任一条违规即拒绝整批；与 MCP `SafeWrite` 权限模式（`packages/feature-core/src/mcp/permission.rs`）是不同边界，互不替代。
+**限制**：`WHERE 1=1` 等恒真条件可通过检查；多语句脚本中任一条违规即拒绝整批；与 MCP `SafeWrite` 权限模式（`modules/src/mcp/permission.rs`）是不同边界，互不替代。
 
 ### 5.3 未覆盖路径
 
@@ -249,7 +249,7 @@ Safe Mode 与只读连接旨在降低误操作风险，**不能**替代数据库
 
 ## 6. 传输层与 rustls 加密后端
 
-DataZen 的出站 TLS 统一走 `rustls 0.23`。该 crate 的 `CryptoProvider` 是**进程级单例**，只能由自身 Cargo feature 推断，而本项目的依赖图同时启用了两个 feature（`cargo tree -p datazen --edges normal,build -e features -i rustls@0.23.43`）：
+DataZen 的出站 TLS 统一走 `rustls 0.23`。该 crate 的 `CryptoProvider` 是**进程级单例**，只能由自身 Cargo feature 推断，而本项目的依赖图同时启用了两个 feature（`cargo tree -p datazen_desktop --edges normal,build -e features -i rustls@0.23.43`）：
 
 | feature | 来源 |
 |---------|------|
@@ -258,7 +258,7 @@ DataZen 的出站 TLS 统一走 `rustls 0.23`。该 crate 的 `CryptoProvider` �
 
 两个 feature 同时存在时，rustls 拒绝猜测：凡是**未显式指定 provider** 的 `ClientConfig::builder()` 都会 panic。因此 `install_default_crypto_provider()` 在 `main()` 的第一行显式安装 `aws-lc-rs`（rustls 0.23 自身的首选实现），并由各 TLS 构造点重复调用以覆盖不经 `main()` 的库/测试嵌入方。
 
-该函数的**实现体**住在共享 crate `packages/tunnel/src/crypto.rs`，宿主 `src-tauri/src/tls.rs` 只保留模块文档、宿主接线守卫（`main()` 必须在解析 argv 前安装）与测试，并以 `pub use` 原样再导出——所以 `datazen::install_default_crypto_provider()` 这条对外路径、调用时机与行为均未变，全仓仍然只有**一个**安装器。实现体必须住在共享 crate 的原因是隧道机制自身的两条 TLS 腿（`https://` HTTP `CONNECT` 代理、`wss://` WebSocket 中继）都要建**自动探测**的 `ClientConfig`，这个决策不能留在宿主边界之后；而宿主 `tls.rs` 本身不能整体搬走，因为它用 `include_str!("main.rs")` / `include_str!("lib.rs")` 做宿主接线守卫，跨 crate 内嵌会破 `cargo package`。
+该函数的**实现体**住在共享 crate `modules/src/tunnel/crypto.rs`，宿主 `src-tauri/src/tls.rs` 只保留模块文档、宿主接线守卫（`main()` 必须在解析 argv 前安装）与测试，并以 `pub use` 原样再导出——所以 `datazen::install_default_crypto_provider()` 这条对外路径、调用时机与行为均未变，全仓仍然只有**一个**安装器。实现体必须住在共享 crate 的原因是隧道机制自身的两条 TLS 腿（`https://` HTTP `CONNECT` 代理、`wss://` WebSocket 中继）都要建**自动探测**的 `ClientConfig`，这个决策不能留在宿主边界之后；而宿主 `tls.rs` 本身不能整体搬走，因为它用 `include_str!("main.rs")` / `include_str!("lib.rs")` 做宿主接线守卫，跨 crate 内嵌会破 `cargo package`。
 
 `install_default()` 由 rustls 自身的 compare-and-swap 保证不会重复安装；DataZen 用 `OnceLock` 保证全进程只发起一次安装，**先到先得的竞态不会 panic**。需要注意的是 `tauri-plugin-updater` 会在没有默认 provider 时安装 `ring`，与本模块构成竞争——所以「安装得足够早」（`main()` 首行，早于 Tauri builder 初始化插件）是该修复成立的前提，而不仅仅是「幂等」。该竞争并不发生在插件注册阶段：`ring` 的安装语句位于 `tauri-plugin-updater-2.10.1/src/updater.rs:446-448` 的 `Updater::check()` 内，只有真正发起更新检查时才会执行；`main()` 优先是三重保障中最便宜的一重，即使任一依赖移动也仍然成立。
 

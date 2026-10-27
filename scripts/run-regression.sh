@@ -5,7 +5,7 @@
 # 用途：
 #   一条命令跑齐 PR 合并前的全部检查：
 #     ① node scripts/check-driver-import-boundaries.mjs（驱动↔宿主 import 边界护栏）
-#     ② cargo test -p datazen --lib          （Host Rust 单测）
+#     ② cargo test -p datazen_desktop --lib          （Host Rust 单测）
 #     ③ npx vitest run                       （Host 前端单测）
 #     ④ npx vitest run --config vitest.drivers.config.ts （驱动 UI 单测）
 #     ⑤ node scripts/check-id-terminology.mjs（ID 术语守护）
@@ -182,7 +182,7 @@ run_cargo_lib_with_retry() {
       HOME="$SANDBOX_HOME" \
       CARGO_HOME="$CARGO_HOME_WRAPPED" \
       RUSTUP_HOME="$RUSTUP_HOME_WRAPPED" \
-      cargo test -p datazen --lib 2>&1 | tee "$round1_log"
+      cargo test -p datazen_desktop --lib 2>&1 | tee "$round1_log"
   rc1=${PIPESTATUS[0]}
 
   if [[ $rc1 -eq 0 ]]; then
@@ -206,7 +206,7 @@ run_cargo_lib_with_retry() {
       HOME="$SANDBOX_HOME" \
       CARGO_HOME="$CARGO_HOME_WRAPPED" \
       RUSTUP_HOME="$RUSTUP_HOME_WRAPPED" \
-      cargo test -p datazen --lib $failed_names 2>&1 | tee "$round2_log"
+      cargo test -p datazen_desktop --lib $failed_names 2>&1 | tee "$round2_log"
   rc2=${PIPESTATUS[0]}
 
   if [[ $rc2 -eq 0 ]]; then
@@ -218,7 +218,7 @@ run_cargo_lib_with_retry() {
   return "$rc2"
 }
 
-run_step "cargo test -p datazen --lib [注入+HOME包装+复跑]" \
+run_step "cargo test -p datazen_desktop --lib [注入+HOME包装+复跑]" \
   run_cargo_lib_with_retry
 
 # ③ Host 前端单测

@@ -16,4 +16,4 @@ tracing = "0.1"
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
-datazen-data-transfer = { path = "../../data-transfer" }
+datazen = { workspace = true, features = ["data_transfer"] }

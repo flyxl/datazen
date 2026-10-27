@@ -1,13 +1,15 @@
 //! Instance-owned Wapp sessions. Only the host bridge sees instance IDs/handles.
 use super::{AppState, CommandError, State};
 use crate::{mcp::session::McpSessionRegistry, platform::PlatformAdapter};
-use datazen_application::{dto::requests::*, sessions::ConnectionUseCases};
-use datazen_feature_core::workspace_apps::Permission;
-use datazen_platform_api::{
-    context::{OwnerRef, RequestContext},
-    dto::{idempotency::IdempotentOperation, session::ResourceRelease},
-    id::*,
-    target::{ExecutionTarget, NamespaceTarget},
+use datazen::application::sessions::ConnectionUseCases;
+use datazen::execution::application::requests::*;
+use datazen::workspace_apps::Permission;
+use datazen::{
+    execution::application::idempotency::IdempotentOperation,
+    execution::target::{ExecutionTarget, NamespaceTarget},
+    execution::ResourceRelease,
+    shared::context::{OwnerRef, RequestContext},
+    shared::id::*,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};

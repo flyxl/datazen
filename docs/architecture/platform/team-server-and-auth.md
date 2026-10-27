@@ -1,8 +1,10 @@
 # DataZen 团队 Web 服务：Server Host、认证授权与安全设计
 
-> 状态：P7 团队 Web 服务仍是目标设计，`server/` 团队服务 host、认证授权与 PostgreSQL adapters 尚未实现。`packages/platform-api`、`packages/runtime`、`packages/backend-client` 等共享契约已存在；桌面 P5 迁移三件套已接入本机 AppDb `JobHost`，但它不是团队服务仓储，也不提供多用户或多 worker 语义。本文以下定义服务端目标，不表示这些服务端能力已落地。
+> 状态：P7 团队 Web 服务仍是目标设计，`server/` 团队服务 host、认证授权与 PostgreSQL adapters 尚未实现。`modules/src/platform_api`、`modules`、`packages/backend-client` 等共享契约已存在；桌面 P5 迁移三件套已接入本机 AppDb `JobHost`，但它不是团队服务仓储，也不提供多用户或多 worker 语义。本文以下定义服务端目标，不表示这些服务端能力已落地。
 > 读者：负责《分阶段开发计划》P7 的实现者。本文定义**怎么组、怎么鉴权、怎么限流、怎么映射错误**；连接 DTO 与错误码表以[连接与会话管理](connection-management.md)为权威，管理库表结构以[持久化模型](persistence-model.md)为权威，出现时一律以链接为准。
 > 配套：[系统概要设计](system-overview.md)（分层、领域对象、v1 HTTP 路由表、安全总纲）、[连接与会话管理](connection-management.md)（DTO、错误表、幂等、CM-01～74）、[持久化模型](persistence-model.md)（管理库表结构与迁移策略）、[共享应用边界与端口](shared-boundaries-and-ports.md)（端口签名与装配差异）、[P0 runtime fake 夹具](fake-runtime-fixtures.md)（transport-neutral fake 资源、故障/竞态注入与 CM-60 基准 harness）、[分阶段开发计划 §11 P7](../../development/platform-development-plan.md#11-p7单实例团队-web-服务)（阶段交付与退出门槛）。
+
+> **2026-10-24 装配目标更新**：按 [DDD 模块化指南](../../development/ddd-refactor-plan.md)，本文旧称 `server/` / `datazen-server` 的目标宿主统一采用 `web/` / `datazen-web`，目前仍未实现。Web 直接使用各功能的 `datazen::<功能>::application`，实现相应领域 Repository 并自行选择功能；不再依赖一个全量独立 application crate，也不另建与 web 并存的 server 宿主。本文认证、授权、隔离、限流、错误和恢复要求不变。
 
 ---
 
@@ -59,9 +61,9 @@ server/
 `server` 允许的依赖方向：
 
 ```text
-server ──→ packages/application, packages/runtime
-      ├──→ packages/platform-api（SessionDirectory / BudgetCoordinator 等 ports）
-      ├──→ packages/driver-api、packages/ai-api；异构三件套经 packages/runtime 暴露的 port 访问宿主内 src-tauri/src/{schema_diff,data_sync,data_transfer}
+server ──→ modules, modules
+      ├──→ modules/src/platform_api（SessionDirectory / BudgetCoordinator 等 ports）
+      ├──→ packages/driver-api、packages/ai-api；异构三件套经 modules 暴露的 port 访问宿主内 src-tauri/src/{schema_diff,data_sync,data_transfer}
       └──→ HTTP 框架、tokio、管理库客户端、序列化
 
 application/runtime ──→ platform-api / driver-api；driver ──→ driver-api
@@ -104,7 +106,7 @@ flowchart TD
     M --> N["监听 :8443，暴露 /healthz、/readyz 与 /api/v1"]
 ```
 
-失败策略是 **fail-closed**：任一步失败即拒绝启动，错误可诊断但不泄密；`tracing` 与凭据脱敏复用 `packages/platform-infra/src/redaction.rs` 的口径（默认不打印密码、令牌、原始数据库错误与用户绝对路径）。
+失败策略是 **fail-closed**：任一步失败即拒绝启动，错误可诊断但不泄密；`tracing` 与凭据脱敏复用 `packages/infra/src/redaction.rs` 的口径（默认不打印密码、令牌、原始数据库错误与用户绝对路径）。
 
 ### 2.4 进程模式
 
@@ -602,7 +604,7 @@ CM-05 的断言即由本节保证：跨组织读取、执行、关闭、取消�
 | 池隔离 | 共享账号下按执行身份与权限范围分池，不按显示用户名 |
 | 审计 | 凭据轮换、失败解析、跨组织尝试均落审计，但不落秘密本身 |
 
-日志与审计的脱敏口径对齐 `packages/platform-infra/src/redaction.rs`：默认不打印密码、令牌、原始数据库错误与用户绝对路径。
+日志与审计的脱敏口径对齐 `packages/infra/src/redaction.rs`：默认不打印密码、令牌、原始数据库错误与用户绝对路径。
 
 ### 10.3 `SessionDirectory` 与 `BudgetCoordinator`（单实例）
 
@@ -673,7 +675,7 @@ flowchart TD
 | 解析后校验 | 拒绝环回（除显式放行的执行节点本机）、link-local、云元数据地址、未授权私网段、节点自身管理地址 |
 | DNS rebinding | 校验通过后**固定已校验 IP**用于本次连接，连接期间不再重新解析 |
 | 重定向 | 首版禁用自动跟随；跨跳由显式二次请求触发完整校验 |
-| 隧道目标 | SSH 隧道（[`packages/tunnel/src/ssh.rs`](../../../packages/tunnel/src/ssh.rs) 的 `SshTunnel`）与代理隧道（`packages/tunnel/src/` 的 `HttpProxyTunnel`、`WebSocketTunnel`）的最终目标走同一校验；隧道端点本身是管理员配置的 `networkRouteRef`，不接受请求体提供 |
+| 隧道目标 | SSH 隧道（[`modules/src/tunnel/ssh.rs`](../../../modules/src/tunnel/ssh.rs) 的 `SshTunnel`）与代理隧道（`modules/src/tunnel/` 的 `HttpProxyTunnel`、`WebSocketTunnel`）的最终目标走同一校验；隧道端点本身是管理员配置的 `networkRouteRef`，不接受请求体提供 |
 | `localhost` 的含义 | `localhost` 指**执行节点自身**。这是明确约定而非绕过：私网可达性通过把执行节点部署在可达网络解决，而不是靠 SSRF 洞。是否允许字面 `localhost` 由组织级 `egressPolicy.loopback` 决定，默认 `deny` |
 | 工具与证书路径 | TLS 证书、私钥、备份/dump 工具二进制路径改为**配置引用或 artifact 引用**；不接受请求体路径；规范化后必须落在允许根目录内，拒绝符号链接逃逸 |
 | 失败表达 | 一律 `ApiError.code = PermissionDenied` + 审计事件，不回显被拒地址的内部结构 |
@@ -720,7 +722,7 @@ flowchart TB
 | --- | --- |
 | 管理数据库 | **PostgreSQL**（[概要 §6.4](system-overview.md#64-repositories-与环境-ports) 已给结论：管理组织、配置版本、任务、审计和额度，不与用户业务数据库混用），独立实例/独立库 |
 | TLS | 进程内 rustls 或前置代理终止；**同源 HTTPS**，浏览器只看到一个 origin（Wapp 静态资源除外） |
-| rustls 初始化 | 进程级 `CryptoProvider` 选择与 `packages/tunnel/src/crypto.rs` 同源（宿主 `src-tauri/src/tls.rs` 只是再导出与宿主接线守卫），但 server 独立初始化（不能依赖桌面 host 的入口） |
+| rustls 初始化 | 进程级 `CryptoProvider` 选择与 `modules/src/tunnel/crypto.rs` 同源（宿主 `src-tauri/src/tls.rs` 只是再导出与宿主接线守卫），但 server 独立初始化（不能依赖桌面 host 的入口） |
 | 资源额度 | 组织/用户/数据库三级 + 控制与 cluster 资源统计，进程内会计 |
 | 客户端一致性 | 同一用例经 IPC（桌面）与 HTTP（Web）运行，断言结果与错误语义一致（CI 门禁） |
 | 不承诺 | 会话无损故障转移、跨服务器原子事务、浏览器代理数据库流量、驱动后端直迁 |
@@ -767,7 +769,7 @@ Web 场景下 Wapp iframe 使用**独立受限 origin**（与主应用不同源�
 由此得到三条由代码保证、而非由约定保证的事实：
 
 1. **服务端安装不需要改写内核逻辑，只需要换一个存储根目录。** 安装、校验、回滚、存储读写已全部按 `wapps_dir` 参数化，adapter 传入不同的 `wapps_dir` 即可。唯一必须由 adapter 承担的是**隔离口径**：桌面是单机单用户，服务端必须把根目录切到 `(organizationId, principalId, wappId)` 三元组之下，否则同组织内不同用户会共享 `storage:local` 数据。
-2. **「插件自定义资源 schema」在服务端没有需要翻译的对象。** manifest 中承载自定义资源的字段是 `backend`，而该字段在**安装时即被显式拒绝**（`packages/feature-core/src/workspace_apps/manifest.rs`，注释 `Rule 3b: backend plugins are reserved for P2`，错误文本为「manifest.backend is not supported by this host; 需要更新版本的 DataZen」）。全仓检索 `.backend` 只命中这一处拒绝点，没有任何解释器消费它。因此 v1 不存在需要跨形态搬运的自定义资源 schema；P2 若要落地，必须**只在共享内核实现一次**，再由桌面 adapter 与服务端 adapter 分别供给运行环境，不得为服务端另写一份解释器。
+2. **「插件自定义资源 schema」在服务端没有需要翻译的对象。** manifest 中承载自定义资源的字段是 `backend`，而该字段在**安装时即被显式拒绝**（`modules/src/workspace_apps/manifest.rs`，注释 `Rule 3b: backend plugins are reserved for P2`，错误文本为「manifest.backend is not supported by this host; 需要更新版本的 DataZen」）。全仓检索 `.backend` 只命中这一处拒绝点，没有任何解释器消费它。因此 v1 不存在需要跨形态搬运的自定义资源 schema；P2 若要落地，必须**只在共享内核实现一次**，再由桌面 adapter 与服务端 adapter 分别供给运行环境，不得为服务端另写一份解释器。
 3. **真正随形态变化的是资源地址，不是 schema。** 桌面用 `datazen://` 自定义 scheme 承载 iframe 入口与静态资源，并用 `ASSET_CSP` 锁死来源（`connect-src 'none'` 等，见 `src-tauri/src/wapps/protocol.rs`）。Web 侧静态资源必须改由 HTTPS origin 提供，`WappManifest` 的 `entry` / `icon` / theme 资源路径需按目标 origin 重写。这一步是 **adapter 的职责**，必须留在 adapter：内核一旦开始感知 origin 就不再形态中立，服务端接入时即构成破坏性变更（见[共享边界 F-12](./shared-boundaries-and-ports.md)）。
 
 另有两处进程级状态在服务端必须重新定义归属，不能沿用桌面形态：`WappManager` 当前是启动时从 `AppState` 装载的**进程全局单例**，启用态由包目录内的 `.enabled` 标记文件记录；服务端须改为按 `(organizationId, principalId)` 解析，且安装类操作先过 §5 RBAC 词表中的 `wapp` 资源 ACL（`write` verb）再落盘。
@@ -824,7 +826,7 @@ Web 场景下 Wapp iframe 使用**独立受限 origin**（与主应用不同源�
 - DTO、服务接口、错误码表、幂等与会话规则以 [连接与会话管理](connection-management.md) 为权威，本文只描述它们在 HTTP 宿主上的落地方式。
 - 管理库表结构以 [持久化模型](persistence-model.md) 为权威；本文的 [§10](#10-服务端仓储与-ports-实现) 与 [§13](#13-schema-migration-运行方式) 只描述运行行为。本文 [§4.3](#43-服务端登录会话) 的登录会话行与 [§6.1](#6-授权模型) 的成员关系 / ACL / 权限版本已由该文档 [§3.10 认证与授权表](persistence-model.md#310-认证与授权表) 登记为 `login_sessions` / `memberships` / `acl_entries` / `permission_versions`（固定角色用 CHECK 表达，不建 `roles` 表）。
 - 阶段交付与退出门槛以 [平台开发计划 §11](../../development/platform-development-plan.md#11-p7单实例团队-web-服务) 为准；P9 的多 worker 与全局预算不在本文范围。
-- 现有 `src-tauri` 的 store/keyring/file 能力是**桌面**实现，服务端不复用其存储形态（见 [§10.1](#101-实现矩阵)），但沿用其错误分类、日志脱敏与安全约定（`CommandError`、`datazen_platform_infra::redaction`、路径遍历防护、扩展名白名单）。
+- 现有 `src-tauri` 的 store/keyring/file 能力是**桌面**实现，服务端不复用其存储形态（见 [§10.1](#101-实现矩阵)），但沿用其错误分类、日志脱敏与安全约定（`CommandError`、`datazen_infra::redaction`、路径遍历防护、扩展名白名单）。
 - 现有 Wapp 桥接在 `datazen://` 不透明 origin 下必须使用 `'*'` target origin；Web 场景 origin 已知，因此本文**收紧**为精确 origin，这是有意的差异而非不一致（[§15.1](#151-wapp-iframe-与桥接)）。
 
 ## 18. 本文不覆盖什么

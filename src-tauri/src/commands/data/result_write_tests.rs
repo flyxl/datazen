@@ -9,21 +9,18 @@
 use super::result_write::{commit_query_result_cell_impl, ResultCellWrite};
 use crate::testing::app_state::TestAppState;
 use crate::testing::mock_driver::MockDriverOptions;
-use datazen_application::{
-    dto::requests::{CommandCall, ExecuteInSessionRequest, OpenSessionRequest},
-    sessions::ConnectionUseCases,
+use datazen::application::sessions::ConnectionUseCases;
+use datazen::execution::application::requests::{
+    CommandCall, ExecuteInSessionRequest, OpenSessionRequest,
+};
+use datazen::{
+    execution::application::idempotency::IdempotentOperation,
+    execution::target::{ExecutionTarget, NamespaceTarget},
+    execution::{ExecutionState, RuntimeResultBinding, SessionHandle},
+    shared::context::OwnerRef,
+    shared::id::ConnectionId,
 };
 use datazen_driver_api::{ColumnSchema, Value};
-use datazen_platform_api::{
-    context::OwnerRef,
-    dto::{
-        execution::{ExecutionState, RuntimeResultBinding},
-        idempotency::IdempotentOperation,
-        session::SessionHandle,
-    },
-    id::ConnectionId,
-    target::{ExecutionTarget, NamespaceTarget},
-};
 
 /// The table the fixture query reads.
 const TABLE: &str = "users";
@@ -148,7 +145,7 @@ async fn run_fixture_query(test: &TestAppState, handle: &SessionHandle) -> Runti
                 .read_artifact_chunk(
                     &context,
                     artifact.clone(),
-                    datazen_platform_api::id::Counter::ZERO,
+                    datazen::shared::id::Counter::ZERO,
                 )
                 .await
                 .expect("the artifact chunk is readable");
@@ -157,7 +154,7 @@ async fn run_fixture_query(test: &TestAppState, handle: &SessionHandle) -> Runti
                     .read_artifact_chunk(
                         &context,
                         artifact.clone(),
-                        datazen_platform_api::id::Counter::new(index),
+                        datazen::shared::id::Counter::new(index),
                     )
                     .await
                     .expect("the artifact chunk is readable");

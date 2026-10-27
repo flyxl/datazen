@@ -7,15 +7,15 @@ use tauri::{Emitter, State};
 pub(crate) fn parse_backup_options(
     options: &[String],
 ) -> Result<datazen_driver_api::BackupDumpOptions, CommandError> {
-    datazen_feature_core::backup::parse_backup_options(options).map_err(Into::into)
+    datazen::backup::parse_backup_options(options).map_err(Into::into)
 }
 pub(crate) fn validate_backup_filter_extension(extension: &str) -> Result<String, CommandError> {
-    datazen_feature_core::backup::validate_backup_filter_extension(extension).map_err(Into::into)
+    datazen::backup::validate_backup_filter_extension(extension).map_err(Into::into)
 }
 #[derive(Clone)]
 struct DesktopBackupSource {
     platform: crate::platform::PlatformEntry,
-    registry: Arc<datazen_runtime::driver_registry::DriverRegistry>,
+    registry: Arc<datazen::execution::runtime::driver_registry::DriverRegistry>,
     store: Arc<crate::store::DesktopRepository>,
 }
 impl DesktopBackupSource {
@@ -28,26 +28,24 @@ impl DesktopBackupSource {
     }
 }
 #[async_trait::async_trait]
-impl datazen_feature_core::backup::BackupSource for DesktopBackupSource {
+impl datazen::backup::BackupSource for DesktopBackupSource {
     async fn resolve_source(
         &self,
         id: &str,
-    ) -> Result<
-        (Arc<dyn DatabaseDriver>, ConnectionConfig),
-        datazen_feature_core::error::FeatureError,
-    > {
-        let adapter = self.platform.require().map_err(|error| {
-            datazen_feature_core::error::FeatureError::Internal(error.to_string())
-        })?;
-        let runtime = adapter.runtime().map_err(|error| {
-            datazen_feature_core::error::FeatureError::Internal(error.to_string())
-        })?;
+    ) -> Result<(Arc<dyn DatabaseDriver>, ConnectionConfig), datazen::export::ExportError> {
+        let adapter = self
+            .platform
+            .require()
+            .map_err(|error| datazen::export::ExportError::Internal(error.to_string()))?;
+        let runtime = adapter
+            .runtime()
+            .map_err(|error| datazen::export::ExportError::Internal(error.to_string()))?;
         let owner = runtime
-            .connection_id_for_session(&datazen_runtime::connection::DbSessionId::new(id))
+            .connection_id_for_session(&datazen::execution::runtime::connection::DbSessionId::new(
+                id,
+            ))
             .ok_or_else(|| {
-                datazen_feature_core::error::FeatureError::Validation(
-                    "Backup session is unavailable".into(),
-                )
+                datazen::export::ExportError::Validation("Backup session is unavailable".into())
             })?;
         let (config, _) = self
             .store
@@ -55,18 +53,14 @@ impl datazen_feature_core::backup::BackupSource for DesktopBackupSource {
             .await
             .filter(|(_, metadata)| metadata.enabled)
             .ok_or_else(|| {
-                datazen_feature_core::error::FeatureError::Validation(
-                    "Backup profile unavailable".into(),
-                )
+                datazen::export::ExportError::Validation("Backup profile unavailable".into())
             })?;
         let driver = self
             .registry
             .get(&config.database_type)
             .await
             .ok_or_else(|| {
-                datazen_feature_core::error::FeatureError::Validation(
-                    "Backup driver unavailable".into(),
-                )
+                datazen::export::ExportError::Validation("Backup driver unavailable".into())
             })?;
         Ok((driver, config))
     }
@@ -75,7 +69,7 @@ impl datazen_feature_core::backup::BackupSource for DesktopBackupSource {
     }
 }
 struct DesktopBackupEvents(tauri::AppHandle);
-impl datazen_feature_core::backup::BackupEvents for DesktopBackupEvents {
+impl datazen::backup::BackupEvents for DesktopBackupEvents {
     fn backup_progress(&self, progress: datazen_driver_api::DumpProgress) {
         let _ = self.0.emit("backup-progress", progress);
     }
@@ -94,7 +88,7 @@ async fn backup_database_to_path(
     app: Option<&tauri::AppHandle>,
 ) -> Result<(), CommandError> {
     let events = app.cloned().map(DesktopBackupEvents);
-    datazen_feature_core::backup::backup_database_to_path(
+    datazen::backup::backup_database_to_path(
         &DesktopBackupSource::new(state),
         session_id,
         database,
@@ -103,7 +97,7 @@ async fn backup_database_to_path(
         compress,
         events
             .as_ref()
-            .map(|events| events as &dyn datazen_feature_core::backup::BackupEvents),
+            .map(|events| events as &dyn datazen::backup::BackupEvents),
     )
     .await
     .map_err(Into::into)
@@ -118,11 +112,11 @@ async fn restore_database_from_path(
     options: Option<Vec<String>>,
 ) -> Result<(), CommandError> {
     let events = app.cloned().map(DesktopBackupEvents);
-    datazen_feature_core::backup::restore_database_from_path(
+    datazen::backup::restore_database_from_path(
         &DesktopBackupSource::new(state),
         events
             .as_ref()
-            .map(|events| events as &dyn datazen_feature_core::backup::BackupEvents),
+            .map(|events| events as &dyn datazen::backup::BackupEvents),
         session_id,
         database,
         input_path,
@@ -144,16 +138,13 @@ struct BackupFileOperation {
 }
 
 #[async_trait::async_trait]
-impl datazen_feature_core::file_job::FileJobOperation for BackupFileOperation {
+impl datazen::file_job::FileJobOperation for BackupFileOperation {
     async fn run(
         &self,
-        cancel: &datazen_runtime::job::CancelToken,
-    ) -> Result<
-        datazen_feature_core::file_job::FileJobOutput,
-        datazen_feature_core::error::FeatureError,
-    > {
+        cancel: &datazen::jobs::CancelToken,
+    ) -> Result<datazen::file_job::FileJobOutput, datazen::export::ExportError> {
         if cancel.is_cancelled() {
-            return Err(datazen_feature_core::error::FeatureError::Validation(
+            return Err(datazen::export::ExportError::Validation(
                 "fileJobCancelled".into(),
             ));
         }
@@ -163,16 +154,14 @@ impl datazen_feature_core::file_job::FileJobOperation for BackupFileOperation {
             .join(format!("backup.{}", self.extension));
         let events = DesktopBackupEvents(self.app.clone());
         // Validate options before allocating a Runtime resource or opening staging.
-        let options = datazen_feature_core::backup::parse_backup_options(
-            self.options.as_deref().unwrap_or_default(),
-        )?;
-        let unavailable = || {
-            datazen_feature_core::error::FeatureError::Validation("runtimeBackupUnavailable".into())
-        };
+        let options =
+            datazen::backup::parse_backup_options(self.options.as_deref().unwrap_or_default())?;
+        let unavailable =
+            || datazen::export::ExportError::Validation("runtimeBackupUnavailable".into());
         let adapter = self.source.platform.require().map_err(|_| unavailable())?;
         let runtime = adapter.runtime().map_err(|_| unavailable())?;
         let connection = runtime
-            .connection_id_for_session(&datazen_runtime::connection::DbSessionId::new(
+            .connection_id_for_session(&datazen::execution::runtime::connection::DbSessionId::new(
                 &self.session_id,
             ))
             .ok_or_else(unavailable)?;
@@ -195,7 +184,7 @@ impl datazen_feature_core::file_job::FileJobOperation for BackupFileOperation {
             .confirmed
             .contains_key(datazen_driver_api::sql_dump::stream::BACKUP_CAPABILITY)
         {
-            return Err(datazen_feature_core::error::FeatureError::Validation(
+            return Err(datazen::export::ExportError::Validation(
                 "runtimeBackupUnsupported".into(),
             ));
         }
@@ -210,30 +199,30 @@ impl datazen_feature_core::file_job::FileJobOperation for BackupFileOperation {
             .clone()
             .filter(|s| !s.trim().is_empty())
             .or(config.database.clone());
-        let schema = datazen_feature_core::services::schema_scope::metadata_schema(
+        let schema = datazen::services::schema_scope::metadata_schema(
             driver.as_ref(),
             None,
             None,
             config.schema.as_deref(),
         );
-        let target = datazen_platform_api::target::ExecutionTarget::new(
-            datazen_platform_api::id::ConnectionId::new(connection.as_str()),
-            datazen_platform_api::target::NamespaceTarget::new(database, None, schema, vec![]),
+        let target = datazen::execution::target::ExecutionTarget::new(
+            datazen::shared::id::ConnectionId::new(connection.as_str()),
+            datazen::execution::target::NamespaceTarget::new(database, None, schema, vec![]),
         );
         let context = adapter.begin_call().context().clone();
         let canonical = adapter
             .resolve_execution_target(
                 &context,
-                datazen_platform_api::id::Counter::new(metadata.config_revision),
+                datazen::shared::id::Counter::new(metadata.config_revision),
                 datazen_driver_api::sql_dump::stream::BACKUP_COMMAND,
                 &target,
             )
             .await
             .map_err(|_| unavailable())?;
         let namespace = canonical.namespace;
-        let target = datazen_platform_api::target::ExecutionTarget::new(
+        let target = datazen::execution::target::ExecutionTarget::new(
             canonical.connection_id,
-            datazen_platform_api::target::NamespaceTarget::new(
+            datazen::execution::target::NamespaceTarget::new(
                 namespace.database.map(|v| v.as_str().to_owned()),
                 namespace.catalog.map(|v| v.as_str().to_owned()),
                 namespace.schema.map(|v| v.as_str().to_owned()),
@@ -246,7 +235,7 @@ impl datazen_feature_core::file_job::FileJobOperation for BackupFileOperation {
         );
         let binder =
             crate::platform::feature_ports::HostBackupBindings::new(runtime.clone()).shared();
-        datazen_feature_core::backup_gateway::backup_to_path(
+        datazen::backup_gateway::backup_to_path(
             runtime,
             binder,
             &context,
@@ -260,11 +249,11 @@ impl datazen_feature_core::file_job::FileJobOperation for BackupFileOperation {
         .await?;
         if cancel.is_cancelled() {
             let _ = tokio::fs::remove_file(output).await;
-            return Err(datazen_feature_core::error::FeatureError::Validation(
+            return Err(datazen::export::ExportError::Validation(
                 "fileJobCancelled".into(),
             ));
         }
-        Ok(datazen_feature_core::file_job::FileJobOutput {
+        Ok(datazen::file_job::FileJobOutput {
             path: output,
             rows: 0,
         })

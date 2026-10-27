@@ -1,18 +1,14 @@
 use crate::commands::AppState;
-use datazen_application::{
-    dto::requests::*,
-    error::{ApiError, ApiErrorCode},
-    sessions::ConnectionUseCases,
-};
-use datazen_platform_api::{
-    context::OwnerRef,
-    dto::{
-        event::ConnectionEventEnvelope,
-        idempotency::IdempotentOperation,
-        profile::{ProfileDraft, ProfilePatch},
-    },
-    id::*,
-    ports::profile::ProfileRepository,
+use datazen::application::sessions::ConnectionUseCases;
+use datazen::execution::application::requests::*;
+use datazen::shared::error::{ApiError, ApiErrorCode};
+use datazen::{
+    connection::domain::ProfileRepository,
+    connection::dto::{ProfileDraft, ProfilePatch, ProfileView},
+    execution::application::events::ConnectionEventEnvelope,
+    execution::application::idempotency::IdempotentOperation,
+    shared::context::OwnerRef,
+    shared::id::*,
 };
 use serde::{Deserialize, Serialize};
 use std::{
@@ -38,7 +34,7 @@ fn encode<T: Serialize>(value: T) -> Result<serde_json::Value, ApiError> {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HandleRequest {
-    pub handle: datazen_platform_api::dto::session::SessionHandle,
+    pub handle: datazen::execution::SessionHandle,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,13 +45,13 @@ pub struct ExecutionRequest {
 #[serde(rename_all = "camelCase")]
 pub struct CancelExecutionRequest {
     pub execution_id: ExecutionId,
-    pub submission_token: datazen_platform_api::dto::idempotency::SubmissionToken,
+    pub submission_token: datazen::execution::application::idempotency::SubmissionToken,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenRequest {
     pub operation: IdempotentOperation,
-    pub handle: Option<datazen_platform_api::dto::session::SessionHandle>,
+    pub handle: Option<datazen::execution::SessionHandle>,
     pub scope: Option<TokenScope>,
     pub connection_id: Option<ConnectionId>,
     pub owner: Option<OwnerRef>,
@@ -63,7 +59,7 @@ pub struct TokenRequest {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenScope {
-    pub handle: Option<datazen_platform_api::dto::session::SessionHandle>,
+    pub handle: Option<datazen::execution::SessionHandle>,
 }
 #[tauri::command]
 pub async fn get_platform_identity(
@@ -255,13 +251,13 @@ pub struct UpdateProfileRequest {
 pub struct ProfileRequest {
     pub connection_id: ConnectionId,
 }
-fn port_error(error: datazen_platform_api::error::PortError) -> ApiError {
+fn port_error(error: datazen::shared::error::PortError) -> ApiError {
     match error {
-        datazen_platform_api::error::PortError::CasConflict { .. } => ApiError::new(
+        datazen::shared::error::PortError::CasConflict { .. } => ApiError::new(
             ApiErrorCode::ConfigRevisionMismatch,
             "profile revision changed",
         ),
-        datazen_platform_api::error::PortError::NotFound(_) => {
+        datazen::shared::error::PortError::NotFound(_) => {
             ApiError::new(ApiErrorCode::NotFound, "profile unavailable")
         }
         _ => ApiError::new(ApiErrorCode::ServiceUnavailable, "profile operation failed"),
@@ -274,14 +270,13 @@ pub async fn platform_create_profile(
 ) -> Result<serde_json::Value, ApiError> {
     let adapter = adapter(&state)?;
     let call = adapter.begin_call();
-    encode(
-        adapter
+    encode(ProfileView::from_record(
+        &adapter
             .profiles()?
             .create(call.context(), request.draft, &request.idempotency_key)
             .await
-            .map_err(port_error)?
-            .to_view(),
-    )
+            .map_err(port_error)?,
+    ))
 }
 #[tauri::command]
 pub async fn platform_update_profile(
@@ -291,17 +286,18 @@ pub async fn platform_update_profile(
     let adapter = adapter(&state)?;
     let call = adapter.begin_call();
     let connection_id = request.connection_id.clone();
-    let view = adapter
-        .profiles()?
-        .compare_and_set(
-            call.context(),
-            request.connection_id,
-            request.expected_config_revision,
-            request.patch,
-        )
-        .await
-        .map_err(port_error)?
-        .to_view();
+    let view = ProfileView::from_record(
+        &adapter
+            .profiles()?
+            .compare_and_set(
+                call.context(),
+                request.connection_id,
+                request.expected_config_revision,
+                request.patch,
+            )
+            .await
+            .map_err(port_error)?,
+    );
     // A profile edit bumps the config revision, which invalidates every session
     // on that connection; a grant pinned to the old revision must not survive it.
     let revoked = state
@@ -321,12 +317,13 @@ pub async fn platform_disable_profile(
     let adapter = adapter(&state)?;
     let call = adapter.begin_call();
     let connection_id = request.connection_id.clone();
-    let view = adapter
-        .profiles()?
-        .disable(call.context(), request.connection_id)
-        .await
-        .map_err(port_error)?
-        .to_view();
+    let view = ProfileView::from_record(
+        &adapter
+            .profiles()?
+            .disable(call.context(), request.connection_id)
+            .await
+            .map_err(port_error)?,
+    );
     let revoked = state
         .ai_grants
         .revoke_for_connection(connection_id.as_str())

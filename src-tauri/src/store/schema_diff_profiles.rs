@@ -1,7 +1,9 @@
 use super::{DesktopRepository, DesktopRepositoryError};
 use crate::schema_diff::SchemaDiffProfile;
-use datazen_platform_api::ports::scope::OrganizationScope;
-use datazen_schema_diff::{SchemaDiffProfileRepository, SchemaDiffProfileRepositoryError};
+use datazen::migration::schema_diff::{
+    SchemaDiffProfileRepository, SchemaDiffProfileRepositoryError,
+};
+use datazen::shared::scope::OrganizationScope;
 use serde_json::Value;
 
 const FILE_NAME: &str = "schema_diff_profiles.enc";
@@ -118,7 +120,10 @@ impl SchemaDiffProfileRepository for DesktopRepository {
     async fn list(
         &self,
         scope: &OrganizationScope,
-    ) -> Result<Vec<datazen_schema_diff::SchemaDiffProfile>, SchemaDiffProfileRepositoryError> {
+    ) -> Result<
+        Vec<datazen::migration::schema_diff::SchemaDiffProfile>,
+        SchemaDiffProfileRepositoryError,
+    > {
         if !crate::platform::is_local_scope(scope) {
             return Ok(Vec::new());
         }
@@ -128,7 +133,7 @@ impl SchemaDiffProfileRepository for DesktopRepository {
     async fn save(
         &self,
         scope: &OrganizationScope,
-        profile: datazen_schema_diff::SchemaDiffProfile,
+        profile: datazen::migration::schema_diff::SchemaDiffProfile,
     ) -> Result<(), SchemaDiffProfileRepositoryError> {
         if !crate::platform::is_local_scope(scope) {
             return Err(SchemaDiffProfileRepositoryError::NotFound(
@@ -305,8 +310,8 @@ mod tests {
         let store = DesktopRepository::init_with_path(temp.path(), crate::store::KeyBackend::File)
             .await
             .expect("store");
-        let foreign = datazen_platform_api::ports::scope::OrganizationScope::new(
-            datazen_platform_api::id::OrganizationId::new("foreign-org"),
+        let foreign = datazen::shared::scope::OrganizationScope::new(
+            datazen::shared::id::OrganizationId::new("foreign-org"),
         );
 
         assert!(SchemaDiffProfileRepository::list(&store, &foreign)

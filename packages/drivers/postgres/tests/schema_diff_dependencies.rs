@@ -1,9 +1,9 @@
 // Dialect integration tests: the driver owns registration and SQL rendering.
 extern crate datazen_driver_postgres;
 
+use datazen::migration::schema_diff::plan::*;
+use datazen::migration::schema_diff::types::*;
 use datazen_driver_api::{ForeignKeyDeferrability, ForeignKeyInfo, IndexInfo};
-use datazen_schema_diff::plan::*;
-use datazen_schema_diff::types::*;
 
 mod schema_diff_support;
 use schema_diff_support::{col, schema};

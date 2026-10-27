@@ -2,14 +2,14 @@
 //!
 //! The rules — which connection a step runs against, what its input must
 //! look like, and how the command is dispatched — live in
-//! `datazen_feature_core::workflow::command_runtime`. What stays here is the
+//! `datazen::workflow::command_runtime`. What stays here is the
 //! desktop binding: the same chain, typed against [`AppState`].
 
 use crate::commands::AppState;
+use datazen::mcp::permission::McpPermissionMode;
+use datazen::workflow::command::WorkflowCommandStep;
+use datazen::workflow::error::WorkflowError;
 use datazen_driver_api::CommandResult;
-use datazen_feature_core::mcp::permission::McpPermissionMode;
-use datazen_feature_core::workflow::command::WorkflowCommandStep;
-use datazen_feature_core::workflow::error::WorkflowError;
 
 pub async fn execute_command(
     app_state: &AppState,
@@ -35,7 +35,7 @@ pub(super) async fn execute_command_with_deadline(
     permission_mode: Option<McpPermissionMode>,
     workflow_deadline: Option<tokio::time::Instant>,
 ) -> Result<CommandResult, WorkflowError> {
-    datazen_feature_core::workflow::command_runtime::execute_command(
+    datazen::workflow::command_runtime::execute_command(
         app_state,
         step,
         workflow_connection,
@@ -101,7 +101,7 @@ mod tests {
             &test.state,
             &step,
             Some("wf-ro"),
-            Some(datazen_feature_core::mcp::permission::McpPermissionMode::ReadOnly),
+            Some(datazen::mcp::permission::McpPermissionMode::ReadOnly),
         )
         .await
         .unwrap_err();

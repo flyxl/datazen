@@ -6,10 +6,10 @@ use crate::commands::AppState;
 use crate::store::DesktopRepository;
 use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
+use datazen::execution::runtime::driver_registry::registry::DriverRegistry;
 use datazen_driver_api::resource::ResourceProvider;
 use datazen_driver_api::{ConnectionConfig, SslMode, TableInfo, TableType};
 use datazen_driver_api::{DatabaseDriver, DatabaseDriverFactory};
-use datazen_runtime::driver_registry::registry::DriverRegistry;
 
 /// Temp store + mock postgres driver for command tests.
 pub struct TestAppState {
@@ -226,14 +226,13 @@ impl TestAppState {
 
     /// Open a runtime session for a profile that the test has already persisted.
     pub async fn open_runtime_session(&self, id: &str) -> String {
-        use datazen_application::{
-            dto::requests::OpenSessionRequest, sessions::ConnectionUseCases,
-        };
-        use datazen_platform_api::{
-            context::OwnerRef,
-            dto::idempotency::IdempotentOperation,
-            id::ConnectionId,
-            target::{ExecutionTarget, NamespaceTarget},
+        use datazen::application::sessions::ConnectionUseCases;
+        use datazen::execution::application::requests::OpenSessionRequest;
+        use datazen::{
+            execution::application::idempotency::IdempotentOperation,
+            execution::target::{ExecutionTarget, NamespaceTarget},
+            shared::context::OwnerRef,
+            shared::id::ConnectionId,
         };
 
         let config = self.store.get_connection(id).await.expect("profile exists");

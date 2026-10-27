@@ -367,7 +367,7 @@ fn is_literal_position(source: &str, start: usize) -> bool {
 
 /// 前面是不是「`->` + 可选路径」的返回类型。
 ///
-/// 路径段要**逐段剥掉**：`-> datazen_platform_api::dto::job::JobFilter` 的紧邻前两个
+/// 路径段要**逐段剥掉**：`-> datazen::jobs::domain::job::JobFilter` 的紧邻前两个
 /// 字符是 `::`，只看 `->` 会判成「不是返回类型」→ 该形态被当成字面量 → 假红。
 fn is_return_type(before: &str) -> bool {
     let mut rest = before.trim_end();
@@ -387,7 +387,7 @@ fn is_return_type(before: &str) -> bool {
 
 /// 前面是不是类型/实现位置（`struct` / `impl` / `enum` / `trait` / `union`）。
 ///
-/// 沿路径链往前找：`impl datazen::JobFilter` 的关键字在路径**之前**，只看紧邻的一个词
+/// 沿路径链往前找：`impl datazen_desktop::JobFilter` 的关键字在路径**之前**，只看紧邻的一个词
 /// 会漏掉它。
 fn is_type_position(before: &str) -> bool {
     const KEYWORDS: &[&str] = &["struct", "impl", "enum", "trait", "union"];
@@ -802,12 +802,12 @@ fn probe() {
 
     /// **M5b**：带路径限定的返回类型不是字面量，守卫不得报它。
     ///
-    /// `-> datazen_platform_api::dto::job::JobFilter {` 的紧邻前两个字符是 `::`，
+    /// `-> datazen::jobs::domain::job::JobFilter {` 的紧邻前两个字符是 `::`，
     /// 只看 `->` 会把整个函数体当成字面量 —— 函数体里没有字面量时就假红。
     #[test]
     fn a_path_qualified_return_type_is_not_a_literal() {
         let source = r##"
-fn probe() -> datazen_platform_api::dto::job::JobFilter {
+fn probe() -> datazen::jobs::domain::job::JobFilter {
     todo!()
 }
 "##;
@@ -1008,13 +1008,13 @@ pub union JobFilter {
 impl JobFilter {
     pub fn probe(&self) {}
 }
-impl datazen_platform_api::dto::job::JobFilter {
+impl datazen::jobs::domain::job::JobFilter {
     pub fn probe(&self) {}
 }
 fn returns_bare() -> JobFilter {
     todo!()
 }
-fn returns_path_qualified() -> datazen_platform_api::dto::job::JobFilter {
+fn returns_path_qualified() -> datazen::jobs::domain::job::JobFilter {
     todo!()
 }
 "##;

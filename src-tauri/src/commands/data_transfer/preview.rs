@@ -83,7 +83,7 @@ async fn preview_sql_file_target(
     let src_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         &job.source.db_session_id,
-        datazen_runtime::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let src_config = src_context.config.clone();
@@ -91,7 +91,7 @@ async fn preview_sql_file_target(
     // 占位符规则来自 SqlDialect 契约，旧驱动 API 逐条转发。
     let src_dialect = LegacySqlDialect::new(src_driver.as_ref());
     let src_handle = src_context.handle.clone();
-    job.source.schema = datazen_feature_core::services::schema_scope::metadata_schema(
+    job.source.schema = datazen::services::schema_scope::metadata_schema(
         src_driver.as_ref(),
         job.source.normalized_schema(),
         None,
@@ -478,13 +478,13 @@ pub(crate) async fn preview_data_transfer_impl(
     let src_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         &job.source.db_session_id,
-        datazen_runtime::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let tgt_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         &target.db_session_id,
-        datazen_runtime::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let src_config = src_context.config.clone();
@@ -496,13 +496,13 @@ pub(crate) async fn preview_data_transfer_impl(
     let target_driver = tgt_context.driver.clone();
     let tgt_dialect = LegacySqlDialect::new(target_driver.as_ref());
     let target_handle = tgt_context.handle.clone();
-    job.source.schema = datazen_feature_core::services::schema_scope::metadata_schema(
+    job.source.schema = datazen::services::schema_scope::metadata_schema(
         src_driver.as_ref(),
         job.source.normalized_schema(),
         None,
         src_config.schema.as_deref(),
     );
-    target.schema = datazen_feature_core::services::schema_scope::metadata_schema(
+    target.schema = datazen::services::schema_scope::metadata_schema(
         target_driver.as_ref(),
         target.normalized_schema(),
         None,

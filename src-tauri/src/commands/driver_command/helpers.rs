@@ -1,8 +1,8 @@
 use super::super::AppState;
-use datazen_driver_api::ConnectionHandle;
-pub(crate) use datazen_feature_core::services::command_policy::{
+pub(crate) use datazen::mcp::application::command_policy::{
     inject_sql_target_fields, nonempty, query_rows_affected, sql_from_input,
 };
+use datazen_driver_api::ConnectionHandle;
 
 pub(crate) fn unbound_handle() -> ConnectionHandle {
     ConnectionHandle {
@@ -53,7 +53,7 @@ pub(crate) async fn record_sql_command_outcome(
         return;
     };
     let Some(connection_id) = runtime.connection_id_for_session(
-        &datazen_runtime::connection::DbSessionId::new(db_session_id),
+        &datazen::execution::runtime::connection::DbSessionId::new(db_session_id),
     ) else {
         tracing::warn!(db_session_id, "Skipping history: no owning connectionId");
         return;
@@ -80,7 +80,11 @@ pub(crate) async fn record_sql_command_outcome(
     };
     // Persistence failures must not break query execution, but silently
     // dropping history (disk full / locked db) is undebuggable — log it.
-    if let Err(e) = state.store.add_query_history(entry).await {
-        tracing::warn!(error = %e, "add_query_history failed");
+    // D6 item 1：写入经模块服务（服务内部同样按告警降级，不向上抛错）。
+    match crate::platform::ipc::require_history_service(state) {
+        Ok(service) => service.add_query_history(entry).await,
+        Err(error) => {
+            tracing::warn!(%error, "add_query_history failed: history service not injected")
+        }
     }
 }

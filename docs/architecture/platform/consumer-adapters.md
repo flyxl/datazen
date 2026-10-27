@@ -40,7 +40,7 @@ metadata 工具只读；写工具仍需执行权限与破坏性确认。模型�
 
 用户显式允许某次 AI 会话使用编辑器状态时，宿主建立内存 grant：grantId、principal、clientInstanceId、AI invocation 范围、目标 session 身份、contextVersion、允许工具/action、到期时间与撤销状态。grantId 不是 attachment token，模型和 Provider 不得到 live session handle。
 
-> 2026-10-17 实现现状：桌面 grant 已落地 `{grantId, clientInstanceId, editorSessionId, connectionId, database, configRevision, editorSessionId 对应的活 SessionHandle, deadline, revoked}`（`packages/feature-core/src/ai/ownership.rs`）；`principal`、AI invocation 范围、允许工具/action 与 contextVersion 的独立记录仍是目标设计，当前以 configRevision + 归属校验覆盖。
+> 2026-10-17 实现现状：桌面 grant 已落地 `{grantId, clientInstanceId, editorSessionId, connectionId, database, configRevision, editorSessionId 对应的活 SessionHandle, deadline, revoked}`（`modules/src/ai/ownership.rs`）；`principal`、AI invocation 范围、允许工具/action 与 contextVersion 的独立记录仍是目标设计，当前以 configRevision + 归属校验覆盖。
 
 共享工具在同一 session actor 队列排队，能观察同一事务和临时对象；不建立第二套事务管理器。开启/提交/回滚用户事务必须有单独明确授权，普通“查询当前状态”授权不包含这些动作。
 
@@ -139,7 +139,7 @@ PostgreSQL 与 MySQL 的 driver 专属 `tests/monitor_scheduled_query.rs` 现提
 
 ### 2026-10-19 NativeTool kernel 与桌面版本探针（当前实现边界）
 
-`packages/platform-api/src/ports/native_tool.rs` 定义 NativeToolPort；请求只含 toolId/version，不含客户端 executable、argv、env、工作目录或凭据。`packages/runtime/src/native_tool/` 在真实 JobRuntime stage capability 下执行：先核对活动 claim，再校验受信端口给出的进程/DB socket 上限；当前只接受一个有证明的进程，任一未知上限或缺目标均失败关闭。OS 进程名额单独计数，完整声明的 DB socket cost 在 spawn 前通过宿主共享 InProcessBudgetCoordinator 的 Job 类一次原子预留，不能将一个进程记成一个 socket。宿主须在环境级复用同一个 NativeToolRuntime；native handler 的 endpoints 不重复声明该物理预留。有效 owner 在执行中持续重验，撤销/取消只通知原进程，不能启动替代进程。
+`modules/src/platform_api/src/ports/native_tool.rs` 定义 NativeToolPort；请求只含 toolId/version，不含客户端 executable、argv、env、工作目录或凭据。`modules/src/native_tool/` 在真实 JobRuntime stage capability 下执行：先核对活动 claim，再校验受信端口给出的进程/DB socket 上限；当前只接受一个有证明的进程，任一未知上限或缺目标均失败关闭。OS 进程名额单独计数，完整声明的 DB socket cost 在 spawn 前通过宿主共享 InProcessBudgetCoordinator 的 Job 类一次原子预留，不能将一个进程记成一个 socket。宿主须在环境级复用同一个 NativeToolRuntime；native handler 的 endpoints 不重复声明该物理预留。有效 owner 在执行中持续重验，撤销/取消只通知原进程，不能启动替代进程。
 
 桌面 `src-tauri/src/platform/native_tool/` **仅实现 POSIX 固定版本探针**：显式部署登记 SHA-256 钉定的 `postgres.pg-dump-version` / `mysql.mysqldump-version` 和对应精确版本行；空注册表拒绝全部请求，不搜索 PATH。唯一 argv 是 `--version`，声明零 DB sockets；数据导出、导入、native backup/restore、任意自定义命令与 Windows adapter 均未启用。请求类型本身无法指定路径。运行前复验部署 binary，验证字节复制到私有临时可执行快照，防止检查后替换路径；生产拒绝脚本，测试仅使用 cfg(test) 合成脚本夹具。工作目录是独立私有目录，stdin 为 null，env_clear 后只设置 LANG/LC_ALL/TZ 常量，不继承 HOME、PGOPTIONS、MYSQL_*、动态加载路径或凭据。
 
@@ -169,9 +169,9 @@ P6 目标 adapter 为 AI tool adapter、MCP request/session adapter、Wapp bridg
 
 ### 8.1 当前共享实现与保留边界（2026-10-17）
 
-Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `feature-core command_runtime → feature-core resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。 NativeTool 继续使用不可序列化的通用 `StageOwnerPermit` 核验活动 Job claim、阶段、实例和取消状态；移除的是 Workflow 专用块/会话绑定，非通用 Job fencing。
+Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `modules command_runtime → modules resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。 NativeTool 继续使用不可序列化的通用 `StageOwnerPermit` 核验活动 Job claim、阶段、实例和取消状态；移除的是 Workflow 专用块/会话绑定，非通用 Job fencing。
 
-共享领域实现集中在 `packages/feature-core`，Wapp 内核（协议/路由策略）作为 `feature_core::workspace_apps` 模块同在其中，宿主只保留 `datazen://` 协议适配器。本轮补迁 command policy、迁移端点身份算法、Dashboard 创建/归档规则、export 容器规划与迁移结果历史映射；原路径保留薄绑定和兼容导出。逐项源码边界见 [feature-core 残余审计](feature-core.md#final-residual-audit-2026-10-17)。
+共享领域实现集中在 `modules`，Wapp 内核（协议/路由策略）作为 `modules::workspace_apps` 模块同在其中，宿主只保留 `datazen://` 协议适配器。本轮补迁 command policy、迁移端点身份算法、Dashboard 创建/归档规则、export 容器规划与迁移结果历史映射；原路径保留薄绑定和兼容导出。逐项源码边界见 [modules 残余审计](modules.md#final-residual-audit-2026-10-17)。
 
 `execute_driver_command` 仍服务桌面 editor/session IPC；Runtime 的 `SessionRegistry` 与 `DesktopSessionBackend` 承载本地 session identity、物理资源、预算与隧道生命周期。AI/MCP/Workflow 默认 DB 工具已走共享 Runtime `ResourceExecutionHost`。Monitor 的定时调度与手动 widget 执行保持共享 MonitorHost/Workflow/Runtime 路径。
 
@@ -181,7 +181,7 @@ Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管
 
 | 旅程 | 必须观察到的结果 | 关联用例 |
 | --- | --- | --- |
-| AI 默认查询 → 授权共享 → 临时对象查询 → 撤销 → 下一次工具 | 共享时同队列可见；撤销后拒绝且编辑器资源仍存活 | CM-53、73、74（**H 层已交付**：`packages/feature-core/src/ai/ownership.rs` 的 grant 生命周期 + `src-tauri/src/commands/ai/grant.rs` 的 `ai_grant_editor_session`/`ai_revoke_editor_grant`/`ai_touch_editor_grant`；F 层真实 UI 旅程待补） |
+| AI 默认查询 → 授权共享 → 临时对象查询 → 撤销 → 下一次工具 | 共享时同队列可见；撤销后拒绝且编辑器资源仍存活 | CM-53、73、74（**H 层已交付**：`modules/src/ai/ownership.rs` 的 grant 生命周期 + `src-tauri/src/commands/ai/grant.rs` 的 `ai_grant_editor_session`/`ai_revoke_editor_grant`/`ai_touch_editor_grant`；F 层真实 UI 旅程待补） |
 | MCP A/B 同连接 → A 开事务 → A 断开 → B 继续 | 资源隔离、A 清理完成、B 不被取消 | CM-53、54 |
 | Wapp 请求 → 重载 → 旧响应/取消到达 | 旧 nonce 被拒绝，新实例状态不受影响 | CM-53、55 |
 | schedule 入队 → ACL 撤销 → 派发 | 不取得资源、不写数据库，记录拒绝原因 | CM-59、65、67 |
@@ -195,4 +195,4 @@ Host fake 验证归属与清理；真实 driver 验证共享状态、精确取�
 
 ### P6 Workflow v1 范围
 
-Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `feature-core command_runtime → feature-core resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。
+Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `modules command_runtime → modules resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。

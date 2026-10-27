@@ -156,8 +156,8 @@ beforeAll(() => {
   writeFileSync(stub, CARGO_STUB_SOURCE);
   chmodSync(stub, 0o755);
 
-  clean = makeWorkspace('clean', [RUNTIME, DRIVER]);
-  unclassified = makeWorkspace('unclassified', [RUNTIME, DRIVER, UNCLASSIFIABLE]);
+  clean = makeWorkspace('clean', [MODULES, DRIVER]);
+  unclassified = makeWorkspace('unclassified', [MODULES, DRIVER, UNCLASSIFIABLE]);
 });
 
 afterAll(() => {
@@ -194,7 +194,7 @@ function makeWorkspace(
   return { root, cargoLog: join(sandbox, `${id}.cargo-invocations`) };
 }
 
-const RUNTIME = { dir: 'packages/runtime', name: 'datazen-runtime' };
+const MODULES = { dir: 'modules', name: 'datazen' };
 const DRIVER = { dir: 'packages/drivers/postgres', name: 'datazen-driver-postgres' };
 /** A real directory below no `LAYERS` path, so `classifyMemberDir` must reject it. */
 const UNCLASSIFIABLE = { dir: 'crates/mystery', name: 'mystery' };
@@ -241,7 +241,7 @@ function cargoTestInvocationsSeesReorderedArgv(ws: StubWorkspace): string[] {
  * ★ **This must never become `toContain`, and that is not a style preference.**
  * `toContain` was the first round's failing shape: with it, *deleting* the
  * no-selector invocation leaves every member still present, so the gate that
- * exists to prove `datazen-runtime`'s 19 integration binaries are compiled in
+ * exists to prove `datazen`'s 19 integration binaries are compiled in
  * CI goes green on the exact regression it was added for — and the deletion is
  * invisible, because a subset assertion cannot fail on a subset. The abort-path
  * `toEqual([])` assertions do **not** cover this: they filter through
@@ -256,8 +256,15 @@ function cargoTestInvocationsSeesReorderedArgv(ws: StubWorkspace): string[] {
  * the abort-path tests depend on cargo never being reached.
  */
 const EXPECTED_CLEAN_INVOCATIONS = [
-  'test -p datazen-runtime',
-  'test --release -p datazen-runtime --bin cm60-bench',
+  'test --all-features -p datazen',
+  'test --no-default-features --features settings --lib -p datazen',
+  'test --no-default-features --features ai --lib -p datazen',
+  'test --no-default-features --features connection,execution --lib -p datazen',
+  'test --no-default-features --features named_views --lib -p datazen',
+  'test --no-default-features --features monitor --lib -p datazen',
+  'test --no-default-features --features dashboard --lib -p datazen',
+  'test --no-default-features --features tunnel --lib -p datazen',
+  'test --release -p datazen --features execution,jobs,test-harness --bin cm60-bench',
 ];
 
 function envFor(ws: StubWorkspace, cargoTestExit = 0): NodeJS.ProcessEnv {
@@ -329,7 +336,7 @@ describe('run-platform-crate-tests exit codes', () => {
     expect(run.stderr).toContain(UNCLASSIFIABLE.dir);
     // ...and it must not have reached the testing it was told to distrust.
     expect(cargoInvocations(unclassified)).not.toContain(
-      'test -p datazen-runtime -p datazen-driver-postgres',
+      'test -p datazen -p datazen-driver-postgres',
     );
   });
 
@@ -355,7 +362,7 @@ describe('run-platform-crate-tests exit codes', () => {
     const run = runIn(clean, ['--dry-run']);
 
     expect(run.code).toBe(0);
-    expect(run.stdout).toContain('datazen-runtime');
+    expect(run.stdout).toContain('datazen');
   });
 
   it("keeps returning cargo's own status unchanged on a clean workspace", () => {
@@ -375,7 +382,7 @@ describe('run-platform-crate-tests exit codes', () => {
   });
 
   it('accepts a required layer that does have a crate', () => {
-    const run = runIn(clean, ['--require-layers=runtime']);
+    const run = runIn(clean, ['--require-layers=modules']);
 
     expect(run.code).toBe(0);
     expect(cargoTestInvocations(clean)).toEqual(EXPECTED_CLEAN_INVOCATIONS);
@@ -427,7 +434,7 @@ describe('discoverCoreCrates stays pure about policy', () => {
 
     expect(thrown).toBeUndefined();
     expect(discovered?.unclassified.length).toBeGreaterThan(0);
-    expect(discovered?.crates.map((c) => c.name)).toContain(RUNTIME.name);
+    expect(discovered?.crates.map((c) => c.name)).toContain(MODULES.name);
   });
 
   it('keeps every tested layer id a real layer id', () => {
@@ -460,7 +467,7 @@ describe('discoverCoreCrates stays pure about policy', () => {
  * the whole mechanism.
  */
 describe('buildCargoArgv puts both CM-60 entry points behind the gate', () => {
-  const crates = [{ name: RUNTIME.name }, { name: DRIVER.name }];
+  const crates = [{ name: MODULES.name }, { name: DRIVER.name }];
   const invocations = buildCargoArgv(crates);
   /**
    * Located by what each argv *is*, never by its position.
@@ -477,18 +484,18 @@ describe('buildCargoArgv puts both CM-60 entry points behind the gate', () => {
   const releaseArgv = invocations.find((argv) => argv.includes('--release')) ?? [];
 
   it('keeps the whole-crate run selector-free, which is what reaches the pressure half', () => {
-    // `packages/runtime/tests/cm60_pressure_drain.rs` is an integration test
+    // `modules` integration tests is an integration test
     // target: a selector-free `cargo test -p …` compiles and runs every
     // integration binary, and that structural property — not a target name in
     // this file — is what puts the §11.4 pressure half behind the gate.
     expect(debugArgv.length).toBeGreaterThan(0); // the find() above failed closed
-    expect(debugArgv).toEqual(['test', '-p', RUNTIME.name, '-p', DRIVER.name]);
+    expect(debugArgv).toEqual(['test', '--all-features', '-p', MODULES.name, '-p', DRIVER.name]);
     for (const selector of ['--lib', '--tests', '--test', '--bin'])
       expect(debugArgv).not.toContain(selector);
     // The binary the selector-free run is asserted to reach really exists on
     // disk; without this, the assertion above would hold over a crate whose
     // tests/ directory had been renamed away.
-    expect(existsSync(join(REPO_ROOT, 'packages', 'runtime', 'tests', 'cm60_pressure_drain.rs'))).toBe(
+    expect(existsSync(join(REPO_ROOT, 'modules', 'src', 'bin', 'cm60-bench', 'main.rs'))).toBe(
       true,
     );
   });
@@ -523,7 +530,7 @@ describe('buildCargoArgv puts both CM-60 entry points behind the gate', () => {
     // `EXTRA_TARGETS` does not (and should not) enumerate, and a driver crate
     // landing in a tested layer later must not be the first one to miss them.
     expect(buildCargoArgv([{ name: DRIVER.name }])).toEqual([
-      ['test', '-p', DRIVER.name],
+      ['test', '--all-features', '-p', DRIVER.name],
     ]);
     expect(buildCargoArgv([])).toEqual([]);
   });
@@ -536,14 +543,14 @@ describe('buildCargoArgv puts both CM-60 entry points behind the gate', () => {
     // list, so it keeps holding when `Cargo.toml` gains a `tests/*.rs` this file
     // has never heard of.
     const TARGET_SELECTORS = ['--lib', '--tests', '--test', '--bin', '--bench', '--all-targets'];
-    const unpinned = buildCargoArgv([RUNTIME]).filter(
+    const unpinned = buildCargoArgv([MODULES]).filter(
       (argv) => !argv.some((arg) => TARGET_SELECTORS.includes(arg)),
     );
 
     expect(unpinned).toHaveLength(1);
     // ...and it is a plain whole-crate run: no profile flag, no target selector,
     // no extras folded in. Anything else here would quietly narrow it again.
-    expect(unpinned[0]).toEqual(['test', '-p', RUNTIME.name]);
+    expect(unpinned[0]).toEqual(['test', '--all-features', '-p', MODULES.name]);
   });
 
   it('keeps every crate-wide invocation selector-free — neither --lib nor --tests', () => {
@@ -555,13 +562,17 @@ describe('buildCargoArgv puts both CM-60 entry points behind the gate', () => {
     // unit tests", which is a factual error the guard below used to encode.
     // What `--tests` actually drops relative to the selector-free call is the
     // **doc tests**, and `--lib` drops everything except the lib's own unit
-    // tests (datazen-runtime alone carries 383 of those, re-executed twice
+    // tests (datazen alone carries 383 of those, re-executed twice
     // per CI run before this shape). Either selector would re-introduce a
     // narrowing exactly like the one this gate exists to prevent, so both
     // are pinned out — adopting one must arrive as a deliberate edit here.
-    const argv = buildCargoArgv([RUNTIME]).map((a) => a.join(' '));
-    expect(argv[0]).toBe('test -p datazen-runtime');
-    expect(argv.some((line) => line.includes('--tests') || line.includes('--lib'))).toBe(false);
+    const argv = buildCargoArgv([MODULES]).map((a) => a.join(' '));
+    expect(argv[0]).toBe('test --all-features -p datazen');
+    expect(
+      argv
+        .filter((line) => !line.includes('--no-default-features'))
+        .some((line) => line.includes('--tests') || line.includes('--lib')),
+    ).toBe(false);
   });
 
   it('names targets that exist, so the table cannot rot into a no-op', () => {
@@ -570,11 +581,9 @@ describe('buildCargoArgv puts both CM-60 entry points behind the gate', () => {
     for (const [crate, entries] of Object.entries(EXTRA_TARGETS)) {
       for (const { args } of entries) {
         const flag = args[0];
-        const name = args[1];
-        const path =
-          flag === '--test'
-            ? join(REPO_ROOT, 'packages', 'runtime', 'tests', `${name}.rs`)
-            : join(REPO_ROOT, 'packages', 'runtime', 'src', 'bin', name, 'main.rs');
+        const targetIndex = args.indexOf('--bin');
+        const name = targetIndex >= 0 ? args[targetIndex + 1] : undefined;
+        const path = join(REPO_ROOT, 'modules', 'src', 'bin', name ?? '', 'main.rs');
         expect([flag, crate, existsSync(path)], `${crate} ${flag} ${name}`).toEqual([
           flag,
           crate,
@@ -606,7 +615,7 @@ describe('run-platform-crate-tests guard negative controls', () => {
     // array element leaves every remaining element present, so a `toContain`
     // assertion stays green and the 19 integration binaries stop compiling in CI
     // without a single red.
-    const mutated = without('test -p datazen-runtime');
+    const mutated = without('test --all-features -p datazen');
 
     expect(mutated).not.toEqual(EXPECTED_CLEAN_INVOCATIONS);
     expect(mutated).toHaveLength(EXPECTED_CLEAN_INVOCATIONS.length - 1);
@@ -619,7 +628,7 @@ describe('run-platform-crate-tests guard negative controls', () => {
     // Same hole, quieter route: `--tests` "looks" like it covers integration
     // binaries and a reader skims it as a fix rather than a swap.
     const mutated = EXPECTED_CLEAN_INVOCATIONS.map((line) =>
-      line === 'test -p datazen-runtime' ? 'test --tests -p datazen-runtime' : line,
+      line === 'test --all-features -p datazen' ? 'test --all-features --tests -p datazen' : line,
     );
 
     expect(mutated).not.toEqual(EXPECTED_CLEAN_INVOCATIONS);
@@ -631,7 +640,7 @@ describe('run-platform-crate-tests guard negative controls', () => {
     // cannot reach production — but it is the mechanism by which the abort-side
     // `toEqual([])` assertions degenerate into "assert true", and that is the
     // same failure mode round one had, one helper away.
-    const reordered = ['--offline test -p datazen-runtime'];
+    const reordered = ['--offline test -p datazen'];
 
     // A real file, not `''`: `cargoInvocations` returns `[]` for a missing path,
     // which would make the assertion below pass for the wrong reason and prove

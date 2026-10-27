@@ -142,7 +142,7 @@ mod ipc_contract_guards {
 ///
 /// The host maps a shared error onto [`super::error::CommandError`] and
 /// nothing else: which code a failure is, and what it means, is decided in
-/// `packages/feature-core`. A rule code inside a command shell is therefore a
+/// `modules`. A rule code inside a command shell is therefore a
 /// rule that lives in the wrong place — and it would be invisible to every
 /// other check, because the shell still compiles and every unit test still
 /// passes.

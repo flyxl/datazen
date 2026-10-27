@@ -29,7 +29,7 @@
 - 正常业务活动顺延空闲期限。桌面默认期限为 30 分钟、扫描间隔 15 秒；detach 后收紧到 60 秒 grace。到期后 Runtime 回滚并关闭资源，失效的 ID 返回 `SessionLost`，必须显式打开新 session 才能继续操作。
 - 物理资源被关闭后，不会通过 `connectionId` 映射以同一个 `dbSessionId` 自动重连。
 
-当前实现入口：[`PlatformAdapter`](../../src-tauri/src/platform/adapter.rs)、[`Runtime idle policy`](../../packages/runtime/src/application/idle.rs)、[`DesktopSessionBackend`](../../src-tauri/src/platform/session_backend.rs)。
+当前实现入口：[`PlatformAdapter`](../../src-tauri/src/platform/adapter.rs)、[`Runtime idle policy`](../../modules/src/execution/application/idle.rs)、[`DesktopSessionBackend`](../../src-tauri/src/platform/session_backend.rs)。
 
 ## 3. 前端绑定
 

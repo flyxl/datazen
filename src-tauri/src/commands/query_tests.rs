@@ -9,8 +9,8 @@ use super::*;
 use crate::store::AppSettings;
 use crate::testing::app_state::TestAppState;
 use crate::testing::mock_driver::MockDriverOptions;
+use datazen::execution::runtime::driver_registry::DriverCapabilities;
 use datazen_driver_api::{ColumnSchema, DriverError, Value};
-use datazen_runtime::driver_registry::DriverCapabilities;
 
 #[tokio::test]
 async fn execute_query_success_records_history() {
@@ -564,7 +564,7 @@ fn an_absent_field_stays_absent_rather_than_becoming_an_empty_filter() {
 async fn session_transaction_expiry_clears_authority_and_rejects_old_controls() {
     let test = TestAppState::new().await;
     let runtime = test.state.platform_require().unwrap().runtime().unwrap();
-    runtime.with_idle_policy(datazen_runtime::application::IdlePolicy::with_deadline(
+    runtime.with_idle_policy(datazen::execution::application::IdlePolicy::with_deadline(
         std::time::Duration::ZERO,
         std::time::Duration::from_millis(1),
     ));

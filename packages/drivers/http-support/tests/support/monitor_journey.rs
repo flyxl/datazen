@@ -2,17 +2,17 @@
 //! No desktop scheduler, occurrence admission or duplicate-tick receipt is simulated.
 #[path = "monitor_runtime.rs"]
 mod runtime;
-use datazen_application::sessions::ConnectionUseCases as _;
+use datazen::application::sessions::ConnectionUseCases as _;
+use datazen::workflow::{resource_execution, WorkflowCommandStep};
+use datazen::{
+    execution::target::{ExecutionTarget, NamespaceTarget},
+    execution::{EffectOutcome, ExecutionState},
+    shared::context::RequestContext,
+    shared::id::{
+        ClientInstanceId, ConnectionId, DelegationId, OrganizationId, PrincipalId, RequestId,
+    },
+};
 use datazen_driver_api::{resource::ResourceProvider, ConnectionConfig, DatabaseDriver};
-use datazen_feature_core::{
-    dashboard::schedule_grant::{MonitorGrant, MonitorScope},
-    workflow::{resource_execution, WorkflowCommandStep},
-};
-use datazen_platform_api::{
-    dto::execution::{EffectOutcome, ExecutionState},
-    id::ConnectionId,
-    target::{ExecutionTarget, NamespaceTarget},
-};
 use futures_util::FutureExt;
 use std::sync::{atomic::Ordering, Arc};
 
@@ -53,27 +53,21 @@ pub async fn run(
             ConnectionId::new("p"),
             NamespaceTarget::new(config.database.clone(), None, config.schema.clone(), vec![]),
         );
-        let grant = MonitorGrant {
-            id: "live-query-grant".into(),
-            dashboard_id: "live-dashboard".into(),
-            widget_id: "live-widget".into(),
-            workflow_id: "live-workflow".into(),
-            workflow_revision: "live-frozen-definition".into(),
-            organization_id: "live-monitor-org".into(),
-            service_principal: "monitor-service:live-query-grant".into(),
-            approved_by: "fixture-owner".into(),
-            scopes: vec![MonitorScope {
-                target: target.clone(),
-                config_revision: 1,
-                command: "query".into(),
-            }],
-            actions: vec!["connect".into(), "query".into()],
-            read_only: true,
-            expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
-            revocation_version: 1,
-            revoked: false,
-        };
-        let host = runtime::host(config.clone(), driver.clone(), provider, grant);
+        let context = RequestContext::new(
+            OrganizationId::new("live-monitor-org"),
+            PrincipalId::new("monitor-service"),
+            None,
+            ClientInstanceId::new("monitor-live-client"),
+            RequestId::new("monitor-live-request"),
+            Some(DelegationId::new("live-query-grant")),
+        );
+        let host = runtime::host(
+            config.clone(),
+            driver.clone(),
+            provider,
+            context,
+            target.clone(),
+        );
         let sql = format!("SELECT COUNT(*) AS n, SUM(id) AS total FROM {table}");
         let step = WorkflowCommandStep::new(
             "scheduled-query",
@@ -84,7 +78,7 @@ pub async fn run(
         let result = resource_execution::execute(&host, &step, "p", None, None, true)
             .await
             .unwrap_or_else(|error| {
-                use datazen_feature_core::workflow::error::WorkflowError;
+                use datazen::workflow::error::WorkflowError;
                 match error {
                     WorkflowError::SqlExecution { code, .. }
                     | WorkflowError::SqlUnconfirmed { code, .. }
@@ -162,14 +156,10 @@ pub async fn run(
                 .await
                 .is_err()
         );
-        host.policy.grant.write().unwrap().revoked = true;
+        host.policy.revoked.store(true, Ordering::SeqCst);
         assert!(host
             .runtime
-            .read_artifact_chunk(
-                &host.context,
-                artifact,
-                datazen_platform_api::id::Counter::ZERO
-            )
+            .read_artifact_chunk(&host.context, artifact, datazen::shared::id::Counter::ZERO)
             .await
             .is_err());
         assert!(

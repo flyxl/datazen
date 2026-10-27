@@ -187,7 +187,7 @@ pub(crate) async fn read_context_paths(
 
 /// Format file entries as a prompt context block (`[Context: path]\\ncontent`, joined by blank lines).
 pub(crate) fn format_context_block(entries: &[(String, String)]) -> String {
-    datazen_feature_core::ai::context::format_context_block(entries)
+    datazen::ai::context::format_context_block(entries)
 }
 
 #[tauri::command]
@@ -570,11 +570,11 @@ mod tests {
         use crate::transfer::adapter_registry::SyncAdapterRegistry;
         use crate::workflow::history::WorkflowHistoryManager;
         use crate::workflow::registry::{AppDbWorkflowRepository, WorkflowRegistry};
-        use datazen_ai_providers::AiProviderRegistry;
-        use datazen_feature_core::ai::context::SchemaContextBuilder;
-        use datazen_feature_core::ai::prompt_resolver::PromptResolver;
-        use datazen_runtime::driver_registry::DriverRegistry;
-        use datazen_runtime::schema_cache::SchemaCache;
+        use datazen::ai::context::SchemaContextBuilder;
+        use datazen::ai::prompt_resolver::PromptResolver;
+        use datazen::ai::AiProviderRegistry;
+        use datazen::execution::runtime::driver_registry::DriverRegistry;
+        use datazen::schema::cache::SchemaCache;
         use std::sync::Arc;
 
         let dir = tempfile::tempdir().unwrap();
@@ -619,12 +619,10 @@ mod tests {
             mcp_client_manager: Arc::new(McpClientManager::new()),
             query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
-            wapps: Arc::new(
-                datazen_feature_core::workspace_apps::manager::WappManager::new(
-                    data_dir.join("wapps"),
-                ),
-            ),
-            cancel_registry: datazen_feature_core::ai::cancel::CancellationRegistry::default(),
+            wapps: Arc::new(datazen::workspace_apps::manager::WappManager::new(
+                data_dir.join("wapps"),
+            )),
+            cancel_registry: datazen::ai::cancel::CancellationRegistry::default(),
             ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
             schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
             desktop_job_host,
@@ -651,11 +649,11 @@ mod tests {
         use crate::transfer::adapter_registry::SyncAdapterRegistry;
         use crate::workflow::history::WorkflowHistoryManager;
         use crate::workflow::registry::{AppDbWorkflowRepository, WorkflowRegistry};
-        use datazen_ai_providers::AiProviderRegistry;
-        use datazen_feature_core::ai::context::SchemaContextBuilder;
-        use datazen_feature_core::ai::prompt_resolver::PromptResolver;
-        use datazen_runtime::driver_registry::DriverRegistry;
-        use datazen_runtime::schema_cache::SchemaCache;
+        use datazen::ai::context::SchemaContextBuilder;
+        use datazen::ai::prompt_resolver::PromptResolver;
+        use datazen::ai::AiProviderRegistry;
+        use datazen::execution::runtime::driver_registry::DriverRegistry;
+        use datazen::schema::cache::SchemaCache;
         use std::sync::Arc;
 
         let dir = tempfile::tempdir().unwrap();
@@ -708,12 +706,10 @@ mod tests {
             mcp_client_manager: Arc::new(McpClientManager::new()),
             query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
             workflow_scheduler: crate::workflow::scheduler::WorkflowScheduler::new(),
-            wapps: Arc::new(
-                datazen_feature_core::workspace_apps::manager::WappManager::new(
-                    data_dir.join("wapps"),
-                ),
-            ),
-            cancel_registry: datazen_feature_core::ai::cancel::CancellationRegistry::default(),
+            wapps: Arc::new(datazen::workspace_apps::manager::WappManager::new(
+                data_dir.join("wapps"),
+            )),
+            cancel_registry: datazen::ai::cancel::CancellationRegistry::default(),
             ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
             schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
             desktop_job_host,

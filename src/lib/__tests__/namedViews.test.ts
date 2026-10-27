@@ -4,7 +4,7 @@
  * Two things are pinned here besides the behaviour:
  *
  * - the **key sets** of the record, with the same literals the Rust suite
- *   uses (`packages/feature-core/src/services/named_views/tests.rs`). A field
+ *   uses (`modules/src/named_views/tests.rs`). A field
  *   that appears on one side only is a contract break that neither side can
  *   see alone.
  * - the **parity** of the two `FilterCondition` definitions — the port's
@@ -68,19 +68,18 @@ const VIEW: NamedView = {
 };
 
 function sortedKeys(value: object): string {
-  return Object.keys(value)
-    .sort()
-    .join(',');
+  return Object.keys(value).sort().join(',');
 }
 
 // ── The parity of the two FilterCondition definitions ────────────────────
 
 /** Whether two types have exactly the same fields. */
-type SameKeys<A, B> = Exclude<keyof A, keyof B> extends never
-  ? Exclude<keyof B, keyof A> extends never
-    ? true
-    : false
-  : false;
+type SameKeys<A, B> =
+  Exclude<keyof A, keyof B> extends never
+    ? Exclude<keyof B, keyof A> extends never
+      ? true
+      : false
+    : false;
 
 /** Whether two types have the same type for one field. */
 type SameField<A, B, K extends keyof A & keyof B> = [A[K]] extends [B[K]]
@@ -103,9 +102,7 @@ type Assert<T extends true> = T;
  * connector — has to be the same type, or a saved view would lose a field on
  * the way through the port.
  */
-export type FilterConditionFieldsMatch = Assert<
-  SameKeys<HostFilterCondition, PortFilterCondition>
->;
+export type FilterConditionFieldsMatch = Assert<SameKeys<HostFilterCondition, PortFilterCondition>>;
 export type FilterConditionColumnMatches = Assert<
   SameField<HostFilterCondition, PortFilterCondition, 'column'>
 >;
@@ -128,9 +125,7 @@ describe('the scope of a saved view', () => {
     expect(namedViewScopeKey({ ...SCOPE, connectionId: 'conn-2' })).not.toBe(
       namedViewScopeKey(SCOPE),
     );
-    expect(namedViewScopeKey({ ...SCOPE, table: 'users' })).not.toBe(
-      namedViewScopeKey(SCOPE),
-    );
+    expect(namedViewScopeKey({ ...SCOPE, table: 'users' })).not.toBe(namedViewScopeKey(SCOPE));
   });
 
   it('tells a missing database from an empty one', () => {
@@ -165,9 +160,7 @@ describe('the name of a saved view', () => {
     const taken = new Set(['users']);
     expect(resolveImportName('Orders', taken)).toBe('Orders');
     expect(resolveImportName('Users', taken)).toBe('Users (2)');
-    expect(
-      resolveImportName('Users', new Set(['users', 'Users (2)'])),
-    ).toBe('Users (3)');
+    expect(resolveImportName('Users', new Set(['users', 'Users (2)']))).toBe('Users (3)');
   });
 });
 
@@ -229,9 +222,7 @@ describe('the list of saved views', () => {
 
   it('holds the views of one scope only', () => {
     const other: NamedView = { ...VIEW, id: 'e', scope: { ...SCOPE, table: 'users' } };
-    expect(viewsForScope([VIEW, other], SCOPE).map((view) => view.id)).toEqual([
-      'view-0001',
-    ]);
+    expect(viewsForScope([VIEW, other], SCOPE).map((view) => view.id)).toEqual(['view-0001']);
   });
 });
 
@@ -246,9 +237,7 @@ describe('the filters of a saved view', () => {
   });
 
   it('refuses an operator the host does not know instead of dropping it', () => {
-    const readout = readViewFilters([
-      { column: 'id', operator: 'matchesRegex', value: 1 },
-    ]);
+    const readout = readViewFilters([{ column: 'id', operator: 'matchesRegex', value: 1 }]);
     expect(readout.unknownOperators).toEqual(['matchesRegex']);
     expect(readout.filters).toEqual([]);
   });

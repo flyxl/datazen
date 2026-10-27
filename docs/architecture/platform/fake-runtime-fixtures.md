@@ -1,6 +1,6 @@
 # DataZen P0 transport-neutral fake resource 夹具与基准 harness 详细设计
 
-> 状态：**夹具已落地**，实现位于 `datazen-runtime`（`packages/runtime/`）的 `src/connection/testing/`：§1–§9 的 fake resource provider、§4 的 F1–F12 逐阶段故障注入、§5 CommandJournal、§6 Barrier/DrainBarrier、§7 FakeClock、§8 FakeIds（含强制碰撞）与 §9 的会话级句柄命令均已实现并有单测，CM-71/CM-73/CM-74 的竞态与碰撞用例也已落地。**§11 CM-60 基准 harness 的两半都已落地**：压力半是集成测试 `packages/runtime/tests/cm60_pressure_drain.rs`（`2bef5bee1`），延迟半是独立 bin `packages/runtime/src/bin/cm60-bench/`（`37526e084`，CI 门禁见 `05ca8c3a9`）。**§10 真实驱动契约夹具仍是目标设计**，尚未实现。基线：2026-09-30，`8592b0fe1`。本文不代表连接管理重构已完成。
+> 状态：**夹具已落地**，实现位于 `datazen`（`modules/`）的 `src/connection/testing/`：§1–§9 的 fake resource provider、§4 的 F1–F12 逐阶段故障注入、§5 CommandJournal、§6 Barrier/DrainBarrier、§7 FakeClock、§8 FakeIds（含强制碰撞）与 §9 的会话级句柄命令均已实现并有单测，CM-71/CM-73/CM-74 的竞态与碰撞用例也已落地。**§11 CM-60 基准 harness 的两半都已落地**：压力半是集成测试 `modules/tests/cm60_pressure_drain.rs`（`2bef5bee1`），延迟半是独立 bin `modules/src/bin/cm60-bench/`（`37526e084`，CI 门禁见 `05ca8c3a9`）。**§10 真实驱动契约夹具仍是目标设计**，尚未实现。基线：2026-09-30，`8592b0fe1`。本文不代表连接管理重构已完成。
 > 读者：负责 [连接管理详细设计](connection-management.md) §14 开发步骤第 2 项（`testing/fake_resource`）、§6.5 句柄登记与 §15.3 基准 harness 的实现者。
 > 配套：[连接管理详细设计](connection-management.md)、[平台开发计划](../../development/platform-development-plan.md)、[系统概要](system-overview.md)、[测试架构](../testing.md)、[E2E 测试指南](../../development/e2e-testing.md)。
 
@@ -45,7 +45,7 @@
 
 | 维度 | 现有 `MockDriver` | 本文 fake resource provider |
 | --- | --- | --- |
-| 落点 | `packages/driver-api/src/mock_driver.rs`（`MockDriver` / `MockDriverOptions`） | `packages/runtime/src/connection/testing/`（已落地） |
+| 落点 | `packages/driver-api/src/mock_driver.rs`（`MockDriver` / `MockDriverOptions`） | `modules/src/execution/runtime/connection/testing/`（已落地） |
 | 抽象层 | `datazen_driver_api::DatabaseDriver` | connection-management.md §5.1 资源级端口 |
 | 典型调用 | 测试直接 `driver.query(&handle, ...)` | runtime actor / 执行网关 |
 | 能表达的句柄 | `ConnectionHandle` / `TransactionHandle`（`packages/driver-api/src/types.rs`） | `ResourceHandle` + §6.5 `SessionHandleRef` |
@@ -56,11 +56,11 @@
 
 ## 2. 落点与模块划分
 
-实际目录（runtime crate `datazen-runtime` 已创建，位于 `packages/runtime/`；两个 target：`lib` 与 `cm60-bench` 这个 bin——§11.6 要求基准不得与功能测试共用入口）：
+实际目录（runtime crate `datazen` 已创建，位于 `modules/`；两个 target：`lib` 与 `cm60-bench` 这个 bin——§11.6 要求基准不得与功能测试共用入口）：
 
 | 路径 | 职责 | 关键导出 |
 | --- | --- | --- |
-| `packages/runtime/src/connection/testing/mod.rs` | 模块入口与 `#[cfg(any(test, feature = "test-harness"))]` 门控 | `FakeHarness` |
+| `modules/src/execution/runtime/connection/testing/mod.rs` | 模块入口与 `#[cfg(any(test, feature = "test-harness"))]` 门控 | `FakeHarness` |
 | `.../testing/fake_resource/` | fake provider、fake resource 状态机、§5.1 九个操作、§4 注入点分派与目录守卫 | `FakeResourceProvider`、`FakeResource`、`FakeScript` |
 | `.../testing/journal/` | CommandJournal 与变化点断言 | `CommandJournal`、`JournalAssert` |
 | `.../testing/barrier/` | 命令级 barrier、协议 drain barrier | `Barrier`、`DrainBarrier` |
@@ -68,9 +68,9 @@
 | `.../testing/ids.rs` | 可预测 ID 生成与强制碰撞 | `FakeIds`、`FakeIdScope` |
 | `.../testing/fixtures.rs` | 固定实体（组织/用户/profile/命名空间 A、B） | `fixtures()` 常量与 `install_fixtures` |
 | `.../testing/commands.rs` | 会话级句柄 fake 命令定义 | `session_handle_command_definitions()` |
-| `packages/runtime/src/bin/cm60-bench/` | CM-60 基准入口（§11） | **已实现**：独立的 bin target，不在 `testing/` 下（§11.6 要求基准不得与功能测试共用入口） |
+| `modules/src/bin/cm60-bench/` | CM-60 基准入口（§11） | **已实现**：独立的 bin target，不在 `testing/` 下（§11.6 要求基准不得与功能测试共用入口） |
 
-`cfg` 门控与 `src-tauri/src/testing/mod.rs` 现有写法保持一致（`app_state` 用 `#[cfg(any(test, feature = "test-harness"))]`，feature 名 `test-harness` 已在 `src-tauri/Cargo.toml` 定义；`packages/runtime/Cargo.toml` 也定义了同名 feature，夹具模块由 `lib.rs` 与 `connection/mod.rs` 两处 `#[cfg(any(test, feature = "test-harness"))]` 双重门控）。
+`cfg` 门控与 `src-tauri/src/testing/mod.rs` 现有写法保持一致（`app_state` 用 `#[cfg(any(test, feature = "test-harness"))]`，feature 名 `test-harness` 已在 `src-tauri/Cargo.toml` 定义；`modules/Cargo.toml` 也定义了同名 feature，夹具模块由 `lib.rs` 与 `connection/mod.rs` 两处 `#[cfg(any(test, feature = "test-harness"))]` 双重门控）。
 
 ```mermaid
 flowchart TD
@@ -490,7 +490,7 @@ h.clock().advance(Duration::from_secs(24 * 3600));  // 触发 IdempotencyExpired
 
 断言集合：`R2` 上不存在任何 `registered` 事件；`I1`~`I8` 全部成立；恢复流程若被触发，必须以**新 dbSessionId** 出现，旧句柄不被重建（connection-management.md §6.5）。
 
-CM-73/CM-74 的断言只依赖 Runtime 行为（回收时处理已登记活动句柄、失效后不以同一 dbSessionId 重建），不依赖 Host 管理器函数名；它们由 `packages/runtime/src/connection/testing/harness/` 中的 Runtime 测试覆盖。
+CM-73/CM-74 的断言只依赖 Runtime 行为（回收时处理已登记活动句柄、失效后不以同一 dbSessionId 重建），不依赖 Host 管理器函数名；它们由 `modules/src/execution/runtime/connection/testing/harness/` 中的 Runtime 测试覆盖。
 
 ## 10. 真实驱动契约夹具模板
 
@@ -580,7 +580,7 @@ INSERT INTO dz_target_marker (id, marker, written_at) VALUES (1, :marker, :now);
 
 | 产物 | 内容 | 落点 |
 | --- | --- | --- |
-| 原始计时 | 每请求两段纳秒值、轮次、并发度 | `target/bench/cm60-raw-<ts>.json`（由 `packages/runtime/src/bin/cm60-bench` 输出） |
+| 原始计时 | 每请求两段纳秒值、轮次、并发度 | `target/bench/cm60-raw-<ts>.json`（由 `modules/src/bin/cm60-bench` 输出） |
 | 环境记录 | CPU 核数、内存、OS、编译器版本 | 同上文件 `environment` 段 |
 | 构建参数 | profile、features、依赖锁文件摘要 | 同上文件 `build` 段 |
 | journal | 资源/permit/句柄全量 journal 摘要 | 同上文件 `journal` 段 |
@@ -605,7 +605,7 @@ pnpm test:unit:drivers        # 驱动 UI 单测
 pnpm test:layers              # 源码层边界
 pnpm test:boundaries          # 驱动导入边界
 pnpm test:ids                 # ID 术语一致性
-cargo test -p datazen --lib                    # Host Rust 单测
+cargo test -p datazen_desktop --lib                    # Host Rust 单测
 cargo test -p datazen-driver-api               # 驱动 API 契约
 cargo test -p datazen-driver-postgres          # 示例：某个驱动 crate
 pnpm tauri:build:webdriver    # WDIO 构建（禁止裸 cargo build）
@@ -613,20 +613,20 @@ pnpm e2e:skip-build           # 复用已编译 debug 二进制
 pnpm e2e:contract:matrix      # Host 契约 × 驱动矩阵
 ```
 
-**已落地、可立即运行**（runtime crate 已创建，核对自 `packages/runtime/Cargo.toml`）：
+**已落地、可立即运行**（runtime crate 已创建，核对自 `modules/Cargo.toml`）：
 
 ```bash
-cargo test -p datazen-runtime --lib                      # 夹具单测（383 个用例，crate 的 lib target）
-cargo test -p datazen-runtime --features test-harness --lib   # 同上，走 feature 门控而非 cfg(test)
-cargo test -p datazen-runtime --test cm60_pressure_drain   # CM-60 压力半（§11.4，另跑）
-cargo run --release -p datazen-runtime --bin cm60-bench     # CM-60 延迟半基准（§11，独立的 bin target）
+cargo test -p datazen --lib                      # 夹具单测（383 个用例，crate 的 lib target）
+cargo test -p datazen --features test-harness --lib   # 同上，走 feature 门控而非 cfg(test)
+cargo test -p datazen --test cm60_pressure_drain   # CM-60 压力半（§11.4，另跑）
+cargo run --release -p datazen --bin cm60-bench     # CM-60 延迟半基准（§11，独立的 bin target）
 ```
 
 **仍未创建、当前**不可**运行，不得在文档或 CI 中当作现有脚本**：
 
 | 预期命令 | 前置条件 |
 | --- | --- |
-| `cargo test -p datazen-runtime --test contract` | 跨 crate 契约测试目录创建，且 `src-tauri/Cargo.toml` 注入依赖 |
+| `cargo test -p datazen --test contract` | 跨 crate 契约测试目录创建，且 `src-tauri/Cargo.toml` 注入依赖 |
 
 创建后必须同步更新平台开发计划 §15.1 的命令表与 CI 门禁，不把未创建命令列为现有脚本。
 

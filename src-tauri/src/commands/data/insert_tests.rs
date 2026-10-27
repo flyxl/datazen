@@ -6,10 +6,8 @@
 use super::test_fixtures::*;
 use super::*;
 use crate::testing::app_state::TestAppState;
+use datazen::data_browsing::{canonicalize_changes, changes_fingerprint, plan_changes};
 use datazen_driver_api::Value;
-use datazen_feature_core::data_browsing::{
-    canonicalize_changes, changes_fingerprint, plan_changes,
-};
 use std::collections::BTreeMap;
 
 // ---------------------------------------------------------------------------
@@ -544,7 +542,7 @@ async fn zero_affected_rows_is_treated_as_a_mismatch_not_as_success() {
 // ---------------------------------------------------------------------------
 // [tester round-5] IB4-D3: the two "session target drifted from the plan"
 // refusals now carry `grid.commit.stalePlan`. Both constructors are
-// `pub(crate)` to feature-core, so these reach the real branches through the
+// `pub(crate)` to modules, so these reach the real branches through the
 // command instead of calling them directly.
 // ---------------------------------------------------------------------------
 

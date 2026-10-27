@@ -148,45 +148,30 @@ fn the_known_hosts_repository_is_no_longer_reachable_from_the_host_state() {
     );
 }
 
-/// 端口 trait 也不许回到机制包里：它曾住在 `packages/tunnel`，搬进 platform-api 后，
-/// `packages/tunnel` 只保留 re-export。回摆的代价是「宿主为了填端口而依赖机制包」。
+/// 隧道领域端口必须由 `modules::tunnel::domain` 唯一定义；platform-api 退役这组
+/// 端口后不得重新出现第二份 trait。
 #[test]
-fn the_known_hosts_port_is_declared_in_platform_api_only() {
+fn the_tunnel_ports_are_declared_in_the_modules_domain_only() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let tunnel_src = manifest_dir
-        .parent()
-        .expect("src-tauri 有上级目录")
-        .join("packages/tunnel/src");
-    let mut offenders = Vec::new();
-    let mut stack = vec![tunnel_src];
-    while let Some(dir) = stack.pop() {
-        let entries = std::fs::read_dir(&dir).expect("mechanism crate 要能读到源码目录");
-        for entry in entries {
-            let path = entry.expect("目录项可读").path();
-            if path.is_dir() {
-                stack.push(path);
-                continue;
-            }
-            if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
-                continue;
-            }
-            let text = std::fs::read_to_string(&path).expect("源码文件是 UTF-8");
-            if text.contains("pub trait KnownHostsRepository") {
-                offenders.push(path.display().to_string());
-            }
-        }
-    }
+    let root = manifest_dir.parent().expect("src-tauri 有上级目录");
+    let domain = root.join("modules/src/tunnel/domain");
+    let known_hosts = std::fs::read_to_string(domain.join("known_hosts.rs"))
+        .expect("modules tunnel domain must contain known_hosts.rs");
+    let tunnel = std::fs::read_to_string(domain.join("tunnel_repository.rs"))
+        .expect("modules tunnel domain must contain tunnel_repository.rs");
     assert!(
-        offenders.is_empty(),
-        "KnownHostsRepository 是 platform-api 的端口（§5.1.2 第五步），机制包只许 re-export：{offenders:?}"
+        known_hosts.contains("pub trait KnownHostsRepository"),
+        "KnownHostsRepository 必须由 modules::tunnel::domain 唯一定义"
     );
     assert!(
-        !manifest_dir
-            .parent()
-            .unwrap()
-            .join("packages/tunnel/src/known_hosts_repository.rs")
-            .exists(),
-        "端口文件已搬走，`known_hosts_repository.rs` 不得回到机制包"
+        tunnel.contains("pub trait TunnelRepository"),
+        "TunnelRepository 必须由 modules::tunnel::domain 唯一定义"
+    );
+    let platform_ports = root.join("modules/src");
+    assert!(
+        !platform_ports.join("known_hosts.rs").exists()
+            && !platform_ports.join("tunnel.rs").exists(),
+        "platform-api 不得重新拥有隧道领域端口"
     );
 }
 

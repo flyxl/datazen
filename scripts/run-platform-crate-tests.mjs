@@ -3,8 +3,8 @@ import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
 /**
  * Run `cargo test` for the platform core crates.
  *
- * Closes the gap at platform-development-plan.md:269 — `datazen-runtime` was
- * linked by CI (`cargo test --lib -p datazen --lib`) but never tested, so the
+ * Closes the gap at platform-development-plan.md:269 — the shared runtime was
+ * shared `datazen` crate was linked by CI but never tested, so the
  * one crate the server will be built on could compile clean and still be wrong.
  *
  * ## Why this is a script and not a list in ci.yml
@@ -12,8 +12,8 @@ import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
  * Precedent: ci.yml:96 carries the comment 「驱动集合只写在
  * `run-unit-driver-set.mjs`，不要内联到这里」 for the driver test set. The same
  * argument applies with more force here, because the platform crates are *being
- * written right now* by another track — `packages/application` and
- * `packages/platform-api` are landing in a parallel branch. A `-p` list in
+ * written right now* by another track — `modules` is now the single shared
+ * business crate. A `-p` list in
  * ci.yml would have to be edited the day they merge; a list derived from the
  * same LAYERS table the boundary guard uses is edited never, and cannot drift
  * from the guard's idea of what a core crate is.
@@ -124,25 +124,9 @@ export const PREFIX = '[platform-crate-tests]';
  * virtue of the directory it lives in, not by its name.
  */
 export const TESTED_LAYERS = Object.freeze([
-  'runtime',
-  // 机制内核（job / budget / sql_guard / schema_cache / driver_registry）：从 `runtime`
-  // 分出后**仍是 core crate**，它不进这张表就会从 CI 的测试集里安静消失
-  // ——正是本脚本存在的理由（见文件头的 platform-development-plan.md:269 那条）。
-  'kernel',
-  'tunnel',
-  'application',
-  'platform-api',
-  'platform-infra',
+  'modules',
+  'infra',
   'server',
-  'ai-providers',
-  // The Workspace App kernel used to be the standalone `workspace-apps` layer.
-  // It now lives in `feature-core` as the `feature_core::workspace_apps`
-  // module, so its unit tests travel with that layer.
-  'feature-core',
-  'schema-diff',
-  'migration-common',
-  'data-sync',
-  'data-transfer',
 ]);
 
 /**
@@ -164,7 +148,7 @@ export const TESTED_LAYERS = Object.freeze([
  * invocation structurally cannot reach is a target whose assertions refuse the
  * debug profile:
  *
- * - `packages/runtime/src/bin/cm60-bench/` is a **binary** target whose unit
+ * - `modules/src/bin/cm60-bench/` is a **binary** target whose unit
  *   tests live in the bin's own test binary — that much `cargo test -p …`
  * *does* reach — but `cm60-bench/main.rs` **has to** be built and run
  * `--release`: it exits 2 under `debug_assertions`, which is a deliberate
@@ -186,18 +170,41 @@ export const TESTED_LAYERS = Object.freeze([
  * discovered are skipped instead — no crate, no target.
  */
 export const EXTRA_TARGETS = Object.freeze({
-  'datazen-runtime': Object.freeze([
+  'datazen': Object.freeze([
     // §11.3 latency half: the bench binary's own unit tests, release only.
-    Object.freeze({ release: true, args: Object.freeze(['--bin', 'cm60-bench']) }),
+    Object.freeze({
+      release: true,
+      args: Object.freeze(['--features', 'execution,jobs,test-harness', '--bin', 'cm60-bench']),
+    }),
+  ]),
+});
+
+/**
+ * Feature profiles that must be exercised in addition to each crate's default
+ * unit-test invocation. D1's settings slice is optional by design, so a default
+ * test alone would compile only the empty module root and miss the real service.
+ */
+export const FEATURE_TESTS = Object.freeze({
+  'datazen': Object.freeze([
+    'settings',
+    'ai',
+    // `connection` exposes DTOs that use execution receipts, while execution
+    // itself depends on connection. Test the smallest valid profile instead
+    // of pretending that `connection` is a standalone Cargo configuration.
+    'connection,execution',
+    'named_views',
+    'monitor',
+    'dashboard',
+    'tunnel',
   ]),
 });
 
 /**
  * Build the full list of `cargo` invocations for a discovered crate set.
  *
- * Pure and exported so the argv can be asserted on directly. Up to two
- * invocations: a no-selector run that reaches every target of every crate,
- * and a single `--release` one for the release extras. Returns an empty list
+ * Pure and exported so the argv can be asserted on directly. It returns a
+ * no-selector run that reaches every target of every crate, one invocation for
+ * each required feature profile, and a single `--release` one for release extras. Returns an empty list
  * only when there is nothing at all to run, which `runCli` already guards
  * against.
  *
@@ -240,6 +247,20 @@ export const EXTRA_TARGETS = Object.freeze({
 export function buildCargoArgv(crates) {
   if (crates.length === 0) return [];
   const names = crates.map((c) => c.name);
+  const featureInvocations = [];
+  for (const name of names) {
+    for (const features of FEATURE_TESTS[name] ?? []) {
+      featureInvocations.push([
+        'test',
+        '--no-default-features',
+        '--features',
+        features,
+        '--lib',
+        '-p',
+        name,
+      ]);
+    }
+  }
   const releaseEntries = [];
   for (const name of names) {
     for (const entry of EXTRA_TARGETS[name] ?? []) {
@@ -251,7 +272,8 @@ export function buildCargoArgv(crates) {
     // "a table edit cannot delete the run" invariant now rests on. It reaches
     // lib unit tests, bin unit tests, every tests/*.rs integration binary and
     // the lib doc tests, with no target list maintained on this side.
-    ['test', ...names.flatMap((n) => ['-p', n])],
+    ['test', '--all-features', ...names.flatMap((n) => ['-p', n])],
+    ...featureInvocations,
     ...(releaseEntries.length > 0
       ? [
           [

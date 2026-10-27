@@ -1,12 +1,12 @@
 //! Product entry for deployment-pinned version probes, not native DB export/restore.
 use super::{error::CommandError, AppState};
-use datazen_platform_api::{
-    context::{OwnerRef, RequestContext},
-    dto::job::{JobDefinition, JobDetails, JobFilter, JobView},
-    id::{IdempotencyKey, JobId, StageId, WorkerId},
-    ports::native_tool::NativeToolSelection,
+use datazen::jobs::application::native_tool::NativeToolJobHandler;
+use datazen::{
+    jobs::domain::job::{JobDefinition, JobDetails, JobFilter, JobView},
+    jobs::domain::native_tool::NativeToolSelection,
+    shared::context::{OwnerRef, RequestContext},
+    shared::id::{IdempotencyKey, JobId, StageId, WorkerId},
 };
-use datazen_runtime::native_tool::NativeToolJobHandler;
 use futures_util::FutureExt;
 use std::{panic::AssertUnwindSafe, sync::Arc};
 use tauri::State;

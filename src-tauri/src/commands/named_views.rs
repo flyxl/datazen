@@ -5,7 +5,7 @@
 //! hands the shared layer that port and an id minter, it maps the shared error
 //! onto [`CommandError`], and it hands the answer back. Every rule — the name uniqueness inside a scope,
 //! the one-default-per-scope rule, the ordering, the idempotent delete — lives
-//! in `datazen_feature_core::services::named_views`.
+//! in `datazen::named_views`.
 //!
 //! The commands are **desktop-only for now**: the storage is the desktop
 //! store's `{appData}/named_views.json`, and a browser build has no such
@@ -13,16 +13,12 @@
 //! gets an explicit "not supported" instead of an empty list that reads like
 //! "you have no saved views".
 
-use datazen_feature_core::services::named_views::{
-    delete_named_view as delete_view, list_named_views as list_views, save_named_view as save_view,
-    NamedView, NamedViewScope,
-};
+use datazen::named_views::{NamedView, NamedViewScope};
 use tauri::State;
 
 use super::error::CommandError;
 use super::AppState;
-use crate::platform::ipc::require_application_services;
-use crate::store::HostViewIdMinter;
+use crate::platform::ipc::require_named_views_service;
 
 /// The views of one scope, or of every scope when `scope` is omitted.
 ///
@@ -32,8 +28,8 @@ pub(crate) async fn list_named_views_impl(
     state: &AppState,
     scope: Option<NamedViewScope>,
 ) -> Result<Vec<NamedView>, CommandError> {
-    let services = require_application_services(state)?;
-    let views = list_views(services.named_views.as_ref(), scope.as_ref()).await?;
+    let service = require_named_views_service(state)?;
+    let views = service.list(scope.as_ref()).await?;
     Ok(views)
 }
 
@@ -45,8 +41,8 @@ pub(crate) async fn save_named_view_impl(
     state: &AppState,
     view: NamedView,
 ) -> Result<NamedView, CommandError> {
-    let services = require_application_services(state)?;
-    let saved = save_view(services.named_views.as_ref(), &HostViewIdMinter, view).await?;
+    let service = require_named_views_service(state)?;
+    let saved = service.save(view).await?;
     Ok(saved)
 }
 
@@ -57,8 +53,8 @@ pub(crate) async fn delete_named_view_impl(
     state: &AppState,
     id: &str,
 ) -> Result<Vec<NamedView>, CommandError> {
-    let services = require_application_services(state)?;
-    let remaining = delete_view(services.named_views.as_ref(), id).await?;
+    let service = require_named_views_service(state)?;
+    let remaining = service.delete(id).await?;
     Ok(remaining)
 }
 
@@ -114,7 +110,8 @@ mod tests {
         );
     }
 
-    /// 生产半边不再出现宿主 store（P3 第一条命令族）。
+    /// 生产半边不再出现宿主 store（P3 第一条命令族；D6 item 1 后命令改经
+    /// `require_named_views_service` 取模块服务，守卫随迁）。
     ///
     /// 计数而不是「有没有」：端口宿主 store 的直读曾经是三条命令各一处，
     /// 只要有人把 `.as_ref()` 换回 `state.store.as_ref()`，这里会先红。
@@ -125,14 +122,14 @@ mod tests {
         assert_eq!(
             production.matches("state.store").count(),
             0,
-            "named views 命令必须走 ApplicationServices 的命名视图端口"
+            "named views 命令必须走模块服务，不得直读宿主 store"
         );
         assert_eq!(
             production
-                .matches("require_application_services(state)")
+                .matches("require_named_views_service(state)")
                 .count(),
             3,
-            "三条命令各取一次聚合"
+            "三条命令各取一次模块服务"
         );
     }
 

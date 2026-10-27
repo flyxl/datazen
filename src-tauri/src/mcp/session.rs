@@ -10,8 +10,8 @@
 //! 映射丢失后 use 返回 SessionLost，绝不用同一个 reference 重建：重建等于让
 //! 上一个客户端的句柄指向下一个客户端的会话。
 
-use datazen_platform_api::dto::session::SessionHandle;
-use datazen_platform_api::id::Counter;
+use datazen::execution::SessionHandle;
+use datazen::shared::id::Counter;
 use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -245,7 +245,7 @@ impl McpSessionRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_platform_api::id::{DbSessionId, RuntimeEpoch};
+    use datazen::shared::id::{DbSessionId, RuntimeEpoch};
 
     fn handle(id: &str) -> SessionHandle {
         SessionHandle::new(DbSessionId::new(id), RuntimeEpoch::new("1"))

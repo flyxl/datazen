@@ -23,7 +23,12 @@ export interface FilterSqlPreviewDialogProps {
  * `COUNT(*)` is always shown — an estimate falls back to it, and the user
  * deserves to see both the plan and the rescue.
  */
-export function FilterSqlPreviewDialog({ open, onClose, preview, error }: FilterSqlPreviewDialogProps) {
+export function FilterSqlPreviewDialog({
+  open,
+  onClose,
+  preview,
+  error,
+}: FilterSqlPreviewDialogProps) {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
 
@@ -53,7 +58,9 @@ export function FilterSqlPreviewDialog({ open, onClose, preview, error }: Filter
 
   const copyAll = () => {
     if (!preview) return;
-    const text = statements.map((statement) => `-- ${statement.label}\n${statement.sql}`).join('\n\n');
+    const text = statements
+      .map((statement) => `-- ${statement.label}\n${statement.sql}`)
+      .join('\n\n');
     void navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
@@ -102,7 +109,10 @@ export function FilterSqlPreviewDialog({ open, onClose, preview, error }: Filter
           </div>
         ))}
         {!preview && !error && (
-          <div data-testid="filter-sql-preview-loading" className="py-8 text-center text-sm text-fg-muted">
+          <div
+            data-testid="filter-sql-preview-loading"
+            className="py-8 text-center text-sm text-fg-muted"
+          >
             {t('filter.previewSqlLoading')}
           </div>
         )}

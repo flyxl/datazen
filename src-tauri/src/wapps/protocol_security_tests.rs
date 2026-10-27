@@ -14,9 +14,9 @@ use tauri::http;
 use super::protocol::{
     parse_datazen_uri, route_datazen_request, DatazenOutcome, WAPPS_OPEN_PAGE_EVENT,
 };
-use datazen_feature_core::workspace_apps::manager::WappManager;
-use datazen_feature_core::workspace_apps::parse_manifest;
-use datazen_feature_core::workspace_apps::protocol::{content_type_for, safe_relative_path};
+use datazen::workspace_apps::manager::WappManager;
+use datazen::workspace_apps::parse_manifest;
+use datazen::workspace_apps::protocol::{content_type_for, safe_relative_path};
 
 const MANIFEST: &str = r#"{
   "id": "acme.bill-audit",

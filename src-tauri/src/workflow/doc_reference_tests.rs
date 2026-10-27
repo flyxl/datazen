@@ -93,21 +93,23 @@ fn the_document_links_reach_real_files() {
 /// 每一项是 `(仓库内相对路径, 1-based 行号, 该行必须包含的片段)`。
 const LINE_REFERENCES: &[(&str, usize, &str)] = &[
     // §2.3：version 写入点（本轨自己顶掉的 / 逐条核对过仍正确的）。
-    ("src-tauri/src/workflow/registry.rs", 226, "version: None,"),
+    // workflow 引擎已随 D6 item 3 切片 b 归位 modules::workflow（modules
+    // 只剩再导出垫片），行号一律指 modules 新居所。
+    ("src-tauri/src/workflow/registry.rs", 224, "version: None,"),
     (
-        "packages/feature-core/src/workflow/registry.rs",
-        437,
+        "modules/src/workflow/application/registry.rs",
+        346,
         "version: None,",
     ),
-    // §2.4：目标解析的两行代码块。
+    // §2.4：目标解析的两行代码块（modules::workflow::engine 新居所）。
     (
-        "packages/feature-core/src/workflow/executor.rs",
-        130,
+        "modules/src/workflow/engine/executor.rs",
+        117,
         "let workflow_connection = workflow.connection.as_deref().or(connection_id);",
     ),
     (
-        "packages/feature-core/src/workflow/executor.rs",
-        131,
+        "modules/src/workflow/engine/executor.rs",
+        118,
         "let workflow_database = workflow.database.as_deref();",
     ),
     // §2.4：目标定位策略注释的现居所（原 `command_runtime.rs:115-119` 已失效）。
@@ -130,19 +132,20 @@ const LINE_REFERENCES: &[(&str, usize, &str)] = &[
     // §2.5：调度器不包裹 Job（原 `scheduler.rs:176` 越界）。
     (
         "src-tauri/src/workflow/scheduler.rs",
-        44,
+        42,
         "crate::commands::workflow_execute_impl(",
     ),
-    ("src-tauri/src/workflow/scheduler.rs", 48, "None,"),
+    ("src-tauri/src/workflow/scheduler.rs", 46, "None,"),
     // §2.5：Dashboard 同样不传连接（原 `dashboard/execute.rs:222`）。
     (
         "src-tauri/src/dashboard/execute.rs",
         71,
         "WorkflowExecutor::execute(",
     ),
-    // §2.3：逐条核对过仍正确的若干处（抽样）。
+    // §2.3：逐条核对过仍正确的若干处（抽样）。dashboard 与 workflow 的共享
+    // 语义已随 D6 各切片归位 modules::（modules 只剩垫片）。
     (
-        "packages/feature-core/src/dashboard/create.rs",
+        "modules/src/dashboard/application/create.rs",
         40,
         "version: None,",
     ),
@@ -152,13 +155,13 @@ const LINE_REFERENCES: &[(&str, usize, &str)] = &[
         "version: Some(\"1\".into()),",
     ),
     (
-        "packages/feature-core/src/workflow/scheduler.rs",
+        "modules/src/workflow/engine/scheduler.rs",
         220,
         "version: None,",
     ),
     (
-        "packages/feature-core/src/dashboard/archive.rs",
-        185,
+        "modules/src/dashboard/application/archive.rs",
+        197,
         "version: None,",
     ),
     (

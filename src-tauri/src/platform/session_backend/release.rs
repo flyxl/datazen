@@ -138,7 +138,7 @@ impl DesktopSessionBackend {
             self.leases
                 .returning(
                     &rc::ResourceId::new(&request.resource_id),
-                    datazen_runtime::resource::DriverCleanVerdict::reported_unclean(),
+                    datazen::execution::runtime::resource::DriverCleanVerdict::reported_unclean(),
                     &Default::default(),
                 )
                 .map_err(|_| {
@@ -174,13 +174,13 @@ impl DesktopSessionBackend {
             .await;
         let clean = match reset {
             Ok(ds::ResetDisposition::Clean) => {
-                datazen_runtime::resource::DriverCleanVerdict::reported_clean()
+                datazen::execution::runtime::resource::DriverCleanVerdict::reported_clean()
             }
-            _ => datazen_runtime::resource::DriverCleanVerdict::reported_unclean(),
+            _ => datazen::execution::runtime::resource::DriverCleanVerdict::reported_unclean(),
         };
-        let host = datazen_runtime::resource::HostConditionSnapshot {
+        let host = datazen::execution::runtime::resource::HostConditionSnapshot {
             fixed_session: resource.purpose
-                == datazen_runtime::resource::LeasePurpose::FixedSession,
+                == datazen::execution::runtime::resource::LeasePurpose::FixedSession,
             ..Default::default()
         };
         if self

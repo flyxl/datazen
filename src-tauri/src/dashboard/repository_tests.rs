@@ -4,15 +4,15 @@ use super::repository::load_monitor_settings;
 use crate::store::AppSettings;
 use crate::store::{AppDb, WorkflowRecord, WorkflowVisibility};
 use chrono::Utc;
-use datazen_feature_core::dashboard::repository::{
+use datazen::dashboard::repository::{
     delete_dashboard, get_dashboard, list_dashboards, save_dashboard, set_dashboard_refresh_paused,
 };
-use datazen_feature_core::dashboard::types::{
+use datazen::dashboard::types::{
     AggregationType, ChartConfig, ChartSortBy, ChartType, Dashboard, DashboardLayout,
     DashboardWidget, RefreshMode, RefreshPolicy, ViewMode, WidgetLayout,
 };
-use datazen_platform_api::id::OrganizationId;
-use datazen_platform_api::ports::scope::OrganizationScope;
+use datazen::shared::id::OrganizationId;
+use datazen::shared::scope::OrganizationScope;
 
 /// 桌面自己的组织作用域。
 fn local_scope() -> OrganizationScope {
@@ -154,7 +154,7 @@ fn set_dashboard_refresh_paused_persists() {
 
 #[test]
 fn load_monitor_settings_uses_app_settings_nested_monitor() {
-    use datazen_feature_core::dashboard::types::MonitorSettings;
+    use datazen::dashboard::types::MonitorSettings;
 
     let settings = AppSettings {
         monitor: MonitorSettings {
@@ -179,7 +179,7 @@ fn a_dashboard_of_another_organization_is_not_found() {
     assert!(list_dashboards(&foreign_scope(), &*db).unwrap().is_empty());
     assert!(matches!(
         get_dashboard(&foreign_scope(), &*db, "dash-1"),
-        Err(datazen_feature_core::dashboard::repository::DashboardRepositoryError::NotFound(_))
+        Err(datazen::dashboard::repository::DashboardRepositoryError::NotFound(_))
     ));
 }
 
@@ -191,7 +191,7 @@ fn the_widgets_of_another_organization_are_not_found() {
     save_dashboard(&scope, &*db, sample_dashboard()).unwrap();
 
     assert!(
-        datazen_feature_core::dashboard::repository::DashboardRepository::list_widget_rows(
+        datazen::dashboard::repository::DashboardRepository::list_widget_rows(
             &*db,
             &foreign_scope(),
             "dash-1"
@@ -200,12 +200,12 @@ fn the_widgets_of_another_organization_are_not_found() {
         .is_empty()
     );
     assert!(matches!(
-        datazen_feature_core::dashboard::repository::DashboardRepository::widget_row(
+        datazen::dashboard::repository::DashboardRepository::widget_row(
             &*db,
             &foreign_scope(),
             "w1"
         ),
-        Err(datazen_feature_core::dashboard::repository::DashboardRepositoryError::NotFound(_))
+        Err(datazen::dashboard::repository::DashboardRepositoryError::NotFound(_))
     ));
 }
 
@@ -219,11 +219,11 @@ fn a_dashboard_of_another_organization_cannot_be_changed_or_removed() {
 
     assert!(matches!(
         set_dashboard_refresh_paused(&foreign, &*db, "dash-1", true),
-        Err(datazen_feature_core::dashboard::repository::DashboardRepositoryError::NotFound(_))
+        Err(datazen::dashboard::repository::DashboardRepositoryError::NotFound(_))
     ));
     assert!(matches!(
         delete_dashboard(&foreign, &*db, "dash-1"),
-        Err(datazen_feature_core::dashboard::repository::DashboardRepositoryError::NotFound(_))
+        Err(datazen::dashboard::repository::DashboardRepositoryError::NotFound(_))
     ));
     assert!(
         get_dashboard(&scope, &*db, "dash-1").is_ok(),
@@ -238,16 +238,10 @@ fn the_workflow_refs_of_another_organization_are_not_found() {
     let scope = local_scope();
     save_dashboard(&scope, &*db, sample_dashboard()).unwrap();
 
-    let local =
-        datazen_feature_core::dashboard::repository::find_workflow_refs(&scope, &*db, "wf-1")
-            .unwrap();
+    let local = datazen::dashboard::repository::find_workflow_refs(&scope, &*db, "wf-1").unwrap();
     assert_eq!(local.len(), 1);
 
-    let foreign = datazen_feature_core::dashboard::repository::find_workflow_refs(
-        &foreign_scope(),
-        &*db,
-        "wf-1",
-    )
-    .unwrap();
+    let foreign =
+        datazen::dashboard::repository::find_workflow_refs(&foreign_scope(), &*db, "wf-1").unwrap();
     assert!(foreign.is_empty());
 }

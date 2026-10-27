@@ -6,16 +6,16 @@ use super::util::{
 };
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
-use datazen_ai_api::*;
-use datazen_feature_core::ai::budget;
-use datazen_feature_core::ai::safety::redact_for_gate;
-use datazen_feature_core::ai::schema_pipeline::{PromptSeed, SchemaContextPipeline};
+use datazen::ai::budget;
+use datazen::ai::safety::redact_for_gate;
+use datazen::ai::schema_pipeline::{PromptSeed, SchemaContextPipeline};
+use datazen::ai::*;
 use std::sync::Arc;
 use tauri::{State, WebviewWindow};
 
 // ─── Database Tool Definitions & Execution ───
 
-pub(crate) use datazen_feature_core::ai::tools::db_tool_definitions;
+pub(crate) use datazen::ai::tools::db_tool_definitions;
 
 /// Convert connected MCP client tools into AI `ToolDefinition`s (Phase 3 wires into chat).
 pub(crate) async fn mcp_tool_definitions(state: &AppState) -> Vec<ToolDefinition> {
@@ -66,13 +66,21 @@ pub(crate) async fn execute_mcp_tool(
 }
 
 pub(crate) async fn execute_db_tool(state: &AppState, tool_call: &ToolCall) -> String {
-    datazen_feature_core::ai::tools::execute_db_tool(state, state.store.as_ref(), tool_call).await
+    let Ok(scope) = state.connection_scope() else {
+        return "Error: connection scope unavailable".into();
+    };
+    let catalog = crate::platform::connections::DesktopConnectionStore::new(state.store.clone());
+    datazen::ai::tools::execute_db_tool(state, &catalog, &scope, tool_call).await
 }
 
 #[async_trait::async_trait]
-impl datazen_feature_core::ai::tool_loop::AiToolLoopHost for AppState {
+impl datazen::ai::tool_loop::AiToolLoopHost for AppState {
     async fn egress_summary(&self) -> String {
-        datazen_feature_core::ai::tools::build_egress_summary(self.store.as_ref()).await
+        let Ok(scope) = self.connection_scope() else {
+            return "No database connections configured.".into();
+        };
+        let catalog = crate::platform::connections::DesktopConnectionStore::new(self.store.clone());
+        datazen::ai::tools::build_egress_summary(&catalog, &scope).await
     }
     async fn execute_db_tool(&self, call: &ToolCall) -> String {
         execute_db_tool(self, call).await
@@ -104,7 +112,7 @@ pub(crate) async fn run_streaming_tool_loop(
         max_rounds,
         cmd_label,
         gate,
-        &datazen_feature_core::ai::ownership::AiTargetClaim::Independent,
+        &datazen::ai::ownership::AiTargetClaim::Independent,
     )
     .await
 }
@@ -119,7 +127,7 @@ pub(crate) async fn run_streaming_tool_loop_with_claim(
     max_rounds: usize,
     cmd_label: &str,
     gate: &AiSafetyGateConfig,
-    claim: &datazen_feature_core::ai::ownership::AiTargetClaim,
+    claim: &datazen::ai::ownership::AiTargetClaim,
 ) -> Result<String, CommandError> {
     // The claim decides which resource each tool may touch; independent and
     // editor-granted calls never share an execution path.
@@ -127,7 +135,7 @@ pub(crate) async fn run_streaming_tool_loop_with_claim(
         state,
         claim: claim.clone(),
     };
-    datazen_feature_core::ai::tool_loop::run_streaming_tool_loop(
+    datazen::ai::tool_loop::run_streaming_tool_loop(
         provider, &host, on_chunk, request_id, request, max_rounds, cmd_label, gate,
     )
     .await
@@ -168,7 +176,7 @@ pub(crate) async fn ai_chat_impl(
 pub(crate) async fn ai_chat_impl_with_claim(
     state: &AppState,
     on_chunk: StreamCallback,
-    target_claim: Option<datazen_feature_core::ai::ownership::AiTargetClaim>,
+    target_claim: Option<datazen::ai::ownership::AiTargetClaim>,
     db_session_id: Option<String>,
     database: Option<String>,
     messages: Vec<ChatMessage>,
@@ -264,27 +272,28 @@ pub(crate) async fn ai_chat_impl_with_claim(
         }
     }
 
-    let schema = schema_prompt.as_ref().map(|(driver, seed)| {
-        datazen_feature_core::ai::chat_request::ChatSchemaPrompt {
-            driver: driver.as_ref(),
-            seed,
-        }
-    });
+    let schema =
+        schema_prompt.as_ref().map(
+            |(driver, seed)| datazen::ai::chat_request::ChatSchemaPrompt {
+                driver: driver.as_ref(),
+                seed,
+            },
+        );
     let mcp_tools = if provider.supports_tools() {
         mcp_tool_definitions(state).await
     } else {
         Vec::new()
     };
-    let mut request = datazen_feature_core::ai::chat_request::build_chat_request(
+    let mut request = datazen::ai::chat_request::build_chat_request(
         state.prompt_resolver.as_ref(),
-        datazen_feature_core::ai::chat_request::ChatRequestInput {
+        datazen::ai::chat_request::ChatRequestInput {
             request_id: &request_id,
             model: &ai_config.model,
             lang: &lang,
             scenario: if is_workflow {
-                datazen_feature_core::ai::chat_request::ChatScenario::WorkflowGenerate
+                datazen::ai::chat_request::ChatScenario::WorkflowGenerate
             } else {
-                datazen_feature_core::ai::chat_request::ChatScenario::Chat
+                datazen::ai::chat_request::ChatScenario::Chat
             },
             schema,
             connections_context: &connections_context,
@@ -305,8 +314,7 @@ pub(crate) async fn ai_chat_impl_with_claim(
         .await;
     request.cancel_token = Some(cancel_token.clone());
 
-    let claim =
-        target_claim.unwrap_or(datazen_feature_core::ai::ownership::AiTargetClaim::Independent);
+    let claim = target_claim.unwrap_or(datazen::ai::ownership::AiTargetClaim::Independent);
     let result = run_streaming_tool_loop_with_claim(
         provider,
         state,
@@ -340,7 +348,7 @@ pub async fn ai_chat(
     scenario: Option<String>,
     context_files: Option<Vec<String>>,
     context_tables: Option<Vec<String>>,
-    target_claim: Option<datazen_feature_core::ai::ownership::AiTargetClaim>,
+    target_claim: Option<datazen::ai::ownership::AiTargetClaim>,
 ) -> Result<String, CommandError> {
     ai_chat_impl_with_claim(
         &state,
@@ -361,10 +369,10 @@ pub async fn ai_chat(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_ai_api::TokenUsage;
-    use datazen_feature_core::ai::tools::{
+    use datazen::ai::tools::{
         classify_tool, is_readonly_db_tool, mcp_needs_confirm, ToolKind, ToolLoopGuard,
     };
+    use datazen::ai::TokenUsage;
 
     // ── ToolLoopGuard unit tests [tester] ──
 

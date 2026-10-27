@@ -25,7 +25,7 @@
 //! # Namespace
 //!
 //! `DatabaseDriver::has_schema_level` is the default `false` and
-//! `DuckDbDriver::qualify_sql_target` calls `sql_target::qualify_sql` with the database
+//! `DuckDbDriver::qualify_sql_target` calls `sql_execution::target::qualify_sql` with the database
 //! only. A blank path is normalised to `:memory:` before connecting, which is still a
 //! database name and is therefore declared. The shape declares an **optional**
 //! `Database` level and nothing else, so a `Schema` or `Catalog` is refused by name

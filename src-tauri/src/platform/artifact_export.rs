@@ -1,9 +1,9 @@
 //! Native-dialog export of the same immutable artifacts used by execution publication.
 use crate::commands::{AppState, CommandError};
-use datazen_platform_api::{
-    dto::artifact::ArtifactLifecycle,
-    id::{ArtifactId, LeaseId},
-    ports::artifact::{ArtifactRepository, ExportSink},
+use datazen::{
+    execution::domain::{ArtifactRepository, ExportSink},
+    execution::ArtifactLifecycle,
+    shared::id::{ArtifactId, LeaseId},
 };
 use serde::{Deserialize, Serialize};
 use std::sync::{

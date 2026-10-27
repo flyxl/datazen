@@ -1,8 +1,8 @@
 use super::*;
 use crate::testing::{app_state::TestAppState, mock_driver::MockDriverOptions};
-use datazen_feature_core::dashboard::repository::save_dashboard;
-use datazen_feature_core::dashboard::types::*;
-use datazen_platform_api::dto::job::{JobFilter, JobState};
+use datazen::dashboard::repository::save_dashboard;
+use datazen::dashboard::types::*;
+use datazen::jobs::domain::job::{JobFilter, JobState};
 use std::time::Duration;
 
 // The shared Host mock defaults to the legacy test type "postgres"; this
@@ -57,7 +57,7 @@ async fn production_timer_admits_actual_grant_revision_and_dispatches_runtime_on
     let mut profile = test.save_connection("timer-profile").await;
     profile.database_type = "postgresql".into();
     test.store.save_connection(profile).await.unwrap();
-    let workflow: datazen_feature_core::workflow::model::WorkflowDefinition =
+    let workflow: datazen::workflow::model::WorkflowDefinition =
         serde_json::from_value(serde_json::json!({
         "id":"timer-workflow", "name":"timer", "description":"real grant revision",
         "connection":"timer-profile", "database":"app", "variables":[],
@@ -164,7 +164,7 @@ async fn production_timer_admits_actual_grant_revision_and_dispatches_runtime_on
         .await
         .unwrap();
     let run_id = &details.domain_results[0].items[0].item_id;
-    let run = datazen_feature_core::dashboard::runs::get_run(
+    let run = datazen::dashboard::runs::get_run(
         &crate::platform::local_organization_scope(),
         &*test.store.app_db(),
         "timer-dashboard",

@@ -7,7 +7,7 @@
  * the next table's command, and the host never holds a long-running job the
  * UI cannot stop. The host owns the one thing the front end must never do:
  * turning a search value into a statement (bound parameters, wildcard
- * escaping — `datazen_feature_core::services::value_search`).
+ * escaping — `datazen::services::value_search`).
  *
  * The rules that matter:
  *

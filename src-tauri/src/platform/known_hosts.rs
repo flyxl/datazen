@@ -2,15 +2,14 @@
 //!
 //! # 这一层为什么在宿主
 //!
-//! 共享 crate `packages/tunnel` 只留**规则**（指纹、TOFU 判定、错误文案）与
+//! 共享 crate `modules/src/tunnel` 只留**规则**（指纹、TOFU 判定、错误文案）与
 //! **存储端口** [`KnownHostsRepository`]；**文件 I/O** 是形态的事，因此住在宿主：
 //! 桌面读 `{appData}/ssh_known_hosts.json`，将来的 web 形态由服务端 host 实现
 //! （服务端存储目录 / 组织级存储）。
 //!
 //! # 行为逐字不变
 //!
-//! 本文件是端口化之前 `packages/tunnel/src/ssh_known_hosts.rs` 里那两段
-//! `std::fs` 逻辑的**原样搬迁**：同样的文件、同样的 JSON 形状（`to_string_pretty`
+//! 本文件承接迁移前共享隧道机制里的两段 `std::fs` 逻辑：同样的文件、同样的 JSON 形状（`to_string_pretty`
 //! 的对象）、同样的两条 warn 文案、同样的三条错误文案。共享包那边只把
 //! 「读本机文件」这件事交了出来。
 
@@ -18,8 +17,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use datazen_platform_api::error::PortError;
-use datazen_platform_api::ports::known_hosts::{KnownHostEntry, KnownHostsRepository};
+use datazen::shared::error::PortError;
+use datazen::tunnel::{KnownHostEntry, KnownHostsRepository};
 
 /// 桌面形态的 known-hosts 端口实例（`{appData}/ssh_known_hosts.json`）。
 ///

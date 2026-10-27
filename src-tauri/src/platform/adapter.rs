@@ -20,16 +20,16 @@
 
 use std::sync::Arc;
 
-use datazen_application::error::{ApiError, ApiErrorCode};
-use datazen_application::frontend_bridge::{self, BridgeInjection, FrontendBridge};
-use datazen_application::ApplicationServices;
-use datazen_driver_api::CommandCatalog;
-use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::{
-    id::{Counter, RequestId},
-    ports::profile::ProfileRepository,
-    target::{CanonicalTarget, ExecutionTarget},
+use datazen::application::frontend_bridge::{self, BridgeInjection, FrontendBridge};
+use datazen::application::ApplicationServices;
+use datazen::shared::context::RequestContext;
+use datazen::shared::error::{ApiError, ApiErrorCode};
+use datazen::{
+    connection::domain::ProfileRepository,
+    execution::target::{CanonicalTarget, ExecutionTarget},
+    shared::id::{Counter, RequestId},
 };
+use datazen_driver_api::CommandCatalog;
 
 use super::handles::SessionHandleRegistry;
 use super::identity::{DesktopIdentity, OwnerIntent};
@@ -102,14 +102,30 @@ pub struct PlatformAdapter {
     identity: DesktopIdentity,
     handles: Arc<SessionHandleRegistry>,
     services: std::sync::OnceLock<Arc<ApplicationServices>>,
-    runtime: std::sync::OnceLock<Arc<datazen_runtime::application::RuntimeConnectionUseCases>>,
+    /// D1 后的设置用例：`datazen::settings` 由宿主直接消费，
+    /// 不再经 `ApplicationServices` 转发。装配期创建一次，进程内共享。
+    settings_service: std::sync::OnceLock<Arc<datazen::settings::SettingsService>>,
+    /// D2 后的连接目录用例：`datazen::connection` 由宿主直接消费。
+    /// 桌面仓储是 `DesktopConnectionStore`（复用同一个 `DesktopRepository`
+    /// 的缓存、写锁与密钥）。
+    connection_service: std::sync::OnceLock<Arc<datazen::connection::ConnectionService>>,
+    /// D6 item 1 后的命名视图用例：`datazen::named_views` 由宿主直接消费。
+    /// 桌面仓储是同一个 `DesktopRepository`（`impl NamedViewRepository for
+    /// DesktopRepository`），id 由 `HostViewIdMinter` 铸造。
+    named_views_service: std::sync::OnceLock<Arc<datazen::named_views::NamedViewService>>,
+    /// D6 item 1 后的历史用例：查询历史与迁移运行历史的词汇/端口归
+    /// `datazen::history`；桌面仓储是同一个 `HistoryDb`
+    /// （`DesktopHistoryRepositories` 适配两个端口）。
+    history_service: std::sync::OnceLock<Arc<datazen::history::HistoryService>>,
+    runtime: std::sync::OnceLock<Arc<datazen::execution::application::RuntimeConnectionUseCases>>,
     profiles: std::sync::OnceLock<Arc<super::repositories::DesktopProfiles>>,
     /// 执行身份解析器（`IdentityResolver` 端口的桌面实现）。
     ///
     /// 放在 `OnceLock` 里而不是构造参数：它是**装配期**决定的事（派生盐取自宿主
     /// 主密钥），而查询方在装配完成前拿不到它——与 `profiles` / `live` 同理。
     identities: std::sync::OnceLock<Arc<super::execution_identity::DesktopIdentityResolver>>,
-    driver_registry: std::sync::OnceLock<Arc<datazen_runtime::driver_registry::DriverRegistry>>,
+    driver_registry:
+        std::sync::OnceLock<Arc<datazen::execution::runtime::driver_registry::DriverRegistry>>,
     target_metadata: std::sync::OnceLock<super::target_metadata::TargetMetadataCache>,
     target_metadata_gate: std::sync::Mutex<()>,
     /// 出向端口适配器。未接线是配置事实（`None`），不是故障。
@@ -126,8 +142,9 @@ pub struct PlatformAdapter {
     /// 的所有权问题。`IdleReclaimer::Drop` 本身就会 stop + abort，因此即使
     /// 漏了显式 `stop`，任务也不会泄漏——这里仍显式停，是为了让停止**发生在一个
     /// 确定的时刻**，而不是等某个不可预测的析构点。
-    idle_reclaimer: std::sync::Mutex<Option<datazen_runtime::application::IdleReclaimer>>,
-    artifacts: std::sync::OnceLock<Arc<datazen_runtime::artifact::FileArtifactRepository>>,
+    idle_reclaimer: std::sync::Mutex<Option<datazen::execution::application::IdleReclaimer>>,
+    artifacts:
+        std::sync::OnceLock<Arc<datazen::execution::runtime::artifact::FileArtifactRepository>>,
     native: std::sync::OnceLock<Arc<super::native_tool::deployment::NativeDeployment>>,
 }
 
@@ -138,6 +155,10 @@ impl PlatformAdapter {
             identity: DesktopIdentity::from_desktop_user(client_instance_id)?,
             handles: Arc::new(SessionHandleRegistry::new()),
             services: std::sync::OnceLock::new(),
+            settings_service: std::sync::OnceLock::new(),
+            connection_service: std::sync::OnceLock::new(),
+            named_views_service: std::sync::OnceLock::new(),
+            history_service: std::sync::OnceLock::new(),
             runtime: std::sync::OnceLock::new(),
             profiles: std::sync::OnceLock::new(),
             identities: std::sync::OnceLock::new(),
@@ -157,6 +178,10 @@ impl PlatformAdapter {
             identity,
             handles: Arc::new(SessionHandleRegistry::new()),
             services: std::sync::OnceLock::new(),
+            settings_service: std::sync::OnceLock::new(),
+            connection_service: std::sync::OnceLock::new(),
+            named_views_service: std::sync::OnceLock::new(),
+            history_service: std::sync::OnceLock::new(),
             runtime: std::sync::OnceLock::new(),
             profiles: std::sync::OnceLock::new(),
             identities: std::sync::OnceLock::new(),
@@ -175,7 +200,7 @@ impl PlatformAdapter {
     /// frontend request paths are never accepted as an ExportSink.
     pub(crate) fn artifact_store(
         &self,
-    ) -> Result<Arc<datazen_runtime::artifact::FileArtifactRepository>, ApiError> {
+    ) -> Result<Arc<datazen::execution::runtime::artifact::FileArtifactRepository>, ApiError> {
         self.artifacts.get().cloned().ok_or_else(|| {
             ApiError::new(
                 ApiErrorCode::ServiceUnavailable,
@@ -259,7 +284,7 @@ impl PlatformAdapter {
     pub fn begin_owned_call(
         &self,
         intent: &OwnerIntent,
-    ) -> Result<(CallScope, datazen_platform_api::context::OwnerRef), ApiError> {
+    ) -> Result<(CallScope, datazen::shared::context::OwnerRef), ApiError> {
         let owner = intent.admit(&self.identity)?;
         Ok((self.begin_call(), owner))
     }
@@ -276,6 +301,80 @@ impl PlatformAdapter {
 
     pub fn application_services(&self) -> Option<Arc<ApplicationServices>> {
         self.services.get().cloned()
+    }
+
+    /// D1 后的设置用例入口：设置已由 `datazen::settings` 拥有，
+    /// 宿主直接消费模块用例，不再经 `ApplicationServices` 转发。
+    pub fn settings_service(&self) -> Option<Arc<datazen::settings::SettingsService>> {
+        self.settings_service.get().cloned()
+    }
+
+    /// D2 后的连接目录用例入口：连接配置 + 分组的用例归
+    /// `datazen::connection`，宿主直接消费。
+    pub fn connection_service(&self) -> Option<Arc<datazen::connection::ConnectionService>> {
+        self.connection_service.get().cloned()
+    }
+
+    /// D6 item 1 后的命名视图用例入口。
+    pub fn named_views_service(&self) -> Option<Arc<datazen::named_views::NamedViewService>> {
+        self.named_views_service.get().cloned()
+    }
+
+    /// D6 item 1 后的历史用例入口。
+    pub fn history_service(&self) -> Option<Arc<datazen::history::HistoryService>> {
+        self.history_service.get().cloned()
+    }
+
+    /// 需要历史用例时调用；未注入 ⇒ 明确报错，不回落旧路径。
+    pub fn require_history_service(
+        &self,
+    ) -> Result<Arc<datazen::history::HistoryService>, ApiError> {
+        self.history_service().ok_or_else(|| {
+            ApiError::new(
+                ApiErrorCode::CapabilityUnsupported,
+                "HistoryService 未注入：启动装配尚未调用 PlatformAdapter::inject，\
+                 或在注入完成前就发起了历史用例调用；此处不做回落，也不得直读宿主 store",
+            )
+        })
+    }
+
+    /// 需要命名视图用例时调用；未注入 ⇒ 明确报错，不回落旧路径。
+    pub fn require_named_views_service(
+        &self,
+    ) -> Result<Arc<datazen::named_views::NamedViewService>, ApiError> {
+        self.named_views_service().ok_or_else(|| {
+            ApiError::new(
+                ApiErrorCode::CapabilityUnsupported,
+                "NamedViewService 未注入：启动装配尚未调用 PlatformAdapter::inject，\
+                 或在注入完成前就发起了命名视图用例调用；此处不做回落，也不得直读宿主 store",
+            )
+        })
+    }
+
+    /// 需要连接目录用例时调用；未注入 ⇒ 明确报错，不回落旧路径。
+    pub fn require_connection_service(
+        &self,
+    ) -> Result<Arc<datazen::connection::ConnectionService>, ApiError> {
+        self.connection_service().ok_or_else(|| {
+            ApiError::new(
+                ApiErrorCode::CapabilityUnsupported,
+                "ConnectionService 未注入：启动装配尚未调用 PlatformAdapter::inject，\
+                 或在注入完成前就发起了连接目录用例调用；此处不做回落，也不得直读宿主 store",
+            )
+        })
+    }
+
+    /// 需要设置用例时调用；未注入 ⇒ 明确报错，不回落旧路径。
+    pub fn require_settings_service(
+        &self,
+    ) -> Result<Arc<datazen::settings::SettingsService>, ApiError> {
+        self.settings_service().ok_or_else(|| {
+            ApiError::new(
+                ApiErrorCode::CapabilityUnsupported,
+                "SettingsService 未注入：启动装配尚未调用 PlatformAdapter::inject，\
+                 或在注入完成前就发起了设置用例调用；此处不做回落，也不得直读宿主 store",
+            )
+        })
     }
 
     /// 需要应用服务时调用；未注入 ⇒ 明确报错，不回落旧路径。
@@ -317,15 +416,27 @@ impl PlatformAdapter {
     pub fn inject(
         &self,
         store: Arc<crate::store::DesktopRepository>,
-        registry: Arc<datazen_runtime::driver_registry::DriverRegistry>,
-        tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
-        known_hosts: Arc<dyn datazen_platform_api::ports::known_hosts::KnownHostsRepository>,
+        registry: Arc<datazen::execution::runtime::driver_registry::DriverRegistry>,
+        tunnels: Arc<dyn datazen::tunnel::TunnelRepository>,
+        known_hosts: Arc<dyn datazen::tunnel::KnownHostsRepository>,
     ) -> Result<(), ApiError> {
         if self.services.get().is_some() {
             return Ok(());
         }
         let profiles = Arc::new(super::repositories::DesktopProfiles::new(store.clone()));
         let policy = Arc::new(super::policy::DesktopPolicy::new(store.clone()));
+        // D6 item 1：历史用例（查询历史 + 迁移运行历史）归模块；桌面仓储是
+        // 同一个 `HistoryDb`，经 `DesktopHistoryRepositories` 适配两个端口。
+        // 构造提前到会话后端装配之前：后端的执行路径写查询历史、命令路径读写
+        // 历史，共享同一份仓储实例（不再经 `DesktopRepository` 的领域门面）。
+        let history_repositories = Arc::new(super::history::DesktopHistoryRepositories::new(
+            store.history_db(),
+        ));
+        let history = Arc::new(datazen::history::HistoryService::new(
+            history_repositories.clone(),
+            history_repositories.clone(),
+        ));
+        let _ = self.history_service.set(history);
         // ---- 失败半径：内核 vs 可选接线 --------------------------------------
         //
         // 本函数装配的东西分两档，两档的失败语义**不同**，改动前先读完这段。
@@ -376,13 +487,14 @@ impl PlatformAdapter {
             self.identity.principal_id().clone(),
             tunnels.clone(),
             known_hosts.clone(),
+            history_repositories.clone(),
         ));
         let native =
             super::native_tool::deployment::NativeDeployment::from_build(backend.physical_budget());
         // 制品存储同上：打不开只关闭「结果制品持久化」这一项，会话与设置照常。
         // 打不开的真实原因通常是 `{dataDir}` 不可写或同名路径不是目录——都是环境事实，
         // 不是「平台装配坏了」。
-        let artifacts = match datazen_runtime::artifact::FileArtifactRepository::open(
+        let artifacts = match datazen::execution::runtime::artifact::FileArtifactRepository::open(
             store.data_dir().join("result-artifacts"),
         ) {
             Ok(artifacts) => Some(Arc::new(artifacts)),
@@ -399,7 +511,7 @@ impl PlatformAdapter {
             backend.clone(),
         ));
         let runtime = Arc::new(
-            datazen_runtime::application::RuntimeConnectionUseCases::new(
+            datazen::execution::application::RuntimeConnectionUseCases::new(
                 profiles.clone(),
                 policy.clone(),
                 backend.clone(),
@@ -412,7 +524,7 @@ impl PlatformAdapter {
         // 就是数据池 + 控制池）。15 秒一跳让宽限名副其实，也让 §9.2 的 30 分钟期限到期后
         // 不再多留最多 3 分钟。
         runtime.with_idle_policy(
-            datazen_runtime::application::IdlePolicy::default()
+            datazen::execution::application::IdlePolicy::default()
                 .with_scan_interval(std::time::Duration::from_secs(15)),
         );
         // 出向端口在此接线。放在 `runtime` 构造之后、`services` 之前：端口是**宿主
@@ -460,11 +572,11 @@ impl PlatformAdapter {
                     let output = match sink.publish_export_output(&id, output).await {
                         Ok(None) => return Ok(()),
                         Ok(Some(output)) => output,
-                        Err(_) => {
-                            return Err(datazen_runtime::connection::ProviderError::ProtocolError(
+                        Err(_) => return Err(
+                            datazen::execution::runtime::connection::ProviderError::ProtocolError(
                                 "export publication rejected".into(),
-                            ))
-                        }
+                            ),
+                        ),
                     };
                     let result = match output.get("source").cloned() {
                         Some(source) => serde_json::from_value(source)
@@ -473,7 +585,7 @@ impl PlatformAdapter {
                         None => sink.publish_output(&id, output),
                     };
                     result.map_err(|_| {
-                        datazen_runtime::connection::ProviderError::ProtocolError(
+                        datazen::execution::runtime::connection::ProviderError::ProtocolError(
                             "result publication rejected".into(),
                         )
                     })
@@ -489,36 +601,42 @@ impl PlatformAdapter {
         let target = super::target_metadata::resolver(target_metadata.clone());
         // §6.2 第 7 步：**形态中立的存储端口在这里注入**。
         //
-        // * `settings`：跨形态设置仓储。桌面实现是存储层本身——`DesktopRepository`
-        //   同时实现 `SettingsRepository`（`store/mod.rs`）与 `TunnelRepository`
-        //   （`store/tunnels.rs`）。
         // * `tunnels`：隧道定义的存储端口。实例与会话后端用的是**同一个**
         //   （建连时解引用 `tunnelId` 要读它），所以这里传 `clone` 而不是新建。
         //
-        // 两个端口都是**构造参数**（不是 `Option`）：漏注入是编译错误，而不是
-        // 运行时的 `None`。将来的 web 形态把这两个实现换成服务端 host 的版本，
+        // 端口是**构造参数**（不是 `Option`）：漏注入是编译错误，而不是
+        // 运行时的 `None`。将来的 web 形态把实现换成服务端 host 的版本，
         // **用例代码一行不改**。
+        //
+        // 设置用例自 D1 收尾后不再走 `ApplicationServices`：
+        // `datazen::settings::SettingsService` 由本 adapter 直接持有
+        // （桌面仓储实现是 `DesktopSettingsRepository`，内部复用同一个
+        // `DesktopRepository` 的缓存、加密与原子写入）。
+        let settings = Arc::new(datazen::settings::SettingsService::new(Arc::new(
+            super::settings::DesktopSettingsRepository::new(store.clone()),
+        )));
+        let _ = self.settings_service.set(settings);
+        let connections = Arc::new(datazen::connection::ConnectionService::new(Arc::new(
+            super::connections::DesktopConnectionStore::new(store.clone()),
+        )));
+        let _ = self.connection_service.set(connections);
+        let named_views = Arc::new(datazen::named_views::NamedViewService::new(
+            store.clone(),
+            Arc::new(crate::store::HostViewIdMinter),
+        ));
+        let _ = self.named_views_service.set(named_views);
         let services = Arc::new(ApplicationServices::new(
             target,
-            datazen_application::identity_policy::IdentityPolicy::new(),
+            datazen::application::identity_policy::IdentityPolicy::new(),
             runtime.clone(),
-            store.clone(),
             tunnels.clone(),
             known_hosts.clone(),
-            // 连接目录端口（§5.1.2 第六步）：桌面实现就是同一个 `DesktopRepository`
-            // （`impl ConnectionCatalog for DesktopRepository`，落盘
-            // `{appData}/connections.json` 与 `groups.json`）。
-            store.clone(),
-            // 命名视图端口（P3 第一条命令族）：桌面实现就是同一个
-            // `DesktopRepository`（`impl NamedViewRepository for DesktopRepository`，
-            // 落盘 `{appData}/named_views.json`）。
-            store.clone(),
             // 仪表盘仓储与运行历史（P3 第二条命令族）：两者都落在应用库，
             // 桌面实现都是 `AppDb`（各自有独立的 `impl … for AppDb`）。
             store.app_db(),
             store.app_db(),
             // Schema Diff profile 仓储（P3 第五条命令族）：profile 词汇与端口
-            // 由 `datazen-schema-diff` 持有，桌面实现仍是同一个加密仓储。
+            // 由 `datazen::migration::schema_diff` 持有，桌面实现仍是同一个加密仓储。
             store.clone(),
             // 迁移历史的只读 profile 投影：三件套共用同一个桌面仓储实例，
             // 命令壳只拿稳定 id / revision，不再点名具体 profile 文件。
@@ -670,7 +788,7 @@ impl PlatformAdapter {
     }
     pub fn runtime(
         &self,
-    ) -> Result<Arc<datazen_runtime::application::RuntimeConnectionUseCases>, ApiError> {
+    ) -> Result<Arc<datazen::execution::application::RuntimeConnectionUseCases>, ApiError> {
         self.runtime
             .get()
             .cloned()
@@ -795,7 +913,7 @@ impl PlatformAdapter {
             &target.connection_id,
             &target.namespace,
             target.object.as_ref(),
-            &datazen_application::target::TargetSource::Request,
+            &datazen::application::target::TargetSource::Request,
         );
         cache
             .write()

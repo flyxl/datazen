@@ -35,13 +35,15 @@ use std::sync::{Arc, Mutex};
 
 use chrono::{Duration, Utc};
 
-use super::models::QueryHistoryEntry;
+// D6 第一切片：历史词汇的唯一定义在 `datazen::history`；本文件（及
+// `store::models`）只再导出。SQL 细节（order_by 映射、schema、迁移环）仍归
+// 本存储实现所有，不进模块。
+pub use datazen::history::{
+    HistoryOrder, HistoryScope, QueryHistoryEntry, QueryHistoryFilter, QueryHistoryPage,
+    DEFAULT_HISTORY_PAGE_SIZE, MAX_MIGRATION_RUN_HISTORY, MAX_QUERY_HISTORY, MAX_WORKFLOW_HISTORY,
+};
 
-pub const MAX_QUERY_HISTORY: usize = 1000;
-pub const MAX_WORKFLOW_HISTORY: usize = 100;
-pub const MAX_MIGRATION_RUN_HISTORY: usize = 1000;
-
-pub use datazen_platform_api::dto::migration::{
+pub use datazen::history::domain::migration_run::{
     MigrationProfileRef, MigrationRunFilter, MigrationRunPage, MigrationRunRecord,
 };
 
@@ -67,108 +69,15 @@ pub enum HistoryDbError {
     Other(String),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HistoryScope {
-    Query,
-    Workflow,
-    All,
-}
-
-impl HistoryScope {
-    pub fn parse(s: &str) -> Option<Self> {
-        match s {
-            "query" => Some(Self::Query),
-            "workflow" => Some(Self::Workflow),
-            "all" => Some(Self::All),
-            _ => None,
-        }
+/// `HistoryOrder` 的 SQL 映射：域层只声明排序意图，`ORDER BY` 尾巴是
+/// SQLite 实现的私有细节（每处分页查询用同一尾巴，"slowest first"
+/// 不会与自己的标签偷偷不一致）。
+fn order_by_sql(order: HistoryOrder) -> &'static str {
+    match order {
+        HistoryOrder::Recent => "executed_at DESC, id DESC",
+        HistoryOrder::Oldest => "executed_at ASC, id ASC",
+        HistoryOrder::Slowest => "execution_time_ms DESC, executed_at DESC",
     }
-}
-
-/// Sort order for the paged query-history read.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum HistoryOrder {
-    /// Newest first (the historical default).
-    #[default]
-    Recent,
-    /// Oldest first.
-    Oldest,
-    /// Slowest first — surfaces the statements that actually hurt.
-    Slowest,
-}
-
-impl HistoryOrder {
-    pub fn parse(s: &str) -> Option<Self> {
-        match s {
-            "recent" => Some(Self::Recent),
-            "oldest" => Some(Self::Oldest),
-            "slowest" => Some(Self::Slowest),
-            _ => None,
-        }
-    }
-
-    /// The exact `ORDER BY` tail, so every page query orders the same way and
-    /// "slowest first" cannot silently disagree with its own label.
-    pub(super) fn order_by(self) -> &'static str {
-        match self {
-            Self::Recent => "executed_at DESC, id DESC",
-            Self::Oldest => "executed_at ASC, id ASC",
-            Self::Slowest => "execution_time_ms DESC, executed_at DESC",
-        }
-    }
-}
-
-/// Filters for the paged query-history read.
-///
-/// `search` is applied **before** `limit` so a caller never has to widen the
-/// page to find a row that exists. `since`/`until` are RFC3339 instants.
-#[derive(Debug, Clone)]
-pub struct QueryHistoryFilter<'a> {
-    pub limit: usize,
-    pub connection_id: Option<&'a str>,
-    pub database: Option<&'a str>,
-    pub schema: Option<&'a str>,
-    pub search: Option<&'a str>,
-    pub since: Option<&'a str>,
-    pub until: Option<&'a str>,
-    pub order: HistoryOrder,
-}
-
-/// Page size used when a caller does not name one.
-///
-/// Hand-written rather than `#[derive(Default)]` on purpose: a derived default
-/// would be `limit: 0`, and `LIMIT 0` returns an empty page that reads as "you
-/// have no history" instead of "you asked for nothing". Every `..Default` call
-/// site would silently render an empty list.
-pub const DEFAULT_HISTORY_PAGE_SIZE: usize = 200;
-
-impl Default for QueryHistoryFilter<'_> {
-    fn default() -> Self {
-        Self {
-            limit: DEFAULT_HISTORY_PAGE_SIZE,
-            connection_id: None,
-            database: None,
-            schema: None,
-            search: None,
-            since: None,
-            until: None,
-            order: HistoryOrder::Recent,
-        }
-    }
-}
-
-/// One page of query history plus the number of rows the filter matched *before*
-/// the page was cut.
-///
-/// Without `total` a truncated page is indistinguishable from a complete one, so
-/// the UI cannot tell "you searched and found nothing" from "the row you are
-/// looking for fell outside the 200 most recent".
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QueryHistoryPage {
-    pub entries: Vec<QueryHistoryEntry>,
-    /// Rows matching the filter with `limit` ignored.
-    pub total: u64,
 }
 
 pub struct HistoryDb {

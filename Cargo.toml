@@ -3,19 +3,8 @@ resolver = "2"
 members = [
     "src-tauri",
     "packages/driver-api",
-    "packages/ai-api",
-    "packages/platform-api",
-    "packages/platform-infra",
-    "packages/application",
-    "packages/runtime",
-    "packages/kernel",
-    "packages/tunnel",
-    "packages/feature-core",
-    "packages/ai-providers",
-    "packages/schema-diff",
-    "packages/data-sync",
-    "packages/migration-common",
-    "packages/data-transfer",
+    "packages/infra",
+    "modules",
     "packages/drivers/*",
 ]
 exclude = [
@@ -25,14 +14,7 @@ exclude = [
 
 [workspace.dependencies]
 datazen-driver-api = { path = "packages/driver-api" }
-datazen-platform-api = { path = "packages/platform-api" }
-datazen-application = { path = "packages/application" }
-datazen-kernel = { path = "packages/kernel" }
-datazen-feature-core = { path = "packages/feature-core" }
-datazen-schema-diff = { path = "packages/schema-diff" }
-datazen-migration-common = { path = "packages/migration-common" }
-datazen-data-sync = { path = "packages/data-sync" }
-datazen-data-transfer = { path = "packages/data-transfer" }
+datazen = { path = "modules", default-features = false }
 
 [profile.dev]
 incremental = true

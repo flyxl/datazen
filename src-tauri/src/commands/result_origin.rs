@@ -6,7 +6,7 @@
 //! validates the request envelope, and it maps the shared error onto
 //! [`CommandError`]. Every rule — what makes a result writable, which request
 //! is refused before any SQL exists, what a write-back plan looks like — lives
-//! in `datazen_feature_core::services::result_edit`.
+//! in `datazen::services::result_edit`.
 //!
 //! Two facts are read here rather than computed here, and both are read from
 //! the same place the rest of the grid reads them: the **primary key** comes
@@ -14,13 +14,13 @@
 //! column flags), and the **read-only flag** comes from the connection
 //! profile. Neither is guessed.
 
-use datazen_driver_api::{ConnectionConfig, LegacyCatalogReader, ResultOrigin, SqlTarget};
-use datazen_feature_core::data_browsing::RowChangePlan;
-use datazen_feature_core::services::result_edit::{
+use datazen::data_browsing::RowChangePlan;
+use datazen::schema::cache::CachedColumns;
+use datazen::services::result_edit::{
     build_result_cell_change_plan, evaluate_result_editability, read_only_error_code,
     GridReadOnlyReason, ResultCellChangeRequest, ResultEditability,
 };
-use datazen_runtime::schema_cache::CachedColumns;
+use datazen_driver_api::{ConnectionConfig, LegacyCatalogReader, ResultOrigin, SqlTarget};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 

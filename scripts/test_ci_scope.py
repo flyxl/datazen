@@ -36,11 +36,26 @@ def _commit_file(repository: Path, name: str, contents: str, message: str) -> st
     return _run_git(repository, "rev-parse", "HEAD")
 
 
+def _init_repository(repository: Path) -> None:
+    """初始化夹具仓库，并关掉 git 的后台自动维护。
+
+    `git commit` 末尾会触发 `git gc --auto`；autoDetach（默认开启）让它 fork
+    后台进程，与测试结束时 TemporaryDirectory 的 rmtree 竞态——ubuntu-latest
+    git 2.55 实测复现 `OSError: [Errno 39] Directory not empty: 'pack'`。
+    夹具仓库只有两三个提交，无需 gc，直接关闭。
+    """
+    _run_git(repository, "init", "-q")
+    _run_git(repository, "config", "gc.auto", "0")
+    _run_git(repository, "config", "gc.autoDetach", "false")
+
+
 class CiScopeTests(unittest.TestCase):
     def test_diff_covers_all_commits_since_last_success_not_only_head_commit(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="datazen-ci-scope-") as temporary:
+        with tempfile.TemporaryDirectory(
+            prefix="datazen-ci-scope-", ignore_cleanup_errors=True
+        ) as temporary:
             repository = Path(temporary)
-            _run_git(repository, "init", "-q")
+            _init_repository(repository)
             _run_git(repository, "config", "user.name", "CI Scope Test")
             _run_git(repository, "config", "user.email", "ci-scope@example.invalid")
             _commit_file(repository, "README.md", "start\n", "base")
@@ -53,9 +68,11 @@ class CiScopeTests(unittest.TestCase):
             self.assertEqual(classify_changed_paths(changed), (False, True))
 
     def test_only_frontend_changes_since_last_success_skips_rust(self) -> None:
-        with tempfile.TemporaryDirectory(prefix="datazen-ci-scope-") as temporary:
+        with tempfile.TemporaryDirectory(
+            prefix="datazen-ci-scope-", ignore_cleanup_errors=True
+        ) as temporary:
             repository = Path(temporary)
-            _run_git(repository, "init", "-q")
+            _init_repository(repository)
             _run_git(repository, "config", "user.name", "CI Scope Test")
             _run_git(repository, "config", "user.email", "ci-scope@example.invalid")
             last_success = _commit_file(repository, "src-tauri/src/lib.rs", "backend\n", "backend")

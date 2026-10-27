@@ -2,7 +2,7 @@
 //!
 //! ## 端口契约落到本文件的义务
 //!
-//! `packages/platform-api/src/ports/identity.rs` 的 `IdentityResolver` 是
+//! `modules/src/execution/application/identity.rs` 的 `IdentityResolver` 是
 //! `executionIdentityKey` 的**唯一生产者**（概要 §6.4 / CM §4.1）。本文件实现它，
 //! 并把端口自带的五条语义逐条钉在代码里：
 //!
@@ -77,20 +77,18 @@ use base64::{
     engine::general_purpose::STANDARD as BASE64_STANDARD,
     engine::general_purpose::URL_SAFE_NO_PAD as BASE64_URL, Engine,
 };
-use datazen_platform_api::{
-    context::{DelegationRef, RequestContext},
-    error::PortError,
-    id::{
+use datazen::{
+    connection::domain::{ProfileRecord, ProfileRepository},
+    execution::application::identity::{ExecutionIdentity, IdentityResolver},
+    execution::application::policy::PolicyService,
+    execution::application::secret::SecretProvider,
+    execution::target::ExecutionTarget,
+    shared::context::{DelegationRef, RequestContext},
+    shared::error::PortError,
+    shared::id::{
         ConnectionId, CredentialRevision, DelegationId, ExecutionIdentityKey, OrganizationId,
         PolicyIsolationKey,
     },
-    ports::{
-        identity::{ExecutionIdentity, IdentityResolver},
-        policy::PolicyService,
-        profile::{ProfileRecord, ProfileRepository},
-        secret::SecretProvider,
-    },
-    target::ExecutionTarget,
 };
 use hmac::{Hmac, Mac};
 use sha2::Sha256;

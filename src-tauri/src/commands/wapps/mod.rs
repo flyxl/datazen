@@ -11,10 +11,10 @@ use tauri::{AppHandle, Emitter, State};
 
 use super::error::{resolve_override_path, CmdExt, CommandError, OVERRIDE_DISABLED_MSG};
 use super::AppState;
-use datazen_feature_core::workspace_apps::install::{install_from_dir, install_from_zip};
-use datazen_feature_core::workspace_apps::manager::LoadedWapp;
-use datazen_feature_core::workspace_apps::storage::{storage_get, storage_remove, storage_set};
-use datazen_feature_core::workspace_apps::WappManifest;
+use datazen::workspace_apps::install::{install_from_dir, install_from_zip};
+use datazen::workspace_apps::manager::LoadedWapp;
+use datazen::workspace_apps::storage::{storage_get, storage_remove, storage_set};
+use datazen::workspace_apps::WappManifest;
 
 pub const WAPPS_CHANGED_EVENT: &str = "wapps:changed";
 

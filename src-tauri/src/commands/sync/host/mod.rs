@@ -20,11 +20,11 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use async_trait::async_trait;
+use datazen::execution::application::{LiveConnectionLease, LivePurpose};
+use datazen::jobs::CancelToken;
 use datazen_driver_api::{
     DatabaseType, SyncKeyContract, SyncSourceAdapter, SyncTargetAdapter, TableSchema,
 };
-use datazen_runtime::application::{LiveConnectionLease, LivePurpose};
-use datazen_runtime::job::CancelToken;
 
 use crate::data_sync::job::artifact::{ChangeSetArtifact, RelationIdentity};
 use crate::data_sync::job::host::{
@@ -37,8 +37,8 @@ use crate::data_sync::{
     SyncSourceFilter, TableMapping,
 };
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
+use datazen::services::schema_scope::metadata_schema;
 use datazen_driver_api::LegacySqlDialect;
-use datazen_feature_core::services::schema_scope::metadata_schema;
 
 use super::super::{resolve_key_contracts, validate_filter_endpoints, validate_filter_schemas};
 use super::keyset_source::DriverKeysetSource;
@@ -75,8 +75,8 @@ struct Slot {
 }
 
 pub(crate) struct HostDataSync {
-    runtime: Arc<datazen_runtime::application::RuntimeConnectionUseCases>,
-    call_context: datazen_platform_api::context::RequestContext,
+    runtime: Arc<datazen::execution::application::RuntimeConnectionUseCases>,
+    call_context: datazen::shared::context::RequestContext,
     store: Arc<crate::store::DesktopRepository>,
     adapters: Arc<SyncAdapterRegistry>,
     source: Endpoint,
@@ -98,8 +98,8 @@ fn invalid(message: impl Into<String>) -> DataSyncError {
 
 impl HostDataSync {
     pub(crate) fn new(
-        runtime: Arc<datazen_runtime::application::RuntimeConnectionUseCases>,
-        call_context: datazen_platform_api::context::RequestContext,
+        runtime: Arc<datazen::execution::application::RuntimeConnectionUseCases>,
+        call_context: datazen::shared::context::RequestContext,
         store: Arc<crate::store::DesktopRepository>,
         adapters: Arc<SyncAdapterRegistry>,
         source: Endpoint,

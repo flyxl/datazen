@@ -4,10 +4,10 @@
 
 ### 1.1 MCP Server
 
-DataZen 作为 MCP Server 暴露数据库操作能力给外部 LLM 应用（Claude Desktop、Cursor 等）。共享的工具/资源/提示词逻辑位于 `packages/feature-core/src/mcp/`；`src-tauri/src/mcp/` 负责宿主传输、认证、权限、会话与 Runtime 接线。
+DataZen 作为 MCP Server 暴露数据库操作能力给外部 LLM 应用（Claude Desktop、Cursor 等）。共享的工具/资源/提示词逻辑位于 `modules/src/mcp/`；`src-tauri/src/mcp/` 负责宿主传输、认证、权限、会话与 Runtime 接线。
 
 ```
-packages/feature-core/src/mcp/   # 共享 tool/resource/prompt 逻辑与权限策略
+modules/src/mcp/   # 共享 tool/resource/prompt 逻辑与权限策略
 src-tauri/src/mcp/
 ├── mod.rs          # 启动/停止与 stdio 传输装配（含断连清理）
 ├── auth.rs         # stdio 本地 token 认证（`mcp.token` + `DATAZEN_MCP_TOKEN`）

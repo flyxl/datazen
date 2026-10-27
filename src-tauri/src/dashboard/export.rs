@@ -6,12 +6,12 @@ use chrono::Utc;
 use thiserror::Error;
 
 use crate::store::{AppDb, AppDbError, WorkflowRecord, WorkflowVisibility as DbVisibility};
-use datazen_feature_core::dashboard::repository::{
+use datazen::dashboard::repository::{
     assign_import_id, list_dashboards, save_dashboard, DashboardRepositoryError,
 };
-use datazen_feature_core::dashboard::types::Dashboard;
-use datazen_feature_core::workflow::model::{WorkflowDefinition, WorkflowVisibility};
-use datazen_platform_api::ports::scope::OrganizationScope;
+use datazen::dashboard::types::Dashboard;
+use datazen::shared::scope::OrganizationScope;
+use datazen::workflow::model::{WorkflowDefinition, WorkflowVisibility};
 
 #[derive(Debug, Error)]
 pub enum DashboardExportError {
@@ -81,7 +81,7 @@ fn collect_embedded_workflows(
     app_db: &AppDb,
     dashboard: &Dashboard,
 ) -> Result<Vec<WorkflowDefinition>, DashboardExportError> {
-    datazen_feature_core::dashboard::archive::select_embedded_workflows(dashboard, |id| {
+    datazen::dashboard::archive::select_embedded_workflows(dashboard, |id| {
         let record = app_db.get_workflow(id)?;
         Ok(record_to_definition(&record)?)
     })
@@ -90,7 +90,7 @@ fn collect_embedded_workflows(
 fn parse_dashboard_file_inner(
     bytes: &[u8],
 ) -> Result<(Dashboard, Vec<WorkflowDefinition>), DashboardExportError> {
-    datazen_feature_core::dashboard::archive::parse_dashboard_file_inner(bytes)
+    datazen::dashboard::archive::parse_dashboard_file_inner(bytes)
         .map_err(|error| DashboardExportError::Validation(error.to_string()))
 }
 
@@ -106,11 +106,8 @@ pub fn export_dashboard_json(
     dashboard: &Dashboard,
 ) -> Result<String, DashboardExportError> {
     let embedded_workflows = collect_embedded_workflows(app_db, dashboard)?;
-    datazen_feature_core::dashboard::archive::serialize_dashboard_file(
-        dashboard,
-        embedded_workflows,
-    )
-    .map_err(|error| DashboardExportError::Validation(error.to_string()))
+    datazen::dashboard::archive::serialize_dashboard_file(dashboard, embedded_workflows)
+        .map_err(|error| DashboardExportError::Validation(error.to_string()))
 }
 
 /// Import a dashboard file; assigns a new id when the id already exists locally.
@@ -139,11 +136,11 @@ mod tests {
     use super::*;
     use crate::store::{AppDb, WorkflowRecord, WorkflowVisibility};
     use chrono::Utc;
-    use datazen_feature_core::dashboard::archive::FORMAT;
-    use datazen_feature_core::dashboard::repository::{
+    use datazen::dashboard::archive::FORMAT;
+    use datazen::dashboard::repository::{
         delete_dashboard, get_dashboard, list_dashboards, save_dashboard,
     };
-    use datazen_feature_core::dashboard::types::{
+    use datazen::dashboard::types::{
         AlertChannel, AlertMetric, AlertMetricKind, AlertOperator, AlertRule, ChartConfig,
         ChartType, DashboardLayout, DashboardWidget, RefreshMode, RefreshPolicy, ViewMode,
         WidgetLayout,
@@ -184,8 +181,8 @@ mod tests {
                     x_axis: None,
                     y_axes: vec![],
                     group_by: None,
-                    aggregation: datazen_feature_core::dashboard::types::AggregationType::None,
-                    sort_by: datazen_feature_core::dashboard::types::ChartSortBy::None,
+                    aggregation: datazen::dashboard::types::AggregationType::None,
+                    sort_by: datazen::dashboard::types::ChartSortBy::None,
                     show_legend: true,
                     show_grid: true,
                     show_values: false,
@@ -210,7 +207,7 @@ mod tests {
                     op: AlertOperator::Gt,
                     threshold: 1.0,
                     cooldown_sec: 300,
-                    channels: vec![AlertChannel::Desktop, AlertChannel::Webhook],
+                    channels: vec![AlertChannel::App, AlertChannel::Webhook],
                 }),
                 enabled: true,
             }],

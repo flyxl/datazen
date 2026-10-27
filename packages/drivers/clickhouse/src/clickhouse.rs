@@ -201,7 +201,7 @@ impl DatabaseDriver for ClickHouseDriver {
     /// F7: qualify unqualified table references with the target database
     /// (`` `db`.`t` `` — true cross-database inline qualifier). The schema
     /// argument has no meaning on ClickHouse and is ignored. Parse failures
-    /// pass SQL through unchanged; see `sql_target::qualify_sql`.
+    /// pass SQL through unchanged; see `sql_execution::target::qualify_sql`.
     fn qualify_sql_target(
         &self,
         sql: &str,

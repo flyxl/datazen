@@ -27,14 +27,14 @@ steps:
 
 ## 模块分层
 
-共享执行语义位于 `packages/feature-core/src/workflow/`，宿主 `src-tauri/src/workflow/` 只保留 YAML 仓储、桌面历史和 Runtime 接线：
+共享执行语义位于 `modules/src/workflow/`，宿主 `src-tauri/src/workflow/` 只保留 YAML 仓储、桌面历史和 Runtime 接线：
 
-- `packages/feature-core/src/workflow/model.rs` / `command.rs`：Definition 与 Step 类型；
-- `packages/feature-core/src/workflow/context.rs`：模板变量、路径和循环上下文；
-- `packages/feature-core/src/workflow/conditions.rs`：Condition 表达式；
-- `packages/feature-core/src/workflow/executor.rs`：步骤编排、超时和错误策略；
-- `packages/feature-core/src/workflow/command_runtime.rs`：显式目标校验、连接继承解析与命令派发；
-- `packages/feature-core/src/workflow/resource_execution.rs`：独立 Runtime 资源执行；
+- `modules/src/workflow/model.rs` / `command.rs`：Definition 与 Step 类型；
+- `modules/src/workflow/context.rs`：模板变量、路径和循环上下文；
+- `modules/src/workflow/conditions.rs`：Condition 表达式；
+- `modules/src/workflow/executor.rs`：步骤编排、超时和错误策略；
+- `modules/src/workflow/command_runtime.rs`：显式目标校验、连接继承解析与命令派发；
+- `modules/src/workflow/resource_execution.rs`：独立 Runtime 资源执行；
 - `src-tauri/src/workflow/registry.rs`：加载、保存、删除 YAML；
 - `src-tauri/src/workflow/command_runtime.rs`：把上一条规则绑定到桌面 `AppState`；
 - `src-tauri/src/workflow/history.rs`：执行历史持久化。

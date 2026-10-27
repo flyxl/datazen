@@ -1,14 +1,14 @@
 //! Shared desktop adapter for read-only commands executed through Runtime.
 use crate::{platform::PlatformEntry, store::DesktopRepository};
-use datazen_driver_api::{
-    check_command_access, CommandAccessLevel, CommandCatalog, ConnectionConfig, DatabaseDriver,
-};
-use datazen_feature_core::workflow::{
+use datazen::execution::runtime::driver_registry::DriverRegistry;
+use datazen::workflow::{
     command::WorkflowCommandStep,
     error::WorkflowError,
     resource_execution::{PreparedExecution, ResourceExecutionHost},
 };
-use datazen_runtime::driver_registry::DriverRegistry;
+use datazen_driver_api::{
+    check_command_access, CommandAccessLevel, CommandCatalog, ConnectionConfig, DatabaseDriver,
+};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -38,7 +38,9 @@ impl RuntimeCommandSource {
         let adapter = self.platform.require().map_err(|error| error.to_string())?;
         let runtime = adapter.runtime().map_err(|error| error.to_string())?;
         let owner = runtime
-            .connection_id_for_session(&datazen_runtime::connection::DbSessionId::new(session_id))
+            .connection_id_for_session(&datazen::execution::runtime::connection::DbSessionId::new(
+                session_id,
+            ))
             .ok_or_else(|| "Runtime session is unavailable".to_owned())?;
         let (config, metadata) = self
             .store
@@ -83,11 +85,11 @@ impl RuntimeCommandSource {
             Some(connection_id.to_owned()),
             input,
         );
-        datazen_feature_core::workflow::resource_execution::execute(
+        datazen::workflow::resource_execution::execute(
             &WappReadOnlyHost(self),
             &step,
             connection_id,
-            Some(datazen_feature_core::mcp::permission::McpPermissionMode::SafeWrite),
+            Some(datazen::mcp::permission::McpPermissionMode::SafeWrite),
             None,
             false,
         )
@@ -150,7 +152,7 @@ impl ResourceExecutionHost for WappReadOnlyHost<'_> {
         id: &str,
         revision: u64,
         command: &str,
-        target: datazen_platform_api::target::ExecutionTarget,
+        target: datazen::execution::target::ExecutionTarget,
     ) -> Result<PreparedExecution, WorkflowError> {
         self.0.prepare(id, revision, command, target).await
     }
@@ -188,7 +190,7 @@ impl ResourceExecutionHost for RuntimeCommandSource {
         _id: &str,
         revision: u64,
         command: &str,
-        target: datazen_platform_api::target::ExecutionTarget,
+        target: datazen::execution::target::ExecutionTarget,
     ) -> Result<PreparedExecution, WorkflowError> {
         let adapter = self
             .platform
@@ -201,7 +203,7 @@ impl ResourceExecutionHost for RuntimeCommandSource {
         let canonical = adapter
             .resolve_execution_target(
                 call.context(),
-                datazen_platform_api::id::Counter::new(revision),
+                datazen::shared::id::Counter::new(revision),
                 command,
                 &target,
             )

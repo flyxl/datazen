@@ -6,7 +6,7 @@ use super::super::error::{CmdExt, CommandError};
 use super::super::AppState;
 use crate::data_sync::api::{filter_tables_by_schema, is_self_sync, resolve_db_name};
 use crate::data_sync::{classify_tables, require_data_sync_family, TableMapping, TableResult};
-use datazen_feature_core::services::schema_scope::metadata_schema;
+use datazen::services::schema_scope::metadata_schema;
 
 pub(crate) async fn inspect_data_sync_impl(
     state: &AppState,
@@ -21,13 +21,13 @@ pub(crate) async fn inspect_data_sync_impl(
     let src_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         &source_db_session_id,
-        datazen_runtime::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let tgt_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         &target_db_session_id,
-        datazen_runtime::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let src_config = src_context.config.clone();

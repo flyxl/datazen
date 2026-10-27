@@ -65,22 +65,11 @@ const METADATA_MAX_BUFFER = 128 * 1024 * 1024;
  */
 export const LAYERS = Object.freeze([
   { id: 'host', path: 'src-tauri', kind: 'rust' },
-  { id: 'application', path: 'packages/application', kind: 'rust' },
-  { id: 'runtime', path: 'packages/runtime', kind: 'rust' },
-  { id: 'kernel', path: 'packages/kernel', kind: 'rust' },
-  { id: 'tunnel', path: 'packages/tunnel', kind: 'rust' },
-  { id: 'feature-core', path: 'packages/feature-core', kind: 'rust' },
-  { id: 'platform-api', path: 'packages/platform-api', kind: 'rust' },
-  { id: 'platform-infra', path: 'packages/platform-infra', kind: 'rust' },
+  { id: 'modules', path: 'modules', kind: 'rust' },
+  { id: 'infra', path: 'packages/infra', kind: 'rust' },
   { id: 'server', path: 'server', kind: 'rust' },
   { id: 'driver-api', path: 'packages/driver-api', kind: 'rust' },
-  { id: 'ai-api', path: 'packages/ai-api', kind: 'rust' },
-  { id: 'ai-providers', path: 'packages/ai-providers', kind: 'rust' },
   { id: 'driver', path: 'packages/drivers/*', kind: 'rust' },
-  { id: 'schema-diff', path: 'packages/schema-diff', kind: 'rust' },
-  { id: 'migration-common', path: 'packages/migration-common', kind: 'rust' },
-  { id: 'data-sync', path: 'packages/data-sync', kind: 'rust' },
-  { id: 'data-transfer', path: 'packages/data-transfer', kind: 'rust' },
   { id: 'backend-client', path: 'packages/backend-client', kind: 'ts' },
 ]);
 

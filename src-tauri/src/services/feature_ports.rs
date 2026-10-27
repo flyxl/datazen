@@ -1,15 +1,6 @@
-use crate::store::DesktopRepository;
+use datazen::services::ports::DatabaseToolHost;
 use datazen_driver_api::{ConnectionConfig, DatabaseDriver};
-use datazen_feature_core::services::ports::{ConnectionCatalog, DatabaseToolHost};
 use std::sync::Arc;
-
-#[async_trait::async_trait]
-impl ConnectionCatalog for DesktopRepository {
-    async fn get_connections(&self) -> Vec<ConnectionConfig> {
-        self.get_connections().await
-    }
-}
-
 #[async_trait::async_trait]
 impl DatabaseToolHost for crate::commands::AppState {
     async fn get_session_config(&self, id: &str) -> Result<ConnectionConfig, String> {
@@ -27,7 +18,7 @@ impl DatabaseToolHost for crate::commands::AppState {
             .map(|(config, _)| config)
             .ok_or_else(|| "Profile unavailable".to_string())
     }
-    async fn execution_settings(&self) -> datazen_platform_api::settings::ExecutionSettings {
+    async fn execution_settings(&self) -> datazen::settings::ExecutionSettings {
         self.store.execution_settings().await
     }
     async fn profile_config(&self, id: &str) -> Result<ConnectionConfig, String> {
@@ -51,16 +42,14 @@ impl DatabaseToolHost for crate::commands::AppState {
         command: &str,
         input: serde_json::Value,
     ) -> Result<datazen_driver_api::CommandResult, String> {
-        let step = datazen_feature_core::workflow::command::WorkflowCommandStep::new(
+        let step = datazen::workflow::command::WorkflowCommandStep::new(
             "tool",
             command,
             Some(id.into()),
             input,
         );
-        datazen_feature_core::workflow::resource_execution::execute(
-            self, &step, id, None, None, false,
-        )
-        .await
-        .map_err(|error| error.to_string())
+        datazen::workflow::resource_execution::execute(self, &step, id, None, None, false)
+            .await
+            .map_err(|error| error.to_string())
     }
 }

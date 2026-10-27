@@ -3,16 +3,17 @@ mod opening;
 mod release;
 #[cfg(feature = "webdriver")]
 pub(crate) mod webdriver_dispatch;
-use super::{resource_budget::DesktopResourceBudget, resource_mapping as map};
+use super::resource_budget::DesktopResourceBudget;
 use crate::store::DesktopRepository;
 use async_trait::async_trait;
-use datazen_driver_api::{resource as dr, session as ds, QueryExecutionId};
-use datazen_platform_api::ports::budget::BudgetCoordinator as _;
-use datazen_runtime::driver_registry::DriverRegistry;
-use datazen_runtime::{
+use datazen::execution::application::budget::BudgetCoordinator as _;
+use datazen::execution::runtime::driver_mapping as map;
+use datazen::execution::runtime::driver_registry::DriverRegistry;
+use datazen::execution::runtime::{
     connection as rc,
     registry::{audit::CapabilityVersions, backend::*},
 };
+use datazen_driver_api::{resource as dr, session as ds, QueryExecutionId};
 use std::{
     collections::HashMap,
     sync::{Arc, RwLock},
@@ -51,8 +52,8 @@ pub(super) struct Resource {
     /// this Arc alive; only confirmed physical-resource removal releases it.
     _tunnel: Option<Arc<crate::tunnel::Tunnel>>,
     _budget_scope: Arc<dyn dr::BudgetPort>,
-    logical: std::sync::Mutex<Option<datazen_runtime::resource::LogicalSessionPermit>>,
-    purpose: datazen_runtime::resource::LeasePurpose,
+    logical: std::sync::Mutex<Option<datazen::execution::runtime::resource::LogicalSessionPermit>>,
+    purpose: datazen::execution::runtime::resource::LeasePurpose,
 }
 
 impl Resource {
@@ -74,10 +75,10 @@ impl Resource {
 pub struct DesktopSessionBackend {
     registry: Arc<DriverRegistry>,
     store: Arc<DesktopRepository>,
-    budget: Arc<datazen_runtime::budget::InProcessBudgetCoordinator>,
-    organization: datazen_platform_api::id::OrganizationId,
-    principal: datazen_platform_api::id::PrincipalId,
-    leases: datazen_runtime::resource::ProductionLeaseManager,
+    budget: Arc<datazen::execution::runtime::budget::InProcessBudgetCoordinator>,
+    organization: datazen::shared::id::OrganizationId,
+    principal: datazen::shared::id::PrincipalId,
+    leases: datazen::execution::runtime::resource::ProductionLeaseManager,
     resources: tokio::sync::RwLock<HashMap<String, Arc<Resource>>>,
     /// dbSessionId → 已打开的物理 resource_id。**出向端口唯一能用的反向索引。**
     ///
@@ -96,14 +97,18 @@ pub struct DesktopSessionBackend {
     ///
     /// 建连时用它把连接侧的 `tunnelId` 解引用回内联配置（解引用发生在**建连时**，
     /// 不是打开表单时）。
-    tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
+    tunnels: Arc<dyn datazen::tunnel::TunnelRepository>,
     /// SSH known-hosts 的存储端口（宿主注入）。
-    known_hosts: Arc<dyn datazen_platform_api::ports::known_hosts::KnownHostsRepository>,
+    known_hosts: Arc<dyn datazen::tunnel::KnownHostsRepository>,
+    /// 查询历史写入端口（D6 第一切片：仓储 trait 归
+    /// `datazen::history` 的 domain，桌面注入同一 `HistoryDb` 的适配器；
+    /// 会话执行路径不再经 `DesktopRepository` 的领域门面）。
+    history: Arc<dyn datazen::history::QueryHistoryRepository>,
 }
 impl DesktopSessionBackend {
     pub(crate) fn physical_budget(
         &self,
-    ) -> Arc<datazen_runtime::budget::InProcessBudgetCoordinator> {
+    ) -> Arc<datazen::execution::runtime::budget::InProcessBudgetCoordinator> {
         self.budget.clone()
     }
 
@@ -111,19 +116,21 @@ impl DesktopSessionBackend {
         registry: Arc<DriverRegistry>,
         store: Arc<DesktopRepository>,
         physical_limit: u32,
-        tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
-        known_hosts: Arc<dyn datazen_platform_api::ports::known_hosts::KnownHostsRepository>,
+        tunnels: Arc<dyn datazen::tunnel::TunnelRepository>,
+        known_hosts: Arc<dyn datazen::tunnel::KnownHostsRepository>,
+        history: Arc<dyn datazen::history::QueryHistoryRepository>,
     ) -> Self {
         Self::new_scoped(
             registry,
             store,
             physical_limit,
-            datazen_platform_api::id::OrganizationId::new(super::identity::LOCAL_ORGANIZATION_ID),
+            datazen::shared::id::OrganizationId::new(super::identity::LOCAL_ORGANIZATION_ID),
             super::identity::local_principal().unwrap_or_else(|| {
-                datazen_platform_api::id::PrincipalId::new("unresolved-desktop-user")
+                datazen::shared::id::PrincipalId::new("unresolved-desktop-user")
             }),
             tunnels,
             known_hosts,
+            history,
         )
     }
     #[allow(clippy::too_many_arguments)]
@@ -131,30 +138,37 @@ impl DesktopSessionBackend {
         registry: Arc<DriverRegistry>,
         store: Arc<DesktopRepository>,
         physical_limit: u32,
-        organization: datazen_platform_api::id::OrganizationId,
-        principal: datazen_platform_api::id::PrincipalId,
-        tunnels: Arc<dyn datazen_platform_api::ports::tunnel::TunnelRepository>,
-        known_hosts: Arc<dyn datazen_platform_api::ports::known_hosts::KnownHostsRepository>,
+        organization: datazen::shared::id::OrganizationId,
+        principal: datazen::shared::id::PrincipalId,
+        tunnels: Arc<dyn datazen::tunnel::TunnelRepository>,
+        known_hosts: Arc<dyn datazen::tunnel::KnownHostsRepository>,
+        history: Arc<dyn datazen::history::QueryHistoryRepository>,
     ) -> Self {
         Self {
             registry,
             store,
-            budget: Arc::new(datazen_runtime::budget::InProcessBudgetCoordinator::new(
-                // PostgreSQL metadata admission requires a data connection and
-                // a control connection atomically. Reserve a complete lease
-                // so retained editors cannot consume its remaining slot.
-                datazen_runtime::budget::BudgetConfig::from_parts(physical_limit, [1, 2, 2, 0]),
-                organization.clone(),
-            )),
+            budget: Arc::new(
+                datazen::execution::runtime::budget::InProcessBudgetCoordinator::new(
+                    // PostgreSQL metadata admission requires a data connection and
+                    // a control connection atomically. Reserve a complete lease
+                    // so retained editors cannot consume its remaining slot.
+                    datazen::execution::runtime::budget::BudgetConfig::from_parts(
+                        physical_limit,
+                        [1, 2, 2, 0],
+                    ),
+                    organization.clone(),
+                ),
+            ),
             organization,
             principal,
-            leases: datazen_runtime::resource::LeaseManager::production(),
+            leases: datazen::execution::runtime::resource::LeaseManager::production(),
             resources: tokio::sync::RwLock::new(HashMap::new()),
             by_session: tokio::sync::RwLock::new(HashMap::new()),
             publisher: RwLock::new(None),
             export_output: RwLock::new(None),
             tunnels,
             known_hosts,
+            history,
         }
     }
     pub fn set_publisher(&self, publisher: ResultPublisher) -> Result<(), rc::ProviderError> {
@@ -291,7 +305,7 @@ impl SessionBackend for DesktopSessionBackend {
     /// 时同样不给半真半假的报告。
     async fn observability_snapshot(
         &self,
-    ) -> Option<datazen_runtime::resource::RuntimeObservabilityReport> {
+    ) -> Option<datazen::execution::runtime::resource::RuntimeObservabilityReport> {
         let ledger = self.leases.snapshot()?;
         let limit = self
             .budget
@@ -385,12 +399,12 @@ impl DesktopSessionBackend {
             let Ok(resource) = self.resource(id.as_str()).await else {
                 continue;
             };
-            let host = datazen_runtime::resource::HostConditionSnapshot::default();
+            let host = datazen::execution::runtime::resource::HostConditionSnapshot::default();
             if self
                 .leases
                 .returning(
                     &id,
-                    datazen_runtime::resource::DriverCleanVerdict::reported_unclean(),
+                    datazen::execution::runtime::resource::DriverCleanVerdict::reported_unclean(),
                     &host,
                 )
                 .is_err()

@@ -60,7 +60,7 @@ async fn cleaned(instance: &Instance, binding: &crate::mcp::session::SessionBind
     let runtime = instance.adapter.runtime().unwrap();
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
-            if !runtime.is_registered(&datazen_runtime::connection::DbSessionId::new(
+            if !runtime.is_registered(&datazen::execution::runtime::connection::DbSessionId::new(
                 binding.handle.db_session_id.as_str(),
             )) && instance.sessions.pending_cleanup().is_empty()
             {

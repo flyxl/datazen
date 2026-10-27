@@ -1,7 +1,8 @@
 //! Build-time deployment allowlist. Never sourced from Settings, IPC, PATH or env.
 use super::{DesktopNativeTools, NativeProbeInstallation};
-use datazen_platform_api::{error::PortError, ports::native_tool::*};
-use datazen_runtime::{budget::InProcessBudgetCoordinator, native_tool::NativeToolRuntime};
+use datazen::execution::runtime::budget::InProcessBudgetCoordinator;
+use datazen::jobs::application::native_tool::NativeToolRuntime;
+use datazen::{jobs::domain::native_tool::*, shared::error::PortError};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{collections::HashMap, path::PathBuf, sync::Arc};

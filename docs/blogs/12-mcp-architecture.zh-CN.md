@@ -4,7 +4,7 @@
 
 ## Server 与 Client
 
-DataZen 作为 MCP Server 暴露 Tools、Resources 和 Prompts；作为 MCP Client 连接外部 Server，取得工具并供 AI Chat 使用。共享工具/资源逻辑位于 `packages/feature-core/src/mcp/`，宿主 `src-tauri/src/mcp/` 负责 Server/Client 的传输、会话、权限与 Runtime 接线；两者共享 Host 的服务和 Command Runtime，而不是相互耦合实现。
+DataZen 作为 MCP Server 暴露 Tools、Resources 和 Prompts；作为 MCP Client 连接外部 Server，取得工具并供 AI Chat 使用。共享工具/资源逻辑位于 `modules/src/mcp/`，宿主 `src-tauri/src/mcp/` 负责 Server/Client 的传输、会话、权限与 Runtime 接线；两者共享 Host 的服务和 Command Runtime，而不是相互耦合实现。
 
 Server 工具包括 `list_connections`、`list_databases`、`list_tables`、`search_tables`、`query`、`get_schema`、`explain_query`、`describe_table`、`list_workflows`、`run_workflow`，以及有状态协议的 `open_session` / `use_session` / `close_session`。
 

@@ -1,352 +1,85 @@
-# [AGENTS.md](http://AGENTS.md)
+# DataZen Agent Guide
 
-> 本文件面向 AI 编程助手，帮助其快速理解项目结构和约定。详细架构设计见 [docs/architecture/](docs/architecture/README.md)。
+本文件是仓库级快速约定；详细架构以 `docs/architecture/`、开发流程以 `docs/development/` 为准。动手前先读本文件、相关目录说明和目标功能文档，并检查当前 branch、worktree、HEAD 与未提交差异。
 
-## 项目概述
+## 项目与目录
 
-DataZen 是一个跨平台桌面数据库管理工具，基于 **Tauri v2**（Rust 后端 + React 前端）构建，集成 AI 辅助功能。
-
-- **框架**：Tauri v2 + React 18 + TypeScript + Tailwind CSS 4
-- **包管理**：pnpm（前端）、Cargo workspace（Rust）
-- **状态管理**：Zustand
-- **设计系统**：`@datazen/ui` 纯 React 基础视图组件库（宿主与插件共享）
-- **测试**：Vitest（Host 单元）、驱动 crate 内单测/E2E、WebdriverIO（Host E2E）
-- **AI**：多 Provider（OpenAI / Anthropic / DeepSeek / Ollama / Custom）、MCP Server/Client
-- **运行模式**：GUI 桌面应用 或 无头 MCP stdio 服务器（`--mcp-stdio`）
-- **发行版本**：Community 社区版（纯开源净室版）/ Pro 增强版（通过特权扩展点注入高级功能）
-
-## 目录结构
+DataZen 是 Tauri v2 + React 18 + TypeScript + Rust 的跨平台数据库管理工具，使用 pnpm 与 Cargo workspace。
 
 ```text
-datazen/
-├── src/                         # React 前端源码
-│   ├── components/              # UI 组件（sql-editor/, ai/, chart/, connection/, DataTable/, ui/）
-│   ├── windows/                 # 主工作区 *Page + 子窗口 *Window（见 architecture/windows.md）
-│   │   └── connection/er/       # ER 图模块（React Flow）
-│   ├── stores/                  # Zustand stores（connection / panel / schema / settings / ai 等）
-│   ├── commands/                # Tauri IPC 封装
-│   ├── lib/                     # 工具库与业务算法
-│   ├── hooks/                   # React hooks
-│   ├── locales/                 # i18n 领域包与按需加载
-│   └── extensions/              # 自动生成注册文件（generated.ts / generated-locales.ts / generated-pro.ts）
-├── src-tauri/                   # Rust 后端
-│   ├── src/
-│   │   ├── bootstrap/           # AppState、启动与关停装配
-│   │   ├── commands/            # Tauri IPC 命令
-│   │   ├── dashboard/           # Dashboard 宿主存储与执行适配
-│   │   ├── mcp/                 # MCP Server/Client 宿主传输与权限
-│   │   ├── monitor/             # MonitorEngine、授权与 occurrence
-│   │   ├── platform/            # PlatformAdapter、DesktopSessionBackend、身份/策略/仓储
-│   │   ├── services/            # Schema metadata、JobRegistry、Runtime 命令源
-│   │   ├── store/               # AES-256-GCM 加密持久化
-│   │   ├── tunnel/                # 隧道装配（机制内核在 packages/tunnel）
-│   │   ├── wapps/               # Wapp 协议桥与管理器
-│   │   └── workflow/            # YAML Workflow 宿主适配与历史
-│   └── resources/               # 菜单翻译、内置 Workflow 模板、原生工具探针
-├── packages/
-│   ├── ui/                      # @datazen/ui: 纯 React 基础组件设计系统（Button, Dialog, Select 等）
-│   ├── extension-points/        # @datazen/extension-points: 特权扩展点 (EP) 契约与注册表
-│   ├── wapp-sdk/                 # @datazen/wapp-sdk: Workspace App 沙箱应用前端 SDK
-│   ├── driver-sdk/              # @datazen/driver-sdk: 数据库驱动前端元数据/方言/Command SDK
-│   ├── driver-api/              # Rust: DatabaseDriver trait + Command API + inventory 注册
-│   ├── platform-api/             # Rust: 跨形态端口与契约（ProfileRepository / RequestContext / FrontendBridge）
-│   ├── platform-infra/           # Rust: 形态中立的跨形态基础设施原语（脱敏 / 路径安全），零 datazen-* 依赖
-│   ├── application/              # Rust: 应用层用例与 ApplicationServices（不依赖宿主形态）
-│   ├── runtime/                  # Rust: 共享内核（session / resource / job / gateway / schema_cache / sql_guard）
-│   ├── tunnel/                   # Rust: 形态中立的隧道机制内核（HTTP CONNECT 代理 / WebSocket 中继 / SSH 转发）
-│   ├── feature-core/             # Rust: 共享 feature（Workflow / AI / MCP / Dashboard / 导出 / 备份恢复 / Wapp 内核）
-│   ├── schema-diff/ data-sync/ data-transfer/ migration-common/  # 迁移三件套与共享迁移边界
-│   ├── backend-client/           # JS: 远端 / 浏览器侧 BackendClient 端口实现
-│   ├── ai-api/                  # Rust: AiProvider trait + 工厂 + 消息/调用协议模型
-│   ├── ai-providers/            # Rust: OpenAI/Anthropic/DeepSeek/Ollama/Custom provider 适配 + wire protocol 实现（纯客户端，不依赖 Tauri）
-│   ├── drivers/                 # path 驱动 crate（测试严格写在各 crate 内）
-│   │   └── <id>/                # Rust `src/` + `tests/`；UI `ui/__tests__/`；E2E `e2e/`
-│   ├── wapps/                   # Workspace Apps 运行时应用与主题源码包（安装测试见其 README）
-│   └── pro-extensions/          # Pro 扩展本地存放/挂载目录（gitignored）；每个子包是独立 git 仓库，需独立 commit/pull/push
-├── e2e/                         # Host WebdriverIO E2E（通用 UI / IPC；非驱动方言）
-├── docs/                        # 入库文档：features/、architecture/、development/、blogs/、bugs/
-└── posts/                       # 推广与发布文案本地存档（gitignored，不提交）
+src/                 React UI、Zustand stores、Tauri IPC client、i18n
+src-tauri/           Desktop bootstrap、commands、platform、store、宿主适配
+packages/            driver-api、modules、runtime、application、platform-api、迁移包、UI/SDK/驱动
+e2e/                 Host WebdriverIO journeys
+docs/                features、architecture、development、blogs、已核实且明确不修的 bugs
 ```
 
-## 核心架构模式
+数据库驱动实现与专属测试必须在 `packages/drivers/<id>/`；Host 不得硬编码驱动方言。`packages/ui` 是纯 React 基础组件库，不能依赖宿主 Store 或 IPC。
 
-### 驱动选型与双版本构建模式（编译时，类似 Caddy 2）
+## DDD 重构目标
 
-1. `drivers-registry.json` 定义 path 驱动 + git 驱动；Git 可钉 `ref`。
-2. `scripts/resolve-drivers.mjs` 构建前执行驱动选型、克隆 Git driver，并生成 `generated.ts`、`driver_init.rs`、`.driver-features.json`（均 gitignored）。
-3. `scripts/resolve-pro.mjs` 控制构建版本：默认 `--edition=community`（纯开源 Fallback）；`--edition=pro`（打包并 stage `@datazen/extension-sql-editor-pro` 到 `src-tauri/resources/builtin-ep/`，运行时经签名验签后动态加载）。
-4. 数据库驱动通过 `inventory` crate 实现链接时自动注册；宿主 `DriverRegistry` 仅走 factories。驱动的**事件出口**（如 Redis Pub/Sub）同样走 `inventory` 注册（`register_event_outlet!`），宿主在启动期遍历装入**本形态**的 sink —— 契约形态中立，驱动侧不出现任何宿主类型。
+权威方案：[DDD 模块化重构](docs/development/ddd-refactor-plan.md)（总纲；实施细节按主题在同目录 `ddd-refactor/` 下，细节文件保留原 §2–§14 编号）。该方案区分当前事实与目标设计，不能把目标目录写成已实现。
 
-注入前托管清单文件的干净副本会存进 gitignored 的 `.driver-file-stash/`；该 stash 带 `.stash-meta.json` 旁证，复用前判新鲜度，**陈旧时 `resolve-drivers.mjs` 以退出码 1 硬失败并给出恢复命令，而不是静默回滚合并后的清单文件**。此时**不要**跑 `--restore`（它会用合并前的旧副本覆盖当前结果）。详见 [docs/development/worktree-isolation.md](docs/development/worktree-isolation.md)。
+- 最终以一个 `modules/` crate 按功能组织 `application` / `domain`；目标 package 为 `datazen`。
+- `src-tauri` 是 Desktop 宿主；目标 Web 宿主是 `web/` / `datazen-web`。
+- Repository trait 由所属 domain 定义，Desktop/Web infrastructure 实现；不建立全局仓储全集。
+- Controller 只做上下文、DTO、应用服务调用和错误映射，不直接访问 Store、AppDb、Driver、Runtime internals。
+- `execution::runtime` 承载 actor、lease、队列、等待、资源回收；`execution::application` 编排用例；Job 归 `jobs`。
+- 保持 `connectionId`、`dbSessionId`、`executionId` 语义不混用，以及 owner、scope、epoch、revision、事务、取消、幂等、artifact、恢复语义。
+- 每个迁移 PR 必须有真实消费者、行为测试和依赖门禁；不提交空壳 Service、`todo!()`、DummyRepository 或重复状态。
+- 当前阶段按 D0→D8 推进；临时兼容导出必须写明消费者和删除阶段，D8 清零。
+
+## 架构与安全不变量
+
+- Rust 生产路径禁止裸 `unwrap()` / `expect()`；使用明确 `Result`、`thiserror`、`tracing` 和现有 `CommandError`。
+- 组织作用域使用 `OrganizationScope::from_context(&ctx)` 或 `state.organization_scope()`；不得在宿主生产代码直接读取安装级组织常量。确有桌面专用例外时使用相邻 `// scope-gate: <id>` 并登记白名单。
+- 公开摘要、错误、日志和 AI/MCP payload 不得包含凭据、绝对敏感路径或原始连接串；凭据使用 AES-256-GCM / 系统钥匙串（开发文件后端为显式配置）。
+- 不读取、打印或 source `.env` / `.env.test` 内容；测试程序可以按项目约定读取，但输出不得泄漏凭据。
+- 不以放宽权限、宽泛 `allow`、删除断言或跳过测试解决问题。
+- 前端严格 TypeScript、禁止 `any`（generated 文件除外）；CSS 使用 Tailwind utility；IPC 前端 camelCase、Rust snake_case。
+- 数据库行为差异走 `DB_REGISTRY` / `DatabaseTypeMeta`；不要把某个数据库的判断散落到 Host。
+- 交互/补全必须测试完整连续旅程，优先软排序，不用不可逆硬过滤；点击选择通过 DOM `data-*` 标识而不是视口坐标。
+
+## 驱动、扩展与生成文件
+
+- `scripts/resolve-drivers.mjs` 根据 `drivers-registry.json` 注入 path/git 驱动；`resolve-pro.mjs` 处理 Community/Pro。
+- 生成文件不得提交：`src/extensions/generated*.ts`、`src-tauri/src/driver_init.rs`、`src-tauri/capabilities/default.json`。
+- 新 Host capability 改 `src-tauri/capabilities/default.json.host`，不要手改生成的 `default.json`。
+- `PROTOCOL_VERSION` 或 `AI_PROTOCOL_VERSION` 变化时同步检查全部插件/Provider。
+- 四维扩展保持正交：Driver、静态 Theme、特权 EP、沙箱 Workspace App；扩展不绕过统一 Driver Command 和权限边界。
+
+## 测试与构建
+
+常用命令：
 
 ```bash
-pnpm tauri:dev                         # 默认 basic 驱动，Community 版
-pnpm tauri:dev:pro                     # Pro 版开发（注入 SQL Editor Pro）
-pnpm tauri:dev --drivers=all           # 全驱动开发
-pnpm tauri:build:community             # 构建开源社区版
-pnpm tauri:build:pro                   # 构建 Pro 增强版
-DATAZEN_DRIVERS=all pnpm tauri:build   # 构建全驱动包
+pnpm build
+pnpm typecheck                       # 默认单引擎门禁，包含测试文件
+pnpm typecheck:tsc                   # 权威 TypeScript 编译器
+npx vitest run                       # Host 前端单测
+cargo fmt --all -- --check
+cargo test -p datazen_desktop --lib
+node scripts/check-ddd-layers.mjs
+node scripts/check-platform-crate-boundaries.mjs
+pnpm e2e                             # 构建并运行 Host E2E
+pnpm e2e:contract:matrix
 ```
 
-### 数据库驱动
+测试输出较长时写入系统临时目录，单独记录退出码，再读取结论行；不能把超时、OOM 或环境缺失误报成代码通过或回归。Rust 链接资源不足可用 `CARGO_BUILD_JOBS=1 RUSTFLAGS='-C debuginfo=0'` 重跑并如实记录。
 
-- Path 驱动：`packages/drivers/*`（crate 名 `datazen-driver-<id>`），经 optional Cargo feature 注入。
-- Git 驱动：克隆到 `packages/drivers/<id>/`（gitignored，非 Cargo workspace member），同样 inventory 注册。
-- 前端 `DB_REGISTRY` 合并 `generated.ts` 的 `DRIVER_DB_ENTRIES`。
-- 默认 DB 图标来自 `packages/drivers/*/ui/icons/{dbType}.svg`。
-- 关键 trait 方法包括 `supports_offset()`、`supports_explain()`、`prompt_overrides()`。
-- **驱动专属实现/测试必须落在对应驱动 crate 目录**，禁止加到 Host。
+E2E 必须使用 `pnpm tauri:build:webdriver` 或 `pnpm e2e` 的构建流程，禁止用裸 `cargo build` 代替。驱动专属 Rust/UI/E2E 测试必须落在对应驱动目录；Host 通用旅程放 `e2e/`。
 
-### 四维扩展体系与公共设计系统 (@datazen/ui)
+## 并行开发与 Git
 
-DataZen 确立严格正交的四维可扩展架构，依托独立设计系统 `@datazen/ui` 共享基础视觉：
+- 并行开发使用独立 worktree；主检出只用于合流和清理，不在同一 worktree 同时提交与验证。
+- 使用 `scripts/new-feature-worktree.sh <track> <base>` 创建轨道；不要 `pnpm install` 破坏软链。并行 Cargo 轨道设置独立 `CARGO_TARGET_DIR`。
+- 轨道期间可提交 `progress.md`，协调分支可提交 `hub.md`；功能验收合并后必须删除，不能成为交付物。
+- 提交前检查 `git status`、`git diff --check`、实际测试和 diff；只提交本任务文件。提交信息使用 `feat:` / `fix:` / `refactor:` / `docs:` / `test:` / `chore:`。
+- 只在用户明确要求时 push、创建 PR、部署、发布或执行外部有副作用操作；PR 前检查全部提交、base/head、diff、checks。
 
-1. **Driver (数据库驱动)**：编译/链接时注入，基于 `@datazen/driver-sdk` 与 `packages/driver-api`。零 DOM、无 React 强依赖，承载数据库连接、SQL 方言、DDL、Driver Command。
-2. **Theme (外观主题)**：纯静态资源包（`manifest.json`, `tokens.css`, `editor.json`, `charts.json`, `icons/`），零代码执行，安全沙箱级最高。
-3. **EP (特权扩展点 / Host Extension Points)**：主进程特权插槽，基于 `@datazen/extension-points`。专用于 SQLEditor Pro 增强、高级图表等对键入延迟（<5ms）和 CodeMirror Compartment 深度集成有严苛要求的核心扩展。宿主默认内置纯净基础版（Fallback）。受根目录 `LICENSE` 的 **DataZen Plugin, Driver & Extension Linking Exception** 保护，允许扩展模块使用独立许可证发布，免除 GPL-3.0 传染。
-4. **Workspace App (工作区应用)**：独立全屏 iframe 沙箱应用，运行目录 `{appData}/wapps/{publisher}.{name}/`，基于 `@datazen/wapp-sdk`，通过 `window.postMessage` 受控桥与宿主通信，取数一律走 `execute_driver_command`。
+## 文档与实现纪律
 
-`@datazen/ui`（`packages/ui/`）不是第五维扩展，而是四维共享的纯 React 基础视图组件库（Button, Input, Select, Dialog, Tabs, Badge, Label, cn），与宿主业务 Store 和 IPC 严格解耦；宿主 `src/components/ui/` 和驱动 UI 统一复用。
-
-### Driver Command API 与统一执行网关
-
-`packages/driver-api` 提供统一 Command 抽象（`command_definitions()` + `execute_command()`）。SQL 编辑器的 `query`/`execute`、流式 `query_stream`、Schema 对象元数据、Redis 操作、管理命令等全部走 `execute_driver_command`，宿主不按 Driver 类型硬编码。Redis 深度能力集中在 `packages/drivers/redis`，宿主仅为薄 Tab 壳。Redis 的 Pub/Sub 消息经 `packages/driver-api` 的**形态中立事件出口**（`DriverEventOutlet` / `DriverEventSink` / `register_event_outlet!`）送达前端：驱动侧**没有任何 `tauri` 依赖**，宿主在启动期遍历装入本形态的 sink（桌面实现见 `src-tauri/src/platform/event_sink.rs`）。
-
-### AI 模块与 ai-api
-
-- `packages/ai-api` 是 Rust 层的 AI Provider 抽象契约（类比 `driver-api`），定义核心 `AiProvider` trait、请求/流式响应模型与工厂注册，并统一 active → default → first 的 AI Profile 选择回退规则。
-- `packages/ai-providers` 承载具体 provider 适配与 wire protocol 实现：`protocol/{openai_chat,openai_responses,anthropic}.rs` 实现 OpenAI Chat/Responses 与 Anthropic 协议，`{openai,anthropic,deepseek,ollama,custom}.rs` 实现 OpenAI / Anthropic / DeepSeek / Ollama / 自定义端点适配，`registry.rs` 负责注册与配置恢复，`metadata.rs` 提供现有 Provider 的默认 endpoint/protocol 元数据。`packages/feature-core/src/ai/` 承载 Provider-neutral 的 Prompt、Schema、Chat/NL2SQL 请求组装、诊断/分析/过滤/文档生成、安全、预算、取消、工具循环与 ownership policy（包括 grant database 绑定和结果 attribution）；AI 用的数据库元数据源（表 / 列 / 类型 / schema）在 `packages/feature-core/src/services/schema_context/`，它实现共享层的 `LogicalSchemaContextSource` 契约（纯逻辑：不暴露物理句柄，也不接收调用方传入的 SchemaCache），物理句柄契约 `PhysicalSchemaContextSource` 只对真正持有句柄的形态开放，共享层用 `PhysicalSchemaContextAdapter` 把两者接起来并持有缓存；宿主只注入 `ResourceExecutionHost` 与 Runtime 门面（`src-tauri/src/services/schema_context_source.rs`），桌面与将来的 web 形态共用同一份实现；共享类型由调用点直接引用 `datazen_ai_api` / `datazen_ai_providers` / `datazen_feature_core::ai`，`commands/ai/` 保留 Tauri IPC、Provider/Profile 配置、仓储/会话读取、输入脱敏、context 文件、MCP/Runtime 工具宿主、事件流和取消接线。
-- `PromptResolver` 优先级：用户覆盖 → 驱动覆盖 → 资源文件 → 编译时英文嵌入。
-- 详情参考 [docs/architecture/backend/ai.md](docs/architecture/backend/ai.md)。
-
-### MCP (Model Context Protocol)
-
-Server 暴露 Tools/Resources/Prompts（DB tools 使用持久化 `connection_id`）；Client 连接外部 MCP Server；`--mcp-stdio` 启动无头模式。详见 [docs/architecture/backend/mcp.md](docs/architecture/backend/mcp.md)。
-
-### Workflows
-
-YAML 驱动的通用执行引擎，GUI、Tauri IPC 和 MCP 共用同一 runtime。Step 通过 Driver Command API 执行；Workflow 默认 connection 可被 Step 继承或覆盖。详见 [docs/architecture/backend/workflow.md](docs/architecture/backend/workflow.md)。
-
-## 前端约定
-
-- **零硬编码**：数据库行为差异全部通过 `DB_REGISTRY` + `DatabaseTypeMeta` 元数据驱动。
-- **主工作区 Page**：`main` 内用 `*Page` 导航（`WelcomePage` / `ConnectionPage` / `SettingsPage` 等）；Settings / 新建连接为 main 内嵌；Docs 跳转官网。独立子窗口仅限 `onboarding` / `backup` / `data-sync` / `schema-diff` / `data-transfer`。详见 [docs/architecture/windows.md](docs/architecture/windows.md)。
-- **IPC 命名**：前端 camelCase，Rust snake_case；Tauri 自动双向映射。
-- **右键菜单**：统一使用 Web Context Menu，禁止 Tauri 原生 `Menu.popup()`。
-- **主题与色彩**：全站通用 `--color-accent-*` 语义 Token；DataTable 单元格类型色使用 `--dt-*` token + `src/lib/dataTypeColors.ts`。
-- **概念区分**：Data Synchronization（仅同族 + 结构/PK 完全一致）≠ Data Transfer（异构 IR 迁移）≠ Schema Diff（结构差异对比与 DDL 迁移生成）。
-
-## ID 术语规范
-
-- `connectionId` = 持久化连接配置 id（原 configId，落盘持久化）。
-- `dbSessionId` = 运行时数据库会话 id（内存态，永不落盘）。
-- 配置/归属/调度语义必须用 `connectionId`，操作已建立连接会话必须用 `dbSessionId`；禁止双模回退。详见 [docs/architecture/naming.md](docs/architecture/naming.md)。
-
-## 错误处理
-
-`CommandError`（`commands/error.rs`）统一覆盖所有错误类型；`CmdExt` 统一记录日志；全局 IPC 错误 Payload 自动脱敏凭据与绝对路径。
-
-## 关键功能模块
-
-| 功能 | 前端入口 | 后端入口 |
-| ---------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| SQL 编辑器 & 风控 | `components/sql-editor/` + `windows/connection/query/` | `packages/runtime/src/sql_guard/` + Runtime session transaction + `execute_driver_command` |
-| 结构比对 (Schema Diff) | `windows/schema-diff/` | `packages/schema-diff/` + `commands/schema_diff.rs`（Driver `MigrationRenderer`） |
-| 数据传输 (Transfer) | `windows/data-transfer/` | `packages/data-transfer/` + `commands/data_transfer/` |
-| 数据同步 (Data Sync) | `windows/data-sync/` | `packages/data-sync/` + `commands/sync/` |
-| 图表可视化 | `components/chart/` + `lib/chart/` | — |
-| ER 图 | `windows/connection/ErDiagramView.tsx` + `er/` | `commands/schema.rs → get_er_data` |
-| 数据与结构导出 | `DataTable/DataExportDialog.tsx` + `BatchExportDialog.tsx` | `commands/export.rs` |
-| AI Chat & 诊断 | `components/ai/AiChatPanel.tsx` + `DiagnosisPanel.tsx` | `commands/ai/` + `packages/feature-core/src/ai/` |
-| Workflows | `windows/workflow/WorkflowPage.tsx` | `packages/feature-core/src/workflow/` + `workflow/` 宿主适配 |
-| 权限与管理命令 | `PrivilegeView.tsx` + `Create*Dialog.tsx` | `execute_driver_command` + Driver `admin_commands` |
-| Schema 对象树 | 连接树 routines/triggers 等 | `execute_driver_command`（`list_objects` / `get_object_ddl`） |
-| Redis 深度运维 | `packages/drivers/redis/ui/*` | `execute_command` / `execute_driver_command` |
-| 工作区应用 (Wapp) 与主题 | `windows/wapps/` + `windows/workspace/` + `windows/settings/AppearanceSection.tsx` | `wapps/` + `commands/wapps.rs`（`datazen://` 协议桥接） |
-
-## 开发命令
-
-```bash
-pnpm install                           # 安装依赖（自动补齐 codegen）
-pnpm dev                               # Vite dev server
-pnpm tauri:dev                         # 完整开发（前端 + Rust；默认 basic 驱动，Community 版）
-pnpm tauri:dev:pro                     # 启动 Pro 版完整开发
-pnpm build                             # 构建前端（缺 codegen 时 --codegen-only）
-pnpm tauri:build:community             # 构建 Community 社区版
-pnpm tauri:build:pro                   # 构建 Pro 增强版
-npx vitest run                         # Host 前端单元测试（不含 packages/drivers）
-pnpm test:unit:drivers                 # Path 驱动 UI 单测（packages/drivers/*/ui）
-pnpm typecheck                         # 单引擎类型检查（tsrs，跟随 TS 7.1 开发线），覆盖 src + packages，**含测试文件**
-pnpm typecheck:tsc                     # 跑权威引擎（typescript@7.0.2）——与发布门禁同一个编译器
-pnpm typecheck:tsrs                    # 同 `pnpm typecheck`（显式写法）
-cargo test -p datazen --lib            # Host Rust 单元测试
-cargo test -p datazen-ai-api --lib     # AI API 单元测试
-cargo test -p datazen-driver-postgres  # 示例：某个驱动 crate 的 Rust 测试
-```
-
-> **测试命令的长输出必须落临时文件再读**：测试/门禁命令（`vitest`、`cargo test`、`typecheck`、
-> `check-*.mjs`、`pnpm build`）的输出动辄上千行，直接回显会被工具截断，而**结论恰恰在末尾**
-> （`Test Files` / `Tests` / `test result:` / 编译错误列表 / 退出码）——被截掉就等于没跑，
-> 且极易据此误判"通过"。一律重定向到**系统临时目录**，再用 `tail` / `grep` 取需要的片段：
->
-> ```bash
-> LOG="$(mktemp -t datazen-test).log"
-> npx vitest run > "$LOG" 2>&1; echo "EXIT=$?"     # 退出码必须单独打印并如实记录
-> tail -n 40 "$LOG"                                # 结论行
-> grep -nE 'FAIL|✗|test result:|error\[|error TS' "$LOG" | head -60   # 失败清单
-> ```
->
-> 注意：临时文件**只放系统 temp 目录**，不得落在仓库内（会污染 `git status`）；
-> 完整日志留在文件里备查，不要为了"看全"而把整个文件回显进对话。
-
-> **测试文件参与类型检查**：`tsconfig.json` 不再排除 `__tests__/` 与 `*.test.ts(x)`，
-> 新增或修改测试后必须保证 `pnpm typecheck` 干净。历史上测试被排除在外，导致 mock
-> 与真实类型长期漂移而不被发现（例如 `TableInfo.rowCount` 实收 `null` 却声明为 `?: number`）。
-> 若某个 mock 确实只实现子集，请用精确断言（`as unknown as X`、`satisfies`、`Pick<>`）显式说明，
-> 禁止用 `any` 绕过；也不要为了让类型通过而删测试或删断言。
-
-**同一棵工作树不得同时被提交方和验证方使用。** 验证方做变异、提交方跑门禁或 `git add`，必须用各自独立的工作树：`git worktree add --detach <path> <commit>`。实测代价：同一棵树上「提交方 `git add`」收进去的是验证方变异后的残留，于是出现一个 message 与内容完全相反的提交，且 `rev-parse` / `is-ancestor` 全部放过——旧提交本身合法，只有内容是毒的。任何门禁重跑都要**首尾各记录一次 HEAD 与工作区 sha**，证明运行期间没人动过。
-
-并行开发用子代理时，主代理直接派发独立子任务并在汇总时验收。
-
-**进度台账：开发期间允许，交付即销毁。** 多轨并行时进度、门禁实测、待裁定项散落在对话上下文里，主代理一死就全丢，且新接手的实例无法判断前一个实例做完了什么。因此：
-
-- **允许**在各轨分支根目录记 `progress.md`（自证已完成/进行中/未开始、门禁命令与逐字结论行、遗留与待裁定项），以及在集成分支根目录记 `hub.md` 作为协调者的跨轨台账。这两个文件**可以提交入库**，随分支流转。
-- **禁止**把它们当交付物：轨道通过验收并合并后，`progress.md` 与 `hub.md` **必须删除**，不得存活在 `main` 上。删除是合并流程的收尾步骤之一，与清理 worktree、删除 feature 分支同级。
-- **缺陷清单不单独建文件**：缺陷结论记在台账里当下游输入，最终必须变成代码、测试和 `docs/` 正式文档里的事实。台账消失后，结论必须仍然能从代码和测试读出来——否则说明结论只存在于台账里，是没做完。
-
-**请求用户决策时，必须在同一轮内交付足以决策的上下文。** 只抛结论、把选择丢回去，等于让用户
-在你没有给出依据的情况下替你承担判断责任。实测代价：门禁盘点阶段把「R3 规则要不要转阻断」
-和「restore-guards 要不要留在 typecheck 链里」两条标进「需你决定」，却各只给一句
-「这是特性级重构」「建议原样保留」——没有数字、没有范围、没有代价、没有替代方案，
-用户无法判断，只能照单接受或拒绝，两条都成了无效征求意见。写「需你决定」之前先自查：
-
-- **具体位置**：哪条规则、哪个文件、哪一行、当前实测命中几条（本例：R3 全仓仅 1 处，
-  `src/windows/connection/DocumentConnectionView.tsx` 单行 import 引入 9 个符号）。
-- **实测数字**：耗时占比、当前是否已红、翻成阻断会让多少个 PR 变红
-  （本例：38ms / 13808ms typecheck = 0.28%；翻阻断则每个 PR 都红）。
-- **修复的工作量与边界**：改哪几个包、动多少个调用点、是否要扩展共享契约
-  （本例：9 个纯函数要经 `DatabaseTypeMeta` 暴露，而该契约当前零函数槽位）。
-- **各选项的代价**：包含「什么都不做」这一项，以及选项之间的可逆性。
-- **实测与推断要分开**：凡是推断，标明依据；凡是实测，给出命令与退出码。
-
-同样地，**对已有结论补上下文时，先核对结论本身是否经得起复查**——本次正是靠复查发现
-「136 行纯逻辑函数被说成特性级重构」这个定级错误：数字补齐后，改成契约扩展而非改写文件。
-
-推广与发布文案只写本地 `posts/`（gitignored）。
-
-### 文档维护纪律
-
-- 仓库只维护三类长期文档：功能使用（`docs/features/`）、代码架构（`docs/architecture/`）、开发流程（`docs/development/`）；另有公开发布的 `docs/blogs/`，以及仅记录**已核实复现、本轮明确不修**缺陷的 `docs/bugs/`。索引见 [docs/README.md](docs/README.md)。
-- **不新增** PRD、设计稿、原型图、实施规范、开发进度、Bug List、评审记录类文档；这些是一次性过程产物，已交付即失效。缺陷结论优先变成代码、测试与正式文档；只有核实复现且明确不修的缺陷才按 `docs/bugs/` 的单文件规则登记。唯一例外是并行开发期间的进度台账（分支根目录 `progress.md` / 集成分支根目录 `hub.md`）——见上文「进度台账：开发期间允许，交付即销毁」：开发期间它存在于分支而非 `docs/`，**验收合并时必须删除**，因而同样满足「已交付即失效」。
-- 用户明确要求并已入库的 [桌面 / Web 平台演进设计](docs/README.md) 是本纪律的窄范围例外；其中标为「目标设计」的概要、详细设计和开发计划只在该明确授权范围内维护，落地后逐节改写为已实现事实。该例外不授权新增其他方案、评审记录或进度文档。
-- 数据浏览的竞品对标 PRD 与 11 个技术设计分册曾经是第二条窄范围例外（一次性方案，按用户明确要求保存）。**该例外已经关闭**：方案落地后逐节改写为已实现事实，分别进入 [数据表格架构](docs/architecture/frontend/data-table.md)、[结果写回架构](docs/architecture/backend/result-write.md) 与 [数据浏览使用指南](docs/features/data-browsing-guide.zh-CN.md)，`docs/prd/` 整个目录已删除。它**不再**授权新增任何 PRD、分册或评审记录。
-- 需要长期留存的设计结论，**改写为「已实现」的事实**并入对应架构文档，而不是保留方案原文。
-- 引用文件路径、命令、IPC 名称、驱动数量等事实前先核对代码；删除或重构代码时同步删除失效引用。
-- 写完文档自查链接可达：`pnpm exec` 下的脚本与 CI 不会校验 Markdown 链接，失效引用只能靠人工/代理检查。
-
-### E2E 测试
-
-- **构建方式**：必须使用 `pnpm tauri:build:webdriver`（或 `pnpm e2e` 自动触发）。**禁止**直接执行裸 `cargo build` 或缺少驱动注入参数的编译。
-- **数据迁移三件套的 DMG 打包边界**：Schema Diff、Data Sync、Data Transfer 的 WDIO 构建如果已成功生成可运行的 `DataZen.app`，但随后仅在 macOS DMG 打包阶段失败，该 DMG 问题不属于本功能的阻塞项；不要为此中断迁移功能开发或专门修复打包脚本。继续用生成的 `.app` 运行 WDIO，并以应用启动和 WDIO 结果判断功能验证状态。
-- **测试落点**：Host 通用 UI 交互路径在 `e2e/specs/`；驱动特定方言 E2E 必须写在 `packages/drivers/<id>/e2e/`。
-- **契约矩阵**：`e2e/contract/` 定义统一跨库 journeys，通过 `pnpm e2e:contract:matrix` 运行。
-
-```bash
-pnpm e2e                     # 完整构建 + 全部 Host E2E
-pnpm e2e:minimal             # DATAZEN_DRIVERS=basic 快速跑
-pnpm e2e:skip-build          # 跳过构建（使用已编译的 debug binary）
-pnpm e2e:contract:matrix     # Host 契约 × 驱动矩阵
-```
-
-## 驱动测试落点
-
-**规则：驱动实现 / 方言 / 专属 UI / 专属 Command 的测试，严格写到该驱动 crate 目录（`packages/drivers/<id>/`），禁止放到 Host。**
-
-| 类型 | 位置 | 运行 |
-| -------- | ------------------------------------- | ------------------------------------------------- |
-| Rust 单元 | 同文件 `#[cfg(test)]` | `cargo test -p datazen-driver-<id>` |
-| Rust 集成 | `packages/drivers/<id>/tests/` | `cargo test -p datazen-driver-<id> --test <name>` |
-| 驱动 UI 单测 | `packages/drivers/<id>/ui/__tests__/` | `pnpm test:unit:drivers` |
-| 驱动 E2E | `packages/drivers/<id>/e2e/` | 显式脚本，不进默认 `pnpm e2e` |
-
-## i18n 国际化规则
-
-- **开发期间**：只加英文的**领域包** `src/locales/en/<domain>.ts`，不要同时修改其他语言文件。
-  ⚠️ **不是 `src/locales/en.ts`** —— 那只是 2 行的向后兼容 re-export shim
-  （`export { default } from './en/index';`），往里加 key 不产生任何效果。
-  动手前先按 key 前缀定位领域包（见 [src/locales/README.md](src/locales/README.md) 的领域清单）。
-- **发布前（硬阻断）**：`node scripts/i18n-sync-check.mjs` 已在 `.github/workflows/release.yml`
-  的 `pre-release-guards` 中作为**发布硬门禁**——翻译不完整，发布构建根本不启动。
-  **发布出去的版本不允许只有英文**；`bump-version` skill 触发重建时必须一并跑该检查。
-  缺失的 key 用 i18n-sync skill 补齐（只补翻译，不改英文领域包 `src/locales/en/<domain>.ts`）。
-- `src/locales/en/<domain>.ts` 是唯一的翻译 source of truth（该目录下全部领域包合起来），其他语言必须保持相同的 key 集合。
-- 采用领域包（Domain Packs）结构，**全部 10 种语言**（`de` / `en` / `es` / `fr` / `ja` / `ko` / `pt-BR` / `ru` / `zh-CN` / `zh-TW`）都按领域拆分；`<locale>.ts` 一律是 shim。
-  子窗口与深层功能通过 `useLocaleDomains` 按需惰性（Lazy）加载。
-
-## 代码风格
-
-- Rust：`rustfmt` + `thiserror` + `tracing` + `CommandError`。
-- **生产路径禁止裸 `unwrap()` / `expect()`**（`#[cfg(test)]` 除外；确需 panic 须注释说明）。详见 [docs/development/panic-policy.md](docs/development/panic-policy.md)。
-- **组织作用域一律走宿主入口**：请求周期内用 `OrganizationScope::from_context(&ctx)`（有请求上下文）或 `state.organization_scope()`（有 `AppState`）；**不得**在宿主生产代码里直读桌面的安装级组织常量（`local_organization_scope()` / `desktop_organization_scope()`）——那是「拿桌面的组织去查服务端的多租户存储」，属于越组织读写。确有桌面专有理由的，在该行**紧邻上方**写 `// scope-gate: <id>` 并登记进 `src-tauri/src/platform/scope_gate.rs` 的白名单（该闸门随 `cargo test -p datazen --lib` 跑，违规即红）。详见 [docs/architecture/platform/shared-boundaries-and-ports.md](docs/architecture/platform/shared-boundaries-and-ports.md) §5.2。
-- TypeScript：严格模式，无 `any`（除 generated 文件），absolute imports。
-- CSS：Tailwind utility classes，暗色主题默认。
-- **单文件规模与模块拆分**：**超长文件是耦合度的信号**——它属于 code review 的判断（评审时决定要不要拆、怎么拆），**不要把行数上限做成 CI 门禁**：占一次 CI 运行时间，却不产生新信号。大型模块仍应按职责拆分为高内聚、低耦合的子组件与子模块；新增代码不要往已经很长的文件里继续堆。
-- 安全：CSP、AES-256-GCM、路径遍历防护、文件扩展名白名单。
-
-## 交互与补全开发原则（防回归规范）
-
-详细设计与案例复盘见 [docs/development/interaction-and-testing-principles.md](docs/development/interaction-and-testing-principles.md)。
-
-- **状态机思维**：任何上下文识别必须具备完整三要素（进入条件、状态内行为、退出跃迁条件），禁止编写只有进入而无退出的单向死锁逻辑。
-- **软排序优先于硬过滤**：优先通过 `boost` 增减权重解决补全排序（期望项加权、干扰项降权）；除非语法 100% 互斥，否则严禁粗暴 `return null` 或过度过滤。
-- **连续旅程测试（Journey Test）**：交互与编辑器逻辑禁止只测静态合法语句，必须编写模拟击键全过程的连续状态机测试（涵盖残缺中间态），断言每一步的状态跃迁与退出。
-- **数据属性解耦**：点击与选择操作通过 DOM `data-*` 属性直接绑定标识，禁止依赖不可靠的视口几何坐标反查。
-- **三维影响度自查**：提交前必须自查（1）是否彻底解决缺陷、（2）是否误伤合法同类、（3）用户下一步操作是否顺畅。
-
-## 重要注意事项
-
-- Path 驱动 Rust crate：`datazen-driver-<id>`；Git 驱动 Rust crate 名以插件仓库为准。
-- `Cargo.toml` 中的插件占位段在 git 中应保持为空；`resolve-drivers.mjs` 构建时自动填充。
-- 以下文件均为 gitignored 的 codegen 文件，由 `resolve-drivers` / `resolve-pro` 生成，切勿提交：
-  - `src/extensions/generated.ts`
-  - `src/extensions/generated-locales.ts`
-  - `src/extensions/generated-pro.ts`
-  - `src-tauri/src/driver_init.rs`
-  - `src-tauri/capabilities/default.json`
-- **Capabilities 管理**：`src-tauri/capabilities/default.json.host` 是 git 跟踪的 host 权限源文件；需要添加新 host capability 时直接修改该文件。`default.json` 在构建时自动合并生成，**严禁手动编辑或提交**。
-- `PROTOCOL_VERSION`（`packages/driver-api`）变更时需同步更新所有插件。
-- `AI_PROTOCOL_VERSION`（`packages/ai-api`）变更时需同步更新所有 AI Provider 插件。
-- **TypeScript 7 起 `node_modules/@types` 不再自动发现。** 根 `tsconfig.json` 与五个
-  `packages/<id>/tsconfig.json` 都显式列出了 `types`。根与五个包先是 TS 5.9 自动发现的同一组
-  （dompurify / node / react / react-dom）；五个包另加 `vite/client`，`packages/ui` 再加
-  `@testing-library/jest-dom/vitest`（它自己的测试用的 DOM matcher，根 program 从
-  `src/test/setup.ts` 拿到同一份增强）。**新增 `@types/*` 依赖时必须同步加进这六处**，
-  否则该包提供的全局类型不会生效。失败方向是安全的——漏加会**多**出错误而不是少掉错误。
-  五个包的 config 现在 `extends` 根配置，因此也继承了根的 `paths`（`@datazen/*` 别名）；
-  在此之前它们各自是 standalone program，`@datazen/*` 全部解析失败，五个 program 合计
-  830 个错误，与代码本身无关。
-  门禁是**单引擎**的：`pnpm typecheck` 只跑 `tsrs`（TS 7.1-dev，前瞻、快约 2 倍）；
-  发布流水线的 `union-typecheck` **也是**只跑 `tsrs` ⇒ **一个编译器，全流程一致**
-  （「本地绿」与「发布绿」指的是同一件事）。
-  `tsrs` 领先 GA 一个版本 ⇒ 它只会比 GA 多报、不会少报（GA 独有的诊断它可能没有）；
-  这道缺口由 `pnpm build` 里的 `tsc --noEmit` 兜住（发布构建仍会抓住），需要权威结论时跑
-  `pnpm typecheck:tsc`。`tsrs` 在没有 Windows 二进制的平台会**回退到 `tsc`** 并明确打印
-  回退原因（绝不静默）⇒ 门禁背后始终有编译器。
-  详见 [docs/development/ci-test-matrix.md](docs/development/ci-test-matrix.md) §2.1.4。
-- AI 配置加密存储在 `ai_config.enc`，不会出现在日志中。
-- **本地环境变量文件保护**：任何 Agent（含子代理）不得打开、读取、解析、source 或打印仓库及其 worktree 中 `.env` / `.env.test` 文件的**内容**；不得将凭据写入提示、日志或报告。只允许检查文件是否存在及 Git 忽略状态。
-  - **测试程序读 `.env` 是合法的**，不得因此禁止运行测试或驱动 live 套件——集成测试本就需要其中的 `DATABASE_URL` 等配置。被禁的是「把内容读进上下文」，不是「程序读文件」。误把二者混同会逼出「不跑测试」的假禁令，等于放走真实缺陷。
-  - **真正的泄漏路径是输出回显**：命令的 stdout / panic 消息 / 断言失败文本里若回显了凭据，内容照样会随对话进入模型服务商。运行任何命令前先确认其输出路径不含凭据；一旦怀疑输出可能含密钥，只摘录结构性结论（哪个文件、哪条断言、退出码、测试计数），**不要转发原始输出**，并优先用上面的「长输出落临时文件」模式取片段。
-  - 审阅「读 env 文件」的测试代码时，看**源码**（是否自造合成探针、默认值是否拒绝读文件），不看 `.env` 本身。
-- 连接密码等凭据：AES-256-GCM；**主密钥**默认在系统钥匙串，开发/adhoc 或 `DATAZEN_KEYRING=file` 时用 `{appData}/.key`。
-- 日志文件位于 `{data_dir}/logs/`。
-
-## CodeGraph
-
-In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the repo root), reach for it BEFORE grep/find or reading files when you need to understand or locate code:
-
-- **MCP tool** (when available): `codegraph_explore` answers most code questions in one call — the relevant symbols' verbatim source plus the call paths between them, including dynamic-dispatch hops grep can't follow. Name a file or symbol in the query to read its current line-numbered source. If it's listed but deferred, load it by name via tool search.
-- **Shell** (always works): `codegraph explore "<symbol names or question>"` prints the same output.
-
-If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is the user's decision.
+- 长期文档只维护 `docs/features/`、`docs/architecture/`、`docs/development/`，以及公开 `docs/blogs/` 和明确不修的 `docs/bugs/`。
+- 不新增 PRD、方案评审、Bug List、进度报告类长期文件；已实现结论改写进对应架构文档。
+- 修改路径、IPC、命令、驱动数量或测试事实前先核对代码；文档链接必须人工检查可达。
+- CodeGraph 存在时优先 `codegraph explore`；否则使用专用搜索/读取工具，编辑前先读当前文件。

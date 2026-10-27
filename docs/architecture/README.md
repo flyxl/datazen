@@ -44,7 +44,7 @@
 - [桌面 / Web 系统概要设计](platform/system-overview.md)
 - [连接管理详细设计与验收用例](platform/connection-management.md)
 - [共享应用边界与端口](platform/shared-boundaries-and-ports.md)
-- [共享 feature 服务边界](platform/feature-core.md)
+- [共享 feature 服务边界](platform/modules.md)
 - [假资源夹具与基准](platform/fake-runtime-fixtures.md)
 - [持久化模型](platform/persistence-model.md)
 - [迁移三件套与 JobRuntime](platform/data-migration-jobs.md)
@@ -87,7 +87,7 @@ packages/
   ├─ platform-infra/    形态中立基础设施原语（脱敏、路径安全）
   ├─ application/       应用层用例（target、identity policy、sessions、settings、DTO）
   ├─ runtime/           运行时内核：session/resource/lease/budget/gateway/job/sql_guard/schema_cache/tunnel
-  ├─ feature-core/      共享 feature 逻辑：Workflow/AI/MCP/Dashboard/导出/备份恢复/Wapp 内核
+  ├─ modules/      共享 feature 逻辑：Workflow/AI/MCP/Dashboard/导出/备份恢复/Wapp 内核
   ├─ schema-diff/       方言中立 Schema Diff 引擎
   ├─ data-sync/         同族 Data Sync 引擎
   ├─ data-transfer/     异构 Data Transfer 引擎
@@ -97,7 +97,7 @@ packages/
   └─ backend-client/, driver-sdk/, wapp-sdk/, extension-points/, ui/   JS/TS 契约与 UI 包
 ```
 
-依赖方向是单向的：`platform-api` 不依赖上层；`application` 依赖 `platform-api`；`runtime` 依赖 `application` 与 `platform-api`；`feature-core` 依赖 `runtime`、`application`、领域引擎与契约；`src-tauri` 是唯一把 Tauri、存储、网络和这些内核接起来的组装根。`scripts/check-platform-crate-boundaries.mjs` 对 Tauri/HTTP/UI 依赖做硬门禁。
+依赖方向是单向的：`platform-api` 不依赖上层；`application` 依赖 `platform-api`；`runtime` 依赖 `application` 与 `platform-api`；`modules` 依赖 `runtime`、`application`、领域引擎与契约；`src-tauri` 是唯一把 Tauri、存储、网络和这些内核接起来的组装根。`scripts/check-platform-crate-boundaries.mjs` 对 Tauri/HTTP/UI 依赖做硬门禁。
 
 当前代码没有独立的 Web Server / Domain Service 层；桌面应用直接通过 Tauri IPC 进入 Rust backend。团队 Web 形态仍属于目标设计，不应在当前架构文档中描述为已实现能力。
 
@@ -166,7 +166,7 @@ Review
 Deploy on target
 ```
 
-Schema Diff 领域代码位于 `packages/schema-diff/src/`：
+Schema Diff 领域代码位于 `modules/src/migration/schema_diff/`：
 
 - `compare.rs`：列、PK、索引差异。
 - `ir.rs`：Snapshot → dialect-neutral `MigrationOperation`。
@@ -188,9 +188,9 @@ Source 是 desired state，Target 是 apply site。例如 source 为 `VARCHAR(25
 
 | 能力 | 目的 | 当前实现 |
 |---|---|---|
-| Schema Diff | 修改目标结构 | `packages/schema-diff/` |
-| Data Sync | 同族数据库按行比较并同步 | `packages/data-sync/` |
-| Data Transfer | 异构数据库/映射/结构+数据迁移 | `packages/data-transfer/` + `packages/migration-common/` |
+| Schema Diff | 修改目标结构 | `modules/src/migration/schema_diff/` |
+| Data Sync | 同族数据库按行比较并同步 | `modules/src/migration/data_sync/` |
+| Data Transfer | 异构数据库/映射/结构+数据迁移 | `modules/src/migration/data_transfer/` + `modules/src/migration/common/` |
 
 Data Sync 使用 Compare → Review → Preview → Execute，生产 compare 路径支持 keyset pagination 和 job cancellation，执行阶段使用参数化 SQL、事务和失败/取消 rollback。
 
@@ -198,17 +198,17 @@ Data Transfer 使用 Endpoints → Setup → Objects → Mapping → Preview →
 
 ## 7. Workflow / AI / MCP / Dashboard
 
-- **Workflow**：共享模型、条件、模板、执行器和调度逻辑位于 `packages/feature-core/src/workflow/`；`src-tauri/src/workflow/` 提供 YAML registry、Command runtime 绑定、history、桌面 runtime entry 与真实驱动验收。Workflow v1 的连接管理经 `feature-core command_runtime → feature-core resource_execution → Runtime`。
-- **AI**：Provider 契约与协议实现位于 `packages/ai-api/` 与 `packages/ai-providers/`；Prompt、Schema 上下文、NL2SQL/诊断/分析等共享逻辑位于 `packages/feature-core/src/ai/`；AI 用的数据库元数据源位于 `packages/feature-core/src/services/schema_context/`（宿主只注入 `ResourceExecutionHost` 与 Runtime 门面）。调用点直接引用共享包。
-- **MCP**：`packages/feature-core/src/mcp/` 持有共享工具/资源逻辑，`src-tauri/src/mcp/` 提供 MCP Server 和 Client 的宿主传输、会话与权限接线，并支持 headless stdio。
-- **Dashboard**：`packages/feature-core/src/dashboard/` 负责 Widget 创建/归档/调度策略，`src-tauri/src/dashboard/` 负责桌面存储与执行适配；`src-tauri/src/monitor/` 负责 MonitorEngine、定时授权与 occurrence。
+- **Workflow**：共享模型、条件、模板、执行器和调度逻辑位于 `modules/src/workflow/`；`src-tauri/src/workflow/` 提供 YAML registry、Command runtime 绑定、history、桌面 runtime entry 与真实驱动验收。Workflow v1 的连接管理经 `modules command_runtime → modules resource_execution → Runtime`。
+- **AI**：Provider 契约与协议实现位于 `packages/ai-api/` 与 `packages/ai-providers/`；Prompt、Schema 上下文、NL2SQL/诊断/分析等共享逻辑位于 `modules/src/ai/`；AI 用的数据库元数据源位于 `modules/src/services/schema_context/`（宿主只注入 `ResourceExecutionHost` 与 Runtime 门面）。调用点直接引用共享包。
+- **MCP**：`modules/src/mcp/` 持有共享工具/资源逻辑，`src-tauri/src/mcp/` 提供 MCP Server 和 Client 的宿主传输、会话与权限接线，并支持 headless stdio。
+- **Dashboard**：`modules/src/dashboard/` 负责 Widget 创建/归档/调度策略，`src-tauri/src/dashboard/` 负责桌面存储与执行适配；`src-tauri/src/monitor/` 负责 MonitorEngine、定时授权与 occurrence。
 
 ## 8. 四维扩展架构
 
 DataZen 采用四维扩展体系：
 
 - **数据库驱动（Driver）**：编译时注入，基于 `@datazen/driver-sdk` 与 `packages/driver-api`，通过 inventory 注册。承载数据库连接、SQL 方言、DDL 和 Driver Command。
-- **沙箱工作区应用（Wapp）**：基于 `@datazen/wapp-sdk`、`manifest.json`、`datazen://` 协议与沙箱 `<iframe>`，运行目录 `{appData}/wapps/{publisher}.{name}/`，向用户暴露独立工作区页面与外观主题，通过受控 postMessage 桥通信；取数一律走 `execute_driver_command`；形态无关的规则/安装/存储在 `packages/feature-core` 的 `workspace_apps` 模块。详见 [wapps.md](backend/wapps.md)。
+- **沙箱工作区应用（Wapp）**：基于 `@datazen/wapp-sdk`、`manifest.json`、`datazen://` 协议与沙箱 `<iframe>`，运行目录 `{appData}/wapps/{publisher}.{name}/`，向用户暴露独立工作区页面与外观主题，通过受控 postMessage 桥通信；取数一律走 `execute_driver_command`；形态无关的规则/安装/存储在 `modules` 的 `workspace_apps` 模块。详见 [wapps.md](backend/wapps.md)。
 - **特权扩展点（Host Extension Points）**：基于 `@datazen/extension-points` 的 `ExtensionPoint<T>` 契约与 CodeMirror Compartment，宿主进程内（In-Process）接入，专用于 SQLEditor 增强等高性能、深交互核心模块。受根目录 **DataZen Plugin, Driver & Extension Linking Exception** 保护，支持独立许可与分发。
 - **外观主题（Theme）**：由 Wapp 以 `contributes.themes[]` 贡献的纯静态资源包（`tokens.css` / `editor.json` / `charts.json` / `icons/`），零代码执行。旧 v1 ThemePack（`packages/themes/`）已存档，`{appData}/themes/` 运行时入口已移除。详见 [wapps.md](backend/wapps.md)「主题应用」与「首屏背景缓存」。
 

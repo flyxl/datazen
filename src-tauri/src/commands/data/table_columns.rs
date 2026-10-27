@@ -1,6 +1,6 @@
 //! Host adapter for the shared catalog port.
 //!
-//! `datazen_feature_core::data_browsing` decides that a plan must be checked
+//! `datazen::data_browsing` decides that a plan must be checked
 //! against the real primary key and column list; it must not know how a given
 //! host reads a catalog. This adapter answers that question with the same
 //! schema cache and driver resolution the grid read uses, so a preview after a
@@ -8,9 +8,9 @@
 
 use super::*;
 use async_trait::async_trait;
-use datazen_feature_core::data_browsing::TableColumnSource;
-use datazen_feature_core::error::FeatureError;
-use datazen_runtime::schema_cache::CachedColumns;
+use datazen::data_browsing::TableColumnSource;
+use datazen::schema::cache::CachedColumns;
+use datazen::table_editing::TableEditingError;
 
 pub(super) struct HostTableColumns<'a> {
     state: &'a AppState,
@@ -22,17 +22,18 @@ impl<'a> HostTableColumns<'a> {
     }
 }
 
-fn into_feature_error(error: CommandError) -> FeatureError {
+fn into_table_editing_error(error: CommandError) -> TableEditingError {
     match error {
-        CommandError::Validation(message) => FeatureError::Validation(message),
-        CommandError::NotFound(message) => FeatureError::NotFound(message),
-        CommandError::NotConfigured(message) => FeatureError::NotConfigured(message),
-        CommandError::Internal(message) => FeatureError::Internal(message),
-        CommandError::Driver(error) => FeatureError::Driver(error),
-        CommandError::Json(error) => FeatureError::Json(error),
-        CommandError::Io(error) => FeatureError::Io(error),
-        CommandError::Ai(error) => FeatureError::Ai(error),
-        other => FeatureError::Internal(other.to_string()),
+        CommandError::Validation(message) => TableEditingError::Validation(message),
+        CommandError::NotFound(message) => TableEditingError::NotFound(message),
+        CommandError::NotConfigured(message) => TableEditingError::NotConfigured(message),
+        CommandError::Internal(message) => TableEditingError::Internal(message),
+        CommandError::Driver(error) => TableEditingError::Driver(error),
+        CommandError::Json(error) => TableEditingError::Json(error),
+        CommandError::Io(error) => TableEditingError::Io(error),
+        // 表列读取路径不产生 AI 错误；留信息不丢失败类别。
+        CommandError::Ai(error) => TableEditingError::Internal(error.to_string()),
+        other => TableEditingError::Internal(other.to_string()),
     }
 }
 
@@ -41,10 +42,10 @@ impl TableColumnSource for HostTableColumns<'_> {
     async fn table_columns(
         &self,
         table: &RowChangeTableContext,
-    ) -> Result<CachedColumns, FeatureError> {
+    ) -> Result<CachedColumns, TableEditingError> {
         load_table_columns(self.state, table)
             .await
-            .map_err(into_feature_error)
+            .map_err(into_table_editing_error)
     }
 }
 

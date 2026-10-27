@@ -14,15 +14,15 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use sha2::{Digest, Sha256};
 
-use datazen_platform_api::context::RequestContext;
-use datazen_platform_api::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
-use datazen_runtime::job::{EndpointRef, EndpointRole};
+use datazen::jobs::{EndpointRef, EndpointRole};
+use datazen::shared::context::RequestContext;
+use datazen::shared::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
 
-use datazen_schema_diff::job::{
+use datazen::migration::schema_diff::job::{
     ApplyRequest, PlanRepository, PrepareRequest, PreparedPlan, ReadOnlyVerdict,
     SchemaDiffFrozenPlan, SchemaDiffJobBackend, SchemaDiffPlanError, StoredPlan,
 };
-use datazen_schema_diff::types::{SchemaDiffDeployResult, SchemaDiffPlan};
+use datazen::migration::schema_diff::types::{SchemaDiffDeployResult, SchemaDiffPlan};
 
 use crate::commands::error::CommandError;
 use crate::commands::schema_diff::prepare_schema_diff_plan_with_schemas_impl;
@@ -47,7 +47,7 @@ impl SchemaDiffJobInfra {
 
 fn fnv_hex_of_json<T: serde::Serialize>(v: &T) -> String {
     let bytes = serde_json::to_vec(v).unwrap_or_default();
-    datazen_schema_diff::job::fnv1a64_hex(&bytes)
+    datazen::migration::schema_diff::job::fnv1a64_hex(&bytes)
 }
 
 fn source_session_id(request: &PrepareRequest) -> String {
@@ -84,7 +84,9 @@ async fn owner_connection_id(state: &AppState, session_id: &str) -> Result<Strin
         .runtime()
         .map_err(crate::platform::into_command_error)?;
     runtime
-        .connection_id_for_session(&datazen_runtime::connection::DbSessionId::new(session_id))
+        .connection_id_for_session(&datazen::execution::runtime::connection::DbSessionId::new(
+            session_id,
+        ))
         .map(|id| id.to_string())
         .ok_or_else(|| CommandError::Validation("Migration connection owner is unavailable".into()))
 }
@@ -141,7 +143,7 @@ impl SchemaDiffJobBackend for AppStateBackend {
     async fn prepare_plan(
         &self,
         request: &PrepareRequest,
-        _cancel: &datazen_runtime::job::CancelToken,
+        _cancel: &datazen::jobs::CancelToken,
     ) -> Result<PreparedPlan, SchemaDiffPlanError> {
         let (plan, tgt_sess, target_db, target_schema) = match request {
             PrepareRequest::Table {
@@ -246,10 +248,10 @@ impl SchemaDiffJobBackend for AppStateBackend {
             handler_version: 1,
             checkpoint_version: 1,
             selection_revision: 1,
-            created_at: datazen_platform_api::id::Timestamp::new(
+            created_at: datazen::shared::id::Timestamp::new(
                 chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
             ),
-            expires_at: datazen_platform_api::id::Timestamp::new(
+            expires_at: datazen::shared::id::Timestamp::new(
                 (chrono::Utc::now() + chrono::Duration::hours(2))
                     .format("%Y-%m-%dT%H:%M:%SZ")
                     .to_string(),
@@ -274,9 +276,9 @@ impl SchemaDiffJobBackend for AppStateBackend {
             } else {
                 "nonAtomicDDL".into()
             },
-            recovery_policy: datazen_schema_diff::job::RecoveryPolicy::parse(recovery_policy_str(
-                transactional_ddl,
-            ))
+            recovery_policy: datazen::migration::schema_diff::job::RecoveryPolicy::parse(
+                recovery_policy_str(transactional_ddl),
+            )
             .ok_or(SchemaDiffPlanError::RecoveryPolicyInvalid(
                 "policy parse".into(),
             ))?,
@@ -337,7 +339,7 @@ impl SchemaDiffJobBackend for AppStateBackend {
         &self,
         plan: &SchemaDiffPlan,
         request: &ApplyRequest,
-        cancel: &datazen_runtime::job::CancelToken,
+        cancel: &datazen::jobs::CancelToken,
     ) -> Result<SchemaDiffDeployResult, SchemaDiffPlanError> {
         let result = crate::commands::schema_diff::execute_schema_diff_deploy_impl_with_cancel(
             &self.state,
@@ -469,8 +471,8 @@ async fn target_schema_from_config(state: &AppState, session: &str) -> Option<St
         .and_then(|c| c.schema)
 }
 
-pub(super) fn owner_ref(_state_unused: &AppState) -> datazen_platform_api::OwnerRef {
-    datazen_platform_api::OwnerRef::ClientSession {
+pub(super) fn owner_ref(_state_unused: &AppState) -> datazen::OwnerRef {
+    datazen::OwnerRef::ClientSession {
         // 描述性字段：与本链 ctx 的客户端实例取值一致（落在 `owner_json` 里，从不被比对）。
         client_instance_id: ClientInstanceId::new("datazen-local-client"),
         purpose: "migration".into(),
@@ -524,11 +526,11 @@ pub struct SchemaDiffPrepareEnvelope {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_platform_api::id::Timestamp;
-    use datazen_schema_diff::job::{RecoveryPolicy, SchemaDiffFrozenPlan};
-    use datazen_schema_diff::types::{
+    use datazen::migration::schema_diff::job::{RecoveryPolicy, SchemaDiffFrozenPlan};
+    use datazen::migration::schema_diff::types::{
         PlanRequirement, PlanStatement, RollbackCompleteness, StatementRisk,
     };
+    use datazen::shared::id::Timestamp;
 
     #[test]
     fn apply_payload_persists_only_allowlisted_schema_diff_receipt_fields() {
@@ -670,10 +672,10 @@ pub async fn register_plan_for_apply(
         handler_version: 1,
         checkpoint_version: 1,
         selection_revision: 1,
-        created_at: datazen_platform_api::id::Timestamp::new(
+        created_at: datazen::shared::id::Timestamp::new(
             chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
         ),
-        expires_at: datazen_platform_api::id::Timestamp::new(
+        expires_at: datazen::shared::id::Timestamp::new(
             (chrono::Utc::now() + chrono::Duration::hours(2))
                 .format("%Y-%m-%dT%H:%M:%SZ")
                 .to_string(),
@@ -689,12 +691,12 @@ pub async fn register_plan_for_apply(
             .await
             .map_err(|e| e)?,
         schema_fingerprint: fingerprint,
-        mapping_fingerprint: datazen_schema_diff::job::fnv1a64_hex(
+        mapping_fingerprint: datazen::migration::schema_diff::job::fnv1a64_hex(
             &serde_json::to_vec(&plan.tables).unwrap_or_default(),
         ),
         consistency: "tableSnapshot".into(),
         transaction_scope: "task".into(),
-        recovery_policy: datazen_schema_diff::job::RecoveryPolicy::ReadOnlyVerify,
+        recovery_policy: datazen::migration::schema_diff::job::RecoveryPolicy::ReadOnlyVerify,
         body_artifact_ids: vec![],
         body_digests: vec![],
         confirmed_actions: Vec::new(),

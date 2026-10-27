@@ -199,7 +199,7 @@ DataZen 有两种启动方式。
 
 使用 `--mcp-stdio` 启动时，它不会创建窗口，而是建立 Tokio Runtime，以无头 MCP Server 的形式运行。外部 Agent 可以通过 stdio 调用 DataZen 暴露的数据库工具和 Workflow。
 
-![DataZen 两种运行模式](diagrams/datazen-runtime-modes.svg)
+![DataZen 两种运行模式](diagrams/datazen-modes.svg)
 
 两种模式都会构建同一套核心 `AppState`，其中包含 Driver Registry、Connection Manager、Store、Schema Cache、Workflow、AI、MCP Client 和 Wapp Manager 等共享服务。
 

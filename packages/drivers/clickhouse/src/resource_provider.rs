@@ -24,7 +24,7 @@
 //! # Namespace
 //!
 //! `DatabaseDriver::has_schema_level` is the default `false` and
-//! `ClickHouseDriver::qualify_sql_target` calls `sql_target::qualify_sql` with the
+//! `ClickHouseDriver::qualify_sql_target` calls `sql_execution::target::qualify_sql` with the
 //! database only; the many `schema` mentions in this crate are ClickHouse's own DDL
 //! object names, not a namespace level. The shape declares an **optional** `Database`
 //! level and nothing else, so a `Schema` or `Catalog` is refused by name instead of

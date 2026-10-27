@@ -5,9 +5,9 @@ use super::server::{DataZenMcpServer, MCP_ALL_TOOLS};
 use super::types::*;
 #[cfg(test)]
 use crate::mcp::tool_help;
-use datazen_feature_core::ai::budget;
-use datazen_feature_core::mcp::allowlist;
-use datazen_feature_core::mcp::permission;
+use datazen::ai::budget;
+use datazen::mcp::allowlist;
+use datazen::mcp::permission;
 #[cfg(test)]
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::*;
@@ -19,7 +19,19 @@ impl DataZenMcpServer {
         uri: &str,
     ) -> Result<ReadResourceResult, McpError> {
         if uri == "datazen://connections" {
-            let connections = self.app_state.store.get_connections().await;
+            let connections =
+                match crate::platform::ipc::require_connection_service(&self.app_state) {
+                    Ok(service) => match service
+                        .list_redacted(&crate::platform::connections::local_connection_scope())
+                        .await
+                    {
+                        Ok(list) => list,
+                        Err(error) => {
+                            return Err(McpError::internal_error(error.to_string(), None))
+                        }
+                    },
+                    Err(error) => return Err(McpError::internal_error(error.to_string(), None)),
+                };
             let result: Vec<serde_json::Value> = connections
                 .iter()
                 .filter(|c| allowlist::is_connection_allowed(&c.id, &self.allowed_connection_ids))
@@ -61,11 +73,11 @@ impl DataZenMcpServer {
                     "[]", uri,
                 )]));
             }
-            let history = self
-                .app_state
-                .store
-                .get_query_history(50, None, None, None)
-                .await;
+            // D6 第一切片：读取经模块服务（同一 `HistoryDb`）。服务未注入是
+            // 装配错误，按 fail-closed 上报 MCP 内部错误，不仍装成空历史。
+            let service = crate::platform::ipc::require_history_service(&self.app_state)
+                .map_err(|error| McpError::internal_error(error.to_string(), None))?;
+            let history = service.recent_query_history(50, None, None, None).await;
             let filtered: Vec<_> = history
                 .into_iter()
                 .filter(|entry| {

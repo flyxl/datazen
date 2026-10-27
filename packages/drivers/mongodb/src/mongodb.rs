@@ -195,7 +195,7 @@ impl MongodbDriver {
         start: Instant,
     ) -> Result<(), DriverError>
     where
-        S: futures_util::Stream<Item = Result<Document, mongodb::error::Error>> + Unpin,
+        S: futures_util::Stream<Item = Result<Document, mongodb::shared::error::Error>> + Unpin,
     {
         let mut peek = Vec::with_capacity(QUERY_STREAM_BATCH_SIZE);
         while peek.len() < QUERY_STREAM_BATCH_SIZE {

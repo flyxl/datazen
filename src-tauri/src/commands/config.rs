@@ -6,9 +6,15 @@ use std::path::PathBuf;
 use tauri::State;
 
 pub(crate) async fn get_groups_impl(state: &AppState) -> Result<Vec<String>, CommandError> {
-    let scope = state.organization_scope()?;
-    let services = crate::platform::ipc::require_application_services(state)?;
-    crate::commands::port_call::port_cmd(services.connections.groups(&scope).await, "get_groups")
+    let scope = state.connection_scope()?;
+    let service = crate::platform::ipc::require_connection_service(state)?;
+    match service.groups(&scope).await {
+        Ok(groups) => Ok(groups),
+        Err(datazen::connection::ConnectionError::NotFound(entity)) => {
+            Err(CommandError::NotFound(entity))
+        }
+        Err(other) => Err(CommandError::Internal(other.to_string())),
+    }
 }
 
 pub(crate) async fn save_groups_impl(
@@ -16,18 +22,20 @@ pub(crate) async fn save_groups_impl(
     groups: Vec<String>,
 ) -> Result<(), CommandError> {
     tracing::info!(count = groups.len(), "save_groups");
-    let scope = state.organization_scope()?;
-    let services = crate::platform::ipc::require_application_services(state)?;
-    crate::commands::port_call::port_cmd(
-        services.connections.save_groups(&scope, groups).await,
-        "save_groups",
-    )
+    let scope = state.connection_scope()?;
+    let service = crate::platform::ipc::require_connection_service(state)?;
+    match service.save_groups(&scope, groups).await {
+        Ok(()) => Ok(()),
+        Err(datazen::connection::ConnectionError::NotFound(entity)) => {
+            Err(CommandError::NotFound(entity))
+        }
+        Err(other) => Err(CommandError::Internal(other.to_string())),
+    }
 }
 
 pub(crate) async fn get_settings_impl(state: &AppState) -> Result<AppSettings, CommandError> {
-    let services = crate::platform::ipc::require_application_services(state)?;
-    let value = services
-        .settings_service()
+    let settings_service = crate::platform::ipc::require_settings_service(state)?;
+    let value = settings_service
         .read_app_settings()
         .await
         .map_err(|_| CommandError::Internal("Unable to read settings".into()))?;
@@ -39,18 +47,16 @@ pub(crate) async fn save_settings_impl(
     state: &AppState,
     mut settings: AppSettings,
 ) -> Result<(), CommandError> {
-    let shared =
-        datazen_application::settings::SettingsService::normalize(settings.shared_settings())
-            .map_err(|error| CommandError::Validation(error.to_string()))?;
+    let shared = datazen::settings::SettingsService::normalize(settings.shared_settings())
+        .map_err(|error| CommandError::Validation(error.to_string()))?;
     settings
         .apply_shared_settings(shared)
         .map_err(CommandError::Validation)?;
     tracing::debug!(theme_mode = %settings.theme.mode, "save_settings");
-    let services = crate::platform::ipc::require_application_services(state)?;
+    let settings_service = crate::platform::ipc::require_settings_service(state)?;
     let value = serde_json::to_value(&settings)
         .map_err(|_| CommandError::Internal("Unable to persist settings".into()))?;
-    services
-        .settings_service()
+    settings_service
         .save_app_settings(value)
         .await
         .map_err(|_| CommandError::Internal("Unable to persist settings".into()))?;
@@ -75,19 +81,24 @@ pub(crate) async fn save_settings_impl(
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SaveSharedSettingsRequest {
-    pub settings: datazen_platform_api::settings::SharedSettings,
+    pub settings: datazen::settings::SharedSettings,
 }
 
 #[tauri::command]
 pub async fn get_shared_settings(
     state: State<'_, AppState>,
-) -> Result<datazen_platform_api::settings::SharedSettings, CommandError> {
-    // 设置用例归位到应用层（§5.1.2 第二步）：仓储由 `ApplicationServices` 持有，
-    // 命令只调用例。这里**不得**再直读宿主 store——宿主直读会把「应用层自己跑
-    // 用例」退化成「宿主替它跑」，并在装配失败时留下第二条事实源。
-    let services = crate::platform::ipc::require_application_services(state.inner())?;
-    services
-        .settings_service()
+) -> Result<datazen::settings::SharedSettings, CommandError> {
+    get_shared_settings_impl(state.inner()).await
+}
+
+pub(crate) async fn get_shared_settings_impl(
+    state: &AppState,
+) -> Result<datazen::settings::SharedSettings, CommandError> {
+    // 设置用例自 D1 收尾后由 `datazen::settings` 拥有，宿主 adapter
+    // 持有同一个服务实例，命令只调用例。这里**不得**再直读宿主 store——
+    // 宿主直读会留下第二条事实源。
+    let settings_service = crate::platform::ipc::require_settings_service(state)?;
+    settings_service
         .read()
         .await
         .map_err(|_| CommandError::Internal("Unable to read settings".into()))
@@ -97,20 +108,26 @@ pub async fn get_shared_settings(
 pub async fn save_shared_settings(
     state: State<'_, AppState>,
     request: SaveSharedSettingsRequest,
-) -> Result<datazen_platform_api::settings::SharedSettings, CommandError> {
-    // 同上：写入也走应用层用例，宿主的 store 只作为端口实现被注入。
-    let services = crate::platform::ipc::require_application_services(state.inner())?;
-    let saved = services
-        .settings_service()
-        .save(request.settings)
+) -> Result<datazen::settings::SharedSettings, CommandError> {
+    save_shared_settings_impl(state.inner(), request.settings).await
+}
+
+pub(crate) async fn save_shared_settings_impl(
+    state: &AppState,
+    settings: datazen::settings::SharedSettings,
+) -> Result<datazen::settings::SharedSettings, CommandError> {
+    // 同上：写入也走模块用例，宿主的 store 只作为端口实现被注入。
+    let settings_service = crate::platform::ipc::require_settings_service(state)?;
+    let saved = settings_service
+        .save(settings)
         .await
         .map_err(|error| match error {
-            datazen_application::settings::SettingsError::Validation(message) => {
+            datazen::settings::SettingsError::Validation(message) => {
                 CommandError::Validation(message)
             }
             _ => CommandError::Internal("Unable to persist settings".into()),
         })?;
-    let full_settings = get_settings_impl(state.inner()).await?;
+    let full_settings = get_settings_impl(state).await?;
     crate::redis_flush_gate::sync_from_settings(&full_settings);
     Ok(saved)
 }

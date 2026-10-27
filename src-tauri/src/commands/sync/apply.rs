@@ -1,6 +1,6 @@
 //! Compare selected tables, generate ChangeSet SQL, and apply.
 
-use datazen_platform_api::dto::job::JobState;
+use datazen::jobs::domain::job::JobState;
 
 use super::super::error::{CmdExt, CommandError};
 use super::super::AppState;
@@ -15,8 +15,8 @@ use crate::data_sync::{
     ComparisonResult, ConflictPolicy, DataSyncError, Endpoint, SyncOptions, SyncSourceFilter,
     TableChangeSet, TableMapping, TableMappingStatus, TableResult,
 };
+use datazen::services::schema_scope::metadata_schema;
 use datazen_driver_api::{LegacySqlDialect, SqlDialect};
-use datazen_feature_core::services::schema_scope::metadata_schema;
 use futures_util::FutureExt;
 use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
@@ -81,17 +81,17 @@ pub(crate) async fn start_data_sync_prepare_job_impl(
     options: SyncOptions,
     source_filters: HashMap<String, SyncSourceFilter>,
     mapping_overrides: Option<Vec<TableMapping>>,
-) -> Result<datazen_platform_api::dto::job::JobView, CommandError> {
+) -> Result<datazen::jobs::domain::job::JobView, CommandError> {
     let source_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         &source_db_session_id,
-        datazen_runtime::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let target_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         &target_db_session_id,
-        datazen_runtime::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let source_config = source_context.config.clone();
@@ -392,13 +392,13 @@ async fn finish_async_prepare_preview(
     let source_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         source_job_session_id,
-        datazen_runtime::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let target_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         target_job_session_id,
-        datazen_runtime::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let source_driver = source_context.driver.clone();
@@ -690,7 +690,7 @@ pub(crate) async fn generate_data_sync_sql_impl(
     let target_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         &target_db_session_id,
-        datazen_runtime::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let tgt_config = target_context.config.clone();

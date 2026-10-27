@@ -142,7 +142,7 @@ impl DatabaseDriver for DuckDbDriver {
     /// (`"schema"."t"`, same shape as PostgreSQL per the F7 baseline). The
     /// database dimension is not inlined — it is served by the driver's own
     /// per-database resource. Parse failures pass SQL through unchanged; see
-    /// `sql_target::qualify_sql`.
+    /// `sql_execution::target::qualify_sql`.
     fn qualify_sql_target(
         &self,
         sql: &str,

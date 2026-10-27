@@ -2,19 +2,17 @@
 //!
 //! The registry's rules — which workflows a user sees, how a definition is
 //! encoded, what a saved workflow looks like — live in
-//! `datazen_feature_core::workflow::registry`. This module only binds them to
+//! `datazen::workflow::registry`. This module only binds them to
 //! the desktop store: the rows are handed over as a trait object, so the
 //! shared crate never names the desktop persistence type.
 
 use crate::platform::scope::is_local_scope;
 use crate::store::{AppDb, AppDbError, WorkflowRecord, WorkflowVisibility as DbVisibility};
-use datazen_feature_core::workflow::model::{
-    WorkflowDefinition, WorkflowListItem, WorkflowVisibility,
-};
-use datazen_feature_core::workflow::registry::{
+use datazen::shared::scope::OrganizationScope;
+use datazen::workflow::model::{WorkflowDefinition, WorkflowListItem, WorkflowVisibility};
+use datazen::workflow::registry::{
     WorkflowDefinitionRecord, WorkflowDefinitionRepository, WorkflowRegistry as CoreRegistry,
 };
-use datazen_platform_api::ports::scope::OrganizationScope;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -214,8 +212,8 @@ impl WorkflowRegistry {
 mod tests {
     use super::*;
     use chrono::Utc;
-    use datazen_feature_core::workflow::model::WorkflowStep;
-    use datazen_platform_api::id::OrganizationId;
+    use datazen::shared::id::OrganizationId;
+    use datazen::workflow::model::WorkflowStep;
 
     fn sample_def(id: &str, visibility: WorkflowVisibility) -> WorkflowDefinition {
         WorkflowDefinition {

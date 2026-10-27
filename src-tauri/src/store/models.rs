@@ -1,30 +1,14 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use datazen_ai_api::AiProviderConfig;
+use datazen::ai::AiProviderConfig;
 use datazen_driver_api::{ConnectionConfig, SavedTunnel};
 
 use super::settings::AppSettings;
 
-/// Record of a executed SQL statement.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QueryHistoryEntry {
-    pub id: String,
-    /// Owning persisted connection id (config).
-    pub connection_id: String,
-    /// Session-active logical database when the statement ran ("" = unknown/legacy rows).
-    pub database: String,
-    /// Schema namespace when known (PG search_path is not session-tracked yet → usually None).
-    #[serde(default)]
-    pub schema: Option<String>,
-    pub sql: String,
-    pub executed_at: DateTime<Utc>,
-    pub execution_time_ms: u64,
-    pub rows_affected: Option<u64>,
-    pub success: bool,
-    pub error_message: Option<String>,
-}
+// D6 第一切片：查询历史条目的唯一定义在 `datazen::history`
+// （domain::query），本模块只再导出，序列化形状（camelCase）钉在模块单测。
+pub use datazen::history::QueryHistoryEntry;
 
 /// A saved SQL favorite, backed by one `.sql` file under the favorites root.
 ///
@@ -200,9 +184,9 @@ pub(crate) struct StoreCache {
     pub(super) schema_diff_profiles: Vec<crate::schema_diff::SchemaDiffProfile>,
     pub(super) schema_diff_profiles_loaded: bool,
     /// Lazy: loaded on first named-view access (`named_views.json`).
-    pub(super) named_views: Vec<datazen_feature_core::services::named_views::NamedView>,
+    pub(super) named_views: Vec<datazen::named_views::NamedView>,
     pub(super) named_views_loaded: bool,
     pub(super) ai_config: Option<AiProviderConfig>,
-    pub(super) ai_settings_config: Option<datazen_ai_api::AiSettingsConfig>,
+    pub(super) ai_settings_config: Option<datazen::ai::AiSettingsConfig>,
     pub(super) ai_config_loaded: bool,
 }

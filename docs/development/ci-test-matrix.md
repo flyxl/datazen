@@ -11,7 +11,7 @@
 | Host 前端单测 | ✅ `basic`：`pnpm test:unit`；`all`：`pnpm test:unit:driver-set`（**收窄至 codegen 敏感文件**，硬门禁，理由见 §2.1.1） | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit` / `pnpm test:unit:driver-set` |
 | 驱动 UI 单测 | ✅ `pnpm test:unit:drivers` | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit:drivers` |
 | TypeScript | ✅ `pnpm typecheck`（**单引擎**：`tsrs` = TS 7.1-dev，见 §2.1.4） | 同上（`union-typecheck` **也是**只跑 `tsrs`，见 §6.2） | `pnpm typecheck` / `pnpm typecheck:tsc` / `pnpm typecheck:tsrs` |
-| Host Rust lib | ✅ `cargo test -p datazen --lib`（basic features） | 完整 release 构建 | `cargo test -p datazen --lib` |
+| Host Rust lib | ✅ `cargo test -p datazen_desktop --lib`（basic features） | 完整 release 构建 | `cargo test -p datazen_desktop --lib` |
 | driver-api | ✅ | 随构建链接 | `cargo test -p datazen-driver-api --lib` |
 | ai-api | ✅ | 随构建链接 | `cargo test -p datazen-ai-api --lib` |
 | 平台内核 crate（`runtime` / `application` / `platform-api` / `server`） | ✅ `pnpm test:platform-crates`，集合由脚本发现 | 随构建链接 | `pnpm test:platform-crates` |
@@ -362,7 +362,7 @@ cargo test --lib -p datazen-driver-api
 DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --tests
 # datazen 需要 features 选择注入的驱动
 FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
-cargo test -p datazen --lib --features "$FEATURES"
+cargo test -p datazen_desktop --lib --features "$FEATURES"
 # 恢复被 inject 的 tracked 文件，确保后续步骤工作在干净状态
 node scripts/driver-file-stash.mjs restore
 # ai-api 不依赖注入产物，放在 restore 之后
@@ -382,8 +382,8 @@ feature-resolved 图，而 `dtolnay/rust-toolchain@stable` 只装在 rust job；
 （`ci.yml` §2.1）没有 Rust 工具链。并进那一步只会得到一个必然失败的步骤。
 
 **为什么这里没有任何 crate 名单**：`scripts/lib/cargoWorkspace.mjs` 的 `LAYERS` 表把
-`manifest_path` 映射到层，规则的主体由 §2.4 的路径推出。因此 `packages/application`、
-`packages/platform-api`、`server/` 一旦被加进 workspace `members`，立刻自动入网——
+`manifest_path` 映射到层，规则的主体由 §2.4 的路径推出。因此 `modules`、
+`modules/src/platform_api`、`server/` 一旦被加进 workspace `members`，立刻自动入网——
 **新增内核 crate 不需要改 `ci.yml`，也不需要改 `package.json`**。列不出来的 member 是
 **error** 不是 pass：门禁无法分类的成员，就是没有任何规则覆盖的成员。
 
@@ -392,7 +392,7 @@ feature-resolved 图，而 `dtolnay/rust-toolchain@stable` 只装在 rust job；
 `cargo test -p …`（lib 单测、bin 单测、全部 `tests/` 集成 target 与 doc test 一次
 覆盖；`EXTRA_TARGETS` 只补 release-only 条目——此前多跑的那次 `--lib` 是它的严格
 子集，实测让 2,537 个测试函数每轮执行两遍）。它补上的是计划 :269 的空缺：
-`datazen-runtime` 当时带着 130 个通过的 Rust 单测，而 CI 里没有任何一步执行它们。
+`datazen` 当时带着 130 个通过的 Rust 单测，而 CI 里没有任何一步执行它们。
 `--require-layers=<ids>` 可在某个阶段把「层存在但没被测到」从静默变成报错。
 
 **变异自证**：`scripts/platform-arch-selfcheck.mjs` 临时改写 `Cargo.toml` / 新增探针 crate，
@@ -530,7 +530,7 @@ pnpm test:unit:drivers
 node scripts/resolve-drivers.mjs --drivers=basic
 cargo test --lib -p datazen-driver-api -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis
 FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
-cargo test -p datazen --lib --features "$FEATURES"
+cargo test -p datazen_desktop --lib --features "$FEATURES"
 node scripts/driver-file-stash.mjs restore
 cargo test -p datazen-ai-api --lib
 pnpm test:platform-arch

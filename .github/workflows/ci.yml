@@ -366,14 +366,19 @@ jobs:
       - name: Rust unit tests (datazen)
         run: |
           FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
-          cargo test -p datazen --lib --features "$FEATURES"
+          cargo test -p datazen_desktop --lib --features "$FEATURES"
 
       - name: Restore managed files
         if: always()
         run: node scripts/driver-file-stash.mjs restore
 
-      - name: Rust unit tests (datazen-ai-api)
-        run: cargo test -p datazen-ai-api --lib
+      # datazen-ai-api 于 D1.5（46dc15b）退役并入 datazen::ai，这里的
+      # crate 级测试步骤随之换代：逐项编译 modules 的可选业务 feature。
+      # 集成测试由后面的 platform-crate runner 以 --all-features 统一收集；
+      # 这里使用 --lib，避免不具备 execution/test-harness 的单 feature 组合
+      # 误编译需要运行时夹具的集成测试。
+      - name: Rust unit tests (datazen)
+        run: cargo test -p datazen --lib --features settings,ai,connection,named_views
 
       # ── 平台内核架构门禁 ──
       #
@@ -383,7 +388,7 @@ jobs:
       # 断言的是提交态的 workspace 清单，与本地开发者看到的一致。
       #
       # 门禁本身不带 crate 名单：清单来自 workspace membership + §2.4 的路径，
-      # 新 crate 落到 packages/application / packages/platform-api / server 下就自动入网，
+       # 新 crate 落到 modules / server 下就自动入网，
       # 不需要在这里改任何一处列表。列不出来的 member 是 error 不是 pass。
       - name: Platform crate dependency boundaries
         run: pnpm test:platform-arch
@@ -402,7 +407,7 @@ jobs:
       # 与上面那条边界门禁的分工：边界门禁的结论行已被 R 阶段全量回归记录在案，
       # 因此本轮策略是「只约束新增 crate」（决策 c 方案 3），不追溯既有代码，也不
       # 改动那条门禁。所以本门禁的范围由脚本里的显式 TARGET_CRATES 列表决定
-      # （当前仅 packages/platform-infra），而不是由 workspace 路径推导。
+      # （当前仅 packages/infra），而不是由 workspace 路径推导。
       #
       # 只禁裸 unwrap()：expect("…") 一律放行（AGENTS.md 禁的是「裸」）。#[cfg(test)]
       # item 与 #[test] / #[tokio::test] 函数按语法整段剔除，不按文件名。目标 crate
@@ -418,7 +423,7 @@ jobs:
       - name: Driver type isolation (T-01..T-03)
         run: pnpm test:driver-types
 
-      # 计划 :269 的 datazen-runtime CI 空缺：core crate 及其后继的 Rust 单测
+      # 计划 :269 的共享运行时 CI 空缺：core crate 及其后继的 Rust 单测
       # 在此统一执行。crate 集合同样由脚本发现，新增 core crate 无需改 CI。
       - name: Rust unit tests (platform core crates)
         run: pnpm test:platform-crates
@@ -438,7 +443,7 @@ jobs:
       # rustc 版本在**运行前**取：产物 build 段要记编译器版本，编完再取就晚了。
       - name: CM-60 latency benchmark (release)
         run: |
-          DZ_CM60_RUSTC_VERSION="$(rustc --version)" cargo run --release -p datazen-runtime --bin cm60-bench -- \
+           DZ_CM60_RUSTC_VERSION="$(rustc --version)" cargo run --release -p datazen --features execution,jobs,test-harness --bin cm60-bench -- \
             --vcpus 4 --mem-bytes 8589934592 --out target/bench
       # 基准产物不在版本控制里（/target 被 gitignore），不存成 artifact 就等于
       # 没人能复核一次红灯。`if: always()` 是因为上面那步红的时候这一步照样要跑。

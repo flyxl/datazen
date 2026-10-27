@@ -1,31 +1,31 @@
 //! Test host ports for the shared Monitor policy/Workflow SQL execution slice.
 //! Real ResourceProviders execute SQL; this does not model desktop receipts or scheduling.
 use async_trait::async_trait;
-use datazen_driver_api::{resource as dr, session as ds};
-use datazen_feature_core::{
-    dashboard::schedule_grant::MonitorGrant,
-    workflow::{
-        error::WorkflowError,
-        resource_execution::{PreparedExecution, ResourceExecutionHost},
-    },
-};
-use datazen_platform_api::target::ExecutionTarget;
-use datazen_platform_api::{
-    error::PortError,
-    id::*,
-    ports::{policy::*, profile::*},
-    RequestContext,
-};
-use datazen_runtime::{
+use datazen::execution::application::policy::{DelegationGrant, PolicyChangeStream};
+use datazen::execution::runtime::driver_mapping as mapping;
+use datazen::execution::runtime::{
     connection as rt,
     registry::{backend::*, SessionBackend},
 };
+use datazen::execution::target::ExecutionTarget;
+use datazen::workflow::{
+    resource_execution::{PreparedExecution, ResourceExecutionHost},
+    WorkflowError,
+};
+use datazen::{
+    connection::{ProfileRecord, ProfileRepository, ProfileScope},
+    execution::application::{
+        AuthorizationAction, AuthorizationDecision, AuthorizationSubject, PolicyService,
+    },
+    shared::error::PortError,
+    shared::id::*,
+    RequestContext,
+};
+use datazen_driver_api::{resource as dr, session as ds};
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc,
 };
-#[path = "../../../../../src-tauri/src/platform/resource_mapping.rs"]
-mod mapping;
 struct Profiles {
     revision: AtomicU64,
 }
@@ -51,7 +51,7 @@ impl ProfileRepository for Profiles {
     async fn create(
         &self,
         _: &RequestContext,
-        _: datazen_platform_api::dto::profile::ProfileDraft,
+        _: datazen::connection::dto::ProfileDraft,
         _: &IdempotencyKey,
     ) -> Result<ProfileRecord, PortError> {
         unreachable!()
@@ -61,7 +61,7 @@ impl ProfileRepository for Profiles {
         _: &RequestContext,
         _: ConnectionId,
         _: ConfigRevision,
-        _: datazen_platform_api::dto::profile::ProfilePatch,
+        _: datazen::connection::dto::ProfilePatch,
     ) -> Result<ProfileRecord, PortError> {
         unreachable!()
     }
@@ -82,15 +82,27 @@ impl ProfileRepository for Profiles {
 }
 
 pub struct Policy {
-    pub grant: std::sync::RwLock<MonitorGrant>,
+    pub revoked: std::sync::atomic::AtomicBool,
+    target: ExecutionTarget,
+    delegation: datazen::shared::context::DelegationRef,
+    config_revision: u64,
 }
 impl Policy {
-    fn current(&self, ctx: &RequestContext) -> Result<MonitorGrant, PortError> {
-        let grant = self.grant.read().unwrap().clone();
-        grant
-            .validate(ctx, chrono::Utc::now())
-            .map_err(|_| PortError::TokenInvalid)?;
-        Ok(grant)
+    fn current(&self, ctx: &RequestContext) -> Result<(), PortError> {
+        if self.revoked.load(Ordering::SeqCst) || ctx != &self.context() {
+            return Err(PortError::TokenInvalid);
+        }
+        Ok(())
+    }
+    fn context(&self) -> RequestContext {
+        RequestContext::new(
+            self.delegation.organization_id.clone(),
+            self.delegation.principal_id.clone(),
+            None,
+            self.delegation.client_instance_id.clone(),
+            datazen::shared::id::RequestId::new("monitor-live-request"),
+            Some(self.delegation.delegation_id.clone()),
+        )
     }
 }
 #[async_trait]
@@ -101,9 +113,9 @@ impl PolicyService for Policy {
         subject: AuthorizationSubject,
         action: AuthorizationAction,
     ) -> Result<AuthorizationDecision, PortError> {
-        let grant = self.current(ctx)?;
+        self.current(ctx)?;
         Ok(
-            if subject == AuthorizationSubject::Delegated(grant.delegation())
+            if subject == AuthorizationSubject::Delegated(self.delegation.clone())
                 && matches!(
                     action,
                     AuthorizationAction::Connect | AuthorizationAction::Query
@@ -118,16 +130,18 @@ impl PolicyService for Policy {
         )
     }
     async fn resolve_delegation(&self, ctx: &RequestContext) -> Result<DelegationGrant, PortError> {
+        self.current(ctx)?;
         Ok(DelegationGrant {
-            delegation: self.current(ctx)?.delegation(),
+            delegation: self.delegation.clone(),
             actions: vec![AuthorizationAction::Connect, AuthorizationAction::Query],
         })
     }
     async fn verify_delegation(
         &self,
         ctx: &RequestContext,
-        delegation: datazen_platform_api::context::DelegationRef,
+        delegation: datazen::shared::context::DelegationRef,
     ) -> Result<DelegationGrant, PortError> {
+        self.current(ctx)?;
         let grant = self.resolve_delegation(ctx).await?;
         if grant.delegation != delegation {
             return Err(PortError::TokenInvalid);
@@ -143,29 +157,24 @@ impl PolicyService for Policy {
         command: &str,
         input: &serde_json::Value,
     ) -> Result<AuthorizationDecision, PortError> {
-        let grant = self.current(ctx)?;
-        let scope = grant
-            .scope(
-                target,
-                (action != AuthorizationAction::Connect).then_some(command),
-            )
-            .ok_or(PortError::TokenInvalid)?;
-        if scope.config_revision != 1 {
+        self.current(ctx)?;
+        if target != &self.target
+            || action == AuthorizationAction::Query && command != "query"
+            || action != AuthorizationAction::Connect
+                && !input["sql"].as_str().is_some_and(|sql| {
+                    let trimmed = sql.trim_start().to_ascii_uppercase();
+                    trimmed.starts_with("SELECT ") || trimmed.starts_with("WITH ")
+                })
+        {
             return Err(PortError::TokenInvalid);
-        }
-        if action != AuthorizationAction::Connect {
-            datazen_feature_core::dashboard::schedule_grant::validate_read_only_sql(
-                input["sql"].as_str().ok_or(PortError::TokenInvalid)?,
-            )
-            .map_err(|_| PortError::TokenInvalid)?;
         }
         self.authorize(ctx, subject, action).await
     }
     fn isolation_key(&self, ctx: &RequestContext) -> Result<PolicyIsolationKey, PortError> {
-        let grant = self.current(ctx)?;
+        self.current(ctx)?;
         Ok(PolicyIsolationKey::new(format!(
             "monitor:{}:{}",
-            grant.id, grant.revocation_version
+            self.delegation.delegation_id, self.config_revision
         )))
     }
     fn subscribe_version_changes(&self) -> PolicyChangeStream {
@@ -181,7 +190,7 @@ pub struct Lifecycle {
     pub execution_ids: std::sync::Mutex<Vec<ExecutionId>>,
 }
 pub struct Host {
-    pub runtime: Arc<datazen_runtime::application::RuntimeConnectionUseCases>,
+    pub runtime: Arc<datazen::execution::application::RuntimeConnectionUseCases>,
     pub policy: Arc<Policy>,
     pub lifecycle: Arc<Lifecycle>,
     config: datazen_driver_api::ConnectionConfig,
@@ -193,16 +202,30 @@ pub fn host(
     config: datazen_driver_api::ConnectionConfig,
     driver: Arc<dyn datazen_driver_api::DatabaseDriver>,
     provider: Arc<dyn dr::ResourceProvider>,
-    grant: MonitorGrant,
+    context: RequestContext,
+    target: ExecutionTarget,
 ) -> Host {
     let lifecycle = Arc::new(Lifecycle::default());
-    let context = grant.context();
+    let delegation = datazen::shared::context::DelegationRef {
+        delegation_id: context
+            .delegation_id
+            .clone()
+            .expect("monitor fixture context carries delegation"),
+        organization_id: context.organization_id.clone(),
+        principal_id: context.principal_id.clone(),
+        client_instance_id: context.client_instance_id.clone(),
+        scope: "monitor-live".into(),
+        expires_at: datazen::shared::id::Timestamp::new("2099-01-01T00:00:00Z"),
+    };
     let policy = Arc::new(Policy {
-        grant: std::sync::RwLock::new(grant),
+        revoked: std::sync::atomic::AtomicBool::new(false),
+        target,
+        delegation,
+        config_revision: 1,
     });
     let publisher = Arc::new(std::sync::Mutex::new(None));
     let runtime = Arc::new(
-        datazen_runtime::application::RuntimeConnectionUseCases::new(
+        datazen::execution::application::RuntimeConnectionUseCases::new(
             Arc::new(Profiles {
                 revision: AtomicU64::new(1),
             }),
@@ -221,7 +244,10 @@ pub fn host(
     runtime
         .result_sink()
         .with_artifact_store(Arc::new(
-            datazen_runtime::artifact::FileArtifactRepository::open(artifacts_dir.path()).unwrap(),
+            datazen::execution::runtime::artifact::FileArtifactRepository::open(
+                artifacts_dir.path(),
+            )
+            .unwrap(),
         ))
         .unwrap();
     *publisher.lock().unwrap() = Some(runtime.result_sink());
@@ -265,14 +291,14 @@ impl ResourceExecutionHost for Host {
         command: &str,
         target: ExecutionTarget,
     ) -> Result<PreparedExecution, WorkflowError> {
-        let grant = self
-            .policy
+        self.policy
             .current(&self.context)
             .map_err(|_| WorkflowError::Validation("grant unavailable".into()))?;
-        let scope = grant
-            .scope(&target, Some(command))
-            .ok_or_else(|| WorkflowError::Validation("target outside grant".into()))?;
-        if id != "p" || revision != scope.config_revision {
+        if id != "p"
+            || revision != self.policy.config_revision
+            || target != self.policy.target
+            || command != "query"
+        {
             return Err(WorkflowError::Validation("revision outside grant".into()));
         }
         Ok(PreparedExecution {
@@ -287,18 +313,15 @@ impl ResourceExecutionHost for Host {
 struct NoArtifactChunks;
 
 #[async_trait]
-impl datazen_feature_core::services::ports::ArtifactChunkReader for NoArtifactChunks {
+impl datazen::services::ports::ArtifactChunkReader for NoArtifactChunks {
     async fn read_chunk(
         &self,
         _ctx: &RequestContext,
-        _artifact: &datazen_platform_api::id::ArtifactId,
-        _index: datazen_platform_api::id::Counter,
-    ) -> Result<
-        datazen_platform_api::dto::execution::ResultChunk,
-        datazen_platform_api::error::ApiError,
-    > {
-        Err(datazen_platform_api::error::ApiError::new(
-            datazen_platform_api::error::ApiErrorCode::CapabilityUnsupported,
+        _artifact: &datazen::shared::id::ArtifactId,
+        _index: datazen::shared::id::Counter,
+    ) -> Result<datazen::execution::ResultChunk, datazen::shared::error::ApiError> {
+        Err(datazen::shared::error::ApiError::new(
+            datazen::shared::error::ApiErrorCode::CapabilityUnsupported,
             "monitor test does not read result artifacts",
         ))
     }
@@ -346,7 +369,7 @@ struct Backend {
     lifecycle: Arc<Lifecycle>,
     config: datazen_driver_api::ConnectionConfig,
     provider: Arc<dyn dr::ResourceProvider>,
-    publisher: Arc<std::sync::Mutex<Option<datazen_runtime::application::RuntimeResultSink>>>,
+    publisher: Arc<std::sync::Mutex<Option<datazen::execution::application::RuntimeResultSink>>>,
     resources: tokio::sync::Mutex<std::collections::HashMap<String, (dr::ResourceHandle, u64)>>,
     budget: Arc<dyn dr::BudgetPort>,
 }
@@ -383,7 +406,9 @@ impl SessionBackend for Backend {
         Ok(OpenedResource {
             context: mapping::context(&observed.context),
             resource_id: id,
-            capabilities: datazen_runtime::registry::audit::CapabilityVersions::new("1", "1"),
+            capabilities: datazen::execution::runtime::registry::audit::CapabilityVersions::new(
+                "1", "1",
+            ),
             capability_snapshot: CapabilityProvenance::new(self.provider.provider_id(), "test", 1),
             driver_supports_cancel: false,
         })
