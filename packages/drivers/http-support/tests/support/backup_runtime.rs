@@ -1,12 +1,16 @@
 //! Test host ports; database effects always come from the real ResourceProvider.
 use async_trait::async_trait;
+use datazen::execution::application::policy::{DelegationGrant, PolicyChangeStream};
 use datazen::execution::runtime::driver_mapping as mapping;
 use datazen::execution::runtime::{
     connection as rt,
     registry::{backend::*, SessionBackend},
 };
 use datazen::{
-    ports::{profile::*, shared::policy::*},
+    connection::{ProfileRecord, ProfileRepository, ProfileScope},
+    execution::application::{
+        AuthorizationAction, AuthorizationDecision, AuthorizationSubject, PolicyService,
+    },
     shared::error::PortError,
     shared::id::*,
     RequestContext,

@@ -2,16 +2,16 @@
  * The host side of the shared-layer completeness contract (08 §3.3.1).
  *
  * The claim under test: `isCompleteFilter` (host) and `filter_is_complete`
- * (shared layer, `packages/feature-core/.../filter_sql`) judge the **same**
+ * (shared layer, `modules/src/table_browsing/executor/filter_sql`) judge the **same**
  * inputs the **same** way. A divergence means the host lets a condition
  * through that the back end then refuses (`grid.filter.incomplete`), or the
  * other way round: the host blocks a condition the back end would have
  * rendered.
  *
  * Both sides read the same canonical table —
- * `packages/feature-core/tests/fixtures/filter_completeness_cases.json` — so
+ * `modules/tests/fixtures/filter_completeness_cases.json` — so
  * the Rust integration test
- * (`packages/feature-core/tests/filter_empty_bounds_recheck.rs`) and this file
+ * (`modules/tests/filter_empty_bounds_recheck.rs`) and this file
  * judge identical inputs against identical expectations. A disagreement on any
  * row turns one of the two sides red.
  */
@@ -29,7 +29,7 @@ type Case = {
   expected_complete: boolean;
 };
 
-const TABLE_RELATIVE = 'packages/feature-core/tests/fixtures/filter_completeness_cases.json';
+const TABLE_RELATIVE = 'modules/tests/fixtures/filter_completeness_cases.json';
 
 /** Walk up from the test cwd until the workspace root (holds the table) is found. */
 function findRepoRoot(): string {
@@ -47,7 +47,8 @@ const CASES: Case[] = (
 ).cases;
 
 function condition(case_: Case): FilterCondition {
-  const value: Value = case_.value_kind === 'json_array' ? (case_.value as Value) : (case_.value as string);
+  const value: Value =
+    case_.value_kind === 'json_array' ? (case_.value as Value) : (case_.value as string);
   return { column: 'score', operator: case_.operator, value };
 }
 

@@ -6,17 +6,21 @@ mod restore_apply_support;
 use datazen::execution::runtime::{
     artifact::FileArtifactRepository,
     budget::{BudgetConfig, BudgetLedger},
-    job::*,
 };
 use datazen::{
-    dto::{execution::EffectOutcome, job::*},
+    backup::{restore_gateway::*, restore_job::*},
+    execution::domain::{ArtifactRepository, ArtifactSpec, ChunkPayload},
     execution::target::*,
-    ports::{artifact::*, job::JobRepository},
+    execution::EffectOutcome,
+    jobs::{
+        domain::job::{Checkpoint, JobDefinition, JobState},
+        domain::repository::JobRepository,
+        *,
+    },
     shared::context::OwnerRef,
     shared::id::*,
     RequestContext,
 };
-use datazen::{restore_gateway::*, restore_job::*};
 use datazen_driver_api::{DatabaseDriver, Value};
 use sha2::{Digest, Sha256};
 use std::sync::{Arc, Mutex};

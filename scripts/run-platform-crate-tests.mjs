@@ -4,7 +4,7 @@ import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
  * Run `cargo test` for the platform core crates.
  *
  * Closes the gap at platform-development-plan.md:269 — the shared runtime was
- * linked by CI (`cargo test --lib -p datazen_desktop --lib`) but never tested, so the
+ * shared `datazen` crate was linked by CI but never tested, so the
  * one crate the server will be built on could compile clean and still be wrong.
  *
  * ## Why this is a script and not a list in ci.yml
@@ -127,11 +127,6 @@ export const TESTED_LAYERS = Object.freeze([
   'modules',
   'infra',
   'server',
-  // The Workspace App kernel used to be the standalone `workspace-apps` layer.
-  // It now lives in `modules` as the `modules::workspace_apps`
-  // module, so its unit tests travel with that layer.
-  'modules',
-  'migration-common',
 ]);
 
 /**

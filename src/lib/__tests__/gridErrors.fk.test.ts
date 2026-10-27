@@ -1,6 +1,6 @@
 /**
  * The `grid.fk.*` codes are produced by the shared foreign-key navigation layer
- * (`packages/feature-core/src/services/fk_navigation.rs`). They must be registered
+ * (`modules/src/services/fk_navigation.rs`). They must be registered
  * here, otherwise `classifyGridError` returns `unknown` and the front end cannot
  * branch on them.
  */

@@ -1,6 +1,7 @@
 //! Test host ports for the shared Monitor policy/Workflow SQL execution slice.
 //! Real ResourceProviders execute SQL; this does not model desktop receipts or scheduling.
 use async_trait::async_trait;
+use datazen::execution::application::policy::{DelegationGrant, PolicyChangeStream};
 use datazen::execution::runtime::driver_mapping as mapping;
 use datazen::execution::runtime::{
     connection as rt,
@@ -9,10 +10,13 @@ use datazen::execution::runtime::{
 use datazen::execution::target::ExecutionTarget;
 use datazen::workflow::{
     resource_execution::{PreparedExecution, ResourceExecutionHost},
-    shared::error::WorkflowError,
+    WorkflowError,
 };
 use datazen::{
-    ports::{profile::*, shared::policy::*},
+    connection::{ProfileRecord, ProfileRepository, ProfileScope},
+    execution::application::{
+        AuthorizationAction, AuthorizationDecision, AuthorizationSubject, PolicyService,
+    },
     shared::error::PortError,
     shared::id::*,
     RequestContext,

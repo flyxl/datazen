@@ -636,7 +636,7 @@ impl PlatformAdapter {
             store.app_db(),
             store.app_db(),
             // Schema Diff profile 仓储（P3 第五条命令族）：profile 词汇与端口
-            // 由 `datazen-schema-diff` 持有，桌面实现仍是同一个加密仓储。
+            // 由 `datazen::migration::schema_diff` 持有，桌面实现仍是同一个加密仓储。
             store.clone(),
             // 迁移历史的只读 profile 投影：三件套共用同一个桌面仓储实例，
             // 命令壳只拿稳定 id / revision，不再点名具体 profile 文件。
