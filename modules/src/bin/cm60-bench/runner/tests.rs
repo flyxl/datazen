@@ -4,7 +4,7 @@
 use super::*;
 use crate::outcome::total_nanos;
 use crate::plan::DEFAULT_PLAN;
-use datazen_modules::execution::runtime::latency::nearest_rank_percentile;
+use datazen::execution::runtime::latency::nearest_rank_percentile;
 
 #[test]
 fn submission_token_rejections_preserve_the_machine_readable_reason() {
@@ -31,7 +31,7 @@ async fn harness_checks_owner_and_preserves_unknown_outcome_fencing() {
     assert!(matches!(
         gateway.accept(&peer, request(0)).await,
         Err(GatewayError::Runtime(
-            datazen_modules::execution::runtime::connection::RuntimeError::UnknownSession(_)
+            datazen::execution::runtime::connection::RuntimeError::UnknownSession(_)
         ))
     ));
     assert_eq!(journal.execute_calls(), 0);

@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod tests {
     use crate::testing::{app_state::TestAppState, mock_driver::MockDriverOptions};
+    use datazen::mcp::permission::McpPermissionMode;
+    use datazen::services::db_tools::*;
     use datazen_driver_api::{TableInfo, TableType};
-    use datazen_feature_core::mcp::permission::McpPermissionMode;
-    use datazen_feature_core::services::db_tools::*;
 
     fn options_with_tables(databases: Vec<String>, tables: Vec<TableInfo>) -> MockDriverOptions {
         MockDriverOptions {
@@ -63,14 +63,11 @@ mod tests {
         let test = test_stack().await;
         test.save_connection("c1").await;
         let driver =
-            datazen_feature_core::services::ports::DatabaseToolHost::driver_for_connection(
-                &test.state,
-                "c1",
-            )
-            .await
-            .unwrap();
+            datazen::services::ports::DatabaseToolHost::driver_for_connection(&test.state, "c1")
+                .await
+                .unwrap();
         assert_eq!(driver.driver_type(), "postgres");
-        let result = datazen_feature_core::services::ports::DatabaseToolHost::execute_target(
+        let result = datazen::services::ports::DatabaseToolHost::execute_target(
             &test.state,
             "c1",
             "list_databases",

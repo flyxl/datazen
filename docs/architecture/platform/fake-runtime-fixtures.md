@@ -1,6 +1,6 @@
 # DataZen P0 transport-neutral fake resource 夹具与基准 harness 详细设计
 
-> 状态：**夹具已落地**，实现位于 `datazen-modules`（`modules/`）的 `src/connection/testing/`：§1–§9 的 fake resource provider、§4 的 F1–F12 逐阶段故障注入、§5 CommandJournal、§6 Barrier/DrainBarrier、§7 FakeClock、§8 FakeIds（含强制碰撞）与 §9 的会话级句柄命令均已实现并有单测，CM-71/CM-73/CM-74 的竞态与碰撞用例也已落地。**§11 CM-60 基准 harness 的两半都已落地**：压力半是集成测试 `modules/tests/cm60_pressure_drain.rs`（`2bef5bee1`），延迟半是独立 bin `modules/src/bin/cm60-bench/`（`37526e084`，CI 门禁见 `05ca8c3a9`）。**§10 真实驱动契约夹具仍是目标设计**，尚未实现。基线：2026-09-30，`8592b0fe1`。本文不代表连接管理重构已完成。
+> 状态：**夹具已落地**，实现位于 `datazen`（`modules/`）的 `src/connection/testing/`：§1–§9 的 fake resource provider、§4 的 F1–F12 逐阶段故障注入、§5 CommandJournal、§6 Barrier/DrainBarrier、§7 FakeClock、§8 FakeIds（含强制碰撞）与 §9 的会话级句柄命令均已实现并有单测，CM-71/CM-73/CM-74 的竞态与碰撞用例也已落地。**§11 CM-60 基准 harness 的两半都已落地**：压力半是集成测试 `modules/tests/cm60_pressure_drain.rs`（`2bef5bee1`），延迟半是独立 bin `modules/src/bin/cm60-bench/`（`37526e084`，CI 门禁见 `05ca8c3a9`）。**§10 真实驱动契约夹具仍是目标设计**，尚未实现。基线：2026-09-30，`8592b0fe1`。本文不代表连接管理重构已完成。
 > 读者：负责 [连接管理详细设计](connection-management.md) §14 开发步骤第 2 项（`testing/fake_resource`）、§6.5 句柄登记与 §15.3 基准 harness 的实现者。
 > 配套：[连接管理详细设计](connection-management.md)、[平台开发计划](../../development/platform-development-plan.md)、[系统概要](system-overview.md)、[测试架构](../testing.md)、[E2E 测试指南](../../development/e2e-testing.md)。
 
@@ -56,7 +56,7 @@
 
 ## 2. 落点与模块划分
 
-实际目录（runtime crate `datazen-modules` 已创建，位于 `modules/`；两个 target：`lib` 与 `cm60-bench` 这个 bin——§11.6 要求基准不得与功能测试共用入口）：
+实际目录（runtime crate `datazen` 已创建，位于 `modules/`；两个 target：`lib` 与 `cm60-bench` 这个 bin——§11.6 要求基准不得与功能测试共用入口）：
 
 | 路径 | 职责 | 关键导出 |
 | --- | --- | --- |
@@ -605,7 +605,7 @@ pnpm test:unit:drivers        # 驱动 UI 单测
 pnpm test:layers              # 源码层边界
 pnpm test:boundaries          # 驱动导入边界
 pnpm test:ids                 # ID 术语一致性
-cargo test -p datazen --lib                    # Host Rust 单测
+cargo test -p datazen_desktop --lib                    # Host Rust 单测
 cargo test -p datazen-driver-api               # 驱动 API 契约
 cargo test -p datazen-driver-postgres          # 示例：某个驱动 crate
 pnpm tauri:build:webdriver    # WDIO 构建（禁止裸 cargo build）
@@ -616,17 +616,17 @@ pnpm e2e:contract:matrix      # Host 契约 × 驱动矩阵
 **已落地、可立即运行**（runtime crate 已创建，核对自 `modules/Cargo.toml`）：
 
 ```bash
-cargo test -p datazen-modules --lib                      # 夹具单测（383 个用例，crate 的 lib target）
-cargo test -p datazen-modules --features test-harness --lib   # 同上，走 feature 门控而非 cfg(test)
-cargo test -p datazen-modules --test cm60_pressure_drain   # CM-60 压力半（§11.4，另跑）
-cargo run --release -p datazen-modules --bin cm60-bench     # CM-60 延迟半基准（§11，独立的 bin target）
+cargo test -p datazen --lib                      # 夹具单测（383 个用例，crate 的 lib target）
+cargo test -p datazen --features test-harness --lib   # 同上，走 feature 门控而非 cfg(test)
+cargo test -p datazen --test cm60_pressure_drain   # CM-60 压力半（§11.4，另跑）
+cargo run --release -p datazen --bin cm60-bench     # CM-60 延迟半基准（§11，独立的 bin target）
 ```
 
 **仍未创建、当前**不可**运行，不得在文档或 CI 中当作现有脚本**：
 
 | 预期命令 | 前置条件 |
 | --- | --- |
-| `cargo test -p datazen-modules --test contract` | 跨 crate 契约测试目录创建，且 `src-tauri/Cargo.toml` 注入依赖 |
+| `cargo test -p datazen --test contract` | 跨 crate 契约测试目录创建，且 `src-tauri/Cargo.toml` 注入依赖 |
 
 创建后必须同步更新平台开发计划 §15.1 的命令表与 CI 门禁，不把未创建命令列为现有脚本。
 

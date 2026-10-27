@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use super::{err, record};
 use crate::gateway_fixtures as fx;
-use datazen_modules::execution::runtime::connection::{OrganizationId, PrincipalId, SessionState};
-use datazen_modules::execution::runtime::gateway::{
+use datazen::execution::runtime::connection::{OrganizationId, PrincipalId, SessionState};
+use datazen::execution::runtime::gateway::{
     AcceptanceDisposition, AlwaysAllow, GatewayError, SourceKind,
 };
 // ───────────────── B 幂等 ─────────────────

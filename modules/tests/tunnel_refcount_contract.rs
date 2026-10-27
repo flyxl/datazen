@@ -24,12 +24,12 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use datazen_modules::execution::application::network::{TunnelBinding, TunnelSpec};
-use datazen_modules::execution::runtime::connection::types::LeaseId;
-use datazen_modules::execution::runtime::tunnel::{
+use datazen::execution::application::network::{TunnelBinding, TunnelSpec};
+use datazen::execution::runtime::connection::types::LeaseId;
+use datazen::execution::runtime::tunnel::{
     TunnelError, TunnelFault, TunnelHandle, TunnelLedger, TunnelState, TunnelTransport,
 };
-use datazen_modules::shared::id::{NetworkRouteRef, NetworkRouteRevision};
+use datazen::shared::id::{NetworkRouteRef, NetworkRouteRevision};
 
 /// 宿主侧录写隧道端口。**刻意不持有任何引用计数，也不持有自存的开合计数** ——
 /// 唯一计数在台账里，读数一律由 [`tally`] 从事件日志现折。

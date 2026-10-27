@@ -126,7 +126,7 @@ async fn runtime_limit_rejects_oversized_statement_and_splits_large_writes() {
 
 #[tokio::test]
 async fn actual_transfer_splits_a_wide_500_row_page_at_the_linked_runtime_limit() {
-    use datazen_modules::migration::data_transfer::{
+    use datazen::migration::data_transfer::{
         execute_transfer_data, TableInspectResult, TransferJob, ValueFormatter,
     };
     use serde_json::json;

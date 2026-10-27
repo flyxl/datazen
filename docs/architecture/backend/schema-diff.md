@@ -154,7 +154,7 @@ Schema Diff 的 prepare/apply 请求以 `sourceDbSessionId` / `targetDbSessionId
 | `src-tauri/src/commands/schema_diff/reviewed_repository.rs` | **存储实现**：桌面形态的实例，在包内进程内实现之上叠加**单租户**收窄 |
 
 - **包内没有进程级全局可变状态**。计划寄居在宿主注入的实例里（`AppState.schema_diff_reviewed_plans`），不再寄居在包里的 `static` 上：多租户宿主可以按组织分桶，A 组织的计划不会被 B 组织读到、顶掉或提前消费掉。
-- **端口方法一律带 `scope: &OrganizationScope`**（`datazen_modules::platform_api::ports::scope`）。**越组织访问按「不存在」处理**——取不到、删不掉，也**不**返回「无权限」错误，那会泄漏「存在但无权」（CM-05）。
+- **端口方法一律带 `scope: &OrganizationScope`**（`datazen::platform_api::ports::scope`）。**越组织访问按「不存在」处理**——取不到、删不掉，也**不**返回「无权限」错误，那会泄漏「存在但无权」（CM-05）。
 - **端口的行类型是领域词汇 `ReviewedPlan`**，不另造一份计划结构；存储实现不得把规则的判定（有效期、身份比对）搬走。
 - **桌面是单租户**：只承认自己那一个组织（`DesktopIdentity::organization_id()`），别的组织一律按「不存在」处理（越组织**写入直接丢弃**）。桌面身份不可用时该存储**不承认任何组织**，不编造组织身份。
 - 计划的**有效期**（30 分钟）与**容量上限**由包给出常量（`REVIEWED_PLAN_TTL` / `REVIEWED_PLAN_MAX_ENTRIES`），存储实现据此裁剪；桌面沿用**进程内存**。

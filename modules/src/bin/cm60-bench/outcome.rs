@@ -34,7 +34,7 @@
 
 use std::collections::BTreeMap;
 
-use datazen_modules::execution::runtime::latency::nearest_rank_percentile;
+use datazen::execution::runtime::latency::nearest_rank_percentile;
 use serde::Serialize;
 
 use crate::driver::{DriverRoundTrip, ProjectionReport};

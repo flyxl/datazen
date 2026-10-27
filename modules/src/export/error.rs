@@ -1,7 +1,7 @@
 //! 导出用例错误信封（D6 item 5 切片 a，2026-10-26）。
 //!
-//! 形状与 feature-core 的 `FeatureError` 逐字同构（变体名、消息格式、
-//! `From` 边全部一致）：导出/文件产物作业族自 feature-core 归位模块后，
+//! 形状与 modules 的 `FeatureError` 逐字同构（变体名、消息格式、
+//! `From` 边全部一致）：导出/文件产物作业族自 modules 归位模块后，
 //! 宿主经 `From<ExportError>` 映射到与旧 `From<FeatureError>` 相同的
 //! 传输桶，同一失败在 IPC 上的文案与类别不变。
 //!

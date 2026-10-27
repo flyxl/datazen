@@ -14,7 +14,7 @@
                            │ Tauri IPC                    │ datazen://{id}/…  │
 ┌──────────────────────────▼──────────────────────────────▼──────────────┐    │
 │ src-tauri: commands/wapps.rs → wapps/{mod, protocol}                   │    │
-│ 内核 packages/feature-core = feature_core::workspace_apps            │    │
+│ 内核 modules = modules::workspace_apps            │    │
 │ register_uri_scheme_protocol("datazen") 资产服务 + open 深链             │    │
 │ execute_driver_command（复用，零改动）                                    │    │
 └─────────────────────────────────────────────────────────────────────────┘    │
@@ -23,11 +23,11 @@
 
 ## 内核下沉（Wave-2 track B1）
 
-后端按 **形态中立 / 形态相关** 切成两层。内核原本自成一个包 `packages/workspace-apps`（crate `datazen-workspace-apps`），现已并入 `packages/feature-core`，成为 `feature_core::workspace_apps` 模块——Workspace App 本身是一个通用 feature，其内核应与其它共享 feature（ai / workflow / dashboard / export / backup）并列，而不是单列一个包。
+后端按 **形态中立 / 形态相关** 切成两层。内核原本自成一个包 `packages/workspace-apps`（crate `datazen-workspace-apps`），现已并入 `modules`，成为 `modules::workspace_apps` 模块——Workspace App 本身是一个通用 feature，其内核应与其它共享 feature（ai / workflow / dashboard / export / backup）并列，而不是单列一个包。
 
 | 层 | 位置 | 内容 |
 |---|---|---|
-| 内核（形态中立） | `packages/feature-core` 的 `workspace_apps` 模块 | `manifest`（schema + 规则 1–7）、`install`（ZIP / 目录安装）、`storage`（按 wapp 隔离的键值存储）、`manager`（已安装包注册表）、`protocol`（URI 语法与路由判定）。zip 条目路径守卫不在本层，见 `packages/platform-infra` 的 `path_safety`，本层 `install` 改为调用它 |
+| 内核（形态中立） | `modules` 的 `workspace_apps` 模块 | `manifest`（schema + 规则 1–7）、`install`（ZIP / 目录安装）、`storage`（按 wapp 隔离的键值存储）、`manager`（已安装包注册表）、`protocol`（URI 语法与路由判定）。zip 条目路径守卫不在本层，见 `packages/platform-infra` 的 `path_safety`，本层 `install` 改为调用它 |
 | 宿主（形态相关） | `src-tauri/src/wapps/` | `protocol`（`datazen://` 协议桥 + IPC 适配器）、`mod.rs`（模块根） |
 | 宿主集成测试 | `src-tauri/src/wapps/integration_tests.rs` | 每个用例都驱动宿主命令层（`commands::wapps::*_impl` + `TestAppState` + `WappManager`），故留在宿主 |
 
@@ -35,7 +35,7 @@
 
 - **存储根参数化**：内核不读取任何 ambient 路径、不持有连接、不发网络请求。桌面端传 `{appData}/wapps`，将来的服务端适配器传自己的存储根，**内核公开函数签名保持不变**（`install_from_zip(zip_path, wapps_dir)` / `install_from_dir(src_dir, wapps_dir)` / `storage_*(wapps_dir, wapp_id, key[, value])`）。
 - **零 HTTP、零桌面壳依赖**：由 `scripts/check-platform-crate-boundaries.mjs` 的 F-12 强制（反向 allow-list + 禁 `tauri` / `axum` / `actix-web` / `warp` / `tonic` / `react`）。HTTP *客户端* 是 `packages/ai-providers` 的职责，本内核两者都不引入。
-- 宿主调用点直接引用 `datazen_feature_core::workspace_apps::…`；`src-tauri/src/wapps/mod.rs` 只保留**宿主自有**的 `protocol` 模块与 `handle_datazen_request` / `parse_datazen_uri` / `WAPPS_OPEN_PAGE_EVENT` 三个转发名，**不再**转发共享包名字。
+- 宿主调用点直接引用 `datazen::workspace_apps::…`；`src-tauri/src/wapps/mod.rs` 只保留**宿主自有**的 `protocol` 模块与 `handle_datazen_request` / `parse_datazen_uri` / `WAPPS_OPEN_PAGE_EVENT` 三个转发名，**不再**转发共享包名字。
 - 随 wapp installer 下沉而失去唯一调用方的 `src-tauri/src/util/theme_zip.rs` 已按死代码纪律删除；其追加的三条守卫（空名 / NUL / ` -> `）改由 crate 内 `empty_nul_and_symlink_names_are_rejected` 钉住。宿主 `app_data_archive::validate_zip_entry_path` 保留（备份 / 还原归档仍用）。
 
 ## 目录与安装
@@ -46,7 +46,7 @@
 
 ## Manifest（apiVersion = 2）
 
-`packages/feature-core/src/workspace_apps/manifest.rs` 为唯一权威 schema（serde camelCase + deny_unknown_fields）。要点：
+`modules/src/workspace_apps/manifest.rs` 为唯一权威 schema（serde camelCase + deny_unknown_fields）。要点：
 
 - id：`^[a-z0-9][a-z0-9-]{0,30}\.[a-z][a-z0-9-]{1,31}$`
 - `contributes.pages[]`：`{id,title,icon?,showIn?="workspace"}`
@@ -100,8 +100,8 @@ Wapp 主题在 IPC 之后才注入 CSS，首屏无法读取 pack token。`syncWe
 
 ## 测试分层
 
-- Rust 内核：`cargo test -p datazen-feature-core --lib`（manifest 规则 / install 真实路径 / 存储隔离 / fixture 与 packages/wapps 双向守护 / zip 路径守卫）
-- Rust 宿主：`cargo test -p datazen --lib wapps`（`datazen://` 协议与协议安全 45 条、命令层 / bootstrap / 安装集成 19 条）
+- Rust 内核：`cargo test -p datazen --lib`（manifest 规则 / install 真实路径 / 存储隔离 / fixture 与 packages/wapps 双向守护 / zip 路径守卫）
+- Rust 宿主：`cargo test -p datazen_desktop --lib wapps`（`datazen://` 协议与协议安全 45 条、命令层 / bootstrap / 安装集成 19 条）
 - Host 单测：桥接语义+安全（wappBridge*.test）、主题管线（themePackApply.wappTheme.test）、壳集成（WappPageShell.bridge）、store、管理页/工作区组件
 - E2E：`e2e/specs/wapps.spec.ts` J1–J5（装→列表→Tab→桥探针→外观→停用卸载），探针经桥 `storage.set` 落盘后磁盘对账（不依赖帧内 WebDriver 自动化）
 

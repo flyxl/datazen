@@ -1,7 +1,7 @@
 //! 身份 newtype：跨模块归属契约的最小 ID/引用值（DDD 迁移 §5.1）。
 //!
 //! 原属 platform-api 契约层，D2（2026-10-26）起唯一定义在
-//! `datazen-modules::shared::id`；platform-api 只再导出同一类型。
+//! `datazen::shared::id`；platform-api 只再导出同一类型。
 //!
 //! `docs/architecture/naming.md` 的 ID 术语规范在这里落地：`connectionId` 是持久化连接配置 ID，
 //! `dbSessionId` 是运行时会话 ID（永不落盘）。两者、乃至与其它 ID 之间**不能互换**，而这一条
@@ -11,7 +11,7 @@
 //! JSON 形态与 `connection-management.md` §4 的 TypeScript 契约逐字段一致。
 //!
 //! 迁移提示（不属于本 crate 的范围）：`modules/src/execution/runtime/connection/types.rs` 目前自带一份
-//! 同名 ID 定义。等 runtime 迁移完成后应改为 `pub use datazen_modules::shared::id::*`；在此之前
+//! 同名 ID 定义。等 runtime 迁移完成后应改为 `pub use datazen::shared::id::*`；在此之前
 //! 两份定义不可互换，因此**不得跨 crate 传递**这两套 ID 的值。
 
 use serde::de::{Unexpected, Visitor};

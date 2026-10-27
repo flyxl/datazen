@@ -43,9 +43,9 @@ run_check node scripts/check-module-layers.mjs
 run_check node scripts/check-id-terminology.mjs
 run_check node scripts/check-shared-crate-panic-policy.mjs
 run_check node scripts/run-platform-crate-tests.mjs --dry-run
-run_check cargo test -p datazen-modules --no-default-features --features contracts,application --lib
-run_check cargo test -p datazen-modules --all-features
-run_check cargo test -p datazen --lib
+run_check cargo test -p datazen_desktop --no-default-features --features contracts,application --lib
+run_check cargo test -p datazen_desktop --all-features
+run_check cargo test -p datazen_desktop --lib
 run_check pnpm typecheck
 run_check pnpm exec vitest run src/platform/__tests__/tauriBackendTransport.tableData.test.ts
 run_check pnpm exec vitest run src/stores/__tests__/tableDataStore.keyset.test.ts
@@ -61,12 +61,12 @@ Rust 链接确属内存不足时，可以用 `CARGO_BUILD_JOBS=1 RUSTFLAGS='-C d
 **modules 已是当前共享业务 crate；契约 bundle 使用 `contracts` feature，不能再创建名为 `platform_api` 的 crate feature。** web 宿主相关命令随 D7 移出本次范围，桌面范围内的 modules 矩阵照常执行：
 
 ```bash
-run_check cargo check -p datazen-modules --no-default-features
-run_check cargo test -p datazen-modules --no-default-features --features settings
-run_check cargo test -p datazen-modules --no-default-features --features connection
-run_check cargo test -p datazen-modules --no-default-features --features monitor
-run_check cargo test -p datazen-modules --no-default-features --features table-browsing
-run_check cargo test -p datazen-modules --all-features
+run_check cargo check -p datazen_desktop --no-default-features
+run_check cargo test -p datazen_desktop --no-default-features --features settings
+run_check cargo test -p datazen_desktop --no-default-features --features connection
+run_check cargo test -p datazen_desktop --no-default-features --features monitor
+run_check cargo test -p datazen_desktop --no-default-features --features table-browsing
+run_check cargo test -p datazen_desktop --all-features
 # 以下两条随 D7 延后（web 宿主不在本次范围）
 run_check cargo test -p datazen-web
 run_check cargo build -p datazen-web --release
@@ -121,7 +121,7 @@ Pro 发行仅在对应独立扩展已装配并授权的环境运行其构建和�
 ### 14.2 全部重构完成的必要条件
 
 - [ ] 业务按功能进入一个 modules crate；每个功能拥有应用层与领域层。
-- [ ] 独立 application/platform-api/runtime/kernel/feature-core 与已合入的旧功能 crate 退役；明确保留的插件契约和基础设施包不被误删。
+- [ ] 独立 application/platform-api/runtime/kernel/modules 与已合入的旧功能 crate 退役；明确保留的插件契约和基础设施包不被误删。
 - [ ] Repository trait 由各领域拥有，生产持久化实现在 src-tauri / web；没有全局仓储全集或另一个总 application 层。
 - [ ] runtime 私有地归属 execution；Job、Schema cache 等归属对应功能；不存在每个消费者一份资源账本。
 - [ ] Controller 只进入应用服务；宿主基础设施与装配可以引用必要领域契约，不被错误的层门禁阻挡。

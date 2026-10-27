@@ -10,10 +10,10 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
-use datazen_modules::execution::application::budget::{ResourceClass, ServiceQuota};
-use datazen_modules::shared::id::ConnectionId;
+use datazen::execution::application::budget::{ResourceClass, ServiceQuota};
+use datazen::shared::id::ConnectionId;
 
-use datazen_modules::execution::runtime::budget::{BudgetLedger, SlotKind};
+use datazen::execution::runtime::budget::{BudgetLedger, SlotKind};
 
 /// 一次资源变化。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

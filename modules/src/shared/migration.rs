@@ -5,7 +5,7 @@
 //! `EndpointIdentity` per endpoint so the admission rules (overlap detection)
 //! and the atomic budget ledger agree on a single type. The struct is
 //! intentionally data-only: deriving a location key from a [`ConnectionInput`]
-//! style config is feature logic and stays in `datazen-feature-core`
+//! style config is feature logic and stays in `datazen`
 //! (`services::migration_endpoint::identify`).
 //!
 //! [`ConnectionInput`]: datazen_driver_api::ConnectionConfig

@@ -1,7 +1,7 @@
 //! Native-selected file staging and owner-bound restore Artifact upload.
 use super::{storage_error, CommandError};
-use datazen_feature_core::restore_job::RestorePlan;
-use datazen_modules::{
+use datazen::restore_job::RestorePlan;
+use datazen::{
     execution::domain::{ArtifactRepository, ArtifactSpec, ChunkPayload},
     execution::target::ExecutionTarget,
     execution::AbortReason,
@@ -68,7 +68,7 @@ pub(super) async fn upload_native_input(
         }
     };
     artifacts.finalize(writer).await.map_err(storage_error)?;
-    let parsed = datazen_feature_core::backup::parse_restore_options(options);
+    let parsed = datazen::backup::parse_restore_options(options);
     Ok(RestorePlan {
         plan_id: uuid::Uuid::new_v4().to_string(),
         target,

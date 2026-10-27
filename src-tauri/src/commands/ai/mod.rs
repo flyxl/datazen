@@ -16,7 +16,7 @@ pub(crate) use util::language_hint;
 
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
-use datazen_feature_core::ai::cancel::CancelReceipt;
+use datazen::ai::cancel::CancelReceipt;
 use tauri::State;
 
 /// Stable owner fingerprint for this process. AI grants and stream cancellation

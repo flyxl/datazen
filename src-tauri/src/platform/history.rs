@@ -1,6 +1,6 @@
 //! Desktop infrastructure adapter for the module-owned history repositories.
 //!
-//! D6 第一切片：`datazen-modules::history` 拥有词汇与仓储端口；SQLite 落盘
+//! D6 第一切片：`datazen::history` 拥有词汇与仓储端口；SQLite 落盘
 //! (`history.sqlite`)、保留截断与 schema 迁移环留在宿主的 `HistoryDb`。
 //! 本文件只把 `HistoryDb` 的同步方法适配为模块端口——不复制缓存、不引入
 //! 第二份存储事实（04-repositories §7.3）。
@@ -11,7 +11,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use datazen_modules::history::{
+use datazen::history::{
     HistoryError, HistoryScope, MigrationRunFilter, MigrationRunPage, MigrationRunRecord,
     MigrationRunRepository, QueryHistoryEntry, QueryHistoryFilter, QueryHistoryPage,
     QueryHistoryRepository,

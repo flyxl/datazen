@@ -1,7 +1,7 @@
 //! DesktopRepository 的 favorites 门面。
 //!
 //! D6 第一切片（2026-10-26）后本文件不再承载历史门面：查询历史与迁移运行
-//! 历史的词汇、仓储端口与用例归 `datazen-modules::history`；桌面 SQLite 实现经
+//! 历史的词汇、仓储端口与用例归 `datazen::history`；桌面 SQLite 实现经
 //! `platform::history::DesktopHistoryRepositories` 适配，所有消费者（命令、
 //! MCP 资源、AI 分析、会话执行路径）走 `require_history_service` / 注入的
 //! `QueryHistoryRepository` 端口。`HistoryDb` 本体（SQL、schema 迁移环、保留

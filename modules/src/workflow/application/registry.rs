@@ -1,13 +1,15 @@
 //! Workflow 登记服务：播种内置、列表投影与保存/删除用例（端口在
 //! domain::repository，规则与词汇同层）。
 //!
-//! 词源：feature-core::workflow::registry 的服务半（D6 item 3 切片 b 拆出）。
+//! 词源：modules::workflow::registry 的服务半（D6 item 3 切片 b 拆出）。
 //! 「注册表拥有规则，存储拥有行」：服务经 `Arc<dyn WorkflowDefinitionRepository>`
 //! 读写，宿主持久化类型不进共享签名。
 
 use super::super::domain::model::{WorkflowDefinition, WorkflowListItem, WorkflowVisibility};
 use super::super::domain::repository::{
     decode_definition, encode_definition, list_item_for, validate_workflow_id,
+};
+pub use super::super::domain::repository::{
     WorkflowDefinitionRecord, WorkflowDefinitionRepository,
 };
 use crate::shared::id::OrganizationId;

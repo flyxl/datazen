@@ -18,16 +18,16 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use datazen_modules::execution::application::network::{
+use datazen::execution::application::network::{
     NetworkProvider, RoutePlan, TunnelBinding, TunnelSpec,
 };
-use datazen_modules::execution::runtime::tunnel::{
+use datazen::execution::runtime::tunnel::{
     RouteCatalog, RouteNetworkProvider, TunnelError, TunnelFault, TunnelHandle, TunnelState,
     TunnelTransport,
 };
-use datazen_modules::shared::context::RequestContext;
-use datazen_modules::shared::error::PortError;
-use datazen_modules::shared::id::{
+use datazen::shared::context::RequestContext;
+use datazen::shared::error::PortError;
+use datazen::shared::id::{
     ClientInstanceId, NetworkRouteRef, NetworkRouteRevision, OrganizationId, PrincipalId, RequestId,
 };
 

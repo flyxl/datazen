@@ -1,7 +1,7 @@
 //! `ProfileRepository` / `ProfileReader`：连接档案（服务端词汇）的持久化端口。
 //!
 //! 原属 platform-api（`ports/profile.rs` + `ports/profile_reader.rs`），D2
-//! （2026-10-26）起唯一定义在 `datazen-modules::connection::domain`；platform-api
+//! （2026-10-26）起唯一定义在 `datazen::connection::domain`；platform-api
 //! 只再导出同一类型。
 //!
 //! 词汇表（§4.2）：`ProfileScope`、`ProfileRecord`、`ConfigRevision`。

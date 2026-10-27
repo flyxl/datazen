@@ -114,12 +114,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
-use datazen_modules::execution::runtime::connection::port::CancelDisposition;
-use datazen_modules::execution::runtime::connection::types::{ClientInstanceId, LeaseId};
-use datazen_modules::execution::runtime::connection::{
+use datazen::execution::runtime::connection::port::CancelDisposition;
+use datazen::execution::runtime::connection::types::{ClientInstanceId, LeaseId};
+use datazen::execution::runtime::connection::{
     ConfigRevision, ConnectionId, ExecutionId, NamespaceTarget, OwnerRef, PoolKeyInputs, ResourceId,
 };
-use datazen_modules::execution::runtime::resource::{
+use datazen::execution::runtime::resource::{
     CleanupDisposition, CleanupReport, DriverCleanVerdict, HostConditionSnapshot, LeasePurpose,
     LeaseRequest, MonotonicSource, PhysicalTransport, ResetDisposition, ResourceError,
     ResourceManager,

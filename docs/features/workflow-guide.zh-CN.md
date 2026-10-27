@@ -1,7 +1,7 @@
 # DataZen Workflow 使用手册
 
 > 本文档描述 DataZen **Workflow（工作流）** 的完整 YAML 语法与用法。  
-> 事实来源：`packages/feature-core/src/workflow/`、仓库内测试 YAML、以及 `workflow_generate` Prompt。  
+> 事实来源：`modules/src/workflow/`、仓库内测试 YAML、以及 `workflow_generate` Prompt。  
 > **YAML 磁盘文件一律使用 snake_case 字段名**（如 `timeout_secs`、`then_steps`、`as_var`）。前端 TypeScript / IPC 响应里可能出现 camelCase，那是序列化层差异，**手写 YAML 时不要用 camelCase**。
 
 ---
@@ -721,7 +721,7 @@ output:
 
 ### 12.3 AI 生成
 
-对话场景使用 Prompt：`packages/feature-core/resources/prompts/workflow_generate.md`。
+对话场景使用 Prompt：`modules/resources/prompts/workflow_generate.md`。
 生成结果必须是 **snake_case** YAML，并用 \`\`\`yaml 代码块包裹。
 
 ### 12.4 MCP
@@ -906,10 +906,10 @@ output:
 
 | 路径 | 内容 |
 |------|------|
-| `packages/feature-core/src/workflow/` | 模型、执行、模板、条件 |
+| `modules/src/workflow/` | 模型、执行、模板、条件 |
 | `scripts/test-cross-db-workflow.yaml` | 跨库示例 |
 | `src-tauri/tests/workflow_tests.rs` | 集成测试 |
-| `packages/feature-core/resources/prompts/workflow_generate.md` | AI 生成规范 |
+| `modules/resources/prompts/workflow_generate.md` | AI 生成规范 |
 | `e2e/specs/workflow*.ts` | UI E2E |
 
 ### 15.5 与旧版本文档的差异（纠错）

@@ -10,7 +10,7 @@
 用户视角的使用说明见 [Tunnel 使用指南](../../features/tunnel-guide.zh-CN.md)。
 
 **代码分布**：隧道机制本身（HTTP `CONNECT` 代理、WebSocket 中继、SSH 转发、SSH known-hosts 规则、进程级
-rustls provider 选择）住在形态中立的 `datazen-modules::tunnel`（边界由共享模块 F-14 断言）；宿主侧
+rustls provider 选择）住在形态中立的 `datazen::tunnel`（边界由共享模块 F-14 断言）；宿主侧
 `src-tauri/src/tunnel/` 只留装配与形态相关接线（`resolve_tunnel_kind` /
 `start_for_connection` / `test_tunnel`、`DesktopTunnelHost`）。进程级 rustls provider 的**实现体**在
 `modules/src/tunnel/crypto.rs`，宿主 `src-tauri/src/tls.rs` 只保留接线守卫与 `pub use` 再导出——理由见
@@ -57,7 +57,7 @@ DesktopSessionBackend                └── 上游（跳板机 / 代理 / 中
 | `TunnelKind` | 配置字段 | 上游形态 |
 |---|---|---|
 | `none` | — | 直连 |
-| `ssh` | `ConnectionConfig.ssh_tunnel`（`SshTunnelConfig`，`types.rs:68`） | SSH 端口转发（`datazen_modules::tunnel::SshTunnel`，`modules/src/tunnel/ssh.rs`） |
+| `ssh` | `ConnectionConfig.ssh_tunnel`（`SshTunnelConfig`，`types.rs:68`） | SSH 端口转发（`datazen::tunnel::SshTunnel`，`modules/src/tunnel/ssh.rs`） |
 | `httpProxy` | `ConnectionConfig.http_proxy_tunnel` | 本机监听 → HTTP `CONNECT` 代理 → 真实库（`modules/src/tunnel/http_proxy.rs`） |
 | `websocket` | `ConnectionConfig.websocket_tunnel` | 本机监听 → WebSocket 中继 → 真实库（`modules/src/tunnel/websocket.rs`） |
 

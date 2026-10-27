@@ -7,7 +7,7 @@
 //!
 //! * 方法集合与顺序语义（§7.1–§7.7）；
 //! * 身份只从 `&RequestContext` 来（INV-01，第一个参数恒定）；
-//! * 失败一律是 [`ApiError`]，端口层的 [`PortError`](datazen_modules::shared::error::PortError)
+//! * 失败一律是 [`ApiError`]，端口层的 [`PortError`](datazen::shared::error::PortError)
 //!   由组装层映射。
 //!
 //! 具体编排（谁开 actor、谁记账、谁落幂等记录）在**组装层**按 §6.2 的顺序用
@@ -15,7 +15,7 @@
 //!
 //! ## 为什么签名住在本包（P0 断环）
 //!
-//! 实现本 trait 的是 `datazen-modules`（`RuntimeConnectionUseCases`），而 runtime 与
+//! 实现本 trait 的是 `datazen`（`RuntimeConnectionUseCases`），而 runtime 与
 //! application 是**互不依赖的兄弟**（R2）。签名里出现的每个类型——`ApiError`、请求 DTO、
 //! 契约视图——于是都必须住在比两者更内层的本包；否则要么 runtime 反向依赖 application
 //! （`application → 领域包 → runtime → application` 的环），要么 proto 类型就得各写一份。

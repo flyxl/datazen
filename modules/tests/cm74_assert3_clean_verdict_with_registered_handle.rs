@@ -33,18 +33,18 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use datazen_modules::shared::id::OrganizationId;
+use datazen::shared::id::OrganizationId;
 
-use datazen_modules::execution::runtime::budget::{
+use datazen::execution::runtime::budget::{
     BudgetClock, BudgetConfig, InProcessBudgetCoordinator, OrganizationPrincipal,
 };
-use datazen_modules::execution::runtime::connection::port::CancelDisposition;
-use datazen_modules::execution::runtime::connection::types::ClientInstanceId;
-use datazen_modules::execution::runtime::connection::{
+use datazen::execution::runtime::connection::port::CancelDisposition;
+use datazen::execution::runtime::connection::types::ClientInstanceId;
+use datazen::execution::runtime::connection::{
     ConfigRevision, ConnectionId, Counter, ExecutionId, HandleId, HandleKind, NamespaceTarget,
     OwnerRef, PoolKeyInputs, ResourceId, SessionHandleRef,
 };
-use datazen_modules::execution::runtime::resource::{
+use datazen::execution::runtime::resource::{
     CleanupDisposition, DriverCleanVerdict, HostConditionSnapshot, LeaseManager, LeasePurpose,
     LeaseRequest, LeaseState, MonotonicSource, NoHandleCloser, PhysicalTransport, ResetDisposition,
     ResourceError, ResourceManager,
@@ -217,7 +217,7 @@ fn leased_with_handle(
     connection_id: &ConnectionId,
     handle_id: &str,
 ) -> (
-    datazen_modules::execution::runtime::connection::LeaseId,
+    datazen::execution::runtime::connection::LeaseId,
     ResourceId,
     SessionHandleRef,
 ) {

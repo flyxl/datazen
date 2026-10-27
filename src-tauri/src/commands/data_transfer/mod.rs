@@ -225,7 +225,7 @@ async fn execute_data_transfer_inner(
         run.source_connection_id = crate::services::migration_endpoint::runtime_session_context(
             &state,
             &plan.job.source.db_session_id,
-            datazen_modules::execution::application::LivePurpose::Inspection,
+            datazen::execution::application::LivePurpose::Inspection,
         )
         .await
         .ok()
@@ -235,7 +235,7 @@ async fn execute_data_transfer_inner(
                 crate::services::migration_endpoint::runtime_session_context(
                     &state,
                     &target.db_session_id,
-                    datazen_modules::execution::application::LivePurpose::Inspection,
+                    datazen::execution::application::LivePurpose::Inspection,
                 )
                 .await
                 .ok()

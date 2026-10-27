@@ -13,7 +13,7 @@
 //!
 //! ## 已实现契约（[共享边界 §4.6](../shared-boundaries-and-ports.md#46-结果与事件端口)）
 //!
-//! 以下行为由 `datazen-modules::artifact::FileArtifactRepository` 实现，并由 runtime 的
+//! 以下行为由 `datazen::artifact::FileArtifactRepository` 实现，并由 runtime 的
 //! artifact journey 与 `p3_live_port` 测试覆盖。其他 host 可以提供自己的实现，但必须遵守同一端口契约。
 //!
 //! * 生命周期 `writing → complete | truncated`，另有 `revoked/expired` 不可读终态。
@@ -30,7 +30,7 @@
 /// 聚合的已发布字节配额（契约值，不是实现细节）。
 ///
 /// 放在端口而不是实现里：它是**契约的一部分**（超配额必须判 `QuotaExceeded`），
-/// 而 `feature-core` 的备份写出路径要按同一配额提前拒绝，否则会先落盘再被回收。
+/// 而 `modules` 的备份写出路径要按同一配额提前拒绝，否则会先落盘再被回收。
 pub const ARTIFACT_BYTE_QUOTA: u64 = 256 * 1024 * 1024;
 
 use async_trait::async_trait;

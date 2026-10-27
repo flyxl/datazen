@@ -125,13 +125,13 @@ pub(crate) async fn prepare_schema_unified_plan_impl(
     let source_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         &source_db_session_id,
-        datazen_modules::execution::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let target_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         &target_db_session_id,
-        datazen_modules::execution::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let source_config = source_context.config.clone();

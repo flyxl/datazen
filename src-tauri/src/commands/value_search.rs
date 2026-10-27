@@ -6,7 +6,7 @@
 //! database/schema fallback the grid's own reads use), it validates the
 //! request envelope, and it maps the shared error onto [`CommandError`]. The
 //! statement rules — how the value is bound, how the wildcards are escaped —
-//! live in `datazen_feature_core::services::value_search`.
+//! live in `datazen::services::value_search`.
 //!
 //! The **scan** is the front end's: one command per table, because that is
 //! what makes pause and resume real (pausing is not issuing the next
@@ -14,10 +14,8 @@
 
 use super::error::CommandError;
 use super::AppState;
-use datazen_feature_core::services::schema_scope::{embedded_schema_of, metadata_schema};
-use datazen_feature_core::services::value_search::{
-    SearchTableValuesRequest, SearchTableValuesResult,
-};
+use datazen::services::schema_scope::{embedded_schema_of, metadata_schema};
+use datazen::services::value_search::{SearchTableValuesRequest, SearchTableValuesResult};
 use tauri::State;
 
 pub(crate) async fn search_table_values_impl(
@@ -64,7 +62,7 @@ pub(crate) async fn search_table_values_impl(
     // Fully qualified so the shared function and the `#[tauri::command]`
     // wrapper of the same name below never collide (the `fk_navigation.rs`
     // convention).
-    let result = datazen_feature_core::services::value_search::search_table_values(
+    let result = datazen::services::value_search::search_table_values(
         resolved.driver.as_ref(),
         &resolved.handle,
         database,

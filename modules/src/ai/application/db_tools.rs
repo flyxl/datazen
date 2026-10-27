@@ -1,6 +1,6 @@
 //! Shared database tool helpers used by both ai_chat tool execution and MCP Server tools.
 //!
-//! D6 item 4 收尾自 feature-core `services::db_tools` 归位（唯一定义在此，
+//! D6 item 4 收尾自 modules `services::db_tools` 归位（唯一定义在此，
 //! 旧路径改再导出垫片）。SQL 分级沿用 `mcp::domain::permission` 的判据，
 //! 只读/Safe Mode 校验沿用 `execution::domain::sql_guard`，不另立第二套。
 

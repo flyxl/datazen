@@ -65,8 +65,8 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
-use datazen_modules::execution::runtime::connection::{ExecutionId, RuntimeError};
-use datazen_modules::execution::runtime::gateway::{
+use datazen::execution::runtime::connection::{ExecutionId, RuntimeError};
+use datazen::execution::runtime::gateway::{
     GatewayAction, GatewayError, MonotonicClock, TokenKeyring, RETENTION_AFTER_EXPIRY_NANOS,
 };
 use gateway_fixtures as fx;
@@ -407,7 +407,7 @@ async fn two_cycles_and_a_retention_sweep_still_leave_nothing_on_disk() {
     assert!(
         matches!(
             unreadable,
-            datazen_modules::execution::runtime::gateway::GatewayError::IdempotencyVerificationRequired { .. }
+            datazen::execution::runtime::gateway::GatewayError::IdempotencyVerificationRequired { .. }
         ),
         "要的是「结局未知、请核验」，实际是 {unreadable:?}"
     );
@@ -421,7 +421,7 @@ async fn two_cycles_and_a_retention_sweep_still_leave_nothing_on_disk() {
     assert!(
         matches!(
             fenced,
-            datazen_modules::execution::runtime::gateway::GatewayError::IdempotencyVerificationRequired { .. }
+            datazen::execution::runtime::gateway::GatewayError::IdempotencyVerificationRequired { .. }
         ),
         "要的还是「结局未知、请核验」，实际是 {fenced:?}"
     );
@@ -456,15 +456,15 @@ fn the_signing_secret_and_the_token_stay_out_of_debug_output() {
 
     let token = TokenKeyring::single(fx::SIGNING_KEY.to_vec())
         .issue(
-            datazen_modules::execution::runtime::gateway::SubmissionOperation::ExecuteInSession,
-            Some(datazen_modules::execution::runtime::connection::Counter::new(1)),
+            datazen::execution::runtime::gateway::SubmissionOperation::ExecuteInSession,
+            Some(datazen::execution::runtime::connection::Counter::new(1)),
             fx::TOKEN_ISSUED_AT_NANOS,
             fx::TOKEN_TTL_NANOS,
         )
         .unwrap_or_else(|err| panic!("签发应成功：{err:?}"));
 
-    let registry = datazen_modules::execution::runtime::gateway::GrantRegistry::shared();
-    let guard = datazen_modules::execution::runtime::gateway::SubmissionTokenGuard::shared(
+    let registry = datazen::execution::runtime::gateway::GrantRegistry::shared();
+    let guard = datazen::execution::runtime::gateway::SubmissionTokenGuard::shared(
         keyring.shared(),
         registry,
     );
@@ -472,7 +472,7 @@ fn the_signing_secret_and_the_token_stay_out_of_debug_output() {
         .admit(
             &token,
             fx::TOKEN_ISSUED_AT_NANOS + 1,
-            Some(datazen_modules::execution::runtime::connection::Counter::new(1)),
+            Some(datazen::execution::runtime::connection::Counter::new(1)),
         )
         .unwrap_or_else(|err| panic!("真令牌应被受理：{err:?}"));
 

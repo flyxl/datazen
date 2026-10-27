@@ -4,10 +4,10 @@ use std::sync::Arc;
 
 use super::{err, record, runtime_err};
 use crate::gateway_fixtures as fx;
-use datazen_modules::execution::runtime::connection::capability::PreciseCancel;
-use datazen_modules::execution::runtime::connection::{ExecutionId, ExecutionState, RuntimeError};
-use datazen_modules::execution::runtime::gateway::cancel::binding;
-use datazen_modules::execution::runtime::gateway::{
+use datazen::execution::runtime::connection::capability::PreciseCancel;
+use datazen::execution::runtime::connection::{ExecutionId, ExecutionState, RuntimeError};
+use datazen::execution::runtime::gateway::cancel::binding;
+use datazen::execution::runtime::gateway::{
     CancelDisposition, GatewayAction, GatewayError, InMemoryIdempotencyRepository,
 };
 // ───────────────── E 取消 ─────────────────

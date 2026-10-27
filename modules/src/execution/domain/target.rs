@@ -1,7 +1,7 @@
 //! 执行侧目标词汇：`ExecutionTarget` 与 `ObjectTarget`。
 //!
 //! 原属 platform-api `target.rs`，D3（2026-10-26）起唯一定义在
-//! `datazen-modules::execution::domain`（§5.1：`ExecutionTarget` 组合连接侧
+//! `datazen::execution::domain`（§5.1：`ExecutionTarget` 组合连接侧
 //! namespace，而不是让 connection 反向引用 execution）。
 //!
 //! `ObjectTarget`（表对象身份）按 §5.1 最终归 schema::domain（「表对象目标由
@@ -203,7 +203,7 @@ impl CanonicalTarget {
 /// The host maps every declared level, path segment, case rule, canonical-ID rule, and alias into
 /// this transport type before the application resolver runs.
 ///
-/// `modules` 不持有副本：它通过 `pub use datazen_modules::execution::target::TargetNamespaceShape`
+/// `modules` 不持有副本：它通过 `pub use datazen::execution::target::TargetNamespaceShape`
 /// 把这一份直接暴露出去，因此平台侧与 runtime 侧永远编译成同一个类型。
 ///
 /// The runtime re-exports this type directly. `required` stays mandatory in serialized requests;

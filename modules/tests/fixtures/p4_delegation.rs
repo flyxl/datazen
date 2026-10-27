@@ -3,7 +3,7 @@ fn delegated(policy: &Policy) -> RequestContext {
     let mut context = ctx("service", "scheduler");
     context.delegation_id = Some(DelegationId::new("grant"));
     *lock(&policy.delegation) = Some(DelegationGrant {
-        delegation: datazen_modules::shared::context::DelegationRef::new(
+        delegation: datazen::shared::context::DelegationRef::new(
             DelegationId::new("grant"),
             context.organization_id.clone(),
             context.principal_id.clone(),
@@ -153,13 +153,12 @@ async fn valid_delegated_execution_reaches_driver_under_service_identity() {
 
 #[tokio::test]
 async fn delegated_results_require_current_policy_and_exact_live_execution_binding() {
-    use datazen_modules::execution::domain::{ArtifactRepository, ArtifactSpec, ChunkPayload};
+    use datazen::execution::domain::{ArtifactRepository, ArtifactSpec, ChunkPayload};
     let (service, backend, _, policy) = setup();
     let context = delegated(&policy);
     let dir = tempfile::tempdir().unwrap();
     let store = Arc::new(
-        datazen_modules::execution::runtime::artifact::FileArtifactRepository::open(dir.path())
-            .unwrap(),
+        datazen::execution::runtime::artifact::FileArtifactRepository::open(dir.path()).unwrap(),
     );
     service
         .result_sink()
@@ -290,8 +289,7 @@ async fn delegated_results_require_current_policy_and_exact_live_execution_bindi
         "result reads never resubmit SQL"
     );
     let recovered = Arc::new(
-        datazen_modules::execution::runtime::artifact::FileArtifactRepository::open(dir.path())
-            .unwrap(),
+        datazen::execution::runtime::artifact::FileArtifactRepository::open(dir.path()).unwrap(),
     );
     assert!(recovered.describe(&owner, artifact.clone()).await.is_err());
     assert!(recovered.describe(&owner, unrelated).await.is_ok());

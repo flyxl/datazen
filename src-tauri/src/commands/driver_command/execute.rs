@@ -6,11 +6,11 @@ use super::helpers::{
 };
 use super::resolve::resolve_command_driver;
 use super::types::ExecuteDriverCommandRequest;
+use datazen::mcp::application::command_policy::access_level_for_mode;
+use datazen::mcp::permission::McpPermissionMode;
 use datazen_driver_api::{
     check_command_access, validate_command_input, CommandResult, DriverSaveDialogSpec,
 };
-use datazen_feature_core::mcp::permission::McpPermissionMode;
-use datazen_modules::mcp::application::command_policy::access_level_for_mode;
 
 pub(crate) async fn execute_driver_command_impl(
     state: &AppState,
@@ -38,13 +38,13 @@ pub(crate) async fn execute_driver_command_with_mode(
     let bound = resolved.bound;
 
     let metadata_command = crate::services::schema_metadata::is_metadata_command(&request.command);
-    let definition = datazen_modules::mcp::application::command_policy::resolve_definition(
+    let definition = datazen::mcp::application::command_policy::resolve_definition(
         driver.as_ref(),
         &request.command,
         request.database.is_some() || request.schema.is_some(),
     )
     .map_err(CommandError::Validation)?;
-    datazen_modules::mcp::application::command_policy::validate_invocation(
+    datazen::mcp::application::command_policy::validate_invocation(
         &definition,
         bound,
         permission_mode,
@@ -73,7 +73,7 @@ pub(crate) async fn execute_driver_command_with_mode(
         .map_err(CommandError::Validation)?;
 
     if is_sql_command {
-        datazen_modules::mcp::application::command_policy::bind_sql_params(&mut request.input)
+        datazen::mcp::application::command_policy::bind_sql_params(&mut request.input)
             .map_err(CommandError::Validation)?;
         if bound {
             if let Some(sql) = request.input.get("sql").and_then(|v| v.as_str()) {
@@ -88,13 +88,13 @@ pub(crate) async fn execute_driver_command_with_mode(
                     false
                 };
                 let safe_mode = state.store.execution_settings().await.safe_mode;
-                datazen_modules::execution::domain::sql_guard::check_sql(sql, read_only, safe_mode)
+                datazen::execution::domain::sql_guard::check_sql(sql, read_only, safe_mode)
                     .map_err(CommandError::Validation)?;
             }
         }
         if let Some(mode) = permission_mode {
             if let Some(sql) = request.input.get("sql").and_then(|v| v.as_str()) {
-                datazen_feature_core::mcp::permission::check_sql_allowed(sql, mode)
+                datazen::mcp::permission::check_sql_allowed(sql, mode)
                     .map_err(CommandError::Validation)?;
             }
         }
@@ -153,7 +153,7 @@ pub(crate) async fn execute_driver_command_with_mode(
                         None,
                     )
                     .await;
-                    if datazen_modules::schema::sql_may_mutate_schema(sql) {
+                    if datazen::schema::sql_may_mutate_schema(sql) {
                         if let Some(id) = db_session_id.as_deref() {
                             state.schema_cache.clear_connection(id).await;
                         }

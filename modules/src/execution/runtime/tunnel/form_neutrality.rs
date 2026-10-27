@@ -2,7 +2,7 @@
 //!
 //! # 这条闸门为什么存在
 //!
-//! 内核（`datazen-modules`）是 web 与桌面**共用**的那一半。形态名一旦写进内核，
+//! 内核（`datazen`）是 web 与桌面**共用**的那一半。形态名一旦写进内核，
 //! 就等于把「只有桌面才成立」的假设焊进共享代码：桌面形态存在时看不出问题，
 //! 换成 web 形态才发现那一半根本用不了。
 //!
@@ -148,7 +148,7 @@ fn violations(source: &str, forbidden: &[String]) -> Vec<(String, Vec<String>)> 
 /// 机制内核（job / budget / sql_guard / schema_cache / driver_registry）从本 crate
 /// 分出去以后，「形态中立」的理由一字未变——它同时服务多种形态。若闸门只扫本 crate，
 /// 拆分就会安静地把那一片移出覆盖范围，而闸门仍然全绿（少扫等于没扫）。
-/// D3 起 budget / sql_guard / driver_registry 的唯一定义在 `datazen-modules`，
+/// D3 起 budget / sql_guard / driver_registry 的唯一定义在 `datazen`，
 /// 那一片必须跟着搬进扫描范围。
 fn scanned_crates() -> Vec<(&'static str, std::path::PathBuf)> {
     // D3 迁移后本文件住在 modules；机制（tunnel/budget/…）也在这里，

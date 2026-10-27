@@ -1,6 +1,6 @@
 //! Restore through the same fixed Session / ExecutionGateway as ordinary SQL.
 //!
-//! D6 item 5 切片 b 自 feature-core 归位（唯一定义在此）。
+//! D6 item 5 切片 b 自 modules 归位（唯一定义在此）。
 use super::restore_job::{
     RestoreEvidence, RestoreGateway, RestoreInput, RestorePlan, RestoreRejection,
 };

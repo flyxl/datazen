@@ -74,7 +74,7 @@ pub(super) async fn prepare_target_objects(
     let context = crate::services::migration_endpoint::runtime_session_context(
         state,
         target_session,
-        datazen_modules::execution::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let config = context.config;
@@ -152,7 +152,7 @@ pub(super) async fn fingerprint_targets(
     let context = crate::services::migration_endpoint::runtime_session_context(
         state,
         session_id,
-        datazen_modules::execution::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let driver = context.driver;

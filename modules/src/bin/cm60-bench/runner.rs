@@ -31,17 +31,17 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
-use datazen_modules::execution::runtime::connection::{
+use datazen::execution::runtime::connection::{
     AttachmentState, CommandCall, ConfigRevision, ConnectionId, Counter, DbSessionId, ExecutionId,
     NamespaceTarget, OrganizationId, OwnerRef, PrincipalId, SessionContext, SessionHandle,
     SessionState, SessionView, Timestamp,
 };
-use datazen_modules::execution::runtime::gateway::owner_binding::OwnerMatchAuthorizer;
-use datazen_modules::execution::runtime::gateway::{
+use datazen::execution::runtime::gateway::owner_binding::OwnerMatchAuthorizer;
+use datazen::execution::runtime::gateway::{
     ExecutionEvent, ExecutionGateway, ExecutionRequest, ExecutionSource, GatewayError,
     InMemoryIdempotencyRepository, RequestPrincipal, SourceKind, GATEWAY_HISTORY_CAPACITY,
 };
-use datazen_modules::shared::id::{ClientInstanceId, EditorSessionId};
+use datazen::shared::id::{ClientInstanceId, EditorSessionId};
 
 use crate::clock::InstantClock;
 use crate::driver::{event_kind, event_sequence, FakeDriverPort, ProjectionReport};
@@ -63,7 +63,7 @@ const IDEMPOTENCY_PREFIX: &str = "idem-cm60-bench";
 const EXEC_PREFIX: &str = "cm60-bench";
 /// 压力半承担 permit 收支对账的测试二进制。
 const PERMIT_CARRIER: &str =
-    "cargo test -p datazen-modules --features execution,jobs --test cm60_pressure_drain";
+    "cargo test -p datazen --features execution,jobs --test cm60_pressure_drain";
 
 // ─────────────────────────────── 夹具 ───────────────────────────────
 
@@ -96,7 +96,7 @@ fn ready_view_for(session_id: &str) -> SessionView {
         connection_id: connection_id.clone(),
         config_revision: ConfigRevision::new(3),
         owner: owner(),
-        initial_target: datazen_modules::execution::runtime::connection::ExecutionTarget {
+        initial_target: datazen::execution::runtime::connection::ExecutionTarget {
             connection_id,
             namespace: namespace(),
             object: None,
@@ -271,7 +271,7 @@ async fn project(
             .apply_event(event_for(execution_id, sequence, session_id))
             .await;
         match disposition {
-            datazen_modules::execution::runtime::gateway::EventDisposition::Applied => {
+            datazen::execution::runtime::gateway::EventDisposition::Applied => {
                 acc.projection.applied += 1;
                 acc.events_projected += 1;
                 // 终态到达，执行从「在途」里退出（泄漏对账）。
@@ -279,24 +279,34 @@ async fn project(
                     port.mark_terminal();
                 }
             }
-            datazen_modules::execution::runtime::gateway::EventDisposition::IgnoredDuplicate { .. } => {
+            datazen::execution::runtime::gateway::EventDisposition::IgnoredDuplicate { .. } => {
                 acc.projection.duplicates += 1;
             }
-            datazen_modules::execution::runtime::gateway::EventDisposition::IgnoredOutOfOrder { .. } => {
+            datazen::execution::runtime::gateway::EventDisposition::IgnoredOutOfOrder {
+                ..
+            } => {
                 acc.projection.out_of_order += 1;
             }
-            datazen_modules::execution::runtime::gateway::EventDisposition::IgnoredDuplicateChunk { .. } => {
+            datazen::execution::runtime::gateway::EventDisposition::IgnoredDuplicateChunk {
+                ..
+            } => {
                 acc.projection.duplicate_chunks += 1;
             }
-            datazen_modules::execution::runtime::gateway::EventDisposition::Gap { .. } => {
+            datazen::execution::runtime::gateway::EventDisposition::Gap { .. } => {
                 acc.projection.lost += 1;
             }
-            datazen_modules::execution::runtime::gateway::EventDisposition::Unbound => {
+            datazen::execution::runtime::gateway::EventDisposition::Unbound => {
                 acc.projection.unbound += 1;
             }
-            datazen_modules::execution::runtime::gateway::EventDisposition::IgnoredStaleSession { .. }
-            | datazen_modules::execution::runtime::gateway::EventDisposition::IgnoredStaleEpoch { .. }
-            | datazen_modules::execution::runtime::gateway::EventDisposition::IgnoredForeignEpoch { .. } => {
+            datazen::execution::runtime::gateway::EventDisposition::IgnoredStaleSession {
+                ..
+            }
+            | datazen::execution::runtime::gateway::EventDisposition::IgnoredStaleEpoch {
+                ..
+            }
+            | datazen::execution::runtime::gateway::EventDisposition::IgnoredForeignEpoch {
+                ..
+            } => {
                 acc.projection.foreign += 1;
             }
         }
@@ -463,7 +473,7 @@ fn notes(
         "夹具为手抄：tests/gateway_fixtures 只对集成测试可见，二进制入口够不到，\
          故在此照其逐字段复刻。"
             .to_owned(),
-        "分位数实现只有一份：datazen_modules::execution::runtime::latency::nearest_rank_percentile，\
+        "分位数实现只有一份：datazen::execution::runtime::latency::nearest_rank_percentile，\
          nearest-rank、第 ceil(0.95*N) 项、1-based、不插值。"
             .to_owned(),
         "排队数结构上恒为 0：网关的受理处置只有 Accepted/Replayed，且未接入预算台账，\
@@ -734,10 +744,9 @@ fn make_gateway(
     store: &Arc<InMemoryIdempotencyRepository>,
 ) -> Arc<ExecutionGateway> {
     Arc::new(ExecutionGateway::new(
-        Arc::clone(port) as Arc<dyn datazen_modules::execution::runtime::registry::SessionPort>,
+        Arc::clone(port) as Arc<dyn datazen::execution::runtime::registry::SessionPort>,
         OwnerMatchAuthorizer::shared(),
-        Arc::clone(store)
-            as Arc<dyn datazen_modules::execution::runtime::gateway::IdempotencyRepository>,
+        Arc::clone(store) as Arc<dyn datazen::execution::runtime::gateway::IdempotencyRepository>,
         Arc::new(InstantClock::new()),
     ))
 }

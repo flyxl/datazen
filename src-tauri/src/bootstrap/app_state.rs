@@ -9,14 +9,14 @@ use crate::monitor::engine::MonitorEngine;
 use crate::store::DesktopRepository;
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use crate::{mcp, redis_flush_gate, workflow};
-use datazen_feature_core::ai::context::SchemaContextBuilder;
-use datazen_modules::execution::runtime::budget::{BudgetConfig, BudgetLedger};
-use datazen_modules::execution::runtime::driver_registry::init_drivers;
-use datazen_modules::jobs::domain::job::RecoveryFilter;
-use datazen_modules::jobs::{JobClock, SystemJobClock};
-use datazen_modules::schema::cache::SchemaCache;
-use datazen_modules::shared::context::RequestContext;
-use datazen_modules::shared::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
+use datazen::ai::context::SchemaContextBuilder;
+use datazen::execution::runtime::budget::{BudgetConfig, BudgetLedger};
+use datazen::execution::runtime::driver_registry::init_drivers;
+use datazen::jobs::domain::job::RecoveryFilter;
+use datazen::jobs::{JobClock, SystemJobClock};
+use datazen::schema::cache::SchemaCache;
+use datazen::shared::context::RequestContext;
+use datazen::shared::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
 
 use super::helpers::unique_driver_types;
 
@@ -82,15 +82,13 @@ pub(super) async fn build_app_state(
 
 pub(crate) fn build_desktop_job_host(
     app_db: Arc<crate::store::AppDb>,
-) -> Arc<datazen_modules::jobs::JobHost> {
+) -> Arc<datazen::jobs::JobHost> {
     let clock: Arc<dyn JobClock> = Arc::new(SystemJobClock);
-    let repository: Arc<dyn datazen_modules::jobs::JobRuntimeRepository> = Arc::new(
+    let repository: Arc<dyn datazen::jobs::JobRuntimeRepository> = Arc::new(
         crate::store::app_db::jobs::SqliteJobRepository::new(app_db, clock.clone(), 300),
     );
     let ledger = Arc::new(Mutex::new(BudgetLedger::new(BudgetConfig::team_default())));
-    Arc::new(datazen_modules::jobs::JobHost::new(
-        repository, ledger, clock,
-    ))
+    Arc::new(datazen::jobs::JobHost::new(repository, ledger, clock))
 }
 
 pub(crate) async fn recover_desktop_jobs_at_startup(state: &AppState) -> Result<(), String> {
@@ -166,7 +164,7 @@ pub(crate) async fn recover_desktop_jobs_at_startup(state: &AppState) -> Result<
 
 pub(crate) fn finish_app_state(
     store: Arc<DesktopRepository>,
-    registry: Arc<datazen_modules::execution::runtime::driver_registry::DriverRegistry>,
+    registry: Arc<datazen::execution::runtime::driver_registry::DriverRegistry>,
     sync_adapters: Arc<crate::transfer::adapter_registry::SyncAdapterRegistry>,
     prompts_dir: Option<PathBuf>,
 ) -> AppState {
@@ -181,8 +179,9 @@ pub(crate) fn finish_app_state(
     // Runtime wapps: scan {appData}/wapps/ for installed packages.
     let wapps_dir = data_dir.join("wapps");
     // Invalid packages are skipped (warn) so one bad install can't break boot.
-    let wapp_manager =
-        Arc::new(datazen_feature_core::workspace_apps::manager::WappManager::new(wapps_dir));
+    let wapp_manager = Arc::new(datazen::workspace_apps::manager::WappManager::new(
+        wapps_dir,
+    ));
     let wapp_count = wapp_manager.load_from_disk();
     tracing::info!("[startup]   ui wapps loaded: {wapp_count}");
 
@@ -199,8 +198,8 @@ pub(crate) fn finish_app_state(
     //
     // 同一份实例既注入会话后端（建连时解引用 `tunnelId`、启动隧道），也进
     // `AppState`（命令侧取用）：整个进程只有一份，存储的生命周期由宿主决定。
-    let tunnels: Arc<dyn datazen_modules::tunnel::TunnelRepository> = store.clone();
-    let known_hosts: Arc<dyn datazen_modules::tunnel::KnownHostsRepository> =
+    let tunnels: Arc<dyn datazen::tunnel::TunnelRepository> = store.clone();
+    let known_hosts: Arc<dyn datazen::tunnel::KnownHostsRepository> =
         crate::platform::known_hosts::desktop_known_hosts_repository(&data_dir);
     // 平台装配必须**先于**依赖它的功能绑定：共享的元数据源要拿到 Runtime 门面
     // （解析会话归属）与执行宿主（profile / 驱动 / 命令执行），两者都出自装配。
@@ -227,7 +226,7 @@ pub(crate) fn finish_app_state(
         crate::commands::schema_diff::reviewed_repository::desktop_reviewed_plan_repository(
             &platform,
         );
-    // AI 元数据源：共享实现住在 feature-core，桌面只提供两个跨形态件——Runtime
+    // AI 元数据源：共享实现住在 modules，桌面只提供两个跨形态件——Runtime
     // 门面与执行宿主。桌面不再有自己的 AI 适配层。
     let schema_source = crate::services::schema_context_source::desktop_schema_context_source(
         registry.clone(),
@@ -240,13 +239,14 @@ pub(crate) fn finish_app_state(
         store,
         schema_cache,
         sync_adapters,
-        ai_registry: Arc::new(datazen_modules::ai::AiProviderRegistry::with_http_client(
-            datazen_modules::ai::http::HttpClient::desktop(),
+        ai_registry: Arc::new(datazen::ai::AiProviderRegistry::with_http_client(
+            datazen::ai::http::HttpClient::desktop(),
         )),
         schema_context_builder: Arc::new(SchemaContextBuilder::new(schema_source)),
-        prompt_resolver: Arc::new(
-            datazen_feature_core::ai::prompt_resolver::PromptResolver::new(&data_dir, prompts_dir),
-        ),
+        prompt_resolver: Arc::new(datazen::ai::prompt_resolver::PromptResolver::new(
+            &data_dir,
+            prompts_dir,
+        )),
         workflow_registry: Arc::new(workflow::WorkflowRegistry::new(
             Arc::new(workflow::registry::AppDbWorkflowRepository::new(
                 app_db.clone(),
@@ -261,7 +261,7 @@ pub(crate) fn finish_app_state(
         query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
         workflow_scheduler: workflow::scheduler::WorkflowScheduler::new(),
         wapps: wapp_manager,
-        cancel_registry: datazen_feature_core::ai::cancel::CancellationRegistry::default(),
+        cancel_registry: datazen::ai::cancel::CancellationRegistry::default(),
         ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
         schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),
         desktop_job_host,

@@ -1,9 +1,9 @@
 //! Exercise the real transfer preflight against a driver without bound DML.
-use datazen_driver_api::*;
-use datazen_driver_turso::TursoDriver;
-use datazen_modules::migration::data_transfer::{
+use datazen::migration::data_transfer::{
     execute_transfer_data, TableInspectResult, TransferJob, ValueFormatter,
 };
+use datazen_driver_api::*;
+use datazen_driver_turso::TursoDriver;
 use serde_json::json;
 use std::collections::HashMap;
 

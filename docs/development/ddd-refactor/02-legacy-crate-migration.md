@@ -42,9 +42,9 @@
 
 独立 `runtime`、`kernel` crate 在调用者迁完后退役，不永久保留第二套实现。
 
-## 5.4 feature-core 与其他功能包
+## 5.4 modules 与其他功能包
 
-`feature-core` 按功能拆入 modules：AI、Workflow、Dashboard、命名视图、连接导入、表读写、导出、备份恢复、MCP 业务和 Wapp 内核。实际宿主 I/O 移到 infrastructure，不把混合文件原样称作 domain。
+`modules` 按功能拆入 modules：AI、Workflow、Dashboard、命名视图、连接导入、表读写、导出、备份恢复、MCP 业务和 Wapp 内核。实际宿主 I/O 移到 infrastructure，不把混合文件原样称作 domain。
 
 `schema-diff`、`data-sync`、`data-transfer` 的算法与计划模型分别进入对应 domain，准备/执行/恢复编排进入 application。`migration-common` 的纯共享算法进入同名内部模块，不能反向依赖三件套或 execution。
 
@@ -55,7 +55,7 @@
 工厂注册）归 `modules::ai` 的契约层，具体 Provider 适配（openai / anthropic / ollama /
 deepseek / custom 及共享 HTTP 机制）作为 `modules::ai` 的内部实现，不再保留独立
 AI crate。`modules::ai` 因此持有唯一一份 Provider 协议与实现；外部插件经
-`datazen-modules` 的 ai feature 实现契约。
+`datazen` 的 ai feature 实现契约。
 
 **platform-infra 改名 infra（2026-10-26 决策）**：`packages/platform-infra` 改名为
 `packages/infra`（crate 名 `datazen-infra`），定位为 **drivers / modules / web /
@@ -69,12 +69,12 @@ desktop 四类消费者中任意两者共用**的无业务基础设施工具的�
 实施采用**类型依赖闭包先移动、旧包单向委托新模块**：
 
 1. 先确认要移动符号用到的全部类型、trait 与宏；一起迁移必要的定义闭包。
-2. 新 modules 的生产依赖不指回准备退役的旧 application/platform-api/runtime/kernel/feature-core/迁移包。
+2. 新 modules 的生产依赖不指回准备退役的旧 application/platform-api/runtime/kernel/modules/迁移包。
 3. 某个定义移动后，由旧包依赖 modules 并再导出；未移动内容仍留在旧包，引用已迁移定义。
 4. 旧调用方与新调用方使用同一类型、同一服务/仓储实例，而不是两套状态。
 5. 每批核对 `cargo metadata` 和默认/裁剪 feature 构建，再移动上层消费者。
 
-**禁止的捷径**：先建 `modules → feature-core` 的空壳，再让 `feature-core → modules` 转发；或让 `platform-api → modules → runtime → platform-api` 形成环。若依赖闭包过大，应先拆出纯接口和模型、仍在旧包内整理职责，再成组迁移，不用复制类型绕过。
+**禁止的捷径**：先建 `modules → modules` 的空壳，再让 `modules → modules` 转发；或让 `platform-api → modules → runtime → platform-api` 形成环。若依赖闭包过大，应先拆出纯接口和模型、仍在旧包内整理职责，再成组迁移，不用复制类型绕过。
 
 兼容路径的例外必须具名：哪个符号、哪个旧消费者、在哪个 D 阶段删除。D8 必须清零；不能以“暂时兼容”永久保留旧包。
 

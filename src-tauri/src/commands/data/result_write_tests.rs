@@ -9,18 +9,18 @@
 use super::result_write::{commit_query_result_cell_impl, ResultCellWrite};
 use crate::testing::app_state::TestAppState;
 use crate::testing::mock_driver::MockDriverOptions;
-use datazen_driver_api::{ColumnSchema, Value};
-use datazen_modules::application::sessions::ConnectionUseCases;
-use datazen_modules::execution::application::requests::{
+use datazen::application::sessions::ConnectionUseCases;
+use datazen::execution::application::requests::{
     CommandCall, ExecuteInSessionRequest, OpenSessionRequest,
 };
-use datazen_modules::{
+use datazen::{
     execution::application::idempotency::IdempotentOperation,
     execution::target::{ExecutionTarget, NamespaceTarget},
     execution::{ExecutionState, RuntimeResultBinding, SessionHandle},
     shared::context::OwnerRef,
     shared::id::ConnectionId,
 };
+use datazen_driver_api::{ColumnSchema, Value};
 
 /// The table the fixture query reads.
 const TABLE: &str = "users";
@@ -145,7 +145,7 @@ async fn run_fixture_query(test: &TestAppState, handle: &SessionHandle) -> Runti
                 .read_artifact_chunk(
                     &context,
                     artifact.clone(),
-                    datazen_modules::shared::id::Counter::ZERO,
+                    datazen::shared::id::Counter::ZERO,
                 )
                 .await
                 .expect("the artifact chunk is readable");
@@ -154,7 +154,7 @@ async fn run_fixture_query(test: &TestAppState, handle: &SessionHandle) -> Runti
                     .read_artifact_chunk(
                         &context,
                         artifact.clone(),
-                        datazen_modules::shared::id::Counter::new(index),
+                        datazen::shared::id::Counter::new(index),
                     )
                     .await
                     .expect("the artifact chunk is readable");

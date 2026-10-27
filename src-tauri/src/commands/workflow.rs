@@ -2,9 +2,9 @@
 
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
-use datazen_feature_core::workflow::executor::WorkflowExecutor;
-use datazen_feature_core::workflow::history::{WorkflowRunListItem, WorkflowRunRecord};
-use datazen_feature_core::workflow::model::{
+use datazen::workflow::executor::WorkflowExecutor;
+use datazen::workflow::history::{WorkflowRunListItem, WorkflowRunRecord};
+use datazen::workflow::model::{
     WorkflowDefinition, WorkflowExecutionResult, WorkflowListItem, WorkflowVisibility,
 };
 use tauri::State;

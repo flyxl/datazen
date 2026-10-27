@@ -8,18 +8,18 @@
 
 use crate::gateway_fixtures as fx;
 use crate::{err, write_once};
-use datazen_modules::execution::runtime::connection::{RuntimeError, SessionState};
-use datazen_modules::execution::runtime::gateway::{GatewayError, SubmissionOperation};
+use datazen::execution::runtime::connection::{RuntimeError, SessionState};
+use datazen::execution::runtime::gateway::{GatewayError, SubmissionOperation};
 
 /// 在指定 owner epoch 下签一张执行令牌。
 fn issue_for_epoch(
-    tokens: &datazen_modules::execution::runtime::gateway::SubmissionTokenGuard,
+    tokens: &datazen::execution::runtime::gateway::SubmissionTokenGuard,
     epoch: u64,
 ) -> String {
     tokens
         .issue(
             SubmissionOperation::ExecuteInSession,
-            Some(datazen_modules::execution::runtime::connection::Counter::new(epoch)),
+            Some(datazen::execution::runtime::connection::Counter::new(epoch)),
             1_000,
             fx::TOKEN_TTL_NANOS,
         )

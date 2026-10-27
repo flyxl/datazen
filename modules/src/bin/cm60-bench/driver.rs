@@ -29,13 +29,13 @@ use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 
-use datazen_modules::execution::runtime::connection::{
+use datazen::execution::runtime::connection::{
     CloseMode, Counter, ExecuteInSessionRequest, ExecutionId, ExecutionReceipt, ExecutionState,
     RuntimeError, SessionHandle, SessionState, SessionView, StreamId,
 };
-use datazen_modules::execution::runtime::gateway::events::ExecutionEventKind;
-use datazen_modules::execution::runtime::latency::nearest_rank_percentile;
-use datazen_modules::execution::runtime::registry::SessionPort;
+use datazen::execution::runtime::gateway::events::ExecutionEventKind;
+use datazen::execution::runtime::latency::nearest_rank_percentile;
+use datazen::execution::runtime::registry::SessionPort;
 
 /// 每次执行发出的事件条数。
 ///

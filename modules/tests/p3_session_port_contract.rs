@@ -22,15 +22,15 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use datazen_modules::execution::runtime::connection::error::ApiErrorCode;
-use datazen_modules::execution::runtime::connection::types::{ClientInstanceId, EditorSessionId};
-use datazen_modules::execution::runtime::connection::{
+use datazen::execution::runtime::connection::error::ApiErrorCode;
+use datazen::execution::runtime::connection::types::{ClientInstanceId, EditorSessionId};
+use datazen::execution::runtime::connection::{
     AttachmentState, CloseMode, CommandCall, ConfigRevision, ConnectionId, Counter, DbSessionId,
     ExecuteInSessionRequest, ExecutionId, ExecutionReceipt, ExecutionState, ExecutionTarget,
     NamespaceTarget, OrganizationId, OwnerRef, PrincipalId, RuntimeError, SessionContext,
     SessionHandle, SessionState, SessionView, StreamId, Timestamp, TransactionState,
 };
-use datazen_modules::execution::runtime::registry::SessionPort;
+use datazen::execution::runtime::registry::SessionPort;
 
 /// 脚本化 fake：`fail_with` 指定执行路径要报的错误，`transaction` 指定事务态，
 /// `state` 指定会话态。默认全成功。

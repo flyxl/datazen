@@ -1,7 +1,7 @@
 //! Product entry for deployment-pinned version probes, not native DB export/restore.
 use super::{error::CommandError, AppState};
-use datazen_modules::jobs::application::native_tool::NativeToolJobHandler;
-use datazen_modules::{
+use datazen::jobs::application::native_tool::NativeToolJobHandler;
+use datazen::{
     jobs::domain::job::{JobDefinition, JobDetails, JobFilter, JobView},
     jobs::domain::native_tool::NativeToolSelection,
     shared::context::{OwnerRef, RequestContext},

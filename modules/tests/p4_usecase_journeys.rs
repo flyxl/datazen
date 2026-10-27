@@ -1,10 +1,10 @@
 use async_trait::async_trait;
-use datazen_modules::execution::application::{RuntimeConnectionUseCases, RuntimeResultSink};
-use datazen_modules::execution::runtime::{
+use datazen::execution::application::{RuntimeConnectionUseCases, RuntimeResultSink};
+use datazen::execution::runtime::{
     connection as rt,
     registry::{backend::*, SessionBackend},
 };
-use datazen_modules::{
+use datazen::{
     connection::domain::*,
     execution as pa,
     execution::application::idempotency::IdempotentOperation,
@@ -15,7 +15,7 @@ use datazen_modules::{
     shared::error::PortError,
     shared::id::*,
 };
-use datazen_modules::{
+use datazen::{
     execution::application::requests::*, execution::application::use_cases::ConnectionUseCases,
     shared::error::ApiErrorCode,
 };
@@ -54,7 +54,7 @@ impl ProfileRepository for Profiles {
     async fn create(
         &self,
         _: &RequestContext,
-        _: datazen_modules::connection::dto::ProfileDraft,
+        _: datazen::connection::dto::ProfileDraft,
         _: &IdempotencyKey,
     ) -> Result<ProfileRecord, PortError> {
         unreachable!()
@@ -64,7 +64,7 @@ impl ProfileRepository for Profiles {
         _: &RequestContext,
         _: ConnectionId,
         _: ConfigRevision,
-        _: datazen_modules::connection::dto::ProfilePatch,
+        _: datazen::connection::dto::ProfilePatch,
     ) -> Result<ProfileRecord, PortError> {
         unreachable!()
     }
@@ -113,7 +113,7 @@ impl PolicyService for Policy {
     async fn verify_delegation(
         &self,
         _: &RequestContext,
-        delegation: datazen_modules::shared::context::DelegationRef,
+        delegation: datazen::shared::context::DelegationRef,
     ) -> Result<DelegationGrant, PortError> {
         let grant = lock(&self.delegation)
             .clone()
@@ -218,11 +218,11 @@ impl SessionBackend for Backend {
         lock(&self.epochs).insert(id.clone(), r.runtime_epoch);
         Ok(OpenedResource {
             context,
-            capabilities: datazen_modules::execution::runtime::registry::CapabilityVersions::new(
+            capabilities: datazen::execution::runtime::registry::CapabilityVersions::new(
                 "7", "2.3.4",
             ),
             capability_snapshot:
-                datazen_modules::execution::runtime::registry::backend::CapabilityProvenance {
+                datazen::execution::runtime::registry::backend::CapabilityProvenance {
                     driver_id: "test".into(),
                     driver_version: "2.3.4".into(),
                     protocol_version: 7,
@@ -431,7 +431,7 @@ async fn execute(
     c: &RequestContext,
     h: &pa::SessionHandle,
     command: &str,
-) -> datazen_modules::execution::ExecutionReceipt {
+) -> datazen::execution::ExecutionReceipt {
     let token = service
         .issue_submission_token(c, IdempotentOperation::ExecuteInSession, Some(h))
         .await
@@ -452,7 +452,7 @@ async fn terminal(
     service: &RuntimeConnectionUseCases,
     c: &RequestContext,
     id: &ExecutionId,
-) -> datazen_modules::execution::ExecutionView {
+) -> datazen::execution::ExecutionView {
     for _ in 0..1000 {
         let view = service.get_execution(c, id.clone()).await.unwrap();
         if view.state.is_terminal() {
@@ -1120,7 +1120,7 @@ async fn published_prefix_disconnect_cancel_recover_missing_chunk_and_execute_ag
     assert_eq!(final_view.effect_outcome, EffectOutcome::Unknown);
     assert_eq!(
         final_view.result_completeness,
-        datazen_modules::execution::ResultCompleteness::Truncated
+        datazen::execution::ResultCompleteness::Truncated
     );
     assert_eq!(final_view.artifact_ids, vec![artifact.clone()]);
     // Replaying the already displayed chunk and then fetching the missing
@@ -1185,7 +1185,7 @@ mod session_transactions;
 /// 重复等待已完成执行返回同一终态，不重新执行（backend 收到的执行 ID 不再增加）。
 #[tokio::test(start_paused = true)]
 async fn wait_on_a_terminal_execution_returns_the_same_terminal_state() {
-    use datazen_modules::execution::application::WaitOutcome;
+    use datazen::execution::application::WaitOutcome;
     use std::time::Duration;
 
     let (service, backend, _, _) = setup();
@@ -1224,7 +1224,7 @@ async fn wait_on_a_terminal_execution_returns_the_same_terminal_state() {
 /// 释放后再次等待拿到真实终态。
 #[tokio::test(start_paused = true)]
 async fn wait_deadline_is_a_timeout_report_not_a_cancellation() {
-    use datazen_modules::execution::application::WaitOutcome;
+    use datazen::execution::application::WaitOutcome;
     use std::time::Duration;
 
     let (service, backend, _, _) = setup();
@@ -1269,7 +1269,7 @@ async fn wait_deadline_is_a_timeout_report_not_a_cancellation() {
 /// 等待不存在的执行映射既有 NotFound，不吞错。
 #[tokio::test(start_paused = true)]
 async fn wait_on_a_missing_execution_maps_the_existing_not_found() {
-    use datazen_modules::shared::id::ExecutionId;
+    use datazen::shared::id::ExecutionId;
     use std::time::Duration;
 
     let (service, _, _, _) = setup();
@@ -1278,8 +1278,5 @@ async fn wait_on_a_missing_execution_maps_the_existing_not_found() {
         .wait_for_execution(&c, ExecutionId::new("no-such-exec"), Duration::from_secs(1))
         .await
         .unwrap_err();
-    assert_eq!(
-        error.code,
-        datazen_modules::shared::error::ApiErrorCode::NotFound
-    );
+    assert_eq!(error.code, datazen::shared::error::ApiErrorCode::NotFound);
 }

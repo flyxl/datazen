@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use datazen_modules::ai::{AiModelProfile, AiProviderConfig, AiSettingsConfig};
+use datazen::ai::{AiModelProfile, AiProviderConfig, AiSettingsConfig};
 
 use super::{DesktopRepository, DesktopRepositoryError};
 

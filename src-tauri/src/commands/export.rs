@@ -1,33 +1,33 @@
 //! Desktop file picker and source/event bindings for the portable export service.
 use super::{error::CommandError, AppState};
+pub use datazen::export::*;
 use datazen_driver_api::DatabaseDriver;
-pub use datazen_feature_core::export::*;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 mod stream;
 struct DesktopExportSource {
     platform: crate::platform::PlatformEntry,
     runtime: crate::services::runtime_command_source::RuntimeCommandSource,
-    registry: Arc<datazen_modules::execution::runtime::driver_registry::DriverRegistry>,
-    cancel: datazen_modules::jobs::CancelToken,
+    registry: Arc<datazen::execution::runtime::driver_registry::DriverRegistry>,
+    cancel: datazen::jobs::CancelToken,
 }
 #[async_trait::async_trait]
 impl ExportSource for DesktopExportSource {
     async fn resolve_source(
         &self,
         id: &str,
-    ) -> Result<(Arc<dyn DatabaseDriver>, bool, bool), datazen_modules::export::ExportError> {
+    ) -> Result<(Arc<dyn DatabaseDriver>, bool, bool), datazen::export::ExportError> {
         let (_, config, _) = self
             .runtime
             .profile_for_session(id)
             .await
-            .map_err(datazen_modules::export::ExportError::Internal)?;
+            .map_err(datazen::export::ExportError::Internal)?;
         let driver = self
             .registry
             .get(&config.database_type)
             .await
             .ok_or_else(|| {
-                datazen_modules::export::ExportError::Validation("Export driver unavailable".into())
+                datazen::export::ExportError::Validation("Export driver unavailable".into())
             })?;
         Ok((
             driver,
@@ -41,25 +41,24 @@ impl ExportSource for DesktopExportSource {
         sql: &str,
         target: datazen_driver_api::SqlTarget<'_>,
         callback: datazen_driver_api::QueryStreamCallback,
-    ) -> Result<(), datazen_modules::export::ExportError> {
+    ) -> Result<(), datazen::export::ExportError> {
         self.stream_runtime_query(id, sql, target, callback).await
     }
 }
 struct ExportOperation {
     store: Arc<crate::store::DesktopRepository>,
-    registry: Arc<datazen_modules::execution::runtime::driver_registry::DriverRegistry>,
+    registry: Arc<datazen::execution::runtime::driver_registry::DriverRegistry>,
     platform: crate::platform::PlatformEntry,
     request: ExportTablesRequest,
     app: AppHandle,
     staging: tempfile::TempDir,
 }
 #[async_trait::async_trait]
-impl datazen_feature_core::file_job::FileJobOperation for ExportOperation {
+impl datazen::file_job::FileJobOperation for ExportOperation {
     async fn run(
         &self,
-        cancel: &datazen_modules::jobs::CancelToken,
-    ) -> Result<datazen_feature_core::file_job::FileJobOutput, datazen_modules::export::ExportError>
-    {
+        cancel: &datazen::jobs::CancelToken,
+    ) -> Result<datazen::file_job::FileJobOutput, datazen::export::ExportError> {
         let (plans, zip) = prepare_export(&self.request)?;
         let path = self.staging.path().join(if zip {
             "export.zip".to_string()
@@ -82,7 +81,7 @@ impl datazen_feature_core::file_job::FileJobOperation for ExportOperation {
         } else {
             run_single_export(&events, &source, &self.request, &plans, &path).await?
         };
-        Ok(datazen_feature_core::file_job::FileJobOutput { path, rows })
+        Ok(datazen::file_job::FileJobOutput { path, rows })
     }
 }
 struct DesktopExportEvents(AppHandle);
@@ -145,9 +144,9 @@ pub async fn export_tables_stream(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use datazen::export::ExportError as CommandError;
     use datazen_driver_api::ColumnInfo;
     use datazen_driver_api::Value;
-    use datazen_modules::export::ExportError as CommandError;
     use std::sync::Mutex;
 
     #[tokio::test]
@@ -163,7 +162,7 @@ mod tests {
                 test.state.platform.clone(),
             ),
             registry: test.state.driver_registry.clone(),
-            cancel: datazen_modules::jobs::CancelToken::new(),
+            cancel: datazen::jobs::CancelToken::new(),
         };
         let rows = Arc::new(Mutex::new(0usize));
         let observed = rows.clone();
@@ -188,7 +187,7 @@ mod tests {
                 .runtime()
                 .expect("runtime is ready")
                 .connection_id_for_session(
-                    &datazen_modules::execution::runtime::connection::DbSessionId::new(&session)
+                    &datazen::execution::runtime::connection::DbSessionId::new(&session)
                 )
                 .is_some(),
             "export must leave the runtime session open"

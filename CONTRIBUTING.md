@@ -54,9 +54,9 @@ pnpm test:unit
 node scripts/resolve-drivers.mjs --drivers=basic
 cargo test --lib -p datazen-driver-api -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis
 FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
-cargo test -p datazen --lib --features "$FEATURES"
+cargo test -p datazen_desktop --lib --features "$FEATURES"
 node scripts/driver-file-stash.mjs restore
-cargo test -p datazen-modules --features ai --lib
+cargo test -p datazen --features ai --lib
 ```
 
 If you changed `site/`: `node scripts/check-site-seo.mjs`.

@@ -1,17 +1,17 @@
 //! Test host ports; database effects always come from the real PostgreSQL provider.
 use async_trait::async_trait;
-use datazen_driver_api::{resource as dr, session as ds};
-use datazen_modules::execution::runtime::driver_mapping as mapping;
-use datazen_modules::execution::runtime::{
+use datazen::execution::runtime::driver_mapping as mapping;
+use datazen::execution::runtime::{
     connection as rt,
     registry::{backend::*, SessionBackend},
 };
-use datazen_modules::{
+use datazen::{
     ports::{profile::*, shared::policy::*},
     shared::error::PortError,
     shared::id::*,
     RequestContext,
 };
+use datazen_driver_api::{resource as dr, session as ds};
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
@@ -41,7 +41,7 @@ impl ProfileRepository for Profiles {
     async fn create(
         &self,
         _: &RequestContext,
-        _: datazen_modules::connection::dto::ProfileDraft,
+        _: datazen::connection::dto::ProfileDraft,
         _: &IdempotencyKey,
     ) -> Result<ProfileRecord, PortError> {
         unreachable!()
@@ -51,7 +51,7 @@ impl ProfileRepository for Profiles {
         _: &RequestContext,
         _: ConnectionId,
         _: ConfigRevision,
-        _: datazen_modules::connection::dto::ProfilePatch,
+        _: datazen::connection::dto::ProfilePatch,
     ) -> Result<ProfileRecord, PortError> {
         unreachable!()
     }
@@ -94,7 +94,7 @@ impl PolicyService for Policy {
     async fn verify_delegation(
         &self,
         _: &RequestContext,
-        _: datazen_modules::shared::context::DelegationRef,
+        _: datazen::shared::context::DelegationRef,
     ) -> Result<DelegationGrant, PortError> {
         unreachable!()
     }
@@ -114,9 +114,9 @@ pub struct Lifecycle {
 pub fn runtime(
     config: datazen_driver_api::ConnectionConfig,
     lifecycle: Arc<Lifecycle>,
-) -> Arc<datazen_modules::execution::application::RuntimeConnectionUseCases> {
+) -> Arc<datazen::execution::application::RuntimeConnectionUseCases> {
     Arc::new(
-        datazen_modules::execution::application::RuntimeConnectionUseCases::new(
+        datazen::execution::application::RuntimeConnectionUseCases::new(
             Arc::new(Profiles {
                 revision: AtomicU64::new(1),
             }),
@@ -212,10 +212,9 @@ impl SessionBackend for Backend {
         Ok(OpenedResource {
             context: mapping::context(&observed.context),
             resource_id: id,
-            capabilities:
-                datazen_modules::execution::runtime::registry::audit::CapabilityVersions::new(
-                    "1", "1",
-                ),
+            capabilities: datazen::execution::runtime::registry::audit::CapabilityVersions::new(
+                "1", "1",
+            ),
             capability_snapshot: CapabilityProvenance::new("postgresql", "test", 1),
             driver_supports_cancel: false,
         })

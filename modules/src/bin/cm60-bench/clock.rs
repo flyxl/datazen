@@ -7,7 +7,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use datazen_modules::execution::runtime::gateway::MonotonicClock;
+use datazen::execution::runtime::gateway::MonotonicClock;
 
 /// 以进程内某个基准瞬间为原点的单调时钟。
 ///

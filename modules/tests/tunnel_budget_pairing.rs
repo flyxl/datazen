@@ -26,10 +26,10 @@ mod tunnel_arch_support;
 
 use tunnel_arch_support::{request, tunnel_spec, wired};
 
-use datazen_modules::execution::runtime::connection::{
+use datazen::execution::runtime::connection::{
     Counter, ExecutionId, HandleId, HandleKind, ResourceId, SessionHandleRef,
 };
-use datazen_modules::execution::runtime::resource::{
+use datazen::execution::runtime::resource::{
     CleanupDisposition, CleanupReport, DriverCleanVerdict, HostConditionSnapshot, TunnelDisposition,
 };
 

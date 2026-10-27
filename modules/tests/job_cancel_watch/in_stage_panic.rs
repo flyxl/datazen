@@ -3,8 +3,8 @@
 //! 并等待取消看守者停止。本测试同时核对 Job 终态和看守者没有继续轮询。
 
 use super::*;
-use datazen_modules::execution::EffectOutcome;
-use datazen_modules::jobs::domain::job::JobState;
+use datazen::execution::EffectOutcome;
+use datazen::jobs::domain::job::JobState;
 
 // ---------------------------------------------------------------- 阶段 panic 的收敛
 

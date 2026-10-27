@@ -38,7 +38,7 @@ pub use history_db::{
 };
 pub use models::{FavoriteQuery, QueryHistoryEntry, SyncTask};
 // The named-view DTO itself is the shared layer's
-// (`datazen-modules::named_views`); the store only contributes
+// (`datazen::named_views`); the store only contributes
 // the persistence and the id minter.
 pub use named_views::HostViewIdMinter;
 pub use settings::{AppSettings, OnboardingState};
@@ -434,7 +434,7 @@ impl DesktopRepository {
         cache.settings.clone()
     }
 
-    pub async fn execution_settings(&self) -> datazen_modules::settings::ExecutionSettings {
+    pub async fn execution_settings(&self) -> datazen::settings::ExecutionSettings {
         self.cache.read().await.settings.shared_settings().execution
     }
 
@@ -468,17 +468,17 @@ impl DesktopRepository {
     /// settings repository boundary.
     pub async fn read_shared_settings(
         &self,
-    ) -> Result<datazen_modules::settings::SharedSettings, DesktopRepositoryError> {
+    ) -> Result<datazen::settings::SharedSettings, DesktopRepositoryError> {
         Ok(self.get_settings().await.shared_settings())
     }
 
     /// Atomically apply and persist the shape-neutral settings projection.
-    /// Validation of enum values belongs to `datazen-modules`; this method only
+    /// Validation of enum values belongs to `datazen`; this method only
     /// preserves the desktop-only fields while writing the shared projection.
     pub async fn write_shared_settings(
         &self,
-        settings: datazen_modules::settings::SharedSettings,
-    ) -> Result<datazen_modules::settings::SharedSettings, DesktopRepositoryError> {
+        settings: datazen::settings::SharedSettings,
+    ) -> Result<datazen::settings::SharedSettings, DesktopRepositoryError> {
         let mut cache = self.cache.write().await;
         let mut next = cache.settings.clone();
         next.apply_shared_settings(settings)

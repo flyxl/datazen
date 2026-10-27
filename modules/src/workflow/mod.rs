@@ -1,7 +1,7 @@
 //! Workflow：步骤/块/事务边界的领域词汇、用例规则与执行引擎
 //! （D6 item 3，2026-10-26；切片 a 词汇 + 切片 b 引擎）。
 //!
-//! 词源：`datazen-feature-core::workflow` 全家族逐字迁移。分层：
+//! 词源：`datazen::workflow` 全家族逐字迁移。分层：
 //! * `domain`——模型词汇（model）、错误信封（error）、定义分派（executable）、
 //!   命令步骤词汇（command）、运行记录词汇（history）、计划预校验（plan_guard，
 //!   §7 先证明后执行）、执行目标解析链（target_plan，§4 四级链）与定义仓储
@@ -23,7 +23,7 @@ pub mod application;
 pub mod domain;
 pub mod engine;
 
-// 旧扁平路径镜像（feature-core 垫片与 src-tauri 消费者兼容）。
+// 旧扁平路径镜像（modules 垫片与 src-tauri 消费者兼容）。
 pub use application::command_runtime;
 pub use application::conditions;
 pub use application::context;

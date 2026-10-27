@@ -66,12 +66,10 @@ const METADATA_MAX_BUFFER = 128 * 1024 * 1024;
 export const LAYERS = Object.freeze([
   { id: 'host', path: 'src-tauri', kind: 'rust' },
   { id: 'modules', path: 'modules', kind: 'rust' },
-  { id: 'feature-core', path: 'packages/feature-core', kind: 'rust' },
   { id: 'infra', path: 'packages/infra', kind: 'rust' },
   { id: 'server', path: 'server', kind: 'rust' },
   { id: 'driver-api', path: 'packages/driver-api', kind: 'rust' },
   { id: 'driver', path: 'packages/drivers/*', kind: 'rust' },
-  { id: 'migration-common', path: 'packages/migration-common', kind: 'rust' },
   { id: 'backend-client', path: 'packages/backend-client', kind: 'ts' },
 ]);
 

@@ -45,7 +45,7 @@ mod retention;
 #[path = "cm70/retries.rs"]
 mod retries;
 
-use datazen_modules::execution::runtime::gateway::{ExecutionRequest, GatewayError};
+use datazen::execution::runtime::gateway::{ExecutionRequest, GatewayError};
 use gateway_fixtures as fx;
 
 /// 把 `Ok` 变成一条带上下文的失败断言。

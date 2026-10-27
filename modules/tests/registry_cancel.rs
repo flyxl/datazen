@@ -22,12 +22,10 @@ mod registry_fixtures;
 
 use std::sync::Arc;
 
-use datazen_modules::execution::runtime::connection::{
+use datazen::execution::runtime::connection::{
     ExecutionId, ExecutionState, RuntimeError, SessionView,
 };
-use datazen_modules::execution::runtime::registry::{
-    CancelDisposition, SessionPort, SessionRegistry,
-};
+use datazen::execution::runtime::registry::{CancelDisposition, SessionPort, SessionRegistry};
 
 use registry_fixtures::{
     as_backend, db_session_id, execute_request, execution_id, handle_of, register_ready, settle,

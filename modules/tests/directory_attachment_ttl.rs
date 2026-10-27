@@ -19,15 +19,15 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use common::{arm_timer, client, principal, CyclicEntropy, TestClock};
-use datazen_modules::execution::domain::{CloseDisposition, SessionDirectory, SessionOwner};
-use datazen_modules::execution::runtime::connection::testing::clock::FiredTimer;
-use datazen_modules::execution::runtime::directory::{
+use datazen::execution::domain::{CloseDisposition, SessionDirectory, SessionOwner};
+use datazen::execution::runtime::connection::testing::clock::FiredTimer;
+use datazen::execution::runtime::directory::{
     Adjudication, AttachmentOutcome, AttachmentRejection, AttachmentRequest, DeadlineKind,
     InMemorySessionDirectory, MonoInstant, RouteRejection, SessionHandle,
 };
-use datazen_modules::shared::context::OwnerRef;
-use datazen_modules::shared::error::PortError;
-use datazen_modules::shared::id::{
+use datazen::shared::context::OwnerRef;
+use datazen::shared::error::PortError;
+use datazen::shared::id::{
     AttachmentToken, ConnectionId, DbSessionId, EditorSessionId, ExecutionId, OrganizationId,
     PrincipalId, RuntimeEpoch, Timestamp, WorkerId,
 };
@@ -642,7 +642,7 @@ fn expiration_projection_is_null_while_executing_without_a_deadline() {
     );
     assert_eq!(
         opened.dir.execution_occupancy(&opened.handle).ok(),
-        Some(datazen_modules::execution::runtime::directory::ExecutionOccupancy::Busy(execution)),
+        Some(datazen::execution::runtime::directory::ExecutionOccupancy::Busy(execution)),
         "占用状态应保持在第一个执行上"
     );
 }

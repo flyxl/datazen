@@ -97,8 +97,8 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 
 | 字段 | 端口类型 | 桌面实现 | 注入点 |
 | --- | --- | --- | --- |
-| `settings` | `datazen_modules::platform_api::ports::SettingsRepository` | `DesktopRepository`（`src-tauri/src/store/mod.rs`） | `PlatformAdapter::inject`（`src-tauri/src/platform/adapter.rs`） |
-| `tunnels` | `datazen_modules::tunnel::TunnelRepository` | `DesktopRepository`（`src-tauri/src/store/tunnels.rs`） | 同上（与注入给会话后端的是**同一个实例**） |
+| `settings` | `datazen::platform_api::ports::SettingsRepository` | `DesktopRepository`（`src-tauri/src/store/mod.rs`） | `PlatformAdapter::inject`（`src-tauri/src/platform/adapter.rs`） |
+| `tunnels` | `datazen::tunnel::TunnelRepository` | `DesktopRepository`（`src-tauri/src/store/tunnels.rs`） | 同上（与注入给会话后端的是**同一个实例**） |
 
 要点：
 
@@ -107,7 +107,7 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 - `AssemblyState::missing_steps()` 里 §6.2-7 的目标状态由 `AwaitingApplicationServices` 改为 `FullyWired`——旧值与当前档位同级，导致「补完第 7 步」在机器上永远不前进。
 - 机器可校验的不变式：`modules` 侧 6 条（形状 3 条 + 行为 3 条），宿主侧 11 条（装配状态机 2 条 + `AppState` 形状 3 条 + 装配降级 2 条 + 第三步与第五步的宿主态收敛守卫 4 条，见 §5.1.2 的 D1 裁定、第三步与第五步）。
 
-**依赖边结论（为什么 application 层不能直接持有领域包端口）**：`datazen-modules` 依赖 `datazen-modules::application`，而 `datazen-modules::schema_diff` / `datazen-modules::data_sync` / `datazen-modules::data_transfer` 都依赖 `datazen-modules`。因此 `application → 领域包` 会闭成 Cargo 环（`cargo metadata` 报 `cyclic package dependency`），门禁连跑都跑不起来。F-02/F-03/F-05 只禁宿主、传输框架与前端标识，**不禁**这条边——挡住它的是依赖图本身，不是门禁。F-04 另外禁止 `platform-api` 依赖领域包，因此「把领域端口搬进 `platform-api`」这条路也要靠**新写窄端口**而不是靠依赖。结论：**领域端口只能由宿主在组装期包成 `platform-api` 层的窄端口再注入**。这一条已写成断言（`the_crate_does_not_depend_on_the_domain_packages`）。
+**依赖边结论（为什么 application 层不能直接持有领域包端口）**：`datazen` 依赖 `datazen::application`，而 `datazen::schema_diff` / `datazen::data_sync` / `datazen::data_transfer` 都依赖 `datazen`。因此 `application → 领域包` 会闭成 Cargo 环（`cargo metadata` 报 `cyclic package dependency`），门禁连跑都跑不起来。F-02/F-03/F-05 只禁宿主、传输框架与前端标识，**不禁**这条边——挡住它的是依赖图本身，不是门禁。F-04 另外禁止 `platform-api` 依赖领域包，因此「把领域端口搬进 `platform-api`」这条路也要靠**新写窄端口**而不是靠依赖。结论：**领域端口只能由宿主在组装期包成 `platform-api` 层的窄端口再注入**。这一条已写成断言（`the_crate_does_not_depend_on_the_domain_packages`）。
 
 **没有做、也不许顺手做的事**：现有 145 处 `state.store.…` 调用点一个都没搬；命令的签名、载荷与错误文案一个都没改；`AppState` 没有新增 `pub` 字段（字段数上限由断言钉住，当前基线 23：25 起，第三步与第五步各 -1）。
 
@@ -121,7 +121,7 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 
 `AppState` 少掉：**0 个字段**（本期只加持有权，不动宿主的字段），访问数不变（`state.store` 仍是 145，`state.tunnels` 仍是 12）。
 
-独立验收：`cargo test -p datazen-modules::application --lib`（形状 3 条 + 行为 3 条）、`cargo test -p datazen --lib`（`completing_step_seven_advances_the_machine_to_fully_wired`、`injection_wires_the_storage_ports_into_the_application_services`、`app_state_*` 3 条）、`node scripts/check-platform-crate-boundaries.mjs`（F-02/F-03/F-04 仍绿）。
+独立验收：`cargo test -p datazen::application --lib`（形状 3 条 + 行为 3 条）、`cargo test -p datazen_desktop --lib`（`completing_step_seven_advances_the_machine_to_fully_wired`、`injection_wires_the_storage_ports_into_the_application_services`、`app_state_*` 3 条）、`node scripts/check-platform-crate-boundaries.mjs`（F-02/F-03/F-04 仍绿）。
 
 风险：`ApplicationServices` 多了必填构造参数 ⇒ 将来任何新的形态都必须提供这两个端口的实现；漏了编译不过，这是**期望**的失败面。注入的实例必须与宿主持有的是同一份（`Arc::ptr_eq` 断言已钉住），否则出现两份事实。
 
@@ -131,7 +131,7 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 
 `AppState` 少掉：**0 个字段**。生产半边的 `state.store.` 计数（口径：`src-tauri/src` 下 `.rs`、排除 `*_tests.rs`、在首个 `#[cfg(test)]` 处截断）从 **106 减到 104**，其中 `commands/config.rs` 由 **14 减到 12**。早先本节写的「145 → 143」是**含测试半边的宽口径**（同一时刻宽口径实测亦为 143），不可与本期数字直接相减。
 
-独立验收（已实测）：`cargo test -p datazen --lib` **1458 passed / 0 failed**（EXIT=0）；新增 `commands::config::tests::shared_settings_commands_read_the_aggregate_not_the_host_store`——断言生产半边里 `SettingsService::new(` 出现 0 次、`state.store.as_ref()` 出现 0 次、`settings_service()` 出现 2 次、`state.store` 出现 12 次；`src-tauri/src/platform/ipc.rs` 的 15 条 `FROZEN_SIGNATURES` 一字未改。
+独立验收（已实测）：`cargo test -p datazen_desktop --lib` **1458 passed / 0 failed**（EXIT=0）；新增 `commands::config::tests::shared_settings_commands_read_the_aggregate_not_the_host_store`——断言生产半边里 `SettingsService::new(` 出现 0 次、`state.store.as_ref()` 出现 0 次、`settings_service()` 出现 2 次、`state.store` 出现 12 次；`src-tauri/src/platform/ipc.rs` 的 15 条 `FROZEN_SIGNATURES` 一字未改。
 
 失败面：按下面的 D1 裁定，聚合取不到时这两条命令报 `NotConfigured`（此前直读 store 恒可用），残留失败面只有 `DesktopIdentity::from_desktop_user` 失败那一档。
 
@@ -144,7 +144,7 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 - **实测依据（说明旧形状的失败半径严重超标）**：`identity_resolver()` 在**生产路径零调用方**（全仓只有 `adapter_tests` 调它），而 `master_key_bytes()` 读的是 `store.encryption_key_b64()`——主密钥在 `DesktopRepository::init_with_path` 里已经生成并持有，因此 `for_desktop` 在 store 就绪后**几乎不可失败**；真实可失败的只有制品目录（`create_dir_all` 撞上同名文件或不可写）。旧形状下这两者任一失败都会让 `profiles` / `runtime` / `services` 一个都装不上，把「制品存不了」放大成「所有依赖平台的 IPC 都是 `NotConfigured`」。
 - **残留失败面（写清，不得再悄悄扩大）**：`DesktopIdentity::from_desktop_user` 失败（取不到本机用户名）时没有 adapter，设置命令仍是 `NotConfigured`。这比旧路径（设置直接读 store）多出的**唯一**一档。接受理由：该档里连接列表、建连、工作流、AI 全部 `NotConfigured`，应用实质不可用；为这一档单留一条宿主直读 `store` 的路径，等于重新引入第二事实源。可逆性：将来若产品要求「无身份也能改设置」，正确做法是给聚合增加一条不依赖身份的构造路径（`sessions` 换成惰性端口），而不是回到 `state.store`。
 
-可执行证据：`cargo test -p datazen --lib -- platform::adapter`（17 passed），其中
+可执行证据：`cargo test -p datazen_desktop --lib -- platform::adapter`（17 passed），其中
 `injection_wires_the_storage_ports_into_the_application_services`（顺利装配时降级表为空、身份解析器在场）、
 `optional_wiring_failure_degrades_only_its_own_capability`（制品目录被同名文件占住时：`inject` 返回 `Ok`、
 `require_application_services()` 可用、`degraded_capabilities()` 只列那一项、`artifact_store()` 报
@@ -182,7 +182,7 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 
 `AppState` 少掉：**3 个字段**——`schema_diff_reviewed_plans`（9 处访问）、`sync_stores`（7 处）、`transfer_plans`（5 处），合计 **21 处** `state.*` 直读归零；字段数 24 → **21**。
 
-独立验收：`cargo test -p datazen-modules::platform_api --lib`（清单 ↔ 代码 ↔ 文档三条交叉断言 + 窄端口的 DTO 往返断言）+ `cargo test -p datazen --lib`（宿主适配器的转发断言：转发的是同一个领域端口实例）+ `node scripts/check-platform-crate-boundaries.mjs`（F-04 必须仍绿：`platform-api` 不依赖领域包）+ 新增断言「生产源码里 `state.schema_diff_reviewed_plans` / `state.sync_stores` / `state.transfer_plans` 出现 0 次」。
+独立验收：`cargo test -p datazen::platform_api --lib`（清单 ↔ 代码 ↔ 文档三条交叉断言 + 窄端口的 DTO 往返断言）+ `cargo test -p datazen_desktop --lib`（宿主适配器的转发断言：转发的是同一个领域端口实例）+ `node scripts/check-platform-crate-boundaries.mjs`（F-04 必须仍绿：`platform-api` 不依赖领域包）+ 新增断言「生产源码里 `state.schema_diff_reviewed_plans` / `state.sync_stores` / `state.transfer_plans` 出现 0 次」。
 
 风险（最高的一期）：窄端口的 DTO 一旦与领域包的形状**各写一份**，事实就有两份 ⇒ 窄端口必须只暴露领域包已有的类型；**若某个领域模型无法用 platform-api 的词汇表达，说明该能力本就不该进形态中立层**，此时该窄端口**不应**被创建。这一期也是形态专属的东西最容易漏进中立层的地方——评审必须逐条问「这个方法在 web 形态有对应物吗」。
 
@@ -207,14 +207,14 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 `modules::tunnel`：机制位于 `modules/src/tunnel/`，端口唯一位于
 `modules/src/tunnel/domain/`。Desktop 的加密落盘、known-hosts 文件 I/O 与
 `DesktopTunnelHost` 仍留在宿主；ApplicationServices、会话后端和测试直接使用
-`datazen_modules::tunnel`，不再经 platform-api 或独立 `datazen-tunnel` crate 转发。
+`datazen::tunnel`，不再经 platform-api 或独立 `datazen-tunnel` crate 转发。
 
 本步删除旧 `packages/tunnel` workspace 成员及 platform-api 的隧道端口文件，更新模块
 feature 矩阵、边界门禁和架构链接。`TunnelRepository` 的摘要/全量分档、组织隔离，
 `KnownHostsRepository::load` 失败降级与 `save` 错误语义、文件格式和 TLS 初始化时机均保持不变。
 
-实测：`cargo test -p datazen-modules --no-default-features --features tunnel` 66 passed；
-`cargo test -p datazen --lib` 1477 passed、9 ignored；modules、platform-api、application
+实测：`cargo test -p datazen_desktop --no-default-features --features tunnel` 66 passed；
+`cargo test -p datazen_desktop --lib` 1477 passed、9 ignored；modules、platform-api、application
 与 Desktop `cargo check` 均通过。
 
 **第六步——`AppState.store` 的归位（按命令族分期；基线 145 处，本期开工时生产半边 104 处）**
@@ -225,7 +225,7 @@ feature 矩阵、边界门禁和架构链接。`TunnelRepository` 的摘要/全�
 宽口径基线）减到 **0**——生产半边口径是 104 → 0（见上「进度」段的计数规则）。
 
 **进度（2026-10-23）**：第三族「连接目录」已落地——新端口
-`datazen_modules::platform_api::ports::ConnectionCatalog`（`list` / `get` / `save` / `delete` /
+`datazen::platform_api::ports::ConnectionCatalog`（`list` / `get` / `save` / `delete` /
 `reorder` / `touch_last_connected_at` / `groups` / `save_groups`，全部带
 `OrganizationScope`；词汇表直接复用 `datazen_driver_api::ConnectionConfig`，不另造投影），
 `ApplicationServices` 持 `connections: Arc<dyn ConnectionCatalog>`，桌面实现
@@ -261,10 +261,10 @@ config 文件只保留四处桌面 `data_dir()` 访问。IPC 签名与返回载�
 排除 `*_tests.rs` 与 `tests.rs`、在首个 `#[cfg(test)]` 处截断）。**不要用裸 `grep` 复算**：
 行内 `#[cfg(test)] mod tests` 里的断言针脚本身就会命中 `state.store` 字样（实测裸 grep 得
 111，比生产半边多 10）。
-附带一条结构性解锁：`application` 现在依赖 `datazen-feature-core`——P0 断环与 P2 收官后
+附带一条结构性解锁：`application` 现在依赖 `datazen`——P0 断环与 P2 收官后
 这是正确方向，`check-ddd-layers.mjs` 的镜像不变量改为按**当前**图求值。
 
-独立验收：每期一条「该命令族的生产源码里不再出现 `state.store`」的断言 + `cargo test -p datazen --lib` 全绿 + 该命令族的 IPC 载荷冻结断言不变 + E2E。
+独立验收：每期一条「该命令族的生产源码里不再出现 `state.store`」的断言 + `cargo test -p datazen_desktop --lib` 全绿 + 该命令族的 IPC 载荷冻结断言不变 + E2E。
 
 **剩余 73 处的分布与难度（2026-10-23 实测，生产半边口径；连接目录族与设置族已扣除）**——这张表的作用是防止下一个人
 把「还剩 73 处」误当成「再搬几个文件就好」：
@@ -310,7 +310,7 @@ config 文件只保留四处桌面 `data_dir()` 访问。IPC 签名与返回载�
 
 ## 7. P3：统一 Session / Lease / Budget / ExecutionGateway
 
-**状态：已完成**（2026-10-13）。单进程 runtime 实现及 CM-02～07、20～32、37～39、54～56、60 单机部分、61～74 的 H 层断言已在 `datazen-modules` 验收。CM-60 按逐请求总开销 p95 ≤10 ms、失败数为 0、事件无重复/丢失判定，并记录实测环境；不要求固定 CPU / 内存参考规格。桌面旧 consumer 后续由 P4/P5/P6 迁移，连接生命周期统一改走 runtime。
+**状态：已完成**（2026-10-13）。单进程 runtime 实现及 CM-02～07、20～32、37～39、54～56、60 单机部分、61～74 的 H 层断言已在 `datazen` 验收。CM-60 按逐请求总开销 p95 ≤10 ms、失败数为 0、事件无重复/丢失判定，并记录实测环境；不要求固定 CPU / 内存参考规格。桌面旧 consumer 后续由 P4/P5/P6 迁移，连接生命周期统一改走 runtime。
 
 **目的**：建立桌面与 server 都能用的资源运行时。
 
@@ -450,7 +450,7 @@ pnpm e2e:skip-build -- --spec packages/drivers/postgres/e2e/connection-pool-rota
 
 P5 退出门槛已关闭，P6 前置条件满足，可以启动。
 
-2026-10-17 实施状态：Workflow/AI/MCP/Dashboard/metadata/export/backup 的共享领域代码与 settings 契约已抽入共享 packages；桌面保留 IPC、native/session identity、仓储和既有 P5 job adapter。表导出与数据库备份已接入桌面 Job/Artifact 交付；PostgreSQL/MySQL 备份执行已接专属 Runtime retained session / `backup_dump`，有界 chunk 同步背压写入 staging/gzip，保留 Job/Artifact 交付；其他驱动失败关闭，实库/桌面验收仍须独立核验，恢复已接单次消费的 apply Job，PostgreSQL/MySQL 的受限 SQL 格式走固定 Runtime session / ExecutionGateway。最终残余核对见 [feature-core](../architecture/platform/feature-core.md#final-residual-audit-2026-10-17) 与 [消费者边界 §8.1](../architecture/platform/consumer-adapters.md#81-当前共享实现与保留边界2026-10-17)。这不是 P6 关闭：Workflow v1 跨库 Runtime 路由、授权调度/native-tool 预算及真实驱动旅程验收仍有阶段工作；本轮提取已在隔离快照复验通过。
+2026-10-17 实施状态：Workflow/AI/MCP/Dashboard/metadata/export/backup 的共享领域代码与 settings 契约已抽入共享 packages；桌面保留 IPC、native/session identity、仓储和既有 P5 job adapter。表导出与数据库备份已接入桌面 Job/Artifact 交付；PostgreSQL/MySQL 备份执行已接专属 Runtime retained session / `backup_dump`，有界 chunk 同步背压写入 staging/gzip，保留 Job/Artifact 交付；其他驱动失败关闭，实库/桌面验收仍须独立核验，恢复已接单次消费的 apply Job，PostgreSQL/MySQL 的受限 SQL 格式走固定 Runtime session / ExecutionGateway。最终残余核对见 [modules](../architecture/platform/modules.md#final-residual-audit-2026-10-17) 与 [消费者边界 §8.1](../architecture/platform/consumer-adapters.md#81-当前共享实现与保留边界2026-10-17)。这不是 P6 关闭：Workflow v1 跨库 Runtime 路由、授权调度/native-tool 预算及真实驱动旅程验收仍有阶段工作；本轮提取已在隔离快照复验通过。
 
 详细设计：[Workflow 资源模型](../architecture/platform/workflow-resource-model.md) 与 [消费者接入](../architecture/platform/consumer-adapters.md)。共享授权失效后拒绝绑定操作，MCP/Wapp 只释放自有资源，调度目标和服务授权显式保存，原生工具也计入完整预算。
 
@@ -586,7 +586,7 @@ pnpm test:unit
 pnpm test:unit:drivers
 pnpm test:layers
 pnpm test:boundaries
-cargo test -p datazen --lib
+cargo test -p datazen_desktop --lib
 cargo test -p datazen-driver-api
 cargo test -p datazen-driver-postgres
 pnpm tauri:build:webdriver
@@ -635,10 +635,10 @@ WDIO 必须使用已注入 driver 的构建；三件套可运行 app 已生成�
 
 本节记录 P2 结束时的移交状态；CM-64 / CM-67 后续进入 P3，其当前 runtime 实现见 §7。以下历史说明不代表这些 P3 类型或行为目前仍未实现。
 
-P2 行原列的三条 D 断言中，**CM-62 的七步现已全部有断言覆盖**（①与⑦是本轮补齐的），**CM-64 / CM-67 移交 P3**：它们的实现对象是 P3 的 artifact 结果运行时与 pool / lease 管理器，P2 无法在不越过阶段边界的前提下交付。已落地的是它们各自的 **Host 侧测试夹具**，落在 `modules/src/execution/runtime/connection/testing/`（`#[cfg(any(test, feature = "test-harness"))]`，`cargo test -p datazen-modules --lib` → `139 passed` / 0 failed，EXIT=0（计数与退出码测于 `5b7c5b49c`）。逐条对照：
+P2 行原列的三条 D 断言中，**CM-62 的七步现已全部有断言覆盖**（①与⑦是本轮补齐的），**CM-64 / CM-67 移交 P3**：它们的实现对象是 P3 的 artifact 结果运行时与 pool / lease 管理器，P2 无法在不越过阶段边界的前提下交付。已落地的是它们各自的 **Host 侧测试夹具**，落在 `modules/src/execution/runtime/connection/testing/`（`#[cfg(any(test, feature = "test-harness"))]`，`cargo test -p datazen_desktop --lib` → `139 passed` / 0 failed，EXIT=0（计数与退出码测于 `5b7c5b49c`）。逐条对照：
 
 - **CM-64（无消费者、截断与有界 drain）**：`testing/barrier/` 下的协议 drain barrier 夹具已可用，`barrier/tests.rs` 内 19 个单测（计数测于 `5b7c5b49c`）覆盖"无消费者时写入阻塞 → FakeClock 越过 drain 期限 → 截断"（`write_without_consumer_blocks_then_truncates_after_the_drain_deadline`）、消费者恢复后不再截断、按执行字节上限独立截断、订阅额度与执行额度分别计数、sink 失败上报。**这是测试夹具而非生产实现**：artifact 配额、unsubscribe 不立即取消 SQL、协议 barrier 的 D 侧断言均未落地。
-- **CM-67（PoolKey 版本和多 database）**：`modules/src/platform_api/src/ports/budget/pool.rs` 的 `PoolKey` 与 `datazen-modules` 夹具的 `policy_isolation_key` 已能支撑"换键判据"（`pool_key_equality_covers_all_eight_components` 等单测）。P2 移交时的状态是"管理器只到数据与 port 层"：`ResourceManager`（`modules/src/execution/runtime/resource/manager.rs`）与 `SessionRegistry`（`modules/src/execution/runtime/registry/registry.rs`）已是生产类型，而 `LeaseManager` / `PoolManager` / `ConnectionPool` 尚无类型定义，只有 `LeaseRequest` / `LeaseState` / `LeaseRecord` / `QueuedLease`、`PoolAcquireRequest` / `PoolLease` / `DriverPoolBudgetPort` / `InMemoryDriverPoolBudget` 与 `BudgetCoordinator` **trait**。**该状态已被 P3 取代**：`LeaseManager` / `PoolManager` / `ConnectionPool` 定义在 `modules/src/execution/runtime/resource/{lease_manager,pool}.rs`，桌面生产路径用的是 `ProductionLeaseManager`（`resource/production.rs`），由 `src-tauri/src/platform/session_backend.rs` 驱动开/执行/归池/关闭/空闲回收；空闲资源停发并关闭、旧缓存不回填、撤权即时生效、空池元数据受 LRU 约束四条的 H 层断言已落地并实测通过（逐条对应与 D 层限制见[连接管理 CM-67](../architecture/platform/connection-management.md#167-补充契约与边界用例)）。
+- **CM-67（PoolKey 版本和多 database）**：`modules/src/platform_api/src/ports/budget/pool.rs` 的 `PoolKey` 与 `datazen` 夹具的 `policy_isolation_key` 已能支撑"换键判据"（`pool_key_equality_covers_all_eight_components` 等单测）。P2 移交时的状态是"管理器只到数据与 port 层"：`ResourceManager`（`modules/src/execution/runtime/resource/manager.rs`）与 `SessionRegistry`（`modules/src/execution/runtime/registry/registry.rs`）已是生产类型，而 `LeaseManager` / `PoolManager` / `ConnectionPool` 尚无类型定义，只有 `LeaseRequest` / `LeaseState` / `LeaseRecord` / `QueuedLease`、`PoolAcquireRequest` / `PoolLease` / `DriverPoolBudgetPort` / `InMemoryDriverPoolBudget` 与 `BudgetCoordinator` **trait**。**该状态已被 P3 取代**：`LeaseManager` / `PoolManager` / `ConnectionPool` 定义在 `modules/src/execution/runtime/resource/{lease_manager,pool}.rs`，桌面生产路径用的是 `ProductionLeaseManager`（`resource/production.rs`），由 `src-tauri/src/platform/session_backend.rs` 驱动开/执行/归池/关闭/空闲回收；空闲资源停发并关闭、旧缓存不回填、撤权即时生效、空池元数据受 LRU 约束四条的 H 层断言已落地并实测通过（逐条对应与 D 层限制见[连接管理 CM-67](../architecture/platform/connection-management.md#167-补充契约与边界用例)）。
 - **CM-62（命名空间规范化矩阵）**：**「代码侧零覆盖」这个结论是错的，错在检索方法**。原结论用「按用例编号 `CM-62` 检索代码扩展名」得出命中 0；该检索**可复现但无效**——测试函数不按用例编号命名，一律按被断言的行为命名，所以按编号检索必然查不到任何断言。改按行为反查（`canonicalize` / `NamespaceShape` / `validate_requirements` / `TargetResolver` / `TargetConflict`）后，7 步中 **6 步有断言**，分属两个层面，**可达性不同**：
 
   - **driver-api 层：生产可达。** 实现是 `packages/driver-api/src/namespace.rs` 的 `NamespaceShape::canonicalize` 与 `validate_requirements`，单测在 `packages/driver-api/src/namespace_tests.rs`（经 `namespace.rs` 的 `#[path]` 挂为 `namespace::tests`）。②不存在层级非 null → `canonicalize_rejects_a_value_for_a_level_that_does_not_exist`（`NonexistentNamespaceLevel { kind: Schema }`）；③required null → `canonicalize_rejects_a_missing_required_level`（`MissingRequiredNamespaceLevel { kind: Catalog }`），操作级 required / forbidden 由 `requirements_reject_a_missing_required_level`、`requirements_reject_a_forbidden_level` 覆盖；④optional 按操作允许 → `requirements_reject_a_missing_required_level` 的 `is_ok()` 分支；⑤同义 path → `canonicalize_merges_aliases_to_a_fixed_point`（`canonical.path[0] == "sales_main"`）、`canonicalize_appends_driver_specific_path_segments`；⑥冲突 path → `canonicalize_rejects_an_alias_cycle_instead_of_picking_one`（`ResourceError::AliasConflict`，**错误类型不是 CM-62 写的 `TargetConflict`**）。
@@ -678,7 +678,7 @@ P2 行原列的三条 D 断言中，**CM-62 的七步现已全部有断言覆盖
 
 ### P6 Workflow v1 范围
 
-Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `feature-core command_runtime → feature-core resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。
+Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `modules command_runtime → modules resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。
 
 #### 桌面 Monitor 定时授权（已实现，2026-10-17）
 

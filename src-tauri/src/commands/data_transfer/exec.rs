@@ -40,14 +40,14 @@ pub(super) async fn load_sql_source_snapshot(
     let context = crate::services::migration_endpoint::runtime_session_context(
         state,
         &job.source.db_session_id,
-        datazen_modules::execution::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let driver = context.driver.clone();
     let handle = context.handle.clone();
     let config = context.config.clone();
     let mut source = job.source.clone();
-    source.schema = datazen_feature_core::services::schema_scope::metadata_schema(
+    source.schema = datazen::services::schema_scope::metadata_schema(
         driver.as_ref(),
         source.normalized_schema(),
         None,
@@ -158,7 +158,7 @@ async fn execute_sql_file_target(
     let src_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         &plan.job.source.db_session_id,
-        datazen_modules::execution::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let src_config = src_context.config.clone();
@@ -464,13 +464,13 @@ pub(super) async fn validate_plan_context(
     let src_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         &plan.job.source.db_session_id,
-        datazen_modules::execution::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let tgt_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         &target.db_session_id,
-        datazen_modules::execution::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let src_config = src_context.config.clone();

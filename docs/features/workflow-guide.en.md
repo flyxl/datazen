@@ -1,7 +1,7 @@
 # DataZen Workflow Guide
 
 > This document describes the full YAML syntax and usage of DataZen **Workflows**.  
-> Source of truth: `packages/feature-core/src/workflow/`, in-repo test YAML, and the `workflow_generate` prompt.  
+> Source of truth: `modules/src/workflow/`, in-repo test YAML, and the `workflow_generate` prompt.  
 > **On-disk YAML must use snake_case field names** (e.g. `timeout_secs`, `then_steps`, `as_var`). Frontend TypeScript / IPC responses may use camelCase — that is a serialization difference. **Do not write camelCase in hand-authored YAML.**
 
 ---
@@ -714,7 +714,7 @@ On failure, `final_output` from completed steps and an `error` field may still b
 
 ### 12.3 AI generation
 
-Chat uses prompt: `packages/feature-core/resources/prompts/workflow_generate.md`.
+Chat uses prompt: `modules/resources/prompts/workflow_generate.md`.
 Output must be **snake_case** YAML inside a \`\`\`yaml fence.
 
 ### 12.4 MCP
@@ -898,10 +898,10 @@ output:
 
 | Path | Contents |
 |------|----------|
-| `packages/feature-core/src/workflow/` | Model, execute, templates, conditions |
+| `modules/src/workflow/` | Model, execute, templates, conditions |
 | `scripts/test-cross-db-workflow.yaml` | Cross-DB sample |
 | `src-tauri/tests/workflow_tests.rs` | Integration tests |
-| `packages/feature-core/resources/prompts/workflow_generate.md` | AI generation rules |
+| `modules/resources/prompts/workflow_generate.md` | AI generation rules |
 | `e2e/specs/workflow*.ts` | UI E2E |
 
 ### 15.5 Corrections vs older docs

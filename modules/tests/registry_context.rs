@@ -67,23 +67,23 @@ mod registry_fixtures;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use datazen_modules::execution::domain::{
+use datazen::execution::domain::{
     ReplacementCommit, ReplacementOperation, ReplacementOutcome, SessionDirectory, SessionOwner,
 };
-use datazen_modules::execution::runtime::connection::{
+use datazen::execution::runtime::connection::{
     ConnectionId, Counter, ExecuteInSessionRequest, ExecutionTarget, ObjectTarget, RuntimeError,
     SessionHandle,
 };
-use datazen_modules::execution::runtime::directory::{
+use datazen::execution::runtime::directory::{
     AttachmentRejection, CommitStatus, InMemorySessionDirectory, ReplacementOperationKey,
     SessionHandle as DirectoryHandle,
 };
-use datazen_modules::execution::runtime::registry::{
+use datazen::execution::runtime::registry::{
     ContextChangeRequest, ContextReplacer, ReplacementDirectory, SessionPort, SessionRegistry,
 };
-use datazen_modules::shared::context::OwnerRef;
-use datazen_modules::shared::error::PortError;
-use datazen_modules::shared::id::{
+use datazen::shared::context::OwnerRef;
+use datazen::shared::error::PortError;
+use datazen::shared::id::{
     AttachmentToken, ClientInstanceId, DbSessionId, EditorSessionId, OrganizationId, PrincipalId,
     RuntimeEpoch, Timestamp, WorkerId,
 };
@@ -411,7 +411,7 @@ struct FailOnCommitDirectory {
 impl ReplacementDirectory for FailOnCommitDirectory {
     async fn owner_of(
         &self,
-        db_session_id: &datazen_modules::shared::id::DbSessionId,
+        db_session_id: &datazen::shared::id::DbSessionId,
     ) -> Result<Option<SessionOwner>, PortError> {
         self.inner.owner_of(db_session_id).await
     }

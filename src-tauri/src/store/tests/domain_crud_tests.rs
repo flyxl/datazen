@@ -1,7 +1,7 @@
 //! Per-domain CRUD across the store's real production wiring.
 //!
 //! History (D6 item 1) goes through the module-owned repository port
-//! (`datazen-modules::history`) adapted onto the same `HistoryDb`
+//! (`datazen::history`) adapted onto the same `HistoryDb`
 //! (`platform::history::DesktopHistoryRepositories`) — the same shape every
 //! command now uses. Favorites stay on the `DesktopRepository` facade. What is
 //! asserted here: history dedup keys on the most recent row, a favorite
@@ -17,7 +17,7 @@ async fn query_history_dedup_and_clear() {
     let store = init_store_for_test(dir.path()).await;
 
     // D6 第一切片：仓储 trait 归模块 domain，桌面适配同一 `HistoryDb`。
-    use datazen_modules::history::QueryHistoryRepository as _;
+    use datazen::history::QueryHistoryRepository as _;
     let repositories = std::sync::Arc::new(
         crate::platform::history::DesktopHistoryRepositories::new(store.history_db()),
     );

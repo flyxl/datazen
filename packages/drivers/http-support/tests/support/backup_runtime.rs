@@ -1,17 +1,17 @@
 //! Test host ports; database effects always come from the real ResourceProvider.
 use async_trait::async_trait;
-use datazen_driver_api::{resource as dr, session as ds};
-use datazen_modules::execution::runtime::driver_mapping as mapping;
-use datazen_modules::execution::runtime::{
+use datazen::execution::runtime::driver_mapping as mapping;
+use datazen::execution::runtime::{
     connection as rt,
     registry::{backend::*, SessionBackend},
 };
-use datazen_modules::{
+use datazen::{
     ports::{profile::*, shared::policy::*},
     shared::error::PortError,
     shared::id::*,
     RequestContext,
 };
+use datazen_driver_api::{resource as dr, session as ds};
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
     Arc,
@@ -41,7 +41,7 @@ impl ProfileRepository for Profiles {
     async fn create(
         &self,
         _: &RequestContext,
-        _: datazen_modules::connection::dto::ProfileDraft,
+        _: datazen::connection::dto::ProfileDraft,
         _: &IdempotencyKey,
     ) -> Result<ProfileRecord, PortError> {
         unreachable!()
@@ -51,7 +51,7 @@ impl ProfileRepository for Profiles {
         _: &RequestContext,
         _: ConnectionId,
         _: ConfigRevision,
-        _: datazen_modules::connection::dto::ProfilePatch,
+        _: datazen::connection::dto::ProfilePatch,
     ) -> Result<ProfileRecord, PortError> {
         unreachable!()
     }
@@ -94,7 +94,7 @@ impl PolicyService for Policy {
     async fn verify_delegation(
         &self,
         _: &RequestContext,
-        _: datazen_modules::shared::context::DelegationRef,
+        _: datazen::shared::context::DelegationRef,
     ) -> Result<DelegationGrant, PortError> {
         unreachable!()
     }
@@ -115,10 +115,10 @@ pub fn runtime(
     config: datazen_driver_api::ConnectionConfig,
     provider: Arc<dyn dr::ResourceProvider>,
     lifecycle: Arc<Lifecycle>,
-) -> Arc<datazen_modules::execution::application::RuntimeConnectionUseCases> {
+) -> Arc<datazen::execution::application::RuntimeConnectionUseCases> {
     let publisher = Arc::new(std::sync::Mutex::new(None));
     let runtime = Arc::new(
-        datazen_modules::execution::application::RuntimeConnectionUseCases::new(
+        datazen::execution::application::RuntimeConnectionUseCases::new(
             Arc::new(Profiles {
                 revision: AtomicU64::new(1),
             }),
@@ -159,7 +159,7 @@ impl dr::BudgetPort for Budget {
     }
 }
 struct Sink {
-    publisher: datazen_modules::execution::application::RuntimeResultSink,
+    publisher: datazen::execution::application::RuntimeResultSink,
     execution: ExecutionId,
 }
 #[async_trait]
@@ -185,8 +185,7 @@ struct Backend {
     lifecycle: Arc<Lifecycle>,
     config: datazen_driver_api::ConnectionConfig,
     provider: Arc<dyn dr::ResourceProvider>,
-    publisher:
-        Arc<std::sync::Mutex<Option<datazen_modules::execution::application::RuntimeResultSink>>>,
+    publisher: Arc<std::sync::Mutex<Option<datazen::execution::application::RuntimeResultSink>>>,
     resources: tokio::sync::Mutex<std::collections::HashMap<String, (dr::ResourceHandle, u64)>>,
     budget: Arc<dyn dr::BudgetPort>,
 }
@@ -223,10 +222,9 @@ impl SessionBackend for Backend {
         Ok(OpenedResource {
             context: mapping::context(&observed.context),
             resource_id: id,
-            capabilities:
-                datazen_modules::execution::runtime::registry::audit::CapabilityVersions::new(
-                    "1", "1",
-                ),
+            capabilities: datazen::execution::runtime::registry::audit::CapabilityVersions::new(
+                "1", "1",
+            ),
             capability_snapshot: CapabilityProvenance::new("postgresql", "test", 1),
             driver_supports_cancel: false,
         })
@@ -238,7 +236,7 @@ impl SessionBackend for Backend {
             .ok_or_else(|| rt::ProviderError::SessionLost("closed fixture".into()))?;
         let sink = Sink {
             publisher: self.publisher.lock().unwrap().clone().unwrap(),
-            execution: datazen_modules::shared::id::ExecutionId::new(r.execution_id.as_str()),
+            execution: datazen::shared::id::ExecutionId::new(r.execution_id.as_str()),
         };
         let result = self
             .provider
@@ -318,25 +316,25 @@ impl SessionBackend for Backend {
 /// `HostBackupBindings`）只是把这件事转发给 runtime；这里照做——测试要覆盖的是
 /// **真实**的绑定语义（等完 in-flight 写、拒收迟到输出），不是另写一份。
 pub fn backup_binder(
-    runtime: Arc<datazen_modules::execution::application::RuntimeConnectionUseCases>,
-) -> Arc<dyn datazen_feature_core::services::ports::BackupOutputBinder> {
-    struct Binder(Arc<datazen_modules::execution::application::RuntimeConnectionUseCases>);
+    runtime: Arc<datazen::execution::application::RuntimeConnectionUseCases>,
+) -> Arc<dyn datazen::services::ports::BackupOutputBinder> {
+    struct Binder(Arc<datazen::execution::application::RuntimeConnectionUseCases>);
 
-    struct Guard(datazen_modules::execution::application::BackupOutputBinding);
+    struct Guard(datazen::execution::application::BackupOutputBinding);
 
-    impl datazen_feature_core::services::ports::BackupOutputGuard for Guard {}
+    impl datazen::services::ports::BackupOutputGuard for Guard {}
 
     #[async_trait]
-    impl datazen_feature_core::services::ports::BackupOutputBinder for Binder {
+    impl datazen::services::ports::BackupOutputBinder for Binder {
         async fn bind(
             &self,
             ctx: &RequestContext,
-            handle: &datazen_modules::execution::SessionHandle,
-            target: &datazen_modules::execution::target::ExecutionTarget,
-            callback: datazen_modules::execution::BackupOutput,
+            handle: &datazen::execution::SessionHandle,
+            target: &datazen::execution::target::ExecutionTarget,
+            callback: datazen::execution::BackupOutput,
         ) -> Result<
-            Box<dyn datazen_feature_core::services::ports::BackupOutputGuard>,
-            datazen_modules::shared::error::ApiError,
+            Box<dyn datazen::services::ports::BackupOutputGuard>,
+            datazen::shared::error::ApiError,
         > {
             let binding = self
                 .0

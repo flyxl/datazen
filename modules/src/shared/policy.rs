@@ -26,7 +26,7 @@ use crate::shared::id::JobId;
 ///    `modules/src/execution/application/convert.rs`（请求转换，`authorized_job` 传 `None`
 ///    ⇒ `Job` / `WorkflowBlock` 变体一律拒绝）。「上层已经挡住了」的结论仍不成立。
 /// 2. **这里的 `OwnerRef` 与 `modules` 里那个同名类型不是同一个东西。**
-///    本侧是 `datazen_modules::shared::context::OwnerRef`：它的 `Editor` 只有
+///    本侧是 `datazen::shared::context::OwnerRef`：它的 `Editor` 只有
 ///    `client_instance_id` / `editor_session_id`，`Job` 只有 `job_id` / `stage_id`
 ///    （且 `stage_id` 是 `crate::shared::id::StageId`，网关侧同名字段是 `String`）——**两侧都没有
 ///    `organization_id` / `principal_id`**。因此本函数在结构上**看不到组织与主体**，

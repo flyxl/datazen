@@ -1,6 +1,6 @@
 //! Prompt resolution with driver + user override support.
 //!
-//! 自 feature-core::ai::prompt_resolver 归位（D6 item 4 切片三，2026-10-26）。
+//! 自 modules::ai::prompt_resolver 归位（D6 item 4 切片三，2026-10-26）。
 //! 模板资源随迁 modules/resources/prompts/；宿主经构造参数注入数据目录与
 //! prompts 目录（宿主决定文件在哪，模块负责怎么读怎么解析）。
 //!

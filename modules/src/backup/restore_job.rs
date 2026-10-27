@@ -1,7 +1,7 @@
 //! Restore is an apply Job, with an immutable, authorized Artifact input.
 //! Drivers must implement a real Gateway binding; no legacy-handle fallback exists.
 //!
-//! D6 item 5 切片 b 自 feature-core 归位（行为用例留 feature-core 集成测试
+//! D6 item 5 切片 b 自 modules 归位（行为用例留 modules 集成测试
 //! ——持有 runtime/kernel 引擎 dev-dep，垫片保留先例）。
 use crate::execution::domain::target::ExecutionTarget;
 use crate::execution::domain::{

@@ -533,7 +533,7 @@ fn the_definition_site_exemption_is_still_a_real_definition() {
 #[test]
 fn the_wiring_guard_catches_a_planted_production_wiring() {
     let planted = r#"
-use datazen_modules::execution::runtime::gateway::AlwaysAllow;
+use datazen::execution::runtime::gateway::AlwaysAllow;
 /// 文档里提到 AlwaysAllow 不该被算作使用。
 pub fn wire(port: Arc<dyn SessionPort>, store: Arc<dyn IdempotencyRepository>) -> ExecutionGateway {
     ExecutionGateway::new(port, Arc::new(AlwaysAllow), store, clock)
@@ -559,7 +559,7 @@ mod tests {
     );
 
     let honest = r#"
-use datazen_modules::execution::runtime::gateway::owner_binding::OwnerMatchAuthorizer;
+use datazen::execution::runtime::gateway::owner_binding::OwnerMatchAuthorizer;
 pub fn wire() -> Arc<OwnerMatchAuthorizer> {
     OwnerMatchAuthorizer::shared()
 }

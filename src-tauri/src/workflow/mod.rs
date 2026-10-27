@@ -4,7 +4,7 @@
 //! itself does not depend on the MCP protocol.
 //!
 //! The engine, the model and the rules live in
-//! `datazen_feature_core::workflow`. What stays here is the desktop half: the
+//! `datazen::workflow`. What stays here is the desktop half: the
 //! port bindings over the desktop stores, the desktop persistence, the
 //! scheduling adapter and the Tauri IPC.
 
@@ -15,8 +15,8 @@ pub mod history;
 pub mod registry;
 pub mod scheduler;
 
-pub use datazen_feature_core::workflow::command::WorkflowCommandStep;
-pub use datazen_feature_core::workflow::error::WorkflowError;
+pub use datazen::workflow::command::WorkflowCommandStep;
+pub use datazen::workflow::error::WorkflowError;
 pub use history::WorkflowHistoryManager;
 pub use registry::WorkflowRegistry;
 

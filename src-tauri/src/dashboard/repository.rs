@@ -2,7 +2,7 @@
 //!
 //! The desktop host keeps the rows in its SQLite store; the rules that
 //! decide what a dashboard contains live in
-//! `datazen_feature_core::dashboard::repository`.
+//! `datazen::dashboard::repository`.
 //!
 //! ## 组织作用域
 //!
@@ -14,10 +14,10 @@
 
 use crate::platform::scope::is_local_scope;
 use crate::store::{AppDb, AppDbError, AppSettings};
-use datazen_feature_core::dashboard::records::{DashboardRecord, WidgetRecord};
-use datazen_feature_core::dashboard::repository::{DashboardRepository, DashboardRepositoryError};
-use datazen_feature_core::dashboard::types::{DashboardWorkflowRef, MonitorSettings};
-use datazen_modules::shared::scope::OrganizationScope;
+use datazen::dashboard::records::{DashboardRecord, WidgetRecord};
+use datazen::dashboard::repository::{DashboardRepository, DashboardRepositoryError};
+use datazen::dashboard::types::{DashboardWorkflowRef, MonitorSettings};
+use datazen::shared::scope::OrganizationScope;
 
 /// The monitor settings the desktop host persists in its settings file.
 pub fn load_monitor_settings(settings: &AppSettings) -> MonitorSettings {

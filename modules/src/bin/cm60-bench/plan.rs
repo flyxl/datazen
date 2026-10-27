@@ -99,7 +99,7 @@ pub const DEFAULT_PLAN: BenchPlan = SPEC_PLAN;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_modules::execution::runtime::latency::nearest_rank_percentile;
+    use datazen::execution::runtime::latency::nearest_rank_percentile;
 
     /// 门禁常量与判据字面一致：10 毫秒；fake 命令 10 毫秒。
     #[test]

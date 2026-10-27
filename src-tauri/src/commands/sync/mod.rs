@@ -292,7 +292,7 @@ pub async fn start_data_sync_prepare_job(
     target_schema: Option<String>,
     options: Option<SyncOptionsInput>,
     filters: Option<HashMap<String, SyncSourceFilter>>,
-) -> Result<datazen_modules::jobs::domain::job::JobView, CommandError> {
+) -> Result<datazen::jobs::domain::job::JobView, CommandError> {
     apply::start_data_sync_prepare_job_impl(
         &state,
         source_db_session_id,
@@ -316,7 +316,7 @@ pub async fn start_data_sync_apply_job(
     source_db_session_id: String,
     target_db_session_id: String,
     request: SyncRunRequest,
-) -> Result<datazen_modules::jobs::domain::job::JobView, CommandError> {
+) -> Result<datazen::jobs::domain::job::JobView, CommandError> {
     exec::start_data_sync_apply_job_impl(
         &state,
         source_db_session_id,

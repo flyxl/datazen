@@ -5,7 +5,7 @@
 //! 两条规矩贯穿全部用例：
 //!
 //! 1. **不真实等待。** 所有时间都来自共享夹具时钟
-//!    [`datazen_modules::execution::runtime::connection::testing::FakeClock`]，由测试自己推进；目录侧的
+//!    [`datazen::execution::runtime::connection::testing::FakeClock`]，由测试自己推进；目录侧的
 //!    `DirectoryClock` 实现收到什么单调纳秒，返回的就是什么，没有一次 `sleep`。
 //! 2. **断言非空。** 每条断言都必须能区分「实现正确」与「实现不存在」——
 //!    删掉目录实现以后，用例必须失败。空断言（只跑不断言、或断言恒真）在本文件
@@ -17,15 +17,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use datazen_modules::execution::runtime::connection::testing::clock::{
-    FakeClock, FiredTimer, TimerId,
-};
-use datazen_modules::execution::runtime::directory::{
+use datazen::execution::runtime::connection::testing::clock::{FakeClock, FiredTimer, TimerId};
+use datazen::execution::runtime::directory::{
     ClockBase, DirectoryClock, InMemorySessionDirectory, MonoInstant, SessionDraft,
     SessionIdEntropy, SharedClock,
 };
-use datazen_modules::shared::context::OwnerRef;
-use datazen_modules::shared::id::{
+use datazen::shared::context::OwnerRef;
+use datazen::shared::id::{
     ClientInstanceId, ConnectionId, EditorSessionId, JobId, OrganizationId, PrincipalId, StageId,
     Timestamp, WorkerId,
 };
@@ -38,7 +36,7 @@ pub const T0_UTC_MILLIS: i64 = 1_767_225_600_000;
 
 /// 目录侧的读时钟适配器：**共享夹具时钟** + 目录自己的 UTC 投影基点。
 ///
-/// 假时钟全仓库**只有一份**，就是 [`datazen_modules::execution::runtime::connection::testing::FakeClock`]；
+/// 假时钟全仓库**只有一份**，就是 [`datazen::execution::runtime::connection::testing::FakeClock`]；
 /// 本类型不含任何时间语义，只做两件翻译：
 ///
 /// - 单调量的表示不同（夹具用 `MonoTime(u64)` 纳秒，目录端口用 `MonoInstant(u128)`）；

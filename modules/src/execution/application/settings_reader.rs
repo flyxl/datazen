@@ -2,9 +2,9 @@
 //!
 //! ## 它与 `SettingsRepository` 的分工
 //!
-//! [`SettingsRepository`](datazen_modules::settings::SettingsRepository) 是**跨形态设置的
+//! [`SettingsRepository`](datazen::settings::SettingsRepository) 是**跨形态设置的
 //! 读写仓储**：整份 `SharedSettings`（用户偏好 + 执行设置），并且带写方法。
-//! 它由 `datazen-modules::settings` 拥有；执行路径只关心其中**两项**，却因此要拿到一个「能改设置」的端口。
+//! 它由 `datazen::settings` 拥有；执行路径只关心其中**两项**，却因此要拿到一个「能改设置」的端口。
 //!
 //! 本端口只投影执行期**真正要读**的两项：
 //!
@@ -15,7 +15,7 @@
 //!
 //! **刻意不含**：MCP 开关、AI 出站策略、驱动私有设置、用户偏好，以及连接池大小
 //! ——后者全仓只有写入方（`src-tauri/src/store/settings.rs`），**没有任何执行期读取方**。
-//! 它们由 `SettingsRepository`（`datazen-modules::settings`）或各自的窄端口提供。
+//! 它们由 `SettingsRepository`（`datazen::settings`）或各自的窄端口提供。
 //!
 //! ## 同一份事实的**三个**取法（别把它误判成三份重复实现）
 //!
@@ -23,11 +23,11 @@
 //!
 //! | 取法 | 位置 | 给什么 |
 //! |---|---|---|
-//! | `SettingsRepository::read_settings` | `datazen-modules::settings` | 整份 `SharedSettings`（含用户偏好）**+ 写方法** |
-//! | `DatabaseToolHost::execution_settings` | `packages/feature-core`（feature-core 层的既有 trait，**不是** platform-api 端口） | 整份 `ExecutionSettings` |
+//! | `SettingsRepository::read_settings` | `datazen::settings` | 整份 `SharedSettings`（含用户偏好）**+ 写方法** |
+//! | `DatabaseToolHost::execution_settings` | `packages/modules`（modules 层的既有 trait，**不是** platform-api 端口） | 整份 `ExecutionSettings` |
 //! | `ExecutionSettingsReader::read` | 本包（本端口） | 执行期两项的投影，**只读** |
 //!
-//! **收敛方向**是让后两者改为**经本端口取**（feature-core 那条 trait 收窄为注入本端口），
+//! **收敛方向**是让后两者改为**经本端口取**（modules 那条 trait 收窄为注入本端口），
 //! 但那是后续轨的事。这里写下重叠，是为了让集成者知道：**这三者不是三份重复实现，
 //! 而是同一份设置的三种取用宽度**。
 //!

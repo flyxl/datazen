@@ -7,11 +7,11 @@
 //! disk keeps both its shape and its encryption.
 
 use super::fixtures::*;
+use datazen::shared::error::PortError;
+use datazen::shared::id::OrganizationId;
+use datazen::shared::scope::OrganizationScope;
+use datazen::tunnel::TunnelRepository;
 use datazen_driver_api::{HttpProxyTunnelConfig, SavedTunnel, TunnelKind};
-use datazen_modules::shared::error::PortError;
-use datazen_modules::shared::id::OrganizationId;
-use datazen_modules::shared::scope::OrganizationScope;
-use datazen_modules::tunnel::TunnelRepository;
 
 /// The desktop's own organization (an installation-level constant).
 fn local_scope() -> OrganizationScope {

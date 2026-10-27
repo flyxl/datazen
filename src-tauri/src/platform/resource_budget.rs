@@ -1,10 +1,8 @@
 //! Driver budget adapter: each scope uses the shared four-class runtime ledger.
 use async_trait::async_trait;
+use datazen::execution::runtime::budget::{BudgetClaim, InProcessBudgetCoordinator, ResourceClass};
+use datazen::shared::id::{ConnectionId, OrganizationId, PrincipalId};
 use datazen_driver_api::resource::{BudgetPermit, BudgetPort, ResourceError};
-use datazen_modules::execution::runtime::budget::{
-    BudgetClaim, InProcessBudgetCoordinator, ResourceClass,
-};
-use datazen_modules::shared::id::{ConnectionId, OrganizationId, PrincipalId};
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
@@ -14,15 +12,7 @@ pub struct DesktopResourceBudget {
     coordinator: Arc<InProcessBudgetCoordinator>,
     claim: BudgetClaim,
     expected_cost: u32,
-    permits: Mutex<
-        HashMap<
-            String,
-            (
-                u32,
-                Vec<datazen_modules::execution::runtime::budget::BudgetPermit>,
-            ),
-        >,
-    >,
+    permits: Mutex<HashMap<String, (u32, Vec<datazen::execution::runtime::budget::BudgetPermit>)>>,
 }
 impl DesktopResourceBudget {
     pub fn scoped(
@@ -149,8 +139,10 @@ impl BudgetPort for DesktopResourceBudget {
             }
             for permit in record {
                 match self.coordinator.release_permit(permit, true) {
-                    datazen_modules::execution::runtime::budget::ReleaseResult::Released { .. }
-                    | datazen_modules::execution::runtime::budget::ReleaseResult::AlreadyReleased { .. } => {}
+                    datazen::execution::runtime::budget::ReleaseResult::Released { .. }
+                    | datazen::execution::runtime::budget::ReleaseResult::AlreadyReleased {
+                        ..
+                    } => {}
                     _ => return Err(self.denied(0)),
                 }
             }
@@ -185,11 +177,13 @@ impl Drop for DesktopResourceBudget {
         for (_, (_, records)) in outstanding {
             for record in &records {
                 match self.coordinator.release_permit(record, false) {
-                    datazen_modules::execution::runtime::budget::ReleaseResult::Released { .. }
-                    | datazen_modules::execution::runtime::budget::ReleaseResult::AlreadyReleased { .. } => {
+                    datazen::execution::runtime::budget::ReleaseResult::Released { .. }
+                    | datazen::execution::runtime::budget::ReleaseResult::AlreadyReleased {
+                        ..
+                    } => {
                         returned += 1;
                     }
-                    datazen_modules::execution::runtime::budget::ReleaseResult::Unknown { .. } => {}
+                    datazen::execution::runtime::budget::ReleaseResult::Unknown { .. } => {}
                 }
             }
         }
@@ -206,7 +200,7 @@ impl Drop for DesktopResourceBudget {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_modules::execution::runtime::budget::BudgetConfig;
+    use datazen::execution::runtime::budget::BudgetConfig;
 
     /// 小到「漏一次就看得出来」的桌面口径：control 1 / interactive 2 / metadata 2 / job 0。
     const TEST_TOTAL: u32 = 12;

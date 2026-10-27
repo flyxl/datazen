@@ -1,11 +1,9 @@
 //! Native file upload and durable admission for restore apply Jobs.
 mod input;
 use super::{AppState, CommandError};
-use datazen_feature_core::restore_job::{
-    RestoreApplyJob, UnsupportedRestoreGateway, RESTORE_APPLY_KIND,
-};
-use datazen_modules::jobs::{EndpointRef, EndpointRole, JobHandler};
-use datazen_modules::{
+use datazen::jobs::{EndpointRef, EndpointRole, JobHandler};
+use datazen::restore_job::{RestoreApplyJob, UnsupportedRestoreGateway, RESTORE_APPLY_KIND};
+use datazen::{
     execution::target::{ExecutionTarget, NamespaceTarget},
     jobs::domain::job::{JobDefinition, JobState},
     shared::context::OwnerRef,
@@ -31,9 +29,9 @@ pub(crate) async fn restore_from_native_file(
         .runtime()
         .map_err(crate::platform::into_command_error)?;
     let owner = runtime
-        .connection_id_for_session(
-            &datazen_modules::execution::runtime::connection::DbSessionId::new(session),
-        )
+        .connection_id_for_session(&datazen::execution::runtime::connection::DbSessionId::new(
+            session,
+        ))
         .map(|id| id.as_str().to_owned())
         .ok_or_else(|| {
             CommandError::Validation("Restore session has no owning connection".into())
@@ -78,16 +76,14 @@ pub(crate) async fn restore_from_native_file(
         ));
     }
     config.database = database;
-    config.schema = datazen_feature_core::services::schema_scope::metadata_schema(
+    config.schema = datazen::services::schema_scope::metadata_schema(
         driver.as_ref(),
         None,
         None,
         config.schema.as_deref(),
     );
-    let identity = datazen_feature_core::services::migration_endpoint::checked_identify(
-        &config,
-        driver.as_ref(),
-    )?;
+    let identity =
+        datazen::services::migration_endpoint::checked_identify(&config, driver.as_ref())?;
     let namespace =
         NamespaceTarget::new(config.database.clone(), None, config.schema.clone(), vec![]);
     let target = ExecutionTarget::new(ConnectionId::new(owner), namespace);
@@ -153,7 +149,7 @@ pub(crate) async fn restore_from_native_file(
     let _ = app.emit("file-job-accepted", &accepted.view);
     // Only providers with the explicit retained SQL restore contract opt in.
     // Other drivers remain Unsupported/NotStarted until P10.
-    let gateway: Arc<dyn datazen_feature_core::restore_job::RestoreGateway> = match state
+    let gateway: Arc<dyn datazen::restore_job::RestoreGateway> = match state
         .driver_registry
         .resource_provider(&config.database_type)
         .await
@@ -215,7 +211,7 @@ pub(crate) async fn restore_from_native_file(
     }
     Ok(())
 }
-fn storage_error(_: datazen_modules::PortError) -> CommandError {
+fn storage_error(_: datazen::PortError) -> CommandError {
     CommandError::Internal(
         "Restore artifact or Job storage unavailable; inspect Job status before retrying".into(),
     )

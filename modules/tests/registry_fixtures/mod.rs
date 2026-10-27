@@ -29,24 +29,24 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::{mpsc, oneshot, Mutex};
 
-use datazen_modules::shared::id::RuntimeEpoch as PlatformRuntimeEpoch;
+use datazen::shared::id::RuntimeEpoch as PlatformRuntimeEpoch;
 
-use datazen_modules::execution::runtime::connection::types::{ClientInstanceId, EditorSessionId};
-use datazen_modules::execution::runtime::connection::ProviderError;
-use datazen_modules::execution::runtime::connection::{
+use datazen::execution::runtime::connection::types::{ClientInstanceId, EditorSessionId};
+use datazen::execution::runtime::connection::ProviderError;
+use datazen::execution::runtime::connection::{
     CloseMode, CommandCall, ConfigRevision, ConnectionId, Counter, DbSessionId, EffectOutcome,
     ExecuteInSessionRequest, ExecutionId, ExecutionState, ExecutionTarget, HandleId, HandleKind,
     NamespaceTarget, ObjectTarget, OrganizationId, OwnerRef, PrincipalId, ResourceId,
     SessionContext, SessionHandle, SessionHandleRef, SessionView, StreamId, Timestamp, WorkerId,
 };
-use datazen_modules::execution::runtime::directory::SessionHandle as DirectoryHandle;
-use datazen_modules::execution::runtime::registry::actor::OpenRequest;
-use datazen_modules::execution::runtime::registry::backend::{
+use datazen::execution::runtime::directory::SessionHandle as DirectoryHandle;
+use datazen::execution::runtime::registry::actor::OpenRequest;
+use datazen::execution::runtime::registry::backend::{
     CancelOnResource, CapabilityProvenance, CloseResource, CloseResourceOutcome, ExecuteOnResource,
     FinalizeHandles, HandleFinalization, OpenResource, OpenedResource, ResourceCancel,
     ResourceExecution, SessionBackend,
 };
-use datazen_modules::execution::runtime::registry::{
+use datazen::execution::runtime::registry::{
     CancelDisposition, CapabilityVersions, SessionRegistry,
 };
 
@@ -548,7 +548,7 @@ pub fn handle_of(view: &SessionView) -> SessionHandle {
 
 /// 目录侧的 runtime epoch 字符串——**直接复用生产实现**，不是测试替身。
 ///
-/// 生产侧那份是 [`datazen_modules::execution::runtime::registry::epoch::epoch_string`]。曾经这里自己写
+/// 生产侧那份是 [`datazen::execution::runtime::registry::epoch::epoch_string`]。曾经这里自己写
 /// 一份 `format!("rte-{:08}", …)`，两端「必须逐字一致」只靠注释担保：生产格式改了而
 /// 门禁全绿是**可能**发生的，而幂等短路（`context.rs` 里 `epoch_of(..)` 与目录里那一代
 /// 的字符串比对）恰恰依赖两端逐字一致——漂移的后果是正常重放被误判成孤儿态。
@@ -557,7 +557,7 @@ pub fn handle_of(view: &SessionView) -> SessionHandle {
 /// 而那正是我们想要的（夹具不该替一个协议可见的取值把关）。把关在别处：
 /// `epoch.rs` 的 `epoch_string_keeps_the_wire_shape` 把**取值**钉在字面量上。
 pub fn epoch_string(epoch: u64) -> String {
-    datazen_modules::execution::runtime::registry::epoch::epoch_string(epoch)
+    datazen::execution::runtime::registry::epoch::epoch_string(epoch)
 }
 
 /// 登记表**第一个**会话拿 `Counter(1)`，`epoch_string(1)` 落在 `rte-00000001`。

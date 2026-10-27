@@ -2,7 +2,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use datazen_modules::ai::{ChatMessage, MessageRole, ToolCall};
+use datazen::ai::{ChatMessage, MessageRole, ToolCall};
 
 use super::*;
 use crate::testing::app_state::TestAppState;
@@ -143,7 +143,7 @@ async fn mock_provider_parse_filter() {
     .await
     .unwrap();
 
-    use datazen_feature_core::services::query_executor::FilterOperator;
+    use datazen::services::query_executor::FilterOperator;
     assert_eq!(filters.len(), 1);
     assert!(matches!(filters[0].operator, FilterOperator::Gt));
 }

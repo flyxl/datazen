@@ -31,8 +31,8 @@
 
 use std::sync::Arc;
 
-use datazen_modules::application::ApplicationServices;
-use datazen_modules::shared::context::{OwnerRef, RequestContext};
+use datazen::application::ApplicationServices;
+use datazen::shared::context::{OwnerRef, RequestContext};
 
 use super::adapter::CallScope;
 use super::error::into_command_error;
@@ -118,11 +118,11 @@ pub fn require_application_services(
         .map_err(into_command_error)
 }
 
-/// D1 后的设置用例入口：`datazen-modules::settings` 由宿主 adapter 直接持有，
+/// D1 后的设置用例入口：`datazen::settings` 由宿主 adapter 直接持有，
 /// 不再经 `ApplicationServices` 转发；命令从这里取同一个服务实例。
 pub fn require_settings_service(
     state: &AppState,
-) -> Result<Arc<datazen_modules::settings::SettingsService>, CommandError> {
+) -> Result<Arc<datazen::settings::SettingsService>, CommandError> {
     state
         .platform_require()
         .map_err(into_command_error)?
@@ -130,11 +130,11 @@ pub fn require_settings_service(
         .map_err(into_command_error)
 }
 
-/// D2 后的连接目录用例入口：`datazen-modules::connection` 由宿主 adapter
+/// D2 后的连接目录用例入口：`datazen::connection` 由宿主 adapter
 /// 直接持有；命令从这里取同一个服务实例。
 pub fn require_connection_service(
     state: &AppState,
-) -> Result<Arc<datazen_modules::connection::ConnectionService>, CommandError> {
+) -> Result<Arc<datazen::connection::ConnectionService>, CommandError> {
     state
         .platform_require()
         .map_err(into_command_error)?
@@ -145,7 +145,7 @@ pub fn require_connection_service(
 /// D6 item 1 后的命名视图用例入口。
 pub fn require_named_views_service(
     state: &AppState,
-) -> Result<Arc<datazen_modules::named_views::NamedViewService>, CommandError> {
+) -> Result<Arc<datazen::named_views::NamedViewService>, CommandError> {
     state
         .platform_require()
         .map_err(into_command_error)?
@@ -156,7 +156,7 @@ pub fn require_named_views_service(
 /// D6 item 1 后的历史用例入口：查询历史与迁移运行历史经模块服务消费。
 pub fn require_history_service(
     state: &AppState,
-) -> Result<Arc<datazen_modules::history::HistoryService>, CommandError> {
+) -> Result<Arc<datazen::history::HistoryService>, CommandError> {
     state
         .platform_require()
         .map_err(into_command_error)?
@@ -167,7 +167,7 @@ pub fn require_history_service(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_modules::shared::id::ClientInstanceId;
+    use datazen::shared::id::ClientInstanceId;
     use serde_json::json;
 
     /// 既有 IPC 外观的**冻结签名**。

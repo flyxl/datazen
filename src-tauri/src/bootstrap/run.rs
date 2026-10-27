@@ -53,8 +53,8 @@ pub fn run_mcp_stdio() {
                 .await
                 .expect("Failed to init store"),
         );
-        let prompts_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../packages/feature-core/resources/prompts");
+        let prompts_dir =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../modules/resources/prompts");
         let app_state = match build_app_state(store, Some(prompts_dir)).await {
             Ok(s) => s,
             Err(e) => {

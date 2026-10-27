@@ -1,6 +1,6 @@
 //! 备份输出端口（D6 item 5 切片 b，2026-10-26）。
 //!
-//! `BackupOutputBinder` 自 feature-core `services::ports` 归位（唯一定义在
+//! `BackupOutputBinder` 自 modules `services::ports` 归位（唯一定义在
 //! 此，旧路径改再导出垫片）：绑定的实现需要 session 归属判定、执行条目
 //! 可见性与 sink 生命周期，这些都在 runtime 内部，由宿主提供实现。
 //! 返回的守卫是**能力对象**——drop 即撤销，实现方负责把 in-flight 的写

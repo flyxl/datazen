@@ -1,20 +1,20 @@
 use super::jobs::SqliteJobRepository;
 use super::{AppDb, AppDbError, APP_DB_FILE, SCHEMA_VERSION};
-use datazen_modules::execution::runtime::budget::{BudgetConfig, BudgetLedger};
-use datazen_modules::execution::{EffectOutcome, ExecutionErrorCode};
-use datazen_modules::jobs::domain::job::{
+use datazen::execution::runtime::budget::{BudgetConfig, BudgetLedger};
+use datazen::execution::{EffectOutcome, ExecutionErrorCode};
+use datazen::jobs::domain::job::{
     Checkpoint, CommitBoundary, JobDefinition, JobDomainResult, JobProgress, JobRecoveryRequest,
     JobRecoveryResult, JobRecoveryVerdict, JobRecoveryVerification, JobResultCounter,
     JobResultItem, JobState, RecoveryFilter,
 };
-use datazen_modules::jobs::domain::repository::JobRepository;
-use datazen_modules::jobs::{
+use datazen::jobs::domain::repository::JobRepository;
+use datazen::jobs::{
     CancelToken, FrozenPlan, JobClock, JobHandler, JobHost, JobRecoveryVerifier, JobRuntime,
     RecoveryVerdict, SharedClock, StageOutcome, StageSpec, StageTerminal,
 };
-use datazen_modules::shared::context::RequestContext;
-use datazen_modules::shared::error::PortError;
-use datazen_modules::shared::id::{
+use datazen::shared::context::RequestContext;
+use datazen::shared::error::PortError;
+use datazen::shared::id::{
     ArtifactId, AuthenticationSessionId, ClientInstanceId, Counter, IdempotencyKey, JobId,
     OrganizationId, PrincipalId, RequestId, StageId, Timestamp, WorkerId,
 };
@@ -52,7 +52,7 @@ fn definition(job_id: &str, plan_id: &str) -> JobDefinition {
         job_id: JobId::new(job_id),
         organization_id: request_context().organization_id,
         kind: "schemaDiffApply".into(),
-        owner: datazen_modules::OwnerRef::ClientSession {
+        owner: datazen::OwnerRef::ClientSession {
             client_instance_id: ClientInstanceId::new("client-local"),
             purpose: "migration".into(),
         },
@@ -118,7 +118,7 @@ fn monitor_occurrence_definition(job_id: &str, scheduled_at: i64) -> JobDefiniti
         job_id: JobId::new(job_id),
         organization_id: request_context().organization_id,
         kind: "monitorOccurrence".into(),
-        owner: datazen_modules::OwnerRef::ClientSession {
+        owner: datazen::OwnerRef::ClientSession {
             client_instance_id: ClientInstanceId::new("monitor:grant-1:1"),
             purpose: "monitorOccurrence".into(),
         },
@@ -314,13 +314,10 @@ async fn accept_receipt_plan_and_result_row_commit_atomically_and_replay_idempot
         Err(PortError::PlanAlreadyConsumed(_))
     ));
 
-    let details = datazen_modules::jobs::JobRuntimeRepository::get_details(
-        &repo,
-        &ctx,
-        accepted.view.job_id.clone(),
-    )
-    .await
-    .expect("details should be queryable");
+    let details =
+        datazen::jobs::JobRuntimeRepository::get_details(&repo, &ctx, accepted.view.job_id.clone())
+            .await
+            .expect("details should be queryable");
     assert_eq!(details.plan_id.as_deref(), Some("plan-atomic"));
     assert_eq!(
         details.target_before_fingerprint.as_deref(),
@@ -463,7 +460,7 @@ async fn sqlite_runtime_reopens_unknown_boundary_receipt_and_verifies_without_re
     let handler = Arc::new(UnknownCommitHandler {
         calls: calls.clone(),
     });
-    let mut handlers = datazen_modules::jobs::HandlerRegistry::new();
+    let mut handlers = datazen::jobs::HandlerRegistry::new();
     handlers.register(handler);
     let ledger = Arc::new(Mutex::new(BudgetLedger::new(BudgetConfig::team_default())));
     let clock_trait: Arc<dyn JobClock> = clock.clone();
@@ -483,7 +480,7 @@ async fn sqlite_runtime_reopens_unknown_boundary_receipt_and_verifies_without_re
     assert_eq!(calls.load(Ordering::SeqCst), 1);
 
     let details_before =
-        datazen_modules::jobs::JobRuntimeRepository::get_details(repo.as_ref(), &ctx, id.clone())
+        datazen::jobs::JobRuntimeRepository::get_details(repo.as_ref(), &ctx, id.clone())
             .await
             .expect("details should be queryable before reopen");
     assert_eq!(details_before.commit_boundaries.len(), 1);
@@ -498,7 +495,7 @@ async fn sqlite_runtime_reopens_unknown_boundary_receipt_and_verifies_without_re
         Some(JobRecoveryVerdict::PendingVerification)
     );
     let checkpoint =
-        datazen_modules::jobs::JobRuntimeRepository::latest_checkpoint(repo.as_ref(), &ctx, &id)
+        datazen::jobs::JobRuntimeRepository::latest_checkpoint(repo.as_ref(), &ctx, &id)
             .await
             .expect("checkpoint read should succeed");
     assert!(checkpoint.is_some());
@@ -610,7 +607,7 @@ async fn cancel_claim_fencing_and_durable_json_exclude_session_and_idempotency_s
     )
     .await
     .expect("expired claim can be fenced by a new generation");
-    let stale_write = datazen_modules::jobs::JobRuntimeRepository::record_progress(
+    let stale_write = datazen::jobs::JobRuntimeRepository::record_progress(
         repo.as_ref(),
         &ctx,
         &stale,
@@ -655,7 +652,7 @@ async fn cancel_claim_fencing_and_durable_json_exclude_session_and_idempotency_s
 async fn app_state_reopen_marks_interrupted_job_for_verification_without_dispatch() {
     use crate::store::DesktopRepository;
     use crate::transfer::adapter_registry::SyncAdapterRegistry;
-    use datazen_modules::execution::runtime::driver_registry::registry::DriverRegistry;
+    use datazen::execution::runtime::driver_registry::registry::DriverRegistry;
 
     let temp = tempfile::tempdir().expect("temp directory");
     let first_store = Arc::new(
@@ -744,10 +741,7 @@ impl JobHandler for UnknownCommitHandler {
         1
     }
 
-    fn validate_plan(
-        &self,
-        _plan: &FrozenPlan,
-    ) -> Result<Vec<StageSpec>, datazen_modules::jobs::JobError> {
+    fn validate_plan(&self, _plan: &FrozenPlan) -> Result<Vec<StageSpec>, datazen::jobs::JobError> {
         Ok(vec![StageSpec {
             stage_id: StageId::new("apply-stage"),
             kind: "apply".into(),
@@ -759,7 +753,7 @@ impl JobHandler for UnknownCommitHandler {
         &self,
         spec: &StageSpec,
         _cancel: &CancelToken,
-    ) -> Result<StageOutcome, datazen_modules::jobs::JobError> {
+    ) -> Result<StageOutcome, datazen::jobs::JobError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         let boundary = CommitBoundary {
             stage_id: spec.stage_id.clone(),

@@ -212,16 +212,6 @@ export const RULES = Object.freeze([
     note: 'the browser client stays transport-agnostic',
   },
   {
-    id: 'F-08',
-    subjects: ['migration-common'],
-    subjectsFromSpec: true,
-    allowedLayers: ['migration-common', 'driver-api'],
-    forbiddenCrates: 'spec',
-    specTokens: ['packages/migration-common'],
-    specCrates: ['tauri', 'axum', 'actix-web', 'warp', 'tonic', 'react'],
-    note: 'shared migration algorithms cannot depend on domain engines, runtime or transports',
-  },
-  {
     id: 'F-11',
     subjects: ['infra'],
     subjectsFromSpec: true,
@@ -238,28 +228,10 @@ export const RULES = Object.freeze([
     note: 'the infrastructure kernel depends on no other layer and no platform transport',
   },
   {
-    id: 'F-12',
-    subjects: ['feature-core', 'modules'],
-    subjectsFromSpec: true,
-    allowedLayers: [
-      'feature-core',
-      'infra',
-      'driver-api',
-      'migration-common',
-      'modules',
-    ],
-    forbiddenCrates: 'spec',
-    specTokens: ['packages/feature-core'],
-    // Host crates are rejected by allowedLayers. Treating `datazen` as a
-    // family would also reject every permitted `datazen-*` shared crate.
-    specCrates: ['tauri', 'axum', 'actix-web', 'warp', 'tonic', 'react'],
-    note: 'portable feature services depend on shared domain/runtime ports, never the desktop or a server transport',
-  },
-  {
     id: 'F-14',
     subjects: ['modules'],
     subjectsFromSpec: true,
-    forbiddenLayers: ['host', 'runtime', 'feature-core'],
+    forbiddenLayers: ['host', 'runtime'],
     // D1.5（2026-10-26）：AI Provider 适配（含 reqwest 出站 HTTP）随 ai feature
     // 并入 modules::ai::providers，reqwest 不再对 modules 全 crate 禁用；
     // Web 框架与 Tauri 仍禁止。

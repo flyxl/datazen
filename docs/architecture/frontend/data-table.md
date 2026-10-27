@@ -438,7 +438,7 @@
 
 ### 10.2 宿主解析，前端不拆表名
 
-前端不拼 SQL、不拆表名：它把 `(表, 本地列, 值…)` 交给宿主，由 `resolve_foreign_key_targets`（`packages/feature-core/src/services/fk_navigation.rs`）在目标库/模式里定位。前端只做显示层的事：`targetLabel` 的文案、`exists` 的结果、错误码的分类。
+前端不拼 SQL、不拆表名：它把 `(表, 本地列, 值…)` 交给宿主，由 `resolve_foreign_key_targets`（`modules/src/services/fk_navigation.rs`）在目标库/模式里定位。前端只做显示层的事：`targetLabel` 的文案、`exists` 的结果、错误码的分类。
 
 ### 10.3 目标不存在不是错误
 

@@ -24,8 +24,8 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use datazen_modules::monitor::domain::{MonitorGrant, MonitorScope};
-use datazen_modules::{
+use datazen::monitor::domain::{MonitorGrant, MonitorScope};
+use datazen::{
     connection::domain::ProfileScope,
     connection::dto::{ProfileDraft, ProfilePatch},
     execution::application::policy::{

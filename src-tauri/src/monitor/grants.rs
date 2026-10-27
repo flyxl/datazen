@@ -1,13 +1,13 @@
 //! Local schedule grants are issued by a desktop user and held as backend metadata.
 use crate::{commands::AppState, store::DesktopRepository};
-use datazen_modules::monitor::application::fixed_targets;
-pub(crate) use datazen_modules::monitor::domain::revision;
-use datazen_modules::monitor::domain::{MonitorGrant, MonitorScope};
-use datazen_modules::workflow::{
+use datazen::monitor::application::fixed_targets;
+pub(crate) use datazen::monitor::domain::revision;
+use datazen::monitor::domain::{MonitorGrant, MonitorScope};
+use datazen::workflow::{
     application::context::WorkflowContext,
     model::{WorkflowDefinition, WorkflowStep},
 };
-use datazen_modules::{
+use datazen::{
     execution::target::{ExecutionTarget, NamespaceTarget},
     shared::context::RequestContext,
     shared::id::{ConnectionId, Counter},
@@ -138,7 +138,7 @@ pub(crate) async fn authorize(
         if sql.contains("{{") || sql.contains("${") {
             return Err("scheduled SQL must not contain dynamic templates".into());
         }
-        datazen_modules::monitor::domain::validate_read_only_sql(sql)
+        datazen::monitor::domain::validate_read_only_sql(sql)
             .map_err(|_| "scheduled monitor requires read-only SQL")?;
         let connection = connection.ok_or("explicit connection required")?;
         let database = database

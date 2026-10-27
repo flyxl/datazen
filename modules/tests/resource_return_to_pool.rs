@@ -1,6 +1,6 @@
 //! 归还裁决的公开面集成测试（三组宿主条件、复位次序、空闲复用）。
 //!
-//! 替身全部手写：`datazen_modules::execution::runtime::testing` 下的 fixture 由 `cfg(test)` 门控，
+//! 替身全部手写：`datazen::execution::runtime::testing` 下的 fixture 由 `cfg(test)` 门控，
 //! 而 `tests/` 编译 lib 时并不带 `cfg(test)`，因此这里按本模块自己声明的公开接缝
 //! ——[`MonotonicSource`] 与 [`PhysicalTransport`]——自建替身。
 //!
@@ -10,13 +10,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use datazen_modules::execution::runtime::connection::port::CancelDisposition;
-use datazen_modules::execution::runtime::connection::types::ClientInstanceId;
-use datazen_modules::execution::runtime::connection::{
+use datazen::execution::runtime::connection::port::CancelDisposition;
+use datazen::execution::runtime::connection::types::ClientInstanceId;
+use datazen::execution::runtime::connection::{
     ConfigRevision, ConnectionId, Counter, ExecutionId, HandleId, HandleKind, NamespaceTarget,
     OwnerRef, PoolKeyInputs, ResourceId, SessionHandleRef,
 };
-use datazen_modules::execution::runtime::resource::{
+use datazen::execution::runtime::resource::{
     CleanupDisposition, DriverCleanVerdict, HostConditionSnapshot, LeasePurpose, LeaseRequest,
     LeaseState, MonotonicSource, PhysicalTransport, ProtocolDebt, ResetDisposition, ResourceError,
     ResourceManager,
@@ -209,7 +209,7 @@ fn manager() -> (
 }
 
 fn first_blocker_code(
-    report: &datazen_modules::execution::runtime::resource::CleanupReport,
+    report: &datazen::execution::runtime::resource::CleanupReport,
 ) -> &'static str {
     report
         .blockers
@@ -682,7 +682,7 @@ fn a_resource_whose_driver_declares_reset_unsupported_is_closed_without_a_reset_
         .release(
             &leased.lease_id,
             HostConditionSnapshot::default().with_reset_for_reuse(
-                datazen_modules::execution::runtime::connection::capability::ResetForReuse::Unsupported,
+                datazen::execution::runtime::connection::capability::ResetForReuse::Unsupported,
             ),
             DriverCleanVerdict::reported_clean(),
         )
@@ -740,7 +740,7 @@ fn a_verified_reset_capability_still_runs_the_full_two_gate_contract() {
         .release(
             &leased.lease_id,
             HostConditionSnapshot::default().with_reset_for_reuse(
-                datazen_modules::execution::runtime::connection::capability::ResetForReuse::Verified,
+                datazen::execution::runtime::connection::capability::ResetForReuse::Verified,
             ),
             DriverCleanVerdict::reported_clean(),
         )
@@ -768,7 +768,7 @@ fn a_verified_reset_capability_still_runs_the_full_two_gate_contract() {
         .release(
             &second.lease_id,
             HostConditionSnapshot::default().with_reset_for_reuse(
-                datazen_modules::execution::runtime::connection::capability::ResetForReuse::Verified,
+                datazen::execution::runtime::connection::capability::ResetForReuse::Verified,
             ),
             DriverCleanVerdict::reported_unclean(),
         )
@@ -795,7 +795,7 @@ fn the_capability_blocker_is_reported_by_first_and_all_blockers() {
             HostConditionSnapshot::default()
                 .with_active_execution(running.clone())
                 .with_reset_for_reuse(
-                    datazen_modules::execution::runtime::connection::capability::ResetForReuse::Unsupported,
+                    datazen::execution::runtime::connection::capability::ResetForReuse::Unsupported,
                 ),
             DriverCleanVerdict::reported_clean(),
         )
@@ -851,7 +851,7 @@ fn the_declined_admissions_count_is_the_pointer_to_why_the_pool_stays_empty() {
         .release(
             &declined.lease_id,
             HostConditionSnapshot::default().with_reset_for_reuse(
-                datazen_modules::execution::runtime::connection::capability::ResetForReuse::Unsupported,
+                datazen::execution::runtime::connection::capability::ResetForReuse::Unsupported,
             ),
             DriverCleanVerdict::reported_clean(),
         )
@@ -868,7 +868,7 @@ fn the_declined_admissions_count_is_the_pointer_to_why_the_pool_stays_empty() {
         .release(
             &verified.lease_id,
             HostConditionSnapshot::default().with_reset_for_reuse(
-                datazen_modules::execution::runtime::connection::capability::ResetForReuse::Verified,
+                datazen::execution::runtime::connection::capability::ResetForReuse::Verified,
             ),
             DriverCleanVerdict::reported_clean(),
         )
@@ -890,7 +890,7 @@ fn the_declined_admissions_count_is_the_pointer_to_why_the_pool_stays_empty() {
         .release(
             &failed.lease_id,
             HostConditionSnapshot::default().with_reset_for_reuse(
-                datazen_modules::execution::runtime::connection::capability::ResetForReuse::Verified,
+                datazen::execution::runtime::connection::capability::ResetForReuse::Verified,
             ),
             DriverCleanVerdict::reported_clean(),
         )

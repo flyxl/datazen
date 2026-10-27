@@ -17,12 +17,12 @@
 //!   [`crate::connection::domain::ProfileScope`]（它限定的是某组织的连接档案）。
 //!
 //! 取用方式（宿主也可经 platform-api 再导出消费，路径
-//! `datazen_modules::scope`；本 crate 是唯一定义，示例按
+//! `datazen::scope`；本 crate 是唯一定义，示例按
 //! crate 内路径编译校验）：
 //!
 //! ```
-//! use datazen_modules::shared::context::RequestContext;
-//! use datazen_modules::shared::scope::OrganizationScope;
+//! use datazen::shared::context::RequestContext;
+//! use datazen::shared::scope::OrganizationScope;
 //!
 //! fn scoped(ctx: &RequestContext) -> OrganizationScope {
 //!     OrganizationScope::from_context(ctx)

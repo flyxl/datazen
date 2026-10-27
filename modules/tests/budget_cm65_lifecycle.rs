@@ -6,15 +6,13 @@
 
 mod support;
 
-use datazen_modules::execution::application::budget::{
-    BudgetCoordinator, BudgetPurpose, ResourceClass,
-};
-use datazen_modules::execution::runtime::budget::{
+use datazen::execution::application::budget::{BudgetCoordinator, BudgetPurpose, ResourceClass};
+use datazen::execution::runtime::budget::{
     BudgetLedger, BudgetPermit, BudgetRequest, DenialReason, DrainScope,
     InProcessBudgetCoordinator, ReleaseOutcome, ReleaseResult, SlotKind,
 };
-use datazen_modules::shared::error::PortError;
-use datazen_modules::shared::id::{ConnectionId, LeaseId, OrganizationId, Timestamp, WorkerId};
+use datazen::shared::error::PortError;
+use datazen::shared::id::{ConnectionId, LeaseId, OrganizationId, Timestamp, WorkerId};
 use std::sync::Arc;
 use support::{
     claim, config, conn, denied, fill_shared_pool_via_coordinator, granted, ok, org, TestClock,

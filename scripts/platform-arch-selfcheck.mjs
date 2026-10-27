@@ -327,7 +327,7 @@ export const MUTATIONS = [
   {
     id: 'M1',
     rule: 'F-01',
-    title: 'a driver crate takes a dependency on datazen-modules',
+    title: 'a driver crate takes a dependency on datazen',
     crate: 'datazen-driver-arch-probe',
     apply(snapshot) {
       // `packages/drivers/*` is a glob, so a new directory is a member with no
@@ -336,16 +336,16 @@ export const MUTATIONS = [
         snapshot,
         'packages/drivers/zz-arch-probe',
         'datazen-driver-arch-probe',
-         `[dependencies]\ndatazen-modules = { path = "${join(REPO_ROOT, 'modules')}" }\n`,
+         `[dependencies]\ndatazen = { path = "${join(REPO_ROOT, 'modules')}" }\n`,
       );
-       return () => readOrEmpty('packages/drivers/zz-arch-probe/Cargo.toml').includes('datazen-modules');
+       return () => readOrEmpty('packages/drivers/zz-arch-probe/Cargo.toml').includes('datazen');
     },
   },
   {
     id: 'M2',
     rule: 'F-02',
     title: 'the platform kernel takes a dependency on a tauri* crate',
-    crate: 'datazen-modules',
+    crate: 'datazen',
     apply(snapshot, scratch) {
       addDependencyTo(
         snapshot,
@@ -360,7 +360,7 @@ export const MUTATIONS = [
     id: 'M3',
     rule: 'F-03',
     title: 'the platform kernel takes a dependency on an HTTP framework',
-    crate: 'datazen-modules',
+    crate: 'datazen',
     apply(snapshot, scratch) {
       addDependencyTo(
         snapshot,
@@ -375,7 +375,7 @@ export const MUTATIONS = [
     id: 'M5',
     rule: 'F-05',
     title: 'the platform kernel takes a dependency on a UI-runtime crate',
-    crate: 'datazen-modules',
+    crate: 'datazen',
     apply(snapshot, scratch) {
       addDependencyTo(
         snapshot,

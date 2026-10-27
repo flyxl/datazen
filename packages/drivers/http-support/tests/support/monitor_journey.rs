@@ -2,10 +2,9 @@
 //! No desktop scheduler, occurrence admission or duplicate-tick receipt is simulated.
 #[path = "monitor_runtime.rs"]
 mod runtime;
-use datazen_driver_api::{resource::ResourceProvider, ConnectionConfig, DatabaseDriver};
-use datazen_feature_core::workflow::{resource_execution, WorkflowCommandStep};
-use datazen_modules::application::sessions::ConnectionUseCases as _;
-use datazen_modules::{
+use datazen::application::sessions::ConnectionUseCases as _;
+use datazen::workflow::{resource_execution, WorkflowCommandStep};
+use datazen::{
     execution::target::{ExecutionTarget, NamespaceTarget},
     execution::{EffectOutcome, ExecutionState},
     shared::context::RequestContext,
@@ -13,6 +12,7 @@ use datazen_modules::{
         ClientInstanceId, ConnectionId, DelegationId, OrganizationId, PrincipalId, RequestId,
     },
 };
+use datazen_driver_api::{resource::ResourceProvider, ConnectionConfig, DatabaseDriver};
 use futures_util::FutureExt;
 use std::sync::{atomic::Ordering, Arc};
 
@@ -78,7 +78,7 @@ pub async fn run(
         let result = resource_execution::execute(&host, &step, "p", None, None, true)
             .await
             .unwrap_or_else(|error| {
-                use datazen_feature_core::workflow::error::WorkflowError;
+                use datazen::workflow::error::WorkflowError;
                 match error {
                     WorkflowError::SqlExecution { code, .. }
                     | WorkflowError::SqlUnconfirmed { code, .. }
@@ -159,11 +159,7 @@ pub async fn run(
         host.policy.revoked.store(true, Ordering::SeqCst);
         assert!(host
             .runtime
-            .read_artifact_chunk(
-                &host.context,
-                artifact,
-                datazen_modules::shared::id::Counter::ZERO
-            )
+            .read_artifact_chunk(&host.context, artifact, datazen::shared::id::Counter::ZERO)
             .await
             .is_err());
         assert!(

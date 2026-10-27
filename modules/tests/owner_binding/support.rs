@@ -16,23 +16,23 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use datazen_modules::execution::runtime::connection::capability::PreciseCancel;
-use datazen_modules::execution::runtime::connection::{
+use datazen::execution::runtime::connection::capability::PreciseCancel;
+use datazen::execution::runtime::connection::{
     AttachmentState, CloseMode, CommandCall, ConfigRevision, ConnectionId, Counter, DbSessionId,
     ExecuteInSessionRequest, ExecutionId, ExecutionReceipt, ExecutionState, ExecutionTarget,
     NamespaceTarget, OrganizationId, OwnerRef, PrincipalId, RuntimeError, SessionContext,
     SessionHandle, SessionState, SessionView, Timestamp,
 };
-use datazen_modules::execution::runtime::gateway::idempotency::IdempotencyRepositoryError;
-use datazen_modules::execution::runtime::gateway::owner_binding::OwnerMatchAuthorizer;
-use datazen_modules::execution::runtime::gateway::{
+use datazen::execution::runtime::gateway::idempotency::IdempotencyRepositoryError;
+use datazen::execution::runtime::gateway::owner_binding::OwnerMatchAuthorizer;
+use datazen::execution::runtime::gateway::{
     CancelBinding, CancelRequest, ExecutionGateway, ExecutionRequest, ExecutionSource, FixedClock,
     GatewayError, IdempotencyRecord, IdempotencyRepository, IdempotencyScope,
     InMemoryIdempotencyRepository, RequestPrincipal, SourceKind,
 };
-use datazen_modules::execution::runtime::registry::SessionPort;
-use datazen_modules::shared::error::ApiErrorCode;
-use datazen_modules::shared::id::{ClientInstanceId, EditorSessionId, JobId};
+use datazen::execution::runtime::registry::SessionPort;
+use datazen::shared::error::ApiErrorCode;
+use datazen::shared::id::{ClientInstanceId, EditorSessionId, JobId};
 
 /// 归属组织 O1：U1 与 U2 同属一个组织，用来看清「同组织 ≠ 同一主体」。
 pub const ORG_O1: &str = "org-ob-1";

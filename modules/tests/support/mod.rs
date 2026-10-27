@@ -14,10 +14,10 @@ use std::fmt::Debug;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-use datazen_modules::execution::application::budget::{BudgetRequest, ResourceClass, ServiceQuota};
-use datazen_modules::shared::id::{ConnectionId, OrganizationId, PrincipalId};
+use datazen::execution::application::budget::{BudgetRequest, ResourceClass, ServiceQuota};
+use datazen::shared::id::{ConnectionId, OrganizationId, PrincipalId};
 
-use datazen_modules::execution::runtime::budget::{
+use datazen::execution::runtime::budget::{
     AdmitOutcome, BudgetClaim, BudgetClock, BudgetConfig, BudgetLedger, DenialReason,
     InProcessBudgetCoordinator, PermitRecord, PrincipalResolver, SlotKind,
 };

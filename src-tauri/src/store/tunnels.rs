@@ -6,7 +6,7 @@
 //!
 //! # 这一层是**存储实现**，不是端口
 //!
-//! 端口是 [`datazen_modules::tunnel::TunnelRepository`]（领域模块里那份，
+//! 端口是 [`datazen::tunnel::TunnelRepository`]（领域模块里那份，
 //! 跨形态共享）：**名单**走摘要（不带密钥），**单条取用**才给全量。本文件提供它的
 //! 桌面实现——加密与落盘格式**留在这里**（主钥匙串在宿主手里），端口层是
 //! 「内存内明文」语义。
@@ -16,10 +16,10 @@
 //! 它只承认自己那一个组织。
 
 use async_trait::async_trait;
+use datazen::shared::error::PortError;
+use datazen::shared::scope::OrganizationScope;
+use datazen::tunnel::TunnelRepository;
 use datazen_driver_api::{SavedTunnel, SavedTunnelSummary, TunnelUsage};
-use datazen_modules::shared::error::PortError;
-use datazen_modules::shared::scope::OrganizationScope;
-use datazen_modules::tunnel::TunnelRepository;
 
 use super::{DesktopRepository, DesktopRepositoryError};
 

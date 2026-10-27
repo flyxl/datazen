@@ -1,7 +1,7 @@
 //! Schema Diff deploy execution and cancellation.
 
+use datazen::migration::schema_diff::types::PlanRequirement;
 use datazen_driver_api::SchemaMigration as _;
-use datazen_modules::migration::schema_diff::types::PlanRequirement;
 
 use super::job;
 use super::unified_plan;
@@ -134,7 +134,7 @@ pub(crate) async fn execute_schema_diff_deploy_impl_with_cancel(
     let target_context = match crate::services::migration_endpoint::runtime_session_context(
         &state,
         &target_db_session_id,
-        datazen_modules::execution::application::LivePurpose::LongLivedHostWork,
+        datazen::execution::application::LivePurpose::LongLivedHostWork,
     )
     .await
     {

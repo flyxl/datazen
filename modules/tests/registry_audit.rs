@@ -28,11 +28,11 @@ mod registry_fixtures;
 
 use std::sync::Arc;
 
-use datazen_modules::execution::runtime::connection::error::ApiErrorCode;
-use datazen_modules::execution::runtime::connection::{
+use datazen::execution::runtime::connection::error::ApiErrorCode;
+use datazen::execution::runtime::connection::{
     ExecutionErrorCode, ExecutionId, ExecutionState, ProviderError, RuntimeError,
 };
-use datazen_modules::execution::runtime::registry::{
+use datazen::execution::runtime::registry::{
     fold_exit, AuditKind, CancelDisposition, CancelReceipt, CapabilityVersions, ExitFact,
     ExitProjection, Outcome, RegistryAuditEntry, SessionRegistry,
 };

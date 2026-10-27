@@ -58,13 +58,13 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use datazen_modules::execution::application::{
+use datazen::execution::application::{
     LiveConnection, LiveConnectionError, LiveConnectionRequest, LiveConnectionSource,
 };
 
 use super::session_backend::DesktopSessionBackend;
 use crate::store::DesktopRepository;
-use datazen_modules::execution::runtime::driver_registry::DriverRegistry;
+use datazen::execution::runtime::driver_registry::DriverRegistry;
 
 /// 桌面侧出向端口实现。
 pub struct DesktopLiveConnectionSource {

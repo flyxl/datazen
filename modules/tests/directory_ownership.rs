@@ -18,11 +18,11 @@ use std::sync::Arc;
 use common::{
     client, cycling_directory, directory, editor_draft, CyclicEntropy, FixedEntropy, TestClock,
 };
-use datazen_modules::execution::domain::{SessionDirectory, SessionOwner};
-use datazen_modules::execution::runtime::directory::{InMemorySessionDirectory, SessionHandle};
-use datazen_modules::shared::context::OwnerRef;
-use datazen_modules::shared::error::PortError;
-use datazen_modules::shared::id::{
+use datazen::execution::domain::{SessionDirectory, SessionOwner};
+use datazen::execution::runtime::directory::{InMemorySessionDirectory, SessionHandle};
+use datazen::shared::context::OwnerRef;
+use datazen::shared::error::PortError;
+use datazen::shared::id::{
     ConnectionId, DbSessionId, EditorSessionId, OrganizationId, PrincipalId, RuntimeEpoch,
     Timestamp, WorkerId,
 };

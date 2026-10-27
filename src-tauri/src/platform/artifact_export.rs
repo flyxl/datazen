@@ -1,6 +1,6 @@
 //! Native-dialog export of the same immutable artifacts used by execution publication.
 use crate::commands::{AppState, CommandError};
-use datazen_modules::{
+use datazen::{
     execution::domain::{ArtifactRepository, ExportSink},
     execution::ArtifactLifecycle,
     shared::id::{ArtifactId, LeaseId},

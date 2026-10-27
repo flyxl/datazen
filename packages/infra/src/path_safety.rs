@@ -9,7 +9,7 @@
 //!
 //! Two byte-identical copies used to exist, one per consumer
 //! (`src-tauri/src/app_data_archive.rs` and the workspace-app installer, whose
-//! package has since been merged into `packages/feature-core/src/workspace_apps/`).
+//! package has since been merged into `modules/src/workspace_apps/`).
 //! Neither imported the other and
 //! the workspace-app copy only named the host copy in its header, so the host
 //! side did not even know a second copy existed — a one-sided edit left one

@@ -1,5 +1,5 @@
 //! Schema application services: metadata reads, physical-context adaptation,
-//! and schema scoping (D4-b, moved from `datazen-feature-core::services`).
+//! and schema scoping (D4-b, moved from `datazen::services`).
 
 pub mod error;
 pub mod metadata;

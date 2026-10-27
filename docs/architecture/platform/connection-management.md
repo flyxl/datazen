@@ -31,7 +31,7 @@
 | [activeConnectionStore](../../../src/stores/activeConnectionStore.ts) | connectionId 索引的连接状态 | 连接可达性与编辑器 session 状态分开 |
 | [QuerySidebarSection](../../../src/windows/connection/query/QuerySidebarSection.tsx) | SQL 推测上下文 | 仅做补全/浏览推测，实际上下文由后端更新 |
 | [dedicatedDbSession](../../../src/lib/dedicatedDbSession.ts) | 三件套窗口准备/释放 | 明确目标，执行 Lease 归 Job |
-| [workflow command_runtime](../../../packages/feature-core/src/workflow/command_runtime.rs) | Workflow v1 默认目标与 Command | 独立 step 经 feature-core resource execution 使用 Runtime |
+| [workflow command_runtime](../../../modules/src/workflow/command_runtime.rs) | Workflow v1 默认目标与 Command | 独立 step 经 modules resource execution 使用 Runtime |
 
 桌面 Host 不再维护第二份 `ConnectionManager`、活动连接表或事务句柄表。Runtime actor 与 lease manager 是物理 session、事务句柄、idle 回收和资源预算的运行时所有者；连接配置仍由 Store 持久化，前端 `connectionId` 与 `dbSessionId` 的用途保持分离。
 
@@ -749,7 +749,7 @@ checkpoint 记录稳定键、已确认提交、源一致性证据和映射指纹
 
 ## 11. Workflow / AI / MCP / Wapp
 
-P6 保持 Workflow v1 的模型、YAML、IPC 与 step 执行语义，只将底层连接管理接到 Runtime。生产路径为 `feature-core command_runtime → feature-core resource_execution → Runtime`。step 的显式连接/数据库目标覆盖 Workflow 默认目标；独立 step 的会话状态不泄漏到后续 step，前一步结果仍可通过模板传入下一步。跨数据库流程由各 step 选择自己的连接完成。
+P6 保持 Workflow v1 的模型、YAML、IPC 与 step 执行语义，只将底层连接管理接到 Runtime。生产路径为 `modules command_runtime → modules resource_execution → Runtime`。step 的显式连接/数据库目标覆盖 Workflow 默认目标；独立 step 的会话状态不泄漏到后续 step，前一步结果仍可通过模板传入下一步。跨数据库流程由各 step 选择自己的连接完成。
 
 P6 不引入 Workflow Job 包裹、session/transaction block、block owner 或事务计划证明。相关未来设计见 [Workflow 资源模型](workflow-resource-model.md)，不属于当前 v1 验收范围。AI/MCP/Wapp、调度授权与原生工具细节见 [消费者接入](consumer-adapters.md)。
 
@@ -863,7 +863,7 @@ Agent 不打开、读取、解析、source 或打印 `.env` / `.env.test` 内容
 | driver E2E | `packages/drivers/<id>/e2e/` | 方言场景 |
 | Web 服务集成 | 拟新增 server crate 内 | HTTP、认证、CSRF、SSE、worker 路由 |
 
-现有可用命令：`pnpm typecheck`、`pnpm test:unit`、`pnpm test:unit:drivers`、`cargo test -p datazen --lib`、`cargo test -p datazen-driver-api`、`cargo test -p datazen-driver-postgres`、`pnpm test:layers`、`pnpm test:boundaries`。runtime crate 的命令：`cargo test -p datazen-modules`（单测与全部 `tests/` 二进制）、`cargo test -p datazen-modules --test cm60_pressure_drain`（CM-60 压力半）、`cargo run --release -p datazen-modules --bin cm60-bench`（CM-60 延迟半基准，独立的 bin target，参数见 fake-runtime-fixtures §11.1）。其他新 crate 测试命令待其 Cargo package 创建后添加，不能现在声称可运行。
+现有可用命令：`pnpm typecheck`、`pnpm test:unit`、`pnpm test:unit:drivers`、`cargo test -p datazen_desktop --lib`、`cargo test -p datazen-driver-api`、`cargo test -p datazen-driver-postgres`、`pnpm test:layers`、`pnpm test:boundaries`。runtime crate 的命令：`cargo test -p datazen`（单测与全部 `tests/` 二进制）、`cargo test -p datazen --test cm60_pressure_drain`（CM-60 压力半）、`cargo run --release -p datazen --bin cm60-bench`（CM-60 延迟半基准，独立的 bin target，参数见 fake-runtime-fixtures §11.1）。其他新 crate 测试命令待其 Cargo package 创建后添加，不能现在声称可运行。
 
 WDIO 使用 `pnpm tauri:build:webdriver` 或经检查的 E2E wrapper，不能裸 cargo build。测试文件参加 typecheck，不用 any。三件套已生成可运行 app 后仅 DMG 打包失败，不阻塞其 WDIO 功能验收。
 
@@ -873,7 +873,7 @@ H 是部署无关 runtime 契约，F 是前端契约，D 是真实驱动协议�
 
 CM-60 使用 release 构建、无数据库网络、单进程固定 fake command 10 ms，以并发 8 预热 1000 请求；每轮采集 10000 个获准且未排队的请求，运行 5 轮。记录实际运行环境，但不要求固定 CPU/内存规格。附加耗时从 gateway 完成鉴权/参数校验开始到派发 driver，以及 driver completion 到 receipt/event 状态登记完成的两段单调时间之和，不包含 fake SQL、预算/actor 排队、网络传输。采用 nearest-rank p95（排序后第 ceil(0.95*N) 项），每轮均须 ≤10 ms；排队请求另报等待分位数，不删失败样本，失败数单列。阶段归属：按开发计划各阶段退出门槛的原文，CM-60 的 H 断言属 P3（§7 含「60 单机部分」）、W1 断言属 P7（§11 含「60 单实例部分」）、WN 部分属 P9（§13 含「CM-57～60 的 WN 部分」）；本节只定义三处共用的测量口径与 harness，不替代任何一处阶段的达标判定。服务端侧另有一张阶段映射表（`team-server-and-auth.md` §16.1 的 CM-60 行，按「单实例部分 / 跨节点部分归 P9」分列），与本处一致；两处均以开发计划退出门槛原文为准。
 
-事件断言限单次存活订阅、缓冲未溢出的 sequence 连续性；重连允许重放重复原始事件，但投影后无重复行/状态遗漏。journal 在每次建连/关闭/permit 变化时断言额度，无随机采样盲区。注入连接持有、慢 consumer 和 drain 的压力部分另运行（`cargo test -p datazen-modules --test cm60_pressure_drain`），不混入非排队延迟样本；保存环境、构建参数、原始计时与 journal 作为 CI artifact（落到 `target/bench/cm60-raw-<ts>.json` 与 `cm60-summary-<ts>.json`，格式与判定式见 fake-runtime-fixtures §11.5–§11.6），不新增仓库评审记录。
+事件断言限单次存活订阅、缓冲未溢出的 sequence 连续性；重连允许重放重复原始事件，但投影后无重复行/状态遗漏。journal 在每次建连/关闭/permit 变化时断言额度，无随机采样盲区。注入连接持有、慢 consumer 和 drain 的压力部分另运行（`cargo test -p datazen --test cm60_pressure_drain`），不混入非排队延迟样本；保存环境、构建参数、原始计时与 journal 作为 CI artifact（落到 `target/bench/cm60-raw-<ts>.json` 与 `cm60-summary-<ts>.json`，格式与判定式见 fake-runtime-fixtures §11.5–§11.6），不新增仓库评审记录。
 
 ## 16. 详细测试用例
 
@@ -1308,7 +1308,7 @@ CM-60 使用 release 构建、无数据库网络、单进程固定 fake command 
 
 **首版执行结果（2026-10）**：生产类型是 `ProductionLeaseManager`（`modules/src/execution/runtime/resource/production.rs`），由桌面 session backend 持有并驱动开/执行/归池/关闭（`src-tauri/src/platform/session_backend.rs`）；池策略在 `modules/src/execution/runtime/resource/pool.rs`，台账在 `resource/table.rs`。
 
-- **H 层：已实现并验证。** `cargo test -p datazen-modules --test resource_rotation_and_disable --test pool_capacity_budget --test resource_return_to_pool` → 6 / 8 / 14 passed，0 failed，EXIT=0。逐条对应：分池与容量守恒 `pool_idle_capacity_never_drifts_from_the_budget_ledger`；轮换后旧代 idle 停发并关闭 `a_credential_rotation_retires_the_idle_leases_of_the_previous_generation`；旧代请求被拒 `a_lease_request_pinned_to_retired_material_is_refused`；慢缓存不回填 `a_slow_cache_result_from_the_previous_generation_cannot_backfill_the_new_generation`；撤权即时生效 `disabling_a_connection_drops_queued_requests_and_records_the_actual_cancellation`；空闲 TTL 到期关闭 `an_idle_lease_is_closed_once_the_idle_ttl_expires`。空池元数据 LRU 是 `datazen-modules` 的 lib 单测 `empty_pool_metadata_stays_within_the_documented_lru_limit`（`modules/src/execution/runtime/resource/journey.rs`；`cargo test -p datazen-modules --lib` → 509 passed / 0 failed，EXIT=0），不在上面三个集成测试文件里。
+- **H 层：已实现并验证。** `cargo test -p datazen_desktop --test resource_rotation_and_disable --test pool_capacity_budget --test resource_return_to_pool` → 6 / 8 / 14 passed，0 failed，EXIT=0。逐条对应：分池与容量守恒 `pool_idle_capacity_never_drifts_from_the_budget_ledger`；轮换后旧代 idle 停发并关闭 `a_credential_rotation_retires_the_idle_leases_of_the_previous_generation`；旧代请求被拒 `a_lease_request_pinned_to_retired_material_is_refused`；慢缓存不回填 `a_slow_cache_result_from_the_previous_generation_cannot_backfill_the_new_generation`；撤权即时生效 `disabling_a_connection_drops_queued_requests_and_records_the_actual_cancellation`；空闲 TTL 到期关闭 `an_idle_lease_is_closed_once_the_idle_ttl_expires`。空池元数据 LRU 是 `datazen` 的 lib 单测 `empty_pool_metadata_stays_within_the_documented_lru_limit`（`modules/src/execution/runtime/resource/journey.rs`；`cargo test -p datazen --lib` → 509 passed / 0 failed，EXIT=0），不在上面三个集成测试文件里。
 - **D 层：两条断言在首版真实驱动上不可观测，记为发布限制而不是待办。** 全部 path 驱动（含 postgres / mysql / sqlite / redis）一律声明 `ResetForReuse::Unsupported`，宿主归池准入把该声明判为 `DriverResetUnsupported`——不进池、直接关闭（`modules/src/execution/runtime/resource/cleanup.rs`），因此空闲池在真实驱动上**恒为空**，「旧 idle 停发并关闭」与「空 pool 元数据受 LRU 上限约束」没有可触发的状态，用真实驱动写这两条断言只会写出永远为真的空断言。只有某个驱动声明 `ResetForReuse::Verified` 并证明复位基线后，它们才重新具备 D 层可验证性。
 - **D 层仍需验收的部分**：真实驱动上按 database/policy 分池且物理连接数不越预算、轮换/禁用后旧代资源不可再签发。现有 `packages/drivers/{postgres,mysql}/e2e/retained-resource-journey.ts` 覆盖 retained session、真实取消与 retained Explain，**不覆盖轮换**。
 

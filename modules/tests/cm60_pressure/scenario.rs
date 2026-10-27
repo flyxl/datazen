@@ -8,14 +8,12 @@
 
 use std::collections::BTreeMap;
 
-use datazen_modules::execution::application::budget::ResourceClass;
-use datazen_modules::shared::id::{
-    ConnectionId, DbSessionId, OrganizationId, PrincipalId, WorkerId,
-};
+use datazen::execution::application::budget::ResourceClass;
+use datazen::shared::id::{ConnectionId, DbSessionId, OrganizationId, PrincipalId, WorkerId};
 
-use datazen_modules::execution::runtime::budget::queues::WaiterId;
-use datazen_modules::execution::runtime::budget::records::SessionScope;
-use datazen_modules::execution::runtime::budget::{
+use datazen::execution::runtime::budget::queues::WaiterId;
+use datazen::execution::runtime::budget::records::SessionScope;
+use datazen::execution::runtime::budget::{
     AdmitOutcome, BudgetLedger, DenialReason, DrainScope, PermitRecord, ReleaseResult,
 };
 

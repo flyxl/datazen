@@ -16,20 +16,20 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use datazen_modules::execution::EffectOutcome;
-use datazen_modules::jobs::domain::job::{
+use datazen::execution::EffectOutcome;
+use datazen::jobs::domain::job::{
     Checkpoint, JobDefinition, JobProgress, JobRecoveryVerdict, JobState,
 };
-use datazen_modules::jobs::domain::repository::JobRepository;
-use datazen_modules::shared::context::RequestContext;
-use datazen_modules::shared::error::PortError;
-use datazen_modules::shared::id::{
+use datazen::jobs::domain::repository::JobRepository;
+use datazen::shared::context::RequestContext;
+use datazen::shared::error::PortError;
+use datazen::shared::id::{
     ClientInstanceId, IdempotencyKey, JobId, OrganizationId, PrincipalId, RequestId, StageId,
     Timestamp, WorkerId,
 };
 
-use datazen_modules::execution::runtime::budget::{ledger::BudgetLedger, quotas::BudgetConfig};
-use datazen_modules::jobs::{
+use datazen::execution::runtime::budget::{ledger::BudgetLedger, quotas::BudgetConfig};
+use datazen::jobs::{
     CancelToken, FrozenPlan, HandlerRegistry, InMemoryJobRepository, JobClock, JobHandler, JobHost,
     JobRuntime, RecoveryVerdict, SharedClock, StageOutcome, StageSpec, StageTerminal,
 };
@@ -53,7 +53,7 @@ fn definition(job_id: &str) -> JobDefinition {
         // organization the test drives the job with.
         organization_id: OrganizationId::new("datazen-local"),
         kind: "dataSyncApply".into(),
-        owner: datazen_modules::shared::context::OwnerRef::ClientSession {
+        owner: datazen::shared::context::OwnerRef::ClientSession {
             client_instance_id: ClientInstanceId::new("client-1"),
             purpose: "migration".into(),
         },
@@ -81,10 +81,7 @@ impl JobHandler for CountingReplayHandler {
     fn handler_version(&self) -> u64 {
         1
     }
-    fn validate_plan(
-        &self,
-        _plan: &FrozenPlan,
-    ) -> Result<Vec<StageSpec>, datazen_modules::jobs::JobError> {
+    fn validate_plan(&self, _plan: &FrozenPlan) -> Result<Vec<StageSpec>, datazen::jobs::JobError> {
         Ok(vec![StageSpec {
             stage_id: StageId::new("s1"),
             kind: "apply".into(),
@@ -95,7 +92,7 @@ impl JobHandler for CountingReplayHandler {
         &self,
         spec: &StageSpec,
         _cancel: &CancelToken,
-    ) -> Result<StageOutcome, datazen_modules::jobs::JobError> {
+    ) -> Result<StageOutcome, datazen::jobs::JobError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         Ok(StageOutcome {
             stage_id: spec.stage_id.clone(),

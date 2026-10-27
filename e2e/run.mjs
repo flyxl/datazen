@@ -538,7 +538,7 @@ if (sawAssetMissing) {
     [
       'App reported "asset not found: index.html" — frontend is broken.',
       `Rebuild with: ${BUILD_CMD}`,
-      'Do NOT use: cargo build -p datazen --features webdriver',
+      'Do NOT use: cargo build -p datazen_desktop --features webdriver',
       'See docs/development/e2e-testing.md',
     ].join('\n'),
   );

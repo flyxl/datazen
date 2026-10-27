@@ -1,7 +1,7 @@
 //! 租约 / 连接池层的测试替身与夹具。
 //!
 //! 为什么单独一个模块：`tests/` 编译 lib 时**不带 `cfg(test)`**，
-//! `datazen_modules::execution::runtime::testing` 下的 fixture 在集成测试里根本不存在。
+//! `datazen::execution::runtime::testing` 下的 fixture 在集成测试里根本不存在。
 //! 所以这里按生产代码自己声明的公开接缝 —— [`MonotonicSource`]、`PhysicalTransport`、
 //! `HandleCloser` —— 自建替身，而不是去改生产代码的可见性。
 //!
@@ -20,18 +20,16 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
-use datazen_modules::shared::id::ExecutionId;
+use datazen::shared::id::ExecutionId;
 
-use datazen_modules::execution::runtime::budget::{
-    BudgetClock, BudgetConfig, InProcessBudgetCoordinator,
-};
-use datazen_modules::execution::runtime::connection::port::CancelDisposition;
-use datazen_modules::execution::runtime::connection::types::ClientInstanceId;
-use datazen_modules::execution::runtime::connection::{
+use datazen::execution::runtime::budget::{BudgetClock, BudgetConfig, InProcessBudgetCoordinator};
+use datazen::execution::runtime::connection::port::CancelDisposition;
+use datazen::execution::runtime::connection::types::ClientInstanceId;
+use datazen::execution::runtime::connection::{
     ConfigRevision, ConnectionId, Counter, HandleId, HandleKind, NamespaceTarget, OwnerRef,
     PoolKeyInputs, ResourceId, SessionHandleRef,
 };
-use datazen_modules::execution::runtime::resource::{
+use datazen::execution::runtime::resource::{
     HostConditionSnapshot, LeaseManager, LeasePurpose, LeaseRequest, MonotonicSource,
     PhysicalTransport, ResetDisposition, ResourceError, ResourceManager,
 };

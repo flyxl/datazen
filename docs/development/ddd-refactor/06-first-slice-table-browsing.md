@@ -8,7 +8,7 @@
 
 - `src/commands/database.ts` 的表数据请求与 `src/platform/tauriBackendTransport.ts` 的 transport 映射。
 - `src-tauri/src/commands/data.rs` 的 `get_table_data_at_target` 与 `commands/table_target.rs` 的 `read` / `execute`。
-- `packages/feature-core/src/services/query_executor/` 的旧查询服务及 `commands/schema.rs` 的旧 `get_table_data`。
+- `modules/src/services/query_executor/` 的旧查询服务及 `commands/schema.rs` 的旧 `get_table_data`。
 - `modules/src/execution/application/` 的执行、事务与结果实现。
 - `src/stores/tableDataStore.ts` 的分页、结果合并和前端状态处理。
 
@@ -44,17 +44,17 @@ Controller 将既有 wire 请求映射为 `table_browsing::application` 的读�
   `state.store.as_ref()` 全部改走聚合，**宿主 store 在该文件的生产半边出现 0 次**
   （新增断言 `the_command_shell_reads_the_aggregate_not_the_host_store` 钉住）。
   连带的两条结构性事实：
-  - `application` 现在**依赖** `datazen-feature-core`。这不是回摆：P0 断环 + P2 收官之后
-    `APP → feature-core → kernel/platform-api` 是正确方向，而「用例层不得依赖领域包」
+  - `application` 现在**依赖** `datazen`。这不是回摆：P0 断环 + P2 收官之后
+    `APP → modules → kernel/platform-api` 是正确方向，而「用例层不得依赖领域包」
     那条 manifest 禁令的理由（`APP → 领域包 → RT → APP` 的 Cargo 环）已经不存在。
     该禁令改写成新断言 `the_crate_may_depend_on_the_shared_feature_layer_but_not_on_the_runtime`
-    —— 保留 `datazen-modules` / `tauri` 两条真禁令，环的判定交给门禁按**当前**图求值。
+    —— 保留 `datazen` / `tauri` 两条真禁令，环的判定交给门禁按**当前**图求值。
   - `scripts/check-ddd-layers.mjs` 的镜像不变量不再硬编码「消费者一定依赖 application」，
     而是**按当前图求值**（消费者此刻确实依赖 application 时才判环），并补了双向自证
     （仍互依赖的合成图必须报警、单向图必须不报警）。
 - **第二条命令族（2026-10-23，仪表盘）**：聚合增加
   `dashboard: Arc<dyn DashboardRepository>` 与 `dashboard_runs: Arc<dyn DashboardRunRepository>`
-  （两个端口都由 `packages/feature-core/src/dashboard/` 定义，桌面实现都是 `AppDb` ⇒
+  （两个端口都由 `modules/src/dashboard/` 定义，桌面实现都是 `AppDb` ⇒
   端口定义在领域包、实现在宿主，聚合只拿 trait 对象）。`commands/dashboard.rs` 的 14 处
   `state.store.app_db()` 中 **8 处归位聚合**（仓储 6 + 运行历史 2），残留 6 处**有名字**的
   形态专属用途（组件创建 3、导入导出 2、手工执行 1），由断言
@@ -63,7 +63,7 @@ Controller 将既有 wire 请求映射为 `table_browsing::application` 的读�
 - **第三条命令族（2026-10-23，连接目录）**：这一族与上两族的差别是**端口住在哪里**。
   连接配置的形状 `ConnectionConfig` 住在 `datazen-driver-api`（每个形态都已链接的那一份，
   且是 IPC 载荷与前端表单的唯一形状），所以端口没有进领域包，而是进
-  `datazen_modules::platform_api::ports::connection_catalog`——`platform-api` 本来就依赖 driver-api
+  `datazen::platform_api::ports::connection_catalog`——`platform-api` 本来就依赖 driver-api
   （`TunnelRepository` 同理），端口里出现 `ConnectionConfig` 不构成新依赖。
   `ApplicationServices` 增加 `connections: Arc<dyn ConnectionCatalog>`，桌面实现是
   `DesktopRepository`；`commands/connection.rs` 与 `commands/connection_import/ipc.rs`

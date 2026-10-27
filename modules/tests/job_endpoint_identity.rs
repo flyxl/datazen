@@ -6,9 +6,9 @@
 
 mod support;
 
-use datazen_modules::shared::id::ConnectionId;
+use datazen::shared::id::ConnectionId;
 
-use datazen_modules::jobs::{detect_endpoint_overlap, EndpointRef, EndpointRole};
+use datazen::jobs::{detect_endpoint_overlap, EndpointRef, EndpointRole};
 
 use support::conn;
 
@@ -55,7 +55,7 @@ fn cm31_alias_configs_sharing_one_service_are_still_rejected() {
         },
     ];
     let err = detect_endpoint_overlap(&endpoints).expect_err("别名自覆盖必须拒绝");
-    let datazen_modules::jobs::JobError::EndpointOverlap(message) = err else {
+    let datazen::jobs::JobError::EndpointOverlap(message) = err else {
         panic!("应当是 EndpointOverlap");
     };
     // 错误必须点名两端与对象，否则用户无从判断该改哪一侧
@@ -114,7 +114,7 @@ fn cm31_same_service_key_on_one_connection_is_rejected() {
     ];
     let err = detect_endpoint_overlap(&endpoints).expect_err("同库自覆盖必须拒绝");
     assert!(
-        matches!(err, datazen_modules::jobs::JobError::EndpointOverlap(_)),
+        matches!(err, datazen::jobs::JobError::EndpointOverlap(_)),
         "{err:?}"
     );
 }
@@ -138,7 +138,7 @@ fn cm31_unprovable_identity_with_writer_is_rejected() {
         },
     ];
     let err = detect_endpoint_overlap(&endpoints).expect_err("身份不可证明必须拒绝");
-    let datazen_modules::jobs::JobError::EndpointOverlap(message) = err else {
+    let datazen::jobs::JobError::EndpointOverlap(message) = err else {
         panic!("应当是 EndpointOverlap");
     };
     assert!(

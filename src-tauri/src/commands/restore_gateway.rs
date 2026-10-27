@@ -1,10 +1,10 @@
 //! Desktop policy binding for the shared Runtime restore orchestrator.
-use datazen_feature_core::{
+use datazen::jobs::CancelToken;
+use datazen::RequestContext;
+use datazen::{
     restore_gateway::{RestoreAuthorization, RuntimeRestoreGateway},
     restore_job::*,
 };
-use datazen_modules::jobs::CancelToken;
-use datazen_modules::RequestContext;
 use std::sync::Arc;
 
 pub(super) struct DesktopRestoreGateway {
@@ -74,8 +74,8 @@ impl RestoreGateway for DesktopRestoreGateway {
         let Ok(runtime) = self.adapter.runtime() else {
             return RestoreEvidence {
                 rejection: Some(RestoreRejection::RuntimeUnavailable),
-                terminal: datazen_modules::jobs::StageTerminal::Failed,
-                effects: datazen_modules::execution::EffectOutcome::NotStarted,
+                terminal: datazen::jobs::StageTerminal::Failed,
+                effects: datazen::execution::EffectOutcome::NotStarted,
                 progress: Default::default(),
                 executions: vec![],
                 boundaries: vec![],

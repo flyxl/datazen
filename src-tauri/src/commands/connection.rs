@@ -1,8 +1,8 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
+use datazen::connection::ConnectionError;
+use datazen::shared::error::ApiErrorCode;
 use datazen_driver_api::{ConnectionConfig, DriverCategory, ServerInfo};
-use datazen_modules::connection::ConnectionError;
-use datazen_modules::shared::error::ApiErrorCode;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -23,9 +23,9 @@ pub struct ConnectionSessionRef {
 
 /// 宿主组织作用域 → 模块连接作用域。
 fn scope_modules(
-    scope: &datazen_modules::shared::scope::OrganizationScope,
-) -> datazen_modules::connection::ConnectionScope {
-    datazen_modules::connection::ConnectionScope::new(scope.organization_id().as_str())
+    scope: &datazen::shared::scope::OrganizationScope,
+) -> datazen::connection::ConnectionScope {
+    datazen::connection::ConnectionScope::new(scope.organization_id().as_str())
 }
 
 /// `ConnectionError` → `CommandError`（与 `port_cmd` 同形：`NotFound` 保留，
@@ -136,7 +136,7 @@ pub(crate) async fn test_connection_impl(
             .await,
         "test_connection",
     )? {
-        datazen_modules::connection::merge_missing_secrets(&mut config, saved);
+        datazen::connection::merge_missing_secrets(&mut config, saved);
     }
     tracing::info!(
         name = %config.name,
@@ -251,7 +251,7 @@ pub(crate) async fn ping_connection_impl(
         crate::services::migration_endpoint::runtime_session_context(
             state,
             &db_session_id,
-            datazen_modules::execution::application::LivePurpose::Inspection,
+            datazen::execution::application::LivePurpose::Inspection,
         )
         .await
         .is_ok(),
@@ -390,7 +390,7 @@ pub(crate) async fn get_connection_info_impl(
     let config = crate::services::migration_endpoint::runtime_session_context(
         state,
         &db_session_id,
-        datazen_modules::execution::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?
     .config;
@@ -814,7 +814,7 @@ mod tests {
             .register_test_driver_with_capabilities(
                 "postgres",
                 test.mock.clone(),
-                datazen_modules::execution::runtime::driver_registry::DriverCapabilities {
+                datazen::execution::runtime::driver_registry::DriverCapabilities {
                     has_multi_database: false,
                     supports_cancel_query: true,
                     supports_query_execution_cancel: true,
@@ -1248,7 +1248,7 @@ mod coverage_tests {
             0,
             "连接目录命令必须走模块连接服务，不得直读宿主 store"
         );
-        // D2 后：连接用例归 datazen-modules::connection，经
+        // D2 后：连接用例归 datazen::connection，经
         // require_connection_service 取宿主装配的同一个服务实例。
         // 聚合（require_application_services）只服务隧道测试等仍住在
         // application 层的端口：测试连接 1、连接 1、指定库连接 1。

@@ -2,20 +2,18 @@
 
 use std::sync::Arc;
 
-use datazen_modules::execution::EffectOutcome;
-use datazen_modules::jobs::domain::job::{
+use datazen::execution::EffectOutcome;
+use datazen::jobs::domain::job::{
     JobDefinition, JobDetails, JobDomainResult, JobFilter, JobProgress, JobRecoveryRequest,
     JobRecoveryResult, JobRecoveryVerdict, JobRecoveryVerification, JobResultCounter,
     JobResultItem, JobState, JobView,
 };
-use datazen_modules::jobs::{EndpointRef, JobHandler, JobHost, JobRecoveryVerifier};
-use datazen_modules::migration::schema_diff::job::{
-    ApplyRequest, PrepareRequest, SchemaDiffHandler,
-};
-use datazen_modules::migration::schema_diff::types::{DeployStatus, SchemaDiffDeployResult};
-use datazen_modules::shared::context::RequestContext;
-use datazen_modules::shared::error::PortError;
-use datazen_modules::shared::id::{Counter, IdempotencyKey, JobId, StageId, WorkerId};
+use datazen::jobs::{EndpointRef, JobHandler, JobHost, JobRecoveryVerifier};
+use datazen::migration::schema_diff::job::{ApplyRequest, PrepareRequest, SchemaDiffHandler};
+use datazen::migration::schema_diff::types::{DeployStatus, SchemaDiffDeployResult};
+use datazen::shared::context::RequestContext;
+use datazen::shared::error::PortError;
+use datazen::shared::id::{Counter, IdempotencyKey, JobId, StageId, WorkerId};
 use serde::Serialize;
 use tauri::State;
 
@@ -559,9 +557,7 @@ fn prepare_endpoints(request: &PrepareRequest) -> (String, String, Vec<String>) 
     }
 }
 
-fn plan_objects(
-    meta: &datazen_modules::migration::schema_diff::job::SchemaDiffFrozenPlan,
-) -> Vec<String> {
+fn plan_objects(meta: &datazen::migration::schema_diff::job::SchemaDiffFrozenPlan) -> Vec<String> {
     meta.endpoint_evidence
         .iter()
         .find_map(|evidence| evidence.strip_prefix("planTables:"))

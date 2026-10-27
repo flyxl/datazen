@@ -1,9 +1,9 @@
 //! Persistent claim authority is separate from Job read visibility.
 use super::*;
-use datazen_modules::jobs::domain::job::StageRecord;
-use datazen_modules::jobs::JobRuntimeRepository;
+use datazen::jobs::domain::job::StageRecord;
+use datazen::jobs::JobRuntimeRepository;
 
-fn stage(claim: &datazen_modules::jobs::domain::job::JobClaim, id: &str) -> StageRecord {
+fn stage(claim: &datazen::jobs::domain::job::JobClaim, id: &str) -> StageRecord {
     StageRecord {
         job_id: claim.job_id.clone(),
         stage_id: StageId::new(id),

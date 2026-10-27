@@ -1,4 +1,4 @@
-//! `datazen-modules` owns feature-oriented domain vocabulary and application use cases.
+//! `datazen` owns feature-oriented domain vocabulary and application use cases.
 //!
 //! The crate intentionally has no dependency on a host, runtime, kernel,
 //! `platform-api`, or Tauri. Hosts provide the repository implementations
@@ -10,8 +10,21 @@
 #[cfg(feature = "backup")]
 pub mod backup;
 
+#[cfg(feature = "connection_import")]
+pub mod connection_import;
+
+#[cfg(feature = "feature_error")]
+pub mod feature_error;
+#[cfg(feature = "feature_error")]
+pub use feature_error as error;
+
+#[cfg(feature = "services")]
+pub mod services;
+
 #[cfg(feature = "wapps")]
 pub mod wapps;
+#[cfg(feature = "wapps")]
+pub use wapps as workspace_apps;
 
 /// D6 item 5：隧道领域端口、known-hosts 规则与形态中立网络机制。
 #[cfg(feature = "tunnel")]
@@ -19,9 +32,24 @@ pub mod tunnel;
 
 #[cfg(feature = "export")]
 pub mod export;
+#[cfg(feature = "export")]
+pub use export::file_job;
+
+#[cfg(feature = "table-editing")]
+pub use table_editing as data_browsing;
+
+#[cfg(feature = "backup")]
+pub use backup::{backup_gateway, restore_gateway, restore_job};
 
 #[cfg(feature = "ai")]
 pub mod ai;
+#[cfg(feature = "ai")]
+pub use ai::application::{
+    cancel, chat_request, context, db_tools, filter, ownership, prompt_resolver, response,
+    schema_context, schema_doc, schema_pipeline, single_turn, sql_generation, tool_loop, tools,
+};
+#[cfg(feature = "ai")]
+pub use ai::domain::{budget, ctx_yaml, safety};
 
 #[cfg(feature = "connection")]
 pub mod connection;
@@ -90,7 +118,7 @@ pub mod schema;
 #[cfg(feature = "settings")]
 pub mod settings;
 
-/// D8：原 `datazen-modules::application` 用例编排已归入 modules，宿主只负责装配。
+/// D8：原 `datazen::application` 用例编排已归入 modules，宿主只负责装配。
 #[cfg(feature = "application")]
 pub mod application;
 

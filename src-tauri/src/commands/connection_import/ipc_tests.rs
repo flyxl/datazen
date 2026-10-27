@@ -1,7 +1,7 @@
 //! Tests for the connection import / export IPC surface.
 
 use super::*;
-use datazen_feature_core::connection_import::ImportFormat;
+use datazen::connection_import::ImportFormat;
 use std::path::Path;
 #[test]
 fn export_rejects_empty_password() {
@@ -92,9 +92,7 @@ fn merge_group_lists_unions_and_counts_new() {
 #[test]
 fn encrypt_decrypt_roundtrip() {
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-    use datazen_feature_core::connection_import::{
-        decrypt_datazen_fields, derive_argon2_key, encrypt_field,
-    };
+    use datazen::connection_import::{decrypt_datazen_fields, derive_argon2_key, encrypt_field};
 
     let salt = [7u8; 16];
     let key = derive_argon2_key("unit-test-password", &salt).unwrap();
@@ -111,9 +109,7 @@ fn encrypt_decrypt_roundtrip() {
 #[test]
 fn decrypt_rejects_wrong_password() {
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-    use datazen_feature_core::connection_import::{
-        decrypt_datazen_fields, derive_argon2_key, encrypt_field,
-    };
+    use datazen::connection_import::{decrypt_datazen_fields, derive_argon2_key, encrypt_field};
 
     let salt = [9u8; 16];
     let key = derive_argon2_key("correct", &salt).unwrap();
@@ -193,7 +189,7 @@ fn import_password_option_treats_blank_as_none() {
 
 #[test]
 fn build_import_preview_json_includes_source_format() {
-    use datazen_feature_core::connection_import::{ImportFormat, ParsedImport};
+    use datazen::connection_import::{ImportFormat, ParsedImport};
 
     let preview = build_import_preview_json(&ParsedImport {
         connections: vec![],

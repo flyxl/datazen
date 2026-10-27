@@ -1,7 +1,7 @@
 //! 网关集成测试共用的夹具。
 //!
-//! 只用**公开 API** 造替身（`datazen_modules::execution::runtime::gateway::*` + 冻结 DTO +
-//! `datazen_modules::execution::runtime::registry::SessionPort`）：这是集成测试与 `--lib` 单测的
+//! 只用**公开 API** 造替身（`datazen::execution::runtime::gateway::*` + 冻结 DTO +
+//! `datazen::execution::runtime::registry::SessionPort`）：这是集成测试与 `--lib` 单测的
 //! 唯一区别，也是它存在的意义——单元测试能碰到 `pub(crate)`，集成测试碰不到，
 //! 所以集成测试能独立证明「对外真的能用」。
 //!
@@ -28,25 +28,25 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use datazen_modules::execution::runtime::connection::{
+use datazen::execution::runtime::connection::{
     AttachmentState, CloseMode, CommandCall, ConfigRevision, ConnectionId, Counter, DbSessionId,
     ExecuteInSessionRequest, ExecutionId, ExecutionReceipt, ExecutionState, ExecutionTarget,
     NamespaceTarget, OrganizationId, OwnerRef, PrincipalId, RuntimeError, SessionContext,
     SessionHandle, SessionState, SessionView, StreamId, Timestamp,
 };
-use datazen_modules::execution::runtime::gateway::idempotency::IdempotencyRepositoryError;
-use datazen_modules::execution::runtime::gateway::{
+use datazen::execution::runtime::gateway::idempotency::IdempotencyRepositoryError;
+use datazen::execution::runtime::gateway::{
     AlwaysAllow, AuthorizationDenial, Authorizer, CancelBinding, CancelRequest, ExecutionEvent,
     ExecutionEventKind, ExecutionGateway, ExecutionRequest, ExecutionSource, FixedClock,
     GatewayAction, GrantRegistry, IdempotencyRecord, IdempotencyRepository, IdempotencyScope,
     InMemoryIdempotencyRepository, RequestPrincipal, SourceKind, SubmissionOperation,
     SubmissionTokenGuard, TokenKeyring,
 };
-use datazen_modules::execution::runtime::registry::SessionPort;
-use datazen_modules::shared::id::{ClientInstanceId, EditorSessionId};
+use datazen::execution::runtime::registry::SessionPort;
+use datazen::shared::id::{ClientInstanceId, EditorSessionId};
 
 /// `PreciseCancel` 在 `connection` 门面里是私有导入，回转发不出去，从定义处引。
-use datazen_modules::execution::runtime::connection::capability::PreciseCancel;
+use datazen::execution::runtime::connection::capability::PreciseCancel;
 
 /// 夹具里的会话 id。
 pub const SESSION: &str = "db_session_contract";

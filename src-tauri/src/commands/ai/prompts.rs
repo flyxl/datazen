@@ -2,8 +2,8 @@
 
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
+use datazen::ai::prompt_resolver::{PromptInfo, PromptOverrideEntry};
 use datazen_driver_api::PromptScenario;
-use datazen_feature_core::ai::prompt_resolver::{PromptInfo, PromptOverrideEntry};
 use tauri::State;
 
 // ─── Prompt management IPC commands ───

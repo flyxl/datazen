@@ -74,7 +74,7 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 
 - 默认实现输出 `LIMIT {n} OFFSET {m}`；驱动声明 `supports_offset() == false`（`superset`）时自动退化为 `LIMIT {n}`。
 - `requires_order_by == true` 时，Host 仅在**调用方没有排序**时补 `order_by_fallback`；用户显式排序优先，不叠加兜底排序。
-- 调用点：`packages/feature-core/src/services/query_executor.rs::build_select_sql`、`modules/src/migration/data_transfer/execute.rs`、`modules/src/migration/data_sync/keyset.rs`、`src-tauri/src/commands/sync/keyset_source.rs`。`data_transfer` 仍以 `supports_offset()` 作为翻页循环的终止条件（不能 OFFSET 的引擎不继续翻页），不参与 SQL 拼接。
+- 调用点：`modules/src/services/query_executor.rs::build_select_sql`、`modules/src/migration/data_transfer/execute.rs`、`modules/src/migration/data_sync/keyset.rs`、`src-tauri/src/commands/sync/keyset_source.rs`。`data_transfer` 仍以 `supports_offset()` 作为翻页循环的终止条件（不能 OFFSET 的引擎不继续翻页），不参与 SQL 拼接。
 - 设置项 `limitSelectResults` 不生成 SQL：它把 `limit` 传给驱动命令，由驱动截断结果集（SQL Server 的做法见 §2.3）。
 
 ### 2.3 方言要点：SQL Server
@@ -119,7 +119,7 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 方言规则（`SqlDialect`）——`quote_ident` / `pagination_syntax` / `try_format_sql_literal` / `parameter_placeholder` / `max_bound_parameters` 全部经 `LegacySqlDialect`：
 
 - `QueryExecutor::build_select_sql` / `build_count_sql`（宿主读表）接收 `&dyn SqlDialect` 与 `limit`/`offset`；`commands/table_target.rs` 在边界处用 `LegacySqlDialect` 包装驱动。
-- 数据迁移写入路径：`data-transfer` 的绑参上限 / 占位符 / 分页子句 / 字面量（`writer.rs`、`dispatcher.rs`、`resume.rs`、`resume/fingerprint.rs`、`job/pipeline.rs`、`job/handler.rs`、`sql_file.rs`），宿主 `modules/src/migration/data_transfer/preview.rs`、`src-tauri/src/commands/data_transfer/exec/execution.rs`，feature-core `export/format.rs`（`emit_insert_batch` 形参即是 `&dyn SqlDialect`）；`bound_insert*` 因同时需要驱动专属的显式自增子句而保留驱动形参。
+- 数据迁移写入路径：`data-transfer` 的绑参上限 / 占位符 / 分页子句 / 字面量（`writer.rs`、`dispatcher.rs`、`resume.rs`、`resume/fingerprint.rs`、`job/pipeline.rs`、`job/handler.rs`、`sql_file.rs`），宿主 `modules/src/migration/data_transfer/preview.rs`、`src-tauri/src/commands/data_transfer/exec/execution.rs`，modules `export/format.rs`（`emit_insert_batch` 形参即是 `&dyn SqlDialect`）；`bound_insert*` 因同时需要驱动专属的显式自增子句而保留驱动形参。
 - 结果编辑校验与同步批读：`commands/result_write.rs` 的 UPDATE 前置 SELECT、`sync/keyset_source.rs`、`sync/host/select.rs`（形参已收窄为 `&dyn SqlDialect`）、`sync/host/statements.rs`、`sync/apply.rs`、`sync/filter_validation.rs`。
 - 驱动专属的规则（`quote_char` / `transfer_explicit_identity_insert_clause` / `supports_offset` / `driver_type`）不在此契约内，仍在驱动上显式调用。
 - 同步 IR 适配器的 `SyncTargetAdapter::quote_ident` 是另一个契约（SQL Server 用 `[x]`、ClickHouse 用反引号，与驱动方言的有意分歧），不得并入。
@@ -127,7 +127,7 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 目录读取（`CatalogReader`）——`get_databases` / `get_schemas` / `get_tables` / `get_table_schema` / `get_columns` / `get_all_columns` 全部经 `LegacyCatalogReader`：
 
 - `SchemaCache::get_columns` / `get_table_schema` / `warmup` 只接收 `&dyn CatalogReader`；读表、ER 图、AI 过滤解析与 `read_relation_columns` 在边界处用 `LegacyCatalogReader` 包装驱动。缓存键仍是 session + database + schema + relation，跨目标读取不共享条目。
-- Schema Diff 目录读取：`schema_diff` 的 plan / compare / unified plan / dependencies / recovery 与 `feature-core` `schema_metadata.rs` 的 `list_catalog` / `read_relation_schema`（driver 形参同时承载 `driver_type()`、外键目录可见性等驱动专属规则，适配器在函数内构造）。
+- Schema Diff 目录读取：`schema_diff` 的 plan / compare / unified plan / dependencies / recovery 与 `modules` `schema_metadata.rs` 的 `list_catalog` / `read_relation_schema`（driver 形参同时承载 `driver_type()`、外键目录可见性等驱动专属规则，适配器在函数内构造）。
 
 其余消费者按调用链逐步迁移；收窄函数形参（如 `fetch_target_table_schema`）留待其调用方迁完后统一做。
 
@@ -182,7 +182,7 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 
 **判定顺序：先看有没有覆写并显式拒绝，再看 `get_tables` / `get_table_schema`。** 覆写 `dump_database_with_progress` 并显式拒绝的驱动根本不会执行通用实现，顺序反过来就会把「显式拒绝」误判成「缺实现」。
 
-`CapabilitySet.backup` 的两个入口 `require_backup_artifact()` / `require_restore_from_artifact()`（`packages/driver-api/src/capabilities.rs`）目前**只有测试调用**，尚未接进备份执行路径——执行路径是 `packages/feature-core/src/backup.rs` 直接调驱动的 `dump_database_with_progress`。声明与执行之间还没有自动咬合，接线前不要把「已声明」读成「已生效」。
+`CapabilitySet.backup` 的两个入口 `require_backup_artifact()` / `require_restore_from_artifact()`（`packages/driver-api/src/capabilities.rs`）目前**只有测试调用**，尚未接进备份执行路径——执行路径是 `modules/src/backup.rs` 直接调驱动的 `dump_database_with_progress`。声明与执行之间还没有自动咬合，接线前不要把「已声明」读成「已生效」。
 
 ### 2.7 复用包装器：`ReuseDriver` 必须显式决定每个方法
 
@@ -226,7 +226,7 @@ Schema Diff 领域消费的结构迁移决策统一收敛到 `SchemaMigration`�
 
 备份域中真正"纯规则"的部分收敛到 `BackupDialect`（`packages/driver-api/src/backup_dialect.rs`）：`uses_sql_restore_pipeline()`（共享 SQL 恢复管线的路由）、`new_sql_scanner()`（语句扫描器，选择/关闭 `DELIMITER` 处理）、`split_restore_sql()`（整段 SQL 缓冲的切分）。带 `ConnectionHandle` 的执行入口（`dump_database*`、`restore_sql*`、`recover_restore_statement`）不在此契约内，保留在驱动上，待运行时路径收敛（§5 计划）统一处理；共享流程本身继续复用 `sql_dump` 模块。
 
-`LegacyBackupDialect` 是自 `DatabaseDriver` 到 `BackupDialect` 的单向适配器。已迁移的调用点：feature-core 备份流程（`backup.rs` 的管线路由与 `RestoreSession` 扫描器；执行侧恢复循环继续持有驱动）、retained-restore 预检 `restore_sql::prepare`（scanner 取自 `BackupDialect`，feature-core `restore_gateway.rs` 与 postgres/mysql 驱动的 `restore_sql` 集成测试在边界包适配器）。
+`LegacyBackupDialect` 是自 `DatabaseDriver` 到 `BackupDialect` 的单向适配器。已迁移的调用点：modules 备份流程（`backup.rs` 的管线路由与 `RestoreSession` 扫描器；执行侧恢复循环继续持有驱动）、retained-restore 预检 `restore_sql::prepare`（scanner 取自 `BackupDialect`，modules `restore_gateway.rs` 与 postgres/mysql 驱动的 `restore_sql` 集成测试在边界包适配器）。
 
 ### 2.11 事件出口契约：`DriverEventOutlet` / `DriverEventSink`
 

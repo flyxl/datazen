@@ -24,7 +24,7 @@
 
 use crate::gateway_fixtures as fx;
 use crate::{err, token_reason, write_once};
-use datazen_modules::execution::runtime::gateway::{
+use datazen::execution::runtime::gateway::{
     GatewayError, GrantRegistry, KeyVersion, SubmissionTokenGuard, TokenKeyring,
 };
 

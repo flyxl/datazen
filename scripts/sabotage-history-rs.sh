@@ -39,7 +39,7 @@ open(p, 'w', encoding='utf-8').write(s.replace(old, new, 1))
 PY
   local out n
   # --color=never so the patterns below match the text, not escape sequences.
-  out=$(cargo test --color=never -p datazen --lib "$filter" 2>&1)
+  out=$(cargo test --color=never -p datazen_desktop --lib "$filter" 2>&1)
   if echo "$out" | grep -qE "error\[E[0-9]+\]|could not compile"; then
     echo "  ⚠️  $label :: 破坏后编译不过,此破坏无效"
     fail=$((fail + 1))

@@ -31,7 +31,7 @@ mod tunnel_arch_support;
 
 use tunnel_arch_support::{request, tunnel_spec, unwired, wired};
 
-use datazen_modules::execution::runtime::resource::LeaseState;
+use datazen::execution::runtime::resource::LeaseState;
 
 // ============================================================ 接线面
 

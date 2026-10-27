@@ -13,8 +13,8 @@ mod support;
 
 use std::sync::Arc;
 
-use datazen_modules::execution::runtime::connection::{HandleId, SessionHandleRef};
-use datazen_modules::execution::runtime::resource::{
+use datazen::execution::runtime::connection::{HandleId, SessionHandleRef};
+use datazen::execution::runtime::resource::{
     CleanupDisposition, DriverCleanVerdict, LeaseState, NoHandleCloser, ResourceError,
     NO_HANDLE_CLOSER,
 };

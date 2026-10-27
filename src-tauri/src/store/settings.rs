@@ -1,8 +1,8 @@
 use crate::mcp::McpServerConfig;
-use datazen_feature_core::dashboard::types::MonitorSettings;
-use datazen_feature_core::mcp::permission::McpPermissionMode;
-use datazen_modules::settings::{ExecutionSettings, SharedSettings, UserPreferences};
-pub use datazen_modules::settings::{SqlFormatOptions, SqlSnippet};
+use datazen::dashboard::types::MonitorSettings;
+use datazen::mcp::permission::McpPermissionMode;
+use datazen::settings::{ExecutionSettings, SharedSettings, UserPreferences};
+pub use datazen::settings::{SqlFormatOptions, SqlSnippet};
 use serde::{Deserialize, Serialize};
 
 /// Current first-run journey revision. Bump it only when the journey must be
@@ -290,7 +290,7 @@ impl AppSettings {
     pub fn shared_settings(&self) -> SharedSettings {
         SharedSettings {
             preferences: UserPreferences {
-                theme: datazen_modules::settings::PortableThemePreference {
+                theme: datazen::settings::PortableThemePreference {
                     mode: self.theme.mode.clone(),
                     pack_id: self.theme.pack_id.clone(),
                 },

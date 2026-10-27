@@ -48,7 +48,7 @@ async fn my_case() {
 Build and run:
 
 ```bash
-CARGO_TARGET_DIR=target-e2e-ipc cargo test -p datazen \
+CARGO_TARGET_DIR=target-e2e-ipc cargo test -p datazen_desktop \
   --features test-harness --test driver_command_ipc
 ```
 
@@ -110,7 +110,7 @@ Migrating all 8 pure-IPC candidates saves **~4 minutes** from the default serial
 - [ ] Map every `it()` / `describe()` case to a `#[tokio::test]` (or `#[test]`)
 - [ ] Use `TestAppState` instead of E2E seeded connections where possible
 - [ ] For real-DB cases (PG backup), gate on env like `workflow_tests.rs` (skip if unavailable)
-- [ ] Run `cargo test -p datazen --features test-harness --test <name>`
+- [ ] Run `cargo test -p datazen_desktop --features test-harness --test <name>`
 - [ ] Run `cargo check -p datazen` without extra features (release path unchanged)
 - [ ] Add E2E comment marker; do not delete E2E spec yet
 - [ ] Update this doc’s status table when complete

@@ -5,11 +5,11 @@ use std::sync::Mutex;
 use super::helpers::{inject_sql_target_fields, nonempty};
 use super::resolve::resolve_command_driver;
 use super::*;
+use datazen::mcp::application::command_policy::access_level_for_mode;
+use datazen::mcp::permission::McpPermissionMode;
 use datazen_driver_api::{
     CommandAccessLevel, QueryExecutionId, QueryStreamCallback, QueryStreamEvent,
 };
-use datazen_feature_core::mcp::permission::McpPermissionMode;
-use datazen_modules::mcp::application::command_policy::access_level_for_mode;
 
 #[test]
 fn request_uses_camel_case_wire_format() {
@@ -500,7 +500,7 @@ async fn read_only_mode_denies_execute() {
             database: None,
             schema: None,
         },
-        Some(datazen_feature_core::mcp::permission::McpPermissionMode::ReadOnly),
+        Some(datazen::mcp::permission::McpPermissionMode::ReadOnly),
         None,
     )
     .await

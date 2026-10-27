@@ -1,6 +1,6 @@
 //! AI 消费者端口（D6 item 4 收尾，2026-10-26）。
 //!
-//! `DatabaseToolHost` 与 `SessionConnectionLookup` 自 feature-core
+//! `DatabaseToolHost` 与 `SessionConnectionLookup` 自 modules
 //! `services::ports` 归位（唯一定义在此，旧路径改再导出垫片）：
 //! 前者是 AI 数据库工具与 MCP 工具共用的宿主能力面（会话配置、驱动
 //! 借出、目标执行与执行设置），后者是 schema 上下文实现所提的问题

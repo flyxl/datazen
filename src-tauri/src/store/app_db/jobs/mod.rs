@@ -12,8 +12,8 @@ mod writes;
 use std::sync::Arc;
 
 use crate::store::app_db::AppDb;
-use datazen_modules::jobs::JobClock;
-use datazen_modules::shared::error::PortError;
+use datazen::jobs::JobClock;
+use datazen::shared::error::PortError;
 use rusqlite::{Connection, Transaction, TransactionBehavior};
 
 /// Local policy: job references remain queryable for 30 days; referenced attachment bytes

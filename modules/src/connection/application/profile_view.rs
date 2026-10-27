@@ -1,7 +1,7 @@
 //! `ProfileView`：连接档案的回显视图投影（§5.1：连接列表响应归 application）。
 //!
 //! 原属 platform-api `dto/profile.rs` 的视图部分，D2（2026-10-26）起唯一定义在
-//! `datazen-modules::connection::application`。投影入口是
+//! `datazen::connection::application`。投影入口是
 //! [`ProfileView::from_record`]（原 `ProfileRecord::to_view` 迁至本层：
 //! domain 不依赖 application 的响应形状）。platform-api 只再导出同一类型。
 //!

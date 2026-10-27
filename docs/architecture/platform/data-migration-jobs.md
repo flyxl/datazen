@@ -16,7 +16,7 @@
 
 三个领域包和对应桌面 Job adapter 已由 P5 落地。`src-tauri/src/lib.rs` 将领域包导出给 Host；Driver 方言、DDL renderer、类型适配和专属测试留在 driver 包。领域引擎不引用 Tauri、HTTP、窗口 Store 或 driver 实现库类型。
 
-公共代码的实际归属：三套引擎共享 `runtime` 的 JobHandler/JobRuntime 和 `platform-api` 的任务 DTO；SQL 标识符引用与旧 family-based 表名限定工具位于 `driver-api::sql_identifiers`。`packages/migration-common` 只提供记录集边界值规范化/比较和端点 category/family 配对规则，不依赖领域引擎、runtime 或平台传输。Data Sync 与 Data Transfer 直接依赖它，Data Transfer 不再依赖 Data Sync。Data Sync 的 `recordset_bounds`、`sync_pairing` 和 `sql` 工具旧路径保留为转导出，只有一份实现。
+公共代码的实际归属：三套引擎共享 `runtime` 的 JobHandler/JobRuntime 和 `platform-api` 的任务 DTO；SQL 标识符引用与旧 family-based 表名限定工具位于 `driver-api::sql_identifiers`。`modules/src/migration/common` 只提供记录集边界值规范化/比较和端点 category/family 配对规则，不依赖领域引擎、runtime 或平台传输。Data Sync 与 Data Transfer 直接依赖它，Data Transfer 不再依赖 Data Sync。Data Sync 的 `recordset_bounds`、`sync_pairing` 和 `sql` 工具旧路径保留为转导出，只有一份实现。
 
 领域语义仍分别拥有：Schema Diff 的结构差异与操作依赖图、Data Sync 的同族门闸与 ChangeSet、Data Transfer 的异构 IR 转换与续传策略。共享配对规则只分类端点；各领域继续执行自己的能力限制（例如 Transfer 拒绝缺少适配器的 Redis 配对）。`qualify_relation_sql` 保留既有 family-based 兼容语义；驱动自有 SQL 重写继续使用 `DatabaseDriver::qualified_sql`，本次不改变驱动 trait、协议版本或执行行为。
 
@@ -137,7 +137,7 @@ Schema Diff / Data Sync / Data Transfer 的 prepare/apply 是**后台任务**：
 
 每次成功的非事务语句记录真实执行 ID、目标/载荷摘要和提交边界；单事务只在确认 COMMIT 后记录一个边界。失败立即停止；已提交边界保留，传输/提交/回滚不确定为 Unknown。取消独立于效果，回滚使用独立清理令牌，只有成功的自有 ROLLBACK 才报告 RolledBack。旧 path helper 只在 Host 测试编译，不是生产回退。
 
-PostgreSQL 的 `packages/drivers/postgres/tests/restore_apply_job.rs` 通过安全 live launcher 的 `--test restore_apply_job` 运行。该旅程使用真实 disposable migration fixture、私有 ArtifactRepository、JobRuntime 的 TargetWriter 预算与单次 plan 消费，复用桌面委托的 `feature-core::restore_gateway::RuntimeRestoreGateway`，由 Runtime Session / ExecutionGateway 调用真正 PostgreSQL ResourceProvider；断言 COMMIT 执行 ID/摘要边界及独立连接读回两行，并验证 COPY、客户端指令、输入摘要/目标替换和配置 revision 失效在写入前失败；事务内建表后写不存在 relation 的 SQL 失败证明自有 ROLLBACK、无残表和 provider close 完成。测试宿主的 Profile/Policy/SessionBackend 是驱动测试接缝；不覆盖桌面 picker、Store、DesktopSessionBackend 的接线，MySQL 的独立旅程见下文。共享 orchestrator 的授权端口在桌面仍重查 Store 的 enabled/revision/readOnly/safeMode 与目标授权。
+PostgreSQL 的 `packages/drivers/postgres/tests/restore_apply_job.rs` 通过安全 live launcher 的 `--test restore_apply_job` 运行。该旅程使用真实 disposable migration fixture、私有 ArtifactRepository、JobRuntime 的 TargetWriter 预算与单次 plan 消费，复用桌面委托的 `modules::restore_gateway::RuntimeRestoreGateway`，由 Runtime Session / ExecutionGateway 调用真正 PostgreSQL ResourceProvider；断言 COMMIT 执行 ID/摘要边界及独立连接读回两行，并验证 COPY、客户端指令、输入摘要/目标替换和配置 revision 失效在写入前失败；事务内建表后写不存在 relation 的 SQL 失败证明自有 ROLLBACK、无残表和 provider close 完成。测试宿主的 Profile/Policy/SessionBackend 是驱动测试接缝；不覆盖桌面 picker、Store、DesktopSessionBackend 的接线，MySQL 的独立旅程见下文。共享 orchestrator 的授权端口在桌面仍重查 Store 的 enabled/revision/readOnly/safeMode 与目标授权。
 
 MySQL 的 `packages/drivers/mysql/tests/restore_apply_job.rs` 使用同一安全 launcher、disposable migration gate、私有 ArtifactRepository、JobRuntime 与生产 `RuntimeRestoreGateway`，通过 Runtime Session / ExecutionGateway 调用 factory 注册的真实 MysqlResourceProvider。`IMPLICIT_COMMIT` 配合 `single_transaction=false`：成功 CREATE/INSERT 逐句记录执行 ID、目标和语句摘要边界，独立连接读回两行；LOAD DATA、SOURCE、输入摘要不符、冻结目标替换及配置 revision 失效均在资源获取/写入前拒绝，NotStarted、attempted=0，且无表、无执行 ID；各拒绝路径均断言 Runtime resource open 计数不变。另一脚本先建表，再向不存在的表 INSERT，失败立即停止；独立连接证明 DDL 表仍存在、后续 CREATE 未运行，再清理残表。驱动 SQL 错误当前不提供本语句的确定效果证据，因此总体效果保守为 Unknown，同时保留已确认的 CREATE 提交边界及 committed=1，不能宣称跨 DDL/DML 原子性、RolledBack 或确定的 PartiallyApplied。测试宿主替代 Profile/Policy/SessionBackend 接线，不覆盖桌面 picker、Store 与 DesktopSessionBackend。
 

@@ -13,7 +13,7 @@
 //!
 //! ## 三条硬约束在本文件里的落点
 //!
-//! 1. **身份只来自 adapter。** [`RequestContext`] 是 `datazen_modules::shared` 的类型，本文件
+//! 1. **身份只来自 adapter。** [`RequestContext`] 是 `datazen::shared` 的类型，本文件
 //!    是 desktop 侧**唯一**构造它的地方（`request_context`）。请求 DTO 不含身份字段，
 //!    本模块也不提供任何「从入参填身份」的入口。
 //! 2. **后台执行不依赖 GUI 上下文。** 本模块只组装桌面本地身份，不给 `client_instance_id`
@@ -24,9 +24,9 @@
 
 use std::sync::OnceLock;
 
-use datazen_modules::shared::context::{OwnerRef, RequestContext};
-use datazen_modules::shared::error::{ApiError, ApiErrorCode};
-use datazen_modules::shared::id::{
+use datazen::shared::context::{OwnerRef, RequestContext};
+use datazen::shared::error::{ApiError, ApiErrorCode};
+use datazen::shared::id::{
     BlockId, ClientInstanceId, EditorSessionId, JobId, OrganizationId, PrincipalId, RequestId,
     StageId,
 };
@@ -294,8 +294,8 @@ impl OwnerIntent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_modules::application::identity_policy::IdentityPolicy;
-    use datazen_modules::execution::application::policy::AuthorizationSubject;
+    use datazen::application::identity_policy::IdentityPolicy;
+    use datazen::execution::application::policy::AuthorizationSubject;
 
     fn identity() -> DesktopIdentity {
         DesktopIdentity::new_launch(LOCAL_ORGANIZATION_ID, "alice", "client-1")

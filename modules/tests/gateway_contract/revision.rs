@@ -3,8 +3,8 @@
 
 use super::{err, record, runtime_err};
 use crate::gateway_fixtures as fx;
-use datazen_modules::execution::runtime::connection::{ExecutionState, RuntimeError, SessionState};
-use datazen_modules::execution::runtime::gateway::GatewayError;
+use datazen::execution::runtime::connection::{ExecutionState, RuntimeError, SessionState};
+use datazen::execution::runtime::gateway::GatewayError;
 // ───────────────── C 乐观并发闸 ─────────────────
 
 #[tokio::test(start_paused = true)]

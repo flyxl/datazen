@@ -17,8 +17,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use datazen_modules::shared::error::PortError;
-use datazen_modules::tunnel::{KnownHostEntry, KnownHostsRepository};
+use datazen::shared::error::PortError;
+use datazen::tunnel::{KnownHostEntry, KnownHostsRepository};
 
 /// 桌面形态的 known-hosts 端口实例（`{appData}/ssh_known_hosts.json`）。
 ///

@@ -14,7 +14,7 @@ pub(crate) async fn revalidate_source_snapshot(
     let context = crate::services::migration_endpoint::runtime_session_context(
         state,
         &source.session,
-        datazen_modules::execution::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let driver = context.driver;

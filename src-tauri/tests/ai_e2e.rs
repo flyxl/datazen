@@ -8,9 +8,9 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use datazen::ai::prompt_resolver::{self, PromptResolver};
+use datazen::ai::{ChatMessage, MessageRole};
 use datazen_driver_api::PromptScenario;
-use datazen_feature_core::ai::prompt_resolver::{self, PromptResolver};
-use datazen_modules::ai::{ChatMessage, MessageRole};
 
 async fn system_prompt(
     scenario: PromptScenario,
@@ -130,7 +130,7 @@ fn load_deepseek_config() -> Option<DeepSeekTestConfig> {
 
 mod provider_tests {
     use super::*;
-    use datazen_modules::ai::*;
+    use datazen::ai::*;
 
     async fn create_provider(
         provider_type: &str,
@@ -140,7 +140,7 @@ mod provider_tests {
     ) -> Box<dyn AiProvider> {
         match provider_type {
             "open_ai" => {
-                let p = datazen_modules::ai::openai::OpenAiProvider::new();
+                let p = datazen::ai::openai::OpenAiProvider::new();
                 let config = AiProviderConfig {
                     provider_type: AiProviderType::OpenAi,
                     api_key: Some(api_key.to_string()),
@@ -153,7 +153,7 @@ mod provider_tests {
                 Box::new(p)
             }
             "deep_seek" => {
-                let p = datazen_modules::ai::deepseek::DeepSeekProvider::new();
+                let p = datazen::ai::deepseek::DeepSeekProvider::new();
                 let config = AiProviderConfig {
                     provider_type: AiProviderType::DeepSeek,
                     api_key: Some(api_key.to_string()),
@@ -671,7 +671,7 @@ mod provider_tests {
         };
 
         let (tx, mut rx) =
-            tokio::sync::mpsc::channel::<Result<StreamChunk, datazen_modules::ai::AiError>>(32);
+            tokio::sync::mpsc::channel::<Result<StreamChunk, datazen::ai::AiError>>(32);
         let result = provider.stream_complete(&request, tx).await;
         assert!(result.is_ok(), "stream_complete failed: {:?}", result.err());
 
@@ -700,7 +700,7 @@ mod provider_tests {
 // ─── DeepSeek Workflow Tool Calling Tests ─────────────────────────────────
 mod deepseek_workflow_tests {
     use super::*;
-    use datazen_modules::ai::*;
+    use datazen::ai::*;
 
     fn workflow_tools() -> Vec<ToolDefinition> {
         vec![
@@ -911,7 +911,7 @@ mod deepseek_workflow_tests {
             return;
         };
 
-        let provider = datazen_modules::ai::deepseek::DeepSeekProvider::new();
+        let provider = datazen::ai::deepseek::DeepSeekProvider::new();
         let init_config = AiProviderConfig {
             provider_type: AiProviderType::DeepSeek,
             api_key: Some(cfg.api_key.clone()),
@@ -1126,7 +1126,7 @@ mod deepseek_workflow_tests {
             return;
         };
 
-        let provider = datazen_modules::ai::deepseek::DeepSeekProvider::new();
+        let provider = datazen::ai::deepseek::DeepSeekProvider::new();
         let init_config = AiProviderConfig {
             provider_type: AiProviderType::DeepSeek,
             api_key: Some(cfg.api_key.clone()),

@@ -1,5 +1,5 @@
 use super::*;
-use datazen_modules::execution::application::{IdlePolicy, SessionTransactionOperation as Op};
+use datazen::execution::application::{IdlePolicy, SessionTransactionOperation as Op};
 #[tokio::test]
 async fn concurrent_begin_is_one_actor_transaction_and_commit_rollback_retire_handles() {
     let (service, backend, _, _) = setup();

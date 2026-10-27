@@ -1,19 +1,19 @@
 //! 池键轮换、配置版本与连接停用的公开面集成测试
 //! （代次隔离、配置版本、停用裁决）。
 //!
-//! 替身全部手写：`datazen_modules::execution::runtime::testing` 下的 fixture 由 `cfg(test)` 门控，
+//! 替身全部手写：`datazen::execution::runtime::testing` 下的 fixture 由 `cfg(test)` 门控，
 //! `tests/` 编译 lib 时并不带 `cfg(test)`，只能按本文件声明的公开接缝自建。
 //! 候选替换的旅程在 `resource_replacement.rs`。
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use datazen_modules::execution::runtime::connection::port::CancelDisposition;
-use datazen_modules::execution::runtime::connection::types::ClientInstanceId;
-use datazen_modules::execution::runtime::connection::{
+use datazen::execution::runtime::connection::port::CancelDisposition;
+use datazen::execution::runtime::connection::types::ClientInstanceId;
+use datazen::execution::runtime::connection::{
     ConfigRevision, ConnectionId, ExecutionId, NamespaceTarget, OwnerRef, PoolKeyInputs, ResourceId,
 };
-use datazen_modules::execution::runtime::resource::{
+use datazen::execution::runtime::resource::{
     CacheFillOutcome, CancellationOutcome, DriverCleanVerdict, HostConditionSnapshot, LeasePurpose,
     LeaseRequest, MonotonicSource, PhysicalTransport, ResetDisposition, ResourceError,
     ResourceManager, RotationKind,

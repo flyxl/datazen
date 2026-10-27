@@ -5,15 +5,15 @@ use crate::dashboard::{
 };
 use crate::monitor::channels::{dispatch_notifications, AlertChannelState};
 use crate::{commands::AppState, store::DesktopRepository};
-use datazen_feature_core::dashboard::repository::{
+use datazen::dashboard::repository::{
     list_dashboards, set_dashboard_refresh_paused, DashboardRepositoryError,
 };
-use datazen_feature_core::dashboard::types::{Dashboard, DashboardWidget, WidgetRun};
+use datazen::dashboard::types::{Dashboard, DashboardWidget, WidgetRun};
 #[cfg(feature = "webdriver")]
-use datazen_modules::monitor::application::evidence;
-use datazen_modules::monitor::application::{MonitorEngine as CoreEngine, MonitorHost};
-use datazen_modules::monitor::domain::MonitorGrant;
-use datazen_modules::shared::scope::OrganizationScope;
+use datazen::monitor::application::evidence;
+use datazen::monitor::application::{MonitorEngine as CoreEngine, MonitorHost};
+use datazen::monitor::domain::MonitorGrant;
+use datazen::shared::scope::OrganizationScope;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 struct DesktopMonitorHost {

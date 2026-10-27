@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::execution::runtime::connection::error::{ApiError, ApiErrorCode};
 
 // ---------------------------------------------------------------------------
-// ID newtype 与计数器：全项目唯一定义处在 `datazen-modules::platform_api::id`。
+// ID newtype 与计数器：全项目唯一定义处在 `datazen::platform_api::id`。
 // ---------------------------------------------------------------------------
 //
 // 本文件**不再**重复定义 `string_id!` 与 `Counter`。同一批 newtype 在
@@ -42,7 +42,7 @@ pub use crate::shared::id::{
     StreamId, Timestamp, WorkerId,
 };
 
-/// 命名空间层与形状的**唯一**定义在 `datazen-modules::platform_api::target`。
+/// 命名空间层与形状的**唯一**定义在 `datazen::platform_api::target`。
 ///
 /// 本文件原先**重复定义**了这两个类型，代价是两份 JSON 形态（`optional` 的 `#[serde(default)]`
 /// 只有 runtime 一侧有）与两套 `database_and_schema()` 语义同时在线。现已删除本地副本。

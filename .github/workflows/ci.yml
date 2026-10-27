@@ -366,18 +366,18 @@ jobs:
       - name: Rust unit tests (datazen)
         run: |
           FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
-          cargo test -p datazen --lib --features "$FEATURES"
+          cargo test -p datazen_desktop --lib --features "$FEATURES"
 
       - name: Restore managed files
         if: always()
         run: node scripts/driver-file-stash.mjs restore
 
-      # datazen-ai-api 于 D1.5（46dc15b）退役并入 datazen-modules::ai，这里的
+      # datazen-ai-api 于 D1.5（46dc15b）退役并入 datazen::ai，这里的
       # crate 级测试步骤随之换代：跑 modules 全 feature 矩阵（与
       # scripts/run-platform-crate-tests.mjs 的 feature 清单一致；不带 --lib，
       # 让 ai 集成测试与各 feature 的 tests/ 一并收集）。
-      - name: Rust unit tests (datazen-modules)
-        run: cargo test -p datazen-modules --features settings,ai,connection,named_views
+      - name: Rust unit tests (datazen)
+        run: cargo test -p datazen --features settings,ai,connection,named_views
 
       # ── 平台内核架构门禁 ──
       #
@@ -442,7 +442,7 @@ jobs:
       # rustc 版本在**运行前**取：产物 build 段要记编译器版本，编完再取就晚了。
       - name: CM-60 latency benchmark (release)
         run: |
-           DZ_CM60_RUSTC_VERSION="$(rustc --version)" cargo run --release -p datazen-modules --features contracts,execution,jobs --bin cm60-bench -- \
+           DZ_CM60_RUSTC_VERSION="$(rustc --version)" cargo run --release -p datazen --features contracts,execution,jobs --bin cm60-bench -- \
             --vcpus 4 --mem-bytes 8589934592 --out target/bench
       # 基准产物不在版本控制里（/target 被 gitignore），不存成 artifact 就等于
       # 没人能复核一次红灯。`if: always()` 是因为上面那步红的时候这一步照样要跑。

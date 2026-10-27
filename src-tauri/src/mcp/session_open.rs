@@ -1,7 +1,7 @@
 //! Acquisition ownership survives cancellation of an MCP tool request.
 use super::server::DataZenMcpServer;
-use datazen_modules::execution::OpenSessionReceipt;
-use datazen_modules::shared::error::ApiError;
+use datazen::execution::OpenSessionReceipt;
+use datazen::shared::error::ApiError;
 use rmcp::ErrorData as McpError;
 use std::{
     future::Future,
@@ -90,9 +90,9 @@ mod tests {
         mcp::types::{CloseSessionInput, OpenSessionInput},
         testing::{app_state::TestAppState, mock_driver::MockDriverOptions},
     };
-    use datazen_modules::application::sessions::ConnectionUseCases;
-    use datazen_modules::execution::application::requests::OpenSessionRequest;
-    use datazen_modules::{
+    use datazen::application::sessions::ConnectionUseCases;
+    use datazen::execution::application::requests::OpenSessionRequest;
+    use datazen::{
         execution::application::idempotency::IdempotentOperation,
         execution::target::{ExecutionTarget, NamespaceTarget},
         shared::context::OwnerRef,

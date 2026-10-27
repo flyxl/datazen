@@ -1,8 +1,8 @@
 //! One owner-bound cleanup worker per MCP client, independent of transport lifetime.
 use super::server::DataZenMcpServer;
-use datazen_modules::application::sessions::ConnectionUseCases;
-use datazen_modules::execution::application::requests::{CloseMode, CloseSessionRequest};
-use datazen_modules::execution::ResourceRelease;
+use datazen::application::sessions::ConnectionUseCases;
+use datazen::execution::application::requests::{CloseMode, CloseSessionRequest};
+use datazen::execution::ResourceRelease;
 use std::{
     sync::atomic::Ordering,
     time::{Duration, Instant},
@@ -32,11 +32,11 @@ impl DataZenMcpServer {
                         if let Ok(runtime) = adapter.runtime() {
                             // Reconstruct only the backend-owned client identity. Never accept an
                             // owner or handle from the caller, or scan by connectionId.
-                            let context = datazen_modules::shared::context::RequestContext::new(
+                            let context = datazen::shared::context::RequestContext::new(
                                 adapter.identity().organization_id().clone(),
                                 adapter.identity().principal_id().clone(),
                                 None,
-                                datazen_modules::shared::id::ClientInstanceId::new(client.clone()),
+                                datazen::shared::id::ClientInstanceId::new(client.clone()),
                                 crate::platform::identity::new_request_id(),
                                 None,
                             );
@@ -155,7 +155,7 @@ mod tests {
             .runtime()
             .unwrap();
         assert!(!runtime.is_registered(
-            &datazen_modules::execution::runtime::connection::DbSessionId::new(
+            &datazen::execution::runtime::connection::DbSessionId::new(
                 binding.handle.db_session_id.as_str()
             )
         ));
@@ -178,8 +178,8 @@ mod tests {
         test.save_connection("mcp-cleanup").await;
         let server = DataZenMcpServer::new(Arc::new(test.state))
             .with_allowed_connections(&["mcp-cleanup".into()]);
-        use datazen_modules::execution::application::requests::OpenSessionRequest;
-        use datazen_modules::{
+        use datazen::execution::application::requests::OpenSessionRequest;
+        use datazen::{
             execution::application::idempotency::IdempotentOperation,
             execution::target::{ExecutionTarget, NamespaceTarget},
             shared::context::OwnerRef,
@@ -359,15 +359,15 @@ mod tests {
         assert_eq!(mock.open_transaction_count(), 0);
         assert_eq!(mock.commit_calls(), 0);
         assert!(!runtime.is_registered(
-            &datazen_modules::execution::runtime::connection::DbSessionId::new(
+            &datazen::execution::runtime::connection::DbSessionId::new(
                 binding.handle.db_session_id.as_str()
             )
         ));
-        assert!(runtime.is_registered(
-            &datazen_modules::execution::runtime::connection::DbSessionId::new(
+        assert!(
+            runtime.is_registered(&datazen::execution::runtime::connection::DbSessionId::new(
                 foreign.handle.db_session_id.as_str()
-            )
-        ));
+            ))
+        );
         assert!(other
             .sessions
             .lookup(
@@ -416,7 +416,7 @@ mod tests {
             .runtime()
             .unwrap();
         assert!(!runtime.is_registered(
-            &datazen_modules::execution::runtime::connection::DbSessionId::new(
+            &datazen::execution::runtime::connection::DbSessionId::new(
                 binding.handle.db_session_id.as_str()
             )
         ));
@@ -431,7 +431,7 @@ mod tests {
         assert_eq!(receipt.resource_release, ResourceRelease::Quarantined);
         assert_eq!(
             receipt.effect_outcome,
-            datazen_modules::execution::EffectOutcome::Unknown
+            datazen::execution::EffectOutcome::Unknown
         );
         // Physical capacity is held while release is undecidable: MCP must not
         // invent a free budget slot or erase the retained cleanup record.

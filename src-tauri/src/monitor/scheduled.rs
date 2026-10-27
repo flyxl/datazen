@@ -4,8 +4,16 @@ use crate::{
     commands::AppState,
     workflow::{WorkflowCommandStep, WorkflowError},
 };
-use datazen_driver_api::{CommandResult, ConnectionConfig, DatabaseDriver};
-use datazen_feature_core::{
+use datazen::jobs::{
+    CancelToken, EndpointRef, EndpointRole, JobError, JobHandler, RecoveryVerdict, StageOutcome,
+    StageSpec, StageTerminal,
+};
+#[cfg(feature = "webdriver")]
+use datazen::monitor::application::evidence;
+use datazen::monitor::application::occurrence;
+use datazen::monitor::domain::MonitorGrant;
+use datazen::shared::context::RequestContext;
+use datazen::{
     dashboard::{
         execute::WidgetExecutionHost,
         types::{DashboardWidget, WidgetRun},
@@ -17,21 +25,13 @@ use datazen_feature_core::{
         resource_execution::{PreparedExecution, ResourceExecutionHost},
     },
 };
-use datazen_modules::jobs::{
-    CancelToken, EndpointRef, EndpointRole, JobError, JobHandler, RecoveryVerdict, StageOutcome,
-    StageSpec, StageTerminal,
-};
-#[cfg(feature = "webdriver")]
-use datazen_modules::monitor::application::evidence;
-use datazen_modules::monitor::application::occurrence;
-use datazen_modules::monitor::domain::MonitorGrant;
-use datazen_modules::shared::context::RequestContext;
-use datazen_modules::{
+use datazen::{
     execution::EffectOutcome,
     jobs::domain::job::{Checkpoint, JobDefinition, JobDomainResult, JobProgress, JobResultItem},
     shared::context::OwnerRef,
     shared::id::{JobId, StageId, WorkerId},
 };
+use datazen_driver_api::{CommandResult, ConnectionConfig, DatabaseDriver};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -81,7 +81,7 @@ impl ResourceExecutionHost for ScheduledWorkflowHost<'_> {
         id: &str,
         revision: u64,
         command: &str,
-        target: datazen_modules::execution::target::ExecutionTarget,
+        target: datazen::execution::target::ExecutionTarget,
     ) -> Result<PreparedExecution, WorkflowError> {
         validate(self.state, self.grant)
             .await
@@ -93,7 +93,7 @@ impl ResourceExecutionHost for ScheduledWorkflowHost<'_> {
         let canonical = adapter
             .resolve_execution_target(
                 &self.context,
-                datazen_modules::shared::id::Counter::new(revision),
+                datazen::shared::id::Counter::new(revision),
                 command,
                 &target,
             )
@@ -131,16 +131,13 @@ impl WorkflowHost for ScheduledWorkflowHost<'_> {
         &self,
         step: &WorkflowCommandStep,
         connection: Option<&str>,
-        _: Option<datazen_feature_core::mcp::permission::McpPermissionMode>,
+        _: Option<datazen::mcp::permission::McpPermissionMode>,
         deadline: Option<tokio::time::Instant>,
     ) -> Result<CommandResult, WorkflowError> {
         let id = step
             .effective_connection(connection)
             .ok_or_else(|| WorkflowError::Validation("scheduled target required".into()))?;
-        datazen_feature_core::workflow::resource_execution::execute(
-            self, step, id, None, deadline, true,
-        )
-        .await
+        datazen::workflow::resource_execution::execute(self, step, id, None, deadline, true).await
     }
     async fn complete_ai(&self, _: String) -> Result<String, WorkflowError> {
         Err(WorkflowError::Validation("scheduled AI unsupported".into()))
@@ -177,9 +174,8 @@ impl WidgetExecutionHost for ScheduledWidgetHost<'_> {
     }
     async fn persist_run(&self, run: &WidgetRun) -> Result<(), String> {
         // 运行记录落在授予它的那个组织里：作用域取自 grant 自带的请求上下文。
-        let scope =
-            datazen_modules::shared::scope::OrganizationScope::from_context(&self.grant.context());
-        datazen_feature_core::dashboard::runs::write_run(
+        let scope = datazen::shared::scope::OrganizationScope::from_context(&self.grant.context());
+        datazen::dashboard::runs::write_run(
             &scope,
             &*self.state.store.app_db(),
             run,
@@ -344,8 +340,7 @@ async fn occurrence_endpoints(
             .get(&config.database_type)
             .await
             .ok_or("monitor driver unavailable")?;
-        let identity =
-            datazen_feature_core::services::migration_endpoint::identify(&config, driver.as_ref());
+        let identity = datazen::services::migration_endpoint::identify(&config, driver.as_ref());
         by_connection.insert(
             connection_id.to_owned(),
             EndpointRef {
@@ -377,13 +372,11 @@ async fn execute_widget_once(
         .app_db()
         .get_workflow(&grant.workflow_id)
         .map_err(|_| "workflow missing")?;
-    if datazen_modules::monitor::domain::revision(&record.definition_yaml)
-        != grant.workflow_revision
-    {
+    if datazen::monitor::domain::revision(&record.definition_yaml) != grant.workflow_revision {
         return Err("scheduled workflow revision changed".into());
     }
     let workflow = serde_yaml::from_str(&record.definition_yaml).map_err(|_| "workflow invalid")?;
-    datazen_feature_core::dashboard::execute::execute_widget_once(
+    datazen::dashboard::execute::execute_widget_once(
         &ScheduledWidgetHost {
             state,
             grant,
@@ -441,10 +434,7 @@ impl JobHandler for MonitorOccurrenceHandler {
         1
     }
 
-    fn validate_plan(
-        &self,
-        plan: &datazen_modules::jobs::FrozenPlan,
-    ) -> Result<Vec<StageSpec>, JobError> {
+    fn validate_plan(&self, plan: &datazen::jobs::FrozenPlan) -> Result<Vec<StageSpec>, JobError> {
         if plan.kind != self.kind()
             || plan.is_apply
             || plan.plan_version != 1
@@ -502,15 +492,10 @@ impl JobHandler for MonitorOccurrenceHandler {
             result = execute_widget_once(&self.state, &self.dashboard_id, &self.widget, &self.grant) => result,
         };
         let (terminal, effect_outcome) = match &run {
-            Ok(run)
-                if run.status == datazen_feature_core::dashboard::types::WidgetRunStatus::Ok =>
-            {
+            Ok(run) if run.status == datazen::dashboard::types::WidgetRunStatus::Ok => {
                 (StageTerminal::Succeeded, EffectOutcome::Completed)
             }
-            Ok(run)
-                if run.status
-                    == datazen_feature_core::dashboard::types::WidgetRunStatus::Timeout =>
-            {
+            Ok(run) if run.status == datazen::dashboard::types::WidgetRunStatus::Timeout => {
                 (StageTerminal::Unknown, EffectOutcome::Unknown)
             }
             Ok(_) => (StageTerminal::Failed, EffectOutcome::NotStarted),
@@ -545,9 +530,9 @@ impl JobHandler for MonitorOccurrenceHandler {
             .as_ref()
             .cloned()?;
         let status = match run.status {
-            datazen_feature_core::dashboard::types::WidgetRunStatus::Ok => "ok",
-            datazen_feature_core::dashboard::types::WidgetRunStatus::Error => "error",
-            datazen_feature_core::dashboard::types::WidgetRunStatus::Timeout => "timeout",
+            datazen::dashboard::types::WidgetRunStatus::Ok => "ok",
+            datazen::dashboard::types::WidgetRunStatus::Error => "error",
+            datazen::dashboard::types::WidgetRunStatus::Timeout => "timeout",
         };
         Some(JobDomainResult {
             stage_id: outcome.stage_id.clone(),
@@ -575,10 +560,10 @@ async fn wait_for_cancel(cancel: &CancelToken) {
 
 #[cfg(test)]
 mod tests {
-    use datazen_modules::monitor::application::occurrence::{
+    use datazen::monitor::application::occurrence::{
         definition_revision, idempotency_key, schedule_id,
     };
-    use datazen_modules::monitor::domain::{revision, MonitorGrant};
+    use datazen::monitor::domain::{revision, MonitorGrant};
 
     fn grant() -> MonitorGrant {
         MonitorGrant {

@@ -4,19 +4,15 @@
 //! resolver a live session, it validates the request envelope, and it maps the
 //! shared error onto [`CommandError`]. Every rule — which constraint matches,
 //! how a composite key pairs, what a NULL means, how a target is resolved —
-//! lives in `datazen_feature_core::services::fk_navigation`.
+//! lives in `datazen::services::fk_navigation`.
 
 use super::error::CommandError;
 use super::AppState;
-use datazen_feature_core::services::fk_navigation::{
+use datazen::services::fk_navigation::{
     ForeignKeyTargetResolution, ResolveForeignKeyTargetsRequest,
 };
-use datazen_feature_core::services::ports::{
-    FkSessionBinding, FkSessionError, ForeignKeyNavigationSource,
-};
-use datazen_feature_core::services::referenced_by::{
-    InboundForeignKeyCatalog, ListInboundForeignKeysRequest,
-};
+use datazen::services::ports::{FkSessionBinding, FkSessionError, ForeignKeyNavigationSource};
+use datazen::services::referenced_by::{InboundForeignKeyCatalog, ListInboundForeignKeysRequest};
 use tauri::State;
 
 /// Lends a live session to the shared foreign-key resolver.
@@ -77,7 +73,7 @@ pub(crate) async fn resolve_foreign_key_targets_impl(
         return Err(CommandError::Validation("table is required".into()));
     }
     let source = HostNavigationSource { state };
-    datazen_feature_core::services::fk_navigation::resolve_foreign_key_targets(&source, &request)
+    datazen::services::fk_navigation::resolve_foreign_key_targets(&source, &request)
         .await
         .map_err(CommandError::from)
 }
@@ -106,7 +102,7 @@ pub(crate) async fn list_inbound_foreign_keys_impl(
         return Err(CommandError::Validation("table is required".into()));
     }
     let source = HostNavigationSource { state };
-    datazen_feature_core::services::referenced_by::list_inbound_foreign_keys(&source, &request)
+    datazen::services::referenced_by::list_inbound_foreign_keys(&source, &request)
         .await
         .map_err(CommandError::from)
 }

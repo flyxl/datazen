@@ -8,7 +8,7 @@
 //! The trade is that a seek needs a **stable total order**: two rows must
 //! never compare equal, or the engine is free to return them in either order
 //! and a page boundary becomes a guess. The host therefore decides whether the
-//! order in force is stable (see `datazen_feature_core::services::table_paging`)
+//! order in force is stable (see `datazen::services::table_paging`)
 //! and the driver decides whether a given order can be expressed as a seek
 //! condition (see [`crate::traits::DatabaseDriver::keyset_predicate_sql`]).
 //!

@@ -7,10 +7,10 @@
 //!
 //! What lives here is **persistence only**. The rules — the name uniqueness
 //! inside a scope, the one-default-per-scope rule, the ordering — live in the
-//! shared layer (`datazen_modules::named_views::domain`), because a
+//! shared layer (`datazen::named_views::domain`), because a
 //! browser build has to reach the same answers.
 
-use datazen_modules::named_views::domain::{
+use datazen::named_views::domain::{
     NamedView, NamedViewError, NamedViewIdMinter, NamedViewRepository,
 };
 

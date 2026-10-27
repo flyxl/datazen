@@ -41,12 +41,11 @@ impl DesktopSessionBackend {
         // alive with pooled resources and with resources quarantined after uncertain close.
         // The definition is read through the `TunnelRepository` port: the connection side
         // only stores `tunnelId`, and the dereference happens here — at connect time.
-        let scope =
-            datazen_modules::shared::scope::OrganizationScope::new(self.organization.clone());
+        let scope = datazen::shared::scope::OrganizationScope::new(self.organization.clone());
         let config = crate::tunnel::resolve_saved_tunnel(&*self.tunnels, &scope, config)
             .await
             .map_err(|error| map::error(dr::ResourceError::Driver(error)))?;
-        let logical = datazen_modules::execution::runtime::resource::LogicalSessionPermit::reserve(
+        let logical = datazen::execution::runtime::resource::LogicalSessionPermit::reserve(
             self.budget.clone(),
             &self.organization,
             &self.principal,
@@ -54,7 +53,7 @@ impl DesktopSessionBackend {
             matches!(request.owner, rc::OwnerRef::Editor { .. }),
         )
         .map_err(|reason| {
-            use datazen_modules::execution::runtime::budget::{ledger::SessionScope, DenialReason};
+            use datazen::execution::runtime::budget::{ledger::SessionScope, DenialReason};
             // 额度型拒绝与物理/队列型拒绝走不同的对外码：前者的空位只能靠回收
             // 或用户关闭编辑器腾出来，后者会随并发退去。混成一个 `ResourceBusy`
             // 会让前端把「额度已满」当成可重试的忙，用户只看到一句通用失败。
@@ -170,7 +169,7 @@ impl DesktopSessionBackend {
                 ));
             }
         };
-        let pool_key = datazen_modules::execution::runtime::resource::PoolKeyGeneration {
+        let pool_key = datazen::execution::runtime::resource::PoolKeyGeneration {
             fingerprint: rc::PoolKeyFingerprint::derive(&rc::PoolKeyInputs {
                 connection_id: request.connection_id.clone(),
                 config_revision: request.config_revision,
@@ -184,15 +183,15 @@ impl DesktopSessionBackend {
             network_route_revision: metadata.config_revision,
         };
         let lease_purpose = if metadata_only {
-            datazen_modules::execution::runtime::resource::LeasePurpose::Metadata
+            datazen::execution::runtime::resource::LeasePurpose::Metadata
         } else {
-            datazen_modules::execution::runtime::resource::LeasePurpose::FixedSession
+            datazen::execution::runtime::resource::LeasePurpose::FixedSession
         };
         let pool_policy =
             if metadata_only && descriptor.reuse_policy == dr::ReusePolicy::ReusableAfterReset {
-                datazen_modules::execution::runtime::resource::PoolPolicy::stateful(2)
+                datazen::execution::runtime::resource::PoolPolicy::stateful(2)
             } else {
-                datazen_modules::execution::runtime::resource::PoolPolicy::stateless()
+                datazen::execution::runtime::resource::PoolPolicy::stateless()
             };
         self.retire_idle(
             self.leases
@@ -206,9 +205,9 @@ impl DesktopSessionBackend {
             self.principal.clone(),
             request.connection_id.clone(),
             if matches!(purpose, dr::ResourcePurpose::MetadataInspection) {
-                datazen_modules::execution::runtime::budget::ResourceClass::Metadata
+                datazen::execution::runtime::budget::ResourceClass::Metadata
             } else {
-                datazen_modules::execution::runtime::budget::ResourceClass::Interactive
+                datazen::execution::runtime::budget::ResourceClass::Interactive
             },
             cost,
         ));
@@ -299,7 +298,7 @@ impl DesktopSessionBackend {
             Err(error) => {
                 let _ = self.leases.returning(
                     &rc::ResourceId::new(&resource_id),
-                    datazen_modules::execution::runtime::resource::DriverCleanVerdict::reported_unclean(),
+                    datazen::execution::runtime::resource::DriverCleanVerdict::reported_unclean(),
                     &Default::default(),
                 );
                 let confirmed = matches!(
@@ -395,7 +394,7 @@ impl DesktopSessionBackend {
         baseline: dr::Baseline,
         budget_scope: Arc<dyn dr::BudgetPort>,
         tunnel: Option<Arc<crate::tunnel::Tunnel>>,
-        purpose: datazen_modules::execution::runtime::resource::LeasePurpose,
+        purpose: datazen::execution::runtime::resource::LeasePurpose,
     ) {
         self.resources.write().await.insert(
             resource_id,
@@ -477,21 +476,21 @@ fn requires_stateful_session(owner: &rc::OwnerRef) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_modules::execution::runtime::connection::OwnerRef;
+    use datazen::execution::runtime::connection::OwnerRef;
 
     #[test]
     fn only_editor_sessions_demand_session_state() {
         let editor = OwnerRef::Editor {
-            organization_id: datazen_modules::shared::id::OrganizationId::new("org"),
-            principal_id: datazen_modules::shared::id::PrincipalId::new("user"),
-            connection_id: datazen_modules::shared::id::ConnectionId::new("conn"),
-            client_instance_id: datazen_modules::shared::id::ClientInstanceId::new("client"),
-            editor_session_id: datazen_modules::shared::id::EditorSessionId::new("editor"),
+            organization_id: datazen::shared::id::OrganizationId::new("org"),
+            principal_id: datazen::shared::id::PrincipalId::new("user"),
+            connection_id: datazen::shared::id::ConnectionId::new("conn"),
+            client_instance_id: datazen::shared::id::ClientInstanceId::new("client"),
+            editor_session_id: datazen::shared::id::EditorSessionId::new("editor"),
         };
         assert!(requires_stateful_session(&editor));
 
         let client = OwnerRef::ClientSession {
-            client_instance_id: datazen_modules::shared::id::ClientInstanceId::new("client"),
+            client_instance_id: datazen::shared::id::ClientInstanceId::new("client"),
         };
         assert!(!requires_stateful_session(&client));
     }

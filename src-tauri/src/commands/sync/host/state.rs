@@ -13,13 +13,13 @@ use std::sync::Arc;
 use std::sync::{LazyLock, Mutex, MutexGuard};
 
 #[cfg(test)]
-use datazen_modules::execution::runtime::budget::{BudgetConfig, BudgetLedger};
+use datazen::execution::runtime::budget::{BudgetConfig, BudgetLedger};
 #[cfg(test)]
-use datazen_modules::jobs::{InMemoryJobRepository, SharedClock};
+use datazen::jobs::{InMemoryJobRepository, SharedClock};
 #[cfg(test)]
-use datazen_modules::shared::context::RequestContext;
+use datazen::shared::context::RequestContext;
 #[cfg(test)]
-use datazen_modules::shared::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
+use datazen::shared::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
 
 use crate::data_sync::job::ChangeSetArtifact;
 

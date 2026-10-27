@@ -10,10 +10,8 @@
 
 use crate::gateway_fixtures as fx;
 use crate::{err, write_once};
-use datazen_modules::execution::runtime::connection::{CommandCall, Counter, RuntimeError};
-use datazen_modules::execution::runtime::gateway::{
-    ExecutionRequest, GatewayError, RequestFingerprint,
-};
+use datazen::execution::runtime::connection::{CommandCall, Counter, RuntimeError};
+use datazen::execution::runtime::gateway::{ExecutionRequest, GatewayError, RequestFingerprint};
 
 /// 让账本读不出来一次：这就是「结局未知」的世界观起点。
 async fn fence_once() -> fx::TokenHarness {

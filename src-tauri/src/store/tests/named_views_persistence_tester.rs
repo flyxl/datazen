@@ -21,7 +21,7 @@
 use super::super::*;
 use super::fixtures::*;
 use chrono::Utc;
-use datazen_modules::named_views::{list_named_views, save_named_view, NamedView, NamedViewScope};
+use datazen::named_views::{list_named_views, save_named_view, NamedView, NamedViewScope};
 
 fn scope(table: &str) -> NamedViewScope {
     NamedViewScope {
@@ -113,20 +113,16 @@ async fn a_new_store_on_the_same_directory_finds_every_field() {
     let store = init_store_for_test(dir.path()).await;
 
     let mut record = view("users", "Open users");
-    record.filters = vec![
-        datazen_feature_core::services::query_executor::FilterCondition {
-            column: "id".into(),
-            operator: datazen_driver_api::filters::FilterOperator::Eq,
-            value: datazen_driver_api::Value::Integer(7),
-            connector: None,
-        },
-    ];
-    record.sorts = vec![
-        datazen_feature_core::services::query_executor::SortCondition {
-            column: "name".into(),
-            descending: true,
-        },
-    ];
+    record.filters = vec![datazen::services::query_executor::FilterCondition {
+        column: "id".into(),
+        operator: datazen_driver_api::filters::FilterOperator::Eq,
+        value: datazen_driver_api::Value::Integer(7),
+        connector: None,
+    }];
+    record.sorts = vec![datazen::services::query_executor::SortCondition {
+        column: "name".into(),
+        descending: true,
+    }];
     record.visible_columns = Some(vec!["id".into(), "name".into()]);
     record.column_order = Some(vec!["name".into(), "id".into()]);
     record.is_default = true;

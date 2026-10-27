@@ -1,6 +1,6 @@
 //! Shared backup and SQL restore use cases. Paths and progress delivery are supplied by hosts.
 //!
-//! D6 item 5 切片 a + b 自 feature-core `backup`/`backup_gateway`/
+//! D6 item 5 切片 a + b 自 modules `backup`/`backup_gateway`/
 //! `restore_job`/`restore_gateway` 归位。错误信封沿用 `export::ExportError`
 //! （备份/恢复是导出到文件族的成员，同一失败类别语义；见 export::error
 //! 模块文档）。恢复走 jobs 的 apply-job 模型（RestoreApplyJob）与同一

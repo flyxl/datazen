@@ -133,6 +133,6 @@ Before merging a PR that touches MCP, IPC, driver-api, ai-api, or persisted JSON
 - [ ] MCP tool or input changes update `mcp/fixtures/mcp_external_contract.json` (or justify why the golden test is unchanged).
 - [ ] Removed JSON keys stay removed (no accidental revival of `configId` / `config_id`).
 - [ ] Stateful session tools keep `clientSessionRef` opaque, keep consumer identity backend-generated, and keep the mapping out of every persisted store.
-- [ ] `cargo test -p datazen --lib` passes (includes MCP contract tests).
+- [ ] `cargo test -p datazen_desktop --lib` passes (includes MCP contract tests).
 
 See also the PR template checklist for the same items.

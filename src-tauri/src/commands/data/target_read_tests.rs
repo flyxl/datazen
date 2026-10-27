@@ -308,7 +308,7 @@ async fn the_request_database_is_read_without_switching_the_session() {
 /// the contract prefix the frontend classifies on.
 #[tokio::test]
 async fn a_read_rejects_an_incomplete_filter_with_the_contract_prefix() {
-    use datazen_feature_core::services::query_executor::{FilterCondition, FilterOperator};
+    use datazen::services::query_executor::{FilterCondition, FilterOperator};
 
     let test = TestAppState::with_tables().await;
     let (_, conn_id) = test.save_and_connect("target-read-filter-incomplete").await;
@@ -339,7 +339,7 @@ async fn a_read_rejects_an_incomplete_filter_with_the_contract_prefix() {
 /// declares the shared operator set, which does not carry them.
 #[tokio::test]
 async fn a_read_rejects_an_unsupported_operator_with_the_contract_prefix() {
-    use datazen_feature_core::services::query_executor::{FilterCondition, FilterOperator};
+    use datazen::services::query_executor::{FilterCondition, FilterOperator};
 
     let test = TestAppState::with_tables().await;
     let (_, conn_id) = test

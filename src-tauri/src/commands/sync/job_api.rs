@@ -3,12 +3,12 @@
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 
-use datazen_modules::jobs::domain::job::{
+use datazen::jobs::domain::job::{
     JobDetails, JobRecoveryRequest, JobRecoveryResult, JobRecoveryTarget, JobRecoveryVerdict,
     JobRecoveryVerification, JobView,
 };
-use datazen_modules::jobs::{EndpointRef, EndpointRole, JobRecoveryVerifier};
-use datazen_modules::{PortError, RequestContext};
+use datazen::jobs::{EndpointRef, EndpointRole, JobRecoveryVerifier};
+use datazen::{PortError, RequestContext};
 use futures_util::FutureExt;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -365,8 +365,8 @@ impl JobRecoveryVerifier for DataSyncRecoveryVerifier {
                 )
                 .await
             }
-            None => Err(datazen_modules::shared::error::ApiError::new(
-                datazen_modules::shared::error::ApiErrorCode::ServiceUnavailable,
+            None => Err(datazen::shared::error::ApiError::new(
+                datazen::shared::error::ApiErrorCode::ServiceUnavailable,
                 "runtime unavailable",
             )),
         };

@@ -1,6 +1,6 @@
 //! `ExecutionGateway` 的集成契约用例。
 //!
-//! 刻意只经由 `datazen_modules::execution::runtime::gateway` / `datazen_modules::execution::runtime::registry` 的**公开 API**
+//! 刻意只经由 `datazen::execution::runtime::gateway` / `datazen::execution::runtime::registry` 的**公开 API**
 //! 驱动网关：不在测试里复用 `src/gateway/**` 的内部测试支撑，也不碰私有字段。
 //! 因此这里红了就代表对外契约真的破了，而不是内部实现挪了个地方。
 //!
@@ -36,10 +36,8 @@ mod revision;
 #[path = "gateway_contract/timing.rs"]
 mod timing;
 
-use datazen_modules::execution::runtime::connection::{CommandCall, ExecutionId, RuntimeError};
-use datazen_modules::execution::runtime::gateway::{
-    ExecutionRecord, ExecutionRequest, GatewayError,
-};
+use datazen::execution::runtime::connection::{CommandCall, ExecutionId, RuntimeError};
+use datazen::execution::runtime::gateway::{ExecutionRecord, ExecutionRequest, GatewayError};
 use gateway_fixtures as fx;
 
 /// 把 `Ok` 变成一条带上下文的失败断言。

@@ -3,10 +3,10 @@
 
 use super::{other_request, record};
 use crate::gateway_fixtures as fx;
-use datazen_modules::execution::runtime::connection::{
+use datazen::execution::runtime::connection::{
     ContextConfidence, Counter, DbSessionId, ExecutionId, ExecutionState, SessionState,
 };
-use datazen_modules::execution::runtime::gateway::{EventDisposition, ExecutionEventKind};
+use datazen::execution::runtime::gateway::{EventDisposition, ExecutionEventKind};
 // ───────────────── F 事件投递 ─────────────────
 
 #[tokio::test(start_paused = true)]

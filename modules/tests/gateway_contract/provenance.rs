@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use super::{err, record};
 use crate::gateway_fixtures as fx;
-use datazen_modules::execution::runtime::connection::Counter;
-use datazen_modules::execution::runtime::gateway::{
+use datazen::execution::runtime::connection::Counter;
+use datazen::execution::runtime::gateway::{
     EventDisposition, ExecutionEventKind, ExecutionSource, GatewayAction, GatewayError,
     InMemoryIdempotencyRepository, SourceKind,
 };

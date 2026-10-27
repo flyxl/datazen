@@ -1,7 +1,7 @@
 //! Desktop infrastructure adapter for the module-owned connection repository.
 //!
 //! D2 (2026-10-26): the connection catalog's domain boundary lives in
-//! `datazen-modules::connection::domain`; this adapter is the desktop's
+//! `datazen::connection::domain`; this adapter is the desktop's
 //! implementation. Storage, cache, write lock, and AES-256-GCM keying stay in
 //! [`DesktopRepository`] — one storage fact, one cache, one lock — exactly as
 //! before; only the port implementation moves here.
@@ -13,10 +13,10 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use datazen_driver_api::ConnectionConfig;
-use datazen_modules::connection::domain::{
+use datazen::connection::domain::{
     ConnectionRepository, ConnectionRepositoryError, ConnectionScope,
 };
+use datazen_driver_api::ConnectionConfig;
 
 use crate::store::DesktopRepository;
 

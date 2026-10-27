@@ -1,7 +1,7 @@
 //! Execution domain: session/execution state machines, targets, ownership,
 //! and the artifact lifecycle vocabulary (§5.1 / §5.3, D3).
 //!
-//! Moved here in D3 (2026-10-26) from `datazen-modules::platform_api` (`dto/session.rs`,
+//! Moved here in D3 (2026-10-26) from `datazen::platform_api` (`dto/session.rs`,
 //! `dto/execution.rs`, `dto/artifact.rs`, `target.rs` 的执行侧); platform-api
 //! re-exports the same types until its retirement in D8. Layering: domain
 //! depends on its own types, `shared` values, and the connection-side

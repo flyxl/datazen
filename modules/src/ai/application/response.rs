@@ -1,4 +1,4 @@
-//! AI 响应解析与提示词文本处理（自 feature-core::ai::response 归位，D6 item 4 切片三）。
+//! AI 响应解析与提示词文本处理（自 modules::ai::response 归位，D6 item 4 切片三）。
 //!
 //! 纯规则：语言提示注入、连接上下文文案、JSON 提取/修复/围栏剥离。错误经
 //! [`AiError::Validation`]（裸消息，display 与宿主侧 FeatureError::Validation/

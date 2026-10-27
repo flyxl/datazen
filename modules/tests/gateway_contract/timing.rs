@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use crate::gateway_fixtures as fx;
-use datazen_modules::execution::runtime::gateway::{
+use datazen::execution::runtime::gateway::{
     AlwaysAllow, InMemoryIdempotencyRepository, MonotonicClock,
 };
 // ───────────────── G 两段单调耗时 ─────────────────

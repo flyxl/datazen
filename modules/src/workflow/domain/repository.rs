@@ -1,6 +1,6 @@
 //! Workflow 定义仓储端口与登记规则（trait 归 domain，实现在宿主——§4.1 第 5 条）。
 //!
-//! 词源：feature-core::workflow::registry 的端口半（D6 item 3 切片 b 拆出）。
+//! 词源：modules::workflow::registry 的端口半（D6 item 3 切片 b 拆出）。
 //! 仓储 trait 归领域层，宿主（桌面 SQLite）提供实现；编码/解码/列表投影是
 //! 纯规则，与词汇同层。
 

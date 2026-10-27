@@ -99,7 +99,7 @@ DataZen 文档只保留三类长期有效内容：**功能使用**（`features/`
 - [团队服务部署、升级与恢复流程](development/team-service-operations.md)：配置与健康检查、发布兼容、备份一致性、恢复隔离与演练。
 - [Workflow 资源模型详细设计](architecture/platform/workflow-resource-model.md)：step / session block / transaction block 三种执行单元、目标继承链、Session/Lease/Budget 集成与版本兼容边界。
 - [团队 Web 服务与认证详细设计](architecture/platform/team-server-and-auth.md)：server crate 形态、中间件链、OIDC/CSRF/RBAC、SSE 回放与错误到 HTTP 的映射。
-- [共享 feature 服务边界](architecture/platform/feature-core.md)：`packages/feature-core` 中 Workflow / AI / MCP / Dashboard / 导出 / 备份恢复的共享实现与宿主绑定。
+- [共享 feature 服务边界](architecture/platform/modules.md)：`modules` 中 Workflow / AI / MCP / Dashboard / 导出 / 备份恢复的共享实现与宿主绑定。
 
 ## 开发与发布
 

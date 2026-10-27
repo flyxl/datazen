@@ -39,12 +39,12 @@
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use datazen_modules::execution::application::network::TunnelSpec;
-use datazen_modules::execution::runtime::connection::types::LeaseId;
-use datazen_modules::execution::runtime::tunnel::{
+use datazen::execution::application::network::TunnelSpec;
+use datazen::execution::runtime::connection::types::LeaseId;
+use datazen::execution::runtime::tunnel::{
     TunnelError, TunnelHandle, TunnelLedger, TunnelRelease, TunnelTransport,
 };
-use datazen_modules::shared::id::{NetworkRouteRef, NetworkRouteRevision};
+use datazen::shared::id::{NetworkRouteRef, NetworkRouteRevision};
 
 /// 判据步骤：「并发释放 **20** 次」。
 const CONCURRENCY: usize = 20;

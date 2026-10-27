@@ -1,7 +1,7 @@
 //! 命名空间目标词汇：连接侧 namespace 的层级与值形状。
 //!
 //! 原属 platform-api `target.rs`，D2（2026-10-26）起唯一定义在
-//! `datazen-modules::connection::domain`（§5.1：初始 `NamespaceTarget` 归
+//! `datazen::connection::domain`（§5.1：初始 `NamespaceTarget` 归
 //! connection::domain）；platform-api 只再导出同一类型，执行侧的
 //! `ExecutionTarget` 在 D3 组合连接侧 namespace 时引用本模块。
 //!

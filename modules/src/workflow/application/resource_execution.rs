@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 /// 一次派发所需的**端口**集合。
 ///
-/// 它曾经直接持有 `datazen_modules::execution::application::RuntimeConnectionUseCases`——
+/// 它曾经直接持有 `datazen::execution::application::RuntimeConnectionUseCases`——
 /// 那让「Workflow 结果组装」这个纯共享逻辑被钉在连接运行时上（R1）。现在它只
 /// 持有两个消费者定义端口的 trait 对象，具体实例由宿主装配。
 pub struct PreparedExecution {

@@ -43,7 +43,7 @@ Java `interface` 和 Rust `trait` 是语言提供的接口机制；Port 描述�
 
 以下是当前事实，不是最终设计：
 
-- 根 `Cargo.toml` 仍列有 `modules`、`modules/src/platform_api`、`modules`、`packages/kernel`、`packages/feature-core` 和迁移领域包；尚无根目录 `modules/`、`web/` 成员。
+- 根 `Cargo.toml` 仍列有 `modules`、`modules/src/platform_api`、`modules`、`packages/kernel`、`modules` 和迁移领域包；尚无根目录 `modules/`、`web/` 成员。
 - `modules/src/application/lib.rs` 的 `ApplicationServices` 持有多个仓储和会话接口；这不等于所有命令的业务编排已经进入应用层。
 - `modules/src/platform_api/src/ports/` 集中存放 Profile、连接目录、设置、Job 等接口；领域仓储也有一部分位于各自领域包。
 - `modules/src/execution/application/mod.rs` 的 `RuntimeConnectionUseCases` 同时持有 Profile / Policy、registry、gateway 和资源状态，需要按职责拆开。
@@ -55,7 +55,7 @@ Java `interface` 和 Rust `trait` 是语言提供的接口机制；Port 描述�
 ### 3.2 五类核心组织单元
 
 1. **driver-api**：保留 `packages/driver-api` 的独立驱动契约地位，本轮不为目录整齐搬它。
-2. **modules**：新增根目录 `modules/`，Cargo package 目标名 `datazen-modules`，Rust 路径 `datazen_modules`。它是**一个 crate**，内部按功能划分。AI Provider 契约与适配实现也并入本 crate 的 `ai` 模块（2026-10-26 决策，见[§5.4](02-legacy-crate-migration.md)）。
+2. **modules**：新增根目录 `modules/`，Cargo package 目标名 `datazen`，Rust 路径 `datazen`。它是**一个 crate**，内部按功能划分。AI Provider 契约与适配实现也并入本 crate 的 `ai` 模块（2026-10-26 决策，见[§5.4](02-legacy-crate-migration.md)）。
 3. **src-tauri**：桌面宿主，保留现有 crate 名和入口，承载 IPC、桌面适配与装配。
 4. **web**：目标 Rust Web 后端目录 `web/`，目标 package 名 `datazen-web`；不是 React 前端目录，也不是桌面的子模块。
 5. **infra**：`packages/infra`（由 `platform-infra` 改名，crate 名 `datazen-infra`），**无业务的基础设施工具 crate**：凡被 drivers / modules / web / desktop 四类消费者中任意两者共用的工具代码（路径安全、凭据脱敏、原子写入等）放这里，提高复用率；仅单消费者使用的留在消费者处。
@@ -71,7 +71,7 @@ packages/driver-api/                  # 保留：驱动契约
 packages/drivers/<id>/                # 保留：驱动实现与专属测试
 packages/infra/                       # datazen-infra：四类消费者共用的无业务工具（改名自 platform-infra）
 modules/
-  Cargo.toml                         # datazen-modules
+  Cargo.toml                         # datazen
   src/
     lib.rs                           # 功能模块出口，不是总 Service Locator
     shared/                          # 小型身份/上下文/通用值；禁止业务仓储全集
@@ -145,7 +145,7 @@ web/
 
 ### 4.1 编译依赖与运行调用不是同一张图
 
-目标编译依赖：宿主依赖 `datazen-modules`；modules 使用 driver-api、infra（共用工具）和必要的中立库；具体驱动实现 driver-api，可用 infra。modules、driver-api、infra 均不反向依赖宿主。宿主只在驱动装配边界链接具体驱动，Controller 不按数据库种类分支。infra 不依赖 modules / driver-api / 宿主——它只提供无业务工具，保持在依赖图最底层。
+目标编译依赖：宿主依赖 `datazen`；modules 使用 driver-api、infra（共用工具）和必要的中立库；具体驱动实现 driver-api，可用 infra。modules、driver-api、infra 均不反向依赖宿主。宿主只在驱动装配边界链接具体驱动，Controller 不按数据库种类分支。infra 不依赖 modules / driver-api / 宿主——它只提供无业务工具，保持在依赖图最底层。
 
 模块内部约束：
 

@@ -7,16 +7,14 @@ use super::util::{
 };
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
-use datazen_feature_core::ai::budget;
-use datazen_feature_core::ai::safety::redact_for_gate;
-use datazen_feature_core::ai::schema_pipeline::{
-    compose_schema_system_suffix, SchemaContextPipeline,
-};
-use datazen_modules::ai::*;
+use datazen::ai::budget;
+use datazen::ai::safety::redact_for_gate;
+use datazen::ai::schema_pipeline::{compose_schema_system_suffix, SchemaContextPipeline};
+use datazen::ai::*;
 use tauri::{State, WebviewWindow};
 use tokio::sync::mpsc;
 
-pub use datazen_feature_core::ai::single_turn::{ConnectionDiagnosis, QueryAnalysis};
+pub use datazen::ai::single_turn::{ConnectionDiagnosis, QueryAnalysis};
 
 // ─── NL2SQL ───
 
@@ -52,7 +50,7 @@ pub(crate) async fn ai_generate_sql_impl(
 pub(crate) async fn ai_generate_sql_impl_with_claim(
     state: &AppState,
     on_chunk: StreamCallback,
-    target_claim: Option<datazen_feature_core::ai::ownership::AiTargetClaim>,
+    target_claim: Option<datazen::ai::ownership::AiTargetClaim>,
     db_session_id: String,
     database: String,
     natural_language: String,
@@ -84,7 +82,7 @@ pub(crate) async fn ai_generate_sql_impl_with_claim(
             let entries = crate::commands::context::read_context_paths(&ctx_dir, ctx_files).await?;
             if !entries.is_empty() {
                 let (yaml_tables, remaining) =
-                    datazen_feature_core::ai::ctx_yaml::extract_ctx_yaml_tables(&entries);
+                    datazen::ai::ctx_yaml::extract_ctx_yaml_tables(&entries);
                 ctx_yaml_tables = yaml_tables;
 
                 if !remaining.is_empty() {
@@ -144,7 +142,7 @@ pub(crate) async fn ai_generate_sql_impl_with_claim(
         "ai_generate_sql: schema context built"
     );
 
-    let mut request = datazen_feature_core::ai::sql_generation::build_sql_generation_request(
+    let mut request = datazen::ai::sql_generation::build_sql_generation_request(
         &request_id,
         &ai_config.model,
         state.prompt_resolver.as_ref(),
@@ -174,8 +172,7 @@ pub(crate) async fn ai_generate_sql_impl_with_claim(
         "ai_generate_sql: sending to provider (stream)"
     );
 
-    let claim =
-        target_claim.unwrap_or(datazen_feature_core::ai::ownership::AiTargetClaim::Independent);
+    let claim = target_claim.unwrap_or(datazen::ai::ownership::AiTargetClaim::Independent);
     let result = if seed.attach_db_tools {
         request.tools = Some(db_tool_definitions());
         run_streaming_tool_loop_with_claim(
@@ -229,7 +226,7 @@ pub async fn ai_generate_sql(
     recent_queries: Option<Vec<String>>,
     context_files: Option<Vec<String>>,
     context_tables: Option<Vec<String>>,
-    target_claim: Option<datazen_feature_core::ai::ownership::AiTargetClaim>,
+    target_claim: Option<datazen::ai::ownership::AiTargetClaim>,
 ) -> Result<String, CommandError> {
     ai_generate_sql_impl_with_claim(
         &state,
@@ -290,7 +287,7 @@ pub(crate) async fn ai_diagnose_error_impl(
         .clone();
 
     let safe_schema_ddl = redact_for_gate(&context.schema_ddl, &gate);
-    datazen_feature_core::ai::single_turn::diagnose_sql_error(
+    datazen::ai::single_turn::diagnose_sql_error(
         provider.as_ref(),
         &ai_config.model,
         state.prompt_resolver.as_ref(),
@@ -347,7 +344,7 @@ pub(crate) async fn ai_analyze_explain_impl(
         .clone();
 
     let lang = state.store.get_settings().await.language;
-    datazen_feature_core::ai::single_turn::analyze_explain(
+    datazen::ai::single_turn::analyze_explain(
         provider.as_ref(),
         &ai_config.model,
         state.prompt_resolver.as_ref(),
@@ -378,7 +375,7 @@ pub(crate) async fn ai_parse_filter_impl(
     database: String,
     table: String,
     natural_language: String,
-) -> Result<Vec<datazen_feature_core::services::query_executor::FilterCondition>, CommandError> {
+) -> Result<Vec<datazen::services::query_executor::FilterCondition>, CommandError> {
     tracing::info!(
         %db_session_id,
         %database,
@@ -413,7 +410,7 @@ pub(crate) async fn ai_parse_filter_impl(
         .cmd_err("ai_parse_filter")?;
 
     let lang = state.store.get_settings().await.language;
-    datazen_feature_core::ai::filter::parse_natural_language_filter(
+    datazen::ai::filter::parse_natural_language_filter(
         provider.as_ref(),
         &ai_config.model,
         state.prompt_resolver.as_ref(),
@@ -433,7 +430,7 @@ pub async fn ai_parse_filter(
     database: String,
     table: String,
     natural_language: String,
-) -> Result<Vec<datazen_feature_core::services::query_executor::FilterCondition>, CommandError> {
+) -> Result<Vec<datazen::services::query_executor::FilterCondition>, CommandError> {
     ai_parse_filter_impl(&state, db_session_id, database, table, natural_language).await
 }
 // ─── Phase 8: Schema documentation ───
@@ -454,7 +451,7 @@ pub(crate) async fn ai_generate_schema_doc_impl(
         .map_err(|error| CommandError::Internal(error.to_string()))?
         .driver()
         .clone();
-    datazen_feature_core::ai::schema_doc::generate_schema_doc(
+    datazen::ai::schema_doc::generate_schema_doc(
         provider.as_ref(),
         &ai_config.model,
         state.schema_context_builder.as_ref(),
@@ -511,7 +508,7 @@ pub(crate) async fn ai_diagnose_connection_impl(
         .ok_or_else(|| CommandError::NotFound("Connection config not found".into()))?;
 
     let conn_summary = redact_for_gate(
-        &datazen_feature_core::ai::single_turn::format_connection_summary(
+        &datazen::ai::single_turn::format_connection_summary(
             &format!("{:?}", conn_info.database_type),
             conn_info.host.as_deref(),
             conn_info.port,
@@ -525,7 +522,7 @@ pub(crate) async fn ai_diagnose_connection_impl(
     );
 
     let lang = state.store.get_settings().await.language;
-    datazen_feature_core::ai::single_turn::diagnose_connection(
+    datazen::ai::single_turn::diagnose_connection(
         provider.as_ref(),
         &ai_config.model,
         state.prompt_resolver.as_ref(),
@@ -577,7 +574,7 @@ pub(crate) async fn ai_analyze_queries_impl(
         .map(|h| redact_for_gate(&h.sql, &gate))
         .collect::<Vec<_>>();
 
-    datazen_feature_core::ai::single_turn::analyze_query_history(
+    datazen::ai::single_turn::analyze_query_history(
         provider.as_ref(),
         &ai_config.model,
         state.prompt_resolver.as_ref(),

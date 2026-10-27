@@ -4,17 +4,17 @@
 //! 加上从 driver completion 到回执/事件状态登记完成的那一段，两段**逐请求先求和**，
 //! 再对和取分位数。fake SQL 本身、预算/actor 排队、网络传输**都不在测量窗口里**。
 //!
-//! 运行：`cargo run --release -p datazen-modules --features execution,jobs --bin cm60-bench`
+//! 运行：`cargo run --release -p datazen --features execution,jobs --bin cm60-bench`
 //!
 //! ## 为什么落成 `src/bin/cm60-bench`，而不是 `connection/testing/bench.rs`
 //!
 //! 模块表把基准列为 `connection/testing/bench.rs`，那行是**过期文本**：
 //! 基准不得与功能测试共用同一二进制入口，给出的命令逐字是
-//! `cargo run --release -p datazen-modules --features execution,jobs --bin cm60-bench`。两处说法冲突时以后者为准，
+//! `cargo run --release -p datazen --features execution,jobs --bin cm60-bench`。两处说法冲突时以后者为准，
 //! 所以入口必须是独立的 bin target。
 //!
 //! 它也**不能**是 `src/bench/` 之类的 lib 模块：那会把基准代码编译进随桌面应用发布的
-//! `datazen-modules` 库里，成为产品二进制的一部分。Cargo 对 bin target 的处理正好相反——
+//! `datazen` 库里，成为产品二进制的一部分。Cargo 对 bin target 的处理正好相反——
 //! `src/bin/<name>/main.rs` 自成一个 crate，基准代码只在该 crate 内链接，发布构建不碰它。
 //! 同一份论证见 `connection/testing/mod.rs`：夹具子树（`connection::testing`）继续保持
 //! 「只服务 `cargo test`」的门控不变。`Cargo.toml` 里的 `exclude` 也不需要动——
@@ -26,7 +26,7 @@
 //!    的拒绝分支——那里直接 `ExitCode::from(2)` 返回，不进入基准。
 //! 2. **每一轮都要 ≤ 10 ms**，不是五轮取平均、也不是取最好的那一轮。
 //! 3. **nearest-rank 第 `ceil(0.95*N)` 项（1-based）**，不插值。分位数实现只有一份：
-//!    `datazen_modules::execution::runtime::latency::nearest_rank_percentile`，唯一调用点在
+//!    `datazen::execution::runtime::latency::nearest_rank_percentile`，唯一调用点在
 //!    [`outcome::Percentiles::of`]。在本入口另写一份排序就是口径分裂。
 //!
 //! ## 失败样本为什么不删
@@ -85,7 +85,7 @@ const USAGE: &str = "\
 cm60-bench —— 性能半（B 半）基准入口
 
 用法：
-  cargo run --release -p datazen-modules --features execution,jobs --bin cm60-bench -- [选项]
+  cargo run --release -p datazen --features execution,jobs --bin cm60-bench -- [选项]
 
 选项（默认值逐字取自规格计划）：
   --warmup <N>        预热请求数（默认 1000；预热样本不进任何分位数）
@@ -160,7 +160,7 @@ fn main() -> ExitCode {
     if cfg!(debug_assertions) {
         eprintln!(
             "cm60-bench: 这是 debug 构建。判据要求 release 构建，debug 档位的 p95 不可用。\n\
-             请改用：cargo run --release -p datazen-modules --features execution,jobs --bin cm60-bench -- \\"
+             请改用：cargo run --release -p datazen --features execution,jobs --bin cm60-bench -- \\"
         );
         return ExitCode::from(2);
     }

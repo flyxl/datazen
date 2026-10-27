@@ -3,18 +3,18 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use datazen_driver_api::namespace::{
-    CaseFolding, CommandTargetRequirements, NamespaceLevelKind, NamespaceShape,
-    TargetLevelRequirement,
-};
-use datazen_modules::application::target::TargetResolver;
-use datazen_modules::{
+use datazen::application::target::TargetResolver;
+use datazen::{
     execution::target::{
         CanonicalTarget, ExecutionTarget, LayerRequirement, NamespaceTarget,
         TargetCanonicalIdRules, TargetCaseFolding, TargetCaseRules, TargetNamespaceLayer,
         TargetNamespacePathSegment, TargetNamespaceShape, TargetRequirements,
     },
     shared::id::ConnectionId,
+};
+use datazen_driver_api::namespace::{
+    CaseFolding, CommandTargetRequirements, NamespaceLevelKind, NamespaceShape,
+    TargetLevelRequirement,
 };
 
 #[derive(Clone)]

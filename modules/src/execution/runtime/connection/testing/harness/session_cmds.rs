@@ -7,7 +7,7 @@
 //! # 为什么不是 `DatabaseDriver`
 //!
 //! 这些命令「通过 driver-api 的 `command_definitions()` / `execute_command()`
-//! 通道暴露」。P0 阶段没有承载 `datazen-modules` 夹具的 driver crate，硬造一个会
+//! 通道暴露」。P0 阶段没有承载 `datazen` 夹具的 driver crate，硬造一个会
 //! 越过「只加夹具与测试、不改生产执行路径、不得让 driver crate 依赖新 crate」的铁律。
 //! 详见 `super` 的模块文档。这里能复用的部分（命令定义、入参校验、结果包装）
 //! 全部复用 driver-api 本身，没有另写一套校验。

@@ -1,6 +1,6 @@
 use super::identity::{local_principal, LOCAL_ORGANIZATION_ID};
 use async_trait::async_trait;
-use datazen_modules::{
+use datazen::{
     execution::application::policy::*,
     shared::context::{DelegationRef, RequestContext},
     shared::error::PortError,
@@ -17,7 +17,7 @@ impl DesktopPolicy {
     fn grant(
         &self,
         ctx: &RequestContext,
-    ) -> Result<datazen_modules::monitor::domain::MonitorGrant, PortError> {
+    ) -> Result<datazen::monitor::domain::MonitorGrant, PortError> {
         crate::monitor::grants::current(&self.store, ctx).map_err(|_| PortError::TokenInvalid)
     }
 }
@@ -81,7 +81,7 @@ impl PolicyService for DesktopPolicy {
         ctx: &RequestContext,
         subject: AuthorizationSubject,
         action: AuthorizationAction,
-        target: &datazen_modules::execution::target::ExecutionTarget,
+        target: &datazen::execution::target::ExecutionTarget,
         command: &str,
         input: &serde_json::Value,
     ) -> Result<AuthorizationDecision, PortError> {
@@ -108,7 +108,7 @@ impl PolicyService for DesktopPolicy {
         }
         if action != AuthorizationAction::Connect {
             let sql = input["sql"].as_str().ok_or(PortError::TokenInvalid)?;
-            datazen_modules::monitor::domain::validate_read_only_sql(sql)
+            datazen::monitor::domain::validate_read_only_sql(sql)
                 .map_err(|_| PortError::TokenInvalid)?;
         }
         self.authorize(ctx, subject, action).await
@@ -141,7 +141,7 @@ impl PolicyService for DesktopPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_modules::shared::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
+    use datazen::shared::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
 
     /// 桌面策略只放行**本机桌面身份**。这三条用例把这条契约钉住：
     ///

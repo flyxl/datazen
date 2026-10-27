@@ -28,10 +28,8 @@ mod registry_fixtures;
 
 use std::sync::Arc;
 
-use datazen_modules::execution::runtime::connection::{ExecutionState, RuntimeError, SessionState};
-use datazen_modules::execution::runtime::registry::{
-    AuditKind, Outcome, SessionPort, SessionRegistry,
-};
+use datazen::execution::runtime::connection::{ExecutionState, RuntimeError, SessionState};
+use datazen::execution::runtime::registry::{AuditKind, Outcome, SessionPort, SessionRegistry};
 
 use registry_fixtures::{
     as_backend, ask_until, db_session_id, execute_request, handle_of, handle_ref,

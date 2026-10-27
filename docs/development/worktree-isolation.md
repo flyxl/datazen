@@ -196,7 +196,7 @@ cd "$MAIN" && git rev-parse --short HEAD          # 建树后复核主 checkout 
 所以上面第 ③ 步原样可用。
 
 跨 worktree 比对测试结果时，是不是该统一用 `all` 才可比？**不需要。** 实测同一提交 `bc36cd121` 下，
-basic（4 驱动 / 807 B）与 all（15 驱动 / 1625 B）各跑一次 `cargo test -p datazen --lib`，结论行**逐字相同**，退出码都是 0：
+basic（4 驱动 / 807 B）与 all（15 驱动 / 1625 B）各跑一次 `cargo test -p datazen_desktop --lib`，结论行**逐字相同**，退出码都是 0：
 
 ```
 basic: test result: ok. 1552 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out

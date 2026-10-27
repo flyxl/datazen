@@ -1,19 +1,19 @@
 //! Desktop session identity binding for portable migration admission rules.
-pub(crate) use datazen_feature_core::services::migration_endpoint::EndpointIdentity;
-use datazen_feature_core::services::migration_endpoint::{checked_identify, normalized};
+pub(crate) use datazen::services::migration_endpoint::EndpointIdentity;
+use datazen::services::migration_endpoint::{checked_identify, normalized};
 
 pub(crate) struct RuntimeSessionContext {
-    pub(crate) view: datazen_modules::execution::SessionView,
+    pub(crate) view: datazen::execution::SessionView,
     pub(crate) driver: std::sync::Arc<dyn datazen_driver_api::DatabaseDriver>,
     pub(crate) handle: datazen_driver_api::ConnectionHandle,
     pub(crate) config: datazen_driver_api::ConnectionConfig,
-    pub(crate) _lease: datazen_modules::execution::application::LiveConnectionLease,
+    pub(crate) _lease: datazen::execution::application::LiveConnectionLease,
 }
 
 pub(crate) async fn runtime_session_context(
     state: &crate::commands::AppState,
     db_session_id: &str,
-    purpose: datazen_modules::execution::application::LivePurpose,
+    purpose: datazen::execution::application::LivePurpose,
 ) -> Result<RuntimeSessionContext, crate::commands::CommandError> {
     let adapter = state
         .platform_require()
@@ -87,9 +87,9 @@ pub(crate) async fn open_dedicated_session(
     database: Option<&str>,
     purpose: &str,
 ) -> Result<String, crate::commands::CommandError> {
-    use datazen_modules::application::sessions::ConnectionUseCases;
-    use datazen_modules::execution::application::requests::OpenSessionRequest;
-    use datazen_modules::{
+    use datazen::application::sessions::ConnectionUseCases;
+    use datazen::execution::application::requests::OpenSessionRequest;
+    use datazen::{
         execution::application::idempotency::IdempotentOperation,
         execution::target::{ExecutionTarget, NamespaceTarget},
         shared::context::OwnerRef,
@@ -168,7 +168,7 @@ pub(crate) async fn retire_sessions_for_profile(
     let closed = runtime
         .close_sessions_for_connection(
             call.context(),
-            &datazen_modules::shared::id::ConnectionId::new(connection_id),
+            &datazen::shared::id::ConnectionId::new(connection_id),
         )
         .await;
     if closed > 0 {
@@ -180,8 +180,8 @@ pub(crate) async fn close_dedicated_session(
     state: &crate::commands::AppState,
     db_session_id: &str,
 ) -> Result<(), crate::commands::CommandError> {
-    use datazen_modules::application::sessions::ConnectionUseCases;
-    use datazen_modules::execution::application::requests::{CloseMode, CloseSessionRequest};
+    use datazen::application::sessions::ConnectionUseCases;
+    use datazen::execution::application::requests::{CloseMode, CloseSessionRequest};
     let adapter = state
         .platform_require()
         .map_err(crate::platform::into_command_error)?;
@@ -203,8 +203,8 @@ pub(crate) async fn close_dedicated_session(
         Err(error)
             if matches!(
                 error.code,
-                datazen_modules::shared::error::ApiErrorCode::SessionNotFound
-                    | datazen_modules::shared::error::ApiErrorCode::SessionLost
+                datazen::shared::error::ApiErrorCode::SessionNotFound
+                    | datazen::shared::error::ApiErrorCode::SessionLost
             ) =>
         {
             tracing::info!(%db_session_id, "session already retired before close");
@@ -233,7 +233,7 @@ pub(crate) async fn session_identity(
     let context = runtime_session_context(
         state,
         db_session_id,
-        datazen_modules::execution::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let view = context.view;
@@ -263,7 +263,7 @@ pub(crate) async fn session_identity(
         config.database = normalized(Some(database))
             .or_else(|| normalized(config.database.as_deref()))
             .map(str::to_owned);
-        config.schema = datazen_feature_core::services::schema_scope::metadata_schema(
+        config.schema = datazen::services::schema_scope::metadata_schema(
             driver.as_ref(),
             schema,
             None,
@@ -292,7 +292,7 @@ mod tests {
     #[tokio::test]
     async fn session_aliases_are_refused_and_cross_database_sessions_remain_legal() {
         use crate::testing::app_state::TestAppState;
-        use datazen_modules::jobs::{detect_endpoint_overlap, EndpointRef, EndpointRole};
+        use datazen::jobs::{detect_endpoint_overlap, EndpointRef, EndpointRole};
         let test = TestAppState::new().await;
         let (_, source) = test.save_and_connect("source-alias").await;
         let (_, target) = test.save_and_connect("target-alias").await;

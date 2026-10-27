@@ -1,6 +1,6 @@
 use super::*;
+use datazen::backup::parse_restore_options;
 use datazen_driver_api::DriverError;
-use datazen_feature_core::backup::parse_restore_options;
 
 #[test]
 fn parse_backup_options_recognizes_aliases() {

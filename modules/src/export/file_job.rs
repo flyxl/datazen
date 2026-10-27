@@ -1,7 +1,7 @@
 //! Durable read-only file jobs: output is published as an owned Artifact, never a client path.
 //!
-//! D6 item 5 切片 a 自 feature-core `file_job` 归位（行为用例留 feature-core
-//! 集成测试——持有 datazen-modules dev-dep，垫片保留先例）。
+//! D6 item 5 切片 a 自 modules `file_job` 归位（行为用例留 modules
+//! 集成测试——持有 datazen dev-dep，垫片保留先例）。
 use super::error::ExportError as FeatureError;
 use crate::execution::domain::{
     AbortReason, ArtifactRepository, ArtifactSpec, ChunkPayload, EffectOutcome, ExecutionErrorCode,

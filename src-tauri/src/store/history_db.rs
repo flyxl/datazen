@@ -35,15 +35,15 @@ use std::sync::{Arc, Mutex};
 
 use chrono::{Duration, Utc};
 
-// D6 第一切片：历史词汇的唯一定义在 `datazen-modules::history`；本文件（及
+// D6 第一切片：历史词汇的唯一定义在 `datazen::history`；本文件（及
 // `store::models`）只再导出。SQL 细节（order_by 映射、schema、迁移环）仍归
 // 本存储实现所有，不进模块。
-pub use datazen_modules::history::{
+pub use datazen::history::{
     HistoryOrder, HistoryScope, QueryHistoryEntry, QueryHistoryFilter, QueryHistoryPage,
     DEFAULT_HISTORY_PAGE_SIZE, MAX_MIGRATION_RUN_HISTORY, MAX_QUERY_HISTORY, MAX_WORKFLOW_HISTORY,
 };
 
-pub use datazen_modules::history::domain::migration_run::{
+pub use datazen::history::domain::migration_run::{
     MigrationProfileRef, MigrationRunFilter, MigrationRunPage, MigrationRunRecord,
 };
 

@@ -6,11 +6,11 @@
 
 use super::{err, runtime_err};
 use crate::gateway_fixtures as fx;
-use datazen_modules::execution::runtime::connection::{
+use datazen::execution::runtime::connection::{
     Counter, ExecutionId, ExecutionReceipt, ExecutionState, RuntimeError, SessionHandle,
     SessionView, StreamId,
 };
-use datazen_modules::execution::runtime::registry::SessionPort;
+use datazen::execution::runtime::registry::SessionPort;
 
 // ───────────────── H 不变量 ─────────────────
 

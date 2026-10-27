@@ -26,13 +26,11 @@ mod registry_fixtures;
 
 use std::sync::Arc;
 
-use datazen_modules::execution::runtime::connection::{
+use datazen::execution::runtime::connection::{
     CloseMode, RuntimeError, SessionHandle, SessionState, WorkerId,
 };
-use datazen_modules::execution::runtime::registry::backend::{
-    ready_to_return_to_pool, HandleDisposition,
-};
-use datazen_modules::execution::runtime::registry::{
+use datazen::execution::runtime::registry::backend::{ready_to_return_to_pool, HandleDisposition};
+use datazen::execution::runtime::registry::{
     AuditKind, Outcome, RegistryAuditEntry, SessionPort, SessionRegistry,
 };
 

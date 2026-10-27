@@ -13,7 +13,7 @@
 //! the second half, "the retry succeeded" could mean anything from a correct
 //! receipt lookup to a plan that was quietly reused.
 
-use datazen_modules::jobs::domain::job::JobState;
+use datazen::jobs::domain::job::JobState;
 
 use super::super::runtime::APPLY_KIND;
 use super::super::{admit_apply, prepare_data_transfer_job_impl};

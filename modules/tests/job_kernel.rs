@@ -6,18 +6,18 @@ mod support;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use datazen_modules::execution::application::budget::ResourceClass;
-use datazen_modules::execution::EffectOutcome;
-use datazen_modules::jobs::domain::job::{JobDefinition, JobProgress, JobState};
-use datazen_modules::jobs::domain::repository::JobRepository;
-use datazen_modules::shared::error::PortError;
-use datazen_modules::shared::id::{
+use datazen::execution::application::budget::ResourceClass;
+use datazen::execution::EffectOutcome;
+use datazen::jobs::domain::job::{JobDefinition, JobProgress, JobState};
+use datazen::jobs::domain::repository::JobRepository;
+use datazen::shared::error::PortError;
+use datazen::shared::id::{
     ClientInstanceId, ConnectionId, ExecutionId, IdempotencyKey, JobId, JobStateVersion as Jsv,
     PrincipalId, RequestId, StageId, Timestamp, WorkerId,
 };
 
-use datazen_modules::execution::runtime::budget::BudgetLedger;
-use datazen_modules::jobs::{
+use datazen::execution::runtime::budget::BudgetLedger;
+use datazen::jobs::{
     detect_endpoint_overlap, CancelToken, EndpointRef, EndpointRole, FrozenPlan, HandlerRegistry,
     InMemoryJobRepository, JobHandler, JobRuntime, RecoveryVerdict, SharedClock, StageOutcome,
     StageSpec, StageTerminal,
@@ -35,8 +35,8 @@ mod runtime_journeys;
 
 // ---------------------------------------------------------------- 共用夹具
 
-fn ctx() -> datazen_modules::shared::context::RequestContext {
-    datazen_modules::shared::context::RequestContext::new(
+fn ctx() -> datazen::shared::context::RequestContext {
+    datazen::shared::context::RequestContext::new(
         org(),
         PrincipalId::new("user-a"),
         None,
@@ -46,8 +46,8 @@ fn ctx() -> datazen_modules::shared::context::RequestContext {
     )
 }
 
-fn owner_job() -> datazen_modules::shared::context::OwnerRef {
-    datazen_modules::shared::context::OwnerRef::ClientSession {
+fn owner_job() -> datazen::shared::context::OwnerRef {
+    datazen::shared::context::OwnerRef::ClientSession {
         client_instance_id: ClientInstanceId::new("client-1"),
         purpose: "migration".into(),
     }
@@ -78,7 +78,7 @@ fn definition(kind: &str, payload: serde_json::Value, job_id: &str) -> JobDefini
         kind: kind.into(),
         owner: owner_job(),
         payload,
-        created_at: datazen_modules::shared::id::Timestamp::new("2026-01-01T00:00:00Z"),
+        created_at: datazen::shared::id::Timestamp::new("2026-01-01T00:00:00Z"),
     }
 }
 
@@ -113,10 +113,7 @@ impl JobHandler for CountingHandler {
     fn handler_version(&self) -> u64 {
         1
     }
-    fn validate_plan(
-        &self,
-        plan: &FrozenPlan,
-    ) -> Result<Vec<StageSpec>, datazen_modules::jobs::JobError> {
+    fn validate_plan(&self, plan: &FrozenPlan) -> Result<Vec<StageSpec>, datazen::jobs::JobError> {
         let _ = plan;
         Ok(vec![StageSpec {
             stage_id: StageId::new("s1"),
@@ -128,7 +125,7 @@ impl JobHandler for CountingHandler {
         &self,
         spec: &StageSpec,
         _cancel: &CancelToken,
-    ) -> Result<StageOutcome, datazen_modules::jobs::JobError> {
+    ) -> Result<StageOutcome, datazen::jobs::JobError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         let terminal = match self.mode {
             Mode::Success => StageTerminal::Succeeded,
@@ -140,31 +137,27 @@ impl JobHandler for CountingHandler {
             stage_id: spec.stage_id.clone(),
             terminal,
             progress: JobProgress {
-                read: datazen_modules::shared::id::Counter::new(10),
-                converted: datazen_modules::shared::id::Counter::new(10),
-                attempted: datazen_modules::shared::id::Counter::new(10),
-                committed: datazen_modules::shared::id::Counter::new(
+                read: datazen::shared::id::Counter::new(10),
+                converted: datazen::shared::id::Counter::new(10),
+                attempted: datazen::shared::id::Counter::new(10),
+                committed: datazen::shared::id::Counter::new(
                     if terminal == StageTerminal::Succeeded {
                         10
                     } else {
                         0
                     },
                 ),
-                unknown: datazen_modules::shared::id::Counter::new(
-                    if terminal == StageTerminal::Unknown {
-                        2
-                    } else {
-                        0
-                    },
-                ),
+                unknown: datazen::shared::id::Counter::new(if terminal == StageTerminal::Unknown {
+                    2
+                } else {
+                    0
+                }),
             },
             commit_boundaries: if terminal == StageTerminal::Succeeded {
-                let mut boundaries = vec![datazen_modules::jobs::domain::job::CommitBoundary {
+                let mut boundaries = vec![datazen::jobs::domain::job::CommitBoundary {
                     stage_id: spec.stage_id.clone(),
                     stable_target_fingerprint: "sha256:abc".into(),
-                    committed_at: datazen_modules::shared::id::Timestamp::new(
-                        "2026-01-01T00:00:01Z",
-                    ),
+                    committed_at: datazen::shared::id::Timestamp::new("2026-01-01T00:00:01Z"),
                     operation_id: None,
                     batch_id: Some("batch-1".into()),
                     payload_digest: Some("sha256:payload".into()),
@@ -172,12 +165,10 @@ impl JobHandler for CountingHandler {
                     verified_at: None,
                 }];
                 if matches!(self.mode, Mode::TwoBoundaries) {
-                    boundaries.push(datazen_modules::jobs::domain::job::CommitBoundary {
+                    boundaries.push(datazen::jobs::domain::job::CommitBoundary {
                         stage_id: spec.stage_id.clone(),
                         stable_target_fingerprint: "sha256:abc".into(),
-                        committed_at: datazen_modules::shared::id::Timestamp::new(
-                            "2026-01-01T00:00:02Z",
-                        ),
+                        committed_at: datazen::shared::id::Timestamp::new("2026-01-01T00:00:02Z"),
                         operation_id: None,
                         batch_id: Some("batch-2".into()),
                         payload_digest: Some("sha256:payload2".into()),
@@ -202,7 +193,7 @@ impl JobHandler for CountingHandler {
     }
     fn verify_recovery(
         &self,
-        checkpoint: &datazen_modules::jobs::domain::job::Checkpoint,
+        checkpoint: &datazen::jobs::domain::job::Checkpoint,
     ) -> RecoveryVerdict {
         if checkpoint
             .verification_evidence
@@ -247,7 +238,7 @@ async fn cm54_same_key_returns_same_job_id_without_reexecution() {
         kind: "schemaDiffApply".into(),
         owner: owner_job(),
         payload: serde_json::json!({"consumedPlanId": "plan-2", "planVersion": 1, "handlerVersion": 1, "checkpointVersion": 1}),
-        created_at: datazen_modules::shared::id::Timestamp::new("2026-01-01T00:00:00Z"),
+        created_at: datazen::shared::id::Timestamp::new("2026-01-01T00:00:00Z"),
     };
     let err = repo
         .accept(&c, other, &IdempotencyKey::new("key-1"))
@@ -334,7 +325,7 @@ async fn fencing_old_claim_writes_are_rejected_after_takeover() {
     );
 
     // 旧 claim1 写入被拒绝
-    let stage = datazen_modules::jobs::domain::job::StageRecord {
+    let stage = datazen::jobs::domain::job::StageRecord {
         job_id: JobId::new("job-f"),
         stage_id: StageId::new("s1"),
         kind: "apply".into(),
@@ -350,7 +341,7 @@ async fn fencing_old_claim_writes_are_rejected_after_takeover() {
     assert!(matches!(err, PortError::StaleClaim), "{err:?}");
 
     // claim2 写入通过
-    let stage2 = datazen_modules::jobs::domain::job::StageRecord {
+    let stage2 = datazen::jobs::domain::job::StageRecord {
         claimed_by: Some(WorkerId::new("w2")),
         ..stage
     };
@@ -370,7 +361,7 @@ async fn fencing_old_claim_writes_are_rejected_after_takeover() {
         .record_stage(
             &c,
             &renewed,
-            datazen_modules::jobs::domain::job::StageRecord {
+            datazen::jobs::domain::job::StageRecord {
                 job_id: JobId::new("job-f"),
                 stage_id: StageId::new("s2"),
                 kind: "apply".into(),
@@ -423,8 +414,8 @@ async fn queued_cancel_is_an_intent_only_and_notstarted_finalizes() {
 
 #[test]
 fn persisted_shapes_never_carry_runtime_handles() {
-    let job = datazen_modules::jobs::domain::job::JobRecord {
-        view: datazen_modules::jobs::domain::job::JobView {
+    let job = datazen::jobs::domain::job::JobRecord {
+        view: datazen::jobs::domain::job::JobView {
             job_id: JobId::new("j"),
             kind: "k".into(),
             state: JobState::Queued,
@@ -477,7 +468,7 @@ async fn recovery_commit_succeeded_checkpoint_missing_requires_manual_review() {
         .claim(&c, JobId::new("job-a"), WorkerId::new("w1"))
         .await
         .expect("claim");
-    let boundary = datazen_modules::jobs::domain::job::CommitBoundary {
+    let boundary = datazen::jobs::domain::job::CommitBoundary {
         stage_id: StageId::new("s1"),
         stable_target_fingerprint: "sha256:abc".into(),
         committed_at: Timestamp::new("2026-01-01T00:00:01Z"),
@@ -548,7 +539,7 @@ async fn recovery_checkpoint_written_terminal_missing_can_resume_without_rerun()
         .claim(&c, JobId::new("job-b"), WorkerId::new("w1"))
         .await
         .expect("claim");
-    let boundary = datazen_modules::jobs::domain::job::CommitBoundary {
+    let boundary = datazen::jobs::domain::job::CommitBoundary {
         stage_id: StageId::new("s1"),
         stable_target_fingerprint: "sha256:abc".into(),
         committed_at: Timestamp::new("2026-01-01T00:00:01Z"),
@@ -562,7 +553,7 @@ async fn recovery_checkpoint_written_terminal_missing_can_resume_without_rerun()
         .await
         .expect("boundary");
     let job = repo.get(&c, JobId::new("job-b")).await.expect("get");
-    let cp = datazen_modules::jobs::domain::job::Checkpoint {
+    let cp = datazen::jobs::domain::job::Checkpoint {
         job_id: JobId::new("job-b"),
         state_version: job.state_version,
         stable_target_fingerprint: "sha256:abc".into(),
@@ -603,7 +594,7 @@ async fn recovery_checkpoint_written_terminal_missing_can_resume_without_rerun()
         "resumeAfterVerify 仍不允许自动重跑副作用阶段"
     );
     // 重复写相同 checkpoint 版本 → 冲突
-    let cp2 = datazen_modules::jobs::domain::job::Checkpoint {
+    let cp2 = datazen::jobs::domain::job::Checkpoint {
         job_id: JobId::new("job-b"),
         state_version: job.state_version,
         stable_target_fingerprint: "sha256:abc".into(),

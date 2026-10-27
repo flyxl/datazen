@@ -1,7 +1,5 @@
-//! Desktop scheduling adapter. The clock and in-flight lifecycle live in feature-core.
-use datazen_feature_core::workflow::scheduler::{
-    WorkflowScheduleHost, WorkflowScheduler as CoreScheduler,
-};
+//! Desktop scheduling adapter. The clock and in-flight lifecycle live in modules.
+use datazen::workflow::scheduler::{WorkflowScheduleHost, WorkflowScheduler as CoreScheduler};
 use std::sync::Arc;
 use tauri::Manager;
 pub struct WorkflowScheduler {
@@ -29,7 +27,7 @@ struct DesktopScheduleHost(tauri::AppHandle);
 impl WorkflowScheduleHost for DesktopScheduleHost {
     async fn list_workflows(
         &self,
-    ) -> Result<Vec<datazen_feature_core::workflow::model::WorkflowDefinition>, String> {
+    ) -> Result<Vec<datazen::workflow::model::WorkflowDefinition>, String> {
         let state = self.0.state::<crate::commands::AppState>();
         // 组织作用域取宿主解析的那一份（调度器不在请求周期内，但宿主状态在手）。
         let scope = state.organization_scope().map_err(|e| e.to_string())?;
@@ -39,7 +37,7 @@ impl WorkflowScheduleHost for DesktopScheduleHost {
     async fn execute_workflow(
         &self,
         id: &str,
-    ) -> Result<datazen_feature_core::workflow::model::WorkflowExecutionResult, String> {
+    ) -> Result<datazen::workflow::model::WorkflowExecutionResult, String> {
         let state = self.0.state::<crate::commands::AppState>();
         crate::commands::workflow_execute_impl(
             state.inner(),
@@ -61,16 +59,14 @@ mod startup_tests {
     impl WorkflowScheduleHost for StartupHost {
         async fn list_workflows(
             &self,
-        ) -> Result<Vec<datazen_feature_core::workflow::model::WorkflowDefinition>, String>
-        {
+        ) -> Result<Vec<datazen::workflow::model::WorkflowDefinition>, String> {
             self.0.send(()).map_err(|error| error.to_string())?;
             Ok(Vec::new())
         }
         async fn execute_workflow(
             &self,
             _: &str,
-        ) -> Result<datazen_feature_core::workflow::model::WorkflowExecutionResult, String>
-        {
+        ) -> Result<datazen::workflow::model::WorkflowExecutionResult, String> {
             Err("empty startup schedule must not execute workflows".into())
         }
     }

@@ -1,7 +1,7 @@
-use datazen::data_sync::filter::{
+use datazen_desktop::data_sync::filter::{
     SyncRecordset as FilterSyncRecordset, SyncRecordsetBound as FilterSyncRecordsetBound,
 };
-use datazen::data_sync::{SyncRecordset, SyncRecordsetBound};
+use datazen_desktop::data_sync::{SyncRecordset, SyncRecordsetBound};
 
 #[test]
 fn filter_module_keeps_legacy_recordset_imports_public() {

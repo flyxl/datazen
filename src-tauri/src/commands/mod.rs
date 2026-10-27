@@ -85,16 +85,16 @@ use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use crate::workflow::history::WorkflowHistoryManager;
 use crate::workflow::registry::WorkflowRegistry;
 use crate::workflow::scheduler::WorkflowScheduler;
+use datazen::ai::context::SchemaContextBuilder;
+use datazen::ai::prompt_resolver::PromptResolver;
+use datazen::ai::AiProviderRegistry;
+use datazen::execution::runtime::driver_registry::registry::DriverRegistry;
+use datazen::schema::cache::SchemaCache;
+use datazen::shared::error::ApiError;
+use datazen::shared::id::OrganizationId;
+use datazen::shared::scope::OrganizationScope;
+use datazen::workspace_apps::manager::WappManager;
 use datazen_driver_api::QueryExecutionId;
-use datazen_feature_core::ai::context::SchemaContextBuilder;
-use datazen_feature_core::ai::prompt_resolver::PromptResolver;
-use datazen_feature_core::workspace_apps::manager::WappManager;
-use datazen_modules::ai::AiProviderRegistry;
-use datazen_modules::execution::runtime::driver_registry::registry::DriverRegistry;
-use datazen_modules::schema::cache::SchemaCache;
-use datazen_modules::shared::error::ApiError;
-use datazen_modules::shared::id::OrganizationId;
-use datazen_modules::shared::scope::OrganizationScope;
 use std::collections::{hash_map::Entry, HashMap};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -171,10 +171,10 @@ impl Default for QueryExecutionRegistry {
 #[derive(Clone)]
 pub struct SyncRepositoryPorts {
     /// 计划注册表端口。签发 / 查看 / 绑定端点身份 / 认领。
-    pub plan_store: Arc<dyn datazen_modules::migration::data_sync::plan_store::SyncPlanRepository>,
+    pub plan_store: Arc<dyn datazen::migration::data_sync::plan_store::SyncPlanRepository>,
     /// 比较存储根端口。决定比较结果写到哪个目录。
     pub comparison_root:
-        Arc<dyn datazen_modules::migration::data_sync::comparison_store::ComparisonStorageRoot>,
+        Arc<dyn datazen::migration::data_sync::comparison_store::ComparisonStorageRoot>,
 }
 
 impl SyncRepositoryPorts {
@@ -185,11 +185,11 @@ impl SyncRepositoryPorts {
         let organization = OrganizationId::new(crate::platform::identity::LOCAL_ORGANIZATION_ID);
         Self {
             plan_store: Arc::new(
-                datazen_modules::migration::data_sync::plan_store::InMemorySyncPlanRepository::new(),
+                datazen::migration::data_sync::plan_store::InMemorySyncPlanRepository::new(),
             ),
             comparison_root: Arc::new(
-                datazen_modules::migration::data_sync::comparison_store::LocalComparisonStorageRoot::new(
-                    datazen_modules::migration::data_sync::comparison_store::default_comparison_storage_root(),
+                datazen::migration::data_sync::comparison_store::LocalComparisonStorageRoot::new(
+                    datazen::migration::data_sync::comparison_store::default_comparison_storage_root(),
                     organization,
                 ),
             ),
@@ -214,13 +214,13 @@ pub struct AppState {
     pub query_executions: Arc<QueryExecutionRegistry>,
     pub workflow_scheduler: Arc<WorkflowScheduler>,
     pub wapps: Arc<WappManager>,
-    pub cancel_registry: datazen_feature_core::ai::cancel::CancellationRegistry,
+    pub cancel_registry: datazen::ai::cancel::CancellationRegistry,
     /// Owner-bound editor-session grants for AI tool execution (P6 §14.4).
     pub ai_grants: Arc<crate::commands::ai::AiGrantService>,
     /// P5 Wave-1：Schema Diff 的 JobRuntime 基础设施（仓储/预算/计划库）。
     pub schema_diff_jobs: Arc<crate::commands::schema_diff::job::SchemaDiffJobInfra>,
     /// P5 本机持久化 Job facade，所有迁移 Host 共用 `{appData}/datazen.sqlite`。
-    pub desktop_job_host: Arc<datazen_modules::jobs::JobHost>,
+    pub desktop_job_host: Arc<datazen::jobs::JobHost>,
     /// Schema Diff 评审计划的存储实例（宿主在组装期创建并注入）。
     ///
     /// 评审计划**不**再寄居在包里的进程级全局变量上：实例由宿主持有，访问按
@@ -279,11 +279,9 @@ impl AppState {
     }
 
     /// 模块连接目录的作用域（D2）：连接用例归
-    /// `datazen-modules::connection`，作用域是模块自己的词汇。
-    pub fn connection_scope(
-        &self,
-    ) -> Result<datazen_modules::connection::ConnectionScope, CommandError> {
-        Ok(datazen_modules::connection::ConnectionScope::new(
+    /// `datazen::connection`，作用域是模块自己的词汇。
+    pub fn connection_scope(&self) -> Result<datazen::connection::ConnectionScope, CommandError> {
+        Ok(datazen::connection::ConnectionScope::new(
             self.organization_scope.organization_id().as_str(),
         ))
     }

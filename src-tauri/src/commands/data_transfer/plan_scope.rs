@@ -32,9 +32,9 @@
 
 use std::sync::OnceLock;
 
-use datazen_modules::shared::context::RequestContext;
-use datazen_modules::shared::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
-use datazen_modules::shared::scope::OrganizationScope;
+use datazen::shared::context::RequestContext;
+use datazen::shared::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
+use datazen::shared::scope::OrganizationScope;
 
 use crate::platform::LOCAL_ORGANIZATION_ID;
 

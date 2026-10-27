@@ -1,19 +1,19 @@
 //! 候选替换的公开面集成测试（提交闸门）。
 //!
-//! 替身全部手写：`datazen_modules::execution::runtime::testing` 下的 fixture 由 `cfg(test)` 门控，
+//! 替身全部手写：`datazen::execution::runtime::testing` 下的 fixture 由 `cfg(test)` 门控，
 //! `tests/` 编译 lib 时并不带 `cfg(test)`，只能按本文件声明的公开接缝自建。
 //! 轮换与停用的旅程在 `resource_rotation_and_disable.rs`。
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use datazen_modules::execution::runtime::connection::port::CancelDisposition;
-use datazen_modules::execution::runtime::connection::types::ClientInstanceId;
-use datazen_modules::execution::runtime::connection::{
+use datazen::execution::runtime::connection::port::CancelDisposition;
+use datazen::execution::runtime::connection::types::ClientInstanceId;
+use datazen::execution::runtime::connection::{
     ConfigRevision, ConnectionId, DbSessionId, ExecutionId, LeaseId, NamespaceTarget, OwnerRef,
     PoolKeyInputs, ResourceId,
 };
-use datazen_modules::execution::runtime::resource::{
+use datazen::execution::runtime::resource::{
     BeginOutcome, DirectoryFault, DirectoryPublisher, LeasePurpose, LeaseRequest, MonotonicSource,
     PhysicalTransport, Publication, ReplacementReceipt, ResetDisposition, ResourceError,
     ResourceManager,

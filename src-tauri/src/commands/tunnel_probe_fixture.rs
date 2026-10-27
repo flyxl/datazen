@@ -10,7 +10,7 @@
 //! permitted`), so the tunnel tests need a *live* SSH endpoint to exercise the
 //! real `SshTunnel::start` path.
 //!
-//! The tunnel mechanisms now live in `datazen-modules::tunnel`, which keeps
+//! The tunnel mechanisms now live in `datazen::tunnel`, which keeps
 //! its own copy of the fixture for its own tests (`modules/src/tunnel/ssh.rs`,
 //! gated on `#[cfg(test)]`). This file is the
 //! host's copy, because the host's test suite drives the fixture across the

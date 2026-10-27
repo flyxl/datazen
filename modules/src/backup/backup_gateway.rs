@@ -1,7 +1,7 @@
 //! Production database backups through a Runtime-owned session and a single
 //! staging writer. The FileArtifactJob publishes the sole delivered artifact.
 //!
-//! D6 item 5 切片 b 自 feature-core 归位（唯一定义在此；错误信封沿用
+//! D6 item 5 切片 b 自 modules 归位（唯一定义在此；错误信封沿用
 //! export::ExportError，见 backup 模块文档）。
 use super::ports::BackupOutputBinder;
 use super::BackupEvents;

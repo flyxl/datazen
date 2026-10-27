@@ -1,6 +1,6 @@
 //! Read-only resource owner admission under current persisted claim and stage.
 use super::{access::db_read_error, SqliteJobRepository};
-use datazen_modules::{
+use datazen::{
     jobs::domain::job::JobClaim, shared::context::RequestContext, shared::error::PortError,
     shared::id::StageId,
 };

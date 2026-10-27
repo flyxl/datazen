@@ -7,16 +7,16 @@
 
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
-pub use datazen_feature_core::ai::ownership::AiGrantService;
-use datazen_feature_core::ai::ownership::{
+pub use datazen::ai::ownership::AiGrantService;
+use datazen::ai::ownership::{
     verify_session_ownership, AiGrantIssue, AiGrantReceipt, AiGrantRejection, AiTargetClaim,
 };
-use datazen_feature_core::ai::tool_loop::AiToolLoopHost;
-use datazen_feature_core::services::ports::DatabaseToolHost;
-use datazen_feature_core::workflow::command::WorkflowCommandStep;
-use datazen_modules::application::sessions::ConnectionUseCases;
-use datazen_modules::execution::SessionHandle;
-use datazen_modules::shared::id::{ClientInstanceId, EditorSessionId};
+use datazen::ai::tool_loop::AiToolLoopHost;
+use datazen::application::sessions::ConnectionUseCases;
+use datazen::execution::SessionHandle;
+use datazen::services::ports::DatabaseToolHost;
+use datazen::shared::id::{ClientInstanceId, EditorSessionId};
+use datazen::workflow::command::WorkflowCommandStep;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::State;
@@ -98,7 +98,7 @@ pub async fn ai_grant_editor_session(
     .map_err(|rejection| CommandError::Validation(rejection_message(rejection)))?;
 
     let owner_fingerprint = match &owner {
-        datazen_modules::shared::context::OwnerRef::Editor {
+        datazen::shared::context::OwnerRef::Editor {
             client_instance_id,
             editor_session_id,
         } => format!(
@@ -179,18 +179,15 @@ impl AiRequestHost<'_> {
         // Bind the tool to the session the grant recorded. Missing database is
         // filled from the grant and conflicting targets keep the existing refusal code.
         let mut input = input;
-        datazen_feature_core::ai::ownership::bind_database_to_grant(
-            &mut input,
-            record.database.as_deref(),
-        )
-        .map_err(|mismatch| {
-            format!(
-                "{}: tool target {} is outside the granted database {}",
-                AiGrantRejection::SessionGone.code(),
-                mismatch.requested_database,
-                mismatch.granted_database
-            )
-        })?;
+        datazen::ai::ownership::bind_database_to_grant(&mut input, record.database.as_deref())
+            .map_err(|mismatch| {
+                format!(
+                    "{}: tool target {} is outside the granted database {}",
+                    AiGrantRejection::SessionGone.code(),
+                    mismatch.requested_database,
+                    mismatch.granted_database
+                )
+            })?;
         let step = WorkflowCommandStep::new(
             "ai-tool",
             command,
@@ -199,7 +196,7 @@ impl AiRequestHost<'_> {
         );
         // Borrow the editor's session: execute_with_existing_session never
         // closes it, so a successful tool call cannot roll back the editor.
-        datazen_feature_core::workflow::resource_execution::execute_with_existing_session(
+        datazen::workflow::resource_execution::execute_with_existing_session(
             self.state,
             &step,
             &record.connection_id,
@@ -222,7 +219,7 @@ impl DatabaseToolHost for AiRequestHost<'_> {
         DatabaseToolHost::get_session_config(self.state, id).await
     }
 
-    async fn execution_settings(&self) -> datazen_modules::settings::ExecutionSettings {
+    async fn execution_settings(&self) -> datazen::settings::ExecutionSettings {
         DatabaseToolHost::execution_settings(self.state).await
     }
 
@@ -256,17 +253,17 @@ impl AiToolLoopHost for AiRequestHost<'_> {
         AiToolLoopHost::egress_summary(self.state).await
     }
 
-    async fn execute_db_tool(&self, call: &datazen_modules::ai::ToolCall) -> String {
+    async fn execute_db_tool(&self, call: &datazen::ai::ToolCall) -> String {
         let raw = match self.state.connection_scope() {
             Ok(scope) => {
                 let catalog = crate::platform::connections::DesktopConnectionStore::new(
                     self.state.store.clone(),
                 );
-                datazen_feature_core::ai::tools::execute_db_tool(self, &catalog, &scope, call).await
+                datazen::ai::tools::execute_db_tool(self, &catalog, &scope, call).await
             }
             Err(_) => "Error: connection scope unavailable".into(),
         };
-        datazen_feature_core::ai::ownership::attach_tool_attribution(raw, &self.claim)
+        datazen::ai::ownership::attach_tool_attribution(raw, &self.claim)
     }
 
     async fn execute_mcp_tool(&self, server: &str, tool: &str, arguments: &str) -> String {

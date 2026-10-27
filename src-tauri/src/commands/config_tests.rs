@@ -126,7 +126,7 @@ async fn get_log_path_honors_custom_log_path_setting() {
 /// 那种写法让「设置用例归位」在源码上根本没发生：命令仍然是服务的
 /// 构造者与持有者。
 ///
-/// D1 收尾后设置用例由 `datazen-modules::settings` 拥有，宿主 adapter 持有
+/// D1 收尾后设置用例由 `datazen::settings` 拥有，宿主 adapter 持有
 /// 服务实例，命令经 `platform::ipc::require_settings_service` 取用例。
 /// 宿主 store 只作为端口实现被注入，不再出现在调用点。
 /// **这条断言盯的就是「不再出现」**：只要有人

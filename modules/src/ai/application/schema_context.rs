@@ -1,7 +1,7 @@
 //! Runtime-backed metadata source: session identity plus independent metadata reads.
 //!
-//! D6 item 4 收尾自 feature-core `services::schema_context` 归位（唯一定义在
-//! 此；行为用例留在 feature-core 垫片层——它们持有 datazen-modules 的
+//! D6 item 4 收尾自 modules `services::schema_context` 归位（唯一定义在
+//! 此；行为用例留在 modules 垫片层——它们持有 datazen 的
 //! dev-dep，与 D5 data_sync 垫片保留集成测试同一先例）。
 
 use super::ports::SessionConnectionLookup;
@@ -255,3 +255,7 @@ impl PhysicalSchemaContextSource for UnavailableSchemaContextSource {
         None
     }
 }
+
+#[cfg(test)]
+#[path = "schema_context_tests.rs"]
+mod tests;

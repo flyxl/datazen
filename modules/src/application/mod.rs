@@ -1,10 +1,10 @@
-//! `datazen-modules::application`：平台用例层。
+//! `datazen::application`：平台用例层。
 //!
 //! ## 边界
 //!
-//! * 依赖：`datazen-modules::platform_api`、`datazen-feature-core`（P3 的领域端口来源；D2 裁定见
+//! * 依赖：`datazen::platform_api`、`datazen`（P3 的领域端口来源；D2 裁定见
 //!   `docs/development/ddd-refactor-plan.md`）、可选 `datazen-driver-api`。
-//!   **不依赖** `datazen-modules`、**不依赖** Tauri、**不依赖** 任何 HTTP 框架。
+//!   **不依赖** `datazen`、**不依赖** Tauri、**不依赖** 任何 HTTP 框架。
 //!   业务因此可以在没有 Tauri 的测试进程里调用。
 //! * 职责：请求 DTO、用例签名、§4.3 目标计算、身份/授权判定顺序、对外错误形状
 //!   [`ApiError`]、前端桥注入端口（[`frontend_bridge`]）。
@@ -34,7 +34,7 @@
 //! ## 注入的存储端口
 //!
 //! `tunnels` 与 `known_hosts` 是**形态中立的存储端口**，住在
-//! `datazen-modules::platform_api::ports`：应用层**持有**它们，而不是反过来
+//! `datazen::platform_api::ports`：应用层**持有**它们，而不是反过来
 //! 借用宿主的 store。端口是**构造参数**而不是可选字段——漏注入是**编译错误**，
 //! 不是运行时的 `None`。桌面由宿主 adapter 注入同一个持久化事实，
 //! 将来的 web 形态换成服务端 host 的实现，**用例代码一行不改**。
@@ -42,17 +42,17 @@
 //! 端口契约有两个合法来源，**不是**「只能来自 platform-api」：
 //!
 //! * 形态中立的**存储端口**按功能拥有者分布（隧道、known-hosts、连接目录、
-//!   制品、预算等在 `datazen-modules::platform_api::ports`；设置已由
-//!   `datazen-modules::settings` 拥有，宿主直接消费，不再经本 crate 转发）。
+//!   制品、预算等在 `datazen::platform_api::ports`；设置已由
+//!   `datazen::settings` 拥有，宿主直接消费，不再经本 crate 转发）。
 //! * P3 起，命令族的**领域端口**住在领域包自己那里（如仪表盘的两个仓储）；
 //!   已归位模块的端口（settings、connection、named_views）不再经本 crate 转发。
 //!
-//! 后者在 P0 之前确实进不来：当时 `datazen-modules` 依赖本包、领域包又依赖
-//! `datazen-modules`，本包一旦依赖领域包就是 Cargo 环。P0（断环）+ P2（内核拆
+//! 后者在 P0 之前确实进不来：当时 `datazen` 依赖本包、领域包又依赖
+//! `datazen`，本包一旦依赖领域包就是 Cargo 环。P0（断环）+ P2（内核拆
 //! `datazen-kernel`、领域包改依赖内核）之后这条环已经不存在（门禁
 //! `scripts/check-ddd-layers.mjs` 按当前图求值，不是引用结论）。
 //!
-//! **仍然进不来的是 `datazen-modules`**：那是连接运行时，回到「用例层 → 运行时」
+//! **仍然进不来的是 `datazen`**：那是连接运行时，回到「用例层 → 运行时」
 //! 会让分层重新倒过来（有断言钉住）。
 
 pub mod capability;
@@ -107,7 +107,7 @@ pub struct ApplicationServices {
     /// 命名视图的存储端口（组装层注入）。
     ///
     /// 这是 P3「按命令族搬编排」的第一条领域端口：端口与规则住在
-    /// `datazen-modules::named_views`（D6 item 1 迁入），**桌面宿主只提供落盘**。
+    /// `datazen::named_views`（D6 item 1 迁入），**桌面宿主只提供落盘**。
     /// 聚合持有它之后，命令壳不再直读宿主 store——形态中立的用例层因此可以在
     /// 没有 Tauri 的进程里跑同一份规则。
     /// 仪表盘仓储（P3 第二条命令族）：行级读写端口由共享 feature 层定义
@@ -308,15 +308,15 @@ mod tests {
     /// 本包**可以**依赖共享 feature 层，但仍不得依赖连接运行时。
     ///
     /// 这条断言曾经是反的（「不得依赖任何领域包」），理由确是硬的：那时
-    /// `datazen-modules` 依赖本包、领域包又依赖 `datazen-modules`，于是
+    /// `datazen` 依赖本包、领域包又依赖 `datazen`，于是
     /// `APP → 领域包 → RT → APP` 是一个 Cargo 环，`cargo metadata` 直接拒绝。
     ///
     /// P0 断环（把端口与 `ApiError` 迁到 platform-api）与 P2 收官（领域包摘掉
-    /// `datazen-modules`，机制内核拆成 `datazen-kernel`）之后那个前提消失了：
-    /// 现在 `APP → feature-core → kernel/platform-api` 是**正确方向**——用例层
+    /// `datazen`，机制内核拆成 `datazen-kernel`）之后那个前提消失了：
+    /// 现在 `APP → modules → kernel/platform-api` 是**正确方向**——用例层
     /// 编排领域服务，领域服务不认识用例层。P3「按命令族搬编排」正是沿这条边走。
     ///
-    /// 仍然钉住的是**反向**那条：本包不得把连接运行时拉回来（`datazen-modules`），
+    /// 仍然钉住的是**反向**那条：本包不得把连接运行时拉回来（`datazen`），
     /// 也不得依赖宿主形态（`tauri` 与 HTTP 框架）。环的判定交给
     /// `scripts/check-ddd-layers.mjs`——它按**当前**依赖图求值，而不是靠这条
     /// manifest 禁令的记忆。
@@ -355,11 +355,11 @@ mod tests {
                 && code.contains("MigrationProfileReader"),
             "存储端口必须直接引其拥有模块的那一份"
         );
-        // D2 起：连接目录端口已归 `datazen-modules::connection::domain` 拥有，
+        // D2 起：连接目录端口已归 `datazen::connection::domain` 拥有，
         // 本包不再持有它（宿主直接消费模块服务），此处反向断言它不再出现。
         assert!(
             !code.contains("ConnectionCatalog"),
-            "连接目录端口已归 datazen-modules::connection 拥有，本包不得再持有或转发"
+            "连接目录端口已归 datazen::connection 拥有，本包不得再持有或转发"
         );
         for port in [
             "TunnelRepository",
@@ -386,7 +386,7 @@ mod tests {
             "pub tunnels: Arc<dyn TunnelRepository>",
             "pub known_hosts: Arc<dyn KnownHostsRepository>",
         ] {
-            // D6 item 1 后：named_views 端口已归 `datazen-modules::named_views`
+            // D6 item 1 后：named_views 端口已归 `datazen::named_views`
             // 拥有，本包不再持有该字段。
             assert!(code.contains(field), "聚合必须持有该存储端口字段：{field}");
         }
@@ -420,10 +420,10 @@ mod tests {
         }
     }
 
-    /// D1 收尾清理后的边界：设置用例已由 `datazen-modules::settings` 拥有，
+    /// D1 收尾清理后的边界：设置用例已由 `datazen::settings` 拥有，
     /// 宿主直接消费；本 crate 不再转发它，也不再持有它的仓储端口。
     ///
-    /// Tunnel 领域端口已在 D6 归 `datazen-modules::tunnel` 唯一定义；因此本 crate
+    /// Tunnel 领域端口已在 D6 归 `datazen::tunnel` 唯一定义；因此本 crate
     /// 可以有一个只启用 tunnel 的窄依赖，但不能借此把已迁出的 settings 用例带回来。
     #[test]
     fn the_crate_no_longer_forwards_the_settings_use_case() {
@@ -436,13 +436,13 @@ mod tests {
         ] {
             assert!(
                 !code.contains(banned),
-                "设置用例已归 `datazen-modules::settings` 拥有，本 crate 不得再出现：{banned}"
+                "设置用例已归 `datazen::settings` 拥有，本 crate 不得再出现：{banned}"
             );
         }
         let manifest = include_str!("../../Cargo.toml");
         assert!(
             manifest.contains("\"tunnel\""),
-            "隧道端口必须直接来自 datazen-modules::tunnel"
+            "隧道端口必须直接来自 datazen::tunnel"
         );
         assert!(
             !manifest.contains("features = [\"settings\"]"),
@@ -471,7 +471,7 @@ mod tests {
                 "sessions",
                 "target",
             ],
-            "本 crate 的对外模块面是封闭的七单元（设置用例已归 datazen-modules）：\
+            "本 crate 的对外模块面是封闭的七单元（设置用例已归 datazen）：\
              多一个或少一个 `pub mod` 都必须在这里显式表态，\
              并同步 lib.rs 顶部的模块表与架构文档"
         );
@@ -702,7 +702,7 @@ mod tests {
 
     #[test]
     fn the_error_type_is_constructible_from_the_code_enum() {
-        // 宿主映射层只需要 `datazen_modules::shared::error::ApiError`，不必知道模块内部形状。
+        // 宿主映射层只需要 `datazen::shared::error::ApiError`，不必知道模块内部形状。
         let error = crate::shared::error::ApiError::new(
             crate::shared::error::ApiErrorCode::TargetRequired,
             "缺少 database 层".to_string(),

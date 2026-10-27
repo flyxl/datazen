@@ -1,7 +1,7 @@
 //! 执行事件词汇：`EventEnvelope<T>`、事件序号与连接事件载荷。
 //!
 //! 原属 platform-api `dto/event.rs` 与 `dto/profile.rs` 的事件部分，D3
-//! （2026-10-26）起唯一定义在 `datazen-modules::execution::application`；
+//! （2026-10-26）起唯一定义在 `datazen::execution::application`；
 //! platform-api 只再导出。载荷虽沿用 `ConnectionEvent` 旧名（线格式不变），
 //! 但其变体（会话变化/执行变化/结果块）全部是执行侧事实，归 execution。
 //!

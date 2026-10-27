@@ -1,7 +1,7 @@
 //! MCP：权限模式、连接白名单与表描述的 Provider-neutral 业务规则
 //! （D6 item 4 切片一，2026-10-26）。
 //!
-//! 词源：`datazen-feature-core::mcp` 三文件逐字迁移。分层：
+//! 词源：`datazen::mcp` 三文件逐字迁移。分层：
 //! * `domain`——权限模式词汇与 SQL 分级（permission：`McpPermissionMode`
 //!   是持久化在应用设置里的 wire 词汇，check_sql_allowed/check_tool_call/
 //!   资源与工具可见性是纯规则）与连接白名单（allowlist：空表即全拒绝的
@@ -17,7 +17,7 @@
 pub mod application;
 pub mod domain;
 
-// 旧扁平路径镜像（feature-core 垫片与直接消费者兼容）。
+// 旧扁平路径镜像（modules 垫片与直接消费者兼容）。
 pub use application::describe;
 pub use domain::allowlist;
 pub use domain::permission;

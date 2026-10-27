@@ -212,9 +212,9 @@ pub fn build() -> BuildRecord {
         gate_p95_nanos: GATE_P95_NANOS,
         rustc_version: rustc_version().unwrap_or_else(|| "unknown".to_owned()),
         pressure_harness:
-            "cargo test -p datazen-modules --features execution,jobs --test cm60_pressure_drain",
+            "cargo test -p datazen --features execution,jobs --test cm60_pressure_drain",
         benchmark_entry:
-            "cargo run --release -p datazen-modules --features execution,jobs --bin cm60-bench",
+            "cargo run --release -p datazen --features execution,jobs --bin cm60-bench",
         criterion_source: "built-in bench criterion: per-round p95 <= 10ms, failures == 0",
         features: features(),
         lock_bytes: WORKSPACE_LOCK.len(),

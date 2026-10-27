@@ -10,7 +10,7 @@
 //! **仍然可见**：将来谁把「整个 `call` 也抹掉」当成修复方案，这条会红。
 
 use crate::gateway_fixtures as fx;
-use datazen_modules::execution::runtime::gateway::ExecutionRequest;
+use datazen::execution::runtime::gateway::ExecutionRequest;
 
 /// 签名令牌的段数与 MAC 段长度下限：用来证明「本用例断言的对象确实是一段签名令牌」，
 /// 而不是一段随手写出来的普通字符串——否则「输出里没有 MAC 段」是空断言。

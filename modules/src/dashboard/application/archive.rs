@@ -2,7 +2,7 @@
 use crate::dashboard::domain::types::{AlertChannel, Dashboard};
 /// 归档（导入/导出）错误的模块内信封。
 ///
-/// 词源：feature-core `FeatureError` 中 dashboard 归档实际用到的唯一变体
+/// 词源：modules `FeatureError` 中 dashboard 归档实际用到的唯一变体
 /// （Validation）。留在本模块而不是再抄一份全量 FeatureError——宿主侧的
 /// 包装（`.map_err(|e| FeatureError::Validation(e.to_string()))`）只依赖
 /// Display，形状不受影响。

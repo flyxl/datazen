@@ -8,27 +8,27 @@
 //! 1. **没有真实等待**：时间走 [`TestClock`]，整条链是同步的，没有偶发失败。
 //! 2. **替身不带计数**：[`RecordingTunnelPort`] 只记物理开合，引用计数的唯一权威是
 //!    `TunnelLedger`；这里若偷偷加一个 `Mutex<usize>` 就等于伪造了第二个计数器。
-//! 3. **手写替身**：`datazen_modules::execution::runtime::testing` 下的 fixture 由 `cfg(test)` 门控，而
+//! 3. **手写替身**：`datazen::execution::runtime::testing` 下的 fixture 由 `cfg(test)` 门控，而
 //!    `tests/` 编译 lib 时并不带 `cfg(test)`（同 `resource_return_to_pool.rs` 的说明）。
 #![allow(dead_code)]
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use datazen_modules::execution::application::network::TunnelSpec;
-use datazen_modules::execution::runtime::connection::port::CancelDisposition;
-use datazen_modules::execution::runtime::connection::types::ClientInstanceId;
-use datazen_modules::execution::runtime::connection::{
+use datazen::execution::application::network::TunnelSpec;
+use datazen::execution::runtime::connection::port::CancelDisposition;
+use datazen::execution::runtime::connection::types::ClientInstanceId;
+use datazen::execution::runtime::connection::{
     ConfigRevision, ConnectionId, ExecutionId, NamespaceTarget, OwnerRef, PoolKeyInputs, ResourceId,
 };
-use datazen_modules::execution::runtime::resource::{
+use datazen::execution::runtime::resource::{
     LeasePurpose, LeaseRequest, MonotonicSource, PhysicalTransport, ResetDisposition,
     ResourceError, ResourceManager,
 };
-use datazen_modules::execution::runtime::tunnel::{
+use datazen::execution::runtime::tunnel::{
     TunnelError, TunnelFault, TunnelHandle, TunnelTransport,
 };
-use datazen_modules::shared::id::{NetworkRouteRef, NetworkRouteRevision};
+use datazen::shared::id::{NetworkRouteRef, NetworkRouteRevision};
 
 // ------------------------------------------------------------ 时间
 

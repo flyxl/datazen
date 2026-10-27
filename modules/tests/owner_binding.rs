@@ -2,7 +2,7 @@
 //!
 //! 刻意不复用 `tests/gateway_fixtures/mod.rs`，也刻意不复用
 //! `src/gateway/testing_support.rs`：这里只用
-//! `datazen_modules::execution::runtime::gateway::*` + 冻结 DTO + `datazen_modules::execution::runtime::registry::SessionPort`
+//! `datazen::execution::runtime::gateway::*` + 冻结 DTO + `datazen::execution::runtime::registry::SessionPort`
 //! 自己搭一套。理由同上——集成测试能碰到的东西比 `--lib` 少，它能独立证明的
 //! 东西也不同；一旦共用夹具，「集成测试验证了真实公开 API」这件事就失真了。
 //!
@@ -74,9 +74,9 @@ mod support;
 #[path = "owner_binding/wiring_shape.rs"]
 mod wiring_shape;
 
-use datazen_modules::execution::runtime::connection::RuntimeError;
-use datazen_modules::execution::runtime::gateway::{GatewayAction, GatewayError};
-use datazen_modules::shared::error::ApiErrorCode;
+use datazen::execution::runtime::connection::RuntimeError;
+use datazen::execution::runtime::gateway::{GatewayAction, GatewayError};
+use datazen::shared::error::ApiErrorCode;
 use std::sync::Arc;
 
 use support::*;

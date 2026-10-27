@@ -9,8 +9,8 @@
 //! 必须与内存实现（`modules/src/jobs/repository/org_scope_tests.rs`）逐条一致，
 //! 因此这里给 SQLite 侧补上同名同形状的用例。
 use super::*;
-use datazen_modules::jobs::domain::job::StageRecord;
-use datazen_modules::jobs::runtime_repository::JobRuntimeRepository;
+use datazen::jobs::domain::job::StageRecord;
+use datazen::jobs::runtime_repository::JobRuntimeRepository;
 
 fn organization_context(organization: &str) -> RequestContext {
     let mut ctx = request_context();
@@ -18,8 +18,8 @@ fn organization_context(organization: &str) -> RequestContext {
     ctx
 }
 
-fn organization_filter(organization: &str) -> datazen_modules::jobs::domain::job::JobFilter {
-    datazen_modules::jobs::domain::job::JobFilter {
+fn organization_filter(organization: &str) -> datazen::jobs::domain::job::JobFilter {
+    datazen::jobs::domain::job::JobFilter {
         organization_id: OrganizationId::new(organization),
         states: Vec::new(),
         owner: None,
@@ -283,7 +283,7 @@ async fn the_renewal_path_carries_no_organization_dimension() {
         .expect("claim in the owning organization");
 
     // claim 不带组织：这份「从别处拿到的」续约凭证与铸出它的那份在续约路径上无法区分。
-    let carried_elsewhere = datazen_modules::jobs::domain::job::JobClaim {
+    let carried_elsewhere = datazen::jobs::domain::job::JobClaim {
         job_id: claim.job_id.clone(),
         stage_id: claim.stage_id.clone(),
         worker_id: claim.worker_id.clone(),
@@ -299,7 +299,7 @@ async fn the_renewal_path_carries_no_organization_dimension() {
     assert_eq!(renewed.claim_generation, claim.claim_generation);
 
     // 真正被拒的是**对不上**的 claim（这才是续约唯一的拒绝理由）。
-    let wrong_worker = datazen_modules::jobs::domain::job::JobClaim {
+    let wrong_worker = datazen::jobs::domain::job::JobClaim {
         worker_id: WorkerId::new("not-the-owner"),
         ..carried_elsewhere
     };

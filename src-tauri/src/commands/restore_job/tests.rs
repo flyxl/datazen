@@ -3,20 +3,20 @@
 #[path = "provider_fixture.rs"]
 mod provider_fixture;
 use super::*;
-use datazen_driver_api::{
-    mock_driver::{MockDriver, MockDriverOptions},
-    resource::ResourceProvider,
-    DatabaseDriver, DatabaseDriverFactory,
-};
-use datazen_feature_core::restore_job::{RestoreGateway, RestorePlan};
-use datazen_modules::execution::runtime::budget::{BudgetConfig, BudgetLedger};
-use datazen_modules::jobs::{JobHost, SharedClock};
-use datazen_modules::{
+use datazen::execution::runtime::budget::{BudgetConfig, BudgetLedger};
+use datazen::jobs::{JobHost, SharedClock};
+use datazen::restore_job::{RestoreGateway, RestorePlan};
+use datazen::{
     execution::domain::ArtifactRepository,
     execution::{ArtifactLifecycle, EffectOutcome},
     jobs::domain::repository::JobRepository,
     shared::id::*,
     RequestContext,
+};
+use datazen_driver_api::{
+    mock_driver::{MockDriver, MockDriverOptions},
+    resource::ResourceProvider,
+    DatabaseDriver, DatabaseDriverFactory,
 };
 use sha2::{Digest, Sha256};
 use std::sync::Mutex;
@@ -62,8 +62,7 @@ async fn host() -> (
         provider,
         driver: MockDriver::new("restore-host-fixture", MockDriverOptions::default()),
     }));
-    let registry =
-        Arc::new(datazen_modules::execution::runtime::driver_registry::DriverRegistry::new());
+    let registry = Arc::new(datazen::execution::runtime::driver_registry::DriverRegistry::new());
     registry
         .register_test_driver("restore-host-fixture", factory.driver.clone())
         .await;
@@ -78,7 +77,7 @@ async fn host() -> (
     )
     .unwrap();
     let adapter = Arc::new(crate::platform::PlatformAdapter::with_identity(identity));
-    let tunnels: Arc<dyn datazen_modules::tunnel::TunnelRepository> = store.clone();
+    let tunnels: Arc<dyn datazen::tunnel::TunnelRepository> = store.clone();
     let known_hosts =
         crate::platform::known_hosts::desktop_known_hosts_repository(store.data_dir());
     adapter
@@ -243,7 +242,7 @@ async fn desktop_restore_uploaded_input_reaches_durable_job_and_desktop_session_
         reopened.get(&ctx, id.clone()).await.unwrap().view.state,
         JobState::Succeeded
     );
-    let persisted = datazen_modules::jobs::JobRuntimeRepository::get_details(&reopened, &ctx, id)
+    let persisted = datazen::jobs::JobRuntimeRepository::get_details(&reopened, &ctx, id)
         .await
         .unwrap();
     assert_eq!(persisted.commit_boundaries, details.commit_boundaries);

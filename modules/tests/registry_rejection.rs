@@ -57,15 +57,15 @@ mod registry_fixtures;
 
 use std::sync::Arc;
 
-use datazen_modules::execution::domain::{InvalidationReason, SessionDirectory};
-use datazen_modules::execution::runtime::connection::{
+use datazen::execution::domain::{InvalidationReason, SessionDirectory};
+use datazen::execution::runtime::connection::{
     ConnectionId, Counter, ExecutionTarget, ObjectTarget, RuntimeError, SessionHandle,
 };
-use datazen_modules::execution::runtime::registry::{
+use datazen::execution::runtime::registry::{
     ContextChangeRequest, ContextReplacer, SessionPort, SessionRegistry,
 };
-use datazen_modules::shared::context::OwnerRef;
-use datazen_modules::shared::id::{
+use datazen::shared::context::OwnerRef;
+use datazen::shared::id::{
     ClientInstanceId, DbSessionId, EditorSessionId, OrganizationId, PrincipalId, RuntimeEpoch,
     Timestamp, WorkerId,
 };
@@ -77,8 +77,8 @@ use registry_fixtures::{
 
 /// 旧会话在**目录**侧的条目。身份必须与 `registry_fixtures::open_request` 的 owner 对齐
 /// （`pr_1` / `cli-1` / `ed-1`），否则测的就不是替换而是夹具串台。
-fn old_owner() -> datazen_modules::execution::domain::SessionOwner {
-    datazen_modules::execution::domain::SessionOwner {
+fn old_owner() -> datazen::execution::domain::SessionOwner {
+    datazen::execution::domain::SessionOwner {
         db_session_id: db_session_id(),
         organization_id: OrganizationId::new("org_1"),
         principal_id: PrincipalId::new("pr_1"),

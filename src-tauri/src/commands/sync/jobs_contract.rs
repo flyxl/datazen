@@ -18,10 +18,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use datazen::execution::EffectOutcome;
+use datazen::jobs::domain::job::JobState;
 use datazen_driver_api::mock_driver::MockDriver;
 use datazen_driver_api::{ColumnSchema, DatabaseDriver, TableSchema};
-use datazen_modules::execution::EffectOutcome;
-use datazen_modules::jobs::domain::job::JobState;
 
 use crate::data_sync::api::SyncComparisonRequest;
 use crate::data_sync::job::body::{ApplySpec, PrepareSpec};

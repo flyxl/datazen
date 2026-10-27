@@ -3,7 +3,7 @@
 //! 词汇来源（逐字迁移，serde 形状不变）：
 //! * `QueryHistoryEntry` / `FavoriteQuery` 相关——原 `src-tauri/src/store/models.rs`；
 //! * `MigrationRunRecord` / `MigrationRunFilter` / `MigrationRunPage` /
-//!   `MigrationProfileRef`——原 `datazen-modules::platform_api::dto::migration`；
+//!   `MigrationProfileRef`——原 `datazen::platform_api::dto::migration`；
 //! * `HistoryScope` / `HistoryOrder` / `QueryHistoryFilter` / `QueryHistoryPage`
 //!   与保留常量——原 `src-tauri/src/store/history_db.rs`。
 //!

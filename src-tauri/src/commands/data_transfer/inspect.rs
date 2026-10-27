@@ -10,8 +10,8 @@ use crate::data_transfer::{
     enforce_transfer_pairing, inspect_tables, structure::enrich_create_new_target_types,
     TableInspectResult, TableMapping, TransferMode,
 };
+use datazen::services::schema_scope::metadata_schema;
 use datazen_driver_api::TableType;
-use datazen_feature_core::services::schema_scope::metadata_schema;
 
 pub(crate) async fn inspect_data_transfer_impl(
     state: &AppState,
@@ -27,13 +27,13 @@ pub(crate) async fn inspect_data_transfer_impl(
     let src_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         &source_db_session_id,
-        datazen_modules::execution::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let tgt_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         &target_db_session_id,
-        datazen_modules::execution::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let src_config = src_context.config.clone();
@@ -262,7 +262,7 @@ pub(crate) async fn inspect_sql_file_transfer_impl(
     let src_context = crate::services::migration_endpoint::runtime_session_context(
         state,
         &source_db_session_id,
-        datazen_modules::execution::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let src_config = src_context.config.clone();

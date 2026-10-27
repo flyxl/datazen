@@ -5,7 +5,7 @@
 //! hands the shared layer that port and an id minter, it maps the shared error
 //! onto [`CommandError`], and it hands the answer back. Every rule — the name uniqueness inside a scope,
 //! the one-default-per-scope rule, the ordering, the idempotent delete — lives
-//! in `datazen_modules::named_views`.
+//! in `datazen::named_views`.
 //!
 //! The commands are **desktop-only for now**: the storage is the desktop
 //! store's `{appData}/named_views.json`, and a browser build has no such
@@ -13,7 +13,7 @@
 //! gets an explicit "not supported" instead of an empty list that reads like
 //! "you have no saved views".
 
-use datazen_modules::named_views::{NamedView, NamedViewScope};
+use datazen::named_views::{NamedView, NamedViewScope};
 use tauri::State;
 
 use super::error::CommandError;

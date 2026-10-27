@@ -61,22 +61,22 @@ mod registry_fixtures;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use datazen_modules::execution::domain::{
+use datazen::execution::domain::{
     ReplacementCommit, ReplacementOperation, ReplacementOutcome, SessionDirectory, SessionOwner,
 };
-use datazen_modules::execution::runtime::connection::{
+use datazen::execution::runtime::connection::{
     ConnectionId, Counter, ExecutionTarget, ObjectTarget, SessionHandle,
 };
-use datazen_modules::execution::runtime::directory::{
+use datazen::execution::runtime::directory::{
     CommitStatus, InMemorySessionDirectory, ReplacementOperationKey,
     SessionHandle as DirectoryHandle,
 };
-use datazen_modules::execution::runtime::registry::{
+use datazen::execution::runtime::registry::{
     ContextChangeRequest, ContextReplacer, ReplacementDirectory, SessionPort, SessionRegistry,
 };
-use datazen_modules::shared::context::OwnerRef;
-use datazen_modules::shared::error::PortError;
-use datazen_modules::shared::id::{
+use datazen::shared::context::OwnerRef;
+use datazen::shared::error::PortError;
+use datazen::shared::id::{
     AttachmentToken, ClientInstanceId, DbSessionId, EditorSessionId, OrganizationId, PrincipalId,
     RuntimeEpoch, Timestamp,
 };
@@ -225,8 +225,7 @@ impl ReplacementDirectory for ProbingDirectory {
     async fn issue_attachment_token(
         &self,
         handle: &DirectoryHandle,
-    ) -> Result<AttachmentToken, datazen_modules::execution::runtime::directory::AttachmentRejection>
-    {
+    ) -> Result<AttachmentToken, datazen::execution::runtime::directory::AttachmentRejection> {
         self.inner.issue_attachment_token(handle)
     }
 
@@ -236,7 +235,7 @@ impl ReplacementDirectory for ProbingDirectory {
         principal_id: PrincipalId,
         client_instance_id: ClientInstanceId,
         token: AttachmentToken,
-    ) -> Result<(), datazen_modules::execution::runtime::directory::AttachmentRejection> {
+    ) -> Result<(), datazen::execution::runtime::directory::AttachmentRejection> {
         self.inner
             .attach_from_client(handle, principal_id, client_instance_id, token)
             .map(|_| ())

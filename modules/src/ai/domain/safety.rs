@@ -8,7 +8,7 @@
 //! point that accepts an [`AiSafetyGateConfig`].  Legacy helpers are removed;
 //! callers must obtain the gate from the active model profile.
 //!
-//! 自 feature-core::ai::safety 归位（D6 item 4 切片三，2026-10-26）。规则层
+//! 自 modules::ai::safety 归位（D6 item 4 切片三，2026-10-26）。规则层
 //! 判据只依赖入参与模块内词汇，每个宿主拿到同一份答案。
 
 use regex::Regex;

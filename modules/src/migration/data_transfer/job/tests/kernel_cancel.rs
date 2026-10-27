@@ -25,7 +25,7 @@
 //! 为什么这里读不到：`get_calls()` / `fail_get()` 是
 //! `#[cfg(any(test, feature = "test-harness"))]` 缝，而 `datazen-data-transfer` 的
 //! `[features]` 只有 `webdriver = []`——**没有 `test-harness`**（runtime 是靠一条
-//! 自引用的 dev-dependency 才拿到的：`datazen-modules = { path = ".", features =
+//! 自引用的 dev-dependency 才拿到的：`datazen = { path = ".", features =
 //! ["test-harness"] }`）。给它补一个 feature 意味着动本 crate 的 feature 面，
 //! 远超本组测试的职责，所以此处只能用 `WATCHER_SLACK` 那样的一段有界等待，
 //! 让断言落在**终态**上。

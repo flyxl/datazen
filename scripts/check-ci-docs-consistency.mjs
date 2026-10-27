@@ -54,7 +54,7 @@ export function extractCiMatrixDriverIds(ciMatrixText) {
     ids.add(m[0]);
   }
 
-  // cargo test -p datazen-driver-<id> (exclude meta crates driver-api; AI tests live in datazen-modules)
+  // cargo test -p datazen-driver-<id> (exclude meta crates driver-api; AI tests live in datazen)
   for (const m of ciMatrixText.matchAll(/datazen-driver-([a-z][a-z0-9-]*)/g)) {
     const id = m[1];
     if (id !== 'api') ids.add(id);

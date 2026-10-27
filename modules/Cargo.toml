@@ -1,5 +1,5 @@
 [package]
-name = "datazen-modules"
+name = "datazen"
 version = "0.0.1"
 edition = "2021"
 license = "GPL-3.0-or-later"
@@ -24,6 +24,44 @@ application = [
 ]
 # 夹具门控：沿用旧 kernel/runtime 的 test-harness 语义（过渡期；D8 收敛）。
 test-harness = []
+connection_import = [
+    "dep:aes",
+    "dep:aes-gcm",
+    "dep:argon2",
+    "dep:base64",
+    "dep:cbc",
+    "dep:datazen-driver-api",
+    "dep:dirs",
+    "dep:hmac",
+    "dep:pbkdf2",
+    "dep:rand",
+    "dep:regex",
+    "dep:rusqlite",
+    "dep:serde_json",
+    "dep:sha1",
+    "dep:sha2",
+    "dep:uuid",
+]
+feature_error = [
+    "dep:datazen-driver-api",
+    "dep:serde_json",
+    "ai",
+    "table-editing",
+    "export",
+]
+services = [
+    "dep:async-trait",
+    "dep:datazen-driver-api",
+    "dep:serde_json",
+    "dep:sha2",
+    "dep:sqlparser",
+    "dep:tokio",
+    "ai",
+    "feature_error",
+    "schema",
+    "table-browsing",
+    "table-editing",
+]
 settings = ["dep:async-trait", "dep:serde_json"]
 # D6 item 5 切片 a：备份与 SQL 恢复用例（BackupSource/BackupEvents 端口 +
 # dump/restore 编排 + .sql/.sql.gz 流式恢复）。错误信封复用 export::
@@ -37,7 +75,7 @@ backup = [
     "dep:datazen-driver-api",
     "export",
 ]
-# D6 item 5 切片 c：Workspace App 形态中立内核自 feature-core 归位
+# D6 item 5 切片 c：Workspace App 形态中立内核自 modules 归位
 # （manifest 模式与校验、ZIP/目录安装、按 wapp 隔离的键值存储、注册表、
 # URI 语法与路由判定）。zip-slip 防护沿用 infra::path_safety；regex 校验
 # wapp id 与清单字段；uuid 铸安装实例 id；tracing 记注册表告警。
@@ -49,7 +87,7 @@ wapps = [
     "dep:tracing",
     "dep:datazen-infra",
 ]
-# D6 item 5 切片 a：表导出与文件产物作业（FileArtifactJob）自 feature-core
+# D6 item 5 切片 a：表导出与文件产物作业（FileArtifactJob）自 modules
 # 归位。zip 承载多文件归档；SQL 只读校验沿用 execution::domain::sql_guard，
 # job 词汇来自 jobs；uuid 铸产物执行 id，chrono 已常驻。
 export = [
@@ -121,7 +159,7 @@ connection = [
     "dep:serde_json",
     "dep:datazen-driver-api",
 ]
-# D6 item 1：命名视图（保存的筛选视图）。规则与端口自 feature-core 迁入；
+# D6 item 1：命名视图（保存的筛选视图）。规则与端口自 modules 迁入；
 # driver-api 提供 filters 词汇（NamedView 的载荷）。
 named_views = [
     "dep:async-trait",
@@ -235,7 +273,7 @@ jobs = [
 # 单一 feature 承载 domain 契约 + providers 适配；若 D7 的 Web 形态需要拆分
 # （如仅契约不带 reqwest），届时再拆，不提前建空档。
 # D6 item 4 收尾：会话编排/工具循环/安全策略（chat_request、tool_loop、tools、
-# cancel、ownership、single_turn 家族、schema 上下文管道）自 feature-core 归位
+# cancel、ownership、single_turn 家族、schema 上下文管道）自 modules 归位
 # application 层。新增依赖：mcp（db_tools 的 SQL 分级与白名单判据）、
 # workflow（schema_context 经 ResourceExecutionHost 走共享执行网关；
 # workflow 已传递 execution/schema/table-editing）、uuid（请求 id 铸造）。
@@ -277,6 +315,9 @@ webdriver = []
 
 [dependencies]
 async-trait = { version = "0.1", optional = true }
+aes = { version = "0.8", optional = true }
+aes-gcm = { version = "0.10", optional = true }
+argon2 = { version = "0.5", optional = true }
 # shared 常驻（id/context/error 词汇），serde 与 thiserror 因此非可选。
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", optional = true }
@@ -289,16 +330,21 @@ sha2 = { version = "0.10", optional = true }
 # D5 data_sync：comparison_store / plan_store 的 SQLite 侧实现所需。
 rusqlite = { version = "0.32.1", features = ["bundled"], optional = true }
 base64 = { version = "0.22", optional = true }
-# D6 item 5 切片 a：export 模块的多文件归档（仅 deflate，与 feature-core 同款）。
+cbc = { version = "0.1", optional = true }
+dirs = { version = "5", optional = true }
+# D6 item 5 切片 a：export 模块的多文件归档（仅 deflate，与 modules 同款）。
 zip = { version = "2", default-features = false, features = ["deflate"], optional = true }
 # D5 data_transfer：sql_file 的 gzip 读写（.sql.gz 导入导出）。
 flate2 = { version = "1.1.9", optional = true }
 hmac = { version = "0.12", optional = true }
 libc = { version = "0.2", optional = true }
+pbkdf2 = { version = "0.12", optional = true }
+rand = { version = "0.8", optional = true }
 # table-editing feature：变更集 ID 生成
 uuid = { version = "1", features = ["v4", "serde"], optional = true }
 # dashboard schedule_grant 的只读 SQL 校验（解析/AST/visitor）。
 sqlparser = { version = "0.59", features = ["visitor"], optional = true }
+sha1 = { version = "0.10", optional = true }
 # ai feature：契约层链接期工厂注册
 inventory = { version = "0.3", optional = true }
 # ai feature：providers 的并发与流式传输

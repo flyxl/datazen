@@ -27,19 +27,15 @@
 //! | `会话关闭后不能再借出` | INV-07/INV-08：不得透明重建 |
 
 use async_trait::async_trait;
-use datazen_driver_api::{
-    mock_driver::{MockDriver, MockDriverOptions},
-    ConnectionHandle, DatabaseDriver,
-};
-use datazen_modules::execution::runtime::registry::{backend::*, SessionBackend};
-use datazen_modules::execution::{
+use datazen::execution::runtime::registry::{backend::*, SessionBackend};
+use datazen::execution::{
     application::{
         IdlePolicy, LiveConnection, LiveConnectionError, LiveConnectionRequest,
         LiveConnectionSource, LivePurpose, RuntimeConnectionUseCases,
     },
     runtime::connection as rt,
 };
-use datazen_modules::{
+use datazen::{
     connection::domain::*,
     execution as pa,
     execution::application::idempotency::IdempotentOperation,
@@ -49,8 +45,12 @@ use datazen_modules::{
     shared::error::PortError,
     shared::id::*,
 };
-use datazen_modules::{
+use datazen::{
     execution::application::requests::*, execution::application::use_cases::ConnectionUseCases,
+};
+use datazen_driver_api::{
+    mock_driver::{MockDriver, MockDriverOptions},
+    ConnectionHandle, DatabaseDriver,
 };
 use std::{
     sync::{
@@ -94,7 +94,7 @@ impl ProfileRepository for Profiles {
     async fn create(
         &self,
         _: &RequestContext,
-        _: datazen_modules::connection::dto::ProfileDraft,
+        _: datazen::connection::dto::ProfileDraft,
         _: &IdempotencyKey,
     ) -> Result<ProfileRecord, PortError> {
         unreachable!()
@@ -104,7 +104,7 @@ impl ProfileRepository for Profiles {
         _: &RequestContext,
         _: ConnectionId,
         _: ConfigRevision,
-        _: datazen_modules::connection::dto::ProfilePatch,
+        _: datazen::connection::dto::ProfilePatch,
     ) -> Result<ProfileRecord, PortError> {
         unreachable!()
     }
@@ -147,7 +147,7 @@ impl PolicyService for Policy {
     async fn verify_delegation(
         &self,
         _: &RequestContext,
-        _: datazen_modules::shared::context::DelegationRef,
+        _: datazen::shared::context::DelegationRef,
     ) -> Result<DelegationGrant, PortError> {
         unreachable!()
     }
@@ -161,7 +161,7 @@ impl PolicyService for Policy {
 
 struct Backend {
     contexts: Mutex<std::collections::HashMap<String, rt::SessionContext>>,
-    sink: Mutex<Option<datazen_modules::execution::application::RuntimeResultSink>>,
+    sink: Mutex<Option<datazen::execution::application::RuntimeResultSink>>,
     cancelled: Mutex<Vec<ExecutionId>>,
     opened: AtomicU64,
     closed: AtomicU64,
@@ -196,11 +196,11 @@ impl SessionBackend for Backend {
         lock(&self.contexts).insert(id.clone(), context.clone());
         Ok(OpenedResource {
             context,
-            capabilities: datazen_modules::execution::runtime::registry::CapabilityVersions::new(
+            capabilities: datazen::execution::runtime::registry::CapabilityVersions::new(
                 "test", "test",
             ),
             capability_snapshot:
-                datazen_modules::execution::runtime::registry::backend::CapabilityProvenance::new(
+                datazen::execution::runtime::registry::backend::CapabilityProvenance::new(
                     "test-driver",
                     "2.3.1",
                     7,
@@ -373,7 +373,7 @@ async fn execute(
     c: &RequestContext,
     h: &pa::SessionHandle,
     command: &str,
-) -> datazen_modules::execution::ExecutionReceipt {
+) -> datazen::execution::ExecutionReceipt {
     let token = service
         .issue_submission_token(c, IdempotentOperation::ExecuteInSession, Some(h))
         .await
@@ -395,7 +395,7 @@ async fn terminal(
     service: &RuntimeConnectionUseCases,
     c: &RequestContext,
     id: &ExecutionId,
-) -> datazen_modules::execution::ExecutionView {
+) -> datazen::execution::ExecutionView {
     for _ in 0..1000 {
         let view = service.get_execution(c, id.clone()).await.unwrap();
         if view.state.is_terminal() {
@@ -634,7 +634,7 @@ async fn 未接线时借出得到服务不可用_且不留登记行() {
 
     assert_eq!(
         err.code,
-        datazen_modules::shared::error::ApiErrorCode::ServiceUnavailable
+        datazen::shared::error::ApiErrorCode::ServiceUnavailable
     );
     assert_eq!(service.live_connection_rows(), 0);
     assert_eq!(service.live_connection_borrows(), 0);
@@ -657,7 +657,7 @@ async fn 宿主拒绝出借时不留下空登记行() {
 
     assert_eq!(
         err.code,
-        datazen_modules::shared::error::ApiErrorCode::ServiceUnavailable
+        datazen::shared::error::ApiErrorCode::ServiceUnavailable
     );
     assert_eq!(lock(&host.requests).len(), 1);
     assert_eq!(service.live_connection_rows(), 0);
@@ -757,7 +757,7 @@ async fn 打开失败不留任何登记行() {
         err.code,
         // `SessionNotFound` 而不是 `SessionLost`：后者意味着「曾经活着、后来没了」，
         // 而这一栏压根没立起来。宿主据此区分「重试打开」和「先查会话再决定」。
-        datazen_modules::shared::error::ApiErrorCode::SessionNotFound
+        datazen::shared::error::ApiErrorCode::SessionNotFound
     );
 
     assert!(service.registered_session_ids().is_empty());
@@ -846,10 +846,7 @@ async fn 会话关闭后不能再借出() {
         .await
         .expect_err("closed session must not lend");
 
-    assert_eq!(
-        err.code,
-        datazen_modules::shared::error::ApiErrorCode::SessionLost
-    );
+    assert_eq!(err.code, datazen::shared::error::ApiErrorCode::SessionLost);
     // 端口压根没被问：请求在 runtime 自己的登记上就失败了。
     assert!(lock(&host.requests).is_empty());
     assert_eq!(service.live_connection_rows(), 0);

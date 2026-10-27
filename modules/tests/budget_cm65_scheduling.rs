@@ -5,12 +5,10 @@
 
 mod support;
 
-use datazen_modules::execution::application::budget::ResourceClass;
-use datazen_modules::execution::runtime::budget::ledger::QueueScope;
-use datazen_modules::execution::runtime::budget::{
-    BudgetClaim, BudgetLedger, DenialReason, SlotKind,
-};
-use datazen_modules::shared::id::PrincipalId;
+use datazen::execution::application::budget::ResourceClass;
+use datazen::execution::runtime::budget::ledger::QueueScope;
+use datazen::execution::runtime::budget::{BudgetClaim, BudgetLedger, DenialReason, SlotKind};
+use datazen::shared::id::PrincipalId;
 use support::{busy, claim, config, conn, count_class, fill_shared_pool, ok, org, DEADLINE_MS};
 
 // ---------------------------------------------------------------------------------------------

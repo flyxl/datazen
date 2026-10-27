@@ -5,9 +5,9 @@ use crate::{
     store::DesktopRepository,
     testing::app_state::{build_app_state, sample_postgres_config},
 };
-use datazen_feature_core::workflow::executor::WorkflowExecutor;
-use datazen_feature_core::workflow::model::{StepStatus, WorkflowDefinition};
-use datazen_modules::execution::runtime::driver_registry::registry::DriverRegistry;
+use datazen::execution::runtime::driver_registry::registry::DriverRegistry;
+use datazen::workflow::executor::WorkflowExecutor;
+use datazen::workflow::model::{StepStatus, WorkflowDefinition};
 use futures_util::FutureExt;
 use std::sync::Arc;
 // Link actual inventory factories even without production driver feature injection.

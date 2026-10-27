@@ -8,11 +8,11 @@
 
 mod support;
 
-use datazen_modules::execution::application::budget::{PhysicalOccupancy, ResourceClass};
-use datazen_modules::shared::id::{ConnectionId, DbSessionId, OrganizationId, PrincipalId};
+use datazen::execution::application::budget::{PhysicalOccupancy, ResourceClass};
+use datazen::shared::id::{ConnectionId, DbSessionId, OrganizationId, PrincipalId};
 
-use datazen_modules::execution::runtime::budget::ledger::SessionScope;
-use datazen_modules::execution::runtime::budget::{
+use datazen::execution::runtime::budget::ledger::SessionScope;
+use datazen::execution::runtime::budget::{
     BudgetConfig, BudgetLedger, DenialReason, PermitRecord, SlotKind,
 };
 

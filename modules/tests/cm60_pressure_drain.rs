@@ -17,7 +17,7 @@
 mod cm60_pressure;
 mod support;
 
-use datazen_modules::execution::application::budget::ResourceClass;
+use datazen::execution::application::budget::ResourceClass;
 
 use cm60_pressure::Change;
 use cm60_pressure::{OPERATIONS, REQUEST_MS, RESERVED, SESSIONS_PER_USER, TICKS, TOTAL, USERS};

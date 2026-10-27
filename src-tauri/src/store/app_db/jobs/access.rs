@@ -1,10 +1,10 @@
-use datazen_modules::jobs::domain::job::{
+use datazen::jobs::domain::job::{
     CommitBoundary, JobDetails, JobDomainResult, JobFilter, JobRecord, JobRecoveryResult,
     JobRecoveryTarget, RecoveryFilter,
 };
-use datazen_modules::shared::context::RequestContext;
-use datazen_modules::shared::error::PortError;
-use datazen_modules::shared::id::{JobId, Timestamp};
+use datazen::shared::context::RequestContext;
+use datazen::shared::error::PortError;
+use datazen::shared::id::{JobId, Timestamp};
 use rusqlite::{params, OptionalExtension};
 
 use super::codec::{decode, read_record};

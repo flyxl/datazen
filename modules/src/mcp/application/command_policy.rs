@@ -1,4 +1,4 @@
-//! MCP 命令准备策略（自 feature-core::services::command_policy 归位，D6 item 4）。
+//! MCP 命令准备策略（自 modules::services::command_policy 归位，D6 item 4）。
 //!
 //! 形态无关的命令准备规则，宿主命令适配器（driver_command）与 workflow 引擎
 //! 共用：权限档位映射、命令定义解析（含 schema 元数据命令合成）、调用校验、

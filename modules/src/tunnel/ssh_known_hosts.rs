@@ -1,7 +1,7 @@
 //! SSH known-hosts 的**纯逻辑**：条目形状、指纹、TOFU 判定与错误文案。
 //!
 //! 这一层是形态中立的：它不知道条目存在哪儿。**存哪儿**是端口
-//! [`datazen_modules::tunnel::KnownHostsRepository`] 的事——桌面实现读
+//! [`datazen::tunnel::KnownHostsRepository`] 的事——桌面实现读
 //! `{appData}/ssh_known_hosts.json`，将来的 web 形态由服务端 host 实现
 //! （服务端存储目录 / 组织级存储）。
 //!

@@ -8,7 +8,7 @@
 //! ## 为什么整个 ApiError 都不在本 crate 定义
 //!
 //! P0 断环（[ddd-refactor-plan.md](../../../docs/development/ddd-refactor-plan.md)）：用例端口
-//! `ConnectionUseCases` 的方法签名返回 `ApiError`，而**实现**该端口的是 `datazen-modules`；
+//! `ConnectionUseCases` 的方法签名返回 `ApiError`，而**实现**该端口的是 `datazen`；
 //! runtime 不得依赖 application（R2：两者是兄弟，互不依赖），端口签名里的每个类型就只能住在
 //! 更内层的 `platform-api`。同理 `ApiErrorCode`（31 个 code）、`RetryDisposition`、请求 DTO
 //! 与端口 trait 本体也都在 platform-api：它们同属「两端都必须看见的词汇」。

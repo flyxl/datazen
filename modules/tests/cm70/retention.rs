@@ -6,7 +6,7 @@
 
 use crate::gateway_fixtures as fx;
 use crate::{err, token_reason, write_once};
-use datazen_modules::execution::runtime::gateway::{token_digest, RETENTION_AFTER_EXPIRY_NANOS};
+use datazen::execution::runtime::gateway::{token_digest, RETENTION_AFTER_EXPIRY_NANOS};
 
 /// 扫到「过期 + 保留期」之后，账本里那条记录真的没了。
 #[tokio::test]

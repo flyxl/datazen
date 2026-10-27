@@ -10,7 +10,7 @@ use rusqlite::{params, Connection};
 use thiserror::Error;
 pub const APP_DB_FILE: &str = "datazen.sqlite";
 pub const SCHEMA_VERSION: i32 = 5;
-pub const MAX_RUN_ROWS: usize = datazen_feature_core::dashboard::execute::MAX_RUN_ROWS;
+pub const MAX_RUN_ROWS: usize = datazen::dashboard::execute::MAX_RUN_ROWS;
 
 /// 历史遗留的桌面本地组织 id（**不是**规范值）。
 ///

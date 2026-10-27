@@ -5,8 +5,8 @@
 
 use crate::gateway_fixtures as fx;
 use crate::{err, token_reason, write_once};
-use datazen_modules::execution::runtime::connection::{CommandCall, Counter, RuntimeError};
-use datazen_modules::execution::runtime::gateway::{ExecutionRequest, GatewayError};
+use datazen::execution::runtime::connection::{CommandCall, Counter, RuntimeError};
+use datazen::execution::runtime::gateway::{ExecutionRequest, GatewayError};
 
 /// 前置：写入已接受且响应丢失——即客户端没拿到回执就重发。
 #[tokio::test]

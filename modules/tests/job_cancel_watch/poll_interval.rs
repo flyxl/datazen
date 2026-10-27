@@ -27,7 +27,7 @@
 //! 只留第 2 条，间隔被调到 5s 时窗口会自己撑到 200s，实测量永远"通过"。
 
 use super::*;
-use datazen_modules::jobs::domain::job::JobState;
+use datazen::jobs::domain::job::JobState;
 
 /// 宿主取消契约 `jobs_cancel_contract.rs` 的 `SETTLE`：放行闸门前的落定预算。
 ///

@@ -41,14 +41,14 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use datazen::execution::EffectOutcome;
+use datazen::jobs::domain::job::JobState;
 use datazen_driver_api::mock_driver::MockDriver;
 use datazen_driver_api::{
     ColumnSchema, ConnectionConfig, ConnectionHandle, DatabaseDriver, DatabaseType, DdlAtomicity,
     DriverCategory, DriverError, MultiQueryResult, QueryResult, ServerInfo, TableInfo, TableSchema,
     TransactionHandle, Value,
 };
-use datazen_modules::execution::EffectOutcome;
-use datazen_modules::jobs::domain::job::JobState;
 use tokio::sync::{mpsc, Semaphore};
 
 use crate::data_sync::job::body::ApplySpec;

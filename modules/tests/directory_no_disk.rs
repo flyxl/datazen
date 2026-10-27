@@ -24,10 +24,10 @@ use std::sync::{Mutex, MutexGuard};
 use std::time::Duration;
 
 use common::{client, cycling_directory, editor_draft, principal, T0_UTC_MILLIS};
-use datazen_modules::execution::domain::{CloseDisposition, InvalidationReason, SessionDirectory};
-use datazen_modules::execution::runtime::directory::{InMemorySessionDirectory, SessionHandle};
-use datazen_modules::shared::error::PortError;
-use datazen_modules::shared::id::{AttachmentToken, RuntimeEpoch, Timestamp};
+use datazen::execution::domain::{CloseDisposition, InvalidationReason, SessionDirectory};
+use datazen::execution::runtime::directory::{InMemorySessionDirectory, SessionHandle};
+use datazen::shared::error::PortError;
+use datazen::shared::id::{AttachmentToken, RuntimeEpoch, Timestamp};
 
 /// 目录模块的源码全集。路径相对本文件（`modules/tests/`）。
 const SOURCES: &[(&str, &str)] = &[
@@ -331,26 +331,26 @@ async fn open_and_attach(
 }
 
 async fn exercise_replacement(dir: &InMemorySessionDirectory, old: &SessionHandle) {
-    let candidate = datazen_modules::execution::domain::SessionOwner {
-        db_session_id: datazen_modules::shared::id::DbSessionId::new("dbs_no_disk_candidate"),
-        organization_id: datazen_modules::shared::id::OrganizationId::new("org-1"),
+    let candidate = datazen::execution::domain::SessionOwner {
+        db_session_id: datazen::shared::id::DbSessionId::new("dbs_no_disk_candidate"),
+        organization_id: datazen::shared::id::OrganizationId::new("org-1"),
         principal_id: principal("user-1"),
-        connection_id: datazen_modules::shared::id::ConnectionId::new("conn-1"),
-        owner: datazen_modules::shared::context::OwnerRef::Editor {
+        connection_id: datazen::shared::id::ConnectionId::new("conn-1"),
+        owner: datazen::shared::context::OwnerRef::Editor {
             client_instance_id: client("client-1"),
-            editor_session_id: datazen_modules::shared::id::EditorSessionId::new("client-1-editor"),
+            editor_session_id: datazen::shared::id::EditorSessionId::new("client-1-editor"),
         },
-        worker_id: datazen_modules::shared::id::WorkerId::new("worker-1"),
+        worker_id: datazen::shared::id::WorkerId::new("worker-1"),
         runtime_epoch: RuntimeEpoch::new("rte-no-disk-0002"),
         resource_epoch: 0,
         last_business_activity: Timestamp::new("2026-01-01T00:00:00.000Z"),
     };
-    let operation = |operation| datazen_modules::execution::domain::ReplacementCommit {
+    let operation = |operation| datazen::execution::domain::ReplacementCommit {
         old: old.clone(),
         new_owner: candidate.clone(),
         operation,
     };
-    use datazen_modules::execution::domain::ReplacementOperation as Op;
+    use datazen::execution::domain::ReplacementOperation as Op;
     dir.commit_replacement(operation(Op::Prepared))
         .await
         .expect("prepare 应成功");
@@ -374,9 +374,7 @@ async fn exercise_expiry(
     );
 }
 
-async fn exercise_invalidation(
-    dir: &InMemorySessionDirectory,
-) -> datazen_modules::shared::id::DbSessionId {
+async fn exercise_invalidation(dir: &InMemorySessionDirectory) -> datazen::shared::id::DbSessionId {
     let (handle, _token) = dir
         .open_session(
             editor_draft("org-1", "user-1", "conn-1", "client-1"),

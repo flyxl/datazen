@@ -1,5 +1,5 @@
 //! Schema metadata ports: the logical and physical sources every metadata
-//! consumer depends on (moved from `datazen-feature-core::services::ports`,
+//! consumer depends on (moved from `datazen::services::ports`,
 //! D4-b 2026-10-26).
 //!
 //! The logical half ([`LogicalSchemaContextSource`]) is the port every

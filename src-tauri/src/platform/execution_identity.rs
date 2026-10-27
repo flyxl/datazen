@@ -77,7 +77,7 @@ use base64::{
     engine::general_purpose::STANDARD as BASE64_STANDARD,
     engine::general_purpose::URL_SAFE_NO_PAD as BASE64_URL, Engine,
 };
-use datazen_modules::{
+use datazen::{
     connection::domain::{ProfileRecord, ProfileRepository},
     execution::application::identity::{ExecutionIdentity, IdentityResolver},
     execution::application::policy::PolicyService,

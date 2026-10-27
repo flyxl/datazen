@@ -6,8 +6,8 @@
 
 mod support;
 
-use datazen_modules::execution::application::budget::ResourceClass;
-use datazen_modules::execution::runtime::budget::{BudgetLedger, DenialReason, SlotKind};
+use datazen::execution::application::budget::ResourceClass;
+use datazen::execution::runtime::budget::{BudgetLedger, DenialReason, SlotKind};
 use support::{busy, claim, config, conn, granted, org};
 
 // ---------------------------------------------------------------------------------------------

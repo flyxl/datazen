@@ -22,16 +22,16 @@ mod common;
 use std::time::Duration;
 
 use common::{client, cycling_directory, editor_draft, principal};
-use datazen_modules::execution::domain::{
+use datazen::execution::domain::{
     CloseDisposition, ReplacementCommit, ReplacementOperation, SessionDirectory, SessionOwner,
 };
-use datazen_modules::execution::runtime::directory::{
+use datazen::execution::runtime::directory::{
     AttachmentRejection, CommitStatus, InMemorySessionDirectory, MonoInstant,
     ReplacementOperationKey, SessionHandle, UnknownCommitOutcome,
 };
-use datazen_modules::shared::context::OwnerRef;
-use datazen_modules::shared::error::PortError;
-use datazen_modules::shared::id::{
+use datazen::shared::context::OwnerRef;
+use datazen::shared::error::PortError;
+use datazen::shared::id::{
     AttachmentToken, ClientInstanceId, ConnectionId, DbSessionId, EditorSessionId, OrganizationId,
     PrincipalId, RuntimeEpoch, Timestamp, WorkerId,
 };

@@ -15,9 +15,9 @@ use std::sync::{Arc, Barrier, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use datazen_modules::execution::runtime::budget::DenialReason;
-use datazen_modules::execution::runtime::connection::{ExecutionId, HandleId, SessionHandleRef};
-use datazen_modules::execution::runtime::resource::{
+use datazen::execution::runtime::budget::DenialReason;
+use datazen::execution::runtime::connection::{ExecutionId, HandleId, SessionHandleRef};
+use datazen::execution::runtime::resource::{
     CleanupDisposition, DriverCleanVerdict, IdleEviction, LeaseState, NoHandleCloser, PoolRefusal,
     ResourceError, LEASE_TRANSITIONS,
 };

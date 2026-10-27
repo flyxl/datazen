@@ -307,7 +307,7 @@ async fn mcp_call_tool_inner_unknown_tool_includes_help() {
 #[tokio::test]
 async fn mcp_call_tool_inner_disabled_tool_includes_help() {
     use crate::testing::app_state::TestAppState;
-    use datazen_feature_core::mcp::permission::McpPermissionMode;
+    use datazen::mcp::permission::McpPermissionMode;
     use std::sync::Arc;
 
     let test = TestAppState::new().await;
@@ -379,7 +379,7 @@ async fn mcp_call_tool_inner_allowlist_error_includes_help() {
 #[tokio::test]
 async fn mcp_query_rejects_disallowed_sql_in_readonly() {
     use crate::testing::app_state::TestAppState;
-    use datazen_feature_core::mcp::permission::McpPermissionMode;
+    use datazen::mcp::permission::McpPermissionMode;
     use std::sync::Arc;
 
     let test = TestAppState::with_tables_and_resource_provider().await;
@@ -418,7 +418,7 @@ async fn mcp_get_info_exposes_capabilities() {
 #[tokio::test]
 async fn mcp_disabled_tools_and_permission_mode() {
     use crate::testing::app_state::TestAppState;
-    use datazen_feature_core::mcp::permission::McpPermissionMode;
+    use datazen::mcp::permission::McpPermissionMode;
     use std::sync::Arc;
 
     let test = TestAppState::new().await;
@@ -428,7 +428,7 @@ async fn mcp_disabled_tools_and_permission_mode() {
 
     let mut router = DataZenMcpServer::tool_router();
     for name in MCP_ALL_TOOLS {
-        if !datazen_feature_core::mcp::permission::is_tool_listed(
+        if !datazen::mcp::permission::is_tool_listed(
             name,
             McpPermissionMode::ReadOnly,
             &server.disabled_tools,
@@ -515,7 +515,7 @@ async fn mcp_run_workflow_not_found() {
 async fn mcp_query_history_read_only_returns_empty() {
     use crate::store::QueryHistoryEntry;
     use crate::testing::app_state::TestAppState;
-    use datazen_feature_core::mcp::permission::McpPermissionMode;
+    use datazen::mcp::permission::McpPermissionMode;
     use std::sync::Arc;
 
     let test = TestAppState::with_tables_and_resource_provider().await;

@@ -1,6 +1,6 @@
 //! Table browsing vertical slice: the read path from browse requests to
 //! filtered/paged SQL and driver result assembly (D4-c, moved from
-//! `datazen-feature-core::services::{query_executor, table_browsing,
+//! `datazen::services::{query_executor, table_browsing,
 //! table_paging}`).
 //!
 //! Read path only. The write path (ChangeSet / insert plan / row identity /

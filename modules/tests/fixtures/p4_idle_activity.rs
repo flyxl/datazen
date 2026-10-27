@@ -1,8 +1,6 @@
 use super::*;
-use datazen_modules::execution::application::IdlePolicy;
-use datazen_modules::execution::runtime::{
-    connection::testing::clock::FakeClock, gateway::MonotonicClock,
-};
+use datazen::execution::application::IdlePolicy;
+use datazen::execution::runtime::{connection::testing::clock::FakeClock, gateway::MonotonicClock};
 use std::time::Duration;
 struct Clock(Arc<FakeClock>);
 impl MonotonicClock for Clock {

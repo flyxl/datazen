@@ -18,19 +18,19 @@ mod support;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use datazen_modules::execution::EffectOutcome;
-use datazen_modules::jobs::domain::job::{
+use datazen::execution::EffectOutcome;
+use datazen::jobs::domain::job::{
     Checkpoint, CommitBoundary, JobDefinition, JobProgress, JobState,
 };
-use datazen_modules::jobs::domain::repository::JobRepository;
-use datazen_modules::shared::context::RequestContext;
-use datazen_modules::shared::id::{
+use datazen::jobs::domain::repository::JobRepository;
+use datazen::shared::context::RequestContext;
+use datazen::shared::id::{
     ClientInstanceId, Counter, ExecutionId, IdempotencyKey, JobId, PrincipalId, RequestId, StageId,
     Timestamp, WorkerId,
 };
 
-use datazen_modules::execution::runtime::budget::BudgetLedger;
-use datazen_modules::jobs::{
+use datazen::execution::runtime::budget::BudgetLedger;
+use datazen::jobs::{
     CancelToken, EndpointRef, EndpointRole, FrozenPlan, HandlerRegistry, InMemoryJobRepository,
     JobError, JobHandler, JobRuntime, RecoveryVerdict, SharedClock, StageOutcome, StageSpec,
     StageTerminal, CANCEL_POLL_INTERVAL,
@@ -108,7 +108,7 @@ fn definition(job_id: &str) -> JobDefinition {
         job_id: JobId::new(job_id),
         organization_id: org(),
         kind: "schemaDiffApply".into(),
-        owner: datazen_modules::shared::context::OwnerRef::ClientSession {
+        owner: datazen::shared::context::OwnerRef::ClientSession {
             client_instance_id: ClientInstanceId::new("client-1"),
             purpose: "migration".into(),
         },
@@ -406,9 +406,8 @@ async fn rig(job_id: &str, plans: Vec<(&'static str, Plan)>) -> Rig {
 impl Rig {
     fn start(
         &self,
-    ) -> tokio::task::JoinHandle<
-        Result<datazen_modules::jobs::JobResult, datazen_modules::shared::error::PortError>,
-    > {
+    ) -> tokio::task::JoinHandle<Result<datazen::jobs::JobResult, datazen::shared::error::PortError>>
+    {
         let runtime = self.runtime.clone();
         let job_id = self.job_id.clone();
         tokio::spawn(async move {

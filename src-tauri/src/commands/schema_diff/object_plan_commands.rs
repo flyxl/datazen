@@ -35,13 +35,13 @@ pub async fn prepare_schema_view_plan(
     let src_context = crate::services::migration_endpoint::runtime_session_context(
         &state,
         &source_db_session_id,
-        datazen_modules::execution::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let tgt_context = crate::services::migration_endpoint::runtime_session_context(
         &state,
         &target_db_session_id,
-        datazen_modules::execution::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let src_config = src_context.config.clone();
@@ -198,13 +198,13 @@ pub async fn prepare_schema_routine_trigger_plan(
     let src_context = crate::services::migration_endpoint::runtime_session_context(
         &state,
         &source_db_session_id,
-        datazen_modules::execution::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let tgt_context = crate::services::migration_endpoint::runtime_session_context(
         &state,
         &target_db_session_id,
-        datazen_modules::execution::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let src_config = src_context.config.clone();
@@ -315,13 +315,13 @@ pub async fn prepare_schema_sequence_plan(
     let src_context = crate::services::migration_endpoint::runtime_session_context(
         &state,
         &source_db_session_id,
-        datazen_modules::execution::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let tgt_context = crate::services::migration_endpoint::runtime_session_context(
         &state,
         &target_db_session_id,
-        datazen_modules::execution::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let src_config = src_context.config.clone();
@@ -442,13 +442,13 @@ pub async fn prepare_schema_type_plan(
     let src_context = crate::services::migration_endpoint::runtime_session_context(
         &state,
         &source_db_session_id,
-        datazen_modules::execution::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let tgt_context = crate::services::migration_endpoint::runtime_session_context(
         &state,
         &target_db_session_id,
-        datazen_modules::execution::application::LivePurpose::Inspection,
+        datazen::execution::application::LivePurpose::Inspection,
     )
     .await?;
     let src_config = src_context.config.clone();

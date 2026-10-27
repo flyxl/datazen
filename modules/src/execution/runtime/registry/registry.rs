@@ -685,7 +685,7 @@ impl SessionRegistry {
     /// 而 `Some(at_ms)` 是绝对毫秒。把「已经到期」写成 `None` 会让
     /// [`Self::evict_idle_at`] 的第二道闸门（未设期限 ⇒ 不动手）永远放行它，
     /// 于是回收器永远够不着这个会话。要表达「立刻到期」就给一个**过去**的
-    /// 时刻，宿主侧应用层（过渡期 `datazen-modules::application::idle`）就是这么截断的。
+    /// 时刻，宿主侧应用层（过渡期 `datazen::application::idle`）就是这么截断的。
     ///
     /// ## 报什么错，与兄弟入口完全同形
     ///

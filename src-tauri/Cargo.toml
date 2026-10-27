@@ -1,5 +1,5 @@
 [package]
-name = "datazen"
+name = "datazen_desktop"
 version = "0.2.3"
 description = "DataZen desktop database client (Tauri backend)"
 authors = ["DataZen"]
@@ -8,25 +8,24 @@ rust-version = "1.85"
 license = "GPL-3.0-or-later"
 
 [lib]
-name = "datazen"
+name = "datazen_desktop"
 path = "src/lib.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-datazen-feature-core = { path = "../packages/feature-core" }
 datazen-driver-api = { workspace = true }
 # Platform adapter (P1, 开发计划 :77)。方向是 host → platform-api / application，
 # 与 F-02 禁止的 application → host 相反，因此不受 crate 边界门禁限制。
 # 两个包都不依赖 Tauri / HTTP，desktop adapter 只在 host 侧引用它们。
-datazen-modules = { workspace = true, features = ["application", "settings", "ai", "connection", "named_views", "history", "execution", "schema", "schema_diff", "data_sync", "data_transfer", "table-browsing", "table-editing", "dashboard", "monitor", "export", "backup", "wapps", "tunnel"] }
+datazen = { workspace = true, features = ["application", "settings", "ai", "connection", "connection_import", "feature_error", "services", "named_views", "history", "execution", "schema", "schema_diff", "data_sync", "data_transfer", "table-browsing", "table-editing", "dashboard", "monitor", "export", "backup", "wapps", "tunnel"] }
 # P5 JobRuntime 内核（§2/§5）：prepare/apply 经 runtime 受理，desktop 只做适配。
 # 形态中立的跨形态基础设施原语（脱敏 / 路径安全），零 datazen-* 依赖（F-11 反向 allow-list 兜底）。
 datazen-infra = { path = "../packages/infra" }
 # 迁移三件套各自以 Job 受理 prepare/apply，host 只做 adapter。
 # Wave-2 B1：Workspace App 形态中立内核（manifest 规则 / 安装 / 存储）已并入
-# datazen-feature-core（feature_core::workspace_apps 模块），此处不再单独依赖。
+# datazen（modules::workspace_apps 模块），此处不再单独依赖。
 inventory = "0.3"
 tauri = { version = "2", features = ["protocol-asset", "macos-private-api", "tray-icon", "devtools"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util", "net", "process"] }
@@ -99,9 +98,9 @@ objc2-app-kit = { version = "0.3.2", optional = true }
 
 [features]
 default = []
-webdriver = ["tauri-plugin-webdriver", "dep:objc2", "dep:objc2-app-kit", "datazen-modules/webdriver"]
+webdriver = ["tauri-plugin-webdriver", "dep:objc2", "dep:objc2-app-kit", "datazen/webdriver"]
 # Enables `datazen::test_harness` for src-tauri/tests/ IPC migration integration tests.
-test-harness = ["datazen-modules/test-harness"]
+test-harness = ["datazen/test-harness"]
 # Driver features — injected by resolve-drivers.mjs at build time; do NOT add manually.
 # <<driver-features>>
 # <</driver-features>>
@@ -113,7 +112,7 @@ sqlx = { version = "=0.8.6", features = ["runtime-tokio", "tls-rustls", "postgre
 datazen-driver-postgres = { path = "../packages/drivers/postgres" }
 datazen-driver-mysql = { path = "../packages/drivers/mysql" }
 datazen-driver-sqlite = { path = "../packages/drivers/sqlite" }
-datazen-modules = { workspace = true, features = ["test-harness"] }
+datazen = { workspace = true, features = ["test-harness"] }
 # Host tests drive `DriverRegistry::register_test_driver*` / `register_test_factory*`, which the
 # Dev-only: `resolver = "2"` keeps this feature out of normal `cargo build` of the host.
 

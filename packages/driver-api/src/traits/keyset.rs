@@ -12,7 +12,7 @@
 //!   must never compare equal, or the engine is free to order them either way
 //!   and a boundary stops meaning anything. That is a question about the
 //!   *table* (does it have a key?), so the host answers it — see
-//!   `datazen_feature_core::services::table_paging`.
+//!   `datazen::services::table_paging`.
 //! * **Can this dialect express the boundary?** That is a question about the
 //!   *dialect*, so the driver answers it, in
 //!   [`keyset_predicate_sql`].

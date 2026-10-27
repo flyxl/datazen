@@ -3,7 +3,7 @@
 //! # 为什么这里没有实现 `DatabaseDriver`
 //!
 //! 会话级句柄命令要求「通过 driver-api 的 `command_definitions()` / `execute_command()`
-//! 通道暴露」。P0 阶段本仓库里**没有任何**以 `datazen-modules` 夹具为后端的 driver crate，
+//! 通道暴露」。P0 阶段本仓库里**没有任何**以 `datazen` 夹具为后端的 driver crate，
 //! 要走那条通道就必须先造一个假 driver crate —— 这既超出 P0 的铁律（只加夹具与测试、
 //! 不改生产执行路径、不得让 `datazen` 或任何 driver crate 依赖新 crate），
 //! 也会给模块表凭空加一个节点。

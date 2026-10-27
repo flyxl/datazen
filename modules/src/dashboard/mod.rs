@@ -1,7 +1,7 @@
 //! Dashboard：仪表盘/组件/运行历史的领域词汇、仓储端口与用例规则
 //! （D6 item 2，2026-10-26）。
 //!
-//! 词源：`datazen-feature-core::dashboard` 全家族逐字迁移。分层：
+//! 词源：`datazen::dashboard` 全家族逐字迁移。分层：
 //! * `domain`——行词汇（records）、仪表盘/组件/图表/告警词汇（types）、
 //!   仓储端口（repository，trait 归 domain、宿主实现）与 Monitor 授权
 //!   元数据（schedule_grant）；
@@ -17,7 +17,7 @@
 pub mod application;
 pub mod domain;
 
-// 旧扁平路径镜像（feature-core 垫片与直接消费者兼容）。
+// 旧扁平路径镜像（modules 垫片与直接消费者兼容）。
 pub use application::alert;
 pub use application::archive;
 pub use application::create;

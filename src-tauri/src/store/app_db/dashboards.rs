@@ -2,8 +2,8 @@
 
 use super::{AppDb, AppDbError};
 use chrono::Utc;
-pub use datazen_feature_core::dashboard::records::{DashboardRecord, WidgetRecord};
-pub use datazen_feature_core::dashboard::types::DashboardWorkflowRef;
+pub use datazen::dashboard::records::{DashboardRecord, WidgetRecord};
+pub use datazen::dashboard::types::DashboardWorkflowRef;
 use rusqlite::params;
 
 impl AppDb {

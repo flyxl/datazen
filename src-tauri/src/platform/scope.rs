@@ -9,8 +9,8 @@
 //! 桌面形态唯一的生产构造入口 [`super::identity::DesktopIdentity::from_desktop_user`]
 //! 把组织钉在 [`super::identity::LOCAL_ORGANIZATION_ID`]。
 
-use datazen_modules::shared::id::OrganizationId;
-use datazen_modules::shared::scope::OrganizationScope;
+use datazen::shared::id::OrganizationId;
+use datazen::shared::scope::OrganizationScope;
 
 use super::identity::LOCAL_ORGANIZATION_ID;
 

@@ -29,12 +29,12 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use datazen_modules::migration::schema_diff::reviewed::{
+use datazen::migration::schema_diff::reviewed::{
     InMemoryReviewedPlanRepository, ReviewedPlan, ReviewedPlanRepository,
     ReviewedPlanRepositoryError,
 };
-use datazen_modules::shared::id::OrganizationId;
-use datazen_modules::shared::scope::OrganizationScope;
+use datazen::shared::id::OrganizationId;
+use datazen::shared::scope::OrganizationScope;
 
 use crate::commands::{AppState, CommandError};
 use crate::platform::PlatformEntry;
@@ -147,9 +147,9 @@ pub(crate) fn reviewed_scope(state: &AppState) -> Result<OrganizationScope, Comm
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_modules::migration::schema_diff::reviewed::ReviewedPlan;
-    use datazen_modules::migration::schema_diff::types::SchemaDiffPlan;
-    use datazen_modules::shared::id::OrganizationId;
+    use datazen::migration::schema_diff::reviewed::ReviewedPlan;
+    use datazen::migration::schema_diff::types::SchemaDiffPlan;
+    use datazen::shared::id::OrganizationId;
 
     fn scope(organization: &str) -> OrganizationScope {
         OrganizationScope::new(OrganizationId::new(organization))
@@ -333,8 +333,8 @@ mod tests {
     /// 的计划进入存储。
     #[tokio::test]
     async fn desktop_store_assembly_denies_every_organization_when_platform_failed() {
-        let failed = PlatformEntry::failed(datazen_modules::shared::error::ApiError::new(
-            datazen_modules::shared::error::ApiErrorCode::Unauthenticated,
+        let failed = PlatformEntry::failed(datazen::shared::error::ApiError::new(
+            datazen::shared::error::ApiErrorCode::Unauthenticated,
             "桌面本地身份不可用",
         ));
         let store = desktop_reviewed_plan_repository(&failed);
@@ -513,7 +513,7 @@ mod tests {
         let mut frozen = plan("plan-1");
         frozen.target_session = "session".into();
         frozen.target_pool = "pool".into();
-        frozen.target_identity = datazen_modules::migration::schema_diff::reviewed::identity(&cfg);
+        frozen.target_identity = datazen::migration::schema_diff::reviewed::identity(&cfg);
         frozen.target_database_scope = cfg.database.clone();
         frozen.target_schema_scope = Some("public".into());
         store
@@ -522,7 +522,7 @@ mod tests {
             .expect("put plan");
 
         let (a, b) = tokio::join!(
-            datazen_modules::migration::schema_diff::reviewed::consume(
+            datazen::migration::schema_diff::reviewed::consume(
                 &store,
                 &owner,
                 &frozen.plan,
@@ -532,7 +532,7 @@ mod tests {
                 cfg.database.as_deref(),
                 Some("public"),
             ),
-            datazen_modules::migration::schema_diff::reviewed::consume(
+            datazen::migration::schema_diff::reviewed::consume(
                 &store,
                 &owner,
                 &frozen.plan,

@@ -25,7 +25,7 @@ fn cm31_overlap_is_rejected_before_any_permit_is_held() {
     ];
     let err = detect_endpoint_overlap(&endpoints).expect_err("overlap");
     assert!(
-        matches!(err, datazen_modules::jobs::JobError::EndpointOverlap(_)),
+        matches!(err, datazen::jobs::JobError::EndpointOverlap(_)),
         "{err:?}"
     );
 
@@ -33,7 +33,7 @@ fn cm31_overlap_is_rejected_before_any_permit_is_held() {
     let mut guard = ledger.lock().expect("lock");
     guard.ensure_service(&conn());
     drop(guard);
-    let permits = datazen_modules::jobs::MultiEndpointPermits::reserve(
+    let permits = datazen::jobs::MultiEndpointPermits::reserve(
         ledger.clone(),
         &endpoints,
         ResourceClass::Job,
@@ -43,7 +43,7 @@ fn cm31_overlap_is_rejected_before_any_permit_is_held() {
     );
     assert!(matches!(
         permits,
-        Err(datazen_modules::jobs::JobError::EndpointOverlap(_))
+        Err(datazen::jobs::JobError::EndpointOverlap(_))
     ));
 }
 
@@ -73,7 +73,7 @@ fn cm65_multi_endpoint_reserve_is_all_or_nothing() {
             role: EndpointRole::TargetWriter,
         },
     ];
-    let permits = datazen_modules::jobs::MultiEndpointPermits::reserve(
+    let permits = datazen::jobs::MultiEndpointPermits::reserve(
         ledger.clone(),
         &endpoints,
         ResourceClass::Job,
@@ -114,7 +114,7 @@ fn cm65_insufficient_budget_admits_no_permits_at_all() {
             role: EndpointRole::TargetWriter,
         },
     ];
-    let result = datazen_modules::jobs::MultiEndpointPermits::reserve(
+    let result = datazen::jobs::MultiEndpointPermits::reserve(
         ledger.clone(),
         &endpoints,
         ResourceClass::Job,
@@ -124,7 +124,7 @@ fn cm65_insufficient_budget_admits_no_permits_at_all() {
     );
     assert!(matches!(
         result,
-        Err(datazen_modules::jobs::JobError::BudgetDenied(_))
+        Err(datazen::jobs::JobError::BudgetDenied(_))
     ));
     let held = ledger
         .lock()

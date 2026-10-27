@@ -1,7 +1,7 @@
-//! 表编辑（写链路）的应用错误（D4-d，随 data_browsing 自 feature-core 迁入）。
+//! 表编辑（写链路）的应用错误（D4-d，随 data_browsing 自 modules 迁入）。
 //!
 //! 变体与 `Display` 字符串与旧 `FeatureError` 对应变体**逐字一致**；
-//! feature-core 侧 `From<TableEditingError> for FeatureError` 保证留守消费者
+//! modules 侧 `From<TableEditingError> for FeatureError` 保证留守消费者
 //! （result_edit / workflow / 宿主命令）零改动（§5.5 单向委托）。
 
 #[derive(Debug, thiserror::Error)]

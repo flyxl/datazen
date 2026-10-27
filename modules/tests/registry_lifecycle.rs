@@ -21,12 +21,10 @@
 
 mod registry_fixtures;
 
-use datazen_modules::execution::runtime::connection::{
+use datazen::execution::runtime::connection::{
     AttachmentState, DbSessionId, RuntimeError, SessionHandle, SessionState,
 };
-use datazen_modules::execution::runtime::registry::{
-    AuditKind, Outcome, SessionPort, SessionRegistry,
-};
+use datazen::execution::runtime::registry::{AuditKind, Outcome, SessionPort, SessionRegistry};
 
 use registry_fixtures::{
     db_session_id, execute_request, handle_of, open_request, other_db_session_id, register_ready,

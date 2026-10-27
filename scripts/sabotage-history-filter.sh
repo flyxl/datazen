@@ -31,7 +31,7 @@ run_case() {
   fi
 
   local out
-  out="$(cargo test --color=never -p datazen --lib "$filter" 2>&1)"
+  out="$(cargo test --color=never -p datazen_desktop --lib "$filter" 2>&1)"
   # `failed` also matches `0 failed`, so match the FAILED summary explicitly.
   if echo "$out" | grep -qE "test result: FAILED|[1-9][0-9]* failed"; then
     echo "  [$name] RED as required"; PASS=$((PASS+1))

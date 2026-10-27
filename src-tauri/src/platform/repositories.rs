@@ -1,8 +1,7 @@
 use super::identity::LOCAL_ORGANIZATION_ID;
 use crate::store::{platform_profiles::ProfileMetadata, DesktopRepository};
 use async_trait::async_trait;
-use datazen_driver_api::ConnectionConfig;
-use datazen_modules::{
+use datazen::{
     connection::domain::{ProfileRecord, ProfileRepository, ProfileScope},
     connection::dto::{ProfileDraft, ProfilePatch},
     execution::application::secret::{ResolvedCredential, SecretProvider, SecretPurpose},
@@ -11,6 +10,7 @@ use datazen_modules::{
     shared::error::PortError,
     shared::id::*,
 };
+use datazen_driver_api::ConnectionConfig;
 use std::{collections::BTreeMap, sync::Arc};
 
 pub struct DesktopProfiles {

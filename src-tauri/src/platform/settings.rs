@@ -1,13 +1,13 @@
 //! Desktop infrastructure adapter for the module-owned settings repository.
 //!
 //! The adapter keeps `AppSettings`, encrypted storage, and atomic persistence in
-//! the Desktop host. `datazen-modules` owns the repository boundary and all
+//! the Desktop host. `datazen` owns the repository boundary and all
 //! shape-neutral validation; this file only translates host storage errors.
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use datazen_modules::settings::{SettingsRepository, SettingsRepositoryError, SharedSettings};
+use datazen::settings::{SettingsRepository, SettingsRepositoryError, SharedSettings};
 
 use crate::store::DesktopRepository;
 
@@ -58,9 +58,8 @@ impl SettingsRepository for DesktopSettingsRepository {
     ) -> Result<serde_json::Value, SettingsRepositoryError> {
         let mut settings: crate::store::AppSettings =
             serde_json::from_value(settings).map_err(Self::backend_error)?;
-        let normalized =
-            datazen_modules::settings::SettingsService::normalize(settings.shared_settings())
-                .map_err(Self::backend_error)?;
+        let normalized = datazen::settings::SettingsService::normalize(settings.shared_settings())
+            .map_err(Self::backend_error)?;
         settings
             .apply_shared_settings(normalized)
             .map_err(Self::backend_error)?;
@@ -85,7 +84,7 @@ mod tests {
                 .expect("desktop repository should initialize"),
         );
         let adapter = DesktopSettingsRepository::new(store.clone());
-        let service = datazen_modules::settings::SettingsService::new(std::sync::Arc::new(adapter));
+        let service = datazen::settings::SettingsService::new(std::sync::Arc::new(adapter));
 
         let mut shared = service.read().await.expect("module read should succeed");
         shared.preferences.language = "zh-CN".into();

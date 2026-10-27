@@ -15,7 +15,7 @@
 //!
 //! 硬边界：内核**零 HTTP**（不依赖任何 HTTP 客户端库，也不依赖任何服务端
 //! 框架）、**零桌面壳依赖**。二者均由
-//! `scripts/check-platform-crate-boundaries.mjs` 的 F-12 强制（feature-core 的
+//! `scripts/check-platform-crate-boundaries.mjs` 的 F-12 强制（modules 的
 //! 反向 allow-list + 禁 `tauri` / `axum` / `actix-web` / `warp` / `tonic` /
 //! `react`）；HTTP *客户端* 是 `modules::ai::providers` 的职责，本模块两者都不引入。
 

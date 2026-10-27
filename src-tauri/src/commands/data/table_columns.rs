@@ -1,6 +1,6 @@
 //! Host adapter for the shared catalog port.
 //!
-//! `datazen_feature_core::data_browsing` decides that a plan must be checked
+//! `datazen::data_browsing` decides that a plan must be checked
 //! against the real primary key and column list; it must not know how a given
 //! host reads a catalog. This adapter answers that question with the same
 //! schema cache and driver resolution the grid read uses, so a preview after a
@@ -8,9 +8,9 @@
 
 use super::*;
 use async_trait::async_trait;
-use datazen_feature_core::data_browsing::TableColumnSource;
-use datazen_modules::schema::cache::CachedColumns;
-use datazen_modules::table_editing::TableEditingError;
+use datazen::data_browsing::TableColumnSource;
+use datazen::schema::cache::CachedColumns;
+use datazen::table_editing::TableEditingError;
 
 pub(super) struct HostTableColumns<'a> {
     state: &'a AppState,

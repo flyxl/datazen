@@ -37,12 +37,12 @@
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use datazen_modules::execution::application::network::{NetworkProvider, TunnelSpec};
-use datazen_modules::execution::runtime::tunnel::{
+use datazen::execution::application::network::{NetworkProvider, TunnelSpec};
+use datazen::execution::runtime::tunnel::{
     RouteCatalog, RouteNetworkProvider, TunnelError, TunnelFault, TunnelHandle, TunnelTransport,
 };
-use datazen_modules::shared::id::{NetworkRouteRef, NetworkRouteRevision};
-use datazen_modules::tunnel::KnownHostsRepository;
+use datazen::shared::id::{NetworkRouteRef, NetworkRouteRevision};
+use datazen::tunnel::KnownHostsRepository;
 use tracing::{debug, warn};
 
 use crate::tunnel::{start_for_connection, Tunnel};
@@ -128,7 +128,7 @@ impl<T> Roster<T> {
 /// 端口实现方按自己的形状报错；这里只做一次窄化，避免每个调用点各写一遍。
 fn open_fault(spec: &TunnelSpec, detail: impl std::fmt::Display) -> TunnelError {
     warn!(
-        target: "datazen::tunnel",
+        target: "datazen_desktop::tunnel",
         route = %spec.route_ref,
         via = %spec.via_host,
         viaPort = spec.via_port,
@@ -221,7 +221,7 @@ impl TunnelTransport for DesktopTunnelHost {
         // 已在表里：上游账本会拦掉重复开，但端口自己也不该把第二条隧道挂到同一个 spec 上。
         if self.live().value(spec).is_some() {
             debug!(
-                target: "datazen::tunnel",
+                target: "datazen_desktop::tunnel",
                 via = %spec.via_host,
                 viaPort = spec.via_port,
                 "隧道已在表内，不重复开启"
@@ -250,7 +250,7 @@ impl TunnelTransport for DesktopTunnelHost {
         let local_port = tunnel.local_port();
         self.live().record(spec, tunnel);
         debug!(
-            target: "datazen::tunnel",
+            target: "datazen_desktop::tunnel",
             via = %spec.via_host,
             viaPort = spec.via_port,
             localPort = local_port,
@@ -264,7 +264,7 @@ impl TunnelTransport for DesktopTunnelHost {
         match self.live().withdraw(spec) {
             Some(tunnel) => {
                 debug!(
-                    target: "datazen::tunnel",
+                    target: "datazen_desktop::tunnel",
                     via = %spec.via_host,
                     viaPort = spec.via_port,
                     localPort = tunnel.local_port(),
@@ -276,7 +276,7 @@ impl TunnelTransport for DesktopTunnelHost {
                 // 上游账本在归零时才会发 close，所以「表里没有」意味着它已经走了。
                 // 报成功：重复关闭不该被当成错误，更不该造出一条假的失败现场。
                 debug!(
-                    target: "datazen::tunnel",
+                    target: "datazen_desktop::tunnel",
                     via = %spec.via_host,
                     viaPort = spec.via_port,
                     "桌面隧道本就不在表内，关闭按幂等放过"
@@ -289,7 +289,7 @@ impl TunnelTransport for DesktopTunnelHost {
     fn revision(&self, route_ref: &NetworkRouteRef) -> Result<NetworkRouteRevision, TunnelError> {
         self.source.revision(route_ref).map_err(|detail| {
             warn!(
-                target: "datazen::tunnel",
+                target: "datazen_desktop::tunnel",
                 route = %route_ref,
                 "路由修订号不可用：{detail}"
             );

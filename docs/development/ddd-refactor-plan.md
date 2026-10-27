@@ -45,7 +45,7 @@
 | 细节文件 | 主题 | 原章节 |
 |---|---|---|
 | [01-target-architecture.md](ddd-refactor/01-target-architecture.md) | 分层概念（Port、五类职责、三个 ID）、目标代码组织、依赖方向与模块边界 | §2–§4 |
-| [02-legacy-crate-migration.md](ddd-refactor/02-legacy-crate-migration.md) | platform-api / application / runtime / kernel / feature-core 与迁移包的去向、防 Cargo 环 | §5 |
+| [02-legacy-crate-migration.md](ddd-refactor/02-legacy-crate-migration.md) | platform-api / application / runtime / kernel / modules 与迁移包的去向、防 Cargo 环 | §5 |
 | [03-execution-and-jobs.md](ddd-refactor/03-execution-and-jobs.md) | Execution 与 Job 的详细边界、等待能力、runtime 实例与关停 | §6 |
 | [04-repositories-and-security.md](ddd-refactor/04-repositories-and-security.md) | Repository 设计、连接目录统一、DesktopRepository 拆分、一致性与授权 | §7 |
 | [05-host-assembly.md](ddd-refactor/05-host-assembly.md) | Desktop / Web 模块级装配、三种「可用」、Cargo feature 策略 | §8 |

@@ -6,11 +6,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const MODULES = 'datazen-modules';
+const MODULES = 'datazen';
 const MIN_WORKSPACE_MEMBERS = 20;
 const FORBIDDEN_MODULES = new Set([
-  'datazen',
-  'datazen-feature-core',
+  'datazen_desktop',
   'datazen-runtime',
   'datazen-application',
   'datazen-platform-api',

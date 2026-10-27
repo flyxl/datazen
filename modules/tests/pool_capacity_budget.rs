@@ -13,7 +13,7 @@
 mod resource_support;
 mod support;
 
-use datazen_modules::execution::runtime::resource::{
+use datazen::execution::runtime::resource::{
     CleanupDisposition, DriverCleanVerdict, IdleEviction, NoHandleCloser, PoolPolicy, PoolRefusal,
     ResourceError, ResourceModel, DEFAULT_MAX_IDLE_PER_POOL,
 };
@@ -23,9 +23,9 @@ use support::ok;
 
 /// 归还一条租约并要求成功：这里只关心「出口成功」，失败信息不带场景上下文会很难读。
 fn release(
-    manager: &mut datazen_modules::execution::runtime::resource::LeaseManager,
-    lease_id: &datazen_modules::execution::runtime::connection::LeaseId,
-) -> datazen_modules::execution::runtime::resource::LeaseRelease {
+    manager: &mut datazen::execution::runtime::resource::LeaseManager,
+    lease_id: &datazen::execution::runtime::connection::LeaseId,
+) -> datazen::execution::runtime::resource::LeaseRelease {
     ok(
         manager.release(
             lease_id,
@@ -227,7 +227,7 @@ fn a_fixed_session_is_refused_by_pool_policy_even_when_the_host_is_clear() {
     // 策略层本身也把「固定会话永不进池」写成硬规则，任何直接问策略的调用方都拿不到 park。
     let direct = fixture.manager.pools_mut().decide(
         &request.pool_key(),
-        datazen_modules::execution::runtime::resource::LeasePurpose::FixedSession,
+        datazen::execution::runtime::resource::LeasePurpose::FixedSession,
         0,
     );
     assert_eq!(direct.refusal, Some(PoolRefusal::FixedSession));

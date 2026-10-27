@@ -5,9 +5,9 @@ use super::server::{DataZenMcpServer, MCP_ALL_TOOLS};
 use super::types::*;
 #[cfg(test)]
 use crate::mcp::tool_help;
-use datazen_feature_core::ai::budget;
-use datazen_feature_core::mcp::allowlist;
-use datazen_feature_core::mcp::permission;
+use datazen::ai::budget;
+use datazen::mcp::allowlist;
+use datazen::mcp::permission;
 #[cfg(test)]
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::*;

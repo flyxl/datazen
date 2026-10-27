@@ -2,24 +2,22 @@
 use super::{AppState, CommandError, RowChangeTableContext};
 use crate::platform::into_command_error;
 use crate::services::{table_browsing, FilterCondition, QueryExecutor, SortCondition};
-use datazen_driver_api::keyset::CursorValue;
-use datazen_driver_api::{
-    CountStrategy, DatabaseDriver, SqlDialect, TableDataResult, TableSchema, Value,
-};
-use datazen_feature_core::services::query_executor::table_read_sql::build_unbounded_select_sql;
-use datazen_feature_core::services::query_executor::{
-    keyset_refusal, paging_info, resolve_paging, PagingPlan,
-};
-use datazen_feature_core::services::table_paging::{keyset_decision, resolve_order_spec_multi};
-use datazen_modules::application::sessions::ConnectionUseCases;
-use datazen_modules::execution::application::requests::{CommandCall, ExecuteAtTargetRequest};
-use datazen_modules::execution::application::RuntimeConnectionUseCases;
-use datazen_modules::{
+use datazen::application::sessions::ConnectionUseCases;
+use datazen::execution::application::requests::{CommandCall, ExecuteAtTargetRequest};
+use datazen::execution::application::RuntimeConnectionUseCases;
+use datazen::services::query_executor::table_read_sql::build_unbounded_select_sql;
+use datazen::services::query_executor::{keyset_refusal, paging_info, resolve_paging, PagingPlan};
+use datazen::services::table_paging::{keyset_decision, resolve_order_spec_multi};
+use datazen::{
     execution::application::idempotency::IdempotentOperation,
     execution::target::{ExecutionTarget, NamespaceTarget, ObjectTarget},
     execution::ExecutionState,
     shared::context::RequestContext,
     shared::id::{ConnectionId, Counter},
+};
+use datazen_driver_api::keyset::CursorValue;
+use datazen_driver_api::{
+    CountStrategy, DatabaseDriver, SqlDialect, TableDataResult, TableSchema, Value,
 };
 use serde::Deserialize;
 use serde_json::{json, Value as Json};
@@ -27,7 +25,7 @@ use serde_json::{json, Value as Json};
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TableReadRequest {
-    pub manual_handle: Option<datazen_modules::execution::SessionHandle>,
+    pub manual_handle: Option<datazen::execution::SessionHandle>,
     pub context: RowChangeTableContext,
     pub page: u32,
     pub page_size: u32,
@@ -182,20 +180,19 @@ fn assemble_statements(
         return Err(CommandError::Validation(message));
     }
 
-    let select =
-        datazen_feature_core::services::query_executor::table_read_sql::build_paged_select_sql(
-            &schema.table_name,
-            &schema.columns,
-            shape.filters.map(<[FilterCondition]>::to_vec),
-            &plan.order,
-            plan.mode,
-            plan.predicate.as_deref(),
-            dialect,
-            u64::from(shape.page_size),
-            u64::from(shape.page).saturating_mul(u64::from(shape.page_size)),
-            shape.filter_logic,
-        )?
-        .sql;
+    let select = datazen::services::query_executor::table_read_sql::build_paged_select_sql(
+        &schema.table_name,
+        &schema.columns,
+        shape.filters.map(<[FilterCondition]>::to_vec),
+        &plan.order,
+        plan.mode,
+        plan.predicate.as_deref(),
+        dialect,
+        u64::from(shape.page_size),
+        u64::from(shape.page).saturating_mul(u64::from(shape.page_size)),
+        shape.filter_logic,
+    )?
+    .sql;
 
     let count_plan = if shape.skip_count {
         CountPlan::Reuse
@@ -255,7 +252,7 @@ async fn execute(
     context: &RequestContext,
     target: &ExecutionTarget,
     revision: Counter,
-    manual_handle: Option<&datazen_modules::execution::SessionHandle>,
+    manual_handle: Option<&datazen::execution::SessionHandle>,
     command: &str,
     input: Json,
 ) -> Result<Vec<Json>, CommandError> {
@@ -279,7 +276,7 @@ async fn execute(
         runtime
             .execute_in_session(
                 context,
-                datazen_modules::execution::application::requests::ExecuteInSessionRequest {
+                datazen::execution::application::requests::ExecuteInSessionRequest {
                     handle: handle.clone(),
                     expected_context_revision: Some(session.context_revision),
                     call: CommandCall {
@@ -367,7 +364,7 @@ async fn fetch_table_schema(
     call_context: &RequestContext,
     target: &ExecutionTarget,
     revision: Counter,
-    manual_handle: Option<&datazen_modules::execution::SessionHandle>,
+    manual_handle: Option<&datazen::execution::SessionHandle>,
     table: &str,
     database: &str,
     schema: Option<&str>,
@@ -420,7 +417,7 @@ pub async fn read(
     // this database cannot serve, or one that is missing a value, has to fail
     // before the statement is assembled and before the connection is used.
     // The shared layer owns the judgement; the host only maps the refusal.
-    datazen_feature_core::services::validate_filters(
+    datazen::services::validate_filters(
         driver.supported_filter_operators(),
         request.filters.as_deref().unwrap_or_default(),
     )?;
@@ -664,7 +661,7 @@ pub async fn read(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TableReadPreviewRequest {
-    pub manual_handle: Option<datazen_modules::execution::SessionHandle>,
+    pub manual_handle: Option<datazen::execution::SessionHandle>,
     pub context: RowChangeTableContext,
     pub page: u32,
     pub page_size: u32,
@@ -740,7 +737,7 @@ pub async fn preview(
         .ok_or_else(|| CommandError::NotConfigured("SQL driver unavailable".into()))?;
     // The same refusal a real read gives: a preview of a statement this
     // database would refuse is a lie, not a preview.
-    datazen_feature_core::services::validate_filters(
+    datazen::services::validate_filters(
         driver.supported_filter_operators(),
         request.filters.as_deref().unwrap_or_default(),
     )?;

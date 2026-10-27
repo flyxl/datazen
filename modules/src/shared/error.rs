@@ -1,6 +1,6 @@
 //! 错误词汇的两个半边：`PortError`（端口层事实）与 `ApiErrorCode`（跨边界业务拒绝码）。
 //!
-//! 原属 platform-api，D2（2026-10-26）起唯一定义在 `datazen-modules::shared::error`；
+//! 原属 platform-api，D2（2026-10-26）起唯一定义在 `datazen::shared::error`；
 //! platform-api 只再导出同一类型，`application` 与 `runtime` 亦经各自路径消费同一份定义。
 //!
 //! 两者共处一个模块，因为它们是**同一份跨 crate 词汇表的两端**：端口报事实、用层把事实
@@ -353,7 +353,7 @@ pub enum RetryDisposition {
 // 用例层失败类型：`ApiError`
 // ---------------------------------------------------------------------------
 //
-// 它为什么在本包（而不是 `application`）：`datazen-modules` 要实现用例端口
+// 它为什么在本包（而不是 `application`）：`datazen` 要实现用例端口
 // `ConnectionUseCases` 并返回 `ApiError`，而 runtime 不得依赖 application
 // （R2：`application` 与 `runtime` 是兄弟，互不依赖，且两者都不许闭成 Cargo 环）。
 // 端口签名里出现的每个类型都只能落在本包——`PortError`、`ApiErrorCode`、

@@ -1,9 +1,7 @@
 //! Desktop compatibility adapter for portable metadata reads.
 use crate::commands::{AppState, CommandError};
+pub use datazen::services::schema_metadata::{command_definitions, is_metadata_command};
 use datazen_driver_api::{CommandResult, ConnectionHandle, DatabaseDriver};
-pub use datazen_feature_core::services::schema_metadata::{
-    command_definitions, is_metadata_command,
-};
 use serde_json::Value;
 use std::sync::Arc;
 pub async fn execute(
@@ -14,7 +12,7 @@ pub async fn execute(
     command: &str,
     input: Value,
 ) -> Result<CommandResult, CommandError> {
-    datazen_feature_core::services::schema_metadata::execute(
+    datazen::services::schema_metadata::execute(
         &state.schema_cache,
         session,
         driver,
@@ -31,11 +29,9 @@ pub async fn execute_on_runtime_resource(
     command: &str,
     input: Value,
 ) -> Result<CommandResult, CommandError> {
-    datazen_feature_core::services::schema_metadata::execute_on_runtime_resource(
-        driver, handle, command, input,
-    )
-    .await
-    .map_err(Into::into)
+    datazen::services::schema_metadata::execute_on_runtime_resource(driver, handle, command, input)
+        .await
+        .map_err(Into::into)
 }
 #[cfg(test)]
 use datazen_driver_api::schema_metadata::*;

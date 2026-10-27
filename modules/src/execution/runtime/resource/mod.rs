@@ -253,7 +253,7 @@ impl ResourceError {
     /// 只有真正要越过模块边界时才用 [`ResourceError::rejected`] 转成既有 `RuntimeError`。
     pub fn logged(self, operation: &'static str) -> Self {
         tracing::warn!(
-            target: "datazen_modules::execution::runtime::resource",
+            target: "datazen::execution::runtime::resource",
             operation,
             reason = self.reason(),
             "resource layer refused the request"

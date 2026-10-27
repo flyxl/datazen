@@ -4,7 +4,7 @@ import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
  * Run `cargo test` for the platform core crates.
  *
  * Closes the gap at platform-development-plan.md:269 — the shared runtime was
- * linked by CI (`cargo test --lib -p datazen --lib`) but never tested, so the
+ * linked by CI (`cargo test --lib -p datazen_desktop --lib`) but never tested, so the
  * one crate the server will be built on could compile clean and still be wrong.
  *
  * ## Why this is a script and not a list in ci.yml
@@ -128,9 +128,9 @@ export const TESTED_LAYERS = Object.freeze([
   'infra',
   'server',
   // The Workspace App kernel used to be the standalone `workspace-apps` layer.
-  // It now lives in `feature-core` as the `feature_core::workspace_apps`
+  // It now lives in `modules` as the `modules::workspace_apps`
   // module, so its unit tests travel with that layer.
-  'feature-core',
+  'modules',
   'migration-common',
 ]);
 
@@ -175,7 +175,7 @@ export const TESTED_LAYERS = Object.freeze([
  * discovered are skipped instead — no crate, no target.
  */
 export const EXTRA_TARGETS = Object.freeze({
-  'datazen-modules': Object.freeze([
+  'datazen': Object.freeze([
     // §11.3 latency half: the bench binary's own unit tests, release only.
     Object.freeze({
       release: true,
@@ -190,7 +190,7 @@ export const EXTRA_TARGETS = Object.freeze({
  * test alone would compile only the empty module root and miss the real service.
  */
 export const FEATURE_TESTS = Object.freeze({
-  'datazen-modules': Object.freeze([
+  'datazen': Object.freeze([
     'settings',
     'ai',
     'connection',

@@ -71,7 +71,7 @@
 //!    (b) **落在真实文件上的探针**——往 `modules/src/execution/runtime/gateway/mod.rs` 的
 //!    `pub(crate) mod testing_support;` 之后插入一行 `pub fn
 //!    planted_authorizer_for_guard_bypass() -> … { …AlwaysAllow) }`，
-//!    跑 `cargo test -p datazen-modules --test owner_binding`，
+//!    跑 `cargo test -p datazen --test owner_binding`，
 //!    报 `modules/src/execution/runtime/gateway/mod.rs`，退出码 101。
 //!    （`request.rs` **不是**反例：实测它没有任何 `AlwaysAllow`/`AlwaysDeny` 命中。）
 //!

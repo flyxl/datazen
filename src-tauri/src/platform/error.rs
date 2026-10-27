@@ -18,7 +18,7 @@
 //! 重试由调用方自己的交互决定，不是服务端 `Retry-After` 的事。
 
 use crate::commands::CommandError;
-use datazen_modules::shared::error::{ApiError, ApiErrorCode};
+use datazen::shared::error::{ApiError, ApiErrorCode};
 
 /// 把应用层错误收敛成既有 IPC 错误形状。
 pub fn into_command_error(error: ApiError) -> CommandError {
@@ -77,7 +77,7 @@ pub fn into_command_error(error: ApiError) -> CommandError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_modules::shared::id::RequestId;
+    use datazen::shared::id::RequestId;
 
     fn err(code: ApiErrorCode, message: &str) -> ApiError {
         ApiError::new(code, message).with_request_id(Some(RequestId::new("req-7")))

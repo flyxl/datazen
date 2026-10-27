@@ -9,7 +9,7 @@ DataZen 是 Tauri v2 + React 18 + TypeScript + Rust 的跨平台数据库管理�
 ```text
 src/                 React UI、Zustand stores、Tauri IPC client、i18n
 src-tauri/           Desktop bootstrap、commands、platform、store、宿主适配
-packages/            driver-api、feature-core、runtime、application、platform-api、迁移包、UI/SDK/驱动
+packages/            driver-api、modules、runtime、application、platform-api、迁移包、UI/SDK/驱动
 e2e/                 Host WebdriverIO journeys
 docs/                features、architecture、development、blogs、已核实且明确不修的 bugs
 ```
@@ -20,7 +20,7 @@ docs/                features、architecture、development、blogs、已核实�
 
 权威方案：[DDD 模块化重构](docs/development/ddd-refactor-plan.md)（总纲；实施细节按主题在同目录 `ddd-refactor/` 下，细节文件保留原 §2–§14 编号）。该方案区分当前事实与目标设计，不能把目标目录写成已实现。
 
-- 最终以一个 `modules/` crate 按功能组织 `application` / `domain`；目标 package 为 `datazen-modules`。
+- 最终以一个 `modules/` crate 按功能组织 `application` / `domain`；目标 package 为 `datazen`。
 - `src-tauri` 是 Desktop 宿主；目标 Web 宿主是 `web/` / `datazen-web`。
 - Repository trait 由所属 domain 定义，Desktop/Web infrastructure 实现；不建立全局仓储全集。
 - Controller 只做上下文、DTO、应用服务调用和错误映射，不直接访问 Store、AppDb、Driver、Runtime internals。
@@ -58,7 +58,7 @@ pnpm typecheck                       # 默认单引擎门禁，包含测试文�
 pnpm typecheck:tsc                   # 权威 TypeScript 编译器
 npx vitest run                       # Host 前端单测
 cargo fmt --all -- --check
-cargo test -p datazen --lib
+cargo test -p datazen_desktop --lib
 node scripts/check-ddd-layers.mjs
 node scripts/check-platform-crate-boundaries.mjs
 pnpm e2e                             # 构建并运行 Host E2E

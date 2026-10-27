@@ -4,11 +4,11 @@ use std::sync::Arc;
 
 use super::{err, record, runtime_err};
 use crate::gateway_fixtures as fx;
-use datazen_modules::execution::runtime::connection::{
+use datazen::execution::runtime::connection::{
     Counter, ExecutionId, ExecutionState, RuntimeError, SessionState,
 };
-use datazen_modules::execution::runtime::gateway::idempotency::RequestFingerprint;
-use datazen_modules::execution::runtime::gateway::{
+use datazen::execution::runtime::gateway::idempotency::RequestFingerprint;
+use datazen::execution::runtime::gateway::{
     GatewayAction, GatewayError, IdempotencyRecord, IdempotencyScope, InMemoryIdempotencyRepository,
 };
 // ───────────────── A 受理入口 ─────────────────

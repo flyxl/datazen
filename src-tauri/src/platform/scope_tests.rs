@@ -13,10 +13,10 @@
 use super::super::identity::LOCAL_ORGANIZATION_ID;
 use super::super::{DesktopIdentity, PlatformAdapter, PlatformEntry};
 use super::{is_local_scope, local_organization_scope};
-use datazen_feature_core::dashboard::repository::DashboardRepository;
-use datazen_modules::shared::error::{ApiError, ApiErrorCode};
-use datazen_modules::shared::id::OrganizationId;
-use datazen_modules::shared::scope::OrganizationScope;
+use datazen::dashboard::repository::DashboardRepository;
+use datazen::shared::error::{ApiError, ApiErrorCode};
+use datazen::shared::id::OrganizationId;
+use datazen::shared::scope::OrganizationScope;
 
 /// 别的组织的作用域。
 fn foreign_scope() -> OrganizationScope {

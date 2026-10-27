@@ -5,21 +5,19 @@ use std::time::Duration;
 use tauri::AppHandle;
 use tauri_plugin_notification::NotificationExt;
 
-use datazen_feature_core::dashboard::types::{
-    AlertChannel, DashboardWidget, MonitorSettings, WidgetRun,
-};
+use datazen::dashboard::types::{AlertChannel, DashboardWidget, MonitorSettings, WidgetRun};
 
 const WEBHOOK_TIMEOUT: Duration = Duration::from_secs(10);
 
-pub use datazen_modules::monitor::application::notifications::{AlertPayload, PendingNotification};
+pub use datazen::monitor::application::notifications::{AlertPayload, PendingNotification};
 pub struct AlertChannelState {
-    core: datazen_modules::monitor::application::notifications::AlertChannelState,
+    core: datazen::monitor::application::notifications::AlertChannelState,
     http_client: reqwest::Client,
 }
 impl AlertChannelState {
     pub fn new() -> Self {
         Self {
-            core: datazen_modules::monitor::application::notifications::AlertChannelState::new(),
+            core: datazen::monitor::application::notifications::AlertChannelState::new(),
             http_client: reqwest::Client::builder()
                 .timeout(WEBHOOK_TIMEOUT)
                 .build()

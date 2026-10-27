@@ -33,7 +33,7 @@
 | [Driver API](../../../packages/driver-api/src/traits.rs) | 提供 DatabaseDriver、Command、迁移等能力 | 增加固定执行资源契约、可选能力接口 |
 | [Factory](../../../packages/driver-api/src/factory.rs) | inventory 编译期注册 | 桌面与 server 使用同一注册入口 |
 | [前端 Command SDK](../../../packages/driver-sdk/src/ipc/driverCommands.ts) | 直接导入 Tauri invoke/Channel | 注入传输无关 BackendClient |
-| [Workflow Command runtime](../../../packages/feature-core/src/workflow/command_runtime.rs) | 解析 connectionId，传递目标 database/schema | 明确 step/session/transaction 三种资源范围 |
+| [Workflow Command runtime](../../../modules/src/workflow/command_runtime.rs) | 解析 connectionId，传递目标 database/schema | 明确 step/session/transaction 三种资源范围 |
 | [dedicatedDbSession](../../../src/lib/dedicatedDbSession.ts) | 三件套准备会话由前端创建、释放 | 执行资源由后端 Job 持有 |
 
 Driver 公共类型继续遵守[驱动依赖边界](../../development/driver-api-dependency-boundary.md)。基线 `packages/driver-api/src/lib.rs` 的 `PROTOCOL_VERSION` 为 6、最低版本为 1；实现时重新核对，不能从旧架构说明复制版本数字。
@@ -101,7 +101,7 @@ modules/src/migration/schema_diff/        共享 Schema Diff 领域引擎       
 modules/src/migration/data_sync/          共享 Data Sync 领域引擎                    【已落地】
 modules/src/migration/data_transfer/      共享 Data Transfer 领域引擎                【已落地】
 modules/src/migration/common/   迁移引擎共享的 pair/recordset 边界          【已落地】
-packages/feature-core/       共享 feature（Workflow/AI/MCP/Dashboard/导出/备份恢复/Wapp 内核）【已落地】
+modules/       共享 feature（Workflow/AI/MCP/Dashboard/导出/备份恢复/Wapp 内核）【已落地】
 packages/driver-api/         现有 Driver API 与可选能力
 packages/driver-sdk/         现有驱动前端元数据/方言/Command SDK
 packages/ai-api/             现有 AI Provider trait、工厂与调用协议
@@ -261,7 +261,7 @@ interface ArtifactChunk {
 | NetworkProvider | 按路由策略建立直连/隧道、端点校验、共享引用 |
 | BudgetCoordinator | 申请节点额度、续期、drain；失联时停止新增资源 |
 
-本表不含 `ConnectionCatalog`（D2 起已归 `datazen-modules::connection::domain::ConnectionRepository` 拥有，宿主 desktop/web 各自实现同一 domain trait；词汇表复用 `ConnectionConfig`，端口为明文语义），也不含 `IdentityResolver`（它已在 §4 模块职责表中引入）：执行身份解析（`executionIdentityKey` 的生产者）由 `IdentityResolver` 承担，`SecretProvider` 只负责版本化秘密材料的读取与轮换；边界见共享边界详细设计。
+本表不含 `ConnectionCatalog`（D2 起已归 `datazen::connection::domain::ConnectionRepository` 拥有，宿主 desktop/web 各自实现同一 domain trait；词汇表复用 `ConnectionConfig`，端口为明文语义），也不含 `IdentityResolver`（它已在 §4 模块职责表中引入）：执行身份解析（`executionIdentityKey` 的生产者）由 `IdentityResolver` 承担，`SecretProvider` 只负责版本化秘密材料的读取与轮换；边界见共享边界详细设计。
 
 `IdentityResolver` 的桌面实现**已落地**（`src-tauri/src/platform/execution_identity.rs` 的 `DesktopIdentityResolver`，装配于 `PlatformAdapter::inject`）：身份键由 `(organizationId, connectionId, policyIsolationKey)` 加一把服务端固定盐（宿主主密钥经 HMAC 域分离派生的子钥）确定性派生，因此同一三元组恒得同一键、凭据轮换只推进 `credentialRevision`；委托走独立入口 `resolve_delegation`，域标签与输入集都与本人路径不同，校验不过失败关闭、不降级为调用者权限（CM-06）；**`resolve` 在委托上下文上一律拒绝**——委托身份只能由 `resolve_delegation` 产出。客户端传入的用户名、角色与 `principal` 不参与派生（CM §4.1）。
 

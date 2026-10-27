@@ -4,7 +4,7 @@
 //! 拆分只搬运代码：夹具与导入经 `use super::*;` 全部来自父模块，断言与被测调用逐字未改。
 
 use super::*;
-use datazen_modules::jobs::domain::job::JobRecoveryVerdict;
+use datazen::jobs::domain::job::JobRecoveryVerdict;
 
 // ------------------------------------------------ runtime 生命周期旅程
 fn runtime_with(
@@ -77,10 +77,7 @@ impl JobHandler for ErrHandler {
     fn handler_version(&self) -> u64 {
         1
     }
-    fn validate_plan(
-        &self,
-        _plan: &FrozenPlan,
-    ) -> Result<Vec<StageSpec>, datazen_modules::jobs::JobError> {
+    fn validate_plan(&self, _plan: &FrozenPlan) -> Result<Vec<StageSpec>, datazen::jobs::JobError> {
         let mut stages = vec![StageSpec {
             stage_id: StageId::new("s1"),
             kind: "apply".into(),
@@ -99,7 +96,7 @@ impl JobHandler for ErrHandler {
         &self,
         spec: &StageSpec,
         cancel: &CancelToken,
-    ) -> Result<StageOutcome, datazen_modules::jobs::JobError> {
+    ) -> Result<StageOutcome, datazen::jobs::JobError> {
         if self.committed_first && spec.stage_id == StageId::new("s1") {
             return CountingHandler {
                 kind: "schemaDiffApply",
@@ -112,13 +109,13 @@ impl JobHandler for ErrHandler {
         if self.panic {
             panic!("synthetic panic payload");
         }
-        Err(datazen_modules::jobs::JobError::BudgetDenied(
+        Err(datazen::jobs::JobError::BudgetDenied(
             "synthetic backend secret".into(),
         ))
     }
     fn verify_recovery(
         &self,
-        _checkpoint: &datazen_modules::jobs::domain::job::Checkpoint,
+        _checkpoint: &datazen::jobs::domain::job::Checkpoint,
     ) -> RecoveryVerdict {
         RecoveryVerdict::ResumeAfterVerify { resume_through: 0 }
     }
@@ -407,14 +404,11 @@ impl JobHandler for ValidationPanicHandler {
     fn handler_version(&self) -> u64 {
         1
     }
-    fn validate_plan(
-        &self,
-        _: &FrozenPlan,
-    ) -> Result<Vec<StageSpec>, datazen_modules::jobs::JobError> {
+    fn validate_plan(&self, _: &FrozenPlan) -> Result<Vec<StageSpec>, datazen::jobs::JobError> {
         if self.panic {
             panic!("synthetic validation panic");
         }
-        Err(datazen_modules::jobs::JobError::BudgetDenied(
+        Err(datazen::jobs::JobError::BudgetDenied(
             "synthetic validation failure".into(),
         ))
     }
@@ -422,13 +416,10 @@ impl JobHandler for ValidationPanicHandler {
         &self,
         _: &StageSpec,
         _: &CancelToken,
-    ) -> Result<StageOutcome, datazen_modules::jobs::JobError> {
+    ) -> Result<StageOutcome, datazen::jobs::JobError> {
         panic!("validation must prevent dispatch");
     }
-    fn verify_recovery(
-        &self,
-        _: &datazen_modules::jobs::domain::job::Checkpoint,
-    ) -> RecoveryVerdict {
+    fn verify_recovery(&self, _: &datazen::jobs::domain::job::Checkpoint) -> RecoveryVerdict {
         RecoveryVerdict::RequireManualReview {
             reason: "test".into(),
         }

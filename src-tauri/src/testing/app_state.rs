@@ -6,10 +6,10 @@ use crate::commands::AppState;
 use crate::store::DesktopRepository;
 use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
+use datazen::execution::runtime::driver_registry::registry::DriverRegistry;
 use datazen_driver_api::resource::ResourceProvider;
 use datazen_driver_api::{ConnectionConfig, SslMode, TableInfo, TableType};
 use datazen_driver_api::{DatabaseDriver, DatabaseDriverFactory};
-use datazen_modules::execution::runtime::driver_registry::registry::DriverRegistry;
 
 /// Temp store + mock postgres driver for command tests.
 pub struct TestAppState {
@@ -226,9 +226,9 @@ impl TestAppState {
 
     /// Open a runtime session for a profile that the test has already persisted.
     pub async fn open_runtime_session(&self, id: &str) -> String {
-        use datazen_modules::application::sessions::ConnectionUseCases;
-        use datazen_modules::execution::application::requests::OpenSessionRequest;
-        use datazen_modules::{
+        use datazen::application::sessions::ConnectionUseCases;
+        use datazen::execution::application::requests::OpenSessionRequest;
+        use datazen::{
             execution::application::idempotency::IdempotentOperation,
             execution::target::{ExecutionTarget, NamespaceTarget},
             shared::context::OwnerRef,

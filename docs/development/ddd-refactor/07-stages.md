@@ -33,25 +33,25 @@
 2. 按[§5.5](02-legacy-crate-migration.md)移动必要类型，旧包只再导出；接入现有桌面 Settings 适配和命令，不只交目录。
 3. 实现空 features 与该功能 feature 构建；新模块不反向依赖待退役包。
 4. 扩展 `scripts/lib/cargoWorkspace.mjs`、`scripts/check-ddd-layers.mjs`、`scripts/check-platform-crate-boundaries.mjs` 与对应自证，使新成员/内部模块真正进入扫描。
-5. 更新 `scripts/run-platform-crate-tests.mjs` 的收集与 feature 矩阵；不能让 datazen-modules 只有空 feature 测试而漏掉业务。
+5. 更新 `scripts/run-platform-crate-tests.mjs` 的收集与 feature 矩阵；不能让 datazen 只有空 feature 测试而漏掉业务。
 6. 对已迁移模块新增[§4](01-target-architecture.md)的内部边界检测。旧 crate 规则仍覆盖未迁移部分。
 
 **退出**：能实际读写设置；旧/新 import 指向同一类型；禁止依赖的合成样例会失败；扫描目标或测试模块为空时不能报告全绿。
 
-**已核实的 D1 设置小切片（2026-10-25）**：`datazen-modules::settings` 已拥有
+**已核实的 D1 设置小切片（2026-10-25）**：`datazen::settings` 已拥有
 `SharedSettings`、`AppSettings` 的 opaque 读写契约、枚举校验与连接池大小归一化，
 Desktop 的 `get_shared_settings` / `save_shared_settings` 以及完整设置读写命令均经
 `SettingsService` 执行。`src-tauri/src/platform/settings.rs` 是 Desktop 仓储适配器，
 复用既有 `DesktopRepository` 的缓存、JSON 格式、原子写入和错误边界；Redis 刷新、
 monitor reload 与 tray 同步仍由原命令路径执行。
 
-**D1 收尾清理已完成（2026-10-26）**：`datazen_modules::platform_api::settings::*`、
+**D1 收尾清理已完成（2026-10-26）**：`datazen::platform_api::settings::*`、
 `platform_api::ports::SettingsRepository`、`datazen_application::settings` 过渡导出
 与 `ApplicationServices` 的设置门面字段均已删除。`SettingsService` 改为持有
 `Arc<dyn SettingsRepository>`（宿主可在装配根长期共享同一服务实例）；桌面宿主的
 `PlatformAdapter` 直接持有模块设置服务并以 `require_settings_service` 暴露，
-命令经 `platform::ipc::require_settings_service` 取用例。`datazen-modules::platform_api`
-与 `datazen-feature-core` 显式依赖 `datazen-modules`（settings feature）以直接
+命令经 `platform::ipc::require_settings_service` 取用例。`datazen::platform_api`
+与 `datazen` 显式依赖 `datazen`（settings feature）以直接
 消费设置词汇。设置事实仍只有一份：模块服务与宿主持有的是同一个仓储实例。
 
 **回滚**：revert 本切片恢复旧入口，设置文件格式不变。
@@ -75,7 +75,7 @@ monitor reload 与 tray 同步仍由原命令路径执行。
 4. 审计 drivers / modules / web / desktop 四类消费者：任意两者共用的无业务工具
    （路径安全、凭据脱敏、原子写入等）收拢进 infra；仅单消费者使用的留在原处。
 
-**退出**：AI Provider 契约与实现只有 `datazen-modules::ai` 一份；旧 crate 名不再
+**退出**：AI Provider 契约与实现只有 `datazen::ai` 一份；旧 crate 名不再
 出现在生产依赖；infra 改名后全仓构建与门禁通过；被收拢的工具在原消费者处只剩
 单一 import，无重复实现。
 
@@ -83,12 +83,12 @@ monitor reload 与 tray 同步仍由原命令路径执行。
 1. `ai-api` → `ai-providers`（`46dc15ba6`）：契约三文件随迁，导出面等价。
 2. `ai-providers` → `modules/src/ai/`（`e02d60d2c`）：domain 契约 + providers 适配
    + registry + 集成测试（`#![cfg(feature = "ai")]` 门控）；F-09 退役、F-14 豁免
-   reqwest、F-04 允许垫底层传递边；feature-core / src-tauri 经
-   `datazen-modules` 的 `ai` feature 消费。
+   reqwest、F-04 允许垫底层传递边；modules / src-tauri 经
+   `datazen` 的 `ai` feature 消费。
 3. `platform-infra` → `infra`（本提交）：目录、crate 名（`datazen-infra`）、
    LAYERS/F-11/F-04/F-12、TESTED_LAYERS、panic-policy 目标、CI 文档全部同步。
-4. 共享审计结论：`redaction`（feature-core / modules::ai / desktop 三类消费）、
-   `path_safety`（feature-core / desktop 两类）已在本层；`drivers/http-support`
+4. 共享审计结论：`redaction`（modules / modules::ai / desktop 三类消费）、
+   `path_safety`（modules / desktop 两类）已在本层；`drivers/http-support`
    仅驱动单类消费，按「单消费者留原处」规则不迁移；驱动无凭据日志路径，
    无需新增 redaction 消费；web 宿主 D7 落地后再按同一规则审计。
 
@@ -110,12 +110,12 @@ monitor reload 与 tray 同步仍由原命令路径执行。
 
 **回滚**：恢复旧适配调用，不需要转换配置文件。不得在旧新实现之间双写。
 
-**第一切片已完成（2026-10-26）**：`datazen-modules::connection` 落地
+**第一切片已完成（2026-10-26）**：`datazen::connection` 落地
 （domain：`ConnectionScope` / `ConnectionRepository` / `ConnectionRepositoryError`；
 application：`ConnectionService`，吸收表单回显的密钥合并、脱敏投影与复制流程，
 含 7 条用例测试）。桌面实现 `src-tauri/src/platform/connections.rs` 的
 `DesktopConnectionStore`（复用同一 `DesktopRepository` 的缓存、写锁与密钥）。
-`platform-api::ports::ConnectionCatalog` 与 feature-core 的重复 trait 定义均已删除
+`platform-api::ports::ConnectionCatalog` 与 modules 的重复 trait 定义均已删除
 （PORT_TRAITS / §6.4 端口表 / inventory 解析清单同步）；`ApplicationServices`
 不再持有 connections 字段；连接命令、分组命令、导入/导出、schema diff 校验、
 AI 工具（egress 摘要 / db_tools / 连接上下文）与 MCP 的目录读取全部改为经
@@ -213,7 +213,7 @@ AI 工具（egress 摘要 / db_tools / 连接上下文）与 MCP 的目录读取
   AUDITED 表、形态中立闸门扫描根、catalog_guard 文档真源、
   runtime 测试的 include_str 与 MANIFEST_DIR 路径）。
 - 验证：modules 872 / runtime lib 9 + 集成 444 / platform-api 46 /
-  kernel 34 / feature-core 765 / application 95 / schema-diff 179 全绿
+  kernel 34 / modules 765 / application 95 / schema-diff 179 全绿
   （p4_usecase_journeys 2 例为下述既有 flake）。
 
 **第三切片 c 已完成（2026-10-26）——编排归位与等待能力**：
@@ -288,20 +288,20 @@ AI 工具（egress 摘要 / db_tools / 连接上下文）与 MCP 的目录读取
 迁移顺序及边界：
 
 1. Settings 剩余路径、Named Views、History：共享业务进各模块；窗口位置、桌面路径等仍是宿主专属配置。
-   **Named Views 已完成（2026-10-26）**：`datazen-modules::named_views`（domain：DTO/规则/端口/IdMinter；
+   **Named Views 已完成（2026-10-26）**：`datazen::named_views`（domain：DTO/规则/端口/IdMinter；
    application：三个用例 + `NamedViewService` 门面）。`SortCondition` 随迁 `driver-api::filters`
-    （feature-core 经再导出保持旧路径）。feature-core 的 `services::named_views` 模块删除，
+    （modules 经再导出保持旧路径）。modules 的 `services::named_views` 模块删除，
     `ApplicationServices` 移除 named_views 字段，命令经 `require_named_views_service` 消费。
-   **Monitor 已完成（2026-10-26，本轨）**：`datazen-modules::monitor` 现在拥有
+   **Monitor 已完成（2026-10-26，本轨）**：`datazen::monitor` 现在拥有
    MonitorGrant/MonitorScope、grant identity/revocation/expiry 校验、工作流 revision、
    固定只读目标归一化、只读 SQL 规则、occurrence schedule/definition/idempotency 身份、
    bounded evidence stages、调度引擎和通知状态规则。Desktop 仅实现 `MonitorHost`、
    SQLite grant/run/job 持久化、执行/驱动/策略/身份适配、tray 与 Tauri notification/event
-   交付；旧 `feature-core::dashboard::{monitor,schedule_grant,notifications}` 路径仅为
-   兼容再导出，唯一消费者是迁移期 feature-core/外部驱动测试，按 D8 删除。
+   交付；旧 `modules::dashboard::{monitor,schedule_grant,notifications}` 路径仅为
+   兼容再导出，唯一消费者是迁移期 modules/外部驱动测试，按 D8 删除。
 2. Dashboard：保存/组件创建/运行历史/导入导出规则进入 application/domain，管理库实现留宿主。文件对话框留宿主交互层，应用服务接收已选择的内容/受控文件能力，不能把 GUI 对话框作为 Web 必填依赖。
 3. Workflow：保留 step/session/transaction block 的资源边界，调用 execution 与 jobs。
-4. AI / MCP：Provider 契约与适配已在 D1.5 并入 `modules::ai`；本阶段迁入的是 feature-core 中 Provider-neutral 的业务（会话编排、工具循环、安全策略）与 MCP 业务分发；认证/stdio/HTTP 登录/事件传输在宿主，授权数据库工具走同一执行入口。
+4. AI / MCP：Provider 契约与适配已在 D1.5 并入 `modules::ai`；本阶段迁入的是 modules 中 Provider-neutral 的业务（会话编排、工具循环、安全策略）与 MCP 业务分发；认证/stdio/HTTP 登录/事件传输在宿主，授权数据库工具走同一执行入口。
 5. Monitor、Export、Backup/Restore、Wapps、Tunnel：按各自模型迁移，保留 grant、文件安全、恢复锁、沙箱桥与网络限制。
 
 **Tunnel 已完成（2026-10-26）**：机制、TLS provider、TOFU 规则和
@@ -341,7 +341,7 @@ AI 工具（egress 摘要 / db_tools / 连接上下文）与 MCP 的目录读取
 
 **工作**：
 
-1. 删除旧 application/platform-api/runtime/kernel/feature-core 及已并入的迁移/tunnel 包的重复实现、兼容再导出和 workspace 成员。
+1. 删除旧 application/platform-api/runtime/kernel/modules 及已并入的迁移/tunnel 包的重复实现、兼容再导出和 workspace 成员。
 2. 更新 Cargo.lock、驱动测试的 dev-dependency、CI 发现、构建脚本、Rustdoc 链接与正式架构说明。
 3. 删除临时例外；旧包名仅允许出现在明确的历史说明中，不能出现在生产依赖或可执行测试路径里。
 4. 旧 IPC 是否删除单独按外部兼容政策决定；保留委托命令不等于保留旧 crate。

@@ -1,7 +1,7 @@
 // 仅在 ai feature 下编译：modules 的集成测试按 feature 矩阵收集。
 #![cfg(feature = "ai")]
 
-use datazen_modules::ai::{
+use datazen::ai::{
     custom::{fetch_remote_models_with_client, CustomProtocol},
     http::HttpClient,
 };

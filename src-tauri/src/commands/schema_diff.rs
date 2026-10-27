@@ -90,7 +90,7 @@ pub(crate) async fn persisted_connection(
     let service = crate::platform::ipc::require_connection_service(state)?;
     service.get(&scope, connection_id).await.map_err(|error| {
         let err = match error {
-            datazen_modules::connection::ConnectionError::NotFound(entity) => {
+            datazen::connection::ConnectionError::NotFound(entity) => {
                 CommandError::NotFound(entity)
             }
             other => CommandError::Internal(other.to_string()),
