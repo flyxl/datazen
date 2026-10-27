@@ -15,7 +15,7 @@
 //! 断言全部非空：把「候选先放行」「提交时旧条目先留着」「未知结果按『多半成功』处理」
 //! 这些改法，都会让下面至少一条断言变红。末一条尤其反直觉——补放行在**多数**时候确实该
 //! 无条件执行，只有末两条把它钉死：把补放行换回无条件重写，本文件另外十条全绿，只有
-//! 「查状态不得复活已关闭的候选」与「查状态不得撤掉活着的候选的期限」两条变红（实测）。
+//! 「a_status_lookup_must_not_resurrect_a_closed_candidate」与「a_status_lookup_must_not_lift_the_deadline_of_a_live_candidate」两条变红（实测）。
 
 mod common;
 
@@ -631,7 +631,7 @@ async fn replacement_after_expiry_is_refused_and_never_resurrects_the_old_entry(
 /// （提交记录一直留着，因为记录的是「提交落定过」而不是「候选还活着」），于是每一次重试
 /// 都会走进那一格。
 #[tokio::test]
-async fn 查状态不得复活已关闭的候选() {
+async fn a_status_lookup_must_not_resurrect_a_closed_candidate() {
     let (_clock, dir) = cycling_directory(64);
     let old = open(&dir).await;
     let candidate = candidate_owner("dbs_candidate_0007", NEXT_EPOCH, "2026-01-01T00:00:00.000Z");
@@ -704,7 +704,7 @@ async fn 查状态不得复活已关闭的候选() {
 /// 被撤了，于是它变成一个**只有显式关闭才会消失**的会话——扫不到、过期不了、还占着名额。
 /// 所以补放行只在「确实还卡在屏障里」时才动手，其余情况原样不碰。
 #[tokio::test]
-async fn 查状态不得撤掉活着的候选的期限() {
+async fn a_status_lookup_must_not_lift_the_deadline_of_a_live_candidate() {
     let (clock, dir) = cycling_directory(64);
     let old = open(&dir).await;
     let candidate = candidate_owner("dbs_candidate_0008", NEXT_EPOCH, "2026-01-01T00:00:00.000Z");

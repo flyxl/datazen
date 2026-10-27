@@ -10,7 +10,7 @@
 //!    躲得过并发驱逐，靠的不是「替换期间它不可见」（那个窗口在 `publish_candidate`
 //!    之后就结束了，此后它就是一条普通在册会话），而是 `open_candidate` 用的
 //!    `OpenRequest` 把 `idle_deadline_ms` 置成 `None`。承重件必须由用例钉住，
-//!    否则它就只是一句注释——见 `发布后的候选没有空闲期限_驱逐对它是不动`。
+//!    否则它就只是一句注释——见 `a_published_candidate_has_no_idle_deadline_eviction_leaves_it_alone`。
 //!
 //! 2. **「明确失败」这一半：可达，且失败点在驱逐侧而不是替换侧。** 发放闸门
 //!    在替换期间把 `Evict` 拒成 `CloseRejected("replacementInProgress")`（`actor/context.rs`
@@ -31,7 +31,7 @@
 //! 台账合并时会被删掉，所以「哪几个变异让本组变红」必须留在文件里：
 //!
 //! - **删掉 `evict_idle_at` 里 `Err(RuntimeError::CloseRejected(_))` 那个 arm**（让它
-//!   落到 `forget`）：`屏障期间到来的驱逐不得摘行_旧句柄仍由替换例程在原资源终结` **红**——
+//!   落到 `forget`）：`eviction_at_the_barrier_must_not_unlink_the_replacement_finalizes_the_old_handle` **红**——
 //!   探针看到行已被摘、额度多还一格，并且整场替换结束时 `closed_with` 里**没有** `res_1`、
 //!   `finalize_calls() == 0`：旧物理资源带着两个已登记句柄泄漏。
 //! - **删掉闸门对 `Evict` 的拒绝**（`actor/context.rs` 的 `gate` 不再挡 `Evict`）：
@@ -40,18 +40,18 @@
 //!   拿到 `UnknownSession`（本例的 `expect` 会喊）。两种红法指向同一件事：
 //!   这一格的答复**必须**是「什么都没发生」。
 //! - **把 `evict_idle_at` 改成「所有答复一律不动」**（删掉 `Ok(Some)` 与 `SessionLost`
-//!   两格）：`对照_没有屏障时到期驱逐照常摘行还额度` 与 `registry_release.rs` 的
-//!   `归池时driver报clean但宿主仍有登记句柄不得算归池成功` 都会红——本组不是单向逻辑。
+//!   两格）：`control_without_a_barrier_an_expired_eviction_unlinks_and_returns_quota_as_usual` 与 `registry_release.rs` 的
+//!   `pooling_with_a_clean_driver_report_but_host_handles_still_registered_must_not_succeed` 都会红——本组不是单向逻辑。
 //! - **把第 1 步的取样退回 `drain_handles`（取走即注销）**：
-//!   `旧句柄只在其登记时的资源上终结_新资源从不收到终结请求` 红在
+//!   `old_handles_finalize_where_they_registered_the_new_one_gets_no_finalize_request` 红在
 //!   `closed_with[0].registered_handles` 那道**正例**断言上吗？不——那里两种实现都是 0。
 //!   真正会红的是 `registry_release.rs` 里 driver 少报那两条（恒 0 ⇒ 判据失去可观测面）。
 //!   本组的这一条钉的是**批次归属**（`resource_id`），与FU2 的账目形状正交。
 //! - **把 `context.rs` 的 `open_request` 里 `idle_deadline_ms: None` 改成 `Some(..)`**：
-//!   `发布后的候选没有空闲期限_驱逐对它是不动` **红**（候选被驱逐摘掉、额度多还一格）。
+//!   `a_published_candidate_has_no_idle_deadline_eviction_leaves_it_alone` **红**（候选被驱逐摘掉、额度多还一格）。
 //!   这条是第 1 点那节论证的**承重件**反证。
 //! - **把 `release` 第 1 步的分组依据从「句柄登记时的资源」换成「当前物理资源」**：
-//!   `旧句柄只在其登记时的资源上终结_新资源从不收到终结请求` **红**——那就是条款 (2)
+//!   `old_handles_finalize_where_they_registered_the_new_one_gets_no_finalize_request` **红**——那就是条款 (2)
 //!   「出现在新 resource」的形状本身。
 
 #![allow(dead_code)]
@@ -260,7 +260,7 @@ impl ReplacementDirectory for ProbingDirectory {
 /// | 闸门不挡 `Evict` | 驱逐真的跑了释放例程 | 旧句柄在**提交之前**就被关掉，第 ⑥ 步拿 `UnknownSession` |
 /// | 分类正确（现状） | 行在、额度在 | 终结与关闭都只发生在 `res_1` 上，各一次 |
 #[tokio::test]
-async fn 屏障期间到来的驱逐不得摘行_旧句柄仍由替换例程在原资源终结() {
+async fn eviction_at_the_barrier_must_not_unlink_the_replacement_finalizes_the_old_handle() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
             .handles(vec![handle_ref("h1", "res_1"), handle_ref("h2", "res_1")])
@@ -363,7 +363,7 @@ async fn 屏障期间到来的驱逐不得摘行_旧句柄仍由替换例程在�
 /// 没有这条，上面那条就只是「驱逐从此永远不动手」也能变绿——那是本项目反复踩过的
 /// 单向逻辑（有进入、无退出）。这里用一个没在替换里的会话证明正常驱逐仍然成立。
 #[tokio::test]
-async fn 对照_没有屏障时到期驱逐照常摘行还额度() {
+async fn control_without_a_barrier_an_expired_eviction_unlinks_and_returns_quota_as_usual() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
             .handles(vec![handle_ref("h1", "res_1")])
@@ -406,7 +406,7 @@ async fn 对照_没有屏障时到期驱逐照常摘行还额度() {
 /// 3. 宿主账全空时 `CloseResource.registered_handles` 才等于 0——这是**正例**，
 ///    与 `registry_release.rs` 里 driver 少报 ⇒ 该值非 0 的那两条互为对照。
 #[tokio::test]
-async fn 旧句柄只在其登记时的资源上终结_新资源从不收到终结请求() {
+async fn old_handles_finalize_where_they_registered_the_new_one_gets_no_finalize_request() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
             .handles(vec![handle_ref("h1", "res_1"), handle_ref("h2", "res_1")])
@@ -476,7 +476,7 @@ async fn 旧句柄只在其登记时的资源上终结_新资源从不收到终�
 /// 本例立刻红（候选被驱逐摘掉、额度多还一格）——**到那一步上面那段论证就不再成立**，
 /// 注释必须改写。所以这不是装饰性用例：它是那条不可达论证唯一可执行的支点。
 #[tokio::test]
-async fn 发布后的候选没有空闲期限_驱逐对它是不动() {
+async fn a_published_candidate_has_no_idle_deadline_eviction_leaves_it_alone() {
     let backend = ScriptedBackend::new(BackendPlan::default()).await;
     let registry = registry_with(&backend);
     let (_clock, directory) = common::cycling_directory(64);
@@ -529,7 +529,7 @@ async fn 发布后的候选没有空闲期限_驱逐对它是不动() {
 /// 否则它可能只是「驱逐对谁都不动」。这一条把 `open_request` 里带期限的会话与
 /// 候选在同一条判据上分开——差异只有一个变量：**期限有没有**。
 #[tokio::test]
-async fn 正例对照_带期限的会话在同一时钟下确实被驱逐() {
+async fn positive_control_a_session_with_a_deadline_is_indeed_evicted_under_the_same_clock() {
     let backend = ScriptedBackend::new(BackendPlan::default()).await;
     let registry = registry_with(&backend);
     registry

@@ -5,7 +5,7 @@
 //! | 用例 | 分支 |
 //! | --- | --- |
 //! | `登记成功只投影会话面` | `open_and_publish` Ok；登记不得早于打开成功 |
-//! | `同一_id_二次登记当场拒绝且不留痕` | `write_table().insert` 冲突；失败不留痕 |
+//! | `registering_the_same_id_twice_is_rejected_on_the_spot_and_leaves_no_trace` | `write_table().insert` 冲突；失败不留痕 |
 //! | `打开失败不留痕不占额度` | `open_and_publish` Err → `quota.release()` |
 //! | `额度用尽拒绝新登记` | `QuotaLedger::try_reserve` |
 //! | `未登记句柄一律 UnknownSession` | `locate` 落空（精确匹配） |
@@ -37,7 +37,7 @@ fn registry_with(backend: Arc<ScriptedBackend>, limit: usize) -> SessionRegistry
 }
 
 #[tokio::test(start_paused = true)]
-async fn 登记成功只投影会话面且表位额度同步可见() {
+async fn a_successful_registration_projects_only_the_session_facade_slot_and_quota_visible() {
     let backend = ScriptedBackend::defaults().await;
     let registry = registry_with(Arc::clone(&backend), SESSION_LIMIT);
 
@@ -104,7 +104,7 @@ async fn 登记成功只投影会话面且表位额度同步可见() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 同一_id_二次登记当场拒绝且不留痕() {
+async fn registering_the_same_id_twice_is_rejected_on_the_spot_and_leaves_no_trace() {
     let backend = ScriptedBackend::defaults().await;
     let registry = registry_with(Arc::clone(&backend), SESSION_LIMIT);
     register_ready(&registry, db_session_id()).await;
@@ -133,7 +133,7 @@ async fn 同一_id_二次登记当场拒绝且不留痕() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 打开失败不留痕不占额度不占表位() {
+async fn an_open_failure_leaves_no_trace_takes_no_quota_and_no_table_slot() {
     let backend = ScriptedBackend::new(BackendPlan::default().open_fails()).await;
     let registry = registry_with(Arc::clone(&backend), SESSION_LIMIT);
 
@@ -162,7 +162,7 @@ async fn 打开失败不留痕不占额度不占表位() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 额度用尽拒绝新登记且不再打开物理资源() {
+async fn an_exhausted_quota_rejects_new_registrations_without_opening_physical_resources() {
     let backend = ScriptedBackend::defaults().await;
     let registry = registry_with(Arc::clone(&backend), 1);
     register_ready(&registry, db_session_id()).await;
@@ -184,7 +184,7 @@ async fn 额度用尽拒绝新登记且不再打开物理资源() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 未登记句柄一律_unknown_session_不定位到替代会话() {
+async fn unregistered_handles_yield_unknown_session_never_resolving_to_a_substitute_session() {
     let backend = ScriptedBackend::defaults().await;
     let registry = registry_with(Arc::clone(&backend), SESSION_LIMIT);
     let view = register_ready(&registry, db_session_id()).await;
@@ -216,7 +216,7 @@ async fn 未登记句柄一律_unknown_session_不定位到替代会话() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 旧世代句柄立即失效_登记表仍可定位() {
+async fn a_stale_generation_handle_is_revoked_immediately_while_the_registry_can_still_locate_it() {
     let backend = ScriptedBackend::defaults().await;
     let registry = registry_with(Arc::clone(&backend), SESSION_LIMIT);
     let view = register_ready(&registry, db_session_id()).await;
@@ -245,7 +245,7 @@ async fn 旧世代句柄立即失效_登记表仍可定位() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 执行完推进上下文世代_旧世代请求拿到明确错() {
+async fn a_finished_execution_advances_the_context_generation_old_requests_get_an_explicit_error() {
     let backend = ScriptedBackend::defaults().await;
     let registry = registry_with(Arc::clone(&backend), SESSION_LIMIT);
     let view = register_ready(&registry, db_session_id()).await;

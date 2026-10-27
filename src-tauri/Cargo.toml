@@ -126,3 +126,7 @@ required-features = ["test-harness"]
 # feature `drivers-registry.json` can produce here — standalone `cargo check`
 # then does not treat them as unexpected cfg.
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("driver-postgres", "driver-mysql", "driver-sqlite", "driver-redis", "driver-mongodb", "driver-sqlserver", "driver-clickhouse", "driver-duckdb", "driver-elasticsearch", "driver-rqlite", "driver-turso", "driver-influxdb", "driver-victoriametrics", "driver-hbase", "driver-vector", "driver-kiwi", "driver-superset"))'] }
+# 标识符只许 ASCII：中文测试名（存量已于 2026-10-27 全量改英文）会触发
+# non_snake_case 告警刷屏 CI 日志；deny 让新增非 ASCII 标识符直接红编译。
+# 注释与字符串字面量里的中文不受影响。
+non_ascii_idents = "deny"

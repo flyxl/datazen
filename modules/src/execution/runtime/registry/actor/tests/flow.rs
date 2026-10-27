@@ -16,7 +16,7 @@ use super::*;
 /// 证据有三段：后端只被调用了一次、第二条的回执还没到（`try_recv` 是
 /// `Empty` 而不是 `Closed`）、闸门放开后两条按 host 铸造的递增 id 先后落地。
 #[tokio::test(start_paused = true)]
-async fn 会话内严格串行第二条执行排到第一条之后() {
+async fn executions_within_a_session_are_strictly_serial_the_second_queues_behind_the_first() {
     let backend = FakeBackend::new(FakeOutcome::default().with_script(Script::Silent)).await;
     let (actor, view, _audit) = spawn_ready(backend.clone()).await;
     let handle = handle_of(&view);
@@ -83,7 +83,7 @@ async fn 会话内严格串行第二条执行排到第一条之后() {
 /// 这里不是「两个 actor 各自跑」，而是同一个后端上量出峰值并发数：
 /// 如果实现退化成一把握住所有会话的大锁，`peak_live()` 只会是 1。
 #[tokio::test(start_paused = true)]
-async fn 不同会话之间真的并发() {
+async fn different_sessions_actually_run_concurrently() {
     let backend = FakeBackend::new(FakeOutcome::default().with_script(Script::Silent)).await;
     let (left, left_view, _a) = spawn_ready_for(backend.clone(), db_session_id()).await;
     let (right, right_view, _b) = spawn_ready_for(backend.clone(), other_db_session_id()).await;
@@ -118,7 +118,7 @@ async fn 不同会话之间真的并发() {
 /// 切库竞态：请求带着**旧修订**打过来，必须被拒，
 /// 而不是在新目标上执行——配置不得用来找替代会话。
 #[tokio::test(start_paused = true)]
-async fn 带着旧上下文修订的执行被拒而不是跑在新目标上() {
+async fn an_execution_with_a_stale_revision_is_rejected_not_run_on_the_new_target() {
     let backend = FakeBackend::new(FakeOutcome::default()).await;
     let (actor, view, _audit) = spawn_ready(backend.clone()).await;
     assert_eq!(view.context_revision, Counter(1));
@@ -143,7 +143,7 @@ async fn 带着旧上下文修订的执行被拒而不是跑在新目标上() {
 /// 一个 ID 只登记一个归属者。带着**旧 runtimeEpoch** 的句柄
 /// 是上一代会话的遗物，它既不能投影也不能执行。
 #[tokio::test(start_paused = true)]
-async fn 旧运行纪元的句柄既不能投影也不能执行() {
+async fn a_handle_from_an_old_run_epoch_can_neither_project_nor_execute() {
     let backend = FakeBackend::new(FakeOutcome::default()).await;
     let (actor, view, _audit) = spawn_ready(backend.clone()).await;
 
@@ -191,7 +191,7 @@ async fn 旧运行纪元的句柄既不能投影也不能执行() {
 /// 三个断言缺一不可：回执是错误、投影不再是 `Ready`、审计里有
 /// `sessionRegistrationFailed` 且结论是 `rejected`。
 #[tokio::test(start_paused = true)]
-async fn 打开失败不返回成功也不留下半开记录() {
+async fn an_open_failure_returns_no_success_and_leaves_no_half_open_record() {
     let backend = FakeBackend::new(FakeOutcome::default().open_fails()).await;
     let (tx, mut audit) = mpsc::unbounded_channel();
     let db = db_session_id();
@@ -267,7 +267,7 @@ async fn 打开失败不返回成功也不留下半开记录() {
 /// 因此在「driver 少报、句柄仍活着的」场景下也照样绿——那正是
 /// 「driver 报 Clean 而宿主仍有已登记句柄时宿主检查必须失败」从不被检验的原因。
 #[tokio::test(start_paused = true)]
-async fn actor_终止后收掉物理资源不再重建句柄() {
+async fn after_the_actor_stops_physical_resources_are_torn_down_and_handles_are_not_rebuilt() {
     let backend = FakeBackend::new(
         FakeOutcome::default()
             .with_script(Script::Immediate)

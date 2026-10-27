@@ -12,16 +12,16 @@
 //!
 //! | 用例 | 分支 |
 //! | --- | --- |
-//! | 会话层九个变体逐一有确定结论 | `fold_exit(ExitFact::Session)` |
+//! | each_of_the_nine_session_layer_variants_gets_a_definite_conclusion | `fold_exit(ExitFact::Session)` |
 //! | 陈旧世代改判成会话未找到 | `ExitFact::Provider` 特例 |
 //! | 宿主拒绝对外不上线路 | `NotOnTheWire` |
 //! | 取消回执线格式键集固定三项 | `CancelReceipt` serde |
 //! | 审计条目只带版本不带连接串 | `CapabilityVersions::is_version_only` |
-//! | 登记成功只留一条带能力版本的条目 | `SessionRegistered` |
-//! | 执行终态是唯一带效果判定的条目 | `ExecutionCompleted` |
+//! | a_successful_registration_leaves_exactly_one_entry_with_the_capability_version | `SessionRegistered` |
+//! | an_execution_terminal_state_is_the_only_entry_with_an_effect_verdict | `ExecutionCompleted` |
 //! | 取消成功不改写数据效果 | `CancelResolved` 无 `effectOutcome` |
 //! | 收干只给增量而累积账保留全部 | `drain_audit` vs `audit_log` |
-//! | 额度只由登记表账本回答 | `remaining_quota` / `stale_quota_for` |
+//! | the_quota_is_answered_by_the_registry_ledger_alone | `remaining_quota` / `stale_quota_for` |
 
 #![allow(dead_code)]
 mod registry_fixtures;
@@ -112,7 +112,7 @@ fn session_facts() -> Vec<(&'static str, RuntimeError, Option<&'static str>)> {
 }
 
 #[test]
-fn 会话层九个变体逐一有确定结论() {
+fn each_of_the_nine_session_layer_variants_gets_a_definite_conclusion() {
     assert_eq!(
         session_facts().len(),
         9,
@@ -139,7 +139,7 @@ fn 会话层九个变体逐一有确定结论() {
 }
 
 #[test]
-fn 陈旧世代经_provider_面折叠成会话未找到() {
+fn a_stale_generation_folds_into_session_not_found_at_the_provider_boundary() {
     let mismatch = ProviderError::RuntimeEpochMismatch("epoch 6 != 7".to_owned());
     // provider 面自己把它报成「世代错配」……
     assert_eq!(
@@ -185,7 +185,7 @@ fn all_api_codes() -> Vec<ApiErrorCode> {
 }
 
 #[test]
-fn 宿主原字不是任何对外码() {
+fn a_raw_host_code_is_never_any_external_code() {
     // 审计逐字记的是 ExecutionErrorCode 的写法……
     assert_eq!(ExecutionErrorCode::HostRejected.as_str(), "hostRejected");
     for code in all_api_codes() {
@@ -208,7 +208,7 @@ fn 宿主原字不是任何对外码() {
 }
 
 #[test]
-fn 取消回执的线格式键集固定为三项() {
+fn the_wire_format_of_a_cancel_receipt_has_a_fixed_key_set_of_three() {
     let receipt = CancelReceipt::normalize(
         ExecutionId::new("exec_1_1".to_owned()),
         ExecutionState::Running,
@@ -228,7 +228,7 @@ fn 取消回执的线格式键集固定为三项() {
 }
 
 #[test]
-fn 审计条目只带版本不带连接凭据() {
+fn audit_entries_carry_the_version_but_never_connection_credentials() {
     let entry = RegistryAuditEntry::registered(
         db_session_id(),
         1,
@@ -254,7 +254,7 @@ fn 审计条目只带版本不带连接凭据() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 宿主拒绝原字进审计且不占额度() {
+async fn a_host_refusal_enters_the_audit_with_its_raw_code_and_occupies_no_quota() {
     let backend = ScriptedBackend::new(BackendPlan::default().open_fails()).await;
     let registry = registry_with(&backend);
     assert!(
@@ -299,7 +299,7 @@ async fn 宿主拒绝原字进审计且不占额度() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 登记成功只留一条带能力版本的条目() {
+async fn a_successful_registration_leaves_exactly_one_entry_with_the_capability_version() {
     let backend = ScriptedBackend::new(BackendPlan::default()).await;
     let registry = registry_with(&backend);
     register_ready(&registry, db_session_id()).await;
@@ -343,7 +343,7 @@ async fn 登记成功只留一条带能力版本的条目() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 执行终态是唯一带效果判定的条目() {
+async fn an_execution_terminal_state_is_the_only_entry_with_an_effect_verdict() {
     let backend = ScriptedBackend::new(BackendPlan::default()).await;
     let registry = registry_with(&backend);
     let view = register_ready(&registry, db_session_id()).await;
@@ -403,7 +403,7 @@ async fn 执行终态是唯一带效果判定的条目() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 取消成功不改写数据效果只留处置() {
+async fn a_successful_cancel_rewrites_no_data_effect_and_leaves_only_the_disposal() {
     let backend = ScriptedBackend::new(BackendPlan::default().with_script(Script::TwoStage)).await;
     let gate = backend.gate();
     let registry = registry_with(&backend);
@@ -454,7 +454,7 @@ async fn 取消成功不改写数据效果只留处置() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 收干审计只给增量而累积账保留全部() {
+async fn draining_the_audit_yields_only_the_increment_the_cumulative_ledger_keeps_everything() {
     let backend = ScriptedBackend::new(BackendPlan::default()).await;
     let registry = registry_with(&backend);
     let view = register_ready(&registry, db_session_id()).await;
@@ -496,7 +496,7 @@ async fn 收干审计只给增量而累积账保留全部() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 额度只由登记表账本回答() {
+async fn the_quota_is_answered_by_the_registry_ledger_alone() {
     let backend = ScriptedBackend::new(BackendPlan::default()).await;
     let registry = registry_with(&backend);
     assert_eq!(registry.remaining_quota(), SESSION_LIMIT);

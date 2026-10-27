@@ -461,7 +461,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn 未接线时借出得到配置事实错误且不留登记行() {
+    async fn borrowing_without_wiring_yields_a_config_error_and_leaves_no_registry_row() {
         let live = LiveConnections::unwired();
         let err = live
             .borrow(request("s0"))
@@ -474,7 +474,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn 宿主拒绝时不登记因此不留空行() {
+    async fn a_host_refusal_registers_nothing_so_no_empty_row_remains() {
         let live = LiveConnections::wired(Arc::new(Never));
         let err = live.borrow(request("s1")).await.expect_err("拒绝");
         assert!(matches!(err, LiveConnectionError::Refused(_)));
@@ -483,7 +483,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn 归还恰好一次且幂等() {
+    async fn return_happens_exactly_once_and_is_idempotent() {
         let ledger = LiveConnectionLedger::new();
         let id = DbSessionId::new("s2");
         let revocation = ledger.borrow(&id);
@@ -497,7 +497,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn 作废只翻标志不摘行所以计数不泄漏() {
+    async fn invalidation_only_flips_a_flag_so_the_counts_do_not_leak() {
         let ledger = LiveConnectionLedger::new();
         let id = DbSessionId::new("s3");
         let revocation = ledger.borrow(&id);
@@ -514,7 +514,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn 归还后的借用不可再用() {
+    async fn a_borrow_cannot_be_reused_after_return() {
         let ledger = Arc::new(LiveConnectionLedger::new());
         let id = DbSessionId::new("s4");
         let revocation = ledger.borrow(&id);

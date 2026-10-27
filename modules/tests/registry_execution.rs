@@ -4,12 +4,12 @@
 //!
 //! | 用例 | 分支 |
 //! | --- | --- |
-//! | `同一会话的执行串行_第二条排队不下发` | `handle_exec_while_flying` → `deferred` |
-//! | `跨会话执行并行_峰值并发为二` | 两个独立 actor 各自 `start_execution`；串行是**会话内**性质 |
-//! | `执行飞行中只读投影插空回答` | `handle_exec_while_flying` 的 `View` 分支（控制通道旁路） |
-//! | `句柄先登记终态后交付` | `apply_completion` 中 register 先于 reply |
-//! | `执行失败不伪装成功且会话回到就绪` | `Ok(Err(cause))` → `Outcome::Undecided` |
-//! | `排队中的执行不得绕过世代校验` | `drain_deferred` → `admit_execution`（切库竞态） |
+//! | `executions_in_the_same_session_are_serial_the_second_queues_without_dispatch` | `handle_exec_while_flying` → `deferred` |
+//! | `executions_across_sessions_run_in_parallel_with_a_peak_concurrency_of_two` | 两个独立 actor 各自 `start_execution`；串行是**会话内**性质 |
+//! | `while_an_execution_is_in_flight_read_only_projections_answer_in_between` | `handle_exec_while_flying` 的 `View` 分支（控制通道旁路） |
+//! | `the_handle_registers_the_terminal_state_before_delivery` | `apply_completion` 中 register 先于 reply |
+//! | `a_failed_execution_does_not_fake_success_and_the_session_returns_to_ready` | `Ok(Err(cause))` → `Outcome::Undecided` |
+//! | `a_queued_execution_must_not_bypass_the_generation_check` | `drain_deferred` → `admit_execution`（切库竞态） |
 //!
 //! # 为什么必须在这一层测
 //!
@@ -61,7 +61,7 @@ fn release(gate: &Gate, n: usize) {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 同一会话的执行串行_第二条排队不下发() {
+async fn executions_in_the_same_session_are_serial_the_second_queues_without_dispatch() {
     let (backend, gate) = gated_backend().await;
     let registry = Arc::new(SessionRegistry::new(as_backend(&backend), SESSION_LIMIT));
     let view = register_ready(&registry, db_session_id()).await;
@@ -118,7 +118,7 @@ async fn 同一会话的执行串行_第二条排队不下发() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 跨会话执行并行_峰值并发为二() {
+async fn executions_across_sessions_run_in_parallel_with_a_peak_concurrency_of_two() {
     let (backend, gate) = gated_backend().await;
     let registry = Arc::new(SessionRegistry::new(as_backend(&backend), SESSION_LIMIT));
 
@@ -172,7 +172,7 @@ async fn 跨会话执行并行_峰值并发为二() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 执行飞行中只读投影插空回答() {
+async fn while_an_execution_is_in_flight_read_only_projections_answer_in_between() {
     let (backend, gate) = gated_backend().await;
     let registry = Arc::new(SessionRegistry::new(as_backend(&backend), SESSION_LIMIT));
     let view = register_ready(&registry, db_session_id()).await;
@@ -215,7 +215,7 @@ async fn 执行飞行中只读投影插空回答() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 句柄先登记终态后交付() {
+async fn the_handle_registers_the_terminal_state_before_delivery() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
             .handles(vec![handle_ref("h_1", "res_1"), handle_ref("h_2", "res_1")]),
@@ -248,7 +248,7 @@ async fn 句柄先登记终态后交付() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 执行失败不伪装成功且会话回到就绪() {
+async fn a_failed_execution_does_not_fake_success_and_the_session_returns_to_ready() {
     let backend = ScriptedBackend::new(BackendPlan::default().execute_fails()).await;
     let registry = SessionRegistry::new(as_backend(&backend), SESSION_LIMIT);
     let view = register_ready(&registry, db_session_id()).await;
@@ -291,7 +291,7 @@ async fn 执行失败不伪装成功且会话回到就绪() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn 排队中的执行不得绕过世代校验() {
+async fn a_queued_execution_must_not_bypass_the_generation_check() {
     // 这里**必须**让后端把世代推进到 2（`BackendPlan` 的默认值）：排队的判据
     // 正是「轮到它时世代已经变了」。若把后端回报的世代钉成 1，
     // 前后都是 1，这条用例会永远绿——测到的是夹具的巧合，不是代码的性质。

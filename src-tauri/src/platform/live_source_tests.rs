@@ -395,7 +395,7 @@ async fn seed_profile(store: &crate::store::DesktopRepository, config: &Connecti
 /// 等于 provider 校验后返回的驱动句柄（身份）、`acquire_resource`
 /// 次数没变（没有新建物理连接）。任何一条不成立都说明接线只是摆设。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn 接线后借出真的走到端口并交回那一份活资源() {
+async fn after_wiring_a_borrow_really_reaches_the_port_and_hands_back_that_live_resource() {
     use datazen::application::sessions::ConnectionUseCases;
     use datazen::{
         execution::application::idempotency::IdempotentOperation,
