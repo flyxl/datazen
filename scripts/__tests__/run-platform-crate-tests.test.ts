@@ -63,6 +63,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { LAYERS, layerById } from '../lib/cargoWorkspace.mjs';
 import {
+  EXCLUDED_TEST_FEATURES,
   EXTRA_TARGETS,
   TESTED_LAYERS,
   buildCargoArgv,
@@ -103,10 +104,27 @@ const CARGO_STUB_SOURCE = [
   '    const abs = path.resolve(root, dir);',
   '    const text = fs.readFileSync(path.join(abs, "Cargo.toml"), "utf8");',
   '    const name = /name\\s*=\\s*"([^"]+)"/.exec(text)[1];',
+  '    // [features] as cargo metadata reports it: a map keyed in manifest order.',
+  '    // Single-line arrays only — every fixture manifest here is written that',
+  '    // way; the REAL repo manifests (multiline arrays) are parsed by this',
+  '    // suite directly, never through the stub.',
+  '    const features = {};',
+  '    const feats = /\\[features\\]([\\s\\S]*?)(?=\\n\\[|$)/.exec(text);',
+  '    if (feats) {',
+  '      for (const line of feats[1].split("\\n")) {',
+  '        const fm = /^(?:"([^"]+)"|([A-Za-z0-9_-]+))\\s*=\\s*\\[(.*)\\]\\s*$/.exec(line.trim());',
+  '        if (fm) {',
+  '          features[fm[1] || fm[2]] = (fm[3].match(/"[^"]*"/g) || []).map(function (q) {',
+  '            return q.slice(1, -1);',
+  '          });',
+  '        }',
+  '      }',
+  '    }',
   '    return {',
   "      id: 'path+file://' + abs + '#' + name,",
   '      name: name,',
   '      manifest_path: path.join(abs, "Cargo.toml"),',
+  '      features: features,',
   '    };',
   '  });',
   '  process.stdout.write(',
@@ -165,19 +183,18 @@ afterAll(() => {
 });
 
 /** Write one real workspace member: directory, `Cargo.toml`, `src/lib.rs`. */
-function writeMember(root: string, dir: string, name: string): void {
+function writeMember(root: string, dir: string, name: string, features?: string): void {
   const abs = join(root, dir);
   mkdirSync(join(abs, 'src'), { recursive: true });
-  writeFileSync(
-    join(abs, 'Cargo.toml'),
-    ['[package]', `name = "${name}"`, 'version = "0.0.1"', 'edition = "2021"', ''].join('\n'),
-  );
+  const toml = ['[package]', `name = "${name}"`, 'version = "0.0.1"', 'edition = "2021"', ''];
+  if (features !== undefined) toml.push(features, '');
+  writeFileSync(join(abs, 'Cargo.toml'), toml.join('\n'));
   writeFileSync(join(abs, 'src/lib.rs'), 'pub fn probe() {}\n');
 }
 
 function makeWorkspace(
   id: string,
-  members: ReadonlyArray<{ dir: string; name: string }>,
+  members: ReadonlyArray<{ dir: string; name: string; features?: string }>,
 ): StubWorkspace {
   const root = join(sandbox, id);
   mkdirSync(root, { recursive: true });
@@ -190,11 +207,26 @@ function makeWorkspace(
       '',
     ].join('\n'),
   );
-  for (const member of members) writeMember(root, member.dir, member.name);
+  for (const member of members) writeMember(root, member.dir, member.name, member.features);
   return { root, cargoLog: join(sandbox, `${id}.cargo-invocations`) };
 }
 
-const MODULES = { dir: 'modules', name: 'datazen' };
+/**
+ * The datazen fixture's feature table — single-line arrays, because that is
+ * what the stub parses. The shape mirrors the distinctions the runner cares
+ * about in the real modules/Cargo.toml: `default` excluded structurally,
+ * `webdriver` excluded by table (and empty), `test-harness` kept — the
+ * integration fixtures and cm60-bench's required-features both need it.
+ */
+const MODULES_FEATURES = [
+  '[features]',
+  'default = []',
+  'settings = ["dep:serde"]',
+  'ai = ["settings"]',
+  'test-harness = []',
+  'webdriver = []',
+].join('\n');
+const MODULES = { dir: 'modules', name: 'datazen', features: MODULES_FEATURES };
 const DRIVER = { dir: 'packages/drivers/postgres', name: 'datazen-driver-postgres' };
 /** A real directory below no `LAYERS` path, so `classifyMemberDir` must reject it. */
 const UNCLASSIFIABLE = { dir: 'crates/mystery', name: 'mystery' };
@@ -231,6 +263,16 @@ function cargoTestInvocationsSeesReorderedArgv(ws: StubWorkspace): string[] {
   return cargoInvocations(ws).filter((line) => /(^|\s)test(\s|$)/.test(line));
 }
 
+/** The fixture feature table as an object, mirroring what the stub emits. */
+function parseFeatureTable(featuresText: string): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const line of featuresText.split('\n')) {
+    const m = /^(?:"([^"]+)"|([A-Za-z0-9_-]+))\s*=\s*\[(.*)\]\s*$/.exec(line.trim());
+    if (m) out[m[1] ?? m[2]] = (m[3].match(/"[^"]*"/g) ?? []).map((q) => q.slice(1, -1));
+  }
+  return out;
+}
+
 /**
  * What a clean one-crate workspace must produce, verbatim and in order.
  *
@@ -252,11 +294,15 @@ function cargoTestInvocationsSeesReorderedArgv(ws: StubWorkspace): string[] {
  * and it fails closed on any missing, extra or reordered call.
  *
  * The order is part of the contract: the selector-free run goes first because
- * it is the gate (and the cheapest of the two), the release extras follow, and
- * the abort-path tests depend on cargo never being reached.
+ * it is the gate, the per-feature legs follow, and the abort-path tests
+ * depend on cargo never being reached. There is no release invocation any
+ * more (retired 2026-10-27 with the CM-60 perf leg); if one reappears it must
+ * arrive with a deliberate EXTRA_TARGETS entry and a reworded tombstone there.
  */
+const WHOLE_CRATE_RUN =
+  'test --no-default-features --features datazen/settings,datazen/ai,datazen/test-harness -p datazen';
 const EXPECTED_CLEAN_INVOCATIONS = [
-  'test --all-features -p datazen',
+  WHOLE_CRATE_RUN,
   'test --no-default-features --features settings --lib -p datazen',
   'test --no-default-features --features ai --lib -p datazen',
   'test --no-default-features --features connection,execution --lib -p datazen',
@@ -264,7 +310,6 @@ const EXPECTED_CLEAN_INVOCATIONS = [
   'test --no-default-features --features monitor --lib -p datazen',
   'test --no-default-features --features dashboard --lib -p datazen',
   'test --no-default-features --features tunnel --lib -p datazen',
-  'test --release -p datazen --features execution,jobs,test-harness --bin cm60-bench',
 ];
 
 function envFor(ws: StubWorkspace, cargoTestExit = 0): NodeJS.ProcessEnv {
@@ -456,129 +501,134 @@ describe('discoverCoreCrates stays pure about policy', () => {
   });
 });
 
-/**
- * `EXTRA_TARGETS` decides which targets get a cargo invocation the default
- * profile cannot provide. Both CM-60 entry points are structurally invisible
- * to a `--lib`-only run — the pressure half is an integration test target,
- * the bench half a binary target — and today the no-selector call compiles
- * the pressure half while the table's release entry compiles the bench half.
- * An entry that goes missing from this table removes the gate without turning
- * anything red. These assertions are on the argv itself, because that argv is
- * the whole mechanism.
- */
-describe('buildCargoArgv puts both CM-60 entry points behind the gate', () => {
-  const crates = [{ name: MODULES.name }, { name: DRIVER.name }];
+describe('buildCargoArgv keeps the whole-crate run structural', () => {
+  /**
+   * The crate objects mirror what discoverCoreCrates attaches: a name plus the
+   * metadata feature table. buildCargoArgv refuses a crate without one, so
+   * every direct call here carries it — the same shape the stub emits for the
+   * runIn() workspaces.
+   */
+  const MODULES_CRATE = { name: MODULES.name, features: parseFeatureTable(MODULES_FEATURES) };
+  const DRIVER_CRATE = { name: DRIVER.name, features: {} };
+  const crates = [MODULES_CRATE, DRIVER_CRATE];
   const invocations = buildCargoArgv(crates);
   /**
-   * Located by what each argv *is*, never by its position.
-   *
-   * This was `const [debugArgv, releaseArgv] = buildCargoArgv(crates)`, and it
-   * silently rebound the moment a third invocation was inserted between them:
-   * `releaseArgv` became the new no-selector call, and `builds the bin unit
-   * tests in their own --release invocation` went red for a reason that had
-   * nothing to do with the release path. A positional destructure over a list
-   * whose length is allowed to change is the defect; the assertions below are
-   * unchanged and now say what they mean.
+   * Located by what each argv *is*, never by its position — a positional
+   * destructure over a list whose length is allowed to change is the defect
+   * documented in git history (see the old revision of this block).
    */
   const debugArgv = invocations.find((argv) => !argv.includes('--release')) ?? [];
-  const releaseArgv = invocations.find((argv) => argv.includes('--release')) ?? [];
 
-  it('keeps the whole-crate run selector-free, which is what reaches the pressure half', () => {
-    // `modules` integration tests is an integration test
-    // target: a selector-free `cargo test -p …` compiles and runs every
-    // integration binary, and that structural property — not a target name in
-    // this file — is what puts the §11.4 pressure half behind the gate.
-    expect(debugArgv.length).toBeGreaterThan(0); // the find() above failed closed
-    expect(debugArgv).toEqual(['test', '--all-features', '-p', MODULES.name, '-p', DRIVER.name]);
+  it('keeps the whole-crate run selector-free, which is what reaches every target', () => {
+    // A selector (`--lib`, `--test x`, `--bin x`, `--tests`) names a subset of
+    // the crate's targets, and the subset missing a name is the subset that
+    // silently stops compiling in CI. Asserted on argv shape rather than on a
+    // target list, so it keeps holding when `Cargo.toml` gains a `tests/*.rs`
+    // this file has never heard of.
+    expect(debugArgv).toEqual([
+      'test',
+      '--no-default-features',
+      '--features',
+      'datazen/settings,datazen/ai,datazen/test-harness',
+      '-p',
+      MODULES.name,
+      '-p',
+      DRIVER.name,
+    ]);
     for (const selector of ['--lib', '--tests', '--test', '--bin'])
       expect(debugArgv).not.toContain(selector);
-    // The binary the selector-free run is asserted to reach really exists on
-    // disk; without this, the assertion above would hold over a crate whose
-    // tests/ directory had been renamed away.
+    // The binary the selector-free run reaches really exists on disk; without
+    // this, the required-features reasoning above would hold over a crate
+    // whose bin had been renamed away.
     expect(existsSync(join(REPO_ROOT, 'modules', 'src', 'bin', 'cm60-bench', 'main.rs'))).toBe(
       true,
     );
   });
 
-  it('builds the bin unit tests in their own --release invocation', () => {
-    // cm60-bench refuses to run under debug_assertions (exit 2), so its unit
-    // tests are only meaningful in release.
-    expect(releaseArgv.length).toBeGreaterThan(0);
-    expect(releaseArgv).toEqual(expect.arrayContaining(['--release', '--bin', 'cm60-bench']));
+  it('names the host-aligned feature set, not --all-features', () => {
+    // 2026-10-27: the whole-crate run moved from `--all-features` to an
+    // explicit list excluding `default` (structural) and `webdriver` (table),
+    // so it compiles datazen with EXACTLY the feature set the datazen_desktop
+    // host leg uses — one compile of the ~209k-line lib per CI run instead of
+    // two. The real-manifest equality behind this is pinned in the
+    // 'host/platform datazen feature alignment' describe below; this
+    // assertion is the argv-shape half of the same invariant.
+    expect(debugArgv.join(' ')).not.toContain('--all-features');
+    expect(debugArgv.join(' ')).toContain('--no-default-features');
+    expect(debugArgv.join(' ')).not.toContain('datazen/webdriver');
+    expect(debugArgv.join(' ')).not.toContain('datazen/default');
   });
 
-  it('never lets --release leak onto the whole-crate run', () => {
-    // `--release` is a profile flag for the entire invocation. If it reached the
-    // first argv, every core crate's test suite would silently rebuild in
-    // release — invisible in the diff, expensive in CI minutes.
-    expect(debugArgv).not.toContain('--release');
-    // ...and the release invocation names only crates the table has an entry
-    // for: a crate landing here without one would mean the table grew a
-    // whole-crate release run nobody argued for.
-    const RELEASE_TABLE_CRATES = Object.keys(EXTRA_TARGETS);
-    for (const name of releaseArgv.filter((a) => a.startsWith('datazen-')))
-      expect(RELEASE_TABLE_CRATES).toContain(name);
+  it('emits no --release invocation at all — the CM-60 perf leg is retired', () => {
+    // 2026-10-27（维护者决策：CI 不做性能测试）: the EXTRA_TARGETS release entry
+    // and the ci.yml bench step were removed together. The bench binary's 53
+    // unit tests are synthetic-arithmetic assertions already run in debug by
+    // the selector-free invocation (its required-features — execution, jobs,
+    // test-harness — are all in the named list), so the release re-run bought
+    // no signal and cost the only dev-deps release compile + fat-LTO link in
+    // the whole job.
+    expect(invocations.every((argv) => !argv.includes('--release'))).toBe(true);
+    expect(Object.keys(EXTRA_TARGETS)).toEqual([]);
   });
 
-  it('leaves a crate with no entry untouched, and never invents a crate', () => {
-    // The table is keyed by crate name. A crate that was not discovered has no
-    // target to add, and a crate with no entry contributes nothing.
-    //
-    // The first (and, for such a crate, only) invocation is the no-selector
-    // one, and it is here for *every* tested crate, not only the ones with a
-    // table entry: its whole job is to reach the `tests/*.rs` binaries that
-    // `EXTRA_TARGETS` does not (and should not) enumerate, and a driver crate
-    // landing in a tested layer later must not be the first one to miss them.
-    expect(buildCargoArgv([{ name: DRIVER.name }])).toEqual([
-      ['test', '--all-features', '-p', DRIVER.name],
+  it('leaves a crate with no features untouched, and never invents a crate', () => {
+    // A feature-less crate still gets its unconditional whole-crate run — the
+    // one invocation that exists for *every* tested crate, not only those
+    // with features — with no --features flag to name.
+    expect(buildCargoArgv([DRIVER_CRATE])).toEqual([
+      ['test', '--no-default-features', '-p', DRIVER.name],
     ]);
     expect(buildCargoArgv([])).toEqual([]);
   });
 
   it('runs exactly one invocation that carries no target selector at all', () => {
-    // The structural property behind the whole integration-coverage gap: a
-    // selector (`--lib`, `--test x`, `--bin x`, `--tests`) names a subset of the
-    // crate's targets, and the subset missing a name is the subset that silently
-    // stops compiling in CI. Asserted on argv shape rather than on a target
-    // list, so it keeps holding when `Cargo.toml` gains a `tests/*.rs` this file
-    // has never heard of.
+    // The structural property behind the whole integration-coverage story:
+    // exactly one invocation may be selector-free, and it must be a plain
+    // whole-crate run (profile flags and feature names aside). Anything else
+    // here would quietly narrow it again.
     const TARGET_SELECTORS = ['--lib', '--tests', '--test', '--bin', '--bench', '--all-targets'];
-    const unpinned = buildCargoArgv([MODULES]).filter(
+    const unpinned = buildCargoArgv([MODULES_CRATE]).filter(
       (argv) => !argv.some((arg) => TARGET_SELECTORS.includes(arg)),
     );
 
     expect(unpinned).toHaveLength(1);
-    // ...and it is a plain whole-crate run: no profile flag, no target selector,
-    // no extras folded in. Anything else here would quietly narrow it again.
-    expect(unpinned[0]).toEqual(['test', '--all-features', '-p', MODULES.name]);
+    expect(unpinned[0]).toEqual([
+      'test',
+      '--no-default-features',
+      '--features',
+      'datazen/settings,datazen/ai,datazen/test-harness',
+      '-p',
+      MODULES.name,
+    ]);
   });
 
   it('keeps every crate-wide invocation selector-free — neither --lib nor --tests', () => {
     // The trap this gate sits next to. `--tests` looks like the tidy way to
     // say "lib plus integration binaries", and per the Cargo Book it does
-    // exactly that ("--tests … by default this includes the library and
-    // binaries built as unittests, and integration tests") — an earlier
-    // revision of this file believed it "silently drops the library's own
-    // unit tests", which is a factual error the guard below used to encode.
-    // What `--tests` actually drops relative to the selector-free call is the
-    // **doc tests**, and `--lib` drops everything except the lib's own unit
-    // tests (datazen alone carries 383 of those, re-executed twice
-    // per CI run before this shape). Either selector would re-introduce a
-    // narrowing exactly like the one this gate exists to prevent, so both
-    // are pinned out — adopting one must arrive as a deliberate edit here.
-    const argv = buildCargoArgv([MODULES]).map((a) => a.join(' '));
-    expect(argv[0]).toBe('test --all-features -p datazen');
+    // exactly that — what it actually drops relative to the selector-free
+    // call is the lib's **doc tests**. `--lib` drops everything except the
+    // lib's own unit tests. Either would re-introduce a narrowing exactly
+    // like the one this gate exists to prevent, so both are pinned out —
+    // adopting one must arrive as a deliberate edit here.
+    const argv = buildCargoArgv([MODULES_CRATE]).map((a) => a.join(' '));
+    expect(argv[0]).toBe(WHOLE_CRATE_RUN);
+    // The --lib-bearing lines are the single-feature legs; everything else —
+    // here exactly the whole-crate run — must carry no selector at all.
     expect(
-      argv
-        .filter((line) => !line.includes('--no-default-features'))
-        .some((line) => line.includes('--tests') || line.includes('--lib')),
+      argv.filter((line) => !line.includes('--lib')).some((line) => line.includes('--tests')),
     ).toBe(false);
   });
 
   it('names targets that exist, so the table cannot rot into a no-op', () => {
-    // A renamed or deleted target makes cargo fail, but only *after* CI has
-    // spent its minutes; asserting on disk here turns the rot into a local red.
-    for (const [crate, entries] of Object.entries(EXTRA_TARGETS)) {
+    // The table is empty today (2026-10-27); this loop is the guard for
+    // whoever re-adds an entry — a renamed or deleted target makes cargo fail
+    // only *after* CI has spent its minutes, and asserting on disk here
+    // turns that rot into a local red. The cast documents the entry shape
+    // the empty table can no longer infer.
+    const table = Object.entries(EXTRA_TARGETS) as Array<
+      [string, ReadonlyArray<{ args: readonly string[] }>]
+    >;
+    for (const [crate, entries] of table) {
       for (const { args } of entries) {
         const flag = args[0];
         const targetIndex = args.indexOf('--bin');
@@ -591,6 +641,188 @@ describe('buildCargoArgv puts both CM-60 entry points behind the gate', () => {
         ]);
       }
     }
+  });
+});
+
+/**
+ * The exclusion table's own invariants. An exclusion is only valid while the
+ * excluded feature stays an empty cfg switch; the runner verifies that against
+ * the metadata feature table and aborts otherwise — these are the tests that
+ * keep the verification itself honest.
+ */
+describe('excluded-feature invariants (fail-closed)', () => {
+  it('pins the exclusion set itself — webdriver only, default is structural', () => {
+    // `default` never belongs here: --no-default-features handles it, and its
+    // exclusion mirrors the host's default-features=false rather than a
+    // per-feature judgement call. A second table entry is a coverage decision
+    // that must arrive with its own fail-closed test above.
+    expect(Object.keys(EXCLUDED_TEST_FEATURES)).toEqual(['webdriver']);
+    // ...and the recorded reason must still name the seam it excludes.
+    expect(EXCLUDED_TEST_FEATURES.webdriver).toContain('D5');
+  });
+
+  it('aborts with 2 when an excluded feature stops being a no-op switch', () => {
+    // `webdriver = ["dep:serde"]` — a REAL dependency behind the excluded
+    // feature. The exclusion was validated against the empty-switch premise;
+    // growing a dependency through the back door must redden the runner
+    // before any cargo invocation, not silently narrow what the leg compiles.
+    const stale = {
+      dir: 'modules',
+      name: 'datazen',
+      features: [
+        '[features]',
+        'default = []',
+        'settings = []',
+        'webdriver = ["dep:serde"]',
+      ].join('\n'),
+    };
+    const ws = makeWorkspace('stale-exclusion', [stale, DRIVER]);
+    const run = runIn(ws, []);
+
+    expect(run.code).toBe(2);
+    expect(run.stderr).toContain('webdriver');
+    // Refused before reaching cargo: a partial plan is not a plan.
+    expect(cargoTestInvocations(ws)).toEqual([]);
+  });
+
+  it('keeps test-harness named — integration fixtures and bin required-features need it', () => {
+    // modules/tests/* link the fixture tree gated
+    // `cfg(any(test, feature = "test-harness"))` on the lib side, and
+    // cm60-bench declares `required-features = ["execution", "jobs",
+    // "test-harness"]`. Dropping test-harness from the named list would keep
+    // the leg green only until the next integration test stops compiling.
+    const [whole] = buildCargoArgv([
+      { name: MODULES.name, features: parseFeatureTable(MODULES_FEATURES) },
+    ]);
+    expect(whole.join(' ')).toContain('datazen/test-harness');
+  });
+
+  it('refuses a crate without a feature table instead of guessing', () => {
+    // The old signature took bare { name } objects; the feature-table
+    // requirement is what makes "name the exact set" auditable. A caller that
+    // cannot supply the table gets an error, never an --all-features
+    // fallback that would quietly diverge from the host leg again.
+    expect(() => buildCargoArgv([{ name: 'datazen' }])).toThrow(/feature table/);
+  });
+});
+
+/**
+ * The cross-file invariant the whole-crate run's feature list rests on.
+ *
+ * ci.yml's datazen_desktop step appends `datazen/test-harness` to the host
+ * features precisely so that the host leg and this runner's whole-crate leg
+ * compile datazen with the SAME feature set — the ~209k-line lib then builds
+ * once per CI run instead of twice. That equality spans three manifests
+ * (modules/Cargo.toml's feature graph, src-tauri/Cargo.toml's dependency
+ * features, the root workspace template's default-features=false), and a
+ * change to any one of them can break it silently: the tests stay green while
+ * cargo quietly goes back to compiling two different datazens. These
+ * assertions parse the real manifests and fail red the moment that happens.
+ */
+describe('host/platform datazen feature alignment (real manifests)', () => {
+  /** Manifest [features] as a map; handles multiline arrays and quoted keys. */
+  function parseManifestFeatures(manifest: string): Record<string, string[]> {
+    const lines = manifest.split('\n');
+    const out: Record<string, string[]> = {};
+    let i = 0;
+    while (i < lines.length && lines[i].trim() !== '[features]') i++;
+    i += 1;
+    while (i < lines.length) {
+      const line = lines[i].trim();
+      if (line.startsWith('[')) break; // next section
+      if (line === '' || line.startsWith('#')) {
+        i += 1;
+        continue;
+      }
+      const m = /^(?:"([^"]+)"|([A-Za-z0-9_-]+))\s*=\s*(.*)$/.exec(line);
+      if (m === null) {
+        i += 1;
+        continue;
+      }
+      const name = m[1] ?? m[2];
+      let body = m[3];
+      while (!body.includes(']') && i + 1 < lines.length) {
+        i += 1;
+        body += ` ${lines[i].trim()}`;
+      }
+      out[name] = (body.match(/"[^"]*"/g) ?? []).map((q) => q.slice(1, -1));
+      i += 1;
+    }
+    return out;
+  }
+
+  /** The datazen dependency's `features = [...]` from src-tauri's manifest. */
+  function parseHostDatazenFeatures(hostManifest: string): string[] {
+    const m = /^datazen = \{ workspace = true, features = \[([^\]]*)\] \}$/m.exec(
+      hostManifest,
+    );
+    if (m === null)
+      throw new Error(
+        'src-tauri/Cargo.toml: the datazen dependency line is not in the expected single-line shape',
+      );
+    return (m[1].match(/"[^"]*"/g) ?? []).map((q) => q.slice(1, -1));
+  }
+
+  it('host closure ∪ {test-harness} equals all datazen features minus default/webdriver', () => {
+    const datazenFeatures = parseManifestFeatures(
+      readFileSync(join(REPO_ROOT, 'modules', 'Cargo.toml'), 'utf8'),
+    );
+    const hostFeatures = parseHostDatazenFeatures(
+      readFileSync(join(REPO_ROOT, 'src-tauri', 'Cargo.toml'), 'utf8'),
+    );
+    expect(Object.keys(datazenFeatures).length).toBeGreaterThan(0);
+
+    const closure = new Set<string>(hostFeatures);
+    const stack = [...hostFeatures];
+    while (stack.length > 0) {
+      const f = stack.pop();
+      if (f === undefined) break;
+      for (const dep of datazenFeatures[f] ?? []) {
+        if (dep.startsWith('dep:')) continue;
+        if (!closure.has(dep)) {
+          closure.add(dep);
+          stack.push(dep);
+        }
+      }
+    }
+    closure.add('test-harness');
+
+    const expected = new Set(
+      Object.keys(datazenFeatures).filter((f) => f !== 'default' && f !== 'webdriver'),
+    );
+    // Sorted for a readable diff; set equality is the claim.
+    expect([...closure].sort()).toEqual([...expected].sort());
+  });
+
+  it('host consumes datazen with default-features = false (workspace template)', () => {
+    // --no-default-features on the runner side mirrors the host's
+    // default-features=false; if the template ever flips, the two legs
+    // re-diverge by the `default` feature and the shared compile is lost.
+    const root = readFileSync(join(REPO_ROOT, 'Cargo.toml'), 'utf8');
+    expect(/^datazen = \{ path = "modules", default-features = false \}$/m.test(root)).toBe(
+      true,
+    );
+    const host = readFileSync(join(REPO_ROOT, 'src-tauri', 'Cargo.toml'), 'utf8');
+    const dep = /^datazen = \{.*$/m.exec(host)?.[0] ?? '';
+    expect(dep).not.toContain('default-features = true');
+  });
+
+  it('the runner names exactly that set for the real datazen table', () => {
+    const table = parseManifestFeatures(
+      readFileSync(join(REPO_ROOT, 'modules', 'Cargo.toml'), 'utf8'),
+    );
+    const [whole] = buildCargoArgv([{ name: 'datazen', features: table }]);
+    const flags =
+      whole
+        .join(' ')
+        .split('--features ')[1]
+        ?.split(' -p ')[0]
+        ?.split(',') ?? [];
+    expect(flags).toEqual(
+      Object.keys(table)
+        .filter((f) => f !== 'default' && f !== 'webdriver')
+        .map((f) => `datazen/${f}`),
+    );
   });
 });
 
@@ -615,7 +847,7 @@ describe('run-platform-crate-tests guard negative controls', () => {
     // array element leaves every remaining element present, so a `toContain`
     // assertion stays green and the 19 integration binaries stop compiling in CI
     // without a single red.
-    const mutated = without('test --all-features -p datazen');
+    const mutated = without(WHOLE_CRATE_RUN);
 
     expect(mutated).not.toEqual(EXPECTED_CLEAN_INVOCATIONS);
     expect(mutated).toHaveLength(EXPECTED_CLEAN_INVOCATIONS.length - 1);
@@ -628,7 +860,9 @@ describe('run-platform-crate-tests guard negative controls', () => {
     // Same hole, quieter route: `--tests` "looks" like it covers integration
     // binaries and a reader skims it as a fix rather than a swap.
     const mutated = EXPECTED_CLEAN_INVOCATIONS.map((line) =>
-      line === 'test --all-features -p datazen' ? 'test --all-features --tests -p datazen' : line,
+      line === WHOLE_CRATE_RUN
+        ? 'test --no-default-features --tests -p datazen'
+        : line,
     );
 
     expect(mutated).not.toEqual(EXPECTED_CLEAN_INVOCATIONS);

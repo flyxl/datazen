@@ -116,19 +116,27 @@ FEATURES="$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-
 printf '  cargo features: %s\n' "$FEATURES"
 
 # --------------------------------------------------------------------------
-step "7/11 Rust unit tests (driver API + basic path drivers, 合并一次 cargo 调用)"
-cargo test --lib -p datazen-driver-api -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis || fail "cargo test driver-api + basic drivers"
+step "7/11 Rust tests (driver-api 全量 + basic path 驱动 --tests，与 ci.yml 两步同形)"
+# driver-api：无 target 选择器（lib + tests/ + doc test）；驱动步与 CI 相同，
+# 带 ALLOW_UNVERIFIED 豁免（本地无数据库时 live 层以「未验证」记账）。
+cargo test -p datazen-driver-api || fail "cargo test driver-api"
+DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --tests || fail "cargo test basic drivers --tests"
 
 # --------------------------------------------------------------------------
-step "8/11 Rust unit tests (datazen --lib --features $FEATURES)"
-cargo test -p datazen_desktop --lib --features "$FEATURES" || fail "cargo test datazen"
+# 与 ci.yml 的宿主腿同步：追加 datazen/test-harness（限定语法），使本地与
+# platform-crates 无选择器腿编译同一 feature 集的 datazen（等式由
+# run-platform-crate-tests 的对齐测试钉死），lib 编译共享为一份。
+step "8/11 Rust unit tests (datazen desktop host --lib --features $FEATURES,datazen/test-harness)"
+cargo test -p datazen_desktop --lib --features "$FEATURES,datazen/test-harness" || fail "cargo test datazen desktop host"
 
 # --------------------------------------------------------------------------
 step "9/11 Restore managed files (driver-file-stash restore)"
 node scripts/driver-file-stash.mjs restore || fail "driver-file-stash restore"
 
 # --------------------------------------------------------------------------
-step "10/11 Rust unit tests (datazen --features ai --lib)"
+# 注：CI 中 modules（datazen）的单 feature 腿与全量矩阵由 `pnpm
+# test:platform-crates` 执行；本地这一步只保留 ai 腿作快速冒烟，不镜像全矩阵。
+step "10/11 Rust unit tests (datazen --features ai --lib, 本地冒烟)"
 cargo test -p datazen --features ai --lib || fail "cargo test modules ai"
 
 printf '\n\033[1;32m[ci-local] 全部 CI 检查通过 ✔\033[0m\n'
