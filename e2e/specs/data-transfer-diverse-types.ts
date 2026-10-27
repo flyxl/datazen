@@ -55,9 +55,21 @@ async function describeTransferState(): Promise<string> {
  * 时而红在推进循环里。这里换成显式条件等待（默认 60s），失败时把现场一起抛出。
  */
 async function clickNext(label: string, timeout = 60000) {
+  let reachedExecute = false;
   try {
     await browser.waitUntil(
       async () => {
+        // 到了执行步就没有 Next 了：这是**到达**而不是失败。推进途中向导可能
+        // 自己走完映射→预览（prepare 回来后自动前进），所以判断要放进等待里，
+        // 不能只在点击前看一次——实测整包跑时正是这个窗口把用例判红。
+        if (
+          await $('[data-testid="data-transfer-execute"]')
+            .isExisting()
+            .catch(() => false)
+        ) {
+          reachedExecute = true;
+          return true;
+        }
         const button = await $('[data-testid="data-transfer-next"]');
         if (!(await button.isExisting().catch(() => false))) return false;
         return (await button.isEnabled().catch(() => false)) === true;
@@ -69,7 +81,12 @@ async function clickNext(label: string, timeout = 60000) {
       `ID:data-transfer-diverse-types|${label}|${(error as Error).message} :: ${await describeTransferState()}`,
     );
   }
-  await (await $('[data-testid="data-transfer-next"]')).click();
+  const next = await $('[data-testid="data-transfer-next"]');
+  if (reachedExecute && !(await next.isExisting().catch(() => false))) {
+    await captureJourneyStep(label, 0, true);
+    return;
+  }
+  await next.click();
   await browser.pause(1200);
   await captureJourneyStep(label, 0, true);
 }
