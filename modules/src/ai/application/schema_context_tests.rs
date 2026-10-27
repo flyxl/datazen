@@ -8,6 +8,7 @@
 //! handle), not the Runtime's own behaviour.
 
 use super::*;
+use crate::ai::application::ports::SessionConnectionLookup;
 use crate::execution::application::requests::OpenSessionRequest;
 use crate::execution::application::use_cases::ConnectionUseCases;
 use crate::execution::application::{RuntimeConnectionUseCases, RuntimeResultSink};
@@ -15,10 +16,8 @@ use crate::execution::runtime::{
     connection as rt,
     registry::{audit::CapabilityVersions, backend::*, SessionBackend},
 };
-use crate::services::ports::{
-    ArtifactChunkReader, LogicalSchemaContextSource, PhysicalSchemaContextSource,
-    SessionConnectionLookup,
-};
+use crate::schema::application::ports::{LogicalSchemaContextSource, PhysicalSchemaContextSource};
+use crate::table_editing::ports::ArtifactChunkReader;
 use crate::workflow::error::WorkflowError;
 use crate::workflow::resource_execution::{PreparedExecution, ResourceExecutionHost};
 use crate::{

@@ -256,15 +256,15 @@ function cargoTestInvocationsSeesReorderedArgv(ws: StubWorkspace): string[] {
  * the abort-path tests depend on cargo never being reached.
  */
 const EXPECTED_CLEAN_INVOCATIONS = [
-  'test -p datazen',
-  'test --no-default-features --features settings -p datazen',
-  'test --no-default-features --features ai -p datazen',
-  'test --no-default-features --features connection -p datazen',
-  'test --no-default-features --features named_views -p datazen',
-  'test --no-default-features --features monitor -p datazen',
-  'test --no-default-features --features dashboard -p datazen',
-  'test --no-default-features --features tunnel -p datazen',
-  'test --release -p datazen --features execution,jobs --bin cm60-bench',
+  'test --all-features -p datazen',
+  'test --no-default-features --features settings --lib -p datazen',
+  'test --no-default-features --features ai --lib -p datazen',
+  'test --no-default-features --features connection --lib -p datazen',
+  'test --no-default-features --features named_views --lib -p datazen',
+  'test --no-default-features --features monitor --lib -p datazen',
+  'test --no-default-features --features dashboard --lib -p datazen',
+  'test --no-default-features --features tunnel --lib -p datazen',
+  'test --release -p datazen --features execution,jobs,test-harness --bin cm60-bench',
 ];
 
 function envFor(ws: StubWorkspace, cargoTestExit = 0): NodeJS.ProcessEnv {
@@ -489,7 +489,7 @@ describe('buildCargoArgv puts both CM-60 entry points behind the gate', () => {
     // integration binary, and that structural property — not a target name in
     // this file — is what puts the §11.4 pressure half behind the gate.
     expect(debugArgv.length).toBeGreaterThan(0); // the find() above failed closed
-    expect(debugArgv).toEqual(['test', '-p', MODULES.name, '-p', DRIVER.name]);
+    expect(debugArgv).toEqual(['test', '--all-features', '-p', MODULES.name, '-p', DRIVER.name]);
     for (const selector of ['--lib', '--tests', '--test', '--bin'])
       expect(debugArgv).not.toContain(selector);
     // The binary the selector-free run is asserted to reach really exists on
@@ -529,7 +529,9 @@ describe('buildCargoArgv puts both CM-60 entry points behind the gate', () => {
     // table entry: its whole job is to reach the `tests/*.rs` binaries that
     // `EXTRA_TARGETS` does not (and should not) enumerate, and a driver crate
     // landing in a tested layer later must not be the first one to miss them.
-    expect(buildCargoArgv([{ name: DRIVER.name }])).toEqual([['test', '-p', DRIVER.name]]);
+    expect(buildCargoArgv([{ name: DRIVER.name }])).toEqual([
+      ['test', '--all-features', '-p', DRIVER.name],
+    ]);
     expect(buildCargoArgv([])).toEqual([]);
   });
 
@@ -542,15 +544,13 @@ describe('buildCargoArgv puts both CM-60 entry points behind the gate', () => {
     // has never heard of.
     const TARGET_SELECTORS = ['--lib', '--tests', '--test', '--bin', '--bench', '--all-targets'];
     const unpinned = buildCargoArgv([MODULES]).filter(
-      (argv) =>
-        !argv.some((arg) => TARGET_SELECTORS.includes(arg)) &&
-        !argv.includes('--no-default-features'),
+      (argv) => !argv.some((arg) => TARGET_SELECTORS.includes(arg)),
     );
 
     expect(unpinned).toHaveLength(1);
     // ...and it is a plain whole-crate run: no profile flag, no target selector,
     // no extras folded in. Anything else here would quietly narrow it again.
-    expect(unpinned[0]).toEqual(['test', '-p', MODULES.name]);
+    expect(unpinned[0]).toEqual(['test', '--all-features', '-p', MODULES.name]);
   });
 
   it('keeps every crate-wide invocation selector-free — neither --lib nor --tests', () => {
@@ -567,8 +567,12 @@ describe('buildCargoArgv puts both CM-60 entry points behind the gate', () => {
     // narrowing exactly like the one this gate exists to prevent, so both
     // are pinned out — adopting one must arrive as a deliberate edit here.
     const argv = buildCargoArgv([MODULES]).map((a) => a.join(' '));
-    expect(argv[0]).toBe('test -p datazen');
-    expect(argv.some((line) => line.includes('--tests') || line.includes('--lib'))).toBe(false);
+    expect(argv[0]).toBe('test --all-features -p datazen');
+    expect(
+      argv
+        .filter((line) => !line.includes('--no-default-features'))
+        .some((line) => line.includes('--tests') || line.includes('--lib')),
+    ).toBe(false);
   });
 
   it('names targets that exist, so the table cannot rot into a no-op', () => {
@@ -611,7 +615,7 @@ describe('run-platform-crate-tests guard negative controls', () => {
     // array element leaves every remaining element present, so a `toContain`
     // assertion stays green and the 19 integration binaries stop compiling in CI
     // without a single red.
-    const mutated = without('test -p datazen');
+    const mutated = without('test --all-features -p datazen');
 
     expect(mutated).not.toEqual(EXPECTED_CLEAN_INVOCATIONS);
     expect(mutated).toHaveLength(EXPECTED_CLEAN_INVOCATIONS.length - 1);
@@ -624,7 +628,7 @@ describe('run-platform-crate-tests guard negative controls', () => {
     // Same hole, quieter route: `--tests` "looks" like it covers integration
     // binaries and a reader skims it as a fix rather than a swap.
     const mutated = EXPECTED_CLEAN_INVOCATIONS.map((line) =>
-      line === 'test -p datazen' ? 'test --tests -p datazen' : line,
+      line === 'test --all-features -p datazen' ? 'test --all-features --tests -p datazen' : line,
     );
 
     expect(mutated).not.toEqual(EXPECTED_CLEAN_INVOCATIONS);

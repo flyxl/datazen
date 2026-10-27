@@ -174,7 +174,7 @@ export const EXTRA_TARGETS = Object.freeze({
     // §11.3 latency half: the bench binary's own unit tests, release only.
     Object.freeze({
       release: true,
-      args: Object.freeze(['--features', 'execution,jobs', '--bin', 'cm60-bench']),
+      args: Object.freeze(['--features', 'execution,jobs,test-harness', '--bin', 'cm60-bench']),
     }),
   ]),
 });
@@ -252,6 +252,7 @@ export function buildCargoArgv(crates) {
         '--no-default-features',
         '--features',
         features,
+        '--lib',
         '-p',
         name,
       ]);
@@ -268,7 +269,7 @@ export function buildCargoArgv(crates) {
     // "a table edit cannot delete the run" invariant now rests on. It reaches
     // lib unit tests, bin unit tests, every tests/*.rs integration binary and
     // the lib doc tests, with no target list maintained on this side.
-    ['test', ...names.flatMap((n) => ['-p', n])],
+    ['test', '--all-features', ...names.flatMap((n) => ['-p', n])],
     ...featureInvocations,
     ...(releaseEntries.length > 0
       ? [

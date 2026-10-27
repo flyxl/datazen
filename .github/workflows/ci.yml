@@ -373,11 +373,12 @@ jobs:
         run: node scripts/driver-file-stash.mjs restore
 
       # datazen-ai-api 于 D1.5（46dc15b）退役并入 datazen::ai，这里的
-      # crate 级测试步骤随之换代：跑 modules 全 feature 矩阵（与
-      # scripts/run-platform-crate-tests.mjs 的 feature 清单一致；不带 --lib，
-      # 让 ai 集成测试与各 feature 的 tests/ 一并收集）。
+      # crate 级测试步骤随之换代：逐项编译 modules 的可选业务 feature。
+      # 集成测试由后面的 platform-crate runner 以 --all-features 统一收集；
+      # 这里使用 --lib，避免不具备 execution/test-harness 的单 feature 组合
+      # 误编译需要运行时夹具的集成测试。
       - name: Rust unit tests (datazen)
-        run: cargo test -p datazen --features settings,ai,connection,named_views
+        run: cargo test -p datazen --lib --features settings,ai,connection,named_views
 
       # ── 平台内核架构门禁 ──
       #
