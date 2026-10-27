@@ -19,7 +19,7 @@ use crate::execution::{
     SessionView,
 };
 use crate::execution::{ExecutionReceipt, ExecutionView};
-use crate::schema_diff::{
+use crate::migration::schema_diff::{
     SchemaDiffProfile, SchemaDiffProfileRepository, SchemaDiffProfileRepositoryError,
 };
 use crate::shared::context::RequestContext;

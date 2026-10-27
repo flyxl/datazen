@@ -72,7 +72,7 @@ use crate::tunnel::TunnelRepository;
 
 use crate::dashboard::repository::DashboardRepository;
 use crate::dashboard::runs::DashboardRunRepository;
-use crate::schema_diff::SchemaDiffProfileRepository;
+use crate::migration::schema_diff::SchemaDiffProfileRepository;
 
 use crate::application::capability::CapabilityRegistry;
 use crate::application::identity_policy::IdentityPolicy;

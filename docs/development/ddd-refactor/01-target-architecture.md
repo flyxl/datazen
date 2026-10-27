@@ -97,7 +97,7 @@ modules/
     schema_diff/
     data_sync/
     data_transfer/
-    migration_common/                # 迁移共享纯算法，不是总 MigrationService
+    migration/common/                # 迁移共享纯算法，不是总 MigrationService
     settings/
     named_views/
     history/
@@ -129,7 +129,7 @@ web/
 
 不创建 `modules/src/application/`、全局 `modules/src/runtime/` 或新的 `modules/src/platform_api/` 来重新包装旧横向分层。一个功能可以按复杂度增加私有子模块，但不为凑目录创建空 service、entity、repository。
 
-`shared` 与 `migration_common` 是基础词汇/纯算法模块，不是独立用户功能，不强制给它们创建空 application 层。
+`shared` 与 `migration/common` 是基础词汇/纯算法模块，不是独立用户功能，不强制给它们创建空 application 层。
 
 ### 3.4 每个模块的对外面
 
@@ -165,7 +165,7 @@ web/
 - `execution` 使用 `connection` 的执行配置读取契约；不直接调用它的 Repository。
 - `schema` 使用 execution；`table_browsing` 使用 schema 和 execution。
 - `table_editing` 使用 schema 和 execution；读写共享的表目标类型由 schema 拥有，不能让读模块依赖写模块的内部上下文。
-- `schema_diff` / `data_sync` / `data_transfer` 使用 schema、execution、jobs 和必要的 migration_common 算法；三件套不合成一个服务。
+- `schema_diff` / `data_sync` / `data_transfer` 使用 schema、execution、jobs 和必要的 migration/common 算法；三件套不合成一个服务。
 - `dashboard` / `workflow` / `ai` / `monitor` 使用被允许的基础功能应用契约，不能直接读连接仓储或执行 actor。
 - `jobs` 不 import Schema Diff、Workflow 或其他业务 Handler；这些模块实现 jobs 声明的 Handler 契约，宿主在启动时注册。
 - `mcp` / `wapps` 的业务桥只调用获准的应用入口，不获得任意 Service Locator 或 Repository 列表。

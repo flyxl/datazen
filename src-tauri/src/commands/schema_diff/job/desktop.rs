@@ -9,8 +9,10 @@ use datazen_modules::jobs::domain::job::{
     JobResultItem, JobState, JobView,
 };
 use datazen_modules::jobs::{EndpointRef, JobHandler, JobHost, JobRecoveryVerifier};
-use datazen_modules::schema_diff::job::{ApplyRequest, PrepareRequest, SchemaDiffHandler};
-use datazen_modules::schema_diff::types::{DeployStatus, SchemaDiffDeployResult};
+use datazen_modules::migration::schema_diff::job::{
+    ApplyRequest, PrepareRequest, SchemaDiffHandler,
+};
+use datazen_modules::migration::schema_diff::types::{DeployStatus, SchemaDiffDeployResult};
 use datazen_modules::shared::context::RequestContext;
 use datazen_modules::shared::error::PortError;
 use datazen_modules::shared::id::{Counter, IdempotencyKey, JobId, StageId, WorkerId};
@@ -557,7 +559,9 @@ fn prepare_endpoints(request: &PrepareRequest) -> (String, String, Vec<String>) 
     }
 }
 
-fn plan_objects(meta: &datazen_modules::schema_diff::job::SchemaDiffFrozenPlan) -> Vec<String> {
+fn plan_objects(
+    meta: &datazen_modules::migration::schema_diff::job::SchemaDiffFrozenPlan,
+) -> Vec<String> {
     meta.endpoint_evidence
         .iter()
         .find_map(|evidence| evidence.strip_prefix("planTables:"))

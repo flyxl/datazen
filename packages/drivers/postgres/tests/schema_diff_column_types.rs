@@ -2,8 +2,8 @@
 extern crate datazen_driver_postgres;
 
 use datazen_driver_api::IndexInfo;
-use datazen_modules::schema_diff::plan::*;
-use datazen_modules::schema_diff::types::*;
+use datazen_modules::migration::schema_diff::plan::*;
+use datazen_modules::migration::schema_diff::types::*;
 
 mod schema_diff_support;
 use schema_diff_support::{col, schema};
@@ -22,7 +22,7 @@ fn add_not_null_column_without_default_requires_backfill() {
         .unwrap();
     assert!(add.sql.contains("status"));
     assert!(!add.sql.contains("NOT NULL"));
-    assert!(plan.requirements.iter().any(|r| matches!(r, datazen_modules::schema_diff::types::PlanRequirement::Backfill { column, .. } if column == "status")));
+    assert!(plan.requirements.iter().any(|r| matches!(r, datazen_modules::migration::schema_diff::types::PlanRequirement::Backfill { column, .. } if column == "status")));
 }
 
 #[test]
@@ -122,7 +122,7 @@ fn unsupported_driver_operation_becomes_requirement() {
     );
     assert!(plan.requirements.iter().any(|r| matches!(
         r,
-        datazen_modules::schema_diff::types::PlanRequirement::Unsupported { .. }
+        datazen_modules::migration::schema_diff::types::PlanRequirement::Unsupported { .. }
     )));
 }
 

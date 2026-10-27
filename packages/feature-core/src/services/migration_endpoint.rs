@@ -1,6 +1,6 @@
 //! Shared physical identity for migration admission; profile IDs only own budget accounting.
 use datazen_driver_api::DatabaseDriver;
-use datazen_modules::schema_diff::normalize_dialect;
+use datazen_modules::migration::schema_diff::normalize_dialect;
 use datazen_modules::shared::id::ConnectionId;
 use sha2::{Digest, Sha256};
 use std::borrow::Cow;
@@ -98,7 +98,7 @@ impl<'a> ResolvedLocation<'a> {
 
 /// `same_endpoint` 的比较基准：归一化方言 + **解析后**的位置字段，剔除 `user`。
 ///
-/// 字段集刻意与 `datazen_modules::schema_diff::reviewed::same_endpoint` 保持一致，见模块文档。
+/// 字段集刻意与 `datazen_modules::migration::schema_diff::reviewed::same_endpoint` 保持一致，见模块文档。
 /// `schema` 必须在其中：同库跨 schema 的搬运（`schema_a.users` → `schema_b.users`）
 /// legacy 是接受的，漏掉 schema 会把它误判成自覆盖。host / port 取 [`ResolvedLocation`]
 /// 而不是配置原值，否则缺省写法与显式默认值会被摘要成两个不同端点。
@@ -151,7 +151,7 @@ fn location_options(value: &serde_json::Value) -> serde_json::Value {
 
 /// 归一化可空字符串：去空白，空白等同缺省。
 ///
-/// 与 `datazen_modules::schema_diff::reviewed::normalized_scope` 同一套规则，让驱动回传的
+/// 与 `datazen_modules::migration::schema_diff::reviewed::normalized_scope` 同一套规则，让驱动回传的
 /// 带空格值与用户填写的干净值不会摘要成两个不同端点。
 pub fn normalized(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|value| !value.is_empty())

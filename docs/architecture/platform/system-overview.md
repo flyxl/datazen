@@ -97,10 +97,10 @@ flowchart TD
 modules/        Rust domain/application、DTO、错误、授权编排、执行运行时与 Jobs【已落地，workspace member】
 modules/src/platform_api/       迁入的传输无关 ports 与契约命名空间【已落地】
 packages/infra/              形态中立基础设施原语（脱敏、路径安全）      【已落地】
-modules/src/schema_diff/        共享 Schema Diff 领域引擎                  【已落地】
-modules/src/data_sync/          共享 Data Sync 领域引擎                    【已落地】
-modules/src/data_transfer/      共享 Data Transfer 领域引擎                【已落地】
-packages/migration-common/   迁移引擎共享的 pair/recordset 边界          【已落地】
+modules/src/migration/schema_diff/        共享 Schema Diff 领域引擎                  【已落地】
+modules/src/migration/data_sync/          共享 Data Sync 领域引擎                    【已落地】
+modules/src/migration/data_transfer/      共享 Data Transfer 领域引擎                【已落地】
+modules/src/migration/common/   迁移引擎共享的 pair/recordset 边界          【已落地】
 packages/feature-core/       共享 feature（Workflow/AI/MCP/Dashboard/导出/备份恢复/Wapp 内核）【已落地】
 packages/driver-api/         现有 Driver API 与可选能力
 packages/driver-sdk/         现有驱动前端元数据/方言/Command SDK
@@ -119,7 +119,7 @@ src/                         共享 React 产品与平台桥
 
 `server/` 与 `packages/themes/` 在实施阶段才加入 workspace/build 配置；`packages/themes` 当前目录仍是旧 v1 ThemePack 存档，目标主题资源与其并存，迁移前不改旧目录。桌面 multi-worker 的编排目标（worker 隔离、drain、RuntimeRouter 投入使用）也未落地：当前桌面是单进程组装，依赖方向与下面段落一致。
 
-依赖方向：host → application/runtime/领域包；application/runtime → platform-api/driver-api；driver → driver-api。`SessionDirectory` 与 `BudgetCoordinator` 的接口归 `platform-api`，SessionRegistry/ResourceManager 只依赖这些 port；桌面/单进程先用内存适配，多 worker 再替换目录和全局预算适配。领域引擎归 `modules/src/schema_diff`、`modules/src/data_sync`、`modules/src/data_transfer`；Tauri 命令、窗口与文件选择留在 `src-tauri` adapter。领域包不得反向 import host。JobRuntime 通过注册的 JobHandler 调用领域引擎，避免 runtime 与领域 crate 循环依赖。
+依赖方向：host → application/runtime/领域包；application/runtime → platform-api/driver-api；driver → driver-api。`SessionDirectory` 与 `BudgetCoordinator` 的接口归 `platform-api`，SessionRegistry/ResourceManager 只依赖这些 port；桌面/单进程先用内存适配，多 worker 再替换目录和全局预算适配。领域引擎归 `modules/src/migration/schema_diff`、`modules/src/migration/data_sync`、`modules/src/migration/data_transfer`；Tauri 命令、窗口与文件选择留在 `src-tauri` adapter。领域包不得反向 import host。JobRuntime 通过注册的 JobHandler 调用领域引擎，避免 runtime 与领域 crate 循环依赖。
 
 ## 5. 统一领域对象
 

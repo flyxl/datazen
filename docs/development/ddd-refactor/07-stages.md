@@ -275,7 +275,7 @@ AI 工具（egress 摘要 / db_tools / 连接上下文）与 MCP 的目录读取
 2. 迁移 Schema Diff，再迁 Data Sync、Data Transfer；每个功能单独交付 Profile → plan → review → execute → history 的完整路径。
 3. Handler 由各功能实现，宿主注册；Job 引擎不 import 具体功能。
 4. 三件套各自拥有仓储 trait；跨三类 Profile 的读取用已定义窄投影，不能恢复总 Store。
-5. 计划 revision、唯一消费、预算、取消、部分成功和恢复事实保持不变；迁移共享算法落 migration_common。
+5. 计划 revision、唯一消费、预算、取消、部分成功和恢复事实保持不变；迁移共享算法落 migration/common。
 
 **退出**：重复提交不会重复应用；旧 revision/权限撤销被拒绝；中断后恢复不复用过期会话；每个三件套有真实驱动和 UI 旅程证据。
 

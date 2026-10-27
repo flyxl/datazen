@@ -178,7 +178,7 @@ data_sync = [
     "dep:tokio",
     "dep:tracing",
     "dep:datazen-driver-api",
-    "migration_common",
+    "common",
     "jobs",
     "schema",
     "execution",
@@ -197,7 +197,7 @@ data_transfer = [
     "dep:tokio",
     "dep:tracing",
     "dep:datazen-driver-api",
-    "migration_common",
+    "common",
     "jobs",
     "schema",
     "execution",
@@ -221,7 +221,7 @@ tunnel = [
 ]
 # D5：迁移三件套的共享纯算法（原 migration-common crate 整体归位）。
 # 不依赖三件套或 execution（01 §4.2）；driver-api 提供分类学词汇。
-migration_common = ["dep:datazen-driver-api", "dep:serde_json"]
+common = ["dep:datazen-driver-api", "dep:serde_json"]
 # D5：Job 运行时（domain/application/engine 三分；原 kernel::job 与
 # platform-api 的 Job/时钟/原生工具词汇）。依赖 execution 的预算账本。
 jobs = [

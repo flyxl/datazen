@@ -18,11 +18,11 @@ use datazen_modules::jobs::{EndpointRef, EndpointRole};
 use datazen_modules::shared::context::RequestContext;
 use datazen_modules::shared::id::{ClientInstanceId, OrganizationId, PrincipalId, RequestId};
 
-use datazen_modules::schema_diff::job::{
+use datazen_modules::migration::schema_diff::job::{
     ApplyRequest, PlanRepository, PrepareRequest, PreparedPlan, ReadOnlyVerdict,
     SchemaDiffFrozenPlan, SchemaDiffJobBackend, SchemaDiffPlanError, StoredPlan,
 };
-use datazen_modules::schema_diff::types::{SchemaDiffDeployResult, SchemaDiffPlan};
+use datazen_modules::migration::schema_diff::types::{SchemaDiffDeployResult, SchemaDiffPlan};
 
 use crate::commands::error::CommandError;
 use crate::commands::schema_diff::prepare_schema_diff_plan_with_schemas_impl;
@@ -47,7 +47,7 @@ impl SchemaDiffJobInfra {
 
 fn fnv_hex_of_json<T: serde::Serialize>(v: &T) -> String {
     let bytes = serde_json::to_vec(v).unwrap_or_default();
-    datazen_modules::schema_diff::job::fnv1a64_hex(&bytes)
+    datazen_modules::migration::schema_diff::job::fnv1a64_hex(&bytes)
 }
 
 fn source_session_id(request: &PrepareRequest) -> String {
@@ -276,7 +276,7 @@ impl SchemaDiffJobBackend for AppStateBackend {
             } else {
                 "nonAtomicDDL".into()
             },
-            recovery_policy: datazen_modules::schema_diff::job::RecoveryPolicy::parse(
+            recovery_policy: datazen_modules::migration::schema_diff::job::RecoveryPolicy::parse(
                 recovery_policy_str(transactional_ddl),
             )
             .ok_or(SchemaDiffPlanError::RecoveryPolicyInvalid(
@@ -526,8 +526,8 @@ pub struct SchemaDiffPrepareEnvelope {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen_modules::schema_diff::job::{RecoveryPolicy, SchemaDiffFrozenPlan};
-    use datazen_modules::schema_diff::types::{
+    use datazen_modules::migration::schema_diff::job::{RecoveryPolicy, SchemaDiffFrozenPlan};
+    use datazen_modules::migration::schema_diff::types::{
         PlanRequirement, PlanStatement, RollbackCompleteness, StatementRisk,
     };
     use datazen_modules::shared::id::Timestamp;
@@ -691,12 +691,13 @@ pub async fn register_plan_for_apply(
             .await
             .map_err(|e| e)?,
         schema_fingerprint: fingerprint,
-        mapping_fingerprint: datazen_modules::schema_diff::job::fnv1a64_hex(
+        mapping_fingerprint: datazen_modules::migration::schema_diff::job::fnv1a64_hex(
             &serde_json::to_vec(&plan.tables).unwrap_or_default(),
         ),
         consistency: "tableSnapshot".into(),
         transaction_scope: "task".into(),
-        recovery_policy: datazen_modules::schema_diff::job::RecoveryPolicy::ReadOnlyVerify,
+        recovery_policy:
+            datazen_modules::migration::schema_diff::job::RecoveryPolicy::ReadOnlyVerify,
         body_artifact_ids: vec![],
         body_digests: vec![],
         confirmed_actions: Vec::new(),

@@ -1,6 +1,8 @@
 use super::{DesktopRepository, DesktopRepositoryError};
 use crate::schema_diff::SchemaDiffProfile;
-use datazen_modules::schema_diff::{SchemaDiffProfileRepository, SchemaDiffProfileRepositoryError};
+use datazen_modules::migration::schema_diff::{
+    SchemaDiffProfileRepository, SchemaDiffProfileRepositoryError,
+};
 use datazen_modules::shared::scope::OrganizationScope;
 use serde_json::Value;
 
@@ -119,7 +121,7 @@ impl SchemaDiffProfileRepository for DesktopRepository {
         &self,
         scope: &OrganizationScope,
     ) -> Result<
-        Vec<datazen_modules::schema_diff::SchemaDiffProfile>,
+        Vec<datazen_modules::migration::schema_diff::SchemaDiffProfile>,
         SchemaDiffProfileRepositoryError,
     > {
         if !crate::platform::is_local_scope(scope) {
@@ -131,7 +133,7 @@ impl SchemaDiffProfileRepository for DesktopRepository {
     async fn save(
         &self,
         scope: &OrganizationScope,
-        profile: datazen_modules::schema_diff::SchemaDiffProfile,
+        profile: datazen_modules::migration::schema_diff::SchemaDiffProfile,
     ) -> Result<(), SchemaDiffProfileRepositoryError> {
         if !crate::platform::is_local_scope(scope) {
             return Err(SchemaDiffProfileRepositoryError::NotFound(

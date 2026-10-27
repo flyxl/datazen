@@ -46,21 +46,22 @@ pub mod mcp;
 #[cfg(feature = "monitor")]
 pub mod monitor;
 
-/// D5：迁移三件套共享纯算法（pairing/recordset_bounds）。
-#[cfg(feature = "migration_common")]
-pub mod migration_common;
+/// D5：数据迁移 package。三件套与共享算法在同一目录下独立 feature-gated。
+#[cfg(any(
+    feature = "common",
+    feature = "schema_diff",
+    feature = "data_sync",
+    feature = "data_transfer"
+))]
+pub mod migration;
 
-/// D5：Schema Diff 引擎（比较/审查/计划/部署 + job handler）。
-#[cfg(feature = "schema_diff")]
-pub mod schema_diff;
-
-/// D5：Data Sync 引擎（比较/审查/变更集/SQL 预览/执行 + job handler）。
+// 迁移期兼容导出：canonical path 是 `migration::*`，旧消费者可平滑迁移。
 #[cfg(feature = "data_sync")]
-pub mod data_sync;
-
-/// D5：Data Transfer 引擎（单向复制/迁移：映射/预览/断点续传 + job pipeline）。
+pub use migration::data_sync;
 #[cfg(feature = "data_transfer")]
-pub mod data_transfer;
+pub use migration::data_transfer;
+#[cfg(feature = "schema_diff")]
+pub use migration::schema_diff;
 
 /// D6 item 1：查询历史与迁移运行历史（词汇/仓储端口/用例门面）。
 #[cfg(feature = "history")]

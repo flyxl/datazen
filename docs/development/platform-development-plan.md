@@ -172,9 +172,9 @@ P4 与 P5 代码边界独立后可以分别推进，但必须共享已稳定的 
 **第四步——领域包端口的窄化**
 
 搬走／新增：在 `modules/src/platform_api/src/ports/` 新增三个**窄端口**（纯 trait，不依赖领域包）：
-- `ReviewedPlanRepository`（schema-diff 的评审计划存储，现契约在 `modules/src/schema_diff/src/reviewed.rs`）；
-- `SyncPlanRepository`（data-sync 的计划注册表，现契约在 `modules/src/data_sync/src/plan_store/repository.rs`）；
-- `TransferPlanRepository`（data-transfer 的不可变计划与检查点，现契约在 `modules/src/data_transfer/src/plan_store/port.rs`）。
+- `ReviewedPlanRepository`（schema-diff 的评审计划存储，现契约在 `modules/src/migration/schema_diff/reviewed.rs`）；
+- `SyncPlanRepository`（data-sync 的计划注册表，现契约在 `modules/src/migration/data_sync/plan_store/repository.rs`）；
+- `TransferPlanRepository`（data-transfer 的不可变计划与检查点，现契约在 `modules/src/migration/data_transfer/plan_store/port.rs`）。
 
 宿主在组装期实现这些窄端口（转发到领域包端口的实例），再注入给 `ApplicationServices`。
 
@@ -439,7 +439,7 @@ pnpm e2e:skip-build -- --spec packages/drivers/postgres/e2e/connection-pool-rota
 已落地事实：
 
 - 桌面 `AppDb` 使用 SQLite v2 Job 仓储；共享 `JobHost` 提供 durable accept、幂等 receipt、状态/进度/结果、取消、恢复核验和后台 dispatch。
-- Schema Diff、Data Sync、Data Transfer 的准备与应用均接入 JobRuntime。领域实现位于 `modules/src/schema_diff`、`modules/src/data_sync`、`modules/src/data_transfer`；Tauri IPC 与桌面适配保留在 `src-tauri/src/commands/`。
+- Schema Diff、Data Sync、Data Transfer 的准备与应用均接入 JobRuntime。领域实现位于 `modules/src/migration/schema_diff`、`modules/src/migration/data_sync`、`modules/src/migration/data_transfer`；Tauri IPC 与桌面适配保留在 `src-tauri/src/commands/`。
 - Job 结果记录提交边界和 `effectOutcome`，区分未开始、已回滚、部分提交、未知和完成；apply `planId` 单次消费，worker 写入受 claim 代次校验。
 - 任务窗口关闭后，后台 Job 继续运行；窗口重开可读取任务状态和结果。应用重启不会自动重放旧 worker：运行中的任务进入待核验，未派发任务标记为未执行。
 - 迁移三件套独立测试和冒烟测试通过，P5 退出门槛已关闭。

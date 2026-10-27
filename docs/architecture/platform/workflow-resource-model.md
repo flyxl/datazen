@@ -69,7 +69,7 @@
 - 校验发生在**生产路径**上：`src-tauri/src/monitor/grants.rs:105` 在把 workflow 变成可执行对象时调用 `into_executable()`（`executable.rs:236`），未知或越界版本在这里被拒（"workflow version invalid"）。因此**版本号不是"写了没人看"的装饰字段**。
 - 写入点：`modules/src/dashboard/application/create.rs:40` 的 `version: None` 字面量（未声明 ⇒ 按 V1 执行），其余在测试代码内（宿主侧 `workflow/host.rs:170/211/246`、`workflow/registry.rs:226`、`commands/dashboard.rs:482`、`commands/ai/integration_tests.rs:377/932/1070/1123`；共享包侧 `modules/src/workflow/application/registry.rs:344`、`modules/src/workflow/engine/scheduler.rs:220`、`modules/src/dashboard/application/archive.rs:197`），其中仅 `integration_tests.rs:377` 写 `Some("1")`。三个内建 YAML 均未设置该字段，按 V1 执行。
 
-对比：仓库中其他"定义版本"同样有校验——`modules/src/schema_diff/src/profile.rs` 的 `CURRENT_VERSION` 并在遇到未知版本时报 "unsupported ... version"；`data_sync::SyncProfile`、`data_transfer::profile.rs` 同样有 `CURRENT_VERSION`；`store/favorites/migrate.rs` 有 `MIGRATION_VERSION`。**Workflow 现在也在其中**：它的版本由 `WorkflowVersion::parse` 校验，未知/空白/非整数/越界版本**拒绝执行**。另需注意 `store/settings.rs:15` 的 `OnboardingState.version` 同样只写不读（生产路径只读 `completed`）——那**是**一个尚未校验的版本字段。
+对比：仓库中其他"定义版本"同样有校验——`modules/src/migration/schema_diff/profile.rs` 的 `CURRENT_VERSION` 并在遇到未知版本时报 "unsupported ... version"；`data_sync::SyncProfile`、`data_transfer::profile.rs` 同样有 `CURRENT_VERSION`；`store/favorites/migrate.rs` 有 `MIGRATION_VERSION`。**Workflow 现在也在其中**：它的版本由 `WorkflowVersion::parse` 校验，未知/空白/非整数/越界版本**拒绝执行**。另需注意 `store/settings.rs:15` 的 `OnboardingState.version` 同样只写不读（生产路径只读 `completed`）——那**是**一个尚未校验的版本字段。
 
 ### 2.4 目标解析与资源获取
 
@@ -115,7 +115,7 @@ command 分支（[command_runtime.rs](../../../modules/src/workflow/application/
 
 `error.rs` 的 `WorkflowError` 共 22 个变体（`modules/src/workflow/domain/error.rs`，按 `#[error(...)]` 计）。IPC 边界仍用 `into_ipc_string()` **把错误拍平成字符串**：执行入口 `executor.rs` 的 `execute_with_options` 返回 `Result<WorkflowExecutionResult, String>`，宿主 IPC、MCP、调度器、Dashboard 与 Monitor 拿到的都是同一条消息。**没有结构化 `ExecutionErrorCode`**——该类型属于 `modules/src/platform_api/src/dto/execution.rs` 的执行终态契约，runtime 与迁移三件套在用，Workflow 路径不产出它。目标化取值则已落在**变体**层面：`UnsupportedPlan` / `CapabilityUnsupported`（`plan_guard.rs` 的 `PlanVerdict::rejection_error()`，该函数目前只有测试调用，执行器尚未接线）与 `TargetRequired` / `TargetConflict` / `TargetUnsupported`（`target_plan.rs` 的 `resolve()`，调用方含 `src-tauri/src/monitor/fixed_targets.rs`）都是现成的 `WorkflowError` 变体；**`OutcomeUnknown` 仍不是** `WorkflowError` 的变体。
 
-事务：Workflow 执行路径**完全不管理事务**。`modules/src/schema_diff/src/transaction.rs` 的 `TransactionScope` 目前唯一的生产消费者是 `modules/src/schema_diff/src/deploy.rs`。
+事务：Workflow 执行路径**完全不管理事务**。`modules/src/migration/schema_diff/transaction.rs` 的 `TransactionScope` 目前唯一的生产消费者是 `modules/src/migration/schema_diff/deploy.rs`。
 
 ### 2.7 现状与目标的差距小结
 
@@ -686,7 +686,7 @@ parseWorkflowDefinition(yaml) -> ParsedDefinition
   4. 解析产物为统一的 ExecutableWorkflow { version, targets, blocks }
 ```
 
-仓库内已有可参照的版本化实现（[§2.3](#23-版本字段的现状重要)）：`modules/src/schema_diff/src/profile.rs`、`modules/src/data_sync` 的 `SyncProfile`、`modules/src/data_transfer/src/profile.rs` 的 `CURRENT_VERSION` + 未知版本拒绝。
+仓库内已有可参照的版本化实现（[§2.3](#23-版本字段的现状重要)）：`modules/src/migration/schema_diff/profile.rs`、`modules/src/migration/data_sync` 的 `SyncProfile`、`modules/src/migration/data_transfer/profile.rs` 的 `CURRENT_VERSION` + 未知版本拒绝。
 
 ### 10.3 未知版本
 
@@ -783,7 +783,7 @@ v1 定义的映射规则是机械的、无歧义的：
 2. **各驱动的隐式提交清单**。MySQL 已知多种 DDL 隐式提交（[连接管理 §10.2](connection-management.md#102-schema-diff)）；PostgreSQL、SQL Server、SQLite 的对应行为需按驱动逐一核验。
 3. **[§2.8 身份错配](#28-一处已确认的身份错配) 的实际失败表现**：`WorkflowPanel` 把 `dbSessionId` 作为 `connectionId` 传入时，`get_or_connect_session` 的 owner 匹配会失败并转入 `connect(connection_id)`；代码上该路径会落到 `establish_connection` 的 `ConnectionConfigNotFound`，但需在真实环境确认，是否存在其他恰好命中的路径。
 4. **Dashboard 工作流组件的目标来源**：基线传 `None`；目标按 [消费者设计 §6](consumer-adapters.md#6-dashboardmonitor-与调度身份) 固定为 widget 定义的完整稳定目标，验收须证明不依赖 GUI 当前连接。
-5. **Workflow runtime 与编辑器事务管理是否会在同一物理 session 上形成双事务控制**：现状 Workflow 不复用 `modules/src/schema_diff/src/transaction.rs`（[§2.6](#26-错误与事务)），但目标模型要求事务由 Workflow runtime 托管，需确认二者不会各自持有同一物理 resource 的事务。
+5. **Workflow runtime 与编辑器事务管理是否会在同一物理 session 上形成双事务控制**：现状 Workflow 不复用 `modules/src/migration/schema_diff/transaction.rs`（[§2.6](#26-错误与事务)），但目标模型要求事务由 Workflow runtime 托管，需确认二者不会各自持有同一物理 resource 的事务。
 6. **调度器服务身份的凭据来源与委托权限模型**（[§9.4](#94-后台调度与-dashboard)），授权与持久化边界按 [消费者设计 §6](consumer-adapters.md#6-dashboardmonitor-与调度身份) 实施，并验证与[连接管理 §10.1 公共处理](connection-management.md#101-公共处理) 一致。
 7. **`WorkflowStep::Ai` 无目标字段**是否需要扩展：AI 步骤若要在 session block 内读取块内临时对象，模型需增加目标引用，本文暂按"AI 步骤不参与块内资源"处理。
 

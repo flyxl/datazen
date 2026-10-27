@@ -254,7 +254,7 @@ fn features() -> String {
         "data_sync",
         "data_transfer",
         "tunnel",
-        "migration_common",
+        "common",
         "jobs",
         "ai",
         "mcp",

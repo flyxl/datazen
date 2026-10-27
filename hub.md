@@ -41,7 +41,7 @@
 
 ## 下一步（按计划顺序）
 
-1. **D5 后续切片**：migration_common crate → modules::migration_common；随后 Schema Diff → Data Sync → Data Transfer 三 crate 逐个归位 modules（07-stages.md D5 工作项 2/5）；runtime 的 native_tool 模块勘察归位。
+1. **D5 后续切片**：migration/common crate → modules::migration/common；随后 Schema Diff → Data Sync → Data Transfer 三 crate 逐个归位 modules（07-stages.md D5 工作项 2/5）；runtime 的 native_tool 模块勘察归位。
 2. **D6/D7/D8** 按 07-stages.md 顺序推进；每阶段开工前先读 08-pr-playbook.md §11.1。
 
 ### D1.5 已完成（2026-10-26）
@@ -78,10 +78,10 @@
 | 提交 | 内容 |
 |---|---|
 | `aee5cafc0` | D5 第一切片：jobs 三分归位 modules::jobs——kernel::job 全家（17 文件）+ platform-api Job 词汇（ports/job、dto/job）+ 时基端口（→shared::clock，常驻）+ native_tool 词汇（→jobs::domain::native_tool）；kernel/platform-api 垫片化；kernel/src/schema_cache 孤儿目录删除；jobs/mod.rs 镜像旧扁平名与深路径；form_neutrality 闸门清单随迁。验证：modules 1221 / runtime 9+32 / platform-api 25 / feature-core 500 / schema-diff 179 / data-sync 12 / data-transfer 253 全绿；五道门禁 PASS |
-| `d16e0a9c2` | D5 第二切片：migration-common 共享纯算法归位 modules::migration_common（07-stages D5 工作项 5 后半） |
+| `d16e0a9c2` | D5 第二切片：migration-common 共享纯算法归位 modules::migration/common（07-stages D5 工作项 5 后半） |
 | `46db92507` | D5 第三切片：Schema Diff 引擎归位 modules::schema_diff（三件套之一） |
 | `2fd65d74f` | D5 第四切片：Data Sync 引擎归位 modules::data_sync（三件套之二；41 文件）。modules 新增 data_sync feature（rusqlite bundled 随 SQLite 侧实现）；垫片保留集成测试（cm43–cm46 等持有 driver dev-deps）；modules 内联单测的家族归一化经 dev-deps + `#[cfg(test)] extern crate` force-link 三驱动（cargo 允许 dev-dep 成环）；shared::migration（EndpointIdentity）随迁自 platform-api。验证：modules 242 / 垫片 25 全绿 |
-| `3694cfd94` | D5 第五切片：Data Transfer 引擎归位 modules::data_transfer（三件套之三；56 文件）。flate2 随 sql_file gzip、inventory 随 transfer 适配器自注册进入 feature；引用收口：kernel::job→jobs、kernel::budget→execution::runtime::budget、platform-api id/context/ports/dto→shared/jobs/execution 各归位点、migration_common 指模块内；垫片保留 filter_operator_refusal 集成测试（补 driver-api dev-dep）。验证：modules 250 / 垫片 3 全绿 / workspace check 通过。**D5 收官**（jobs 三分 + migration_common + 三件套 + native_tool 全部归位；退出准则中的真实驱动/UI 旅程证据归 CI/E2E 验收） |
+| `3694cfd94` | D5 第五切片：Data Transfer 引擎归位 modules::data_transfer（三件套之三；56 文件）。flate2 随 sql_file gzip、inventory 随 transfer 适配器自注册进入 feature；引用收口：kernel::job→jobs、kernel::budget→execution::runtime::budget、platform-api id/context/ports/dto→shared/jobs/execution 各归位点、migration/common 指模块内；垫片保留 filter_operator_refusal 集成测试（补 driver-api dev-dep）。验证：modules 250 / 垫片 3 全绿 / workspace check 通过。**D5 收官**（jobs 三分 + migration/common + 三件套 + native_tool 全部归位；退出准则中的真实驱动/UI 旅程证据归 CI/E2E 验收） |
 | `b248e15` + `b53702f` + `beba3d6` | CI 随迁修复（评审 agent，PR #133 首次 CI run 40274319982/40282921088 两层失败定位）：① `shared/scope.rs` doctest 仍指 platform-api 旧路径（E0433），改 crate 内自洽路径恢复编译校验；② chrono 转 modules 常驻依赖——shared::clock 无 feature 门，settings/connection 等单 feature 矩阵腿与默认构建在 clock.rs 编译破损（先例：shared 常驻 ⇒ serde/thiserror 非可选）；③ modules 补声明 webdriver feature + data-transfer 垫片恢复转发（src-tauri E2E 传导链 + 8 条 unexpected_cfgs 清零）；④ datazen-migration-common 垫片零消费方且 F-08 违规（→datazen-modules/infra），提前退役（原定 D8），DDD 门禁 DOMAIN_PACKAGES 同步；⑤ cm06 负例 doctest 随 D3-3b 归位改 modules 内路径（compile_fail 负例被 E0433 歪打正着放行，可编译对照如实转红拦截）。验证：modules doctest（默认/CI 同款 features/单 feature 腿/all-features）全绿、三门禁 exit 0、其余核心 crate doctest 面扫描为空 |
 
 ## 会话恢复要点
@@ -154,7 +154,7 @@
 - 网络抖动：GitHub TLS 频繁中断，fetch/push 需重试与 `--depth=N` 渐进；
   origin remote 已内嵌 PAT。
 - feature-lite 全量口径 = settings,history,workflow,dashboard,
-  connection,named_views,execution,schema,migration_common,ai,mcp,
+  connection,named_views,execution,schema,migration/common,ai,mcp,
   webdriver,jobs,export,backup（本轮 1423）。
 - ddd-layers 门禁需全量 metadata（缺 brotli 等约 14 包）：本地跳过，
   PR CI 兜底（用户 2026-10-26 决策）。
