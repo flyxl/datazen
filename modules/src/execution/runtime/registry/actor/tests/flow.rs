@@ -118,7 +118,7 @@ async fn different_sessions_actually_run_concurrently() {
 /// 切库竞态：请求带着**旧修订**打过来，必须被拒，
 /// 而不是在新目标上执行——配置不得用来找替代会话。
 #[tokio::test(start_paused = true)]
-async fn an_execution_with_a_stale_context_revision_is_rejected_instead_of_running_on_the_new_target() {
+async fn an_execution_with_a_stale_revision_is_rejected_not_run_on_the_new_target() {
     let backend = FakeBackend::new(FakeOutcome::default()).await;
     let (actor, view, _audit) = spawn_ready(backend.clone()).await;
     assert_eq!(view.context_revision, Counter(1));

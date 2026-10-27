@@ -137,7 +137,7 @@
 //! 人处置**：既不落在旧 resource，也不落在新 resource，而是悬空。这正是判据
 //! 「或明确失败」要排除的形状。该格由
 //! `tests/registry_evict_replacement.rs` 的
-//! `an_eviction_during_the_barrier_must_not_unlink_the_replacement_still_finalizes_the_old_handle` 钉住（探针站在
+//! `eviction_at_the_barrier_must_not_unlink_the_replacement_finalizes_the_old_handle` 钉住（探针站在
 //! `Prepared` 提交那一刻，即屏障内部；不靠时间推进制造窗口）。
 //!
 //! 为什么这里写结论而不是留一个用例：可达的部分已有用例，不可达的部分**构造不出来**。

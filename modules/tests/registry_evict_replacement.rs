@@ -31,7 +31,7 @@
 //! 台账合并时会被删掉，所以「哪几个变异让本组变红」必须留在文件里：
 //!
 //! - **删掉 `evict_idle_at` 里 `Err(RuntimeError::CloseRejected(_))` 那个 arm**（让它
-//!   落到 `forget`）：`an_eviction_during_the_barrier_must_not_unlink_the_replacement_still_finalizes_the_old_handle` **红**——
+//!   落到 `forget`）：`eviction_at_the_barrier_must_not_unlink_the_replacement_finalizes_the_old_handle` **红**——
 //!   探针看到行已被摘、额度多还一格，并且整场替换结束时 `closed_with` 里**没有** `res_1`、
 //!   `finalize_calls() == 0`：旧物理资源带着两个已登记句柄泄漏。
 //! - **删掉闸门对 `Evict` 的拒绝**（`actor/context.rs` 的 `gate` 不再挡 `Evict`）：
@@ -43,7 +43,7 @@
 //!   两格）：`control_without_a_barrier_an_expired_eviction_unlinks_and_returns_quota_as_usual` 与 `registry_release.rs` 的
 //!   `pooling_with_a_clean_driver_report_but_host_handles_still_registered_must_not_succeed` 都会红——本组不是单向逻辑。
 //! - **把第 1 步的取样退回 `drain_handles`（取走即注销）**：
-//!   `an_old_handle_finalizes_only_on_its_registering_resource_the_new_one_gets_no_finalize_request` 红在
+//!   `old_handles_finalize_where_they_registered_the_new_one_gets_no_finalize_request` 红在
 //!   `closed_with[0].registered_handles` 那道**正例**断言上吗？不——那里两种实现都是 0。
 //!   真正会红的是 `registry_release.rs` 里 driver 少报那两条（恒 0 ⇒ 判据失去可观测面）。
 //!   本组的这一条钉的是**批次归属**（`resource_id`），与FU2 的账目形状正交。
@@ -51,7 +51,7 @@
 //!   `a_published_candidate_has_no_idle_deadline_eviction_leaves_it_alone` **红**（候选被驱逐摘掉、额度多还一格）。
 //!   这条是第 1 点那节论证的**承重件**反证。
 //! - **把 `release` 第 1 步的分组依据从「句柄登记时的资源」换成「当前物理资源」**：
-//!   `an_old_handle_finalizes_only_on_its_registering_resource_the_new_one_gets_no_finalize_request` **红**——那就是条款 (2)
+//!   `old_handles_finalize_where_they_registered_the_new_one_gets_no_finalize_request` **红**——那就是条款 (2)
 //!   「出现在新 resource」的形状本身。
 
 #![allow(dead_code)]
@@ -260,7 +260,7 @@ impl ReplacementDirectory for ProbingDirectory {
 /// | 闸门不挡 `Evict` | 驱逐真的跑了释放例程 | 旧句柄在**提交之前**就被关掉，第 ⑥ 步拿 `UnknownSession` |
 /// | 分类正确（现状） | 行在、额度在 | 终结与关闭都只发生在 `res_1` 上，各一次 |
 #[tokio::test]
-async fn an_eviction_during_the_barrier_must_not_unlink_the_replacement_still_finalizes_the_old_handle() {
+async fn eviction_at_the_barrier_must_not_unlink_the_replacement_finalizes_the_old_handle() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
             .handles(vec![handle_ref("h1", "res_1"), handle_ref("h2", "res_1")])
@@ -406,7 +406,7 @@ async fn control_without_a_barrier_an_expired_eviction_unlinks_and_returns_quota
 /// 3. 宿主账全空时 `CloseResource.registered_handles` 才等于 0——这是**正例**，
 ///    与 `registry_release.rs` 里 driver 少报 ⇒ 该值非 0 的那两条互为对照。
 #[tokio::test]
-async fn an_old_handle_finalizes_only_on_its_registering_resource_the_new_one_gets_no_finalize_request() {
+async fn old_handles_finalize_where_they_registered_the_new_one_gets_no_finalize_request() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
             .handles(vec![handle_ref("h1", "res_1"), handle_ref("h2", "res_1")])

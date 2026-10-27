@@ -14,7 +14,7 @@
 //! | `with_the_deadline_off_expired_sessions_are_not_reclaimed` | `idle_deadline_ms == None` 是配置事实，不是「计数器为 0」 |
 //! | `the_periodic_scanner_drives_reaping_itself_the_host_needs_no_extra_timer` | 驱动器归应用层所有 |
 //! | `a_started_scanner_really_exits_after_stop_leaking_no_task` | 起得也要停得；不泄漏 task |
-//! | `borrow_return_borrow_again_the_ledger_returns_to_the_same_slot_and_the_port_is_probed_twice` | 端口被真的查询（不是回放缓存） |
+//! | `borrow_return_borrow_again_ledger_back_to_the_same_slot_and_port_probed_twice` | 端口被真的查询（不是回放缓存） |
 //! | `reaping_invalidates_outstanding_borrows_the_holder_receives_an_invalidated_reference` | 被回收 ⇒ 旧借用立刻失效 |
 //! | `borrowing_without_wiring_yields_service_unavailable_and_leaves_no_registry_row` | 没接线是配置事实，不登记 |
 //! | `a_host_refusal_to_lend_leaves_no_empty_registry_row` | 拒绝路径不得留下孤儿行 |
@@ -543,7 +543,7 @@ async fn a_started_scanner_really_exits_after_stop_leaking_no_task() {
 /// 「第二轮回放缓存」是这条路最像成功的失败形状：计数对、内容也对，但端口压根
 /// 没被问。因此 `host.requests` 的条数必须等于轮数，而不是 ≤ 轮数。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn borrow_return_borrow_again_the_ledger_returns_to_the_same_slot_and_the_port_is_probed_twice() {
+async fn borrow_return_borrow_again_ledger_back_to_the_same_slot_and_port_probed_twice() {
     let (service, _, host) = setup();
     let c = ctx("u", "c");
     let opened = open(&service, &c, "e").await;

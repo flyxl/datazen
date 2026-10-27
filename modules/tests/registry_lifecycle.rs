@@ -37,7 +37,7 @@ fn registry_with(backend: Arc<ScriptedBackend>, limit: usize) -> SessionRegistry
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_successful_registration_projects_only_the_session_facade_with_slot_and_quota_visible_together() {
+async fn a_successful_registration_projects_only_the_session_facade_slot_and_quota_visible() {
     let backend = ScriptedBackend::defaults().await;
     let registry = registry_with(Arc::clone(&backend), SESSION_LIMIT);
 

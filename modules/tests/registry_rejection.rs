@@ -9,7 +9,7 @@
 //! | 用例 | 分支 |
 //! | --- | --- |
 //! | a_revision_mismatch_is_always_rejected_and_the_old_session_stays_untouched | 乐观并发闸门 |
-//! | on_publication_failure_the_quota_returns_to_its_old_value_and_the_colliding_row_stays_put | 提交后退款 |
+//! | on_publication_failure_the_quota_is_refunded_and_the_colliding_row_stays_put | 提交后退款 |
 //! | a_same_key_replay_after_the_registry_row_is_gone_neither_issues_a_receipt_nor_reopens | 幂等短路的孤儿态判据（`Err` 分支） |
 //! | after_directory_invalidation_a_same_key_replay_must_not_hand_back_a_dead_token | 幂等回放的存活性复核 |
 //!
@@ -222,7 +222,7 @@ async fn a_revision_mismatch_is_always_rejected_and_the_old_session_stays_untouc
 // ---------------------------------------------------------------------------------------------
 
 #[tokio::test]
-async fn on_publication_failure_the_quota_returns_to_its_old_value_and_the_colliding_row_stays_put() {
+async fn on_publication_failure_the_quota_is_refunded_and_the_colliding_row_stays_put() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
             .handles(vec![handle_ref("h1", "res_1"), handle_ref("h2", "res_1")])

@@ -732,7 +732,7 @@ async fn a_retry_does_not_rotate_the_token_the_first_one_still_counts_after_the_
 // ---------------------------------------------------------------------------------------------
 
 #[tokio::test]
-async fn when_the_driver_underreports_handles_the_replacement_still_publishes_but_the_old_session_is_judged_lost() {
+async fn an_underreported_driver_handle_count_still_publishes_but_judges_the_old_session_lost() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
             .handles(vec![handle_ref("h1", "res_1"), handle_ref("h2", "res_1")])

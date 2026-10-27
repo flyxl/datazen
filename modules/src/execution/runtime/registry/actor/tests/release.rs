@@ -244,7 +244,7 @@ async fn an_idle_eviction_first_rolls_back_on_the_original_resource_then_closes_
 ///
 /// 关键是**什么都没做**：既不下发句柄、也不关资源——拒绝必须是零副作用的。
 #[tokio::test(start_paused = true)]
-async fn a_no_transaction_close_request_with_transactions_in_flight_is_rejected_with_zero_side_effects() {
+async fn a_no_transaction_close_with_transactions_in_flight_is_rejected_zero_side_effects() {
     let backend = FakeBackend::new(FakeOutcome::default().finalizes(1, 0)).await;
     let (actor, view, _audit) = spawn_ready(backend.clone()).await;
     let handle = handle_of(&view);

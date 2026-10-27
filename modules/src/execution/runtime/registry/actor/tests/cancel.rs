@@ -296,7 +296,7 @@ async fn a_failed_cancel_reports_the_error_as_is_and_audits_the_outcome_as_rejec
 /// 另外把三种 disposition 的线上字面量钉死：它们必须与执行终态那套字面量
 /// **不相交**，否则两套词汇混在一起就再也分不清「控制结论」和「执行结论」。
 #[tokio::test(start_paused = true)]
-async fn cancel_audits_carry_only_the_capability_version_and_disposal_literals_disjoint_from_states() {
+async fn cancel_audits_carry_only_the_capability_version_and_disjoint_disposal_literals() {
     const DISPOSITIONS: [&str; 3] = ["requested", "unsupported", "alreadyFinished"];
     const EXECUTION_STATES: [&str; 6] = [
         "queued",

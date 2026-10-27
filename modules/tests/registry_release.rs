@@ -73,7 +73,7 @@ async fn session_with_handles(registry: &Arc<SessionRegistry>) -> SessionHandle 
 }
 
 #[tokio::test(start_paused = true)]
-async fn handles_finalize_on_their_registering_resource_before_the_current_physical_resource_closes() {
+async fn handles_finalize_where_they_registered_before_the_current_physical_resource_closes() {
     // 执行在 `res_1` 上签发两个句柄；释放必须先在该资源上终结它们，再关闭资源。
     let backend = ScriptedBackend::new(
         BackendPlan::default()
@@ -571,7 +571,7 @@ async fn pooling_with_a_clean_driver_report_but_host_handles_still_registered_mu
 /// driver 明确报告批次仍有一个句柄时，宿主必须保留整批登记项并判失。
 /// 一次执行返回的句柄绑定到当前物理资源；未逐项确认整个批次前，不能只注销其中一部分。
 #[tokio::test(start_paused = true)]
-async fn when_the_driver_still_reports_handles_the_host_ledger_keeps_the_batch_and_judges_it_lost() {
+async fn when_the_driver_still_reports_handles_the_host_keeps_the_batch_and_judges_it_lost() {
     let backend = ScriptedBackend::new(
         BackendPlan::default()
             .handles(vec![handle_ref("h1", "res_1"), handle_ref("h2", "res_1")])
