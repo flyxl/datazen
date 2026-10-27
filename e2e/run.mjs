@@ -249,27 +249,40 @@ function waitForPort(port, host = '127.0.0.1', timeoutMs = 15000) {
   });
 }
 
+/**
+ * The executable inside the bundle is named after the binary target
+ * (`src-tauri/Cargo.toml`), not after the product. The DDD refactor renamed the
+ * crate to `datazen_desktop`, so resolve both names instead of hard-coding the
+ * old one and silently falling back to a stale `target/debug/datazen` left over
+ * from an earlier checkout.
+ */
+const APP_BINARY_NAMES = ['datazen_desktop', 'datazen'];
+
 function getAppBinaryPath() {
   if (process.platform === 'win32') {
-    return path.join(ROOT, 'target/debug/datazen.exe');
+    return path.join(ROOT, 'target/debug', `${APP_BINARY_NAMES[0]}.exe`);
   }
   // macOS: always prefer the Tauri debug .app when present.
-  // Bare `cargo build` overwrites target/debug/datazen and often breaks
+  // Bare `cargo build` overwrites the unbundled binary and often breaks
   // embedded frontend assets ("asset not found: index.html"), while the
   // .app from `pnpm tauri build --debug` stays intact.
-  const appBundleBin = path.join(
-    ROOT,
-    'target/debug/bundle/macos/DataZen.app/Contents/MacOS/datazen',
-  );
-  const proAppBundleBin = path.join(
-    ROOT,
-    'target/debug/bundle/macos/DataZen Pro.app/Contents/MacOS/datazen',
-  );
+  const bundles = ['DataZen.app', 'DataZen Pro.app'];
   if (process.platform === 'darwin') {
-    if (fs.existsSync(appBundleBin)) return appBundleBin;
-    if (fs.existsSync(proAppBundleBin)) return proAppBundleBin;
+    for (const bundle of bundles) {
+      for (const name of APP_BINARY_NAMES) {
+        const candidate = path.join(
+          ROOT,
+          `target/debug/bundle/macos/${bundle}/Contents/MacOS/${name}`,
+        );
+        if (fs.existsSync(candidate)) return candidate;
+      }
+    }
   }
-  return path.join(ROOT, 'target/debug/datazen');
+  for (const name of APP_BINARY_NAMES) {
+    const candidate = path.join(ROOT, 'target/debug', name);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return path.join(ROOT, 'target/debug', APP_BINARY_NAMES[0]);
 }
 
 function assertFrontendDistPresent() {
