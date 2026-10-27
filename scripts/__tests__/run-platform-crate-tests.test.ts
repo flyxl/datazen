@@ -259,7 +259,7 @@ const EXPECTED_CLEAN_INVOCATIONS = [
   'test --all-features -p datazen',
   'test --no-default-features --features settings --lib -p datazen',
   'test --no-default-features --features ai --lib -p datazen',
-  'test --no-default-features --features connection --lib -p datazen',
+  'test --no-default-features --features connection,execution --lib -p datazen',
   'test --no-default-features --features named_views --lib -p datazen',
   'test --no-default-features --features monitor --lib -p datazen',
   'test --no-default-features --features dashboard --lib -p datazen',

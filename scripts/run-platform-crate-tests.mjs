@@ -188,7 +188,10 @@ export const FEATURE_TESTS = Object.freeze({
   'datazen': Object.freeze([
     'settings',
     'ai',
-    'connection',
+    // `connection` exposes DTOs that use execution receipts, while execution
+    // itself depends on connection. Test the smallest valid profile instead
+    // of pretending that `connection` is a standalone Cargo configuration.
+    'connection,execution',
     'named_views',
     'monitor',
     'dashboard',
