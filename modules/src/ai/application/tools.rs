@@ -207,23 +207,6 @@ impl ToolLoopGuard {
         }
     }
 
-    /// Check if a total round result exceeds the per-round cap and truncate.
-    #[allow(dead_code)]
-    pub fn enforce_round_cap(&self, messages: &mut Vec<ChatMessage>) {
-        let total: usize = messages.iter().map(|m| m.content.len()).sum();
-        if total > self.per_round_cap {
-            // Truncate the last message to fit within the cap.
-            if let Some(last) = messages.last_mut() {
-                let excess = total - self.per_round_cap;
-                let bytes = last.content.as_bytes();
-                if bytes.len() > excess {
-                    last.content = String::from_utf8_lossy(&bytes[..bytes.len() - excess])
-                        .to_string()
-                        + "\u{2026}(round cap)";
-                }
-            }
-        }
-    }
 }
 
 impl Default for ToolLoopGuard {

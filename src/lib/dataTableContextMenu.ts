@@ -444,8 +444,8 @@ export function serializeDataTableColumnValues(columnIndex: number, rows: unknow
 /**
  * The label of a "Set Value" entry.
  *
- * The rules live in `components/DataTable/editors/setValueMenu.ts`; this
- * only maps an action to the text the caller supplied.
+ * The rules live in `lib/setValueActions.ts`; this only maps an action
+ * to the text the caller supplied.
  */
 function setValueActionLabel(id: SetValueActionId, labels: DataTableContextMenuLabels): string {
   switch (id) {

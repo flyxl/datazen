@@ -237,14 +237,6 @@ export function readViewFilters(
   return { filters, unknownOperators };
 }
 
-/** The names already taken in a scope. */
-export function takenNamesInScope(
-  views: readonly NamedView[],
-  scope: NamedViewScope,
-): Set<string> {
-  return new Set(viewsForScope(views, scope).map((view) => view.name));
-}
-
 /**
  * The export file of a set of views.
  *

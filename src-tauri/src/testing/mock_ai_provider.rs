@@ -38,11 +38,6 @@ impl MockAiProvider {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn set_supports_tools(&self, v: bool) {
-        self.supports_tools.store(v, Ordering::Relaxed);
-    }
-
     pub fn set_validate_ok(&self, v: bool) {
         self.validate_ok.store(v, Ordering::Relaxed);
     }
@@ -77,25 +72,6 @@ impl MockAiProvider {
             .lock()
             .unwrap()
             .push_back(Err(AiError::RequestFailed(msg.into())));
-    }
-
-    /// Queue a non-streaming tool-call response (used when stream queue is empty
-    /// and the default `stream_complete` falls back to `complete`).
-    #[allow(dead_code)]
-    pub fn push_tool_calls(&self, tool_calls: Vec<ToolCall>) {
-        self.complete_queue
-            .lock()
-            .unwrap()
-            .push_back(Ok(CompletionResponse {
-                request_id: String::new(),
-                content: String::new(),
-                reasoning: None,
-                usage: TokenUsage::default(),
-                model: "mock-model".into(),
-                finish_reason: Some("tool_calls".into()),
-                tool_calls: Some(tool_calls),
-                response_id: None,
-            }));
     }
 
     /// Queue an explicit streaming round (chunks delivered via mpsc).
@@ -148,14 +124,6 @@ impl MockAiProvider {
         self.push_stream_text(final_text);
     }
 
-    #[allow(dead_code)]
-    pub fn push_stream_error(&self, msg: impl Into<String>) {
-        self.stream_queue
-            .lock()
-            .unwrap()
-            .push_back(Err(AiError::RequestFailed(msg.into())));
-    }
-
     pub fn call_count(&self) -> usize {
         self.calls.lock().unwrap().len()
     }
@@ -164,10 +132,6 @@ impl MockAiProvider {
         self.calls.lock().unwrap().last().cloned()
     }
 
-    #[allow(dead_code)]
-    pub fn take_calls(&self) -> Vec<CompletionRequest> {
-        std::mem::take(&mut *self.calls.lock().unwrap())
-    }
 }
 
 impl Default for MockAiProvider {

@@ -471,52 +471,6 @@ pub struct StoredSyncPlan {
     pub(crate) expires_at: Instant,
 }
 
-/// Build the unattended profile selection from a server-owned comparison.
-///
-/// Persisted profiles do not carry row payloads or SQL.  A profile run applies
-/// every enabled operation for every matched table in the immutable plan;
-/// the plan registry remains the only source of table and row identities.
-pub fn default_profile_selection(
-    store: &dyn SyncPlanRepository,
-    scope: &OrganizationScope,
-    plan_id: &str,
-    revision: u64,
-    options: &SyncOptions,
-) -> Result<SyncRunSelection, String> {
-    let plan = store.peek(scope, plan_id)?;
-    if plan.selection_revision != revision {
-        return Err("selection revision is stale; return to comparison".into());
-    }
-    let summaries = plan.comparison.summaries()?;
-    let operations = [
-        ChangeOperation::Insert,
-        ChangeOperation::Update,
-        ChangeOperation::Delete,
-    ]
-    .into_iter()
-    .filter(|operation| options.allows(*operation))
-    .collect::<Vec<_>>();
-    if operations.is_empty() {
-        return Err("profile has no enabled Data Sync operations".into());
-    }
-    let scopes = summaries
-        .into_iter()
-        .filter(|table| table.table.status == TableMappingStatus::Matched)
-        .map(|table| SyncTableSelection {
-            source_table: table.table.source_table,
-            target_table: table.table.target_table,
-            selection_mode: SyncSelectionMode::All,
-            operations: operations.clone(),
-            excluded_rows: Vec::new(),
-        })
-        .collect();
-    Ok(SyncRunSelection {
-        revision,
-        rows: Vec::new(),
-        scopes,
-    })
-}
-
 /// Build the review preview of an already-issued plan.
 pub fn preview_for_plan(
     store: &dyn SyncPlanRepository,

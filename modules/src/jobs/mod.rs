@@ -20,12 +20,9 @@ pub mod application;
 pub mod domain;
 pub mod engine;
 
-// 旧深路径兼容（`datazen_kernel::job::runtime::…` 等经 kernel 垫片穿透）：
-pub use application::{handler, host};
-pub use domain::{
-    budget, error, job, native_tool, owner, plan, recovery, repository, runtime_repository,
-};
-pub use engine::{memory_repository, memory_runtime_repository, runtime};
+// 旧深路径兼容（`datazen_kernel::job::runtime::…` 等经 kernel 垫片穿透；
+// 仅保留仍有消费者的别名，其余深路径直接经 `jobs::domain::…`/`jobs::engine::…`）：
+pub use domain::{job, repository, runtime_repository};
 
 // 扁平名（镜像原 kernel::job::* 的既有形态，消费者零改动）：
 pub use application::handler::{

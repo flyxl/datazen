@@ -23,22 +23,15 @@ pub mod application;
 pub mod domain;
 pub mod engine;
 
-// 旧扁平路径镜像（modules 垫片与 src-tauri 消费者兼容）。
+// 旧扁平路径镜像（modules 垫片与 src-tauri 消费者兼容；仅保留有消费者的别名）。
 pub use application::command_runtime;
-pub use application::conditions;
-pub use application::context;
-pub use application::data_step;
 pub use application::host;
 pub use application::registry;
 pub use application::resource_execution;
 pub use domain::command;
 pub use domain::error;
-pub use domain::executable;
 pub use domain::history;
 pub use domain::model;
-pub use domain::plan_guard;
-pub use domain::repository;
-pub use domain::target_plan;
 pub use engine::executor;
 pub use engine::scheduler;
 

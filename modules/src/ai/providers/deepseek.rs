@@ -49,10 +49,6 @@ impl DeepSeekProvider {
         })
     }
 
-    pub async fn list_models(&self) -> Result<Vec<ModelInfo>, AiError> {
-        let cfg = self.protocol_config().await?;
-        protocol::openai_chat::fetch_models(&cfg).await
-    }
 }
 
 #[async_trait]

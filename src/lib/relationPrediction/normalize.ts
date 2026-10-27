@@ -137,17 +137,6 @@ export function singularize(tableName: string): string {
  * `users` + `id` → `users_id` / `user_id`. Both the table name and its singular
  * are offered, so either naming style is recognized.
  */
-export function qualifiedKeyNameForms(tableName: string, keyColumn: string): string[] {
-  const forms = new Set<string>();
-  for (const table of [tableName, singularize(tableName)]) {
-    const normalizedTable = normalizeIdentifier(table);
-    const normalizedKey = normalizeIdentifier(keyColumn);
-    if (!normalizedTable || !normalizedKey) continue;
-    forms.add(`${normalizedTable}_${normalizedKey}`);
-  }
-  return [...forms];
-}
-
 /**
  * Key column names that carry no domain meaning.
  *

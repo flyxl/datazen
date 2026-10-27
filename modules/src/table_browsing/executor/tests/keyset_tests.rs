@@ -13,7 +13,6 @@
 
 use super::keyset_refusal;
 use super::*;
-use crate::execution::runtime::driver_registry::DriverRegistry;
 use crate::schema::SchemaCache;
 use datazen_driver_api::keyset::{CursorValue, KeysetUnavailableReason, OrderColumn, PagingMode};
 
@@ -326,7 +325,7 @@ mod executor_paging {
     }
 
     fn executor() -> QueryExecutor {
-        let cache = Arc::new(SchemaCache::new(Arc::new(DriverRegistry::new())));
+        let cache = Arc::new(SchemaCache::new());
         QueryExecutor::new(cache)
     }
 

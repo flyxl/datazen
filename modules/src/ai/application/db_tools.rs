@@ -13,34 +13,6 @@ use crate::schema::application::scope::metadata_schema;
 use datazen_driver_api::DatabaseDriver;
 use std::sync::Arc;
 
-/// Explicit metadata target for an MCP call.
-///
-/// The MCP surface is the one place where a table/database name is typed by a
-/// human rather than walked from the object tree, so it has no schema to hand
-/// down. It resolves the database from the caller's argument with the
-/// connection config as fallback, and the schema from the caller's argument,
-/// the config, then the driver's own convention — never a session default.
-pub async fn resolve_metadata_target(
-    host: &dyn DatabaseToolHost,
-    db_session_id: &str,
-    driver: &Arc<dyn DatabaseDriver>,
-    database: Option<&str>,
-    schema: Option<&str>,
-) -> Result<(String, Option<String>), String> {
-    let config = host
-        .get_session_config(db_session_id)
-        .await
-        .map_err(|e| format!("Cannot read session config: {e}"))?;
-    let database = database
-        .map(str::trim)
-        .filter(|db| !db.is_empty())
-        .or(config.database.as_deref())
-        .unwrap_or("")
-        .to_string();
-    let schema = metadata_schema(driver.as_ref(), schema, None, config.schema.as_deref());
-    Ok((database, schema))
-}
-
 /// List all configured connections as a JSON string.
 pub async fn list_connections(
     store: &dyn crate::connection::domain::ConnectionRepository,

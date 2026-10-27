@@ -1,32 +1,10 @@
-//! DUMP / RESTORE import-export helpers and manifest v1 types.
+//! DUMP / RESTORE import-export helpers.
 
-use std::collections::HashSet;
 
 use redis::AsyncCommands;
 use serde::{Deserialize, Serialize};
 
 use crate::ops::KeyError;
-
-#[allow(dead_code)] // manifest helpers reserved for the upcoming dump/restore import flow
-pub const MANIFEST_SCHEMA_VERSION: u32 = 1;
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
-pub struct DumpManifestKey {
-    pub key: String,
-    pub ttl_seconds: i64,
-    pub dump_file: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
-pub struct DumpManifest {
-    pub schema_version: u32,
-    pub db_index: u32,
-    pub keys: Vec<DumpManifestKey>,
-}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -82,41 +60,6 @@ pub fn restore_uses_replace(replace: bool) -> bool {
     replace
 }
 
-/// Build a safe, unique `.bin` filename for a Redis key inside the export zip.
-#[allow(dead_code)]
-pub fn dump_file_name_for_key(key: &str, index: usize, used: &mut HashSet<String>) -> String {
-    let mut base: String = key
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    if base.is_empty() || base.starts_with('.') {
-        base = format!("key_{index}");
-    }
-    if base.len() > 120 {
-        base.truncate(120);
-    }
-    let mut candidate = format!("{base}.bin");
-    if !used.contains(&candidate) {
-        used.insert(candidate.clone());
-        return candidate;
-    }
-    let mut n = 2;
-    loop {
-        candidate = format!("{base}_{n}.bin");
-        if !used.contains(&candidate) {
-            used.insert(candidate.clone());
-            return candidate;
-        }
-        n += 1;
-    }
-}
-
 pub fn encode_dump_base64(bytes: &[u8]) -> String {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.encode(bytes)
@@ -127,24 +70,6 @@ pub fn decode_dump_base64(encoded: &str) -> Result<Vec<u8>, String> {
     base64::engine::general_purpose::STANDARD
         .decode(encoded.trim())
         .map_err(|e| format!("invalid dump base64: {e}"))
-}
-
-#[allow(dead_code)]
-pub fn parse_manifest(json: &str) -> Result<DumpManifest, String> {
-    let manifest: DumpManifest =
-        serde_json::from_str(json).map_err(|e| format!("invalid manifest JSON: {e}"))?;
-    if manifest.schema_version != MANIFEST_SCHEMA_VERSION {
-        return Err(format!(
-            "unsupported manifest schemaVersion: {} (expected {MANIFEST_SCHEMA_VERSION})",
-            manifest.schema_version
-        ));
-    }
-    Ok(manifest)
-}
-
-#[allow(dead_code)]
-pub fn serialize_manifest(manifest: &DumpManifest) -> Result<String, String> {
-    serde_json::to_string_pretty(manifest).map_err(|e| e.to_string())
 }
 
 pub async fn dump_keys<C>(conn: &mut C, keys: &[String]) -> Result<DumpKeysResult, String>
@@ -245,38 +170,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn manifest_v1_serde_round_trip() {
-        let manifest = DumpManifest {
-            schema_version: MANIFEST_SCHEMA_VERSION,
-            db_index: 0,
-            keys: vec![
-                DumpManifestKey {
-                    key: "a".into(),
-                    ttl_seconds: -1,
-                    dump_file: "a.bin".into(),
-                },
-                DumpManifestKey {
-                    key: "user:1".into(),
-                    ttl_seconds: 3600,
-                    dump_file: "user_1.bin".into(),
-                },
-            ],
-        };
-        let json = serialize_manifest(&manifest).unwrap();
-        let parsed = parse_manifest(&json).unwrap();
-        assert_eq!(parsed, manifest);
-        assert!(json.contains("\"schemaVersion\": 1"));
-        assert!(json.contains("\"dbIndex\": 0"));
-    }
-
-    #[test]
-    fn parse_manifest_rejects_unsupported_schema() {
-        let json = r#"{"schemaVersion":2,"dbIndex":0,"keys":[]}"#;
-        let err = parse_manifest(json).unwrap_err();
-        assert!(err.contains("unsupported manifest schemaVersion"));
-    }
-
-    #[test]
     fn pttl_to_ttl_seconds_mapping() {
         assert_eq!(pttl_to_ttl_seconds(-1), -1);
         assert_eq!(pttl_to_ttl_seconds(-2), -2);
@@ -296,22 +189,6 @@ mod tests {
     fn restore_replace_flag_controls_modifier() {
         assert!(!restore_uses_replace(false));
         assert!(restore_uses_replace(true));
-    }
-
-    #[test]
-    fn dump_file_name_sanitizes_and_deduplicates() {
-        let mut used = HashSet::new();
-        assert_eq!(
-            dump_file_name_for_key("a", 0, &mut used),
-            "a.bin".to_string()
-        );
-        assert_eq!(
-            dump_file_name_for_key("a", 1, &mut used),
-            "a_2.bin".to_string()
-        );
-        let weird = dump_file_name_for_key("foo/bar:baz", 2, &mut used);
-        assert!(weird.ends_with(".bin"));
-        assert!(!weird.contains('/'));
     }
 
     #[test]

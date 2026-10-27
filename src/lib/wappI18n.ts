@@ -66,13 +66,4 @@ export async function resolveWappString(
   return null;
 }
 
-/** Backward compatibility alias. */
-export const resolvePluginString = resolveWappString;
 
-/** Test hook: drop cached dictionaries (they live for the webview session). */
-export function clearWappI18nCacheForTests(): void {
-  dictionaryCache.clear();
-}
-
-/** Backward compatibility alias. */
-export const clearPluginI18nCacheForTests = clearWappI18nCacheForTests;

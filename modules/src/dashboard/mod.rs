@@ -3,8 +3,7 @@
 //!
 //! 词源：`datazen::dashboard` 全家族逐字迁移。分层：
 //! * `domain`——行词汇（records）、仪表盘/组件/图表/告警词汇（types）、
-//!   仓储端口（repository，trait 归 domain、宿主实现）与 Monitor 授权
-//!   元数据（schedule_grant）；
+//!   仓储端口（repository，trait 归 domain、宿主实现）；
 //! * `application`——组件创建（create）、运行历史规则（runs）、告警评估
 //!   （alert）、导入导出与脱敏（archive）、执行编排（execute）、刷新
 //!   监控引擎（monitor）、通知规则（notifications）。
@@ -18,14 +17,10 @@ pub mod application;
 pub mod domain;
 
 // 旧扁平路径镜像（modules 垫片与直接消费者兼容）。
-pub use application::alert;
 pub use application::archive;
 pub use application::create;
 pub use application::execute;
-pub use application::monitor;
-pub use application::notifications;
 pub use application::runs;
 pub use domain::records;
 pub use domain::repository;
-pub use domain::schedule_grant;
 pub use domain::types;

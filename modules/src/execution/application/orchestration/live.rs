@@ -56,7 +56,7 @@
 //! ## 台账是「谁能写」的唯一答案
 //!
 //! [`LiveConnectionLedger`] 与 [`crate::directory`]、`crate::execution::runtime::resource::ResourceManager`、
-//! [`crate::budget`] 的形状一致：私有账本 + 对外只暴露登记/归还的入口 + 只读投影。
+//! [`crate::ai::domain::budget`] 的形状一致：私有账本 + 对外只暴露登记/归还的入口 + 只读投影。
 //! 引用计数只有一处，任何路径想减计数都必须过 [`LiveConnectionLedger::release`]，因此
 //! 「归还恰好一次」由结构保证，而不是靠每个调用点自觉。
 
@@ -346,7 +346,8 @@ impl std::fmt::Debug for LiveConnectionLease {
 
 /// 活连接门面：借出/归还的唯一写入口。
 ///
-/// 形状对齐 [`crate::execution::runtime::directory::InMemorySessionDirectory`]、`crate::budget` 与
+/// 形状对齐 [`crate::execution::runtime::directory::InMemorySessionDirectory`]、
+/// [`crate::ai::domain::budget`] 与
 /// [`crate::execution::runtime::resource::ResourceManager`]：未接线是**配置事实**（`None`），不是错误计数；
 /// 接线后所有写操作都收敛到本类型的方法上。
 ///

@@ -120,7 +120,6 @@ export default defineConfig({
         'src/components/DataTable/**/*.{ts,tsx}',
         'src/components/ai/**/*.{ts,tsx}',
         'src/windows/connection/ConnectionPage.tsx',
-        'src/windows/connection/ConnectionSettingsDialog.tsx',
         'src/windows/connection/ObjectBrowser.tsx',
         'src/windows/connection/PrivilegeView.tsx',
         'src/components/FilterEditor.tsx',

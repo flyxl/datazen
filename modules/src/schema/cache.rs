@@ -8,7 +8,6 @@
 //!
 //! When the full schema is cached, the columns tier is also satisfied from it.
 
-use crate::execution::runtime::driver_registry::DriverRegistry;
 use datazen_driver_api::{CatalogReader, ColumnSchema, ConnectionHandle, DriverError, TableSchema};
 use std::collections::HashMap;
 use std::sync::{
@@ -20,11 +19,9 @@ use tokio::sync::RwLock;
 
 /// Cached table schema with metadata.
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct CachedSchema {
     pub schema: TableSchema,
     pub cached_at: Instant,
-    pub version: u64,
 }
 
 /// Lightweight cached columns (no indexes / foreign keys).
@@ -40,8 +37,6 @@ pub struct CachedColumns {
 pub struct DatabaseCache {
     tables: HashMap<String, CachedSchema>,
     columns: HashMap<String, CachedColumns>,
-    #[allow(dead_code)]
-    pub db_version: u64,
 }
 
 /// Multi-level schema cache.
@@ -50,18 +45,15 @@ pub struct SchemaCache {
     generation: AtomicU64,
     cache_ttl: Duration,
     max_tables: usize,
-    #[allow(dead_code)]
-    registry: Arc<DriverRegistry>,
 }
 
 impl SchemaCache {
-    pub fn new(registry: Arc<DriverRegistry>) -> Self {
+    pub fn new() -> Self {
         Self {
             caches: Arc::new(RwLock::new(HashMap::new())),
             generation: AtomicU64::new(0),
             cache_ttl: Duration::from_secs(300),
             max_tables: 1000,
-            registry,
         }
     }
 
@@ -267,7 +259,6 @@ impl SchemaCache {
             CachedSchema {
                 schema: schema.clone(),
                 cached_at: Instant::now(),
-                version: 0,
             },
         );
 
@@ -377,26 +368,6 @@ impl SchemaCache {
         self.generation.fetch_add(1, Ordering::AcqRel);
         caches.remove(connection_id);
     }
-
-    #[allow(dead_code)]
-    pub async fn warmup(
-        &self,
-        connection_id: &str,
-        database: &str,
-        schema: Option<&str>,
-        catalog: &dyn CatalogReader,
-        handle: &ConnectionHandle,
-        tables: &[String],
-    ) {
-        for table in tables {
-            if let Err(error) = self
-                .get_table_schema(connection_id, database, schema, table, catalog, handle)
-                .await
-            {
-                tracing::warn!(%table, %error, "Warmup skipped");
-            }
-        }
-    }
 }
 
 #[cfg(test)]
@@ -418,7 +389,7 @@ mod tests {
         registry
             .register_test_driver("postgres", mock.clone())
             .await;
-        let cache = SchemaCache::new(registry);
+        let cache = SchemaCache::new();
         (cache, mock, test_handle())
     }
 
@@ -535,7 +506,7 @@ mod tests {
 
     #[tokio::test]
     async fn invalidate_removes_one_table() {
-        let cache = SchemaCache::new(Arc::new(DriverRegistry::new()));
+        let cache = SchemaCache::new();
         {
             let mut caches = cache.caches.write().await;
             let db = SchemaCache::get_db_cache_mut(&mut caches, "conn-1", "db-a");
@@ -553,7 +524,7 @@ mod tests {
 
     #[tokio::test]
     async fn invalidate_clears_whole_database_when_table_omitted() {
-        let cache = SchemaCache::new(Arc::new(DriverRegistry::new()));
+        let cache = SchemaCache::new();
         {
             let mut caches = cache.caches.write().await;
             let db = SchemaCache::get_db_cache_mut(&mut caches, "conn-1", "db-a");
@@ -623,8 +594,7 @@ mod tests {
                 CachedSchema {
                     schema: empty_schema("orders"),
                     cached_at: Instant::now(),
-                    version: 0,
-                },
+                    },
             );
         }
 

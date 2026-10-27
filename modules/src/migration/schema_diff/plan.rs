@@ -1892,29 +1892,6 @@ pub fn build_schema_diff_plan_with_target_only(
     )
 }
 
-/// Compatibility wrapper for callers that only have selected target-only
-/// snapshots. Those snapshots cannot prove the absence of unselected FK
-/// dependents, so destructive target-only plans fail closed. Callers with a
-/// complete target table catalog should use
-/// [`build_schema_diff_plan_with_target_only_catalog`].
-pub fn build_schema_diff_plan_with_target_only_schemas(
-    pairs: &[(String, TableSchema, TableSchema)],
-    target_only_tables: &[String],
-    _target_only_schemas: &[(String, TableSchema)],
-    source_dialect: &str,
-    target_dialect: &str,
-    opts: PlanOptions<'_>,
-) -> SchemaDiffPlan {
-    build_schema_diff_plan_with_target_only_catalog(
-        pairs,
-        target_only_tables,
-        None,
-        source_dialect,
-        target_dialect,
-        opts,
-    )
-}
-
 /// Build a destructive target-only plan against the complete target table
 /// catalog. A missing catalog is fail-closed because it cannot prove that a
 /// selected parent has no unselected foreign-key dependents.

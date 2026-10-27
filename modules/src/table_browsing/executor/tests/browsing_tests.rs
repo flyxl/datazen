@@ -7,7 +7,6 @@
 //! many rows** it says there are.
 
 use super::*;
-use crate::execution::runtime::driver_registry::DriverRegistry;
 use crate::schema::SchemaCache;
 
 /// The order of a read whose table has a primary key.
@@ -197,7 +196,7 @@ mod count_strategy_execution {
     async fn executor(options: MockDriverOptions) -> (QueryExecutor, Arc<MockDriver>) {
         // The column read goes through the catalog reader the caller passes
         // in, so the cache needs a registry but never looks at it.
-        let cache = Arc::new(SchemaCache::new(Arc::new(DriverRegistry::new())));
+        let cache = Arc::new(SchemaCache::new());
         (
             QueryExecutor::new(cache),
             MockDriver::new("postgres", options),

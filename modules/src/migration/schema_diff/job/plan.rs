@@ -101,10 +101,6 @@ impl SchemaDiffFrozenPlan {
         Ok(())
     }
 
-    /// 与当前生效事实比对（capability 快照/结构指纹）。
-    pub fn matches_capability_snapshot(&self, current_hash: &str) -> bool {
-        self.capability_snapshot_hash == current_hash
-    }
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]

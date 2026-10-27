@@ -91,4 +91,3 @@ export function buildMcpAgentSnippet(target: McpAgentTarget, command = 'datazen'
   };
 }
 
-export const MCP_AGENT_TARGETS: McpAgentTarget[] = ['cursor', 'claude'];

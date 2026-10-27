@@ -24,11 +24,6 @@ impl TransferError {
         Self::Unsupported(msg.into())
     }
 
-    #[allow(dead_code)]
-    pub fn not_implemented(msg: impl Into<String>) -> Self {
-        Self::NotImplemented(msg.into())
-    }
-
     pub fn cancelled(msg: impl Into<String>) -> Self {
         Self::Cancelled(msg.into())
     }
