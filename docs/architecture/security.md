@@ -10,9 +10,9 @@
 | **密码派生** | Argon2id KDF（替代双轮 SHA-256），用于连接导入/导出文件与敏感字段的字段级加密 | `modules/src/connection_import/datazen.rs::derive_argon2_key` |
 | **AI Key 加密** | 随 Store 整体 AES-256-GCM 加密 | `src-tauri/src/store/ai_config.rs`（`ai_config.enc`） |
 | **连接池管理** | sqlx 连接池 + 超时清理 | 各数据库驱动 |
-| **空闲会话与资源回收** | Runtime 默认 30 分钟会话期限；桌面每 15 秒扫描，detached grace 为 60 秒；到期显式关闭而不透明重连 | `modules/src/execution/application/idle.rs`、`src-tauri/src/platform/adapter.rs` |
-| **连接生命周期** | 物理连接全部经 runtime 会话层租约借出（按用途授权、显式归还是常态路径），不是裸句柄长持有 | `modules/src/execution/application/live.rs` |
-| **结果集内存控制（按面生效）** | 分面限制：Workflow 单查询 `query_row_limit`（默认 1000 行）；AI 边界对 `rows`/`data` 等 payload 字段整体剔除（§4） | `modules/src/workflow/executor.rs`、`modules/src/ai/safety.rs` |
+| **空闲会话与资源回收** | Runtime 默认 30 分钟会话期限；桌面每 15 秒扫描，detached grace 为 60 秒；到期显式关闭而不透明重连 | `modules/src/execution/application/orchestration/idle.rs`、`src-tauri/src/platform/adapter.rs` |
+| **连接生命周期** | 物理连接全部经 runtime 会话层租约借出（按用途授权、显式归还是常态路径），不是裸句柄长持有 | `modules/src/execution/application/orchestration/live.rs` |
+| **结果集内存控制（按面生效）** | 分面限制：Workflow 单查询 `query_row_limit`（默认 1000 行）；AI 边界对 `rows`/`data` 等 payload 字段整体剔除（§4） | `modules/src/workflow/engine/executor.rs`、`modules/src/ai/domain/safety.rs` |
 | **SQL 注入防护** | 参数化查询 | `query_with_params` |
 | **TLS 加密后端** | 进程级 rustls `CryptoProvider` 显式安装（`aws-lc-rs`） | 实现体在 `modules/src/tunnel/crypto.rs`，宿主 `src-tauri/src/tls.rs` 保留接线守卫与再导出 |
 | **CSP** | Content Security Policy | `src-tauri/tauri.conf.json` |
@@ -84,7 +84,7 @@ CSP 以对象形式写在 `src-tauri/tauri.conf.json` 的 `security.csp`，当�
 AI 请求经过两个边界：
 
 1. **前端组装边界**：`src/lib/aiQueryActions.ts` 和 `src/stores/aiStore.ts` 在构造诊断上下文、发送 IPC 前，先清理 SQL、错误文本和 schema context。这个边界保证正常 UI 路径不会把明显的凭据直接传下去。
-2. **Rust Provider 边界**：`modules/src/ai/safety.rs` 的 `redact_for_gate` 是唯一公开脱敏入口；宿主调用点直接引用该共享模块。每个 AI 用例在把 caller 内容交给 Provider 前都会再处理一次，直接调用 IPC、绕过 UI 或未来新增调用方都不能仅依赖前端脱敏。
+2. **Rust Provider 边界**：`modules/src/ai/domain/safety.rs` 的 `redact_for_gate` 是唯一公开脱敏入口；宿主调用点直接引用该共享模块。每个 AI 用例在把 caller 内容交给 Provider 前都会再处理一次，直接调用 IPC、绕过 UI 或未来新增调用方都不能仅依赖前端脱敏。
 
 最终发送给 Provider 的内容由具体 AI 场景决定，但允许的数据库上下文原则上只有：
 
@@ -232,7 +232,7 @@ Safe Mode 额外约束：
 
 Safe Mode 开启时，Schema 树会隐藏 Truncate/Drop 等高危菜单项；关闭 Safe Mode 后，Query Panel 对 `DROP` / `TRUNCATE` 语句弹出二次确认，后端不再拦截此类语句。
 
-**限制**：`WHERE 1=1` 等恒真条件可通过检查；多语句脚本中任一条违规即拒绝整批；与 MCP `SafeWrite` 权限模式（`modules/src/mcp/permission.rs`）是不同边界，互不替代。
+**限制**：`WHERE 1=1` 等恒真条件可通过检查；多语句脚本中任一条违规即拒绝整批；与 MCP `SafeWrite` 权限模式（`modules/src/mcp/domain/permission.rs`）是不同边界，互不替代。
 
 ### 5.3 未覆盖路径
 

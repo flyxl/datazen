@@ -769,7 +769,7 @@ Web 场景下 Wapp iframe 使用**独立受限 origin**（与主应用不同源�
 由此得到三条由代码保证、而非由约定保证的事实：
 
 1. **服务端安装不需要改写内核逻辑，只需要换一个存储根目录。** 安装、校验、回滚、存储读写已全部按 `wapps_dir` 参数化，adapter 传入不同的 `wapps_dir` 即可。唯一必须由 adapter 承担的是**隔离口径**：桌面是单机单用户，服务端必须把根目录切到 `(organizationId, principalId, wappId)` 三元组之下，否则同组织内不同用户会共享 `storage:local` 数据。
-2. **「插件自定义资源 schema」在服务端没有需要翻译的对象。** manifest 中承载自定义资源的字段是 `backend`，而该字段在**安装时即被显式拒绝**（`modules/src/workspace_apps/manifest.rs`，注释 `Rule 3b: backend plugins are reserved for P2`，错误文本为「manifest.backend is not supported by this host; 需要更新版本的 DataZen」）。全仓检索 `.backend` 只命中这一处拒绝点，没有任何解释器消费它。因此 v1 不存在需要跨形态搬运的自定义资源 schema；P2 若要落地，必须**只在共享内核实现一次**，再由桌面 adapter 与服务端 adapter 分别供给运行环境，不得为服务端另写一份解释器。
+2. **「插件自定义资源 schema」在服务端没有需要翻译的对象。** manifest 中承载自定义资源的字段是 `backend`，而该字段在**安装时即被显式拒绝**（`modules/src/wapps/manifest.rs`，注释 `Rule 3b: backend plugins are reserved for P2`，错误文本为「manifest.backend is not supported by this host; 需要更新版本的 DataZen」）。全仓检索 `.backend` 只命中这一处拒绝点，没有任何解释器消费它。因此 v1 不存在需要跨形态搬运的自定义资源 schema；P2 若要落地，必须**只在共享内核实现一次**，再由桌面 adapter 与服务端 adapter 分别供给运行环境，不得为服务端另写一份解释器。
 3. **真正随形态变化的是资源地址，不是 schema。** 桌面用 `datazen://` 自定义 scheme 承载 iframe 入口与静态资源，并用 `ASSET_CSP` 锁死来源（`connect-src 'none'` 等，见 `src-tauri/src/wapps/protocol.rs`）。Web 侧静态资源必须改由 HTTPS origin 提供，`WappManifest` 的 `entry` / `icon` / theme 资源路径需按目标 origin 重写。这一步是 **adapter 的职责**，必须留在 adapter：内核一旦开始感知 origin 就不再形态中立，服务端接入时即构成破坏性变更（见[共享边界 F-12](./shared-boundaries-and-ports.md)）。
 
 另有两处进程级状态在服务端必须重新定义归属，不能沿用桌面形态：`WappManager` 当前是启动时从 `AppState` 装载的**进程全局单例**，启用态由包目录内的 `.enabled` 标记文件记录；服务端须改为按 `(organizationId, principalId)` 解析，且安装类操作先过 §5 RBAC 词表中的 `wapp` 资源 ACL（`write` verb）再落盘。

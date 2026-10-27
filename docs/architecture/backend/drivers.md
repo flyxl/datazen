@@ -141,8 +141,8 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 
 | 闸门 | 位置 | `pv < MIN` | `pv > PROTOCOL_VERSION` | `MIN <= pv < PROTOCOL_VERSION` |
 | --- | --- | --- | --- | --- |
-| 驱动 | `packages/kernel/src/driver_registry/registry.rs` 的 `register_from_inventory` | `return Err`，硬拒绝、不创建驱动 | 只 `tracing::warn!`，照常加载 | `warn!` 提示降级后照常加载 |
-| AI Provider | `packages/ai-providers/src/registry.rs` 的 factory 遍历（`AI_PROTOCOL_VERSION` / `MIN_AI_PROTOCOL_VERSION` 是 `packages/ai-api` 的另一套常量） | `tracing::error!` 后 `continue`，跳过注册 | 只 `warn!`，照常注册 | `warn!` 降级提示 |
+| 驱动 | `modules/src/execution/runtime/driver_registry/registry.rs` 的 `register_from_inventory` | `return Err`，硬拒绝、不创建驱动 | 只 `tracing::warn!`，照常加载 | `warn!` 提示降级后照常加载 |
+| AI Provider | `modules/src/ai/providers/registry.rs` 的 factory 遍历（`AI_PROTOCOL_VERSION` / `MIN_AI_PROTOCOL_VERSION` 是 `packages/ai-api` 的另一套常量） | `tracing::error!` 后 `continue`，跳过注册 | 只 `warn!`，照常注册 | `warn!` 降级提示 |
 
 **降级模式并不真的把能力改写成 `false`**：两处降级分支只打一条日志，消息里回显的是 factory **自己声明**的能力值（驱动侧 `supports_cancel_query` / `supports_explain` / `supports_streaming_results`，Provider 侧 `supports_streaming` / `supports_tools`），驱动随后照常 `create()` 并按自己声明的能力运行。这是 `driver-api` 侧写下的契约承诺与宿主当前实现之间的已知差距。
 
@@ -182,7 +182,7 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 
 **判定顺序：先看有没有覆写并显式拒绝，再看 `get_tables` / `get_table_schema`。** 覆写 `dump_database_with_progress` 并显式拒绝的驱动根本不会执行通用实现，顺序反过来就会把「显式拒绝」误判成「缺实现」。
 
-`CapabilitySet.backup` 的两个入口 `require_backup_artifact()` / `require_restore_from_artifact()`（`packages/driver-api/src/capabilities.rs`）目前**只有测试调用**，尚未接进备份执行路径——执行路径是 `modules/src/backup.rs` 直接调驱动的 `dump_database_with_progress`。声明与执行之间还没有自动咬合，接线前不要把「已声明」读成「已生效」。
+`CapabilitySet.backup` 的两个入口 `require_backup_artifact()` / `require_restore_from_artifact()`（`packages/driver-api/src/capabilities.rs`）目前**只有测试调用**，尚未接进备份执行路径——执行路径是 `modules/src/execution/application/orchestration/backup.rs` 直接调驱动的 `dump_database_with_progress`。声明与执行之间还没有自动咬合，接线前不要把「已声明」读成「已生效」。
 
 ### 2.7 复用包装器：`ReuseDriver` 必须显式决定每个方法
 
@@ -208,7 +208,7 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 - `test_connection`：回写别名的 `server_type`。
 - 精确取消协议：由构造参数门控，并且仍要求内层声明支持。
 
-机械守卫：`packages/driver-api/src/reuse_forwarding_tests.rs` 读取 `traits.rs` 与 `reuse.rs` 的源码，断言 trait 的每个方法都出现在包装器实现中，并带正/反控制用例。`DatabaseDriver` 以后新增方法而包装器不更新，`cargo test -p datazen-driver-api` 直接失败；这条不变量不再依赖评审。
+机械守卫：`packages/driver-api/src/reuse/forwarding_tests.rs` 读取 `traits.rs` 与 `reuse.rs` 的源码，断言 trait 的每个方法都出现在包装器实现中，并带正/反控制用例。`DatabaseDriver` 以后新增方法而包装器不更新，`cargo test -p datazen-driver-api` 直接失败；这条不变量不再依赖评审。
 
 ### 2.8 命令描述契约：`CommandCatalog`
 
@@ -326,7 +326,7 @@ Data Sync 的同族结构门闸和 Data Transfer 的 IR pairing 不应混为一�
 
 ## 6. Driver Registry
 
-Driver Registry 实现在 `packages/kernel/src/driver_registry/`（`datazen_kernel::driver_registry`；`datazen_runtime::driver_registry` 是同一份的再导出），与 SchemaCache 同处共享机制内核 `datazen-kernel`。宿主原 `src-tauri/src/db/` 门面已删除，连接层统一直接引用 `datazen_runtime::driver_registry`（或 `datazen_kernel::driver_registry`）与 `datazen_driver_api`。
+Driver Registry 实现在 `modules/src/execution/runtime/driver_registry/`（`datazen::execution::runtime::driver_registry`；原 `datazen-kernel` 机制内核 D8 已归 `modules`，与 SchemaCache（`modules/src/schema/application/`）同 crate）。宿主原 `src-tauri/src/db/` 门面已删除，连接层统一直接引用 `datazen::execution::runtime::driver_registry` 与 `datazen_driver_api`。
 
 Driver 通过 inventory 在编译期注册。构建时由 registry / build tooling 决定哪些 Driver 被编译进 DataZen。
 

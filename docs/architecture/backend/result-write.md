@@ -11,9 +11,9 @@
 | 结果网格**只能**用窄通道写回：`commitQueryResultCell` | `src-tauri/src/commands/result_write.rs`、`src/stores/panelStore.ts` 的 `updateResultCell` |
 | origin 通道（驱动自述来源 → 逐列可写 → 预览 → 提交）**被常量关闭** | `src/lib/resultEditability.ts` 的 `RESULT_ORIGIN_WRITE_BACK_ENABLED = false` |
 | 来源判定 `resolve_result_origin` 仍然每次都调，但它的肯定答复**不能**授予写权限；它只能「拒绝」和「解释」 | `src-tauri/src/commands/result_origin.rs`、`src/lib/resultEditability.ts` 的 `resolveResultWriteBack` |
-| 「写到的还是不是原来那张表」由**写入前**的关系重比保证，不由 `WriteTarget` 保证 | `src-tauri/src/commands/result_write.rs`、`modules/src/services/result_edit.rs` 的 `WriteTarget` 文档注释 |
+| 「写到的还是不是原来那张表」由**写入前**的关系重比保证，不由 `WriteTarget` 保证 | `src-tauri/src/commands/result_write.rs`、`modules/src/table_editing/result_edit/mod.rs` 的 `WriteTarget` 文档注释 |
 | 一次执行只能改**一格**；改完必须重跑查询才能再改 | `src/stores/panelStore.ts` 的 `updateResultCell` 末尾 `runtimeBinding: null` |
-| 判定与写入**都没有**「批量」形态：请求里的 `row_count` 必须是 1 | `modules/src/services/result_edit.rs` 的 `validate_result_cell_request` |
+| 判定与写入**都没有**「批量」形态：请求里的 `row_count` 必须是 1 | `modules/src/table_editing/result_edit/mod.rs` 的 `validate_result_cell_request` |
 
 ## 2. 两条通道
 
@@ -59,7 +59,7 @@ origin 通道是驱动自己回答「这些行来自哪里、哪些列是基表�
 
 ## 3. 服务端判定：`evaluate_result_editability`
 
-判定本身在共享层 `modules/src/services/result_edit.rs`，命令壳只做三件事：把会话和 catalog 的答案借给规则、校验请求信封、把共享错误映射成 `CommandError`。
+判定本身在共享层 `modules/src/table_editing/result_edit/mod.rs`，命令壳只做三件事：把会话和 catalog 的答案借给规则、校验请求信封、把共享错误映射成 `CommandError`。
 
 `GridReadOnlyReason` 共 11 种，`read_only_error_code` 把它们映射成 5 个 `ResultErrorCode`：
 

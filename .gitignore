@@ -64,7 +64,6 @@ e2e/.env
 
 # Driver selection codegen (written by resolve-drivers.mjs; not committed)
 src/extensions/generated.ts
-src/extensions/generated-locales.ts
 src/extensions/generated-pro.ts
 src-tauri/src/driver_init.rs
 .pro-config.json

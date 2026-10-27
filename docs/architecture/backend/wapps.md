@@ -34,7 +34,7 @@
 关键约定：
 
 - **存储根参数化**：内核不读取任何 ambient 路径、不持有连接、不发网络请求。桌面端传 `{appData}/wapps`，将来的服务端适配器传自己的存储根，**内核公开函数签名保持不变**（`install_from_zip(zip_path, wapps_dir)` / `install_from_dir(src_dir, wapps_dir)` / `storage_*(wapps_dir, wapp_id, key[, value])`）。
-- **零 HTTP、零桌面壳依赖**：由 `scripts/check-platform-crate-boundaries.mjs` 的 F-12 强制（反向 allow-list + 禁 `tauri` / `axum` / `actix-web` / `warp` / `tonic` / `react`）。HTTP *客户端* 是 `packages/ai-providers` 的职责，本内核两者都不引入。
+- **零 HTTP、零桌面壳依赖**：由 `scripts/check-platform-crate-boundaries.mjs` 的 F-14 强制（modules 闭包断言：禁宿主 crate、`tauri` / `axum` / `actix-web` / `warp` / `tonic` / `react`）。HTTP *客户端* 是 `packages/ai-providers` 的职责，本内核两者都不引入。
 - 宿主调用点直接引用 `datazen::workspace_apps::…`；`src-tauri/src/wapps/mod.rs` 只保留**宿主自有**的 `protocol` 模块与 `handle_datazen_request` / `parse_datazen_uri` / `WAPPS_OPEN_PAGE_EVENT` 三个转发名，**不再**转发共享包名字。
 - 随 wapp installer 下沉而失去唯一调用方的 `src-tauri/src/util/theme_zip.rs` 已按死代码纪律删除；其追加的三条守卫（空名 / NUL / ` -> `）改由 crate 内 `empty_nul_and_symlink_names_are_rejected` 钉住。宿主 `app_data_archive::validate_zip_entry_path` 保留（备份 / 还原归档仍用）。
 
@@ -46,7 +46,7 @@
 
 ## Manifest（apiVersion = 2）
 
-`modules/src/workspace_apps/manifest.rs` 为唯一权威 schema（serde camelCase + deny_unknown_fields）。要点：
+`modules/src/wapps/manifest.rs` 为唯一权威 schema（serde camelCase + deny_unknown_fields）。要点：
 
 - id：`^[a-z0-9][a-z0-9-]{0,30}\.[a-z][a-z0-9-]{1,31}$`
 - `contributes.pages[]`：`{id,title,icon?,showIn?="workspace"}`

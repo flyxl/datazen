@@ -83,21 +83,20 @@ src-tauri (desktop host)
   │
   ▼
 packages/
-  ├─ platform-api/      跨形态、无传输依赖的契约（ID、RequestContext、target、ports）
-  ├─ platform-infra/    形态中立基础设施原语（脱敏、路径安全）
-  ├─ application/       应用层用例（target、identity policy、sessions、settings、DTO）
-  ├─ runtime/           运行时内核：session/resource/lease/budget/gateway/job/sql_guard/schema_cache/tunnel
-  ├─ modules/      共享 feature 逻辑：Workflow/AI/MCP/Dashboard/导出/备份恢复/Wapp 内核
-  ├─ schema-diff/       方言中立 Schema Diff 引擎
-  ├─ data-sync/         同族 Data Sync 引擎
-  ├─ data-transfer/     异构 Data Transfer 引擎
-  ├─ migration-common/  迁移引擎共享的 pair/recordset 边界
-  ├─ driver-api/        Driver trait 与 Command/迁移/资源契约
-  ├─ ai-api/, ai-providers/   AI Provider 契约与协议实现
-  └─ backend-client/, driver-sdk/, wapp-sdk/, extension-points/, ui/   JS/TS 契约与 UI 包
+  ├─ driver-api/        Driver trait 与 Command/迁移/资源契约（唯一 Rust 契约包之一）
+  ├─ infra/             形态中立基础设施原语（脱敏、路径安全；原 platform-infra）
+  └─ backend-client/, driver-sdk/, wapp-sdk/, extension-points/, ui/, drivers/*   JS/TS 契约、UI 包与全部数据库驱动
+
+modules/（单一业务 crate `datazen`，DDD 迁移后按功能分层）
+  ├─ src/shared/        跨形态、无传输依赖的契约（ID、RequestContext、PortError、Clock；原 platform-api 契约层）
+  ├─ src/application/   应用层用例（target、identity policy、sessions、DTO）
+  ├─ src/execution/     运行时内核：session/resource/lease/budget/gateway/driver_registry
+  ├─ src/jobs/          Job 运行时与 NativeTool（原 kernel 的 Job 部分）
+  ├─ src/migration/     schema-diff / data-sync / data-transfer 三引擎与 common
+  ├─ src/workflow/ src/ai/ src/mcp/ src/dashboard/   共享 feature 逻辑（domain/application/engine 分层）
 ```
 
-依赖方向是单向的：`platform-api` 不依赖上层；`application` 依赖 `platform-api`；`runtime` 依赖 `application` 与 `platform-api`；`modules` 依赖 `runtime`、`application`、领域引擎与契约；`src-tauri` 是唯一把 Tauri、存储、网络和这些内核接起来的组装根。`scripts/check-platform-crate-boundaries.mjs` 对 Tauri/HTTP/UI 依赖做硬门禁。
+依赖方向是单向的：`modules` 内 `shared` 契约层不依赖上层；各领域包的 `application` 依赖 `shared` 与 `driver-api`；`src-tauri` 是唯一把 Tauri、存储、网络和这些内核接起来的组装根。`scripts/check-platform-crate-boundaries.mjs` 对 Tauri/HTTP/UI 依赖做硬门禁。
 
 当前代码没有独立的 Web Server / Domain Service 层；桌面应用直接通过 Tauri IPC 进入 Rust backend。团队 Web 形态仍属于目标设计，不应在当前架构文档中描述为已实现能力。
 

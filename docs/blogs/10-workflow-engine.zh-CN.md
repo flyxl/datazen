@@ -1,6 +1,8 @@
 # DataZen 架构设计（十）：YAML Workflow 执行引擎
 
 > 当一次数据库操作需要查询、判断、循环和 AI 协作时，按钮已经不够用了。DataZen 用 YAML 描述步骤，用统一 Command Runtime 执行步骤，让 GUI、Tauri IPC 和 MCP 共享同一个 Workflow 核心。
+>
+> **更新注记（2026-10-27）**：DDD 迁移后 `modules/src/workflow/` 已按 `domain/` / `application/` / `engine/` 分层，本文所引平铺路径（如 `modules/src/workflow/model.rs`）现位于对应子目录（如 `modules/src/workflow/domain/model.rs`）；最新结构以 [架构文档](../architecture/backend/workflow.md) 为准。
 
 ## Workflow 不是宏录制
 
