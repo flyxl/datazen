@@ -1,0 +1,50 @@
+{
+  "_comment": [
+    "The canonical completeness table shared by the shared layer and the host.",
+    "Read by packages/feature-core/tests/filter_empty_bounds_recheck.rs (Rust) and by",
+    "src/stores/tableData/__tests__/filterCompletenessParity.test.ts (TypeScript), so",
+    "both sides judge the SAME inputs against the SAME expectation. A divergence on",
+    "any row makes one of the two sides red.",
+    "",
+    "value_kind: 'json_array' -> the shared layer sees Value::Json(Array), the host sees",
+    "the plain JS array. 'string' -> the shared layer sees Value::String, the host sees",
+    "the plain JS string."
+  ],
+  "cases": [
+    { "id": "between-array-empty-upper", "operator": "between", "value_kind": "json_array", "value": ["10", ""], "expected_complete": false },
+    { "id": "between-array-empty-lower", "operator": "between", "value_kind": "json_array", "value": ["", "10"], "expected_complete": false },
+    { "id": "between-array-blank-upper", "operator": "between", "value_kind": "json_array", "value": ["10", "   "], "expected_complete": false },
+    { "id": "between-array-null-lower", "operator": "between", "value_kind": "json_array", "value": [null, "10"], "expected_complete": false },
+    { "id": "between-array-null-upper", "operator": "between", "value_kind": "json_array", "value": [10, null], "expected_complete": false },
+    { "id": "between-array-both-empty", "operator": "between", "value_kind": "json_array", "value": ["", ""], "expected_complete": false },
+
+    { "id": "between-string-empty-upper", "operator": "between", "value_kind": "string", "value": "10,", "expected_complete": false },
+    { "id": "between-string-empty-lower", "operator": "between", "value_kind": "string", "value": ",10", "expected_complete": false },
+    { "id": "between-string-blank-upper", "operator": "between", "value_kind": "string", "value": "10,   ", "expected_complete": false },
+    { "id": "between-string-three-parts", "operator": "between", "value_kind": "string", "value": "10,20,30", "expected_complete": false },
+    { "id": "between-string-no-comma", "operator": "between", "value_kind": "string", "value": "10", "expected_complete": false },
+
+    { "id": "notbetween-array-empty-upper", "operator": "notBetween", "value_kind": "json_array", "value": ["10", ""], "expected_complete": false },
+    { "id": "notbetween-array-empty-lower", "operator": "notBetween", "value_kind": "json_array", "value": ["", "10"], "expected_complete": false },
+    { "id": "notbetween-array-blank-upper", "operator": "notBetween", "value_kind": "json_array", "value": ["10", "   "], "expected_complete": false },
+    { "id": "notbetween-array-null-lower", "operator": "notBetween", "value_kind": "json_array", "value": [null, "10"], "expected_complete": false },
+    { "id": "notbetween-array-null-upper", "operator": "notBetween", "value_kind": "json_array", "value": [10, null], "expected_complete": false },
+    { "id": "notbetween-string-empty-upper", "operator": "notBetween", "value_kind": "string", "value": "10,", "expected_complete": false },
+    { "id": "notbetween-string-empty-lower", "operator": "notBetween", "value_kind": "string", "value": ",10", "expected_complete": false },
+    { "id": "notbetween-string-blank-upper", "operator": "notBetween", "value_kind": "string", "value": "10,   ", "expected_complete": false },
+    { "id": "notbetween-string-three-parts", "operator": "notBetween", "value_kind": "string", "value": "10,20,30", "expected_complete": false },
+    { "id": "notbetween-array-both-empty", "operator": "notBetween", "value_kind": "json_array", "value": ["", ""], "expected_complete": false },
+    { "id": "notbetween-array-complete", "operator": "notBetween", "value_kind": "json_array", "value": ["10", "20"], "expected_complete": true },
+    { "id": "notbetween-string-complete", "operator": "notBetween", "value_kind": "string", "value": "10,20", "expected_complete": true },
+    { "id": "notbetween-array-zero-lower", "operator": "notBetween", "value_kind": "json_array", "value": [0, 10], "expected_complete": true },
+
+    { "id": "between-array-zero-lower", "operator": "between", "value_kind": "json_array", "value": [0, 10], "expected_complete": true },
+    { "id": "between-array-false-lower", "operator": "between", "value_kind": "json_array", "value": [false, true], "expected_complete": true },
+    { "id": "between-array-zero-upper", "operator": "between", "value_kind": "json_array", "value": [10, 0], "expected_complete": true },
+    { "id": "between-array-complete", "operator": "between", "value_kind": "json_array", "value": ["10", "20"], "expected_complete": true },
+    { "id": "between-string-zero-lower", "operator": "between", "value_kind": "string", "value": "0,10", "expected_complete": true },
+    { "id": "between-string-false-lower", "operator": "between", "value_kind": "string", "value": "false,true", "expected_complete": true },
+    { "id": "between-string-complete", "operator": "between", "value_kind": "string", "value": "10,20", "expected_complete": true },
+    { "id": "between-string-padded", "operator": "between", "value_kind": "string", "value": " 10 , 20 ", "expected_complete": true }
+  ]
+}

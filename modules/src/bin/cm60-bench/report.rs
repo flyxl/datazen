@@ -261,6 +261,9 @@ fn features() -> String {
         "webdriver",
         "table-browsing",
         "table-editing",
+        "connection_import",
+        "feature_error",
+        "services",
     ];
     DECLARED
         .iter()
