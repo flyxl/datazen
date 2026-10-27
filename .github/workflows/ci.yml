@@ -443,7 +443,7 @@ jobs:
       # rustc 版本在**运行前**取：产物 build 段要记编译器版本，编完再取就晚了。
       - name: CM-60 latency benchmark (release)
         run: |
-           DZ_CM60_RUSTC_VERSION="$(rustc --version)" cargo run --release -p datazen --features contracts,execution,jobs --bin cm60-bench -- \
+           DZ_CM60_RUSTC_VERSION="$(rustc --version)" cargo run --release -p datazen --features execution,jobs,test-harness --bin cm60-bench -- \
             --vcpus 4 --mem-bytes 8589934592 --out target/bench
       # 基准产物不在版本控制里（/target 被 gitignore），不存成 artifact 就等于
       # 没人能复核一次红灯。`if: always()` 是因为上面那步红的时候这一步照样要跑。
