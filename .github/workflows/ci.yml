@@ -100,13 +100,19 @@ jobs:
       # 功能 PR。per-PR 门禁只保留"改错了就必须在合并前发现"的那几条。
       # driver-protocol 门禁已于 2026-10-21 退役：仓库已无第三方驱动生态，协议版本
       # 冻结于 6（治理决定见 docs/architecture/backend/drivers.md §2.5）。
+      #
+      # 2026-10-27：守卫全部改为直连 `node scripts/…` 而非 `pnpm test:ids` 等
+      # 别名。本步自己的注释目标就是省 shell launch，而 pnpm 间接层每次都要
+      # 重新启动 pnpm 并执行 DATAZEN_VERIFY_DEPS_BEFORE_RUN=install 的前置
+      # 依赖校验——4 次别名调用就是 4 次重复校验，与本步合并的理由自我矛盾。
+      # 守卫脚本本体不变，只是调用方式与 check-managed-stubs 对齐。
       - name: All strict guards (stubs, IDs, layers, boundaries, i18n keys)
         run: |
           node scripts/check-managed-stubs.mjs
-          pnpm test:ids
-          pnpm test:layers
-          pnpm test:boundaries
-          pnpm test:i18n-keys
+          node scripts/check-id-terminology.mjs
+          node scripts/check-module-layers.mjs
+          node scripts/check-driver-import-boundaries.mjs
+          node scripts/i18n-key-collision-check.mjs
 
       - name: Frontend unit tests
         # No Pro here, and no Pro opt-out. `packages/pro-extensions/**` is a
@@ -318,10 +324,19 @@ jobs:
       - name: Rust formatting
         run: cargo fmt --all -- --check
 
-      # driver-api 不依赖 --features / 注入产物，且没有 tests/ 目录——`--lib`
-      # 就是它的全部测试面。
+      # driver-api 不依赖 --features / 注入产物，无 target 选择器 = lib 单测 +
+      # tests/ 下 4 个集成文件（26 个测试）+ doc test 一次覆盖，与
+      # publish-driver-api.yml 的 `cargo test -p datazen-driver-api` 同形。
       #
-      # 四个 basic path 驱动的 lib 单测不再在这里跑：下面的 `--tests` 步按
+      # 本步此前是 `--lib`，当时的注释声称 driver-api「没有 tests/ 目录」——
+      # 已过时：tests/ 现有 connector_wire_tester / driver_env_injection_discipline
+      # / resource_contract / row_write_sql 四个文件，此前只在
+      # publish-driver-api.yml（tag / 手动触发）才执行。其中
+      # driver_env_injection_discipline 是守卫型测试（扫描 packages/drivers/
+      # 全树、断言任何驱动源码不得读取 .env 文件），性质上属于 PR 门禁：
+      # 此前这类违规最早要到发布流水线才会被看到。补齐后 PR 阶段即可拦截。
+      #
+      # 四个 basic path 驱动的 lib 单测不在这里跑：下面的 `--tests` 步按
       # cargo 的目标选择语义（lib target 的 test=true 默认开启）同样会编译
       # 并运行它们的 lib 单测，此前两步让每轮 CI 把同一批 lib 测试函数执行
       # 两遍（实测合计 936 个）。驱动 lib 单测不读
@@ -329,8 +344,8 @@ jobs:
       # 模板读取（rg 全仓验证：命中全部位于 */tests/*，无一在 */src/*），所以
       # 在带豁免的 `--tests` 环境下运行与原来的严格 `--lib` 环境行为一致，
       # 去重不损失任何信号。
-      - name: Rust unit tests (driver API)
-        run: cargo test --lib -p datazen-driver-api
+      - name: Rust tests (driver API, lib + tests/ + doc)
+        run: cargo test -p datazen-driver-api
 
       # ── 驱动集成测试（tests/ 目录）──
       #
@@ -363,7 +378,10 @@ jobs:
       - name: Driver integration tests (basic path drivers, tests/)
         run: DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --tests
 
-      - name: Rust unit tests (datazen)
+      # 本步是 datazen_desktop（src-tauri 宿主 crate）。此前与下面已删除的
+      # modules 步骤重名（都叫 "Rust unit tests (datazen)"），CI 日志里难以
+      # 区分，改为显式点名宿主。
+      - name: Rust unit tests (datazen desktop host)
         run: |
           FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
           cargo test -p datazen_desktop --lib --features "$FEATURES"
@@ -372,13 +390,22 @@ jobs:
         if: always()
         run: node scripts/driver-file-stash.mjs restore
 
-      # datazen-ai-api 于 D1.5（46dc15b）退役并入 datazen::ai，这里的
-      # crate 级测试步骤随之换代：逐项编译 modules 的可选业务 feature。
-      # 集成测试由后面的 platform-crate runner 以 --all-features 统一收集；
-      # 这里使用 --lib，避免不具备 execution/test-harness 的单 feature 组合
-      # 误编译需要运行时夹具的集成测试。
-      - name: Rust unit tests (datazen)
-        run: cargo test -p datazen --lib --features settings,ai,connection,named_views
+      # 此处曾有一步（datazen-ai-api 于 D1.5 退役后的换代步骤）：
+      #   cargo test -p datazen --lib --features settings,ai,connection,named_views
+      # 2026-10-27 删除，依据如下（恢复前先读完）：
+      #
+      # 1. 其 feature 闭包 = platform-crate runner（scripts/
+      #    run-platform-crate-tests.mjs 的 FEATURE_TESTS）`ai` 腿闭包 ∪
+      #    `named_views` 腿闭包：ai → settings, connection, mcp, workflow
+      #    （modules/Cargo.toml），workflow → execution, schema, table-editing；
+      #    加上 named_views 自身。即 F1 = {settings, ai, connection,
+      #    named_views, mcp, workflow, execution, schema, table-editing}。
+      # 2. modules/src 全仓无任何 cfg(all(feature = …)) 组合门控（rg 验证），
+      #    feature 组合是纯并集：F1 编译出的每个测试函数都已在 `ai` 腿或
+      #    `named_views` 腿中编译并执行（~1,317 个测试函数每轮重复跑一遍）。
+      # 3. 组合层面的依赖统一冲突由 runner 的 `--all-features` 步覆盖（它是
+      #    F1 特征集的严格超集），F1 不提供任何独有的编译检查信号。
+      # 净效果：删除前多付一次完整 datazen lib（~209k 行）编译，零覆盖增益。
 
       # ── 平台内核架构门禁 ──
       #

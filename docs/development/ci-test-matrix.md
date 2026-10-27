@@ -12,8 +12,8 @@
 | 驱动 UI 单测 | ✅ `pnpm test:unit:drivers` | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit:drivers` |
 | TypeScript | ✅ `pnpm typecheck`（**单引擎**：`tsrs` = TS 7.1-dev，见 §2.1.4） | 同上（`union-typecheck` **也是**只跑 `tsrs`，见 §6.2） | `pnpm typecheck` / `pnpm typecheck:tsc` / `pnpm typecheck:tsrs` |
 | Host Rust lib | ✅ `cargo test -p datazen_desktop --lib`（basic features） | 完整 release 构建 | `cargo test -p datazen_desktop --lib` |
-| driver-api | ✅ | 随构建链接 | `cargo test -p datazen-driver-api --lib` |
-| ai-api | ✅ | 随构建链接 | `cargo test -p datazen-ai-api --lib` |
+| driver-api | ✅ `cargo test -p datazen-driver-api`（lib + tests/ 4 文件 + doc test，2026-10-27 由 `--lib` 扩充） | 随构建链接 | `cargo test -p datazen-driver-api` |
+| modules（datazen）单 feature 腿 | ✅ `pnpm test:platform-crates` 的 `FEATURE_TESTS` 逐腿编译（ai 腿已覆盖 ai-api 退役前的那步组合闭包；原 `--features settings,ai,connection,named_views` 组合步于 2026-10-27 删除，理由见 §2.2） | 随构建链接 | `pnpm test:platform-crates` |
 | 平台内核 crate（`runtime` / `application` / `platform-api` / `server`） | ✅ `pnpm test:platform-crates`，集合由脚本发现 | 随构建链接 | `pnpm test:platform-crates` |
 | 平台 crate 架构门禁（全部平台边界规则） | ✅ `pnpm test:platform-arch`，附变异自证 `pnpm test:platform-arch:mutations` | ❌ | `pnpm test:platform-arch` |
 | Basic path 驱动 lib | ✅ 四 crate 由 `--tests` 步一并运行（lib + 集成 target，见下行） | Basic SKU 内嵌 | `cargo test -p datazen-driver-<id> --lib` |
@@ -27,7 +27,7 @@
 
 **原则**
 
-1. **Basic 必测**：每个 PR 与 `main` push 均跑 basic 四驱动 + Host 三件套（TS 单测 / Host lib / driver-api / ai-api）。
+1. **Basic 必测**：每个 PR 与 `main` push 均跑 basic 四驱动 + Host 三件套（TS 单测 / Host lib / driver-api；modules 单 feature 腿由 `pnpm test:platform-crates` 覆盖）。
 2. **All 只进 Host 单测，不进编译矩阵**：`resolve-drivers --drivers=all` 的 codegen 让 PR CI 把 Host 前端单测中**codegen 敏感的那部分**（模块图会执行 `generated.ts` 的测试文件，运行期由 `select-codegen-sensitive-tests.mjs` 选出）在 `all` 下再判一遍——前端驱动形态是编译期 codegen，验证它不需要编译 Rust 驱动，因此 `all` 在 PR 上是廉价的；而 `cargo` 侧编译全部 path 驱动仍然只发生在 Release **All** SKU 与本地全量验证（`--drivers=all` 约 5 分钟重编译），不占 PR 流水线。
 3. **Path 轮转（维护者策略）**：可选 path 驱动（mongodb、clickhouse、duckdb、sqlserver、elasticsearch 等）的 **Rust lib 不在 PR CI 矩阵内**；其 **UI 单测全部进 PR CI**（`pnpm test:unit:drivers` 按文件系统收集 `packages/drivers/*/ui/__tests__/`，与 `--drivers=` 选型无关，因此可选驱动同样被覆盖）。改 Rust 时作者仍须在 PR 说明中列出 `cargo test -p datazen-driver-<id> --lib`（及该 crate 内 E2E）。发版 **All** SKU 是对全部 path 驱动的集成校验。
 4. **契约矩阵**：Host Connection Contract（`e2e/contract/`）验证 PG/MySQL/SQLite 上同一套 Host UI journey；**不进 PR CI**，由维护者在合并前或 R 阶段跑 `pnpm e2e:contract:matrix`；fixtures 单测 `pnpm test:unit:e2e-contract` 可在本地或后续 CI 扩展中启用。
@@ -339,7 +339,6 @@ TS 快照进来。两处都用精确版本。
 | 格式门禁 | `cargo fmt --all -- --check` | **硬门禁**；必须排在「驱动解析」**之后**——fmt 要加载 Cargo workspace，而 `lib.rs` 的 `mod driver_init` 指向 gitignored codegen，只由 resolve-drivers 生成，排前面会 `failed to resolve mod 'driver_init'` 直接 EXIT=1。rustfmt 由 `dtolnay/rust-toolchain` 的 `components: rustfmt` 显式安装（该 action 固定 `--profile minimal`，而 rustfmt 属 `default` profile） |
 | Rust | 见下表 | Rust **stable** |
 | 清理 | `driver-file-stash.mjs restore` | 恢复被 inject 的 tracked 文件（`if: always()`） |
-| ai-api | `cargo test -p datazen-ai-api --lib` | 在 restore **之后**执行（不依赖 inject 产物） |
 | 架构门禁 | `pnpm test:platform-arch` | 全部平台边界规则检查，**阻塞** |
 | 内核 crate 单测 | `pnpm test:platform-crates` | 集合由脚本按 LAYERS 发现 |
 | 门禁自证 | `pnpm test:platform-arch:mutations` | 变异证明，**job 内最后一步** |
@@ -347,11 +346,13 @@ TS 快照进来。两处都用精确版本。
 Rust 测试顺序（与 `ci.yml` 一致）：
 
 ```bash
-# driver-api 没有 tests/ 目录，`--lib` 就是它的全部测试面（不依赖 --features）。
+# driver-api：无 target 选择器 = lib 单测 + tests/ 下 4 个集成文件（26 个测试，
+# 含 driver_env_injection_discipline 守卫型测试）+ doc test，与
+# publish-driver-api.yml 同形。2026-10-27 由 `--lib` 扩充（当时的
+# 「没有 tests/ 目录」注释已过时；那 4 个文件此前只在发布流水线执行）。
 # 四个 basic path 驱动的 lib 单测不在这里跑：下一条 `--tests` 按 cargo 目标选择
-# 语义同样会编译并运行 lib 的单测 target（此前两步把同一批 936 个 lib 测试
-# 函数每轮执行两遍；驱动 lib 单测不读 ALLOW_UNVERIFIED，去重无信号损失）。
-cargo test --lib -p datazen-driver-api
+# 语义同样会编译并运行 lib 的单测 target（去重无信号损失，详见 ci.yml 注释）。
+cargo test -p datazen-driver-api
 # 驱动集成测试 + 四驱动的 lib 单测：`--tests` 覆盖 test=true 的全部 target
 # （含 lib，不含 doc test）。live 契约层默认严格（验不到即失败）。CI 全文件
 # 没有数据库容器，也没有任何 TEST_PG_* / TEST_MYSQL_*，所以显式声明豁免——
@@ -365,8 +366,12 @@ FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-f
 cargo test -p datazen_desktop --lib --features "$FEATURES"
 # 恢复被 inject 的 tracked 文件，确保后续步骤工作在干净状态
 node scripts/driver-file-stash.mjs restore
-# ai-api 不依赖注入产物，放在 restore 之后
-cargo test -p datazen-ai-api --lib
+# 此处曾有 `cargo test -p datazen-ai-api --lib`，后又改为
+# `cargo test -p datazen --lib --features settings,ai,connection,named_views`；
+# 2026-10-27 删除：该组合的 feature 闭包 = platform-crate runner `ai` 腿 ∪
+# `named_views` 腿，modules/src 无 cfg(all(feature)) 组合门控，全部 ~1,317 个
+# 测试函数都在那两条腿里再跑一遍——零覆盖增益，却多付一次完整 datazen lib
+# 编译。恢复前先读 ci.yml 同位置的墓碑注释。
 pnpm test:platform-arch
 pnpm test:platform-crates
 pnpm test:platform-arch:mutations
@@ -528,11 +533,11 @@ pnpm typecheck
 pnpm test:unit
 pnpm test:unit:drivers
 node scripts/resolve-drivers.mjs --drivers=basic
-cargo test --lib -p datazen-driver-api -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis
+cargo test -p datazen-driver-api
+DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen-driver-postgres -p datazen-driver-mysql -p datazen-driver-sqlite -p datazen-driver-redis --tests
 FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
 cargo test -p datazen_desktop --lib --features "$FEATURES"
 node scripts/driver-file-stash.mjs restore
-cargo test -p datazen-ai-api --lib
 pnpm test:platform-arch
 pnpm test:platform-crates
 ```
