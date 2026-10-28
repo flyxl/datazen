@@ -1,683 +1,92 @@
-import type { SharedSettings } from './settings';
 /**
  * `BackendClient` — the typed facade every frontend consumer should hold.
  *
- * The method list is the authoritative one from
- * `docs/architecture/platform/system-overview.md` §6.2. Each method is a thin,
- * typed delegation to the bound `BackendTransport`, so this file contains
- * routing and no logic: no SQL, no database-type branching, no transport
- * mechanism. That is the point of the facade — a consumer that needs a new
- * capability asks the backend for it and never learns which backend it is
- * talking to.
+ * Form-split F3 turned this file from *the implementation* of the backend
+ * surface into the *composition* of it: every domain method now lives in its
+ * domain client (`settingsClient.ts`, `sessionClient.ts`, ...), built through
+ * `createClients`, and this facade is those domains spread onto one object —
+ * exactly what a consumer held before, byte-identical in behavior.
+ *
+ * The facade stays for the transition (revert-safety, plan §5.3: "门面再导出
+ * 保兼容，revert 不触碰消费方"). New consumers should prefer the domain
+ * clients — `BackendClient` is deprecated as the *primary* import, not
+ * removed: existing call sites keep compiling, and F4/F5 migrate them.
  *
  * Backend selection happens *here*, by binding a different instance under a
  * different `backendId` (§7.3). It never happens by passing an id to a method.
- *
- * The facade is composed of two halves: the kernel surface below and the
- * table-data surface in `./tableDataClient`. A consumer sees one object either
- * way — `BackendClient` extends `TableDataClient` — but each half keeps its
- * own file, because the table-data half is a distinct domain with its own
- * wire shapes and its own capability rules.
  */
 
-import { ApiError, deserializeApiError } from './errors';
-import { createEventStream, toEventStream, type ConnectionEventStream } from './streams';
-import type { BackendTransport, MethodMap } from './transport';
-import { createTableDataMethods, type TableDataClient } from './tableDataClient';
-import { emptyJobProgress, toCounter, toId } from './types';
-import type {
-  ArtifactChunk,
-  ArtifactReadRequest,
-  AttachmentRequest,
-  CancelReceipt,
-  CloseReceipt,
-  CloseSessionRequest,
-  ContextChangeReceipt,
-  Counter,
-  EffectOutcome,
-  ExecuteAtTargetRequest,
-  ExecuteInSessionRequest,
-  ExecutionReceipt,
-  ExecutionView,
-  Id,
-  JobProgress,
-  JobState,
-  JobView,
-  OpenSessionReceipt,
-  OpenSessionRequest,
-  OwnerRef,
-  ProfileDraft,
-  ProfilePatch,
-  ProfileView,
-  SessionHandle,
-  SessionView,
-  SetSessionContextRequest,
-  SubmissionToken,
-  SubscribeEventsRequest,
-  Timestamp,
-} from './types';
+import { createBackendGuard } from './guard';
+import type { BackendTransport } from './transport';
+import { createClients } from './clients';
+import type { SettingsClient } from './settingsClient';
+import type { IdentityClient } from './identityClient';
+import type { ConnectionClient } from './connectionClient';
+import type { SessionClient } from './sessionClient';
+import type { ExecutionClient } from './executionClient';
+import type { JobClient, JobWatchHandle, JobWatchOptions, SubmitJobOptions } from './jobClient';
+import type { ArtifactClient } from './artifactClient';
+import type { TableDataClient } from './tableDataClient';
+import type { EventClient } from './streams';
 
-export interface BackendClient extends TableDataClient {
-  getSettings(): Promise<SharedSettings>;
-  saveSettings(settings: SharedSettings): Promise<SharedSettings>;
+export type { JobWatchHandle, JobWatchOptions, SubmitJobOptions };
+export { parseJobView, parseCancelReceipt } from './jobClient';
 
+/**
+ * The facade: every domain client plus the binding identity.
+ *
+ * @deprecated as the *primary* import — hold the domain client you need
+ * (`SettingsClient`, `TableDataClient`, ...) instead. This interface remains
+ * the exact composition of all domains for the transition and stays
+ * revert-safe.
+ */
+export interface BackendClient
+  extends SettingsClient,
+    IdentityClient,
+    ConnectionClient,
+    SessionClient,
+    ExecutionClient,
+    EventClient,
+    JobClient,
+    ArtifactClient,
+    TableDataClient {
   /** Which backend this facade is bound to. Never a business-method argument. */
   readonly backendId: string;
-  getPlatformIdentity(): Promise<{
-    clientInstanceId: string;
-    organizationId: string;
-    principalId: string;
-  }>;
 
   /**
    * The binding this facade delegates to.
    *
    * Exposed only for the transitional `packages/driver-sdk` re-exports, which
    * still speak the legacy driver-command gateway. Consumers call the methods
-   * below; this goes away with that gateway.
+   * above; this goes away with that gateway.
    */
   readonly transport: BackendTransport;
-
-  listConnections(): Promise<readonly ProfileView[]>;
-  createConnection(draft: ProfileDraft, submissionToken: SubmissionToken): Promise<ProfileView>;
-  updateConnection(
-    connectionId: Id,
-    expectedRevision: number,
-    patch: ProfilePatch,
-  ): Promise<ProfileView>;
-  disableConnection(connectionId: Id, expectedRevision: number): Promise<ProfileView>;
-
-  openSession(
-    request: OpenSessionRequest,
-    submissionToken: SubmissionToken,
-  ): Promise<OpenSessionReceipt>;
-  getSession(handle: SessionHandle): Promise<SessionView>;
-  executeInSession(
-    request: ExecuteInSessionRequest,
-    token: SubmissionToken,
-  ): Promise<ExecutionReceipt>;
-  executeAtTarget(
-    request: ExecuteAtTargetRequest,
-    token: SubmissionToken,
-  ): Promise<ExecutionReceipt>;
-  setSessionContext(
-    request: SetSessionContextRequest,
-    token: SubmissionToken,
-  ): Promise<ContextChangeReceipt>;
-  attachSession(request: AttachmentRequest): Promise<SessionView>;
-  detachSession(request: AttachmentRequest): Promise<SessionView>;
-  closeSession(request: CloseSessionRequest): Promise<CloseReceipt>;
-
-  getExecution(executionId: Id): Promise<ExecutionView>;
-  /**
-   * Ask the backend to cancel an execution. This is the *only* path that may
-   * cancel SQL: ending the event subscription is not cancelling, and keeping
-   * them in separate types is what keeps that true.
-   */
-  cancelExecution(executionId: Id, token: SubmissionToken): Promise<CancelReceipt>;
-
-  /**
-   * Subscribe to connection events.
-   *
-   * The handle is owned by this facade. Breaking out of the iteration ends the
-   * subscription locally (§7.3) and leaves any running execution alone.
-   */
-  subscribeEvents(request: SubscribeEventsRequest): ConnectionEventStream;
-
-  startJob(definition: Record<string, unknown>, token: SubmissionToken): Promise<JobView>;
-  listJobs(filter: Record<string, unknown>): Promise<readonly JobView[]>;
-  getJob(jobId: Id): Promise<JobView>;
-  cancelJob(jobId: Id, token: SubmissionToken): Promise<CancelReceipt>;
-
-  /**
-   * Poll `getJob` and deliver each fresh view, with explicit re-subscribe
-   * semantics: after any delivery error the next successful fetch is reported
-   * as `resubscribed`, so a consumer may treat it as a fresh attachment to the
-   * job rather than a continuation of the old stream.
-   *
-   * The returned handle's `stop()` only ends the local polling: it never
-   * cancels or releases the backend job. A window unmount is an unsubscribe,
-   * not a resource release.
-   */
-  watchJob(
-    jobId: Id,
-    onUpdate: (view: JobView, meta: { resubscribed: boolean }) => void,
-    options?: JobWatchOptions,
-  ): JobWatchHandle;
-
-  /**
-   * Submit an apply job with idempotent-timeout recovery.
-   *
-   * If the submission does not settle within `timeoutMs`, or fails with a
-   * transient availability/outcome-unknown error, the client first consults
-   * the original idempotent receipt (the token→jobId map populated by
-   * `startJob`, then a `listJobs` scan by kind + creation time) instead of
-   * immediately creating a new job. An unknown commit therefore never spawns
-   * a second apply Job; when no receipt can be found the error is
-   * `OutcomeUnknown`, which is check-then-retry, not blind retry.
-   */
-  submitJobIdempotent(
-    definition: Record<string, unknown>,
-    token: SubmissionToken,
-    options?: SubmitJobOptions,
-  ): Promise<JobView>;
-
-  readArtifact(request: ArtifactReadRequest): Promise<ArtifactChunk>;
-  issueSubmissionToken(
-    operation: string,
-    handle: SessionHandle | null,
-    scope?: { connectionId: string; owner: OwnerRef },
-  ): Promise<SubmissionToken>;
 }
 
 /**
  * Build a facade over a transport.
  *
- * Every method delegates to `transport.call` with its `MethodMap` key, and
- * every rejection passes through `asApiError` so an adapter that throws a raw
- * object cannot leak an unrecognized error type to consumers.
+ * Every method delegates to `transport.call` with its `MethodMap` key through
+ * the shared guard, so a capability gap and a malformed rejection behave the
+ * same on the facade and on a bare domain client.
  */
 export function createBackendClient(backendId: string, transport: BackendTransport): BackendClient {
-  /**
-   * The methods this backend cannot serve, and the kind of each gap.
-   *
-   * A capability gap is a property of the backend, not of the call site, so it
-   * is declared once by the adapter and enforced here.
-   */
-  const unsupportedMethods = transport.unsupportedMethods ?? {};
-
-  /**
-   * Delegation plus error normalization, applied to every kernel method.
-   *
-   * An unsupported method fails here, on *use* rather than on bind: a backend
-   * that cannot serve named views is still a perfectly good backend for
-   * everything else, and binding it must not fail. The code comes from the §13
-   * table (`CapabilityUnsupported`), so a caller can branch on it instead of
-   * on a message — and it is the same code this package already uses when a
-   * backend has no event subscription.
-   *
-   * The two kinds of gap get different wording on purpose. A form factor
-   * that can *never* serve a method and a backend that simply has not
-   * implemented it yet are different facts, and a caller that hides a
-   * "coming soon" feature or offers a "never possible" one is misreading the
-   * port. The kind also travels on the error, so the caller can branch on it
-   * without reading the message.
-   */
-  const guard = async <T>(method: keyof MethodMap, run: () => Promise<T>): Promise<T> => {
-    const kind = unsupportedMethods[method];
-    if (kind !== undefined) {
-      throw new ApiError(
-        'CapabilityUnsupported',
-        kind === 'capability'
-          ? `${method} is not supported by the ${backendId} backend.`
-          : `${method} is not implemented by the ${backendId} backend yet.`,
-        { unsupportedKind: kind },
-      );
-    }
-    try {
-      return await run();
-    } catch (error) {
-      throw asApiError(error, method);
-    }
-  };
-
-  /** Per-client receipt map: submission token idempotency key → job id. */
-  const jobReceiptByKey = new Map<string, Id>();
-
-  const startJob = async (
-    definition: Record<string, unknown>,
-    submissionToken: SubmissionToken,
-  ): Promise<JobView> => {
-    const raw = await guard('startJob', () =>
-      transport.call('startJob', { ...definition, submissionToken }),
-    );
-    const job = parseJobView(raw);
-    jobReceiptByKey.set(submissionToken.idempotencyKey, job.jobId);
-    return job;
-  };
-
-  const getJob = async (jobId: Id): Promise<JobView> => {
-    const raw = await guard('getJob', () => transport.call('getJob', { jobId }));
-    return parseJobView(raw);
-  };
-
-  const listJobs = async (filter: Record<string, unknown>): Promise<readonly JobView[]> => {
-    const raw = await guard('listJobs', () => transport.call('listJobs', filter));
-    if (!Array.isArray(raw)) {
-      throw new ApiError('ServiceUnavailable', 'listJobs returned a malformed payload.');
-    }
-    return raw.map((entry) => parseJobView(entry));
-  };
-
-  const cancelJob = async (jobId: Id, submissionToken: SubmissionToken) => {
-    const raw = await guard('cancelJob', () =>
-      transport.call('cancelJob', { jobId, submissionToken }),
-    );
-    return parseCancelReceipt(raw);
-  };
+  const guard = createBackendGuard(backendId, transport.unsupportedMethods ?? {});
+  const domains = createClients(transport, guard);
 
   return {
     backendId,
-    getSettings: () => guard('getSettings', () => transport.call('getSettings', undefined)),
-    saveSettings: (settings) =>
-      guard('saveSettings', () => transport.call('saveSettings', { settings })),
-    getPlatformIdentity: () =>
-      guard('getPlatformIdentity', () => transport.call('getPlatformIdentity', undefined)),
     transport,
-
-    listConnections: () =>
-      guard('listConnections', () => transport.call('listConnections', undefined)),
-
-    createConnection: (draft, submissionToken) =>
-      guard('createConnection', () =>
-        transport.call('createConnection', { ...draft, submissionToken }),
-      ),
-
-    updateConnection: (connectionId, expectedRevision, patch) =>
-      guard('updateConnection', () =>
-        transport.call('updateConnection', { connectionId, expectedRevision, patch }),
-      ),
-
-    disableConnection: (connectionId, expectedRevision) =>
-      guard('disableConnection', () =>
-        transport.call('disableConnection', { connectionId, expectedRevision }),
-      ),
-
-    openSession: (request, submissionToken) =>
-      guard('openSession', () => transport.call('openSession', { ...request, submissionToken })),
-
-    getSession: (handle) => guard('getSession', () => transport.call('getSession', { handle })),
-
-    executeInSession: (request, submissionToken) =>
-      guard('executeInSession', () =>
-        transport.call('executeInSession', { ...request, submissionToken }),
-      ),
-
-    executeAtTarget: (request, submissionToken) =>
-      guard('executeAtTarget', () =>
-        transport.call('executeAtTarget', { ...request, submissionToken }),
-      ),
-
-    setSessionContext: (request, submissionToken) =>
-      guard('setSessionContext', () =>
-        transport.call('setSessionContext', { ...request, submissionToken }),
-      ),
-
-    attachSession: (request) =>
-      guard('attachSession', () => transport.call('attachSession', request)),
-    detachSession: (request) =>
-      guard('detachSession', () => transport.call('detachSession', request)),
-
-    closeSession: (request) => guard('closeSession', () => transport.call('closeSession', request)),
-
-    getExecution: (executionId) =>
-      guard('getExecution', () => transport.call('getExecution', { executionId })),
-
-    cancelExecution: async (executionId, submissionToken) => {
-      const raw = await guard('cancelExecution', () =>
-        transport.call('cancelExecution', { executionId, submissionToken }),
-      );
-      const receipt = parseCancelReceipt(raw);
-      if (receipt.executionId !== executionId) {
-        throw new ApiError('ServiceUnavailable', 'Cancel receipt belongs to another execution.');
-      }
-      return receipt;
-    },
-
-    subscribeEvents: (request) => {
-      const { subscribe } = transport;
-      if (!subscribe) {
-        // An adapter without stream support fails on *use*, not on bind, and
-        // with a code from the §13 table rather than a bare TypeError.
-        return createEventStream<never>(
-          {
-            next: () =>
-              Promise.reject(
-                new ApiError(
-                  'CapabilityUnsupported',
-                  'Event subscription is not supported by this backend.',
-                ),
-              ),
-            release: () => undefined,
-          },
-          request.streamId,
-        );
-      }
-      return toEventStream(subscribe.call(transport, 'subscribeEvents', request), request.streamId);
-    },
-
-    startJob,
-
-    listJobs,
-
-    getJob,
-
-    cancelJob,
-
-    watchJob: (jobId, onUpdate, options) => watchJobLoop(getJob, jobId, onUpdate, options),
-
-    submitJobIdempotent: (definition, submissionToken, options) =>
-      submitJobIdempotentImpl(
-        startJob,
-        getJob,
-        listJobs,
-        jobReceiptByKey,
-        definition,
-        submissionToken,
-        options,
-      ),
-
-    readArtifact: (request) => guard('readArtifact', () => transport.call('readArtifact', request)),
-
-    issueSubmissionToken: (operation, handle, scope) =>
-      guard('issueSubmissionToken', () =>
-        transport.call('issueSubmissionToken', { operation, handle, ...scope }),
-      ),
-
-    // The table-data half of the facade. It is built the same way as the
-    // methods above — through the same `guard`, over the same transport — so
-    // a capability gap and a malformed rejection behave identically on both
-    // halves.
-    ...createTableDataMethods(transport, guard),
+    ...domains.settings,
+    ...domains.identity,
+    ...domains.connection,
+    ...domains.session,
+    ...domains.execution,
+    ...domains.events,
+    ...domains.job,
+    ...domains.artifact,
+    ...domains.tableData,
   };
-}
-
-/** How a `watchJob` loop tunes its polling. */
-export interface JobWatchOptions {
-  /** Poll interval; defaults to 1500ms. */
-  intervalMs?: number;
-  /** Surface delivery errors; the loop then waits and re-subscribes. */
-  onError?: (error: unknown) => void;
-}
-
-export interface JobWatchHandle {
-  /** End the local polling loop. Never cancels or releases the job. */
-  stop(): void;
-}
-
-export interface SubmitJobOptions {
-  /** Milliseconds before the submission is considered timed out. */
-  timeoutMs?: number;
-}
-
-/**
- * Normalize anything thrown inside a facade method into an `ApiError`.
- *
- * A well-formed `ApiError` passes through untouched — re-wrapping it would
- * discard its `requestId`, which is the one field that makes a user-visible
- * failure traceable to a backend log line.
- */
-function asApiError(error: unknown, method: string): ApiError {
-  if (error instanceof ApiError) return error;
-  const apiError = deserializeApiError(error);
-  if (apiError.code === 'ServiceUnavailable' && !apiError.requestId) {
-    return new ApiError(apiError.code, `${method} failed: ${apiError.message}`, { cause: error });
-  }
-  return apiError;
-}
-
-/* ------------------------------------------------------------------ */
-/* Job DTO decoding and the two submission/watch semantics helpers.    */
-/*                                                                     */
-/* The desktop adapter currently forwards raw JSON, so these decoders    */
-/* are the schema alignment point: a payload that drops the P5 fields  */
-/* is normalized to documented defaults instead of leaking `undefined`, */
-/* and one that violates the contract fails loudly.                     */
-/* ------------------------------------------------------------------ */
-
-const JOB_STATES: readonly string[] = ['queued', 'running', 'succeeded', 'failed', 'cancelled'];
-const EFFECT_OUTCOMES: readonly string[] = [
-  'notStarted',
-  'completed',
-  'rolledBack',
-  'partiallyApplied',
-  'unknown',
-];
-const EXECUTION_STATES: readonly string[] = [
-  'queued',
-  'running',
-  'cancelRequested',
-  'succeeded',
-  'failed',
-  'cancelled',
-];
-const CANCEL_DISPOSITIONS: readonly string[] = ['requested', 'unsupported', 'alreadyFinished'];
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function parseEnum<T extends string>(value: unknown, allowed: readonly string[]): T | null {
-  return typeof value === 'string' && allowed.includes(value) ? (value as T) : null;
-}
-
-/** A wire Timestamp may be a number or an ISO-8601 string; normalize to number. */
-function parseTimestamp(value: unknown): Timestamp | undefined {
-  if (typeof value === 'number' && Number.isFinite(value)) return value as Timestamp;
-  if (typeof value === 'string' && value.length > 0) {
-    const ms = Date.parse(value);
-    if (!Number.isNaN(ms)) return ms as Timestamp;
-  }
-  return undefined;
-}
-
-function parseIdArray(value: unknown): readonly Id[] {
-  if (!Array.isArray(value)) return [];
-  const out: Id[] = [];
-  for (const entry of value) {
-    const id = toId(entry);
-    if (id !== undefined) out.push(id);
-  }
-  return out;
-}
-
-function parseEffectOutcome(value: unknown): EffectOutcome | null {
-  return parseEnum<EffectOutcome>(value, EFFECT_OUTCOMES);
-}
-
-function parseJobProgress(value: unknown): JobProgress {
-  if (!isRecord(value)) return emptyJobProgress();
-  return {
-    read: counterOrAbsent(value['read'], 'read'),
-    converted: counterOrAbsent(value['converted'], 'converted'),
-    attempted: counterOrAbsent(value['attempted'], 'attempted'),
-    committed: counterOrAbsent(value['committed'], 'committed'),
-    unknown: counterOrAbsent(value['unknown'], 'unknown'),
-  };
-}
-
-/**
- * A counter that is **absent** is zero — an older payload simply has no such
- * field yet. A counter that is **present and unreadable** is a different thing:
- * it is a count the client cannot hold faithfully, because it exceeds
- * `Number.MAX_SAFE_INTEGER`, and reporting it as 0 is precisely the silent lie
- * this narrowing is meant to prevent. A migration of 2^53 + 1 rows and a
- * migration of no rows must never look alike, so the second case throws instead
- * of collapsing into the first.
- */
-function counterOrAbsent(raw: unknown, field: string): Counter {
-  if (raw === undefined || raw === null) return zeroCounter();
-  const narrowed = toCounter(raw);
-  if (narrowed === undefined) {
-    throw new ApiError(
-      'ServiceUnavailable',
-      `Malformed job progress: progress.${field} is ${JSON.stringify(raw)}, which is not a count this client can read without losing it.`,
-    );
-  }
-  return narrowed;
-}
-
-function zeroCounter(): Counter {
-  const value = toCounter(0);
-  if (value === undefined) throw new Error('toCounter rejected 0');
-  return value;
-}
-
-/** Schema-align a raw payload with the backend JobView DTO (§8). */
-export function parseJobView(raw: unknown): JobView {
-  if (!isRecord(raw)) {
-    throw new ApiError('ServiceUnavailable', 'Malformed job view: not an object.');
-  }
-  const jobId = toId(raw['jobId']);
-  const kind = typeof raw['kind'] === 'string' ? raw['kind'] : undefined;
-  const state = parseEnum<JobState>(raw['state'], JOB_STATES);
-  const createdAt = parseTimestamp(raw['createdAt']);
-  const updatedAt = parseTimestamp(raw['updatedAt']);
-  if (
-    jobId === undefined ||
-    kind === undefined ||
-    state === null ||
-    createdAt === undefined ||
-    updatedAt === undefined
-  ) {
-    throw new ApiError(
-      'ServiceUnavailable',
-      'Malformed job view: required field missing or mistyped.',
-    );
-  }
-  const stage = typeof raw['stage'] === 'string' ? raw['stage'] : null;
-  return {
-    jobId,
-    kind,
-    state,
-    stage,
-    executionIds: parseIdArray(raw['executionIds']),
-    artifactIds: parseIdArray(raw['artifactIds']),
-    createdAt,
-    updatedAt,
-    effectOutcome: parseEffectOutcome(raw['effectOutcome']),
-    cancelRequested: raw['cancelRequested'] === true,
-    pendingVerificationReason:
-      typeof raw['pendingVerificationReason'] === 'string'
-        ? raw['pendingVerificationReason']
-        : null,
-    error: typeof raw['error'] === 'string' ? raw['error'] : null,
-    progress: parseJobProgress(raw['progress']),
-  };
-}
-
-/** Schema-align a raw payload with the backend CancelReceipt DTO. */
-export function parseCancelReceipt(raw: unknown): CancelReceipt {
-  if (!isRecord(raw)) {
-    throw new ApiError('ServiceUnavailable', 'Malformed cancel receipt: not an object.');
-  }
-  const executionId = toId(raw['executionId']);
-  const disposition = parseEnum<'requested' | 'unsupported' | 'alreadyFinished'>(
-    raw['disposition'],
-    CANCEL_DISPOSITIONS,
-  );
-  const state = parseEnum<CancelReceipt['state']>(raw['state'], EXECUTION_STATES);
-  if (executionId === undefined || disposition === null || state === null) {
-    throw new ApiError(
-      'ServiceUnavailable',
-      'Malformed cancel receipt: required field missing or mistyped.',
-    );
-  }
-  return { executionId, disposition, state };
-}
-
-/** Poll loop behind `watchJob`; see the interface docs for the semantics. */
-function watchJobLoop(
-  getJob: (jobId: Id) => Promise<JobView>,
-  jobId: Id,
-  onUpdate: (view: JobView, meta: { resubscribed: boolean }) => void,
-  options?: JobWatchOptions,
-): JobWatchHandle {
-  let stopped = false;
-  let disconnected = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const intervalMs = options?.intervalMs ?? 1500;
-
-  const tick = async (): Promise<void> => {
-    if (stopped) return;
-    try {
-      const view = await getJob(jobId);
-      const resubscribed = disconnected;
-      disconnected = false;
-      if (!stopped) onUpdate(view, { resubscribed });
-    } catch (error) {
-      disconnected = true;
-      options?.onError?.(error);
-    } finally {
-      if (!stopped) {
-        timer = setTimeout(() => {
-          void tick();
-        }, intervalMs);
-      }
-    }
-  };
-
-  void tick();
-  return {
-    stop: () => {
-      stopped = true;
-      if (timer !== undefined) clearTimeout(timer);
-    },
-  };
-}
-
-/** Idempotent submission behind `submitJobIdempotent`; see interface docs. */
-async function submitJobIdempotentImpl(
-  startJob: (definition: Record<string, unknown>, token: SubmissionToken) => Promise<JobView>,
-  getJob: (jobId: Id) => Promise<JobView>,
-  listJobs: (filter: Record<string, unknown>) => Promise<readonly JobView[]>,
-  jobReceiptByKey: Map<string, Id>,
-  definition: Record<string, unknown>,
-  token: SubmissionToken,
-  options?: SubmitJobOptions,
-): Promise<JobView> {
-  const startedAt = Date.now();
-  let applied: JobView | undefined;
-  let submissionError: unknown;
-  try {
-    if (options?.timeoutMs === undefined) {
-      applied = await startJob(definition, token);
-    } else {
-      applied = await Promise.race([
-        startJob(definition, token),
-        new Promise<never>((_, reject) =>
-          setTimeout(
-            () => reject(new ApiError('OutcomeUnknown', 'Job submission timed out.')),
-            options.timeoutMs,
-          ),
-        ),
-      ]);
-    }
-  } catch (error) {
-    submissionError = error;
-  }
-
-  if (applied !== undefined) return applied;
-
-  // Timeout or transient failure: consult the original idempotent receipt
-  // before considering any new submission.
-  const receiptId = jobReceiptByKey.get(token.idempotencyKey);
-  if (receiptId !== undefined) {
-    try {
-      return await getJob(receiptId);
-    } catch {
-      // Fall through to the listJobs scan.
-    }
-  }
-
-  try {
-    const kind = typeof definition['kind'] === 'string' ? definition['kind'] : undefined;
-    const recent = (await listJobs({})).filter(
-      (job) =>
-        (kind === undefined || job.kind === kind) &&
-        job.createdAt >= startedAt - 5000 &&
-        job.createdAt <= startedAt + 60_000,
-    );
-    if (recent.length === 1) return recent[0];
-  } catch {
-    // Consulting the receipt index failed; report the original outcome.
-  }
-
-  if (submissionError instanceof ApiError) throw submissionError;
-  throw new ApiError(
-    'OutcomeUnknown',
-    'Job submission outcome is unknown; check the job center rather than re-applying.',
-  );
 }
 
 /**

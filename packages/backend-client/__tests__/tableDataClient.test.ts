@@ -71,11 +71,8 @@ type SameKeys<A, B> = [Exclude<keyof A, keyof B>] extends [never]
  * assignable to the other (which is what catches a required field that
  * became optional, or a field whose type drifted).
  */
-type Parity<A, B> = MutuallyAssignable<A, B> extends true
-  ? SameKeys<A, B> extends true
-    ? true
-    : false
-  : false;
+type Parity<A, B> =
+  MutuallyAssignable<A, B> extends true ? (SameKeys<A, B> extends true ? true : false) : false;
 
 /** Fails to compile when the checked condition is not `true`. */
 type Assert<T extends true> = T;
@@ -121,9 +118,7 @@ type IsOptional<T, K extends keyof T> = {} extends Pick<T, K> ? true : false;
  * payload of its own, so the runtime half of the property belongs to the
  * host's `pendingChangesForWire`, which pins it there).
  */
-export type InsertMarkedStaysOptional = Assert<
-  IsOptional<PendingRowChange, 'insertMarked'>
->;
+export type InsertMarkedStaysOptional = Assert<IsOptional<PendingRowChange, 'insertMarked'>>;
 
 /* ------------------------------------------------------------------ */
 /* Fixtures.                                                           */
@@ -525,7 +520,9 @@ describe('a backend that cannot serve a method', () => {
 
     // A backend that simply has not implemented it yet says that instead, so
     // a caller can tell "coming soon" from "never possible".
-    const pending = createFakeTransport({ unsupportedMethods: { estimateTableRows: 'notImplemented' } });
+    const pending = createFakeTransport({
+      unsupportedMethods: { estimateTableRows: 'notImplemented' },
+    });
     const desktop = createBackendClient('desktop', pending.transport);
     await expect(
       desktop.estimateTableRows({ dbSessionId: 'sess-1', table: 'orders' }),
@@ -541,7 +538,9 @@ describe('a backend that cannot serve a method', () => {
       unsupportedKind: 'capability',
     });
 
-    const pending = createFakeTransport({ unsupportedMethods: { estimateTableRows: 'notImplemented' } });
+    const pending = createFakeTransport({
+      unsupportedMethods: { estimateTableRows: 'notImplemented' },
+    });
     const desktop = createBackendClient('desktop', pending.transport);
     await expect(
       desktop.estimateTableRows({ dbSessionId: 'sess-1', table: 'orders' }),

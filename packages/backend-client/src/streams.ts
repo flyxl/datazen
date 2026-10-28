@@ -13,7 +13,9 @@
  * helper, so it is enforced structurally here — see `createEventStream`.
  */
 
-import type { ConnectionEvent, EventEnvelope } from './types';
+import { ApiError } from './errors';
+import type { BackendTransport } from './transport';
+import type { ConnectionEvent, EventEnvelope, SubscribeEventsRequest } from './types';
 
 /**
  * A subscription over backend events.
@@ -157,3 +159,52 @@ function readSequence(event: unknown): number | null {
 
 /** Concrete envelope type used by `BackendClient.subscribeEvents`. */
 export type ConnectionEventStream = EventStream<EventEnvelope<ConnectionEvent>>;
+
+/* ------------------------------------------------------------------ */
+/* Event domain client (form-split F3).                                */
+/*                                                                     */
+/* The plan puts the one Event method here rather than in its own       */
+/* file: the stream abstraction is the domain. `createEventMethods`     */
+/* gives it the same guard-free factory shape every domain client has   */
+/* (there is no `MethodMap` key to guard — subscription is an optional  */
+/* transport capability, and the unsupported case is the returned       */
+/* stream's first rejection, by contract).                             */
+/* ------------------------------------------------------------------ */
+
+/** The Event domain client surface. */
+export interface EventClient {
+  /**
+   * Subscribe to connection events.
+   *
+   * The handle is owned by this client. Breaking out of the iteration ends the
+   * subscription locally (§7.3) and leaves any running execution alone.
+   */
+  subscribeEvents(request: SubscribeEventsRequest): ConnectionEventStream;
+}
+
+/** Build the Event domain client over a transport. */
+export function createEventMethods(transport: BackendTransport): EventClient {
+  return {
+    subscribeEvents: (request) => {
+      const { subscribe } = transport;
+      if (!subscribe) {
+        // An adapter without stream support fails on *use*, not on bind, and
+        // with a code from the §13 table rather than a bare TypeError.
+        return createEventStream<never>(
+          {
+            next: () =>
+              Promise.reject(
+                new ApiError(
+                  'CapabilityUnsupported',
+                  'Event subscription is not supported by this backend.',
+                ),
+              ),
+            release: () => undefined,
+          },
+          request.streamId,
+        );
+      }
+      return toEventStream(subscribe.call(transport, 'subscribeEvents', request), request.streamId);
+    },
+  };
+}
