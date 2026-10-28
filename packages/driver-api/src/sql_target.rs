@@ -347,13 +347,15 @@ pub fn qualify_attach_alias(dialect: &dyn Dialect, sql: &str, database: Option<&
         // A file path is the backing file of the implicit `main` schema, not
         // an ATTACH alias, so never qualify SQL with a filesystem path.
         Some(path) if path.contains('/') || path.contains('\\') => return sql.to_string(),
-        Some(alias) => qualify_sql_with(
-            dialect,
-            QualifierQuote::DoubleQuote,
-            std::slice::from_ref(&alias),
-            sql,
-        )
-        .sql,
+        Some(alias) => {
+            qualify_sql_with(
+                dialect,
+                QualifierQuote::DoubleQuote,
+                std::slice::from_ref(&alias),
+                sql,
+            )
+            .sql
+        }
     }
 }
 

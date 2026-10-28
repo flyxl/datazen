@@ -144,7 +144,8 @@ pub async fn commit_pending_changes(
         manual_handle,
     )
     .await
-}#[path = "data/table_columns.rs"]
+}
+#[path = "data/table_columns.rs"]
 mod table_columns;
 
 #[cfg(test)]

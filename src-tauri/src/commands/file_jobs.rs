@@ -180,4 +180,3 @@ fn unavailable(error: datazen::PortError) -> CommandError {
     tracing::warn!(%error, "file job port failure");
     CommandError::Internal(format!("file job storage or dispatch unavailable: {error}"))
 }
-

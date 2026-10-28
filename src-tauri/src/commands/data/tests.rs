@@ -211,7 +211,6 @@ async fn commit_rejects_explicit_schema_context_change() {
     assert!(error.to_string().contains("Schema context changed"));
 }
 
-
 #[tokio::test]
 async fn empty_identity_is_rejected_before_any_sql_is_generated() {
     // `parameterized_writes` stays false: every builder call is unsupported.
