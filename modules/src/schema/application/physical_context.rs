@@ -91,7 +91,7 @@ impl LogicalSchemaContextSource for PhysicalSchemaContextAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-        use datazen_driver_api::{
+    use datazen_driver_api::{
         mock_driver::{MockDriver, MockDriverOptions},
         ConnectionHandle, DatabaseDriver, TableInfo, TableType,
     };

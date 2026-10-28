@@ -48,7 +48,6 @@ impl DeepSeekProvider {
             max_request_timeout: std::time::Duration::from_secs(120),
         })
     }
-
 }
 
 #[async_trait]

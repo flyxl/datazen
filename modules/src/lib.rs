@@ -76,7 +76,6 @@ pub mod monitor;
 ))]
 pub mod migration;
 
-
 /// D6 item 1：查询历史与迁移运行历史（词汇/仓储端口/用例门面）。
 #[cfg(feature = "history")]
 pub mod history;

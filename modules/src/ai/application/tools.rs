@@ -206,7 +206,6 @@ impl ToolLoopGuard {
             tool_call_id: Some(tc.id.clone()),
         }
     }
-
 }
 
 impl Default for ToolLoopGuard {

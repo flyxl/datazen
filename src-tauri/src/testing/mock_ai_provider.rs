@@ -131,7 +131,6 @@ impl MockAiProvider {
     pub fn last_request(&self) -> Option<CompletionRequest> {
         self.calls.lock().unwrap().last().cloned()
     }
-
 }
 
 impl Default for MockAiProvider {

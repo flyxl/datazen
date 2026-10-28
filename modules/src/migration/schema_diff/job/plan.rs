@@ -100,7 +100,6 @@ impl SchemaDiffFrozenPlan {
         }
         Ok(())
     }
-
 }
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]

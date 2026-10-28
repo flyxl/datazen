@@ -594,7 +594,7 @@ mod tests {
                 CachedSchema {
                     schema: empty_schema("orders"),
                     cached_at: Instant::now(),
-                    },
+                },
             );
         }
 
