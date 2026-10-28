@@ -384,11 +384,7 @@ mod tests {
     }
 
     async fn cache_with_mock() -> (SchemaCache, Arc<MockDriver>, ConnectionHandle) {
-        let registry = Arc::new(DriverRegistry::new());
         let mock = MockDriver::new("postgres", MockDriverOptions::default());
-        registry
-            .register_test_driver("postgres", mock.clone())
-            .await;
         let cache = SchemaCache::new();
         (cache, mock, test_handle())
     }
