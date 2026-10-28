@@ -3,6 +3,38 @@
 > 本文件随每个 form-split PR 同步提交，记录实际执行顺序、决策与验证结果，
 > 避免工作进度丢失。条目按时间倒序（最新在上）。基线：`2a08e55`（F4a 合入后）。
 
+## 2026-10-29（会话五）— F6-a：workspace 协议落地（packages 字段 + install 实测）
+
+> 计划 §5.6 项1 / §7.1 风险项。此提交只落地协议本身：`pnpm-workspace.yaml`
+> 增补 `packages: [apps/*, packages/*, packages/drivers/*]`，五个 TS 包成为
+> 真 importer；跨包解析**仍骑 alias 表**（F6-b 才退役）——零行为变化，
+> 闸门/typecheck/测试全绿即证。
+
+### §7.1 实测记录（本环境的诚实边界）
+
+- **主 checkout**：`corepack pnpm@11.15.0 install` 成功（23s，与 CI 同大版本；
+  本仓无 packageManager 字段，CI 用 pnpm/action-setup@4 version 11）。
+  lockfile 增 5 个 importer（backend-client/driver-sdk/extension-points/ui/
+  wapp-sdk，各为空依赖表——尚无 importer 声明 `@datazen/*`，node_modules
+  不出现链接，解析仍走 alias，预期零行为差异）。
+- **第二 checkout**（tar 复制树，无 .git/node_modules）：`install
+  --frozen-lockfile` 成功（5s，走共享 content-addressable store 硬链）。
+  「新 workspace 字段在第二个 checkout 上干净安装」这一 §7.1 实质已证。
+- **软链 node_modules 形态无法复现**：本沙箱禁 symlink（`ln -s` /
+  `python os.symlink` 均被拒，连带 `git worktree add` 整体不可用——git
+  worktree 自身需要 symlink）。§7.1 注记的「工作树 node_modules 软链 +
+  workspace hoist directory is not a real directory」失败形态**留待 CI 与
+  真实开发者环境观察**；pnpm-workspace.yaml 既有的 verifyDepsBeforeRun
+  关闭逻辑不动，若该形态出现，按其注释回退 packages 字段即可（计划 §5.6
+  回滚预案的第一段）。
+
+### 验证
+
+- typecheck（tsrs root/scripts/pack-ep）OK；backend-client + platform
+  契约批 237/237 绿；闸门 0 blocking / 1 advisory（不变）。
+
+---
+
 ## 2026-10-29（会话四）— R6 台账焚烧 batch-2（收口）：8 → **1 advisory**，台账清空
 
 > 承接会话三的 batch-1（34 → 8）。本批把剩余 6 个 R6 台账文件全部端口化，
