@@ -1,7 +1,9 @@
+import type { TableContextInput, TableSqlActionKind } from '@datazen/driver-sdk';
+
+export type { TableContextInput, TableSqlActionKind } from '@datazen/driver-sdk';
+
 import { escapeIdent } from './databaseTypes';
 import type { DatabaseType } from '../types';
-
-export type TableSqlActionKind = 'openData' | 'select' | 'insert' | 'update' | 'ddl';
 
 export type QueryOpenSource = 'table-action' | 'object-search' | 'ai-action';
 
@@ -13,21 +15,6 @@ export interface TableContext {
   database: string;
   schema: string | null;
   tableName: string;
-}
-
-/** Structural input accepted from an existing TablePanel, ViewPanel, or search result. */
-export interface TableContextInput {
-  connectionId: string;
-  dbSessionId: string;
-  databaseType: DatabaseType;
-  database: string;
-  schema: string | null;
-  tableName?: string;
-  tableSchema: string | null;
-  viewName?: string;
-  viewSchema: string | null;
-  objectType?: string;
-  name?: string;
 }
 
 export interface QueryOpenContext extends TableContext {
@@ -127,7 +114,7 @@ export function buildTableContext(input: TableContextInput): TableContext {
   return {
     connectionId: normalizeRequired(input.connectionId, 'connectionId'),
     dbSessionId: normalizeRequired(input.dbSessionId, 'dbSessionId'),
-    databaseType: input.databaseType,
+    databaseType: input.databaseType as DatabaseType,
     database: normalizeOptional(input.database) ?? '',
     schema: normalizeOptional(input.schema ?? input.tableSchema ?? input.viewSchema) ?? null,
     tableName: readTableName(input),

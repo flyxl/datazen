@@ -6,7 +6,7 @@ export interface StreamableQueryTab {
   error: string | null;
   executionTimeMs: number | null;
   executionId: string | null;
-  publishedArtifacts?: import('./queryResultArtifacts').QueryResultArtifacts;
+  publishedArtifacts?: import('@datazen/backend-client').QueryResultArtifacts;
 }
 
 function emptyStatement(sql: string): StatementResult {

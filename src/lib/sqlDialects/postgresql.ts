@@ -1,5 +1,5 @@
-import type { SqlDialectStrategy } from './types';
-import { BaseTableSqlGenerator } from './baseTableSql';
+import type { SqlDialectStrategy } from '@datazen/extension-points';
+import { BaseTableSqlGenerator } from '@datazen/driver-sdk';
 
 const PG_OPTIONS = [
   { id: 'data-only', label: '--data-only' },

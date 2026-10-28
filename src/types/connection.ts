@@ -1,8 +1,23 @@
 /** Database engine identifiers for the current build (injected via resolve-drivers). */
 export type { DatabaseType } from '../extensions/generated';
 import type { DatabaseType } from '../extensions/generated';
+import type { SslMode, DatabaseObjectKind } from '@datazen/extension-points';
+import type { SshAuthMethod } from '@datazen/driver-sdk';
+import type { Value } from '@datazen/backend-client';
 
-import type { HttpProxyTunnelConfig, TunnelKind, WebSocketTunnelConfig } from './tunnel';
+export type { SslMode, DatabaseObjectKind } from '@datazen/extension-points';
+export type { SshAuthMethod } from '@datazen/driver-sdk';
+export type {
+  ColumnInfo,
+  MultiQueryResult,
+  QueryResult,
+  QueryStreamEvent,
+  StatementResult,
+  Value,
+} from '@datazen/backend-client';
+
+
+import type { HttpProxyTunnelConfig, TunnelKind, WebSocketTunnelConfig } from '@datazen/driver-sdk';
 
 /**
  * Connection-facing types.
@@ -17,11 +32,7 @@ export type {
   HttpProxyTunnelConfig,
   WebSocketTunnelConfig,
   SavedTunnel,
-} from './tunnel';
-
-export type SslMode = 'disable' | 'prefer' | 'require' | 'verifyCa' | 'verifyFull';
-
-export type SshAuthMethod = 'password' | 'private_key' | 'agent';
+} from '@datazen/driver-sdk';
 
 export interface SshTunnelConfig {
   enabled: boolean;
@@ -86,8 +97,6 @@ export interface DriverCapabilities {
 
 export type TableType = 'table' | 'view' | 'materializedView' | 'systemTable';
 
-export type DatabaseObjectKind = 'function' | 'procedure' | 'trigger' | 'sequence' | 'type';
-
 export interface DatabaseObject {
   kind: DatabaseObjectKind;
   schema?: string | null;
@@ -150,8 +159,6 @@ export interface TableSchema {
   indexes: IndexInfo[];
   foreignKeys: ForeignKeyInfo[];
 }
-
-export type Value = string | number | boolean | null | Record<string, unknown> | unknown[];
 
 /**
  * The referenced side of a foreign key, as the host resolved it (DB-07).
@@ -216,52 +223,6 @@ export interface ResolveForeignKeyTargetsRequest {
   limit?: number;
 }
 
-export interface ColumnInfo {
-  name: string;
-  dataType: string;
-  nullable: boolean;
-}
-
-export interface QueryResult {
-  columns: ColumnInfo[];
-  rows: (Value | null)[][];
-  rowsAffected?: number;
-  executionTimeMs: number;
-}
-
-export interface StatementResult {
-  source?: import('@datazen/backend-client').StatementResultSource | null;
-  runtimeBinding?: import('@datazen/backend-client').RuntimeResultBinding | null;
-  provenance?: import('@datazen/backend-client').ResultProvenance | null;
-  sql: string;
-  columns: ColumnInfo[];
-  rows: (Value | null)[][];
-  rowsAffected?: number;
-  executionTimeMs: number;
-  truncated?: boolean;
-  pinned?: boolean;
-}
-
-export interface MultiQueryResult {
-  results: StatementResult[];
-  totalTimeMs: number;
-}
-
-/** IPC events for `execute_query_stream`. Independent of SQL LIMIT. */
-export type QueryStreamEvent =
-  | { type: 'executionStarted'; executionId: string }
-  | { type: 'publishedArtifacts'; artifacts: import('../lib/queryResultArtifacts').QueryResultArtifacts }
-  | { type: 'statementStart'; index: number; sql: string; columns: ColumnInfo[] }
-  | { type: 'rows'; index: number; rows: (Value | null)[][] }
-  | { type: 'statementSnapshot'; index: number; result: StatementResult }
-  | {
-      type: 'statementEnd';
-      index: number;
-      rowsAffected?: number;
-      executionTimeMs: number;
-      truncated: boolean;
-    }
-  | { type: 'done'; totalTimeMs: number };
 
 export interface ExplainPlanDetail {
   key: string;

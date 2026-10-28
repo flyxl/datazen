@@ -13,8 +13,8 @@ import {
 } from '../extensions/generated';
 import type { IconSourceMap } from './iconResolver';
 
-export type { ConnectionMode, DatabaseTypeMeta } from './databaseMeta';
-import type { DatabaseTypeMeta } from './databaseMeta';
+export type { ConnectionMode, DatabaseTypeMeta } from '@datazen/extension-points';
+import type { DatabaseTypeMeta } from '@datazen/extension-points';
 import { registerDriverMetas } from '@datazen/extension-points';
 
 export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {

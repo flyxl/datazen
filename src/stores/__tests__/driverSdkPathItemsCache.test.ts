@@ -1,12 +1,12 @@
 import { describe, expect, it, beforeEach } from 'vitest';
-import { useSchemaStore } from '../../../src/stores/schemaStore';
-import type { TableInfo } from '../../../src/types';
+import { useSchemaStore } from '../schemaStore';
+import type { TableInfo } from '../../types';
 import {
   bindSchemaStore,
   cachePathItems,
   getCachedPathItems,
   subscribeSchemaPathItems,
-} from '../src/schemaStoreBridge';
+} from '@datazen/driver-sdk';
 
 describe('driver-sdk path item cache', () => {
   beforeEach(() => {

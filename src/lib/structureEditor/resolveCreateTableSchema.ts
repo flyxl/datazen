@@ -1,5 +1,5 @@
 import { DB_REGISTRY } from '../databaseTypes';
-import type { DatabaseTypeMeta } from '../databaseMeta';
+import type { DatabaseTypeMeta } from '@datazen/extension-points';
 import type { DatabaseType } from '../../types';
 
 export interface ResolveCreateTableSchemaParams {

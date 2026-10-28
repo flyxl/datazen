@@ -1,4 +1,4 @@
-import { transitionalTransport } from './desktopBinding';
+import { useBackendClient } from '@datazen/backend-client';
 import type {
   CatalogScope,
   ListCatalogOutput,
@@ -22,7 +22,7 @@ async function execute<T>(
   command: string,
   input: Record<string, unknown>,
 ): Promise<T> {
-  const result = await transitionalTransport().call('execute_driver_command', {
+  const result = await useBackendClient().transport.call('execute_driver_command', {
     request: { dbSessionId, command, input },
   });
   return (result as { data: T }).data;

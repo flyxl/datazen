@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { DatabaseTypeMeta } from '../databaseMeta';
+import type { DatabaseTypeMeta } from '@datazen/extension-points';
 import { canOpenStructureEditor } from './canOpenStructureEditor';
 
 const sqlTableMeta = {

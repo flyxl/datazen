@@ -14,7 +14,7 @@
 
 import { DB_REGISTRY } from '../databaseTypes';
 import type { DatabaseType } from '../../types';
-import type { ResolvedSqlDialectProfile, SqlDialectProfile } from './types';
+import type { ResolvedSqlDialectProfile, SqlDialectProfile } from '@datazen/extension-points';
 
 export const STANDARD_DIALECT_PROFILE: ResolvedSqlDialectProfile = {
   quoteStyle: 'double',

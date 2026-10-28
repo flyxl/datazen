@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react';
 import { syncCommands } from '../commands/sync';
 import { DB_REGISTRY } from './databaseTypes';
-import type { DatabaseTypeMeta } from './databaseMeta';
+import type { DatabaseTypeMeta } from '@datazen/extension-points';
 import { normalizeDriverId } from './syncTaxonomy';
 
 function registryMeta(dbType: string): DatabaseTypeMeta | undefined {

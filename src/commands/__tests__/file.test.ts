@@ -1,4 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  setBackendClient,
+  setPlatformServices,
+  type SaveBinaryInput,
+  type SaveTextInput,
+} from '@datazen/backend-client';
 
 const invokeMock = vi.hoisted(() => vi.fn());
 const listenMock = vi.hoisted(() => vi.fn());
@@ -18,6 +24,19 @@ import {
 } from '../file';
 
 describe('fileCommands dialog wrappers', () => {
+  // §7.2/§7.3：driver-sdk 的 dialog/file 再导出只走已绑定的 BackendClient
+  // 与 PlatformServices（生产环境由宿主 main.tsx 绑定）。测试将两者绑定到
+  // 基于 mock invoke 的实现。
+  beforeAll(() => {
+    setBackendClient('test', { transport: { call: invokeMock } } as never);
+    setPlatformServices({
+      saveTextWithDialog: (input: SaveTextInput) =>
+        invokeMock('save_text_with_dialog', input),
+      saveBinaryWithDialog: (input: SaveBinaryInput) =>
+        invokeMock('save_base64_with_dialog', input),
+    } as never);
+  });
+
   beforeEach(() => {
     invokeMock.mockReset();
     listenMock.mockReset();

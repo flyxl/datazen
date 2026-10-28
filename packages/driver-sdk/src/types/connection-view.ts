@@ -5,8 +5,7 @@
  * from the host workspace shell, plus the ref-callback payloads it may fill.
  */
 import type { MutableRefObject } from 'react';
-import type { DatabaseType } from '../../../../src/types';
-import type { TableContextInput, TableSqlActionKind } from '../../../../src/lib/tableSqlActions';
+import type { DatabaseType } from '@datazen/extension-points';
 import type { KvSlotState } from './kv-slots';
 
 export interface NodeContextMenuPayload {
@@ -125,4 +124,20 @@ export interface ConnectionViewProps {
    * slots (context bar / status bar / key-props sidebar) read the same values.
    */
   kvSlotState?: KvSlotState;
+}
+
+export type TableSqlActionKind = 'openData' | 'select' | 'insert' | 'update' | 'ddl';
+
+export interface TableContextInput {
+  connectionId: string;
+  dbSessionId: string;
+  databaseType: DatabaseType;
+  database: string;
+  schema: string | null;
+  tableName?: string;
+  tableSchema: string | null;
+  viewName?: string;
+  viewSchema: string | null;
+  objectType?: string;
+  name?: string;
 }

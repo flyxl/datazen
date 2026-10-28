@@ -1,3 +1,5 @@
+export type { StructureEditorUiConfig } from '@datazen/extension-points';
+
 /** Mirrors `packages/driver-api` structure editor types (serde camelCase JSON). */
 
 export type AlterStrategy = 'none' | 'direct' | 'sqliteRebuild';
@@ -72,21 +74,6 @@ export interface PlanStatement {
 export interface StructureChangePlan {
   statements: PlanStatement[];
   warnings?: string[];
-}
-
-/** Per-driver UI config from `DatabaseTypeMeta.structureEditor`. */
-export interface StructureEditorUiConfig {
-  enabled?: boolean;
-  columnTypes: { value: string; label: string }[];
-  defaultColumnType: string;
-  fields: {
-    comment?: boolean;
-    charset?: boolean;
-    collation?: boolean;
-    unsigned?: boolean;
-    length?: boolean;
-  };
-  indexMethods: string[];
 }
 
 export type StructureCapabilityFlag = {

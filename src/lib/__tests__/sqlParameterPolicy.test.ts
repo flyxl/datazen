@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { resolveSqlParameterPolicy } from '../sqlDialects/sqlParameterPolicy';
 import { parseSqlParams } from '../sqlBindParams';
-import type { SqlParameterStrategy } from '../sqlDialects/types';
+import type { SqlParameterStrategy } from '@datazen/extension-points';
 
 describe('resolveSqlParameterPolicy', () => {
   it('uses the selected driver policy and strategy', () => {

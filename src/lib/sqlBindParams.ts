@@ -1,4 +1,4 @@
-import type { SqlParameterStrategy } from './sqlDialects/types';
+import type { SqlParameterStrategy } from '@datazen/extension-points';
 
 export type SqlParamKind = 'named' | 'positional';
 

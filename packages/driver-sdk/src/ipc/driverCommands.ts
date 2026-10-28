@@ -1,6 +1,6 @@
 import { Channel } from '@tauri-apps/api/core';
-import type { DriverCommandDefinition, QueryStreamEvent } from '../../../../src/types';
-import { transitionalTransport } from './desktopBinding';
+import type { DriverCommandDefinition, QueryStreamEvent } from '@datazen/backend-client';
+import { useBackendClient } from '@datazen/backend-client';
 
 export interface ExecuteDriverCommandRequest {
   /** Runtime db session id (required for session-bound commands). */
@@ -45,22 +45,22 @@ export interface CommandResult {
  */
 export const driverCommands = {
   getConnectionCommands: (dbSessionId: string) =>
-    transitionalTransport().call('get_connection_commands', { dbSessionId }) as Promise<
+    useBackendClient().transport.call('get_connection_commands', { dbSessionId }) as Promise<
       DriverCommandDefinition[]
     >,
 
   getDriverCommands: (driverType: string) =>
-    transitionalTransport().call('get_driver_commands', { driverType }) as Promise<
+    useBackendClient().transport.call('get_driver_commands', { driverType }) as Promise<
       DriverCommandDefinition[]
     >,
 
   execute: (request: ExecuteDriverCommandRequest) =>
-    transitionalTransport().call('execute_driver_command', { request }) as Promise<CommandResult>,
+    useBackendClient().transport.call('execute_driver_command', { request }) as Promise<CommandResult>,
 
   executeStream: async (request: ExecuteDriverCommandStreamRequest) => {
     const onEventChannel = new Channel<QueryStreamEvent>();
     onEventChannel.onmessage = request.onEvent;
-    await transitionalTransport().call('execute_driver_command_stream', {
+    await useBackendClient().transport.call('execute_driver_command_stream', {
       request: {
         dbSessionId: request.dbSessionId,
         command: request.command,

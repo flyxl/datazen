@@ -1,5 +1,4 @@
-import type { TableSchema } from '../../types';
-import type { GeneratedSqlType, TableSqlDialect } from './types';
+import type { GeneratedSqlType, TableSqlDialect, TableSchema } from '@datazen/extension-points';
 
 /**
  * Base ANSI SQL generator for table template statements.

@@ -1,4 +1,4 @@
-import type { DatabaseTypeMeta } from '../databaseMeta';
+import type { DatabaseTypeMeta } from '@datazen/extension-points';
 
 export function canOpenStructureEditor(meta: DatabaseTypeMeta | undefined): boolean {
   if (!meta) return false;

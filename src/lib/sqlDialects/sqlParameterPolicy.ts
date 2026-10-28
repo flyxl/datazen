@@ -1,5 +1,5 @@
 import { DB_REGISTRY } from '../databaseTypes';
-import type { SqlDialectProfile, SqlParameterPolicy, SqlParameterStrategy } from './types';
+import type { SqlDialectProfile, SqlParameterPolicy, SqlParameterStrategy } from '@datazen/extension-points';
 import type { SqlParamDialectPolicy } from '../sqlBindParams';
 
 interface SqlParameterMeta {

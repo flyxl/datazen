@@ -1,4 +1,4 @@
-import type { SqlParameterStrategy } from '../../../../src/lib/sqlDialects/types';
+import type { SqlParameterStrategy } from './sqlDialectTypes';
 
 export type SqlParamKind = 'named' | 'positional';
 

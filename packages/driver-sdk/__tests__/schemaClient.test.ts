@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setBackendClient } from '@datazen/backend-client';
 import { schemaClient } from '../src/ipc/schemaClient';
 import { relationKey } from '../src/types/schemaMetadata';
 
@@ -6,6 +7,13 @@ const invoke = vi.hoisted(() => vi.fn());
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 
 describe('schema metadata transport contract', () => {
+  // §7.2/§7.3：SDK 的 IPC 再导出只走已绑定的 BackendClient。
+  // 测试显式绑定一个把 transport.call 直接映射到 mock invoke 的客户端
+  // （生产环境由宿主 main.tsx 的 bindDesktopBackend() 完成同一件事）。
+  beforeAll(() => {
+    setBackendClient('test', { transport: { call: invoke } } as never);
+  });
+
   beforeEach(() => {
     invoke.mockReset();
   });

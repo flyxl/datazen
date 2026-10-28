@@ -4,6 +4,7 @@ import type { DatabaseTypeMeta } from '@datazen/driver-sdk';
 import { DB_REGISTRY } from '../../../lib/databaseTypes';
 import { PRESET_GROUPS } from '../../../lib/connectionGroups';
 import { buildConnectionConfig } from '../../../lib/connectionFormModel';
+import type { DatabaseType } from '../../../types';
 import { useConnectionForm, type ConnectionFormState } from '../useConnectionForm';
 
 /**
@@ -52,7 +53,7 @@ function previewConfig(form: ConnectionFormState, editId?: string | null) {
     newId: () => 'conn_test',
     unnamedLabel: 'newConn.unnamed',
     name: form.name,
-    databaseType: form.databaseType,
+    databaseType: form.databaseType as DatabaseType,
     host: form.host,
     port: form.port,
     database: form.database,

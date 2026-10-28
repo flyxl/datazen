@@ -14,7 +14,7 @@ import type { ComponentType } from 'react';
 import type { KvSlotState } from '@datazen/driver-sdk';
 import { PanelContentRenderer } from '../PanelContentRenderer';
 import { createKvSlotState } from '../../../lib/kvSlotState';
-import type { DatabaseTypeMeta } from '../../../lib/databaseMeta';
+import type { DatabaseTypeMeta } from '@datazen/extension-points';
 import type { Panel } from '../../../stores/panelStore';
 
 const { registry, receivedState } = vi.hoisted(() => ({

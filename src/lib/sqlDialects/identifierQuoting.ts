@@ -7,7 +7,7 @@
  * the folded identity, so a second implementation would silently split entries.
  */
 
-import type { ResolvedSqlDialectProfile, SqlDialectQuoteStyle } from './types';
+import type { ResolvedSqlDialectProfile, SqlDialectQuoteStyle } from '@datazen/extension-points';
 
 /**
  * Reserved words that force quoting. Dialects may add their own through

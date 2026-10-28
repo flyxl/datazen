@@ -6,7 +6,7 @@ import {
 } from './sqlNamespace';
 import { DB_REGISTRY } from './databaseTypes';
 import type { DatabaseType, TableInfo } from '../types';
-import type { DatabaseTypeMeta } from './databaseMeta';
+import type { DatabaseTypeMeta } from '@datazen/extension-points';
 import { resolveEnsureSegments } from './sqlPathPrefix';
 
 export interface EnsureDeps {
