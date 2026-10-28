@@ -57,7 +57,11 @@ async function executeSql(dbSessionId: string, sql: string): Promise<QueryResult
 }
 
 async function readObjectDdl(request: ObjectDdlRequest): Promise<string> {
-  return invokeBackend<string>('get_object_ddl', request);
+  const { dbSessionId, ...input } = request;
+  const result = await invokeBackend<{ data: { ddl: string } }>('execute_driver_command', {
+    request: { dbSessionId, command: 'get_object_ddl', input },
+  });
+  return result.data.ddl;
 }
 
 async function waitForEditorText(expected: string): Promise<void> {
@@ -399,16 +403,19 @@ describe('PostgreSQL Schema Tree objects', () => {
       // Probe the actual driver command before asserting the rendered row.
       // This keeps an empty PostgreSQL catalog result distinct from a row that
       // exists but is outside the navigator's virtualized viewport.
-      const listedProcedures = await invokeBackend<ListedDatabaseObject[]>('get_database_objects', {
-        dbSessionId,
-        kind: 'procedure',
-      });
+      const listedResult = await invokeBackend<{ data: { objects: ListedDatabaseObject[] } }>(
+        'execute_driver_command',
+        {
+          request: { dbSessionId, command: 'list_objects', input: { kind: 'procedure' } },
+        },
+      );
+      const listedProcedures = listedResult.data.objects;
       const listedProcedure = listedProcedures.find(
         (object) => object.name === name.procedure && object.schema === schema,
       );
       if (!listedProcedure) {
         throw new Error(
-          `PostgreSQL get_database_objects(procedure) omitted ${schema}.${name.procedure}; ` +
+          `PostgreSQL list_objects(procedure) omitted ${schema}.${name.procedure}; ` +
             `returned: ${listedProcedures.map((object) => `${object.schema ?? ''}.${object.name}`).join(', ') || '(none)'}`,
         );
       }

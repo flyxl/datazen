@@ -5,7 +5,7 @@ vi.mock('../../locales/t', () => ({
   t: (key: string) => key,
 }));
 
-const mockGetQueryHistory = vi.fn().mockResolvedValue([]);
+const mockGetQueryHistoryPage = vi.fn().mockResolvedValue({ entries: [], total: 0 });
 const mockGetFavoriteQueries = vi.fn().mockResolvedValue([]);
 const mockAddFavoriteQuery = vi.fn().mockResolvedValue(undefined);
 const mockDeleteFavoriteQuery = vi.fn().mockResolvedValue(undefined);
@@ -44,7 +44,7 @@ const activeConnectionState: {
 
 vi.mock('../../commands/query', () => ({
   queryCommands: {
-    getQueryHistory: (...args: unknown[]) => mockGetQueryHistory(...args),
+    getQueryHistoryPage: (...args: unknown[]) => mockGetQueryHistoryPage(...args),
     getFavoriteQueries: (...args: unknown[]) => mockGetFavoriteQueries(...args),
     addFavoriteQuery: (...args: unknown[]) => mockAddFavoriteQuery(...args),
     deleteFavoriteQuery: (...args: unknown[]) => mockDeleteFavoriteQuery(...args),
@@ -1130,11 +1130,11 @@ describe('panelStore', () => {
         success: true,
       },
     ];
-    mockGetQueryHistory.mockResolvedValueOnce(history);
+    mockGetQueryHistoryPage.mockResolvedValueOnce({ entries: history, total: history.length });
 
     await usePanelStore.getState().loadHistory('cfg-1');
 
-    expect(mockGetQueryHistory).toHaveBeenCalledWith(1000, 'cfg-1');
+    expect(mockGetQueryHistoryPage).toHaveBeenCalledWith({ limit: 1000, connectionId: 'cfg-1' });
     expect(usePanelStore.getState().queryHistory).toEqual(history);
   });
 
@@ -1184,12 +1184,12 @@ describe('panelStore', () => {
 
   it('openQueryHistory shows drawer, hides favorites, and loads filtered history', async () => {
     const history = [{ id: 'h1', sql: 'SELECT 1' }];
-    mockGetQueryHistory.mockResolvedValueOnce(history);
+    mockGetQueryHistoryPage.mockResolvedValueOnce({ entries: history, total: history.length });
     usePanelStore.setState({ favoritesVisible: true, historyVisible: false });
 
     await usePanelStore.getState().openQueryHistory('cfg-1');
 
-    expect(mockGetQueryHistory).toHaveBeenCalledWith(1000, 'cfg-1');
+    expect(mockGetQueryHistoryPage).toHaveBeenCalledWith({ limit: 1000, connectionId: 'cfg-1' });
     const state = usePanelStore.getState();
     expect(state.historyVisible).toBe(true);
     expect(state.favoritesVisible).toBe(false);

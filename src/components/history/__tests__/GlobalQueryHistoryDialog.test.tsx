@@ -28,7 +28,6 @@ function realT(k: string, params?: Record<string, string | number>): string {
 vi.mock('../../../commands/query', () => ({
   queryCommands: {
     getQueryHistoryPage: vi.fn(),
-    getQueryHistory: vi.fn(),
     clearQueryHistory: vi.fn(),
     deleteQueryHistoryEntry: vi.fn(),
     addFavoriteQuery: vi.fn(),
@@ -137,11 +136,6 @@ describe('GlobalQueryHistoryDialog', () => {
     expect(screen.getAllByText('Secondary MySQL').length).toBeGreaterThanOrEqual(1);
   });
 
-  it('never calls the legacy limit-only reader', async () => {
-    render(<GlobalQueryHistoryDialog open onClose={vi.fn()} />);
-    await screen.findByText('SELECT * FROM users');
-    expect(queryCommands.getQueryHistory).not.toHaveBeenCalled();
-  });
 
   // ── C: search must reach the backend, and truncation must be disclosed ──
 

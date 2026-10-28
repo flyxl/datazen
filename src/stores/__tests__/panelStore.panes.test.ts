@@ -4,7 +4,7 @@ vi.mock('../../locales/t', () => ({
   t: (key: string) => key,
 }));
 
-const mockGetQueryHistory = vi.fn().mockResolvedValue([]);
+const mockGetQueryHistoryPage = vi.fn().mockResolvedValue({ entries: [], total: 0 });
 const mockCancelQuery = vi.fn().mockResolvedValue(undefined);
 const mockExecuteQueryStream = vi.fn().mockResolvedValue(undefined);
 
@@ -44,7 +44,7 @@ const activeConnectionState: {
 
 vi.mock('../../commands/query', () => ({
   queryCommands: {
-    getQueryHistory: (...args: unknown[]) => mockGetQueryHistory(...args),
+    getQueryHistoryPage: (...args: unknown[]) => mockGetQueryHistoryPage(...args),
     getFavoriteQueries: vi.fn().mockResolvedValue([]),
     addFavoriteQuery: vi.fn().mockResolvedValue(undefined),
     deleteFavoriteQuery: vi.fn().mockResolvedValue(undefined),

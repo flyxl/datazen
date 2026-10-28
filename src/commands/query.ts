@@ -5,7 +5,6 @@ import type {
   FavoriteQuery,
   HistorySort,
   MultiQueryResult,
-  QueryHistoryEntry,
   QueryHistoryPage,
   QueryStreamEvent,
 } from '../types';
@@ -66,20 +65,15 @@ export const queryCommands = {
   cancelQuery: (dbSessionId: string, executionId: string) =>
     invoke<void>('cancel_query', { dbSessionId, executionId }),
 
-  /** connectionId = 持久化配置连接 id（历史按连接分组）。 */
-  getQueryHistory: (limit: number, connectionId?: string, database?: string, schema?: string) =>
-    invoke<QueryHistoryEntry[]>('get_query_history', { limit, connectionId, database, schema }),
-
   clearQueryHistory: () => invoke<void>('clear_query_history'),
 
   /**
    * Paged history with an honest count.
    *
-   * `getQueryHistory` cannot express search or a time range, and a caller that
-   * filters its `limit`-ed array in JS silently loses anything past the limit.
-   * Here the backend applies every predicate *before* the page is cut and
-   * reports `total` for the whole match set, so the UI can say "N of M" rather
-   * than imply the page is everything.
+   * The backend applies every predicate *before* the page is cut and reports
+   * `total` for the whole match set, so the UI can say "N of M" rather than
+   * imply the page is everything. Callers that only need "the N most recent
+   * entries" read `entries` and ignore `total`.
    */
   getQueryHistoryPage: (opts: {
     limit: number;
