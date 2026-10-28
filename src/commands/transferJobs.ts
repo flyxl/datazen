@@ -15,7 +15,7 @@
  * but is no longer called by the window.
  */
 
-import { invoke } from '@tauri-apps/api/core';
+import { legacyInvoke as invoke } from '@datazen/backend-client';
 import { parseJobView } from '@datazen/backend-client';
 import type {
   CommitBoundary,

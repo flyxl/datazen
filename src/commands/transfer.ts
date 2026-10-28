@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { legacyInvoke as invoke } from '@datazen/backend-client';
 import type { FilterCondition } from '../types';
 
 export type TransferMode = 'structure' | 'data' | 'structureAndData';

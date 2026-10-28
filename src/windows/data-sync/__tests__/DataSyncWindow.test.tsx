@@ -54,6 +54,13 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => invokeMock(...args),
 }));
 
+
+
+import { setBackendClient } from '@datazen/backend-client';
+// form-split R6: the invoke wrappers ride the bound backend transport now.
+setBackendClient('test', {
+  transport: { call: (c: string, p?: unknown) => (p === undefined ? invokeMock(c) : invokeMock(c, p)) },
+} as never);
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
 }));

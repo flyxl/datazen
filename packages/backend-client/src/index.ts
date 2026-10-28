@@ -89,6 +89,9 @@ export { createTableDataMethods } from './tableDataClient';
 export type { DriverGatewayMethodMap, DriverGatewayClient } from './driverGatewayClient';
 export { createDriverGatewayMethods } from './driverGatewayClient';
 
+export type { LegacyCommandName, LegacyHostMethodMap } from './legacyHostCommands';
+export { legacyInvoke } from './legacyHostCommands';
+
 export * from './types';
 
 export * from './settings';

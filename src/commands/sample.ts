@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { legacyInvoke as invoke } from '@datazen/backend-client';
 
 /**
  * First-run sample dataset IPC (Rust `commands/sample.rs`).

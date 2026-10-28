@@ -1,3 +1,4 @@
+import { legacyInvoke as invoke } from '@datazen/backend-client';
 import { schemaClient } from '@datazen/driver-sdk';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Database, HardDrive } from 'lucide-react';
@@ -91,7 +92,6 @@ export function BackupWindow() {
 
   useEffect(() => {
     void (async () => {
-      const { invoke } = await import('@tauri-apps/api/core');
       const conns = await invoke<ConnectionConfig[]>('get_connections');
       const grps = await invoke<string[]>('get_groups');
       setConnections(conns);
@@ -124,7 +124,6 @@ export function BackupWindow() {
       }
 
       try {
-        const { invoke } = await import('@tauri-apps/api/core');
         const session = await invoke<{ dbSessionId: string }>('connect', {
           connectionId: conn.id,
         });
@@ -260,7 +259,6 @@ export function BackupWindow() {
       );
 
       try {
-        const { invoke } = await import('@tauri-apps/api/core');
         const saved = await invoke<boolean>('backup_database', {
           dbSessionId,
           database: selectedDb,

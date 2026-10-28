@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { legacyInvoke as invoke } from '@datazen/backend-client';
 import type { WappManifest, WappSummary } from '../types/wapp';
 
 /** Mirrors `WAPPS_CHANGED_EVENT` in `src-tauri/src/commands/wapps.rs`. */

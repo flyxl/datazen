@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { legacyInvoke as invoke, type LegacyCommandName } from '@datazen/backend-client';
 import { requirePlatform } from '../platform/contracts';
 
 type UnlistenFn = () => void;
@@ -74,7 +74,7 @@ function e2eStubInvoke<T>(cmd: string, args: unknown, real: () => Promise<T>): P
  * an empty string for every captured call, which would be an invalid receipt
  * and must never be mistaken for a granted session.
  */
-function nativeInvoke<T>(cmd: string, args?: object): Promise<T> {
+function nativeInvoke<T>(cmd: LegacyCommandName, args?: object): Promise<T> {
   return invoke<T>(cmd, args as Record<string, unknown> | undefined);
 }
 

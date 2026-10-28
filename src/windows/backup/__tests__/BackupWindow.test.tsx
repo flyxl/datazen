@@ -138,7 +138,9 @@ function conn(
 
 /** §7.2/§7.3：schemaClient/IPC 再导出只走已绑定的 BackendClient（生产由宿主启动时绑定）。 */
 beforeAll(() => {
-  setBackendClient('test', { transport: { call: invokeMock } } as never);
+  setBackendClient('test', {
+    transport: { call: (c: string, p?: unknown) => (p === undefined ? invokeMock(c) : invokeMock(c, p)) },
+  } as never);
 });
 
 beforeEach(() => {

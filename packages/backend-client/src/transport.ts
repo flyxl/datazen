@@ -26,6 +26,7 @@ import type { JobMethodMap } from './jobClient';
 import type { ArtifactMethodMap } from './artifactClient';
 import type { TableDataMethodMap } from './tableDataClient';
 import type { DriverGatewayMethodMap } from './driverGatewayClient';
+import type { LegacyHostMethodMap } from './legacyHostCommands';
 import type { ConnectionEvent, EventEnvelope, SubscribeEventsRequest } from './types';
 
 /** Legacy gateway envelope. Kept because the `{ data }` unwrap is a public contract. */
@@ -63,7 +64,8 @@ export type MethodMap = SettingsMethodMap &
   JobMethodMap &
   ArtifactMethodMap &
   TableDataMethodMap &
-  DriverGatewayMethodMap;
+  DriverGatewayMethodMap &
+  LegacyHostMethodMap;
 
 /**
  * Bound by the host to exactly one backend.

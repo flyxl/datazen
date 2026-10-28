@@ -19,10 +19,18 @@ vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: stableT, language: 'en' }),
 }));
 
+const invokeMock = vi.hoisted(() => vi.fn());
 vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn(),
+  invoke: invokeMock,
 }));
 
+
+import { setBackendClient } from '@datazen/backend-client';
+// form-split R6: the invoke wrappers ride the bound backend transport now
+// (same binding pattern as file.test.ts — the mock keeps its invoke shape).
+setBackendClient('test', {
+  transport: { call: (c: string, p?: unknown) => (p === undefined ? invokeMock(c) : invokeMock(c, p)) },
+} as never);
 vi.mock('../../../lib/crossWindowBus', () => ({
   listenCrossWindow: vi.fn().mockResolvedValue(() => {}),
 }));

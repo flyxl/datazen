@@ -16,9 +16,16 @@ const { stableT } = vi.hoisted(() => ({
   stableT: (key: string) => key,
 }));
 
+const invokeMock = vi.hoisted(() => vi.fn().mockResolvedValue([]));
 vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn().mockResolvedValue([]),
+  invoke: invokeMock,
 }));
+
+import { setBackendClient } from '@datazen/backend-client';
+// form-split R6: the invoke wrappers ride the bound backend transport now.
+setBackendClient('test', {
+  transport: { call: (c: string, p?: unknown) => (p === undefined ? invokeMock(c) : invokeMock(c, p)) },
+} as never);
 
 vi.mock('../../../hooks/useThemeListener', () => ({
   useThemeListener: vi.fn(),

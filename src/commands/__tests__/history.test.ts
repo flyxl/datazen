@@ -2,8 +2,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { historyCommands } from '../history';
 
-vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
+const invokeMock = vi.hoisted(() => vi.fn());
+vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
 
+
+import { setBackendClient } from '@datazen/backend-client';
+// form-split R6: the invoke wrappers ride the bound backend transport now
+// (same binding pattern as file.test.ts — the mock keeps its invoke shape).
+setBackendClient('test', {
+  transport: {
+    call: (c: string, p?: unknown) =>
+      p === undefined ? invokeMock(c) : invokeMock(c, p),
+  },
+} as never);
 describe('migration history commands', () => {
   beforeEach(() => vi.mocked(invoke).mockReset());
 

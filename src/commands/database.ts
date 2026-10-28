@@ -4,7 +4,7 @@ import {
   executeTargetCommand,
   metadataTarget,
 } from '../lib/session/targetCommand';
-import { invoke } from '@tauri-apps/api/core';
+import { legacyInvoke as invoke } from '@datazen/backend-client';
 import { useBackendClient } from '@datazen/backend-client';
 import type {
   CountStrategy,

@@ -129,13 +129,23 @@ function i18nWarnings(spy: MockInstance): string[] {
 }
 
 describe('SchemaDiffWindow — first frame emits no i18n false positives', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     // packages/ui/src/i18n.ts keeps `reportedMissingKeys` in a module-private
     // Set that is never cleared, so a shared module instance would let an
     // earlier test case report a key and make this one pass vacuously. A fresh
     // module graph restores an empty Set. React is externalised by Vite, so
     // resetting the registry does not split React identity.
     vi.resetModules();
+    // The fresh graph also re-instantiates backend-client; re-bind the
+    // transport mock there before any component import resolves it.
+    // (form-split R6: invoke wrappers ride the bound backend transport.)
+    const bc = await import('@datazen/backend-client');
+    bc.setBackendClient('test', {
+      transport: {
+        call: (c: string, p?: unknown) =>
+          p === undefined ? invokeMock(c) : invokeMock(c, p),
+      },
+    } as never);
     urlParams.sourceId = 'pg-1';
     urlParams.targetId = 'my-1';
     invokeMock.mockImplementation((cmd: string) =>

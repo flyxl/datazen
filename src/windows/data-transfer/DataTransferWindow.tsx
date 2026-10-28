@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { legacyInvoke as invoke } from '@datazen/backend-client';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { WindowChromeSlot } from '@datazen/extension-points';
 import { StatusBar } from '../../components/StatusBar';

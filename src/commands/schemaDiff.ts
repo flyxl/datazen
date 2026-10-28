@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { legacyInvoke as invoke } from '@datazen/backend-client';
 import type { JobDetails, JobProgress, JobState, JobView } from '@datazen/backend-client';
 import type { DatabaseObject, TableSchema, TableSchemaDiff } from '../types';
 

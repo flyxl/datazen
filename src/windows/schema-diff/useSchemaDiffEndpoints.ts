@@ -1,7 +1,7 @@
 import { discoveryFailure } from './schemaDiffObjectDiscovery';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ApiError, API_ERROR_CODES } from '@datazen/backend-client';
-import { invoke } from '@tauri-apps/api/core';
+import { legacyInvoke as invoke } from '@datazen/backend-client';
 import { databaseCommands } from '../../commands/database';
 import { useI18n } from '../../hooks/useI18n';
 import { listenCrossWindow } from '../../lib/crossWindowBus';

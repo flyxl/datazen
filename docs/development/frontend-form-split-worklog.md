@@ -3,6 +3,46 @@
 > 本文件随每个 form-split PR 同步提交，记录实际执行顺序、决策与验证结果，
 > 避免工作进度丢失。条目按时间倒序（最新在上）。基线：`2a08e55`（F4a 合入后）。
 
+## 2026-10-29（会话三）— R6 core-invoke 台账焚烧 batch-1：34 → 8 advisory
+
+### 迁移设计（照 DriverGateway 先例的第二个过渡逃生舱）
+
+- `packages/backend-client/src/legacyHostCommands.ts`：`LegacyCommandName`
+  联合类型（189 个遗留宿主命令名，从全部调用点机械提取）+
+  `LegacyHostMethodMap`（mapped type：request loose / response unknown，
+  命令名编译期校验）+ `legacyInvoke<T>(command, payload?)` 薄再导出——
+  与 `@tauri-apps/api/core` 的 invoke 同名同泛型同元数，调用点零改动，
+  仅换 import 行（F2「收编不新建」模式的复用）。
+- 载荷原样透传（省略时 undefined，桌面 transport 对 snake_case 扁平路由）：
+  与被替换的 invoke 字节等价。
+- `FacadeCoversMethodMap` 断言排除 legacy 轨键（由 legacyInvoke 服务，不上门面）。
+
+### 批量迁移（24 文件）
+
+- 17 个 `src/commands/*.ts`（ai/artifact/backup/connection/context/dashboard/
+  database/file/history/query/sample/schemaDiff/sync/transfer/transferJobs/
+  tunnel/wapps）+ sqlFileExecution + BackupWindow + 2 个 data-sync hook +
+  DataTransferWindow + OnboardingWindow + useSchemaDiffEndpoints。
+- union 补漏：ai 的 nativeInvoke 三命令（grant/revoke/touch）与 schemaDiff 的
+  两个 prepare 命令（间接传参，库存脚本初版漏检）。
+
+### 测试迁移（照 file.test.ts 先例）
+
+- 19 个测试文件补 `setBackendClient('test', { transport: { call: … } })`
+  绑定（元数归一适配器保持无实参断言原样）；resetModules 场景（firstFrameI18n）
+  在 beforeEach 重绑新模块图的 backend-client 实例。
+
+### 验证
+
+- typecheck 绿；src/commands + backend-client 344/344 绿；schema-diff 69/69、
+  data-sync/data-transfer/backup/onboarding/sqlFile 全绿；闸门 0 blocking /
+  **8 advisory**（34 → 8）。
+- 剩余 8 = R3 既有豁免 1 条 + R6 六文件待端口化：MenuBar(fullscreen)、
+  fetchRelationDdl(clipboard×2)、surfaceBgCache(host 文件持久化)、
+  wappBridge(wapp_session+通知)、BrandSidebar/SettingsContent(getVersion)。
+
+---
+
 ## 2026-10-29（会话二）— F4c 簇合并收口：223 → **215**（计划终态命中）
 > 本段落 rebased 在并行会话的 F5（59dea6941）与 R6 event 焚烧（d712c47ff）之后：
 > 两个会话的 F4c 重核结论一致（零死命令）；本提交把交接说明中「合并簇为

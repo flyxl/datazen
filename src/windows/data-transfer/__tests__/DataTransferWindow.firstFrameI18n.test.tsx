@@ -21,9 +21,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 
+const invokeMock = vi.hoisted(() => vi.fn().mockResolvedValue([]));
 vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn().mockResolvedValue([]),
+  invoke: invokeMock,
 }));
+
 
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
@@ -75,13 +77,24 @@ function i18nWarnings(spy: MockInstance): string[] {
 }
 
 describe('DataTransferWindow — first frame emits no i18n false positives', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     // packages/ui/src/i18n.ts keeps `reportedMissingKeys` in a module-private
     // Set that is never cleared, so a shared module instance would let an
     // earlier test case report a key and make this one pass vacuously. A fresh
     // module graph restores an empty Set. React is externalised by Vite, so
     // resetting the registry does not split React identity.
     vi.resetModules();
+    // The fresh graph also re-instantiates backend-client; re-bind the
+    // transport mock there before any component import resolves it.
+    const bc = await import('@datazen/backend-client');
+    bc.setBackendClient('test', {
+      transport: {
+        call: (c: string, p?: unknown) =>
+          p === undefined ? invokeMock(c) : invokeMock(c, p),
+      },
+    } as never);
+    invokeMock.mockReset();
+    invokeMock.mockResolvedValue([]);
   });
 
   afterEach(() => {

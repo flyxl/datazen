@@ -80,16 +80,18 @@ type Assert<T extends true> = T;
 /**
  * Every non-gateway `MethodMap` key is a method of the facade.
  *
- * The legacy gateway keys are excluded on purpose: they are addressed by the
- * `driverGateway` domain client, not spread onto the facade. If a domain
- * slice gains a key that no facade method serves, this alias stops
- * satisfying `true` and the build fails — the exact drift the plan's
- * "键一致性编译期断言" asks for.
+ * The legacy gateway keys and the legacy host-command rail keys are excluded
+ * on purpose: the former are addressed by the `driverGateway` domain client,
+ * the latter by the `legacyInvoke` escape hatch, and neither is spread onto
+ * the facade. If a domain slice gains a key that no facade method serves,
+ * this alias stops satisfying `true` and the build fails — the exact drift
+ * the plan's "键一致性编译期断言" asks for.
  */
 export type FacadeCoversMethodMap = Assert<
   Exclude<
     keyof MethodMap,
-    keyof import('./driverGatewayClient').DriverGatewayMethodMap
+    | keyof import('./driverGatewayClient').DriverGatewayMethodMap
+    | keyof import('./legacyHostCommands').LegacyHostMethodMap
   > extends keyof Omit<import('./client').BackendClient, 'backendId' | 'transport'>
     ? true
     : false

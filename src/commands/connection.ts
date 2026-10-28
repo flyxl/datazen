@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { legacyInvoke as invoke } from '@datazen/backend-client';
 import { toIpcConnectionConfig } from '../lib/connectionConfig';
 import type { ConnectionConfig, DriverCapabilities, ServerInfo } from '../types';
 

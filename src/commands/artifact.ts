@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { legacyInvoke as invoke } from '@datazen/backend-client';
 
 export type ArtifactExportResponse =
   | { status: 'cancelled' }
