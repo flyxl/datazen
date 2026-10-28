@@ -23,6 +23,7 @@ import {
   isScreenshotTraceEnabled,
   saveJourneyScreenshot,
 } from './lib/screenshotTrace.js';
+import SharedFixtureResetService from './services/shared-fixture-reset.js';
 import {
   cleanupAppDataViaIpc,
   createWorkerDatabase,
@@ -512,6 +513,8 @@ export const config: WebdriverIO.Config = {
   connectionRetryCount: 3,
   framework: 'mocha',
   reporters: ['spec'],
+  // 共享夹具库（datazen_sync_*）按 spec 文件重置，见 services/shared-fixture-reset.ts。
+  services: [[SharedFixtureResetService, {}]],
   mochaOpts: {
     ui: 'bdd',
     timeout: 120000,
