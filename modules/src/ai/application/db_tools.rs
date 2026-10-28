@@ -10,9 +10,6 @@ pub const MCP_QUERY_MAX_LIMIT: u32 = 50_000;
 use super::ports::DatabaseToolHost;
 use crate::mcp::domain::permission::{self, McpPermissionMode};
 use crate::schema::application::scope::metadata_schema;
-use datazen_driver_api::DatabaseDriver;
-use std::sync::Arc;
-
 /// List all configured connections as a JSON string.
 pub async fn list_connections(
     store: &dyn crate::connection::domain::ConnectionRepository,
