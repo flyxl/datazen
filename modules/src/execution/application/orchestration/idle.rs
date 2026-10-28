@@ -51,7 +51,7 @@ pub const DEFAULT_DETACHED_GRACE: Duration = Duration::from_secs(60);
 /// 空闲回收策略。
 ///
 /// `deadline == None` 是**配置事实**（本部署不做空闲回收），不是「计数器为 0」：
-/// 两种 `None` 语义不混同，是 [`crate::budget`] / [`crate::resource`] 一直在守的规矩。
+/// 两种 `None` 语义不混同，是 [`crate::ai::domain::budget`] / [`crate::resource`] 一直在守的规矩。
 /// `detached_grace == None` 同样是配置事实：摘挂载后不额外收紧期限。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IdlePolicy {
@@ -252,55 +252,9 @@ impl RuntimeConnectionUseCases {
         IdleReclaimer { stop, task }
     }
 
-    /// 把会话的空闲期限**顺延**到「现在 + policy 期限」，即 §6.4 的「业务活动刷新」。
-    ///
-    /// ## 为什么必须是应用层方法
-    ///
-    /// §9.2 逐字写：「登录心跳不能刷新 lastBusinessActivity；执行期间不以 idle 判定回收」。
-    /// 因此刷新的时机只能是**真实的业务活动**（一次真实命令执行及完成），
-    /// 不能是任何周期性任务——把刷新写进扫描器会让「心跳刷新」这条禁令失效，
-    /// 且会话只要挂着就永远不回收，正好是 §6.4 要防的那半句。
-    ///
-    /// ## 三种 `None` 必须分开
-    ///
-    /// 1. 策略关闭 ⇒ 本方法**不动** registry：期限本来就是 `None`，写一次 `None`
-    ///    与不写等价，但会白发一次 actor 往返。
-    /// 2. 会话已不在册 / epoch 不匹配 ⇒ 如实返回错误，**不**把它当成「刷成功了」。
-    /// 3. 会话物理资源已释放 ⇒ 同样如实返回错误，不重建、不透明替换。
-    ///
-    /// 刷新只延长期限，**不**提前回收：顺延是单向的（`max(now + span, at)`），
-    /// 见 [`Self::idle_deadline_ms`] 里同一把尺子的截断方向。
-    pub async fn refresh_idle_deadline(
-        &self,
-        handle: &crate::execution::SessionHandle,
-    ) -> Result<Option<u64>, ApiError> {
-        let activity = self.inner.idle_activity.lock().await;
-        if activity.contains_key(handle) {
-            return Ok(None);
-        }
-        let policy = *lock(&self.inner.idle);
-        let Some(span) = policy.deadline_ms() else {
-            return Ok(None);
-        };
-        // 与 `create_session` 写入 `OpenRequest.idle_deadline_ms` 同一条路径、同一把尺子：
-        // 两处单位不一致会让「到期」变成随机器负载漂移的量。
-        let at = self
-            .inner
-            .clock
-            .now_ms()
-            .saturating_add(span)
-            .max(self.inner.clock.now_ms());
-        let internal = convert::handle(handle)?;
-        self.inner
-            .registry
-            .set_idle_deadline(&internal, Some(at))
-            .await
-            .map_err(convert::runtime)
-    }
-
     /// 会话**摘掉挂载**之后，把空闲期限收到「现在 + 摘挂载宽限」。
     ///
-    /// 方向与 [`Self::refresh_idle_deadline`] 相反：那条只把期限往后推（真实业务活动），
+    /// 方向与「业务活动刷新」相反：那只把期限往后推（真实业务活动），
     /// 这条只往回收紧。§9.2 禁止的是「心跳/扫描把期限往后推」，收紧不在禁令内——恰恰相反，
     /// 它防的正是「会话只要挂着就永远不回收」那半句：一旦**不挂了**，就不该继续占额度。
     ///

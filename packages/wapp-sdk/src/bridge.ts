@@ -11,7 +11,7 @@
  */
 export const BRIDGE_CHANNEL = 'datazen-wapp';
 
-/** Must match `WAPP_API_VERSION` on the host (`src/types/extension.ts`). */
+/** Must match `WAPP_API_VERSION` on the host (`src/types/wapp.ts`). */
 export const WAPP_API_VERSION = 2;
 
 /** Mirrors the host router deadline (`wappBridge.ts`). */

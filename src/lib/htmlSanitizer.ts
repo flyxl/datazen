@@ -4,9 +4,8 @@
  * Uses DOMParser (browser/jsdom) to walk the DOM tree and strip dangerous
  * tags, event-handler attributes, and `javascript:` URLs.
  *
- * NOTE: DOMPurify is the preferred long-term solution (see package.json
- * dompurify dep). This implementation covers the same threat surface for
- * GFM markdown output and passes the full XSS test suite.
+ * This implementation covers the threat surface for GFM markdown output
+ * and passes the full XSS test suite.
  */
 
 const STRIP_TAGS = new Set([

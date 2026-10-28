@@ -168,7 +168,7 @@ pub(crate) fn finish_app_state(
     sync_adapters: Arc<crate::transfer::adapter_registry::SyncAdapterRegistry>,
     prompts_dir: Option<PathBuf>,
 ) -> AppState {
-    let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
+    let schema_cache = Arc::new(SchemaCache::new());
     let monitor_engine = MonitorEngine::new(store.clone());
 
     let data_dir = store.data_dir().to_path_buf();

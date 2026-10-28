@@ -3,7 +3,7 @@
  *
  * Zero-build vanilla JS mirroring the @datazen/extension-sdk bridge semantics:
  * `wapp.ready` -> `host.ready` handshake, then reqId-correlated RPC against
- * the host postMessage router (src/lib/extensionBridge.ts). Kept dependency-free
+ * the host postMessage router (src/lib/wappBridge.ts). Kept dependency-free
  * on purpose so the fixture is a plain static directory.
  */
 (function () {

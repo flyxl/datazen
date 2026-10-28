@@ -1,10 +1,10 @@
 //! Fixed target normalization for scheduled monitor definitions.
 
 use crate::workflow::{
-    context::WorkflowContext,
-    executable::TargetDeclaration,
-    model::{WorkflowDefinition, WorkflowStep},
-    target_plan::{resolve, TargetRequirements},
+    application::context::WorkflowContext,
+    domain::executable::TargetDeclaration,
+    domain::model::{WorkflowDefinition, WorkflowStep},
+    domain::target_plan::{resolve, TargetRequirements},
     WorkflowError,
 };
 

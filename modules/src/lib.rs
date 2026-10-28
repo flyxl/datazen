@@ -43,13 +43,6 @@ pub use backup::{backup_gateway, restore_gateway, restore_job};
 
 #[cfg(feature = "ai")]
 pub mod ai;
-#[cfg(feature = "ai")]
-pub use ai::application::{
-    cancel, chat_request, context, db_tools, filter, ownership, prompt_resolver, response,
-    schema_context, schema_doc, schema_pipeline, single_turn, sql_generation, tool_loop, tools,
-};
-#[cfg(feature = "ai")]
-pub use ai::domain::{budget, ctx_yaml, safety};
 
 #[cfg(feature = "connection")]
 pub mod connection;
@@ -82,14 +75,6 @@ pub mod monitor;
     feature = "data_transfer"
 ))]
 pub mod migration;
-
-// 迁移期兼容导出：canonical path 是 `migration::*`，旧消费者可平滑迁移。
-#[cfg(feature = "data_sync")]
-pub use migration::data_sync;
-#[cfg(feature = "data_transfer")]
-pub use migration::data_transfer;
-#[cfg(feature = "schema_diff")]
-pub use migration::schema_diff;
 
 /// D6 item 1：查询历史与迁移运行历史（词汇/仓储端口/用例门面）。
 #[cfg(feature = "history")]
@@ -129,17 +114,12 @@ pub mod shared;
 // Stable crate-level conveniences for host adapters. Definitions remain in
 // their owning vertical slices; these exports avoid recreating a horizontal
 // platform-api namespace.
-#[cfg(feature = "connection")]
-pub use connection::{ProfileDraft, ProfileDraftPatch, ProfilePatch, ProfileReader, ProfileView};
 #[cfg(feature = "execution")]
 pub use execution::*;
 #[cfg(feature = "jobs")]
-pub use jobs::{
-    CancelToken, JobClock, JobError, JobHandler, JobHost, JobRepository, JobRuntime,
-    JobRuntimeRepository, RecoveryVerdict, SharedClock, StageOutcome, StageSpec, StageTerminal,
-};
+pub use jobs::JobRepository;
 pub use shared::id::*;
-pub use shared::{ApiError, ApiErrorCode, DelegationRef, OwnerRef, PortError, RequestContext};
+pub use shared::{OwnerRef, PortError, RequestContext};
 
 #[cfg(test)]
 mod tests {

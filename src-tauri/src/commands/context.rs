@@ -586,7 +586,7 @@ mod tests {
         let registry = Arc::new(DriverRegistry::new());
         let platform = crate::platform::PlatformEntry::launch();
         let monitor_engine = MonitorEngine::new(store.clone());
-        let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
+        let schema_cache = Arc::new(SchemaCache::new());
         let data_dir = store.data_dir().to_path_buf();
         let history_db = store.history_db();
         let app_db = store.app_db();
@@ -674,7 +674,7 @@ mod tests {
         let registry = Arc::new(DriverRegistry::new());
         let platform = crate::platform::PlatformEntry::launch();
         let monitor_engine = MonitorEngine::new(store.clone());
-        let schema_cache = Arc::new(SchemaCache::new(registry.clone()));
+        let schema_cache = Arc::new(SchemaCache::new());
         let data_dir = store.data_dir().to_path_buf();
         let history_db = store.history_db();
         let desktop_job_host = crate::build_desktop_job_host(store.app_db());

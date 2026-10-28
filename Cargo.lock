@@ -2002,13 +2002,9 @@ dependencies = [
 name = "datazen_desktop"
 version = "0.2.3"
 dependencies = [
- "aes 0.8.4",
  "aes-gcm 0.10.3",
- "anyhow",
- "argon2",
  "async-trait",
  "base64 0.22.1",
- "cbc 0.1.2",
  "chrono",
  "datazen",
  "datazen-driver-api",
@@ -2017,7 +2013,6 @@ dependencies = [
  "datazen-driver-sqlite",
  "datazen-infra",
  "dirs 6.0.0",
- "flate2",
  "futures-util",
  "hmac 0.12.1",
  "inventory",
@@ -2026,7 +2021,6 @@ dependencies = [
  "objc2",
  "objc2-app-kit",
  "open",
- "pbkdf2 0.12.2",
  "rand 0.8.7",
  "regex",
  "reqwest",
@@ -2037,7 +2031,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
- "sha1 0.10.7",
  "sha2 0.10.9",
  "sqlx",
  "sys-locale",
@@ -2063,7 +2056,6 @@ dependencies = [
  "url",
  "urlencoding",
  "uuid",
- "webpki-roots 0.26.11",
  "wiremock",
  "zip 2.4.2",
 ]

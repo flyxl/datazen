@@ -529,26 +529,6 @@ impl FileArtifactRepository {
         grant.cancelled = Some(cancelled);
         Ok(())
     }
-    /// Host calls only after the user confirms that the exported JSONL is partial.
-    /// The export prepends an explicit truncation record, so the marker survives transfer.
-    pub fn authorize_truncated_export(
-        &self,
-        ctx: &RequestContext,
-        handle: LeaseId,
-        path: PathBuf,
-        confirmed: bool,
-    ) -> Result<(), PortError> {
-        if !confirmed {
-            return Err(PortError::TokenInvalid);
-        }
-        self.authorize_export(ctx, handle.clone(), path)?;
-        let mut s = self.state.lock().map_err(|_| unavailable())?;
-        s.exports
-            .get_mut(&handle)
-            .ok_or(PortError::TokenInvalid)?
-            .allow_truncated = true;
-        Ok(())
-    }
 }
 #[async_trait]
 impl ArtifactRepository for FileArtifactRepository {

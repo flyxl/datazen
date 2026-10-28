@@ -256,15 +256,6 @@ impl MonitorEngine {
         Ok(run)
     }
 
-    /// Apply the scheduler's admission and dispatch policy without exposing
-    /// its private runtime state to the host controller.
-    pub async fn tick_scheduled_widget_with(
-        &self,
-        dashboard_id: &str,
-        widget: &DashboardWidget,
-    ) -> Result<WidgetRun, String> {
-        self.tick_scheduled_widget(dashboard_id, widget).await
-    }
     async fn poll(self: &Arc<Self>) {
         for entry in self.schedule.read().await.clone() {
             let key = (entry.dashboard_id.clone(), entry.widget.id.clone());

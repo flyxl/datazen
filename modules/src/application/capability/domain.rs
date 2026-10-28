@@ -295,14 +295,6 @@ impl CapabilityState {
         matches!(self, Self::Available)
     }
 
-    pub const fn is_degraded(self) -> bool {
-        matches!(self, Self::Degraded { .. })
-    }
-
-    pub const fn is_unavailable(self) -> bool {
-        matches!(self, Self::Unavailable)
-    }
-
     pub const fn cause(self) -> Option<DegradationCause> {
         match self {
             Self::Degraded { cause } => Some(cause),

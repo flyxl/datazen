@@ -133,16 +133,6 @@ impl RuntimeResultSink {
     ) -> Result<(), ApiError> {
         self.publish(id, serde_json::json!([]), Vec::new(), Some(output), None)
     }
-    /// Drivers that can observe each statement provide its context and verified relation here.
-    pub fn publish_statement_rows(
-        &self,
-        id: &ExecutionId,
-        columns: serde_json::Value,
-        rows: Vec<serde_json::Value>,
-        source: StatementResultSource,
-    ) -> Result<(), ApiError> {
-        self.publish(id, columns, rows, None, Some(source))
-    }
     pub fn publish_statement_output(
         &self,
         id: &ExecutionId,

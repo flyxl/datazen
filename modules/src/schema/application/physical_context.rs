@@ -91,7 +91,6 @@ impl LogicalSchemaContextSource for PhysicalSchemaContextAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::execution::runtime::driver_registry::DriverRegistry;
     use datazen_driver_api::{
         mock_driver::{MockDriver, MockDriverOptions},
         ConnectionHandle, DatabaseDriver, TableInfo, TableType,
@@ -129,8 +128,7 @@ mod tests {
         driver: Arc<MockDriver>,
         schema: Option<String>,
     ) -> (PhysicalSchemaContextAdapter, Arc<SchemaCache>) {
-        let registry = Arc::new(DriverRegistry::new());
-        let cache = Arc::new(SchemaCache::new(registry));
+        let cache = Arc::new(SchemaCache::new());
         let physical = Arc::new(PhysicalSource {
             driver: driver.clone(),
             handle: test_handle(),

@@ -289,7 +289,28 @@ pub trait SyncTargetAdapter: Send + Sync {
     }
 
     /// Format a runtime `Value` as a SQL literal suitable for INSERT statements.
-    fn format_literal(&self, value: &Option<Value>, ir_type: &IRType) -> String;
+    ///
+    /// The default is the dialect-neutral escaping the HTTP path drivers
+    /// previously duplicated six times verbatim: `NULL` / `true` / `false`
+    /// literals, doubled single quotes, and `\x`-prefixed hex bytes. Drivers
+    /// whose dialect quotes differently override it.
+    fn format_literal(&self, value: &Option<Value>, _ir_type: &IRType) -> String {
+        match value {
+            None | Some(Value::Null) => "NULL".into(),
+            Some(Value::Bool(b)) => if *b { "true" } else { "false" }.into(),
+            Some(Value::Integer(n)) => n.to_string(),
+            Some(Value::Float(f)) => f.to_string(),
+            Some(Value::String(s)) => format!("'{}'", s.replace('\'', "''")),
+            Some(Value::Timestamp(s)) => format!("'{}'", s),
+            Some(Value::Json(j)) => format!("'{}'", j.to_string().replace('\'', "''")),
+            Some(Value::Bytes(b)) => format!(
+                "'\\x{}'",
+                b.iter()
+                    .map(|byte| format!("{:02x}", byte))
+                    .collect::<String>()
+            ),
+        }
+    }
 
     fn quote_char(&self) -> char {
         '"'

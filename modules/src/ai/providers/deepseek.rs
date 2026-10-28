@@ -48,11 +48,6 @@ impl DeepSeekProvider {
             max_request_timeout: std::time::Duration::from_secs(120),
         })
     }
-
-    pub async fn list_models(&self) -> Result<Vec<ModelInfo>, AiError> {
-        let cfg = self.protocol_config().await?;
-        protocol::openai_chat::fetch_models(&cfg).await
-    }
 }
 
 #[async_trait]

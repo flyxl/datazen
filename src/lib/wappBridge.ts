@@ -334,8 +334,6 @@ function isEnvelope(data: unknown): data is WappRequestEnvelope {
   );
 }
 
-export const isWappEnvelope = isEnvelope;
-
 /**
  * Attach the RPC bridge to a wapp iframe. Returns a handle whose `detach`
  * removes the window listener; call it when the shell unmounts or reloads

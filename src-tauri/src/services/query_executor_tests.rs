@@ -24,7 +24,7 @@ mod host_tests {
         registry
             .register_test_driver("postgres", mock.clone())
             .await;
-        let cache = Arc::new(SchemaCache::new(registry));
+        let cache = Arc::new(SchemaCache::new());
         let executor = QueryExecutor::new(cache);
         let driver = mock.clone() as Arc<dyn datazen_driver_api::DatabaseDriver>;
         let handle = ConnectionHandle {

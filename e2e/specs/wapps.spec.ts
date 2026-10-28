@@ -105,7 +105,7 @@ async function ensureSampleWappInstalled() {
   await browser.pause(600);
 }
 
-/** Seed activeConnectionStore with a live PG session (extensionBridge command.invoke). */
+/** Seed activeConnectionStore with a live PG session (wappBridge command.invoke). */
 async function ensureLivePgSession() {
   await browser.url('tauri://localhost');
   await browser.pause(400);

@@ -71,7 +71,6 @@ pub enum ResourceProviderLookup {
 /// (or rely on [`DriverRegistry::get`]) to load a type on demand.
 pub struct DriverRegistry {
     drivers: Arc<RwLock<HashMap<DatabaseType, Arc<dyn DatabaseDriver>>>>,
-    kv_drivers: Arc<RwLock<HashMap<DatabaseType, Arc<dyn KeyValueDriver>>>>,
     capabilities: Arc<RwLock<HashMap<DatabaseType, DriverCapabilities>>>,
     /// The factory each registered driver came from.
     ///
@@ -90,7 +89,6 @@ impl DriverRegistry {
     pub fn new() -> Self {
         Self {
             drivers: Arc::new(RwLock::new(HashMap::new())),
-            kv_drivers: Arc::new(RwLock::new(HashMap::new())),
             capabilities: Arc::new(RwLock::new(HashMap::new())),
             factories: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -190,10 +188,6 @@ impl DriverRegistry {
                     capability_map.insert(actual.clone(), capabilities);
                 }
             }
-            if let Some(kv) = factory.create_kv() {
-                let mut kv_map = self.kv_drivers.write().await;
-                kv_map.insert(kv.driver_type(), kv);
-            }
             // The driver and its factory are registered under the same keys, so
             // the provider a caller resolves is backed by the driver this
             // registry handed out, never by a second `create()`.
@@ -238,13 +232,6 @@ impl DriverRegistry {
         capabilities.get(db_type).copied()
     }
 
-    /// Types currently loaded in memory (for diagnostics). Prefer
-    /// [`available_types`] for UI catalogs.
-    pub async fn loaded_types(&self) -> Vec<DatabaseType> {
-        let drivers = self.drivers.read().await;
-        drivers.keys().cloned().collect()
-    }
-
     /// Resolve the opaque-resource provider of a registered driver.
     ///
     /// Fail-closed, and never a silent no-op: a driver that has not been
@@ -276,15 +263,6 @@ impl DriverRegistry {
             }
         })?;
         require_resource_provider(factory).map_err(ResourceProviderLookup::Missing)
-    }
-
-    pub async fn get_kv_driver(&self, db_type: &DatabaseType) -> Option<Arc<dyn KeyValueDriver>> {
-        if let Err(e) = self.ensure_type(db_type).await {
-            tracing::warn!(db_type = %db_type, error = %e, "KV driver ensure failed");
-            return None;
-        }
-        let kv_drivers = self.kv_drivers.read().await;
-        kv_drivers.get(db_type).cloned()
     }
 
     /// Look up a SQL driver by its type string, loading on demand.
@@ -320,16 +298,6 @@ impl DriverRegistry {
             .write()
             .await
             .insert(db_type, capabilities);
-    }
-
-    /// Register a KV driver instance for unit tests (bypasses inventory).
-    #[cfg(test)]
-    pub async fn register_test_kv_driver(
-        &self,
-        db_type: impl Into<DatabaseType>,
-        kv: Arc<dyn KeyValueDriver>,
-    ) {
-        self.kv_drivers.write().await.insert(db_type.into(), kv);
     }
 
     /// Register the factory a type's driver came from, for unit tests.
