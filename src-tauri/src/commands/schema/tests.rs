@@ -170,8 +170,7 @@ async fn er_composition_reads_each_tables_own_schema_and_never_caches_empty() {
         .await
         .unwrap();
         schemas.push(
-            datazen_driver_api::parse_table_schema_from_command(&data)
-                .expect("relation schema"),
+            datazen_driver_api::parse_table_schema_from_command(&data).expect("relation schema"),
         );
     }
 
