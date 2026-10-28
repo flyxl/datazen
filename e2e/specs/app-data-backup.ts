@@ -5,7 +5,6 @@
  * ADB-002  export_app_data writes a zip under a temp path (overridePath form)
  * ADB-003  Export zip is non-empty and re-import IPC succeeds (no restart)
  * ADB-004  Import of path-traversal zip fails safely
- * ADB-005  get_system_ui_language returns a supported locale (related first-run)
  * ADB-006  Exported zip excludes logs/ and *.tmp entries
  * ADB-007  Export button label matches current UI language
  * ADB-008  Exported zip excludes .key (encryption key material)
@@ -50,8 +49,6 @@ function importFromPath(zipPath: string) {
   });
 }
 
-const SUPPORTED = new Set(['en', 'zh-CN', 'zh-TW', 'es', 'fr', 'de', 'ja', 'pt-BR', 'ru', 'ko']);
-
 function makeTraversalZip(dest: string) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dz-evil-'));
   const payload = path.join(dir, 'outside.txt');
@@ -73,7 +70,7 @@ z.close()
   execFileSync('python3', ['-c', py, dest], { stdio: 'ignore' });
 }
 
-describe('App Data Backup (ADB-001~ADB-005)', () => {
+describe('App Data Backup (ADB-001~ADB-004, ADB-006~ADB-007)', () => {
   let backupPath = '';
   let evilPath = '';
 
@@ -158,11 +155,6 @@ describe('App Data Backup (ADB-001~ADB-005)', () => {
       expect(String(e)).toMatch(/traversal|InvalidInput|absolute|failed|error/i);
     }
     expect(failed).toBe(true);
-  });
-
-  it('ADB-005: get_system_ui_language should return a supported locale', async () => {
-    const lang = await invokeBackend<string>('get_system_ui_language');
-    expect(SUPPORTED.has(lang)).toBe(true);
   });
 
   it('ADB-006: exported zip should exclude logs/ and *.tmp', async () => {

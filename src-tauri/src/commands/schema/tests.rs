@@ -41,42 +41,6 @@ async fn schema_commands_with_connected_mock() {
     .unwrap();
     assert_eq!(schema.table_name, "users");
     assert_eq!(schema.columns.len(), 2);
-
-    let er = get_er_data_impl(&test.state, conn_id, "app".into(), None)
-        .await
-        .unwrap();
-    assert_eq!(er.len(), 1);
-}
-
-#[tokio::test]
-async fn get_er_data_errors_when_no_table_metadata_is_readable() {
-    use datazen_driver_api::{TableInfo, TableType};
-
-    // Schema-level driver that never supplies a schema (no explicit filter,
-    // table schema None, no default): every ExactSchema metadata read fails
-    // while the driver still lists tables.
-    let opts = MockDriverOptions {
-        has_schema_level: true,
-        tables: vec![TableInfo {
-            name: "users".into(),
-            schema: None,
-            table_type: TableType::Table,
-            row_count: None,
-        }],
-        ..Default::default()
-    };
-    let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect("er-all-fail").await;
-    // When tables exist but every per-table column read fails, an empty Vec
-    // would be rendered as "this database has no tables". Fail loudly instead.
-    let err = get_er_data_impl(&test.state, conn_id, "app".into(), None)
-        .await
-        .unwrap_err();
-    assert!(
-        err.to_string()
-            .contains("failed to read column metadata for all"),
-        "expected the all-tables-failed error, got: {err}"
-    );
 }
 
 #[tokio::test]
@@ -114,150 +78,6 @@ fn col(name: &str) -> datazen_driver_api::ColumnSchema {
 }
 
 #[tokio::test]
-async fn unknown_object_kind_is_validation_error() {
-    let test = TestAppState::new().await;
-    let (_, conn_id) = test.save_and_connect("obj-bad-kind").await;
-    let err = get_database_objects_impl(&test.state, conn_id, "invalid_kind".into(), None)
-        .await
-        .unwrap_err();
-    assert!(err.to_string().contains("Unknown object kind"));
-}
-
-#[tokio::test]
-async fn lists_database_objects_returns_empty_when_query_has_no_rows_and_no_columns() {
-    let opts = MockDriverOptions {
-        columns: vec![],
-        query_rows: vec![],
-        ..Default::default()
-    };
-    let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect("obj-empty").await;
-    let rows = get_database_objects_impl(&test.state, conn_id, "function".into(), None)
-        .await
-        .unwrap();
-    assert!(rows.is_empty());
-}
-
-#[tokio::test]
-async fn lists_database_objects_from_name_column() {
-    let opts = MockDriverOptions {
-        columns: vec![col("schema"), col("name")],
-        query_rows: vec![
-            vec![
-                Some(Value::String("public".into())),
-                Some(Value::String("fn_ok".into())),
-            ],
-            vec![
-                Some(Value::String("public".into())),
-                Some(Value::String("".into())),
-            ],
-        ],
-        ..Default::default()
-    };
-    let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect("obj-list").await;
-    let rows = get_database_objects_impl(&test.state, conn_id, "function".into(), None)
-        .await
-        .unwrap();
-    assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].name, "fn_ok");
-    assert_eq!(rows[0].schema.as_deref(), Some("public"));
-    assert_eq!(rows[0].kind, "function");
-}
-
-#[tokio::test]
-async fn lists_database_objects_preserves_signature_and_trigger_target() {
-    let opts = MockDriverOptions {
-        columns: vec![
-            col("schema"),
-            col("name"),
-            col("signature"),
-            col("target_schema"),
-            col("target_name"),
-        ],
-        query_rows: vec![vec![
-            Some(Value::String("public".into())),
-            Some(Value::String("audit".into())),
-            Some(Value::String("integer".into())),
-            Some(Value::String("public".into())),
-            Some(Value::String("orders".into())),
-        ]],
-        ..Default::default()
-    };
-    let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect("obj-identity").await;
-    let rows = get_database_objects_impl(&test.state, conn_id, "trigger".into(), None)
-        .await
-        .unwrap();
-    assert_eq!(rows[0].signature.as_deref(), Some("integer"));
-    assert_eq!(rows[0].target_schema.as_deref(), Some("public"));
-    assert_eq!(rows[0].target_name.as_deref(), Some("orders"));
-}
-
-#[tokio::test]
-async fn object_ddl_reads_named_or_second_column() {
-    let opts = MockDriverOptions {
-        columns: vec![col("Function"), col("Create Function")],
-        query_rows: vec![vec![
-            Some(Value::String("fn_ok".into())),
-            Some(Value::String("CREATE FUNCTION fn_ok() ...".into())),
-        ]],
-        ..Default::default()
-    };
-    let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect("obj-ddl").await;
-    let ddl = get_object_ddl_impl(
-        &test.state,
-        conn_id,
-        "function".into(),
-        "fn_ok".into(),
-        Some("public".into()),
-    )
-    .await
-    .unwrap();
-    assert!(ddl.contains("CREATE FUNCTION"));
-}
-
-#[tokio::test]
-async fn object_ddl_missing_object_fails_closed() {
-    let opts = MockDriverOptions {
-        columns: vec![col("ddl")],
-        query_rows: vec![],
-        ..Default::default()
-    };
-    let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect("obj-missing-ddl").await;
-    let error = get_object_ddl_with_metadata_impl(
-        &test.state,
-        conn_id,
-        "function".into(),
-        "missing".into(),
-        Some("public".into()),
-        Some("integer".into()),
-        None,
-        None,
-        None,
-    )
-    .await
-    .unwrap_err();
-    assert!(error.to_string().contains("not found"));
-}
-
-#[tokio::test]
-async fn object_catalog_preserves_permission_query_errors() {
-    let opts = MockDriverOptions {
-        query_error: Some("permission denied for relation pg_proc".into()),
-        ..Default::default()
-    };
-    let test = TestAppState::with_options(opts).await;
-    let (_, conn_id) = test.save_and_connect("obj-permission").await;
-    let error = get_database_objects_impl(&test.state, conn_id, "function".into(), None)
-        .await
-        .unwrap_err();
-    assert!(error.to_string().contains("permission denied"));
-}
-
-#[tokio::test]
 async fn privileges_map_grantee_and_skip_incomplete_rows() {
     let opts = MockDriverOptions {
         columns: vec![col("grantee"), col("schema"), col("name"), col("privilege")],
@@ -280,15 +100,18 @@ async fn privileges_map_grantee_and_skip_incomplete_rows() {
     assert_eq!(grants[0].object_name, "users");
     assert_eq!(grants[0].privilege, "SELECT");
 }
-/// Regression (BUG-003): `get_er_data` listed the requested database's
-/// tables but read every table's schema against whatever catalog the shared
-/// session sat on. That produced a successful but column-less schema, which
-/// the schema cache stored under the requested database and served for its
-/// whole TTL — empty structure view, ER diagram without columns, and a data
-/// grid with the right row count but blank cells. Each read now carries its
-/// own `(database, schema)` target.
+/// Regression (BUG-003): an ER read listed the requested database's tables
+/// but read every table's schema against whatever catalog the shared session
+/// sat on. That produced a successful but column-less schema, which the
+/// schema cache stored under the requested database and served for its whole
+/// TTL — empty structure view, ER diagram without columns, and a data grid
+/// with the right row count but blank cells. The ER surface now composes
+/// `list_catalog` + one explicit `get_table_schema` per relation through the
+/// driver-command gateway — the same path `ErDiagramView` drives in
+/// production — and this pins that every read carries its own
+/// `(database, schema)` target.
 #[tokio::test]
-async fn get_er_data_reads_each_tables_own_schema_and_never_caches_empty() {
+async fn er_composition_reads_each_tables_own_schema_and_never_caches_empty() {
     use datazen_driver_api::{ColumnSchema, TableInfo, TableType};
 
     fn column(name: &str) -> ColumnSchema {
@@ -327,13 +150,33 @@ async fn get_er_data_reads_each_tables_own_schema_and_never_caches_empty() {
     // Sample config pins database = "app"; the ER view targets "analytics".
     let (_, conn_id) = test.save_and_connect("er-pin-db").await;
 
-    let schemas = get_er_data_impl(&test.state, conn_id.clone(), "analytics".into(), None)
+    // The production composition: list the relations, then read each table's
+    // own schema with an explicit target — never a session-wide `USE`.
+    let relations = read_catalog(&test.state, conn_id.clone(), "analytics".into(), None)
         .await
         .unwrap();
+    let mut schemas = Vec::new();
+    for relation in &relations {
+        let data = execute_metadata(
+            &test.state,
+            conn_id.clone(),
+            "get_table_schema",
+            serde_json::json!({
+                "database": relation.relation.database,
+                "schema": relation.relation.schema,
+                "table": relation.relation.name,
+            }),
+        )
+        .await
+        .unwrap();
+        schemas.push(
+            datazen_driver_api::parse_table_schema_from_command(&data).expect("relation schema"),
+        );
+    }
 
     assert!(
         test.mock.use_database_calls().is_empty(),
-        "get_er_data must read each table's schema explicitly, not by switching the session"
+        "the ER composition must read each table's schema explicitly, not by switching the session"
     );
     assert_eq!(schemas.len(), 1);
     assert_eq!(
@@ -443,7 +286,7 @@ async fn read_definition(
     name: String,
     database: String,
     schema: Option<String>,
-) -> Result<TableSchema, CommandError> {
+) -> Result<datazen_driver_api::TableSchema, CommandError> {
     let data = execute_metadata(
         state,
         session,

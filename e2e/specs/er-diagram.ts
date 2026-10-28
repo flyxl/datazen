@@ -1,9 +1,8 @@
-import { listDatabases } from '../schema-metadata.js';
 /**
  * ER diagram full user journey — workspace home / toolbar entry, React Flow canvas,
  * controls, search, table/relation stats, and inferred relationships.
  *
- * Covers: ER-001~ER-009
+ * Covers: ER-002~ER-009
  */
 import { expect, browser, $, $$ } from '@wdio/globals';
 import {
@@ -128,7 +127,7 @@ async function edgeDashOf(edgeId: string): Promise<string | null> {
   }, edgeId);
 }
 
-describe('ER 图功能 E2E 测试 (ER-001~ER-013)', () => {
+describe('ER 图功能 E2E 测试 (ER-002~ER-013)', () => {
   let mainWindow: string;
 
   before(async () => {
@@ -193,28 +192,6 @@ describe('ER 图功能 E2E 测试 (ER-001~ER-013)', () => {
       await resetDialogQueue();
     } catch {
       /* ok */
-    }
-  });
-
-  it('ER-001: get_er_data IPC 应返回 schema 数组', async () => {
-    // Use a dedicated session. `connect` reuses the UI-owned session and the
-    // force-disconnect below would otherwise invalidate the ER panel's live
-    // dbSessionId before ER-003 opens it.
-    const dbSessionId = await invokeBackend<string>('connect_dedicated', {
-      connectionId: SEEDED_CONN_ID,
-      database: null,
-    });
-    try {
-      const databases = await listDatabases({ dbSessionId });
-      expect(databases.length).toBeGreaterThan(0);
-
-      const schemas = await invokeBackend<unknown[]>('get_er_data', {
-        dbSessionId,
-        database: databases[0],
-      });
-      expect(Array.isArray(schemas)).toBe(true);
-    } finally {
-      await disconnectBackend(dbSessionId);
     }
   });
 

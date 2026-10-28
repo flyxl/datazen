@@ -25,9 +25,16 @@ async fn execute_query_success_records_history() {
         .unwrap();
     assert_eq!(result.results.len(), 1);
 
-    let history = get_query_history_impl(&test.state, 10, None, None, None)
-        .await
-        .unwrap();
+    let history = get_query_history_page_impl(
+        &test.state,
+        HistoryPageRequest {
+            limit: 10,
+            ..HistoryPageRequest::default()
+        },
+    )
+    .await
+    .unwrap()
+    .entries;
     assert_eq!(history.len(), 1);
     assert!(history[0].success);
 }
@@ -178,10 +185,17 @@ async fn clear_query_history() {
         .await
         .unwrap();
     clear_query_history_impl(&test.state).await.unwrap();
-    assert!(get_query_history_impl(&test.state, 10, None, None, None)
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(get_query_history_page_impl(
+        &test.state,
+        HistoryPageRequest {
+            limit: 10,
+            ..HistoryPageRequest::default()
+        },
+    )
+    .await
+    .unwrap()
+    .entries
+    .is_empty());
 }
 
 #[tokio::test]
@@ -244,9 +258,16 @@ async fn query_stream_command_does_not_apply_limit_when_switch_off() {
     assert!(events
         .iter()
         .any(|e| matches!(e, QueryStreamEvent::Done { .. })));
-    let history = get_query_history_impl(&test.state, 10, None, None, None)
-        .await
-        .unwrap();
+    let history = get_query_history_page_impl(
+        &test.state,
+        HistoryPageRequest {
+            limit: 10,
+            ..HistoryPageRequest::default()
+        },
+    )
+    .await
+    .unwrap()
+    .entries;
     assert!(history.iter().any(|e| e.success));
 }
 
@@ -309,9 +330,16 @@ async fn query_stream_command_can_skip_result_limit_for_export() {
     .await
     .unwrap();
     assert_eq!(test.mock.last_query_limit(), Some(None));
-    let history = get_query_history_impl(&test.state, 10, None, None, None)
-        .await
-        .unwrap();
+    let history = get_query_history_page_impl(
+        &test.state,
+        HistoryPageRequest {
+            limit: 10,
+            ..HistoryPageRequest::default()
+        },
+    )
+    .await
+    .unwrap()
+    .entries;
     assert!(history.is_empty());
 }
 
@@ -341,9 +369,16 @@ async fn query_stream_command_failure_records_history() {
     .await
     .unwrap_err();
     assert!(err.to_string().contains("boom"));
-    let history = get_query_history_impl(&test.state, 10, None, None, None)
-        .await
-        .unwrap();
+    let history = get_query_history_page_impl(
+        &test.state,
+        HistoryPageRequest {
+            limit: 10,
+            ..HistoryPageRequest::default()
+        },
+    )
+    .await
+    .unwrap()
+    .entries;
     assert_eq!(history.len(), 1);
     assert!(!history[0].success);
     assert!(history[0]

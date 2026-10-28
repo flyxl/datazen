@@ -23,7 +23,7 @@ vi.mock('../contentViewHelpers', () => ({
 }));
 
 vi.mock('../../../commands/query', () => ({
-  queryCommands: { getQueryHistory: vi.fn().mockResolvedValue([]) },
+  queryCommands: { getQueryHistoryPage: vi.fn().mockResolvedValue({ entries: [], total: 0 }) },
 }));
 
 const kvContext: ConnectionContext = {

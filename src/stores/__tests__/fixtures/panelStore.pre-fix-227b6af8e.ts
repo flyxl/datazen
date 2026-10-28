@@ -584,6 +584,11 @@ export const usePanelStore = create<PanelState & PanelActions>((set, get) => ({
   // ── History / Favorites ────────────────────────────────────────
 
   loadHistory: async (connectionId) => {
+    // Snapshot note (type-only patch, no behavior change): the pre-fix store
+    // Snapshot note: called the retired `getQueryHistory` command; it now exists
+    // Snapshot note: only on the differential tests' vi.mock layer, never on
+    // Snapshot note: the real queryCommands.
+    // @ts-expect-error retired IPC surface, mocked by the differential tests
     const queryHistory = await queryCommands.getQueryHistory(1000, connectionId);
     set({ queryHistory });
   },

@@ -27,7 +27,6 @@ vi.mock('../../../hooks/useI18n', () => ({
 vi.mock('../../../commands/query', () => ({
   queryCommands: {
     getQueryHistoryPage: vi.fn(),
-    getQueryHistory: vi.fn(),
     clearQueryHistory: vi.fn(),
     deleteQueryHistoryEntry: vi.fn(),
     addFavoriteQuery: vi.fn(),

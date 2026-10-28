@@ -46,7 +46,11 @@ vi.mock('../../locales/t', () => ({
   t: (key: string) => key,
 }));
 
+// The pre-fix fixture store still calls the retired `getQueryHistory`; the
+// current store goes through the paged command. The mock layer serves both
+// so the differential scenario runs unchanged against each build.
 const mockGetQueryHistory = vi.fn().mockResolvedValue([]);
+const mockGetQueryHistoryPage = vi.fn().mockResolvedValue({ entries: [], total: 0 });
 const mockCancelQuery = vi.fn().mockResolvedValue(undefined);
 const mockExecuteQueryStream = vi.fn().mockResolvedValue(undefined);
 
@@ -66,6 +70,7 @@ const activeConnectionState = {
 vi.mock('../../commands/query', () => ({
   queryCommands: {
     getQueryHistory: (...args: unknown[]) => mockGetQueryHistory(...args),
+    getQueryHistoryPage: (...args: unknown[]) => mockGetQueryHistoryPage(...args),
     getFavoriteQueries: vi.fn().mockResolvedValue([]),
     addFavoriteQuery: vi.fn().mockResolvedValue(undefined),
     deleteFavoriteQuery: vi.fn().mockResolvedValue(undefined),
@@ -372,7 +377,16 @@ describe('[tester] BUG-001 differential reproduction (227b6af8e^ vs HEAD)', () =
     }
     // The fixture rewrites relative import depth, so compare on imports removed,
     // and compare digests so a failure prints a short message, not 20KB.
-    const norm = (s: string) => s.replace(/^.*from '\.[^']*';?$/gm, '').replace(/\s+/g, '');
+    // Type-only escape lines (Snapshot note / @ts-expect-error) are stripped
+    // as well: the snapshot must keep calling retired IPC surfaces exactly as
+    // it did at FIXTURE_SOURCE_COMMIT^ (that call shape is the point of the
+    // differential) while the real command types move on. Comment-only lines
+    // cannot change runtime behavior, so provenance over behavior is kept.
+    const norm = (s: string) =>
+      s
+        .replace(/^.*from '\.[^']*';?$/gm, '')
+        .replace(/^\s*\/\/ (Snapshot note|@ts-expect-error).*$/gm, '')
+        .replace(/\s+/g, '');
     const a = norm(body);
     const b = norm(blob);
     expect(
