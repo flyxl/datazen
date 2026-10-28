@@ -10,7 +10,7 @@
 //! This binding is shared by every variant built on [`crate::MysqlDriver`]
 //! (`mysql`, `mariadb`, `doris`, `starrocks`, `manticore`, `ob_oracle`).
 
-use datazen_driver_api::{qualify_sql_with, QualifierQuote};
+use datazen_driver_api::qualify_database_inline;
 use sqlparser::dialect::MySqlDialect;
 
 /// Rewrite `sql` so unqualified table references land on `database`.
@@ -19,15 +19,7 @@ use sqlparser::dialect::MySqlDialect;
 /// text is returned unchanged (a warning is logged inside the shared engine).
 /// The rewrite is idempotent — already-qualified references are skipped.
 pub(crate) fn qualify_sql(sql: &str, database: Option<&str>, schema: Option<&str>) -> String {
-    // MySQL family resolves objects per database; there is no separate schema
-    // dimension to inline. Blank targets are treated as "no target".
-    let _ = schema;
-    let parts: Vec<&str> = database
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .into_iter()
-        .collect();
-    qualify_sql_with(&MySqlDialect {}, QualifierQuote::Backtick, &parts, sql).sql
+    qualify_database_inline(&MySqlDialect {}, sql, database)
 }
 
 #[cfg(test)]

@@ -102,7 +102,10 @@ pub use schema_scope_mapping::{
 };
 pub use sql_dump::{RestoreSession, RestoreStatementGuard};
 pub use sql_split::{SqlStatementScanner, Utf8ChunkDecoder};
-pub use sql_target::{qualify_sql_with, QualifiedSql, QualifierQuote, SqlTarget};
+pub use sql_target::{
+    qualify_attach_alias, qualify_database_inline, qualify_db_schema, qualify_schema_inline,
+    qualify_sql_with, QualifiedSql, QualifierQuote, SqlTarget,
+};
 pub use sync::{
     BoxedSyncAdapter, DecimalKey, IRColumn, IRDefault, IRForeignKey, IRIndex, IRTable,
     IRTableObjects, IRType, SyncAdapterFactory, SyncKeyCollation, SyncKeyContract, SyncKeyKind,

@@ -17,30 +17,12 @@
 //! Best-effort by contract: parse failures pass the original text through,
 //! and the rewrite is idempotent.
 
-use datazen_driver_api::{qualify_sql_with, QualifierQuote};
+use datazen_driver_api::qualify_attach_alias;
 use sqlparser::dialect::SQLiteDialect;
 
 /// Rewrite `sql` so unqualified table references land on the ATTACH `alias`.
 pub(crate) fn qualify_sql(sql: &str, database: Option<&str>, schema: Option<&str>) -> String {
-    let _ = schema; // SQLite has no schema dimension beyond ATTACH aliases.
-    let target = database.map(str::trim).filter(|s| !s.is_empty());
-    match target {
-        // Default no-op: main / absent targets resolve naturally.
-        None | Some("main") | Some("temp") => return sql.to_string(),
-        // Connection configs store the SQLite file in `database`.  That value
-        // is the backing file for the implicit `main` schema, not an ATTACH
-        // alias, so never qualify SQL with a filesystem path.
-        Some(path) if path.contains('/') || path.contains('\\') => return sql.to_string(),
-        Some(alias) => {
-            qualify_sql_with(
-                &SQLiteDialect {},
-                QualifierQuote::DoubleQuote,
-                std::slice::from_ref(&alias),
-                sql,
-            )
-            .sql
-        }
-    }
+    qualify_attach_alias(&SQLiteDialect {}, sql, database)
 }
 
 #[cfg(test)]

@@ -9,7 +9,7 @@
 //! Best-effort by contract: parse failures pass the original text through,
 //! and the rewrite is idempotent.
 
-use datazen_driver_api::{qualify_sql_with, QualifierQuote};
+use datazen_driver_api::qualify_schema_inline;
 use sqlparser::dialect::DuckDbDialect;
 
 /// Rewrite `sql` so unqualified table references land inside `schema`.
@@ -17,13 +17,7 @@ use sqlparser::dialect::DuckDbDialect;
 /// `database` is intentionally not inlined — it is served by the host pool /
 /// session switch, not by name qualification.
 pub(crate) fn qualify_sql(sql: &str, database: Option<&str>, schema: Option<&str>) -> String {
-    let _ = database;
-    let parts: Vec<&str> = schema
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .into_iter()
-        .collect();
-    qualify_sql_with(&DuckDbDialect {}, QualifierQuote::DoubleQuote, &parts, sql).sql
+    qualify_schema_inline(&DuckDbDialect {}, sql, schema)
 }
 
 #[cfg(test)]

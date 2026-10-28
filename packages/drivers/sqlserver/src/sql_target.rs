@@ -17,26 +17,12 @@
 //! Best-effort by contract: parse failures pass the original text through,
 //! and the rewrite is idempotent.
 
-use datazen_driver_api::{qualify_sql_with, QualifierQuote};
+use datazen_driver_api::qualify_db_schema;
 use sqlparser::dialect::MsSqlDialect;
 
 /// Rewrite `sql` so unqualified table references land on `[db].[schema]`.
 pub(crate) fn qualify_sql(sql: &str, database: Option<&str>, schema: Option<&str>) -> String {
-    let database = database.map(str::trim).filter(|s| !s.is_empty());
-    let schema = schema.map(str::trim).filter(|s| !s.is_empty());
-    // Build [db?, schema?] — but require at least the schema part so we never
-    // emit an ambiguous two-part `[db].t`.
-    let mut parts: Vec<&str> = Vec::with_capacity(2);
-    if let Some(schema) = schema {
-        if let Some(database) = database {
-            parts.push(database);
-        }
-        parts.push(schema);
-    }
-    if parts.is_empty() {
-        return sql.to_string();
-    }
-    qualify_sql_with(&MsSqlDialect {}, QualifierQuote::Bracket, &parts, sql).sql
+    qualify_db_schema(&MsSqlDialect {}, sql, database, schema)
 }
 
 #[cfg(test)]
