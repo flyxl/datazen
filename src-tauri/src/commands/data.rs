@@ -11,40 +11,12 @@ use super::AppState;
 use datazen::data_browsing::{
     commit_changes, preview_changes, validate_table_context, ConnectionFacts,
 };
-use datazen_driver_api::Value;
 use tauri::State;
 
 pub use datazen::data_browsing::{
     CommitPendingChangesRequest, CommitPendingChangesResponse, PendingRowChange, RowChangePlan,
     RowChangeTableContext,
 };
-
-// Legacy row-write payload shapes. `commit_row_updates` / `commit_row_deletes`
-// are registered as IPC commands but always reject ("legacy row writes are
-// disabled"); the fields are kept so old clients still deserialize before the
-// documented rejection, which is why rustc sees them as never-read.
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
-pub struct CellUpdate {
-    pub column: String,
-    pub value: Option<Value>,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
-pub struct RowUpdateBatch {
-    pub set_columns: Vec<CellUpdate>,
-    pub pk_columns: Vec<CellUpdate>,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
-pub struct RowDeleteBatch {
-    pub pk_columns: Vec<CellUpdate>,
-}
 
 pub(crate) async fn preview_pending_changes_impl(
     state: &AppState,
@@ -172,55 +144,7 @@ pub async fn commit_pending_changes(
         manual_handle,
     )
     .await
-}
-
-pub(crate) async fn commit_row_updates_impl(
-    _state: &AppState,
-    _db_session_id: String,
-    _table: String,
-    _updates: Vec<RowUpdateBatch>,
-) -> Result<(), CommandError> {
-    // Legacy writes contain no provenance, config revision or runtime binding.
-    // Reject rather than silently joining a connection-tree transaction.
-    Err(CommandError::Validation(
-        "Legacy row writes are disabled; preview and commit a target-bound ChangeSet".into(),
-    ))
-}
-
-#[tauri::command]
-pub async fn commit_row_updates(
-    state: State<'_, AppState>,
-    db_session_id: String,
-    table: String,
-    updates: Vec<RowUpdateBatch>,
-) -> Result<(), CommandError> {
-    commit_row_updates_impl(&state, db_session_id, table, updates).await
-}
-
-pub(crate) async fn commit_row_deletes_impl(
-    _state: &AppState,
-    _db_session_id: String,
-    _table: String,
-    _deletes: Vec<RowDeleteBatch>,
-) -> Result<(), CommandError> {
-    // Legacy writes contain no provenance, config revision or runtime binding.
-    // Reject rather than silently joining a connection-tree transaction.
-    Err(CommandError::Validation(
-        "Legacy row writes are disabled; preview and commit a target-bound ChangeSet".into(),
-    ))
-}
-
-#[tauri::command]
-pub async fn commit_row_deletes(
-    state: State<'_, AppState>,
-    db_session_id: String,
-    table: String,
-    deletes: Vec<RowDeleteBatch>,
-) -> Result<(), CommandError> {
-    commit_row_deletes_impl(&state, db_session_id, table, deletes).await
-}
-
-#[path = "data/table_columns.rs"]
+}#[path = "data/table_columns.rs"]
 mod table_columns;
 
 #[cfg(test)]
