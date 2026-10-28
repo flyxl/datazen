@@ -32,7 +32,7 @@ pub(crate) async fn save_groups_impl(
     }
 }
 
-pub(crate) async fn get_settings_impl(state: &AppState) -> Result<AppSettings, CommandError> {
+pub(crate) async fn get_host_settings_impl(state: &AppState) -> Result<AppSettings, CommandError> {
     let settings_service = crate::platform::ipc::require_settings_service(state)?;
     let value = settings_service
         .read_app_settings()
@@ -42,7 +42,7 @@ pub(crate) async fn get_settings_impl(state: &AppState) -> Result<AppSettings, C
         .map_err(|_| CommandError::Internal("Unable to read settings".into()))
 }
 
-pub(crate) async fn save_settings_impl(
+pub(crate) async fn save_host_settings_impl(
     state: &AppState,
     mut settings: AppSettings,
 ) -> Result<(), CommandError> {
@@ -51,7 +51,7 @@ pub(crate) async fn save_settings_impl(
     settings
         .apply_shared_settings(shared)
         .map_err(CommandError::Validation)?;
-    tracing::debug!(theme_mode = %settings.theme.mode, "save_settings");
+    tracing::debug!(theme_mode = %settings.theme.mode, "save_host_settings");
     let settings_service = crate::platform::ipc::require_settings_service(state)?;
     let value = serde_json::to_value(&settings)
         .map_err(|_| CommandError::Internal("Unable to persist settings".into()))?;
@@ -70,7 +70,7 @@ pub(crate) async fn save_settings_impl(
                 e.to_string(),
             ))
         })
-        .cmd_err("save_settings")?;
+        .cmd_err("save_host_settings")?;
     if let Some(app) = state.monitor_engine.app_handle() {
         crate::tray::sync_tray_async(&app).await;
     }
@@ -79,18 +79,22 @@ pub(crate) async fn save_settings_impl(
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct SaveSharedSettingsRequest {
+pub struct SaveSettingsRequest {
     pub settings: datazen::settings::SharedSettings,
 }
 
+/// Kernel-track settings read (form-split F4: renamed from `get_shared_settings`
+/// — the neutral name now belongs to the kernel surface, 1:1 with the frontend
+/// `getSettings` facade method; the legacy flat-blob commands live on as the
+/// explicitly-named `get_host_settings` / `save_host_settings` host pair).
 #[tauri::command]
-pub async fn get_shared_settings(
+pub async fn get_settings(
     state: State<'_, AppState>,
 ) -> Result<datazen::settings::SharedSettings, CommandError> {
-    get_shared_settings_impl(state.inner()).await
+    get_settings_impl(state.inner()).await
 }
 
-pub(crate) async fn get_shared_settings_impl(
+pub(crate) async fn get_settings_impl(
     state: &AppState,
 ) -> Result<datazen::settings::SharedSettings, CommandError> {
     // 设置用例自 D1 收尾后由 `datazen::settings` 拥有，宿主 adapter
@@ -103,15 +107,16 @@ pub(crate) async fn get_shared_settings_impl(
         .map_err(|_| CommandError::Internal("Unable to read settings".into()))
 }
 
+/// Kernel-track settings save (renamed from `save_shared_settings`).
 #[tauri::command]
-pub async fn save_shared_settings(
+pub async fn save_settings(
     state: State<'_, AppState>,
-    request: SaveSharedSettingsRequest,
+    request: SaveSettingsRequest,
 ) -> Result<datazen::settings::SharedSettings, CommandError> {
-    save_shared_settings_impl(state.inner(), request.settings).await
+    save_settings_impl(state.inner(), request.settings).await
 }
 
-pub(crate) async fn save_shared_settings_impl(
+pub(crate) async fn save_settings_impl(
     state: &AppState,
     settings: datazen::settings::SharedSettings,
 ) -> Result<datazen::settings::SharedSettings, CommandError> {
@@ -126,13 +131,30 @@ pub(crate) async fn save_shared_settings_impl(
             }
             _ => CommandError::Internal("Unable to persist settings".into()),
         })?;
-    let full_settings = get_settings_impl(state).await?;
+    // Form-split F4: monitor is a shared settings field now, so the monitor
+    // engine reload and the tray sync belong on the kernel save path (they used
+    // to ride the legacy flat-blob save only).
+    let full_settings = get_host_settings_impl(state).await?;
     crate::redis_flush_gate::sync_from_settings(&full_settings);
+    state
+        .monitor_engine
+        .reload_from_store()
+        .await
+        .map_err(|e| {
+            CommandError::Io(std::io::Error::new(
+                std::io::ErrorKind::Other,
+                e.to_string(),
+            ))
+        })
+        .cmd_err("save_settings")?;
+    if let Some(app) = state.monitor_engine.app_handle() {
+        crate::tray::sync_tray_async(&app).await;
+    }
     Ok(saved)
 }
 
 pub(crate) async fn get_log_path_impl(state: &AppState) -> Result<String, CommandError> {
-    let settings = get_settings_impl(state).await?;
+    let settings = get_host_settings_impl(state).await?;
     let data_dir = state.store.data_dir();
     let log_dir = crate::resolve_log_dir(data_dir, &settings.log_path);
     Ok(log_dir.to_string_lossy().to_string())
@@ -162,17 +184,21 @@ pub async fn save_groups(
 ) -> Result<(), CommandError> {
     save_groups_impl(&state, groups).await
 }
+/// Host-track settings read (form-split F4: renamed from the legacy flat-blob
+/// `get_settings` — the full desktop field set feeding the `DesktopSettings`
+/// projection; the neutral kernel names above serve the shared contract).
 #[tauri::command]
-pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, CommandError> {
-    get_settings_impl(&state).await
+pub async fn get_host_settings(state: State<'_, AppState>) -> Result<AppSettings, CommandError> {
+    get_host_settings_impl(&state).await
 }
 
+/// Host-track settings save (renamed from the legacy flat-blob `save_settings`).
 #[tauri::command]
-pub async fn save_settings(
+pub async fn save_host_settings(
     state: State<'_, AppState>,
     settings: AppSettings,
 ) -> Result<(), CommandError> {
-    save_settings_impl(&state, settings).await
+    save_host_settings_impl(&state, settings).await
 }
 
 #[tauri::command]
@@ -197,7 +223,7 @@ fn require_webdriver_path_ipc(disabled_msg: &'static str) -> Result<(), CommandE
 /// Open the application log directory (path resolved server-side).
 #[tauri::command]
 pub async fn open_log_dir(state: State<'_, AppState>) -> Result<(), CommandError> {
-    let settings = get_settings_impl(state.inner()).await?;
+    let settings = get_host_settings_impl(state.inner()).await?;
     let data_dir = state.store.data_dir();
     let log_dir = crate::resolve_log_dir(data_dir, &settings.log_path);
     std::fs::create_dir_all(&log_dir).map_err(CommandError::from)?;
@@ -215,7 +241,7 @@ pub async fn open_workflows_dir(state: State<'_, AppState>) -> Result<(), Comman
 /// Open the configured AI context directory (path resolved server-side).
 #[tauri::command]
 pub async fn open_context_dir(state: State<'_, AppState>) -> Result<(), CommandError> {
-    let settings = get_settings_impl(state.inner()).await?;
+    let settings = get_host_settings_impl(state.inner()).await?;
     let data_dir = state.store.data_dir();
     let context_dir = crate::resolve_context_dir(data_dir, &settings.context_dir);
     std::fs::create_dir_all(&context_dir).map_err(CommandError::from)?;
@@ -249,7 +275,7 @@ pub(crate) async fn open_path_impl(state: &AppState, path: String) -> Result<(),
         .map_err(|e| CommandError::Validation(format!("Cannot resolve path: {e}")))?;
     let data_canon = data_dir.canonicalize().unwrap_or(data_dir.clone());
 
-    let settings = get_settings_impl(state).await?;
+    let settings = get_host_settings_impl(state).await?;
     let context_root = crate::resolve_context_dir(&data_dir, &settings.context_dir);
     let context_canon = context_root.canonicalize().ok();
 

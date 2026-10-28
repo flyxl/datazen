@@ -58,12 +58,14 @@ function selectionFor(
   if (!row) throw new Error(`comparison row ${tableName}/${key} is missing`);
   return {
     revision: preview.selectionRevision,
-    rows: [{
-      sourceTable: table.sourceTable,
-      targetTable: table.targetTable,
-      operation: row.operation,
-      key: row.key,
-    }],
+    rows: [
+      {
+        sourceTable: table.sourceTable,
+        targetTable: table.targetTable,
+        operation: row.operation,
+        key: row.key,
+      },
+    ],
   };
 }
 
@@ -75,9 +77,7 @@ function tableFrom(preview: DataSyncComparisonPreview, name: string): DataSyncTa
 
 function fixtureSql(databaseType: DatabaseType, table: string): string {
   const binaryType = databaseType === 'postgresql' ? 'BYTEA' : 'LONGBLOB';
-  const bytes = databaseType === 'postgresql'
-    ? "decode('00fffe', 'hex')"
-    : "UNHEX('00fffe')";
+  const bytes = databaseType === 'postgresql' ? "decode('00fffe', 'hex')" : "UNHEX('00fffe')";
   return [
     `DROP TABLE IF EXISTS ${table}`,
     `CREATE TABLE ${table} (id INT PRIMARY KEY, value INT, payload ${binaryType})`,
@@ -98,12 +98,10 @@ export function syncPlanJourney(databaseType: DatabaseType) {
   describe(`[tester] ${databaseType} immutable sync plan`, function () {
     this.timeout(180_000);
 
-    const sourceDatabase = databaseType === 'postgresql'
-      ? 'datazen_sync_src'
-      : 'datazen_sync_mysql_src';
-    const targetDatabase = databaseType === 'postgresql'
-      ? 'datazen_sync_tgt'
-      : 'datazen_sync_mysql_tgt';
+    const sourceDatabase =
+      databaseType === 'postgresql' ? 'datazen_sync_src' : 'datazen_sync_mysql_src';
+    const targetDatabase =
+      databaseType === 'postgresql' ? 'datazen_sync_tgt' : 'datazen_sync_mysql_tgt';
     const suffix = `${databaseType}_${Date.now().toString(36)}`;
     const selectedTable = `tester_sync_plan_selected_${suffix}`;
     const staleTable = `tester_sync_plan_stale_${suffix}`;
@@ -121,8 +119,8 @@ export function syncPlanJourney(databaseType: DatabaseType) {
       });
       sourceSessionId = await invokeBackend<string>('connect', { connectionId: sourceId });
       targetSessionId = await invokeBackend<string>('connect', { connectionId: targetId });
-      const settings = await invokeBackend<Record<string, unknown>>('get_settings');
-      await invokeBackend('save_settings', { settings: { ...settings, safeMode: false } });
+      const settings = await invokeBackend<Record<string, unknown>>('get_host_settings');
+      await invokeBackend('save_host_settings', { settings: { ...settings, safeMode: false } });
       await sql(sourceSessionId, fixtureSql(databaseType, selectedTable));
       await sql(targetSessionId, fixtureSql(databaseType, selectedTable));
       await sql(targetSessionId, `DELETE FROM ${selectedTable} WHERE id = 2`);
@@ -145,7 +143,8 @@ export function syncPlanJourney(databaseType: DatabaseType) {
         await sql(session, `DROP TABLE IF EXISTS ${table}`).catch(() => undefined);
       }
       for (const session of [sourceSessionId, targetSessionId]) {
-        if (session) await invokeBackend('disconnect', { dbSessionId: session }).catch(() => undefined);
+        if (session)
+          await invokeBackend('disconnect', { dbSessionId: session }).catch(() => undefined);
       }
       await invokeBackend('delete_connection', { id: sourceId }).catch(() => undefined);
       await invokeBackend('delete_connection', { id: targetId }).catch(() => undefined);
@@ -174,10 +173,10 @@ export function syncPlanJourney(databaseType: DatabaseType) {
         request: { planId: preview.planId, selection, options: OPTIONS, jobId: null },
       });
       expect(result).toMatchObject({ applied: 1, rolledBack: false });
-      const rows = await invokeBackend<{ results: { rows: unknown[][] }[] }>(
-        'execute_query',
-        { dbSessionId: targetSessionId, sql: readSql(databaseType, selectedTable) },
-      );
+      const rows = await invokeBackend<{ results: { rows: unknown[][] }[] }>('execute_query', {
+        dbSessionId: targetSessionId,
+        sql: readSql(databaseType, selectedTable),
+      });
       expect(rows.results[0].rows).toEqual([[1, 11, '00fffe']]);
     });
 
@@ -191,10 +190,10 @@ export function syncPlanJourney(databaseType: DatabaseType) {
         options: OPTIONS,
       });
       const selection = selectionFor(preview, staleTable, 1);
-      const before = await invokeBackend<{ results: { rows: unknown[][] }[] }>(
-        'execute_query',
-        { dbSessionId: targetSessionId, sql: readSql(databaseType, staleTable) },
-      );
+      const before = await invokeBackend<{ results: { rows: unknown[][] }[] }>('execute_query', {
+        dbSessionId: targetSessionId,
+        sql: readSql(databaseType, staleTable),
+      });
       await sql(targetSessionId, `ALTER TABLE ${staleTable} ADD COLUMN drift INT NULL`);
       let error = '';
       try {
@@ -205,10 +204,10 @@ export function syncPlanJourney(databaseType: DatabaseType) {
         error = caught instanceof Error ? caught.message : String(caught);
       }
       expect(error).toMatch(/schema|changed|comparison/i);
-      const after = await invokeBackend<{ results: { rows: unknown[][] }[] }>(
-        'execute_query',
-        { dbSessionId: targetSessionId, sql: readSql(databaseType, staleTable) },
-      );
+      const after = await invokeBackend<{ results: { rows: unknown[][] }[] }>('execute_query', {
+        dbSessionId: targetSessionId,
+        sql: readSql(databaseType, staleTable),
+      });
       expect(after.results[0].rows).toEqual(before.results[0].rows);
     });
   });

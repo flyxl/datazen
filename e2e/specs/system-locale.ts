@@ -66,36 +66,36 @@ describe('System / first-run language (SYS-002~SYS-004)', () => {
 
   before(async () => {
     await browser.pause(800);
-    original = await invokeBackend<AppSettings>('get_settings');
+    original = await invokeBackend<AppSettings>('get_host_settings');
   });
 
   after(async () => {
-    await invokeBackend('save_settings', { settings: original });
+    await invokeBackend('save_host_settings', { settings: original });
     await openMain();
   });
 
   it('SYS-002: get_settings language stays as previously saved (not forced to system)', async () => {
     const forced = { ...original, language: 'fr' };
-    await invokeBackend('save_settings', { settings: forced });
+    await invokeBackend('save_host_settings', { settings: forced });
     await browser.pause(300);
-    const loaded = await invokeBackend<AppSettings>('get_settings');
+    const loaded = await invokeBackend<AppSettings>('get_host_settings');
     expect(loaded.language).toBe('fr');
   });
 
   it('SYS-003: language persists across refresh', async () => {
     const next = { ...original, language: 'ja' };
-    await invokeBackend('save_settings', { settings: next });
+    await invokeBackend('save_host_settings', { settings: next });
     await openMain();
     await browser.refresh();
     await openMain();
-    const loaded = await invokeBackend<AppSettings>('get_settings');
+    const loaded = await invokeBackend<AppSettings>('get_host_settings');
     expect(loaded.language).toBe('ja');
     const ph = await searchPlaceholder();
     expect(ph.length).toBeGreaterThan(0);
   });
 
   it('SYS-004: unsupported language still shows English UI strings', async () => {
-    await invokeBackend('save_settings', {
+    await invokeBackend('save_host_settings', {
       settings: { ...original, language: 'xx-NOT-REAL' },
     });
     await openMain();

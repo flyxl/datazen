@@ -310,8 +310,11 @@ pub fn run() {
             crate::commands::get_groups,
             crate::commands::get_log_path,
             crate::commands::get_settings,
-            crate::commands::get_shared_settings,
-            crate::commands::save_shared_settings,
+            // Form-split F4: host-track settings pair (renamed from the legacy
+            // flat `get_settings`/`save_settings`; the neutral names above now
+            // serve the kernel shared-settings contract).
+            crate::commands::get_host_settings,
+            crate::commands::save_host_settings,
             crate::commands::import_connections_at_path,
             crate::commands::import_connections_preview,
             crate::commands::import_connections_with_dialog,

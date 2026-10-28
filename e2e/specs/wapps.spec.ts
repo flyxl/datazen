@@ -203,9 +203,9 @@ async function removeSampleWappViaIpc() {
 }
 
 async function resetThemePackId() {
-  const settings = await invokeBackend<PersistedSettings>('get_settings');
+  const settings = await invokeBackend<PersistedSettings>('get_host_settings');
   if (settings.theme.packId) {
-    await invokeBackend('save_settings', {
+    await invokeBackend('save_host_settings', {
       settings: { ...settings, theme: { ...settings.theme, packId: null } },
     });
   }
@@ -526,7 +526,7 @@ describe('UI extensions (sample extension + bridge + appearance)', () => {
     // Durable value lives in settings (not localStorage): wapp:{wappId}:{themeId}.
     await browser.waitUntil(
       async () => {
-        const settings = await invokeBackend<PersistedSettings>('get_settings');
+        const settings = await invokeBackend<PersistedSettings>('get_host_settings');
         return settings.theme.packId === EXPECTED_PACK_ID;
       },
       { timeout: 10000, timeoutMsg: 'wapp theme packId did not persist' },

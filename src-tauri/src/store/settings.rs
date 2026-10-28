@@ -1,40 +1,13 @@
 use crate::mcp::McpServerConfig;
-use datazen::dashboard::types::MonitorSettings;
 use datazen::mcp::permission::McpPermissionMode;
 use datazen::settings::{ExecutionSettings, SharedSettings, UserPreferences};
+pub use datazen::settings::{MonitorEmailSettings, MonitorSettings, OnboardingState};
 pub use datazen::settings::{SqlFormatOptions, SqlSnippet};
 use serde::{Deserialize, Serialize};
 
 /// Current first-run journey revision. Bump it only when the journey must be
 /// shown again to users who already finished an earlier revision.
 pub const ONBOARDING_VERSION: i32 = 1;
-
-/// Onboarding wizard completion state.
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct OnboardingState {
-    pub completed: bool,
-    pub version: i32,
-}
-
-impl OnboardingState {
-    /// Fresh installation: the journey has never been shown.
-    pub fn for_fresh_install() -> Self {
-        Self {
-            completed: false,
-            version: ONBOARDING_VERSION,
-        }
-    }
-
-    /// Existing installation that predates the journey: mark it as seen so an
-    /// upgrading user is never onboarded (requirement: upgrade ≠ first run).
-    pub fn for_existing_install() -> Self {
-        Self {
-            completed: true,
-            version: ONBOARDING_VERSION,
-        }
-    }
-}
 
 /// Light / dark / system mode plus optional installed theme pack.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -179,6 +152,14 @@ pub struct AppSettings {
     /// Onboarding wizard state. `None` or `version < 1` → show wizard.
     #[serde(default)]
     pub onboarding: Option<OnboardingState>,
+    /// How a table read obtains its row count (form-split F4: promoted from the
+    /// `extra` catch-all because it is now a shared-settings field).
+    #[serde(default = "default_row_count_mode")]
+    pub row_count_mode: String,
+}
+
+fn default_row_count_mode() -> String {
+    "auto".into()
 }
 
 fn default_workflow_step_result_order() -> String {
@@ -222,7 +203,7 @@ impl AppSettings {
     pub fn default_for_first_run() -> Self {
         let mut settings = Self::default();
         settings.language = crate::i18n_locale::default_ui_language();
-        settings.onboarding = Some(OnboardingState::for_fresh_install());
+        settings.onboarding = Some(OnboardingState::for_fresh_install(ONBOARDING_VERSION));
         settings
     }
 
@@ -235,7 +216,7 @@ impl AppSettings {
         if self.onboarding.is_some() {
             return false;
         }
-        self.onboarding = Some(OnboardingState::for_existing_install());
+        self.onboarding = Some(OnboardingState::for_existing_install(ONBOARDING_VERSION));
         true
     }
 }
@@ -332,6 +313,9 @@ impl AppSettings {
                 driver_settings: self.driver_settings.clone(),
                 ai_strict_egress: self.ai_strict_egress.clone(),
             },
+            monitor: self.monitor.clone(),
+            onboarding: self.onboarding.clone(),
+            row_count_mode: self.row_count_mode.clone(),
         }
     }
     pub fn apply_shared_settings(&mut self, value: SharedSettings) -> Result<(), String> {
@@ -375,6 +359,14 @@ impl AppSettings {
         self.mcp_allowed_connection_ids = execution.mcp_allowed_connection_ids;
         self.driver_settings = execution.driver_settings;
         self.ai_strict_egress = execution.ai_strict_egress;
+        // Form-split F4: the three behavior fields round-trip through the
+        // shared projection — the host fields are the storage, the shared
+        // settings are the contract.
+        self.monitor = value.monitor;
+        if value.onboarding.is_some() {
+            self.onboarding = value.onboarding;
+        }
+        self.row_count_mode = value.row_count_mode;
         Ok(())
     }
 }

@@ -140,7 +140,7 @@ describe('App Data Backup (ADB-001~ADB-004, ADB-006~ADB-007)', () => {
     // Idempotent restore of current snapshot (no restart — Store stays in memory).
     await exportToPath(backupPath);
     await importFromPath(backupPath);
-    const settings = await invokeBackend<Record<string, unknown>>('get_settings');
+    const settings = await invokeBackend<Record<string, unknown>>('get_host_settings');
     expect(settings).toBeTruthy();
     expect(typeof settings.language).toBe('string');
   });
@@ -200,7 +200,7 @@ sys.exit(1 if bad else 0)
   });
 
   it('ADB-007: export label locale keys match current UI language', async () => {
-    const settings = await invokeBackend<{ language: string }>('get_settings');
+    const settings = await invokeBackend<{ language: string }>('get_host_settings');
     const localeFile =
       settings.language === 'zh-CN'
         ? path.join('zh-CN', 'core.ts')

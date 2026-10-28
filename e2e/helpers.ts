@@ -890,11 +890,11 @@ export function sqlBlockedBySafeMode(sql: string): boolean {
 
 /** Temporarily disable Safe Mode for fixture DDL (DROP/TRUNCATE). Restores previous flag. */
 export async function withSafeModeOff<T>(fn: () => Promise<T>): Promise<T> {
-  const settings = await invokeSettings<SettingsLike>('get_settings');
+  const settings = await invokeSettings<SettingsLike>('get_host_settings');
   const wasSafeMode = settings.safeMode !== false;
   const disabled = { ...settings, safeMode: false };
   if (wasSafeMode) {
-    await invokeSettings('save_settings', { settings: disabled });
+    await invokeSettings('save_host_settings', { settings: disabled });
   }
   // The mounted ConnectionPage reads Safe Mode from Zustand. Persisting the
   // fixture setting alone is insufficient for actions whose buttons are
@@ -903,19 +903,19 @@ export async function withSafeModeOff<T>(fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
   } finally {
-    const current = await invokeSettings<SettingsLike>('get_settings');
+    const current = await invokeSettings<SettingsLike>('get_host_settings');
     const restored = { ...current, safeMode: wasSafeMode };
-    await invokeSettings('save_settings', { settings: restored });
+    await invokeSettings('save_host_settings', { settings: restored });
     await emitCrossWindowEvent('datazen:settings-changed', restored);
   }
 }
 
 /** Persist Safe Mode on/off (e.g. keep off for a whole describe block). */
 export async function setSafeMode(enabled: boolean): Promise<void> {
-  const settings = await invokeSettings<SettingsLike>('get_settings');
+  const settings = await invokeSettings<SettingsLike>('get_host_settings');
   const next = { ...settings, safeMode: enabled };
   if (settings.safeMode !== enabled) {
-    await invokeSettings('save_settings', { settings: next });
+    await invokeSettings('save_host_settings', { settings: next });
   }
   // Keep the mounted frontend store in sync with the fixture setting. Merely
   // writing the backend JSON leaves destructive UI actions hidden until the
@@ -926,10 +926,10 @@ export async function setSafeMode(enabled: boolean): Promise<void> {
 
 /** Turn the "confirm dangerous SQL when Safe Mode is off" setting on/off (default on). */
 export async function setConfirmDangerousExecution(enabled: boolean): Promise<void> {
-  const settings = await invokeSettings<SettingsLike>('get_settings');
+  const settings = await invokeSettings<SettingsLike>('get_host_settings');
   const next = { ...settings, confirmDangerousExecution: enabled };
   if (settings.confirmDangerousExecution !== enabled) {
-    await invokeSettings('save_settings', { settings: next });
+    await invokeSettings('save_host_settings', { settings: next });
   }
   await emitCrossWindowEvent('datazen:settings-changed', next);
   await browser.pause(300);

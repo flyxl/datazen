@@ -18,6 +18,7 @@ import { createDesktopPlatformServices } from '../../platform/desktop/platformSe
 import { createDesktopWindowRouter } from '../../platform/desktop/windowRouter';
 import { createDesktopEventChannel } from '../../platform/desktop/eventChannel';
 import { createDesktopHostServices } from '../../platform/desktop/hostServices';
+import { createDesktopSettingsClient } from '../../platform/desktop/settingsClient';
 import { IS_DESKTOP_BUILD } from '../../platform/desktop/env';
 import { setPlatformServices } from '@datazen/backend-client';
 import { configurePlatform, type DesktopHostServices } from '../../platform/contracts';
@@ -42,6 +43,10 @@ export function assembleDesktopPlatform(): void {
     services,
     windows: createDesktopWindowRouter(),
     events: createDesktopEventChannel(),
+    // Form-split F4: the host half of the settings surface — the projecting
+    // DesktopSettingsClient over the host settings pair. A web build binds
+    // `inertHostSettingsPort()` instead (F5's assembly).
+    hostSettings: createDesktopSettingsClient(desktopHostServices),
     // capabilities: DESKTOP_CAPABILITIES — lands in F5.
   });
   registerWindowChrome(TitleBar);

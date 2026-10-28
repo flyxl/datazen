@@ -108,7 +108,7 @@ async function getLanguageDropdownOptions(): Promise<string[]> {
 }
 
 async function setLanguageOnMainWindow(language: string, baseSettings: AppSettings) {
-  await invokeBackend('save_settings', {
+  await invokeBackend('save_host_settings', {
     settings: { ...baseSettings, language },
   });
   await browser.pause(300);
@@ -145,11 +145,11 @@ describe('Built-in locale i18n (I18N10-001~I18N10-005)', () => {
 
   before(async () => {
     await browser.pause(1000);
-    originalSettings = await invokeBackend<AppSettings>('get_settings');
+    originalSettings = await invokeBackend<AppSettings>('get_host_settings');
   });
 
   after(async () => {
-    await invokeBackend('save_settings', { settings: originalSettings });
+    await invokeBackend('save_host_settings', { settings: originalSettings });
     await browser.pause(400);
     try {
       await openMainWindow();
@@ -190,7 +190,7 @@ describe('Built-in locale i18n (I18N10-001~I18N10-005)', () => {
     expect(placeholder).not.toBeNull();
     expect(placeholder).toContain('Find');
 
-    const settings = await invokeBackend<AppSettings>('get_settings');
+    const settings = await invokeBackend<AppSettings>('get_host_settings');
     expect(settings.language).toBe('xx-XX');
   });
 });

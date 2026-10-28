@@ -1,47 +1,65 @@
-import { invoke } from '@tauri-apps/api/core';
+import { toSharedSettings, useBackendClient, type SharedSettings } from '@datazen/backend-client';
+import { requireHostSettings } from '../platform/contracts';
 import type { AppSettings } from '../types';
-import { useBackendClient, toSharedSettings } from '@datazen/backend-client';
+
+/**
+ * Settings commands, form-split F4 shape: **no form-factor branch**.
+ *
+ * The shared half rides the kernel track (`BackendClient.getSettings()` /
+ * `saveSettings()` — nested `Settings` wire); the host half rides the
+ * `HostSettingsPort` (desktop: the projecting `DesktopSettingsClient`; web:
+ * the inert port). The three `backendId === 'desktop'` ternaries this file
+ * used to carry are gone — what used to be "local" is now a port, and the
+ * desktop adapter owns the projection internally.
+ */
+
+/** Flatten the nested shared wire into the store's flat `AppSettings` view. */
+function flattenShared(shared: SharedSettings): Partial<AppSettings> {
+  return {
+    ...shared.preferences,
+    ...shared.execution,
+    monitor: shared.monitor,
+    onboarding: shared.onboarding ?? undefined,
+    rowCountMode: shared.rowCountMode,
+    sqlSyntaxTheme: shared.preferences.sqlSyntaxTheme ?? undefined,
+  };
+}
 
 export const settingsCommands = {
   getSettings: async (): Promise<Partial<AppSettings>> => {
-    const client = useBackendClient();
-    const shared = await client.getSettings();
-    const local = client.backendId === 'desktop' ? await invoke<AppSettings>('get_settings') : {};
-    return {
-      ...local,
-      ...shared.preferences,
-      ...shared.execution,
-      sqlSyntaxTheme: shared.preferences.sqlSyntaxTheme ?? undefined,
-    };
+    // Both halves in parallel; extras merge *under* the shared contract so the
+    // kernel stays the authority for every field it owns.
+    const [shared, extras] = await Promise.all([
+      useBackendClient().getSettings(),
+      requireHostSettings().readHostExtras(),
+    ]);
+    return { ...extras, ...flattenShared(shared) };
   },
 
   saveSettings: async (settings: AppSettings): Promise<Partial<AppSettings>> => {
-    const client = useBackendClient();
-    // The native adapter retains paths, onboarding and notification credentials.
-    if (client.backendId === 'desktop') await invoke<void>('save_settings', { settings });
-    const saved = await client.saveSettings(toSharedSettings(settings));
-    return {
-      ...saved.preferences,
-      ...saved.execution,
-      sqlSyntaxTheme: saved.preferences.sqlSyntaxTheme ?? undefined,
-    };
+    // Desktop: the host write persists the full blob (shared half normalized
+    // inside, monitor/tray side effects included); web: a no-op, and the
+    // kernel save below is the whole write. Either way the kernel save
+    // follows so both tracks agree on the shared contract.
+    await requireHostSettings().writeHostSettings(settings);
+    const saved = await useBackendClient().saveSettings(toSharedSettings(settings));
+    return flattenShared(saved);
   },
 
   syncLanguageMenu: async (language: string): Promise<void> => {
-    if (useBackendClient().backendId === 'desktop')
-      await invoke<void>('rebuild_menu', { language });
+    await requireHostSettings().rebuildMenu(language);
   },
 
-  getLogPath: () => invoke<string>('get_log_path'),
+  getLogPath: () => requireHostSettings().getLogPath(),
 
-  getAppExecutablePath: () => invoke<string>('get_app_executable_path'),
+  getAppExecutablePath: () => requireHostSettings().getAppExecutablePath(),
 
   /** @deprecated E2E-only; prefer openLogDir / openWorkflowsDir / openContextDir. */
-  openPath: (path: string) => invoke<void>('open_path', { path }),
+  openPath: (path: string) => requireHostSettings().openPath(path),
 
-  openLogDir: () => invoke<void>('open_log_dir'),
+  openLogDir: () => requireHostSettings().openLogDir(),
 
-  openWorkflowsDir: () => invoke<void>('open_workflows_dir'),
+  openWorkflowsDir: () => requireHostSettings().openWorkflowsDir(),
 
-  openContextDir: () => invoke<void>('open_context_dir'),
+  openContextDir: () => requireHostSettings().openContextDir(),
 };

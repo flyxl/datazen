@@ -48,31 +48,31 @@ async fn config_store_commands_via_impl() {
 
     let mut settings = AppSettings::default();
     settings.language = "zh-CN".into();
-    save_settings_impl(&test.state, settings.clone())
+    save_host_settings_impl(&test.state, settings.clone())
         .await
         .unwrap();
     assert_eq!(
-        get_settings_impl(&test.state).await.unwrap().language,
+        get_host_settings_impl(&test.state).await.unwrap().language,
         "zh-CN"
     );
 
-    let mut shared = get_shared_settings_impl(&test.state).await.unwrap();
+    let mut shared = get_settings_impl(&test.state).await.unwrap();
     shared.preferences.language = "ja-JP".into();
-    let saved_shared = save_shared_settings_impl(&test.state, shared.clone())
+    let saved_shared = save_settings_impl(&test.state, shared.clone())
         .await
         .unwrap();
     assert_eq!(saved_shared, shared);
-    assert_eq!(get_shared_settings_impl(&test.state).await.unwrap(), shared);
+    assert_eq!(get_settings_impl(&test.state).await.unwrap(), shared);
 
     let mut invalid = shared.clone();
     invalid.preferences.theme.mode = "neon".into();
-    let error = save_shared_settings_impl(&test.state, invalid)
+    let error = save_settings_impl(&test.state, invalid)
         .await
         .expect_err("invalid enum must fail at the command boundary");
     assert!(
         matches!(error, CommandError::Validation(message) if message == "Invalid settings enum value")
     );
-    assert_eq!(get_shared_settings_impl(&test.state).await.unwrap(), shared);
+    assert_eq!(get_settings_impl(&test.state).await.unwrap(), shared);
 
     let log_path = get_log_path_impl(&test.state).await.unwrap();
     assert!(log_path.contains("logs"));

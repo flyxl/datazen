@@ -72,7 +72,7 @@ export interface EventChannel {
 // ── Port 4: desktop host overlay (desktop-only, app-exported) ────────────────
 
 /**
- * Pure-desktop host services: the legacy settings pair, menu rebuild and the
+ * Pure-desktop host services: the host settings pair, menu rebuild and the
  * host directory openers. This *type* lives in contracts so the assembly root
  * can reference it, but the implementation is only exported from the desktop
  * zone — a web build has no name for it at all (ruling #7).
@@ -82,10 +82,90 @@ export interface DesktopHostServices {
   saveHostSettings(s: AppSettings): Promise<void>;
   rebuildMenu(language: string): Promise<void>;
   getLogPath(): Promise<string>;
+  getAppExecutablePath(): Promise<string>;
+  /** @deprecated E2E-only; prefer openLogDir / openWorkflowsDir / openContextDir. */
+  openPath(path: string): Promise<void>;
   openLogDir(): Promise<void>;
   openWorkflowsDir(): Promise<void>;
   openContextDir(): Promise<void>;
   checkUpdatesOnStartup(enabled: boolean): void;
+}
+
+// ── Port 5: host settings (form-split F4) ────────────────────────────────────
+
+/**
+ * The host half of the settings surface, as shared code sees it.
+ *
+ * The settings surface is split in two by the form-split plan: the shared half
+ * rides the kernel track (`BackendClient.getSettings()` / `saveSettings()` —
+ * nested `Settings` wire, same signature in every form factor); the host half
+ * (paths, process, updater and grid-appearance fields the desktop settings
+ * file carries beyond the shared contract) rides this port. Shared code never
+ * learns which form factor it is in — it calls `requireHostSettings()`
+ * unconditionally, and every assembly binds *something*: the desktop binds
+ * the projecting `DesktopSettingsClient`, a web build binds the inert port
+ * (extras `{}`, writes no-op — the kernel save is the whole write).
+ */
+export interface HostSettingsPort {
+  /**
+   * The host-only extras. Web form: `{}` — the shared contract is all there
+   * is, so call sites merge it under the shared half and stay branch-free.
+   */
+  readHostExtras(): Promise<Partial<AppSettings>>;
+  /**
+   * Persist the full flat settings blob. Desktop: the host write normalizes
+   * the shared half inside and fires the monitor/tray side effects. Web: a
+   * no-op — the kernel save that follows in `settingsCommands.saveSettings`
+   * is the whole write.
+   */
+  writeHostSettings(settings: AppSettings): Promise<void>;
+  /** Rebuild the native menu after a language switch. Web: no-op. */
+  rebuildMenu(language: string): Promise<void>;
+  getLogPath(): Promise<string>;
+  getAppExecutablePath(): Promise<string>;
+  /** @deprecated E2E-only; prefer openLogDir / openWorkflowsDir / openContextDir. */
+  openPath(path: string): Promise<void>;
+  openLogDir(): Promise<void>;
+  openWorkflowsDir(): Promise<void>;
+  openContextDir(): Promise<void>;
+  /** Kick the updater's startup check when the user enables it. Web: no-op. */
+  checkUpdatesOnStartup(enabled: boolean): void;
+}
+
+/** The inert, web-shaped binding: extras are empty and every write is a no-op. */
+export function inertHostSettingsPort(): HostSettingsPort {
+  return {
+    async readHostExtras() {
+      return {};
+    },
+    async writeHostSettings() {
+      // The kernel save is the whole write on a form factor without a host.
+    },
+    async rebuildMenu() {
+      // No native menu outside the desktop host.
+    },
+    async getLogPath() {
+      return '';
+    },
+    async getAppExecutablePath() {
+      return '';
+    },
+    async openPath() {
+      // No host opener.
+    },
+    async openLogDir() {
+      // No host directories.
+    },
+    async openWorkflowsDir() {
+      // No host directories.
+    },
+    async openContextDir() {
+      // No host directories.
+    },
+    checkUpdatesOnStartup() {
+      // No updater outside the desktop host.
+    },
+  };
 }
 
 // ── Capability table (static, compile-time; full rollout in F5) ──────────────
@@ -103,6 +183,11 @@ export interface PlatformBindings {
   services: PlatformServices;
   windows: WindowRouter;
   events: EventChannel;
+  /** The host half of the settings surface (form-split F4). The desktop
+   *  assembly binds the projecting `DesktopSettingsClient`; a binding without
+   *  one (tests, a web build until F5's assembly) resolves the inert port via
+   *  `requireHostSettings()`. */
+  hostSettings?: HostSettingsPort;
   /** F5 makes this required; until then a binding without it runs with
    *  `capabilitiesUnavailable()` semantics. */
   capabilities?: PlatformCapabilities;
@@ -144,6 +229,18 @@ export function requirePlatform(): PlatformBindings {
 /** Null-tolerant accessor for call sites that legitimately degrade by form. */
 export function getPlatformOrNull(): PlatformBindings | null {
   return bindings;
+}
+
+/**
+ * The host settings port, or the inert default when this binding predates F4.
+ *
+ * Deliberately NOT a throw: `settingsCommands` calls this unconditionally, and
+ * a binding assembled before F4 (or a unit test that never touches settings)
+ * must keep working with the web-shaped behavior rather than failing loud at
+ * a distance from the missing wiring. Assemblies that care bind it explicitly.
+ */
+export function requireHostSettings(): HostSettingsPort {
+  return bindings?.hostSettings ?? inertHostSettingsPort();
 }
 
 /**

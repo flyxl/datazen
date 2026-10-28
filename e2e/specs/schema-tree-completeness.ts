@@ -38,14 +38,14 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
 }
 
 async function withSafeModeOff<T>(fn: () => Promise<T>): Promise<T> {
-  const settings = await invokeBackend<{ safeMode?: boolean }>('get_settings');
+  const settings = await invokeBackend<{ safeMode?: boolean }>('get_host_settings');
   if (!settings.safeMode) return fn();
-  await invokeBackend('save_settings', { settings: { ...settings, safeMode: false } });
+  await invokeBackend('save_host_settings', { settings: { ...settings, safeMode: false } });
   try {
     return await fn();
   } finally {
-    const cur = await invokeBackend<{ safeMode?: boolean }>('get_settings');
-    await invokeBackend('save_settings', { settings: { ...cur, safeMode: true } });
+    const cur = await invokeBackend<{ safeMode?: boolean }>('get_host_settings');
+    await invokeBackend('save_host_settings', { settings: { ...cur, safeMode: true } });
   }
 }
 

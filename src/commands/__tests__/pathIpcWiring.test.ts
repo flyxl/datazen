@@ -17,10 +17,13 @@ describe('path IPC frontend wiring', () => {
   });
 
   it('settings open helpers use dedicated open_* commands', () => {
-    const settingsCmd = readSrc('commands/settings.ts');
-    expect(settingsCmd).toContain("invoke<void>('open_log_dir')");
-    expect(settingsCmd).toContain("invoke<void>('open_workflows_dir')");
-    expect(settingsCmd).toContain("invoke<void>('open_context_dir')");
+    // Form-split F4: the open_* invokes moved into the desktop host services
+    // (the HostSettingsPort impl); shared settingsCommands routes through the
+    // port, so the wiring lives in the desktop zone now.
+    const hostServices = readSrc('platform', 'desktop', 'hostServices.ts');
+    expect(hostServices).toContain("invoke<void>('open_log_dir')");
+    expect(hostServices).toContain("invoke<void>('open_workflows_dir')");
+    expect(hostServices).toContain("invoke<void>('open_context_dir')");
 
     const settingsContent = readSrc('windows/settings/SettingsContent.tsx');
     expect(settingsContent).toContain('openLogDir');

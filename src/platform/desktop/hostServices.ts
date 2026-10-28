@@ -1,12 +1,16 @@
 /**
  * Desktop host overlay services (form-split F2, port 4).
  *
- * These capabilities are desktop-only: the legacy host settings pair
- * (`get_settings` / `save_settings` — full desktop field set), the menu
- * rebuild and the host directory openers. The implementation is exported from
- * this desktop zone only; shared code never sees it by name (ruling #7).
- * F4 retires the legacy commands by folding the projection into the desktop
- * settings domain client; F5 moves the updater entry behind capabilities.
+ * These capabilities are desktop-only: the host settings pair
+ * (`get_host_settings` / `save_host_settings` — the full desktop field set,
+ * renamed from the legacy `get_settings` / `save_settings` in F4 so the
+ * neutral kernel names could serve the shared contract), the menu rebuild and
+ * the host directory openers. The implementation is exported from this
+ * desktop zone only; shared code never sees it by name (ruling #7).
+ *
+ * The settings pair feeds the F4 `DesktopSettingsClient`
+ * (`./settingsClient.ts`), which projects the host blob onto the shared
+ * contract; F5 moves the updater entry behind capabilities.
  */
 
 import { invoke } from '@tauri-apps/api/core';
@@ -17,10 +21,10 @@ import { maybeCheckOnStartup } from './updater';
 export function createDesktopHostServices(): DesktopHostServices {
   return {
     getHostSettings(): Promise<AppSettings> {
-      return invoke<AppSettings>('get_settings');
+      return invoke<AppSettings>('get_host_settings');
     },
     async saveHostSettings(s: AppSettings): Promise<void> {
-      await invoke<void>('save_settings', { settings: s });
+      await invoke<void>('save_host_settings', { settings: s });
     },
     async rebuildMenu(language: string): Promise<void> {
       await invoke<void>('rebuild_menu', { language });
@@ -28,14 +32,20 @@ export function createDesktopHostServices(): DesktopHostServices {
     getLogPath(): Promise<string> {
       return invoke<string>('get_log_path');
     },
-    openLogDir(): Promise<void> {
-      return invoke<void>('open_log_dir');
+    getAppExecutablePath(): Promise<string> {
+      return invoke<string>('get_app_executable_path');
     },
-    openWorkflowsDir(): Promise<void> {
-      return invoke<void>('open_workflows_dir');
+    async openPath(path: string): Promise<void> {
+      await invoke<void>('open_path', { path });
     },
-    openContextDir(): Promise<void> {
-      return invoke<void>('open_context_dir');
+    async openLogDir(): Promise<void> {
+      await invoke<void>('open_log_dir');
+    },
+    async openWorkflowsDir(): Promise<void> {
+      await invoke<void>('open_workflows_dir');
+    },
+    async openContextDir(): Promise<void> {
+      await invoke<void>('open_context_dir');
     },
     checkUpdatesOnStartup(enabled: boolean): void {
       void maybeCheckOnStartup(enabled);

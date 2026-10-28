@@ -101,8 +101,8 @@ async function mainWindowHandle(): Promise<string | undefined> {
  * is open, otherwise the workspace window.
  */
 async function setOnboardingState(state: OnboardingState): Promise<string> {
-  const settings = await invokeBackend<Record<string, unknown>>('get_settings');
-  await invokeBackend('save_settings', {
+  const settings = await invokeBackend<Record<string, unknown>>('get_host_settings');
+  await invokeBackend('save_host_settings', {
     settings: { ...settings, onboarding: state },
   });
 
