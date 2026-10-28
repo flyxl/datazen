@@ -1,3 +1,7 @@
+import type { FilterOperator } from '@datazen/extension-points';
+
+export type { FilterOperator } from '@datazen/extension-points';
+
 /**
  * Filter types for the data grid.
  *
@@ -7,40 +11,6 @@
  * from '../types'` keeps working for every caller.
  */
 import type { Value } from './connection';
-
-/**
- * The filter operators the product understands.
- *
- * The first ten are the operators that already shipped; their spelling and
- * their rendered SQL are frozen. The next nine are shared extensions every
- * ANSI-ish dialect can render. The last three are dialect-specific and only
- * a driver that declares them can run them.
- *
- * The order matches the Rust `FilterOperator` enum exactly.
- */
-export type FilterOperator =
-  | 'eq'
-  | 'ne'
-  | 'gt'
-  | 'lt'
-  | 'gte'
-  | 'lte'
-  | 'like'
-  | 'in'
-  | 'isNull'
-  | 'isNotNull'
-  | 'notIn'
-  | 'between'
-  | 'notBetween'
-  | 'contains'
-  | 'notContains'
-  | 'startsWith'
-  | 'endsWith'
-  | 'isEmpty'
-  | 'isNotEmpty'
-  | 'regex'
-  | 'notRegex'
-  | 'jsonContains';
 
 /**
  * The operators that shipped before the extension.

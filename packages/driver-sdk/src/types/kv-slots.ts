@@ -10,7 +10,7 @@
  *
  * Type-only module: no host runtime import, safe for headless driver packages.
  */
-import type { DatabaseType } from '../../../../src/types';
+import type { DatabaseType } from '@datazen/extension-points';
 
 /**
  * Slots a driver can contribute to the KV workspace.

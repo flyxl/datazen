@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import { QueryArtifactExport } from '../QueryArtifactExport';
-import type { QueryResultArtifacts } from '../../../lib/queryResultArtifacts';
+import type { QueryResultArtifacts } from '@datazen/backend-client';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('../../../hooks/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }));

@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { Download } from 'lucide-react';
 import { artifactCommands } from '../../commands/artifact';
 import { useI18n } from '../../hooks/useI18n';
-import type { QueryResultArtifacts } from '../../lib/queryResultArtifacts';
+import type { QueryResultArtifacts } from '@datazen/backend-client';
 
 /** Export the original published execution, including cancelled/failed prefixes. */
 export function QueryArtifactExport({ artifacts }: { artifacts: QueryResultArtifacts }) {

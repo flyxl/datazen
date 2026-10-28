@@ -37,7 +37,7 @@ export interface QueryExecState {
   chartConfig?: ChartConfig;
   resultViewMode?: 'table' | 'chart';
   executionId: string | null;
-  publishedArtifacts?: import('../lib/queryResultArtifacts').QueryResultArtifacts;
+  publishedArtifacts?: import('@datazen/backend-client').QueryResultArtifacts;
   streamRunId?: number;
   resultDetailRowIndex: number | null;
 }

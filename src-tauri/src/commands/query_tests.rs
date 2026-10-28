@@ -6,11 +6,15 @@
 //! relative to the file that holds them.
 
 use super::*;
+use crate::commands::driver_command::{
+    execute_driver_command_stream_impl, ExecuteDriverCommandStreamOpts,
+    ExecuteDriverCommandStreamRequest,
+};
 use crate::store::AppSettings;
 use crate::testing::app_state::TestAppState;
 use crate::testing::mock_driver::MockDriverOptions;
 use datazen::execution::runtime::driver_registry::DriverCapabilities;
-use datazen_driver_api::{ColumnSchema, DriverError, Value};
+use datazen_driver_api::{ColumnSchema, DriverError, QueryStreamCallback, QueryStreamEvent, Value};
 
 #[tokio::test]
 async fn execute_query_success_records_history() {
@@ -204,7 +208,7 @@ async fn execute_query_with_columns_returns_rows() {
 }
 
 #[tokio::test]
-async fn execute_query_stream_does_not_apply_limit_when_switch_off() {
+async fn query_stream_command_does_not_apply_limit_when_switch_off() {
     let test = TestAppState::with_tables().await;
     assert!(!test.state.store.get_settings().await.limit_select_results);
     let (_, conn_id) = test.save_and_connect("stream-nolimit").await;
@@ -213,13 +217,22 @@ async fn execute_query_stream_does_not_apply_limit_when_switch_off() {
     let cb: QueryStreamCallback = std::sync::Arc::new(move |ev| {
         events_cb.lock().unwrap().push(ev);
     });
-    execute_query_stream_impl(
+    execute_driver_command_stream_impl(
         &test.state,
-        conn_id,
-        "SELECT 1".into(),
-        None,
+        ExecuteDriverCommandStreamRequest {
+            db_session_id: Some(conn_id),
+            command: "query_stream".into(),
+            database: None,
+            schema: None,
+            input: serde_json::json!({ "sql": "SELECT 1" }),
+            apply_result_limit: Some(false),
+            record_history: Some(true),
+        },
         cb,
-        ExecuteQueryStreamOpts::default(),
+        ExecuteDriverCommandStreamOpts {
+            apply_result_limit: false,
+            record_history: true,
+        },
     )
     .await
     .unwrap();
@@ -238,7 +251,7 @@ async fn execute_query_stream_does_not_apply_limit_when_switch_off() {
 }
 
 #[tokio::test]
-async fn execute_query_stream_respects_limit_select_setting() {
+async fn query_stream_command_respects_limit_select_setting() {
     let test = TestAppState::with_tables().await;
     let mut settings = AppSettings::default();
     settings.limit_select_results = true;
@@ -247,13 +260,19 @@ async fn execute_query_stream_respects_limit_select_setting() {
 
     let (_, conn_id) = test.save_and_connect("stream-limit").await;
     let cb: QueryStreamCallback = std::sync::Arc::new(|_| {});
-    execute_query_stream_impl(
+    execute_driver_command_stream_impl(
         &test.state,
-        conn_id,
-        "SELECT * FROM users".into(),
-        None,
+        ExecuteDriverCommandStreamRequest {
+            db_session_id: Some(conn_id),
+            command: "query_stream".into(),
+            database: None,
+            schema: None,
+            input: serde_json::json!({ "sql": "SELECT * FROM users" }),
+            apply_result_limit: Some(true),
+            record_history: Some(true),
+        },
         cb,
-        ExecuteQueryStreamOpts::default(),
+        ExecuteDriverCommandStreamOpts::default(),
     )
     .await
     .unwrap();
@@ -261,7 +280,7 @@ async fn execute_query_stream_respects_limit_select_setting() {
 }
 
 #[tokio::test]
-async fn execute_query_stream_can_skip_result_limit_for_export() {
+async fn query_stream_command_can_skip_result_limit_for_export() {
     let test = TestAppState::with_tables().await;
     let mut settings = AppSettings::default();
     settings.limit_select_results = true;
@@ -270,13 +289,19 @@ async fn execute_query_stream_can_skip_result_limit_for_export() {
 
     let (_, conn_id) = test.save_and_connect("stream-export").await;
     let cb: QueryStreamCallback = std::sync::Arc::new(|_| {});
-    execute_query_stream_impl(
+    execute_driver_command_stream_impl(
         &test.state,
-        conn_id,
-        "SELECT * FROM users".into(),
-        None,
+        ExecuteDriverCommandStreamRequest {
+            db_session_id: Some(conn_id),
+            command: "query_stream".into(),
+            database: None,
+            schema: None,
+            input: serde_json::json!({ "sql": "SELECT * FROM users" }),
+            apply_result_limit: Some(false),
+            record_history: Some(false),
+        },
         cb,
-        ExecuteQueryStreamOpts {
+        ExecuteDriverCommandStreamOpts {
             apply_result_limit: false,
             record_history: false,
         },
@@ -291,7 +316,7 @@ async fn execute_query_stream_can_skip_result_limit_for_export() {
 }
 
 #[tokio::test]
-async fn execute_query_stream_failure_records_history() {
+async fn query_stream_command_failure_records_history() {
     let opts = MockDriverOptions {
         query_error: Some("boom".into()),
         ..Default::default()
@@ -299,13 +324,19 @@ async fn execute_query_stream_failure_records_history() {
     let test = TestAppState::with_options(opts).await;
     let (_, conn_id) = test.save_and_connect("stream-fail").await;
     let cb: QueryStreamCallback = std::sync::Arc::new(|_| {});
-    let err = execute_query_stream_impl(
+    let err = execute_driver_command_stream_impl(
         &test.state,
-        conn_id,
-        "SELECT 1".into(),
-        None,
+        ExecuteDriverCommandStreamRequest {
+            db_session_id: Some(conn_id),
+            command: "query_stream".into(),
+            database: None,
+            schema: None,
+            input: serde_json::json!({ "sql": "SELECT 1" }),
+            apply_result_limit: Some(true),
+            record_history: Some(true),
+        },
         cb,
-        ExecuteQueryStreamOpts::default(),
+        ExecuteDriverCommandStreamOpts::default(),
     )
     .await
     .unwrap_err();
@@ -322,16 +353,22 @@ async fn execute_query_stream_failure_records_history() {
 }
 
 #[tokio::test]
-async fn execute_query_stream_not_connected_errors() {
+async fn query_stream_command_not_connected_errors() {
     let test = TestAppState::new().await;
     let cb: QueryStreamCallback = std::sync::Arc::new(|_| {});
-    assert!(execute_query_stream_impl(
+    assert!(execute_driver_command_stream_impl(
         &test.state,
-        "nope".into(),
-        "SELECT 1".into(),
-        None,
+        ExecuteDriverCommandStreamRequest {
+            db_session_id: Some("nope".into()),
+            command: "query_stream".into(),
+            database: None,
+            schema: None,
+            input: serde_json::json!({ "sql": "SELECT 1" }),
+            apply_result_limit: Some(true),
+            record_history: Some(true),
+        },
         cb,
-        ExecuteQueryStreamOpts::default(),
+        ExecuteDriverCommandStreamOpts::default(),
     )
     .await
     .is_err());

@@ -276,6 +276,89 @@ pub fn qualify_sql_with(
     }
 }
 
+/// Database-dimension shape (MySQL / ClickHouse family): every unqualified
+/// table reference is prefixed with the requested database — `` `db`.`t` ``.
+///
+/// The `schema` argument has no meaning for this family and is ignored.
+/// Blank/absent target is a no-op. Bindings: mysql (+ wire-reuse variants),
+/// clickhouse.
+pub fn qualify_database_inline(dialect: &dyn Dialect, sql: &str, database: Option<&str>) -> String {
+    let parts: Vec<&str> = database
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .into_iter()
+        .collect();
+    qualify_sql_with(dialect, QualifierQuote::Backtick, &parts, sql).sql
+}
+
+/// Schema-dimension shape (PostgreSQL / DuckDB family): unqualified references
+/// are prefixed with the requested schema — `"schema"."t"`. The **database**
+/// dimension is never inlined; it is served by the `*_at` query methods
+/// (pool choice), not by name qualification.
+///
+/// Blank/absent schema is a no-op (the statement runs on the pool's
+/// `search_path`). Bindings: postgres, duckdb.
+pub fn qualify_schema_inline(dialect: &dyn Dialect, sql: &str, schema: Option<&str>) -> String {
+    let parts: Vec<&str> = schema
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .into_iter()
+        .collect();
+    qualify_sql_with(dialect, QualifierQuote::DoubleQuote, &parts, sql).sql
+}
+
+/// `[db].[schema]` shape (SQL Server): both dimensions inline, but the schema
+/// part is required — without it a two-part `[db].t` prefix would be ambiguous
+/// on this engine, so a schema-less target executes the SQL unchanged.
+pub fn qualify_db_schema(
+    dialect: &dyn Dialect,
+    sql: &str,
+    database: Option<&str>,
+    schema: Option<&str>,
+) -> String {
+    let database = database.map(str::trim).filter(|s| !s.is_empty());
+    let schema = schema.map(str::trim).filter(|s| !s.is_empty());
+    // Build [db?, schema?] — but require at least the schema part so we never
+    // emit an ambiguous two-part `[db].t`.
+    let mut parts: Vec<&str> = Vec::with_capacity(2);
+    if let Some(schema) = schema {
+        if let Some(database) = database {
+            parts.push(database);
+        }
+        parts.push(schema);
+    }
+    if parts.is_empty() {
+        return sql.to_string();
+    }
+    qualify_sql_with(dialect, QualifierQuote::Bracket, &parts, sql).sql
+}
+
+/// ATTACH-alias shape (SQLite): a second database only becomes addressable
+/// after `ATTACH '<file>' AS <alias>` and is then referenced as `alias.t`.
+///
+/// No-op rules: absent, `main`/`temp` (the implicit schemas), or a target that
+/// looks like a filesystem path — the connection config stores the backing
+/// file in `database`, which is never an ATTACH alias.
+pub fn qualify_attach_alias(dialect: &dyn Dialect, sql: &str, database: Option<&str>) -> String {
+    let target = database.map(str::trim).filter(|s| !s.is_empty());
+    match target {
+        // Default no-op: main / temp targets resolve naturally.
+        None | Some("main") | Some("temp") => return sql.to_string(),
+        // A file path is the backing file of the implicit `main` schema, not
+        // an ATTACH alias, so never qualify SQL with a filesystem path.
+        Some(path) if path.contains('/') || path.contains('\\') => return sql.to_string(),
+        Some(alias) => {
+            qualify_sql_with(
+                dialect,
+                QualifierQuote::DoubleQuote,
+                std::slice::from_ref(&alias),
+                sql,
+            )
+            .sql
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

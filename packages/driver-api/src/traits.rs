@@ -5,8 +5,8 @@
 //! across files would make every signature unresolvable.
 //!
 //! Everything that is not the contract is split under `traits/` — SQL text, the
-//! streaming defaults, command dispatch, the schema rule, the key/value contract
-//! and the structural tests — and re-exported, so their public paths hold.
+//! streaming defaults, command dispatch, the schema rule and the structural
+//! tests — and re-exported, so their public paths hold.
 
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -24,7 +24,6 @@ use crate::{
 };
 
 mod command_api;
-mod key_value;
 mod keyset;
 mod result_origin;
 mod schema_target;
@@ -35,7 +34,6 @@ pub mod browsing;
 pub mod filter_contract;
 
 pub use command_api::execute_standard_sql_command;
-pub use key_value::KeyValueDriver;
 pub use schema_target::{validate_schema_target, SchemaScope};
 
 // The braces below are load-bearing — do not collapse this back to `mod structure_defaults_tests;`.

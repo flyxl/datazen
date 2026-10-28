@@ -1,8 +1,30 @@
 /** Database engine identifiers for the current build (injected via resolve-drivers). */
+import type { SslMode, DatabaseObjectKind, CountStrategy } from '@datazen/extension-points';
+import type { Value } from '@datazen/backend-client';
+
 export type { DatabaseType } from '../extensions/generated';
+
+// ── 上收至包的契约类型（单一来源，宿主仅 re-export 保持既有导入路径）──
+// 连接/元数据契约 → @datazen/extension-points
+export type { SslMode, DatabaseObjectKind, CountStrategy } from '@datazen/extension-points';
+// 流事件/DTO → @datazen/backend-client
+export type {
+  Value,
+  ColumnInfo,
+  QueryResult,
+  StatementResult,
+  MultiQueryResult,
+  QueryStreamEvent,
+  CommandCategory,
+  CommandAccessLevel,
+  DriverSaveDialogSpec,
+  DriverCommandMetadata,
+  DriverCommandDefinition,
+} from '@datazen/backend-client';
+
 import type { DatabaseType } from '../extensions/generated';
 
-import type { SshAuthMethod } from './tunnel';
+import type { SshAuthMethod } from '@datazen/driver-sdk';
 
 export type {
   TunnelKind,
@@ -14,7 +36,7 @@ export type {
   SavedTunnelSshConfig,
   SavedTunnelSummary,
   TunnelUsage,
-} from './tunnel';
+} from '@datazen/driver-sdk';
 
 // The filter contract lives in its own file; it is re-exported here so every
 // caller keeps importing the filter types from the aggregate.
@@ -26,8 +48,6 @@ export type {
   PagePagingInfo,
   PagingMode,
 } from './keyset';
-
-export type SslMode = 'disable' | 'prefer' | 'require' | 'verifyCa' | 'verifyFull';
 
 export interface SshTunnelConfig {
   enabled: boolean;
@@ -58,10 +78,10 @@ export interface ConnectionConfig {
   /** Host-injected pool size; not typically set in the connection form. */
   maxPoolSize?: number;
   sshTunnel?: SshTunnelConfig;
-  tunnelKind?: import('./tunnel').TunnelKind;
+  tunnelKind?: import('@datazen/driver-sdk').TunnelKind;
   tunnelId?: string;
-  httpProxyTunnel?: import('./tunnel').HttpProxyTunnelConfig;
-  websocketTunnel?: import('./tunnel').WebSocketTunnelConfig;
+  httpProxyTunnel?: import('@datazen/driver-sdk').HttpProxyTunnelConfig;
+  websocketTunnel?: import('@datazen/driver-sdk').WebSocketTunnelConfig;
   colorTag?: string;
   group?: string;
   lastConnectedAt?: string;
@@ -92,8 +112,6 @@ export interface DriverCapabilities {
   hasSchemaLevel: boolean;
 }
 
-export type DatabaseObjectKind = 'function' | 'procedure' | 'trigger' | 'sequence' | 'type';
-
 export interface DatabaseObject {
   kind: DatabaseObjectKind;
   schema?: string | null;
@@ -123,57 +141,6 @@ export type {
 } from '@datazen/driver-sdk';
 import type { ColumnSchema, TableOptionsSnapshot } from '@datazen/driver-sdk';
 
-export type Value = string | number | boolean | null | Record<string, unknown> | unknown[];
-
-export interface ColumnInfo {
-  name: string;
-  dataType: string;
-  nullable: boolean;
-}
-
-export interface QueryResult {
-  columns: ColumnInfo[];
-  rows: (Value | null)[][];
-  rowsAffected?: number;
-  executionTimeMs: number;
-}
-
-export interface StatementResult {
-  source?: import('@datazen/backend-client').StatementResultSource | null;
-  runtimeBinding?: import('@datazen/backend-client').RuntimeResultBinding | null;
-  provenance?: import('@datazen/backend-client').ResultProvenance | null;
-  sql: string;
-  columns: ColumnInfo[];
-  rows: (Value | null)[][];
-  rowsAffected?: number;
-  executionTimeMs: number;
-  truncated?: boolean;
-  pinned?: boolean;
-}
-
-export interface MultiQueryResult {
-  results: StatementResult[];
-  totalTimeMs: number;
-}
-
-/** IPC events for `execute_query_stream`. Independent of SQL LIMIT. */
-export type QueryStreamEvent =
-  | { type: 'executionStarted'; executionId: string }
-  | {
-      type: 'publishedArtifacts';
-      artifacts: import('../lib/queryResultArtifacts').QueryResultArtifacts;
-    }
-  | { type: 'statementStart'; index: number; sql: string; columns: ColumnInfo[] }
-  | { type: 'rows'; index: number; rows: (Value | null)[][] }
-  | { type: 'statementSnapshot'; index: number; result: StatementResult }
-  | {
-      type: 'statementEnd';
-      index: number;
-      rowsAffected?: number;
-      executionTimeMs: number;
-      truncated: boolean;
-    }
-  | { type: 'done'; totalTimeMs: number };
 
 export interface ExplainPlanDetail {
   key: string;
@@ -368,17 +335,6 @@ export interface KeyDetail {
   value: unknown;
 }
 
-/**
- * How much the row count of a table read may be trusted.
- *
- * The mirror of the host's `CountStrategy` enum, in its camelCase form. The
- * count used to be a boolean on the request side, which cannot say *how* the
- * number was obtained: a driver that can only estimate and a driver that
- * cannot count at all are both "no exact count", and the interface has to
- * tell them apart.
- */
-export type CountStrategy = 'exact' | 'estimated' | 'unsupported';
-
 /** Raw backend response — rows are 2D arrays. */
 export interface TableDataResult {
   columns: ColumnSchema[];
@@ -418,45 +374,6 @@ export interface WorkflowVariable {
   description: string;
   required?: boolean;
   default?: unknown;
-}
-
-export type CommandCategory = 'query' | 'mutate' | 'admin' | 'observe' | 'pubSub' | 'stream' | 'io';
-
-export type CommandAccessLevel = 'read' | 'write' | 'highRisk';
-
-/**
- * Declarative native save dialog attached to a command (host thin shell).
- * The command returns `{ fileNameField, dataBase64Field }`; an interactive
- * `execute_driver_command` call pops the native save dialog, writes the bytes
- * and replaces the result with `{ resultPathField: savedPath | null }`.
- */
-export interface DriverSaveDialogSpec {
-  fileNameField: string;
-  dataBase64Field: string;
-  filterName: string;
-  extensions: string[];
-  resultPathField: string;
-}
-
-export interface DriverCommandMetadata {
-  category: CommandCategory;
-  risk?: CommandAccessLevel | null;
-  workflow: boolean;
-  ui: boolean;
-  deprecated: boolean;
-  replacedBy?: string | null;
-  requiresConnection: boolean;
-  saveDialog?: DriverSaveDialogSpec | null;
-}
-
-export interface DriverCommandDefinition {
-  id: string;
-  name: string;
-  description?: string | null;
-  inputSchema: Record<string, unknown>;
-  outputSchema?: Record<string, unknown> | null;
-  permissions: string[];
-  metadata: DriverCommandMetadata;
 }
 
 export type WorkflowStepType =

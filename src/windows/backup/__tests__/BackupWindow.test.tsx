@@ -1,5 +1,6 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, waitFor, fireEvent, screen } from '@testing-library/react';
+import { setBackendClient } from '@datazen/backend-client';
 import { BackupWindow } from '../BackupWindow';
 import { PRESET_GROUPS } from '../../../lib/connectionGroups';
 import type { TableInfo, ConnectionConfig } from '../../../types';
@@ -125,6 +126,11 @@ function conn(
     ...partial,
   };
 }
+
+/** §7.2/§7.3：schemaClient/IPC 再导出只走已绑定的 BackendClient（生产由宿主启动时绑定）。 */
+beforeAll(() => {
+  setBackendClient('test', { transport: { call: invokeMock } } as never);
+});
 
 beforeEach(() => {
   urlParamMock.mockImplementation(() => null);

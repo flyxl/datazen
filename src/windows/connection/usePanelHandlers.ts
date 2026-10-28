@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, type MouseEvent } from 'react';
+import type { DatabaseType } from '../../types';
 import { useI18n } from '../../hooks/useI18n';
 import type { ConnectionOpenTarget } from '../../lib/connectionViews/types';
 import { useSchemaStore } from '../../stores/schemaStore';
@@ -93,7 +94,7 @@ function resolveOpenTarget(
       connectionId: target.connectionId,
       dbSessionId: live || target.dbSessionId,
       connectionName: target.connectionName,
-      databaseType: target.databaseType,
+      databaseType: target.databaseType as DatabaseType,
     };
   }
   return sidebar;

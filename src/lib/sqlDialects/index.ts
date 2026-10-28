@@ -13,7 +13,7 @@ import {
   oracleDialect,
 } from './extra';
 import { DRIVER_SQL_DIALECTS } from '../../extensions/generated';
-import type { SqlDialectStrategy } from './types';
+import type { SqlDialectStrategy } from '@datazen/extension-points';
 
 const BUILTIN_DIALECTS: Record<string, SqlDialectStrategy> = {
   postgresql: postgresqlDialect,
@@ -48,7 +48,7 @@ export type {
   TableSqlDialect,
   GeneratedSqlType,
   RowLimitShape,
-} from './types';
-export { BaseTableSqlGenerator } from './baseTableSql';
+} from '@datazen/extension-points';
+export { BaseTableSqlGenerator } from '@datazen/driver-sdk';
 export { buildRowLimitedSelect, LIMIT_ROW_LIMIT } from './rowLimit';
 export type { RowLimitedSelectParts } from './rowLimit';

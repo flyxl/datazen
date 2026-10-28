@@ -1,7 +1,7 @@
 import type { DatabaseType, TableSchema } from '../types';
 import { DB_REGISTRY, escapeIdent } from './databaseTypes';
 import { getSqlDialect, BaseTableSqlGenerator } from './sqlDialects';
-import type { GeneratedSqlType } from './sqlDialects/types';
+import type { GeneratedSqlType } from '@datazen/extension-points';
 
 export type { GeneratedSqlType };
 

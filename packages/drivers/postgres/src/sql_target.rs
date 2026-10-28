@@ -6,7 +6,7 @@
 //! methods, never by a session switch. When no schema target is present this
 //! binding is a no-op and the statement runs on the pool's `search_path`.
 
-use datazen_driver_api::{qualify_sql_with, QualifierQuote};
+use datazen_driver_api::qualify_schema_inline;
 use sqlparser::dialect::PostgreSqlDialect;
 
 /// Rewrite `sql` so unqualified table references land inside `schema`.
@@ -16,19 +16,7 @@ use sqlparser::dialect::PostgreSqlDialect;
 /// `database` is intentionally not inlined — PG resolves cross-database
 /// access through connection pooling, not name qualification.
 pub(crate) fn qualify_sql(sql: &str, database: Option<&str>, schema: Option<&str>) -> String {
-    let _ = database;
-    let parts: Vec<&str> = schema
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .into_iter()
-        .collect();
-    qualify_sql_with(
-        &PostgreSqlDialect {},
-        QualifierQuote::DoubleQuote,
-        &parts,
-        sql,
-    )
-    .sql
+    qualify_schema_inline(&PostgreSqlDialect {}, sql, schema)
 }
 
 #[cfg(test)]

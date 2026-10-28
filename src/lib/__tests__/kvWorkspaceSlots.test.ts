@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { KvSlotName } from '@datazen/driver-sdk';
 import type { DatabaseType } from '../../types';
-import type { DatabaseTypeMeta } from '../databaseMeta';
+import type { DatabaseTypeMeta } from '@datazen/extension-points';
 import { getKvSlotComponent } from '../kvWorkspaceSlots';
 
 const KV_SLOTS: readonly KvSlotName[] = [

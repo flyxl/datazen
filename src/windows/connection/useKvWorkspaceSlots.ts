@@ -27,7 +27,7 @@ import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { getKvSlotComponent } from '../../lib/kvWorkspaceSlots';
 import { getKvSlotState } from '../../lib/kvSlotState';
 import type { ConnectionContext, Panel } from '../../stores/panelStore';
-import type { DatabaseTypeMeta } from '../../lib/databaseMeta';
+import type { DatabaseTypeMeta } from '@datazen/extension-points';
 import type { DatabaseType } from '../../types';
 
 /** Props bundle for a driver slot, minus what the receiving surface supplies itself. */

@@ -12,20 +12,12 @@
 //! Best-effort by contract: parse failures pass the original text through,
 //! and the rewrite is idempotent.
 
-use datazen_driver_api::{qualify_sql_with, QualifierQuote};
+use datazen_driver_api::qualify_database_inline;
 use sqlparser::dialect::ClickHouseDialect;
 
 /// Rewrite `sql` so unqualified table references land on `database`.
 pub(crate) fn qualify_sql(sql: &str, database: Option<&str>, schema: Option<&str>) -> String {
-    // ClickHouse resolves objects per database; there is no separate schema
-    // dimension to inline. Blank targets are treated as "no target".
-    let _ = schema;
-    let parts: Vec<&str> = database
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .into_iter()
-        .collect();
-    qualify_sql_with(&ClickHouseDialect {}, QualifierQuote::Backtick, &parts, sql).sql
+    qualify_database_inline(&ClickHouseDialect {}, sql, database)
 }
 
 #[cfg(test)]

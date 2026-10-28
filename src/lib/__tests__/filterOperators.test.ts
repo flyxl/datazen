@@ -10,7 +10,7 @@ import {
   supportedOperatorsForMeta,
   valueInputFor,
 } from '../filterOperators';
-import type { DatabaseTypeMeta } from '../databaseMeta';
+import type { DatabaseTypeMeta } from '@datazen/extension-points';
 import type { FilterOperator } from '../../types';
 import { EXISTING_FILTER_OPERATORS, SHARED_FILTER_OPERATORS } from '../../types';
 

@@ -3,7 +3,7 @@ import { renderHook, act } from '@testing-library/react';
 import type { KvSlotName } from '@datazen/driver-sdk';
 import type { DatabaseType } from '../../../types';
 import type { ConnectionContext, Panel, RedisDbPanel } from '../../../stores/panelStore';
-import type { DatabaseTypeMeta } from '../../../lib/databaseMeta';
+import type { DatabaseTypeMeta } from '@datazen/extension-points';
 import { resetKvSlotStatesForTests } from '../../../lib/kvSlotState';
 import { useKvWorkspaceSlots, resolveKvDatabaseIndex } from '../useKvWorkspaceSlots';
 

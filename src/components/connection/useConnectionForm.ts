@@ -1,3 +1,4 @@
+import type { DatabaseTypeMeta } from '@datazen/extension-points';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { connectionCommands } from '../../commands/connection';
@@ -401,7 +402,7 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}): Conne
 
   const applyTypeDefaults = useCallback(
     (newType: DatabaseType) => {
-      const newMeta = DB_REGISTRY[newType];
+      const newMeta = (DB_REGISTRY as Record<string, DatabaseTypeMeta>)[newType];
       if (!newMeta) return;
       setName('');
       setHost(newMeta.defaultHost || '127.0.0.1');
@@ -424,19 +425,19 @@ export function useConnectionForm(options: UseConnectionFormOptions = {}): Conne
   );
 
   const handleDatabaseTypeChange = useCallback(
-    (newType: DatabaseType) => {
+    (newType: string) => {
       if (newType === databaseType) return;
-      const newMeta = DB_REGISTRY[newType];
+      const newMeta = (DB_REGISTRY as Record<string, DatabaseTypeMeta>)[newType];
       if (!newMeta) return;
       if (!editId) typeSnapshotsRef.current.set(databaseType, captureSnapshot());
-      setDatabaseType(newType);
+      setDatabaseType(newType as DatabaseType);
       if (!editId) {
-        const saved = typeSnapshotsRef.current.get(newType);
+        const saved = typeSnapshotsRef.current.get(newType as DatabaseType);
         if (saved) {
           restoreSnapshot(saved);
           return;
         }
-        applyTypeDefaults(newType);
+        applyTypeDefaults(newType as DatabaseType);
       } else {
         setHost(newMeta.defaultHost || '127.0.0.1');
         setPort(newMeta.defaultPort ? String(newMeta.defaultPort) : '');

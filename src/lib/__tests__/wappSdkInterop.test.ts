@@ -17,16 +17,16 @@ import {
   BRIDGE_ERROR as SDK_ERRORS,
   REQUEST_TIMEOUT_MS as SDK_TIMEOUT,
   WAPP_API_VERSION as SDK_API_VERSION,
-} from '../src/bridge';
-import { DEFAULT_THEME_TOKENS, applyThemeSnapshot, startThemeListener } from '../src/theme';
-import * as SdkPublic from '../src/index';
-import type { ConnectionSummary } from '../src/bridge';
+} from '@datazen/wapp-sdk';
+import { DEFAULT_THEME_TOKENS, applyThemeSnapshot, startThemeListener } from '@datazen/wapp-sdk';
+import * as SdkPublic from '@datazen/wapp-sdk';
+import type { ConnectionSummary } from '@datazen/wapp-sdk';
 import {
   THEME_SNAPSHOT_VERSION,
   THEME_TOKENS,
   buildThemeSnapshot,
-} from '../../../src/lib/themeTokens';
-import { WAPP_API_VERSION as HOST_API_VERSION } from '../../../src/types/wapp';
+} from '../themeTokens';
+import { WAPP_API_VERSION as HOST_API_VERSION } from '../../types/wapp';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const HOST_ROOT = resolve(HERE, '../../..');
@@ -35,7 +35,10 @@ const HOST_BRIDGE_PATH = existsSync(resolve(HOST_ROOT, 'src/lib/wappBridge.ts'))
   : resolve(HOST_ROOT, 'src/lib/wappBridge.ts');
 const HOST_BRIDGE_SRC = readFileSync(HOST_BRIDGE_PATH, 'utf8');
 const HOST_CSS_SRC = readFileSync(resolve(HOST_ROOT, 'src/styles/themes.css'), 'utf8');
-const SDK_CSS_SRC = readFileSync(resolve(HERE, '../src/theme.css'), 'utf8');
+const SDK_CSS_SRC = readFileSync(
+  resolve(HOST_ROOT, 'packages/wapp-sdk/src/theme.css'),
+  'utf8',
+);
 
 function extractConstBlock(source: string, name: string): string {
   const startMatch = source.match(new RegExp(`(?:export )?const ${name}(?::[^=]+)? = \\{`));

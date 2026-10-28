@@ -15,7 +15,7 @@
  */
 import type { FilterOperator, Value } from '../types';
 import { SHARED_FILTER_OPERATORS } from '../types';
-import type { DatabaseTypeMeta } from './databaseMeta';
+import type { DatabaseTypeMeta } from '@datazen/extension-points';
 import { resolveCellType, type CellType, type CellTypeHints } from './cellTypes';
 
 /**

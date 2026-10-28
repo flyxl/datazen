@@ -1,3 +1,7 @@
+import type { CellType, CellTypeHints, CellTypeRule } from '@datazen/extension-points';
+
+export type { CellType, CellTypeHints, CellTypeMatch, CellTypeRule } from '@datazen/extension-points';
+
 /**
  * The normalised cell type — the host's **single** answer to "what kind of
  * value does this column hold".
@@ -36,79 +40,6 @@
  */
 import type { DataTypeFamily } from './dataTypeColors';
 
-/**
- * The normalised type of a column.
- *
- * `unknown` is a real value, not an error: it means "neither the shared table
- * nor the driver recognised this name". The editor treats it as text and the
- * grid never complains about it — but it is also the signal that a driver
- * owes the host one more rule.
- */
-export type CellType =
-  | 'text' // character / text / unknown text family
-  | 'number' // integer, fixed point, float
-  | 'bool' // boolean
-  | 'date' // date only
-  | 'time' // time only
-  | 'datetime' // date + time, with or without a zone
-  | 'json' // structured value (JSON / JSONB / array / VARIANT)
-  | 'bytes' // binary
-  | 'enum' // enum / low-cardinality column
-  | 'uuid' // UUID / uniqueidentifier
-  | 'unknown'; // not classified — handled as text, never as an error
-
-/**
- * How a rule matches a type name.
- *
- * The kinds exist because "one substring test for everything" is the defect
- * this table replaces: `point`.includes('int') is true.
- */
-export type CellTypeMatch =
-  | 'exact' // the whole name equals the pattern
-  | 'prefix' // the name starts with the pattern
-  | 'suffix' // the name ends with the pattern
-  | 'token' // some token equals the pattern
-  | 'tokenPrefix' // some token starts with the pattern
-  | 'substring'; // the name contains the pattern (only where it is unambiguous)
-
-export interface CellTypeRule {
-  readonly match: CellTypeMatch;
-  /** A lower-case literal. Never a regular expression. */
-  readonly pattern: string;
-  readonly cellType: CellType;
-}
-
-/**
- * What a driver declares about its own types.
- *
- * Every field is optional: a driver that declares nothing keeps the shared
- * table's behaviour exactly (00-contracts R4).
- */
-export interface CellTypeHints {
-  /**
-   * Driver rules, evaluated **before** the shared table; the first hit wins.
-   * This is where a dialect trap is corrected (`timestamp` in SQL Server is a
-   * row version, not a time).
-   */
-  readonly overrides?: readonly CellTypeRule[];
-  /**
-   * Type names this driver uses for enumerations (token / token-prefix
-   * match) → `CellType` `enum`. PostgreSQL reports every enum column as
-   * `USER-DEFINED`, so only the driver can know what that means.
-   */
-  readonly enumTypes?: readonly string[];
-  /**
-   * Type names whose values carry a zone (`timestamptz`, `datetimeoffset`).
-   * They decide whether the date editor may use the picker: the picker
-   * cannot carry an offset, so a zoned column is edited as plain text.
-   */
-  readonly zonedTypes?: readonly string[];
-  /**
-   * Type names that cannot be written in place in this database (SQL Server's
-   * `rowversion`) → read-only reason `typeNotEditable`.
-   */
-  readonly readOnlyTypes?: readonly string[];
-}
 
 /**
  * The shared default table, in evaluation order.

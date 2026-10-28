@@ -1,4 +1,4 @@
-import type { DatabaseTypeMeta } from './databaseMeta';
+import type { DatabaseTypeMeta } from '@datazen/extension-points';
 
 /**
  * Data-export capability strength for a connection/driver, weakest to strongest.

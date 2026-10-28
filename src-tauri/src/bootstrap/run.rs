@@ -351,8 +351,6 @@ pub fn run() {
             // ── 表结构编辑 ──
             // ── 行数据读写 ──
             crate::commands::commit_pending_changes,
-            crate::commands::commit_row_deletes,
-            crate::commands::commit_row_updates,
             crate::commands::preview_pending_changes,
             // ── 查询、事务、历史与收藏 ──
             crate::commands::add_favorite_query,
@@ -364,7 +362,6 @@ pub fn run() {
             crate::commands::commit_session_transaction,
             crate::commands::delete_favorite_query,
             crate::commands::execute_query,
-            crate::commands::execute_query_stream,
             crate::commands::get_favorite_queries,
             crate::commands::get_favorites_root,
             crate::commands::get_query_history,
@@ -386,9 +383,6 @@ pub fn run() {
             crate::commands::get_driver_commands,
             // ── 导出 ──
             crate::commands::export_tables_stream,
-            crate::commands::file_jobs::get_file_job,
-            crate::commands::file_jobs::cancel_file_job,
-            crate::commands::file_jobs::export_file_job,
             // ── 备份 ──
             crate::commands::backup_database,
             // ── 恢复 ──

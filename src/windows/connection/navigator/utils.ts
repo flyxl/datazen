@@ -2,7 +2,7 @@ import { effectiveExpanded, searchedRowLevels } from '@datazen/ui';
 import { isLeaf, pathKey, type SqlNamespace } from '../../../lib/sqlNamespace';
 import { escapeIdent } from '../../../lib/databaseTypes';
 import { databaseObjectIdentityKey } from '../../../lib/databaseObjectIdentity';
-import type { DatabaseTypeMeta } from '../../../lib/databaseMeta';
+import type { DatabaseTypeMeta } from '@datazen/extension-points';
 import type { ConnectionConfig, TableInfo } from '../../../types';
 import type { UnifiedRow } from './types';
 

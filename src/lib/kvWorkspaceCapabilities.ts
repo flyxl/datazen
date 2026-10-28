@@ -6,7 +6,7 @@
  * decide whether a KV surface exists; the component itself is resolved separately
  * by `kvWorkspaceSlots.ts`, and both must succeed before the host renders a slot.
  */
-import type { DatabaseTypeMeta, KvWorkspaceCapabilities } from './databaseMeta';
+import type { DatabaseTypeMeta, KvWorkspaceCapabilities } from '@datazen/extension-points';
 import type { KvSlotName } from '@datazen/driver-sdk';
 
 /** Every KV slot name, in render order. Iterated by tests and the generator docs. */

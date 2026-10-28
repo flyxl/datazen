@@ -8,7 +8,7 @@
  * module weaves that shape into the statement. The host never spells `TOP`
  * or `FETCH FIRST` itself, and never branches on a driver name.
  */
-import type { RowLimitShape, SqlDialectStrategy } from './types';
+import type { RowLimitShape, SqlDialectStrategy } from '@datazen/extension-points';
 
 /** The standard cap: `LIMIT n` at the end of the statement. */
 export const LIMIT_ROW_LIMIT: RowLimitShape = {

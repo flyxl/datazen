@@ -6,7 +6,7 @@ import {
   supportsAnyExport,
   supportsFullTableExport,
 } from '../exportCapability';
-import type { DatabaseTypeMeta } from '../databaseMeta';
+import type { DatabaseTypeMeta } from '@datazen/extension-points';
 
 const meta = (partial: Partial<DatabaseTypeMeta>): DatabaseTypeMeta => ({
   label: 'x',

@@ -1,6 +1,7 @@
-import { describe, expect, it, vi, beforeEach, afterEach, type Mock } from 'vitest';
+import { describe, expect, it, vi, beforeAll, beforeEach, afterEach, type Mock } from 'vitest';
 import { useState } from 'react';
 import { render, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
+import { setBackendClient } from '@datazen/backend-client';
 import { WorkflowForm, emptyDraft } from '../WorkflowForm';
 import type { WorkflowDraft } from '../WorkflowForm';
 import { listDatabasesDedicated } from '../../../lib/dedicatedDbSession';
@@ -130,6 +131,11 @@ function renderForm(
   }
   return { onDraftChange, onSave, onCancel };
 }
+
+/** §7.2/§7.3：driverCommands 只走已绑定的 BackendClient（生产由宿主启动时绑定）。 */
+beforeAll(() => {
+  setBackendClient('test', { transport: { call: async () => [] } } as never);
+});
 
 beforeEach(() => {
   vi.clearAllMocks();

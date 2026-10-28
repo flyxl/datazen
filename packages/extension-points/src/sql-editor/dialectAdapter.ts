@@ -8,8 +8,8 @@ import { DB_REGISTRY, type DatabaseType } from './databaseTypes';
 import type {
   QualifiedRelationId,
   SqlDialectAdapter,
+  ResolvedSqlParameterPolicy,
   SqlDialectQuoteStyle,
-  SqlParameterPolicy,
   SqlProjectionAliasVisibility,
 } from './types';
 
@@ -17,7 +17,7 @@ export type DialectProfile = {
   quoteStyle: SqlDialectQuoteStyle;
   foldCase: 'lower' | 'upper' | 'preserve';
   projectionAliasVisibility: SqlProjectionAliasVisibility;
-  parameterPolicy: SqlParameterPolicy;
+  parameterPolicy: ResolvedSqlParameterPolicy;
   reservedKeywords?: readonly string[];
 };
 
@@ -29,6 +29,7 @@ const STANDARD_PROFILE: DialectProfile = {
     atNamed: false,
     question: false,
     dollarPositional: true,
+    dollarNamed: false,
     template: false,
   },
 };
@@ -43,49 +44,49 @@ const PROFILES: Record<string, DialectProfile> = {
     quoteStyle: 'double',
     foldCase: 'lower',
     projectionAliasVisibility: 'select-only',
-    parameterPolicy: { atNamed: false, question: true, dollarPositional: false, template: false },
+    parameterPolicy: { atNamed: false, question: true, dollarPositional: false, dollarNamed: false, template: false },
   },
   mysql: {
     quoteStyle: 'backtick',
     foldCase: 'lower',
     projectionAliasVisibility: 'order-group',
-    parameterPolicy: { atNamed: false, question: true, dollarPositional: false, template: false },
+    parameterPolicy: { atNamed: false, question: true, dollarPositional: false, dollarNamed: false, template: false },
   },
   mariadb: {
     quoteStyle: 'backtick',
     foldCase: 'lower',
     projectionAliasVisibility: 'order-group',
-    parameterPolicy: { atNamed: false, question: true, dollarPositional: false, template: false },
+    parameterPolicy: { atNamed: false, question: true, dollarPositional: false, dollarNamed: false, template: false },
   },
   sqlserver: {
     quoteStyle: 'bracket',
     foldCase: 'preserve',
     projectionAliasVisibility: 'broad',
-    parameterPolicy: { atNamed: true, question: false, dollarPositional: false, template: false },
+    parameterPolicy: { atNamed: true, question: false, dollarPositional: false, dollarNamed: false, template: false },
   },
   mssql: {
     quoteStyle: 'bracket',
     foldCase: 'preserve',
     projectionAliasVisibility: 'broad',
-    parameterPolicy: { atNamed: true, question: false, dollarPositional: false, template: false },
+    parameterPolicy: { atNamed: true, question: false, dollarPositional: false, dollarNamed: false, template: false },
   },
   duckdb: {
     quoteStyle: 'double',
     foldCase: 'lower',
     projectionAliasVisibility: 'select-only',
-    parameterPolicy: { atNamed: false, question: true, dollarPositional: true, template: false },
+    parameterPolicy: { atNamed: false, question: true, dollarPositional: true, dollarNamed: false, template: false },
   },
   clickhouse: {
     quoteStyle: 'backtick',
     foldCase: 'lower',
     projectionAliasVisibility: 'broad',
-    parameterPolicy: { atNamed: false, question: false, dollarPositional: false, template: false },
+    parameterPolicy: { atNamed: false, question: false, dollarPositional: false, dollarNamed: false, template: false },
   },
   oracle: {
     quoteStyle: 'double',
     foldCase: 'upper',
     projectionAliasVisibility: 'broad',
-    parameterPolicy: { atNamed: false, question: false, dollarPositional: false, template: false },
+    parameterPolicy: { atNamed: false, question: false, dollarPositional: false, dollarNamed: false, template: false },
   },
 };
 
@@ -305,6 +306,7 @@ export function getDialectAdapter(dialectId: string): SqlDialectAdapter {
           atNamed: driverProfile.parameterPolicy.atNamed ?? false,
           question: driverProfile.parameterPolicy.question ?? false,
           dollarPositional: driverProfile.parameterPolicy.dollarPositional ?? false,
+          dollarNamed: driverProfile.parameterPolicy.dollarNamed ?? false,
           template: driverProfile.parameterPolicy.template ?? false,
         },
         reservedKeywords: driverProfile.reservedKeywords,

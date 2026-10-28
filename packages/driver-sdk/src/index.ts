@@ -5,7 +5,7 @@
  */
 
 // === Base SQL Generators & Dialect Profiles ===
-export { BaseTableSqlGenerator } from '../../../src/lib/sqlDialects/baseTableSql';
+export { BaseTableSqlGenerator } from './sqlDialects/baseTableSql';
 export type {
   SqlDialectStrategy,
   SqlDialectProfile,
@@ -15,16 +15,19 @@ export type {
   SqlParameterPolicy,
   SqlParameterOccurrence,
   SqlParameterStrategy,
-} from '../../../src/lib/sqlDialects/types';
+} from '@datazen/extension-points';
 
 // === Database metadata ===
 export type {
   DatabaseTypeMeta,
   ConnectionMode,
   KvWorkspaceCapabilities,
-} from '../../../src/lib/databaseMeta';
-export type { DatabaseObjectKind } from '../../../src/types';
+  DataGridCapabilities,
+} from '@datazen/extension-points';
+export type { DatabaseObjectKind } from '@datazen/extension-points';
+export * from './types/tunnel';
 export * from './types/schemaMetadata';
+export type { TableContextInput, TableSqlActionKind } from './types/connection-view';
 export { schemaClient } from './ipc/schemaClient';
 
 // === SQL function catalog types ===
@@ -34,7 +37,8 @@ export type { FunctionEntry, FunctionParam } from '@datazen/extension-points';
 export type {
   ConnectionClipboardFill,
   ConnectionClipboardParser,
-} from '../../../src/lib/connectionClipboardTypes';
+  MatchedConnectionClipboard,
+} from './types/connectionClipboard';
 export type { ConnectionFormState } from './types/connection-form';
 
 // === Key-Value (Redis) data contracts ===

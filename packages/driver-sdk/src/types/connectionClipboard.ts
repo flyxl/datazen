@@ -1,4 +1,4 @@
-import type { SslMode } from '../types';
+import type { SslMode } from '@datazen/extension-points';
 
 /** Parsed clipboard payload that the new-connection form can apply. */
 export interface ConnectionClipboardFill {

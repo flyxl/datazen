@@ -1,18 +1,18 @@
 import type { DatabaseType } from '../types';
 import type { ConnectionFormState } from '../components/connection/useConnectionForm';
 import { DB_REGISTRY, sortDbTypesByPopularity } from './databaseTypes';
-import type { DatabaseTypeMeta } from './databaseMeta';
+import type { DatabaseTypeMeta } from '@datazen/extension-points';
 import type {
   ConnectionClipboardFill,
   MatchedConnectionClipboard,
-} from './connectionClipboardTypes';
+} from '@datazen/driver-sdk';
 import { getDriverClipboardParsers } from '../extensions/generated';
 
 export type {
   ConnectionClipboardFill,
   ConnectionClipboardParser,
   MatchedConnectionClipboard,
-} from './connectionClipboardTypes';
+} from '@datazen/driver-sdk';
 
 export function matchConnectionClipboard(
   raw: string,

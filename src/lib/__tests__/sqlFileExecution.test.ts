@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { beforeAll, describe, expect, it, vi, beforeEach } from 'vitest';
 
 const { invokeMock, listenMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
@@ -13,6 +13,7 @@ vi.mock('@tauri-apps/api/event', () => ({
   listen: (...args: unknown[]) => listenMock(...args),
 }));
 
+import { setBackendClient } from '@datazen/backend-client';
 import { runSqlFileExecution } from '../sqlFileExecution';
 import type { I18nKey } from '../../locales';
 
@@ -26,6 +27,11 @@ function baseOptions() {
     t,
   };
 }
+
+/** §7.2/§7.3：IPC 再导出只走已绑定的 BackendClient；测试绑定 mock invoke 通道。 */
+beforeAll(() => {
+  setBackendClient('test', { transport: { call: invokeMock } } as never);
+});
 
 beforeEach(() => {
   invokeMock.mockReset();

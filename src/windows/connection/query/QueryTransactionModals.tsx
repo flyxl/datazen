@@ -1,5 +1,5 @@
 import { QueryArtifactExport } from '../../../components/query/QueryArtifactExport';
-import type { QueryResultArtifacts } from '../../../lib/queryResultArtifacts';
+import type { QueryResultArtifacts } from '@datazen/backend-client';
 import {
   editorOwnerForPane,
   getQueryPanelSessionRegistry,

@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use super::driver_command::{
     execute_driver_command_stream_impl, ExecuteDriverCommandStreamOpts,
     ExecuteDriverCommandStreamRequest,
@@ -9,8 +7,7 @@ use super::AppState;
 use crate::store::history_db::DEFAULT_HISTORY_PAGE_SIZE;
 use crate::store::{HistoryOrder, QueryHistoryEntry, QueryHistoryFilter, QueryHistoryPage};
 use datazen_driver_api::MultiQueryResult;
-use datazen_driver_api::{QueryExecutionId, QueryStreamCallback, QueryStreamEvent};
-use tauri::ipc::Channel;
+use datazen_driver_api::QueryExecutionId;
 use tauri::State;
 
 pub(crate) async fn execute_query_impl(
@@ -46,52 +43,6 @@ pub(crate) async fn execute_query_impl(
     )
     .await?;
     serde_json::from_value(result.data).map_err(CommandError::Json)
-}
-
-#[derive(Clone, Copy)]
-pub(crate) struct ExecuteQueryStreamOpts {
-    pub apply_result_limit: bool,
-    pub record_history: bool,
-}
-
-impl Default for ExecuteQueryStreamOpts {
-    fn default() -> Self {
-        Self {
-            apply_result_limit: true,
-            record_history: true,
-        }
-    }
-}
-
-pub(crate) async fn execute_query_stream_impl(
-    state: &AppState,
-    db_session_id: String,
-    sql: String,
-    database: Option<String>,
-    on_event: QueryStreamCallback,
-    opts: ExecuteQueryStreamOpts,
-) -> Result<(), CommandError> {
-    execute_driver_command_stream_impl(
-        state,
-        ExecuteDriverCommandStreamRequest {
-            db_session_id: Some(db_session_id),
-            command: "query_stream".into(),
-            // F7: same envelope targeting as `execute_query` — rewrite-capable
-            // drivers qualify unqualified relations inline (`db`.`t`) and no
-            // session switch is performed on any path.
-            database,
-            schema: None,
-            input: serde_json::json!({ "sql": sql }),
-            apply_result_limit: Some(opts.apply_result_limit),
-            record_history: Some(opts.record_history),
-        },
-        on_event,
-        ExecuteDriverCommandStreamOpts {
-            apply_result_limit: opts.apply_result_limit,
-            record_history: opts.record_history,
-        },
-    )
-    .await
 }
 
 pub(crate) async fn cancel_query_impl(
@@ -278,41 +229,6 @@ pub async fn execute_query(
     database: Option<String>,
 ) -> Result<MultiQueryResult, CommandError> {
     execute_query_impl(&state, db_session_id, sql, database).await
-}
-
-#[tauri::command]
-pub async fn execute_query_stream(
-    state: State<'_, AppState>,
-    db_session_id: String,
-    sql: String,
-    database: Option<String>,
-    on_event: Channel<QueryStreamEvent>,
-    apply_result_limit: Option<bool>,
-    record_history: Option<bool>,
-) -> Result<(), CommandError> {
-    let callback: QueryStreamCallback = Arc::new(move |event| {
-        // Unavoidable and not a masked defect: `Channel::send` fails only when
-        // the receiving end is gone (the webview for this stream was closed or
-        // reloaded), and there is no one left to report to — the event has
-        // nowhere to go even if it were reported. `QueryStreamCallback` returns
-        // `()`, so propagating would mean changing the callback contract for
-        // every producer. Deliberately *not* logged: this runs once per stream
-        // event, so a log line here would flood the file with the same message
-        // for the remainder of a large result set.
-        let _ = on_event.send(event);
-    });
-    execute_query_stream_impl(
-        &state,
-        db_session_id,
-        sql,
-        database,
-        callback,
-        ExecuteQueryStreamOpts {
-            apply_result_limit: apply_result_limit.unwrap_or(true),
-            record_history: record_history.unwrap_or(true),
-        },
-    )
-    .await
 }
 
 #[tauri::command]
@@ -537,7 +453,7 @@ mod log_hygiene_tests {
     }
 
     #[test]
-    fn execute_query_stream_source_does_not_info_log_sql_preview() {
+    fn execute_driver_command_stream_source_does_not_info_log_sql_preview() {
         let src = include_str!("driver_command/streaming.rs");
         let start = src
             .find("pub(crate) async fn execute_driver_command_stream_impl")
