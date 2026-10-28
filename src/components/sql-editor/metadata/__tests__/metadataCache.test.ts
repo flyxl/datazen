@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TableSchema } from '../../../../types';
-import type { QualifiedRelationId } from '../../semantic/types';
+import type { QualifiedRelationId } from '@datazen/extension-points';
 import { createMetadataCache, schemaToMetadata } from '../metadataCache';
 import type { EditorRelationRequest } from '../types';
 

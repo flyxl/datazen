@@ -5,7 +5,7 @@
 
 import type { CountStrategy, DatabaseObjectKind, FilterOperator, SslMode } from '../types';
 import type { StructureEditorUiConfig } from './structureEditor/types';
-import type { FunctionEntry } from './sqlFunctionTypes';
+import type { FunctionEntry } from '@datazen/extension-points';
 import type { CellTypeHints } from './cellTypes';
 import type {
   SqlDialectStrategy,

@@ -8,7 +8,7 @@
  * driver dialect branches in host!
  */
 
-import type { FunctionEntry, FunctionParam } from './sqlFunctionTypes';
+import type { FunctionEntry, FunctionParam } from '@datazen/extension-points';
 import { DB_REGISTRY } from './databaseTypes';
 import type { DatabaseType } from '../types';
 
@@ -160,4 +160,3 @@ export function buildFunctionCompletions(
     apply: `${e.name}(`,
   }));
 }
-

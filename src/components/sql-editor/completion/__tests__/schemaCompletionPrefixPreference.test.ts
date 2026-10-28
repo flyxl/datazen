@@ -4,8 +4,7 @@ import { CompletionContext } from '@codemirror/autocomplete';
 import type { SQLNamespace } from '@codemirror/lang-sql';
 import type { CompletionQuotePolicy } from '../../contracts';
 import type { EditorMetadataSnapshot, EditorRelationMetadata } from '../../metadata/types';
-import { getDialectAdapter } from '../../semantic/dialectAdapter';
-import { buildSemanticModel } from '../../semantic/scopeModel';
+import { buildSemanticModel, getDialectAdapter } from '@datazen/extension-points';
 import { produceSchemaCompletions, type SchemaCompletionOptions } from '../schemaCompletion';
 
 // Host contract only: standard SQL identifiers and double quotes, no driver fixtures.

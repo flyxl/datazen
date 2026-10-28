@@ -5,4 +5,4 @@
  *
  * Compatibility wrapper over the unified semantic statement range module.
  */
-export { getStatementTextAtCursor as getStatementAtCursor } from '../components/sql-editor/semantic/statementRanges';
+export { getStatementTextAtCursor as getStatementAtCursor } from '@datazen/extension-points';

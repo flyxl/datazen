@@ -6,7 +6,7 @@
  *
  * Statement splitting delegates to the unified semantic scanner.
  */
-import { maskSemicolonsInLiterals } from '../components/sql-editor/semantic/scanner';
+import { maskSemicolonsInLiterals } from '@datazen/extension-points';
 
 /** Mask `;` inside comments and quoted literals so a naive split is safe. */
 export function stripSqlNoise(sql: string): string {

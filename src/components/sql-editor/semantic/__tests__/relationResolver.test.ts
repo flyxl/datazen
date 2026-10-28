@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { getDialectAdapter } from '../dialectAdapter';
 import {
+  buildSemanticModel,
+  getDialectAdapter,
+  listVisibleRelations,
   resolveQualifiedRelation,
   resolveRelation,
-  listVisibleRelations,
-} from '../relationResolver';
-import { buildSemanticModel } from '../scopeModel';
+} from '@datazen/extension-points';
 
 describe('resolveRelation', () => {
   it('resolves unique alias', () => {

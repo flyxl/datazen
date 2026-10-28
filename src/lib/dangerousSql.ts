@@ -1,6 +1,5 @@
-import { scanSql } from '../components/sql-editor/semantic/scanner';
-import { SqlTokenKind } from '../components/sql-editor/semantic/tokens';
-import type { SqlToken } from '../components/sql-editor/semantic/types';
+import type { SqlToken } from '@datazen/extension-points';
+import { SqlTokenKind, scanSql } from '@datazen/extension-points';
 
 /**
  * SQL risk classifier.

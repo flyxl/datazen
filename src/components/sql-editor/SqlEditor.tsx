@@ -19,10 +19,13 @@ import {
 import { EditorView, placeholder as cmPlaceholder } from '@codemirror/view';
 import { EditorState, Compartment, Transaction } from '@codemirror/state';
 import { snippet } from '@codemirror/autocomplete';
-import { useIsExtensionEnhanced, sqlEditorEnhancedEP } from '@datazen/extension-points';
+import {
+  buildSemanticModel,
+  sqlEditorEnhancedEP,
+  useIsExtensionEnhanced,
+} from '@datazen/extension-points';
 import { parseQualifiedPathParents } from '../../lib/sqlPathPrefix';
 import { toggleSqlLineComments } from '../../lib/sqlEditorContextMenu';
-import { buildSemanticModel } from './semantic/scopeModel';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useI18n } from '../../hooks/useI18n';
 import type { I18nKey } from '../../locales';
@@ -111,7 +114,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
 
   // ── S6-D: Snapshot & model refs for completion/hover ──────────────
   const metadataSnapshotRef = useRef(metadataSnapshot);
-  const modelRef = useRef<import('./semantic/types').SqlSemanticModel | null>(null);
+  const modelRef = useRef<import('@datazen/extension-points').SqlSemanticModel | null>(null);
 
   const { t } = useI18n();
   // Snippet descriptions are i18n keys; the completion source needs a resolver.

@@ -7,7 +7,7 @@ import {
 } from '../../../../lib/sqlCompletionContext';
 import { resolveCmDialect } from '../../contracts';
 import { keywordCompletionSource } from '@codemirror/lang-sql';
-import { buildSemanticModel } from '../../semantic/scopeModel';
+import { buildSemanticModel } from '@datazen/extension-points';
 import { produceSchemaCompletions } from '../schemaCompletion';
 
 describe('SQL Editing Typing Journey (Continuous Typing State Machine)', () => {

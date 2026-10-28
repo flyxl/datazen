@@ -1,10 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import type { TableSchema } from '../../types';
-import type {
-  QualifiedRelationId,
-  SqlRelationBinding,
-} from '../../components/sql-editor/semantic/types';
+import type { QualifiedRelationId, SqlRelationBinding } from '@datazen/extension-points';
 import type { EditorMetadataContext } from '../../components/sql-editor/metadata/types';
 import { createMetadataCache } from '../../components/sql-editor/metadata/metadataCache';
 import {

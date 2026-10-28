@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { maskSemicolonsInLiterals, scanSql, splitSqlBySemicolon } from '../scanner';
-import { SqlTokenKind } from '../tokens';
+import {
+  SqlTokenKind,
+  maskSemicolonsInLiterals,
+  scanSql,
+  splitSqlBySemicolon,
+} from '@datazen/extension-points';
 
 describe('scanSql', () => {
   it('tokenizes a simple statement with semicolon delimiter', () => {

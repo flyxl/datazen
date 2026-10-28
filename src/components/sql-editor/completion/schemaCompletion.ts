@@ -21,11 +21,14 @@ import type {
   SqlRelationBinding,
   SqlSemanticModel,
   SqlToken,
-} from '../semantic/types';
-import { SqlTokenKind } from '../semantic/tokens';
-import { getDialectAdapter } from '../semantic/dialectAdapter';
-import { foldSegment } from '../semantic/quoteHelper';
-import { listVisibleRelations, resolveRelation } from '../semantic/relationResolver';
+} from '@datazen/extension-points';
+import {
+  SqlTokenKind,
+  foldSegment,
+  getDialectAdapter,
+  listVisibleRelations,
+  resolveRelation,
+} from '@datazen/extension-points';
 import { findRelationMetadata } from '../metadata/findRelation';
 
 /* -------------------------------------------------------------------------- */
