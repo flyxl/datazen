@@ -1,7 +1,7 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
 use crate::services::{embedded_schema_of, metadata_schema, QueryExecutor};
-use datazen_driver_api::schema_objects::{DatabaseObject, ObjectKind, PrivilegeGrant};
+use datazen_driver_api::schema_objects::PrivilegeGrant;
 use datazen_driver_api::TableSchema;
 use std::time::Instant;
 use tauri::State;
@@ -73,12 +73,6 @@ pub(crate) async fn get_er_data_impl(
     Ok(schemas)
 }
 
-fn parse_objects_from_command(data: &serde_json::Value) -> Vec<DatabaseObject> {
-    data.get("objects")
-        .and_then(|v| serde_json::from_value(v.clone()).ok())
-        .unwrap_or_default()
-}
-
 fn parse_grants_from_command(data: &serde_json::Value) -> Vec<PrivilegeGrant> {
     data.get("grants")
         .and_then(|v| serde_json::from_value(v.clone()).ok())
@@ -106,86 +100,6 @@ async fn run_schema_object_command(
     Ok(result.data)
 }
 
-pub(crate) async fn get_database_objects_impl(
-    state: &AppState,
-    db_session_id: String,
-    kind: String,
-    database: Option<String>,
-) -> Result<Vec<DatabaseObject>, CommandError> {
-    if ObjectKind::parse(&kind).is_none() {
-        return Err(CommandError::Validation(format!(
-            "Unknown object kind: {kind}"
-        )));
-    }
-    let data = run_schema_object_command(
-        state,
-        &db_session_id,
-        "list_objects",
-        serde_json::json!({ "kind": kind, "database": database }),
-    )
-    .await?;
-    Ok(parse_objects_from_command(&data))
-}
-
-pub(crate) async fn get_object_ddl_impl(
-    state: &AppState,
-    db_session_id: String,
-    kind: String,
-    name: String,
-    schema: Option<String>,
-) -> Result<String, CommandError> {
-    get_object_ddl_with_metadata_impl(
-        state,
-        db_session_id,
-        kind,
-        name,
-        schema,
-        None,
-        None,
-        None,
-        None,
-    )
-    .await
-}
-
-pub(crate) async fn get_object_ddl_with_metadata_impl(
-    state: &AppState,
-    db_session_id: String,
-    kind: String,
-    name: String,
-    schema: Option<String>,
-    signature: Option<String>,
-    target_schema: Option<String>,
-    target_name: Option<String>,
-    database: Option<String>,
-) -> Result<String, CommandError> {
-    if ObjectKind::parse(&kind).is_none() {
-        return Err(CommandError::Validation(format!(
-            "Unknown object kind: {kind}"
-        )));
-    }
-    let data = run_schema_object_command(
-        state,
-        &db_session_id,
-        "get_object_ddl",
-        serde_json::json!({
-            "kind": kind,
-            "name": name,
-            "schema": schema,
-            "signature": signature,
-            "targetSchema": target_schema,
-            "targetName": target_name,
-            "database": database,
-        }),
-    )
-    .await?;
-    Ok(data
-        .get("ddl")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default()
-        .to_string())
-}
-
 pub(crate) async fn get_privileges_impl(
     state: &AppState,
     db_session_id: String,
@@ -198,42 +112,6 @@ pub(crate) async fn get_privileges_impl(
     )
     .await?;
     Ok(parse_grants_from_command(&data))
-}
-
-#[tauri::command]
-pub async fn get_database_objects(
-    state: State<'_, AppState>,
-    db_session_id: String,
-    kind: String,
-    database: Option<String>,
-) -> Result<Vec<DatabaseObject>, CommandError> {
-    get_database_objects_impl(&state, db_session_id, kind, database).await
-}
-
-#[tauri::command]
-pub async fn get_object_ddl(
-    state: State<'_, AppState>,
-    db_session_id: String,
-    kind: String,
-    name: String,
-    schema: Option<String>,
-    signature: Option<String>,
-    target_schema: Option<String>,
-    target_name: Option<String>,
-    database: Option<String>,
-) -> Result<String, CommandError> {
-    get_object_ddl_with_metadata_impl(
-        &state,
-        db_session_id,
-        kind,
-        name,
-        schema,
-        signature,
-        target_schema,
-        target_name,
-        database,
-    )
-    .await
 }
 
 #[tauri::command]

@@ -26,7 +26,7 @@ vi.mock('../../../hooks/useI18n', () => ({
 }));
 
 vi.mock('../../../commands/query', () => ({
-  queryCommands: { getQueryHistory: vi.fn() },
+  queryCommands: { getQueryHistoryPage: vi.fn() },
 }));
 
 vi.mock('../../../lib/databaseTypes', () => ({
@@ -75,7 +75,7 @@ const connection: ConnectionConfig = {
 };
 
 async function renderHome() {
-  vi.mocked(queryCommands.getQueryHistory).mockResolvedValue(entries);
+  vi.mocked(queryCommands.getQueryHistoryPage).mockResolvedValue({ entries, total: entries.length });
   useConnectionStore.setState({ connections: [connection] } as never);
   const utils = render(
     <ConnectionWorkspaceHome

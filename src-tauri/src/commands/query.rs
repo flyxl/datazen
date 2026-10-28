@@ -5,7 +5,7 @@ use super::driver_command::{
 use super::error::{CmdExt, CommandError};
 use super::AppState;
 use crate::store::history_db::DEFAULT_HISTORY_PAGE_SIZE;
-use crate::store::{HistoryOrder, QueryHistoryEntry, QueryHistoryFilter, QueryHistoryPage};
+use crate::store::{HistoryOrder, QueryHistoryFilter, QueryHistoryPage};
 use datazen_driver_api::MultiQueryResult;
 use datazen_driver_api::QueryExecutionId;
 use tauri::State;
@@ -97,25 +97,6 @@ pub(crate) async fn cancel_query_impl(
         .cancel_query_with_execution(&resolved.handle, &execution_id)
         .await
         .cmd_err("cancel_query")
-}
-
-pub(crate) async fn get_query_history_impl(
-    state: &AppState,
-    limit: usize,
-    connection_id: Option<String>,
-    database: Option<String>,
-    schema: Option<String>,
-) -> Result<Vec<QueryHistoryEntry>, CommandError> {
-    // D6 item 1：查询历史用例经模块服务；未注入时报错而非回落直读 store。
-    let service = crate::platform::ipc::require_history_service(state)?;
-    Ok(service
-        .recent_query_history(
-            limit,
-            connection_id.as_deref(),
-            database.as_deref(),
-            schema.as_deref(),
-        )
-        .await)
 }
 
 pub(crate) async fn clear_query_history_impl(state: &AppState) -> Result<(), CommandError> {
@@ -238,17 +219,6 @@ pub async fn cancel_query(
     execution_id: String,
 ) -> Result<(), CommandError> {
     cancel_query_impl(&state, db_session_id, execution_id).await
-}
-
-#[tauri::command]
-pub async fn get_query_history(
-    state: State<'_, AppState>,
-    limit: usize,
-    connection_id: Option<String>,
-    database: Option<String>,
-    schema: Option<String>,
-) -> Result<Vec<QueryHistoryEntry>, CommandError> {
-    get_query_history_impl(&state, limit, connection_id, database, schema).await
 }
 
 #[tauri::command]

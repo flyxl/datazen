@@ -37,8 +37,7 @@ vi.mock('../contentViewHelpers', () => ({
 
 vi.mock('../../../commands/query', () => ({
   queryCommands: {
-    getQueryHistory: vi.fn().mockResolvedValue([]),
-    // The global history dialog reads through the paged command, which returns
+    // Every history reader goes through the paged command, which returns
     // `{ entries, total }` rather than a bare array.
     getQueryHistoryPage: vi.fn().mockResolvedValue({ entries: [], total: 0 }),
   },
@@ -518,16 +517,17 @@ describe('ConnectionWorkspaceHome', () => {
     useConnectionStore.setState({ connections: sampleConnections });
     const onSelectHistoryQuery = vi.fn();
 
-    vi.mocked(queryCommands.getQueryHistory).mockResolvedValueOnce([
-      {
-        id: 'hist-1',
-        connectionId: 'conn-1',
-        database: 'postgres',
-        sql: 'SELECT * FROM users;',
-        executedAt: new Date().toISOString(),
-        executionTimeMs: 15,
-        success: true,
-      },
+    vi.mocked(queryCommands.getQueryHistoryPage).mockResolvedValueOnce({
+      entries: [
+        {
+          id: 'hist-1',
+          connectionId: 'conn-1',
+          database: 'postgres',
+          sql: 'SELECT * FROM users;',
+          executedAt: new Date().toISOString(),
+          executionTimeMs: 15,
+          success: true,
+        },
       {
         id: 'hist-2',
         connectionId: 'conn-1',
@@ -537,7 +537,9 @@ describe('ConnectionWorkspaceHome', () => {
         executionTimeMs: 8,
         success: true,
       },
-    ]);
+      ],
+      total: 2,
+    });
 
     render(
       <ConnectionWorkspaceHome
@@ -674,7 +676,10 @@ describe('ConnectionWorkspaceHome', () => {
       executionTimeMs: 15,
       success: true,
     };
-    vi.mocked(queryCommands.getQueryHistory).mockResolvedValueOnce([mockHistoryItem]);
+    vi.mocked(queryCommands.getQueryHistoryPage).mockResolvedValueOnce({
+      entries: [mockHistoryItem],
+      total: 1,
+    });
 
     render(
       <ConnectionWorkspaceHome

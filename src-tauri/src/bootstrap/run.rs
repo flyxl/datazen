@@ -333,9 +333,7 @@ pub fn run() {
             crate::commands::restart_app,
             crate::commands::save_encryption_key_with_dialog,
             // ── Schema 元数据 ──
-            crate::commands::get_database_objects,
             crate::commands::get_er_data,
-            crate::commands::get_object_ddl,
             crate::commands::get_privileges,
             crate::commands::get_table_data_at_target,
             crate::commands::preview_table_read_sql,
@@ -364,7 +362,6 @@ pub fn run() {
             crate::commands::execute_query,
             crate::commands::get_favorite_queries,
             crate::commands::get_favorites_root,
-            crate::commands::get_query_history,
             crate::commands::get_query_history_page,
             crate::commands::refresh_favorites,
             crate::commands::rollback_session_transaction,

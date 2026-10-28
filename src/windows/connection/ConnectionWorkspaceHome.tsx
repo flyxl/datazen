@@ -159,14 +159,14 @@ export function ConnectionWorkspaceHome({
   // Load recent query history (global or connection-scoped)
   useEffect(() => {
     let unmounted = false;
-    if (typeof queryCommands?.getQueryHistory !== 'function') {
+    if (typeof queryCommands?.getQueryHistoryPage !== 'function') {
       return;
     }
     queryCommands
-      .getQueryHistory(5, connectionContext?.connectionId)
-      .then((history) => {
-        if (!unmounted && Array.isArray(history)) {
-          setRecentQueries(history);
+      .getQueryHistoryPage({ limit: 5, connectionId: connectionContext?.connectionId })
+      .then((page) => {
+        if (!unmounted && Array.isArray(page?.entries)) {
+          setRecentQueries(page.entries);
         }
       })
       .catch(() => {
