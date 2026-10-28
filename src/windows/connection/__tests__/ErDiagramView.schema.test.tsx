@@ -26,7 +26,7 @@ vi.mock('@xyflow/react', () => ({
 
 import { ErDiagramView } from '../ErDiagramView';
 
-describe('ErDiagramView forwards the schema to get_er_data', () => {
+describe('ErDiagramView forwards the schema to the ER data composition', () => {
   beforeEach(() => {
     getErData.mockClear();
   });

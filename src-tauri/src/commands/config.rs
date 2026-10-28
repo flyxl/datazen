@@ -1,6 +1,5 @@
 use super::error::{CmdExt, CommandError};
 use super::AppState;
-use crate::i18n_locale;
 use crate::store::AppSettings;
 use std::path::PathBuf;
 use tauri::State;
@@ -166,11 +165,6 @@ pub async fn save_groups(
 #[tauri::command]
 pub async fn get_settings(state: State<'_, AppState>) -> Result<AppSettings, CommandError> {
     get_settings_impl(&state).await
-}
-
-#[tauri::command]
-pub fn get_system_ui_language() -> String {
-    i18n_locale::default_ui_language()
 }
 
 #[tauri::command]

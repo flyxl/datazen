@@ -902,7 +902,9 @@ ContentView
 
 ### 8.3 数据流
 
-1. 后端 `get_er_data(db_session_id, database)` 批量获取所有表的 `TableSchema`（含外键）
+1. `ErDiagramView` 经 driver 网关拼装 ER 数据：`list_catalog` 列出关系，再逐表
+   `get_table_schema`（每条读自带显式 `(database, schema)` 目标，不借用会话）
+   得到 `TableSchema[]`（含外键）
 2. `buildErGraph(schemas, focusTable?, predicted?, collapsedTables?)` 生成 nodes 和 edges；
    节点只带**显式尺寸**，坐标由下一步决定
 3. `focusTable` 控制焦点模式：仅显示目标表及其直接关联表

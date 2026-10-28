@@ -19,7 +19,7 @@ These specs have **no `$()` DOM interactions** — only `invokeBackend` / inline
 | E2E spec | Primary IPC surface | Migration complexity |
 |----------|---------------------|----------------------|
 | `driver-commands.ts` | `get_connections`, `connect`, `get_connection_commands`, `execute_driver_command` | **Done (PoC)** — `driver_command_ipc.rs` |
-| `app-data-backup.ts` | `export_app_data`, `import_app_data`, `get_system_ui_language` (+ minimal UI for button labels) | Medium — needs temp paths, zip assertions |
+| `app-data-backup.ts` | `export_app_data`, `import_app_data` (+ minimal UI for button labels) | Medium — needs temp paths, zip assertions |
 | `table-batch-ops.ts` | `execute_driver_command`, `save_settings` (+ helpers for PG seed) | Medium — table seed via mock or PG fixture |
 | `execute-sql-file.ts` | `restore_sql_file`, `execute_driver_command` | Medium — uses `overridePath` webdriver form |
 | `edit-delete-connection.ts` | `save_connection`, `get_connections`, `delete_connection` | Low |

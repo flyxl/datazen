@@ -312,7 +312,6 @@ pub fn run() {
             crate::commands::get_settings,
             crate::commands::get_shared_settings,
             crate::commands::save_shared_settings,
-            crate::commands::get_system_ui_language,
             crate::commands::import_connections_at_path,
             crate::commands::import_connections_preview,
             crate::commands::import_connections_with_dialog,
@@ -333,7 +332,6 @@ pub fn run() {
             crate::commands::restart_app,
             crate::commands::save_encryption_key_with_dialog,
             // ── Schema 元数据 ──
-            crate::commands::get_er_data,
             crate::commands::get_privileges,
             crate::commands::get_table_data_at_target,
             crate::commands::preview_table_read_sql,
