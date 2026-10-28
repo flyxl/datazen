@@ -3,6 +3,60 @@
 > 本文件随每个 form-split PR 同步提交，记录实际执行顺序、决策与验证结果，
 > 避免工作进度丢失。条目按时间倒序（最新在上）。基线：`2a08e55`（F4a 合入后）。
 
+## 2026-10-29（会话四）— R6 台账焚烧 batch-2（收口）：8 → **1 advisory**，台账清空
+
+> 承接会话三的 batch-1（34 → 8）。本批把剩余 6 个 R6 台账文件全部端口化，
+> `R6_LEGACY_TAURI_FILES` 集合清空，规则转全阻断——自此生产 `src/` 在
+> 桌面区外的任何新 `@tauri-apps/*` import 直接红闸门（F6 `packages/frontend`
+> 必须宿主运行时无关的绊网就位）。剩余 1 advisory 为 R3 的
+> DocumentConnectionView 既有豁免（永久条目，非本计划范围）。
+
+### 端口化清单（六文件 → 三端口一界面）
+
+- **MenuBar（fullscreen）**→ `PlatformServices.toggleFullscreen`：桌面绑定
+  用 zone 内 `getCurrentWindow()`（裁决 #5：窗口控制属桌面区）；web 降级为
+  document fullscreen API。裸 try/catch 保留。
+- **fetchRelationDdl（clipboard×2）**→ `writeClipboard` + 新端口
+  `writeClipboardHtml({ html, altText })`：桌面绑定即原
+  `write_clipboard` / `write_clipboard_html` 宿主命令（字节等价）；web 降级
+  为 `ClipboardItem`（缺失或无手势时退 plain text，绝不静默 no-op）。
+  测试改为端口绑 invoke mock，线断言（命令名+载荷）原样保留。
+- **wappBridge（wapp_session 族 + 通知）**：session/storage 走
+  `legacyInvoke`（batch-1 轨道）；通知走新端口
+  `showNotification({ title, body })`——桌面绑定保持
+  `plugin:notification|notify` 线形，web 降级为 Notification API
+  （权限拒绝即 reject，调用方本就 best-effort）。
+- **surfaceBgCache（host 文件持久化）**→ `HostSettingsPort.persistSurfaceBackground`
+  （fire-and-forget）：桌面绑定即 `set_surface_background` IPC；web 为
+  inert no-op。运行时 `__TAURI_INTERNALS__` 探测删除，改为
+  `getPlatformOrNull()?.hostSettings?.…` 可选链（平台未配置 = 旧探测的
+  同一「无处可持久化」情形）。
+- **BrandSidebar / SettingsContent（getVersion）**→ `HostSettingsPort.getAppVersion`：
+  桌面绑定 zone 内 `@tauri-apps/api/app`；inert 端口 reject，调用方
+  gate 在 `capabilities.versionSource`（F5 表已在位）上、`.catch` 保持
+  占位符/隐藏行为。SettingsContent 顺带消掉了文件顶部最后一个
+  `@tauri-apps` 运行时 import（F5 留下的探测残留随之自然收口）。
+
+### 测试修复（本批唯一非机械改动）
+
+- `wappBridge.test.ts` 的端口绑定原是模块级一次性 `setPlatformServices` +
+  全局 `afterEach(clearPlatformServices)`——首个测试后端口即处于未绑定态，
+  后续 `ui.notify` 用例全部未捕获 reject。改为 `beforeEach` 重绑（26/26 绿）。
+
+### 验证
+
+- typecheck（tsrs root/scripts/pack-ep）OK；触点批 8 文件 67/67 绿；
+  commands+platform+backend-client+MenuBar+SettingsContent 广域回归
+  **417/417** 绿。
+- 闸门 **0 blocking / 1 advisory**（8 → 1，台账集合已删除内容转空集）；
+  生产 `src/` 中桌面区外 `@tauri-apps` 引用全数核对为注释、生成注册表
+  （`src/extensions/generated*.ts`，既有豁免）或测试 mock。
+- 零 Rust 侧改动：本批端口化的五个宿主命令/插件调用全部复用既有注册
+  （`write_clipboard_html` / `set_surface_background` /
+  `plugin:notification|notify` / app/window JS API），无需动 `run.rs`。
+
+---
+
 ## 2026-10-29（会话三）— R6 core-invoke 台账焚烧 batch-1：34 → 8 advisory
 
 ### 迁移设计（照 DriverGateway 先例的第二个过渡逃生舱）

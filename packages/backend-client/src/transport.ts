@@ -135,6 +135,14 @@ export interface PlatformServices {
   openTextWithDialog(input: OpenTextInput): Promise<OpenedTextFile | null>;
   openDirectoryWithDialog(input: OpenDirectoryInput): Promise<OpenedDirectory | null>;
   writeClipboard(text: string): Promise<void>;
+  /**
+   * Rich-text clipboard write. The desktop host command bypasses browser
+   * user-gesture restrictions; the web form degrades to the async clipboard
+   * API's `ClipboardItem` when available and to plain text otherwise.
+   * Added by the form-split R6 ledger burn (the fetchRelationDdl copy
+   * helpers' native fallback leg).
+   */
+  writeClipboardHtml(input: WriteClipboardHtmlInput): Promise<void>;
   readClipboard(): Promise<string>;
   /**
    * External open. `url` goes to the system browser (web form degrades to
@@ -143,6 +151,29 @@ export interface PlatformServices {
    * opening host directories), mirroring §7.1.
    */
   openExternal(input: OpenExternalInput): Promise<void>;
+  /**
+   * Toggle the window's fullscreen state (Menu-bar action). Web form:
+   * the document fullscreen API on the root element. Added by the form-split
+   * R6 ledger burn (MenuBar's last chrome touchpoint outside the zones).
+   */
+  toggleFullscreen(): Promise<void>;
+  /**
+   * System notification (wapp sandbox bridge). Desktop rides the registered
+   * notification plugin; web degrades to the `Notification` API. Added by the
+   * form-split R6 ledger burn (wappBridge's plugin invoke).
+   */
+  showNotification(input: ShowNotificationInput): Promise<void>;
+}
+
+export interface WriteClipboardHtmlInput {
+  html: string;
+  /** Plain-text fallback the same clipboard entry carries. */
+  altText: string;
+}
+
+export interface ShowNotificationInput {
+  title: string;
+  body?: string;
 }
 
 export interface OpenExternalInput {

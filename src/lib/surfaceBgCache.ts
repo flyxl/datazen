@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { getPlatformOrNull } from '../platform/contracts';
 
 export const DEFAULT_SURFACE_DARK = '#0b0e14';
 export const DEFAULT_SURFACE_LIGHT = '#f8fafc';
@@ -31,8 +31,9 @@ export function cssColorToHex(value: string): string | null {
 export function persistSurfaceBackground(isDark: boolean, cssColor: string): void {
   const hex = cssColorToHex(cssColor);
   if (!hex) return;
-  if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return;
-  void invoke('set_surface_background', { hex, dark: isDark }).catch(() => {
-    // Cache write is best-effort; next window still has in-memory Rust state if IPC reached set().
-  });
+  // Form-split R6: the host-file persistence rides the HostSettingsPort now
+  // (desktop: the `set_surface_background` IPC; other forms: inert no-op).
+  // The platform being unconfigured (pre-assembly, or a bare test) is the
+  // same "nothing to persist" case the old runtime probe used to gate.
+  getPlatformOrNull()?.hostSettings?.persistSurfaceBackground(hex, isDark);
 }

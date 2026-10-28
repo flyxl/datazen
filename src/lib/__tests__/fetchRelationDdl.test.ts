@@ -1,4 +1,6 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest';
+import { clearPlatformServices, setPlatformServices } from '@datazen/backend-client';
+import { invoke } from '@tauri-apps/api/core';
 import { fetchRelationDdl, copyToClipboard } from '../fetchRelationDdl';
 import * as schemaCache from '../schemaCache';
 import { databaseCommands } from '../../commands/database';
@@ -110,8 +112,18 @@ describe('fetchRelationDdl', () => {
 });
 
 describe('copyToClipboard', () => {
+  // Form-split R6: the native fallback leg rides the PlatformServices port —
+  // the tests bind the port with the invoke mock behind it, which keeps the
+  // old wire assertions (command name + payload) intact.
+
   beforeEach(() => {
     vi.clearAllMocks();
+    clearPlatformServices();
+  });
+
+  afterEach(() => {
+    clearPlatformServices();
+    delete (navigator as { clipboard?: unknown }).clipboard;
   });
 
   it('returns false for empty text', async () => {
@@ -131,7 +143,7 @@ describe('copyToClipboard', () => {
     expect(writeTextMock).toHaveBeenCalledWith('test ddl');
   });
 
-  it('invokes Tauri write_clipboard command when navigator.clipboard fails', async () => {
+  it('reaches the host clipboard command when navigator.clipboard fails', async () => {
     const writeTextMock = vi.fn().mockRejectedValue(new Error('Permission denied'));
     Object.assign(navigator, {
       clipboard: {
@@ -139,16 +151,17 @@ describe('copyToClipboard', () => {
       },
     });
 
-    const { invoke } = await import('@tauri-apps/api/core');
     vi.mocked(invoke).mockResolvedValueOnce(undefined);
+    setPlatformServices({
+      writeClipboard: (text: string) => invoke('write_clipboard', { text }),
+    } as never);
 
     const ok = await copyToClipboard('tauri ddl');
     expect(ok).toBe(true);
     expect(invoke).toHaveBeenCalledWith('write_clipboard', { text: 'tauri ddl' });
   });
 
-  it('falls back to execCommand if navigator.clipboard and Tauri invoke throw', async () => {
-    const { invoke } = await import('@tauri-apps/api/core');
+  it('falls back to execCommand if navigator.clipboard and the host command throw', async () => {
     vi.mocked(invoke).mockRejectedValueOnce(new Error('Tauri not running'));
 
     const writeTextMock = vi.fn().mockRejectedValue(new Error('Permission denied'));
@@ -159,6 +172,10 @@ describe('copyToClipboard', () => {
     });
     const execCommandMock = vi.fn().mockReturnValue(true);
     document.execCommand = execCommandMock;
+
+    setPlatformServices({
+      writeClipboard: (text: string) => invoke('write_clipboard', { text }),
+    } as never);
 
     const ok = await copyToClipboard('fallback ddl');
     expect(ok).toBe(true);

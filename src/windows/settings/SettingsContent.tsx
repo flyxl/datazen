@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
-import { getVersion } from '@tauri-apps/api/app';
-import { getPlatformOrNull } from '../../platform/contracts';
+import { getPlatformOrNull, requireHostSettings } from '../../platform/contracts';
 import { ThemedIcon } from '../../components/ThemedIcon';
 import { Button } from '../../components/ui/Button';
 import { PathInput } from '@datazen/ui';
@@ -107,7 +106,11 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
     // `capabilities.versionSource`); pre-table callers fall back to the
     // desktop-shaped behavior, same as the section set above.
     if (capabilities?.versionSource === 'build-constant') return;
-    getVersion()
+    // Form-split R6: the read rides the HostSettingsPort — the desktop zone
+    // owns `@tauri-apps/api/app`; forms without a host app reject and the
+    // About line simply stays hidden, exactly as the old `.catch` did.
+    requireHostSettings()
+      .getAppVersion()
       .then(setAppVersion)
       .catch(() => {});
   }, [capabilities?.versionSource]);

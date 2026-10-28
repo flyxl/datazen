@@ -7,6 +7,7 @@ import {
   WIZARD_CHROME_TEXT_CLASS,
   WIZARD_FOOTER_HEIGHT_CLASS,
 } from './onboardingLayout';
+import { getPlatformOrNull } from '../../platform/contracts';
 
 /**
  * Brand sidebar (left 352px) — matches the design prototype.
@@ -20,8 +21,13 @@ export function BrandSidebar() {
   const [version, setVersion] = useState('…');
 
   useEffect(() => {
-    import('@tauri-apps/api/app')
-      .then((m) => m.getVersion())
+    // Form-split R6: the version read rides the HostSettingsPort — the
+    // desktop zone owns `@tauri-apps/api/app`. Forms without a host app
+    // (or a `build-constant` versionSource) leave the em-dash placeholder,
+    // exactly as the old `.catch` did.
+    if (getPlatformOrNull()?.capabilities?.versionSource === 'build-constant') return;
+    getPlatformOrNull()
+      ?.hostSettings?.getAppVersion()
       .then(setVersion)
       .catch(() => {});
   }, []);

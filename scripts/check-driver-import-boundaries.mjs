@@ -151,50 +151,15 @@ export const R2_FILE_CARVEOUTS = new Set([
 ]);
 
 /**
- * R6 transition ledger (form-split F2): production `src/` files that still
- * import `@tauri-apps/*` **outside** the desktop zones. Every entry is a
- * data-plane invoke wrapper or a chrome touchpoint on the F4 facade-migration
- * list (plan §4.3 "~23 只碰 invoke" + §4.2 stragglers). Findings in these
- * files are downgraded to advisory so the gate goes live WITHOUT handing the
- * team a permanently red CI — the same governance pattern as R3's
- * DocumentConnectionView ledger. Entries are removed as F4 migrates each
- * file onto the backend-client facade; the set itself is deleted when the
- * last entry goes (F6's `packages/frontend` must be host-runtime-free).
+ * R6 transition ledger (form-split F2 → burned by the R6 ledger-burn series).
+ * Every production `src/` file now rides a port, the domain-client facade or
+ * the legacy invoke rail — the last ledger entries went with the form-split
+ * R6 core-invoke burn, so the set is EMPTY and the rule is fully blocking:
+ * any NEW `@tauri-apps/*` import outside the desktop zones fails the gate.
+ * (F6's `packages/frontend` must stay host-runtime-free; this is that
+ * guarantee's tripwire.)
  */
-export const R6_LEGACY_TAURI_FILES = new Set([
-  'src/commands/ai.ts',
-  'src/commands/artifact.ts',
-  'src/commands/backup.ts',
-  'src/commands/connection.ts',
-  'src/commands/context.ts',
-  'src/commands/dashboard.ts',
-  'src/commands/database.ts',
-  'src/commands/file.ts',
-  'src/commands/history.ts',
-  'src/commands/query.ts',
-  'src/commands/sample.ts',
-  'src/commands/schemaDiff.ts',
-  'src/commands/sync.ts',
-  'src/commands/transfer.ts',
-  'src/commands/transferJobs.ts',
-  'src/commands/tunnel.ts',
-  'src/commands/wapps.ts',
-  'src/components/MenuBar.tsx',
-  'src/lib/fetchRelationDdl.ts',
-  'src/lib/sqlFileExecution.ts',
-  'src/lib/surfaceBgCache.ts',
-  'src/lib/wappBridge.ts',
-  'src/windows/backup/BackupWindow.tsx',
-  'src/windows/connection/QueryPanel.tsx',
-  'src/windows/data-sync/useDataSyncEndpoints.ts',
-  'src/windows/data-sync/useDataSyncProfiles.ts',
-  'src/windows/data-transfer/DataTransferWindow.tsx',
-  'src/windows/onboarding/BrandSidebar.tsx',
-  'src/windows/onboarding/OnboardingWindow.tsx',
-  'src/windows/schema-diff/useSchemaDiffEndpoints.ts',
-  'src/windows/settings/SettingsContent.tsx',
-  'src/windows/workspace/WorkspaceView.tsx',
-]);
+export const R6_LEGACY_TAURI_FILES = new Set([]);
 
 /**
  * R7 sanctioned bridges (form-split F2): the assembly root plus the six thin
@@ -304,7 +269,8 @@ export const ALLOWLIST = [
     specifier: '../../packages/drivers/redis/locales',
     reason:
       'test mirrors the runtime registration path: imports the driver locale entry the way generated.ts loads driver UI meta, to assert the shared registry sees driver packs',
-    milestone: 'Wave 4 import-guard (coordinator ruling); remove when the registry contract can be asserted without the driver entry import',
+    milestone:
+      'Wave 4 import-guard (coordinator ruling); remove when the registry contract can be asserted without the driver entry import',
   },
   {
     rule: 'R3',
@@ -320,7 +286,8 @@ export const ALLOWLIST = [
     specifier: '../../packages/drivers/redis/ui/shared/meta',
     reason:
       'vitest.drivers.config.ts setupFile (line 24); driver UI suites need the driver entry registered to render with real strings',
-    milestone: 'Wave 4 import-guard (coordinator ruling); remove only if the drivers vitest config can register driver entries without host-side imports',
+    milestone:
+      'Wave 4 import-guard (coordinator ruling); remove only if the drivers vitest config can register driver entries without host-side imports',
   },
   {
     rule: 'R3',
@@ -768,9 +735,7 @@ export function checkDriverImportBoundaries(opts = {}) {
   for (const ledgerFile of R6_LEGACY_TAURI_FILES) {
     if (ledgeredSeen.has(ledgerFile)) continue;
     if (!adapter.has(ledgerFile)) continue; // deleted file: cleanup hint below
-    log(
-      `${tag} R6 (ledger) ${ledgerFile}: no @tauri-apps findings left — remove the entry`,
-    );
+    log(`${tag} R6 (ledger) ${ledgerFile}: no @tauri-apps findings left — remove the entry`);
   }
   for (const { entry, fileMissing } of expired) {
     const why = fileMissing

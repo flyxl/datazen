@@ -95,8 +95,11 @@ describe('PlatformServices port (backend-client §7.4)', () => {
       openTextWithDialog: async () => null,
       openDirectoryWithDialog: async () => null,
       writeClipboard,
+      writeClipboardHtml: async () => undefined,
       readClipboard: async () => 'copied',
       openExternal: async () => undefined,
+      toggleFullscreen: async () => undefined,
+      showNotification: async () => undefined,
     });
     await expect(requirePlatformServices().readClipboard()).resolves.toBe('copied');
   });

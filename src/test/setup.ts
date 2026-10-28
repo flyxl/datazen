@@ -56,8 +56,11 @@ const testPlatform: PlatformBindings = {
     openTextWithDialog: async () => null,
     openDirectoryWithDialog: async () => null,
     writeClipboard: async () => undefined,
+    writeClipboardHtml: async () => undefined,
     readClipboard: async () => '',
     openExternal: async () => undefined,
+    toggleFullscreen: async () => undefined,
+    showNotification: async () => undefined,
   },
   windows: {
     openSingletonWindow: () => undefined,

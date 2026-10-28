@@ -35,6 +35,8 @@ export type {
   PlatformServices,
   SaveBinaryInput,
   SaveTextInput,
+  ShowNotificationInput,
+  WriteClipboardHtmlInput,
 } from './transport';
 export {
   clearPlatformServices,

@@ -59,6 +59,23 @@ export function createWebPlatformServices() {
     async writeClipboard(text: string) {
       await navigator.clipboard.writeText(text);
     },
+    async writeClipboardHtml(input: { html: string; altText: string }) {
+      // The documented web degradation: `ClipboardItem` when the browser
+      // offers it, plain text otherwise — never a silent no-op.
+      type ClipboardItemCtor = new (item: Record<string, string>) => ClipboardItem;
+      const ctor = (globalThis as { ClipboardItem?: ClipboardItemCtor }).ClipboardItem;
+      if (ctor && typeof ClipboardItem !== 'undefined') {
+        try {
+          await navigator.clipboard.write([
+            new ctor({ 'text/html': input.html, 'text/plain': input.altText }),
+          ]);
+          return;
+        } catch {
+          // NotAllowedError without a user gesture — fall through to plain text.
+        }
+      }
+      await navigator.clipboard.writeText(input.altText);
+    },
     async readClipboard() {
       return navigator.clipboard.readText();
     },
@@ -66,6 +83,30 @@ export function createWebPlatformServices() {
       if (input.url) window.open(input.url, '_blank', 'noopener');
       // A local path has no browser semantics; the §7.1 contract makes this
       // the desktop-only half.
+    },
+    async toggleFullscreen() {
+      // The document fullscreen API on the root element — the port's
+      // documented web semantics (the desktop form toggles the OS window).
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await document.documentElement.requestFullscreen();
+      }
+    },
+    async showNotification(input: { title: string; body?: string }) {
+      // The Notification API is the browser-native degradation of the
+      // desktop notification plugin. Permission denials reject — callers
+      // already treat notification failure as best-effort.
+      if (typeof Notification === 'undefined') {
+        throw new Error('showNotification: the Notification API is unavailable in this browser.');
+      }
+      if (Notification.permission === 'default') {
+        await Notification.requestPermission();
+      }
+      if (Notification.permission !== 'granted') {
+        throw new Error('showNotification: notification permission was not granted.');
+      }
+      new Notification(input.title, { body: input.body });
     },
   };
 }

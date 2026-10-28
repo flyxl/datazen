@@ -13,7 +13,7 @@
  * - Per-iframe concurrency cap (E_RATE_LIMIT) and 30s timeout (E_TIMEOUT)
  *   around the host-internal promise.
  */
-import { invoke } from '@tauri-apps/api/core';
+import { legacyInvoke as invoke, requirePlatformServices } from '@datazen/backend-client';
 import type { WappPermission } from '../types/wapp';
 import { WAPP_API_VERSION } from '../types/wapp';
 import { wappCommands } from '../commands/wapps';
@@ -296,12 +296,14 @@ async function handleStorage(wappId: string, type: string, payload: unknown) {
 }
 
 /**
- * System notification through the already-registered Tauri notification
- * plugin (`notification:default` capability). Rate limited per iframe to one
- * shot per {@link NOTIFY_MIN_INTERVAL_MS}.
+ * System notification through the platform port (desktop: the registered
+ * Tauri notification plugin, `notification:default` capability; web: the
+ * Notification API). Rate limited per iframe to one shot per
+ * {@link NOTIFY_MIN_INTERVAL_MS}. Form-split R6: the plugin invoke moved
+ * into the desktop zone behind `PlatformServices.showNotification`.
  */
 function showNotification(title: string, body?: string): Promise<void> {
-  return invoke<void>('plugin:notification|notify', { options: { title, body } });
+  return requirePlatformServices().showNotification({ title, body });
 }
 
 export interface AttachBridgeOptions {

@@ -14,6 +14,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import { getVersion } from '@tauri-apps/api/app';
 import type { AppSettings } from '../../types';
 import type { DesktopHostServices } from '../contracts';
 import { maybeCheckOnStartup } from './updater';
@@ -49,6 +50,20 @@ export function createDesktopHostServices(): DesktopHostServices {
     },
     checkUpdatesOnStartup(enabled: boolean): void {
       void maybeCheckOnStartup(enabled);
+    },
+    async getAppVersion(): Promise<string> {
+      // Zone-local import surface: the version read belongs to the host app
+      // bundle, and `@tauri-apps/api/app` may only be imported inside the
+      // desktop zone (ruling #5).
+      return getVersion();
+    },
+    persistSurfaceBackground(hex: string, dark: boolean): void {
+      // Best-effort host-file persistence for the next window's init-script
+      // bake — fire and forget, failures only lose the paint continuity.
+      void invoke('set_surface_background', { hex, dark }).catch(() => {
+        // Cache write is best-effort; next window still has in-memory Rust
+        // state if the IPC reached `set`.
+      });
     },
   };
 }

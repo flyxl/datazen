@@ -8,6 +8,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import type {
   OpenDirectoryInput,
   OpenExternalInput,
@@ -17,6 +18,8 @@ import type {
   PlatformServices,
   SaveBinaryInput,
   SaveTextInput,
+  ShowNotificationInput,
+  WriteClipboardHtmlInput,
 } from '@datazen/backend-client';
 
 export function createDesktopPlatformServices(): PlatformServices {
@@ -64,6 +67,13 @@ export function createDesktopPlatformServices(): PlatformServices {
       await invoke<void>('write_clipboard', { text });
     },
 
+    async writeClipboardHtml(input: WriteClipboardHtmlInput): Promise<void> {
+      await invoke<void>('write_clipboard_html', {
+        html: input.html,
+        altText: input.altText,
+      });
+    },
+
     readClipboard(): Promise<string> {
       return invoke<string>('read_clipboard');
     },
@@ -75,6 +85,24 @@ export function createDesktopPlatformServices(): PlatformServices {
       const target = input.url ?? input.path;
       if (!target) return;
       await invoke<void>('open_path', { path: target });
+    },
+
+    async toggleFullscreen(): Promise<void> {
+      // The zone-local window handle: fullscreen is a window-control
+      // capability, and the desktop zone is where `@tauri-apps/api/window`
+      // may be imported (ruling #5 — compile-time form determination).
+      const win = getCurrentWindow();
+      const isFullscreen = await win.isFullscreen();
+      await win.setFullscreen(!isFullscreen);
+    },
+
+    async showNotification(input: ShowNotificationInput): Promise<void> {
+      // The notification plugin command surface — the bridge used to invoke
+      // `plugin:notification|notify` directly; the port keeps that wire shape
+      // while moving the import boundary into the zone.
+      await invoke<void>('plugin:notification|notify', {
+        options: { title: input.title, body: input.body },
+      });
     },
   };
 }

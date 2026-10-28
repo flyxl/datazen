@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mockInvoke = vi.fn().mockResolvedValue(undefined);
+// Form-split R6: persistence rides the HostSettingsPort — the runtime
+// `__TAURI_INTERNALS__` probe is gone, so the test drives the port binding
+// directly instead of faking a Tauri window.
+const platformRef = vi.hoisted(() => ({ current: null as unknown }));
 
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: (...args: unknown[]) => mockInvoke(...args),
+vi.mock('../../platform/contracts', () => ({
+  getPlatformOrNull: () => platformRef.current,
 }));
 
 import {
@@ -30,28 +33,35 @@ describe('cssColorToHex', () => {
 });
 
 describe('persistSurfaceBackground', () => {
+  const persistMock = vi.fn();
+
   beforeEach(() => {
-    mockInvoke.mockClear();
-    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    persistMock.mockClear();
+    platformRef.current = null;
   });
 
   afterEach(() => {
-    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    platformRef.current = null;
   });
 
-  it('no-ops without Tauri', () => {
+  it('no-ops when the platform is not configured (pre-assembly, bare test)', () => {
     persistSurfaceBackground(true, DEFAULT_SURFACE_DARK);
-    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(persistMock).not.toHaveBeenCalled();
   });
 
-  it('sends sanitized hex to Rust when Tauri is present', () => {
-    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+  it('routes the sanitized hex through the HostSettingsPort when bound', () => {
+    platformRef.current = {
+      hostSettings: { persistSurfaceBackground: persistMock },
+    };
     persistSurfaceBackground(true, 'rgb(26, 10, 46)');
-    expect(mockInvoke).toHaveBeenCalledWith('set_surface_background', {
-      hex: '#1a0a2e',
-      dark: true,
-    });
+    expect(persistMock).toHaveBeenCalledWith('#1a0a2e', true);
     persistSurfaceBackground(false, 'not-a-color');
-    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(persistMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('no-ops when the binding carries no host settings (web stub shape)', () => {
+    platformRef.current = {};
+    persistSurfaceBackground(true, DEFAULT_SURFACE_DARK);
+    expect(persistMock).not.toHaveBeenCalled();
   });
 });

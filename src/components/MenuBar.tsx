@@ -154,11 +154,12 @@ async function handleMenuAction(id: string) {
 
   switch (id) {
     case 'fullscreen': {
+      // Form-split R6: fullscreen is a window-control capability — the
+      // PlatformServices port toggles it (desktop: the OS window; other
+      // forms: the document fullscreen API). The bare try/catch survives.
       try {
-        const { getCurrentWindow } = await import('@tauri-apps/api/window');
-        const win = getCurrentWindow();
-        const isFs = await win.isFullscreen();
-        await win.setFullscreen(!isFs);
+        const { requirePlatformServices } = await import('@datazen/backend-client');
+        await requirePlatformServices().toggleFullscreen();
       } catch {
         // ignore
       }

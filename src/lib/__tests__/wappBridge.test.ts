@@ -50,6 +50,34 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => notificationInvokeMock(...args),
 }));
 
+import {
+  setBackendClient,
+  setPlatformServices,
+  clearPlatformServices,
+} from '@datazen/backend-client';
+
+// Form-split R6: the bridge's session/storage invokes ride the legacy rail
+// (bound backend transport) and the notification rides the platform port —
+// both are wired onto the same invoke mocks the assertions read.
+setBackendClient('test', {
+  transport: {
+    call: (c: string, p?: unknown) =>
+      p === undefined ? notificationInvokeMock(c) : notificationInvokeMock(c, p),
+  },
+} as never);
+// The binding is refreshed per test: `clearPlatformServices` in the global
+// afterEach wipes it, so a module-level one-shot would leave every test
+// after the first running against an unbound port.
+beforeEach(() => {
+  setPlatformServices({
+    showNotification: (input: { title: string; body?: string }) =>
+      notificationInvokeMock('plugin:notification|notify', {
+        options: { title: input.title, body: input.body },
+      }),
+  } as never);
+});
+afterEach(() => clearPlatformServices());
+
 vi.mock('../../commands/wapps', () => ({
   wappCommands: {
     wappStorageGet: (...args: unknown[]) => storageGetMock(...args),

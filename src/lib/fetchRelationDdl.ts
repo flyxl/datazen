@@ -80,10 +80,12 @@ export async function copyToClipboard(text: string): Promise<boolean> {
     // If Clipboard API throws (e.g. NotAllowedError in WebKit when async), fall through
   }
 
-  // 2. Try Tauri native backend IPC (bypasses browser user-gesture restrictions completely)
+  // 2. Try the host clipboard capability (bypasses browser user-gesture restrictions completely).
+  // Form-split R6: the PlatformServices port replaces the direct IPC — the
+  // desktop binding IS the host command; other forms retry the async API.
   try {
-    const { invoke } = await import('@tauri-apps/api/core');
-    await invoke('write_clipboard', { text });
+    const { requirePlatformServices } = await import('@datazen/backend-client');
+    await requirePlatformServices().writeClipboard(text);
     return true;
   } catch {
     // Fall back to DOM execCommand
@@ -145,10 +147,10 @@ export async function copyRichTextToClipboard(html: string, text: string): Promi
     // NotAllowedError (no user gesture) or unsupported flavors — fall through
   }
 
-  // 2. Tauri native backend IPC
+  // 2. The host clipboard capability (rich-text half)
   try {
-    const { invoke } = await import('@tauri-apps/api/core');
-    await invoke('write_clipboard_html', { html, altText: text });
+    const { requirePlatformServices } = await import('@datazen/backend-client');
+    await requirePlatformServices().writeClipboardHtml({ html, altText: text });
     return true;
   } catch {
     // Fall back to plain text

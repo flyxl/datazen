@@ -1,6 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
+
+import { setBackendClient } from '@datazen/backend-client';
+// Form-split R6: wapp_session rides the legacy invoke rail — bind the mock
+// transport so the wire assertions keep reading the same invokeMock.
+setBackendClient('test', {
+  transport: {
+    call: (c: string, p?: unknown) => (p === undefined ? invokeMock(c) : invokeMock(c, p)),
+  },
+} as never);
 vi.mock('../../commands/wapps', () => ({ wappCommands: {} }));
 vi.mock('../../commands/connection', () => ({ connectionCommands: {} }));
 vi.mock('../../stores/connectionStore', () => ({ useConnectionStore: {} }));

@@ -99,6 +99,18 @@ export interface DesktopHostServices {
   openWorkflowsDir(): Promise<void>;
   openContextDir(): Promise<void>;
   checkUpdatesOnStartup(enabled: boolean): void;
+  /**
+   * The host app's own version string (the desktop app bundle's). Added by
+   * the form-split R6 ledger burn — the About surfaces and the onboarding
+   * brand panel used to import `@tauri-apps/api/app` directly.
+   */
+  getAppVersion(): Promise<string>;
+  /**
+   * Persist the resolved surface background for the next window's init-script
+   * bake (host file, desktop-only paint continuity concern). Best-effort fire
+   * and forget. Added by the form-split R6 ledger burn (surfaceBgCache).
+   */
+  persistSurfaceBackground(hex: string, dark: boolean): void;
 }
 
 // ── Port 5: host settings (form-split F4) ────────────────────────────────────
@@ -140,6 +152,17 @@ export interface HostSettingsPort {
   openContextDir(): Promise<void>;
   /** Kick the updater's startup check when the user enables it. Web: no-op. */
   checkUpdatesOnStartup(enabled: boolean): void;
+  /**
+   * The host app's version string. Rejects on forms without a host app —
+   * callers gate on `capabilities.versionSource === 'build-constant'` and
+   * keep their own fallback. Added by the form-split R6 ledger burn.
+   */
+  getAppVersion(): Promise<string>;
+  /**
+   * Persist the surface background for the next window's first-paint bake.
+   * Inert on forms without a host store. Added by the R6 ledger burn.
+   */
+  persistSurfaceBackground(hex: string, dark: boolean): void;
 }
 
 /** The inert, web-shaped binding: extras are empty and every write is a no-op. */
@@ -174,6 +197,14 @@ export function inertHostSettingsPort(): HostSettingsPort {
     },
     checkUpdatesOnStartup() {
       // No updater outside the desktop host.
+    },
+    async getAppVersion() {
+      // A form without a host app has no bundle version; callers gate on
+      // `capabilities.versionSource` and keep their own fallback.
+      throw new Error('getAppVersion: no host app on this form factor.');
+    },
+    persistSurfaceBackground() {
+      // No host file to bake into the next window's first paint.
     },
   };
 }

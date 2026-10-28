@@ -135,5 +135,7 @@ export function createDesktopSettingsClient(host: DesktopHostServices): HostSett
     openWorkflowsDir: () => host.openWorkflowsDir(),
     openContextDir: () => host.openContextDir(),
     checkUpdatesOnStartup: (enabled) => host.checkUpdatesOnStartup(enabled),
+    getAppVersion: () => host.getAppVersion(),
+    persistSurfaceBackground: (hex, dark) => host.persistSurfaceBackground(hex, dark),
   };
 }

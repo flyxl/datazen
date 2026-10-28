@@ -140,6 +140,8 @@ describe('createDesktopSettingsClient — the HostSettingsPort adapter', () => {
       openWorkflowsDir: vi.fn().mockResolvedValue(undefined),
       openContextDir: vi.fn().mockResolvedValue(undefined),
       checkUpdatesOnStartup: vi.fn(),
+      getAppVersion: vi.fn().mockResolvedValue('0.2.3-test'),
+      persistSurfaceBackground: vi.fn(),
     };
   }
 
