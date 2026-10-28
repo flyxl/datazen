@@ -82,6 +82,7 @@ DataZen 文档只保留三类长期有效内容：**功能使用**（`features/`
 - [连接管理详细设计](architecture/platform/connection-management.md)：数据契约、状态机、算法、验收标准与 74 个测试用例，是接口契约、错误码与验收的唯一权威。
 - [分阶段开发计划](development/platform-development-plan.md)：连接重构、多应用形态、团队服务和多 worker 的依赖与交付门槛，是阶段→补充契约归属的唯一权威。
 - [DDD 模块化重构：目标架构与实施指南](development/ddd-refactor-plan.md)：2026-10-24 已确认的目标——单一 modules crate 按功能内分 application/domain，Repository 由领域定义、宿主实现，执行机制归 execution/runtime，Desktop/Web 按需装配；含旧包退役、D0–D8 迁移、测试与发布门槛。2026-10-26 起拆分为总纲 + `development/ddd-refactor/` 细节文件（保留原 § 编号）。目标尚未完成实现。
+- [前端形态拆分：目标架构与实施计划](development/frontend-form-split-plan.md)：2026-10-28 已确认的目标——`packages/frontend`（共享 lib，真实 pnpm workspace 协议消费）+ `apps/desktop`（唯一 `@tauri-apps` 领地）的拓扑，与后端 modules ↔ src-tauri 镜像；平台能力经三个窄端口（PlatformServices 扩展 / WindowRouter / EventChannel）bootstrap 注入，宿主叠加（DesktopHostServices）不进共享槽位类型；含 F1–F6 分阶段实施（先清场后分家）、eslint 与 import-boundary 闸门（R4 扩展 + R5）、实测基线与 IPC 命令轨迹（272 → ~215）。目标尚未完成实现。
 
 **目标代码组织以这版 DDD 指南为准**：它替代旧文中独立 application、集中 platform-api、独立 runtime/kernel 作为长期布局的安排，Web 后端目标目录统一为 `web/`。下面各文的既有协议、安全、资源与恢复契约继续有效；已实现位置仍以代码为准，不能把新目录写成已经存在。
 
