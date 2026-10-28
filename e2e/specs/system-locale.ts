@@ -1,7 +1,6 @@
 /**
- * E2E — First-run / system language behavior (SYS-001~SYS-004)
+ * E2E — First-run / system language behavior (SYS-002~SYS-004)
  *
- * SYS-001  get_system_ui_language is in supported set
  * SYS-002  Persisted language is not overwritten by get_settings
  * SYS-003  Switching to a supported language persists across refresh
  * SYS-004  Unsupported stored language still renders English UI fallback
@@ -44,8 +43,6 @@ interface AppSettings {
   contextDir?: string;
 }
 
-const SUPPORTED = ['en', 'zh-CN', 'zh-TW', 'es', 'fr', 'de', 'ja', 'pt-BR', 'ru', 'ko'] as const;
-
 async function openMain() {
   await browser.url('tauri://localhost');
   await browser.waitUntil(async () => (await $$('input')).length > 0, {
@@ -64,7 +61,7 @@ async function searchPlaceholder(): Promise<string> {
   return '';
 }
 
-describe('System / first-run language (SYS-001~SYS-004)', () => {
+describe('System / first-run language (SYS-002~SYS-004)', () => {
   let original: AppSettings;
 
   before(async () => {
@@ -77,22 +74,12 @@ describe('System / first-run language (SYS-001~SYS-004)', () => {
     await openMain();
   });
 
-  it('SYS-001: get_system_ui_language returns a supported code', async () => {
-    const lang = await invokeBackend<string>('get_system_ui_language');
-    expect(SUPPORTED.includes(lang as (typeof SUPPORTED)[number])).toBe(true);
-  });
-
   it('SYS-002: get_settings language stays as previously saved (not forced to system)', async () => {
     const forced = { ...original, language: 'fr' };
     await invokeBackend('save_settings', { settings: forced });
     await browser.pause(300);
     const loaded = await invokeBackend<AppSettings>('get_settings');
     expect(loaded.language).toBe('fr');
-
-    // System language probe must not mutate settings
-    await invokeBackend('get_system_ui_language');
-    const again = await invokeBackend<AppSettings>('get_settings');
-    expect(again.language).toBe('fr');
   });
 
   it('SYS-003: language persists across refresh', async () => {

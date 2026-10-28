@@ -2,76 +2,8 @@ use super::error::{CmdExt, CommandError};
 use super::AppState;
 use crate::services::{embedded_schema_of, metadata_schema, QueryExecutor};
 use datazen_driver_api::schema_objects::PrivilegeGrant;
-use datazen_driver_api::TableSchema;
 use std::time::Instant;
 use tauri::State;
-
-pub(crate) async fn get_er_data_impl(
-    state: &AppState,
-    db_session_id: String,
-    database: String,
-    schema: Option<String>,
-) -> Result<Vec<TableSchema>, CommandError> {
-    let start = Instant::now();
-    tracing::info!(%db_session_id, %database, schema = ?schema, "get_er_data");
-    let resolved =
-        super::driver_command::resolve_command_driver(state, Some(&db_session_id), None).await?;
-    let driver = &resolved.driver;
-    let handle = &resolved.handle;
-
-    // No session pin and no `USE`: every read below carries its own explicit
-    // target, and each table's own schema (from `TableInfo`) is authoritative
-    // over the caller's filter — a filter selects *which* tables to draw, it
-    // does not relocate the ones that came back.
-    let tables = driver
-        .get_tables(&handle, &database, schema.as_deref())
-        .await
-        .cmd_err("get_er_data")?;
-
-    let mut schemas = Vec::with_capacity(tables.len());
-    for table in &tables {
-        let table_schema = metadata_schema(
-            driver.as_ref(),
-            schema.as_deref(),
-            table.schema.as_deref(),
-            None,
-        );
-        let catalog = datazen_driver_api::LegacyCatalogReader::new(driver.as_ref());
-        match state
-            .schema_cache
-            .get_table_schema(
-                &db_session_id,
-                &database,
-                table_schema.as_deref(),
-                &table.name,
-                &catalog,
-                &handle,
-            )
-            .await
-        {
-            Ok(schema) => schemas.push(schema),
-            Err(e) => {
-                tracing::warn!(table = %table.name, error = %e, "get_er_data: skipping table");
-            }
-        }
-    }
-
-    if !tables.is_empty() && schemas.is_empty() {
-        return Err(CommandError::Internal(format!(
-            "get_er_data: failed to read column metadata for all {} tables in {}",
-            tables.len(),
-            database
-        )));
-    }
-
-    tracing::info!(
-        %db_session_id, %database,
-        tables = schemas.len(),
-        ms = start.elapsed().as_millis() as u64,
-        "get_er_data OK"
-    );
-    Ok(schemas)
-}
 
 fn parse_grants_from_command(data: &serde_json::Value) -> Vec<PrivilegeGrant> {
     data.get("grants")
@@ -187,16 +119,6 @@ pub async fn estimate_table_rows(
     schema: Option<String>,
 ) -> Result<Option<i64>, CommandError> {
     estimate_table_rows_impl(&state, db_session_id, table, database, schema).await
-}
-
-#[tauri::command]
-pub async fn get_er_data(
-    state: State<'_, AppState>,
-    db_session_id: String,
-    database: String,
-    schema: Option<String>,
-) -> Result<Vec<TableSchema>, CommandError> {
-    get_er_data_impl(&state, db_session_id, database, schema).await
 }
 
 #[cfg(test)]
