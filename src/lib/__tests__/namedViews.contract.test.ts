@@ -89,10 +89,7 @@ const VIEW: NamedView = {
 describe('§2 · the named-view codes reach the front end through the real chain', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    const client = createBackendClient(
-      DESKTOP_BACKEND_ID,
-      createDesktopBackendTransport(),
-    );
+    const client = createBackendClient(DESKTOP_BACKEND_ID, createDesktopBackendTransport());
     setBackendClient(DESKTOP_BACKEND_ID, client);
     selectBackend(DESKTOP_BACKEND_ID);
   });
@@ -108,47 +105,46 @@ describe('§2 · the named-view codes reach the front end through the real chain
       code: 'grid.view.invalid',
       text: 'grid.view.invalid: the view name must not be empty',
     },
-  ])('$code survives invoke → transport → backend-client → databaseCommands', async ({
-    code,
-    text,
-  }) => {
-    // The host rejects with a **plain string** — that is what
-    // `CommandError::Serialize` produces.
-    mockInvoke.mockRejectedValue(text);
+  ])(
+    '$code survives invoke → transport → backend-client → databaseCommands',
+    async ({ code, text }) => {
+      // The host rejects with a **plain string** — that is what
+      // `CommandError::Serialize` produces.
+      mockInvoke.mockRejectedValue(text);
 
-    let caught: unknown = null;
-    try {
-      await databaseCommands.saveNamedView(VIEW);
-    } catch (error) {
-      caught = error;
-    }
+      let caught: unknown = null;
+      try {
+        await databaseCommands.saveNamedView(VIEW);
+      } catch (error) {
+        caught = error;
+      }
 
-    // The rejection is an `ApiError`, as it always was.
-    expect(caught).toBeInstanceOf(ApiError);
-    const apiError = caught as ApiError;
-    expect(apiError.code).toBe('ServiceUnavailable');
+      // The rejection is an `ApiError`, as it always was.
+      expect(caught).toBeInstanceOf(ApiError);
+      const apiError = caught as ApiError;
+      expect(apiError.code).toBe('ServiceUnavailable');
 
-    // **The host's own text is in the cause chain**, verbatim.
-    const cause = (apiError as { cause?: unknown }).cause;
-    expect(cause).toBeInstanceOf(Error);
-    expect((cause as Error).message).toBe(text);
+      // **The host's own text is in the cause chain**, verbatim.
+      const cause = (apiError as { cause?: unknown }).cause;
+      expect(cause).toBeInstanceOf(Error);
+      expect((cause as Error).message).toBe(text);
 
-    // And it is the text the front end classifies.
-    expect(hostErrorMessage(caught)).toBe(text);
-    expect(classifyGridError(hostErrorMessage(caught))).toBe(code);
+      // And it is the text the front end classifies.
+      expect(hostErrorMessage(caught)).toBe(text);
+      expect(classifyGridError(hostErrorMessage(caught))).toBe(code);
 
-    // The wrapper's own message would classify to "unknown" — the prefix
-    // "<method> failed: " moves the code away from the anchor. This is why
-    // the cause chain has to be walked, and why the front end must not read
-    // `error.message` directly.
-    expect(classifyGridError(apiError.message)).toBe('unknown');
-    expect(apiError.message).toContain(text);
-    expect(apiError.message).toContain('failed:');
-  });
+      // The wrapper's own message would classify to "unknown" — the prefix
+      // "<method> failed: " moves the code away from the anchor. This is why
+      // the cause chain has to be walked, and why the front end must not read
+      // `error.message` directly.
+      expect(classifyGridError(apiError.message)).toBe('unknown');
+      expect(apiError.message).toContain(text);
+      expect(apiError.message).toContain('failed:');
+    },
+  );
 
   it('classifies a failed list and a failed delete the same way', async () => {
-    const text =
-      'grid.view.nameExists: a saved view with this name already exists for this table';
+    const text = 'grid.view.nameExists: a saved view with this name already exists for this table';
     mockInvoke.mockRejectedValue(text);
 
     let caught: unknown = null;
@@ -213,9 +209,7 @@ describe('§2 · the named-view codes reach the front end through the real chain
         if (entry.isDirectory()) return walk(full);
         return entry.name.endsWith('.rs') ? [full] : [];
       });
-    const files = [...roots].flatMap((root) =>
-      statSync(root).isDirectory() ? walk(root) : [],
-    );
+    const files = [...roots].flatMap((root) => (statSync(root).isDirectory() ? walk(root) : []));
     expect(files.length).toBeGreaterThanOrEqual(1423);
   });
 });
@@ -241,7 +235,18 @@ describe('§5 · the named-view DTO exists exactly once', () => {
       readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
         const full = join(directory, entry.name);
         if (entry.isDirectory()) {
-          if (entry.name === 'node_modules' || entry.name === 'dist') return [];
+          // `.worktrees/` 是仓库自己的并行开发目录（AGENTS.md 要求用它），里面是
+          // 另一条轨道的完整检出：不跳过就会把「同一份类型声明」数成两份，让这条
+          // 契约测试在有条轨道在跑时变红。`.git` / `target` 同理不该走进来。
+          if (
+            entry.name === 'node_modules' ||
+            entry.name === 'dist' ||
+            entry.name === 'target' ||
+            entry.name === '.worktrees' ||
+            entry.name === '.git'
+          ) {
+            return [];
+          }
           return walk(full);
         }
         return /\.tsx?$/.test(entry.name) ? [full] : [];
@@ -296,9 +301,7 @@ describe('§6 · an absent connector stays absent', () => {
     // The user set a per-condition connector and then cleared it again. The
     // draft object carries the key with an undefined value (the shape the
     // editor produces); the applied one does not carry it at all.
-    const draft = [
-      { column: 'id', operator: 'eq' as const, value: 1, connector: undefined },
-    ];
+    const draft = [{ column: 'id', operator: 'eq' as const, value: 1, connector: undefined }];
     expect(filterDraftEqualsApplied(draft, 'and', applied, 'and')).toBe(true);
   });
 
@@ -311,10 +314,7 @@ describe('§6 · an absent connector stays absent', () => {
   it('writes the Rust side with the field skipped, not with null', () => {
     // The shared crate's own spelling — asserted here so a change to the
     // serde attribute is caught from the front end's side too.
-    const filters = readFileSync(
-      join(REPO_ROOT, 'packages/driver-api/src/filters.rs'),
-      'utf-8',
-    );
+    const filters = readFileSync(join(REPO_ROOT, 'packages/driver-api/src/filters.rs'), 'utf-8');
     expect(filters).toMatch(/skip_serializing_if\s*=\s*"Option::is_none"/);
   });
 });
@@ -335,10 +335,7 @@ describe('§8 · a form factor that cannot serve the named views hides the entry
   });
 
   it('offers the entry on the desktop, which registers the three commands', () => {
-    const client = createBackendClient(
-      DESKTOP_BACKEND_ID,
-      createDesktopBackendTransport(),
-    );
+    const client = createBackendClient(DESKTOP_BACKEND_ID, createDesktopBackendTransport());
     clients.set('desktop-test', client);
     setBackendClient('desktop-test', client);
     selectBackend('desktop-test');
@@ -415,10 +412,7 @@ describe('§8 · a form factor that cannot serve the named views hides the entry
   });
 
   it('tells the two kinds of gap apart in the code', () => {
-    const kinds = readFileSync(
-      join(REPO_ROOT, 'packages/backend-client/src/errors.ts'),
-      'utf-8',
-    );
+    const kinds = readFileSync(join(REPO_ROOT, 'packages/backend-client/src/errors.ts'), 'utf-8');
     expect(kinds).toMatch(/export type UnsupportedMethodKind = 'capability' \| 'notImplemented'/);
   });
 });

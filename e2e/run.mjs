@@ -18,7 +18,7 @@
  *
  * See docs/development/e2e-testing.md for the full agent playbook.
  */
-import { spawn, execSync } from 'node:child_process';
+import { spawn, execSync, execFileSync } from 'node:child_process';
 import { createConnection } from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -54,6 +54,38 @@ function runEnvSetup() {
     execSync(`bash "${script}"`, { stdio: 'inherit', cwd: ROOT, env: process.env });
   } catch {
     log('WARNING: e2e/setup-e2e-env.sh failed. DB specs may fail; UI-only specs can still run.');
+  }
+}
+
+/**
+ * 清空共享夹具库（`datazen_sync_src` / `datazen_sync_tgt` / `..._mysql_*`）。
+ *
+ * 这些库被 data-sync / data-transfer / schema-diff 三个家族共用，此前只在整套
+ * 开始与结束时各清一次：于是「某个 spec 建的表还在不在」取决于它前面跑过谁，
+ * 同一个 spec 单跑绿、整包红，红点还会漂到别的 spec 头上。隔离模式在每个 spec
+ * 起应用**之前**重置，让每个 spec 看到同一个起点。
+ *
+ * 失败不判红：重置是夹具卫生，清理失败会以 WARNING 汇总到整包结论里。
+ */
+const sharedFixtureResetFailures = [];
+
+function resetSharedFixtureDbs(spec) {
+  if (process.env.E2E_SKIP_SHARED_FIXTURE_RESET === '1') return;
+  const script = path.join(__dirname, 'reset-sync-dbs.sh');
+  if (!fs.existsSync(script)) return;
+  try {
+    execFileSync('bash', [script], {
+      stdio: 'pipe',
+      cwd: ROOT,
+      env: { ...process.env, E2E_RESET_SYNC_QUIET: '1' },
+    });
+  } catch (error) {
+    sharedFixtureResetFailures.push(spec);
+    log(
+      `WARNING: shared fixture reset failed before ${spec}: ${String(error.message || error)
+        .split('\n')[0]
+        .slice(0, 200)}`,
+    );
   }
 }
 
@@ -768,6 +800,8 @@ if (INSTANCE_COUNT > 1) {
     E2E_WD_PORT: String(WD_PORT),
     E2E_WORKER_INDEX: '0',
     E2E_WORKER_SCHEMA: process.env.E2E_WORKER_SCHEMA || 'e2e_worker_0',
+    // 共享夹具库由本进程在每个 spec 前重置，wdio service 不必重复。
+    E2E_SHARED_FIXTURE_RESET: 'runner',
   };
 
   // 单个 spec 的超时上限：挂了就杀掉，记 FAIL 继续下一个，否则一个卡死的 spec
@@ -930,6 +964,8 @@ if (INSTANCE_COUNT > 1) {
     const spec = specs[i];
     log(`[${i + 1}/${specs.length}] ${spec}`);
     if (i > 0) resetAppDataDir(dataDirs[0], false);
+    // 先清共享夹具库再起应用：应用一起来就会连库，晚了会撞上自己的进行中会话。
+    resetSharedFixtureDbs(spec);
     const proc = await startAppVerified(spec);
     let result = { code: 1, skipped: false };
     try {
@@ -948,6 +984,12 @@ if (INSTANCE_COUNT > 1) {
   cleanup();
   runEnvTeardown();
   if (skipped.length > 0) log(`${skipped.length} spec file(s) had no runnable case (skipped)`);
+  if (sharedFixtureResetFailures.length > 0) {
+    log(
+      `${sharedFixtureResetFailures.length} spec file(s) ran without a clean shared fixture DB ` +
+        '(resets failed; see WARNING lines above)',
+    );
+  }
   if (failures.length === 0) {
     log(`All ${specs.length} isolated spec files passed!`);
     process.exit(0);

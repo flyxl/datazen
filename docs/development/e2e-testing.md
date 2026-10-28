@@ -242,12 +242,15 @@ bash e2e/setup-e2e-env.sh
 | 阶段 | 动作 | 位置 |
 |------|------|------|
 | **跑前** | 创建/重置 PG `datazen_e2e`、MySQL `datazen_test`、sync 库、`product` seed | `e2e/setup-e2e-env.sh`（`run.mjs` 自动调用） |
+| **每个 spec 前** | 清空共享夹具库 `datazen_sync_src` / `datazen_sync_tgt` / `datazen_sync_mysql_src` / `datazen_sync_mysql_tgt`，并补回只读角色在 `datazen_sync_tgt` 上的 SELECT | `e2e/reset-sync-dbs.sh`（隔离模式由 `run.mjs` 起应用前调用；串跑模式由 `e2e/services/shared-fixture-reset.ts` 在每个 spec 文件的首个 suite 前调用） |
 | **跑前** | 清空 `e2e/.app-data/`（隔离的应用数据目录） | `e2e/run.mjs`（`--keep-app-data` 保留） |
 | **WDIO before** | upsert 默认 PG 连接 `conn_e2e_pg` | `e2e/wdio.conf.ts` → `seedDefaultPgConnection` |
 | **WDIO onComplete** | 删除 `e2e-*` / `E2E-*` 连接、`e2e-*` workflow、清空 query history | `e2e/lib/testDataLifecycle.ts` |
 | **跑后** | DROP 名称含 `e2e` / 前缀 `sync_` / 遗留 `ds_j_` / `ds_edge_` 的表，重 seed `product` | `e2e/teardown-e2e-env.sh`（`run.mjs` 自动调用） |
 
 跳过 DB teardown：`E2E_SKIP_TEARDOWN=1 pnpm e2e:skip-build`。各 spec 内的 `after` hook 仍应清理本用例创建的连接/表（双保险）。
+
+`datazen_sync_*` 这四个库是 data-sync / data-transfer / schema-diff 三个家族共用的夹具库。它们**每个 spec 文件开始前都会清空**（`e2e/reset-sync-dbs.sh`，实测干净时约 0.15s、有表时约 0.9s），因为此前只在整套开始/结束时各清一次：同一个 spec 单跑绿、整包红，红点还会漂到别的 spec 头上——「前面跑过谁」决定了「现在还剩什么表」。重置只动这四个夹具库，不碰种子库 `datazen_e2e` / `datazen_test` 和每个会话自己的 `e2e_w*` 工作库；PG 侧保留 `product` 以维持既有语义。跳过：`E2E_SKIP_SHARED_FIXTURE_RESET=1`（排查顺序相关问题时偶尔需要）。
 
 #### Data Sync 夹具约定
 
@@ -483,6 +486,7 @@ Tauri 2 前端传参为 **camelCase**（如 `defaultFileName`），不要用 sna
 | `e2e/specs/` | 用例 |
 | `e2e/.env.example` | 环境变量模板 |
 | `e2e/setup-e2e-env.sh` | 创建 E2E 库、seed `product`、RO 用户 |
+| `e2e/reset-sync-dbs.sh` | 清空 `datazen_sync_*` 四个共享夹具库（每个 spec 前调用） |
 | `e2e/teardown-e2e-env.sh` | 跑后清理临时表、重置 seed |
 | `e2e/lib/testDataLifecycle.ts` | WDIO 全局 IPC setup/teardown |
 | `src-tauri/Cargo.toml` → `webdriver` feature | 启用 `tauri-plugin-webdriver` |

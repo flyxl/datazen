@@ -70,19 +70,12 @@ for db in datazen_sync_src datazen_sync_tgt; do
   psql_as "$PG_SUPER" -d "$db" <<SQL
 GRANT CONNECT ON DATABASE ${db} TO ${PG_USER};
 GRANT USAGE, CREATE ON SCHEMA public TO ${PG_USER};
-DO \$\$
-DECLARE r record;
-BEGIN
-  FOR r IN
-    SELECT tablename FROM pg_tables
-    WHERE schemaname = 'public' AND tablename <> 'product'
-  LOOP
-    EXECUTE format('DROP TABLE IF EXISTS %I CASCADE', r.tablename);
-  END LOOP;
-END \$\$;
 SQL
 done
-echo "  Reset writable E2E fixture tables and granted schema access on both sync databases"
+echo "  Granted schema access on both sync databases"
+
+# 清表交给 reset-sync-dbs.sh：整套开始、每个 spec 之前用的都是同一段逻辑。
+bash "$SCRIPT_DIR/reset-sync-dbs.sh"
 
 psql_as "$PG_SUPER" -d datazen_sync_tgt <<SQL
 GRANT CONNECT ON DATABASE datazen_sync_tgt TO ${PG_READONLY};
