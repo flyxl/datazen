@@ -370,7 +370,7 @@ beforeEach(() => {
         isFullscreen: async () => false,
         onFullscreenChanged: async () => () => undefined,
         setBackgroundRootColor: async () => undefined,
-        onCloseRequested: (handler: (event: { preventDefault: () => void }) => Promise<void>) => {
+        onCloseRequested: (handler: (event: { preventDefault: () => void }) => void) => {
           tauriWindowTestState.closeHandlerRegistrationCount.current += 1;
           tauriWindowTestState.closeRequestedHandler.current = handler;
           return Promise.resolve(() => {});
