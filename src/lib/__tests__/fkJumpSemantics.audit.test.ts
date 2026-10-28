@@ -33,11 +33,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 vi.mock('../../lib/session/tableSession', () => ({ tableManualHandle: vi.fn(() => null) }));
 
-import {
-  createBackendClient,
-  selectBackend,
-  setBackendClient,
-} from '@datazen/backend-client';
+import { createBackendClient, selectBackend, setBackendClient } from '@datazen/backend-client';
 import {
   createDesktopBackendTransport,
   DESKTOP_BACKEND_ID,
@@ -130,10 +126,7 @@ describe('audit: the request of a jump', () => {
     useTableDataStore.getState().reset();
     useFkNavigationStore.getState().reset();
     usePanelStore.getState().addPanel(sourcePanel());
-    const client = createBackendClient(
-      DESKTOP_BACKEND_ID,
-      createDesktopBackendTransport(),
-    );
+    const client = createBackendClient(DESKTOP_BACKEND_ID, createDesktopBackendTransport());
     setBackendClient(DESKTOP_BACKEND_ID, client);
     selectBackend(DESKTOP_BACKEND_ID);
   });
@@ -141,9 +134,7 @@ describe('audit: the request of a jump', () => {
   it('names every local column of the group, the values and the constraint', async () => {
     mockInvoke.mockResolvedValue(resolution('parents', ['x', 'y']));
 
-    await openForeignKeyTarget(
-      jump({ foreignKey: COMPOSITE, values: [3, 4] }),
-    );
+    await openForeignKeyTarget(jump({ foreignKey: COMPOSITE, values: [3, 4] }));
 
     expect(callsTo('resolve_foreign_key_targets')).toHaveLength(1);
     const request = callsTo('resolve_foreign_key_targets')[0].request;
@@ -156,9 +147,7 @@ describe('audit: the request of a jump', () => {
   it('builds positional eq conditions combined with and', async () => {
     mockInvoke.mockResolvedValue(resolution('parents', ['x', 'y']));
 
-    const outcome = await openForeignKeyTarget(
-      jump({ foreignKey: COMPOSITE, values: [3, 4] }),
-    );
+    const outcome = await openForeignKeyTarget(jump({ foreignKey: COMPOSITE, values: [3, 4] }));
 
     const slice = useTableDataStore.getState().byPanel.get(outcome.panelId as string);
     expect(slice?.filters).toEqual([
@@ -169,9 +158,7 @@ describe('audit: the request of a jump', () => {
   });
 
   it('refuses a group with a missing member, and never asks for IS NULL', async () => {
-    const outcome = await openForeignKeyTarget(
-      jump({ foreignKey: COMPOSITE, values: [3, null] }),
-    );
+    const outcome = await openForeignKeyTarget(jump({ foreignKey: COMPOSITE, values: [3, null] }));
 
     expect(outcome.ok).toBe(false);
     expect(outcome.error?.code).toBe('grid.fk.valueNull');
@@ -207,15 +194,12 @@ describe('audit: the first frame of the new tab', () => {
     useTableDataStore.getState().reset();
     useFkNavigationStore.getState().reset();
     usePanelStore.getState().addPanel(sourcePanel());
-    const client = createBackendClient(
-      DESKTOP_BACKEND_ID,
-      createDesktopBackendTransport(),
-    );
+    const client = createBackendClient(DESKTOP_BACKEND_ID, createDesktopBackendTransport());
     setBackendClient(DESKTOP_BACKEND_ID, client);
     selectBackend(DESKTOP_BACKEND_ID);
     mockInvoke.mockImplementation(async (command: string) => {
       if (command === 'resolve_foreign_key_targets') return resolution('customers', ['id']);
-      if (command === 'get_table_data_at_target') {
+      if (command === 'get_table_data') {
         return {
           columns: [{ name: 'id', dataType: 'integer', isPrimaryKey: true, isNullable: false }],
           rows: [[7]],
@@ -248,7 +232,7 @@ describe('audit: the first frame of the new tab', () => {
     expect(slice?.requestRevision).toBe(0);
     expect(slice?.loadingRevision).toBeNull();
     // The seed never fetches.
-    expect(callsTo('get_table_data_at_target')).toHaveLength(0);
+    expect(callsTo('get_table_data')).toHaveLength(0);
   });
 
   it('fetches exactly once, and the one fetch carries the conditions', async () => {
@@ -267,7 +251,7 @@ describe('audit: the first frame of the new tab', () => {
       table: 'customers',
     });
 
-    const fetches = callsTo('get_table_data_at_target');
+    const fetches = callsTo('get_table_data');
     expect(fetches).toHaveLength(1);
     const request = fetches[0].request;
     expect(request.filters).toEqual([{ column: 'id', operator: 'eq', value: 7 }]);
@@ -285,10 +269,7 @@ describe('audit: the round trip A → B → A', () => {
     useTableDataStore.getState().reset();
     useFkNavigationStore.getState().reset();
     usePanelStore.getState().addPanel(sourcePanel());
-    const client = createBackendClient(
-      DESKTOP_BACKEND_ID,
-      createDesktopBackendTransport(),
-    );
+    const client = createBackendClient(DESKTOP_BACKEND_ID, createDesktopBackendTransport());
     setBackendClient(DESKTOP_BACKEND_ID, client);
     selectBackend(DESKTOP_BACKEND_ID);
   });
@@ -380,10 +361,7 @@ describe('audit: a refusal opens no tab', () => {
     useTableDataStore.getState().reset();
     useFkNavigationStore.getState().reset();
     usePanelStore.getState().addPanel(sourcePanel());
-    const client = createBackendClient(
-      DESKTOP_BACKEND_ID,
-      createDesktopBackendTransport(),
-    );
+    const client = createBackendClient(DESKTOP_BACKEND_ID, createDesktopBackendTransport());
     setBackendClient(DESKTOP_BACKEND_ID, client);
     selectBackend(DESKTOP_BACKEND_ID);
   });

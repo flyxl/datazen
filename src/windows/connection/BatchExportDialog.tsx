@@ -10,7 +10,7 @@ import type {
   BatchExportTableInput,
 } from '../../lib/batchExport';
 import { runBatchExportJob, type BatchExportOutputMode } from '../../lib/batchExportJob';
-import { onExportProgress } from '../../commands/file';
+import { requireTablesExporter } from '../../platform/contracts';
 import { supportsFullTableExport, type DataExportCapability } from '../../lib/exportCapability';
 import { Spinner } from '../../components/ui/Spinner';
 
@@ -134,10 +134,11 @@ export function BatchExportDialog({
     const selectedTables = tables.filter((name) => selected.has(name));
     setStatus('exporting');
     setProgress({ current: 0, total: selectedTables.length });
-    // Subscribe to Rust-side writer progress (row counts streamed to disk).
+    // Subscribe to writer progress through the bound exporter (the F4
+    // dual-flow port; a form without a streaming writer has no progress).
     let unlisten: (() => void) | undefined;
     try {
-      const done = await onExportProgress((e) => {
+      const done = await requireTablesExporter().onExportProgress?.((e) => {
         const idx = selectedTables.indexOf(e.table);
         setProgress({
           current: idx >= 0 ? idx + 1 : 1,

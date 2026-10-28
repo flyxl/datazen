@@ -179,8 +179,11 @@ mod result_source_tests;
 #[path = "table_target.rs"]
 mod table_target;
 
+/// Target-bound table read (form-split F4: renamed from
+/// `get_table_data_at_target` — the neutral kernel name, 1:1 with the facade
+/// `getTableData`; the retired session-scoped predecessor freed the name).
 #[tauri::command]
-pub async fn get_table_data_at_target(
+pub async fn get_table_data(
     state: State<'_, AppState>,
     request: table_target::TableReadRequest,
 ) -> Result<datazen_driver_api::TableDataResult, CommandError> {

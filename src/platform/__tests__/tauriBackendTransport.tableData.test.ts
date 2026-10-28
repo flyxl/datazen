@@ -79,7 +79,7 @@ describe('desktop transport: table-data commands', () => {
     // The session-scoped `get_table_data` has been retired; the grid reads
     // through the target-bound command, and the port names the command the
     // grid actually uses.
-    expect(mock.invoke).toHaveBeenLastCalledWith('get_table_data_at_target', {
+    expect(mock.invoke).toHaveBeenLastCalledWith('get_table_data', {
       request: {
         context: { ...CONTEXT },
         manualHandle: null,
@@ -291,7 +291,7 @@ describe('desktop transport: table-data commands', () => {
 
     await client.getTableData({ context: CONTEXT, page: 0, pageSize: 50 });
 
-    expect(mock.invoke).toHaveBeenCalledWith('get_table_data_at_target', {
+    expect(mock.invoke).toHaveBeenCalledWith('get_table_data', {
       request: { context: CONTEXT, page: 0, pageSize: 50 },
     });
   });
@@ -358,7 +358,7 @@ function parseRegisteredCommands(source: string): Set<string> {
  */
 describe('the desktop declaration against the host command registry', () => {
   const TABLE_DATA_COMMANDS: ReadonlyArray<{ method: keyof MethodMap; command: string }> = [
-    { method: 'getTableData', command: 'get_table_data_at_target' },
+    { method: 'getTableData', command: 'get_table_data' },
     { method: 'previewPendingChanges', command: 'preview_pending_changes' },
     { method: 'commitPendingChanges', command: 'commit_pending_changes' },
     { method: 'commitQueryResultCell', command: 'commit_query_result_cell' },
@@ -405,7 +405,7 @@ describe('the desktop declaration against the host command registry', () => {
 
     // The table-data commands the host *does* register are found by their
     // command name, whatever module path they are registered under.
-    expect(registered.has('get_table_data_at_target')).toBe(true);
+    expect(registered.has('get_table_data')).toBe(true);
     expect(registered.has('preview_pending_changes')).toBe(true);
     expect(registered.has('commit_pending_changes')).toBe(true);
     expect(registered.has('commit_query_result_cell')).toBe(true);

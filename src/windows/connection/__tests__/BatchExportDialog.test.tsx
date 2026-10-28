@@ -34,13 +34,25 @@ vi.mock('../../../components/ui/Select', () => ({
   ),
 }));
 
+// Form-split F4: the export flow rides the dual-flow port; the test binds a
+// fake exporter through the platform bindings exactly like an assembly does.
 const exportTablesStream = vi.fn();
 
-vi.mock('../../../commands/file', () => ({
-  fileCommands: {
-    exportTablesStream: (...args: unknown[]) => exportTablesStream(...args),
-  },
-}));
+import { configurePlatform, clearPlatform } from '../../../platform/contracts';
+
+function bindFakeExporter(): void {
+  configurePlatform({
+    services: {} as never,
+    windows: {} as never,
+    events: {
+      emitCrossWindow: async () => {},
+      listenCrossWindow: async () => () => {},
+    },
+    tablesExporter: {
+      exportTables: (...args: unknown[]) => exportTablesStream(...(args as [never])),
+    },
+  });
+}
 
 const TABLES = ['users', 'orders', 'products'];
 
@@ -53,10 +65,14 @@ function mockTable(name: string): BatchExportTableInput {
   };
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  clearPlatform();
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
+  bindFakeExporter();
   exportTablesStream.mockResolvedValue({ Saved: 1 });
 });
 

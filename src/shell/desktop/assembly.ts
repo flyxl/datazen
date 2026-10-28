@@ -19,9 +19,15 @@ import { createDesktopWindowRouter } from '../../platform/desktop/windowRouter';
 import { createDesktopEventChannel } from '../../platform/desktop/eventChannel';
 import { createDesktopHostServices } from '../../platform/desktop/hostServices';
 import { createDesktopSettingsClient } from '../../platform/desktop/settingsClient';
+import { createDesktopTablesExporter } from '../../platform/desktop/tablesExporter';
 import { IS_DESKTOP_BUILD } from '../../platform/desktop/env';
 import { setPlatformServices } from '@datazen/backend-client';
-import { configurePlatform, type DesktopHostServices } from '../../platform/contracts';
+import { bindHostEventListener } from '@datazen/driver-sdk';
+import {
+  configurePlatform,
+  requirePlatform,
+  type DesktopHostServices,
+} from '../../platform/contracts';
 import { registerWindowChrome } from '@datazen/extension-points';
 import { TitleBar } from './TitleBar';
 
@@ -47,8 +53,18 @@ export function assembleDesktopPlatform(): void {
     // DesktopSettingsClient over the host settings pair. A web build binds
     // `inertHostSettingsPort()` instead (F5's assembly).
     hostSettings: createDesktopSettingsClient(desktopHostServices),
+    // Form-split F4 (§3.3 dual-flow demonstration): the desktop export half —
+    // Rust-side streaming through the save-dialog token writer. A web build
+    // binds `createBlobTablesExporter(...)` under the same signature.
+    tablesExporter: createDesktopTablesExporter(),
     // capabilities: DESKTOP_CAPABILITIES — lands in F5.
   });
+  // Form-split F4 (R8 retirement): driver UI listens to host broadcasts
+  // (redis-pubsub-message, ...) through the EventChannel port via the
+  // driver-sdk bridge — the driver layer never imports the host runtime.
+  bindHostEventListener((event, handler) =>
+    requirePlatform().events.listenCrossWindow(event, handler),
+  );
   registerWindowChrome(TitleBar);
 }
 

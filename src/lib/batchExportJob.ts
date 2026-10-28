@@ -1,4 +1,5 @@
-import { fileCommands, type ExportTablesRequest } from '../commands/file';
+import type { ExportTablesRequest } from '../commands/file';
+import { requireTablesExporter } from '../platform/contracts';
 
 export type BatchExportOutputMode = 'single' | 'zip';
 
@@ -28,7 +29,11 @@ export interface RunBatchExportJobOptions {
     rows?: unknown[];
   }>;
   onProgress?: (progress: BatchExportProgress) => void;
-  /** Injectable for tests; defaults to fileCommands.exportTablesStream. */
+  /**
+   * Injectable for tests; defaults to the bound form's exporter (the F4
+   * dual-flow port — desktop streams via the save-dialog token writer, a web
+   * build Blob-downloads under the same signature).
+   */
   exportTables?: (
     request: ExportTablesRequest,
   ) => Promise<{ Saved: number } | { Cancelled: null } | null>;
@@ -56,7 +61,7 @@ export async function runBatchExportJob(
     schema,
     loadTableExportData,
     onProgress,
-    exportTables = fileCommands.exportTablesStream,
+    exportTables = (request: ExportTablesRequest) => requireTablesExporter().exportTables(request),
   } = options;
 
   if (tableNames.length === 0) {

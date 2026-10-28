@@ -111,7 +111,7 @@ describe('[tester] postgres retained resource journey', () => {
         let index = 0;
         while (true) {
           const chunk = await invokeBackend<{ bytes: number[]; publishedChunkCount: string }>(
-            'read_artifact_chunk',
+            'read_artifact',
             { request: { artifactId, chunkIndex: String(index) } },
           );
           const payload = JSON.parse(new TextDecoder().decode(new Uint8Array(chunk.bytes))) as {

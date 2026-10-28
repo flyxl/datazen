@@ -126,7 +126,7 @@ pub async fn execute_at_target(
     let canonical = adapter
         .resolve_execution_target(
             call.context(),
-            request.expected_config_revision,
+            request.expected_revision,
             &request.call.command,
             &request.target,
         )
@@ -224,7 +224,7 @@ pub async fn cancel_execution(
 }
 
 #[tauri::command]
-pub async fn platform_list_profiles(
+pub async fn list_connections(
     state: State<'_, AppState>,
     request: serde_json::Value,
 ) -> Result<serde_json::Value, ApiError> {
@@ -233,17 +233,22 @@ pub async fn platform_list_profiles(
     let call = adapter.begin_call();
     encode(adapter.runtime()?.list_connections(call.context()).await?)
 }
+/// Kernel-wire create request (form-split F4): the facade folds the draft flat
+/// and carries the kernel's own submission token — the same wire
+/// `BackendClient.createConnection` sends, 1:1.
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct CreateProfileRequest {
+    #[serde(flatten)]
     pub draft: ProfileDraft,
-    pub idempotency_key: IdempotencyKey,
+    pub submission_token: datazen::execution::application::idempotency::SubmissionToken,
 }
+/// Kernel-wire update request (form-split F4): `expectedRevision` is the
+/// facade's name for the config-revision CAS guard.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateProfileRequest {
     pub connection_id: ConnectionId,
-    pub expected_config_revision: ConfigRevision,
+    pub expected_revision: ConfigRevision,
     pub patch: ProfilePatch,
 }
 #[derive(Deserialize)]
@@ -264,7 +269,7 @@ fn port_error(error: datazen::shared::error::PortError) -> ApiError {
     }
 }
 #[tauri::command]
-pub async fn platform_create_profile(
+pub async fn create_connection(
     state: State<'_, AppState>,
     request: CreateProfileRequest,
 ) -> Result<serde_json::Value, ApiError> {
@@ -273,13 +278,17 @@ pub async fn platform_create_profile(
     encode(ProfileView::from_record(
         &adapter
             .profiles()?
-            .create(call.context(), request.draft, &request.idempotency_key)
+            .create(
+                call.context(),
+                request.draft,
+                &request.submission_token.idempotency_key,
+            )
             .await
             .map_err(port_error)?,
     ))
 }
 #[tauri::command]
-pub async fn platform_update_profile(
+pub async fn update_connection(
     state: State<'_, AppState>,
     request: UpdateProfileRequest,
 ) -> Result<serde_json::Value, ApiError> {
@@ -292,7 +301,7 @@ pub async fn platform_update_profile(
             .compare_and_set(
                 call.context(),
                 request.connection_id,
-                request.expected_config_revision,
+                request.expected_revision,
                 request.patch,
             )
             .await
@@ -310,7 +319,7 @@ pub async fn platform_update_profile(
     encode(view)
 }
 #[tauri::command]
-pub async fn platform_disable_profile(
+pub async fn disable_connection(
     state: State<'_, AppState>,
     request: ProfileRequest,
 ) -> Result<serde_json::Value, ApiError> {
@@ -446,7 +455,7 @@ pub struct ArtifactRequest {
     pub chunk_index: Counter,
 }
 #[tauri::command]
-pub async fn read_artifact_chunk(
+pub async fn read_artifact(
     state: State<'_, AppState>,
     request: ArtifactRequest,
 ) -> Result<serde_json::Value, ApiError> {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { getVersion } from '@tauri-apps/api/app';
-import { getBackendClient } from '@datazen/backend-client';
+import { getPlatformOrNull } from '../../platform/contracts';
 import { ThemedIcon } from '../../components/ThemedIcon';
 import { Button } from '../../components/ui/Button';
 import { PathInput } from '@datazen/ui';
@@ -38,6 +38,7 @@ import { SqlSnippetsCard } from './SqlSnippetsCard';
 import {
   parseSettingsSection,
   SETTINGS_NAV_GROUPS,
+  ALL_SETTINGS_SECTIONS,
   settingsSectionsForBackend,
   type SettingsSection,
 } from './settingsSections';
@@ -71,12 +72,16 @@ export interface SettingsContentProps {
 
 export function SettingsContent({ initialSection, onBack }: Readonly<SettingsContentProps>) {
   useSettings();
-  // F2 bug fix: browser dev (backend unbound, `null`) was misjudged as the
-  // desktop form by `backend === null ||`. The remaining `backendId` probe is
-  // transitional — F4/F5 replace it with `capabilities.settingsSections`.
-  const backend = getBackendClient();
-  const desktop = backend !== null && backend.backendId === 'desktop';
-  const availableSections = settingsSectionsForBackend(desktop);
+  // Form-split F4: the section set is capabilities-driven — F5's static table
+  // plugs into `capabilities.settingsSections` directly. Until the table
+  // lands, callers without capabilities get the full (desktop-shaped) set;
+  // no form probe, no `backendId` branch.
+  const capabilities = getPlatformOrNull()?.capabilities;
+  // Pre-F5 (no capabilities table yet) the desktop-shaped behavior holds:
+  // full section set + version read, without any form probe.
+  const availableSections = settingsSectionsForBackend(
+    capabilities?.settingsSections ?? ALL_SETTINGS_SECTIONS,
+  );
   const { t } = useI18n();
 
   const storeSettings = useSettingsStore((s) => s.settings);
@@ -98,11 +103,14 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
   const [appVersion, setAppVersion] = useState('');
 
   useEffect(() => {
-    if (!desktop) return;
+    // Form-split F4: the version read is capability-gated (F5's table drives
+    // `capabilities.versionSource`); pre-table callers fall back to the
+    // desktop-shaped behavior, same as the section set above.
+    if (capabilities?.versionSource === 'build-constant') return;
     getVersion()
       .then(setAppVersion)
       .catch(() => {});
-  }, [desktop]);
+  }, [capabilities?.versionSource]);
 
   const languageOptions = useMemo(
     () => [
@@ -148,13 +156,15 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
     });
   }, [loadSettings]);
 
+  // The logging section is desktop-only: its default-path read rides the host
+  // settings port, which answers '' on a form without a host.
   useEffect(() => {
-    if (!desktop) return;
+    if (!availableSections.some((section) => section.id === 'logging')) return;
     void settingsCommands
       .getLogPath()
       .then(setDefaultLogPath)
       .catch(() => {});
-  }, []);
+  }, [availableSections]);
 
   // Theme pack applies immediately via updateSettings; merge packId only so other draft edits persist.
   useEffect(() => {
@@ -396,7 +406,7 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                 />
               </SettingRow>
 
-              {desktop && (
+              {availableSections.some((section) => section.id === 'logging') && (
                 <UpdateSection
                   checkOnStartup={settings.checkForUpdatesOnStartup}
                   onCheckOnStartupChange={(v) => updateField('checkForUpdatesOnStartup', v)}
@@ -671,7 +681,9 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                 onChange={(v) => updateField('confirmDangerousExecution', v)}
               />
 
-              {desktop && <DataCleanupSection />}
+              {availableSections.some((section) => section.id === 'logging') && (
+                <DataCleanupSection />
+              )}
             </>
           )}
 

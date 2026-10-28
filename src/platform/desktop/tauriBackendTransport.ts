@@ -41,27 +41,18 @@ export const DESKTOP_BACKEND_ID = 'desktop';
 /**
  * Map a `MethodMap` key to its Tauri command name.
  *
- * Keys are written camelCase for the future kernel surface and snake_case for
- * the legacy driver-command gateway that already exists on the Rust side, so
- * only the former is converted. Tauri maps the names in both directions, so
- * this is a naming convention and not a lookup table.
+ * Keys are written camelCase for the kernel surface and snake_case for the
+ * legacy driver-command gateway, so only the former is converted. Tauri maps
+ * the names in both directions, so this is a naming convention and not a
+ * lookup table.
+ *
+ * Form-split F4 (ruling #2, step 4): the override table is GONE — the kernel
+ * track and the host command names are 1:1. Every rename the table used to
+ * carry (`get_shared_settings`, `platform_list_profiles`,
+ * `read_artifact_chunk`, `get_table_data_at_target`, ...) was resolved on the
+ * Rust side, so `toCommandName` is pure convention now.
  */
 function toCommandName(method: keyof MethodMap): string {
-  const commandOverrides: Partial<Record<keyof MethodMap, string>> = {
-    listConnections: 'platform_list_profiles',
-    createConnection: 'platform_create_profile',
-    updateConnection: 'platform_update_profile',
-    disableConnection: 'platform_disable_profile',
-    readArtifact: 'read_artifact_chunk',
-    // The table read is the *target-bound* command: it carries its own
-    // context and manual handle instead of borrowing a session. The grid
-    // reads through it — the retired session-scoped `get_table_data` no
-    // longer exists — so the port has to name the command the grid uses.
-    getTableData: 'get_table_data_at_target',
-    // The DB-15 SQL preview: same target-bound shape, never executed.
-    previewTableReadSql: 'preview_table_read_sql',
-  };
-  if (commandOverrides[method]) return commandOverrides[method];
   return method.includes('_')
     ? method
     : method.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);

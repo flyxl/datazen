@@ -16,6 +16,16 @@
 import type { PlatformServices } from '@datazen/backend-client';
 import type { SettingsSection } from '../windows/settings/settingsSections';
 import type { AppSettings } from '../types';
+import type {
+  ExportProgressEvent as TablesExportProgressEvent,
+  ExportTablesRequest as TablesExportRequest,
+  ExportTablesResult as TablesExportResult,
+} from '../commands/file';
+export type {
+  ExportProgressEvent as TablesExportProgressEvent,
+  ExportTablesRequest as TablesExportRequest,
+  ExportTablesResult as TablesExportResult,
+} from '../commands/file';
 
 // ── Port 2: window routing (absorbs src/lib/windowManager.ts) ────────────────
 
@@ -168,6 +178,24 @@ export function inertHostSettingsPort(): HostSettingsPort {
   };
 }
 
+// ── Port 6: tables exporter (form-split F4 dual-flow demonstration) ──────────
+
+/**
+ * The shared export signature (plan §3.3): `exportTables(request)` — the
+ * desktop implementation streams through the save-dialog token writer (path
+ * never returns to JS); a web implementation assembles the bytes and Blob-
+ * downloads them. Both answer the same signature, so the export UI never
+ * learns which form factor it is in.
+ */
+export interface TablesExporterPort {
+  exportTables(request: TablesExportRequest): Promise<TablesExportResult | null>;
+  /**
+   * Writer progress while streaming (row counts per table). Optional: a form
+   * without a streaming writer simply has no progress to report.
+   */
+  onExportProgress?(handler: (event: TablesExportProgressEvent) => void): Promise<() => void>;
+}
+
 // ── Capability table (static, compile-time; full rollout in F5) ──────────────
 
 export interface PlatformCapabilities {
@@ -188,6 +216,8 @@ export interface PlatformBindings {
    *  one (tests, a web build until F5's assembly) resolves the inert port via
    *  `requireHostSettings()`. */
   hostSettings?: HostSettingsPort;
+  /** The dual-flow export demonstration port (form-split F4, plan §3.3). */
+  tablesExporter?: TablesExporterPort;
   /** F5 makes this required; until then a binding without it runs with
    *  `capabilitiesUnavailable()` semantics. */
   capabilities?: PlatformCapabilities;
@@ -229,6 +259,23 @@ export function requirePlatform(): PlatformBindings {
 /** Null-tolerant accessor for call sites that legitimately degrade by form. */
 export function getPlatformOrNull(): PlatformBindings | null {
   return bindings;
+}
+
+/**
+ * The export port, or an explicit failure when no form bound one.
+ *
+ * Export is a user-triggered action, not an ambient read: an unbound exporter
+ * is a wiring gap worth failing loudly (§7.4 semantics) rather than degrade
+ * into a silently missing download.
+ */
+export function requireTablesExporter(): TablesExporterPort {
+  const exporter = bindings?.tablesExporter;
+  if (!exporter) {
+    throw new Error(
+      'No tables exporter has been bound; check that the app assembly root ran configurePlatform().',
+    );
+  }
+  return exporter;
 }
 
 /**

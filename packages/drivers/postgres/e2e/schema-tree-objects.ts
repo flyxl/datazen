@@ -240,7 +240,7 @@ describe('PostgreSQL Schema Tree objects', () => {
         `INSERT INTO ${qualifiedTable} (id, label) VALUES (1, 'P2-TARGET-001')`,
       );
 
-      const result = await invokeBackend<TableReadResult>('get_table_data_at_target', {
+      const result = await invokeBackend<TableReadResult>('get_table_data', {
         request: {
           manualHandle: null,
           context: {

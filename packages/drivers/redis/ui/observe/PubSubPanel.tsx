@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Radio, Search, Send, X } from 'lucide-react';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { listenHostEvent } from '@datazen/driver-sdk';
 import { Button, cn, Spinner } from '@datazen/ui';
 import { useI18n } from '@datazen/ui';
 import { redisCommandInvoke } from '../shared/redisInvoke';
@@ -98,13 +98,16 @@ export function PubSubPanel({ dbSessionId, connectionId }: PubSubPanelProps) {
   }, [messages, scrollToBottom]);
 
   useEffect(() => {
-    let unlisten: UnlistenFn | undefined;
+    // Form-split F4 (R8 retirement): host broadcasts ride the driver-sdk
+    // event bridge (the app binds it onto the EventChannel port at assembly);
+    // the panel no longer imports the host runtime.
+    let unlisten: (() => void) | undefined;
     let cancelled = false;
 
     void (async () => {
       try {
-        unlisten = await listen<PubSubMessageEvent>('redis-pubsub-message', (event) => {
-          const payload = event.payload;
+        unlisten = await listenHostEvent('redis-pubsub-message', (raw) => {
+          const payload = raw as PubSubMessageEvent;
           // Attribution is by connection: the payload names the persisted
           // connection config id it was produced for.
           if (payload.connectionId !== connectionId) return;

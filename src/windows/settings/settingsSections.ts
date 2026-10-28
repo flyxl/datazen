@@ -62,7 +62,7 @@ export function parseSettingsSection(value: string | null | undefined): Settings
 }
 
 /** Sections currently supplied by native host services. */
-export const DESKTOP_SETTINGS_SECTIONS = new Set<SettingsSection>([
+export const DESKTOP_SETTINGS_SECTIONS: ReadonlySet<SettingsSection> = new Set<SettingsSection>([
   'logging',
   'ai',
   'prompts',
@@ -71,8 +71,22 @@ export const DESKTOP_SETTINGS_SECTIONS = new Set<SettingsSection>([
   'tunnels',
   'extensions',
 ]);
-export function settingsSectionsForBackend(desktop: boolean) {
-  return SETTINGS_SECTIONS.filter(
-    (section) => desktop || !DESKTOP_SETTINGS_SECTIONS.has(section.id),
-  );
+
+/** Every section the page knows (the desktop-shaped default until F5's table). */
+export const ALL_SETTINGS_SECTIONS: ReadonlySet<SettingsSection> = new Set(
+  SETTINGS_SECTIONS.map((section) => section.id),
+);
+
+/**
+ * The sections the settings page may show, given the form's section set.
+ *
+ * Form-split F4 capabilities-ready shape: the parameter is the *section set*
+ * the form provides, not a desktop boolean — F5's `PlatformCapabilities.
+ * settingsSections` plugs in directly (desktop binds `ALL_SETTINGS_SECTIONS`,
+ * a web build binds its narrower set). Callers without capabilities yet pass
+ * the full set, which preserves the desktop-shaped behavior of the F4→F5
+ * window without reintroducing a form probe.
+ */
+export function settingsSectionsForBackend(sections: ReadonlySet<SettingsSection>) {
+  return SETTINGS_SECTIONS.filter((section) => sections.has(section.id));
 }

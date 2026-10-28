@@ -107,7 +107,7 @@ describe('desktop subscription adapter', () => {
     });
     expect(chunk.bytes).toEqual(new Uint8Array([1, 2]));
     expect(chunk.chunkIndex).toBe('9007199254740993');
-    expect(mock.invoke).toHaveBeenCalledWith('read_artifact_chunk', {
+    expect(mock.invoke).toHaveBeenCalledWith('read_artifact', {
       request: { artifactId: 'a', chunkIndex: '0' },
     });
     mock.invoke.mockResolvedValue(undefined);
