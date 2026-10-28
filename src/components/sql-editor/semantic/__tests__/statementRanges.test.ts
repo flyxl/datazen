@@ -3,7 +3,6 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { EditorState } from '@codemirror/state';
 import { describe, expect, it } from 'vitest';
-import { scanSql } from '../scanner';
 import {
   buildStatementRanges,
   buildStatementRangesFromTokens,
@@ -14,9 +13,10 @@ import {
   getStatementContent,
   getStatementTextAtCursor,
   getValidStatementRanges,
+  scanSql,
   statementIndexField,
   updateStatementRangesIncremental,
-} from '../statementRanges';
+} from '@datazen/extension-points';
 
 const fixtureDir = join(dirname(fileURLToPath(import.meta.url)), '../../__tests__/fixtures');
 const benchmark20k = readFileSync(join(fixtureDir, 'benchmark20k.sql'), 'utf8');

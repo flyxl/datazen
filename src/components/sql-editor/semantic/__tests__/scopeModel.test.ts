@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { getDialectAdapter } from '../dialectAdapter';
-import { buildSemanticModel, findScopeAtCursor, getScopeChain } from '../scopeModel';
+import {
+  buildSemanticModel,
+  findScopeAtCursor,
+  getDialectAdapter,
+  getScopeChain,
+} from '@datazen/extension-points';
 
 describe('buildSemanticModel', () => {
   it('parses simple SELECT FROM with implicit alias', () => {

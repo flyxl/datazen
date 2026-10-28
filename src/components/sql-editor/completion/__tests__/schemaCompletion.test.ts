@@ -2,13 +2,11 @@ import { describe, it, expect } from 'vitest';
 import type { EditorMetadataSnapshot, EditorRelationMetadata } from '../../metadata/types';
 import type {
   QualifiedRelationId,
-  SqlSemanticModel,
   SqlScope,
+  SqlSemanticModel,
   SqlToken,
-} from '../../semantic/types';
-import { SqlTokenKind } from '../../semantic/tokens';
-import { getDialectAdapter } from '../../semantic/dialectAdapter';
-import { buildSemanticModel } from '../../semantic/scopeModel';
+} from '@datazen/extension-points';
+import { SqlTokenKind, buildSemanticModel, getDialectAdapter } from '@datazen/extension-points';
 import {
   produceSchemaCompletions,
   resolveAliasDotCompletions,

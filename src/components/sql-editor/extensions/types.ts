@@ -4,7 +4,11 @@
  * These extensions consume the unified active statement range from
  * statementRanges.ts and expose the same SqlExecutionTarget contract.
  */
-import type { SqlStatementRange, SqlTextRange, SqlExecutionTarget } from '../semantic/types';
+import type {
+  SqlExecutionTarget,
+  SqlStatementRange,
+  SqlTextRange,
+} from '@datazen/extension-points';
 
 // Re-export consumers need
 export type { SqlStatementRange, SqlTextRange, SqlExecutionTarget };

@@ -28,7 +28,7 @@ export * from './types/schemaMetadata';
 export { schemaClient } from './ipc/schemaClient';
 
 // === SQL function catalog types ===
-export type { FunctionEntry, FunctionParam } from '../../../src/lib/sqlFunctionTypes';
+export type { FunctionEntry, FunctionParam } from '@datazen/extension-points';
 
 // === Connection clipboard & form models ===
 export type {

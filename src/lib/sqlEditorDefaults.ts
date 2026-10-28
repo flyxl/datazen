@@ -1,9 +1,11 @@
 import type { TableInfo } from '../types';
 import { isSchemaGroupingSchema } from './sqlNamespace';
-import { scanSql } from '../components/sql-editor/semantic/scanner';
-import { buildStatementRanges } from '../components/sql-editor/semantic/statementRanges';
-import { buildScopesForStatement } from '../components/sql-editor/semantic/scope/builder';
-import { getDialectAdapter } from '../components/sql-editor/semantic/dialectAdapter';
+import {
+  buildScopesForStatement,
+  buildStatementRanges,
+  getDialectAdapter,
+  scanSql,
+} from '@datazen/extension-points';
 
 /**
  * Extract physical table/view names referenced across all scopes and statements

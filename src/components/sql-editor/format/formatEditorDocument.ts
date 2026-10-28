@@ -7,7 +7,7 @@
  */
 import type { EditorView } from '@codemirror/view';
 import { formatSql, DEFAULT_SQL_FORMAT_OPTIONS } from '../../../lib/sqlFormat';
-import { buildStatementRanges, findStatementAtCursor } from '../semantic/statementRanges';
+import { buildStatementRanges, findStatementAtCursor } from '@datazen/extension-points';
 import type { SqlFormatOptions } from '../../../types';
 
 export interface FormatEditorDocumentOptions {

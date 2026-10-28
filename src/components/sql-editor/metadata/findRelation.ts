@@ -1,6 +1,6 @@
 import type { EditorMetadataSnapshot, EditorRelationMetadata } from './types';
-import type { QualifiedRelationId, SqlDialectAdapter } from '../semantic/types';
-import { relationKey } from '../semantic/quoteHelper';
+import type { QualifiedRelationId, SqlDialectAdapter } from '@datazen/extension-points';
+import { relationKey } from '@datazen/extension-points';
 import type { SqlSchema } from '../contracts';
 
 /**

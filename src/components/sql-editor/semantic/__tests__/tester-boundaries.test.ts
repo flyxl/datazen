@@ -3,19 +3,21 @@
  */
 import { EditorState } from '@codemirror/state';
 import { describe, expect, it } from 'vitest';
-import { scanSql } from '../scanner';
 import {
+  SqlTokenKind,
   buildStatementRanges,
   clearStatementIndexCache,
   createStatementIndexState,
   findStatementAtCursor,
   getCachedStatementIndex,
   getStatementTextAtCursor,
+  isQuoteOrCommentKind,
+  isStringKind,
+  scanSql,
   setCachedStatementIndex,
   statementIndexField,
   updateStatementRangesIncremental,
-} from '../statementRanges';
-import { isQuoteOrCommentKind, isStringKind, SqlTokenKind } from '../tokens';
+} from '@datazen/extension-points';
 
 describe('[tester] token helper coverage', () => {
   it('classifies string and comment kinds', () => {

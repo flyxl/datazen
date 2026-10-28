@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { getDialectAdapter } from '../dialectAdapter';
-import { listVisibleRelations, resolveQualifiedColumn, resolveRelation } from '../relationResolver';
-import { buildSemanticModel } from '../scopeModel';
-// Pure helper coverage targets added by the independent tester ([tester]).
 import {
+  buildSemanticModel,
+  getDialectAdapter,
+  listVisibleRelations,
   parseQualifiedNameText,
   qualifiedNameToString,
+  resolveQualifiedColumn,
+  resolveRelation,
   segmentFromQuotedText,
-} from '../quoteHelper';
+} from '@datazen/extension-points';
+// Pure helper coverage targets added by the independent tester ([tester]).
 
 describe('[tester] dialectAdapter shouldQuoteIdentifier', () => {
   const pg = getDialectAdapter('postgresql');

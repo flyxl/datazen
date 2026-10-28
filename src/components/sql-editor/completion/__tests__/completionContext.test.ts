@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { extractQualifierParts } from '@datazen/extension-points';
 import {
-  extractQualifierParts,
   detectAliasDotContext,
   inferSqlCompletionKind,
   filterCompletionsByKind,

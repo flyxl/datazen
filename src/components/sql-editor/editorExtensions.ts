@@ -47,26 +47,26 @@ import { getActionShortcut, toCodeMirrorKeyFormat, type KeymapPreset } from '../
 
 // ── Leaf factories (S4-A/B/C/D + S5-A) ───────────────────────────────
 import {
-  statementIndexField,
+  ExtensionPoint,
+  SafeCompartmentWrapper,
+  buildSemanticModel,
   executionStateField,
   extensionRegistry,
+  getDialectAdapter,
   sqlEditorEnhancedEP,
-  SafeCompartmentWrapper,
-  type ExtensionPoint,
+  statementIndexField,
 } from '@datazen/extension-points';
 import { produceSchemaCompletions } from './completion/schemaCompletion';
 import { createSnippetCompletionSource, type SqlSnippetItem } from './snippets';
 import { formatEditorDocument } from './format/formatEditorDocument';
-import { getDialectAdapter } from './semantic/dialectAdapter';
 import { toPredictionTable } from '../../lib/relationPrediction/fromRelationMetadata';
 import {
   relatedTableBoostMap,
   relatedTableHints,
 } from '../../lib/relationPrediction/relatedTables';
-import { buildSemanticModel } from './semantic/scopeModel';
 import type { EditorMetadataSnapshot } from './metadata/types';
-import type { SqlSemanticModel } from './semantic/types';
 import type { ProSettingsBag } from './proCompartments';
+import type { SqlSemanticModel } from '@datazen/extension-points';
 
 /* -------------------------------------------------------------------------- */
 /*  Types                                                                      */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getDialectAdapter, listSupportedDialectIds } from '../dialectAdapter';
+import { getDialectAdapter, listSupportedDialectIds } from '@datazen/extension-points';
 
 describe('getDialectAdapter', () => {
   it('returns adapters for all supported dialect ids', () => {
