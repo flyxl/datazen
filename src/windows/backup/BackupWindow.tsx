@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { useSettings } from '../../hooks/useSettings';
 import { useI18n } from '../../hooks/useI18n';
+import { requirePlatform } from '../../platform/contracts';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { groupConnections } from '../../stores/connectionStore';
@@ -246,13 +247,17 @@ export function BackupWindow() {
       logPumpRef.current.reset([t('backup.progressPreparing')]);
       setStatusMessage(t('backup.progressPreparing'));
 
-      const { listen } = await import('@tauri-apps/api/event');
-      const unlisten = await listen<BackupProgressPayload>('backup-progress', (event) => {
-        const line = formatBackupProgress(event.payload, t);
-        setProgress(event.payload);
-        setStatusMessage(line);
-        logPumpRef.current.push(line);
-      });
+      // Form-split F6 prep (R6 burn): host broadcasts ride the EventChannel port.
+      const unlisten = await requirePlatform().events.listenCrossWindow(
+        'backup-progress',
+        (raw) => {
+          const payload = raw as BackupProgressPayload;
+          const line = formatBackupProgress(payload, t);
+          setProgress(payload);
+          setStatusMessage(line);
+          logPumpRef.current.push(line);
+        },
+      );
 
       try {
         const { invoke } = await import('@tauri-apps/api/core');

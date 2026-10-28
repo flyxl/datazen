@@ -31,8 +31,17 @@ const { listenMock, wappState, tabsState, openMock, closeByWappMock } = vi.hoist
   };
 });
 
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: (...args: Parameters<typeof listenMock>) => listenMock(...args),
+vi.mock('../../../platform/contracts', () => ({
+  requirePlatform: () => ({
+    events: {
+      listenCrossWindow: (name: string, handler: (payload: unknown) => void) =>
+        listenMock(name, handler),
+      emitCrossWindow: async () => {},
+    },
+    windows: {},
+    services: {},
+  }),
+  getPlatformOrNull: () => null,
 }));
 
 vi.mock('../../../hooks/useI18n', () => ({
@@ -86,9 +95,9 @@ function makePlugin(overrides: Partial<WappSummary> = {}): WappSummary {
   };
 }
 
-function openPageHandler(): ((event: { payload?: unknown }) => void) | undefined {
+function openPageHandler(): ((payload: unknown) => void) | undefined {
   const call = listenMock.mock.calls.find(([event]) => event === 'wapps:open-page');
-  return call?.[1] as ((event: { payload?: unknown }) => void) | undefined;
+  return call?.[1] as ((payload: unknown) => void) | undefined;
 }
 
 beforeEach(() => {
@@ -152,7 +161,8 @@ describe('WorkspaceView', () => {
     expect(handler).toBeDefined();
 
     await act(async () => {
-      handler?.({ payload: { wappId: 'acme.bill-audit', pageId: 'quota-check', params: {} } });
+      // The EventChannel rail delivers the RAW payload (no Tauri envelope).
+      handler?.({ wappId: 'acme.bill-audit', pageId: 'quota-check', params: {} });
     });
     expect(openMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -173,8 +183,8 @@ describe('WorkspaceView', () => {
 
     const handler = openPageHandler();
     await act(async () => {
-      handler?.({ payload: { wappId: 'ghost', pageId: 'main' } });
-      handler?.({ payload: { wappId: 'acme.off', pageId: 'main' } });
+      handler?.({ wappId: 'ghost', pageId: 'main' });
+      handler?.({ wappId: 'acme.off', pageId: 'main' });
       handler?.({ payload: { wappId: 'acme.bill-audit' } });
       handler?.({ payload: { wappId: 'acme.bill-audit', pageId: 'nope' } });
       handler?.({});

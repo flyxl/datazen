@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { fileCommands as dialogFileCommands } from '@datazen/driver-sdk';
+import { requirePlatform } from '../platform/contracts';
 
 export interface OpenedTextFile {
   fileName: string;
@@ -89,11 +90,13 @@ export interface ExportProgressEvent {
  * unlisten function. Setting it up lets the UI show row-write progress during
  * the (potentially long) streaming phase.
  */
+/** Host-broadcast progress for `export_tables_stream` (the exporter port's
+ * streaming half; kept for e2e and non-port callers). */
 export function onExportProgress(
   handler: (event: ExportProgressEvent) => void,
-): Promise<import('@tauri-apps/api/event').UnlistenFn> {
-  return import('@tauri-apps/api/event').then(({ listen }) =>
-    listen<ExportProgressEvent>('batch-export-progress', (e) => handler(e.payload)),
+): Promise<() => void> {
+  // Form-split F6 prep (R6 burn): rides the EventChannel port.
+  return requirePlatform().events.listenCrossWindow('batch-export-progress', (raw) =>
+    handler(raw as ExportProgressEvent),
   );
 }
-

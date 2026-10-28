@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
+import { requirePlatform } from '../platform/contracts';
 import {
   createProgressLogPump,
   formatRestoreProgress,
@@ -70,9 +70,11 @@ export async function runSqlFileExecution({
   logPump.reset([t('backup.restoring')]);
   onProgress?.(null, t('backup.restoring'));
 
-  const unlisten = await listen<BackupProgressPayload>('restore-progress', (event) => {
-    const line = formatRestoreProgress(event.payload, t);
-    onProgress?.(event.payload, line);
+  // Form-split F6 prep (R6 burn): host broadcasts ride the EventChannel port.
+  const unlisten = await requirePlatform().events.listenCrossWindow('restore-progress', (raw) => {
+    const payload = raw as BackupProgressPayload;
+    const line = formatRestoreProgress(payload, t);
+    onProgress?.(payload, line);
     logPump.push(line);
   });
 
@@ -93,9 +95,17 @@ export async function runSqlFileExecution({
     onProgress?.({ current: 0, total: 0, objectName: '', phase: 'done' }, doneLine);
     return true;
   } catch (e) {
-    const message = e instanceof Error ? e.message
-      : typeof e === 'object' && e !== null && 'code' in e && e.code === 'restoreOutcome'
-        && 'message' in e && typeof e.message === 'string' ? e.message : String(e);
+    const message =
+      e instanceof Error
+        ? e.message
+        : typeof e === 'object' &&
+            e !== null &&
+            'code' in e &&
+            e.code === 'restoreOutcome' &&
+            'message' in e &&
+            typeof e.message === 'string'
+          ? e.message
+          : String(e);
     logPump.push(message);
     logPump.flush();
     onError?.(message);

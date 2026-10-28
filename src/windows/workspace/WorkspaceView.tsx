@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
-import { listen } from '@tauri-apps/api/event';
 import { useI18n } from '../../hooks/useI18n';
 import { useResizable } from '../../hooks/useResizable';
 import { useWappStore } from '../../stores/wappStore';
+import { requirePlatform } from '../../platform/contracts';
 import { useWorkspaceTabsStore } from '../../stores/workspaceTabsStore';
 import { WappPageShell } from './WappPageShell';
 import { WorkspaceDefaultCards } from './WorkspaceDefaultCards';
@@ -68,19 +68,22 @@ export function WorkspaceView({ onOpenExtensions }: WorkspaceViewProps) {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let disposed = false;
-    void listen<OpenPageEventPayload>(WAPPS_OPEN_PAGE_EVENT, (event) => {
-      const payload = event.payload;
-      const targetId = payload?.wappId;
-      if (!targetId || !payload?.pageId) return;
-      const wapp = useWappStore.getState().byId(targetId);
-      if (!wapp || !wapp.enabled) return;
-      if (!wapp.pages.some((p) => p.id === payload.pageId)) return;
-      openWappPage(targetId, payload.pageId);
-      // `params` is stored with the tab by the bridge consumer in F6.
-    }).then((fn) => {
-      if (disposed) fn();
-      else unlisten = fn;
-    });
+    // Form-split F6 prep (R6 burn): host broadcasts ride the EventChannel port.
+    void requirePlatform()
+      .events.listenCrossWindow(WAPPS_OPEN_PAGE_EVENT, (raw) => {
+        const payload = raw as OpenPageEventPayload;
+        const targetId = payload?.wappId;
+        if (!targetId || !payload?.pageId) return;
+        const wapp = useWappStore.getState().byId(targetId);
+        if (!wapp || !wapp.enabled) return;
+        if (!wapp.pages.some((p) => p.id === payload.pageId)) return;
+        openWappPage(targetId, payload.pageId);
+        // `params` is stored with the tab by the bridge consumer in F6.
+      })
+      .then((fn) => {
+        if (disposed) fn();
+        else unlisten = fn;
+      });
     return () => {
       disposed = true;
       unlisten?.();

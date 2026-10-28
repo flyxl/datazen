@@ -13,15 +13,20 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: invokeMock,
 }));
 
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: listenMock,
+vi.mock('../../platform/contracts', () => ({
+  requirePlatform: () => ({
+    events: {
+      listenCrossWindow: (name: string, handler: (payload: unknown) => void) =>
+        listenMock(name, handler),
+      emitCrossWindow: async () => {},
+    },
+    windows: {},
+    services: {},
+  }),
+  getPlatformOrNull: () => null,
 }));
 
-import {
-  fileCommands,
-  onExportProgress,
-  type ExportTablesRequest,
-} from '../file';
+import { fileCommands, onExportProgress, type ExportTablesRequest } from '../file';
 
 describe('fileCommands dialog wrappers', () => {
   // §7.2/§7.3：driver-sdk 的 dialog/file 再导出只走已绑定的 BackendClient
@@ -30,8 +35,7 @@ describe('fileCommands dialog wrappers', () => {
   beforeAll(() => {
     setBackendClient('test', { transport: { call: invokeMock } } as never);
     setPlatformServices({
-      saveTextWithDialog: (input: SaveTextInput) =>
-        invokeMock('save_text_with_dialog', input),
+      saveTextWithDialog: (input: SaveTextInput) => invokeMock('save_text_with_dialog', input),
       saveBinaryWithDialog: (input: SaveBinaryInput) =>
         invokeMock('save_base64_with_dialog', input),
     } as never);
@@ -100,9 +104,9 @@ describe('fileCommands streaming save session', () => {
 
   it('begin/append/finish/abort share the opaque token', async () => {
     invokeMock.mockResolvedValueOnce('token-1');
-    await expect(
-      fileCommands.beginSaveWithDialog('log.txt', 'Text', ['txt']),
-    ).resolves.toBe('token-1');
+    await expect(fileCommands.beginSaveWithDialog('log.txt', 'Text', ['txt'])).resolves.toBe(
+      'token-1',
+    );
     expect(invokeMock).toHaveBeenCalledWith('begin_save_with_dialog', {
       defaultFileName: 'log.txt',
       filterName: 'Text',
@@ -173,8 +177,9 @@ describe('exportTablesStream + progress events', () => {
     expect(listenMock).toHaveBeenCalledTimes(1);
     expect(listenMock.mock.calls[0][0]).toBe('batch-export-progress');
 
-    const relay = listenMock.mock.calls[0][1] as (e: { payload: unknown }) => void;
-    relay({ payload: { table: 'users', rowsWritten: 10 } });
+    // The EventChannel rail delivers the RAW payload (no Tauri envelope).
+    const relay = listenMock.mock.calls[0][1] as (payload: unknown) => void;
+    relay({ table: 'users', rowsWritten: 10 });
     expect(handler).toHaveBeenCalledWith({ table: 'users', rowsWritten: 10 });
 
     await unlisten();

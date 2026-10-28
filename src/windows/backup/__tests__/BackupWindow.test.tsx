@@ -33,9 +33,9 @@ const {
   // and the production call sites are `listen(name, handler)` / `getUrlParam(name)`.
   urlParamMock: vi.fn<(name: string) => string | null>(() => null),
   confirmDialogFn: vi.fn().mockResolvedValue(true),
-  listenMock: vi.fn<
-    (name: string, handler: (event: { payload: unknown }) => void) => Promise<() => void>
-  >(async () => () => {}),
+  listenMock: vi.fn<(name: string, handler: (payload: unknown) => void) => Promise<() => void>>(
+    async () => () => {},
+  ),
   // Mutable per-test dialect backup options; defaults to the previous empty list.
   backupOptionsRef: { current: [] as Array<{ id: string; label: string }> },
 }));
@@ -81,9 +81,17 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => invokeMock(...args),
 }));
 
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: (name: string, handler: (event: { payload: unknown }) => void) =>
-    listenMock(name, handler),
+vi.mock('../../../platform/contracts', () => ({
+  requirePlatform: () => ({
+    events: {
+      listenCrossWindow: (name: string, handler: (payload: unknown) => void) =>
+        listenMock(name, handler),
+      emitCrossWindow: async () => {},
+    },
+    windows: {},
+    services: {},
+  }),
+  getPlatformOrNull: () => null,
 }));
 
 vi.mock('../../../hooks/useConfirmDialog', () => ({
@@ -266,13 +274,12 @@ describe('BackupWindow connection list', () => {
 
   it('restore progress log appends each statement', async () => {
     mockRestoreCommands([]);
-    let onProgress: ((event: { payload: unknown }) => void) | undefined;
-    listenMock.mockImplementation(
-      async (_name: string, cb: (event: { payload: unknown }) => void) => {
-        onProgress = cb;
-        return () => {};
-      },
-    );
+    // The EventChannel rail delivers the RAW payload (no Tauri envelope).
+    let onProgress: ((payload: unknown) => void) | undefined;
+    listenMock.mockImplementation(async (_name: string, cb: (payload: unknown) => void) => {
+      onProgress = cb;
+      return () => {};
+    });
     invokeMock.mockImplementation(
       async (cmd: string, args?: { request?: { command?: string } }) => {
         if (cmd === 'get_connections') {
@@ -294,12 +301,8 @@ describe('BackupWindow connection list', () => {
           return { data: { databases: ['app', 'postgres'] } };
         if (args?.request?.command === 'list_catalog') return catalogResult([]);
         if (cmd === 'restore_sql_file') {
-          onProgress?.({
-            payload: { current: 1, total: 2, objectName: 'CREATE TABLE users', phase: 'object' },
-          });
-          onProgress?.({
-            payload: { current: 2, total: 2, objectName: 'INSERT INTO users', phase: 'object' },
-          });
+          onProgress?.({ current: 1, total: 2, objectName: 'CREATE TABLE users', phase: 'object' });
+          onProgress?.({ current: 2, total: 2, objectName: 'INSERT INTO users', phase: 'object' });
           return true;
         }
         return null;

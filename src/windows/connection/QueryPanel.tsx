@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { listen } from '@tauri-apps/api/event';
+import { requirePlatform } from '../../platform/contracts';
 import type { SqlEditorHandle } from '../../components/SqlEditor';
 import { buildEditorSchema } from '../../lib/buildEditorSchema';
 import {
@@ -260,11 +260,16 @@ export function QueryPanel({
   // session pointer forever — treat it as unset.
   const boundDatabase = database?.trim() ? database : null;
   const [ownedSessionState, setOwnedSessionState] = useState<SessionView | null>(null);
-  const observedNamespace = ownedSessionState?.observedContext.confidence === 'confirmed' ? ownedSessionState.observedContext.namespace : null;
-  const selectedDatabase = observedNamespace ? observedNamespace.database : isPathHierarchy
-    ? (currentDatabase ?? boundDatabase)
-    : (boundDatabase ?? currentDatabase);
-  const selectedSchema = observedNamespace ? observedNamespace.schema : schema ?? currentSchema;
+  const observedNamespace =
+    ownedSessionState?.observedContext.confidence === 'confirmed'
+      ? ownedSessionState.observedContext.namespace
+      : null;
+  const selectedDatabase = observedNamespace
+    ? observedNamespace.database
+    : isPathHierarchy
+      ? (currentDatabase ?? boundDatabase)
+      : (boundDatabase ?? currentDatabase);
+  const selectedSchema = observedNamespace ? observedNamespace.schema : (schema ?? currentSchema);
   const supportsExplain = dbMeta?.supportsExplain === true;
   const hasContextSelectors = isPathHierarchy || (isMultiDb && databases.length > 0);
   const queryResultExportCapability = resolveExportScope(dbMeta);
@@ -642,7 +647,8 @@ export function QueryPanel({
   ]);
 
   useEffect(() => {
-    const unlisten = listen('menu:add-favorite', () => {
+    // Form-split F6 prep (R6 burn): host broadcasts ride the EventChannel port.
+    const unlisten = requirePlatform().events.listenCrossWindow('menu:add-favorite', () => {
       workflows.openAddFavoriteDialog(
         workflows.pendingFavSqlRef.current ||
           usePanelStore.getState().queryExec.get(paneKey(panelId, paneId))?.sql ||
@@ -712,9 +718,20 @@ export function QueryPanel({
       {ownedSessionState && ['lost', 'closed'].includes(ownedSessionState.state) && (
         <div className="flex items-center gap-2 px-3 py-2 text-sm" role="status">
           <span>{t('query.session.disconnected')}</span>
-          <button data-testid="editor-new-session-button" type="button"
-            onClick={() => void sessionController?.openNewSession().catch((error: unknown) =>
-              showMessageDialog(error instanceof Error ? error.message : String(error), 'error'))}>
+          <button
+            data-testid="editor-new-session-button"
+            type="button"
+            onClick={() =>
+              void sessionController
+                ?.openNewSession()
+                .catch((error: unknown) =>
+                  showMessageDialog(
+                    error instanceof Error ? error.message : String(error),
+                    'error',
+                  ),
+                )
+            }
+          >
             {t('query.session.openNew')}
           </button>
         </div>
@@ -804,7 +821,18 @@ export function QueryPanel({
             >
               <QueryResultsPane
                 publishedArtifacts={exec.publishedArtifacts}
-                onCellEdit={(row, col, value) => usePanelStore.getState().updateResultCell(panelId, activeResultIdx, row, col, value, ...paneArgs(paneId))}
+                onCellEdit={(row, col, value) =>
+                  usePanelStore
+                    .getState()
+                    .updateResultCell(
+                      panelId,
+                      activeResultIdx,
+                      row,
+                      col,
+                      value,
+                      ...paneArgs(paneId),
+                    )
+                }
                 dbSessionId={dbSessionId}
                 databaseType={databaseType}
                 sql={exec.sql}

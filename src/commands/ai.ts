@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { requirePlatform } from '../platform/contracts';
+
+type UnlistenFn = () => void;
 import type {
   AiChatMessage,
   AiProviderConfig,
@@ -198,7 +200,8 @@ export const aiCommands = {
     nativeInvoke<AiGrantReceipt>('ai_grant_editor_session', params),
   revokeEditorGrant: (grantId: string) =>
     nativeInvoke<boolean>('ai_revoke_editor_grant', { grantId }),
-  touchEditorGrant: (grantId: string) => nativeInvoke<boolean>('ai_touch_editor_grant', { grantId }),
+  touchEditorGrant: (grantId: string) =>
+    nativeInvoke<boolean>('ai_touch_editor_grant', { grantId }),
 
   promptList: (driverType?: string) =>
     invoke<PromptInfo[]>('prompt_list', { driverType: driverType ?? null }),
@@ -210,21 +213,22 @@ export const aiCommands = {
 export function onAiStreamChunk(
   callback: (payload: StreamChunkPayload) => void,
 ): Promise<UnlistenFn> {
-  return listen<StreamChunkPayload>('ai:stream-chunk', (event) => {
-    callback(event.payload);
-  });
+  // Form-split F6 prep (R6 burn): host broadcasts ride the EventChannel port.
+  return requirePlatform().events.listenCrossWindow('ai:stream-chunk', (raw) =>
+    callback(raw as StreamChunkPayload),
+  );
 }
 
 export function onAiStreamError(
   callback: (payload: StreamErrorPayload) => void,
 ): Promise<UnlistenFn> {
-  return listen<StreamErrorPayload>('ai:stream-error', (event) => {
-    callback(event.payload);
-  });
+  return requirePlatform().events.listenCrossWindow('ai:stream-error', (raw) =>
+    callback(raw as StreamErrorPayload),
+  );
 }
 
 export function onAiConfigChanged(callback: (isConfigured: boolean) => void): Promise<UnlistenFn> {
-  return listen<boolean>('ai:config-changed', (event) => {
-    callback(event.payload);
-  });
+  return requirePlatform().events.listenCrossWindow('ai:config-changed', (raw) =>
+    callback(raw as boolean),
+  );
 }

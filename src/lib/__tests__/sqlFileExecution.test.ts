@@ -9,8 +9,17 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => invokeMock(...args),
 }));
 
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: (...args: unknown[]) => listenMock(...args),
+vi.mock('../../platform/contracts', () => ({
+  requirePlatform: () => ({
+    events: {
+      listenCrossWindow: (name: string, handler: (payload: unknown) => void) =>
+        listenMock(name, handler),
+      emitCrossWindow: async () => {},
+    },
+    windows: {},
+    services: {},
+  }),
+  getPlatformOrNull: () => null,
 }));
 
 import { setBackendClient } from '@datazen/backend-client';
@@ -156,21 +165,36 @@ describe('runSqlFileExecution (decision 3+6 unified IPC)', () => {
     invokeMock.mockRejectedValue(failure);
     const onError = vi.fn();
     const progress = vi.fn();
-    await expect(runSqlFileExecution({ ...baseOptions(), onError, onProgress: progress })).rejects.toThrow('Restore Unsupported');
+    await expect(
+      runSqlFileExecution({ ...baseOptions(), onError, onProgress: progress }),
+    ).rejects.toThrow('Restore Unsupported');
     expect(onError).toHaveBeenCalledWith(failure.message);
-    expect(invokeMock.mock.calls.filter(([command]) => command === 'restore_sql_file')).toHaveLength(1);
+    expect(
+      invokeMock.mock.calls.filter(([command]) => command === 'restore_sql_file'),
+    ).toHaveLength(1);
     expect(progress.mock.calls.some(([payload]) => payload?.phase === 'done')).toBe(false);
   });
 
-  it.each(['unknown', 'partiallyApplied', 'rolledBack', 'notStarted'])('preserves structured %s outcomes without retry or success', async (effectOutcome) => {
-    const failure = { code: 'restoreOutcome', message: `Restore failed: ${effectOutcome}; automatic retry is forbidden`, automaticRetryAllowed: false, details: { job: { state: 'failed', effectOutcome } } };
-    invokeMock.mockRejectedValue(failure);
-    const onError = vi.fn();
-    const progress = vi.fn();
-    await expect(runSqlFileExecution({ ...baseOptions(), onError, onProgress: progress })).rejects.toEqual(failure);
-    expect(onError).toHaveBeenCalledWith(failure.message);
-    expect(invokeMock.mock.calls.filter(([command]) => command === 'restore_sql_file')).toHaveLength(1);
-    expect(progress.mock.calls.some(([payload]) => payload?.phase === 'done')).toBe(false);
-  });
-
+  it.each(['unknown', 'partiallyApplied', 'rolledBack', 'notStarted'])(
+    'preserves structured %s outcomes without retry or success',
+    async (effectOutcome) => {
+      const failure = {
+        code: 'restoreOutcome',
+        message: `Restore failed: ${effectOutcome}; automatic retry is forbidden`,
+        automaticRetryAllowed: false,
+        details: { job: { state: 'failed', effectOutcome } },
+      };
+      invokeMock.mockRejectedValue(failure);
+      const onError = vi.fn();
+      const progress = vi.fn();
+      await expect(
+        runSqlFileExecution({ ...baseOptions(), onError, onProgress: progress }),
+      ).rejects.toEqual(failure);
+      expect(onError).toHaveBeenCalledWith(failure.message);
+      expect(
+        invokeMock.mock.calls.filter(([command]) => command === 'restore_sql_file'),
+      ).toHaveLength(1);
+      expect(progress.mock.calls.some(([payload]) => payload?.phase === 'done')).toBe(false);
+    },
+  );
 });
