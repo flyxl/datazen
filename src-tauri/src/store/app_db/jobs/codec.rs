@@ -39,27 +39,6 @@ pub(super) fn durable_plan(kind: &str, payload: &Value) -> Result<Value, PortErr
             "monitor occurrence plan is missing its durable identity".into(),
         ));
     }
-    if kind == "nativeToolProbe" && !object.contains_key("nativeToolSelection") {
-        return Err(PortError::BackendUnavailable(
-            "native selection missing".into(),
-        ));
-    }
-    if kind == "nativeToolProbe"
-        && !object
-            .get("planDigest")
-            .and_then(Value::as_str)
-            .is_some_and(|digest| {
-                digest.len() == 71
-                    && digest.starts_with("sha256:")
-                    && digest[7..]
-                        .bytes()
-                        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-            })
-    {
-        return Err(PortError::BackendUnavailable(
-            "native deployment digest missing or invalid".into(),
-        ));
-    }
     let mut projected = serde_json::Map::new();
     for (key, value) in object {
         let common_field = matches!(
@@ -89,8 +68,7 @@ pub(super) fn durable_plan(kind: &str, payload: &Value) -> Result<Value, PortErr
                 | "fileExtension"
         );
         let monitor_field = key == "monitorOccurrence" && kind == "monitorOccurrence";
-        let native_field = key == "nativeToolSelection" && kind == "nativeToolProbe";
-        if !common_field && !monitor_field && !native_field {
+        if !common_field && !monitor_field {
             return Err(PortError::BackendUnavailable(
                 "job plan contains a field outside the durable projection".into(),
             ));
@@ -140,7 +118,6 @@ fn validate_plan_value(kind: &str, key: &str, value: &Value) -> Result<(), PortE
                         .is_some_and(|text| !text.is_empty() && text.len() <= 4096)
                 })
         }),
-        "nativeToolSelection" => kind == "nativeToolProbe" && validate_native_selection(value),
         "recoveryTargets" => validate_recovery_targets(value),
         "monitorOccurrence" => kind == "monitorOccurrence" && validate_monitor_occurrence(value),
         _ => false,
@@ -152,20 +129,6 @@ fn validate_plan_value(kind: &str, key: &str, value: &Value) -> Result<(), PortE
             "job plan field `{key}` has an unsupported durable value"
         )))
     }
-}
-
-fn validate_native_selection(value: &Value) -> bool {
-    let Ok(selection) = serde_json::from_value::<
-        datazen::jobs::domain::native_tool::NativeToolSelection,
-    >(value.clone()) else {
-        return false;
-    };
-    matches!(
-        selection.tool_id.as_str(),
-        "postgres.pg-dump-version" | "mysql.mysqldump-version"
-    ) && !selection.version.is_empty()
-        && selection.version.len() <= 128
-        && !selection.version.chars().any(char::is_control)
 }
 
 fn validate_monitor_occurrence(value: &Value) -> bool {

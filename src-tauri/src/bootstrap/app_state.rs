@@ -92,24 +92,8 @@ pub(crate) fn build_desktop_job_host(
 }
 
 pub(crate) async fn recover_desktop_jobs_at_startup(state: &AppState) -> Result<(), String> {
-    // Native Jobs use the real desktop identity, unlike historical migration
-    // adapters. Mark only those jobs for inspection; never rebuild a handler.
-    if let Ok(adapter) = state.platform_require() {
-        let context = adapter.begin_call().context().clone();
-        state
-            .desktop_job_host
-            .mark_restart_candidates_for_verification(
-                &context,
-                RecoveryFilter {
-                    kinds: vec!["nativeToolProbe".into()],
-                    older_than: None,
-                    limit: None,
-                },
-            )
-            .await
-            .map_err(|_| "native job recovery scan failed".to_string())?;
-    }
-
+    // NativeToolProbe 作业不在此恢复：F1 已删除 NativeTool 全部内核词汇与 IPC 面，
+    // 旧库遗留行由 schema migration v6 在打开时一次性 purge（app_db.rs）。
     let ctx = RequestContext::new(
         OrganizationId::new(crate::platform::LOCAL_ORGANIZATION_ID),
         PrincipalId::new("datazen-local-user"),

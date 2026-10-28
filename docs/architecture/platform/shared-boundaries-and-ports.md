@@ -49,7 +49,7 @@
 
 ### 2.2 模块树
 
-> **现状注记（2026-10-27 复核）**：下面这棵 `modules/src/platform_api/src/` 树是 P1 阶段的落地形态，保留作迁移对照。此后契约层已再消解：ID / 上下文 / 错误 / `check_owner` / `Clock` 迁入 `modules/src/shared/`，请求 DTO 与用例端口在 `modules/src/application/`（`dto/`、`sessions.rs`、`target.rs`），端口 trait 分散至各自领域包（隧道 → `modules/src/tunnel/domain/`，NativeTool → `modules/src/jobs/domain/`，Profile → `modules/src/connection/domain/`，窄端口见 §4.10）。集中的 `PORT_TRAITS` 清单随迁移取消。
+> **现状注记（2026-10-27 复核）**：下面这棵 `modules/src/platform_api/src/` 树是 P1 阶段的落地形态，保留作迁移对照。此后契约层已再消解：ID / 上下文 / 错误 / `check_owner` / `Clock` 迁入 `modules/src/shared/`，请求 DTO 与用例端口在 `modules/src/application/`（`dto/`、`sessions.rs`、`target.rs`），端口 trait 分散至各自领域包（隧道 → `modules/src/tunnel/domain/`，Profile → `modules/src/connection/domain/`，窄端口见 §4.10；NativeTool 端口已随前端形态拆分方案 F1 删除）。集中的 `PORT_TRAITS` 清单随迁移取消。
 
 ```text
 modules/src/platform_api/src/（P1 历史形态，现 dispersed 至 shared / 领域包）
@@ -449,7 +449,7 @@ modules/src/execution/runtime/connection/
 
 ## 4. 端口 trait（已实现；契约分散于各领域包，见下方落地形态）
 
-> 落地形态（2026-10-27 复核）：端口 trait 随消费者分散在各领域包与 `modules/src/application/`——隧道端口在 `modules/src/tunnel/domain/`，NativeTool 在 `modules/src/jobs/domain/`，Profile 系在 `modules/src/connection/domain/`，窄端口见 §4.10；P1 阶段集中的 `PORT_TRAITS` 清单（原 `platform_api/src/ports/inventory.rs`）随契约层消解而取消，端口归属以各领域包模块源码为准。`#[async_trait]` + `Send + Sync + 'static` + `Arc<dyn X>` 注入，`PortError` 七个变体只派生 `Debug` 与 `thiserror::Error`（刻意不实现 `Serialize`，用例测试 `the_port_error_has_no_wire_shape_of_its_own` 守住）。`application` 与 `runtime` 通过 `pub use datazen::platform_api::…` 再导出，不重复定义。**端口 trait 本身只定义签名，不含任何实现**——**带副作用或带传输**的实现由端口的提供方 crate 各自承担，不得回填进 `platform-api`（否则契约与实现耦合，`platform-api` 的平台中立性即被破坏），也不得让两个提供方为同一端口各写一份。**例外说明**：只有形态中立、无副作用、无传输的进程内原语实现可以随端口一起提供，因为它没有第二份实现可写（先例 `ports::budget::pool_ledger`，见 §4.9 的 `Clock`）；其余实现一律不得回填。
+> 落地形态（2026-10-27 复核）：端口 trait 随消费者分散在各领域包与 `modules/src/application/`——隧道端口在 `modules/src/tunnel/domain/`，Profile 系在 `modules/src/connection/domain/`，窄端口见 §4.10（NativeTool 端口已随前端形态拆分方案 F1 删除）；P1 阶段集中的 `PORT_TRAITS` 清单（原 `platform_api/src/ports/inventory.rs`）随契约层消解而取消，端口归属以各领域包模块源码为准。`#[async_trait]` + `Send + Sync + 'static` + `Arc<dyn X>` 注入，`PortError` 七个变体只派生 `Debug` 与 `thiserror::Error`（刻意不实现 `Serialize`，用例测试 `the_port_error_has_no_wire_shape_of_its_own` 守住）。`application` 与 `runtime` 通过 `pub use datazen::platform_api::…` 再导出，不重复定义。**端口 trait 本身只定义签名，不含任何实现**——**带副作用或带传输**的实现由端口的提供方 crate 各自承担，不得回填进 `platform-api`（否则契约与实现耦合，`platform-api` 的平台中立性即被破坏），也不得让两个提供方为同一端口各写一份。**例外说明**：只有形态中立、无副作用、无传输的进程内原语实现可以随端口一起提供，因为它没有第二份实现可写（先例 `ports::budget::pool_ledger`，见 §4.9 的 `Clock`）；其余实现一律不得回填。
 
 - 所有 ID 参数使用 `platform-api` 的 newtype（`OrganizationId`、`PrincipalId`、`ConnectionId`、`DbSessionId`、`JobId`、`ExecutionId`、`ArtifactId`、`StreamId`、`RuntimeEpoch`…），**不使用裸 `String` 标识语义**。`connectionId` = 持久化配置 ID，`dbSessionId` = 运行时会话 ID，两者永不混用（[ID 术语规范](../../../AGENTS.md#id-术语规范)）。
 - **`RequestContext` 与全部 ID newtype 定义在 `platform-api`**，无行为、无平台依赖；`application` 与 `runtime` 用 `pub use` 再导出。这样端口签名（`platform-api`）与用例签名（`application`）共用同一份类型定义而不产生依赖倒置（否则 `platform-api` 必须反向依赖 `application`，与 F-04 冲突）。
@@ -1169,9 +1169,9 @@ restore 任务（组织 = 规范值）与 transfer / schema-diff / sync 任务�
    `claim_client_instance_id=?8`）也建立在同一套主体取值上。主体轴一旦动，必须与认领、
    恢复路径一起评估，**单独排期**，不夹带在「统一组织」这一波里。
 
-（当前可见症状有限：今天唯一以 IPC ctx 列举的路径是
-[`commands/native_tool.rs`](../../../src-tauri/src/commands/native_tool.rs) 的
-`native_tool_list_jobs`，它额外按 `kind` 过滤。但结构性事实不变——主体轴仍分裂。）
+（当前可见症状有限：曾以 IPC ctx 列举的路径
+`commands/native_tool.rs` 的 `native_tool_list_jobs`（额外按 `kind` 过滤）已随
+前端形态拆分方案 F1 删除，但结构性事实不变——主体轴仍分裂。）
 
 #### 客户端实例轴为什么不动
 

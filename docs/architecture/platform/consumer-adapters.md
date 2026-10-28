@@ -123,59 +123,27 @@ PostgreSQL 与 MySQL 的 driver 专属 `packages/drivers/{postgres,mysql}/tests/
 
 导出、备份、恢复均以 Job 受理，冻结稳定目标、输出规格、工具/driver 版本与风险确认。文件选择或下载只属于 host adapter；领域层写 Artifact，不接受任意服务端路径。
 
-需要数据库原生 CLI 的操作通过 NativeTool 环境端口，目标协议如下：
+### NativeTool 环境端口（已删除，2026-10-28）
 
-| 操作 | 契约 |
-| --- | --- |
-| resolve | 仅解析部署允许的工具 ID/版本与绝对可执行文件，不能使用客户端可执行路径 |
-| spawn | 使用结构化 argv、显式工作目录和白名单环境；不经 shell 拼接；凭据通过受控通道注入 |
-| output | stdout/stderr 有界读取并脱敏；大输出进入私有 Artifact，不能阻塞管道造成死锁 |
-| cancel | 停止输入、请求工具退出、超时终止其进程组、等待回收，再核验外部效果 |
-| cleanup | 关闭管道、受控临时文件、进程和相关预算；失败留下审计与人工处理提示 |
-
-原生工具可能自行建立数据库连接，必须在启动前申报可证明的连接上限并预留全部预算。无法限制隐藏连接数的工具不进入严格预算模式；该操作显式 unsupported，不能以“只有一个 OS process”记一个 socket。
-
-服务节点未安装工具、版本不符或服务身份无法访问目标时，在接受/派发校验失败，不能调用浏览器或桌面本地 CLI 代替服务端执行。恢复是外部写任务，取消与进程退出都不证明回滚；unknown 进入核验，不自动重放。
-
-### 2026-10-19 NativeTool kernel 与桌面版本探针（当前实现边界）
-
-`modules/src/jobs/domain/native_tool.rs` 定义 NativeToolPort；请求只含 toolId/version，不含客户端 executable、argv、env、工作目录或凭据。`modules/src/native_tool/` 在真实 JobRuntime stage capability 下执行：先核对活动 claim，再校验受信端口给出的进程/DB socket 上限；当前只接受一个有证明的进程，任一未知上限或缺目标均失败关闭。OS 进程名额单独计数，完整声明的 DB socket cost 在 spawn 前通过宿主共享 InProcessBudgetCoordinator 的 Job 类一次原子预留，不能将一个进程记成一个 socket。宿主须在环境级复用同一个 NativeToolRuntime；native handler 的 endpoints 不重复声明该物理预留。有效 owner 在执行中持续重验，撤销/取消只通知原进程，不能启动替代进程。
-
-桌面 `src-tauri/src/platform/native_tool/` **仅实现 POSIX 固定版本探针**：显式部署登记 SHA-256 钉定的 `postgres.pg-dump-version` / `mysql.mysqldump-version` 和对应精确版本行；空注册表拒绝全部请求，不搜索 PATH。唯一 argv 是 `--version`，声明零 DB sockets；数据导出、导入、native backup/restore、任意自定义命令与 Windows adapter 均未启用。请求类型本身无法指定路径。运行前复验部署 binary，验证字节复制到私有临时可执行快照，防止检查后替换路径；生产拒绝脚本，测试仅使用 cfg(test) 合成脚本夹具。工作目录是独立私有目录，stdin 为 null，env_clear 后只设置 LANG/LC_ALL/TZ 常量，不继承 HOME、PGOPTIONS、MYSQL_*、动态加载路径或凭据。
-
-stdout/stderr 同时按 4 KiB 缓冲读取，无无界队列；总输出默认 64 KiB、硬上限 1 MiB，版本 stdout 额外限制 1 KiB，超限即终止。原始输出全部丢弃，只比对受信精确版本行，receipt/Job projection 只记录字节计数、稳定结果码和清理事实。当前探针不生成大输出 Artifact。deadline/取消触发专属 process group 的 TERM、宽限后 KILL，并 wait/reap 主进程；只有组已不存在、管道关闭、临时目录明确删除成功才报告 Confirmed。请求停止等待不丢失进程：provider worker 保留实际 Child/目录，失败后只重试原资源清理。
-
-未确认 cleanup 保留全部 process/socket 预算，确认后才核销；cleanup 状态查询 panic 也按未确认处理，由原 owner task 保留全部名额并继续只查询原资源清理，不因 observer 故障释放进程名额或重放工具；结果中的 Unknown 不因稍后物理释放就改称数据库回滚/成功。每个 Job/stage 只执行一次，重复执行返回原 receipt，换 selection 拒绝；Job 终态与重启恢复都不自动运行 NativeTool，handler 的 recovery 始终要求人工复核。进程退出码不能证明真实数据库效果，通用 kernel 对非零 DB socket 的 fake operation 保守记录 Unknown。此段提供端口/内核与合成进程测试基础，**现有构建时登记与探针 Job IPC 接线仍待独立验收；没有产品 UI、已批准的实际 pg_dump/mysqldump 二进制登记、真实数据库操作或 native backup/restore 产品路径，也没有完成 P6 全预算及适用层验收**。
-
-Runtime 故障测试另覆盖调用方等待任务被 abort、仓储随后撤销时，原 native owner 仍独立重验 claim 并通知同一在途调用取消；未确认 cleanup 同时保留 process 与完整声明 socket cost，其他 Job 不得 spawn。provider run panic 不能被当作 pre-spawn Err，结果为 Unknown 且同样保留全部预算，延迟 cleanup 确认只释放预算、不改写原 receipt、不重放。这里的 stalled provider/DB socket cost 是合成端口夹具，输出背压/真实 process-group kill/reap 仍是桌面 adapter 的另一层测试；没有把这两层拼称实库组合旅程。故意 abort 整个 JobRuntime 调用还会留下 Running/取消意图的持久 Job，不能声称已完成 durable 终态发布；产品关闭窗口只退订、请求与 Job 运行的独立托管及重启核验仍需实际接入验收。
-
-### 可信部署登记与探针 Job 产品入口（待独立验收）
-
-`src-tauri/resources/native-tool-probes.json` 是编译进宿主的部署 allowlist，默认 `[]`。只有经过审阅并重建宿主的部署维护者能登记 `versionProbeV1`、工具 ID/版本、绝对二进制路径、64 位小写 SHA-256、精确版本行与完整资源上界；它不从 Settings、IPC、PATH 或运行环境读取登记。最多 32 项、64 KiB，重复/非法记录或二进制校验失败使 native 能力失败关闭，不回落到其他可执行文件。此合同只允许 `postgres.pg-dump-version` / `mysql.mysqldump-version`、固定 `--version`、1 process / 0 DB sockets；非零 DB socket 或未知合同拒绝，不降为零。默认构建没有批准的实际工具，不能用该探针宣称支持 dump/restore。
-
-产品 IPC 是 `native_tool_choices` / `native_tool_submit` / `native_tool_get` / `native_tool_list_jobs` / `native_tool_cancel`。提交 DTO 严格只接收 `selection { toolId, version }` 与 UUID `idempotencyKey`，拒绝未知字段；不接受路径、argv、env、cwd、主体、connection、资源 cost 或凭据。选择列表只返回安全选择、operation 与上界，不返回部署路径或工具输出。调用通过真实桌面 RequestContext 与 ManageJob policy，get/cancel 检查 owner 和 `nativeToolProbe` kind，list 返回至多 100 项。
-
-SQLite durable admission 冻结选择及部署合同摘要（含二进制 SHA、精确版本行、资源 cost），同键不同选择/部署摘要冲突；同键返回既有 Job，只有新受理 Job 才创建独立后台 dispatch，IPC 停止等待不取消 Job。每个宿主环境只保留一个 NativeToolRuntime，物理 coordinator 与桌面 Runtime session 为同一个实例；进程/全部声明 socket 的派发预算、claim 重验、cancel、cleanup 与 Unknown receipt 继续使用既有 kernel，不复制执行器。启动使用当前真实桌面主体把旧 native Jobs 标为待核验，不恢复 handler 或重放。派发异常保留固定 `nativeDispatchUnconfirmed` 核验状态。探针原始 stdout/stderr 丢弃，只保存原有有界 byte-count/effect/cleanup JobDomainResult；没有导出 Artifact，也没有开放真实 DB 操作。
-
-本接线尚未编译或测试。后续验收须分别验证部署拒绝/摘要变更、SQLite 同键与重开、后台 Job 在 IPC 等待结束后完成、owner/kind 隔离、撤销与未确认清理保留预算、共享 Runtime 预算竞争及重启不重放。真实 PostgreSQL/MySQL CLI、各批准版本完整连接上界、Artifact 导出、实际组合背压/取消/reap/cleanup 及 UI 仍未实现或未验收；不构成 P6 关闭。
+> **历史记录**：本节原描述 NativeTool 环境端口（部署锚定的 `pg_dump` / `mysqldump --version` 探针）的目标协议、kernel 实现、桌面部署登记与产品 IPC。随前端形态拆分方案 **F1**（裁决 #3）整体删除：产品零使用、无 UI、探针登记表默认空即拒绝一切，契约先行预留却从未被消费。删除面：`modules/src/jobs/{domain,application}/native_tool*`、`src-tauri/src/{commands,platform}/native_tool*`、`src-tauri/resources/native-tool-probes.json`、`owner.rs` 的 `verify_native_selection`、codec 的 `nativeToolProbe` 校验分支与 IPC 五命令。旧库遗留的 `nativeToolProbe` 作业行由宿主 schema migration v6 在启动时一次性 purge（子表全部 ON DELETE CASCADE）。若未来需要数据库原生 CLI 能力，须重新立项；本节保留删除事实与回滚边界（revert 无数据迁移逆向，purge 不恢复旧记录——记录本身无产品价值）。
 
 ## 8. 接口落地与旧路径删除
 
-P6 目标 adapter 为 AI tool adapter、MCP request/session adapter、Wapp bridge adapter、schedule adapter 与 native tool adapter；名字是职责描述，不假称当前存在这些模块。新增字段与方法先在 contracts/application 注册，再同时更新桌面和团队 adapter。
+P6 目标 adapter 为 AI tool adapter、MCP request/session adapter、Wapp bridge adapter 与 schedule adapter（native tool adapter 随 NativeTool 删除而取消，见 §7 墓碑）；名字是职责描述，不假称当前存在这些模块。新增字段与方法先在 contracts/application 注册，再同时更新桌面和团队 adapter。
 
 每个消费者切换时按顺序完成：完整目标与 schema → owner/委托与风控 → receipt/结果/取消 → 资源清理 → 连续旅程验证 → 删除旧管理器调用。Workflow 继续使用其详细设计定义的 step/block，不在消费者 adapter 重复实现块事务。
 
-现有平台设计的 Dashboard 目标来源和调度凭据缺口由 §6 固定；native tool 与 Wapp stateful 能力由 §5/§7 固定。具体驱动不具备相应能力仍必须拒绝，不能由 Host 伪造支持。
+现有平台设计的 Dashboard 目标来源和调度凭据缺口由 §6 固定；Wapp stateful 能力由 §5/§7 固定（NativeTool 已删除，见 §7 墓碑）。具体驱动不具备相应能力仍必须拒绝，不能由 Host 伪造支持。
 
 ### 8.1 当前共享实现与保留边界（2026-10-17）
 
-Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `modules command_runtime → modules resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。 NativeTool 继续使用不可序列化的通用 `StageOwnerPermit` 核验活动 Job claim、阶段、实例和取消状态；移除的是 Workflow 专用块/会话绑定，非通用 Job fencing。
+Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `modules command_runtime → modules resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。（NativeTool 原依赖的不可序列化通用 `StageOwnerPermit` Job fencing 保留在 Job 内核中服务其余 Handler；NativeTool 本体已删除。）
 
 共享领域实现集中在 `modules`，Wapp 内核（协议/路由策略）作为 `modules::workspace_apps` 模块同在其中，宿主只保留 `datazen://` 协议适配器。本轮补迁 command policy、迁移端点身份算法、Dashboard 创建/归档规则、export 容器规划与迁移结果历史映射；原路径保留薄绑定和兼容导出。逐项源码边界见 [modules 残余审计](modules.md#final-residual-audit-2026-10-17)。
 
 `execute_driver_command` 仍服务桌面 editor/session IPC；Runtime 的 `SessionRegistry` 与 `DesktopSessionBackend` 承载本地 session identity、物理资源、预算与隧道生命周期。AI/MCP/Workflow 默认 DB 工具已走共享 Runtime `ResourceExecutionHost`。Monitor 的定时调度与手动 widget 执行保持共享 MonitorHost/Workflow/Runtime 路径。
 
-共享代码可复用不等于 §9 旅程完成：表导出与数据库备份已接入桌面 Job/Artifact 交付，表导出的 profile 查询沿用 RuntimeCommandSource，但数据不再通过完整 MultiQueryResult 读取：Host 建立专用 `tableExport` Runtime session，并在 query admission 前绑定 owner/authentication/delegation、canonical target 与 config revision。PostgreSQL/MySQL 的 awaitable ResourceProvider 批次经独立容量 1 的进程内输出槽到原 formatter，发送等待不持有 execution 全局锁；单批最多 256 行、编码后最多 2 MiB，formatter 逐批在 blocking pool 执行。仅此 Host capability 可豁免交互查询行数上限，客户端参数不能取得该权限。取消 watcher 撤销 binding、唤醒 producer 并请求取消同一 execution；错误/丢弃等待者走原 Runtime owner 关闭路径，不重放查询。已在执行的同步文件写不可强制中止，但不再交付后续批次或成功发布；只有执行成功且关闭回执确认释放资源才发送 Done，未知清理失败关闭。此实现未改变 ExportSource、format/plan 或 IPC；新增回归源码及 PG/MySQL live 导出/取消尚待独立验证。PostgreSQL/MySQL 备份通过专属 Runtime retained session 的 `backup_dump` 流式写 staging/gzip（64 KiB chunk、同步背压），其他驱动失败关闭；恢复已接入单次消费的 apply Job 和效果证据端口；PostgreSQL/MySQL 的受限 SQL 格式已接固定 Runtime Session / ExecutionGateway；其他驱动至 P10 保持 Unsupported/NotStarted，实库旅程仍须独立验收。Workflow 本轮保持 v1，仅迁移底层连接管理；块与专用 Workflow Job 不在交付范围。显式 editor grant 已接桌面 H 层：grant/revoke/touch IPC、借用不拥有的 in-session 执行与取消回执已实现；新增的真实 UI 生命周期旅程尚未执行，MCP/Wapp 归属仍待核对。NativeTool 全预算与适用层验收仍待后续。不得将本轮桌面单测通过当作 P6 阶段退出证明。
+共享代码可复用不等于 §9 旅程完成：表导出与数据库备份已接入桌面 Job/Artifact 交付，表导出的 profile 查询沿用 RuntimeCommandSource，但数据不再通过完整 MultiQueryResult 读取：Host 建立专用 `tableExport` Runtime session，并在 query admission 前绑定 owner/authentication/delegation、canonical target 与 config revision。PostgreSQL/MySQL 的 awaitable ResourceProvider 批次经独立容量 1 的进程内输出槽到原 formatter，发送等待不持有 execution 全局锁；单批最多 256 行、编码后最多 2 MiB，formatter 逐批在 blocking pool 执行。仅此 Host capability 可豁免交互查询行数上限，客户端参数不能取得该权限。取消 watcher 撤销 binding、唤醒 producer 并请求取消同一 execution；错误/丢弃等待者走原 Runtime owner 关闭路径，不重放查询。已在执行的同步文件写不可强制中止，但不再交付后续批次或成功发布；只有执行成功且关闭回执确认释放资源才发送 Done，未知清理失败关闭。此实现未改变 ExportSource、format/plan 或 IPC；新增回归源码及 PG/MySQL live 导出/取消尚待独立验证。PostgreSQL/MySQL 备份通过专属 Runtime retained session 的 `backup_dump` 流式写 staging/gzip（64 KiB chunk、同步背压），其他驱动失败关闭；恢复已接入单次消费的 apply Job 和效果证据端口；PostgreSQL/MySQL 的受限 SQL 格式已接固定 Runtime Session / ExecutionGateway；其他驱动至 P10 保持 Unsupported/NotStarted，实库旅程仍须独立验收。Workflow 本轮保持 v1，仅迁移底层连接管理；块与专用 Workflow Job 不在交付范围。显式 editor grant 已接桌面 H 层：grant/revoke/touch IPC、借用不拥有的 in-session 执行与取消回执已实现；新增的真实 UI 生命周期旅程尚未执行，MCP/Wapp 归属仍待核对。不得将本轮桌面单测通过当作 P6 阶段退出证明。
 
 ## 9. 验收与故障旅程
 
@@ -186,7 +154,6 @@ Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管
 | Wapp 请求 → 重载 → 旧响应/取消到达 | 旧 nonce 被拒绝，新实例状态不受影响 | CM-53、55 |
 | schedule 入队 → ACL 撤销 → 派发 | 不取得资源、不写数据库，记录拒绝原因 | CM-59、65、67 |
 | 写工具响应丢失 → 查询 receipt → 再次提交同 key | 返回同 execution，不重复写入 | CM-54、70 |
-| NativeTool 输出背压 → 取消 → 工具部分提交 | 管道/进程回收；保留真实副作用，未知不重跑 | CM-40、54、60 |
 
 Host fake 验证归属与清理；真实 driver 验证共享状态、精确取消和外部效果；Frontend 验证旧事件过滤；W1 验证鉴权与桥，WN 验证调度接管。未运行的层不能记为通过。
 

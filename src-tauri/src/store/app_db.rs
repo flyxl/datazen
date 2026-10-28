@@ -353,6 +353,19 @@ impl AppDb {
                 )?;
                 tx.execute("INSERT INTO schema_migrations(version,applied_at) VALUES (5,?1)", params![Utc::now().to_rfc3339()])?;
             }
+            if current < 6 {
+                // v6：NativeTool 删除（前端形态拆分方案 F1）的防御性 purge。
+                //
+                // `nativeToolProbe` 作业的内核词汇（NativeToolSelection / 冻结投影里的
+                // `nativeToolSelection` 字段豁免）已随 F1 删除；旧库里遗留的该 kind
+                // 行会在 durable 投影校验时被拒（字段超出投影），也可能被恢复扫描
+                // 标记成永远无法人工核验的僵尸——NativeTool 的 IPC 面已不存在。
+                // 产品从未使用该能力（探针登记表默认空即拒绝一切），记录本身无价值：
+                // 直接删除行，子表（receipts / stages / boundaries / checkpoints /
+                // result_details / domain_results / artifact_refs）全部 ON DELETE CASCADE。
+                tx.execute("DELETE FROM jobs WHERE kind = 'nativeToolProbe'", [])?;
+                tx.execute("INSERT INTO schema_migrations(version,applied_at) VALUES (6,?1)", params![Utc::now().to_rfc3339()])?;
+            }
             tx.commit()?;
             Ok(())
         })

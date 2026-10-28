@@ -824,4 +824,4 @@ v1 定义的映射规则是机械的、无歧义的：
 
 Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `modules command_runtime → modules resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。
 
-Workflow scheduler 保留桌面 runtime-entry 修复；Monitor 的固定只读目标授权与独立 occurrence Job、Wapp 实例会话、MCP owner/TTL、Restore/Backup/Export 和 NativeTool 通用 Job fencing 不受此范围收缩影响。跨驱动 v1 旅程须独立验收，未运行的测试不算通过。 Host 通用真实驱动旅程位于 `src-tauri/src/workflow/live_acceptance.rs`，通过安全 live runner 显式运行两个方向的 Query → Command 与前步结果 SQL 模板串联；不把直接 sqlx 查询或 ignored 测试计为 Runtime 接线验收。
+Workflow scheduler 保留桌面 runtime-entry 修复；Monitor 的固定只读目标授权与独立 occurrence Job、Wapp 实例会话、MCP owner/TTL、Restore/Backup/Export 的通用 Job fencing 不受此范围收缩影响（NativeTool 通用 Job fencing 已随前端形态拆分方案 F1 删除）。跨驱动 v1 旅程须独立验收，未运行的测试不算通过。 Host 通用真实驱动旅程位于 `src-tauri/src/workflow/live_acceptance.rs`，通过安全 live runner 显式运行两个方向的 Query → Command 与前步结果 SQL 模板串联；不把直接 sqlx 查询或 ignored 测试计为 Runtime 接线验收。

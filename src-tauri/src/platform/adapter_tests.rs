@@ -385,7 +385,7 @@ fn profile_view_defaults_are_placeholders_and_must_not_be_used_on_the_desktop_pa
 ///
 /// `adapter.rs` 的访问器逐个报错：`runtime()` / `profiles()` / `live_source()` /
 /// `artifact_store()` / `identity_resolver()` 缺项时是 `ServiceUnavailable`；
-/// `require_application_services()` 与 `native_tools()` 是 `CapabilityUnsupported`。
+/// `require_application_services()` 是 `CapabilityUnsupported`。
 /// 两者在 IPC 表面都收敛成 `CommandError::NotConfigured`（`platform/error.rs` 的窄适配）。
 ///
 /// 这条把错误码从**注释**变成**断言**：改任何一个访问器的错误码、或把窄适配的
@@ -416,13 +416,10 @@ fn without_injection_every_accessor_error_code_matches_its_documented_comment() 
         );
     }
 
-    let capability_unsupported: Vec<(&str, Result<(), ApiError>)> = vec![
-        (
-            "require_application_services",
-            adapter.require_application_services().map(|_| ()),
-        ),
-        ("native_tools", adapter.native_tools().map(|_| ())),
-    ];
+    let capability_unsupported: Vec<(&str, Result<(), ApiError>)> = vec![(
+        "require_application_services",
+        adapter.require_application_services().map(|_| ()),
+    )];
     for (name, result) in capability_unsupported {
         let err = result
             .err()

@@ -145,7 +145,6 @@ pub struct PlatformAdapter {
     idle_reclaimer: std::sync::Mutex<Option<datazen::execution::application::IdleReclaimer>>,
     artifacts:
         std::sync::OnceLock<Arc<datazen::execution::runtime::artifact::FileArtifactRepository>>,
-    native: std::sync::OnceLock<Arc<super::native_tool::deployment::NativeDeployment>>,
 }
 
 impl PlatformAdapter {
@@ -205,16 +204,6 @@ impl PlatformAdapter {
             ApiError::new(
                 ApiErrorCode::ServiceUnavailable,
                 "artifact storage is not wired",
-            )
-        })
-    }
-    pub(crate) fn native_tools(
-        &self,
-    ) -> Result<Arc<super::native_tool::deployment::NativeDeployment>, ApiError> {
-        self.native.get().cloned().ok_or_else(|| {
-            ApiError::new(
-                ApiErrorCode::CapabilityUnsupported,
-                "native deployment unavailable",
             )
         })
     }
@@ -489,8 +478,6 @@ impl PlatformAdapter {
             known_hosts.clone(),
             history_repositories.clone(),
         ));
-        let native =
-            super::native_tool::deployment::NativeDeployment::from_build(backend.physical_budget());
         // 制品存储同上：打不开只关闭「结果制品持久化」这一项，会话与设置照常。
         // 打不开的真实原因通常是 `{dataDir}` 不可写或同名路径不是目录——都是环境事实，
         // 不是「平台装配坏了」。
@@ -671,14 +658,6 @@ impl PlatformAdapter {
         self.services.set(services).map_err(|_| {
             ApiError::new(ApiErrorCode::ContextConflict, "services already injected")
         })?;
-        // Publish only after the matching Runtime backend was fully injected:
-        // no partial retry may bind native jobs to a different physical ledger.
-        match native {
-            Ok(native) => {
-                let _ = self.native.set(native);
-            }
-            Err(_) => tracing::warn!("native deployment rejected; native operations unsupported"),
-        }
         // 空闲回收驱动器：**应用层自己拥有**，宿主不再另挂定时器（这样就不会有
         // 「两个驱动器抢同一张 registry 表」的形状）。放在 services 之后启动，
         // 是为了让「装配已 FullyWired」与「回收器已在跑」不出现反序——反序时
@@ -993,17 +972,3 @@ impl PlatformEntry {
 #[cfg(test)]
 #[path = "adapter_tests.rs"]
 mod tests;
-
-#[cfg(test)]
-impl PlatformAdapter {
-    pub(crate) fn replace_native_fixture(&mut self, manifest: &str) -> Result<(), ApiError> {
-        let replacement = self
-            .native_tools()?
-            .fixture_manifest(manifest)
-            .map_err(|_| ApiError::invalid_argument("synthetic native deployment rejected"))?;
-        self.native.take();
-        self.native
-            .set(replacement)
-            .map_err(|_| ApiError::invalid_argument("synthetic native fixture unavailable"))
-    }
-}
