@@ -286,7 +286,7 @@ async fn read_definition(
     name: String,
     database: String,
     schema: Option<String>,
-) -> Result<TableSchema, CommandError> {
+) -> Result<datazen_driver_api::TableSchema, CommandError> {
     let data = execute_metadata(
         state,
         session,
