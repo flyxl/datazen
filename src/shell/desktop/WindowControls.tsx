@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { Minus, Square, X } from 'lucide-react';
-import { useI18n } from '../hooks/useI18n';
+import { useI18n } from '../../hooks/useI18n';
 
 /**
  * Web-based window controls for Windows/Linux frameless windows.

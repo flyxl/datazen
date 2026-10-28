@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { listen } from '@tauri-apps/api/event';
+import { getPlatformOrNull } from '../platform/contracts';
 import { WAPPS_CHANGED_EVENT, wappCommands } from '../commands/wapps';
 import { toErrorMessage } from '../lib/errors';
 import type { WappSummary } from '../types/wapp';
@@ -63,14 +63,22 @@ let subscriptionStarted = false;
 
 /**
  * Register the `wapps:changed` refresh listener exactly once per module
- * instance. The failure path resets the guard so a later retry can succeed
- * (e.g. when first attempted outside the Tauri runtime).
+ * instance. `wapps:changed` is a host broadcast event, so it rides the
+ * EventChannel port (B4 rail 2) — no direct `@tauri-apps/api/event` import.
+ * The failure path resets the guard so a later retry can succeed (e.g. when
+ * first attempted before platform assembly).
  */
 export function ensureWappsChangedListener(): void {
   if (subscriptionStarted) return;
   subscriptionStarted = true;
   try {
-    const p = listen(WAPPS_CHANGED_EVENT, () => {
+    const events = getPlatformOrNull()?.events;
+    if (!events) {
+      // Platform not assembled yet (unit tests / pre-bootstrap): retry later.
+      subscriptionStarted = false;
+      return;
+    }
+    const p = events.listenCrossWindow(WAPPS_CHANGED_EVENT, () => {
       void useWappStore.getState().fetch();
     });
     if (p && typeof p.catch === 'function') {

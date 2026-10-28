@@ -9,9 +9,18 @@ vi.mock('@tauri-apps/api/event', () => ({
   listen: (...args: unknown[]) => mockListen(...args),
 }));
 
+// Form-split F2: the branch is the compile-time IS_DESKTOP_BUILD constant;
+// a getter-export mock lets each describe flip the form.
+const envState = vi.hoisted(() => ({ desktop: false }));
+vi.mock('../../platform/desktop/env', () => ({
+  get IS_DESKTOP_BUILD() {
+    return envState.desktop;
+  },
+}));
+
 describe('crossWindowBus — browser', () => {
   beforeEach(() => {
-    delete (globalThis as Record<string, unknown>).__TAURI_INTERNALS__;
+    envState.desktop = false;
     vi.clearAllMocks();
   });
 
@@ -47,13 +56,13 @@ describe('crossWindowBus — browser', () => {
 
 describe('crossWindowBus — Tauri', () => {
   beforeEach(() => {
-    (globalThis as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    envState.desktop = true;
     vi.clearAllMocks();
     mockListen.mockResolvedValue(mockUnlisten);
   });
 
   afterEach(() => {
-    delete (globalThis as Record<string, unknown>).__TAURI_INTERNALS__;
+    envState.desktop = false;
   });
 
   it('emitCrossWindow uses Tauri emit', async () => {

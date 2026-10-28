@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { TitleBar } from '../../components/TitleBar';
+import { WindowChromeSlot } from '@datazen/extension-points';
 import { StatusBar } from '../../components/StatusBar';
 import { LocaleDomainLoading } from '../../components/LocaleDomainLoading';
 import { useI18n } from '../../hooks/useI18n';
@@ -131,10 +131,13 @@ export function DataSyncWindow() {
       data-write-outcome-uncertain={runState.writeOutcomeUncertain ? 'true' : 'false'}
       className="flex h-screen min-h-0 flex-col bg-surface text-fg"
     >
-      <TitleBar
+      <WindowChromeSlot
         title={t('common.dataSyncTitle')}
         rightContent={
-          <MigrationRunHistoryDialog operation="dataSync" onReconcile={profiles.reconcileUnknownRun} />
+          <MigrationRunHistoryDialog
+            operation="dataSync"
+            onReconcile={profiles.reconcileUnknownRun}
+          />
         }
       />
 
@@ -312,7 +315,9 @@ export function DataSyncWindow() {
         onNext={() => void navigation.goNext()}
       />
 
-      <StatusBar left={<span className="truncate">{feedback.statusMsg || t('common.dataSync')}</span>} />
+      <StatusBar
+        left={<span className="truncate">{feedback.statusMsg || t('common.dataSync')}</span>}
+      />
 
       <DataSyncDialogs
         errorOpen={feedback.errorOpen}

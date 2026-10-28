@@ -1,0 +1,398 @@
+/**
+ * Desktop `WindowRouter` implementation (form-split F2, absorbed from
+ * `src/lib/windowManager.ts` — every legacy export keeps its signature).
+ *
+ * In the Tauri runtime, creates real OS windows via the Rust-side command so
+ * `accept_first_mouse` is applied at the native layer. In browser dev mode,
+ * opens new browser tabs with query params. The branch is resolved at
+ * COMPILE time via `IS_DESKTOP_BUILD` (ruling #5).
+ */
+
+import { invoke } from '@tauri-apps/api/core';
+import { IS_DESKTOP_BUILD } from './env';
+import { settingsCommands } from '../../commands/settings';
+import { t } from '../../locales/t';
+import { useSettingsStore } from '../../stores/settingsStore';
+import { buildDocsUrl } from '../../lib/docsUrls';
+import { emitCrossWindow } from './eventChannel';
+import { openNewConnectionDialog as openConnectionEditorDialog } from '../../lib/connectionEditor';
+import {
+  buildMigrationWindowUrlParams,
+  type MigrationWindowPrefill,
+} from '../../lib/migrationWindowPrefill';
+
+import type { EventChannel, WindowChromePort, WindowRouter } from '../contracts';
+import { createDesktopEventChannel } from './eventChannel';
+
+export type { MigrationWindowPrefill };
+
+/**
+ * Representative window labels that must match
+ * `src-tauri/capabilities/default.json` → `windows` globs.
+ * Keep in sync when adding open*Window helpers.
+ */
+export const WINDOW_CAPABILITY_LABEL_SAMPLES = [
+  'main',
+  'data-sync-singleton',
+  'data-transfer-singleton',
+  'schema-diff-singleton',
+  'backup-singleton',
+  'backup-restore-singleton',
+] as const;
+
+interface OpenWindowOptions {
+  params?: Record<string, string>;
+  width?: number;
+  height?: number;
+  minWidth?: number;
+  minHeight?: number;
+  title?: string;
+  center?: boolean;
+}
+
+/** Menu item ids whose handlers live in the main workspace shell. */
+const MAIN_SHELL_MENU_IDS = new Set([
+  'open-settings',
+  'new-connection',
+  'workflow',
+  'dashboard',
+  'export-config',
+  'import-config',
+  'export-connections',
+  'import-connections-file',
+  'import-connections-dbx',
+  'import-connections-navicat',
+  'import-connections-datagrip',
+  'import-connections-dbeaver',
+  'import-connections-tableplus',
+]);
+
+async function focusMainWindow(): Promise<void> {
+  if (!IS_DESKTOP_BUILD) return;
+  const { WebviewWindow } = await loadWebviewWindowModule();
+  const main = await WebviewWindow.getByLabel('main');
+  if (!main) return;
+  await main.show();
+  await main.unminimize();
+  await main.setFocus();
+}
+
+/** True when any sub-window (backup, data-sync, …) is still open. */
+export async function hasOpenChildWindows(): Promise<boolean> {
+  if (!IS_DESKTOP_BUILD) return false;
+  const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+  const windows = await WebviewWindow.getAll();
+  return windows.some((window) => window.label !== 'main');
+}
+
+/** Sub-window HTML entry — no splash (see `window.html`). Main stays on `index.html`. */
+const SUB_WINDOW_ENTRY = 'window.html';
+
+import { cssColorToHex } from '../../lib/surfaceBgCache';
+
+/** Coalesce concurrent singleton opens (duplicate menu listeners / double-click). */
+const singletonOpenInFlight = new Map<string, Promise<void>>();
+
+let webviewWindowModulePromise: Promise<typeof import('@tauri-apps/api/webviewWindow')> | null =
+  null;
+
+function loadWebviewWindowModule() {
+  webviewWindowModulePromise ??= import('@tauri-apps/api/webviewWindow');
+  return webviewWindowModulePromise;
+}
+
+function resolveOpenerBackgroundColor(): string | undefined {
+  if (typeof document === 'undefined') return undefined;
+  const inline = document.documentElement.style.backgroundColor;
+  const fromInline = inline ? cssColorToHex(inline) : null;
+  if (fromInline) return fromInline;
+  const computed = getComputedStyle(document.documentElement).backgroundColor;
+  return cssColorToHex(computed) ?? undefined;
+}
+
+async function openTauriWindow(label: string, options: OpenWindowOptions) {
+  const qs = new URLSearchParams(options.params ?? {}).toString();
+  const url = qs ? `${SUB_WINDOW_ENTRY}?${qs}` : SUB_WINDOW_ENTRY;
+  const backgroundColor = resolveOpenerBackgroundColor();
+
+  try {
+    await invoke('create_sub_window', {
+      options: {
+        label,
+        url,
+        title: options.title ?? 'DataZen',
+        width: options.width ?? 800,
+        height: options.height ?? 640,
+        minWidth: options.minWidth,
+        minHeight: options.minHeight,
+        center: options.center ?? true,
+        ...(backgroundColor ? { backgroundColor } : {}),
+      },
+    });
+  } catch (e) {
+    console.error(`[windowManager] failed to open window "${label}"`, e);
+    // A rejected invoke (permission denied, build failure) is otherwise
+    // indistinguishable from "the click did nothing", and devtools are not
+    // available in release builds.
+    try {
+      const { message } = await import('@tauri-apps/plugin-dialog');
+      await message(`${label}\n\n${e instanceof Error ? e.message : String(e)}`, {
+        title: 'DataZen',
+        kind: 'error',
+      });
+    } catch {
+      // dialog unavailable; the console log above is the only trace
+    }
+    throw e;
+  }
+}
+
+function openBrowserWindow(options: OpenWindowOptions) {
+  const qs = new URLSearchParams(options.params ?? {}).toString();
+  const url = qs ? `/window.html?${qs}` : '/window.html';
+  window.open(url, '_blank', `width=${options.width ?? 800},height=${options.height ?? 640}`);
+}
+
+async function focusSingletonWindow(label: string): Promise<boolean> {
+  if (!IS_DESKTOP_BUILD) return false;
+  const { WebviewWindow } = await loadWebviewWindowModule();
+  const existing = await WebviewWindow.getByLabel(label);
+  if (!existing) return false;
+  await existing.show();
+  await existing.unminimize();
+  await existing.setFocus();
+  return true;
+}
+
+export function openSingletonWindow(label: string, options: OpenWindowOptions) {
+  const inflight = singletonOpenInFlight.get(label);
+  if (inflight) {
+    void inflight.catch(() => {});
+    void focusSingletonWindow(label).catch(() => {});
+    return;
+  }
+
+  const task = (async () => {
+    if (IS_DESKTOP_BUILD) {
+      if (await focusSingletonWindow(label)) return;
+      await openTauriWindow(label, options);
+    } else {
+      openBrowserWindow(options);
+    }
+  })().finally(() => {
+    singletonOpenInFlight.delete(label);
+  });
+
+  singletonOpenInFlight.set(label, task);
+  void task.catch(() => {});
+}
+
+/** Multi-instance opener — browser tabs / future web routes. */
+export function openMultiInstanceWindow(_label: string, options: OpenWindowOptions) {
+  openBrowserWindow(options);
+}
+
+// ── In-app dialogs (main window) ────────────────────────────────────
+
+/** Open the new/edit connection dialog in the main window. */
+export function openNewConnectionDialog(editId?: string, defaultGroup?: string) {
+  void focusMainWindow().then(() => openConnectionEditorDialog(editId, defaultGroup));
+}
+
+// ── Singleton windows ───────────────────────────────────────────────
+
+export function openDataSyncWindow(prefill?: MigrationWindowPrefill) {
+  openSingletonWindow('data-sync-singleton', {
+    params: buildMigrationWindowUrlParams('data-sync', prefill),
+    width: 1000,
+    height: 700,
+    minWidth: 600,
+    minHeight: 480,
+    title: t('common.dataSyncTitle'),
+  });
+}
+
+export function openDataTransferWindow(prefill?: MigrationWindowPrefill) {
+  openSingletonWindow('data-transfer-singleton', {
+    params: buildMigrationWindowUrlParams('data-transfer', prefill),
+    width: 1000,
+    height: 720,
+    minWidth: 640,
+    minHeight: 480,
+    title: t('win.dataTransfer'),
+  });
+}
+
+export function openSchemaDiffWindow(prefill?: MigrationWindowPrefill) {
+  openSingletonWindow('schema-diff-singleton', {
+    params: buildMigrationWindowUrlParams('schema-diff', prefill),
+    width: 900,
+    height: 640,
+    minWidth: 560,
+    minHeight: 420,
+    title: t('win.schemaDiff'),
+  });
+}
+
+export function openBackupWindow(
+  mode: 'backup' | 'restore' = 'backup',
+  prefill?: { connectionId?: string; database?: string },
+) {
+  const restore = mode === 'restore';
+  // URL param `connectionId` = persistent config connection id.
+  openSingletonWindow(restore ? 'backup-restore-singleton' : 'backup-singleton', {
+    params: {
+      window: 'backup',
+      ...(restore ? { mode: 'restore' } : {}),
+      ...(prefill?.connectionId ? { connectionId: prefill.connectionId } : {}),
+      ...(prefill?.database ? { database: prefill.database } : {}),
+    },
+    width: 750,
+    height: 520,
+    minWidth: 600,
+    minHeight: 400,
+    title: restore ? t('win.restore') : t('win.backup'),
+  });
+}
+
+export function openWorkflowWindow() {
+  void focusMainWindow().then(() => emitCrossWindow('menu:workflow'));
+}
+
+export async function emitMenuAction(id: string, payload?: unknown): Promise<void> {
+  if (MAIN_SHELL_MENU_IDS.has(id)) {
+    await focusMainWindow();
+  }
+  await emitCrossWindow(`menu:${id}`, payload);
+}
+
+export function openSettingsWindow(section?: string) {
+  void emitMenuAction('open-settings', section ? { section } : undefined);
+}
+
+/** Open official help docs in the system browser (GitHub Pages). */
+export function openDocsWindow(section?: string) {
+  const language = useSettingsStore.getState().settings.language;
+  const url = buildDocsUrl(language, section);
+  if (IS_DESKTOP_BUILD) {
+    void settingsCommands.openPath(url).catch(() => {
+      window.open(url, '_blank', 'noopener');
+    });
+  } else {
+    window.open(url, '_blank', 'noopener');
+  }
+}
+
+// ── Multi-instance windows ──────────────────────────────────────────
+
+export function openDashboardWindow(dashboardId?: string, dashboardName?: string) {
+  void focusMainWindow().then(() => {
+    if (dashboardId) {
+      void emitCrossWindow('menu:open-dashboard', { dashboardId, dashboardName });
+      return;
+    }
+    void emitCrossWindow('menu:dashboard');
+  });
+}
+
+/**
+ * Key used by {@link openConnectionWindow} to hand the first connection
+ * payload to the main workspace ConnectionPage via `localStorage`.
+ * Subsequent connections use the `datazen:open-connection` cross-window event.
+ */
+export const PENDING_CONNECTION_KEY = 'datazen:pending-connection';
+
+/**
+ * Key used by the onboarding wizard to signal ConnectionPage to auto-open
+ * the sample connection and pre-fill a query panel with a preset SQL statement.
+ * Consumed once on mount and immediately removed.
+ */
+export const POST_ONBOARDING_SAMPLE_KEY = 'datazen:post-onboarding-sample';
+
+export interface PostOnboardingSample {
+  connectionName: string;
+  sql: string;
+}
+
+/**
+ * Open the main workspace and add a connection tab.
+ *
+ * Connection-specific params are NOT included in the URL (only `window=connection`)
+ * so that the Rust-side `focus_existing_window` never re-navigates the webview
+ * when a second connection is opened.
+ *
+ * Instead, the connection payload is delivered via:
+ * 1. `localStorage` — read on first mount (handles the initial window creation race)
+ * 2. `datazen:open-connection` event — handled by the existing listener
+ */
+export function openConnectionWindow(
+  opts: { dbSessionId?: string; connectionId?: string },
+  connectionName: string,
+  database?: string,
+  databaseType?: string,
+  action?: string,
+) {
+  // Cross-window payload keys follow the W3 convention:
+  // `connectionId` = persistent config connection id, `dbSessionId` = runtime session id.
+  const payload: Record<string, string> = { connectionName };
+  if (opts.dbSessionId) payload.dbSessionId = opts.dbSessionId;
+  if (opts.connectionId) payload.connectionId = opts.connectionId;
+  if (database) payload.database = database;
+  if (databaseType) payload.databaseType = databaseType;
+  if (action) payload.action = action;
+
+  try {
+    localStorage.setItem(PENDING_CONNECTION_KEY, JSON.stringify(payload));
+  } catch {
+    // localStorage unavailable; event-only fallback
+  }
+
+  void emitCrossWindow('datazen:open-connection', payload);
+  void focusMainWindow();
+}
+
+// ── Window chrome port (B7: fullscreen / background / close lifecycle) ────────
+
+async function currentWindow() {
+  const { getCurrentWindow } = await import('@tauri-apps/api/window');
+  return getCurrentWindow();
+}
+
+const windowChrome: WindowChromePort = {
+  async isFullscreen(): Promise<boolean> {
+    return currentWindow().then((win) => win.isFullscreen());
+  },
+  async onFullscreenChanged(cb: (fs: boolean) => void): Promise<() => void> {
+    const { listen } = await import('@tauri-apps/api/event');
+    return listen<boolean>('fullscreen-changed', (e) => cb(Boolean(e.payload)));
+  },
+  async setBackgroundRootColor(hex: string): Promise<void> {
+    await (await currentWindow()).setBackgroundColor(hex);
+  },
+  async onCloseRequested(cb: (event: { preventDefault(): void }) => void): Promise<() => void> {
+    const win = await currentWindow();
+    return win.onCloseRequested((event) => cb(event));
+  },
+  async minimizeCurrent(): Promise<void> {
+    await (await currentWindow()).minimize();
+  },
+  async closeCurrent(): Promise<void> {
+    await (await currentWindow()).close();
+  },
+};
+
+export { windowChrome };
+
+/** Compose the desktop `WindowRouter` port implementation. */
+export function createDesktopWindowRouter(): WindowRouter {
+  return {
+    openSingletonWindow,
+    openMultiInstanceWindow,
+    focusMainWindow,
+    hasOpenChildWindows,
+    windowChrome,
+  };
+}
+
+export type { EventChannel };
+export { createDesktopEventChannel };

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, PanelLeftOpen } from 'lucide-react';
-import { TitleBar } from '../../components/TitleBar';
+import { WindowChromeSlot } from '@datazen/extension-points';
 import { MenuBar } from '../../components/MenuBar';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { ResultMessageDialog } from '../../components/ui/ResultMessageDialog';
@@ -13,6 +13,7 @@ import { useConnectionStore } from '../../stores/connectionStore';
 import { connectionCommands } from '../../commands/connection';
 import { backupCommands } from '../../commands/backup';
 import { emitCrossWindow, listenCrossWindow } from '../../lib/crossWindowBus';
+import { getPlatformOrNull } from '../../platform/contracts';
 import { DB_REGISTRY, getDbLabel } from '../../lib/databaseTypes';
 import { openConnectionShareDialog } from '../../lib/connectionShare';
 import { hideNativeContextMenu } from '../../lib/nativeContextMenu';
@@ -244,20 +245,22 @@ export function ConnectionPage() {
   // ── Window close → release all connections (minimize when sub-windows stay open) ──
 
   useEffect(() => {
-    if (!('__TAURI_INTERNALS__' in globalThis)) return;
+    // Window lifecycle is a platform port (WindowRouter.windowChrome), not a
+    // runtime probe: the platform is configured by the assembly root before
+    // first render, and the desktop implementation no-ops in browser dev.
+    const windows = getPlatformOrNull()?.windows;
+    if (!windows) return;
     let unlisten: (() => void) | undefined;
     let isClosing = false;
 
     void (async () => {
-      const { getCurrentWindow } = await import('@tauri-apps/api/window');
       const { hasOpenChildWindows } = await import('../../lib/windowManager');
-      const win = getCurrentWindow();
-      unlisten = await win.onCloseRequested(async (event) => {
+      unlisten = await windows.windowChrome.onCloseRequested(async (event) => {
         if (isClosing) return;
 
         if (await hasOpenChildWindows()) {
           event.preventDefault();
-          await win.minimize();
+          await windows.windowChrome.minimizeCurrent();
           return;
         }
 
@@ -277,7 +280,7 @@ export function ConnectionPage() {
             }
           }
         }
-        await win.close();
+        await windows.windowChrome.closeCurrent();
       });
     })();
 
@@ -842,7 +845,11 @@ export function ConnectionPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-surface text-fg">
-      <TitleBar title={titleBarTitle} leftContent={titleBarLeft} rightContent={<ThemeToggle />} />
+      <WindowChromeSlot
+        title={titleBarTitle}
+        leftContent={titleBarLeft}
+        rightContent={<ThemeToggle />}
+      />
 
       {mainView === 'settings' ? (
         <div className="flex min-h-0 flex-1 flex-col" data-testid="settings-page">

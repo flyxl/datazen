@@ -3,7 +3,11 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { ErrorBoundary } from '../ErrorBoundary';
 import { enCopy } from '../../test/enCopy';
 
-vi.mock('../TitleBar', () => ({ TitleBar: () => <div data-testid="title-bar" /> }));
+// Form-split F2: ErrorBoundary renders the chrome SLOT, not a host component.
+vi.mock('@datazen/extension-points', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datazen/extension-points')>()),
+  WindowChromeSlot: () => <div data-testid="title-bar" />,
+}));
 
 afterEach(cleanup);
 

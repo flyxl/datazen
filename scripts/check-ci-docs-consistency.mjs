@@ -19,7 +19,10 @@ const PATHS = {
   contributing: 'CONTRIBUTING.md',
   registry: 'drivers-registry.json',
   ciYml: '.github/workflows/ci.yml',
-  windowManager: 'src/lib/windowManager.ts',
+  // Form-split F2: the implementation moved into the desktop zone; the shim
+  // at src/lib/windowManager.ts only re-exports. The contract this script
+  // asserts (kinds / labels / capability samples) lives in the implementation.
+  windowManager: 'src/platform/desktop/windowRouter.ts',
   windowKind: 'src/lib/windowKind.ts',
 };
 

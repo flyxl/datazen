@@ -4,6 +4,15 @@ const mockCheck = vi.fn();
 const mockDownloadAndInstall = vi.fn();
 const mockRelaunch = vi.fn();
 
+// Form-split F2: updater's form branch is the compile-time IS_DESKTOP_BUILD
+// constant; a getter-export mock replaces the old __TAURI_INTERNALS__ toggle.
+const envState = vi.hoisted(() => ({ desktop: false }));
+vi.mock('../../platform/desktop/env', () => ({
+  get IS_DESKTOP_BUILD() {
+    return envState.desktop;
+  },
+}));
+
 vi.mock('@tauri-apps/plugin-updater', () => ({
   check: (...args: unknown[]) => mockCheck(...args),
 }));
@@ -67,12 +76,12 @@ describe('updater without Tauri', () => {
 
 describe('updater with Tauri', () => {
   beforeEach(() => {
-    (globalThis as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    envState.desktop = true;
     vi.clearAllMocks();
   });
 
   afterEach(() => {
-    delete (globalThis as Record<string, unknown>).__TAURI_INTERNALS__;
+    envState.desktop = false;
   });
 
   it('isUpdaterSupported returns true', () => {
@@ -170,12 +179,12 @@ describe('updater with Tauri', () => {
 
 describe('updater refuses a manifest belonging to another SKU', () => {
   beforeEach(() => {
-    (globalThis as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    envState.desktop = true;
     vi.clearAllMocks();
   });
 
   afterEach(() => {
-    delete (globalThis as Record<string, unknown>).__TAURI_INTERNALS__;
+    envState.desktop = false;
   });
 
   it('reads the manifest variant only when it is a usable string', () => {

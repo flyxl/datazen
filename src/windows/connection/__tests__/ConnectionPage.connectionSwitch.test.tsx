@@ -240,8 +240,9 @@ vi.mock('../ContentView', async () => {
   };
 });
 
-vi.mock('../../../components/TitleBar', () => ({
-  TitleBar: () => <div data-testid="title-bar" />,
+vi.mock('@datazen/extension-points', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datazen/extension-points')>()),
+  WindowChromeSlot: () => <div data-testid="title-bar" />,
 }));
 vi.mock('../../../components/MenuBar', () => ({ MenuBar: () => <div data-testid="menu-bar" /> }));
 vi.mock('../../../components/ThemeToggle', () => ({

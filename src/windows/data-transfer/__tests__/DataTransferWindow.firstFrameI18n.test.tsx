@@ -60,8 +60,9 @@ vi.mock('../../../commands/transfer', () => ({
   },
 }));
 
-vi.mock('../../../components/TitleBar', () => ({
-  TitleBar: ({ title }: { title?: unknown }) => <div>{String(title ?? '')}</div>,
+vi.mock('@datazen/extension-points', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datazen/extension-points')>()),
+  WindowChromeSlot: ({ title }: { title?: unknown }) => <div>{String(title ?? '')}</div>,
 }));
 
 vi.mock('../../../components/StatusBar', () => ({ StatusBar: () => <div /> }));

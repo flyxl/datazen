@@ -1,12 +1,20 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { WindowChromeFallback } from '../WindowChromeFallback';
+import { registerWindowChrome } from '@datazen/extension-points';
 
-vi.mock('../../hooks/usePlatform', () => ({
-  usePlatform: () => 'macos',
-}));
+// Form-split F2: the fallback renders the chrome SLOT — register a mac-style
+// stub so the drag-region assertion still exercises the real slot wiring.
+let unregisterChrome: () => void = () => {};
 
-afterEach(cleanup);
+beforeEach(() => {
+  unregisterChrome = registerWindowChrome(() => <div data-tauri-drag-region />);
+});
+
+afterEach(() => {
+  unregisterChrome();
+  cleanup();
+});
 
 describe('WindowChromeFallback', () => {
   it('renders a macOS drag region so overlay windows can be moved before content loads', () => {

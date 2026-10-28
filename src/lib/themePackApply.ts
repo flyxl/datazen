@@ -1,5 +1,6 @@
 import { wappCommands } from '../commands/wapps';
 import { emitCrossWindow } from './crossWindowBus';
+import { getPlatformOrNull } from '../platform/contracts';
 import { bootstrapDefaultIconResolver } from './bootstrapIconResolver';
 import { UI_ICON_IDS } from './iconIds';
 import { createIconResolver, setActiveIconResolver, type IconSourceMap } from './iconResolver';
@@ -92,9 +93,11 @@ export function syncWebviewBackgroundFromTokens(): void {
 }
 
 function syncNativeWindowBackground(hex: string): void {
-  if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) return;
-  void import('@tauri-apps/api/window')
-    .then(({ getCurrentWindow }) => getCurrentWindow().setBackgroundColor(hex))
+  if (typeof window === 'undefined') return;
+  // B7 via the WindowRouter port: an unconfigured platform (unit tests) or a
+  // web form simply has no native window background to sync.
+  getPlatformOrNull()
+    ?.windows.windowChrome.setBackgroundRootColor(hex)
     .catch(() => {
       // Missing ACL / platform without setBackgroundColor — HTML cache still applies.
     });

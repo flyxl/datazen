@@ -71,8 +71,11 @@ export interface SettingsContentProps {
 
 export function SettingsContent({ initialSection, onBack }: Readonly<SettingsContentProps>) {
   useSettings();
+  // F2 bug fix: browser dev (backend unbound, `null`) was misjudged as the
+  // desktop form by `backend === null ||`. The remaining `backendId` probe is
+  // transitional — F4/F5 replace it with `capabilities.settingsSections`.
   const backend = getBackendClient();
-  const desktop = backend === null || backend.backendId === 'desktop';
+  const desktop = backend !== null && backend.backendId === 'desktop';
   const availableSections = settingsSectionsForBackend(desktop);
   const { t } = useI18n();
 

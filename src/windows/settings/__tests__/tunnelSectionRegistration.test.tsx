@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setBackendClient, clearBackendClients } from '@datazen/backend-client';
 import { cleanup, render, screen } from '@testing-library/react';
 import { SETTINGS_SECTIONS, parseSettingsSection } from '../settingsSections';
 import {
@@ -31,9 +32,15 @@ vi.mock('../../../hooks/useLocaleDomains', () => ({
 
 import { SettingsContent } from '../SettingsContent';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  clearBackendClients();
+});
 
 beforeEach(() => {
+  // Desktop settings behavior (form-split F2): bind the desktop facade so the
+  // desktop-only sections (tunnels among them) are in the available set.
+  setBackendClient('desktop', { backendId: 'desktop' } as never);
   vi.clearAllMocks();
   mockTunnelCommands.getTunnelSummaries.mockResolvedValue([]);
   mockTunnelCommands.getTunnelUsage.mockResolvedValue({ connectionIds: [], connectionNames: [] });

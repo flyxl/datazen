@@ -21,9 +21,10 @@ import { hideSplash, waitForStartupTask } from './lib/splash';
 import { installTauriEventUnlistenRaceWorkaround } from './lib/tauriEventCompat';
 import { installDocumentScrollLock } from './lib/documentScrollLock';
 import { bootstrapDefaultIconResolver } from './lib/bootstrapIconResolver';
-import { maybeCheckOnStartup } from './lib/updater';
+import { maybeCheckOnStartup } from './platform/desktop/updater';
 import { getWindowKind } from './lib/windowKind';
-import { bindDesktopBackend } from './platform/tauriBackendTransport';
+import { assembleDesktopPlatform, showSubWindowWhenReady } from './shell/desktop/assembly';
+import { IS_DESKTOP_BUILD } from './platform/desktop/env';
 import { startLocaleSync } from './lib/localeSync';
 import { initProExtensions } from './extensions/generated-pro';
 import * as extensionPoints from '@datazen/extension-points';
@@ -119,9 +120,10 @@ const SETTINGS_PRELOAD_TIMEOUT_MS = 3_000;
 
 async function bootstrap() {
   try {
-    if ('__TAURI_INTERNALS__' in globalThis) {
-      // Every window needs the backend facade before job hydration runs.
-      bindDesktopBackend();
+    // Form is decided at COMPILE time (ruling #5) — no runtime probing.
+    if (IS_DESKTOP_BUILD) {
+      // Backend binding + platform port injection + chrome registration.
+      assembleDesktopPlatform();
       try {
         const settingsPreload = import('./stores/settingsStore').then(
           async ({ useSettingsStore }) => {
@@ -160,26 +162,7 @@ async function bootstrap() {
 
 void bootstrap();
 
-if ('__TAURI_INTERNALS__' in globalThis) {
-  import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
-    const win = getCurrentWindow();
-    if (win.label !== 'main') {
-      // Theme + splash already applied in index.html; show only after that paint.
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          void win
-            .show()
-            .then(() => {
-              win.setFocus().catch(() => {});
-            })
-            .catch((e) => {
-              console.error(`[bootstrap] failed to show window "${win.label}"`, e);
-            });
-        });
-      });
-    }
-  });
-}
+showSubWindowWhenReady();
 
 requestAnimationFrame(() => {
   requestAnimationFrame(() => {

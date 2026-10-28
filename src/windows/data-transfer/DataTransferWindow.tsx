@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { TitleBar } from '../../components/TitleBar';
+import { WindowChromeSlot } from '@datazen/extension-points';
 import { StatusBar } from '../../components/StatusBar';
 import { LocaleDomainLoading } from '../../components/LocaleDomainLoading';
 import { Button } from '../../components/ui/Button';
@@ -1077,7 +1077,7 @@ export function DataTransferWindow() {
 
   return (
     <div data-testid="data-transfer-window" className="flex h-screen flex-col bg-surface text-fg">
-      <TitleBar
+      <WindowChromeSlot
         title={t('common.dataTransfer')}
         rightContent={<MigrationRunHistoryDialog operation="dataTransfer" />}
       />

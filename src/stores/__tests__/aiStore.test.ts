@@ -61,15 +61,6 @@ const streamErrorHandler = vi.fn();
 
 vi.mock('../../commands/ai', () => ({
   aiCommands: mockAiCommands,
-  onAiStreamChunk: vi.fn().mockImplementation((cb) => {
-    streamChunkHandler.mockImplementation(cb);
-    return Promise.resolve(mockUnlisten);
-  }),
-  onAiStreamError: vi.fn().mockImplementation((cb) => {
-    streamErrorHandler.mockImplementation(cb);
-    return Promise.resolve(mockUnlisten);
-  }),
-  onAiConfigChanged: vi.fn().mockResolvedValue(mockUnlisten),
 }));
 
 describe('aiStore', () => {
@@ -80,7 +71,24 @@ describe('aiStore', () => {
     vi.clearAllMocks();
     mockMcpClientServers = [];
     syncMcpSettingsMock();
-    (globalThis as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    // Form-split F2: the data-plane guard is "is a backend bound", and the
+    // stream events ride the platform EventChannel — both are re-established
+    // after vi.resetModules() re-imports every module fresh.
+    const { setBackendClient } = await import('@datazen/backend-client');
+    setBackendClient('test', {} as never);
+    const { configurePlatform } = await import('../../platform/contracts');
+    configurePlatform({
+      services: {} as never,
+      windows: {} as never,
+      events: {
+        emitCrossWindow: vi.fn().mockResolvedValue(undefined),
+        listenCrossWindow: vi.fn().mockImplementation((evt: string, cb: (p?: unknown) => void) => {
+          if (evt === 'ai:stream-chunk') streamChunkHandler.mockImplementation(cb);
+          if (evt === 'ai:stream-error') streamErrorHandler.mockImplementation(cb);
+          return Promise.resolve(mockUnlisten);
+        }),
+      },
+    });
     const mod = await import('../aiStore');
     useAiStore = mod.useAiStore;
     useAiStore.setState({
@@ -116,8 +124,9 @@ describe('aiStore', () => {
       expect(useAiStore.getState().configError).toBe('load fail');
     });
 
-    it('loadConfig skips without Tauri', async () => {
-      delete (globalThis as Record<string, unknown>).__TAURI_INTERNALS__;
+    it('loadConfig skips without a bound backend', async () => {
+      const { clearBackendClients } = await import('@datazen/backend-client');
+      clearBackendClients();
       await useAiStore.getState().loadConfig();
       expect(mockAiCommands.getConfig).not.toHaveBeenCalled();
     });

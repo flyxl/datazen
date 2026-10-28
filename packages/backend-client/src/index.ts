@@ -17,12 +17,7 @@ export type {
   RetryDisposition,
   UnsupportedMethodKind,
 } from './errors';
-export {
-  ApiError,
-  API_ERROR_CODES,
-  defaultRetryDisposition,
-  deserializeApiError,
-} from './errors';
+export { ApiError, API_ERROR_CODES, defaultRetryDisposition, deserializeApiError } from './errors';
 
 export type { ConnectionEventStream, EventStream, EventStreamSource } from './streams';
 export { createEventStream, toEventStream } from './streams';
@@ -32,6 +27,7 @@ export type {
   CommandResult,
   MethodMap,
   OpenDirectoryInput,
+  OpenExternalInput,
   OpenTextInput,
   OpenedDirectory,
   OpenedTextFile,

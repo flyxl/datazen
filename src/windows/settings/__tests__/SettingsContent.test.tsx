@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { setBackendClient, clearBackendClients } from '@datazen/backend-client';
 import { render, cleanup, waitFor, fireEvent, screen, within } from '@testing-library/react';
 import { SettingsContent } from '../SettingsContent';
 import { SETTINGS_SECTIONS } from '../settingsSections';
@@ -368,6 +369,10 @@ const samplePrompts = [
 ];
 
 beforeEach(() => {
+  // Form-split F2 bug fix: browser dev (backend null) no longer masquerades as
+  // the desktop form. These suites describe DESKTOP settings behavior, so bind
+  // the desktop facade explicitly.
+  setBackendClient('desktop', { backendId: 'desktop' } as never);
   vi.clearAllMocks();
   Element.prototype.scrollIntoView = vi.fn();
   loadSettingsMock.mockResolvedValue(undefined);
@@ -437,7 +442,10 @@ beforeEach(() => {
   aiState.saveMcpClientServers.mockResolvedValue(undefined);
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  clearBackendClients();
+});
 
 describe('SettingsContent', () => {
   it('renders general section by default', async () => {

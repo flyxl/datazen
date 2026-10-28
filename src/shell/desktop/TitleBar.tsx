@@ -2,8 +2,9 @@ import type { ReactNode } from 'react';
 import { useCallback, useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { usePlatform } from '../hooks/usePlatform';
-import { useUiStore } from '../stores/uiStore';
+import { usePlatform } from '../../platform/desktop/os';
+import { IS_DESKTOP_BUILD } from '../../platform/desktop/env';
+import { useUiStore } from '../../stores/uiStore';
 import { WindowControls } from './WindowControls';
 
 export interface TitleBarProps {
@@ -52,7 +53,7 @@ export function TitleBar({ title, leftContent, rightContent }: TitleBarProps) {
   const isFullscreen = useUiStore((s) => s.isFullscreen);
 
   useEffect(() => {
-    if (!isMac || !('__TAURI_INTERNALS__' in window)) return;
+    if (!isMac || !IS_DESKTOP_BUILD) return;
 
     let unlisten: (() => void) | undefined;
     let unlistenResized: (() => void) | undefined;
@@ -114,7 +115,7 @@ export function TitleBar({ title, leftContent, rightContent }: TitleBarProps) {
 
   // Sync immediately whenever leftContent changes (e.g. settings back button appears)
   useEffect(() => {
-    if (isMac && leftContent && '__TAURI_INTERNALS__' in window) {
+    if (isMac && leftContent && IS_DESKTOP_BUILD) {
       void useUiStore.getState().syncFullscreen();
     }
   }, [isMac, leftContent]);

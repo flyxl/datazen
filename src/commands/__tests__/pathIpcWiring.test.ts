@@ -241,7 +241,9 @@ describe('path IPC frontend wiring', () => {
     expect(app).not.toContain('DocsWindow');
     expect(app).not.toContain('NewConnectionWindow');
 
-    const wm = readSrc('lib/windowManager.ts');
+    // Form-split F2: implementation moved to the desktop zone; the shim only
+    // re-exports, so the source contract lives at the new path.
+    const wm = readSrc('platform/desktop/windowRouter.ts');
     expect(wm).toContain('buildDocsUrl');
     expect(wm).not.toContain("openSingletonWindow('docs-singleton'");
     expect(wm).not.toContain("openSingletonWindow('new-connection");
@@ -275,7 +277,9 @@ describe('path IPC frontend wiring', () => {
     );
     const registered = new Set(
       [
-        ...hostBootstrap.matchAll(/crate::(?:commands|platform::(?:session_commands|artifact_export))::(?:[a-z_0-9]+::)*([a-z_0-9]+),/g),
+        ...hostBootstrap.matchAll(
+          /crate::(?:commands|platform::(?:session_commands|artifact_export))::(?:[a-z_0-9]+::)*([a-z_0-9]+),/g,
+        ),
       ].map((m) => m[1]),
     );
     registered.add('rebuild_menu');

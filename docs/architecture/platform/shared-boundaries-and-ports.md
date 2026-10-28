@@ -1264,6 +1264,9 @@ export interface PlatformServices {
   openDirectoryWithDialog(input: OpenDirectoryInput): Promise<OpenedDirectory | null>;
   writeClipboard(text: string): Promise<void>;
   readClipboard(): Promise<string>;
+  // F2 扩展（前端形态拆分方案 §3.3 第 9 项原子能力）：URL 走系统浏览器
+  // （web 形态退化为 window.open）；本地路径仅桌面有语义。
+  openExternal(input: OpenExternalInput): Promise<void>;
 }
 ```
 

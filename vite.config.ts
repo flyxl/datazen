@@ -11,6 +11,11 @@ export default defineConfig({
   // Tauri serves the webview from a custom protocol; absolute `/assets/...`
   // URLs can miss the asset handler and hit ipc:// (GET → "only POST and OPTIONS are allowed").
   base: './',
+  // Form-split F2 (ruling #5): expose the Tauri CLI's TAURI_ENV_* vars to
+  // `import.meta.env` so the form factor is decided at COMPILE time
+  // (`src/platform/desktop/env.ts`). `tauri dev`/`tauri build` inject them;
+  // plain `vite dev` leaves them undefined → browser branch.
+  envPrefix: ['VITE_', 'TAURI_ENV_'],
   plugins: [react(), tailwindcss()],
   clearScreen: false,
   server: {

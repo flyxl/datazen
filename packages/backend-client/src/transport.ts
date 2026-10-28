@@ -343,6 +343,18 @@ export interface PlatformServices {
   openDirectoryWithDialog(input: OpenDirectoryInput): Promise<OpenedDirectory | null>;
   writeClipboard(text: string): Promise<void>;
   readClipboard(): Promise<string>;
+  /**
+   * External open. `url` goes to the system browser (web form degrades to
+   * `window.open`); a local `path` only has desktop semantics. Added by the
+   * form-split plan F2 as the 9th atomic capability (`openPath` / docs URLs /
+   * opening host directories), mirroring §7.1.
+   */
+  openExternal(input: OpenExternalInput): Promise<void>;
+}
+
+export interface OpenExternalInput {
+  url?: string;
+  path?: string;
 }
 
 export interface SaveTextInput {

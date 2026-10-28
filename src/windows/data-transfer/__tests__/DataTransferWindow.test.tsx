@@ -137,8 +137,9 @@ vi.mock('../../../commands/transferJobs', () => ({
   },
 }));
 
-vi.mock('../../../components/TitleBar', () => ({
-  TitleBar: ({ title }: { title?: unknown }) => <div>{String(title ?? '')}</div>,
+vi.mock('@datazen/extension-points', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datazen/extension-points')>()),
+  WindowChromeSlot: ({ title }: { title?: unknown }) => <div>{String(title ?? '')}</div>,
 }));
 
 vi.mock('../../../components/StatusBar', () => ({
@@ -631,7 +632,11 @@ describe('DataTransferWindow', () => {
         return { connectionId: conn as string, dbSessionId: `dedicated-${conn}-${db}` };
       }
       if (cmd === 'release_connection') return false;
-      if (cmd === 'connect') return { connectionId: args?.connectionId as string, dbSessionId: `live-${args?.connectionId as string}` };
+      if (cmd === 'connect')
+        return {
+          connectionId: args?.connectionId as string,
+          dbSessionId: `live-${args?.connectionId as string}`,
+        };
       return null;
     });
   });

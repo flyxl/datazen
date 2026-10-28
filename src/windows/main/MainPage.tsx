@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { TitleBar } from '../../components/TitleBar';
+import { WindowChromeSlot } from '@datazen/extension-points';
 import { MenuBar } from '../../components/MenuBar';
 import { ThemeToggle } from '../../components/ThemeToggle';
 import { useI18n } from '../../hooks/useI18n';
@@ -109,7 +109,7 @@ export function MainPage() {
   if (connections.length === 0 && loadError) {
     return (
       <div className="flex h-full min-h-0 flex-col bg-surface text-fg">
-        <TitleBar
+        <WindowChromeSlot
           title={t('menu.appName')}
           leftContent={<MenuBar />}
           rightContent={<ThemeToggle />}

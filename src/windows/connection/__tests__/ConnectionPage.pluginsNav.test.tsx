@@ -141,6 +141,11 @@ vi.mock('../../../commands/connection', () => ({
 
 vi.mock('../../../lib/windowManager', () => ({
   PENDING_CONNECTION_KEY: 'datazen:pending-connection',
+  POST_ONBOARDING_SAMPLE_KEY: 'datazen:post-onboarding-sample',
+  // F2: ConnectionPage dynamically imports this when the platform's
+  // windowChrome port is present (see setup.ts testPlatform); a missing
+  // export surfaces as an unhandled rejection after the tests settle.
+  hasOpenChildWindows: vi.fn().mockResolvedValue(false),
   openNewConnectionDialog: vi.fn(),
   openBackupWindow: vi.fn(),
   openDataSyncWindow: vi.fn(),
@@ -159,8 +164,9 @@ vi.mock('../ContentView', () => ({
   ContentView: () => <div data-testid="mock-content-view">content-view</div>,
 }));
 
-vi.mock('../../../components/TitleBar', () => ({
-  TitleBar: ({ title, leftContent }: { title: string; leftContent?: React.ReactNode }) => (
+vi.mock('@datazen/extension-points', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datazen/extension-points')>()),
+  WindowChromeSlot: ({ title, leftContent }: { title: string; leftContent?: React.ReactNode }) => (
     <div data-testid="title-bar">
       {leftContent}
       {title}

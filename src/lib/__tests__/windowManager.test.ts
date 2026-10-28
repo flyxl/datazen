@@ -9,6 +9,17 @@ const mockShow = vi.fn().mockResolvedValue(undefined);
 const mockUnminimize = vi.fn().mockResolvedValue(undefined);
 const mockSetFocus = vi.fn().mockResolvedValue(undefined);
 
+// Form-split F2: the implementation moved to platform/desktop/windowRouter.ts
+// and the form branch is the compile-time IS_DESKTOP_BUILD constant. The env
+// module is mocked with a GETTER export so each describe can flip the form
+// the way `window.__TAURI_INTERNALS__` used to be flipped at runtime.
+const envState = vi.hoisted(() => ({ desktop: false }));
+vi.mock('../../platform/desktop/env', () => ({
+  get IS_DESKTOP_BUILD() {
+    return envState.desktop;
+  },
+}));
+
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
 }));
@@ -17,8 +28,13 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({
   message: (...args: unknown[]) => mockMessage(...args),
 }));
 
-vi.mock('../crossWindowBus', () => ({
+vi.mock('../../platform/desktop/eventChannel', () => ({
   emitCrossWindow: (...args: unknown[]) => mockEmitCrossWindow(...args),
+  listenCrossWindow: async () => () => undefined,
+  createDesktopEventChannel: () => ({
+    emitCrossWindow: (...args: unknown[]) => mockEmitCrossWindow(...args),
+    listenCrossWindow: async () => () => undefined,
+  }),
 }));
 
 const mockGetByLabel = vi.fn().mockResolvedValue(null);
@@ -48,7 +64,7 @@ vi.mock('../connectionEditor', () => ({
 
 describe('windowManager — browser', () => {
   beforeEach(() => {
-    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    envState.desktop = false;
     vi.clearAllMocks();
     vi.spyOn(window, 'open').mockReturnValue(null);
   });
@@ -189,7 +205,7 @@ describe('windowManager — browser', () => {
 
 describe('windowManager — Tauri', () => {
   beforeEach(() => {
-    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    envState.desktop = true;
     vi.clearAllMocks();
     mockInvoke.mockResolvedValue(undefined);
     mockOpenPath.mockResolvedValue(undefined);
@@ -197,7 +213,7 @@ describe('windowManager — Tauri', () => {
   });
 
   afterEach(() => {
-    delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    envState.desktop = false;
   });
 
   it('openDocsWindow uses open_path IPC and does not create a sub-window', async () => {

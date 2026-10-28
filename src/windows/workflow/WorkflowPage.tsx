@@ -24,7 +24,7 @@ import {
   Wand2,
   X,
 } from 'lucide-react';
-import { TitleBar } from '../../components/TitleBar';
+import { WindowChromeSlot } from '@datazen/extension-points';
 import { StatusBar } from '../../components/StatusBar';
 import { DataTable } from '../../components/DataTable/DataTable';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
@@ -715,7 +715,7 @@ export function WorkflowPage({
       {embedded ? (
         workflowToolbar
       ) : (
-        <TitleBar title={t('win.workflow')} leftContent={workflowToolbar} />
+        <WindowChromeSlot title={t('win.workflow')} leftContent={workflowToolbar} />
       )}
 
       <div className="flex min-h-0 flex-1">

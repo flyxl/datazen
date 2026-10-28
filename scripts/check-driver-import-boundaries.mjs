@@ -151,6 +151,71 @@ export const R2_FILE_CARVEOUTS = new Set([
 ]);
 
 /**
+ * R6 transition ledger (form-split F2): production `src/` files that still
+ * import `@tauri-apps/*` **outside** the desktop zones. Every entry is a
+ * data-plane invoke wrapper or a chrome touchpoint on the F4 facade-migration
+ * list (plan §4.3 "~23 只碰 invoke" + §4.2 stragglers). Findings in these
+ * files are downgraded to advisory so the gate goes live WITHOUT handing the
+ * team a permanently red CI — the same governance pattern as R3's
+ * DocumentConnectionView ledger. Entries are removed as F4 migrates each
+ * file onto the backend-client facade; the set itself is deleted when the
+ * last entry goes (F6's `packages/frontend` must be host-runtime-free).
+ */
+export const R6_LEGACY_TAURI_FILES = new Set([
+  'src/commands/ai.ts',
+  'src/commands/artifact.ts',
+  'src/commands/backup.ts',
+  'src/commands/connection.ts',
+  'src/commands/context.ts',
+  'src/commands/dashboard.ts',
+  'src/commands/database.ts',
+  'src/commands/file.ts',
+  'src/commands/history.ts',
+  'src/commands/query.ts',
+  'src/commands/sample.ts',
+  'src/commands/schemaDiff.ts',
+  'src/commands/settings.ts',
+  'src/commands/sync.ts',
+  'src/commands/transfer.ts',
+  'src/commands/transferJobs.ts',
+  'src/commands/tunnel.ts',
+  'src/commands/wapps.ts',
+  'src/components/MenuBar.tsx',
+  'src/lib/fetchRelationDdl.ts',
+  'src/lib/sqlFileExecution.ts',
+  'src/lib/surfaceBgCache.ts',
+  'src/lib/wappBridge.ts',
+  'src/windows/backup/BackupWindow.tsx',
+  'src/windows/connection/QueryPanel.tsx',
+  'src/windows/data-sync/useDataSyncEndpoints.ts',
+  'src/windows/data-sync/useDataSyncProfiles.ts',
+  'src/windows/data-transfer/DataTransferWindow.tsx',
+  'src/windows/onboarding/BrandSidebar.tsx',
+  'src/windows/onboarding/OnboardingWindow.tsx',
+  'src/windows/schema-diff/useSchemaDiffEndpoints.ts',
+  'src/windows/settings/SettingsContent.tsx',
+  'src/windows/workspace/WorkspaceView.tsx',
+]);
+
+/**
+ * R7 sanctioned bridges (form-split F2): the assembly root plus the six thin
+ * re-export shims whose entire purpose is to keep legacy import paths alive
+ * until F6. Both lists self-eliminate — main.tsx becomes `apps/desktop/src/`
+ * and the shims die with the `src/` → `packages/frontend/` move.
+ */
+export const R7_SANCTIONED_BRIDGES = new Set([
+  'src/main.tsx',
+  'src/lib/windowManager.ts',
+  'src/lib/crossWindowBus.ts',
+  'src/lib/pathPicker.ts',
+  'src/lib/updater.ts',
+  'src/platform/tauriBackendTransport.ts',
+  'src/hooks/usePlatform.ts',
+  // The fallback shim keeps legacy `src/platform/tauriBackendTransport` importers
+  // (tests + the transitional driver-sdk lazy bind) working until F6.
+]);
+
+/**
  * Rule metadata. `blocking: false` keeps a rule visible in the report without
  * failing CI (only R3 qualifies today, see header note).
  */
@@ -178,6 +243,24 @@ export const RULES = {
     name: 'shared design system must stay host-free and runtime-free',
     blocking: true,
     doc: 'docs/architecture/frontend/components.md §9',
+  },
+  R6: {
+    id: 'R6',
+    name: 'src outside the desktop zones must not import @tauri-apps/*',
+    blocking: true,
+    doc: 'docs/development/frontend-form-split-plan.md §6.1 rule 1',
+  },
+  R7: {
+    id: 'R7',
+    name: 'src may import platform/desktop entities only via sanctioned bridges',
+    blocking: true,
+    doc: 'docs/development/frontend-form-split-plan.md §6.1 rule 2',
+  },
+  R8: {
+    id: 'R8',
+    name: 'driver packages must not import @tauri-apps/* (events ride the backend-client rail)',
+    blocking: false,
+    doc: 'docs/development/frontend-form-split-plan.md §6.2 (R4 scope extension, drivers face)',
   },
 };
 
@@ -275,7 +358,37 @@ export function rulesForFile(rel) {
   if (rel.startsWith('packages/') && !R2_FILE_CARVEOUTS.has(rel)) rules.push(RULES.R2);
   if (rel.startsWith(`${HOST_SRC_DIR}/`)) rules.push(RULES.R3);
   if (rel.startsWith(`${UI_DIR}/`)) rules.push(RULES.R4);
+  // ── Form-split F2 zone rules (plan §6.1) ────────────────────────────────
+  // Tests may probe/mock the zones freely (the vitest alias for
+  // `@tauri-apps/api/window` is a test asset); production code may not.
+  if (isHostProductionFile(rel)) {
+    const inPlatformZone = rel.startsWith('src/platform/desktop/');
+    const inShellZone = rel.startsWith('src/shell/desktop/');
+    if (!inPlatformZone && !inShellZone) {
+      // R6 applies everywhere (ledgered files get their findings downgraded to
+      // advisory in classification — visibility without a red CI).
+      rules.push(RULES.R6);
+      if (!R7_SANCTIONED_BRIDGES.has(rel)) rules.push(RULES.R7);
+    }
+  }
+  // Drivers are a shared two-form layer (plan §6.1 rule 3): host runtime
+  // imports are forbidden. Advisory until the F4 PubSubPanel fix lands, then
+  // flip `RULES.R8.blocking` in the same commit.
+  if (rel.startsWith(`${DRIVER_DIR}/`) && !isDriverTestFile(rel)) rules.push(RULES.R8);
   return rules;
+}
+
+/** Host production file = under `src/` and not a test scaffold. */
+function isHostProductionFile(rel) {
+  if (!rel.startsWith('src/')) return false;
+  if (rel.includes('/__tests__/')) return false;
+  if (rel.startsWith('src/test/')) return false;
+  return true;
+}
+
+/** Driver e2e/webdriver bridges are test scaffolding, not driver UI. */
+function isDriverTestFile(rel) {
+  return rel.includes('/e2e/') || rel.includes('/__tests__/');
 }
 
 /**
@@ -391,6 +504,52 @@ export function inspectSource(rel, source) {
           text: at(line),
           specifier: value,
           detail,
+        });
+      }
+    }
+
+    if (rule === RULES.R6) {
+      for (const { value, line } of literals) {
+        if (!value.startsWith('@tauri-apps/')) continue;
+        findings.push({
+          rule,
+          file: rel,
+          line,
+          text: at(line),
+          specifier: value,
+          detail: `imports the host runtime '${value}' outside the desktop zones (ruling D2/plan §6.1 rule 1)`,
+        });
+      }
+    }
+
+    if (rule === RULES.R7) {
+      for (const { value, line } of literals) {
+        const target = resolveSpecifier(rel, value);
+        if (!target) continue;
+        if (!(target === 'src/platform/desktop' || target.startsWith('src/platform/desktop/'))) {
+          continue;
+        }
+        findings.push({
+          rule,
+          file: rel,
+          line,
+          text: at(line),
+          specifier: value,
+          detail: `imports the desktop zone entity ${target} — shared code may only see platform/contracts.ts ports (ruling #7)`,
+        });
+      }
+    }
+
+    if (rule === RULES.R8) {
+      for (const { value, line } of literals) {
+        if (!value.startsWith('@tauri-apps/')) continue;
+        findings.push({
+          rule,
+          file: rel,
+          line,
+          text: at(line),
+          specifier: value,
+          detail: `driver layer imports the host runtime '${value}' — events ride the backend-client rail (ruling D2/plan §6.1 rule 3)`,
         });
       }
     }
@@ -544,6 +703,7 @@ export function checkDriverImportBoundaries(opts = {}) {
   const blocked = [];
   const advisory = [];
   const usedEntries = new Set();
+  const ledgeredSeen = new Set();
   let allowed = 0;
 
   for (const { rel, content } of sources) {
@@ -557,6 +717,12 @@ export function checkDriverImportBoundaries(opts = {}) {
       if (exempt >= 0) {
         usedEntries.add(exempt);
         allowed += 1;
+        continue;
+      }
+      // R6 transition ledger: F4-owned files stay visible but advisory.
+      if (finding.rule.id === 'R6' && R6_LEGACY_TAURI_FILES.has(finding.file)) {
+        ledgeredSeen.add(finding.file);
+        advisory.push({ ...finding, ledgered: true });
         continue;
       }
       // BUG-008: findings in files this repo does not track (gitignored
@@ -588,9 +754,23 @@ export function checkDriverImportBoundaries(opts = {}) {
     error(`    ${finding.text}`);
   }
   for (const finding of advisory) {
-    const note = finding.external ? ` · ${EXTERNAL_ADVISORY_NOTE}` : '';
+    const note = finding.external
+      ? ` · ${EXTERNAL_ADVISORY_NOTE}`
+      : finding.ledgered
+        ? ' · R6 transition ledger (F4 facade migration burns it down)'
+        : '';
     log(
       `${tag} ${finding.rule.id} (advisory) ${finding.file}:${finding.line}: ${finding.detail}${note}`,
+    );
+  }
+  // Stale ledger hygiene: an entry whose file no longer produces findings is
+  // dead weight — surface it so the set cannot silently rot (same property the
+  // ALLOWLIST expiry check buys).
+  for (const ledgerFile of R6_LEGACY_TAURI_FILES) {
+    if (ledgeredSeen.has(ledgerFile)) continue;
+    if (!adapter.has(ledgerFile)) continue; // deleted file: cleanup hint below
+    log(
+      `${tag} R6 (ledger) ${ledgerFile}: no @tauri-apps findings left — remove the entry`,
     );
   }
   for (const { entry, fileMissing } of expired) {
@@ -606,7 +786,7 @@ export function checkDriverImportBoundaries(opts = {}) {
     error(
       `${tag} FAILED: ${blocked.length} violation(s)${expired.length ? ` + ${expired.length} expired exemption(s)` : ''} (${scanned}${advisoryNote})`,
     );
-    for (const ruleId of ['R1', 'R2', 'R4']) {
+    for (const ruleId of ['R1', 'R2', 'R4', 'R6', 'R7']) {
       if (blocked.some((f) => f.rule.id === ruleId)) error(`    see ${RULES[ruleId].doc}`);
     }
     return 1;

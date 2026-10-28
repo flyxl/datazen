@@ -1,5 +1,7 @@
 import { create } from 'zustand';
-import { aiCommands, onAiStreamChunk, onAiStreamError, onAiConfigChanged } from '../commands/ai';
+import { aiCommands } from '../commands/ai';
+import { getBackendClient } from '@datazen/backend-client';
+import { getPlatformOrNull } from '../platform/contracts';
 import { redactSensitiveText } from '../lib/aiQueryActions';
 import { normalizeAiProviders } from '../lib/aiProviders';
 import type { AiChatMessage } from '../types';
@@ -50,7 +52,11 @@ export const useAiStore = create<AiStore>((set, get) => ({
   fetchingRemoteModels: false,
 
   loadConfig: async () => {
-    if (!('__TAURI_INTERNALS__' in globalThis)) return;
+    // Backend-dimension guard (not a form probe): AI config loads are data-plane
+    // calls, so they simply have nothing to read when no backend is bound
+    // (browser dev / unit tests without a transport).
+    if (!getBackendClient()) return;
+    ensureAiConfigChangedListener();
     set({ configLoading: true, configError: null });
     try {
       const [config, settingsConfig] = await Promise.all([
@@ -77,7 +83,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
   },
 
   loadSettingsConfig: async () => {
-    if (!('__TAURI_INTERNALS__' in globalThis)) return;
+    if (!getBackendClient()) return;
     try {
       const settingsConfig = await aiCommands.getSettingsConfig();
       const config = await aiCommands.getConfig();
@@ -165,7 +171,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
   },
 
   loadProviders: async () => {
-    if (!('__TAURI_INTERNALS__' in globalThis)) return;
+    if (!getBackendClient()) return;
     try {
       const providers = normalizeAiProviders(await aiCommands.getProviders());
       set({ providers });
@@ -644,12 +650,17 @@ export const useAiStore = create<AiStore>((set, get) => ({
   handleCancelTimeout: (requestId) => applyCancelTimeout(get, set, requestId),
 
   setupEventListeners: async () => {
-    if (!('__TAURI_INTERNALS__' in globalThis)) return () => {};
-    const unChunk = await onAiStreamChunk((payload) => {
-      get().handleStreamChunk(payload);
+    // Host broadcast events (`ai:stream-*`) ride the EventChannel port (B4
+    // rail 2); subscription lifetime is guaranteed by assembly timing — the
+    // platform is configured before first render. Degrade to a no-op when the
+    // platform is not assembled (unit tests).
+    const events = getPlatformOrNull()?.events;
+    if (!events) return () => {};
+    const unChunk = await events.listenCrossWindow('ai:stream-chunk', (payload) => {
+      get().handleStreamChunk(payload as import('../types').StreamChunkPayload);
     });
-    const unError = await onAiStreamError((payload) => {
-      applyStreamError(get, set, payload);
+    const unError = await events.listenCrossWindow('ai:stream-error', (payload) => {
+      applyStreamError(get, set, payload as import('../types').StreamErrorPayload);
     });
     return () => {
       unChunk();
@@ -901,8 +912,19 @@ export const useAiStore = create<AiStore>((set, get) => ({
 }));
 
 // Listen for cross-window config changes so all windows stay in sync.
-if ('__TAURI_INTERNALS__' in globalThis) {
-  void onAiConfigChanged(() => {
+// Deferred to first `loadConfig` (module import happens before platform
+// assembly, and injection timing is what guarantees the port exists — so the
+// subscription starts from the first backend-bound call instead of at import).
+let aiConfigChangedStarted = false;
+function ensureAiConfigChangedListener(): void {
+  if (aiConfigChangedStarted) return;
+  aiConfigChangedStarted = true;
+  const events = getPlatformOrNull()?.events;
+  if (!events) {
+    aiConfigChangedStarted = false;
+    return;
+  }
+  void events.listenCrossWindow('ai:config-changed', () => {
     void useAiStore.getState().loadConfig();
   });
 }

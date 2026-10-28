@@ -2,6 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockCheck = vi.fn();
 
+// Form-split F2: updater's form branch is the compile-time IS_DESKTOP_BUILD
+// constant; a getter-export mock replaces the old __TAURI_INTERNALS__ toggle.
+const envState = vi.hoisted(() => ({ desktop: false }));
+vi.mock('../../platform/desktop/env', () => ({
+  get IS_DESKTOP_BUILD() {
+    return envState.desktop;
+  },
+}));
+
 vi.mock('@tauri-apps/plugin-updater', () => ({
   check: (...args: unknown[]) => mockCheck(...args),
 }));
@@ -29,12 +38,12 @@ import {
 
 describe('updater on a SKU with no published channel', () => {
   beforeEach(() => {
-    (globalThis as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    envState.desktop = true;
     vi.clearAllMocks();
   });
 
   afterEach(() => {
-    delete (globalThis as Record<string, unknown>).__TAURI_INTERNALS__;
+    envState.desktop = false;
   });
 
   it('is a desktop build, so it shows the manual download card', () => {

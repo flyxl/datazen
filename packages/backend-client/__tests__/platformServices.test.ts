@@ -27,6 +27,7 @@ function createSpyServices() {
     openDirectoryWithDialog: vi.fn(async () => ({ path: '/tmp/out' }) satisfies OpenedDirectory),
     writeClipboard: vi.fn(async () => undefined),
     readClipboard: vi.fn(async () => 'clipboard text'),
+    openExternal: vi.fn(async () => undefined),
   } satisfies PlatformServices;
 }
 

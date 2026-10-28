@@ -149,8 +149,9 @@ vi.mock('../../../lib/windowKind', () => ({
   getUrlParam: (name: string) => urlParamMock(name),
 }));
 
-vi.mock('../../../components/TitleBar', () => ({
-  TitleBar: ({ title, rightContent }: { title?: unknown; rightContent?: unknown }) => (
+vi.mock('@datazen/extension-points', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datazen/extension-points')>()),
+  WindowChromeSlot: ({ title, rightContent }: { title?: unknown; rightContent?: unknown }) => (
     <div data-testid="title-bar">
       {String(title ?? '')}
       {rightContent as never}
@@ -438,7 +439,11 @@ describe('DataSyncWindow wizard', () => {
           };
         }
         if (cmd === 'release_connection') return false;
-        if (cmd === 'connect') return { connectionId: args?.connectionId as string, dbSessionId: `live-${args?.connectionId as string}` };
+        if (cmd === 'connect')
+          return {
+            connectionId: args?.connectionId as string,
+            dbSessionId: `live-${args?.connectionId as string}`,
+          };
         if (cmd === 'classify_data_sync_pair') return mockClassifyDataSyncPair(args);
         return null;
       },
@@ -789,10 +794,17 @@ describe('DataSyncWindow wizard', () => {
         if (cmd === 'get_connections') return [pgSrc, pgTgt, mysqlTgt];
         if (cmd === 'connect_dedicated') {
           if (args?.connectionId === 'pg-tgt') throw new Error('refused');
-          return { connectionId: args?.connectionId as string, dbSessionId: `dedicated-${args?.connectionId}-db` };
+          return {
+            connectionId: args?.connectionId as string,
+            dbSessionId: `dedicated-${args?.connectionId}-db`,
+          };
         }
         if (cmd === 'release_connection') return false;
-        if (cmd === 'connect') return { connectionId: args?.connectionId as string, dbSessionId: `live-${args?.connectionId as string}` };
+        if (cmd === 'connect')
+          return {
+            connectionId: args?.connectionId as string,
+            dbSessionId: `live-${args?.connectionId as string}`,
+          };
         if (cmd === 'classify_data_sync_pair') return mockClassifyDataSyncPair(args);
         return null;
       },
@@ -904,7 +916,11 @@ describe('DataSyncWindow wizard', () => {
           return { connectionId: conn as string, dbSessionId: `dedicated-${conn}-${db}` };
         }
         if (cmd === 'release_connection') return false;
-        if (cmd === 'connect') return { connectionId: args?.connectionId as string, dbSessionId: `live-${args?.connectionId as string}` };
+        if (cmd === 'connect')
+          return {
+            connectionId: args?.connectionId as string,
+            dbSessionId: `live-${args?.connectionId as string}`,
+          };
         if (cmd === 'classify_data_sync_pair') return mockClassifyDataSyncPair(args);
         return null;
       },
@@ -945,7 +961,11 @@ describe('DataSyncWindow wizard', () => {
           return { connectionId: conn as string, dbSessionId: `dedicated-${conn}-${db}` };
         }
         if (cmd === 'release_connection') return false;
-        if (cmd === 'connect') return { connectionId: args?.connectionId as string, dbSessionId: `live-${args?.connectionId as string}` };
+        if (cmd === 'connect')
+          return {
+            connectionId: args?.connectionId as string,
+            dbSessionId: `live-${args?.connectionId as string}`,
+          };
         if (cmd === 'classify_data_sync_pair') return mockClassifyDataSyncPair(args);
         return null;
       },
@@ -1030,7 +1050,11 @@ describe('DataSyncWindow wizard', () => {
           return { connectionId: conn as string, dbSessionId: `dedicated-${conn}-${db}` };
         }
         if (cmd === 'release_connection') return false;
-        if (cmd === 'connect') return { connectionId: args?.connectionId as string, dbSessionId: `live-${args?.connectionId as string}` };
+        if (cmd === 'connect')
+          return {
+            connectionId: args?.connectionId as string,
+            dbSessionId: `live-${args?.connectionId as string}`,
+          };
         if (cmd === 'classify_data_sync_pair') return mockClassifyDataSyncPair(args);
         return null;
       },

@@ -1,7 +1,7 @@
 import { schemaClient } from '@datazen/driver-sdk';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronRight, Database, HardDrive } from 'lucide-react';
-import { TitleBar } from '../../components/TitleBar';
+import { WindowChromeSlot } from '@datazen/extension-points';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { useSettings } from '../../hooks/useSettings';
@@ -301,7 +301,9 @@ export function BackupWindow() {
 
   return (
     <div className="flex h-screen min-h-0 flex-col bg-surface text-fg">
-      <TitleBar title={isRestore ? t('common.restoreDatabase') : t('common.backupDatabase')} />
+      <WindowChromeSlot
+        title={isRestore ? t('common.restoreDatabase') : t('common.backupDatabase')}
+      />
 
       {!isRestore && (
         <div className="flex items-center gap-3 border-b border-edge px-4 py-2">

@@ -183,8 +183,9 @@ vi.mock('../../../components/ui/Select', () => ({
   ),
 }));
 
-vi.mock('../../../components/TitleBar', () => ({
-  TitleBar: ({ title, leftContent }: { title: string; leftContent?: React.ReactNode }) => (
+vi.mock('@datazen/extension-points', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datazen/extension-points')>()),
+  WindowChromeSlot: ({ title, leftContent }: { title: string; leftContent?: React.ReactNode }) => (
     <div data-testid="title-bar">
       <span>{title}</span>
       {leftContent}

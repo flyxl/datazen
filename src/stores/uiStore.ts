@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { getPlatformOrNull } from '../platform/contracts';
 
 export type DialogId = 'new-connection' | null;
 
@@ -74,12 +75,16 @@ export const useUiStore = create<UiStore>((set, get) => ({
     set({ workspaceSidebarMode: mode });
   },
   syncFullscreen: async () => {
-    if (typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window)) {
+    if (typeof window === 'undefined') {
       return false;
     }
+    // Window fullscreen is a platform port (B7), not a runtime probe: an
+    // unconfigured platform (browser dev without assembly, unit tests)
+    // degrades to "not fullscreen", matching the legacy browser branch.
+    const windows = getPlatformOrNull()?.windows;
+    if (!windows) return false;
     try {
-      const { getCurrentWindow } = await import('@tauri-apps/api/window');
-      const isFs = await getCurrentWindow().isFullscreen();
+      const isFs = await windows.windowChrome.isFullscreen();
       set({ isFullscreen: isFs });
       return isFs;
     } catch {

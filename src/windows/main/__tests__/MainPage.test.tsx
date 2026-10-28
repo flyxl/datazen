@@ -48,8 +48,9 @@ vi.mock('../../connection/ConnectionPage', () => ({
   ),
 }));
 
-vi.mock('../../../components/TitleBar', () => ({
-  TitleBar: ({ title }: { title: string }) => <div data-testid="title-bar">{title}</div>,
+vi.mock('@datazen/extension-points', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datazen/extension-points')>()),
+  WindowChromeSlot: ({ title }: { title: string }) => <div data-testid="title-bar">{title}</div>,
 }));
 
 vi.mock('../../../components/MenuBar', () => ({

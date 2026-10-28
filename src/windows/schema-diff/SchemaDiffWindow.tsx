@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BookOpen, Copy } from 'lucide-react';
-import { TitleBar } from '../../components/TitleBar';
+import { WindowChromeSlot } from '@datazen/extension-points';
 import { StatusBar } from '../../components/StatusBar';
 import { LocaleDomainLoading } from '../../components/LocaleDomainLoading';
 import { Button } from '../../components/ui/Button';
@@ -666,7 +666,7 @@ export function SchemaDiffWindow() {
       data-testid="schema-diff-window"
       data-discovery-failure={discoveryDiagnostic || undefined}
     >
-      <TitleBar
+      <WindowChromeSlot
         title={t('common.schemaDiff')}
         rightContent={
           <div className="flex items-center gap-1">

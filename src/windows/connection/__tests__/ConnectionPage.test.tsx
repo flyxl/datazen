@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, waitFor, screen, fireEvent } from '@testing-library/react';
 import { ConnectionPage } from '../ConnectionPage';
 import { tauriWindowTestState } from '../../../test/mocks/tauriWindow';
+import { configurePlatform } from '../../../platform/contracts';
 import type { Dashboard } from '../../../types/dashboard';
 
 const {
@@ -226,8 +227,9 @@ vi.mock('../ContentView', async () => {
   };
 });
 
-vi.mock('../../../components/TitleBar', () => ({
-  TitleBar: ({ title, leftContent }: { title: string; leftContent?: React.ReactNode }) => (
+vi.mock('@datazen/extension-points', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datazen/extension-points')>()),
+  WindowChromeSlot: ({ title, leftContent }: { title: string; leftContent?: React.ReactNode }) => (
     <div data-testid="title-bar">
       {leftContent}
       {title}
@@ -354,6 +356,34 @@ function setPendingConnection(data: Record<string, string>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Form-split F2: the close lifecycle rides the WindowRouter port — wire its
+  // chrome onto the shared tauriWindow mock so the TC-window suites keep
+  // observing the same handler/minimize/close artifacts as before.
+  configurePlatform({
+    services: {} as never,
+    windows: {
+      openSingletonWindow: () => undefined,
+      openMultiInstanceWindow: () => undefined,
+      focusMainWindow: async () => undefined,
+      hasOpenChildWindows: (...args: unknown[]) => hasOpenChildWindowsMock(...args),
+      windowChrome: {
+        isFullscreen: async () => false,
+        onFullscreenChanged: async () => () => undefined,
+        setBackgroundRootColor: async () => undefined,
+        onCloseRequested: (handler: (event: { preventDefault: () => void }) => Promise<void>) => {
+          tauriWindowTestState.closeHandlerRegistrationCount.current += 1;
+          tauriWindowTestState.closeRequestedHandler.current = handler;
+          return Promise.resolve(() => {});
+        },
+        minimizeCurrent: () => tauriWindowTestState.minimizeMock(),
+        closeCurrent: () => tauriWindowTestState.closeMock(),
+      },
+    },
+    events: {
+      emitCrossWindow: (...args: unknown[]) => emitCrossWindowMock(...args),
+      listenCrossWindow: async () => () => undefined,
+    },
+  });
   menuOpenSettingsHandler.current = null;
   tauriWindowTestState.closeRequestedHandler.current = null;
   tauriWindowTestState.closeHandlerRegistrationCount.current = 0;
@@ -481,9 +511,10 @@ describe('ConnectionPage', () => {
   it('TC-window: shows loading spinner while connect is pending', async () => {
     let resolveConnect: (v: { connectionId: string; dbSessionId: string }) => void = () => {};
     connectMock.mockImplementation(
-      () => new Promise<{ connectionId: string; dbSessionId: string }>((resolve) => {
-        resolveConnect = resolve;
-      }),
+      () =>
+        new Promise<{ connectionId: string; dbSessionId: string }>((resolve) => {
+          resolveConnect = resolve;
+        }),
     );
     setPendingConnection({
       connectionId: 'cfg-slow',

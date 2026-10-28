@@ -21,9 +21,22 @@ vi.mock('../../commands/wapps', () => ({
   wappCommands: mockWappCommands,
 }));
 
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: (...args: Parameters<typeof listenMock>) => listenMock(...args),
-}));
+// Form-split F2: wapps:changed rides the platform EventChannel port; the
+// store reads it via contracts. Mock the contracts module so the store's
+// getPlatformOrNull() resolves a controllable events port.
+vi.mock('../../platform/contracts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../platform/contracts')>();
+  const { configurePlatform } = actual;
+  configurePlatform({
+    services: {} as never,
+    windows: {} as never,
+    events: {
+      emitCrossWindow: async () => undefined,
+      listenCrossWindow: (...args: Parameters<typeof listenMock>) => listenMock(...args) as never,
+    },
+  });
+  return actual;
+});
 
 function makeWapp(overrides: Partial<WappSummary> = {}): WappSummary {
   return {

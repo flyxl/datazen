@@ -1,6 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { useI18n } from '../hooks/useI18n';
-import { TitleBar } from './TitleBar';
+import { WindowChromeSlot } from '@datazen/extension-points';
 
 interface Props {
   children: ReactNode;
@@ -55,7 +55,7 @@ class ErrorBoundaryInner extends Component<BoundaryProps, State> {
 
     return (
       <div className="flex h-screen min-h-0 w-screen flex-col bg-surface">
-        <TitleBar />
+        <WindowChromeSlot />
         <div className="flex flex-1 items-center justify-center p-8">
           <div className="max-w-md space-y-4 text-center">
             <div className="text-4xl">⚠️</div>

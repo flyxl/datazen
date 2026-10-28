@@ -1,13 +1,24 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TitleBar } from '../TitleBar';
+import { TitleBar } from '../../shell/desktop/TitleBar';
 import { useUiStore } from '../../stores/uiStore';
+import { configurePlatform } from '../../platform/contracts';
 
 const isFullscreenMock = vi.fn().mockResolvedValue(false);
 const onResizedMock = vi.fn().mockResolvedValue(() => {});
 
-vi.mock('../../hooks/usePlatform', () => ({
+// Form-split F2: TitleBar imports the OS hook and the form constant from the
+// desktop zone; the form is compile-time, so the env module gets a getter
+// mock that this suite pins to the desktop branch.
+vi.mock('../../platform/desktop/env', () => ({
+  get IS_DESKTOP_BUILD() {
+    return true;
+  },
+}));
+
+vi.mock('../../platform/desktop/os', () => ({
   usePlatform: () => 'macos',
+  getPlatformSync: () => 'macos',
 }));
 
 vi.mock('@tauri-apps/api/event', () => ({
@@ -25,9 +36,29 @@ describe('TitleBar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useUiStore.setState({ isFullscreen: false });
-    // Simulate Tauri runtime
-    (window as unknown as { __TAURI_INTERNALS__: Record<string, unknown> }).__TAURI_INTERNALS__ =
-      {};
+    // uiStore.syncFullscreen reads the platform port — point its fullscreen
+    // query at the same mock the Tauri window module used to hit directly.
+    configurePlatform({
+      services: {} as never,
+      windows: {
+        openSingletonWindow: () => undefined,
+        openMultiInstanceWindow: () => undefined,
+        focusMainWindow: async () => undefined,
+        hasOpenChildWindows: async () => false,
+        windowChrome: {
+          isFullscreen: isFullscreenMock,
+          onFullscreenChanged: async () => () => undefined,
+          setBackgroundRootColor: async () => undefined,
+          onCloseRequested: async () => () => undefined,
+          minimizeCurrent: async () => undefined,
+          closeCurrent: async () => undefined,
+        },
+      },
+      events: {
+        emitCrossWindow: async () => undefined,
+        listenCrossWindow: async () => () => undefined,
+      },
+    });
   });
 
   afterEach(cleanup);
@@ -43,7 +74,10 @@ describe('TitleBar', () => {
   });
 
   it('syncs fullscreen on mount and switches to pl-3 padding when fullscreen', async () => {
-    isFullscreenMock.mockResolvedValueOnce(true);
+    // Deterministic across both mount effects (listener sync + leftContent
+    // sync): a persistent implementation instead of a one-shot, so the
+    // 250/500ms retries cannot race the once-queue.
+    isFullscreenMock.mockResolvedValue(true);
     render(
       <TitleBar title="Settings" leftContent={<button data-testid="settings-back">Back</button>} />,
     );
@@ -60,7 +94,7 @@ describe('TitleBar', () => {
     const { rerender } = render(<TitleBar title="Main" leftContent={null} />);
 
     // Now user navigates to settings, introducing leftContent
-    isFullscreenMock.mockResolvedValueOnce(true);
+    isFullscreenMock.mockResolvedValue(true);
     rerender(
       <TitleBar title="Settings" leftContent={<button data-testid="settings-back">Back</button>} />,
     );

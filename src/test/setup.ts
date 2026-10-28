@@ -38,3 +38,48 @@ if (typeof Range !== 'undefined' && !Range.prototype.getClientRects) {
 if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }
+
+// ── Platform ports (form-split F2) ────────────────────────────────────────────
+// Shared code reaches window/event capabilities through the platform registry
+// (`src/platform/contracts.ts`). Production wires the desktop implementations
+// in the assembly root before first paint; tests configure a browser-shaped
+// no-op platform so unconfigured-port errors never mask the behavior under
+// test. This mirrors what browser dev mode resolves to via the compile-time
+// `IS_DESKTOP_BUILD` branches.
+import { configurePlatform, clearPlatform } from '../platform/contracts';
+import type { PlatformBindings } from '../platform/contracts';
+
+const testPlatform: PlatformBindings = {
+  services: {
+    saveTextWithDialog: async () => false,
+    saveBinaryWithDialog: async () => false,
+    openTextWithDialog: async () => null,
+    openDirectoryWithDialog: async () => null,
+    writeClipboard: async () => undefined,
+    readClipboard: async () => '',
+    openExternal: async () => undefined,
+  },
+  windows: {
+    openSingletonWindow: () => undefined,
+    openMultiInstanceWindow: () => undefined,
+    focusMainWindow: async () => undefined,
+    hasOpenChildWindows: async () => false,
+    windowChrome: {
+      isFullscreen: async () => false,
+      onFullscreenChanged: async () => () => undefined,
+      setBackgroundRootColor: async () => undefined,
+      onCloseRequested: async () => () => undefined,
+      minimizeCurrent: async () => undefined,
+      closeCurrent: async () => undefined,
+    },
+  },
+  events: {
+    emitCrossWindow: async () => undefined,
+    listenCrossWindow: async () => () => undefined,
+  },
+};
+
+configurePlatform(testPlatform);
+
+// Suites that exercise the *unconfigured* port path rebind with these.
+export { testPlatform, clearPlatform, configurePlatform };

@@ -68,8 +68,9 @@ vi.mock('../../../components/DbTypeBadge', () => ({
   DbTypeBadge: () => <span>badge</span>,
 }));
 
-vi.mock('../../../components/TitleBar', () => ({
-  TitleBar: ({ title }: { title?: string }) => <div>{title}</div>,
+vi.mock('@datazen/extension-points', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datazen/extension-points')>()),
+  WindowChromeSlot: ({ title }: { title?: string }) => <div>{title}</div>,
 }));
 
 vi.mock('../../../lib/sqlDialects', () => ({
@@ -219,7 +220,7 @@ describe('BackupWindow connection list', () => {
           ];
         }
         if (cmd === 'get_groups') return [PRESET_GROUPS.development];
-        if (cmd === 'connect') return { connectionId: "pg-1", dbSessionId: "live-1" };
+        if (cmd === 'connect') return { connectionId: 'pg-1', dbSessionId: 'live-1' };
         if (cmd === 'get_connection_info') return { serverVersion: '16' };
         if (args?.request?.command === 'list_databases')
           return { data: { databases: ['app', 'postgres'] } };
@@ -287,7 +288,7 @@ describe('BackupWindow connection list', () => {
           ];
         }
         if (cmd === 'get_groups') return [PRESET_GROUPS.development];
-        if (cmd === 'connect') return { connectionId: "pg-1", dbSessionId: "live-1" };
+        if (cmd === 'connect') return { connectionId: 'pg-1', dbSessionId: 'live-1' };
         if (cmd === 'get_connection_info') return { serverVersion: '16' };
         if (args?.request?.command === 'list_databases')
           return { data: { databases: ['app', 'postgres'] } };
@@ -380,7 +381,7 @@ describe('BackupWindow backup flow', () => {
       async (cmd: string, args?: { request?: { command?: string } }) => {
         if (cmd === 'get_connections') return pgOnlyConnections();
         if (cmd === 'get_groups') return [PRESET_GROUPS.development];
-        if (cmd === 'connect') return { connectionId: "pg-1", dbSessionId: "live-1" };
+        if (cmd === 'connect') return { connectionId: 'pg-1', dbSessionId: 'live-1' };
         if (cmd === 'get_connection_info') return { serverVersion: '16' };
         if (args?.request?.command === 'list_databases')
           return { data: { databases: ['app', 'postgres'] } };
@@ -533,7 +534,7 @@ describe('BackupWindow backup flow', () => {
       async (cmd: string, args?: { request?: { command?: string } }) => {
         if (cmd === 'get_connections') return pgOnlyConnections();
         if (cmd === 'get_groups') return [PRESET_GROUPS.development];
-        if (cmd === 'connect') return { connectionId: "pg-1", dbSessionId: "live-1" };
+        if (cmd === 'connect') return { connectionId: 'pg-1', dbSessionId: 'live-1' };
         if (cmd === 'get_connection_info') return { serverVersion: '16' };
         if (args?.request?.command === 'list_databases')
           return { data: { databases: ['app', 'postgres'] } };
