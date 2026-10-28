@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::capabilities::CapabilitySet;
 use crate::resource::ResourceProvider;
-use crate::traits::{DatabaseDriver, KeyValueDriver};
+use crate::traits::DatabaseDriver;
 
 /// Factory that plugins implement to register their driver.
 /// Use the [`register_driver!`] macro for convenient registration.
@@ -40,12 +40,6 @@ pub trait DatabaseDriverFactory: Send + Sync + 'static {
     /// Whether this driver supports streaming results.
     fn supports_streaming_results(&self) -> bool {
         false
-    }
-
-    /// If this driver also implements KeyValueDriver, return it.
-    /// Default returns None.
-    fn create_kv(&self) -> Option<Arc<dyn KeyValueDriver>> {
-        None
     }
 
     /// The opaque-resource provider this driver implements, if any.

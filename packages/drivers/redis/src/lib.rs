@@ -62,9 +62,6 @@ impl DatabaseDriverFactory for RedisFactory {
     fn create(&self) -> Arc<dyn DatabaseDriver> {
         shared_driver()
     }
-    fn create_kv(&self) -> Option<Arc<dyn KeyValueDriver>> {
-        Some(shared_driver())
-    }
     fn driver_id(&self) -> &'static str {
         "redis"
     }

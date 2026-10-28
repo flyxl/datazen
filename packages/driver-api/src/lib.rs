@@ -122,7 +122,7 @@ pub use types::*;
 
 /// Protocol version for the driver API.
 ///
-/// Bump this when making breaking changes to `DatabaseDriver`, `KeyValueDriver`,
+/// Bump this when making breaking changes to `DatabaseDriver`,
 /// `DatabaseDriverFactory`, or `ResourceProvider` traits.
 ///
 /// 4 → 5: `ResourceProvider` gained the required `close_handle` method (§6.5

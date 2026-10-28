@@ -1,8 +1,7 @@
 //! Redis-specific value/detail types crossing the driver↔host IPC boundary.
 //!
-//! Kept in the redis crate (not `driver-api`) because no `KeyValueDriver`
-//! trait method references them: `get_key`/`get_key_raw` are Redis-inherent
-//! commands dispatched via `execute_command`, not generic KV-trait calls.
+//! Kept in the redis crate (not `driver-api`) because they are Redis-inherent
+//! commands dispatched via `execute_command`, not generic contract calls.
 
 use serde::{Deserialize, Serialize};
 

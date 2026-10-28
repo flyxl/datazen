@@ -1,7 +1,6 @@
-//! Redis driver core — session, database, key-value trait impls live here.
+//! Redis driver core — session and database impls live here.
 
 mod database;
-mod key_value;
 pub(crate) mod session;
 
 use datazen_driver_api::*;
