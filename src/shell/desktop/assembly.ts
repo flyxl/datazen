@@ -21,6 +21,7 @@ import { createDesktopHostServices } from '../../platform/desktop/hostServices';
 import { createDesktopSettingsClient } from '../../platform/desktop/settingsClient';
 import { createDesktopTablesExporter } from '../../platform/desktop/tablesExporter';
 import { IS_DESKTOP_BUILD } from '../../platform/desktop/env';
+import { DESKTOP_CAPABILITIES } from '../../platform/capabilities';
 import { setPlatformServices } from '@datazen/backend-client';
 import { bindHostEventListener } from '@datazen/driver-sdk';
 import {
@@ -57,7 +58,9 @@ export function assembleDesktopPlatform(): void {
     // Rust-side streaming through the save-dialog token writer. A web build
     // binds `createBlobTablesExporter(...)` under the same signature.
     tablesExporter: createDesktopTablesExporter(),
-    // capabilities: DESKTOP_CAPABILITIES — lands in F5.
+    // Form-split F5: the static capability table — sections, updater and
+    // version source branch on this, never on a form probe.
+    capabilities: DESKTOP_CAPABILITIES,
   });
   // Form-split F4 (R8 retirement): driver UI listens to host broadcasts
   // (redis-pubsub-message, ...) through the EventChannel port via the

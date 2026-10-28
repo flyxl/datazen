@@ -406,7 +406,7 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                 />
               </SettingRow>
 
-              {availableSections.some((section) => section.id === 'logging') && (
+              {(capabilities?.updater ?? true) && (
                 <UpdateSection
                   checkOnStartup={settings.checkForUpdatesOnStartup}
                   onCheckOnStartupChange={(v) => updateField('checkForUpdatesOnStartup', v)}
