@@ -56,13 +56,13 @@ describe('merged import/export wrappers', () => {
     expectSingleInvoke('import_connections_with_dialog', { password: 'pw' });
   });
 
-  it('pickConnectionsImportFile opens the native file picker only', async () => {
+  it('pickConnectionsImportFile opens the merged import picker (connections kind)', async () => {
     invokeMock.mockResolvedValue('/tmp/share.datazenconnection');
     await expect(connectionCommands.pickConnectionsImportFile()).resolves.toBe(
       '/tmp/share.datazenconnection',
     );
     expect(invokeMock).toHaveBeenCalledTimes(1);
-    expect(invokeMock).toHaveBeenCalledWith('pick_connections_import_file');
+    expect(invokeMock).toHaveBeenCalledWith('pick_import_file', { kind: 'connections' });
   });
 
   it('importConnectionsAtPath forwards password and path', async () => {
@@ -88,11 +88,11 @@ describe('merged import/export wrappers', () => {
     await expect(backupCommands.exportAppData('datazen-backup.zip')).resolves.toBe(false);
   });
 
-  it('pickAppDataImportFile opens the native file picker only', async () => {
+  it('pickAppDataImportFile opens the merged import picker (app-data kind)', async () => {
     invokeMock.mockResolvedValue('/tmp/datazen-backup.zip');
     await expect(backupCommands.pickAppDataImportFile()).resolves.toBe('/tmp/datazen-backup.zip');
     expect(invokeMock).toHaveBeenCalledTimes(1);
-    expect(invokeMock).toHaveBeenCalledWith('pick_app_data_import_file');
+    expect(invokeMock).toHaveBeenCalledWith('pick_import_file', { kind: 'app-data' });
   });
 
   it('importAppData passes sourcePath to import_app_data', async () => {
@@ -162,7 +162,8 @@ describe('remaining connection wrappers keep their wire contract', () => {
     });
 
     await connectionCommands.pickConnectionImportPathWithDialog('folder', 'navicat');
-    expect(invokeMock).toHaveBeenLastCalledWith('pick_connection_import_path_with_dialog', {
+    expect(invokeMock).toHaveBeenLastCalledWith('pick_import_file', {
+      kind: 'competitor-path',
       mode: 'folder',
       source: 'navicat',
     });

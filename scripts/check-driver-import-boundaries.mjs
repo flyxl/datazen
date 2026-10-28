@@ -174,7 +174,6 @@ export const R6_LEGACY_TAURI_FILES = new Set([
   'src/commands/query.ts',
   'src/commands/sample.ts',
   'src/commands/schemaDiff.ts',
-  'src/commands/settings.ts',
   'src/commands/sync.ts',
   'src/commands/transfer.ts',
   'src/commands/transferJobs.ts',

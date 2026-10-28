@@ -10,8 +10,9 @@ export const backupCommands = {
   exportAppData: (defaultFileName: string) =>
     invoke<boolean>('export_app_data', { defaultFileName }),
 
-  /** Native open dialog for app-data ZIP import (path only; no import). */
-  pickAppDataImportFile: () => invoke<string | null>('pick_app_data_import_file'),
+  /** Native open dialog for app-data ZIP import (path only; no import).
+   * Form-split F4c: merged into the shared pick_import_file host command. */
+  pickAppDataImportFile: () => invoke<string | null>('pick_import_file', { kind: 'app-data' }),
 
   /**
    * Decision 3 merged IPC: ZIP import from a path chosen in the UI.

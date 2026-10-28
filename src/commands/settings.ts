@@ -54,7 +54,7 @@ export const settingsCommands = {
 
   getAppExecutablePath: () => requireHostSettings().getAppExecutablePath(),
 
-  /** @deprecated E2E-only; prefer openLogDir / openWorkflowsDir / openContextDir. */
+  /** @deprecated E2E-only; prefer openLogDir / openWorkflowsDir / openContextDir (one IPC: open_known_dir). */
   openPath: (path: string) => requireHostSettings().openPath(path),
 
   openLogDir: () => requireHostSettings().openLogDir(),

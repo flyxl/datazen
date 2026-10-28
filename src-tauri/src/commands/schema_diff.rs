@@ -6,7 +6,6 @@
 //! * [`profile_commands`] — Schema Diff profile IPC commands.
 //! * [`dependency_catalog`] — target dependency catalog reads and validation.
 //! * [`plan_commands`] — table-level plan preparation.
-//! * [`object_plan_commands`] — view / routine / sequence / type plans.
 //! * [`deploy_commands`] — deploy execution and cancellation.
 //! * [`compare_commands`] — single-table schema comparison.
 //! * [`reviewed_repository`] — reviewed-plan storage port implementation (desktop, single tenant).
@@ -19,7 +18,6 @@ pub mod unified_plan;
 mod compare_commands;
 mod dependency_catalog;
 mod deploy_commands;
-mod object_plan_commands;
 mod object_scope;
 mod plan_commands;
 mod profile_commands;
@@ -36,11 +34,7 @@ use crate::schema_diff::deploy::{
     DESTRUCTIVE_CONFIRM_TOKEN,
 };
 use crate::schema_diff::diff_table_schemas;
-use crate::schema_diff::objects::{
-    build_routine_trigger_migration_plan_with_components,
-    build_sequence_migration_plan_with_components, build_type_migration_plan_with_components,
-    build_view_migration_plan_with_components, SchemaObjectSnapshot,
-};
+use crate::schema_diff::objects::SchemaObjectSnapshot;
 use crate::schema_diff::plan::{is_source_unbounded_text, PlanOptions};
 use crate::schema_diff::types::TableColumnDiff;
 use crate::schema_diff::types::{
@@ -59,7 +53,6 @@ use tauri::State;
 // `#[tauri::command]` attribute generates in each submodule.
 pub use compare_commands::*;
 pub use deploy_commands::*;
-pub use object_plan_commands::*;
 pub use plan_commands::*;
 pub use profile_commands::*;
 
@@ -71,7 +64,7 @@ use dependency_catalog::{
 };
 use object_scope::{
     apply_sqlserver_object_scope_gate, ensure_distinct_schema_scope, fetch_schema_object,
-    fetch_schema_view, list_schema_objects, list_schema_views, select_schema_object_pair,
+    list_schema_objects, select_schema_object_pair,
 };
 pub(crate) use reviewed_repository::reviewed_scope;
 

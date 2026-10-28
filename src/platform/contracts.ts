@@ -93,7 +93,7 @@ export interface DesktopHostServices {
   rebuildMenu(language: string): Promise<void>;
   getLogPath(): Promise<string>;
   getAppExecutablePath(): Promise<string>;
-  /** @deprecated E2E-only; prefer openLogDir / openWorkflowsDir / openContextDir. */
+  /** @deprecated E2E-only; prefer openLogDir / openWorkflowsDir / openContextDir (one IPC: open_known_dir). */
   openPath(path: string): Promise<void>;
   openLogDir(): Promise<void>;
   openWorkflowsDir(): Promise<void>;
@@ -133,7 +133,7 @@ export interface HostSettingsPort {
   rebuildMenu(language: string): Promise<void>;
   getLogPath(): Promise<string>;
   getAppExecutablePath(): Promise<string>;
-  /** @deprecated E2E-only; prefer openLogDir / openWorkflowsDir / openContextDir. */
+  /** @deprecated E2E-only; prefer openLogDir / openWorkflowsDir / openContextDir (one IPC: open_known_dir). */
   openPath(path: string): Promise<void>;
   openLogDir(): Promise<void>;
   openWorkflowsDir(): Promise<void>;

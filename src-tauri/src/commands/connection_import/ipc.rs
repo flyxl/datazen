@@ -36,7 +36,7 @@ pub fn detect_connection_import_path(
     })
 }
 
-pub(super) fn import_file_filters(app: ImportApp) -> (&'static str, &'static [&'static str]) {
+pub(crate) fn import_file_filters(app: ImportApp) -> (&'static str, &'static [&'static str]) {
     match app {
         ImportApp::Dbx => ("DBX", &["db", "json", "sqlite"]),
         ImportApp::Navicat => ("Navicat", &["ncx", "xml"]),
@@ -44,31 +44,6 @@ pub(super) fn import_file_filters(app: ImportApp) -> (&'static str, &'static [&'
         ImportApp::DBeaver => ("DBeaver", &["json"]),
         ImportApp::TablePlus => ("TablePlus", &["plist", "tableplusconnection"]),
     }
-}
-
-/// Native file or folder picker for competitor data/install paths. Path never crosses as a write.
-#[tauri::command]
-pub async fn pick_connection_import_path_with_dialog(
-    app: AppHandle,
-    mode: String,
-    source: String,
-) -> Result<Option<String>, CommandError> {
-    let import_app = ImportApp::parse(&source)?;
-    let is_folder = mode.trim().eq_ignore_ascii_case("folder");
-    let picked = if is_folder {
-        super::super::dialog::pick_folder(&app).await?
-    } else {
-        let (label, exts) = import_file_filters(import_app);
-        super::super::dialog::open_file(
-            &app,
-            vec![(
-                label.to_string(),
-                exts.iter().map(|s| s.to_string()).collect(),
-            )],
-        )
-        .await?
-    };
-    Ok(picked.map(|p| p.to_string_lossy().into_owned()))
 }
 
 /// Import connections discovered from a known competitor app install path.
@@ -293,8 +268,11 @@ async fn write_connections_export(
 
 /// Open-dialog filters shared by [`import_connections_preview`] and
 /// [`import_connections_with_dialog`] (pure data — the invocation itself lives
-/// in the central [`super::dialog`] gateway).
-fn connections_open_filters() -> Vec<(String, Vec<String>)> {
+/// in the central [`super::dialog`] gateway). Form-split F4c: the standalone
+/// picker command merged into `commands::dialog::pick_import_file(kind =
+/// "connections")` — this filter table stays here next to the import formats
+/// it describes.
+pub(crate) fn connections_open_filters() -> Vec<(String, Vec<String>)> {
     vec![
         (
             "Connections".into(),
@@ -484,13 +462,6 @@ async fn import_connections_from_path(
         "import_connections OK"
     );
     Ok(result)
-}
-
-/// Open the native file picker for connection import (file only; no parse).
-#[tauri::command]
-pub async fn pick_connections_import_file(app: AppHandle) -> Result<Option<String>, CommandError> {
-    let picked = super::super::dialog::open_file(&app, connections_open_filters()).await?;
-    Ok(picked.map(|p| p.to_string_lossy().into_owned()))
 }
 
 /// Import connections from a path already chosen in the UI (TablePlus-style:

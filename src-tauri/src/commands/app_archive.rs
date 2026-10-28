@@ -86,17 +86,11 @@ pub async fn export_app_data(
     Ok(true)
 }
 
-/// Open the native file picker for app-data ZIP import (file only; no import).
-#[tauri::command]
-pub async fn pick_app_data_import_file(app: AppHandle) -> Result<Option<String>, CommandError> {
-    let picked = super::dialog::open_file(&app, vec![("ZIP".into(), vec!["zip".into()])]).await?;
-    Ok(picked.map(|p| p.to_string_lossy().into_owned()))
-}
-
 /// ZIP import from a path chosen in the UI (TablePlus-style: pick file first,
 /// confirm in the webview, then import). Returns `true` if imported.
 ///
-/// Production callers pass `source_path` from [`pick_app_data_import_file`]
+/// Production callers pass `source_path` from the merged
+/// `commands::dialog::pick_import_file(kind = "app-data")` picker
 /// after the web confirm; E2E passes `override_path`, which requires a
 /// webdriver build and skips the picker.
 ///

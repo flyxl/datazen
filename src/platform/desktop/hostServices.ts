@@ -39,13 +39,13 @@ export function createDesktopHostServices(): DesktopHostServices {
       await invoke<void>('open_path', { path });
     },
     async openLogDir(): Promise<void> {
-      await invoke<void>('open_log_dir');
+      await invoke<void>('open_known_dir', { kind: 'log' });
     },
     async openWorkflowsDir(): Promise<void> {
-      await invoke<void>('open_workflows_dir');
+      await invoke<void>('open_known_dir', { kind: 'workflows' });
     },
     async openContextDir(): Promise<void> {
-      await invoke<void>('open_context_dir');
+      await invoke<void>('open_known_dir', { kind: 'context' });
     },
     checkUpdatesOnStartup(enabled: boolean): void {
       void maybeCheckOnStartup(enabled);

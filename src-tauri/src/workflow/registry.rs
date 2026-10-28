@@ -143,7 +143,7 @@ fn record_to_definition_record(record: &WorkflowRecord) -> WorkflowDefinitionRec
 /// The desktop workflow registry: the shared rules over the desktop rows.
 pub struct WorkflowRegistry {
     core: CoreRegistry,
-    /// Legacy path kept for `open_workflows_dir` / diagnostics (may be empty).
+    /// Legacy path kept for `open_known_dir("workflows")` / diagnostics (may be empty).
     workflows_dir: PathBuf,
 }
 

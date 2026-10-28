@@ -220,44 +220,41 @@ fn require_webdriver_path_ipc(disabled_msg: &'static str) -> Result<(), CommandE
     super::error::require_webdriver_path_ipc(disabled_msg)
 }
 
-/// Open the application log directory (path resolved server-side).
+/// Open a well-known host directory (`kind`: `log` / `workflows` / `context`).
+///
+/// Form-split F4c merge of the three named openers (`open_log_dir` /
+/// `open_workflows_dir` / `open_context_dir`): the path stays server-resolved —
+/// the webview only names the well-known directory, never a filesystem path.
 #[tauri::command]
-pub async fn open_log_dir(state: State<'_, AppState>) -> Result<(), CommandError> {
-    let settings = get_host_settings_impl(state.inner()).await?;
-    let data_dir = state.store.data_dir();
-    let log_dir = crate::resolve_log_dir(data_dir, &settings.log_path);
-    std::fs::create_dir_all(&log_dir).map_err(CommandError::from)?;
-    open::that(&log_dir).map_err(|e| CommandError::Internal(format!("open_log_dir: {e}")))
-}
-
-/// Open the workflows directory (path resolved server-side).
-#[tauri::command]
-pub async fn open_workflows_dir(state: State<'_, AppState>) -> Result<(), CommandError> {
-    let dir = state.workflow_registry.workflows_dir().clone();
+pub async fn open_known_dir(state: State<'_, AppState>, kind: String) -> Result<(), CommandError> {
+    let dir = match kind.trim() {
+        "log" => {
+            let settings = get_host_settings_impl(state.inner()).await?;
+            crate::resolve_log_dir(state.store.data_dir(), &settings.log_path)
+        }
+        "workflows" => state.workflow_registry.workflows_dir().clone(),
+        "context" => {
+            let settings = get_host_settings_impl(state.inner()).await?;
+            crate::resolve_context_dir(state.store.data_dir(), &settings.context_dir)
+        }
+        other => {
+            return Err(CommandError::Validation(format!(
+                "open_known_dir: unknown kind '{other}' (expected log, workflows, or context)"
+            )))
+        }
+    };
     std::fs::create_dir_all(&dir).map_err(CommandError::from)?;
-    open::that(&dir).map_err(|e| CommandError::Internal(format!("open_workflows_dir: {e}")))
-}
-
-/// Open the configured AI context directory (path resolved server-side).
-#[tauri::command]
-pub async fn open_context_dir(state: State<'_, AppState>) -> Result<(), CommandError> {
-    let settings = get_host_settings_impl(state.inner()).await?;
-    let data_dir = state.store.data_dir();
-    let context_dir = crate::resolve_context_dir(data_dir, &settings.context_dir);
-    std::fs::create_dir_all(&context_dir).map_err(CommandError::from)?;
-    open::that(&context_dir).map_err(|e| CommandError::Internal(format!("open_context_dir: {e}")))
+    open::that(&dir).map_err(|e| CommandError::Internal(format!("open_known_dir: {e}")))
 }
 
 /// Open a path only if it lies under the app data dir or configured context dir.
-/// Prefer open_log_dir / open_workflows_dir / open_context_dir when possible.
+/// Prefer `open_known_dir` when the target is one of the well-known directories.
 pub(crate) async fn open_path_impl(state: &AppState, path: String) -> Result<(), CommandError> {
     if path.starts_with("http://") || path.starts_with("https://") {
         return open::that(&path).map_err(|e| CommandError::Internal(format!("open_path: {e}")));
     }
 
-    require_webdriver_path_ipc(
-        "open_path disabled; use open_log_dir / open_workflows_dir / open_context_dir",
-    )?;
+    require_webdriver_path_ipc("open_path disabled; use open_known_dir")?;
     let requested = PathBuf::from(&path);
     if requested.to_string_lossy().contains("..") {
         return Err(CommandError::Validation(

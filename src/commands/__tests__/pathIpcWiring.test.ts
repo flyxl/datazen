@@ -16,14 +16,28 @@ describe('path IPC frontend wiring', () => {
     expect(src).not.toContain('localSavePath');
   });
 
-  it('settings open helpers use dedicated open_* commands', () => {
-    // Form-split F4: the open_* invokes moved into the desktop host services
-    // (the HostSettingsPort impl); shared settingsCommands routes through the
-    // port, so the wiring lives in the desktop zone now.
+  it('settings open helpers use the merged open_known_dir command', () => {
+    // Form-split F4c: the three named dir openers merged into
+    // `open_known_dir(kind)` — one command, server-side path resolution,
+    // webview only names the well-known directory. The invokes live in the
+    // desktop host services (the HostSettingsPort impl); shared
+    // settingsCommands routes through the port.
     const hostServices = readSrc('platform', 'desktop', 'hostServices.ts');
-    expect(hostServices).toContain("invoke<void>('open_log_dir')");
-    expect(hostServices).toContain("invoke<void>('open_workflows_dir')");
-    expect(hostServices).toContain("invoke<void>('open_context_dir')");
+    expect(hostServices).toContain("invoke<void>('open_known_dir', { kind: 'log' })");
+    expect(hostServices).toContain("invoke<void>('open_known_dir', { kind: 'workflows' })");
+    expect(hostServices).toContain("invoke<void>('open_known_dir', { kind: 'context' })");
+    expect(hostServices).not.toContain("'open_log_dir'");
+    expect(hostServices).not.toContain("'open_workflows_dir'");
+    expect(hostServices).not.toContain("'open_context_dir'");
+
+    const hostBootstrap = fs.readFileSync(
+      path.join(ROOT, '../src-tauri/src/bootstrap/run.rs'),
+      'utf8',
+    );
+    expect(hostBootstrap).toContain('commands::open_known_dir,');
+    expect(hostBootstrap).not.toContain('commands::open_log_dir,');
+    expect(hostBootstrap).not.toContain('commands::open_workflows_dir,');
+    expect(hostBootstrap).not.toContain('commands::open_context_dir,');
 
     const settingsContent = readSrc('windows/settings/SettingsContent.tsx');
     expect(settingsContent).toContain('openLogDir');
@@ -133,7 +147,9 @@ describe('path IPC frontend wiring', () => {
 
     const backup = readSrc('commands/backup.ts');
     expect(backup).toContain("invoke<boolean>('export_app_data'");
-    expect(backup).toContain("'pick_app_data_import_file'");
+    // Form-split F4c: the three import pickers merged into pick_import_file.
+    expect(backup).toContain("'pick_import_file'");
+    expect(backup).toContain("{ kind: 'app-data' }");
     expect(backup).toContain("invoke<boolean>('import_app_data'");
 
     for (const gone of GONE_IPCS) {
@@ -174,14 +190,28 @@ describe('path IPC frontend wiring', () => {
       'commands::import_connections_preview,',
       'commands::import_connections_with_dialog,',
       'commands::export_app_data,',
-      'commands::pick_app_data_import_file,',
+      'commands::pick_import_file,',
       'commands::import_app_data,',
     ]) {
       expect(hostBootstrap).toContain(kept);
     }
-    for (const gone of GONE_IPCS) {
+    for (const gone of [...GONE_IPCS, 'pick_app_data_import_file']) {
       expect(hostBootstrap).not.toContain(`commands::${gone},`);
     }
+    // The merged picker lives in the dialog gateway with the other native
+    // dialog invocations (R-1.3 centralization).
+    const rustDialog = fs.readFileSync(
+      path.join(ROOT, '../src-tauri/src/commands/dialog.rs'),
+      'utf8',
+    );
+    expect(rustDialog).toContain('pub async fn pick_import_file');
+    // The predecessor names survive only inside the merge's doc comment
+    // (provenance), never as command bodies.
+    const pickerBody = rustDialog.slice(
+      rustDialog.indexOf('#[tauri::command]\npub async fn pick_import_file'),
+    );
+    expect(pickerBody).not.toContain('pick_app_data_import_file()');
+    expect(pickerBody).not.toContain('pick_connections_import_file()');
   });
 
   it('connection share uses dialog IPC and menu events', () => {
@@ -193,17 +223,26 @@ describe('path IPC frontend wiring', () => {
     expect(connection).toContain("'import_connections_from_app'");
     expect(connection).toContain('importConnectionsFromApp');
     expect(connection).toContain("'detect_connection_import_path'");
-    expect(connection).toContain("'pick_connection_import_path_with_dialog'");
+    // Form-split F4c: competitor-path picking merged into pick_import_file.
+    expect(connection).toContain("'pick_import_file'");
+    expect(connection).toContain("{ kind: 'connections' }");
+    expect(connection).toContain("{ kind: 'competitor-path', mode, source }");
+    expect(connection).not.toContain("'pick_connection_import_path_with_dialog'");
+    expect(connection).not.toContain("'pick_connections_import_file'");
 
     const rustConfig = fs.readFileSync(
       path.join(ROOT, '../src-tauri/src/commands/connection_import/ipc.rs'),
       'utf8',
     );
-    expect(rustConfig).toContain('pub async fn pick_connection_import_path_with_dialog');
+    expect(rustConfig).not.toContain('pub async fn pick_connection_import_path_with_dialog');
+    expect(rustConfig).not.toContain('pub async fn pick_connections_import_file');
+    // The filter tables stay next to the import formats they describe.
+    expect(rustConfig).toContain('pub(crate) fn import_file_filters');
+    expect(rustConfig).toContain('pub(crate) fn connections_open_filters');
     // R-1.3: native dialog invocation is centralised in commands/dialog.rs.
-    // The picker routes through the gateway and the blocking execution shim
-    // (macOS anti-freeze pattern) lives there — config.rs must not call
-    // plugin-dialog directly.
+    // The merged picker routes through the gateway and the blocking execution
+    // shim (macOS anti-freeze pattern) lives there — feature modules must not
+    // call plugin-dialog directly.
     const rustDialog = fs.readFileSync(
       path.join(ROOT, '../src-tauri/src/commands/dialog.rs'),
       'utf8',
@@ -211,12 +250,14 @@ describe('path IPC frontend wiring', () => {
     expect(rustDialog).toContain('async fn run_blocking_dialog');
     expect(rustDialog).toContain('blocking_pick_file');
     expect(rustDialog).toContain('blocking_pick_folder');
-    const pickFn = rustConfig.slice(
-      rustConfig.indexOf('pub async fn pick_connection_import_path_with_dialog'),
-      rustConfig.indexOf('pub async fn import_connections_from_app'),
+    const pickFn = rustDialog.slice(
+      rustDialog.indexOf('pub async fn pick_import_file'),
+      rustDialog.indexOf('pub(crate) async fn confirm_message'),
     );
-    expect(pickFn).toContain('super::super::dialog::pick_folder');
-    expect(pickFn).toContain('super::super::dialog::open_file');
+    expect(pickFn).toContain('super::connection_import::ipc::import_file_filters');
+    expect(pickFn).toContain('super::connection_import::ipc::connections_open_filters');
+    expect(pickFn).toContain('open_file(&app');
+    expect(pickFn).toContain('pick_folder(&app');
     expect(pickFn).not.toContain('.pick_file(');
     expect(pickFn).not.toContain('.pick_folder(');
 

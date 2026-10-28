@@ -1,34 +1,10 @@
 //! Schema object scope gating and object selection helpers.
 //!
-//! Object-only plans do not carry the unified planner's SQL Server schema
-//! mapper, so their source and target objects must live in the same
-//! configured schema. These helpers also resolve the qualified selectors the
-//! client sends for views, routines, sequences and types.
+//! The unified planner resolves schema scope before reading source and target
+//! objects, and these helpers also resolve the qualified selectors the client
+//! sends for views, routines, sequences and types.
 
 use super::{CommandError, PlanRequirement, SchemaDiffPlan, SchemaObjectSnapshot};
-
-pub(super) async fn list_schema_views(
-    driver: &dyn datazen_driver_api::DatabaseDriver,
-    handle: &datazen_driver_api::ConnectionHandle,
-) -> Result<Vec<datazen_driver_api::DatabaseObject>, CommandError> {
-    let result = datazen_driver_api::execute_schema_object_command(
-        driver,
-        &driver.driver_type(),
-        handle,
-        "list_objects",
-        serde_json::json!({ "kind": "view" }),
-    )
-    .await
-    .map_err(CommandError::Driver)?;
-    result
-        .data
-        .get("objects")
-        .cloned()
-        .map(serde_json::from_value)
-        .transpose()
-        .map_err(|error| CommandError::Internal(format!("invalid view metadata: {error}")))
-        .map(|objects| objects.unwrap_or_default())
-}
 
 pub(super) async fn ensure_distinct_schema_scope(
     source_driver: &dyn datazen_driver_api::DatabaseDriver,
@@ -214,52 +190,6 @@ fn reject_unverifiable_schema_scope() -> CommandError {
     CommandError::Validation(
         "Cannot verify that source and target are different database scopes; the driver must provide physical database identity".into(),
     )
-}
-
-pub(super) async fn fetch_schema_view(
-    driver: &dyn datazen_driver_api::DatabaseDriver,
-    handle: &datazen_driver_api::ConnectionHandle,
-    object: &datazen_driver_api::DatabaseObject,
-) -> Result<SchemaObjectSnapshot, CommandError> {
-    let result = datazen_driver_api::execute_schema_object_command(
-        driver,
-        &driver.driver_type(),
-        handle,
-        "get_object_ddl",
-        serde_json::json!({
-            "kind": "view",
-            "name": object.name,
-            "schema": object.schema,
-        }),
-    )
-    .await
-    .map_err(CommandError::Driver)?;
-    let definition = result
-        .data
-        .get("ddl")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or_default()
-        .trim()
-        .to_owned();
-    let mysql_view_metadata = result
-        .data
-        .get("viewMetadata")
-        .cloned()
-        .map(serde_json::from_value::<datazen_driver_api::MySqlViewMetadata>)
-        .transpose()
-        .map_err(|error| {
-            CommandError::Internal(format!("invalid MySQL view creation metadata: {error}"))
-        })?;
-    if definition.is_empty() {
-        return Err(CommandError::Validation(format!(
-            "View {} disappeared while it was being inspected",
-            object.name
-        )));
-    }
-    let mut snapshot =
-        SchemaObjectSnapshot::view(object.schema.as_deref(), &object.name, &definition);
-    snapshot.mysql_view_metadata = mysql_view_metadata;
-    Ok(snapshot)
 }
 
 pub(super) async fn list_schema_objects(

@@ -160,8 +160,10 @@ export const connectionCommands = {
       sourceFormat?: string;
     } | null>('import_connections_with_dialog', { password }),
 
-  /** Native open dialog only; returns the picked path or null if cancelled. */
-  pickConnectionsImportFile: () => invoke<string | null>('pick_connections_import_file'),
+  /** Native open dialog only; returns the picked path or null if cancelled.
+   * Form-split F4c: the three import pickers merged into one host command —
+   * the filter table stays host-side, the webview only names the kind. */
+  pickConnectionsImportFile: () => invoke<string | null>('pick_import_file', { kind: 'connections' }),
 
   /** Import after the file has already been chosen in the UI. */
   importConnectionsAtPath: (password: string, path: string) =>
@@ -177,7 +179,7 @@ export const connectionCommands = {
     invoke<{ path: string; found: boolean }>('detect_connection_import_path', { source }),
 
   pickConnectionImportPathWithDialog: (mode: 'file' | 'folder', source: string) =>
-    invoke<string | null>('pick_connection_import_path_with_dialog', { mode, source }),
+    invoke<string | null>('pick_import_file', { kind: 'competitor-path', mode, source }),
 
   importConnectionsFromApp: (source: string, password: string, dataPath: string) =>
     invoke<{

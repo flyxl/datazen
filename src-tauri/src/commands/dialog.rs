@@ -236,6 +236,58 @@ pub(crate) async fn pick_folder(app: &AppHandle) -> Result<Option<PathBuf>, Comm
     picked_opt_to_path(picked)
 }
 
+// ---------------------------------------------------------------------------
+// Import picker (form-split F4c: three open-pickers merged into one)
+// ---------------------------------------------------------------------------
+
+/// Pick an import source through the native dialog — form-split F4c merge of
+/// the three open-pickers (`pick_connections_import_file` /
+/// `pick_app_data_import_file` / `pick_connection_import_path_with_dialog`).
+///
+/// The host owns the filter table: the webview names *what* it wants to
+/// import (`kind`), never the dialog filters or a start directory. `mode`
+/// (`folder` / `file`) and `source` (competitor app key) apply only to the
+/// competitor-path kind, mirroring the merged predecessors' parameters.
+#[tauri::command]
+pub async fn pick_import_file(
+    app: AppHandle,
+    kind: String,
+    mode: Option<String>,
+    source: Option<String>,
+) -> Result<Option<String>, CommandError> {
+    let picked = match kind.trim() {
+        "connections" => {
+            open_file(&app, super::connection_import::ipc::connections_open_filters()).await?
+        }
+        "app-data" => open_file(&app, vec![("ZIP".into(), vec!["zip".into()])]).await?,
+        "competitor-path" => {
+            let source = source.unwrap_or_default();
+            let import_app = datazen::connection_import::ImportApp::parse(&source)?;
+            let wants_folder = mode
+                .as_deref()
+                .map(|m| m.trim().eq_ignore_ascii_case("folder"))
+                .unwrap_or(false);
+            if wants_folder {
+                pick_folder(&app).await?
+            } else {
+                let (label, exts) =
+                    super::connection_import::ipc::import_file_filters(import_app);
+                open_file(
+                    &app,
+                    vec![(label.to_string(), exts.iter().map(|s| s.to_string()).collect())],
+                )
+                .await?
+            }
+        }
+        other => {
+            return Err(CommandError::Validation(format!(
+                "pick_import_file: unknown kind '{other}' (expected connections, app-data, or competitor-path)"
+            )))
+        }
+    };
+    Ok(picked.map(|p| p.to_string_lossy().into_owned()))
+}
+
 /// Native OkCancel **message** dialog behind the injection queue (warning
 /// kind, matching its single caller). Returns `true` when confirmed, `false`
 /// when dismissed.

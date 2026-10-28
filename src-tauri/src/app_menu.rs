@@ -215,7 +215,7 @@ mod native_menu {
                     let app = app_handle.clone();
                     tauri::async_runtime::spawn(async move {
                         let state = app.state::<AppState>();
-                        if let Err(e) = crate::commands::open_log_dir(state).await {
+                        if let Err(e) = crate::commands::open_known_dir(state, "log".into()).await {
                             tracing::warn!(error = %e, "menu view-logs: open log dir failed");
                         }
                     });

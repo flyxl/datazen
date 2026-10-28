@@ -481,7 +481,7 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
     }
   });
 
-  it('打开工作流目录按钮应通过 open_workflows_dir 命令打开文件夹', async function () {
+  it('打开工作流目录按钮应通过 open_known_dir(workflows) 命令打开文件夹', async function () {
     this.timeout(20000);
     await openWorkflowWorkspace(mainWindow);
     await browser.pause(1000);
@@ -503,10 +503,14 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
     const path = await import('node:path');
     const root = path.resolve(import.meta.dirname, '../..');
     const wfWin = fs.readFileSync(path.join(root, 'src/windows/workflow/WorkflowPage.tsx'), 'utf8');
-    // Prefer dedicated command; tolerate either window or shared settings wrapper.
-    const settingsCmd = fs.readFileSync(path.join(root, 'src/commands/settings.ts'), 'utf8');
-    expect(settingsCmd).toContain("invoke<void>('open_workflows_dir')");
-    expect(wfWin.includes('openWorkflowsDir') || wfWin.includes('open_workflows_dir')).toBe(true);
+    // Form-split F4c: the named dir openers merged into open_known_dir(kind);
+    // the invoke lives in the desktop host-services zone.
+    const hostServices = fs.readFileSync(
+      path.join(root, 'src/platform/desktop/hostServices.ts'),
+      'utf8',
+    );
+    expect(hostServices).toContain("invoke<void>('open_known_dir', { kind: 'workflows' })");
+    expect(wfWin.includes('openWorkflowsDir')).toBe(true);
 
     await browser.execute(() => {
       const buttons = document.querySelectorAll('button');
@@ -520,8 +524,8 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
     });
     await browser.pause(800);
 
-    // Dedicated command must exist in webdriver builds.
-    await invokeBackend('open_workflows_dir');
+    // Merged command must exist in webdriver builds.
+    await invokeBackend('open_known_dir', { kind: 'workflows' });
   });
 
   it('输入框有焦点时单击侧边栏标签应立即切换', async function () {
