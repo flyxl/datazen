@@ -16,7 +16,7 @@ use crate::{
 use crate::{
     ColumnInfo, ColumnSchema, ConnectionConfig, ConnectionHandle, CountStrategy, DatabaseDriver,
     DatabaseType, DriverCategory, DriverError, ExplainResult, MultiQueryResult, QueryResult,
-    ServerInfo, StatementResult, StructureChangePlan, StructureChangeRequest, TableInfo,
+    ServerInfo, StructureChangePlan, StructureChangeRequest, TableInfo,
     TableSchema, TransactionHandle, Value,
 };
 
