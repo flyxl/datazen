@@ -4,7 +4,7 @@
  *
  * ## Why this exists
  *
- * `src-tauri/tauri.conf.json` compiles **one** global updater endpoint into
+ * `apps/desktop/src-tauri/tauri.conf.json` compiles **one** global updater endpoint into
  * every build, and the Tauri updater picks a manifest entry by *platform* only
  * (`darwin-aarch64`, `windows-x86_64`, …). Neither the manifest nor the running
  * app carried any notion of which SKU an artifact was built for, so a user who
@@ -14,8 +14,8 @@
  * The fix has three legs, and all three read their facts from this module:
  *
  *   1. **Runtime gate** — `resolve-drivers.mjs` bakes `DATAZEN_VARIANT` and the
- *      `hasUpdaterChannel()` verdict into `src/extensions/generated.ts`;
- *      `src/lib/updater.ts` self-updates only when that verdict is true and
+ *      `hasUpdaterChannel()` verdict into `packages/frontend/src/extensions/generated.ts`;
+ *      `packages/frontend/src/lib/updater.ts` self-updates only when that verdict is true and
  *      otherwise shows a manual-download card.
  *   2. **Per-SKU endpoint** — `ci-tauri-build.mjs` injects the SKU's own
  *      manifest URL, so a variant never even reads Basic's manifest.

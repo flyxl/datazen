@@ -75,7 +75,7 @@ if (!locale || !lang) {
 }
 
 mkdirSync(OUT_DIR, { recursive: true });
-const enEntries = parseLocaleTs(readFileSync(resolve(ROOT, 'src/locales/en.ts'), 'utf-8'));
+const enEntries = parseLocaleTs(readFileSync(resolve(ROOT, 'packages/frontend/src/locales/en.ts'), 'utf-8'));
 const out = {};
 const BATCH = 20;
 let done = 0;

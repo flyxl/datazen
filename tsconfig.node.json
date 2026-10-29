@@ -12,7 +12,7 @@
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig-node/tsconfig.node.tsbuildinfo"
   },
   "include": [
-    "vite.config.ts",
-    "tailwind.config.ts"
+    "apps/desktop/vite.config.ts",
+    "apps/desktop/tailwind.config.ts"
   ]
 }

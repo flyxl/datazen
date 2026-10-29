@@ -51,13 +51,60 @@ export interface ExecutionSettings {
   aiStrictEgress: boolean;
 }
 
+/**
+ * Onboarding wizard state (form-split F4: behavior field, shared).
+ *
+ * `undefined` or `version < 1` → the wizard shows; a fresh install materializes
+ * `for_fresh_install`, an upgrade `for_existing_install` (upgrade ≠ first run).
+ */
+export interface SettingsOnboardingState {
+  completed: boolean;
+  version: number;
+}
+
+/** How a table read obtains its row count (form-split F4: behavior field, shared). */
+export type SettingsRowCountMode = 'auto' | 'exact' | 'estimated' | 'none';
+
+/** Dashboard monitor settings (form-split F4: behavior field, shared). Mirrors `datazen::dashboard::types::MonitorSettings`. */
+export interface SettingsMonitorEmailSettings {
+  enabled?: boolean;
+  host?: string;
+  port?: number;
+  username?: string;
+  password?: string;
+  from?: string;
+  to?: string[];
+}
+
+export interface SettingsMonitorSettings {
+  trayEnabled: boolean;
+  closeToTray: boolean;
+  defaultWebhookUrl?: string;
+  email?: SettingsMonitorEmailSettings;
+  maxConcurrentQueries: number;
+  exportIncludeDashboardRuns: boolean;
+  runRetentionCount: number;
+  runRetentionDays: number;
+}
+
 export interface SharedSettings {
   preferences: UserPreferences;
   execution: ExecutionSettings;
+  /** Form-split F4: the three behavior fields migrated from the desktop blob. */
+  monitor: SettingsMonitorSettings;
+  onboarding: SettingsOnboardingState | null;
+  rowCountMode: SettingsRowCountMode;
 }
 
 /** Whitelist projection: no native config or credentials enter the shared transport. */
-export function toSharedSettings(settings: UserPreferences & ExecutionSettings): SharedSettings {
+export function toSharedSettings(
+  settings: UserPreferences &
+    ExecutionSettings & {
+      monitor?: SettingsMonitorSettings;
+      onboarding?: SettingsOnboardingState | null;
+      rowCountMode?: SettingsRowCountMode;
+    },
+): SharedSettings {
   const {
     theme,
     language,
@@ -129,5 +176,22 @@ export function toSharedSettings(settings: UserPreferences & ExecutionSettings):
     driverSettings,
     aiStrictEgress,
   };
-  return { preferences, execution };
+  return {
+    preferences,
+    execution,
+    monitor: settings.monitor ?? defaultMonitorSettings(),
+    onboarding: settings.onboarding ?? null,
+    rowCountMode: settings.rowCountMode ?? 'auto',
+  };
+}
+
+function defaultMonitorSettings(): SettingsMonitorSettings {
+  return {
+    trayEnabled: true,
+    closeToTray: true,
+    maxConcurrentQueries: 2,
+    exportIncludeDashboardRuns: true,
+    runRetentionCount: 200,
+    runRetentionDays: 30,
+  };
 }

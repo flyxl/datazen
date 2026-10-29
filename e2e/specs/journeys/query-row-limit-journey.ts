@@ -89,7 +89,7 @@ async function reuseQueryTab(): Promise<void> {
  * applies the previous limit and the truncation banner reports the old number.
  */
 async function applyRowLimitSettings(limitSelectResults: boolean, queryResultLimit: number) {
-  await invokeBackend('save_settings', {
+  await invokeBackend('save_host_settings', {
     settings: {
       theme: { mode: 'dark', packId: null },
       // Keep the UI in the language this journey's `t()` helper resolves
@@ -178,7 +178,7 @@ describe('数据查询行数限制 Journey（QLIMIT-001~QLIMIT-006）', () => {
       /* cleanup best-effort */
     }
     // Restore default settings
-    await invokeBackend('save_settings', {
+    await invokeBackend('save_host_settings', {
       settings: {
         theme: { mode: 'dark', packId: null },
         language: 'en',
@@ -205,7 +205,7 @@ describe('数据查询行数限制 Journey（QLIMIT-001~QLIMIT-006）', () => {
   // ── QLIMIT-001: Default limit is 1000 ──
 
   it('QLIMIT-001: 默认 queryResultLimit 应为 1000', async () => {
-    const settings = await invokeBackend<any>('get_settings');
+    const settings = await invokeBackend<any>('get_host_settings');
     expect(settings.queryResultLimit).toBe(1000);
     expect(settings.limitSelectResults).toBe(true);
     await captureJourneyStep('qlimit-001-default');

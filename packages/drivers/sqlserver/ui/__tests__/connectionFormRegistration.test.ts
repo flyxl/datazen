@@ -73,7 +73,7 @@ const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(TEST_DIR, '../../../../..');
 const SCRIPT = resolve(ROOT, 'scripts/resolve-drivers.mjs');
 /** `src/extensions/` — the directory the emitted import specifiers are relative to. */
-const GENERATED_DIR = resolve(ROOT, 'src/extensions');
+const GENERATED_DIR = resolve(ROOT, 'packages/frontend/src/extensions');
 /** This module, extension-stripped, so emitted specifiers compare on identity. */
 const OWN_MODULE = resolve(TEST_DIR, '../ConnectionFields');
 

@@ -123,7 +123,7 @@ describe('[tester] postgres pool key and rotation journey (CM-67 D)', function (
       let index = 0;
       for (;;) {
         const chunk = await invokeBackend<{ bytes: number[]; publishedChunkCount: string }>(
-          'read_artifact_chunk',
+          'read_artifact',
           { request: { artifactId, chunkIndex: String(index) } },
         );
         const payload = JSON.parse(new TextDecoder().decode(new Uint8Array(chunk.bytes))) as {
@@ -165,7 +165,7 @@ describe('[tester] postgres pool key and rotation journey (CM-67 D)', function (
       await adminSql(`CREATE DATABASE ${dbA}`);
       await adminSql(`CREATE DATABASE ${dbB}`);
     });
-    const profiles = await invokeBackend<ProfileView[]>('platform_list_profiles', { request: {} });
+    const profiles = await invokeBackend<ProfileView[]>('list_connections', { request: {} });
     const profile = profiles.find((entry) => entry.connectionId === ADMIN_ID);
     if (!profile) throw new Error('disposable profile unavailable');
     profileRevision = profile.configRevision;
@@ -225,7 +225,7 @@ describe('[tester] postgres pool key and rotation journey (CM-67 D)', function (
       // Rotation: a benign CAS patch still bumps the config revision, which is
       // exactly what retires the previous generation.
       stage = 'rotation';
-      const rotation = await invokeBackend<ProfileView>('platform_update_profile', {
+      const rotation = await invokeBackend<ProfileView>('update_connection', {
         request: {
           connectionId: ADMIN_ID,
           expectedConfigRevision: profileRevision,

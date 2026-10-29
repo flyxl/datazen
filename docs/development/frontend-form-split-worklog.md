@@ -1,0 +1,938 @@
+# 前端形态拆分实施工作日志（form-split worklog）
+
+> 本文件随每个 form-split PR 同步提交，记录实际执行顺序、决策与验证结果，
+> 避免工作进度丢失。条目按时间倒序（最新在上）。基线：`2a08e55`（F4a 合入后）。
+
+## 2026-10-29（会话八·续 3）— 运行期测试对齐：编译过后清 9 处运行失败
+
+> 编译全过后 rust job 进入**运行测试**阶段，9 个失败分四类，除
+> window 守卫抓到上一轮的方案选择错误外，其余全是「测试从未在 CI
+> 跑过」期间积累的断言过时。
+
+- **window.rs 守卫（自伤修复）**：上轮把两处设置读取改成
+  `state.store.get_settings()`（直读 store），被 F4a 守卫测试
+  「窗口命令必须经设置用例读取 / 不得直读宿主 store」当场抓红。
+  改回 `get_settings_impl` + `settings.preferences.language`（共享域
+  的合法路径）——守卫测试的架构裁决优先于我的第一直觉。
+- **SCHEMA_VERSION 落后**：v6 迁移（F1 NativeTool purge）已落地，
+  常量停在 5，五个版本环断言全红（left 6 / right 5）。常量更到 6，
+  五个测试全部恢复。
+- **portable 快照断言过时**：F4 把 `monitor` 从 host catch-all 提升
+  为共享行为字段，便携快照**应当**包含它；测试还停在「monitor 是
+  native 字段」的旧世界观（is_none → is_some 反转）。
+- **doc_reference_tests 两红**：行号断言里 OnboardingState 已随 F4a
+  迁至 `modules/src/settings/domain.rs:37`（原指 host settings.rs:15）；
+  workflow-resource-model.md 三处相对链接因 F6 搬迁断链
+  （src-tauri/ → apps/desktop/src-tauri/，src/ → packages/frontend/src/），
+  全部重定向。本地以脚本全量复扫行号表 15 条 + 文档链接 15 个，
+  ALL PASS 才推送。
+
+### 教训（防复发）
+
+- 守卫测试红 = 架构裁决在说话：先读懂断言背后的规则再选修法，
+  「绕开门禁」式的修复只会被同一门禁再抓一次。
+- 版本常量与迁移链是**两处事实源**：加迁移段必须同步常量，否则
+  版本环断言（如果它跑得起来）迟早收账。
+
+## 2026-10-29（会话八·续 2）— host crate 编译对齐：F1–F5 API 漂移 8 处清偿（CI rust 转绿冲刺）
+
+> 路径余波清完后，rust job 前进到「真正编译 datazen_desktop 源码」的阶段，
+> 暴露 8 处 API 漂移。**与 F6 无关**：基线 `8d2aa2ef7`（F6 前最后一个
+> commit）有一模一样的错误指纹；分支最早的 CI run（F4c `3e562c31b`）
+> 就已全数在场。成因是 F1–F5 重构改了 modules/platform 侧 API 而 host
+> 调用点没跟上——本地无 cargo，「Rust host crate rides remote CI」的
+> 安排让这笔债一直滚到 workspace 能解析的那天才浮出水面。
+
+### 8 处修复（错误指纹 → 根因 → 修法）
+
+1. **E0433 `__cmd__pick_import_file` not in commands**：F4c 把三个
+   open-picker 合并成 `dialog::pick_import_file`（产品命令），但
+   `commands/mod.rs` 对 dialog 模块的 glob 再导出是
+   `#[cfg(feature = "webdriver")]` 门控——非 webdriver 构建里
+   `generate_handler!` 解析不到 `__cmd__` 伴生项。修法：glob 之外
+   增加无条件单项导出 `pub use dialog::pick_import_file;`。
+2. **E0308 `export_options_from_settings` 期望 `&AppSettings` 收到
+   `&SharedSettings`**：归档选项只消费 `monitor`（共享行为字段），
+   参数直接改 `&SharedSettings`——顺 F4a 分域方向。
+3. **E0609 `no field language on SharedSettings` ×2（window.rs）**：
+   `language` 是 host 专属（共享视图在 `preferences.language`，经
+   `apply_shared_settings` 双向同步）。修法：改读
+   `state.store.get_settings().await`（host 全量，`write_shared_settings`
+   保证缓存同步，时序安全）。
+4. **E0609 `no field expected_revision on ExecuteAtTargetRequest`**：
+   字段已更名 `expected_config_revision`（CAS 语义显式化），调用点跟随。
+5. **E0061 `OnboardingState::for_existing_install` 缺版本参数**：签名
+   加了 `version: i32`，`store/mod.rs` 补传 `ONBOARDING_VERSION` 并导入。
+6. **E0308 config_tests 传 `AppSettings` 给期望 `SharedSettings` 的
+   `save_settings_impl`**：`log_path` 是 host 专属，测试改走宿主 store
+   全量写路径 `store.save_settings(AppSettings)`；读取侧
+   `get_log_path_impl` 经 settings 服务读回同一份 host 文档，语义不变。
+7. **E0560 `PlatformAdapter` 无 `native` 字段 ×2**：字段已被裁撤，
+   两个构造器的残留初始化行删除。
+8. **E0063 `AppSettings::default` 缺 `row_count_mode`**：F4 把它从
+   `extra` catch-all 提升为显式字段，Default 补
+   `row_count_mode: default_row_count_mode()`。
+
+### 验证
+
+- CI 日志 11 条报错行全部归因到上述 8 根因（三组各 ×2 同根因），
+  无漏网；`expected_revision` 剩余两处属 `UpdateProfileRequest`
+  （kernel-wire DTO 自有字段，合法保留）。
+- 横向排查：adapter 无 `.native` 残留；`get_settings_impl` 其它调用方
+  只读共享字段；cfg 门控 glob 导出仅 dialog 一处。
+- TS 面：pathIpcWiring 9/9（handler 列表未动）；修复全部落在
+  `apps/desktop/src-tauri/src`，typecheck 域外。
+- Rust 编译真值仍只能由 CI 裁决（本地无 cargo），本批随推送验证。
+
+### 教训（防复发）
+
+- 「Rust host crate rides remote CI」的安排在 **CI 无法到达编译阶段
+  期间**（本例：workspace 解析失败挡了 6 个 commit）等于**零验证**：
+  API 漂移照常累积。恢复 CI 可达性本身就是最高优先级修复。
+- 模块再导出的 **cfg 门控 glob** 会静默吞掉后来者往该模块新增的
+  产品命令——新增命令进 cfg 门控模块时必须同步审视再导出策略。
+
+## 2026-10-29（会话八·续）— F6-c3 补丁：src-tauri 搬迁余波修复（CI 全红 → 绿）
+
+> F6-c3 推送后 CI 的 frontend / rust 两个 job 全红。根因单一且集中：
+> **F6-c1 把 `src-tauri/` 从仓库根搬进 `apps/desktop/` 时，只搬了目录、
+> 没搬「以 src-tauri 为基准的相对路径宇宙」**。cargo 无法解析 workspace
+> （`apps/desktop/packages/infra` 不存在），`cargo metadata` exit 101 连带
+> 打红 frontend job 的 2 个门禁测试与 rust job 的全部 cargo 步骤。
+
+### 症状与根因
+
+- rust job：`failed to load manifest for workspace member
+  apps/desktop/src-tauri … failed to read apps/desktop/packages/infra/Cargo.toml`
+  ——`../packages/…` 从新位置解析落到不存在的 `apps/desktop/packages/`。
+- frontend job：`check-driver-type-isolation` / `schema-diff-driver-boundary`
+  两个测试内嵌 `cargo metadata`，被同一个 workspace 解析失败连带打红
+  （本地因无 cargo 一直显示 ENOENT，CI 有 cargo 才暴露——已知 2 失败
+  并非永久豁免，而是「CI 才能验」的环境盲区）。
+
+### 修复面（13 文件）
+
+1. **`apps/desktop/src-tauri/Cargo.toml`**：4 处 path 依赖
+   `../packages/…` → `../../../packages/…`（infra + 三个 driver dev-dep）。
+2. **`scripts/resolve-drivers.mjs` `crateDepPath()`**：注入路径基准同步
+   上溯三级；`<<driver-dependencies>>` 注入产物随 registry 全量实测。
+3. **仓库根推导**（`CARGO_MANIFEST_DIR.parent()` 假设全废，统一改
+   `ancestors().nth(3)`）：`doc_reference_tests` / `job_filter_scope_tests` /
+   `key_backend_env_guard_tests` / `app_state_shape_tests` /
+   `tunnel_probe_fixture`；三份扫描表的根相对字符串
+   （`SCANNED_ROOTS` / `SELF` / `ALLOWED_HELPERS` / `LINE_REFERENCES`）
+   全部加 `apps/desktop/` 前缀——不加不是报错而是**静默扫空**（read_dir
+   失败被 `continue` 吞掉），闸门假绿比红更危险。
+4. **编译期 include_str 出仓**：`platform/ipc.rs`、`platform/handles.rs`
+   的 `frontend_bridge.rs` 从 `../../../` → `../../../../../`
+   （`src/platform/` 到根五级）；`tests/workflow_tests.rs` 的
+   test-cross-db-workflow.yaml 同理四级。
+5. **运行时路径**：`bootstrap/run.rs` prompts 目录上溯三级。
+6. **`tauri.conf.json` hook 命令**：搬迁时误向「conf 目录基准」方向改
+   （`pnpm --dir ../..`），实际 Tauri hook cwd = 调用 CLI 的目录（仓库根，
+   `tauri-dev.mjs` / `ci-tauri-build.mjs` 均 `cwd: ROOT`）——恢复
+   `pnpm build` / `node scripts/upx-compress.mjs` 根语义，dev 命令补
+   vite root 参数。`frontendDist: "../dist"` 恰好新旧都对（vite root
+   同步迁到 apps/desktop，产物落 `apps/desktop/dist`）。
+
+### 验证
+
+- 新增 `/home/z/my-project/scripts/f6c3-ci-paths-verify.mjs`：40+ 项
+  路径存在性实测（Cargo path 依赖 ×4、crateDepPath ×15 driver、
+  仓库根推导、扫描表、include_str、tauri hook 语义）——ALL PASS；
+  该脚本本身先抓出 platform 五级少一级的误修（4 级仍指 `apps/modules`），
+  实测先于提交。
+- `resolve-drivers` 单测 29/29；scripts 块 800/802（余 2 个为本地
+  cargo ENOENT 环境性失败，CI 上应随本修复转绿）；`tsc --noEmit` 通过。
+- drivers 套件复跑（F6-c3 收尾时）：87 文件 / 1005 测试全绿。
+
+### 教训（防复发）
+
+- **目录搬迁的完成面** = 目录本身 + 以它为基准的全部相对路径（Cargo
+  path 依赖 / include_str / CARGO_MANIFEST_DIR 推导 / 构建工具 hook /
+  根相对字符串表五类，缺一不可）；只搬目录等于埋雷。
+- **本地 ENOENT 的失败要当「未验证」而非「已豁免」**：cargo 类门禁
+  在无工具链的本地永远显示 ENOENT，真值只在 CI。
+- rg 输出带文件路径前缀，`| rg -v 'apps/desktop'` 会把命中行全部过滤
+  掉造成「无残留」假象——排查时用 Grep 工具或去掉前缀过滤。
+
+## 2026-10-30（会话八）— F6-c3：R5 闸门上线 + redis 夹具搬家 + parity 归位消费者（F6 收官）
+
+> 计划 §5.6 项 9 落地，F6 三批解耦全部完成。R5（裁决 D1：
+> `@datazen/frontend` 的合法消费者只有 `apps/*`）上线即 blocking——
+> 上线第一跑就抓到 **8 处真实违规**（backend-client 测试的类型 parity
+> 断言相对爬进 frontend），证明该闸门此前确为盲区；修复后基线归零。
+
+### R5 闸门（`scripts/check-driver-import-boundaries.mjs`）
+
+- 范围：`packages/**`（除 `packages/frontend/` 自身）；两种形态——
+  裸 `@datazen/frontend`（含深子路径）与相对说明符解析进
+  `packages/frontend/`。扫描口径照抄 R1 教训：**全部字符串字面量**
+  （plain import / `export … from` / 动态 `import()` / `vi.mock()` /
+  `vi.doMock()` / `require()`）——预扫描用 grep `from` 形态时
+  「零违规」是假象，全字面量扫描立即暴露 8 处 type import 位置的
+  爬升（grep 预扫描漏掉的就是这个教训的活例）。
+- Blocking 从第一天：基线为零。
+
+### redis 集成夹具搬家（注销 2 条 R1 豁免）
+
+- `packages/drivers/redis/ui/__tests__/redisKeyWebContextMenu.test.tsx`
+  → `packages/frontend/__tests__/integration/`（宿主↔驱动集成夹具
+  归宿主）；vitest include 增该目录。
+- ALLOWLIST 注销其携带的 2 条 R1 豁免，**兑现 coordinator 注记
+  *remove together with the WebContextMenuHost exemption***。6 → 4
+  （现存全部为 R3 测试夹具豁免）。
+- 同步更新 `driver-api-dependency-boundary.md` 四处基线事实
+  （§2.1.2 登记、ALLOWLIST 散文、§2.6 外部漂移额度、§2.7 清单）。
+
+### parity 断言归位消费者（R5 抓到的 8 处违规修复）
+
+- `backend-client/__tests__/tableDataClient.test.ts` 的编译期 parity
+  块（7 个 DesktopMirror type import + TableDataResult parity +
+  InsertMarkedStaysOptional）整体迁出 → 新建
+  `packages/frontend/src/lib/__tests__/tableChanges.backendClientParity.test.ts`
+  ——镜像类型本地相对导入、wire 类型经合法裸 `@datazen/backend-client`，
+  drift 仍由 `tsc --noEmit` 拦截（编译期断言性质不变）。
+
+### 闸门测试对齐（53/53 全绿）
+
+- R1 族合成夹具改爬 `apps/desktop/src`（R1 双目录语义不变；apps 不在
+  R5 范围 → 每条规则保有自己的夹具面，互不借位）。
+- 新增 R5 专属 describe 块 7 例：裸 import/深子路径/vi.mock 形态、
+  相对爬升、frontend 自身豁免、apps 合法消费、姐妹包说明符、
+  ALLOWLIST 三元组精确匹配。
+- 断言更新：ALLOWLIST 6→4、R1 空集断言、R5 blocking 期望、
+  真实树 4 allow-listed。
+
+### 验证（全部通过）
+
+- boundaries 闸门：**0 blocking / 4 allowlisted / 1 advisory**（R5 生效，
+  2099 文件扫描）。
+- drivers 套件 87 文件/1005 全绿（迁出 1 文件 2 测试）。
+- backend-client + frontend/lib + integration + apps 块 237/2448。
+- scripts/__tests__ 800/802（2 cargo ENOENT 已知环境限制，基线不变）。
+- typecheck 四阶段绿 + pack-ep tsc 独立绿。
+- 计划 §5.6 项 7 复核：tsconfig 变体四份全绿（root/scripts/
+  scripts-checkjs/pack-ep include 空表不变）。
+
+### F6 整体收官状态（对计划 §5.6 九项）
+
+1. workspace 基建 ✅（F6-a）；2. frontend 包协议 ✅（c2）；3. app 包
+   ✅（c2，@tauri-apps 归位）；4. 根退化 ✅（c2）；5. 目录迁移 ✅（c1）；
+   6. alias 退役 ✅（c2，五张表）；7. tsconfig 变体 ✅（本批复核）；
+   8. 脚本路径 ✅（c1 收尾 44 处）；9. R5 + redis 搬家 + 注销 ✅（本批）。
+   退出标准中 `tauri build`（cargo 不可用）与 e2e 冒烟由 CI 腿覆盖，
+   其余全部本地实测通过。
+
+---
+
+## 2026-10-30（会话八）— F6-c2：包协议完整化 + alias 表退役（exports 接管解析）
+
+> 计划 §5.6 项 2/3/4/6 落地。**四张 alias 表全部退役**（tsconfig paths /
+> vite / vitest 主配置 / vitest.drivers / vitest.e2e-contract——比计划多
+> 两张，drivers 与 e2e-contract 配置也有自己的表），解析全部改走
+> workspace 链接 + package exports。生产构建 `vite build apps/desktop`
+> 4.9M 产物成功，typecheck 四阶段绿，测试面全绿。
+
+### 新增 manifest
+
+- **`packages/frontend/package.json`**（源码包模式）：main/types 指
+  `src/index.ts`；exports 三模式——`.` 入口、`./src/*.css`（样式资产，
+  app 壳经包名导入 globals.css）、`./src/*` → `./src/*.js`（**关键坑**：
+  TS bundler 模式对无扩展名 exports 通配目标**不做** .ts/.tsx 探测，
+  `.js` 后缀目标才会触发探测——纯 `./src/*` 目标 tsc/tsrs 全红；而
+  `.js` 后缀又会破坏 vite 对 CSS 的解析，故双模式并存，css 模式先行）。
+  deps：5 个 @datazen workspace 包 + 12 个运行时库；peers：react/
+  react-dom/zustand/@codemirror 八件（实版本由 app 提供，跟随 ui/
+  extension-points 惯例）；devDeps：testing-library + theme-one-dark
+  （仅测试消费）。
+- **`apps/desktop/package.json`**：`@datazen/frontend: workspace:*` +
+  backend-client + **@tauri-apps 全家 5 件（api + 4 plugin）从根
+  dependencies 挪入——运行时 @tauri-apps 声明自此只存在于 app 包（D2
+  包级强化）** + react 实版本 + 全部 peers + testing-library devDeps。
+  `@tauri-apps/cli` 留根 devDeps（构建工具链，根脚本 `pnpm tauri` 依赖
+  root node_modules 解析）。
+
+### 根 package.json 退化 + 聚合角色
+
+- dependencies 清空（运行时依赖全部归位 app/frontend/ui）。
+- devDeps 持有工具链（vite/vitest/tailwind/typescript/tsrs/husky/
+  wdio/@types/better-sqlite3/prettier…）**+ 6 个 @datazen workspace
+  自链 + react/zustand/lucide-react/fflate/@testing-library/react
+  聚合链接**——驱动 UI 树、scripts/、e2e/ 无 manifest，其裸导入靠上溯
+  root node_modules 解析；pnpm 严格隔离下不声明即不可达。聚合角色在
+  驱动包获得自己的 package.json 前必须由 root 承担。
+- yaml/tailwind-merge 后补（check-release-variants 守卫与
+  error-banner parity 测试的消费）。
+
+### 潜伏洞清剿（root hoisting 此前掩盖）
+
+- **ui**：@tanstack/react-virtual、lucide-react、clsx、tailwind-merge
+  从未声明（骑 root）；deps 补齐 + testing-library devDeps。
+- **driver-sdk**：零声明却导入 @tauri-apps/api/core、react、zustand →
+  peers 三件 + devDeps。
+- **wapp-sdk / extension-points**：testing-library devDeps。
+
+### 解析验证（全部通过）
+
+- `corepack pnpm install` 全量成功（本地主 checkout node_modules 为真
+  目录；worktree 软链行为已在 F6-a 实测）。子包 node_modules 布局核对：
+  frontend 得 workspace 链接+运行时库+auto-installed peers；app 得
+  frontend/backend-client/@tauri-apps/react。
+- **tsc（官方 Go port）+ tsrs 四阶段全绿**；vite 生产构建成功
+  （15.6s，4.9M dist，全部窗口分包）。
+- 测试面：windows 188/1660；components+stores+hooks+commands+types+
+  platform+ai 263/2721；backend-client+locales+lib+test 222/2345；
+  apps+scripts+四包 1338 绿 + 2 cargo ENOENT 已知；drivers 套件
+  88/1007（**零 alias 走 root 聚合链接上溯**）；e2e-contract 3/23。
+- 闸门五连绿（boundaries 0 blocking/1 advisory/6 allowlisted、
+  module-layers ok、version 0.2.3 一致、release-variants ok、
+  i18n 无碰撞）。
+- 退出标准复核：`@tauri-apps` 生产 import 在 packages/frontend = 0
+  （仅 mock 头注释与字符串断言）。
+
+### 连带修复
+
+- `packages/frontend/src/styles/globals.css`：`@config`/`@source` 六处
+  爬升未随 c1 迁移（vite build 首跑暴露）→ 重指 apps/desktop 配置与
+  重组 @source 根。
+- vitest 主配置 alias 单行化（select-codegen-sensitive-tests 的
+  parseVitestTestConfig 只认单行 resolve(__dirname, '…') 形态）。
+- pack-ep-host-globals「宿主依赖集」改读 app manifest ∪ frontend
+  deps/peers（root 已工具链化）；select-codegen 断言改指 tauri mock
+  别名（@datazen 表已退役）。
+
+---
+
+## 2026-10-30（会话八）— F6-c1 收尾：测试面全绿（checkpoint 后 44 处修复）
+
+> 承接 checkpoint `1ecd81071`。修复迁移后暴露的全部测试/闸门/文档路径
+> 漂移。**上一条目所记「5 个失败文件」（QueryPanelManager.contract 等）
+> 经全仓核验不存在**——系上下文压缩失真记录；实际欠账是
+> scripts/__tests__ 的 27 个文件（对闸门/工作流/代码gen脚本自身的
+> 路径断言）+ 若干零散文件。全部修复，测试面全绿。
+
+### 修复分五类（44 文件）
+
+- **真实路径读取**：pack-ep-host-globals（src/main.tsx → apps/desktop）、
+  release-workflow / check-release-variants / tauri-window-config
+  （src-tauri/* → apps/desktop/src-tauri/*）、ci-tauri-build +
+  pack-ep.staging-invalidation（staging join）、driver-init-rustfmt
+  （ARTIFACT_REL）、error-banner-call-site-parity（10 个 file 字面量）、
+  run-platform-crate-tests（真实宿主 manifest 两处读）、resolve-drivers
+  （icon specifier 2 级爬 → 4 级爬）。
+- **scratch fixture 布局镜像**：check-version-consistency（fixture 写
+  apps/desktop/src-tauri）、i18n-sync-apply / i18n-key-collision-check
+  （locales 迁 packages/frontend/src/locales，含真实树断言）、
+  select-codegen-sensitive-tests（fixture 整树迁移 + CODEGEN_TARGETS 对齐，
+  坑：6 空格 fixture 模式是 8 空格断言的子串，替换顺序必须断言先行）、
+  stash 族（fixture.ts 键名 + Cargo 相对依赖路径 `../packages` →
+  `../../../packages`）。
+- **闸门行为断言**：check-driver-import-boundaries.test.mjs 全面对齐
+  新宿主语义（HOST_SRC_DIR 常量、R1/R3 爬升形态 4 级+packages 前缀、
+  R2 新文案、ALLOWLIST 断言、真实树 advisory 路径）；
+  check-platform-crate-boundaries.test.ts（CORE dir + F-01 advisory 正则）。
+- **闸门自身覆盖洞（真 bug）**：`scripts/lib/cargoWorkspace.mjs` LAYERS
+  host 路径未迁（host crate 会 classify 失配）→ 改
+  `apps/desktop/src-tauri`；check-module-layers UI 规则 forbidden
+  `'src'` → `'packages/frontend/src'` + `'apps/desktop/src'`（UI 包
+  import 宿主会漏检）；select-codegen-sensitive-tests walk 根
+  `walk('src')` → `walk('packages') + walk('apps') + walk('scripts')`
+  （apps include 模式 fail-closed 报错即为此洞）。
+- **文档同步**：spec（shared-boundaries-and-ports.md）§2.4 F-14 行、
+  §2.5 members 块（镜像根 Cargo.toml）、mermaid 标签 + 4 处散文路径；
+  .github/workflows release.yml 4 处 builtin-ep 路径 + ci.yml 注释。
+
+### 归位迁移（测试随宿主走）
+
+- `mainE2eHandles.test.ts`：断言**应用入口**（main.tsx 已归 app）→
+  `apps/desktop/src/__tests__/`，readApp/readFrontend 双根。
+- `tester_tunnelFieldContracts`：cwd 相对 `src/` → `packages/frontend/src/`。
+- `sqlserver connectionFormRegistration`：GENERATED_DIR →
+  `packages/frontend/src/extensions`；redis `kvSlotRegistration`：
+  moduleOf 4 级爬（registry 发射形态变化）。
+- e2e 树 9 处旧路径（i18n/lib/specs/journeys/drag-drop）。
+
+### 验证（全部通过）
+
+- **主套件分块**：windows 188 文件/1660；components 147/1471；
+  stores+hooks+commands+types+platform+ai 117/1254；backend-client+
+  locales+lib+test 222/2346；apps+scripts 64（apps 15 全绿）；
+  wapp-sdk+extension-points+driver-sdk+ui 42/450。
+- **scripts/__tests__ 793/795**（2 失败 = cargo ENOENT 已知环境限制，
+  CI rust 腿覆盖，与会话一以来基线一致）。
+- **drivers 套件 88 文件/1007 全绿**（vitest.drivers.config.ts）。
+- **typecheck**：tsrs root + scripts + pack-ep 全绿（顺手焚掉
+  wappSdkInterop 未用 existsSync import）。
+- **闸门实跑**：driver-import-boundaries 0 blocking/1 advisory/6
+  allowlisted（与迁移前一致）；module-layers ok（1 advisory 既有）；
+  i18n-key-collision ok（2856 host keys）。
+- 后台进程跨 bash 调用不存活（本环境限制）→ 全量回归采用分块前台跑。
+
+---
+
+## 2026-10-30（会话七）— F6-c1：目录搬家（src/ → packages/frontend/src + apps/desktop），路径/配置/闸门/gitignore 全量重指向【checkpoint 提交】
+
+> F6 第一批解耦：纯机械目录迁移。共 2108 处 git status 变更（2015 纯 R、
+> 40 RM、48 M）。本条目为**保底 checkpoint**（用户指令：先提交防丢），
+> 大块迁移+配置+闸门已完成且 typecheck 全绿、闸门与迁移前完全一致；
+> 测试回归 3641/3646，**剩 5 个失败文件待修**（详见下文「已知未竟」），
+> 修完后追加验证条目。
+
+### 目录动作（git mv）
+
+- `src/` → `packages/frontend/src/`（共享源码包，源码包模式，c2 起
+  由 package.json exports 接管解析；c1 阶段由三处 alias 表重指向）。
+- 桌面专属物 → `apps/desktop/`：`index.html`、`postcss.config.js`、
+  `src-tauri/` 整树（Cargo.toml/build.rs/capabilities/icons/src/…）、
+  `vite.config.ts`、`tailwind.config.ts`、`window.html`、`src/main.tsx`、
+  `src/platform/`（desktop 实现 + web stub + `__tests__/` 13 桌面测试）、
+  `src/shell/desktop/`（TitleBar + WindowControls + 各自 `__tests__/`）。
+- 新建 `packages/frontend/src/index.ts`（包公共出口：capabilities/env
+  两行 re-export，c2 exports 接管的锚点）。
+
+### 配置重指向
+
+- `tsconfig.json`：include 改 `packages/frontend/src` + `apps/desktop/src`；
+  paths 增 `@datazen/frontend/src/*` 与 `@datazen/frontend`。
+- `apps/desktop/vite.config.ts`：全部 alias 加 `../../`，新增 frontend
+  两条深路径 alias。
+- `apps/desktop/tailwind.config.ts`：content 增
+  `../../packages/frontend/src/**/*`。
+- `vitest.config.ts`：alias/setupFiles/include/coverage 四处重指向；
+  `vitest.drivers.config.ts` setupFiles 两条。
+- 根 `package.json`：build/build:bundle/build:with-drivers 的
+  `vite build apps/desktop`。
+- `Cargo.toml` members 增 `apps/desktop/src-tauri`；
+  `tauri.conf.json` beforeBuildCommand `pnpm --dir ../.. run build`、
+  beforeBundleCommand `node ../../scripts/upx-compress.mjs`。
+- **`.gitignore` 10 处旧路径模式迁移**（generated.ts/generated-pro.ts/
+  driver_init.rs/builtinLocales.ts/default.json/target//gen//
+  resources/builtin-ep//tests/.env.test/Cargo.lock 全部加新前缀）——
+  不迁则生成产物以 untracked 形态漏出。
+
+### 跨包 import 形态（c1 过渡态）
+
+- apps 侧 23 文件改包名深路径 `@datazen/frontend/src/...`（重写器：
+  `/home/z/my-project/scripts/f6-c1-rewrite-imports.py`，用「虚拟旧位置」
+  解析）；39 个 scripts 路径重写（`f6-c1-rewrite-scripts.py`）。
+
+### 闸门适配（`scripts/check-driver-import-boundaries.mjs`）
+
+- HOST_SRC_DIR=`packages/frontend/src`、APP_SRC_DIR=`apps/desktop/src`；
+  walk 根 `['packages', APP_SRC_DIR]`；R3 双前缀；R1 target 双目录判定；
+  R2 范围排除 `packages/frontend/`；ALLOWLIST 6 条 specifier 更新
+  （redis 2 条 5 级爬升、locales 2 条 + driverUiSetup 2 条 4 级）。
+- 迁移后回归：**0 blocking / 1 advisory（DocumentConnectionView R3）/
+  6 allowlisted——与迁移前完全一致**。
+
+### 爬升级数修正（本批最大坑）
+
+- `posix.resolve` 会 clamp 到 root 但 TS bundler resolution 不允许逃出
+  root——一律 `node -e` 实测级数再改。已修：locales.test/driverUiSetup
+  （4 级）、DocumentConnectionView（5 级 mongodbFind）、backend-client
+  tableDataClient.test（3 级爬 frontend）、namedViews.contract（REPO_ROOT
+  5 级 + src/lib 前缀）、themePackApply（fixtures 5 级）、wappSdkInterop
+  （HOST_ROOT=包根 3 级 + wapp-sdk css 5 级）、wappThemes（WAPPS_ROOT
+  5 级）、windowCapabilities（src-tauri 4 级含 `.json.host` 变体）、
+  tailwind-colour-classes（`../../apps/desktop/tailwind.config.ts` 2 级）、
+  redisKeyWebContextMenu（5 级）、WindowControls.test（useI18n mock 改
+  包名深路径）。
+
+### 验证（本 checkpoint 时点）
+
+- typecheck：tsrs root + scripts + pack-ep 全绿。
+- 闸门：0 blocking / 1 advisory / 6 allowlisted（与迁移前一致）。
+- vitest：platform+apps 块 144 绿；backend-client+locales+lib+test 块
+  **3641/3646**。
+- **已知未竟（下一提交修）**：`QueryPanelManager.contract`、
+  `localStoragePersistence.contract`、`transactionTimeline.telemetry`、
+  `artifactTelemetryAudit`、`connectionHistoryPersistenceAudit` 5 文件
+  失败——按已修案例模式推断为文件系统路径按旧布局计算（少一级爬升/
+  硬编码 `src/` 前缀）。另：scripts/__tests__ 基线回归、e2e 树 4 文件
+  `../../src/` 引用、`.github/workflows` 路径核对未跑。
+
+---
+
+## 2026-10-30（会话七）— R6 收口：driverInvoke 死代码焚烧——生产共享树 @tauri-apps import 归零（F6 输入条件达成）
+
+> F6 计划的输入条件：「`src/` 内 `@tauri-apps` import 已归零，分家变为
+> 纯机械动作」。核查发现最后一个真实 import 藏在**生成文件模板**里：
+> `src/extensions/generated.ts` 的 `driverInvoke()`（`plugin:driverId|command`
+> 直调轨）。全树消费审计（src/ + packages/ + scripts/ + tests）：**零消费者**
+> ——纯死代码。驱动侧命令需要宿主轨的，走 driverGateway 域客户端
+> （backend transport 轨，F3 已建）。
+
+### 改动
+
+- `scripts/resolve-drivers.mjs` 模板：删 `import { invoke } from
+  '@tauri-apps/api/core'` 与 `driverInvoke()` 函数；保留 `DRIVER_COMMANDS`
+  元数据表 + `hasDriverCommand`（不触宿主运行时，stash 工作流 fixture 依赖
+  其形状）。
+- `scripts/driver-deinject.mjs`（stub 形态模板）：同步删两块。
+- `src/extensions/generated.ts` 为 .gitignore 构建产物（.gitignore:66）——
+  本地 `--codegen-only` 重生成验证产出无 invoke、幂等。
+
+### 终态审计（生产树 @tauri-apps）
+
+- 真实 import 全部收拢桌面隔离区：`src/platform/desktop/*`（8 文件）+
+  `src/shell/desktop/TitleBar.tsx`（1）——共 9 处，全部 F6 随 apps/desktop 走。
+- 其余匹配全是**注释**（wappStore/useClipboardCopyFeedback/contracts/
+  BrandSidebar/SettingsContent/tauriWindow 基建）与 gitignored 产物内的
+  本批注释。
+- 测试树终态见批次二盘点。
+
+### 验证
+
+- `scripts/__tests__` 793/795 通过；2 失败均为 cargo ENOENT 已知环境限制
+  （CI rust 腿验证，worklog 会话一即有记录），与本批无关。
+- typecheck（tsrs root/scripts/scripts-checkjs/pack-ep）OK——scripts 变体
+  曾现 2 条 with-driver-inject JSDoc 推断瞬态错误，stash 对照 + 三次复跑
+  均不可复现（tsrs 缓存态噪声）。
+- 闸门 0 blocking / 1 advisory（不变）。
+
+---
+
+## 2026-10-30（会话七）— F6-tests 批次二：9 个残留共享区测试归位，测试树 @tauri-apps 归零达标
+
+> 承接批次一。9 个残留文件按断言性质三路归位，共享区测试树从此只在
+> 注释/字符串断言里出现 `@tauri-apps`——`packages/frontend` 的测试面
+> 宿主无关（F6 目录迁移的输入条件之一）。
+
+### 三路归位
+
+- **stale mock 纯删除**：ConnectionPage.test —— 生产轨道早已走平台端口
+  spy（`hasOpenChildWindowsMock` 绑进 `configurePlatform`），残留的
+  `vi.mock('@tauri-apps/api/webviewWindow')` + `webviewGetAllMock`
+  零断言消费，删除四处置点。
+- **桌面轨道测试搬家（8 件 → `src/platform/__tests__/`，`.desktop` 后缀）**：
+  这批测试绑**真实** `createDesktopBackendTransport()` 并断言 IPC 层契约
+  （`resolve_foreign_key_targets` 等命令名/参数封窗、宿主错误文本经
+  ApiError cause 链回环、Channel 订阅机器）——本质是「组件 × 桌面轨道」
+  的集成审计，归桌面区测试，F6 目录迁移时随 apps/desktop 走：
+  fkErrorRoundTrip / fkJumpSemantics.audit / gridErrorRoundTrip.audit /
+  namedViews.contract / fkArrowRequest.audit / fkNavigation.journey /
+  fkViewportRestore.audit / desktopSubscription（纯 transport subscribe
+  机器）。零断言损失（保留 IPC 名映射覆盖），仅改相对 import 路径。
+- **桌面组件测试归位**：TitleBar.test → `src/shell/desktop/__tests__/`
+  （被测组件 TitleBar 本就在 shell/desktop；mock event/window 正当）。
+
+### 批次一顺手修复
+
+- WorkspaceIntegration.test 的未用 `clearPlatform` 导入（tsrs TS6133）。
+
+### 终态盘点
+
+- 共享区测试树 `@tauri-apps` 仅剩 3 处合规：WorkspaceIntegration 与
+  OnboardingWizard 的**注释**、pathIpcWiring 的**字符串断言**（断言源码
+  不含 `@tauri-apps/api/core`，非 import）。
+- 桌面区测试（platform/__tests__ 14 件 + shell/desktop 1 件）保留 tauri
+  mock——它们随 F6 目录迁移进 apps/desktop。
+
+### 验证
+
+- 定点：9 件迁移/清理 97/97 绿；TitleBar 3/3 绿。
+- 块回归：platform+shell+lib+DataTable+connection+workspace 386 文件
+  **3758 通过 / 1 skip**（598s）。
+- typecheck（tsrs root/scripts/pack-ep）OK；闸门 0 blocking / 1 advisory。
+
+---
+
+## 2026-10-30（会话七）— F6-tests 批次一：37 个共享区测试的 `@tauri-apps/api/core` mock 焚烧
+
+> 承接会话六（生产侧 shim 焚烧完）。本批对齐测试侧：共享区测试不再
+> `vi.mock('@tauri-apps/api/core')`——invoke 轨道已骑 bound backend
+> transport（R6 形态），mock 面换到 `setBackendClient('test', …)` /
+> spy platform port，测试不再 import 宿主运行时。这是 F6 目录迁移的
+> 前置：`packages/frontend` 里的测试文件必须宿主无关。
+
+### 改动模式（三类）
+
+- **纯删除**（多数）：测试早已通过 `setBackendClient('test', …)` 绑定
+  transport，残留的 `vi.mock('@tauri-apps/api/core')` 只是历史噪声——
+  删掉后 invoke 轨道走 transport 绑定，断言面不变（connection/dashboard/
+  file/history/importExport/schemaDiff/syncPlan/transfer/transferJobs/
+  wapps/BackupWindow/QueryPanel 族/DataSync/DataTransfer 族/
+  wappBridge 族/sqlFileExecution/themePackApply/fetchRelationDdl 等 28 文件）。
+- **换 spy platform port**：WorkspaceIntegration（EventChannel 端口
+  `listenCrossWindow` spy——顺带修复 stale mock 静默跳过 guard 断言的真
+  缺陷）；QueryArtifactExport（artifact 命令已上 legacy 轨，绑定
+  transport）；BrandSidebar 侧 firstFrame 测试改 `getAppVersion` 端口直答。
+- **杂项对齐**：OnboardingWizard / SchemaDiff 族 / DashboardPanel /
+  DataTransferWindow 的 firstFrameI18n 与 ContentView 等随 mock 删除重排
+  绑定时序。
+
+### 残留盘点（下一批次输入）
+
+- 测试树剩 9 个共享区文件仍 `vi.mock('@tauri-apps/*')`：fk 族四件
+  （fkArrowRequest/fkNavigation.journey/fkViewportRestore.audit/
+  fkErrorRoundTrip）+ fkJumpSemantics.audit + gridErrorRoundTrip.audit +
+  namedViews.contract + lib/session/desktopSubscription +
+  ConnectionPage（webviewWindow mock）。
+- 合规不动：`src/platform/__tests__/*` 四件桌面机器测试 + TitleBar
+  （shell/desktop 组件）+ pathIpcWiring（字符串断言非 import）+ 两处注释。
+
+### 验证
+
+- `vitest run`（37 文件定点）：**407/407 绿**（83s）。
+- 闸门 0 blocking / 1 advisory（不变）。
+
+---
+
+## 2026-10-30（会话六）— F6-pre：六个 R7 shim 焚烧（转端口访问器），分家变纯机械
+
+> 计划 §5.6 的输入条件「分家变为纯机械动作」的最后一英里。六个 F2 过渡 shim
+> （windowManager / crossWindowBus / pathPicker / updater / usePlatform /
+> tauriBackendTransport）全部从「re-export 桌面区」转为「共享端口访问器」或删除；
+> 高层窗口助手与 updater 的纯推理逻辑**搬回家**（共享侧），桌面区只剩机器。
+> R7 闸门集合收缩到 `src/main.tsx` 一项（随目录迁移消亡）。
+
+### 端口面补口（backend-client / contracts）
+
+- `PlatformServices` +2：`pickPath`（桌面=dialog 插件，web=null 即取消语义，
+  `PickPathInput` 与 `@datazen/ui` 的 `PathPickerDialogOptions` 结构恒等）；
+  `getOsPlatform`（桌面=plugin-os 探测、自带 UA 兜底；web=UA）。os.ts 整文件
+  消亡（钩子逻辑回 `hooks/usePlatform.ts`，插件探测并入桌面绑定）。
+- `HostSettingsPort` / `DesktopHostServices` +2：`checkForUpdates` /
+  `downloadAndInstallUpdate`（类型 `UpdateProgress` / `UpdateCheckResult` 自
+  desktop/updater **字节等价**上移 contracts；inert 端口 reject——Update 区
+  本就 gate 在 `capabilities.updater` 上，§7.4 语义）。desktop/updater 瘦身为
+  纯插件流（check/download/relaunch/maybeCheckOnStartup），channel/variant/
+  manifest 纯函数回 `lib/updater.ts`。
+- `requireBackendClient()` 新增（client.ts，照 requirePlatformServices 先例）：
+  queryPanelSessionRoot 的 lazy `bindDesktopBackend()` 兜底退役——共享代码永不
+  自绑宿主适配器。注册表拿到的 facade 是「首属性访问才解析」的 Proxy：peek/
+  remove 纯簿记不触线（resetModules 形态的测试图构造安全），首次开 wire 才
+  §7.4 响亮失败。
+
+### shim → 访问器逐条
+
+- **crossWindowBus**：共享模块持有 BroadcastChannel 默认轨（自桌面 eventChannel
+  的浏览器分支**搬回**，`createBrowserEventChannel` 单一来源，web stub 复用）；
+  绑定平台时走 `events` 端口。桌面 eventChannel 瘦身为纯 Tauri；装配根按
+  `IS_DESKTOP_BUILD ? 桌面 : 浏览器轨` 绑定（browser-dev 行为不变）。
+- **windowManager**：open*Window / emitMenuAction / PENDING_CONNECTION_KEY 等
+  高层助手（URL 参数、localStorage、事件、i18n 推理）回共享侧，骑
+  `requirePlatform().windows` + 总线；桌面 windowRouter 只留 openSingletonWindow
+  （create_sub_window / WebviewWindow 聚焦 / 浏览器 tab 兜底 / 错误对话框）。
+  原文件里向 lib 的 import（connectionEditor / settingsStore / docsUrls）随
+  高层逻辑一起搬走——桌面区不再反向 import 共享 UI 模块。
+- **pathPicker / usePlatform**：访问器 + 钩子回家（见端口补口）。
+  `desktop/pathPicker.ts`、`desktop/os.ts` 删除；`platform/tauriBackendTransport.ts`
+  shim 删除（消费方：queryPanelSessionRoot 走 requireBackendClient；5 个测试
+  re-point 到桌面区真身）。
+- **env.ts 上移**：`platform/desktop/env.ts` → `platform/env.ts`（纯
+  `import.meta.env`，零宿主运行时）——`IS_DESKTOP_BUILD` 是**编译期构建常量**
+  （裁决 #5），前端包为两种形态分别编译时各自折叠；桌面区与共享侧同源引用。
+
+### 测试迁移（shape 不变、mock 面换轨）
+
+- windowManager.test 拆两半：lib 侧绑 spy 平台钉**端口契约**（label/params/尺寸/
+  事件载荷）；桌面机器（invoke/webviewWindow/去重/inflight/错误对话框）移
+  `platform/__tests__/windowRouter.desktop.test.ts`。crossWindowBus.test 同形
+  拆分（未配置=BroadcastChannel 默认轨；绑定=端口转发；Tauri 半边移
+  `eventChannel.desktop.test.ts`）。updater 流断言移
+  `platform/__tests__/updaterFlow.test.ts`（含 doMock 定制 SKU 的回归守卫）。
+- 顺手修复**前会话 batch-1 遗漏的四组测试**（HEAD 上即红）：QueryArtifactExport
+  （artifact 命令已上 legacy 轨但测试未绑 transport）、ContentViewKvDbSwitch /
+  OnboardingWizard（同因 + BrandSidebar 版本读已走 HostSettingsPort）、
+  AiSettingsSection（context_get_dir 未绑定 → 3 个未处理 rejection 导致
+  vitest exit 1）。全部按既有 `setBackendClient('test', …)` / 平台绑定模式补。
+- `check-ci-docs-consistency.mjs` 的 windowManager 指针随实现回迁更新。
+
+### 验证
+
+- typecheck（tsrs root/scripts/pack-ep）OK；闸门 0 blocking / 1 advisory。
+- 全量分块回归：stores 903/903；windows+commands+components/ai 1930/1930；
+  components 其余（DataTable 422 / filter+query+chart 等 1084 / admin+export
+  +history+migration+schema+sql-editor+杂项 705）；drivers 配置 1007/1007；
+  e2e-contract 23/23；backend-client+platform+hooks+lib 早前批全绿。
+- 已知环境限制不变：cargo 依赖的 2 个脚本测试本机 ENOENT（远程 CI rust 腿验证）。
+- 本机无 `tauri build`/webdriver 冒烟（无 cargo）——同 F4a/F4c 策略，开 PR 触发远程 CI。
+
+---
+
+## 2026-10-29（会话五）— F6-a：workspace 协议落地（packages 字段 + install 实测）
+
+> 计划 §5.6 项1 / §7.1 风险项。此提交只落地协议本身：`pnpm-workspace.yaml`
+> 增补 `packages: [apps/*, packages/*, packages/drivers/*]`，五个 TS 包成为
+> 真 importer；跨包解析**仍骑 alias 表**（F6-b 才退役）——零行为变化，
+> 闸门/typecheck/测试全绿即证。
+
+### §7.1 实测记录（本环境的诚实边界）
+
+- **主 checkout**：`corepack pnpm@11.15.0 install` 成功（23s，与 CI 同大版本；
+  本仓无 packageManager 字段，CI 用 pnpm/action-setup@4 version 11）。
+  lockfile 增 5 个 importer（backend-client/driver-sdk/extension-points/ui/
+  wapp-sdk，各为空依赖表——尚无 importer 声明 `@datazen/*`，node_modules
+  不出现链接，解析仍走 alias，预期零行为差异）。
+- **第二 checkout**（tar 复制树，无 .git/node_modules）：`install
+  --frozen-lockfile` 成功（5s，走共享 content-addressable store 硬链）。
+  「新 workspace 字段在第二个 checkout 上干净安装」这一 §7.1 实质已证。
+- **软链 node_modules 形态无法复现**：本沙箱禁 symlink（`ln -s` /
+  `python os.symlink` 均被拒，连带 `git worktree add` 整体不可用——git
+  worktree 自身需要 symlink）。§7.1 注记的「工作树 node_modules 软链 +
+  workspace hoist directory is not a real directory」失败形态**留待 CI 与
+  真实开发者环境观察**；pnpm-workspace.yaml 既有的 verifyDepsBeforeRun
+  关闭逻辑不动，若该形态出现，按其注释回退 packages 字段即可（计划 §5.6
+  回滚预案的第一段）。
+
+### 验证
+
+- typecheck（tsrs root/scripts/pack-ep）OK；backend-client + platform
+  契约批 237/237 绿；闸门 0 blocking / 1 advisory（不变）。
+
+---
+
+## 2026-10-29（会话四）— R6 台账焚烧 batch-2（收口）：8 → **1 advisory**，台账清空
+
+> 承接会话三的 batch-1（34 → 8）。本批把剩余 6 个 R6 台账文件全部端口化，
+> `R6_LEGACY_TAURI_FILES` 集合清空，规则转全阻断——自此生产 `src/` 在
+> 桌面区外的任何新 `@tauri-apps/*` import 直接红闸门（F6 `packages/frontend`
+> 必须宿主运行时无关的绊网就位）。剩余 1 advisory 为 R3 的
+> DocumentConnectionView 既有豁免（永久条目，非本计划范围）。
+
+### 端口化清单（六文件 → 三端口一界面）
+
+- **MenuBar（fullscreen）**→ `PlatformServices.toggleFullscreen`：桌面绑定
+  用 zone 内 `getCurrentWindow()`（裁决 #5：窗口控制属桌面区）；web 降级为
+  document fullscreen API。裸 try/catch 保留。
+- **fetchRelationDdl（clipboard×2）**→ `writeClipboard` + 新端口
+  `writeClipboardHtml({ html, altText })`：桌面绑定即原
+  `write_clipboard` / `write_clipboard_html` 宿主命令（字节等价）；web 降级
+  为 `ClipboardItem`（缺失或无手势时退 plain text，绝不静默 no-op）。
+  测试改为端口绑 invoke mock，线断言（命令名+载荷）原样保留。
+- **wappBridge（wapp_session 族 + 通知）**：session/storage 走
+  `legacyInvoke`（batch-1 轨道）；通知走新端口
+  `showNotification({ title, body })`——桌面绑定保持
+  `plugin:notification|notify` 线形，web 降级为 Notification API
+  （权限拒绝即 reject，调用方本就 best-effort）。
+- **surfaceBgCache（host 文件持久化）**→ `HostSettingsPort.persistSurfaceBackground`
+  （fire-and-forget）：桌面绑定即 `set_surface_background` IPC；web 为
+  inert no-op。运行时 `__TAURI_INTERNALS__` 探测删除，改为
+  `getPlatformOrNull()?.hostSettings?.…` 可选链（平台未配置 = 旧探测的
+  同一「无处可持久化」情形）。
+- **BrandSidebar / SettingsContent（getVersion）**→ `HostSettingsPort.getAppVersion`：
+  桌面绑定 zone 内 `@tauri-apps/api/app`；inert 端口 reject，调用方
+  gate 在 `capabilities.versionSource`（F5 表已在位）上、`.catch` 保持
+  占位符/隐藏行为。SettingsContent 顺带消掉了文件顶部最后一个
+  `@tauri-apps` 运行时 import（F5 留下的探测残留随之自然收口）。
+
+### 测试修复（本批唯一非机械改动）
+
+- `wappBridge.test.ts` 的端口绑定原是模块级一次性 `setPlatformServices` +
+  全局 `afterEach(clearPlatformServices)`——首个测试后端口即处于未绑定态，
+  后续 `ui.notify` 用例全部未捕获 reject。改为 `beforeEach` 重绑（26/26 绿）。
+
+### 验证
+
+- typecheck（tsrs root/scripts/pack-ep）OK；触点批 8 文件 67/67 绿；
+  commands+platform+backend-client+MenuBar+SettingsContent 广域回归
+  **417/417** 绿。
+- 闸门 **0 blocking / 1 advisory**（8 → 1，台账集合已删除内容转空集）；
+  生产 `src/` 中桌面区外 `@tauri-apps` 引用全数核对为注释、生成注册表
+  （`src/extensions/generated*.ts`，既有豁免）或测试 mock。
+- 零 Rust 侧改动：本批端口化的五个宿主命令/插件调用全部复用既有注册
+  （`write_clipboard_html` / `set_surface_background` /
+  `plugin:notification|notify` / app/window JS API），无需动 `run.rs`。
+
+---
+
+## 2026-10-29（会话三）— R6 core-invoke 台账焚烧 batch-1：34 → 8 advisory
+
+### 迁移设计（照 DriverGateway 先例的第二个过渡逃生舱）
+
+- `packages/backend-client/src/legacyHostCommands.ts`：`LegacyCommandName`
+  联合类型（189 个遗留宿主命令名，从全部调用点机械提取）+
+  `LegacyHostMethodMap`（mapped type：request loose / response unknown，
+  命令名编译期校验）+ `legacyInvoke<T>(command, payload?)` 薄再导出——
+  与 `@tauri-apps/api/core` 的 invoke 同名同泛型同元数，调用点零改动，
+  仅换 import 行（F2「收编不新建」模式的复用）。
+- 载荷原样透传（省略时 undefined，桌面 transport 对 snake_case 扁平路由）：
+  与被替换的 invoke 字节等价。
+- `FacadeCoversMethodMap` 断言排除 legacy 轨键（由 legacyInvoke 服务，不上门面）。
+
+### 批量迁移（24 文件）
+
+- 17 个 `src/commands/*.ts`（ai/artifact/backup/connection/context/dashboard/
+  database/file/history/query/sample/schemaDiff/sync/transfer/transferJobs/
+  tunnel/wapps）+ sqlFileExecution + BackupWindow + 2 个 data-sync hook +
+  DataTransferWindow + OnboardingWindow + useSchemaDiffEndpoints。
+- union 补漏：ai 的 nativeInvoke 三命令（grant/revoke/touch）与 schemaDiff 的
+  两个 prepare 命令（间接传参，库存脚本初版漏检）。
+
+### 测试迁移（照 file.test.ts 先例）
+
+- 19 个测试文件补 `setBackendClient('test', { transport: { call: … } })`
+  绑定（元数归一适配器保持无实参断言原样）；resetModules 场景（firstFrameI18n）
+  在 beforeEach 重绑新模块图的 backend-client 实例。
+
+### 验证
+
+- typecheck 绿；src/commands + backend-client 344/344 绿；schema-diff 69/69、
+  data-sync/data-transfer/backup/onboarding/sqlFile 全绿；闸门 0 blocking /
+  **8 advisory**（34 → 8）。
+- 剩余 8 = R3 既有豁免 1 条 + R6 六文件待端口化：MenuBar(fullscreen)、
+  fetchRelationDdl(clipboard×2)、surfaceBgCache(host 文件持久化)、
+  wappBridge(wapp_session+通知)、BrandSidebar/SettingsContent(getVersion)。
+
+---
+
+## 2026-10-29（会话二）— F4c 簇合并收口：223 → **215**（计划终态命中）
+> 本段落 rebased 在并行会话的 F5（59dea6941）与 R6 event 焚烧（d712c47ff）之后：
+> 两个会话的 F4c 重核结论一致（零死命令）；本提交把交接说明中「合并簇为
+> 持续整合项」落实为实际合并，机械计数达到计划 §8 终态 ~215。
+
+
+### 簇核定（对照计划 §5.4 项6 与 §8 轨迹）
+
+- **死命令重核**：对 223 命令面跑字面引用 + transport.call 双轨审计，
+  **零死命令残留**——main 侧 `6c883f2c0`（6 冗余命令）、`ad1ff0102`
+  （query history 合并 + 网关薄壳 ×2）、`ce8c37998`（get_er_data +
+  get_system_ui_language）已提前消化计划中的死命令清单。计划 §8 的
+  267→255→~232 为旧基线估算，机械计数为准。
+- **schema plan 族 6→2**：`prepare_schema_unified_plan` 是合并目标且已在线
+  （SchemaDiffWindow 双路径：对象走 unified、纯表走 table）。四个 per-kind
+  命令（view / routine_trigger / sequence / type）经核定**零产品调用、零
+  e2e 调用**——只有 `schemaDiff.ts` 里的死包装方法与其单测在引用。跨方言
+  纯表场景 unified 内部已委托 table impl（`unified_plan.rs:144`），但同方言
+  纯表走的是 `build_unified_schema_diff_plan_with_source_scope` 独立代码
+  路径，与 table builder 非行为等价——**table 命令保留**，不做 6→1 的
+  最后一步（风险登记：无法本地编译验证 Rust 行为等价性，遵循「机械计数
+  为准 + 不做无法验证的行为切换」）。
+- **dir-open 4→2**：`open_log_dir` / `open_workflows_dir` /
+  `open_context_dir` 合并为 `open_known_dir(kind: log|workflows|context)`；
+  路径保持服务端解析（安全属性不变），`open_path` 保留（webdriver 门控 +
+  app-data 校验路径）。
+- **file pickers 3→1**：`pick_connections_import_file` /
+  `pick_app_data_import_file` / `pick_connection_import_path_with_dialog`
+  合并为 `commands::dialog::pick_import_file(kind, mode?, source?)`——放
+  dialog 网关（R-1.3 集中化），filter 表留在 feature 模块
+  （`connections_open_filters` / `import_file_filters` 升 pub(crate)）。
+  `pick_data_transfer_sql_file` 是 save+token 语义（路径不出宿主），
+  不属 open-picker 族，保留。
+- **dialogs 8→6 / job 读侧 13→5 / AI 一次性 8→2**：经基线对照，这些簇
+  在 main 侧 IPC 收敛 PR 中已按不同形状吸收（file_jobs 命令族删除、
+  query_history 合并等）；当前面 215 已达终态，不再为凑旧估算数字做
+  无验证依据的深部 Rust 手术。
+
+### 改动清单
+
+- Rust：删 `object_plan_commands.rs`（整文件）；`schema_diff.rs` /
+  `object_scope.rs`（死 helper `fetch_schema_view` / `list_schema_views` 一并
+  删除）；`config.rs`（open_known_dir 合并体）；`dialog.rs`（pick_import_file
+  合并体）；`connection_import/ipc.rs`、`app_archive.rs`（旧 picker 删除）；
+  `app_menu.rs`（菜单 OpenLogDir 走 open_known_dir("log")）；`run.rs` 注册
+  223→215。
+- TS：`schemaDiff.ts` 删 4 死方法 + 4 死测试；`connection.ts` / `backup.ts`
+  切 `pick_import_file`；`hostServices.ts` 切 `open_known_dir`；
+  `pathIpcWiring.test.ts` / `importExportCommands.test.ts` 断言更新；
+  e2e `path-ipc-hardening.ts` / `workflow-window.ts` 源码断言重定向到
+  hostServices 区（原断言指向 F2 已迁移走的 settings.ts 旧位置——顺手
+  修复了这两处陈旧断言）。
+- 闸门：R6 台账移除 `src/commands/settings.ts`（F4a 已清零，过期项）。
+
+### 验证
+
+- typecheck（tsrs root/scripts/pack-ep）OK；commands+platform+backend-client
+  **337/337** 绿；schemaDiff 单测 17/17；边界闸门 0 blocking / 41 advisory；
+  ci-docs 一致性 OK；注册命令机械计数 **215**（计划 §8 终态目标命中）。
+- Rust 侧本机无 cargo（工具链下载受限）：静态核对全部删除项引用面 +
+  契约测试源码断言双向核对；宿主 crate 依赖远程 CI 验证（开 PR 触发，
+  同 F4a 策略）。
+
+---
+
+## 2026-10-29（续） — R6 台账 event 类焚烧（d712c47ff）+ 会话终态
+
+- `@tauri-apps/api/event` 类违规全部迁移到 F2 EventChannel 端口（裸载荷，无 Tauri 信封）：
+  WorkspaceView（wapps:open-page 深链）、sqlFileExecution（restore-progress）、
+  QueryPanel（menu:add-favorite）、ai.ts（三条流监听）、file.ts（onExportProgress）、
+  BackupWindow（backup-progress）。
+- surfaceBgCache 尝试后**回退**：`set_surface_background` 是宿主文件持久化命令而非涂色，
+  需专门端口（行为保持优先于台账数字）。
+- 台账 41 → 34 advisory；测试从 event mock 改为平台契约 mock（裸载荷断言）。
+- 验证：typecheck 绿；闸门 0 blocking / 34 advisory；受影响 125 测试绿。
+
+### 会话终态与续作交接（F6 前）
+
+- **已完成**：F1–F5 全部合入并推送（至 3d66bf002）+ 本批 event 焚烧（d712c47ff）。
+- **F6 前置未满足**：`src/` 内 `@tauri-apps` 未归零——剩余约 33 文件全部为
+  core-invoke 深迁移类（commands/*.ts 的 legacy 命令族 + BackupWindow/fetchRelationDdl/
+  wappBridge/onboarding 等）。每文件需端口/门面设计（kernel 面方法入 MethodMap、
+  宿主命令入 HostSettingsPort/新端口、驱动命令走 driverCommands 桥），非机械替换。
+- **F6 本体**（workspace 协议 + 目录迁移 + R5 闸门）依计划为单个大 PR，
+  须在上述归零后执行；worktree checkout `pnpm install` 实测为 §7.1 强制风险项。
+- 续作路径：①烧 core-invoke 台账（按域分批）→ ②F6 restructure
+  （`pnpm-workspace.yaml` packages 字段 + apps/desktop + packages/frontend + alias 退役）。
+
+---
+
+---
+
+## 2026-10-29 — F4b + F4c 重核 + F5 合入（74d2eef → 59dea69）
+
+### F4b（74d2eefe8）
+- 命名归零完成：`get_table_data_at_target`→`get_table_data`、`read_artifact_chunk`→`read_artifact`、
+  `platform_list/create/update/disable_profile`→`list/create/update/disable_connection`；
+  **`commandOverrides` 表删除**（toCommandName 纯约定，kernel 轨与命令名 1:1，裁决 #2 第 4 步达成）。
+- Connection 命令 wire 对齐 kernel 面（flattened ProfileDraft + kernel SubmissionToken、
+  expectedRevision）——预留命令真正可从 connectionClient 调用（激活）；消费方切换依计划 §7
+  「不设硬同步门槛」归 D 阶段。
+- 导出双流程示范（§3.3）：`TablesExporterPort` 共享签名 `exportTables(request)`；桌面实现走
+  save-dialog token 流式写（进度上 EventChannel），`createBlobTablesExporter` 为 web 半边
+  （分页读入 → CSV → Blob 下载，仅浏览器 API，R6 天然合规）。
+- R8 退役：driver-sdk 事件桥 `bindHostEventListener/listenHostEvent`；装配绑到 EventChannel；
+  redis PubSubPanel 改走桥（不再 import @tauri-apps/api/event）。
+- capabilities 预备：`settingsSectionsForBackend(ReadonlySet<SettingsSection>)`；
+  SettingsContent 读 `capabilities?.settingsSections`——**src/ 内 `backendId ===` 代码级归零**。
+
+### F4c 重核（并入 F5 提交说明）
+- 经验式死命令扫描（注册名 × 全树字符串引用）：**0 条真死命令**——main #142/#143 已执行删除计划；
+  合并簇为持续整合项（计划 §8 台账随 PR 更新）。F4 退出标准全项达成。
+
+### F5（59dea6941）
+- `src/platform/capabilities.ts`：DESKTOP/WEB_CAPABILITIES 静态表（sections/updater/versionSource）；
+  桌面装配绑定。UpdateSection 消费 `capabilities.updater`、版本读消费 `versionSource`。
+- 每域契约表 `domainContractTables.test.ts`（32 例：方法名 × 请求封套 × 响应直通 + 缺口两分类）。
+- 端口契约 `platformContracts.test.ts`（11 例：§7.4 未绑定显式错误 + 绑定后行为；HostSettings
+  惰性默认例外）。
+- web stub `src/platform/web/`：全 throw transport（CapabilityUnsupported，绝不静默空答）+
+  浏览器原生 PlatformServices 降级 + 惰性宿主端口 + Blob 导出半边 + WEB_CAPABILITIES——
+  **编译期同形持续验证**。
+- playbook：`docs/development/platform-extension-playbook.md`（决策树 + F3 复刻配方 + 测试标准）。
+- 验证：typecheck 绿；闸门 0 blocking / 41 advisory（R8 清零）；418 测试绿。
+
+---
+
+---
+
+## 2026-10-29（会话一）— 环境基线与 F4b 并行会话发现
+
+### 会话环境基线（续作前核对）
+
+- 检出 `docs/frontend-form-split-plan` @ `2a08e5507`，工作区干净。
+- 工具链：node v24.22.1；pnpm 12.16.1（全局安装）；**cargo 本机不可用**
+  （rustup 官方 CDN 与清华镜像均超时，直连组件下载 ~16KB/s 不可行）。
+- `pnpm install --frozen-lockfile` 完成；`scripts/typecheck.mjs --engine=tsrs` OK；
+  `vitest run packages/backend-client` 194/194 绿；边界闸门 0 blocking / 42 advisory。
+- IPC 注册命令实测：**223**（计划轨迹数字 267→255→~232 为旧基线估算，
+  main 侧 IPC 合并已提前消化部分——F4c 需按当前面重新核定死命令清单）。
+
+### F4b 并行会话发现（rebase 时合入）
+
+远程在克隆后新增 `74d2eefe8`（F4b）：命名归零完成（commandOverrides 表
+删除、platform_*_profile→*_connection 等 7 项改名）、TablesExporterPort
+导出双流程示范（桌面流式 + web Blob）、R8 退役（driver-sdk host event
+bridge）、`settingsSectionsForBackend(ReadonlySet<SettingsSection>)` capabilities
+预备形态（最后一个 backendId === 'desktop' 探测消除）。Connection 消费方
+切换按计划 §7.4 无硬同步门槛裁决随 D 阶段走。
+
+### 待办（按计划 §5.4–§5.6）
+
+- [x] F4b：Connection 域示范迁移 + `platform_*_profile` 改名 + override 表消减（并行会话）
+- [x] F4c：死命令删除 + 合并簇（本会话，223→215）
+- [x] F4 项5：SettingsContent capabilities 预备、PubSubPanel 违规、导出双流程（F4b 并行会话）
+- [ ] F5：DESKTOP_CAPABILITIES / 每域契约测试 / web stub / playbook
+- [ ] F6：workspace 协议 + 包完整化 + 目录迁移 + R5 闸门
+

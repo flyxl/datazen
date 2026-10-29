@@ -265,7 +265,7 @@ describe('MySQL Schema Tree object journey', function () {
   });
 
   it('reads a table by explicit target through platform metadata', async () => {
-    const result = await invokeBackend<TableReadResult>('get_table_data_at_target', {
+    const result = await invokeBackend<TableReadResult>('get_table_data', {
       request: {
         manualHandle: null,
         context: {

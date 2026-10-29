@@ -16,7 +16,7 @@ Commands 是 React 前端进入 Rust backend 的 IPC 边界。Command 层负责�
 - data_transfer
 - workflow
 - dashboard
-- AI / MCP / native_tool
+- AI / MCP（native_tool 已随前端形态拆分方案 F1 删除）
 - history / export / backup / restore_job / file_jobs / app_archive
 - wapps / theme / window / dialog / tunnel / clipboard
 

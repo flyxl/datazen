@@ -65,7 +65,7 @@ describe('i18n-key-collision-check', () => {
    * @returns {string} the directory written
    */
   const writeHostLocale = (locale, entries) => {
-    const dir = join(root, 'src/locales', locale);
+    const dir = join(root, 'packages/frontend/src/locales', locale);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'connection.ts'), dictSource(entries));
     return dir;
@@ -93,7 +93,7 @@ describe('i18n-key-collision-check', () => {
   /** @returns {ReturnType<typeof findKeyCollisions>} */
   const scan = () =>
     findKeyCollisions({
-      localesDir: join(root, 'src/locales'),
+      localesDir: join(root, 'packages/frontend/src/locales'),
       driversDir: join(root, 'packages/drivers'),
     });
 
@@ -125,7 +125,9 @@ describe('i18n-key-collision-check', () => {
       const { collisions } = scan();
       expect(collisions.map((c) => c.key)).toEqual(['mongo.insert']);
       expect(collisions[0].driver).toBe('mongodb');
-      expect(collisions[0].hostFile).toContain(join('src', 'locales', 'en', 'connection.ts'));
+      expect(collisions[0].hostFile).toContain(
+        join('packages/frontend/src/locales', 'en', 'connection.ts'),
+      );
       expect(collisions[0].driverFile).toContain(join('mongodb', 'locales', 'en.ts'));
     });
 
@@ -277,7 +279,7 @@ describe('i18n-key-collision-check', () => {
     });
 
     it('exits 2 when there are no host dictionaries at all', () => {
-      mkdirSync(join(root, 'src/locales'), { recursive: true });
+      mkdirSync(join(root, 'packages/frontend/src/locales'), { recursive: true });
       writeDriverPack('mongodb', { 'mongo.insert': 'Insert' });
 
       const { code, err } = runGuard();
@@ -340,7 +342,7 @@ describe('i18n-key-collision-check', () => {
     it('skips non-dictionary files at the src/locales root', () => {
       // builtinLocales.ts is generated and holds BUILTIN_LOCALE_LABELS, not
       // translations — reading it would invent keys nobody renders.
-      const dir = join(root, 'src/locales');
+      const dir = join(root, 'packages/frontend/src/locales');
       mkdirSync(dir, { recursive: true });
       writeFileSync(
         join(dir, 'builtinLocales.ts'),
@@ -372,7 +374,7 @@ describe('i18n-key-collision-check', () => {
   describe('the real repository', () => {
     it('has no key owned by both the host and a driver pack', () => {
       const result = findKeyCollisions({
-        localesDir: join(REPO_ROOT, 'src/locales'),
+        localesDir: join(REPO_ROOT, 'packages/frontend/src/locales'),
         driversDir: join(REPO_ROOT, 'packages/drivers'),
       });
 

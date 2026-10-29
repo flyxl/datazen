@@ -136,7 +136,7 @@ jobs:
       # This step judges the suite under `all` (all registered PATH drivers:
       # no git driver, so no deploy key and no network needed), **narrowed at
       # run time** to the test files whose module graphs execute the
-      # driver-set codegen (`src/extensions/generated.ts`) — everything else
+      # driver-set codegen (`packages/frontend/src/extensions/generated.ts`) — everything else
       # runs byte-identical code under `all` and is already judged by the
       # `basic` step above. The selection lives in
       # select-codegen-sensitive-tests.mjs (criterion + fail-closed list) and
@@ -449,8 +449,8 @@ jobs:
       # 门禁自身的变异证明，放最后一步：它会临时改写 Cargo.toml 再还原，
       # 因此后面不得再有依赖该工作树的步骤。最后运行把「被强杀导致残留变异」
       # 的影响面降到 0（此时整个 job 已经没有后续步骤了）。
-      # 10 个变异约 5s，失败即说明门禁已经失去鉴别力——比门禁变红更早报警。
-      - name: Platform arch guard self-proof (10 mutations)
+      # 9 个变异约 5s，失败即说明门禁已经失去鉴别力——比门禁变红更早报警。
+      - name: Platform arch guard self-proof (9 mutations)
         run: pnpm test:platform-arch:mutations
 
   # ── 聚合 job：所有被选中的检查全绿才算 CI 通过。

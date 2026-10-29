@@ -41,7 +41,7 @@
  *
  * Driver selection in this repo is compile-time (`scripts/resolve-drivers.mjs`
  * injects one `driver-<id>` Cargo feature per registered driver and rewrites
- * `src-tauri/Cargo.toml`'s `<<driver-features>>` block), and each driver is its
+ * `apps/desktop/src-tauri/Cargo.toml`'s `<<driver-features>>` block), and each driver is its
  * own crate with its own version. That design only holds if a driver's shipped
  * code is a function of that driver alone. A cross-driver type edge breaks
  * three things at once:

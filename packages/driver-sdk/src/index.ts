@@ -94,6 +94,16 @@ export type {
 
 // === Native-dialog file IO (shared with driver UI) ===
 export { fileCommands } from './ipc/fileCommands';
+// Host event rail bridge (form-split F4): driver UI listens to host broadcasts
+// through the app's EventChannel port, never the host runtime directly.
+export {
+  bindHostEventListener,
+  listenHostEvent,
+  unbindHostEventListener,
+  type HostEventHandler,
+  type HostEventListener,
+  type HostEventPayload,
+} from './ipc/hostEventBridge';
 export type { OpenedBinaryFile } from './ipc/fileCommands';
 
 // === Driver settings helpers (pure) ===

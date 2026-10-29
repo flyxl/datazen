@@ -4,8 +4,8 @@
  *
  * Ensures the application semver stays in sync across:
  *   - package.json
- *   - src-tauri/Cargo.toml
- *   - src-tauri/tauri.conf.json
+ *   - apps/desktop/src-tauri/Cargo.toml
+ *   - apps/desktop/src-tauri/tauri.conf.json
  *
  * Run: node scripts/check-version-consistency.mjs
  * Exit 0 when all match; exit 1 with a diff report otherwise.
@@ -26,16 +26,16 @@ const VERSION_SOURCES = [
     },
   },
   {
-    label: 'src-tauri/Cargo.toml',
-    path: resolve(ROOT, 'src-tauri/Cargo.toml'),
+    label: 'apps/desktop/src-tauri/Cargo.toml',
+    path: resolve(ROOT, 'apps/desktop/src-tauri/Cargo.toml'),
     extract(text) {
       const match = text.match(/^version\s*=\s*"([^"]+)"/m);
       return match?.[1] ?? null;
     },
   },
   {
-    label: 'src-tauri/tauri.conf.json',
-    path: resolve(ROOT, 'src-tauri/tauri.conf.json'),
+    label: 'apps/desktop/src-tauri/tauri.conf.json',
+    path: resolve(ROOT, 'apps/desktop/src-tauri/tauri.conf.json'),
     extract(text) {
       const parsed = JSON.parse(text);
       return parsed.version ?? null;

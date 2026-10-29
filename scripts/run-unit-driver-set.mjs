@@ -3,7 +3,7 @@ import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
 /**
  * Run the Host unit suite (vitest) under an explicit driver set.
  *
- * Why this exists: the frontend codegen files (`src/extensions/generated.ts`
+ * Why this exists: the frontend codegen files (`packages/frontend/src/extensions/generated.ts`
  * and friends) are gitignored, so "which driver set am I type-checking and
  * testing" is invisible in CI logs and silently depends on whatever ran
  * last. `pnpm test:unit` therefore only ever exercised `basic`, and a driver
@@ -34,7 +34,7 @@ import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
  * ## Scope narrowing (codegen-sensitive files only)
  *
  * The vitest leg does NOT re-run the whole suite. A test can only observe the
- * driver set through `src/extensions/generated.ts`, so the run is narrowed to
+ * driver set through `packages/frontend/src/extensions/generated.ts`, so the run is narrowed to
  * the test files whose module graphs execute that file — selected at run time
  * by `select-codegen-sensitive-tests.mjs` from the same `include` globs this
  * suite collects. Everything else runs byte-identical code under `all` and is
@@ -105,10 +105,10 @@ export function parseUnitDriverSetArgs(argv = process.argv.slice(2), env = proce
  * byte-identical on Windows, macOS and Linux (no pnpm.cmd re-parse, no shell
  * quoting of the driver set).
  *
- *  1. `resolve-drivers --codegen-only` writes `src/extensions/generated.ts`,
+ *  1. `resolve-drivers --codegen-only` writes `packages/frontend/src/extensions/generated.ts`,
  *     so vitest imports the driver set it is about to be judged against.
- *  2. `generate-builtin-locales` writes `src/locales/builtinLocales.ts`, which
- *     `src/locales/index.ts` imports **statically**. On a fresh clone that file
+ *  2. `generate-builtin-locales` writes `packages/frontend/src/locales/builtinLocales.ts`, which
+ *     `packages/frontend/src/locales/index.ts` imports **statically**. On a fresh clone that file
  *     does not exist — it is gitignored codegen — so without this step vitest
  *     dies at import time with `Failed to resolve import "./builtinLocales"`.
  *     Measured on feat/platform-p0 @ 7559759b7: omitting it turns 125 of 556

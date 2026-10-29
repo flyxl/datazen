@@ -1,0 +1,404 @@
+//! Unified SQLite persistence for workflows, dashboards, widgets, and widget runs.
+//!
+//! File: `{data_dir}/datazen.sqlite`
+
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+
+use chrono::Utc;
+use rusqlite::{params, Connection};
+use thiserror::Error;
+pub const APP_DB_FILE: &str = "datazen.sqlite";
+/// v6 = F1 NativeTool 删除的防御性 purge（nativeToolProbe 行清理）。
+/// 常量此前停在 5（v6 落地时未同步），恢复 CI 可达后由版本环断言抓出。
+pub const SCHEMA_VERSION: i32 = 6;
+pub const MAX_RUN_ROWS: usize = datazen::dashboard::execute::MAX_RUN_ROWS;
+
+/// 历史遗留的桌面本地组织 id（**不是**规范值）。
+///
+/// 2026-10-09 引入 `jobs` 表的那次提交里，迁移三件套与启动期恢复扫描把
+/// `"datazen-local"` 写死成了组织 id，而桌面的规范组织 id 是
+/// [`crate::platform::LOCAL_ORGANIZATION_ID`]（`"datazen-desktop-local"`）。
+/// 两个值落在 `jobs.organization_id` 的同一列上 ⇒ 同一张表里落着两套组织。
+///
+/// v5 迁移把旧行并回规范值；本常量只用于**识别旧行**，不得用于写入。
+const LEGACY_LOCAL_ORGANIZATION_ID: &str = "datazen-local";
+
+const JOB_SCHEMA_V2: &str = r#"
+CREATE TABLE jobs (
+  job_id TEXT PRIMARY KEY NOT NULL,
+  organization_id TEXT NOT NULL,
+  owner_principal_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('queued','running','succeeded','failed','cancelled')),
+  state_version INTEGER NOT NULL CHECK (state_version > 0),
+  stage TEXT,
+  owner_json TEXT NOT NULL,
+  plan_json TEXT NOT NULL,
+  execution_ids_json TEXT NOT NULL DEFAULT '[]',
+  artifact_ids_json TEXT NOT NULL DEFAULT '[]',
+  progress_json TEXT NOT NULL,
+  effect_outcome TEXT,
+  cancel_requested INTEGER NOT NULL DEFAULT 0 CHECK (cancel_requested IN (0,1)),
+  pending_verification_reason TEXT,
+  result_error_code TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  worker_id TEXT,
+  claim_stage_id TEXT,
+  claim_expires_at TEXT,
+  claim_generation INTEGER NOT NULL DEFAULT 0 CHECK (claim_generation >= 0),
+  cancel_requested_at TEXT,
+  consumed_plan_id TEXT,
+  CONSTRAINT ck_jobs_claim_pair CHECK ((worker_id IS NULL) = (claim_expires_at IS NULL)),
+  CONSTRAINT ck_jobs_running_claim CHECK (state <> 'running' OR worker_id IS NOT NULL),
+  UNIQUE (organization_id, consumed_plan_id)
+);
+CREATE INDEX idx_jobs_list ON jobs (organization_id, created_at, job_id);
+CREATE INDEX idx_jobs_recovery ON jobs (organization_id, state, updated_at);
+CREATE INDEX idx_jobs_claim_expiry ON jobs (claim_expires_at) WHERE state = 'running';
+
+CREATE TABLE job_idempotency_receipts (
+  organization_id TEXT NOT NULL,
+  owner_principal_id TEXT NOT NULL,
+  idempotency_key_hash TEXT NOT NULL,
+  request_digest TEXT NOT NULL,
+  receipt_projection TEXT NOT NULL,
+  job_id TEXT NOT NULL REFERENCES jobs(job_id) ON DELETE CASCADE,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (organization_id, owner_principal_id, idempotency_key_hash)
+);
+
+CREATE TABLE job_stages (
+  job_id TEXT NOT NULL REFERENCES jobs(job_id) ON DELETE CASCADE,
+  stage_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  claimed_by TEXT,
+  execution_ids_json TEXT NOT NULL DEFAULT '[]',
+  started_at TEXT,
+  finished_at TEXT,
+  PRIMARY KEY (job_id, stage_id)
+);
+
+CREATE TABLE job_commit_boundaries (
+  job_id TEXT NOT NULL REFERENCES jobs(job_id) ON DELETE CASCADE,
+  sequence INTEGER NOT NULL,
+  boundary_json TEXT NOT NULL,
+  PRIMARY KEY (job_id, sequence)
+);
+
+CREATE TABLE job_checkpoints (
+  job_id TEXT NOT NULL REFERENCES jobs(job_id) ON DELETE CASCADE,
+  state_version INTEGER NOT NULL,
+  checkpoint_json TEXT NOT NULL,
+  PRIMARY KEY (job_id, state_version)
+);
+
+CREATE TABLE job_result_details (
+  job_id TEXT PRIMARY KEY NOT NULL REFERENCES jobs(job_id) ON DELETE CASCADE,
+  plan_id TEXT,
+  plan_digest TEXT,
+  selection_revision INTEGER,
+  recovery_json TEXT
+);
+
+CREATE TABLE job_domain_results (
+  job_id TEXT NOT NULL REFERENCES jobs(job_id) ON DELETE CASCADE,
+  stage_id TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  PRIMARY KEY (job_id, stage_id)
+);
+
+CREATE TABLE job_artifact_refs (
+  job_id TEXT NOT NULL REFERENCES jobs(job_id) ON DELETE CASCADE,
+  artifact_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  PRIMARY KEY (job_id, artifact_id)
+);
+CREATE INDEX idx_job_artifact_expiry ON job_artifact_refs (expires_at);
+"#;
+
+#[derive(Debug, Error)]
+pub enum AppDbError {
+    #[error("SQLite error: {0}")]
+    Sqlite(#[from] rusqlite::Error),
+
+    #[error("Not found: {0}")]
+    NotFound(String),
+
+    #[error("Validation error: {0}")]
+    Validation(String),
+
+    #[error("Workflow in use by dashboards: {0}")]
+    WorkflowInUse(String),
+
+    #[error("{0}")]
+    Other(String),
+}
+
+pub struct AppDb {
+    db_path: PathBuf,
+    conn: Mutex<Connection>,
+}
+
+impl AppDb {
+    pub fn open(data_dir: &Path) -> Result<Arc<Self>, AppDbError> {
+        let db_path = data_dir.join(APP_DB_FILE);
+        if let Some(parent) = db_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| AppDbError::Other(e.to_string()))?;
+        }
+        let conn = Connection::open(&db_path)?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
+        conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")?;
+        let db = Arc::new(Self {
+            db_path,
+            conn: Mutex::new(conn),
+        });
+        db.init_schema()?;
+        Ok(db)
+    }
+
+    #[cfg(test)]
+    pub fn open_in_memory() -> Result<Arc<Self>, AppDbError> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+        let db = Arc::new(Self {
+            db_path: PathBuf::from(":memory:"),
+            conn: Mutex::new(conn),
+        });
+        db.init_schema()?;
+        Ok(db)
+    }
+
+    pub fn db_path(&self) -> &Path {
+        &self.db_path
+    }
+
+    fn with_conn<T, F>(&self, f: F) -> Result<T, AppDbError>
+    where
+        F: FnOnce(&Connection) -> Result<T, AppDbError>,
+    {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| AppDbError::Other(format!("app db lock poisoned: {e}")))?;
+        f(&conn)
+    }
+
+    pub(super) fn with_conn_mut<T, F>(&self, f: F) -> Result<T, AppDbError>
+    where
+        F: FnOnce(&mut Connection) -> Result<T, AppDbError>,
+    {
+        let mut conn = self
+            .conn
+            .lock()
+            .map_err(|e| AppDbError::Other(format!("app db lock poisoned: {e}")))?;
+        f(&mut conn)
+    }
+
+    fn init_schema(&self) -> Result<(), AppDbError> {
+        self.with_conn_mut(|conn| {
+            conn.execute_batch(
+                r#"
+                CREATE TABLE IF NOT EXISTS schema_migrations (
+                  version INTEGER PRIMARY KEY NOT NULL,
+                  applied_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS workflows (
+                  id TEXT PRIMARY KEY NOT NULL,
+                  name TEXT NOT NULL,
+                  description TEXT NOT NULL DEFAULT '',
+                  visibility TEXT NOT NULL DEFAULT 'user'
+                    CHECK (visibility IN ('user', 'dashboardHidden')),
+                  definition_yaml TEXT NOT NULL,
+                  updated_at TEXT NOT NULL,
+                  created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_workflows_visibility
+                  ON workflows(visibility);
+
+                CREATE TABLE IF NOT EXISTS dashboards (
+                  id TEXT PRIMARY KEY NOT NULL,
+                  name TEXT NOT NULL,
+                  created_at TEXT NOT NULL,
+                  updated_at TEXT NOT NULL,
+                  layout_cols INTEGER NOT NULL DEFAULT 12,
+                  layout_row_height INTEGER NOT NULL DEFAULT 80,
+                  enabled INTEGER NOT NULL DEFAULT 1,
+                  refresh_paused INTEGER NOT NULL DEFAULT 0
+                );
+
+                CREATE TABLE IF NOT EXISTS widgets (
+                  id TEXT PRIMARY KEY NOT NULL,
+                  dashboard_id TEXT NOT NULL REFERENCES dashboards(id) ON DELETE CASCADE,
+                  title TEXT NOT NULL,
+                  workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE RESTRICT,
+                  view_mode TEXT NOT NULL CHECK (view_mode IN ('chart', 'table')),
+                  chart_config_json TEXT,
+                  layout_x INTEGER NOT NULL,
+                  layout_y INTEGER NOT NULL,
+                  layout_w INTEGER NOT NULL,
+                  layout_h INTEGER NOT NULL,
+                  refresh_mode TEXT NOT NULL
+                    CHECK (refresh_mode IN ('manual', 'onOpen', 'interval')),
+                  refresh_sec INTEGER,
+                  alert_json TEXT,
+                  enabled INTEGER NOT NULL DEFAULT 1,
+                  sort_order INTEGER NOT NULL DEFAULT 0,
+                  created_at TEXT NOT NULL,
+                  updated_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_widgets_dashboard
+                  ON widgets(dashboard_id, sort_order);
+                CREATE INDEX IF NOT EXISTS idx_widgets_workflow
+                  ON widgets(workflow_id);
+
+                CREATE TABLE IF NOT EXISTS widget_runs (
+                  id TEXT PRIMARY KEY NOT NULL,
+                  dashboard_id TEXT NOT NULL,
+                  widget_id TEXT NOT NULL REFERENCES widgets(id) ON DELETE CASCADE,
+                  workflow_id TEXT NOT NULL,
+                  started_at TEXT NOT NULL,
+                  finished_at TEXT NOT NULL,
+                  status TEXT NOT NULL CHECK (status IN ('ok', 'error', 'timeout')),
+                  error TEXT,
+                  row_count INTEGER NOT NULL DEFAULT 0,
+                  columns_json TEXT NOT NULL,
+                  rows_json TEXT NOT NULL,
+                  variables_json TEXT,
+                  alert_fired INTEGER,
+                  alert_value REAL
+                );
+                CREATE INDEX IF NOT EXISTS idx_widget_runs_widget_started
+                  ON widget_runs(widget_id, started_at DESC);
+
+                CREATE TABLE IF NOT EXISTS widget_latest_run (
+                  widget_id TEXT PRIMARY KEY NOT NULL REFERENCES widgets(id) ON DELETE CASCADE,
+                  run_id TEXT NOT NULL REFERENCES widget_runs(id) ON DELETE CASCADE,
+                  started_at TEXT NOT NULL,
+                  status TEXT NOT NULL
+                );
+                "#,
+            )?;
+
+            let tx =
+                conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            let current: i32 = tx.query_row(
+                "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
+                [],
+                |row| row.get(0),
+            )?;
+            if current < 1 {
+                tx.execute(
+                    "INSERT INTO schema_migrations (version, applied_at) VALUES (1, ?1)",
+                    params![Utc::now().to_rfc3339()],
+                )?;
+            }
+            if current < 2 {
+                tx.execute_batch(JOB_SCHEMA_V2)?;
+                tx.execute(
+                    "INSERT INTO schema_migrations (version, applied_at) VALUES (2, ?1)",
+                    params![Utc::now().to_rfc3339()],
+                )?;
+            }
+            if current < 3 {
+                tx.execute_batch("CREATE TABLE monitor_schedule_grants (id TEXT PRIMARY KEY NOT NULL, dashboard_id TEXT NOT NULL, widget_id TEXT NOT NULL, metadata_json TEXT NOT NULL); CREATE INDEX idx_monitor_grant_widget ON monitor_schedule_grants(dashboard_id, widget_id);")?;
+                tx.execute("INSERT INTO schema_migrations(version, applied_at) VALUES (3, ?1)", params![Utc::now().to_rfc3339()])?;
+            }
+            if current < 4 {
+                tx.execute_batch("ALTER TABLE jobs ADD COLUMN claim_client_instance_id TEXT;")?;
+                tx.execute("INSERT INTO schema_migrations(version,applied_at) VALUES (4,?1)", params![Utc::now().to_rfc3339()])?;
+            }
+            if current < 5 {
+                // v5：把「历史遗留的桌面本地组织 id」并回**规范值**。
+                //
+                // 桌面是单租户：一份 app data 就是一个组织，组织轴上**只能**有一个值。
+                // 旧实现里迁移三件套与启动期恢复扫描用了另一个字面量，于是
+                // `jobs.organization_id` 同一列上落着两套组织 ⇒ 列举 / 恢复扫描
+                // 按组织过滤时，两类任务互不可见。
+                //
+                // `jobs` 上有 `UNIQUE (organization_id, consumed_plan_id)`：若同一
+                // `consumed_plan_id` 在两个组织下都存在，直接 UPDATE 会撞唯一约束 ⇒
+                // 迁移事务失败 ⇒ **应用起不来**。因此 UPDATE 只作用于「改过去之后
+                // 不会撞」的行；撞上的行留在原地——它本来就读不出来（列举按组织过滤），
+                // 不比现在更糟。
+                tx.execute(
+                    "UPDATE jobs SET organization_id = ?1 \
+                     WHERE organization_id = ?2 \
+                       AND (consumed_plan_id IS NULL \
+                            OR NOT EXISTS (SELECT 1 FROM jobs t \
+                                            WHERE t.organization_id = ?1 \
+                                              AND t.consumed_plan_id = jobs.consumed_plan_id))",
+                    params![
+                        crate::platform::LOCAL_ORGANIZATION_ID,
+                        LEGACY_LOCAL_ORGANIZATION_ID
+                    ],
+                )?;
+                // 幂等回执的主键含组织：不改就成了孤儿（永远查不到）。
+                //
+                // 幂等哈希把组织算进了进去（`jobs/codec.rs::idempotency_hash`），
+                // 因此这里**本不该**撞主键；仍加同样的防御谓词，代价为零，
+                // 换来的是「迁移永远不把应用卡在起不来的状态」这条不变量。
+                tx.execute(
+                    "UPDATE job_idempotency_receipts SET organization_id = ?1 \
+                     WHERE organization_id = ?2 \
+                       AND NOT EXISTS (SELECT 1 FROM job_idempotency_receipts t \
+                                        WHERE t.organization_id = ?1 \
+                                          AND t.owner_principal_id = job_idempotency_receipts.owner_principal_id \
+                                          AND t.idempotency_key_hash = job_idempotency_receipts.idempotency_key_hash)",
+                    params![
+                        crate::platform::LOCAL_ORGANIZATION_ID,
+                        LEGACY_LOCAL_ORGANIZATION_ID
+                    ],
+                )?;
+                tx.execute("INSERT INTO schema_migrations(version,applied_at) VALUES (5,?1)", params![Utc::now().to_rfc3339()])?;
+            }
+            if current < 6 {
+                // v6：NativeTool 删除（前端形态拆分方案 F1）的防御性 purge。
+                //
+                // `nativeToolProbe` 作业的内核词汇（NativeToolSelection / 冻结投影里的
+                // `nativeToolSelection` 字段豁免）已随 F1 删除；旧库里遗留的该 kind
+                // 行会在 durable 投影校验时被拒（字段超出投影），也可能被恢复扫描
+                // 标记成永远无法人工核验的僵尸——NativeTool 的 IPC 面已不存在。
+                // 产品从未使用该能力（探针登记表默认空即拒绝一切），记录本身无价值：
+                // 直接删除行，子表（receipts / stages / boundaries / checkpoints /
+                // result_details / domain_results / artifact_refs）全部 ON DELETE CASCADE。
+                tx.execute("DELETE FROM jobs WHERE kind = 'nativeToolProbe'", [])?;
+                tx.execute("INSERT INTO schema_migrations(version,applied_at) VALUES (6,?1)", params![Utc::now().to_rfc3339()])?;
+            }
+            tx.commit()?;
+            Ok(())
+        })
+    }
+
+    // ── Workflows ─────────────────────────────────────────────────────────
+}
+
+mod dashboards;
+pub(crate) mod jobs;
+mod monitor_grants;
+mod runs;
+mod workflows;
+
+#[cfg(test)]
+#[path = "app_db_tests.rs"]
+mod tests;
+
+#[cfg(test)]
+#[path = "app_db_jobs_tests.rs"]
+mod job_tests;
+#[cfg(test)]
+#[path = "app_db_restore_job_tests.rs"]
+mod restore_job_tests;
+
+#[cfg(test)]
+#[path = "app_db_org_unify_tests.rs"]
+mod org_unify_tests;
+
+// Re-exported so the paths `app_db::X` keep resolving for `store/mod.rs`
+// and anything else that names these types through this module.
+pub use dashboards::{DashboardRecord, WidgetRecord};
+pub use runs::WidgetRunRecord;
+pub use workflows::{WorkflowRecord, WorkflowVisibility};

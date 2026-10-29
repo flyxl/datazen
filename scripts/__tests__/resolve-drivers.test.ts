@@ -228,7 +228,7 @@ describe('drivers-registry.json snapshot', () => {
 describe('resolveDriverIconImport', () => {
   it('resolves badges next to the meta file', () => {
     const resolved = resolveDriverIconImport(
-      '../../packages/drivers/postgres/ui/meta',
+      '../../../../packages/drivers/postgres/ui/meta',
       'postgresql',
     );
     expect(resolved?.importPath).toContain('drivers/postgres/ui/icons/postgresql.svg?url');
@@ -236,7 +236,7 @@ describe('resolveDriverIconImport', () => {
 
   it('falls back to the driver ui/ dir when meta sits in a nested feature dir', () => {
     const resolved = resolveDriverIconImport(
-      '../../packages/drivers/redis/ui/shared/meta',
+      '../../../../packages/drivers/redis/ui/shared/meta',
       'redis',
     );
     expect(resolved?.importPath).toContain('drivers/redis/ui/icons/redis.svg?url');
@@ -244,7 +244,7 @@ describe('resolveDriverIconImport', () => {
 
   it('returns null for dbTypes without a badge SVG', () => {
     expect(
-      resolveDriverIconImport('../../packages/drivers/redis/ui/shared/meta', 'no-such-db-type'),
+      resolveDriverIconImport('../../../../packages/drivers/redis/ui/shared/meta', 'no-such-db-type'),
     ).toBeNull();
   });
 });

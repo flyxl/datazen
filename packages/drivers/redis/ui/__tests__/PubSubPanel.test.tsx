@@ -19,7 +19,7 @@ interface PubSubEventPayload {
 
 // The listener the panel registers, captured so a test can push an event
 // through the real subscription path.
-let pubSubHandler: ((event: { payload: PubSubEventPayload }) => void) | undefined;
+let pubSubHandler: ((payload: PubSubEventPayload) => void) | undefined;
 
 const listenMock = vi.hoisted(() => vi.fn());
 
@@ -41,8 +41,9 @@ vi.mock('@datazen/ui', async (importOriginal) => ({
   }),
 }));
 
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: listenMock,
+vi.mock('@datazen/driver-sdk', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@datazen/driver-sdk')>()),
+  listenHostEvent: listenMock,
 }));
 
 const mockInvoke = vi.fn().mockResolvedValue(undefined);
@@ -59,8 +60,9 @@ describe('PubSubPanel', () => {
   beforeEach(() => {
     pubSubHandler = undefined;
     listenMock.mockReset();
+    // Form-split F4: the bridge passes the RAW payload (no Tauri envelope).
     listenMock.mockImplementation(
-      async (name: string, handler: (event: { payload: PubSubEventPayload }) => void) => {
+      async (name: string, handler: (payload: PubSubEventPayload) => void) => {
         if (name === 'redis-pubsub-message') {
           pubSubHandler = handler;
         }
@@ -227,13 +229,11 @@ describe('PubSubPanel', () => {
 
     await act(async () => {
       pubSubHandler?.({
-        payload: {
-          connectionId: 'conn-1',
-          subscriptionId: 'sub-1',
-          channel: 'news',
-          payload: 'hello from redis',
-          ts: 1_700_000_000_000,
-        },
+        connectionId: 'conn-1',
+        subscriptionId: 'sub-1',
+        channel: 'news',
+        payload: 'hello from redis',
+        ts: 1_700_000_000_000,
       });
     });
 
@@ -247,13 +247,11 @@ describe('PubSubPanel', () => {
 
     await act(async () => {
       pubSubHandler?.({
-        payload: {
-          connectionId: 'conn-other',
-          subscriptionId: 'sub-2',
-          channel: 'news',
-          payload: 'not mine',
-          ts: 1_700_000_000_001,
-        },
+        connectionId: 'conn-other',
+        subscriptionId: 'sub-2',
+        channel: 'news',
+        payload: 'not mine',
+        ts: 1_700_000_000_001,
       });
     });
 

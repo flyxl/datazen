@@ -115,7 +115,7 @@ async function readRuntimeCommand<T>(
   const profiles = await probeCall('profiles', () =>
     invokeBackend<
       Array<{ connectionId: string; configRevision: number | string; enabled: boolean }>
-    >('platform_list_profiles', { request: {} }),
+    >('list_connections', { request: {} }),
   );
   const profile = profiles.find((entry) => entry.connectionId === connectionId && entry.enabled);
   if (!profile) throw new RuntimeMetadataProbeError('profiles', 'profileUnavailable');
@@ -181,7 +181,7 @@ async function readRuntimeCommand<T>(
   }
   for (const artifactId of completed.artifactIds) {
     const chunk = await probeCall('artifactRead', () =>
-      invokeBackend<{ bytes: number[] }>('read_artifact_chunk', {
+      invokeBackend<{ bytes: number[] }>('read_artifact', {
         request: { artifactId, chunkIndex: '0' },
       }),
     );

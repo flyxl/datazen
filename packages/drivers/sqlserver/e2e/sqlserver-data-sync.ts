@@ -129,10 +129,10 @@ describe('SQL Server Data Sync identity insert (live)', () => {
     });
 
   const setSafeMode = async (enabled: boolean) => {
-    const settings = await invoke<Record<string, unknown>>('get_settings');
+    const settings = await invoke<Record<string, unknown>>('get_host_settings');
     if (originalSafeMode === null) originalSafeMode = settings.safeMode !== false;
     if ((settings.safeMode !== false) === enabled) return;
-    await invoke('save_settings', { settings: { ...settings, safeMode: enabled } });
+    await invoke('save_host_settings', { settings: { ...settings, safeMode: enabled } });
   };
 
   const saveAndConnect = async (id: string, name: string, schema: string): Promise<string> => {
@@ -185,9 +185,9 @@ describe('SQL Server Data Sync identity insert (live)', () => {
 
   const restoreSafeMode = async () => {
     if (originalSafeMode === null) return;
-    const settings = await invoke<Record<string, unknown>>('get_settings').catch(() => null);
+    const settings = await invoke<Record<string, unknown>>('get_host_settings').catch(() => null);
     if (!settings || (settings.safeMode !== false) === originalSafeMode) return;
-    await invoke('save_settings', {
+    await invoke('save_host_settings', {
       settings: { ...settings, safeMode: originalSafeMode },
     }).catch(() => undefined);
   };

@@ -113,7 +113,7 @@ const SITES: readonly Site[] = [
   {
     // `plain` variant, no `className` at either site.
     label: 'TunnelEditDialog hint',
-    file: 'src/windows/settings/TunnelEditDialog.tsx',
+    file: 'packages/frontend/src/windows/settings/TunnelEditDialog.tsx',
     count: 2,
     base: 'text-xs text-red-400',
     colour: 'text-danger',
@@ -121,7 +121,7 @@ const SITES: readonly Site[] = [
   {
     // `plain`, no `className` at either site.
     label: 'TunnelSettingsSection store error',
-    file: 'src/windows/settings/TunnelSettingsSection.tsx',
+    file: 'packages/frontend/src/windows/settings/TunnelSettingsSection.tsx',
     count: 2,
     base: 'text-xs text-red-400',
     colour: 'text-danger',
@@ -129,7 +129,7 @@ const SITES: readonly Site[] = [
   {
     // `plain`, no `className`.
     label: 'TunnelDeleteDialog',
-    file: 'src/windows/settings/TunnelDeleteDialog.tsx',
+    file: 'packages/frontend/src/windows/settings/TunnelDeleteDialog.tsx',
     count: 1,
     base: 'text-xs text-red-400',
     colour: 'text-danger',
@@ -137,7 +137,7 @@ const SITES: readonly Site[] = [
   {
     // `plain`, no `className`.
     label: 'TunnelTestDialog',
-    file: 'src/windows/settings/TunnelTestDialog.tsx',
+    file: 'packages/frontend/src/windows/settings/TunnelTestDialog.tsx',
     count: 1,
     base: 'text-xs text-red-400',
     colour: 'text-danger',
@@ -146,7 +146,7 @@ const SITES: readonly Site[] = [
     // `boxed` + `mt-3`; the call site restates no colour, so the variant's
     // background and border both survive — which is the point of defect 1.
     label: 'SaveTunnelDialog',
-    file: 'src/components/connection/SaveTunnelDialog.tsx',
+    file: 'packages/frontend/src/components/connection/SaveTunnelDialog.tsx',
     count: 1,
     base: 'mt-3 rounded-md border border-red-500/20 bg-red-500/10 p-2 text-xs text-red-400',
     colour: 'border-danger/20 bg-danger/10 text-danger',
@@ -154,7 +154,7 @@ const SITES: readonly Site[] = [
   {
     // `plain`, no `className` at either site.
     label: 'ConnectionAdvancedSettings div',
-    file: 'src/components/connection/ConnectionAdvancedSettings.tsx',
+    file: 'packages/frontend/src/components/connection/ConnectionAdvancedSettings.tsx',
     count: 2,
     base: 'text-xs text-red-400',
     colour: 'text-danger',
@@ -164,7 +164,7 @@ const SITES: readonly Site[] = [
     // Two call sites since 08 Step 10: the caller's apply error and the
     // "condition has no value" reason that blocks Apply. Same class set.
     label: 'FilterEditor',
-    file: 'src/components/FilterEditor.tsx',
+    file: 'packages/frontend/src/components/FilterEditor.tsx',
     count: 2,
     base: 'basis-full px-1 py-1 text-xs text-red-400',
     colour: 'text-danger',
@@ -174,7 +174,7 @@ const SITES: readonly Site[] = [
     // call site deliberately does NOT restate it: restating a class identical
     // to the variant's is what invites silent divergence later.
     label: 'NlFilterInput',
-    file: 'src/components/ai/NlFilterInput.tsx',
+    file: 'packages/frontend/src/components/ai/NlFilterInput.tsx',
     count: 1,
     base: 'pl-9 text-xs text-danger',
     colour: 'text-danger',
@@ -189,7 +189,7 @@ const SITES: readonly Site[] = [
     // track, GC budget), and the filter half of that toolbar moved again
     // into `TableFilterToolbar` (08, named views). The call site was moved
     // verbatim — class set included — so only the file it lives in changed.
-    file: 'src/windows/connection/TableFilterToolbar.tsx',
+    file: 'packages/frontend/src/windows/connection/TableFilterToolbar.tsx',
     count: 1,
     base: 'border-b border-red-500/30 bg-red-500/10 px-3 py-1 text-xs text-red-400',
     colour: 'bg-danger/10 border-danger/30 text-danger',
@@ -198,7 +198,7 @@ const SITES: readonly Site[] = [
     // `strip` + `py-2 text-danger`. Restating the variant's own value is inert
     // (tw-merge collapses the duplicate), so the rendered set is unchanged.
     label: 'WorkflowPage operation error',
-    file: 'src/windows/workflow/WorkflowPage.tsx',
+    file: 'packages/frontend/src/windows/workflow/WorkflowPage.tsx',
     count: 1,
     base: 'flex items-start gap-2 border-b border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300',
     colour: 'border-danger/20 bg-danger/10 text-danger',

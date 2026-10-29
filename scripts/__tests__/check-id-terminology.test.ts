@@ -45,18 +45,30 @@ describe('checkIdTerminology', () => {
   });
 
   it('suppresses allow-listed lines only when file and line both match', () => {
-    mkdirSync(join(root, 'src', 'commands'), { recursive: true });
-    const file = join(root, 'src', 'commands', 'schemaDiff.ts');
+    // The allow-list keys the historical comment by its F6 path under
+    // packages/frontend/src, so the fixture must mirror that layout exactly.
+    mkdirSync(join(root, 'packages/frontend/src', 'commands'), { recursive: true });
+    const file = join(root, 'packages/frontend/src', 'commands', 'schemaDiff.ts');
+    const runAtLayout = () => {
+      const errors: string[] = [];
+      const code = checkIdTerminology({
+        root,
+        dirs: ['packages/frontend/src'],
+        log: () => {},
+        error: (msg) => errors.push(String(msg)),
+      });
+      return { code, errors };
+    };
     // Mirrors the whitelisted historical-format comment in schemaDiff.ts.
     writeFileSync(
       file,
       "// v1 configs with configId are rejected.\nconst legacyPayload = { configId: 'old' };\n",
     );
-    const { code, errors } = run();
+    const { code, errors } = runAtLayout();
     expect(code).toBe(1); // line 2 carries the same token outside the allow-list
     expect(errors.join('\n')).toContain('schemaDiff.ts:2');
     // Same file, allow-listed line only → clean.
     writeFileSync(file, '// v1 configs with configId are rejected.\n');
-    expect(run().code).toBe(0);
+    expect(runAtLayout().code).toBe(0);
   });
 });

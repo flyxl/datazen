@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * Regression guard: the generated `src-tauri/src/driver_init.rs` must be
+ * Regression guard: the generated `apps/desktop/src-tauri/src/driver_init.rs` must be
  * byte-identical to what `rustfmt` would emit, for ANY driver set.
  *
  * HISTORY OF THE DEFECT THIS PINS
@@ -34,7 +34,7 @@
  * Every assertion targets the *real artifact file* that the *real CLI* wrote:
  * `resolve-drivers.mjs --codegen-only` is spawned as a subprocess against a
  * throwaway copy of the repository, and the test reads back
- * `<staged>/src-tauri/src/driver_init.rs` from disk. The goldens under
+ * `<staged>/apps/desktop/src-tauri/src/driver_init.rs` from disk. The goldens under
  * `fixtures/` are frozen recorded artifacts, checked in independently of the
  * template; the three rustfmt-free property tests re-derive the rule from
  * rustfmt's documented behaviour rather than from this repo's code, and the
@@ -70,7 +70,7 @@ import { withProbeLock } from './boundaryMutation';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '../..');
 const FIXTURE_DIR = join(HERE, 'fixtures');
-const ARTIFACT_REL = 'src-tauri/src/driver_init.rs';
+const ARTIFACT_REL = 'apps/desktop/src-tauri/src/driver_init.rs';
 
 /**
  * Driver-set arguments under test.
@@ -133,7 +133,7 @@ function readGolden(name) {
       `missing golden fixture ${path}\n` +
         `Regenerate it by running, for a set S:\n` +
         `  node scripts/resolve-drivers.mjs --codegen-only --drivers=<S>\n` +
-        `and copying src-tauri/src/driver_init.rs over the fixture.`,
+        `and copying apps/desktop/src-tauri/src/driver_init.rs over the fixture.`,
     );
   }
   return readFileSync(path, 'utf8');

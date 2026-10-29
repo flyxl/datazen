@@ -2,7 +2,7 @@
 
 > 状态：平台 DTO / ports / facade 已实现；P5 已把 `JobHost` 与 AppDb SQLite v2 接入 AppState，并接通 Schema Diff、Data Sync、Data Transfer 三件套的桌面 Job 生命周期。团队 server 与完整 Profile/ConnectionUseCases 仍未全部接线，不能把本机 Job adapter 当成团队服务仓储。
 >
-> **尚未完整接线的准确含义**：运行期 `JobHost` 已承载三件套的桌面 Job；Profile/ConnectionUseCases 仍不能从真实连接配置完整构造所需的 revision/credential 字段。`src-tauri/src/platform/adapter.rs` 的连接用例不能为缺失字段伪造值。
+> **尚未完整接线的准确含义**：运行期 `JobHost` 已承载三件套的桌面 Job；Profile/ConnectionUseCases 仍不能从真实连接配置完整构造所需的 revision/credential 字段。`apps/desktop/src-tauri/src/platform/adapter.rs` 的连接用例不能为缺失字段伪造值。
 >
 > 仍待实现：团队 `server` crate、完整 Profile/ConnectionUseCases adapter，以及各节明确标为目标设计的 HTTP/多 worker 行为。P5 桌面迁移三件套独立测试与冒烟测试已通过；本机 Job host 不提供服务端或多 worker 语义。
 > 读者：本文只定义包边界、端口签名、组装方式和护栏；DTO 语义、会话状态机、资源预算算法以既有文档为权威，本文不重复定义。标为「目标设计」的段落仍是契约，未随 P1 实现。
@@ -49,7 +49,7 @@
 
 ### 2.2 模块树
 
-> **现状注记（2026-10-27 复核）**：下面这棵 `modules/src/platform_api/src/` 树是 P1 阶段的落地形态，保留作迁移对照。此后契约层已再消解：ID / 上下文 / 错误 / `check_owner` / `Clock` 迁入 `modules/src/shared/`，请求 DTO 与用例端口在 `modules/src/application/`（`dto/`、`sessions.rs`、`target.rs`），端口 trait 分散至各自领域包（隧道 → `modules/src/tunnel/domain/`，NativeTool → `modules/src/jobs/domain/`，Profile → `modules/src/connection/domain/`，窄端口见 §4.10）。集中的 `PORT_TRAITS` 清单随迁移取消。
+> **现状注记（2026-10-27 复核）**：下面这棵 `modules/src/platform_api/src/` 树是 P1 阶段的落地形态，保留作迁移对照。此后契约层已再消解：ID / 上下文 / 错误 / `check_owner` / `Clock` 迁入 `modules/src/shared/`，请求 DTO 与用例端口在 `modules/src/application/`（`dto/`、`sessions.rs`、`target.rs`），端口 trait 分散至各自领域包（隧道 → `modules/src/tunnel/domain/`，Profile → `modules/src/connection/domain/`，窄端口见 §4.10；NativeTool 端口已随前端形态拆分方案 F1 删除）。集中的 `PORT_TRAITS` 清单随迁移取消。
 
 ```text
 modules/src/platform_api/src/（P1 历史形态，现 dispersed 至 shared / 领域包）
@@ -121,7 +121,7 @@ packages/backend-client/src/
 ```mermaid
 flowchart TD
     subgraph host[Host / 装配层]
-        TA[src-tauri<br/>Tauri adapter]
+        TA[apps/desktop/src-tauri<br/>Tauri adapter]
         SRV[server<br/>HTTP adapter]
         FE[src + packages/backend-client<br/>前端]
     end
@@ -181,14 +181,14 @@ flowchart TD
 | F-09 | ~~已退役（2026-10-26，D1.5）~~：`ai-api` 并入 `ai-providers` 后整体并入 `modules::ai`，主体不复存在；「AI 代码不得拖入 `tauri*` 或宿主」的约束由 F-14 对 `modules` 的断言继续承担 | 主体消失后规则空转，保留只会掩盖真正的边界 |
 | F-11 | `packages/infra` 的 normal + build 工作区依赖只允许自身；不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react`。改名与定位扩展见 §2.5.1 | 公共基础设施一旦依赖任一上层 crate 或平台传输，就从「垫底」退化成所有形态被迫共同链接的耦合中枢 |
 | F-13 | ~~已退役（2026-10-26，D6 Tunnel）~~：隧道机制已并入 `modules::tunnel`；其形态中立依赖由 F-14 的 modules 闭包统一检查 | 避免为 modules 内部 feature 保留一套与 modules 重复的 crate 级边界规则 |
-| F-14 | `modules` 的 normal + build 依赖闭包不含 src-tauri、`datazen`，也不含 `tauri*`、`axum`、`actix-web`、`warp`、`tonic`；`reqwest` 自 D1.5 起豁免——AI Provider 适配（出站 HTTP 客户端）随 ai feature 住在 `modules::ai::providers`，这是 2026-10-26 的用户决策，不是传输框架渗入 | 功能模块必须由自身 domain/application 契约承载，不能把桌面宿主、旧横向运行时或传输实现带回模块 crate |
+| F-14 | `modules` 的 normal + build 依赖闭包不含 apps/desktop/src-tauri、`datazen`，也不含 `tauri*`、`axum`、`actix-web`、`warp`、`tonic`；`reqwest` 自 D1.5 起豁免——AI Provider 适配（出站 HTTP 客户端）随 ai feature 住在 `modules::ai::providers`，这是 2026-10-26 的用户决策，不是传输框架渗入 | 功能模块必须由自身 domain/application 契约承载，不能把桌面宿主、旧横向运行时或传输实现带回模块 crate |
 **F-01 的作用域同时覆盖两侧：manifest 声明边与解析闭包。** 上面"crate 依赖闭包"若按字面只理解为 `cargo metadata` 的 `resolve` 图，是**不够的**：那个图是 **feature-resolved 的**，只含当前 feature 解析下真正被链接的边。无人启用的 feature 背后的 optional 依赖根本不在 `resolve.nodes[].deps[]` 里，任何闭包遍历都看不见它。因此 F-01 也约束 `Cargo.toml` 的**声明边**——声明了、但当前 feature 解析不链接的边，同样算违反。两侧任一出现即违规。
 
 **F-01 两侧都已是阻断判定；主体是 `packages/drivers/*`，两侧都按主体范围判定。** 宿主 `datazen` 自己声明 `tauri-plugin-webdriver`（Tauri 自己的 webdriver 插件，宿主本来就该有）是**合法的**：它不在 `packages/drivers/*` 里，因此声明边那一侧只把它报成 advisory，不判 violation。驱动的豁免必须是**显式**的：规则表里的 `exemptions` 列表（成员 + 家族 + 理由）为空即无豁免，且过期条目（成员不是本规则主体、或家族不是本规则禁的）直接报 **error**——它什么也没保护，却看起来像在保护。
 
-这条不是修辞上的严谨，是实测出来的盲点：`packages/drivers/redis/Cargo.toml` 曾声明的 `tauri = { version = "2", optional = true }` 与 `src-tauri/Cargo.toml` 的 `tauri-plugin-webdriver = { version = "0.2", optional = true }` 都不在解析图里，只读闭包的守卫对它们完全失明。判定方式与告警含义见 §8.2 注 3。
+这条不是修辞上的严谨，是实测出来的盲点：`packages/drivers/redis/Cargo.toml` 曾声明的 `tauri = { version = "2", optional = true }` 与 `apps/desktop/src-tauri/Cargo.toml` 的 `tauri-plugin-webdriver = { version = "0.2", optional = true }` 都不在解析图里，只读闭包的守卫对它们完全失明。判定方式与告警含义见 §8.2 注 3。
 
-**redis 驱动已不再有任何 `tauri` 依赖。** 它的 Pub/Sub 事件出口原先经一个 Tauri 插件注入（驱动 crate 内的 `plugin.rs` + `build.rs`，均已删除），这正是 `tauri` 进了该驱动可选依赖闭包的唯一原因：server 形态要支持 Redis Pub/Sub 就得启用 `tauri-plugin` feature，把 Tauri 拖进 server 的依赖闭包，直接撞上 §2.2 对 server 的禁令 —— **Pub/Sub 曾经是「桌面独占」能力，根因是注入通道的形态，不是能力本身。** 注入通道改成形态中立的 `inventory` 事件出口注册后（契约见 `packages/driver-api/src/event_sink.rs`：`DriverEventOutlet` / `DriverEventSink` / `register_event_outlet!` / `iter_event_outlets()`），驱动的 `tauri` 可选依赖、`tauri-plugin` 构建依赖、`build.rs` 与插件 ACL 目录一并删除：**redis 驱动的解析闭包与声明边都不再触及 `tauri*`**，同一份驱动 crate 可被 server 形态复用。宿主侧的桌面实现见 `src-tauri/src/platform/event_sink.rs`。
+**redis 驱动已不再有任何 `tauri` 依赖。** 它的 Pub/Sub 事件出口原先经一个 Tauri 插件注入（驱动 crate 内的 `plugin.rs` + `build.rs`，均已删除），这正是 `tauri` 进了该驱动可选依赖闭包的唯一原因：server 形态要支持 Redis Pub/Sub 就得启用 `tauri-plugin` feature，把 Tauri 拖进 server 的依赖闭包，直接撞上 §2.2 对 server 的禁令 —— **Pub/Sub 曾经是「桌面独占」能力，根因是注入通道的形态，不是能力本身。** 注入通道改成形态中立的 `inventory` 事件出口注册后（契约见 `packages/driver-api/src/event_sink.rs`：`DriverEventOutlet` / `DriverEventSink` / `register_event_outlet!` / `iter_event_outlets()`），驱动的 `tauri` 可选依赖、`tauri-plugin` 构建依赖、`build.rs` 与插件 ACL 目录一并删除：**redis 驱动的解析闭包与声明边都不再触及 `tauri*`**，同一份驱动 crate 可被 server 形态复用。宿主侧的桌面实现见 `apps/desktop/src-tauri/src/platform/event_sink.rs`。
 
 **F-09 的两条实现路径，缺一不可。** 一条是依赖闭包：`forbiddenLayers: ['host']` 与
 `forbiddenCrates`（F-09 写死 `['tauri']`），按 `cargo metadata` 的解析图闭包遍历。另一条是
@@ -211,7 +211,7 @@ flowchart TD
 ```toml
 [workspace]
 members = [
-    "src-tauri",
+    "apps/desktop/src-tauri",
     "packages/driver-api",
     "packages/infra",
     "modules",
@@ -231,7 +231,7 @@ datazen = { path = "modules", default-features = false }
 Wave-2 在此基础上又新增 `packages/ai-providers` 成员（AI provider 协议适配实现），其边界由
 F-09 断言。`packages/ai-providers` **不在**「禁服务端框架进入内核」的作用域内：它按定义就是一个
 HTTP *客户端*适配层（依赖 `reqwest` 访问各 provider 的端点），那条约束禁的是服务端框架进入内核，
-不是禁内核发请求。**接入方式是消费方写显式 `path`**：`src-tauri/Cargo.toml` 顶部以
+不是禁内核发请求。**接入方式是消费方写显式 `path`**：`apps/desktop/src-tauri/Cargo.toml` 顶部以
 `datazen-ai-providers = { path = "../packages/ai-providers" }` 引入（与 Wave-1 各平台 crate 同风格，
 不是 `{ workspace = true }`，因为根 `[workspace.dependencies]` 里没有这一条）。
 
@@ -240,7 +240,7 @@ Workspace App 本身是一个通用 feature，其内核（manifest 规则、包�
 已安装包注册表、URI 语法与路由判定）不再自成一个包，而是并入 `modules`，
 成为 `modules::workspace_apps` 模块——与其它共享 feature（ai / workflow / dashboard /
 export / backup）并列。根 `Cargo.toml` 的 `members` 相应移除 `packages/workspace-apps`，
-`src-tauri/Cargo.toml` 移除 `datazen-workspace-apps = { path = "../packages/workspace-apps" }`，
+`apps/desktop/src-tauri/Cargo.toml` 移除 `datazen-workspace-apps = { path = "../packages/workspace-apps" }`，
 改由既有的 `datazen` 依赖承接。其边界由 F-14 断言（见 §2.4）。
 
 #### 2.5.1 公共基础设施层 `packages/infra`（已实现；2026-10-26 由 `platform-infra` 改名，D1.5）
@@ -449,7 +449,7 @@ modules/src/execution/runtime/connection/
 
 ## 4. 端口 trait（已实现；契约分散于各领域包，见下方落地形态）
 
-> 落地形态（2026-10-27 复核）：端口 trait 随消费者分散在各领域包与 `modules/src/application/`——隧道端口在 `modules/src/tunnel/domain/`，NativeTool 在 `modules/src/jobs/domain/`，Profile 系在 `modules/src/connection/domain/`，窄端口见 §4.10；P1 阶段集中的 `PORT_TRAITS` 清单（原 `platform_api/src/ports/inventory.rs`）随契约层消解而取消，端口归属以各领域包模块源码为准。`#[async_trait]` + `Send + Sync + 'static` + `Arc<dyn X>` 注入，`PortError` 七个变体只派生 `Debug` 与 `thiserror::Error`（刻意不实现 `Serialize`，用例测试 `the_port_error_has_no_wire_shape_of_its_own` 守住）。`application` 与 `runtime` 通过 `pub use datazen::platform_api::…` 再导出，不重复定义。**端口 trait 本身只定义签名，不含任何实现**——**带副作用或带传输**的实现由端口的提供方 crate 各自承担，不得回填进 `platform-api`（否则契约与实现耦合，`platform-api` 的平台中立性即被破坏），也不得让两个提供方为同一端口各写一份。**例外说明**：只有形态中立、无副作用、无传输的进程内原语实现可以随端口一起提供，因为它没有第二份实现可写（先例 `ports::budget::pool_ledger`，见 §4.9 的 `Clock`）；其余实现一律不得回填。
+> 落地形态（2026-10-27 复核）：端口 trait 随消费者分散在各领域包与 `modules/src/application/`——隧道端口在 `modules/src/tunnel/domain/`，Profile 系在 `modules/src/connection/domain/`，窄端口见 §4.10（NativeTool 端口已随前端形态拆分方案 F1 删除）；P1 阶段集中的 `PORT_TRAITS` 清单（原 `platform_api/src/ports/inventory.rs`）随契约层消解而取消，端口归属以各领域包模块源码为准。`#[async_trait]` + `Send + Sync + 'static` + `Arc<dyn X>` 注入，`PortError` 七个变体只派生 `Debug` 与 `thiserror::Error`（刻意不实现 `Serialize`，用例测试 `the_port_error_has_no_wire_shape_of_its_own` 守住）。`application` 与 `runtime` 通过 `pub use datazen::platform_api::…` 再导出，不重复定义。**端口 trait 本身只定义签名，不含任何实现**——**带副作用或带传输**的实现由端口的提供方 crate 各自承担，不得回填进 `platform-api`（否则契约与实现耦合，`platform-api` 的平台中立性即被破坏），也不得让两个提供方为同一端口各写一份。**例外说明**：只有形态中立、无副作用、无传输的进程内原语实现可以随端口一起提供，因为它没有第二份实现可写（先例 `ports::budget::pool_ledger`，见 §4.9 的 `Clock`）；其余实现一律不得回填。
 
 - 所有 ID 参数使用 `platform-api` 的 newtype（`OrganizationId`、`PrincipalId`、`ConnectionId`、`DbSessionId`、`JobId`、`ExecutionId`、`ArtifactId`、`StreamId`、`RuntimeEpoch`…），**不使用裸 `String` 标识语义**。`connectionId` = 持久化配置 ID，`dbSessionId` = 运行时会话 ID，两者永不混用（[ID 术语规范](../../../AGENTS.md#id-术语规范)）。
 - **`RequestContext` 与全部 ID newtype 定义在 `platform-api`**，无行为、无平台依赖；`application` 与 `runtime` 用 `pub use` 再导出。这样端口签名（`platform-api`）与用例签名（`application`）共用同一份类型定义而不产生依赖倒置（否则 `platform-api` 必须反向依赖 `application`，与 F-04 冲突）。
@@ -1169,9 +1169,9 @@ restore 任务（组织 = 规范值）与 transfer / schema-diff / sync 任务�
    `claim_client_instance_id=?8`）也建立在同一套主体取值上。主体轴一旦动，必须与认领、
    恢复路径一起评估，**单独排期**，不夹带在「统一组织」这一波里。
 
-（当前可见症状有限：今天唯一以 IPC ctx 列举的路径是
-[`commands/native_tool.rs`](../../../src-tauri/src/commands/native_tool.rs) 的
-`native_tool_list_jobs`，它额外按 `kind` 过滤。但结构性事实不变——主体轴仍分裂。）
+（当前可见症状有限：曾以 IPC ctx 列举的路径
+`commands/native_tool.rs` 的 `native_tool_list_jobs`（额外按 `kind` 过滤）已随
+前端形态拆分方案 F1 删除，但结构性事实不变——主体轴仍分裂。）
 
 #### 客户端实例轴为什么不动
 
@@ -1264,6 +1264,9 @@ export interface PlatformServices {
   openDirectoryWithDialog(input: OpenDirectoryInput): Promise<OpenedDirectory | null>;
   writeClipboard(text: string): Promise<void>;
   readClipboard(): Promise<string>;
+  // F2 扩展（前端形态拆分方案 §3.3 第 9 项原子能力）：URL 走系统浏览器
+  // （web 形态退化为 window.open）；本地路径仅桌面有语义。
+  openExternal(input: OpenExternalInput): Promise<void>;
 }
 ```
 
@@ -1393,7 +1396,7 @@ F-07 是唯一不经过 `cargo metadata` 的规则：它的主体没有 `Cargo.t
    > **判定按主体范围，不按工作区。** F-01 的主体是 `driver` 层（`packages/drivers/*`），**两侧都按主体范围判定**：驱动里的休眠 `tauri*` 边是 violation；宿主 `datazen` 的休眠 `tauri*` 边**不是** F-01 的事（宿主本来就该依赖 Tauri），只报成 advisory。宿主那条见下注 4。
    >
    > **豁免必须显式。** 规则表的 `exemptions` 列表（成员 + 家族 + 理由）是唯一的放行通道，空即无豁免；过期条目（成员不是本规则主体、或家族不是本规则禁的）报 **error**。**没有**"降级成 advisory 就放过"这种口子。
-4. **`tauri-plugin-webdriver` 是同一个盲点，且长在宿主自己身上。** `src-tauri/Cargo.toml` 里的 `tauri-plugin-webdriver = { version = "0.2", optional = true }`，由该文件 `webdriver` feature 数组里的 `tauri-plugin-webdriver` 门控，不在 `resolve.deps[]` 里。该 feature 数组共 **4** 项：`webdriver = ["tauri-plugin-webdriver", "dep:objc2", "dep:objc2-app-kit", "datazen::data_transfer/webdriver"]`——只有第一项属 tauri 家族，`dep:objc2` / `dep:objc2-app-kit` 是 macOS 静默 E2E 的两个支撑 crate，第四项把 `datazen::data_transfer` 的 `webdriver` feature 一并打开；`default = []`，所以整条数组都在默认 feature 之外。宿主 manifest 一直"看起来干净"，只是因为里面没有任何 tauri 边可达，不代表它干净。**F-01 武装后它仍然合法**：宿主不在 F-01 的主体范围内，这条边只报 advisory。
+4. **`tauri-plugin-webdriver` 是同一个盲点，且长在宿主自己身上。** `apps/desktop/src-tauri/Cargo.toml` 里的 `tauri-plugin-webdriver = { version = "0.2", optional = true }`，由该文件 `webdriver` feature 数组里的 `tauri-plugin-webdriver` 门控，不在 `resolve.deps[]` 里。该 feature 数组共 **4** 项：`webdriver = ["tauri-plugin-webdriver", "dep:objc2", "dep:objc2-app-kit", "datazen::data_transfer/webdriver"]`——只有第一项属 tauri 家族，`dep:objc2` / `dep:objc2-app-kit` 是 macOS 静默 E2E 的两个支撑 crate，第四项把 `datazen::data_transfer` 的 `webdriver` feature 一并打开；`default = []`，所以整条数组都在默认 feature 之外。宿主 manifest 一直"看起来干净"，只是因为里面没有任何 tauri 边可达，不代表它干净。**F-01 武装后它仍然合法**：宿主不在 F-01 的主体范围内，这条边只报 advisory。
 5. **怎么读 declared-minus-resolved 这类告警（别只记"共几条"）。** 对某个成员，令 D = manifest 声明的 tauri 家族集合，R = normal+build 闭包解析到的 tauri 家族集合：
    - `D∖R`（声明了但当前 feature 解析不链接的**休眠边**）**才是信号**，且只有 manifest 扫描看得见；
    - `R∖D`（解析到了但未声明 = **传递依赖**）**不是信号**——任何有传递依赖的 crate 都成立，拿它告警会天天误报。

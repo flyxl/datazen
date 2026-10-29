@@ -264,7 +264,7 @@ function specLayerId(pathToken) {
     (l) => l.path === normalised || (normalised.endsWith('/*') && l.path === normalised),
   );
   if (layer) return layer.id;
-  // `src-tauri` never appears as a F-row subject, but keep the miss loud rather
+  // `apps/desktop/src-tauri` never appears as a F-row subject, but keep the miss loud rather
   // than silently mapping it onto something plausible.
   return { unclassified: `spec names \`${pathToken}\`, which matches no LAYERS entry` };
 }
@@ -282,7 +282,7 @@ export function parseSpecRow(row) {
   for (const match of row.matchAll(/`([^`]+)`/g)) {
     const token = match[1].trim();
     if (token === '') continue;
-    if (/^(packages\/|src-tauri$|server$|modules$)/.test(token)) paths.push(token);
+    if (/^(packages\/|apps\/|src-tauri$|server$|modules$)/.test(token)) paths.push(token);
     else if (token.includes('@') || token.includes('(') || token.includes('.'))
       frontend.push(token);
     else crates.push(token);
@@ -694,7 +694,7 @@ export function checkPlatformCrateBoundaries(options) {
   // are the `driver` layer (`packages/drivers/*`), so:
   //
   //   * a dormant `tauri*` edge in a **driver** is a violation;
-  //   * the same edge in the **host** is not. `src-tauri/Cargo.toml` declares
+  //   * the same edge in the **host** is not. `apps/desktop/src-tauri/Cargo.toml` declares
   //     `tauri-plugin-webdriver` for the macOS silent-E2E feature, and the host
   //     is *supposed* to depend on Tauri — F-01 does not cover it, so it is
   //     reported (an advisory) but never adjudicated. Reading the host's own

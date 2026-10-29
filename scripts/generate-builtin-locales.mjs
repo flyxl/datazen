@@ -23,8 +23,8 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
-const MANIFEST = resolve(ROOT, 'src/locales/builtin-locales.json');
-const OUT = resolve(ROOT, 'src/locales/builtinLocales.ts');
+const MANIFEST = resolve(ROOT, 'packages/frontend/src/locales/builtin-locales.json');
+const OUT = resolve(ROOT, 'packages/frontend/src/locales/builtinLocales.ts');
 
 /** Canonical endonym names per locale code (used when `add` omits a label). */
 const ENDONYMS = {
@@ -63,11 +63,11 @@ function writeManifest(entries) {
 }
 
 function hasLocaleFile(code) {
-  return existsSync(resolve(ROOT, `src/locales/${code}.ts`));
+  return existsSync(resolve(ROOT, `packages/frontend/src/locales/${code}.ts`));
 }
 
 function hasEagerPack(code) {
-  return existsSync(resolve(ROOT, `src/locales/${code}/eager.ts`));
+  return existsSync(resolve(ROOT, `packages/frontend/src/locales/${code}/eager.ts`));
 }
 
 /** locale code → valid TS identifier for the default-import binding (zh-CN -> zhCN). */

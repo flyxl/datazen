@@ -31,7 +31,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
-const localesDir = resolve(root, 'src/locales');
+const localesDir = resolve(root, 'packages/frontend/src/locales');
 const driversDir = resolve(root, 'packages/drivers');
 
 const LOCALE_FILES = ['de', 'es', 'fr', 'ja', 'ko', 'pt-BR', 'ru', 'zh-TW', 'zh-CN'];
@@ -304,7 +304,7 @@ function getEnKeysAtRef(ref) {
   try {
     const paths = execFileSync(
       'git',
-      ['ls-tree', '-r', '--name-only', ref, '--', 'src/locales/en'],
+      ['ls-tree', '-r', '--name-only', ref, '--', 'packages/frontend/src/locales/en'],
       {
         cwd: root,
         encoding: 'utf-8',
@@ -313,7 +313,7 @@ function getEnKeysAtRef(ref) {
     )
       .split('\n')
       .filter((path) => path.endsWith('.ts'));
-    const sourcePaths = paths.length > 0 ? paths : ['src/locales/en.ts'];
+    const sourcePaths = paths.length > 0 ? paths : ['packages/frontend/src/locales/en.ts'];
     const sources = sourcePaths.map((path) =>
       execFileSync('git', ['show', `${ref}:${path}`], {
         cwd: root,

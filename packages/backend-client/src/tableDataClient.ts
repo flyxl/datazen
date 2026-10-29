@@ -15,7 +15,8 @@
  * handed a `guard` and uses it like every other method does.
  */
 
-import type { BackendTransport, MethodMap } from './transport';
+import type { BackendTransport } from './transport';
+import type { BackendGuard } from './guard';
 import type {
   CommitPendingChangesRequest,
   CommitPendingChangesResponse,
@@ -47,8 +48,123 @@ import type {
  *
  * It normalizes a rejection into an `ApiError` and refuses a method the bound
  * backend declared it cannot serve.
+ *
+ * Form-split F3: the canonical definition moved to `./guard`; this re-export
+ * keeps the pre-F3 import path (`tableDataClient`) working for the desktop
+ * adapter and any deep importer.
  */
-export type BackendGuard = <T>(method: keyof MethodMap, run: () => Promise<T>) => Promise<T>;
+export type { BackendGuard };
+
+/**
+ * The TableData slice of `MethodMap` (form-split F3).
+ *
+ * Every method here is a typed delegation to the bound transport. There is no
+ * logic in this file: no SQL, no dialect branching, no transport mechanism.
+ * The one decision it does make is the *capability* check, and that decision
+ * belongs to the caller of the factory, not here: this module is handed a
+ * `guard` and uses it like every other method does.
+ */
+export interface TableDataMethodMap {
+  /**
+   * A target-bound table read.
+   *
+   * The read never borrows an editor's session: it runs against the explicit
+   * target named by the context, or against the session a `manualHandle`
+   * pins.
+   */
+  getTableData: { request: TableDataRequest; response: TableDataResult };
+  /**
+   * The SQL preview of a table read (DB-15).
+   *
+   * The backend assembles through the same code a real read executes, so the
+   * statements it returns are the statements the product would send — the
+   * frontend never builds preview SQL of its own.
+   */
+  previewTableReadSql: {
+    request: TableReadPreviewRequest;
+    response: TableReadPreviewSql;
+  };
+  /**
+   * The change preview. It produces a serialisable plan and executes nothing:
+   * the backend renders SQL, the frontend never does.
+   */
+  previewPendingChanges: {
+    request: PreviewPendingChangesRequest;
+    response: RowChangePlan;
+  };
+  /**
+   * The change commit. It applies the exact plan the preview returned and is
+   * guarded by that plan's fingerprint, so a stale preview cannot be applied.
+   */
+  commitPendingChanges: {
+    request: CommitPendingChangesRequest;
+    response: CommitPendingChangesResponse;
+  };
+  /**
+   * The estimated row count. `null` means "this driver cannot estimate", which
+   * is an answer and not an error; the caller decides whether to fall back to
+   * an exact count.
+   */
+  estimateTableRows: {
+    request: EstimateTableRowsRequest;
+    response: number | null;
+  };
+  /**
+   * The foreign-key resolution: which table a local column points at, and
+   * whether the referenced row still exists.
+   */
+  resolveForeignKeyTargets: {
+    request: ResolveForeignKeyTargetsRequest;
+    response: ForeignKeyTargetResolution;
+  };
+  listInboundForeignKeys: {
+    request: ListInboundForeignKeysRequest;
+    response: InboundForeignKeyCatalog;
+  };
+  searchTableValues: {
+    request: SearchTableValuesRequest;
+    response: SearchTableValuesResult;
+  };
+  /**
+   * The named views of one scope (or of every scope when `scope` is omitted).
+   *
+   * The three named-view commands are **desktop-only** for now: their storage
+   * is the desktop host's persistent store, which a browser build has no
+   * counterpart for. They are declared here so the port stays complete, and a
+   * backend that cannot serve them declares that in
+   * `BackendTransport.unsupportedMethods` — the caller then gets an explicit
+   * "unsupported" failure instead of an empty list that looks like "you have
+   * no saved views".
+   */
+  listNamedViews: { request: ListNamedViewsRequest; response: readonly NamedView[] };
+  saveNamedView: { request: SaveNamedViewRequest; response: NamedView };
+  deleteNamedView: { request: DeleteNamedViewRequest; response: readonly NamedView[] };
+  /**
+   * The write of one edited cell of a query result, bound to the runtime
+   * resource that produced the result.
+   */
+  commitQueryResultCell: { request: ResultCellWrite; response: undefined };
+  /**
+   * Where a query result came from, and whether it may be written back.
+   *
+   * The verdict is computed by the backend because only the driver knows the
+   * provenance of the rows; the interface renders it and never recomputes it.
+   */
+  resolveResultOrigin: {
+    request: ResolveResultOriginRequest;
+    response: ResultEditability;
+  };
+  /**
+   * The change plan for one edited cell of a query result.
+   *
+   * The preview produces a serialisable plan and executes nothing: the
+   * backend renders the statement, the frontend never does.
+   */
+  previewResultCellChange: {
+    request: ResultCellChangeRequest;
+    response: RowChangePlan;
+  };
+}
 
 /** The table-data methods of the `BackendClient` facade. */
 export interface TableDataClient {
@@ -193,3 +309,9 @@ export function createTableDataMethods(
       guard('previewResultCellChange', () => transport.call('previewResultCellChange', request)),
   };
 }
+
+/** Compile-time: every TableData map key is served by this domain client. */
+type Assert<T extends true> = T;
+export type TableDataClientCoversMap = Assert<
+  keyof TableDataMethodMap extends keyof TableDataClient ? true : false
+>;

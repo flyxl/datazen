@@ -26,7 +26,13 @@ function createSpyServices() {
     ),
     openDirectoryWithDialog: vi.fn(async () => ({ path: '/tmp/out' }) satisfies OpenedDirectory),
     writeClipboard: vi.fn(async () => undefined),
+    writeClipboardHtml: vi.fn(async () => undefined),
     readClipboard: vi.fn(async () => 'clipboard text'),
+    openExternal: vi.fn(async () => undefined),
+    toggleFullscreen: vi.fn(async () => undefined),
+    showNotification: vi.fn(async () => undefined),
+    pickPath: vi.fn(async () => '/tmp/picked.txt'),
+    getOsPlatform: vi.fn(async () => 'macos' as const),
   } satisfies PlatformServices;
 }
 

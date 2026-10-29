@@ -98,7 +98,7 @@ describe('Client parity P0–P2', () => {
   });
 
   it('Safe Mode blocks UPDATE without WHERE', async () => {
-    const settings = await invokeBackend<{ safeMode: boolean }>('get_settings');
+    const settings = await invokeBackend<{ safeMode: boolean }>('get_host_settings');
     expect(settings.safeMode).toBe(true);
     const err = await invokeBackendCatch('execute_driver_command', {
       request: {

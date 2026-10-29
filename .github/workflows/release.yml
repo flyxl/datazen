@@ -111,7 +111,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pro-extension
-          path: src-tauri/resources/builtin-ep/sql-editor-pro
+          path: apps/desktop/src-tauri/resources/builtin-ep/sql-editor-pro
           if-no-files-found: error
           retention-days: 1
 
@@ -505,7 +505,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: pro-extension
-          path: src-tauri/resources/builtin-ep/sql-editor-pro
+          path: apps/desktop/src-tauri/resources/builtin-ep/sql-editor-pro
 
       - name: Resolve drivers and build Tauri app
         shell: bash
@@ -537,7 +537,7 @@ jobs:
         shell: bash
         run: |
           # Note: with-driver-inject.mjs restores staging dirs after the child command,
-          # so src-tauri/resources/builtin-ep/ may already be cleared here.
+          # so apps/desktop/src-tauri/resources/builtin-ep/ may already be cleared here.
           # We verify the actual bundled output instead.
           BUNDLE_DIR="target/${{ matrix.target }}/release/bundle"
           FAIL=0
@@ -563,7 +563,7 @@ jobs:
           # ── Linux: check deb + AppImage ──
           if [ "${{ runner.os }}" = "Linux" ]; then
             echo "::notice::[pro-verify] staging state before check:"
-            ls -la src-tauri/resources/builtin-ep/sql-editor-pro/dist/ 2>/dev/null || echo "::notice::[pro-verify] staging dir already restored (expected)"
+            ls -la apps/desktop/src-tauri/resources/builtin-ep/sql-editor-pro/dist/ 2>/dev/null || echo "::notice::[pro-verify] staging dir already restored (expected)"
 
             DEB=$(find "$BUNDLE_DIR/deb" -name "*.deb" 2>/dev/null | head -1)
             if [ -z "$DEB" ]; then

@@ -57,7 +57,7 @@
 | `command` step **没有**顶层 `database` 字段 | `WorkflowStep::Command { id, command, connection, input, timeout_secs, on_error }`，库名只能写在 `input.database` |
 | `ai` step **没有** `connection` / `database` 字段 | AI 步骤当前不接触目标资源 |
 | `version: Option<String>` 存在 | `WorkflowDefinition.version` |
-| 三个内建 YAML 均未写 `version` | [`src-tauri/resources/builtin-workflows/`](../../../src-tauri/resources/builtin-workflows) 下的 `hello-query.yaml`、`cross-db-sample.yaml`、`ai-summarize.yaml` |
+| 三个内建 YAML 均未写 `version` | [`src-tauri/resources/builtin-workflows/`](../../../apps/desktop/src-tauri/resources/builtin-workflows) 下的 `hello-query.yaml`、`cross-db-sample.yaml`、`ai-summarize.yaml` |
 | workflow 不再以 step 形式调用数据迁移三件套 | `WorkflowStep` 没有 `migration` 变体；`WorkflowHost` 没有迁移端口；该能力从未真正发布，按直接移除处理，详见 [backend/workflow.md §迁移 step（已移除）](../backend/workflow.md#迁移-step已移除) |
 
 ### 2.3 版本字段的现状（重要）
@@ -132,7 +132,7 @@ command 分支（[command_runtime.rs](../../../modules/src/workflow/application/
 
 ### 2.8 一处已确认的身份错配
 
-GUI 的 AI 侧栏把**运行时会话 id 当作 `connectionId` 传给 Workflow**：[`components/ai/WorkflowPanel.tsx:104`](../../../src/components/ai/WorkflowPanel.tsx) 在 `handleExecute`（L99-107）里执行时传 `connectionId: dbSessionId`，而 `dbSessionId` 来自 `activeConnections[conn.id]?.dbSessionId`（连接窗口的运行时会话标识）。后端 `resolve_session_for_connection` 按 owner **配置 id** 查表，按[命名规范](../../../AGENTS.md) 这是被禁止的双模混用。同一页面的独立 Workflow 窗口（[`WorkflowPage.tsx:417`](../../../src/windows/workflow/WorkflowPage.tsx)）则完全不传该参数。
+GUI 的 AI 侧栏把**运行时会话 id 当作 `connectionId` 传给 Workflow**：[`components/ai/WorkflowPanel.tsx:104`](../../../packages/frontend/src/components/ai/WorkflowPanel.tsx) 在 `handleExecute`（L99-107）里执行时传 `connectionId: dbSessionId`，而 `dbSessionId` 来自 `activeConnections[conn.id]?.dbSessionId`（连接窗口的运行时会话标识）。后端 `resolve_session_for_connection` 按 owner **配置 id** 查表，按[命名规范](../../../AGENTS.md) 这是被禁止的双模混用。同一页面的独立 Workflow 窗口（[`WorkflowPage.tsx:417`](../../../packages/frontend/src/windows/workflow/WorkflowPage.tsx)）则完全不传该参数。
 
 这正是第 9 节"AI/MCP/Wapp 与 Workflow 边界"要清理的入口耦合，实际失败表现列入[第 12 节](#12-待-p0-验证清单)。
 
@@ -824,4 +824,4 @@ v1 定义的映射规则是机械的、无歧义的：
 
 Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `modules command_runtime → modules resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。
 
-Workflow scheduler 保留桌面 runtime-entry 修复；Monitor 的固定只读目标授权与独立 occurrence Job、Wapp 实例会话、MCP owner/TTL、Restore/Backup/Export 和 NativeTool 通用 Job fencing 不受此范围收缩影响。跨驱动 v1 旅程须独立验收，未运行的测试不算通过。 Host 通用真实驱动旅程位于 `src-tauri/src/workflow/live_acceptance.rs`，通过安全 live runner 显式运行两个方向的 Query → Command 与前步结果 SQL 模板串联；不把直接 sqlx 查询或 ignored 测试计为 Runtime 接线验收。
+Workflow scheduler 保留桌面 runtime-entry 修复；Monitor 的固定只读目标授权与独立 occurrence Job、Wapp 实例会话、MCP owner/TTL、Restore/Backup/Export 的通用 Job fencing 不受此范围收缩影响（NativeTool 通用 Job fencing 已随前端形态拆分方案 F1 删除）。跨驱动 v1 旅程须独立验收，未运行的测试不算通过。 Host 通用真实驱动旅程位于 `src-tauri/src/workflow/live_acceptance.rs`，通过安全 live runner 显式运行两个方向的 Query → Command 与前步结果 SQL 模板串联；不把直接 sqlx 查询或 ignored 测试计为 Runtime 接线验收。

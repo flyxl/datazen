@@ -5,11 +5,11 @@
  * cannot spy/replace invoke. UI wiring is asserted via source + visible controls;
  * behavior is covered by direct IPC (PIH-001~003) which is available under webdriver.
  *
- * PIH-001  open_log_dir / open_workflows_dir / open_context_dir succeed
+ * PIH-001  open_known_dir (log / workflows / context) succeeds
  * PIH-002  open_path allows app-data paths; rejects outside paths
  * PIH-003  export_connections + import_connections_preview round-trip
- * PIH-004  Settings logging uses open_log_dir (source + button visible)
- * PIH-005  Settings AI context uses open_context_dir (source + button visible)
+ * PIH-004  Settings logging uses open_known_dir('log') (source + button visible)
+ * PIH-005  Settings AI context uses open_known_dir('context') (source + button visible)
  * PIH-006  ADB pull saves via the host save dialog through execute_driver_command
  *          (decision 2; source + ADB UI has no path field)
  */
@@ -31,6 +31,7 @@ const FILE_CONNECTION_FIELDS = path.join(
   'src/components/connection/FileConnectionFields.tsx',
 );
 const SETTINGS_TS = path.join(ROOT, 'src/commands/settings.ts');
+const HOST_SERVICES = path.join(ROOT, 'src/platform/desktop/hostServices.ts');
 const SETTINGS_CONTENT = path.join(ROOT, 'src/windows/settings/SettingsContent.tsx');
 const AI_SETTINGS = path.join(ROOT, 'src/windows/settings/AiSettingsSection.tsx');
 const ADB_TS = path.join(ROOT, 'src/commands/adb.ts');
@@ -91,10 +92,13 @@ describe('Path IPC Hardening (PIH-001~PIH-006)', () => {
     }
   });
 
-  it('PIH-001: dedicated open_* dir commands should succeed', async () => {
-    await invokeBackend('open_log_dir');
-    await invokeBackend('open_workflows_dir');
-    await invokeBackend('open_context_dir');
+  it('PIH-001: merged open_known_dir command should succeed for every kind', async () => {
+    await invokeBackend('open_known_dir', { kind: 'log' });
+    await invokeBackend('open_known_dir', { kind: 'workflows' });
+    await invokeBackend('open_known_dir', { kind: 'context' });
+    const badKind = await invokeBackendCatch('open_known_dir', { kind: 'etc' });
+    expect(badKind).toBeTruthy();
+    expect(badKind!).toMatch(/unknown kind/i);
   });
 
   it('PIH-002: open_path allows log dir and rejects outside paths', async () => {
@@ -138,15 +142,17 @@ describe('Path IPC Hardening (PIH-001~PIH-006)', () => {
     expect(Array.isArray(preview!.connections)).toBe(true);
   });
 
-  it('PIH-004: Settings logging button wires open_log_dir', async function () {
+  it('PIH-004: Settings logging button wires open_known_dir(log)', async function () {
     this.timeout(20000);
 
     const winSrc = fs.readFileSync(SETTINGS_CONTENT, 'utf8');
     expect(winSrc).toContain('openLogDir()');
     expect(winSrc).not.toMatch(/openPath\(\s*(localDir|dir|defaultDir|draft)/);
 
-    const cmdSrc = fs.readFileSync(SETTINGS_TS, 'utf8');
-    expect(cmdSrc).toContain("invoke<void>('open_log_dir')");
+    // Form-split F4c: the named dir openers merged into open_known_dir(kind);
+    // the invoke lives in the desktop host-services zone now.
+    const hostServices = fs.readFileSync(HOST_SERVICES, 'utf8');
+    expect(hostServices).toContain("invoke<void>('open_known_dir', { kind: 'log' })");
 
     await openSettingsInMainWindow('logging');
 
@@ -158,14 +164,14 @@ describe('Path IPC Hardening (PIH-001~PIH-006)', () => {
     await browser.pause(500);
   });
 
-  it('PIH-005: Settings AI context button wires open_context_dir', async function () {
+  it('PIH-005: Settings AI context button wires open_known_dir(context)', async function () {
     this.timeout(20000);
 
     const winSrc = fs.readFileSync(AI_SETTINGS, 'utf8');
     expect(winSrc).toContain('openContextDir()');
 
-    const cmdSrc = fs.readFileSync(SETTINGS_TS, 'utf8');
-    expect(cmdSrc).toContain("invoke<void>('open_context_dir')");
+    const hostServices = fs.readFileSync(HOST_SERVICES, 'utf8');
+    expect(hostServices).toContain("invoke<void>('open_known_dir', { kind: 'context' })");
 
     await openSettingsInMainWindow('ai');
 

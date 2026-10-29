@@ -102,7 +102,7 @@ describe('App Data Backup (ADB-001~ADB-004, ADB-006~ADB-007)', () => {
     // App-data config wiring (backupCommands calls + menu:export/import-config
     // listeners) lives in ConnectionPage.tsx.
     const connectionSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, '../../src/windows/connection/ConnectionPage.tsx'),
+      path.resolve(import.meta.dirname, '../../packages/frontend/src/windows/connection/ConnectionPage.tsx'),
       'utf8',
     );
     expect(connectionSrc).toContain('backupCommands.exportAppData(');
@@ -114,14 +114,14 @@ describe('App Data Backup (ADB-001~ADB-004, ADB-006~ADB-007)', () => {
     // Asset-drift fix: the menu:export/import-connections listeners live in
     // MainPage.tsx (in-page connection dialog) — not in ConnectionPage.tsx.
     const mainPageSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, '../../src/windows/main/MainPage.tsx'),
+      path.resolve(import.meta.dirname, '../../packages/frontend/src/windows/main/MainPage.tsx'),
       'utf8',
     );
     expect(mainPageSrc).toContain('menu:export-connections');
     expect(mainPageSrc).toContain('menu:import-connections');
 
     const zh = fs.readFileSync(
-      path.resolve(import.meta.dirname, '../../src/locales/zh-CN/core.ts'),
+      path.resolve(import.meta.dirname, '../../packages/frontend/src/locales/zh-CN/core.ts'),
       'utf8',
     );
     expect(zh).toContain("'common.exportAppData': '导出应用数据'");
@@ -140,7 +140,7 @@ describe('App Data Backup (ADB-001~ADB-004, ADB-006~ADB-007)', () => {
     // Idempotent restore of current snapshot (no restart — Store stays in memory).
     await exportToPath(backupPath);
     await importFromPath(backupPath);
-    const settings = await invokeBackend<Record<string, unknown>>('get_settings');
+    const settings = await invokeBackend<Record<string, unknown>>('get_host_settings');
     expect(settings).toBeTruthy();
     expect(typeof settings.language).toBe('string');
   });
@@ -200,7 +200,7 @@ sys.exit(1 if bad else 0)
   });
 
   it('ADB-007: export label locale keys match current UI language', async () => {
-    const settings = await invokeBackend<{ language: string }>('get_settings');
+    const settings = await invokeBackend<{ language: string }>('get_host_settings');
     const localeFile =
       settings.language === 'zh-CN'
         ? path.join('zh-CN', 'core.ts')
@@ -208,7 +208,7 @@ sys.exit(1 if bad else 0)
           ? path.join('en', 'core.ts')
           : path.join('en', 'core.ts');
     const src = fs.readFileSync(
-      path.resolve(import.meta.dirname, `../../src/locales/${localeFile}`),
+      path.resolve(import.meta.dirname, `../../packages/frontend/src/locales/${localeFile}`),
       'utf8',
     );
     if (settings.language === 'zh-CN') {

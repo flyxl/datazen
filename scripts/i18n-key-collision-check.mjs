@@ -63,7 +63,7 @@ import { extractPackKeys, findDriverLocalePacks } from './i18n-sync-check.mjs';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
- * Every host locale directory under `src/locales`. `en` + `zh-CN` are the two
+ * Every host locale directory under `packages/frontend/src/locales`. `en` + `zh-CN` are the two
  * runtime-registered locales (src/locales/builtinLocales.ts); the other eight
  * ship as source-only files but are equally part of the host key contract, so a
  * key present in any of them counts as host-owned.
@@ -81,7 +81,7 @@ export const HOST_LOCALE_DIRS = [
   'ru',
 ];
 
-/** Files at `src/locales/` root that are NOT dictionaries (generated, barrels). */
+/** Files at `packages/frontend/src/locales/` root that are NOT dictionaries (generated, barrels). */
 const HOST_SKIP_FILES = new Set([
   'builtinLocales.ts', // codegen: BUILTIN_LOCALES + labels, not a dictionary
   'builtin-locales.json',
@@ -110,7 +110,7 @@ export function hostDictionaryFiles(dir) {
  * Read one host locale into `key → defining file`.
  *
  * @param {string} locale
- * @param {string} localesDir absolute path of `src/locales`
+ * @param {string} localesDir absolute path of `packages/frontend/src/locales`
  * @returns {Map<string, string>} key → absolute file path that defines it
  */
 export function readHostLocaleKeys(locale, localesDir) {
@@ -128,7 +128,7 @@ export function readHostLocaleKeys(locale, localesDir) {
 /**
  * Collect every host-owned key with the file that defines it.
  *
- * @param {string} localesDir absolute path of `src/locales`
+ * @param {string} localesDir absolute path of `packages/frontend/src/locales`
  * @returns {{ keys: Map<string, string>, localeCount: number, fileCount: number }}
  */
 export function collectHostKeys(localesDir) {
@@ -268,7 +268,7 @@ export function checkI18nKeyCollisions(opts = {}) {
   const error = opts.error ?? console.error.bind(console);
 
   const result = findKeyCollisions({
-    localesDir: join(root, 'src/locales'),
+    localesDir: join(root, 'packages/frontend/src/locales'),
     driversDir: join(root, 'packages/drivers'),
   });
 

@@ -16,18 +16,18 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@datazen/backend-client': resolve(__dirname, 'packages/backend-client/src/index.ts'),
-      '@datazen/driver-sdk': resolve(__dirname, 'packages/driver-sdk/src/index.ts'),
-      '@datazen/extension-points': resolve(__dirname, 'packages/extension-points/src/index.ts'),
-      '@datazen/wapp-sdk': resolve(__dirname, 'packages/wapp-sdk/src/index.ts'),
-      '@datazen/extension-sdk': resolve(__dirname, 'packages/wapp-sdk/src/index.ts'),
-      '@datazen/ui': resolve(__dirname, 'packages/ui/src/index.ts'),
-      '@tauri-apps/api/window': resolve(__dirname, 'src/test/mocks/tauriWindow.ts'),
+      // form-split F6-c2: the @datazen/* alias table is retired — package
+      // exports (workspace links) resolve every @datazen specifier, exactly
+      // as vite and tsc now do. The one alias that remains is test
+      // infrastructure, not package resolution: the shared test setup mocks
+      // the Tauri window API for jsdom, and app-owned vitest configs keep
+      // this mock alias per plan §5.6 item 6.
+      '@tauri-apps/api/window': resolve(__dirname, 'packages/frontend/src/test/mocks/tauriWindow.ts'),
     },
   },
   test: {
     environment: 'jsdom',
-    setupFiles: ['./src/test/setup.ts'],
+    setupFiles: ['./packages/frontend/src/test/setup.ts'],
     // Vitest's 5s default is not a defensible budget for this suite. Measured
     // per-test wall time over all 5702 Host tests (driver set `all`, macOS,
     // 8 cores) at three contention levels, via `--reporter=json`:
@@ -102,7 +102,12 @@ export default defineConfig({
     // this and is the right tool for a hook with a known worst case.
     hookTimeout: 120_000,
     include: [
-      'src/**/*.test.{ts,tsx}',
+      'packages/frontend/src/**/*.test.{ts,tsx}',
+      // form-split F6-c3: host↔driver integration fixtures (redis key web
+      // context menu) live with the host package, outside src/ so the
+      // host-production rules (R3/R6/R7) do not adjudicate test scaffolding.
+      'packages/frontend/__tests__/**/*.test.{ts,tsx}',
+      'apps/desktop/src/**/*.test.{ts,tsx}',
       'scripts/__tests__/**/*.test.{ts,mjs}',
       // SDK package tests run on the Host toolchain too (PRD F8).
       'packages/wapp-sdk/__tests__/**/*.test.{ts,tsx}',
@@ -115,45 +120,45 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: [
-        'src/lib/**/*.{ts,tsx}',
-        'src/stores/**/*.{ts,tsx}',
-        'src/components/DataTable/**/*.{ts,tsx}',
-        'src/components/ai/**/*.{ts,tsx}',
-        'src/windows/connection/ConnectionPage.tsx',
-        'src/windows/connection/ObjectBrowser.tsx',
-        'src/windows/connection/PrivilegeView.tsx',
-        'src/components/FilterEditor.tsx',
+        'packages/frontend/src/lib/**/*.{ts,tsx}',
+        'packages/frontend/src/stores/**/*.{ts,tsx}',
+        'packages/frontend/src/components/DataTable/**/*.{ts,tsx}',
+        'packages/frontend/src/components/ai/**/*.{ts,tsx}',
+        'packages/frontend/src/windows/connection/ConnectionPage.tsx',
+        'packages/frontend/src/windows/connection/ObjectBrowser.tsx',
+        'packages/frontend/src/windows/connection/PrivilegeView.tsx',
+        'packages/frontend/src/components/FilterEditor.tsx',
         // The filter editor's parts live next to it since 08 Step 9; the
         // coverage gate has to see them, or the split would quietly shrink
         // the denominator instead of moving it.
-        'src/components/filter/**/*.{ts,tsx}',
-        'src/components/query/BindParamPanel.tsx',
-        'src/components/connection/SshTunnelFields.tsx',
-        'src/windows/workflow/**/*.{ts,tsx}',
-        'src/windows/settings/SettingsContent.tsx',
-        'src/windows/main/MainPage.tsx',
-        'src/windows/welcome/WelcomePage.tsx',
-        'src/windows/dashboard/**/*.{ts,tsx}',
-        'src/windows/settings/sections/GeneralSection.tsx',
-        'src/windows/settings/sections/ConnectionsSection.tsx',
-        'src/windows/settings/sections/DriversSection.tsx',
-        'src/windows/settings/sections/AiSection.tsx',
-        'src/windows/settings/sections/PluginsSection.tsx',
-        'src/windows/settings/sections/ShortcutsSection.tsx',
-        'src/windows/settings/sections/AppearanceSection.tsx',
-        'src/windows/settings/sections/AboutSection.tsx',
-        'src/windows/settings/sections/TelemetrySection.tsx',
-        'src/windows/settings/sections/BackupSection.tsx',
-        'src/windows/settings/sections/McpSettingsSection.tsx',
+        'packages/frontend/src/components/filter/**/*.{ts,tsx}',
+        'packages/frontend/src/components/query/BindParamPanel.tsx',
+        'packages/frontend/src/components/connection/SshTunnelFields.tsx',
+        'packages/frontend/src/windows/workflow/**/*.{ts,tsx}',
+        'packages/frontend/src/windows/settings/SettingsContent.tsx',
+        'packages/frontend/src/windows/main/MainPage.tsx',
+        'packages/frontend/src/windows/welcome/WelcomePage.tsx',
+        'packages/frontend/src/windows/dashboard/**/*.{ts,tsx}',
+        'packages/frontend/src/windows/settings/sections/GeneralSection.tsx',
+        'packages/frontend/src/windows/settings/sections/ConnectionsSection.tsx',
+        'packages/frontend/src/windows/settings/sections/DriversSection.tsx',
+        'packages/frontend/src/windows/settings/sections/AiSection.tsx',
+        'packages/frontend/src/windows/settings/sections/PluginsSection.tsx',
+        'packages/frontend/src/windows/settings/sections/ShortcutsSection.tsx',
+        'packages/frontend/src/windows/settings/sections/AppearanceSection.tsx',
+        'packages/frontend/src/windows/settings/sections/AboutSection.tsx',
+        'packages/frontend/src/windows/settings/sections/TelemetrySection.tsx',
+        'packages/frontend/src/windows/settings/sections/BackupSection.tsx',
+        'packages/frontend/src/windows/settings/sections/McpSettingsSection.tsx',
       ],
       exclude: [
-        'src/**/__tests__/**',
-        'src/**/*.d.ts',
-        'src/test/**',
-        'src/plugins/**',
-        'src/locales/**',
-        'src/lib/chart/renderers/**',
-        'src/types/**',
+        'packages/frontend/src/**/__tests__/**',
+        'packages/frontend/src/**/*.d.ts',
+        'packages/frontend/src/test/**',
+        'packages/frontend/src/plugins/**',
+        'packages/frontend/src/locales/**',
+        'packages/frontend/src/lib/chart/renderers/**',
+        'packages/frontend/src/types/**',
       ],
       thresholds: {
         lines: 80,

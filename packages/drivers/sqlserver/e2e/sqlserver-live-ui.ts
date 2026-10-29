@@ -135,9 +135,9 @@ describe('SQL Server driver GUI (live)', () => {
     });
 
   const setSafeMode = async (enabled: boolean) => {
-    const settings = await invoke<Record<string, unknown>>('get_settings');
+    const settings = await invoke<Record<string, unknown>>('get_host_settings');
     if ((settings.safeMode !== false) === enabled) return;
-    await invoke('save_settings', { settings: { ...settings, safeMode: enabled } });
+    await invoke('save_host_settings', { settings: { ...settings, safeMode: enabled } });
   };
 
   const dropScratch = async () => {

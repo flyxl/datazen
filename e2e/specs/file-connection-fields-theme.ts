@@ -53,7 +53,7 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
 }
 
 async function setTheme(theme: 'light' | 'dark') {
-  await invokeBackend('save_settings', {
+  await invokeBackend('save_host_settings', {
     settings: {
       theme,
       language: 'zh-CN',

@@ -1,0 +1,904 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowLeft, PanelLeftOpen } from 'lucide-react';
+import { WindowChromeSlot } from '@datazen/extension-points';
+import { MenuBar } from '../../components/MenuBar';
+import { ThemeToggle } from '../../components/ThemeToggle';
+import { ResultMessageDialog } from '../../components/ui/ResultMessageDialog';
+import { useI18n } from '../../hooks/useI18n';
+import { useResizable } from '../../hooks/useResizable';
+import { useSettings } from '../../hooks/useSettings';
+import { useSettingsStore } from '../../stores/settingsStore';
+import { useAiStore } from '../../stores/aiStore';
+import { useConnectionStore } from '../../stores/connectionStore';
+import { connectionCommands } from '../../commands/connection';
+import { backupCommands } from '../../commands/backup';
+import { emitCrossWindow, listenCrossWindow } from '../../lib/crossWindowBus';
+import { getPlatformOrNull } from '../../platform/contracts';
+import { DB_REGISTRY, getDbLabel } from '../../lib/databaseTypes';
+import { openConnectionShareDialog } from '../../lib/connectionShare';
+import { hideNativeContextMenu } from '../../lib/nativeContextMenu';
+import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
+import { useUiStore } from '../../stores/uiStore';
+import {
+  usePanelStore,
+  nextPanelId,
+  type RedisDbPanel,
+  type RedisPendingAction,
+} from '../../stores/panelStore';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import type { ConnectionViewActions } from '../../lib/connectionViews/types';
+import {
+  makeTabFromPayload,
+  removeConnectionFromStores,
+  syncStoresActiveConnection,
+  type ConnectionTab,
+  type MainView,
+  type WorkspaceMode,
+} from './connectionPageUtils';
+import { useConnectionTabs } from './useConnectionTabs';
+import {
+  openNewConnectionDialog,
+  PENDING_CONNECTION_KEY,
+  POST_ONBOARDING_SAMPLE_KEY,
+  type PostOnboardingSample,
+} from '../../lib/windowManager';
+import {
+  ConnectionNavigatorTree,
+  type ConnectionNavigatorTreeHandle,
+} from './ConnectionNavigatorTree';
+import { ContentView } from './ContentView';
+import { useDashboardStore } from '../../stores/dashboardStore';
+import { useWorkspacePanelStateStore } from '../../stores/workspacePanelStateStore';
+import { DashboardPanel } from '../dashboard/DashboardPanel';
+import { WorkflowPage } from '../workflow/WorkflowPage';
+import { SettingsContent } from '../settings/SettingsContent';
+import { WorkspaceView } from '../workspace/WorkspaceView';
+import { WappManagementPage } from '../wapps/WappManagementPage';
+import { WorkspaceModeSidebar } from './WorkspaceModeSidebar';
+import { Spinner } from '../../components/ui/Spinner';
+
+export function ConnectionPage() {
+  useSettings();
+
+  const { t } = useI18n();
+  const loadSettings = useSettingsStore((s) => s.loadSettings);
+  const loadAiConfig = useAiStore((s) => s.loadConfig);
+  const setupAiListeners = useAiStore((s) => s.setupEventListeners);
+  const fetchConnections = useConnectionStore((s) => s.fetchConnections);
+  const fetchGroups = useConnectionStore((s) => s.fetchGroups);
+  const deleteConnection = useConnectionStore((s) => s.deleteConnection);
+  const connections = useConnectionStore((s) => s.connections);
+  const [confirmDelete, confirmDeleteDialog] = useConfirmDialog();
+  const [confirmBackupKey, confirmBackupKeyDialog] = useConfirmDialog();
+  const [confirmImportAppData, confirmImportAppDataDialog] = useConfirmDialog();
+  const [messageDialogOpen, setMessageDialogOpen] = useState(false);
+  const [messageDialogText, setMessageDialogText] = useState('');
+  const [messageDialogKind, setMessageDialogKind] = useState<'error' | 'success'>('error');
+  const fetchDashboards = useDashboardStore((s) => s.fetchDashboards);
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>('connections');
+  const [mainView, setMainView] = useState<MainView>('workspace');
+  const [settingsSection, setSettingsSection] = useState<string | undefined>(undefined);
+  /** Preserved for the sidebar Settings entry — restore workspace mode on back. */
+  const settingsReturnModeRef = useRef<WorkspaceMode>('connections');
+  const [embeddedDashboardId, setEmbeddedDashboardId] = useState<string | undefined>(undefined);
+  const [dashboardTitle, setDashboardTitle] = useState('');
+
+  const { tabs, setTabs, activeIdx, setActiveIdx, activeTab, pendingActionRef } =
+    useConnectionTabs();
+  const { size: sidebarWidth, handleRef: resizeHandleRef } = useResizable({
+    direction: 'horizontal',
+    initialSize: 280,
+    minSize: 200,
+    maxSize: 500,
+    storageKey: 'connection-sidebar-width',
+  });
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const selectTableRef = useRef<
+    ((table: string, schema: string | null, database: string) => void) | undefined
+  >();
+  const nodeContextMenuRef = useRef<
+    | ((payload: { kind: string; name: string; x: number; y: number; schema?: string }) => void)
+    | undefined
+  >();
+  const actionsRef = useRef<ConnectionViewActions | undefined>();
+  const navigatorRef = useRef<ConnectionNavigatorTreeHandle>(null);
+
+  // ── Post-onboarding: auto-open sample connection + preset query ──
+  const postOnboardingRef = useRef<PostOnboardingSample | null>(null);
+  const postOnboardingConsumedRef = useRef(false);
+  const workspaceSidebarMode = useUiStore((s) => s.workspaceSidebarMode);
+  const toggleWorkspaceSidebarMode = useUiStore((s) => s.toggleWorkspaceSidebarMode);
+  const sidebarExpanded = workspaceSidebarMode === 'expanded';
+
+  const showMessageDialog = useCallback((text: string, kind: 'error' | 'success') => {
+    setMessageDialogText(text);
+    setMessageDialogKind(kind);
+    setMessageDialogOpen(true);
+  }, []);
+
+  const executePendingAction = useCallback(() => {
+    const action = pendingActionRef.current;
+    if (!action) return;
+    pendingActionRef.current = null;
+    setWorkspaceMode('connections');
+    if (action === 'openSqlFile') {
+      actionsRef.current?.openSqlFile?.();
+    }
+  }, [pendingActionRef]);
+
+  useEffect(() => {
+    if (!activeTab?.dbSessionId || activeTab.status !== 'connected') return;
+    executePendingAction();
+  }, [activeTab?.dbSessionId, activeTab?.status, executePendingAction]);
+
+  const allPanels = usePanelStore((s) => s.panels);
+
+  const activePanelId = usePanelStore((s) => s.activePanelId);
+  const activePanel = allPanels.find((p) => p.id === activePanelId) ?? null;
+
+  // A context menu is scoped to the page/object that opened it. Close it when
+  // navigation or the active panel changes so async menu requests cannot
+  // appear over a different workspace or retain stale database actions.
+  useEffect(() => {
+    hideNativeContextMenu();
+  }, [workspaceMode, mainView, activePanelId]);
+
+  // ── Load connections + settings — fire-and-forget, once ──
+
+  useEffect(() => {
+    void loadSettings();
+    void loadAiConfig();
+    void fetchConnections();
+    void fetchGroups();
+    const aiCleanupPromise = setupAiListeners();
+    return () => {
+      void aiCleanupPromise.then((fn) => fn());
+    };
+  }, [loadSettings, loadAiConfig, setupAiListeners, fetchConnections, fetchGroups]);
+
+  // Refresh connections when other windows update them
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    void listenCrossWindow('datazen:connections-changed', () => {
+      void fetchConnections();
+      void fetchGroups();
+    }).then((fn) => {
+      cleanup = fn;
+    });
+    return () => cleanup?.();
+  }, [fetchConnections, fetchGroups]);
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    void listenCrossWindow('datazen:refresh-connection', (payload) => {
+      const data = payload as { dbSessionId?: string } | undefined;
+      if (!data?.dbSessionId) return;
+      const tab = tabs.find((t) => t.dbSessionId === data.dbSessionId);
+      if (!tab) return;
+      void navigatorRef.current?.refreshConnection(tab.connectionId);
+      actionsRef.current?.refresh?.();
+    }).then((fn) => {
+      cleanup = fn;
+    });
+    return () => cleanup?.();
+  }, [tabs]);
+
+  // ── Derive active connection from active panel or active tab ──
+
+  const activeDbSessionId = activePanel?.dbSessionId || activeTab?.dbSessionId || null;
+
+  useEffect(() => {
+    syncStoresActiveConnection(activeDbSessionId);
+  }, [activeDbSessionId]);
+
+  useEffect(() => {
+    if (!activePanel) return;
+    const tabIdx = tabs.findIndex((t) => t.connectionId === activePanel.connectionId);
+    if (tabIdx >= 0 && tabIdx !== activeIdx) {
+      setActiveIdx(tabIdx);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePanelId]);
+
+  // ── Listen for new connection requests from MainPage ──
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    void listenCrossWindow('datazen:open-connection', (payload) => {
+      const data = payload as Record<string, string> | undefined;
+      if (!data?.connectionId) return;
+      setWorkspaceMode('connections');
+
+      try {
+        localStorage.removeItem(PENDING_CONNECTION_KEY);
+      } catch {}
+
+      const newTab = makeTabFromPayload(data);
+      if (!newTab) return;
+
+      if (data.action) pendingActionRef.current = data.action;
+
+      if (newTab.dbSessionId) syncStoresActiveConnection(newTab.dbSessionId);
+
+      setTabs((prev) => {
+        const existingIdx = prev.findIndex((t) => t.connectionId === newTab.connectionId);
+        if (existingIdx >= 0) {
+          if (prev[existingIdx].dbSessionId) {
+            syncStoresActiveConnection(prev[existingIdx].dbSessionId);
+          }
+          setActiveIdx(existingIdx);
+          if (prev[existingIdx].status === 'connected' && data.action) {
+            setTimeout(() => executePendingAction(), 500);
+          }
+          return prev;
+        }
+        const next = [...prev, newTab];
+        setActiveIdx(next.length - 1);
+        return next;
+      });
+    }).then((fn) => {
+      cleanup = fn;
+    });
+    return () => cleanup?.();
+  }, []);
+
+  // ── Window close → release all connections (minimize when sub-windows stay open) ──
+
+  useEffect(() => {
+    // Window lifecycle is a platform port (WindowRouter.windowChrome), not a
+    // runtime probe: the platform is configured by the assembly root before
+    // first render, and the desktop implementation no-ops in browser dev.
+    const windows = getPlatformOrNull()?.windows;
+    if (!windows) return;
+    let unlisten: (() => void) | undefined;
+    let isClosing = false;
+
+    void (async () => {
+      const { hasOpenChildWindows } = await import('../../lib/windowManager');
+      unlisten = await windows.windowChrome.onCloseRequested(async (event) => {
+        if (isClosing) return;
+
+        if (await hasOpenChildWindows()) {
+          event.preventDefault();
+          await windows.windowChrome.minimizeCurrent();
+          return;
+        }
+
+        isClosing = true;
+        event.preventDefault();
+        for (const tab of tabs) {
+          if (tab.dbSessionId) {
+            try {
+              const wasDisconnected = await connectionCommands.releaseConnection(tab.dbSessionId);
+              if (wasDisconnected) {
+                await emitCrossWindow('datazen:connection-closed', {
+                  dbSessionId: tab.dbSessionId,
+                });
+              }
+            } catch {
+              // best effort
+            }
+          }
+        }
+        await windows.windowChrome.closeCurrent();
+      });
+    })();
+
+    return () => unlisten?.();
+  }, [tabs]);
+
+  // ── Close all tabs for a connection (and cleanup store data) ──
+
+  const handleCloseTab = useCallback(
+    async (connectionId: string) => {
+      const tab = tabs.find((t) => t.connectionId === connectionId);
+      if (!tab) return;
+
+      usePanelStore.getState().removeAllForConnection(connectionId);
+
+      if (tab.dbSessionId) {
+        removeConnectionFromStores(tab.dbSessionId);
+        useActiveConnectionStore.getState().removeByDbSessionId(tab.dbSessionId);
+        try {
+          const wasDisconnected = await connectionCommands.releaseConnection(tab.dbSessionId);
+          if (wasDisconnected) {
+            void emitCrossWindow('datazen:connection-closed', { dbSessionId: tab.dbSessionId });
+          }
+        } catch {
+          // best effort
+        }
+      }
+
+      const idx = tabs.findIndex((t) => t.connectionId === connectionId);
+      setTabs((prev) => prev.filter((t) => t.connectionId !== connectionId));
+      setActiveIdx((prev) => {
+        if (idx < 0) return prev;
+        if (prev < idx) return prev;
+        if (prev === idx) return Math.min(prev, tabs.length - 2);
+        return prev - 1;
+      });
+    },
+    [tabs],
+  );
+
+  // ── Tree callbacks ──
+
+  /*
+   * A connection switch is only half done when the tab changes. `activePanelId`
+   * is a single global slot, so if the previously active panel belongs to another
+   * connection it stays active — and since the navigator's own selection is
+   * derived *from* the active panel (see `activeDbSessionId` above), the tree
+   * highlights the old connection too, not just the content column.
+   *
+   * This is the exit transition of a context switch, so it has to run on every
+   * path that leaves the current connection, not only the one that already had a
+   * tab. It used to live inside the `existingIdx >= 0` branch, which meant a
+   * connection opened for the *first* time (no tab ⇒ the other branch) silently
+   * kept the previous connection's panel: open redis, pick db0, open mysql ⇒
+   * redis's workbench. `?? null` is the meaningful case rather than a fallback —
+   * a connection with no panels of its own must show its overview, so "no
+   * active panel" is the correct state, not a missing one.
+   */
+  const retargetActivePanel = useCallback((connectionId: string) => {
+    const { panels, activePanelId: curActiveId, setActivePanel } = usePanelStore.getState();
+    const curActive = panels.find((p) => p.id === curActiveId);
+    if (curActive?.connectionId === connectionId) return;
+    setActivePanel(panels.find((p) => p.connectionId === connectionId)?.id ?? null);
+  }, []);
+
+  const handleSelectConnection = useCallback(
+    (connectionId: string) => {
+      setWorkspaceMode('connections');
+      const existingIdx = tabs.findIndex((t) => t.connectionId === connectionId);
+      if (existingIdx >= 0) {
+        const existingTab = tabs[existingIdx];
+        if (existingTab.dbSessionId) {
+          syncStoresActiveConnection(existingTab.dbSessionId);
+        }
+        setActiveIdx(existingIdx);
+        retargetActivePanel(connectionId);
+        return;
+      }
+      const conn = connections.find((c) => c.id === connectionId);
+      if (!conn) return;
+
+      const entry = useActiveConnectionStore.getState().connections[connectionId];
+      const sessionId = entry?.dbSessionId ?? '';
+      const newTab: ConnectionTab = {
+        connectionId,
+        dbSessionId: sessionId,
+        connectionName: conn.name,
+        databaseType: conn.databaseType,
+        initialDatabase: conn.database,
+        status: sessionId ? 'connected' : 'connecting',
+      };
+      if (sessionId) syncStoresActiveConnection(sessionId);
+      setTabs((prev) => {
+        const next = [...prev, newTab];
+        setActiveIdx(next.length - 1);
+        return next;
+      });
+      retargetActivePanel(connectionId);
+    },
+    [tabs, connections, retargetActivePanel],
+  );
+
+  const handleSelectKvDb = useCallback(
+    (connectionId: string, dbName: string, pendingAction?: RedisPendingAction) => {
+      setWorkspaceMode('connections');
+      handleSelectConnection(connectionId);
+
+      const panels = usePanelStore.getState().panels;
+      const existing = panels.find(
+        (p) =>
+          DB_REGISTRY[p.databaseType]?.isKeyValue === true &&
+          p.connectionId === connectionId &&
+          (p as RedisDbPanel).dbName === dbName,
+      );
+      if (existing) {
+        // If a pending action is provided, update the existing panel so the
+        // driver view can pick it up on the next render cycle.
+        if (pendingAction) {
+          usePanelStore.getState().updatePanel(existing.id, { pendingAction });
+        }
+        usePanelStore.getState().setActivePanel(existing.id);
+        return;
+      }
+
+      const conn = connections.find((c) => c.id === connectionId);
+      if (!conn) return;
+      const entry = useActiveConnectionStore.getState().connections[connectionId];
+      const sessionId = entry?.dbSessionId ?? '';
+
+      const panel: RedisDbPanel = {
+        id: nextPanelId('redis'),
+        connectionId,
+        dbSessionId: sessionId,
+        connectionName: conn.name,
+        databaseType: conn.databaseType,
+        type: 'redis-db',
+        dbName,
+        pendingAction,
+      };
+      usePanelStore.getState().addPanel(panel);
+    },
+    [handleSelectConnection, connections],
+  );
+
+  const handleDeleteConnection = useCallback(
+    (connectionId: string) => {
+      const conn = connections.find((c) => c.id === connectionId);
+      if (!conn) return;
+      void confirmDelete({
+        title: t('common.deleteConnection'),
+        message: t('main.ctx.confirmDeleteConnection', { name: conn.name }),
+        kind: 'warning',
+      }).then((ok) => {
+        if (!ok) return;
+        void handleCloseTab(connectionId);
+        void deleteConnection(connectionId);
+      });
+    },
+    [connections, confirmDelete, handleCloseTab, deleteConnection, t],
+  );
+
+  const handleDisconnect = useCallback(
+    (connectionId: string) => {
+      void handleCloseTab(connectionId);
+    },
+    [handleCloseTab],
+  );
+
+  const pendingSelectTableRef = useRef<{
+    table: string;
+    schema: string | null;
+    database: string;
+  } | null>(null);
+
+  // State counter that increments on each handleSelectTable call, guaranteeing
+  // a re-render so the effect below can flush the pending selection.  Without
+  // this, a no-op setActiveIdx in handleSelectConnection would skip the re-render
+  // and the bare effect would never re-fire to pick up the pending selection.
+  const [pendingSelectVersion, setPendingSelectVersion] = useState(0);
+
+  const flushPendingSelect = useCallback(() => {
+    const p = pendingSelectTableRef.current;
+    if (!p || !selectTableRef.current) return;
+    pendingSelectTableRef.current = null;
+    selectTableRef.current(p.table, p.schema, p.database);
+  }, []);
+
+  const handleSelectTable = useCallback(
+    (tableName: string, schema: string | null, database: string) => {
+      // Clicking a table always opens its data view — including while the
+      // visual builder is open. Tables enter the builder only by dragging a
+      // navigator row onto its canvas, so this path has no builder branch.
+      pendingSelectTableRef.current = { table: tableName, schema, database };
+      // Bump state to guarantee a re-render → useEffect fires → flush.
+      // Also schedule rAF as a fast path for the common case where ContentView
+      // is already mounted and selectTableRef.current is ready.
+      setPendingSelectVersion((v) => v + 1);
+      requestAnimationFrame(flushPendingSelect);
+    },
+    [flushPendingSelect],
+  );
+
+  // Reliable retry: fires after the re-render triggered by pendingSelectVersion
+  // changing.  At this point useLayoutEffect in ContentView has already set
+  // selectTableRef.current, so the ref is guaranteed to be ready.
+  useEffect(() => {
+    flushPendingSelect();
+  }, [pendingSelectVersion, flushPendingSelect]);
+
+  const handleRefresh = useCallback(() => {
+    void fetchConnections();
+    void fetchGroups();
+    void navigatorRef.current?.refreshAllConnections();
+  }, [fetchConnections, fetchGroups]);
+
+  // ── Post-onboarding sample: read directive once, open connection + query ──
+
+  // Step 1: Read the directive from localStorage on first mount.
+  useEffect(() => {
+    if (postOnboardingConsumedRef.current) return;
+    try {
+      const raw = localStorage.getItem(POST_ONBOARDING_SAMPLE_KEY);
+      if (!raw) return;
+      localStorage.removeItem(POST_ONBOARDING_SAMPLE_KEY);
+      postOnboardingConsumedRef.current = true;
+      postOnboardingRef.current = JSON.parse(raw) as PostOnboardingSample;
+    } catch {
+      // Malformed key — ignore.
+    }
+  }, []);
+
+  // Step 2: Once connections are loaded, find the sample connection and open a tab.
+  useEffect(() => {
+    const directive = postOnboardingRef.current;
+    if (!directive) return;
+    if (!connections.length) return;
+    const conn = connections.find((c) => c.name === directive.connectionName);
+    if (!conn) return;
+    handleSelectConnection(conn.id);
+  }, [connections, handleSelectConnection]);
+
+  // Step 3: When the sample connection becomes connected, open a query panel
+  // with the preset SQL.
+  useEffect(() => {
+    const directive = postOnboardingRef.current;
+    if (!directive) return;
+    const conn = connections.find((c) => c.name === directive.connectionName);
+    if (!conn) return;
+    const tab = tabs.find((t) => t.connectionId === conn.id && t.status === 'connected');
+    if (!tab) return;
+    if (allPanels.some((p) => p.connectionId === conn.id)) return;
+    postOnboardingRef.current = null;
+    actionsRef.current?.newQuery?.(directive.sql);
+  }, [tabs, connections, allPanels]);
+
+  const handleExportConfig = useCallback(async () => {
+    let saved: boolean;
+    try {
+      const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      saved = await backupCommands.exportAppData(`datazen-backup-${date}.zip`);
+    } catch (e) {
+      showMessageDialog(e instanceof Error ? e.message : t('common.exportFailed'), 'error');
+      return;
+    }
+    if (!saved) return;
+    showMessageDialog(t('appData.exportSuccess'), 'success');
+
+    try {
+      const wantKey = await confirmBackupKey({
+        title: t('appData.backupKeyTitle'),
+        message: t('appData.backupKeyMessage'),
+        confirmLabel: t('common.save'),
+        kind: 'info',
+      });
+      if (wantKey) {
+        const keySaved = await backupCommands.saveEncryptionKeyWithDialog('datazen.key');
+        if (keySaved) {
+          showMessageDialog(t('appData.backupKeySaved'), 'success');
+        }
+      }
+    } catch (e) {
+      showMessageDialog(e instanceof Error ? e.message : t('appData.backupKeyFailed'), 'error');
+    }
+  }, [confirmBackupKey, showMessageDialog, t]);
+
+  const handleImportConfig = useCallback(async () => {
+    try {
+      const picked = await backupCommands.pickAppDataImportFile();
+      if (!picked) return;
+      const confirmed = await confirmImportAppData({
+        title: t('common.importAppData'),
+        message: t('appData.importConfirmMessage'),
+        confirmLabel: t('common.confirm'),
+        kind: 'warning',
+      });
+      if (!confirmed) return;
+      await backupCommands.importAppData(picked);
+      await backupCommands.restartApp();
+    } catch (e) {
+      showMessageDialog(e instanceof Error ? e.message : t('common.importFailed'), 'error');
+    }
+  }, [confirmImportAppData, showMessageDialog, t]);
+
+  // Sidebar mode switch: plain mode change, the dashboard panel restores
+  // its own view state from the snapshot (or bootstraps on first open).
+  const handleSwitchToDashboard = useCallback(() => {
+    setWorkspaceMode('dashboard');
+  }, []);
+
+  const handleOpenDashboard = useCallback(async () => {
+    await fetchDashboards();
+    // Explicit open: drop the dashboard view snapshot so the panel shows the
+    // requested board instead of restoring the previous one.
+    useWorkspacePanelStateStore.getState().clearDashboardSnapshot();
+    const list = useDashboardStore.getState().list;
+    if (list.length > 0) {
+      setEmbeddedDashboardId(list[0]!.id);
+      setDashboardTitle(list[0]!.name);
+      setWorkspaceMode('dashboard');
+      return;
+    }
+    setEmbeddedDashboardId(undefined);
+    setDashboardTitle(t('connection.dashboard.title'));
+    setWorkspaceMode('dashboard');
+  }, [fetchDashboards, t]);
+
+  const handleOpenDashboardById = useCallback(
+    (dashboardId?: string, dashboardName?: string) => {
+      useWorkspacePanelStateStore.getState().clearDashboardSnapshot();
+      setEmbeddedDashboardId(dashboardId);
+      setDashboardTitle(dashboardName ?? t('connection.dashboard.title'));
+      setWorkspaceMode('dashboard');
+    },
+    [t],
+  );
+
+  const handleOpenWorkflow = useCallback(() => {
+    setWorkspaceMode('workflow');
+  }, []);
+
+  const openSettingsInShell = useCallback(
+    (section?: string) => {
+      void useUiStore.getState().syncFullscreen();
+      settingsReturnModeRef.current = workspaceMode;
+      setSettingsSection(section);
+      setMainView('settings');
+    },
+    [workspaceMode],
+  );
+
+  useEffect(() => {
+    if (mainView === 'settings') {
+      void useUiStore.getState().syncFullscreen();
+      const timer = setTimeout(() => {
+        void useUiStore.getState().syncFullscreen();
+      }, 250);
+      return () => clearTimeout(timer);
+    }
+  }, [mainView]);
+
+  const handleSettingsBack = useCallback(() => {
+    setMainView('workspace');
+    setSettingsSection(undefined);
+    setWorkspaceMode(settingsReturnModeRef.current);
+  }, []);
+
+  useEffect(() => {
+    const cleanups: Array<() => void> = [];
+
+    void listenCrossWindow('menu:open-settings', (payload) => {
+      const data = payload as { section?: string } | undefined;
+      openSettingsInShell(data?.section);
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:workflow', () => {
+      handleOpenWorkflow();
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:dashboard', () => {
+      void handleOpenDashboard();
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:open-dashboard', (payload) => {
+      const data = payload as { dashboardId?: string; dashboardName?: string } | undefined;
+      handleOpenDashboardById(data?.dashboardId, data?.dashboardName);
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:export-config', () => {
+      void handleExportConfig();
+    }).then((fn) => cleanups.push(fn));
+    void listenCrossWindow('menu:import-config', () => {
+      void handleImportConfig();
+    }).then((fn) => cleanups.push(fn));
+
+    return () => cleanups.forEach((fn) => fn());
+  }, [
+    handleExportConfig,
+    handleImportConfig,
+    handleOpenDashboard,
+    handleOpenWorkflow,
+    openSettingsInShell,
+  ]);
+
+  // ── Render ──
+
+  const centerTitle = (() => {
+    if (workspaceMode === 'workflow') return t('win.workflow');
+    if (workspaceMode === 'dashboard') {
+      return dashboardTitle ? `${dashboardTitle} - DataZen` : t('win.dashboard');
+    }
+    if (workspaceMode === 'workspace') return t('nav.workspacePages');
+    if (workspaceMode === 'extension') return t('nav.extensions');
+    if (activePanel) {
+      return `${activePanel.connectionName} - ${getDbLabel(activePanel.databaseType)} - DataZen`;
+    }
+    if (activeTab) {
+      return `${activeTab.connectionName} - ${getDbLabel(activeTab.databaseType)} - DataZen`;
+    }
+    return t('win.connections');
+  })();
+
+  const connectionWorkspace = (
+    <div className="flex h-full min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1">
+        {sidebarCollapsed ? (
+          <div className="flex shrink-0 flex-col items-center border-r border-edge bg-surface-alt py-2">
+            <button
+              type="button"
+              className="flex h-7 w-7 items-center justify-center rounded-md text-fg-muted hover:bg-surface-raised hover:text-fg"
+              onClick={() => setSidebarCollapsed(false)}
+              title={t('connWin.expandSidebar')}
+            >
+              <PanelLeftOpen className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          <>
+            <aside
+              data-testid="connection-navigator-aside"
+              style={{ width: sidebarWidth }}
+              className="flex h-full min-h-0 shrink-0 flex-col border-r border-edge bg-surface-alt"
+            >
+              <div className="flex min-h-0 flex-1 flex-col">
+                <ConnectionNavigatorTree
+                  ref={navigatorRef}
+                  activeConnectionId={activeTab?.connectionId ?? null}
+                  onSelectConnection={handleSelectConnection}
+                  onSelectTable={handleSelectTable}
+                  onSelectKvDb={handleSelectKvDb}
+                  onNewConnection={(defaultGroup) =>
+                    openNewConnectionDialog(undefined, defaultGroup)
+                  }
+                  onRefresh={handleRefresh}
+                  onExportConnections={() => openConnectionShareDialog('export')}
+                  onImportConnections={() => openConnectionShareDialog('import')}
+                  onEditConnection={(id) => openNewConnectionDialog(id)}
+                  onDeleteConnection={handleDeleteConnection}
+                  onDisconnect={handleDisconnect}
+                  onCollapseSidebar={() => setSidebarCollapsed(true)}
+                  onNodeContextMenu={(payload) => nodeContextMenuRef.current?.(payload)}
+                  onShowMessage={showMessageDialog}
+                  viewActions={{
+                    newQuery: (...args) => actionsRef.current?.newQuery(...args),
+                    openTableAction: (context, action) =>
+                      actionsRef.current?.openTableAction?.(context, action),
+                    openSqlFile: () => actionsRef.current?.openSqlFile?.(),
+                    createTable: () => actionsRef.current?.createTable?.(),
+                    openCreateDatabase: () => actionsRef.current?.openCreateDatabase?.(),
+                    openCreateSchema: () => actionsRef.current?.openCreateSchema?.(),
+                    openCreateUser: () => actionsRef.current?.openCreateUser?.(),
+                    openErDiagram: (...args) => actionsRef.current?.openErDiagram(...args),
+                    openTableStructure: (name) => actionsRef.current?.openTableStructure?.(name),
+                    refresh: () => actionsRef.current?.refresh(),
+                    openObject: (...args) => actionsRef.current?.openObject?.(...args),
+                    openQueryHistory: () => actionsRef.current?.openQueryHistory?.(),
+                    openServerStatus: (...args) => actionsRef.current?.openServerStatus?.(...args),
+                    openProcessList: (...args) => actionsRef.current?.openProcessList?.(...args),
+                  }}
+                />
+              </div>
+            </aside>
+            <div
+              ref={resizeHandleRef}
+              className="w-1 -ml-0.5 shrink-0 cursor-col-resize bg-transparent hover:bg-accent/30 transition-colors"
+              title={t('main.sidebar.resize')}
+            />
+          </>
+        )}
+
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          {activeTab?.status === 'error' && !activePanel && (
+            <div className="flex flex-1 flex-col items-center justify-center gap-4">
+              <div className="copyable text-sm text-danger">{activeTab.error}</div>
+              <div className="flex gap-2">
+                <button
+                  className="rounded-md bg-accent px-4 py-1.5 text-sm text-on-accent hover:bg-accent-2"
+                  type="button"
+                  onClick={() => {
+                    setTabs((prev) =>
+                      prev.map((tab, i) =>
+                        i === activeIdx
+                          ? { ...tab, status: 'connecting', dbSessionId: '', error: undefined }
+                          : tab,
+                      ),
+                    );
+                  }}
+                >
+                  {t('common.retry')}
+                </button>
+                <button
+                  className="rounded-md bg-surface-raised px-4 py-1.5 text-sm text-fg-secondary hover:text-fg"
+                  type="button"
+                  onClick={() => void handleCloseTab(activeTab.connectionId)}
+                >
+                  {t('common.close')}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Hide ContentView while connecting to avoid duplicate loading indicators.
+              ConnectionPage already shows its own connecting UI above. */}
+          {!(activeTab?.status === 'connecting' && !activePanel) && (
+            <ContentView
+              selectTableRef={selectTableRef}
+              nodeContextMenuRef={nodeContextMenuRef}
+              actionsRef={actionsRef}
+              onSelectConnection={handleSelectConnection}
+              // Same callback the navigation tree gets: a driver context bar's db
+              // selector must land on the one activate-or-open implementation,
+              // never on a second copy of it inside ContentView.
+              onSelectKvDb={handleSelectKvDb}
+            />
+          )}
+
+          {activeTab?.status === 'connecting' && !activePanel && (
+            <div className="flex flex-1 flex-col items-center justify-center gap-4">
+              <Spinner variant="ring" size="2xl" tone="accent" />
+              <div className="text-sm text-fg-muted">{t('conn.connecting')}</div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  const titleBarTitle = mainView === 'settings' ? t('win.settings') : centerTitle;
+
+  const titleBarLeft = (
+    <div className="flex items-center gap-1">
+      {mainView === 'settings' && (
+        <button
+          type="button"
+          data-testid="settings-back"
+          data-no-drag
+          onClick={handleSettingsBack}
+          title={t('common.back')}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-fg-secondary hover:bg-surface-raised hover:text-fg"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+      )}
+      <MenuBar />
+    </div>
+  );
+
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-surface text-fg">
+      <WindowChromeSlot
+        title={titleBarTitle}
+        leftContent={titleBarLeft}
+        rightContent={<ThemeToggle />}
+      />
+
+      {mainView === 'settings' ? (
+        <div className="flex min-h-0 flex-1 flex-col" data-testid="settings-page">
+          <SettingsContent initialSection={settingsSection} />
+        </div>
+      ) : (
+        <div className="flex min-h-0 flex-1">
+          <WorkspaceModeSidebar
+            workspaceMode={workspaceMode}
+            sidebarExpanded={sidebarExpanded}
+            onSetWorkspaceMode={setWorkspaceMode}
+            onOpenWorkflow={handleOpenWorkflow}
+            onOpenDashboard={handleSwitchToDashboard}
+            onOpenSettings={() => openSettingsInShell()}
+            onToggleSidebarMode={toggleWorkspaceSidebarMode}
+          />
+
+          <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+            {workspaceMode === 'connections' && connectionWorkspace}
+            {workspaceMode === 'workflow' && (
+              <WorkflowPage embedded onOpenDashboardInShell={handleOpenDashboardById} />
+            )}
+            {workspaceMode === 'workspace' && (
+              <WorkspaceView onOpenExtensions={() => setWorkspaceMode('extension')} />
+            )}
+            {workspaceMode === 'extension' && (
+              <WappManagementPage onOpenInWorkspace={() => setWorkspaceMode('workspace')} />
+            )}
+            {workspaceMode === 'dashboard' && (
+              <DashboardPanel
+                key={embeddedDashboardId ?? 'no-board'}
+                initialDashboardId={embeddedDashboardId}
+                onDashboardChange={(_id, name) => setDashboardTitle(name)}
+                onOpenWorkflowEditor={handleOpenWorkflow}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteDialog}
+      {confirmBackupKeyDialog}
+      {confirmImportAppDataDialog}
+      <ResultMessageDialog
+        open={messageDialogOpen}
+        kind={messageDialogKind}
+        message={messageDialogText}
+        onClose={() => setMessageDialogOpen(false)}
+      />
+    </div>
+  );
+}

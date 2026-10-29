@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
-  ApiError,
   clearBackendClients,
   createBackendClient,
   getBackendClient,
@@ -14,58 +13,32 @@ import {
   toTimestamp,
   useBackendClient,
   type BackendTransport,
-  type ConnectionEvent,
-  type Counter,
-  type EventEnvelope,
   type Id,
   type MethodMap,
-  type Timestamp,
-  type OpenSessionRequest,
   type SessionHandle,
-  type SubmissionToken,
-  type SubscribeEventsRequest,
 } from '../src/index';
 
 /**
- * Fixtures go through the narrowing helpers on purpose.
- *
- * The branded types exist so that a raw `string` cannot be passed where an
- * `Id`/`Counter`/`Timestamp` belongs; a test that reached for `as Id` would
- * defeat exactly that and could not catch a swapped handle.
+ * The facade half of the F3 domain split: what `client.ts` itself owns —
+ * composition, the binding registry, and the DTO narrowing helpers the Job
+ * domain reuses. Per-domain wire contracts live in the per-domain test files
+ * (`sessionClient.test.ts`, `executionClient.test.ts`, ...).
  */
-const id = (value: string): Id => mustNarrow(toId(value), 'Id', value);
-const counter = (value: number): Counter => mustNarrow(toCounter(value), 'Counter', value);
-const timestamp = (value: number): Timestamp => mustNarrow(toTimestamp(value), 'Timestamp', value);
 
-/** Fail loudly at fixture construction rather than leaking `undefined` downstream. */
+/** Narrowing fixtures keep the branded types honest (see `toCounter` suite). */
+const id = (value: string): Id => mustNarrow(toId(value), 'Id', value);
+
 function mustNarrow<T>(narrowed: T | undefined, kind: string, value: unknown): T {
   if (narrowed === undefined) throw new Error(`fixture ${String(value)} is not a valid ${kind}`);
   return narrowed;
 }
-
-const TOKEN: SubmissionToken = {
-  idempotencyKey: 'idem-1',
-  expiresAt: timestamp(1_700_000_000_000),
-};
-
-const OPEN_REQUEST: OpenSessionRequest = {
-  initialTarget: {
-    connectionId: id('conn-1'),
-    namespace: { database: null, catalog: null, schema: 'public', path: [] },
-    object: null,
-  },
-  owner: { kind: 'editor', clientInstanceId: id('client-1'), editorSessionId: id('ed-1') },
-  idempotencyKey: 'idem-open-1',
-};
-
-const HANDLE: SessionHandle = { dbSessionId: id('sess-1'), runtimeEpoch: id('epoch-1') };
 
 /**
  * Records every `call` so the contract can be asserted on the wire shape, not
  * on the facade's return value. A facade that quietly renames or reshapes an
  * argument would otherwise still receive the fake's canned answer and pass.
  */
-function createFakeTransport() {
+export function createFakeTransport() {
   const calls: Array<{ method: keyof MethodMap; payload: unknown }> = [];
   const responses = new Map<keyof MethodMap, unknown>();
 
@@ -80,147 +53,31 @@ function createFakeTransport() {
   return { transport, calls, responses };
 }
 
-describe('BackendClient against a fake transport', () => {
-  beforeEach(() => clearBackendClients());
-  afterEach(() => clearBackendClients());
-
-  it('sends the documented method name and request for openSession', async () => {
-    const fake = createFakeTransport();
-    fake.responses.set('openSession', { session: HANDLE });
-
-    const client = createBackendClient('desktop', fake.transport);
-    await client.openSession(OPEN_REQUEST, TOKEN);
-
-    expect(fake.calls).toHaveLength(1);
-    expect(fake.calls[0]?.method).toBe('openSession');
-    // The token is folded into the request rather than carried as a separate
-    // transport argument, so the adapter sees exactly one envelope.
-    expect(fake.calls[0]?.payload).toEqual({ ...OPEN_REQUEST, submissionToken: TOKEN });
+describe('facade composes the domain clients', () => {
+  it('exposes every domain method on one object', () => {
+    const client = createBackendClient('desktop', createFakeTransport().transport);
+    // One method per domain, as a composition smoke: the per-domain files
+    // assert the wire shapes; this asserts the spread lost nothing.
+    expect(typeof client.getSettings).toBe('function');
+    expect(typeof client.getPlatformIdentity).toBe('function');
+    expect(typeof client.listConnections).toBe('function');
+    expect(typeof client.openSession).toBe('function');
+    expect(typeof client.executeInSession).toBe('function');
+    expect(typeof client.subscribeEvents).toBe('function');
+    expect(typeof client.startJob).toBe('function');
+    expect(typeof client.readArtifact).toBe('function');
+    expect(typeof client.getTableData).toBe('function');
+    expect(typeof client.watchJob).toBe('function');
+    expect(typeof client.submitJobIdempotent).toBe('function');
+    expect(client.backendId).toBe('desktop');
   });
 
-  it('returns the transport response unchanged', async () => {
-    const fake = createFakeTransport();
-    const receipt = { session: HANDLE };
-    fake.responses.set('openSession', receipt);
-
-    const client = createBackendClient('desktop', fake.transport);
-    await expect(client.openSession(OPEN_REQUEST, TOKEN)).resolves.toBe(receipt);
-  });
-
-  it('routes cancelExecution under its own method name and passes the id through', async () => {
-    const fake = createFakeTransport();
-    fake.responses.set('cancelExecution', {
-      executionId: id('exec-7'),
-      disposition: 'requested',
-      state: 'cancelRequested',
-    });
-
-    const client = createBackendClient('desktop', fake.transport);
-    await client.cancelExecution(id('exec-7'), TOKEN);
-
-    expect(fake.calls[0]).toEqual({
-      method: 'cancelExecution',
-      payload: { executionId: id('exec-7'), submissionToken: TOKEN },
-    });
-  });
-
-  for (const [disposition, state] of [
-    ['requested', 'cancelRequested'],
-    ['unsupported', 'running'],
-    ['alreadyFinished', 'succeeded'],
-  ]) {
-    it(`CM-72 preserves ${disposition} as control disposition without inventing an execution effect`, async () => {
-      const fake = createFakeTransport();
-      fake.responses.set('cancelExecution', { executionId: id('exec-7'), disposition, state });
-      const client = createBackendClient('desktop', fake.transport);
-      await expect(client.cancelExecution(id('exec-7'), TOKEN)).resolves.toEqual({
-        executionId: id('exec-7'),
-        disposition,
-        state,
-      });
-    });
-  }
-
-  for (const payload of [
-    { executionId: 'exec-7', accepted: true, state: 'cancelRequested' },
-    { executionId: 'exec-7', disposition: 'Requested', state: 'cancelRequested' },
-    { executionId: 'exec-7', disposition: 'requested', state: 'rolledBack' },
-    { executionId: 'other-execution', disposition: 'requested', state: 'cancelRequested' },
-  ]) {
-    it(`CM-72 rejects a drifted or mismatched cancellation receipt ${JSON.stringify(payload)}`, async () => {
-      const fake = createFakeTransport();
-      fake.responses.set('cancelExecution', payload);
-      const client = createBackendClient('desktop', fake.transport);
-      await expect(client.cancelExecution(id('exec-7'), TOKEN)).rejects.toMatchObject({
-        code: 'ServiceUnavailable',
-      });
-      expect(fake.calls).toHaveLength(1);
-    });
-  }
-
-  it('reads a session by handle without adding anything to the payload', async () => {
-    const fake = createFakeTransport();
-    fake.responses.set('getSession', {});
-
-    const client = createBackendClient('desktop', fake.transport);
-    await client.getSession(HANDLE);
-
-    expect(fake.calls[0]).toEqual({ method: 'getSession', payload: { handle: HANDLE } });
-  });
-
-  it('turns a transport rejection into an ApiError carrying the requestId', async () => {
-    const transport: BackendTransport = {
-      call: () => Promise.reject({ code: 'SessionNotFound', message: 'gone', requestId: 'r-1' }),
-    };
-    const client = createBackendClient('desktop', transport);
-
-    await expect(client.getSession(HANDLE)).rejects.toBeInstanceOf(ApiError);
-    await expect(client.getSession(HANDLE)).rejects.toMatchObject({
-      code: 'SessionNotFound',
-      requestId: 'r-1',
-    });
-  });
-
-  it('does not swallow an ApiError the transport already produced', async () => {
-    const original = new ApiError('ContextConflict', 'context moved on', { requestId: 'r-2' });
-    const transport: BackendTransport = { call: () => Promise.reject(original) };
-    const client = createBackendClient('desktop', transport);
-
-    await expect(client.getSession(HANDLE)).rejects.toBe(original);
-  });
-
-  it('reports CapabilityUnsupported when the backend cannot subscribe', async () => {
-    const fake = createFakeTransport();
-    const client = createBackendClient('desktop', fake.transport);
-
-    const stream = client.subscribeEvents({ streamId: id('exec-1'), afterSequence: null });
-
-    await expect(stream[Symbol.asyncIterator]().next()).rejects.toMatchObject({
-      code: 'CapabilityUnsupported',
-    });
-  });
-
-  it('hands the subscribe request to the transport untouched', async () => {
-    const request: SubscribeEventsRequest = { streamId: id('exec-2'), afterSequence: counter(41) };
-    const seen: SubscribeEventsRequest[] = [];
-    const transport: BackendTransport = {
-      call: () => Promise.reject(new Error('unused')),
-      subscribe: (_method, payload) => {
-        seen.push(payload);
-        const feed: AsyncIterable<EventEnvelope<ConnectionEvent>> = {
-          [Symbol.asyncIterator]: async function* () {
-            // An empty feed: the assertion is about the request, not the events.
-          },
-        };
-        return feed;
-      },
-    };
-    const client = createBackendClient('desktop', transport);
-    const stream = client.subscribeEvents(request);
-
-    await stream[Symbol.asyncIterator]().next();
-
-    expect(seen).toEqual([request]);
+  it('a second facade is a second composition — the Job domain state never leaks across', () => {
+    const a = createBackendClient('desktop', createFakeTransport().transport);
+    const b = createBackendClient('desktop', createFakeTransport().transport);
+    // The Job domain's receipt map is per-composition-root, which is the
+    // documented boundary: two clients never share idempotency receipts.
+    expect(a).not.toBe(b);
   });
 });
 
@@ -384,3 +241,12 @@ describe('toCounter', () => {
     }
   });
 });
+
+/** Shared fixture: a narrowed session handle, reused by the domain test files. */
+export const TEST_HANDLE: SessionHandle = {
+  dbSessionId: id('sess-1'),
+  runtimeEpoch: id('epoch-1'),
+};
+
+/** Re-exported for the per-domain files so the fake stays in one place. */
+export { id, toCounter, toTimestamp };

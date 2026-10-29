@@ -35,7 +35,7 @@
  * green:
  *
  *   * an out-of-line test module (`#[cfg(test)] mod tests;` with the body in
- *     `src/tests.rs`) is a *separate file*; the declaration is skipped here and
+ *     `packages/frontend/src/tests.rs`) is a *separate file*; the declaration is skipped here and
  *     the other file is scanned, so its `unwrap()`s are reported;
  *   * `#[cfg(any(test, …))]` is not recognised as a test attribute;
  *   * a qualified path that only *names* an item called `unwrap` reads the same
@@ -122,7 +122,7 @@ const TEST_ATTR_RE =
 const BARE_UNWRAP_RE = /(?:\.\s*(?:r#)?unwrap\s*\(\s*\)|::\s*(?:r#)?unwrap(?![A-Za-z0-9_]))/g;
 
 /** Build output is not authored source. */
-const RUST_SKIP_DIR_NAMES = new Set(['target', 'node_modules', '.git', 'dist']);
+const RUST_SKIP_DIR_NAMES = new Set(['target', 'node_modules', '.git', 'apps/desktop/dist']);
 
 const isIdentChar = (c) => c !== undefined && /[A-Za-z0-9_]/.test(c);
 
@@ -379,7 +379,7 @@ export function analyzeRustSource(text, file) {
 /**
  * Walk one crate's `src` tree and audit every Rust file in it.
  *
- * A crate whose `src/` directory does not exist is an **error**, not a clean
+ * A crate whose `packages/frontend/src/` directory does not exist is an **error**, not a clean
  * scan: "nothing was read" and "nothing was wrong" must never print the same
  * line.
  *

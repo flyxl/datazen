@@ -192,7 +192,7 @@ describe('ci-tauri-build pro staging preflight', () => {
 
   it('reports an empty missing list when the staged tree is complete', () => {
     const root = mkdtempSync(join(tmpdir(), 'datazen-pro-ready-'));
-    const staging = join(root, 'src-tauri', 'resources', 'builtin-ep', 'sql-editor-pro');
+    const staging = join(root, 'apps/desktop/src-tauri', 'resources', 'builtin-ep', 'sql-editor-pro');
     mkdirSync(join(staging, 'dist'), { recursive: true });
     writeFileSync(join(staging, 'manifest.json'), '{}');
     writeFileSync(join(staging, 'dist/index.esm.js'), '// bundle');

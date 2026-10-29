@@ -94,7 +94,7 @@ function parseArgs(argv) {
 export function verifyBatch(root, batch) {
   const problems = [];
   const counts = { keys: 0, domains: Object.keys(batch).length };
-  const enDir = resolve(root, 'src/locales/en');
+  const enDir = resolve(root, 'packages/frontend/src/locales/en');
 
   for (const [domainFile, entries] of Object.entries(batch)) {
     const enFile = resolve(enDir, domainFile);

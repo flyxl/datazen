@@ -37,7 +37,7 @@ const SCAN_EXTENSIONS = new Set([...SHARED_SCAN_EXTENSIONS, '.rs']);
 // them, so the two lists were equivalent in practice. Verified by count, not by
 // inspection: the walk collects the same 2017 files under either set.
 // Gitignored codegen produced by resolve-drivers — never hand-written source.
-const SKIP_FILES = new Set(['src/extensions/generated.ts']);
+const SKIP_FILES = new Set(['packages/frontend/src/extensions/generated.ts']);
 
 /**
  * Forbidden token shapes. Every entry must carry a reason; hits are only
@@ -79,7 +79,7 @@ const ALLOWLIST = [
     // Historical-format doc comment: documents that schema-diff v1 payloads
     // carrying the OLD `configId` key are rejected on import. The token only
     // describes the rejected legacy format; it is not a live identifier.
-    file: 'src/commands/schemaDiff.ts',
+    file: 'packages/frontend/src/commands/schemaDiff.ts',
     line: /v1 configs with configId are rejected/,
   },
   {
@@ -97,7 +97,7 @@ const ALLOWLIST = [
     // The pattern cannot tell "connectionId used as a session key" (the
     // reversal it guards) from "connectionId used as the config key" (legal),
     // because that distinction is semantic, not lexical.
-    file: 'src/lib/relationMetadata/sessionConfig.ts',
+    file: 'packages/frontend/src/lib/relationMetadata/sessionConfig.ts',
     line: /connectionId: config\.connectionId as MetadataSessionIdentity/,
   },
   {

@@ -460,8 +460,6 @@ fn the_scan_covers_all_shared_runtime_sources() {
         "modules:src/shared/id.rs",
         // 用例编排随机制迁入本 crate（过渡期整块），继续被扫
         "modules:src/execution/application/orchestration/mod.rs",
-        // Job native-tool 应用面也必须被扫
-        "modules:src/jobs/application/native_tool/handler.rs",
         // 豁免必须真的生效：src/ai 不得出现在清单里
         // （若豁免失效，ai 子树的文件会出现在 files 里并被形态词点红）。
     ] {

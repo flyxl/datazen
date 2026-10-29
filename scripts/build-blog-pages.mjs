@@ -144,7 +144,7 @@ function buildZhPage(article) {
     <section class="page-head">
       <div class="wrap">
         <p class="breadcrumb">
-          <a href="index.html">首页</a> /
+          <a href="apps/desktop/index.html">首页</a> /
           <a href="blog.html">博客</a>
         </p>
         <h1>${escapeXml(title)}</h1>
@@ -218,7 +218,7 @@ function buildEnPage(article) {
     <section class="page-head">
       <div class="wrap">
         <p class="breadcrumb">
-          <a href="index.html">Home</a> /
+          <a href="apps/desktop/index.html">Home</a> /
           <a href="blog.html">Blog</a>
         </p>
         <h1>${escapeXml(title)}</h1>
@@ -288,7 +288,7 @@ function buildZhBlogList() {
     <section class="page-head">
       <div class="wrap">
         <p class="breadcrumb">
-          <a href="index.html">首页</a> / 博客
+          <a href="apps/desktop/index.html">首页</a> / 博客
         </p>
         <h1>博客</h1>
         <p>DataZen 官方博客：新功能发布、技术深度解析和使用指南。</p>
@@ -351,7 +351,7 @@ function buildEnBlogList() {
     <section class="page-head">
       <div class="wrap">
         <p class="breadcrumb">
-          <a href="index.html">Home</a> / Blog
+          <a href="apps/desktop/index.html">Home</a> / Blog
         </p>
         <h1>Blog</h1>
         <p>DataZen official blog: new features, deep dives, and usage guides.</p>

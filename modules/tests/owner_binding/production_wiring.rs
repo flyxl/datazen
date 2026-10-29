@@ -75,7 +75,7 @@ const MUST_VISIT: &[&str] = &[
     "modules/src/execution/runtime/gateway/owner_binding.rs",
     "modules/src/execution/runtime/connection/types.rs",
     "modules/src/shared/context.rs",
-    "src-tauri/src/platform/identity.rs",
+    "apps/desktop/src-tauri/src/platform/identity.rs",
 ];
 
 pub(super) fn repo_root() -> PathBuf {

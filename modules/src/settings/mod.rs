@@ -5,6 +5,7 @@ pub mod domain;
 
 pub use application::{SettingsError, SettingsService};
 pub use domain::{
-    ExecutionSettings, PortableThemePreference, SettingsRepository, SettingsRepositoryError,
-    SharedSettings, SqlFormatOptions, SqlSnippet, UserPreferences,
+    ExecutionSettings, MonitorEmailSettings, MonitorSettings, OnboardingState,
+    PortableThemePreference, SettingsRepository, SettingsRepositoryError, SharedSettings,
+    SqlFormatOptions, SqlSnippet, UserPreferences,
 };

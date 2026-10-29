@@ -17,8 +17,8 @@ describe('driver-deinject', () => {
     expect(emptyMarkerBlock(INJECTED_CONTENTS['Cargo.toml'], 'driver-patches')).toBe(
       CLEAN_CONTENTS['Cargo.toml'],
     );
-    expect(deinjectCargoContent(INJECTED_CONTENTS['src-tauri/Cargo.toml'])).toBe(
-      CLEAN_CONTENTS['src-tauri/Cargo.toml'],
+    expect(deinjectCargoContent(INJECTED_CONTENTS['apps/desktop/src-tauri/Cargo.toml'])).toBe(
+      CLEAN_CONTENTS['apps/desktop/src-tauri/Cargo.toml'],
     );
   });
 
@@ -26,9 +26,9 @@ describe('driver-deinject', () => {
     expect(
       deinjectManagedContent(
         'src/extensions/generated.ts',
-        INJECTED_CONTENTS['src/extensions/generated.ts'],
+        INJECTED_CONTENTS['packages/frontend/src/extensions/generated.ts'],
       ),
-    ).toBe(INJECTED_CONTENTS['src/extensions/generated.ts']);
+    ).toBe(INJECTED_CONTENTS['packages/frontend/src/extensions/generated.ts']);
   });
 
   it('classifies fully-generated codegen paths', () => {

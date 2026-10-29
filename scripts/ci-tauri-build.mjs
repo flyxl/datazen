@@ -55,7 +55,7 @@ export const FAST_FRONTEND_BUILD_COMMAND = 'pnpm build:bundle';
 export const REQUIRED_PRO_STAGED_PATHS = ['manifest.json', 'dist/index.esm.js', 'signature.sig'];
 
 export function builtinEpStagingDir(root = ROOT) {
-  return join(root, 'src-tauri', 'resources', 'builtin-ep', 'sql-editor-pro');
+  return join(root, 'apps/desktop/src-tauri', 'resources', 'builtin-ep', 'sql-editor-pro');
 }
 
 /**

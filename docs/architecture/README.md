@@ -91,7 +91,7 @@ modules/（单一业务 crate `datazen`，DDD 迁移后按功能分层）
   ├─ src/shared/        跨形态、无传输依赖的契约（ID、RequestContext、PortError、Clock；原 platform-api 契约层）
   ├─ src/application/   应用层用例（target、identity policy、sessions、DTO）
   ├─ src/execution/     运行时内核：session/resource/lease/budget/gateway/driver_registry
-  ├─ src/jobs/          Job 运行时与 NativeTool（原 kernel 的 Job 部分）
+  ├─ src/jobs/          Job 运行时（原 kernel 的 Job 部分；NativeTool 子模块已随前端形态拆分方案 F1 删除）
   ├─ src/migration/     schema-diff / data-sync / data-transfer 三引擎与 common
   ├─ src/workflow/ src/ai/ src/mcp/ src/dashboard/   共享 feature 逻辑（domain/application/engine 分层）
 ```

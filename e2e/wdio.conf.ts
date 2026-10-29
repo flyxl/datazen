@@ -145,9 +145,9 @@ async function runSessionBootstrap() {
     const inv = (window as any).__TAURI_INTERNALS__.invoke.bind(
       (window as any).__TAURI_INTERNALS__,
     );
-    inv('get_settings')
+    inv('get_host_settings')
       .then((settings: Record<string, unknown>) =>
-        inv('save_settings', {
+        inv('save_host_settings', {
           settings: {
             ...settings,
             language: 'zh-CN',
@@ -543,7 +543,7 @@ export const config: WebdriverIO.Config = {
       }
       if (main) await browser.switchToWindow(main);
       await ensureMainWindowForIpc();
-      await invokeBackend('get_settings');
+      await invokeBackend('get_host_settings');
       await browser.pause(600);
     } catch {
       /* ignore */

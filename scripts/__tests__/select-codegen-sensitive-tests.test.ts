@@ -43,19 +43,25 @@ describe('parseVitestTestConfig reads the real config as text', () => {
 
   it('finds the test-file include block and only that one', () => {
     expect(parsed.include.length).toBeGreaterThan(0);
-    expect(parsed.include).toContain('src/**/*.test.{ts,tsx}');
+    expect(parsed.include).toContain('packages/frontend/src/**/*.test.{ts,tsx}');
     // The coverage include array is a different block and must not leak in:
     // none of its entries name test files.
     expect(parsed.include.every((e) => e.includes('.test.'))).toBe(true);
   });
 
   it('carries the alias map the walk must resolve through', () => {
-    expect(parsed.aliases['@datazen/driver-sdk']).toBe('packages/driver-sdk/src/index.ts');
-    expect(Object.keys(parsed.aliases).length).toBeGreaterThan(1);
+    // form-split F6-c2: the @datazen/* alias table is retired — package
+    // exports resolve those. The one entry that remains is the Tauri window
+    // mock the shared test setup installs; the walk must still resolve
+    // through it so a setup file reaching the mock counts as an edge.
+    expect(parsed.aliases['@tauri-apps/api/window']).toBe(
+      'packages/frontend/src/test/mocks/tauriWindow.ts',
+    );
+    expect(Object.keys(parsed.aliases).length).toBeGreaterThanOrEqual(1);
   });
 
   it('finds the setup files, whose sensitivity would defeat the narrowing', () => {
-    expect(parsed.setupFiles).toContain('./src/test/setup.ts');
+    expect(parsed.setupFiles).toContain('./packages/frontend/src/test/setup.ts');
   });
 });
 
@@ -93,54 +99,54 @@ function makeFixtureTree(id: string, options: FixtureOptions = {}): string {
           '    },',
           '  },',
           '  test: {',
-          "    setupFiles: ['./src/test/setup.ts'],",
+          "    setupFiles: ['./packages/frontend/src/test/setup.ts'],",
           '    include: [',
-          "      'src/**/*.test.{ts,tsx}',",
+          "      'packages/frontend/src/**/*.test.{ts,tsx}',",
           '    ],',
           '  },',
           '});',
         ].join('\n'),
     ],
-    ['src/extensions/generated.ts', 'export const G = 1;\n'],
-    ['src/test/setup.ts', "import { expect } from 'vitest';\n"],
+    ['packages/frontend/src/extensions/generated.ts', 'export const G = 1;\n'],
+    ['packages/frontend/src/test/setup.ts', "import { expect } from 'vitest';\n"],
     // value chain: value.ts executes generated; a value importer of value.ts
     // therefore observes the driver set.
     [
-      'src/lib/value.ts',
+      'packages/frontend/src/lib/value.ts',
       "import { G } from '../extensions/generated';\nexport const V = G;\n",
     ],
     [
-      'src/__tests__/value.test.ts',
+      'packages/frontend/src/__tests__/value.test.ts',
       "import { V } from '../lib/value';\nit('sees V', () => {});\n",
     ],
     [
-      'src/__tests__/dynamic.test.ts',
+      'packages/frontend/src/__tests__/dynamic.test.ts',
       "it('lazily loads value', async () => { await import('../lib/value'); });\n",
     ],
     [
-      'src/__tests__/alias.test.ts',
+      'packages/frontend/src/__tests__/alias.test.ts',
       "import { V } from '@datazen/x';\nit('sees alias V', () => {});\n",
     ],
     [
       'packages/x/src/index.ts',
-      "import { G } from '../../../src/extensions/generated';\nexport const V = G;\n",
+      "import { G } from '../../frontend/src/extensions/generated';\nexport const V = G;\n",
     ],
     // erased chains: neither typeonly.ts nor allmarked.ts executes generated,
     // so their importers run identical code under every driver set.
     [
-      'src/lib/typeonly.ts',
+      'packages/frontend/src/lib/typeonly.ts',
       "import type { G } from '../extensions/generated';\nexport const T = 1;\n",
     ],
     [
-      'src/__tests__/typeonly.test.ts',
+      'packages/frontend/src/__tests__/typeonly.test.ts',
       "import { T } from '../lib/typeonly';\nit('sees T', () => {});\n",
     ],
     [
-      'src/lib/allmarked.ts',
+      'packages/frontend/src/lib/allmarked.ts',
       "import { type G } from '../extensions/generated';\nexport const A = 1;\n",
     ],
     [
-      'src/__tests__/allmarked.test.ts',
+      'packages/frontend/src/__tests__/allmarked.test.ts',
       "import { A } from '../lib/allmarked';\nit('sees A', () => {});\n",
     ],
     ...(options.extra ?? []),
@@ -159,9 +165,9 @@ describe('selectCodegenSensitiveTests on a fixture tree', () => {
     try {
       const { files, testFileCount } = selectCodegenSensitiveTests({ root, log: () => {} });
       expect(files).toEqual([
-        'src/__tests__/alias.test.ts',
-        'src/__tests__/dynamic.test.ts',
-        'src/__tests__/value.test.ts',
+        'packages/frontend/src/__tests__/alias.test.ts',
+        'packages/frontend/src/__tests__/dynamic.test.ts',
+        'packages/frontend/src/__tests__/value.test.ts',
       ]);
       expect(testFileCount).toBe(5);
     } finally {
@@ -171,7 +177,12 @@ describe('selectCodegenSensitiveTests on a fixture tree', () => {
 
   it('throws when a setup file reaches the codegen target', () => {
     const root = makeFixtureTree('setup-sensitive', {
-      extra: [['src/test/setup.ts', "import { G } from '../extensions/generated';\n"]],
+      extra: [
+        [
+          'packages/frontend/src/test/setup.ts',
+          "import { G } from '../extensions/generated';\n",
+        ],
+      ],
     });
     try {
       expect(() => selectCodegenSensitiveTests({ root, log: () => {} })).toThrow(/setup file/);
@@ -187,7 +198,7 @@ describe('selectCodegenSensitiveTests on a fixture tree', () => {
         'export default defineConfig({',
         '  test: {',
         '    include: [',
-        "      'src/**/*.test.{ts,tsx}',",
+        "      'packages/frontend/src/**/*.test.{ts,tsx}',",
         "      'nowhere/**/*.test.{ts,tsx}',",
         '    ],',
         '  },',
@@ -210,7 +221,7 @@ describe('selectCodegenSensitiveTests on a fixture tree', () => {
         'export default defineConfig({',
         '  test: {',
         '    include: [',
-        "      'src/**/*.test.{ts,tsx}',",
+        "      'packages/frontend/src/**/*.test.{ts,tsx}',",
         '    ],',
         '  },',
         '});',
@@ -218,7 +229,10 @@ describe('selectCodegenSensitiveTests on a fixture tree', () => {
       extra: [
         // Overwrite the value chain with an erased chain: nothing executes
         // generated.ts any more, which is a broken state, not an empty run.
-        ['src/lib/value.ts', "import type { G } from '../extensions/generated';\nexport const V = 1;\n"],
+        [
+          'packages/frontend/src/lib/value.ts',
+          "import type { G } from '../extensions/generated';\nexport const V = 1;\n",
+        ],
       ],
     });
     try {
@@ -247,7 +261,7 @@ describe('selectCodegenSensitiveTests on the real tree', () => {
     // cellEditorCandidates is the case the driver-set gate exists for: its
     // expectations read DB_REGISTRY quote characters, which basic does not
     // register (see the `sqlserver` literal in that file's history).
-    expect(files).toContain('src/lib/__tests__/cellEditorCandidates.test.ts');
+    expect(files).toContain('packages/frontend/src/lib/__tests__/cellEditorCandidates.test.ts');
     // An .mjs guard test cannot import the TS codegen, so it must never be
     // selected; if it ever is, the walker is matching on text, not edges.
     expect(files).not.toContain('scripts/__tests__/check-version-consistency.test.mjs');

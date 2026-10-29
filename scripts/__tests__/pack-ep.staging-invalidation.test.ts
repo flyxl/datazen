@@ -61,7 +61,7 @@ describe('a failed pack must not leave a reusable signed tree', () => {
       root,
       // Mirrors the production layout so ci-tauri-build's `root`-relative probe
       // resolves to the same tree the rest of these cases exercise.
-      stageDir: join(root, 'src-tauri', 'resources', 'builtin-ep', 'sql-editor-pro'),
+      stageDir: join(root, 'apps/desktop/src-tauri', 'resources', 'builtin-ep', 'sql-editor-pro'),
       codegenPath: join(root, 'generated-pro.ts'),
       outDir: join(root, 'artifacts'),
     };

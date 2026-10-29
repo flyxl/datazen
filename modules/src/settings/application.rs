@@ -74,6 +74,11 @@ impl SettingsService {
             && matches!(
                 settings.execution.mcp_permission_mode.as_str(),
                 "read_only" | "safe_write" | "high_risk_write"
+            )
+            // Form-split F4: behavior field migrated from the desktop blob.
+            && matches!(
+                settings.row_count_mode.as_str(),
+                "auto" | "exact" | "estimated" | "none"
             );
 
         if !valid {
@@ -133,6 +138,9 @@ mod tests {
                 driver_settings: serde_json::Map::new(),
                 ai_strict_egress: true,
             },
+            monitor: Default::default(),
+            onboarding: None,
+            row_count_mode: "auto".into(),
         }
     }
 
