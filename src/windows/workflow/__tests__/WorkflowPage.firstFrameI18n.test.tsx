@@ -37,10 +37,6 @@ const { aiStoreState } = vi.hoisted(() => {
   return { aiStoreState: state };
 });
 
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn().mockResolvedValue(() => {}),
-}));
-
 vi.mock('../../../hooks/useSettings', () => ({ useSettings: () => {} }));
 
 vi.mock('../../../hooks/useResizable', () => ({

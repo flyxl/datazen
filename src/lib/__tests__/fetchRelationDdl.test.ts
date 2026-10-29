@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest';
 import { clearPlatformServices, setPlatformServices } from '@datazen/backend-client';
-import { invoke } from '@tauri-apps/api/core';
 import { fetchRelationDdl, copyToClipboard } from '../fetchRelationDdl';
 import * as schemaCache from '../schemaCache';
 import { databaseCommands } from '../../commands/database';
@@ -13,10 +12,6 @@ vi.mock('../../commands/database', () => ({
   databaseCommands: {
     getObjectDdl: vi.fn(),
   },
-}));
-
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn(),
 }));
 
 describe('fetchRelationDdl', () => {
@@ -115,6 +110,7 @@ describe('copyToClipboard', () => {
   // Form-split R6: the native fallback leg rides the PlatformServices port —
   // the tests bind the port with the invoke mock behind it, which keeps the
   // old wire assertions (command name + payload) intact.
+  const invoke = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -151,7 +147,7 @@ describe('copyToClipboard', () => {
       },
     });
 
-    vi.mocked(invoke).mockResolvedValueOnce(undefined);
+    invoke.mockResolvedValueOnce(undefined);
     setPlatformServices({
       writeClipboard: (text: string) => invoke('write_clipboard', { text }),
     } as never);
@@ -162,7 +158,7 @@ describe('copyToClipboard', () => {
   });
 
   it('falls back to execCommand if navigator.clipboard and the host command throw', async () => {
-    vi.mocked(invoke).mockRejectedValueOnce(new Error('Tauri not running'));
+    invoke.mockRejectedValueOnce(new Error('Tauri not running'));
 
     const writeTextMock = vi.fn().mockRejectedValue(new Error('Permission denied'));
     Object.assign(navigator, {

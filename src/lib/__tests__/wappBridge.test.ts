@@ -46,10 +46,6 @@ function toBytes(text: string): number[] {
   return [...new TextEncoder().encode(text)];
 }
 
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: (...args: unknown[]) => notificationInvokeMock(...args),
-}));
-
 import {
   setBackendClient,
   setPlatformServices,

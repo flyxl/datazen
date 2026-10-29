@@ -77,10 +77,6 @@ vi.mock('../../../lib/sqlDialects', () => ({
   getSqlDialect: () => ({ backupOptions: backupOptionsRef.current }),
 }));
 
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: (...args: unknown[]) => invokeMock(...args),
-}));
-
 vi.mock('../../../platform/contracts', () => ({
   requirePlatform: () => ({
     events: {

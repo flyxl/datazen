@@ -23,9 +23,20 @@ const { listenMock, wappState, getManifestMock } = vi.hoisted(() => {
   };
 });
 
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: (...args: Parameters<typeof listenMock>) => listenMock(...args),
-}));
+// Form-split F6-tests: WorkspaceView listens through the EventChannel port
+// (`requirePlatform().events.listenCrossWindow`) — bind a spy events port so
+// the deep-link handler assertions keep reading listenMock. The old
+// `@tauri-apps/api/event` mock went stale when the view moved onto the port
+// (the optional-chained handler silently stopped exercising the guards).
+import { clearPlatform, configurePlatform, testPlatform } from '../../../test/setup';
+
+configurePlatform({
+  ...testPlatform,
+  events: {
+    listenCrossWindow: (...args: Parameters<typeof listenMock>) => listenMock(...args) as never,
+    emitCrossWindow: async () => undefined,
+  },
+});
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),

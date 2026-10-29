@@ -3,6 +3,47 @@
 > 本文件随每个 form-split PR 同步提交，记录实际执行顺序、决策与验证结果，
 > 避免工作进度丢失。条目按时间倒序（最新在上）。基线：`2a08e55`（F4a 合入后）。
 
+## 2026-10-30（会话七）— F6-tests 批次一：37 个共享区测试的 `@tauri-apps/api/core` mock 焚烧
+
+> 承接会话六（生产侧 shim 焚烧完）。本批对齐测试侧：共享区测试不再
+> `vi.mock('@tauri-apps/api/core')`——invoke 轨道已骑 bound backend
+> transport（R6 形态），mock 面换到 `setBackendClient('test', …)` /
+> spy platform port，测试不再 import 宿主运行时。这是 F6 目录迁移的
+> 前置：`packages/frontend` 里的测试文件必须宿主无关。
+
+### 改动模式（三类）
+
+- **纯删除**（多数）：测试早已通过 `setBackendClient('test', …)` 绑定
+  transport，残留的 `vi.mock('@tauri-apps/api/core')` 只是历史噪声——
+  删掉后 invoke 轨道走 transport 绑定，断言面不变（connection/dashboard/
+  file/history/importExport/schemaDiff/syncPlan/transfer/transferJobs/
+  wapps/BackupWindow/QueryPanel 族/DataSync/DataTransfer 族/
+  wappBridge 族/sqlFileExecution/themePackApply/fetchRelationDdl 等 28 文件）。
+- **换 spy platform port**：WorkspaceIntegration（EventChannel 端口
+  `listenCrossWindow` spy——顺带修复 stale mock 静默跳过 guard 断言的真
+  缺陷）；QueryArtifactExport（artifact 命令已上 legacy 轨，绑定
+  transport）；BrandSidebar 侧 firstFrame 测试改 `getAppVersion` 端口直答。
+- **杂项对齐**：OnboardingWizard / SchemaDiff 族 / DashboardPanel /
+  DataTransferWindow 的 firstFrameI18n 与 ContentView 等随 mock 删除重排
+  绑定时序。
+
+### 残留盘点（下一批次输入）
+
+- 测试树剩 9 个共享区文件仍 `vi.mock('@tauri-apps/*')`：fk 族四件
+  （fkArrowRequest/fkNavigation.journey/fkViewportRestore.audit/
+  fkErrorRoundTrip）+ fkJumpSemantics.audit + gridErrorRoundTrip.audit +
+  namedViews.contract + lib/session/desktopSubscription +
+  ConnectionPage（webviewWindow mock）。
+- 合规不动：`src/platform/__tests__/*` 四件桌面机器测试 + TitleBar
+  （shell/desktop 组件）+ pathIpcWiring（字符串断言非 import）+ 两处注释。
+
+### 验证
+
+- `vitest run`（37 文件定点）：**407/407 绿**（83s）。
+- 闸门 0 blocking / 1 advisory（不变）。
+
+---
+
 ## 2026-10-30（会话六）— F6-pre：六个 R7 shim 焚烧（转端口访问器），分家变纯机械
 
 > 计划 §5.6 的输入条件「分家变为纯机械动作」的最后一英里。六个 F2 过渡 shim

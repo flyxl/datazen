@@ -22,15 +22,6 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 
 const invokeMock = vi.hoisted(() => vi.fn().mockResolvedValue([]));
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: invokeMock,
-}));
-
-
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn().mockResolvedValue(() => {}),
-}));
-
 vi.mock('../../../hooks/useSettings', () => ({
   useSettings: () => undefined,
 }));

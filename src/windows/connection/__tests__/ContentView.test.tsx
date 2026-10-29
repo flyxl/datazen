@@ -232,10 +232,6 @@ vi.mock('../../../components/ai/AiChatPanel', () => ({
   AiChatPanel: mockDiv('mock-ai-chat-panel'),
 }));
 
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn(),
-}));
-
 describe('ContentView', () => {
   let ContentView: typeof import('../ContentView').ContentView;
   let panelStore: typeof import('../../../stores/panelStore');

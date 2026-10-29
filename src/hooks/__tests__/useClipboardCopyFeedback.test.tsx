@@ -18,8 +18,6 @@ import {
 } from '../../test/copyFeedbackHarness';
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
-vi.mock('@tauri-apps/api/core', () => ({ invoke }));
-
 // Form-split R6/F6-prep: the copy chain's native fallback leg rides the
 // PlatformServices port — bind it with the invoke mock behind it so the wire
 // assertions (command name + payload) keep reading the same mock.

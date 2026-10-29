@@ -162,10 +162,6 @@ vi.mock('../../../stores/aiStore', () => ({
     }),
 }));
 vi.mock('../../../components/ai/DiagnosisPanel', () => ({ DiagnosisPanel: () => null }));
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn().mockResolvedValue(() => {}),
-}));
-
 vi.mock('../../../hooks/useConfirmDialog', () => ({
   useConfirmDialog: () => [vi.fn(async () => true), null],
 }));

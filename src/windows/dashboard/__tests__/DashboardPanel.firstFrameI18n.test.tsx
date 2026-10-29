@@ -66,10 +66,6 @@ const { dashboardStoreState } = vi.hoisted(() => {
   };
 });
 
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn().mockResolvedValue(() => {}),
-}));
-
 // No `settings.language` → the real useLocaleDomains defaults to 'en' and asks
 // for the `dashboard` pack, exactly as the shipping panel does.
 vi.mock('../../../stores/settingsStore', () => ({

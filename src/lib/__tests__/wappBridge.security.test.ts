@@ -38,10 +38,6 @@ const {
   auditLogMock: vi.fn(),
 }));
 
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: (...args: unknown[]) => notificationInvokeMock(...args),
-}));
-
 vi.mock('../../commands/wapps', () => ({
   wappCommands: {
     wappStorageGet: (...args: unknown[]) => storageGetMock(...args),

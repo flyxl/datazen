@@ -131,10 +131,6 @@ vi.mock('../../../stores/aiStore', () => ({
 vi.mock('../../../hooks/useConfirmDialog', () => ({
   useConfirmDialog: () => [vi.fn().mockResolvedValue(true), null],
 }));
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn().mockResolvedValue(() => {}),
-}));
-
 vi.mock('../../../commands/dashboard', () => ({
   dashboardCommands: {
     createWidgetFromSql: (...args: unknown[]) => createWidgetFromSql(...args),

@@ -157,10 +157,6 @@ vi.mock('../../../stores/aiStore', () => ({
     }),
 }));
 vi.mock('../../../components/ai/DiagnosisPanel', () => ({ DiagnosisPanel: () => null }));
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn().mockResolvedValue(() => {}),
-}));
-
 vi.mock('../../../hooks/useConfirmDialog', () => ({
   // One independent confirm pair per hook call site: a test that asserts on a
   // specific dialog must not depend on how many other dialogs the panel

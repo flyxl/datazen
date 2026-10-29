@@ -16,11 +16,6 @@ const e2eGlobal = globalThis as typeof globalThis & {
   __dataTransferJobCalls?: CapturedJobCall[];
 };
 
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: (...args: unknown[]) => invokeMock(...args),
-}));
-
-
 import { setBackendClient } from '@datazen/backend-client';
 // form-split R6: the invoke wrappers ride the bound backend transport now
 // (same binding pattern as file.test.ts — the mock keeps its invoke shape).

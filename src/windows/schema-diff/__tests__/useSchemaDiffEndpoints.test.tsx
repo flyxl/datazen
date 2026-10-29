@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { invoke } from '@tauri-apps/api/core';
 import type { ConnectionConfig } from '../../../types';
 import { useSchemaDiffEndpoints } from '../useSchemaDiffEndpoints';
 import {
@@ -20,11 +19,6 @@ vi.mock('../../../hooks/useI18n', () => ({
 }));
 
 const invokeMock = vi.hoisted(() => vi.fn());
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: invokeMock,
-}));
-
-
 import { setBackendClient } from '@datazen/backend-client';
 // form-split R6: the invoke wrappers ride the bound backend transport now
 // (same binding pattern as file.test.ts — the mock keeps its invoke shape).
@@ -112,7 +106,7 @@ describe('useSchemaDiffEndpoints', () => {
     });
     urlParamMock.mockReset();
     urlParamMock.mockReturnValue(null);
-    vi.mocked(invoke).mockResolvedValue(MOCK_CONNECTIONS);
+    invokeMock.mockResolvedValue(MOCK_CONNECTIONS);
     vi.mocked(listDatabasesDedicated).mockResolvedValue({
       databases: ['datazen_sync_src', 'datazen_sync_tgt'],
       // Matches the real helper, which releases the dedicated session before
@@ -133,7 +127,7 @@ describe('useSchemaDiffEndpoints', () => {
     await waitFor(() => {
       expect(result.current.connections).toHaveLength(3);
     });
-    expect(invoke).toHaveBeenCalledWith('get_connections');
+    expect(invokeMock).toHaveBeenCalledWith('get_connections');
   });
 
   it('reports cross-dialect when source and target types differ', async () => {
@@ -260,7 +254,7 @@ describe('useSchemaDiffEndpoints', () => {
   });
 
   it('keeps SQLite main as the catalog without overriding the configured file path', async () => {
-    vi.mocked(invoke).mockResolvedValue([
+    invokeMock.mockResolvedValue([
       { id: 'sqlite-src', name: 'SQLite Src', databaseType: 'sqlite', database: '/tmp/source.db' },
       { id: 'sqlite-tgt', name: 'SQLite Tgt', databaseType: 'sqlite', database: '/tmp/target.db' },
     ]);
@@ -336,7 +330,7 @@ describe('useSchemaDiffEndpoints', () => {
   });
 
   it('prefers the configured connection schema when the catalog has empty schemas', async () => {
-    vi.mocked(invoke).mockResolvedValue([
+    invokeMock.mockResolvedValue([
       pgConn('pg-src', 'PG Src', 'worker_db', 'e2e_worker_0'),
       pgConn('pg-tgt', 'PG Tgt', 'datazen_sync_tgt'),
     ]);

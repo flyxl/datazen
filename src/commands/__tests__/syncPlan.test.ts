@@ -2,9 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SyncProfile } from '../sync';
 
 const invoke = vi.hoisted(() => vi.fn());
-vi.mock('@tauri-apps/api/core', () => ({ invoke }));
-
-
 import { setBackendClient } from '@datazen/backend-client';
 // form-split R6: the invoke wrappers ride the bound backend transport now
 // (same binding pattern as file.test.ts — the mock keeps its invoke shape).

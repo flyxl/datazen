@@ -40,10 +40,6 @@ const { invokeMock, urlParams } = vi.hoisted(() => ({
   urlParams: {} as Record<string, string>,
 }));
 
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: (...a: unknown[]) => invokeMock(...a),
-}));
-
 vi.mock('../../../hooks/useThemeListener', () => ({ useThemeListener: vi.fn() }));
 
 // No `settings.language` → the real useLocaleDomains defaults to 'en'.

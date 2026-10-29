@@ -164,10 +164,6 @@ vi.mock('../../../components/query/QueryContextSelectors', () => ({
 }));
 vi.mock('../../../components/query/QueryErrorPanel', () => ({ QueryErrorPanel: () => null }));
 vi.mock('../dashboard/AddToDashboardDialog', () => ({ AddToDashboardDialog: () => null }));
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn().mockResolvedValue(() => {}),
-}));
-
 // Partial mock: the favorite dialog is replaced by a probe that exposes the SQL
 // it was opened with, so `onSaveQuery` routing is observable end to end.
 vi.mock('../query/QueryTransactionModals', async () => {

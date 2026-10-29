@@ -174,7 +174,6 @@ vi.mock('../../../commands/file', () => ({
     openTextWithDialog: vi.fn(),
   },
 }));
-vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn().mockResolvedValue([]) }));
 vi.mock('../../../hooks/useThemeListener', () => ({ useThemeListener: vi.fn() }));
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key, language: 'en' }),

@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { invoke } from '@tauri-apps/api/core';
 import { setBackendClient } from '@datazen/backend-client';
 import { QueryArtifactExport } from '../QueryArtifactExport';
 import type { QueryResultArtifacts } from '@datazen/backend-client';
 
-vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('../../../hooks/useI18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }));
+
+const invoke = vi.fn();
 
 // Form-split R6: the artifact commands ride the legacy invoke rail, which
 // resolves the bound backend facade — bind the mocked invoke behind the

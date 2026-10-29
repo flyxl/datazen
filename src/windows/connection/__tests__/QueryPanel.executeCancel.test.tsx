@@ -212,10 +212,6 @@ vi.mock('../dashboard/AddToDashboardDialog', () => ({
   AddToDashboardDialog: () => null,
 }));
 
-vi.mock('@tauri-apps/api/event', () => ({
-  listen: vi.fn().mockResolvedValue(() => {}),
-}));
-
 const PANEL_ID = 'panel-test';
 
 /**

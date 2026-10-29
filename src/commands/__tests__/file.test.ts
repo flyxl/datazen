@@ -9,10 +9,6 @@ import {
 const invokeMock = vi.hoisted(() => vi.fn());
 const listenMock = vi.hoisted(() => vi.fn());
 
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: invokeMock,
-}));
-
 vi.mock('../../platform/contracts', () => ({
   requirePlatform: () => ({
     events: {

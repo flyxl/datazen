@@ -10,10 +10,6 @@ import {
 } from '../themePackApply';
 import { parsePackEditorOverlay } from '../themeEditorColors';
 
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: vi.fn().mockResolvedValue(undefined),
-}));
-
 vi.mock('../crossWindowBus', () => ({
   emitCrossWindow: vi.fn().mockResolvedValue(undefined),
 }));

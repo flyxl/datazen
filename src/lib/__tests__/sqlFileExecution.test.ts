@@ -5,10 +5,6 @@ const { invokeMock, listenMock } = vi.hoisted(() => ({
   listenMock: vi.fn(async (..._args: unknown[]) => () => {}),
 }));
 
-vi.mock('@tauri-apps/api/core', () => ({
-  invoke: (...args: unknown[]) => invokeMock(...args),
-}));
-
 vi.mock('../../platform/contracts', () => ({
   requirePlatform: () => ({
     events: {
