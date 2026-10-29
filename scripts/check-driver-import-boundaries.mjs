@@ -58,6 +58,20 @@
  *       R2 only looks for `setLocale()`, R3 only looks at `packages/frontend/src/**`. This rule
  *       is what the `PathInput` → `@tauri-apps/plugin-dialog` import tripped.
  *
+ *   R5  The shared frontend package is consumable only by apps (ruling D1,
+ *       plan §6.2). `packages/**` — except `packages/frontend/` itself — must
+ *       not import `@datazen/frontend` (bare or deep) and must not resolve a
+ *       relative specifier into `packages/frontend/`. Scan surface copies the
+ *       R1 lesson: **every string literal** (plain import / `export … from` /
+ *       dynamic `import()` / `vi.mock()` / `vi.doMock()` / `require()`), the
+ *       exact shape 8 `vi.mock` violations used to slip past a `from`-only
+ *       baseline during Wave 2. Blocking from day one: the baseline is zero
+ *       (the redis key web context menu integration fixture moved to
+ *       `packages/frontend/__tests__/integration/` in F6-c3, retiring the two
+ *       R1 ALLOWLIST exemptions it carried — the coordinator notes there said
+ *       *remove together with the WebContextMenuHost exemption*, and that is
+ *       exactly what the move did).
+ *
  * Exemptions live in `ALLOWLIST` below: exact `(rule, file, specifier)` triples
  * with a reason and the milestone that owns them — no directory or glob
  * wildcards. Entries that stop matching (file gone, or violation fixed) are
@@ -205,6 +219,12 @@ export const RULES = {
     blocking: true,
     doc: 'docs/architecture/frontend/components.md §9',
   },
+  R5: {
+    id: 'R5',
+    name: 'the shared frontend package is consumable only by apps',
+    blocking: true,
+    doc: 'docs/development/frontend-form-split-plan.md §6.2 R5 / ruling D1',
+  },
   R6: {
     id: 'R6',
     name: 'src outside the desktop zones must not import @tauri-apps/*',
@@ -226,29 +246,17 @@ export const RULES = {
 };
 
 /**
- * Allow-list: the two coordinator-ruled host-integration fixtures in the redis
- * driver UI test. Matched on exact (rule, file, specifier); an entry that stops
+ * Allow-list. Matched on exact (rule, file, specifier); an entry that stops
  * matching is reported as an expired exemption.
+ *
+ * F6-c3: the two R1 entries for the redis key web context menu integration
+ * fixture were RETIRED by moving that test to
+ * `packages/frontend/__tests__/integration/redisKeyWebContextMenu.test.tsx`
+ * (plan §5.6 item 9) — the host↔driver fixture lives with the host now, and
+ * R5 takes over the boundary it used to breach. What remains is the R3
+ * test-harness ruling below.
  */
 export const ALLOWLIST = [
-  {
-    rule: 'R1',
-    file: 'packages/drivers/redis/ui/__tests__/redisKeyWebContextMenu.test.tsx',
-    specifier: '../../../../../packages/frontend/src/components/ui/WebContextMenu',
-    reason:
-      'driver↔host integration fixture: renders the real host WebContextMenuHost to prove showNativeContextMenu() lands in the host web menu',
-    milestone:
-      'Wave 4 import-guard (coordinator ruling); remove when the host menu mount is contributed via an SDK bridge',
-  },
-  {
-    rule: 'R1',
-    file: 'packages/drivers/redis/ui/__tests__/redisKeyWebContextMenu.test.tsx',
-    specifier: '../../../../../packages/frontend/src/stores/contextMenuStore',
-    reason:
-      'same fixture asserts against the host contextMenuStore (importing it is what triggers bindContextMenuBridge)',
-    milestone:
-      'Wave 4 import-guard (coordinator ruling); remove together with the WebContextMenuHost exemption above',
-  },
   // ── R3 test-harness ruling ────────────────────────────────────────────────
   // The four R3 findings that are NOT DocumentConnectionView.tsx are test
   // scaffolding, not host product code. `packages/frontend/src/test/driverUiSetup.ts` is the
@@ -318,6 +326,10 @@ export function rulesForFile(rel) {
   if (SKIPPED_CODEGEN_FILES.has(rel)) return [];
   const rules = [];
   if (rel.startsWith(`${DRIVER_DIR}/`)) rules.push(RULES.R1);
+  // form-split F6-c3 (ruling D1): @datazen/frontend's legal consumers are
+  // apps/* — every other package reaching for it (bare or relative) inverts
+  // the dependency direction the whole split exists to establish.
+  if (rel.startsWith('packages/') && !rel.startsWith('packages/frontend/')) rules.push(RULES.R5);
   // form-split F6-c1: the host frontend tree now lives under packages/frontend/,
   // so R2 (non-host packages must not call setLocale) must skip the host
   // package itself — the host IS the sanctioned caller.
@@ -482,6 +494,30 @@ export function inspectSource(rel, source) {
           text: at(line),
           specifier: value,
           detail,
+        });
+      }
+    }
+
+    if (rule === RULES.R5) {
+      for (const { value, line } of literals) {
+        // Bare @datazen/frontend (any subpath) is a package-protocol import;
+        // a relative specifier counts when it resolves into the frontend
+        // package dir. Both shapes scanned on the full literal surface.
+        const bare = value === '@datazen/frontend' || value.startsWith('@datazen/frontend/');
+        const target = bare ? null : resolveSpecifier(rel, value);
+        const climbsIn =
+          target !== null &&
+          (target === 'packages/frontend' || target.startsWith('packages/frontend/'));
+        if (!bare && !climbsIn) continue;
+        findings.push({
+          rule,
+          file: rel,
+          line,
+          text: at(line),
+          specifier: value,
+          detail: bare
+            ? `imports the shared frontend package '${value}' — only apps/* may consume @datazen/frontend (ruling D1)`
+          : `resolves into the shared frontend package (${target}) — only apps/* may consume it (ruling D1)`,
         });
       }
     }

@@ -5,7 +5,6 @@ import {
   createBackendClient,
   toTableValue,
   type BackendTransport,
-  type ChangeWarning,
   type CommitPendingChangesRequest,
   type CommitPendingChangesResponse,
   type Counter,
@@ -26,99 +25,12 @@ import {
 } from '../src/index';
 
 /* ------------------------------------------------------------------ */
-/* Compile-time parity with the desktop mirror.                       */
-/*                                                                     */
-/* The desktop frontend keeps its own copy of these shapes in          */
-/* `src/lib/tableChanges.ts`. Two copies drift, and a drift here is    */
-/* not a cosmetic difference: the same pending change would preview    */
-/* on the desktop and commit differently on the web, or the insert    */
-/* flag would be dropped on one side only.                            */
-/*                                                                     */
-/* The assertion below is a *type* assertion, so it is checked by     */
-/* `tsc --noEmit` and not by a test run: a shape that stops matching  */
-/* is a typecheck failure, long before a test could notice.           */
+/* Compile-time parity with the desktop mirror moved to the consumer    */
+/* (form-split F6-c3, ruling D1 / gate R5): the assertions now live in  */
+/* packages/frontend/src/lib/__tests__/tableChanges.backendClientParity  */
+/* .test.ts, where the mirror is local and the wire types arrive via    */
+/* the sanctioned bare specifier @datazen/backend-client.              */
 /* ------------------------------------------------------------------ */
-
-type DesktopTableChangeContext = import('../../../packages/frontend/src/lib/tableChanges').TableChangeContext;
-type DesktopPendingRowChange = import('../../../packages/frontend/src/lib/tableChanges').PendingRowChange;
-type DesktopPlannedStatement = import('../../../packages/frontend/src/lib/tableChanges').PlannedStatement;
-type DesktopChangeWarning = import('../../../packages/frontend/src/lib/tableChanges').ChangeWarning;
-type DesktopRowChangePlan = import('../../../packages/frontend/src/lib/tableChanges').RowChangePlan;
-type DesktopCommitStatementResult = import('../../../packages/frontend/src/lib/tableChanges').CommitStatementResult;
-type DesktopCommitPendingChangesResponse =
-  import('../../../packages/frontend/src/lib/tableChanges').CommitPendingChangesResponse;
-
-/** `true` only when `A` and `B` are mutually assignable. */
-type MutuallyAssignable<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
-
-/**
- * `true` only when `A` and `B` declare exactly the same keys.
- *
- * Mutual assignability alone is not enough, and the gap is not academic: an
- * **optional** field that exists on one side and not the other is assignable
- * in *both* directions, so a mirror that silently dropped `insertMarked?`
- * would still pass an assignability check. The key comparison is what makes
- * that failure loud.
- */
-type SameKeys<A, B> = [Exclude<keyof A, keyof B>] extends [never]
-  ? [Exclude<keyof B, keyof A>] extends [never]
-    ? true
-    : false
-  : false;
-
-/**
- * `true` only when the two shapes are the same shape: same keys, and each
- * assignable to the other (which is what catches a required field that
- * became optional, or a field whose type drifted).
- */
-type Parity<A, B> =
-  MutuallyAssignable<A, B> extends true ? (SameKeys<A, B> extends true ? true : false) : false;
-
-/** Fails to compile when the checked condition is not `true`. */
-type Assert<T extends true> = T;
-
-export type ContextParity = Assert<Parity<DesktopTableChangeContext, TableChangeContext>>;
-export type PendingChangeParity = Assert<Parity<DesktopPendingRowChange, PendingRowChange>>;
-export type PlannedStatementParity = Assert<Parity<DesktopPlannedStatement, PlannedStatement>>;
-export type ChangeWarningParity = Assert<Parity<DesktopChangeWarning, ChangeWarning>>;
-export type RowChangePlanParity = Assert<Parity<DesktopRowChangePlan, RowChangePlan>>;
-export type CommitStatementParity = Assert<
-  Parity<DesktopCommitStatementResult, import('../src/index').CommitStatementResult>
->;
-export type CommitResponseParity = Assert<
-  Parity<DesktopCommitPendingChangesResponse, CommitPendingChangesResponse>
->;
-/**
- * The table read result is mirrored too, from the desktop's `src/types`.
- *
- * It matters for the same reason: the same read must mean the same thing on
- * both sides of the port — in particular whether "the count was not taken"
- * arrives as `null` or as a missing key.
- */
-export type TableDataResultParity = Assert<
-  Parity<import('../../../packages/frontend/src/types').TableDataResult, TableDataResult>
->;
-
-/**
- * `true` only when the key `K` of `T` is **optional**.
- *
- * The parity assertion above compares the key sets, not their optionality: a
- * field that is optional on one side and required on the other has the same
- * keys and stays assignable in both directions. That gap matters here — the
- * host omits `insertMarked` when it is false, so a mirror that declared the
- * flag as required would claim a key the wire does not carry.
- */
-type IsOptional<T, K extends keyof T> = {} extends Pick<T, K> ? true : false;
-
-/**
- * The insert flag stays optional in the mirror.
- *
- * Fail-closed: making the flag required turns this into `false` and the
- * program red (the type assertion, not a runtime one — this package builds no
- * payload of its own, so the runtime half of the property belongs to the
- * host's `pendingChangesForWire`, which pins it there).
- */
-export type InsertMarkedStaysOptional = Assert<IsOptional<PendingRowChange, 'insertMarked'>>;
 
 /* ------------------------------------------------------------------ */
 /* Fixtures.                                                           */

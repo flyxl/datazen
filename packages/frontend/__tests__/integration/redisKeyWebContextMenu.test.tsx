@@ -1,13 +1,19 @@
+/**
+ * form-split F6-c3 (plan §5.6 item 9 / ruling D1): moved from
+ * packages/drivers/redis/ui/__tests__/ — the host↔driver integration fixture
+ * lives with the HOST now, which retires the two R1 ALLOWLIST exemptions it
+ * carried (see the coordinator notes in check-driver-import-boundaries.mjs).
+ */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import fs from 'node:fs';
 import path from 'node:path';
-import { WebContextMenuHost } from '../../../../../packages/frontend/src/components/ui/WebContextMenu';
+import { WebContextMenuHost } from '../../src/components/ui/WebContextMenu';
 import { showNativeContextMenu } from '@datazen/driver-sdk';
 // Host store module import triggers `bindContextMenuBridge` at load (capability
 // injection); this integration test asserts against the host web-menu store.
-import { useContextMenuStore } from '../../../../../packages/frontend/src/stores/contextMenuStore';
-import { buildRedisKeyContextMenuItems } from '../key-browser/redisKeyContextMenu';
+import { useContextMenuStore } from '../../src/stores/contextMenuStore';
+import { buildRedisKeyContextMenuItems } from '../../../drivers/redis/ui/key-browser/redisKeyContextMenu';
 
 afterEach(() => {
   useContextMenuStore.getState().hide();
@@ -60,7 +66,7 @@ describe('Redis key web context menu', () => {
     // D-0 split moved the row actions out of the workbench wall into the hook
     // that owns them; the assertion is unchanged (seam + coords, not copy).
     const src = fs.readFileSync(
-      path.resolve(import.meta.dirname, '../key-browser/useKeyRowActions.tsx'),
+      path.resolve(import.meta.dirname, '../../../drivers/redis/ui/key-browser/useKeyRowActions.tsx'),
       'utf8',
     );
     expect(src).toContain('showNativeContextMenu');

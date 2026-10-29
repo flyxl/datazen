@@ -103,6 +103,10 @@ export default defineConfig({
     hookTimeout: 120_000,
     include: [
       'packages/frontend/src/**/*.test.{ts,tsx}',
+      // form-split F6-c3: host↔driver integration fixtures (redis key web
+      // context menu) live with the host package, outside src/ so the
+      // host-production rules (R3/R6/R7) do not adjudicate test scaffolding.
+      'packages/frontend/__tests__/**/*.test.{ts,tsx}',
       'apps/desktop/src/**/*.test.{ts,tsx}',
       'scripts/__tests__/**/*.test.{ts,mjs}',
       // SDK package tests run on the Host toolchain too (PRD F8).

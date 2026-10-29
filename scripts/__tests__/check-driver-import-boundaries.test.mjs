@@ -39,13 +39,16 @@ function run(files, opts = {}) {
 }
 
 // Depth bookkeeping (all fixtures are host climbs from these directories; the
-// host shared tree lives under packages/frontend/src since the F6 split):
-//   packages/drivers/redis/ui              → ../../../../packages/frontend/src/…
-//   packages/drivers/redis/ui/__tests__    → ../../../../../packages/frontend/src/…
+// host is two trees since the F6 split — the shared packages/frontend/src and
+// the app apps/desktop/src). R1-family fixtures climb into the APP tree: R1
+// adjudicates both, while R5 (F6-c3) only guards the shared package, so each
+// rule keeps a fixture surface of its own:
+//   packages/drivers/redis/ui              → ../../../../apps/desktop/src/…
+//   packages/drivers/redis/ui/__tests__    → ../../../../../apps/desktop/src/…
 const DRIVER_UI = 'packages/drivers/redis/ui/ValuePanel.tsx';
-const DRIVER_UI_HOST_CLIMB = '../../../../packages/frontend/src/hooks/useI18n';
+const DRIVER_UI_HOST_CLIMB = '../../../../apps/desktop/src/hooks/useI18n';
 const DRIVER_TEST = 'packages/drivers/redis/ui/__tests__/valuePanel.test.tsx';
-const DRIVER_TEST_HOST_CLIMB = '../../../../../packages/frontend/src/stores/settingsStore';
+const DRIVER_TEST_HOST_CLIMB = '../../../../../apps/desktop/src/stores/settingsStore';
 
 describe('scanCode (specifier extraction)', () => {
   it('collects single-quoted, double-quoted and static template literals with lines', () => {
@@ -100,7 +103,7 @@ describe('resolveSpecifier', () => {
       'packages/drivers/redis/shared/meta',
     );
     expect(resolveSpecifier(DRIVER_UI, DRIVER_UI_HOST_CLIMB)).toBe(
-      'packages/frontend/src/hooks/useI18n',
+      'apps/desktop/src/hooks/useI18n',
     );
     expect(
       resolveSpecifier(
@@ -133,7 +136,7 @@ describe('R1 · drivers must not reference host src/', () => {
     });
     expect(result.code).toBe(1);
     expect(result.err).toContain(`R1 ${DRIVER_UI}:2`);
-    expect(result.err).toContain('resolves to host packages/frontend/src/hooks/useI18n');
+    expect(result.err).toContain('resolves to host apps/desktop/src/hooks/useI18n');
     expect(result.err).toContain(`import { useI18n } from '${DRIVER_UI_HOST_CLIMB}'`);
     expect(result.err).toContain('§2.1.2');
   });
@@ -143,7 +146,7 @@ describe('R1 · drivers must not reference host src/', () => {
       [DRIVER_TEST]:
         `import { describe, it, vi } from 'vitest';\n` +
         `vi.mock('${DRIVER_TEST_HOST_CLIMB}');\n` +
-        `vi.doMock('../../../../../packages/frontend/src/hooks/useI18n', () => ({}));\n`,
+        `vi.doMock('../../../../../apps/desktop/src/hooks/useI18n', () => ({}));\n`,
     });
     expect(result.code).toBe(1);
     expect(result.err).toContain(`${DRIVER_TEST}:2`);
@@ -156,9 +159,9 @@ describe('R1 · drivers must not reference host src/', () => {
     const file = 'packages/drivers/mongodb/ui/a.ts';
     const result = run({
       [file]: [
-        "export { cn } from '../../../../packages/frontend/src/lib/cn';",
-        "const lazy = () => import('../../../../packages/frontend/src/types');",
-        "const legacy = require('../../../../packages/frontend/src/stores/panelStore');",
+        "export { cn } from '../../../../apps/desktop/src/lib/cn';",
+        "const lazy = () => import('../../../../apps/desktop/src/types');",
+        "const legacy = require('../../../../apps/desktop/src/stores/panelStore');",
       ].join('\n'),
     });
     expect(result.code).toBe(1);
@@ -280,7 +283,7 @@ describe('tracking-scope classification (BUG-008)', () => {
   /** One R1 (external clone), one R2 (staged Pro EP) and one R3 (tracked host). */
   const MIXED_TREE = {
     [SUPERSET_FILE]:
-      "import { useI18n } from '../../../../packages/frontend/src/hooks/useI18n';\n",
+      "import { useI18n } from '../../../../apps/desktop/src/hooks/useI18n';\n",
     [EP_TEST_FILE]: "import { setLocale } from '@datazen/ui';\nsetLocale('en');\n",
     'packages/frontend/src/test/driverUiSetup.ts':
       "import '../../../../packages/drivers/redis/ui/shared/meta';\n",
@@ -401,9 +404,12 @@ describe('allow-list', () => {
   });
 
   it('shipped allow-list carries only coordinator-ruled entries, no globs', () => {
-    // 2 条 R1（redis 测试直接用宿主组件）+ 4 条 R3（测试夹具加载驱动 UI meta）。
+    // 4 条 R3（测试夹具加载驱动 UI meta）。F6-c3 把 redis 集成夹具搬到
+    // packages/frontend/__tests__/integration/ 并注销了它携带的 2 条 R1 豁免
+    // （兑现 coordinator 注记 remove together with the WebContextMenuHost
+    // exemption）；R5 闸门同批上线，接管该边界。
     // 裁定过程见 scripts/check-driver-import-boundaries.mjs 的 RULES.R3 文档注释。
-    expect(ALLOWLIST).toHaveLength(6);
+    expect(ALLOWLIST).toHaveLength(4);
 
     for (const item of ALLOWLIST) {
       // 三元组按 (rule, file, specifier) 精确匹配，所以不能出现通配
@@ -414,16 +420,8 @@ describe('allow-list', () => {
       expect(item.milestone.length).toBeGreaterThan(3);
     }
 
-    const r1 = ALLOWLIST.filter((i) => i.rule === 'R1');
-    expect(r1).toHaveLength(2);
-    for (const item of r1) {
-      expect(item.file).toBe('packages/drivers/redis/ui/__tests__/redisKeyWebContextMenu.test.tsx');
-      expect(item.specifier).toMatch(/^(\.\.\/)+packages\/frontend\/src\/[^*?]+$/);
-    }
-    expect(r1.map((i) => i.specifier).sort()).toEqual([
-      '../../../../../packages/frontend/src/components/ui/WebContextMenu',
-      '../../../../../packages/frontend/src/stores/contextMenuStore',
-    ]);
+    // R1 豁免已随 F6-c3 的搬家全部注销——空集本身是被断言的事实。
+    expect(ALLOWLIST.filter((i) => i.rule === 'R1')).toEqual([]);
 
     // R3 的豁免只许落在测试与测试夹具上。生产代码里的 host → driver 引用是真实
     // 分层破坏，只能靠把文档视图改走 SDK 修，不许用 allowlist 抹掉。
@@ -443,13 +441,14 @@ describe('allow-list', () => {
 describe('R4 · the shared design system must stay host-free and runtime-free', () => {
   const UI_SRC = 'packages/ui/src/PathInput.tsx';
 
-  it('keeps R1/R2/R4 blocking while R3 stays advisory', () => {
-    expect([RULES.R1.blocking, RULES.R2.blocking, RULES.R3.blocking, RULES.R4.blocking]).toEqual([
-      true,
-      true,
-      false,
-      true,
-    ]);
+  it('keeps R1/R2/R4/R5 blocking while R3 stays advisory', () => {
+    expect([
+      RULES.R1.blocking,
+      RULES.R2.blocking,
+      RULES.R3.blocking,
+      RULES.R4.blocking,
+      RULES.R5.blocking,
+    ]).toEqual([true, true, false, true, true]);
   });
 
   it('passes a design-system file that only depends on React and on itself', () => {
@@ -494,9 +493,9 @@ describe('R4 · the shared design system must stay host-free and runtime-free', 
       reason: "imports the host-only runtime package 'zustand…'",
     },
     {
-      what: 'a relative climb into the host shared tree',
-      body: "import { useSettingsStore } from '../../../packages/frontend/src/stores/settingsStore';\nexport const s = useSettingsStore;\n",
-      reason: 'reaches into the host packages/frontend/src/stores/settingsStore',
+      what: 'a relative climb into the host app tree',
+      body: "import { useSettingsStore } from '../../../apps/desktop/src/stores/settingsStore';\nexport const s = useSettingsStore;\n",
+      reason: 'reaches into the host apps/desktop/src/stores/settingsStore',
     },
     {
       what: 'a bare import of a sibling DataZen package',
@@ -546,6 +545,83 @@ describe('R4 · the shared design system must stay host-free and runtime-free', 
     expect(err.join('\n')).toContain(
       "R4 packages/ui/src/__uiBoundaryProbe__.tsx:1: imports the host-only runtime package '@tauri-apps/…'",
     );
+  });
+});
+
+describe('R5 · the shared frontend package is consumable only by apps', () => {
+  it('flags a bare @datazen/frontend import from a driver file, naming file:line', () => {
+    const file = 'packages/drivers/mysql/ui/ConnectionView.tsx';
+    const result = run({
+      [file]: "import { useI18n } from '@datazen/frontend';\nexport const x = useI18n;\n",
+    });
+    expect(result.code).toBe(1);
+    expect(result.err).toContain(`R5 ${file}:1`);
+    expect(result.err).toContain("imports the shared frontend package '@datazen/frontend'");
+    expect(result.err).toContain('ruling D1');
+  });
+
+  it('flags deep bare subpaths too (the package-protocol shape)', () => {
+    const file = 'packages/drivers/mysql/ui/meta.ts';
+    const result = run({
+      [file]: "vi.mock('@datazen/frontend/src/hooks/useI18n');\nexport const m = 1;\n",
+    });
+    expect(result.code).toBe(1);
+    expect(result.err).toContain(`R5 ${file}:1`);
+    expect(result.err).toContain("@datazen/frontend/src/hooks/useI18n");
+  });
+
+  it('flags a relative climb that resolves into packages/frontend/', () => {
+    // From packages/drivers/redis/ui, three climbs land on packages/ — the
+    // exact shape the pre-F6 layout made natural and D1 now forbids.
+    const file = 'packages/drivers/redis/ui/ValuePanel.tsx';
+    const result = run({
+      [file]: "import { useI18n } from '../../../frontend/src/hooks/useI18n';\nexport const u = useI18n;\n",
+    });
+    expect(result.code).toBe(1);
+    expect(result.err).toContain(`R5 ${file}:1`);
+    expect(result.err).toContain('resolves into the shared frontend package (packages/frontend/src/hooks/useI18n)');
+  });
+
+  it('does not adjudicate the frontend package itself (self-relative imports are its own business)', () => {
+    const result = run({
+      'packages/frontend/src/lib/value.ts': "import { store } from '../stores/panelStore';\nexport const v = store;\n",
+      'packages/frontend/__tests__/integration/fixture.test.tsx':
+        "import { WebContextMenuHost } from '../../src/components/ui/WebContextMenu';\nexport const H = WebContextMenuHost;\n",
+    });
+    expect(result.code).toBe(0);
+    expect(result.err).toBe('');
+  });
+
+  it('does not adjudicate apps/* — the legal consumers', () => {
+    const result = run({
+      'apps/desktop/src/main.tsx':
+        "import { App } from '@datazen/frontend/src/App';\nimport { env } from '@datazen/frontend';\nexport const m = [App, env];\n",
+    });
+    expect(result.code).toBe(0);
+    expect(result.err).toBe('');
+  });
+
+  it('leaves sibling-package specifiers that resolve elsewhere alone', () => {
+    const result = run({
+      'packages/drivers/redis/ui/meta.ts':
+        "import { registry } from '@datazen/driver-sdk';\nexport const r = registry;\n",
+    });
+    expect(result.code).toBe(0);
+    expect(result.err).toBe('');
+  });
+
+  it('suppresses exactly the allow-listed (rule, file, specifier) triple', () => {
+    const file = 'packages/drivers/mysql/ui/ConnectionView.tsx';
+    const files = { [file]: "import { useI18n } from '@datazen/frontend';\nexport const x = useI18n;\n" };
+    const entry = {
+      rule: 'R5',
+      file,
+      specifier: '@datazen/frontend',
+      reason: 'sanctioned bridge while the SDK port lands',
+      milestone: 'probe ruling',
+    };
+    expect(run(files, { allowlist: [entry] }).code).toBe(0);
+    expect(run(files, { allowlist: [{ ...entry, specifier: '@datazen/frontend/src' }] }).code).toBe(1);
   });
 });
 
@@ -599,8 +675,8 @@ describe('guard plumbing', () => {
     const report = out.join('\n');
     expect(err.join('')).toBe('');
     expect(code).toBe(0);
-    // all six shipped exemptions are live on the current baseline …
-    expect(report).toContain('6 allow-listed reference(s) skipped');
+    // all four shipped exemptions are live on the current baseline …
+    expect(report).toContain('4 allow-listed reference(s) skipped');
     // … and the one known host → driver production reference stays advisory-only
     // (deliberately not exempted — it is a real layering break, see RULES.R3).
     expect(report).toContain(
