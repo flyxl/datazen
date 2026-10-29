@@ -15,7 +15,6 @@ const {
   emitCrossWindowMock,
   listenCrossWindowMock,
   getActiveConnectionState,
-  webviewGetAllMock,
   hasOpenChildWindowsMock,
   fetchConnectionsMock,
   fetchGroupsMock,
@@ -50,7 +49,6 @@ const {
       { status: string; connectionId?: string; dbSessionId?: string }
     >,
   })),
-  webviewGetAllMock: vi.fn().mockResolvedValue([{ label: 'main' }]),
   hasOpenChildWindowsMock: vi.fn().mockResolvedValue(false),
   fetchConnectionsMock: vi.fn().mockResolvedValue(undefined),
   fetchGroupsMock: vi.fn().mockResolvedValue(undefined),
@@ -344,12 +342,6 @@ vi.mock('../../../lib/databaseTypes', async () => {
   };
 });
 
-vi.mock('@tauri-apps/api/webviewWindow', () => ({
-  WebviewWindow: {
-    getAll: (...args: unknown[]) => webviewGetAllMock(...args),
-  },
-}));
-
 function setPendingConnection(data: Record<string, string>) {
   localStorage.setItem('datazen:pending-connection', JSON.stringify(data));
 }
@@ -390,7 +382,6 @@ beforeEach(() => {
   tauriWindowTestState.closeMock.mockReset().mockResolvedValue(undefined);
   tauriWindowTestState.minimizeMock.mockReset().mockResolvedValue(undefined);
   hasOpenChildWindowsMock.mockResolvedValue(false);
-  webviewGetAllMock.mockResolvedValue([{ label: 'main' }]);
   localStorage.clear();
   getActiveConnectionState.mockReturnValue({ connections: {} });
   connectMock.mockResolvedValue({ connectionId: 'cfg-1', dbSessionId: 'conn-live-1' });

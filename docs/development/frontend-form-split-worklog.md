@@ -3,6 +3,51 @@
 > 本文件随每个 form-split PR 同步提交，记录实际执行顺序、决策与验证结果，
 > 避免工作进度丢失。条目按时间倒序（最新在上）。基线：`2a08e55`（F4a 合入后）。
 
+## 2026-10-30（会话七）— F6-tests 批次二：9 个残留共享区测试归位，测试树 @tauri-apps 归零达标
+
+> 承接批次一。9 个残留文件按断言性质三路归位，共享区测试树从此只在
+> 注释/字符串断言里出现 `@tauri-apps`——`packages/frontend` 的测试面
+> 宿主无关（F6 目录迁移的输入条件之一）。
+
+### 三路归位
+
+- **stale mock 纯删除**：ConnectionPage.test —— 生产轨道早已走平台端口
+  spy（`hasOpenChildWindowsMock` 绑进 `configurePlatform`），残留的
+  `vi.mock('@tauri-apps/api/webviewWindow')` + `webviewGetAllMock`
+  零断言消费，删除四处置点。
+- **桌面轨道测试搬家（8 件 → `src/platform/__tests__/`，`.desktop` 后缀）**：
+  这批测试绑**真实** `createDesktopBackendTransport()` 并断言 IPC 层契约
+  （`resolve_foreign_key_targets` 等命令名/参数封窗、宿主错误文本经
+  ApiError cause 链回环、Channel 订阅机器）——本质是「组件 × 桌面轨道」
+  的集成审计，归桌面区测试，F6 目录迁移时随 apps/desktop 走：
+  fkErrorRoundTrip / fkJumpSemantics.audit / gridErrorRoundTrip.audit /
+  namedViews.contract / fkArrowRequest.audit / fkNavigation.journey /
+  fkViewportRestore.audit / desktopSubscription（纯 transport subscribe
+  机器）。零断言损失（保留 IPC 名映射覆盖），仅改相对 import 路径。
+- **桌面组件测试归位**：TitleBar.test → `src/shell/desktop/__tests__/`
+  （被测组件 TitleBar 本就在 shell/desktop；mock event/window 正当）。
+
+### 批次一顺手修复
+
+- WorkspaceIntegration.test 的未用 `clearPlatform` 导入（tsrs TS6133）。
+
+### 终态盘点
+
+- 共享区测试树 `@tauri-apps` 仅剩 3 处合规：WorkspaceIntegration 与
+  OnboardingWizard 的**注释**、pathIpcWiring 的**字符串断言**（断言源码
+  不含 `@tauri-apps/api/core`，非 import）。
+- 桌面区测试（platform/__tests__ 14 件 + shell/desktop 1 件）保留 tauri
+  mock——它们随 F6 目录迁移进 apps/desktop。
+
+### 验证
+
+- 定点：9 件迁移/清理 97/97 绿；TitleBar 3/3 绿。
+- 块回归：platform+shell+lib+DataTable+connection+workspace 386 文件
+  **3758 通过 / 1 skip**（598s）。
+- typecheck（tsrs root/scripts/pack-ep）OK；闸门 0 blocking / 1 advisory。
+
+---
+
 ## 2026-10-30（会话七）— F6-tests 批次一：37 个共享区测试的 `@tauri-apps/api/core` mock 焚烧
 
 > 承接会话六（生产侧 shim 焚烧完）。本批对齐测试侧：共享区测试不再

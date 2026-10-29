@@ -28,7 +28,7 @@ const { listenMock, wappState, getManifestMock } = vi.hoisted(() => {
 // the deep-link handler assertions keep reading listenMock. The old
 // `@tauri-apps/api/event` mock went stale when the view moved onto the port
 // (the optional-chained handler silently stopped exercising the guards).
-import { clearPlatform, configurePlatform, testPlatform } from '../../../test/setup';
+import { configurePlatform, testPlatform } from '../../../test/setup';
 
 configurePlatform({
   ...testPlatform,

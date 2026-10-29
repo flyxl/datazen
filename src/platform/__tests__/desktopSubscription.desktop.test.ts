@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createBackendClient } from '@datazen/backend-client';
-import { ExecutionProjection } from '../ExecutionProjection';
+import { ExecutionProjection } from '../../lib/session/ExecutionProjection';
 import type { EventEnvelope, ConnectionEvent, Id } from '@datazen/backend-client';
 const mock = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -15,7 +15,7 @@ vi.mock('@tauri-apps/api/core', () => ({
     }
   },
 }));
-import { createDesktopBackendTransport } from '../../../platform/desktop/tauriBackendTransport';
+import { createDesktopBackendTransport } from '../desktop/tauriBackendTransport';
 
 afterEach(() => {
   vi.clearAllMocks();

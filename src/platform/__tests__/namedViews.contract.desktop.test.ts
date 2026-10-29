@@ -53,13 +53,13 @@ import {
 import {
   createDesktopBackendTransport,
   DESKTOP_BACKEND_ID,
-} from '../../platform/desktop/tauriBackendTransport';
-import { classifyGridError, GRID_ERROR_CODES } from '../gridErrors';
-import { hostErrorMessage } from '../hostErrorMessage';
+} from '../desktop/tauriBackendTransport';
+import { classifyGridError, GRID_ERROR_CODES } from '../../lib/gridErrors';
+import { hostErrorMessage } from '../../lib/hostErrorMessage';
 import { databaseCommands } from '../../commands/database';
-import { namedViewsAvailable } from '../namedViews';
+import { namedViewsAvailable } from '../../lib/namedViews';
 import { filterDraftEqualsApplied } from '../../stores/tableData/filterUtils';
-import type { NamedView, NamedViewScope } from '../namedViews';
+import type { NamedView, NamedViewScope } from '../../lib/namedViews';
 
 const REPO_ROOT = resolve(__dirname, '../../..');
 

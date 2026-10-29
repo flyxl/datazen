@@ -14,17 +14,17 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { useMemo } from 'react';
-import { DataTable } from '../DataTable';
-import { useTableForeignKeyNavigation } from '../../../windows/connection/useTableForeignKeyNavigation';
-import { usePanelStore } from '../../../stores/panelStore';
-import { useTableDataStore } from '../../../stores/tableDataStore';
-import { useFkNavigationStore, resetFkNavigationEntryIds } from '../../../stores/fkNavigationStore';
+import { DataTable } from '../../components/DataTable/DataTable';
+import { useTableForeignKeyNavigation } from '../../windows/connection/useTableForeignKeyNavigation';
+import { usePanelStore } from '../../stores/panelStore';
+import { useTableDataStore } from '../../stores/tableDataStore';
+import { useFkNavigationStore, resetFkNavigationEntryIds } from '../../stores/fkNavigationStore';
 import { createBackendClient, setBackendClient } from '@datazen/backend-client';
 import {
   createDesktopBackendTransport,
   DESKTOP_BACKEND_ID,
-} from '../../../platform/desktop/tauriBackendTransport';
-import type { TablePanel } from '../../../stores/panelTypes';
+} from '../desktop/tauriBackendTransport';
+import type { TablePanel } from '../../stores/panelTypes';
 
 const { mockInvoke } = vi.hoisted(() => ({ mockInvoke: vi.fn() }));
 
@@ -37,7 +37,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 const schemaState = vi.hoisted(() => ({ foreignKeys: [] as unknown[] }));
 
-vi.mock('../../../lib/schemaCache', () => ({
+vi.mock('../../lib/schemaCache', () => ({
   // `fkReferencedBy` 在模块作用域调用它注册失效回调；返回退订空函数即可。
   subscribeSchemaInvalidation: () => () => undefined,
   getCachedTableSchema: async () => ({
@@ -49,23 +49,23 @@ vi.mock('../../../lib/schemaCache', () => ({
   }),
 }));
 
-vi.mock('../../../hooks/useI18n', () => ({
+vi.mock('../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('../../../hooks/useColumnResize', () => ({
+vi.mock('../../hooks/useColumnResize', () => ({
   useColumnResize: () => ({ columnWidths: [160, 160, 160, 160], onResizeStart: vi.fn() }),
   adjustWidthsForSort: (widths: number[]) => widths,
 }));
 
-vi.mock('../../../hooks/useVirtualTable', () => ({
+vi.mock('../../hooks/useVirtualTable', () => ({
   useVirtualTable: ({ rows }: { rows: unknown[][] }) => ({
     virtualRows: rows.map((_, index) => ({ index, key: String(index), start: index * 28 })),
     totalHeight: rows.length * 28,
   }),
 }));
 
-vi.mock('../../../lib/session/tableSession', () => ({ tableManualHandle: vi.fn(() => null) }));
+vi.mock('../../lib/session/tableSession', () => ({ tableManualHandle: vi.fn(() => null) }));
 
 const SOURCE_PANEL = 'panel-source';
 

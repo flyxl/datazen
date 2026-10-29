@@ -41,9 +41,9 @@ import { createBackendClient, selectBackend, setBackendClient } from '@datazen/b
 import {
   createDesktopBackendTransport,
   DESKTOP_BACKEND_ID,
-} from '../../platform/desktop/tauriBackendTransport';
-import { classifyGridError } from '../gridErrors';
-import { hostErrorMessage, openForeignKeyTarget } from '../fkNavigationActions';
+} from '../desktop/tauriBackendTransport';
+import { classifyGridError } from '../../lib/gridErrors';
+import { hostErrorMessage, openForeignKeyTarget } from '../../lib/fkNavigationActions';
 import { usePanelStore } from '../../stores/panelStore';
 import { useFkNavigationStore, resetFkNavigationEntryIds } from '../../stores/fkNavigationStore';
 import { useTableDataStore } from '../../stores/tableDataStore';

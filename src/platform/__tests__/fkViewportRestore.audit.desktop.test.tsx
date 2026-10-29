@@ -14,16 +14,16 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
-import { useTableForeignKeyNavigation } from '../useTableForeignKeyNavigation';
-import { usePanelStore } from '../../../stores/panelStore';
-import { useTableDataStore } from '../../../stores/tableDataStore';
-import { useFkNavigationStore, resetFkNavigationEntryIds } from '../../../stores/fkNavigationStore';
+import { useTableForeignKeyNavigation } from '../../windows/connection/useTableForeignKeyNavigation';
+import { usePanelStore } from '../../stores/panelStore';
+import { useTableDataStore } from '../../stores/tableDataStore';
+import { useFkNavigationStore, resetFkNavigationEntryIds } from '../../stores/fkNavigationStore';
 import { createBackendClient, setBackendClient } from '@datazen/backend-client';
 import {
   createDesktopBackendTransport,
   DESKTOP_BACKEND_ID,
-} from '../../../platform/desktop/tauriBackendTransport';
-import type { TablePanel } from '../../../stores/panelTypes';
+} from '../desktop/tauriBackendTransport';
+import type { TablePanel } from '../../stores/panelTypes';
 
 const { mockInvoke } = vi.hoisted(() => ({ mockInvoke: vi.fn() }));
 
@@ -36,7 +36,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 const schemaReads = vi.hoisted(() => ({ count: 0 }));
 
-vi.mock('../../../lib/schemaCache', () => ({
+vi.mock('../../lib/schemaCache', () => ({
   // The reverse catalog (DB-20) subscribes at module load; a no-op keeps
   // this audit focused on the jump's own reads.
   subscribeSchemaInvalidation: () => () => undefined,
@@ -59,7 +59,7 @@ vi.mock('../../../lib/schemaCache', () => ({
   },
 }));
 
-vi.mock('../../../lib/session/tableSession', () => ({ tableManualHandle: vi.fn(() => null) }));
+vi.mock('../../lib/session/tableSession', () => ({ tableManualHandle: vi.fn(() => null) }));
 
 const SOURCE_PANEL = 'panel-source';
 

@@ -37,9 +37,9 @@ import { createBackendClient, selectBackend, setBackendClient } from '@datazen/b
 import {
   createDesktopBackendTransport,
   DESKTOP_BACKEND_ID,
-} from '../../platform/desktop/tauriBackendTransport';
-import { openForeignKeyTarget } from '../fkNavigationActions';
-import { buildFkFilters, scrollTopForAnchorRow } from '../fkNavigation';
+} from '../desktop/tauriBackendTransport';
+import { openForeignKeyTarget } from '../../lib/fkNavigationActions';
+import { buildFkFilters, scrollTopForAnchorRow } from '../../lib/fkNavigation';
 import { usePanelStore } from '../../stores/panelStore';
 import { useTableDataStore } from '../../stores/tableDataStore';
 import { useFkNavigationStore, resetFkNavigationEntryIds } from '../../stores/fkNavigationStore';

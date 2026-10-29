@@ -46,9 +46,9 @@ import {
 import {
   createDesktopBackendTransport,
   DESKTOP_BACKEND_ID,
-} from '../../platform/desktop/tauriBackendTransport';
-import { classifyGridError } from '../gridErrors';
-import { hostErrorMessage } from '../fkNavigationActions';
+} from '../desktop/tauriBackendTransport';
+import { classifyGridError } from '../../lib/gridErrors';
+import { hostErrorMessage } from '../../lib/fkNavigationActions';
 import { databaseCommands } from '../../commands/database';
 import { extractErrorMessage } from '../../stores/tableData/connectionState';
 import type { RowChangePlan } from '../../lib/tableChanges';
