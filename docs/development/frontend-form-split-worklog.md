@@ -3,6 +3,45 @@
 > 本文件随每个 form-split PR 同步提交，记录实际执行顺序、决策与验证结果，
 > 避免工作进度丢失。条目按时间倒序（最新在上）。基线：`2a08e55`（F4a 合入后）。
 
+## 2026-10-30（会话七）— R6 收口：driverInvoke 死代码焚烧——生产共享树 @tauri-apps import 归零（F6 输入条件达成）
+
+> F6 计划的输入条件：「`src/` 内 `@tauri-apps` import 已归零，分家变为
+> 纯机械动作」。核查发现最后一个真实 import 藏在**生成文件模板**里：
+> `src/extensions/generated.ts` 的 `driverInvoke()`（`plugin:driverId|command`
+> 直调轨）。全树消费审计（src/ + packages/ + scripts/ + tests）：**零消费者**
+> ——纯死代码。驱动侧命令需要宿主轨的，走 driverGateway 域客户端
+> （backend transport 轨，F3 已建）。
+
+### 改动
+
+- `scripts/resolve-drivers.mjs` 模板：删 `import { invoke } from
+  '@tauri-apps/api/core'` 与 `driverInvoke()` 函数；保留 `DRIVER_COMMANDS`
+  元数据表 + `hasDriverCommand`（不触宿主运行时，stash 工作流 fixture 依赖
+  其形状）。
+- `scripts/driver-deinject.mjs`（stub 形态模板）：同步删两块。
+- `src/extensions/generated.ts` 为 .gitignore 构建产物（.gitignore:66）——
+  本地 `--codegen-only` 重生成验证产出无 invoke、幂等。
+
+### 终态审计（生产树 @tauri-apps）
+
+- 真实 import 全部收拢桌面隔离区：`src/platform/desktop/*`（8 文件）+
+  `src/shell/desktop/TitleBar.tsx`（1）——共 9 处，全部 F6 随 apps/desktop 走。
+- 其余匹配全是**注释**（wappStore/useClipboardCopyFeedback/contracts/
+  BrandSidebar/SettingsContent/tauriWindow 基建）与 gitignored 产物内的
+  本批注释。
+- 测试树终态见批次二盘点。
+
+### 验证
+
+- `scripts/__tests__` 793/795 通过；2 失败均为 cargo ENOENT 已知环境限制
+  （CI rust 腿验证，worklog 会话一即有记录），与本批无关。
+- typecheck（tsrs root/scripts/scripts-checkjs/pack-ep）OK——scripts 变体
+  曾现 2 条 with-driver-inject JSDoc 推断瞬态错误，stash 对照 + 三次复跑
+  均不可复现（tsrs 缓存态噪声）。
+- 闸门 0 blocking / 1 advisory（不变）。
+
+---
+
 ## 2026-10-30（会话七）— F6-tests 批次二：9 个残留共享区测试归位，测试树 @tauri-apps 归零达标
 
 > 承接批次一。9 个残留文件按断言性质三路归位，共享区测试树从此只在

@@ -87,7 +87,6 @@ export function cleanGeneratedTsContent() {
  * This file registers frontend components and metadata for active drivers.
  * Regenerated every time the build runs with different --drivers args.
  */
-import { invoke } from '@tauri-apps/api/core';
 import type { DatabaseTypeMeta } from '@datazen/driver-sdk';
 import type { SqlDialectStrategy } from '@datazen/driver-sdk';
 import type { DriverFormValidator } from '@datazen/driver-sdk';
@@ -242,14 +241,8 @@ export const DRIVER_COMMANDS: DriverCommandMeta[] = [
 
 ];
 
-/** Invoke a driver-provided Tauri command using plugin:id|command format. */
-export async function driverInvoke<T = unknown>(
-  driverId: string,
-  command: string,
-  args?: Record<string, unknown>,
-): Promise<T> {
-  return invoke<T>(\`plugin:\${driverId}|\${command}\`, args ?? {});
-}
+// form-split R6: driverInvoke was dead code (zero consumers) and carried the
+// last @tauri-apps/api/core import in the shared production tree.
 
 /** Check whether a specific driver command is available in this build. */
 export function hasDriverCommand(driverId: string, command: string): boolean {

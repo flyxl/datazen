@@ -670,8 +670,7 @@ export function renderFrontendRegistry(drivers, variant) {
  * This file registers frontend components and metadata for active drivers.
  * Regenerated every time the build runs with different --drivers args.
  */
-${importLines.length > 0 ? importLines.join('\n') + '\n' : ''}${iconImportLines.length > 0 ? iconImportLines.join('\n') + '\n' : ''}import { invoke } from '@tauri-apps/api/core';
-import type { DatabaseTypeMeta } from '@datazen/driver-sdk';
+${importLines.length > 0 ? importLines.join('\n') + '\n' : ''}${iconImportLines.length > 0 ? iconImportLines.join('\n') + '\n' : ''}import type { DatabaseTypeMeta } from '@datazen/driver-sdk';
 import type { SqlDialectStrategy } from '@datazen/driver-sdk';
 import type { DriverFormValidator } from '@datazen/driver-sdk';
 import type { ConnectionClipboardParser } from '@datazen/driver-sdk';
@@ -876,14 +875,10 @@ export const DRIVER_COMMANDS: DriverCommandMeta[] = [
 ${driverCommandLines.join('\n')}
 ];
 
-/** Invoke a driver-provided Tauri command using plugin:id|command format. */
-export async function driverInvoke<T = unknown>(
-  driverId: string,
-  command: string,
-  args?: Record<string, unknown>,
-): Promise<T> {
-  return invoke<T>(\`plugin:\${driverId}|\${command}\`, args ?? {});
-}
+// form-split R6: driverInvoke was dead code (zero consumers across src/ and
+// packages/) and carried the LAST @tauri-apps/api/core import in the shared
+// production tree. Driver-side plugin commands that need a host rail go
+// through the driverGateway domain client on the backend transport instead.
 
 /** Check whether a specific plugin command is available in this build. */
 export function hasDriverCommand(driverId: string, command: string): boolean {
