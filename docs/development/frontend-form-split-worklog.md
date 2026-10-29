@@ -3,6 +3,76 @@
 > 本文件随每个 form-split PR 同步提交，记录实际执行顺序、决策与验证结果，
 > 避免工作进度丢失。条目按时间倒序（最新在上）。基线：`2a08e55`（F4a 合入后）。
 
+## 2026-10-30（会话八）— F6-c3：R5 闸门上线 + redis 夹具搬家 + parity 归位消费者（F6 收官）
+
+> 计划 §5.6 项 9 落地，F6 三批解耦全部完成。R5（裁决 D1：
+> `@datazen/frontend` 的合法消费者只有 `apps/*`）上线即 blocking——
+> 上线第一跑就抓到 **8 处真实违规**（backend-client 测试的类型 parity
+> 断言相对爬进 frontend），证明该闸门此前确为盲区；修复后基线归零。
+
+### R5 闸门（`scripts/check-driver-import-boundaries.mjs`）
+
+- 范围：`packages/**`（除 `packages/frontend/` 自身）；两种形态——
+  裸 `@datazen/frontend`（含深子路径）与相对说明符解析进
+  `packages/frontend/`。扫描口径照抄 R1 教训：**全部字符串字面量**
+  （plain import / `export … from` / 动态 `import()` / `vi.mock()` /
+  `vi.doMock()` / `require()`）——预扫描用 grep `from` 形态时
+  「零违规」是假象，全字面量扫描立即暴露 8 处 type import 位置的
+  爬升（grep 预扫描漏掉的就是这个教训的活例）。
+- Blocking 从第一天：基线为零。
+
+### redis 集成夹具搬家（注销 2 条 R1 豁免）
+
+- `packages/drivers/redis/ui/__tests__/redisKeyWebContextMenu.test.tsx`
+  → `packages/frontend/__tests__/integration/`（宿主↔驱动集成夹具
+  归宿主）；vitest include 增该目录。
+- ALLOWLIST 注销其携带的 2 条 R1 豁免，**兑现 coordinator 注记
+  *remove together with the WebContextMenuHost exemption***。6 → 4
+  （现存全部为 R3 测试夹具豁免）。
+- 同步更新 `driver-api-dependency-boundary.md` 四处基线事实
+  （§2.1.2 登记、ALLOWLIST 散文、§2.6 外部漂移额度、§2.7 清单）。
+
+### parity 断言归位消费者（R5 抓到的 8 处违规修复）
+
+- `backend-client/__tests__/tableDataClient.test.ts` 的编译期 parity
+  块（7 个 DesktopMirror type import + TableDataResult parity +
+  InsertMarkedStaysOptional）整体迁出 → 新建
+  `packages/frontend/src/lib/__tests__/tableChanges.backendClientParity.test.ts`
+  ——镜像类型本地相对导入、wire 类型经合法裸 `@datazen/backend-client`，
+  drift 仍由 `tsc --noEmit` 拦截（编译期断言性质不变）。
+
+### 闸门测试对齐（53/53 全绿）
+
+- R1 族合成夹具改爬 `apps/desktop/src`（R1 双目录语义不变；apps 不在
+  R5 范围 → 每条规则保有自己的夹具面，互不借位）。
+- 新增 R5 专属 describe 块 7 例：裸 import/深子路径/vi.mock 形态、
+  相对爬升、frontend 自身豁免、apps 合法消费、姐妹包说明符、
+  ALLOWLIST 三元组精确匹配。
+- 断言更新：ALLOWLIST 6→4、R1 空集断言、R5 blocking 期望、
+  真实树 4 allow-listed。
+
+### 验证（全部通过）
+
+- boundaries 闸门：**0 blocking / 4 allowlisted / 1 advisory**（R5 生效，
+  2099 文件扫描）。
+- drivers 套件 87 文件/1005 全绿（迁出 1 文件 2 测试）。
+- backend-client + frontend/lib + integration + apps 块 237/2448。
+- scripts/__tests__ 800/802（2 cargo ENOENT 已知环境限制，基线不变）。
+- typecheck 四阶段绿 + pack-ep tsc 独立绿。
+- 计划 §5.6 项 7 复核：tsconfig 变体四份全绿（root/scripts/
+  scripts-checkjs/pack-ep include 空表不变）。
+
+### F6 整体收官状态（对计划 §5.6 九项）
+
+1. workspace 基建 ✅（F6-a）；2. frontend 包协议 ✅（c2）；3. app 包
+   ✅（c2，@tauri-apps 归位）；4. 根退化 ✅（c2）；5. 目录迁移 ✅（c1）；
+   6. alias 退役 ✅（c2，五张表）；7. tsconfig 变体 ✅（本批复核）；
+   8. 脚本路径 ✅（c1 收尾 44 处）；9. R5 + redis 搬家 + 注销 ✅（本批）。
+   退出标准中 `tauri build`（cargo 不可用）与 e2e 冒烟由 CI 腿覆盖，
+   其余全部本地实测通过。
+
+---
+
 ## 2026-10-30（会话八）— F6-c2：包协议完整化 + alias 表退役（exports 接管解析）
 
 > 计划 §5.6 项 2/3/4/6 落地。**四张 alias 表全部退役**（tsconfig paths /
