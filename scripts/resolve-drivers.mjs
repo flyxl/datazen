@@ -1013,10 +1013,11 @@ function escapeRegex(s) {
  */
 function crateDepPath(name, meta) {
   if (meta.source === 'path' && meta.path) {
-    // apps/desktop/src-tauri/Cargo.toml → ../packages/drivers/X
-    return `../${meta.path}`;
+    // apps/desktop/src-tauri/Cargo.toml → ../../../packages/drivers/X
+    // (F6 目录搬迁：src-tauri 从仓库根迁至 apps/desktop/，需上溯三级到根。)
+    return `../../../${meta.path}`;
   }
-  return `../packages/drivers/${name}`;
+  return `../../../packages/drivers/${name}`;
 }
 
 /** Path drivers use datazen-driver-*; git drivers keep their published crate name (usually datazen-plugin-*). */

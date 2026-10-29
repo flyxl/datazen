@@ -11,11 +11,12 @@
 
 use std::path::{Path, PathBuf};
 
-/// 仓库根目录：`src-tauri` 的上一级。
+/// 仓库根目录：`apps/desktop/src-tauri` 上溯三级。
 fn repository_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("src-tauri sits inside the repository root")
+        .ancestors()
+        .nth(3)
+        .expect("src-tauri 位于 apps/desktop/ 下，上溯三级即仓库根")
         .to_path_buf()
 }
 
@@ -23,13 +24,13 @@ fn repository_root() -> PathBuf {
 ///
 /// `src-tauri/tests` 是**集成测试目标**（`cargo check -p datazen --all-targets` 会编译它），
 /// 因此它和 `src-tauri/src` 一样属于「会被编译、因而可能写错」的代码，必须一并扫。
-const SCANNED_ROOTS: &[&str] = &["src-tauri/src", "src-tauri/tests", "packages"];
+const SCANNED_ROOTS: &[&str] = &["apps/desktop/src-tauri/src", "apps/desktop/src-tauri/tests", "packages"];
 
 /// 目录遍历时跳过的名字：构建产物与依赖目录里没有可执行的契约。
 const SKIPPED_DIRECTORIES: &[&str] = &["target", "node_modules", ".git"];
 
 /// 本文件自身：它在自己的说明文字里提到过滤器字面量，扫自己会自证其说。
-const SELF: &str = "src-tauri/src/store/job_filter_scope_tests.rs";
+const SELF: &str = "apps/desktop/src-tauri/src/store/job_filter_scope_tests.rs";
 
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
@@ -955,7 +956,7 @@ mod invariants {
     #[test]
     fn the_live_bare_raw_string_cannot_hide_a_literal() {
         let root = repository_root();
-        let path = root.join("src-tauri/src/commands/config.rs");
+        let path = root.join("apps/desktop/src-tauri/src/commands/config.rs");
         let source =
             std::fs::read_to_string(&path).expect("config.rs 必须存在：它是这条断言的被测对象");
         let anchor = ".strip_prefix(r\"\\\\?\\\")";

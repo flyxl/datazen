@@ -4,9 +4,9 @@
   "version": "0.2.3",
   "identifier": "com.tbeasy.datazen",
   "build": {
-    "beforeDevCommand": "pnpm exec vite",
-    "beforeBuildCommand": "pnpm --dir ../.. run build",
-    "beforeBundleCommand": "node ../../scripts/upx-compress.mjs",
+    "beforeDevCommand": "pnpm exec vite apps/desktop",
+    "beforeBuildCommand": "pnpm build",
+    "beforeBundleCommand": "node scripts/upx-compress.mjs",
     "devUrl": "http://localhost:5173",
     "frontendDist": "../dist"
   },

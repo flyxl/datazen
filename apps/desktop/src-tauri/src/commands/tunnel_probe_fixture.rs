@@ -258,8 +258,9 @@ mod tests {
     fn ssh_bastion_fixture_never_reaches_a_production_build() {
         let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let repo_root = manifest_dir
-            .parent()
-            .expect("src-tauri sits in the repo root");
+            .ancestors()
+            .nth(3)
+            .expect("src-tauri 位于 apps/desktop/ 下，上溯三级即仓库根");
         let host_src = manifest_dir.join("src");
 
         let mut files = Vec::new();

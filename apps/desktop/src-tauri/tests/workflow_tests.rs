@@ -10,7 +10,8 @@ use std::path::PathBuf;
 
 fn load_env() -> Option<DbConfig> {
     let env_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
+        .ancestors()
+        .nth(3)
         .unwrap()
         .join(".env");
 
@@ -100,7 +101,7 @@ use datazen::workflow::model::{WorkflowDefinition, WorkflowStep};
 
 #[test]
 fn tc01_cross_db_workflow_yaml_parses() {
-    let yaml = include_str!("../../scripts/test-cross-db-workflow.yaml");
+    let yaml = include_str!("../../../../scripts/test-cross-db-workflow.yaml");
     let workflow: WorkflowDefinition = serde_yaml::from_str(yaml).unwrap();
     assert_eq!(workflow.id, "order-logistics");
     assert!(workflow.timeout_secs.is_some());

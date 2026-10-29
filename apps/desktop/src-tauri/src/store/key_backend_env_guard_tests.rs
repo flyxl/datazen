@@ -34,26 +34,27 @@ const ENV_NAMES: &[&str] = &["DATAZEN_KEYRING", "DATAZEN_TEST_KEYRING"];
 /// `src-tauri/src/testing/mod.rs` holds the shared `#[cfg(test)]` helper
 /// (`ForceKeyringGuard`); it is not a test itself, and the guard test below
 /// pins that only `#[ignore]`d tests call it.
-const ALLOWED_HELPERS: &[&str] = &["src-tauri/src/testing/mod.rs"];
+const ALLOWED_HELPERS: &[&str] = &["apps/desktop/src-tauri/src/testing/mod.rs"];
 
 /// This file: it names the patterns it looks for, so scanning itself would
 /// report its own source (same convention as `job_filter_scope_tests.rs`).
-const SELF: &str = "src-tauri/src/store/key_backend_env_guard_tests.rs";
+const SELF: &str = "apps/desktop/src-tauri/src/store/key_backend_env_guard_tests.rs";
 
 /// Directory names without executable contracts.
 const SKIPPED_DIRECTORIES: &[&str] = &["target", "node_modules", ".git"];
 
-/// Repository root: `src-tauri`'s parent.
+/// Repository root: three levels above `apps/desktop/src-tauri`.
 fn repository_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("src-tauri sits inside the repository root")
+        .ancestors()
+        .nth(3)
+        .expect("src-tauri 位于 apps/desktop/ 下，上溯三级即仓库根")
         .to_path_buf()
 }
 
 fn rust_sources(root: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    let mut stack = vec![root.join("src-tauri/src")];
+    let mut stack = vec![root.join("apps/desktop/src-tauri/src")];
     while let Some(directory) = stack.pop() {
         let Ok(entries) = std::fs::read_dir(&directory) else {
             continue;

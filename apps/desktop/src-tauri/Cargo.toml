@@ -22,7 +22,7 @@ datazen-driver-api = { workspace = true }
 datazen = { workspace = true, features = ["application", "settings", "ai", "connection", "connection_import", "feature_error", "services", "named_views", "history", "execution", "schema", "schema_diff", "data_sync", "data_transfer", "table-browsing", "table-editing", "dashboard", "monitor", "export", "backup", "wapps", "tunnel"] }
 # P5 JobRuntime 内核（§2/§5）：prepare/apply 经 runtime 受理，desktop 只做适配。
 # 形态中立的跨形态基础设施原语（脱敏 / 路径安全），零 datazen-* 依赖（F-11 反向 allow-list 兜底）。
-datazen-infra = { path = "../packages/infra" }
+datazen-infra = { path = "../../../packages/infra" }
 # 迁移三件套各自以 Job 受理 prepare/apply，host 只做 adapter。
 # Wave-2 B1：Workspace App 形态中立内核（manifest 规则 / 安装 / 存储）已并入
 # datazen（modules::workspace_apps 模块），此处不再单独依赖。
@@ -101,9 +101,9 @@ test-harness = ["datazen/test-harness"]
 [dev-dependencies]
 wiremock = "0.6"
 sqlx = { version = "=0.8.6", features = ["runtime-tokio", "tls-rustls", "postgres", "mysql"] }
-datazen-driver-postgres = { path = "../packages/drivers/postgres" }
-datazen-driver-mysql = { path = "../packages/drivers/mysql" }
-datazen-driver-sqlite = { path = "../packages/drivers/sqlite" }
+datazen-driver-postgres = { path = "../../../packages/drivers/postgres" }
+datazen-driver-mysql = { path = "../../../packages/drivers/mysql" }
+datazen-driver-sqlite = { path = "../../../packages/drivers/sqlite" }
 datazen = { workspace = true, features = ["test-harness"] }
 # Host tests drive `DriverRegistry::register_test_driver*` / `register_test_factory*`, which the
 # Dev-only: `resolver = "2"` keeps this feature out of normal `cargo build` of the host.

@@ -61,7 +61,8 @@ struct DeepSeekTestConfig {
 
 fn read_env_file() -> Option<std::collections::HashMap<String, String>> {
     let env_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
+        .ancestors()
+        .nth(3)
         .unwrap()
         .join(".env.test");
 

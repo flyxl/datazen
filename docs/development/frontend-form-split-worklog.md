@@ -3,6 +3,70 @@
 > 本文件随每个 form-split PR 同步提交，记录实际执行顺序、决策与验证结果，
 > 避免工作进度丢失。条目按时间倒序（最新在上）。基线：`2a08e55`（F4a 合入后）。
 
+## 2026-10-29（会话八·续）— F6-c3 补丁：src-tauri 搬迁余波修复（CI 全红 → 绿）
+
+> F6-c3 推送后 CI 的 frontend / rust 两个 job 全红。根因单一且集中：
+> **F6-c1 把 `src-tauri/` 从仓库根搬进 `apps/desktop/` 时，只搬了目录、
+> 没搬「以 src-tauri 为基准的相对路径宇宙」**。cargo 无法解析 workspace
+> （`apps/desktop/packages/infra` 不存在），`cargo metadata` exit 101 连带
+> 打红 frontend job 的 2 个门禁测试与 rust job 的全部 cargo 步骤。
+
+### 症状与根因
+
+- rust job：`failed to load manifest for workspace member
+  apps/desktop/src-tauri … failed to read apps/desktop/packages/infra/Cargo.toml`
+  ——`../packages/…` 从新位置解析落到不存在的 `apps/desktop/packages/`。
+- frontend job：`check-driver-type-isolation` / `schema-diff-driver-boundary`
+  两个测试内嵌 `cargo metadata`，被同一个 workspace 解析失败连带打红
+  （本地因无 cargo 一直显示 ENOENT，CI 有 cargo 才暴露——已知 2 失败
+  并非永久豁免，而是「CI 才能验」的环境盲区）。
+
+### 修复面（13 文件）
+
+1. **`apps/desktop/src-tauri/Cargo.toml`**：4 处 path 依赖
+   `../packages/…` → `../../../packages/…`（infra + 三个 driver dev-dep）。
+2. **`scripts/resolve-drivers.mjs` `crateDepPath()`**：注入路径基准同步
+   上溯三级；`<<driver-dependencies>>` 注入产物随 registry 全量实测。
+3. **仓库根推导**（`CARGO_MANIFEST_DIR.parent()` 假设全废，统一改
+   `ancestors().nth(3)`）：`doc_reference_tests` / `job_filter_scope_tests` /
+   `key_backend_env_guard_tests` / `app_state_shape_tests` /
+   `tunnel_probe_fixture`；三份扫描表的根相对字符串
+   （`SCANNED_ROOTS` / `SELF` / `ALLOWED_HELPERS` / `LINE_REFERENCES`）
+   全部加 `apps/desktop/` 前缀——不加不是报错而是**静默扫空**（read_dir
+   失败被 `continue` 吞掉），闸门假绿比红更危险。
+4. **编译期 include_str 出仓**：`platform/ipc.rs`、`platform/handles.rs`
+   的 `frontend_bridge.rs` 从 `../../../` → `../../../../../`
+   （`src/platform/` 到根五级）；`tests/workflow_tests.rs` 的
+   test-cross-db-workflow.yaml 同理四级。
+5. **运行时路径**：`bootstrap/run.rs` prompts 目录上溯三级。
+6. **`tauri.conf.json` hook 命令**：搬迁时误向「conf 目录基准」方向改
+   （`pnpm --dir ../..`），实际 Tauri hook cwd = 调用 CLI 的目录（仓库根，
+   `tauri-dev.mjs` / `ci-tauri-build.mjs` 均 `cwd: ROOT`）——恢复
+   `pnpm build` / `node scripts/upx-compress.mjs` 根语义，dev 命令补
+   vite root 参数。`frontendDist: "../dist"` 恰好新旧都对（vite root
+   同步迁到 apps/desktop，产物落 `apps/desktop/dist`）。
+
+### 验证
+
+- 新增 `/home/z/my-project/scripts/f6c3-ci-paths-verify.mjs`：40+ 项
+  路径存在性实测（Cargo path 依赖 ×4、crateDepPath ×15 driver、
+  仓库根推导、扫描表、include_str、tauri hook 语义）——ALL PASS；
+  该脚本本身先抓出 platform 五级少一级的误修（4 级仍指 `apps/modules`），
+  实测先于提交。
+- `resolve-drivers` 单测 29/29；scripts 块 800/802（余 2 个为本地
+  cargo ENOENT 环境性失败，CI 上应随本修复转绿）；`tsc --noEmit` 通过。
+- drivers 套件复跑（F6-c3 收尾时）：87 文件 / 1005 测试全绿。
+
+### 教训（防复发）
+
+- **目录搬迁的完成面** = 目录本身 + 以它为基准的全部相对路径（Cargo
+  path 依赖 / include_str / CARGO_MANIFEST_DIR 推导 / 构建工具 hook /
+  根相对字符串表五类，缺一不可）；只搬目录等于埋雷。
+- **本地 ENOENT 的失败要当「未验证」而非「已豁免」**：cargo 类门禁
+  在无工具链的本地永远显示 ENOENT，真值只在 CI。
+- rg 输出带文件路径前缀，`| rg -v 'apps/desktop'` 会把命中行全部过滤
+  掉造成「无残留」假象——排查时用 Grep 工具或去掉前缀过滤。
+
 ## 2026-10-30（会话八）— F6-c3：R5 闸门上线 + redis 夹具搬家 + parity 归位消费者（F6 收官）
 
 > 计划 §5.6 项 9 落地，F6 三批解耦全部完成。R5（裁决 D1：

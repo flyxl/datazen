@@ -17,11 +17,12 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-/// 仓库根（`src-tauri/` 的上一级）。
+/// 仓库根（`apps/desktop/src-tauri/` 上溯三级）。
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("src-tauri 必须在仓库根下")
+        .ancestors()
+        .nth(3)
+        .expect("src-tauri 位于 apps/desktop/ 下，上溯三级即仓库根")
         .to_path_buf()
 }
 
@@ -95,7 +96,7 @@ const LINE_REFERENCES: &[(&str, usize, &str)] = &[
     // §2.3：version 写入点（本轨自己顶掉的 / 逐条核对过仍正确的）。
     // workflow 引擎已随 D6 item 3 切片 b 归位 modules::workflow（modules
     // 只剩再导出垫片），行号一律指 modules 新居所。
-    ("src-tauri/src/workflow/registry.rs", 224, "version: None,"),
+    ("apps/desktop/src-tauri/src/workflow/registry.rs", 224, "version: None,"),
     (
         "modules/src/workflow/application/registry.rs",
         346,
@@ -115,30 +116,30 @@ const LINE_REFERENCES: &[(&str, usize, &str)] = &[
     // §2.4：目标定位策略注释的现居所（原 `command_runtime.rs:115-119` 已失效）。
     // 文档指的是 59-62 这**四行注释块**，逐行钉住它的首尾与关键 token。
     (
-        "src-tauri/src/commands/driver_command/execute.rs",
+        "apps/desktop/src-tauri/src/commands/driver_command/execute.rs",
         59,
         "F7: pass envelope targeting into the command input",
     ),
     (
-        "src-tauri/src/commands/driver_command/execute.rs",
+        "apps/desktop/src-tauri/src/commands/driver_command/execute.rs",
         60,
         "qualify_sql_target",
     ),
     (
-        "src-tauri/src/commands/driver_command/execute.rs",
+        "apps/desktop/src-tauri/src/commands/driver_command/execute.rs",
         62,
         "never switches the session's database",
     ),
     // §2.5：调度器不包裹 Job（原 `scheduler.rs:176` 越界）。
     (
-        "src-tauri/src/workflow/scheduler.rs",
+        "apps/desktop/src-tauri/src/workflow/scheduler.rs",
         42,
         "crate::commands::workflow_execute_impl(",
     ),
-    ("src-tauri/src/workflow/scheduler.rs", 46, "None,"),
+    ("apps/desktop/src-tauri/src/workflow/scheduler.rs", 46, "None,"),
     // §2.5：Dashboard 同样不传连接（原 `dashboard/execute.rs:222`）。
     (
-        "src-tauri/src/dashboard/execute.rs",
+        "apps/desktop/src-tauri/src/dashboard/execute.rs",
         71,
         "WorkflowExecutor::execute(",
     ),
@@ -150,7 +151,7 @@ const LINE_REFERENCES: &[(&str, usize, &str)] = &[
         "version: None,",
     ),
     (
-        "src-tauri/src/commands/ai/integration_tests.rs",
+        "apps/desktop/src-tauri/src/commands/ai/integration_tests.rs",
         377,
         "version: Some(\"1\".into()),",
     ),
@@ -165,7 +166,7 @@ const LINE_REFERENCES: &[(&str, usize, &str)] = &[
         "version: None,",
     ),
     (
-        "src-tauri/src/store/settings.rs",
+        "apps/desktop/src-tauri/src/store/settings.rs",
         15,
         "pub struct OnboardingState {",
     ),

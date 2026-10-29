@@ -153,7 +153,10 @@ fn the_known_hosts_repository_is_no_longer_reachable_from_the_host_state() {
 #[test]
 fn the_tunnel_ports_are_declared_in_the_modules_domain_only() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let root = manifest_dir.parent().expect("src-tauri 有上级目录");
+    let root = manifest_dir
+        .ancestors()
+        .nth(3)
+        .expect("src-tauri 位于 apps/desktop/ 下，上溯三级即仓库根");
     let domain = root.join("modules/src/tunnel/domain");
     let known_hosts = std::fs::read_to_string(domain.join("known_hosts.rs"))
         .expect("modules tunnel domain must contain known_hosts.rs");
