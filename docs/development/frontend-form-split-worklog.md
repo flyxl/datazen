@@ -3,6 +3,45 @@
 > 本文件随每个 form-split PR 同步提交，记录实际执行顺序、决策与验证结果，
 > 避免工作进度丢失。条目按时间倒序（最新在上）。基线：`2a08e55`（F4a 合入后）。
 
+## 2026-10-29（会话八·收官）— CI 全绿达成：六轮修复接力 + 协作者补刀
+
+> run 40897779793（`7a8891622`）：detect-changes / rust / frontend / ci
+> 四 job 全部 success。从 F6-c3 推送后的全红到全绿，共六轮本地提交
+> 加一轮协作者（p@l）修复，全程未跳过、未禁用任何门禁。
+
+### 六轮修复谱系（错误阶段逐轮后移本身就是进展）
+
+| 轮次 | commit | 修的层 | 关键内容 |
+|---|---|---|---|
+| 1 | `4c5d3b182` | workspace 解析 | Cargo path 依赖 ×4、crateDepPath 基准、仓库根推导 ×5 文件、include_str 出仓、tauri hooks 根语义 → **frontend job 转绿** |
+| 2 | `9f334c7e5` | tauri-build | bundle.resources prompts 三级上溯（build 脚本期校验） |
+| 3 | `5f24a2ba0` | 编译期 | F1–F5 API 漂移 ×8（cfg 门控导出吞命令、SharedSettings 分域、字段更名、Default 缺字段） |
+| 4 | `65f1995b9` | 编译期收尾 | dialog glob 无条件化（单项 use 不带 `__cmd__` 伴生项）；archive 测试随 SharedSettings |
+| 5 | `8b4821b89` | 运行期 | 9 处断言过时（SCHEMA_VERSION 5→6、portable monitor is_some、doc 行号表 + 断链、window 守卫回正道） |
+| 6 | `631b761f0` | 全特性测试腿 | sql_guard fixture include_str 六级上溯落旧 src/lib → packages/frontend |
+| 7 | `7a8891622`（协作者） | 门禁脚本 | owner_binding 路径、platform-arch-selfcheck 探针路径、self-proof 步骤名 10→9 |
+
+### 全程判定依据（防「改着改着变成绕过门禁」）
+
+- 每轮先下载失败 job 日志、定位到具体错误行，归因到根因才动手；
+  修复面最小化（六轮合计 30 文件，无一行门禁逻辑被删）。
+- 两处「守卫测试抓到自己」的回合（window 守卫、app_archive 守卫）
+  全部按守卫的架构裁决回正，而非放松守卫。
+- 本地无法跑 cargo，每轮修完做三类替代验证：路径存在性脚本
+  （`f6c3-ci-paths-verify.mjs`，50+ 项 ALL PASS）、doc 断言复扫脚本
+  （`f6c3-docref-verify.mjs`，行号表 15 条 + 链接 15 个）、TS 面
+  typecheck + 相关 vitest。
+
+### 遗留观察（不阻塞，记录备查）
+
+- `modules/src/migration/data_transfer/transfer/adapter_registry.rs`
+  的 `driver-*` cfg 值不在 modules/Cargo.toml feature 表里，
+  以 warning 形式报 unexpected cfg（11 条）——这些值实际由宿主侧
+  `datazen_desktop` 的 unexpected_cfgs 白名单覆盖，warning 属噪音，
+  可择期在 modules 侧加 check-cfg 声明或收敛。
+- main 分支 rust job 一直绿；本分支积累的漂移全部来自
+  「本地无 cargo + CI workspace 解析失败」的重叠窗口，窗口已闭合。
+
 ## 2026-10-29（会话八·续 3）— 运行期测试对齐：编译过后清 9 处运行失败
 
 > 编译全过后 rust job 进入**运行测试**阶段，9 个失败分四类，除
