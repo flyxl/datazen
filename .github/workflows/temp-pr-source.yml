@@ -1,0 +1,19 @@
+name: Temporary PR source snapshot
+on:
+  push:
+    branches:
+      - refactor/reduce-code-duplication-2026-10
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Archive repository
+        run: git archive --format=tar.gz --prefix=datazen/ HEAD -o "$RUNNER_TEMP/datazen-pr-source.tar.gz"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: datazen-pr-source
+          path: ${{ runner.temp }}/datazen-pr-source.tar.gz
+          retention-days: 1
