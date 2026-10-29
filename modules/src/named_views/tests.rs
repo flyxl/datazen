@@ -20,7 +20,7 @@ use super::domain::{
 /**
  * The key sets of the serialized record.
  *
- * They are pinned here **and** in the frontend (`src/lib/__tests__/namedViews.test.ts`),
+ * They are pinned here **and** in the frontend (`packages/frontend/src/lib/__tests__/namedViews.test.ts`),
  * with the same literals: a field that appears on one side only is a contract
  * break that neither side can see alone.
  */
