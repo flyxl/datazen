@@ -64,7 +64,7 @@ const METADATA_MAX_BUFFER = 128 * 1024 * 1024;
  * A path ending in `/*` matches any directory strictly beneath it.
  */
 export const LAYERS = Object.freeze([
-  { id: 'host', path: 'src-tauri', kind: 'rust' },
+  { id: 'host', path: 'apps/desktop/src-tauri', kind: 'rust' },
   { id: 'modules', path: 'modules', kind: 'rust' },
   { id: 'infra', path: 'packages/infra', kind: 'rust' },
   { id: 'server', path: 'server', kind: 'rust' },

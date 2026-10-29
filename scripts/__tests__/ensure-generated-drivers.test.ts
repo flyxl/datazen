@@ -13,7 +13,7 @@ import {
 import { FULLY_GENERATED_MANAGED } from '../driver-deinject.mjs';
 import { resetDir } from './fixture';
 
-const ALL_GENERATED = [...FULLY_GENERATED_MANAGED, 'src-tauri/capabilities/default.json'];
+const ALL_GENERATED = [...FULLY_GENERATED_MANAGED, 'apps/desktop/src-tauri/capabilities/default.json'];
 
 /** Content that satisfies every marker `generated.ts` is required to export. */
 const CURRENT_GENERATED_TS = Object.entries(REQUIRED_CODEGEN_MARKERS)
@@ -26,7 +26,10 @@ function writeCurrentTree(root: string, generatedTs = CURRENT_GENERATED_TS) {
   for (const rel of ALL_GENERATED) {
     const full = join(root, rel);
     mkdirSync(dirname(full), { recursive: true });
-    writeFileSync(full, rel === 'src/extensions/generated.ts' ? generatedTs : '// present\n');
+    writeFileSync(
+      full,
+      rel === 'packages/frontend/src/extensions/generated.ts' ? generatedTs : '// present\n',
+    );
   }
 }
 
@@ -75,7 +78,7 @@ describe('ensure-generated-drivers', () => {
     writeCurrentTree(root, staleSource);
 
     expect(missingGeneratedFiles(root)).toEqual([]);
-    expect(staleGeneratedFiles(root)).toEqual(['src/extensions/generated.ts']);
+    expect(staleGeneratedFiles(root)).toEqual(['packages/frontend/src/extensions/generated.ts']);
     expect(shouldGenerate(root)).toBe(true);
 
     const calls: string[] = [];
@@ -94,7 +97,7 @@ describe('ensure-generated-drivers', () => {
       },
     });
     expect(result.generated).toBe(true);
-    expect(result.stale).toEqual(['src/extensions/generated.ts']);
+    expect(result.stale).toEqual(['packages/frontend/src/extensions/generated.ts']);
     expect(calls).toEqual(['--codegen-only']);
     expect(logged.some((m) => m.includes('stale'))).toBe(true);
   });

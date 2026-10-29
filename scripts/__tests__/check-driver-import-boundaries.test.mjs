@@ -38,13 +38,14 @@ function run(files, opts = {}) {
   return { code, out: out.join('\n'), err: err.join('\n') };
 }
 
-// Depth bookkeeping (all fixtures are host climbs from these directories):
-//   packages/drivers/redis/ui              → ../../../../src/…
-//   packages/drivers/redis/ui/__tests__    → ../../../../../src/…
+// Depth bookkeeping (all fixtures are host climbs from these directories; the
+// host shared tree lives under packages/frontend/src since the F6 split):
+//   packages/drivers/redis/ui              → ../../../../packages/frontend/src/…
+//   packages/drivers/redis/ui/__tests__    → ../../../../../packages/frontend/src/…
 const DRIVER_UI = 'packages/drivers/redis/ui/ValuePanel.tsx';
-const DRIVER_UI_HOST_CLIMB = '../../../../src/hooks/useI18n';
+const DRIVER_UI_HOST_CLIMB = '../../../../packages/frontend/src/hooks/useI18n';
 const DRIVER_TEST = 'packages/drivers/redis/ui/__tests__/valuePanel.test.tsx';
-const DRIVER_TEST_HOST_CLIMB = '../../../../../src/stores/settingsStore';
+const DRIVER_TEST_HOST_CLIMB = '../../../../../packages/frontend/src/stores/settingsStore';
 
 describe('scanCode (specifier extraction)', () => {
   it('collects single-quoted, double-quoted and static template literals with lines', () => {
@@ -98,9 +99,14 @@ describe('resolveSpecifier', () => {
     expect(resolveSpecifier('packages/drivers/redis/ui/a.ts', '../shared/meta')).toBe(
       'packages/drivers/redis/shared/meta',
     );
-    expect(resolveSpecifier(DRIVER_UI, DRIVER_UI_HOST_CLIMB)).toBe('src/hooks/useI18n');
+    expect(resolveSpecifier(DRIVER_UI, DRIVER_UI_HOST_CLIMB)).toBe(
+      'packages/frontend/src/hooks/useI18n',
+    );
     expect(
-      resolveSpecifier('src/test/driverUiSetup.ts', '../../packages/drivers/redis/ui/shared/meta'),
+      resolveSpecifier(
+        'packages/frontend/src/test/driverUiSetup.ts',
+        '../../../../packages/drivers/redis/ui/shared/meta',
+      ),
     ).toBe('packages/drivers/redis/ui/shared/meta');
   });
 
@@ -127,7 +133,7 @@ describe('R1 · drivers must not reference host src/', () => {
     });
     expect(result.code).toBe(1);
     expect(result.err).toContain(`R1 ${DRIVER_UI}:2`);
-    expect(result.err).toContain('resolves to host src/hooks/useI18n');
+    expect(result.err).toContain('resolves to host packages/frontend/src/hooks/useI18n');
     expect(result.err).toContain(`import { useI18n } from '${DRIVER_UI_HOST_CLIMB}'`);
     expect(result.err).toContain('§2.1.2');
   });
@@ -137,7 +143,7 @@ describe('R1 · drivers must not reference host src/', () => {
       [DRIVER_TEST]:
         `import { describe, it, vi } from 'vitest';\n` +
         `vi.mock('${DRIVER_TEST_HOST_CLIMB}');\n` +
-        `vi.doMock('../../../../../src/hooks/useI18n', () => ({}));\n`,
+        `vi.doMock('../../../../../packages/frontend/src/hooks/useI18n', () => ({}));\n`,
     });
     expect(result.code).toBe(1);
     expect(result.err).toContain(`${DRIVER_TEST}:2`);
@@ -150,9 +156,9 @@ describe('R1 · drivers must not reference host src/', () => {
     const file = 'packages/drivers/mongodb/ui/a.ts';
     const result = run({
       [file]: [
-        "export { cn } from '../../../../src/lib/cn';",
-        "const lazy = () => import('../../../../src/types');",
-        "const legacy = require('../../../../src/stores/panelStore');",
+        "export { cn } from '../../../../packages/frontend/src/lib/cn';",
+        "const lazy = () => import('../../../../packages/frontend/src/types');",
+        "const legacy = require('../../../../packages/frontend/src/stores/panelStore');",
       ].join('\n'),
     });
     expect(result.code).toBe(1);
@@ -191,7 +197,7 @@ describe('R2 · only the host may call setLocale()', () => {
     });
     expect(result.code).toBe(1);
     expect(result.err).toContain('R2 packages/drivers/redis/ui/console.ts:2');
-    expect(result.err).toContain('only be called from host src/**');
+    expect(result.err).toContain('may only be called from the host');
   });
 
   it('flags calls in other non-host packages (driver-sdk / extension-points / wapp-sdk)', () => {
@@ -232,9 +238,10 @@ describe('R2 · only the host may call setLocale()', () => {
     expect(result.code).toBe(0);
   });
 
-  it('keeps the host out of scope (src/** is the legitimate caller)', () => {
+  it('keeps the host out of scope (packages/frontend/src/** is the legitimate caller)', () => {
     const result = run({
-      'src/lib/localeSync.ts': "import { setLocale } from '@datazen/ui';\nsetLocale(next);\n",
+      'packages/frontend/src/lib/localeSync.ts':
+        "import { setLocale } from '@datazen/ui';\nsetLocale(next);\n",
     });
     expect(result.code).toBe(0);
   });
@@ -243,19 +250,19 @@ describe('R2 · only the host may call setLocale()', () => {
 describe('R3 · host must not import driver internals', () => {
   it('reports host → driver references as advisory findings without failing', () => {
     const result = run({
-      'src/test/driverUiSetup.ts':
-        "import '../locales';\nimport '../../packages/drivers/redis/ui/shared/meta';\n",
+      'packages/frontend/src/test/driverUiSetup.ts':
+        "import '../locales';\nimport '../../../../packages/drivers/redis/ui/shared/meta';\n",
     });
     expect(result.code).toBe(0);
-    expect(result.out).toContain('R3 (advisory) src/test/driverUiSetup.ts:2');
+    expect(result.out).toContain('R3 (advisory) packages/frontend/src/test/driverUiSetup.ts:2');
     expect(result.out).toContain('1 advisory finding(s)');
     expect(result.err).toBe('');
   });
 
   it('exempts the gitignored codegen registries (the sanctioned host → driver edge)', () => {
     const result = run({
-      'src/extensions/generated.ts':
-        "import { redisMeta } from '../../packages/drivers/redis/ui/shared/meta';\n",
+      'packages/frontend/src/extensions/generated.ts':
+        "import { redisMeta } from '../../../../packages/drivers/redis/ui/shared/meta';\n",
     });
     expect(result.code).toBe(0);
     expect(result.out).not.toContain('advisory');
@@ -272,9 +279,11 @@ describe('tracking-scope classification (BUG-008)', () => {
     'packages/pro-extensions/sql-editor-pro/src/locales/__tests__/locales.test.ts';
   /** One R1 (external clone), one R2 (staged Pro EP) and one R3 (tracked host). */
   const MIXED_TREE = {
-    [SUPERSET_FILE]: "import { useI18n } from '../../../../src/hooks/useI18n';\n",
+    [SUPERSET_FILE]:
+      "import { useI18n } from '../../../../packages/frontend/src/hooks/useI18n';\n",
     [EP_TEST_FILE]: "import { setLocale } from '@datazen/ui';\nsetLocale('en');\n",
-    'src/test/driverUiSetup.ts': "import '../../packages/drivers/redis/ui/shared/meta';\n",
+    'packages/frontend/src/test/driverUiSetup.ts':
+      "import '../../../../packages/drivers/redis/ui/shared/meta';\n",
   };
   const ignoredExternal = (rel) =>
     rel.startsWith('packages/drivers/superset/') || rel.startsWith('packages/pro-extensions/');
@@ -288,7 +297,7 @@ describe('tracking-scope classification (BUG-008)', () => {
     // each downgraded finding is tagged so the developer sees who owns the fix …
     expect(result.out.split(EXTERNAL_ADVISORY_NOTE)).toHaveLength(3); // 2 findings + trailing piece
     // … while the plain R3 host advisory keeps its usual shape
-    expect(result.out).toContain('R3 (advisory) src/test/driverUiSetup.ts:1');
+    expect(result.out).toContain('R3 (advisory) packages/frontend/src/test/driverUiSetup.ts:1');
     expect(result.out).toContain('3 advisory finding(s)');
   });
 
@@ -409,11 +418,11 @@ describe('allow-list', () => {
     expect(r1).toHaveLength(2);
     for (const item of r1) {
       expect(item.file).toBe('packages/drivers/redis/ui/__tests__/redisKeyWebContextMenu.test.tsx');
-      expect(item.specifier).toMatch(/^(\.\.\/)+src\/[^*?]+$/);
+      expect(item.specifier).toMatch(/^(\.\.\/)+packages\/frontend\/src\/[^*?]+$/);
     }
     expect(r1.map((i) => i.specifier).sort()).toEqual([
-      '../../../../../src/components/ui/WebContextMenu',
-      '../../../../../src/stores/contextMenuStore',
+      '../../../../../packages/frontend/src/components/ui/WebContextMenu',
+      '../../../../../packages/frontend/src/stores/contextMenuStore',
     ]);
 
     // R3 的豁免只许落在测试与测试夹具上。生产代码里的 host → driver 引用是真实
@@ -422,11 +431,11 @@ describe('allow-list', () => {
     expect(r3).toHaveLength(4);
     for (const item of r3) {
       const isTest = /\.test\.tsx?$/.test(item.file);
-      const isHarness = item.file === 'src/test/driverUiSetup.ts';
+      const isHarness = item.file === 'packages/frontend/src/test/driverUiSetup.ts';
       expect(isTest || isHarness).toBe(true);
     }
     expect(ALLOWLIST.map((i) => i.file)).not.toContain(
-      'src/windows/connection/DocumentConnectionView.tsx',
+      'packages/frontend/src/windows/connection/DocumentConnectionView.tsx',
     );
   });
 });
@@ -485,9 +494,9 @@ describe('R4 · the shared design system must stay host-free and runtime-free', 
       reason: "imports the host-only runtime package 'zustand…'",
     },
     {
-      what: 'a relative climb into the host src tree',
-      body: "import { useSettingsStore } from '../../../src/stores/settingsStore';\nexport const s = useSettingsStore;\n",
-      reason: 'reaches into the host src/stores/settingsStore',
+      what: 'a relative climb into the host shared tree',
+      body: "import { useSettingsStore } from '../../../packages/frontend/src/stores/settingsStore';\nexport const s = useSettingsStore;\n",
+      reason: 'reaches into the host packages/frontend/src/stores/settingsStore',
     },
     {
       what: 'a bare import of a sibling DataZen package',
@@ -594,7 +603,9 @@ describe('guard plumbing', () => {
     expect(report).toContain('6 allow-listed reference(s) skipped');
     // … and the one known host → driver production reference stays advisory-only
     // (deliberately not exempted — it is a real layering break, see RULES.R3).
-    expect(report).toContain('R3 (advisory) src/windows/connection/DocumentConnectionView.tsx:25');
+    expect(report).toContain(
+      'R3 (advisory) packages/frontend/src/windows/connection/DocumentConnectionView.tsx:25',
+    );
   });
 
   // Deliberately not under `withProbeLock`, unlike the two cases above. The

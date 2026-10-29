@@ -93,7 +93,7 @@ function fixture(
 }
 
 const CORE = [
-  { name: 'datazen_desktop', dir: 'src-tauri' },
+  { name: 'datazen_desktop', dir: 'apps/desktop/src-tauri' },
   { name: 'datazen-driver-api', dir: 'packages/driver-api' },
   { name: 'datazen', dir: 'modules' },
   { name: 'datazen-driver-redis', dir: 'packages/drivers/redis' },
@@ -148,7 +148,7 @@ function run(metadata: object, specText = SPEC, options: { requireLayers?: strin
 describe('classifyMemberDir', () => {
   it('maps every path §2.4 names to a layer', () => {
     for (const dir of [
-      'src-tauri',
+      'apps/desktop/src-tauri',
       'server',
       'modules',
       'packages/infra',
@@ -391,18 +391,18 @@ describe('checkPlatformCrateBoundaries', () => {
   });
 
   it("F-01: the host's own dormant tauri declaration is not adjudicated by F-01", () => {
-    // The trap this rule must not fall into. `src-tauri/Cargo.toml` declares
+    // The trap this rule must not fall into. `apps/desktop/src-tauri/Cargo.toml` declares
     // `tauri-plugin-webdriver` for the macOS silent-E2E feature, and the host
     // is *supposed* to depend on Tauri — F-01's subjects are the `driver`
     // layer, so that edge is outside the rule. Reading it as a violation would
     // be the gate punishing the one member that is allowed to have it.
     //
-    // The real `src-tauri/Cargo.toml` is read here, so this case is about the
+    // The real `apps/desktop/src-tauri/Cargo.toml` is read here, so this case is about the
     // real tree's host manifest, not a synthetic one.
     const result = run(fixture(CORE, { ...clean }));
     expect(result.violations.filter((v) => v.startsWith('F-01'))).toEqual([]);
     expect(result.advisories.join('\n')).toMatch(
-      /datazen_desktop \(src-tauri\/Cargo\.toml\) declares .*tauri-plugin-webdriver/,
+      /datazen_desktop \(apps\/desktop\/src-tauri\/Cargo\.toml\) declares .*tauri-plugin-webdriver/,
     );
     expect(result.advisories.join('\n')).toMatch(/Not blocking: F-01's subjects are/);
   });
@@ -797,7 +797,7 @@ describe('F-07 transport tokens respect identifier boundaries', () => {
         root,
         metadata: fixture(
           [
-            { name: 'datazen_desktop', dir: 'src-tauri' },
+            { name: 'datazen_desktop', dir: 'apps/desktop/src-tauri' },
             { name: 'datazen', dir: 'modules' },
           ],
           {},
@@ -861,7 +861,7 @@ describe('declaredDependencies — the manifest-side scan', () => {
     // `[target.'cfg(windows)'.dependencies]` is common in cross-platform drivers
     // and was the open question: a scanner that only matches a literal
     // `[dependencies]` header misses it, and a door that misses the side door is
-    // not a door. The real occurrence is `src-tauri/Cargo.toml:90`.
+    // not a door. The real occurrence is `apps/desktop/src-tauri/Cargo.toml`.
     expect(
       declaredDependencies(`[target.'cfg(target_os = "macos")'.dependencies]\nobjc2 = "0.6.4"\n`),
     ).toEqual([

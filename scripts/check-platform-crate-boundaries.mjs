@@ -282,7 +282,7 @@ export function parseSpecRow(row) {
   for (const match of row.matchAll(/`([^`]+)`/g)) {
     const token = match[1].trim();
     if (token === '') continue;
-    if (/^(packages\/|src-tauri$|server$|modules$)/.test(token)) paths.push(token);
+    if (/^(packages\/|apps\/|src-tauri$|server$|modules$)/.test(token)) paths.push(token);
     else if (token.includes('@') || token.includes('(') || token.includes('.'))
       frontend.push(token);
     else crates.push(token);

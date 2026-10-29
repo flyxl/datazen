@@ -75,7 +75,8 @@ export const LAYER_RULES = [
     // *above* the design system; reaching into any of them inverts the
     // layering every other package is built on.
     forbidden: [
-      'src',
+      'packages/frontend/src',
+      'apps/desktop/src',
       'packages/drivers',
       'packages/driver-sdk',
       'packages/wapp-sdk',

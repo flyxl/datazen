@@ -713,7 +713,7 @@ describe('excluded-feature invariants (fail-closed)', () => {
  * features precisely so that the host leg and this runner's whole-crate leg
  * compile datazen with the SAME feature set — the ~209k-line lib then builds
  * once per CI run instead of twice. That equality spans three manifests
- * (modules/Cargo.toml's feature graph, src-tauri/Cargo.toml's dependency
+ * (modules/Cargo.toml's feature graph, apps/desktop/src-tauri/Cargo.toml's dependency
  * features, the root workspace template's default-features=false), and a
  * change to any one of them can break it silently: the tests stay green while
  * cargo quietly goes back to compiling two different datazens. These
@@ -751,14 +751,14 @@ describe('host/platform datazen feature alignment (real manifests)', () => {
     return out;
   }
 
-  /** The datazen dependency's `features = [...]` from src-tauri's manifest. */
+  /** The datazen dependency's `features = [...]` from the host manifest. */
   function parseHostDatazenFeatures(hostManifest: string): string[] {
     const m = /^datazen = \{ workspace = true, features = \[([^\]]*)\] \}$/m.exec(
       hostManifest,
     );
     if (m === null)
       throw new Error(
-        'src-tauri/Cargo.toml: the datazen dependency line is not in the expected single-line shape',
+        'apps/desktop/src-tauri/Cargo.toml: the datazen dependency line is not in the expected single-line shape',
       );
     return (m[1].match(/"[^"]*"/g) ?? []).map((q) => q.slice(1, -1));
   }
@@ -768,7 +768,7 @@ describe('host/platform datazen feature alignment (real manifests)', () => {
       readFileSync(join(REPO_ROOT, 'modules', 'Cargo.toml'), 'utf8'),
     );
     const hostFeatures = parseHostDatazenFeatures(
-      readFileSync(join(REPO_ROOT, 'src-tauri', 'Cargo.toml'), 'utf8'),
+      readFileSync(join(REPO_ROOT, 'apps/desktop/src-tauri', 'Cargo.toml'), 'utf8'),
     );
     expect(Object.keys(datazenFeatures).length).toBeGreaterThan(0);
 
@@ -802,7 +802,7 @@ describe('host/platform datazen feature alignment (real manifests)', () => {
     expect(/^datazen = \{ path = "modules", default-features = false \}$/m.test(root)).toBe(
       true,
     );
-    const host = readFileSync(join(REPO_ROOT, 'src-tauri', 'Cargo.toml'), 'utf8');
+    const host = readFileSync(join(REPO_ROOT, 'apps/desktop/src-tauri', 'Cargo.toml'), 'utf8');
     const dep = /^datazen = \{.*$/m.exec(host)?.[0] ?? '';
     expect(dep).not.toContain('default-features = true');
   });

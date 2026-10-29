@@ -6,7 +6,7 @@ import type {
   DataSyncSelection,
   DataSyncTableResult,
   SyncOptions,
-} from '../../src/commands/sync.js';
+} from '../../packages/frontend/src/commands/sync.js';
 
 type DatabaseType = 'postgresql' | 'mysql';
 

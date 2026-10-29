@@ -183,10 +183,10 @@ describe('[tester] tunnel field contracts (e)', () => {
 
   it('has no `any` or `@ts-ignore` escape hatch in the contract or the field components', () => {
     const files = [
-      'src/components/connection/tunnelFieldContracts.ts',
-      'src/components/connection/SshTunnelFields.tsx',
-      'src/components/connection/HttpProxyTunnelFields.tsx',
-      'src/components/connection/WebSocketTunnelFields.tsx',
+      'packages/frontend/src/components/connection/tunnelFieldContracts.ts',
+      'packages/frontend/src/components/connection/SshTunnelFields.tsx',
+      'packages/frontend/src/components/connection/HttpProxyTunnelFields.tsx',
+      'packages/frontend/src/components/connection/WebSocketTunnelFields.tsx',
     ];
     for (const file of files) {
       const source = readFileSync(resolve(process.cwd(), file), 'utf8');

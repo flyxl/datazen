@@ -11,7 +11,7 @@ function readAppConfig(filename: string): {
   app: { windows: WindowConfig[]; security: { csp: Record<string, string> } };
 } {
   return JSON.parse(
-    readFileSync(new URL(`../../src-tauri/${filename}`, import.meta.url), 'utf8'),
+    readFileSync(new URL(`../../apps/desktop/src-tauri/${filename}`, import.meta.url), 'utf8'),
   ) as { app: { windows: WindowConfig[]; security: { csp: Record<string, string> } } };
 }
 

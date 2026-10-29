@@ -14,15 +14,22 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const ROOT = path.resolve(import.meta.dirname, '..');
+// The entry module is app-owned (apps/desktop/src/main.tsx) since the F6 split;
+// the store it wires the handle to still lives in the shared frontend package.
+const APP_SRC = path.resolve(import.meta.dirname, '..');
+const FRONTEND_SRC = path.resolve(import.meta.dirname, '../../../../packages/frontend/src');
 
-function readSrc(...parts: string[]) {
-  return fs.readFileSync(path.join(ROOT, ...parts), 'utf8');
+function readApp(...parts: string[]) {
+  return fs.readFileSync(path.join(APP_SRC, ...parts), 'utf8');
+}
+
+function readFrontend(...parts: string[]) {
+  return fs.readFileSync(path.join(FRONTEND_SRC, ...parts), 'utf8');
 }
 
 describe('E2E handle wiring', () => {
   it('registers __tableDataStore in the entry module behind the E2E/dev gate', () => {
-    const main = readSrc('main.tsx');
+    const main = readApp('main.tsx');
     expect(main).toMatch(
       /if\s*\(\s*import\.meta\.env\.VITE_E2E\s*\|\|\s*import\.meta\.env\.DEV\s*\)\s*\{[\s\S]{0,300}?__tableDataStore\s*=/,
     );
@@ -31,11 +38,11 @@ describe('E2E handle wiring', () => {
   it('keeps a single owner: the store file must not register the handle', () => {
     // Two owners race: the imported module body evaluates before the importer's, so the
     // second assignment wins — in a dev build that meant `undefined` over the real store.
-    expect(readSrc('stores/tableDataStore.ts')).not.toContain('__tableDataStore');
+    expect(readFrontend('stores/tableDataStore.ts')).not.toContain('__tableDataStore');
   });
 
   it('never publishes the table store handle unconditionally', () => {
-    const main = readSrc('main.tsx');
+    const main = readApp('main.tsx');
     // `__schemaStore` is published unconditionally; the table store must not copy that
     // pattern — a production build must not grow a global handle nobody asked for.
     expect(main).not.toMatch(/\(globalThis as any\)\.__tableDataStore/);
@@ -43,7 +50,7 @@ describe('E2E handle wiring', () => {
   });
 
   it('publishes undefined rather than the store outside an E2E/dev build', () => {
-    const main = readSrc('main.tsx');
+    const main = readApp('main.tsx');
     // The else branch keeps the handle name in the bundle (the assignment survives
     // tree-shaking) without exposing a live store in a production build.
     expect(main).toMatch(/__tableDataStore\s*=\s*undefined;/);

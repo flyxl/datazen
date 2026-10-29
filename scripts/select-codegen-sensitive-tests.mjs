@@ -185,8 +185,12 @@ export function collectSourceFiles(root) {
       else if (/\.(ts|tsx|mjs)$/.test(rel)) out.add(rel.split('\\').join('/'));
     }
   };
-  walk('src');
+  // F6 layout: shared sources live under packages/frontend/src, the desktop
+  // app under apps/desktop/src. Walking 'packages' and 'apps' covers both and
+  // any future sibling packages/apps; 'scripts' completes the module graph
+  // roots a test file can import from.
   walk('packages');
+  walk('apps');
   walk('scripts');
   return out;
 }
@@ -293,7 +297,7 @@ export function selectCodegenSensitiveTests(options = {}) {
   const { include, aliases, setupFiles } = parseVitestTestConfig(readFileSync(configPath, 'utf-8'));
 
   const sources = collectSourceFiles(root);
-  if (sources.size === 0) throw new Error('no candidate source files found under src/packages/scripts');
+  if (sources.size === 0) throw new Error('no candidate source files found under packages/apps/scripts');
 
   // Forward edges once per file, then reverse them: the dependents of
   // generated.ts are a much smaller subgraph than the whole suite, and one

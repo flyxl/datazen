@@ -68,10 +68,10 @@ let root;
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'datazen-i18n-sync-'));
-  mkdirSync(join(root, 'src/locales/en'), { recursive: true });
-  mkdirSync(join(root, 'src/locales/de'), { recursive: true });
-  writeFileSync(join(root, 'src/locales/en/query.ts'), EN_PACK);
-  writeFileSync(join(root, 'src/locales/de/query.ts'), LOCALE_PACK);
+  mkdirSync(join(root, 'packages/frontend/src/locales/en'), { recursive: true });
+  mkdirSync(join(root, 'packages/frontend/src/locales/de'), { recursive: true });
+  writeFileSync(join(root, 'packages/frontend/src/locales/en/query.ts'), EN_PACK);
+  writeFileSync(join(root, 'packages/frontend/src/locales/de/query.ts'), LOCALE_PACK);
 });
 
 afterEach(() => {
@@ -79,7 +79,7 @@ afterEach(() => {
 });
 
 /** Read the target pack back. */
-const readLocale = () => readFileSync(join(root, 'src/locales/de/query.ts'), 'utf-8');
+const readLocale = () => readFileSync(join(root, 'packages/frontend/src/locales/de/query.ts'), 'utf-8');
 
 /** The keys a source string declares, in order. */
 const keysOf = (source) => parseEntries(source).map((e) => e.key);
@@ -181,7 +181,7 @@ describe('i18n sync toolchain — idempotence', () => {
 describe('i18n sync toolchain — the gate rules the tools encode', () => {
   it('treats stale as a byte comparison against English', () => {
     writeFileSync(
-      join(root, 'src/locales/de/query.ts'),
+      join(root, 'packages/frontend/src/locales/de/query.ts'),
       `/** Auto-split domain: query (de) */
 const pack = {
   'filter.filter': 'Filter',

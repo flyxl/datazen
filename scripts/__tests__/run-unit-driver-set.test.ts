@@ -140,7 +140,9 @@ describe('run-unit-driver-set narrows the vitest leg to codegen-sensitive files'
     expect(resolved.vitestArgs).toEqual(real.files);
     // The canonical driver-set-sensitive case must be in: its expectations
     // read DB_REGISTRY quote characters, which `basic` does not register.
-    expect(resolved.vitestArgs).toContain('src/lib/__tests__/cellEditorCandidates.test.ts');
+    expect(resolved.vitestArgs).toContain(
+      'packages/frontend/src/lib/__tests__/cellEditorCandidates.test.ts',
+    );
     // ...and the run stays a strict subset of the collected suite.
     expect(real.files.length).toBeLessThan(real.testFileCount);
   });

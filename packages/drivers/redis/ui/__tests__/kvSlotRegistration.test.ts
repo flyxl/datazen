@@ -74,9 +74,13 @@ const SHIPPED_ROWS: Array<{ slot: string; component: string; module: string }> =
 
 const SHIPPED_SLOTS = SHIPPED_ROWS.map((row) => row.slot);
 
-/** Registry row → the repo-relative module path codegen emits for it. */
+/**
+ * Registry row → the module path codegen emits for it. Specifiers are relative
+ * to the generated registry at `packages/frontend/src/extensions/generated.ts`,
+ * so reaching the repo root (and back into packages/) takes four climbs.
+ */
 function moduleOf(row: { module: string }): string {
-  return `../../${row.module}`;
+  return `../../../../${row.module}`;
 }
 
 /** `connectionHome` is the slot name; the capability flag behind it is `home`. */

@@ -3,6 +3,73 @@
 > 本文件随每个 form-split PR 同步提交，记录实际执行顺序、决策与验证结果，
 > 避免工作进度丢失。条目按时间倒序（最新在上）。基线：`2a08e55`（F4a 合入后）。
 
+## 2026-10-30（会话八）— F6-c1 收尾：测试面全绿（checkpoint 后 44 处修复）
+
+> 承接 checkpoint `1ecd81071`。修复迁移后暴露的全部测试/闸门/文档路径
+> 漂移。**上一条目所记「5 个失败文件」（QueryPanelManager.contract 等）
+> 经全仓核验不存在**——系上下文压缩失真记录；实际欠账是
+> scripts/__tests__ 的 27 个文件（对闸门/工作流/代码gen脚本自身的
+> 路径断言）+ 若干零散文件。全部修复，测试面全绿。
+
+### 修复分五类（44 文件）
+
+- **真实路径读取**：pack-ep-host-globals（src/main.tsx → apps/desktop）、
+  release-workflow / check-release-variants / tauri-window-config
+  （src-tauri/* → apps/desktop/src-tauri/*）、ci-tauri-build +
+  pack-ep.staging-invalidation（staging join）、driver-init-rustfmt
+  （ARTIFACT_REL）、error-banner-call-site-parity（10 个 file 字面量）、
+  run-platform-crate-tests（真实宿主 manifest 两处读）、resolve-drivers
+  （icon specifier 2 级爬 → 4 级爬）。
+- **scratch fixture 布局镜像**：check-version-consistency（fixture 写
+  apps/desktop/src-tauri）、i18n-sync-apply / i18n-key-collision-check
+  （locales 迁 packages/frontend/src/locales，含真实树断言）、
+  select-codegen-sensitive-tests（fixture 整树迁移 + CODEGEN_TARGETS 对齐，
+  坑：6 空格 fixture 模式是 8 空格断言的子串，替换顺序必须断言先行）、
+  stash 族（fixture.ts 键名 + Cargo 相对依赖路径 `../packages` →
+  `../../../packages`）。
+- **闸门行为断言**：check-driver-import-boundaries.test.mjs 全面对齐
+  新宿主语义（HOST_SRC_DIR 常量、R1/R3 爬升形态 4 级+packages 前缀、
+  R2 新文案、ALLOWLIST 断言、真实树 advisory 路径）；
+  check-platform-crate-boundaries.test.ts（CORE dir + F-01 advisory 正则）。
+- **闸门自身覆盖洞（真 bug）**：`scripts/lib/cargoWorkspace.mjs` LAYERS
+  host 路径未迁（host crate 会 classify 失配）→ 改
+  `apps/desktop/src-tauri`；check-module-layers UI 规则 forbidden
+  `'src'` → `'packages/frontend/src'` + `'apps/desktop/src'`（UI 包
+  import 宿主会漏检）；select-codegen-sensitive-tests walk 根
+  `walk('src')` → `walk('packages') + walk('apps') + walk('scripts')`
+  （apps include 模式 fail-closed 报错即为此洞）。
+- **文档同步**：spec（shared-boundaries-and-ports.md）§2.4 F-14 行、
+  §2.5 members 块（镜像根 Cargo.toml）、mermaid 标签 + 4 处散文路径；
+  .github/workflows release.yml 4 处 builtin-ep 路径 + ci.yml 注释。
+
+### 归位迁移（测试随宿主走）
+
+- `mainE2eHandles.test.ts`：断言**应用入口**（main.tsx 已归 app）→
+  `apps/desktop/src/__tests__/`，readApp/readFrontend 双根。
+- `tester_tunnelFieldContracts`：cwd 相对 `src/` → `packages/frontend/src/`。
+- `sqlserver connectionFormRegistration`：GENERATED_DIR →
+  `packages/frontend/src/extensions`；redis `kvSlotRegistration`：
+  moduleOf 4 级爬（registry 发射形态变化）。
+- e2e 树 9 处旧路径（i18n/lib/specs/journeys/drag-drop）。
+
+### 验证（全部通过）
+
+- **主套件分块**：windows 188 文件/1660；components 147/1471；
+  stores+hooks+commands+types+platform+ai 117/1254；backend-client+
+  locales+lib+test 222/2346；apps+scripts 64（apps 15 全绿）；
+  wapp-sdk+extension-points+driver-sdk+ui 42/450。
+- **scripts/__tests__ 793/795**（2 失败 = cargo ENOENT 已知环境限制，
+  CI rust 腿覆盖，与会话一以来基线一致）。
+- **drivers 套件 88 文件/1007 全绿**（vitest.drivers.config.ts）。
+- **typecheck**：tsrs root + scripts + pack-ep 全绿（顺手焚掉
+  wappSdkInterop 未用 existsSync import）。
+- **闸门实跑**：driver-import-boundaries 0 blocking/1 advisory/6
+  allowlisted（与迁移前一致）；module-layers ok（1 advisory 既有）；
+  i18n-key-collision ok（2856 host keys）。
+- 后台进程跨 bash 调用不存活（本环境限制）→ 全量回归采用分块前台跑。
+
+---
+
 ## 2026-10-30（会话七）— F6-c1：目录搬家（src/ → packages/frontend/src + apps/desktop），路径/配置/闸门/gitignore 全量重指向【checkpoint 提交】
 
 > F6 第一批解耦：纯机械目录迁移。共 2108 处 git status 变更（2015 纯 R、

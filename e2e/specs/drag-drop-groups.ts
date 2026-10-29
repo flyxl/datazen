@@ -27,7 +27,7 @@ describe('Main window HTML5 drag routing configuration', () => {
     // `disable_drag_drop_handler` Tauri's native drag-drop callback swallows
     // every HTML5 drop before it reaches the WebView.
     const source = readFileSync(
-      new URL('../../src-tauri/src/commands/window.rs', import.meta.url),
+      new URL('../../apps/desktop/src-tauri/src/commands/window.rs', import.meta.url),
       'utf8',
     );
     const builders = source.split('WebviewWindowBuilder::new').slice(1);

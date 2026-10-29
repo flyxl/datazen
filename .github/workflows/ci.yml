@@ -136,7 +136,7 @@ jobs:
       # This step judges the suite under `all` (all registered PATH drivers:
       # no git driver, so no deploy key and no network needed), **narrowed at
       # run time** to the test files whose module graphs execute the
-      # driver-set codegen (`src/extensions/generated.ts`) — everything else
+      # driver-set codegen (`packages/frontend/src/extensions/generated.ts`) — everything else
       # runs byte-identical code under `all` and is already judged by the
       # `basic` step above. The selection lives in
       # select-codegen-sensitive-tests.mjs (criterion + fail-closed list) and

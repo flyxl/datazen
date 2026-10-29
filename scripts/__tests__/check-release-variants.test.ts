@@ -14,7 +14,7 @@ const root = resolve(import.meta.dirname, '../..');
  */
 const GUARDED_FILES = [
   '.github/workflows/release.yml',
-  'src-tauri/tauri.conf.json',
+  'apps/desktop/src-tauri/tauri.conf.json',
   'packaging/winget/Flyxl.DataZen.yaml',
   'packaging/homebrew/datazen.rb',
 ];
@@ -83,7 +83,7 @@ describe('check-release-variants', () => {
   it('catches a default endpoint that is no longer Basic', () => {
     // Basic gets no build-time override, so tauri.conf.json *is* its channel.
     const dir = copyWithEdits({
-      'src-tauri/tauri.conf.json': (text) =>
+      'apps/desktop/src-tauri/tauri.conf.json': (text) =>
         text.replace('download/latest.json', 'download/latest-all.json'),
     });
 
@@ -99,7 +99,8 @@ describe('check-release-variants', () => {
     // ci-tauri-build.mjs overrides `endpoints` only, so this is the single
     // pubkey for every SKU: losing it breaks signature verification everywhere.
     const dir = copyWithEdits({
-      'src-tauri/tauri.conf.json': (text) => text.replace(/\n\s*"pubkey": "[^"]*",/, ''),
+      'apps/desktop/src-tauri/tauri.conf.json': (text) =>
+        text.replace(/\n\s*"pubkey": "[^"]*",/, ''),
     });
 
     const issues = collectReleaseVariantIssues(dir);

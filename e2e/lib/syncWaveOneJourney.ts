@@ -1,6 +1,6 @@
 import { expect } from '@wdio/globals';
 import { invokeBackend } from '../helpers.js';
-import type { DataSyncTableResult, DataSyncSqlStatement } from '../../src/commands/sync.js';
+import type { DataSyncTableResult, DataSyncSqlStatement } from '../../packages/frontend/src/commands/sync.js';
 
 /** Isolated relational IPC journey. Credentials never included in assertion messages. */
 export function syncWaveOneJourney(databaseType: 'postgresql' | 'mysql') {
