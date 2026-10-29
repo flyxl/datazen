@@ -172,7 +172,7 @@ async fn preview_sql_file_target(
         .filter(|table| matches!(table.table_type, TableType::Table))
         .map(|table| table.name.as_str())
         .collect::<Vec<_>>();
-    let source_schemas = super::schema_loading::load_named_table_schemas(
+    let mut source_schemas = super::schema_loading::load_named_table_schemas(
         src_driver.as_ref(),
         &src_handle,
         &job.source,
@@ -542,7 +542,7 @@ pub(crate) async fn preview_data_transfer_impl(
         .filter(|table| matches!(table.table_type, TableType::Table))
         .map(|table| table.name.as_str())
         .collect::<Vec<_>>();
-    let source_schemas = super::schema_loading::load_named_table_schemas(
+    let mut source_schemas = super::schema_loading::load_named_table_schemas(
         src_driver.as_ref(),
         &src_handle,
         &job.source,

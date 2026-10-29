@@ -283,7 +283,7 @@ pub(crate) async fn execute_data_transfer_impl_with_write_observer(
         .filter(|table| matches!(table.table_type, TableType::Table))
         .map(|table| table.name.as_str())
         .collect::<Vec<_>>();
-    let source_schemas = super::super::schema_loading::load_named_table_schemas(
+    let mut source_schemas = super::super::schema_loading::load_named_table_schemas(
         src_driver.as_ref(),
         &src_handle,
         &job.source,
