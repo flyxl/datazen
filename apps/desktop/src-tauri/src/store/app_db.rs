@@ -9,7 +9,9 @@ use chrono::Utc;
 use rusqlite::{params, Connection};
 use thiserror::Error;
 pub const APP_DB_FILE: &str = "datazen.sqlite";
-pub const SCHEMA_VERSION: i32 = 5;
+/// v6 = F1 NativeTool 删除的防御性 purge（nativeToolProbe 行清理）。
+/// 常量此前停在 5（v6 落地时未同步），恢复 CI 可达后由版本环断言抓出。
+pub const SCHEMA_VERSION: i32 = 6;
 pub const MAX_RUN_ROWS: usize = datazen::dashboard::execute::MAX_RUN_ROWS;
 
 /// 历史遗留的桌面本地组织 id（**不是**规范值）。

@@ -57,7 +57,7 @@
 | `command` step **没有**顶层 `database` 字段 | `WorkflowStep::Command { id, command, connection, input, timeout_secs, on_error }`，库名只能写在 `input.database` |
 | `ai` step **没有** `connection` / `database` 字段 | AI 步骤当前不接触目标资源 |
 | `version: Option<String>` 存在 | `WorkflowDefinition.version` |
-| 三个内建 YAML 均未写 `version` | [`src-tauri/resources/builtin-workflows/`](../../../src-tauri/resources/builtin-workflows) 下的 `hello-query.yaml`、`cross-db-sample.yaml`、`ai-summarize.yaml` |
+| 三个内建 YAML 均未写 `version` | [`src-tauri/resources/builtin-workflows/`](../../../apps/desktop/src-tauri/resources/builtin-workflows) 下的 `hello-query.yaml`、`cross-db-sample.yaml`、`ai-summarize.yaml` |
 | workflow 不再以 step 形式调用数据迁移三件套 | `WorkflowStep` 没有 `migration` 变体；`WorkflowHost` 没有迁移端口；该能力从未真正发布，按直接移除处理，详见 [backend/workflow.md §迁移 step（已移除）](../backend/workflow.md#迁移-step已移除) |
 
 ### 2.3 版本字段的现状（重要）
@@ -132,7 +132,7 @@ command 分支（[command_runtime.rs](../../../modules/src/workflow/application/
 
 ### 2.8 一处已确认的身份错配
 
-GUI 的 AI 侧栏把**运行时会话 id 当作 `connectionId` 传给 Workflow**：[`components/ai/WorkflowPanel.tsx:104`](../../../src/components/ai/WorkflowPanel.tsx) 在 `handleExecute`（L99-107）里执行时传 `connectionId: dbSessionId`，而 `dbSessionId` 来自 `activeConnections[conn.id]?.dbSessionId`（连接窗口的运行时会话标识）。后端 `resolve_session_for_connection` 按 owner **配置 id** 查表，按[命名规范](../../../AGENTS.md) 这是被禁止的双模混用。同一页面的独立 Workflow 窗口（[`WorkflowPage.tsx:417`](../../../src/windows/workflow/WorkflowPage.tsx)）则完全不传该参数。
+GUI 的 AI 侧栏把**运行时会话 id 当作 `connectionId` 传给 Workflow**：[`components/ai/WorkflowPanel.tsx:104`](../../../packages/frontend/src/components/ai/WorkflowPanel.tsx) 在 `handleExecute`（L99-107）里执行时传 `connectionId: dbSessionId`，而 `dbSessionId` 来自 `activeConnections[conn.id]?.dbSessionId`（连接窗口的运行时会话标识）。后端 `resolve_session_for_connection` 按 owner **配置 id** 查表，按[命名规范](../../../AGENTS.md) 这是被禁止的双模混用。同一页面的独立 Workflow 窗口（[`WorkflowPage.tsx:417`](../../../packages/frontend/src/windows/workflow/WorkflowPage.tsx)）则完全不传该参数。
 
 这正是第 9 节"AI/MCP/Wapp 与 Workflow 边界"要清理的入口耦合，实际失败表现列入[第 12 节](#12-待-p0-验证清单)。
 

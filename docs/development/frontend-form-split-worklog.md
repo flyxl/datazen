@@ -3,6 +3,37 @@
 > 本文件随每个 form-split PR 同步提交，记录实际执行顺序、决策与验证结果，
 > 避免工作进度丢失。条目按时间倒序（最新在上）。基线：`2a08e55`（F4a 合入后）。
 
+## 2026-10-29（会话八·续 3）— 运行期测试对齐：编译过后清 9 处运行失败
+
+> 编译全过后 rust job 进入**运行测试**阶段，9 个失败分四类，除
+> window 守卫抓到上一轮的方案选择错误外，其余全是「测试从未在 CI
+> 跑过」期间积累的断言过时。
+
+- **window.rs 守卫（自伤修复）**：上轮把两处设置读取改成
+  `state.store.get_settings()`（直读 store），被 F4a 守卫测试
+  「窗口命令必须经设置用例读取 / 不得直读宿主 store」当场抓红。
+  改回 `get_settings_impl` + `settings.preferences.language`（共享域
+  的合法路径）——守卫测试的架构裁决优先于我的第一直觉。
+- **SCHEMA_VERSION 落后**：v6 迁移（F1 NativeTool purge）已落地，
+  常量停在 5，五个版本环断言全红（left 6 / right 5）。常量更到 6，
+  五个测试全部恢复。
+- **portable 快照断言过时**：F4 把 `monitor` 从 host catch-all 提升
+  为共享行为字段，便携快照**应当**包含它；测试还停在「monitor 是
+  native 字段」的旧世界观（is_none → is_some 反转）。
+- **doc_reference_tests 两红**：行号断言里 OnboardingState 已随 F4a
+  迁至 `modules/src/settings/domain.rs:37`（原指 host settings.rs:15）；
+  workflow-resource-model.md 三处相对链接因 F6 搬迁断链
+  （src-tauri/ → apps/desktop/src-tauri/，src/ → packages/frontend/src/），
+  全部重定向。本地以脚本全量复扫行号表 15 条 + 文档链接 15 个，
+  ALL PASS 才推送。
+
+### 教训（防复发）
+
+- 守卫测试红 = 架构裁决在说话：先读懂断言背后的规则再选修法，
+  「绕开门禁」式的修复只会被同一门禁再抓一次。
+- 版本常量与迁移链是**两处事实源**：加迁移段必须同步常量，否则
+  版本环断言（如果它跑得起来）迟早收账。
+
 ## 2026-10-29（会话八·续 2）— host crate 编译对齐：F1–F5 API 漂移 8 处清偿（CI rust 转绿冲刺）
 
 > 路径余波清完后，rust job 前进到「真正编译 datazen_desktop 源码」的阶段，

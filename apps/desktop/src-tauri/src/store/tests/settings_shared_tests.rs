@@ -7,7 +7,9 @@ fn portable_snapshot_excludes_native_settings_and_credentials() {
     local.log_path = "/private/logs".into();
     let value = serde_json::to_value(local.shared_settings()).unwrap();
     assert!(value.get("logPath").is_none());
-    assert!(value.get("monitor").is_none());
+    // monitor 自 F4 起是共享行为字段（跨形态行为一致），必须出现在便携快照里；
+    // 旧断言（is_none）属于 monitor 还是 host catch-all 的前一个世界观。
+    assert!(value.get("monitor").is_some());
     assert!(!value.to_string().contains("/private"));
 }
 

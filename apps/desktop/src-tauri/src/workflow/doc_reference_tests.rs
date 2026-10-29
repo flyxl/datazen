@@ -166,8 +166,8 @@ const LINE_REFERENCES: &[(&str, usize, &str)] = &[
         "version: None,",
     ),
     (
-        "apps/desktop/src-tauri/src/store/settings.rs",
-        15,
+        "modules/src/settings/domain.rs",
+        37,
         "pub struct OnboardingState {",
     ),
 ];

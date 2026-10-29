@@ -112,10 +112,9 @@ pub fn docs_url(language: &str, section: Option<&str>) -> String {
 /// Open official help docs in the system browser (native Help menu).
 pub async fn open_docs_window(app: AppHandle, section: Option<&str>) -> Result<(), CommandError> {
     let state = app.state::<AppState>();
-    // `language` 是 host 专属设置（F4a 分域后不在 SharedSettings 里），
-    // 从宿主 store 读全量 AppSettings。
-    let settings = state.store.get_settings().await;
-    let url = docs_url(&settings.language, section);
+    // `language` 在共享域的 `preferences` 里（F4a 分域）；仍走设置用例读取。
+    let settings = crate::commands::config::get_settings_impl(state.inner()).await?;
+    let url = docs_url(&settings.preferences.language, section);
     open::that(&url).map_err(|e| CommandError::Internal(format!("open_docs_window: {e}")))
 }
 
@@ -499,9 +498,9 @@ pub async fn open_migration_sub_window(
     kind: MigrationSubWindow,
 ) -> Result<(), CommandError> {
     let state = app.state::<AppState>();
-    // 同上：菜单文案语言是 host 专属设置，从宿主 store 读全量 AppSettings。
-    let settings = state.store.get_settings().await;
-    let menu_title = crate::menu_label(&settings.language, kind.menu_title_key());
+    // 同上：菜单文案语言在共享域 preferences 里，仍走设置用例读取。
+    let settings = crate::commands::config::get_settings_impl(state.inner()).await?;
+    let menu_title = crate::menu_label(&settings.preferences.language, kind.menu_title_key());
     let title = format!("{menu_title} - DataZen");
     let (label, url, width, height, min_width, min_height) = kind.spec();
 
