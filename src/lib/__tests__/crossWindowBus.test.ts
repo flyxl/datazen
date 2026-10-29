@@ -1,31 +1,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mockEmit = vi.fn().mockResolvedValue(undefined);
-const mockListen = vi.fn().mockResolvedValue(vi.fn());
-const mockUnlisten = vi.fn();
+/**
+ * Cross-window bus tests (form-split F6 prep).
+ *
+ * The bus rides the `EventChannel` port when a platform is bound and the
+ * shared BroadcastChannel default otherwise — these two describes pin both
+ * halves. The desktop (Tauri emit/listen) implementation is app-owned and is
+ * covered by `src/platform/__tests__/eventChannel.desktop.test.ts`.
+ */
 
-vi.mock('@tauri-apps/api/event', () => ({
-  emit: (...args: unknown[]) => mockEmit(...args),
-  listen: (...args: unknown[]) => mockListen(...args),
-}));
+import { clearPlatform, configurePlatform, testPlatform } from '../../test/setup';
+import { emitCrossWindow, listenCrossWindow } from '../crossWindowBus';
 
-// Form-split F2: the branch is the compile-time IS_DESKTOP_BUILD constant;
-// a getter-export mock lets each describe flip the form.
-const envState = vi.hoisted(() => ({ desktop: false }));
-vi.mock('../../platform/desktop/env', () => ({
-  get IS_DESKTOP_BUILD() {
-    return envState.desktop;
-  },
-}));
-
-describe('crossWindowBus — browser', () => {
+describe('crossWindowBus — unconfigured platform (BroadcastChannel default)', () => {
   beforeEach(() => {
-    envState.desktop = false;
+    clearPlatform();
     vi.clearAllMocks();
   });
 
+  afterEach(() => {
+    clearPlatform();
+  });
+
   it('emitCrossWindow posts via BroadcastChannel', async () => {
-    const { emitCrossWindow } = await import('../crossWindowBus');
     const messages: unknown[] = [];
     const bc = new BroadcastChannel('datazen-bus');
     bc.onmessage = (e) => messages.push(e.data);
@@ -37,7 +34,6 @@ describe('crossWindowBus — browser', () => {
   });
 
   it('listenCrossWindow receives BroadcastChannel messages', async () => {
-    const { listenCrossWindow } = await import('../crossWindowBus');
     const handler = vi.fn();
     const unlisten = await listenCrossWindow('sync:settings', handler);
 
@@ -54,34 +50,39 @@ describe('crossWindowBus — browser', () => {
   });
 });
 
-describe('crossWindowBus — Tauri', () => {
+describe('crossWindowBus — bound platform (port contract)', () => {
+  const spyEmit = vi.fn().mockResolvedValue(undefined);
+  const spyListen = vi.fn().mockResolvedValue(() => undefined);
+
   beforeEach(() => {
-    envState.desktop = true;
     vi.clearAllMocks();
-    mockListen.mockResolvedValue(mockUnlisten);
+    // The shared test platform (same shape the global setup binds), with the
+    // events half replaced by spies — the port contract is what this suite
+    // pins, not any particular platform implementation.
+    configurePlatform({
+      ...testPlatform,
+      events: {
+        emitCrossWindow: (...args: unknown[]) => spyEmit(...args),
+        listenCrossWindow: (...args: unknown[]) => spyListen(...args),
+      },
+    });
   });
 
   afterEach(() => {
-    envState.desktop = false;
+    clearPlatform();
   });
 
-  it('emitCrossWindow uses Tauri emit', async () => {
-    vi.resetModules();
-    const { emitCrossWindow } = await import('../crossWindowBus');
+  it('emitCrossWindow forwards to the bound EventChannel port', async () => {
     await emitCrossWindow('datazen:theme-pack-changed', 'pack-1');
-    expect(mockEmit).toHaveBeenCalledWith('datazen:theme-pack-changed', 'pack-1');
+    expect(spyEmit).toHaveBeenCalledWith('datazen:theme-pack-changed', 'pack-1');
   });
 
-  it('listenCrossWindow uses Tauri listen', async () => {
-    vi.resetModules();
+  it('listenCrossWindow forwards to the bound EventChannel port and returns its unlisten', async () => {
     const handler = vi.fn();
-    mockListen.mockImplementation(async (_event, cb) => {
-      cb({ payload: { x: 1 } });
-      return mockUnlisten;
-    });
-    const { listenCrossWindow } = await import('../crossWindowBus');
+    const sentinel = () => undefined;
+    spyListen.mockResolvedValueOnce(sentinel);
     const unlisten = await listenCrossWindow('evt', handler);
-    expect(handler).toHaveBeenCalledWith({ x: 1 });
-    expect(unlisten).toBe(mockUnlisten);
+    expect(spyListen).toHaveBeenCalledWith('evt', handler);
+    expect(unlisten).toBe(sentinel);
   });
 });

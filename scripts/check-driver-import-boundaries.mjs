@@ -162,22 +162,15 @@ export const R2_FILE_CARVEOUTS = new Set([
 export const R6_LEGACY_TAURI_FILES = new Set([]);
 
 /**
- * R7 sanctioned bridges (form-split F2): the assembly root plus the six thin
- * re-export shims whose entire purpose is to keep legacy import paths alive
- * until F6. Both lists self-eliminate — main.tsx becomes `apps/desktop/src/`
- * and the shims die with the `src/` → `packages/frontend/` move.
+ * R7 sanctioned bridges (form-split F2 → burned by the F6-prep shim
+ * conversion): the six thin re-export shims are gone — windowManager,
+ * crossWindowBus, pathPicker, updater and usePlatform are shared modules that
+ * ride the platform ports (the accessor form), and the tauriBackendTransport
+ * fallback shim is deleted (queryPanelSessionRoot fails loudly through
+ * `requireBackendClient`). What remains sanctioned: the app entry (main.tsx),
+ * which becomes `apps/desktop/src/` with the directory move.
  */
-export const R7_SANCTIONED_BRIDGES = new Set([
-  'src/main.tsx',
-  'src/lib/windowManager.ts',
-  'src/lib/crossWindowBus.ts',
-  'src/lib/pathPicker.ts',
-  'src/lib/updater.ts',
-  'src/platform/tauriBackendTransport.ts',
-  'src/hooks/usePlatform.ts',
-  // The fallback shim keeps legacy `src/platform/tauriBackendTransport` importers
-  // (tests + the transitional driver-sdk lazy bind) working until F6.
-]);
+export const R7_SANCTIONED_BRIDGES = new Set(['src/main.tsx']);
 
 /**
  * Rule metadata. `blocking: false` keeps a rule visible in the report without

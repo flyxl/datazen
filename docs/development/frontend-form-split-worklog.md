@@ -3,6 +3,79 @@
 > 本文件随每个 form-split PR 同步提交，记录实际执行顺序、决策与验证结果，
 > 避免工作进度丢失。条目按时间倒序（最新在上）。基线：`2a08e55`（F4a 合入后）。
 
+## 2026-10-30（会话六）— F6-pre：六个 R7 shim 焚烧（转端口访问器），分家变纯机械
+
+> 计划 §5.6 的输入条件「分家变为纯机械动作」的最后一英里。六个 F2 过渡 shim
+> （windowManager / crossWindowBus / pathPicker / updater / usePlatform /
+> tauriBackendTransport）全部从「re-export 桌面区」转为「共享端口访问器」或删除；
+> 高层窗口助手与 updater 的纯推理逻辑**搬回家**（共享侧），桌面区只剩机器。
+> R7 闸门集合收缩到 `src/main.tsx` 一项（随目录迁移消亡）。
+
+### 端口面补口（backend-client / contracts）
+
+- `PlatformServices` +2：`pickPath`（桌面=dialog 插件，web=null 即取消语义，
+  `PickPathInput` 与 `@datazen/ui` 的 `PathPickerDialogOptions` 结构恒等）；
+  `getOsPlatform`（桌面=plugin-os 探测、自带 UA 兜底；web=UA）。os.ts 整文件
+  消亡（钩子逻辑回 `hooks/usePlatform.ts`，插件探测并入桌面绑定）。
+- `HostSettingsPort` / `DesktopHostServices` +2：`checkForUpdates` /
+  `downloadAndInstallUpdate`（类型 `UpdateProgress` / `UpdateCheckResult` 自
+  desktop/updater **字节等价**上移 contracts；inert 端口 reject——Update 区
+  本就 gate 在 `capabilities.updater` 上，§7.4 语义）。desktop/updater 瘦身为
+  纯插件流（check/download/relaunch/maybeCheckOnStartup），channel/variant/
+  manifest 纯函数回 `lib/updater.ts`。
+- `requireBackendClient()` 新增（client.ts，照 requirePlatformServices 先例）：
+  queryPanelSessionRoot 的 lazy `bindDesktopBackend()` 兜底退役——共享代码永不
+  自绑宿主适配器。注册表拿到的 facade 是「首属性访问才解析」的 Proxy：peek/
+  remove 纯簿记不触线（resetModules 形态的测试图构造安全），首次开 wire 才
+  §7.4 响亮失败。
+
+### shim → 访问器逐条
+
+- **crossWindowBus**：共享模块持有 BroadcastChannel 默认轨（自桌面 eventChannel
+  的浏览器分支**搬回**，`createBrowserEventChannel` 单一来源，web stub 复用）；
+  绑定平台时走 `events` 端口。桌面 eventChannel 瘦身为纯 Tauri；装配根按
+  `IS_DESKTOP_BUILD ? 桌面 : 浏览器轨` 绑定（browser-dev 行为不变）。
+- **windowManager**：open*Window / emitMenuAction / PENDING_CONNECTION_KEY 等
+  高层助手（URL 参数、localStorage、事件、i18n 推理）回共享侧，骑
+  `requirePlatform().windows` + 总线；桌面 windowRouter 只留 openSingletonWindow
+  （create_sub_window / WebviewWindow 聚焦 / 浏览器 tab 兜底 / 错误对话框）。
+  原文件里向 lib 的 import（connectionEditor / settingsStore / docsUrls）随
+  高层逻辑一起搬走——桌面区不再反向 import 共享 UI 模块。
+- **pathPicker / usePlatform**：访问器 + 钩子回家（见端口补口）。
+  `desktop/pathPicker.ts`、`desktop/os.ts` 删除；`platform/tauriBackendTransport.ts`
+  shim 删除（消费方：queryPanelSessionRoot 走 requireBackendClient；5 个测试
+  re-point 到桌面区真身）。
+- **env.ts 上移**：`platform/desktop/env.ts` → `platform/env.ts`（纯
+  `import.meta.env`，零宿主运行时）——`IS_DESKTOP_BUILD` 是**编译期构建常量**
+  （裁决 #5），前端包为两种形态分别编译时各自折叠；桌面区与共享侧同源引用。
+
+### 测试迁移（shape 不变、mock 面换轨）
+
+- windowManager.test 拆两半：lib 侧绑 spy 平台钉**端口契约**（label/params/尺寸/
+  事件载荷）；桌面机器（invoke/webviewWindow/去重/inflight/错误对话框）移
+  `platform/__tests__/windowRouter.desktop.test.ts`。crossWindowBus.test 同形
+  拆分（未配置=BroadcastChannel 默认轨；绑定=端口转发；Tauri 半边移
+  `eventChannel.desktop.test.ts`）。updater 流断言移
+  `platform/__tests__/updaterFlow.test.ts`（含 doMock 定制 SKU 的回归守卫）。
+- 顺手修复**前会话 batch-1 遗漏的四组测试**（HEAD 上即红）：QueryArtifactExport
+  （artifact 命令已上 legacy 轨但测试未绑 transport）、ContentViewKvDbSwitch /
+  OnboardingWizard（同因 + BrandSidebar 版本读已走 HostSettingsPort）、
+  AiSettingsSection（context_get_dir 未绑定 → 3 个未处理 rejection 导致
+  vitest exit 1）。全部按既有 `setBackendClient('test', …)` / 平台绑定模式补。
+- `check-ci-docs-consistency.mjs` 的 windowManager 指针随实现回迁更新。
+
+### 验证
+
+- typecheck（tsrs root/scripts/pack-ep）OK；闸门 0 blocking / 1 advisory。
+- 全量分块回归：stores 903/903；windows+commands+components/ai 1930/1930；
+  components 其余（DataTable 422 / filter+query+chart 等 1084 / admin+export
+  +history+migration+schema+sql-editor+杂项 705）；drivers 配置 1007/1007；
+  e2e-contract 23/23；backend-client+platform+hooks+lib 早前批全绿。
+- 已知环境限制不变：cargo 依赖的 2 个脚本测试本机 ENOENT（远程 CI rust 腿验证）。
+- 本机无 `tauri build`/webdriver 冒烟（无 cargo）——同 F4a/F4c 策略，开 PR 触发远程 CI。
+
+---
+
 ## 2026-10-29（会话五）— F6-a：workspace 协议落地（packages 字段 + install 实测）
 
 > 计划 §5.6 项1 / §7.1 风险项。此提交只落地协议本身：`pnpm-workspace.yaml`

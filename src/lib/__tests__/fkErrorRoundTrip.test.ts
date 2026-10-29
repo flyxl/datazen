@@ -41,7 +41,7 @@ import { createBackendClient, selectBackend, setBackendClient } from '@datazen/b
 import {
   createDesktopBackendTransport,
   DESKTOP_BACKEND_ID,
-} from '../../platform/tauriBackendTransport';
+} from '../../platform/desktop/tauriBackendTransport';
 import { classifyGridError } from '../gridErrors';
 import { hostErrorMessage, openForeignKeyTarget } from '../fkNavigationActions';
 import { usePanelStore } from '../../stores/panelStore';
@@ -79,10 +79,7 @@ describe('the round trip of a grid error message', () => {
       connectionName: 'Local',
       databaseType: 'postgresql',
     });
-    const client = createBackendClient(
-      DESKTOP_BACKEND_ID,
-      createDesktopBackendTransport(),
-    );
+    const client = createBackendClient(DESKTOP_BACKEND_ID, createDesktopBackendTransport());
     setBackendClient(DESKTOP_BACKEND_ID, client);
     selectBackend(DESKTOP_BACKEND_ID);
     mockInvoke.mockRejectedValue(HOST_MESSAGE);
@@ -151,17 +148,15 @@ describe('the round trip of a grid error message', () => {
       page: 0,
       pageSize: 50,
     });
-    await useTableDataStore
-      .getState()
-      .loadTableData({
-        panelId,
-        dbSessionId: 'session-1',
-        table: 'orders',
-        connectionId: 'conn-1',
-        driverType: 'postgresql',
-        database: 'app',
-        schema: null,
-      });
+    await useTableDataStore.getState().loadTableData({
+      panelId,
+      dbSessionId: 'session-1',
+      table: 'orders',
+      connectionId: 'conn-1',
+      driverType: 'postgresql',
+      database: 'app',
+      schema: null,
+    });
     useTableDataStore.getState().stageCellChange(panelId, 0, 'name', 'Alicia');
 
     mockInvoke.mockRejectedValue('grid.commit.stalePlan: Row change plan fingerprint is stale');

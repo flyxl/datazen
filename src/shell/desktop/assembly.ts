@@ -20,7 +20,7 @@ import { createDesktopEventChannel } from '../../platform/desktop/eventChannel';
 import { createDesktopHostServices } from '../../platform/desktop/hostServices';
 import { createDesktopSettingsClient } from '../../platform/desktop/settingsClient';
 import { createDesktopTablesExporter } from '../../platform/desktop/tablesExporter';
-import { IS_DESKTOP_BUILD } from '../../platform/desktop/env';
+import { IS_DESKTOP_BUILD } from '../../platform/env';
 import { DESKTOP_CAPABILITIES } from '../../platform/capabilities';
 import { setPlatformServices } from '@datazen/backend-client';
 import { bindHostEventListener } from '@datazen/driver-sdk';
@@ -30,6 +30,7 @@ import {
   type DesktopHostServices,
 } from '../../platform/contracts';
 import { registerWindowChrome } from '@datazen/extension-points';
+import { createBrowserEventChannel } from '../../lib/crossWindowBus';
 import { TitleBar } from './TitleBar';
 
 /**
@@ -49,7 +50,9 @@ export function assembleDesktopPlatform(): void {
   configurePlatform({
     services,
     windows: createDesktopWindowRouter(),
-    events: createDesktopEventChannel(),
+    // Browser-dev runs of the desktop bundle bind the shared browser rail
+    // (BroadcastChannel) — the desktop channel is now pure Tauri (F6 prep).
+    events: IS_DESKTOP_BUILD ? createDesktopEventChannel() : createBrowserEventChannel(),
     // Form-split F4: the host half of the settings surface — the projecting
     // DesktopSettingsClient over the host settings pair. A web build binds
     // `inertHostSettingsPort()` instead (F5's assembly).

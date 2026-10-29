@@ -30,7 +30,7 @@ import { createBackendClient, setBackendClient } from '@datazen/backend-client';
 import {
   createDesktopBackendTransport,
   DESKTOP_BACKEND_ID,
-} from '../../../platform/tauriBackendTransport';
+} from '../../../platform/desktop/tauriBackendTransport';
 import type { ForeignKeyInfo } from '../../../types';
 
 const { mockInvoke } = vi.hoisted(() => ({ mockInvoke: vi.fn() }));

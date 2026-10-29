@@ -142,6 +142,8 @@ describe('createDesktopSettingsClient — the HostSettingsPort adapter', () => {
       checkUpdatesOnStartup: vi.fn(),
       getAppVersion: vi.fn().mockResolvedValue('0.2.3-test'),
       persistSurfaceBackground: vi.fn(),
+      checkForUpdates: vi.fn().mockResolvedValue({ status: 'upToDate' }),
+      downloadAndInstallUpdate: vi.fn().mockResolvedValue({ status: 'upToDate' }),
     };
   }
 

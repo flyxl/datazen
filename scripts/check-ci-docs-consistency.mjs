@@ -19,10 +19,10 @@ const PATHS = {
   contributing: 'CONTRIBUTING.md',
   registry: 'drivers-registry.json',
   ciYml: '.github/workflows/ci.yml',
-  // Form-split F2: the implementation moved into the desktop zone; the shim
-  // at src/lib/windowManager.ts only re-exports. The contract this script
-  // asserts (kinds / labels / capability samples) lives in the implementation.
-  windowManager: 'src/platform/desktop/windowRouter.ts',
+  // Form-split F6 prep: the high-level window surface (kinds / labels /
+  // capability samples) moved back to the shared windowManager, which rides
+  // the WindowRouter port; the desktop zone keeps only the window machinery.
+  windowManager: 'src/lib/windowManager.ts',
   windowKind: 'src/lib/windowKind.ts',
 };
 
@@ -51,9 +51,7 @@ export function extractCiMatrixDriverIds(ciMatrixText) {
   }
 
   // optional path driver examples (mongodb、clickhouse、duckdb…)
-  for (const m of ciMatrixText.matchAll(
-    /(?:mongodb|clickhouse|duckdb|sqlserver|elasticsearch)/g,
-  )) {
+  for (const m of ciMatrixText.matchAll(/(?:mongodb|clickhouse|duckdb|sqlserver|elasticsearch)/g)) {
     ids.add(m[0]);
   }
 
@@ -77,12 +75,7 @@ export function checkCiMatrixDrivers(opts = {}) {
 }
 
 /** Sub-window `?window=` kinds that must exist in windowKind.ts and windowManager.ts. */
-const DOCUMENTED_SUB_WINDOW_KINDS = [
-  'backup',
-  'data-sync',
-  'schema-diff',
-  'data-transfer',
-];
+const DOCUMENTED_SUB_WINDOW_KINDS = ['backup', 'data-sync', 'schema-diff', 'data-transfer'];
 
 /** Singleton labels that create_sub_window receives (from windowManager.ts). */
 const EXPECTED_SINGLETON_LABELS = [
@@ -133,9 +126,7 @@ export function checkWindowBoundaries(opts = {}) {
   }
 
   // windows.md §4 snippet should list every non-main WindowKind (doc drift guard).
-  const kindTypeMatch = windowsMd.match(
-    /export type WindowKind = ([^;]+);/,
-  );
+  const kindTypeMatch = windowsMd.match(/export type WindowKind = ([^;]+);/);
   if (kindTypeMatch) {
     for (const kind of DOCUMENTED_SUB_WINDOW_KINDS) {
       if (!kindTypeMatch[1].includes(`'${kind}'`)) {
@@ -221,7 +212,9 @@ export function checkCiDocsConsistency(opts = {}) {
 
   const toolchain = checkToolchainVersions({ root });
   if (toolchain.ok) {
-    log(`[check-ci-docs] toolchain ok (Node ${toolchain.ci.node}, pnpm ${toolchain.ci.pnpm}, Rust stable)`);
+    log(
+      `[check-ci-docs] toolchain ok (Node ${toolchain.ci.node}, pnpm ${toolchain.ci.pnpm}, Rust stable)`,
+    );
   } else {
     failed = true;
     for (const msg of toolchain.errors) error(`[check-ci-docs] ${msg}`);

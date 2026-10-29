@@ -45,7 +45,6 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => invokeMock(...args),
 }));
 
-
 import { setBackendClient } from '@datazen/backend-client';
 // form-split R6: the invoke wrappers ride the bound backend transport now
 // (same binding pattern as file.test.ts — the mock keeps its invoke shape).
@@ -53,6 +52,22 @@ setBackendClient('test', { transport: { call: invokeMock } } as never);
 vi.mock('@tauri-apps/api/app', () => ({
   getVersion: async () => '9.9.9',
 }));
+
+// Form-split R6/F6-prep: BrandSidebar reads the version through the
+// HostSettingsPort (the `@tauri-apps/api/app` import is desktop-zone-only).
+// Wire the port's getAppVersion onto the same mocked getVersion so the
+// version row still renders v9.9.9.
+import { getVersion } from '@tauri-apps/api/app';
+import { configurePlatform, testPlatform } from '../../../test/setup';
+import { inertHostSettingsPort } from '../../../platform/contracts';
+
+configurePlatform({
+  ...testPlatform,
+  hostSettings: {
+    ...inertHostSettingsPort(),
+    getAppVersion: () => getVersion(),
+  },
+});
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({

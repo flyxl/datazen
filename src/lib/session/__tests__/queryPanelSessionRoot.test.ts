@@ -13,15 +13,9 @@ const registryCtor = vi.hoisted(() => vi.fn());
 
 vi.mock('@datazen/backend-client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@datazen/backend-client')>()),
-  getBackendClient: () => ({
+  requireBackendClient: () => ({
     getPlatformIdentity: (...args: unknown[]) => getPlatformIdentity(...args),
   }),
-}));
-
-vi.mock('../../../platform/tauriBackendTransport', () => ({
-  bindDesktopBackend: () => {
-    throw new Error('desktop backend should not be bound when a client already exists');
-  },
 }));
 
 vi.mock('../QueryPanelSession', () => ({

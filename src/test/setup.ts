@@ -61,6 +61,8 @@ const testPlatform: PlatformBindings = {
     openExternal: async () => undefined,
     toggleFullscreen: async () => undefined,
     showNotification: async () => undefined,
+    pickPath: async () => null,
+    getOsPlatform: async () => 'unknown' as const,
   },
   windows: {
     openSingletonWindow: () => undefined,

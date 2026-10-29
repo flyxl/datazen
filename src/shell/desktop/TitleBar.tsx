@@ -2,8 +2,8 @@ import type { ReactNode } from 'react';
 import { useCallback, useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { usePlatform } from '../../platform/desktop/os';
-import { IS_DESKTOP_BUILD } from '../../platform/desktop/env';
+import { usePlatform } from '../../hooks/usePlatform';
+import { IS_DESKTOP_BUILD } from '../../platform/env';
 import { useUiStore } from '../../stores/uiStore';
 import { WindowControls } from './WindowControls';
 

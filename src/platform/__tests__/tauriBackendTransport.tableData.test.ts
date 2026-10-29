@@ -27,7 +27,7 @@ vi.mock('@tauri-apps/api/core', () => ({
   },
 }));
 
-import { createDesktopBackendTransport } from '../tauriBackendTransport';
+import { createDesktopBackendTransport } from '../desktop/tauriBackendTransport';
 import {
   createBackendClient,
   type Counter,

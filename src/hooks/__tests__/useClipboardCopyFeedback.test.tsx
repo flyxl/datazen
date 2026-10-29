@@ -9,6 +9,7 @@
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
+import { clearPlatformServices, setPlatformServices } from '@datazen/backend-client';
 import { useClipboardCopyFeedback } from '../useClipboardCopyFeedback';
 import {
   advanceBy,
@@ -18,6 +19,17 @@ import {
 
 const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
+
+// Form-split R6/F6-prep: the copy chain's native fallback leg rides the
+// PlatformServices port — bind it with the invoke mock behind it so the wire
+// assertions (command name + payload) keep reading the same mock.
+function bindClipboardPort() {
+  setPlatformServices({
+    writeClipboard: (text: string) => invoke('write_clipboard', { text }),
+    writeClipboardHtml: (input: { html: string; altText: string }) =>
+      invoke('write_clipboard_html', { html: input.html, altText: input.altText }),
+  } as never);
+}
 
 const WINDOW_MS = 1200;
 
@@ -38,11 +50,13 @@ describe('useClipboardCopyFeedback', () => {
   beforeEach(() => {
     invoke.mockReset();
     invoke.mockResolvedValue(undefined);
+    bindClipboardPort();
   });
 
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    clearPlatformServices();
   });
 
   it('lights up optimistically and reverts at the window edge, not before', async () => {

@@ -111,7 +111,12 @@ vi.mock('../../../stores/panelStore', async () => {
   };
   const usePanelStore = (selector: (s: typeof state) => unknown) => selector(state);
   usePanelStore.getState = () => state;
-  return { ...pane, EMPTY_QUERY_EXEC, usePanelStore, nextPanelId: (prefix: string) => `panel-${prefix}` };
+  return {
+    ...pane,
+    EMPTY_QUERY_EXEC,
+    usePanelStore,
+    nextPanelId: (prefix: string) => `panel-${prefix}`,
+  };
 });
 
 vi.mock('../../../stores/settingsStore', () => {
@@ -155,8 +160,22 @@ vi.mock('../../../lib/kvSlotState', () => ({ pruneKvSlotStates: () => {} }));
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { setBackendClient } from '@datazen/backend-client';
 import { ContentView } from '../ContentView';
 import type { ConnectionViewActions } from '../../../lib/connectionViews/types';
+
+// Form-split R6/F6-prep: the query commands ride the legacy invoke rail, which
+// resolves the bound backend facade — `ConnectionWorkspaceHome`'s history
+// effect fires on mount. Bind the test transport (empty history page) so the
+// mount reaches the assertions instead of an unbound-client throw.
+setBackendClient('test', {
+  transport: {
+    call: async (method: string) => {
+      if (method === 'get_query_history_page') return { entries: [], total: 0 };
+      return undefined;
+    },
+  },
+} as never);
 
 beforeEach(() => {
   captured.args.length = 0;

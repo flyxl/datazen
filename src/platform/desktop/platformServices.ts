@@ -15,12 +15,23 @@ import type {
   OpenedDirectory,
   OpenedTextFile,
   OpenTextInput,
+  OsPlatform,
+  PickPathInput,
   PlatformServices,
   SaveBinaryInput,
   SaveTextInput,
   ShowNotificationInput,
   WriteClipboardHtmlInput,
 } from '@datazen/backend-client';
+
+/** User-agent fallback, unchanged from the original os.ts probe failure leg. */
+function platformFromUserAgent(): OsPlatform {
+  const ua = navigator.userAgent.toLowerCase();
+  if (ua.includes('mac')) return 'macos';
+  if (ua.includes('win')) return 'windows';
+  if (ua.includes('linux')) return 'linux';
+  return 'unknown';
+}
 
 export function createDesktopPlatformServices(): PlatformServices {
   return {
@@ -103,6 +114,33 @@ export function createDesktopPlatformServices(): PlatformServices {
       await invoke<void>('plugin:notification|notify', {
         options: { title: input.title, body: input.body },
       });
+    },
+
+    async pickPath(input?: PickPathInput): Promise<string | null> {
+      // The host's PathPicker (absorbed from the F2 zone-local pathPicker.ts):
+      // the single place in the app that opens a native path dialog. The
+      // `{ multiple: false, ...options }` default matches what `PathInput`
+      // did when the call still lived inside the design system.
+      const { open } = await import('@tauri-apps/plugin-dialog');
+      const selected = await open({ multiple: false, ...(input ?? {}) });
+      return typeof selected === 'string' ? selected : null;
+    },
+
+    async getOsPlatform(): Promise<OsPlatform> {
+      // The plugin-os probe (absorbed from os.ts); the user-agent fallback
+      // matches the original failure leg so a missing plugin degrades, not
+      // breaks.
+      try {
+        const { platform } = await import('@tauri-apps/plugin-os');
+        const p = platform();
+        if (p === 'macos') return 'macos';
+        if (p === 'windows') return 'windows';
+        if (p === 'linux') return 'linux';
+        return 'unknown';
+      } catch {
+        // plugin-os not available, fall back to user agent
+        return platformFromUserAgent();
+      }
     },
   };
 }

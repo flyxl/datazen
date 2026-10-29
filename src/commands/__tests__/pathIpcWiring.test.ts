@@ -285,9 +285,11 @@ describe('path IPC frontend wiring', () => {
     expect(app).not.toContain('DocsWindow');
     expect(app).not.toContain('NewConnectionWindow');
 
-    // Form-split F2: implementation moved to the desktop zone; the shim only
-    // re-exports, so the source contract lives at the new path.
-    const wm = readSrc('platform/desktop/windowRouter.ts');
+    // Form-split F6 prep: the high-level helpers (docs URL building included)
+    // moved back to the shared windowManager, which rides the WindowRouter
+    // port; the desktop zone keeps only the window machinery — so the source
+    // contract lives at the shared path.
+    const wm = readSrc('lib/windowManager.ts');
     expect(wm).toContain('buildDocsUrl');
     expect(wm).not.toContain("openSingletonWindow('docs-singleton'");
     expect(wm).not.toContain("openSingletonWindow('new-connection");

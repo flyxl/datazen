@@ -1,22 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mockCheck = vi.fn();
+// Form-split F6 prep: the SKU-channel reasoning is shared and pure — these are
+// the lib-side tests. The "nothing may reach the plugin" flow half of the
+// regression guard lives in `src/platform/__tests__/updaterFlow.test.ts`.
 
-// Form-split F2: updater's form branch is the compile-time IS_DESKTOP_BUILD
-// constant; a getter-export mock replaces the old __TAURI_INTERNALS__ toggle.
+// The form branch is the compile-time IS_DESKTOP_BUILD constant (shared
+// `platform/env`); a getter-export mock replaces the old toggle.
 const envState = vi.hoisted(() => ({ desktop: false }));
-vi.mock('../../platform/desktop/env', () => ({
+vi.mock('../../platform/env', () => ({
   get IS_DESKTOP_BUILD() {
     return envState.desktop;
   },
-}));
-
-vi.mock('@tauri-apps/plugin-updater', () => ({
-  check: (...args: unknown[]) => mockCheck(...args),
-}));
-
-vi.mock('@tauri-apps/plugin-process', () => ({
-  relaunch: vi.fn(),
 }));
 
 // A private / local SKU: it names itself but publishes no updater channel, which
@@ -27,9 +21,7 @@ vi.mock('../../extensions/generated', () => ({
 }));
 
 import {
-  checkForUpdates,
   currentVariant,
-  downloadAndInstallUpdate,
   getUpdateChannel,
   hasUpdaterChannel,
   isUpdaterSupported,
@@ -52,29 +44,8 @@ describe('updater on a SKU with no published channel', () => {
     expect(getUpdateChannel()).toBe('manual');
   });
 
-  it('never runs the in-app updater', async () => {
+  it('never runs the in-app updater', () => {
     expect(isUpdaterSupported()).toBe(false);
-
-    // Regression guard for the reported bug: a variant whose SKU has no channel
-    // used to read Basic's manifest and install a Basic build over itself,
-    // dropping every driver Basic does not ship. Nothing may reach the plugin.
-    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
-    await maybeCheckOnStartup(true);
-    expect(mockCheck).not.toHaveBeenCalled();
-    info.mockRestore();
-
-    const check = await checkForUpdates();
-    expect(check).toEqual({
-      status: 'error',
-      message: 'Updater is not available in this build',
-    });
-
-    const install = await downloadAndInstallUpdate();
-    expect(install).toEqual({
-      status: 'error',
-      message: 'Updater is not available in this build',
-    });
-    expect(mockCheck).not.toHaveBeenCalled();
   });
 
   it('stays inert even when the startup setting is on', async () => {

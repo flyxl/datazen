@@ -46,7 +46,7 @@ import {
 import {
   createDesktopBackendTransport,
   DESKTOP_BACKEND_ID,
-} from '../../platform/tauriBackendTransport';
+} from '../../platform/desktop/tauriBackendTransport';
 import { classifyGridError } from '../gridErrors';
 import { hostErrorMessage } from '../fkNavigationActions';
 import { databaseCommands } from '../../commands/database';
@@ -100,18 +100,14 @@ const HOST_CASES = [
   },
   {
     code: 'grid.commit.conflictingIntents',
-    text:
-      'grid.commit.conflictingIntents: a row marked for delete cannot also carry column writes',
+    text: 'grid.commit.conflictingIntents: a row marked for delete cannot also carry column writes',
   },
 ] as const;
 
 describe('audit: the host error round trip, for codes other than grid.fk.*', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    const client = createBackendClient(
-      DESKTOP_BACKEND_ID,
-      createDesktopBackendTransport(),
-    );
+    const client = createBackendClient(DESKTOP_BACKEND_ID, createDesktopBackendTransport());
     setBackendClient(DESKTOP_BACKEND_ID, client);
     selectBackend(DESKTOP_BACKEND_ID);
   });
@@ -258,10 +254,7 @@ describe('audit: the transport change does not touch the capability path', () =>
   });
 
   it('lets the named views reach the host again', async () => {
-    const client = createBackendClient(
-      DESKTOP_BACKEND_ID,
-      createDesktopBackendTransport(),
-    );
+    const client = createBackendClient(DESKTOP_BACKEND_ID, createDesktopBackendTransport());
     setBackendClient(DESKTOP_BACKEND_ID, client);
     selectBackend(DESKTOP_BACKEND_ID);
 
@@ -305,10 +298,7 @@ describe('audit: the transport change does not touch the capability path', () =>
   });
 
   it('lets the row count estimate reach the host again', async () => {
-    const client = createBackendClient(
-      DESKTOP_BACKEND_ID,
-      createDesktopBackendTransport(),
-    );
+    const client = createBackendClient(DESKTOP_BACKEND_ID, createDesktopBackendTransport());
     setBackendClient(DESKTOP_BACKEND_ID, client);
     selectBackend(DESKTOP_BACKEND_ID);
 

@@ -122,6 +122,26 @@ export function getBackendClient(): BackendClient | null {
   return clientsByBackend.get(selectedBackendId) ?? null;
 }
 
+/**
+ * The selected facade, or a loud failure (§7.4 semantics).
+ *
+ * Shared code must never *bind* a host adapter as a fallback — an unbound
+ * backend at a data-plane call site is a wiring gap (the assembly root did
+ * not run, or ran after the first data-plane consumer), and the §7.4 ruling
+ * makes that throw a locatable error instead of silently degrading into a
+ * direct host connection. Added by the form-split F6 prep
+ * (queryPanelSessionRoot's lazy `bindDesktopBackend()` fallback burn).
+ */
+export function requireBackendClient(): BackendClient {
+  const client = getBackendClient();
+  if (!client) {
+    throw new Error(
+      'BackendClient has not been bound; check that the app assembly root ran before the first data-plane call.',
+    );
+  }
+  return client;
+}
+
 /** Which backend is selected, or `null`. */
 export function getSelectedBackendId(): string | null {
   return selectedBackendId;

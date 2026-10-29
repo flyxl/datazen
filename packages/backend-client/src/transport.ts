@@ -163,6 +163,42 @@ export interface PlatformServices {
    * form-split R6 ledger burn (wappBridge's plugin invoke).
    */
   showNotification(input: ShowNotificationInput): Promise<void>;
+  /**
+   * Native path dialog (the host's `PathPicker`). Desktop rides the dialog
+   * plugin; the web form has no native picker and resolves `null` (cancel
+   * semantics — callers disable the browse affordance by capability, not by
+   * probing). Added by the form-split F6 prep (lib/pathPicker shim burn).
+   */
+  pickPath(input?: PickPathInput): Promise<string | null>;
+  /**
+   * The OS platform dimension (macos/windows/linux), orthogonal to the form
+   * factor — both forms need it. Desktop probes plugin-os; the web form
+   * sniffs the user agent. Added by the form-split F6 prep (hooks/usePlatform
+   * shim burn).
+   */
+  getOsPlatform(): Promise<OsPlatform>;
+}
+
+/** The OS dimension, shared by both form factors. */
+export type OsPlatform = 'macos' | 'windows' | 'linux' | 'unknown';
+
+/** Dialog filter shape for {@link PlatformServices.pickPath}. */
+export interface PickPathFileFilter {
+  name: string;
+  extensions: string[];
+}
+
+/**
+ * Options for the native path dialog. Structurally identical to
+ * `@datazen/ui`'s `PathPickerDialogOptions` so the host binding satisfies the
+ * `PathPicker` signature without the design system depending on this package.
+ */
+export interface PickPathInput {
+  directory?: boolean;
+  multiple?: boolean;
+  title?: string;
+  defaultPath?: string;
+  filters?: PickPathFileFilter[];
 }
 
 export interface WriteClipboardHtmlInput {

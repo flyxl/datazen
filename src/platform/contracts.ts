@@ -111,7 +111,37 @@ export interface DesktopHostServices {
    * and forget. Added by the form-split R6 ledger burn (surfaceBgCache).
    */
   persistSurfaceBackground(hex: string, dark: boolean): void;
+  /**
+   * Check the host updater's endpoint for a newer release. Added by the
+   * form-split F6 prep (lib/updater shim burn) — the plugin-updater flow is
+   * app-owned; the shared UpdateSection rides this port.
+   */
+  checkForUpdates(): Promise<UpdateCheckResult>;
+  /**
+   * Download and install the pending update (relaunches the app); returns
+   * the same result shape the check does. Added by the form-split F6 prep.
+   */
+  downloadAndInstallUpdate(
+    onProgress?: (progress: UpdateProgress) => void,
+  ): Promise<UpdateCheckResult>;
 }
+
+// ── Updater wire types (form-split F6 prep — shared by the port and lib/updater) ─
+
+/** Progress of a running update check/download/install (plugin-updater's shape). */
+export type UpdateProgress =
+  | { phase: 'checking' }
+  | { phase: 'downloading'; downloaded: number; total: number | null }
+  | { phase: 'installing' }
+  | { phase: 'done'; version: string }
+  | { phase: 'idle' };
+
+/** Outcome of an update check / download-and-install run. */
+export type UpdateCheckResult =
+  | { status: 'upToDate' }
+  | { status: 'available'; version: string }
+  | { status: 'installed'; version: string }
+  | { status: 'error'; message: string };
 
 // ── Port 5: host settings (form-split F4) ────────────────────────────────────
 
@@ -163,6 +193,16 @@ export interface HostSettingsPort {
    * Inert on forms without a host store. Added by the R6 ledger burn.
    */
   persistSurfaceBackground(hex: string, dark: boolean): void;
+  /**
+   * Check the updater. Unreachable on a web form (the section gates on
+   * `capabilities.updater`), so the inert port rejects loudly (§7.4) instead
+   * of pretending an updater exists. Added by the form-split F6 prep.
+   */
+  checkForUpdates(): Promise<UpdateCheckResult>;
+  /** Install half of the same unreachable pair. */
+  downloadAndInstallUpdate(
+    onProgress?: (progress: UpdateProgress) => void,
+  ): Promise<UpdateCheckResult>;
 }
 
 /** The inert, web-shaped binding: extras are empty and every write is a no-op. */
@@ -205,6 +245,14 @@ export function inertHostSettingsPort(): HostSettingsPort {
     },
     persistSurfaceBackground() {
       // No host file to bake into the next window's first paint.
+    },
+    async checkForUpdates() {
+      // Unreachable on a web form: the Update section gates on
+      // `capabilities.updater === false`. Fail loudly if reached anyway.
+      throw new Error('checkForUpdates: no updater on a form without a host app.');
+    },
+    async downloadAndInstallUpdate() {
+      throw new Error('downloadAndInstallUpdate: no updater on a form without a host app.');
     },
   };
 }

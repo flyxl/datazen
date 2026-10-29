@@ -10,13 +10,13 @@ const onResizedMock = vi.fn().mockResolvedValue(() => {});
 // Form-split F2: TitleBar imports the OS hook and the form constant from the
 // desktop zone; the form is compile-time, so the env module gets a getter
 // mock that this suite pins to the desktop branch.
-vi.mock('../../platform/desktop/env', () => ({
+vi.mock('../../platform/env', () => ({
   get IS_DESKTOP_BUILD() {
     return true;
   },
 }));
 
-vi.mock('../../platform/desktop/os', () => ({
+vi.mock('../../hooks/usePlatform', () => ({
   usePlatform: () => 'macos',
   getPlatformSync: () => 'macos',
 }));

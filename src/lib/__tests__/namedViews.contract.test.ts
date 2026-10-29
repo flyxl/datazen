@@ -53,7 +53,7 @@ import {
 import {
   createDesktopBackendTransport,
   DESKTOP_BACKEND_ID,
-} from '../../platform/tauriBackendTransport';
+} from '../../platform/desktop/tauriBackendTransport';
 import { classifyGridError, GRID_ERROR_CODES } from '../gridErrors';
 import { hostErrorMessage } from '../hostErrorMessage';
 import { databaseCommands } from '../../commands/database';

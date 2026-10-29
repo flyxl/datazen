@@ -100,6 +100,8 @@ describe('PlatformServices port (backend-client §7.4)', () => {
       openExternal: async () => undefined,
       toggleFullscreen: async () => undefined,
       showNotification: async () => undefined,
+      pickPath: async () => null,
+      getOsPlatform: async () => 'unknown' as const,
     });
     await expect(requirePlatformServices().readClipboard()).resolves.toBe('copied');
   });

@@ -15,7 +15,7 @@ vi.mock('@tauri-apps/api/core', () => ({
     }
   },
 }));
-import { createDesktopBackendTransport } from '../../../platform/tauriBackendTransport';
+import { createDesktopBackendTransport } from '../../../platform/desktop/tauriBackendTransport';
 
 afterEach(() => {
   vi.clearAllMocks();

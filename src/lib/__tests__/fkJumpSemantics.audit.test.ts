@@ -37,7 +37,7 @@ import { createBackendClient, selectBackend, setBackendClient } from '@datazen/b
 import {
   createDesktopBackendTransport,
   DESKTOP_BACKEND_ID,
-} from '../../platform/tauriBackendTransport';
+} from '../../platform/desktop/tauriBackendTransport';
 import { openForeignKeyTarget } from '../fkNavigationActions';
 import { buildFkFilters, scrollTopForAnchorRow } from '../fkNavigation';
 import { usePanelStore } from '../../stores/panelStore';

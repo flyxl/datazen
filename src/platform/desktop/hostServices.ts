@@ -16,8 +16,12 @@
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
 import type { AppSettings } from '../../types';
-import type { DesktopHostServices } from '../contracts';
+import type { DesktopHostServices, UpdateCheckResult, UpdateProgress } from '../contracts';
 import { maybeCheckOnStartup } from './updater';
+import {
+  checkForUpdates as desktopCheckForUpdates,
+  downloadAndInstallUpdate as desktopDownloadAndInstallUpdate,
+} from './updater';
 
 export function createDesktopHostServices(): DesktopHostServices {
   return {
@@ -64,6 +68,16 @@ export function createDesktopHostServices(): DesktopHostServices {
         // Cache write is best-effort; next window still has in-memory Rust
         // state if the IPC reached `set`.
       });
+    },
+    checkForUpdates(): Promise<UpdateCheckResult> {
+      // Form-split F6 prep: the shared UpdateSection reaches the app-owned
+      // plugin-updater flow through this delegation.
+      return desktopCheckForUpdates();
+    },
+    downloadAndInstallUpdate(
+      onProgress?: (progress: UpdateProgress) => void,
+    ): Promise<UpdateCheckResult> {
+      return desktopDownloadAndInstallUpdate(onProgress);
     },
   };
 }

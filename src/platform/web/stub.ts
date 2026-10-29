@@ -25,6 +25,7 @@ import { ApiError, type BackendTransport, setPlatformServices } from '@datazen/b
 import { configurePlatform, inertHostSettingsPort, type PlatformBindings } from '../contracts';
 import { WEB_CAPABILITIES } from '../capabilities';
 import { createBlobTablesExporter } from '../blobTablesExporter';
+import { createBrowserEventChannel } from '../../lib/crossWindowBus';
 
 /** The all-throw backend transport: no web backend exists yet. */
 export function createWebBackendTransportStub(): BackendTransport {
@@ -108,6 +109,20 @@ export function createWebPlatformServices() {
       }
       new Notification(input.title, { body: input.body });
     },
+    async pickPath() {
+      // No native path picker in a browser tab: cancel semantics (null), the
+      // port's documented web answer. Callers gate the browse affordance on
+      // capability, never on a probe.
+      return null;
+    },
+    async getOsPlatform() {
+      // The OS dimension still exists in a browser — the user agent answers.
+      const ua = navigator.userAgent.toLowerCase();
+      if (ua.includes('mac')) return 'macos';
+      if (ua.includes('win')) return 'windows';
+      if (ua.includes('linux')) return 'linux';
+      return 'unknown';
+    },
   };
 }
 
@@ -152,19 +167,9 @@ export function createWebWindowRouter(): PlatformBindings['windows'] {
   };
 }
 
-/** Cross-window events: inert until the real web assembly wires a rail. */
+/** Cross-window events: BroadcastChannel across tabs (the shared browser rail). */
 export function createWebEventChannel(): PlatformBindings['events'] {
-  return {
-    async emitCrossWindow(event, payload) {
-      // No receivers in the stub form; BroadcastChannel wiring lands with the
-      // real web assembly.
-      void event;
-      void payload;
-    },
-    async listenCrossWindow(_event, _handler) {
-      return () => undefined;
-    },
-  };
+  return createBrowserEventChannel();
 }
 
 /**

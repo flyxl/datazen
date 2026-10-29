@@ -24,7 +24,7 @@ import { bootstrapDefaultIconResolver } from './lib/bootstrapIconResolver';
 import { maybeCheckOnStartup } from './platform/desktop/updater';
 import { getWindowKind } from './lib/windowKind';
 import { assembleDesktopPlatform, showSubWindowWhenReady } from './shell/desktop/assembly';
-import { IS_DESKTOP_BUILD } from './platform/desktop/env';
+import { IS_DESKTOP_BUILD } from './platform/env';
 import { startLocaleSync } from './lib/localeSync';
 import { initProExtensions } from './extensions/generated-pro';
 import * as extensionPoints from '@datazen/extension-points';

@@ -1,8 +1,22 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { setBackendClient } from '@datazen/backend-client';
 import { AiSettingsSection } from '../AiSettingsSection';
 import { useAiStore } from '../../../stores/aiStore';
 import { getDefaultSafetyGate } from '../../../lib/aiSafetyPresets';
+
+// Form-split R6/F6-prep: the context commands ride the legacy invoke rail,
+// which resolves the bound backend facade — the section's dir effect fires on
+// mount. Bind the test transport so the mount does not leave an unhandled
+// unbound-client rejection behind (vitest exits 1 on those).
+setBackendClient('test', {
+  transport: {
+    call: async (method: string) => {
+      if (method === 'context_get_dir') return '/tmp/datazen-context';
+      return undefined;
+    },
+  },
+} as never);
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({
