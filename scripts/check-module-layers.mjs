@@ -5,7 +5,7 @@ import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
  *
  * Two independent layers are policed here:
  *
- *  1. `src/lib/relationMetadata` — the shared relation-metadata layer, which
+ *  1. `packages/frontend/src/lib/relationMetadata` — the shared relation-metadata layer, which
  *     must not climb back up into the components / stores / windows / hooks
  *     that consume it. (Query Builder is owned by the independent SQL Editor
  *     Pro repository and no longer participates in Host source-layer checks.)
@@ -65,8 +65,8 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const LAYER_RULES = [
   {
     name: 'shared relation metadata must not import its consumers',
-    from: 'src/lib/relationMetadata',
-    forbidden: ['src/components', 'src/stores', 'src/windows', 'src/hooks'],
+    from: 'packages/frontend/src/lib/relationMetadata',
+    forbidden: ['packages/frontend/src/components', 'packages/frontend/src/stores', 'packages/frontend/src/windows', 'packages/frontend/src/hooks'],
   },
   {
     name: 'shared design system (@datazen/ui) must stay a host-free leaf',
@@ -140,7 +140,7 @@ function collectSourceFiles(dir) {
     for (const entry of readdirSync(current, { withFileTypes: true })) {
       // Vendored / generated trees are somebody else's source. Skipping them
       // here matters more than it looks: `packages/ui/` has no `node_modules`
-      // or `dist` today, so without this a single `npm install` under the
+      // or `apps/desktop/dist` today, so without this a single `npm install` under the
       // design system would start failing the gate on third-party code.
       if (entry.isDirectory() && SKIP_DIR_NAMES.has(entry.name)) continue;
       const full = resolve(current, entry.name);

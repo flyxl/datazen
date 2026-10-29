@@ -39,7 +39,7 @@ import {
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const WORKFLOW = '.github/workflows/release.yml';
-const TAURI_CONF = 'src-tauri/tauri.conf.json';
+const TAURI_CONF = 'apps/desktop/src-tauri/tauri.conf.json';
 
 /**
  * Packaging templates that are pasted into Homebrew / WinGet releases. They must

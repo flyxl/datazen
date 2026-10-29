@@ -57,7 +57,7 @@ export const ROOT = resolve(__dirname, '..');
  */
 export const MANAGED_FILES = [
   'Cargo.toml',
-  'src-tauri/Cargo.toml',
+  'apps/desktop/src-tauri/Cargo.toml',
   'Cargo.lock',
 ];
 

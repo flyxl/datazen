@@ -99,7 +99,7 @@ function parseArgs(argv) {
 export function packAtRef(root, ref, locale) {
   let files;
   try {
-    files = execFileSync('git', ['ls-tree', '-r', '--name-only', ref, '--', `src/locales/${locale}`], {
+    files = execFileSync('git', ['ls-tree', '-r', '--name-only', ref, '--', `packages/frontend/src/locales/${locale}`], {
       cwd: root,
       encoding: 'utf-8',
     })
@@ -125,8 +125,8 @@ export function packAtRef(root, ref, locale) {
  * @returns {{ problems: number, report: object }}
  */
 export function verifyLocale(root, locale, baseline) {
-  const enDir = resolve(root, 'src/locales/en');
-  const localeDir = resolve(root, 'src/locales', locale);
+  const enDir = resolve(root, 'packages/frontend/src/locales/en');
+  const localeDir = resolve(root, 'packages/frontend/src/locales', locale);
   const en = {};
   const enFiles = readdirSync(enDir).filter((f) => f.endsWith('.ts')).sort();
   for (const f of enFiles) Object.assign(en, parsePack(readFileSync(resolve(enDir, f), 'utf-8')));

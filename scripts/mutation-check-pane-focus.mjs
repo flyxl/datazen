@@ -5,7 +5,7 @@
  * (plus the two whole-state literals at module scope and in `reset`). Reading
  * the code cannot tell you whether an action actually routes through it — only a
  * mutation can. This script reverts each focus-touching action in
- * `src/stores/panelStore.ts` to its pre-BUG-001 shape and requires the **pane
+ * `packages/frontend/src/stores/panelStore.ts` to its pre-BUG-001 shape and requires the **pane
  * suite** to go red: the 10 files in `TESTS` below, run together. Nothing here
  * looks at one file — a cell is RED when the whole `TESTS` run exits non-zero, so
  * a mutation that only some *other* file in that list can see still counts as
@@ -140,20 +140,20 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const STORE_REL = 'src/stores/panelStore.ts';
+const STORE_REL = 'packages/frontend/src/stores/panelStore.ts';
 const STORE = resolve(ROOT, STORE_REL);
 
 const TESTS = [
-  'src/stores/__tests__/panelStore.test.ts',
-  'src/stores/__tests__/panelStore.panes.test.ts',
-  'src/stores/__tests__/paneFocusScope.tester.test.ts',
-  'src/stores/__tests__/paneFocusDifferentialRepro.tester.test.ts',
-  'src/stores/__tests__/paneFocusEntryLifecycle.tester.test.ts',
-  'src/stores/__tests__/paneP2ContractProbes.tester.test.ts',
-  'src/stores/__tests__/paneRealSequence.tester.test.ts',
-  'src/stores/__tests__/panelCloseNotifier.test.ts',
-  'src/hooks/__tests__/useQueryExec.pane.tester.test.tsx',
-  'src/windows/connection/__tests__/QueryPanel.paneRouting.test.tsx',
+  'packages/frontend/src/stores/__tests__/panelStore.test.ts',
+  'packages/frontend/src/stores/__tests__/panelStore.panes.test.ts',
+  'packages/frontend/src/stores/__tests__/paneFocusScope.tester.test.ts',
+  'packages/frontend/src/stores/__tests__/paneFocusDifferentialRepro.tester.test.ts',
+  'packages/frontend/src/stores/__tests__/paneFocusEntryLifecycle.tester.test.ts',
+  'packages/frontend/src/stores/__tests__/paneP2ContractProbes.tester.test.ts',
+  'packages/frontend/src/stores/__tests__/paneRealSequence.tester.test.ts',
+  'packages/frontend/src/stores/__tests__/panelCloseNotifier.test.ts',
+  'packages/frontend/src/hooks/__tests__/useQueryExec.pane.tester.test.tsx',
+  'packages/frontend/src/windows/connection/__tests__/QueryPanel.paneRouting.test.tsx',
 ];
 
 // The syncPaneFocus call site shared by removePanelsFor{Relation,Database}.
@@ -734,7 +734,7 @@ try {
     // Guarded like the rest, and for the same reason: this runs *before* the
     // exit-code fold below, so a throw here discards every exitReason pushed so
     // far and node forces exit 1 — i.e. UNCOVERED. Measured, not theorised: with
-    // this one call left bare, making `src/stores` read-only (the file itself
+    // this one call left bare, making `packages/frontend/src/stores` read-only (the file itself
     // still writable, so the whole run succeeds) produced exactly that, a bare
     // `Error: EACCES ... unlink` stack and exit 1, for a run whose tree was
     // perfectly clean. A leftover backup is harmless — it is the startup bytes,

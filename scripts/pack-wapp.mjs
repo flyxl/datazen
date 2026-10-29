@@ -23,11 +23,11 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const WAPPS_DIR = resolve(ROOT, 'packages/wapps');
-const OUT_DIR = join(WAPPS_DIR, 'dist');
+const OUT_DIR = join(WAPPS_DIR, 'apps/desktop/dist');
 
 function listPackageDirs() {
   return readdirSync(WAPPS_DIR, { withFileTypes: true })
-    .filter((e) => e.isDirectory() && e.name !== 'dist')
+    .filter((e) => e.isDirectory() && e.name !== 'apps/desktop/dist')
     .map((e) => e.name)
     .sort();
 }

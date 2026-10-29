@@ -111,7 +111,7 @@ function parseArgs(argv) {
  * @param {{ dryRun?: boolean }} options
  */
 export function harmonizeLocale(root, locale, rules, { dryRun = false } = {}) {
-  const localeDir = resolve(root, 'src/locales', locale);
+  const localeDir = resolve(root, 'packages/frontend/src/locales', locale);
   const changed = [];
   const problems = [];
   const noop = [];

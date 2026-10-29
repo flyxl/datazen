@@ -302,8 +302,8 @@ const DRIVER_ICON_PARENT = {
  * own directory and the enclosing `ui/` directory.
  */
 function driverIconDirs(metaPath) {
-  // metaPath like '../../packages/drivers/postgres/ui/meta' (from src/extensions)
-  const absMetaTs = resolve(ROOT, 'src/extensions', `${metaPath}.ts`);
+  // metaPath like '../../../../packages/drivers/postgres/ui/meta' (from src/extensions)
+  const absMetaTs = resolve(ROOT, 'packages/frontend/src/extensions', `${metaPath}.ts`);
   const dirs = [dirname(absMetaTs)];
   const segments = relative(ROOT, absMetaTs).split(/[\\/]/);
   const uiIdx = segments.lastIndexOf('ui');
@@ -316,7 +316,7 @@ export function resolveDriverIconImport(metaPath, dbTypeId) {
     const abs = join(dir, 'icons', `${dbTypeId}.svg`);
     if (!existsSync(abs)) continue;
     // import path relative to src/extensions/generated.ts
-    const relFromExtensions = relative(resolve(ROOT, 'src/extensions'), abs).replaceAll('\\', '/');
+    const relFromExtensions = relative(resolve(ROOT, 'packages/frontend/src/extensions'), abs).replaceAll('\\', '/');
     const importPath = relFromExtensions.startsWith('.') ? relFromExtensions : `./${relFromExtensions}`;
     return { abs, importPath: `${importPath}?url`, fileKey: dbTypeId };
   }
@@ -330,7 +330,7 @@ const BASIC_PATH_FRONTEND = {
       { id: 'questdb', metaExport: 'questdbMeta' },
       { id: 'cloudberry', metaExport: 'cloudberryMeta' },
     ],
-    metaPath: '../../packages/drivers/postgres/ui/meta',
+    metaPath: '../../../../packages/drivers/postgres/ui/meta',
   },
   mysql: {
     dbTypes: [
@@ -341,18 +341,18 @@ const BASIC_PATH_FRONTEND = {
       { id: 'manticore', metaExport: 'manticoreMeta' },
       { id: 'ob_oracle', metaExport: 'obOracleMeta' },
     ],
-    metaPath: '../../packages/drivers/mysql/ui/meta',
+    metaPath: '../../../../packages/drivers/mysql/ui/meta',
   },
   sqlite: {
     dbTypes: [{ id: 'sqlite', metaExport: 'sqliteMeta' }],
-    metaPath: '../../packages/drivers/sqlite/ui/meta',
+    metaPath: '../../../../packages/drivers/sqlite/ui/meta',
   },
   redis: {
     dbTypes: [{ id: 'redis', metaExport: 'redisMeta' }],
-    metaPath: '../../packages/drivers/redis/ui/shared/meta',
+    metaPath: '../../../../packages/drivers/redis/ui/shared/meta',
     connectionForm: {
       component: 'RedisConnectionWizard',
-      path: '../../packages/drivers/redis/ui/connection/ConnectionWizard',
+      path: '../../../../packages/drivers/redis/ui/connection/ConnectionWizard',
       formVariant: 'redis',
       advanced: 'RedisTlsFields',
       validator: { export: 'redisValidate' },
@@ -361,12 +361,12 @@ const BASIC_PATH_FRONTEND = {
       {
         dbType: 'redis',
         export: 'parseRedisConnectionClipboard',
-        path: '../../packages/drivers/redis/ui/connection/parseRedisClipboard',
+        path: '../../../../packages/drivers/redis/ui/connection/parseRedisClipboard',
       },
     ],
     connectionView: {
       component: 'RedisConnectionView',
-      path: '../../packages/drivers/redis/ui/connection/RedisConnectionView',
+      path: '../../../../packages/drivers/redis/ui/connection/RedisConnectionView',
       viewMode: 'keyvalue',
     },
     // KV workspace slots (host contract F-3). Declared slot by slot, in
@@ -376,36 +376,36 @@ const BASIC_PATH_FRONTEND = {
     kvSlots: {
       statusBar: {
         component: 'RedisKvStatusBar',
-        path: '../../packages/drivers/redis/ui/kv-bar',
+        path: '../../../../packages/drivers/redis/ui/kv-bar',
       },
       keyPropsSidebar: {
         component: 'RedisKeyPropsSidebar',
-        path: '../../packages/drivers/redis/ui/kv-bar',
+        path: '../../../../packages/drivers/redis/ui/kv-bar',
       },
       connectionHome: {
         component: 'RedisOverviewHome',
-        path: '../../packages/drivers/redis/ui/overview/RedisOverviewHome',
+        path: '../../../../packages/drivers/redis/ui/overview/RedisOverviewHome',
       },
     },
     settings: {
       driverId: 'redis',
       label: 'Redis',
       sectionExport: 'RedisSettingsSection',
-      sectionPath: '../../packages/drivers/redis/ui/connection/settings',
+      sectionPath: '../../../../packages/drivers/redis/ui/connection/settings',
       schemaExport: 'redisSettingsSchema',
-      schemaPath: '../../packages/drivers/redis/ui/connection/settings',
+      schemaPath: '../../../../packages/drivers/redis/ui/connection/settings',
     },
   },
   mongodb: {
     dbTypes: [{ id: 'mongodb', metaExport: 'mongodbMeta' }],
-    metaPath: '../../packages/drivers/mongodb/ui/meta',
+    metaPath: '../../../../packages/drivers/mongodb/ui/meta',
   },
   sqlserver: {
     dbTypes: [{ id: 'sqlserver', metaExport: 'sqlserverMeta' }],
-    metaPath: '../../packages/drivers/sqlserver/ui/meta',
+    metaPath: '../../../../packages/drivers/sqlserver/ui/meta',
     connectionForm: {
       component: 'SqlServerConnectionFields',
-      path: '../../packages/drivers/sqlserver/ui/ConnectionFields',
+      path: '../../../../packages/drivers/sqlserver/ui/ConnectionFields',
       formVariant: 'sqlserver',
       advanced: 'SqlServerConnectionAdvanced',
       validator: { export: 'sqlServerValidate' },
@@ -413,39 +413,39 @@ const BASIC_PATH_FRONTEND = {
   },
   clickhouse: {
     dbTypes: [{ id: 'clickhouse', metaExport: 'clickhouseMeta' }],
-    metaPath: '../../packages/drivers/clickhouse/ui/meta',
+    metaPath: '../../../../packages/drivers/clickhouse/ui/meta',
   },
   duckdb: {
     dbTypes: [{ id: 'duckdb', metaExport: 'duckdbMeta' }],
-    metaPath: '../../packages/drivers/duckdb/ui/meta',
+    metaPath: '../../../../packages/drivers/duckdb/ui/meta',
   },
   elasticsearch: {
     dbTypes: [{ id: 'elasticsearch', metaExport: 'elasticsearchMeta' }],
-    metaPath: '../../packages/drivers/elasticsearch/ui/meta',
+    metaPath: '../../../../packages/drivers/elasticsearch/ui/meta',
   },
   rqlite: {
     dbTypes: [{ id: 'rqlite', metaExport: 'rqliteMeta' }],
-    metaPath: '../../packages/drivers/rqlite/ui/meta',
+    metaPath: '../../../../packages/drivers/rqlite/ui/meta',
   },
   turso: {
     dbTypes: [{ id: 'turso', metaExport: 'tursoMeta' }],
-    metaPath: '../../packages/drivers/turso/ui/meta',
+    metaPath: '../../../../packages/drivers/turso/ui/meta',
   },
   influxdb: {
     dbTypes: [{ id: 'influxdb', metaExport: 'influxdbMeta' }],
-    metaPath: '../../packages/drivers/influxdb/ui/meta',
+    metaPath: '../../../../packages/drivers/influxdb/ui/meta',
   },
   victoriametrics: {
     dbTypes: [{ id: 'victoriametrics', metaExport: 'victoriametricsMeta' }],
-    metaPath: '../../packages/drivers/victoriametrics/ui/meta',
+    metaPath: '../../../../packages/drivers/victoriametrics/ui/meta',
   },
   hbase: {
     dbTypes: [{ id: 'hbase', metaExport: 'hbaseMeta' }],
-    metaPath: '../../packages/drivers/hbase/ui/meta',
+    metaPath: '../../../../packages/drivers/hbase/ui/meta',
   },
   vector: {
     dbTypes: [{ id: 'vector', metaExport: 'vectorMeta' }],
-    metaPath: '../../packages/drivers/vector/ui/meta',
+    metaPath: '../../../../packages/drivers/vector/ui/meta',
   },
 };
 
@@ -456,26 +456,26 @@ const FRONTEND_DRIVER_CONFIG = {
   ...BASIC_PATH_FRONTEND,
   kiwi: {
     dbTypes: [{ id: 'kiwi', metaExport: 'kiwiMeta' }],
-    metaPath: '../../packages/drivers/kiwi/ui/plugin-meta',
+    metaPath: '../../../../packages/drivers/kiwi/ui/plugin-meta',
     connectionForm: {
       component: 'KiwiConnectionFields',
-      path: '../../packages/drivers/kiwi/ui/KiwiConnectionFields',
+      path: '../../../../packages/drivers/kiwi/ui/KiwiConnectionFields',
       formVariant: 'kiwi',
     },
     sqlDialects: [],
   },
   superset: {
     dbTypes: [{ id: 'superset', metaExport: 'supersetMeta' }],
-    metaPath: '../../packages/drivers/superset/ui/plugin-meta',
+    metaPath: '../../../../packages/drivers/superset/ui/plugin-meta',
     connectionForm: {
       component: 'SupersetConnectionFields',
-      path: '../../packages/drivers/superset/ui/SupersetConnectionFields',
+      path: '../../../../packages/drivers/superset/ui/SupersetConnectionFields',
       formVariant: 'superset',
       validator: { export: 'supersetValidate' },
     },
     schemaTree: {
       component: 'SupersetSchemaTree',
-      path: '../../packages/drivers/superset/ui/SupersetSchemaTree',
+      path: '../../../../packages/drivers/superset/ui/SupersetSchemaTree',
       dbType: 'superset',
     },
     sqlDialects: [],
@@ -483,7 +483,7 @@ const FRONTEND_DRIVER_CONFIG = {
 };
 
 /**
- * Render the contents of `src/extensions/generated.ts` for a driver list.
+ * Render the contents of `packages/frontend/src/extensions/generated.ts` for a driver list.
  *
  * Split out of `generateFrontendRegistry` so tests can obtain the artifact
  * without writing to the checkout. The emitted `DRIVER_VALIDATORS` map is the
@@ -691,7 +691,7 @@ export const DRIVER_PROTOCOL_VERSION = 1;
  * The updater needs it because \`tauri.conf.json\` compiles one global endpoint
  * into every build and Tauri selects a manifest entry by platform alone — with
  * no SKU in hand, a variant would install the Basic build and lose the drivers
- * Basic does not ship. \`src/lib/updater.ts\` shows a manual-download card
+ * Basic does not ship. \`packages/frontend/src/lib/updater.ts\` shows a manual-download card
  * instead unless this is a SKU with its own published channel. Set by
  * \`--variant=<sku>\` / \`DATAZEN_VARIANT\`; see scripts/release-variants.mjs.
  */
@@ -892,7 +892,7 @@ export function hasDriverCommand(driverId: string, command: string): boolean {
 }
 
 function generateFrontendRegistry(drivers, variant) {
-  const outPath = workPath('src/extensions/generated.ts');
+  const outPath = workPath('packages/frontend/src/extensions/generated.ts');
   reportWrite(
     outPath,
     writeIfChanged(outPath, renderFrontendRegistry(drivers, variant)),
@@ -1007,13 +1007,13 @@ function escapeRegex(s) {
 /**
  * Update Cargo.toml files to include only resolved drivers.
  *
- * - src-tauri/Cargo.toml: adds optional path dependencies + feature flags
+ * - apps/desktop/src-tauri/Cargo.toml: adds optional path dependencies + feature flags
  * - Cargo.toml (root): adds [patch] entries when git-sourced drivers are
  *   cloned locally, so Cargo uses the local checkout instead of fetching
  */
 function crateDepPath(name, meta) {
   if (meta.source === 'path' && meta.path) {
-    // src-tauri/Cargo.toml → ../packages/drivers/X
+    // apps/desktop/src-tauri/Cargo.toml → ../packages/drivers/X
     return `../${meta.path}`;
   }
   return `../packages/drivers/${name}`;
@@ -1032,7 +1032,7 @@ function crateRustIdent(name, meta) {
 }
 
 function updateCargoFiles(drivers, registry) {
-  // --- src-tauri/Cargo.toml: plugin deps ---
+  // --- apps/desktop/src-tauri/Cargo.toml: plugin deps ---
   const depLines = drivers.map(name => {
     const meta = registry[name];
     const crateName = cratePackageName(name, meta || {});
@@ -1042,16 +1042,16 @@ function updateCargoFiles(drivers, registry) {
     }
     return `${crateName} = { path = "${depPath}", optional = true }`;
   });
-  replaceMarkerSection('src-tauri/Cargo.toml', 'PLUGIN DEPS', depLines.join('\n'));
+  replaceMarkerSection('apps/desktop/src-tauri/Cargo.toml', 'PLUGIN DEPS', depLines.join('\n'));
 
-  // --- src-tauri/Cargo.toml: plugin features ---
+  // --- apps/desktop/src-tauri/Cargo.toml: plugin features ---
   const featureLines = drivers.map(name => {
     const meta = registry[name];
     const feature = meta?.feature;
     const crateName = cratePackageName(name, meta || {});
     return feature ? `${feature} = ["dep:${crateName}"]` : null;
   }).filter(Boolean);
-  replaceMarkerSection('src-tauri/Cargo.toml', 'PLUGIN FEATURES', featureLines.join('\n'));
+  replaceMarkerSection('apps/desktop/src-tauri/Cargo.toml', 'PLUGIN FEATURES', featureLines.join('\n'));
 
   // --- Root Cargo.toml: [patch] entries for git-sourced drivers ---
   // Prefer the same builder as injectRootCargoPatches (includes driver-api unify).
@@ -1065,7 +1065,7 @@ function updateCargoFiles(drivers, registry) {
 }
 
 /**
- * Generate src-tauri/src/driver_init.rs — Rust plugin Tauri-plugin registration.
+ * Generate apps/desktop/src-tauri/src/driver_init.rs — Rust plugin Tauri-plugin registration.
  *
  * For each plugin that declares a `tauriPlugin` block in the registry,
  * generates a #[cfg(feature = "...")] guarded .plugin() call.
@@ -1136,7 +1136,7 @@ ${body}
 }
 `;
 
-  const outPath = workPath('src-tauri/src/driver_init.rs');
+  const outPath = workPath('apps/desktop/src-tauri/src/driver_init.rs');
   reportWrite(outPath, writeIfChanged(outPath, content));
 }
 
@@ -1157,14 +1157,14 @@ function replaceMarkerBlock(content, name, lines) {
 }
 
 /**
- * Inject plugin dependencies and features into src-tauri/Cargo.toml at build time.
+ * Inject plugin dependencies and features into apps/desktop/src-tauri/Cargo.toml at build time.
  * Uses start/end markers for idempotent injection.
  *
  * Drivers that declare `tauriPlugin` also enable the crate's `tauri-plugin` feature
  * so permissions/build.rs and init() are compiled in.
  */
 function injectCargoToml(drivers, registry) {
-  const relPath = 'src-tauri/Cargo.toml';
+  const relPath = 'apps/desktop/src-tauri/Cargo.toml';
   let content = readFileSync(managedReadPath(relPath), 'utf-8');
 
   // Build dependency lines (path-based, optional)
@@ -1219,13 +1219,13 @@ function injectCargoToml(drivers, registry) {
  * Writes the merged result to `default.json` (gitignored).
  */
 function syncDriverCapabilities(drivers, registry) {
-  const hostPath = workPath('src-tauri/capabilities/default.json.host');
+  const hostPath = workPath('apps/desktop/src-tauri/capabilities/default.json.host');
   if (!existsSync(hostPath)) {
     console.warn(`[resolve-drivers] host capabilities file not found: ${hostPath}`);
     return;
   }
 
-  const tomlPath = workPath('src-tauri/Cargo.toml');
+  const tomlPath = workPath('apps/desktop/src-tauri/Cargo.toml');
   const toml = existsSync(tomlPath) ? readFileSync(tomlPath, 'utf-8') : '';
   const effective = drivers.filter((name) => {
     const feat = registry[name]?.feature;
@@ -1271,9 +1271,9 @@ function syncDriverCapabilities(drivers, registry) {
     `}`,
     ``,
   ].join('\n');
-  // tauri-build re-runs on changes under src-tauri/capabilities, so avoid
+  // tauri-build re-runs on changes under apps/desktop/src-tauri/capabilities, so avoid
   // touching the file when the merged permissions are identical.
-  const capPath = workPath('src-tauri/capabilities/default.json');
+  const capPath = workPath('apps/desktop/src-tauri/capabilities/default.json');
   writeIfChanged(capPath, content);
   console.log(
     `[resolve-drivers] generated capabilities (host + drivers): [${added.join(', ') || 'no drivers'}]`,
@@ -1468,7 +1468,7 @@ function main() {
   // tauri.conf.json declares `resources/builtin-ep` unconditionally and the
   // directory is gitignored, so tauri-build fails on a clean checkout ("resource
   // path ... doesn't exist"); every cargo path runs this script first — create it.
-  mkdirSync(resolve(ROOT, 'src-tauri', 'resources', 'builtin-ep'), { recursive: true });
+  mkdirSync(resolve(ROOT, 'apps/desktop/src-tauri', 'resources', 'builtin-ep'), { recursive: true });
 
   if (wantsRestoreOnly()) {
     restoreManagedFiles();
@@ -1532,7 +1532,7 @@ function main() {
       injectRootCargoPatches(resolvedDrivers, registry);
     }
     // Always generate capabilities (default.json is gitignored, built from default_host.json + drivers).
-    // Capabilities ALWAYS mirror src-tauri/Cargo.toml's actual injection state: only drivers whose
+    // Capabilities ALWAYS mirror apps/desktop/src-tauri/Cargo.toml's actual injection state: only drivers whose
     // cargo feature is present may contribute permissions. In full mode injectCargoToml runs first,
     // so every selected plugin qualifies; in codegen-only / post-restore states the file stays
     // consistent with what cargo will actually compile (otherwise tauri-build fails with
@@ -1557,7 +1557,7 @@ function main() {
 
     generateFrontendRegistry(resolvedDrivers, variant);
     generateRustDriverInit(resolvedDrivers, registry);
-    if (!existsSync(resolve(ROOT, 'src/extensions/generated-pro.ts'))) {
+    if (!existsSync(resolve(ROOT, 'packages/frontend/src/extensions/generated-pro.ts'))) {
       resolvePro({ codegenOnly: true });
     }
 

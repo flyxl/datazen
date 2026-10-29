@@ -22,7 +22,7 @@ const DEV_OVERRIDE_PATH = resolve(ROOT, '.drivers-dev.json');
  * Driver ACL ids that can actually appear in the generated Tauri capabilities.
  *
  * `resolve-drivers.mjs`'s `syncDriverCapabilities` merges `<tauriPlugin.id>:default`
- * into `src-tauri/capabilities/default.json` for every active driver whose registry
+ * into `apps/desktop/src-tauri/capabilities/default.json` for every active driver whose registry
  * entry declares a `tauriPlugin` block with **non-empty** `commands`; a driver without
  * commands ships no ACL permission manifest, so referencing `<id>:default` would fail
  * the build. The detection list is therefore derived from the same source instead of
@@ -64,9 +64,9 @@ export function driverAclIds(registryPath = REGISTRY_PATH) {
 }
 
 export const FULLY_GENERATED_MANAGED = [
-  'src-tauri/src/driver_init.rs',
-  'src/extensions/generated.ts',
-  'src/extensions/generated-pro.ts',
+  'apps/desktop/src-tauri/src/driver_init.rs',
+  'packages/frontend/src/extensions/generated.ts',
+  'packages/frontend/src/extensions/generated-pro.ts',
 ];
 
 export function isFullyGeneratedManagedFile(relPath) {

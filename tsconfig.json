@@ -48,11 +48,14 @@
       "@datazen/extension-points": ["./packages/extension-points/src/index.ts"],
       "@datazen/wapp-sdk": ["./packages/wapp-sdk/src/index.ts"],
       "@datazen/extension-sdk": ["./packages/wapp-sdk/src/index.ts"],
-      "@datazen/ui": ["./packages/ui/src/index.ts"]
+      "@datazen/ui": ["./packages/ui/src/index.ts"],
+      "@datazen/frontend/src/*": ["./packages/frontend/src/*"],
+      "@datazen/frontend": ["./packages/frontend/src/index.ts"]
     }
   },
   "include": [
-    "src",
+    "packages/frontend/src",
+    "apps/desktop/src",
     "packages/backend-client",
     "packages/driver-sdk",
     "packages/extension-points",

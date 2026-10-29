@@ -21,7 +21,7 @@ import { withProbeLock } from './boundaryMutation';
 // repo root (tsconfig.node.json is a composite project over these two files, and
 // a composite project must emit). This guard is only as trustworthy as the file
 // it reads, so it names the source file outright.
-import tailwindConfig from '../../tailwind.config.ts';
+import tailwindConfig from '../../apps/desktop/tailwind.config.ts';
 
 /** Utilities that take a colour argument. */
 const COLOUR_UTILITIES = [

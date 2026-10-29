@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
-const localesDir = resolve(root, 'src/locales');
+const localesDir = resolve(root, 'packages/frontend/src/locales');
 
 const TARGETS = ['de.ts', 'es.ts', 'fr.ts', 'ja.ts', 'ko.ts', 'pt-BR.ts', 'ru.ts', 'zh-TW.ts'];
 

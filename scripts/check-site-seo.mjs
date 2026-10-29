@@ -5,7 +5,7 @@ import path from "node:path";
 const ROOT = path.resolve("site");
 const ORIGIN = "https://flyxl.github.io/datazen";
 const PAGES = [
-  "index.html",
+  "apps/desktop/index.html",
   "features.html",
   "ai.html",
   "charts.html",
@@ -54,9 +54,9 @@ for (const file of PAGES) {
   const zh = normalizeLinks(read(zhRel));
 
   const enCanon =
-    file === "index.html" ? `${ORIGIN}/` : `${ORIGIN}/${file}`;
+    file === "apps/desktop/index.html" ? `${ORIGIN}/` : `${ORIGIN}/${file}`;
   const zhCanon =
-    file === "index.html" ? `${ORIGIN}/zh/` : `${ORIGIN}/zh/${file}`;
+    file === "apps/desktop/index.html" ? `${ORIGIN}/zh/` : `${ORIGIN}/zh/${file}`;
 
   if (en) {
     mustInclude(en, enRel, 'lang="en"');
@@ -97,10 +97,10 @@ for (const file of PAGES) {
   }
 }
 
-const enIndex = read("index.html");
+const enIndex = read("apps/desktop/index.html");
 const zhIndex = read("zh/index.html");
-mustInclude(enIndex, "index.html", "application/ld+json");
-mustInclude(enIndex, "index.html", "SoftwareApplication");
+mustInclude(enIndex, "apps/desktop/index.html", "application/ld+json");
+mustInclude(enIndex, "apps/desktop/index.html", "SoftwareApplication");
 mustInclude(zhIndex, "zh/index.html", "application/ld+json");
 mustInclude(zhIndex, "zh/index.html", "SoftwareApplication");
 
@@ -111,9 +111,9 @@ const sitemap = read("sitemap.xml");
 if (sitemap) {
   for (const file of PAGES) {
     const enUrl =
-      file === "index.html" ? `${ORIGIN}/` : `${ORIGIN}/${file}`;
+      file === "apps/desktop/index.html" ? `${ORIGIN}/` : `${ORIGIN}/${file}`;
     const zhUrl =
-      file === "index.html" ? `${ORIGIN}/zh/` : `${ORIGIN}/zh/${file}`;
+      file === "apps/desktop/index.html" ? `${ORIGIN}/zh/` : `${ORIGIN}/zh/${file}`;
     mustInclude(sitemap, "sitemap.xml", enUrl);
     mustInclude(sitemap, "sitemap.xml", zhUrl);
   }

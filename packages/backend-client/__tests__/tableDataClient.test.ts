@@ -39,14 +39,14 @@ import {
 /* is a typecheck failure, long before a test could notice.           */
 /* ------------------------------------------------------------------ */
 
-type DesktopTableChangeContext = import('../../../src/lib/tableChanges').TableChangeContext;
-type DesktopPendingRowChange = import('../../../src/lib/tableChanges').PendingRowChange;
-type DesktopPlannedStatement = import('../../../src/lib/tableChanges').PlannedStatement;
-type DesktopChangeWarning = import('../../../src/lib/tableChanges').ChangeWarning;
-type DesktopRowChangePlan = import('../../../src/lib/tableChanges').RowChangePlan;
-type DesktopCommitStatementResult = import('../../../src/lib/tableChanges').CommitStatementResult;
+type DesktopTableChangeContext = import('../../../packages/frontend/src/lib/tableChanges').TableChangeContext;
+type DesktopPendingRowChange = import('../../../packages/frontend/src/lib/tableChanges').PendingRowChange;
+type DesktopPlannedStatement = import('../../../packages/frontend/src/lib/tableChanges').PlannedStatement;
+type DesktopChangeWarning = import('../../../packages/frontend/src/lib/tableChanges').ChangeWarning;
+type DesktopRowChangePlan = import('../../../packages/frontend/src/lib/tableChanges').RowChangePlan;
+type DesktopCommitStatementResult = import('../../../packages/frontend/src/lib/tableChanges').CommitStatementResult;
 type DesktopCommitPendingChangesResponse =
-  import('../../../src/lib/tableChanges').CommitPendingChangesResponse;
+  import('../../../packages/frontend/src/lib/tableChanges').CommitPendingChangesResponse;
 
 /** `true` only when `A` and `B` are mutually assignable. */
 type MutuallyAssignable<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
@@ -96,7 +96,7 @@ export type CommitResponseParity = Assert<
  * arrives as `null` or as a missing key.
  */
 export type TableDataResultParity = Assert<
-  Parity<import('../../../src/types').TableDataResult, TableDataResult>
+  Parity<import('../../../packages/frontend/src/types').TableDataResult, TableDataResult>
 >;
 
 /**

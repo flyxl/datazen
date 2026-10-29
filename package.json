@@ -6,9 +6,9 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "build": "node scripts/ensure-generated-drivers.mjs && node scripts/generate-builtin-locales.mjs && node scripts/generate-menu-labels.mjs && tsc --noEmit && vite build",
-    "build:bundle": "node scripts/ensure-generated-drivers.mjs && node scripts/generate-builtin-locales.mjs && node scripts/generate-menu-labels.mjs && vite build",
-    "build:with-drivers": "node scripts/generate-builtin-locales.mjs && node scripts/generate-menu-labels.mjs && node scripts/with-driver-inject.mjs -- sh -c \"tsc --noEmit && vite build\"",
+    "build": "node scripts/ensure-generated-drivers.mjs && node scripts/generate-builtin-locales.mjs && node scripts/generate-menu-labels.mjs && tsc --noEmit && vite build apps/desktop",
+    "build:bundle": "node scripts/ensure-generated-drivers.mjs && node scripts/generate-builtin-locales.mjs && node scripts/generate-menu-labels.mjs && vite build apps/desktop",
+    "build:with-drivers": "node scripts/generate-builtin-locales.mjs && node scripts/generate-menu-labels.mjs && node scripts/with-driver-inject.mjs -- sh -c \"tsc --noEmit && vite build apps/desktop\"",
     "typecheck": "pnpm check:restore-guards && node scripts/typecheck.mjs --engine=tsrs",
     "check:restore-guards": "node scripts/check-restore-block-guards.mjs",
     "typecheck:tsc": "node scripts/typecheck.mjs --engine=tsc",

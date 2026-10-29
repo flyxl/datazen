@@ -55,8 +55,8 @@ const MANUAL = {
 };
 
 const converter = OpenCC.Converter({ from: 'cn', to: 'tw' });
-const zhCN = parseLocaleTs(readFileSync(resolve(ROOT, 'src/locales/zh-CN.ts'), 'utf-8'));
-const en = parseLocaleTs(readFileSync(resolve(ROOT, 'src/locales/en.ts'), 'utf-8'));
+const zhCN = parseLocaleTs(readFileSync(resolve(ROOT, 'packages/frontend/src/locales/zh-CN.ts'), 'utf-8'));
+const en = parseLocaleTs(readFileSync(resolve(ROOT, 'packages/frontend/src/locales/en.ts'), 'utf-8'));
 
 const lines = [];
 for (const [key, cnVal] of zhCN) {
@@ -67,5 +67,5 @@ for (const [key, cnVal] of zhCN) {
 }
 
 const out = `const translations = {\n${lines.join('\n')}\n} as const;\n\nexport type TranslationKey = keyof typeof translations;\nexport default translations;\n`;
-writeFileSync(resolve(ROOT, 'src/locales/zh-TW.ts'), out, 'utf-8');
+writeFileSync(resolve(ROOT, 'packages/frontend/src/locales/zh-TW.ts'), out, 'utf-8');
 console.log(`[build-zh-tw] wrote zh-TW.ts (${zhCN.size} keys)`);

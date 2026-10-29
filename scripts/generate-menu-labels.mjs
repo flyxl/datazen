@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Generate src-tauri/resources/menu-labels.json from frontend locale files.
+ * Generate apps/desktop/src-tauri/resources/menu-labels.json from frontend locale files.
  *
  * Single source of truth: src/locales/<locale>/*.ts (or src/locales/<locale>.ts
  * for locales that have not been split into domain packs).
@@ -19,7 +19,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
-const OUT = resolve(ROOT, 'src-tauri/resources/menu-labels.json');
+const OUT = resolve(ROOT, 'apps/desktop/src-tauri/resources/menu-labels.json');
 
 /**
  * Rust menu lookup key → frontend TranslationKey.
@@ -82,14 +82,14 @@ const RUST_TO_LOCALE = {
 
 /**
  * Built-in locale set comes from the same source of truth as the frontend
- * (`src/locales/builtin-locales.json`, managed via `pnpm locales:*`). The
+ * (`packages/frontend/src/locales/builtin-locales.json`, managed via `pnpm locales:*`). The
  * native menus only ship the built-in languages — add a language there and
  * rebuild, and the menu picks it up.
  */
 function builtinLocales() {
   let raw;
   try {
-    raw = JSON.parse(readFileSync(resolve(ROOT, 'src/locales/builtin-locales.json'), 'utf-8'));
+    raw = JSON.parse(readFileSync(resolve(ROOT, 'packages/frontend/src/locales/builtin-locales.json'), 'utf-8'));
   } catch {
     return ['en', 'zh-CN'];
   }
@@ -114,7 +114,7 @@ function parseLocaleTs(source) {
 }
 
 function localeSourceFiles(code) {
-  const dir = resolve(ROOT, 'src/locales', code);
+  const dir = resolve(ROOT, 'packages/frontend/src/locales', code);
   const domainFiles = existsSync(dir)
     ? readdirSync(dir, { withFileTypes: true })
         .filter((entry) => entry.isFile() && entry.name.endsWith('.ts'))
@@ -124,7 +124,7 @@ function localeSourceFiles(code) {
 
   return domainFiles.length > 0
     ? domainFiles
-    : [resolve(ROOT, 'src/locales', `${code}.ts`)];
+    : [resolve(ROOT, 'packages/frontend/src/locales', `${code}.ts`)];
 }
 
 function parseLocaleFiles(files) {

@@ -15,7 +15,7 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const SCOPES = ['src', 'src-tauri'];
+const SCOPES = ['src', 'apps/desktop/src-tauri'];
 
 const CHECKS = [
   {

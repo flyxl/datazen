@@ -22,8 +22,8 @@ const PATHS = {
   // Form-split F6 prep: the high-level window surface (kinds / labels /
   // capability samples) moved back to the shared windowManager, which rides
   // the WindowRouter port; the desktop zone keeps only the window machinery.
-  windowManager: 'src/lib/windowManager.ts',
-  windowKind: 'src/lib/windowKind.ts',
+  windowManager: 'packages/frontend/src/lib/windowManager.ts',
+  windowKind: 'packages/frontend/src/lib/windowKind.ts',
 };
 
 function read(root, rel) {

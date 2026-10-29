@@ -41,7 +41,7 @@ function restoreAll() {
 
 function cargoTomlHasFeatures(features) {
   if (features.length === 0) return true;
-  const cargoToml = readFileSync(resolve(ROOT, 'src-tauri/Cargo.toml'), 'utf-8');
+  const cargoToml = readFileSync(resolve(ROOT, 'apps/desktop/src-tauri/Cargo.toml'), 'utf-8');
   return features.every((f) => cargoToml.includes(`${f} =`));
 }
 

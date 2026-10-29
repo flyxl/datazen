@@ -186,7 +186,7 @@ function stubCrate(name, scratch) {
     join(dir, 'Cargo.toml'),
     `[package]\nname = "${name}"\nversion = "0.0.0"\nedition = "2021"\n\n[dependencies]\n`,
   );
-  writeFileSync(join(dir, 'src/lib.rs'), `// probe stub for ${name}\npub fn probe() {}\n`);
+  writeFileSync(join(dir, 'packages/frontend/src/lib.rs'), `// probe stub for ${name}\npub fn probe() {}\n`);
   return dir;
 }
 
@@ -198,7 +198,7 @@ function addMemberDir(snapshot, rel, name, manifestBody) {
     join(REPO_ROOT, rel, 'Cargo.toml'),
     `[package]\nname = "${name}"\nversion = "0.0.1"\nedition = "2021"\n\n${manifestBody}`,
   );
-  writeFileSync(join(REPO_ROOT, rel, 'src/lib.rs'), '// arch-guard probe\npub fn probe() {}\n');
+  writeFileSync(join(REPO_ROOT, rel, 'packages/frontend/src/lib.rs'), '// arch-guard probe\npub fn probe() {}\n');
 }
 
 /**

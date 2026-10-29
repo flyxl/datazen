@@ -3,6 +3,89 @@
 > 本文件随每个 form-split PR 同步提交，记录实际执行顺序、决策与验证结果，
 > 避免工作进度丢失。条目按时间倒序（最新在上）。基线：`2a08e55`（F4a 合入后）。
 
+## 2026-10-30（会话七）— F6-c1：目录搬家（src/ → packages/frontend/src + apps/desktop），路径/配置/闸门/gitignore 全量重指向【checkpoint 提交】
+
+> F6 第一批解耦：纯机械目录迁移。共 2108 处 git status 变更（2015 纯 R、
+> 40 RM、48 M）。本条目为**保底 checkpoint**（用户指令：先提交防丢），
+> 大块迁移+配置+闸门已完成且 typecheck 全绿、闸门与迁移前完全一致；
+> 测试回归 3641/3646，**剩 5 个失败文件待修**（详见下文「已知未竟」），
+> 修完后追加验证条目。
+
+### 目录动作（git mv）
+
+- `src/` → `packages/frontend/src/`（共享源码包，源码包模式，c2 起
+  由 package.json exports 接管解析；c1 阶段由三处 alias 表重指向）。
+- 桌面专属物 → `apps/desktop/`：`index.html`、`postcss.config.js`、
+  `src-tauri/` 整树（Cargo.toml/build.rs/capabilities/icons/src/…）、
+  `vite.config.ts`、`tailwind.config.ts`、`window.html`、`src/main.tsx`、
+  `src/platform/`（desktop 实现 + web stub + `__tests__/` 13 桌面测试）、
+  `src/shell/desktop/`（TitleBar + WindowControls + 各自 `__tests__/`）。
+- 新建 `packages/frontend/src/index.ts`（包公共出口：capabilities/env
+  两行 re-export，c2 exports 接管的锚点）。
+
+### 配置重指向
+
+- `tsconfig.json`：include 改 `packages/frontend/src` + `apps/desktop/src`；
+  paths 增 `@datazen/frontend/src/*` 与 `@datazen/frontend`。
+- `apps/desktop/vite.config.ts`：全部 alias 加 `../../`，新增 frontend
+  两条深路径 alias。
+- `apps/desktop/tailwind.config.ts`：content 增
+  `../../packages/frontend/src/**/*`。
+- `vitest.config.ts`：alias/setupFiles/include/coverage 四处重指向；
+  `vitest.drivers.config.ts` setupFiles 两条。
+- 根 `package.json`：build/build:bundle/build:with-drivers 的
+  `vite build apps/desktop`。
+- `Cargo.toml` members 增 `apps/desktop/src-tauri`；
+  `tauri.conf.json` beforeBuildCommand `pnpm --dir ../.. run build`、
+  beforeBundleCommand `node ../../scripts/upx-compress.mjs`。
+- **`.gitignore` 10 处旧路径模式迁移**（generated.ts/generated-pro.ts/
+  driver_init.rs/builtinLocales.ts/default.json/target//gen//
+  resources/builtin-ep//tests/.env.test/Cargo.lock 全部加新前缀）——
+  不迁则生成产物以 untracked 形态漏出。
+
+### 跨包 import 形态（c1 过渡态）
+
+- apps 侧 23 文件改包名深路径 `@datazen/frontend/src/...`（重写器：
+  `/home/z/my-project/scripts/f6-c1-rewrite-imports.py`，用「虚拟旧位置」
+  解析）；39 个 scripts 路径重写（`f6-c1-rewrite-scripts.py`）。
+
+### 闸门适配（`scripts/check-driver-import-boundaries.mjs`）
+
+- HOST_SRC_DIR=`packages/frontend/src`、APP_SRC_DIR=`apps/desktop/src`；
+  walk 根 `['packages', APP_SRC_DIR]`；R3 双前缀；R1 target 双目录判定；
+  R2 范围排除 `packages/frontend/`；ALLOWLIST 6 条 specifier 更新
+  （redis 2 条 5 级爬升、locales 2 条 + driverUiSetup 2 条 4 级）。
+- 迁移后回归：**0 blocking / 1 advisory（DocumentConnectionView R3）/
+  6 allowlisted——与迁移前完全一致**。
+
+### 爬升级数修正（本批最大坑）
+
+- `posix.resolve` 会 clamp 到 root 但 TS bundler resolution 不允许逃出
+  root——一律 `node -e` 实测级数再改。已修：locales.test/driverUiSetup
+  （4 级）、DocumentConnectionView（5 级 mongodbFind）、backend-client
+  tableDataClient.test（3 级爬 frontend）、namedViews.contract（REPO_ROOT
+  5 级 + src/lib 前缀）、themePackApply（fixtures 5 级）、wappSdkInterop
+  （HOST_ROOT=包根 3 级 + wapp-sdk css 5 级）、wappThemes（WAPPS_ROOT
+  5 级）、windowCapabilities（src-tauri 4 级含 `.json.host` 变体）、
+  tailwind-colour-classes（`../../apps/desktop/tailwind.config.ts` 2 级）、
+  redisKeyWebContextMenu（5 级）、WindowControls.test（useI18n mock 改
+  包名深路径）。
+
+### 验证（本 checkpoint 时点）
+
+- typecheck：tsrs root + scripts + pack-ep 全绿。
+- 闸门：0 blocking / 1 advisory / 6 allowlisted（与迁移前一致）。
+- vitest：platform+apps 块 144 绿；backend-client+locales+lib+test 块
+  **3641/3646**。
+- **已知未竟（下一提交修）**：`QueryPanelManager.contract`、
+  `localStoragePersistence.contract`、`transactionTimeline.telemetry`、
+  `artifactTelemetryAudit`、`connectionHistoryPersistenceAudit` 5 文件
+  失败——按已修案例模式推断为文件系统路径按旧布局计算（少一级爬升/
+  硬编码 `src/` 前缀）。另：scripts/__tests__ 基线回归、e2e 树 4 文件
+  `../../src/` 引用、`.github/workflows` 路径核对未跑。
+
+---
+
 ## 2026-10-30（会话七）— R6 收口：driverInvoke 死代码焚烧——生产共享树 @tauri-apps import 归零（F6 输入条件达成）
 
 > F6 计划的输入条件：「`src/` 内 `@tauri-apps` import 已归零，分家变为

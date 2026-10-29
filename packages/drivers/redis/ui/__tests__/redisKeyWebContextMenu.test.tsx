@@ -2,11 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import fs from 'node:fs';
 import path from 'node:path';
-import { WebContextMenuHost } from '../../../../../src/components/ui/WebContextMenu';
+import { WebContextMenuHost } from '../../../../../packages/frontend/src/components/ui/WebContextMenu';
 import { showNativeContextMenu } from '@datazen/driver-sdk';
 // Host store module import triggers `bindContextMenuBridge` at load (capability
 // injection); this integration test asserts against the host web-menu store.
-import { useContextMenuStore } from '../../../../../src/stores/contextMenuStore';
+import { useContextMenuStore } from '../../../../../packages/frontend/src/stores/contextMenuStore';
 import { buildRedisKeyContextMenuItems } from '../key-browser/redisKeyContextMenu';
 
 afterEach(() => {

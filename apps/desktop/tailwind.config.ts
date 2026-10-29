@@ -1,0 +1,80 @@
+import type { Config } from 'tailwindcss';
+
+export default {
+  darkMode: 'class',
+  content: [
+    // form-split F6-c1: the config moved to apps/desktop; the shared
+    // frontend source and the driver UI trees live at the repository root.
+    './index.html',
+    './src/**/*.{js,ts,jsx,tsx}',
+    '../../packages/frontend/src/**/*.{js,ts,jsx,tsx}',
+    '../../packages/drivers/**/ui/**/*.{js,ts,jsx,tsx}',
+  ],
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['var(--font-sans)'],
+        mono: ['var(--font-mono)'],
+      },
+      colors: {
+        surface: {
+          DEFAULT: 'var(--c-surface)',
+          alt: 'var(--c-surface-alt)',
+          raised: 'var(--c-surface-raised)',
+          inset: 'var(--c-surface-inset)',
+        },
+        edge: {
+          DEFAULT: 'var(--c-edge)',
+          hi: 'var(--c-edge-hi)',
+        },
+        fg: {
+          DEFAULT: 'var(--c-fg)',
+          secondary: 'var(--c-fg-secondary)',
+          muted: 'var(--c-fg-muted)',
+        },
+        titlebar: {
+          DEFAULT: 'var(--c-titlebar)',
+          fg: 'var(--c-titlebar-fg)',
+          'fg-muted': 'var(--c-titlebar-fg-muted)',
+          hover: 'var(--c-titlebar-hover)',
+        },
+        accent: {
+          DEFAULT: 'var(--c-accent)',
+          2: 'var(--c-accent-2)',
+          deep: 'var(--c-accent-deep)',
+          dim: 'var(--c-accent-dim)',
+          ring: 'var(--c-accent-ring)',
+        },
+        'on-accent': {
+          DEFAULT: 'var(--c-on-accent)',
+        },
+        success: {
+          DEFAULT: 'var(--c-success)',
+        },
+        'query-run': {
+          DEFAULT: 'var(--c-query-run)',
+        },
+        warning: {
+          DEFAULT: 'var(--c-warning)',
+        },
+        danger: {
+          DEFAULT: 'var(--c-danger)',
+        },
+        dt: {
+          null: 'var(--dt-null)',
+          bool: 'var(--dt-bool)',
+          number: 'var(--dt-number)',
+          datetime: 'var(--dt-datetime)',
+          json: 'var(--dt-json)',
+          text: 'var(--dt-text)',
+          binary: 'var(--dt-binary)',
+          // Uncommitted-change marks (DB-06): a state channel, never a value colour.
+          'dirty-border': 'var(--dt-dirty-border)',
+          'dirty-bg': 'var(--dt-dirty-bg)',
+          'dirty-mark': 'var(--dt-dirty-mark)',
+          'deleted-fg': 'var(--dt-deleted-fg)',
+        },
+      },
+    },
+  },
+} satisfies Config;
