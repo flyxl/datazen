@@ -167,26 +167,19 @@ async fn preview_sql_file_target(
             crate::data_transfer::metadata::table_in_endpoint_schema(&job.source, table)
         })
         .collect();
-    let mut source_schemas = HashMap::new();
-    for table in source_tables
+    let source_table_names = source_tables
         .iter()
-        .filter(|t| matches!(t.table_type, TableType::Table))
-    {
-        let schema = crate::data_transfer::metadata::load_table_schema(
-            src_driver.as_ref(),
-            &src_handle,
-            &job.source,
-            &table.name,
-        )
-        .await
-        .map_err(|error| {
-            CommandError::Validation(format!(
-                "failed to inspect source table '{}': {error}",
-                table.name
-            ))
-        })?;
-        source_schemas.insert(table.name.clone(), schema);
-    }
+        .filter(|table| matches!(table.table_type, TableType::Table))
+        .map(|table| table.name.clone())
+        .collect::<Vec<_>>();
+    let source_schemas = super::schema_loading::load_named_table_schemas(
+        src_driver.as_ref(),
+        &src_handle,
+        &job.source,
+        &source_table_names,
+        "source",
+    )
+    .await?;
     if let Some((src_adapter, _)) = &structure_adapters {
         crate::data_transfer::structure::enrich_source_types(
             src_adapter.as_ref(),
@@ -544,55 +537,45 @@ pub(crate) async fn preview_data_transfer_impl(
         })
         .collect();
 
-    let mut source_schemas = HashMap::new();
-    for table in src_tables
+    let source_table_names = src_tables
         .iter()
-        .filter(|t| matches!(t.table_type, TableType::Table))
-    {
-        let schema = crate::data_transfer::metadata::load_table_schema(
-            src_driver.as_ref(),
-            &src_handle,
-            &job.source,
-            &table.name,
-        )
-        .await
-        .map_err(|error| {
-            CommandError::Validation(format!(
-                "failed to inspect source table '{}': {error}",
-                table.name
-            ))
-        })?;
-        source_schemas.insert(table.name.clone(), schema);
-    }
+        .filter(|table| matches!(table.table_type, TableType::Table))
+        .map(|table| table.name.clone())
+        .collect::<Vec<_>>();
+    let source_schemas = super::schema_loading::load_named_table_schemas(
+        src_driver.as_ref(),
+        &src_handle,
+        &job.source,
+        &source_table_names,
+        "source",
+    )
+    .await?;
 
     // Capture target schemas for the immutable plan. A missing target table
     // is represented as `None` in the fingerprint and is expected only for a
     // CREATE NEW mapping; a table appearing before execution then invalidates
     // the plan instead of silently changing its operation.
-    let mut target_schemas: HashMap<String, TableSchema> = HashMap::new();
-    for table in inspected.iter().filter(|table| {
-        table.enabled
-            && !matches!(
-                table.status,
-                crate::data_transfer::model::TableMappingStatus::CreateNew
-            )
-            && !table.target_table.trim().is_empty()
-    }) {
-        let schema = crate::data_transfer::metadata::load_table_schema(
+    let target_table_names = inspected
+        .iter()
+        .filter(|table| {
+            table.enabled
+                && !matches!(
+                    table.status,
+                    crate::data_transfer::model::TableMappingStatus::CreateNew
+                )
+                && !table.target_table.trim().is_empty()
+        })
+        .map(|table| table.target_table.clone())
+        .collect::<Vec<_>>();
+    let target_schemas: HashMap<String, TableSchema> =
+        super::schema_loading::load_named_table_schemas(
             target_driver.as_ref(),
             &target_handle,
             &target,
-            &table.target_table,
+            &target_table_names,
+            "target",
         )
-        .await
-        .map_err(|error| {
-            CommandError::Validation(format!(
-                "failed to inspect target table '{}': {error}",
-                table.target_table
-            ))
-        })?;
-        target_schemas.insert(table.target_table.clone(), schema);
-    }
+        .await?;
 
     // Preserve the actual target namespace for qualified FK references. A
     // bare table name alone is ambiguous when the connection can see multiple
