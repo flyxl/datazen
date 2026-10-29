@@ -1,13 +1,13 @@
 @import 'tailwindcss' source(none);
 @import './themes.css';
 
-@config '../../tailwind.config.ts';
+@config '../../../../apps/desktop/tailwind.config.ts';
 
-@source '../../index.html';
-@source '../../window.html';
-@source '../../src';
-@source '../../packages/ui/src';
-@source '../../packages/drivers/*/ui';
+@source '../../../../apps/desktop/index.html';
+@source '../../../../apps/desktop/window.html';
+@source '..';
+@source '../../../ui/src';
+@source '../../../drivers/*/ui';
 @source '../../packages/app-sdk/src';
 @source '../../packages/extension-points/src';
 @source '../../packages/pro-extensions/*/src';

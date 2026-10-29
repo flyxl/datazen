@@ -50,8 +50,14 @@ describe('parseVitestTestConfig reads the real config as text', () => {
   });
 
   it('carries the alias map the walk must resolve through', () => {
-    expect(parsed.aliases['@datazen/driver-sdk']).toBe('packages/driver-sdk/src/index.ts');
-    expect(Object.keys(parsed.aliases).length).toBeGreaterThan(1);
+    // form-split F6-c2: the @datazen/* alias table is retired — package
+    // exports resolve those. The one entry that remains is the Tauri window
+    // mock the shared test setup installs; the walk must still resolve
+    // through it so a setup file reaching the mock counts as an edge.
+    expect(parsed.aliases['@tauri-apps/api/window']).toBe(
+      'packages/frontend/src/test/mocks/tauriWindow.ts',
+    );
+    expect(Object.keys(parsed.aliases).length).toBeGreaterThanOrEqual(1);
   });
 
   it('finds the setup files, whose sensitivity would defeat the narrowing', () => {

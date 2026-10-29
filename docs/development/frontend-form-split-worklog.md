@@ -3,6 +3,84 @@
 > 本文件随每个 form-split PR 同步提交，记录实际执行顺序、决策与验证结果，
 > 避免工作进度丢失。条目按时间倒序（最新在上）。基线：`2a08e55`（F4a 合入后）。
 
+## 2026-10-30（会话八）— F6-c2：包协议完整化 + alias 表退役（exports 接管解析）
+
+> 计划 §5.6 项 2/3/4/6 落地。**四张 alias 表全部退役**（tsconfig paths /
+> vite / vitest 主配置 / vitest.drivers / vitest.e2e-contract——比计划多
+> 两张，drivers 与 e2e-contract 配置也有自己的表），解析全部改走
+> workspace 链接 + package exports。生产构建 `vite build apps/desktop`
+> 4.9M 产物成功，typecheck 四阶段绿，测试面全绿。
+
+### 新增 manifest
+
+- **`packages/frontend/package.json`**（源码包模式）：main/types 指
+  `src/index.ts`；exports 三模式——`.` 入口、`./src/*.css`（样式资产，
+  app 壳经包名导入 globals.css）、`./src/*` → `./src/*.js`（**关键坑**：
+  TS bundler 模式对无扩展名 exports 通配目标**不做** .ts/.tsx 探测，
+  `.js` 后缀目标才会触发探测——纯 `./src/*` 目标 tsc/tsrs 全红；而
+  `.js` 后缀又会破坏 vite 对 CSS 的解析，故双模式并存，css 模式先行）。
+  deps：5 个 @datazen workspace 包 + 12 个运行时库；peers：react/
+  react-dom/zustand/@codemirror 八件（实版本由 app 提供，跟随 ui/
+  extension-points 惯例）；devDeps：testing-library + theme-one-dark
+  （仅测试消费）。
+- **`apps/desktop/package.json`**：`@datazen/frontend: workspace:*` +
+  backend-client + **@tauri-apps 全家 5 件（api + 4 plugin）从根
+  dependencies 挪入——运行时 @tauri-apps 声明自此只存在于 app 包（D2
+  包级强化）** + react 实版本 + 全部 peers + testing-library devDeps。
+  `@tauri-apps/cli` 留根 devDeps（构建工具链，根脚本 `pnpm tauri` 依赖
+  root node_modules 解析）。
+
+### 根 package.json 退化 + 聚合角色
+
+- dependencies 清空（运行时依赖全部归位 app/frontend/ui）。
+- devDeps 持有工具链（vite/vitest/tailwind/typescript/tsrs/husky/
+  wdio/@types/better-sqlite3/prettier…）**+ 6 个 @datazen workspace
+  自链 + react/zustand/lucide-react/fflate/@testing-library/react
+  聚合链接**——驱动 UI 树、scripts/、e2e/ 无 manifest，其裸导入靠上溯
+  root node_modules 解析；pnpm 严格隔离下不声明即不可达。聚合角色在
+  驱动包获得自己的 package.json 前必须由 root 承担。
+- yaml/tailwind-merge 后补（check-release-variants 守卫与
+  error-banner parity 测试的消费）。
+
+### 潜伏洞清剿（root hoisting 此前掩盖）
+
+- **ui**：@tanstack/react-virtual、lucide-react、clsx、tailwind-merge
+  从未声明（骑 root）；deps 补齐 + testing-library devDeps。
+- **driver-sdk**：零声明却导入 @tauri-apps/api/core、react、zustand →
+  peers 三件 + devDeps。
+- **wapp-sdk / extension-points**：testing-library devDeps。
+
+### 解析验证（全部通过）
+
+- `corepack pnpm install` 全量成功（本地主 checkout node_modules 为真
+  目录；worktree 软链行为已在 F6-a 实测）。子包 node_modules 布局核对：
+  frontend 得 workspace 链接+运行时库+auto-installed peers；app 得
+  frontend/backend-client/@tauri-apps/react。
+- **tsc（官方 Go port）+ tsrs 四阶段全绿**；vite 生产构建成功
+  （15.6s，4.9M dist，全部窗口分包）。
+- 测试面：windows 188/1660；components+stores+hooks+commands+types+
+  platform+ai 263/2721；backend-client+locales+lib+test 222/2345；
+  apps+scripts+四包 1338 绿 + 2 cargo ENOENT 已知；drivers 套件
+  88/1007（**零 alias 走 root 聚合链接上溯**）；e2e-contract 3/23。
+- 闸门五连绿（boundaries 0 blocking/1 advisory/6 allowlisted、
+  module-layers ok、version 0.2.3 一致、release-variants ok、
+  i18n 无碰撞）。
+- 退出标准复核：`@tauri-apps` 生产 import 在 packages/frontend = 0
+  （仅 mock 头注释与字符串断言）。
+
+### 连带修复
+
+- `packages/frontend/src/styles/globals.css`：`@config`/`@source` 六处
+  爬升未随 c1 迁移（vite build 首跑暴露）→ 重指 apps/desktop 配置与
+  重组 @source 根。
+- vitest 主配置 alias 单行化（select-codegen-sensitive-tests 的
+  parseVitestTestConfig 只认单行 resolve(__dirname, '…') 形态）。
+- pack-ep-host-globals「宿主依赖集」改读 app manifest ∪ frontend
+  deps/peers（root 已工具链化）；select-codegen 断言改指 tauri mock
+  别名（@datazen 表已退役）。
+
+---
+
 ## 2026-10-30（会话八）— F6-c1 收尾：测试面全绿（checkpoint 后 44 处修复）
 
 > 承接 checkpoint `1ecd81071`。修复迁移后暴露的全部测试/闸门/文档路径

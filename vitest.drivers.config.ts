@@ -1,24 +1,14 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
-import { resolve } from 'path';
 
 /** Path-driver UI unit tests — not part of Host `pnpm test:unit`. */
 export default defineConfig({
   plugins: [react()],
-  resolve: {
-    alias: {
-      // `packages/driver-sdk/src/ipc/desktopBinding.ts` re-exports the
-      // BackendClient surface, so driver UI tests transitively need this alias.
-      // Without it every driver UI file that touches the ipc layer fails to
-      // resolve the import — 48 files, while the host suite stays green.
-      '@datazen/backend-client': resolve(__dirname, 'packages/backend-client/src/index.ts'),
-      '@datazen/driver-sdk': resolve(__dirname, 'packages/driver-sdk/src/index.ts'),
-      '@datazen/extension-points': resolve(__dirname, 'packages/extension-points/src/index.ts'),
-      '@datazen/wapp-sdk': resolve(__dirname, 'packages/wapp-sdk/src/index.ts'),
-      '@datazen/ui': resolve(__dirname, 'packages/ui/src/index.ts'),
-      '@datazen/extension-sdk': resolve(__dirname, 'packages/wapp-sdk/src/index.ts'),
-    },
-  },
+  // form-split F6-c2: the @datazen/* alias table is retired. Driver UI
+  // trees carry no package.json, so their `@datazen/*` imports resolve by
+  // walking up to the repository root's node_modules, where the workspace
+  // aggregator links live (root devDependencies). The host suite proves the
+  // same resolution works for manifest-carrying consumers.
   test: {
     environment: 'jsdom',
     setupFiles: ['./packages/frontend/src/test/setup.ts', './packages/frontend/src/test/driverUiSetup.ts'],

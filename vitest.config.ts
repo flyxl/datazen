@@ -16,21 +16,13 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@datazen/backend-client': resolve(__dirname, 'packages/backend-client/src/index.ts'),
-      '@datazen/driver-sdk': resolve(__dirname, 'packages/driver-sdk/src/index.ts'),
-      '@datazen/extension-points': resolve(__dirname, 'packages/extension-points/src/index.ts'),
-      '@datazen/wapp-sdk': resolve(__dirname, 'packages/wapp-sdk/src/index.ts'),
-      '@datazen/extension-sdk': resolve(__dirname, 'packages/wapp-sdk/src/index.ts'),
-      '@datazen/ui': resolve(__dirname, 'packages/ui/src/index.ts'),
-      // form-split F6-c1: the src tree split into packages/frontend (shared)
-      // and apps/desktop (host assembly). The runner stays at the repository
-      // root so one command still drives the whole matrix.
-      '@datazen/frontend/src': resolve(__dirname, 'packages/frontend/src'),
-      '@datazen/frontend': resolve(__dirname, 'packages/frontend/src/index.ts'),
-      '@tauri-apps/api/window': resolve(
-        __dirname,
-        'packages/frontend/src/test/mocks/tauriWindow.ts',
-      ),
+      // form-split F6-c2: the @datazen/* alias table is retired — package
+      // exports (workspace links) resolve every @datazen specifier, exactly
+      // as vite and tsc now do. The one alias that remains is test
+      // infrastructure, not package resolution: the shared test setup mocks
+      // the Tauri window API for jsdom, and app-owned vitest configs keep
+      // this mock alias per plan §5.6 item 6.
+      '@tauri-apps/api/window': resolve(__dirname, 'packages/frontend/src/test/mocks/tauriWindow.ts'),
     },
   },
   test: {

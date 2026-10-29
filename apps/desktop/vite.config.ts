@@ -29,21 +29,11 @@ export default defineConfig({
     // @codemirror/view silently becomes a different instance and the linter is
     // never scheduled (no diagnostics, no squiggle).
     dedupe: ['@codemirror/state', '@codemirror/view'],
-    alias: {
-      // form-split F6-c1: the vite root moved to apps/desktop; the shared
-      // packages stayed at the repository root, so every alias gains the
-      // ../../ hop. The frontend package rides deep subpaths
-      // (`@datazen/frontend/src/...`) — the bare specifier is the package
-      // entry. F6-c2 replaces this table with real workspace resolution.
-      '@datazen/backend-client': resolve(__dirname, '../../packages/backend-client/src/index.ts'),
-      '@datazen/driver-sdk': resolve(__dirname, '../../packages/driver-sdk/src/index.ts'),
-      '@datazen/extension-points': resolve(__dirname, '../../packages/extension-points/src/index.ts'),
-      '@datazen/wapp-sdk': resolve(__dirname, '../../packages/wapp-sdk/src/index.ts'),
-      '@datazen/extension-sdk': resolve(__dirname, '../../packages/wapp-sdk/src/index.ts'),
-      '@datazen/ui': resolve(__dirname, '../../packages/ui/src/index.ts'),
-      '@datazen/frontend/src': resolve(__dirname, '../../packages/frontend/src'),
-      '@datazen/frontend': resolve(__dirname, '../../packages/frontend/src/index.ts'),
-    },
+    // form-split F6-c2: the @datazen/* alias table is retired. The app
+    // depends on @datazen/frontend (workspace:*), so bare and deep-subpath
+    // specifiers resolve through package exports into the workspace links;
+    // manifest-less driver UI trees walk up to the repository root's
+    // aggregator links (root devDependencies).
   },
   // Main window: index.html (with splash). Sub-windows: window.html (no splash).
   build: {

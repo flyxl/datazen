@@ -244,12 +244,23 @@ describe('externalize / allow-list asymmetry probe (G1 red line)', () => {
   it('rejects every @codemirror the Host depends on but does not publish', () => {
     // Derived from Host data alone — the extension's checkout is not consulted,
     // so this runs (and can fail) in any Host CI job.
-    const hostPkg: unknown = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
-    const deps = hostPkg as {
-      dependencies?: Record<string, string>;
-      devDependencies?: Record<string, string>;
+    // form-split F6-c2: the root manifest is toolchain-only now. The Host's
+    // real dependency set lives in the desktop app manifest plus the shared
+    // frontend package's dependencies and peers (the app satisfies the peers,
+    // so both halves ship in the same binary).
+    const readManifest = (rel: string): Record<string, string> => {
+      const m = JSON.parse(readFileSync(join(ROOT, rel), 'utf8')) as {
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+        peerDependencies?: Record<string, string>;
+      };
+      return { ...m.dependencies, ...m.devDependencies, ...m.peerDependencies };
     };
-    const hostCodeMirror = Object.keys({ ...deps.dependencies, ...deps.devDependencies })
+    const hostDeps = {
+      ...readManifest('apps/desktop/package.json'),
+      ...readManifest('packages/frontend/package.json'),
+    };
+    const hostCodeMirror = Object.keys(hostDeps)
       .filter((name) => name.startsWith('@codemirror/'))
       .sort();
     // The Host must depend on some CodeMirror packages at all, or the set below
