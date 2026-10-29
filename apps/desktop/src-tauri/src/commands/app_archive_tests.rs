@@ -22,9 +22,9 @@ fn app_archive_reads_settings_through_the_application_services() {
 
 #[test]
 fn export_options_from_settings_reflects_monitor_flag() {
-    use crate::store::AppSettings;
-
-    let mut settings = AppSettings::default();
+    // 归档选项吃共享行为域（F4a 分域后 get_settings_impl 返回 SharedSettings）；
+    // 用 host 全量默认值的共享投影构造测试输入，贴近真实读取路径。
+    let mut settings = crate::store::AppSettings::default().shared_settings();
     settings.monitor.export_include_dashboard_runs = false;
     assert!(!export_options_from_settings(&settings).include_dashboard_runs);
     settings.monitor.export_include_dashboard_runs = true;
