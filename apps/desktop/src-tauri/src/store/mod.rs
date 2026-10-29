@@ -41,7 +41,7 @@ pub use models::{FavoriteQuery, QueryHistoryEntry, SyncTask};
 // (`datazen::named_views`); the store only contributes
 // the persistence and the id minter.
 pub use named_views::HostViewIdMinter;
-pub use settings::{AppSettings, OnboardingState};
+pub use settings::{AppSettings, OnboardingState, ONBOARDING_VERSION};
 
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
@@ -320,7 +320,9 @@ impl DesktopRepository {
                 }
                 Err(_) => {
                     let mut settings = AppSettings::default_for_first_run();
-                    settings.onboarding = Some(OnboardingState::for_existing_install());
+                    settings.onboarding = Some(OnboardingState::for_existing_install(
+                        ONBOARDING_VERSION,
+                    ));
                     (settings, true)
                 }
             }

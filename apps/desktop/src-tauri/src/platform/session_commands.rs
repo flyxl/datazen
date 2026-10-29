@@ -126,7 +126,7 @@ pub async fn execute_at_target(
     let canonical = adapter
         .resolve_execution_target(
             call.context(),
-            request.expected_revision,
+            request.expected_config_revision,
             &request.call.command,
             &request.target,
         )

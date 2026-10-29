@@ -115,7 +115,14 @@ async fn get_log_path_honors_custom_log_path_setting() {
         .join("custom-logs")
         .to_string_lossy()
         .into();
-    save_settings_impl(&test.state, settings).await.unwrap();
+    // `log_path` 是 host 专属设置（F4a 分域后不在 SharedSettings 里），保存
+    // 走宿主 store 的全量写路径，而不是 save_settings_impl 的共享域通道；
+    // 读取侧 get_log_path_impl 经 settings 服务读回同一份 host 文档。
+    test.state
+        .store
+        .save_settings(settings)
+        .await
+        .expect("host settings persist");
     let log_path = get_log_path_impl(&test.state).await.unwrap();
     assert!(log_path.contains("custom-logs"));
 }

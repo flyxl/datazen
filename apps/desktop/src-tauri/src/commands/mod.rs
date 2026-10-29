@@ -54,6 +54,11 @@ pub use encryption_key::*;
 // The dialog module is private; its commands are only re-exported for webdriver.
 #[cfg(feature = "webdriver")]
 pub use dialog::*;
+// pick_import_file (F4c picker merge) is a *product* command that lives in the
+// dialog gateway — it must be reachable from `crate::commands::…` in every
+// build, not just webdriver ones, or `generate_handler!` fails to resolve
+// `__cmd__pick_import_file` (the glob above is cfg-gated).
+pub use dialog::pick_import_file;
 pub use driver_command::*;
 pub(crate) use error::{CmdExt, CommandError};
 pub use export::*;

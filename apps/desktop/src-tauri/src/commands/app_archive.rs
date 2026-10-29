@@ -7,12 +7,14 @@
 use super::error::{resolve_override_path, CmdExt, CommandError, OVERRIDE_DISABLED_MSG};
 use super::AppState;
 use crate::app_data_archive;
-use crate::store::AppSettings;
+use datazen::settings::SharedSettings;
 use std::path::PathBuf;
 use tauri::{AppHandle, State};
 
+/// 导出选项只依赖共享行为字段（`monitor`），因此参数是 `SharedSettings`
+/// （F4a 设置分域后 `get_settings_impl` 返回共享域，host 专属字段不参与归档）。
 pub(crate) fn export_options_from_settings(
-    settings: &AppSettings,
+    settings: &SharedSettings,
 ) -> app_data_archive::ExportOptions {
     app_data_archive::ExportOptions {
         include_dashboard_runs: settings.monitor.export_include_dashboard_runs,

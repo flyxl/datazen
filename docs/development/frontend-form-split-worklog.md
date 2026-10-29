@@ -3,6 +3,64 @@
 > 本文件随每个 form-split PR 同步提交，记录实际执行顺序、决策与验证结果，
 > 避免工作进度丢失。条目按时间倒序（最新在上）。基线：`2a08e55`（F4a 合入后）。
 
+## 2026-10-29（会话八·续 2）— host crate 编译对齐：F1–F5 API 漂移 8 处清偿（CI rust 转绿冲刺）
+
+> 路径余波清完后，rust job 前进到「真正编译 datazen_desktop 源码」的阶段，
+> 暴露 8 处 API 漂移。**与 F6 无关**：基线 `8d2aa2ef7`（F6 前最后一个
+> commit）有一模一样的错误指纹；分支最早的 CI run（F4c `3e562c31b`）
+> 就已全数在场。成因是 F1–F5 重构改了 modules/platform 侧 API 而 host
+> 调用点没跟上——本地无 cargo，「Rust host crate rides remote CI」的
+> 安排让这笔债一直滚到 workspace 能解析的那天才浮出水面。
+
+### 8 处修复（错误指纹 → 根因 → 修法）
+
+1. **E0433 `__cmd__pick_import_file` not in commands**：F4c 把三个
+   open-picker 合并成 `dialog::pick_import_file`（产品命令），但
+   `commands/mod.rs` 对 dialog 模块的 glob 再导出是
+   `#[cfg(feature = "webdriver")]` 门控——非 webdriver 构建里
+   `generate_handler!` 解析不到 `__cmd__` 伴生项。修法：glob 之外
+   增加无条件单项导出 `pub use dialog::pick_import_file;`。
+2. **E0308 `export_options_from_settings` 期望 `&AppSettings` 收到
+   `&SharedSettings`**：归档选项只消费 `monitor`（共享行为字段），
+   参数直接改 `&SharedSettings`——顺 F4a 分域方向。
+3. **E0609 `no field language on SharedSettings` ×2（window.rs）**：
+   `language` 是 host 专属（共享视图在 `preferences.language`，经
+   `apply_shared_settings` 双向同步）。修法：改读
+   `state.store.get_settings().await`（host 全量，`write_shared_settings`
+   保证缓存同步，时序安全）。
+4. **E0609 `no field expected_revision on ExecuteAtTargetRequest`**：
+   字段已更名 `expected_config_revision`（CAS 语义显式化），调用点跟随。
+5. **E0061 `OnboardingState::for_existing_install` 缺版本参数**：签名
+   加了 `version: i32`，`store/mod.rs` 补传 `ONBOARDING_VERSION` 并导入。
+6. **E0308 config_tests 传 `AppSettings` 给期望 `SharedSettings` 的
+   `save_settings_impl`**：`log_path` 是 host 专属，测试改走宿主 store
+   全量写路径 `store.save_settings(AppSettings)`；读取侧
+   `get_log_path_impl` 经 settings 服务读回同一份 host 文档，语义不变。
+7. **E0560 `PlatformAdapter` 无 `native` 字段 ×2**：字段已被裁撤，
+   两个构造器的残留初始化行删除。
+8. **E0063 `AppSettings::default` 缺 `row_count_mode`**：F4 把它从
+   `extra` catch-all 提升为显式字段，Default 补
+   `row_count_mode: default_row_count_mode()`。
+
+### 验证
+
+- CI 日志 11 条报错行全部归因到上述 8 根因（三组各 ×2 同根因），
+  无漏网；`expected_revision` 剩余两处属 `UpdateProfileRequest`
+  （kernel-wire DTO 自有字段，合法保留）。
+- 横向排查：adapter 无 `.native` 残留；`get_settings_impl` 其它调用方
+  只读共享字段；cfg 门控 glob 导出仅 dialog 一处。
+- TS 面：pathIpcWiring 9/9（handler 列表未动）；修复全部落在
+  `apps/desktop/src-tauri/src`，typecheck 域外。
+- Rust 编译真值仍只能由 CI 裁决（本地无 cargo），本批随推送验证。
+
+### 教训（防复发）
+
+- 「Rust host crate rides remote CI」的安排在 **CI 无法到达编译阶段
+  期间**（本例：workspace 解析失败挡了 6 个 commit）等于**零验证**：
+  API 漂移照常累积。恢复 CI 可达性本身就是最高优先级修复。
+- 模块再导出的 **cfg 门控 glob** 会静默吞掉后来者往该模块新增的
+  产品命令——新增命令进 cfg 门控模块时必须同步审视再导出策略。
+
 ## 2026-10-29（会话八·续）— F6-c3 补丁：src-tauri 搬迁余波修复（CI 全红 → 绿）
 
 > F6-c3 推送后 CI 的 frontend / rust 两个 job 全红。根因单一且集中：

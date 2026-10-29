@@ -167,7 +167,6 @@ impl PlatformAdapter {
             live: std::sync::OnceLock::new(),
             idle_reclaimer: std::sync::Mutex::new(None),
             artifacts: std::sync::OnceLock::new(),
-            native: std::sync::OnceLock::new(),
         })
     }
 
@@ -190,7 +189,6 @@ impl PlatformAdapter {
             live: std::sync::OnceLock::new(),
             idle_reclaimer: std::sync::Mutex::new(None),
             artifacts: std::sync::OnceLock::new(),
-            native: std::sync::OnceLock::new(),
         }
     }
 

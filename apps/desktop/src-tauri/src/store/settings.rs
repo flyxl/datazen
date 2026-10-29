@@ -247,6 +247,7 @@ impl Default for AppSettings {
             check_for_updates_on_startup: false,
             auto_chart_on_query: false,
             monitor: MonitorSettings::default(),
+            row_count_mode: default_row_count_mode(),
             driver_settings: serde_json::Map::new(),
             wapp_settings: serde_json::Map::new(),
             mcp_client_servers: Vec::new(),
