@@ -508,10 +508,10 @@ async fn load_schemas(
         .await
         .cmd_err("apply_data_transfer_job")?;
     let table_names = tables
-        .into_iter()
+        .iter()
         .filter(|table| crate::data_transfer::metadata::table_in_endpoint_schema(endpoint, table))
         .filter(|table| matches!(table.table_type, TableType::Table))
-        .map(|table| table.name)
+        .map(|table| table.name.as_str())
         .collect::<Vec<_>>();
     super::super::schema_loading::load_named_table_schemas(
         driver, handle, endpoint, &table_names, side,

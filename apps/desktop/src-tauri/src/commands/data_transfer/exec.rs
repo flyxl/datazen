@@ -64,7 +64,7 @@ pub(super) async fn load_sql_source_snapshot(
     let table_names = tables
         .iter()
         .filter(|table| matches!(table.table_type, TableType::Table))
-        .map(|table| table.name.clone())
+        .map(|table| table.name.as_str())
         .collect::<Vec<_>>();
     let schemas = super::schema_loading::load_named_table_schemas(
         driver.as_ref(),

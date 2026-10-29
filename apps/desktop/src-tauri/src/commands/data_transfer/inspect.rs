@@ -108,7 +108,7 @@ pub(crate) async fn inspect_data_transfer_impl(
     let source_table_names = src_tables
         .iter()
         .filter(|table| matches!(table.table_type, TableType::Table))
-        .map(|table| table.name.clone())
+        .map(|table| table.name.as_str())
         .collect::<Vec<_>>();
     let source_schemas = super::schema_loading::load_named_table_schemas(
         src_driver.as_ref(),
@@ -121,7 +121,7 @@ pub(crate) async fn inspect_data_transfer_impl(
     let target_table_names = tgt_tables
         .iter()
         .filter(|table| matches!(table.table_type, TableType::Table))
-        .map(|table| table.name.clone())
+        .map(|table| table.name.as_str())
         .collect::<Vec<_>>();
     let target_schemas = super::schema_loading::load_named_table_schemas(
         tgt_driver.as_ref(),
@@ -278,7 +278,7 @@ pub(crate) async fn inspect_sql_file_transfer_impl(
     let source_table_names = source_tables
         .iter()
         .filter(|table| matches!(table.table_type, TableType::Table))
-        .map(|table| table.name.clone())
+        .map(|table| table.name.as_str())
         .collect::<Vec<_>>();
     let source_schemas = super::schema_loading::load_named_table_schemas(
         src_driver.as_ref(),
