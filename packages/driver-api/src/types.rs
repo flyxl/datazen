@@ -325,6 +325,15 @@ impl MultiQueryResult {
     /// Drivers that support only a single query per call can use this to avoid
     /// duplicating the field mapping while keeping their `query_multi` behavior explicit.
     pub fn single_statement(sql: impl Into<String>, result: QueryResult) -> Self {
+        Self::single_statement_with_truncation(sql, result, false)
+    }
+
+    /// Wrap one query result while preserving whether the row cap truncated it.
+    pub fn single_statement_with_truncation(
+        sql: impl Into<String>,
+        result: QueryResult,
+        truncated: bool,
+    ) -> Self {
         let total_time_ms = result.execution_time_ms;
         Self {
             results: vec![StatementResult {
@@ -333,7 +342,7 @@ impl MultiQueryResult {
                 rows: result.rows,
                 rows_affected: result.rows_affected,
                 execution_time_ms: total_time_ms,
-                truncated: false,
+                truncated,
             }],
             total_time_ms,
         }
@@ -1025,6 +1034,20 @@ mod tests {
 #[cfg(test)]
 mod multi_query_result_tests {
     use super::*;
+
+    #[test]
+    fn single_statement_with_truncation_preserves_truncation_flag() {
+        let query = QueryResult {
+            columns: Vec::new(),
+            rows: Vec::new(),
+            rows_affected: None,
+            execution_time_ms: 0,
+        };
+
+        let multi = MultiQueryResult::single_statement_with_truncation("SELECT 1", query, true);
+
+        assert!(multi.results[0].truncated);
+    }
 
     #[test]
     fn single_statement_preserves_query_result_and_timing() {
