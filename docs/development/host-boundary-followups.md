@@ -292,6 +292,7 @@ F4a 第一刀已落地：
 | F3 | 新建 `driver-support`，搬第一批纯函数（第一刀已落地：`sql_split` + `sql_identifiers`） | `PROTOCOL_VERSION` 不变；`driver-api` 不再包含已搬走的函数体；前端无新依赖 |
 | F4a | `connection::api` + 桌面胶水变薄（第一刀已落地：CRUD + `resolve_test_config`；会话/隧道编排按方案留宿主） | IPC 载荷与错误码不变；宿主测试只覆盖映射 |
 | F4b | 表读取两用例（第二刀已落地：`table_browsing::api` 的 `read_table_page`/`preview_table_read` + `TargetCommandRunner` 端口；query/schema 薄命令不动） | IPC 载荷与错误码不变；宿主不再含 SQL 拼装/行合并/计划展开 |
-| F4c… | 按第 3 节顺序逐个用例下沉（export、backup → sync/transfer/schema_diff） | 每刀删除宿主中的对应实现 |
+| ~~export、backup~~ | **复核结论（2026-10-30）：无需 F4 刀**——D6 item 5 已把它们落到目标形态（算法在 `modules::export`/`modules::backup`，宿主 `export.rs`/`backup.rs` 只剩端口实现 + 对话框/事件绑定），本方案写就时未计入 | 宿主不再含算法（已达成） |
+| F4c… | sync / data_transfer / schema_diff，按第 3 节顺序逐个用例下沉（候选切口已探明：`sync/host/statements.rs`、`sync/host/select.rs`、`data_transfer/preview.rs` 均含 SQL 拼装；modules 侧 `migration::{data_sync,data_transfer,schema_diff}` 已有 4 万行对应域，下沉是接合不是新建） | 每刀删除宿主中的对应实现 |
 
 Web 宿主仍然不在这组 PR 里创建。`api` 模块不引用 Axum。隧道实现不迁出 `modules`。
