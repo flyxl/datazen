@@ -10,7 +10,7 @@
  * shared modules that own it.
  */
 
-export { IS_DESKTOP_BUILD } from '@datazen/frontend/src/platform/env';
+export { IS_DESKTOP_BUILD } from '@datazen/frontend';
 export { createDesktopPlatformServices } from './platformServices';
 export { createDesktopEventChannel } from './eventChannel';
 export {

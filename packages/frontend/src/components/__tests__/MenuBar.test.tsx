@@ -5,6 +5,7 @@ import { enCopy } from '../../test/enCopy';
 
 vi.mock('../../hooks/usePlatform', () => ({
   usePlatform: () => 'windows',
+  getPlatformSync: () => 'windows',
 }));
 
 vi.mock('../../stores/settingsStore', () => ({

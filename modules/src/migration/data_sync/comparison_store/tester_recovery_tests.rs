@@ -70,29 +70,50 @@ fn test_tester_symlinked_owner_marker_is_preserved_by_stale_sweep() {
 }
 
 #[test]
-fn test_tester_missing_empty_and_corrupt_owner_leases_fail_closed() {
-    for invalid_lease in ["missing", "empty", "corrupt"] {
+fn test_tester_missing_owner_lease_fails_closed() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = ensure_private_store_root(&temporary.path().join("stores")).unwrap();
+    let owner = acquire_owner_lease(&root).unwrap();
+    let directory = create_store_directory(&root, &owner).unwrap();
+    let lease = root
+        .join(OWNER_DIRECTORY)
+        .join(format!("{}.lock", owner.id));
+    drop(owner);
+
+    fs::remove_file(&lease).unwrap();
+
+    scavenge_stale_stores(&root);
+
+    assert!(directory.exists(), "missing owner lease must fail closed");
+}
+
+/// F1 之后租约的存活证明只看内核锁，**不看锁文件内容**：空的或乱写的
+/// `.lock` 文件只说明 owner 没写内容，不说明它还活着——owner 已死时照常
+/// 回收。旧 SQLite 租约把「空/损坏文件」当不可证明处理，是那个机制下的
+/// 保守取舍；flock 语义下这是可证明的死锁持有者。
+#[test]
+fn test_tester_empty_and_corrupt_owner_lock_files_still_reclaim_dead_owners() {
+    for content in ["empty", "corrupt"] {
         let temporary = tempfile::tempdir().unwrap();
         let root = ensure_private_store_root(&temporary.path().join("stores")).unwrap();
         let owner = acquire_owner_lease(&root).unwrap();
         let directory = create_store_directory(&root, &owner).unwrap();
         let lease = root
             .join(OWNER_DIRECTORY)
-            .join(format!("{}.sqlite", owner.id));
+            .join(format!("{}.lock", owner.id));
         drop(owner);
 
-        match invalid_lease {
-            "missing" => fs::remove_file(&lease).unwrap(),
+        match content {
             "empty" => fs::write(&lease, b"").unwrap(),
-            "corrupt" => fs::write(&lease, b"not a sqlite database").unwrap(),
+            "corrupt" => fs::write(&lease, b"not a lock, just garbage").unwrap(),
             _ => unreachable!(),
         }
 
         scavenge_stale_stores(&root);
 
         assert!(
-            directory.exists(),
-            "{invalid_lease} owner lease must fail closed"
+            !directory.exists(),
+            "{content} lock file must not keep a dead owner's store alive"
         );
     }
 }
@@ -106,10 +127,10 @@ fn test_tester_symlinked_owner_lease_and_noncanonical_store_ids_fail_closed() {
     let directory = create_store_directory(&root, &owner).unwrap();
     let lease = root
         .join(OWNER_DIRECTORY)
-        .join(format!("{}.sqlite", owner.id));
+        .join(format!("{}.lock", owner.id));
     drop(owner);
 
-    let outside = temporary.path().join("outside-owner.sqlite");
+    let outside = temporary.path().join("outside-owner.lock");
     fs::write(&outside, b"outside").unwrap();
     fs::remove_file(&lease).unwrap();
     std::os::unix::fs::symlink(&outside, &lease).unwrap();

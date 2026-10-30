@@ -19,30 +19,34 @@ datazen-driver-api = { workspace = true }
 # Platform adapter (P1, 开发计划 :77)。方向是 host → platform-api / application，
 # 与 F-02 禁止的 application → host 相反，因此不受 crate 边界门禁限制。
 # 两个包都不依赖 Tauri / HTTP，desktop adapter 只在 host 侧引用它们。
-datazen = { workspace = true, features = ["application", "settings", "ai", "connection", "connection_import", "feature_error", "services", "named_views", "history", "execution", "schema", "schema_diff", "data_sync", "data_transfer", "table-browsing", "table-editing", "dashboard", "monitor", "export", "backup", "wapps", "tunnel"] }
+# 桌面二进制启用全部已落地业务 feature（host-boundary-followups F0：common/jobs/workflow/mcp
+# 此前由 data_sync/schema_diff/mcp 等传递打开，读清单的人会以为 MCP 没编进桌面）。
+# 未列出的 feature 不得被桌面意外打开；`cargo tree -p datazen_desktop -e normal,build,features -i datazen`
+# 的启用集合应与本清单一致（dev 行另加 test-harness）。
+datazen = { workspace = true, features = ["application", "settings", "ai", "connection", "connection_import", "feature_error", "services", "named_views", "history", "execution", "schema", "schema_diff", "data_sync", "data_transfer", "table-browsing", "table-editing", "dashboard", "monitor", "export", "backup", "wapps", "tunnel", "common", "jobs", "workflow", "mcp"] }
 # P5 JobRuntime 内核（§2/§5）：prepare/apply 经 runtime 受理，desktop 只做适配。
 # 形态中立的跨形态基础设施原语（脱敏 / 路径安全），零 datazen-* 依赖（F-11 反向 allow-list 兜底）。
-datazen-infra = { path = "../../../packages/infra" }
+datazen-infra = { workspace = true }
 # 迁移三件套各自以 Job 受理 prepare/apply，host 只做 adapter。
 # Wave-2 B1：Workspace App 形态中立内核（manifest 规则 / 安装 / 存储）已并入
 # datazen（modules::workspace_apps 模块），此处不再单独依赖。
-inventory = "0.3"
+inventory = { workspace = true }
 tauri = { version = "2", features = ["protocol-asset", "macos-private-api", "tray-icon", "devtools"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util", "net", "process"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-aes-gcm = "0.10"
-base64 = "0.22"
-rand = "0.8"
+serde = { workspace = true }
+serde_json = { workspace = true }
+aes-gcm = { workspace = true }
+base64 = { workspace = true }
+rand = { workspace = true }
 chrono = { version = "0.4", features = ["serde"] }
-uuid = { version = "1", features = ["v4", "serde"] }
-thiserror = "1"
-tracing = "0.1"
+uuid = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 open = "5"
 sysinfo = "0.30"
-async-trait = "0.1"
+async-trait = { workspace = true }
 urlencoding = "2"
 tauri-plugin-webdriver = { version = "0.2", optional = true }
 tauri-plugin-dialog = "2"
@@ -52,12 +56,12 @@ tauri-plugin-os = "2.3.2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 sys-locale = "0.3.2"
-russh = "0.60"
-tokio-tungstenite = { version = "0.26", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
-tokio-rustls = "0.26"
-url = "2"
-reqwest = { version = "0.13.3", default-features = false, features = ["rustls", "json", "stream", "cookies", "query", "form"] }
-futures-util = "0.3"
+russh = { workspace = true }
+tokio-tungstenite = { workspace = true }
+tokio-rustls = { workspace = true }
+url = { workspace = true }
+reqwest = { workspace = true }
+futures-util = { workspace = true }
 
 # Driver crates — injected by resolve-drivers.mjs at build time; do NOT add manually.
 # <<driver-dependencies>>
@@ -66,16 +70,16 @@ rmcp = { version = "2.2.0", features = ["server", "client", "transport-io", "tra
 schemars = "1.2.2"
 tokio-util = { version = "0.7.19", features = ["rt", "compat"] }
 dirs = "6.0.0"
-rusqlite = { version = "0.32.1", features = ["bundled"] }
+rusqlite = { workspace = true }
 keyring = { version = "4", features = ["v1"] }
-serde_yaml = "0.9.34"
-regex = "1.13.1"
-zip = { version = "2", default-features = false, features = ["deflate"] }
-hmac = "0.12"
-sha2 = "0.10"
+serde_yaml = { workspace = true }
+regex = { workspace = true }
+zip = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
 
 tempfile = "3.27.0"
-libc = "0.2"
+libc = { workspace = true }
 
 # macOS 静默 E2E：让 webdriver 构建在 `DATAZEN_E2E_QUIET` 下拒绝进程激活，
 # 避免本地跑测试时抢走开发者焦点（见 `src/e2e_quiet.rs`）。两个 crate 都由
@@ -101,9 +105,9 @@ test-harness = ["datazen/test-harness"]
 [dev-dependencies]
 wiremock = "0.6"
 sqlx = { version = "=0.8.6", features = ["runtime-tokio", "tls-rustls", "postgres", "mysql"] }
-datazen-driver-postgres = { path = "../../../packages/drivers/postgres" }
-datazen-driver-mysql = { path = "../../../packages/drivers/mysql" }
-datazen-driver-sqlite = { path = "../../../packages/drivers/sqlite" }
+datazen-driver-postgres = { workspace = true }
+datazen-driver-mysql = { workspace = true }
+datazen-driver-sqlite = { workspace = true }
 datazen = { workspace = true, features = ["test-harness"] }
 # Host tests drive `DriverRegistry::register_test_driver*` / `register_test_factory*`, which the
 # Dev-only: `resolver = "2"` keeps this feature out of normal `cargo build` of the host.

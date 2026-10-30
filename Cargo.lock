@@ -1679,6 +1679,7 @@ dependencies = [
  "datazen-driver-sqlite",
  "datazen-infra",
  "dirs 5.0.1",
+ "fd-lock",
  "flate2",
  "futures-util",
  "hmac 0.12.1",
@@ -1720,6 +1721,7 @@ version = "0.0.21"
 dependencies = [
  "async-trait",
  "chrono",
+ "datazen-driver-support",
  "inventory",
  "serde",
  "serde_json",
@@ -1944,6 +1946,10 @@ dependencies = [
  "tracing",
  "uuid",
 ]
+
+[[package]]
+name = "datazen-driver-support"
+version = "0.0.1"
 
 [[package]]
 name = "datazen-driver-turso"
@@ -2631,6 +2637,17 @@ name = "fax"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "caf1079563223d5d59d83c85886a56e586cfd5c1a26292e971a0fa266531ac5a"
+
+[[package]]
+name = "fd-lock"
+version = "4.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ce92ff622d6dadf7349484f42c93271a0d49b7cc4d466a936405bacbe10aa78"
+dependencies = [
+ "cfg-if",
+ "rustix 1.1.4",
+ "windows-sys 0.59.0",
+]
 
 [[package]]
 name = "fdeflate"

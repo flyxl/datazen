@@ -1,3 +1,5 @@
+import type { Platform } from '../hooks/usePlatform';
+
 export type KeymapPreset = 'default' | 'dbeaver' | 'navicat';
 
 export type KeymapAction =
@@ -88,6 +90,15 @@ export function toCodeMirrorKeyFormat(key: string): string {
       return lower;
     })
     .join('-');
+}
+
+/**
+ * The platform modifier key symbol for shortcut copy: ⌘ on macOS, Ctrl
+ * everywhere else. One place to rule the `isMac ? '⌘' : 'Ctrl'` inline
+ * ternaries that used to drift between components.
+ */
+export function formatModKey(platform: Platform): string {
+  return platform === 'macos' ? '⌘' : 'Ctrl';
 }
 
 /**

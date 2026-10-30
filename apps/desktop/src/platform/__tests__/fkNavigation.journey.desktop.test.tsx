@@ -21,17 +21,20 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { useMemo } from 'react';
-import { DataTable } from '@datazen/frontend/src/components/DataTable/DataTable';
-import { useTableForeignKeyNavigation } from '@datazen/frontend/src/windows/connection/useTableForeignKeyNavigation';
-import { usePanelStore } from '@datazen/frontend/src/stores/panelStore';
-import { useTableDataStore } from '@datazen/frontend/src/stores/tableDataStore';
-import { useFkNavigationStore, resetFkNavigationEntryIds } from '@datazen/frontend/src/stores/fkNavigationStore';
+import { DataTable } from '@datazen/frontend/testing/components/DataTable/DataTable.tsx';
+import { useTableForeignKeyNavigation } from '@datazen/frontend/testing/windows/connection/useTableForeignKeyNavigation.ts';
+import { usePanelStore } from '@datazen/frontend/testing/stores/panelStore.ts';
+import { useTableDataStore } from '@datazen/frontend/testing/stores/tableDataStore.ts';
+import {
+  useFkNavigationStore,
+  resetFkNavigationEntryIds,
+} from '@datazen/frontend/testing/stores/fkNavigationStore.ts';
 import { createBackendClient, setBackendClient } from '@datazen/backend-client';
 import {
   createDesktopBackendTransport,
   DESKTOP_BACKEND_ID,
 } from '../desktop/tauriBackendTransport';
-import type { ForeignKeyInfo } from '@datazen/frontend/src/types/index';
+import type { ForeignKeyInfo } from '@datazen/frontend/testing/types/index.ts';
 
 const { mockInvoke } = vi.hoisted(() => ({ mockInvoke: vi.fn() }));
 
@@ -44,7 +47,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 const schemaState = vi.hoisted(() => ({ foreignKeys: [] as unknown[] }));
 
-vi.mock('@datazen/frontend/src/lib/schemaCache', () => ({
+vi.mock('@datazen/frontend/testing/lib/schemaCache.ts', () => ({
   // `fkReferencedBy` 在模块作用域调用它注册失效回调；返回退订空函数即可。
   subscribeSchemaInvalidation: () => () => undefined,
   getCachedTableSchema: async () => ({
@@ -56,23 +59,25 @@ vi.mock('@datazen/frontend/src/lib/schemaCache', () => ({
   }),
 }));
 
-vi.mock('@datazen/frontend/src/hooks/useI18n', () => ({
+vi.mock('@datazen/frontend/testing/hooks/useI18n.ts', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('@datazen/frontend/src/hooks/useColumnResize', () => ({
+vi.mock('@datazen/frontend/testing/hooks/useColumnResize.ts', () => ({
   useColumnResize: () => ({ columnWidths: [160, 160, 160], onResizeStart: vi.fn() }),
   adjustWidthsForSort: (widths: number[]) => widths,
 }));
 
-vi.mock('@datazen/frontend/src/hooks/useVirtualTable', () => ({
+vi.mock('@datazen/frontend/testing/hooks/useVirtualTable.ts', () => ({
   useVirtualTable: ({ rows }: { rows: unknown[][] }) => ({
     virtualRows: rows.map((_, index) => ({ index, key: String(index), start: index * 28 })),
     totalHeight: rows.length * 28,
   }),
 }));
 
-vi.mock('@datazen/frontend/src/lib/session/tableSession', () => ({ tableManualHandle: vi.fn(() => null) }));
+vi.mock('@datazen/frontend/testing/lib/session/tableSession.ts', () => ({
+  tableManualHandle: vi.fn(() => null),
+}));
 
 const SOURCE_PANEL = 'panel-orders';
 
@@ -528,7 +533,7 @@ describe('journey: foreign-key navigation', () => {
       ...RESOLUTION,
       target: { ...RESOLUTION.target, table: 'orders' },
     });
-    const second = await import('@datazen/frontend/src/lib/fkNavigationActions');
+    const second = await import('@datazen/frontend/testing/lib/fkNavigationActions.ts');
     await second.openForeignKeyTarget({
       sourcePanelId: targetId,
       sourceTable: 'customers',

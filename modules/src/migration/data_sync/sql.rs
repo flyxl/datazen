@@ -45,6 +45,77 @@ where
     }
 }
 
+/// `SELECT <all columns> … WHERE <pk> = <placeholder> … ORDER BY <pk> …` used by
+/// the apply handler to verify one target row right before the batch writes it
+/// (§5.3).
+///
+/// The predicate must **bind the reviewed key**: the target executor passes the
+/// key values to `query_with_params` in the same order, and the handler reads
+/// at most one row. A `pk IS NOT NULL` scan would instead answer with the
+/// first row of the table, which silently verifies — and can accept — a row
+/// the review never saw.
+///
+/// **An empty `pk_columns` is refused, not degraded.** There is no predicate to
+/// bind and no key the handler could have read, so the only statement that
+/// could be produced here is a full-table `SELECT` whose first row would be
+/// taken for the reviewed row. Returning an error makes the missing key visible
+/// at the boundary that owns it; the earlier "empty order clause" fallback
+/// turned the same defect into a silently full-table scan.
+///
+/// 宿主边界 F4c-1 自桌面宿主下沉：SQL 与拒绝语义逐字保留。
+pub fn select_by_key_sql(
+    dialect: &dyn datazen_driver_api::SqlDialect,
+    quote: &char,
+    database: &str,
+    schema: Option<&str>,
+    table: &str,
+    columns: &[String],
+    pk_columns: &[String],
+    column_types: &std::collections::HashMap<String, String>,
+) -> Result<String, DataSyncError> {
+    if pk_columns.is_empty() {
+        return Err(DataSyncError::validation(format!(
+            "target relation {database}.{table} has no primary key, so its reviewed row cannot be re-read before the write (§5.3)"
+        )));
+    }
+    let mut parts = vec![database.to_string()];
+    if let Some(schema) = schema {
+        parts.push(schema.to_string());
+    }
+    parts.push(table.to_string());
+    let qualified = parts
+        .iter()
+        .map(|part| quote_ident_sql(part, *quote))
+        .collect::<Vec<_>>()
+        .join(".");
+    let projection = columns
+        .iter()
+        .map(|column| quote_ident_sql(column, *quote))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let predicate = pk_columns
+        .iter()
+        .enumerate()
+        .map(|(offset, pk)| {
+            // Placeholder indexes are 1-based and positional: the key values the
+            // executor binds land in exactly this order.
+            let placeholder = dialect
+                .parameter_placeholder(offset + 1, column_types.get(pk).map(String::as_str))
+                .map_err(|error| DataSyncError::validation(error.to_string()))?;
+            Ok(format!("{} = {placeholder}", quote_ident_sql(pk, *quote)))
+        })
+        .collect::<Result<Vec<_>, DataSyncError>>()?
+        .join(" AND ");
+    let order = pk_columns
+        .iter()
+        .map(|pk| quote_ident_sql(pk, *quote))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Ok(format!(
+        "SELECT {projection} FROM {qualified} WHERE {predicate} ORDER BY {order}"
+    ))
+}
+
 pub fn mysql_placeholder(_index: usize) -> String {
     "?".into()
 }
@@ -661,6 +732,105 @@ mod tests {
     use super::*;
     use crate::migration::data_sync::changeset::TableChangeSet;
     use crate::migration::data_sync::model::{ConflictPolicy, RowChange, SyncOptions};
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    // ---- keyed read (F4c-1, 自宿主 select.rs 原样迁入) ----
+
+    // `parameterized_writes` is what makes the mock render a placeholder at
+    // all; the sigil itself comes from the driver (`?n` here, `$n` on
+    // postgres), so what these tests pin down is the *index order*, which is
+    // the part `select_by_key_sql` owns.
+    fn keyed_postgres() -> std::sync::Arc<datazen_driver_api::mock_driver::MockDriver> {
+        datazen_driver_api::mock_driver::MockDriver::new(
+            "postgresql",
+            datazen_driver_api::mock_driver::MockDriverOptions {
+                parameterized_writes: true,
+                ..Default::default()
+            },
+        )
+    }
+
+    // The keyed read only needs the dialect rules, so the test hands it the
+    // same legacy adapter the host hands it.
+    fn keyed_dialect(
+        driver: &Arc<datazen_driver_api::mock_driver::MockDriver>,
+    ) -> datazen_driver_api::LegacySqlDialect<'_, datazen_driver_api::mock_driver::MockDriver> {
+        datazen_driver_api::LegacySqlDialect::new(driver.as_ref())
+    }
+
+    fn keyed_columns() -> Vec<String> {
+        ["id", "name"].map(String::from).to_vec()
+    }
+
+    fn keyed_types() -> HashMap<String, String> {
+        [("id".to_string(), "int4".to_string())]
+            .into_iter()
+            .collect()
+    }
+
+    #[test]
+    fn a_keyed_read_binds_the_reviewed_key() {
+        let driver = keyed_postgres();
+        let dialect = keyed_dialect(&driver);
+        let sql = select_by_key_sql(
+            &dialect,
+            &'"',
+            "app",
+            None,
+            "users",
+            &keyed_columns(),
+            &["id".to_string()],
+            &keyed_types(),
+        )
+        .expect("a relation with a primary key must produce a keyed read");
+        assert_eq!(
+            sql, r#"SELECT "id", "name" FROM "app"."users" WHERE "id" = ?1 ORDER BY "id""#,
+            "the predicate must bind the reviewed key and never widen to a scan"
+        );
+    }
+
+    #[test]
+    fn a_composite_key_binds_placeholder_indexes_in_key_order() {
+        let driver = keyed_postgres();
+        let dialect = keyed_dialect(&driver);
+        let sql = select_by_key_sql(
+            &dialect,
+            &'"',
+            "app",
+            Some("public"),
+            "users",
+            &keyed_columns(),
+            &["id".to_string(), "name".to_string()],
+            &keyed_types(),
+        )
+        .expect("a composite key must produce a keyed read");
+        assert_eq!(
+            sql, r#"SELECT "id", "name" FROM "app"."public"."users" WHERE "id" = ?1 AND "name" = ?2 ORDER BY "id", "name""#,
+            "the executor binds key values positionally, so placeholder indexes must follow key order"
+        );
+    }
+
+    #[test]
+    fn a_relation_without_a_primary_key_is_refused_instead_of_scanned() {
+        let driver = keyed_postgres();
+        let dialect = keyed_dialect(&driver);
+        let error = select_by_key_sql(
+            &dialect,
+            &'"',
+            "app",
+            None,
+            "users",
+            &keyed_columns(),
+            &[],
+            &keyed_types(),
+        )
+        .expect_err("no key means no reviewed row can be re-read; a full-table SELECT must never be returned");
+        assert!(
+            error.to_string().contains("no primary key"),
+            "the refusal must name the missing key, got: {error}"
+        );
+    }
 
     fn q(name: &str) -> String {
         quote_ident_sql(name, '"')

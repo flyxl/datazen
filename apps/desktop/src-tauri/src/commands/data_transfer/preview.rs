@@ -19,18 +19,10 @@ async fn count_scoped_source_rows(
     scope: &crate::data_transfer::recordset::SourceScope,
     limit: Option<u64>,
 ) -> Result<u64, CommandError> {
-    let relation = datazen_driver_api::sql_identifiers::qualify_relation_sql(
-        &driver.driver_type(),
-        Some(&endpoint.database),
-        endpoint.normalized_schema(),
-        table,
-        driver.quote_char(),
-    );
-    let mut sql = format!("SELECT COUNT(*) FROM {relation}");
-    if let Some(where_sql) = &scope.where_sql {
-        sql.push(' ');
-        sql.push_str(where_sql);
-    }
+    // 装配（限定名、WHERE 尾巴、参数顺序）在域里；执行与驱动错误映射留在
+    // 宿主——租约在这里。解析与限幅同样在域里，文本与下沉前逐字一致。
+    let sql =
+        crate::data_transfer::recordset::count_scoped_rows_sql(driver, endpoint, table, scope);
     let result = driver
         .query_with_params(handle, &sql, &scope.count_params)
         .await
@@ -39,21 +31,9 @@ async fn count_scoped_source_rows(
         .rows
         .first()
         .and_then(|row| row.first())
-        .and_then(Option::as_ref)
-        .ok_or_else(|| CommandError::Validation("source count query returned no count".into()))?;
-    let count = match value {
-        datazen_driver_api::Value::Integer(value) => u64::try_from(*value)
-            .map_err(|_| CommandError::Validation("source count was negative".into())),
-        datazen_driver_api::Value::String(value) => value.parse::<u64>().map_err(|_| {
-            CommandError::Validation("source count was not an unsigned integer".into())
-        }),
-        _ => {
-            return Err(CommandError::Validation(
-                "source count query returned an unsupported value".into(),
-            ));
-        }
-    }?;
-    Ok(limit.map_or(count, |limit| count.min(limit)))
+        .and_then(Option::as_ref);
+    crate::data_transfer::recordset::parse_scoped_row_count(value, limit)
+        .map_err(CommandError::from)
 }
 
 /// Preview the source scope and SQL statements for a native-dialog-selected
@@ -88,8 +68,6 @@ async fn preview_sql_file_target(
     .await?;
     let src_config = src_context.config.clone();
     let src_driver = src_context.driver.clone();
-    // 占位符规则来自 SqlDialect 契约，旧驱动 API 逐条转发。
-    let src_dialect = LegacySqlDialect::new(src_driver.as_ref());
     let src_handle = src_context.handle.clone();
     job.source.schema = datazen::services::schema_scope::metadata_schema(
         src_driver.as_ref(),
@@ -219,26 +197,11 @@ async fn preview_sql_file_target(
                 mapping.source_table
             ))
         })?;
-        crate::data_transfer::recordset::build_source_scope(
+        crate::data_transfer::recordset::build_source_scope_for_driver(
             schema,
             mapping.source_filter.as_ref(),
             mapping.recordset.as_ref(),
-            src_driver.quote_char(),
-            &src_driver.driver_type(),
-            |index, data_type| {
-                src_dialect
-                    .parameter_placeholder(index, data_type)
-                    .map_err(|error| {
-                        crate::data_transfer::TransferError::unsupported(error.to_string())
-                    })
-            },
-            |column| {
-                schema
-                    .columns
-                    .iter()
-                    .find(|candidate| candidate.name == column)
-                    .map(|candidate| candidate.data_type.clone())
-            },
+            src_driver.as_ref(),
         )
         .map_err(|error| CommandError::Validation(error.to_string()))?;
     }
@@ -382,26 +345,11 @@ async fn preview_sql_file_target(
                 .tables
                 .iter()
                 .find(|mapping| mapping.source_table == table.source_table);
-            let scope = crate::data_transfer::recordset::build_source_scope(
+            let scope = crate::data_transfer::recordset::build_source_scope_for_driver(
                 schema,
                 mapping.and_then(|mapping| mapping.source_filter.as_ref()),
                 mapping.and_then(|mapping| mapping.recordset.as_ref()),
-                src_driver.quote_char(),
-                &src_driver.driver_type(),
-                |index, data_type| {
-                    src_dialect
-                        .parameter_placeholder(index, data_type)
-                        .map_err(|error| {
-                            crate::data_transfer::TransferError::unsupported(error.to_string())
-                        })
-                },
-                |column| {
-                    schema
-                        .columns
-                        .iter()
-                        .find(|candidate| candidate.name == column)
-                        .map(|candidate| candidate.data_type.clone())
-                },
+                src_driver.as_ref(),
             )
             .map_err(CommandError::from)?;
             let estimated_rows = if mapping.is_some_and(|mapping| mapping.recordset.is_some()) {
@@ -483,10 +431,9 @@ pub(crate) async fn preview_data_transfer_impl(
     let src_config = src_context.config.clone();
     let tgt_config = tgt_context.config.clone();
     let src_driver = src_context.driver.clone();
-    // 占位符规则来自 SqlDialect 契约，旧驱动 API 逐条转发。
-    let src_dialect = LegacySqlDialect::new(src_driver.as_ref());
     let src_handle = src_context.handle.clone();
     let target_driver = tgt_context.driver.clone();
+    // 目标占位符能力探测仍走 SqlDialect 契约；源侧闭包已在域里。
     let tgt_dialect = LegacySqlDialect::new(target_driver.as_ref());
     let target_handle = tgt_context.handle.clone();
     job.source.schema = datazen::services::schema_scope::metadata_schema(
@@ -613,26 +560,11 @@ pub(crate) async fn preview_data_transfer_impl(
                     mapping.source_table
                 ))
             })?;
-        crate::data_transfer::recordset::build_source_scope(
+        crate::data_transfer::recordset::build_source_scope_for_driver(
             schema,
             mapping.source_filter.as_ref(),
             mapping.recordset.as_ref(),
-            src_driver.quote_char(),
-            &src_driver.driver_type(),
-            |index, data_type| {
-                src_dialect
-                    .parameter_placeholder(index, data_type)
-                    .map_err(|error| {
-                        crate::data_transfer::TransferError::unsupported(error.to_string())
-                    })
-            },
-            |column| {
-                schema
-                    .columns
-                    .iter()
-                    .find(|candidate| candidate.name == column)
-                    .map(|candidate| candidate.data_type.clone())
-            },
+            src_driver.as_ref(),
         )
         .map_err(|error| {
             CommandError::Validation(format!(
@@ -748,26 +680,11 @@ pub(crate) async fn preview_data_transfer_impl(
         let Some(schema) = source_schemas_for_plan.get(&write_plan.source_table) else {
             continue;
         };
-        let scope = crate::data_transfer::recordset::build_source_scope(
+        let scope = crate::data_transfer::recordset::build_source_scope_for_driver(
             schema,
             mapping.source_filter.as_ref(),
             mapping.recordset.as_ref(),
-            src_driver.quote_char(),
-            &src_driver.driver_type(),
-            |index, data_type| {
-                src_dialect
-                    .parameter_placeholder(index, data_type)
-                    .map_err(|error| {
-                        crate::data_transfer::TransferError::unsupported(error.to_string())
-                    })
-            },
-            |column| {
-                schema
-                    .columns
-                    .iter()
-                    .find(|candidate| candidate.name == column)
-                    .map(|candidate| candidate.data_type.clone())
-            },
+            src_driver.as_ref(),
         )
         .map_err(|error| {
             CommandError::Validation(format!("cannot render typed source scope preview: {error}"))

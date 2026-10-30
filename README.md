@@ -17,7 +17,7 @@
 <video src="site/assets/video/demo-recording.mp4" controls width="100%" poster="site/assets/video/demo-poster.png"></video>
 
 <p align="center">
-  <b>18 database drivers</b> · <b>10 interface languages</b> · <b>MCP server &amp; client</b> · <b>No account, no cloud</b> · <b>macOS · Windows · Linux</b>
+  <b>17 database drivers</b> · <b>10 interface languages</b> · <b>MCP server &amp; client</b> · <b>No account, no cloud</b> · <b>macOS · Windows · Linux</b>
 </p>
 
 ## Everything a database asks of you, in one app

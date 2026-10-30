@@ -296,7 +296,7 @@ fn large_comparison_spills_to_private_indexed_store_and_round_trips() {
         assert_eq!(
             fs::metadata(
                 root.join(OWNER_DIRECTORY)
-                    .join(format!("{}.sqlite", owner.owner_id))
+                    .join(format!("{}.lock", owner.owner_id))
             )
             .unwrap()
             .permissions()
@@ -652,9 +652,7 @@ fn stale_owner_store_is_reclaimed_after_its_lease_is_released() {
     #[cfg(unix)]
     std::os::unix::fs::symlink(&outside, directory.join("outside-link")).unwrap();
     let owner_id = owner.id;
-    let owner_lease_path = root
-        .join(OWNER_DIRECTORY)
-        .join(format!("{owner_id}.sqlite"));
+    let owner_lease_path = root.join(OWNER_DIRECTORY).join(format!("{owner_id}.lock"));
     drop(owner);
 
     scavenge_stale_stores(&root);
@@ -670,6 +668,34 @@ fn stale_owner_store_is_reclaimed_after_its_lease_is_released() {
     assert!(
         !owner_lease_path.exists(),
         "unused stale owner lease remains"
+    );
+}
+
+/// F1 验收的前半句：**锁被持有 → 不回收**。跨进程租约换成 flock 后，
+/// 同一进程内另开一次锁文件（新的 open file description）也会被持有中的
+/// 锁挡住（`WouldBlock`），所以单进程测试就能同时覆盖「活 owner 的目录
+/// 不得被回收」与「放锁后才可回收」两个方向。
+#[test]
+fn live_owner_store_is_not_reclaimed_while_the_lease_is_held() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = ensure_private_store_root(&temporary.path().join("stores")).unwrap();
+    let owner = acquire_owner_lease(&root).unwrap();
+    let directory = create_store_directory(&root, &owner).unwrap();
+    fs::write(directory.join("partial.rows"), b"incomplete").unwrap();
+
+    scavenge_stale_stores(&root);
+
+    assert!(
+        directory.exists(),
+        "store owned by a live owner must not be reclaimed"
+    );
+
+    drop(owner);
+    scavenge_stale_stores(&root);
+
+    assert!(
+        !directory.exists(),
+        "the same store must be reclaimed once the lease is released"
     );
 }
 
@@ -692,7 +718,7 @@ fn owner_lease_is_cached_per_root_so_each_root_can_reclaim_its_own_stale_stores(
 
     let lease_file = |root: &Path, owner: &OwnerLease| {
         root.join(OWNER_DIRECTORY)
-            .join(format!("{}.sqlite", owner.id))
+            .join(format!("{}.lock", owner.id))
     };
     assert!(
         lease_file(&first_root, &first).exists(),

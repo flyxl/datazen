@@ -6,7 +6,7 @@ description = "DataZen elasticsearch database driver"
 license = "GPL-3.0-or-later"
 
 [dependencies]
-datazen-driver-api = { path = "../../driver-api" }
+datazen-driver-api = { workspace = true }
 datazen-driver-http-support = { path = "../http-support" }
 async-trait = "0.1"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "net", "io-util", "macros"] }

@@ -7,7 +7,7 @@
 
 ## 全局状态
 
-- 当前阶段：**D3 基本完成**（词汇/端口/机制内核/连接资源运行时机制/编排归位 + wait_for_execution 第一步）；D2 完成 + D6 item 1 完成；下一步 **D4：Schema、表读写与 SQL 消费者**（kernel schema_cache → modules::schema；modules data_browsing/query_executor → table_browsing/table_editing；参考 06-first-slice-table-browsing.md）。
+- 当前阶段：**D6 收尾中**——item 1/2/3/4 已完成；item 5 已完成 5a/5b 两切片（export/backup + restore/backup 双网关）；余项：Wapps（workspace_apps）、Tunnel crate、connection_import、services 残余与收尾清理（见文末「D6 下一步」）。**D7（Web 宿主）已移出本次重构范围**（2026-10-26 决策，见「范围决策更新」），D8 在桌面单宿主范围内收尾。本行是正文各阶段小节的摘要，以正文为准；此前的 D3/D4 表述已过期两个阶段（F-12，2026-10-30 修正）。
 - 既有 flake 备注：`p4_usecase_journeys` 两用例在弱 CPU 沙箱偶发超时（D1 基线可复现、单跑通过、CI 绿），随 runtime 机制切片处理等待语义时一并解决。
 - **CI 待办（PR #133 打通验证链后新暴露，非迁移引入）**：`platform::native_tool::tests::native_desktop_forged_resolution_and_unverified_version_fail_closed` 在 ubuntu-latest 上失败（`tools.resolve(&selection)` 第二次 resolve 报 `BackendUnavailable("native tool unavailable or unverified")`，tests.rs:164）。该测试 8bf6eb5 后未改动、本沙箱通过——疑似 runner 环境敏感（首次真正在 CI 执行；此前每轮 run 都在更早步骤失败）。**这是 fail-closed 安全语义测试，修前先弄清 resolve 二次调用的失败机理，不许为绿放松校验**。另外 `p4_usecase_journeys`/`p4_usecase` 相关 9 个 ignored 与 CM-60 基准照旧。
 - 阶段与 PR 粒度：计划按 **D0–D8 九个阶段**推进（无 "wave" 概念，wave 仅是 coordinator 的

@@ -9,6 +9,8 @@ import type {
   SqlStatementRange,
   SqlTextRange,
 } from '@datazen/extension-points';
+import { getPlatformSync } from '../../../hooks/usePlatform';
+import { formatModKey } from '../../../lib/keymap';
 
 // Re-export consumers need
 export type { SqlStatementRange, SqlTextRange, SqlExecutionTarget };
@@ -67,7 +69,7 @@ export function isMacOS(): boolean {
 
 /** Returns the platform-aware shortcut label for execute action. */
 export function executeShortcutLabel(): string {
-  return isMacOS() ? '⌘ Enter' : 'Ctrl+Enter';
+  return `${formatModKey(getPlatformSync())}+Enter`;
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────

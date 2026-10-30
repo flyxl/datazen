@@ -34,7 +34,9 @@ vi.mock('@tauri-apps/api/core', () => ({
   },
 }));
 
-vi.mock('@datazen/frontend/src/lib/session/tableSession', () => ({ tableManualHandle: vi.fn(() => null) }));
+vi.mock('@datazen/frontend/testing/lib/session/tableSession.ts', () => ({
+  tableManualHandle: vi.fn(() => null),
+}));
 
 import {
   ApiError,
@@ -47,11 +49,11 @@ import {
   createDesktopBackendTransport,
   DESKTOP_BACKEND_ID,
 } from '../desktop/tauriBackendTransport';
-import { classifyGridError } from '@datazen/frontend/src/lib/gridErrors';
-import { hostErrorMessage } from '@datazen/frontend/src/lib/fkNavigationActions';
-import { databaseCommands } from '@datazen/frontend/src/commands/database';
-import { extractErrorMessage } from '@datazen/frontend/src/stores/tableData/connectionState';
-import type { RowChangePlan } from '@datazen/frontend/src/lib/tableChanges';
+import { classifyGridError } from '@datazen/frontend/testing/lib/gridErrors.ts';
+import { hostErrorMessage } from '@datazen/frontend/testing/lib/fkNavigationActions.ts';
+import { databaseCommands } from '@datazen/frontend/testing/commands/database.ts';
+import { extractErrorMessage } from '@datazen/frontend/testing/stores/tableData/connectionState.ts';
+import type { RowChangePlan } from '@datazen/frontend/testing/lib/tableChanges.ts';
 
 const PLAN: RowChangePlan = {
   planId: 'plan-1',

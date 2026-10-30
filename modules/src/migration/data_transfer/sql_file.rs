@@ -1085,25 +1085,11 @@ pub async fn execute_with_target(
                 .join(", "),
             source_table_ref(source_driver, job, &table.source_table)
         );
-        let scope = super::recordset::build_source_scope(
+        let scope = super::recordset::build_source_scope_for_driver(
             schema,
             mapping.and_then(|mapping| mapping.source_filter.as_ref()),
             mapping.and_then(|mapping| mapping.recordset.as_ref()),
-            source_driver.quote_char(),
-            &source_driver.driver_type(),
-            |index, data_type| {
-                // 占位符规则来自 SqlDialect 契约，旧驱动 API 逐条转发。
-                LegacySqlDialect::new(source_driver)
-                    .parameter_placeholder(index, data_type)
-                    .map_err(|error| TransferError::unsupported(error.to_string()))
-            },
-            |column| {
-                schema
-                    .columns
-                    .iter()
-                    .find(|candidate| candidate.name == column)
-                    .map(|column| column.data_type.clone())
-            },
+            source_driver,
         )?;
         scope.append_to(&mut query);
         let ir_types = match ir_rendering {

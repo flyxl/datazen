@@ -8,9 +8,9 @@ import {
   toSettings,
   type DesktopSettings,
 } from '../desktop/settingsClient';
-import type { AppSettings } from '@datazen/frontend/src/types/index';
-import type { DesktopHostServices } from '@datazen/frontend/src/platform/contracts';
-import { DEFAULT_MONITOR_SETTINGS } from '@datazen/frontend/src/types/dashboard';
+import type { AppSettings } from '@datazen/frontend/testing/types/index.ts';
+import type { DesktopHostServices } from '@datazen/frontend/testing/platform/contracts.ts';
+import { DEFAULT_MONITOR_SETTINGS } from '@datazen/frontend/testing/types/dashboard.ts';
 
 /**
  * The F4 settings demonstration contracts: the projection is the whole point.

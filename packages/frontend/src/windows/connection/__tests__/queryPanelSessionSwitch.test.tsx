@@ -34,6 +34,7 @@ vi.mock('../../../hooks/useI18n', () => ({
 
 vi.mock('../../../hooks/usePlatform', () => ({
   usePlatform: () => 'macos',
+  getPlatformSync: () => 'macos',
 }));
 
 vi.mock('../../../lib/nativeContextMenu', async (importOriginal) => ({
@@ -92,9 +93,7 @@ function controllerWith(behavior: {
   view?: SessionView | null;
   setContext?: (view: SessionView) => Promise<SessionView>;
 }): { controller: EditorSessionController; setContext: ReturnType<typeof vi.fn> } {
-  const setContext = vi.fn(
-    behavior.setContext ?? ((view: SessionView) => Promise.resolve(view)),
-  );
+  const setContext = vi.fn(behavior.setContext ?? ((view: SessionView) => Promise.resolve(view)));
   const controller = {
     execute: vi.fn().mockResolvedValue({ executionId: 'rollback-1' }),
     client: { getExecution: vi.fn().mockResolvedValue({ state: 'succeeded' }) },
@@ -154,8 +153,13 @@ describe('[tester] useQueryContextPath two-phase session switch', () => {
       schema: null,
       path: [],
     });
-    await waitFor(() => expect(schemaMocks.ensureNamespacePath).toHaveBeenCalledWith(['other'], 'sess-1'));
-    expect(panelMocks.updatePanel).toHaveBeenCalledWith('panel-1', { database: 'other', schema: undefined });
+    await waitFor(() =>
+      expect(schemaMocks.ensureNamespacePath).toHaveBeenCalledWith(['other'], 'sess-1'),
+    );
+    expect(panelMocks.updatePanel).toHaveBeenCalledWith('panel-1', {
+      database: 'other',
+      schema: undefined,
+    });
     // A clean session needs no transaction confirmation and no user prompt.
     expect(onSessionPrompt).not.toHaveBeenCalled();
   });
@@ -200,10 +204,13 @@ describe('[tester] useQueryContextPath two-phase session switch', () => {
 
     await waitFor(() => expect(setContext).toHaveBeenCalledTimes(1));
     expect(controller.execute).toHaveBeenCalledWith({
-      command: 'platform.rollbackTransaction', input: { defersCommit: true },
+      command: 'platform.rollbackTransaction',
+      input: { defersCommit: true },
     });
     expect(controller.client.getExecution).toHaveBeenCalledWith('rollback-1');
-    await waitFor(() => expect(schemaMocks.ensureNamespacePath).toHaveBeenCalledWith(['other'], 'sess-1'));
+    await waitFor(() =>
+      expect(schemaMocks.ensureNamespacePath).toHaveBeenCalledWith(['other'], 'sess-1'),
+    );
   });
 
   it('prompts a revision conflict and keeps the previous database', async () => {
@@ -218,10 +225,7 @@ describe('[tester] useQueryContextPath two-phase session switch', () => {
     });
 
     await waitFor(() =>
-      expect(onSessionPrompt).toHaveBeenCalledWith(
-        'query.session.revisionConflict',
-        undefined,
-      ),
+      expect(onSessionPrompt).toHaveBeenCalledWith('query.session.revisionConflict', undefined),
     );
     expect(setContext).toHaveBeenCalledTimes(1);
     expect(schemaMocks.switchDatabase).not.toHaveBeenCalled();

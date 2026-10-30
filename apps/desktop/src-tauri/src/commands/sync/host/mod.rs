@@ -11,10 +11,8 @@
 
 mod executor;
 pub(crate) mod recording;
-pub(super) mod select;
 pub(crate) mod selection;
 pub(crate) mod state;
-mod statements;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -26,6 +24,7 @@ use datazen_driver_api::{
     DatabaseType, SyncKeyContract, SyncSourceAdapter, SyncTargetAdapter, TableSchema,
 };
 
+use crate::data_sync::api::{generate_reviewed_batch_sql, BatchSqlContext, BatchSqlHost};
 use crate::data_sync::job::artifact::{ChangeSetArtifact, RelationIdentity};
 use crate::data_sync::job::host::{
     ArtifactRepositoryGuard, DataSyncHost, EndpointSession, KeysetPageSource, TableSchemaPair,
@@ -33,8 +32,8 @@ use crate::data_sync::job::host::{
 };
 use crate::data_sync::pairing::family_of;
 use crate::data_sync::{
-    require_data_sync_family, DataSyncError, Endpoint, RowChange, SqlStatement, SyncOptions,
-    SyncSourceFilter, TableMapping,
+    require_data_sync_family, select_by_key_sql, DataSyncError, Endpoint, RowChange, SqlStatement,
+    SyncOptions, SyncSourceFilter, TableMapping,
 };
 use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use datazen::services::schema_scope::metadata_schema;
@@ -506,7 +505,7 @@ impl DataSyncHost for HostDataSync {
                         pk_columns: side_pk.clone(),
                         key_contracts: contracts.clone(),
                         recordset_limit,
-                        select_by_key_sql: select::select_by_key_sql(
+                        select_by_key_sql: select_by_key_sql(
                             &dialect,
                             &quote,
                             &slot.session.database,
@@ -652,7 +651,9 @@ impl DataSyncHost for HostDataSync {
         changes: Vec<RowChange>,
         options: &SyncOptions,
     ) -> Result<Vec<SqlStatement>, DataSyncError> {
-        statements::generate(self, relation, source_table, target_table, changes, options)
+        // 复核门禁（空批次/未复核行/关系匹配）在 api 内先于本宿主的任何
+        // 查询执行；本实现只负责把租约、注册表与比较期缓存拼成上下文。
+        generate_reviewed_batch_sql(self, relation, source_table, target_table, changes, options)
     }
 
     fn now(&self) -> String {
@@ -667,6 +668,32 @@ impl DataSyncHost for HostDataSync {
             reason,
             "data-sync stage rejected before any port call"
         );
+    }
+}
+
+/// F4c-1 端口实现：把比较期缓存（`mapped_table_schemas` 落的
+/// `RelationMeta`）、适配器注册表与活动目标租约拼成装配上下文。
+///
+/// 查找顺序与下沉前的 `statements.rs` 一致：relation_meta → target_slot →
+/// source/target 适配器；失败路径与文本不变。
+impl BatchSqlHost for HostDataSync {
+    fn write_sql_context(&self, target_table: &str) -> Result<BatchSqlContext, DataSyncError> {
+        let meta = self.relation_meta(false, target_table)?;
+        let slot = self.target_slot()?;
+        let preview_source = self.sync_source_adapter(&meta.db_type)?;
+        let preview_target = self.sync_target_adapter(&meta.db_type)?;
+        Ok(BatchSqlContext {
+            family: slot.session.family.clone(),
+            database: meta.database.clone(),
+            schema: meta.schema.clone(),
+            schema_obj: meta.schema_obj.clone(),
+            columns: meta.columns.clone(),
+            column_types: meta.column_types.clone(),
+            pk_columns: meta.pk_columns.clone(),
+            preview_source,
+            preview_target,
+            target_driver: slot.session.driver.clone(),
+        })
     }
 }
 

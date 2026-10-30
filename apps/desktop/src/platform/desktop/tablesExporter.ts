@@ -13,8 +13,8 @@ import type {
   TablesExportProgressEvent,
   TablesExportRequest,
   TablesExportResult,
-} from '@datazen/frontend/src/platform/contracts';
-import { requirePlatform } from '@datazen/frontend/src/platform/contracts';
+} from '@datazen/frontend';
+import { requirePlatform } from '@datazen/frontend';
 
 export function createDesktopTablesExporter(): TablesExporterPort {
   return {

@@ -12,9 +12,9 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
-import { IS_DESKTOP_BUILD } from '@datazen/frontend/src/platform/env';
-import { cssColorToHex } from '@datazen/frontend/src/lib/surfaceBgCache';
-import type { WindowChromePort, WindowRouter } from '@datazen/frontend/src/platform/contracts';
+import { IS_DESKTOP_BUILD } from '@datazen/frontend';
+import { cssColorToHex } from '@datazen/frontend/shell';
+import type { WindowChromePort, WindowRouter } from '@datazen/frontend';
 
 async function focusMainWindow(): Promise<void> {
   if (!IS_DESKTOP_BUILD) return;
@@ -57,7 +57,10 @@ function resolveOpenerBackgroundColor(): string | undefined {
   return cssColorToHex(computed) ?? undefined;
 }
 
-async function openTauriWindow(label: string, options: import('@datazen/frontend/src/platform/contracts').OpenWindowOptions) {
+async function openTauriWindow(
+  label: string,
+  options: import('@datazen/frontend').OpenWindowOptions,
+) {
   const qs = new URLSearchParams(options.params ?? {}).toString();
   const url = qs ? `${SUB_WINDOW_ENTRY}?${qs}` : SUB_WINDOW_ENTRY;
   const backgroundColor = resolveOpenerBackgroundColor();
@@ -94,7 +97,7 @@ async function openTauriWindow(label: string, options: import('@datazen/frontend
   }
 }
 
-function openBrowserWindow(options: import('@datazen/frontend/src/platform/contracts').OpenWindowOptions) {
+function openBrowserWindow(options: import('@datazen/frontend').OpenWindowOptions) {
   const qs = new URLSearchParams(options.params ?? {}).toString();
   const url = qs ? `/window.html?${qs}` : '/window.html';
   window.open(url, '_blank', `width=${options.width ?? 800},height=${options.height ?? 640}`);
@@ -113,7 +116,7 @@ async function focusSingletonWindow(label: string): Promise<boolean> {
 
 export function openSingletonWindow(
   label: string,
-  options: import('@datazen/frontend/src/platform/contracts').OpenWindowOptions,
+  options: import('@datazen/frontend').OpenWindowOptions,
 ) {
   const inflight = singletonOpenInFlight.get(label);
   if (inflight) {
@@ -140,7 +143,7 @@ export function openSingletonWindow(
 /** Multi-instance opener — browser tabs / future web routes. */
 export function openMultiInstanceWindow(
   _label: string,
-  options: import('@datazen/frontend/src/platform/contracts').OpenWindowOptions,
+  options: import('@datazen/frontend').OpenWindowOptions,
 ) {
   openBrowserWindow(options);
 }

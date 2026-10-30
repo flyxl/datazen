@@ -65,10 +65,12 @@ P1（共享边界）、P3（Runtime 会话/资源/网关）、P4（桌面会话�
 DataZen 当前是一个基于 Tauri v2 的桌面数据库客户端，同时支持 GUI 模式和 headless MCP stdio 模式。前端通过 Tauri IPC（或 `@datazen/backend-client` 端口）进入宿主组装层，业务内核位于共享 Rust workspace。
 
 ```text
-React / TypeScript (src/)
+React / TypeScript
+  apps/desktop/          桌面壳（入口、platform/desktop、shell）
+  packages/frontend/     共享 UI `@datazen/frontend`（stores、组件、hooks、i18n、平台端口）
   │  Tauri IPC / @datazen/backend-client
   ▼
-src-tauri (desktop host)
+apps/desktop/src-tauri (desktop host, crate `datazen_desktop`)
   ├─ commands/       IPC 边界与参数/错误处理
   ├─ platform/       Tauri 组装根：PlatformAdapter、DesktopSessionBackend、身份/策略/仓储适配
   ├─ services/       薄宿主服务：Schema metadata、JobRegistry、Runtime command source
@@ -83,9 +85,10 @@ src-tauri (desktop host)
   │
   ▼
 packages/
-  ├─ driver-api/        Driver trait 与 Command/迁移/资源契约（唯一 Rust 契约包之一）
-  ├─ infra/             形态中立基础设施原语（脱敏、路径安全；原 platform-infra）
-  └─ backend-client/, driver-sdk/, wapp-sdk/, extension-points/, ui/, drivers/*   JS/TS 契约、UI 包与全部数据库驱动
+  ├─ driver-api/        Driver trait 与 Command/迁移/资源契约（Rust crate `datazen-driver-api`）
+  ├─ infra/             形态中立基础设施原语（脱敏、路径安全；crate `datazen-infra`）
+  └─ backend-client/, driver-sdk/, wapp-sdk/, extension-points/, ui/   TS 契约与 UI 包
+packages/drivers/*      全部数据库驱动（Cargo crate；多数尚无 package.json，pnpm 会跳过）
 
 modules/（单一业务 crate `datazen`，DDD 迁移后按功能分层）
   ├─ src/shared/        跨形态、无传输依赖的契约（ID、RequestContext、PortError、Clock；原 platform-api 契约层）
@@ -96,7 +99,7 @@ modules/（单一业务 crate `datazen`，DDD 迁移后按功能分层）
   ├─ src/workflow/ src/ai/ src/mcp/ src/dashboard/   共享 feature 逻辑（domain/application/engine 分层）
 ```
 
-依赖方向是单向的：`modules` 内 `shared` 契约层不依赖上层；各领域包的 `application` 依赖 `shared` 与 `driver-api`；`src-tauri` 是唯一把 Tauri、存储、网络和这些内核接起来的组装根。`scripts/check-platform-crate-boundaries.mjs` 对 Tauri/HTTP/UI 依赖做硬门禁。
+依赖方向是单向的：`modules` 内 `shared` 契约层不依赖上层；各领域包的 `application` 依赖 `shared` 与 `driver-api`；`apps/desktop/src-tauri` 是当前唯一把 Tauri、存储、网络和这些内核接起来的组装根。`scripts/check-platform-crate-boundaries.mjs` 对 Tauri/HTTP/UI 依赖做硬门禁。
 
 当前代码没有独立的 Web Server / Domain Service 层；桌面应用直接通过 Tauri IPC 进入 Rust backend。团队 Web 形态仍属于目标设计，不应在当前架构文档中描述为已实现能力。
 

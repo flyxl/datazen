@@ -2,7 +2,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WindowControls } from '../WindowControls';
 
-vi.mock('@datazen/frontend/src/hooks/useI18n', () => ({
+vi.mock('@datazen/frontend/testing/hooks/useI18n.ts', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 

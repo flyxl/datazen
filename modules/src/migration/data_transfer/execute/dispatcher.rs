@@ -163,25 +163,11 @@ pub async fn execute_transfer_data_with_resume_checkpoint(
             .tables
             .iter()
             .find(|mapping| mapping.source_table == table.source_table);
-        let source_scope = match super::super::recordset::build_source_scope(
+        let source_scope = match super::super::recordset::build_source_scope_for_driver(
             src_schema,
             mapping.and_then(|mapping| mapping.source_filter.as_ref()),
             mapping.and_then(|mapping| mapping.recordset.as_ref()),
-            src_quote,
-            &src_family,
-            |index, data_type| {
-                // 占位符规则来自 SqlDialect 契约，旧驱动 API 逐条转发。
-                LegacySqlDialect::new(src_driver)
-                    .parameter_placeholder(index, data_type)
-                    .map_err(|error| TransferError::unsupported(error.to_string()))
-            },
-            |column| {
-                src_schema
-                    .columns
-                    .iter()
-                    .find(|candidate| candidate.name == column)
-                    .map(|candidate| candidate.data_type.clone())
-            },
+            src_driver,
         ) {
             Ok(scope) => scope,
             Err(error) => {

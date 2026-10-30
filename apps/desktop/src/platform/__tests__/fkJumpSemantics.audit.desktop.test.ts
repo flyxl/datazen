@@ -31,20 +31,28 @@ vi.mock('@tauri-apps/api/core', () => ({
   },
 }));
 
-vi.mock('@datazen/frontend/src/lib/session/tableSession', () => ({ tableManualHandle: vi.fn(() => null) }));
+vi.mock('@datazen/frontend/testing/lib/session/tableSession.ts', () => ({
+  tableManualHandle: vi.fn(() => null),
+}));
 
 import { createBackendClient, selectBackend, setBackendClient } from '@datazen/backend-client';
 import {
   createDesktopBackendTransport,
   DESKTOP_BACKEND_ID,
 } from '../desktop/tauriBackendTransport';
-import { openForeignKeyTarget } from '@datazen/frontend/src/lib/fkNavigationActions';
-import { buildFkFilters, scrollTopForAnchorRow } from '@datazen/frontend/src/lib/fkNavigation';
-import { usePanelStore } from '@datazen/frontend/src/stores/panelStore';
-import { useTableDataStore } from '@datazen/frontend/src/stores/tableDataStore';
-import { useFkNavigationStore, resetFkNavigationEntryIds } from '@datazen/frontend/src/stores/fkNavigationStore';
-import type { TablePanel } from '@datazen/frontend/src/stores/panelTypes';
-import type { ForeignKeyInfo } from '@datazen/frontend/src/types/index';
+import { openForeignKeyTarget } from '@datazen/frontend/testing/lib/fkNavigationActions.ts';
+import {
+  buildFkFilters,
+  scrollTopForAnchorRow,
+} from '@datazen/frontend/testing/lib/fkNavigation.ts';
+import { usePanelStore } from '@datazen/frontend/testing/stores/panelStore.ts';
+import { useTableDataStore } from '@datazen/frontend/testing/stores/tableDataStore.ts';
+import {
+  useFkNavigationStore,
+  resetFkNavigationEntryIds,
+} from '@datazen/frontend/testing/stores/fkNavigationStore.ts';
+import type { TablePanel } from '@datazen/frontend/testing/stores/panelTypes.ts';
+import type { ForeignKeyInfo } from '@datazen/frontend/testing/types/index.ts';
 
 const SINGLE: ForeignKeyInfo = {
   name: 'orders_customer_fk',

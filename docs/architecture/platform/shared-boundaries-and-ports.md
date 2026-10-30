@@ -203,6 +203,14 @@ flowchart TD
 其 `specCrates` 同样点名 `axum`、`actix-web`、`warp`、`tonic`，覆盖范围比原 F-10 更宽
 （连带 `tauri`、`react` 与桌面宿主层）。因此 F-10 整条删除，其断言不被削弱。
 
+**`packages/driver-support` 归入 driver-api 层（2026-10-30，F3 下沉注册）。** 该 crate 是
+`sql_split` 与 `sql_identifiers` 的零依赖文本工具（刻意连 serde 都不带），单一消费者是
+`packages/driver-api`。守卫侧的 `LAYERS`（`scripts/lib/cargoWorkspace.mjs`）给它的是**既有
+`driver-api` 层**，不是新开一层：F-01 的 `allowedLayers: ['driver','driver-api']` 因此当天就
+覆盖它——驱动插件作者可以单独取用文本工具（这是 F3 的既定意图），而新开一层会让这条边变成
+违规、直到有人显式放宽。本段是分类决定的登记处，不新增 F 行：该 crate 零依赖，没有需要
+F-xx 断言的依赖面。
+
 ### 2.5 workspace 成员与前端接线（已实现）
 
 根 `Cargo.toml` 的 `members` 以 `modules` 作为唯一业务模块 crate；platform_api 的契约职责由 `modules` 内的 `shared` 命名空间承担（见 §2.2 现状注记），
@@ -213,8 +221,8 @@ flowchart TD
 members = [
     "apps/desktop/src-tauri",
     "packages/driver-api",
+    "packages/driver-support",
     "packages/infra",
-    "modules",
     "modules",
     "packages/drivers/*",
 ]
@@ -223,6 +231,9 @@ members = [
 [workspace.dependencies]
 datazen = { path = "modules", default-features = false }
 ```
+
+其中 `packages/driver-support` 是 F3 下沉的零依赖文本工具 crate（`sql_split` +
+`sql_identifiers`），单一消费者 `packages/driver-api`；层归属与边界登记见 §2.4 末段。
 
 与本文早期草案的差异：`server/` **没有**加进 `members`——`server/` 在仓库中不存在，该 crate 属更晚阶段；
 `packages/backend-client` 是 TypeScript 包，**不得**加入 Cargo `members`。`packages/drivers/*` 的通配与两个
@@ -1357,7 +1368,7 @@ F-07 是唯一不经过 `cargo metadata` 的规则：它的主体没有 `Cargo.t
 | --- | --- |
 | 读 `cargo metadata --format-version 1` | `cargoWorkspace.mjs` 的 `runCargoMetadata` |
 | 只用 `resolve.nodes`（feature-resolved 图），`packages[].dependencies` 不参与判定 | `cargoWorkspace.mjs` 的 `buildWorkspaceIndex` |
-| 层归属按**目录路径**而非 crate 名：`src-tauri`=host、`packages/drivers/*`=driver、`server`=server、`packages/backend-client` 是 `kind:'ts'` | `cargoWorkspace.mjs` 的 `LAYERS` 与 `classifyMemberDir` |
+| 层归属按**目录路径**而非 crate 名：`src-tauri`=host、`packages/drivers/*`=driver、`server`=server、`packages/backend-client` 是 `kind:'ts'`；`packages/driver-api` 与 `packages/driver-support` 同属 driver-api 层（§2.4 末段） | `cargoWorkspace.mjs` 的 `LAYERS` 与 `classifyMemberDir` |
 | 闭包 = normal + build，`dev` 边不计（`#[cfg(test)]` 依赖不算出货依赖） | `cargoWorkspace.mjs` 的 `normalBuildClosure`，只跟随 `dep_kinds` 为 `null` 或 `"build"` 的边 |
 | 列不出层的 workspace member 是 error 不是 pass | `check-platform-crate-boundaries.mjs` 里 `for (const bad of index.unclassified)` 那段 |
 | violations / errors → exit 1；advisory 只打印，不计入失败 | 退出码只看 `violations.length + errors.length`；advisory 走 `result.advisories` 单独打印 |

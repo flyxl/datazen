@@ -186,7 +186,20 @@ execution = [
 # D4：Schema 元数据缓存与 DDL 判定（依赖 execution 的 driver_registry）。
 schema = ["dep:tokio", "dep:datazen-infra", "execution"]
 # D4-c：表浏览读链路（依赖 schema 的 SchemaCache）。
-"table-browsing" = ["dep:serde_json", "schema"]
+# F4b api 用例层（读/预览）：请求 DTO 复用 grid 的表上下文词汇
+# （RowChangeTableContext 在 table-editing），目标注入策略在 mcp，
+# 目标/会话句柄词汇在 execution；async-trait 承载 TargetCommandRunner
+# 端口，tracing 记估计回退告警，driver-api 提供驱动与方言契约。
+"table-browsing" = [
+    "dep:async-trait",
+    "dep:serde_json",
+    "dep:tracing",
+    "dep:datazen-driver-api",
+    "schema",
+    "execution",
+    "mcp",
+    "table-editing",
+]
 # D4-d：表编辑写链路（依赖 schema 缓存 + execution 产物读取词汇）。
 "table-editing" = ["dep:async-trait", "dep:serde_json", "dep:uuid", "schema", "execution"]
 # D5：Schema Diff 引擎（原 schema-diff crate 整体归位；三件套之一）。
@@ -204,12 +217,13 @@ schema_diff = [
     "execution",
 ]
 # D5：Data Sync 引擎（原 data-sync crate 整体归位；三件套之二）。
-# rusqlite（bundled）随 comparison_store/plan_store 的 SQLite 侧实现进入——
-# 形态中立（非平台 API）；D7 Web 装配时再评估是否上收宿主。
+# fd-lock 随 comparison_store 的跨进程排他租约进入（host-boundary F1：
+# SQLite 排他事务换成 flock/LockFileEx，进程死亡由内核放锁；data_sync 不再
+# 依赖 rusqlite）。形态中立（非平台 API）。
 data_sync = [
     "dep:async-trait",
     "dep:base64",
-    "dep:rusqlite",
+    "dep:fd-lock",
     "dep:serde_json",
     "dep:uuid",
     "dep:sha2",
@@ -314,72 +328,76 @@ mcp = [
 webdriver = []
 
 [dependencies]
-async-trait = { version = "0.1", optional = true }
+async-trait = { workspace = true, optional = true }
 aes = { version = "0.8", optional = true }
-aes-gcm = { version = "0.10", optional = true }
+aes-gcm = { workspace = true, optional = true }
 argon2 = { version = "0.5", optional = true }
 # shared 常驻（id/context/error 词汇），serde 与 thiserror 因此非可选。
-serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", optional = true }
-thiserror = "1"
+serde = { workspace = true }
+serde_json = { workspace = true, optional = true }
+thiserror = { workspace = true }
 # execution feature：机制代码（会话 actor/账本/产物/隧道）。
 # futures-util / chrono 已在下方 ai / named_views 区声明（同名 optional dep），
 # 这里不重复声明。
 indexmap = { version = "2", optional = true }
-sha2 = { version = "0.10", optional = true }
-# D5 data_sync：comparison_store / plan_store 的 SQLite 侧实现所需。
-rusqlite = { version = "0.32.1", features = ["bundled"], optional = true }
-base64 = { version = "0.22", optional = true }
+sha2 = { workspace = true, optional = true }
+# comparison_store 的跨进程排他租约（flock / LockFileEx；宿主边界 F1 替换
+# SQLite 租约。单一消费者，按 P1 口径不上收 workspace 根表）。
+fd-lock = { version = "4", optional = true }
+# connection_import：读取 DBX 的 dbx.db（只读打开活库，先复制 -wal/-shm）。
+# data_sync 的比对租约已改用 fd-lock，不再依赖 rusqlite（host-boundary F1）。
+rusqlite = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
 cbc = { version = "0.1", optional = true }
 dirs = { version = "5", optional = true }
 # D6 item 5 切片 a：export 模块的多文件归档（仅 deflate，与 modules 同款）。
-zip = { version = "2", default-features = false, features = ["deflate"], optional = true }
+zip = { workspace = true, optional = true }
 # D5 data_transfer：sql_file 的 gzip 读写（.sql.gz 导入导出）。
 flate2 = { version = "1.1.9", optional = true }
-hmac = { version = "0.12", optional = true }
-libc = { version = "0.2", optional = true }
+hmac = { workspace = true, optional = true }
+libc = { workspace = true, optional = true }
 pbkdf2 = { version = "0.12", optional = true }
-rand = { version = "0.8", optional = true }
+rand = { workspace = true, optional = true }
 # table-editing feature：变更集 ID 生成
-uuid = { version = "1", features = ["v4", "serde"], optional = true }
+uuid = { workspace = true, optional = true }
 # dashboard schedule_grant 的只读 SQL 校验（解析/AST/visitor）。
-sqlparser = { version = "0.59", features = ["visitor"], optional = true }
+sqlparser = { workspace = true, optional = true }
 sha1 = { version = "0.10", optional = true }
 # ai feature：契约层链接期工厂注册
-inventory = { version = "0.3", optional = true }
+inventory = { workspace = true, optional = true }
 # ai feature：providers 的并发与流式传输
 tokio = { version = "1", features = ["rt", "sync", "time", "macros", "net", "fs", "io-util"], optional = true }
 tokio-util = { version = "0.7", features = ["rt"], optional = true }
-futures-util = { version = "0.3", optional = true }
-russh = { version = "0.60", optional = true }
-tokio-rustls = { version = "0.26", optional = true }
-tokio-tungstenite = { version = "0.26", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"], optional = true }
-url = { version = "2", optional = true }
+futures-util = { workspace = true, optional = true }
+russh = { workspace = true, optional = true }
+tokio-rustls = { workspace = true, optional = true }
+tokio-tungstenite = { workspace = true, optional = true }
+url = { workspace = true, optional = true }
 webpki-roots = { version = "0.26", optional = true }
-reqwest = { version = "0.13.3", default-features = false, features = ["rustls", "json", "stream", "cookies", "query", "form"], optional = true }
-tracing = { version = "0.1", optional = true }
+reqwest = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
 # ai feature：URL 脱敏等工具，来自垫底的 datazen-infra（drivers/modules/web/desktop 共用）
-datazen-infra = { path = "../packages/infra", optional = true }
+datazen-infra = { workspace = true, optional = true }
 
 # connection / named_views features：连接配置形状与 filters 词汇（driver 契约 crate，允许的依赖边）
-datazen-driver-api = { path = "../packages/driver-api", optional = true }
+datazen-driver-api = { workspace = true, optional = true }
 # shared::clock 的 SystemClock 生产实现常驻需要 chrono（D5 随 shared 自
 # platform-api 归位）。不再是可选依赖：shared 无 feature 门，且
 # run-platform-crate-tests.mjs 的单 feature 矩阵腿（settings/connection 等）
 # 不带 named_views，若可选则默认/单 feature 构建在 clock.rs 处编译破损。
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 # workflow feature：定义 YAML 编解码（registry encode/decode）。
-serde_yaml = { version = "0.9", optional = true }
+serde_yaml = { workspace = true, optional = true }
 # workflow feature：上下文模板 {{var}} 解析；ai feature：脱敏正则。
-regex = { version = "1", optional = true }
+regex = { workspace = true, optional = true }
 
 [dev-dependencies]
 syn = { version = "2", features = ["full", "parsing", "visit"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 # shared 词汇单测（Counter 序列化、RequestContext 往返等）需要 serde_json。
-serde_json = "1"
+serde_json = { workspace = true }
 # workflow 模型词汇单测（YAML 往返——workflow 在宿主侧以 YAML 落盘/导出）。
-serde_yaml = "0.9"
+serde_yaml = { workspace = true }
 # 机制测试（产物落盘恢复等）需要临时目录。
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "test-util"] }
@@ -388,14 +406,10 @@ tracing-subscriber = "0.3"
 # data_sync 测试：家族归一化（sync_family_of）走 inventory 链接期工厂，
 # 测试二进制必须链接 driver crate 才有工厂可查（与原 data-sync crate 的
 # dev-deps 对齐，否则 mysql/mariadb、tidb 等别名判定退化成异构对）。
-datazen-driver-postgres = { path = "../packages/drivers/postgres" }
-datazen-driver-mysql = { path = "../packages/drivers/mysql" }
-datazen-driver-sqlite = { path = "../packages/drivers/sqlite" }
+datazen-driver-postgres = { workspace = true }
+datazen-driver-mysql = { workspace = true }
+datazen-driver-sqlite = { workspace = true }
 
-[lints.rust]
-# 标识符只许 ASCII：中文测试名（2026-10-27 存量 160 个已全部改英文，
-# 见 test/ascii-test-identifiers 分支）会触发 rustc 的 non_snake_case
-# 告警刷屏 CI 日志；deny 让新增非 ASCII 标识符直接红编译，而不是等
-# 日志里再冒出来。注释与字符串字面量里的中文不受此 lint 影响。
-# （cm70_no_disk.rs 的 `fn 落盘` 是探测器自证样本 raw string，非标识符。）
-non_ascii_idents = "deny"
+[lints]
+# lint 定义上收 workspace 根（[workspace.lints.rust]），完整理由见根 Cargo.toml。
+workspace = true

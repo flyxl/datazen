@@ -76,7 +76,7 @@ export const LOCALE_SOURCE_DIR = 'src/locales';
 /**
  * Options for `assertHostGlobalKeysAllowed` and the tree/archive wrappers that
  * forward to it. `hostTable` defaults to the keys parsed out of
- * `apps/desktop/src/main.tsx`; `label` only decorates the failure message.
+ * `packages/frontend/src/bootstrap/startSharedApp.tsx`; `label` only decorates the failure message.
  *
  * @typedef {{
  *   modules?: string[],
@@ -183,8 +183,9 @@ export function stagedTreeComplete(stageDir) {
  * (track B: `builtin-ep` loaded from a blob: URL with no module resolution).
  *
  * Keys must cover the extension build's `external` list plus any bare
- * specifier used in dynamic `import()` inside the bundle. The host entry
- * (`apps/desktop/src/main.tsx`) populates `globalThis.__DATAZEN_HOST__` with THE SAME keys —
+ * specifier used in dynamic `import()` inside the bundle. The shared app
+ * bootstrap (`packages/frontend/src/bootstrap/startSharedApp.tsx`, called by
+ * the desktop entry) populates `globalThis.__DATAZEN_HOST__` with THE SAME keys —
  * keep both lists in sync or the blob-loaded bundle crashes on a missing key.
  * A pack-time throw on unmapped bare imports is intentional: fail here, not
  * in a user's WebView.
@@ -198,7 +199,8 @@ export const HOST_GLOBAL_NAME = '__DATAZEN_HOST__';
  * host singleton. Never replace an entry with that regex — a regexp here would
  * silently admit a module the host table does not provide, shipping a second
  * copy into the bundle (cross-realm identity split, no error at load).
- * Keep in sync with the `__DATAZEN_HOST__` table in `apps/desktop/src/main.tsx`;
+ * Keep in sync with the `__DATAZEN_HOST__` table in
+ * `packages/frontend/src/bootstrap/startSharedApp.tsx`;
  * `scripts/__tests__/pack-ep.test.ts` fails when the two drift apart.
  */
 export const HOST_SHARED_MODULES = [
@@ -254,7 +256,7 @@ function isBareSpecifier(spec) {
 function unmappedError(kind, spec) {
   return new Error(
     `[pack-ep] unmapped bare ${kind} "${spec}" — add it to HOST_SHARED_MODULES ` +
-      `and the host ${HOST_GLOBAL_NAME} table in src/main.tsx`,
+      `and the host ${HOST_GLOBAL_NAME} table in the shared app bootstrap`,
   );
 }
 
@@ -484,7 +486,10 @@ export function rewriteEpBundleFile(bundlePath, opts = {}) {
   return { bundlePath, rewritten };
 }
 
-export const HOST_TABLE_SOURCE = resolve(ROOT, 'apps/desktop/src/main.tsx');
+export const HOST_TABLE_SOURCE = resolve(
+  ROOT,
+  'packages/frontend/src/bootstrap/startSharedApp.tsx',
+);
 
 /**
  * @param {string} text literal text to embed in a RegExp source
@@ -646,7 +651,7 @@ function hostKeyError(violations, { globalName, label }) {
   for (const spec of violations.unmapped) {
     lines.push(
       `[pack-ep]   - unmapped host table key "${spec}" (absent from HOST_SHARED_MODULES ` +
-        `and from the ${globalName} table in src/main.tsx)`,
+        `and from the ${globalName} table in the shared app bootstrap)`,
     );
   }
   for (const spec of violations.allowListedOnly) {

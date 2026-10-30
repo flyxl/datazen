@@ -1,10 +1,9 @@
-# form-split F6（计划 §5.6 项1）：workspace 协议落地。`apps/*` 目前为空
-# glob（分家迁移合入后出现 apps/desktop）；`packages/drivers/*` 当前全部为
-# 纯 Rust crate + TS UI 目录（无 package.json，pnpm 跳过），列出的目的是
-# 驱动包未来获得 package.json 时自动纳入而无需改这里。既有 5 个 TS 包
-# （backend-client / driver-sdk / extension-points / ui / wapp-sdk）成为
-# 真 workspace importer —— 但在 F6-b 之前跨包解析仍骑在 vite / tsconfig /
-# vitest 三张 alias 表上，此提交仅落地协议本身（§7.1 风险实测见 worklog）。
+# pnpm workspace。`apps/*` 现有 apps/desktop（桌面壳 datazen-desktop）。
+# `packages/*` 含 frontend、ui、backend-client、driver-sdk、extension-points、
+# wapp-sdk，以及尚无 package.json 的 Rust 目录（infra、driver-api；pnpm 会跳过）。
+# `packages/drivers/*` 当前是 Cargo crate，多数没有 package.json，pnpm 跳过；
+# 列在这里是为了驱动以后补上 package.json 时自动纳入。
+# 跨包解析走 package exports（form-split F6-c2 已退役 vite/tsconfig/vitest alias）。
 packages:
   - apps/*
   - packages/*

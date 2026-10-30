@@ -4,6 +4,7 @@
 //! （domain：`ProfileRecord` / `ProfileRepository` / `ProfileReader` /
 //! `NamespaceTarget`；application：`ProfileView` 投影），platform-api 只再导出。
 
+pub mod api;
 pub mod application;
 pub mod domain;
 pub mod dto;

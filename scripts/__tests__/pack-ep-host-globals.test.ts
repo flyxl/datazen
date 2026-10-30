@@ -142,7 +142,9 @@ describe('rewriteEpImportsToHostGlobals (track B blob loading)', () => {
 });
 
 /**
- * Track G1 anti-drift guard. The host entry table (`apps/desktop/src/main.tsx`) and the
+ * Track G1 anti-drift guard. The host entry table
+ * (`packages/frontend/src/bootstrap/startSharedApp.tsx`, populated by the shared
+ * app bootstrap the desktop entry calls) and the
  * pack-time allow-list (`HOST_SHARED_MODULES`) are two halves of one
  * mechanism: pack-ep rewrites every bare import to
  * `globalThis.__DATAZEN_HOST__[spec]`, so a specifier present in one list but
@@ -152,7 +154,7 @@ describe('rewriteEpImportsToHostGlobals (track B blob loading)', () => {
  */
 describe('host shared module registry (G1 anti-drift guard)', () => {
   const hostTableKeys = parseHostGlobalTableKeys(
-    readFileSync(join(ROOT, 'apps/desktop/src/main.tsx'), 'utf8'),
+    readFileSync(join(ROOT, 'packages/frontend/src/bootstrap/startSharedApp.tsx'), 'utf8'),
   );
 
   it('parses both quoted specifiers and bare identifier keys from the host table', () => {
@@ -187,7 +189,7 @@ describe('host shared module registry (G1 anti-drift guard)', () => {
     const declaredOnly = HOST_SHARED_MODULES.filter((spec) => !published.has(spec));
     expect(
       declaredOnly,
-      `HOST_SHARED_MODULES declares ${declaredOnly.join(', ')} but apps/desktop/src/main.tsx never ` +
+      `HOST_SHARED_MODULES declares ${declaredOnly.join(', ')} but the shared app bootstrap never ` +
         `publishes them — a Pro import of those would ship signed and crash on load`,
     ).toEqual([]);
   });
@@ -223,7 +225,7 @@ describe('host shared module registry (G1 anti-drift guard)', () => {
  * imported shared package fail the build instead of being silently bundled as a
  * second copy of a host singleton (cross-realm identity split, no error at load).
  *
- * The registry-parity cases above read only `apps/desktop/src/main.tsx` and
+ * The registry-parity cases above read only the shared app bootstrap and
  * `scripts/pack-ep.mjs`, so they stay green if someone "tidies up" the two sides
  * into one rule. The case below closes that hole from the Host side **without
  * reading the extension's checkout**: it derives the admitted set from the
@@ -400,7 +402,7 @@ describe('[bug-002] artifact host-key invariant', () => {
 
   it('rejects an allow-listed key the host entry table never publishes', () => {
     // The second bypass class: the narrow list is a *declaration of intent*, the
-    // `apps/desktop/src/main.tsx` table is what exists at runtime. An entry present only in
+    // shared app bootstrap's `__DATAZEN_HOST__` table is what exists at runtime. An entry present only in
     // the declaration is an `undefined` deref at load, exactly like an unmapped
     // one — so it must be a hard failure too, not a silent pass.
     const code = `const a = globalThis.${HOST_GLOBAL_NAME}["react-dom/server"];`;

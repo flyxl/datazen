@@ -106,12 +106,13 @@ jobs:
       # 重新启动 pnpm 并执行 DATAZEN_VERIFY_DEPS_BEFORE_RUN=install 的前置
       # 依赖校验——4 次别名调用就是 4 次重复校验，与本步合并的理由自我矛盾。
       # 守卫脚本本体不变，只是调用方式与 check-managed-stubs 对齐。
-      - name: All strict guards (stubs, IDs, layers, boundaries, i18n keys)
+      - name: All strict guards (stubs, IDs, layers, boundaries, i18n keys, frontend entries)
         run: |
           node scripts/check-managed-stubs.mjs
           node scripts/check-id-terminology.mjs
           node scripts/check-module-layers.mjs
           node scripts/check-driver-import-boundaries.mjs
+          node scripts/check-frontend-public-entry.mjs
           node scripts/i18n-key-collision-check.mjs
 
       - name: Frontend unit tests

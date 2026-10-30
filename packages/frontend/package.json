@@ -9,8 +9,10 @@
   "types": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./src/*.css": "./src/*.css",
-    "./src/*": "./src/*.js"
+    "./app": "./src/app.ts",
+    "./shell": "./src/shell.ts",
+    "./styles.css": "./src/styles/globals.css",
+    "./testing/*": "./src/*"
   },
   "dependencies": {
     "@datazen/backend-client": "workspace:*",
@@ -28,7 +30,7 @@
     "marked": "^18.0.9",
     "recharts": "^3.10.1",
     "sql-formatter": "^15.6.10",
-    "xlsx": "^0.18.5",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "yaml": "^2.9.0"
   },
   "peerDependencies": {
