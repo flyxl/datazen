@@ -29,6 +29,9 @@ pub(super) struct LegacyFake {
     pub(super) disconnect_calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     connect_fails: bool,
     disconnect_fails: bool,
+    /// What a `query` command answers, when a test needs a real buffered
+    /// result instead of the echo payload.
+    buffered_query: Option<MultiQueryResult>,
 }
 
 impl LegacyFake {
@@ -40,7 +43,15 @@ impl LegacyFake {
             disconnect_calls: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             connect_fails: false,
             disconnect_fails: false,
+            buffered_query: None,
         }
+    }
+
+    /// Answer `query` with a buffered multi-statement result: the shape a
+    /// legacy driver hands back to `execute_command`.
+    pub(super) fn answering_query_with(mut self, answer: MultiQueryResult) -> Self {
+        self.buffered_query = Some(answer);
+        self
     }
 }
 
@@ -159,6 +170,15 @@ impl DatabaseDriver for LegacyFake {
         command: &str,
         input: serde_json::Value,
     ) -> Result<CommandResult, DriverError> {
+        if let (Some(answer), "query") = (&self.buffered_query, command) {
+            return Ok(CommandResult {
+                data: serde_json::to_value(answer).map_err(|error| {
+                    DriverError::QueryFailed(format!(
+                        "buffered answer is not serializable: {error}"
+                    ))
+                })?,
+            });
+        }
         Ok(CommandResult {
             data: serde_json::json!({ "command": command, "input": input }),
         })
@@ -339,6 +359,34 @@ async fn a_pool_of_one_is_not_reported_as_a_fixed_session() {
         "a legacy pool must never pass for a fixed session"
     );
     assert_eq!(descriptor.session_continuity, SessionContinuity::Unknown);
+}
+
+#[tokio::test]
+async fn a_driver_that_parks_one_client_may_answer_a_leased_session() {
+    // The opt-in: a driver whose `connect` parks exactly one physical client per
+    // handle answers "one pooled connection leased to this handle" — a fact
+    // rather than a gap. It is still not a reusable fixed session, so the guard
+    // above keeps holding for the same provider.
+    let provider = adapter(LegacyFake::new()).with_leased_session();
+    let descriptor = provider
+        .describe_resource(&DescribeResourceRequest {
+            connection_config: config(),
+            identity_scope: IdentityScope::default(),
+            target: target("app"),
+            purpose: ResourcePurpose::InteractiveQuery,
+        })
+        .await
+        .expect("describe succeeds");
+
+    assert_eq!(descriptor.session_continuity, SessionContinuity::Leased);
+    assert!(descriptor.declares_leased_session());
+    assert!(
+        !descriptor.is_fixed_session(),
+        "a lease is not a fixed session, however deliberately it was declared"
+    );
+    // The opt-in settles the continuity question only; it lifts no capability
+    // cell, so a driver that has not studied §6.1 is still refused by name.
+    assert!(provider.capabilities().require_stateful_session().is_err());
 }
 
 #[tokio::test]

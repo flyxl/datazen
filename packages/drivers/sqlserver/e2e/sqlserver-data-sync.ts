@@ -8,6 +8,7 @@
  * credentials. All scratch objects use a per-run `dz_e2e_*` schema.
  */
 import { expect, browser } from '@wdio/globals';
+import { dbSessionIdOf } from '../../../../e2e/lib/sessionId.js';
 
 const HOST = (process.env.E2E_SQLSERVER_HOST || '').trim();
 const PORT = Number(process.env.E2E_SQLSERVER_PORT || '1433');
@@ -157,7 +158,7 @@ describe('SQL Server Data Sync identity insert (live)', () => {
     let lastError: unknown;
     for (let attempt = 1; attempt <= 4; attempt += 1) {
       try {
-        return await invoke<string>('connect', { connectionId: id });
+        return dbSessionIdOf(await invoke<unknown>('connect', { connectionId: id }));
       } catch (error) {
         lastError = error;
         if (!String(error).toLowerCase().includes('not currently available') || attempt === 4) {

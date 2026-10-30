@@ -274,11 +274,74 @@ fn structure_has_cycle(
     Ok(visited != selected.len())
 }
 
+/// Split a driver-reported relation name into its identifier segments.
+///
+/// Each driver renders a relation in its own dialect: PostgreSQL and MySQL
+/// write `schema.table`, while SQL Server writes `[schema].[table]` and may
+/// carry a dot *inside* a bracketed identifier (`[my.schema].[orders]`).
+/// Splitting on the first `.` therefore reads a bracketed name as four
+/// segments and loses the reference; this scanner honours `[]`, `""` and
+/// backtick quoting and unquotes each segment as it goes.
+fn qualified_name_segments(name: &str) -> Vec<String> {
+    let mut segments = Vec::new();
+    let mut current = String::new();
+    let mut chars = name.trim().chars().peekable();
+    while let Some(character) = chars.next() {
+        match character {
+            '[' => {
+                while let Some(inner) = chars.next() {
+                    if inner == ']' {
+                        if chars.peek() == Some(&']') {
+                            chars.next();
+                            current.push(']');
+                            continue;
+                        }
+                        break;
+                    }
+                    current.push(inner);
+                }
+            }
+            '"' => {
+                while let Some(inner) = chars.next() {
+                    if inner == '"' {
+                        if chars.peek() == Some(&'"') {
+                            chars.next();
+                            current.push('"');
+                            continue;
+                        }
+                        break;
+                    }
+                    current.push(inner);
+                }
+            }
+            '`' => {
+                while let Some(inner) = chars.next() {
+                    if inner == '`' {
+                        if chars.peek() == Some(&'`') {
+                            chars.next();
+                            current.push('`');
+                            continue;
+                        }
+                        break;
+                    }
+                    current.push(inner);
+                }
+            }
+            '.' => {
+                segments.push(std::mem::take(&mut current));
+            }
+            other => current.push(other),
+        }
+    }
+    segments.push(current);
+    segments
+}
+
 /// Resolve driver-reported FK names to the source mapping key. PostgreSQL
-/// reports `schema.table`; the transfer plan keys tables by their selected
-/// bare name, so strip only the explicitly selected schema. An FK into any
-/// other schema remains a dependency error instead of being guessed by its
-/// final name segment.
+/// reports `schema.table`, SQL Server reports `[schema].[table]`; the transfer
+/// plan keys tables by their selected bare name, so strip only the explicitly
+/// selected schema. An FK into any other schema remains a dependency error
+/// instead of being guessed by its final name segment.
 fn canonical_source_table_name(
     referenced_table: &str,
     job: &TransferJob,
@@ -287,9 +350,20 @@ fn canonical_source_table_name(
     if selected.contains(referenced_table) {
         return Ok(referenced_table.to_string());
     }
-    if let Some((schema, table)) = referenced_table.split_once('.') {
-        if job.source.normalized_schema() == Some(schema) && selected.contains(table) {
-            return Ok(table.to_string());
+    let segments = qualified_name_segments(referenced_table);
+    if let Some(table) = segments.last() {
+        let schema = match segments.len() {
+            0 | 1 => None,
+            _ => segments.get(segments.len() - 2),
+        };
+        let schema_matches = match schema {
+            Some(schema) => job.source.normalized_schema() == Some(schema.as_str()),
+            // An unqualified reference comes from the session's schema, which
+            // is the schema this transfer reads from.
+            None => true,
+        };
+        if schema_matches && selected.contains(table) {
+            return Ok(table.clone());
         }
     }
     Err(TransferError::validation(format!(
@@ -1407,5 +1481,71 @@ mod database_plan_tests {
         assert!(plan[2..]
             .iter()
             .all(|item| item.kind == DdlPreviewKind::ForeignKey));
+    }
+}
+
+#[cfg(test)]
+mod foreign_key_reference_tests {
+    use super::*;
+    use crate::migration::data_transfer::model::Endpoint;
+    use crate::migration::data_transfer::sql_structure_fixtures::job;
+    use std::collections::BTreeSet;
+
+    fn selected(names: &[&str]) -> BTreeSet<String> {
+        names.iter().map(|name| (*name).to_string()).collect()
+    }
+
+    fn sqlserver_job() -> TransferJob {
+        let mut job = job(Vec::new());
+        job.source = Endpoint {
+            db_session_id: "source".into(),
+            database: "source_db".into(),
+            schema: Some("dz_e2e_src".into()),
+        };
+        job
+    }
+
+    #[test]
+    fn a_bracketed_sqlserver_reference_resolves_to_its_bare_table_name() {
+        let mapped = canonical_source_table_name(
+            "[dz_e2e_src].[parent]",
+            &sqlserver_job(),
+            &selected(&["parent", "child"]),
+        )
+        .expect("bracketed reference resolves");
+
+        assert_eq!(mapped, "parent");
+    }
+
+    #[test]
+    fn a_dot_inside_a_bracketed_identifier_is_not_a_qualifier_separator() {
+        let error = canonical_source_table_name(
+            "[my.schema].[parent]",
+            &sqlserver_job(),
+            &selected(&["parent"]),
+        )
+        .expect_err("a reference into another schema stays out of scope");
+
+        assert!(format!("{error}").contains("unselected or out-of-scope"));
+    }
+
+    #[test]
+    fn an_unqualified_bracketed_reference_resolves_within_the_selected_schema() {
+        let mapped =
+            canonical_source_table_name("[parent]", &sqlserver_job(), &selected(&["parent"]))
+                .expect("unqualified reference resolves");
+
+        assert_eq!(mapped, "parent");
+    }
+
+    #[test]
+    fn a_postgres_reference_keeps_its_two_segment_reading() {
+        let mut job = sqlserver_job();
+        job.source.schema = Some("public".into());
+
+        let mapped = canonical_source_table_name("public.parent", &job, &selected(&["parent"]))
+            .expect("postgres reference resolves");
+
+        assert_eq!(mapped, "parent");
     }
 }
