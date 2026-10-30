@@ -12,7 +12,9 @@
 > 已落地（`data_sync::api` 收复核批次/键读/preview 装配，宿主 `statements.rs`/
 > `select.rs` 删除、`apply.rs` 委托去重，见 §6 末尾实施记录）；F4c data_transfer
 > 预览刀已落地（源范围闭包六处收口 + COUNT 装配/解析下沉，宿主 `preview.rs`
-> 858→775 行只剩传输编排，见 §6 末尾实施记录）；F4c 余下 schema_diff 复核待做。
+> 858→775 行只剩传输编排，见 §6 末尾实施记录）；F4c schema_diff 复核刀已落地
+> （目录/快照/计划展开/复核消费/部署验证/单表对比六文件下沉 `schema_diff::api`，
+> 宿主只剩端口与 JobRuntime 接线，见 §6 末尾实施记录）。F4c 四刀至此全部完成。
 > 该分支同时合入代码组织评审（`code-organization-review.md`），两份计划的统一执行顺序见其 §4。
 > 本文放在分支 `docs/path-facts-after-form-split`，不打开 PR，避免每次推送触发 CI。
 > 合并前仍以代码为准；本文只约束这一组后续改动的切法。
@@ -263,6 +265,16 @@ F3 第一刀已落地：
 3. **driver-support 零依赖**：新 crate 无任何 dependencies（连 serde 都没有），驱动插件作者可单独取文本工具。单一消费者，按 P1 口径 path 依赖不上收 workspace 根表。
 4. **验证**：`cargo check` 三级绿（driver-support / driver-api / modules），搬入的 14 个内嵌测试全绿，`PROTOCOL_VERSION`（=6）与 `MIN_PROTOCOL_VERSION`（=1）未动，前端零新依赖。
 
+F4c schema_diff 复核刀已落地（F4c 收官刀：目录/快照/计划展开/复核消费/部署验证/单表对比整体下沉）：
+
+1. **切口**：宿主 `commands/schema_diff/` 的算法面六文件下沉后**删除**——`dependency_catalog.rs`（356 行，目标依赖目录读取与完整性校验）、`object_scope.rs`（390 行，SQL Server 对象范围门）、`unified_plan/catalog.rs`（256 行，统一计划目录装配）、`unified_plan/revalidation.rs`（114 行，源快照复核）与两份算法测试 `tests/{catalog,selectors}.rs`；`unified_plan.rs` 632→116、`plan_commands.rs` 404→106、`compare_commands.rs` 179→71、`deploy_commands.rs` 466→344。modules 侧新建 `migration/schema_diff/api.rs`（2369 行）收全部用例编排：`prepare_table_plan` / `prepare_unified_plan`（计划展开）、`consume_and_verify_reviewed_plan` / `revalidate_source_snapshot`（复核消费与部署前双端验证）、`compare_table_schemas`（单表列级对比 + DDL 预览）、`list/fetch_schema_objects` 与目录/快照读取族、`validate_target_dependency_catalog`、SQL Server 范围门两函数。
+2. **端口**：`SchemaDiffAdapterHost`（sync 适配器对解析，桌面实现挂 `state.sync_adapters` 注册表，错误文本与下沉前逐字节一致）与 `ComparisonPreviewHost`（DDL 渲染与全类型读取由 data_transfer 提供，宿主薄转发 `transfer::full_types` / `transfer::ddl`）按 F4b `TargetCommandRunner` 先例落宿主；`SchemaDiffEndpoint`（driver + handle + config 借用集）为下沉侧端点入参，由宿主 `runtime_session_context` 构造。`reviewed_repository.rs`（569 行）保留宿主——reviewed-plan 存储端口的桌面单租户实现，非算法；`job.rs`（JobRuntime 接线，P5 Wave-1 轨）与历史记账、只读/破坏性门同样留宿主。
+3. **错误路线**：`SchemaDiffApiError::{Driver,Validation,Internal}` 三变体与桌面此前内联构造的 `CommandError` 一一对应（`Driver` 的 `NotSupported` → `Validation` 分叉在 api 侧完成），桌面 `From<SchemaDiffApiError> for CommandError` 是唯一一份桌面映射表，Web 宿主以后自持 HTTP 版。验证序列的错误顺序与文本逐字节不变。
+4. **sync 域顺带归位**：`commands/sync/compare.rs` 的 IR 对比算法（`format_ir_type` / `ir_column_snapshot` / `diff_table_schemas_ir`，105 行）下沉 `modules::schema_diff::compare`，宿主文件只剩 COUNT 装配；宿主 `sync/tests.rs` 里断言这些函数的 6 个算法测试（4 IR + 2 raw diff）同批迁 modules `compare.rs` 内嵌测试，`sync/tests.rs` 1105→896 只剩传输/集成测试。
+5. **测试**：算法测试 7 个（目录读取、选择器解析、范围门，原 `tests/{catalog,selectors}.rs`）逐字迁 `api_tests.rs`（MockDriver 取 driver-api 公开测试替身，桌面 `crate::testing::mock_driver` 即其再导出）；IR 对比 6 个迁 `compare.rs`。modules `--features schema_diff` 1133/1133 绿（原 1120 + 迁移 13）；宿主保留的 `tests/plan_deploy.rs` 断言经宿主装配的映射与集成，零改动。
+6. **验收达成**：宿主 schema_diff 域（含 `schema_diff.rs` 与测试）6,108→3,612 行，生产代码不再含 SQL 拼装、目录读取、计划展开与快照复核（残留 SQL 字符串仅在测试断言/fixture）；连同 sync 域顺带归位，宿主侧净删 2,705 行。
+7. **验证**：modules check 绿 + `--features schema_diff` 测试 1133/1133；rustfmt 全部改过文件通过；`check-module-layers` / `check-ddd-layers` 门禁绿；`pnpm typecheck` 绿（tsrs 三配置）；前端单元套件本刀为纯 Rust 改动，沙箱内抽样运行（含全部 scripts/__tests__ 门禁测试）0 失败，全量套件与桌面 crate 同口径交 CI 验证（沙箱 ~10 分钟回收长进程，既有限制）。
+
 F4c data_transfer 预览刀已落地（源范围闭包四路收口 + COUNT 装配/解析下沉）：
 
 1. **切口**：`data_transfer/preview.rs`（宿主 858 行）的算法面是同一套源范围装配闭包的四份宿主拷贝（占位符经 `LegacySqlDialect` 转发、列类型从 schema 现查）——SQL 文件路径校验环、SQL 文件 write-plans 环、库目标校验环、库目标 typed 占位符渲染环；同一闭包集在 modules 侧还有两份（`execute/dispatcher.rs`、`job/handler.rs`）。收进 `recordset::build_source_scope_for_driver` 后六处共用一份；预览行数估计的 COUNT 装配（限定名 + WHERE 尾巴 + 参数顺序）与单格解析/限幅一并下沉（`count_scoped_rows_sql` / `parse_scoped_row_count`），执行留在宿主（租约与驱动错误映射在彼）。宿主 `preview.rs` 858→775 行，剩余为会话上下文、适配器注册表、schema 装载调用与计划签发——与 F4b 保留的宿主传输机器同类，非算法。
@@ -315,6 +327,6 @@ F4a 第一刀已落地：
 | F4a | `connection::api` + 桌面胶水变薄（第一刀已落地：CRUD + `resolve_test_config`；会话/隧道编排按方案留宿主） | IPC 载荷与错误码不变；宿主测试只覆盖映射 |
 | F4b | 表读取两用例（第二刀已落地：`table_browsing::api` 的 `read_table_page`/`preview_table_read` + `TargetCommandRunner` 端口；query/schema 薄命令不动） | IPC 载荷与错误码不变；宿主不再含 SQL 拼装/行合并/计划展开 |
 | ~~export、backup~~ | **复核结论（2026-10-30）：无需 F4 刀**——D6 item 5 已把它们落到目标形态（算法在 `modules::export`/`modules::backup`，宿主 `export.rs`/`backup.rs` 只剩端口实现 + 对话框/事件绑定），本方案写就时未计入 | 宿主不再含算法（已达成） |
-| F4c… | sync / data_transfer / schema_diff，按第 3 节顺序逐个用例下沉（**sync 刀已落地**：`host/statements.rs`、`host/select.rs` 下沉 `data_sync::api`，`apply.rs` 循环体委托同一装配去重，`BatchSqlHost` 端口单方法落宿主；**data_transfer 预览刀已落地**：源范围闭包四宿主拷贝 + 两 modules 拷贝收进 `recordset::build_source_scope_for_driver/_for_family`（Job handler 的 family 来源=端点配置类型，保住分叉），COUNT 装配/解析下沉 `count_scoped_rows_sql`/`parse_scoped_row_count`，执行留宿主租约侧，宿主 `preview.rs` 858→775 只剩传输编排；待做：schema_diff 复核；modules 侧 `migration::{data_sync,data_transfer,schema_diff}` 已有 4 万行对应域，下沉是接合不是新建） | 每刀删除宿主中的对应实现（sync 刀已达成：宿主不再含写路径 SQL 拼装与键读 SELECT；data_transfer 预览刀已达成：宿主 `preview.rs` 不再含源范围 SQL 装配与 COUNT 装配/解析） |
+| F4c… | sync / data_transfer / schema_diff，按第 3 节顺序逐个用例下沉（**sync 刀已落地**：`host/statements.rs`、`host/select.rs` 下沉 `data_sync::api`，`apply.rs` 循环体委托同一装配去重，`BatchSqlHost` 端口单方法落宿主；**data_transfer 预览刀已落地**：源范围闭包四宿主拷贝 + 两 modules 拷贝收进 `recordset::build_source_scope_for_driver/_for_family`（Job handler 的 family 来源=端点配置类型，保住分叉），COUNT 装配/解析下沉 `count_scoped_rows_sql`/`parse_scoped_row_count`，执行留宿主租约侧，宿主 `preview.rs` 858→775 只剩传输编排；**schema_diff 复核刀已落地**：目录/快照/计划展开/复核消费/部署验证/单表对比六文件下沉 `schema_diff::api`，`SchemaDiffAdapterHost`/`ComparisonPreviewHost` 端口落宿主，sync 域 IR 对比算法顺带归位 modules，宿主 schema_diff 域 6,108→3,612 行；modules 侧 `migration::{data_sync,data_transfer,schema_diff}` 已有 4 万行对应域，下沉是接合不是新建） | 每刀删除宿主中的对应实现（sync 刀已达成：宿主不再含写路径 SQL 拼装与键读 SELECT；data_transfer 预览刀已达成：宿主 `preview.rs` 不再含源范围 SQL 装配与 COUNT 装配/解析；schema_diff 复核刀已达成：宿主生产代码不再含目录读取、计划展开、快照复核与 IR 对比算法） |
 
 Web 宿主仍然不在这组 PR 里创建。`api` 模块不引用 Axum。隧道实现不迁出 `modules`。

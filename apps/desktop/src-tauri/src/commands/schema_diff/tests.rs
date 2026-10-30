@@ -3,18 +3,20 @@
 //! The test bodies are moved verbatim out of the former `schema_diff` god
 //! module and grouped by responsibility so that no single file grows past the
 //! repository's 800-line budget.
+//!
+//! host-boundary F4c-3：算法测试（目录读取、选择器解析、范围门）随实现
+//! 下沉 `modules` 的 `schema_diff::api` 测试；本树保留的是经宿主装配的
+//! 计划/部署/档案集成测试与端口映射测试。
 
 use super::*;
-use crate::schema_diff::types::{PlanStatement, RollbackCompleteness, StatementRisk};
-use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+use crate::schema_diff::SchemaDiffProfile;
+use crate::testing::mock_driver::MockDriverOptions;
 use datazen_driver_api::{
     ColumnSchema, ForeignKeyDeferrability, ForeignKeyInfo, TableInfo, TableType,
 };
 use std::collections::HashMap;
 
-mod catalog;
 mod plan_deploy;
-mod selectors;
 
 fn pg_fk(name: &str) -> ForeignKeyInfo {
     ForeignKeyInfo {

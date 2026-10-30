@@ -3,6 +3,7 @@
 //! D5（2026-10-26）自独立 crate `schema-diff` 整体归位；旧 crate 已在
 //! D8 退役，本模块保留唯一实现。
 
+pub mod api;
 pub mod compare;
 pub mod dependencies;
 pub mod dependency_graph;
