@@ -10,8 +10,9 @@
 > 实施记录）；F4b 第二刀已落地（`modules/src/table_browsing/api.rs` 收表读取
 > 两用例与 `TargetCommandRunner` 端口，见 §6 末尾实施记录）；F4c sync 写路径刀
 > 已落地（`data_sync::api` 收复核批次/键读/preview 装配，宿主 `statements.rs`/
-> `select.rs` 删除、`apply.rs` 委托去重，见 §6 末尾实施记录）；F4c 余下
-> data_transfer / schema_diff 待做。
+> `select.rs` 删除、`apply.rs` 委托去重，见 §6 末尾实施记录）；F4c data_transfer
+> 预览刀已落地（源范围闭包六处收口 + COUNT 装配/解析下沉，宿主 `preview.rs`
+> 858→775 行只剩传输编排，见 §6 末尾实施记录）；F4c 余下 schema_diff 复核待做。
 > 该分支同时合入代码组织评审（`code-organization-review.md`），两份计划的统一执行顺序见其 §4。
 > 本文放在分支 `docs/path-facts-after-form-split`，不打开 PR，避免每次推送触发 CI。
 > 合并前仍以代码为准；本文只约束这一组后续改动的切法。
@@ -262,6 +263,14 @@ F3 第一刀已落地：
 3. **driver-support 零依赖**：新 crate 无任何 dependencies（连 serde 都没有），驱动插件作者可单独取文本工具。单一消费者，按 P1 口径 path 依赖不上收 workspace 根表。
 4. **验证**：`cargo check` 三级绿（driver-support / driver-api / modules），搬入的 14 个内嵌测试全绿，`PROTOCOL_VERSION`（=6）与 `MIN_PROTOCOL_VERSION`（=1）未动，前端零新依赖。
 
+F4c data_transfer 预览刀已落地（源范围闭包四路收口 + COUNT 装配/解析下沉）：
+
+1. **切口**：`data_transfer/preview.rs`（宿主 858 行）的算法面是同一套源范围装配闭包的四份宿主拷贝（占位符经 `LegacySqlDialect` 转发、列类型从 schema 现查）——SQL 文件路径校验环、SQL 文件 write-plans 环、库目标校验环、库目标 typed 占位符渲染环；同一闭包集在 modules 侧还有两份（`execute/dispatcher.rs`、`job/handler.rs`）。收进 `recordset::build_source_scope_for_driver` 后六处共用一份；预览行数估计的 COUNT 装配（限定名 + WHERE 尾巴 + 参数顺序）与单格解析/限幅一并下沉（`count_scoped_rows_sql` / `parse_scoped_row_count`），执行留在宿主（租约与驱动错误映射在彼）。宿主 `preview.rs` 858→775 行，剩余为会话上下文、适配器注册表、schema 装载调用与计划签发——与 F4b 保留的宿主传输机器同类，非算法。
+2. **family 来源分叉（保住原来源）**：预览命令 / SQL 文件路径 / 执行 dispatcher 的 family 取驱动自报 `driver_type()`（`for_driver`）；Job handler 的 family 取端点配置类型（适配器注册表用它做键，桌面上游两者一致但来源不同）——`for_family` 显式收参，`for_driver` 是它的驱动自报特化。tuple 范围门（`tuple_ordering_supported`）与拒绝文本都消费该字符串，换成统一来源会在分叉时改变判定；一个测试用「驱动自报 fixture 拒绝、显式 postgresql 放行」钉死分叉。
+3. **错误路线**：闭包内 `TransferError::unsupported(error.to_string())` 原样保留——`DriverError::Unsupported` 的 Display 带 `Unsupported: ` 前缀，转发的是整串（测试钉死该前缀存活）；调用点各自的错误装饰（裸 Validation / `From<TransferError>` / `source driver cannot execute…` / `cannot render typed source scope preview: …` 前缀）留在宿主，`TransferError::Validation` 的 Display 即裸文本，IPC 字节不变。
+4. **测试**：新增 6 个——闭包版与驱动版同一断言面（等价性钉死）、过滤列类型经 schema 现查转发进占位符、family 来源分叉、占位符拒绝映射、COUNT 限定名三族（PG 无/有 schema、MySQL database）与 WHERE 尾巴、COUNT 解析四种拒绝文本 + 整数/字符串载体 + 限幅取小。data_transfer 闭包 1212/1212 绿（原 1206 + 新 6）；modules 27 feature 全集 2573/2573 绿。
+5. **验证**：`data_transfer` feature check 绿、27 feature 全集 check 绿（对齐宿主腿）；rustfmt 全部改过文件通过；`check-module-layers` / `check-ddd-layers` 门禁绿；桌面 crate 沙箱缺 GTK/WebKit 无法本地编译（既有限制，CI 验证），宿主文件经 rustfmt 解析 + 人工类型复查。
+
 F4c sync 写路径刀已落地（覆盖两个已探明切口 + 宿主重复装配消除）：
 
 1. **切口**：`sync/host/statements.rs`（复核批次 SQL 生成，180 行）与 `sync/host/select.rs`（§5.3 键读 SELECT，184 行）整体下沉后**删除**；`apply.rs` 的 `generate_data_sync_sql_impl`（ui-preview 命令）循环体与 statements.rs 是同一套装配序列的两份宿主拷贝（sqlserver 预检 → 投影复验 → preview 字面量 → qualify → identity 盖章），一并改为委托 modules 同一份装配——`exec.rs` 的 plan-preview 路径经同一函数自动受益。宿主 `apply.rs` 1177→682 行，`host/mod.rs` 增端口实现。
@@ -306,6 +315,6 @@ F4a 第一刀已落地：
 | F4a | `connection::api` + 桌面胶水变薄（第一刀已落地：CRUD + `resolve_test_config`；会话/隧道编排按方案留宿主） | IPC 载荷与错误码不变；宿主测试只覆盖映射 |
 | F4b | 表读取两用例（第二刀已落地：`table_browsing::api` 的 `read_table_page`/`preview_table_read` + `TargetCommandRunner` 端口；query/schema 薄命令不动） | IPC 载荷与错误码不变；宿主不再含 SQL 拼装/行合并/计划展开 |
 | ~~export、backup~~ | **复核结论（2026-10-30）：无需 F4 刀**——D6 item 5 已把它们落到目标形态（算法在 `modules::export`/`modules::backup`，宿主 `export.rs`/`backup.rs` 只剩端口实现 + 对话框/事件绑定），本方案写就时未计入 | 宿主不再含算法（已达成） |
-| F4c… | sync / data_transfer / schema_diff，按第 3 节顺序逐个用例下沉（**sync 刀已落地**：`host/statements.rs`、`host/select.rs` 下沉 `data_sync::api`，`apply.rs` 循环体委托同一装配去重，`BatchSqlHost` 端口单方法落宿主；待做：`data_transfer/preview.rs`、schema_diff 复核；modules 侧 `migration::{data_sync,data_transfer,schema_diff}` 已有 4 万行对应域，下沉是接合不是新建） | 每刀删除宿主中的对应实现（sync 刀已达成：宿主不再含写路径 SQL 拼装与键读 SELECT） |
+| F4c… | sync / data_transfer / schema_diff，按第 3 节顺序逐个用例下沉（**sync 刀已落地**：`host/statements.rs`、`host/select.rs` 下沉 `data_sync::api`，`apply.rs` 循环体委托同一装配去重，`BatchSqlHost` 端口单方法落宿主；**data_transfer 预览刀已落地**：源范围闭包四宿主拷贝 + 两 modules 拷贝收进 `recordset::build_source_scope_for_driver/_for_family`（Job handler 的 family 来源=端点配置类型，保住分叉），COUNT 装配/解析下沉 `count_scoped_rows_sql`/`parse_scoped_row_count`，执行留宿主租约侧，宿主 `preview.rs` 858→775 只剩传输编排；待做：schema_diff 复核；modules 侧 `migration::{data_sync,data_transfer,schema_diff}` 已有 4 万行对应域，下沉是接合不是新建） | 每刀删除宿主中的对应实现（sync 刀已达成：宿主不再含写路径 SQL 拼装与键读 SELECT；data_transfer 预览刀已达成：宿主 `preview.rs` 不再含源范围 SQL 装配与 COUNT 装配/解析） |
 
 Web 宿主仍然不在这组 PR 里创建。`api` 模块不引用 Axum。隧道实现不迁出 `modules`。

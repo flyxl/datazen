@@ -8,7 +8,7 @@
 use datazen_driver_api::TableSchema;
 
 use datazen_driver_api::sql_identifiers::quote_ident_sql;
-use datazen_driver_api::Value;
+use datazen_driver_api::{SqlDialect, Value};
 
 use super::error::TransferError;
 use super::filter::SourceFilter;
@@ -382,6 +382,116 @@ where
         params,
         count_params,
     })
+}
+
+/// Build one source scope from the live source driver's dialect and quoting.
+///
+/// 宿主边界 F4c-3 收口：预览命令、SQL 文件路径、执行 dispatcher 与 Job
+/// handler 原本各持一份相同的闭包（占位符经 `LegacySqlDialect` 转发、列
+/// 类型从 schema 现查）；收进本模块后各调用点共用一份。调用点保留各自
+/// 的错误装饰（前缀文本 / 映射表），错误本体与文本不变。
+pub fn build_source_scope_for_driver(
+    schema: &TableSchema,
+    source_filter: Option<&SourceFilter>,
+    recordset: Option<&TransferRecordset>,
+    driver: &dyn datazen_driver_api::DatabaseDriver,
+) -> Result<SourceScope, TransferError> {
+    build_source_scope_for_family(
+        schema,
+        source_filter,
+        recordset,
+        driver,
+        &driver.driver_type(),
+    )
+}
+
+/// The shared closure set with an explicit source family string.
+///
+/// Job handler 的 family 取自端点的配置类型（适配器注册表用它做键），
+/// 而不是驱动自报的 `driver_type()`；两者在桌面上游一致，但来源不同，
+/// 这里保住原来源。tuple 范围门（`tuple_ordering_supported`）与拒绝文
+/// 本都消费这个字符串，换成驱动自报会在来源分叉时改变判定。
+pub fn build_source_scope_for_family(
+    schema: &TableSchema,
+    source_filter: Option<&SourceFilter>,
+    recordset: Option<&TransferRecordset>,
+    driver: &dyn datazen_driver_api::DatabaseDriver,
+    source_driver_type: &str,
+) -> Result<SourceScope, TransferError> {
+    // 占位符规则来自 SqlDialect 契约，旧驱动 API 逐条转发。
+    let dialect = datazen_driver_api::LegacySqlDialect::new(driver);
+    build_source_scope(
+        schema,
+        source_filter,
+        recordset,
+        driver.quote_char(),
+        source_driver_type,
+        |index, data_type| {
+            dialect
+                .parameter_placeholder(index, data_type)
+                .map_err(|error| TransferError::unsupported(error.to_string()))
+        },
+        |column| {
+            schema
+                .columns
+                .iter()
+                .find(|candidate| candidate.name == column)
+                .map(|candidate| candidate.data_type.clone())
+        },
+    )
+}
+
+/// The COUNT query for one scoped source table (preview row estimates).
+///
+/// 执行留在宿主（它持有租约与驱动错误映射）；装配——限定名、WHERE 尾巴、
+/// 参数顺序——属于域。`scope.count_params` 与本 SQL 的占位符顺序一一对应。
+pub fn count_scoped_rows_sql(
+    driver: &dyn datazen_driver_api::DatabaseDriver,
+    endpoint: &super::model::Endpoint,
+    table: &str,
+    scope: &SourceScope,
+) -> String {
+    let relation = datazen_driver_api::sql_identifiers::qualify_relation_sql(
+        &driver.driver_type(),
+        Some(&endpoint.database),
+        endpoint.normalized_schema(),
+        table,
+        driver.quote_char(),
+    );
+    let mut sql = format!("SELECT COUNT(*) FROM {relation}");
+    if let Some(where_sql) = &scope.where_sql {
+        sql.push(' ');
+        sql.push_str(where_sql);
+    }
+    sql
+}
+
+/// Parse the single-cell COUNT result, then clamp it to the recordset limit.
+///
+/// `None`（无行 / 空行 / 空单元）与「非整数单元」是两种不同的拒绝，
+/// 文本与下沉前的宿主实现逐字一致。
+pub fn parse_scoped_row_count(
+    value: Option<&Value>,
+    limit: Option<u64>,
+) -> Result<u64, TransferError> {
+    let count = match value {
+        None => {
+            return Err(TransferError::validation(
+                "source count query returned no count",
+            ));
+        }
+        Some(Value::Integer(value)) => u64::try_from(*value)
+            .map_err(|_| TransferError::validation("source count was negative"))?,
+        Some(Value::String(value)) => value
+            .parse::<u64>()
+            .map_err(|_| TransferError::validation("source count was not an unsigned integer"))?,
+        Some(_) => {
+            return Err(TransferError::validation(
+                "source count query returned an unsupported value",
+            ));
+        }
+    };
+    Ok(limit.map_or(count, |limit| count.min(limit)))
 }
 
 fn tuple_ordering_supported(source_driver_type: &str) -> bool {

@@ -14,8 +14,7 @@ use crate::jobs::job::{Checkpoint, JobProgress};
 use crate::shared::clock::{Clock, SystemClock};
 use crate::shared::id::{ArtifactId, StageId};
 use datazen_driver_api::{
-    ConnectionHandle, DatabaseDriver, LegacySqlDialect, SqlDialect, SyncSourceAdapter,
-    SyncTargetAdapter, TableSchema, Value,
+    ConnectionHandle, DatabaseDriver, SyncSourceAdapter, SyncTargetAdapter, TableSchema, Value,
 };
 
 use async_trait::async_trait;
@@ -575,28 +574,14 @@ impl DataTransferHandler {
                         .tables
                         .iter()
                         .find(|m| m.source_table == table.source_table);
-                    let src_family_quote = source_driver.quote_char();
-                    // 占位符语法来自 SqlDialect 契约，旧驱动 API 逐条转发。
-                    let src_dialect = LegacySqlDialect::new(source_driver.as_ref());
+                    // family 取端点配置类型（适配器注册表的键），不是驱动自报。
                     let source_scope =
-                        match crate::migration::data_transfer::recordset::build_source_scope(
+                        match crate::migration::data_transfer::recordset::build_source_scope_for_family(
                             &src_schema,
                             mapping.and_then(|m| m.source_filter.as_ref()),
                             mapping.and_then(|m| m.recordset.as_ref()),
-                            src_family_quote,
+                            source_driver.as_ref(),
                             source_type,
-                            |index, data_type| {
-                                src_dialect
-                                    .parameter_placeholder(index, data_type)
-                                    .map_err(|e| TransferError::unsupported(e.to_string()))
-                            },
-                            |column| {
-                                src_schema
-                                    .columns
-                                    .iter()
-                                    .find(|c| c.name == column)
-                                    .map(|c| c.data_type.clone())
-                            },
                         ) {
                             Ok(scope) => scope,
                             Err(error) => return Ok(failed_stage(spec, error.to_string())),
@@ -634,7 +619,7 @@ impl DataTransferHandler {
                         source_scope: &source_scope,
                         source_table_ref: &table.source_table,
                         target_table_ref: &table.target_table,
-                        source_quote: src_family_quote,
+                        source_quote: source_driver.quote_char(),
                         target_type,
                         columns: &columns,
                         formatter: formatter_ref,

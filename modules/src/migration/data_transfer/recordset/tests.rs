@@ -1,6 +1,14 @@
 use super::*;
+use crate::migration::data_transfer::filter::FilterLogic;
+use crate::migration::data_transfer::model::Endpoint;
 use crate::migration::data_transfer::model::TransferRecordsetTupleRange;
+use async_trait::async_trait;
+use datazen_driver_api::filters::{FilterCondition, FilterOperator};
 use datazen_driver_api::ColumnSchema;
+use datazen_driver_api::{
+    ConnectionConfig, ConnectionHandle, DatabaseDriver, DatabaseType, DriverError,
+    MultiQueryResult, QueryResult, ServerInfo, TableInfo,
+};
 
 fn schema(primary_keys: &[&str]) -> TableSchema {
     TableSchema {
@@ -582,4 +590,327 @@ fn legacy_table_mapping_without_recordset_deserializes() {
     }))
     .unwrap();
     assert!(mapping.recordset.is_none());
+}
+
+// ---- F4c-3：共享闭包收口（for_driver / for_family、计数装配与解析）----
+
+/// 最小驱动夹具：只有身份与方言面（family、引号、占位符）是真行为，
+/// 会话方法全部 Unsupported——被测函数不开会话，宿主侧的执行留在租约上。
+struct FixtureDriver {
+    family: &'static str,
+    quote: char,
+    typed_placeholders: bool,
+    reject_placeholder: Option<&'static str>,
+}
+
+fn unsupported<T>() -> Result<T, DriverError> {
+    Err(DriverError::Unsupported("unused in test".into()))
+}
+
+#[async_trait]
+impl DatabaseDriver for FixtureDriver {
+    async fn cancel_query(&self, _: &ConnectionHandle) -> Result<(), DriverError> {
+        Ok(())
+    }
+    fn driver_type(&self) -> DatabaseType {
+        self.family.into()
+    }
+    fn quote_char(&self) -> char {
+        self.quote
+    }
+    fn parameter_placeholder(
+        &self,
+        index: usize,
+        data_type: Option<&str>,
+    ) -> Result<String, DriverError> {
+        if let Some(reason) = self.reject_placeholder {
+            return Err(DriverError::Unsupported(reason.into()));
+        }
+        if self.typed_placeholders {
+            Ok(format!("${index}::{}", data_type.unwrap_or("none")))
+        } else {
+            Ok("?".into())
+        }
+    }
+    async fn connect(&self, _: &ConnectionConfig) -> Result<ConnectionHandle, DriverError> {
+        unsupported()
+    }
+    async fn test_connection(&self, _: &ConnectionConfig) -> Result<ServerInfo, DriverError> {
+        unsupported()
+    }
+    async fn disconnect(&self, _: ConnectionHandle) -> Result<(), DriverError> {
+        Ok(())
+    }
+    async fn get_databases(&self, _: &ConnectionHandle) -> Result<Vec<String>, DriverError> {
+        unsupported()
+    }
+    async fn get_tables(
+        &self,
+        _: &ConnectionHandle,
+        _: &str,
+        _: Option<&str>,
+    ) -> Result<Vec<TableInfo>, DriverError> {
+        unsupported()
+    }
+    async fn get_table_schema(
+        &self,
+        _: &ConnectionHandle,
+        _: &str,
+        _: &str,
+        _: Option<&str>,
+    ) -> Result<TableSchema, DriverError> {
+        unsupported()
+    }
+    async fn query(&self, _: &ConnectionHandle, _: &str) -> Result<QueryResult, DriverError> {
+        unsupported()
+    }
+    async fn query_multi(
+        &self,
+        _: &ConnectionHandle,
+        _: &str,
+        _: Option<u32>,
+    ) -> Result<MultiQueryResult, DriverError> {
+        unsupported()
+    }
+    async fn query_with_params(
+        &self,
+        _: &ConnectionHandle,
+        _: &str,
+        _: &[Value],
+    ) -> Result<QueryResult, DriverError> {
+        unsupported()
+    }
+    async fn execute(&self, _: &ConnectionHandle, _: &str) -> Result<u64, DriverError> {
+        unsupported()
+    }
+}
+
+#[test]
+fn for_driver_assembles_typed_placeholders_schema_types_and_driver_quoting() {
+    // 与 two_column_tuple_uses_native_row_predicates_and_declared_scan_order
+    // 同一断言面：闭包版与驱动版产出逐字相同的 SQL，钉住收口前后的等价性。
+    let schema = schema(&["name", "id"]);
+    let recordset = tuple_recordset(
+        &["name", "id"],
+        Some((
+            vec![serde_json::json!("東京"), serde_json::json!("-8")],
+            true,
+        )),
+        Some((
+            vec![serde_json::json!("東京"), serde_json::json!("2147483647")],
+            false,
+        )),
+    );
+    let driver = FixtureDriver {
+        family: "postgresql",
+        quote: '"',
+        typed_placeholders: true,
+        reject_placeholder: None,
+    };
+    let scope = build_source_scope_for_driver(&schema, None, Some(&recordset), &driver).unwrap();
+    assert_eq!(
+        scope.where_sql.as_deref(),
+        Some(
+            r#"WHERE ("name", "id") >= ($1::TEXT, $2::INTEGER) AND ("name", "id") < ($3::TEXT, $4::INTEGER)"#
+        )
+    );
+    assert_eq!(
+        scope.recordset_sql.as_deref(),
+        Some(r#"ORDER BY "name" ASC, "id" ASC"#)
+    );
+    assert_eq!(scope.count_params.len(), 4);
+}
+
+#[test]
+fn for_driver_forwards_filter_column_types_into_placeholders() {
+    let schema = schema(&["id"]);
+    let filter = SourceFilter::new(
+        vec![
+            FilterCondition {
+                column: "name".into(),
+                operator: FilterOperator::Eq,
+                value: Value::String("active".into()),
+                connector: None,
+            },
+            FilterCondition {
+                column: "id".into(),
+                operator: FilterOperator::Gt,
+                value: Value::Integer(2),
+                connector: None,
+            },
+        ],
+        FilterLogic::And,
+    )
+    .unwrap();
+    let driver = FixtureDriver {
+        family: "postgresql",
+        quote: '"',
+        typed_placeholders: true,
+        reject_placeholder: None,
+    };
+    let scope = build_source_scope_for_driver(&schema, Some(&filter), None, &driver).unwrap();
+    // 列类型从 schema 现查（name=TEXT、id=INTEGER），占位符经驱动方言转发。
+    assert_eq!(
+        scope.where_sql.as_deref(),
+        Some(r#"WHERE ("name" = $1::TEXT) AND ("id" > $2::INTEGER)"#)
+    );
+    assert!(matches!(
+        scope.params.as_slice(),
+        [Value::String(name), Value::Integer(2)] if name == "active"
+    ));
+}
+
+#[test]
+fn tuple_range_family_comes_from_the_caller_not_the_driver_self_report() {
+    let schema = schema(&["name", "id"]);
+    // 文本分量两端相等（排序规则门放行），整数分量拉开区间。
+    let recordset = tuple_recordset(
+        &["name", "id"],
+        Some((vec![serde_json::json!("a"), serde_json::json!(1)], true)),
+        Some((vec![serde_json::json!("a"), serde_json::json!(9)], true)),
+    );
+    // 驱动自报 fixture：不在 tuple 排序白名单里，for_driver 必须拒绝。
+    let driver = FixtureDriver {
+        family: "fixture",
+        quote: '"',
+        typed_placeholders: false,
+        reject_placeholder: None,
+    };
+    let error = build_source_scope_for_driver(&schema, None, Some(&recordset), &driver)
+        .expect_err("fixture family cannot guarantee tuple ordering");
+    assert_eq!(
+        error.to_string(),
+        "source driver 'fixture' cannot guarantee matching composite tuple predicate and scan ordering"
+    );
+    // for_family 保住调用方来源（Job handler 用端点配置类型）：同一驱动、
+    // 显式 postgresql family → 放行。
+    let scope =
+        build_source_scope_for_family(&schema, None, Some(&recordset), &driver, "postgresql")
+            .unwrap();
+    assert!(scope.where_sql.is_some());
+}
+
+#[test]
+fn placeholder_refusal_maps_to_unsupported_with_the_driver_text() {
+    let schema = schema(&["id"]);
+    let recordset = rs(Some("id"));
+    let driver = FixtureDriver {
+        family: "postgresql",
+        quote: '"',
+        typed_placeholders: false,
+        reject_placeholder: Some("driver refuses typed placeholders"),
+    };
+    let error = build_source_scope_for_driver(&schema, None, Some(&recordset), &driver)
+        .expect_err("placeholder refusal must surface");
+    // DriverError::Unsupported 的 Display 带 "Unsupported: " 前缀，闭包原样
+    // 转发（error.to_string()），收口后不变。
+    assert!(
+        matches!(error, TransferError::Unsupported(ref message) if message == "Unsupported: driver refuses typed placeholders")
+    );
+    assert_eq!(
+        error.to_string(),
+        "Unsupported: driver refuses typed placeholders"
+    );
+}
+
+fn count_endpoint() -> Endpoint {
+    Endpoint {
+        db_session_id: "session-1".into(),
+        database: "appdb".into(),
+        schema: Some("  ".into()),
+    }
+}
+
+#[test]
+fn count_scoped_rows_sql_qualifies_and_appends_the_where_tail() {
+    let mut endpoint = count_endpoint();
+    let driver = FixtureDriver {
+        family: "postgresql",
+        quote: '"',
+        typed_placeholders: false,
+        reject_placeholder: None,
+    };
+    // 空白 schema 被归一化掉：PG 系限定名只带表名。
+    let scope = SourceScope {
+        where_sql: None,
+        recordset_sql: None,
+        params: Vec::new(),
+        count_params: Vec::new(),
+    };
+    assert_eq!(
+        count_scoped_rows_sql(&driver, &endpoint, "users", &scope),
+        r#"SELECT COUNT(*) FROM "users""#
+    );
+    // WHERE 尾巴原样接上；参数顺序由 scope.count_params 承诺。
+    let scoped = SourceScope {
+        where_sql: Some(r#"WHERE "id" > $1"#.into()),
+        recordset_sql: None,
+        params: vec![Value::Integer(2)],
+        count_params: vec![Value::Integer(2)],
+    };
+    assert_eq!(
+        count_scoped_rows_sql(&driver, &endpoint, "users", &scoped),
+        r#"SELECT COUNT(*) FROM "users" WHERE "id" > $1"#
+    );
+    // 有 schema 走 schema.table；MySQL 系走 database.table（schema 被忽略）。
+    endpoint.schema = Some("public".into());
+    assert_eq!(
+        count_scoped_rows_sql(&driver, &endpoint, "users", &scope),
+        r#"SELECT COUNT(*) FROM "public"."users""#
+    );
+    let mysql = FixtureDriver {
+        family: "mysql",
+        quote: '`',
+        typed_placeholders: false,
+        reject_placeholder: None,
+    };
+    assert_eq!(
+        count_scoped_rows_sql(&mysql, &endpoint, "users", &scope),
+        "SELECT COUNT(*) FROM `appdb`.`users`"
+    );
+}
+
+#[test]
+fn parse_scoped_row_count_rejects_shapes_and_clamps_to_the_limit() {
+    // 无行 / 空行 / 空单元：单一拒绝文本。
+    assert_eq!(
+        parse_scoped_row_count(None, None).unwrap_err().to_string(),
+        "source count query returned no count"
+    );
+    // 负数与不可解析字符串是两种不同的拒绝。
+    assert_eq!(
+        parse_scoped_row_count(Some(&Value::Integer(-1)), None)
+            .unwrap_err()
+            .to_string(),
+        "source count was negative"
+    );
+    assert_eq!(
+        parse_scoped_row_count(Some(&Value::String("x".into())), None)
+            .unwrap_err()
+            .to_string(),
+        "source count was not an unsigned integer"
+    );
+    assert_eq!(
+        parse_scoped_row_count(Some(&Value::Bool(true)), None)
+            .unwrap_err()
+            .to_string(),
+        "source count query returned an unsupported value"
+    );
+    // 整数 / 字符串两种载体都能取数；限幅取小。
+    assert_eq!(
+        parse_scoped_row_count(Some(&Value::Integer(7)), None).unwrap(),
+        7
+    );
+    assert_eq!(
+        parse_scoped_row_count(Some(&Value::String("42".into())), None).unwrap(),
+        42
+    );
+    assert_eq!(
+        parse_scoped_row_count(Some(&Value::Integer(100)), Some(10)).unwrap(),
+        10
+    );
+    assert_eq!(
+        parse_scoped_row_count(Some(&Value::Integer(3)), Some(10)).unwrap(),
+        3
+    );
 }
