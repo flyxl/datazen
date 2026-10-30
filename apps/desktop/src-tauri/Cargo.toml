@@ -19,7 +19,11 @@ datazen-driver-api = { workspace = true }
 # Platform adapter (P1, 开发计划 :77)。方向是 host → platform-api / application，
 # 与 F-02 禁止的 application → host 相反，因此不受 crate 边界门禁限制。
 # 两个包都不依赖 Tauri / HTTP，desktop adapter 只在 host 侧引用它们。
-datazen = { workspace = true, features = ["application", "settings", "ai", "connection", "connection_import", "feature_error", "services", "named_views", "history", "execution", "schema", "schema_diff", "data_sync", "data_transfer", "table-browsing", "table-editing", "dashboard", "monitor", "export", "backup", "wapps", "tunnel"] }
+# 桌面二进制启用全部已落地业务 feature（host-boundary-followups F0：common/jobs/workflow/mcp
+# 此前由 data_sync/schema_diff/mcp 等传递打开，读清单的人会以为 MCP 没编进桌面）。
+# 未列出的 feature 不得被桌面意外打开；`cargo tree -p datazen_desktop -e normal,build,features -i datazen`
+# 的启用集合应与本清单一致（dev 行另加 test-harness）。
+datazen = { workspace = true, features = ["application", "settings", "ai", "connection", "connection_import", "feature_error", "services", "named_views", "history", "execution", "schema", "schema_diff", "data_sync", "data_transfer", "table-browsing", "table-editing", "dashboard", "monitor", "export", "backup", "wapps", "tunnel", "common", "jobs", "workflow", "mcp"] }
 # P5 JobRuntime 内核（§2/§5）：prepare/apply 经 runtime 受理，desktop 只做适配。
 # 形态中立的跨形态基础设施原语（脱敏 / 路径安全），零 datazen-* 依赖（F-11 反向 allow-list 兜底）。
 datazen-infra = { workspace = true }
