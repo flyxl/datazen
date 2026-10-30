@@ -27,7 +27,7 @@ mod tests;
 
 use std::collections::HashMap;
 
-use super::error::CommandError;
+use super::error::{CmdExt, CommandError};
 use super::AppState;
 use crate::schema_diff::deploy::{
     execute_schema_diff_deploy_at as run_schema_diff_deploy, plan_has_destructive, DeployOptions,
@@ -36,6 +36,10 @@ use crate::schema_diff::deploy::{
 use crate::schema_diff::types::{ColumnTypeOverride, SchemaDiffDeployResult, SchemaDiffPlan};
 use datazen_driver_api::SqlTarget;
 use tauri::State;
+
+// 子模块经 `super::` 取这些名字（私有导入对后代模块可见）；F4c-3 重写
+// 父模块时曾漏掉 `CmdExt` 与 `SchemaDiffProfile` 两项，CI 桌面腿抓回。
+use crate::schema_diff::SchemaDiffProfile;
 
 pub use datazen::migration::schema_diff::api as schema_diff_api;
 pub(crate) use datazen::migration::schema_diff::api::{
@@ -72,18 +76,22 @@ impl SchemaDiffAdapterHost for AppStateSchemaDiffAdapters<'_> {
         source_type: &str,
         target_type: &str,
     ) -> Result<PlanSyncAdapters, String> {
+        // 注册表以 `&DatabaseType`（= &String）为键；端口入参是 &str，
+        // 在此各自提升一次，查找与失败文本不变。
+        let source_type = source_type.to_owned();
+        let target_type = target_type.to_owned();
         self.state
             .sync_adapters
-            .ensure_pair(source_type, target_type)?;
+            .ensure_pair(&source_type, &target_type)?;
         let source = self
             .state
             .sync_adapters
-            .get_source(source_type)
+            .get_source(&source_type)
             .ok_or_else(|| "missing source sync adapter".to_string())?;
         let target = self
             .state
             .sync_adapters
-            .get_target(target_type)
+            .get_target(&target_type)
             .ok_or_else(|| "missing target sync adapter".to_string())?;
         Ok(PlanSyncAdapters { source, target })
     }
@@ -93,15 +101,17 @@ impl SchemaDiffAdapterHost for AppStateSchemaDiffAdapters<'_> {
         source_type: &str,
         target_type: &str,
     ) -> Option<ComparisonSyncAdapters> {
+        let source_type = source_type.to_owned();
+        let target_type = target_type.to_owned();
         self.state
             .sync_adapters
-            .ensure_pair(source_type, target_type)
+            .ensure_pair(&source_type, &target_type)
             .ok()?;
         Some(ComparisonSyncAdapters {
-            source_of_source: self.state.sync_adapters.get_source(source_type)?,
-            source_of_target: self.state.sync_adapters.get_source(target_type)?,
-            target_of_source: self.state.sync_adapters.get_target(source_type)?,
-            target_of_target: self.state.sync_adapters.get_target(target_type)?,
+            source_of_source: self.state.sync_adapters.get_source(&source_type)?,
+            source_of_target: self.state.sync_adapters.get_source(&target_type)?,
+            target_of_source: self.state.sync_adapters.get_target(&source_type)?,
+            target_of_target: self.state.sync_adapters.get_target(&target_type)?,
         })
     }
 }
