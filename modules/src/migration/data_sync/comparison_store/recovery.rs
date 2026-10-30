@@ -1,13 +1,12 @@
 //! Cross-process leases and safe reclamation for comparison-store directories.
 
-use rusqlite::{Connection, OpenFlags};
+use fd_lock::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
 use uuid::Uuid;
 
 #[cfg(unix)]
@@ -30,13 +29,19 @@ pub(super) struct StoreOwnerMarker {
     pub(super) store_id: Uuid,
 }
 
-/// A SQLite exclusive transaction is an OS-managed cross-process lease. The
-/// connection stays open for the lifetime of all stores created by this app
-/// process. If the process exits unexpectedly SQLite releases the lock, which
-/// lets a later process prove the owner is gone before reclaiming its stores.
+/// A kernel-managed cross-process lease over the owner's lock file
+/// (host-boundary follow-up F1: replaces the SQLite exclusive transaction).
+///
+/// The lock is `flock` on Unix / `LockFileEx` on Windows, held for the
+/// lifetime of all stores created by this app process: the file stays open,
+/// and if the process exits unexpectedly the kernel releases the lock when
+/// the descriptor closes. A later process proves an owner is gone by opening
+/// the same lock file and failing to acquire the lock (`WouldBlock` = owner
+/// alive), which is what lets it reclaim that owner's stores safely. The
+/// lock file's *content* is never read — only the kernel lock speaks.
 pub(super) struct OwnerLease {
     pub(super) id: Uuid,
-    _connection: Mutex<Connection>,
+    _lock: Mutex<RwLock<File>>,
 }
 
 impl std::fmt::Debug for OwnerLease {
@@ -53,6 +58,35 @@ impl std::fmt::Debug for OwnerLease {
 /// 租约是**按根**缓存的：租约文件本身住在根目录下的 `.owners/`，用另一个根的
 /// 租约去标记当前根的目录，会让陈旧目录永远无法被证明为可回收。
 static PROCESS_OWNER_LEASES: OnceLock<Mutex<HashMap<PathBuf, Arc<OwnerLease>>>> = OnceLock::new();
+
+/// 把一个已打开的锁文件变成「持有型」租约：`try_write` 成功后故意泄漏
+/// guard（guard 的 Drop 会立即解锁），返回持有 `File` 的 `RwLock`。
+/// 之后释放锁的唯一途径就是关闭文件——`RwLock` 被 drop 时 `File` 随之关闭，
+/// 内核放锁。这与进程崩溃时内核自动放锁是同一条生命周期，也是租约语义
+/// （「活到进程/句柄死为止」而不是「活到某个作用域为止」）的实现方式。
+fn lock_owner_file(file: File) -> Result<Option<RwLock<File>>, String> {
+    let mut lock = RwLock::new(file);
+    // 借用注意：`try_write` 的返回值（含 guard）借用 `lock`，match 臂内不能
+    // 移动它——先 break 出循环，借用结束后再构造返回值。
+    let acquired = loop {
+        match lock.try_write() {
+            Ok(guard) => {
+                std::mem::forget(guard);
+                break true;
+            }
+            // 锁被别人持有：owner 还活着，证明失败。
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => break false,
+            // flock(LOCK_NB) 可能被信号打断（EINTR），重试即可。
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => {
+                return Err(format!(
+                    "cannot lock Data Sync comparison owner lease: {error}"
+                ));
+            }
+        }
+    };
+    Ok(if acquired { Some(lock) } else { None })
+}
 
 pub(super) fn ensure_private_store_root(path: &Path) -> io::Result<PathBuf> {
     ensure_private_directory(path)?;
@@ -122,33 +156,21 @@ pub(super) fn acquire_owner_lease(root: &Path) -> Result<Arc<OwnerLease>, String
     ensure_private_directory(&owner_directory)
         .map_err(|error| format!("cannot prepare Data Sync comparison owner directory: {error}"))?;
     let owner_id = Uuid::new_v4();
-    let lock_path = owner_directory.join(format!("{owner_id}.sqlite"));
+    let lock_path = owner_directory.join(format!("{owner_id}.lock"));
     let lock_file = create_new_file(&lock_path)
         .map_err(|error| format!("cannot create Data Sync comparison owner lease: {error}"))?;
-    drop(lock_file);
-    let connection = Connection::open_with_flags(
-        &lock_path,
-        OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .map_err(|error| format!("cannot open Data Sync comparison owner lease: {error}"))?;
-    connection
-        .busy_timeout(Duration::ZERO)
-        .map_err(|error| format!("cannot configure Data Sync comparison owner lease: {error}"))?;
-    connection
-        .pragma_update(None, "journal_mode", "DELETE")
-        .map_err(|error| format!("cannot configure Data Sync comparison owner lease: {error}"))?;
-    connection
-        .execute_batch(
-            "CREATE TABLE IF NOT EXISTS owner_lease (id INTEGER PRIMARY KEY CHECK (id = 1)); BEGIN EXCLUSIVE;",
-        )
-        .map_err(|error| format!("cannot lock Data Sync comparison owner lease: {error}"))?;
-    #[cfg(unix)]
-    fs::set_permissions(&lock_path, fs::Permissions::from_mode(0o600))
-        .map_err(|error| format!("cannot secure Data Sync comparison owner lease: {error}"))?;
-    Ok(Arc::new(OwnerLease {
-        id: owner_id,
-        _connection: Mutex::new(connection),
-    }))
+    // A freshly created, uniquely named lock file cannot have a contender, so
+    // `WouldBlock` is impossible by construction — any failure here is fatal.
+    match lock_owner_file(lock_file) {
+        Ok(Some(lock)) => Ok(Arc::new(OwnerLease {
+            id: owner_id,
+            _lock: Mutex::new(lock),
+        })),
+        Ok(None) => Err(
+            "cannot lock Data Sync comparison owner lease: fresh lease is contended".to_string(),
+        ),
+        Err(error) => Err(error),
+    }
 }
 
 pub(super) fn create_store_directory(root: &Path, owner: &OwnerLease) -> io::Result<PathBuf> {
@@ -236,15 +258,24 @@ pub(super) fn has_valid_owner_marker(directory: &Path, owner_id: Uuid, store_id:
     )
 }
 
+/// 证明一个 owner 已经死亡：打开它的锁文件并尝试加锁。拿到锁 → owner
+/// 已死（或从未活过），返回的凭据持有锁直到 drop；`WouldBlock` → owner
+/// 还活着，返回 `None`。锁文件**内容**不参与证明——空的或乱写的锁文件
+/// 只说明 owner 没有洁癖，不说明它还活着。
+///
+/// 锁文件缺失（或不是普通文件，比如软链）时同样返回 `None`：证明不了
+/// 就不回收（fail closed）。
+pub(super) struct OwnerLeaseProof {
+    _lock: RwLock<File>,
+}
+
 pub(super) fn try_lock_existing_owner(
     root: &Path,
     owner_id: Uuid,
-) -> Result<Option<Connection>, String> {
-    let path = root
-        .join(OWNER_DIRECTORY)
-        .join(format!("{owner_id}.sqlite"));
-    let metadata = match fs::symlink_metadata(&path) {
-        Ok(metadata) if metadata.file_type().is_file() => metadata,
+) -> Result<Option<OwnerLeaseProof>, String> {
+    let path = root.join(OWNER_DIRECTORY).join(format!("{owner_id}.lock"));
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) if metadata.file_type().is_file() => {}
         Ok(_) => return Ok(None),
         Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
         Err(error) => {
@@ -252,31 +283,15 @@ pub(super) fn try_lock_existing_owner(
                 "cannot inspect Data Sync comparison owner lease: {error}"
             ));
         }
-    };
-    if metadata.len() == 0 {
-        return Ok(None);
     }
-    let connection = Connection::open_with_flags(
-        &path,
-        OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )
-    .map_err(|error| format!("cannot open Data Sync comparison owner lease: {error}"))?;
-    connection
-        .busy_timeout(Duration::ZERO)
-        .map_err(|error| format!("cannot configure Data Sync comparison owner lease: {error}"))?;
-    match connection.execute_batch("BEGIN EXCLUSIVE;") {
-        Ok(()) => Ok(Some(connection)),
-        Err(rusqlite::Error::SqliteFailure(error, _))
-            if matches!(
-                error.code,
-                rusqlite::ErrorCode::DatabaseBusy | rusqlite::ErrorCode::DatabaseLocked
-            ) =>
-        {
-            Ok(None)
-        }
-        Err(error) => Err(format!(
-            "cannot prove Data Sync comparison owner is stale: {error}"
-        )),
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&path)
+        .map_err(|error| format!("cannot open Data Sync comparison owner lease: {error}"))?;
+    match lock_owner_file(file)? {
+        Some(lock) => Ok(Some(OwnerLeaseProof { _lock: lock })),
+        None => Ok(None),
     }
 }
 
@@ -322,8 +337,8 @@ where
         if !has_valid_owner_marker(&directory, owner_id, store_id) {
             continue;
         }
-        let owner_connection = match try_lock_existing_owner(root, owner_id) {
-            Ok(Some(connection)) => connection,
+        let owner_proof = match try_lock_existing_owner(root, owner_id) {
+            Ok(Some(proof)) => proof,
             Ok(None) => continue,
             Err(error) => {
                 tracing::warn!(path = %directory.display(), error = %error, "cannot prove Data Sync comparison owner is stale");
@@ -335,11 +350,17 @@ where
                 tracing::warn!(path = %directory.display(), error = %error, "failed to reclaim stale Data Sync comparison store");
             }
         }
-        drop(owner_connection);
+        drop(owner_proof);
     }
     reap_unreferenced_owner_leases(root);
 }
 
+/// 回收无引用的 owner 租约文件。
+///
+/// 只认 F1 之后的 `.lock` 文件；旧版本留下的 `.sqlite` 租约**不读也不删**
+/// ——新代码无法证明其持有者死活，不动它是最安全的。其代价是升级前
+/// 崩溃残留的 comparison 目录不再被新版本回收（一次性遗留，量级为
+/// 崩溃当时的溢出结果），删除请手动清空存储根。
 pub(super) fn reap_unreferenced_owner_leases(root: &Path) {
     let mut referenced_owners = HashSet::new();
     let stores = match fs::read_dir(root) {
@@ -364,20 +385,20 @@ pub(super) fn reap_unreferenced_owner_leases(root: &Path) {
         let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
         };
-        let Some(owner_text) = name.strip_suffix(".sqlite") else {
+        let Some(owner_text) = name.strip_suffix(".lock") else {
             continue;
         };
         let Ok(owner_id) = Uuid::parse_str(owner_text) else {
             continue;
         };
-        if format!("{owner_id}.sqlite") != name || referenced_owners.contains(&owner_id) {
+        if format!("{owner_id}.lock") != name || referenced_owners.contains(&owner_id) {
             continue;
         }
-        let connection = match try_lock_existing_owner(root, owner_id) {
-            Ok(Some(connection)) => connection,
+        let proof = match try_lock_existing_owner(root, owner_id) {
+            Ok(Some(proof)) => proof,
             Ok(None) | Err(_) => continue,
         };
-        drop(connection);
+        drop(proof);
         if let Err(error) = fs::remove_file(&path) {
             if error.kind() != io::ErrorKind::NotFound {
                 tracing::debug!(path = %path.display(), error = %error, "could not remove stale Data Sync comparison owner lease");

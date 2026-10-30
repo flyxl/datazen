@@ -204,12 +204,13 @@ schema_diff = [
     "execution",
 ]
 # D5：Data Sync 引擎（原 data-sync crate 整体归位；三件套之二）。
-# rusqlite（bundled）随 comparison_store/plan_store 的 SQLite 侧实现进入——
-# 形态中立（非平台 API）；D7 Web 装配时再评估是否上收宿主。
+# fd-lock 随 comparison_store 的跨进程排他租约进入（host-boundary F1：
+# SQLite 排他事务换成 flock/LockFileEx，进程死亡由内核放锁；data_sync 不再
+# 依赖 rusqlite）。形态中立（非平台 API）。
 data_sync = [
     "dep:async-trait",
     "dep:base64",
-    "dep:rusqlite",
+    "dep:fd-lock",
     "dep:serde_json",
     "dep:uuid",
     "dep:sha2",
@@ -327,7 +328,11 @@ thiserror = { workspace = true }
 # 这里不重复声明。
 indexmap = { version = "2", optional = true }
 sha2 = { workspace = true, optional = true }
-# D5 data_sync：comparison_store / plan_store 的 SQLite 侧实现所需。
+# comparison_store 的跨进程排他租约（flock / LockFileEx；宿主边界 F1 替换
+# SQLite 租约。单一消费者，按 P1 口径不上收 workspace 根表）。
+fd-lock = { version = "4", optional = true }
+# connection_import：读取 DBX 的 dbx.db（只读打开活库，先复制 -wal/-shm）。
+# data_sync 的比对租约已改用 fd-lock，不再依赖 rusqlite（host-boundary F1）。
 rusqlite = { workspace = true, optional = true }
 base64 = { workspace = true, optional = true }
 cbc = { version = "0.1", optional = true }
