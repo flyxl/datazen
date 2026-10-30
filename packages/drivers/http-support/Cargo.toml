@@ -13,7 +13,7 @@ license = "GPL-3.0-or-later"
 exclude = ["tests/support/**"]
 
 [dependencies]
-datazen-driver-api = { path = "../../driver-api" }
+datazen-driver-api = { workspace = true }
 reqwest = { version = "0.13.3", features = ["json", "cookies", "stream", "query", "form"] }
 base64 = "0.22"
 serde_json = "1"

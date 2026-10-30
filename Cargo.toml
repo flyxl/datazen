@@ -13,8 +13,52 @@ exclude = [
 ]
 
 [workspace.dependencies]
+# Path crates — the only place a member's relative path is spelled out.
 datazen-driver-api = { path = "packages/driver-api" }
 datazen = { path = "modules", default-features = false }
+datazen-infra = { path = "packages/infra" }
+datazen-driver-postgres = { path = "packages/drivers/postgres" }
+datazen-driver-mysql = { path = "packages/drivers/mysql" }
+datazen-driver-sqlite = { path = "packages/drivers/sqlite" }
+# Shared external specs — single source of truth for the versions (and, where
+# they must stay in lockstep, the feature sets) that modules, the desktop host
+# and the driver crates consume. Members inherit with `workspace = true`.
+# Only specs identical across their consumers belong here; chrono, tokio,
+# tracing-subscriber and dirs intentionally stay per-member because their
+# feature sets / major versions legitimately differ — divergent specs must be
+# a consumer decision, never silently unified by this table.
+thiserror = "1"
+async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9.34"
+uuid = { version = "1", features = ["v4", "serde"] }
+tracing = "0.1"
+regex = "1.13.1"
+rand = "0.8"
+libc = "0.2"
+inventory = "0.3"
+aes-gcm = "0.10"
+base64 = "0.22"
+sha2 = "0.10"
+hmac = "0.12"
+futures-util = "0.3"
+rusqlite = { version = "0.32.1", features = ["bundled"] }
+zip = { version = "2", default-features = false, features = ["deflate"] }
+russh = "0.60"
+tokio-tungstenite = { version = "0.26", default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }
+tokio-rustls = "0.26"
+url = "2"
+reqwest = { version = "0.13.3", default-features = false, features = ["rustls", "json", "stream", "cookies", "query", "form"] }
+sqlparser = { version = "0.59", features = ["visitor"] }
+
+[workspace.lints.rust]
+# 标识符只许 ASCII：中文测试名（2026-10-27 存量 160 个已全部改英文，
+# 见 test/ascii-test-identifiers 分支）会触发 rustc 的 non_snake_case
+# 告警刷屏 CI 日志；deny 让新增非 ASCII 标识符直接红编译，而不是等
+# 日志里再冒出来。注释与字符串字面量里的中文不受此 lint 影响。
+# （cm70_no_disk.rs 的 `fn 落盘` 是探测器自证样本 raw string，非标识符。）
+non_ascii_idents = "deny"
 
 [profile.dev]
 incremental = true

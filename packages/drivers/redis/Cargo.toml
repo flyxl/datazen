@@ -9,7 +9,7 @@ license = "GPL-3.0-or-later"
 default = []
 
 [dependencies]
-datazen-driver-api = { path = "../../driver-api" }
+datazen-driver-api = { workspace = true }
 async-trait = "0.1"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "net", "io-util", "macros"] }
 redis = { version = "0.27", features = ["tokio-comp", "aio", "cluster-async", "sentinel", "tls-rustls", "tls-rustls-insecure", "tokio-rustls-comp"] }

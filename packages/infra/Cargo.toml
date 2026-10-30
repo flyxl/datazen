@@ -10,8 +10,9 @@ description = "Shared infrastructure utilities for DataZen (renamed from platfor
 # shared crate for them; do NOT add a crate for them.
 #
 # Declared directly, not inherited from the root [workspace.dependencies] table:
-# that table carries only the seven path crates, so there is no root entry to
-# inherit from — and this crate's dependency list is part of the F-11 boundary
-# review (no datazen-* layer, no platform transport).
+# that table carries the path crates plus the shared external specs consumed in
+# lockstep by modules / the desktop host / the drivers — while this crate's
+# dependency list is part of the F-11 boundary review (no datazen-* layer, no
+# platform transport), so it stays self-contained on purpose.
 regex = "1.13.1"
 url = "2"
