@@ -186,7 +186,20 @@ execution = [
 # D4：Schema 元数据缓存与 DDL 判定（依赖 execution 的 driver_registry）。
 schema = ["dep:tokio", "dep:datazen-infra", "execution"]
 # D4-c：表浏览读链路（依赖 schema 的 SchemaCache）。
-"table-browsing" = ["dep:serde_json", "schema"]
+# F4b api 用例层（读/预览）：请求 DTO 复用 grid 的表上下文词汇
+# （RowChangeTableContext 在 table-editing），目标注入策略在 mcp，
+# 目标/会话句柄词汇在 execution；async-trait 承载 TargetCommandRunner
+# 端口，tracing 记估计回退告警，driver-api 提供驱动与方言契约。
+"table-browsing" = [
+    "dep:async-trait",
+    "dep:serde_json",
+    "dep:tracing",
+    "dep:datazen-driver-api",
+    "schema",
+    "execution",
+    "mcp",
+    "table-editing",
+]
 # D4-d：表编辑写链路（依赖 schema 缓存 + execution 产物读取词汇）。
 "table-editing" = ["dep:async-trait", "dep:serde_json", "dep:uuid", "schema", "execution"]
 # D5：Schema Diff 引擎（原 schema-diff crate 整体归位；三件套之一）。

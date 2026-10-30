@@ -7,7 +7,8 @@
 > data_sync 测试验证；F2 含三处实施偏差，见 §6 末尾的实施记录）；F3 第一刀
 > 已落地（`sql_split` + `sql_identifiers` 下沉 `driver-support`，见 §6 末尾实施记录）；
 > F4a 第一刀已落地（`modules/src/connection/api.rs` 固定 api 模块写法，见 §6 末尾
-> 实施记录）；F4b 起后续刀未动。
+> 实施记录）；F4b 第二刀已落地（`modules/src/table_browsing/api.rs` 收表读取
+> 两用例与 `TargetCommandRunner` 端口，见 §6 末尾实施记录）；F4c 起后续刀未动。
 > 该分支同时合入代码组织评审（`code-organization-review.md`），两份计划的统一执行顺序见其 §4。
 > 本文放在分支 `docs/path-facts-after-form-split`，不打开 PR，避免每次推送触发 CI。
 > 合并前仍以代码为准；本文只约束这一组后续改动的切法。
@@ -258,6 +259,16 @@ F3 第一刀已落地：
 3. **driver-support 零依赖**：新 crate 无任何 dependencies（连 serde 都没有），驱动插件作者可单独取文本工具。单一消费者，按 P1 口径 path 依赖不上收 workspace 根表。
 4. **验证**：`cargo check` 三级绿（driver-support / driver-api / modules），搬入的 14 个内嵌测试全绿，`PROTOCOL_VERSION`（=6）与 `MIN_PROTOCOL_VERSION`（=1）未动，前端零新依赖。
 
+F4b 第二刀已落地：
+
+1. **切口为表读取两用例**（方案切片顺序第 2 步「只读查询与 schema / 表浏览」的主体）：`read_table_page`（分页读，含计数与行同批、估计失败降级重读、不可用估计回退精确 `COUNT(*)`）与 `preview_table_read`（DB-15 预览）；两者共享的 `assemble_statements`（DB-15 单点拼装）、`fetch_table_schema`、`statement_row_sets`（流式/一次性双形态结果合并）一并下沉。`query.rs` 的 execute_query 本就只是 driver_command 传输信封、`schema.rs` 的 estimate_table_rows 算法已在 modules 的 QueryExecutor——都不携带算法，本刀不动。
+2. **端口走消费者定义（R1）**：`TargetCommandRunner`（目标/会话上执行一条命令并收集输出）不命名 runtime 门面；桌面实现 `DesktopTargetRunner` 持 `&PlatformAdapter + &RuntimeConnectionUseCases`，保留目标解析、提交令牌、终态轮询与产物分块收集——这些是传输机器不是算法，验收标准（宿主不再出现 SQL 拼装/行合并/计划展开）不涉及其内容。写链路 D4-d 的 `commit_changes` 已立 `Arc<dyn ConnectionUseCases>` 先例，本刀同源。
+3. **错误走 `TableReadError` 而非 feature error 折叠**：用例层校验/构建失败 `Validation`/`Internal` 与桌面原内联 `CommandError` 构造一一对应；端口失败走 `Runtime(ApiError)` **原样透传**。此处不能复用 `From<ApiError> for FeatureError` 的折叠桶：`ResourceBusy` 在桌面映射表里是独立可处置 IPC 类别，折叠成 `Internal` 会改错误外观。桌面 `From<TableReadError>` 是唯一一份桌面映射表。
+4. **宿主保留三处输入校验的重复**（上下文、页大小、过滤器，与写链路 `commit_changes` 同款）：宿主副本保持本传输的错误顺序稳定（profile 查找前拦下坏请求），api 侧重检因「第二传输直呼时也必须成立」。两个副本都不是死代码：宿主副本先择错，api 副本对宿主路径永远通过。
+5. **验收达成**：宿主 `table_target.rs` 874→270 行，生产代码不再含 SQL 拼装、行合并、计数计划展开；DTO（`TableReadRequest` 等）随用例进 modules，宿主 re-export 保住 `table_target::` 路径，`data.rs` 命令与 `target_read_tests.rs`（20+ 用例）零改动。
+6. **验证**：table-browsing 闭包 `cargo test --lib` 1125/1125 绿（含 api 新增 12 测：拼装三计划、双形态合并、端口失败透传、无宿主类型闸门）；全 feature 无选择器 `cargo check`（对齐宿主腿 27 feature）绿；桌面 crate 沙箱缺 GTK/WebKit 无法本地编译（既有限制，CI 验证），宿主文件经 rustfmt 解析 + 人工类型复查。
+7. **feature 表随刀显式化**：table-browsing 增列 async-trait/tracing/driver-api/execution/mcp/table-editing——请求 DTO 本就嵌 `RowChangeTableContext`（table-editing 词汇）、读调用本就依赖 mcp 的目标注入策略，此前靠 schema→execution→connection 传递闭包掩盖；全部是既有激活集的子集，无解析变化。
+
 F4a 第一刀已落地：
 
 1. **错误路线选 feature error 而非新增 ApiErrorCode**：`as_str` 的协议字面量与连接规格 §13 的 code 列逐字绑定，新增 `Internal` 变体等于发明协议取值，违反仓库的规格纪律（「不发明取值」）。因此 `api` 函数返回 `ConnectionError`（方案明文允许「ApiError / feature error」二选一），业务错误文本在 application 层早已定稿；桌面 `conn_cmd` 就是那唯一一份桌面映射表，Web 宿主以后自持 HTTP 版。IPC 错误码与消息**逐字节不变**（同类型流过同一映射）。
@@ -280,6 +291,7 @@ F4a 第一刀已落地：
 | F2 | 前端稳定入口与深导入门禁 | 第 6 节完成标准 |
 | F3 | 新建 `driver-support`，搬第一批纯函数（第一刀已落地：`sql_split` + `sql_identifiers`） | `PROTOCOL_VERSION` 不变；`driver-api` 不再包含已搬走的函数体；前端无新依赖 |
 | F4a | `connection::api` + 桌面胶水变薄（第一刀已落地：CRUD + `resolve_test_config`；会话/隧道编排按方案留宿主） | IPC 载荷与错误码不变；宿主测试只覆盖映射 |
-| F4b… | 按第 3 节顺序逐个用例下沉 | 每刀删除宿主中的对应实现 |
+| F4b | 表读取两用例（第二刀已落地：`table_browsing::api` 的 `read_table_page`/`preview_table_read` + `TargetCommandRunner` 端口；query/schema 薄命令不动） | IPC 载荷与错误码不变；宿主不再含 SQL 拼装/行合并/计划展开 |
+| F4c… | 按第 3 节顺序逐个用例下沉（export、backup → sync/transfer/schema_diff） | 每刀删除宿主中的对应实现 |
 
 Web 宿主仍然不在这组 PR 里创建。`api` 模块不引用 Axum。隧道实现不迁出 `modules`。

@@ -6,6 +6,7 @@
 //! Read path only. The write path (ChangeSet / insert plan / row identity /
 //! write exec) is the `table_editing` module (D4-d).
 
+pub mod api;
 pub mod browsing;
 pub mod executor;
 pub mod paging;
