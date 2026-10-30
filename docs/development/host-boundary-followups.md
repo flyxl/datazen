@@ -8,7 +8,10 @@
 > 已落地（`sql_split` + `sql_identifiers` 下沉 `driver-support`，见 §6 末尾实施记录）；
 > F4a 第一刀已落地（`modules/src/connection/api.rs` 固定 api 模块写法，见 §6 末尾
 > 实施记录）；F4b 第二刀已落地（`modules/src/table_browsing/api.rs` 收表读取
-> 两用例与 `TargetCommandRunner` 端口，见 §6 末尾实施记录）；F4c 起后续刀未动。
+> 两用例与 `TargetCommandRunner` 端口，见 §6 末尾实施记录）；F4c sync 写路径刀
+> 已落地（`data_sync::api` 收复核批次/键读/preview 装配，宿主 `statements.rs`/
+> `select.rs` 删除、`apply.rs` 委托去重，见 §6 末尾实施记录）；F4c 余下
+> data_transfer / schema_diff 待做。
 > 该分支同时合入代码组织评审（`code-organization-review.md`），两份计划的统一执行顺序见其 §4。
 > 本文放在分支 `docs/path-facts-after-form-split`，不打开 PR，避免每次推送触发 CI。
 > 合并前仍以代码为准；本文只约束这一组后续改动的切法。
@@ -259,6 +262,16 @@ F3 第一刀已落地：
 3. **driver-support 零依赖**：新 crate 无任何 dependencies（连 serde 都没有），驱动插件作者可单独取文本工具。单一消费者，按 P1 口径 path 依赖不上收 workspace 根表。
 4. **验证**：`cargo check` 三级绿（driver-support / driver-api / modules），搬入的 14 个内嵌测试全绿，`PROTOCOL_VERSION`（=6）与 `MIN_PROTOCOL_VERSION`（=1）未动，前端零新依赖。
 
+F4c sync 写路径刀已落地（覆盖两个已探明切口 + 宿主重复装配消除）：
+
+1. **切口**：`sync/host/statements.rs`（复核批次 SQL 生成，180 行）与 `sync/host/select.rs`（§5.3 键读 SELECT，184 行）整体下沉后**删除**；`apply.rs` 的 `generate_data_sync_sql_impl`（ui-preview 命令）循环体与 statements.rs 是同一套装配序列的两份宿主拷贝（sqlserver 预检 → 投影复验 → preview 字面量 → qualify → identity 盖章），一并改为委托 modules 同一份装配——`exec.rs` 的 plan-preview 路径经同一函数自动受益。宿主 `apply.rs` 1177→682 行，`host/mod.rs` 增端口实现。
+2. **端口与上下文**：`BatchSqlHost`（单方法 `write_sql_context(target_table)`）按 F4b `TargetCommandRunner` 先例落宿主实现——`relation_meta` → `target_slot` → source/target 适配器，查找顺序与失败文本不变。装配入参 `WriteSqlContext`（借用）收 family/库名/schema/表 schema/双适配器/方言/identity 开关位；复核批次用例 `generate_reviewed_batch_sql` 收端口，preview 用例直呼共享核心 `generate_write_sql_for_table`。
+3. **门禁先于端口（顺序契约）**：options 校验、关系匹配、未复核行拒绝、空批次短路都在 api 内**先于**任何端口调用执行——下沉前这些校验先于宿主 `relation_meta`/`target_slot` 查询，下沉后以 `UntouchedHost`（端口即 panic）3 个测试钉死该顺序。租约生命周期不变：`target_slot()` 返回 `Slot` 克隆，`HostDataSync.slots` 仍持有 `Arc<LiveConnectionLease>`，局部克隆提前 drop 不释放租约。
+4. **错误路线**：全部走 `DataSyncError::validation`，经既有 `From<DataSyncError> for CommandError` 映射表转 IPC——`Validation` 的 Display 即裸文本，错误字节不变；预检/身份校验/投影漂移的错误文本逐字迁移。
+5. **一处顺序重排（可达输入上等价）**：ui-preview 循环里 sqlserver 预检原在投影查找之前，委托后统一在 modules 装配内（投影查找之后）执行。`ChangeSet::from_comparison` 是 `comparison.tables` 的严格过滤器，投影查找在可达输入上不会 miss，两序行为一致。
+6. **测试迁移与新增**：宿主 7 个内联测试（预检×2、身份×2、投影漂移、options 覆盖）与键读 3 个测试原样迁 modules；新增门禁序 3 测（`UntouchedHost`）与装配 happy path 2 测（哑适配器 + mock 驱动）。data_sync 闭包 258/258 绿（原 244 + 新 14），modules 全量 1210/1210 绿。
+7. **验证**：`data_sync` feature check 绿；桌面宿主 feature 联合（27 feature 全集对齐宿主腿）check 绿；裸 `connection` / `services` / `connection_import` 单 feature 失败为**存量问题**（stash 后基线复现，与评审 F-5 同类，归 P3 feature 图修剪）；桌面 crate 沙箱缺 GTK/WebKit 无法本地编译（既有限制，CI 验证），宿主文件经 rustfmt 解析 + 人工类型复查。
+
 F4b 第二刀已落地：
 
 1. **切口为表读取两用例**（方案切片顺序第 2 步「只读查询与 schema / 表浏览」的主体）：`read_table_page`（分页读，含计数与行同批、估计失败降级重读、不可用估计回退精确 `COUNT(*)`）与 `preview_table_read`（DB-15 预览）；两者共享的 `assemble_statements`（DB-15 单点拼装）、`fetch_table_schema`、`statement_row_sets`（流式/一次性双形态结果合并）一并下沉。`query.rs` 的 execute_query 本就只是 driver_command 传输信封、`schema.rs` 的 estimate_table_rows 算法已在 modules 的 QueryExecutor——都不携带算法，本刀不动。
@@ -293,6 +306,6 @@ F4a 第一刀已落地：
 | F4a | `connection::api` + 桌面胶水变薄（第一刀已落地：CRUD + `resolve_test_config`；会话/隧道编排按方案留宿主） | IPC 载荷与错误码不变；宿主测试只覆盖映射 |
 | F4b | 表读取两用例（第二刀已落地：`table_browsing::api` 的 `read_table_page`/`preview_table_read` + `TargetCommandRunner` 端口；query/schema 薄命令不动） | IPC 载荷与错误码不变；宿主不再含 SQL 拼装/行合并/计划展开 |
 | ~~export、backup~~ | **复核结论（2026-10-30）：无需 F4 刀**——D6 item 5 已把它们落到目标形态（算法在 `modules::export`/`modules::backup`，宿主 `export.rs`/`backup.rs` 只剩端口实现 + 对话框/事件绑定），本方案写就时未计入 | 宿主不再含算法（已达成） |
-| F4c… | sync / data_transfer / schema_diff，按第 3 节顺序逐个用例下沉（候选切口已探明：`sync/host/statements.rs`、`sync/host/select.rs`、`data_transfer/preview.rs` 均含 SQL 拼装；modules 侧 `migration::{data_sync,data_transfer,schema_diff}` 已有 4 万行对应域，下沉是接合不是新建） | 每刀删除宿主中的对应实现 |
+| F4c… | sync / data_transfer / schema_diff，按第 3 节顺序逐个用例下沉（**sync 刀已落地**：`host/statements.rs`、`host/select.rs` 下沉 `data_sync::api`，`apply.rs` 循环体委托同一装配去重，`BatchSqlHost` 端口单方法落宿主；待做：`data_transfer/preview.rs`、schema_diff 复核；modules 侧 `migration::{data_sync,data_transfer,schema_diff}` 已有 4 万行对应域，下沉是接合不是新建） | 每刀删除宿主中的对应实现（sync 刀已达成：宿主不再含写路径 SQL 拼装与键读 SELECT） |
 
 Web 宿主仍然不在这组 PR 里创建。`api` 模块不引用 Axum。隧道实现不迁出 `modules`。
