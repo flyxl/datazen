@@ -51,7 +51,10 @@ vi.mock('../../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock('../../../../hooks/usePlatform', () => ({ usePlatform: () => 'linux' }));
+vi.mock('../../../../hooks/usePlatform', () => ({
+  usePlatform: () => 'linux',
+  getPlatformSync: () => 'linux',
+}));
 
 vi.mock('../../../../hooks/useSettingsStore', () => ({
   useSettingsStore: (selector: (state: { settings: Record<string, unknown> }) => unknown) =>

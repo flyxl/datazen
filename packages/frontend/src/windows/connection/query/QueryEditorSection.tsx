@@ -39,7 +39,7 @@ import { useI18n } from '../../../hooks/useI18n';
 import { usePlatform } from '../../../hooks/usePlatform';
 import { useSettingsStore } from '../../../stores/settingsStore';
 import { tid } from '../../../lib/tid';
-import { formatShortcutForDisplay, getActionShortcut } from '../../../lib/keymap';
+import { formatModKey, formatShortcutForDisplay, getActionShortcut } from '../../../lib/keymap';
 import { showNativeContextMenu } from '../../../lib/nativeContextMenu';
 import { buildSqlEditorContextMenuItems } from '../../../lib/sqlEditorContextMenu';
 import type { QueryExecutionViewModel } from '../../../lib/queryExecutionViewModel';
@@ -223,8 +223,7 @@ export function QueryEditorSection({
 }: QueryEditorSectionProps) {
   const { t } = useI18n();
   const platform = usePlatform();
-  const isMac = platform === 'macos';
-  const executeShortcutLabel = isMac ? '⌘ Enter' : 'Ctrl+Enter';
+  const executeShortcutLabel = `${formatModKey(platform)}+Enter`;
   const completionIncludeTablePrefix = useSettingsStore(
     (s) => s.settings.editorCompletionIncludeTablePrefix ?? true,
   );
@@ -529,7 +528,7 @@ export function QueryEditorSection({
         )}
         {!compactToolbar && (
           <span className="shrink-0 whitespace-nowrap text-[11px] text-fg-muted">
-            {isMac ? '⌘+Enter' : 'Ctrl+Enter'} {t('query.execute')}
+            {formatModKey(platform)}+Enter {t('query.execute')}
           </span>
         )}
         {executionViewModel.rowCount != null && (

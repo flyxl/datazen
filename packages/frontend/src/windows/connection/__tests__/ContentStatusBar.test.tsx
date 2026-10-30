@@ -14,6 +14,7 @@ const usePlatformMock = vi.fn(() => 'macos' as 'macos' | 'windows' | 'linux' | '
 
 vi.mock('../../../hooks/usePlatform', () => ({
   usePlatform: () => usePlatformMock(),
+  getPlatformSync: () => usePlatformMock(),
 }));
 
 beforeEach(() => {

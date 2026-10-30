@@ -1,3 +1,5 @@
+import { getPlatformSync } from '../hooks/usePlatform';
+import { formatModKey } from './keymap';
 import type { NativeMenuItemDef } from './nativeContextMenu';
 import { nativeEditMenuItems } from './nativeContextMenu';
 
@@ -48,7 +50,7 @@ export function buildSqlEditorContextMenuItems(
   args: BuildSqlEditorContextMenuArgs,
 ): NativeMenuItemDef[] {
   const { labels, handlers, sqlText, hasSelection = false } = args;
-  const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform || navigator.userAgent);
+  const mod = formatModKey(getPlatformSync());
   const trimmed = sqlText.trim();
   const items: NativeMenuItemDef[] = [...nativeEditMenuItems(), { kind: 'separator' }];
 
@@ -57,7 +59,7 @@ export function buildSqlEditorContextMenuItems(
       kind: 'item',
       id: 'run',
       label: labels.run,
-      shortcut: isMac ? '⌘ Enter' : 'Ctrl+Enter',
+      shortcut: `${mod}+Enter`,
       enabled: trimmed.length > 0,
       action: handlers.onRun,
     });
@@ -67,7 +69,7 @@ export function buildSqlEditorContextMenuItems(
       kind: 'item',
       id: 'run-selection',
       label: labels.runSelection,
-      shortcut: isMac ? '⌘ Enter' : 'Ctrl+Enter',
+      shortcut: `${mod}+Enter`,
       enabled: hasSelection,
       action: handlers.onRunSelection,
     });
@@ -86,7 +88,7 @@ export function buildSqlEditorContextMenuItems(
       kind: 'item',
       id: 'comment',
       label: labels.comment,
-      shortcut: isMac ? '⌘ /' : 'Ctrl+/',
+      shortcut: `${mod}+/`,
       enabled: trimmed.length > 0 || hasSelection,
       action: handlers.onComment,
     });
@@ -98,7 +100,7 @@ export function buildSqlEditorContextMenuItems(
       kind: 'item',
       id: 'add-favorite',
       label: labels.addFavorite,
-      shortcut: isMac ? '⌘ S' : 'Ctrl+S',
+      shortcut: `${mod}+S`,
       enabled: trimmed.length > 0,
       action: () => {
         if (trimmed) handlers.onAddFavorite?.(trimmed);

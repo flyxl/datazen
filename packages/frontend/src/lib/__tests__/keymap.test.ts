@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  formatModKey,
   formatShortcutForDisplay,
   getActionShortcut,
   normalizeShortcutInput,
@@ -53,6 +54,15 @@ describe('toCodeMirrorKeyFormat', () => {
     expect(toCodeMirrorKeyFormat('ctrl-enter')).toBe('Ctrl-Enter');
     expect(toCodeMirrorKeyFormat('ctrl+f3')).toBe('Ctrl-F3');
     expect(toCodeMirrorKeyFormat('alt+x')).toBe('Alt-x');
+  });
+});
+
+describe('formatModKey', () => {
+  it('renders ⌘ only on macOS and Ctrl on every other platform', () => {
+    expect(formatModKey('macos')).toBe('⌘');
+    expect(formatModKey('windows')).toBe('Ctrl');
+    expect(formatModKey('linux')).toBe('Ctrl');
+    expect(formatModKey('unknown')).toBe('Ctrl');
   });
 });
 

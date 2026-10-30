@@ -105,6 +105,7 @@ vi.mock('../../../hooks/useI18n', () => ({
 
 vi.mock('../../../hooks/usePlatform', () => ({
   usePlatform: () => 'macos',
+  getPlatformSync: () => 'macos',
 }));
 
 vi.mock('../../../hooks/useConfirmDialog', () => ({
@@ -1221,7 +1222,7 @@ describe('[tester] query/QueryEditorSection', () => {
 
     // Icon-only: the name survives as tooltip/accessible name, never as text.
     const execute = screen.getByTestId('editor-execute-button');
-    expect(execute).toHaveAttribute('title', 'query.execute (⌘ Enter)');
+    expect(execute).toHaveAttribute('title', 'query.execute (⌘+Enter)');
     expect(execute.textContent).toBe('');
     expect(screen.getByRole('button', { name: 'query.history' })).toHaveAttribute(
       'title',

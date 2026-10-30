@@ -1,6 +1,7 @@
 import { useI18n } from '../../hooks/useI18n';
 import { usePlatform } from '../../hooks/usePlatform';
 import { getDbLabel } from '../../lib/databaseTypes';
+import { formatModKey } from '../../lib/keymap';
 import { formatRowCount } from '../../lib/totalRowsDisplay';
 import type { CountStrategy, DatabaseType } from '../../types';
 import type { KvStatusBarBinding } from './useKvWorkspaceSlots';
@@ -41,7 +42,7 @@ export function ContentStatusBar({
   const { t } = useI18n();
   const platform = usePlatform();
   const isMac = platform === 'macos';
-  const mod = isMac ? '⌘' : 'Ctrl';
+  const mod = formatModKey(platform);
   const keySep = isMac ? '' : '+';
   const Slot = statusBarSlot?.Component;
 
