@@ -6,6 +6,7 @@
  * constraint. It skips unless the SQL Server E2E connection variables are set.
  */
 import { expect } from '@wdio/globals';
+import { dbSessionIdOf } from '../../../../e2e/lib/sessionId.js';
 
 const HOST = (process.env.E2E_SQLSERVER_HOST || '').trim();
 const PORT = Number(process.env.E2E_SQLSERVER_PORT || '1433');
@@ -94,7 +95,17 @@ async function invoke<T>(cmd: string, args: Record<string, unknown> = {}): Promi
       internals
         .invoke(command, JSON.parse(serializedArgs))
         .then((value) => done(value))
-        .catch((error: unknown) => done({ __error: String(error) }));
+        .catch((error: unknown) => {
+          // Rust command errors cross the IPC bridge as objects, so `String()`
+          // alone would flatten every failure into "[object Object]".
+          let message: string;
+          try {
+            message = typeof error === 'string' ? error : JSON.stringify(error);
+          } catch {
+            message = String(error);
+          }
+          done({ __error: message });
+        });
     },
     cmd,
     JSON.stringify(args),
@@ -109,6 +120,28 @@ function bracket(identifier: string): string {
   return `[${identifier.replaceAll(']', ']]')}]`;
 }
 
+/**
+ * Read one typed metadata result from the driver command surface.
+ *
+ * `execute_driver_command` is the live IPC command that reaches a driver's own
+ * command handler with the session that owns the catalog, and it is the only
+ * route that still reports the driver's rejection message. The at-target route
+ * (`execute_at_target`) collapses every driver refusal into an
+ * `ExecutionErrorCode`, so a spec that asserts *which* shape SQL Server refuses
+ * has to read the command result here.
+ */
+async function readDriverCommand<T>(
+  sessionId: string,
+  command: string,
+  input: Record<string, unknown>,
+): Promise<T> {
+  const result = await invoke<{ data?: T }>('execute_driver_command', {
+    request: { dbSessionId: sessionId, command, input },
+  });
+  if (result?.data === undefined) throw new Error('typed command result unavailable');
+  return result.data;
+}
+
 describe('SQL Server schema metadata IPC (live)', () => {
   let dbSessionId = '';
   let database = DATABASE;
@@ -121,13 +154,17 @@ describe('SQL Server schema metadata IPC (live)', () => {
       ...(database ? { database } : {}),
     });
 
-  const tableSchema = (table: string) =>
-    invoke<TableSchemaPayload>('get_table_schema', {
+  const tableSchema = async (table: string) => {
+    const data = await readDriverCommand<{ schema?: TableSchemaPayload }>(
       dbSessionId,
-      table,
-      database,
-      schema: scratchSchema,
-    });
+      'get_table_schema',
+      { database, schema: scratchSchema, table },
+    );
+    if (!data?.schema || !Array.isArray(data.schema.columns)) {
+      throw new Error('typed table schema unavailable');
+    }
+    return data.schema;
+  };
 
   const qualified = (table: string) => `${bracket(scratchSchema)}.${bracket(table)}`;
 
@@ -212,7 +249,7 @@ describe('SQL Server schema metadata IPC (live)', () => {
         options: { trustServerCertificate: TRUST_CERT },
       },
     });
-    dbSessionId = await invoke<string>('connect', { connectionId: CONNECTION_ID });
+    dbSessionId = dbSessionIdOf(await invoke<unknown>('connect', { connectionId: CONNECTION_ID }));
 
     await setSafeMode(false);
     if (!database) {

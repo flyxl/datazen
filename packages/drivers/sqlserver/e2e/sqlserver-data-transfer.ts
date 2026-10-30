@@ -6,6 +6,7 @@
  * dz_e2e_transfer_* schema created by this spec.
  */
 import { expect } from '@wdio/globals';
+import { dbSessionIdOf } from '../../../../e2e/lib/sessionId.js';
 
 const HOST = (process.env.E2E_SQLSERVER_HOST || '').trim();
 const PORT = Number(process.env.E2E_SQLSERVER_PORT || '1433');
@@ -176,8 +177,12 @@ describe('SQL Server Data Transfer (live)', () => {
     await invoke('save_connection', {
       config: connectionConfig(TARGET_CONNECTION_ID, 'E2E SQL Server transfer target'),
     });
-    sourceSessionId = await invoke<string>('connect', { connectionId: SOURCE_CONNECTION_ID });
-    targetSessionId = await invoke<string>('connect', { connectionId: TARGET_CONNECTION_ID });
+    sourceSessionId = dbSessionIdOf(
+      await invoke<unknown>('connect', { connectionId: SOURCE_CONNECTION_ID }),
+    );
+    targetSessionId = dbSessionIdOf(
+      await invoke<unknown>('connect', { connectionId: TARGET_CONNECTION_ID }),
+    );
 
     if (!database) {
       const active = await run(sourceSessionId, 'SELECT DB_NAME() AS database_name');

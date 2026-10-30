@@ -195,6 +195,23 @@ describe('desktop transport: table-data commands', () => {
     expect(mock.invoke).toHaveBeenLastCalledWith('commit_query_result_cell', { request });
   });
 
+  it('keeps the single-word legacy host commands on the flat payload', async () => {
+    mock.invoke.mockResolvedValue({ connectionId: 'conn-1', dbSessionId: 'sess-1' });
+    const transport = createDesktopBackendTransport();
+
+    // `connect` and `disconnect` are the only legacy host commands whose names
+    // carry no underscore. Keying the flat/nested decision off the underscore
+    // classified them as kernel methods and sent `{ request: { connectionId } }`,
+    // which the host rejects with `command connect missing required key
+    // connectionId` — the navigator's "open" failed while the IPC specs stayed
+    // green. Casing, not underscores, is what separates the two rails.
+    await transport.call('connect', { connectionId: 'conn-1' });
+    expect(mock.invoke).toHaveBeenLastCalledWith('connect', { connectionId: 'conn-1' });
+
+    await transport.call('disconnect', { dbSessionId: 'sess-1' });
+    expect(mock.invoke).toHaveBeenLastCalledWith('disconnect', { dbSessionId: 'sess-1' });
+  });
+
   it('serves the named-view commands the host registers', async () => {
     // 08 registered the three named-view commands, so the declaration that
     // kept them out of the desktop had to go — otherwise the desktop would

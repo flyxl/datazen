@@ -123,6 +123,24 @@ pub(crate) fn provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn ResourceProvi
 /// provider and a provider rebuilt outside the memo declare *the same* twelve
 /// cells with *the same* provenance. Without this, a test comparing the two
 /// would be comparing two different claims instead of two construction sites.
+///
+/// # Why the descriptor answers `Leased`
+///
+/// `connect` parks exactly one `tiberius` client per handle
+/// (`sqlserver.rs:16` — `clients: RwLock<HashMap<String, SqlClient>>`), and every
+/// command for that session — session-scoped transactions included — runs on
+/// that same client (`sqlserver.rs:1611-1752`). The resource a caller acquires is
+/// therefore one pooled connection leased for the session's lifetime, which is
+/// the fact [`LegacyResourceAdapter::with_leased_session`] declares. Without it
+/// the descriptor answers `Unknown`, and
+/// `apps/desktop/src-tauri/src/platform/session_backend/opening.rs:136-149`
+/// refuses every editor-owned session for this driver — the SQL Editor could not
+/// open a tab at all, because neither the capability bit below (§6.1 withholds
+/// `stateful_session`) nor the descriptor answered how the session continues.
+///
+/// This claim is `Leased`, never `Fixed`: the driver has no baseline validation
+/// and re-declares nothing on reuse, so the state belongs to this lease and dies
+/// with it (`connection-management.md` §5.2, `CM-19`).
 fn adapter(driver: Arc<dyn DatabaseDriver>, runtime_epoch: u64) -> LegacyResourceAdapter {
     LegacyResourceAdapter::new(
         driver,
@@ -132,6 +150,7 @@ fn adapter(driver: Arc<dyn DatabaseDriver>, runtime_epoch: u64) -> LegacyResourc
         namespace_shape(),
         capabilities(),
     )
+    .with_leased_session()
     .with_evidence(capability_evidence())
 }
 
@@ -165,7 +184,7 @@ pub(crate) fn stray_provider(driver: Arc<dyn DatabaseDriver>) -> Arc<dyn Resourc
 ///
 /// | Capability | Declared | Why |
 /// |---|---|---|
-/// | `stateful_session` | `Supported` | this driver reads **session-scoped state back off the server**, which is what the cell asks about. `current_isolation_level` issues `DBCC USEROPTIONS WITH NO_INFOMSGS` and parses the *session's* current isolation level out of the reply (`sqlserver.rs:461-488`) — a per-session diagnostic that cannot be read without a session; and `ensure_no_open_transaction` issues `SELECT @@TRANCOUNT AS [transaction_count]` and treats a nonzero count as an error (`sqlserver.rs:490-509`, called at `:1625`). The transaction handle is registered against that same `SqlClient` and dropped only when the transaction ends (`sqlserver.rs:1631-1637`, `:1717`, `:1752`). Both observations survive between statements on one connection, so the session is measured, not assumed. Independent of `resource_adapter.rs:271`, which reports `SessionContinuity::Unknown` for the *descriptor*: continuity asks whether a reconnection is survivable, which is a different question from whether the session's own state can be read.
+/// | `stateful_session` | `Unsupported` | this driver reads **session-scoped state back off the server**, which is what the cell asks about. `current_isolation_level` issues `DBCC USEROPTIONS WITH NO_INFOMSGS` and parses the *session's* current isolation level out of the reply (`sqlserver.rs:461-488`) — a per-session diagnostic that cannot be read without a session; and `ensure_no_open_transaction` issues `SELECT @@TRANCOUNT AS [transaction_count]` and treats a nonzero count as an error (`sqlserver.rs:490-509`, called at `:1625`). The transaction handle is registered against that same `SqlClient` and dropped only when the transaction ends (`sqlserver.rs:1631-1637`, `:1717`, `:1752`). Both observations survive between statements on one connection, so the session is measured, not assumed. §6.1 still withholds the cell: reading state is not owning it — there is no baseline validation and no exclusive declaration, so the next consumer would inherit unverified state (see `capabilities()` below, and the two tests that pin the blank).
 ///
 /// Note that this is *not* in tension with `SessionContinuity::Unknown` in this provider's own descriptor (`resource_adapter.rs:271`, `:215`). The two are independent fields: `SessionContinuity` is what the adapter can prove about a resource without a richer `DatabaseDriver` method, while `stateful_session` is the driver's own claim about its connection. `mysql`, `sqlite` and `mongodb` all report `SessionContinuity::Leased` together with `stateful_session: Unsupported` (`sqlite/src/resource.rs:14`, `mongodb/src/resource.rs:15`), so no adapter descriptor has ever implied a particular `stateful_session`. What a legacy driver may *not* claim is `SessionContinuity::Fixed` — that is what `a_described_resource_is_never_mistaken_for_a_fixed_reusable_session` guards, and this provider never asks for it. |
 /// | `namespace_switch` | `Unsupported` | nothing in this crate switches the attached database, schema or server. `sql_execution::target::qualify_sql` rewrites the *SQL text* instead (`sql_target.rs:24-40`), the module states that no session `USE` is ever issued (`sql_target.rs:12`), and a test asserts the generated read SQL contains no `USE [` (`sqlserver.rs:2095`). The database dimension is served by the host session pin (`sql_target.rs:158-165`), which is host session management, not a capability this provider exposes; the adapter refuses `change_context` outright. Measured absent, not merely undeclared. |
@@ -484,8 +503,16 @@ mod tests {
         assert!(!descriptor.is_fixed_session());
         assert_eq!(
             descriptor.session_continuity,
-            SessionContinuity::Unknown,
-            "SQL Server cannot observe a session, so continuity stays unknown"
+            SessionContinuity::Leased,
+            "`connect` parks one tiberius client per handle (sqlserver.rs:16), so the \
+             resource is one pooled connection leased for the session's lifetime — a \
+             fact, not a fixed reusable session"
+        );
+        assert!(
+            descriptor.declares_leased_session(),
+            "the host gate reads `Leased` as an answer and `Unknown` as a gap: without \
+             this, opening.rs:136-149 refuses every editor-owned session and the SQL \
+             Editor cannot open a tab at all"
         );
         assert!(
             matches!(

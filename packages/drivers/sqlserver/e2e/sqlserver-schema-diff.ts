@@ -17,6 +17,7 @@ import {
   clickSchemaDiffCompare,
   clickSchemaDiffGeneratePlan,
   closeExtraWindows,
+  dbSessionIdOf,
   deploySchemaDiffPlan,
   disconnectBackend,
   invokeBackend,
@@ -120,7 +121,7 @@ function connectionConfig(id: string, name: string, database: string) {
 }
 
 async function withConnection<T>(connectionId: string, work: (sessionId: string) => Promise<T>) {
-  const sessionId = await invoke<string>('connect', { connectionId });
+  const sessionId = dbSessionIdOf(await invoke<unknown>('connect', { connectionId }));
   try {
     return await work(sessionId);
   } finally {
@@ -133,8 +134,12 @@ async function run(sessionId: string, sql: string): Promise<QueryResultPayload> 
 }
 
 async function createScratchObjects(): Promise<void> {
-  const sourceSession = await invoke<string>('connect', { connectionId: SOURCE_ID });
-  const targetSession = await invoke<string>('connect', { connectionId: TARGET_ID });
+  const sourceSession = dbSessionIdOf(
+    await invoke<unknown>('connect', { connectionId: SOURCE_ID }),
+  );
+  const targetSession = dbSessionIdOf(
+    await invoke<unknown>('connect', { connectionId: TARGET_ID }),
+  );
   try {
     await withSafeModeOff(async () => {
       for (const session of [sourceSession, targetSession]) {

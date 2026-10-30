@@ -39,9 +39,13 @@
 //!
 //! `session_continuity` is never declared `Fixed`. A pool of size one is not a
 //! fixed session (`connection-management.md` §5.2) and `DatabaseDriver`
-//! exposes no way to prove otherwise, so the adapter reports
-//! `SessionContinuity::Unknown`, which `is_fixed()` treats exactly like
-//! `Leased` (`CM-19`).
+//! exposes no way to prove otherwise, so the default answer is
+//! `SessionContinuity::Unknown`. A driver may opt into the one claim its own
+//! code *can* back — [`LegacyResourceAdapter::with_leased_session`], i.e. "one
+//! pooled connection leased to this handle" — which is a fact rather than a
+//! gap (`CM-19`) and is what `mysql`, `sqlite`, `mongodb` and `hbase` answer
+//! from their own providers. There is deliberately no builder for `Fixed`: that
+//! claim is not the adapter's to make.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -54,7 +58,7 @@ use crate::namespace::{NamespaceShape, NamespaceTarget, TargetRequirements};
 use crate::resource::{
     AcquireResourceRequest, Baseline, BudgetPermit, BudgetPort, CommandCall, ConnectionCostPolicy,
     DescribeResourceRequest, ResourceDescriptor, ResourceError, ResourceHandle, ResourceProvider,
-    ResultSink, ReusePolicy,
+    ResultChunk, ResultSink, ReusePolicy, StatementSummary,
 };
 use crate::session::{
     CancelDisposition, CancelReceipt, CloseDisposition, CompletionStatus, ContextChangeDisposition,
@@ -62,7 +66,22 @@ use crate::session::{
     SessionContext, SessionHandleRef, SessionObservation, TransactionObservation,
     TransactionOptions, TransactionState,
 };
+use crate::types::MultiQueryResult;
 use crate::{ConnectionHandle, DatabaseDriver, DriverError, QueryExecutionId};
+
+/// Decode a buffered `query` answer, or `None` when the payload is not one.
+///
+/// A legacy driver answers `query` with `MultiQueryResult`
+/// (`packages/driver-api/src/types.rs`): every statement it ran, buffered. The
+/// adapter splits it into the chunk protocol instead of one `commandResult`, so
+/// a reader that requires `statementIndex` on each output still sees the rows.
+/// A payload that does not decode stays on the typed-command path rather than
+/// being reshaped on a guess.
+fn buffered_query_answer(data: &serde_json::Value) -> Option<MultiQueryResult> {
+    serde_json::from_value::<MultiQueryResult>(data.clone())
+        .ok()
+        .filter(|answer| !answer.results.is_empty())
+}
 
 /// Everything the adapter tracks for one acquired resource.
 struct LiveResource {
@@ -82,6 +101,9 @@ pub struct LegacyResourceAdapter {
     runtime_epoch: u64,
     namespace_shape: NamespaceShape,
     capabilities: CapabilityRegistry,
+    /// The continuity answer the descriptor reports. `Unknown` unless the driver
+    /// opted in through [`LegacyResourceAdapter::with_leased_session`].
+    session_continuity: SessionContinuity,
     live: Mutex<BTreeMap<String, LiveResource>>,
 }
 
@@ -159,8 +181,35 @@ impl LegacyResourceAdapter {
             runtime_epoch,
             namespace_shape,
             capabilities: registry,
+            session_continuity: SessionContinuity::Unknown,
             live: Mutex::new(BTreeMap::new()),
         }
+    }
+
+    /// Declare the resource as a **leased** pooled connection (`CM-19`).
+    ///
+    /// A driver whose `connect` parks one physical client per handle — SQL
+    /// Server keeps a `tiberius` client in a map keyed by the session's pool id
+    /// and hands that same client back for the session's lifetime — can answer
+    /// the continuity question the host asks when it decides whether an editor
+    /// session may hold the resource: one pooled connection leased to this
+    /// handle, released when the session ends.
+    ///
+    /// This is *not* [`SessionContinuity::Fixed`] and must not be read as one.
+    /// `Fixed` would claim the same physical session survives and can be handed
+    /// to the next consumer with verified baseline state; a legacy driver
+    /// proves no baseline and re-declares nothing on reuse, which is why
+    /// `connection-management.md` §5.2 withholds that cell from this path and
+    /// why `a_described_resource_is_never_mistaken_for_a_fixed_reusable_session`
+    /// exists. `Leased` is the honest answer for a pool of one: the state lives
+    /// on *this* lease and dies with it.
+    ///
+    /// `stateful_session` in the capability set is a separate question and is
+    /// untouched here — `mysql`, `sqlite` and `mongodb` answer `Leased` with
+    /// `stateful_session: Unsupported`.
+    pub fn with_leased_session(mut self) -> Self {
+        self.session_continuity = SessionContinuity::Leased;
+        self
     }
 
     /// Record the evidence behind this adapter's declaration.
@@ -189,6 +238,7 @@ impl LegacyResourceAdapter {
             runtime_epoch,
             namespace_shape,
             mut capabilities,
+            session_continuity,
             live,
         } = self;
         if capabilities.snapshot.capability_revision == 0 {
@@ -201,6 +251,7 @@ impl LegacyResourceAdapter {
             runtime_epoch,
             namespace_shape,
             capabilities,
+            session_continuity,
             live,
         }
     }
@@ -270,8 +321,10 @@ impl LegacyResourceAdapter {
             provider_id: self.driver_id.clone(),
             resource_key: format!("{}#{:?}", self.driver_id, request.purpose),
             // Never `Fixed`: `DatabaseDriver` cannot prove a session-scoped
-            // physical connection (`connection-management.md` §5.2).
-            session_continuity: SessionContinuity::Unknown,
+            // physical connection (`connection-management.md` §5.2). A driver
+            // that can prove its handle is one leased pool connection opts into
+            // `Leased` through `with_leased_session`.
+            session_continuity: self.session_continuity,
             // No verified reset-to-baseline, so a resource must be re-acquired
             // rather than reused (`CM-19`).
             reuse_policy: ReusePolicy::Unknown,
@@ -367,9 +420,19 @@ impl ResourceProvider for LegacyResourceAdapter {
     /// The completion is truthful but coarse: a legacy `CommandResult` is one
     /// opaque JSON payload with no per-statement observation, no context
     /// read-back and no protocol-drain signal, so those stay unknown/empty
-    /// rather than being reconstructed. The original payload is delivered as
-    /// typed `commandResult` output; the sink must explicitly accept it, and
-    /// sink rejection propagates instead of silently discarding the output.
+    /// rather than being reconstructed.
+    ///
+    /// For `query` the buffered answer is delivered in the chunk protocol a
+    /// migrated provider streams (per statement: `statementColumns`, row
+    /// batches, then `statementSummary`), because a single `commandResult`
+    /// carries no `statementIndex` and readers that only know the chunk
+    /// protocol drop it — the SQL Editor's result assembler
+    /// (`packages/frontend/src/lib/session/runEditorQuery.ts`) does exactly
+    /// that, so every driver still on this adapter rendered an empty grid after
+    /// a successful query. Non-query commands keep the single typed
+    /// `commandResult` payload the typed-command callers read; the sink must
+    /// explicitly accept it, and sink rejection propagates instead of silently
+    /// discarding the output.
     async fn execute_on_resource(
         &self,
         handle: &ResourceHandle,
@@ -383,9 +446,7 @@ impl ResourceProvider for LegacyResourceAdapter {
             .execute_command(&connection, &call.command, call.input.clone())
             .await
             .map_err(ResourceError::Driver)?;
-        sink.write_output(serde_json::json!({ "kind": "commandResult", "data": output.data }))
-            .await?;
-        Ok(ExecutionCompletion {
+        let completion = ExecutionCompletion {
             completion_status: CompletionStatus::Succeeded,
             effect_outcome: EffectOutcome::Completed,
             statement_results: Vec::new(),
@@ -402,7 +463,45 @@ impl ResourceProvider for LegacyResourceAdapter {
             session_handles: Vec::<SessionHandleRef>::new(),
             protocol_drained: true,
             resource_health: ResourceHealth::Unknown,
-        })
+        };
+        if call.command == "query" {
+            if let Some(buffered) = buffered_query_answer(&output.data) {
+                for (statement_index, statement) in buffered.results.iter().enumerate() {
+                    if !statement.columns.is_empty() {
+                        sink.write_output(serde_json::json!({
+                            "kind": "statementColumns",
+                            "statementIndex": statement_index,
+                            "columns": statement.columns,
+                            "truncated": statement.truncated,
+                        }))
+                        .await?;
+                    }
+                    // A statement with no rows is not a row batch: its total
+                    // travels on the summary channel, which is also what the
+                    // contract asks of migrated providers (no synthetic empty
+                    // batch, `resource.rs` `ResultChunk`).
+                    if !statement.rows.is_empty() {
+                        sink.write(ResultChunk {
+                            statement_index,
+                            sql: statement.sql.clone(),
+                            rows: statement.rows.clone(),
+                            rows_affected: None,
+                        })
+                        .await?;
+                    }
+                    sink.write_statement_summary(StatementSummary {
+                        statement_index,
+                        sql: statement.sql.clone(),
+                        rows_affected: statement.rows_affected,
+                    })
+                    .await?;
+                }
+                return Ok(completion);
+            }
+        }
+        sink.write_output(serde_json::json!({ "kind": "commandResult", "data": output.data }))
+            .await?;
+        Ok(completion)
     }
 
     /// The legacy driver has no read-back API. Returning the acquisition target

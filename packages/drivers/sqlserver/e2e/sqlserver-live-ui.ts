@@ -23,6 +23,7 @@
  */
 import { mkdirSync } from 'node:fs';
 import { browser, $, expect } from '@wdio/globals';
+import { dbSessionIdOf } from '../../../../e2e/lib/sessionId.js';
 import {
   clickCardConnectButton,
   ensureMainWindowForIpc,
@@ -241,7 +242,9 @@ describe('SQL Server driver GUI (live)', () => {
     // opened through the navigator exactly like a user would.
     for (let attempt = 1; attempt <= 4 && !dbSessionId; attempt += 1) {
       try {
-        dbSessionId = await invoke<string>('connect', { connectionId: CONNECTION_ID });
+        dbSessionId = dbSessionIdOf(
+          await invoke<unknown>('connect', { connectionId: CONNECTION_ID }),
+        );
       } catch (error) {
         if (!String(error).toLowerCase().includes(RESUME_CODE) || attempt === 4) throw error;
         console.warn(`⏳ database resuming (attempt ${attempt}/4), retrying in 8s`);
@@ -283,7 +286,9 @@ describe('SQL Server driver GUI (live)', () => {
     this.timeout(120_000);
     try {
       // Reusing the connection returns the session the UI opened.
-      dbSessionId = await invoke<string>('connect', { connectionId: CONNECTION_ID });
+      dbSessionId = dbSessionIdOf(
+        await invoke<unknown>('connect', { connectionId: CONNECTION_ID }),
+      );
       await dropScratch();
     } catch (error) {
       console.warn(`ℹ️  cleanup reported: ${String(error)}`);

@@ -21,6 +21,7 @@
  *     pnpm e2e:skip-build -- --spec packages/drivers/sqlserver/e2e/sqlserver-live-e2e.ts
  */
 import { expect } from '@wdio/globals';
+import { dbSessionIdOf } from '../../../../e2e/lib/sessionId.js';
 
 const HOST = (process.env.E2E_SQLSERVER_HOST || '').trim();
 const PORT = Number(process.env.E2E_SQLSERVER_PORT || '1433');
@@ -130,12 +131,23 @@ describe('SQL Server driver E2E (live)', () => {
 
   const readTable = (page: number, pageSize = PAGE_SIZE) =>
     invoke<TableDataPayload>('get_table_data', {
-      dbSessionId,
-      table: scratchTableName,
-      page,
-      pageSize,
-      schema: scratchSchema,
-      database: DATABASE || null,
+      request: {
+        manualHandle: null,
+        context: {
+          connectionId: CONNECTION_ID,
+          dbSessionId,
+          driverType: 'sqlserver',
+          database: DATABASE || null,
+          schema: scratchSchema,
+          table: scratchTableName,
+        },
+        page,
+        pageSize,
+        filters: null,
+        sorts: null,
+        skipCount: false,
+        filterLogic: null,
+      },
     });
 
   /**
@@ -208,7 +220,9 @@ describe('SQL Server driver E2E (live)', () => {
     let lastError: unknown;
     for (let attempt = 1; attempt <= 4 && !dbSessionId; attempt += 1) {
       try {
-        dbSessionId = await invoke<string>('connect', { connectionId: CONNECTION_ID });
+        dbSessionId = dbSessionIdOf(
+          await invoke<unknown>('connect', { connectionId: CONNECTION_ID }),
+        );
       } catch (error) {
         lastError = error;
         if (!String(error).toLowerCase().includes(RESUME_CODE) || attempt === 4) throw error;
@@ -316,14 +330,23 @@ describe('SQL Server driver E2E (live)', () => {
 
   it('round-trips a filtered, sorted read through the driver', async () => {
     const filtered = await invoke<TableDataPayload>('get_table_data', {
-      dbSessionId,
-      table: scratchTableName,
-      page: 0,
-      pageSize: PAGE_SIZE,
-      schema: scratchSchema,
-      database: DATABASE || null,
-      filters: [{ column: 'id', operator: 'gt', value: 4 }],
-      sorts: [{ column: 'id', descending: true }],
+      request: {
+        manualHandle: null,
+        context: {
+          connectionId: CONNECTION_ID,
+          dbSessionId,
+          driverType: 'sqlserver',
+          database: DATABASE || null,
+          schema: scratchSchema,
+          table: scratchTableName,
+        },
+        page: 0,
+        pageSize: PAGE_SIZE,
+        filters: [{ column: 'id', operator: 'gt', value: 4 }],
+        sorts: [{ column: 'id', descending: true }],
+        skipCount: false,
+        filterLogic: null,
+      },
     });
     const names = filtered.columns.map((c) => c.name);
     expect(filtered.rows.map((row) => Number(row[names.indexOf('id')]))).toEqual([
