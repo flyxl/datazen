@@ -206,18 +206,10 @@ impl DatabaseDriver for FakeSqlite {
         sql: &str,
         _limit: Option<u32>,
     ) -> Result<MultiQueryResult, DriverError> {
-        let result = self.query(handle, sql).await?;
-        Ok(MultiQueryResult {
-            results: vec![StatementResult {
-                sql: sql.to_string(),
-                columns: result.columns,
-                rows: result.rows,
-                rows_affected: result.rows_affected,
-                execution_time_ms: result.execution_time_ms,
-                truncated: false,
-            }],
-            total_time_ms: 0,
-        })
+        Ok(MultiQueryResult::single_statement(
+            sql,
+            self.query(handle, sql).await?,
+        ))
     }
 
     async fn query_with_params(

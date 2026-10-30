@@ -278,26 +278,19 @@ pub(crate) async fn execute_data_transfer_impl_with_write_observer(
         })
         .collect();
 
-    let mut source_schemas = HashMap::new();
-    for table in src_tables
+    let source_table_names = src_tables
         .iter()
-        .filter(|t| matches!(t.table_type, TableType::Table))
-    {
-        let schema = crate::data_transfer::metadata::load_table_schema(
-            src_driver.as_ref(),
-            &src_handle,
-            &job.source,
-            &table.name,
-        )
-        .await
-        .map_err(|error| {
-            CommandError::Validation(format!(
-                "failed to inspect source table '{}': {error}",
-                table.name
-            ))
-        })?;
-        source_schemas.insert(table.name.clone(), schema);
-    }
+        .filter(|table| matches!(table.table_type, TableType::Table))
+        .map(|table| table.name.as_str())
+        .collect::<Vec<_>>();
+    let mut source_schemas = super::super::schema_loading::load_named_table_schemas(
+        src_driver.as_ref(),
+        &src_handle,
+        &job.source,
+        &source_table_names,
+        "source",
+    )
+    .await?;
 
     let resume_preflight = if supports_bounded_resume(&job) {
         match super::resume_preflight::inspect_resume_contract(

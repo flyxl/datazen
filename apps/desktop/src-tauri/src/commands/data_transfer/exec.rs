@@ -61,26 +61,19 @@ pub(super) async fn load_sql_source_snapshot(
         .into_iter()
         .filter(|table| crate::data_transfer::metadata::table_in_endpoint_schema(&source, table))
         .collect();
-    let mut schemas = HashMap::new();
-    for table in tables
+    let table_names = tables
         .iter()
         .filter(|table| matches!(table.table_type, TableType::Table))
-    {
-        let schema = crate::data_transfer::metadata::load_table_schema(
-            driver.as_ref(),
-            &handle,
-            &source,
-            &table.name,
-        )
-        .await
-        .map_err(|error| {
-            CommandError::Validation(format!(
-                "failed to inspect source table '{}': {error}",
-                table.name
-            ))
-        })?;
-        schemas.insert(table.name.clone(), schema);
-    }
+        .map(|table| table.name.as_str())
+        .collect::<Vec<_>>();
+    let schemas = super::schema_loading::load_named_table_schemas(
+        driver.as_ref(),
+        &handle,
+        &source,
+        &table_names,
+        "source",
+    )
+    .await?;
     let inspected = crate::data_transfer::inspect_tables(
         &tables,
         &[],

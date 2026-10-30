@@ -319,6 +319,36 @@ pub struct StatementResult {
     pub truncated: bool,
 }
 
+impl MultiQueryResult {
+    /// Wrap one query result in the response shape used for multi-statement queries.
+    ///
+    /// Drivers that support only a single query per call can use this to avoid
+    /// duplicating the field mapping while keeping their `query_multi` behavior explicit.
+    pub fn single_statement(sql: impl Into<String>, result: QueryResult) -> Self {
+        Self::single_statement_with_truncation(sql, result, false)
+    }
+
+    /// Wrap one query result while preserving whether the row cap truncated it.
+    pub fn single_statement_with_truncation(
+        sql: impl Into<String>,
+        result: QueryResult,
+        truncated: bool,
+    ) -> Self {
+        let total_time_ms = result.execution_time_ms;
+        Self {
+            results: vec![StatementResult {
+                sql: sql.into(),
+                columns: result.columns,
+                rows: result.rows,
+                rows_affected: result.rows_affected,
+                execution_time_ms: total_time_ms,
+                truncated,
+            }],
+            total_time_ms,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ConnectionHandle {
     pub id: String,
@@ -997,5 +1027,55 @@ mod tests {
             serde_json::to_string(&DdlAtomicity::AutoCommitPerStatement).unwrap(),
             "\"autoCommitPerStatement\""
         );
+    }
+}
+
+#[cfg(test)]
+mod multi_query_result_tests {
+    use super::*;
+
+    #[test]
+    fn single_statement_with_truncation_preserves_truncation_flag() {
+        let query = QueryResult {
+            columns: Vec::new(),
+            rows: Vec::new(),
+            rows_affected: None,
+            execution_time_ms: 0,
+        };
+
+        let multi = MultiQueryResult::single_statement_with_truncation("SELECT 1", query, true);
+
+        assert!(multi.results[0].truncated);
+    }
+
+    #[test]
+    fn single_statement_preserves_query_result_and_timing() {
+        let query = QueryResult {
+            columns: vec![ColumnInfo {
+                name: "id".into(),
+                data_type: "INTEGER".into(),
+                nullable: false,
+            }],
+            rows: vec![vec![Some(Value::Integer(42))]],
+            rows_affected: Some(1),
+            execution_time_ms: 7,
+        };
+
+        let multi = MultiQueryResult::single_statement("SELECT 42", query);
+
+        assert_eq!(multi.total_time_ms, 7);
+        assert_eq!(multi.results.len(), 1);
+        let statement = &multi.results[0];
+        assert_eq!(statement.sql, "SELECT 42");
+        assert_eq!(statement.columns.len(), 1);
+        assert_eq!(statement.columns[0].name, "id");
+        assert_eq!(statement.rows.len(), 1);
+        assert!(matches!(
+            statement.rows[0][0].as_ref(),
+            Some(Value::Integer(42))
+        ));
+        assert_eq!(statement.rows_affected, Some(1));
+        assert_eq!(statement.execution_time_ms, 7);
+        assert!(!statement.truncated);
     }
 }

@@ -12,6 +12,7 @@ mod jobs;
 #[cfg(test)]
 mod plan_scope;
 mod preview;
+mod schema_loading;
 mod types;
 
 #[cfg(test)]

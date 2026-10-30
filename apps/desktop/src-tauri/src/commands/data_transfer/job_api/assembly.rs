@@ -507,28 +507,20 @@ async fn load_schemas(
         .get_tables(handle, &endpoint.database, endpoint.normalized_schema())
         .await
         .cmd_err("apply_data_transfer_job")?;
-    let mut schemas = HashMap::new();
-    for table in tables
-        .into_iter()
+    let table_names = tables
+        .iter()
         .filter(|table| crate::data_transfer::metadata::table_in_endpoint_schema(endpoint, table))
         .filter(|table| matches!(table.table_type, TableType::Table))
-    {
-        let schema = crate::data_transfer::metadata::load_table_schema(
-            driver,
-            handle,
-            endpoint,
-            &table.name,
-        )
-        .await
-        .map_err(|error| {
-            CommandError::Validation(format!(
-                "failed to inspect {side} table '{}': {error}",
-                table.name
-            ))
-        })?;
-        schemas.insert(table.name.clone(), schema);
-    }
-    Ok(schemas)
+        .map(|table| table.name.as_str())
+        .collect::<Vec<_>>();
+    super::super::schema_loading::load_named_table_schemas(
+        driver,
+        handle,
+        endpoint,
+        &table_names,
+        side,
+    )
+    .await
 }
 
 /// Drop the helper argument when the platform-only source check is unused.

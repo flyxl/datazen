@@ -16,8 +16,8 @@ use crate::{
 use crate::{
     ColumnInfo, ColumnSchema, ConnectionConfig, ConnectionHandle, CountStrategy, DatabaseDriver,
     DatabaseType, DriverCategory, DriverError, ExplainResult, MultiQueryResult, QueryResult,
-    ServerInfo, StatementResult, StructureChangePlan, StructureChangeRequest, TableInfo,
-    TableSchema, TransactionHandle, Value,
+    ServerInfo, StructureChangePlan, StructureChangeRequest, TableInfo, TableSchema,
+    TransactionHandle, Value,
 };
 
 /// The column the mock's estimate statement selects. The mock answers a
@@ -940,17 +940,7 @@ impl DatabaseDriver for MockDriver {
         if let Ok(mut g) = self.last_query_limit.lock() {
             *g = Some(limit);
         }
-        Ok(MultiQueryResult {
-            results: vec![StatementResult {
-                sql: sql.to_string(),
-                columns: result.columns,
-                rows: result.rows,
-                rows_affected: result.rows_affected,
-                execution_time_ms: result.execution_time_ms,
-                truncated: false,
-            }],
-            total_time_ms: 0,
-        })
+        Ok(MultiQueryResult::single_statement(sql, result))
     }
 
     async fn query_with_params(
