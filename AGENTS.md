@@ -7,11 +7,13 @@
 DataZen 是 Tauri v2 + React 18 + TypeScript + Rust 的跨平台数据库管理工具，使用 pnpm 与 Cargo workspace。
 
 ```text
-apps/desktop/        桌面应用：src/（React UI、Zustand stores、Tauri IPC client、i18n）+ src-tauri/（Desktop bootstrap、commands、platform、store、宿主适配）
-modules/             `datazen` 核心 crate：feature 门控的领域词汇、仓储端口与应用用例（D 系列迁移的归位目标）
-packages/            driver-api、infra、drivers/*（驱动家族与 http-support）、frontend、ui、backend-client、driver-sdk、extension-points、wapp-sdk、wapps
-e2e/                 Host WebdriverIO journeys
-docs/                features、architecture、development、blogs、已核实且明确不修的 bugs
+apps/desktop/            桌面壳：入口、platform/desktop 适配、shell、以及 src-tauri 宿主
+apps/desktop/src-tauri/  Desktop bootstrap、commands、platform、store、宿主适配（crate `datazen_desktop`）
+packages/frontend/       共享 React UI（`@datazen/frontend`）：stores、组件、hooks、i18n、平台端口
+packages/                driver-api、infra、UI/SDK（backend-client、driver-sdk、wapp-sdk、extension-points、ui）、wapps、drivers/*
+modules/                 单一业务 crate `datazen`（feature 门控的领域与用例）
+e2e/                     Host WebdriverIO journeys
+docs/                    features、architecture、development、blogs、已核实且明确不修的 bugs
 ```
 
 数据库驱动实现与专属测试必须在 `packages/drivers/<id>/`；Host 不得硬编码驱动方言。`packages/ui` 是纯 React 基础组件库，不能依赖宿主 Store 或 IPC。
@@ -21,7 +23,7 @@ docs/                features、architecture、development、blogs、已核实�
 权威方案：[DDD 模块化重构](docs/development/ddd-refactor-plan.md)（总纲；实施细节按主题在同目录 `ddd-refactor/` 下，细节文件保留原 §2–§14 编号）。该方案区分当前事实与目标设计，不能把目标目录写成已实现。
 
 - 最终以一个 `modules/` crate 按功能组织 `application` / `domain`；目标 package 为 `datazen`（已落地：`modules/` 即 `datazen` crate）。
-- `apps/desktop/src-tauri` 是 Desktop 宿主；目标 Web 宿主是 `web/` / `datazen-web`（Web 形态已移出 DDD 重构范围，D8 在桌面单宿主内收尾）。
+- `apps/desktop/src-tauri` 是 Desktop 宿主（crate `datazen_desktop`）；目标 Web 宿主是 `apps/web/`（尚未落地，不要写成已实现；Web 形态已移出 DDD 重构范围，D8 在桌面单宿主内收尾）。
 - Repository trait 由所属 domain 定义，Desktop/Web infrastructure 实现；不建立全局仓储全集。
 - Controller 只做上下文、DTO、应用服务调用和错误映射，不直接访问 Store、AppDb、Driver、Runtime internals。
 - `execution::runtime` 承载 actor、lease、队列、等待、资源回收；`execution::application` 编排用例；Job 归 `jobs`。
