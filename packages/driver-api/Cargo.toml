@@ -24,6 +24,10 @@ tokio = { version = "1", features = ["sync"] }
 # the SQL driver crates; each driver crate also depends on sqlparser directly
 # to bind its own dialect).
 sqlparser = { version = "0.59", features = ["visitor"] }
+# F3: pure SQL text helpers moved to driver-support; re-exported from lib.rs
+# so downstream paths stay stable. Single consumer — per the P1 policy a
+# single-consumer path dep is not hoisted to the workspace root table.
+datazen-driver-support = { path = "../driver-support" }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

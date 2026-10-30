@@ -154,11 +154,11 @@ graph TD
 > | 步 | 来源 | 内容 | 状态（本分支） |
 > |---|---|---|---|
 > | 1 | F0 | 桌面 feature 显式全集 | ✅ 已实施，cargo 等价验证 26=26 |
-> | 2 | P0 | 卫生清欠 | ✅ 已实施（hub.md 头部刷新、README 计数对齐 17；xlsx CVE 按方案留给维护者决策） |
+> | 2 | P0 | 卫生清欠 | ✅ 已实施（hub.md 头部刷新、README 计数对齐 17；xlsx 已从 npm 0.18.5 换 cdn.sheetjs.com 0.20.3 tarball（CVE-2023-30533 / CVE-2024-22363，API 面仅 read/write/utils 六调用点，升级后 import/export 测试全绿）；附带把四处 `isMac ? '⌘' : 'Ctrl'` 内联收敛到 `keymap.formatModKey(platform)`，顺带统一了同文件内 `⌘ Enter`/`⌘+Enter` 的格式漂移） |
 > | 3 | P1 | workspace 依赖继承 | ✅ 机械部分已实施 |
 > | 4 | F1 | 比对租约 flock 化，data_sync 去 rusqlite | ✅ 已实施：fd-lock 4 替换 SQLite 排他事务，锁住不回收/放锁后回收双向测试，45/45 comparison_store + 244/244 data_sync 全绿；遗留 .sqlite 租约不读不删（fail closed，见提交说明） |
 > | 5 | F2 | 前端稳定入口 + 门禁 | ✅ 已实施（含三处偏差，见边界方案 §6 实施记录：新增 `./app` 轻入口、`./testing/*` 测试镜像、镜像导入带扩展名） |
-> | 6 | P2 ∥ F3 | 驱动注入静态化 ∥ 新建 driver-support | 待做，两项无耦合可并行 |
+> | 6 | P2 ∥ F3 | 驱动注入静态化 ∥ 新建 driver-support | F3 第一刀已实施：`sql_split` + `sql_identifiers`（仅有的零依赖纯模块，780 行）下沉新 crate，模块级 re-export 保下游路径，三级 cargo check + 14 内嵌测试全绿，`PROTOCOL_VERSION` 不变；后续候选（filters/keyset/dialect）拖着 `Value`/`DatabaseDriver`，留待后续刀。P2 待做，两项无耦合可并行 |
 > | 7 | F4a…F4n | 命令体按用例下沉各 feature `api` 模块 | 待做 |
 > | 8 | P3 / P5 | feature 图修剪 / 目录语义化 | 记录方向，见各自触发条件 |
 >

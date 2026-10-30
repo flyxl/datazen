@@ -1721,6 +1721,7 @@ version = "0.0.21"
 dependencies = [
  "async-trait",
  "chrono",
+ "datazen-driver-support",
  "inventory",
  "serde",
  "serde_json",
@@ -1945,6 +1946,10 @@ dependencies = [
  "tracing",
  "uuid",
 ]
+
+[[package]]
+name = "datazen-driver-support"
+version = "0.0.1"
 
 [[package]]
 name = "datazen-driver-turso"

@@ -4,7 +4,9 @@
 > 确认日期：2026-10-29。基线：`main` 上 form-split 已落地（`apps/desktop`、`packages/frontend`、`modules` crate `datazen`）。
 > 2026-10-30 更新（`review/code-organization-2026-10` 分支）：F0、F1、F2 已在该分支
 > 落地（F0 经 cargo tree 等价验证 26=26；F1 经 45/45 comparison_store + 244/244
-> data_sync 测试验证；F2 含三处实施偏差，见 §6 末尾的实施记录）；F3、F4 代码未动。
+> data_sync 测试验证；F2 含三处实施偏差，见 §6 末尾的实施记录）；F3 第一刀
+> 已落地（`sql_split` + `sql_identifiers` 下沉 `driver-support`，见 §6 末尾实施记录），
+> F4 代码未动。
 > 该分支同时合入代码组织评审（`code-organization-review.md`），两份计划的统一执行顺序见其 §4。
 > 本文放在分支 `docs/path-facts-after-form-split`，不打开 PR，避免每次推送触发 CI。
 > 合并前仍以代码为准；本文只约束这一组后续改动的切法。
@@ -248,6 +250,13 @@ F2 已落地，与上文三处偏差，均有买测：
 2. **测试镜像 `./testing/*`**：上文预期测试也只用三个说明符，实测 13 个接缝测试必须拿到内部件（断言 store 终态、vi.mock 内部接缝、注入状态）。新增 `"./testing/*": "./src/*"`，门禁双规则：`@datazen/frontend/src/` 全仓禁止、`testing/` 仅测试文件可用。vi.mock 按解析后文件拦截，镜像与包内相对导入命中同一模块，拦截链路不变。
 3. **testing 导入带扩展名**：TS bundler 模式对 exports 通配目标不做扩展名推断，旧 `./src/*` 能解析靠的是 node_modules 物理路径回退（symlink 落在真实目录）；`testing/` 无物理目录，回退失效。仓库本就开了 `allowImportingTsExtensions`，测试镜像导入带上真实扩展名（`…/stores/uiStore.ts`）后 exports 成为唯一解析源——不需要复活 F6-c2 已退役的 tsconfig paths 别名表。
 
+F3 第一刀已落地：
+
+1. **切口选最小纯集**：全量盘点 `driver-api` 50+ 模块后，`sql_split`（683 行）与 `sql_identifiers`（97 行）是仅有的零 crate 依赖、零外部依赖模块；其余候选（filters/keyset/dialect/backup_dialect）都拖着 `Value` / `DatabaseDriver` / serde，强行下沉会把类型一起拖走，超出第一刀边界。
+2. **模块级 re-export 保路径**：`driver-api` 的 `pub use datazen_driver_support::{sql_identifiers, sql_split}` 让下游 `datazen_driver_api::sql_split::…` 与 crate 内 `crate::sql_split::…` 均不变；lib.rs 顶层的 `SqlStatementScanner` / `Utf8ChunkDecoder` 聚合导出改指新源。函数体真正离开 `driver-api`，验收达成。
+3. **driver-support 零依赖**：新 crate 无任何 dependencies（连 serde 都没有），驱动插件作者可单独取文本工具。单一消费者，按 P1 口径 path 依赖不上收 workspace 根表。
+4. **验证**：`cargo check` 三级绿（driver-support / driver-api / modules），搬入的 14 个内嵌测试全绿，`PROTOCOL_VERSION`（=6）与 `MIN_PROTOCOL_VERSION`（=1）未动，前端零新依赖。
+
 ---
 
 ## 7. 分 PR 与验收
@@ -259,7 +268,7 @@ F2 已落地，与上文三处偏差，均有买测：
 | F0 | 本文 + 桌面 feature 显式全集（可与本文同 PR，也可紧随其后） | feature 启用集合与改前一致；文档路径与仓库一致 |
 | F1 | 比对租约改为 flock | `data_sync` 不再依赖 `rusqlite`；恢复测试覆盖「锁住不回收 / 放锁后回收」；比较正文格式不变 |
 | F2 | 前端稳定入口与深导入门禁 | 第 6 节完成标准 |
-| F3 | 新建 `driver-support`，搬第一批纯函数 | `PROTOCOL_VERSION` 不变；`driver-api` 不再包含已搬走的函数体；前端无新依赖 |
+| F3 | 新建 `driver-support`，搬第一批纯函数（第一刀已落地：`sql_split` + `sql_identifiers`） | `PROTOCOL_VERSION` 不变；`driver-api` 不再包含已搬走的函数体；前端无新依赖 |
 | F4a | `connection::api` + 桌面胶水变薄 | IPC 载荷与错误码不变；宿主测试只覆盖映射 |
 | F4b… | 按第 3 节顺序逐个用例下沉 | 每刀删除宿主中的对应实现 |
 

@@ -43,8 +43,6 @@ pub mod schema_scope_mapping;
 pub mod session;
 pub mod sql_builder;
 pub mod sql_dump;
-pub mod sql_identifiers;
-pub mod sql_split;
 pub mod sql_target;
 pub mod sqlite_structure;
 pub mod sync;
@@ -54,6 +52,9 @@ mod tunnel_types;
 mod types;
 
 pub use backup_dialect::{BackupDialect, LegacyBackupDialect};
+// F3 第一刀：两个纯文本模块下沉到 driver-support，函数体不再在本 crate。
+// 模块级 re-export 保住历史路径（下游 `datazen_driver_api::sql_split::…`、
+// crate 内 `crate::sql_split::…` 均不变）。
 pub use capability_domains::{BackupSupport, DataSupport};
 pub use catalog::{CatalogReader, LegacyCatalogReader};
 pub use command::{
@@ -64,6 +65,8 @@ pub use command::{
     CommandResult, DriverCommandDefinition, DriverCommandMetadata, DriverSaveDialogSpec,
 };
 pub use command_catalog::{CommandCatalog, LegacyCommandCatalog};
+pub use datazen_driver_support::sql_split::{SqlStatementScanner, Utf8ChunkDecoder};
+pub use datazen_driver_support::{sql_identifiers, sql_split};
 pub use dialect::{BoundParameterLimit, LegacySqlDialect, SqlDialect};
 pub use event_sink::{iter_event_outlets, DriverEvent, DriverEventOutlet, DriverEventSink};
 pub use explain_plan::{normalize_mysql_explain_plan, normalize_postgres_explain_plan};
@@ -101,7 +104,6 @@ pub use schema_scope_mapping::{
     MySqlViewMetadata, SchemaObjectScopeDependency, SchemaObjectScopeMapping,
 };
 pub use sql_dump::{RestoreSession, RestoreStatementGuard};
-pub use sql_split::{SqlStatementScanner, Utf8ChunkDecoder};
 pub use sql_target::{
     qualify_attach_alias, qualify_database_inline, qualify_db_schema, qualify_schema_inline,
     qualify_sql_with, QualifiedSql, QualifierQuote, SqlTarget,
