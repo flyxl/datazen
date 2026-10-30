@@ -1,16 +1,18 @@
 //! Schema Diff deploy execution and cancellation.
+//!
+//! host-boundary F4c-3：复核消费与部署前目标/源验证下沉
+//! `schema_diff::api::{consume_and_verify_reviewed_plan, revalidate_source_snapshot}`；
+//! 本层保留历史记账、只读/破坏性门与 JobRuntime 接线，验证序列的错误
+//! 顺序与文本逐字节不变。
 
 use datazen::migration::schema_diff::types::PlanRequirement;
 use datazen_driver_api::SchemaMigration as _;
 
 use super::job;
-use super::unified_plan;
 use super::{
-    fetch_schema_object, fetch_target_table_dependency_catalog, fetch_target_table_schema,
-    has_table_drop_statement, plan_has_destructive, resolve_reviewed_table_snapshot,
-    reviewed_scope, run_schema_diff_deploy, validate_target_dependency_catalog, AppState,
-    CommandError, DeployOptions, SchemaDiffDeployResult, SchemaDiffPlan, SqlTarget, State,
-    DESTRUCTIVE_CONFIRM_TOKEN,
+    plan_has_destructive, reviewed_scope, run_schema_diff_deploy, schema_diff_api,
+    schema_diff_endpoint, AppState, CommandError, DeployOptions, SchemaDiffDeployResult,
+    SchemaDiffPlan, SqlTarget, State, DESTRUCTIVE_CONFIRM_TOKEN,
 };
 
 /// Execute a reviewed schema diff plan on the target connection.
@@ -237,13 +239,19 @@ pub(crate) async fn execute_schema_diff_deploy_impl_with_cancel(
         }
     }
 
-    let reviewed = match crate::schema_diff::reviewed::consume(
+    // 复核消费 + 部署前目标侧验证（含表 DROP 的完整目录复核、逐表/对象
+    // 快照复核、对象目录与表身份复核、MySQL 视图创建上下文复核）。
+    let target_endpoint = schema_diff_api::SchemaDiffEndpoint {
+        driver: driver.clone(),
+        handle: handle.clone(),
+        config: config.clone(),
+    };
+    let reviewed = match schema_diff_api::consume_and_verify_reviewed_plan(
         state.schema_diff_reviewed_plans.as_ref(),
-        &reviewed_scope(state)?,
+        &reviewed_scope(&state)?,
         &plan,
+        &target_endpoint,
         &target_db_session_id,
-        &handle,
-        &config,
         effective_target_database,
         effective_target_schema,
     )
@@ -251,159 +259,29 @@ pub(crate) async fn execute_schema_diff_deploy_impl_with_cancel(
     {
         Ok(value) => value,
         Err(error) => {
-            return fail_schema_diff_deploy(&state, history_run, CommandError::Validation(error))
-                .await;
+            return fail_schema_diff_deploy(&state, history_run, error.into()).await;
         }
     };
-    if has_table_drop_statement(&reviewed.plan) {
-        if !reviewed.has_complete_target_dependency_catalog {
-            return fail_schema_diff_deploy(
-                &state,
-                history_run,
-                CommandError::Validation(
-                    "Cannot verify the complete target dependency catalog for this table drop; compare again with full catalog visibility".into(),
-                ),
-            )
-            .await;
-        }
-        let current_catalog = match fetch_target_table_dependency_catalog(
-            driver.as_ref(),
-            &handle,
-            effective_target_database.unwrap_or_default(),
-            &config.database_type,
-            reviewed.target_dependency_schema_scope.as_deref(),
-            &[],
-        )
-        .await
-        {
-            Ok(catalog) => catalog,
-            Err(error) => return fail_schema_diff_deploy(&state, history_run, error).await,
-        };
-        if let Err(error) =
-            validate_target_dependency_catalog(&reviewed.snapshots, &current_catalog)
-        {
-            return fail_schema_diff_deploy(&state, history_run, CommandError::Validation(error))
-                .await;
-        }
-    } else {
-        for (table, snapshot) in &reviewed.snapshots {
-            let (relation, snapshot_database, snapshot_schema) = resolve_reviewed_table_snapshot(
-                &config.database_type,
-                table,
-                effective_target_database.unwrap_or_default(),
-                effective_target_schema,
-            );
-            let current = match fetch_target_table_schema(
-                driver.as_ref(),
-                &handle,
-                &relation,
-                &snapshot_database,
-                snapshot_schema.as_deref(),
-            )
-            .await
-            {
-                Ok(value) => value,
-                Err(error) => return fail_schema_diff_deploy(&state, history_run, error).await,
-            };
-            if let Err(error) =
-                crate::schema_diff::reviewed::validate_snapshot(table, snapshot, &current)
-            {
-                return fail_schema_diff_deploy(
-                    &state,
-                    history_run,
-                    CommandError::Validation(error),
-                )
-                .await;
-            }
-        }
-    }
-    for snapshot in &reviewed.object_snapshots {
-        let object = datazen_driver_api::DatabaseObject {
-            kind: snapshot.kind.as_str().into(),
-            schema: snapshot.schema.clone(),
-            name: snapshot.name.clone(),
-            signature: snapshot.signature.clone(),
-            target_schema: snapshot.target_schema.clone(),
-            target_name: snapshot.target_name.clone(),
-        };
-        let current = match fetch_schema_object(driver.as_ref(), &handle, &object).await {
-            Ok(value) => value,
-            Err(error) => return fail_schema_diff_deploy(&state, history_run, error).await,
-        };
-        if let Err(error) =
-            crate::schema_diff::reviewed::validate_object_snapshot(snapshot, &current)
-        {
-            return fail_schema_diff_deploy(&state, history_run, CommandError::Validation(error))
-                .await;
-        }
-    }
-    if reviewed.has_complete_target_object_catalog {
-        let mut current_catalog_complete = true;
-        let (_, current_object_catalog) = match unified_plan::read_target_object_catalog(
-            driver.as_ref(),
-            &handle,
-            config.database.as_deref().unwrap_or_default(),
-            &config.database_type,
-            reviewed.target_dependency_schema_scope.as_deref(),
-            &mut current_catalog_complete,
-        )
-        .await
-        {
-            value if current_catalog_complete => value,
-            _ => {
-                return fail_schema_diff_deploy(
-                    &state,
-                    history_run,
-                    CommandError::Validation(
-                        "Target object dependency catalog can no longer be proved complete; compare again".into(),
-                    ),
-                )
-                .await
-            }
-        };
-        if let Err(error) = crate::schema_diff::reviewed::validate_object_dependency_catalog(
-            &reviewed.object_dependency_catalog,
-            &current_object_catalog,
-        ) {
-            return fail_schema_diff_deploy(&state, history_run, CommandError::Validation(error))
-                .await;
-        }
-        let current_table_catalog = match unified_plan::read_target_table_identities(
-            driver.as_ref(),
-            &handle,
-            config.database.as_deref().unwrap_or_default(),
-            &config.database_type,
-            reviewed.target_dependency_schema_scope.as_deref(),
+    // 源侧快照复核按原顺序随后执行（源会话从复核记录解析）。
+    if let Some(source_snapshot) = reviewed.source_snapshot.as_ref() {
+        let source_context = match crate::services::migration_endpoint::runtime_session_context(
+            &state,
+            &source_snapshot.session,
+            datazen::execution::application::LivePurpose::Inspection,
         )
         .await
         {
             Ok(value) => value,
             Err(error) => return fail_schema_diff_deploy(&state, history_run, error).await,
         };
-        if let Err(error) = crate::schema_diff::reviewed::validate_table_identity_catalog(
-            &reviewed.target_table_identity_catalog,
-            &current_table_catalog,
-        ) {
-            return fail_schema_diff_deploy(&state, history_run, CommandError::Validation(error))
-                .await;
+        if let Err(error) = schema_diff_api::revalidate_source_snapshot(
+            &schema_diff_endpoint(source_context),
+            &reviewed,
+        )
+        .await
+        {
+            return fail_schema_diff_deploy(&state, history_run, error.into()).await;
         }
-    }
-    if let Some(expected_context) = reviewed.target_mysql_view_scope_context.as_ref() {
-        let current_context =
-            unified_plan::read_mysql_view_scope_context(driver.as_ref(), &handle).await;
-        if current_context.as_ref() != Some(expected_context) {
-            return fail_schema_diff_deploy(
-                &state,
-                history_run,
-                CommandError::Validation(
-                    "Target MySQL view creation context changed after review; compare again".into(),
-                ),
-            )
-            .await;
-        }
-    }
-    if let Err(error) = unified_plan::revalidate_source_snapshot(&state, &reviewed).await {
-        return fail_schema_diff_deploy(&state, history_run, error).await;
     }
     let plan = reviewed.plan;
     // The durable Job path always passes a cancel flag (`run_apply_job` drives

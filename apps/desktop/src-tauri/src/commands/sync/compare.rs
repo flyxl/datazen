@@ -1,21 +1,12 @@
-use crate::commands::error::{CmdExt, CommandError};
-use crate::schema_diff::types::{ChangedColumnDiff, ColumnChange, ColumnSnapshot, TableColumnDiff};
-use crate::transfer::ir::{IRColumn, IRTable, IRType};
-use datazen_driver_api::sql_identifiers::qualify_relation_sql;
-use std::collections::HashMap;
+//! Row-count estimate for Data Sync (thin delegate).
+//!
+//! host-boundary F4c 残余收口：COUNT 装配与宽容解析下沉
+//! `data_sync::api::count_table_rows`，本层只保留 `cmd_err` 的 IPC 错误
+//! 映射（驱动错误原样透传，文本逐字节不变）。
 
-// ── Helpers ─────────────────────────────────────────────────────────
+use crate::commands::error::{CmdExt, CommandError};
 
 /// Count rows in a table on a given connection.
-pub(super) fn value_as_u64(value: &datazen_driver_api::Value) -> Option<u64> {
-    match value {
-        datazen_driver_api::Value::Integer(n) if *n >= 0 => Some(*n as u64),
-        datazen_driver_api::Value::Float(f) if *f >= 0.0 && f.is_finite() => Some(*f as u64),
-        datazen_driver_api::Value::String(s) => s.parse().ok(),
-        _ => None,
-    }
-}
-
 pub(crate) async fn count_rows(
     driver: &dyn datazen_driver_api::DatabaseDriver,
     handle: &datazen_driver_api::ConnectionHandle,
@@ -24,125 +15,7 @@ pub(crate) async fn count_rows(
     schema: Option<&str>,
     table: &str,
 ) -> Result<u64, CommandError> {
-    let quote = if family == "mysql" { '`' } else { '"' };
-    let qualified = qualify_relation_sql(family, database, schema, table, quote);
-    let sql = format!("SELECT COUNT(*) FROM {qualified}");
-    let res = driver
-        .query_at(
-            handle,
-            &sql,
-            datazen_driver_api::SqlTarget::new(database, schema),
-        )
+    crate::data_sync::api::count_table_rows(driver, handle, family, database, schema, table)
         .await
-        .cmd_err("count_rows")?;
-    if let Some(row) = res.rows.first() {
-        if let Some(Some(v)) = row.first() {
-            if let Some(n) = value_as_u64(v) {
-                return Ok(n);
-            }
-        }
-    }
-    Ok(0)
-}
-
-/// Stable display string for IR types in schema-diff snapshots.
-pub(crate) fn format_ir_type(t: &IRType) -> String {
-    match t {
-        IRType::Bool => "Bool".into(),
-        IRType::Int8 => "Int8".into(),
-        IRType::Int16 => "Int16".into(),
-        IRType::Int32 => "Int32".into(),
-        IRType::Int64 => "Int64".into(),
-        IRType::Float32 => "Float32".into(),
-        IRType::Float64 => "Float64".into(),
-        IRType::Decimal { precision, scale } => format!("Decimal({precision},{scale})"),
-        IRType::Char { length } => format!("Char({length})"),
-        IRType::Varchar { length } => format!("Varchar({length:?})"),
-        IRType::Text => "Text".into(),
-        IRType::Binary { length } => format!("Binary({length:?})"),
-        IRType::Blob => "Blob".into(),
-        IRType::Date => "Date".into(),
-        IRType::Time { with_timezone } => format!("Time(tz={with_timezone})"),
-        IRType::Timestamp { with_timezone } => format!("Timestamp(tz={with_timezone})"),
-        IRType::Json => "Json".into(),
-        IRType::Uuid => "Uuid".into(),
-        IRType::Bit { length } => format!("Bit({length})"),
-        IRType::Other(s) => format!("Other({s})"),
-    }
-}
-
-fn ir_column_snapshot(col: &IRColumn) -> ColumnSnapshot {
-    ColumnSnapshot {
-        name: col.name.clone(),
-        data_type: format_ir_type(&col.ir_type),
-        nullable: col.nullable,
-        default_value: None,
-        comment: None,
-        is_primary_key: col.is_primary_key,
-        is_auto_increment: false,
-    }
-}
-
-/// Compare schemas using IR types so dialect aliases that map to the same [`IRType`] are not reported as dataType changes.
-pub(crate) fn diff_table_schemas_ir(
-    table: &str,
-    src_ir: &IRTable,
-    tgt_ir: &IRTable,
-) -> TableColumnDiff {
-    let src_map: HashMap<&str, &IRColumn> = src_ir
-        .columns
-        .iter()
-        .map(|c| (c.name.as_str(), c))
-        .collect();
-    let tgt_map: HashMap<&str, &IRColumn> = tgt_ir
-        .columns
-        .iter()
-        .map(|c| (c.name.as_str(), c))
-        .collect();
-    let mut missing_on_target = Vec::new();
-    let mut extra_on_target = Vec::new();
-    let mut changed = Vec::new();
-    for col in &src_ir.columns {
-        if !tgt_map.contains_key(col.name.as_str()) {
-            missing_on_target.push(ir_column_snapshot(col));
-        }
-    }
-    for col in &tgt_ir.columns {
-        if !src_map.contains_key(col.name.as_str()) {
-            extra_on_target.push(ir_column_snapshot(col));
-        }
-    }
-    for col in &src_ir.columns {
-        if let Some(tgt_col) = tgt_map.get(col.name.as_str()) {
-            let mut changes = Vec::new();
-            if col.ir_type != tgt_col.ir_type {
-                changes.push(ColumnChange::DataType);
-            }
-            if col.nullable != tgt_col.nullable {
-                changes.push(ColumnChange::Nullable);
-            }
-            if col.is_primary_key != tgt_col.is_primary_key {
-                changes.push(ColumnChange::PrimaryKey);
-            }
-            if !changes.is_empty() {
-                changed.push(ChangedColumnDiff {
-                    name: col.name.clone(),
-                    source: ir_column_snapshot(col),
-                    target: ir_column_snapshot(tgt_col),
-                    changes,
-                });
-            }
-        }
-    }
-    TableColumnDiff {
-        table: table.to_string(),
-        added: missing_on_target.clone(),
-        removed: extra_on_target.clone(),
-        missing_on_target,
-        extra_on_target,
-        changed,
-        missing_check_constraints: Vec::new(),
-        extra_check_constraints: Vec::new(),
-        table_options: None,
-    }
+        .cmd_err("count_rows")
 }

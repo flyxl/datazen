@@ -158,9 +158,9 @@ graph TD
 > | 3 | P1 | workspace 依赖继承 | ✅ 机械部分已实施 |
 > | 4 | F1 | 比对租约 flock 化，data_sync 去 rusqlite | ✅ 已实施：fd-lock 4 替换 SQLite 排他事务，锁住不回收/放锁后回收双向测试，45/45 comparison_store + 244/244 data_sync 全绿；遗留 .sqlite 租约不读不删（fail closed，见提交说明） |
 > | 5 | F2 | 前端稳定入口 + 门禁 | ✅ 已实施（含三处偏差，见边界方案 §6 实施记录：新增 `./app` 轻入口、`./testing/*` 测试镜像、镜像导入带扩展名） |
-> | 6 | P2 ∥ F3 | 驱动注入静态化 ∥ 新建 driver-support | F3 第一刀已实施：`sql_split` + `sql_identifiers`（仅有的零依赖纯模块，780 行）下沉新 crate，模块级 re-export 保下游路径，三级 cargo check + 14 内嵌测试全绿，`PROTOCOL_VERSION` 不变；后续候选（filters/keyset/dialect）拖着 `Value`/`DatabaseDriver`，留待后续刀。P2 待做，两项无耦合可并行 |
-> | 7 | F4a…F4n | 命令体按用例下沉各 feature `api` 模块 | F4a 已实施：`modules/src/connection/api.rs` 固定 api 写法（错误走 feature error 路线，避免发明 ApiErrorCode 协议取值；IPC 错误码逐字节不变），8 处桌面调用点改委托，`resolve_test_config` 密钥合并逻辑下沉；modules 1487/1487 绿。F4b 已实施：`modules/src/table_browsing/api.rs` 收表读取两用例（`read_table_page`/`preview_table_read`，含 DB-15 单点拼装、计数回退、双形态结果合并），`TargetCommandRunner` 消费者端口落宿主实现，宿主 `table_target.rs` 874→270 行只剩传输胶水与端口；table-browsing 闭包 1125/1125 绿、全 feature check 绿。复核：export/backup 无需 F4 刀（D6 item 5 已落目标形态）。F4c sync 写路径刀已实施：`data_sync::api` 收复核批次（`generate_reviewed_batch_sql` + `BatchSqlHost` 端口）、键读 `select_by_key_sql` 与共享装配 `generate_write_sql_for_table`，宿主 `sync/host/statements.rs`、`select.rs` 删除、`apply.rs` 1177→682 行委托去重（ui-preview 与复核批次共用同一装配），门禁先于端口的顺序契约以测试钉死；data_sync 闭包 258/258 绿、宿主 feature 联合 check 绿。F4c data_transfer 预览刀已实施：源范围装配闭包六处（宿主 preview.rs 四环 + modules sql_file/dispatcher/handler）收进 `recordset::build_source_scope_for_driver`（Job handler 走 `for_family` 保端点配置类型来源），COUNT 装配/解析下沉 `count_scoped_rows_sql`/`parse_scoped_row_count`（执行留宿主租约侧），宿主 `preview.rs` 858→775 行只剩传输编排，错误装饰留调用点、IPC 字节不变；data_transfer 闭包 1212/1212 绿（+6 新测）、modules 27 feature 全集 2573/2573 绿。F4c 余下 schema_diff 复核待做 |
-> | 8 | P3 / P5 | feature 图修剪 / 目录语义化 | 记录方向，见各自触发条件 |
+> | 6 | P2 ∥ F3 | 驱动注入静态化 ∥ 新建 driver-support | F3 第一刀已实施：`sql_split` + `sql_identifiers`（仅有的零依赖纯模块，780 行）下沉新 crate，模块级 re-export 保下游路径，三级 cargo check + 14 内嵌测试全绿，`PROTOCOL_VERSION` 不变；后续候选（filters/keyset/dialect）已复核完毕：三候选均不满足方案分批判据（filters 是 IPC 契约 DTO、dialect 是 trait 配套适配器、keyset 含方言 SQL 装配且消费者含 modules），且下沉与桥接 re-export 构成环依赖，判决不搬，F3 收口（见边界方案 §6 复核结论）。P2 待做，两项无耦合可并行 |
+> | 7 | F4a…F4n | 命令体按用例下沉各 feature `api` 模块 | F4a 已实施：`modules/src/connection/api.rs` 固定 api 写法（错误走 feature error 路线，避免发明 ApiErrorCode 协议取值；IPC 错误码逐字节不变），8 处桌面调用点改委托，`resolve_test_config` 密钥合并逻辑下沉；modules 1487/1487 绿。F4b 已实施：`modules/src/table_browsing/api.rs` 收表读取两用例（`read_table_page`/`preview_table_read`，含 DB-15 单点拼装、计数回退、双形态结果合并），`TargetCommandRunner` 消费者端口落宿主实现，宿主 `table_target.rs` 874→270 行只剩传输胶水与端口；table-browsing 闭包 1125/1125 绿、全 feature check 绿。复核：export/backup 无需 F4 刀（D6 item 5 已落目标形态）。F4c sync 写路径刀已实施：`data_sync::api` 收复核批次（`generate_reviewed_batch_sql` + `BatchSqlHost` 端口）、键读 `select_by_key_sql` 与共享装配 `generate_write_sql_for_table`，宿主 `sync/host/statements.rs`、`select.rs` 删除、`apply.rs` 1177→682 行委托去重（ui-preview 与复核批次共用同一装配），门禁先于端口的顺序契约以测试钉死；data_sync 闭包 258/258 绿、宿主 feature 联合 check 绿。F4c data_transfer 预览刀已实施：源范围装配闭包六处（宿主 preview.rs 四环 + modules sql_file/dispatcher/handler）收进 `recordset::build_source_scope_for_driver`（Job handler 走 `for_family` 保端点配置类型来源），COUNT 装配/解析下沉 `count_scoped_rows_sql`/`parse_scoped_row_count`（执行留宿主租约侧），宿主 `preview.rs` 858→775 行只剩传输编排，错误装饰留调用点、IPC 字节不变；data_transfer 闭包 1212/1212 绿（+6 新测）、modules 27 feature 全集 2573/2573 绿。F4c schema_diff 复核刀已实施：宿主 schema_diff 域算法面六文件下沉 `schema_diff::api`（2,369 行收目录/快照/计划展开/复核消费/部署验证/单表对比），`SchemaDiffAdapterHost`/`ComparisonPreviewHost` 端口落宿主，宿主域 6,108→3,612 行、净删 2,705 行，sync 域 IR 对比算法顺带归位。F4c 残余收口已实施：sync COUNT 装配下沉 `data_sync::api::count_table_rows`、result_write 确认读下沉 `table_editing::result_edit::confirm_unchanged_read_sql`，data_transfer 复核无需新刀——`commands/` 生产代码零 SQL 拼装，§3 全树口径验收达成（modules 三 feature 并跑 1448/1448 绿）。F4 系列至此全部完成 |
+> | 8 | P3 / P5 | feature 图修剪 / 目录语义化 | 记录方向，见各自触发条件。P4 两项评估同日收口：tsconfig project references 不引入（tsrs 主引擎未验证 references 支持 + 15 个无包身份驱动 UI 树 + F2 门禁在岗，重评条件已记 P4-2）；根 devDeps 无需下放（逐项实测根表即真实消费者，前置是 P5 驱动 UI 包身份，见 P4-3） |
 >
 > 附带发现（本地实测）：裸 `--features connection_import` 在 main 上即编译失败
 > （connection_import 使用 `crate::feature_error` 但其 feature 列表未声明该依赖，
@@ -183,7 +183,20 @@ feature 集 / 主版本合理地不同（`dirs` 5 vs 6 是真问题，见 F-2，
 统一）。同时把 `non_ascii_idents = "deny"` 上收 `[workspace.lints.rust]`。预期效果：漂移在
 结构上不可能发生；新增依赖时"该不该进根表" forced 一次决策。
 
-后续项（本分支未做）：`dirs` 5→6 收敛；`serde_yaml` 已弃用（0.9.34+deprecated），规划迁移。
+后续项（2026-10-30 复核分支已全部落地）：
+1. **`dirs` 5→6 收敛 ✅**：实测 modules 侧 `connection_import/app_source.rs` 只用自由函数
+   `home_dir` / `data_dir` / `data_local_dir` / `config_dir`，两主版本间签名不变，「需要代码适配」
+   的担忧不成立——直接升 6 零代码改动；`Cargo.lock` 从双版本（5.0.1 + 6.0.0）收敛为单一 6.0.0，
+   规格上收根表 `[workspace.dependencies]`，两成员 `workspace = true` 继承（根表注释同步改写，
+   dirs 移出 per-member 豁免清单）。验证：`connection_import,feature_error` check + 1404/1404
+   测试绿（裸 `connection_import` 单 feature 编译失败为存量问题，见 P3 附注）。
+2. **`serde_yaml` 迁移 ✅**：换 `serde_norway` 0.9.42（延续 0.9.x 版本线的维护 fork，semver
+   兼容），经 package 别名 `serde_yaml = { package = "serde_norway", version = "0.9.42" }`
+   落根表——全部 20 处 `serde_yaml::` 导入路径零改动（仓库 API 面实测仅 `from_str`×17 +
+   `to_string`×3，签名逐一相同）。验证：六个 yaml 消费 feature（workflow/ai/monitor/dashboard/
+   backup/export）check + 1417/1417 测试绿（含 workflow YAML 往返金样）；26-feature 宿主腿
+   全集 check 绿；`Cargo.lock` 中 serde_yaml 0.9.34+deprecated 消失。桌面侧调用点（dashboard
+   export / workflow registry / monitor）经同一别名解析，CI 验证（沙箱无 GTK/WebKit）。
 
 ### P2 — 驱动注入静态化（2–3 天，消除最大构建脆弱性）
 
@@ -220,12 +233,28 @@ P3 才动图的结构。F0 留下的守护注释（未列出的 feature 不得�
    ——定位为**过渡态**：F2 落地时 exports 收成 `.` / `./shell` / `./styles.css` 三说明符，
    整条 `./src/*` 随之删除。本次修复的价值是消除「指向不存在 .js」的中间态埋雷，
    不让 F2 之前的任何严格消费者踩坑。
-2. （建议并入 F2 的 PR 一并做）tsconfig project references 评估：当前单程序 include 全部
-   包源码、tsrs/tsc 单程序 typecheck，包间边界靠约定不靠编译器；F2 门禁脚本
-   （`check-frontend-public-entry.mjs`）给出运行时检查后，project references 作为编译期
-   补强再评估优先级。
-3. （建议并入 F2 的 PR 一并做）根 package.json 的 react / zustand 等 devDependencies
-   下放至真实消费者。
+2. tsconfig project references 评估（2026-10-30 评估完毕，结论：**当前不引入**）：
+   F2 已落地且门禁（`check-frontend-public-entry.mjs`，运行时检查）在岗。project references
+   作为编译期补强的三个否决性事实——(a) 主 typecheck 引擎是 `tsrs`（Rust port，
+   `0.18.0-ts7.1.0-dev`，`scripts/typecheck.mjs` 明文「The gate runs tsrs alone」），其
+   0.18 开发线对 composite/project-references 的支持未经验证，引入即把门禁押在未验证面上；
+   (b) 根 `tsconfig.json` 的单程序 include 含 **15 个无 package.json 的驱动 UI 树**
+   （`packages/drivers/*/ui`），project references 要求每个被引用工程有自己的 tsconfig +
+   composite 配置，等于给 16 个驱动目录各造一份编译清单——而 P5 的方向恰恰是把驱动目录
+   挪出 TS workspace glob；(c) 边界违规当前由 F2 门禁 + `check-module-layers` 等 5 个
+   脚本在 CI 兜住，违规会被拦截而非静默通过，「靠约定不靠编译器」的表述已过时。重评条件：
+   tsrs 稳定支持 references、或 tsc 转正为主引擎、或 P5 落地驱动 UI 获得独立包身份。
+3. 根 package.json 的 react / zustand 等 devDependencies 下放（2026-10-30 复核完毕，
+   结论：**无需下放，根表每项都有真实根上下文消费者**）：逐项实测后，评审点名的
+   react / react-dom / @types/react / zustand / lucide-react / @testing-library/react
+   都是被**无 package.json 的驱动 UI 树**（`packages/drivers/*/ui`，15 个目录，经根
+   node_modules 解析、且在根 tsconfig 单程序与 `vitest.drivers.config.ts` 的 include 里）
+   与根上下文消费（`scripts/*.mjs` 的 type-only react 导入、`scripts/__tests__` 对
+   @testing-library/react 与 tailwind-merge 的直接导入、根 vitest/vite 配置）——
+   「真实消费者」就是根本身。其余各项同样有主：better-sqlite3 归 `e2e/create-sqlite-test-db.mjs`、
+   opencc-js / @iamtraction/google-translate / yaml / fflate 归 locale 与打包脚本、
+   wdio 族归 `e2e/wdio.conf.ts`。下放的前置是 P5 给驱动 UI 包身份（届时根表只留
+   工具链），本阶段动它只会制造双源。
 
 ### P5 — 目录语义化（Web 宿主重新立项时一并做，当前不动）
 

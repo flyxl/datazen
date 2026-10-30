@@ -11,7 +11,7 @@ use datazen::{
     shared::context::RequestContext,
     shared::id::Counter,
 };
-use datazen_driver_api::{ColumnInfo, LegacySqlDialect, SqlDialect, TableSchema, Value};
+use datazen_driver_api::{ColumnInfo, TableSchema, Value};
 use serde::Deserialize;
 use serde_json::json;
 use tauri::State;
@@ -334,23 +334,14 @@ pub(crate) async fn commit_query_result_cell_impl(
     if affected == Some(0) {
         // MySQL reports changed rows: a concurrent writer may already have set
         // the requested value. Confirm it on this resource before calling it unchanged.
-        // 占位符与标识符引用来自 SqlDialect 契约，旧驱动 API 逐条转发。
-        let dialect = LegacySqlDialect::new(driver.as_ref());
-        let mut parameters = Vec::new();
-        let mut predicates = Vec::new();
-        for (key, value) in &pk {
-            let placeholder = dialect
-                .parameter_placeholder(parameters.len() + 1, None)
-                .map_err(CommandError::Driver)?;
-            parameters.push(value.clone().unwrap_or(Value::Null));
-            predicates.push(format!("{} = {}", dialect.quote_ident(key), placeholder));
-        }
-        let sql = format!(
-            "SELECT {} FROM {} WHERE {}",
-            dialect.quote_ident(&request.column),
-            dialect.quote_ident(&table),
-            predicates.join(" AND ")
-        );
+        // 装配（引用/占位符/谓词）在 modules `result_edit::confirm_unchanged_read_sql`
+        // 定稿（host-boundary 残余收口）；限定与执行留宿主运行时侧。
+        let (sql, parameters) = datazen::table_editing::result_edit::confirm_unchanged_read_sql(
+            driver.as_ref(),
+            &table,
+            &request.column,
+            &pk,
+        )?;
         let sql = driver
             .qualify_sql_target(
                 &sql,

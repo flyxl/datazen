@@ -349,7 +349,7 @@ fd-lock = { version = "4", optional = true }
 rusqlite = { workspace = true, optional = true }
 base64 = { workspace = true, optional = true }
 cbc = { version = "0.1", optional = true }
-dirs = { version = "5", optional = true }
+dirs = { workspace = true, optional = true }
 # D6 item 5 切片 a：export 模块的多文件归档（仅 deflate，与 modules 同款）。
 zip = { workspace = true, optional = true }
 # D5 data_transfer：sql_file 的 gzip 读写（.sql.gz 导入导出）。

@@ -138,6 +138,25 @@ impl From<crate::schema_diff::object_selection::ObjectSelectionError> for Comman
     }
 }
 
+/// host-boundary F4c-3：`schema_diff::api` 用例错误 → IPC 类别。
+///
+/// 三个变体与桌面此前内联构造的 `CommandError` 一一对应（`Driver` 的
+/// `NotSupported` → `Validation` 分叉已在 api 侧完成），映射表全仓库仅此
+/// 一份；Web 宿主以后自持 HTTP 版。
+impl From<crate::schema_diff::api::SchemaDiffApiError> for CommandError {
+    fn from(e: crate::schema_diff::api::SchemaDiffApiError) -> Self {
+        match e {
+            crate::schema_diff::api::SchemaDiffApiError::Driver(error) => Self::Driver(error),
+            crate::schema_diff::api::SchemaDiffApiError::Validation(message) => {
+                Self::Validation(message)
+            }
+            crate::schema_diff::api::SchemaDiffApiError::Internal(message) => {
+                Self::Internal(message)
+            }
+        }
+    }
+}
+
 impl From<crate::data_sync::DataSyncError> for CommandError {
     fn from(e: crate::data_sync::DataSyncError) -> Self {
         match e {

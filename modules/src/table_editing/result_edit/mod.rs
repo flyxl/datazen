@@ -628,5 +628,39 @@ pub fn build_result_cell_change_plan(
     build_row_change_plan(driver, table, std::slice::from_ref(&change), columns)
 }
 
+/// Confirm-read SELECT for MySQL changed-rows semantics (host-boundary 残余收口，
+/// 自桌面 `commands/result_write.rs` 下沉)。
+///
+/// MySQL 把「值已经是这样」的 UPDATE 报告为 0 受影响行。宿主拿到 0 后必须
+/// 重读这一格，区分「并发写手已经写入了请求值」（放行）与「行已变更或
+/// 消失」（拒绝）。装配（标识符引用、占位符编号、谓词拼接）在此定稿，
+/// 宿主不再渲染 SQL；`qualify_sql_target` 限定与执行仍留宿主运行时侧。
+pub fn confirm_unchanged_read_sql(
+    driver: &dyn DatabaseDriver,
+    table: &str,
+    column: &str,
+    row_identity: &[(&str, Option<Value>)],
+) -> Result<(String, Vec<Value>), TableEditingError> {
+    use datazen_driver_api::SqlDialect as _;
+
+    let dialect = datazen_driver_api::LegacySqlDialect::new(driver);
+    let mut parameters = Vec::new();
+    let mut predicates = Vec::new();
+    for (key, value) in row_identity {
+        let placeholder = dialect
+            .parameter_placeholder(parameters.len() + 1, None)
+            .map_err(TableEditingError::Driver)?;
+        parameters.push(value.clone().unwrap_or(Value::Null));
+        predicates.push(format!("{} = {}", dialect.quote_ident(key), placeholder));
+    }
+    let sql = format!(
+        "SELECT {} FROM {} WHERE {}",
+        dialect.quote_ident(column),
+        dialect.quote_ident(table),
+        predicates.join(" AND ")
+    );
+    Ok((sql, parameters))
+}
+
 #[cfg(test)]
 mod tests;

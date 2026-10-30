@@ -1,26 +1,11 @@
-use super::compare::{diff_table_schemas_ir, format_ir_type};
 use super::tasks::{
     check_sync_conflicts_impl, delete_sync_task_impl, get_sync_tasks_impl,
     save_sync_task_direct_impl,
 };
 use crate::commands::schema_diff::compare_table_schemas_impl;
-use crate::schema_diff::diff_table_schemas;
 use crate::store::SyncTask;
-use crate::transfer::ir::{IRColumn, IRTable, IRType};
 
 use datazen_driver_api::{ColumnSchema, TableSchema, Value};
-
-fn ir_col(name: &str, ir_type: IRType, nullable: bool, is_primary_key: bool) -> IRColumn {
-    IRColumn {
-        name: name.into(),
-        ir_type,
-        nullable,
-        default_expr: None,
-        is_primary_key,
-        is_auto_increment: false,
-        comment: None,
-    }
-}
 
 fn col(name: &str, data_type: &str, nullable: bool, pk: bool) -> ColumnSchema {
     ColumnSchema {
@@ -164,200 +149,6 @@ async fn sync_profile_ipc_validates_connections_and_round_trips() {
     assert!(error
         .to_string()
         .contains("source connection no longer exists"));
-}
-
-#[test]
-fn ir_diff_treats_equivalent_varchar_as_same() {
-    // Postgres `character varying(100)` and MySQL `varchar(100)` both map to
-    // IRType::Varchar { length: Some(100) } — must not report dataType change.
-    let src = IRTable {
-        name: "t".into(),
-        columns: vec![ir_col(
-            "name",
-            IRType::Varchar { length: Some(100) },
-            true,
-            false,
-        )],
-        primary_keys: vec![],
-        table_options: None,
-    };
-    let tgt = IRTable {
-        name: "t".into(),
-        columns: vec![ir_col(
-            "name",
-            IRType::Varchar { length: Some(100) },
-            true,
-            false,
-        )],
-        primary_keys: vec![],
-        table_options: None,
-    };
-
-    let diff = diff_table_schemas_ir("t", &src, &tgt);
-    assert!(diff.added.is_empty());
-    assert!(diff.removed.is_empty());
-    assert!(diff.changed.is_empty());
-}
-
-#[test]
-fn ir_diff_detects_columns_missing_on_target() {
-    let src = IRTable {
-        name: "t".into(),
-        columns: vec![
-            ir_col("id", IRType::Int64, false, true),
-            ir_col("email", IRType::Text, true, false),
-        ],
-        primary_keys: vec!["id".into()],
-        table_options: None,
-    };
-    let tgt = IRTable {
-        name: "t".into(),
-        columns: vec![ir_col("id", IRType::Int64, false, true)],
-        primary_keys: vec!["id".into()],
-        table_options: None,
-    };
-
-    let diff = diff_table_schemas_ir("t", &src, &tgt);
-    assert_eq!(diff.missing_on_target.len(), 1);
-    assert_eq!(diff.missing_on_target[0].name, "email");
-    assert_eq!(diff.added.len(), 1);
-    assert!(diff.extra_on_target.is_empty());
-    assert!(diff.changed.is_empty());
-}
-
-#[test]
-fn ir_diff_detects_type_nullable_and_pk_changes() {
-    let src = IRTable {
-        name: "t".into(),
-        columns: vec![
-            ir_col("id", IRType::Int32, false, true),
-            ir_col("name", IRType::Varchar { length: Some(50) }, true, false),
-        ],
-        primary_keys: vec!["id".into()],
-        table_options: None,
-    };
-    let tgt = IRTable {
-        name: "t".into(),
-        columns: vec![
-            ir_col("id", IRType::Int64, false, false),
-            ir_col("name", IRType::Varchar { length: Some(50) }, false, false),
-            ir_col("extra", IRType::Text, true, false),
-        ],
-        primary_keys: vec![],
-        table_options: None,
-    };
-
-    let diff = diff_table_schemas_ir("t", &src, &tgt);
-    assert!(
-        diff.added.is_empty(),
-        "source columns are all present on target"
-    );
-    assert_eq!(diff.removed.len(), 1);
-    assert_eq!(diff.removed[0].name, "extra");
-    assert_eq!(diff.removed[0].data_type, "Text");
-    assert_eq!(diff.changed.len(), 2);
-
-    let id = diff.changed.iter().find(|c| c.name == "id").unwrap();
-    assert!(id.changes.contains(&"dataType".into()));
-    assert!(id.changes.contains(&"isPrimaryKey".into()));
-    assert_eq!(id.source.data_type, "Int32");
-    assert_eq!(id.target.data_type, "Int64");
-
-    let name = diff.changed.iter().find(|c| c.name == "name").unwrap();
-    assert_eq!(name.changes, vec!["nullable".to_string()]);
-}
-
-#[test]
-fn format_ir_type_is_stable() {
-    assert_eq!(
-        format_ir_type(&IRType::Varchar { length: Some(255) }),
-        "Varchar(Some(255))"
-    );
-    assert_eq!(
-        format_ir_type(&IRType::Varchar { length: None }),
-        "Varchar(None)"
-    );
-    assert_eq!(
-        format_ir_type(&IRType::Decimal {
-            precision: 10,
-            scale: 2
-        }),
-        "Decimal(10,2)"
-    );
-}
-
-#[test]
-fn raw_diff_still_flags_native_string_mismatch() {
-    let src = TableSchema {
-        table_name: "t".into(),
-        columns: vec![ColumnSchema {
-            name: "name".into(),
-            data_type: "character varying(100)".into(),
-            nullable: true,
-            default_value: None,
-            comment: None,
-            is_primary_key: false,
-            is_auto_increment: false,
-        }],
-        primary_keys: vec![],
-        indexes: vec![],
-        foreign_keys: vec![],
-        check_constraints: vec![],
-        table_options: Default::default(),
-    };
-    let tgt = TableSchema {
-        table_name: "t".into(),
-        columns: vec![ColumnSchema {
-            name: "name".into(),
-            data_type: "varchar(100)".into(),
-            nullable: true,
-            default_value: None,
-            comment: None,
-            is_primary_key: false,
-            is_auto_increment: false,
-        }],
-        primary_keys: vec![],
-        indexes: vec![],
-        foreign_keys: vec![],
-        check_constraints: vec![],
-        table_options: Default::default(),
-    };
-
-    let diff = diff_table_schemas("t", &src, &tgt, None);
-    assert_eq!(diff.changed.len(), 1);
-    assert!(diff.changed[0].changes.contains(&"dataType".into()));
-}
-
-#[test]
-fn diff_table_schemas_detects_added_removed_changed() {
-    let src = table(
-        "users",
-        vec![
-            col("id", "integer", false, true),
-            col("name", "text", true, false),
-            col("legacy", "text", true, false),
-        ],
-        vec!["id".into()],
-    );
-    let tgt = table(
-        "users",
-        vec![
-            col("id", "integer", false, true),
-            col("name", "varchar", true, false),
-            col("email", "text", false, false),
-        ],
-        vec!["id".into()],
-    );
-
-    // Source = desired state: columns on src missing from tgt are "added" (to target).
-    let diff = diff_table_schemas("users", &src, &tgt, None);
-    assert_eq!(diff.added.len(), 1);
-    assert_eq!(diff.added[0].name, "legacy");
-    assert_eq!(diff.removed.len(), 1);
-    assert_eq!(diff.removed[0].name, "email");
-    assert_eq!(diff.changed.len(), 1);
-    assert_eq!(diff.changed[0].name, "name");
-    assert!(diff.changed[0].changes.contains(&"dataType".into()));
 }
 
 #[tokio::test]
@@ -966,15 +757,6 @@ async fn legacy_apply_rejects_unreviewed_recomparison() {
     .await
     .unwrap_err();
     assert!(err.to_string().contains("durable Data Sync job"), "{err}");
-}
-
-#[test]
-fn value_as_u64_accepts_int_float_and_numeric_string() {
-    use super::compare::value_as_u64;
-    assert_eq!(value_as_u64(&Value::Integer(12)), Some(12));
-    assert_eq!(value_as_u64(&Value::Float(7.0)), Some(7));
-    assert_eq!(value_as_u64(&Value::String("3".into())), Some(3));
-    assert_eq!(value_as_u64(&Value::Integer(-1)), None);
 }
 
 #[test]
