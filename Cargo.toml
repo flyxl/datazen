@@ -24,15 +24,24 @@ datazen-driver-sqlite = { path = "packages/drivers/sqlite" }
 # Shared external specs — single source of truth for the versions (and, where
 # they must stay in lockstep, the feature sets) that modules, the desktop host
 # and the driver crates consume. Members inherit with `workspace = true`.
-# Only specs identical across their consumers belong here; chrono, tokio,
-# tracing-subscriber and dirs intentionally stay per-member because their
-# feature sets / major versions legitimately differ — divergent specs must be
-# a consumer decision, never silently unified by this table.
+# Only specs identical across their consumers belong here; chrono, tokio and
+# tracing-subscriber intentionally stay per-member because their feature sets
+# legitimately differ — divergent specs must be a consumer decision, never
+# silently unified by this table.
+# dirs was the fourth hold-out (modules 5 / desktop 6, review F-2); converged
+# at 6 on 2026-10-30 — the connection_import call sites use the free
+# home_dir/data_dir/data_local_dir/config_dir functions, whose signatures are
+# unchanged between the majors, so no code adaptation was needed.
 thiserror = "1"
 async-trait = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde_yaml = "0.9.34"
+# serde_yaml 0.9.34 is upstream-deprecated (archived). serde_norway is the
+# maintained drop-in fork that continues the 0.9.x line; the package alias
+# keeps every `serde_yaml::` import path stable. The repo's entire API face
+# is from_str (17 call sites) + to_string (3), both signature-identical.
+serde_yaml = { package = "serde_norway", version = "0.9.42" }
+dirs = "6"
 uuid = { version = "1", features = ["v4", "serde"] }
 tracing = "0.1"
 regex = "1.13.1"

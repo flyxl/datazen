@@ -183,7 +183,20 @@ feature 集 / 主版本合理地不同（`dirs` 5 vs 6 是真问题，见 F-2，
 统一）。同时把 `non_ascii_idents = "deny"` 上收 `[workspace.lints.rust]`。预期效果：漂移在
 结构上不可能发生；新增依赖时"该不该进根表" forced 一次决策。
 
-后续项（本分支未做）：`dirs` 5→6 收敛；`serde_yaml` 已弃用（0.9.34+deprecated），规划迁移。
+后续项（2026-10-30 复核分支已全部落地）：
+1. **`dirs` 5→6 收敛 ✅**：实测 modules 侧 `connection_import/app_source.rs` 只用自由函数
+   `home_dir` / `data_dir` / `data_local_dir` / `config_dir`，两主版本间签名不变，「需要代码适配」
+   的担忧不成立——直接升 6 零代码改动；`Cargo.lock` 从双版本（5.0.1 + 6.0.0）收敛为单一 6.0.0，
+   规格上收根表 `[workspace.dependencies]`，两成员 `workspace = true` 继承（根表注释同步改写，
+   dirs 移出 per-member 豁免清单）。验证：`connection_import,feature_error` check + 1404/1404
+   测试绿（裸 `connection_import` 单 feature 编译失败为存量问题，见 P3 附注）。
+2. **`serde_yaml` 迁移 ✅**：换 `serde_norway` 0.9.42（延续 0.9.x 版本线的维护 fork，semver
+   兼容），经 package 别名 `serde_yaml = { package = "serde_norway", version = "0.9.42" }`
+   落根表——全部 20 处 `serde_yaml::` 导入路径零改动（仓库 API 面实测仅 `from_str`×17 +
+   `to_string`×3，签名逐一相同）。验证：六个 yaml 消费 feature（workflow/ai/monitor/dashboard/
+   backup/export）check + 1417/1417 测试绿（含 workflow YAML 往返金样）；26-feature 宿主腿
+   全集 check 绿；`Cargo.lock` 中 serde_yaml 0.9.34+deprecated 消失。桌面侧调用点（dashboard
+   export / workflow registry / monitor）经同一别名解析，CI 验证（沙箱无 GTK/WebKit）。
 
 ### P2 — 驱动注入静态化（2–3 天，消除最大构建脆弱性）
 
