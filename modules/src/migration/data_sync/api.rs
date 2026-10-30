@@ -582,6 +582,55 @@ fn validate_projected_identity_values(
     Ok(())
 }
 
+// ---------------------------------------------------------------- 行数估计
+
+/// Count rows in a relation on a live connection (host-boundary F4c 残余收口，
+/// 自桌面 `commands/sync/compare.rs` 下沉)。
+///
+/// 限定名经 `qualify_relation_sql` 装配（mysql 反引号，其余双引号）；计数
+/// 载体放宽到非负整数 / 有限浮点 / 可解析数字字符串，读不出时回退 0——
+/// 与桌面内联实现逐字节同语义。驱动错误原样透传（宿主 `cmd_err` 侧的
+/// IPC 映射不变）。
+pub async fn count_table_rows(
+    driver: &dyn DatabaseDriver,
+    handle: &datazen_driver_api::ConnectionHandle,
+    family: &str,
+    database: Option<&str>,
+    schema: Option<&str>,
+    table: &str,
+) -> Result<u64, datazen_driver_api::DriverError> {
+    let quote = if family == "mysql" { '`' } else { '"' };
+    let qualified = datazen_driver_api::sql_identifiers::qualify_relation_sql(
+        family, database, schema, table, quote,
+    );
+    let sql = format!("SELECT COUNT(*) FROM {qualified}");
+    let res = driver
+        .query_at(
+            handle,
+            &sql,
+            datazen_driver_api::SqlTarget::new(database, schema),
+        )
+        .await?;
+    if let Some(row) = res.rows.first() {
+        if let Some(Some(value)) = row.first() {
+            if let Some(count) = count_value_as_u64(value) {
+                return Ok(count);
+            }
+        }
+    }
+    Ok(0)
+}
+
+/// 计数载体的宽容解析：非负整数、有限非负浮点、可解析数字字符串。
+fn count_value_as_u64(value: &Value) -> Option<u64> {
+    match value {
+        Value::Integer(n) if *n >= 0 => Some(*n as u64),
+        Value::Float(f) if *f >= 0.0 && f.is_finite() => Some(*f as u64),
+        Value::String(s) => s.parse().ok(),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod write_sql_tests {
     use super::*;
@@ -1096,5 +1145,18 @@ mod write_sql_tests {
         assert!(opts.update);
         assert!(opts.delete);
         assert_eq!(opts.batch_size, 50);
+    }
+}
+
+#[cfg(test)]
+mod count_tests {
+    use super::*;
+
+    #[test]
+    fn count_value_as_u64_accepts_int_float_and_numeric_string() {
+        assert_eq!(count_value_as_u64(&Value::Integer(12)), Some(12));
+        assert_eq!(count_value_as_u64(&Value::Float(7.0)), Some(7));
+        assert_eq!(count_value_as_u64(&Value::String("3".into())), Some(3));
+        assert_eq!(count_value_as_u64(&Value::Integer(-1)), None);
     }
 }

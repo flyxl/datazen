@@ -760,15 +760,6 @@ async fn legacy_apply_rejects_unreviewed_recomparison() {
 }
 
 #[test]
-fn value_as_u64_accepts_int_float_and_numeric_string() {
-    use super::compare::value_as_u64;
-    assert_eq!(value_as_u64(&Value::Integer(12)), Some(12));
-    assert_eq!(value_as_u64(&Value::Float(7.0)), Some(7));
-    assert_eq!(value_as_u64(&Value::String("3".into())), Some(3));
-    assert_eq!(value_as_u64(&Value::Integer(-1)), None);
-}
-
-#[test]
 fn execution_ipc_response_preserves_all_evidence_outcomes_flattened() {
     use crate::commands::error::CommandError;
     use crate::data_sync::{ExecutionOutcome, ExecutionResult};

@@ -906,3 +906,30 @@ fn write_target_treats_empty_levels_as_absent() {
     };
     assert_eq!(WriteTarget::of(&absent), WriteTarget::of(&empty));
 }
+
+// ------------------------------------------------ host-boundary 残余收口
+
+/// `confirm_unchanged_read_sql` 的装配面：占位符按序编号、标识符引用交给
+/// 方言、多键谓词 AND 拼接、None 身份值落 NULL 参数。断言与桌面原内联
+/// 实现的输出逐字节一致（host `result_write.rs` 迁移前行为；MockDriver
+/// 默认 `"` 引用 + `?N` 占位符）。
+#[test]
+fn confirm_unchanged_read_sql_assembles_quoted_predicates_in_order() {
+    let driver = datazen_driver_api::mock_driver::MockDriver::new(
+        "mysql",
+        datazen_driver_api::mock_driver::MockDriverOptions {
+            parameterized_writes: true,
+            ..Default::default()
+        },
+    );
+    let identity = [("id", Some(Value::Integer(7))), ("tenant", None)];
+    let (sql, parameters) =
+        confirm_unchanged_read_sql(driver.as_ref(), "orders", "status", &identity).unwrap();
+    assert_eq!(
+        sql,
+        "SELECT \"status\" FROM \"orders\" WHERE \"id\" = ?1 AND \"tenant\" = ?2"
+    );
+    assert_eq!(parameters.len(), 2);
+    assert!(matches!(&parameters[0], Value::Integer(n) if *n == 7));
+    assert!(matches!(&parameters[1], Value::Null));
+}
