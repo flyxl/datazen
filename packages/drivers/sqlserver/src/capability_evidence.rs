@@ -34,7 +34,8 @@ pub(crate) fn capability_evidence() -> Vec<(&'static str, String)> {
     vec![
         (
             "statefulSession",
-            "Supported, and measured rather than assumed. Two round-trips read state \
+            "Declined by §6.1, and the readings that would back it are measured rather \
+             than assumed. Two round-trips read state \
              that belongs to one physical TDS connection and nothing else: \
              sqlserver.rs:461-488 `current_isolation_level` issues `DBCC USEROPTIONS \
              WITH NO_INFOMSGS` (sqlserver.rs:462) and parses the session's own current \
@@ -47,9 +48,10 @@ pub(crate) fn capability_evidence() -> Vec<(&'static str, String)> {
              The transaction handle registered under the same connection id \
              (sqlserver.rs:1631-1637) survives between statements and is dropped only \
              when the transaction ends (sqlserver.rs:1717, sqlserver.rs:1752). \
-             Independent of resource_adapter.rs:271, which reports \
-             `SessionContinuity::Unknown` for the descriptor because that is a separate \
-             question about *reconnection*."
+             Independent of the descriptor's continuity answer, which is a separate \
+             question about *reconnection*: `LegacyResourceAdapter::with_leased_session` \
+             reports `Leased` because `connect` parks one tiberius client per handle \
+             (sqlserver.rs:16), and leasing a connection is still not owning state."
                 .to_string(),
         ),
         (
