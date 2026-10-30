@@ -503,6 +503,22 @@ pub async fn read(
         }
     };
     let mut estimate_failed = false;
+    // F7: the read's `FROM` carries the bare table name the driver reported, so
+    // the schema has to travel with the statement. An at-target `query` bypasses
+    // the `driver_command` envelope that injects the targeting fields, and every
+    // SQL driver qualifies unqualified relations from exactly those fields
+    // (`qualify_sql_target`) instead of switching the session — without them a
+    // read of a non-default schema resolves against the session default and
+    // fails with "Invalid object name".
+    let read_call = |sql: &str| {
+        let mut input = json!({ "sql": sql });
+        datazen::mcp::application::command_policy::inject_sql_target_fields(
+            &mut input,
+            Some(database),
+            request.context.schema.as_deref(),
+        );
+        input
+    };
     let outputs = match execute(
         adapter,
         &runtime,
@@ -511,7 +527,7 @@ pub async fn read(
         revision,
         request.manual_handle.as_ref(),
         "query",
-        json!({"sql": sql}),
+        read_call(&sql),
     )
     .await
     {
@@ -535,7 +551,7 @@ pub async fn read(
                 revision,
                 request.manual_handle.as_ref(),
                 "query",
-                json!({"sql": select}),
+                read_call(&select),
             )
             .await?
         }
@@ -548,19 +564,11 @@ pub async fn read(
         _ => None,
     };
     let rows_at = u64::from(count_at.is_some());
+    let statements = statement_row_sets(outputs)?;
     let mut rows = Vec::new();
     let mut total_rows = None;
-    for output in outputs {
-        if output["kind"] != "rows" {
-            continue;
-        }
-        let index = output["statementIndex"].as_u64().ok_or_else(|| {
-            CommandError::Validation("Result statement identity unavailable".into())
-        })?;
-        let result_rows: Vec<Vec<Option<Value>>> =
-            serde_json::from_value(output["rows"].clone())
-                .map_err(|_| CommandError::Validation("Invalid table result rows".into()))?;
-        if count_at == Some(index) {
+    for (index, result_rows) in &statements {
+        if count_at == Some(*index) {
             // Drivers publish a final empty result chunk after each statement.
             // Do not let that metadata-only chunk erase the count row.
             let cell = result_rows
@@ -581,8 +589,8 @@ pub async fn read(
             if let Some(count) = count {
                 total_rows = Some(count);
             }
-        } else if index == rows_at {
-            rows.extend(result_rows);
+        } else if *index == rows_at {
+            rows.extend(result_rows.iter().cloned());
         }
     }
     // An unusable estimate is the absence of a fact, not a fact.
@@ -602,16 +610,14 @@ pub async fn read(
             revision,
             request.manual_handle.as_ref(),
             "query",
-            json!({"sql": assembled.exact_count_statement.clone()}),
+            read_call(assembled.exact_count_statement.as_str()),
         )
         .await;
         if let Ok(outputs) = counted {
-            for output in outputs {
-                if output["kind"] != "rows" {
+            for (index, result_rows) in statement_row_sets(outputs).unwrap_or_default() {
+                if index != 0 {
                     continue;
                 }
-                let result_rows: Vec<Vec<Option<Value>>> =
-                    serde_json::from_value(output["rows"].clone()).unwrap_or_default();
                 let cell = result_rows
                     .first()
                     .and_then(|row| row.first())
@@ -654,6 +660,51 @@ pub async fn read(
         page_size: request.page_size,
         paging: Some(paging),
     })
+}
+
+/// The row sets of every statement a read executed, keyed by statement index.
+///
+/// Two shapes reach this code and both are real. A resource that streams rows
+/// publishes them as `rows` chunks, one per block, each tagged with the
+/// statement it came from; a resource that answers the command in one piece
+/// publishes a single `commandResult` whose `data.results` holds one entry per
+/// statement in batch order. Reading only the streaming shape is not a
+/// narrower version of this helper — it is an empty page for every driver that
+/// answers in one piece.
+fn statement_row_sets(
+    outputs: Vec<Json>,
+) -> Result<std::collections::BTreeMap<u64, Vec<Vec<Option<Value>>>>, CommandError> {
+    let mut statements: std::collections::BTreeMap<u64, Vec<Vec<Option<Value>>>> =
+        std::collections::BTreeMap::new();
+    for output in outputs {
+        match output["kind"].as_str() {
+            Some("rows") => {
+                let index = output["statementIndex"].as_u64().ok_or_else(|| {
+                    CommandError::Validation("Result statement identity unavailable".into())
+                })?;
+                let chunk: Vec<Vec<Option<Value>>> = serde_json::from_value(output["rows"].clone())
+                    .map_err(|_| CommandError::Validation("Invalid table result rows".into()))?;
+                // Drivers publish a final empty result chunk after each
+                // statement; appending it keeps the row data and adds nothing.
+                statements.entry(index).or_default().extend(chunk);
+            }
+            Some("commandResult") => {
+                let results = output["data"]["results"]
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default();
+                for (index, result) in results.into_iter().enumerate() {
+                    let rows: Vec<Vec<Option<Value>>> =
+                        serde_json::from_value(result["rows"].clone()).map_err(|_| {
+                            CommandError::Validation("Invalid table result rows".into())
+                        })?;
+                    statements.entry(index as u64).or_default().extend(rows);
+                }
+            }
+            _ => continue,
+        }
+    }
+    Ok(statements)
 }
 
 /// The request of a DB-15 preview: the query shape of a page read, plus the
