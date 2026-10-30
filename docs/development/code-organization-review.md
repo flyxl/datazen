@@ -159,7 +159,7 @@ graph TD
 > | 4 | F1 | 比对租约 flock 化，data_sync 去 rusqlite | ✅ 已实施：fd-lock 4 替换 SQLite 排他事务，锁住不回收/放锁后回收双向测试，45/45 comparison_store + 244/244 data_sync 全绿；遗留 .sqlite 租约不读不删（fail closed，见提交说明） |
 > | 5 | F2 | 前端稳定入口 + 门禁 | ✅ 已实施（含三处偏差，见边界方案 §6 实施记录：新增 `./app` 轻入口、`./testing/*` 测试镜像、镜像导入带扩展名） |
 > | 6 | P2 ∥ F3 | 驱动注入静态化 ∥ 新建 driver-support | F3 第一刀已实施：`sql_split` + `sql_identifiers`（仅有的零依赖纯模块，780 行）下沉新 crate，模块级 re-export 保下游路径，三级 cargo check + 14 内嵌测试全绿，`PROTOCOL_VERSION` 不变；后续候选（filters/keyset/dialect）拖着 `Value`/`DatabaseDriver`，留待后续刀。P2 待做，两项无耦合可并行 |
-> | 7 | F4a…F4n | 命令体按用例下沉各 feature `api` 模块 | 待做 |
+> | 7 | F4a…F4n | 命令体按用例下沉各 feature `api` 模块 | F4a 第一刀已实施：`modules/src/connection/api.rs` 固定 api 写法（错误走 feature error 路线，避免发明 ApiErrorCode 协议取值；IPC 错误码逐字节不变），8 处桌面调用点改委托，`resolve_test_config` 密钥合并逻辑下沉；modules 1487/1487 绿。F4b 起（只读查询/schema 浏览、export、backup、sync/transfer/schema_diff）待做 |
 > | 8 | P3 / P5 | feature 图修剪 / 目录语义化 | 记录方向，见各自触发条件 |
 >
 > 附带发现（本地实测）：裸 `--features connection_import` 在 main 上即编译失败
@@ -186,6 +186,15 @@ feature 集 / 主版本合理地不同（`dirs` 5 vs 6 是真问题，见 F-2，
 后续项（本分支未做）：`dirs` 5→6 收敛；`serde_yaml` 已弃用（0.9.34+deprecated），规划迁移。
 
 ### P2 — 驱动注入静态化（2–3 天，消除最大构建脆弱性）
+
+> 2026-10-30 评估（评审分支）：**不盲做**。手术面为 `resolve-drivers.mjs`（1605 行）+
+> `driver-file-stash.mjs`（547 行）+ `with-driver-inject` / `driver-deinject` / stash-precommit
+> 三脚本 + `ci.yml`/`release.yml` 双工作流接线；验收标准（任一构建路径后 `git status`
+> 干净、`--drivers=all` 与 `--drivers=stub` 两极构建等价）只能在具备桌面构建环境处
+> 验证（本评审沙箱缺 GTK/WebKit，桌面 crate 无法编译）。实施草图：驱动声明为桌面
+> optional 依赖 + feature（`unexpected_cfgs` 已静态声明全部 17 个 driver feature，
+> 清单闭集是现成前提），`resolve-drivers.mjs` 退化为 `--features` 参数与前端 codegen
+> 生成器，stash/restore 机制整体删除，git 驱动（kiwi/superset）继续走 `[patch]`。
 
 `unexpected_cfgs` 已静态声明全部 17 个 driver feature，说明清单是闭集。把驱动声明为 desktop
 的 optional 依赖 + feature，`resolve-drivers.mjs` 退化为生成 `--features` 参数与前端

@@ -5,8 +5,9 @@
 > 2026-10-30 更新（`review/code-organization-2026-10` 分支）：F0、F1、F2 已在该分支
 > 落地（F0 经 cargo tree 等价验证 26=26；F1 经 45/45 comparison_store + 244/244
 > data_sync 测试验证；F2 含三处实施偏差，见 §6 末尾的实施记录）；F3 第一刀
-> 已落地（`sql_split` + `sql_identifiers` 下沉 `driver-support`，见 §6 末尾实施记录），
-> F4 代码未动。
+> 已落地（`sql_split` + `sql_identifiers` 下沉 `driver-support`，见 §6 末尾实施记录）；
+> F4a 第一刀已落地（`modules/src/connection/api.rs` 固定 api 模块写法，见 §6 末尾
+> 实施记录）；F4b 起后续刀未动。
 > 该分支同时合入代码组织评审（`code-organization-review.md`），两份计划的统一执行顺序见其 §4。
 > 本文放在分支 `docs/path-facts-after-form-split`，不打开 PR，避免每次推送触发 CI。
 > 合并前仍以代码为准；本文只约束这一组后续改动的切法。
@@ -257,6 +258,15 @@ F3 第一刀已落地：
 3. **driver-support 零依赖**：新 crate 无任何 dependencies（连 serde 都没有），驱动插件作者可单独取文本工具。单一消费者，按 P1 口径 path 依赖不上收 workspace 根表。
 4. **验证**：`cargo check` 三级绿（driver-support / driver-api / modules），搬入的 14 个内嵌测试全绿，`PROTOCOL_VERSION`（=6）与 `MIN_PROTOCOL_VERSION`（=1）未动，前端零新依赖。
 
+F4a 第一刀已落地：
+
+1. **错误路线选 feature error 而非新增 ApiErrorCode**：`as_str` 的协议字面量与连接规格 §13 的 code 列逐字绑定，新增 `Internal` 变体等于发明协议取值，违反仓库的规格纪律（「不发明取值」）。因此 `api` 函数返回 `ConnectionError`（方案明文允许「ApiError / feature error」二选一），业务错误文本在 application 层早已定稿；桌面 `conn_cmd` 就是那唯一一份桌面映射表，Web 宿主以后自持 HTTP 版。IPC 错误码与消息**逐字节不变**（同类型流过同一映射）。
+2. **切口为 CRUD + 测试配置解析**：`list/get/save/duplicate/delete/reorder` 六个用例 + `resolve_test_config`（原 test_connection 的密钥合并逻辑下沉）；会话编排（connect 的 open_dedicated_session）、隧道拨号、注册表查询留宿主——它们编排宿主服务，本就不是 DTO 映射。
+3. **宿主命令变薄**：8 处调用点改为 `connection_api::*` 委托；「保存后退休旧会话」钩子（PR #116 语义）留在宿主命令层，与方案「桌面专有能力留在宿主」一致。
+4. **测试位置**：api 契约测试（脱敏投影、None 语义、密钥合并、复制去时间戳）在 `modules` 内嵌；宿主测试（原 17 个）不动，断言的仍是映射与集成。
+5. **验证**：`cargo check --features connection,execution` 绿；modules 1487/1487 全绿；桌面 crate 因沙箱缺 GTK/WebKit 无法本地编译（既有限制，CI 验证），改动经 rustfmt 语法解析 + 人工类型复查（Arc→& 经显式 `&service` 解引用传递）。
+6. **顺带发现（既有问题，非本刀引入）**：裸 `--features connection` 编译不过——`connection/dto.rs` 无条件重导出 `crate::execution::*`，而 `execution` 不在 `connection` 的 feature 列表里。与评审 F-5（裸 connection_import 编译失败）同类，归 P3 feature 图修剪。
+
 ---
 
 ## 7. 分 PR 与验收
@@ -269,7 +279,7 @@ F3 第一刀已落地：
 | F1 | 比对租约改为 flock | `data_sync` 不再依赖 `rusqlite`；恢复测试覆盖「锁住不回收 / 放锁后回收」；比较正文格式不变 |
 | F2 | 前端稳定入口与深导入门禁 | 第 6 节完成标准 |
 | F3 | 新建 `driver-support`，搬第一批纯函数（第一刀已落地：`sql_split` + `sql_identifiers`） | `PROTOCOL_VERSION` 不变；`driver-api` 不再包含已搬走的函数体；前端无新依赖 |
-| F4a | `connection::api` + 桌面胶水变薄 | IPC 载荷与错误码不变；宿主测试只覆盖映射 |
+| F4a | `connection::api` + 桌面胶水变薄（第一刀已落地：CRUD + `resolve_test_config`；会话/隧道编排按方案留宿主） | IPC 载荷与错误码不变；宿主测试只覆盖映射 |
 | F4b… | 按第 3 节顺序逐个用例下沉 | 每刀删除宿主中的对应实现 |
 
 Web 宿主仍然不在这组 PR 里创建。`api` 模块不引用 Axum。隧道实现不迁出 `modules`。
