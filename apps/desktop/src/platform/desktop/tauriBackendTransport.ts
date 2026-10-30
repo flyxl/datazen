@@ -59,6 +59,23 @@ function toCommandName(method: keyof MethodMap): string {
 }
 
 /**
+ * Whether a `MethodMap` key names a legacy host command (snake_case rail).
+ *
+ * The legacy rail's names are lowercase — `connect`, `get_connections` — while
+ * every kernel name is camelCase (`listConnections`, `getJob`). The earlier
+ * test was "the name contains an underscore", which classified the two
+ * single-word legacy commands (`connect`, `disconnect`) as kernel methods: their
+ * payload was wrapped in `{ request }`, the host reported
+ * `command connect missing required key connectionId`, and opening a connection
+ * from the navigator failed with a red error banner while the IPC path in the
+ * specs kept working. Casing is the discriminator the two rails actually agree
+ * on, so use it.
+ */
+function isLegacyHostCommand(method: keyof MethodMap): boolean {
+  return !/[A-Z]/.test(method);
+}
+
+/**
  * Methods whose payload *is* the command's argument bag.
  *
  * The kernel-surface commands take a single `request` argument, so their
@@ -123,7 +140,7 @@ export function createDesktopBackendTransport(): BackendTransport {
       const args =
         method === 'getPlatformIdentity'
           ? {}
-          : method.includes('_') ||
+          : isLegacyHostCommand(method) ||
               method === 'getJob' ||
               method === 'listJobs' ||
               FLAT_ARGUMENT_METHODS.has(method)
