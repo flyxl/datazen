@@ -10,7 +10,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./src/*.css": "./src/*.css",
-    "./src/*": "./src/*.js"
+    "./src/*": "./src/*"
   },
   "dependencies": {
     "@datazen/backend-client": "workspace:*",
