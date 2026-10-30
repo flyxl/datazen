@@ -2,6 +2,9 @@
 
 > **状态：已确认的实施方案，代码尚未按本文改动。**
 > 确认日期：2026-10-29。基线：`main` 上 form-split 已落地（`apps/desktop`、`packages/frontend`、`modules` crate `datazen`）。
+> 2026-10-30 更新（`review/code-organization-2026-10` 分支）：F0 已在该分支落地并经
+> `cargo tree` 等价验证（启用集合改前/改后 26=26）；F1–F4 代码未动。该分支同时合入
+> 代码组织评审（`code-organization-review.md`），两份计划的统一执行顺序见其 §4。
 > 本文放在分支 `docs/path-facts-after-form-split`，不打开 PR，避免每次推送触发 CI。
 > 合并前仍以代码为准；本文只约束这一组后续改动的切法。
 
