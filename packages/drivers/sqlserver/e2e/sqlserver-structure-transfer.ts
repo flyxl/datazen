@@ -17,6 +17,7 @@
  * Every object belongs to a unique dz_e2e_xfer_* schema created by this spec.
  */
 import { expect } from '@wdio/globals';
+import { dbSessionIdOf } from '../../../../e2e/lib/sessionId.js';
 
 const HOST = (process.env.E2E_SQLSERVER_HOST || '').trim();
 const PORT = Number(process.env.E2E_SQLSERVER_PORT || '1433');
@@ -210,8 +211,12 @@ describe('SQL Server Data Transfer structure mode (live)', () => {
     await invoke('save_connection', {
       config: connectionConfig(TARGET_CONNECTION_ID, 'E2E SQL Server structure target'),
     });
-    sourceSessionId = await invoke<string>('connect', { connectionId: SOURCE_CONNECTION_ID });
-    targetSessionId = await invoke<string>('connect', { connectionId: TARGET_CONNECTION_ID });
+    sourceSessionId = dbSessionIdOf(
+      await invoke<unknown>('connect', { connectionId: SOURCE_CONNECTION_ID }),
+    );
+    targetSessionId = dbSessionIdOf(
+      await invoke<unknown>('connect', { connectionId: TARGET_CONNECTION_ID }),
+    );
 
     if (!database) {
       const active = await queryRows(sourceSessionId, 'SELECT DB_NAME()');
@@ -384,7 +389,11 @@ describe('SQL Server Data Transfer structure mode (live)', () => {
       targetSessionId,
       'SELECT OBJECT_SCHEMA_NAME(fk.referenced_object_id), OBJECT_NAME(fk.referenced_object_id), ' +
         'fk.delete_referential_action_desc, fk.update_referential_action_desc ' +
-        `FROM sys.foreign_keys AS fk WHERE fk.name = ${literal(FOREIGN_KEY)}`,
+        'FROM sys.foreign_keys AS fk ' +
+        'JOIN sys.tables AS t ON t.object_id = fk.parent_object_id ' +
+        'JOIN sys.schemas AS s ON s.schema_id = t.schema_id ' +
+        `WHERE fk.name = ${literal(FOREIGN_KEY)} AND s.name = ${literal(TARGET_SCHEMA)} ` +
+        `AND t.name = ${literal(CHILD_TABLE)}`,
     );
     expect(foreignKeyRows).toHaveLength(1);
     expect(foreignKeyRows[0]?.[0]).toBe(TARGET_SCHEMA);
