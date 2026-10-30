@@ -17,7 +17,7 @@
 <video src="site/assets/video/demo-recording.mp4" controls width="100%" poster="site/assets/video/demo-poster.png"></video>
 
 <p align="center">
-  <b>18 个数据库驱动</b> · <b>10 种界面语言</b> · <b>MCP Server 与 Client</b> · <b>无需账号、不依赖云端</b> · <b>macOS · Windows · Linux</b>
+  <b>17 个数据库驱动</b> · <b>10 种界面语言</b> · <b>MCP Server 与 Client</b> · <b>无需账号、不依赖云端</b> · <b>macOS · Windows · Linux</b>
 </p>
 
 ## 数据库要你做的所有事，一个应用装下
