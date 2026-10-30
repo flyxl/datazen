@@ -157,7 +157,7 @@ graph TD
 > | 2 | P0 | 卫生清欠（xlsx CVE 为最紧急项） | 部分✅（见 P0 清单） |
 > | 3 | P1 | workspace 依赖继承 | ✅ 机械部分已实施 |
 > | 4 | F1 | 比对租约 flock 化，data_sync 去 rusqlite | 待做 |
-> | 5 | F2 | 前端稳定入口三说明符 + 门禁 | 待做（吸收 P4 剩余项） |
+> | 5 | F2 | 前端稳定入口 + 门禁 | ✅ 已实施（含三处偏差，见边界方案 §6 实施记录：新增 `./app` 轻入口、`./testing/*` 测试镜像、镜像导入带扩展名） |
 > | 6 | P2 ∥ F3 | 驱动注入静态化 ∥ 新建 driver-support | 待做，两项无耦合可并行 |
 > | 7 | F4a…F4n | 命令体按用例下沉各 feature `api` 模块 | 待做 |
 > | 8 | P3 / P5 | feature 图修剪 / 目录语义化 | 记录方向，见各自触发条件 |
@@ -244,6 +244,7 @@ P3 才动图的结构。F0 留下的守护注释（未列出的 feature 不得�
 | fix(frontend) | 子路径 exports `.js` → 源码直引 | 与兄弟包语义对齐；当前消费者经解析器回退已工作，改后走正路 |
 | docs(merge) | 并入 `docs/path-facts-after-form-split`：AGENTS.md 地图取双方之长（含补回 `packages/wapps` 目录）、架构 README、pnpm-workspace 注释、`host-boundary-followups.md` 全文 | 无 |
 | feat(desktop) | 边界方案 F0：桌面 datazen feature 显式全集（补 `common` / `jobs` / `workflow` / `mcp`）+ 守护注释 | cargo tree 等价验证：改前/改后启用集合 26=26 逐项一致；声明与启用完全对齐（无传递打开、无死声明） |
+| feat(frontend) | 边界方案 F2：`startSharedApp` 吸收桌面启动链（marks/CSS/PRO 表/E2E 桥/locale/设置预载/React root）；`tauriEventCompat` 归位桌面；`src/shell.ts` 壳层切片；exports 收成 `.` / `./app` / `./shell` / `./styles.css` / `./testing/*`；24 个消费文件改写；门禁 `check-frontend-public-entry.mjs` 接入 CI；AGENTS.md 不变量条目 | typecheck（tsrs/TS7）通过；全量 vitest 见提交说明；三处与方案的偏差及买测见边界方案 §6 实施记录 |
 
 待 CI 验证的原因：沙箱已装 cargo 1.99.1，可做 metadata / tree 级验证（F0 等价性已验证），
 但无法编译桌面宿主（缺 GTK/WebKit 系统库）。已做的本地验证：tomllib 全量解析、

@@ -2,8 +2,7 @@
 
 > **状态：已确认的实施方案，代码尚未按本文改动。**
 > 确认日期：2026-10-29。基线：`main` 上 form-split 已落地（`apps/desktop`、`packages/frontend`、`modules` crate `datazen`）。
-> 2026-10-30 更新（`review/code-organization-2026-10` 分支）：F0 已在该分支落地并经
-> `cargo tree` 等价验证（启用集合改前/改后 26=26）；F1–F4 代码未动。该分支同时合入
+> 2026-10-30 更新（`review/code-organization-2026-10` 分支）：F0 与 F2 已在该分支落地（F0 经 cargo tree 等价验证；F2 含三处实施偏差，见 §6 末尾的实施记录）；F1、F3、F4 代码未动。该分支同时合入
 > 代码组织评审（`code-organization-review.md`），两份计划的统一执行顺序见其 §4。
 > 本文放在分支 `docs/path-facts-after-form-split`，不打开 PR，避免每次推送触发 CI。
 > 合并前仍以代码为准；本文只约束这一组后续改动的切法。
@@ -238,6 +237,14 @@ startSharedApp();
 6. 加 `scripts/check-frontend-public-entry.mjs`：`apps/`、`packages/`（排除 `packages/frontend`）、`e2e/` 中出现 `@datazen/frontend/src/` 即失败。接到现有的边界检查脚本旁，不新造 CI。
 
 完成标准：`apps/desktop/src/main.tsx` 不再 import 任何 store 或 `App` 的深路径；`rg @datazen/frontend/src apps packages e2e` 无匹配。
+
+### 实施记录（2026-10-30，`review/code-organization-2026-10` 分支）
+
+F2 已落地，与上文三处偏差，均有买测：
+
+1. **入口多一个 `./app`**：`startSharedApp` 没放进 `.`。`@datazen/frontend/src/lib/updater` 这类轻量消费者改走 `.` 后，如果 `.` 重导出 startSharedApp，会把整个应用图（App、stores、PRO 表）拖进桌面适配器的测试图——`updaterFlow.test` 的部分 `vi.mock`（generated.ts 只提供 variant 字段）在模块求值期撞上 `DB_REGISTRY` 展开直接炸。拆出 `./app` 后 `.` 保持轻量（contracts、能力位、updater 变体规则、windowKind、crossWindowBus），桌面适配器与它们的测试图不再背负应用图。
+2. **测试镜像 `./testing/*`**：上文预期测试也只用三个说明符，实测 13 个接缝测试必须拿到内部件（断言 store 终态、vi.mock 内部接缝、注入状态）。新增 `"./testing/*": "./src/*"`，门禁双规则：`@datazen/frontend/src/` 全仓禁止、`testing/` 仅测试文件可用。vi.mock 按解析后文件拦截，镜像与包内相对导入命中同一模块，拦截链路不变。
+3. **testing 导入带扩展名**：TS bundler 模式对 exports 通配目标不做扩展名推断，旧 `./src/*` 能解析靠的是 node_modules 物理路径回退（symlink 落在真实目录）；`testing/` 无物理目录，回退失效。仓库本就开了 `allowImportingTsExtensions`，测试镜像导入带上真实扩展名（`…/stores/uiStore.ts`）后 exports 成为唯一解析源——不需要复活 F6-c2 已退役的 tsconfig paths 别名表。
 
 ---
 

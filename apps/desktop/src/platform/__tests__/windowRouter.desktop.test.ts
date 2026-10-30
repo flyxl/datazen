@@ -17,7 +17,7 @@ const mockUnminimize = vi.fn().mockResolvedValue(undefined);
 const mockSetFocus = vi.fn().mockResolvedValue(undefined);
 
 const envState = vi.hoisted(() => ({ desktop: false }));
-vi.mock('@datazen/frontend/src/platform/env', () => ({
+vi.mock('@datazen/frontend/testing/platform/env.ts', () => ({
   get IS_DESKTOP_BUILD() {
     return envState.desktop;
   },

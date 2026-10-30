@@ -18,10 +18,10 @@ import {
   isUpdaterSupported,
   manifestBelongsToBuild,
   readManifestVariant,
-} from '@datazen/frontend/src/lib/updater';
-import type { UpdateCheckResult, UpdateProgress } from '@datazen/frontend/src/platform/contracts';
+} from '@datazen/frontend';
+import type { UpdateCheckResult, UpdateProgress } from '@datazen/frontend';
 
-export type { UpdateCheckResult, UpdateProgress } from '@datazen/frontend/src/platform/contracts';
+export type { UpdateCheckResult, UpdateProgress } from '@datazen/frontend';
 
 /** Shown when a manifest fails the SKU check. Healthy builds never reach it. */
 const MANIFEST_MISMATCH_MESSAGE =

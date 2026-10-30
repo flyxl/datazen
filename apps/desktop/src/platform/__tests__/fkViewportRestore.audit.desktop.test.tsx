@@ -14,16 +14,19 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
-import { useTableForeignKeyNavigation } from '@datazen/frontend/src/windows/connection/useTableForeignKeyNavigation';
-import { usePanelStore } from '@datazen/frontend/src/stores/panelStore';
-import { useTableDataStore } from '@datazen/frontend/src/stores/tableDataStore';
-import { useFkNavigationStore, resetFkNavigationEntryIds } from '@datazen/frontend/src/stores/fkNavigationStore';
+import { useTableForeignKeyNavigation } from '@datazen/frontend/testing/windows/connection/useTableForeignKeyNavigation.ts';
+import { usePanelStore } from '@datazen/frontend/testing/stores/panelStore.ts';
+import { useTableDataStore } from '@datazen/frontend/testing/stores/tableDataStore.ts';
+import {
+  useFkNavigationStore,
+  resetFkNavigationEntryIds,
+} from '@datazen/frontend/testing/stores/fkNavigationStore.ts';
 import { createBackendClient, setBackendClient } from '@datazen/backend-client';
 import {
   createDesktopBackendTransport,
   DESKTOP_BACKEND_ID,
 } from '../desktop/tauriBackendTransport';
-import type { TablePanel } from '@datazen/frontend/src/stores/panelTypes';
+import type { TablePanel } from '@datazen/frontend/testing/stores/panelTypes.ts';
 
 const { mockInvoke } = vi.hoisted(() => ({ mockInvoke: vi.fn() }));
 
@@ -36,7 +39,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 const schemaReads = vi.hoisted(() => ({ count: 0 }));
 
-vi.mock('@datazen/frontend/src/lib/schemaCache', () => ({
+vi.mock('@datazen/frontend/testing/lib/schemaCache.ts', () => ({
   // The reverse catalog (DB-20) subscribes at module load; a no-op keeps
   // this audit focused on the jump's own reads.
   subscribeSchemaInvalidation: () => () => undefined,
@@ -59,7 +62,9 @@ vi.mock('@datazen/frontend/src/lib/schemaCache', () => ({
   },
 }));
 
-vi.mock('@datazen/frontend/src/lib/session/tableSession', () => ({ tableManualHandle: vi.fn(() => null) }));
+vi.mock('@datazen/frontend/testing/lib/session/tableSession.ts', () => ({
+  tableManualHandle: vi.fn(() => null),
+}));
 
 const SOURCE_PANEL = 'panel-source';
 

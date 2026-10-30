@@ -42,7 +42,9 @@ vi.mock('@tauri-apps/api/core', () => ({
   },
 }));
 
-vi.mock('@datazen/frontend/src/lib/session/tableSession', () => ({ tableManualHandle: vi.fn(() => null) }));
+vi.mock('@datazen/frontend/testing/lib/session/tableSession.ts', () => ({
+  tableManualHandle: vi.fn(() => null),
+}));
 
 import {
   ApiError,
@@ -54,12 +56,12 @@ import {
   createDesktopBackendTransport,
   DESKTOP_BACKEND_ID,
 } from '../desktop/tauriBackendTransport';
-import { classifyGridError, GRID_ERROR_CODES } from '@datazen/frontend/src/lib/gridErrors';
-import { hostErrorMessage } from '@datazen/frontend/src/lib/hostErrorMessage';
-import { databaseCommands } from '@datazen/frontend/src/commands/database';
-import { namedViewsAvailable } from '@datazen/frontend/src/lib/namedViews';
-import { filterDraftEqualsApplied } from '@datazen/frontend/src/stores/tableData/filterUtils';
-import type { NamedView, NamedViewScope } from '@datazen/frontend/src/lib/namedViews';
+import { classifyGridError, GRID_ERROR_CODES } from '@datazen/frontend/testing/lib/gridErrors.ts';
+import { hostErrorMessage } from '@datazen/frontend/testing/lib/hostErrorMessage.ts';
+import { databaseCommands } from '@datazen/frontend/testing/commands/database.ts';
+import { namedViewsAvailable } from '@datazen/frontend/testing/lib/namedViews.ts';
+import { filterDraftEqualsApplied } from '@datazen/frontend/testing/stores/tableData/filterUtils.ts';
+import type { NamedView, NamedViewScope } from '@datazen/frontend/testing/lib/namedViews.ts';
 
 // form-split F6-c1: the suite moved to apps/desktop/src/platform/__tests__ —
 // five segments up to the repository root (apps/desktop/src/platform/__tests__).
@@ -220,7 +222,10 @@ describe('§2 · the named-view codes reach the front end through the real chain
 
 describe('§5 · the named-view DTO exists exactly once', () => {
   it('is declared in the backend-client port, not in the host helper', () => {
-    const helper = readFileSync(join(REPO_ROOT, 'packages/frontend/src/lib/namedViews.ts'), 'utf-8');
+    const helper = readFileSync(
+      join(REPO_ROOT, 'packages/frontend/src/lib/namedViews.ts'),
+      'utf-8',
+    );
     // A second `interface NamedView` / `type NamedView =` in the host helper
     // is the "one DTO, two shapes" failure mode.
     expect(helper).not.toMatch(/interface\s+NamedView\b/);

@@ -20,17 +20,15 @@ import { createDesktopEventChannel } from '../../platform/desktop/eventChannel';
 import { createDesktopHostServices } from '../../platform/desktop/hostServices';
 import { createDesktopSettingsClient } from '../../platform/desktop/settingsClient';
 import { createDesktopTablesExporter } from '../../platform/desktop/tablesExporter';
-import { IS_DESKTOP_BUILD } from '@datazen/frontend/src/platform/env';
-import { DESKTOP_CAPABILITIES } from '@datazen/frontend/src/platform/capabilities';
+import {
+  IS_DESKTOP_BUILD,
+  DESKTOP_CAPABILITIES,
+  createBrowserEventChannel,
+} from '@datazen/frontend';
 import { setPlatformServices } from '@datazen/backend-client';
 import { bindHostEventListener } from '@datazen/driver-sdk';
-import {
-  configurePlatform,
-  requirePlatform,
-  type DesktopHostServices,
-} from '@datazen/frontend/src/platform/contracts';
+import { configurePlatform, requirePlatform, type DesktopHostServices } from '@datazen/frontend';
 import { registerWindowChrome } from '@datazen/extension-points';
-import { createBrowserEventChannel } from '@datazen/frontend/src/lib/crossWindowBus';
 import { TitleBar } from './TitleBar';
 
 /**

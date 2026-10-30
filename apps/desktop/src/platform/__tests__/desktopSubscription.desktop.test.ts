@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createBackendClient } from '@datazen/backend-client';
-import { ExecutionProjection } from '@datazen/frontend/src/lib/session/ExecutionProjection';
+import { ExecutionProjection } from '@datazen/frontend/testing/lib/session/ExecutionProjection.ts';
 import type { EventEnvelope, ConnectionEvent, Id } from '@datazen/backend-client';
 const mock = vi.hoisted(() => ({
   invoke: vi.fn(),

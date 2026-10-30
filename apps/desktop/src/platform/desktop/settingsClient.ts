@@ -22,8 +22,8 @@
  * F5's capabilities table is what makes those sections form-aware.
  */
 
-import type { AppSettings } from '@datazen/frontend/src/types/index';
-import type { DesktopHostServices, HostSettingsPort } from '@datazen/frontend/src/platform/contracts';
+import type { AppSettings } from '@datazen/frontend';
+import type { DesktopHostServices, HostSettingsPort } from '@datazen/frontend';
 import type { SharedSettings } from '@datazen/backend-client';
 
 /**

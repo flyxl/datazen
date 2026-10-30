@@ -1,8 +1,8 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TitleBar } from '../TitleBar';
-import { useUiStore } from '@datazen/frontend/src/stores/uiStore';
-import { configurePlatform } from '@datazen/frontend/src/platform/contracts';
+import { useUiStore } from '@datazen/frontend/testing/stores/uiStore.ts';
+import { configurePlatform } from '@datazen/frontend/testing/platform/contracts.ts';
 
 const isFullscreenMock = vi.fn().mockResolvedValue(false);
 const onResizedMock = vi.fn().mockResolvedValue(() => {});
@@ -10,13 +10,13 @@ const onResizedMock = vi.fn().mockResolvedValue(() => {});
 // Form-split F2: TitleBar imports the OS hook and the form constant from the
 // desktop zone; the form is compile-time, so the env module gets a getter
 // mock that this suite pins to the desktop branch.
-vi.mock('@datazen/frontend/src/platform/env', () => ({
+vi.mock('@datazen/frontend/testing/platform/env.ts', () => ({
   get IS_DESKTOP_BUILD() {
     return true;
   },
 }));
 
-vi.mock('@datazen/frontend/src/hooks/usePlatform', () => ({
+vi.mock('@datazen/frontend/testing/hooks/usePlatform.ts', () => ({
   usePlatform: () => 'macos',
   getPlatformSync: () => 'macos',
 }));

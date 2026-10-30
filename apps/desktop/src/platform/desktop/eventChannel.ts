@@ -8,7 +8,7 @@
  * Tauri runtime  → Tauri event system (emit/listen broadcasts to all windows).
  */
 
-import type { EventChannel } from '@datazen/frontend/src/platform/contracts';
+import type { EventChannel } from '@datazen/frontend';
 
 type Handler = (payload?: unknown) => void;
 

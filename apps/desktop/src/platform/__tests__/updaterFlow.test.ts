@@ -16,7 +16,7 @@ const mockDownloadAndInstall = vi.fn();
 const mockRelaunch = vi.fn();
 
 const envState = vi.hoisted(() => ({ desktop: false }));
-vi.mock('@datazen/frontend/src/platform/env', () => ({
+vi.mock('@datazen/frontend/testing/platform/env.ts', () => ({
   get IS_DESKTOP_BUILD() {
     return envState.desktop;
   },
@@ -31,7 +31,7 @@ vi.mock('@tauri-apps/plugin-process', () => ({
 }));
 
 // The Basic SKU: publishes a channel (the lib-side variant tests cover `custom`).
-vi.mock('@datazen/frontend/src/extensions/generated', () => ({
+vi.mock('@datazen/frontend/testing/extensions/generated.ts', () => ({
   DATAZEN_VARIANT: 'basic',
   DATAZEN_UPDATER_CHANNEL: true,
 }));
@@ -196,7 +196,7 @@ describe('updater flows on a SKU with no published channel', () => {
     envState.desktop = true;
     vi.clearAllMocks();
     vi.resetModules();
-    vi.doMock('@datazen/frontend/src/extensions/generated', () => ({
+    vi.doMock('@datazen/frontend/testing/extensions/generated.ts', () => ({
       DATAZEN_VARIANT: 'custom',
       DATAZEN_UPDATER_CHANNEL: false,
     }));

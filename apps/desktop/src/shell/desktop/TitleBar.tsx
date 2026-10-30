@@ -2,9 +2,8 @@ import type { ReactNode } from 'react';
 import { useCallback, useEffect } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { usePlatform } from '@datazen/frontend/src/hooks/usePlatform';
-import { IS_DESKTOP_BUILD } from '@datazen/frontend/src/platform/env';
-import { useUiStore } from '@datazen/frontend/src/stores/uiStore';
+import { usePlatform, useUiStore } from '@datazen/frontend/shell';
+import { IS_DESKTOP_BUILD } from '@datazen/frontend';
 import { WindowControls } from './WindowControls';
 
 export interface TitleBarProps {

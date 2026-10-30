@@ -35,19 +35,27 @@ vi.mock('@tauri-apps/api/core', () => ({
   },
 }));
 
-vi.mock('@datazen/frontend/src/lib/session/tableSession', () => ({ tableManualHandle: vi.fn(() => null) }));
+vi.mock('@datazen/frontend/testing/lib/session/tableSession.ts', () => ({
+  tableManualHandle: vi.fn(() => null),
+}));
 
 import { createBackendClient, selectBackend, setBackendClient } from '@datazen/backend-client';
 import {
   createDesktopBackendTransport,
   DESKTOP_BACKEND_ID,
 } from '../desktop/tauriBackendTransport';
-import { classifyGridError } from '@datazen/frontend/src/lib/gridErrors';
-import { hostErrorMessage, openForeignKeyTarget } from '@datazen/frontend/src/lib/fkNavigationActions';
-import { usePanelStore } from '@datazen/frontend/src/stores/panelStore';
-import { useFkNavigationStore, resetFkNavigationEntryIds } from '@datazen/frontend/src/stores/fkNavigationStore';
-import { useTableDataStore } from '@datazen/frontend/src/stores/tableDataStore';
-import type { ForeignKeyInfo } from '@datazen/frontend/src/types/index';
+import { classifyGridError } from '@datazen/frontend/testing/lib/gridErrors.ts';
+import {
+  hostErrorMessage,
+  openForeignKeyTarget,
+} from '@datazen/frontend/testing/lib/fkNavigationActions.ts';
+import { usePanelStore } from '@datazen/frontend/testing/stores/panelStore.ts';
+import {
+  useFkNavigationStore,
+  resetFkNavigationEntryIds,
+} from '@datazen/frontend/testing/stores/fkNavigationStore.ts';
+import { useTableDataStore } from '@datazen/frontend/testing/stores/tableDataStore.ts';
+import type { ForeignKeyInfo } from '@datazen/frontend/testing/types/index.ts';
 
 /** The message the host sends: the prefix is the contract (07 §3.2). */
 const HOST_MESSAGE =

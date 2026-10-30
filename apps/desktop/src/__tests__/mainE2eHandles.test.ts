@@ -1,9 +1,12 @@
 /**
  * The E2E suites read the table state through `window.__tableDataStore`
  * (e.g. `e2e/specs/table-cell-selection.ts`). A module-level assignment inside the store
- * file is tree-shaken by Vite, so the handle has to be registered in the **entry module** —
- * and it is live in the two builds that need it: the webdriver build (`VITE_E2E=1`, see
- * `scripts/e2e-tauri-build.mjs`) and the dev server (`DEV=true`).
+ * file is tree-shaken by Vite, so the handle has to be registered in the **bootstrap
+ * module that the entry evaluates** — since host-boundary follow-up F2 that is the
+ * shared app bootstrap (`packages/frontend/src/bootstrap/startSharedApp.tsx`), called
+ * by `apps/desktop/src/main.tsx`. The handle is live in the two builds that need it:
+ * the webdriver build (`VITE_E2E=1`, see `scripts/e2e-tauri-build.mjs`) and the dev
+ * server (`DEV=true`).
  *
  * This is a wiring test: the failure mode it guards against is silent — the handle simply
  * is not there any more and every E2E case that reads the store fails with a null snapshot.
@@ -14,8 +17,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-// The entry module is app-owned (apps/desktop/src/main.tsx) since the F6 split;
-// the store it wires the handle to still lives in the shared frontend package.
 const APP_SRC = path.resolve(import.meta.dirname, '..');
 const FRONTEND_SRC = path.resolve(import.meta.dirname, '../../../../packages/frontend/src');
 
@@ -28,9 +29,9 @@ function readFrontend(...parts: string[]) {
 }
 
 describe('E2E handle wiring', () => {
-  it('registers __tableDataStore in the entry module behind the E2E/dev gate', () => {
-    const main = readApp('main.tsx');
-    expect(main).toMatch(
+  it('registers __tableDataStore in the shared bootstrap behind the E2E/dev gate', () => {
+    const bootstrap = readFrontend('bootstrap/startSharedApp.tsx');
+    expect(bootstrap).toMatch(
       /if\s*\(\s*import\.meta\.env\.VITE_E2E\s*\|\|\s*import\.meta\.env\.DEV\s*\)\s*\{[\s\S]{0,300}?__tableDataStore\s*=/,
     );
   });
@@ -41,18 +42,28 @@ describe('E2E handle wiring', () => {
     expect(readFrontend('stores/tableDataStore.ts')).not.toContain('__tableDataStore');
   });
 
-  it('never publishes the table store handle unconditionally', () => {
+  it('wires the shared bootstrap into the desktop entry', () => {
+    // The registration lives in the bootstrap; it only runs for the desktop when the
+    // entry actually calls `startSharedApp` from '@datazen/frontend/app' (F2).
     const main = readApp('main.tsx');
+    expect(main).toMatch(/from '@datazen\/frontend\/app'/);
+    expect(main).toMatch(/startSharedApp\(/);
+  });
+
+  it('never publishes the table store handle unconditionally', () => {
+    const bootstrap = readFrontend('bootstrap/startSharedApp.tsx');
     // `__schemaStore` is published unconditionally; the table store must not copy that
     // pattern — a production build must not grow a global handle nobody asked for.
-    expect(main).not.toMatch(/\(globalThis as any\)\.__tableDataStore/);
-    expect(main).not.toMatch(/\(globalThis as Record<string, unknown>\)\.__tableDataStore/);
+    expect(bootstrap).not.toMatch(
+      /\(globalThis as any\)\.__tableDataStore\s*=\s*useTableDataStore/,
+    );
+    expect(bootstrap).not.toMatch(/\(globalThis as Record<string, unknown>\)\.__tableDataStore/);
   });
 
   it('publishes undefined rather than the store outside an E2E/dev build', () => {
-    const main = readApp('main.tsx');
+    const bootstrap = readFrontend('bootstrap/startSharedApp.tsx');
     // The else branch keeps the handle name in the bundle (the assignment survives
     // tree-shaking) without exposing a live store in a production build.
-    expect(main).toMatch(/__tableDataStore\s*=\s*undefined;/);
+    expect(bootstrap).toMatch(/__tableDataStore\s*=\s*undefined;/);
   });
 });

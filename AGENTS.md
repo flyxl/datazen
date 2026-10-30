@@ -39,6 +39,7 @@ docs/                    features、architecture、development、blogs、已核�
 - 不读取、打印或 source `.env` / `.env.test` 内容；测试程序可以按项目约定读取，但输出不得泄漏凭据。
 - 不以放宽权限、宽泛 `allow`、删除断言或跳过测试解决问题。
 - 前端严格 TypeScript、禁止 `any`（generated 文件除外）；CSS 使用 Tailwind utility；IPC 前端 camelCase、Rust snake_case。
+- `@datazen/frontend` 只经公开入口消费：`.`（平台端口与能力位）、`./app`（startSharedApp 启动链）、`./shell`（壳层切片）、`./styles.css`；`./testing/*` 仅测试文件可用。禁止 `@datazen/frontend/src/` 深导入（`scripts/check-frontend-public-entry.mjs` 门禁）。
 - 数据库行为差异走 `DB_REGISTRY` / `DatabaseTypeMeta`；不要把某个数据库的判断散落到 Host。
 - 交互/补全必须测试完整连续旅程，优先软排序，不用不可逆硬过滤；点击选择通过 DOM `data-*` 标识而不是视口坐标。
 

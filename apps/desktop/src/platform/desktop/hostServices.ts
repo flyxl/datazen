@@ -15,8 +15,8 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { getVersion } from '@tauri-apps/api/app';
-import type { AppSettings } from '@datazen/frontend/src/types/index';
-import type { DesktopHostServices, UpdateCheckResult, UpdateProgress } from '@datazen/frontend/src/platform/contracts';
+import type { AppSettings } from '@datazen/frontend';
+import type { DesktopHostServices, UpdateCheckResult, UpdateProgress } from '@datazen/frontend';
 import { maybeCheckOnStartup } from './updater';
 import {
   checkForUpdates as desktopCheckForUpdates,
