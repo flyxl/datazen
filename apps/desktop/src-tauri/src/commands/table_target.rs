@@ -8,6 +8,10 @@
 //! submission, polling, artifact collection).
 use super::{AppState, CommandError};
 use crate::platform::{into_command_error, into_execution_target, PlatformAdapter};
+// 端口实现里调的是 ConnectionUseCases 的 trait 方法（get_session /
+// issue_submission_token / execute_in_session / execute_at_target /
+// get_execution）；RuntimeConnectionUseCases 只是结构体，不带来方法。
+use datazen::application::sessions::ConnectionUseCases;
 use datazen::execution::application::idempotency::IdempotentOperation;
 use datazen::execution::application::requests::{CommandCall, ExecuteAtTargetRequest};
 use datazen::execution::application::RuntimeConnectionUseCases;

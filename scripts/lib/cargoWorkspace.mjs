@@ -68,7 +68,13 @@ export const LAYERS = Object.freeze([
   { id: 'modules', path: 'modules', kind: 'rust' },
   { id: 'infra', path: 'packages/infra', kind: 'rust' },
   { id: 'server', path: 'server', kind: 'rust' },
+  // `packages/driver-support`（F3 下沉的零依赖文本工具）与 driver-api 同层：
+  // 同一「驱动契约」地层的两个 crate。归入既有层而不是新开一层，是让
+  // F-01 的 allowedLayers ['driver','driver-api'] 当天就对它生效——驱动
+  // 插件作者可以单独取用文本工具（F3 实施记录的既定意图），而新开一层
+  // 会把这条边变成违规，直到有人显式放宽。
   { id: 'driver-api', path: 'packages/driver-api', kind: 'rust' },
+  { id: 'driver-api', path: 'packages/driver-support', kind: 'rust' },
   { id: 'driver', path: 'packages/drivers/*', kind: 'rust' },
   { id: 'backend-client', path: 'packages/backend-client', kind: 'ts' },
 ]);

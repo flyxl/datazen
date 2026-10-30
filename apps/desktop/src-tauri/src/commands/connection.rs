@@ -1263,11 +1263,19 @@ mod coverage_tests {
             8,
             "列表 / 保存 / 复制 / 删除 / 测试连接 / 连接 / 指定库连接 / 重排 各取一次模块服务"
         );
+        // F4a 后：合并缺失密钥与脱敏投影的纯函数住 modules::connection::api，
+        // 命令层只委托不复制。两层钉法：本文件不得重新定义这两个函数；八个
+        // 目录用例全部经 connection_api 走模块服务（合并/脱敏在 api 内发生）。
         assert_eq!(
-            production.matches("merge_missing_secrets").count()
-                + production.matches("redact_secrets").count(),
-            2,
+            production.matches("fn merge_missing_secrets").count()
+                + production.matches("fn redact_secrets").count(),
+            0,
             "合并缺失密钥与脱敏投影必须复用模块的纯函数，不得在命令层另写一份"
+        );
+        assert_eq!(
+            production.matches("connection_api::").count(),
+            8,
+            "列表 / 保存 / 复制 / 删除 / 测试连接 / 读取 ×2 / 重排 全部委托 connection_api"
         );
     }
 }
