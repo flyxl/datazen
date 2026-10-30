@@ -200,7 +200,7 @@ import { useSchemaStore } from '@datazen/frontend/src/stores/schemaStore';
 | 说明符 | 导出 |
 |---|---|
 | `@datazen/frontend` | `startSharedApp`、平台端口与能力位（`configurePlatform`、`requirePlatform`、契约类型、`DESKTOP_CAPABILITIES`、`WEB_CAPABILITIES`、`IS_DESKTOP_BUILD`） |
-| `@datazen/frontend/chrome` | 壳层专用的最小表面：`useI18n`、`usePlatform`、`useUiStore` 中 TitleBar 真正用到的选择子。不导出全部 store |
+| `@datazen/frontend/shell` | 壳层专用的最小表面：`useI18n`、`usePlatform`、`useUiStore` 中 TitleBar 真正用到的选择子。不导出全部 store |
 | `@datazen/frontend/styles.css` | `src/styles/globals.css` |
 
 `exports` 的值写成真实存在的源文件（`.ts` / `.tsx` / `.css`），删除 `./src/*` → `.js` 这条。
@@ -224,7 +224,7 @@ startSharedApp();
 ### 文件去留
 
 - 挪到 `apps/desktop/src/platform/desktop/tauriEventCompat.ts`：`packages/frontend/src/lib/tauriEventCompat.ts`。共享包不再提到 Tauri unlisten 竞态。
-- 留在 `apps/desktop`：`updater.ts`、`TitleBar.tsx`、`WindowControls.tsx`、`assembly.ts`。TitleBar 改为从 `@datazen/frontend/chrome` 取状态，不再从 `@datazen/frontend/src/stores/uiStore` 取。
+- 留在 `apps/desktop`：`updater.ts`、`TitleBar.tsx`、`WindowControls.tsx`、`assembly.ts`。TitleBar 改为从 `@datazen/frontend/shell` 取状态，不再从 `@datazen/frontend/src/stores/uiStore` 取。
 - 留在 `packages/frontend`：`App`、stores、hooks、locales、components、`extensions/generated*.ts`（驱动 UI 注册表是共享的，由 `startSharedApp` 调用，桌面入口不再直接 import）。
 - `registerWindowChrome` 仍然通过 `@datazen/extension-points`。不要把 TitleBar 搬进共享包去「消灭」最后一个桌面文件。
 
@@ -232,8 +232,8 @@ startSharedApp();
 
 1. 在 `packages/frontend/src/bootstrap/startSharedApp.tsx` 放入从 `main.tsx` 移过来的共享启动代码，先让桌面改调它，行为不变（splash、locale、pro 扩展、store 预热逐项对照）。
 2. 移动 `tauriEventCompat`，改调用点与测试。
-3. 增加 `src/chrome.ts`，只转出壳层用到的符号。TitleBar / WindowControls 改 import。
-4. 改 `package.json` 的 `exports`：`.`、`./chrome`、`./styles.css`。删掉 `./src/*`。
+3. 增加 `src/shell.ts`，只转出壳层用到的符号。TitleBar / WindowControls 改 import。
+4. 改 `package.json` 的 `exports`：`.`、`./shell`、`./styles.css`。删掉 `./src/*`。
 5. 全仓库搜索 `@datazen/frontend/src/`。生产代码和测试都改为上述三个说明符。`packages/frontend` 内部不准使用这个前缀。
 6. 加 `scripts/check-frontend-public-entry.mjs`：`apps/`、`packages/`（排除 `packages/frontend`）、`e2e/` 中出现 `@datazen/frontend/src/` 即失败。接到现有的边界检查脚本旁，不新造 CI。
 
