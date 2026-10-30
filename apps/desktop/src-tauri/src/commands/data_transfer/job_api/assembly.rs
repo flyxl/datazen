@@ -514,7 +514,11 @@ async fn load_schemas(
         .map(|table| table.name.as_str())
         .collect::<Vec<_>>();
     super::super::schema_loading::load_named_table_schemas(
-        driver, handle, endpoint, &table_names, side,
+        driver,
+        handle,
+        endpoint,
+        &table_names,
+        side,
     )
     .await
 }

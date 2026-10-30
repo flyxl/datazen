@@ -16,8 +16,8 @@ use crate::{
 use crate::{
     ColumnInfo, ColumnSchema, ConnectionConfig, ConnectionHandle, CountStrategy, DatabaseDriver,
     DatabaseType, DriverCategory, DriverError, ExplainResult, MultiQueryResult, QueryResult,
-    ServerInfo, StructureChangePlan, StructureChangeRequest, TableInfo,
-    TableSchema, TransactionHandle, Value,
+    ServerInfo, StructureChangePlan, StructureChangeRequest, TableInfo, TableSchema,
+    TransactionHandle, Value,
 };
 
 /// The column the mock's estimate statement selects. The mock answers a

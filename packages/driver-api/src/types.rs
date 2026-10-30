@@ -1030,7 +1030,6 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod multi_query_result_tests {
     use super::*;
@@ -1071,7 +1070,10 @@ mod multi_query_result_tests {
         assert_eq!(statement.columns.len(), 1);
         assert_eq!(statement.columns[0].name, "id");
         assert_eq!(statement.rows.len(), 1);
-        assert!(matches!(statement.rows[0][0].as_ref(), Some(Value::Integer(42))));
+        assert!(matches!(
+            statement.rows[0][0].as_ref(),
+            Some(Value::Integer(42))
+        ));
         assert_eq!(statement.rows_affected, Some(1));
         assert_eq!(statement.execution_time_ms, 7);
         assert!(!statement.truncated);
