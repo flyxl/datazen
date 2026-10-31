@@ -10,7 +10,13 @@ name: lockfile-snapshot
 # DELETE THIS FILE after the lock lands.
 
 on:
-  workflow_dispatch:
+  # push rather than workflow_dispatch: the automation token cannot dispatch
+  # workflows, but a push of this file itself triggers the snapshot.
+  push:
+    branches:
+      - review/code-organization-2026-10
+    paths:
+      - ".github/workflows/lockfile-snapshot.yml"
 
 jobs:
   snapshot:
