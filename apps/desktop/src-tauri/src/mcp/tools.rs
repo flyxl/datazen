@@ -66,15 +66,9 @@ impl DataZenMcpServer {
         Parameters(input): Parameters<ListDatabasesInput>,
     ) -> Result<String, McpError> {
         self.ensure_allowed("list_databases", &input.connection_id)?;
-        let output = datazen::workflow::runtime_reads::read_target_command(
-            self.resource_host.as_ref(),
-            &input.connection_id,
-            "list_databases",
-            serde_json::json!({}),
-        )
-        .await?;
-        serde_json::to_string_pretty(&datazen_driver_api::parse_databases_from_command(&output))
-            .map_err(|e| Self::map_err(e.to_string()))
+        datazen::mcp::tools::list_databases(self.resource_host.as_ref(), &input.connection_id)
+            .await
+            .map_err(Self::map_err)
     }
 
     #[tool(
@@ -85,18 +79,14 @@ impl DataZenMcpServer {
         Parameters(input): Parameters<ListTablesInput>,
     ) -> Result<String, McpError> {
         self.ensure_allowed("list_tables", &input.connection_id)?;
-        let output = datazen::workflow::runtime_reads::read_target_command(
+        datazen::mcp::tools::list_tables(
             self.resource_host.as_ref(),
             &input.connection_id,
-            "list_tables",
-            serde_json::json!({
-                "database": input.database,
-                "schema": input.schema,
-            }),
+            input.database,
+            input.schema,
         )
-        .await?;
-        serde_json::to_string_pretty(&datazen_driver_api::parse_tables_from_command(&output))
-            .map_err(|e| Self::map_err(e.to_string()))
+        .await
+        .map_err(Self::map_err)
     }
 
     #[tool(
@@ -107,35 +97,16 @@ impl DataZenMcpServer {
         Parameters(input): Parameters<SearchTablesInput>,
     ) -> Result<String, McpError> {
         self.ensure_allowed("search_tables", &input.connection_id)?;
-        let limit = input.limit.unwrap_or(20) as usize;
-        let output = datazen::workflow::runtime_reads::read_target_command(
+        datazen::mcp::tools::search_tables(
             self.resource_host.as_ref(),
             &input.connection_id,
-            "list_tables",
-            serde_json::json!({
-                "database": input.database,
-                "schema": input.schema,
-            }),
+            input.database,
+            input.schema,
+            &input.pattern,
+            input.limit,
         )
-        .await?;
-        let tables = datazen_driver_api::parse_tables_from_command(&output);
-        let pattern_lower = input.pattern.to_lowercase();
-        let matched: Vec<_> = tables
-            .iter()
-            .filter(|table| table.name.to_lowercase().contains(&pattern_lower))
-            .take(limit)
-            .collect();
-        let total_matches = tables
-            .iter()
-            .filter(|table| table.name.to_lowercase().contains(&pattern_lower))
-            .count();
-        serde_json::to_string_pretty(&serde_json::json!({
-            "matched": matched,
-            "totalMatches": total_matches,
-            "totalTables": tables.len(),
-            "pattern": input.pattern,
-        }))
-        .map_err(|e| Self::map_err(e.to_string()))
+        .await
+        .map_err(Self::map_err)
     }
 
     #[tool(
@@ -146,25 +117,17 @@ impl DataZenMcpServer {
         Parameters(input): Parameters<QueryInput>,
     ) -> Result<String, McpError> {
         self.ensure_allowed("query", &input.connection_id)?;
-        permission::check_sql_allowed(&input.sql, self.permission_mode)
-            .map_err(|e| tool_help::tool_error("query", &e))?;
-        let mut command_input = serde_json::json!({
-            "sql": input.sql,
-            "limit": datazen::services::db_tools::resolve_query_limit(input.limit),
-        });
-        self.app_state
-            .store
-            .execution_settings()
-            .await
-            .apply_result_limit(&mut command_input);
-        let output = datazen::workflow::runtime_reads::read_target_command(
+        let settings = self.app_state.store.execution_settings().await;
+        datazen::mcp::tools::query(
             self.resource_host.as_ref(),
             &input.connection_id,
-            "query",
-            command_input,
+            &input.sql,
+            input.limit,
+            self.permission_mode,
+            &settings,
         )
-        .await?;
-        serde_json::to_string_pretty(&output).map_err(|e| Self::map_err(e.to_string()))
+        .await
+        .map_err(|e| tool_help::tool_error("query", &e))
     }
 
     #[tool(
@@ -175,19 +138,15 @@ impl DataZenMcpServer {
         Parameters(input): Parameters<GetSchemaInput>,
     ) -> Result<String, McpError> {
         self.ensure_allowed("get_schema", &input.connection_id)?;
-        let output = datazen::workflow::runtime_reads::read_target_command(
+        datazen::mcp::tools::get_schema(
             self.resource_host.as_ref(),
             &input.connection_id,
-            "get_table_schema",
-            serde_json::json!({
-                "database": input.database,
-                "schema": input.schema,
-                "table": input.table,
-            }),
+            input.database,
+            input.schema,
+            &input.table,
         )
-        .await?;
-        serde_json::to_string_pretty(&vec![output["schema"].clone()])
-            .map_err(|e| Self::map_err(e.to_string()))
+        .await
+        .map_err(Self::map_err)
     }
 
     #[tool(
@@ -198,14 +157,13 @@ impl DataZenMcpServer {
         Parameters(input): Parameters<ExplainQueryInput>,
     ) -> Result<String, McpError> {
         self.ensure_allowed("explain_query", &input.connection_id)?;
-        let output = datazen::workflow::runtime_reads::read_target_command(
+        datazen::mcp::tools::explain_query(
             self.resource_host.as_ref(),
             &input.connection_id,
-            "explain",
-            serde_json::json!({ "sql": input.sql }),
+            &input.sql,
         )
-        .await?;
-        serde_json::to_string_pretty(&output).map_err(|e| Self::map_err(e.to_string()))
+        .await
+        .map_err(Self::map_err)
     }
 
     #[tool(
@@ -216,21 +174,15 @@ impl DataZenMcpServer {
         Parameters(input): Parameters<DescribeTableInput>,
     ) -> Result<String, McpError> {
         self.ensure_allowed("describe_table", &input.connection_id)?;
-        let output = datazen::workflow::runtime_reads::read_target_command(
+        datazen::mcp::tools::describe_table(
             self.resource_host.as_ref(),
             &input.connection_id,
-            "get_table_schema",
-            serde_json::json!({
-                "database": input.database,
-                "schema": input.schema,
-                "table": input.table,
-            }),
+            input.database,
+            input.schema,
+            &input.table,
         )
-        .await?;
-        let schema = serde_json::from_value(output["schema"].clone())
-            .map_err(|e| Self::map_err(e.to_string()))?;
-
-        Ok(format_table_description(&input.table, &schema))
+        .await
+        .map_err(Self::map_err)
     }
 
     #[tool(

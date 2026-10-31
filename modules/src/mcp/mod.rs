@@ -20,5 +20,6 @@ pub mod domain;
 
 // 旧扁平路径镜像（modules 垫片与直接消费者兼容）。
 pub use application::describe;
+pub use application::tools;
 pub use domain::allowlist;
 pub use domain::permission;
