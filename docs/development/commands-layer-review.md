@@ -181,7 +181,7 @@ modules 侧 `migration/` 已有同域测试基建（`filter_tests.rs`、`plan_te
 | backup.rs | 362 | 保留 | 对话框/路径/事件绑定；网关在 modules |
 | ~~backup_tests.rs（原 322）~~ | 276 | **已拆（本轮）** | 5 个纯逻辑测试 → `modules/src/backup/options_tests.rs`；留 From 守卫/bootstrap 守卫/IPC 参数守卫/往返烟测（C1/C2/C4） |
 | restore_gateway.rs / restore_job.rs / restore_job/input.rs | 399 | 保留（桥接核对） | modules `backup::restore_*` 已有对应本体 |
-| restore_job/tests.rs | 365 | 测试迁移（甄别） | 被测恢复语义指向 modules `restore_job` |
+| restore_job/tests.rs | 365 | 保留（C4 适配器烟测） | 宿主边界旅程（生产上传→SQLite 准入→桌面运行时接线）；深度行为在 modules 驱动旅程（模块文档明言「PG/MySQL driver journeys own real SQL evidence」） |
 | restore_job/provider_fixture.rs | 274 | 基建（随刀） | — |
 | export.rs + export/stream.rs | 846 | 保留 | 文件导出宿主绑定 |
 | export/live_acceptance.rs | 347 | 保留（C4 验收） | 真实驱动验收烟测 |
@@ -192,7 +192,7 @@ modules 侧 `migration/` 已有同域测试基建（`filter_tests.rs`、`plan_te
 | app_archive.rs | 131 | 保留 | app 数据目录 ZIP |
 | port_call.rs | 37 | 下沉候选 | 端口调用→命令结果收口，形态中立，与 WR-C 错误词汇对齐时处理 |
 | connection_import/ipc.rs | 509 | 保留（拆分甄别） | 文件对话框 + 密码校验；导入解析已在 modules（各格式有测试） |
-| connection_import/ipc_tests.rs | 783 | 测试迁移（拆分） | 导入行为测试迁 `modules/src/connection_import/`；文件过滤/IPC 形状留 C1 |
+| connection_import/ipc_tests.rs | 783 | **已拆（本轮 B1）** | 加密往返 2 测已迁 `modules/src/connection_import/datazen.rs`（内联）；merge/preview/export 构建逻辑被困宿主 → B2 刀；文件过滤/密码校验留 C3 |
 | wapps/mod.rs / driver.rs / sessions.rs / storage.rs / registry.rs | 1,161 | 瘦身（分刀） | 会话/存储编排部分形态中立 |
 | wapps/tests.rs | 472 | 守卫（注册部分）+ 随刀拆分 | — |
 | wapps/session_tests.rs | 151 | 随刀下沉 | 会话语义 |
@@ -202,14 +202,17 @@ modules 侧 `migration/` 已有同域测试基建（`filter_tests.rs`、`plan_te
 
 ## 4. 迁移批次（执行顺序）
 
-- **B0（本轮已执行）**：三块「逻辑已在 modules、测试直接搬家」——
+- **B0（已执行）**：三块「逻辑已在 modules、测试直接搬家」——
   `filter_validation_tests`（501 行整迁）、`backup_tests` 纯逻辑 5 测、
   `ai/tests.rs` 纯逻辑 25 测（response 18 + tools 4 + api 1 + single_turn 2；
   另删 1 个与 modules 既有覆盖重复的 `provider_defaults` 测试）。
   共 **1,355 行测试代码归位 modules**，桌面 commands 层净减约 1,050 行。
-- **B1（下一刀，纯迁移）**：`connection_import/ipc_tests` 拆分、
-  `driver_command/tests` 拆分（wire 格式留 C1）、`restore_job/tests` 甄别、
-  `data_transfer/job_api/tests/{queries,addressability,endpoint_identity}`。
+- **B1（进行中）**：`connection_import/ipc_tests` 已拆（加密往返 2 测迁
+  `modules/src/connection_import/datazen.rs`；merge/preview/export 构建逻辑
+  留待 B2 刀，文件过滤留 C3）；`restore_job/tests` 复核为 C4 烟测改判保留；
+  待做：`driver_command/tests` 拆分（wire 格式留 C1，resolve/策略/流式语义
+  测试迁 `modules/src/mcp/application/`）、`data_transfer/job_api/tests/
+  {queries,addressability,endpoint_identity}` 逐个核对。
 - **B2（域刀，`_impl` 拆除 + 逻辑下沉 + 测试跟随）**：按域推进，顺序
   connection → tunnel（summary/probe）→ query/driver_command → data（写路径）→
   schema/schema_diff → dashboard/config/context/history/named_views/workflow/

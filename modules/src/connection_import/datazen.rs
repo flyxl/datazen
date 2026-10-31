@@ -171,3 +171,40 @@ pub fn parse(
         .unwrap_or_default();
     Ok((connections, groups))
 }
+
+#[cfg(test)]
+mod tests {
+    //! 2026-10-31 自桌面 `commands/connection_import/ipc_tests.rs` 归位：
+    //! 密钥派生/字段加密/批量解密的往返语义是本模块的行为，不是宿主绑定。
+
+    use super::{decrypt_datazen_fields, derive_argon2_key, encrypt_field};
+
+    #[test]
+    fn encrypt_decrypt_roundtrip() {
+        let salt = [7u8; 16];
+        let key = derive_argon2_key("unit-test-password", &salt).unwrap();
+        let cipher = encrypt_field("secret-db-password", &key).unwrap();
+        let mut data = serde_json::json!({
+            "encrypted": true,
+            "salt": base64::engine::general_purpose::STANDARD.encode(salt),
+            "connections": [{ "password": cipher }]
+        });
+        decrypt_datazen_fields(&mut data, "unit-test-password").unwrap();
+        assert_eq!(data["connections"][0]["password"], "secret-db-password");
+    }
+
+    #[test]
+    fn decrypt_rejects_wrong_password() {
+        use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+
+        let salt = [9u8; 16];
+        let key = derive_argon2_key("correct", &salt).unwrap();
+        let cipher = encrypt_field("payload", &key).unwrap();
+        let mut data = serde_json::json!({
+            "encrypted": true,
+            "salt": BASE64.encode(salt),
+            "connections": [{ "password": cipher }]
+        });
+        assert!(decrypt_datazen_fields(&mut data, "wrong").is_err());
+    }
+}
