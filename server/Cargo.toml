@@ -4,12 +4,14 @@ version = "0.1.0"
 edition = "2021"
 description = "DataZen team web server host (P7 / web-ready WR-D): the HTTP form of the product. One binary, three subcommands (serve | migrate | check-schema), assembling the shared modules kernel behind the /api/v1 contract (docs/architecture/platform/http-api-contract.md)."
 
-# WR-D1 骨架的依赖纪律（team-server-and-auth §2.2 的允许方向）：
+# 依赖纪律（team-server-and-auth §2.2；WR-D1 立规、WR-D2 起按域放宽）：
 #
-# - `datazen`（modules 内核）：本骨架只消费跨边界错误词汇
-#   `shared::error::{ApiError, ApiErrorCode}` 与 `shared::id::RequestId` —— 它们是
-#   IPC 与 HTTP 两种绑定共用的 wire 类型，server 不得另立一份（同用例、两绑定的
-#   第一步就是共用这一份词汇）。域用例的深度接线随 WR-D2/D4 到来。
+# - `datazen`（modules 内核）：WR-D1 只消费跨边界错误词汇
+#   `shared::error::{ApiError, ApiErrorCode}` 与 `shared::id::RequestId`（IPC 与
+#   HTTP 两种绑定共用的 wire 类型，server 不得另立一份）。WR-D2 第一切片起
+#   消费 connection 域的仓储端口与 DTO——同一 domain trait、另一个适配器。
+# - 管理库：SQLite 首版（rusqlite，与桌面 AppDb 同款；PostgreSQL 适配器是
+#   后续生产化切片，见 src/storage/mod.rs 的差异登记）。
 # - HTTP 框架 axum + tower-http：中间件链的载体。
 # - 禁止闭包（CI 的 scripts/check-server-deps.mjs 强制）：任何 `tauri*` crate
 #   （含 tauri-plugin-*）、`wry` / `tao`、桌面宿主 crate `datazen_desktop`、任何
@@ -19,11 +21,26 @@ description = "DataZen team web server host (P7 / web-ready WR-D): the HTTP form
 # 它随 WR-D2 的真实 handler 一起进来，届时 logging.rs 的脱敏契约开始有消费者。
 
 [dependencies]
-datazen = { workspace = true }
+# 只开 connection 域：WR-D2 第一切片只消费 ProfileRepository/ProfileReader/
+# DTO + shared。connection 的 DTO 引用 execution 回执，CI 的最小有效组合是
+# `connection,execution`（见 scripts/run-platform-crate-tests.mjs 的
+# FEATURE_TESTS 注释）——照此声明，不整包开启（与桌面的全 feature 列表
+# 形成对照：宿主按需消费内核）。后续切片按域点亮。
+datazen = { workspace = true, features = ["connection", "execution"] }
+
+# 适配器的 `#[async_trait]`（trait 实现处直接使用，需是本 crate 的直接依赖；
+# datazen 侧的同名依赖不传递可见性）。
+async-trait = { workspace = true }
 
 axum = "0.8"
 tower-http = { version = "0.6", features = ["catch-panic", "limit"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net"] }
+
+# WR-D2 管理库（SQLite 首版；与桌面 AppDb 同款选型，PostgreSQL 适配器是
+# 后续生产化切片——见 src/storage/mod.rs 的差异登记）。chrono 与桌面同款
+# 直接声明（workspace 未集中管理此依赖；Cargo.lock 已含，无锁变更）。
+rusqlite = { workspace = true }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
