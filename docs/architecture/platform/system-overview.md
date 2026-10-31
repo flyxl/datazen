@@ -217,7 +217,7 @@ interface ArtifactChunk {
 
 ### 6.3 首版 HTTP 映射
 
-以下为待实现路由，不能当作当前可调用 API。
+以下为待实现路由，不能当作当前可调用 API。本表是 v1 映射的**骨架**；补全并冻结的完整契约面（含 settings / identity / tableData 全部方法 / driverGateway 过渡域）以 [http-api-contract](http-api-contract.md)（web ready WR-C2）为唯一权威，两表不一致时以契约文档为准。
 
 | 路由 | 用例 |
 | --- | --- |
