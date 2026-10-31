@@ -1,4 +1,9 @@
 //! Tests for the connection import / export IPC surface.
+//!
+//! 2026-10-31 拆分：密钥派生/字段加密/批量解密的纯逻辑往返已归位
+//! `modules/src/connection_import/datazen.rs`（内联测试）；这里留宿主面——
+//! 文件对话框过滤（C3）、分享密码校验、合并/预览/导出构建这些待 B2 刀
+//! 下沉的宿主逻辑及其经命令入口的往返。
 
 use super::*;
 use datazen::connection_import::ImportFormat;
@@ -87,39 +92,6 @@ fn merge_group_lists_unions_and_counts_new() {
     );
     assert_eq!(merged, vec!["alpha", "beta", "gamma"]);
     assert_eq!(added, 1);
-}
-
-#[test]
-fn encrypt_decrypt_roundtrip() {
-    use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-    use datazen::connection_import::{decrypt_datazen_fields, derive_argon2_key, encrypt_field};
-
-    let salt = [7u8; 16];
-    let key = derive_argon2_key("unit-test-password", &salt).unwrap();
-    let cipher = encrypt_field("secret-db-password", &key).unwrap();
-    let mut data = serde_json::json!({
-        "encrypted": true,
-        "salt": BASE64.encode(salt),
-        "connections": [{ "password": cipher }]
-    });
-    decrypt_datazen_fields(&mut data, "unit-test-password").unwrap();
-    assert_eq!(data["connections"][0]["password"], "secret-db-password");
-}
-
-#[test]
-fn decrypt_rejects_wrong_password() {
-    use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-    use datazen::connection_import::{decrypt_datazen_fields, derive_argon2_key, encrypt_field};
-
-    let salt = [9u8; 16];
-    let key = derive_argon2_key("correct", &salt).unwrap();
-    let cipher = encrypt_field("payload", &key).unwrap();
-    let mut data = serde_json::json!({
-        "encrypted": true,
-        "salt": BASE64.encode(salt),
-        "connections": [{ "password": cipher }]
-    });
-    assert!(decrypt_datazen_fields(&mut data, "wrong").is_err());
 }
 
 #[test]

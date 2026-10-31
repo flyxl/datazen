@@ -14,7 +14,9 @@ pub(crate) use datazen::ai::response::language_hint;
 /// Delivers streaming chunks to the UI (or test collector).
 pub(crate) type StreamCallback = Arc<dyn Fn(&str, Result<StreamChunk, AiError>) + Send + Sync>;
 
-pub(crate) fn window_stream_callback(window: &WebviewWindow) -> StreamCallback {
+pub(crate) fn window_stream_callback<R: tauri::Runtime>(
+    window: &WebviewWindow<R>,
+) -> StreamCallback {
     let window = window.clone();
     Arc::new(move |request_id, result| {
         emit_stream_chunk_or_error(&window, request_id, result);

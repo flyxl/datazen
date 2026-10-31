@@ -13,16 +13,6 @@ use crate::testing::app_state::TestAppState;
 use datazen::ai::prompt_resolver::PromptOverrideEntry;
 use datazen::ai::tools::{classify_tool, ToolKind};
 
-fn collecting_stream_callback() -> (StreamCallback, Arc<Mutex<Vec<(String, bool)>>>) {
-    let log = Arc::new(Mutex::new(Vec::new()));
-    let log_c = log.clone();
-    let cb: StreamCallback = Arc::new(move |request_id, result| {
-        let done = result.as_ref().map(|c| c.done).unwrap_or(false);
-        log_c.lock().unwrap().push((request_id.to_string(), done));
-    });
-    (cb, log)
-}
-
 #[tokio::test]
 async fn resolve_ai_requires_saved_config() {
     let test = TestAppState::new().await;
@@ -35,8 +25,9 @@ async fn ai_session_commands_reject_unknown_runtime_ids() {
     let (test, _mock) = TestAppState::with_wiremock_ai().await;
     test.save_connection("runtime-only").await;
 
-    let error = ai_analyze_explain_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let error = ai_analyze_explain(
+        app.state(),
         "unopened-runtime-session".into(),
         "Seq Scan on users".into(),
         "SELECT * FROM users".into(),
@@ -50,7 +41,8 @@ async fn ai_session_commands_reject_unknown_runtime_ids() {
 async fn ai_validate_config_hits_wiremock() {
     let (test, mock) = TestAppState::with_wiremock_ai().await;
     let cfg = crate::testing::ai_wiremock::openai_wiremock_config(&mock);
-    ai_validate_config_impl(&test.state, cfg).await.unwrap();
+    let app = host_command_app(test);
+    ai_validate_config(app.state(), cfg).await.unwrap();
 }
 
 #[tokio::test]
@@ -63,8 +55,9 @@ async fn ai_diagnose_error_returns_parsed_json() {
     )
     .await;
 
-    let result = ai_diagnose_error_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let result = ai_diagnose_error(
+        app.state(),
         conn_id,
         "app".into(),
         "SELECT bad FROM users".into(),
@@ -90,8 +83,9 @@ async fn ai_analyze_explain_parses_response() {
     )
     .await;
 
-    let result = ai_analyze_explain_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let result = ai_analyze_explain(
+        app.state(),
         conn_id,
         "Seq Scan on users".into(),
         "SELECT * FROM users".into(),
@@ -114,8 +108,9 @@ async fn ai_parse_filter_normalizes_null_operators() {
     )
     .await;
 
-    let filters = ai_parse_filter_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let filters = ai_parse_filter(
+        app.state(),
         conn_id,
         "app".into(),
         "users".into(),
@@ -138,7 +133,8 @@ async fn ai_generate_schema_doc_returns_markdown() {
     mock.mount_chat_completion_text("# Users\n\nTable of users.")
         .await;
 
-    let doc = ai_generate_schema_doc_impl(&test.state, conn_id, "app".into())
+    let app = host_command_app(test);
+    let doc = ai_generate_schema_doc(app.state(), conn_id, "app".into())
         .await
         .unwrap();
     assert!(doc.contains("Users"));
@@ -154,8 +150,9 @@ async fn ai_diagnose_connection_parses_json() {
     )
     .await;
 
-    let result = ai_diagnose_connection_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let result = ai_diagnose_connection(
+        app.state(),
         "conn-diag".into(),
         "password authentication failed".into(),
     )
@@ -169,7 +166,8 @@ async fn ai_diagnose_connection_parses_json() {
 #[tokio::test]
 async fn ai_analyze_queries_requires_history() {
     let (test, _mock) = TestAppState::with_wiremock_ai().await;
-    let err = ai_analyze_queries_impl(&test.state, None)
+    let app = host_command_app(test);
+    let err = ai_analyze_queries(app.state(), None)
         .await
         .unwrap_err();
     assert!(err.to_string().contains("No query history"));
@@ -202,7 +200,8 @@ async fn ai_analyze_queries_with_history() {
     )
     .await;
 
-    let analysis = ai_analyze_queries_impl(&test.state, Some(conn_id))
+    let app = host_command_app(test);
+    let analysis = ai_analyze_queries(app.state(), Some(conn_id))
         .await
         .unwrap();
     assert_eq!(analysis.summary, "Light reads");
@@ -251,15 +250,17 @@ async fn ai_generate_sql_stream_without_tools() {
     let (_, conn_id) = test.save_and_connect("nl2sql-cfg").await;
     mock.mount_chat_stream_text("SELECT 1").await;
 
-    let (cb, log) = collecting_stream_callback();
-    let rid = ai_generate_sql_impl(
-        &test.state,
-        cb,
+    let app = host_command_app(test);
+    let log = app.stream_log();
+    let rid = ai_generate_sql(
+        app.state(),
+        app.window(),
         conn_id,
         "app".into(),
         "count users".into(),
         "req-nl2sql".into(),
         Some("users".into()),
+        None,
         None,
         None,
         None,
@@ -277,10 +278,10 @@ async fn ai_chat_with_schema_and_stream() {
     let (_, conn_id) = test.save_and_connect("chat-cfg").await;
     mock.mount_chat_stream_text("Hello from AI").await;
 
-    let (cb, _log) = collecting_stream_callback();
-    let rid = ai_chat_impl(
-        &test.state,
-        cb,
+    let app = host_command_app(test);
+    let rid = ai_chat(
+        app.state(),
+        app.window(),
         Some(conn_id),
         Some("app".into()),
         vec![ChatMessage {
@@ -292,6 +293,7 @@ async fn ai_chat_with_schema_and_stream() {
         }],
         "req-chat".into(),
         true,
+        None,
         None,
         None,
         None,
@@ -308,10 +310,10 @@ async fn ai_chat_workflow_scenario_builds_system_prompt() {
     test.save_connection("wf-ctx").await;
     mock.mount_chat_stream_text("workflow yaml").await;
 
-    let (cb, _) = collecting_stream_callback();
-    ai_chat_impl(
-        &test.state,
-        cb,
+    let app = host_command_app(test);
+    ai_chat(
+        app.state(),
+        app.window(),
         None,
         None,
         vec![ChatMessage {
@@ -324,6 +326,7 @@ async fn ai_chat_workflow_scenario_builds_system_prompt() {
         "req-wf".into(),
         false,
         Some("workflow_generate".into()),
+        None,
         None,
         None,
     )
@@ -347,12 +350,13 @@ async fn prompt_override_round_trip() {
         .await
         .unwrap();
 
-    let prompts = prompt_list_impl(&test.state, Some("postgres".into()))
+    let app = host_command_app(test);
+    let prompts = prompt_list(app.state(), Some("postgres".into()))
         .await
         .unwrap();
     assert!(prompts.iter().any(|p| p.source == PromptSource::User));
 
-    test.state
+    app.state()
         .prompt_resolver
         .remove_override("postgres", PromptScenario::Chat)
         .await
@@ -443,7 +447,8 @@ async fn ai_generate_schema_doc_selects_tables_when_many() {
         .await;
     mock.mount_chat_completion_text_once("# Schema doc").await;
 
-    let doc = ai_generate_schema_doc_impl(&test.state, conn_id, "app".into())
+    let app = host_command_app(test);
+    let doc = ai_generate_schema_doc(app.state(), conn_id, "app".into())
         .await
         .unwrap();
     assert!(doc.contains("# Schema doc"));
@@ -492,14 +497,15 @@ data: [DONE]
         .mount(&mock.server)
         .await;
 
-    let (cb, _) = collecting_stream_callback();
-    ai_generate_sql_impl(
-        &test.state,
-        cb,
+    let app = host_command_app(test);
+    ai_generate_sql(
+        app.state(),
+        app.window(),
         conn_id,
         "app".into(),
         "how many users".into(),
         "req-tools".into(),
+        None,
         None,
         None,
         None,
@@ -533,8 +539,9 @@ async fn ai_parse_filter_drops_unknown_columns() {
     )
     .await;
 
-    let filters = ai_parse_filter_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let filters = ai_parse_filter(
+        app.state(),
         conn_id,
         "app".into(),
         "users".into(),
@@ -558,10 +565,10 @@ async fn ai_generate_sql_injects_context_file() {
 
     mock.mount_chat_stream_text("SELECT 1").await;
 
-    let (cb, _) = collecting_stream_callback();
-    ai_generate_sql_impl(
-        &test.state,
-        cb,
+    let app = host_command_app(test);
+    ai_generate_sql(
+        app.state(),
+        app.window(),
         conn_id,
         "app".into(),
         "run query".into(),
@@ -569,6 +576,7 @@ async fn ai_generate_sql_injects_context_file() {
         None,
         None,
         Some(vec!["notes.md".into()]),
+        None,
         None,
     )
     .await
@@ -612,9 +620,10 @@ async fn execute_db_tool_get_table_schema() {
 #[tokio::test]
 async fn ai_delete_config_resets_providers() {
     let (test, _mock) = TestAppState::with_wiremock_ai().await;
-    assert!(ai_get_config_impl(&test.state).await.unwrap().is_some());
-    ai_delete_config_impl(&test.state).await.unwrap();
-    assert!(ai_get_config_impl(&test.state).await.unwrap().is_none());
+    let app = host_command_app(test);
+    assert!(ai_get_config(app.state()).await.unwrap().is_some());
+    ai_delete_config(app.handle(), app.state()).await.unwrap();
+    assert!(ai_get_config(app.state()).await.unwrap().is_none());
 }
 
 #[tokio::test]
@@ -627,10 +636,10 @@ async fn ai_chat_injects_context_files_into_user_message() {
     std::fs::write(ctx_dir.join("ctx.md"), "File context").unwrap();
     mock.mount_chat_stream_text("ok").await;
 
-    let (cb, _) = collecting_stream_callback();
-    ai_chat_impl(
-        &test.state,
-        cb,
+    let app = host_command_app(test);
+    ai_chat(
+        app.state(),
+        app.window(),
         None,
         None,
         vec![ChatMessage {
@@ -645,6 +654,7 @@ async fn ai_chat_injects_context_files_into_user_message() {
         None,
         Some(vec!["ctx.md".into()]),
         None,
+        None,
     )
     .await
     .unwrap();
@@ -655,10 +665,10 @@ async fn ai_chat_schema_resolve_failure_still_streams() {
     let (test, mock) = TestAppState::with_wiremock_ai().await;
     mock.mount_chat_stream_text("fallback").await;
 
-    let (cb, _) = collecting_stream_callback();
-    ai_chat_impl(
-        &test.state,
-        cb,
+    let app = host_command_app(test);
+    ai_chat(
+        app.state(),
+        app.window(),
         Some("not-connected".into()),
         Some("app".into()),
         vec![ChatMessage {
@@ -670,6 +680,7 @@ async fn ai_chat_schema_resolve_failure_still_streams() {
         }],
         "req-fail-schema".into(),
         true,
+        None,
         None,
         None,
         None,
@@ -686,7 +697,8 @@ async fn ai_generate_schema_doc_falls_back_when_selection_invalid() {
     mock.mount_chat_completion_text_once("not-valid-json").await;
     mock.mount_chat_completion_text_once("# Fallback doc").await;
 
-    let doc = ai_generate_schema_doc_impl(&test.state, conn_id, "app".into())
+    let app = host_command_app(test);
+    let doc = ai_generate_schema_doc(app.state(), conn_id, "app".into())
         .await
         .unwrap();
     assert!(doc.contains("Fallback doc"));
@@ -739,7 +751,8 @@ async fn ai_analyze_queries_all_history() {
     )
     .await;
 
-    let analysis = ai_analyze_queries_impl(&test.state, None).await.unwrap();
+    let app = host_command_app(test);
+    let analysis = ai_analyze_queries(app.state(), None).await.unwrap();
     assert_eq!(analysis.summary, "ok");
 }
 
@@ -749,10 +762,10 @@ async fn ai_generate_sql_pins_current_table() {
     let (_, conn_id) = test.save_and_connect("pin-table").await;
     mock.mount_chat_stream_text("SELECT * FROM users").await;
 
-    let (cb, _) = collecting_stream_callback();
-    ai_generate_sql_impl(
-        &test.state,
-        cb,
+    let app = host_command_app(test);
+    ai_generate_sql(
+        app.state(),
+        app.window(),
         conn_id,
         "app".into(),
         "show users".into(),
@@ -761,17 +774,21 @@ async fn ai_generate_sql_pins_current_table() {
         None,
         None,
         Some(vec!["orders".into()]),
+        None,
     )
     .await
     .unwrap();
 }
 
 #[tokio::test]
-async fn ai_save_config_impl_persists_wiremock_provider() {
+async fn ai_save_config_persists_wiremock_provider() {
     let (test, mock) = TestAppState::with_wiremock_ai().await;
     let cfg = crate::testing::ai_wiremock::openai_wiremock_config(&mock);
-    ai_save_config_impl(&test.state, cfg).await.unwrap();
-    assert!(ai_get_config_impl(&test.state).await.unwrap().is_some());
+    let app = host_command_app(test);
+    ai_save_config(app.handle(), app.state(), cfg)
+        .await
+        .unwrap();
+    assert!(ai_get_config(app.state()).await.unwrap().is_some());
 }
 
 #[tokio::test]
@@ -781,7 +798,8 @@ async fn ai_generate_schema_doc_strips_markdown_fence() {
     mock.mount_chat_completion_text("```markdown\n# Title\n```")
         .await;
 
-    let doc = ai_generate_schema_doc_impl(&test.state, conn_id, "app".into())
+    let app = host_command_app(test);
+    let doc = ai_generate_schema_doc(app.state(), conn_id, "app".into())
         .await
         .unwrap();
     assert!(doc.contains("# Title"));
@@ -800,10 +818,10 @@ async fn ai_chat_stream_http_error_propagates() {
         .mount(&mock.server)
         .await;
 
-    let (cb, _) = collecting_stream_callback();
-    assert!(ai_chat_impl(
-        &test.state,
-        cb,
+    let app = host_command_app(test);
+    assert!(ai_chat(
+        app.state(),
+        app.window(),
         None,
         None,
         vec![ChatMessage {
@@ -815,6 +833,7 @@ async fn ai_chat_stream_http_error_propagates() {
         }],
         "req-err".into(),
         false,
+        None,
         None,
         None,
         None,
@@ -889,10 +908,10 @@ data: [DONE]
         .mount(&mock.server)
         .await;
 
-    let (cb, _) = collecting_stream_callback();
-    ai_chat_impl(
-        &test.state,
-        cb,
+    let app = host_command_app(test);
+    ai_chat(
+        app.state(),
+        app.window(),
         None,
         None,
         vec![ChatMessage {
@@ -904,6 +923,7 @@ data: [DONE]
         }],
         "req-ask".into(),
         false,
+        None,
         None,
         None,
         None,
@@ -970,16 +990,17 @@ async fn ai_generate_sql_recent_queries_chinese_label() {
     test.state.store.save_settings(settings).await.unwrap();
     mock.mount_chat_stream_text("SELECT 1").await;
 
-    let (cb, _) = collecting_stream_callback();
-    ai_generate_sql_impl(
-        &test.state,
-        cb,
+    let app = host_command_app(test);
+    ai_generate_sql(
+        app.state(),
+        app.window(),
         conn_id,
         "app".into(),
         "查询".into(),
         "req-zh".into(),
         None,
         Some(vec!["SELECT 1".into()]),
+        None,
         None,
         None,
     )
@@ -993,7 +1014,8 @@ async fn ai_generate_schema_doc_small_schema_single_step() {
     let (_, conn_id) = test.save_and_connect("small-doc").await;
     mock.mount_chat_completion_text("# Small schema doc").await;
 
-    let doc = ai_generate_schema_doc_impl(&test.state, conn_id, "app".into())
+    let app = host_command_app(test);
+    let doc = ai_generate_schema_doc(app.state(), conn_id, "app".into())
         .await
         .unwrap();
     assert!(doc.contains("Small schema"));
@@ -1002,8 +1024,9 @@ async fn ai_generate_schema_doc_small_schema_single_step() {
 #[tokio::test]
 async fn ai_diagnose_connection_missing_config_errors() {
     let (test, _mock) = TestAppState::with_wiremock_ai().await;
-    assert!(ai_diagnose_connection_impl(
-        &test.state,
+    let app = host_command_app(test);
+    assert!(ai_diagnose_connection(
+        app.state(),
         "missing".into(),
         "connection refused".into(),
     )
@@ -1027,10 +1050,10 @@ async fn ai_chat_connected_english_schema_message() {
     let (_, conn_id) = test.save_and_connect("en-chat").await;
     mock.mount_chat_stream_text("Hello").await;
 
-    let (cb, _) = collecting_stream_callback();
-    ai_chat_impl(
-        &test.state,
-        cb,
+    let app = host_command_app(test);
+    ai_chat(
+        app.state(),
+        app.window(),
         Some(conn_id),
         Some("app".into()),
         vec![ChatMessage {
@@ -1042,6 +1065,7 @@ async fn ai_chat_connected_english_schema_message() {
         }],
         "req-en".into(),
         true,
+        None,
         None,
         None,
         None,
@@ -1238,10 +1262,10 @@ async fn ai_chat_mcp_tool_roundtrip() {
     }]);
     mock.push_stream_text("done");
 
-    let (cb, _) = collecting_stream_callback();
-    ai_chat_impl(
-        &test.state,
-        cb,
+    let app = host_command_app(test);
+    ai_chat(
+        app.state(),
+        app.window(),
         None,
         None,
         vec![ChatMessage {
@@ -1253,6 +1277,7 @@ async fn ai_chat_mcp_tool_roundtrip() {
         }],
         "req-mcp-roundtrip".into(),
         false,
+        None,
         None,
         None,
         None,
@@ -1317,10 +1342,10 @@ async fn ai_chat_mcp_and_db_same_round() {
     }]);
     mock.push_stream_text("all done");
 
-    let (cb, _) = collecting_stream_callback();
-    ai_chat_impl(
-        &test.state,
-        cb,
+    let app = host_command_app(test);
+    ai_chat(
+        app.state(),
+        app.window(),
         None,
         None,
         vec![ChatMessage {
@@ -1332,6 +1357,7 @@ async fn ai_chat_mcp_and_db_same_round() {
         }],
         "req-mcp-db-same".into(),
         false,
+        None,
         None,
         None,
         None,
@@ -1372,15 +1398,18 @@ async fn ai_chat_ask_questions_with_executable_runs_tools_then_stops() {
     test.save_connection("mixed-round-cfg").await;
     let mcp_calls = register_echo_test_mcp(&test.state).await;
 
+    let app = host_command_app(test);
+    // Done chunks only, recording whether the chunk carried tool calls —
+    // the emitted `toolCalls` field is present exactly when the model asked
+    // for tools.
     let done_chunks: Arc<Mutex<Vec<(String, bool)>>> = Arc::new(Mutex::new(Vec::new()));
     let done_log = done_chunks.clone();
-    let cb: StreamCallback = Arc::new(move |request_id, result| {
-        if let Ok(chunk) = result {
-            if chunk.done {
-                done_log
-                    .lock()
-                    .unwrap()
-                    .push((request_id.to_string(), chunk.tool_calls.is_some()));
+    app.window().listen("ai:stream-chunk", move |event| {
+        if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
+            if payload["done"].as_bool().unwrap_or(false) {
+                let request_id = payload["requestId"].as_str().unwrap_or_default().to_string();
+                let has_tool_calls = payload.get("toolCalls").is_some();
+                done_log.lock().unwrap().push((request_id, has_tool_calls));
             }
         }
     });
@@ -1412,9 +1441,9 @@ async fn ai_chat_ask_questions_with_executable_runs_tools_then_stops() {
         egress_summary: None,
     }]);
 
-    ai_chat_impl(
-        &test.state,
-        cb.clone(),
+    ai_chat(
+        app.state(),
+        app.window(),
         None,
         None,
         vec![ChatMessage {
@@ -1426,6 +1455,7 @@ async fn ai_chat_ask_questions_with_executable_runs_tools_then_stops() {
         }],
         "req-mixed".into(),
         false,
+        None,
         None,
         None,
         None,

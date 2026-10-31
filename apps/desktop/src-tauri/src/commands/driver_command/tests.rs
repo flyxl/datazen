@@ -1,11 +1,24 @@
+//! Driver Command IPC 测试：请求信封线格式钉子 + 经 TestAppState 的编排用例。
+//!
+//! 2026-10-31 拆分（B1 批次，commands-layer-review §3.3/§4）：
+//! `inject_sql_target_fields` 与 `access_level_for_mode` 两个纯逻辑测试已归位
+//! `modules/src/execution/application/command_policy.rs`（内联测试——逻辑本体在
+//! execution，`mcp::application::command_policy` 只是旧路径再导出）；
+//! `debug_sql_preview_redacts_secrets` 与 `packages/infra/src/redaction.rs` 的
+//! `sql_preview_truncates_and_redacts` 同输入同断言（同测
+//! `datazen_infra::redaction::sql_preview_for_log`），按重复覆盖删除。
+//! 这里留宿主面：请求信封 wire 格式与 handler 类型名（C1）、bootstrap 注册
+//! 守卫（C2）、无 AppHandle 的保存对话框拒绝（C3）；其余经 TestAppState 直调
+//! `*_impl` 的 resolve/策略/流式语义测试待 B2 query/driver_command 域刀随逻辑
+//! 下沉 modules（换 axum 宿主无法原样编译——TestAppState 是桌面 crate 词汇）。
+
 use std::any::type_name;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use super::helpers::{inject_sql_target_fields, nonempty};
+use super::helpers::nonempty;
 use super::resolve::resolve_command_driver;
 use super::*;
-use datazen::mcp::application::command_policy::access_level_for_mode;
 use datazen::mcp::permission::McpPermissionMode;
 use datazen_driver_api::{
     CommandAccessLevel, QueryExecutionId, QueryStreamCallback, QueryStreamEvent,
@@ -57,26 +70,6 @@ fn request_schema_field_round_trips_and_defaults_to_none() {
 }
 
 #[test]
-fn inject_sql_target_fields_skips_blank_values_and_non_objects() {
-    let mut input = serde_json::json!({ "sql": "SELECT 1" });
-    inject_sql_target_fields(&mut input, Some("  "), Some(""));
-    assert_eq!(
-        input,
-        serde_json::json!({ "sql": "SELECT 1" }),
-        "blank envelope targeting must not be injected"
-    );
-
-    let mut input = serde_json::json!({ "sql": "SELECT 1" });
-    inject_sql_target_fields(&mut input, Some("db"), Some("schema_x"));
-    assert_eq!(input["database"], "db");
-    assert_eq!(input["schema"], "schema_x");
-
-    let mut scalar = serde_json::Value::Null;
-    inject_sql_target_fields(&mut scalar, Some("db"), None);
-    assert_eq!(scalar, serde_json::Value::Null);
-}
-
-#[test]
 fn request_defaults_input_to_null_when_omitted() {
     let request: ExecuteDriverCommandRequest = serde_json::from_value(serde_json::json!({
         "dbSessionId": "mysql-prod",
@@ -88,14 +81,6 @@ fn request_defaults_input_to_null_when_omitted() {
     assert_eq!(request.command, "query");
     assert_eq!(request.input, serde_json::Value::Null);
     assert!(request.driver_type.is_none());
-}
-
-#[test]
-fn debug_sql_preview_redacts_secrets() {
-    let sql = "SELECT * FROM t WHERE url = 'mysql://root:hunter2@127.0.0.1/app'";
-    let redacted = datazen_infra::redaction::sql_preview_for_log(sql);
-    assert!(!redacted.contains("hunter2"), "{redacted}");
-    assert!(redacted.contains("mysql://***@"), "{redacted}");
 }
 
 #[tokio::test]
@@ -833,23 +818,6 @@ fn test_tester_ipc_stream_request_wire_format_matches_baseline() {
     assert_eq!(encoded["applyResultLimit"], false);
     assert_eq!(encoded["recordHistory"], true);
     assert!(encoded.get("db_session_id").is_none());
-}
-
-#[test]
-fn test_tester_access_level_for_mode_maps_mcp_permission_modes() {
-    assert_eq!(access_level_for_mode(None), CommandAccessLevel::HighRisk);
-    assert_eq!(
-        access_level_for_mode(Some(McpPermissionMode::ReadOnly)),
-        CommandAccessLevel::Read
-    );
-    assert_eq!(
-        access_level_for_mode(Some(McpPermissionMode::SafeWrite)),
-        CommandAccessLevel::Write
-    );
-    assert_eq!(
-        access_level_for_mode(Some(McpPermissionMode::HighRiskWrite)),
-        CommandAccessLevel::HighRisk
-    );
 }
 
 #[tokio::test]

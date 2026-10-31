@@ -6,6 +6,7 @@
 //! 期望形状），避免把部署秘密打进日志。
 
 use std::net::SocketAddr;
+use std::path::PathBuf;
 
 use crate::error::ServerError;
 
@@ -19,21 +20,48 @@ pub struct ServerConfig {
 
     /// `tracing` filter 表达式（`EnvFilter` 语法），默认 `info`。
     pub log_filter: String,
+
+    /// 管理库文件路径（WR-D2）。默认工作目录下的 `datazen-admin.sqlite`；
+    /// 部署目录约定随 WR-G3 的运维切片固化，不在骨架期伪装。
+    pub db_path: PathBuf,
 }
 
 /// 环境变量名。`DATAZEN_` 前缀与仓库既有约定对齐。
 pub const ENV_LISTEN: &str = "DATAZEN_SERVER_LISTEN";
 pub const ENV_LOG: &str = "DATAZEN_SERVER_LOG";
+pub const ENV_DB: &str = "DATAZEN_SERVER_DB";
+pub const DEFAULT_DB_FILE: &str = "datazen-admin.sqlite";
 
 impl ServerConfig {
     /// 从环境变量加载并校验。任一键非法即 [`ServerError::ConfigInvalid`]。
     pub fn from_env() -> Result<Self, ServerError> {
         let listen_addr = read_addr(ENV_LISTEN)?;
         let log_filter = read_filter(ENV_LOG)?;
+        let db_path = read_db(ENV_DB)?;
         Ok(Self {
             listen_addr,
             log_filter,
+            db_path,
         })
+    }
+}
+
+fn read_db(key: &str) -> Result<PathBuf, ServerError> {
+    match std::env::var(key) {
+        Ok(raw) => {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                Err(ServerError::ConfigInvalid(format!(
+                    "{key} must not be blank"
+                )))
+            } else {
+                Ok(PathBuf::from(trimmed))
+            }
+        }
+        Err(std::env::VarError::NotPresent) => Ok(PathBuf::from(DEFAULT_DB_FILE)),
+        Err(std::env::VarError::NotUnicode(_)) => Err(ServerError::ConfigInvalid(format!(
+            "{key} must be valid UTF-8"
+        ))),
     }
 }
 

@@ -1,42 +1,12 @@
+//! Host-side tests for the backup/restore IPC surface.
+//!
+//! 2026-10-31 拆分：选项解析/过滤校验的纯逻辑钉子已随逻辑归位
+//! `modules/src/backup/options_tests.rs`；这里只留宿主绑定——
+//! 错误信封映射（`From<DriverError>`）、bootstrap 注册守卫、
+//! IPC 参数形状守卫，以及经真实命令入口的备份/恢复往返。
+
 use super::*;
-use datazen::backup::parse_restore_options;
 use datazen_driver_api::DriverError;
-
-#[test]
-fn parse_backup_options_recognizes_aliases() {
-    let opts = parse_backup_options(&[
-        "schema-only".into(),
-        "clean".into(),
-        "create".into(),
-        "no-owner".into(),
-        "single-transaction".into(),
-        "routines".into(),
-        "triggers".into(),
-    ]);
-    let opts = opts.unwrap();
-    assert!(opts.schema_only);
-    assert!(opts.clean);
-    assert!(opts.create_database);
-    assert!(opts.no_owner);
-    assert!(opts.single_transaction);
-    assert!(opts.routines);
-    assert!(opts.triggers);
-    assert!(!opts.data_only);
-}
-
-#[test]
-fn parse_backup_options_rejects_format_custom() {
-    let err = parse_backup_options(&["format-custom".into()]).unwrap_err();
-    assert!(err.to_string().contains("format-custom"));
-}
-
-#[test]
-fn validate_backup_filter_extension_allows_known() {
-    for ext in ["sql", ".sql", "gz", "dump"] {
-        assert!(validate_backup_filter_extension(ext).is_ok());
-    }
-    assert!(validate_backup_filter_extension("exe").is_err());
-}
 
 // Registered IPC signatures now live together in the native backup adapter.
 const SOURCE: &str = include_str!("backup.rs");
@@ -64,22 +34,6 @@ fn bootstrap_rs_registers_merged_commands_only() {
             "`{gone}` must no longer be registered in bootstrap.rs"
         );
     }
-}
-
-#[test]
-fn parse_restore_options_recognizes_single_transaction() {
-    let opts = parse_restore_options(&["single-transaction".into()]);
-    assert!(opts.single_transaction);
-    assert!(!parse_restore_options(&[]).single_transaction);
-    assert!(!opts.overwrite);
-    assert!(parse_restore_options(&["overwrite".into()]).overwrite);
-}
-
-#[test]
-fn validate_backup_filter_extension_accepts_sql_gz_dump() {
-    assert_eq!(validate_backup_filter_extension("sql").unwrap(), "sql");
-    assert_eq!(validate_backup_filter_extension(".GZ").unwrap(), "gz");
-    assert!(validate_backup_filter_extension("exe").is_err());
 }
 
 #[test]

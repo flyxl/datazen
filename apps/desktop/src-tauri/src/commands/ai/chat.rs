@@ -1,8 +1,13 @@
 //! AI chat IPC and tool-loop execution.
+//!
+//! WR-A2：`ai_chat` 命令处理函数直接持有接线逻辑（schema 上下文、MCP 工具
+//! 装配、取消登记、流式回调构造），无 `_impl` 转发层；工具循环本体在
+//! modules（`datazen::ai::tool_loop`）。命令对 `R: Runtime` 泛型，测试经
+//! `tauri::test::mock_app` 直调。
 
 use super::util::{
     borrow_runtime_session, build_connections_context, resolve_ai, resolve_language,
-    resolve_safety_gate, window_stream_callback, StreamCallback,
+    resolve_safety_gate, window_stream_callback,
 };
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
@@ -59,39 +64,12 @@ impl datazen::ai::tool_loop::AiToolLoopHost for AppState {
         execute_mcp_tool(self, server, tool, arguments).await
     }
 }
-// Short-form entry kept for the existing tests; production IPC calls the
-// claim-aware variant directly.
-#[allow(dead_code)]
-#[allow(clippy::too_many_arguments)]
-pub(crate) async fn run_streaming_tool_loop(
-    provider: Arc<dyn AiProvider>,
-    state: &AppState,
-    on_chunk: StreamCallback,
-    request_id: &str,
-    request: CompletionRequest,
-    max_rounds: usize,
-    cmd_label: &str,
-    gate: &AiSafetyGateConfig,
-) -> Result<String, CommandError> {
-    run_streaming_tool_loop_with_claim(
-        provider,
-        state,
-        on_chunk,
-        request_id,
-        request,
-        max_rounds,
-        cmd_label,
-        gate,
-        &datazen::ai::ownership::AiTargetClaim::Independent,
-    )
-    .await
-}
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn run_streaming_tool_loop_with_claim(
     provider: Arc<dyn AiProvider>,
     state: &AppState,
-    on_chunk: StreamCallback,
+    on_chunk: super::util::StreamCallback,
     request_id: &str,
     request: CompletionRequest,
     max_rounds: usize,
@@ -114,10 +92,10 @@ pub(crate) async fn run_streaming_tool_loop_with_claim(
 
 // ─── AI Chat ───
 
-#[allow(dead_code)]
-pub(crate) async fn ai_chat_impl(
-    state: &AppState,
-    on_chunk: StreamCallback,
+#[tauri::command]
+pub async fn ai_chat<R: tauri::Runtime>(
+    state: State<'_, AppState>,
+    window: WebviewWindow<R>,
     db_session_id: Option<String>,
     database: Option<String>,
     messages: Vec<ChatMessage>,
@@ -126,36 +104,9 @@ pub(crate) async fn ai_chat_impl(
     scenario: Option<String>,
     context_files: Option<Vec<String>>,
     context_tables: Option<Vec<String>>,
-) -> Result<String, CommandError> {
-    ai_chat_impl_with_claim(
-        state,
-        on_chunk,
-        None,
-        db_session_id,
-        database,
-        messages,
-        request_id,
-        include_schema,
-        scenario,
-        context_files,
-        context_tables,
-    )
-    .await
-}
-
-pub(crate) async fn ai_chat_impl_with_claim(
-    state: &AppState,
-    on_chunk: StreamCallback,
     target_claim: Option<datazen::ai::ownership::AiTargetClaim>,
-    db_session_id: Option<String>,
-    database: Option<String>,
-    messages: Vec<ChatMessage>,
-    request_id: String,
-    include_schema: bool,
-    scenario: Option<String>,
-    context_files: Option<Vec<String>>,
-    context_tables: Option<Vec<String>>,
 ) -> Result<String, CommandError> {
+    let on_chunk = window_stream_callback(&window);
     let is_workflow = scenario.as_deref() == Some("workflow_generate");
 
     tracing::info!(
@@ -184,7 +135,7 @@ pub(crate) async fn ai_chat_impl_with_claim(
     if include_schema {
         if let Some(ref conn_id) = db_session_id {
             let db = database.as_deref().unwrap_or("");
-            if let Ok((_session, lease)) = borrow_runtime_session(state, conn_id, "ai_chat").await {
+            if let Ok((_session, lease)) = borrow_runtime_session(&state, conn_id, "ai_chat").await {
                 let Ok(connection) = lease.connection() else {
                     return Err(CommandError::Internal(
                         "ai_chat: runtime connection borrow revoked".into(),
@@ -249,7 +200,7 @@ pub(crate) async fn ai_chat_impl_with_claim(
             },
         );
     let mcp_tools = if provider.supports_tools() {
-        mcp_tool_definitions(state).await
+        mcp_tool_definitions(&state).await
     } else {
         Vec::new()
     };
@@ -276,7 +227,7 @@ pub(crate) async fn ai_chat_impl_with_claim(
     .await;
 
     // Register cancel token so `ai_cancel` IPC can interrupt this stream.
-    let cancel_owner = super::ai_owner_fingerprint(state);
+    let cancel_owner = super::ai_owner_fingerprint(&state);
     let cancel_token = state
         .cancel_registry
         .register(&request_id, &cancel_owner)
@@ -286,7 +237,7 @@ pub(crate) async fn ai_chat_impl_with_claim(
     let claim = target_claim.unwrap_or(datazen::ai::ownership::AiTargetClaim::Independent);
     let result = run_streaming_tool_loop_with_claim(
         provider,
-        state,
+        &state,
         on_chunk,
         &request_id,
         request,
@@ -303,36 +254,6 @@ pub(crate) async fn ai_chat_impl_with_claim(
         .unregister(&request_id, &cancel_owner)
         .await;
     result
-}
-
-#[tauri::command]
-pub async fn ai_chat(
-    state: State<'_, AppState>,
-    window: WebviewWindow,
-    db_session_id: Option<String>,
-    database: Option<String>,
-    messages: Vec<ChatMessage>,
-    request_id: String,
-    include_schema: bool,
-    scenario: Option<String>,
-    context_files: Option<Vec<String>>,
-    context_tables: Option<Vec<String>>,
-    target_claim: Option<datazen::ai::ownership::AiTargetClaim>,
-) -> Result<String, CommandError> {
-    ai_chat_impl_with_claim(
-        &state,
-        window_stream_callback(&window),
-        target_claim,
-        db_session_id,
-        database,
-        messages,
-        request_id,
-        include_schema,
-        scenario,
-        context_files,
-        context_tables,
-    )
-    .await
 }
 
 #[cfg(test)]

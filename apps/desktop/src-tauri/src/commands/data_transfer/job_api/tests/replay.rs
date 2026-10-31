@@ -12,6 +12,12 @@
 //! here: the same key replays, and a *different* key still hits the wall. Without
 //! the second half, "the retry succeeded" could mean anything from a correct
 //! receipt lookup to a plan that was quietly reused.
+//!
+//! Layer verdict (B1 triage, 2026-10-31): every case stays at the host. The
+//! receipt-before-claim ordering under test is `admit_apply`'s own composition
+//! of the kernel's receipt store (desktop-crate orchestration over
+//! `TestAppState`), so all three cases follow the future data_transfer domain
+//! knife rather than relocating beside the kernel.
 
 use datazen::jobs::domain::job::JobState;
 

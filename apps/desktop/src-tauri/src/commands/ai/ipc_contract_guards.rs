@@ -14,15 +14,21 @@ fn ai_command_sources() -> String {
 }
 
 /// Extracts the parameter list of a `pub async fn <command>(...)`.
+///
+/// Streaming commands are generic over the runtime (`<R: tauri::Runtime>`),
+/// so the search skips from the function name past any generic clause to the
+/// opening parenthesis.
 fn command_params(command: &str) -> String {
     let source = ai_command_sources();
-    let needle = format!("pub async fn {command}(");
+    let needle = format!("pub async fn {command}");
     let start = source
         .find(&needle)
         .unwrap_or_else(|| panic!("command `{command}` not found in AI command modules"));
     let rest = &source[start + needle.len()..];
-    let end = rest.find(')').expect("unterminated parameter list");
-    rest[..end].to_string()
+    let params_start = rest.find('(').expect("unterminated parameter list");
+    let params = &rest[params_start + 1..];
+    let end = params.find(')').expect("unterminated parameter list");
+    params[..end].to_string()
 }
 
 #[test]

@@ -274,4 +274,49 @@ mod tests {
             .contains("all your natural language responses"));
         assert_eq!(request.messages[1].content, "user");
     }
+
+    /// 2026-10-31 自桌面 `commands/ai/tests.rs` 归位：AI 供应商响应的
+    /// camelCase 反序列化形状是本模块的契约，不是宿主绑定。
+    #[test]
+    fn connection_diagnosis_deserializes_camel_case() {
+        let json = r#"{
+            "diagnosis": "Authentication failed",
+            "possibleCauses": ["Wrong password", "User does not exist"],
+            "solutions": [
+                {"description": "Check password", "command": null},
+                {"description": "Create user", "command": "CREATE USER test"}
+            ],
+            "category": "auth"
+    }"#;
+        let result: ConnectionDiagnosis = serde_json::from_str(json).unwrap();
+        assert_eq!(result.diagnosis, "Authentication failed");
+        assert_eq!(result.possible_causes.len(), 2);
+        assert_eq!(result.solutions.len(), 2);
+        assert_eq!(result.category, "auth");
+        assert!(result.solutions[0].command.is_none());
+        assert_eq!(
+            result.solutions[1].command.as_deref(),
+            Some("CREATE USER test")
+        );
+    }
+
+    /// 2026-10-31 自桌面 `commands/ai/tests.rs` 归位，同上。
+    #[test]
+    fn query_analysis_deserializes_camel_case() {
+        let json = r#"{
+            "summary": "Mostly read queries",
+            "categories": [
+                {"name": "SELECT", "count": 10, "examples": ["SELECT * FROM users"]}
+            ],
+            "insights": ["Heavy read workload"],
+            "frequentTables": ["users", "orders"],
+            "recommendations": ["Add index on orders.user_id"]
+    }"#;
+        let result: QueryAnalysis = serde_json::from_str(json).unwrap();
+        assert_eq!(result.summary, "Mostly read queries");
+        assert_eq!(result.categories.len(), 1);
+        assert_eq!(result.categories[0].count, 10);
+        assert_eq!(result.frequent_tables, vec!["users", "orders"]);
+        assert_eq!(result.recommendations.len(), 1);
+    }
 }
