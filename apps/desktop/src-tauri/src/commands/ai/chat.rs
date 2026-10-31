@@ -1,8 +1,8 @@
 //! AI chat IPC and tool-loop execution.
 
 use super::util::{
-    borrow_runtime_session, build_connections_context, resolve_ai, resolve_safety_gate,
-    window_stream_callback, StreamCallback,
+    borrow_runtime_session, build_connections_context, resolve_ai, resolve_language,
+    resolve_safety_gate, window_stream_callback, StreamCallback,
 };
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
@@ -171,9 +171,8 @@ pub(crate) async fn ai_chat_impl_with_claim(
     );
     let (provider, ai_config) = resolve_ai(&state).await?;
 
-    let app_settings = state.store.get_settings().await;
     let gate = resolve_safety_gate(&state).await;
-    let lang = app_settings.language;
+    let lang = resolve_language(&state).await;
     let connections_context = if is_workflow {
         build_connections_context(&state, &lang).await
     } else {

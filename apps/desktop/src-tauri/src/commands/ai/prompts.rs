@@ -1,4 +1,8 @@
 //! Prompt template management IPC commands.
+//!
+//! 命令层只做接线：懒启动与模板装载在 `datazen::ai::api::ensure_ai_ready`，
+//! 列表 / 覆盖 / 解除覆盖在 `PromptResolver`（modules）；宿主只把驱动
+//! 注册表按名字查到的句柄递给用例（接线性查询，不是编排）。
 
 use crate::commands::error::CommandError;
 use crate::commands::AppState;

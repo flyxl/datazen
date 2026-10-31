@@ -24,6 +24,7 @@
 //! Hosts provide persistence and directories; this module has no dependency
 //! on Tauri or any host.
 
+pub mod api;
 pub mod application;
 pub mod domain;
 pub mod providers;

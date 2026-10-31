@@ -155,6 +155,24 @@ pub async fn get_connections(state: State<'_, AppState>) -> Result<Vec<Connectio
 
 验收：宿主生产代码里不再出现 SQL 拼装、行对比、计划展开。`commands` 下单个生产文件以「一个传输函数大约十几行」为完成标准，测试可以仍放在宿主，但断言的是映射和权限，不是算法。算法测试留在 `modules`。
 
+### 实施记录：AI 配置刀 + command 层全量盘点（2026-10-31，`review/p2-p3-p5-2026-10`）
+
+**切口**：`commands/ai/config.rs` 的 8 个命令、`AppState::ensure_ai_ready`、`util.rs` 的 `resolve_ai`/`resolve_safety_gate`，以及 chat / generate 里的 8 处 `state.store.get_settings().await.language`——command 层直读 AppState 编排 AI 配置，是 §3 形态在 AI 族的唯一漏网（其余族经 F4a / F4b / F4c / P3 / D1 / D6 item 5 已达标）。
+
+**下沉**：`modules/src/ai/api.rs` 新增（F4a `connection/api` 先例形态），13 个用例函数：`ensure_ai_ready`（注册 → 首次注册恢复配置 → 按语言装模板）、`list_providers`、`validate_provider_config`、`save_provider_config`（先 initialize 后落盘）、`get_provider_config`、`delete_provider_config`（先 reset 全部再清盘）、`get_settings_config`、`save_settings_config`、`set_active_profile`（先落盘再热初始化）、`resolve_active_provider`（码文本 `AI_NOT_CONFIGURED` / `AI_PROVIDER_NOT_AVAILABLE` 逐字保留）、`effective_safety_gate`、`fetch_remote_models`（协议字符串 IPC 词汇表迁入，含拒绝文案）、`settings_language`。`ProviderListItem` 展示 DTO 随迁 modules（字段与 serde 形状逐字不变，宿主 `pub use` 保住 `commands::ProviderListItem` 旧路径）。
+
+**端口**：`AiConfigStore` 落 `ai/application/ports.rs`（与 `DatabaseToolHost` 同居）——取 / 存 / 删六法 + 两个设置派生读量（提示词语言、执行设置，安全门要读）。桌面实现挂 `DesktopRepository`（`store/ai_config.rs`），存储错误折 `AiUseCaseError::Internal`：Display 文本原样透传，且旧路径 `CommandError::Store` 的序列化也只是打印错误文本——IPC 逐字节一致。错误映射沿用既有唯一桌面表 `From<AiUseCaseError>`（同桶）。宿主 `workflow/host.rs` 的 `complete_ai`（`WorkflowHost` 端口实现）同步改为委托 `resolve_active_provider` + `effective_safety_gate`，消灭与命令层重复的解析编排；`WorkflowError` 两段文案（"AI not configured" / "AI provider not available"）按原样映射。
+
+**宿主残留（有名字）**：`ai:config-changed` 事件发射（Tauri Emitter）、`ai_owner_fingerprint`（宿主身份指纹）、`AppState::ensure_ai_ready` 退化为单行纯委托（装配根接线辅助，非编排体）、`borrow_runtime_session`（Runtime 门面借用）、`DesktopConnectionStore::new(state.store.clone())`（连接目录端口实现的接线）。
+
+**接线判据（本刀固化的操作定义）**：command 层允许的 `state.X` 用法只有三类——① 把端口 / 服务实例递给 api 用例（`.as_ref()` / `.clone()` 后立即传参）；② 取作用域与身份（`connection_scope` / `organization_scope` / `platform_require`）；③ 宿主专有钩子（事件、对话框、托盘、会话退休）。一旦出现「读字段 → 判断 → 再读 → 组装」，那就是编排，须下沉。
+
+**验证**：`cargo check -p datazen --features ai` 通过；`cargo test -p datazen --features ai --lib ai::api` 5/5（DTO 映射与内建默认值、懒启动的一次性注册与配置恢复、resolve 双码文本、未知协议拒绝文案、set_active_profile 的先存后取顺序）。桌面 crate 沙箱不可编（`driver_init.rs` 是构建期生成物，见 P2）——宿主侧以 rustfmt 语法校验 + 逐符号核对收口，既有 `_impl` 集成测试签名未动，在桌面机器上即为回归网。
+
+**command 层余留清单（AI 刀之后的盘点）**：已达标族——connection（F4a）、table_browsing（F4b）、sync / data_transfer / schema_diff（F4c + 残余收口）、dashboard（P3，形状测试钉死 8 聚合 / 6 宿主残留）、config / settings（D1 服务化）、export / backup（D6 item 5）、named_views / history（形状测试）、workflow（薄委托）、mcp（宿主自有服务面）。AI 族余留两刀：① chat / generate 的请求装配下沉（`ai_chat_impl_with_claim` 约 160 行编排：schema 管道、context 文件、MCP 工具装配、取消注册、工具环调用）——需要 `AiChatHost` 级端口（runtime 会话借用、context 目录读取、MCP 工具枚举 / 执行；现有 `AiToolLoopHost` 已覆盖工具环执行，缺的是请求装配侧）；② `mcp_tool_definitions` 的 `settings.mcp_client_servers` 过滤（`chat.rs`）——MCP 域设置读取，随 MCP 刀处理。
+
+host 层全部目录的职责全景（254 条 IPC 的族级达标表、platform/store 等非 command 目录的逐目录职责、P2/P3/P5 交叉点）另见 [`host-layer-inventory.md`](host-layer-inventory.md)（2026-10-31 快照，基线 `22113a321`）。
+
 ---
 
 ## 4. 桌面 feature 显式全集
@@ -347,6 +365,7 @@ F4a 第一刀已落地：
 | F4b | 表读取两用例（第二刀已落地：`table_browsing::api` 的 `read_table_page`/`preview_table_read` + `TargetCommandRunner` 端口；query/schema 薄命令不动） | IPC 载荷与错误码不变；宿主不再含 SQL 拼装/行合并/计划展开 |
 | ~~export、backup~~ | **复核结论（2026-10-30）：无需 F4 刀**——D6 item 5 已把它们落到目标形态（算法在 `modules::export`/`modules::backup`，宿主 `export.rs`/`backup.rs` 只剩端口实现 + 对话框/事件绑定），本方案写就时未计入 | 宿主不再含算法（已达成） |
 | F4c… | sync / data_transfer / schema_diff，按第 3 节顺序逐个用例下沉（**sync 刀已落地**：`host/statements.rs`、`host/select.rs` 下沉 `data_sync::api`，`apply.rs` 循环体委托同一装配去重，`BatchSqlHost` 端口单方法落宿主；**data_transfer 预览刀已落地**：源范围闭包四宿主拷贝 + 两 modules 拷贝收进 `recordset::build_source_scope_for_driver/_for_family`（Job handler 的 family 来源=端点配置类型，保住分叉），COUNT 装配/解析下沉 `count_scoped_rows_sql`/`parse_scoped_row_count`，执行留宿主租约侧，宿主 `preview.rs` 858→775 只剩传输编排；**schema_diff 复核刀已落地**：目录/快照/计划展开/复核消费/部署验证/单表对比六文件下沉 `schema_diff::api`，`SchemaDiffAdapterHost`/`ComparisonPreviewHost` 端口落宿主，sync 域 IR 对比算法顺带归位 modules，宿主 schema_diff 域 6,108→3,612 行；**残余收口已落地**：sync COUNT 装配下沉 `count_table_rows`、result_write 确认读下沉 `confirm_unchanged_read_sql`，`commands/` 生产代码零 SQL 拼装；modules 侧 `migration::{data_sync,data_transfer,schema_diff}` 已有 4 万行对应域，下沉是接合不是新建） | 每刀删除宿主中的对应实现（sync 刀已达成：宿主不再含写路径 SQL 拼装与键读 SELECT；data_transfer 预览刀已达成：宿主 `preview.rs` 不再含源范围 SQL 装配与 COUNT 装配/解析；schema_diff 复核刀已达成：宿主生产代码不再含目录读取、计划展开、快照复核与 IR 对比算法；残余收口已达成：`commands/` 生产代码零 SQL 拼装，全树口径验收达成） |
+| AI 配置刀 | `ai::api` + `AiConfigStore` 端口（**2026-10-31 已落地**：`commands/ai/config.rs` 8 命令、`ensure_ai_ready`、`resolve_ai`/`resolve_safety_gate`/语言读取全部下沉；`ProviderListItem` DTO 随迁；chat / generate 的 8 处 language 直读一并收口，详见 §3 实施记录） | IPC 载荷与错误文案逐字节不变；`commands/ai` 生产代码对 `state.store` 只剩端口递参与端口实现接线（chat 的 MCP 设置过滤与请求装配留待后续刀，见 §3 余留清单） |
 
 Web 宿主仍然不在这组 PR 里创建。`api` 模块不引用 Axum。隧道实现不迁出 `modules`。
 

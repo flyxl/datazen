@@ -25,42 +25,29 @@ pub(crate) fn window_stream_callback(window: &WebviewWindow) -> StreamCallback {
 ///
 /// Falls back to a relaxed gate (credentials only) when no profile is found,
 /// matching the previous `ai_strict_egress = false` default behavior.
+///
+/// 编排体（设置档案 + 执行设置合并）在 `datazen::ai::api::effective_safety_gate`；
+/// 这里只递配置端口。
 pub(crate) async fn resolve_safety_gate(state: &AppState) -> AiSafetyGateConfig {
-    datazen::ai::safety::effective_safety_gate(
-        &state.store.get_ai_settings_config().await,
-        &state.store.execution_settings().await,
-    )
+    datazen::ai::api::effective_safety_gate(state.store.as_ref()).await
 }
 
 pub(crate) async fn resolve_ai(
     state: &AppState,
 ) -> Result<(Arc<dyn AiProvider>, AiProviderConfig), CommandError> {
     state.ensure_ai_ready().await;
-
-    let config = state
-        .store
-        .get_ai_config()
+    // 未配置 / 供应商不可用的码文本是前端契约，由用例层定稿并钉测试。
+    datazen::ai::api::resolve_active_provider(&state.ai_registry, state.store.as_ref())
         .await
-        .ok_or_else(|| CommandError::NotConfigured("AI_NOT_CONFIGURED".into()))?;
+        .map_err(Into::into)
+}
 
-    let safe_endpoint = config
-        .endpoint
-        .as_deref()
-        .map(datazen_infra::redaction::redact_url_for_log);
-    tracing::debug!(
-        provider = %config.provider_type,
-        model = %config.model,
-        endpoint = ?safe_endpoint,
-        "resolve_ai: provider config"
-    );
-
-    let provider = state
-        .ai_registry
-        .get(&config.provider_type)
-        .await
-        .ok_or_else(|| CommandError::NotConfigured("AI_PROVIDER_NOT_AVAILABLE".into()))?;
-
-    Ok((provider, config))
+/// 界面语言经配置端口读取（host-boundary §3：AI 命令不直读宿主 store）。
+///
+/// chat / generate 族的提示词解析与响应处理都以语言为请求输入；这里统一
+/// 从 `datazen::ai::api` 取，替代旧的 `state.store.get_settings().language`。
+pub(crate) async fn resolve_language(state: &AppState) -> String {
+    datazen::ai::api::settings_language(state.store.as_ref()).await
 }
 
 pub(crate) async fn build_connections_context(state: &AppState, lang: &str) -> String {

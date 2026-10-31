@@ -7,6 +7,8 @@
 //! （「哪个连接拥有此运行时会话」——由持有 Runtime 门面的形态回答）。
 //! 端口定义在使用它的模块（§4.1 第 5 条），宿主提供实现。
 
+use super::error::AiUseCaseError;
+use crate::ai::domain::types::{AiProviderConfig, AiSettingsConfig};
 use crate::settings::ExecutionSettings;
 use datazen_driver_api::{ConnectionConfig, DatabaseDriver};
 use std::sync::Arc;
@@ -128,4 +130,38 @@ impl<T: McpToolBroker + ?Sized> McpToolBroker for Arc<T> {
     ) -> Result<String, String> {
         (**self).call_tool(server_id, tool_name, arguments).await
     }
+}
+
+/// AI 配置族的持久化端口（host-boundary §3，AI 配置刀，2026-10-31）。
+///
+/// 配置放哪、怎么加密是宿主形态的自由度：桌面是 `{appData}/ai_config.enc`
+/// 的加密单文件，Web 宿主以后换成服务端存储。模块侧用例（`ai::api` 的
+/// 保存 / 删除 / 激活切换 / 懒启动）只知道「取 / 存 / 删」，以及两个从
+/// 宿主设置事实派生的读量：提示词解析要界面语言，安全门要执行设置——
+/// 两者与 AI 配置同源于宿主持久化，不值得再各开一个端口。
+///
+/// 存储失败统一折成 [`AiUseCaseError::Internal`]：这类失败没有更细的
+/// 用户处置，宿主映射表把它落进内部错误桶，Display 文本原样透传。
+#[async_trait::async_trait]
+pub trait AiConfigStore: Send + Sync {
+    /// 当前激活的供应商配置（多档案设置里的选中项）。
+    async fn get_ai_config(&self) -> Option<AiProviderConfig>;
+    /// 多档案设置全文。
+    async fn get_ai_settings_config(&self) -> AiSettingsConfig;
+    /// 保存多档案设置全文。
+    async fn save_ai_settings_config(
+        &self,
+        config: &AiSettingsConfig,
+    ) -> Result<(), AiUseCaseError>;
+    /// 切换激活档案；档案不存在由持久化层拒绝。
+    async fn set_active_profile(&self, profile_id: &str) -> Result<(), AiUseCaseError>;
+    /// 保存单档案语义的供应商配置（实现负责并进多档案结构）。
+    async fn save_ai_config(&self, config: &AiProviderConfig) -> Result<(), AiUseCaseError>;
+    /// 删除全部 AI 配置（档案与激活态一起清）。
+    async fn delete_ai_config(&self) -> Result<(), AiUseCaseError>;
+    /// 提示词模板的界面语言（宿主设置事实的派生读量）。
+    async fn settings_language(&self) -> String;
+    /// 执行设置（安全门读取；与 [`DatabaseToolHost::execution_settings`]
+    /// 同一底层事实）。
+    async fn execution_settings(&self) -> ExecutionSettings;
 }
