@@ -2008,8 +2008,11 @@ dependencies = [
 name = "datazen-server"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
+ "chrono",
  "datazen",
+ "rusqlite",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
