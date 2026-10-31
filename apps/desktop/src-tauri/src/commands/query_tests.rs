@@ -4,6 +4,22 @@
 //! budget. `log_hygiene_tests` stays in `query.rs` because it reads
 //! the source it is testing with `include_str!`, and those paths are
 //! relative to the file that holds them.
+//!
+//! B2 query knife: the `_impl` forwarding layer is gone, so these tests drive
+//! the REAL `#[tauri::command]` entries through `query_command_test_host`
+//! (a `tauri::test::mock_app` managing the harness's `AppState`; the tempdir,
+//! store, mock driver and registry stay alive in the keepalive).
+//!
+//! Not converted to command entries: the five `query_stream_command_*` tests.
+//! They pin the stream orchestration semantics of
+//! `execute_driver_command_stream_impl`, which lives in `driver_command/` and
+//! sinks to modules in its own later batch (commands-layer-review §3.3) —
+//! these tests follow THAT knife. The transaction-semantics depth tests
+//! (concurrent begin, idle expiry, unknown-commit fencing) moved out with the
+//! logic long ago and are covered by
+//! `modules/tests/fixtures/p4_session_transactions.rs`; what stays here is the
+//! adapter smoke through the command entries plus the `"No open transaction"`
+//! wire-message pin.
 
 use super::*;
 use crate::commands::driver_command::{
@@ -16,25 +32,37 @@ use crate::testing::mock_driver::MockDriverOptions;
 use datazen::execution::runtime::driver_registry::DriverCapabilities;
 use datazen_driver_api::{ColumnSchema, DriverError, QueryStreamCallback, QueryStreamEvent, Value};
 
+use super::query_command_test_host::{host_command_app, HostedCommandApp};
+
+/// Drive the real `get_query_history_page` entry with only `limit` set — the
+/// wire form of the former `HistoryPageRequest::default()` reads.
+async fn history_page(app: &HostedCommandApp, limit: usize) -> QueryHistoryPage {
+    get_query_history_page(
+        app.state(),
+        limit,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect("history page")
+}
+
 #[tokio::test]
 async fn execute_query_success_records_history() {
     let test = TestAppState::with_tables().await;
     let (_, conn_id) = test.save_and_connect("q-cfg").await;
-    let result = execute_query_impl(&test.state, conn_id, "SELECT 1".into(), None)
+    let app = host_command_app(test);
+    let result = execute_query(app.state(), conn_id, "SELECT 1".into(), None)
         .await
         .unwrap();
     assert_eq!(result.results.len(), 1);
 
-    let history = get_query_history_page_impl(
-        &test.state,
-        HistoryPageRequest {
-            limit: 10,
-            ..HistoryPageRequest::default()
-        },
-    )
-    .await
-    .unwrap()
-    .entries;
+    let history = history_page(&app, 10).await.entries;
     assert_eq!(history.len(), 1);
     assert!(history[0].success);
 }
@@ -48,7 +76,8 @@ async fn execute_query_respects_result_limit_setting() {
     test.state.store.save_settings(settings).await.unwrap();
 
     let (_, conn_id) = test.save_and_connect("limit-cfg").await;
-    execute_query_impl(&test.state, conn_id, "SELECT * FROM users".into(), None)
+    let app = host_command_app(test);
+    execute_query(app.state(), conn_id, "SELECT * FROM users".into(), None)
         .await
         .unwrap();
 }
@@ -73,7 +102,8 @@ async fn cancel_query_rejects_when_driver_capability_is_unknown_without_calling_
         .get_capabilities(&"postgres".to_string())
         .await
         .is_none());
-    let error = cancel_query_impl(&test.state, conn_id, execution_id.as_str().to_string())
+    let app = host_command_app(test);
+    let error = cancel_query(app.state(), conn_id, execution_id.as_str().to_string())
         .await
         .unwrap_err();
     assert!(matches!(
@@ -82,7 +112,7 @@ async fn cancel_query_rejects_when_driver_capability_is_unknown_without_calling_
             if message.starts_with("UNSUPPORTED_OPERATION:cancel_query:")
                 && message.ends_with("capability is unknown")
     ));
-    assert_eq!(test.mock.cancel_query_calls(), 0);
+    assert_eq!(app.keep.mock.cancel_query_calls(), 0);
 }
 
 #[tokio::test]
@@ -111,7 +141,8 @@ async fn cancel_query_rejects_when_driver_capability_is_disabled() {
         )
         .await;
 
-    let error = cancel_query_impl(&test.state, conn_id, execution_id.as_str().to_string())
+    let app = host_command_app(test);
+    let error = cancel_query(app.state(), conn_id, execution_id.as_str().to_string())
         .await
         .unwrap_err();
     assert!(matches!(
@@ -119,7 +150,7 @@ async fn cancel_query_rejects_when_driver_capability_is_disabled() {
         super::super::error::CommandError::Validation(message)
             if message.starts_with("UNSUPPORTED_OPERATION:cancel_query:")
     ));
-    assert_eq!(test.mock.cancel_query_calls(), 0);
+    assert_eq!(app.keep.mock.cancel_query_calls(), 0);
 }
 
 #[tokio::test]
@@ -155,7 +186,8 @@ async fn cancel_query_surfaces_driver_unsupported_without_claiming_success() {
         )
         .await;
 
-    let error = cancel_query_impl(&test.state, conn_id, execution_id.as_str().to_string())
+    let app = host_command_app(test);
+    let error = cancel_query(app.state(), conn_id, execution_id.as_str().to_string())
         .await
         .unwrap_err();
     assert!(matches!(
@@ -163,15 +195,16 @@ async fn cancel_query_surfaces_driver_unsupported_without_claiming_success() {
         super::super::error::CommandError::Driver(DriverError::Unsupported(message))
             if message == "backend cancellation is unavailable"
     ));
-    assert_eq!(test.mock.cancel_query_calls(), 0);
-    assert_eq!(test.mock.precise_cancel_query_calls(), 1);
+    assert_eq!(app.keep.mock.cancel_query_calls(), 0);
+    assert_eq!(app.keep.mock.precise_cancel_query_calls(), 1);
 }
 
 #[tokio::test]
 async fn execute_query_not_connected_errors() {
     let test = TestAppState::new().await;
+    let app = host_command_app(test);
     assert!(
-        execute_query_impl(&test.state, "nope".into(), "SELECT 1".into(), None)
+        execute_query(app.state(), "nope".into(), "SELECT 1".into(), None)
             .await
             .is_err()
     );
@@ -181,21 +214,12 @@ async fn execute_query_not_connected_errors() {
 async fn clear_query_history() {
     let test = TestAppState::with_tables().await;
     let (_, conn_id) = test.save_and_connect("hist-cfg").await;
-    execute_query_impl(&test.state, conn_id, "SELECT 1".into(), None)
+    let app = host_command_app(test);
+    execute_query(app.state(), conn_id, "SELECT 1".into(), None)
         .await
         .unwrap();
-    clear_query_history_impl(&test.state).await.unwrap();
-    assert!(get_query_history_page_impl(
-        &test.state,
-        HistoryPageRequest {
-            limit: 10,
-            ..HistoryPageRequest::default()
-        },
-    )
-    .await
-    .unwrap()
-    .entries
-    .is_empty());
+    clear_query_history(app.state()).await.unwrap();
+    assert!(history_page(&app, 10).await.entries.is_empty());
 }
 
 #[tokio::test]
@@ -215,7 +239,8 @@ async fn execute_query_with_columns_returns_rows() {
     };
     let test = TestAppState::with_options(opts).await;
     let (_, conn_id) = test.save_and_connect("rows-cfg").await;
-    let result = execute_query_impl(&test.state, conn_id, "SELECT id FROM t".into(), None)
+    let app = host_command_app(test);
+    let result = execute_query(app.state(), conn_id, "SELECT id FROM t".into(), None)
         .await
         .unwrap();
     assert_eq!(result.results[0].rows.len(), 1);
@@ -226,13 +251,15 @@ async fn query_stream_command_does_not_apply_limit_when_switch_off() {
     let test = TestAppState::with_tables().await;
     assert!(!test.state.store.get_settings().await.limit_select_results);
     let (_, conn_id) = test.save_and_connect("stream-nolimit").await;
+    let app = host_command_app(test);
+    let state = app.state();
     let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let events_cb = std::sync::Arc::clone(&events);
     let cb: QueryStreamCallback = std::sync::Arc::new(move |ev| {
         events_cb.lock().unwrap().push(ev);
     });
     execute_driver_command_stream_impl(
-        &test.state,
+        &state,
         ExecuteDriverCommandStreamRequest {
             db_session_id: Some(conn_id),
             command: "query_stream".into(),
@@ -250,7 +277,7 @@ async fn query_stream_command_does_not_apply_limit_when_switch_off() {
     )
     .await
     .unwrap();
-    assert_eq!(test.mock.last_query_limit(), Some(None));
+    assert_eq!(app.keep.mock.last_query_limit(), Some(None));
     let events = events.lock().unwrap();
     assert!(events
         .iter()
@@ -258,16 +285,7 @@ async fn query_stream_command_does_not_apply_limit_when_switch_off() {
     assert!(events
         .iter()
         .any(|e| matches!(e, QueryStreamEvent::Done { .. })));
-    let history = get_query_history_page_impl(
-        &test.state,
-        HistoryPageRequest {
-            limit: 10,
-            ..HistoryPageRequest::default()
-        },
-    )
-    .await
-    .unwrap()
-    .entries;
+    let history = history_page(&app, 10).await.entries;
     assert!(history.iter().any(|e| e.success));
 }
 
@@ -280,9 +298,11 @@ async fn query_stream_command_respects_limit_select_setting() {
     test.state.store.save_settings(settings).await.unwrap();
 
     let (_, conn_id) = test.save_and_connect("stream-limit").await;
+    let app = host_command_app(test);
+    let state = app.state();
     let cb: QueryStreamCallback = std::sync::Arc::new(|_| {});
     execute_driver_command_stream_impl(
-        &test.state,
+        &state,
         ExecuteDriverCommandStreamRequest {
             db_session_id: Some(conn_id),
             command: "query_stream".into(),
@@ -297,7 +317,7 @@ async fn query_stream_command_respects_limit_select_setting() {
     )
     .await
     .unwrap();
-    assert_eq!(test.mock.last_query_limit(), Some(Some(5)));
+    assert_eq!(app.keep.mock.last_query_limit(), Some(Some(5)));
 }
 
 #[tokio::test]
@@ -309,9 +329,11 @@ async fn query_stream_command_can_skip_result_limit_for_export() {
     test.state.store.save_settings(settings).await.unwrap();
 
     let (_, conn_id) = test.save_and_connect("stream-export").await;
+    let app = host_command_app(test);
+    let state = app.state();
     let cb: QueryStreamCallback = std::sync::Arc::new(|_| {});
     execute_driver_command_stream_impl(
-        &test.state,
+        &state,
         ExecuteDriverCommandStreamRequest {
             db_session_id: Some(conn_id),
             command: "query_stream".into(),
@@ -329,17 +351,8 @@ async fn query_stream_command_can_skip_result_limit_for_export() {
     )
     .await
     .unwrap();
-    assert_eq!(test.mock.last_query_limit(), Some(None));
-    let history = get_query_history_page_impl(
-        &test.state,
-        HistoryPageRequest {
-            limit: 10,
-            ..HistoryPageRequest::default()
-        },
-    )
-    .await
-    .unwrap()
-    .entries;
+    assert_eq!(app.keep.mock.last_query_limit(), Some(None));
+    let history = history_page(&app, 10).await.entries;
     assert!(history.is_empty());
 }
 
@@ -351,9 +364,11 @@ async fn query_stream_command_failure_records_history() {
     };
     let test = TestAppState::with_options(opts).await;
     let (_, conn_id) = test.save_and_connect("stream-fail").await;
+    let app = host_command_app(test);
+    let state = app.state();
     let cb: QueryStreamCallback = std::sync::Arc::new(|_| {});
     let err = execute_driver_command_stream_impl(
-        &test.state,
+        &state,
         ExecuteDriverCommandStreamRequest {
             db_session_id: Some(conn_id),
             command: "query_stream".into(),
@@ -369,16 +384,7 @@ async fn query_stream_command_failure_records_history() {
     .await
     .unwrap_err();
     assert!(err.to_string().contains("boom"));
-    let history = get_query_history_page_impl(
-        &test.state,
-        HistoryPageRequest {
-            limit: 10,
-            ..HistoryPageRequest::default()
-        },
-    )
-    .await
-    .unwrap()
-    .entries;
+    let history = history_page(&app, 10).await.entries;
     assert_eq!(history.len(), 1);
     assert!(!history[0].success);
     assert!(history[0]
@@ -390,9 +396,11 @@ async fn query_stream_command_failure_records_history() {
 #[tokio::test]
 async fn query_stream_command_not_connected_errors() {
     let test = TestAppState::new().await;
+    let app = host_command_app(test);
+    let state = app.state();
     let cb: QueryStreamCallback = std::sync::Arc::new(|_| {});
     assert!(execute_driver_command_stream_impl(
-        &test.state,
+        &state,
         ExecuteDriverCommandStreamRequest {
             db_session_id: Some("nope".into()),
             command: "query_stream".into(),
@@ -416,9 +424,10 @@ async fn query_stream_command_not_connected_errors() {
 async fn execute_query_never_switches_the_session_database() {
     let test = TestAppState::with_tables().await;
     let (_, conn_id) = test.save_and_connect("switch-db-cfg").await;
+    let app = host_command_app(test);
 
-    let result = execute_query_impl(
-        &test.state,
+    let result = execute_query(
+        app.state(),
         conn_id.clone(),
         "SELECT 1".into(),
         Some("analytics".into()),
@@ -429,13 +438,13 @@ async fn execute_query_never_switches_the_session_database() {
 
     // The whole point of the refactor: no session switch, ever.
     assert!(
-        test.mock.use_database_calls().is_empty(),
+        app.keep.mock.use_database_calls().is_empty(),
         "execute_query must not switch the session's database"
     );
     // ...and the session record still reports its own configured database,
     // because the request target is per-call, not session state.
-    let config = test
-        .state
+    let config = app
+        .keep
         .store
         .get_connection("switch-db-cfg")
         .await
@@ -447,16 +456,17 @@ async fn execute_query_never_switches_the_session_database() {
 async fn execute_query_never_switches_for_same_blank_or_absent_pin() {
     let test = TestAppState::with_tables().await;
     let (_, conn_id) = test.save_and_connect("no-switch-db-cfg").await;
+    let app = host_command_app(test);
 
     for pin in [None, Some("app".to_string()), Some("   ".to_string())] {
-        execute_query_impl(&test.state, conn_id.clone(), "SELECT 1".into(), pin)
+        execute_query(app.state(), conn_id.clone(), "SELECT 1".into(), pin)
             .await
             .unwrap();
     }
 
-    assert!(test.mock.use_database_calls().is_empty());
-    let config = test
-        .state
+    assert!(app.keep.mock.use_database_calls().is_empty());
+    let config = app
+        .keep
         .store
         .get_connection("no-switch-db-cfg")
         .await
@@ -468,37 +478,38 @@ async fn execute_query_never_switches_for_same_blank_or_absent_pin() {
 async fn session_transaction_begin_commit_and_status() {
     let test = TestAppState::new().await;
     let (_, conn_id) = test.save_and_connect("tx-cfg").await;
+    let app = host_command_app(test);
     assert!(
-        !session_transaction_status_impl(&test.state, conn_id.clone())
+        !session_transaction_status(app.state(), conn_id.clone())
             .await
             .unwrap()
     );
-    begin_session_transaction_impl(&test.state, conn_id.clone())
+    begin_session_transaction(app.state(), conn_id.clone())
         .await
         .unwrap();
     assert!(
-        session_transaction_status_impl(&test.state, conn_id.clone())
+        session_transaction_status(app.state(), conn_id.clone())
             .await
             .unwrap()
     );
-    begin_session_transaction_impl(&test.state, conn_id.clone())
+    begin_session_transaction(app.state(), conn_id.clone())
         .await
         .unwrap();
-    commit_session_transaction_impl(&test.state, conn_id.clone())
+    commit_session_transaction(app.state(), conn_id.clone())
         .await
         .unwrap();
     assert!(
-        !session_transaction_status_impl(&test.state, conn_id.clone())
+        !session_transaction_status(app.state(), conn_id.clone())
             .await
             .unwrap()
     );
-    begin_session_transaction_impl(&test.state, conn_id.clone())
+    begin_session_transaction(app.state(), conn_id.clone())
         .await
         .unwrap();
-    rollback_session_transaction_impl(&test.state, conn_id.clone())
+    rollback_session_transaction(app.state(), conn_id.clone())
         .await
         .unwrap();
-    assert!(!session_transaction_status_impl(&test.state, conn_id)
+    assert!(!session_transaction_status(app.state(), conn_id)
         .await
         .unwrap());
 }
@@ -507,33 +518,15 @@ async fn session_transaction_begin_commit_and_status() {
 async fn commit_and_rollback_without_tx_are_validation_errors() {
     let test = TestAppState::new().await;
     let (_, conn_id) = test.save_and_connect("tx-empty").await;
-    let commit_err = commit_session_transaction_impl(&test.state, conn_id.clone())
+    let app = host_command_app(test);
+    let commit_err = commit_session_transaction(app.state(), conn_id.clone())
         .await
         .unwrap_err();
     assert!(commit_err.to_string().contains("No open transaction"));
-    let rollback_err = rollback_session_transaction_impl(&test.state, conn_id)
+    let rollback_err = rollback_session_transaction(app.state(), conn_id)
         .await
         .unwrap_err();
     assert!(rollback_err.to_string().contains("No open transaction"));
-}
-
-#[tokio::test]
-async fn concurrent_begin_is_idempotent() {
-    let test = TestAppState::new().await;
-    let (_, conn_id) = test.save_and_connect("tx-race").await;
-    let a = begin_session_transaction_impl(&test.state, conn_id.clone());
-    let b = begin_session_transaction_impl(&test.state, conn_id.clone());
-    let (ra, rb) = tokio::join!(a, b);
-    assert!(ra.is_ok());
-    assert!(rb.is_ok());
-    assert!(
-        session_transaction_status_impl(&test.state, conn_id.clone())
-            .await
-            .unwrap()
-    );
-    commit_session_transaction_impl(&test.state, conn_id)
-        .await
-        .unwrap();
 }
 
 // ── HistoryPageRequest → QueryHistoryFilter ───────────────────────────────────
@@ -542,7 +535,7 @@ fn request(order: Option<&str>) -> HistoryPageRequest {
     HistoryPageRequest {
         limit: 25,
         order: order.map(str::to_string),
-        ..Default::default()
+        ..HistoryPageRequest::default()
     }
 }
 
@@ -630,58 +623,4 @@ fn an_absent_field_stays_absent_rather_than_becoming_an_empty_filter() {
     assert_eq!(filter.search, None);
     assert_eq!(filter.since, None);
     assert_eq!(filter.until, None);
-}
-
-#[tokio::test]
-async fn session_transaction_expiry_clears_authority_and_rejects_old_controls() {
-    let test = TestAppState::new().await;
-    let runtime = test.state.platform_require().unwrap().runtime().unwrap();
-    runtime.with_idle_policy(datazen::execution::application::IdlePolicy::with_deadline(
-        std::time::Duration::ZERO,
-        std::time::Duration::from_millis(1),
-    ));
-    let (_, id) = test.save_and_connect("tx-expired").await;
-    begin_session_transaction_impl(&test.state, id.clone())
-        .await
-        .unwrap();
-    assert!(session_transaction_status_impl(&test.state, id.clone())
-        .await
-        .unwrap());
-    assert_eq!(runtime.reclaim_idle().await.reclaimed.len(), 1);
-    assert!(!session_transaction_status_impl(&test.state, id.clone())
-        .await
-        .unwrap());
-    assert!(commit_session_transaction_impl(&test.state, id.clone())
-        .await
-        .is_err());
-    assert!(rollback_session_transaction_impl(&test.state, id)
-        .await
-        .is_err());
-    assert_eq!(test.mock.open_transaction_count(), 0);
-}
-#[tokio::test]
-async fn transaction_commit_failure_retains_unknown_status_and_blocks_replay() {
-    let test = TestAppState::with_options(MockDriverOptions {
-        commit_error_on_call: Some(1),
-        commit_error_after_effect: true,
-        ..Default::default()
-    })
-    .await;
-    let (_, id) = test.save_and_connect("tx-unknown").await;
-    begin_session_transaction_impl(&test.state, id.clone())
-        .await
-        .unwrap();
-    assert!(commit_session_transaction_impl(&test.state, id.clone())
-        .await
-        .is_err());
-    assert!(session_transaction_status_impl(&test.state, id.clone())
-        .await
-        .is_err());
-    assert!(commit_session_transaction_impl(&test.state, id.clone())
-        .await
-        .is_err());
-    assert!(begin_session_transaction_impl(&test.state, id)
-        .await
-        .is_err());
-    assert_eq!(test.mock.commit_calls(), 1);
 }
