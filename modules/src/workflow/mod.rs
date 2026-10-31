@@ -28,6 +28,7 @@ pub use application::command_runtime;
 pub use application::host;
 pub use application::registry;
 pub use application::resource_execution;
+pub use application::runtime_reads;
 pub use domain::command;
 pub use domain::error;
 pub use domain::history;

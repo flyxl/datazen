@@ -7,7 +7,10 @@
 //!   资源与工具可见性是纯规则）与连接白名单（allowlist：空表即全拒绝的
 //!   安全默认）；
 //! * `application`——表描述格式化（describe：MCP `describe_table` 工具
-//!   输出的人类可读文案）。
+//!   输出的人类可读文案）。只读命令用例（M4）位于
+//!   `workflow::application::runtime_reads`（它吃 ResourceExecutionHost
+//!   端口与 mcp 的权限词汇，故落在 workflow 侧），表结构上下文装配位于
+//!   `ai::application::schema_context`。
 //!
 //! 边界（07-stages D6 工作项 4）：业务分发（server/handler/tools/resources）
 //! 与认证/stdio/HTTP 登录/事件传输留宿主（src-tauri::mcp）；模块只持有

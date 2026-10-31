@@ -105,8 +105,8 @@ impl DataZenMcpServer {
             let db = parts.get(1).copied().unwrap_or("");
 
             self.ensure_allowed("schema_resource", connection_id)?;
-            let schema_ddl = super::runtime_schema::schema_context(
-                self,
+            let schema_ddl = datazen::ai::schema_context::connection_schema_context(
+                self.resource_host.as_ref(),
                 connection_id,
                 db,
                 budget::MCP_RESOURCE,

@@ -61,15 +61,19 @@ pub(crate) async fn execute_wapp_driver_command_impl(
         connection_id = %request.connection_id,
         "Wapp runtime command invoked"
     );
-    let source = crate::services::runtime_command_source::RuntimeCommandSource::new(
-        state.driver_registry.clone(),
-        state.store.clone(),
-        state.platform.clone(),
+    // M4: the read path is the shared use case; the desktop host is only the
+    // `ResourceExecutionHost` implementation it runs on.
+    let source = crate::services::runtime_command_source::RuntimeCommandSource::from_app_state(
+        state,
     );
-    source
-        .read_target_command(&request.connection_id, &request.command, request.args)
-        .await
-        .map_err(CommandError::Validation)
+    datazen::workflow::runtime_reads::read_target_command(
+        &source,
+        &request.connection_id,
+        &request.command,
+        request.args,
+    )
+    .await
+    .map_err(CommandError::Validation)
 }
 
 #[tauri::command]

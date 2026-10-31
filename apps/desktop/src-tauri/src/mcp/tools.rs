@@ -66,8 +66,8 @@ impl DataZenMcpServer {
         Parameters(input): Parameters<ListDatabasesInput>,
     ) -> Result<String, McpError> {
         self.ensure_allowed("list_databases", &input.connection_id)?;
-        let output = super::runtime_schema::read_target_command(
-            self,
+        let output = datazen::workflow::runtime_reads::read_target_command(
+            self.resource_host.as_ref(),
             &input.connection_id,
             "list_databases",
             serde_json::json!({}),
@@ -85,8 +85,8 @@ impl DataZenMcpServer {
         Parameters(input): Parameters<ListTablesInput>,
     ) -> Result<String, McpError> {
         self.ensure_allowed("list_tables", &input.connection_id)?;
-        let output = super::runtime_schema::read_target_command(
-            self,
+        let output = datazen::workflow::runtime_reads::read_target_command(
+            self.resource_host.as_ref(),
             &input.connection_id,
             "list_tables",
             serde_json::json!({
@@ -108,8 +108,8 @@ impl DataZenMcpServer {
     ) -> Result<String, McpError> {
         self.ensure_allowed("search_tables", &input.connection_id)?;
         let limit = input.limit.unwrap_or(20) as usize;
-        let output = super::runtime_schema::read_target_command(
-            self,
+        let output = datazen::workflow::runtime_reads::read_target_command(
+            self.resource_host.as_ref(),
             &input.connection_id,
             "list_tables",
             serde_json::json!({
@@ -157,8 +157,8 @@ impl DataZenMcpServer {
             .execution_settings()
             .await
             .apply_result_limit(&mut command_input);
-        let output = super::runtime_schema::read_target_command(
-            self,
+        let output = datazen::workflow::runtime_reads::read_target_command(
+            self.resource_host.as_ref(),
             &input.connection_id,
             "query",
             command_input,
@@ -175,8 +175,8 @@ impl DataZenMcpServer {
         Parameters(input): Parameters<GetSchemaInput>,
     ) -> Result<String, McpError> {
         self.ensure_allowed("get_schema", &input.connection_id)?;
-        let output = super::runtime_schema::read_target_command(
-            self,
+        let output = datazen::workflow::runtime_reads::read_target_command(
+            self.resource_host.as_ref(),
             &input.connection_id,
             "get_table_schema",
             serde_json::json!({
@@ -198,8 +198,8 @@ impl DataZenMcpServer {
         Parameters(input): Parameters<ExplainQueryInput>,
     ) -> Result<String, McpError> {
         self.ensure_allowed("explain_query", &input.connection_id)?;
-        let output = super::runtime_schema::read_target_command(
-            self,
+        let output = datazen::workflow::runtime_reads::read_target_command(
+            self.resource_host.as_ref(),
             &input.connection_id,
             "explain",
             serde_json::json!({ "sql": input.sql }),
@@ -216,8 +216,8 @@ impl DataZenMcpServer {
         Parameters(input): Parameters<DescribeTableInput>,
     ) -> Result<String, McpError> {
         self.ensure_allowed("describe_table", &input.connection_id)?;
-        let output = super::runtime_schema::read_target_command(
-            self,
+        let output = datazen::workflow::runtime_reads::read_target_command(
+            self.resource_host.as_ref(),
             &input.connection_id,
             "get_table_schema",
             serde_json::json!({

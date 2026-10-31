@@ -8,6 +8,7 @@ use datazen::mcp::allowlist;
 use datazen::mcp::permission::McpPermissionMode;
 use datazen::shared::context::RequestContext;
 use datazen::shared::id::ClientInstanceId;
+use datazen::workflow::resource_execution::ResourceExecutionHost;
 use rmcp::ErrorData as McpError;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -17,6 +18,10 @@ pub use super::types::*;
 #[derive(Clone)]
 pub struct DataZenMcpServer {
     pub(crate) app_state: Arc<AppState>,
+    /// M4: the shared read-only command use cases (`datazen::workflow::runtime_reads`)
+    /// run on this port. The desktop implementation is `RuntimeCommandSource`,
+    /// assembled once per server instance.
+    pub(crate) resource_host: Arc<dyn ResourceExecutionHost>,
     pub(crate) disabled_tools: HashSet<String>,
     pub(crate) permission_mode: McpPermissionMode,
     /// Non-empty allowlist required — empty means deny-all (secure default).
@@ -54,6 +59,7 @@ pub const MCP_ALL_TOOLS: &[&str] = &[
 impl DataZenMcpServer {
     pub fn new(app_state: Arc<AppState>) -> Self {
         Self {
+            resource_host: crate::services::runtime_command_source::resource_host(&app_state),
             app_state,
             disabled_tools: HashSet::new(),
             permission_mode: McpPermissionMode::default(),
