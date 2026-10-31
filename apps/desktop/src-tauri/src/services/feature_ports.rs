@@ -127,7 +127,7 @@ impl datazen::mcp::tools::RedactedConnectionSource for crate::commands::AppState
 /// the host state is the only organization identity source).
 #[async_trait::async_trait]
 impl datazen::mcp::tools::WorkflowCatalog for crate::commands::AppState {
-    async fn list(&self) -> Result<Vec<datazen::workflow::registry::WorkflowListItem>, String> {
+    async fn list(&self) -> Result<Vec<datazen::workflow::model::WorkflowListItem>, String> {
         let scope = self
             .organization_scope()
             .map_err(|error| error.to_string())?;

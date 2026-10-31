@@ -20,10 +20,9 @@ use crate::mcp::application::describe::format_table_description;
 use crate::mcp::domain::allowlist;
 use crate::settings::ExecutionSettings;
 use crate::workflow::application::host::WorkflowHost;
-use crate::workflow::application::registry::WorkflowListItem;
 use crate::workflow::application::resource_execution::ResourceExecutionHost;
 use crate::workflow::application::runtime_reads;
-use crate::workflow::domain::model::WorkflowDefinition;
+use crate::workflow::domain::model::{WorkflowDefinition, WorkflowListItem};
 use datazen_driver_api::{DatabaseType, TableSchema};
 
 /// 工具错误的两分通道。
