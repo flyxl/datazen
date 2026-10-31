@@ -256,12 +256,12 @@ groups:
 
 `ai_chat` 在流式 tool loop 中合并两类工具定义：
 
-1. **DB tools** — `list_tables`、`search_tables`、`query_db` 等，经共享 Runtime resource execution / Driver Command API 执行。
+1. **DB tools** — `list_connections`、`list_databases`、`list_tables`、`search_tables`、`get_table_schema` 五个只读工具（`db_tool_definitions()` 全集，无写工具），经共享 Runtime resource execution / Driver Command API 执行。
 2. **MCP Client tools** — 来自 Settings 中已连接的外部 MCP Server，qualified name 形如 `mcp/{serverId}/{toolName}`。
 
 实现要点（Tauri 适配在 `src-tauri/src/commands/ai/chat.rs`，共享工具定义与循环在 `modules/src/ai/`）：
 
-- `mcp_tool_definitions()` 从 `McpClientManager` 拉取已连接 server 的 tool schema，转换为 Provider 的 `ToolDefinition`；MCP 连接发现和调用留在 Tauri adapter。
+- `mcp_tool_definitions()` 从 `McpClientManager` 拉取已连接 server 的 tool schema，转换为 Provider 的 `ToolDefinition`；MCP 连接发现和调用留在 Tauri adapter（AI 侧的 MCP 工具面尚未端口化——web 形态落地前需抽消费者端口，见[边界方案 §8 M3](../../development/host-boundary-followups.md#8-跨形态一致性收敛m-系列)）。
 - `ai/chat_request.rs` 组装通用 Chat 请求与工具定义；`ai/tool_loop.rs` 识别 `mcp/` 前缀并经 `AiToolLoopHost` 调用 MCP，DB tool 与 MCP tool 可在同一轮对话中交替执行。
 - 未连接 MCP Server 时行为与原先一致，仅暴露 DB tools。
 

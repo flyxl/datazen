@@ -173,8 +173,12 @@ pub struct McpClientManager {
 }
 
 /// Qualified tool name for AI routing: `mcp/{serverId}/{toolName}`.
+///
+/// M3: the routing rule is owned by the shared layer
+/// (`datazen::ai::mcp_tools::qualified_tool_name`); this alias keeps the
+/// client module's construction sites and tests unchanged.
 pub fn mcp_qualified_name(server_id: &str, tool_name: &str) -> String {
-    format!("mcp/{server_id}/{tool_name}")
+    datazen::ai::mcp_tools::qualified_tool_name(server_id, tool_name)
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -3,7 +3,7 @@
 //! Data-operation steps are normalized to Driver Commands and dispatched
 //! through `command_runtime`, while AI and control-flow steps remain generic.
 
-use crate::mcp::domain::permission::{self, McpPermissionMode};
+use crate::execution::domain::permission::{self, McpPermissionMode};
 use crate::workflow::application::host::WorkflowHost;
 use std::time::Instant;
 

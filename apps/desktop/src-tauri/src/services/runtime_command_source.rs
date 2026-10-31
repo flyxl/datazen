@@ -1,14 +1,17 @@
 //! Shared desktop adapter for read-only commands executed through Runtime.
+//!
+//! M4 后本类型只剩两个角色：`ResourceExecutionHost` 的桌面实现（AI、
+//! MCP 与 Wapp 的读取用例都吃这个端口，共享逻辑在
+//! `datazen::workflow::runtime_reads`），以及导出装配的会话 profile 查询。
+//! 命令执行本体已用例化进共享层，宿主不再持有读取业务。
+use crate::commands::AppState;
 use crate::{platform::PlatformEntry, store::DesktopRepository};
 use datazen::execution::runtime::driver_registry::DriverRegistry;
 use datazen::workflow::{
-    command::WorkflowCommandStep,
     error::WorkflowError,
     resource_execution::{PreparedExecution, ResourceExecutionHost},
 };
-use datazen_driver_api::{
-    check_command_access, CommandAccessLevel, CommandCatalog, ConnectionConfig, DatabaseDriver,
-};
+use datazen_driver_api::{ConnectionConfig, DatabaseDriver};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -51,74 +54,13 @@ impl RuntimeCommandSource {
         Ok((owner.as_str().to_owned(), config, metadata.config_revision))
     }
 
-    pub(crate) async fn read_target_command(
-        &self,
-        connection_id: &str,
-        command: &str,
-        input: serde_json::Value,
-    ) -> Result<serde_json::Value, String> {
-        let (config, _, enabled) = self
-            .profile(connection_id)
-            .await
-            .map_err(|error| error.to_string())?;
-        if !enabled {
-            return Err("Connection profile is disabled".into());
-        }
-        let driver = self
-            .driver(&config)
-            .await
-            .map_err(|error| error.to_string())?;
-        let catalog = datazen_driver_api::LegacyCommandCatalog::new(driver.as_ref());
-        let definition = catalog
-            .command_definitions()
-            .into_iter()
-            .chain(datazen_driver_api::schema_catalog_command_definitions())
-            .chain(crate::services::schema_metadata::command_definitions())
-            .find(|definition| definition.id == command)
-            .ok_or_else(|| format!("Unsupported command: {command}"))?;
-        check_command_access(&definition, CommandAccessLevel::Read)
-            .map_err(|_| "Wapps may invoke read-only driver commands".to_owned())?;
-
-        let step = WorkflowCommandStep::new(
-            "wapp-command",
-            command,
-            Some(connection_id.to_owned()),
-            input,
-        );
-        datazen::workflow::resource_execution::execute(
-            &WappReadOnlyHost(self),
-            &step,
-            connection_id,
-            Some(datazen::mcp::permission::McpPermissionMode::SafeWrite),
-            None,
-            false,
+    /// Assemble from the desktop app state (the MCP and Wapp read paths).
+    pub(crate) fn from_app_state(state: &AppState) -> Self {
+        Self::new(
+            state.driver_registry.clone(),
+            state.store.clone(),
+            state.platform.clone(),
         )
-        .await
-        .map(|result| result.data)
-        .map_err(|error| error.to_string())
-    }
-
-    /// Resolve the configured driver for a persisted connection profile.
-    ///
-    /// Callers that execute a command must still use `read_target_command` so
-    /// Runtime performs the authoritative profile, revision and target checks.
-    /// This helper is only for driver metadata needed to render prompts.
-    pub(crate) async fn driver_for_connection(
-        &self,
-        connection_id: &str,
-    ) -> Result<Arc<dyn DatabaseDriver>, String> {
-        let (config, metadata) = self
-            .store
-            .platform_profile(connection_id)
-            .await
-            .ok_or_else(|| "Connection profile unavailable".to_owned())?;
-        if !metadata.enabled {
-            return Err("Connection profile is disabled".to_owned());
-        }
-        self.registry
-            .get(&config.database_type)
-            .await
-            .ok_or_else(|| "Driver unavailable".to_owned())
     }
 
     pub(crate) async fn execution_safe_mode(&self) -> bool {
@@ -126,36 +68,14 @@ impl RuntimeCommandSource {
     }
 }
 
-struct WappReadOnlyHost<'a>(&'a RuntimeCommandSource);
-
-#[async_trait::async_trait]
-impl ResourceExecutionHost for WappReadOnlyHost<'_> {
-    async fn profile(&self, id: &str) -> Result<(ConnectionConfig, u64, bool), WorkflowError> {
-        let (mut config, revision, enabled) = self.0.profile(id).await?;
-        config.read_only = true;
-        Ok((config, revision, enabled))
-    }
-
-    async fn driver(
-        &self,
-        config: &ConnectionConfig,
-    ) -> Result<Arc<dyn DatabaseDriver>, WorkflowError> {
-        self.0.driver(config).await
-    }
-
-    async fn safe_mode(&self) -> bool {
-        self.0.safe_mode().await
-    }
-
-    async fn prepare(
-        &self,
-        id: &str,
-        revision: u64,
-        command: &str,
-        target: datazen::execution::target::ExecutionTarget,
-    ) -> Result<PreparedExecution, WorkflowError> {
-        self.0.prepare(id, revision, command, target).await
-    }
+/// The desktop `ResourceExecutionHost` for the shared read-only command
+/// use cases (`datazen::workflow::runtime_reads`).
+///
+/// M4: the host keeps its legitimate role — one desktop implementation of
+/// the port — while every read path (Wapp, MCP, and later web) goes through
+/// the shared use case.
+pub(crate) fn resource_host(state: &AppState) -> std::sync::Arc<dyn ResourceExecutionHost> {
+    std::sync::Arc::new(RuntimeCommandSource::from_app_state(state))
 }
 
 #[async_trait::async_trait]

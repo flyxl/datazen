@@ -7,6 +7,7 @@
 //! D3 后续切片迁入。
 
 pub mod budget;
+pub mod command_policy;
 pub mod event_sink;
 pub mod events;
 pub mod idempotency;

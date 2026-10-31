@@ -10,6 +10,7 @@
 pub mod artifact;
 pub mod artifact_repository;
 pub mod execution;
+pub mod permission;
 pub mod session;
 pub mod session_directory;
 pub mod sql_guard;
@@ -26,6 +27,14 @@ pub use artifact_repository::{
 pub use execution::{
     CancelOutcome, CapabilitySnapshot, EffectOutcome, ExecutionErrorCode, ExecutionState,
     ResultCompleteness, ResultProvenance, StatementResultSource, WritableMapping,
+};
+// 权限模式词汇（M1 前置刀自 mcp::domain 归位）：它是持久化在应用设置里的
+// wire 词汇，被 workflow（resource_execution 的 permission_mode）、ai
+// （db_tools 的 SQL 分级）、table_browsing（目标注入策略）与 MCP server
+// 共同消费——依赖方向上它是执行分级词汇，不是 MCP 专属。
+pub use permission::{
+    check_sql_allowed, check_tool_call, is_resource_listed, is_tool_listed,
+    query_history_content_allowed, McpPermissionMode,
 };
 pub use session::{
     AttachmentState, CancelDisposition, ContextConfidence, ResourceRelease, SessionContext,

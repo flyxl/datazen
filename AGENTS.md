@@ -12,6 +12,7 @@ apps/desktop/src-tauri/  Desktop bootstrap、commands、platform、store、宿�
 packages/frontend/       共享 React UI（`@datazen/frontend`）：stores、组件、hooks、i18n、平台端口
 packages/                driver-api、infra、UI/SDK（backend-client、driver-sdk、wapp-sdk、extension-points、ui）、wapps、drivers/*
 modules/                 单一业务 crate `datazen`（feature 门控的领域与用例）
+server/                  团队 Web 服务宿主（crate `datazen-server`，web-ready WR-D1 起骨架：HTTP 中间件链 + /healthz /readyz；域路由随 WR-D2+ 逐域点亮）
 e2e/                     Host WebdriverIO journeys
 docs/                    features、architecture、development、blogs、已核实且明确不修的 bugs
 ```
@@ -23,7 +24,7 @@ docs/                    features、architecture、development、blogs、已核�
 权威方案：[DDD 模块化重构](docs/development/ddd-refactor-plan.md)（总纲；实施细节按主题在同目录 `ddd-refactor/` 下，细节文件保留原 §2–§14 编号）。该方案区分当前事实与目标设计，不能把目标目录写成已实现。
 
 - 最终以一个 `modules/` crate 按功能组织 `application` / `domain`；目标 package 为 `datazen`（已落地：`modules/` 即 `datazen` crate）。
-- `apps/desktop/src-tauri` 是 Desktop 宿主（crate `datazen_desktop`）；目标 Web 宿主是 `apps/web/`（尚未落地，不要写成已实现；Web 形态已移出 DDD 重构范围，D8 在桌面单宿主内收尾）。
+- `apps/desktop/src-tauri` 是 Desktop 宿主（crate `datazen_desktop`）；`server/` 是团队 Web 服务宿主（crate `datazen-server`，WR-D1 骨架已落地）；目标浏览器宿主 `apps/web/`（尚未落地，不要写成已实现；Web 形态已移出 DDD 重构范围，D8 在桌面单宿主内收尾）。两个已落地宿主互不依赖，都只依赖 `modules` 内核；server 的依赖闭包由 CI 门禁 `pnpm test:server-deps` 强制无 tauri/UI。
 - Repository trait 由所属 domain 定义，Desktop/Web infrastructure 实现；不建立全局仓储全集。
 - Controller 只做上下文、DTO、应用服务调用和错误映射，不直接访问 Store、AppDb、Driver、Runtime internals。
 - `execution::runtime` 承载 actor、lease、队列、等待、资源回收；`execution::application` 编排用例；Job 归 `jobs`。

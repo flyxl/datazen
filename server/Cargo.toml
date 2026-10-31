@@ -1,0 +1,40 @@
+[package]
+name = "datazen-server"
+version = "0.1.0"
+edition = "2021"
+description = "DataZen team web server host (P7 / web-ready WR-D): the HTTP form of the product. One binary, three subcommands (serve | migrate | check-schema), assembling the shared modules kernel behind the /api/v1 contract (docs/architecture/platform/http-api-contract.md)."
+
+# WR-D1 骨架的依赖纪律（team-server-and-auth §2.2 的允许方向）：
+#
+# - `datazen`（modules 内核）：本骨架只消费跨边界错误词汇
+#   `shared::error::{ApiError, ApiErrorCode}` 与 `shared::id::RequestId` —— 它们是
+#   IPC 与 HTTP 两种绑定共用的 wire 类型，server 不得另立一份（同用例、两绑定的
+#   第一步就是共用这一份词汇）。域用例的深度接线随 WR-D2/D4 到来。
+# - HTTP 框架 axum + tower-http：中间件链的载体。
+# - 禁止闭包（CI 的 scripts/check-server-deps.mjs 强制）：任何 `tauri*` crate
+#   （含 tauri-plugin-*）、`wry` / `tao`、桌面宿主 crate `datazen_desktop`、任何
+#   前端 UI runtime。
+#
+# `datazen-infra`（redaction）暂不声明：D1 骨架没有会携带秘密的日志路径；
+# 它随 WR-D2 的真实 handler 一起进来，届时 logging.rs 的脱敏契约开始有消费者。
+
+[dependencies]
+datazen = { workspace = true }
+
+axum = "0.8"
+tower-http = { version = "0.6", features = ["catch-panic", "limit"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net"] }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { workspace = true }
+
+[dev-dependencies]
+# oneshot 驱动 Router 的集成测试需要 ServiceExt。
+tower = { version = "0.5", features = ["util"] }
+
+[lints]
+workspace = true

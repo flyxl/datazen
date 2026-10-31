@@ -96,6 +96,7 @@ const CORE = [
   { name: 'datazen_desktop', dir: 'apps/desktop/src-tauri' },
   { name: 'datazen-driver-api', dir: 'packages/driver-api' },
   { name: 'datazen', dir: 'modules' },
+  { name: 'datazen-server', dir: 'server' },
   { name: 'datazen-driver-redis', dir: 'packages/drivers/redis' },
 ];
 
@@ -495,22 +496,37 @@ describe('checkPlatformCrateBoundaries', () => {
   });
 
   it('F-06: a tauri crate in the server closure is a violation', () => {
-    const members = [...CORE, { name: 'datazen-server', dir: 'server' }];
     const result = run(
-      fixture(members, { ...clean, 'datazen-server': ['tauri'] }, [{ name: 'tauri' }]),
+      fixture(CORE, { ...clean, 'datazen-server': ['tauri'] }, [{ name: 'tauri' }]),
     );
     expect(result.violations.join('\n')).toMatch(/F-06.*datazen-server.*→ tauri/);
   });
 
+  it("F-06 is armed since server landed — its absence is an error, not a vacuous report", () => {
+    // WR-D1 put datazen-server on disk and in DEFAULT_REQUIRED_LAYERS, so
+    // the rule that spent the pre-server era honestly vacuous is now armed:
+    // removing the crate from the metadata must fail the gate. (ts subjects
+    // like backend-client resolve against the real disk; rust subjects like
+    // server resolve against this fixture, which is why the filter works.)
+    const noServer = CORE.filter((m) => m.dir !== 'server');
+    const result = run(fixture(noServer, clean));
+    expect(result.errors.join('\n')).toContain('server');
+    expect(result.vacuous.map((v) => v.rule)).not.toContain('F-06');
+  });
+
   it('reports a not-yet-created layer as vacuous rather than failing', () => {
+    // F-06 held this seat while server/ was hypothetical; since WR-D1 the
+    // honest vacuous example is F-11 (infra absent from this fixture).
     const result = run(fixture(CORE, clean));
-    expect(result.vacuous.map((v) => v.rule)).toContain('F-06');
+    expect(result.vacuous.map((v) => v.rule)).toContain('F-11');
     expect(result.violations).toEqual([]);
   });
 
   it('--require-layers turns a vacuous rule into an error', () => {
-    const result = run(fixture(CORE, clean), SPEC, { requireLayers: ['server'] });
-    expect(result.errors.join('\n')).toContain('server');
+    // `infra` is absent from this fixture, so F-11 is vacuous by default;
+    // requiring the layer converts the report into an error.
+    const result = run(fixture(CORE, clean), SPEC, { requireLayers: ['infra'] });
+    expect(result.errors.join('\n')).toContain('infra');
   });
 });
 

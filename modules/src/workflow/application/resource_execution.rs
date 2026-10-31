@@ -82,7 +82,7 @@ pub async fn execute(
     state: &dyn ResourceExecutionHost,
     step: &WorkflowCommandStep,
     connection_id: &str,
-    permission_mode: Option<crate::mcp::domain::permission::McpPermissionMode>,
+    permission_mode: Option<crate::execution::domain::permission::McpPermissionMode>,
     workflow_deadline: Option<tokio::time::Instant>,
     require_workflow: bool,
 ) -> Result<CommandResult, WorkflowError> {
@@ -134,7 +134,7 @@ pub async fn execute_with_existing_session(
     state: &dyn ResourceExecutionHost,
     step: &WorkflowCommandStep,
     connection_id: &str,
-    permission_mode: Option<crate::mcp::domain::permission::McpPermissionMode>,
+    permission_mode: Option<crate::execution::domain::permission::McpPermissionMode>,
     workflow_deadline: Option<tokio::time::Instant>,
     require_workflow: bool,
     handle: crate::execution::domain::SessionHandle,
@@ -155,7 +155,7 @@ async fn execute_bound(
     state: &dyn ResourceExecutionHost,
     step: &WorkflowCommandStep,
     connection_id: &str,
-    permission_mode: Option<crate::mcp::domain::permission::McpPermissionMode>,
+    permission_mode: Option<crate::execution::domain::permission::McpPermissionMode>,
     workflow_deadline: Option<tokio::time::Instant>,
     require_workflow: bool,
     binding: SessionBinding,
@@ -207,7 +207,7 @@ async fn execute_bound(
     validate_command_input(&definition, &step.input).map_err(WorkflowError::Validation)?;
     check_command_access(
         &definition,
-        crate::mcp::application::command_policy::access_level_for_mode(permission_mode),
+        crate::execution::application::command_policy::access_level_for_mode(permission_mode),
     )
     .map_err(WorkflowError::Validation)?;
     if matches!(step.command.as_str(), "query" | "execute" | "explain") {
@@ -223,7 +223,7 @@ async fn execute_bound(
         )
         .map_err(WorkflowError::Validation)?;
         if let Some(mode) = permission_mode {
-            crate::mcp::domain::permission::check_sql_allowed(sql, mode)
+            crate::execution::domain::permission::check_sql_allowed(sql, mode)
                 .map_err(WorkflowError::Validation)?;
         }
     }

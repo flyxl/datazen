@@ -20,19 +20,23 @@ impl DataZenMcpServer {
         Parameters(args): Parameters<Nl2SqlArgs>,
     ) -> Result<GetPromptResult, McpError> {
         self.ensure_allowed("nl2sql", &args.connection_id)?;
-        let driver =
-            super::runtime_schema::driver_for_connection(self, &args.connection_id).await?;
+        let driver = datazen::workflow::runtime_reads::driver_for_connection(
+            self.resource_host.as_ref(),
+            &args.connection_id,
+        )
+        .await.map_err(DataZenMcpServer::map_err)?;
         let lang = self.app_state.store.get_settings().await.language;
         let db_type = driver.driver_type();
         let db = args.database.as_deref().unwrap_or("");
 
-        let schema_ddl = super::runtime_schema::schema_context(
-            self,
+        let schema_ddl = datazen::ai::schema_context::connection_schema_context(
+            self.resource_host.as_ref(),
             &args.connection_id,
             db,
             datazen::ai::budget::FALLBACK_DDL,
         )
-        .await?;
+        .await
+        .map_err(DataZenMcpServer::map_err)?;
 
         let mut vars = HashMap::new();
         vars.insert("db_type", db_type.as_str());
@@ -63,8 +67,11 @@ impl DataZenMcpServer {
         Parameters(args): Parameters<DiagnoseErrorArgs>,
     ) -> Result<GetPromptResult, McpError> {
         self.ensure_allowed("diagnose_error", &args.connection_id)?;
-        let driver =
-            super::runtime_schema::driver_for_connection(self, &args.connection_id).await?;
+        let driver = datazen::workflow::runtime_reads::driver_for_connection(
+            self.resource_host.as_ref(),
+            &args.connection_id,
+        )
+        .await.map_err(DataZenMcpServer::map_err)?;
         let lang = self.app_state.store.get_settings().await.language;
         let db_type = driver.driver_type();
 
@@ -100,18 +107,22 @@ impl DataZenMcpServer {
         Parameters(args): Parameters<ExplainPlanArgs>,
     ) -> Result<GetPromptResult, McpError> {
         self.ensure_allowed("explain_plan", &args.connection_id)?;
-        let driver =
-            super::runtime_schema::driver_for_connection(self, &args.connection_id).await?;
+        let driver = datazen::workflow::runtime_reads::driver_for_connection(
+            self.resource_host.as_ref(),
+            &args.connection_id,
+        )
+        .await.map_err(DataZenMcpServer::map_err)?;
         let lang = self.app_state.store.get_settings().await.language;
         let db_type = driver.driver_type();
 
-        let explain_result = super::runtime_schema::read_target_command(
-            self,
+        let explain_result = datazen::workflow::runtime_reads::read_target_command(
+            self.resource_host.as_ref(),
             &args.connection_id,
             "explain",
             serde_json::json!({ "sql": args.sql }),
         )
-        .await?;
+        .await
+        .map_err(DataZenMcpServer::map_err)?;
         let explain_text = serde_json::to_string_pretty(&explain_result)
             .unwrap_or_else(|_| "Failed to serialize EXPLAIN output".to_string());
 

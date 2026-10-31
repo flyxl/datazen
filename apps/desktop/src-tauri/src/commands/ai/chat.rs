@@ -18,27 +18,12 @@ use tauri::{State, WebviewWindow};
 pub(crate) use datazen::ai::tools::db_tool_definitions;
 
 /// Convert connected MCP client tools into AI `ToolDefinition`s (Phase 3 wires into chat).
+///
+/// M3: the form-neutral assembly lives in the shared layer
+/// (`datazen::ai::mcp_tools`); this is the IPC-side thin shell over the
+/// `McpToolBroker` implementation on `AppState`.
 pub(crate) async fn mcp_tool_definitions(state: &AppState) -> Vec<ToolDefinition> {
-    let settings = state.store.get_settings().await;
-    state
-        .mcp_client_manager
-        .all_tools()
-        .await
-        .into_iter()
-        .filter(|tool| {
-            settings
-                .mcp_client_servers
-                .iter()
-                .find(|c| c.id == tool.server_id)
-                .map(|c| c.enabled_for_ai)
-                .unwrap_or(true)
-        })
-        .map(|tool| ToolDefinition {
-            name: tool.qualified_name,
-            description: tool.description.unwrap_or_else(|| tool.tool_name.clone()),
-            parameters: tool.input_schema,
-        })
-        .collect()
+    datazen::ai::mcp_tools::mcp_tool_definitions(state).await
 }
 
 pub(crate) async fn execute_mcp_tool(
@@ -47,22 +32,7 @@ pub(crate) async fn execute_mcp_tool(
     tool_name: &str,
     arguments: &str,
 ) -> String {
-    let qualified = crate::mcp::client::mcp_qualified_name(server_id, tool_name);
-    let args: serde_json::Value = match serde_json::from_str(arguments) {
-        Ok(v) => v,
-        Err(e) => {
-            return format!("MCP tool error ({qualified}): invalid JSON arguments: {e}");
-        }
-    };
-
-    match state
-        .mcp_client_manager
-        .call_tool(server_id, tool_name, args)
-        .await
-    {
-        Ok(result) => crate::mcp::format_call_tool_result(&result, &qualified),
-        Err(msg) => format!("MCP tool error ({qualified}): {msg}"),
-    }
+    datazen::ai::mcp_tools::execute_mcp_tool(state, server_id, tool_name, arguments).await
 }
 
 pub(crate) async fn execute_db_tool(state: &AppState, tool_call: &ToolCall) -> String {

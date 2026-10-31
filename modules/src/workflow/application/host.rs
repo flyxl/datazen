@@ -1,4 +1,4 @@
-use crate::mcp::domain::permission::McpPermissionMode;
+use crate::execution::domain::permission::McpPermissionMode;
 use crate::workflow::domain::command::WorkflowCommandStep;
 use crate::workflow::domain::error::WorkflowError;
 use datazen_driver_api::CommandResult;

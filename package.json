@@ -114,6 +114,7 @@
     "test:platform-arch": "node scripts/check-platform-crate-boundaries.mjs",
     "test:platform-crates": "node scripts/run-platform-crate-tests.mjs",
     "test:platform-arch:mutations": "node scripts/platform-arch-selfcheck.mjs",
+    "test:server-deps": "node scripts/check-server-deps.mjs --self-test && cargo tree -p datazen-server --edges normal,build --prefix none > /tmp/server-deps.txt && node scripts/check-server-deps.mjs /tmp/server-deps.txt",
     "test:ddd-layers": "node scripts/check-ddd-layers.mjs",
     "test:shared-crate-panic": "node scripts/check-shared-crate-panic-policy.mjs",
     "test:i18n-keys": "node scripts/i18n-key-collision-check.mjs",

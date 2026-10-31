@@ -6,6 +6,7 @@ members = [
     "packages/driver-support",
     "packages/infra",
     "modules",
+    "server",
     "packages/drivers/*",
 ]
 exclude = [

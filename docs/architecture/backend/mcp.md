@@ -4,15 +4,14 @@
 
 ### 1.1 MCP Server
 
-DataZen 作为 MCP Server 暴露数据库操作能力给外部 LLM 应用（Claude Desktop、Cursor 等）。共享的工具/资源/提示词逻辑位于 `modules/src/mcp/`；`src-tauri/src/mcp/` 负责宿主传输、认证、权限、会话与 Runtime 接线。
+DataZen 作为 MCP Server 暴露数据库操作能力给外部 LLM 应用（Claude Desktop、Cursor 等）。**目标分层**（DDD 目标架构 §3.3）：工具业务分发位于 `modules/src/mcp/`，宿主只留传输与登录。**当前事实**（基线 `528f10e`，2026-10-31 核对）：共享层只有权限/白名单/命令准备/表格描述策略（751 行）；工具实现、Resources、Prompts、有状态会话协议与 MCP Client 仍在 `src-tauri/src/mcp/`（约 4,200 行）——归位工作立项为[边界方案 §8 M 系列](../../development/host-boundary-followups.md#8-跨形态一致性收敛m-系列)，完成前 Web 宿主无法以「只换 Server 形态」复用 MCP 能力。
 
 ```
-modules/src/mcp/   # 共享 tool/resource/prompt 逻辑与权限策略
+modules/src/mcp/   # 已共享：权限/白名单/命令准备/表格描述策略；工具分发归位 = 边界方案 M1
 src-tauri/src/mcp/
 ├── mod.rs          # 启动/停止与 stdio 传输装配（含断连清理）
 ├── auth.rs         # stdio 本地 token 认证（`mcp.token` + `DATAZEN_MCP_TOKEN`）
-├── allowlist.rs    # 连接白名单（空 = 拒绝一切）
-├── permission.rs   # 三档权限 + SQL/工具/资源门控
+├── (allowlist/permission 在 modules/src/mcp/{domain,application}，宿主经 `datazen::mcp::` 引用)
 ├── server.rs       # MCP Server 实例与工具清单 `MCP_ALL_TOOLS`
 ├── server/         # 有状态会话等 Server 测试
 ├── tools.rs        # 工具实现的宿主绑定（含 workflow 与有状态会话工具）
@@ -27,7 +26,7 @@ src-tauri/src/mcp/
 └── client.rs       # MCP Client 管理
 ```
 
-`permission.rs` 只保留 MCP 专属的权限策略（三档模式、白名单、工具/资源门控）。SQL 主关键字分类（`sql_main_keyword`、`tokenize_sql`、`find_main_verb_index`）与注释剥离等**与传输无关**的 SQL 判读能力已下沉到共享层 `packages/kernel/src/sql_guard/`，宿主直接复用，未来服务端入口共用同一份实现。
+modules 内的 `permission.rs` / `allowlist.rs` 只承载 MCP 专属的权限策略（三档模式、白名单、工具/资源门控）。SQL 主关键字分类（`sql_main_keyword`、`tokenize_sql`、`find_main_verb_index`）与注释剥离等**与传输无关**的 SQL 判读能力位于共享层 `modules/src/execution/domain/sql_guard/`，宿主直接复用，未来服务端入口共用同一份实现。
 
 Workflow 引擎本身见 [`workflow` 模块](./workflow.md)，MCP 仅通过 Tools/Resources 暴露。
 

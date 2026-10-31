@@ -392,15 +392,21 @@ export const MUTATIONS = [
     title: 'the server workspace takes a dependency on a tauri* crate',
     crate: 'datazen-server',
     apply(snapshot, scratch) {
-      addMembers(snapshot, ['server']);
-      addMemberDir(
-        snapshot,
-        'server',
-        'datazen-server',
-        `[dependencies]\ntauri = { path = "${stubCrate('tauri', scratch)}" }\n`,
+      // `server/` is a real package since WR-D1. Overwrite its manifest and
+      // lib root and back both up (the M7 pattern); do NOT register the
+      // package directory for removal and do NOT re-add it to members — it is
+      // already a workspace member, and a second `"server",` line would make
+      // the gate fail on a parse artifact instead of the tauri edge. The
+      // untouched `server/src/http/…` tree compiles to nothing: the stub
+      // lib.rs declares no modules.
+      snapshot.backup('server/Cargo.toml');
+      snapshot.backup('server/src/lib.rs');
+      writeFileSync(
+        join(REPO_ROOT, 'server/Cargo.toml'),
+        `[package]\nname = "datazen-server"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\ntauri = { path = "${stubCrate('tauri', scratch)}" }\n`,
       );
-      return () =>
-        readOrEmpty('Cargo.toml').includes('"server",') && readOrEmpty('server/Cargo.toml').includes('tauri =');
+      writeFileSync(join(REPO_ROOT, 'server/src/lib.rs'), '// arch-guard probe\npub fn probe() {}\n');
+      return () => readOrEmpty('server/Cargo.toml').includes('tauri =');
     },
   },
   {

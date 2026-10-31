@@ -4,9 +4,12 @@
 //! 此；行为用例留在 modules 垫片层——它们持有 datazen 的
 //! dev-dep，与 D5 data_sync 垫片保留集成测试同一先例）。
 
+use super::context::format_compact_ddl;
 use super::ports::SessionConnectionLookup;
+use crate::ai::domain::budget;
 use crate::schema::application::ports::{LogicalSchemaContextSource, PhysicalSchemaContextSource};
 use crate::workflow::application::resource_execution::{self, ResourceExecutionHost};
+use crate::workflow::application::runtime_reads;
 use crate::workflow::domain::command::WorkflowCommandStep;
 use crate::workflow::domain::error::WorkflowError;
 use datazen_driver_api::{
@@ -108,6 +111,63 @@ fn host_message(error: WorkflowError) -> String {
         WorkflowError::ConnectionFailed { message, .. } => message,
         other => other.to_string(),
     }
+}
+
+/// A token-budgeted schema context for a persisted connection profile.
+///
+/// M4 companion of [`RuntimeSchemaContextSource`]: that type answers the same
+/// question for a runtime *session* (the AI tool loop's identity), while this
+/// free function answers it for a *connection id* (the MCP prompts/resources
+/// identity). Both run on the same [`ResourceExecutionHost`] port — one
+/// capability, one read path, two entry identities.
+///
+/// Lists the connection's tables (at most 30), compresses each into a
+/// single-line DDL and stops at the token budget. A table whose schema read
+/// fails is skipped: the context is a best-effort digest, not a consistency
+/// snapshot.
+pub async fn connection_schema_context(
+    host: &dyn ResourceExecutionHost,
+    connection_id: &str,
+    database: &str,
+    max_tokens: usize,
+) -> Result<String, String> {
+    let table_output = runtime_reads::read_target_command(
+        host,
+        connection_id,
+        "list_tables",
+        serde_json::json!({ "database": database, "schema": null }),
+    )
+    .await?;
+    let tables = datazen_driver_api::parse_tables_from_command(&table_output);
+    let mut schema_ddl = Vec::new();
+    let mut token_estimate = 0;
+    for table in tables.iter().take(30) {
+        let output = runtime_reads::read_target_command(
+            host,
+            connection_id,
+            "get_table_schema",
+            serde_json::json!({
+                "database": database,
+                "schema": null,
+                "table": table.name,
+            }),
+        )
+        .await;
+        let Ok(output) = output else {
+            continue;
+        };
+        let Ok(schema) = serde_json::from_value::<TableSchema>(output["schema"].clone()) else {
+            continue;
+        };
+        let ddl_line = format_compact_ddl(&table.name, &schema);
+        let line_tokens = budget::estimate_tokens(&ddl_line);
+        if token_estimate + line_tokens > max_tokens {
+            break;
+        }
+        token_estimate += line_tokens;
+        schema_ddl.push(ddl_line);
+    }
+    Ok(schema_ddl.join("\n"))
 }
 
 /// The logical half of the metadata port.
