@@ -58,11 +58,9 @@ impl FakeHost {
     }
 
     fn mock_driver() -> Arc<dyn DatabaseDriver> {
-        Arc::new(
-            datazen_driver_api::mock_driver::MockDriver::new(
-                "sqlite",
-                datazen_driver_api::mock_driver::MockDriverOptions::default(),
-            ),
+        datazen_driver_api::mock_driver::MockDriver::new(
+            "sqlite",
+            datazen_driver_api::mock_driver::MockDriverOptions::default(),
         )
     }
 }
@@ -134,9 +132,9 @@ async fn a_disabled_profile_is_refused_before_the_driver() {
 async fn a_disabled_profile_is_refused_for_driver_metadata_too() {
     let mut host = FakeHost::new(config(false));
     host.enabled = false;
-    let error = driver_for_connection(&host, "c1")
-        .await
-        .expect_err("a disabled connection has no driver to hand out");
+    let Err(error) = driver_for_connection(&host, "c1").await else {
+        panic!("a disabled connection has no driver to hand out");
+    };
     assert_eq!(error, "Connection profile is disabled");
 }
 
@@ -199,9 +197,9 @@ async fn driver_metadata_errors_keep_the_host_wording() {
             unreachable!("driver metadata never prepares")
         }
     }
-    let error = driver_for_connection(&Unavailable, "c1")
-        .await
-        .expect_err("an unavailable profile must surface its wording");
+    let Err(error) = driver_for_connection(&Unavailable, "c1").await else {
+        panic!("an unavailable profile must surface its wording");
+    };
     assert_eq!(error, "Connection profile unavailable");
 }
 

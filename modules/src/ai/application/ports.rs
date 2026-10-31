@@ -78,6 +78,7 @@ pub trait SessionConnectionLookup: Send + Sync {
 
 /// A tool surfaced by a connected MCP server, in the neutral shape the AI
 /// tool loop consumes (M3).
+#[derive(Clone)]
 pub struct McpBrokeredTool {
     pub server_id: String,
     pub tool_name: String,
