@@ -1,4 +1,8 @@
 //! MCP tool handlers and helpers.
+//!
+//! M1 后本文件是 rmcp 绑定层：`#[tool]` 宏、Input 的 JsonSchema、白名单
+//! 检查与错误映射；工具业务在 `datazen::mcp::tools`（modules），有状态
+//! 会话协议（M2 范围）仍在宿主。
 
 use super::server::{DataZenMcpServer, MCP_SESSION_PURPOSE};
 use super::session::{sanitize_ttl, SessionBinding};
@@ -13,13 +17,10 @@ use datazen::execution::application::requests::{
 use datazen::execution::application::RuntimeConnectionUseCases;
 use datazen::execution::target::{ExecutionTarget, NamespaceTarget, TargetNamespaceLayer};
 use datazen::execution::{ExecutionState, ExecutionView};
-use datazen::mcp::allowlist;
 use datazen::mcp::permission;
+use datazen::mcp::tools::ToolError;
 use datazen::shared::context::{OwnerRef, RequestContext};
 use datazen::shared::id::{ArtifactId, ClientInstanceId, ConnectionId, Counter};
-use datazen::workflow::executor::{
-    WorkflowExecuteOptions, WorkflowExecutor, WORKFLOW_QUERY_ROW_LIMIT,
-};
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::{tool, tool_router, ErrorData as McpError};
 use serde_json::json;
@@ -28,36 +29,25 @@ use std::time::{Duration, Instant};
 
 pub(crate) use datazen::mcp::describe::format_table_description;
 
+fn tool_shell_error(tool: &str, error: ToolError) -> McpError {
+    match error {
+        ToolError::InvalidParams(message) => tool_help::tool_error(tool, &message),
+        ToolError::Internal(message) => DataZenMcpServer::map_err(message),
+    }
+}
+
 #[tool_router(vis = "pub(crate)")]
 impl DataZenMcpServer {
     #[tool(
         description = "List all configured database connections. Returns connection IDs, names, database types, and hosts."
     )]
     pub(crate) async fn list_connections(&self) -> Result<String, McpError> {
-        let connections = match crate::platform::ipc::require_connection_service(&self.app_state) {
-            Ok(service) => match service
-                .list_redacted(&crate::platform::connections::local_connection_scope())
-                .await
-            {
-                Ok(list) => list,
-                Err(error) => return Err(McpError::internal_error(error.to_string(), None)),
-            },
-            Err(error) => return Err(McpError::internal_error(error.to_string(), None)),
-        };
-        let result: Vec<serde_json::Value> = connections
-            .iter()
-            .filter(|c| allowlist::is_connection_allowed(&c.id, &self.allowed_connection_ids))
-            .map(|c| {
-                serde_json::json!({
-                    "id": c.id,
-                    "name": c.name,
-                    "databaseType": format!("{:?}", c.database_type),
-                    "host": c.host,
-                    "database": c.database,
-                })
-            })
-            .collect();
-        serde_json::to_string_pretty(&result).map_err(|e| Self::map_err(format!("Error: {e}")))
+        datazen::mcp::tools::list_connections(
+            self.app_state.as_ref(),
+            &self.allowed_connection_ids,
+        )
+        .await
+        .map_err(|e| DataZenMcpServer::map_err(e.into_message()))
     }
 
     #[tool(description = "List all databases on a connected server.")]
@@ -68,7 +58,7 @@ impl DataZenMcpServer {
         self.ensure_allowed("list_databases", &input.connection_id)?;
         datazen::mcp::tools::list_databases(self.resource_host.as_ref(), &input.connection_id)
             .await
-            .map_err(Self::map_err)
+            .map_err(|e| tool_shell_error("list_databases", e))
     }
 
     #[tool(
@@ -86,7 +76,7 @@ impl DataZenMcpServer {
             input.schema,
         )
         .await
-        .map_err(Self::map_err)
+        .map_err(|e| tool_shell_error("list_tables", e))
     }
 
     #[tool(
@@ -106,7 +96,7 @@ impl DataZenMcpServer {
             input.limit,
         )
         .await
-        .map_err(Self::map_err)
+        .map_err(|e| tool_shell_error("search_tables", e))
     }
 
     #[tool(
@@ -127,7 +117,7 @@ impl DataZenMcpServer {
             &settings,
         )
         .await
-        .map_err(|e| tool_help::tool_error("query", &e))
+        .map_err(|e| tool_shell_error("query", e))
     }
 
     #[tool(
@@ -146,7 +136,7 @@ impl DataZenMcpServer {
             &input.table,
         )
         .await
-        .map_err(Self::map_err)
+        .map_err(|e| tool_shell_error("get_schema", e))
     }
 
     #[tool(
@@ -163,7 +153,7 @@ impl DataZenMcpServer {
             &input.sql,
         )
         .await
-        .map_err(Self::map_err)
+        .map_err(|e| tool_shell_error("explain_query", e))
     }
 
     #[tool(
@@ -182,22 +172,16 @@ impl DataZenMcpServer {
             &input.table,
         )
         .await
-        .map_err(Self::map_err)
+        .map_err(|e| tool_shell_error("describe_table", e))
     }
 
     #[tool(
         description = "List all available user-defined workflows. Workflows are reusable AI automations combining prompts and database operations."
     )]
     pub(crate) async fn list_workflows(&self) -> Result<String, McpError> {
-        // 组织作用域取宿主解析的那一份：MCP 工具没有自己的请求上下文，
-        // 宿主状态（AppState）就是唯一的组织身份来源。
-        let scope = self
-            .app_state
-            .organization_scope()
-            .map_err(|error| McpError::internal_error(error.to_string(), None))?;
-        let workflows = self.app_state.workflow_registry.list(&scope).await;
-        serde_json::to_string_pretty(&workflows)
-            .map_err(|e| McpError::internal_error(e.to_string(), None))
+        datazen::mcp::tools::list_workflows(self.app_state.as_ref())
+            .await
+            .map_err(|e| DataZenMcpServer::map_err(e.into_message()))
     }
 
     #[tool(
@@ -207,36 +191,16 @@ impl DataZenMcpServer {
         &self,
         Parameters(input): Parameters<RunWorkflowInput>,
     ) -> Result<String, McpError> {
-        let scope = self
-            .app_state
-            .organization_scope()
-            .map_err(|error| McpError::internal_error(error.to_string(), None))?;
-        let workflow = self
-            .app_state
-            .workflow_registry
-            .get(&scope, &input.workflow_id)
-            .await
-            .ok_or_else(|| {
-                tool_help::tool_error(
-                    "run_workflow",
-                    &format!("Workflow '{}' not found", input.workflow_id),
-                )
-            })?;
-
-        let result = WorkflowExecutor::execute_with_options(
-            &workflow,
+        datazen::mcp::tools::run_workflow(
             self.app_state.as_ref(),
+            self.app_state.as_ref(),
+            &input.workflow_id,
             input.connection_id.as_deref(),
             &input.variables,
-            WorkflowExecuteOptions {
-                permission_mode: Some(self.permission_mode),
-                query_row_limit: Some(WORKFLOW_QUERY_ROW_LIMIT),
-            },
+            self.permission_mode,
         )
         .await
-        .map_err(|e| McpError::internal_error(e, None))?;
-
-        Ok(result.final_output)
+        .map_err(|e| tool_shell_error("run_workflow", e))
     }
 
     /// Stateful protocol step 1 (summary §4.2): open a session on an **explicit**

@@ -99,3 +99,48 @@ impl McpToolBroker for crate::commands::AppState {
             .map(|result| crate::mcp::format_call_tool_result(&result, &qualified))
     }
 }
+
+/// M1: the desktop `RedactedConnectionSource` — the local connection catalog
+/// behind the shared `list_connections` use case.
+#[async_trait::async_trait]
+impl datazen::mcp::tools::RedactedConnectionSource for crate::commands::AppState {
+    async fn list_redacted(&self) -> Result<Vec<datazen::mcp::tools::RedactedConnection>, String> {
+        let service = crate::platform::ipc::require_connection_service(self)
+            .map_err(|error| error.to_string())?;
+        let scope = crate::platform::connections::local_connection_scope();
+        let connections = service.list_redacted(&scope).await.map_err(|e| e.to_string())?;
+        Ok(connections
+            .into_iter()
+            .map(|c| datazen::mcp::tools::RedactedConnection {
+                id: c.id,
+                name: c.name,
+                database_type: c.database_type,
+                host: c.host,
+                database: c.database,
+            })
+            .collect())
+    }
+}
+
+/// M1: the desktop `WorkflowCatalog` — the seeded workflow registry under the
+/// host's organization scope (an MCP tool has no request context of its own;
+/// the host state is the only organization identity source).
+#[async_trait::async_trait]
+impl datazen::mcp::tools::WorkflowCatalog for crate::commands::AppState {
+    async fn list(&self) -> Result<Vec<datazen::workflow::registry::WorkflowListItem>, String> {
+        let scope = self
+            .organization_scope()
+            .map_err(|error| error.to_string())?;
+        Ok(self.workflow_registry.list(&scope).await)
+    }
+
+    async fn get(
+        &self,
+        workflow_id: &str,
+    ) -> Result<Option<datazen::workflow::model::WorkflowDefinition>, String> {
+        let scope = self
+            .organization_scope()
+            .map_err(|error| error.to_string())?;
+        Ok(self.workflow_registry.get(&scope, workflow_id).await)
+    }
+}
