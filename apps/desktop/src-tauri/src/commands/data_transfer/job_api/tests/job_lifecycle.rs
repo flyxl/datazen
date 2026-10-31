@@ -1,6 +1,15 @@
 //! The lifecycle of one transfer Job as the client sees it: cancelling a Job
 //! the runtime is driving, and the recovery verdict an apply Job publishes over
 //! its own commit boundaries.
+//!
+//! Layer verdict (B1 triage, 2026-10-31): every case stays at the host. Cancel
+//! routing (`cancel_data_transfer_job` / `cancel_data_transfer_impl`) and the
+//! recovery-verdict publication (`runtime::drive` → `TransferApplyJobView`) are
+//! desktop-crate code over `TestAppState`; the kernel's own cancel watch and
+//! verdict rules are already tested beside that logic in modules
+//! (`migration/data_transfer/job/tests/kernel_cancel.rs`,
+//! `…/cm47_48_recovery.rs`). All three cases follow the future data_transfer
+//! domain knife.
 
 use datazen::execution::EffectOutcome;
 use datazen::jobs::domain::job::{JobDefinition, JobProgress, JobState};

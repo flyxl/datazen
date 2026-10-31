@@ -24,6 +24,13 @@
 //! asserts on the returned state, or that polls with nothing but an upper bound,
 //! therefore still passes against an apply that blocks its caller on the whole
 //! migration.
+//!
+//! Layer verdict (B1 triage, 2026-10-31): every case stays at the host. Each
+//! drives desktop-crate orchestration (`admit_apply` / `apply_detached` /
+//! `cancel_data_transfer_job` over `TestAppState`), so each follows the future
+//! data_transfer domain knife — except the argument-bag deserialization and the
+//! not-found envelope mapping at the bottom, which are C1 wire nails and stay
+//! here permanently.
 
 use std::time::Duration;
 

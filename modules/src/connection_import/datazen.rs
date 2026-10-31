@@ -178,6 +178,7 @@ mod tests {
     //! 密钥派生/字段加密/批量解密的往返语义是本模块的行为，不是宿主绑定。
 
     use super::{decrypt_datazen_fields, derive_argon2_key, encrypt_field};
+    use base64::Engine as _;
 
     #[test]
     fn encrypt_decrypt_roundtrip() {

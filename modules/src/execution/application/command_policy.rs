@@ -149,3 +149,51 @@ pub fn query_rows_affected(data: &serde_json::Value) -> Option<u64> {
             .sum(),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    //! 2026-10-31 自桌面 `commands/driver_command/tests.rs` 归位（B1 批次，
+    //! commands-layer-review §3.3/§4）：信封目标字段注入与权限档位映射是
+    //! 本模块的形态中立规则，不是宿主绑定（judgment rule：换 axum 宿主
+    //! 原样通过）。宿主侧经 `mcp::application::command_policy` 旧路径再
+    //! 导出消费（M1 前置刀归位 execution），测试跟逻辑走。
+
+    use super::*;
+
+    #[test]
+    fn inject_sql_target_fields_skips_blank_values_and_non_objects() {
+        let mut input = serde_json::json!({ "sql": "SELECT 1" });
+        inject_sql_target_fields(&mut input, Some("  "), Some(""));
+        assert_eq!(
+            input,
+            serde_json::json!({ "sql": "SELECT 1" }),
+            "blank envelope targeting must not be injected"
+        );
+
+        let mut input = serde_json::json!({ "sql": "SELECT 1" });
+        inject_sql_target_fields(&mut input, Some("db"), Some("schema_x"));
+        assert_eq!(input["database"], "db");
+        assert_eq!(input["schema"], "schema_x");
+
+        let mut scalar = serde_json::Value::Null;
+        inject_sql_target_fields(&mut scalar, Some("db"), None);
+        assert_eq!(scalar, serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_tester_access_level_for_mode_maps_mcp_permission_modes() {
+        assert_eq!(access_level_for_mode(None), CommandAccessLevel::HighRisk);
+        assert_eq!(
+            access_level_for_mode(Some(McpPermissionMode::ReadOnly)),
+            CommandAccessLevel::Read
+        );
+        assert_eq!(
+            access_level_for_mode(Some(McpPermissionMode::SafeWrite)),
+            CommandAccessLevel::Write
+        );
+        assert_eq!(
+            access_level_for_mode(Some(McpPermissionMode::HighRiskWrite)),
+            CommandAccessLevel::HighRisk
+        );
+    }
+}
