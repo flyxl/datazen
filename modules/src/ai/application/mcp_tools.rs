@@ -11,7 +11,7 @@
 //! （`"MCP tool error ({qualified}): …"`），工具循环测试与桌面
 //! MCP client 测试都不感知本迁移。
 
-use super::ports::{McpBrokeredTool, McpToolBroker};
+use super::ports::McpToolBroker;
 use crate::ai::domain::types::ToolDefinition;
 
 /// Qualified tool name for AI routing: `mcp/{serverId}/{toolName}`.
@@ -66,6 +66,7 @@ pub async fn execute_mcp_tool(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ai::application::ports::McpBrokeredTool;
 
     struct FakeBroker {
         tools: Vec<McpBrokeredTool>,

@@ -29,7 +29,7 @@ use crate::schema::application::metadata;
 use crate::workflow::domain::command::WorkflowCommandStep;
 use crate::workflow::domain::error::WorkflowError;
 use datazen_driver_api::{
-    check_command_access, CommandAccessLevel, ConnectionConfig, DatabaseDriver,
+    check_command_access, CommandAccessLevel, CommandCatalog, ConnectionConfig, DatabaseDriver,
     LegacyCommandCatalog,
 };
 use std::sync::Arc;
