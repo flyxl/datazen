@@ -843,6 +843,84 @@ mod tests {
         jump_bastion.shutdown();
         target_bastion.shutdown();
     }
+
+    /// The bastion fixture (and the throwaway private key it carries) must
+    /// never reach a production artifact.
+    ///
+    /// The fixture is `#[cfg(test)]`-gated, so it only exists in test builds —
+    /// but that guarantee holds only as long as the gate really says
+    /// `#[cfg(test)]` (a feature gate the host turns on would smuggle the key
+    /// into the shipped binary). Pinned here instead of left to convention;
+    /// migrated from the desktop host's copy of the fixture when that copy
+    /// was deleted (B2 tunnel knife: the last host-side bastion test moved
+    /// to `probe_tests.rs`, which uses this crate's own fixture).
+    #[test]
+    fn ssh_bastion_fixture_never_reaches_a_production_build() {
+        let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let src_root = manifest_dir.join("src");
+
+        // Exactly one holder of the key in this crate's source tree: the
+        // test-only fixture module in this file.
+        let mut holders = Vec::new();
+        collect_rust_files(&src_root, &mut holders);
+        let mut holders: Vec<String> = holders
+            .iter()
+            .filter(|file| {
+                std::fs::read_to_string(file)
+                    .map(|text| text.contains("FIXTURE_SSH_PRIVATE_KEY"))
+                    .unwrap_or(false)
+            })
+            .map(|file| {
+                file.strip_prefix(&src_root)
+                    .expect("every file is under src")
+                    .to_string_lossy()
+                    .replace('\\', "/")
+            })
+            .collect();
+        holders.sort();
+        assert_eq!(
+            holders,
+            vec!["tunnel/ssh.rs".to_string()],
+            "the SSH bastion fixture (and the throwaway private key it carries) must live in \
+             exactly one file of this crate's source tree"
+        );
+
+        // …and that fixture module must be gated on `#[cfg(test)]`, not on a
+        // feature a host might turn on in a production build. The declaration
+        // needle is assembled at runtime so this test's own source never
+        // matches itself (the same discipline the IPC surface guards use).
+        let own_source =
+            std::fs::read_to_string(manifest_dir.join("src/tunnel/ssh.rs")).expect("read self");
+        let visibility = "pub(crate) ";
+        let mod_decl = format!("{visibility}mod test_fixture {{");
+        let gate = own_source
+            .rfind(&mod_decl)
+            .expect("the fixture module must stay in ssh.rs");
+        let window = &own_source[gate.saturating_sub(200)..gate];
+        assert!(
+            window.contains("#[cfg(test)]"),
+            "the fixture module must be gated on #[cfg(test)]"
+        );
+        assert!(
+            !window.contains("feature = "),
+            "the fixture module must not be gated on a feature a host turns on, or the \
+             throwaway key would be compiled into a shipped binary"
+        );
+    }
+
+    fn collect_rust_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_rust_files(&path, out);
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                out.push(path);
+            }
+        }
+    }
 }
 
 /// [tester round 2] In-process SSH bastion fixture.

@@ -18,6 +18,7 @@
 use async_trait::async_trait;
 use datazen::shared::error::PortError;
 use datazen::shared::scope::OrganizationScope;
+use datazen::tunnel::domain::{usage_from_connections, summarize};
 use datazen::tunnel::TunnelRepository;
 use datazen_driver_api::{SavedTunnel, SavedTunnelSummary, TunnelUsage};
 
@@ -239,6 +240,9 @@ fn store_error(error: DesktopRepositoryError) -> PortError {
 #[async_trait]
 impl TunnelRepository for DesktopRepository {
     /// 名单：**只带摘要**，不含任何口令 / 密钥 / token。
+    ///
+    /// 映射本体是共享层的那一份（`datazen::tunnel::domain::summarize`）——
+    /// 未来 web 服务端仓储的 `list` 调同一个函数，两份实现不会漂移。
     async fn list(&self, scope: &OrganizationScope) -> Result<Vec<SavedTunnelSummary>, PortError> {
         if !crate::platform::is_local_scope(scope) {
             return Ok(Vec::new());
@@ -247,11 +251,7 @@ impl TunnelRepository for DesktopRepository {
             .get_tunnels()
             .await
             .into_iter()
-            .map(|tunnel| SavedTunnelSummary {
-                id: tunnel.id,
-                name: tunnel.name,
-                kind: tunnel.kind,
-            })
+            .map(|tunnel| summarize(&tunnel))
             .collect())
     }
 
@@ -285,34 +285,21 @@ impl TunnelRepository for DesktopRepository {
 
     /// 反向投影：哪些连接引用了这条隧道。
     ///
-    /// `connection_ids` 与 `connection_names` 位置对齐。空 id 不做扫面：
-    /// `materialize_tunnel_refs` 把 `""` 当「无隧道引用」。
+    /// `connection_ids` 与 `connection_names` 位置对齐。映射本体是共享层的
+    /// 那一份（`datazen::tunnel::domain::usage_from_connections`）：空 id
+    /// 不扫面、`None` 不匹配这些语义在那里唯一持有。越组织按「不存在」
+    /// 处理（空投影，CM-05）。
     async fn usage(
         &self,
         scope: &OrganizationScope,
         tunnel_id: &str,
     ) -> Result<TunnelUsage, PortError> {
-        let mut connection_ids = Vec::new();
-        let mut connection_names = Vec::new();
         if !crate::platform::is_local_scope(scope) {
             return Ok(TunnelUsage {
-                connection_ids,
-                connection_names,
+                connection_ids: Vec::new(),
+                connection_names: Vec::new(),
             });
         }
-        // An empty query must not sweep in connections whose reference is itself
-        // empty: `materialize_tunnel_refs` treats "" as "no tunnel reference".
-        if !tunnel_id.is_empty() {
-            for conn in self.get_connections().await {
-                if conn.tunnel_id.as_deref() == Some(tunnel_id) {
-                    connection_ids.push(conn.id);
-                    connection_names.push(conn.name);
-                }
-            }
-        }
-        Ok(TunnelUsage {
-            connection_ids,
-            connection_names,
-        })
+        Ok(usage_from_connections(self.get_connections().await.iter(), tunnel_id))
     }
 }

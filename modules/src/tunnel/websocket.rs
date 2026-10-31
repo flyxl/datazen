@@ -579,3 +579,9 @@ mod tests {
         );
     }
 }
+
+// 上游探针与数据路径的逐字节测试（B2 隧道域刀自桌面 commands/tunnel_probe_tests.rs
+// 归位）：机制在本文件，测试住在旁边。
+#[cfg(test)]
+#[path = "websocket_probe_tests.rs"]
+mod probe_tests;

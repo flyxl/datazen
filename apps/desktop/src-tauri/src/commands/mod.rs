@@ -415,18 +415,6 @@ pub mod test_harness {
 mod ipc_surface_tests;
 
 #[cfg(test)]
-#[path = "tunnel_probe_fixture.rs"]
-mod tunnel_probe_fixture;
-
-#[cfg(test)]
-#[path = "tunnel_probe_tests.rs"]
-mod tunnel_probe_tests;
-
-#[cfg(test)]
-#[path = "tunnel_summary_tests.rs"]
-mod tunnel_summary_tests;
-
-#[cfg(test)]
 #[path = "org_scope_surface_tests.rs"]
 mod org_scope_surface_tests;
 
