@@ -11,8 +11,8 @@
 //! 中间件链的装配顺序见 [`middleware`]；请求体上限取 team-server §9.1
 //! 的首版权威值 8 MiB（L1 物理闸）。
 
-use axum::extract::{Request, Uri};
-use axum::http::StatusCode;
+use axum::extract::Request;
+use axum::http::{StatusCode, Uri};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
