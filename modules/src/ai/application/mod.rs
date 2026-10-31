@@ -4,7 +4,8 @@
 //! - 提示词解析与响应文本处理（prompt_resolver / response）；
 //! - 会话编排（chat_request / sql_generation / single_turn / filter /
 //!   schema_doc / schema_pipeline / context——schema 上下文管道）；
-//! - 工具循环（tools / tool_loop / db_tools + DatabaseToolHost 端口）；
+//! - 工具循环（tools / tool_loop / db_tools + DatabaseToolHost 端口，
+//!   MCP 工具面 mcp_tools + McpToolBroker 端口，M3）；
 //! - 取消注册表（cancel）与会话所有权（ownership，P6 §14.4 授权）；
 //! - schema 上下文实现（schema_context + SessionConnectionLookup 端口，
 //!   经 workflow 的 ResourceExecutionHost 走共享执行网关）。
@@ -17,6 +18,7 @@ pub mod context;
 pub mod db_tools;
 pub mod error;
 pub mod filter;
+pub mod mcp_tools;
 pub mod ownership;
 pub mod ports;
 pub mod prompt_resolver;

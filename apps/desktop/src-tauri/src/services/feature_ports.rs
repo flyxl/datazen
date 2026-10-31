@@ -1,3 +1,4 @@
+use datazen::ai::application::ports::McpToolBroker;
 use datazen::services::ports::DatabaseToolHost;
 use datazen_driver_api::{ConnectionConfig, DatabaseDriver};
 use std::sync::Arc;
@@ -51,5 +52,50 @@ impl DatabaseToolHost for crate::commands::AppState {
         datazen::workflow::resource_execution::execute(self, &step, id, None, None, false)
             .await
             .map_err(|error| error.to_string())
+    }
+}
+
+/// M3: the desktop `McpToolBroker` — the stdio subprocess manager behind the
+/// shared AI tool-loop port. Transport, spawn whitelist and token checks stay
+/// here; a web form implements the same port over HTTP/SSE.
+#[async_trait::async_trait]
+impl McpToolBroker for crate::commands::AppState {
+    async fn tools_for_ai(&self) -> Vec<datazen::ai::application::ports::McpBrokeredTool> {
+        let settings = self.store.get_settings().await;
+        self.mcp_client_manager
+            .all_tools()
+            .await
+            .into_iter()
+            .filter(|tool| {
+                settings
+                    .mcp_client_servers
+                    .iter()
+                    .find(|c| c.id == tool.server_id)
+                    .map(|c| c.enabled_for_ai)
+                    .unwrap_or(true)
+            })
+            .map(|tool| {
+                datazen::ai::application::ports::McpBrokeredTool {
+                    server_id: tool.server_id,
+                    tool_name: tool.tool_name,
+                    qualified_name: tool.qualified_name,
+                    description: tool.description,
+                    input_schema: tool.input_schema,
+                }
+            })
+            .collect()
+    }
+
+    async fn call_tool(
+        &self,
+        server_id: &str,
+        tool_name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<String, String> {
+        let qualified = datazen::ai::mcp_tools::qualified_tool_name(server_id, tool_name);
+        self.mcp_client_manager
+            .call_tool(server_id, tool_name, arguments)
+            .await
+            .map(|result| crate::mcp::format_call_tool_result(&result, &qualified))
     }
 }

@@ -31,8 +31,8 @@ pub mod providers;
 // Compatibility-shaped flat exports for hosts that previously consumed the
 // modules facade. The definitions remain owned by their DDD layer above.
 pub use application::{
-    cancel, chat_request, context, db_tools, filter, ownership, schema_context, schema_doc,
-    schema_pipeline, single_turn, sql_generation, tool_loop, tools,
+    cancel, chat_request, context, db_tools, filter, mcp_tools, ownership, schema_context,
+    schema_doc, schema_pipeline, single_turn, sql_generation, tool_loop, tools,
 };
 pub use domain::{budget, ctx_yaml, safety};
 

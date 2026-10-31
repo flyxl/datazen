@@ -75,3 +75,56 @@ pub trait SessionConnectionLookup: Send + Sync {
     /// unknown, closed, or no longer attached to its directory entry.
     fn connection_id_for_session(&self, session_id: &str) -> Option<String>;
 }
+
+/// A tool surfaced by a connected MCP server, in the neutral shape the AI
+/// tool loop consumes (M3).
+pub struct McpBrokeredTool {
+    pub server_id: String,
+    pub tool_name: String,
+    /// Routing name the model sees: `mcp/{serverId}/{toolName}`.
+    pub qualified_name: String,
+    pub description: Option<String>,
+    pub input_schema: serde_json::Value,
+}
+
+/// The AI tool loop's view of connected MCP servers (M3, cross-form
+/// convergence).
+///
+/// Consumer-defined port: the shared layer needs exactly two capabilities —
+/// "list the tools AI may use" and "call one tool". The only form difference
+/// allowed is the implementation: the desktop wires its stdio subprocess
+/// manager (host `McpClientManager`), a web form wires an HTTP/SSE client.
+/// The `enabled_for_ai` filter runs on the implementing side, because it
+/// reads that form's configuration storage.
+///
+/// `call_tool` returns pre-formatted text on success: result formatting is
+/// transport-shaped (rmcp `CallToolResult` on the desktop) and therefore
+/// stays with the implementation, while the tool loop's `String` contract
+/// stays shared.
+#[async_trait::async_trait]
+pub trait McpToolBroker: Send + Sync {
+    /// Tools of every connected server that is available to AI.
+    async fn tools_for_ai(&self) -> Vec<McpBrokeredTool>;
+    /// Call one tool; the success value is the formatted result text.
+    async fn call_tool(
+        &self,
+        server_id: &str,
+        tool_name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<String, String>;
+}
+
+#[async_trait::async_trait]
+impl<T: McpToolBroker + ?Sized> McpToolBroker for Arc<T> {
+    async fn tools_for_ai(&self) -> Vec<McpBrokeredTool> {
+        (**self).tools_for_ai().await
+    }
+    async fn call_tool(
+        &self,
+        server_id: &str,
+        tool_name: &str,
+        arguments: serde_json::Value,
+    ) -> Result<String, String> {
+        (**self).call_tool(server_id, tool_name, arguments).await
+    }
+}
