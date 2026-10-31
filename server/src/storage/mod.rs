@@ -20,11 +20,15 @@
 //! 用 `spawn_blocking` 包住（内核 trait 是 async，SQLite 是同步——差异
 //! 只允许出现在这一层）。
 
+pub mod known_hosts;
 pub mod migrations;
 pub mod profiles;
 
+pub use known_hosts::ServerKnownHosts;
 pub use profiles::ServerProfiles;
 
+#[cfg(test)]
+mod known_hosts_tests;
 #[cfg(test)]
 mod profiles_tests;
 

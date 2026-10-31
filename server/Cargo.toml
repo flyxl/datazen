@@ -21,12 +21,12 @@ description = "DataZen team web server host (P7 / web-ready WR-D): the HTTP form
 # 它随 WR-D2 的真实 handler 一起进来，届时 logging.rs 的脱敏契约开始有消费者。
 
 [dependencies]
-# 只开 connection 域：WR-D2 第一切片只消费 ProfileRepository/ProfileReader/
-# DTO + shared。connection 的 DTO 引用 execution 回执，CI 的最小有效组合是
-# `connection,execution`（见 scripts/run-platform-crate-tests.mjs 的
-# FEATURE_TESTS 注释）——照此声明，不整包开启（与桌面的全 feature 列表
-# 形成对照：宿主按需消费内核）。后续切片按域点亮。
-datazen = { workspace = true, features = ["connection", "execution"] }
+# 按域点亮：WR-D2 只消费 connection（ProfileRepository/DTO + shared）、
+# execution（connection DTO 引用其回执，CI FEATURE_TESTS 钉的最小有效组合）
+# 与 tunnel（KnownHostsRepository 端口在 tunnel::domain；WR-F5 的服务端隧道
+# 本就要求共用该机制 feature）。不整包开启——与桌面的全 feature 列表形成
+# 对照：宿主按需消费内核。后续切片按域点亮。
+datazen = { workspace = true, features = ["connection", "execution", "tunnel"] }
 
 # 适配器的 `#[async_trait]`（trait 实现处直接使用，需是本 crate 的直接依赖；
 # datazen 侧的同名依赖不传递可见性）。

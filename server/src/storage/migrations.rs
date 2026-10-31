@@ -55,7 +55,27 @@ CREATE INDEX idx_connection_profile_list
 };
 
 /// 全部迁移，按版本升序。执行器假定有序且无空洞。
-pub const MIGRATIONS: &[Migration] = &[V1_CONNECTION_PROFILE];
+pub const MIGRATIONS: &[Migration] = &[V1_CONNECTION_PROFILE, V2_KNOWN_HOSTS];
+
+/// v2：SSH known-hosts 表（`KnownHostsRepository` 的服务端落地）。
+///
+/// 端口是**同步**且**无鉴权维度**的（条目按 `host:port` 键，TOFU 语义）；
+/// 组织隔离由宿主按「每组织一个仓储实例」实现——`organization_id` 列是
+/// 实例的隔离边界，不是端口参数（形状差异见端口模块头）。
+const V2_KNOWN_HOSTS: Migration = Migration {
+    version: 2,
+    name: "known_hosts baseline",
+    expand: r#"
+CREATE TABLE known_hosts (
+  organization_id TEXT NOT NULL,
+  host_key TEXT NOT NULL,
+  fingerprint TEXT NOT NULL,
+  algorithm TEXT NOT NULL,
+  public_key TEXT NOT NULL,
+  PRIMARY KEY (organization_id, host_key)
+);
+"#,
+};
 
 #[cfg(test)]
 mod tests {
