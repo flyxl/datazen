@@ -171,6 +171,8 @@ pub async fn get_connections(state: State<'_, AppState>) -> Result<Vec<Connectio
 
 **command 层余留清单（AI 刀之后的盘点）**：已达标族——connection（F4a）、table_browsing（F4b）、sync / data_transfer / schema_diff（F4c + 残余收口）、dashboard（P3，形状测试钉死 8 聚合 / 6 宿主残留）、config / settings（D1 服务化）、export / backup（D6 item 5）、named_views / history（形状测试）、workflow（薄委托）、mcp（宿主自有服务面）。AI 族余留两刀：① chat / generate 的请求装配下沉（`ai_chat_impl_with_claim` 约 160 行编排：schema 管道、context 文件、MCP 工具装配、取消注册、工具环调用）——需要 `AiChatHost` 级端口（runtime 会话借用、context 目录读取、MCP 工具枚举 / 执行；现有 `AiToolLoopHost` 已覆盖工具环执行，缺的是请求装配侧）；② `mcp_tool_definitions` 的 `settings.mcp_client_servers` 过滤（`chat.rs`）——MCP 域设置读取，随 MCP 刀处理。
 
+host 层全部目录的职责全景（254 条 IPC 的族级达标表、platform/store 等非 command 目录的逐目录职责、P2/P3/P5 交叉点）另见 [`host-layer-inventory.md`](host-layer-inventory.md)（2026-10-31 快照，基线 `22113a321`）。
+
 ---
 
 ## 4. 桌面 feature 显式全集
