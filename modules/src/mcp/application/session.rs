@@ -13,8 +13,8 @@
 //! 归属校验、TTL 归一化与过期/清理登记（`resourceRelease=Confirmed` 才删
 //! 记录）是共享语义；定时 worker 与传输生命周期驱动留宿主。
 
-use datazen::execution::SessionHandle;
-use datazen::shared::id::Counter;
+use crate::execution::SessionHandle;
+use crate::shared::id::Counter;
 use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
@@ -248,7 +248,7 @@ impl McpSessionRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use datazen::shared::id::{DbSessionId, RuntimeEpoch};
+    use crate::shared::id::{DbSessionId, RuntimeEpoch};
 
     fn handle(id: &str) -> SessionHandle {
         SessionHandle::new(DbSessionId::new(id), RuntimeEpoch::new("1"))
