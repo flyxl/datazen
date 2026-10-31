@@ -87,7 +87,7 @@ WR-F（能力落地）在 WR-D/WR-E 期间交叉插入，单项依赖见各节�
 
 | 切片 | 内容 | 验收 |
 |---|---|---|
-| **WR-C1** | modules 无宿主独立构建腿进 CI：`cargo check/test -p datazen` 不经 `datazen_desktop` 编译（当前 modules 只随宿主腿编译，F-14 只查边界不查可独立构建）。server crate 落地后此腿扩展为「server 腿」的前半 | CI 新腿绿；宿主腿保持不变；modules 引入任何宿主依赖时独立腿先红 |
+| **WR-C1（核实后收窄，无需新刀）** | ~~modules 无宿主独立构建腿~~ 立项时误判：`pnpm test:platform-crates`（`scripts/run-platform-crate-tests.mjs`，CI rust job 既有步骤）已独立编译并测试 modules——无选择器腿用 27/29 显式 feature 清单（与宿主腿对齐，rust-cache 共享），另有 `FEATURE_TESTS` 分 feature profile 腿（settings/ai/connection+execution/named_views/monitor/dashboard/tunnel）。服务器 crate 落地后由同一腿自动覆盖（`TESTED_LAYERS` 已含 `'server'`，按目录发现，无需改 CI） | 已达成（既有）；本文记录核实修正 |
 | **WR-C2** | HTTP API 契约面定义。**决策建议**：HTTP 面镜像 `packages/backend-client` 的域客户端面（`connectionClient` / `jobClient` / `executionClient` / `sessionClient` / `artifactClient` / `settingsClient`…，F3 已建 12+ 域客户端），**不镜像 IPC 命令面**（215 簇含 dialog/window/clipboard 等平台服务，不属于后端）。桌面专属能力（updater、window、native dialog）不出现在 HTTP 面，由 `capabilities` 表（F5）声明差异 | 每域 HTTP 端点与域客户端方法一一对应；多余端点为零；`WEB_CAPABILITIES` 不含桌面专属项 |
 | **WR-C3** | 同用例双传输测试基础设施：同一用例（组装 request → 调 application → 断言）在 IPC 与 HTTP 两绑定下跑（P7 交付项「桌面 IPC 与 HTTP 同用例测试」的前置抽离） | 新用例测试两腿同绿；形态差异只允许出现在装配层断言 |
 | **WR-C4** | `apps/web` 建立后 web 构建腿进 CI（typecheck + vite build + 域契约测试） | CI 腿绿；web stub 的全 throw 语义不被绕过（能力未实现时显式 `CapabilityUnsupported`） |

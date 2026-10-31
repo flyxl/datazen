@@ -5,7 +5,7 @@
 //! SQL 参数绑定与信封目标字段注入。
 
 //! Shape-independent command preparation shared by host command adapters.
-use crate::mcp::domain::permission::McpPermissionMode;
+use crate::execution::domain::permission::McpPermissionMode;
 use datazen_driver_api::{CommandAccessLevel, DatabaseDriver, DriverCommandDefinition};
 
 pub fn access_level_for_mode(mode: Option<McpPermissionMode>) -> CommandAccessLevel {

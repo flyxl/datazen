@@ -1,14 +1,15 @@
 //! Shared database tool helpers used by both ai_chat tool execution and MCP Server tools.
 //!
 //! D6 item 4 收尾自 modules `services::db_tools` 归位（唯一定义在此，
-//! 旧路径改再导出垫片）。SQL 分级沿用 `mcp::domain::permission` 的判据，
-//! 只读/Safe Mode 校验沿用 `execution::domain::sql_guard`，不另立第二套。
+//! 旧路径改再导出垫片）。SQL 分级沿用 `execution::domain::permission` 的
+//! 判据（M1 前置刀自 mcp 归位——它是执行分级词汇），只读/Safe Mode 校验
+//! 沿用 `execution::domain::sql_guard`，不另立第二套。
 
 pub const MCP_QUERY_DEFAULT_LIMIT: u32 = 100;
 pub const MCP_QUERY_MAX_LIMIT: u32 = 50_000;
 
 use super::ports::DatabaseToolHost;
-use crate::mcp::domain::permission::{self, McpPermissionMode};
+use crate::execution::domain::permission::{self, McpPermissionMode};
 use crate::schema::application::scope::metadata_schema;
 /// List all configured connections as a JSON string.
 pub async fn list_connections(

@@ -10,7 +10,7 @@ pub mod referenced_by;
 pub mod value_search;
 
 pub mod command_policy {
-    pub use crate::mcp::application::command_policy::*;
+    pub use crate::execution::application::command_policy::*;
 }
 pub mod db_tools {
     pub use crate::ai::application::db_tools::*;

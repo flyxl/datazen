@@ -24,7 +24,7 @@
 //! 命令），改写不改变任何 MCP 工具的外部文本。
 
 use crate::execution::domain::target::ExecutionTarget;
-use crate::mcp::domain::permission::McpPermissionMode;
+use crate::execution::domain::permission::McpPermissionMode;
 use crate::schema::application::metadata;
 use crate::workflow::domain::command::WorkflowCommandStep;
 use crate::workflow::domain::error::WorkflowError;

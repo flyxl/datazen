@@ -106,8 +106,9 @@ export = [
 # + tracing（降级告警）。
 history = ["dep:async-trait", "dep:tracing"]
 # D6 item 3：workflow 全家族（切片 a 词汇 + 切片 b 引擎）。依赖 execution
-# （目标/会话/SQL 分级词汇与请求 DTO）、schema（元数据命令合成）、
-# table_editing（ArtifactChunkReader 端口）与 mcp（权限模式 + 命令准备策略）；
+# （目标/会话/SQL 分级词汇与请求 DTO，含权限模式 vocabulary——M1 前置刀
+# 自 mcp 归位，不再拉 mcp feature）、schema（元数据命令合成）、
+# table_editing（ArtifactChunkReader 端口）；
 # serde_yaml 承载定义 YAML 编解码，tokio/tokio-util/futures-util 撑调度与
 # 取消，tracing 记登记/调度告警，chrono 已常驻。
 workflow = [
@@ -123,7 +124,6 @@ workflow = [
     "execution",
     "schema",
     "table-editing",
-    "mcp",
 ]
 # D6 item 2：Dashboard 家族。依赖 workflow（组件绑定/归档引用 WorkflowDefinition）
 # 与 execution（schedule_grant 的 ExecutionTarget）；tokio/tokio-util 撑刷新
@@ -180,6 +180,9 @@ execution = [
     "dep:sha2",
     "dep:hmac",
     "dep:libc",
+    # command_policy（M1 前置刀自 mcp 归位）消费命令目录词汇；sql_guard
+    # 的方言 SQL 装配也在本 feature。
+    "dep:datazen-driver-api",
     "connection",
     "settings",
 ]
@@ -187,7 +190,8 @@ execution = [
 schema = ["dep:tokio", "dep:datazen-infra", "execution"]
 # D4-c：表浏览读链路（依赖 schema 的 SchemaCache）。
 # F4b api 用例层（读/预览）：请求 DTO 复用 grid 的表上下文词汇
-# （RowChangeTableContext 在 table-editing），目标注入策略在 mcp，
+# （RowChangeTableContext 在 table-editing），目标注入策略在 execution
+# （command_policy，M1 前置刀自 mcp 归位），
 # 目标/会话句柄词汇在 execution；async-trait 承载 TargetCommandRunner
 # 端口，tracing 记估计回退告警，driver-api 提供驱动与方言契约。
 "table-browsing" = [
@@ -197,7 +201,6 @@ schema = ["dep:tokio", "dep:datazen-infra", "execution"]
     "dep:datazen-driver-api",
     "schema",
     "execution",
-    "mcp",
     "table-editing",
 ]
 # D4-d：表编辑写链路（依赖 schema 缓存 + execution 产物读取词汇）。
@@ -307,12 +310,12 @@ ai = [
     "dep:uuid",
     "settings",
     "connection",
-    "mcp",
     "workflow",
 ]
 
-# D6 item 4 切片一：MCP 业务规则（权限模式/连接白名单/表描述格式化）。
-# permission 的 SQL 分级依赖 execution::domain::sql_guard（不另立判据）；
+# D6 item 4 切片一：MCP 业务规则（连接白名单/表描述格式化，权限词汇已归位
+# execution::domain::permission——M1 前置刀，mcp 保持旧路径再导出垫片；
+# sql 分级判据仍在 execution::domain::sql_guard，不另立一份；
 # check_tool_call 的参数面需要 serde_json，describe 消费 driver-api 的
 # TableSchema。
 mcp = [

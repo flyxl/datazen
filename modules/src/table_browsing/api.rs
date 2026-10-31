@@ -34,7 +34,7 @@ use serde_json::{json, Value as Json};
 
 use crate::execution::target::{ExecutionTarget, NamespaceTarget, ObjectTarget};
 use crate::execution::SessionHandle;
-use crate::mcp::application::command_policy::inject_sql_target_fields;
+use crate::execution::application::command_policy::inject_sql_target_fields;
 use crate::shared::context::RequestContext;
 use crate::shared::error::ApiError;
 use crate::shared::id::{ConnectionId, Counter};
