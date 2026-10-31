@@ -4,8 +4,6 @@ mod apply;
 mod artifact_view;
 pub(crate) mod compare;
 mod exec;
-#[cfg(test)]
-mod filter_validation_tests;
 mod host;
 mod inspect;
 mod job_api;
@@ -24,9 +22,6 @@ use super::error::CommandError;
 use super::AppState;
 use crate::data_sync::api::SyncComparisonRequest;
 use crate::data_sync::api::{resolve_options, SyncOptionsInput};
-pub(crate) use crate::data_sync::filter_validation::{
-    resolve_key_contracts, validate_filter_endpoints, validate_filter_schemas,
-};
 use crate::data_sync::plan_store as plans;
 use crate::data_sync::plan_store::{SyncRunRequest, SyncRunSelection};
 use crate::data_sync::{
