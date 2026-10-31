@@ -349,3 +349,64 @@ F4a 第一刀已落地：
 | F4c… | sync / data_transfer / schema_diff，按第 3 节顺序逐个用例下沉（**sync 刀已落地**：`host/statements.rs`、`host/select.rs` 下沉 `data_sync::api`，`apply.rs` 循环体委托同一装配去重，`BatchSqlHost` 端口单方法落宿主；**data_transfer 预览刀已落地**：源范围闭包四宿主拷贝 + 两 modules 拷贝收进 `recordset::build_source_scope_for_driver/_for_family`（Job handler 的 family 来源=端点配置类型，保住分叉），COUNT 装配/解析下沉 `count_scoped_rows_sql`/`parse_scoped_row_count`，执行留宿主租约侧，宿主 `preview.rs` 858→775 只剩传输编排；**schema_diff 复核刀已落地**：目录/快照/计划展开/复核消费/部署验证/单表对比六文件下沉 `schema_diff::api`，`SchemaDiffAdapterHost`/`ComparisonPreviewHost` 端口落宿主，sync 域 IR 对比算法顺带归位 modules，宿主 schema_diff 域 6,108→3,612 行；**残余收口已落地**：sync COUNT 装配下沉 `count_table_rows`、result_write 确认读下沉 `confirm_unchanged_read_sql`，`commands/` 生产代码零 SQL 拼装；modules 侧 `migration::{data_sync,data_transfer,schema_diff}` 已有 4 万行对应域，下沉是接合不是新建） | 每刀删除宿主中的对应实现（sync 刀已达成：宿主不再含写路径 SQL 拼装与键读 SELECT；data_transfer 预览刀已达成：宿主 `preview.rs` 不再含源范围 SQL 装配与 COUNT 装配/解析；schema_diff 复核刀已达成：宿主生产代码不再含目录读取、计划展开、快照复核与 IR 对比算法；残余收口已达成：`commands/` 生产代码零 SQL 拼装，全树口径验收达成） |
 
 Web 宿主仍然不在这组 PR 里创建。`api` 模块不引用 Axum。隧道实现不迁出 `modules`。
+
+---
+
+## 8. 跨形态一致性收敛（M 系列）
+
+> 立项依据（用户指令，2026-10-31）：**AI 的 DB 工具是 web 与 desktop 共同需要的能力——实现方式可以不同，基础能力必须一致；MCP 同理，差异只允许是 Server 形态（stdio 子进程 / 内嵌 duplex / streamable HTTP + 服务端身份），其余完全一致；runtime 读取路径不允许「同一能力、两条适配」。**
+> 基线核对：`528f10e`（2026-10-31）。本节回答「runtime 适配层为什么存在 web/desktop 不一致」，并给出收敛切片。
+
+### 8.1 现状核对（已核实事实）
+
+**AI 侧——已符合原则，一处缺口。**
+
+| 层 | 位置 | 形态中立性 |
+|---|---|---|
+| 工具定义（5 个只读工具） | `modules/src/ai/application/tools.rs::db_tool_definitions()` | ✅ 共享 |
+| 工具执行 | `modules/src/ai/application/db_tools.rs`，经 `DatabaseToolHost` 端口（`ai/application/ports.rs`） | ✅ 端口化 |
+| 工具循环 + 守卫 | `modules/src/ai/application/tool_loop.rs` + `AiToolLoopHost` 端口 | ✅ 共享 |
+| schema 上下文 | `modules/src/ai/application/schema_context.rs::RuntimeSchemaContextSource`，只吃 `SessionConnectionLookup` + `ResourceExecutionHost` 两个端口 | ✅ 端口化 |
+| 桌面装配 | `AppState` 实现 `DatabaseToolHost`（`services/feature_ports.rs`）、`AiRequestHost` 按 claim 分流（`commands/ai/grant.rs`）、`services/schema_context_source.rs` 注入两端口 | ✅ 属于「形态实现」 |
+| **缺口：MCP 工具面** | `commands/ai/chat.rs` 的 `mcp_tool_definitions` / `execute_mcp_tool` 直接绑桌面 `state.mcp_client_manager`（stdio 子进程管理器） | ❌ 无端口，web 落地时不可实现 → M3 |
+
+**MCP 侧——不符合原则。** DDD 目标架构（`ddd-refactor/01-target-architecture.md` §3.3）明文「`mcp/` 工具业务分发；传输和登录在宿主」，现状：
+
+| 层 | 位置 | 行数 |
+|---|---|---|
+| 已共享 | `modules/src/mcp/`：`domain/permission.rs`（三档权限）、`domain/allowlist.rs`、`application/command_policy.rs`（命令准备，主消费者其实是 driver_command 适配器）、`application/describe.rs` | 751 |
+| 宿主私有 | `src-tauri/src/mcp/`：13 个工具实现（`MCP_ALL_TOOLS`：10 无状态 + 3 有状态；tools.rs，直连 AppState / `RuntimeCommandSource` / `WorkflowExecutor`）、有状态会话协议（`session*.rs`：open/use/close、TTL、cleanup worker 与 RollbackAndClose 退避）、`tool_help.rs`、`resources.rs`、`prompts.rs`、rmcp handler/server、`client.rs`（MCP Client）、stdio token 认证与 golden 契约 | ~4,200 |
+
+后果：web 宿主落地时要重写 13 个工具 + 有状态会话语义 + Resources/Prompts——违反「差异应只有 Server 形态不同」。
+
+**runtime 读取路径——不一致的实体。**「在持久化连接 profile 上执行只读元数据命令」这件事存在两条路径：
+
+1. **AI 的路径（共享）**：`RuntimeSchemaContextSource`（modules）→ `ResourceExecutionHost` 端口 → 桌面注入 `RuntimeCommandSource`。
+2. **MCP 的路径（桌面私有）**：`src-tauri/src/mcp/runtime_schema.rs::read_target_command` → 直呼桌面结构体 `RuntimeCommandSource::read_target_command`（构造参数 `DesktopRepository` + `PlatformEntry`，均为桌面类型）。
+
+`RuntimeCommandSource` 起源是 Wapp 只读宿主（错误文案 `"Wapps may invoke read-only driver commands"`、step id `"wapp-command"` 仍是原文），后为 MCP 复用，又被 `schema_context_source.rs` 注入为 AI 源的 `ResourceExecutionHost` 实现——即它在系统里的合法角色是**桌面的端口实现**，但它同时被 MCP 当**直连捷径**使用。
+
+### 8.2 为什么不一致（根因，非设计分歧）
+
+1. **时序**：桌面先行。MCP Server 出生在 Tauri 宿主内（rmcp stdio 传输 + AppState 接线是其出生需求），当时 `modules` crate 尚不存在（D 系列整合前布局为 `src-tauri` + `packages/*`）。
+2. **抽取按消费者逐个推进**：AI 在 D6 item 4（2026-10-26）完成端口化归位；MCP 的抽取停在纯策略层（permission/allowlist/describe/command_policy）——工具本体有状态、碰 Runtime，抽取成本高一档，尚未排到。
+3. **没有测试钉位置**：golden 契约（`contract.rs` / `mcp_external_contract.json`）只钉外部 schema 形状，不钉实现位置；F-14 分层门禁只保证 modules 不反向依赖宿主，检测不到「本该在 modules 的业务留在宿主」。
+
+结论：这是**未完成的迁移**，不是被允许的形态差异。§4.7/§4.8 定义的允许差异是「同一端口、另一适配器」（`ProfileRepository`、`SessionDirectory`、`EventSink`、`Clock` 等）；`RuntimeCommandSource` 对 MCP 而言不是端口实现，是绕开端口的桌面直连。
+
+### 8.3 收敛切片（每刀独立 PR）
+
+| 刀 | 内容 | 验收 |
+|---|---|---|
+| **M4（先行，最小刀）** | 元数据读取统一：MCP 的 `runtime_schema.rs` 改走共享用例（`read_target_command` 用例化进 `modules/src/mcp/application` 或 `schema::application`，吃 `ResourceExecutionHost` 端口）；`RuntimeCommandSource` 保留其合法角色 = 桌面 `ResourceExecutionHost` 实现之一 | 宿主 `mcp/` 不再引用 `RuntimeCommandSource`；MCP 元数据工具错误文本不变 |
+| **M3** | AI 的 MCP 工具面端口化：AI 侧定义消费者端口（`McpToolBroker`：列工具 / 调工具，`enabled_for_ai` 过滤归共享层），`commands/ai/chat.rs` 两函数改走端口；桌面实现 = 现有 `McpClientManager`（stdio 传输、spawn 白名单、token 校验留桌面）；web 未来以 HTTP/SSE 客户端实现同一端口 | AI 工具循环测试不感知形态；桌面 MCP client 既有测试零改动 |
+| **M1（最大刀）** | MCP 工具分发归位：新建 `modules/src/mcp/application/tools/`（工具目录 name/description/input schema + 分发 + 无状态工具用例），实现改吃共享端口（`ConnectionRepository`、`ResourceExecutionHost`、workflow application 契约）；`tool_help.rs` 随迁；宿主 `tools.rs` 变 rmcp 薄绑定——`#[tool]` 签名保留，函数体一行委托 | golden 契约 `mcp_external_contract.json` 逐字节不变；宿主不再含工具业务；`--features mcp` 测试绿 |
+| **M2** | 有状态会话语义归位：TTL、归属校验、cleanup 策略（100ms–30s 退避、`resourceRelease=Confirmed` 才删记录）进 `modules/src/mcp/application/session/`；宿主保留定时 worker 与 rmcp 传输生命周期驱动 | 桌面行为不变（`session_cleanup` 既有测试全绿，语义测试迁 modules） |
+
+顺序理由：M4 消除双路径并给 M1 铺路；M3 独立且小；M1 是主体；M2 独立于 M1 可后置。
+
+### 8.4 文档修正（随本节一并完成）
+
+- `mcp.md` §1.1：删去不成立的「共享的工具/资源/提示词逻辑位于 `modules/src/mcp/`」，改记真实分层并指向本节；`packages/kernel/src/sql_guard/` 路径修正为 `modules/src/execution/domain/sql_guard/`。
+- `ai.md` §1.11：`query_db` 不存在于工具面（实际为 5 个只读工具），已修正；MCP 工具面缺口标注 M3。
+
