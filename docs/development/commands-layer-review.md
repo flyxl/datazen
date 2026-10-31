@@ -107,12 +107,12 @@ modules 测，宿主绑定在宿主测。**command 层不承载业务行为的�
 
 | 文件 | 行 | 裁决 | 依据 |
 |---|---|---|---|
-| query.rs | 449 | 瘦身（9 `_impl`） | 执行编排，M4 后读取已用例化 |
-| query_tests.rs | 687 | 随刀下沉 | 直调 `execute_driver_command_stream_impl` |
+| query.rs | 449 | **已拆（B2 批次1）** | 11 `_impl` 全数内联；事务状态机本在 modules；测试经 `query_command_test_host` 直调真实入口 |
+| query_tests.rs | 687 | **已转（B2 批次1）** | 直调 `execute_driver_command_stream_impl` 的部分保留（driver_command 域后续刀）；其余经宿主直调真实入口 |
 | query_favorites.rs | 236 | 瘦身（5 `_impl`） | 收藏 CRUD 壳 |
 | driver_command/mod.rs + types.rs | 144 | 保留 | 请求信封 DTO（C1 线格式） |
 | driver_command/execute.rs / resolve.rs / streaming.rs / helpers.rs / discovery.rs | 689 | 瘦身（resolve 内含策略裁决，逻辑在 `mcp::application::command_policy`） | 命令执行壳 |
-| driver_command/tests.rs | 1,003 | 测试迁移（线格式部分留为 C1） | wire 格式测试留；`resolve_command_driver`/策略/流式语义测试迁 `modules/src/mcp/application/` |
+| driver_command/tests.rs | 1,003 | **B1 已拆** | 2 测迁 `execution/application/command_policy.rs`（逻辑真身）；1 测与 infra 重复删除；37 留（C1×5/C2×1/C3×1 + 30 pending-B2）|
 | result_mapping.rs | 159 | 下沉 | 保守结果映射（SQL 识别 + 驱动确认）纯形态中立 |
 | result_origin.rs | 334 | 瘦身（2 `_impl`） | 结果来源标注 |
 | result_write.rs | 382 | 瘦身（1 `_impl`） | 窄写路径编排，`commit_query_result_cell_impl` 待下沉 |
@@ -207,18 +207,28 @@ modules 侧 `migration/` 已有同域测试基建（`filter_tests.rs`、`plan_te
   `ai/tests.rs` 纯逻辑 25 测（response 18 + tools 4 + api 1 + single_turn 2；
   另删 1 个与 modules 既有覆盖重复的 `provider_defaults` 测试）。
   共 **1,355 行测试代码归位 modules**，桌面 commands 层净减约 1,050 行。
-- **B1（进行中）**：`connection_import/ipc_tests` 已拆（加密往返 2 测迁
-  `modules/src/connection_import/datazen.rs`；merge/preview/export 构建逻辑
-  留待 B2 刀，文件过滤留 C3）；`restore_job/tests` 复核为 C4 烟测改判保留；
-  待做：`driver_command/tests` 拆分（wire 格式留 C1，resolve/策略/流式语义
-  测试迁 `modules/src/mcp/application/`）、`data_transfer/job_api/tests/
-  {queries,addressability,endpoint_identity}` 逐个核对。
+- **B1（完成）**：`connection_import/ipc_tests` 加密往返 2 测归位；
+  `restore_job/tests` 复核为 C4 烟测保留；`driver_command/tests` 拆分完成
+  （2 测迁 `execution/application/command_policy.rs`——命令策略逻辑真身在
+  execution 而非 mcp 垫片；1 测与 `packages/infra` redaction 测试逐字重复
+  删除；37 留）；`job_api/tests` 全五件甄别完成（`endpoint_identity` 12 测
+  迁 `modules/tests/job_endpoint_identity.rs` 与 cm31_* 内核规则互补；
+  queries/addressability/replay/job_lifecycle 实测面为桌面编排——原 §3.5
+  「指向 modules 逻辑」的判断被证伪，改判随刀（B2 data_transfer 刀），
+  3 C1 + 1 C2 永留）。
 - **B2（域刀，`_impl` 拆除 + 逻辑下沉 + 测试跟随）**：按域推进，顺序
   connection → tunnel（summary/probe）→ query/driver_command → data（写路径）→
   schema/schema_diff → dashboard/config/context/history/named_views/workflow/
   query_favorites/mcp/fk_navigation → sync → data_transfer → wapps。
   每域刀法与 WR-A2 AI 域相同：`_impl` 删除、逻辑内联进命令函数或下沉 modules
   用例、业务测试进 modules、C1–C4 测试留宿主、IPC 契约零变化。
+  **进度（2026-10-31）**：query（11）/ dashboard（10）/ config（9）/ tunnel
+  （7，脱敏映射与探测编排下沉 `tunnel::domain::projection` + `tunnel::probe`）/
+  connection（14，最大域；`session_info_payload`/`driver_category_label` 下沉
+  `connection::api`）五域完成，`_impl` 总数 115 → ~45。中央连带修复四类：
+  test_harness 重写为 HostedApp、ipc.rs 冻结表去 `_impl` 行（数量钉改为 0）、
+  session_backend/data 测试全部转真实命令入口（新增 data 域测试宿主）。
+  每域均配 `*_command_test_host.rs`（mock_app 托管 AppState）。
 - **B3（编排巨石下沉）**：`ai/integration_tests` 拆分、`ai_chat`/`ai_generate_sql`
   编排本体下沉（WR-A2 既登记遗留）、`sync/host` 与 `data_transfer` 桥接对照
   WR-F5 服务端实现复核。

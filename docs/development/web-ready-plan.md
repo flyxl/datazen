@@ -149,6 +149,8 @@ WR-F（能力落地）在 WR-D/WR-E 期间交叉插入，单项依赖见各节�
 
 ## 11. 进度回写区
 
+- **2026-10-31 — B1 收口 + B2 五域刀落地（cargo 进沙箱后首批真验提交）**：沙箱装入 Rust 1.99.1（tuna 镜像直连）+ rsproxy crates 镜像；Cargo.lock 增量已生成待随刀提交。**B1 完成**：`driver_command/tests` 拆分（2 测迁 `execution/application/command_policy.rs`、1 测与 infra 重复删除、37 留）+ `job_api/tests` 五件甄别（`endpoint_identity` 12 测迁 `modules/tests/job_endpoint_identity.rs`；其余四件实测面为桌面编排，改判随 B2 data_transfer 刀）。**B2 五域刀**（刀法=WR-A2 同款，每提交逐项验证）：query（11 `_impl`，`5f668caf`）、dashboard+config（19，`1d41d247`，`save_and_fetch` 下沉 `dashboard::repository`）、tunnel（7，`5b4fce08`，脱敏映射/探测编排下沉 `tunnel::domain::projection`+`tunnel::probe`，tunnel 腿 104 测绿）、connection（14——最大域，`350027d4`，`session_info_payload`/`driver_category_label` 下沉 `connection::api`，connection,execution 腿 928 测绿）。**中央连带修复**（`80419d4a`）：test_harness 重写为 HostedApp（真实命令入口 + `tauri/test` 进 feature）、`platform/ipc.rs` 冻结表去 14 行 `_impl`（数量钉 14→0）、session_backend 与 data 测试 8 处调用全部转真实命令入口（新增 data 域测试宿主）。桌面 commands 层 `_impl` 115 → ~45。**分工现状**：modules/server 侧全部本地真验（cargo test/check）；桌面侧因沙箱缺 webkit2gtk 静态把关 + CI 验证（PR #152 滚动）。
+
 > 纪律：每项切片完成 → 验证 → 提交推送 → 在此登记（日期、提交、一句话事实）。
 
 - **2026-10-31 — B1 首片：`connection_import` 加密测试归位 + 复核改判**：`ipc_tests.rs` 的加密往返 2 测（`encrypt_decrypt_roundtrip`/`decrypt_rejects_wrong_password`，被测为 `datazen::connection_import::{derive_argon2_key,encrypt_field,decrypt_datazen_fields}`）迁入 `modules/src/connection_import/datazen.rs` 内联测试——该文件此前 173 行零测试。桌面留宿主面：文件对话框过滤（C3）、分享密码校验、merge/preview/export 构建逻辑（被困宿主，B2 刀处理）及导出格式往返。复核改判：`restore_job/tests.rs`（365 行）实为 C4 适配器烟测（宿主边界旅程：生产上传→SQLite 准入→桌面运行时接线，深度行为在 modules 驱动旅程）——**保留**，review 文档裁决已更正。B1 余项：`driver_command/tests` 拆分、`data_transfer/job_api/tests` 三件甄别。
