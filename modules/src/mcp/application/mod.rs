@@ -5,6 +5,7 @@
 //! 再导出，宿主与垫片既有 import 零改动。
 
 pub mod describe;
+pub mod session;
 pub mod tools;
 
 pub use crate::execution::application::command_policy;

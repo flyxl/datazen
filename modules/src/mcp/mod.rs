@@ -7,8 +7,9 @@
 //!   table_browsing / MCP 共同消费的执行分级词汇，留在 mcp 会形成 feature
 //!   环），此处保持旧路径再导出垫片；
 //! * `application`——表描述格式化（describe：MCP `describe_table` 工具
-//!   输出的人类可读文案）与 command_policy 垫片（已归位
-//!   `execution::application::command_policy`）。
+//!   输出的人类可读文案）、无状态工具用例（tools，M1）与有状态会话映射
+//!   语义（session，M2：registry/TTL/归属校验/清理登记；定时 worker 与
+//!   传输驱动留宿主）；command_policy 垫片（已归位 execution）。
 //!
 //! 边界（07-stages D6 工作项 4）：业务分发（server/handler/tools/resources）
 //! 与认证/stdio/HTTP 登录/事件传输留宿主（src-tauri::mcp）；模块只持有
@@ -20,6 +21,7 @@ pub mod domain;
 
 // 旧扁平路径镜像（modules 垫片与直接消费者兼容）。
 pub use application::describe;
+pub use application::session;
 pub use application::tools;
 pub use domain::allowlist;
 pub use domain::permission;

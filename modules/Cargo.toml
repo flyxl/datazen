@@ -313,13 +313,14 @@ ai = [
     "workflow",
 ]
 
-# D6 item 4 切片一 + M1：MCP 业务规则与无状态工具用例（连接白名单/表描述
-# 格式化/工具业务分发；权限词汇已归位 execution::domain::permission——
-# M1 前置刀，mcp 保持旧路径再导出垫片；sql 分级判据仍在
-# execution::domain::sql_guard，不另立一份）。M1 起工具用例依赖 workflow
-# （runtime_reads 读取用例与 ResourceExecutionHost 端口）、ai
-# （resolve_query_limit）与 settings（ExecutionSettings 结果上限）——前置刀
-# 解环后方向无环（mcp 无人依赖，宿主除外）。
+# D6 item 4 切片一 + M1/M2：MCP 业务规则、无状态工具用例与会话映射语义
+# （连接白名单/表描述格式化/工具业务分发/registry；权限词汇已归位
+# execution::domain::permission——M1 前置刀，mcp 保持旧路径再导出垫片；
+# sql 分级判据仍在 execution::domain::sql_guard，不另立一份）。M1 起工具
+# 用例依赖 workflow（runtime_reads 读取用例与 ResourceExecutionHost 端口）、
+# ai（resolve_query_limit）与 settings（ExecutionSettings 结果上限）；
+# M2 的 session 语义需要 uuid（reference 铸造）与 tokio（Notify 唤醒）。
+# 前置刀解环后方向无环（mcp 无人依赖，宿主除外）。
 mcp = [
     "execution",
     "schema",
@@ -328,6 +329,8 @@ mcp = [
     "workflow",
     "dep:serde_json",
     "dep:datazen-driver-api",
+    "dep:uuid",
+    "dep:tokio",
 ]
 
 # D5 data_transfer：debug 构建 + webdriver E2E 的故障注入 seam（commit-ack 丢失）。
