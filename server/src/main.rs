@@ -13,9 +13,9 @@ fn main() -> ExitCode {
 
     match subcommand {
         Some("serve") => datazen_server::bootstrap::serve(),
-        Some("migrate") | Some("check-schema") => {
+        Some(sub @ ("migrate" | "check-schema")) => {
             eprintln!(
-                "datazen-server: '{subcommand}' is not implemented in this build — \
+                "datazen-server: '{sub}' is not implemented in this build — \
                  schema migrations arrive with WR-D2 (web-ready plan §6). \
                  Refusing instead of doing nothing."
             );
