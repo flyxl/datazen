@@ -111,7 +111,8 @@ impl DataZenMcpServer {
                 db,
                 budget::MCP_RESOURCE,
             )
-            .await?;
+            .await
+            .map_err(DataZenMcpServer::map_err)?;
 
             return Ok(ReadResourceResult::new(vec![ResourceContents::text(
                 schema_ddl, uri,

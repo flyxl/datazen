@@ -24,7 +24,7 @@ impl DataZenMcpServer {
             self.resource_host.as_ref(),
             &args.connection_id,
         )
-        .await?;
+        .await.map_err(DataZenMcpServer::map_err)?;
         let lang = self.app_state.store.get_settings().await.language;
         let db_type = driver.driver_type();
         let db = args.database.as_deref().unwrap_or("");
@@ -35,7 +35,8 @@ impl DataZenMcpServer {
             db,
             datazen::ai::budget::FALLBACK_DDL,
         )
-        .await?;
+        .await
+        .map_err(DataZenMcpServer::map_err)?;
 
         let mut vars = HashMap::new();
         vars.insert("db_type", db_type.as_str());
@@ -70,7 +71,7 @@ impl DataZenMcpServer {
             self.resource_host.as_ref(),
             &args.connection_id,
         )
-        .await?;
+        .await.map_err(DataZenMcpServer::map_err)?;
         let lang = self.app_state.store.get_settings().await.language;
         let db_type = driver.driver_type();
 
@@ -110,7 +111,7 @@ impl DataZenMcpServer {
             self.resource_host.as_ref(),
             &args.connection_id,
         )
-        .await?;
+        .await.map_err(DataZenMcpServer::map_err)?;
         let lang = self.app_state.store.get_settings().await.language;
         let db_type = driver.driver_type();
 
@@ -120,7 +121,8 @@ impl DataZenMcpServer {
             "explain",
             serde_json::json!({ "sql": args.sql }),
         )
-        .await?;
+        .await
+        .map_err(DataZenMcpServer::map_err)?;
         let explain_text = serde_json::to_string_pretty(&explain_result)
             .unwrap_or_else(|_| "Failed to serialize EXPLAIN output".to_string());
 

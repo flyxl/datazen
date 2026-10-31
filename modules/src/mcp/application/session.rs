@@ -160,7 +160,7 @@ impl McpSessionRegistry {
         closed
     }
 
-    pub(crate) fn revoke(&self, reference: &str, client: &str) {
+    pub fn revoke(&self, reference: &str, client: &str) {
         if let Some(binding) = self.close(reference, client) {
             self.retain_cleanup(binding);
         }
