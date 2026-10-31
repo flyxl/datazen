@@ -1,65 +1,65 @@
 //! Dashboard IPC: CRUD, widget run history, manual execution, and widget creation.
+//!
+//! B2 仪表盘刀（WR-A2 同刀法）：`*_impl` 转发层已删除，接线逻辑直接住在
+//! `#[tauri::command]` 处理函数里；形态中立的「存储后回读」组合下沉到
+//! `datazen::dashboard::repository::save_and_fetch`。命令壳只保留
+//! state→repository 的装配与错误映射，IPC 契约（命令名、参数、错误文案）零变化。
 
 use tauri::{AppHandle, State};
 
 use super::error::{CmdExt, CommandError};
 use super::AppState;
-use crate::dashboard::create::{
-    create_widget_from_sql as create_widget_from_sql_impl,
-    create_widget_from_workflow as create_widget_from_workflow_impl,
-    update_hidden_workflow_sql as update_hidden_workflow_sql_impl, CreateWidgetResult,
-};
+use crate::dashboard::create::CreateWidgetResult;
 use crate::dashboard::export::{export_dashboard_json, import_dashboard};
 use crate::platform::ipc::require_application_services;
 use datazen::dashboard::repository::{
     delete_dashboard as store_delete_dashboard, find_workflow_refs,
-    get_dashboard as store_get_dashboard, list_dashboards as store_list_dashboards,
-    save_dashboard as store_save_dashboard,
+    get_dashboard as store_get_dashboard, list_dashboards as store_list_dashboards, save_and_fetch,
     set_dashboard_refresh_paused as store_set_refresh_paused,
 };
 use datazen::dashboard::runs::{get_run, list_run_index};
 use datazen::dashboard::types::{ChartConfig, Dashboard, RunIndexEntry, ViewMode, WidgetRun};
 
-pub(crate) async fn list_dashboards_impl(state: &AppState) -> Result<Vec<Dashboard>, CommandError> {
+#[tauri::command]
+pub async fn list_dashboards(state: State<'_, AppState>) -> Result<Vec<Dashboard>, CommandError> {
     let scope = state.organization_scope()?;
-    let app_db = require_application_services(state)?.dashboard.clone();
+    let app_db = require_application_services(&state)?.dashboard.clone();
     store_list_dashboards(&scope, &*app_db).cmd_err("list_dashboards")
 }
 
-pub(crate) async fn get_dashboard_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn get_dashboard(
+    state: State<'_, AppState>,
     id: String,
 ) -> Result<Dashboard, CommandError> {
     tracing::debug!(%id, "get_dashboard");
     let scope = state.organization_scope()?;
-    let app_db = require_application_services(state)?.dashboard.clone();
+    let app_db = require_application_services(&state)?.dashboard.clone();
     store_get_dashboard(&scope, &*app_db, &id).cmd_err("get_dashboard")
 }
 
-pub(crate) async fn save_dashboard_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn save_dashboard(
+    state: State<'_, AppState>,
     dashboard: Dashboard,
 ) -> Result<Dashboard, CommandError> {
     tracing::info!(id = %dashboard.id, "save_dashboard");
     let scope = state.organization_scope()?;
-    let app_db = require_application_services(state)?.dashboard.clone();
-    let id = dashboard.id.clone();
-    store_save_dashboard(&scope, &*app_db, dashboard).cmd_err("save_dashboard")?;
+    let app_db = require_application_services(&state)?.dashboard.clone();
+    let saved = save_and_fetch(&scope, &*app_db, dashboard).cmd_err("save_dashboard")?;
     state
         .monitor_engine
         .reload_from_store()
         .await
         .cmd_err("save_dashboard")?;
-    store_get_dashboard(&scope, &*app_db, &id).cmd_err("save_dashboard")
+    Ok(saved)
 }
 
-pub(crate) async fn delete_dashboard_impl(
-    state: &AppState,
-    id: String,
-) -> Result<(), CommandError> {
+#[tauri::command]
+pub async fn delete_dashboard(state: State<'_, AppState>, id: String) -> Result<(), CommandError> {
     tracing::info!(%id, "delete_dashboard");
     let scope = state.organization_scope()?;
-    let app_db = require_application_services(state)?.dashboard.clone();
+    let app_db = require_application_services(&state)?.dashboard.clone();
     store_delete_dashboard(&scope, &*app_db, &id).cmd_err("delete_dashboard")?;
     state
         .monitor_engine
@@ -68,13 +68,14 @@ pub(crate) async fn delete_dashboard_impl(
         .cmd_err("delete_dashboard")
 }
 
-pub(crate) async fn set_dashboard_refresh_paused_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn set_dashboard_refresh_paused(
+    state: State<'_, AppState>,
     id: String,
     paused: bool,
 ) -> Result<(), CommandError> {
     let scope = state.organization_scope()?;
-    let app_db = require_application_services(state)?.dashboard.clone();
+    let app_db = require_application_services(&state)?.dashboard.clone();
     store_set_refresh_paused(&scope, &*app_db, &id, paused)
         .cmd_err("set_dashboard_refresh_paused")?;
     state
@@ -84,78 +85,14 @@ pub(crate) async fn set_dashboard_refresh_paused_impl(
         .cmd_err("set_dashboard_refresh_paused")
 }
 
-pub(crate) fn find_dashboard_workflow_refs_impl(
-    state: &AppState,
-    workflow_id: String,
-) -> Result<Vec<datazen::dashboard::types::DashboardWorkflowRef>, CommandError> {
-    let scope = state.organization_scope()?;
-    let app_db = require_application_services(state)?.dashboard.clone();
-    find_workflow_refs(&scope, &*app_db, &workflow_id).cmd_err("find_dashboard_workflow_refs")
-}
-
-#[tauri::command]
-pub async fn list_dashboards(state: State<'_, AppState>) -> Result<Vec<Dashboard>, CommandError> {
-    list_dashboards_impl(&state).await
-}
-
-#[tauri::command]
-pub async fn get_dashboard(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<Dashboard, CommandError> {
-    get_dashboard_impl(&state, id).await
-}
-
-#[tauri::command]
-pub async fn save_dashboard(
-    state: State<'_, AppState>,
-    dashboard: Dashboard,
-) -> Result<Dashboard, CommandError> {
-    save_dashboard_impl(&state, dashboard).await
-}
-
-#[tauri::command]
-pub async fn delete_dashboard(state: State<'_, AppState>, id: String) -> Result<(), CommandError> {
-    delete_dashboard_impl(&state, id).await
-}
-
-#[tauri::command]
-pub async fn set_dashboard_refresh_paused(
-    state: State<'_, AppState>,
-    id: String,
-    paused: bool,
-) -> Result<(), CommandError> {
-    set_dashboard_refresh_paused_impl(&state, id, paused).await
-}
-
 #[tauri::command]
 pub fn find_dashboard_workflow_refs(
     state: State<'_, AppState>,
     workflow_id: String,
 ) -> Result<Vec<datazen::dashboard::types::DashboardWorkflowRef>, CommandError> {
-    find_dashboard_workflow_refs_impl(&state, workflow_id)
-}
-
-pub(crate) async fn list_widget_runs_impl(
-    state: &AppState,
-    dashboard_id: String,
-    widget_id: String,
-    limit: usize,
-) -> Result<Vec<RunIndexEntry>, CommandError> {
     let scope = state.organization_scope()?;
-    let app_db = require_application_services(state)?.dashboard_runs.clone();
-    list_run_index(&scope, &*app_db, &dashboard_id, &widget_id, limit).cmd_err("list_widget_runs")
-}
-
-pub(crate) async fn get_widget_run_impl(
-    state: &AppState,
-    dashboard_id: String,
-    widget_id: String,
-    run_id: String,
-) -> Result<WidgetRun, CommandError> {
-    let scope = state.organization_scope()?;
-    let app_db = require_application_services(state)?.dashboard_runs.clone();
-    get_run(&scope, &*app_db, &dashboard_id, &widget_id, &run_id).cmd_err("get_widget_run")
+    let app_db = require_application_services(&state)?.dashboard.clone();
+    find_workflow_refs(&scope, &*app_db, &workflow_id).cmd_err("find_dashboard_workflow_refs")
 }
 
 #[tauri::command]
@@ -165,7 +102,9 @@ pub async fn list_widget_runs(
     widget_id: String,
     limit: usize,
 ) -> Result<Vec<RunIndexEntry>, CommandError> {
-    list_widget_runs_impl(&state, dashboard_id, widget_id, limit).await
+    let scope = state.organization_scope()?;
+    let app_db = require_application_services(&state)?.dashboard_runs.clone();
+    list_run_index(&scope, &*app_db, &dashboard_id, &widget_id, limit).cmd_err("list_widget_runs")
 }
 
 #[tauri::command]
@@ -175,18 +114,21 @@ pub async fn get_widget_run(
     widget_id: String,
     run_id: String,
 ) -> Result<WidgetRun, CommandError> {
-    get_widget_run_impl(&state, dashboard_id, widget_id, run_id).await
+    let scope = state.organization_scope()?;
+    let app_db = require_application_services(&state)?.dashboard_runs.clone();
+    get_run(&scope, &*app_db, &dashboard_id, &widget_id, &run_id).cmd_err("get_widget_run")
 }
 
-pub(crate) async fn run_dashboard_widget_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn run_dashboard_widget(
+    state: State<'_, AppState>,
     dashboard_id: String,
     widget_id: String,
 ) -> Result<WidgetRun, CommandError> {
     tracing::info!(%dashboard_id, %widget_id, "run_dashboard_widget");
     let scope = state.organization_scope()?;
-    // scope-gate: 导出走桌面文件对话框与 `AppDb` 具体类型（`export_dashboard_json`
-    // 的签名就是 `&AppDb`），属 §5.1.3 形态专属清单，不进中立层。
+    // scope-gate: 手工执行（1 处宿主残留）——`monitor_engine` 的 tick 路径持有
+    // `AppDb` 具体类型，属 §5.1.3 形态专属清单，不进中立层。
     let app_db = state.store.app_db();
     let dashboard = store_get_dashboard(&scope, &*app_db, &dashboard_id)?;
     let widget = dashboard
@@ -201,15 +143,6 @@ pub(crate) async fn run_dashboard_widget_impl(
         .tick_widget(&dashboard_id, &widget)
         .await
         .cmd_err("run_dashboard_widget")
-}
-
-#[tauri::command]
-pub async fn run_dashboard_widget(
-    state: State<'_, AppState>,
-    dashboard_id: String,
-    widget_id: String,
-) -> Result<WidgetRun, CommandError> {
-    run_dashboard_widget_impl(&state, dashboard_id, widget_id).await
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -230,7 +163,7 @@ pub async fn create_widget_from_sql(
 ) -> Result<CreateWidgetResult, CommandError> {
     let scope = state.organization_scope()?;
     let app_db = state.store.app_db();
-    create_widget_from_sql_impl(
+    crate::dashboard::create::create_widget_from_sql(
         &scope,
         &app_db,
         &state.workflow_registry,
@@ -270,7 +203,7 @@ pub async fn update_hidden_widget_sql(
 ) -> Result<(), CommandError> {
     let scope = state.organization_scope()?;
     let app_db = state.store.app_db();
-    update_hidden_workflow_sql_impl(
+    crate::dashboard::create::update_hidden_workflow_sql(
         &scope,
         &app_db,
         &state.workflow_registry,
@@ -289,7 +222,7 @@ pub async fn create_widget_from_workflow(
 ) -> Result<CreateWidgetResult, CommandError> {
     let scope = state.organization_scope()?;
     let app_db = state.store.app_db();
-    create_widget_from_workflow_impl(
+    crate::dashboard::create::create_widget_from_workflow(
         &scope,
         &app_db,
         &params.dashboard_id,
@@ -370,6 +303,7 @@ pub async fn import_dashboard_with_dialog(
 
 #[cfg(test)]
 mod tests {
+    use super::command_test_host::host_command_app;
     use super::*;
 
     /// 仪表盘命令族的宿主残留必须**有名字**。
@@ -385,13 +319,16 @@ mod tests {
     /// 这条断言的作用不是「少几个数字」，而是让任何人想再动这里时必须先
     /// 说明自己搬的是哪一类——数字变了而理由没变，就是偷偷把形态专属
     /// 的东西塞进了中立层。
+    ///
+    /// 注意：本模块必须保持在文件中部（monitor 授权命令之前）——断言按
+    /// 首个 `#[cfg(test)]` 切分生产半边，授权命令里的 store 访问不计入。
     #[test]
     fn the_command_shell_reads_the_aggregate_and_names_the_host_residue() {
         let source = include_str!("dashboard.rs");
         let production = source.split("#[cfg(test)]").next().unwrap_or(source);
         assert_eq!(
             production
-                .matches("require_application_services(state)")
+                .matches("require_application_services(&state)")
                 .count(),
             8,
             "仪表盘 6 处 + 运行历史 2 处都应从聚合取端口"
@@ -467,35 +404,38 @@ mod tests {
         assert!(matches!(cmd_err, CommandError::NotFound(msg) if msg == "missing-id"));
     }
 
+    /// CRUD 适配器烟测（C4）：真实命令入口 → 聚合端口 → 模块仓储规则 → 宿主 SQLite。
+    /// 深度行为（归一化、组织隔离）在 `modules/src/dashboard/domain/repository.rs` 测。
     #[tokio::test]
-    async fn dashboard_crud_via_impl() {
+    async fn dashboard_crud_roundtrip() {
         use crate::testing::app_state::TestAppState;
 
         let test = TestAppState::new().await;
-        assert!(list_dashboards_impl(&test.state).await.unwrap().is_empty());
+        let app = host_command_app(test);
+        assert!(list_dashboards(app.state()).await.unwrap().is_empty());
 
-        seed_workflow(&test.state.store.app_db(), "wf-1");
+        seed_workflow(&app.keep.store.app_db(), "wf-1");
         let dash = sample_dashboard("dash-1", "wf-1");
-        save_dashboard_impl(&test.state, dash.clone())
-            .await
-            .unwrap();
-        let loaded = get_dashboard_impl(&test.state, "dash-1".into())
+        let saved = save_dashboard(app.state(), dash.clone()).await.unwrap();
+        assert_eq!(saved.id, "dash-1");
+        let loaded = get_dashboard(app.state(), "dash-1".into())
             .await
             .unwrap();
         assert_eq!(loaded.name, "Test");
+        assert_eq!(loaded, saved);
 
-        set_dashboard_refresh_paused_impl(&test.state, "dash-1".into(), true)
+        set_dashboard_refresh_paused(app.state(), "dash-1".into(), true)
             .await
             .unwrap();
-        let paused = get_dashboard_impl(&test.state, "dash-1".into())
+        let paused = get_dashboard(app.state(), "dash-1".into())
             .await
             .unwrap();
         assert!(paused.refresh_paused);
 
-        delete_dashboard_impl(&test.state, "dash-1".into())
+        delete_dashboard(app.state(), "dash-1".into())
             .await
             .unwrap();
-        assert!(get_dashboard_impl(&test.state, "dash-1".into())
+        assert!(get_dashboard(app.state(), "dash-1".into())
             .await
             .is_err());
     }
@@ -540,20 +480,27 @@ mod tests {
             .unwrap();
 
         let dash = sample_dashboard("dash-run", "wf-run");
-        save_dashboard_impl(&test.state, dash).await.unwrap();
+        let app = host_command_app(test);
+        save_dashboard(app.state(), dash).await.unwrap();
 
-        let run = run_dashboard_widget_impl(&test.state, "dash-run".into(), "w1".into())
+        let run = run_dashboard_widget(app.state(), "dash-run".into(), "w1".into())
             .await
             .unwrap();
         assert!(!run.id.is_empty());
         assert_eq!(run.status, datazen::dashboard::types::WidgetRunStatus::Ok);
 
-        let runs = list_widget_runs_impl(&test.state, "dash-run".into(), "w1".into(), 10)
+        let runs = list_widget_runs(app.state(), "dash-run".into(), "w1".into(), 10)
             .await
             .unwrap();
         assert_eq!(runs.len(), 1);
     }
 }
+
+// 测试宿主（cfg(test)）：声明必须留在 `mod tests` 之后——上面的源码守卫按
+// 首个 `#[cfg(test)]` 切分生产半边。
+#[cfg(test)]
+#[path = "dashboard_command_test_host.rs"]
+pub(crate) mod command_test_host;
 
 #[tauri::command]
 pub async fn authorize_monitor_widget_schedule(
