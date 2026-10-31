@@ -2,7 +2,7 @@
 
 use super::chat::{db_tool_definitions, run_streaming_tool_loop_with_claim};
 use super::util::{
-    borrow_runtime_session, resolve_ai, resolve_safety_gate, runtime_session,
+    borrow_runtime_session, resolve_ai, resolve_language, resolve_safety_gate, runtime_session,
     window_stream_callback, StreamCallback,
 };
 use crate::commands::error::{CmdExt, CommandError};
@@ -62,7 +62,6 @@ pub(crate) async fn ai_generate_sql_impl_with_claim(
 ) -> Result<String, CommandError> {
     let recent_queries = recent_queries.unwrap_or_default();
     let mut natural_language = natural_language;
-    let app_settings = state.store.get_settings().await;
     let gate = resolve_safety_gate(&state).await;
     tracing::info!(
         %request_id,
@@ -99,7 +98,7 @@ pub(crate) async fn ai_generate_sql_impl_with_claim(
 
     let (provider, ai_config) = resolve_ai(&state).await?;
 
-    let lang = app_settings.language;
+    let lang = resolve_language(&state).await;
 
     let (_session, lease) =
         borrow_runtime_session(state, &db_session_id, "ai_generate_sql").await?;
@@ -276,7 +275,7 @@ pub(crate) async fn ai_diagnose_error_impl(
         .await
         .cmd_err("ai_diagnose_error")?;
 
-    let lang = state.store.get_settings().await.language;
+    let lang = resolve_language(&state).await;
 
     let (_session, lease) =
         borrow_runtime_session(state, &db_session_id, "ai_diagnose_error").await?;
@@ -343,7 +342,7 @@ pub(crate) async fn ai_analyze_explain_impl(
         .driver()
         .clone();
 
-    let lang = state.store.get_settings().await.language;
+    let lang = resolve_language(&state).await;
     datazen::ai::single_turn::analyze_explain(
         provider.as_ref(),
         &ai_config.model,
@@ -409,7 +408,7 @@ pub(crate) async fn ai_parse_filter_impl(
         .await
         .cmd_err("ai_parse_filter")?;
 
-    let lang = state.store.get_settings().await.language;
+    let lang = resolve_language(&state).await;
     datazen::ai::filter::parse_natural_language_filter(
         provider.as_ref(),
         &ai_config.model,
@@ -442,7 +441,7 @@ pub(crate) async fn ai_generate_schema_doc_impl(
 ) -> Result<String, CommandError> {
     tracing::info!(%db_session_id, %database, "ai_generate_schema_doc: start");
     let (provider, ai_config) = resolve_ai(&state).await?;
-    let lang = state.store.get_settings().await.language;
+    let lang = resolve_language(&state).await;
 
     let (_session, lease) =
         borrow_runtime_session(state, &db_session_id, "ai_generate_schema_doc").await?;
@@ -521,7 +520,7 @@ pub(crate) async fn ai_diagnose_connection_impl(
         &gate,
     );
 
-    let lang = state.store.get_settings().await.language;
+    let lang = resolve_language(&state).await;
     datazen::ai::single_turn::diagnose_connection(
         provider.as_ref(),
         &ai_config.model,
@@ -541,9 +540,9 @@ pub(crate) async fn ai_analyze_queries_impl(
     db_session_id: Option<String>,
 ) -> Result<QueryAnalysis, CommandError> {
     tracing::info!(db_session_id = ?db_session_id, "ai_analyze_queries: start");
-    let app_settings = state.store.get_settings().await;
     let gate = resolve_safety_gate(state).await;
     let (provider, ai_config) = resolve_ai(&state).await?;
+    let lang = resolve_language(&state).await;
 
     // The IPC parameter is the runtime dbSessionId; resolve the persisted
     // connection id that owns it so history is filtered by connection.
@@ -578,7 +577,7 @@ pub(crate) async fn ai_analyze_queries_impl(
         provider.as_ref(),
         &ai_config.model,
         state.prompt_resolver.as_ref(),
-        &app_settings.language,
+        &lang,
         &queries,
     )
     .await

@@ -290,14 +290,17 @@ impl AppState {
 
     /// Lazily register AI providers + load prompt templates.
     /// Does not run during GUI startup — only on first AI / prompt use.
+    ///
+    /// 编排体（注册 → 首次注册时恢复持久化配置 → 按语言装载模板）在
+    /// `datazen::ai::api::ensure_ai_ready`；这里只把装配好的 registry、
+    /// 配置端口与提示词解析器递过去（host-boundary §3 的接线形态）。
     pub async fn ensure_ai_ready(&self) {
-        if self.ai_registry.ensure_registered().await {
-            if let Some(ai_config) = self.store.get_ai_config().await {
-                self.ai_registry.restore_config(&ai_config).await;
-            }
-        }
-        let lang = self.store.get_settings().await.language;
-        self.prompt_resolver.ensure_ready(&lang).await;
+        datazen::ai::api::ensure_ai_ready(
+            &self.ai_registry,
+            self.store.as_ref(),
+            &self.prompt_resolver,
+        )
+        .await;
     }
 }
 

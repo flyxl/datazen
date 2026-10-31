@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use datazen::ai::application::AiUseCaseError;
 use datazen::ai::{AiModelProfile, AiProviderConfig, AiSettingsConfig};
 
 use super::{DesktopRepository, DesktopRepositoryError};
@@ -170,5 +171,59 @@ impl DesktopRepository {
             .map_err(|e| DesktopRepositoryError::ParseError(e.to_string()))?;
         let encrypted = self.encrypt(&json)?;
         Self::write_file_atomic(&path, encrypted).await
+    }
+}
+
+/// AI 配置族持久化端口实现（host-boundary §3，AI 配置刀）。
+///
+/// 端口契约在 `datazen::ai::application::ports::AiConfigStore`；桌面把
+/// 「`{appData}/ai_config.enc` 加密单文件 + 内存缓存」这一事实接到端口上。
+/// 存储错误统一折成用例信封的 `Internal` 桶（Display 文本原样透传，经桌面
+/// 映射表后 IPC 文案与旧 `CommandError::Store` 路径逐字节一致——两者都只
+/// 打印错误文本）。语言与执行设置是宿主设置事实的派生读量，供提示词解析
+/// 与安全门用例消费。
+#[async_trait::async_trait]
+impl datazen::ai::application::ports::AiConfigStore for DesktopRepository {
+    async fn get_ai_config(&self) -> Option<AiProviderConfig> {
+        DesktopRepository::get_ai_config(self).await
+    }
+
+    async fn get_ai_settings_config(&self) -> AiSettingsConfig {
+        DesktopRepository::get_ai_settings_config(self).await
+    }
+
+    async fn save_ai_settings_config(
+        &self,
+        config: &AiSettingsConfig,
+    ) -> Result<(), AiUseCaseError> {
+        DesktopRepository::save_ai_settings_config(self, config)
+            .await
+            .map_err(|e| AiUseCaseError::Internal(e.to_string()))
+    }
+
+    async fn set_active_profile(&self, profile_id: &str) -> Result<(), AiUseCaseError> {
+        DesktopRepository::set_active_profile(self, profile_id)
+            .await
+            .map_err(|e| AiUseCaseError::Internal(e.to_string()))
+    }
+
+    async fn save_ai_config(&self, config: &AiProviderConfig) -> Result<(), AiUseCaseError> {
+        DesktopRepository::save_ai_config(self, config)
+            .await
+            .map_err(|e| AiUseCaseError::Internal(e.to_string()))
+    }
+
+    async fn delete_ai_config(&self) -> Result<(), AiUseCaseError> {
+        DesktopRepository::delete_ai_config(self)
+            .await
+            .map_err(|e| AiUseCaseError::Internal(e.to_string()))
+    }
+
+    async fn settings_language(&self) -> String {
+        DesktopRepository::get_settings(self).await.language
+    }
+
+    async fn execution_settings(&self) -> datazen::settings::ExecutionSettings {
+        DesktopRepository::execution_settings(self).await
     }
 }
