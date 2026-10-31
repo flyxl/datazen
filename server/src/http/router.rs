@@ -21,7 +21,7 @@ use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::limit::RequestBodyLimitLayer;
 
 use crate::http::middleware;
-use crate::http::response::{status_for, ApiErrorResponse};
+use crate::http::response::ApiErrorResponse;
 use datazen::shared::error::{ApiError, ApiErrorCode};
 
 /// 请求体字节上限：team-server §9.1 首版权威值（8 MiB，L1 物理闸 → 413）。
@@ -67,18 +67,21 @@ async fn readyz() -> impl IntoResponse {
 /// 其余 → 404 `notFound`。两条都走 [`ApiErrorResponse`]，wire 形状与
 /// 契约一致。
 async fn api_or_not_found(uri: Uri) -> Response {
-    let error = if uri.path().starts_with("/api/") {
-        ApiError::new(
+    // `/api/` 前缀 → 501：本 build 尚未点亮任何域路由（not-implemented 类，
+    // 契约 §7 的映射裁决）；点亮后本函数对已挂路由不再可达，只剩真正未
+    // 实现的新路径。其余 → 404（status_for 的默认推导，防 ID 枚举口径）。
+    // 两条都走 [`ApiErrorResponse`]，wire 形状与契约一致。
+    if uri.path().starts_with("/api/") {
+        let error = ApiError::new(
             ApiErrorCode::CapabilityUnsupported,
             "This build serves no /api/v1 domain routes yet; they arrive with WR-D2 and later slices.",
-        )
-    } else {
-        ApiError::new(ApiErrorCode::NotFound, "No such route.")
-    };
-    // 显式落一遍状态码再交给 ApiErrorResponse：让本函数对 501/404 的选择
-    // 可读、可测，而不是藏在 IntoResponse 里。
-    let status = status_for(error.code);
-    ApiErrorResponse::new(error).with_status(status).into_response()
+        );
+        return ApiErrorResponse::new(error)
+            .with_status(StatusCode::NOT_IMPLEMENTED)
+            .into_response();
+    }
+    let error = ApiError::new(ApiErrorCode::NotFound, "No such route.");
+    ApiErrorResponse::new(error).into_response()
 }
 
 #[cfg(test)]

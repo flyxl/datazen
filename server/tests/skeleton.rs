@@ -73,7 +73,12 @@ async fn unknown_non_api_path_is_404_not_found() {
     assert_eq!(status, StatusCode::NOT_FOUND);
     let json = api_error_json(&body);
     assert_eq!(json["code"], "notFound");
-    assert_eq!(json["retryDisposition"], "never");
+    // NotFound 的 disposition 断言**共享词汇表的运行时真值** safeRead
+    // （`datazen::shared::error` 的 `retry_disposition`，modules 测试钉住）。
+    // 注意 team-server §9.2 的 404 行写的是 never——两处不一致是既有
+    // 文档与代码的出入，留给 WR-D4 的错误映射逐行确认裁决，本测试只断
+    // 言 wire 上实际出现的值（server 复用同一份词汇，不自行改写）。
+    assert_eq!(json["retryDisposition"], "safeRead");
 }
 
 #[tokio::test]
