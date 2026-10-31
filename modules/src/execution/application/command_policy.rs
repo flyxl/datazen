@@ -16,26 +16,43 @@ pub fn access_level_for_mode(mode: Option<McpPermissionMode>) -> CommandAccessLe
     }
 }
 
+/// 命令发现目录：驱动原生命令 + schema 元数据命令的合成。
+///
+/// schema 的合成段是 feature 门控的：本 crate 的既定依赖边是
+/// `schema → execution`（schema 的实现消费 execution 词汇），execution
+/// 不能反向硬引 schema，否则 `connection,execution` 这类最小腿编译不过
+/// （CI 的 FEATURE_TESTS 腿之一）。没有 schema 的构建只返回驱动原生
+/// 命令——元数据命令本来就不在那套词汇里。
 pub fn discovery_definitions(driver: &dyn DatabaseDriver) -> Vec<DriverCommandDefinition> {
+    #[cfg_attr(not(feature = "schema"), allow(unused_mut))]
     let mut definitions = driver.command_definitions();
-    definitions.retain(|definition| {
-        !crate::schema::application::metadata::is_metadata_command(&definition.id)
-    });
-    definitions.extend(crate::schema::application::metadata::command_definitions());
+    #[cfg(feature = "schema")]
+    {
+        definitions.retain(|definition| {
+            !crate::schema::application::metadata::is_metadata_command(&definition.id)
+        });
+        definitions.extend(crate::schema::application::metadata::command_definitions());
+    }
     definitions
 }
 
+/// 元数据命令的目标必须在 input 内提供；这条校验与 schema 词汇同源，
+/// 同样随 feature 门控（见 [`discovery_definitions`] 的注释）。
+#[cfg_attr(not(feature = "schema"), allow(unused_variables))]
 pub fn resolve_definition(
     driver: &dyn DatabaseDriver,
     command: &str,
     envelope_has_target: bool,
 ) -> Result<DriverCommandDefinition, String> {
     let mut definitions = driver.command_definitions();
-    if crate::schema::application::metadata::is_metadata_command(command) {
-        if envelope_has_target {
-            return Err("Metadata targets must be supplied inside input".into());
+    #[cfg(feature = "schema")]
+    {
+        if crate::schema::application::metadata::is_metadata_command(command) {
+            if envelope_has_target {
+                return Err("Metadata targets must be supplied inside input".into());
+            }
+            definitions = discovery_definitions(driver);
         }
-        definitions = discovery_definitions(driver);
     }
     if datazen_driver_api::is_schema_catalog_command(command) {
         for definition in datazen_driver_api::schema_catalog_command_definitions() {
