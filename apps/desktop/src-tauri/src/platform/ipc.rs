@@ -174,8 +174,9 @@ mod tests {
     ///
     /// 开发计划 :77 要求"保留现有 IPC 外观"。这类要求靠人读 diff 是守不住的：
     /// 加一个参数、改一个返回类型，名字和数量都不变，CI 也不会报。
-    /// 所以把 15 个 `#[tauri::command]` 与 14 个 `*_impl` 的完整签名钉在这里，
-    /// 任何人动外观都会让这个测试变红。
+    /// 所以把 15 个 `#[tauri::command]` 的完整签名钉在这里，
+    /// 任何人动外观都会让这个测试变红。B2 域刀之后命令层不再有
+    /// `_impl` 转发层（接线逻辑直接住在命令处理函数里）。
     const FROZEN_SIGNATURES: &[&str] = &[
         "pub async fn get_connections( state: State<'_, AppState>, ) -> Result<Vec<ConnectionConfig>, CommandError>",
         "pub async fn save_connection( state: State<'_, AppState>, config: ConnectionConfig, clear_missing_credentials: Option<bool>, ) -> Result<(), CommandError>",
@@ -192,20 +193,6 @@ mod tests {
         "pub async fn get_connection_info( state: State<'_, AppState>, db_session_id: String, ) -> Result<serde_json::Value, CommandError>",
         "pub async fn reorder_connections( state: State<'_, AppState>, ordered_ids: Vec<String>, ) -> Result<(), CommandError>",
         "pub async fn get_available_drivers( state: State<'_, AppState>, ) -> Result<Vec<String>, CommandError>",
-        "pub(crate) async fn get_connections_impl( state: &AppState, ) -> Result<Vec<ConnectionConfig>, CommandError>",
-        "pub(crate) async fn save_connection_impl( state: &AppState, config: ConnectionConfig, clear_missing_credentials: bool, ) -> Result<(), CommandError>",
-        "pub(crate) async fn delete_connection_impl( state: &AppState, id: String, ) -> Result<(), CommandError>",
-        "pub(crate) async fn duplicate_connection_impl( state: &AppState, source_id: String, new_id: String, new_name: String, ) -> Result<(), CommandError>",
-        "pub(crate) async fn test_connection_impl( state: &AppState, config: ConnectionConfig, ) -> Result<ServerInfo, CommandError>",
-        "pub(crate) async fn connect_impl( state: &AppState, connection_id: String, ) -> Result<ConnectionSessionRef, CommandError>",
-        "pub(crate) async fn connect_dedicated_impl( state: &AppState, connection_id: String, database: Option<String>, ) -> Result<ConnectionSessionRef, CommandError>",
-        "pub(crate) async fn ping_connection_impl( state: &AppState, db_session_id: String, ) -> Result<bool, CommandError>",
-        "pub(crate) async fn release_connection_impl( state: &AppState, db_session_id: String, ) -> Result<bool, CommandError>",
-        "pub(crate) async fn disconnect_impl( state: &AppState, db_session_id: String, ) -> Result<(), CommandError>",
-        "pub(crate) async fn close_database_impl( state: &AppState, db_session_id: String, database: String, ) -> Result<bool, CommandError>",
-        "pub(crate) async fn get_open_databases_impl( state: &AppState, db_session_id: String, ) -> Result<Vec<String>, CommandError>",
-        "pub(crate) async fn get_connection_info_impl( state: &AppState, db_session_id: String, ) -> Result<serde_json::Value, CommandError>",
-        "pub(crate) async fn get_available_drivers_impl( state: &AppState, ) -> Result<Vec<String>, CommandError>",
     ];
 
     const CONNECTION_COMMANDS: &str = include_str!("../commands/connection.rs");
@@ -313,8 +300,9 @@ mod tests {
         );
         assert_eq!(
             production.matches("pub(crate) async fn ").count(),
-            14,
-            "connection.rs 的 *_impl 数量变了"
+            0,
+            "B2 域刀后 connection.rs 不再有 _impl 转发层：接线逻辑应住在
+             #[tauri::command] 处理函数内或下沉 modules 用例"
         );
     }
 

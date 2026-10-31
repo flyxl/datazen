@@ -96,7 +96,10 @@ objc2-app-kit = { version = "0.3.2", optional = true }
 default = []
 webdriver = ["tauri-plugin-webdriver", "dep:objc2", "dep:objc2-app-kit", "datazen/webdriver"]
 # Enables `datazen::test_harness` for src-tauri/tests/ IPC migration integration tests.
-test-harness = ["datazen/test-harness"]
+# `tauri/test` lights up `tauri::test::mock_app` for the harness's HostedApp —
+# the command entries need a `State<'_, AppState>` that only a Manager can
+# provide (B2 之后命令层没有 `_impl` 转发层)。
+test-harness = ["datazen/test-harness", "tauri/test"]
 # Driver features — injected by resolve-drivers.mjs at build time; do NOT add manually.
 # <<driver-features>>
 # <</driver-features>>

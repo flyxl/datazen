@@ -1,5 +1,6 @@
 use super::test_fixtures::*;
 use super::*;
+use super::data_command_test_host::host_command_app;
 use crate::testing::app_state::TestAppState;
 use datazen_driver_api::Value;
 use std::collections::BTreeMap;
@@ -8,8 +9,9 @@ use std::collections::BTreeMap;
 async fn preview_builds_driver_sql_without_opening_a_transaction() {
     let test = with_parameterized_driver().await;
     let (_, conn_id) = test.save_and_connect("preview-only").await;
+    let app = host_command_app(test);
     let plan = preview_pending_changes_impl(
-        &test.state,
+        &app.state(),
         table_context("preview-only", &conn_id),
         vec![update_change(1, "Alice", "Updated")],
     )
@@ -21,8 +23,8 @@ async fn preview_builds_driver_sql_without_opening_a_transaction() {
     assert!(plan.updates[0].sql_template.contains("UPDATE \"users\""));
     assert!(plan.updates[0].sql_template.contains("\"id\" = ?2"));
     assert!(!plan.updates[0].sql_template.contains("Updated"));
-    assert!(!crate::commands::session_transaction_status_impl(
-        &test.state,
+    assert!(!crate::commands::session_transaction_status(
+        app.state(),
         plan.table.db_session_id.clone()
     )
     .await
@@ -64,15 +66,16 @@ async fn commit_reuses_plan_fingerprint_and_returns_plan_id() {
 async fn commit_rejects_stale_fingerprint_before_execution() {
     let test = with_parameterized_driver().await;
     let (_, conn_id) = test.save_and_connect("stale-plan").await;
+    let app = host_command_app(test);
     let plan = preview_pending_changes_impl(
-        &test.state,
+        &app.state(),
         table_context("stale-plan", &conn_id),
         vec![update_change(1, "Alice", "Updated")],
     )
     .await
     .unwrap();
     let error = commit_pending_changes_impl(
-        &test.state,
+        &app.state(),
         CommitPendingChangesRequest {
             db_session_id: conn_id.clone(),
             fingerprint: "stale".into(),
@@ -84,7 +87,7 @@ async fn commit_rejects_stale_fingerprint_before_execution() {
 
     assert!(error.to_string().contains("fingerprint"));
     assert!(
-        !crate::commands::session_transaction_status_impl(&test.state, conn_id)
+        !crate::commands::session_transaction_status(app.state(), conn_id)
             .await
             .unwrap()
     );
@@ -216,11 +219,12 @@ async fn empty_identity_is_rejected_before_any_sql_is_generated() {
     // `parameterized_writes` stays false: every builder call is unsupported.
     let test = TestAppState::with_options(crate::testing::app_state::rich_mock_options()).await;
     let (_, conn_id) = test.save_and_connect("guard-before-sql").await;
+    let app = host_command_app(test);
 
     let mut delete = delete_change(1);
     delete.row_identity = BTreeMap::new();
     let error = preview_pending_changes_impl(
-        &test.state,
+        &app.state(),
         table_context("guard-before-sql", &conn_id),
         vec![delete],
     )
@@ -233,9 +237,9 @@ async fn empty_identity_is_rejected_before_any_sql_is_generated() {
         !message.contains("parameterized row writes are not supported"),
         "SQL was generated before the identity guard ran: {message}"
     );
-    assert_eq!(test.mock.execute_calls(), 0);
+    assert_eq!(app.keep.mock.execute_calls(), 0);
     assert!(
-        !crate::commands::session_transaction_status_impl(&test.state, conn_id)
+        !crate::commands::session_transaction_status(app.state(), conn_id)
             .await
             .unwrap(),
         "a rejected plan must not open a transaction"

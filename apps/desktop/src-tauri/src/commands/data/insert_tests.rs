@@ -5,6 +5,7 @@
 
 use super::test_fixtures::*;
 use super::*;
+use super::data_command_test_host::host_command_app;
 use crate::testing::app_state::TestAppState;
 use datazen::data_browsing::{canonicalize_changes, changes_fingerprint, plan_changes};
 use datazen_driver_api::Value;
@@ -21,8 +22,9 @@ use std::collections::BTreeMap;
 async fn insert_preview_builds_statement_with_only_written_columns() {
     let test = with_parameterized_driver().await;
     let (_, conn_id) = test.save_and_connect("insert-preview").await;
+    let app = host_command_app(test);
     let plan = preview_pending_changes_impl(
-        &test.state,
+        &app.state(),
         table_context("insert-preview", &conn_id),
         vec![insert_change(&[
             ("name", Some(Value::String("Ada".into()))),
@@ -51,8 +53,8 @@ async fn insert_preview_builds_statement_with_only_written_columns() {
         .parameter_summary
         .iter()
         .any(|line| line == "INSERT note=NULL"));
-    assert!(!crate::commands::session_transaction_status_impl(
-        &test.state,
+    assert!(!crate::commands::session_transaction_status(
+        app.state(),
         plan.table.db_session_id.clone()
     )
     .await
@@ -358,8 +360,9 @@ async fn canonicalizing_the_rebuilt_plan_is_idempotent_for_new_rows() {
 async fn insert_joins_the_callers_manual_transaction_instead_of_opening_one() {
     let test = TestAppState::with_resource_provider(insert_capable_options()).await;
     let (_, conn_id) = test.save_and_connect("insert-manual-tx").await;
+    let app = host_command_app(test);
     let plan = preview_pending_changes_impl(
-        &test.state,
+        &app.state(),
         table_context("insert-manual-tx", &conn_id),
         vec![
             insert_change(&[("name", Some(Value::String("Ada".into())))]),
@@ -369,13 +372,13 @@ async fn insert_joins_the_callers_manual_transaction_instead_of_opening_one() {
     .await
     .unwrap();
 
-    crate::commands::begin_session_transaction_impl(&test.state, conn_id.clone())
+    crate::commands::begin_session_transaction(app.state(), conn_id.clone())
         .await
         .unwrap();
-    assert_eq!(test.mock.open_transaction_count(), 1);
-    let commits_before = test.mock.commit_calls();
+    assert_eq!(app.keep.mock.open_transaction_count(), 1);
+    let commits_before = app.keep.mock.commit_calls();
 
-    let platform = test.state.platform_require().unwrap();
+    let platform = app.state().platform_require().unwrap().clone();
     let scope = platform.begin_call();
     let runtime = platform.runtime().unwrap();
     let handle = runtime
@@ -385,7 +388,7 @@ async fn insert_joins_the_callers_manual_transaction_instead_of_opening_one() {
         .handle;
 
     let response = commit_pending_changes_with_handle(
-        &test.state,
+        &app.state(),
         CommitPendingChangesRequest {
             db_session_id: conn_id.clone(),
             fingerprint: plan.fingerprint.clone(),
@@ -398,27 +401,27 @@ async fn insert_joins_the_callers_manual_transaction_instead_of_opening_one() {
 
     assert_eq!(response.affected_rows, 2);
     assert_eq!(
-        test.mock.execute_with_params_calls(),
+        app.keep.mock.execute_with_params_calls(),
         2,
         "insert + update must really run inside the caller's transaction"
     );
     assert_eq!(
-        test.mock.commit_calls(),
+        app.keep.mock.commit_calls(),
         commits_before,
         "the ChangeSet must not commit the caller's transaction"
     );
     assert_eq!(
-        test.mock.open_transaction_count(),
+        app.keep.mock.open_transaction_count(),
         1,
         "no second transaction may be opened"
     );
     assert!(
-        crate::commands::session_transaction_status_impl(&test.state, conn_id.clone())
+        crate::commands::session_transaction_status(app.state(), conn_id.clone())
             .await
             .unwrap(),
         "the caller keeps control of its transaction"
     );
-    crate::commands::rollback_session_transaction_impl(&test.state, conn_id)
+    crate::commands::rollback_session_transaction(app.state(), conn_id)
         .await
         .unwrap();
 }
@@ -555,9 +558,13 @@ async fn a_drifted_manual_transaction_is_refused_as_a_stale_plan() {
     let mut config = crate::testing::app_state::sample_postgres_config("r5-manual-drift");
     config.database = None;
     test.store.save_connection(config).await.unwrap();
-    let conn_id = test.connect_config("r5-manual-drift").await;
+    let app = host_command_app(test);
+    let conn_id = crate::commands::connect(app.state(), "r5-manual-drift".into())
+        .await
+        .expect("reconnect via the real command entry")
+        .db_session_id;
     let plan = preview_pending_changes_impl(
-        &test.state,
+        &app.state(),
         RowChangeTableContext {
             database: Some("other_db".into()),
             ..table_context("r5-manual-drift", &conn_id)
@@ -567,10 +574,10 @@ async fn a_drifted_manual_transaction_is_refused_as_a_stale_plan() {
     .await
     .unwrap();
 
-    crate::commands::begin_session_transaction_impl(&test.state, conn_id.clone())
+    crate::commands::begin_session_transaction(app.state(), conn_id.clone())
         .await
         .unwrap();
-    let platform = test.state.platform_require().unwrap();
+    let platform = app.state().platform_require().unwrap().clone();
     let scope = platform.begin_call();
     let runtime = platform.runtime().unwrap();
     let handle = runtime
@@ -580,7 +587,7 @@ async fn a_drifted_manual_transaction_is_refused_as_a_stale_plan() {
         .handle;
 
     let error = commit_pending_changes_with_handle(
-        &test.state,
+        &app.state(),
         CommitPendingChangesRequest {
             db_session_id: conn_id,
             fingerprint: plan.fingerprint.clone(),
@@ -601,7 +608,7 @@ async fn a_drifted_manual_transaction_is_refused_as_a_stale_plan() {
         error.contains("preview the changes and commit again"),
         "got: {error}"
     );
-    assert_eq!(test.mock.commit_calls(), 0);
+    assert_eq!(app.keep.mock.commit_calls(), 0);
 }
 
 /// The owned path must not over-reject: when the driver really opens its

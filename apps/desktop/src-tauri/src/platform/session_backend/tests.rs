@@ -2,9 +2,15 @@
 //!
 //! These run on the in-memory fixture, so they observe the Host's lease and
 //! budget accounting rather than a database server's own connection count.
+//!
+//! B2 connection 刀之后命令层没有 `_impl` 转发层：`release_connection` /
+//! `save_connection` 走真实 `#[tauri::command]` 入口（经
+//! `connection_command_test_host` 托管的 mock app）；仍存在的
+//! `execute_driver_command_impl`（driver_command 域、后续刀）经托管态的
+//! deref 继续可用。
 
+use crate::commands::connection::connection_command_test_host::host_command_app;
 use crate::commands::driver_command::{execute_driver_command_impl, ExecuteDriverCommandRequest};
-use crate::commands::release_connection_impl;
 use crate::testing::app_state::{rich_mock_options, TestAppState};
 
 fn query(session: &str) -> ExecuteDriverCommandRequest {
@@ -18,18 +24,14 @@ fn query(session: &str) -> ExecuteDriverCommandRequest {
     }
 }
 
-/// Repeating statements on one session must not accumulate physical resources.
-///
-/// This is the host-side half of the leak question: the fixture opens exactly
-/// one resource for the session, executes many statements through the live
-/// connection, and every snapshot (ledger + budget) stays flat until the
-/// session is released.
+/// One session = one physical resource. Repeated statements on the live
+/// session must not accumulate resources; releasing the session returns it.
 #[tokio::test]
 async fn repeated_statements_do_not_accumulate_physical_resources() {
     let test = TestAppState::with_resource_provider(rich_mock_options()).await;
     let (_config, session) = test.save_and_connect("resource-flat").await;
 
-    let adapter = test.state.platform_require().expect("platform ready");
+    let adapter = test.state.platform_require().expect("platform ready").clone();
     let runtime = adapter.runtime().expect("runtime ready");
     let before = runtime
         .observability_snapshot()
@@ -43,8 +45,9 @@ async fn repeated_statements_do_not_accumulate_physical_resources() {
     );
     let connects = test.mock.connect_calls();
 
+    let app = host_command_app(test);
     for _ in 0..32 {
-        execute_driver_command_impl(&test.state, query(&session))
+        execute_driver_command_impl(&app.state(), query(&session))
             .await
             .expect("statement succeeds on the live session");
     }
@@ -60,12 +63,12 @@ async fn repeated_statements_do_not_accumulate_physical_resources() {
     assert_eq!(after.budget_in_use, before.budget_in_use, "no new permit");
     assert_eq!(after.physical_limit, before.physical_limit);
     assert_eq!(
-        test.mock.connect_calls(),
+        app.keep.mock.connect_calls(),
         connects,
         "no extra driver connection was opened"
     );
 
-    release_connection_impl(&test.state, session)
+    crate::commands::release_connection(app.state(), session)
         .await
         .expect("release succeeds");
     let closed = runtime
@@ -86,7 +89,7 @@ async fn saving_a_profile_retires_its_sessions_and_reconnect_succeeds() {
     let first = test.open_runtime_session("profile-retire").await;
     let second = test.open_runtime_session("profile-retire").await;
 
-    let adapter = test.state.platform_require().expect("platform ready");
+    let adapter = test.state.platform_require().expect("platform ready").clone();
     let runtime = adapter.runtime().expect("runtime ready");
     let before = runtime
         .observability_snapshot()
@@ -102,7 +105,11 @@ async fn saving_a_profile_retires_its_sessions_and_reconnect_succeeds() {
         .await
         .expect("profile exists");
     config.name = "Renamed profile".into();
-    crate::commands::save_connection_impl(&test.state, config, false)
+
+    let app = host_command_app(test);
+    // None 与旧 `save_connection_impl(..., false)` 同语义：命令体
+    // `clear_missing_credentials.unwrap_or(false)`。
+    crate::commands::save_connection(app.state(), config, None)
         .await
         .expect("save succeeds");
 
@@ -117,7 +124,7 @@ async fn saving_a_profile_retires_its_sessions_and_reconnect_succeeds() {
     assert_eq!(after.physical_total, 0, "physical resources returned");
     assert_eq!(after.budget_in_use, 0, "budget permits returned");
     for old in [&first, &second] {
-        let error = execute_driver_command_impl(&test.state, query(old))
+        let error = execute_driver_command_impl(&app.state(), query(old))
             .await
             .expect_err("a retired session is not reusable");
         assert!(
@@ -126,14 +133,17 @@ async fn saving_a_profile_retires_its_sessions_and_reconnect_succeeds() {
         );
     }
 
-    let reconnected = test.open_runtime_session("profile-retire").await;
+    let reconnected = crate::commands::connect(app.state(), "profile-retire".into())
+        .await
+        .expect("reconnect succeeds")
+        .db_session_id;
     let reopened = runtime
         .observability_snapshot()
         .await
         .expect("observability snapshot");
     assert_eq!(reopened.physical_total, 1, "reconnect opens one resource");
     assert_eq!(reopened.budget_in_use, 1);
-    execute_driver_command_impl(&test.state, query(&reconnected))
+    execute_driver_command_impl(&app.state(), query(&reconnected))
         .await
         .expect("reconnected session executes");
 }

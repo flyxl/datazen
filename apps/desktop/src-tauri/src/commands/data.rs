@@ -176,6 +176,13 @@ mod result_write_tests;
 #[path = "data/result_source_tests.rs"]
 mod result_source_tests;
 
+// 测试宿主（cfg(test)）：query 刀移除 `session_transaction_*_impl` 后，data
+// 测试的事务断言经真实 `#[tauri::command]` 入口驱动（与 query/dashboard/
+// tunnel/connection 各域宿主同形）。
+#[cfg(test)]
+#[path = "data_command_test_host.rs"]
+mod data_command_test_host;
+
 #[path = "table_target.rs"]
 mod table_target;
 
