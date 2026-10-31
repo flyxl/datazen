@@ -1,44 +1,27 @@
 //! AI provider configuration IPC commands.
+//!
+//! host-boundary §3（F4a `connection/api` 先例）：命令层只做请求接线与
+//! 转发——把 registry、[`AiConfigStore`] 端口与请求 DTO 交给
+//! `datazen::ai::api`，编排（供应商懒注册、持久化配置恢复、保存时的
+//! initialize 顺序、删除时的 reset 顺序）在 modules 定稿。桌面在这里保留
+//! 的只有传输胶水：`ai:config-changed` 事件发射与命令名日志；错误经
+//! `AiUseCaseError → CommandError` 的同桶映射，IPC 文案不变。
 
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
-use datazen::ai::AiProviderConfig;
-use datazen::ai::*;
-use datazen::ai::*;
-use serde::Serialize;
+use datazen::ai::api as ai_api;
+use datazen::ai::{AiProviderConfig, AiSettingsConfig, ModelInfo};
 use tauri::{AppHandle, Emitter, State};
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ProviderListItem {
-    pub provider_type: AiProviderType,
-    pub display_name: String,
-    pub supports_streaming: bool,
-    pub supports_tools: bool,
-    pub default_endpoint: String,
-    pub default_protocol: String,
-}
+// 展示 DTO（含内建端点 / 协议默认值映射）归模块所有；宿主再导出保持
+// `commands::ProviderListItem` 旧路径可用（宿主测试与前端类型面不变）。
+pub use datazen::ai::api::ProviderListItem;
 
 pub(crate) async fn ai_get_providers_impl(
     state: &AppState,
 ) -> Result<Vec<ProviderListItem>, CommandError> {
     state.ensure_ai_ready().await;
-    let providers = state.ai_registry.all_providers().await;
-    let result = providers
-        .into_iter()
-        .map(|p| {
-            let (ep, proto) = provider_defaults(p.provider_type());
-            ProviderListItem {
-                provider_type: p.provider_type(),
-                display_name: p.display_name().to_string(),
-                supports_streaming: p.supports_streaming(),
-                supports_tools: p.supports_tools(),
-                default_endpoint: ep.into(),
-                default_protocol: proto.into(),
-            }
-        })
-        .collect();
-    Ok(result)
+    Ok(ai_api::list_providers(&state.ai_registry).await)
 }
 
 #[tauri::command]
@@ -54,25 +37,10 @@ pub async fn ai_fetch_remote_models(
     endpoint: String,
     api_key: String,
 ) -> Result<Vec<ModelInfo>, CommandError> {
-    let proto = match protocol.as_str() {
-        "open_ai_compatible" => datazen::ai::custom::CustomProtocol::OpenAiCompatible,
-        "open_ai_responses" => datazen::ai::custom::CustomProtocol::OpenAiResponses,
-        "anthropic_compatible" => datazen::ai::custom::CustomProtocol::AnthropicCompatible,
-        other => {
-            return Err(CommandError::Validation(format!(
-                "Unknown protocol: {other}"
-            )))
-        }
-    };
-
-    datazen::ai::custom::fetch_remote_models_with_client(
-        datazen::ai::http::HttpClient::desktop(),
-        proto,
-        &endpoint,
-        &api_key,
-    )
-    .await
-    .cmd_err("ai_fetch_remote_models")
+    // 协议字符串是 IPC 词汇，映射（含未知词表值的拒绝文案）在用例层定稿。
+    ai_api::fetch_remote_models(&protocol, &endpoint, &api_key)
+        .await
+        .cmd_err("ai_fetch_remote_models")
 }
 
 pub(crate) async fn ai_validate_config_impl(
@@ -80,15 +48,7 @@ pub(crate) async fn ai_validate_config_impl(
     config: AiProviderConfig,
 ) -> Result<(), CommandError> {
     state.ensure_ai_ready().await;
-    let provider = state
-        .ai_registry
-        .get(&config.provider_type)
-        .await
-        .ok_or_else(|| {
-            CommandError::NotFound(format!("Provider {:?} not found", config.provider_type))
-        })?;
-    provider
-        .validate_config(&config)
+    ai_api::validate_provider_config(&state.ai_registry, &config)
         .await
         .cmd_err("ai_validate_config")
 }
@@ -106,22 +66,7 @@ pub(crate) async fn ai_save_config_impl(
     config: AiProviderConfig,
 ) -> Result<(), CommandError> {
     state.ensure_ai_ready().await;
-    let provider = state
-        .ai_registry
-        .get(&config.provider_type)
-        .await
-        .ok_or_else(|| {
-            CommandError::NotFound(format!("Provider {:?} not found", config.provider_type))
-        })?;
-
-    provider
-        .initialize(&config)
-        .await
-        .cmd_err("ai_save_config")?;
-
-    state
-        .store
-        .save_ai_config(&config)
+    ai_api::save_provider_config(&state.ai_registry, state.store.as_ref(), config)
         .await
         .cmd_err("ai_save_config")
 }
@@ -140,7 +85,7 @@ pub async fn ai_save_config(
 pub(crate) async fn ai_get_config_impl(
     state: &AppState,
 ) -> Result<Option<AiProviderConfig>, CommandError> {
-    Ok(state.store.get_ai_config().await)
+    Ok(ai_api::get_provider_config(state.store.as_ref()).await)
 }
 
 #[tauri::command]
@@ -151,12 +96,7 @@ pub async fn ai_get_config(
 }
 
 pub(crate) async fn ai_delete_config_impl(state: &AppState) -> Result<(), CommandError> {
-    for provider in state.ai_registry.all_providers().await {
-        provider.reset().await;
-    }
-    state
-        .store
-        .delete_ai_config()
+    ai_api::delete_provider_config(&state.ai_registry, state.store.as_ref())
         .await
         .cmd_err("ai_delete_config")
 }
@@ -174,7 +114,7 @@ pub async fn ai_delete_config(
 pub(crate) async fn ai_get_settings_config_impl(
     state: &AppState,
 ) -> Result<AiSettingsConfig, CommandError> {
-    Ok(state.store.get_ai_settings_config().await)
+    Ok(ai_api::get_settings_config(state.store.as_ref()).await)
 }
 
 #[tauri::command]
@@ -189,16 +129,7 @@ pub(crate) async fn ai_save_settings_config_impl(
     config: AiSettingsConfig,
 ) -> Result<(), CommandError> {
     state.ensure_ai_ready().await;
-    if let Some(profile) = config.selected_profile() {
-        let provider_config = AiProviderConfig::from(profile);
-        if let Some(provider) = state.ai_registry.get(&provider_config.provider_type).await {
-            let _ = provider.initialize(&provider_config).await;
-        }
-    }
-
-    state
-        .store
-        .save_ai_settings_config(&config)
+    ai_api::save_settings_config(&state.ai_registry, state.store.as_ref(), config)
         .await
         .cmd_err("ai_save_settings_config")
 }
@@ -219,18 +150,9 @@ pub(crate) async fn ai_set_active_profile_impl(
     profile_id: String,
 ) -> Result<(), CommandError> {
     state.ensure_ai_ready().await;
-    state
-        .store
-        .set_active_profile(&profile_id)
+    ai_api::set_active_profile(&state.ai_registry, state.store.as_ref(), &profile_id)
         .await
-        .cmd_err("ai_set_active_profile")?;
-
-    if let Some(cfg) = state.store.get_ai_config().await {
-        if let Some(provider) = state.ai_registry.get(&cfg.provider_type).await {
-            let _ = provider.initialize(&cfg).await;
-        }
-    }
-    Ok(())
+        .cmd_err("ai_set_active_profile")
 }
 
 #[tauri::command]

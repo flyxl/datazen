@@ -39,20 +39,24 @@ impl WorkflowHost for AppState {
         .await
     }
     async fn complete_ai(&self, prompt: String) -> Result<String, WorkflowError> {
-        let config = self
-            .store
-            .get_ai_config()
-            .await
-            .ok_or_else(|| WorkflowError::Ai("AI not configured".into()))?;
-        let provider = self
-            .ai_registry
-            .get(&config.provider_type)
-            .await
-            .ok_or_else(|| WorkflowError::Ai("AI provider not available".into()))?;
-        let gate = datazen::ai::safety::effective_safety_gate(
-            &self.store.get_ai_settings_config().await,
-            &self.store.execution_settings().await,
-        );
+        // 解析激活供应商与安全门的编排与命令层共用同一用例面
+        // （host-boundary §3 AI 配置刀）；本端口实现只保留 WorkflowError
+        // 的两段文案映射，错误语义与下沉前逐字一致。
+        let (provider, config) =
+            match datazen::ai::api::resolve_active_provider(&self.ai_registry, self.store.as_ref())
+                .await
+            {
+                Ok(pair) => pair,
+                Err(datazen::ai::application::AiUseCaseError::NotConfigured(code))
+                    if code == "AI_NOT_CONFIGURED" =>
+                {
+                    return Err(WorkflowError::Ai("AI not configured".into()));
+                }
+                Err(_) => {
+                    return Err(WorkflowError::Ai("AI provider not available".into()));
+                }
+            };
+        let gate = datazen::ai::api::effective_safety_gate(self.store.as_ref()).await;
         let prompt = datazen::ai::safety::redact_for_gate(&prompt, &gate);
         let request = CompletionRequest {
             request_id: uuid::Uuid::new_v4().to_string(),
