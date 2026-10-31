@@ -253,10 +253,11 @@ export const RULES = Object.freeze([
  * default no longer has anything to protect it. It could not be armed sooner —
  * until `resolveSubject` learned to answer a `ts` layer from the workspace
  * directory, this entry would have made every PR red by calling a present, clean
- * package a missing layer. `server` stays unarmed on purpose: `datazen-server`
- * has not landed, and F-06 remains honestly vacuous until it does.
+ * package a missing layer. `server` is armed since WR-D1 landed `datazen-server`
+ * (2026-10-31): F-06 now has a real subject, and this entry is what makes the
+ * server crate's disappearance an error rather than a silently vacuous rule.
  */
-export const DEFAULT_REQUIRED_LAYERS = ['backend-client', 'modules'];
+export const DEFAULT_REQUIRED_LAYERS = ['backend-client', 'modules', 'server'];
 
 function specLayerId(pathToken) {
   const normalised = pathToken.replace(/\/\*$/, '/*');
