@@ -20,6 +20,19 @@ pub struct TestAppState {
     pub registry: Arc<DriverRegistry>,
 }
 
+/// The fields of a [`TestAppState`] that must stay alive after its state has
+/// been handed to a mock command host ([`TestAppState::into_state`]).
+///
+/// The fields exist for their drop/lifetime semantics, not for reading —
+/// tests keep driving the mock through the `mock` binding they already hold.
+#[allow(dead_code)]
+pub struct TestStateKeepalive {
+    pub _temp: tempfile::TempDir,
+    pub store: Arc<DesktopRepository>,
+    pub mock: Arc<MockDriver>,
+    pub registry: Arc<DriverRegistry>,
+}
+
 /// Supplies the same test driver through the runtime resource contract.
 ///
 /// Runtime SQL and ChangeSet paths open short-lived resources through a
@@ -175,6 +188,32 @@ impl TestAppState {
 
     pub async fn with_tables() -> Self {
         Self::with_options(rich_mock_options()).await
+    }
+
+    /// Hand the assembled [`AppState`] to a mock command host so tests can
+    /// drive the real `#[tauri::command]` handlers (their `State` /
+    /// `WebviewWindow` parameters can only come from a `Manager`).
+    ///
+    /// Consumes the harness's state; everything that must outlive the test
+    /// (tempdir, store, mock driver, registry) is returned in the keepalive.
+    /// The mock driver stays programmable through the returned handle.
+    pub fn into_state(self) -> (AppState, TestStateKeepalive) {
+        let Self {
+            _temp,
+            state,
+            store,
+            mock,
+            registry,
+        } = self;
+        (
+            state,
+            TestStateKeepalive {
+                _temp,
+                store,
+                mock,
+                registry,
+            },
+        )
     }
 
     pub async fn with_tables_and_resource_provider() -> Self {

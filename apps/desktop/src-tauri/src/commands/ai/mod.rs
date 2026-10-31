@@ -48,6 +48,12 @@ pub async fn ai_cancel(
 pub(crate) use util::*;
 
 #[cfg(test)]
+mod command_test_host;
+
+#[cfg(test)]
+pub(crate) use command_test_host::{host_command_app, CommandApp};
+
+#[cfg(test)]
 mod integration_tests;
 
 #[cfg(test)]

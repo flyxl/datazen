@@ -105,6 +105,10 @@ test-harness = ["datazen/test-harness"]
 [dev-dependencies]
 wiremock = "0.6"
 sqlx = { version = "=0.8.6", features = ["runtime-tokio", "tls-rustls", "postgres", "mysql"] }
+# `tauri::test`（mock_app / MockRuntime）：`#[tauri::command]` 处理函数现在直接
+# 持有业务逻辑，命令集成测试经真实命令入口驱动（State/WebviewWindow 只能来自
+# Manager），需要 mock 运行时宿主。test feature 仅测试构建启用。
+tauri = { version = "2", features = ["test"] }
 datazen-driver-postgres = { workspace = true }
 datazen-driver-mysql = { workspace = true }
 datazen-driver-sqlite = { workspace = true }

@@ -385,21 +385,23 @@ fn test_emit_stream_chunk_builds_payload_via_callback() {
 }
 
 #[tokio::test]
-async fn ai_providers_config_prompt_workflow_impl() {
+async fn ai_providers_config_prompt_workflow() {
     use crate::testing::app_state::TestAppState;
     use datazen::ai::AiProviderConfig;
     use datazen::ai::AiProviderType;
 
     let test = TestAppState::new().await;
-    assert!(ai_get_config_impl(&test.state).await.unwrap().is_none());
+    let (state, _keep) = test.into_state();
+    let app = CommandApp::new(state);
+    assert!(ai_get_config(app.state()).await.unwrap().is_none());
 
-    let providers = ai_get_providers_impl(&test.state).await.unwrap();
+    let providers = ai_get_providers(app.state()).await.unwrap();
     assert!(!providers.is_empty());
 
-    let prompts = prompt_list_impl(&test.state, None).await.unwrap();
+    let prompts = prompt_list(app.state(), None).await.unwrap();
     assert!(!prompts.is_empty());
 
-    let workflows = workflow_list_impl(&test.state).await.unwrap();
+    let workflows = workflow_list_impl(&app.state()).await.unwrap();
     assert!(
         workflows.iter().any(|w| w.id.starts_with("builtin-")),
         "empty workflow dir should be seeded with builtin workflows, got: {workflows:?}"
@@ -413,10 +415,10 @@ async fn ai_providers_config_prompt_workflow_impl() {
         max_tokens: 4096,
         extra: serde_json::json!({}),
     };
-    test.state.store.save_ai_config(&cfg).await.unwrap();
-    assert!(ai_get_config_impl(&test.state).await.unwrap().is_some());
-    ai_delete_config_impl(&test.state).await.unwrap();
-    assert!(ai_get_config_impl(&test.state).await.unwrap().is_none());
+    app.state().store.save_ai_config(&cfg).await.unwrap();
+    assert!(ai_get_config(app.state()).await.unwrap().is_some());
+    ai_delete_config(app.handle(), app.state()).await.unwrap();
+    assert!(ai_get_config(app.state()).await.unwrap().is_none());
 }
 
 #[tokio::test]
@@ -438,6 +440,8 @@ async fn ai_validate_config_rejects_missing_api_key() {
     use datazen::ai::AiProviderType;
 
     let test = TestAppState::new().await;
+    let (state, _keep) = test.into_state();
+    let app = CommandApp::new(state);
     let cfg = AiProviderConfig {
         provider_type: AiProviderType::OpenAi,
         api_key: None,
@@ -446,7 +450,7 @@ async fn ai_validate_config_rejects_missing_api_key() {
         max_tokens: 4096,
         extra: serde_json::json!({}),
     };
-    assert!(ai_validate_config_impl(&test.state, cfg).await.is_err());
+    assert!(ai_validate_config(app.state(), cfg).await.is_err());
 }
 
 #[tokio::test]
