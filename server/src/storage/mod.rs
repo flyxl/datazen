@@ -45,11 +45,11 @@ pub enum StorageError {
     #[error("admin store open failed: {0}")]
     Open(String),
 
-    #[error("migration failed at version {version} ({name}): {source}")]
+    #[error("migration failed at version {version} ({name}): {detail}")]
     Migration {
         version: i64,
         name: &'static str,
-        source: String,
+        detail: String,
     },
 
     #[error("admin store query failed: {0}")]
@@ -124,14 +124,14 @@ impl AdminStore {
                     StorageError::Migration {
                         version: migration.version,
                         name: migration.name,
-                        source: source.to_string(),
+                        detail: source.to_string(),
                     }
                 })?;
                 tx.execute_batch(migration.expand).map_err(|source| {
                     StorageError::Migration {
                         version: migration.version,
                         name: migration.name,
-                        source: source.to_string(),
+                        detail: source.to_string(),
                     }
                 })?;
                 tx.execute(
@@ -141,12 +141,12 @@ impl AdminStore {
                 .map_err(|source| StorageError::Migration {
                     version: migration.version,
                     name: migration.name,
-                    source: source.to_string(),
+                    detail: source.to_string(),
                 })?;
                 tx.commit().map_err(|source| StorageError::Migration {
                     version: migration.version,
                     name: migration.name,
-                    source: source.to_string(),
+                    detail: source.to_string(),
                 })?;
             }
             applied.push(AppliedMigration {
@@ -168,11 +168,11 @@ impl AdminStore {
         if !has_table {
             return Ok(0);
         }
-        self.lock()?.query_row(
+        Ok(self.lock()?.query_row(
             "SELECT COALESCE(MAX(version), 0) FROM admin_schema_version",
             [],
             |row| row.get(0),
-        )
+        )?)
     }
 
     fn ensure_version_table(&self) -> Result<(), StorageError> {
@@ -187,11 +187,11 @@ impl AdminStore {
     }
 
     fn version_applied(&self, version: i64) -> Result<bool, StorageError> {
-        self.lock()?.query_row(
+        Ok(self.lock()?.query_row(
             "SELECT EXISTS (SELECT 1 FROM admin_schema_version WHERE version = ?1)",
             [version],
             |row| row.get(0),
-        )
+        )?)
     }
 
     fn lock(&self) -> Result<std::sync::MutexGuard<'_, Connection>, StorageError> {
