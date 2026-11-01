@@ -14,6 +14,7 @@
 
 pub mod cancel;
 pub mod chat_request;
+pub mod chat_session;
 pub mod context;
 pub mod db_tools;
 pub mod error;

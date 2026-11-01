@@ -7,7 +7,7 @@
 //! 的配置工作流，以及 MCP 客户端的宿主装配语义。
 
 use super::*;
-use crate::commands::workflow_list_impl;
+use crate::commands::workflow_list;
 use datazen::ai::*;
 
 #[tokio::test]
@@ -104,7 +104,8 @@ async fn ai_providers_config_prompt_workflow() {
     let prompts = prompt_list(app.state(), None).await.unwrap();
     assert!(!prompts.is_empty());
 
-    let workflows = workflow_list_impl(&app.state()).await.unwrap();
+    // B3：workflow_list_impl 转发已回收，测试走真实命令入口。
+    let workflows = workflow_list(app.state()).await.unwrap();
     assert!(
         workflows.iter().any(|w| w.id.starts_with("builtin-")),
         "empty workflow dir should be seeded with builtin workflows, got: {workflows:?}"

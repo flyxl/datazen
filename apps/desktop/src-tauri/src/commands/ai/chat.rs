@@ -1,26 +1,29 @@
-//! AI chat IPC and tool-loop execution.
+//! AI chat IPC thin binding.
 //!
-//! WR-A2：`ai_chat` 命令处理函数直接持有接线逻辑（schema 上下文、MCP 工具
-//! 装配、取消登记、流式回调构造），无 `_impl` 转发层；工具循环本体在
-//! modules（`datazen::ai::tool_loop`）。命令对 `R: Runtime` 泛型，测试经
-//! `tauri::test::mock_app` 直调。
+//! WR-A2：`ai_chat` 命令处理函数只做 IPC 形参提取与端口取值；B3 后编排
+//! 本体（schema 管线降级、上下文块装配、取消登记对称性、工具循环）下沉
+//! modules 用例 `datazen::ai::application::chat_session`。命令对
+//! `R: Runtime` 泛型，测试经 `tauri::test::mock_app` 直调。
+//!
+//! 本文件同时是宿主端口的装配点：`AppState` 的 [`AiToolLoopHost`] 实现
+//! 与请求级 [`AiRequestHost`]（claim 归因，P6 §14.4）。
 
 use super::util::{
-    borrow_runtime_session, build_connections_context, resolve_ai, resolve_language,
-    resolve_safety_gate, window_stream_callback,
+    borrow_runtime_session, build_connections_context, read_context_entries, resolve_ai,
+    resolve_language, resolve_safety_gate, window_stream_callback,
 };
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
-use datazen::ai::budget;
-use datazen::ai::safety::redact_for_gate;
-use datazen::ai::schema_pipeline::{PromptSeed, SchemaContextPipeline};
+use datazen::ai::application::chat_session::{
+    run_chat_session, ChatSessionEnv, ChatSessionInput,
+};
+use datazen::ai::application::schema_pipeline::SchemaContextPipeline;
+use datazen::ai::ownership::AiTargetClaim;
+use datazen::ai::tool_loop::AiToolLoopHost;
 use datazen::ai::*;
-use std::sync::Arc;
 use tauri::{State, WebviewWindow};
 
 // ─── Database Tool Definitions & Execution ───
-
-pub(crate) use datazen::ai::tools::db_tool_definitions;
 
 /// Convert connected MCP client tools into AI `ToolDefinition`s (Phase 3 wires into chat).
 ///
@@ -49,7 +52,7 @@ pub(crate) async fn execute_db_tool(state: &AppState, tool_call: &ToolCall) -> S
 }
 
 #[async_trait::async_trait]
-impl datazen::ai::tool_loop::AiToolLoopHost for AppState {
+impl AiToolLoopHost for AppState {
     async fn egress_summary(&self) -> String {
         let Ok(scope) = self.connection_scope() else {
             return "No database connections configured.".into();
@@ -63,31 +66,6 @@ impl datazen::ai::tool_loop::AiToolLoopHost for AppState {
     async fn execute_mcp_tool(&self, server: &str, tool: &str, arguments: &str) -> String {
         execute_mcp_tool(self, server, tool, arguments).await
     }
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(crate) async fn run_streaming_tool_loop_with_claim(
-    provider: Arc<dyn AiProvider>,
-    state: &AppState,
-    on_chunk: super::util::StreamCallback,
-    request_id: &str,
-    request: CompletionRequest,
-    max_rounds: usize,
-    cmd_label: &str,
-    gate: &AiSafetyGateConfig,
-    claim: &datazen::ai::ownership::AiTargetClaim,
-) -> Result<String, CommandError> {
-    // The claim decides which resource each tool may touch; independent and
-    // editor-granted calls never share an execution path.
-    let host = super::AiRequestHost {
-        state,
-        claim: claim.clone(),
-    };
-    datazen::ai::tool_loop::run_streaming_tool_loop(
-        provider, &host, on_chunk, request_id, request, max_rounds, cmd_label, gate,
-    )
-    .await
-    .map_err(Into::into)
 }
 
 // ─── AI Chat ───
@@ -104,24 +82,13 @@ pub async fn ai_chat<R: tauri::Runtime>(
     scenario: Option<String>,
     context_files: Option<Vec<String>>,
     context_tables: Option<Vec<String>>,
-    target_claim: Option<datazen::ai::ownership::AiTargetClaim>,
+    target_claim: Option<AiTargetClaim>,
 ) -> Result<String, CommandError> {
     let on_chunk = window_stream_callback(&window);
     let is_workflow = scenario.as_deref() == Some("workflow_generate");
 
-    tracing::info!(
-        %request_id,
-        db_session_id = ?db_session_id,
-        database = ?database,
-        messages_count = messages.len(),
-        %include_schema,
-        scenario = ?scenario,
-        context_tables_count = context_tables.as_ref().map(|t| t.len()).unwrap_or(0),
-        last_user_msg_len = messages.last().map(|m| m.content.len()).unwrap_or(0),
-        "ai_chat: start"
-    );
+    // 端口取值（thin binding）。
     let (provider, ai_config) = resolve_ai(&state).await?;
-
     let gate = resolve_safety_gate(&state).await;
     let lang = resolve_language(&state).await;
     let connections_context = if is_workflow {
@@ -129,348 +96,74 @@ pub async fn ai_chat<R: tauri::Runtime>(
     } else {
         String::new()
     };
-    let mut schema_prompt: Option<(Arc<dyn datazen_driver_api::DatabaseDriver>, PromptSeed)> = None;
-    let mut attach_db_tools = true;
-
-    if include_schema {
-        if let Some(ref conn_id) = db_session_id {
-            let db = database.as_deref().unwrap_or("");
-            if let Ok((_session, lease)) = borrow_runtime_session(&state, conn_id, "ai_chat").await {
-                let Ok(connection) = lease.connection() else {
-                    return Err(CommandError::Internal(
-                        "ai_chat: runtime connection borrow revoked".into(),
-                    ));
-                };
-                let driver = connection.driver().clone();
-                let pinned = context_tables.clone().unwrap_or_default();
-                let supports_tools = provider.supports_tools();
-                let pipeline = SchemaContextPipeline::new(state.schema_context_builder.clone());
-                match pipeline
-                    .resolve(
-                        conn_id,
-                        db,
-                        &pinned,
-                        supports_tools,
-                        budget::PINNED_DDL,
-                        budget::FALLBACK_DDL,
-                    )
-                    .await
-                {
-                    Ok(seed) => {
-                        attach_db_tools = seed.attach_db_tools;
-                        schema_prompt = Some((driver, seed));
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            %request_id,
-                            db_session_id = %conn_id,
-                            database = %db,
-                            error_len = e.to_string().len(),
-                            "ai_chat: schema context pipeline resolve failed; disabling DB tools"
-                        );
-                        attach_db_tools = false;
-                    }
-                }
-            }
-        }
-    }
-
-    let mut context_block: Option<String> = None;
-    if let Some(ref ctx_files) = context_files {
-        if !ctx_files.is_empty() {
-            let ctx_dir = crate::commands::context::resolve_context_dir_from_state(&state).await?;
-            let entries = crate::commands::context::read_context_paths(&ctx_dir, ctx_files).await?;
-            if !entries.is_empty() {
-                let sanitized_entries: Vec<(String, String)> = entries
-                    .into_iter()
-                    .map(|(path, content)| (path, redact_for_gate(&content, &gate)))
-                    .collect();
-                context_block = Some(crate::commands::context::format_context_block(
-                    &sanitized_entries,
-                ));
-            }
-        }
-    }
-
-    let schema =
-        schema_prompt.as_ref().map(
-            |(driver, seed)| datazen::ai::chat_request::ChatSchemaPrompt {
-                driver: driver.as_ref(),
-                seed,
+    // 宿主运行时端口：借用 live 驱动供 schema 管线使用。会话未知 → None
+    // （pinned 契约：静默跳过 schema 注入，`ai_chat_schema_resolve_failure_still_streams`）；
+    // 借用被撤销 → 硬错误，文案钉死。
+    let schema_driver = if include_schema {
+        match db_session_id.as_deref() {
+            Some(conn_id) => match borrow_runtime_session(&state, conn_id, "ai_chat").await {
+                Ok((_session, lease)) => Some(
+                    lease
+                        .connection()
+                        .map_err(|_| {
+                            CommandError::Internal(
+                                "ai_chat: runtime connection borrow revoked".into(),
+                            )
+                        })?
+                        .driver()
+                        .clone(),
+                ),
+                Err(_) => None,
             },
-        );
+            None => None,
+        }
+    } else {
+        None
+    };
+    let context_entries = read_context_entries(&state, context_files.as_deref()).await?;
     let mcp_tools = if provider.supports_tools() {
         mcp_tool_definitions(&state).await
     } else {
         Vec::new()
     };
-    let mut request = datazen::ai::chat_request::build_chat_request(
-        state.prompt_resolver.as_ref(),
-        datazen::ai::chat_request::ChatRequestInput {
-            request_id: &request_id,
-            model: &ai_config.model,
-            lang: &lang,
+
+    // 编排本体在 modules（B3 下沉）；claim 归因由请求级宿主提供。
+    let host = super::AiRequestHost {
+        state: &state,
+        claim: target_claim.unwrap_or(AiTargetClaim::Independent),
+    };
+    let env = ChatSessionEnv {
+        provider,
+        model: ai_config.model,
+        gate,
+        lang,
+        connections_context,
+        mcp_tools,
+        context_entries,
+        schema_driver,
+        prompt_resolver: state.prompt_resolver.clone(),
+        schema_pipeline: SchemaContextPipeline::new(state.schema_context_builder.clone()),
+        cancel_registry: state.cancel_registry.clone(),
+        cancel_owner: super::ai_owner_fingerprint(&state),
+    };
+    run_chat_session(
+        env,
+        &host,
+        on_chunk,
+        ChatSessionInput {
+            request_id,
+            db_session_id,
+            database,
+            messages,
+            include_schema,
             scenario: if is_workflow {
                 datazen::ai::chat_request::ChatScenario::WorkflowGenerate
             } else {
                 datazen::ai::chat_request::ChatScenario::Chat
             },
-            schema,
-            connections_context: &connections_context,
-            messages,
-            context_block: context_block.as_deref(),
-            safety_gate: &gate,
-            attach_db_tools,
-            mcp_tools,
+            context_tables,
         },
     )
-    .await;
-
-    // Register cancel token so `ai_cancel` IPC can interrupt this stream.
-    let cancel_owner = super::ai_owner_fingerprint(&state);
-    let cancel_token = state
-        .cancel_registry
-        .register(&request_id, &cancel_owner)
-        .await;
-    request.cancel_token = Some(cancel_token.clone());
-
-    let claim = target_claim.unwrap_or(datazen::ai::ownership::AiTargetClaim::Independent);
-    let result = run_streaming_tool_loop_with_claim(
-        provider,
-        &state,
-        on_chunk,
-        &request_id,
-        request,
-        10,
-        "ai_chat",
-        &gate,
-        &claim,
-    )
-    .await;
-
-    // Always unregister — normal completion or cancellation.
-    state
-        .cancel_registry
-        .unregister(&request_id, &cancel_owner)
-        .await;
-    result
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use datazen::ai::tools::{
-        classify_tool, is_readonly_db_tool, mcp_needs_confirm, ToolKind, ToolLoopGuard,
-    };
-    use datazen::ai::TokenUsage;
-
-    // ── ToolLoopGuard unit tests [tester] ──
-
-    #[test]
-    fn test_tester_guard_new_defaults() {
-        let guard = ToolLoopGuard::new();
-        assert_eq!(guard.round, 0);
-        assert_eq!(guard.total_tokens, 0);
-        assert_eq!(guard.max_rounds, 6);
-        assert_eq!(guard.max_total_tokens, 24_000);
-        assert_eq!(guard.max_duration.as_secs(), 180);
-        assert_eq!(guard.per_tool_cap, 2048);
-        assert_eq!(guard.per_round_cap, 12_288);
-    }
-
-    #[test]
-    fn test_tester_guard_check_round_succeeds_within_limits() {
-        let mut guard = ToolLoopGuard::new();
-        // First 6 rounds should succeed (max_rounds = 6)
-        for i in 1..=6 {
-            assert!(guard.check_round().is_ok(), "round {i} should succeed");
-        }
-        assert_eq!(guard.round, 6);
-    }
-
-    #[test]
-    fn test_tester_guard_check_round_fails_on_max_rounds() {
-        let mut guard = ToolLoopGuard::new();
-        for _ in 0..6 {
-            guard.check_round().unwrap();
-        }
-        // 7th round should fail
-        let err = guard.check_round().unwrap_err();
-        assert!(
-            err.contains("max rounds"),
-            "error should mention max rounds: {err}"
-        );
-    }
-
-    #[test]
-    fn test_tester_guard_check_round_fails_on_token_budget() {
-        let mut guard = ToolLoopGuard::new();
-        guard.total_tokens = 24_000; // at budget
-        let err = guard.check_round().unwrap_err();
-        assert!(
-            err.contains("token budget"),
-            "error should mention token budget: {err}"
-        );
-    }
-
-    #[test]
-    fn test_tester_guard_check_round_fails_on_time_limit() {
-        let mut guard = ToolLoopGuard::new();
-        guard.max_duration = std::time::Duration::from_millis(1); // 1ms
-                                                                  // Wait a bit to exceed the limit
-        std::thread::sleep(std::time::Duration::from_millis(5));
-        let err = guard.check_round().unwrap_err();
-        assert!(
-            err.contains("time limit"),
-            "error should mention time limit: {err}"
-        );
-    }
-
-    #[test]
-    fn test_tester_guard_accumulate_usage() {
-        let mut guard = ToolLoopGuard::new();
-        let usage = TokenUsage {
-            prompt_tokens: 100,
-            completion_tokens: 200,
-            total_tokens: 300,
-        };
-        guard.accumulate_usage(&usage);
-        assert_eq!(guard.total_tokens, 300);
-
-        guard.accumulate_usage(&usage);
-        assert_eq!(guard.total_tokens, 600);
-    }
-
-    #[test]
-    fn test_tester_guard_truncate_under_cap() {
-        let result = ToolLoopGuard::truncate_tool_result("hello", 100);
-        assert_eq!(result, "hello");
-    }
-
-    #[test]
-    fn test_tester_guard_truncate_over_cap() {
-        let long = "a".repeat(3000);
-        let result = ToolLoopGuard::truncate_tool_result(&long, 100);
-        assert!(result.len() < 3000);
-        assert!(result.contains("truncated"));
-        assert!(result.contains("bytes omitted"));
-    }
-
-    #[test]
-    fn test_tester_guard_truncate_exact_cap() {
-        let exact = "a".repeat(100);
-        let result = ToolLoopGuard::truncate_tool_result(&exact, 100);
-        assert_eq!(result, exact);
-    }
-
-    #[test]
-    fn test_tester_guard_truncate_and_wrap() {
-        let guard = ToolLoopGuard::new();
-        let tc = ToolCall {
-            id: "call_1".into(),
-            name: "test".into(),
-            arguments: "{}".into(),
-        };
-        let msg = guard.truncate_and_wrap(&tc, "result content".into());
-        assert_eq!(msg.role, MessageRole::Tool);
-        assert_eq!(msg.tool_call_id.as_deref(), Some("call_1"));
-        assert_eq!(msg.content, "result content");
-    }
-
-    #[test]
-    fn test_tester_guard_truncate_and_wrap_truncates_large() {
-        let guard = ToolLoopGuard::new();
-        let tc = ToolCall {
-            id: "call_2".into(),
-            name: "test".into(),
-            arguments: "{}".into(),
-        };
-        let big = "x".repeat(4096);
-        let msg = guard.truncate_and_wrap(&tc, big);
-        assert!(msg.content.len() < 4096);
-        assert!(msg.content.contains("truncated"));
-    }
-
-    // ── classify_tool tests [tester] ──
-
-    #[test]
-    fn test_tester_classify_tool_ask_questions() {
-        assert!(matches!(
-            classify_tool("ask_questions"),
-            ToolKind::AskQuestions
-        ));
-    }
-
-    #[test]
-    fn test_tester_classify_tool_db() {
-        assert!(matches!(classify_tool("list_connections"), ToolKind::Db(_)));
-        assert!(matches!(classify_tool("list_databases"), ToolKind::Db(_)));
-        assert!(matches!(classify_tool("list_tables"), ToolKind::Db(_)));
-        assert!(matches!(classify_tool("search_tables"), ToolKind::Db(_)));
-        assert!(matches!(classify_tool("get_table_schema"), ToolKind::Db(_)));
-    }
-
-    #[test]
-    fn test_tester_classify_tool_mcp() {
-        let kind = classify_tool("mcp/server1/get_data");
-        match kind {
-            ToolKind::Mcp {
-                server_id,
-                tool_name,
-            } => {
-                assert_eq!(server_id, "server1");
-                assert_eq!(tool_name, "get_data");
-            }
-            _ => panic!("expected Mcp kind"),
-        }
-    }
-
-    #[test]
-    fn test_tester_classify_tool_unknown() {
-        assert!(matches!(
-            classify_tool("nonexistent_tool"),
-            ToolKind::Unknown
-        ));
-        assert!(matches!(classify_tool("mcp/"), ToolKind::Unknown));
-        assert!(matches!(classify_tool("mcp/server/"), ToolKind::Unknown));
-    }
-
-    // ── is_readonly_db_tool tests [tester] ──
-
-    #[test]
-    fn test_tester_is_readonly_db_tool() {
-        assert!(is_readonly_db_tool("list_connections"));
-        assert!(is_readonly_db_tool("list_databases"));
-        assert!(is_readonly_db_tool("list_tables"));
-        assert!(is_readonly_db_tool("search_tables"));
-        assert!(is_readonly_db_tool("get_table_schema"));
-        assert!(!is_readonly_db_tool("ask_questions"));
-        assert!(!is_readonly_db_tool("unknown"));
-    }
-
-    // ── mcp_needs_confirm tests [tester] ──
-
-    #[test]
-    fn test_tester_mcp_needs_confirm_schema_based() {
-        let schema = serde_json::json!({"x-write": true});
-        assert!(mcp_needs_confirm("any_tool", &schema));
-    }
-
-    #[test]
-    fn test_tester_mcp_needs_confirm_name_based() {
-        let schema = serde_json::json!({});
-        assert!(mcp_needs_confirm("write_file", &schema));
-        assert!(mcp_needs_confirm("delete_record", &schema));
-        assert!(mcp_needs_confirm("drop_table", &schema));
-        assert!(mcp_needs_confirm("update_user", &schema));
-        assert!(mcp_needs_confirm("create_index", &schema));
-        assert!(mcp_needs_confirm("insert_data", &schema));
-    }
-
-    #[test]
-    fn test_tester_mcp_needs_confirm_readonly() {
-        let schema = serde_json::json!({});
-        assert!(!mcp_needs_confirm("get_data", &schema));
-        assert!(!mcp_needs_confirm("list_files", &schema));
-    }
+    .await
+    .map_err(Into::into)
 }

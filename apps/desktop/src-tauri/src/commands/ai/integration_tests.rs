@@ -7,11 +7,10 @@ use datazen_driver_api::PromptScenario;
 
 use super::chat::execute_db_tool;
 use super::*;
-use crate::commands::{workflow_execute_impl, workflow_list_impl};
+use crate::commands::{workflow_execute, workflow_list};
 use crate::testing::ai_wiremock::WiremockAi;
 use crate::testing::app_state::TestAppState;
 use datazen::ai::prompt_resolver::PromptOverrideEntry;
-use datazen::ai::tools::{classify_tool, ToolKind};
 
 #[tokio::test]
 async fn resolve_ai_requires_saved_config() {
@@ -401,23 +400,26 @@ async fn workflow_save_list_get_delete() {
         .save_workflow(&test.state.organization_scope().unwrap(), &wf)
         .await
         .unwrap();
-    let list = workflow_list_impl(&test.state).await.unwrap();
+
+    // B3：workflow_list_impl 转发已回收，测试走真实命令入口。
+    let app = host_command_app(test);
+    let list = workflow_list(app.state()).await.unwrap();
     assert!(list.iter().any(|w| w.id == "test-wf"));
 
-    let loaded = test
-        .state
+    let loaded = app
+        .state()
         .workflow_registry
-        .get(&test.state.organization_scope().unwrap(), "test-wf")
+        .get(&app.state().organization_scope().unwrap(), "test-wf")
         .await
         .expect("workflow");
     assert_eq!(loaded.name, "Test Workflow");
 
-    test.state
+    app.state()
         .workflow_registry
-        .delete_workflow(&test.state.organization_scope().unwrap(), "test-wf")
+        .delete_workflow(&app.state().organization_scope().unwrap(), "test-wf")
         .await
         .unwrap();
-    let remaining = workflow_list_impl(&test.state).await.unwrap();
+    let remaining = workflow_list(app.state()).await.unwrap();
     assert!(
         !remaining.iter().any(|w| w.id == "test-wf"),
         "deleted workflow should be gone, got: {remaining:?}"
@@ -843,23 +845,6 @@ async fn ai_chat_stream_http_error_propagates() {
 }
 
 #[tokio::test]
-async fn classify_tool_mcp_db_and_ask_paths() {
-    assert_eq!(classify_tool("ask_questions"), ToolKind::AskQuestions);
-    assert_eq!(
-        classify_tool("list_tables"),
-        ToolKind::Db("list_tables".into())
-    );
-    assert_eq!(
-        classify_tool("mcp/browser/search"),
-        ToolKind::Mcp {
-            server_id: "browser".into(),
-            tool_name: "search".into(),
-        }
-    );
-    assert_eq!(classify_tool("not_a_tool"), ToolKind::Unknown);
-}
-
-#[tokio::test]
 async fn execute_mcp_tool_not_connected_returns_qualified_error() {
     let test = TestAppState::new().await;
     let out = execute_mcp_tool(&test.state, "ext-server", "ping", r#"{"message":"hi"}"#).await;
@@ -972,12 +957,14 @@ async fn workflow_execute_ai_step_with_wiremock() {
         .await
         .unwrap();
 
-    let result = workflow_execute_impl(&test.state, "exec-wf".into(), serde_json::json!({}), None)
+    // B3：测试转真实命令入口（生产调用方 scheduler 仍走共享入口）。
+    let app = host_command_app(test);
+    let result = workflow_execute(app.state(), "exec-wf".into(), serde_json::json!({}), None)
         .await
         .unwrap();
     assert!(result.final_output.contains("workflow output"));
 
-    let history = test.state.workflow_history.list(Some("exec-wf")).await;
+    let history = app.state().workflow_history.list(Some("exec-wf")).await;
     assert_eq!(history.len(), 1);
 }
 
@@ -1037,8 +1024,9 @@ async fn ai_diagnose_connection_missing_config_errors() {
 #[tokio::test]
 async fn workflow_execute_missing_id_errors() {
     let test = TestAppState::new().await;
+    let app = host_command_app(test);
     assert!(
-        workflow_execute_impl(&test.state, "nope".into(), serde_json::json!({}), None,)
+        workflow_execute(app.state(), "nope".into(), serde_json::json!({}), None,)
             .await
             .is_err()
     );
@@ -1113,11 +1101,12 @@ async fn workflow_history_clear_after_execute() {
         .save_workflow(&test.state.organization_scope().unwrap(), &wf)
         .await
         .unwrap();
-    workflow_execute_impl(&test.state, "hist-wf".into(), serde_json::json!({}), None)
+    let app = host_command_app(test);
+    workflow_execute(app.state(), "hist-wf".into(), serde_json::json!({}), None)
         .await
         .unwrap();
-    let cleared = test
-        .state
+    let cleared = app
+        .state()
         .workflow_history
         .clear(Some("hist-wf"))
         .await
@@ -1164,8 +1153,9 @@ async fn dashboard_hidden_workflow_execute_skips_history() {
         .save_workflow(&test.state.organization_scope().unwrap(), &wf)
         .await
         .unwrap();
-    workflow_execute_impl(
-        &test.state,
+    let app = host_command_app(test);
+    workflow_execute(
+        app.state(),
         "hidden-hist".into(),
         serde_json::json!({}),
         None,
@@ -1173,7 +1163,7 @@ async fn dashboard_hidden_workflow_execute_skips_history() {
     .await
     .unwrap();
 
-    let history = test.state.workflow_history.list(Some("hidden-hist")).await;
+    let history = app.state().workflow_history.list(Some("hidden-hist")).await;
     assert!(
         history.is_empty(),
         "dashboardHidden workflows must not write workflow_history"
