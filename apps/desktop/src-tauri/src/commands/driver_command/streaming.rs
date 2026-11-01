@@ -1,4 +1,15 @@
-use std::sync::atomic::{AtomicU64, Ordering};
+//! 流式驱动命令编排（B2 域刀后的分层）。
+//!
+//! [`execute_driver_command_stream_impl`] 是**跨域共享入口**（保留）：
+//! `commands/query_tests.rs` 的五个 `query_stream_command_*` 测试仍驱动它
+//! （它们随 query 域刀登记为“跟随 driver_command 刀”，本刀保签名不动）；
+//! `commands/query.rs` 的日志卫生守卫还逐字扫它的函数体。待那五个测试
+//! 转真命令入口（需要可构造的 tauri Channel 测试面）后可回收。
+//!
+//! 形态中立的遥测聚合（受影响行数 / 总耗时的先累计后转发包装）已下沉
+//! `datazen::execution::application::stream_telemetry`（B2 域刀）；事件
+//! **发射**（tauri Channel）留在宿主命令壳 `execute_driver_command_stream`。
+
 use std::sync::Arc;
 
 use super::super::error::{CmdExt, CommandError};
@@ -9,11 +20,21 @@ use super::helpers::{
 };
 use super::resolve::resolve_command_driver;
 use super::types::{ExecuteDriverCommandStreamOpts, ExecuteDriverCommandStreamRequest};
+use datazen::execution::application::stream_telemetry::StreamTelemetry;
 use datazen_driver_api::{
     check_command_access, validate_command_input, CommandAccessLevel, CommandCatalog,
     QueryExecutionId, QueryStreamCallback, QueryStreamEvent,
 };
 
+/// 跨域共享入口（B2 driver_command 域刀保留）：流式驱动命令编排。
+///
+/// 调用方（待其转真命令入口后可回收）：
+/// * 测试：`commands/query_tests.rs`（五个 `query_stream_command_*`）；
+/// * 源码守卫：`commands/query.rs` 的 `log_hygiene_tests` 逐字扫本函数体
+///   （签名与 `sql_preview_for_log` 的 debug 位置都不得动）。
+///
+/// 不是命令转发体：宿主命令 `execute_driver_command_stream` 只做
+/// Channel→回调端口的适配与开关默认值，编排本体在这里。
 pub(crate) async fn execute_driver_command_stream_impl(
     state: &AppState,
     mut request: ExecuteDriverCommandStreamRequest,
@@ -156,26 +177,11 @@ pub(crate) async fn execute_driver_command_stream_impl(
     } else {
         None
     };
-    let rows_affected = Arc::new(AtomicU64::new(0));
-    let total_ms = Arc::new(AtomicU64::new(0));
-    let rows_cb = Arc::clone(&rows_affected);
-    let ms_cb = Arc::clone(&total_ms);
-    let user_cb = Arc::clone(&on_event);
-    let wrapped: QueryStreamCallback = Arc::new(move |event| {
-        match &event {
-            QueryStreamEvent::StatementEnd {
-                rows_affected: Some(n),
-                ..
-            } => {
-                rows_cb.fetch_add(*n, Ordering::Relaxed);
-            }
-            QueryStreamEvent::Done { total_time_ms } => {
-                ms_cb.store(*total_time_ms, Ordering::Relaxed);
-            }
-            _ => {}
-        }
-        user_cb(event);
-    });
+    // 形态中立的遥测包装（modules）：在把事件转交用户回调之前累计
+    // `StatementEnd.rows_affected` 与 `Done.total_time_ms`，流结束后供
+    // 历史记录读取。
+    let telemetry = StreamTelemetry::new();
+    let wrapped = telemetry.wrap(Arc::clone(&on_event));
 
     let stream_result = driver
         .query_stream_with_execution_at(
@@ -208,8 +214,8 @@ pub(crate) async fn execute_driver_command_stream_impl(
                     Some(db_session_id),
                     &sql,
                     true,
-                    total_ms.load(Ordering::Relaxed),
-                    Some(rows_affected.load(Ordering::Relaxed)),
+                    telemetry.total_time_ms(),
+                    Some(telemetry.rows_affected()),
                     None,
                 )
                 .await;

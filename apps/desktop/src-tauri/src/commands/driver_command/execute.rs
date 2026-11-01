@@ -1,3 +1,19 @@
+//! 驱动命令执行编排（B2 域刀后的分层）。
+//!
+//! * [`execute_driver_command_impl`] —— **跨域共享入口**（保留，调用方清单
+//!   见其文档注释）：内部复用路径（无 AppHandle、无权限档位），声明保存
+//!   对话框的命令在此被拒。
+//! * [`run_driver_command`] —— 域内私有编排核心：`execute_driver_command`
+//!   命令（GUI，AppHandle 可用）与上面的共享入口共用同一份接线。原
+//!   `pub(crate) fn execute_driver_command_with_mode` 转发 API 已收编于此，
+//!   域外不可再直达。
+//!
+//! 编排里的形态中立规则（定义解析、调用校验、访问分级、SQL 参数绑定、
+//! 信封目标注入）早已是 `datazen::execution::application::command_policy`
+//! 的用例（错误文案的钉子测试在那边）；这里持有的是宿主接线：活会话解析
+//! （resolve.rs）、执行设置读取、schema 缓存失效、历史记录、原生保存
+//! 对话框（finish_save_dialog）。
+
 use super::super::error::{CmdExt, CommandError};
 use super::super::AppState;
 use super::helpers::{
@@ -12,16 +28,40 @@ use datazen_driver_api::{
     check_command_access, validate_command_input, CommandResult, DriverSaveDialogSpec,
 };
 
+/// 跨域共享入口（B2 driver_command 域刀保留）：内部复用路径的驱动命令执行
+/// ——无 AppHandle、无权限档位；命令声明保存对话框时在此被拒（见
+/// `command_policy::validate_invocation` 的冻结文案）。
+///
+/// 调用方（待其域刀把编排收编后可回收本入口）：
+/// * 生产：`commands/query.rs`（execute_query）、`commands/schema.rs`
+///   （run_schema_object_command）；
+/// * 测试：`commands/export/live_acceptance.rs`、`commands/schema/tests.rs`、
+///   `platform/session_backend/tests.rs`、`services/schema_metadata/tests.rs`。
+///
+/// 不是命令转发体：GUI 命令 [`super::execute_driver_command`] 与它共享
+/// 同一编排核心 [`run_driver_command`]，区别只在对话框句柄的有无。
 pub(crate) async fn execute_driver_command_impl(
     state: &AppState,
     request: ExecuteDriverCommandRequest,
 ) -> Result<CommandResult, CommandError> {
-    // Internal reuse (query/schema IPCs, MCP tools): never shows a native
-    // dialog — commands declaring a save dialog are rejected here.
-    execute_driver_command_with_mode(state, request, None, None).await
+    run_driver_command(state, request, None, None).await
 }
 
-pub(crate) async fn execute_driver_command_with_mode(
+/// 域内私有编排核心（原 `execute_driver_command_with_mode`，B2 域刀收编）：
+/// 解析驱动 → 策略校验（连接要求 / 保存对话框交互要求）→ 限额与信封目标
+/// 注入 → 输入校验与访问分级 → SQL 守卫（只读连接 / 安全模式 / 档位）→
+/// 执行（元数据命令走 schema 缓存服务）→ 历史记录与缓存失效 →
+/// （声明保存对话框且交互可用时）`finish_save_dialog`。
+///
+/// `permission_mode` 当前生产入口恒为 `None`（GUI 与内部复用都不带档位；
+/// 带档位的 MCP / workflow 工具路径在 modules 侧自带管线，见
+/// `mcp::application::tools::query`）。参数保留：域内测试用它钉
+/// 「档位 → 访问分级 → 拒绝」的组合行为，未来内部复用若需要档位也不必
+/// 再开新面。
+///
+/// 可见性是 `pub(super)`：域外（含测试宿主）不得直达，一律走命令入口或
+/// 上面的跨域共享入口。
+pub(super) async fn run_driver_command(
     state: &AppState,
     mut request: ExecuteDriverCommandRequest,
     permission_mode: Option<McpPermissionMode>,

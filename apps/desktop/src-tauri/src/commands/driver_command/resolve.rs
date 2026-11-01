@@ -15,6 +15,20 @@ pub(crate) struct ResolvedCommandDriver {
     pub(crate) bound: bool,
 }
 
+/// 会话/驱动解析的**跨域共享入口**（B2 域刀确认为保留项）。
+///
+/// 调用方（待各自域刀把编排收编后评估回收）：
+/// * 本域：两个 discovery 命令、`execute_driver_command_impl`、
+///   `execute_driver_command_stream_impl`；
+/// * 生产（域外）：`commands/query.rs`（cancel_query）、
+///   `commands/value_search.rs`、`commands/fk_navigation.rs`、
+///   `commands/schema.rs`（estimate_table_rows）、
+///   `commands/result_origin.rs`（也消费 `ResolvedCommandDriver`）、
+///   `commands/data/table_columns.rs`。
+///
+/// 宿主绑定是它的本质（platform runtime 租借 + 驱动注册表），不下沉；
+/// 「会话缺失 → `DB session {id} is unavailable`」与「无会话无类型 →
+/// `dbSessionId or driverType is required`」是冻结的 IPC 文案。
 pub(crate) async fn resolve_command_driver(
     state: &AppState,
     db_session_id: Option<&String>,

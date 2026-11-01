@@ -1,16 +1,28 @@
-//! Driver Command IPC 测试：请求信封线格式钉子 + 经 TestAppState 的编排用例。
+//! Driver Command IPC 测试（B2 域刀后的分层，commands-layer-review §1）。
 //!
-//! 2026-10-31 拆分（B1 批次，commands-layer-review §3.3/§4）：
-//! `inject_sql_target_fields` 与 `access_level_for_mode` 两个纯逻辑测试已归位
-//! `modules/src/execution/application/command_policy.rs`（内联测试——逻辑本体在
-//! execution，`mcp::application::command_policy` 只是旧路径再导出）；
-//! `debug_sql_preview_redacts_secrets` 与 `packages/infra/src/redaction.rs` 的
-//! `sql_preview_truncates_and_redacts` 同输入同断言（同测
-//! `datazen_infra::redaction::sql_preview_for_log`），按重复覆盖删除。
-//! 这里留宿主面：请求信封 wire 格式与 handler 类型名（C1）、bootstrap 注册
-//! 守卫（C2）、无 AppHandle 的保存对话框拒绝（C3）；其余经 TestAppState 直调
-//! `*_impl` 的 resolve/策略/流式语义测试待 B2 query/driver_command 域刀随逻辑
-//! 下沉 modules（换 axum 宿主无法原样编译——TestAppState 是桌面 crate 词汇）。
+//! * **C1 线格式钉子**——请求信封 wire 格式与 handler 类型名、bootstrap
+//!   注册；
+//! * **C4 适配器烟测 / 编排行为**——发现目录、执行与流式语义经
+//!   `TestAppState` + 保留的跨域共享入口或真实命令入口驱动。
+//!
+//! 2026-10-31 拆分史：B1 批次把 `inject_sql_target_fields` /
+//! `access_level_for_mode` 两个纯逻辑测试归位
+//! `modules/src/execution/application/command_policy.rs`，删除一个与
+//! `packages/infra` redaction 测试重复的用例。B2 域刀（本刀）：
+//! * discovery 两条命令的测试改走**真实命令入口**
+//!   （`driver_command_test_host` 托管 mock app）；
+//! * `execute_driver_command`（AppHandle 参数）与
+//!   `execute_driver_command_stream`（tauri Channel 参数）暂无真入口测试面
+//!   （Wry 句柄 / Channel 构造），相关测试继续驱动**保留的跨域共享入口**
+//!   `execute_driver_command_impl` / `execute_driver_command_stream_impl`
+//!   （调用方清单见 execute.rs / streaming.rs）——与 query_tests.rs 的五个
+//!   流测试同一处置；
+//! * 原 `execute_driver_command_with_mode` 转发 API 收编为域内私有核心
+//!   `execute::run_driver_command`，两个权限档位测试改经它驱动；
+//! * 校验管线错误文案（`Unsupported driver command` / `requires a
+//!   connection` / `interactive session`）与发现目录合成的**规则本体**钉子
+//!   已在 modules 的 command_policy 内联测试里（本刀补入），这里保留的是
+//!   端到端路径证据。
 
 use std::any::type_name;
 use std::sync::Arc;
@@ -23,6 +35,8 @@ use datazen::mcp::permission::McpPermissionMode;
 use datazen_driver_api::{
     CommandAccessLevel, QueryExecutionId, QueryStreamCallback, QueryStreamEvent,
 };
+
+use super::driver_command_test_host::host_command_app;
 
 #[test]
 fn request_uses_camel_case_wire_format() {
@@ -83,11 +97,14 @@ fn request_defaults_input_to_null_when_omitted() {
     assert!(request.driver_type.is_none());
 }
 
+/// C4 烟测：真实 `get_connection_commands` 命令入口 → 共享解析 → 模块发现
+/// 目录合成（B2 域刀前直调 `get_connection_commands_impl`）。
 #[tokio::test]
 async fn discovers_standard_commands_from_connection() {
     let test = crate::testing::app_state::TestAppState::new().await;
     let (_, conn_id) = test.save_and_connect("cmd-discover").await;
-    let definitions = get_connection_commands_impl(&test.state, conn_id)
+    let app = host_command_app(test);
+    let definitions = get_connection_commands(app.state(), conn_id)
         .await
         .unwrap();
     let ids: Vec<_> = definitions.iter().map(|d| d.id.as_str()).collect();
@@ -471,11 +488,14 @@ async fn rejects_invalid_query_input() {
     assert!(err.to_string().contains("missing required field"));
 }
 
+/// 档位组合行为（原 `execute_driver_command_with_mode` 直调；B2 域刀后该
+/// 入口收编为域内私有核心 `run_driver_command`，生产入口恒 `None`——
+/// 带档位的路径在 modules 的 MCP 工具管线里）。
 #[tokio::test]
 async fn read_only_mode_denies_execute() {
     let test = crate::testing::app_state::TestAppState::new().await;
     let (_, conn_id) = test.save_and_connect("cmd-ro").await;
-    let err = execute_driver_command_with_mode(
+    let err = super::execute::run_driver_command(
         &test.state,
         ExecuteDriverCommandRequest {
             db_session_id: Some(conn_id),
@@ -485,7 +505,7 @@ async fn read_only_mode_denies_execute() {
             database: None,
             schema: None,
         },
-        Some(datazen::mcp::permission::McpPermissionMode::ReadOnly),
+        Some(McpPermissionMode::ReadOnly),
         None,
     )
     .await
@@ -516,11 +536,13 @@ async fn rejects_connection_id_on_execute_without_live_session() {
     );
 }
 
+/// C4 烟测（B2 域刀前直调 `get_connection_commands_impl`）。
 #[tokio::test]
 async fn discovers_commands_from_live_session() {
     let test = crate::testing::app_state::TestAppState::new().await;
     let (_, db_session_id) = test.save_and_connect("cfg-discover").await;
-    let definitions = get_connection_commands_impl(&test.state, db_session_id)
+    let app = host_command_app(test);
+    let definitions = get_connection_commands(app.state(), db_session_id)
         .await
         .unwrap();
     assert!(definitions.iter().any(|d| d.id == "query"));
@@ -530,7 +552,8 @@ async fn discovers_commands_from_live_session() {
 async fn rejects_connection_id_on_get_connection_commands_without_live_session() {
     let test = crate::testing::app_state::TestAppState::new().await;
     test.save_connection("cfg-discover").await;
-    let err = get_connection_commands_impl(&test.state, "cfg-discover".into())
+    let app = host_command_app(test);
+    let err = get_connection_commands(app.state(), "cfg-discover".into())
         .await
         .unwrap_err();
     assert!(
@@ -539,10 +562,12 @@ async fn rejects_connection_id_on_get_connection_commands_without_live_session()
     );
 }
 
+/// C4 烟测（B2 域刀前直调 `get_driver_type_commands_impl`）。
 #[tokio::test]
 async fn discovers_commands_from_driver_type_without_connection() {
     let test = crate::testing::app_state::TestAppState::new().await;
-    let definitions = get_driver_type_commands_impl(&test.state, "postgres".into())
+    let app = host_command_app(test);
+    let definitions = get_driver_commands(app.state(), "postgres".into())
         .await
         .unwrap();
     assert!(definitions.iter().any(|d| d.id == "query"));
@@ -854,7 +879,7 @@ async fn test_tester_execute_applies_access_via_resolve_and_helpers_pipeline() {
     // Cross-module path: resolve → access_level_for_mode → check_command_access.
     let test = crate::testing::app_state::TestAppState::new().await;
     let (_, conn_id) = test.save_and_connect("tester-access-pipeline").await;
-    let err = execute_driver_command_with_mode(
+    let err = super::execute::run_driver_command(
         &test.state,
         ExecuteDriverCommandRequest {
             db_session_id: Some(conn_id),

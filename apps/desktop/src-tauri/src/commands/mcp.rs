@@ -1,4 +1,12 @@
 //! MCP Server + Client management IPC commands.
+//!
+//! B2 mcp 刀（commands-layer-review §3.6）：`mcp_client_disconnect/list/tools`
+//! 三个 `_impl` 转发体已删，接线直接住在 `#[tauri::command]` 处理函数里
+//!（它们只是 `McpClientManager` 端口的纯调用）；`mcp_client_connect_impl`
+//! 因**跨域生产调用方**（`bootstrap/run.rs` 启动期自动重连两处）保留为
+//! 共享入口（见其文档注释）。嵌入式 server 的启停/重载是宿主进程生命周期
+//! 管理（tokio 任务 + 进程内 duplex），不下沉；工具语义（权限档位、白名单、
+//! 表描述）早已在 `datazen::mcp`。
 
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
@@ -155,6 +163,16 @@ pub async fn mcp_list_all_tools() -> Result<Vec<String>, CommandError> {
 
 // ─── MCP Client commands ───
 
+/// 跨域共享入口（B2 mcp 刀保留）：启动期按设置自动连接外部 MCP server
+/// （失败后 5s 重试一次）。
+///
+/// 调用方（待其域刀把编排收编后可回收）：
+/// * 生产：`bootstrap/run.rs`（两处——首连 + 重试，见
+///   “Failed to auto-connect external MCP client on startup”）；
+/// * 命令：`mcp_client_connect`（与它共享同一实现）。
+///
+/// 不是命令转发体：`#[tauri::command]` 处理函数与启动路径共用这一份端口
+/// 调用与错误映射。
 pub(crate) async fn mcp_client_connect_impl(
     state: &AppState,
     config: mcp::McpServerConfig,
@@ -164,39 +182,6 @@ pub(crate) async fn mcp_client_connect_impl(
         .connect(&config)
         .await
         .cmd_err("mcp_client_connect")
-}
-
-pub(crate) async fn mcp_client_disconnect_impl(
-    state: &AppState,
-    server_id: String,
-) -> Result<(), CommandError> {
-    state
-        .mcp_client_manager
-        .disconnect(&server_id)
-        .await
-        .map_err(CommandError::Internal)
-}
-
-pub(crate) async fn mcp_client_list_impl(
-    state: &AppState,
-) -> Result<Vec<McpClientStatus>, CommandError> {
-    Ok(state
-        .mcp_client_manager
-        .connected_servers()
-        .await
-        .into_iter()
-        .map(|(id, name, count)| McpClientStatus {
-            server_id: id,
-            server_name: name,
-            tools_count: count,
-        })
-        .collect())
-}
-
-pub(crate) async fn mcp_client_tools_impl(
-    state: &AppState,
-) -> Result<Vec<mcp::McpToolInfo>, CommandError> {
-    Ok(state.mcp_client_manager.all_tools().await)
 }
 
 #[tauri::command]
@@ -212,7 +197,11 @@ pub async fn mcp_client_disconnect(
     state: State<'_, AppState>,
     server_id: String,
 ) -> Result<(), CommandError> {
-    mcp_client_disconnect_impl(&state, server_id).await
+    state
+        .mcp_client_manager
+        .disconnect(&server_id)
+        .await
+        .map_err(CommandError::Internal)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -227,14 +216,24 @@ pub struct McpClientStatus {
 pub async fn mcp_client_list(
     state: State<'_, AppState>,
 ) -> Result<Vec<McpClientStatus>, CommandError> {
-    mcp_client_list_impl(&state).await
+    Ok(state
+        .mcp_client_manager
+        .connected_servers()
+        .await
+        .into_iter()
+        .map(|(id, name, count)| McpClientStatus {
+            server_id: id,
+            server_name: name,
+            tools_count: count,
+        })
+        .collect())
 }
 
 #[tauri::command]
 pub async fn mcp_client_tools(
     state: State<'_, AppState>,
 ) -> Result<Vec<mcp::McpToolInfo>, CommandError> {
-    mcp_client_tools_impl(&state).await
+    Ok(state.mcp_client_manager.all_tools().await)
 }
 
 #[tauri::command]
@@ -264,6 +263,7 @@ pub async fn mcp_client_call_tool(
 mod tests {
     use super::*;
     use crate::testing::app_state::TestAppState;
+    use tauri::Manager;
 
     #[tokio::test]
     async fn cloned_app_state_shares_the_active_monitor_engine() {
@@ -371,10 +371,16 @@ mod tests {
 
     #[tokio::test]
     async fn mcp_client_list_empty_and_disconnect_unknown() {
+        // B2 mcp 刀：`mcp_client_disconnect/list/tools` 的 `_impl` 转发体
+        // 已删，测试改走真实 `#[tauri::command]` 入口（C4 烟测：命令壳 →
+        // McpClientManager 端口 → 空目录/未知 server 的幂等行为）。
         let test = TestAppState::new().await;
-        assert!(mcp_client_list_impl(&test.state).await.unwrap().is_empty());
-        assert!(mcp_client_tools_impl(&test.state).await.unwrap().is_empty());
-        assert!(mcp_client_disconnect_impl(&test.state, "missing".into())
+        let (state, _keep) = test.into_state();
+        let app = tauri::test::mock_app();
+        app.manage(state);
+        assert!(mcp_client_list(app.state()).await.unwrap().is_empty());
+        assert!(mcp_client_tools(app.state()).await.unwrap().is_empty());
+        assert!(mcp_client_disconnect(app.state(), "missing".into())
             .await
             .is_ok());
     }
