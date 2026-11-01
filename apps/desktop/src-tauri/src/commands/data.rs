@@ -18,18 +18,19 @@ pub use datazen::data_browsing::{
     RowChangeTableContext,
 };
 
-pub(crate) async fn preview_pending_changes_impl(
-    state: &AppState,
-    table: RowChangeTableContext,
+#[tauri::command]
+pub async fn preview_pending_changes(
+    state: State<'_, AppState>,
+    context: RowChangeTableContext,
     changes: Vec<PendingRowChange>,
 ) -> Result<RowChangePlan, CommandError> {
-    tracing::info!(db_session_id = %table.db_session_id, table = %table.table, change_count = changes.len(), "preview_pending_changes");
+    tracing::info!(db_session_id = %context.db_session_id, table = %context.table, change_count = changes.len(), "preview_pending_changes");
     let (config, metadata) = state
         .store
-        .platform_profile(&table.connection_id)
+        .platform_profile(&context.connection_id)
         .await
         .ok_or_else(|| CommandError::NotFound("Connection profile unavailable".into()))?;
-    if !metadata.enabled || config.database_type != table.driver_type {
+    if !metadata.enabled || config.database_type != context.driver_type {
         return Err(CommandError::Validation(
             "Table connection context changed".into(),
         ));
@@ -39,32 +40,16 @@ pub(crate) async fn preview_pending_changes_impl(
         .get_sql_driver_by_name(config.database_type.as_str())
         .await
         .ok_or_else(|| CommandError::NotConfigured("Driver unavailable".into()))?;
-    let columns = table_columns::HostTableColumns::new(state);
+    let columns = table_columns::HostTableColumns::new(&state);
     preview_changes(
         driver.as_ref(),
-        table,
+        context,
         &changes,
         &columns,
         metadata.config_revision,
     )
     .await
     .map_err(CommandError::from)
-}
-
-#[tauri::command]
-pub async fn preview_pending_changes(
-    state: State<'_, AppState>,
-    context: RowChangeTableContext,
-    changes: Vec<PendingRowChange>,
-) -> Result<RowChangePlan, CommandError> {
-    preview_pending_changes_impl(&state, context, changes).await
-}
-
-pub(crate) async fn commit_pending_changes_impl(
-    state: &AppState,
-    request: CommitPendingChangesRequest,
-) -> Result<CommitPendingChangesResponse, CommandError> {
-    commit_pending_changes_with_handle(state, request, None).await
 }
 
 async fn commit_pending_changes_with_handle(
@@ -218,5 +203,5 @@ pub async fn commit_query_result_cell(
     state: State<'_, AppState>,
     request: ResultCellWrite,
 ) -> Result<(), CommandError> {
-    result_write::commit_query_result_cell(state, request).await
+    result_write::commit_query_result_cell(&state, request).await
 }

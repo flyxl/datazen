@@ -10,10 +10,10 @@
 //! dashboard / tunnel / connection knives' hosts).
 //!
 //! The data commands take no window or app-handle parameters (they emit no
-//! events), so no mock webview window is needed. Data-domain `*_impl` calls
-//! that still exist (preview/commit pending changes — the data knife has not
-//! landed yet) keep taking `&AppState`, reachable from the hosted state via
-//! deref: `impl_fn(&app.state(), …)`.
+//! events), so no mock webview window is needed. With the B2 batch-4 data
+//! knife the preview/commit `_impl` forwarders are gone too: every data
+//! assertion now enters through the real command entries, and the harness's
+//! mock driver stays reachable through the keepalive (`keep.mock`).
 
 use crate::commands::AppState;
 use crate::testing::app_state::{TestAppState, TestStateKeepalive};

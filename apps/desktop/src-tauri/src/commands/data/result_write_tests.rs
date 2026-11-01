@@ -6,7 +6,7 @@
 //! process — the narrow mapping verdict says nothing about the connection's
 //! read-only flag, so the host has to ask for it itself.
 
-use super::result_write::{commit_query_result_cell_impl, ResultCellWrite};
+use super::result_write::{commit_query_result_cell, ResultCellWrite};
 use crate::testing::app_state::TestAppState;
 use crate::testing::mock_driver::MockDriverOptions;
 use datazen::application::sessions::ConnectionUseCases;
@@ -191,7 +191,7 @@ async fn a_read_only_connection_refuses_the_write_and_sends_no_statement() {
     let binding = run_fixture_query(&test, &handle).await;
     let before = test.mock.query_calls();
 
-    let error = commit_query_result_cell_impl(&test.state, cell_write(binding))
+    let error = commit_query_result_cell(&test.state, cell_write(binding))
         .await
         .unwrap_err()
         .to_string();
@@ -219,7 +219,7 @@ async fn a_writable_connection_is_not_refused_as_read_only() {
     let handle = open_session(&test, "narrow-writable").await;
     let binding = run_fixture_query(&test, &handle).await;
 
-    let error = commit_query_result_cell_impl(&test.state, cell_write(binding))
+    let error = commit_query_result_cell(&test.state, cell_write(binding))
         .await
         .unwrap_err()
         .to_string();

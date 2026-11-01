@@ -10,8 +10,8 @@ async fn preview_builds_driver_sql_without_opening_a_transaction() {
     let test = with_parameterized_driver().await;
     let (_, conn_id) = test.save_and_connect("preview-only").await;
     let app = host_command_app(test);
-    let plan = preview_pending_changes_impl(
-        &app.state(),
+    let plan = preview_pending_changes(
+        app.state(),
         table_context("preview-only", &conn_id),
         vec![update_change(1, "Alice", "Updated")],
     )
@@ -38,20 +38,20 @@ async fn commit_reuses_plan_fingerprint_and_returns_plan_id() {
     options.parameterized_writes = true;
     let test = TestAppState::with_resource_provider(options).await;
     let (_, conn_id) = test.save_and_connect("commit-plan").await;
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let plan = preview_pending_changes(
+        app.state(),
         table_context("commit-plan", &conn_id),
         vec![update_change(1, "Alice", "Updated"), delete_change(2)],
     )
     .await
     .unwrap();
-    let response = commit_pending_changes_impl(
-        &test.state,
-        CommitPendingChangesRequest {
-            db_session_id: conn_id,
-            fingerprint: plan.fingerprint.clone(),
-            plan: plan.clone(),
-        },
+    let response = commit_pending_changes(
+        app.state(),
+        conn_id,
+        None,
+        plan.clone(),
+        plan.fingerprint.clone(),
     )
     .await
     .unwrap();
@@ -67,20 +67,19 @@ async fn commit_rejects_stale_fingerprint_before_execution() {
     let test = with_parameterized_driver().await;
     let (_, conn_id) = test.save_and_connect("stale-plan").await;
     let app = host_command_app(test);
-    let plan = preview_pending_changes_impl(
-        &app.state(),
+    let plan = preview_pending_changes(
+        app.state(),
         table_context("stale-plan", &conn_id),
         vec![update_change(1, "Alice", "Updated")],
     )
     .await
     .unwrap();
-    let error = commit_pending_changes_impl(
-        &app.state(),
-        CommitPendingChangesRequest {
-            db_session_id: conn_id.clone(),
-            fingerprint: "stale".into(),
-            plan,
-        },
+    let error = commit_pending_changes(
+        app.state(),
+        conn_id.clone(),
+        None,
+        plan,
+        "stale".into(),
     )
     .await
     .unwrap_err();
@@ -97,8 +96,9 @@ async fn commit_rejects_stale_fingerprint_before_execution() {
 async fn preview_rejects_changes_without_primary_key_identity() {
     let test = with_parameterized_driver().await;
     let (_, conn_id) = test.save_and_connect("preview-no-pk").await;
-    let error = preview_pending_changes_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let error = preview_pending_changes(
+        app.state(),
         table_context("preview-no-pk", &conn_id),
         vec![PendingRowChange {
             row_identity: BTreeMap::new(),
@@ -125,8 +125,9 @@ async fn commit_rejects_database_context_change_without_switching_session() {
     options.parameterized_writes = true;
     let test = TestAppState::with_options(options).await;
     let (_, conn_id) = test.save_and_connect("context-database").await;
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let plan = preview_pending_changes(
+        app.state(),
         RowChangeTableContext {
             database: Some("other_db".into()),
             ..table_context("context-database", &conn_id)
@@ -136,18 +137,17 @@ async fn commit_rejects_database_context_change_without_switching_session() {
     .await
     .unwrap();
 
-    let error = commit_pending_changes_impl(
-        &test.state,
-        CommitPendingChangesRequest {
-            db_session_id: conn_id,
-            fingerprint: plan.fingerprint.clone(),
-            plan,
-        },
+    let error = commit_pending_changes(
+        app.state(),
+        conn_id,
+        None,
+        plan.clone(),
+        plan.fingerprint.clone(),
     )
     .await
     .unwrap_err();
     assert!(error.to_string().contains("Database context changed"));
-    assert!(test.mock.use_database_calls().is_empty());
+    assert!(app.keep.mock.use_database_calls().is_empty());
 }
 
 #[tokio::test]
@@ -157,8 +157,9 @@ async fn commit_allows_concrete_table_schema_when_connection_schema_is_unspecifi
     options.parameterized_writes = true;
     let test = TestAppState::with_resource_provider(options).await;
     let (_, conn_id) = test.save_and_connect("context-schema-default").await;
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let plan = preview_pending_changes(
+        app.state(),
         RowChangeTableContext {
             schema: Some("public".into()),
             ..table_context("context-schema-default", &conn_id)
@@ -168,13 +169,12 @@ async fn commit_allows_concrete_table_schema_when_connection_schema_is_unspecifi
     .await
     .unwrap();
 
-    commit_pending_changes_impl(
-        &test.state,
-        CommitPendingChangesRequest {
-            db_session_id: conn_id,
-            fingerprint: plan.fingerprint.clone(),
-            plan,
-        },
+    commit_pending_changes(
+        app.state(),
+        conn_id,
+        None,
+        plan.clone(),
+        plan.fingerprint.clone(),
     )
     .await
     .unwrap();
@@ -190,8 +190,9 @@ async fn commit_rejects_explicit_schema_context_change() {
     config.schema = Some("private".into());
     test.store.save_connection(config).await.unwrap();
     let conn_id = test.connect_config("context-schema-explicit").await;
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let plan = preview_pending_changes(
+        app.state(),
         RowChangeTableContext {
             schema: Some("public".into()),
             ..table_context("context-schema-explicit", &conn_id)
@@ -201,13 +202,12 @@ async fn commit_rejects_explicit_schema_context_change() {
     .await
     .unwrap();
 
-    let error = commit_pending_changes_impl(
-        &test.state,
-        CommitPendingChangesRequest {
-            db_session_id: conn_id,
-            fingerprint: plan.fingerprint.clone(),
-            plan,
-        },
+    let error = commit_pending_changes(
+        app.state(),
+        conn_id,
+        None,
+        plan.clone(),
+        plan.fingerprint.clone(),
     )
     .await
     .unwrap_err();
@@ -223,8 +223,8 @@ async fn empty_identity_is_rejected_before_any_sql_is_generated() {
 
     let mut delete = delete_change(1);
     delete.row_identity = BTreeMap::new();
-    let error = preview_pending_changes_impl(
-        &app.state(),
+    let error = preview_pending_changes(
+        app.state(),
         table_context("guard-before-sql", &conn_id),
         vec![delete],
     )
@@ -259,8 +259,9 @@ async fn a_stale_config_revision_is_refused_with_the_stale_plan_code() {
     options.parameterized_writes = true;
     let test = TestAppState::with_options(options).await;
     let (_, conn_id) = test.save_and_connect("r4-config-revision").await;
-    let mut plan = preview_pending_changes_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let mut plan = preview_pending_changes(
+        app.state(),
         table_context("r4-config-revision", &conn_id),
         vec![update_change(1, "Alice", "Updated")],
     )
@@ -268,13 +269,12 @@ async fn a_stale_config_revision_is_refused_with_the_stale_plan_code() {
     .unwrap();
     plan.config_revision = Some(plan.config_revision.unwrap().saturating_increment());
 
-    let error = commit_pending_changes_impl(
-        &test.state,
-        CommitPendingChangesRequest {
-            db_session_id: conn_id,
-            fingerprint: plan.fingerprint.clone(),
-            plan,
-        },
+    let error = commit_pending_changes(
+        app.state(),
+        conn_id,
+        None,
+        plan.clone(),
+        plan.fingerprint.clone(),
     )
     .await
     .unwrap_err()
@@ -285,7 +285,7 @@ async fn a_stale_config_revision_is_refused_with_the_stale_plan_code() {
         error.contains("Connection configuration changed; preview the changes again"),
         "got: {error}"
     );
-    assert_eq!(test.mock.execute_with_params_calls(), 0);
+    assert_eq!(app.keep.mock.execute_with_params_calls(), 0);
 }
 
 #[tokio::test]
@@ -295,8 +295,9 @@ async fn a_database_context_drift_is_refused_with_the_stale_plan_code() {
     options.parameterized_writes = true;
     let test = TestAppState::with_options(options).await;
     let (_, conn_id) = test.save_and_connect("r4-db-drift").await;
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let plan = preview_pending_changes(
+        app.state(),
         RowChangeTableContext {
             database: Some("other_db".into()),
             ..table_context("r4-db-drift", &conn_id)
@@ -306,13 +307,12 @@ async fn a_database_context_drift_is_refused_with_the_stale_plan_code() {
     .await
     .unwrap();
 
-    let error = commit_pending_changes_impl(
-        &test.state,
-        CommitPendingChangesRequest {
-            db_session_id: conn_id,
-            fingerprint: plan.fingerprint.clone(),
-            plan,
-        },
+    let error = commit_pending_changes(
+        app.state(),
+        conn_id,
+        None,
+        plan.clone(),
+        plan.fingerprint.clone(),
     )
     .await
     .unwrap_err()
@@ -323,7 +323,7 @@ async fn a_database_context_drift_is_refused_with_the_stale_plan_code() {
         error.contains("Database context changed; preview the changes again"),
         "got: {error}"
     );
-    assert!(test.mock.use_database_calls().is_empty());
+    assert!(app.keep.mock.use_database_calls().is_empty());
 }
 
 #[tokio::test]
@@ -336,8 +336,9 @@ async fn a_schema_context_drift_is_refused_with_the_stale_plan_code() {
     config.schema = Some("private".into());
     test.store.save_connection(config).await.unwrap();
     let conn_id = test.connect_config("r4-schema-drift").await;
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let plan = preview_pending_changes(
+        app.state(),
         RowChangeTableContext {
             schema: Some("public".into()),
             ..table_context("r4-schema-drift", &conn_id)
@@ -347,13 +348,12 @@ async fn a_schema_context_drift_is_refused_with_the_stale_plan_code() {
     .await
     .unwrap();
 
-    let error = commit_pending_changes_impl(
-        &test.state,
-        CommitPendingChangesRequest {
-            db_session_id: conn_id,
-            fingerprint: plan.fingerprint.clone(),
-            plan,
-        },
+    let error = commit_pending_changes(
+        app.state(),
+        conn_id,
+        None,
+        plan.clone(),
+        plan.fingerprint.clone(),
     )
     .await
     .unwrap_err()
@@ -376,21 +376,21 @@ async fn a_read_only_connection_is_refused_with_the_read_only_code() {
     config.read_only = true;
     test.store.save_connection(config).await.unwrap();
     let conn_id = test.connect_config("r4-read-only").await;
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let plan = preview_pending_changes(
+        app.state(),
         table_context("r4-read-only", &conn_id),
         vec![update_change(1, "Alice", "Updated")],
     )
     .await
     .unwrap();
 
-    let error = commit_pending_changes_impl(
-        &test.state,
-        CommitPendingChangesRequest {
-            db_session_id: conn_id,
-            fingerprint: plan.fingerprint.clone(),
-            plan,
-        },
+    let error = commit_pending_changes(
+        app.state(),
+        conn_id,
+        None,
+        plan.clone(),
+        plan.fingerprint.clone(),
     )
     .await
     .unwrap_err()
@@ -401,5 +401,5 @@ async fn a_read_only_connection_is_refused_with_the_read_only_code() {
         error.contains("Connection is read-only; row changes are not allowed"),
         "got: {error}"
     );
-    assert_eq!(test.mock.execute_with_params_calls(), 0);
+    assert_eq!(app.keep.mock.execute_with_params_calls(), 0);
 }

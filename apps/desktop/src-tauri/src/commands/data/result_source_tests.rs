@@ -13,7 +13,7 @@
 //! * a `Verified` mapping is what opens the narrow write path: it writes, and a
 //!   result without it is refused.
 
-use super::result_write::{commit_query_result_cell_impl, ResultCellWrite};
+use super::result_write::{commit_query_result_cell, ResultCellWrite};
 use crate::testing::app_state::TestAppState;
 use crate::testing::mock_driver::MockDriverOptions;
 use datazen::application::sessions::ConnectionUseCases;
@@ -391,7 +391,7 @@ async fn a_verified_mapping_writes_the_cell_through_its_live_session() {
     );
     let before = test.mock.query_calls();
 
-    commit_query_result_cell_impl(&test.state, cell_write(binding))
+    commit_query_result_cell(&test.state, cell_write(binding))
         .await
         .expect("a verified mapping writes the cell back");
 
@@ -418,7 +418,7 @@ async fn a_result_without_a_verified_mapping_is_refused() {
     );
     let before = test.mock.query_calls();
 
-    let error = commit_query_result_cell_impl(&test.state, cell_write(binding))
+    let error = commit_query_result_cell(&test.state, cell_write(binding))
         .await
         .unwrap_err()
         .to_string();
@@ -512,7 +512,7 @@ async fn an_unreported_autocommit_does_not_make_a_verified_result_unwritable() {
     // The context is carried verbatim: "the driver cannot tell" stays unknown.
     assert_eq!(source.context.autocommit, None);
 
-    commit_query_result_cell_impl(&test.state, cell_write(binding))
+    commit_query_result_cell(&test.state, cell_write(binding))
         .await
         .expect("an unreported autocommit must not make a verified result unwritable");
 }
@@ -534,7 +534,7 @@ async fn an_empty_identity_is_the_same_absence_as_no_identity() {
     );
     assert_eq!(source.context.effective_identity.as_deref(), Some(""));
 
-    commit_query_result_cell_impl(&test.state, cell_write(binding))
+    commit_query_result_cell(&test.state, cell_write(binding))
         .await
         .expect("an empty identity must not make a verified result unwritable");
 }
@@ -567,7 +567,7 @@ async fn a_mode_change_during_the_statement_keeps_the_result_writable() {
     );
     assert_eq!(source.context.autocommit, Some(true));
 
-    commit_query_result_cell_impl(&test.state, cell_write(binding))
+    commit_query_result_cell(&test.state, cell_write(binding))
         .await
         .expect("a mode change must not unpin a verified result");
 }
@@ -592,7 +592,7 @@ async fn a_real_target_change_refuses_the_write_and_sends_nothing() {
     );
     let calls_before = test.mock.query_calls();
 
-    let error = commit_query_result_cell_impl(&test.state, cell_write(binding))
+    let error = commit_query_result_cell(&test.state, cell_write(binding))
         .await
         .unwrap_err()
         .to_string();
