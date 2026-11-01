@@ -18,12 +18,6 @@ use std::collections::BTreeMap;
 // or because the assertion could pass without the behaviour being true.
 // ---------------------------------------------------------------------------
 
-/// 指纹必须在 plan 被按值消费前取出：`commit_pending_changes` 的实参从左到
-/// 右求值，`plan, plan.fingerprint.clone()` 是 use-after-move。
-fn fingerprint_before_move(plan: &RowChangePlan) -> String {
-    plan.fingerprint.clone()
-}
-
 #[tokio::test]
 async fn insert_preview_builds_statement_with_only_written_columns() {
     let test = with_parameterized_driver().await;
@@ -395,12 +389,13 @@ async fn insert_joins_the_callers_manual_transaction_instead_of_opening_one() {
         .unwrap()
         .handle;
 
+    let fingerprint = plan.fingerprint.clone();
     let response = commit_pending_changes(
         app.state(),
         conn_id.clone(),
         Some(handle),
         plan,
-        fingerprint_before_move(&plan),
+        fingerprint,
     )
     .await
     .unwrap();
@@ -592,12 +587,13 @@ async fn a_drifted_manual_transaction_is_refused_as_a_stale_plan() {
         .unwrap()
         .handle;
 
+    let fingerprint = plan.fingerprint.clone();
     let error = commit_pending_changes(
         app.state(),
         conn_id,
         Some(handle),
         plan,
-        fingerprint_before_move(&plan),
+        fingerprint,
     )
     .await
     .unwrap_err()
