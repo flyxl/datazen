@@ -225,9 +225,15 @@ modules 侧 `migration/` 已有同域测试基建（`filter_tests.rs`、`plan_te
   **进度（2026-10-31）**：query（11）/ dashboard（10）/ config（9）/ tunnel
   （7，脱敏映射与探测编排下沉 `tunnel::domain::projection` + `tunnel::probe`）/
   connection（14，最大域；`session_info_payload`/`driver_category_label` 下沉
-  `connection::api`）五域完成，`_impl` 总数 115 → ~45。中央连带修复四类：
-  test_harness 重写为 HostedApp、ipc.rs 冻结表去 `_impl` 行（数量钉改为 0）、
-  session_backend/data 测试全部转真实命令入口（新增 data 域测试宿主）。
+  `connection::api`）/ driver_command+mcp（discovery.rs 整删 + 目录合成归一
+  `command_policy::discovery_definitions`，流遥测下沉 `stream_telemetry`）/
+  schema+schema_diff（三用例下沉 `schema::application::privileges`/`scope`，
+  两仓储下沉 `migration/schema_diff/reviewed_single_tenant`/`job/recovery_targets`）
+  七域完成，`_impl` 总数 115 → 60（剩余集中：sync 17、wapps 11、data_transfer 7、
+  query_favorites 5——批次 3 对象；跨域共享入口 12 处有调用方清单注释，随调用方
+  域刀逐个回收）。中央连带修复四类：test_harness 重写为 HostedApp、ipc.rs 冻结表
+  去 `_impl` 行（数量钉改为 0）、session_backend/data 测试全部转真实命令入口
+  （新增 data 域测试宿主）。
   每域均配 `*_command_test_host.rs`（mock_app 托管 AppState）。
 - **B3（编排巨石下沉）**：`ai/integration_tests` 拆分、`ai_chat`/`ai_generate_sql`
   编排本体下沉（WR-A2 既登记遗留）、`sync/host` 与 `data_transfer` 桥接对照
