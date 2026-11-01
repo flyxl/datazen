@@ -107,6 +107,10 @@ pub mod settings;
 #[cfg(feature = "application")]
 pub mod application;
 
+/// WR-C3「同用例双传输」测试基建（规格本体，IPC/HTTP 两腿共享；夹具门控沿 test-harness 语义）。
+#[cfg(any(test, feature = "test-harness"))]
+pub mod use_case_contracts;
+
 /// 跨模块基础词汇（ID/上下文/错误信封）。常驻编译，不设 feature 门
 /// （§5.1：形成归属契约的最小 ID/引用值在 shared 唯一定义）。
 pub mod shared;
