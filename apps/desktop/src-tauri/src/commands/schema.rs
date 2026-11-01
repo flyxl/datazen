@@ -73,7 +73,7 @@ pub async fn estimate_table_rows(
     let start = Instant::now();
     tracing::info!(%db_session_id, %table, "estimate_table_rows");
     let resolved =
-        super::driver_command::resolve_command_driver(state, Some(&db_session_id), None).await?;
+        super::driver_command::resolve_command_driver(&state, Some(&db_session_id), None).await?;
     let driver = &resolved.driver;
     let handle = &resolved.handle;
 
