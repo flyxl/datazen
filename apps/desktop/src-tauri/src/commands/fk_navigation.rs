@@ -62,23 +62,6 @@ impl ForeignKeyNavigationSource for HostNavigationSource<'_> {
 }
 
 /// Resolve the target of one foreign-key group and probe it for existence.
-pub(crate) async fn resolve_foreign_key_targets_impl(
-    state: &AppState,
-    request: ResolveForeignKeyTargetsRequest,
-) -> Result<ForeignKeyTargetResolution, CommandError> {
-    if request.db_session_id.trim().is_empty() {
-        return Err(CommandError::Validation("dbSessionId is required".into()));
-    }
-    if request.table.trim().is_empty() {
-        return Err(CommandError::Validation("table is required".into()));
-    }
-    let source = HostNavigationSource { state };
-    datazen::services::fk_navigation::resolve_foreign_key_targets(&source, &request)
-        .await
-        .map_err(CommandError::from)
-}
-
-/// Resolve the target of one foreign-key group and probe it for existence.
 ///
 /// `exists = false` means the target table is readable but the referenced row
 /// is gone — a successful answer, not an error.
@@ -87,22 +70,16 @@ pub async fn resolve_foreign_key_targets(
     state: State<'_, AppState>,
     request: ResolveForeignKeyTargetsRequest,
 ) -> Result<ForeignKeyTargetResolution, CommandError> {
-    resolve_foreign_key_targets_impl(&state, request).await
-}
-
-/// List the constraints of other tables that reference one table (DB-20).
-pub(crate) async fn list_inbound_foreign_keys_impl(
-    state: &AppState,
-    request: ListInboundForeignKeysRequest,
-) -> Result<InboundForeignKeyCatalog, CommandError> {
     if request.db_session_id.trim().is_empty() {
         return Err(CommandError::Validation("dbSessionId is required".into()));
     }
     if request.table.trim().is_empty() {
         return Err(CommandError::Validation("table is required".into()));
     }
-    let source = HostNavigationSource { state };
-    datazen::services::referenced_by::list_inbound_foreign_keys(&source, &request)
+    let source = HostNavigationSource {
+        state: state.inner(),
+    };
+    datazen::services::fk_navigation::resolve_foreign_key_targets(&source, &request)
         .await
         .map_err(CommandError::from)
 }
@@ -116,8 +93,26 @@ pub async fn list_inbound_foreign_keys(
     state: State<'_, AppState>,
     request: ListInboundForeignKeysRequest,
 ) -> Result<InboundForeignKeyCatalog, CommandError> {
-    list_inbound_foreign_keys_impl(&state, request).await
+    if request.db_session_id.trim().is_empty() {
+        return Err(CommandError::Validation("dbSessionId is required".into()));
+    }
+    if request.table.trim().is_empty() {
+        return Err(CommandError::Validation("table is required".into()));
+    }
+    let source = HostNavigationSource {
+        state: state.inner(),
+    };
+    datazen::services::referenced_by::list_inbound_foreign_keys(&source, &request)
+        .await
+        .map_err(CommandError::from)
 }
 
 #[cfg(test)]
 mod tests;
+
+// 测试宿主（cfg(test)）：B2 批次 4 刀移除 `*_impl` 后，线格式钉子经真实
+// `#[tauri::command]` 入口驱动（与 data/query 各域宿主同形）。声明置于
+// `mod tests` 之后：生产源以首个 `#[cfg(test)]` 分界（config.rs 首立约定）。
+#[cfg(test)]
+#[path = "fk_navigation_command_test_host.rs"]
+mod command_test_host;

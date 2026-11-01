@@ -11,11 +11,12 @@
 //!
 //! 本刀只收 CRUD 与「测试连接的配置解析」；`list_plain` / `groups` 的导入
 //! 导出路径（`commands/connection_import`）与会话/隧道编排留待后续刀，
-//! 仍由宿主直呼服务。
+//! 仍由宿主直呼服务。B2 连接域刀补入**会话信息载荷**（`get_connection_info`
+//! 的响应形状：字段键与驱动类别词汇是 IPC 契约，宿主只负责组装输入）。
 //!
 //! DTO 复用 `datazen-driver-api` 的 `ConnectionConfig`，不另定义一份。
 
-use datazen_driver_api::ConnectionConfig;
+use datazen_driver_api::{ConnectionConfig, DriverCategory};
 
 use super::application::{merge_missing_secrets, ConnectionError, ConnectionService};
 use super::domain::ConnectionScope;
@@ -96,6 +97,44 @@ pub async fn resolve_test_config(
         merge_missing_secrets(&mut config, saved);
     }
     Ok(config)
+}
+
+/// 驱动类别 → 前端词汇。
+///
+/// 未注册的驱动类型保守地按 `"sql"` 呈现（与桌面命令层的历史行为逐字一致：
+/// `KeyValue` → `"keyvalue"`、`Document` → `"document"`、其余含 `None` →
+/// `"sql"`）。这三个字符串是 IPC 载荷，改动即破坏前端。
+pub fn driver_category_label(category: Option<DriverCategory>) -> &'static str {
+    match category {
+        Some(DriverCategory::KeyValue) => "keyvalue",
+        Some(DriverCategory::Document) => "document",
+        _ => "sql",
+    }
+}
+
+/// 会话信息载荷（`get_connection_info` 的响应形状）。
+///
+/// 纯投影：入参是宿主组装好的三样东西——会话生效的配置（runtime session
+/// 的 config）、驱动类别（未注册为 `None`）、驱动能力表。字段键
+/// （`databaseType` / `driverCategory` / `name` / `host` / `port` /
+/// `database` / `schema` / `serverVersion` / `capabilities`）是冻结的 IPC
+/// 契约；宿主（桌面或将来的 Web）只负责取数，形状由这里单一持有。
+pub fn session_info_payload(
+    config: &ConnectionConfig,
+    driver_category: Option<DriverCategory>,
+    capabilities: serde_json::Value,
+) -> serde_json::Value {
+    serde_json::json!({
+        "databaseType": &config.database_type,
+        "driverCategory": driver_category_label(driver_category),
+        "name": &config.name,
+        "host": &config.host,
+        "port": &config.port,
+        "database": &config.database,
+        "schema": &config.schema,
+        "serverVersion": &config.server_version,
+        "capabilities": capabilities,
+    })
 }
 
 #[cfg(test)]
@@ -296,5 +335,65 @@ mod tests {
             .unwrap();
         assert_eq!(copy.name, "Copy");
         assert_eq!(copy.last_connected_at, None);
+    }
+
+    #[test]
+    fn driver_category_labels_are_the_frozen_ipc_vocabulary() {
+        assert_eq!(driver_category_label(Some(DriverCategory::Sql)), "sql");
+        assert_eq!(
+            driver_category_label(Some(DriverCategory::KeyValue)),
+            "keyvalue"
+        );
+        assert_eq!(
+            driver_category_label(Some(DriverCategory::Document)),
+            "document"
+        );
+        // 未注册的驱动类型保守地按 SQL 呈现（桌面命令层的历史行为）。
+        assert_eq!(driver_category_label(None), "sql");
+    }
+
+    #[test]
+    fn session_info_payload_pins_the_wire_shape() {
+        let mut config = sample("c1", Some("never-on-the-wire"));
+        config.database = None;
+        config.server_version = Some("PostgreSQL 16.2".into());
+        let payload =
+            session_info_payload(&config, Some(DriverCategory::Sql), serde_json::Value::Null);
+
+        // 字段键与取值逐字对应桌面 `get_connection_info` 的既有载荷。
+        assert_eq!(payload["databaseType"], "postgresql");
+        assert_eq!(payload["driverCategory"], "sql");
+        assert_eq!(payload["name"], "Profile c1");
+        assert_eq!(payload["host"], "db.example.com");
+        assert_eq!(payload["port"], 5432);
+        assert!(payload["database"].is_null(), "未选库必须是 null 而非缺失");
+        assert!(payload["schema"].is_null());
+        assert_eq!(payload["serverVersion"], "PostgreSQL 16.2");
+        assert!(payload["capabilities"].is_null());
+        // 载荷里不得出现凭据字段：会话信息是展示面。
+        let wire = serde_json::to_string(&payload).unwrap();
+        assert!(!wire.contains("never-on-the-wire"));
+        assert!(!wire.contains("password"));
+    }
+
+    #[test]
+    fn session_info_payload_maps_every_driver_category() {
+        let config = sample("c9", None);
+        for (category, expected) in [
+            (DriverCategory::KeyValue, "keyvalue"),
+            (DriverCategory::Document, "document"),
+            (DriverCategory::Sql, "sql"),
+        ] {
+            let payload = session_info_payload(
+                &config,
+                Some(category),
+                serde_json::json!({"supportsExplain": true}),
+            );
+            assert_eq!(payload["driverCategory"], expected);
+            assert_eq!(payload["capabilities"]["supportsExplain"], true);
+        }
+        // 驱动未注册（None）时同样保守回退为 sql。
+        let payload = session_info_payload(&config, None, serde_json::Value::Null);
+        assert_eq!(payload["driverCategory"], "sql");
     }
 }

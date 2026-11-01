@@ -314,6 +314,23 @@ pub fn save_dashboard(
     Ok(())
 }
 
+/// Store a dashboard and return the stored form of it.
+///
+/// The stored form is what [`save_dashboard`] normalised (refresh policies,
+/// `updated_at`) — a caller that echoes the dashboard back to a user reads
+/// what was actually persisted, not what it sent. B2 dashboard knife: this
+/// composition moved here from the desktop command shell so an axum host
+/// would reuse it unchanged.
+pub fn save_and_fetch(
+    scope: &OrganizationScope,
+    store: &dyn DashboardRepository,
+    dashboard: Dashboard,
+) -> Result<Dashboard, DashboardRepositoryError> {
+    let id = dashboard.id.clone();
+    save_dashboard(scope, store, dashboard)?;
+    get_dashboard(scope, store, &id)
+}
+
 /// Remove a stored dashboard.
 pub fn delete_dashboard(
     scope: &OrganizationScope,
@@ -612,6 +629,24 @@ mod tests {
         save_dashboard(&scope, &store, sample_dashboard(vec![widget])).unwrap();
         let loaded = get_dashboard(&scope, &store, "dash-1").unwrap();
         assert_eq!(loaded.widgets[0].refresh.refresh_sec, Some(30));
+    }
+
+    /// 存储后回读的是**归一化后的形态**，且 id 不变——命令壳把这份
+    /// 组合下沉重用（save 后把存储形态返回给前端）。
+    #[test]
+    fn save_and_fetch_returns_the_normalised_stored_form() {
+        let store = MemoryRepository::new();
+        let scope = scope_of("org-a");
+        let mut widget = sample_widget("w1", "wf-1");
+        widget.refresh = RefreshPolicy {
+            mode: RefreshMode::Interval,
+            refresh_sec: Some(5),
+        };
+        let stored = save_and_fetch(&scope, &store, sample_dashboard(vec![widget])).unwrap();
+
+        assert_eq!(stored.id, "dash-1");
+        assert_eq!(stored.widgets[0].refresh.refresh_sec, Some(30));
+        assert_eq!(get_dashboard(&scope, &store, "dash-1").unwrap(), stored);
     }
 
     #[test]

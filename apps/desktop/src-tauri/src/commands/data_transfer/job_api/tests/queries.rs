@@ -12,6 +12,14 @@
 //! repository honours states and owner and silently drops the other two, and it
 //! has no notion of a job kind at all. So `kind` and `limit` are applied here,
 //! host-side, and each of them gets its own assertion below.
+//!
+//! Layer verdict (B1 triage, 2026-10-31): every case stays at the host. The
+//! surface under test is desktop-crate code — `read_job` / `read_jobs` and the
+//! kind/limit narrowing in `queries::select`, over `AppState::desktop_job_host`
+//! — and the kernel exports no kind-aware listing to delegate to. The wire-shape
+//! case is a C1 nail (the client parser's contract); the narrowing cases follow
+//! the future data_transfer domain knife and sink together with
+//! `job_api::queries`.
 
 use datazen::execution::EffectOutcome;
 use datazen::jobs::domain::job::{JobProgress, JobState, JobView};

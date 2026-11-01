@@ -1,8 +1,9 @@
-use crate::data_sync::filter_validation::{
-    resolve_key_contracts, validate_filter_endpoints, validate_filter_schemas,
-};
-use crate::data_sync::SyncSourceFilter;
-use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
+//! `filter_validation` 的行为钉子（2026-10-31 自桌面 commands 层归位：
+//! 逻辑一直在 modules，测试却住在宿主命令层——单元测试跟着逻辑走）。
+
+use super::{resolve_key_contracts, validate_filter_endpoints, validate_filter_schemas};
+use crate::migration::data_sync::SyncSourceFilter;
+use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
 use datazen_driver_api::{ColumnSchema, TableSchema};
 use datazen_driver_mysql::{MysqlDriver, MysqlSyncAdapter};
 use datazen_driver_postgres::{PgSyncAdapter, PostgresDriver};
@@ -429,10 +430,7 @@ fn test_tester_endpoint_validation_rejects_cross_dialect_ordering_expressions() 
 
 #[test]
 fn test_tester_endpoint_validation_reports_unavailable_parameter_binding() {
-    let driver = crate::testing::mock_driver::MockDriver::new(
-        "postgresql",
-        crate::testing::mock_driver::MockDriverOptions::default(),
-    );
+    let driver = MockDriver::new("postgresql", MockDriverOptions::default());
     let adapter = PgSyncAdapter;
     let source = schema(&[("tenant_id", "INTEGER"), ("id", "BIGINT")]);
     let keys = keys();

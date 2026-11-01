@@ -8,11 +8,13 @@
 //! 三件事：
 //!
 //! 1. 文档里的**相对链接**指到的文件必须真的存在（`docs/` 内可达）。
-//! 2. 文档点名的**行号**必须还指着它声称的那一行内容。
+//! 2. 文档点名的**代码事实**必须仍能在所指文件里找到（内容锚点）。
 //! 3. 文档里的**驱动数量事实**（`qualify_sql_target` 的实现方）必须与代码一致。
 //!
-//! 行号会随任何代码改动漂移——那正是本组用例存在的理由：**代码动了，文档必须
-//! 跟着动**，否则这里先红。
+//! 维护纪律（2026-10 起生效）：长期文档**不直接引用行号**——行号会随任何
+//! 代码改动漂移，钉行号的文档维护成本高于它省下的阅读成本。引用一律用
+//! 「文件 + 函数/常量/字面量」这类稳定锚点；这里校验的就是锚点内容仍然
+//! 存在——代码语义变了，锚点消失，这里先红。
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -89,117 +91,94 @@ fn the_document_links_reach_real_files() {
     );
 }
 
-/// 文档点名的行号必须还指着它声称的那一行。
+/// 文档点名的代码事实必须仍能在所指文件里找到。
 ///
-/// 每一项是 `(仓库内相对路径, 1-based 行号, 该行必须包含的片段)`。
-const LINE_REFERENCES: &[(&str, usize, &str)] = &[
+/// 每一项是 `(仓库内相对路径, 必须存在于该文件的代码片段)`——不钉行号，
+/// 只钉内容锚点（见本模块顶部维护纪律）。
+const CODE_REFERENCES: &[(&str, &str)] = &[
     // §2.3：version 写入点（本轨自己顶掉的 / 逐条核对过仍正确的）。
     // workflow 引擎已随 D6 item 3 切片 b 归位 modules::workflow（modules
-    // 只剩再导出垫片），行号一律指 modules 新居所。
-    ("apps/desktop/src-tauri/src/workflow/registry.rs", 224, "version: None,"),
+    // 只剩再导出垫片），锚点一律指 modules 新居所。
+    ("apps/desktop/src-tauri/src/workflow/registry.rs", "version: None,"),
     (
         "modules/src/workflow/application/registry.rs",
-        346,
         "version: None,",
     ),
     // §2.4：目标解析的两行代码块（modules::workflow::engine 新居所）。
     (
         "modules/src/workflow/engine/executor.rs",
-        117,
         "let workflow_connection = workflow.connection.as_deref().or(connection_id);",
     ),
     (
         "modules/src/workflow/engine/executor.rs",
-        118,
         "let workflow_database = workflow.database.as_deref();",
     ),
-    // §2.4：目标定位策略注释的现居所（原 `command_runtime.rs:115-119` 已失效）。
-    // 文档指的是 59-62 这**四行注释块**，逐行钉住它的首尾与关键 token。
+    // §2.4：目标定位策略注释的现居所（原 `command_runtime.rs` 已失效）。
+    // 文档指的是 F7 **四行注释块**，钉住它的首尾与关键 token。
     (
         "apps/desktop/src-tauri/src/commands/driver_command/execute.rs",
-        59,
         "F7: pass envelope targeting into the command input",
     ),
     (
         "apps/desktop/src-tauri/src/commands/driver_command/execute.rs",
-        60,
         "qualify_sql_target",
     ),
     (
         "apps/desktop/src-tauri/src/commands/driver_command/execute.rs",
-        62,
         "never switches the session's database",
     ),
-    // §2.5：调度器不包裹 Job（原 `scheduler.rs:176` 越界）。
+    // §2.5：调度器不包裹 Job。
     (
         "apps/desktop/src-tauri/src/workflow/scheduler.rs",
-        42,
         "crate::commands::workflow_execute_impl(",
     ),
-    ("apps/desktop/src-tauri/src/workflow/scheduler.rs", 46, "None,"),
-    // §2.5：Dashboard 同样不传连接（原 `dashboard/execute.rs:222`）。
+    // §2.5：Dashboard 同样不传连接（原 `dashboard/execute.rs`）。
     (
         "apps/desktop/src-tauri/src/dashboard/execute.rs",
-        71,
         "WorkflowExecutor::execute(",
     ),
     // §2.3：逐条核对过仍正确的若干处（抽样）。dashboard 与 workflow 的共享
     // 语义已随 D6 各切片归位 modules::（modules 只剩垫片）。
     (
         "modules/src/dashboard/application/create.rs",
-        40,
         "version: None,",
     ),
     (
         "apps/desktop/src-tauri/src/commands/ai/integration_tests.rs",
-        377,
         "version: Some(\"1\".into()),",
     ),
     (
         "modules/src/workflow/engine/scheduler.rs",
-        220,
         "version: None,",
     ),
     (
         "modules/src/dashboard/application/archive.rs",
-        197,
         "version: None,",
     ),
     (
         "modules/src/settings/domain.rs",
-        37,
         "pub struct OnboardingState {",
     ),
 ];
 
 #[test]
-fn the_document_line_references_still_point_at_what_they_claim() {
+fn the_document_code_references_still_exist_in_the_files_they_name() {
     let mut stale: Vec<String> = Vec::new();
 
-    for (relative, line, expected) in LINE_REFERENCES {
+    for (relative, expected) in CODE_REFERENCES {
         let path = repo_root().join(relative);
         let Ok(text) = std::fs::read_to_string(&path) else {
             stale.push(format!("{relative}：文件不存在"));
             continue;
         };
-        let Some(actual) = text.lines().nth(line - 1) else {
-            stale.push(format!(
-                "{relative}：只有 {} 行，文档指到了第 {line} 行",
-                text.lines().count()
-            ));
-            continue;
-        };
-        if !actual.contains(expected) {
-            stale.push(format!(
-                "{relative}:{line}：期望包含 `{expected}`，实际是 `{}`",
-                actual.trim()
-            ));
+        if !text.contains(expected) {
+            stale.push(format!("{relative}：找不到锚点片段 `{expected}`"));
         }
     }
 
     assert!(
         stale.is_empty(),
-        "文档里的行号引用必须还指着它声称的那一行：\n{}",
+        "文档里的代码引用必须仍能在所指文件里找到：\n{}",
         stale.join("\n")
     );
 }

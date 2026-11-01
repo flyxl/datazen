@@ -1,187 +1,14 @@
+//! Host-side tests for the AI IPC surface.
+//!
+//! 2026-10-31 拆分：纯逻辑钉子（响应解析、工具分类、供应商默认值、
+//! DTO 反序列化）已随逻辑归位 modules（`ai/application/response_tests.rs`、
+//! `ai/application/tools_tests.rs`、`ai/api.rs`、`ai/application/single_turn.rs`）；
+//! 这里只留宿主绑定——命令入口行为、流式事件载荷形状、经 `TestAppState`
+//! 的配置工作流，以及 MCP 客户端的宿主装配语义。
+
 use super::*;
 use crate::commands::workflow_list_impl;
-use datazen::ai::response::{
-    extract_json_boundary, inject_language_hint, strip_markdown_fences, truncate_str,
-};
-use datazen::ai::tools::{classify_tool, is_db_tool, ToolKind};
-use datazen::ai::AiProviderType;
 use datazen::ai::*;
-use datazen::ai::*;
-
-#[test]
-fn test_provider_list_item_serialization() {
-    let item = ProviderListItem {
-        provider_type: AiProviderType::OpenAi,
-        display_name: "OpenAI".into(),
-        supports_streaming: true,
-        supports_tools: true,
-        default_endpoint: "https://api.openai.com/v1".into(),
-        default_protocol: "open_ai_compatible".into(),
-    };
-
-    let json = serde_json::to_string(&item).unwrap();
-    assert!(json.contains("\"providerType\":\"open_ai\""));
-    assert!(json.contains("\"displayName\":\"OpenAI\""));
-    assert!(json.contains("\"supportsStreaming\":true"));
-    assert!(json.contains("\"defaultEndpoint\":"));
-    assert!(json.contains("\"defaultProtocol\":"));
-}
-
-#[test]
-fn test_strip_markdown_fences_plain_json() {
-    let input = r#"{"explanation":"test","suggestedSql":null,"changes":[]}"#;
-    assert_eq!(strip_markdown_fences(input), input);
-}
-
-#[test]
-fn test_strip_markdown_fences_with_json_fence() {
-    let input = "```json\n{\"explanation\":\"test\"}\n```";
-    assert_eq!(strip_markdown_fences(input), "{\"explanation\":\"test\"}");
-}
-
-#[test]
-fn test_strip_markdown_fences_with_bare_fence() {
-    let input = "```\n{\"explanation\":\"test\"}\n```";
-    assert_eq!(strip_markdown_fences(input), "{\"explanation\":\"test\"}");
-}
-
-#[test]
-fn test_strip_markdown_fences_whitespace() {
-    let input = "  ```json\n  {\"key\":\"val\"}  \n```  ";
-    assert_eq!(strip_markdown_fences(input), "{\"key\":\"val\"}");
-}
-
-#[test]
-fn test_extract_json_boundary_object_with_trailing() {
-    let input = r#"{"key":"val"}The user wants me to..."#;
-    assert_eq!(extract_json_boundary(input), Some(r#"{"key":"val"}"#));
-}
-
-#[test]
-fn test_extract_json_boundary_array_with_trailing() {
-    let input = r#"[{"a":1}]Some reasoning text"#;
-    assert_eq!(extract_json_boundary(input), Some(r#"[{"a":1}]"#));
-}
-
-#[test]
-fn test_extract_json_boundary_nested() {
-    let input = r#"{"a":{"b":"c"},"d":[1,2]}trailing"#;
-    assert_eq!(
-        extract_json_boundary(input),
-        Some(r#"{"a":{"b":"c"},"d":[1,2]}"#)
-    );
-}
-
-#[test]
-fn test_extract_json_boundary_with_escaped_quotes() {
-    let input = r#"{"msg":"say \"hello\""}extra"#;
-    assert_eq!(
-        extract_json_boundary(input),
-        Some(r#"{"msg":"say \"hello\""}"#)
-    );
-}
-
-#[test]
-fn test_extract_json_boundary_no_json() {
-    assert_eq!(extract_json_boundary("not json at all"), None);
-}
-
-#[test]
-fn test_extract_json_boundary_clean() {
-    let input = r#"{"key":"val"}"#;
-    assert_eq!(extract_json_boundary(input), Some(input));
-}
-
-#[test]
-fn test_parse_ai_json_with_trailing_reasoning() {
-    #[derive(serde::Deserialize)]
-    struct Simple {
-        key: String,
-    }
-    let raw = r#"{"key":"val"}The user wants me to analyze..."#;
-    let result: Result<Simple, _> = parse_ai_json(raw, None, "test");
-    assert!(result.is_ok());
-    assert_eq!(result.unwrap().key, "val");
-}
-
-#[test]
-fn test_connection_diagnosis_deserialization() {
-    let json = r#"{
-            "diagnosis": "Authentication failed",
-            "possibleCauses": ["Wrong password", "User does not exist"],
-            "solutions": [
-                {"description": "Check password", "command": null},
-                {"description": "Create user", "command": "CREATE USER test"}
-            ],
-            "category": "auth"
-    }"#;
-    let result: ConnectionDiagnosis = serde_json::from_str(json).unwrap();
-    assert_eq!(result.diagnosis, "Authentication failed");
-    assert_eq!(result.possible_causes.len(), 2);
-    assert_eq!(result.solutions.len(), 2);
-    assert_eq!(result.category, "auth");
-    assert!(result.solutions[0].command.is_none());
-    assert_eq!(
-        result.solutions[1].command.as_deref(),
-        Some("CREATE USER test")
-    );
-}
-
-#[test]
-fn test_query_analysis_deserialization() {
-    let json = r#"{
-            "summary": "Mostly read queries",
-            "categories": [
-                {"name": "SELECT", "count": 10, "examples": ["SELECT * FROM users"]}
-            ],
-            "insights": ["Heavy read workload"],
-            "frequentTables": ["users", "orders"],
-            "recommendations": ["Add index on orders.user_id"]
-    }"#;
-    let result: QueryAnalysis = serde_json::from_str(json).unwrap();
-    assert_eq!(result.summary, "Mostly read queries");
-    assert_eq!(result.categories.len(), 1);
-    assert_eq!(result.categories[0].count, 10);
-    assert_eq!(result.frequent_tables, vec!["users", "orders"]);
-    assert_eq!(result.recommendations.len(), 1);
-}
-
-#[test]
-fn test_is_db_tool() {
-    assert!(is_db_tool("list_connections"));
-    assert!(is_db_tool("list_databases"));
-    assert!(is_db_tool("list_tables"));
-    assert!(is_db_tool("get_table_schema"));
-    assert!(!is_db_tool("ask_questions"));
-    assert!(!is_db_tool("unknown_tool"));
-    assert!(!is_db_tool(""));
-}
-
-#[test]
-fn test_classify_tool() {
-    assert_eq!(classify_tool("ask_questions"), ToolKind::AskQuestions);
-    assert_eq!(
-        classify_tool("list_connections"),
-        ToolKind::Db("list_connections".into())
-    );
-    assert_eq!(
-        classify_tool("mcp/files/read_file"),
-        ToolKind::Mcp {
-            server_id: "files".into(),
-            tool_name: "read_file".into(),
-        }
-    );
-    assert_eq!(
-        classify_tool("mcp/my-server/my_tool_name"),
-        ToolKind::Mcp {
-            server_id: "my-server".into(),
-            tool_name: "my_tool_name".into(),
-        }
-    );
-    assert_eq!(classify_tool("mcp/bad"), ToolKind::Unknown);
-    assert_eq!(classify_tool("mcp//tool"), ToolKind::Unknown);
-    assert_eq!(classify_tool("unknown_tool"), ToolKind::Unknown);
-}
 
 #[tokio::test]
 async fn execute_mcp_tool_errors_when_server_not_connected() {
@@ -201,130 +28,6 @@ async fn execute_mcp_tool_rejects_invalid_json() {
     let out = execute_mcp_tool(&test.state, "srv", "tool", "not-json").await;
     assert!(out.contains("MCP tool error (mcp/srv/tool)"));
     assert!(out.contains("invalid JSON arguments"));
-}
-
-#[test]
-fn test_db_tool_definitions_count() {
-    let tools = db_tool_definitions();
-    assert_eq!(tools.len(), 5);
-    let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
-    assert!(names.contains(&"list_connections"));
-    assert!(names.contains(&"list_databases"));
-    assert!(names.contains(&"list_tables"));
-    assert!(names.contains(&"get_table_schema"));
-}
-
-#[test]
-fn test_db_tool_definitions_have_valid_schemas() {
-    for tool in db_tool_definitions() {
-        assert!(!tool.name.is_empty());
-        assert!(!tool.description.is_empty());
-        assert!(tool.parameters.is_object());
-        let obj = tool.parameters.as_object().unwrap();
-        assert_eq!(obj.get("type").and_then(|v| v.as_str()), Some("object"));
-    }
-}
-
-#[test]
-fn test_language_hint_known_locales() {
-    assert!(language_hint("zh-CN").contains("Chinese (Simplified)"));
-    assert!(language_hint("zh-TW").contains("Chinese (Traditional)"));
-    assert!(language_hint("en").contains("English"));
-    assert!(language_hint("ja").contains("Japanese"));
-    assert!(language_hint("ko").contains("Korean"));
-    assert!(language_hint("es").contains("Spanish"));
-    assert!(language_hint("fr").contains("French"));
-    assert!(language_hint("custom-locale").contains("custom-locale"));
-}
-
-#[test]
-fn test_inject_language_hint_appends_to_system() {
-    let mut messages = vec![
-        ChatMessage {
-            role: MessageRole::System,
-            content: "Base prompt".into(),
-            reasoning: None,
-            tool_calls: None,
-            tool_call_id: None,
-        },
-        ChatMessage {
-            role: MessageRole::User,
-            content: "Hi".into(),
-            reasoning: None,
-            tool_calls: None,
-            tool_call_id: None,
-        },
-    ];
-    inject_language_hint(&mut messages, "zh-CN");
-    assert!(messages[0].content.contains("Base prompt"));
-    assert!(messages[0].content.contains("Chinese (Simplified)"));
-    assert!(!messages[1].content.contains("Chinese"));
-}
-
-#[test]
-fn test_provider_defaults_all_types() {
-    assert_eq!(
-        provider_defaults(AiProviderType::OpenAi),
-        ("https://api.openai.com/v1", "open_ai_compatible")
-    );
-    assert_eq!(
-        provider_defaults(AiProviderType::Anthropic),
-        ("https://api.anthropic.com", "anthropic_compatible")
-    );
-    assert_eq!(
-        provider_defaults(AiProviderType::DeepSeek),
-        ("https://api.deepseek.com", "open_ai_responses")
-    );
-    assert_eq!(
-        provider_defaults(AiProviderType::Custom),
-        ("", "open_ai_compatible")
-    );
-}
-
-#[test]
-fn test_truncate_str_multibyte() {
-    assert_eq!(truncate_str("héllo", 3), "hé");
-    assert_eq!(truncate_str("你好世界", 7), "你好");
-}
-
-#[test]
-fn test_parse_ai_json_empty_response() {
-    #[derive(Debug, serde::Deserialize)]
-    #[allow(dead_code)]
-    struct Simple {
-        key: String,
-    }
-    let err = parse_ai_json::<Simple>("   ", None, "test").unwrap_err();
-    assert!(err.to_string().contains("empty"));
-}
-
-#[test]
-fn test_parse_ai_json_truncated_finish_reason() {
-    #[derive(Debug, serde::Deserialize)]
-    #[allow(dead_code)]
-    struct Simple {
-        items: Vec<String>,
-    }
-    let raw = r#"{"items": ["unclosed"#;
-    let err = parse_ai_json::<Simple>(raw, Some("length"), "test").unwrap_err();
-    assert!(err.to_string().contains("truncated"));
-}
-
-#[test]
-fn test_parse_ai_json_invalid_with_reason() {
-    #[derive(Debug, serde::Deserialize)]
-    #[allow(dead_code)]
-    struct NeedsField {
-        required_field: String,
-    }
-    let raw = r#"{"wrong": "field"}"#;
-    let err = parse_ai_json::<NeedsField>(raw, Some("stop"), "test").unwrap_err();
-    assert!(err.to_string().contains("schema"));
-}
-
-#[test]
-fn test_language_hint_unknown_locale_uses_code() {
-    assert!(language_hint("de").contains("de"));
 }
 
 #[test]
@@ -385,21 +88,23 @@ fn test_emit_stream_chunk_builds_payload_via_callback() {
 }
 
 #[tokio::test]
-async fn ai_providers_config_prompt_workflow_impl() {
+async fn ai_providers_config_prompt_workflow() {
     use crate::testing::app_state::TestAppState;
     use datazen::ai::AiProviderConfig;
     use datazen::ai::AiProviderType;
 
     let test = TestAppState::new().await;
-    assert!(ai_get_config_impl(&test.state).await.unwrap().is_none());
+    let (state, _keep) = test.into_state();
+    let app = CommandApp::new(state);
+    assert!(ai_get_config(app.state()).await.unwrap().is_none());
 
-    let providers = ai_get_providers_impl(&test.state).await.unwrap();
+    let providers = ai_get_providers(app.state()).await.unwrap();
     assert!(!providers.is_empty());
 
-    let prompts = prompt_list_impl(&test.state, None).await.unwrap();
+    let prompts = prompt_list(app.state(), None).await.unwrap();
     assert!(!prompts.is_empty());
 
-    let workflows = workflow_list_impl(&test.state).await.unwrap();
+    let workflows = workflow_list_impl(&app.state()).await.unwrap();
     assert!(
         workflows.iter().any(|w| w.id.starts_with("builtin-")),
         "empty workflow dir should be seeded with builtin workflows, got: {workflows:?}"
@@ -413,10 +118,10 @@ async fn ai_providers_config_prompt_workflow_impl() {
         max_tokens: 4096,
         extra: serde_json::json!({}),
     };
-    test.state.store.save_ai_config(&cfg).await.unwrap();
-    assert!(ai_get_config_impl(&test.state).await.unwrap().is_some());
-    ai_delete_config_impl(&test.state).await.unwrap();
-    assert!(ai_get_config_impl(&test.state).await.unwrap().is_none());
+    app.state().store.save_ai_config(&cfg).await.unwrap();
+    assert!(ai_get_config(app.state()).await.unwrap().is_some());
+    ai_delete_config(app.handle(), app.state()).await.unwrap();
+    assert!(ai_get_config(app.state()).await.unwrap().is_none());
 }
 
 #[tokio::test]
@@ -438,6 +143,8 @@ async fn ai_validate_config_rejects_missing_api_key() {
     use datazen::ai::AiProviderType;
 
     let test = TestAppState::new().await;
+    let (state, _keep) = test.into_state();
+    let app = CommandApp::new(state);
     let cfg = AiProviderConfig {
         provider_type: AiProviderType::OpenAi,
         api_key: None,
@@ -446,7 +153,7 @@ async fn ai_validate_config_rejects_missing_api_key() {
         max_tokens: 4096,
         extra: serde_json::json!({}),
     };
-    assert!(ai_validate_config_impl(&test.state, cfg).await.is_err());
+    assert!(ai_validate_config(app.state(), cfg).await.is_err());
 }
 
 #[tokio::test]

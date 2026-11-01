@@ -12,8 +12,9 @@ use tauri::State;
 
 // ─── Prompt management IPC commands ───
 
-pub(crate) async fn prompt_list_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn prompt_list(
+    state: State<'_, AppState>,
     driver_type: Option<String>,
 ) -> Result<Vec<PromptInfo>, CommandError> {
     state.ensure_ai_ready().await;
@@ -25,14 +26,6 @@ pub(crate) async fn prompt_list_impl(
         };
     let prompts = state.prompt_resolver.list_prompts(driver.as_deref()).await;
     Ok(prompts)
-}
-
-#[tauri::command]
-pub async fn prompt_list(
-    state: State<'_, AppState>,
-    driver_type: Option<String>,
-) -> Result<Vec<PromptInfo>, CommandError> {
-    prompt_list_impl(&state, driver_type).await
 }
 
 #[tauri::command]

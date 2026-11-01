@@ -1,4 +1,16 @@
 //! Tunnel entity IPC (independent of connection configs).
+//!
+//! B2 隧道域刀：`*_impl` 转发层已拆除，接线直接住在 `#[tauri::command]` 体里。
+//! 两条曾经散在宿主的逻辑收进了共享 crate 的唯一权威，命令壳只做装配：
+//!
+//! * 名单/反向投影（`id`/`name`/`kind` 摘要与 usage 位置对齐）——
+//!   `datazen::tunnel::domain` 的 `summarize` / `usage_from_connections`，
+//!   桌面仓储（`store/tunnels.rs`）的 `list` / `usage` 实现调同一份；
+//! * 「测试隧道」探测编排（取定义 → 按种类开隧道 → 惰性种类补上游验证 →
+//!   拆掉 → 报耗时）—— `datazen::tunnel::test_saved_tunnel`。
+//!
+//! IPC 契约逐字不变：命令名、参数、返回形状与错误文案（见文末
+//! `commands/ipc_surface_tests.rs` 的入口面守卫）。
 
 use super::error::{CmdExt, CommandError};
 use super::AppState;
@@ -19,14 +31,15 @@ fn tunnel_cmd<T>(result: Result<T, PortError>, cmd: &str) -> Result<T, CommandEr
     crate::commands::port_call::port_cmd(result, cmd)
 }
 
-pub(crate) async fn get_tunnels_impl(state: &AppState) -> Result<Vec<SavedTunnel>, CommandError> {
+#[tauri::command]
+pub async fn get_tunnels(state: State<'_, AppState>) -> Result<Vec<SavedTunnel>, CommandError> {
     // 端口只有两档：名单（摘要，**不带密钥**）与单条取用（全量）。这个 IPC 的载荷是
     // **全量**且形状冻结，因此由两档组合而成：先取名单，再逐条取用。
     //
     // 生产代码没有它的调用方（所有列表路径都走 `get_tunnel_summaries`），但命令的
     // 形状与载荷不变。
     let scope = state.organization_scope()?;
-    let services = crate::platform::ipc::require_application_services(state)?;
+    let services = crate::platform::ipc::require_application_services(&state)?;
     let summaries = tunnel_cmd(services.tunnels.list(&scope).await, "get_tunnels")?;
     let mut tunnels = Vec::with_capacity(summaries.len());
     for summary in summaries {
@@ -42,29 +55,32 @@ pub(crate) async fn get_tunnels_impl(state: &AppState) -> Result<Vec<SavedTunnel
     Ok(tunnels)
 }
 
-pub(crate) async fn get_tunnel_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn get_tunnel(
+    state: State<'_, AppState>,
     id: String,
 ) -> Result<Option<SavedTunnel>, CommandError> {
     let scope = state.organization_scope()?;
-    let services = crate::platform::ipc::require_application_services(state)?;
+    let services = crate::platform::ipc::require_application_services(&state)?;
     tunnel_cmd(services.tunnels.get(&scope, &id).await, "get_tunnel")
 }
 
-pub(crate) async fn save_tunnel_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn save_tunnel(
+    state: State<'_, AppState>,
     tunnel: SavedTunnel,
 ) -> Result<(), CommandError> {
     tracing::info!(id = %tunnel.id, name = %tunnel.name, kind = ?tunnel.kind, "save_tunnel");
     let scope = state.organization_scope()?;
-    let services = crate::platform::ipc::require_application_services(state)?;
+    let services = crate::platform::ipc::require_application_services(&state)?;
     tunnel_cmd(services.tunnels.save(&scope, tunnel).await, "save_tunnel")
 }
 
-pub(crate) async fn delete_tunnel_impl(state: &AppState, id: String) -> Result<(), CommandError> {
+#[tauri::command]
+pub async fn delete_tunnel(state: State<'_, AppState>, id: String) -> Result<(), CommandError> {
     tracing::info!(%id, "delete_tunnel");
     let scope = state.organization_scope()?;
-    let services = crate::platform::ipc::require_application_services(state)?;
+    let services = crate::platform::ipc::require_application_services(&state)?;
     tunnel_cmd(services.tunnels.delete(&scope, &id).await, "delete_tunnel")
 }
 
@@ -72,22 +88,25 @@ pub(crate) async fn delete_tunnel_impl(state: &AppState, id: String) -> Result<(
 ///
 /// 走端口的**名单档**：它只带 `id` / `name` / `kind`，**不含**任何凭据——
 /// 端口这一档刻意不返回密钥（`get_tunnels` 那种全量列表是另一条路径）。
-pub(crate) async fn get_tunnel_summaries_impl(
-    state: &AppState,
+/// 投影本体是 `datazen::tunnel::domain` 的共享映射，桌面仓储调同一份。
+#[tauri::command]
+pub async fn get_tunnel_summaries(
+    state: State<'_, AppState>,
 ) -> Result<Vec<SavedTunnelSummary>, CommandError> {
     let scope = state.organization_scope()?;
-    let services = crate::platform::ipc::require_application_services(state)?;
+    let services = crate::platform::ipc::require_application_services(&state)?;
     tunnel_cmd(services.tunnels.list(&scope).await, "get_tunnel_summaries")
 }
 
 /// Which connections reference `id`. `connection_ids` and `connection_names`
 /// are positionally aligned.
-pub(crate) async fn get_tunnel_usage_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn get_tunnel_usage(
+    state: State<'_, AppState>,
     id: String,
 ) -> Result<TunnelUsage, CommandError> {
     let scope = state.organization_scope()?;
-    let services = crate::platform::ipc::require_application_services(state)?;
+    let services = crate::platform::ipc::require_application_services(&state)?;
     tunnel_cmd(
         services.tunnels.usage(&scope, &id).await,
         "get_tunnel_usage",
@@ -95,15 +114,20 @@ pub(crate) async fn get_tunnel_usage_impl(
 }
 
 /// Probe a saved tunnel against `target_host:target_port`; returns elapsed ms.
-pub(crate) async fn test_tunnel_impl(
-    state: &AppState,
+///
+/// 编排在 `datazen::tunnel::test_saved_tunnel`（形态中立）：取定义 → 按种类把
+/// 隧道真的开起来 → 惰性种类（HTTP 代理 / WebSocket）补一次上游验证 → 拆掉。
+/// 错误文案是 IPC 载荷，由那份用例逐字持有。
+#[tauri::command]
+pub async fn test_tunnel(
+    state: State<'_, AppState>,
     id: String,
     target_host: String,
     target_port: u16,
 ) -> Result<u64, CommandError> {
     let scope = state.organization_scope()?;
-    let services = crate::platform::ipc::require_application_services(state)?;
-    let elapsed = crate::tunnel::test_tunnel(
+    let services = crate::platform::ipc::require_application_services(&state)?;
+    let elapsed = datazen::tunnel::test_saved_tunnel(
         &*services.tunnels,
         &scope,
         &services.known_hosts,
@@ -118,69 +142,149 @@ pub(crate) async fn test_tunnel_impl(
     Ok(elapsed_ms)
 }
 
-#[tauri::command]
-pub async fn get_tunnels(state: State<'_, AppState>) -> Result<Vec<SavedTunnel>, CommandError> {
-    get_tunnels_impl(&state).await
-}
-
-#[tauri::command]
-pub async fn get_tunnel(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<Option<SavedTunnel>, CommandError> {
-    get_tunnel_impl(&state, id).await
-}
-
-#[tauri::command]
-pub async fn save_tunnel(
-    state: State<'_, AppState>,
-    tunnel: SavedTunnel,
-) -> Result<(), CommandError> {
-    save_tunnel_impl(&state, tunnel).await
-}
-
-#[tauri::command]
-pub async fn delete_tunnel(state: State<'_, AppState>, id: String) -> Result<(), CommandError> {
-    delete_tunnel_impl(&state, id).await
-}
-
-#[tauri::command]
-pub async fn get_tunnel_summaries(
-    state: State<'_, AppState>,
-) -> Result<Vec<SavedTunnelSummary>, CommandError> {
-    get_tunnel_summaries_impl(&state).await
-}
-
-#[tauri::command]
-pub async fn get_tunnel_usage(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<TunnelUsage, CommandError> {
-    get_tunnel_usage_impl(&state, id).await
-}
-
-#[tauri::command]
-pub async fn test_tunnel(
-    state: State<'_, AppState>,
-    id: String,
-    target_host: String,
-    target_port: u16,
-) -> Result<u64, CommandError> {
-    test_tunnel_impl(&state, id, target_host, target_port).await
-}
+// 测试宿主（cfg(test)）：把 harness 的 AppState 挂进 mock tauri app，让测试
+// 能以真实 `#[tauri::command]` 入口驱动（`State<'_, AppState>` 只能来自
+// tauri `Manager`）。
+#[cfg(test)]
+#[path = "tunnel_command_test_host.rs"]
+mod tunnel_command_test_host;
 
 #[cfg(test)]
 mod tests {
+    //! 命令壳的**留守测试**（B2 隧道域刀后的分类）：
+    //!
+    //! * **C4 适配器烟测**——真实命令入口 + `DesktopRepository`：脱敏映射经由
+    //!   桌面仓储的 `list` / `usage`（它们调用 `datazen::tunnel::domain` 的共享
+    //!   投影）端到端走一遍。映射本体的语义深度（顺序、位置对齐、空 id 不
+    //!   扫面）已随映射迁入 `modules/src/tunnel/domain/projection_tests.rs`。
+    //! * **C1 命令入口行为**——`test_tunnel` 的参数面与毫秒换算：错误路径点名
+    //!   隧道 id、成功路径返回 `u64` 毫秒。探测语义（按种类开隧道、上游验证、
+    //!   拆除、BUG-001/BUG-003 回归矩阵）已随用例迁入
+    //!   `modules/src/tunnel/probe_tests.rs`；上游探针与数据路径的逐字节测试在
+    //!   `modules/src/tunnel/{http_proxy,websocket}_probe_tests.rs`。
+
     use super::*;
-    use crate::commands::tunnel_summary_tests::saved_ssh_tunnel;
-    use crate::testing::app_state::TestAppState;
+    use super::tunnel_command_test_host::host_command_app;
+    use crate::testing::app_state::{sample_postgres_config, TestAppState};
     use datazen_driver_api::{SshTunnelConfig, TunnelKind};
+
+    const SSH_PASSWORD: &str = "ssh-password-secret";
+    const SSH_PASSPHRASE: &str = "ssh-passphrase-secret";
+    const SSH_HOST: &str = "bastion.internal";
+
+    fn saved_ssh_tunnel(id: &str, name: &str) -> SavedTunnel {
+        SavedTunnel {
+            id: id.into(),
+            name: name.into(),
+            kind: TunnelKind::Ssh,
+            ssh: Some(SshTunnelConfig {
+                enabled: true,
+                host: SSH_HOST.into(),
+                port: 2222,
+                username: "ubuntu".into(),
+                auth_method: "password".into(),
+                password: Some(SSH_PASSWORD.into()),
+                private_key_path: None,
+                passphrase: Some(SSH_PASSPHRASE.into()),
+                jump: None,
+            }),
+            http_proxy: None,
+            websocket: None,
+        }
+    }
+
+    fn assert_no_secret_leak(json: &str) {
+        for needle in [
+            SSH_PASSWORD,
+            SSH_PASSPHRASE,
+            SSH_HOST,
+            "ubuntu",
+            "password",
+            "passphrase",
+            "authToken",
+            "auth_token",
+            "privateKeyPath",
+        ] {
+            assert!(
+                !json.contains(needle),
+                "IPC payload leaked `{needle}`: {json}"
+            );
+        }
+    }
+
+    // ── C4: adapter smoke — real command entry + DesktopRepository ──
+
+    #[tokio::test]
+    async fn summaries_drop_every_tunnel_secret() {
+        let test = TestAppState::new().await;
+        test.store
+            .save_tunnel(saved_ssh_tunnel("t1", "Prod Bastion"))
+            .await
+            .unwrap();
+
+        let app = host_command_app(test);
+        let summaries = get_tunnel_summaries(app.state()).await.unwrap();
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].id, "t1");
+        assert_eq!(summaries[0].name, "Prod Bastion");
+        assert_eq!(summaries[0].kind, TunnelKind::Ssh);
+
+        let json = serde_json::to_string(&summaries).unwrap();
+        assert_no_secret_leak(&json);
+        let value: serde_json::Value = serde_json::to_value(&summaries).unwrap();
+        assert_eq!(
+            value,
+            serde_json::json!([{ "id": "t1", "name": "Prod Bastion", "kind": "ssh" }]),
+            "the summary must expose exactly id/name/kind"
+        );
+    }
+
+    #[tokio::test]
+    async fn usage_lists_referencing_connections_in_order() {
+        let test = TestAppState::new().await;
+        test.store
+            .save_tunnel(saved_ssh_tunnel("t1", "Prod Bastion"))
+            .await
+            .unwrap();
+        test.store
+            .save_tunnel(saved_ssh_tunnel("t2", "Other Bastion"))
+            .await
+            .unwrap();
+
+        let mut hit = sample_postgres_config("conn-hit");
+        hit.name = "Hit".into();
+        hit.tunnel_id = Some("t1".into());
+        test.store.save_connection(hit).await.unwrap();
+
+        let mut other = sample_postgres_config("conn-other");
+        other.name = "Other".into();
+        other.tunnel_id = Some("t2".into());
+        test.store.save_connection(other).await.unwrap();
+
+        let app = host_command_app(test);
+        let usage = get_tunnel_usage(app.state(), "t1".into()).await.unwrap();
+        assert_eq!(usage.connection_ids, vec!["conn-hit".to_string()]);
+        assert_eq!(usage.connection_names, vec!["Hit".to_string()]);
+
+        let json = serde_json::to_string(&usage).unwrap();
+        assert_no_secret_leak(&json);
+
+        // Miss path: a stored tunnel nobody references returns empty arrays.
+        let miss = get_tunnel_usage(app.state(), "t2-missing".into())
+            .await
+            .unwrap();
+        assert!(miss.connection_ids.is_empty());
+        assert!(miss.connection_names.is_empty());
+    }
+
+    // ── C1: command-entry behavior for the probe ────────────────────
 
     #[tokio::test]
     async fn test_tunnel_rejects_unknown_tunnel_id() {
         let test = TestAppState::new().await;
-        let err = test_tunnel_impl(
-            &test.state,
+        let app = host_command_app(test);
+        let err = test_tunnel(
+            app.state(),
             "missing-tunnel".into(),
             "127.0.0.1".into(),
             5432,
@@ -193,80 +297,14 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn test_tunnel_rejects_tunnel_without_a_tunnel_config() {
-        let test = TestAppState::new().await;
-        test.store
-            .save_tunnel(SavedTunnel {
-                id: "t-none".into(),
-                name: "Disabled".into(),
-                kind: TunnelKind::None,
-                ssh: None,
-                http_proxy: None,
-                websocket: None,
-            })
-            .await
-            .unwrap();
-
-        let err = test_tunnel_impl(&test.state, "t-none".into(), "127.0.0.1".into(), 5432)
-            .await
-            .expect_err("a tunnel with no configuration must not report success");
-        assert!(
-            err.to_string().contains("resolved to no tunnel"),
-            "unexpected error: {err}"
-        );
-    }
-
-    // ── [tester] independent verification additions ──────────────────
-
-    #[tokio::test]
-    async fn test_tester_test_tunnel_rejects_ssh_kind_without_ssh_config() {
-        let test = TestAppState::new().await;
-        test.store
-            .save_tunnel(SavedTunnel {
-                id: "t-ssh-broken".into(),
-                name: "Broken".into(),
-                kind: TunnelKind::Ssh,
-                ssh: None,
-                http_proxy: None,
-                websocket: None,
-            })
-            .await
-            .unwrap();
-
-        let err = test_tunnel_impl(&test.state, "t-ssh-broken".into(), "127.0.0.1".into(), 5432)
-            .await
-            .expect_err("kind=ssh with no ssh config must not report success");
-        assert!(
-            err.to_string().contains("sshTunnel is missing or disabled"),
-            "unexpected error: {err}"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_tester_test_tunnel_rejects_disabled_ssh_tunnel() {
-        let test = TestAppState::new().await;
-        let mut tunnel = saved_ssh_tunnel("t-ssh-off", "Disabled");
-        if let Some(ssh) = tunnel.ssh.as_mut() {
-            ssh.enabled = false;
-        }
-        test.store.save_tunnel(tunnel).await.unwrap();
-
-        let err = test_tunnel_impl(&test.state, "t-ssh-off".into(), "127.0.0.1".into(), 5432)
-            .await
-            .expect_err("a disabled ssh tunnel must not report success");
-        assert!(
-            err.to_string().contains("sshTunnel is missing or disabled"),
-            "unexpected error: {err}"
-        );
-    }
-
-    /// [tester] Success path: the probe must reach `Ok(elapsed_ms)` and tear the
-    /// tunnel down without panicking.
+    /// [tester] Success path through the real command entry: the probe must
+    /// reach `Ok(elapsed_ms)` (the `u64` millisecond conversion included) and
+    /// tear the tunnel down without panicking.
     ///
     /// The fixture is a local TCP listener that answers an HTTP `CONNECT` with
     /// `200`, so the assertion also holds if the lazily-started proxy path is
-    /// ever made to dial eagerly (see `tunnel-backend-BUG-001`).
+    /// ever made to dial eagerly (see `tunnel-backend-BUG-001`). The deeper
+    /// probe semantics live in `modules/src/tunnel/probe_tests.rs`.
     #[tokio::test]
     async fn test_tester_test_tunnel_success_path_with_local_proxy_fixture() {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -310,443 +348,18 @@ mod tests {
             .await
             .unwrap();
 
-        let elapsed_ms = test_tunnel_impl(&test.state, "t-proxy".into(), "127.0.0.1".into(), 5432)
-            .await
-            .expect("the probe must succeed for a reachable local proxy fixture");
-        assert!(
-            elapsed_ms < 5_000,
-            "probe took suspiciously long: {elapsed_ms}ms"
-        );
-
-        fixture.abort();
-    }
-
-    // ── tunnel-backend-BUG-001: unreachable proxy / relay must not pass ──
-
-    /// A `127.0.0.1` port the OS just handed out and that nothing listens on.
-    async fn closed_local_port() -> u16 {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind probe port");
-        let port = listener.local_addr().expect("probe addr").port();
-        drop(listener);
-        port
-    }
-
-    fn saved_proxy_tunnel(id: &str, port: u16) -> SavedTunnel {
-        SavedTunnel {
-            id: id.into(),
-            name: "Proxy".into(),
-            kind: TunnelKind::HttpProxy,
-            ssh: None,
-            http_proxy: Some(datazen_driver_api::HttpProxyTunnelConfig {
-                enabled: true,
-                host: "127.0.0.1".into(),
-                port,
-                scheme: "http".into(),
-                username: None,
-                password: None,
-                headers: None,
-                connect_timeout_secs: 2,
-            }),
-            websocket: None,
-        }
-    }
-
-    fn saved_websocket_tunnel(id: &str, port: u16) -> SavedTunnel {
-        SavedTunnel {
-            id: id.into(),
-            name: "Relay".into(),
-            kind: TunnelKind::WebSocket,
-            ssh: None,
-            http_proxy: None,
-            websocket: Some(datazen_driver_api::WebSocketTunnelConfig {
-                enabled: true,
-                url: format!("ws://127.0.0.1:{port}/tunnel"),
-                auth_token: None,
-                headers: None,
-                connect_timeout_secs: 2,
-                ping_interval_secs: 0,
-                mode: "datazen_v1".into(),
-            }),
-        }
-    }
-
-    /// BUG-001 regression: `HttpProxyTunnel::start` only binds the local
-    /// listener, so the probe used to answer `Ok(0)` for a proxy on a closed
-    /// port. It must report `Err`.
-    #[tokio::test]
-    async fn test_tunnel_rejects_unreachable_http_proxy_endpoint() {
-        let test = TestAppState::new().await;
-        let port = closed_local_port().await;
-        test.store
-            .save_tunnel(saved_proxy_tunnel("t-dead-proxy", port))
-            .await
-            .unwrap();
-
-        let err = test_tunnel_impl(&test.state, "t-dead-proxy".into(), "127.0.0.1".into(), 5432)
-            .await
-            .expect_err("an unreachable proxy must not be reported as reachable");
-        assert!(
-            err.to_string().contains("connect to proxy"),
-            "unexpected error: {err}"
-        );
-    }
-
-    /// A reachable proxy that *rejects* the CONNECT must fail too: this proves
-    /// the probe performs a real CONNECT handshake, not a bare TCP connect.
-    #[tokio::test]
-    async fn test_tunnel_rejects_proxy_that_refuses_connect() {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind proxy fixture");
-        let port = listener.local_addr().expect("fixture addr").port();
-        let fixture = tokio::spawn(async move {
-            while let Ok((mut stream, _)) = listener.accept().await {
-                tokio::spawn(async move {
-                    let mut buf = [0u8; 1024];
-                    let _ = stream.read(&mut buf).await;
-                    let _ = stream.write_all(b"HTTP/1.1 403 Forbidden\r\n\r\n").await;
-                    let _ = stream.shutdown().await;
-                });
-            }
-        });
-
-        let test = TestAppState::new().await;
-        test.store
-            .save_tunnel(saved_proxy_tunnel("t-refusing-proxy", port))
-            .await
-            .unwrap();
-
-        let err = test_tunnel_impl(
-            &test.state,
-            "t-refusing-proxy".into(),
+        let app = host_command_app(test);
+        let elapsed_ms = test_tunnel(
+            app.state(),
+            "t-proxy".into(),
             "127.0.0.1".into(),
             5432,
         )
         .await
-        .expect_err("a proxy that refuses CONNECT must not be reported as reachable");
-        assert!(
-            err.to_string().contains("CONNECT rejected"),
-            "unexpected error: {err}"
-        );
-
-        fixture.abort();
-    }
-
-    /// BUG-001 regression: `WebSocketTunnel::start` only binds the local
-    /// listener, so the probe used to answer `Ok(0)` for a relay on a closed
-    /// port. It must report `Err`.
-    #[tokio::test]
-    async fn test_tunnel_rejects_unreachable_websocket_endpoint() {
-        let test = TestAppState::new().await;
-        let port = closed_local_port().await;
-        test.store
-            .save_tunnel(saved_websocket_tunnel("t-dead-relay", port))
-            .await
-            .unwrap();
-
-        let err = test_tunnel_impl(&test.state, "t-dead-relay".into(), "127.0.0.1".into(), 5432)
-            .await
-            .expect_err("an unreachable relay must not be reported as reachable");
-        assert!(
-            !err.to_string().is_empty(),
-            "the probe error must carry a message"
-        );
-    }
-
-    /// The mirror of the failure tests: a relay that really answers the
-    /// `datazen_v1` `open` with `opened` must pass, so the fix cannot be
-    /// "always return Err for WebSocket".
-    #[tokio::test]
-    async fn test_tunnel_probes_websocket_relay_end_to_end() {
-        use futures_util::{SinkExt, StreamExt};
-        use tokio_tungstenite::tungstenite::Message;
-
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind relay fixture");
-        let port = listener.local_addr().expect("fixture addr").port();
-        let fixture = tokio::spawn(async move {
-            while let Ok((stream, _)) = listener.accept().await {
-                tokio::spawn(async move {
-                    let Ok(mut ws) = tokio_tungstenite::accept_async(stream).await else {
-                        return;
-                    };
-                    if let Some(Ok(Message::Text(text))) = ws.next().await {
-                        let open: serde_json::Value =
-                            serde_json::from_str(&text).unwrap_or_default();
-                        let ack = if open.get("op").and_then(|v| v.as_str()) == Some("open") {
-                            r#"{"op":"opened"}"#
-                        } else {
-                            r#"{"op":"error","message":"unexpected frame"}"#
-                        };
-                        let _ = ws.send(Message::Text(ack.to_string().into())).await;
-                        // Hold the socket until the probe closes it.
-                        while let Some(Ok(msg)) = ws.next().await {
-                            if msg.is_close() {
-                                break;
-                            }
-                        }
-                    }
-                });
-            }
-        });
-
-        let test = TestAppState::new().await;
-        test.store
-            .save_tunnel(saved_websocket_tunnel("t-live-relay", port))
-            .await
-            .unwrap();
-
-        let elapsed_ms =
-            test_tunnel_impl(&test.state, "t-live-relay".into(), "127.0.0.1".into(), 5432)
-                .await
-                .expect("a relay that acks the open must pass the probe");
+        .expect("the probe must succeed for a reachable local proxy fixture");
         assert!(
             elapsed_ms < 5_000,
             "probe took suspiciously long: {elapsed_ms}ms"
-        );
-
-        fixture.abort();
-    }
-
-    /// SSH has always dialed eagerly, so this pins that an unreachable bastion
-    /// is reported as unreachable rather than optimistically succeeding.
-    #[tokio::test]
-    async fn test_tunnel_rejects_unreachable_ssh_bastion() {
-        let test = TestAppState::new().await;
-        let port = closed_local_port().await;
-        test.store
-            .save_tunnel(SavedTunnel {
-                id: "t-dead-bastion".into(),
-                name: "Bastion".into(),
-                kind: TunnelKind::Ssh,
-                ssh: Some(SshTunnelConfig {
-                    enabled: true,
-                    host: "127.0.0.1".into(),
-                    port,
-                    username: "ubuntu".into(),
-                    auth_method: "password".into(),
-                    password: Some("secret".into()),
-                    private_key_path: None,
-                    passphrase: None,
-                    jump: None,
-                }),
-                http_proxy: None,
-                websocket: None,
-            })
-            .await
-            .unwrap();
-
-        let err = test_tunnel_impl(
-            &test.state,
-            "t-dead-bastion".into(),
-            "127.0.0.1".into(),
-            5432,
-        )
-        .await
-        .expect_err("an unreachable bastion must not be reported as reachable");
-        assert!(
-            err.to_string().contains("SSH connect"),
-            "unexpected error: {err}"
-        );
-    }
-
-    // ── tunnel-backend-BUG-003: the CONNECT probe must be bounded ─────
-
-    /// BUG-003 regression: a proxy that **accepts TCP but never answers** the
-    /// `CONNECT` request used to hang the probe forever, so the IPC future never
-    /// settled and the management UI spun indefinitely.
-    ///
-    /// `saved_proxy_tunnel` pins `connect_timeout_secs = 2`. The probe is itself
-    /// wrapped in a generous test-level timeout so that, if the fix regresses,
-    /// this case fails instead of wedging the whole suite.
-    #[tokio::test]
-    async fn test_tunnel_times_out_against_a_proxy_that_never_answers_connect() {
-        use tokio::io::AsyncReadExt;
-
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind silent proxy");
-        let port = listener.local_addr().expect("fixture addr").port();
-        let fixture = tokio::spawn(async move {
-            while let Ok((mut stream, _)) = listener.accept().await {
-                tokio::spawn(async move {
-                    // Consume the CONNECT request, then deliberately never reply.
-                    let mut buf = [0u8; 1024];
-                    let _ = stream.read(&mut buf).await;
-                    tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-                    drop(stream);
-                });
-            }
-        });
-
-        let test = TestAppState::new().await;
-        test.store
-            .save_tunnel(saved_proxy_tunnel("t-silent-proxy", port))
-            .await
-            .unwrap();
-
-        let started = std::time::Instant::now();
-        let outcome = tokio::time::timeout(
-            std::time::Duration::from_secs(15),
-            test_tunnel_impl(
-                &test.state,
-                "t-silent-proxy".into(),
-                "127.0.0.1".into(),
-                5432,
-            ),
-        )
-        .await;
-        let elapsed = started.elapsed();
-
-        let result = outcome.expect(
-            "the probe must not hang against a silent proxy: BUG-003 regression \
-             (CONNECT handshake not bounded by connect_timeout_secs)",
-        );
-        let err = result.expect_err("a proxy that never answers CONNECT must fail the probe");
-        assert!(
-            err.to_string().contains("timed out"),
-            "the timeout must be identifiable in the error: {err}"
-        );
-        assert!(
-            elapsed < std::time::Duration::from_secs(10),
-            "the probe must be bounded by connect_timeout_secs (2s), took {elapsed:?}"
-        );
-
-        fixture.abort();
-    }
-
-    /// [tester] BUG-003 (a)1 — the **`https` branch** of `verify_upstream` must
-    /// be bounded exactly like the plaintext one.
-    ///
-    /// The Coder's guard above only covers the plaintext branch. This is the
-    /// encrypted variant: a plain TCP endpoint that accepts but never speaks
-    /// TLS. `tls_connect` is bounded by `connect_timeout_secs`, so the probe
-    /// must return `Err` inside the budget rather than hang the IPC future.
-    ///
-    /// Reaching the CONNECT-*read* stage of the `https` branch would require a
-    /// TLS server whose certificate chains to a `webpki-roots` CA, which cannot
-    /// be fabricated hermetically. That stage is therefore bounded where it is
-    /// actually implemented: `tunnel::http_proxy::tests::test_tester_connect_read_is_bounded_when_the_peer_never_answers`
-    /// exercises `perform_connect_within` — the very helper both branches call.
-    #[tokio::test]
-    async fn test_tester_https_probe_is_bounded_against_a_silent_endpoint() {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind silent https fixture");
-        let port = listener.local_addr().expect("fixture addr").port();
-        let fixture = tokio::spawn(async move {
-            while let Ok((stream, _)) = listener.accept().await {
-                tokio::spawn(async move {
-                    // Hold the TCP connection open and never answer the ClientHello.
-                    tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-                    drop(stream);
-                });
-            }
-        });
-
-        let test = TestAppState::new().await;
-        let mut tunnel = saved_proxy_tunnel("t-https-silent", port);
-        tunnel
-            .http_proxy
-            .as_mut()
-            .expect("fixture builds an http_proxy tunnel")
-            .scheme = "https".into();
-        test.store.save_tunnel(tunnel).await.unwrap();
-
-        let started = std::time::Instant::now();
-        let outcome = tokio::time::timeout(
-            std::time::Duration::from_secs(15),
-            test_tunnel_impl(
-                &test.state,
-                "t-https-silent".into(),
-                "127.0.0.1".into(),
-                5432,
-            ),
-        )
-        .await;
-        let elapsed = started.elapsed();
-
-        let result = outcome.expect(
-            "the https probe must not hang: BUG-003 regression (the https branch \
-             has no deadline)",
-        );
-        let err = result.expect_err("a silent endpoint under scheme=https must fail the probe");
-        assert!(
-            err.to_string().contains("timed out"),
-            "the timeout must be identifiable in the error: {err}"
-        );
-        assert!(
-            elapsed < std::time::Duration::from_secs(10),
-            "the https probe must be bounded by connect_timeout_secs (2s), took {elapsed:?}"
-        );
-
-        fixture.abort();
-    }
-
-    /// [tester] BUG-003 (a)3 — the deadline must bound the **whole** CONNECT
-    /// handshake, not each individual `read`.
-    ///
-    /// `perform_connect` reads the status line byte by byte. A per-read timeout
-    /// would never fire against a proxy that keeps dribbling bytes (every read
-    /// makes progress), so the probe would still hang forever. This fixture
-    /// answers one byte every 250 ms and never terminates the header, so only an
-    /// absolute deadline can stop it.
-    #[tokio::test]
-    async fn test_tester_probe_deadline_covers_a_dribbling_proxy() {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("bind dribbling proxy");
-        let port = listener.local_addr().expect("fixture addr").port();
-        let fixture = tokio::spawn(async move {
-            while let Ok((mut stream, _)) = listener.accept().await {
-                tokio::spawn(async move {
-                    let mut buf = [0u8; 1024];
-                    let _ = stream.read(&mut buf).await;
-                    // Progress on every read, but the header terminator never arrives.
-                    loop {
-                        if stream.write_all(b"a").await.is_err() {
-                            break;
-                        }
-                        let _ = stream.flush().await;
-                        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-                    }
-                });
-            }
-        });
-
-        let test = TestAppState::new().await;
-        test.store
-            .save_tunnel(saved_proxy_tunnel("t-dribble", port))
-            .await
-            .unwrap();
-
-        let started = std::time::Instant::now();
-        let outcome = tokio::time::timeout(
-            std::time::Duration::from_secs(15),
-            test_tunnel_impl(&test.state, "t-dribble".into(), "127.0.0.1".into(), 5432),
-        )
-        .await;
-        let elapsed = started.elapsed();
-
-        let result = outcome.expect(
-            "a dribbling proxy must not hang the probe: the deadline must cover \
-             the whole handshake, not each read (BUG-003 regression)",
-        );
-        let err = result.expect_err("a never-terminated CONNECT response must fail the probe");
-        assert!(
-            err.to_string().contains("timed out"),
-            "the timeout must be identifiable in the error: {err}"
-        );
-        assert!(
-            elapsed < std::time::Duration::from_secs(10),
-            "the probe must stop at connect_timeout_secs (2s), took {elapsed:?}"
         );
 
         fixture.abort();

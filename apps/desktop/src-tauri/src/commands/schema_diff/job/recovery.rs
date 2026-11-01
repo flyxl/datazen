@@ -1,5 +1,15 @@
-use datazen_driver_api::{DatabaseObject, ObjectKind};
-use sha2::{Digest, Sha256};
+//! Schema Diff 恢复目标的宿主侧接线。
+//!
+//! B2 schema_diff 域刀：**纯**投影函数（目标线 id 编解码、证据记录、表目标
+//! 派生）已下沉 `datazen::migration::schema_diff::job::recovery_targets`
+//! （线格式契约与实现逐字不变，测试也随迁 modules）；本文件保留**会话绑定**
+//! 的两个编排——[`prepare_target_objects`]（解析运行时会话后按请求派生目标集）
+//! 与 [`fingerprint_targets`]（解析会话后逐目标读结构/DDL 并计算 sha256 指纹）。
+//! 它们解析运行时会话、映射宿主错误信封，因此留宿主；纯投影经
+//! `pub(super) use` 原名再导出，域内调用点（`job.rs` / `job/desktop.rs`）不变。
+
+use datazen_driver_api::{CatalogReader, LegacyCatalogReader};
+use sha2::{Digest as _, Sha256};
 
 use crate::commands::error::CommandError;
 use crate::commands::schema_diff::{
@@ -7,60 +17,17 @@ use crate::commands::schema_diff::{
 };
 use crate::commands::AppState;
 use crate::schema_diff::job::PrepareRequest;
-use datazen_driver_api::{CatalogReader, LegacyCatalogReader};
 
-const TARGET_ID_PREFIX: &str = "obj-";
-const TARGET_EVIDENCE_PREFIX: &str = "recoveryObject:";
-const TARGET_JSON_PREFIX: &str = "recoveryIdentity:";
-
-pub(super) fn encode_target_id(target: &DatabaseObject) -> Option<String> {
-    let json = serde_json::to_vec(target).ok()?;
-    let mut id = String::with_capacity(TARGET_ID_PREFIX.len() + json.len() * 2);
-    id.push_str(TARGET_ID_PREFIX);
-    for byte in json {
-        use std::fmt::Write;
-        write!(&mut id, "{byte:02x}").ok()?;
-    }
-    (id.len() <= 512).then_some(id)
-}
-
-pub(super) fn decode_target_id(id: &str) -> Option<DatabaseObject> {
-    let encoded = id.strip_prefix(TARGET_ID_PREFIX)?;
-    if encoded.is_empty()
-        || encoded.len() % 2 != 0
-        || !encoded.bytes().all(|byte| byte.is_ascii_hexdigit())
-    {
-        return None;
-    }
-    let bytes = encoded
-        .as_bytes()
-        .chunks_exact(2)
-        .map(|pair| {
-            let digits = std::str::from_utf8(pair).ok()?;
-            u8::from_str_radix(digits, 16).ok()
-        })
-        .collect::<Option<Vec<_>>>()?;
-    serde_json::from_slice(&bytes).ok()
-}
-
-pub(super) fn target_ids_from_evidence(evidence: &[String]) -> Vec<String> {
-    evidence
-        .iter()
-        .filter_map(|item| item.strip_prefix(TARGET_EVIDENCE_PREFIX).map(str::to_owned))
-        .collect()
-}
-
-pub(super) fn targets_from_evidence(evidence: &[String]) -> Option<Vec<DatabaseObject>> {
-    let raw = evidence
-        .iter()
-        .find_map(|item| item.strip_prefix(TARGET_JSON_PREFIX))?;
-    serde_json::from_str(raw).ok()
-}
+// 纯投影：形态中立，随 B2 域刀下沉 modules（recovery_targets），此处原名再导出。
+pub(super) use datazen::migration::schema_diff::job::recovery_targets::{
+    decode_target_id, encode_target_id, record_target_objects, table_target,
+    target_ids_from_evidence, targets_from_evidence,
+};
 
 pub(super) async fn prepare_target_objects(
     state: &AppState,
     request: &PrepareRequest,
-) -> Result<Vec<DatabaseObject>, CommandError> {
+) -> Result<Vec<datazen_driver_api::DatabaseObject>, CommandError> {
     let target_session = match request {
         PrepareRequest::Table {
             target_db_session_id,
@@ -84,7 +51,7 @@ pub(super) async fn prepare_target_objects(
     }
     .or(config.schema.as_deref());
     let mut targets = Vec::new();
-    let mut add = |object: DatabaseObject| {
+    let mut add = |object: datazen_driver_api::DatabaseObject| {
         if !targets.contains(&object) {
             targets.push(object);
         }
@@ -125,29 +92,11 @@ pub(super) async fn prepare_target_objects(
     Ok(targets)
 }
 
-pub(super) fn record_target_objects(evidence: &mut Vec<String>, targets: &[DatabaseObject]) {
-    if let Ok(json) = serde_json::to_string(targets) {
-        evidence.push(format!("{TARGET_JSON_PREFIX}{json}"));
-    }
-    let encoded = targets
-        .iter()
-        .map(encode_target_id)
-        .collect::<Option<Vec<_>>>();
-    if let Some(ids) = encoded {
-        evidence.extend(
-            ids.into_iter()
-                .map(|id| format!("{TARGET_EVIDENCE_PREFIX}{id}")),
-        );
-    } else {
-        evidence.push("recoveryProjectionIncomplete".into());
-    }
-}
-
 pub(super) async fn fingerprint_targets(
     state: &AppState,
     session_id: &str,
     database: Option<&str>,
-    targets: &[DatabaseObject],
+    targets: &[datazen_driver_api::DatabaseObject],
 ) -> Result<String, CommandError> {
     let context = crate::services::migration_endpoint::runtime_session_context(
         state,
@@ -165,7 +114,9 @@ pub(super) async fn fingerprint_targets(
     let catalog = LegacyCatalogReader::new(driver.as_ref());
     let mut entries = Vec::with_capacity(targets.len());
     for target in targets {
-        if ObjectKind::parse(&target.kind) == Some(ObjectKind::Table) {
+        if datazen_driver_api::ObjectKind::parse(&target.kind)
+            == Some(datazen_driver_api::ObjectKind::Table)
+        {
             let snapshot = match catalog
                 .get_table_schema(
                     &handle,
@@ -185,7 +136,7 @@ pub(super) async fn fingerprint_targets(
             continue;
         }
 
-        let kind = ObjectKind::parse(&target.kind).ok_or_else(|| {
+        let kind = datazen_driver_api::ObjectKind::parse(&target.kind).ok_or_else(|| {
             CommandError::Validation("Recovery target kind is unsupported".into())
         })?;
         let listed = list_schema_objects(driver.as_ref(), &handle, kind).await?;
@@ -211,20 +162,4 @@ pub(super) async fn fingerprint_targets(
     let bytes = serde_json::to_vec(&entries)
         .map_err(|_| CommandError::Internal("Schema Diff target fingerprint failed".into()))?;
     Ok(format!("sha256:{:x}", Sha256::digest(bytes)))
-}
-
-pub(super) fn table_target(table: &str, schema: Option<&str>) -> DatabaseObject {
-    let relation = table
-        .trim()
-        .rsplit_once('.')
-        .map(|(_, name)| name)
-        .unwrap_or_else(|| table.trim());
-    DatabaseObject {
-        kind: ObjectKind::Table.as_str().into(),
-        schema: schema.map(str::to_owned),
-        name: relation.to_owned(),
-        signature: None,
-        target_schema: None,
-        target_name: None,
-    }
 }

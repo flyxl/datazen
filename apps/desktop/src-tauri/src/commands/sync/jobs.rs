@@ -491,7 +491,7 @@ pub(crate) async fn submit_apply(
     let job_id = window_job_id
         .filter(|id| !id.trim().is_empty())
         .unwrap_or_else(|| format!("data-sync-{}", uuid::Uuid::new_v4()));
-    let view = super::exec::start_data_sync_apply_job_impl(
+    let view = super::exec::start_apply_job(
         state,
         source_session_id,
         target_session_id,

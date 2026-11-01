@@ -96,7 +96,10 @@ objc2-app-kit = { version = "0.3.2", optional = true }
 default = []
 webdriver = ["tauri-plugin-webdriver", "dep:objc2", "dep:objc2-app-kit", "datazen/webdriver"]
 # Enables `datazen::test_harness` for src-tauri/tests/ IPC migration integration tests.
-test-harness = ["datazen/test-harness"]
+# `tauri/test` lights up `tauri::test::mock_app` for the harness's HostedApp —
+# the command entries need a `State<'_, AppState>` that only a Manager can
+# provide (B2 之后命令层没有 `_impl` 转发层)。
+test-harness = ["datazen/test-harness", "tauri/test"]
 # Driver features — injected by resolve-drivers.mjs at build time; do NOT add manually.
 # <<driver-features>>
 # <</driver-features>>
@@ -105,6 +108,10 @@ test-harness = ["datazen/test-harness"]
 [dev-dependencies]
 wiremock = "0.6"
 sqlx = { version = "=0.8.6", features = ["runtime-tokio", "tls-rustls", "postgres", "mysql"] }
+# `tauri::test`（mock_app / MockRuntime）：`#[tauri::command]` 处理函数现在直接
+# 持有业务逻辑，命令集成测试经真实命令入口驱动（State/WebviewWindow 只能来自
+# Manager），需要 mock 运行时宿主。test feature 仅测试构建启用。
+tauri = { version = "2", features = ["test"] }
 datazen-driver-postgres = { workspace = true }
 datazen-driver-mysql = { workspace = true }
 datazen-driver-sqlite = { workspace = true }

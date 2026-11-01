@@ -21,7 +21,9 @@
 
 pub mod install;
 pub mod manifest;
+pub mod package_kind;
 pub mod storage;
+pub mod summary;
 
 #[cfg(test)]
 mod fixture_tests;

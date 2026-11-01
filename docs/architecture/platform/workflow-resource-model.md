@@ -64,16 +64,16 @@
 
 `version` 字段**现已被严格校验**（本节早前版本称它「只被写入、从未被读取」，那是 `modules` 落地**之前**的基线事实，现已不成立）：
 
-- 版本解析在 `modules/src/workflow/domain/executable.rs:35` 的 `WorkflowVersion::parse`：**未声明**按 `V1` 处理；**空串**、**非 `^\d+$`**（严格 ASCII 数字，`u32::from_str` 还会接受 `"+2"`，那不是声明的格式）、以及**超过 `HIGHEST_SUPPORTED_VERSION = 2`**（`executable.rs:20`）的版本**一律拒绝**，报 `WorkflowError::UnsupportedDefinitionVersion`。
-- 按版本分派在 `executable.rs:50-54`（`Ok(1) => V1`、`Ok(2) => V2`）。
-- 校验发生在**生产路径**上：`src-tauri/src/monitor/grants.rs:105` 在把 workflow 变成可执行对象时调用 `into_executable()`（`executable.rs:236`），未知或越界版本在这里被拒（"workflow version invalid"）。因此**版本号不是"写了没人看"的装饰字段**。
-- 写入点：`modules/src/dashboard/application/create.rs:40` 的 `version: None` 字面量（未声明 ⇒ 按 V1 执行），其余在测试代码内（宿主侧 `workflow/host.rs:170/211/246`、`workflow/registry.rs:226`、`commands/dashboard.rs:482`、`commands/ai/integration_tests.rs:377/932/1070/1123`；共享包侧 `modules/src/workflow/application/registry.rs:344`、`modules/src/workflow/engine/scheduler.rs:220`、`modules/src/dashboard/application/archive.rs:197`），其中仅 `integration_tests.rs:377` 写 `Some("1")`。三个内建 YAML 均未设置该字段，按 V1 执行。
+- 版本解析在 `modules/src/workflow/domain/executable.rs` 的 `WorkflowVersion::parse`：**未声明**按 `V1` 处理；**空串**、**非 `^\d+$`**（严格 ASCII 数字，`u32::from_str` 还会接受 `"+2"`，那不是声明的格式）、以及**超过 `HIGHEST_SUPPORTED_VERSION = 2`**（`executable.rs` 的同名常量）的版本**一律拒绝**，报 `WorkflowError::UnsupportedDefinitionVersion`。
+- 按版本分派在 `executable.rs` 的 `match`（`Ok(1) => V1`、`Ok(2) => V2`）。
+- 校验发生在**生产路径**上：`src-tauri/src/monitor/grants.rs` 在把 workflow 变成可执行对象时调用 `into_executable()`（定义在 `executable.rs`），未知或越界版本在这里被拒（"workflow version invalid"）。因此**版本号不是"写了没人看"的装饰字段**。
+- 写入点：`modules/src/dashboard/application/create.rs` 的 `version: None` 字面量（未声明 ⇒ 按 V1 执行），其余在测试代码内（宿主侧 `workflow/host.rs` 三处、`workflow/registry.rs`、`commands/dashboard.rs`、`commands/ai/integration_tests.rs` 四处；共享包侧 `modules/src/workflow/application/registry.rs`、`modules/src/workflow/engine/scheduler.rs`、`modules/src/dashboard/application/archive.rs`），其中仅 `integration_tests.rs` 的其中一处写 `Some("1")`。三个内建 YAML 均未设置该字段，按 V1 执行。
 
-对比：仓库中其他"定义版本"同样有校验——`modules/src/migration/schema_diff/profile.rs` 的 `CURRENT_VERSION` 并在遇到未知版本时报 "unsupported ... version"；`data_sync::SyncProfile`、`data_transfer::profile.rs` 同样有 `CURRENT_VERSION`；`store/favorites/migrate.rs` 有 `MIGRATION_VERSION`。**Workflow 现在也在其中**：它的版本由 `WorkflowVersion::parse` 校验，未知/空白/非整数/越界版本**拒绝执行**。另需注意 `store/settings.rs:15` 的 `OnboardingState.version` 同样只写不读（生产路径只读 `completed`）——那**是**一个尚未校验的版本字段。
+对比：仓库中其他"定义版本"同样有校验——`modules/src/migration/schema_diff/profile.rs` 的 `CURRENT_VERSION` 并在遇到未知版本时报 "unsupported ... version"；`data_sync::SyncProfile`、`data_transfer::profile.rs` 同样有 `CURRENT_VERSION`；`store/favorites/migrate.rs` 有 `MIGRATION_VERSION`。**Workflow 现在也在其中**：它的版本由 `WorkflowVersion::parse` 校验，未知/空白/非整数/越界版本**拒绝执行**。另需注意 `store/settings.rs` 的 `OnboardingState.version` 同样只写不读（生产路径只读 `completed`）——那**是**一个尚未校验的版本字段。
 
 ### 2.4 目标解析与资源获取
 
-[`executor.rs:117-118`](../../../modules/src/workflow/engine/executor.rs)：
+[`executor.rs`](../../../modules/src/workflow/engine/executor.rs)：
 
 ```rust
 let workflow_connection = workflow.connection.as_deref().or(connection_id);
@@ -98,15 +98,15 @@ command 分支（[command_runtime.rs](../../../modules/src/workflow/application/
 5. `validate_command_input` + 按 `permission_mode` 的 `check_command_access`；id 为 `"query"` / `"execute"` 时再过 `sql_guard::check_sql` 与 `mcp::permission::check_sql_allowed`；
 6. `inject_sql_target_fields(&mut input, database, schema)` 后 `driver.execute_command`。
 
-`commands/driver_command/execute.rs:59-62` 的注释明确记录了目标定位策略：**不再做 session 切库**，目标随 command input 下传，由支持 `qualify_sql_target` 的驱动就地改写未限定关系名；当前 6 个 SQL 驱动（clickhouse、sqlite、duckdb、mysql、postgres、sqlserver）均已实现该方法，mongodb 虽声明 `has_multi_database` 但不走 SQL 路径。
+`commands/driver_command/execute.rs` 的 F7 目标定位注释明确记录了目标定位策略：**不再做 session 切库**，目标随 command input 下传，由支持 `qualify_sql_target` 的驱动就地改写未限定关系名；当前 6 个 SQL 驱动（clickhouse、sqlite、duckdb、mysql、postgres、sqlserver）均已实现该方法，mongodb 虽声明 `has_multi_database` 但不走 SQL 路径。
 
 ### 2.5 调度、历史与 Job
 
 | 观察 | 证据 |
 | --- | --- |
-| 调度器不包裹 Job | `workflow/scheduler.rs:44-48` 直接调用 `commands::workflow_execute_impl(state, id, json!({}), None)`，连接参数恒为 `None` |
+| 调度器不包裹 Job | `workflow/scheduler.rs` 直接调用 `commands::workflow_execute_impl(state, id, json!({}), None)`，连接参数恒为 `None` |
 | 调度器无资源会计 | `WorkflowScheduler` 只有 `app_handle` / `paused` / `last_run` / `in_flight` / `cancel_token`，无预算与阶段字段；间隔下限 30 秒、默认 3600 秒，进程启动首次观察只上膛不触发 |
-| Dashboard 同样不传连接 | `dashboard/execute.rs:71` 传 `None` |
+| Dashboard 同样不传连接 | `dashboard/execute.rs` 传 `None` |
 | MCP 入口显式可选 | `mcp/tools.rs` 的 `run_workflow` 接受 `connection_id: Option<String>`，只读模式下 `run_workflow` 被 `READ_ONLY_BLOCKED_TOOLS` 拦截 |
 | 历史按可见性写入 | `commands/workflow.rs`：`visibility == DashboardHidden` 不写历史 |
 | 全链路**没有平台 Job 概念** | Workflow 执行不产生 jobId、不进 `JobRepository`、没有阶段资源与检查点；workflow 也不再以 step 形式调用三件套，因而没有「step 内嵌 Job」的例外 |
@@ -132,7 +132,7 @@ command 分支（[command_runtime.rs](../../../modules/src/workflow/application/
 
 ### 2.8 一处已确认的身份错配
 
-GUI 的 AI 侧栏把**运行时会话 id 当作 `connectionId` 传给 Workflow**：[`components/ai/WorkflowPanel.tsx:104`](../../../packages/frontend/src/components/ai/WorkflowPanel.tsx) 在 `handleExecute`（L99-107）里执行时传 `connectionId: dbSessionId`，而 `dbSessionId` 来自 `activeConnections[conn.id]?.dbSessionId`（连接窗口的运行时会话标识）。后端 `resolve_session_for_connection` 按 owner **配置 id** 查表，按[命名规范](../../../AGENTS.md) 这是被禁止的双模混用。同一页面的独立 Workflow 窗口（[`WorkflowPage.tsx:417`](../../../packages/frontend/src/windows/workflow/WorkflowPage.tsx)）则完全不传该参数。
+GUI 的 AI 侧栏把**运行时会话 id 当作 `connectionId` 传给 Workflow**：[`components/ai/WorkflowPanel.tsx`](../../../packages/frontend/src/components/ai/WorkflowPanel.tsx) 在 `handleExecute` 里执行时传 `connectionId: dbSessionId`，而 `dbSessionId` 来自 `activeConnections[conn.id]?.dbSessionId`（连接窗口的运行时会话标识）。后端 `resolve_session_for_connection` 按 owner **配置 id** 查表，按[命名规范](../../../AGENTS.md) 这是被禁止的双模混用。同一页面的独立 Workflow 窗口（[`WorkflowPage.tsx`](../../../packages/frontend/src/windows/workflow/WorkflowPage.tsx)）则完全不传该参数。
 
 这正是第 9 节"AI/MCP/Wapp 与 Workflow 边界"要清理的入口耦合，实际失败表现列入[第 12 节](#12-待-p0-验证清单)。
 

@@ -14,7 +14,6 @@ use datazen::{
 use datazen_driver_api::{ColumnInfo, TableSchema, Value};
 use serde::Deserialize;
 use serde_json::json;
-use tauri::State;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -121,14 +120,11 @@ async fn execute(
     }
 }
 
-pub async fn commit_query_result_cell(
-    state: State<'_, AppState>,
-    request: ResultCellWrite,
-) -> Result<(), CommandError> {
-    commit_query_result_cell_impl(&state, request).await
-}
-
-pub(crate) async fn commit_query_result_cell_impl(
+/// The narrow write path behind the `commit_query_result_cell` command
+/// (mounted in `data.rs`). Host-bound orchestration: platform adapter,
+/// runtime session state and the connection profile all live here; the rules
+/// it consults (`read_only_error_code`, `WriteTarget`) are shared-layer.
+pub(crate) async fn commit_query_result_cell(
     state: &AppState,
     request: ResultCellWrite,
 ) -> Result<(), CommandError> {

@@ -32,8 +32,6 @@ use datazen_driver_api::{
     ConnectionConfig, DriverError, HttpProxyTunnelConfig, TunnelKind, WebSocketTunnelConfig,
 };
 use std::sync::Arc;
-use std::time::Instant;
-use tokio::time::Duration;
 
 /// Runtime-owned tunnel associated with a live connection resource.
 pub enum Tunnel {
@@ -156,96 +154,6 @@ pub async fn test_connection(
     driver.test_connection(&effective_config).await
 }
 
-/// Probe a saved tunnel directly, without manufacturing a runtime session id.
-pub async fn test_tunnel(
-    tunnels: &dyn TunnelRepository,
-    scope: &OrganizationScope,
-    known_hosts: &Arc<dyn KnownHostsRepository>,
-    tunnel_id: &str,
-    target_host: &str,
-    target_port: u16,
-) -> Result<Duration, DriverError> {
-    let saved = match tunnels.get(scope, tunnel_id).await {
-        Ok(saved) => saved,
-        Err(error) => {
-            return Err(DriverError::InvalidConfig(format!(
-                "tunnel id '{tunnel_id}' unavailable: {error}"
-            )));
-        }
-    };
-    let Some(saved) = saved else {
-        return Err(DriverError::InvalidConfig(format!(
-            "tunnel id '{tunnel_id}' not found"
-        )));
-    };
-    let config = ConnectionConfig {
-        id: format!("__tunnel_test__{tunnel_id}"),
-        name: format!("tunnel test: {tunnel_id}"),
-        database_type: "postgresql".to_string(),
-        host: Some(target_host.to_string()),
-        port: Some(target_port),
-        database: None,
-        schema: None,
-        username: None,
-        password: None,
-        ssl_mode: datazen_driver_api::SslMode::default(),
-        connection_timeout: 30,
-        max_pool_size: 10,
-        ssh_tunnel: None,
-        tunnel_kind: None,
-        tunnel_id: Some(tunnel_id.to_string()),
-        http_proxy_tunnel: None,
-        websocket_tunnel: None,
-        color_tag: None,
-        group: None,
-        last_connected_at: None,
-        server_version: None,
-        options: None,
-        read_only: false,
-        pinned: false,
-    };
-    let started = Instant::now();
-    let (_resolved, tunnel) = start_for_connection(
-        resolve_saved_tunnel(tunnels, scope, config).await?,
-        known_hosts.clone(),
-    )
-    .await?;
-    let Some(tunnel) = tunnel else {
-        return Err(DriverError::InvalidConfig(format!(
-            "tunnel '{tunnel_id}' resolved to no tunnel configuration"
-        )));
-    };
-    let verified = match saved.kind {
-        TunnelKind::HttpProxy => {
-            verify_http_proxy_upstream(
-                &saved.http_proxy.ok_or_else(|| {
-                    DriverError::InvalidConfig(format!(
-                        "tunnel '{tunnel_id}' has no httpProxy config"
-                    ))
-                })?,
-                target_host,
-                target_port,
-            )
-            .await
-        }
-        TunnelKind::WebSocket => {
-            verify_websocket_upstream(
-                &saved.websocket.ok_or_else(|| {
-                    DriverError::InvalidConfig(format!(
-                        "tunnel '{tunnel_id}' has no websocket config"
-                    ))
-                })?,
-                target_host,
-                target_port,
-            )
-            .await
-        }
-        TunnelKind::Ssh | TunnelKind::None => Ok(()),
-    };
-    drop(tunnel);
-    verified?;
-    Ok(started.elapsed())
-}
 
 async fn start_websocket(
     config: ConnectionConfig,

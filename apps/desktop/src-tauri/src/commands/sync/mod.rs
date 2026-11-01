@@ -1,11 +1,31 @@
 //! Data sync IPC commands (task persistence, inspect/compare/apply/generate).
+//!
+//! B2 sync 域刀（commands-layer-review §3.5）：`*_impl` 转发层已拆除——
+//! 简单接线（任务/档案 CRUD、legacy apply 拒绝、revalidate 投影、
+//! check_sync_conflicts 编排）直接住在 `#[tauri::command]` 处理函数里；
+//! 重编排（inspect 管线、compare/prepare/apply 的 durable Job 流水）
+//! 保留为域内核心，但不再有与命令同名的 `X → X_impl` 镜像：
+//! [`inspect::run_inspect`]、[`apply::run_comparison`] /
+//! [`apply::start_prepare_job`]、[`exec::start_apply_job`] /
+//! [`exec::execute_data_sync_plan`] /
+//! [`exec::generate_data_sync_sql_for_plan`]（jobs_contract 等域内契约测试
+//! 直驱这些核心）。形态中立的投影随刀下沉 modules：检视收尾/复核报告/
+//! 活动库校验/预览限幅在 `data_sync::api`，Artifact→Comparison 重建在
+//! `data_sync::artifact_view`，keyset 页源在 `data_sync::keyset_source`
+//! （宿主 `keyset_source.rs`/`artifact_view.rs` 整删）。
+//!
+//! `tauri::async_runtime` 的作业 spawn、`host::state` 的进程内 stores 是
+//! 宿主形态，留宿主（B3 对照 WR-F5 服务端实现复核）。
+//!
+//! IPC 契约逐字节不变：命令名、参数（serde camelCase）、返回 JSON 与错误
+//! 文案（见 `sync/tests.rs` 的 C1 钉子与 `jobs_contract*` 契约测试）。
 
 mod apply;
-mod artifact_view;
+/// Row-count delegate shared with the data_transfer domain (cross-domain
+/// entry, B2 knife keeps it; the count assembly itself is
+/// `data_sync::api::count_table_rows`).
 pub(crate) mod compare;
 mod exec;
-#[cfg(test)]
-mod filter_validation_tests;
 mod host;
 mod inspect;
 mod job_api;
@@ -14,49 +34,35 @@ mod jobs;
 mod jobs_cancel_contract;
 #[cfg(test)]
 mod jobs_contract;
-mod keyset_source;
 mod tasks;
+
+#[cfg(test)]
+mod command_test_host;
 
 #[cfg(test)]
 mod tests;
 
-use super::error::CommandError;
+use super::error::{CmdExt, CommandError};
 use super::AppState;
 use crate::data_sync::api::SyncComparisonRequest;
 use crate::data_sync::api::{resolve_options, SyncOptionsInput};
-pub(crate) use crate::data_sync::filter_validation::{
-    resolve_key_contracts, validate_filter_endpoints, validate_filter_schemas,
-};
 use crate::data_sync::plan_store as plans;
 use crate::data_sync::plan_store::{SyncRunRequest, SyncRunSelection};
 use crate::data_sync::{
-    classify_data_sync_pair as classify_data_sync_pair_impl, DataSyncExecutionResponse,
-    DataSyncPairingView, SyncProfile, SyncSourceFilter, TableMapping,
+    DataSyncExecutionResponse, DataSyncPairingView, SyncProfile, SyncSourceFilter, TableMapping,
 };
 use crate::store::SyncTask;
-#[cfg(test)]
-pub(crate) use apply::generate_data_sync_sql_impl;
-pub(crate) use apply::{apply_data_sync_impl, compare_data_sync_impl, revalidate_data_sync_impl};
-#[cfg(test)]
-pub(crate) use exec::execute_data_sync_impl;
-pub(crate) use exec::{execute_data_sync_plan_impl, generate_data_sync_sql_for_plan_impl};
-pub(crate) use inspect::inspect_data_sync_impl;
-pub use job_api::*;
-#[cfg(test)]
-pub(crate) use jobs::cancel_job;
 use std::collections::HashMap;
-pub(crate) use tasks::{
-    check_sync_conflicts_impl, delete_sync_task_impl, get_sync_tasks_impl,
-    save_sync_task_direct_impl,
-};
 use tauri::State;
+
+pub use job_api::*;
 
 #[tauri::command]
 pub fn classify_data_sync_pair(
     source_database_type: String,
     target_database_type: String,
 ) -> Result<DataSyncPairingView, CommandError> {
-    Ok(classify_data_sync_pair_impl(
+    Ok(crate::data_sync::classify_data_sync_pair(
         &source_database_type,
         &target_database_type,
     ))
@@ -64,18 +70,12 @@ pub fn classify_data_sync_pair(
 
 #[tauri::command]
 pub async fn get_sync_tasks(state: State<'_, AppState>) -> Result<Vec<SyncTask>, CommandError> {
-    get_sync_tasks_impl(&state).await
+    Ok(state.store.get_sync_tasks().await)
 }
 
 #[tauri::command]
 pub async fn get_sync_profiles(
     state: State<'_, AppState>,
-) -> Result<Vec<SyncProfile>, CommandError> {
-    get_sync_profiles_impl(&state).await
-}
-
-pub(crate) async fn get_sync_profiles_impl(
-    state: &AppState,
 ) -> Result<Vec<SyncProfile>, CommandError> {
     Ok(state.store.get_sync_profiles().await)
 }
@@ -83,13 +83,6 @@ pub(crate) async fn get_sync_profiles_impl(
 #[tauri::command]
 pub async fn save_sync_profile(
     state: State<'_, AppState>,
-    profile: SyncProfile,
-) -> Result<(), CommandError> {
-    save_sync_profile_impl(&state, profile).await
-}
-
-pub(crate) async fn save_sync_profile_impl(
-    state: &AppState,
     mut profile: SyncProfile,
 ) -> Result<(), CommandError> {
     profile.validate().map_err(CommandError::Validation)?;
@@ -126,16 +119,9 @@ pub async fn delete_sync_profile(
     state: State<'_, AppState>,
     profile_id: String,
 ) -> Result<(), CommandError> {
-    delete_sync_profile_impl(&state, &profile_id).await
-}
-
-pub(crate) async fn delete_sync_profile_impl(
-    state: &AppState,
-    profile_id: &str,
-) -> Result<(), CommandError> {
     state
         .store
-        .delete_sync_profile(profile_id)
+        .delete_sync_profile(&profile_id)
         .await
         .map_err(|error| CommandError::Internal(error.to_string()))
 }
@@ -145,7 +131,11 @@ pub async fn save_sync_task_direct(
     state: State<'_, AppState>,
     task: SyncTask,
 ) -> Result<(), CommandError> {
-    save_sync_task_direct_impl(&state, task).await
+    state
+        .store
+        .save_sync_task(task)
+        .await
+        .cmd_err("save_sync_task_direct")
 }
 
 #[tauri::command]
@@ -153,7 +143,11 @@ pub async fn delete_sync_task(
     state: State<'_, AppState>,
     task_id: String,
 ) -> Result<(), CommandError> {
-    delete_sync_task_impl(&state, task_id).await
+    state
+        .store
+        .delete_sync_task(&task_id)
+        .await
+        .cmd_err("delete_sync_task")
 }
 
 #[tauri::command]
@@ -167,7 +161,7 @@ pub async fn inspect_data_sync(
     target_schema: Option<String>,
     tables: Option<Vec<TableMapping>>,
 ) -> Result<Vec<crate::data_sync::TableResult>, CommandError> {
-    inspect_data_sync_impl(
+    inspect::run_inspect(
         &state,
         source_db_session_id,
         target_db_session_id,
@@ -225,7 +219,7 @@ pub async fn execute_data_sync(
             false,
         ),
         Ok(()) => {
-            execution_response_and_cancelled(execute_data_sync_plan_impl(&state, request).await)
+            execution_response_and_cancelled(exec::execute_data_sync_plan(&state, request).await)
         }
     };
     if let Some(run) = run {
@@ -293,7 +287,7 @@ pub async fn start_data_sync_prepare_job(
     options: Option<SyncOptionsInput>,
     filters: Option<HashMap<String, SyncSourceFilter>>,
 ) -> Result<datazen::jobs::domain::job::JobView, CommandError> {
-    apply::start_data_sync_prepare_job_impl(
+    apply::start_prepare_job(
         &state,
         source_db_session_id,
         target_db_session_id,
@@ -317,16 +311,11 @@ pub async fn start_data_sync_apply_job(
     target_db_session_id: String,
     request: SyncRunRequest,
 ) -> Result<datazen::jobs::domain::job::JobView, CommandError> {
-    exec::start_data_sync_apply_job_impl(
-        &state,
-        source_db_session_id,
-        target_db_session_id,
-        request,
-    )
-    .await
+    exec::start_apply_job(&state, source_db_session_id, target_db_session_id, request).await
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn compare_data_sync(
     state: State<'_, AppState>,
     source_db_session_id: String,
@@ -340,7 +329,7 @@ pub async fn compare_data_sync(
     options: Option<SyncOptionsInput>,
     filters: Option<HashMap<String, SyncSourceFilter>>,
 ) -> Result<plans::SyncComparisonPreview, CommandError> {
-    compare_data_sync_impl(
+    apply::run_comparison(
         &state,
         SyncComparisonRequest {
             source_db_session_id,
@@ -384,19 +373,24 @@ pub async fn apply_data_sync(
     target_schema: Option<String>,
     options: Option<SyncOptionsInput>,
 ) -> Result<crate::data_sync::ExecutionResult, CommandError> {
-    apply_data_sync_impl(
+    // Legacy apply had no reviewed plan: every entry is refused here and the
+    // caller is pointed at the durable reviewed-selection path (原
+    // `apply_data_sync_impl` 的拒绝体，B2 域刀内联)。
+    let _ = (
         &state,
-        source_db_session_id,
-        target_db_session_id,
-        tables,
-        job_id,
-        source_database,
-        target_database,
-        source_schema,
-        target_schema,
+        &source_db_session_id,
+        &target_db_session_id,
+        &tables,
+        &job_id,
+        &source_database,
+        &target_database,
+        &source_schema,
+        &target_schema,
         resolve_options(options),
-    )
-    .await
+    );
+    Err(CommandError::Validation(
+        "legacy apply has no reviewed plan; compare and submit the reviewed selection as a durable Data Sync job".into(),
+    ))
 }
 
 #[tauri::command]
@@ -406,7 +400,7 @@ pub async fn generate_data_sync_sql(
     selection: Option<SyncRunSelection>,
     options: SyncOptionsInput,
 ) -> Result<Vec<crate::data_sync::SqlStatement>, CommandError> {
-    generate_data_sync_sql_for_plan_impl(
+    exec::generate_data_sync_sql_for_plan(
         &state,
         plan_id,
         selection.unwrap_or_default(),
@@ -415,6 +409,9 @@ pub async fn generate_data_sync_sql(
     .await
 }
 
+/// Re-run inspect gates for selected tables; returns stale table names when
+/// structure/PK drifted. The stale-table projection itself is
+/// `data_sync::api::revalidation_report` (B2 sink).
 #[tauri::command]
 pub async fn revalidate_data_sync(
     state: State<'_, AppState>,
@@ -426,17 +423,21 @@ pub async fn revalidate_data_sync(
     source_schema: Option<String>,
     target_schema: Option<String>,
 ) -> Result<serde_json::Value, CommandError> {
-    revalidate_data_sync_impl(
+    let inspected = inspect::run_inspect(
         &state,
         source_db_session_id,
         target_db_session_id,
-        tables.unwrap_or_default(),
         source_database,
         target_database,
         source_schema,
         target_schema,
+        &[],
     )
-    .await
+    .await?;
+    Ok(crate::data_sync::api::revalidation_report(
+        tables.unwrap_or_default(),
+        inspected,
+    ))
 }
 
 #[tauri::command]
@@ -444,5 +445,84 @@ pub async fn check_sync_conflicts(
     state: State<'_, AppState>,
     task_id: String,
 ) -> Result<serde_json::Value, CommandError> {
-    check_sync_conflicts_impl(&state, task_id).await
+    // 冲突检查编排（原 `check_sync_conflicts_impl`，B2 域刀内联）：持久化
+    // 任务按 connectionId 重开专用会话，源侧行数与冻结计数比对；端点解析
+    // 与释放的细节在 `tasks` 域内核心。
+    let tasks = state.store.get_sync_tasks().await;
+    let task = tasks
+        .iter()
+        .find(|t| t.id == task_id)
+        .ok_or_else(|| CommandError::NotFound("Sync task not found".into()))?;
+
+    let source = tasks::resolve_task_endpoint(
+        &state,
+        &task.source_connection_id,
+        task.source_database.as_deref(),
+        task.source_schema.as_deref(),
+        "source",
+    )
+    .await?;
+    // Resolve the target as well so a stale or deleted target cannot make the
+    // task appear safe to resume. No target rows are read by this command.
+    let target = match tasks::resolve_task_endpoint(
+        &state,
+        &task.target_connection_id,
+        task.target_database.as_deref(),
+        task.target_schema.as_deref(),
+        "target",
+    )
+    .await
+    {
+        Ok(target) => target,
+        Err(error) => {
+            tasks::release_task_endpoint(&state, &source).await;
+            return Err(error);
+        }
+    };
+
+    let result = async {
+        let mut conflicts = Vec::<serde_json::Value>::new();
+
+        for table in &task.tables {
+            if task.completed_tables.contains(table) {
+                continue;
+            }
+
+            let original_count = task.source_row_counts.get(table).copied().unwrap_or(0);
+            let current_count = compare::count_rows(
+                source.driver.as_ref(),
+                &source.handle,
+                &source.config.database_type,
+                task.source_database
+                    .as_deref()
+                    .or(source.config.database.as_deref()),
+                task.source_schema
+                    .as_deref()
+                    .or(source.config.schema.as_deref()),
+                table,
+            )
+            .await?;
+
+            if current_count != original_count {
+                conflicts.push(serde_json::json!({
+                    "table": table,
+                    "originalRows": original_count,
+                    "currentRows": current_count,
+                }));
+            }
+        }
+
+        Ok(serde_json::json!({
+            "hasConflicts": !conflicts.is_empty(),
+            "conflicts": conflicts,
+        }))
+    }
+    .await;
+
+    // Dedicated sessions are task-local resources. Release them on both the
+    // successful result and every count_rows error path; ordinary reused UI
+    // sessions remain owned by their existing callers.
+    tasks::release_task_endpoint(&state, &source).await;
+    tasks::release_task_endpoint(&state, &target).await;
+    result
 }

@@ -1,11 +1,19 @@
 //! Dedicated Data Sync execute IPC (bypasses sql_guard / execute_query).
+//!
+//! B2 sync 域刀（commands-layer-review §3.5）：转发名拆除——
+//! `generate_data_sync_sql_for_plan` / `start_apply_job` /
+//! `execute_data_sync_plan` 是域内核心（命令入口 + jobs_contract/exec 内联
+//! 测试共用）；`validate_active_database` 与预览限幅
+//! （`SQL_PREVIEW_IPC_MAX_BYTES` / `append_bounded_preview_statement`）已下沉
+//! `data_sync::api`（纯逻辑测试随迁 modules/tests）；cfg(test) 的遗留语句
+//! 路径更名 `execute_data_sync_statements`，只供既有命令层单测使用。
 
 use std::collections::HashMap;
 use std::panic::AssertUnwindSafe;
 
 use super::super::error::CommandError;
 use super::super::AppState;
-use super::apply::generate_data_sync_sql_impl;
+use super::apply::generate_data_sync_sql_for_tables;
 use super::host::state::StoredSelection;
 use crate::data_sync::comparison_store::{ComparisonStorage, ComparisonTableMetadata};
 #[cfg(test)]
@@ -152,11 +160,6 @@ impl StatementExecutor for LiveExecutor {
     }
 }
 
-/// The IPC preview still returns a single JSON array, so keep that response
-/// explicitly bounded while the execution path consumes one generated page
-/// at a time.
-const SQL_PREVIEW_IPC_MAX_BYTES: usize = 16 * 1024 * 1024;
-
 /// Refuse an apply whose target can no longer be trusted, before the Job is
 /// submitted.
 ///
@@ -212,12 +215,12 @@ async fn validate_plan_context_sessions(
             "target connection is now read-only; return to comparison".into(),
         ));
     }
-    validate_active_database(
+    crate::data_sync::api::validate_active_database(
         source_config.database.as_deref(),
         &plan.source_database,
         "source",
     )?;
-    validate_active_database(
+    crate::data_sync::api::validate_active_database(
         target_config.database.as_deref(),
         &plan.target_database,
         "target",
@@ -305,23 +308,6 @@ async fn validate_plan_context_sessions(
     // apply while adding nothing to the check above.
     drop(target_driver);
     drop(target_handle);
-    Ok(())
-}
-
-pub(super) fn validate_active_database(
-    active_database: Option<&str>,
-    planned_database: &str,
-    side: &str,
-) -> Result<(), CommandError> {
-    let active = active_database
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let planned = planned_database.trim();
-    if planned.is_empty() || active != Some(planned) {
-        return Err(CommandError::Validation(format!(
-            "{side} session active database changed or cannot be confirmed; return to comparison"
-        )));
-    }
     Ok(())
 }
 
@@ -435,7 +421,7 @@ impl<'a> ComparisonStorageSqlPageSource<'a> {
             else {
                 continue;
             };
-            let statements = generate_data_sync_sql_impl(
+            let statements = generate_data_sync_sql_for_tables(
                 self.state,
                 self.target_db_session_id.to_string(),
                 vec![table_page],
@@ -465,7 +451,8 @@ impl StatementBatchSource for ComparisonStorageSqlPageSource<'_> {
 
 /// SQL preview is still one IPC array, so reject it as soon as its serialized
 /// response would exceed the documented cap. Execution uses the same page
-/// source directly and never accumulates this preview vector.
+/// source directly and never accumulates this preview vector. The bound
+/// itself is `data_sync::api::SQL_PREVIEW_IPC_MAX_BYTES`（B2 域刀下沉）。
 async fn generate_bounded_data_sync_sql_preview(
     mut source: ComparisonStorageSqlPageSource<'_>,
 ) -> Result<Vec<crate::data_sync::SqlStatement>, CommandError> {
@@ -473,33 +460,14 @@ async fn generate_bounded_data_sync_sql_preview(
     let mut response_bytes = 2usize; // JSON array brackets
     while let Some(batch) = source.next_sql_batch().await? {
         for statement in batch {
-            append_bounded_preview_statement(&mut statements, &mut response_bytes, statement)?;
+            crate::data_sync::api::append_bounded_preview_statement(
+                &mut statements,
+                &mut response_bytes,
+                statement,
+            )?;
         }
     }
     Ok(statements)
-}
-
-fn append_bounded_preview_statement(
-    statements: &mut Vec<crate::data_sync::SqlStatement>,
-    response_bytes: &mut usize,
-    statement: crate::data_sync::SqlStatement,
-) -> Result<(), CommandError> {
-    let statement_bytes = serde_json::to_vec(&statement)
-        .map_err(|error| CommandError::Validation(error.to_string()))?
-        .len();
-    let separator_bytes = usize::from(!statements.is_empty());
-    let next_size = response_bytes
-        .saturating_add(separator_bytes)
-        .saturating_add(statement_bytes);
-    if next_size > SQL_PREVIEW_IPC_MAX_BYTES {
-        return Err(CommandError::Validation(format!(
-            "Data Sync SQL preview exceeds the {} MiB IPC limit; select fewer rows or operations",
-            SQL_PREVIEW_IPC_MAX_BYTES / (1024 * 1024)
-        )));
-    }
-    *response_bytes = next_size;
-    statements.push(statement);
-    Ok(())
 }
 
 fn validate_requested_options(
@@ -520,7 +488,7 @@ fn validate_requested_options(
     Ok(())
 }
 
-pub(crate) async fn generate_data_sync_sql_for_plan_impl(
+pub(crate) async fn generate_data_sync_sql_for_plan(
     state: &AppState,
     plan_id: String,
     selection: SyncRunSelection,
@@ -556,7 +524,7 @@ pub(crate) async fn generate_data_sync_sql_for_plan_impl(
 /// Admit an apply against the exact reviewed ChangeSet and run it on detached,
 /// job-owned sessions. The selection stays process-local and is installed only
 /// after the durable consumed-plan receipt wins.
-pub(crate) async fn start_data_sync_apply_job_impl(
+pub(crate) async fn start_apply_job(
     state: &AppState,
     source_db_session_id: String,
     target_db_session_id: String,
@@ -728,7 +696,7 @@ pub(crate) async fn start_data_sync_apply_job_impl(
     Ok(accepted_view)
 }
 
-pub(crate) async fn execute_data_sync_plan_impl(
+pub(crate) async fn execute_data_sync_plan(
     state: &AppState,
     mut request: SyncRunRequest,
 ) -> Result<ExecutionResult, CommandError> {
@@ -751,7 +719,7 @@ pub(crate) async fn execute_data_sync_plan_impl(
         request.job_id = Some(format!("data-sync-{}", uuid::Uuid::new_v4()));
     }
     let accepted =
-        start_data_sync_apply_job_impl(state, source_session_id, target_session_id, request)
+        start_apply_job(state, source_session_id, target_session_id, request)
             .await?;
     let finished = super::jobs::wait_for_durable_terminal(state, accepted.job_id.as_str()).await?;
     let details = super::jobs::details_durable_job(state, finished.job_id.as_str()).await?;
@@ -832,9 +800,9 @@ fn applied_outcome(
 
 // Kept only for the existing Rust command-path unit tests.  This helper is
 // cfg(test) and is not registered as an IPC command; production execution can
-// only enter through `execute_data_sync_plan_impl`.
+// only enter through `execute_data_sync_plan`.
 #[cfg(test)]
-pub(crate) async fn execute_data_sync_impl(
+pub(crate) async fn execute_data_sync_statements(
     state: &AppState,
     target_db_session_id: String,
     statements: Vec<crate::data_sync::SqlStatement>,
@@ -1021,57 +989,10 @@ mod tests {
         );
     }
 
-    #[test]
-    fn sql_preview_rejects_a_statement_that_exceeds_the_ipc_bound() {
-        let statement = crate::data_sync::SqlStatement {
-            table: "users".into(),
-            operation: ChangeOperation::Insert,
-            sql: "INSERT INTO users VALUES (?)".into(),
-            preview_sql: "INSERT INTO users VALUES (?)".into(),
-            parameters: vec![Value::String("x".repeat(SQL_PREVIEW_IPC_MAX_BYTES + 1))],
-            row_key: vec![Value::Integer(1)],
-            identity_insert: None,
-        };
-        let mut statements = Vec::new();
-        let mut response_bytes = 2;
-        let error =
-            append_bounded_preview_statement(&mut statements, &mut response_bytes, statement)
-                .unwrap_err();
-
-        assert!(error.to_string().contains("16 MiB IPC limit"));
-        assert!(error.to_string().contains("select fewer rows"));
-        assert!(statements.is_empty());
-    }
-
-    #[test]
-    fn test_tester_sql_preview_counts_each_statement_and_json_separator() {
-        let first = crate::data_sync::SqlStatement {
-            table: "users".into(),
-            operation: ChangeOperation::Insert,
-            sql: "INSERT INTO users VALUES (?)".into(),
-            preview_sql: "INSERT INTO users VALUES (?)".into(),
-            parameters: vec![Value::String("first".into())],
-            row_key: vec![Value::Integer(1)],
-            identity_insert: None,
-        };
-        let second = crate::data_sync::SqlStatement {
-            parameters: vec![Value::String("second".into())],
-            row_key: vec![Value::Integer(2)],
-            ..first.clone()
-        };
-        let expected_bytes = 2
-            + serde_json::to_vec(&first).unwrap().len()
-            + 1
-            + serde_json::to_vec(&second).unwrap().len();
-        let mut statements = Vec::new();
-        let mut response_bytes = 2;
-
-        append_bounded_preview_statement(&mut statements, &mut response_bytes, first).unwrap();
-        append_bounded_preview_statement(&mut statements, &mut response_bytes, second).unwrap();
-
-        assert_eq!(statements.len(), 2);
-        assert_eq!(response_bytes, expected_bytes);
-    }
+    // （B2 sync 域刀）`sql_preview_rejects_a_statement_that_exceeds_the_ipc_bound`
+    // 与 `test_tester_sql_preview_counts_each_statement_and_json_separator` 已随
+    // `append_bounded_preview_statement` 下沉迁至
+    // `modules/tests/data_sync_api_tests.rs`。
 
     #[tokio::test]
     async fn test_tester_bounded_sql_preview_returns_selected_rows_in_order() {
@@ -1156,7 +1077,7 @@ mod tests {
         let options = SyncOptions::default();
         let selection = jobs_contract::insert_selection(preview.selection_revision);
 
-        let sql = generate_data_sync_sql_for_plan_impl(
+        let sql = generate_data_sync_sql_for_plan(
             pair.state(),
             preview.plan_id.clone(),
             selection.clone(),
@@ -1166,7 +1087,7 @@ mod tests {
         .unwrap();
         assert_eq!(sql.len(), 1, "one pending row ⇒ one preview statement");
 
-        let result = execute_data_sync_plan_impl(
+        let result = execute_data_sync_plan(
             pair.state(),
             SyncRunRequest {
                 plan_id: preview.plan_id,
@@ -1198,14 +1119,14 @@ mod tests {
             job_id: None,
         };
 
-        let first = execute_data_sync_plan_impl(pair.state(), request())
+        let first = execute_data_sync_plan(pair.state(), request())
             .await
             .unwrap_err();
         assert!(first.to_string().contains("reviewed ChangeSet is empty"));
 
         // Same planId, same refusal: a spent planId would answer "already
         // submitted" here instead.
-        let second = execute_data_sync_plan_impl(pair.state(), request())
+        let second = execute_data_sync_plan(pair.state(), request())
             .await
             .unwrap_err();
         assert!(second.to_string().contains("reviewed ChangeSet is empty"));

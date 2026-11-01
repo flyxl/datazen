@@ -20,6 +20,7 @@ pub mod policy;
 pub mod requests;
 pub mod secret;
 pub mod settings_reader;
+pub mod stream_telemetry;
 pub mod submission;
 pub mod target_resolver;
 pub mod use_cases;

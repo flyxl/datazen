@@ -1,9 +1,23 @@
+//! 连接域 IPC：档案 CRUD、测试连接、会话开启/释放与驱动信息。
+//!
+//! B2 连接域刀（commands-layer-review §3.2）：`*_impl` 转发层已拆除，接线
+//! 直接住在 `#[tauri::command]` 体里。目录用例（列表 / 保存 / 复制 / 删除 /
+//! 重排、密钥合并与脱敏投影、测试连接的配置解析）早已下沉
+//! `datazen::connection::api`；本刀补入**会话信息载荷**
+//! （`connection::api::session_info_payload`：字段键与驱动类别词汇是 IPC
+//! 契约，Web 宿主复用同一份）。会话与驱动编排留在宿主：开会话走
+//! `services::migration_endpoint`，测试连接的隧道拨号走 `crate::tunnel`，
+//! 每 lib 库的池维护走 platform adapter 的 runtime 端口。
+//!
+//! IPC 契约逐字不变：命令名、参数、返回形状与错误文案（见
+//! `platform/ipc.rs` 的冻结签名表与文末的源码守卫）。
+
 use super::error::{CmdExt, CommandError};
 use super::AppState;
 use datazen::connection::api as connection_api;
 use datazen::connection::ConnectionError;
 use datazen::shared::error::ApiErrorCode;
-use datazen_driver_api::{ConnectionConfig, DriverCategory, ServerInfo};
+use datazen_driver_api::{ConnectionConfig, ServerInfo};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -68,11 +82,12 @@ fn log_ipc_identity(state: &AppState, command: &'static str) {
     }
 }
 
-pub(crate) async fn get_connections_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn get_connections(
+    state: State<'_, AppState>,
 ) -> Result<Vec<ConnectionConfig>, CommandError> {
     let scope = state.connection_scope()?;
-    let service = crate::platform::ipc::require_connection_service(state)?;
+    let service = crate::platform::ipc::require_connection_service(&state)?;
     let list = conn_cmd(
         connection_api::list_connections(&scope, &service).await,
         "get_connections",
@@ -81,35 +96,43 @@ pub(crate) async fn get_connections_impl(
     Ok(list)
 }
 
-pub(crate) async fn save_connection_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn save_connection(
+    state: State<'_, AppState>,
     config: ConnectionConfig,
-    clear_missing_credentials: bool,
+    clear_missing_credentials: Option<bool>,
 ) -> Result<(), CommandError> {
     tracing::info!(id = %config.id, name = %config.name, "save_connection");
     let scope = state.connection_scope()?;
-    let service = crate::platform::ipc::require_connection_service(state)?;
+    let service = crate::platform::ipc::require_connection_service(&state)?;
     let connection_id = config.id.clone();
     // 表单回显把密文/密钥置 None：合并语义（不覆盖已存密钥）已随用例体
     // 下沉 `datazen::connection::api::save_connection`。
     conn_cmd(
-        connection_api::save_connection(&scope, &service, config, clear_missing_credentials).await,
+        connection_api::save_connection(
+            &scope,
+            &service,
+            config,
+            clear_missing_credentials.unwrap_or(false),
+        )
+        .await,
         "save_connection",
     )?;
     // 保存新配置后让该 profile 的旧会话退休（PR #116 的语义）：端口只负责落盘，
     // 「旧连接串已经作废」这件事必须由命令层显式触发，否则用户改完密码仍复用旧会话。
-    crate::services::migration_endpoint::retire_sessions_for_profile(state, &connection_id).await;
+    crate::services::migration_endpoint::retire_sessions_for_profile(&state, &connection_id).await;
     Ok(())
 }
 
-pub(crate) async fn duplicate_connection_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn duplicate_connection(
+    state: State<'_, AppState>,
     source_id: String,
     new_id: String,
     new_name: String,
 ) -> Result<(), CommandError> {
     let scope = state.connection_scope()?;
-    let service = crate::platform::ipc::require_connection_service(state)?;
+    let service = crate::platform::ipc::require_connection_service(&state)?;
     conn_cmd(
         connection_api::duplicate_connection(&scope, &service, &source_id, &new_id, &new_name)
             .await,
@@ -117,26 +140,25 @@ pub(crate) async fn duplicate_connection_impl(
     )
 }
 
-pub(crate) async fn delete_connection_impl(
-    state: &AppState,
-    id: String,
-) -> Result<(), CommandError> {
+#[tauri::command]
+pub async fn delete_connection(state: State<'_, AppState>, id: String) -> Result<(), CommandError> {
     tracing::info!(%id, "delete_connection");
     let scope = state.connection_scope()?;
-    let service = crate::platform::ipc::require_connection_service(state)?;
+    let service = crate::platform::ipc::require_connection_service(&state)?;
     conn_cmd(
         connection_api::delete_connection(&scope, &service, &id).await,
         "delete_connection",
     )
 }
 
-pub(crate) async fn test_connection_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn test_connection(
+    state: State<'_, AppState>,
     config: ConnectionConfig,
 ) -> Result<ServerInfo, CommandError> {
     let scope = state.organization_scope()?;
-    let services = crate::platform::ipc::require_application_services(state)?;
-    let connection_service = crate::platform::ipc::require_connection_service(state)?;
+    let services = crate::platform::ipc::require_application_services(&state)?;
+    let connection_service = crate::platform::ipc::require_connection_service(&state)?;
     // 密钥合并（表单回显空字段 ← 已存档案）已随用例体下沉
     // `datazen::connection::api::resolve_test_config`。
     let config = conn_cmd(
@@ -165,14 +187,16 @@ pub(crate) async fn test_connection_impl(
     Ok(result)
 }
 
-pub(crate) async fn connect_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn connect(
+    state: State<'_, AppState>,
     connection_id: String,
 ) -> Result<ConnectionSessionRef, CommandError> {
-    log_ipc_identity(state, "connect");
+    // connection_id = 持久化配置连接 id；返回值携带 connectionId + 运行时 dbSessionId。
+    log_ipc_identity(&state, "connect");
     tracing::info!(%connection_id, "connect");
     let scope = state.connection_scope()?;
-    let connection_service = crate::platform::ipc::require_connection_service(state)?;
+    let connection_service = crate::platform::ipc::require_connection_service(&state)?;
     let config = conn_cmd(
         connection_api::get_connection(&scope, &connection_service, &connection_id).await,
         "connect",
@@ -190,7 +214,7 @@ pub(crate) async fn connect_impl(
     // database back. Requiring one here would contradict the driver-declared
     // namespace shape and broke profiles saved without a database.
     let db_session_id = crate::services::migration_endpoint::open_dedicated_session(
-        state,
+        &state,
         &connection_id,
         config.database.as_deref(),
         "client",
@@ -204,18 +228,19 @@ pub(crate) async fn connect_impl(
     })
 }
 
-pub(crate) async fn connect_dedicated_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn connect_dedicated(
+    state: State<'_, AppState>,
     connection_id: String,
     database: Option<String>,
 ) -> Result<ConnectionSessionRef, CommandError> {
-    log_ipc_identity(state, "connect_dedicated");
+    log_ipc_identity(&state, "connect_dedicated");
     tracing::info!(%connection_id, database = ?database, "connect_dedicated");
     // An explicit `database` pins the session; otherwise fall back to the
     // profile. Both may be unset — the driver then resolves its own default,
     // exactly as on the shared `connect` path.
     let scope = state.connection_scope()?;
-    let connection_service = crate::platform::ipc::require_connection_service(state)?;
+    let connection_service = crate::platform::ipc::require_connection_service(&state)?;
     let database =
         match crate::services::migration_endpoint::normalize_database(database.as_deref()) {
             Some(database) => Some(database),
@@ -234,7 +259,7 @@ pub(crate) async fn connect_dedicated_impl(
         tracing::warn!(%connection_id, error = %e, "failed to persist last_connected_at");
     }
     let db_session_id = crate::services::migration_endpoint::open_dedicated_session(
-        state,
+        &state,
         &connection_id,
         database.as_deref(),
         "clientDedicated",
@@ -248,14 +273,15 @@ pub(crate) async fn connect_dedicated_impl(
     })
 }
 
-pub(crate) async fn ping_connection_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn ping_connection(
+    state: State<'_, AppState>,
     db_session_id: String,
 ) -> Result<bool, CommandError> {
-    log_ipc_identity(state, "ping_connection");
+    log_ipc_identity(&state, "ping_connection");
     Ok(
         crate::services::migration_endpoint::runtime_session_context(
-            state,
+            &state,
             &db_session_id,
             datazen::execution::application::LivePurpose::Inspection,
         )
@@ -264,13 +290,14 @@ pub(crate) async fn ping_connection_impl(
     )
 }
 
-pub(crate) async fn release_connection_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn release_connection(
+    state: State<'_, AppState>,
     db_session_id: String,
 ) -> Result<bool, CommandError> {
-    log_ipc_identity(state, "release_connection");
+    log_ipc_identity(&state, "release_connection");
     tracing::info!(%db_session_id, "release_connection");
-    match crate::services::migration_endpoint::close_dedicated_session(state, &db_session_id).await
+    match crate::services::migration_endpoint::close_dedicated_session(&state, &db_session_id).await
     {
         Ok(()) => {
             state.schema_cache.clear_connection(&db_session_id).await;
@@ -282,7 +309,20 @@ pub(crate) async fn release_connection_impl(
     }
 }
 
-/// Close the driver-side connection pool that serves one database of a session.
+#[tauri::command]
+pub async fn disconnect(
+    state: State<'_, AppState>,
+    db_session_id: String,
+) -> Result<(), CommandError> {
+    log_ipc_identity(&state, "disconnect");
+    tracing::info!(%db_session_id, "disconnect (force)");
+    crate::services::migration_endpoint::close_dedicated_session(&state, &db_session_id).await?;
+    state.schema_cache.clear_connection(&db_session_id).await;
+    tracing::info!(%db_session_id, "disconnect OK");
+    Ok(())
+}
+
+/// F5: release one database's backend resources without closing the session.
 ///
 /// This is the *only* way a database's backend resources are released without
 /// tearing down the whole session. It is deliberately not a `USE`-style switch:
@@ -291,12 +331,13 @@ pub(crate) async fn release_connection_impl(
 ///
 /// The host also drops every cached schema scope of that database, so the next
 /// read re-fetches instead of serving structure from a pool that just went away.
-pub(crate) async fn close_database_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn close_database(
+    state: State<'_, AppState>,
     db_session_id: String,
     database: String,
 ) -> Result<bool, CommandError> {
-    log_ipc_identity(state, "close_database");
+    log_ipc_identity(&state, "close_database");
     let database = database.trim().to_string();
     if database.is_empty() {
         return Err(CommandError::Validation(
@@ -347,11 +388,12 @@ pub(crate) async fn close_database_impl(
 /// a right-click "close database connection" would actually release. A driver
 /// with no per-database resource returns an empty list, which the UI renders as
 /// "no marker" rather than as an error.
-pub(crate) async fn get_open_databases_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn get_open_databases(
+    state: State<'_, AppState>,
     db_session_id: String,
 ) -> Result<Vec<String>, CommandError> {
-    log_ipc_identity(state, "get_open_databases");
+    log_ipc_identity(&state, "get_open_databases");
     let start = std::time::Instant::now();
     // Runtime session demand; the host never sees a driver or a handle here.
     let adapter = state
@@ -376,25 +418,14 @@ pub(crate) async fn get_open_databases_impl(
     Ok(open)
 }
 
-pub(crate) async fn disconnect_impl(
-    state: &AppState,
-    db_session_id: String,
-) -> Result<(), CommandError> {
-    log_ipc_identity(state, "disconnect");
-    tracing::info!(%db_session_id, "disconnect (force)");
-    crate::services::migration_endpoint::close_dedicated_session(state, &db_session_id).await?;
-    state.schema_cache.clear_connection(&db_session_id).await;
-    tracing::info!(%db_session_id, "disconnect OK");
-    Ok(())
-}
-
-pub(crate) async fn get_connection_info_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn get_connection_info(
+    state: State<'_, AppState>,
     db_session_id: String,
 ) -> Result<serde_json::Value, CommandError> {
-    log_ipc_identity(state, "get_connection_info");
+    log_ipc_identity(&state, "get_connection_info");
     let config = crate::services::migration_endpoint::runtime_session_context(
-        state,
+        &state,
         &db_session_id,
         datazen::execution::application::LivePurpose::Inspection,
     )
@@ -402,139 +433,18 @@ pub(crate) async fn get_connection_info_impl(
     .config;
 
     let db_type = &config.database_type;
-
     let driver = state.driver_registry.get(db_type).await;
-    let driver_category = match driver.as_ref().map(|d| d.driver_category()) {
-        Some(DriverCategory::KeyValue) => "keyvalue",
-        Some(DriverCategory::Document) => "document",
-        _ => "sql",
-    };
     let capabilities = state.driver_registry.get_capabilities(db_type).await;
-
-    Ok(serde_json::json!({
-        "databaseType": db_type,
-        "driverCategory": driver_category,
-        "name": config.name,
-        "host": config.host,
-        "port": config.port,
-        "database": config.database,
-        "schema": config.schema,
-        "serverVersion": config.server_version,
-        "capabilities": capabilities,
-    }))
-}
-
-pub(crate) async fn get_available_drivers_impl(
-    state: &AppState,
-) -> Result<Vec<String>, CommandError> {
-    Ok(state.driver_registry.available_types())
-}
-
-#[tauri::command]
-pub async fn get_connections(
-    state: State<'_, AppState>,
-) -> Result<Vec<ConnectionConfig>, CommandError> {
-    get_connections_impl(&state).await
-}
-
-#[tauri::command]
-pub async fn save_connection(
-    state: State<'_, AppState>,
-    config: ConnectionConfig,
-    clear_missing_credentials: Option<bool>,
-) -> Result<(), CommandError> {
-    save_connection_impl(&state, config, clear_missing_credentials.unwrap_or(false)).await
-}
-
-#[tauri::command]
-pub async fn duplicate_connection(
-    state: State<'_, AppState>,
-    source_id: String,
-    new_id: String,
-    new_name: String,
-) -> Result<(), CommandError> {
-    duplicate_connection_impl(&state, source_id, new_id, new_name).await
-}
-
-#[tauri::command]
-pub async fn delete_connection(state: State<'_, AppState>, id: String) -> Result<(), CommandError> {
-    delete_connection_impl(&state, id).await
-}
-
-#[tauri::command]
-pub async fn test_connection(
-    state: State<'_, AppState>,
-    config: ConnectionConfig,
-) -> Result<ServerInfo, CommandError> {
-    test_connection_impl(&state, config).await
-}
-
-#[tauri::command]
-pub async fn connect(
-    state: State<'_, AppState>,
-    connection_id: String,
-) -> Result<ConnectionSessionRef, CommandError> {
-    // connection_id = 持久化配置连接 id；返回值携带 connectionId + 运行时 dbSessionId。
-    connect_impl(&state, connection_id).await
-}
-
-#[tauri::command]
-pub async fn connect_dedicated(
-    state: State<'_, AppState>,
-    connection_id: String,
-    database: Option<String>,
-) -> Result<ConnectionSessionRef, CommandError> {
-    connect_dedicated_impl(&state, connection_id, database).await
-}
-
-#[tauri::command]
-pub async fn ping_connection(
-    state: State<'_, AppState>,
-    db_session_id: String,
-) -> Result<bool, CommandError> {
-    ping_connection_impl(&state, db_session_id).await
-}
-
-#[tauri::command]
-pub async fn release_connection(
-    state: State<'_, AppState>,
-    db_session_id: String,
-) -> Result<bool, CommandError> {
-    release_connection_impl(&state, db_session_id).await
-}
-
-#[tauri::command]
-pub async fn disconnect(
-    state: State<'_, AppState>,
-    db_session_id: String,
-) -> Result<(), CommandError> {
-    disconnect_impl(&state, db_session_id).await
-}
-
-/// F5: release one database's backend resources without closing the session.
-#[tauri::command]
-pub async fn close_database(
-    state: State<'_, AppState>,
-    db_session_id: String,
-    database: String,
-) -> Result<bool, CommandError> {
-    close_database_impl(&state, db_session_id, database).await
-}
-
-#[tauri::command]
-pub async fn get_open_databases(
-    state: State<'_, AppState>,
-    db_session_id: String,
-) -> Result<Vec<String>, CommandError> {
-    get_open_databases_impl(&state, db_session_id).await
-}
-
-#[tauri::command]
-pub async fn get_connection_info(
-    state: State<'_, AppState>,
-    db_session_id: String,
-) -> Result<serde_json::Value, CommandError> {
-    get_connection_info_impl(&state, db_session_id).await
+    // 模块载荷函数持有已序列化的 capabilities（None → null，与旧命令层
+    // json! 直插 Option<DriverCapabilities> 的线格式逐字节一致）。
+    let capabilities = serde_json::to_value(capabilities).unwrap_or(serde_json::Value::Null);
+    // 载荷形状与驱动类别词汇（IPC 契约）由模块单一持有：
+    // `datazen::connection::api::session_info_payload`。
+    Ok(connection_api::session_info_payload(
+        &config,
+        driver.as_ref().map(|d| d.driver_category()),
+        capabilities,
+    ))
 }
 
 #[tauri::command]
@@ -555,11 +465,25 @@ pub async fn reorder_connections(
 pub async fn get_available_drivers(
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, CommandError> {
-    get_available_drivers_impl(&state).await
+    Ok(state.driver_registry.available_types())
 }
 
 #[cfg(test)]
 mod tests {
+    //! 命令壳的**留守测试**（B2 连接域刀后的分类）：
+    //!
+    //! * **C4 适配器烟测**——真实命令入口 → 模块连接服务 → 宿主仓储（落盘
+    //!   加密、config_revision、重排）端到端走一遍。密钥合并 / 脱敏投影的
+    //!   语义深度已随用例钉在
+    //!   `modules/src/connection/application/service.rs`；会话信息载荷的形状
+    //!   与驱动类别词汇钉在 `modules/src/connection/api.rs`。
+    //! * **C1 命令入口行为**——无库 / 空白库的会话开启语义、未知配置与未知
+    //!   会话的错误路径与文案。
+    //!
+    //! 全部经 `connection_command_test_host` 以真实 `#[tauri::command]` 入口
+    //! 驱动（`State<'_, AppState>` 只能来自 tauri `Manager`）。
+
+    use super::connection_command_test_host::host_command_app;
     use super::*;
     use crate::testing::app_state::{sample_postgres_config, TestAppState};
     use datazen_driver_api::{HttpProxyTunnelConfig, SshTunnelConfig, WebSocketTunnelConfig};
@@ -567,9 +491,12 @@ mod tests {
     #[tokio::test]
     async fn get_connections_empty_then_saved() {
         let test = TestAppState::new().await;
-        assert!(get_connections_impl(&test.state).await.unwrap().is_empty());
-        test.save_connection("c1").await;
-        let list = get_connections_impl(&test.state).await.unwrap();
+        let app = host_command_app(test);
+        assert!(get_connections(app.state()).await.unwrap().is_empty());
+        save_connection(app.state(), sample_postgres_config("c1"), None)
+            .await
+            .unwrap();
+        let list = get_connections(app.state()).await.unwrap();
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].id, "c1");
     }
@@ -619,11 +546,13 @@ mod tests {
             ping_interval_secs: 30,
             mode: "datazen_v1".into(),
         });
-        save_connection_impl(&test.state, config, false)
-            .await
-            .unwrap();
+        let app = host_command_app(test);
 
-        let projected = get_connections_impl(&test.state).await.unwrap();
+        // Wire form: the form sends no clearMissingCredentials flag for a
+        // normal save (None → merge semantics).
+        save_connection(app.state(), config, None).await.unwrap();
+
+        let projected = get_connections(app.state()).await.unwrap();
         let wire = serde_json::to_string(&projected).unwrap();
         for secret in [
             "db-password-marker",
@@ -641,10 +570,10 @@ mod tests {
 
         let mut edit = projected[0].clone();
         edit.name = "Edited profile".into();
-        save_connection_impl(&test.state, edit.clone(), false)
+        save_connection(app.state(), edit.clone(), None)
             .await
             .unwrap();
-        let saved = test.store.get_connection(&edit.id).await.unwrap();
+        let saved = app.keep.store.get_connection(&edit.id).await.unwrap();
         assert_eq!(saved.password.as_deref(), Some("db-password-marker"));
         assert_eq!(
             saved
@@ -701,8 +630,15 @@ mod tests {
             Some("ws-header-marker")
         );
 
-        save_connection_impl(&test.state, edit, true).await.unwrap();
-        let cleared = test.store.get_connection("secret-profile").await.unwrap();
+        save_connection(app.state(), edit, Some(true))
+            .await
+            .unwrap();
+        let cleared = app
+            .keep
+            .store
+            .get_connection("secret-profile")
+            .await
+            .unwrap();
         assert!(cleared.password.is_none());
         assert!(cleared.ssh_tunnel.as_ref().unwrap().password.is_none());
         assert!(cleared.ssh_tunnel.as_ref().unwrap().passphrase.is_none());
@@ -742,9 +678,10 @@ mod tests {
         let mut source = sample_postgres_config("source-profile");
         source.password = Some("duplicate-secret-marker".into());
         test.store.save_connection(source).await.unwrap();
+        let app = host_command_app(test);
 
-        duplicate_connection_impl(
-            &test.state,
+        duplicate_connection(
+            app.state(),
             "source-profile".into(),
             "copied-profile".into(),
             "Copied profile".into(),
@@ -752,54 +689,59 @@ mod tests {
         .await
         .unwrap();
 
-        let copied = test.store.get_connection("copied-profile").await.unwrap();
+        let copied = app
+            .keep
+            .store
+            .get_connection("copied-profile")
+            .await
+            .unwrap();
         assert_eq!(copied.name, "Copied profile");
         assert_eq!(copied.password.as_deref(), Some("duplicate-secret-marker"));
-        let wire =
-            serde_json::to_string(&get_connections_impl(&test.state).await.unwrap()).unwrap();
+        let wire = serde_json::to_string(&get_connections(app.state()).await.unwrap()).unwrap();
         assert!(!wire.contains("duplicate-secret-marker"));
     }
 
     #[tokio::test]
     async fn save_and_delete_connection() {
         let test = TestAppState::new().await;
+        let app = host_command_app(test);
         let cfg = sample_postgres_config("del-me");
-        save_connection_impl(&test.state, cfg, false).await.unwrap();
-        delete_connection_impl(&test.state, "del-me".into())
+        save_connection(app.state(), cfg, None).await.unwrap();
+        delete_connection(app.state(), "del-me".into())
             .await
             .unwrap();
-        assert!(get_connections_impl(&test.state).await.unwrap().is_empty());
+        assert!(get_connections(app.state()).await.unwrap().is_empty());
     }
 
     #[tokio::test]
     async fn test_connection_success_and_unknown_driver() {
         let test = TestAppState::with_tables().await;
-        let info = test_connection_impl(&test.state, sample_postgres_config("t1"))
+        let app = host_command_app(test);
+        let info = test_connection(app.state(), sample_postgres_config("t1"))
             .await
             .unwrap();
         assert!(info.server_version.contains("PostgreSQL"));
 
         let mut bad = sample_postgres_config("bad");
         bad.database_type = "nonexistent_driver".into();
-        assert!(test_connection_impl(&test.state, bad).await.is_err());
+        assert!(test_connection(app.state(), bad).await.is_err());
     }
 
     #[tokio::test]
     async fn connect_updates_last_connected_and_ping_disconnect() {
         let test = TestAppState::with_tables().await;
         test.save_connection("cfg-1").await;
-        let conn_id = connect_impl(&test.state, "cfg-1".into())
+        let app = host_command_app(test);
+        let conn_id = connect(app.state(), "cfg-1".into())
             .await
             .unwrap()
             .db_session_id;
-        let stored = test.store.get_connection("cfg-1").await.unwrap();
+        let stored = app.keep.store.get_connection("cfg-1").await.unwrap();
         assert!(stored.last_connected_at.is_some());
 
-        assert!(ping_connection_impl(&test.state, conn_id.clone())
-            .await
-            .unwrap());
-        disconnect_impl(&test.state, conn_id).await.unwrap();
-        assert!(!ping_connection_impl(&test.state, "missing".into())
+        assert!(ping_connection(app.state(), conn_id.clone()).await.unwrap());
+        disconnect(app.state(), conn_id).await.unwrap();
+        assert!(!ping_connection(app.state(), "missing".into())
             .await
             .unwrap());
     }
@@ -808,18 +750,19 @@ mod tests {
     async fn get_connection_info_and_available_drivers() {
         let test = TestAppState::with_tables().await;
         let (_, db_session_id) = test.save_and_connect("cfg-2").await;
-        let info = get_connection_info_impl(&test.state, db_session_id.clone())
+        let app = host_command_app(test);
+        let info = get_connection_info(app.state(), db_session_id.clone())
             .await
             .unwrap();
         assert_eq!(info["databaseType"], "postgres");
         assert_eq!(info["driverCategory"], "sql");
         assert!(info["capabilities"].is_null());
 
-        test.state
+        app.state()
             .driver_registry
             .register_test_driver_with_capabilities(
                 "postgres",
-                test.mock.clone(),
+                app.keep.mock.clone(),
                 datazen::execution::runtime::driver_registry::DriverCapabilities {
                     has_multi_database: false,
                     supports_cancel_query: true,
@@ -831,18 +774,18 @@ mod tests {
                 },
             )
             .await;
-        let info = get_connection_info_impl(&test.state, db_session_id)
+        let info = get_connection_info(app.state(), db_session_id)
             .await
             .unwrap();
         assert_eq!(info["capabilities"]["supportsCancelQuery"], true);
         assert_eq!(info["capabilities"]["supportsExplain"], true);
         assert_eq!(info["capabilities"]["supportsStreamingResults"], false);
 
-        let drivers = get_available_drivers_impl(&test.state).await.unwrap();
+        let drivers = get_available_drivers(app.state()).await.unwrap();
         // Test drivers are registered via register_test_driver, not inventory catalog.
         let _ = drivers;
-        assert!(test
-            .state
+        assert!(app
+            .state()
             .driver_registry
             .get(&"postgres".to_string())
             .await
@@ -859,14 +802,15 @@ mod tests {
         let mut config = sample_postgres_config("no-db");
         config.database = None;
         test.store.save_connection(config).await.unwrap();
+        let app = host_command_app(test);
 
-        let session = connect_impl(&test.state, "no-db".into())
+        let session = connect(app.state(), "no-db".into())
             .await
             .expect("a profile without a database must still open a session");
         assert_eq!(session.connection_id, "no-db");
         assert!(!session.db_session_id.is_empty());
 
-        let info = get_connection_info_impl(&test.state, session.db_session_id)
+        let info = get_connection_info(app.state(), session.db_session_id)
             .await
             .unwrap();
         assert!(info["database"].is_null());
@@ -878,8 +822,9 @@ mod tests {
         let mut config = sample_postgres_config("blank-db");
         config.database = Some("   ".into());
         test.store.save_connection(config).await.unwrap();
+        let app = host_command_app(test);
 
-        connect_impl(&test.state, "blank-db".into())
+        connect(app.state(), "blank-db".into())
             .await
             .expect("a whitespace-only database is the same as no database");
     }
@@ -890,8 +835,9 @@ mod tests {
         let mut config = sample_postgres_config("no-db-dedicated");
         config.database = None;
         test.store.save_connection(config).await.unwrap();
+        let app = host_command_app(test);
 
-        let session = connect_dedicated_impl(&test.state, "no-db-dedicated".into(), None)
+        let session = connect_dedicated(app.state(), "no-db-dedicated".into(), None)
             .await
             .expect("a dedicated session may open before a database is chosen");
         assert!(!session.db_session_id.is_empty());
@@ -901,11 +847,11 @@ mod tests {
     async fn connect_dedicated_blank_database_falls_back_to_the_profile() {
         let test = TestAppState::with_tables().await;
         test.save_connection("blank-dedicated").await;
+        let app = host_command_app(test);
 
-        let session =
-            connect_dedicated_impl(&test.state, "blank-dedicated".into(), Some("  ".into()))
-                .await
-                .expect("blank means unpinned, so the profile's database applies");
+        let session = connect_dedicated(app.state(), "blank-dedicated".into(), Some("  ".into()))
+            .await
+            .expect("blank means unpinned, so the profile's database applies");
         assert!(!session.db_session_id.is_empty());
     }
 
@@ -925,13 +871,15 @@ mod tests {
     #[tokio::test]
     async fn connect_unknown_config_errors() {
         let test = TestAppState::new().await;
-        assert!(connect_impl(&test.state, "missing".into()).await.is_err());
+        let app = host_command_app(test);
+        assert!(connect(app.state(), "missing".into()).await.is_err());
     }
 
     #[tokio::test]
     async fn get_connection_info_unknown_connection_errors() {
         let test = TestAppState::new().await;
-        assert!(get_connection_info_impl(&test.state, "nope".into())
+        let app = host_command_app(test);
+        assert!(get_connection_info(app.state(), "nope".into())
             .await
             .is_err());
     }
@@ -949,6 +897,7 @@ mod coverage_tests {
     //! release ref-counting, disconnect's pending-transaction rollback,
     //! driver-category reporting, and the reorder wrapper.
 
+    use super::connection_command_test_host::host_command_app;
     use super::*;
     use crate::testing::app_state::{sample_postgres_config, TestAppState};
     use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
@@ -964,12 +913,13 @@ mod coverage_tests {
             .expect("the saved profile exists")
             .1
             .config_revision;
+        let app = host_command_app(test);
 
-        let shared = connect_impl(&test.state, "d1".into())
+        let shared = connect(app.state(), "d1".into())
             .await
             .unwrap()
             .db_session_id;
-        let dedicated = connect_dedicated_impl(&test.state, "d1".into(), Some("app".into()))
+        let dedicated = connect_dedicated(app.state(), "d1".into(), Some("app".into()))
             .await
             .unwrap()
             .db_session_id;
@@ -979,7 +929,8 @@ mod coverage_tests {
         // "connection configuration changed". `touch_last_connected_at` must not.
         // Release semantics are covered by
         // `release_connection_decrements_then_tears_down` below.
-        let revision_after = test
+        let revision_after = app
+            .keep
             .store
             .platform_profile("d1")
             .await
@@ -991,7 +942,7 @@ mod coverage_tests {
             "opening a session must not re-save the profile"
         );
         assert!(
-            ping_connection_impl(&test.state, shared).await.unwrap(),
+            ping_connection(app.state(), shared).await.unwrap(),
             "the shared session must stay usable after a dedicated session opens"
         );
     }
@@ -1005,21 +956,22 @@ mod coverage_tests {
         })
         .await;
         test.save_connection("cd1").await;
-        let session = connect_impl(&test.state, "cd1".into())
+        let app = host_command_app(test);
+        let session = connect(app.state(), "cd1".into())
             .await
             .unwrap()
             .db_session_id;
 
-        let closed = close_database_impl(&test.state, session.clone(), "analytics".into())
+        let closed = close_database(app.state(), session.clone(), "analytics".into())
             .await
             .unwrap();
         assert!(closed, "a schema-aware driver reports a released pool");
         assert_eq!(
-            test.mock.close_database_calls(),
+            app.keep.mock.close_database_calls(),
             vec!["analytics".to_string()]
         );
         // The session must survive: only the named database's resources went away.
-        assert!(ping_connection_impl(&test.state, session).await.unwrap());
+        assert!(ping_connection(app.state(), session).await.unwrap());
     }
 
     #[tokio::test]
@@ -1032,12 +984,13 @@ mod coverage_tests {
         })
         .await;
         test.save_connection("od1").await;
-        let session = connect_impl(&test.state, "od1".into())
+        let app = host_command_app(test);
+        let session = connect(app.state(), "od1".into())
             .await
             .unwrap()
             .db_session_id;
 
-        let open = get_open_databases_impl(&test.state, session).await.unwrap();
+        let open = get_open_databases(app.state(), session).await.unwrap();
         // Sorted and de-duplicated, so the UI marker is stable across calls.
         assert_eq!(open, vec!["analytics".to_string(), "app".to_string()]);
     }
@@ -1046,11 +999,12 @@ mod coverage_tests {
     async fn open_databases_is_empty_for_drivers_without_database_pools() {
         let test = TestAppState::with_tables().await;
         test.save_connection("od2").await;
-        let session = connect_impl(&test.state, "od2".into())
+        let app = host_command_app(test);
+        let session = connect(app.state(), "od2".into())
             .await
             .unwrap()
             .db_session_id;
-        assert!(get_open_databases_impl(&test.state, session)
+        assert!(get_open_databases(app.state(), session)
             .await
             .unwrap()
             .is_empty());
@@ -1059,7 +1013,8 @@ mod coverage_tests {
     #[tokio::test]
     async fn open_databases_rejects_an_unknown_session() {
         let test = TestAppState::with_tables().await;
-        let err = get_open_databases_impl(&test.state, "no-such-session".into())
+        let app = host_command_app(test);
+        let err = get_open_databases(app.state(), "no-such-session".into())
             .await
             .unwrap_err();
         assert!(
@@ -1072,11 +1027,12 @@ mod coverage_tests {
     async fn close_database_is_a_noop_for_drivers_without_database_pools() {
         let test = TestAppState::with_tables().await;
         test.save_connection("cd2").await;
-        let session = connect_impl(&test.state, "cd2".into())
+        let app = host_command_app(test);
+        let session = connect(app.state(), "cd2".into())
             .await
             .unwrap()
             .db_session_id;
-        let closed = close_database_impl(&test.state, session, "app".into())
+        let closed = close_database(app.state(), session, "app".into())
             .await
             .unwrap();
         assert!(!closed);
@@ -1086,17 +1042,18 @@ mod coverage_tests {
     async fn close_database_rejects_blank_names_and_unknown_sessions() {
         let test = TestAppState::with_tables().await;
         test.save_connection("cd3").await;
-        let session = connect_impl(&test.state, "cd3".into())
+        let app = host_command_app(test);
+        let session = connect(app.state(), "cd3".into())
             .await
             .unwrap()
             .db_session_id;
 
-        let blank = close_database_impl(&test.state, session.clone(), "   ".into())
+        let blank = close_database(app.state(), session.clone(), "   ".into())
             .await
             .unwrap_err();
         assert!(blank.to_string().contains("non-empty database name"));
 
-        let unknown = close_database_impl(&test.state, "no-such-session".into(), "app".into())
+        let unknown = close_database(app.state(), "no-such-session".into(), "app".into())
             .await
             .unwrap_err();
         assert!(
@@ -1104,7 +1061,7 @@ mod coverage_tests {
                 || unknown.to_string().contains("session unavailable")
         );
         assert!(
-            test.mock.close_database_calls().is_empty(),
+            app.keep.mock.close_database_calls().is_empty(),
             "neither rejection may reach the driver"
         );
     }
@@ -1113,36 +1070,33 @@ mod coverage_tests {
     async fn release_connection_decrements_then_tears_down() {
         let test = TestAppState::with_tables().await;
         test.save_connection("r1").await;
+        let app = host_command_app(test);
         // Runtime opens one owned session per connect call.
-        let s1 = connect_impl(&test.state, "r1".into())
+        let s1 = connect(app.state(), "r1".into())
             .await
             .unwrap()
             .db_session_id;
-        let s2 = connect_impl(&test.state, "r1".into())
+        let s2 = connect(app.state(), "r1".into())
             .await
             .unwrap()
             .db_session_id;
         assert_ne!(s1, s2, "Runtime session ownership is explicit per connect");
 
         // Each Runtime release closes exactly the owned session.
-        let torn = release_connection_impl(&test.state, s1.clone())
-            .await
-            .unwrap();
+        let torn = release_connection(app.state(), s1.clone()).await.unwrap();
         assert!(torn);
-        assert!(!ping_connection_impl(&test.state, s1.clone()).await.unwrap());
+        assert!(!ping_connection(app.state(), s1.clone()).await.unwrap());
 
         // The second owned session is independent.
-        let torn = release_connection_impl(&test.state, s2.clone())
-            .await
-            .unwrap();
+        let torn = release_connection(app.state(), s2.clone()).await.unwrap();
         assert!(torn);
         assert!(
-            !ping_connection_impl(&test.state, s1).await.unwrap(),
+            !ping_connection(app.state(), s1).await.unwrap(),
             "session must be gone after the final release"
         );
 
         // Releasing an unknown session is a benign no-op (reports torn down).
-        let torn = release_connection_impl(&test.state, "missing".into())
+        let torn = release_connection(app.state(), "missing".into())
             .await
             .unwrap();
         assert!(torn);
@@ -1152,35 +1106,30 @@ mod coverage_tests {
     async fn disconnect_rolls_back_runtime_transaction_and_clears_status() {
         let test = TestAppState::with_tables().await;
         let (_, id) = test.save_and_connect("tx-close").await;
-        crate::commands::query::begin_session_transaction_impl(&test.state, id.clone())
+        let app = host_command_app(test);
+        crate::commands::query::begin_session_transaction(app.state(), id.clone())
             .await
             .unwrap();
-        assert_eq!(test.mock.open_transaction_count(), 1);
-        disconnect_impl(&test.state, id.clone()).await.unwrap();
+        assert_eq!(app.keep.mock.open_transaction_count(), 1);
+        disconnect(app.state(), id.clone()).await.unwrap();
         assert!(
-            !crate::commands::query::session_transaction_status_impl(&test.state, id.clone())
+            !crate::commands::query::session_transaction_status(app.state(), id.clone())
                 .await
                 .unwrap()
         );
-        assert_eq!(test.mock.open_transaction_count(), 0);
-        assert!(!ping_connection_impl(&test.state, id).await.unwrap());
+        assert_eq!(app.keep.mock.open_transaction_count(), 0);
+        assert!(!ping_connection(app.state(), id).await.unwrap());
     }
 
     #[tokio::test]
     async fn get_connection_info_reports_driver_category() {
         let harness = TestAppState::new().await;
-        for (driver_type, expected_category, category) in [
-            (
-                "kv-mock",
-                "keyvalue",
-                datazen_driver_api::DriverCategory::KeyValue,
-            ),
-            (
-                "doc-mock",
-                "document",
-                datazen_driver_api::DriverCategory::Document,
-            ),
-            ("postgres", "sql", datazen_driver_api::DriverCategory::Sql),
+        // Register every driver spelling up front (harness setup): the command
+        // entries below must only see an already-assembled registry.
+        for (driver_type, category) in [
+            ("kv-mock", datazen_driver_api::DriverCategory::KeyValue),
+            ("doc-mock", datazen_driver_api::DriverCategory::Document),
+            ("postgres", datazen_driver_api::DriverCategory::Sql),
         ] {
             let opts = MockDriverOptions {
                 category,
@@ -1193,19 +1142,22 @@ mod coverage_tests {
                 .register_test_driver(driver_type, mock.clone())
                 .await;
             harness.register_runtime_driver(driver_type, mock).await;
+        }
+        let app = host_command_app(harness);
+        for (driver_type, expected_category) in [
+            ("kv-mock", "keyvalue"),
+            ("doc-mock", "document"),
+            ("postgres", "sql"),
+        ] {
             let mut cfg = sample_postgres_config(driver_type);
             cfg.database_type = driver_type.into();
-            save_connection_impl(&harness.state, cfg, false)
-                .await
-                .unwrap();
+            save_connection(app.state(), cfg, None).await.unwrap();
 
-            let conn_id = connect_impl(&harness.state, driver_type.into())
+            let conn_id = connect(app.state(), driver_type.into())
                 .await
                 .unwrap()
                 .db_session_id;
-            let info = get_connection_info_impl(&harness.state, conn_id)
-                .await
-                .unwrap();
+            let info = get_connection_info(app.state(), conn_id).await.unwrap();
             assert_eq!(info["databaseType"], driver_type);
             assert_eq!(
                 info["driverCategory"], expected_category,
@@ -1216,21 +1168,19 @@ mod coverage_tests {
 
     #[tokio::test]
     async fn reorder_connections_persists_new_order() {
-        // `reorder_connections` is a thin IPC wrapper over the store call;
-        // tauri::State cannot be built outside the tauri runtime, so exercise
-        // the store path the wrapper delegates to.
+        // `reorder_connections` is a thin IPC wrapper over the store call; the
+        // test host now lets us drive the real command entry end to end.
         let test = TestAppState::new().await;
+        let app = host_command_app(test);
         for id in ["a", "b", "c"] {
-            save_connection_impl(&test.state, sample_postgres_config(id), false)
+            save_connection(app.state(), sample_postgres_config(id), None)
                 .await
                 .unwrap();
         }
-        test.state
-            .store
-            .reorder_connections(vec!["c".into(), "a".into(), "b".into()])
+        reorder_connections(app.state(), vec!["c".into(), "a".into(), "b".into()])
             .await
             .unwrap();
-        let order: Vec<String> = get_connections_impl(&test.state)
+        let order: Vec<String> = get_connections(app.state())
             .await
             .unwrap()
             .into_iter()
@@ -1241,9 +1191,9 @@ mod coverage_tests {
 
     /// 连接目录族（§5.1.2 第六步第三条命令族）的生产半边不直读宿主 store。
     ///
-    /// 计数而不是「有没有」：这 8 条命令原本各有 1 处 `state.store`，只要有人把
-    /// 某条换回宿主 store，这里会先红。`duplicate_connection_impl` 与
-    /// `connect_dedicated_impl` 里的 `.store` 曾经跨行书写，所以断言不能用「逐行 grep」
+    /// 计数而不是「有没有」：这些命令原本各有 1 处 `state.store`，只要有人把
+    /// 某条换回宿主 store，这里会先红。`duplicate_connection` 与
+    /// `connect_dedicated` 里的 `.store` 曾经跨行书写，所以断言不能用「逐行 grep」
     /// 的口径来写。
     #[test]
     fn the_command_shell_reads_the_module_service_not_the_host_store() {
@@ -1265,7 +1215,7 @@ mod coverage_tests {
         );
         // F4a 后：合并缺失密钥与脱敏投影的纯函数住 modules::connection::api，
         // 命令层只委托不复制。两层钉法：本文件不得重新定义这两个函数；八个
-        // 目录用例全部经 connection_api 走模块服务（合并/脱敏在 api 内发生）。
+        // 目录用例全部经模块 api 走模块服务（合并/脱敏在 api 内发生）。
         assert_eq!(
             production.matches("fn merge_missing_secrets").count()
                 + production.matches("fn redact_secrets").count(),
@@ -1274,8 +1224,16 @@ mod coverage_tests {
         );
         assert_eq!(
             production.matches("connection_api::").count(),
-            8,
-            "列表 / 保存 / 复制 / 删除 / 测试连接 / 读取 ×2 / 重排 全部委托 connection_api"
+            9,
+            "列表 / 保存 / 复制 / 删除 / 测试连接 / 读取 ×2 / 重排 / 会话信息 全部委托 connection_api"
         );
     }
 }
+
+// 测试宿主（cfg(test)）：把 harness 的 AppState 挂进 mock tauri app，让测试
+// 能以真实 `#[tauri::command]` 入口驱动（`State<'_, AppState>` 只能来自
+// tauri `Manager`）。声明必须留在两个测试模块之后——上面的源码守卫按
+// 首个 `#[cfg(test)]` 切分生产半边。
+#[cfg(test)]
+#[path = "connection_command_test_host.rs"]
+pub(crate) mod connection_command_test_host;

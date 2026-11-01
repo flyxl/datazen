@@ -1,7 +1,3 @@
-use super::driver_command::{
-    execute_driver_command_stream_impl, ExecuteDriverCommandStreamOpts,
-    ExecuteDriverCommandStreamRequest,
-};
 use super::error::{CmdExt, CommandError};
 use super::AppState;
 use crate::store::history_db::DEFAULT_HISTORY_PAGE_SIZE;
@@ -10,8 +6,9 @@ use datazen_driver_api::MultiQueryResult;
 use datazen_driver_api::QueryExecutionId;
 use tauri::State;
 
-pub(crate) async fn execute_query_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn execute_query(
+    state: State<'_, AppState>,
     db_session_id: String,
     sql: String,
     database: Option<String>,
@@ -23,7 +20,7 @@ pub(crate) async fn execute_query_impl(
         "execute_query sql"
     );
     let result = super::driver_command::execute_driver_command_impl(
-        state,
+        &state,
         super::driver_command::ExecuteDriverCommandRequest {
             db_session_id: Some(db_session_id),
             driver_type: None,
@@ -45,8 +42,9 @@ pub(crate) async fn execute_query_impl(
     serde_json::from_value(result.data).map_err(CommandError::Json)
 }
 
-pub(crate) async fn cancel_query_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn cancel_query(
+    state: State<'_, AppState>,
     db_session_id: String,
     execution_id: String,
 ) -> Result<(), CommandError> {
@@ -62,7 +60,7 @@ pub(crate) async fn cancel_query_impl(
         .await
         .map_err(CommandError::Validation)?;
     let resolved =
-        super::driver_command::resolve_command_driver(state, Some(&db_session_id), None).await?;
+        super::driver_command::resolve_command_driver(&state, Some(&db_session_id), None).await?;
     let connection_id = resolved
         .session
         .as_ref()
@@ -99,9 +97,10 @@ pub(crate) async fn cancel_query_impl(
         .cmd_err("cancel_query")
 }
 
-pub(crate) async fn clear_query_history_impl(state: &AppState) -> Result<(), CommandError> {
+#[tauri::command]
+pub async fn clear_query_history(state: State<'_, AppState>) -> Result<(), CommandError> {
     tracing::info!("clear_query_history");
-    crate::platform::ipc::require_history_service(state)?
+    crate::platform::ipc::require_history_service(&state)?
         .clear_query_history()
         .await
         .map(|_| ())
@@ -179,53 +178,7 @@ impl HistoryPageRequest {
 
 /// Paged history read. `total` is the full match count, so a UI can state
 /// "showing N of M" instead of implying the page is everything.
-pub(crate) async fn get_query_history_page_impl(
-    state: &AppState,
-    request: HistoryPageRequest,
-) -> Result<QueryHistoryPage, CommandError> {
-    let filter = request.to_filter()?;
-    crate::platform::ipc::require_history_service(state)?
-        .query_history_page(&filter)
-        .await
-        .cmd_err("get_query_history_page")
-}
-
-/// Remove exactly one history row. Returns how many rows went away so a caller
-/// can reject a no-op instead of showing a success it did not earn.
-pub(crate) async fn delete_query_history_impl(
-    state: &AppState,
-    id: String,
-) -> Result<u64, CommandError> {
-    crate::platform::ipc::require_history_service(state)?
-        .delete_query_history(&id)
-        .await
-        .cmd_err("delete_query_history")
-}
-
-#[tauri::command]
-pub async fn execute_query(
-    state: State<'_, AppState>,
-    db_session_id: String,
-    sql: String,
-    database: Option<String>,
-) -> Result<MultiQueryResult, CommandError> {
-    execute_query_impl(&state, db_session_id, sql, database).await
-}
-
-#[tauri::command]
-pub async fn cancel_query(
-    state: State<'_, AppState>,
-    db_session_id: String,
-    execution_id: String,
-) -> Result<(), CommandError> {
-    cancel_query_impl(&state, db_session_id, execution_id).await
-}
-
-#[tauri::command]
-pub async fn clear_query_history(state: State<'_, AppState>) -> Result<(), CommandError> {
-    clear_query_history_impl(&state).await
-}
-
+///
 /// Tauri requires one parameter per IPC argument, so this signature cannot
 /// shrink. The struct above is how the rest of the code sees it.
 #[tauri::command]
@@ -241,28 +194,34 @@ pub async fn get_query_history_page(
     until: Option<String>,
     order: Option<String>,
 ) -> Result<QueryHistoryPage, CommandError> {
-    get_query_history_page_impl(
-        &state,
-        HistoryPageRequest {
-            limit,
-            connection_id,
-            database,
-            schema,
-            search,
-            since,
-            until,
-            order,
-        },
-    )
-    .await
+    let request = HistoryPageRequest {
+        limit,
+        connection_id,
+        database,
+        schema,
+        search,
+        since,
+        until,
+        order,
+    };
+    let filter = request.to_filter()?;
+    crate::platform::ipc::require_history_service(&state)?
+        .query_history_page(&filter)
+        .await
+        .cmd_err("get_query_history_page")
 }
 
+/// Remove exactly one history row. Returns how many rows went away so a caller
+/// can reject a no-op instead of showing a success it did not earn.
 #[tauri::command]
 pub async fn delete_query_history(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<u64, CommandError> {
-    delete_query_history_impl(&state, id).await
+    crate::platform::ipc::require_history_service(&state)?
+        .delete_query_history(&id)
+        .await
+        .cmd_err("delete_query_history")
 }
 
 /// Write `content` to a user-chosen path. Resolves `false` when the save
@@ -302,6 +261,10 @@ pub async fn save_sql_file(
     Ok(true)
 }
 
+/// Shared bridge for the three transaction controls: every one of them is
+/// "resolve the platform runtime, open a call scope, hand the operation to
+/// `RuntimeConnectionUseCases::session_transaction`" — the transaction state
+/// machine itself lives in modules.
 async fn runtime_transaction(
     state: &AppState,
     session_id: &str,
@@ -318,41 +281,49 @@ async fn runtime_transaction(
         .await
         .map_err(crate::platform::into_command_error)
 }
-pub(crate) async fn begin_session_transaction_impl(
-    state: &AppState,
+
+#[tauri::command]
+pub async fn begin_session_transaction(
+    state: State<'_, AppState>,
     db_session_id: String,
 ) -> Result<(), CommandError> {
     runtime_transaction(
-        state,
+        &state,
         &db_session_id,
         datazen::execution::application::SessionTransactionOperation::Begin,
     )
     .await
 }
-pub(crate) async fn commit_session_transaction_impl(
-    state: &AppState,
+
+#[tauri::command]
+pub async fn commit_session_transaction(
+    state: State<'_, AppState>,
     db_session_id: String,
 ) -> Result<(), CommandError> {
     runtime_transaction(
-        state,
+        &state,
         &db_session_id,
         datazen::execution::application::SessionTransactionOperation::Commit,
     )
     .await
 }
-pub(crate) async fn rollback_session_transaction_impl(
-    state: &AppState,
+
+#[tauri::command]
+pub async fn rollback_session_transaction(
+    state: State<'_, AppState>,
     db_session_id: String,
 ) -> Result<(), CommandError> {
     runtime_transaction(
-        state,
+        &state,
         &db_session_id,
         datazen::execution::application::SessionTransactionOperation::Rollback,
     )
     .await
 }
-pub(crate) async fn session_transaction_status_impl(
-    state: &AppState,
+
+#[tauri::command]
+pub async fn session_transaction_status(
+    state: State<'_, AppState>,
     db_session_id: String,
 ) -> Result<bool, CommandError> {
     let platform = state
@@ -367,49 +338,15 @@ pub(crate) async fn session_transaction_status_impl(
         .map_err(crate::platform::into_command_error)
 }
 
-#[tauri::command]
-pub async fn begin_session_transaction(
-    state: State<'_, AppState>,
-    db_session_id: String,
-) -> Result<(), CommandError> {
-    begin_session_transaction_impl(&state, db_session_id).await
-}
-
-#[tauri::command]
-pub async fn commit_session_transaction(
-    state: State<'_, AppState>,
-    db_session_id: String,
-) -> Result<(), CommandError> {
-    commit_session_transaction_impl(&state, db_session_id).await
-}
-
-#[tauri::command]
-pub async fn rollback_session_transaction(
-    state: State<'_, AppState>,
-    db_session_id: String,
-) -> Result<(), CommandError> {
-    rollback_session_transaction_impl(&state, db_session_id).await
-}
-
-#[tauri::command]
-pub async fn session_transaction_status(
-    state: State<'_, AppState>,
-    db_session_id: String,
-) -> Result<bool, CommandError> {
-    session_transaction_status_impl(&state, db_session_id).await
-}
-
 #[cfg(test)]
 mod log_hygiene_tests {
     #[test]
     fn execute_query_source_does_not_info_log_sql_preview() {
         let src = include_str!("query.rs");
-        let start = src
-            .find("pub(crate) async fn execute_query_impl")
-            .expect("fn");
+        let start = src.find("pub async fn execute_query(").expect("fn");
         let chunk = &src[start..start + 800];
         assert!(
-            !chunk.contains("tracing::info!(") || !chunk.contains("%sql_preview"),
+            !chunk.contains("tracing::info!") || !chunk.contains("%sql_preview"),
             "execute_query must not info!-log sql_preview"
         );
         assert!(
@@ -434,7 +371,7 @@ mod log_hygiene_tests {
             .unwrap_or(start + 8000);
         let chunk = &src[start..end];
         assert!(
-            !chunk.contains("tracing::info!(") || !chunk.contains("%sql_preview"),
+            !chunk.contains("tracing::info!") || !chunk.contains("%sql_preview"),
             "execute_driver_command_stream must not info!-log sql_preview"
         );
         assert!(
@@ -443,6 +380,10 @@ mod log_hygiene_tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "query_command_test_host.rs"]
+mod query_command_test_host;
 
 #[cfg(test)]
 #[path = "query_tests.rs"]

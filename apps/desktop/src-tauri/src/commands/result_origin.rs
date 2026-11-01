@@ -68,16 +68,9 @@ pub async fn resolve_result_origin(
     state: State<'_, AppState>,
     request: ResolveResultOriginRequest,
 ) -> Result<ResultEditability, CommandError> {
-    resolve_result_origin_impl(&state, request).await
-}
-
-pub(crate) async fn resolve_result_origin_impl(
-    state: &AppState,
-    request: ResolveResultOriginRequest,
-) -> Result<ResultEditability, CommandError> {
     validate_envelope(&request.db_session_id, &request.sql)?;
-    let resolved = resolve_command_driver(state, Some(&request.db_session_id), None).await?;
-    let profile = session_profile(state, &resolved).await?;
+    let resolved = resolve_command_driver(&state, Some(&request.db_session_id), None).await?;
+    let profile = session_profile(&state, &resolved).await?;
     let (database, schema) = sql_target(
         &resolved,
         &profile,
@@ -87,7 +80,7 @@ pub(crate) async fn resolve_result_origin_impl(
     let target = SqlTarget::new(database.as_deref(), schema.as_deref());
     let origin = describe_origin(&resolved, target, &request.result_columns, &request.sql).await?;
     let columns = source_table_columns(
-        state,
+        &state,
         &resolved,
         &profile,
         request.database.as_deref(),
@@ -117,13 +110,6 @@ pub async fn preview_result_cell_change(
     state: State<'_, AppState>,
     request: ResultCellChangeRequest,
 ) -> Result<RowChangePlan, CommandError> {
-    preview_result_cell_change_impl(&state, request).await
-}
-
-pub(crate) async fn preview_result_cell_change_impl(
-    state: &AppState,
-    request: ResultCellChangeRequest,
-) -> Result<RowChangePlan, CommandError> {
     validate_envelope(&request.db_session_id, &request.sql)?;
     if request.table.trim().is_empty() {
         return Err(CommandError::Validation(
@@ -135,8 +121,8 @@ pub(crate) async fn preview_result_cell_change_impl(
             "the change request names no column".into(),
         ));
     }
-    let resolved = resolve_command_driver(state, Some(&request.db_session_id), None).await?;
-    let profile = connection_profile(state, &request.connection_id).await?;
+    let resolved = resolve_command_driver(&state, Some(&request.db_session_id), None).await?;
+    let profile = connection_profile(&state, &request.connection_id).await?;
     let (database, schema) = sql_target(
         &resolved,
         &profile,
@@ -146,7 +132,7 @@ pub(crate) async fn preview_result_cell_change_impl(
     let target = SqlTarget::new(database.as_deref(), schema.as_deref());
     let origin = describe_origin(&resolved, target, &request.result_columns, &request.sql).await?;
     let columns = source_table_columns(
-        state,
+        &state,
         &resolved,
         &profile,
         request.database.as_deref(),

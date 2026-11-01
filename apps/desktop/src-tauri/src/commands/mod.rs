@@ -5,7 +5,7 @@ mod app_archive;
 mod backup;
 mod clipboard;
 mod config;
-mod connection;
+pub(crate) mod connection;
 mod connection_import;
 mod context;
 mod dashboard;
@@ -367,44 +367,76 @@ mod tests {
 /// Host IPC test helpers for `src-tauri/tests/` pure-IPC E2E migrations.
 #[cfg(feature = "test-harness")]
 pub mod test_harness {
-    use super::{
-        connect_impl, execute_driver_command_impl, get_connection_commands_impl,
-        get_connections_impl, AppState,
-    };
+    //! B2 各域刀之后命令层不再有 `_impl` 转发层：真实命令入口的
+    //! `State<'_, AppState>` 只能来自 tauri `Manager`，harness 因此自持
+    //! mock app（与 `commands/*_command_test_host.rs` 同形；这里走
+    //! feature 门而非 `cfg(test)`，供 `src-tauri/tests/` 集成测试二进制
+    //! 消费——tauri 的 `test` feature 由本 crate 的 dev-dependency 与
+    //! `test-harness` feature 一起点亮）。
+
+    use super::AppState;
+    use crate::testing::app_state::{TestAppState, TestStateKeepalive};
     use datazen_driver_api::{CommandResult, DriverCommandDefinition};
+    use tauri::Manager;
 
     pub use super::ExecuteDriverCommandRequest;
     pub use crate::testing::app_state::TestAppState;
 
+    /// A [`TestAppState`] hosted behind a mock command app.
+    ///
+    /// `keep` holds the parts that must outlive the managed state (tempdir,
+    /// store, mock driver); callers keep driving the mock through it.
+    pub struct HostedApp {
+        app: tauri::App<tauri::test::MockRuntime>,
+        pub keep: TestStateKeepalive,
+    }
+
+    impl HostedApp {
+        /// Manage a harness's state behind a fresh mock app.
+        pub fn new(test: TestAppState) -> Self {
+            let (state, keep) = test.into_state();
+            let app = tauri::test::mock_app();
+            app.manage(state);
+            Self { app, keep }
+        }
+
+        /// The managed state, as a tauri `State` handle for command parameters.
+        fn state(&self) -> tauri::State<'_, AppState> {
+            self.app.state::<AppState>()
+        }
+    }
+
     pub async fn get_connections(
-        state: &AppState,
+        host: &HostedApp,
     ) -> Result<Vec<datazen_driver_api::ConnectionConfig>, String> {
-        get_connections_impl(state).await.map_err(|e| e.to_string())
+        super::connection::get_connections(host.state())
+            .await
+            .map_err(|e| e.to_string())
     }
 
     pub async fn connect(
-        state: &AppState,
+        host: &HostedApp,
         connection_id: String,
     ) -> Result<crate::commands::connection::ConnectionSessionRef, String> {
-        connect_impl(state, connection_id)
+        super::connection::connect(host.state(), connection_id)
             .await
             .map_err(|e| e.to_string())
     }
 
     pub async fn get_connection_commands(
-        state: &AppState,
+        host: &HostedApp,
         db_session_id: String,
     ) -> Result<Vec<DriverCommandDefinition>, String> {
-        get_connection_commands_impl(state, db_session_id)
+        super::driver_command::get_connection_commands(host.state(), db_session_id)
             .await
             .map_err(|e| e.to_string())
     }
 
     pub async fn execute_driver_command(
-        state: &AppState,
+        host: &HostedApp,
         request: ExecuteDriverCommandRequest,
     ) -> Result<CommandResult, String> {
-        execute_driver_command_impl(state, request)
+        super::driver_command::execute_driver_command(host.state(), request)
             .await
             .map_err(|e| e.to_string())
     }
@@ -413,18 +445,6 @@ pub mod test_harness {
 #[cfg(test)]
 #[path = "ipc_surface_tests.rs"]
 mod ipc_surface_tests;
-
-#[cfg(test)]
-#[path = "tunnel_probe_fixture.rs"]
-mod tunnel_probe_fixture;
-
-#[cfg(test)]
-#[path = "tunnel_probe_tests.rs"]
-mod tunnel_probe_tests;
-
-#[cfg(test)]
-#[path = "tunnel_summary_tests.rs"]
-mod tunnel_summary_tests;
 
 #[cfg(test)]
 #[path = "org_scope_surface_tests.rs"]

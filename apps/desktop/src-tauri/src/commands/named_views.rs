@@ -24,65 +24,38 @@ use crate::platform::ipc::require_named_views_service;
 ///
 /// The order is the one the menu shows: the default view first, then the rest
 /// by name.
-pub(crate) async fn list_named_views_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn list_named_views(
+    state: State<'_, AppState>,
     scope: Option<NamedViewScope>,
 ) -> Result<Vec<NamedView>, CommandError> {
-    let service = require_named_views_service(state)?;
-    let views = service.list(scope.as_ref()).await?;
-    Ok(views)
+    let service = require_named_views_service(&state)?;
+    Ok(service.list(scope.as_ref()).await?)
 }
 
 /// Save a view and return the record as it was stored.
 ///
 /// The answer carries the minted id and the timestamps, so the frontend can
 /// replace its local copy instead of guessing them.
-pub(crate) async fn save_named_view_impl(
-    state: &AppState,
-    view: NamedView,
-) -> Result<NamedView, CommandError> {
-    let service = require_named_views_service(state)?;
-    let saved = service.save(view).await?;
-    Ok(saved)
-}
-
-/// Delete a view and return the remaining ones.
-///
-/// Deleting an id nobody carries is not an error.
-pub(crate) async fn delete_named_view_impl(
-    state: &AppState,
-    id: &str,
-) -> Result<Vec<NamedView>, CommandError> {
-    let service = require_named_views_service(state)?;
-    let remaining = service.delete(id).await?;
-    Ok(remaining)
-}
-
-/// The saved views of one scope (or of every scope when `scope` is omitted).
-#[tauri::command]
-pub async fn list_named_views(
-    state: State<'_, AppState>,
-    scope: Option<NamedViewScope>,
-) -> Result<Vec<NamedView>, CommandError> {
-    list_named_views_impl(&state, scope).await
-}
-
-/// Save a named view; the backend mints the id and stamps the timestamps.
 #[tauri::command]
 pub async fn save_named_view(
     state: State<'_, AppState>,
     view: NamedView,
 ) -> Result<NamedView, CommandError> {
-    save_named_view_impl(&state, view).await
+    let service = require_named_views_service(&state)?;
+    Ok(service.save(view).await?)
 }
 
-/// Delete a named view; the remaining views come back with the receipt.
+/// Delete a view and return the remaining ones.
+///
+/// Deleting an id nobody carries is not an error.
 #[tauri::command]
 pub async fn delete_named_view(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<Vec<NamedView>, CommandError> {
-    delete_named_view_impl(&state, &id).await
+    let service = require_named_views_service(&state)?;
+    Ok(service.delete(&id).await?)
 }
 
 #[cfg(test)]
@@ -111,7 +84,8 @@ mod tests {
     }
 
     /// 生产半边不再出现宿主 store（P3 第一条命令族；D6 item 1 后命令改经
-    /// `require_named_views_service` 取模块服务，守卫随迁）。
+    /// `require_named_views_service` 取模块服务，守卫随迁；B2 批次 4 刀把
+    /// `_impl` 内联进命令处理函数后，取服务的三处调用仍在命令体内）。
     ///
     /// 计数而不是「有没有」：端口宿主 store 的直读曾经是三条命令各一处，
     /// 只要有人把 `.as_ref()` 换回 `state.store.as_ref()`，这里会先红。
@@ -126,7 +100,7 @@ mod tests {
         );
         assert_eq!(
             production
-                .matches("require_named_views_service(state)")
+                .matches("require_named_views_service(&state)")
                 .count(),
             3,
             "三条命令各取一次模块服务"

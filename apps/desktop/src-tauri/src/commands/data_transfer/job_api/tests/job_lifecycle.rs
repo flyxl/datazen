@@ -1,6 +1,15 @@
 //! The lifecycle of one transfer Job as the client sees it: cancelling a Job
 //! the runtime is driving, and the recovery verdict an apply Job publishes over
 //! its own commit boundaries.
+//!
+//! Layer verdict (B1 triage, 2026-10-31): every case stays at the host. Cancel
+//! routing (`cancel_data_transfer_job` / `cancel_data_transfer_impl`) and the
+//! recovery-verdict publication (`runtime::drive` → `TransferApplyJobView`) are
+//! desktop-crate code over `TestAppState`; the kernel's own cancel watch and
+//! verdict rules are already tested beside that logic in modules
+//! (`migration/data_transfer/job/tests/kernel_cancel.rs`,
+//! `…/cm47_48_recovery.rs`). All three cases follow the future data_transfer
+//! domain knife.
 
 use datazen::execution::EffectOutcome;
 use datazen::jobs::domain::job::{JobDefinition, JobProgress, JobState};
@@ -106,10 +115,14 @@ async fn a_cancel_request_lands_on_the_job_repository() {
 #[tokio::test]
 async fn cancel_command_answers_false_for_unknown_ids() {
     let test = TestAppState::with_options(mock_options()).await;
-    let unknown = "transfer-cancel-never-accepted";
-    let answered = crate::commands::data_transfer::cancel_data_transfer_impl(&test.state, unknown)
-        .await
-        .expect("an unknown job id must not be a transport error");
+    let unknown = "transfer-cancel-never-accepted".to_owned();
+    // B2 data_transfer 刀：`cancel_data_transfer_impl` 转发体已删，经真实
+    // 命令入口驱动（mock app 托管 harness 态）。
+    let app = super::super::super::command_test_host::host_command_app(test);
+    let answered =
+        crate::commands::data_transfer::cancel_data_transfer(app.state(), unknown)
+            .await
+            .expect("an unknown job id must not be a transport error");
     assert!(
         !answered,
         "false means nothing was cancelled so the caller must not treat it as success"

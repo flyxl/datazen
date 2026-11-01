@@ -1,3 +1,4 @@
+use super::command_test_host::host_command_app;
 use super::*;
 
 const BOOTSTRAP_RS: &str = include_str!("../../bootstrap/run.rs");
@@ -99,8 +100,13 @@ async fn wapp_driver_command_uses_an_independent_runtime_target() {
     install_zip(&test, &zip_path).await;
     test.save_connection("wapp-runtime").await;
 
-    let result = execute_wapp_driver_command_impl(
-        &test.state,
+    // B2 域刀：`execute_wapp_driver_command_impl` 转发层已删，本测试改走
+    // 真实命令入口（mock_app 托管 AppState）。准入规则（权限/黑名单/args
+    // 形状）随接线住在命令处理函数里；读取用例本体在
+    // `datazen::workflow::runtime_reads`。
+    let app = host_command_app(test);
+    let result = execute_wapp_driver_command(
+        app.state(),
         WappDriverCommandRequest {
             wapp_id: "acme.demo".into(),
             connection_id: "wapp-runtime".into(),
@@ -112,7 +118,8 @@ async fn wapp_driver_command_uses_an_independent_runtime_target() {
     .expect("a permitted read command must execute through Runtime");
 
     assert!(result.is_object());
-    let adapter = test.state.platform_require().expect("platform is ready");
+    let state = app.state();
+    let adapter = state.platform_require().expect("platform is ready");
     let call = adapter.begin_call();
     assert!(
         adapter
@@ -135,8 +142,10 @@ async fn disabled_wapp_cannot_invoke_driver_commands() {
         .await
         .unwrap();
 
-    let error = execute_wapp_driver_command_impl(
-        &test.state,
+    // B2 域刀：同上，改走真实命令入口；拒绝文案是 IPC 契约。
+    let app = host_command_app(test);
+    let error = execute_wapp_driver_command(
+        app.state(),
         WappDriverCommandRequest {
             wapp_id: "acme.demo".into(),
             connection_id: "not-used".into(),
@@ -277,47 +286,11 @@ async fn install_rejects_invalid_packages() {
     assert!(list_wapps_impl(&test.state).is_empty());
 }
 
-#[tokio::test]
-async fn inspect_wapp_package_previews_manifest_without_writing() {
-    let test = TestAppState::new().await;
-    let wapps_dir = test.state.wapps.wapps_dir().to_path_buf();
-
-    // Unknown path → NotFound.
-    let err = inspect_wapp_package_impl("/nonexistent/pkg.zip".into())
-        .await
-        .unwrap_err();
-    assert!(err.to_string().contains("not found"), "{err}");
-
-    let tmp = TempDir::new().unwrap();
-    let zip_path = tmp.path().join("demo.zip");
-    write_demo_zip(&zip_path);
-
-    // Valid package: manifest returned, plugins dir untouched.
-    assert!(!wapps_dir.exists() || wapps_dir.read_dir().unwrap().next().is_none());
-    let manifest = inspect_wapp_package_impl(zip_path.to_string_lossy().to_string())
-        .await
-        .unwrap();
-    assert_eq!(manifest.id, "acme.demo");
-    assert_eq!(manifest.version, "1.0.0");
-    assert!(list_wapps_impl(&test.state).is_empty());
-    assert!(!wapps_dir.join("acme.demo").exists());
-
-    // Invalid package surfaces the validation error.
-    let bad = tmp.path().join("bad.zip");
-    {
-        let file = fs::File::create(&bad).unwrap();
-        let mut zip = ZipWriter::new(file);
-        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-        let manifest = DEMO_MANIFEST.replace("\"apiVersion\": 2", "\"apiVersion\": 99");
-        zip.start_file("manifest.json", options).unwrap();
-        zip.write_all(manifest.as_bytes()).unwrap();
-        zip.finish().unwrap();
-    }
-    let err = inspect_wapp_package_impl(bad.to_string_lossy().to_string())
-        .await
-        .unwrap_err();
-    assert!(err.to_string().contains("apiVersion"), "{err}");
-}
+// B2 域刀：`inspect_wapp_package_previews_manifest_without_writing` 已删除——
+// 包校验本体（含「不落盘安装」与 apiVersion 拒绝）在
+// `modules/src/wapps/install/tests.rs` 的 inspect_* 三测有逐面覆盖；宿主侧
+// 剩下的 NotFound 预检留在 `inspect_wapp_package_with_dialog` 命令里（该
+// 命令需要 Wry 对话框句柄 + webdriver 路径门，不进单测）。
 
 #[tokio::test]
 async fn storage_requires_existing_wapp_and_namespaces_by_id() {
@@ -429,38 +402,9 @@ async fn load_from_disk_restores_registry_with_persisted_enabled_state() {
     assert_eq!(restored.manifest.name, "Demo Wapp");
 }
 
-#[test]
-fn summary_serializes_camel_case_payload() {
-    let dir = TempDir::new().unwrap();
-    let pack = dir.path().join("acme.demo");
-    write_demo_dir(&pack);
-    let manifest = datazen::workspace_apps::validate_wapp_dir(&pack).unwrap();
-    let summary = WappSummary::from(&LoadedWapp {
-        manifest,
-        enabled: true,
-    });
-    let json = serde_json::to_value(&summary).unwrap();
-    assert_eq!(json["apiVersion"], 2);
-    assert_eq!(json["enabled"], true);
-    assert_eq!(json["author"], "Acme");
-    assert_eq!(json["permissions"][0], "storage:local");
-    assert_eq!(json["pages"][0]["id"], "main");
-    assert_eq!(json["pages"][0]["icon"], "assets/icon.svg");
-    assert_eq!(json["themes"][0]["id"], "demo-dark");
-    assert_eq!(json["themes"][0]["modes"][0], "dark");
-    // description is None in the manifest → omitted from the payload.
-    assert!(json.get("description").is_none());
-}
-
-#[test]
-fn wapp_package_kind_parses_zip_and_folder_aliases() {
-    assert_eq!(WappPackageKind::parse("zip").unwrap(), WappPackageKind::Zip);
-    assert_eq!(
-        WappPackageKind::parse("folder").unwrap(),
-        WappPackageKind::Folder
-    );
-    assert!(WappPackageKind::parse("bogus").is_err());
-}
+// B2 域刀：`summary_serializes_camel_case_payload` 与
+// `wapp_package_kind_parses_zip_and_folder_aliases` 两个纯逻辑测试随投影/
+// 词汇解析本体迁 `modules/src/wapps/{summary,package_kind}.rs`（内联）。
 
 #[tokio::test]
 async fn pick_session_is_consumed_once_on_install_path_resolution() {

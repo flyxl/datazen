@@ -19,7 +19,7 @@ use crate::data_sync::job::artifact::RelationIdentity;
 use crate::data_sync::job::host::{KeysetPageSource, TargetExecutor};
 use crate::data_sync::{DataSyncError, Row, RowPageSource, SqlStatement};
 
-use super::super::keyset_source::DriverKeysetSource;
+use crate::data_sync::keyset_source::DriverKeysetSource;
 
 /// `DriverKeysetSource` adapted to the handler port. The port is foreign to
 /// the host, so the existing driver reader is wrapped instead of rewritten.

@@ -336,3 +336,7 @@ pub async fn execute_db_tool(
     };
     result.unwrap_or_else(|e| e)
 }
+
+#[cfg(test)]
+#[path = "tools_tests.rs"]
+mod tests;

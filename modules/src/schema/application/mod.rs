@@ -5,6 +5,7 @@ pub mod error;
 pub mod metadata;
 pub mod physical_context;
 pub mod ports;
+pub mod privileges;
 pub mod scope;
 
 pub use error::SchemaError;

@@ -5,6 +5,7 @@
 
 use super::test_fixtures::*;
 use super::*;
+use super::data_command_test_host::host_command_app;
 use crate::testing::app_state::TestAppState;
 use datazen::data_browsing::{canonicalize_changes, changes_fingerprint, plan_changes};
 use datazen_driver_api::Value;
@@ -21,8 +22,9 @@ use std::collections::BTreeMap;
 async fn insert_preview_builds_statement_with_only_written_columns() {
     let test = with_parameterized_driver().await;
     let (_, conn_id) = test.save_and_connect("insert-preview").await;
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let plan = preview_pending_changes(
+        app.state(),
         table_context("insert-preview", &conn_id),
         vec![insert_change(&[
             ("name", Some(Value::String("Ada".into()))),
@@ -51,8 +53,8 @@ async fn insert_preview_builds_statement_with_only_written_columns() {
         .parameter_summary
         .iter()
         .any(|line| line == "INSERT note=NULL"));
-    assert!(!crate::commands::session_transaction_status_impl(
-        &test.state,
+    assert!(!crate::commands::session_transaction_status(
+        app.state(),
         plan.table.db_session_id.clone()
     )
     .await
@@ -63,8 +65,9 @@ async fn insert_preview_builds_statement_with_only_written_columns() {
 async fn commit_executes_insert_only_plan_instead_of_returning_empty_success() {
     let test = TestAppState::with_resource_provider(insert_capable_options()).await;
     let (_, conn_id) = test.save_and_connect("insert-only").await;
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let plan = preview_pending_changes(
+        app.state(),
         table_context("insert-only", &conn_id),
         vec![insert_change(&[(
             "name",
@@ -74,13 +77,12 @@ async fn commit_executes_insert_only_plan_instead_of_returning_empty_success() {
     .await
     .unwrap();
 
-    let response = commit_pending_changes_impl(
-        &test.state,
-        CommitPendingChangesRequest {
-            db_session_id: conn_id,
-            fingerprint: plan.fingerprint.clone(),
-            plan,
-        },
+    let response = commit_pending_changes(
+        app.state(),
+        conn_id,
+        None,
+        plan.clone(),
+        plan.fingerprint.clone(),
     )
     .await
     .unwrap();
@@ -90,17 +92,18 @@ async fn commit_executes_insert_only_plan_instead_of_returning_empty_success() {
     assert_eq!(response.statements[0].operation, "insert");
     assert!(response.statements[0].row_identity.is_empty());
     // One bound execution, one commit: the plan was not "successfully" skipped.
-    assert_eq!(test.mock.execute_with_params_calls(), 1);
-    assert_eq!(test.mock.commit_calls(), 1);
-    assert_eq!(test.mock.open_transaction_count(), 0);
+    assert_eq!(app.keep.mock.execute_with_params_calls(), 1);
+    assert_eq!(app.keep.mock.commit_calls(), 1);
+    assert_eq!(app.keep.mock.open_transaction_count(), 0);
 }
 
 #[tokio::test]
 async fn insert_and_update_share_one_transaction_and_one_commit() {
     let test = TestAppState::with_resource_provider(insert_capable_options()).await;
     let (_, conn_id) = test.save_and_connect("insert-and-update").await;
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let plan = preview_pending_changes(
+        app.state(),
         table_context("insert-and-update", &conn_id),
         vec![
             insert_change(&[("name", Some(Value::String("Ada".into())))]),
@@ -110,13 +113,12 @@ async fn insert_and_update_share_one_transaction_and_one_commit() {
     .await
     .unwrap();
 
-    let response = commit_pending_changes_impl(
-        &test.state,
-        CommitPendingChangesRequest {
-            db_session_id: conn_id,
-            fingerprint: plan.fingerprint.clone(),
-            plan,
-        },
+    let response = commit_pending_changes(
+        app.state(),
+        conn_id,
+        None,
+        plan.clone(),
+        plan.fingerprint.clone(),
     )
     .await
     .unwrap();
@@ -126,9 +128,9 @@ async fn insert_and_update_share_one_transaction_and_one_commit() {
     // inserts → updates: the new row is written before the existing one.
     assert_eq!(response.statements[0].operation, "insert");
     assert_eq!(response.statements[1].operation, "update");
-    assert_eq!(test.mock.execute_with_params_calls(), 2);
-    assert_eq!(test.mock.commit_calls(), 1);
-    assert_eq!(test.mock.open_transaction_count(), 0);
+    assert_eq!(app.keep.mock.execute_with_params_calls(), 2);
+    assert_eq!(app.keep.mock.commit_calls(), 1);
+    assert_eq!(app.keep.mock.open_transaction_count(), 0);
 }
 
 #[tokio::test]
@@ -137,8 +139,9 @@ async fn insert_rolls_back_the_whole_batch_on_failure() {
     options.execute_rows_affected = 2;
     let test = TestAppState::with_resource_provider(options).await;
     let (_, conn_id) = test.save_and_connect("insert-rollback").await;
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let plan = preview_pending_changes(
+        app.state(),
         table_context("insert-rollback", &conn_id),
         vec![
             insert_change(&[("name", Some(Value::String("Ada".into())))]),
@@ -148,13 +151,12 @@ async fn insert_rolls_back_the_whole_batch_on_failure() {
     .await
     .unwrap();
 
-    let error = commit_pending_changes_impl(
-        &test.state,
-        CommitPendingChangesRequest {
-            db_session_id: conn_id,
-            fingerprint: plan.fingerprint.clone(),
-            plan,
-        },
+    let error = commit_pending_changes(
+        app.state(),
+        conn_id,
+        None,
+        plan.clone(),
+        plan.fingerprint.clone(),
     )
     .await
     .unwrap_err();
@@ -164,19 +166,20 @@ async fn insert_rolls_back_the_whole_batch_on_failure() {
         error.to_string().contains("grid.commit.affectedMismatch: "),
         "got: {error}"
     );
-    assert_eq!(test.mock.commit_calls(), 0);
-    assert_eq!(test.mock.open_transaction_count(), 0);
+    assert_eq!(app.keep.mock.commit_calls(), 0);
+    assert_eq!(app.keep.mock.open_transaction_count(), 0);
 }
 
 #[tokio::test]
 async fn the_identity_guard_name_only_the_offending_operation() {
     let test = with_parameterized_driver().await;
     let (_, conn_id) = test.save_and_connect("guard-mixed").await;
+    let app = host_command_app(test);
 
     let mut delete = delete_change(1);
     delete.row_identity = BTreeMap::new();
-    let error = preview_pending_changes_impl(
-        &test.state,
+    let error = preview_pending_changes(
+        app.state(),
         table_context("guard-mixed", &conn_id),
         vec![
             insert_change(&[("name", Some(Value::String("Ada".into())))]),
@@ -198,8 +201,9 @@ async fn the_identity_guard_name_only_the_offending_operation() {
 async fn mixed_insert_update_delete_plan_runs_in_insert_update_delete_order() {
     let test = TestAppState::with_resource_provider(insert_capable_options()).await;
     let (_, conn_id) = test.save_and_connect("mixed-plan").await;
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let plan = preview_pending_changes(
+        app.state(),
         table_context("mixed-plan", &conn_id),
         vec![
             delete_change(9),
@@ -214,13 +218,12 @@ async fn mixed_insert_update_delete_plan_runs_in_insert_update_delete_order() {
     assert_eq!(plan.updates.len(), 1);
     assert_eq!(plan.deletes.len(), 1);
 
-    let response = commit_pending_changes_impl(
-        &test.state,
-        CommitPendingChangesRequest {
-            db_session_id: conn_id,
-            fingerprint: plan.fingerprint.clone(),
-            plan,
-        },
+    let response = commit_pending_changes(
+        app.state(),
+        conn_id,
+        None,
+        plan.clone(),
+        plan.fingerprint.clone(),
     )
     .await
     .unwrap();
@@ -240,30 +243,30 @@ async fn mixed_insert_update_delete_plan_runs_in_insert_update_delete_order() {
         .statements
         .iter()
         .all(|statement| statement.affected_rows == 1));
-    assert_eq!(test.mock.execute_with_params_calls(), 3);
-    assert_eq!(test.mock.commit_calls(), 1);
-    assert_eq!(test.mock.open_transaction_count(), 0);
+    assert_eq!(app.keep.mock.execute_with_params_calls(), 3);
+    assert_eq!(app.keep.mock.commit_calls(), 1);
+    assert_eq!(app.keep.mock.open_transaction_count(), 0);
 }
 
 #[tokio::test]
 async fn insert_with_no_written_column_executes_default_values() {
     let test = TestAppState::with_resource_provider(insert_capable_options()).await;
     let (_, conn_id) = test.save_and_connect("insert-empty-columns").await;
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let plan = preview_pending_changes(
+        app.state(),
         table_context("insert-empty-columns", &conn_id),
         vec![insert_change(&[])],
     )
     .await
     .unwrap();
 
-    let response = commit_pending_changes_impl(
-        &test.state,
-        CommitPendingChangesRequest {
-            db_session_id: conn_id,
-            fingerprint: plan.fingerprint.clone(),
-            plan,
-        },
+    let response = commit_pending_changes(
+        app.state(),
+        conn_id,
+        None,
+        plan.clone(),
+        plan.fingerprint.clone(),
     )
     .await
     .unwrap();
@@ -272,16 +275,17 @@ async fn insert_with_no_written_column_executes_default_values() {
     assert_eq!(response.statements[0].operation, "insert");
     assert!(response.statements[0].row_identity.is_empty());
     assert_eq!(response.statements[0].affected_rows, 1);
-    assert_eq!(test.mock.execute_with_params_calls(), 1);
-    assert_eq!(test.mock.commit_calls(), 1);
+    assert_eq!(app.keep.mock.execute_with_params_calls(), 1);
+    assert_eq!(app.keep.mock.commit_calls(), 1);
 }
 
 #[tokio::test]
 async fn commit_rejects_an_insert_plan_edited_after_preview() {
     let test = TestAppState::with_resource_provider(insert_capable_options()).await;
     let (_, conn_id) = test.save_and_connect("insert-tampered").await;
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let plan = preview_pending_changes(
+        app.state(),
         table_context("insert-tampered", &conn_id),
         vec![insert_change(&[(
             "name",
@@ -296,20 +300,19 @@ async fn commit_rejects_an_insert_plan_edited_after_preview() {
         .current_values
         .insert("name".into(), Some(Value::String("Mallory".into())));
 
-    let error = commit_pending_changes_impl(
-        &test.state,
-        CommitPendingChangesRequest {
-            db_session_id: conn_id,
-            fingerprint: plan.fingerprint.clone(),
-            plan: tampered,
-        },
+    let error = commit_pending_changes(
+        app.state(),
+        conn_id,
+        None,
+        tampered,
+        plan.fingerprint.clone(),
     )
     .await
     .unwrap_err();
 
     assert!(error.to_string().contains("fingerprint"), "got: {error}");
     assert_eq!(
-        test.mock.execute_with_params_calls(),
+        app.keep.mock.execute_with_params_calls(),
         0,
         "a stale plan must be rejected before anything is written"
     );
@@ -320,8 +323,9 @@ async fn commit_rejects_an_insert_plan_edited_after_preview() {
 async fn canonicalizing_the_rebuilt_plan_is_idempotent_for_new_rows() {
     let test = with_parameterized_driver().await;
     let (_, conn_id) = test.save_and_connect("insert-rebuild").await;
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let plan = preview_pending_changes(
+        app.state(),
         table_context("insert-rebuild", &conn_id),
         vec![
             insert_change(&[("name", Some(Value::String("Ada".into()))), ("note", None)]),
@@ -358,8 +362,9 @@ async fn canonicalizing_the_rebuilt_plan_is_idempotent_for_new_rows() {
 async fn insert_joins_the_callers_manual_transaction_instead_of_opening_one() {
     let test = TestAppState::with_resource_provider(insert_capable_options()).await;
     let (_, conn_id) = test.save_and_connect("insert-manual-tx").await;
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let plan = preview_pending_changes(
+        app.state(),
         table_context("insert-manual-tx", &conn_id),
         vec![
             insert_change(&[("name", Some(Value::String("Ada".into())))]),
@@ -369,13 +374,13 @@ async fn insert_joins_the_callers_manual_transaction_instead_of_opening_one() {
     .await
     .unwrap();
 
-    crate::commands::begin_session_transaction_impl(&test.state, conn_id.clone())
+    crate::commands::begin_session_transaction(app.state(), conn_id.clone())
         .await
         .unwrap();
-    assert_eq!(test.mock.open_transaction_count(), 1);
-    let commits_before = test.mock.commit_calls();
+    assert_eq!(app.keep.mock.open_transaction_count(), 1);
+    let commits_before = app.keep.mock.commit_calls();
 
-    let platform = test.state.platform_require().unwrap();
+    let platform = app.state().platform_require().unwrap().clone();
     let scope = platform.begin_call();
     let runtime = platform.runtime().unwrap();
     let handle = runtime
@@ -384,41 +389,40 @@ async fn insert_joins_the_callers_manual_transaction_instead_of_opening_one() {
         .unwrap()
         .handle;
 
-    let response = commit_pending_changes_with_handle(
-        &test.state,
-        CommitPendingChangesRequest {
-            db_session_id: conn_id.clone(),
-            fingerprint: plan.fingerprint.clone(),
-            plan,
-        },
+    let fingerprint = plan.fingerprint.clone();
+    let response = commit_pending_changes(
+        app.state(),
+        conn_id.clone(),
         Some(handle),
+        plan,
+        fingerprint,
     )
     .await
     .unwrap();
 
     assert_eq!(response.affected_rows, 2);
     assert_eq!(
-        test.mock.execute_with_params_calls(),
+        app.keep.mock.execute_with_params_calls(),
         2,
         "insert + update must really run inside the caller's transaction"
     );
     assert_eq!(
-        test.mock.commit_calls(),
+        app.keep.mock.commit_calls(),
         commits_before,
         "the ChangeSet must not commit the caller's transaction"
     );
     assert_eq!(
-        test.mock.open_transaction_count(),
+        app.keep.mock.open_transaction_count(),
         1,
         "no second transaction may be opened"
     );
     assert!(
-        crate::commands::session_transaction_status_impl(&test.state, conn_id.clone())
+        crate::commands::session_transaction_status(app.state(), conn_id.clone())
             .await
             .unwrap(),
         "the caller keeps control of its transaction"
     );
-    crate::commands::rollback_session_transaction_impl(&test.state, conn_id)
+    crate::commands::rollback_session_transaction(app.state(), conn_id)
         .await
         .unwrap();
 }
@@ -435,8 +439,9 @@ async fn affected_mismatch_on_an_insert_is_coded_at_position_zero() {
     options.execute_rows_affected = 2;
     let test = TestAppState::with_resource_provider(options).await;
     let (_, conn_id) = test.save_and_connect("r3-mismatch-insert").await;
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let plan = preview_pending_changes(
+        app.state(),
         table_context("r3-mismatch-insert", &conn_id),
         vec![insert_change(&[(
             "name",
@@ -446,13 +451,12 @@ async fn affected_mismatch_on_an_insert_is_coded_at_position_zero() {
     .await
     .unwrap();
 
-    let error = commit_pending_changes_impl(
-        &test.state,
-        CommitPendingChangesRequest {
-            db_session_id: conn_id,
-            fingerprint: plan.fingerprint.clone(),
-            plan,
-        },
+    let error = commit_pending_changes(
+        app.state(),
+        conn_id,
+        None,
+        plan.clone(),
+        plan.fingerprint.clone(),
     )
     .await
     .unwrap_err()
@@ -464,7 +468,7 @@ async fn affected_mismatch_on_an_insert_is_coded_at_position_zero() {
     );
     assert!(error.contains("INSERT affected 2 rows"), "got: {error}");
     assert!(error.contains("refusing ambiguous write"), "got: {error}");
-    assert_eq!(test.mock.commit_calls(), 0);
+    assert_eq!(app.keep.mock.commit_calls(), 0);
 }
 
 #[tokio::test]
@@ -473,21 +477,21 @@ async fn affected_mismatch_on_a_row_identity_is_coded_at_position_zero() {
     options.execute_rows_affected = 2;
     let test = TestAppState::with_resource_provider(options).await;
     let (_, conn_id) = test.save_and_connect("r3-mismatch-update").await;
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let plan = preview_pending_changes(
+        app.state(),
         table_context("r3-mismatch-update", &conn_id),
         vec![update_change(1, "Alice", "Updated")],
     )
     .await
     .unwrap();
 
-    let error = commit_pending_changes_impl(
-        &test.state,
-        CommitPendingChangesRequest {
-            db_session_id: conn_id,
-            fingerprint: plan.fingerprint.clone(),
-            plan,
-        },
+    let error = commit_pending_changes(
+        app.state(),
+        conn_id,
+        None,
+        plan.clone(),
+        plan.fingerprint.clone(),
     )
     .await
     .unwrap_err()
@@ -502,7 +506,7 @@ async fn affected_mismatch_on_a_row_identity_is_coded_at_position_zero() {
         "got: {error}"
     );
     assert!(error.contains("refusing ambiguous write"), "got: {error}");
-    assert_eq!(test.mock.commit_calls(), 0);
+    assert_eq!(app.keep.mock.commit_calls(), 0);
 }
 
 #[tokio::test]
@@ -511,21 +515,21 @@ async fn zero_affected_rows_is_treated_as_a_mismatch_not_as_success() {
     options.execute_rows_affected = 0;
     let test = TestAppState::with_resource_provider(options).await;
     let (_, conn_id) = test.save_and_connect("r3-mismatch-zero").await;
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let plan = preview_pending_changes(
+        app.state(),
         table_context("r3-mismatch-zero", &conn_id),
         vec![update_change(1, "Alice", "Updated")],
     )
     .await
     .unwrap();
 
-    let error = commit_pending_changes_impl(
-        &test.state,
-        CommitPendingChangesRequest {
-            db_session_id: conn_id,
-            fingerprint: plan.fingerprint.clone(),
-            plan,
-        },
+    let error = commit_pending_changes(
+        app.state(),
+        conn_id,
+        None,
+        plan.clone(),
+        plan.fingerprint.clone(),
     )
     .await
     .unwrap_err()
@@ -536,7 +540,7 @@ async fn zero_affected_rows_is_treated_as_a_mismatch_not_as_success() {
         "0 rows must be refused, got: {error}"
     );
     assert!(error.contains("affected 0 rows"), "got: {error}");
-    assert_eq!(test.mock.commit_calls(), 0);
+    assert_eq!(app.keep.mock.commit_calls(), 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -555,9 +559,13 @@ async fn a_drifted_manual_transaction_is_refused_as_a_stale_plan() {
     let mut config = crate::testing::app_state::sample_postgres_config("r5-manual-drift");
     config.database = None;
     test.store.save_connection(config).await.unwrap();
-    let conn_id = test.connect_config("r5-manual-drift").await;
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let conn_id = crate::commands::connect(app.state(), "r5-manual-drift".into())
+        .await
+        .expect("reconnect via the real command entry")
+        .db_session_id;
+    let plan = preview_pending_changes(
+        app.state(),
         RowChangeTableContext {
             database: Some("other_db".into()),
             ..table_context("r5-manual-drift", &conn_id)
@@ -567,10 +575,10 @@ async fn a_drifted_manual_transaction_is_refused_as_a_stale_plan() {
     .await
     .unwrap();
 
-    crate::commands::begin_session_transaction_impl(&test.state, conn_id.clone())
+    crate::commands::begin_session_transaction(app.state(), conn_id.clone())
         .await
         .unwrap();
-    let platform = test.state.platform_require().unwrap();
+    let platform = app.state().platform_require().unwrap().clone();
     let scope = platform.begin_call();
     let runtime = platform.runtime().unwrap();
     let handle = runtime
@@ -579,14 +587,13 @@ async fn a_drifted_manual_transaction_is_refused_as_a_stale_plan() {
         .unwrap()
         .handle;
 
-    let error = commit_pending_changes_with_handle(
-        &test.state,
-        CommitPendingChangesRequest {
-            db_session_id: conn_id,
-            fingerprint: plan.fingerprint.clone(),
-            plan,
-        },
+    let fingerprint = plan.fingerprint.clone();
+    let error = commit_pending_changes(
+        app.state(),
+        conn_id,
         Some(handle),
+        plan,
+        fingerprint,
     )
     .await
     .unwrap_err()
@@ -601,7 +608,7 @@ async fn a_drifted_manual_transaction_is_refused_as_a_stale_plan() {
         error.contains("preview the changes and commit again"),
         "got: {error}"
     );
-    assert_eq!(test.mock.commit_calls(), 0);
+    assert_eq!(app.keep.mock.commit_calls(), 0);
 }
 
 /// The owned path must not over-reject: when the driver really opens its
@@ -620,9 +627,13 @@ async fn an_owned_session_that_honours_the_plan_target_still_writes() {
     let mut config = crate::testing::app_state::sample_postgres_config("r5-owned-ok");
     config.database = None;
     test.store.save_connection(config).await.unwrap();
-    let conn_id = test.connect_config("r5-owned-ok").await;
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let conn_id = crate::commands::connect(app.state(), "r5-owned-ok".into())
+        .await
+        .expect("reconnect via the real command entry")
+        .db_session_id;
+    let plan = preview_pending_changes(
+        app.state(),
         RowChangeTableContext {
             database: Some("other_db".into()),
             ..table_context("r5-owned-ok", &conn_id)
@@ -632,20 +643,18 @@ async fn an_owned_session_that_honours_the_plan_target_still_writes() {
     .await
     .unwrap();
 
-    let response = commit_pending_changes_with_handle(
-        &test.state,
-        CommitPendingChangesRequest {
-            db_session_id: conn_id,
-            fingerprint: plan.fingerprint.clone(),
-            plan,
-        },
+    let response = commit_pending_changes(
+        app.state(),
+        conn_id,
         None,
+        plan.clone(),
+        plan.fingerprint.clone(),
     )
     .await
     .expect("the target matched, so the write must not be refused");
 
     assert_eq!(response.affected_rows, 1);
-    assert_eq!(test.mock.execute_with_params_calls(), 1);
-    assert_eq!(test.mock.commit_calls(), 1);
-    assert_eq!(test.mock.open_transaction_count(), 0);
+    assert_eq!(app.keep.mock.execute_with_params_calls(), 1);
+    assert_eq!(app.keep.mock.commit_calls(), 1);
+    assert_eq!(app.keep.mock.open_transaction_count(), 0);
 }

@@ -210,14 +210,24 @@ async fn journey(prefix: &str, driver_id: &str) {
                 .await
                 .is_ok());
         }
-        let interactive = crate::commands::query::execute_query_impl(
+        // B2 query 刀之后命令层没有 `execute_query_impl`：交互查询经
+        // `execute_query` 命令的同一路径执行（tracing + 驱动命令请求 +
+        // MultiQueryResult 反序列化），这里直接组装等价请求。
+        let interactive = crate::commands::driver_command::execute_driver_command_impl(
             &state,
-            handle.db_session_id.as_str().into(),
-            format!("SELECT id FROM {table}"),
-            Some(database.clone()),
+            crate::commands::driver_command::ExecuteDriverCommandRequest {
+                db_session_id: Some(handle.db_session_id.as_str().into()),
+                driver_type: None,
+                command: "query".into(),
+                database: Some(database.clone()),
+                schema: None,
+                input: serde_json::json!({ "sql": format!("SELECT id FROM {table}") }),
+            },
         )
         .await
         .unwrap_or_else(|_| panic!("interactive query failed"));
+        let interactive: datazen_driver_api::MultiQueryResult =
+            serde_json::from_value(interactive.data).unwrap();
         assert_eq!(interactive.results[0].rows.len(), 32);
         assert!(interactive.results[0].truncated);
         for cancel_after_batch in [false, true] {

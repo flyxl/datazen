@@ -21,6 +21,8 @@ pub mod plan_request;
 pub mod profile;
 pub mod profile_repository;
 pub mod reviewed;
+// B2 schema_diff 域刀：桌面单租户收窄逐字下沉（宿主 reviewed_repository.rs 只余装配桥接）。
+pub mod reviewed_single_tenant;
 pub mod transaction;
 pub mod types;
 pub mod unified;
@@ -36,4 +38,5 @@ pub use object_identity::SchemaObjectIdentity;
 pub use plan::{build_column_plan, build_schema_diff_plan, PlanOptions};
 pub use profile::SchemaDiffProfile;
 pub use profile_repository::{SchemaDiffProfileRepository, SchemaDiffProfileRepositoryError};
+pub use reviewed_single_tenant::SingleTenantReviewedPlanRepository;
 pub use types::*;

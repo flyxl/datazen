@@ -7,11 +7,14 @@
 //! * [`backend`]：物理资源接缝（prepare/verify_authorization/fingerprint/deploy/read_only_verify）。
 //! * [`handler`]：`SchemaDiffHandler` 实现 `JobHandler`（validatePlan/runStage/verifyRecovery）。
 //! * [`recovery`]：§7 故障窗口的纯判定（`decide_recovery`）。
+//! * [`recovery_targets`]：恢复目标的纯投影（线 id 编解码 / 证据记录 / 表目标派生）。
 
 pub mod backend;
 pub mod handler;
 pub mod plan;
 pub mod recovery;
+// B2 schema_diff 域刀：宿主 job/recovery.rs 的纯投影函数下沉（线 id/证据/表目标）。
+pub mod recovery_targets;
 
 pub use backend::{
     ApplyRequest, PrepareRequest, PreparedPlan, ReadOnlyVerdict, SchemaDiffJobBackend,
@@ -24,4 +27,8 @@ pub use plan::{
 pub use recovery::{
     decide_recovery, EVIDENCE_BOUNDARY_VERIFIED, EVIDENCE_CAPABILITY_CHANGED,
     EVIDENCE_COMMIT_ACK_LOST, EVIDENCE_DDL_RESPONSE_LOST, EVIDENCE_VERSIONS_CHANGED,
+};
+pub use recovery_targets::{
+    decode_target_id, encode_target_id, record_target_objects, table_target,
+    target_ids_from_evidence, targets_from_evidence,
 };

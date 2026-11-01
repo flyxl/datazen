@@ -18,8 +18,14 @@ use datazen::services::schema_scope::{embedded_schema_of, metadata_schema};
 use datazen::services::value_search::{SearchTableValuesRequest, SearchTableValuesResult};
 use tauri::State;
 
-pub(crate) async fn search_table_values_impl(
-    state: &AppState,
+/// Count the rows of one table whose searchable columns match a value (DB-19).
+///
+/// One command per table; the front end drives the scan and owns pause and
+/// resume. The value is bound wherever the dialect owns a bound-parameter
+/// vocabulary — it never reaches the SQL text on such a driver.
+#[tauri::command]
+pub async fn search_table_values(
+    state: State<'_, AppState>,
     request: SearchTableValuesRequest,
 ) -> Result<SearchTableValuesResult, CommandError> {
     if request.table.trim().is_empty() {
@@ -30,7 +36,7 @@ pub(crate) async fn search_table_values_impl(
     }
 
     let resolved =
-        super::driver_command::resolve_command_driver(state, Some(&request.db_session_id), None)
+        super::driver_command::resolve_command_driver(&state, Some(&request.db_session_id), None)
             .await?;
     let session = resolved
         .session
@@ -59,8 +65,8 @@ pub(crate) async fn search_table_values_impl(
         config.schema.as_deref(),
     );
 
-    // Fully qualified so the shared function and the `#[tauri::command]`
-    // wrapper of the same name below never collide (the `fk_navigation.rs`
+    // Fully qualified so the shared function and this `#[tauri::command]`
+    // wrapper of the same name never collide (the `fk_navigation.rs`
     // convention).
     let result = datazen::services::value_search::search_table_values(
         resolved.driver.as_ref(),
@@ -72,17 +78,4 @@ pub(crate) async fn search_table_values_impl(
     .await
     .map_err(|error| CommandError::Validation(error.to_string()))?;
     Ok(result)
-}
-
-/// Count the rows of one table whose searchable columns match a value (DB-19).
-///
-/// One command per table; the front end drives the scan and owns pause and
-/// resume. The value is bound wherever the dialect owns a bound-parameter
-/// vocabulary — it never reaches the SQL text on such a driver.
-#[tauri::command]
-pub async fn search_table_values(
-    state: State<'_, AppState>,
-    request: SearchTableValuesRequest,
-) -> Result<SearchTableValuesResult, CommandError> {
-    search_table_values_impl(&state, request).await
 }

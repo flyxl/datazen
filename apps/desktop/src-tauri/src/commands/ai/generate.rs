@@ -1,9 +1,14 @@
 //! AI generation and analysis IPC commands.
+//!
+//! WR-A2：命令处理函数直接持有接线逻辑（会话借用、schema 上下文管线、
+//! 取消登记、流式回调构造），无 `_impl` 转发层；编排本体在 modules
+//! （`datazen::ai::*` 用例与 `run_streaming_tool_loop`）。流式命令对
+//! `R: Runtime` 泛型，测试经 `tauri::test::mock_app` 直调。
 
 use super::chat::{db_tool_definitions, run_streaming_tool_loop_with_claim};
 use super::util::{
     borrow_runtime_session, resolve_ai, resolve_language, resolve_safety_gate, runtime_session,
-    window_stream_callback, StreamCallback,
+    window_stream_callback,
 };
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
@@ -18,10 +23,10 @@ pub use datazen::ai::single_turn::{ConnectionDiagnosis, QueryAnalysis};
 
 // ─── NL2SQL ───
 
-#[allow(dead_code)]
-pub(crate) async fn ai_generate_sql_impl(
-    state: &AppState,
-    on_chunk: StreamCallback,
+#[tauri::command]
+pub async fn ai_generate_sql<R: tauri::Runtime>(
+    state: State<'_, AppState>,
+    window: WebviewWindow<R>,
     db_session_id: String,
     database: String,
     natural_language: String,
@@ -30,36 +35,9 @@ pub(crate) async fn ai_generate_sql_impl(
     recent_queries: Option<Vec<String>>,
     context_files: Option<Vec<String>>,
     context_tables: Option<Vec<String>>,
-) -> Result<String, CommandError> {
-    ai_generate_sql_impl_with_claim(
-        state,
-        on_chunk,
-        None,
-        db_session_id,
-        database,
-        natural_language,
-        request_id,
-        current_table,
-        recent_queries,
-        context_files,
-        context_tables,
-    )
-    .await
-}
-
-pub(crate) async fn ai_generate_sql_impl_with_claim(
-    state: &AppState,
-    on_chunk: StreamCallback,
     target_claim: Option<datazen::ai::ownership::AiTargetClaim>,
-    db_session_id: String,
-    database: String,
-    natural_language: String,
-    request_id: String,
-    current_table: Option<String>,
-    recent_queries: Option<Vec<String>>,
-    context_files: Option<Vec<String>>,
-    context_tables: Option<Vec<String>>,
 ) -> Result<String, CommandError> {
+    let on_chunk = window_stream_callback(&window);
     let recent_queries = recent_queries.unwrap_or_default();
     let mut natural_language = natural_language;
     let gate = resolve_safety_gate(&state).await;
@@ -101,7 +79,7 @@ pub(crate) async fn ai_generate_sql_impl_with_claim(
     let lang = resolve_language(&state).await;
 
     let (_session, lease) =
-        borrow_runtime_session(state, &db_session_id, "ai_generate_sql").await?;
+        borrow_runtime_session(&state, &db_session_id, "ai_generate_sql").await?;
     let driver_ref = lease
         .connection()
         .map_err(|error| CommandError::Internal(error.to_string()))?
@@ -155,7 +133,7 @@ pub(crate) async fn ai_generate_sql_impl_with_claim(
     .await;
 
     // Register cancel token so `ai_cancel` IPC can interrupt this stream.
-    let cancel_owner = super::ai_owner_fingerprint(state);
+    let cancel_owner = super::ai_owner_fingerprint(&state);
     let cancel_token = state
         .cancel_registry
         .register(&request_id, &cancel_owner)
@@ -176,7 +154,7 @@ pub(crate) async fn ai_generate_sql_impl_with_claim(
         request.tools = Some(db_tool_definitions());
         run_streaming_tool_loop_with_claim(
             provider,
-            state,
+            &state,
             on_chunk,
             &request_id,
             request,
@@ -213,46 +191,17 @@ pub(crate) async fn ai_generate_sql_impl_with_claim(
     result
 }
 
-#[tauri::command]
-pub async fn ai_generate_sql(
-    state: State<'_, AppState>,
-    window: WebviewWindow,
-    db_session_id: String,
-    database: String,
-    natural_language: String,
-    request_id: String,
-    current_table: Option<String>,
-    recent_queries: Option<Vec<String>>,
-    context_files: Option<Vec<String>>,
-    context_tables: Option<Vec<String>>,
-    target_claim: Option<datazen::ai::ownership::AiTargetClaim>,
-) -> Result<String, CommandError> {
-    ai_generate_sql_impl_with_claim(
-        &state,
-        window_stream_callback(&window),
-        target_claim,
-        db_session_id,
-        database,
-        natural_language,
-        request_id,
-        current_table,
-        recent_queries,
-        context_files,
-        context_tables,
-    )
-    .await
-}
-
 // ─── SQL Error Diagnosis ───
 
-pub(crate) async fn ai_diagnose_error_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn ai_diagnose_error(
+    state: State<'_, AppState>,
     db_session_id: String,
     database: String,
     sql: String,
     error_message: String,
 ) -> Result<DiagnosisResult, CommandError> {
-    let gate = resolve_safety_gate(state).await;
+    let gate = resolve_safety_gate(&state).await;
     let safe_sql = redact_for_gate(&sql, &gate);
     let safe_error_message = redact_for_gate(&error_message, &gate);
     tracing::info!(
@@ -278,7 +227,7 @@ pub(crate) async fn ai_diagnose_error_impl(
     let lang = resolve_language(&state).await;
 
     let (_session, lease) =
-        borrow_runtime_session(state, &db_session_id, "ai_diagnose_error").await?;
+        borrow_runtime_session(&state, &db_session_id, "ai_diagnose_error").await?;
     let driver_ref = lease
         .connection()
         .map_err(|error| CommandError::Internal(error.to_string()))?
@@ -300,26 +249,16 @@ pub(crate) async fn ai_diagnose_error_impl(
     .cmd_err("ai_diagnose_error")
 }
 
-#[tauri::command]
-pub async fn ai_diagnose_error(
-    state: State<'_, AppState>,
-    db_session_id: String,
-    database: String,
-    sql: String,
-    error_message: String,
-) -> Result<DiagnosisResult, CommandError> {
-    ai_diagnose_error_impl(&state, db_session_id, database, sql, error_message).await
-}
-
 // ─── EXPLAIN Analysis ───
 
-pub(crate) async fn ai_analyze_explain_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn ai_analyze_explain(
+    state: State<'_, AppState>,
     db_session_id: String,
     explain_output: String,
     original_sql: String,
 ) -> Result<ExplainAnalysis, CommandError> {
-    let gate = resolve_safety_gate(state).await;
+    let gate = resolve_safety_gate(&state).await;
     let safe_original_sql = redact_for_gate(&original_sql, &gate);
     let safe_explain_output = redact_for_gate(&explain_output, &gate);
     tracing::info!(
@@ -335,7 +274,7 @@ pub(crate) async fn ai_analyze_explain_impl(
     let (provider, ai_config) = resolve_ai(&state).await?;
 
     let (_session, lease) =
-        borrow_runtime_session(state, &db_session_id, "ai_analyze_explain").await?;
+        borrow_runtime_session(&state, &db_session_id, "ai_analyze_explain").await?;
     let driver = lease
         .connection()
         .map_err(|error| CommandError::Internal(error.to_string()))?
@@ -356,20 +295,11 @@ pub(crate) async fn ai_analyze_explain_impl(
     .cmd_err("ai_analyze_explain")
 }
 
-#[tauri::command]
-pub async fn ai_analyze_explain(
-    state: State<'_, AppState>,
-    db_session_id: String,
-    explain_output: String,
-    original_sql: String,
-) -> Result<ExplainAnalysis, CommandError> {
-    ai_analyze_explain_impl(&state, db_session_id, explain_output, original_sql).await
-}
-
 // ─── Smart Filter ───
 
-pub(crate) async fn ai_parse_filter_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn ai_parse_filter(
+    state: State<'_, AppState>,
     db_session_id: String,
     database: String,
     table: String,
@@ -382,11 +312,12 @@ pub(crate) async fn ai_parse_filter_impl(
         input_len = natural_language.len(),
         "ai_parse_filter: start"
     );
-    let gate = resolve_safety_gate(state).await;
+    let gate = resolve_safety_gate(&state).await;
     let natural_language = redact_for_gate(&natural_language, &gate);
     let (provider, ai_config) = resolve_ai(&state).await?;
 
-    let (session, lease) = borrow_runtime_session(state, &db_session_id, "ai_parse_filter").await?;
+    let (session, lease) =
+        borrow_runtime_session(&state, &db_session_id, "ai_parse_filter").await?;
     let connection = lease
         .connection()
         .map_err(|error| CommandError::Internal(error.to_string()))?;
@@ -422,20 +353,11 @@ pub(crate) async fn ai_parse_filter_impl(
     .cmd_err("ai_parse_filter")
 }
 
-#[tauri::command]
-pub async fn ai_parse_filter(
-    state: State<'_, AppState>,
-    db_session_id: String,
-    database: String,
-    table: String,
-    natural_language: String,
-) -> Result<Vec<datazen::services::query_executor::FilterCondition>, CommandError> {
-    ai_parse_filter_impl(&state, db_session_id, database, table, natural_language).await
-}
 // ─── Phase 8: Schema documentation ───
 
-pub(crate) async fn ai_generate_schema_doc_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn ai_generate_schema_doc(
+    state: State<'_, AppState>,
     db_session_id: String,
     database: String,
 ) -> Result<String, CommandError> {
@@ -444,7 +366,7 @@ pub(crate) async fn ai_generate_schema_doc_impl(
     let lang = resolve_language(&state).await;
 
     let (_session, lease) =
-        borrow_runtime_session(state, &db_session_id, "ai_generate_schema_doc").await?;
+        borrow_runtime_session(&state, &db_session_id, "ai_generate_schema_doc").await?;
     let driver = lease
         .connection()
         .map_err(|error| CommandError::Internal(error.to_string()))?
@@ -464,15 +386,6 @@ pub(crate) async fn ai_generate_schema_doc_impl(
     .cmd_err("ai_generate_schema_doc")
 }
 
-#[tauri::command]
-pub async fn ai_generate_schema_doc(
-    state: State<'_, AppState>,
-    db_session_id: String,
-    database: String,
-) -> Result<String, CommandError> {
-    ai_generate_schema_doc_impl(&state, db_session_id, database).await
-}
-
 // ─── Phase 8: Connection diagnostics ───
 
 #[tauri::command]
@@ -481,15 +394,7 @@ pub async fn ai_diagnose_connection(
     connection_id: String,
     error_message: String,
 ) -> Result<ConnectionDiagnosis, CommandError> {
-    ai_diagnose_connection_impl(&state, connection_id, error_message).await
-}
-
-pub(crate) async fn ai_diagnose_connection_impl(
-    state: &AppState,
-    connection_id: String,
-    error_message: String,
-) -> Result<ConnectionDiagnosis, CommandError> {
-    let gate = resolve_safety_gate(state).await;
+    let gate = resolve_safety_gate(&state).await;
     let safe_error_message = redact_for_gate(&error_message, &gate);
     tracing::info!(%connection_id, error_len = error_message.len(), "ai_diagnose_connection: start");
     tracing::debug!(
@@ -535,19 +440,20 @@ pub(crate) async fn ai_diagnose_connection_impl(
 
 // ─── Phase 8: Query history analysis ───
 
-pub(crate) async fn ai_analyze_queries_impl(
-    state: &AppState,
+#[tauri::command]
+pub async fn ai_analyze_queries(
+    state: State<'_, AppState>,
     db_session_id: Option<String>,
 ) -> Result<QueryAnalysis, CommandError> {
     tracing::info!(db_session_id = ?db_session_id, "ai_analyze_queries: start");
-    let gate = resolve_safety_gate(state).await;
+    let gate = resolve_safety_gate(&state).await;
     let (provider, ai_config) = resolve_ai(&state).await?;
     let lang = resolve_language(&state).await;
 
     // The IPC parameter is the runtime dbSessionId; resolve the persisted
     // connection id that owns it so history is filtered by connection.
     let owner_connection_id = if let Some(ref cid) = db_session_id {
-        runtime_session(state, cid, "ai_analyze_queries")
+        runtime_session(&state, cid, "ai_analyze_queries")
             .await
             .ok()
             .map(|session| session.connection_id.as_str().to_owned())
@@ -556,7 +462,7 @@ pub(crate) async fn ai_analyze_queries_impl(
     };
     // D6 第一切片：读取经模块服务（同一 `HistoryDb`）；未注入是装配错误，
     // 向上抛 CommandError 而不是仍装成空历史。
-    let history = crate::platform::ipc::require_history_service(state)?
+    let history = crate::platform::ipc::require_history_service(&state)?
         .recent_query_history(200, owner_connection_id.as_deref(), None, None)
         .await;
     let filtered: Vec<_> = history.iter().collect();
@@ -582,12 +488,4 @@ pub(crate) async fn ai_analyze_queries_impl(
     )
     .await
     .cmd_err("ai_analyze_queries")
-}
-
-#[tauri::command]
-pub async fn ai_analyze_queries(
-    state: State<'_, AppState>,
-    db_session_id: Option<String>,
-) -> Result<QueryAnalysis, CommandError> {
-    ai_analyze_queries_impl(&state, db_session_id).await
 }

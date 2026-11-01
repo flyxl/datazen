@@ -500,4 +500,179 @@ mod tests {
             .collect();
         assert_eq!(order, vec!["c", "a", "b"]);
     }
+
+    /// 全量密钥面：数据库密码、SSH 密码/口令、跳板密码、代理密码/头、
+    /// WebSocket 令牌/头——展示投影一个都不能漏（断言集与桌面命令层的
+    /// C4 烟测逐字同源，深度钉在本层）。
+    #[test]
+    fn redact_secrets_strips_every_nested_secret_surface() {
+        use datazen_driver_api::{HttpProxyTunnelConfig, WebSocketTunnelConfig};
+        let mut config = sample("c1", Some("db-password-marker"));
+        config.ssh_tunnel = Some(SshTunnelConfig {
+            enabled: true,
+            host: "ssh.example.com".into(),
+            port: 22,
+            username: "ssh-user".into(),
+            auth_method: "password".into(),
+            password: Some("ssh-password-marker".into()),
+            private_key_path: None,
+            passphrase: Some("ssh-passphrase-marker".into()),
+            jump: Some(Box::new(SshTunnelConfig {
+                enabled: true,
+                host: "jump.example.com".into(),
+                port: 22,
+                username: "jump-user".into(),
+                auth_method: "password".into(),
+                password: Some("jump-password-marker".into()),
+                private_key_path: None,
+                passphrase: None,
+                jump: None,
+            })),
+        });
+        config.http_proxy_tunnel = Some(HttpProxyTunnelConfig {
+            enabled: true,
+            host: "proxy.example.com".into(),
+            port: 8080,
+            scheme: "https".into(),
+            username: Some("proxy-user".into()),
+            password: Some("proxy-password-marker".into()),
+            headers: Some([("Authorization".into(), "proxy-header-marker".into())].into()),
+            connect_timeout_secs: 30,
+        });
+        config.websocket_tunnel = Some(WebSocketTunnelConfig {
+            enabled: true,
+            url: "wss://relay.example.com/tunnel".into(),
+            auth_token: Some("ws-token-marker".into()),
+            headers: Some([("Authorization".into(), "ws-header-marker".into())].into()),
+            connect_timeout_secs: 30,
+            ping_interval_secs: 30,
+            mode: "datazen_v1".into(),
+        });
+
+        redact_secrets(&mut config);
+        assert_eq!(config.password, None);
+        let ssh = config.ssh_tunnel.as_ref().unwrap();
+        assert_eq!(ssh.password, None);
+        assert_eq!(ssh.passphrase, None);
+        assert_eq!(ssh.jump.as_ref().unwrap().password, None);
+        let proxy = config.http_proxy_tunnel.as_ref().unwrap();
+        assert_eq!(proxy.password, None);
+        assert_eq!(proxy.headers, None);
+        let websocket = config.websocket_tunnel.as_ref().unwrap();
+        assert_eq!(websocket.auth_token, None);
+        assert_eq!(websocket.headers, None);
+    }
+
+    /// 表单回显（密钥全空）合并回已存档案：同一批嵌套密钥面逐字段恢复。
+    #[test]
+    fn merge_missing_secrets_restores_every_nested_secret_surface() {
+        use datazen_driver_api::{HttpProxyTunnelConfig, WebSocketTunnelConfig};
+        let mut saved = sample("c1", Some("db-password-marker"));
+        saved.ssh_tunnel = Some(SshTunnelConfig {
+            enabled: true,
+            host: "ssh.example.com".into(),
+            port: 22,
+            username: "ssh-user".into(),
+            auth_method: "password".into(),
+            password: Some("ssh-password-marker".into()),
+            private_key_path: None,
+            passphrase: Some("ssh-passphrase-marker".into()),
+            jump: Some(Box::new(SshTunnelConfig {
+                enabled: true,
+                host: "jump.example.com".into(),
+                port: 22,
+                username: "jump-user".into(),
+                auth_method: "password".into(),
+                password: Some("jump-password-marker".into()),
+                private_key_path: None,
+                passphrase: None,
+                jump: None,
+            })),
+        });
+        saved.http_proxy_tunnel = Some(HttpProxyTunnelConfig {
+            enabled: true,
+            host: "proxy.example.com".into(),
+            port: 8080,
+            scheme: "https".into(),
+            username: Some("proxy-user".into()),
+            password: Some("proxy-password-marker".into()),
+            headers: Some([("Authorization".into(), "proxy-header-marker".into())].into()),
+            connect_timeout_secs: 30,
+        });
+        saved.websocket_tunnel = Some(WebSocketTunnelConfig {
+            enabled: true,
+            url: "wss://relay.example.com/tunnel".into(),
+            auth_token: Some("ws-token-marker".into()),
+            headers: Some([("Authorization".into(), "ws-header-marker".into())].into()),
+            connect_timeout_secs: 30,
+            ping_interval_secs: 30,
+            mode: "datazen_v1".into(),
+        });
+
+        // 表单回显：结构保留、密钥字段全空。
+        let mut echoed = saved.clone();
+        echoed.password = None;
+        echoed.ssh_tunnel.as_mut().unwrap().password = None;
+        echoed.ssh_tunnel.as_mut().unwrap().passphrase = None;
+        echoed
+            .ssh_tunnel
+            .as_mut()
+            .unwrap()
+            .jump
+            .as_mut()
+            .unwrap()
+            .password = None;
+        echoed.http_proxy_tunnel.as_mut().unwrap().password = None;
+        echoed.http_proxy_tunnel.as_mut().unwrap().headers = None;
+        echoed.websocket_tunnel.as_mut().unwrap().auth_token = None;
+        echoed.websocket_tunnel.as_mut().unwrap().headers = None;
+
+        merge_missing_secrets(&mut echoed, saved);
+        assert_eq!(echoed.password.as_deref(), Some("db-password-marker"));
+        let ssh = echoed.ssh_tunnel.as_ref().unwrap();
+        assert_eq!(ssh.password.as_deref(), Some("ssh-password-marker"));
+        assert_eq!(ssh.passphrase.as_deref(), Some("ssh-passphrase-marker"));
+        assert_eq!(
+            ssh.jump.as_ref().unwrap().password.as_deref(),
+            Some("jump-password-marker")
+        );
+        assert_eq!(
+            echoed
+                .http_proxy_tunnel
+                .as_ref()
+                .unwrap()
+                .password
+                .as_deref(),
+            Some("proxy-password-marker")
+        );
+        assert_eq!(
+            echoed
+                .http_proxy_tunnel
+                .as_ref()
+                .unwrap()
+                .headers
+                .as_ref()
+                .and_then(|headers| headers.get("Authorization")),
+            Some(&"proxy-header-marker".to_string())
+        );
+        assert_eq!(
+            echoed
+                .websocket_tunnel
+                .as_ref()
+                .unwrap()
+                .auth_token
+                .as_deref(),
+            Some("ws-token-marker")
+        );
+        assert_eq!(
+            echoed
+                .websocket_tunnel
+                .as_ref()
+                .unwrap()
+                .headers
+                .as_ref()
+                .and_then(|headers| headers.get("Authorization")),
+            Some(&"ws-header-marker".to_string())
+        );
+    }
 }

@@ -350,6 +350,13 @@ fn build_import_preview_json(parsed: &ParsedImport) -> serde_json::Value {
     })
 }
 
+/// 域内共享装配入口（非 1:1 转发，调用方清单）：多条导入命令共用同一段
+/// 「落库 + 分组 + 结果回执」装配——
+/// - `import_connections_from_app`（剪贴板/应用来源）；
+/// - `import_connections_at_path` / `import_connections_with_dialog`（经
+///   域内私有助手 `import_connections_from_path`，文件来源）。
+/// - 测试：`ipc_tests.rs` 的合并往返钉子（C1 线格式）。
+/// 按 data_transfer admission 拆分同款裁决保留：多调用方共享 API，不是转发层。
 pub(crate) async fn apply_connection_import_impl(
     state: &AppState,
     incoming: Vec<ConnectionConfig>,

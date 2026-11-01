@@ -4,6 +4,16 @@
 //! stay pure and synchronous: same-backend admission, prepare/apply payload
 //! separation (checked against the runtime plan projector, not against a copy of
 //! its rules), and the one-shot plan lifecycle in the plan store.
+//!
+//! Layer verdict (B1 triage, 2026-10-31): every contract above is pinned against
+//! desktop-crate code in `job_api` itself (payload builders, `scope`, `admission`,
+//! `plan_digest`, `availability_of`, `endpoint_refs`, artifact/expiry/key helpers,
+//! `prepare_data_transfer_job_impl`), so these follow the future data_transfer
+//! domain knife rather than relocating — except
+//! `the_desktop_scope_is_the_only_organization_the_plan_registry_sees`, a C2
+//! host-assembly nail that stays permanently (it pins the scope the desktop host
+//! derives, `LOCAL_ORGANIZATION_ID`, against the store's CM-05 isolation; the
+//! store-side isolation rules are tested beside the store in modules).
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -49,7 +59,9 @@ fn plan_scope() -> &'static datazen::shared::scope::OrganizationScope {
 }
 
 /// A stand-in endpoint identity, so wiring facts can be asserted without a live
-/// connection. Real identities are produced by `super::endpoint_identity::identify`.
+/// connection. Real identities are produced by
+/// `datazen::services::migration_endpoint::identify` (their contract tests live
+/// in `modules/tests/job_endpoint_identity.rs`, relocated 2026-10-31).
 fn identity(connection_id: &str, service_key: &str) -> EndpointIdentity {
     EndpointIdentity {
         connection_id: ConnectionId::new(connection_id),
@@ -894,7 +906,6 @@ async fn two_concurrent_apply_jobs_share_exactly_one_plan_claim() {
 }
 
 mod addressability;
-mod endpoint_identity;
 mod job_lifecycle;
 mod queries;
 mod replay;

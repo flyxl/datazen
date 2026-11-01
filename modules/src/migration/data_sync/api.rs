@@ -20,7 +20,7 @@ use super::{
     generate_table_sql_with_qualified_table_and_policy, types_eq::types_equivalent,
     ChangeOperation, ConflictPolicy, DataSyncError, IdentityInsertTarget, LargeValueMode,
     MatchingStrategy, RowChange, SqlStatement, SyncOptions, SyncSourceFilter, TableChangeSet,
-    TableMapping, TableResult,
+    TableMapping, TableMappingStatus, TableResult,
 };
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -629,6 +629,157 @@ fn count_value_as_u64(value: &Value) -> Option<u64> {
         Value::String(s) => s.parse().ok(),
         _ => None,
     }
+}
+
+// --------------------------------------------- 检视/预检装配（B2 sync 域刀下沉）
+
+/// Refuse an apply whose side no longer sits on the planned database.
+///
+/// B2 sync 域刀自桌面 `commands/sync/exec.rs` 下沉（原
+/// `validate_active_database`，`pub(super)`）：活动库必须能与比较时冻结的
+/// 库**确认一致**（空/空白视作无法确认），错误文案逐字节不变，经宿主
+/// `From<DataSyncError>` 映射仍落 `CommandError::Validation`。
+pub fn validate_active_database(
+    active_database: Option<&str>,
+    planned_database: &str,
+    side: &str,
+) -> Result<(), DataSyncError> {
+    let active = active_database
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let planned = planned_database.trim();
+    if planned.is_empty() || active != Some(planned) {
+        return Err(DataSyncError::validation(format!(
+            "{side} session active database changed or cannot be confirmed; return to comparison"
+        )));
+    }
+    Ok(())
+}
+
+/// Attach the inspect gates' final metadata to the classified rows.
+///
+/// B2 sync 域刀自桌面 `commands/sync/inspect.rs` 下沉：`classify_tables` 之后的
+/// 两步收尾——①把 SQL Server 结构预检失败原因补到 `Incompatible` 行（只允许
+/// 出现固定文案，不回显驱动诊断），②给 `Matched` 行补上源表投影
+/// （列名/列型/主键）与结构化 `source_filter`。两步都是纯数据投影，Web 宿主
+/// 复用同一份。
+pub fn finalize_inspect_results(
+    results: Vec<TableResult>,
+    mappings: &[TableMapping],
+    source_schemas: &HashMap<String, TableSchema>,
+    source_schema_errors: &HashMap<String, String>,
+    target_schema_errors: &HashMap<String, String>,
+) -> Vec<TableResult> {
+    let mut results = results;
+    for result in &mut results {
+        if result.status == TableMappingStatus::Incompatible {
+            let source_error = source_schema_errors.get(&result.source_table);
+            let target_error = target_schema_errors.get(&result.target_table);
+            match (source_error, target_error) {
+                (Some(source), Some(target)) => {
+                    result.incompatible_reason = Some(format!(
+                        "SQL Server schema preflight failed; source: {source}; target: {target}"
+                    ));
+                }
+                (Some(error), None) => {
+                    result.incompatible_reason = Some(format!(
+                        "SQL Server source schema preflight failed: {error}"
+                    ));
+                }
+                (None, Some(error)) => {
+                    result.incompatible_reason = Some(format!(
+                        "SQL Server target schema preflight failed: {error}"
+                    ));
+                }
+                (None, None) => {}
+            }
+        }
+        if result.status != TableMappingStatus::Matched {
+            continue;
+        }
+        if let Some(schema) = source_schemas.get(&result.source_table) {
+            result.columns = schema
+                .columns
+                .iter()
+                .map(|column| column.name.clone())
+                .collect();
+            result.column_types = schema
+                .columns
+                .iter()
+                .map(|column| column.data_type.clone())
+                .collect();
+            result.primary_keys = schema.effective_primary_keys();
+        }
+        result.source_filter = mappings
+            .iter()
+            .find(|mapping| mapping.source_table == result.source_table)
+            .and_then(|mapping| mapping.source_filter.clone());
+    }
+    results
+}
+
+/// The stale-table report of the revalidate command (`ok` / `staleTables`).
+///
+/// B2 sync 域刀自桌面 `commands/sync/apply.rs` 下沉（原
+/// `revalidate_data_sync_impl` 的投影段）：空选集视作「全表复核」，非
+/// `Matched` 行进入 `staleTables`（`sourceTable`/`targetTable`/`status`/
+/// `reason`）。载荷键是 IPC 契约，Web 宿主复用同一份。
+pub fn revalidation_report(tables: Vec<String>, inspected: Vec<TableResult>) -> serde_json::Value {
+    let wanted: std::collections::HashSet<String> = tables.into_iter().collect();
+    let mut stale = Vec::new();
+    for row in inspected {
+        if !wanted.is_empty()
+            && !wanted.contains(&row.source_table)
+            && !wanted.contains(&row.target_table)
+        {
+            continue;
+        }
+        if row.status != TableMappingStatus::Matched {
+            stale.push(serde_json::json!({
+                "sourceTable": row.source_table,
+                "targetTable": row.target_table,
+                "status": row.status,
+                "reason": row.incompatible_reason,
+            }));
+        }
+    }
+    serde_json::json!({
+        "ok": stale.is_empty(),
+        "staleTables": stale,
+    })
+}
+
+/// The serialized SQL-preview IPC response is one JSON array, so it is rejected
+/// as soon as its size would exceed the documented cap.
+///
+/// B2 sync 域刀自桌面 `commands/sync/exec.rs` 下沉：执行路径消费逐页生成的
+/// 语句、从不累积这个预览向量；这里只钉「数组括号 + 逐语句字节数 + 分隔
+/// 逗号」的保守估算与 16 MiB 上限，超限文案逐字节不变。
+pub const SQL_PREVIEW_IPC_MAX_BYTES: usize = 16 * 1024 * 1024;
+
+/// Accumulate one preview statement under the [`SQL_PREVIEW_IPC_MAX_BYTES`]
+/// budget; `response_bytes` carries the running serialized-array size.
+pub fn append_bounded_preview_statement(
+    statements: &mut Vec<SqlStatement>,
+    response_bytes: &mut usize,
+    statement: SqlStatement,
+) -> Result<(), DataSyncError> {
+    let statement_bytes = serde_json::to_vec(&statement)
+        .map_err(|error| DataSyncError::validation(error.to_string()))?
+        .len();
+    let separator_bytes = usize::from(!statements.is_empty());
+    let next_size = response_bytes
+        .saturating_add(separator_bytes)
+        .saturating_add(statement_bytes);
+    if next_size > SQL_PREVIEW_IPC_MAX_BYTES {
+        return Err(DataSyncError::validation(format!(
+            "Data Sync SQL preview exceeds the {} MiB IPC limit; select fewer rows or operations",
+            SQL_PREVIEW_IPC_MAX_BYTES / (1024 * 1024)
+        )));
+    }
+    *response_bytes = next_size;
+    statements.push(statement);
+    Ok(())
 }
 
 #[cfg(test)]

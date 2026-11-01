@@ -276,3 +276,7 @@ pub fn validate_filter_endpoints(
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "filter_validation_tests.rs"]
+mod tests;

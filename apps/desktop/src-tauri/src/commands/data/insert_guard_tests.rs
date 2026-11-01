@@ -7,6 +7,7 @@
 //! the repository's 800-line ceiling.
 
 use super::*;
+use super::data_command_test_host::host_command_app;
 use crate::testing::app_state::{rich_mock_options, TestAppState};
 use crate::testing::mock_driver::MockDriverOptions;
 use datazen_driver_api::ColumnSchema;
@@ -101,9 +102,10 @@ async fn composite_identity_missing_a_key_column_is_rejected() {
     ]))
     .await;
     let (_, conn_id) = test.save_and_connect("w3-partial").await;
+    let app = host_command_app(test);
 
-    let error = preview_pending_changes_impl(
-        &test.state,
+    let error = preview_pending_changes(
+        app.state(),
         context("w3-partial", &conn_id, "orders"),
         vec![update(&[("tenant_id", 7)], "amount", "9.99")],
     )
@@ -120,7 +122,7 @@ async fn composite_identity_missing_a_key_column_is_rejected() {
         message.contains("tenant_id, order_no"),
         "the refusal must print the real primary key: {message}"
     );
-    assert_eq!(test.mock.get_columns_calls(), 1);
+    assert_eq!(app.keep.mock.get_columns_calls(), 1);
 }
 
 #[tokio::test]
@@ -133,9 +135,10 @@ async fn composite_identity_with_an_extra_column_is_rejected() {
     ]))
     .await;
     let (_, conn_id) = test.save_and_connect("w3-extra").await;
+    let app = host_command_app(test);
 
-    let error = preview_pending_changes_impl(
-        &test.state,
+    let error = preview_pending_changes(
+        app.state(),
         context("w3-extra", &conn_id, "orders"),
         vec![update(
             &[("tenant_id", 7), ("order_no", 3), ("id", 11)],
@@ -163,9 +166,10 @@ async fn composite_identity_with_the_full_key_is_accepted() {
     ]))
     .await;
     let (_, conn_id) = test.save_and_connect("w3-full").await;
+    let app = host_command_app(test);
 
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let plan = preview_pending_changes(
+        app.state(),
         context("w3-full", &conn_id, "orders"),
         vec![update(
             &[("tenant_id", 7), ("order_no", 3)],
@@ -191,9 +195,10 @@ async fn single_primary_key_table_still_accepts_its_key() {
     options.parameterized_writes = true;
     let test = TestAppState::with_resource_provider(options).await;
     let (_, conn_id) = test.save_and_connect("w3-single").await;
+    let app = host_command_app(test);
 
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let plan = preview_pending_changes(
+        app.state(),
         context("w3-single", &conn_id, "users"),
         vec![update(&[("id", 1)], "name", "Ada")],
     )
@@ -213,9 +218,10 @@ async fn unavailable_schema_rejects_instead_of_skipping_the_guard() {
         .insert("orders".into(), "permission denied for table orders".into());
     let test = TestAppState::with_resource_provider(options).await;
     let (_, conn_id) = test.save_and_connect("w3-unavailable").await;
+    let app = host_command_app(test);
 
-    let error = preview_pending_changes_impl(
-        &test.state,
+    let error = preview_pending_changes(
+        app.state(),
         context("w3-unavailable", &conn_id, "orders"),
         vec![update(&[("id", 1)], "name", "Ada")],
     )
@@ -245,9 +251,10 @@ async fn insert_writing_an_unknown_column_is_rejected_by_name() {
     options.parameterized_writes = true;
     let test = TestAppState::with_resource_provider(options).await;
     let (_, conn_id) = test.save_and_connect("v2-unknown").await;
+    let app = host_command_app(test);
 
-    let error = preview_pending_changes_impl(
-        &test.state,
+    let error = preview_pending_changes(
+        app.state(),
         context("v2-unknown", &conn_id, "users"),
         vec![new_row(&[("nmae", Some(Value::String("Ada".into())))])],
     )
@@ -269,9 +276,10 @@ async fn insert_writing_a_known_nullable_column_is_accepted() {
     options.parameterized_writes = true;
     let test = TestAppState::with_resource_provider(options).await;
     let (_, conn_id) = test.save_and_connect("v2-known").await;
+    let app = host_command_app(test);
 
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let plan = preview_pending_changes(
+        app.state(),
         context("v2-known", &conn_id, "users"),
         vec![new_row(&[
             ("name", Some(Value::String("Ada".into()))),
@@ -296,14 +304,15 @@ async fn insert_row_carrying_an_identity_is_rejected() {
     options.parameterized_writes = true;
     let test = TestAppState::with_resource_provider(options).await;
     let (_, conn_id) = test.save_and_connect("d2-identity").await;
+    let app = host_command_app(test);
 
     let mut change = new_row(&[("name", Some(Value::String("Ada".into())))]);
     change
         .row_identity
         .insert("id".into(), Some(Value::Integer(1)));
 
-    let error = preview_pending_changes_impl(
-        &test.state,
+    let error = preview_pending_changes(
+        app.state(),
         context("d2-identity", &conn_id, "users"),
         vec![change],
     )
@@ -325,14 +334,15 @@ async fn insert_row_carrying_original_values_is_rejected() {
     options.parameterized_writes = true;
     let test = TestAppState::with_resource_provider(options).await;
     let (_, conn_id) = test.save_and_connect("d2-original").await;
+    let app = host_command_app(test);
 
     let mut change = new_row(&[("name", Some(Value::String("Ada".into())))]);
     change
         .original_values
         .insert("name".into(), Some(Value::String("Grace".into())));
 
-    let error = preview_pending_changes_impl(
-        &test.state,
+    let error = preview_pending_changes(
+        app.state(),
         context("d2-original", &conn_id, "users"),
         vec![change],
     )
@@ -352,9 +362,10 @@ async fn insert_row_with_empty_existing_row_state_is_accepted() {
     options.parameterized_writes = true;
     let test = TestAppState::with_resource_provider(options).await;
     let (_, conn_id) = test.save_and_connect("d2-empty").await;
+    let app = host_command_app(test);
 
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let plan = preview_pending_changes(
+        app.state(),
         context("d2-empty", &conn_id, "users"),
         vec![new_row(&[("name", Some(Value::String("Ada".into())))])],
     )
@@ -377,9 +388,10 @@ async fn insert_without_returning_seam_warns_that_the_page_will_refresh() {
     options.parameterized_writes = true;
     let test = TestAppState::with_resource_provider(options).await;
     let (_, conn_id) = test.save_and_connect("d4-none").await;
+    let app = host_command_app(test);
 
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let plan = preview_pending_changes(
+        app.state(),
         context("d4-none", &conn_id, "users"),
         vec![new_row(&[("name", Some(Value::String("Ada".into())))])],
     )
@@ -407,9 +419,10 @@ async fn insert_with_returning_seam_has_no_degradation_warning() {
     options.insert_returning_clause = Some("RETURNING id".into());
     let test = TestAppState::with_resource_provider(options).await;
     let (_, conn_id) = test.save_and_connect("d4-returning").await;
+    let app = host_command_app(test);
 
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let plan = preview_pending_changes(
+        app.state(),
         context("d4-returning", &conn_id, "users"),
         vec![new_row(&[("name", Some(Value::String("Ada".into())))])],
     )
@@ -430,9 +443,10 @@ async fn plan_without_inserts_has_no_returning_warning() {
     options.parameterized_writes = true;
     let test = TestAppState::with_resource_provider(options).await;
     let (_, conn_id) = test.save_and_connect("d4-update-only").await;
+    let app = host_command_app(test);
 
-    let plan = preview_pending_changes_impl(
-        &test.state,
+    let plan = preview_pending_changes(
+        app.state(),
         context("d4-update-only", &conn_id, "users"),
         vec![update(&[("id", 1)], "name", "Ada")],
     )
@@ -465,12 +479,13 @@ async fn a_context_without_a_database_is_refused_before_any_catalog_read() {
     options.parameterized_writes = true;
     let test = TestAppState::with_resource_provider(options).await;
     let (_, conn_id) = test.save_and_connect("w3-no-database").await;
+    let app = host_command_app(test);
 
     let mut target = context("w3-no-database", &conn_id, "users");
     target.database = None;
 
-    let error = preview_pending_changes_impl(
-        &test.state,
+    let error = preview_pending_changes(
+        app.state(),
         target,
         vec![update(&[("id", 1)], "name", "Ada")],
     )
@@ -488,7 +503,7 @@ async fn a_context_without_a_database_is_refused_before_any_catalog_read() {
         "got: {message}"
     );
     assert_eq!(
-        test.mock.get_columns_calls(),
+        app.keep.mock.get_columns_calls(),
         0,
         "no catalog read may be attempted without a database"
     );
@@ -506,9 +521,10 @@ async fn an_empty_catalog_answer_is_refused_instead_of_skipping_the_guard() {
         .insert("app".into(), std::collections::HashMap::new());
     let test = TestAppState::with_resource_provider(options).await;
     let (_, conn_id) = test.save_and_connect("w3-empty-columns").await;
+    let app = host_command_app(test);
 
-    let error = preview_pending_changes_impl(
-        &test.state,
+    let error = preview_pending_changes(
+        app.state(),
         context("w3-empty-columns", &conn_id, "users"),
         vec![update(&[("id", 1)], "name", "Ada")],
     )

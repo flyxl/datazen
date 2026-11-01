@@ -26,7 +26,8 @@
 //!   的模块文档记录了完整顺序。
 //! - `/api/v1` 域路由：按契约表随 WR-D2/D4/D5 逐域点亮；D1 骨架对未点亮
 //!   路径统一回答 501 `capabilityUnsupported`（契约 §7 的映射裁决）。
-//! - 迁移：`migrate` / `check-schema` 子命令是 WR-D2 的交付物。
+//! - 迁移：`migrate` / `check-schema` 已随 WR-D2 第一切片落地（真实 expand
+//!   迁移执行器 + 只读版本报告；落后退出码 3、超前退出码 4）。
 //! - TLS 与 `:8443` 生产监听、UI origin 校验：随 WR-D3 的同源 HTTPS 落地；
 //!   D1 默认只在回环地址监听明文。
 
@@ -35,3 +36,4 @@ pub mod config;
 pub mod error;
 pub mod http;
 pub mod logging;
+pub mod storage;

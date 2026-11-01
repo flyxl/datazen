@@ -5,15 +5,19 @@
 //! terminates. The legacy comparison store is rebuilt *from* the Artifact —
 //! never from client rows — so preview, paging and selection validation keep
 //! one contract (§5.1).
+//!
+//! B2 sync 域刀（commands-layer-review §3.5）自桌面
+//! `commands/sync/artifact_view.rs` 整体下沉：纯数据投影，只依赖 data_sync
+//! 自身类型，桌面宿主与未来的 Web 宿主共用同一份。
 
-use crate::data_sync::job::artifact::{ChangeBlock, ChangeSetArtifact, TableMeta};
-use crate::data_sync::{ComparisonResult, RowChange, TableResult};
+use super::job::artifact::{ChangeBlock, ChangeSetArtifact, TableMeta};
+use super::{ComparisonResult, RowChange, TableResult};
 
 /// Rebuild the server-owned comparison from the frozen blocks.
 ///
 /// `blocks` is the only row source; `table_meta` carries the per-table
 /// columns/PK baseline that the review panel and the statement generator need.
-pub(crate) fn comparison_from_artifact(artifact: &ChangeSetArtifact) -> ComparisonResult {
+pub fn comparison_from_artifact(artifact: &ChangeSetArtifact) -> ComparisonResult {
     let mut tables = Vec::with_capacity(artifact.table_meta.len());
     for meta in &artifact.table_meta {
         let source_table = source_table_of(artifact, meta);

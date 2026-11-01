@@ -1,12 +1,20 @@
 //! Live driver-backed keyset page source for Data Sync compare.
+//!
+//! B2 sync 域刀（commands-layer-review §3.5）自桌面
+//! `commands/sync/keyset_source.rs` 整体下沉：本文件只依赖 `datazen_driver_api`
+//! 与 data_sync 自身类型（分页子句/占位符经 `SqlDialect` 契约由
+//! `LegacySqlDialect` 逐条转发），桌面宿主与未来的 Web 宿主共用同一份。
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use datazen_driver_api::{SyncKeyContract, SyncKeyValue, SyncSourceAdapter, Value};
+use datazen_driver_api::SyncKeyContract;
+use datazen_driver_api::SyncKeyValue;
+use datazen_driver_api::SyncSourceAdapter;
+use datazen_driver_api::Value;
 
-use crate::data_sync::{
+use super::{
     build_keyset_select_sql_with_order_filter_and_pagination, keyset_seek_parameter_count,
     quote_ident_sql, DataSyncError, Row, RowPageSource, SyncSourceFilter,
 };

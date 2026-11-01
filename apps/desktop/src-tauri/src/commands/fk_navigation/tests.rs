@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use datazen_driver_api::{ColumnSchema, ForeignKeyInfo, IndexInfo, TableSchema, Value};
 
 use super::*;
+use super::command_test_host::host_command_app;
 use crate::testing::app_state::TestAppState;
 use crate::testing::mock_driver::MockDriverOptions;
 
@@ -63,9 +64,9 @@ fn request(
 
 #[tokio::test]
 async fn resolve_foreign_key_targets_requires_a_db_session_id() {
-    let test = TestAppState::new().await;
-    let error = resolve_foreign_key_targets_impl(
-        &test.state,
+    let app = host_command_app(TestAppState::new().await);
+    let error = resolve_foreign_key_targets(
+        app.state(),
         request("", &["customer_id"], vec![Value::Integer(7)]),
     )
     .await
@@ -79,10 +80,10 @@ async fn resolve_foreign_key_targets_requires_a_db_session_id() {
 
 #[tokio::test]
 async fn resolve_foreign_key_targets_maps_shape_mismatch_to_the_grid_prefix() {
-    let test = TestAppState::new().await;
+    let app = host_command_app(TestAppState::new().await);
 
-    let error = resolve_foreign_key_targets_impl(
-        &test.state,
+    let error = resolve_foreign_key_targets(
+        app.state(),
         request(
             "session-1",
             &["customer_id"],
@@ -100,10 +101,10 @@ async fn resolve_foreign_key_targets_maps_shape_mismatch_to_the_grid_prefix() {
 
 #[tokio::test]
 async fn resolve_foreign_key_targets_maps_value_null_to_the_grid_prefix() {
-    let test = TestAppState::new().await;
+    let app = host_command_app(TestAppState::new().await);
 
-    let error = resolve_foreign_key_targets_impl(
-        &test.state,
+    let error = resolve_foreign_key_targets(
+        app.state(),
         request("session-1", &["customer_id"], vec![Value::Null]),
     )
     .await
@@ -156,8 +157,9 @@ async fn resolve_foreign_key_targets_resolves_a_target_through_the_mock_driver()
     .await;
     let (_, db_session_id) = test.save_and_connect("fk-nav").await;
 
-    let resolution = resolve_foreign_key_targets_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let resolution = resolve_foreign_key_targets(
+        app.state(),
         request(&db_session_id, &["customer_id"], vec![Value::Integer(7)]),
     )
     .await

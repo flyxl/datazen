@@ -1,18 +1,19 @@
 //! PoC: pure-IPC spec migration — driver command discovery + execution.
 //!
 //! Replaces `e2e/specs/driver-commands.ts` (WebDriver → Tauri IPC indirection).
-//! Calls the same `*_impl` handlers the IPC layer uses, via `TestAppState` mock
-//! driver — no browser, no WebDriver, no beforeSuite overhead.
+//! Drives the REAL `#[tauri::command]` entries (B2 之后命令层没有 `_impl`
+//! 转发层——与 IPC 层同一入口), via `TestAppState` mock driver — no browser,
+//! no WebDriver, no beforeSuite overhead.
 //!
 //! Run:
 //! ```text
-//! CARGO_TARGET_DIR=target-e2e-ipc cargo test -p datazen \
+//! CARGO_TARGET_DIR=target-e2e-ipc cargo test -p datazen_desktop \
 //!   --features test-harness --test driver_command_ipc
 //! ```
 
 use datazen_desktop::test_harness::{
     connect, execute_driver_command, get_connection_commands, get_connections,
-    ExecuteDriverCommandRequest, TestAppState,
+    ExecuteDriverCommandRequest, HostedApp, TestAppState,
 };
 
 /// Mirrors E2E: get_connections → connect → get_connection_commands → query.
@@ -20,17 +21,18 @@ use datazen_desktop::test_harness::{
 async fn discovers_commands_from_connection_and_executes_query() {
     let test = TestAppState::new().await;
     test.save_connection("ipc-poc-discover").await;
+    let host = HostedApp::new(test);
 
-    let conns = get_connections(&test.state).await.unwrap();
+    let conns = get_connections(&host).await.unwrap();
     assert!(!conns.is_empty(), "expected at least one saved connection");
 
     let connection_id = conns[0].id.clone();
-    let db_session_id = connect(&test.state, connection_id)
+    let db_session_id = connect(&host, connection_id)
         .await
         .expect("connect should return a runtime dbSessionId")
         .db_session_id;
 
-    let definitions = get_connection_commands(&test.state, db_session_id.clone())
+    let definitions = get_connection_commands(&host, db_session_id.clone())
         .await
         .unwrap();
     assert!(
@@ -40,7 +42,7 @@ async fn discovers_commands_from_connection_and_executes_query() {
     );
 
     let result = execute_driver_command(
-        &test.state,
+        &host,
         ExecuteDriverCommandRequest {
             db_session_id: Some(db_session_id),
             driver_type: None,
@@ -63,9 +65,10 @@ async fn discovers_commands_from_connection_and_executes_query() {
 async fn rejects_unsupported_driver_command() {
     let test = TestAppState::new().await;
     let (_, db_session_id) = test.save_and_connect("ipc-poc-unknown-cmd").await;
+    let host = HostedApp::new(test);
 
     let err = execute_driver_command(
-        &test.state,
+        &host,
         ExecuteDriverCommandRequest {
             db_session_id: Some(db_session_id),
             driver_type: None,

@@ -348,3 +348,7 @@ pub fn find_first_balanced_json(s: &str) -> Option<&str> {
     }
     None
 }
+
+#[cfg(test)]
+#[path = "response_tests.rs"]
+mod tests;

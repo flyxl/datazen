@@ -557,3 +557,7 @@ pub async fn stream_sql_file_into_session(
     }
     session.finish(on_progress).await.map_err(Into::into)
 }
+
+#[cfg(test)]
+#[path = "options_tests.rs"]
+mod tests;

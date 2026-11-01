@@ -1,4 +1,12 @@
 //! Inspect Data Sync table mappings and hard gates (no row compare).
+//!
+//! B2 sync 域刀（commands-layer-review §3.5）：`inspect_data_sync_impl` 转发
+//! 名拆除，本文件是域内核心 [`run_inspect`]——命令入口、prepare 预检与
+//! revalidate 共用。分类之后的收尾投影（SQL Server 预检原因 + Matched 行
+//! 列投影/主键/结构化过滤）已下沉 `data_sync::api::finalize_inspect_results`；
+//! 留在宿主的是会话解析（`services::migration_endpoint`）与逐表 schema
+//! 读取（`metadata_schema` 梯子在 modules 的 schema 树，migration 树不反向
+//! 依赖，见域刀报告）。
 
 use std::collections::HashMap;
 
@@ -8,7 +16,9 @@ use crate::data_sync::api::{filter_tables_by_schema, is_self_sync, resolve_db_na
 use crate::data_sync::{classify_tables, require_data_sync_family, TableMapping, TableResult};
 use datazen::services::schema_scope::metadata_schema;
 
-pub(crate) async fn inspect_data_sync_impl(
+/// Inspect one pair of sessions: pairing gate → self-sync gate → per-table
+/// schema reads → classification → match-metadata enrichment.
+pub(crate) async fn run_inspect(
     state: &AppState,
     source_db_session_id: String,
     target_db_session_id: String,
@@ -139,7 +149,7 @@ pub(crate) async fn inspect_data_sync_impl(
         &src_config.database_type,
         &tgt_config.database_type,
     )?;
-    let mut results = classify_tables(
+    let results = classify_tables(
         &family,
         &src_tables,
         &tgt_tables,
@@ -147,49 +157,11 @@ pub(crate) async fn inspect_data_sync_impl(
         &source_schemas,
         &target_schemas,
     );
-    for result in &mut results {
-        if result.status == crate::data_sync::TableMappingStatus::Incompatible {
-            let source_error = source_schema_errors.get(&result.source_table);
-            let target_error = target_schema_errors.get(&result.target_table);
-            match (source_error, target_error) {
-                (Some(source), Some(target)) => {
-                    result.incompatible_reason = Some(format!(
-                        "SQL Server schema preflight failed; source: {source}; target: {target}"
-                    ));
-                }
-                (Some(error), None) => {
-                    result.incompatible_reason = Some(format!(
-                        "SQL Server source schema preflight failed: {error}"
-                    ));
-                }
-                (None, Some(error)) => {
-                    result.incompatible_reason = Some(format!(
-                        "SQL Server target schema preflight failed: {error}"
-                    ));
-                }
-                (None, None) => {}
-            }
-        }
-        if result.status != crate::data_sync::TableMappingStatus::Matched {
-            continue;
-        }
-        if let Some(schema) = source_schemas.get(&result.source_table) {
-            result.columns = schema
-                .columns
-                .iter()
-                .map(|column| column.name.clone())
-                .collect();
-            result.column_types = schema
-                .columns
-                .iter()
-                .map(|column| column.data_type.clone())
-                .collect();
-            result.primary_keys = schema.effective_primary_keys();
-        }
-        result.source_filter = mappings
-            .iter()
-            .find(|mapping| mapping.source_table == result.source_table)
-            .and_then(|mapping| mapping.source_filter.clone());
-    }
-    Ok(results)
+    Ok(crate::data_sync::api::finalize_inspect_results(
+        results,
+        mappings,
+        &source_schemas,
+        &source_schema_errors,
+        &target_schema_errors,
+    ))
 }

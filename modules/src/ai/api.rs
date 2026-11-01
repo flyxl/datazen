@@ -478,4 +478,25 @@ mod tests {
             .unwrap();
         assert_eq!(*store.calls.lock().unwrap(), vec!["set", "get"]);
     }
+
+    /// 2026-10-31 自桌面 `commands/ai/tests.rs` 归位：`ProviderListItem`
+    /// 的 camelCase 线格式是本模块的契约，不是宿主绑定。
+    #[test]
+    fn provider_list_item_serializes_camel_case() {
+        let item = ProviderListItem {
+            provider_type: AiProviderType::OpenAi,
+            display_name: "OpenAI".into(),
+            supports_streaming: true,
+            supports_tools: true,
+            default_endpoint: "https://api.openai.com/v1".into(),
+            default_protocol: "open_ai_compatible".into(),
+        };
+
+        let json = serde_json::to_string(&item).unwrap();
+        assert!(json.contains("\"providerType\":\"open_ai\""));
+        assert!(json.contains("\"displayName\":\"OpenAI\""));
+        assert!(json.contains("\"supportsStreaming\":true"));
+        assert!(json.contains("\"defaultEndpoint\":"));
+        assert!(json.contains("\"defaultProtocol\":"));
+    }
 }
