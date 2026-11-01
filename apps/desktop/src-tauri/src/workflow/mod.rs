@@ -10,6 +10,7 @@
 
 pub mod command_runtime;
 pub mod history;
+pub mod schedule_grant;
 
 // These modules own the workflow registry and the desktop scheduling adapter.
 pub mod registry;
