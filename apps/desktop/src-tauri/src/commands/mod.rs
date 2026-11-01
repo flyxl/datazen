@@ -5,7 +5,7 @@ mod app_archive;
 mod backup;
 mod clipboard;
 mod config;
-mod connection;
+pub(crate) mod connection;
 mod connection_import;
 mod context;
 mod dashboard;

@@ -235,7 +235,7 @@ async fn apply_connection_import_impl_merges_connections_and_groups() {
     assert_eq!(result.skipped, vec!["skipped-row"]);
     assert_eq!(result.source_format, "DataZen");
 
-    let groups = crate::commands::config::get_groups_impl(&test.state)
+    let groups = crate::commands::config::read_connection_groups(&test.state)
         .await
         .unwrap();
     assert!(groups.contains(&"Alpha".into()));

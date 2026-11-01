@@ -1393,6 +1393,7 @@ async fn ai_chat_mcp_and_db_same_round() {
 async fn ai_chat_ask_questions_with_executable_runs_tools_then_stops() {
     use datazen::ai::{MessageRole, StreamChunk, ToolCall};
     use std::sync::atomic::Ordering;
+    use tauri::Listener;
 
     let (test, mock) = TestAppState::with_mock_ai_tables().await;
     test.save_connection("mixed-round-cfg").await;

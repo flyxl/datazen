@@ -9,7 +9,7 @@ fn app_archive_reads_settings_through_the_application_services() {
         .next()
         .expect("app_archive.rs 必须有生产半边");
     assert!(
-        production.contains("get_settings_impl(state)")
+        production.contains("read_shared_settings(state)")
             && !production.contains("state.store.get_settings"),
         "归档选项必须经设置用例读取，不能直读宿主 store"
     );

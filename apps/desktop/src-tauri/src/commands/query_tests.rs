@@ -218,7 +218,8 @@ async fn clear_query_history() {
     execute_query(app.state(), conn_id, "SELECT 1".into(), None)
         .await
         .unwrap();
-    clear_query_history(app.state()).await.unwrap();
+    // 本测试函数与命令同名，函数体内裸名解析到测试自身；全限定路由到命令。
+    crate::commands::query::clear_query_history(app.state()).await.unwrap();
     assert!(history_page(&app, 10).await.entries.is_empty());
 }
 

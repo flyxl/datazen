@@ -28,8 +28,17 @@ async fn read_host_settings(state: &AppState) -> Result<AppSettings, CommandErro
 
 #[tauri::command]
 pub async fn get_groups(state: State<'_, AppState>) -> Result<Vec<String>, CommandError> {
+    read_connection_groups(state.inner()).await
+}
+
+/// config 域外调用方（connection_import 的导入验收测试）读取连接分组的
+/// 共用入口。不是命令转发体：`get_groups` 命令与它共享同一其实现，
+/// 待各域把编排收编后再评估去留。
+pub(crate) async fn read_connection_groups(
+    state: &AppState,
+) -> Result<Vec<String>, CommandError> {
     let scope = state.connection_scope()?;
-    let service = crate::platform::ipc::require_connection_service(&state)?;
+    let service = crate::platform::ipc::require_connection_service(state)?;
     match service.groups(&scope).await {
         Ok(groups) => Ok(groups),
         Err(datazen::connection::ConnectionError::NotFound(entity)) => {
@@ -115,10 +124,19 @@ pub struct SaveSettingsRequest {
 pub async fn get_settings(
     state: State<'_, AppState>,
 ) -> Result<datazen::settings::SharedSettings, CommandError> {
+    read_shared_settings(state.inner()).await
+}
+
+/// 宿主内部调用方（窗口/菜单文案、归档导出）共用的共享域设置读取。
+/// 不是命令转发体：`get_settings` 命令与它共享同一实现，config 域外的
+/// 生产调用方经由此入口，直至各自域刀把编排收编为止。
+pub(crate) async fn read_shared_settings(
+    state: &AppState,
+) -> Result<datazen::settings::SharedSettings, CommandError> {
     // 设置用例自 D1 收尾后由 `datazen::settings` 拥有，宿主 adapter
     // 持有同一个服务实例，命令只调用例。这里**不得**再直读宿主 store——
     // 宿主直读会留下第二条事实源。
-    let settings_service = crate::platform::ipc::require_settings_service(&state)?;
+    let settings_service = crate::platform::ipc::require_settings_service(state)?;
     settings_service
         .read()
         .await

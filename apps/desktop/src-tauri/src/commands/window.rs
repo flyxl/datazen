@@ -113,7 +113,7 @@ pub fn docs_url(language: &str, section: Option<&str>) -> String {
 pub async fn open_docs_window(app: AppHandle, section: Option<&str>) -> Result<(), CommandError> {
     let state = app.state::<AppState>();
     // `language` 在共享域的 `preferences` 里（F4a 分域）；仍走设置用例读取。
-    let settings = crate::commands::config::get_settings_impl(state.inner()).await?;
+    let settings = crate::commands::config::read_shared_settings(state.inner()).await?;
     let url = docs_url(&settings.preferences.language, section);
     open::that(&url).map_err(|e| CommandError::Internal(format!("open_docs_window: {e}")))
 }
@@ -499,7 +499,7 @@ pub async fn open_migration_sub_window(
 ) -> Result<(), CommandError> {
     let state = app.state::<AppState>();
     // 同上：菜单文案语言在共享域 preferences 里，仍走设置用例读取。
-    let settings = crate::commands::config::get_settings_impl(state.inner()).await?;
+    let settings = crate::commands::config::read_shared_settings(state.inner()).await?;
     let menu_title = crate::menu_label(&settings.preferences.language, kind.menu_title_key());
     let title = format!("{menu_title} - DataZen");
     let (label, url, width, height, min_width, min_height) = kind.spec();
@@ -661,7 +661,7 @@ mod tests {
             .expect("window.rs 必须有生产半边");
         assert_eq!(
             production
-                .matches("config::get_settings_impl(state.inner())")
+                .matches("config::read_shared_settings(state.inner())")
                 .count(),
             2,
             "帮助窗口与迁移子窗口都必须经设置用例读取"

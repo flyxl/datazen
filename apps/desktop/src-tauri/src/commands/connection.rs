@@ -435,6 +435,9 @@ pub async fn get_connection_info(
     let db_type = &config.database_type;
     let driver = state.driver_registry.get(db_type).await;
     let capabilities = state.driver_registry.get_capabilities(db_type).await;
+    // 模块载荷函数持有已序列化的 capabilities（None → null，与旧命令层
+    // json! 直插 Option<DriverCapabilities> 的线格式逐字节一致）。
+    let capabilities = serde_json::to_value(capabilities).unwrap_or(serde_json::Value::Null);
     // 载荷形状与驱动类别词汇（IPC 契约）由模块单一持有：
     // `datazen::connection::api::session_info_payload`。
     Ok(connection_api::session_info_payload(
