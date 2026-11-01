@@ -9,6 +9,7 @@
 pub mod budget;
 pub mod command_policy;
 pub mod event_sink;
+pub mod event_sink_memory;
 pub mod events;
 pub mod idempotency;
 pub mod identity;
