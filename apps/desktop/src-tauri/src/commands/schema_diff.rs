@@ -5,11 +5,19 @@
 //! 本层只剩传输胶水（会话/作用域解析、历史记账、JobRuntime 接线）与
 //! 两个端口的桌面实现。
 //!
+//! B2 schema_diff 域刀（commands-layer-review §3.5）：`_impl` 转发体已拆——
+//! 表级/统一计划准备与部署编排逐字迁入 [`job`]（其生产调用方就是
+//! `AppStateBackend`）；[`compare_commands`] 的 `compare_table_schemas_impl`
+//! 是唯一保留的转发体（跨域调用方 `commands/sync/tests.rs`，见该文件注释）。
+//! 恢复目标的纯投影下沉 `datazen::migration::schema_diff::job::recovery_targets`；
+//! 单租户评审计划收窄下沉
+//! `datazen::migration::schema_diff::reviewed_single_tenant`。
+//!
 //! * [`profile_commands`] — Schema Diff profile IPC commands.
-//! * [`plan_commands`] — table-level plan preparation（薄委托）.
-//! * [`deploy_commands`] — deploy execution and cancellation（薄委托）.
+//! * [`plan_commands`] — table-level plan preparation（JobRuntime 薄入口）.
+//! * [`deploy_commands`] — deploy execution and cancellation（JobRuntime 薄入口）.
 //! * [`compare_commands`] — single-table schema comparison（薄委托）.
-//! * [`reviewed_repository`] — reviewed-plan storage port implementation (desktop, single tenant).
+//! * [`reviewed_repository`] — reviewed-plan storage assembly (desktop, single tenant).
 //!
 //! [`job`] and [`unified_plan`] keep their own subtrees.
 
@@ -23,18 +31,16 @@ mod profile_commands;
 pub(crate) mod reviewed_repository;
 
 #[cfg(test)]
+mod command_test_host;
+
+#[cfg(test)]
 mod tests;
 
 use std::collections::HashMap;
 
 use super::error::{CmdExt, CommandError};
 use super::AppState;
-use crate::schema_diff::deploy::{
-    execute_schema_diff_deploy_at as run_schema_diff_deploy, plan_has_destructive, DeployOptions,
-    DESTRUCTIVE_CONFIRM_TOKEN,
-};
-use crate::schema_diff::types::{ColumnTypeOverride, SchemaDiffDeployResult, SchemaDiffPlan};
-use datazen_driver_api::SqlTarget;
+use crate::schema_diff::types::{ColumnTypeOverride, SchemaDiffPlan};
 use tauri::State;
 
 // 子模块经 `super::` 取这些名字（私有导入对后代模块可见）；F4c-3 重写
@@ -43,8 +49,7 @@ use crate::schema_diff::SchemaDiffProfile;
 
 pub use datazen::migration::schema_diff::api as schema_diff_api;
 pub(crate) use datazen::migration::schema_diff::api::{
-    fetch_schema_object, is_table_missing_error, list_schema_objects, resolve_profile_table,
-    schema_catalog_database,
+    fetch_schema_object, is_table_missing_error, list_schema_objects, schema_catalog_database,
 };
 use datazen::migration::schema_diff::api::{
     ComparisonPreviewHost, ComparisonSyncAdapters, PlanSyncAdapters, SchemaDiffAdapterHost,

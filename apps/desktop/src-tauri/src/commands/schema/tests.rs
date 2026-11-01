@@ -1,3 +1,4 @@
+use super::command_test_host::host_command_app;
 use super::*;
 use crate::testing::app_state::TestAppState;
 use crate::testing::mock_driver::MockDriverOptions;
@@ -94,7 +95,12 @@ async fn privileges_map_grantee_and_skip_incomplete_rows() {
     };
     let test = TestAppState::with_options(opts).await;
     let (_, conn_id) = test.save_and_connect("priv-list").await;
-    let grants = get_privileges_impl(&test.state, conn_id).await.unwrap();
+    // B2 域刀：`get_privileges_impl` 转发层已删，本测试改走真实命令入口；
+    // 目录组装规则本体在 `datazen::schema::application::privileges`（有纯逻辑
+    // 测试），这里钉的是「mock 驱动经 driver_command 网关 → 命令入口 → 目录」
+    // 的适配器烟测（C4）。
+    let app = host_command_app(test);
+    let grants = get_privileges(app.state(), conn_id).await.unwrap();
     assert_eq!(grants.len(), 1);
     assert_eq!(grants[0].grantee, "alice");
     assert_eq!(grants[0].object_name, "users");

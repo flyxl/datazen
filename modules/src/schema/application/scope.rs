@@ -63,3 +63,39 @@ pub fn metadata_schema(
         .map(str::to_string)
         .or_else(|| driver.default_schema().map(str::to_string))
 }
+
+/// The database argument for a session-bound, table-targeted read.
+///
+/// Priority: `requested` (trimmed, non-blank) → the connection profile's
+/// configured database → `"default"`. This is the ladder the row-estimate
+/// pipeline and the grid's own reads climb, so a table opened from the object
+/// tree and the same table estimated or searched can never land on two
+/// databases. Shared with the host so exactly one implementation exists —
+/// a second copy is how "the table is in `app`" and "the table is in
+/// `default`" drift apart.
+pub fn table_read_database<'a>(
+    requested: Option<&'a str>,
+    config_database: Option<&'a str>,
+) -> &'a str {
+    requested
+        .map(str::trim)
+        .filter(|database| !database.is_empty())
+        .or(config_database)
+        .unwrap_or("default")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn table_read_database_prefers_the_request_then_the_profile() {
+        assert_eq!(
+            table_read_database(Some("analytics"), Some("app")),
+            "analytics"
+        );
+        assert_eq!(table_read_database(None, Some("app")), "app");
+        assert_eq!(table_read_database(Some("  "), Some("app")), "app");
+        assert_eq!(table_read_database(None, None), "default");
+    }
+}

@@ -5,7 +5,14 @@
 //! count behavior is pinned by the target-bound read (`data/target_read_tests.rs`);
 //! the session-bound `get_table_data` command was retired, and its count locks
 //! moved to that path.
+//!
+//! B2 schema knife: the `estimate_table_rows_impl` forwarding body is gone, so
+//! these tests drive the REAL `#[tauri::command]` entry through
+//! `schema/command_test_host` (a `tauri::test::mock_app` managing the
+//! harness's `AppState`; the mock driver stays programmable through the
+//! keepalive).
 
+use super::command_test_host::host_command_app;
 use super::*;
 use crate::testing::app_state::TestAppState;
 
@@ -32,9 +39,10 @@ mod count_strategy {
         })
         .await;
         let (_, conn_id) = test.save_and_connect("estimate-none").await;
-        let calls = test.mock.query_calls();
-        let estimate = estimate_table_rows_impl(
-            &test.state,
+        let app = host_command_app(test);
+        let calls = app.keep.mock.query_calls();
+        let estimate = estimate_table_rows(
+            app.state(),
             conn_id,
             "users".into(),
             Some("app".into()),
@@ -44,7 +52,7 @@ mod count_strategy {
         .expect("a driver without an estimate is not a failure");
         assert_eq!(estimate, None);
         assert_eq!(
-            test.mock.query_calls(),
+            app.keep.mock.query_calls(),
             calls,
             "the command must not run a statement of its own"
         );
@@ -69,8 +77,9 @@ mod count_strategy {
         })
         .await;
         let (_, conn_id) = test.save_and_connect("estimate-value").await;
-        let estimate = estimate_table_rows_impl(
-            &test.state,
+        let app = host_command_app(test);
+        let estimate = estimate_table_rows(
+            app.state(),
             conn_id,
             "users".into(),
             Some("app".into()),
@@ -100,8 +109,9 @@ mod count_strategy {
         })
         .await;
         let (_, conn_id) = test.save_and_connect("estimate-bad").await;
-        let estimate = estimate_table_rows_impl(
-            &test.state,
+        let app = host_command_app(test);
+        let estimate = estimate_table_rows(
+            app.state(),
             conn_id,
             "users".into(),
             Some("app".into()),
@@ -115,8 +125,9 @@ mod count_strategy {
     #[tokio::test]
     async fn estimate_table_rows_requires_live_session() {
         let test = TestAppState::new().await;
-        let error = estimate_table_rows_impl(
-            &test.state,
+        let app = host_command_app(test);
+        let error = estimate_table_rows(
+            app.state(),
             "missing".into(),
             "users".into(),
             Some("app".into()),
