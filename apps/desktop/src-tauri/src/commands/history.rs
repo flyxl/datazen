@@ -167,27 +167,19 @@ pub(crate) async fn finish_data_sync_migration_run(
     }
 }
 
-pub(crate) async fn purge_history_impl(
-    state: &AppState,
-    scope: String,
-    retain_days: Option<u32>,
-) -> Result<u64, CommandError> {
-    let scope = HistoryScope::parse(&scope)
-        .ok_or_else(|| CommandError::Validation(format!("Invalid history scope: {scope}")))?;
-    tracing::info!(?scope, ?retain_days, "purge_history");
-    crate::platform::ipc::require_history_service(state)?
-        .purge_history(scope, retain_days)
-        .await
-        .cmd_err("purge_history")
-}
-
 #[tauri::command]
 pub async fn purge_history(
     state: State<'_, AppState>,
     scope: String,
     retain_days: Option<u32>,
 ) -> Result<u64, CommandError> {
-    purge_history_impl(&state, scope, retain_days).await
+    let scope = HistoryScope::parse(&scope)
+        .ok_or_else(|| CommandError::Validation(format!("Invalid history scope: {scope}")))?;
+    tracing::info!(?scope, ?retain_days, "purge_history");
+    crate::platform::ipc::require_history_service(&state)?
+        .purge_history(scope, retain_days)
+        .await
+        .cmd_err("purge_history")
 }
 
 #[tauri::command]
@@ -285,6 +277,8 @@ mod tests {
     use super::*;
     use crate::store::QueryHistoryEntry;
     use crate::testing::app_state::TestAppState;
+
+    use super::command_test_host::host_command_app;
     use chrono::Utc;
     use uuid::Uuid;
 
@@ -324,17 +318,17 @@ mod tests {
 
     #[tokio::test]
     async fn purge_history_clear_all_query_scope() {
-        let test = TestAppState::new().await;
-        crate::platform::ipc::require_history_service(&test.state)
+        let app = host_command_app(TestAppState::new().await);
+        crate::platform::ipc::require_history_service(&app.state())
             .unwrap()
             .add_query_history(sample_entry("SELECT 1"))
             .await;
 
-        let deleted = purge_history_impl(&test.state, "query".into(), None)
+        let deleted = purge_history(app.state(), "query".into(), None)
             .await
             .unwrap();
         assert_eq!(deleted, 1);
-        assert!(crate::platform::ipc::require_history_service(&test.state)
+        assert!(crate::platform::ipc::require_history_service(&app.state())
             .unwrap()
             .recent_query_history(10, None, None, None)
             .await
@@ -343,8 +337,8 @@ mod tests {
 
     #[tokio::test]
     async fn purge_history_rejects_invalid_scope() {
-        let test = TestAppState::new().await;
-        let err = purge_history_impl(&test.state, "invalid".into(), Some(7))
+        let app = host_command_app(TestAppState::new().await);
+        let err = purge_history(app.state(), "invalid".into(), Some(7))
             .await
             .unwrap_err();
         assert!(matches!(err, CommandError::Validation(_)));
@@ -534,3 +528,10 @@ mod tests {
         }
     }
 }
+
+// 测试宿主（cfg(test)）：B2 批次 4 刀移除 `purge_history_impl` 后，清除/校验
+// 测试经真实 `#[tauri::command]` 入口驱动（与 data/query 各域宿主同形）。声明
+// 置于 `mod tests` 之后：生产源以首个 `#[cfg(test)]` 分界（config.rs 首立约定）。
+#[cfg(test)]
+#[path = "history_command_test_host.rs"]
+mod command_test_host;
