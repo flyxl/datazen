@@ -1,13 +1,20 @@
 //! Compare selected tables, generate ChangeSet SQL, and apply.
+//!
+//! B2 sync 域刀（commands-layer-review §3.5）：转发名拆除——`run_comparison`
+//! 与 `start_prepare_job` 是域内核心（命令入口 + jobs_contract 契约测试共用），
+//! `generate_data_sync_sql_for_tables` 供 exec 的分页 SQL 预览源与预览测试
+//! 共用；`apply_data_sync_impl`（永久拒绝）与 `revalidate_data_sync_impl`
+//! 的接线已内联进 mod.rs 的命令体，后者投影段下沉
+//! `data_sync::api::revalidation_report`。Artifact→Comparison 重建在
+//! `data_sync::artifact_view`（宿主同名文件整删）。
 
 use datazen::jobs::domain::job::JobState;
 
 use super::super::error::{CmdExt, CommandError};
 use super::super::AppState;
-use super::artifact_view;
-use super::inspect::inspect_data_sync_impl;
 use crate::data_sync::api::SyncComparisonRequest;
 use crate::data_sync::api::{generate_write_sql_for_table, WriteSqlContext};
+use crate::data_sync::artifact_view::comparison_from_artifact;
 use crate::data_sync::comparison_store::ComparisonStorage;
 use crate::data_sync::job::PrepareSpec;
 use crate::data_sync::plan_store as plans;
@@ -23,6 +30,8 @@ use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use super::inspect::run_inspect;
+
 /// Compare: statement-only pre-flight, then a `dataSyncPrepare` Job freezes the
 /// ChangeSet that the returned planId points at.
 ///
@@ -31,7 +40,7 @@ use uuid::Uuid;
 /// snapshot on the same two db sessions is refused by the driver, and even where
 /// it is allowed the frozen rows would be read outside the snapshot the
 /// ChangeSet is attributed to.
-pub(crate) async fn compare_data_sync_impl(
+pub(crate) async fn run_comparison(
     state: &AppState,
     request: SyncComparisonRequest,
 ) -> Result<plans::SyncComparisonPreview, CommandError> {
@@ -40,7 +49,7 @@ pub(crate) async fn compare_data_sync_impl(
         .clone()
         .filter(|id| !id.trim().is_empty())
         .unwrap_or_else(|| format!("data-sync-{}", Uuid::new_v4()));
-    let accepted = start_data_sync_prepare_job_impl(
+    let accepted = start_prepare_job(
         state,
         request.source_db_session_id,
         request.target_db_session_id,
@@ -68,7 +77,7 @@ pub(crate) async fn compare_data_sync_impl(
 /// Accept a durable prepare job, then return its id while a detached dispatcher
 /// performs the row comparison and builds the process-local review projection.
 #[allow(clippy::too_many_arguments)]
-pub(crate) async fn start_data_sync_prepare_job_impl(
+pub(crate) async fn start_prepare_job(
     state: &AppState,
     source_db_session_id: String,
     target_db_session_id: String,
@@ -135,7 +144,7 @@ pub(crate) async fn start_data_sync_prepare_job_impl(
     .await?;
     let mapping_overrides = mapping_overrides.unwrap_or_default();
     let preflight = async {
-        let inspected = inspect_data_sync_impl(
+        let inspected = run_inspect(
             state,
             sessions.source_id.clone(),
             sessions.target_id.clone(),
@@ -371,7 +380,7 @@ async fn finish_async_prepare_preview(
     let artifact = super::host::state::load_artifact(plan_id).ok_or_else(|| {
         CommandError::Validation("the prepare job produced no frozen ChangeSet".into())
     })?;
-    let mut rebuilt = artifact_view::comparison_from_artifact(&artifact);
+    let mut rebuilt = comparison_from_artifact(&artifact);
     rebuilt.tables.extend(skipped);
     rebuilt.tables.sort_by_key(|table| {
         order
@@ -484,7 +493,7 @@ async fn finish_async_prepare_preview(
 /// Project one already-inspected matched table back into the frozen
 /// `TableMapping` carried by the prepare Job.
 ///
-/// `inspect_data_sync_impl` already resolved structure/PK compatibility, so the
+/// `run_inspect` already resolved structure/PK compatibility, so the
 /// mapping only has to name the pair and repeat the structured filter the
 /// caller asked for; column matching is re-derived from the live schemas inside
 /// the Job's `mapped_table_schemas` stage.
@@ -505,7 +514,7 @@ fn mapping_of(
 ///
 /// 宿主只负责：会话/适配器解析、逐表读 schema、投影查找；装配本身在
 /// `data_sync::api::generate_write_sql_for_table`（F4c-1），与复核批次共用。
-pub(crate) async fn generate_data_sync_sql_impl(
+pub(crate) async fn generate_data_sync_sql_for_tables(
     state: &AppState,
     target_db_session_id: String,
     tables: Vec<TableResult>,
@@ -603,79 +612,4 @@ pub(crate) async fn generate_data_sync_sql_impl(
         statements.extend(stmts);
     }
     Ok(statements)
-}
-
-pub(crate) async fn apply_data_sync_impl(
-    state: &AppState,
-    source_db_session_id: String,
-    target_db_session_id: String,
-    tables: Vec<String>,
-    job_id: Option<String>,
-    source_database: Option<String>,
-    target_database: Option<String>,
-    source_schema: Option<String>,
-    target_schema: Option<String>,
-    options: SyncOptions,
-) -> Result<crate::data_sync::ExecutionResult, CommandError> {
-    let _ = (
-        state,
-        source_db_session_id,
-        target_db_session_id,
-        tables,
-        job_id,
-        source_database,
-        target_database,
-        source_schema,
-        target_schema,
-        options,
-    );
-    Err(CommandError::Validation(
-        "legacy apply has no reviewed plan; compare and submit the reviewed selection as a durable Data Sync job".into(),
-    ))
-}
-
-/// Re-run inspect gates for selected tables; returns stale table names when structure/PK drifted.
-pub(crate) async fn revalidate_data_sync_impl(
-    state: &AppState,
-    source_db_session_id: String,
-    target_db_session_id: String,
-    tables: Vec<String>,
-    source_database: Option<String>,
-    target_database: Option<String>,
-    source_schema: Option<String>,
-    target_schema: Option<String>,
-) -> Result<serde_json::Value, CommandError> {
-    let inspected = inspect_data_sync_impl(
-        state,
-        source_db_session_id,
-        target_db_session_id,
-        source_database,
-        target_database,
-        source_schema,
-        target_schema,
-        &[],
-    )
-    .await?;
-    let wanted: std::collections::HashSet<String> = tables.into_iter().collect();
-    let mut stale = Vec::new();
-    for row in inspected {
-        if !wanted.is_empty()
-            && !wanted.contains(&row.source_table)
-            && !wanted.contains(&row.target_table)
-        {
-            continue;
-        }
-        if row.status != TableMappingStatus::Matched {
-            stale.push(serde_json::json!({
-                "sourceTable": row.source_table,
-                "targetTable": row.target_table,
-                "status": row.status,
-                "reason": row.incompatible_reason,
-            }));
-        }
-    }
-    Ok(serde_json::json!({
-        "ok": stale.is_empty(),
-        "staleTables": stale,
-    }))
 }

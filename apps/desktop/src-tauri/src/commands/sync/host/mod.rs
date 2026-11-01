@@ -42,7 +42,7 @@ use datazen_driver_api::LegacySqlDialect;
 use crate::data_sync::filter_validation::{
     resolve_key_contracts, validate_filter_endpoints, validate_filter_schemas,
 };
-use super::keyset_source::DriverKeysetSource;
+use crate::data_sync::keyset_source::DriverKeysetSource;
 use crate::data_sync::api::resolve_db_name;
 use executor::{HostKeysetSource, HostTargetExecutor};
 

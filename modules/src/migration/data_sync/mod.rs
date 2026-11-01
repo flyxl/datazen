@@ -8,6 +8,7 @@
 
 pub mod api;
 pub mod apply_loop;
+pub mod artifact_view;
 pub mod changeset;
 pub mod compare;
 pub mod comparison_store;
@@ -19,6 +20,7 @@ mod filter_values;
 pub mod gate;
 pub mod job;
 pub mod keyset;
+pub mod keyset_source;
 pub mod legacy;
 pub mod mapping;
 pub mod model;

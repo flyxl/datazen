@@ -4,8 +4,8 @@
 //! `packages/data-sync/tests/cm4*` drive `DataSyncHandler` against a `FakeHost`.
 //! That proves the handler's own refusals, but a handler that is never reached
 //! passes them too — so every test here enters through the production path
-//! (`compare_data_sync_impl`, `jobs::submit_prepare`, `jobs::submit_apply`,
-//! `exec::start_data_sync_apply_job_impl`) and exercises the configured driver
+//! (`apply::run_comparison`, `jobs::submit_prepare`, `jobs::submit_apply`,
+//! `exec::start_apply_job`) and exercises the configured driver
 //! path through Runtime. The gate chain, the budget reservation, the plan
 //! consumption and the effect-outcome projection are therefore part of what is
 //! asserted, not decoration around it.
@@ -136,7 +136,7 @@ pub async fn compare(
     source_database: Option<String>,
     target_database: Option<String>,
 ) -> Result<SyncComparisonPreview, CommandError> {
-    super::apply::compare_data_sync_impl(
+    super::apply::run_comparison(
         pair.state(),
         SyncComparisonRequest {
             source_db_session_id: pair.source_session.clone(),
@@ -218,7 +218,7 @@ async fn readonly_target_can_be_compared_but_cannot_be_applied() {
 
     let preview = compare(&pair, None, None).await.expect("read-only compare");
     assert_eq!(preview.tables[0].insert_count, 1);
-    let error = super::exec::execute_data_sync_plan_impl(
+    let error = super::exec::execute_data_sync_plan(
         pair.state(),
         super::plans::SyncRunRequest {
             plan_id: preview.plan_id,
@@ -340,7 +340,7 @@ async fn compare_refuses_a_non_database_target_before_any_job_is_submitted() {
 
     // The pairing rule runs in the compare pre-flight (apply.rs), above
     // `open_job`, so nothing is accepted and no planId is minted.
-    let error = super::apply::compare_data_sync_impl(
+    let error = super::apply::run_comparison(
         pair.state(),
         SyncComparisonRequest {
             source_db_session_id: pair.source_session.clone(),
@@ -400,7 +400,7 @@ async fn the_budget_refuses_a_self_overlapping_pair_before_the_compare_reads_a_r
     let target = test.open_runtime_session("self-sync").await;
     assert_ne!(source, target, "a self-sync needs two distinct db sessions");
 
-    let error = super::apply::compare_data_sync_impl(
+    let error = super::apply::run_comparison(
         &test.state,
         SyncComparisonRequest {
             source_db_session_id: source,

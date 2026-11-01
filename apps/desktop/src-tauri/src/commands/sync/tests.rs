@@ -1,7 +1,17 @@
-use super::tasks::{
-    check_sync_conflicts_impl, delete_sync_task_impl, get_sync_tasks_impl,
-    save_sync_task_direct_impl,
-};
+//! Sync 域命令层测试（B2 域刀后形态）。
+//!
+//! 测试分层（commands-layer-review §1）：纯逻辑用例（`filter_tables_by_schema`
+//! / `is_self_sync` / `validate_active_database` / SQL 预览限幅 / revalidate
+//! 投影 / 检视收尾投影）已随下沉物迁往 `modules/tests/data_sync_api_tests.rs`；
+//! 这里保留并改写为**真实命令入口**（经 `command_test_host` 的 mock_app 托管
+//! `State<'_, AppState>`）的是 C4 适配器烟测与编排行为（任务 CRUD 往返、
+//! 冲突检查的专用会话重连/释放、compare 的 durable Job 流水），外加三类
+//! 守卫：宿主装配（组织作用域 vs 比较存储根）、IPC 注册面（legacy 命令
+//! 不得回归）、错误信封映射（C1 线格式）。
+//!
+//! 跨域共享入口照常直调：`compare_table_schemas_impl`（schema_diff 域）。
+
+use super::command_test_host::host_command_app;
 use crate::commands::schema_diff::compare_table_schemas_impl;
 use crate::store::SyncTask;
 
@@ -102,6 +112,8 @@ async fn desktop_sync_store_ports_admit_only_the_local_organization() {
     );
 }
 
+/// C4 烟测 + C1 错误文案：档案保存的连接存在性校验与往返（B2 域刀后走
+/// 真实命令入口）。
 #[tokio::test]
 async fn sync_profile_ipc_validates_connections_and_round_trips() {
     use crate::testing::app_state::TestAppState;
@@ -115,10 +127,11 @@ async fn sync_profile_ipc_validates_connections_and_round_trips() {
         "sync-profile-target",
     );
 
-    super::save_sync_profile_impl(&test.state, profile.clone())
+    let app = host_command_app(test);
+    super::save_sync_profile(app.state(), profile.clone())
         .await
         .expect("profile should save");
-    let loaded = super::get_sync_profiles_impl(&test.state)
+    let loaded = super::get_sync_profiles(app.state())
         .await
         .expect("profiles should load");
     assert_eq!(loaded.len(), 1);
@@ -126,16 +139,16 @@ async fn sync_profile_ipc_validates_connections_and_round_trips() {
     assert_eq!(loaded[0].tables, profile.tables);
     assert_eq!(loaded[0].options, profile.options);
 
-    super::delete_sync_profile_impl(&test.state, "sync-profile-1")
+    super::delete_sync_profile(app.state(), "sync-profile-1")
         .await
         .expect("profile should delete");
-    assert!(super::get_sync_profiles_impl(&test.state)
+    assert!(super::get_sync_profiles(app.state())
         .await
         .expect("profiles should load")
         .is_empty());
 
     let missing_target = sync_profile("missing", "sync-profile-source", "gone");
-    let error = super::save_sync_profile_impl(&test.state, missing_target)
+    let error = super::save_sync_profile(app.state(), missing_target)
         .await
         .expect_err("missing target must be rejected");
     assert!(error
@@ -143,7 +156,7 @@ async fn sync_profile_ipc_validates_connections_and_round_trips() {
         .contains("target connection no longer exists"));
 
     let missing_source = sync_profile("missing-source", "gone", "sync-profile-target");
-    let error = super::save_sync_profile_impl(&test.state, missing_source)
+    let error = super::save_sync_profile(app.state(), missing_source)
         .await
         .expect_err("missing source must be rejected");
     assert!(error
@@ -151,6 +164,7 @@ async fn sync_profile_ipc_validates_connections_and_round_trips() {
         .contains("source connection no longer exists"));
 }
 
+/// C4 烟测：任务 CRUD + 检视 + 冲突检查经真实命令入口一次走通。
 #[tokio::test]
 async fn sync_task_crud_and_inspect() {
     use crate::data_sync::TableMappingStatus;
@@ -174,15 +188,16 @@ async fn sync_task_crud_and_inspect() {
     let src_conn = test.open_runtime_session("src-cfg").await;
     let tgt_conn = test.open_runtime_session("tgt-cfg").await;
 
-    let results = super::inspect_data_sync_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let results = super::inspect_data_sync(
+        app.state(),
         src_conn.clone(),
         tgt_conn.clone(),
         None,
         None,
         None,
         None,
-        &[],
+        None,
     )
     .await
     .unwrap();
@@ -212,20 +227,27 @@ async fn sync_task_crud_and_inspect() {
         updated_at: Utc::now(),
         resume_state: "unknown".into(),
     };
-    save_sync_task_direct_impl(&test.state, task).await.unwrap();
-    assert_eq!(get_sync_tasks_impl(&test.state).await.unwrap().len(), 1);
+    super::save_sync_task_direct(app.state(), task)
+        .await
+        .unwrap();
+    assert_eq!(
+        super::get_sync_tasks(app.state()).await.unwrap().len(),
+        1
+    );
 
-    let conflicts = check_sync_conflicts_impl(&test.state, "task-1".into())
+    let conflicts = super::check_sync_conflicts(app.state(), "task-1".into())
         .await
         .unwrap();
     assert_eq!(conflicts["hasConflicts"], false);
 
-    delete_sync_task_impl(&test.state, "task-1".into())
+    super::delete_sync_task(app.state(), "task-1".into())
         .await
         .unwrap();
-    assert!(get_sync_tasks_impl(&test.state).await.unwrap().is_empty());
+    assert!(super::get_sync_tasks(app.state()).await.unwrap().is_empty());
 }
 
+/// 跨域共享入口照常调用（schema_diff 域的 `compare_table_schemas_impl`，
+/// 该转发体由其调用方域刀处置，本域只消费）。
 #[tokio::test]
 async fn compare_table_schemas_impl_returns_diff_for_table() {
     use crate::testing::app_state::{sample_postgres_config, TestAppState};
@@ -256,6 +278,7 @@ async fn compare_table_schemas_impl_returns_diff_for_table() {
     assert_eq!(schema_diff["table"], "users");
 }
 
+/// C2 守卫：legacy Transfer IR / 结构同步命令不得回归注册面。
 #[test]
 fn legacy_transfer_ir_compare_ipc_removed() {
     let compare_src = include_str!("compare.rs");
@@ -286,49 +309,8 @@ fn legacy_transfer_ir_compare_ipc_removed() {
     );
 }
 
-#[test]
-fn filter_tables_by_schema_keeps_matching_schema_only() {
-    use datazen_driver_api::{TableInfo, TableType};
-
-    let tables = vec![
-        TableInfo {
-            schema: Some("public".into()),
-            name: "a".into(),
-            table_type: TableType::Table,
-            row_count: None,
-        },
-        TableInfo {
-            schema: Some("app".into()),
-            name: "b".into(),
-            table_type: TableType::Table,
-            row_count: None,
-        },
-    ];
-    let filtered = crate::data_sync::api::filter_tables_by_schema(tables, Some("public"));
-    assert_eq!(filtered.len(), 1);
-    assert_eq!(filtered[0].name, "a");
-}
-
-#[test]
-fn is_self_sync_requires_matching_schema_on_same_connection() {
-    assert!(crate::data_sync::api::is_self_sync(
-        "c1",
-        "c1",
-        "db",
-        "db",
-        Some("public"),
-        Some("public")
-    ));
-    assert!(!crate::data_sync::api::is_self_sync(
-        "c1",
-        "c1",
-        "db",
-        "db",
-        Some("public"),
-        Some("app")
-    ));
-}
-
+/// C4 烟测：检视经真实命令入口返回 Matched 表（编排本体在
+/// `inspect::run_inspect`，收尾投影已下沉 modules 并在那里单测）。
 #[tokio::test]
 async fn inspect_data_sync_returns_matched_tables() {
     use crate::data_sync::TableMappingStatus;
@@ -339,14 +321,26 @@ async fn inspect_data_sync_returns_matched_tables() {
     test.save_and_connect("tgt-ins").await;
     let src = test.open_runtime_session("src-ins").await;
     let tgt = test.open_runtime_session("tgt-ins").await;
-    let results = super::inspect_data_sync_impl(&test.state, src, tgt, None, None, None, None, &[])
-        .await
-        .unwrap();
+    let app = host_command_app(test);
+    let results = super::inspect_data_sync(
+        app.state(),
+        src,
+        tgt,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
     assert!(results
         .iter()
         .any(|r| r.status == TableMappingStatus::Matched && r.source_table == "users"));
 }
 
+/// C4 烟测：compare 经真实命令入口产出不透明服务端计划（durable prepare
+/// Job 流水：受理 → 派发 → 终态 → 预览）。
 #[tokio::test]
 async fn compare_data_sync_returns_an_opaque_server_plan() {
     use crate::testing::app_state::TestAppState;
@@ -358,37 +352,25 @@ async fn compare_data_sync_returns_an_opaque_server_plan() {
     test.store.save_connection(target_config).await.unwrap();
     let source = test.open_runtime_session("src-plan").await;
     let target = test.open_runtime_session("tgt-plan").await;
-    let preview = super::compare_data_sync_impl(
-        &test.state,
-        crate::data_sync::api::SyncComparisonRequest {
-            source_db_session_id: source,
-            target_db_session_id: target,
-            tables: Vec::new(),
-            job_id: None,
-            source_database: None,
-            target_database: None,
-            source_schema: None,
-            target_schema: None,
-            options: crate::data_sync::SyncOptions::default(),
-            mappings: Vec::new(),
-            source_filters: std::collections::HashMap::new(),
-        },
+    let app = host_command_app(test);
+    let preview = super::compare_data_sync(
+        app.state(),
+        source,
+        target,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
     )
     .await
     .unwrap();
     assert!(!preview.plan_id.is_empty());
     assert_eq!(preview.selection_revision, 1);
-    assert_eq!(test.mock.open_transaction_count(), 0);
-}
-
-#[test]
-fn execute_data_sync_rejects_when_target_active_database_changes() {
-    assert!(
-        super::exec::validate_active_database(Some("other_database"), "app", "target")
-            .unwrap_err()
-            .to_string()
-            .contains("active database")
-    );
+    assert_eq!(app.keep.mock.open_transaction_count(), 0);
 }
 
 #[tokio::test]
@@ -410,7 +392,9 @@ async fn execute_data_sync_rejects_read_only_target() {
         row_key: vec![],
         identity_insert: None,
     };
-    let err = super::execute_data_sync_impl(&test.state, id, vec![stmt], None, None)
+    // Legacy statement path (cfg(test)-only helper, no IPC entry): the
+    // read-only refusal itself is modules `execute_statements` semantics.
+    let err = super::exec::execute_data_sync_statements(&test.state, id, vec![stmt], None, None)
         .await
         .unwrap_err();
     assert!(err.to_string().contains("read-only"));
@@ -421,7 +405,8 @@ async fn check_sync_conflicts_missing_task_errors() {
     use crate::testing::app_state::TestAppState;
 
     let test = TestAppState::new().await;
-    assert!(check_sync_conflicts_impl(&test.state, "missing".into())
+    let app = host_command_app(test);
+    assert!(super::check_sync_conflicts(app.state(), "missing".into())
         .await
         .is_err());
 }
@@ -472,7 +457,8 @@ async fn check_sync_conflicts_ignores_stale_session_ids_and_reconnects_by_connec
     .await
     .unwrap();
 
-    let result = check_sync_conflicts_impl(&test.state, "legacy-conflict-check".into())
+    let app = host_command_app(test);
+    let result = super::check_sync_conflicts(app.state(), "legacy-conflict-check".into())
         .await
         .unwrap();
     assert_eq!(result["hasConflicts"], false);
@@ -522,13 +508,14 @@ async fn check_sync_conflicts_reconnects_selected_database_with_override() {
     .await
     .unwrap();
 
+    let app = host_command_app(test);
     for _ in 0..2 {
-        let result = check_sync_conflicts_impl(&test.state, "selected-database-check".into())
+        let result = super::check_sync_conflicts(app.state(), "selected-database-check".into())
             .await
             .unwrap();
         assert_eq!(result["hasConflicts"], false);
         assert_eq!(
-            runtime_physical_resource_count(&test.state).await,
+            runtime_physical_resource_count(&app.state()).await,
             0,
             "dedicated Runtime task sessions must release their physical resources after each check"
         );
@@ -579,12 +566,13 @@ async fn check_sync_conflicts_releases_selected_database_sessions_on_count_error
     .await
     .unwrap();
 
-    let error = check_sync_conflicts_impl(&test.state, "count-error-check".into())
+    let app = host_command_app(test);
+    let error = super::check_sync_conflicts(app.state(), "count-error-check".into())
         .await
         .unwrap_err();
     assert!(error.to_string().contains("count failed"));
     assert_eq!(
-        runtime_physical_resource_count(&test.state).await,
+        runtime_physical_resource_count(&app.state()).await,
         0,
         "count_rows errors must release both dedicated Runtime task sessions"
     );
@@ -600,7 +588,7 @@ async fn cancel_data_sync_stops_execute_before_start() {
     test.store.save_connection(cfg).await.unwrap();
     let id = test.open_runtime_session("cancel-tgt").await;
     let job = format!("job-{}", uuid::Uuid::new_v4());
-    assert!(super::cancel_job(&job).await);
+    assert!(super::jobs::cancel_job(&job).await);
     let stmt = SqlStatement {
         table: "t".into(),
         operation: ChangeOperation::Insert,
@@ -610,9 +598,10 @@ async fn cancel_data_sync_stops_execute_before_start() {
         row_key: vec![],
         identity_insert: None,
     };
-    let error = super::execute_data_sync_impl(&test.state, id, vec![stmt], Some(job), None)
-        .await
-        .unwrap_err();
+    let error =
+        super::exec::execute_data_sync_statements(&test.state, id, vec![stmt], Some(job), None)
+            .await
+            .unwrap_err();
     assert!(matches!(
         error,
         crate::commands::error::CommandError::DataSyncNotStarted(message)
@@ -636,21 +625,19 @@ async fn compare_rejects_mock_driver_that_repeats_keyset_pages() {
     test.store.save_connection(target_config).await.unwrap();
     let src = test.open_runtime_session("src-cmp").await;
     let tgt = test.open_runtime_session("tgt-cmp").await;
-    let err = super::compare_data_sync_impl(
-        &test.state,
-        crate::data_sync::api::SyncComparisonRequest {
-            source_db_session_id: src,
-            target_db_session_id: tgt,
-            tables: vec!["users".into()],
-            job_id: None,
-            source_database: None,
-            target_database: None,
-            source_schema: None,
-            target_schema: None,
-            options: crate::data_sync::SyncOptions::default(),
-            mappings: Vec::new(),
-            source_filters: std::collections::HashMap::new(),
-        },
+    let app = host_command_app(test);
+    let err = super::compare_data_sync(
+        app.state(),
+        src,
+        tgt,
+        Some(vec!["users".into()]),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
     )
     .await
     .unwrap_err();
@@ -660,7 +647,7 @@ async fn compare_rejects_mock_driver_that_repeats_keyset_pages() {
         err.to_string().contains("handlerStageTerminated"),
         "a malformed keyset stream must fail the durable prepare job closed, got: {err}"
     );
-    assert_eq!(test.mock.open_transaction_count(), 0);
+    assert_eq!(app.keep.mock.open_transaction_count(), 0);
 }
 
 #[tokio::test]
@@ -712,7 +699,10 @@ async fn generated_binary_preview_uses_the_target_driver_literal_renderer() {
         result.column_types = vec!["INT".into(), "BINARY".into()];
         result.primary_keys = vec!["id".into()];
 
-        let statements = super::generate_data_sync_sql_impl(
+        // 域内核心（无独立 IPC 入口）：预览字面量装配本体在
+        // `data_sync::api::generate_write_sql_for_table`（modules 有单测），
+        // 这里钉会话解析 + 适配器查找 + 逐表 schema 读取的宿主接线。
+        let statements = super::apply::generate_data_sync_sql_for_tables(
             &test.state,
             target_db_session_id,
             vec![result],
@@ -733,6 +723,7 @@ async fn generated_binary_preview_uses_the_target_driver_literal_renderer() {
     }
 }
 
+/// C4/C1：legacy apply 的永久拒绝经真实命令入口，错误文案是 IPC 契约。
 #[tokio::test]
 async fn legacy_apply_rejects_unreviewed_recomparison() {
     use crate::testing::app_state::TestAppState;
@@ -742,8 +733,9 @@ async fn legacy_apply_rejects_unreviewed_recomparison() {
     test.save_and_connect("tgt-ap").await;
     let src = test.open_runtime_session("src-ap").await;
     let tgt = test.open_runtime_session("tgt-ap").await;
-    let err = super::apply_data_sync_impl(
-        &test.state,
+    let app = host_command_app(test);
+    let err = super::apply_data_sync(
+        app.state(),
         src,
         tgt,
         vec!["users".into()],
@@ -752,13 +744,14 @@ async fn legacy_apply_rejects_unreviewed_recomparison() {
         None,
         None,
         None,
-        crate::data_sync::SyncOptions::default(),
+        None,
     )
     .await
     .unwrap_err();
     assert!(err.to_string().contains("durable Data Sync job"), "{err}");
 }
 
+/// C1 线格式钉子：证据结局展平 + `outcome` 词汇 + legacy 平铺字段。
 #[test]
 fn execution_ipc_response_preserves_all_evidence_outcomes_flattened() {
     use crate::commands::error::CommandError;
@@ -826,6 +819,7 @@ fn execution_ipc_response_preserves_all_evidence_outcomes_flattened() {
     }
 }
 
+/// C1 错误信封映射：NotStarted / OutcomeUnknown / Validation 保持可区分。
 #[test]
 fn test_tester_data_sync_error_conversion_keeps_not_started_and_unknown_distinct() {
     use crate::commands::error::CommandError;
@@ -845,6 +839,7 @@ fn test_tester_data_sync_error_conversion_keeps_not_started_and_unknown_distinct
     ));
 }
 
+/// C1：确认取消的区分先于安全错误脱敏（`execute cancelled` 前缀是契约）。
 #[test]
 fn confirmed_sync_cancellation_is_distinguished_before_safe_error_redaction() {
     use crate::commands::error::CommandError;
