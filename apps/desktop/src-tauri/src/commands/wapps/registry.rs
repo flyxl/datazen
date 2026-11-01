@@ -154,12 +154,16 @@ pub async fn inspect_wapp_package_with_dialog(
         )));
     }
 
-    let manifest = tokio::task::spawn_blocking(move || {
-        datazen::workspace_apps::install::inspect_wapp_package(&source)
-    })
-    .await
-    .map_err(|e| CommandError::Internal(format!("inspect_wapp_package task: {e}")))?
-    .map_err(CommandError::Validation)?;
+    let manifest = {
+        // 阻塞线程只拿走自己需要的路径；宿主侧的 pick 会话与标签仍要读源路径。
+        let source_for_task = source.clone();
+        tokio::task::spawn_blocking(move || {
+            datazen::workspace_apps::install::inspect_wapp_package(&source_for_task)
+        })
+        .await
+        .map_err(|e| CommandError::Internal(format!("inspect_wapp_package task: {e}")))?
+        .map_err(CommandError::Validation)?
+    };
     let pick_token = insert_pick_session(source.clone()).await?;
     Ok(Some(WappPackagePreview {
         pick_token,

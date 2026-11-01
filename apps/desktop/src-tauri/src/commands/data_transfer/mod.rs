@@ -1,16 +1,15 @@
 //! Data Transfer IPC commands.
 //!
-//! B2 data_transfer 域刀（commands-layer-review §3.5/§4）：`*_impl` 转发层
-//! 拆除。`cancel_data_transfer_impl` 的接线直接住在命令处理函数里；
-//! preview / inspect / execute 的编排本体收编为域内命名核心——
-//! `preview::run_transfer_preview`、`inspect::run_transfer_inspection` /
-//! `inspect::run_sql_file_inspection`、`exec::execute_transfer_run`——命令
-//! 壳与 job_api 的 prepare/apply 共用同一份（driver_command 域刀的
-//! `run_driver_command` 同形）。运行选择的纯规则与迁移历史的回滚口径已
-//! 下沉 `datazen::migration::data_transfer::{run_selection, history_outcome}`；
-//! `resolve_db_name` / `is_self_database` 随检视编排归位
-//! `data_transfer::metadata`。深度编排（会话解析、同步适配器、计划注册表
-//! 接线）仍留宿主，B3 对照 WR-F5 服务端实现复核后再下沉。
+//! B2 data_transfer 域刀（commands-layer-review §3.5/§4）：`cancel_data_transfer_impl`
+//! 转发体拆除，接线直接住在命令处理函数里。preview / inspect / execute 的
+//! 编排本体保留历史名（`*_impl`——它们是域内命名核心，命令壳与 job_api 的
+//! prepare/apply 共用同一份，driver_command 域刀的 `run_driver_command` 同形
+//! 职责）。运行选择的纯规则与迁移历史的回滚口径已下沉
+//! `datazen::migration::data_transfer::{run_selection, history_outcome}`；
+//! `resolve_db_name` 随检视编排归位 `data_transfer::metadata`（域内 `types`
+//! 模块仍在：`is_self_database` 的六参形状是宿主检视编排私有词汇）。
+//! 深度编排（会话解析、同步适配器、计划注册表接线）仍留宿主，
+//! B3 对照 WR-F5 服务端实现复核后再下沉。
 //!
 //! IPC 契约逐字节不变：命令名、参数（serde camelCase）、返回 JSON 与错误
 //! 文案（`platform/ipc.rs` 冻结策略与 `ipc_surface_tests.rs` 钉子）。
@@ -28,6 +27,7 @@ mod jobs;
 mod plan_scope;
 mod preview;
 mod schema_loading;
+mod types;
 
 #[cfg(test)]
 mod command_test_host;
@@ -42,7 +42,14 @@ use crate::data_transfer::{
     TableInspectResult, TransferExecutionResult, TransferJob, TransferMode, TransferPreview,
     TransferProfile, TransferRunRequest,
 };
+/// 无写入观察者的执行入口只被测试夹具直接调用；生产路径走
+/// `execute_data_transfer_impl_with_write_observer`。
+#[cfg(test)]
+pub(crate) use exec::execute_data_transfer_impl;
+pub(crate) use exec::execute_data_transfer_impl_with_write_observer;
+pub(crate) use inspect::{inspect_data_transfer_impl, inspect_sql_file_transfer_impl};
 pub use job_api::*;
+pub(crate) use preview::preview_data_transfer_impl;
 use tauri::{AppHandle, State};
 
 #[tauri::command]
@@ -116,7 +123,7 @@ pub async fn inspect_data_transfer(
     mode: TransferMode,
     tables: Option<Vec<crate::data_transfer::TableMapping>>,
 ) -> Result<Vec<TableInspectResult>, CommandError> {
-    inspect::run_transfer_inspection(
+    inspect_data_transfer_impl(
         &state,
         source_db_session_id,
         target_db_session_id,
@@ -143,7 +150,7 @@ pub async fn inspect_sql_file_transfer(
     mode: TransferMode,
     tables: Option<Vec<crate::data_transfer::TableMapping>>,
 ) -> Result<Vec<TableInspectResult>, CommandError> {
-    inspect::run_sql_file_inspection(
+    inspect_sql_file_transfer_impl(
         &state,
         source_db_session_id,
         source_database,
@@ -160,7 +167,7 @@ pub async fn preview_data_transfer(
     state: State<'_, AppState>,
     job: TransferJob,
 ) -> Result<TransferPreview, CommandError> {
-    preview::run_transfer_preview(&state, job).await
+    preview_data_transfer_impl(&state, job).await
 }
 
 /// Pick a SQL destination through the native dialog. Only the opaque token is
@@ -252,7 +259,9 @@ async fn execute_data_transfer_inner(
         }
     }
     let write_started = AtomicBool::new(false);
-    let result = exec::execute_transfer_run(&state, request, Some(&write_started)).await;
+    let result =
+        exec::execute_data_transfer_impl_with_write_observer(&state, request, Some(&write_started))
+            .await;
     match &result {
         Ok(value) => {
             crate::commands::history::finish_migration_run(

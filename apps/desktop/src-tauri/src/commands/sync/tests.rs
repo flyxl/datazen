@@ -139,7 +139,7 @@ async fn sync_profile_ipc_validates_connections_and_round_trips() {
     assert_eq!(loaded[0].tables, profile.tables);
     assert_eq!(loaded[0].options, profile.options);
 
-    super::delete_sync_profile(app.state(), "sync-profile-1")
+    super::delete_sync_profile(app.state(), "sync-profile-1".to_owned())
         .await
         .expect("profile should delete");
     assert!(super::get_sync_profiles(app.state())

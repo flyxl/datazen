@@ -118,7 +118,8 @@ async fn wapp_driver_command_uses_an_independent_runtime_target() {
     .expect("a permitted read command must execute through Runtime");
 
     assert!(result.is_object());
-    let adapter = app.state().platform_require().expect("platform is ready");
+    let state = app.state();
+    let adapter = state.platform_require().expect("platform is ready");
     let call = adapter.begin_call();
     assert!(
         adapter
