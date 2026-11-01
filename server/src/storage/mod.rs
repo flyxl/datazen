@@ -20,13 +20,21 @@
 //! 用 `spawn_blocking` 包住（内核 trait 是 async，SQLite 是同步——差异
 //! 只允许出现在这一层）。
 
+pub mod artifacts;
+pub mod jobs;
 pub mod known_hosts;
 pub mod migrations;
 pub mod profiles;
 
+pub use artifacts::ServerArtifacts;
+pub use jobs::ServerJobs;
 pub use known_hosts::ServerKnownHosts;
 pub use profiles::ServerProfiles;
 
+#[cfg(test)]
+mod artifacts_tests;
+#[cfg(test)]
+mod jobs_tests;
 #[cfg(test)]
 mod known_hosts_tests;
 #[cfg(test)]

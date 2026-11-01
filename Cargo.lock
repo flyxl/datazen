@@ -2012,6 +2012,7 @@ dependencies = [
  "axum",
  "chrono",
  "datazen",
+ "libc",
  "rusqlite",
  "serde",
  "serde_json",
