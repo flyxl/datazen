@@ -229,9 +229,13 @@ modules 侧 `migration/` 已有同域测试基建（`filter_tests.rs`、`plan_te
   `command_policy::discovery_definitions`，流遥测下沉 `stream_telemetry`）/
   schema+schema_diff（三用例下沉 `schema::application::privileges`/`scope`，
   两仓储下沉 `migration/schema_diff/reviewed_single_tenant`/`job/recovery_targets`）
-  七域完成，`_impl` 总数 115 → 60（剩余集中：sync 17、wapps 11、data_transfer 7、
-  query_favorites 5——批次 3 对象；跨域共享入口 12 处有调用方清单注释，随调用方
-  域刀逐个回收）。中央连带修复四类：test_harness 重写为 HostedApp、ipc.rs 冻结表
+  sync（17 全拆，`artifact_view`/`keyset_source` 整文件下沉 `migration/data_sync`）/
+  wapps+data_transfer（投影/词汇/`run_selection`/`history_outcome` 下沉；registry
+  九入口因 `src/wapps/integration_tests.rs` 直调保留，data_transfer 按 B1 甄别保
+  admission 拆分）——**十域刀全部完成**，`_impl` 总数 115 → 40，无 1:1 转发残留；
+  剩余全部为文档化共享入口（调用方清单注释）或测试夹具，随调用方域刀/
+  B3/B4 批次回收（杂域余量：query_favorites 5、named_views 3、workflow 2、data 2、
+  fk_navigation 2、result_origin 2、零星 7）。中央连带修复四类：test_harness 重写为 HostedApp、ipc.rs 冻结表
   去 `_impl` 行（数量钉改为 0）、session_backend/data 测试全部转真实命令入口
   （新增 data 域测试宿主）。
   每域均配 `*_command_test_host.rs`（mock_app 托管 AppState）。
