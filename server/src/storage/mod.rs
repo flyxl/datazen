@@ -15,20 +15,27 @@
 //!   在备份可核验恢复后才执行（本执行器只跑 expand，contract 显式拒绝）。
 //! - **组织隔离**（CM-05）：所有查询按 `organization_id` 限定；越组织读取
 //!   返回 `None` / 空列表，不报错、不泄漏「存在但无权」。
+//! - **append-only 表**（WR-D3 起）：`audit_events` 对本 crate 只有 INSERT
+//!   与 SELECT，没有 UPDATE/DELETE 代码路径（`storage::audit` 的源文本
+//!   钉子测试钉在 CI 上）。
 //!
 //! 并发模型与桌面 `AppDb` 同款：单 `Mutex<Connection>`，异步边界由适配器
 //! 用 `spawn_blocking` 包住（内核 trait 是 async，SQLite 是同步——差异
 //! 只允许出现在这一层）。
 
 pub mod artifacts;
+pub mod audit;
 pub mod jobs;
 pub mod known_hosts;
+pub mod login_sessions;
 pub mod migrations;
 pub mod profiles;
 
 pub use artifacts::ServerArtifacts;
+pub use audit::ServerAudit;
 pub use jobs::ServerJobs;
 pub use known_hosts::ServerKnownHosts;
+pub use login_sessions::{LoginSessions, ValidateFailure};
 pub use profiles::ServerProfiles;
 
 #[cfg(test)]
@@ -37,6 +44,8 @@ mod artifacts_tests;
 mod jobs_tests;
 #[cfg(test)]
 mod known_hosts_tests;
+#[cfg(test)]
+mod login_sessions_tests;
 #[cfg(test)]
 mod profiles_tests;
 
@@ -48,7 +57,7 @@ use rusqlite::Connection;
 /// 管理库打开/迁移失败。进程边界事实：只进日志与 stderr（同 `ServerError`
 /// 的纪律），进端口层时映射为 `PortError::BackendUnavailable`，不携带 SQL
 /// 原文之外的值。
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum StorageError {
     #[error("admin store open failed: {0}")]
     Open(String),

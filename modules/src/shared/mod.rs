@@ -12,6 +12,7 @@
 //! Moved here in D2 (2026-10-26) from `datazen::platform_api`, which now only
 //! re-exports the same types until its retirement in D8.
 
+pub mod audit;
 pub mod clock;
 pub mod context;
 pub mod error;
@@ -26,5 +27,6 @@ pub mod scope;
 #[allow(unused_doc_comments)]
 pub mod id;
 
+pub use audit::{AuditEvent, AuditOutcome, AuditPayload, AuditPrincipalKind, AuditSink};
 pub use context::{DelegationRef, OwnerRef, RequestContext};
 pub use error::{ApiError, ApiErrorCode, PortError, RetryDisposition};
