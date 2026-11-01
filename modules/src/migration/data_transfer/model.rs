@@ -610,3 +610,19 @@ pub struct TransferPairingView {
     pub family: Option<String>,
     pub reason: Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 迁自桌面 `commands/data_transfer/tests.rs`（B2 域刀：纯构造规则
+    /// 归位 modules）。
+    #[test]
+    fn table_mapping_auto_sets_same_name() {
+        let m = TableMapping::auto("users");
+        assert_eq!(m.source_table, "users");
+        assert_eq!(m.target_table, "users");
+        assert!(m.enabled);
+        assert!(!m.create_new);
+    }
+}

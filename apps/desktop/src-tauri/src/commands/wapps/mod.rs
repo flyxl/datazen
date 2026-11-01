@@ -1,11 +1,21 @@
 //! Runtime UI-extension IPC: list / install / remove / enable, manifest lookup,
 //! per-extension KV storage, and sandbox-constrained file reads.
+//!
+//! B2 wapps 域刀（commands-layer-review §3.6）：`execute_wapp_driver_command_impl`
+//! 与 `inspect_wapp_package_impl` 两个转发体已删——接线直接住在
+//! `#[tauri::command]` 处理函数里；`WappSummary` 投影与 `WappPackageKind`
+//! 词汇解析已下沉 `datazen::workspace_apps::{summary, package_kind}`（线契约
+//! 逐字保留）。registry/storage 的九个 `*_impl` 因**跨域调用方**保留（见
+//! 各自的调用方清单注释）：`src/wapps/integration_tests.rs`（协议桥的
+//! 集成测试，只读钉子）直调它们驱动宿主命令层。
+//!
+//! IPC 契约逐字节不变：命令名、参数（serde camelCase）、`wapps:changed`
+//! 事件与错误文案。
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::LazyLock;
 
-use serde::Serialize;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, State};
 
@@ -15,6 +25,11 @@ use datazen::workspace_apps::install::{install_from_dir, install_from_zip};
 use datazen::workspace_apps::manager::LoadedWapp;
 use datazen::workspace_apps::storage::{storage_get, storage_remove, storage_set};
 use datazen::workspace_apps::WappManifest;
+
+// B2 域刀下沉物的宿主侧引用：投影与词汇解析的规则本体在 modules，
+// 这里只保留类型路径（`commands::wapps::WappSummary` 等旧路径不变）。
+pub use datazen::workspace_apps::summary::{WappPageSummary, WappSummary, WappThemeSummary};
+pub(crate) use datazen::workspace_apps::package_kind::{package_label, WappPackageKind};
 
 pub const WAPPS_CHANGED_EVENT: &str = "wapps:changed";
 
@@ -26,30 +41,6 @@ struct WappPickSession {
 
 static WAPP_PICK_SESSIONS: LazyLock<tokio::sync::Mutex<HashMap<String, WappPickSession>>> =
     LazyLock::new(|| tokio::sync::Mutex::new(HashMap::new()));
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum WappPackageKind {
-    Zip,
-    Folder,
-}
-
-impl WappPackageKind {
-    fn parse(raw: &str) -> Result<Self, CommandError> {
-        match raw.trim().to_ascii_lowercase().as_str() {
-            "zip" | "file" => Ok(Self::Zip),
-            "folder" | "dir" | "directory" => Ok(Self::Folder),
-            other => Err(CommandError::Validation(format!(
-                "Invalid wapp package kind: {other}"
-            ))),
-        }
-    }
-}
-
-fn package_label(path: &Path) -> String {
-    path.file_name()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "package".into())
-}
 
 async fn insert_pick_session(path: PathBuf) -> Result<String, CommandError> {
     let token = uuid::Uuid::new_v4().to_string();
@@ -101,83 +92,6 @@ fn ensure_wapp_exists(state: &AppState, id: &str) -> Result<LoadedWapp, CommandE
         .ok_or_else(|| CommandError::NotFound(format!("wapp not found: {id}")))
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WappPageSummary {
-    pub id: String,
-    pub title: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub icon: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WappThemeSummary {
-    pub id: String,
-    pub name: String,
-    pub modes: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct WappSummary {
-    pub id: String,
-    pub name: String,
-    pub version: String,
-    pub api_version: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub author: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub icon: Option<String>,
-    pub enabled: bool,
-    pub permissions: Vec<String>,
-    pub pages: Vec<WappPageSummary>,
-    pub themes: Vec<WappThemeSummary>,
-}
-
-impl From<&LoadedWapp> for WappSummary {
-    fn from(wapp: &LoadedWapp) -> Self {
-        let manifest = &wapp.manifest;
-        Self {
-            id: manifest.id.clone(),
-            name: manifest.name.clone(),
-            version: manifest.version.clone(),
-            api_version: manifest.api_version,
-            author: manifest.author.clone(),
-            description: manifest.description.clone(),
-            icon: manifest.icon.clone(),
-            enabled: wapp.enabled,
-            permissions: manifest
-                .permissions
-                .iter()
-                .map(|permission| permission.as_str().to_string())
-                .collect(),
-            pages: manifest
-                .contributes
-                .pages
-                .iter()
-                .map(|page| WappPageSummary {
-                    id: page.id.clone(),
-                    title: page.title.clone(),
-                    icon: page.icon.clone(),
-                })
-                .collect(),
-            themes: manifest
-                .contributes
-                .themes
-                .iter()
-                .map(|theme| WappThemeSummary {
-                    id: theme.id.clone(),
-                    name: theme.name.clone(),
-                    modes: theme.modes.clone(),
-                })
-                .collect(),
-        }
-    }
-}
-
 mod driver;
 mod sessions;
 pub use sessions::*;
@@ -187,6 +101,9 @@ mod storage;
 pub use driver::*;
 pub use registry::*;
 pub use storage::*;
+
+#[cfg(test)]
+mod command_test_host;
 
 #[cfg(test)]
 #[path = "tests.rs"]

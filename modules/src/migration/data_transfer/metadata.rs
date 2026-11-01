@@ -31,6 +31,44 @@ pub fn table_in_endpoint_schema(
     }
 }
 
+/// Resolve the effective database name for an endpoint: the selected name
+/// wins, a blank falls back to the connection profile's default.
+///
+/// B2 data_transfer 域刀下沉物（原桌面 `commands/data_transfer/types.rs`）：
+/// 与 `migration::data_sync::api::resolve_db_name` 同形的选择梯子。
+pub fn resolve_db_name(selected: Option<&str>, config_default: Option<&str>) -> String {
+    selected
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .or(config_default.map(str::trim).filter(|s| !s.is_empty()))
+        .unwrap_or("")
+        .to_string()
+}
+
+/// Same session + same database + same schema means a transfer would write
+/// back into its own source. B2 域刀下沉物（原桌面 types.rs 的
+/// `is_self_database`）；拒绝文案留在宿主命令层（IPC 契约）。
+pub fn is_self_database(
+    source_db_session_id: &str,
+    target_db_session_id: &str,
+    source_database: &str,
+    target_database: &str,
+    source_schema: Option<&str>,
+    target_schema: Option<&str>,
+) -> bool {
+    if source_db_session_id != target_db_session_id {
+        return false;
+    }
+    if source_database != target_database {
+        return false;
+    }
+    normalize_schema(source_schema) == normalize_schema(target_schema)
+}
+
+fn normalize_schema(schema: Option<&str>) -> Option<&str> {
+    schema.map(str::trim).filter(|s| !s.is_empty())
+}
+
 pub async fn load_table_schema(
     driver: &dyn DatabaseDriver,
     handle: &ConnectionHandle,

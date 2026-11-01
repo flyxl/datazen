@@ -1,4 +1,19 @@
 //! Data Transfer IPC commands.
+//!
+//! B2 data_transfer 域刀（commands-layer-review §3.5/§4）：`*_impl` 转发层
+//! 拆除。`cancel_data_transfer_impl` 的接线直接住在命令处理函数里；
+//! preview / inspect / execute 的编排本体收编为域内命名核心——
+//! `preview::run_transfer_preview`、`inspect::run_transfer_inspection` /
+//! `inspect::run_sql_file_inspection`、`exec::execute_transfer_run`——命令
+//! 壳与 job_api 的 prepare/apply 共用同一份（driver_command 域刀的
+//! `run_driver_command` 同形）。运行选择的纯规则与迁移历史的回滚口径已
+//! 下沉 `datazen::migration::data_transfer::{run_selection, history_outcome}`；
+//! `resolve_db_name` / `is_self_database` 随检视编排归位
+//! `data_transfer::metadata`。深度编排（会话解析、同步适配器、计划注册表
+//! 接线）仍留宿主，B3 对照 WR-F5 服务端实现复核后再下沉。
+//!
+//! IPC 契约逐字节不变：命令名、参数（serde camelCase）、返回 JSON 与错误
+//! 文案（`platform/ipc.rs` 冻结策略与 `ipc_surface_tests.rs` 钉子）。
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -13,8 +28,9 @@ mod jobs;
 mod plan_scope;
 mod preview;
 mod schema_loading;
-mod types;
 
+#[cfg(test)]
+mod command_test_host;
 #[cfg(test)]
 mod resume_preflight_tests;
 #[cfg(test)]
@@ -23,18 +39,10 @@ mod tests;
 use super::error::CommandError;
 use super::AppState;
 use crate::data_transfer::{
-    classify_transfer_pair as classify_transfer_pair_impl, TableInspectResult,
-    TransferExecutionResult, TransferJob, TransferMode, TransferPreview, TransferProfile,
-    TransferRunRequest,
+    TableInspectResult, TransferExecutionResult, TransferJob, TransferMode, TransferPreview,
+    TransferProfile, TransferRunRequest,
 };
-/// 无写入观察者的执行入口只被测试夹具直接调用；生产路径走
-/// `execute_data_transfer_impl_with_write_observer`。
-#[cfg(test)]
-pub(crate) use exec::execute_data_transfer_impl;
-pub(crate) use exec::execute_data_transfer_impl_with_write_observer;
-pub(crate) use inspect::{inspect_data_transfer_impl, inspect_sql_file_transfer_impl};
 pub use job_api::*;
-pub(crate) use preview::preview_data_transfer_impl;
 use tauri::{AppHandle, State};
 
 #[tauri::command]
@@ -92,7 +100,7 @@ pub fn classify_transfer_pair(
     source_database_type: String,
     target_database_type: String,
 ) -> Result<crate::data_transfer::TransferPairingView, CommandError> {
-    Ok(classify_transfer_pair_impl(
+    Ok(crate::data_transfer::classify_transfer_pair(
         &source_database_type,
         &target_database_type,
     ))
@@ -108,7 +116,7 @@ pub async fn inspect_data_transfer(
     mode: TransferMode,
     tables: Option<Vec<crate::data_transfer::TableMapping>>,
 ) -> Result<Vec<TableInspectResult>, CommandError> {
-    inspect_data_transfer_impl(
+    inspect::run_transfer_inspection(
         &state,
         source_db_session_id,
         target_db_session_id,
@@ -135,7 +143,7 @@ pub async fn inspect_sql_file_transfer(
     mode: TransferMode,
     tables: Option<Vec<crate::data_transfer::TableMapping>>,
 ) -> Result<Vec<TableInspectResult>, CommandError> {
-    inspect_sql_file_transfer_impl(
+    inspect::run_sql_file_inspection(
         &state,
         source_db_session_id,
         source_database,
@@ -152,7 +160,7 @@ pub async fn preview_data_transfer(
     state: State<'_, AppState>,
     job: TransferJob,
 ) -> Result<TransferPreview, CommandError> {
-    preview_data_transfer_impl(&state, job).await
+    preview::run_transfer_preview(&state, job).await
 }
 
 /// Pick a SQL destination through the native dialog. Only the opaque token is
@@ -244,8 +252,7 @@ async fn execute_data_transfer_inner(
         }
     }
     let write_started = AtomicBool::new(false);
-    let result =
-        execute_data_transfer_impl_with_write_observer(&state, request, Some(&write_started)).await;
+    let result = exec::execute_transfer_run(&state, request, Some(&write_started)).await;
     match &result {
         Ok(value) => {
             crate::commands::history::finish_migration_run(
@@ -256,7 +263,11 @@ async fn execute_data_transfer_inner(
                 value.rows_inserted,
                 value.tables.iter().filter(|table| !table.success).count() as u64,
                 0,
-                transfer_rollback_history_outcome(value),
+                // 回滚口径本体在 `datazen::migration::data_transfer::
+                // history_outcome`（B2 域刀下沉物）。
+                datazen::migration::data_transfer::history_outcome::rollback_history_outcome(
+                    value,
+                ),
             )
             .await
         }
@@ -269,7 +280,9 @@ async fn execute_data_transfer_inner(
                 0,
                 1,
                 0,
-                transfer_error_history_outcome(write_started.load(Ordering::SeqCst)),
+                datazen::migration::data_transfer::history_outcome::error_history_outcome(
+                    write_started.load(Ordering::SeqCst),
+                ),
             )
             .await
         }
@@ -294,87 +307,27 @@ pub fn reset_data_transfer_test_commit_ack_loss() -> bool {
     crate::data_transfer::execute::clear_test_commit_ack_loss()
 }
 
-/// 把一次传输执行的结果映射成迁移运行历史里的 `rollback_outcome`。
-///
-/// 这条规则属于 Data Transfer 域：它回答「目标库事务到底回滚了没有」，
-/// 与 workflow 无关。SQL 文件输出不走目标库事务，也没有逐表结果，
-/// 因此沿用它既有的运行历史口径。
-pub(crate) fn transfer_rollback_history_outcome(result: &TransferExecutionResult) -> &'static str {
-    use crate::data_transfer::model::TableExecutionOutcome;
-
-    // SQL-file output does not use target database transactions or typed
-    // per-table outcomes. Preserve its existing run-history contract here.
-    if result.tables.iter().all(|table| table.outcome.is_none()) {
-        return if result.partial {
-            "unknown"
-        } else {
-            "notRequired"
-        };
-    }
-
-    if result
-        .tables
-        .iter()
-        .any(|table| table.outcome == Some(TableExecutionOutcome::Unknown))
-    {
-        "unknown"
-    } else if result
-        .tables
-        .iter()
-        .any(|table| table.outcome == Some(TableExecutionOutcome::PartiallyApplied))
-    {
-        "partiallyApplied"
-    } else if result
-        .tables
-        .iter()
-        .any(|table| table.outcome == Some(TableExecutionOutcome::RolledBack))
-    {
-        "rolledBack"
-    } else if result.partial
-        && result
-            .tables
-            .iter()
-            .all(|table| table.outcome == Some(TableExecutionOutcome::NotStarted))
-    {
-        "notStarted"
-    } else {
-        "notRequired"
-    }
-}
-
-/// 传输失败时的回滚口径：写入已经开始就只能说「未知」，没开始才敢写
-/// 「未开始」。
-pub(crate) fn transfer_error_history_outcome(write_started: bool) -> &'static str {
-    if write_started {
-        "unknown"
-    } else {
-        "notStarted"
-    }
-}
-
 /// P5 Jobs are cancelled through the Job repository: `request_cancel` records
 /// the intent, the runtime's per-stage cancel watcher flips the `CancelToken`
 /// the stage already holds (mid-stage), or the next stage boundary check does
 /// (between stages), and the runtime closes the Job as `Cancelled`.
-pub(crate) async fn cancel_data_transfer_impl(
-    state: &AppState,
-    job_id: &str,
-) -> Result<bool, CommandError> {
-    if job_api::cancel_data_transfer_job(state, job_id).await? {
-        // A P5 Job answers with the recorded request itself, so the caller
-        // learns whether the cancel actually reached the Job.
-        return job_api::job_cancel_requested(state, job_id).await;
-    }
-    // Legacy `execute_data_transfer` runs are not durable Jobs, but the IPC
-    // still accepts them. Cancel a registered in-process run while preserving
-    // `false` for ids neither execution path has registered.
-    Ok(jobs::cancel_registered_job(job_id).await)
-}
-
+///
+/// 接线（B2 域刀自 `cancel_data_transfer_impl` 内联，逐字保留）：先问持久
+/// Job 宿主；没有登记过 Job 才回落到遗留 in-process 注册表。两条路径都
+/// 不认识的 id 诚实地回答 `false`（job_lifecycle 测试钉的 never-`Ok(true)`
+/// 面，现经真实命令入口驱动）。
 #[tauri::command]
 pub async fn cancel_data_transfer(
     state: State<'_, AppState>,
     job_id: String,
 ) -> Result<bool, CommandError> {
-    cancel_data_transfer_impl(&state, &job_id).await
+    if job_api::cancel_data_transfer_job(&state, &job_id).await? {
+        // A P5 Job answers with the recorded request itself, so the caller
+        // learns whether the cancel actually reached the Job.
+        return job_api::job_cancel_requested(&state, &job_id).await;
+    }
+    // Legacy `execute_data_transfer` runs are not durable Jobs, but the IPC
+    // still accepts them. Cancel a registered in-process run while preserving
+    // `false` for ids neither execution path has registered.
+    Ok(jobs::cancel_registered_job(&job_id).await)
 }

@@ -91,3 +91,51 @@ impl TransferProfile {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 迁自桌面 `commands/data_transfer/tests.rs`（B2 域刀：DTO 反序列化
+    /// 规则随模型归位；`fileToken` 是运行期值，绝不接受客户端回传）。
+    #[test]
+    fn transfer_profile_rejects_runtime_file_token_and_unknown_fields() {
+        let payload = r#"{
+            "version": 1,
+            "id": "profile-1",
+            "name": "nightly",
+            "sourceConnectionId": "src",
+            "destinationMode": "sqlFile",
+            "mode": "data",
+            "writeMode": "insert",
+            "tables": [],
+            "options": {"batchSize": 10, "stopOnError": true, "confirmedDestructive": false},
+            "createdAt": "2026-09-21T00:00:00Z",
+            "updatedAt": "2026-09-21T00:00:00Z",
+            "fileToken": "must-not-persist"
+        }"#;
+        assert!(serde_json::from_str::<TransferProfile>(payload).is_err());
+    }
+
+    /// 迁自桌面 `commands/data_transfer/tests.rs`（B2 域刀）。
+    #[test]
+    fn test_tester_legacy_transfer_profile_without_format_fields_is_compatible() {
+        let payload = r#"{
+            "version": 1,
+            "id": "legacy-profile",
+            "name": "legacy",
+            "sourceConnectionId": "src",
+            "destinationMode": "sqlFile",
+            "mode": "data",
+            "writeMode": "insert",
+            "tables": [],
+            "options": {"batchSize": 10, "stopOnError": true, "confirmedDestructive": false},
+            "createdAt": "2026-09-21T00:00:00Z",
+            "updatedAt": "2026-09-21T00:00:00Z"
+        }"#;
+        let profile = serde_json::from_str::<TransferProfile>(payload).unwrap();
+        assert_eq!(profile.sql_file_encoding, None);
+        assert_eq!(profile.sql_file_compression, None);
+        profile.validate().unwrap();
+    }
+}

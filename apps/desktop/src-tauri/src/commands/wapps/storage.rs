@@ -1,7 +1,14 @@
 //! Wapp sandbox storage (per-wapp key/value) and file reads.
+//!
+//! B2 wapps 域刀：四条 `*_impl` 全部因跨域调用方保留为域内共享入口——
+//! `src/wapps/integration_tests.rs`（协议桥集成测试，只读钉子）直调它们
+//! 驱动宿主存储边界；生产调用方是各自上方的一行命令壳。存储端口本体
+//! （`storage_get/set/remove`）在 `datazen::workspace_apps::storage`。
 
 use super::*;
 
+/// 跨域共享入口（B2 域刀保留）：生产调用方 `wapp_storage_get` 命令；跨域
+/// 测试调用方 `src/wapps/integration_tests.rs` + 本域 `tests.rs`。
 pub(crate) async fn wapp_storage_get_impl(
     state: &AppState,
     wapp_id: String,
@@ -17,6 +24,8 @@ pub(crate) async fn wapp_storage_get_impl(
     .await
 }
 
+/// 跨域共享入口（B2 域刀保留）：生产调用方 `wapp_storage_set` 命令；跨域
+/// 测试调用方 `src/wapps/integration_tests.rs` + 本域 `tests.rs`。
 pub(crate) async fn wapp_storage_set_impl(
     state: &AppState,
     wapp_id: String,
@@ -33,6 +42,8 @@ pub(crate) async fn wapp_storage_set_impl(
     .await
 }
 
+/// 跨域共享入口（B2 域刀保留）：生产调用方 `wapp_storage_remove` 命令；跨域
+/// 测试调用方 `src/wapps/integration_tests.rs` + 本域 `tests.rs`。
 pub(crate) async fn wapp_storage_remove_impl(
     state: &AppState,
     wapp_id: String,
@@ -64,6 +75,9 @@ where
         .map_err(CommandError::Validation)
 }
 
+/// 跨域共享入口（B2 域刀保留）：生产调用方 `read_wapp_file` 命令；跨域
+/// 测试调用方 `src/wapps/integration_tests.rs` + 本域 `tests.rs`。沙箱规则
+/// （隐藏文件/穿越拒绝）是宿主边界行为，错误文案是 IPC 契约。
 pub(crate) async fn read_wapp_file_impl(
     state: &AppState,
     id: String,

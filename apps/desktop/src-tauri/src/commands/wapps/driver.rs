@@ -24,8 +24,13 @@ pub struct WappDriverCommandRequest {
     pub args: serde_json::Value,
 }
 
-pub(crate) async fn execute_wapp_driver_command_impl(
-    state: &AppState,
+/// 接线（B2 域刀自 `execute_wapp_driver_command_impl` 内联，逐字保留）：
+/// Wapp 准入（存在 / 启用 / command:invoke 权限 / 命令黑名单 / args 形状）
+/// 全部在触碰运行时之前完成；读取走 modules 的共享用例——桌面宿主只是
+/// 它运行所在的 `ResourceExecutionHost` 实现。
+#[tauri::command]
+pub async fn execute_wapp_driver_command(
+    state: State<'_, AppState>,
     request: WappDriverCommandRequest,
 ) -> Result<serde_json::Value, CommandError> {
     let wapp = state
@@ -63,9 +68,8 @@ pub(crate) async fn execute_wapp_driver_command_impl(
     );
     // M4: the read path is the shared use case; the desktop host is only the
     // `ResourceExecutionHost` implementation it runs on.
-    let source = crate::services::runtime_command_source::RuntimeCommandSource::from_app_state(
-        state,
-    );
+    let source =
+        crate::services::runtime_command_source::RuntimeCommandSource::from_app_state(&state);
     datazen::workflow::runtime_reads::read_target_command(
         &source,
         &request.connection_id,
@@ -74,12 +78,4 @@ pub(crate) async fn execute_wapp_driver_command_impl(
     )
     .await
     .map_err(CommandError::Validation)
-}
-
-#[tauri::command]
-pub async fn execute_wapp_driver_command(
-    state: State<'_, AppState>,
-    request: WappDriverCommandRequest,
-) -> Result<serde_json::Value, CommandError> {
-    execute_wapp_driver_command_impl(&state, request).await
 }

@@ -3,6 +3,7 @@
 pub mod error;
 pub mod execute;
 pub mod filter;
+pub mod history_outcome;
 pub mod job;
 pub mod mapping;
 pub mod metadata;
@@ -14,6 +15,7 @@ pub mod profile;
 pub mod recordset;
 pub mod resume;
 pub mod resume_dispatch;
+pub mod run_selection;
 mod scan;
 pub mod sql_file;
 mod sql_structure;
