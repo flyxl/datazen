@@ -134,8 +134,11 @@ fn revalidation_report_lists_only_stale_rows_and_treats_empty_selection_as_all()
     let mut unmapped = TableResult::matched("logs", "logs", Vec::new());
     unmapped.status = TableMappingStatus::UnmappedSource;
 
-    // 空选集：全部行都复核。
-    let all = revalidation_report(Vec::new(), vec![matched.clone(), incompatible.clone()]);
+    // 空选集：全部行都复核（三行齐上——Matched 行不算 stale，其余两行算）。
+    let all = revalidation_report(
+        Vec::new(),
+        vec![matched.clone(), incompatible.clone(), unmapped.clone()],
+    );
     assert_eq!(all["ok"], false);
     let stale = all["staleTables"].as_array().unwrap();
     assert_eq!(stale.len(), 2, "matched rows never count as stale");

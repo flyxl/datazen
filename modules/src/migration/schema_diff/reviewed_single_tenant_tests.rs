@@ -2,6 +2,10 @@
 //! 逐字迁移；断言与测试名语义不变，仅类型更名 `DesktopReviewedPlanRepository`
 //! → [`SingleTenantReviewedPlanRepository`]、路径改走 `datazen` 内部路径）。
 //!
+//! 夹具组织 id 用形态中性的 `"datazen-local-org"`：桌面的规范本地组织 id
+//! 含形态专名，共享内核禁止该字面量（form_neutrality 闸门）；存储对 id 的
+//! 具体取值不做任何假设，测试语义不受影响。
+//!
 //! 装配路径（宿主身份源失败 ⇒ deny-all 兜底）留在宿主侧的
 //! `commands/schema_diff/reviewed_repository.rs`——那里钉的是宿主装配契约。
 
@@ -58,8 +62,8 @@ fn plan(plan_id: &str) -> ReviewedPlan {
 /// 单租户存储只承认自己那一个组织：别的组织**读不到**。
 #[tokio::test]
 async fn single_tenant_store_hides_plans_from_other_organizations() {
-    let store = SingleTenantReviewedPlanRepository::new(OrganizationId::new("datazen-desktop-local"));
-    let owner = scope("datazen-desktop-local");
+    let store = SingleTenantReviewedPlanRepository::new(OrganizationId::new("datazen-local-org"));
+    let owner = scope("datazen-local-org");
     let other = scope("other-org");
     store
         .put(&owner, "plan-1", plan("plan-1"))
@@ -79,8 +83,8 @@ async fn single_tenant_store_hides_plans_from_other_organizations() {
 /// 跨组织删除按「不存在」处理：删不掉别人的计划，也不返回「无权限」。
 #[tokio::test]
 async fn single_tenant_store_refuses_to_remove_other_organizations_plans() {
-    let store = SingleTenantReviewedPlanRepository::new(OrganizationId::new("datazen-desktop-local"));
-    let owner = scope("datazen-desktop-local");
+    let store = SingleTenantReviewedPlanRepository::new(OrganizationId::new("datazen-local-org"));
+    let owner = scope("datazen-local-org");
     let other = scope("other-org");
     store
         .put(&owner, "plan-1", plan("plan-1"))
@@ -98,8 +102,8 @@ async fn single_tenant_store_refuses_to_remove_other_organizations_plans() {
 /// 跨组织写入不落数据：本组织读不到「别的组织写进来」的计划。
 #[tokio::test]
 async fn single_tenant_store_drops_writes_from_other_organizations() {
-    let store = SingleTenantReviewedPlanRepository::new(OrganizationId::new("datazen-desktop-local"));
-    let owner = scope("datazen-desktop-local");
+    let store = SingleTenantReviewedPlanRepository::new(OrganizationId::new("datazen-local-org"));
+    let owner = scope("datazen-local-org");
     let other = scope("other-org");
     store
         .put(&other, "plan-1", plan("plan-1"))
@@ -121,8 +125,8 @@ async fn single_tenant_store_drops_writes_from_other_organizations() {
 /// 本条会红。
 #[tokio::test]
 async fn single_tenant_store_discards_cross_organization_writes_entirely() {
-    let store = SingleTenantReviewedPlanRepository::new(OrganizationId::new("datazen-desktop-local"));
-    let owner = scope("datazen-desktop-local");
+    let store = SingleTenantReviewedPlanRepository::new(OrganizationId::new("datazen-local-org"));
+    let owner = scope("datazen-local-org");
     let other = scope("other-org");
     store
         .put(&other, "plan-1", plan("plan-1"))
@@ -147,7 +151,7 @@ async fn single_tenant_store_discards_cross_organization_writes_entirely() {
 #[tokio::test]
 async fn single_tenant_store_without_identity_denies_every_organization() {
     let store = SingleTenantReviewedPlanRepository::deny_all();
-    let any = scope("datazen-desktop-local");
+    let any = scope("datazen-local-org");
     store
         .put(&any, "plan-1", plan("plan-1"))
         .await
@@ -162,8 +166,8 @@ async fn single_tenant_store_without_identity_denies_every_organization() {
 /// 一次性消费：同一个计划只能被消费一次。
 #[tokio::test]
 async fn single_tenant_store_consumes_a_plan_exactly_once() {
-    let store = SingleTenantReviewedPlanRepository::new(OrganizationId::new("datazen-desktop-local"));
-    let owner = scope("datazen-desktop-local");
+    let store = SingleTenantReviewedPlanRepository::new(OrganizationId::new("datazen-local-org"));
+    let owner = scope("datazen-local-org");
     store
         .put(&owner, "plan-1", plan("plan-1"))
         .await
@@ -184,8 +188,8 @@ async fn single_tenant_store_consumes_a_plan_exactly_once() {
 /// 这条钉住的是**容量/过期策略**本身（改造前是 `plans.retain(...)` 的既有魔数）。
 #[tokio::test]
 async fn single_tenant_store_trims_expired_plans_on_put() {
-    let store = SingleTenantReviewedPlanRepository::new(OrganizationId::new("datazen-desktop-local"));
-    let owner = scope("datazen-desktop-local");
+    let store = SingleTenantReviewedPlanRepository::new(OrganizationId::new("datazen-local-org"));
+    let owner = scope("datazen-local-org");
     let mut stale = plan("stale");
     stale.created_at_ms = now_ms().saturating_sub(31 * 60 * 1000);
     store
@@ -227,8 +231,8 @@ async fn single_tenant_store_trims_expired_plans_on_put() {
 /// 淘汰顺序与断言完全不变（index 越小 ⇒ 冻结越早 ⇒ 越先被淘汰）。
 #[tokio::test]
 async fn single_tenant_store_enforces_max_entries_by_evicting_the_oldest() {
-    let store = SingleTenantReviewedPlanRepository::new(OrganizationId::new("datazen-desktop-local"));
-    let owner = scope("datazen-desktop-local");
+    let store = SingleTenantReviewedPlanRepository::new(OrganizationId::new("datazen-local-org"));
+    let owner = scope("datazen-local-org");
     let base = now_ms();
     for index in 0..130u64 {
         let mut entry = plan(&format!("plan-{index}"));
@@ -278,8 +282,8 @@ async fn single_tenant_store_enforces_max_entries_by_evicting_the_oldest() {
 /// 由 `reviewed::validate` 报 "Plan expired; compare again"。
 #[tokio::test]
 async fn single_tenant_store_serves_expired_plans_for_the_rule_layer_to_reject() {
-    let store = SingleTenantReviewedPlanRepository::new(OrganizationId::new("datazen-desktop-local"));
-    let owner = scope("datazen-desktop-local");
+    let store = SingleTenantReviewedPlanRepository::new(OrganizationId::new("datazen-local-org"));
+    let owner = scope("datazen-local-org");
     let mut stale = plan("stale");
     stale.created_at_ms = now_ms().saturating_sub(31 * 60 * 1000);
     store
@@ -303,8 +307,8 @@ async fn single_tenant_store_serves_expired_plans_for_the_rule_layer_to_reject()
 /// 而不是只在测试替身上验证。
 #[tokio::test]
 async fn single_tenant_store_admits_exactly_one_concurrent_consumer() {
-    let store = SingleTenantReviewedPlanRepository::new(OrganizationId::new("datazen-desktop-local"));
-    let owner = scope("datazen-desktop-local");
+    let store = SingleTenantReviewedPlanRepository::new(OrganizationId::new("datazen-local-org"));
+    let owner = scope("datazen-local-org");
     let cfg: datazen_driver_api::ConnectionConfig = serde_json::from_value(serde_json::json!({
         "id": "target",
         "name": "target",

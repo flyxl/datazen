@@ -59,12 +59,15 @@ mod tests {
 
     #[test]
     fn incomplete_rows_are_rejected_by_the_wire_shape() {
-        // A row missing required fields cannot deserialize: the whole catalog
-        // reads as absent rather than silently dropping the malformed entry —
-        // the driver is responsible for never emitting such rows.
+        // A row missing a required field (grantee / objectName / privilege)
+        // cannot deserialize: the whole catalog reads as absent rather than
+        // silently dropping the malformed entry — the driver is responsible
+        // for never emitting such rows. (`objectSchema` is optional on the
+        // wire — `PrivilegeGrant::object_schema` is `Option<String>` — so a
+        // schema-less grant is a complete row, not an incomplete one.)
         let data = serde_json::json!({
             "grants": [
-                { "grantee": "alice", "objectName": "users", "privilege": "SELECT" }
+                { "objectName": "users", "privilege": "SELECT" }
             ]
         });
         assert!(parse_grants_from_command(&data).is_empty());
