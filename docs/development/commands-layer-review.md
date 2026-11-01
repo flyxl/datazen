@@ -233,11 +233,19 @@ modules 侧 `migration/` 已有同域测试基建（`filter_tests.rs`、`plan_te
   wapps+data_transfer（投影/词汇/`run_selection`/`history_outcome` 下沉；registry
   九入口因 `src/wapps/integration_tests.rs` 直调保留，data_transfer 按 B1 甄别保
   admission 拆分）——**十域刀全部完成**，`_impl` 总数 115 → 40，无 1:1 转发残留；
-  剩余全部为文档化共享入口（调用方清单注释）或测试夹具，随调用方域刀/
-  B3/B4 批次回收（杂域余量：query_favorites 5、named_views 3、workflow 2、data 2、
-  fk_navigation 2、result_origin 2、零星 7）。中央连带修复四类：test_harness 重写为 HostedApp、ipc.rs 冻结表
+  中央连带修复四类：test_harness 重写为 HostedApp、ipc.rs 冻结表
   去 `_impl` 行（数量钉改为 0）、session_backend/data 测试全部转真实命令入口
   （新增 data 域测试宿主）。
+  **批次 4（2026-11-01，杂域收官）**：query_favorites（5）/ named_views（3）/
+  value_search（1）/ result_origin（2）/ fk_navigation（2）/
+  history（1）/ data（2）全部拆除，测试随宿主转真实命令入口（新增
+  query_favorites / fk_navigation / history 三份 `*_command_test_host.rs`）；
+  result_write（1）`commit_query_result_cell(State)` 中间人改持有逻辑的
+  `&AppState` 域内函数；workflow（2）与 connection_import（1）文档化保留
+  （前者生产调用方 `workflow/scheduler.rs` 后台调度 + 调用方全在 B3 的 ai
+  测试；后者三条导入命令共用的装配 API）——`_impl` 总数 40 → 21，
+  **残余全部带调用方清单注释**（wapps 9、data_transfer 5、driver_command 2、
+  workflow 2、mcp/schema_diff/connection_import 各 1），无 1:1 转发残留。
   每域均配 `*_command_test_host.rs`（mock_app 托管 AppState）。
 - **B3（编排巨石下沉）**：`ai/integration_tests` 拆分、`ai_chat`/`ai_generate_sql`
   编排本体下沉（WR-A2 既登记遗留）、`sync/host` 与 `data_transfer` 桥接对照

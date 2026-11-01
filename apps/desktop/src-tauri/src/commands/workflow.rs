@@ -11,20 +11,11 @@ use tauri::State;
 
 // ─── Workflow IPC commands ───
 
-pub(crate) async fn workflow_list_impl(
-    state: &AppState,
-) -> Result<Vec<WorkflowListItem>, CommandError> {
-    let scope = state.organization_scope()?;
-    Ok(state.workflow_registry.list(&scope).await)
-}
-
-#[tauri::command]
-pub async fn workflow_list(
-    state: State<'_, AppState>,
-) -> Result<Vec<WorkflowListItem>, CommandError> {
-    workflow_list_impl(&state).await
-}
-
+/// 域内共享入口（非 1:1 转发，调用方清单）：
+/// - 生产：`workflow/scheduler.rs` 的 `DesktopScheduleHost::execute_workflow`
+///   （后台定时调度器不在请求周期内，直接复用命令接线）。
+/// - 测试：`ai/integration_tests.rs`（B3 随刀下沉后回收）。
+/// `#[tauri::command] workflow_execute` 是它的命令入口。
 pub(crate) async fn workflow_execute_impl(
     state: &AppState,
     workflow_id: String,
@@ -54,6 +45,21 @@ pub(crate) async fn workflow_execute_impl(
     }
 
     Ok(result)
+}
+
+/// 域内共享入口（非 1:1 转发，调用方清单）：`ai/tests.rs` 与
+/// `ai/integration_tests.rs`（B3 随刀下沉后回收；届时本入口随该刀内联）。
+/// `#[tauri::command] workflow_list` 是它的命令入口。
+pub(crate) async fn workflow_list_impl(state: &AppState) -> Result<Vec<WorkflowListItem>, CommandError> {
+    let scope = state.organization_scope()?;
+    Ok(state.workflow_registry.list(&scope).await)
+}
+
+#[tauri::command]
+pub async fn workflow_list(
+    state: State<'_, AppState>,
+) -> Result<Vec<WorkflowListItem>, CommandError> {
+    workflow_list_impl(&state).await
 }
 
 #[tauri::command]
