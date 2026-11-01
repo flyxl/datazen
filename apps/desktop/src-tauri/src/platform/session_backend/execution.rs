@@ -122,7 +122,7 @@ impl DesktopSessionBackend {
                 .input
                 .get("sql")
                 .and_then(serde_json::Value::as_str)
-                .and_then(crate::commands::result_relation_candidate)
+                .and_then(datazen::execution::application::result_mapping::result_relation_candidate)
             {
                 if let Some(driver) = self.registry.get(&config.database_type).await {
                     match resource.driver_handle() {
@@ -531,7 +531,7 @@ fn verified_source(
         );
         return None;
     };
-    let relation = crate::commands::verify_result_mapping(
+    let relation = datazen::execution::application::result_mapping::verify_result_mapping(
         rc::ConnectionId::new(connection_id),
         columns,
         &schema,

@@ -264,7 +264,12 @@ pub(crate) async fn commit_query_result_cell(
     let resolved = data
         .get("resolvedTarget")
         .ok_or_else(|| CommandError::Validation("Driver cannot confirm result identity".into()))?;
-    if super::verify_result_mapping(relation.connection_id.clone(), &columns, &schema, resolved)
+    if datazen::execution::application::result_mapping::verify_result_mapping(
+        relation.connection_id.clone(),
+        &columns,
+        &schema,
+        resolved,
+    )
         .as_ref()
         != Some(relation)
     {
