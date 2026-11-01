@@ -48,6 +48,17 @@ fn command_params(source: &str) -> Vec<(String, String)> {
     let mut cursor = 0usize;
     while let Some(offset) = source[cursor..].find("#[tauri::command]") {
         let start = cursor + offset;
+        // 只认「本行行首（允许缩进）」的属性：B2 各域刀的文档注释里大量出现
+        // `` `#[tauri::command]` `` 字样（叙述内联刀法），裸文本匹配会把它们
+        // 当真属性、再与后续第一个 `fn `（往往是私有助手）配对成假命令。
+        // 注释里的属性前面必有 `//!` / `///` / `//` 或行内文本，行首前缀
+        // 必然非空；真属性独占一行（可能带缩进），前缀只有空白。
+        let line_start = source[..start].rfind('\n').map_or(0, |i| i + 1);
+        let line_prefix = &source[line_start..start];
+        if !line_prefix.trim().is_empty() {
+            cursor = start + "#[tauri::command]".len();
+            continue;
+        }
         let tail = &source[start..];
         let Some(fm) = tail.find("fn ") else {
             break;
