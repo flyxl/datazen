@@ -7,6 +7,7 @@
 
 pub use datazen::ai::providers::testing::{mock_ai_config, MockAiProvider};
 
+use datazen::ai::AiProvider as _;
 use std::sync::Arc;
 
 use super::app_state::TestAppState;
