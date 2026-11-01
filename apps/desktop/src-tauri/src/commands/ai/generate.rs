@@ -1,23 +1,26 @@
 //! AI generation and analysis IPC commands.
 //!
-//! WR-A2：命令处理函数直接持有接线逻辑（会话借用、schema 上下文管线、
-//! 取消登记、流式回调构造），无 `_impl` 转发层；编排本体在 modules
-//! （`datazen::ai::*` 用例与 `run_streaming_tool_loop`）。流式命令对
-//! `R: Runtime` 泛型，测试经 `tauri::test::mock_app` 直调。
+//! WR-A2：单轮命令（diagnose/explain/filter/schema_doc/connection/queries）
+//! 的处理函数直接持有接线逻辑（会话借用、SQL 上下文读取、脱敏），无
+//! `_impl` 转发层；B3 后 `ai_generate_sql` 的编排本体（pinned 表合成、
+//! schema 管线、取消登记、attach_db_tools 分流）下沉 modules 用例
+//! `datazen::ai::application::chat_session`，命令只做形参提取与端口取值。
+//! 流式命令对 `R: Runtime` 泛型，测试经 `tauri::test::mock_app` 直调。
 
-use super::chat::{db_tool_definitions, run_streaming_tool_loop_with_claim};
 use super::util::{
-    borrow_runtime_session, resolve_ai, resolve_language, resolve_safety_gate, runtime_session,
-    window_stream_callback,
+    borrow_runtime_session, read_context_entries, resolve_ai, resolve_language,
+    resolve_safety_gate, runtime_session, window_stream_callback,
 };
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
-use datazen::ai::budget;
+use datazen::ai::application::chat_session::{
+    run_sql_generation_session, ChatSessionEnv, SqlGenerationInput,
+};
+use datazen::ai::application::schema_pipeline::SchemaContextPipeline;
+use datazen::ai::ownership::AiTargetClaim;
 use datazen::ai::safety::redact_for_gate;
-use datazen::ai::schema_pipeline::{compose_schema_system_suffix, SchemaContextPipeline};
 use datazen::ai::*;
 use tauri::{State, WebviewWindow};
-use tokio::sync::mpsc;
 
 pub use datazen::ai::single_turn::{ConnectionDiagnosis, QueryAnalysis};
 
@@ -35,11 +38,9 @@ pub async fn ai_generate_sql<R: tauri::Runtime>(
     recent_queries: Option<Vec<String>>,
     context_files: Option<Vec<String>>,
     context_tables: Option<Vec<String>>,
-    target_claim: Option<datazen::ai::ownership::AiTargetClaim>,
+    target_claim: Option<AiTargetClaim>,
 ) -> Result<String, CommandError> {
     let on_chunk = window_stream_callback(&window);
-    let recent_queries = recent_queries.unwrap_or_default();
-    let mut natural_language = natural_language;
     let gate = resolve_safety_gate(&state).await;
     tracing::info!(
         %request_id,
@@ -47,148 +48,58 @@ pub async fn ai_generate_sql<R: tauri::Runtime>(
         %database,
         input_len = natural_language.len(),
         current_table = ?current_table,
-        recent_queries_count = recent_queries.len(),
+        recent_queries_count = recent_queries.as_ref().map_or(0, Vec::len),
         "ai_generate_sql: start"
     );
 
-    let mut ctx_yaml_tables: Vec<String> = Vec::new();
-
-    if let Some(ref ctx_files) = context_files {
-        if !ctx_files.is_empty() {
-            let ctx_dir = crate::commands::context::resolve_context_dir_from_state(&state).await?;
-            let entries = crate::commands::context::read_context_paths(&ctx_dir, ctx_files).await?;
-            if !entries.is_empty() {
-                let (yaml_tables, remaining) =
-                    datazen::ai::ctx_yaml::extract_ctx_yaml_tables(&entries);
-                ctx_yaml_tables = yaml_tables;
-
-                if !remaining.is_empty() {
-                    let context_block = crate::commands::context::format_context_block(&remaining);
-                    natural_language = format!("{context_block}\n\n{natural_language}");
-                }
-            }
-        }
-    }
-
-    // Context files and natural language are caller-provided prompt content;
-    // sanitize the complete assembled value at the command boundary.
-    let natural_language = redact_for_gate(&natural_language, &gate);
-
+    // 端口取值（thin binding）。顺序即错误优先级，与 IPC 契约一致。
+    let context_entries = read_context_entries(&state, context_files.as_deref()).await?;
     let (provider, ai_config) = resolve_ai(&state).await?;
-
     let lang = resolve_language(&state).await;
-
     let (_session, lease) =
         borrow_runtime_session(&state, &db_session_id, "ai_generate_sql").await?;
-    let driver_ref = lease
+    let driver = lease
         .connection()
         .map_err(|error| CommandError::Internal(error.to_string()))?
         .driver()
         .clone();
 
-    let mut pinned = context_tables.unwrap_or_default();
-    for table in ctx_yaml_tables {
-        if !pinned.iter().any(|p| p == &table) {
-            pinned.push(table);
-        }
-    }
-    if let Some(ref t) = current_table {
-        if !pinned.iter().any(|p| p == t) {
-            pinned.insert(0, t.clone());
-        }
-    }
-
-    let supports_tools = provider.supports_tools();
-    let pipeline = SchemaContextPipeline::new(state.schema_context_builder.clone());
-    let seed = pipeline
-        .resolve(
-            &db_session_id,
-            &database,
-            &pinned,
-            supports_tools,
-            budget::PINNED_DDL,
-            budget::FALLBACK_DDL,
-        )
-        .await
-        .cmd_err("ai_generate_sql")?;
-
-    tracing::debug!(
-        schema_suffix_len = compose_schema_system_suffix(&seed).len(),
-        attach_db_tools = seed.attach_db_tools,
-        pinned_count = pinned.len(),
-        "ai_generate_sql: schema context built"
-    );
-
-    let mut request = datazen::ai::sql_generation::build_sql_generation_request(
-        &request_id,
-        &ai_config.model,
-        state.prompt_resolver.as_ref(),
-        driver_ref.as_ref(),
-        &lang,
-        &seed,
-        natural_language,
-        &recent_queries,
-        &gate,
-    )
-    .await;
-
-    // Register cancel token so `ai_cancel` IPC can interrupt this stream.
-    let cancel_owner = super::ai_owner_fingerprint(&state);
-    let cancel_token = state
-        .cancel_registry
-        .register(&request_id, &cancel_owner)
-        .await;
-    request.cancel_token = Some(cancel_token.clone());
-
-    tracing::debug!(
-        %request_id,
-        model = %request.model,
-        messages_count = request.messages.len(),
-        system_prompt_len = request.messages.first().map(|m| m.content.len()).unwrap_or(0),
-        attach_db_tools = seed.attach_db_tools,
-        "ai_generate_sql: sending to provider (stream)"
-    );
-
-    let claim = target_claim.unwrap_or(datazen::ai::ownership::AiTargetClaim::Independent);
-    let result = if seed.attach_db_tools {
-        request.tools = Some(db_tool_definitions());
-        run_streaming_tool_loop_with_claim(
-            provider,
-            &state,
-            on_chunk,
-            &request_id,
-            request,
-            10,
-            "ai_generate_sql",
-            &gate,
-            &claim,
-        )
-        .await
-    } else {
-        let (tx, mut rx) = mpsc::channel::<Result<StreamChunk, AiError>>(32);
-        let req_id_clone = request_id.clone();
-        let on_chunk_bg = on_chunk.clone();
-
-        tokio::spawn(async move {
-            while let Some(chunk_result) = rx.recv().await {
-                on_chunk_bg(&req_id_clone, chunk_result);
-            }
-        });
-
-        provider
-            .stream_complete(&request, tx)
-            .await
-            .cmd_err("ai_generate_sql")?;
-
-        Ok(request_id.clone())
+    // 编排本体在 modules（B3 下沉）；claim 归由请求级宿主提供。
+    let host = super::AiRequestHost {
+        state: &state,
+        claim: target_claim.unwrap_or(AiTargetClaim::Independent),
     };
-
-    // Always unregister — normal completion or cancellation.
-    state
-        .cancel_registry
-        .unregister(&request_id, &cancel_owner)
-        .await;
-    result
+    let env = ChatSessionEnv {
+        provider,
+        model: ai_config.model,
+        gate,
+        lang,
+        connections_context: String::new(),
+        mcp_tools: Vec::new(),
+        context_entries,
+        schema_driver: None,
+        prompt_resolver: state.prompt_resolver.clone(),
+        schema_pipeline: SchemaContextPipeline::new(state.schema_context_builder.clone()),
+        cancel_registry: state.cancel_registry.clone(),
+        cancel_owner: super::ai_owner_fingerprint(&state),
+    };
+    run_sql_generation_session(
+        env,
+        driver,
+        &host,
+        on_chunk,
+        SqlGenerationInput {
+            request_id,
+            db_session_id,
+            database,
+            natural_language,
+            current_table,
+            recent_queries: recent_queries.unwrap_or_default(),
+            context_tables: context_tables.unwrap_or_default(),
+        },
+    )
+    .await
+    .map_err(Into::into)
 }
 
 // ─── SQL Error Diagnosis ───

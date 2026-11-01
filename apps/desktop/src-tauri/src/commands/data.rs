@@ -191,10 +191,8 @@ pub async fn preview_table_read_sql(
     table_target::preview(&state, request).await
 }
 
-#[path = "result_mapping.rs"]
-mod result_mapping;
-pub(crate) use result_mapping::{result_relation_candidate, verify_result_mapping};
-
+// B4：保守结果映射整体下沉 `datazen::execution::application::result_mapping`
+// （SQL 识别 + 驱动确认纯形态中立）；调用方直连 modules，宿主不再转发。
 #[path = "result_write.rs"]
 mod result_write;
 pub use result_write::ResultCellWrite;

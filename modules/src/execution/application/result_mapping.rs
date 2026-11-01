@@ -1,9 +1,12 @@
 //! Conservative query-result mapping. SQL identifies a candidate relation only;
 //! the driver must confirm it on the original pinned resource before verification.
-use datazen::{
-    execution::target::{ExecutionTarget, NamespaceTarget, ObjectTarget},
-    shared::id::ConnectionId,
-};
+//!
+//! B4 自桌面 `commands/result_mapping.rs` 下沉（形态中立：SQL 识别 + 驱动
+//! 确认，零宿主依赖）。写入路径守门语义不变：SQL 只提名候选关系，驱动
+//! 必须在同一 pinned 资源上确认之后，结果才获得可写标注。
+
+use crate::execution::target::{ExecutionTarget, NamespaceTarget, ObjectTarget};
+use crate::shared::id::ConnectionId;
 use datazen_driver_api::{ColumnInfo, TableSchema};
 use serde_json::Value;
 use std::collections::HashSet;
@@ -157,3 +160,7 @@ pub fn verify_result_mapping(
     target.object = Some(ObjectTarget::new("relation", table));
     Some(target)
 }
+
+#[cfg(test)]
+#[path = "result_mapping_tests.rs"]
+mod tests;

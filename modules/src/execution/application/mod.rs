@@ -18,6 +18,7 @@ pub mod network;
 pub mod orchestration;
 pub mod policy;
 pub mod requests;
+pub mod result_mapping;
 pub mod secret;
 pub mod settings_reader;
 pub mod stream_telemetry;

@@ -170,3 +170,69 @@ fn test_parse_ai_json_invalid_with_reason() {
 fn test_language_hint_unknown_locale_uses_code() {
     assert!(language_hint("de").contains("de"));
 }
+
+// ── 多围栏剥离 / JSON 边界定位 / 修复（B3 自桌面 commands/ai/util.rs 归位）──
+
+#[test]
+fn test_find_first_balanced_json_variants() {
+    use super::find_first_balanced_json;
+
+    assert_eq!(find_first_balanced_json(r#"{"key": "value"}"#), Some(r#"{"key": "value"}"#));
+    assert_eq!(
+        find_first_balanced_json(r#"Here is the result: {"key": "value"} and some trailing text"#),
+        Some(r#"{"key": "value"}"#)
+    );
+    assert_eq!(
+        find_first_balanced_json("Here is the result:\n```json\n{\"key\": \"value\"}\n```\nand trailing"),
+        Some(r#"{"key": "value"}"#)
+    );
+    assert_eq!(find_first_balanced_json("[1, 2, 3]"), Some("[1, 2, 3]"));
+    assert_eq!(find_first_balanced_json(r#"{"a": {"b": [1, 2]}}"#), Some(r#"{"a": {"b": [1, 2]}}"#));
+    assert_eq!(
+        find_first_balanced_json(r#"{"msg": "hello {world}", "n": 42}"#),
+        Some(r#"{"msg": "hello {world}", "n": 42}"#)
+    );
+    assert_eq!(find_first_balanced_json("no json here"), None);
+}
+
+#[test]
+fn test_strip_fences_all_variants() {
+    use super::strip_fences_all;
+
+    assert_eq!(strip_fences_all("```json\n{\"a\": 1}\n```"), r#"{"a": 1}"#);
+    let multiple = strip_fences_all("```json\n{\"a\": 1}\n```\nSome text\n```json\n{\"b\": 2}\n```");
+    assert!(multiple.contains(r#"{"a": 1}"#));
+    assert!(multiple.contains(r#"{"b": 2}"#));
+    assert!(strip_fences_all("```json\n{\"a\": 1}\nno closing fence").contains(r#"{"a": 1}"#));
+    assert_eq!(strip_fences_all(r#"{"a": 1}"#), r#"{"a": 1}"#);
+}
+
+#[test]
+fn test_repair_json_variants() {
+    use super::repair_json;
+
+    assert_eq!(
+        repair_json(r#"{"a": 1, "b": 2,}"#),
+        Some(r#"{"a": 1, "b": 2}"#.to_string())
+    );
+    assert_eq!(
+        repair_json(r#"[1, 2, 3,]"#),
+        Some(r#"[1, 2, 3]"#.to_string())
+    );
+    assert_eq!(repair_json(r#"{"a": 1}"#), None);
+}
+
+#[test]
+fn test_parse_ai_json_from_fenced_and_prefixed_response() {
+    let raw = "Sure! Here is the SQL:\n```json\n{\"sql\": \"SELECT 1\"}\n```";
+    let result: serde_json::Value = parse_ai_json(raw, Some("stop"), "test").unwrap();
+    assert_eq!(result["sql"], "SELECT 1");
+
+    let raw = "Here is the result: {\"query\": \"hello\"}";
+    let result: serde_json::Value = parse_ai_json(raw, Some("stop"), "test").unwrap();
+    assert_eq!(result["query"], "hello");
+
+    let raw = "```json\n{\"sql\": \"SELECT 1\",}\n```";
+    let result: serde_json::Value = parse_ai_json(raw, Some("stop"), "test").unwrap();
+    assert_eq!(result["sql"], "SELECT 1");
+}

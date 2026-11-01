@@ -1,4 +1,8 @@
 //! Shared helpers for AI command handlers.
+//!
+//! B3 后这里只剩宿主绑定：tauri 事件投递、配置端口取值、运行时会话借用
+//! 与上下文文件的宿主 FS IO（路径政策 + 读取）。被测逻辑已全部归位
+//! modules（响应解析钉子在 `ai/application/response_tests.rs`）。
 
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
@@ -111,12 +115,23 @@ pub(crate) async fn runtime_session(
         })
 }
 
-pub(crate) fn parse_ai_json<T: serde::de::DeserializeOwned>(
-    raw: &str,
-    finish_reason: Option<&str>,
-    cmd: &str,
-) -> Result<T, CommandError> {
-    datazen::ai::response::parse_ai_json(raw, finish_reason, cmd).map_err(Into::into)
+/// Host-side context-file IO for chat / NL2SQL: `None`/empty yields no
+/// entries; otherwise resolve the context dir (host settings) and read the
+/// requested paths (path policy lives in `commands::context`). Contents stay
+/// unredacted — the modules use cases own the redaction policy per entry
+/// point (chat: per-file; NL2SQL: whole assembled NL).
+pub(crate) async fn read_context_entries(
+    state: &AppState,
+    files: Option<&[String]>,
+) -> Result<Vec<(String, String)>, CommandError> {
+    let Some(files) = files else {
+        return Ok(Vec::new());
+    };
+    if files.is_empty() {
+        return Ok(Vec::new());
+    }
+    let ctx_dir = crate::commands::context::resolve_context_dir_from_state(state).await?;
+    crate::commands::context::read_context_paths(&ctx_dir, files).await
 }
 
 pub(crate) fn emit_stream_chunk_or_error<R: tauri::Runtime>(
@@ -149,136 +164,5 @@ pub(crate) fn emit_stream_chunk_or_error<R: tauri::Runtime>(
                 }),
             );
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use datazen::ai::response::{find_first_balanced_json, repair_json, strip_fences_all};
-
-    // ── find_first_balanced_json ──
-
-    #[test]
-    fn find_json_simple_object() {
-        let input = r#"{"key": "value"}"#;
-        let result = find_first_balanced_json(input).unwrap();
-        assert_eq!(result, r#"{"key": "value"}"#);
-    }
-
-    #[test]
-    fn find_json_with_prefix_text() {
-        let input = r#"Here is the result: {"key": "value"} and some trailing text"#;
-        let result = find_first_balanced_json(input).unwrap();
-        assert_eq!(result, r#"{"key": "value"}"#);
-    }
-
-    #[test]
-    fn find_json_with_prefix_text_multiline() {
-        let input = "Here is the result:\n```json\n{\"key\": \"value\"}\n```\nand trailing";
-        let result = find_first_balanced_json(input).unwrap();
-        assert_eq!(result, r#"{"key": "value"}"#);
-    }
-
-    #[test]
-    fn find_json_array() {
-        let input = r#"[1, 2, 3]"#;
-        let result = find_first_balanced_json(input).unwrap();
-        assert_eq!(result, r#"[1, 2, 3]"#);
-    }
-
-    #[test]
-    fn find_json_nested() {
-        let input = r#"{"a": {"b": [1, 2]}}"#;
-        let result = find_first_balanced_json(input).unwrap();
-        assert_eq!(result, r#"{"a": {"b": [1, 2]}}"#);
-    }
-
-    #[test]
-    fn find_json_with_strings_containing_braces() {
-        let input = r#"{"msg": "hello {world}", "n": 42}"#;
-        let result = find_first_balanced_json(input).unwrap();
-        assert_eq!(result, r#"{"msg": "hello {world}", "n": 42}"#);
-    }
-
-    #[test]
-    fn find_json_returns_none_for_plain_text() {
-        assert!(find_first_balanced_json("no json here").is_none());
-    }
-
-    // ── strip_fences_all ──
-
-    #[test]
-    fn strip_single_fence() {
-        let input = "```json\n{\"a\": 1}\n```";
-        let result = strip_fences_all(input);
-        assert_eq!(result, r#"{"a": 1}"#);
-    }
-
-    #[test]
-    fn strip_multiple_fences() {
-        let input = "```json\n{\"a\": 1}\n```\nSome text\n```json\n{\"b\": 2}\n```";
-        let result = strip_fences_all(input);
-        assert!(result.contains(r#"{"a": 1}"#));
-        assert!(result.contains(r#"{"b": 2}"#));
-    }
-
-    #[test]
-    fn strip_fence_without_closing() {
-        let input = "```json\n{\"a\": 1}\nno closing fence";
-        let result = strip_fences_all(input);
-        assert!(result.contains(r#"{"a": 1}"#));
-    }
-
-    #[test]
-    fn strip_no_fence_passthrough() {
-        let input = r#"{"a": 1}"#;
-        let result = strip_fences_all(input);
-        assert_eq!(result, r#"{"a": 1}"#);
-    }
-
-    // ── repair_json ──
-
-    #[test]
-    fn repair_trailing_comma_object() {
-        let input = r#"{"a": 1, "b": 2,}"#;
-        let repaired = repair_json(input).unwrap();
-        assert_eq!(repaired, r#"{"a": 1, "b": 2}"#);
-    }
-
-    #[test]
-    fn repair_trailing_comma_array() {
-        let input = r#"[1, 2, 3,]"#;
-        let repaired = repair_json(input).unwrap();
-        assert_eq!(repaired, r#"[1, 2, 3]"#);
-    }
-
-    #[test]
-    fn repair_no_change_needed() {
-        let input = r#"{"a": 1}"#;
-        assert!(repair_json(input).is_none());
-    }
-
-    // ── parse_ai_json integration ──
-
-    #[test]
-    fn parse_json_from_fenced_response() {
-        let raw = "Sure! Here is the SQL:\n```json\n{\"sql\": \"SELECT 1\"}\n```";
-        let result: serde_json::Value = parse_ai_json(raw, Some("stop"), "test").unwrap();
-        assert_eq!(result["sql"], "SELECT 1");
-    }
-
-    #[test]
-    fn parse_json_from_prefixed_response() {
-        let raw = "Here is the result: {\"query\": \"hello\"}";
-        let result: serde_json::Value = parse_ai_json(raw, Some("stop"), "test").unwrap();
-        assert_eq!(result["query"], "hello");
-    }
-
-    #[test]
-    fn parse_json_with_trailing_comma() {
-        let raw = "```json\n{\"sql\": \"SELECT 1\",}\n```";
-        let result: serde_json::Value = parse_ai_json(raw, Some("stop"), "test").unwrap();
-        assert_eq!(result["sql"], "SELECT 1");
     }
 }

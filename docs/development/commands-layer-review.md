@@ -76,22 +76,23 @@ modules 测，宿主绑定在宿主测。**command 层不承载业务行为的�
 - **随刀下沉**——测试与其所钉的 `_impl`/编排逻辑一起下沉；
 - **下沉**——生产文件本体是形态中立逻辑，应整体（或主体）迁 modules。
 
-### 3.1 ai/（WR-A2 已完成转发层拆除；本轮完成测试拆分）
+### 3.1 ai/（WR-A2 已完成转发层拆除；B3 完成编排下沉与测试归位）
 
 | 文件 | 行 | 裁决 | 依据 |
 |---|---|---|---|
 | ai/mod.rs | 66 | 保留 | 域注册 |
-| ai/chat.rs | 476 | 瘦身（后续刀） | 编排本体（schema 管线+取消登记）待下沉，M3 已端口化 |
+| ai/chat.rs | 161 | **已拆（B3）** | 编排本体（schema 管线降级、上下文块装配、取消登记对称性、工具循环）下沉 `ai::application::chat_session`；余下为 IPC 形参提取、端口取值与 `AiToolLoopHost`/`AiRequestHost` 宿主装配；原内联 guard/classify/readonly/mcp_needs_confirm 钉子归位 `tools_tests.rs` |
 | ai/config.rs | 121 | 保留 | 配置存取壳，逻辑已在 `ai::api`/`AiConfigStore` |
-| ai/generate.rs | 491 | 瘦身（后续刀） | 同 chat，编排待下沉 |
-| ai/grant.rs | 272 | 保留 | 会话所有权授予的宿主绑定（M2 语义在 modules） |
+| ai/generate.rs | 322 | **已拆（B3）** | `ai_generate_sql` 编排（pinned 表合成、yaml 拆分、schema 管线、取消登记、attach_db_tools 分流）下沉 `chat_session`；单轮六命令本来就是薄绑定（会话借用+脱敏+modules 单轮用例） |
+| ai/grant.rs | 272 | 保留 | 会话所有权授予的宿主绑定（M2 语义在 modules；`AiRequestHost` claim 归因） |
 | ai/prompts.rs | 54 | 保留 | 提示词模板 IO 壳 |
-| ai/util.rs | 284 | 保留 | `emit_stream_chunk_or_error` 等 tauri 事件绑定 |
+| ai/util.rs | 155 | 保留 | tauri 事件绑定 + 配置端口取值 + 上下文文件宿主 FS IO（`read_context_entries`）；`parse_ai_json` 包装与 JSON 修复钉子已归位 `response_tests.rs` |
 | ai/command_test_host.rs | 99 | 基建 | mock_app 托管 AppState（WR-A2 产物，C3/C4 用） |
 | ai/ipc_contract_guards.rs | 88 | 守卫 | C1 参数提取 |
-| ai/tests.rs | 233 | 已拆（本轮） | 纯逻辑 25 测已归位 modules；剩 9 测为 C3/C4 |
-| ai/mock_provider_tests.rs | 370 | 随刀下沉 | AI 供应商协议回放，测的是 modules providers，待 harness 判断（wiremock 在宿主） |
-| ai/integration_tests.rs | 1,468 | 随刀下沉 | `ai_chat`/`ai_generate_sql` 编排下沉后拆分：编排用例测试进 modules，事件/取消 IPC 钉子留宿主 |
+| ai/tests.rs | 233 | 已拆（B0）+ B3 转真入口 | workflow_list 走真实命令入口；余 9 测为 C3/C4 |
+| ai/mock_provider_tests.rs | 371 | **复核改判 C4 保留（B3）** | 全部经真实命令入口驱动宿主装配（配置 CRUD、单轮命令、工具循环、错误信封）——宿主边界旅程烟测，非单元测试；modules 侧编排裁决由 `chat_session_tests` 脚本化假体钉住（wiremock/mock 假体归位后两侧覆盖互补） |
+| ai/integration_tests.rs | 1,456 | **已拆分（B3）** | 编排裁决钉子归位 modules（`chat_session_tests` 10 钉）；workflow 测试转真实命令入口；余下为 C1 事件/取消 IPC 钉子（toolCalls 载荷形状、流错误传播）+ C4 宿主装配旅程（wiremock/mock 假体走真命令入口） |
+| ai/ipc_surface（error/config 守卫） | — | 守卫 | IPC 契约零变化（B3 前后命令名、参数、错误文案逐字保留） |
 
 ### 3.2 connection / tunnel / 长连接域
 
@@ -113,10 +114,10 @@ modules 测，宿主绑定在宿主测。**command 层不承载业务行为的�
 | driver_command/mod.rs + types.rs | 144 | 保留 | 请求信封 DTO（C1 线格式） |
 | driver_command/execute.rs / resolve.rs / streaming.rs / helpers.rs / discovery.rs | 689 | 瘦身（resolve 内含策略裁决，逻辑在 `mcp::application::command_policy`） | 命令执行壳 |
 | driver_command/tests.rs | 1,003 | **B1 已拆** | 2 测迁 `execution/application/command_policy.rs`（逻辑真身）；1 测与 infra 重复删除；37 留（C1×5/C2×1/C3×1 + 30 pending-B2）|
-| result_mapping.rs | 159 | 下沉 | 保守结果映射（SQL 识别 + 驱动确认）纯形态中立 |
+| result_mapping.rs | ~~159~~ | **已下沉（B4）** | → `execution::application::result_mapping`（SQL 识别 + 驱动确认纯形态中立；归位时补齐 11 颗行为钉子） |
 | result_origin.rs | 334 | 瘦身（2 `_impl`） | 结果来源标注 |
 | result_write.rs | 382 | 瘦身（1 `_impl`） | 窄写路径编排，`commit_query_result_cell_impl` 待下沉 |
-| table_target.rs | 273 | 下沉 | 目标执行选择逻辑 |
+| table_target.rs | 273 | **复核改判保留（B4）** | 选择逻辑已于 F4b 下沉 `table_browsing::api`；残留为 `TargetCommandRunner` 端口适配（WR-F5 服务端同端口第二适配器）+ 传输校验（错误顺序钉在本传输）——即「同一用例、两种薄绑定」的桌面半边 |
 | value_search.rs | 88 | 保留 | 壳；逻辑已在 `services/value_search`（有测试） |
 | sample.rs | 87 | 保留 | 种子数据集 IO 壳 |
 
@@ -173,7 +174,7 @@ modules 侧 `migration/` 已有同域测试基建（`filter_tests.rs`、`plan_te
 | dashboard.rs | 685 | 瘦身（10 `_impl`） | 仪表盘 CRUD 壳 |
 | history.rs | 536 | 瘦身（1 `_impl`） | 历史记录壳 |
 | named_views.rs | 160 | 瘦身（3 `_impl`） | 命名视图壳 |
-| workflow.rs | 197 | 瘦身（2 `_impl`） | 工作流壳 |
+| workflow.rs | 190 | 瘦身（1 `_impl`，B3 复核） | 工作流壳；`workflow_list_impl` 已随 B3 回收（ai 测试转真入口），`workflow_execute_impl` 保留——生产调用方 `workflow/scheduler.rs` 后台调度器（调用方清单注释已更新） |
 | mcp.rs | 381 | 瘦身（4 `_impl`） | M 系列后剩绑定壳 |
 | fk_navigation.rs | 123 | 瘦身（2 `_impl`） | 壳；规则在 `services/fk_navigation`（有测试） |
 | schema.rs | 127 | 瘦身（2 `_impl`） | 壳 |
@@ -190,7 +191,7 @@ modules 侧 `migration/` 已有同域测试基建（`filter_tests.rs`、`plan_te
 | window.rs | 753 | 保留 | tauri 窗口 |
 | clipboard.rs / theme.rs / encryption_key.rs | 85 | 保留 | 宿主小绑定 |
 | app_archive.rs | 131 | 保留 | app 数据目录 ZIP |
-| port_call.rs | 37 | 下沉候选 | 端口调用→命令结果收口，形态中立，与 WR-C 错误词汇对齐时处理 |
+| port_call.rs | 37 | **复核改判保留（B4，C1）** | `PortError` → 宿主 `CommandError` 信封映射即 C1 核心（`NotFound` 必须保留成 `NotFound`）；宿主错误类型在共享层无对应物，映射必须住在宿主；与 WR-C 错误词汇对齐核查完成（detail 脱敏透传、与 `CmdExt::cmd_err` 同形日志） |
 | connection_import/ipc.rs | 509 | 保留（拆分甄别） | 文件对话框 + 密码校验；导入解析已在 modules（各格式有测试） |
 | connection_import/ipc_tests.rs | 783 | **已拆（本轮 B1）** | 加密往返 2 测已迁 `modules/src/connection_import/datazen.rs`（内联）；merge/preview/export 构建逻辑被困宿主 → B2 刀；文件过滤/密码校验留 C3 |
 | wapps/mod.rs / driver.rs / sessions.rs / storage.rs / registry.rs | 1,161 | 瘦身（分刀） | 会话/存储编排部分形态中立 |
@@ -247,11 +248,29 @@ modules 侧 `migration/` 已有同域测试基建（`filter_tests.rs`、`plan_te
   **残余全部带调用方清单注释**（wapps 9、data_transfer 5、driver_command 2、
   workflow 2、mcp/schema_diff/connection_import 各 1），无 1:1 转发残留。
   每域均配 `*_command_test_host.rs`（mock_app 托管 AppState）。
-- **B3（编排巨石下沉）**：`ai/integration_tests` 拆分、`ai_chat`/`ai_generate_sql`
-  编排本体下沉（WR-A2 既登记遗留）、`sync/host` 与 `data_transfer` 桥接对照
-  WR-F5 服务端实现复核。
-- **B4（收口）**：`port_call.rs` 下沉候选与 WR-C 错误词汇对齐；
-  `result_mapping`/`table_target` 下沉；`testing/` 基建的 modules 侧对照清点。
+- **B3（完成，2026-11-01，编排巨石下沉）**：**`ai_chat`/`ai_generate_sql` 编排本体下沉**
+  ——新增 `ai::application::chat_session`（schema 管线降级、上下文块装配、
+  pinned 表合成、取消登记对称性、`attach_db_tools` 分流），宿主命令只剩
+  IPC 形参提取 + 端口取值（`AiRequestHost` claim 归因留宿主），IPC 契约零
+  变化；modules 侧新增 10 颗编排裁决钉子（脚本化假体，无 HTTP）。**测试归位**：
+  `chat.rs` 内联 guard/classify/readonly/mcp_needs_confirm 钉子 → `tools_tests.rs`；
+  `util.rs` 内联 JSON 修复钉子 → `response_tests.rs`（`parse_ai_json` 包装随之删除）；
+  `mock_provider_tests` 复核改判 C4 保留；`integration_tests` 拆分（编排钉子进
+  modules，C1/C4 留宿主）。**workflow 回收**：`workflow_list_impl` 拆除（ai 测试
+  转真命令入口），`workflow_execute_impl` 保留（生产调用方 scheduler）。
+  **WR-F5 对照复核**：sync/host 与 data_transfer 桥接面确认已按「同一端口、
+  另一适配器」成型——端口在 modules（`migration/data_sync/job/host` 的
+  `DataSyncHost`/`TargetExecutor`/`KeysetPageSource` 等），桌面是第一适配器，
+  服务端（WR-F5/WR-D4）只需同端口第二适配器，无需桌面侧返工。
+- **B4（完成，2026-11-01，收口）**：`result_mapping` 整文件下沉
+  `execution::application::result_mapping`（归位时补齐 11 颗行为钉子——此前零测试）；
+  `MockAiProvider`（tauri-free 脚本化假体）下沉 `ai::providers::testing`
+  （test-harness 门控，WR-C3 同用例双传输的前提），桌面只留 `TestAppState` 装配；
+  `table_target` 复核改判保留（F4b 已下沉选择逻辑，残留为端口适配 + 传输校验）；
+  `port_call` 复核改判保留（C1 信封映射，宿主错误类型无共享层对应物），
+  与 WR-C 错误词汇对齐核查完成；`testing/` 基建清点收口：mock_driver 已在
+  driver-api 共享、ai_wiremock 留宿主（modules 侧 protocol 自有 wiremock 假体）、
+  app_state/resource_provider 为宿主装配夹具（WR-C3 的 HTTP 腿将建自己的服务端宿主）。
 
 ## 5. 与既有轨道的衔接
 

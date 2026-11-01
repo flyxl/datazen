@@ -13,3 +13,9 @@ pub mod ollama;
 pub mod openai;
 pub mod protocol;
 pub mod registry;
+
+/// 脚本化假体 LLM（test-harness 夹具门控，不进生产构建；B4 自桌面
+/// `testing/mock_ai_provider.rs` 下沉——两种宿主形态共用同一 `AiProvider`
+/// 假体，WR-C3「同用例双传输」的前提）。
+#[cfg(feature = "test-harness")]
+pub mod testing;
