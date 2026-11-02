@@ -31,10 +31,12 @@
 //! - TLS 与 `:8443` 生产监听、UI origin 校验：随 WR-D3 的同源 HTTPS 落地；
 //!   D1 默认只在回环地址监听明文。
 
+pub mod auth;
 pub mod bootstrap;
 pub mod config;
 pub mod csrf;
 pub mod error;
+pub mod execution;
 pub mod http;
 pub mod logging;
 pub mod policy;

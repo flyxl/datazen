@@ -25,21 +25,27 @@
 
 pub mod artifacts;
 pub mod audit;
+pub mod connections;
 pub mod jobs;
 pub mod known_hosts;
 pub mod login_sessions;
 pub mod migrations;
 pub mod profiles;
+pub mod tunnels;
 
 pub use artifacts::ServerArtifacts;
 pub use audit::ServerAudit;
+pub use connections::ServerConnections;
 pub use jobs::ServerJobs;
 pub use known_hosts::ServerKnownHosts;
 pub use login_sessions::{LoginSessions, ValidateFailure};
 pub use profiles::ServerProfiles;
+pub use tunnels::ServerTunnels;
 
 #[cfg(test)]
 mod artifacts_tests;
+#[cfg(test)]
+mod connections_tests;
 #[cfg(test)]
 mod jobs_tests;
 #[cfg(test)]
@@ -48,6 +54,8 @@ mod known_hosts_tests;
 mod login_sessions_tests;
 #[cfg(test)]
 mod profiles_tests;
+#[cfg(test)]
+mod tunnels_tests;
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -137,20 +145,19 @@ impl AdminStore {
             let at = chrono::Utc::now().to_rfc3339();
             {
                 let conn = self.lock()?;
-                let tx = conn.unchecked_transaction().map_err(|source| {
-                    StorageError::Migration {
+                let tx =
+                    conn.unchecked_transaction()
+                        .map_err(|source| StorageError::Migration {
+                            version: migration.version,
+                            name: migration.name,
+                            detail: source.to_string(),
+                        })?;
+                tx.execute_batch(migration.expand)
+                    .map_err(|source| StorageError::Migration {
                         version: migration.version,
                         name: migration.name,
                         detail: source.to_string(),
-                    }
-                })?;
-                tx.execute_batch(migration.expand).map_err(|source| {
-                    StorageError::Migration {
-                        version: migration.version,
-                        name: migration.name,
-                        detail: source.to_string(),
-                    }
-                })?;
+                    })?;
                 tx.execute(
                     "INSERT INTO admin_schema_version (version, name, applied_at) VALUES (?1, ?2, ?3)",
                     rusqlite::params![migration.version, migration.name, at],
@@ -239,7 +246,10 @@ mod tests {
         assert!(second.is_empty(), "second run must apply nothing");
         assert_eq!(
             store.schema_version().unwrap(),
-            migrations::MIGRATIONS.last().map(|m| m.version).unwrap_or(0)
+            migrations::MIGRATIONS
+                .last()
+                .map(|m| m.version)
+                .unwrap_or(0)
         );
     }
 

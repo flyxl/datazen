@@ -140,8 +140,8 @@ pub fn verify(
     }
     // 校验项 3 已由 session_active 参数表达（见模块头）。
     let _ = cookie_mac; // cookie 的 mac 不参与验证——签名只认 header 提交值；
-                       // cookie 半边的完整性由同值断言（校验项 1）与 HMAC
-                       // 共同保证。
+                        // cookie 半边的完整性由同值断言（校验项 1）与 HMAC
+                        // 共同保证。
     Ok(())
 }
 
@@ -153,13 +153,11 @@ fn split_token(token: &str) -> Result<(String, [u8; 32]), CsrfRejection> {
     let mac_bytes = URL_SAFE_NO_PAD
         .decode(mac_part)
         .map_err(|_| CsrfRejection::Malformed)?;
-    let mac: [u8; 32] = mac_bytes
-        .try_into()
-        .map_err(|_| CsrfRejection::Malformed)?;
+    let mac: [u8; 32] = mac_bytes.try_into().map_err(|_| CsrfRejection::Malformed)?;
     Ok((random.to_owned(), mac))
 }
 
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+pub(crate) fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     a.ct_eq(b).into()
 }
 
@@ -227,7 +225,8 @@ mod tests {
     #[test]
     fn a_rotated_secret_rejects_old_tokens() {
         let old = secret();
-        let rotated = CsrfSecret::new(b"rotated-server-secret-32-bytes-min!".to_vec()).expect("secret");
+        let rotated =
+            CsrfSecret::new(b"rotated-server-secret-32-bytes-min!".to_vec()).expect("secret");
         let token = mint(&old, "session-1").expect("mint");
         assert_eq!(
             verify(&rotated, "session-1", &token, &token, true),
@@ -273,7 +272,13 @@ mod tests {
             Err(CsrfRejection::Malformed),
         );
         assert_eq!(
-            verify(&secret, "session-1", &format!("{random}.%%%"), &format!("{random}.%%%"), true),
+            verify(
+                &secret,
+                "session-1",
+                &format!("{random}.%%%"),
+                &format!("{random}.%%%"),
+                true
+            ),
             Err(CsrfRejection::Malformed),
         );
     }

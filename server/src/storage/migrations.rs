@@ -209,6 +209,7 @@ pub const MIGRATIONS: &[Migration] = &[
     V4_ARTIFACTS,
     V5_AUTHZ_BASELINE,
     V6_AUDIT_EVENTS,
+    V7_EXECUTION_WIRING,
 ];
 
 /// v2：SSH known-hosts 表（`KnownHostsRepository` 的服务端落地）。
@@ -397,6 +398,127 @@ CREATE TABLE expired_artifact (
   owner_principal_id TEXT NOT NULL,
   expires_epoch INTEGER NOT NULL
 );
+"#,
+};
+
+/// v7：WR-D2 收尾（连接目录 / 隧道定义）与 WR-D4 执行接线（秘密材料 /
+/// 服务身份）四表。expansion-only 追加，v1–v6 不动。
+///
+/// DDL 风格沿 §3.10（复合主键 `organization_id` 打头、CHECK 约束、部分索引、
+/// expand-only）；PostgreSQL 等价形登记沿 v3/v4/v5 口径
+/// （[persistence-model §3](../../../../../docs/architecture/platform/persistence-model.md)
+/// 未覆盖这四张表，差异已在本刀模块报告登记）：
+///
+/// - `TIMESTAMPTZ → TEXT`（定宽 RFC3339 UTC 毫秒，`shared::clock` 同一口径）；
+///   `BOOLEAN → INTEGER 0/1` + `CHECK IN (0,1)`（v1 同款）。
+/// - **`stored_secret` / `stored_secret_version`**（`SecretProvider` 的服务端
+///   落地）：行内只有**密文**（HMAC-SHA256 KDF 派生密钥的 sealed box：
+///   nonce + 密文 + 完整性 tag 三列，全部 base64），明文永不入库——与
+///   v1 `secret_ref` 的「只存引用」纪律一致，材料这半边由本迁移补齐。
+///   版本行按 `(organization_id, secret_ref, revision)` 建键；
+///   `read_versioned` 的历史回读（team-server §10.2）由旧版本行承接，
+///   `rotate` 删除全部旧版本行实现「旧版本材料立即失效」。
+/// - **`connection_catalog` / `connection_catalog_group`**（`ConnectionRepository`
+///   的服务端落地）：表单词汇（`ConnectionConfig`）的**净化投影**落
+///   `config_json`——敏感字段（`password` / `passphrase` / `authToken`，
+///   含 ssh `jump` 嵌套）在序列化前置 NULL，明文进 `stored_secret` 的
+///   sealed box，行内只留 `secret_ref` 引用（与 §3.3 `connections` 的
+///   `secret_ref` 列语义同形；§3.3 是 `ProfileRepository` 的目标投影，
+///   表单词汇的回显存储是另一张表，聚合边界见模块报告）。
+///   `sort_order` 承载 `reorder` 的用户排序；`tunnel_id` 投影列让
+///   `usage` 反向投影成为一次索引查询而不是 JSON 扫面；`group_name`
+///   投影列同理（§4.1 桌面 `groups.json` 的服务端等价物）。
+/// - **`tunnel_definition`**（`TunnelRepository` 的服务端落地）：`kind`
+///   的 CHECK 取值即 driver-api `TunnelKind` 的三个持久化字面量
+///   （`none` 不是持久化形态，SavedTunnel 契约排除它）；`config_json`
+///   同款净化投影 + `secret_ref` 引用。
+/// - **`execution_service_identity`**（`IdentityResolver` 委托路径的服务端
+///   落地）：`workflow grant` 的 `service_principal` 词汇
+///   （`modules/src/workflow/domain/grant.rs`）按
+///   `(organization_id, delegation_id)` 登记，`scope` / `target_connection_id`
+///   / `expires_at` 是 CM-06 的最小作用域事实；`uq_..._principal` 部分唯一
+///   索引保证**一个服务身份至多一份活跃授权**（重发即换 delegation_id，
+///   旧行保留 revoked=1 供审计）。
+const V7_EXECUTION_WIRING: Migration = Migration {
+    version: 7,
+    name: "execution wiring baseline (stored_secret/connection_catalog/tunnel_definition/service_identity)",
+    expand: r#"
+CREATE TABLE stored_secret (
+  organization_id TEXT NOT NULL,
+  secret_ref TEXT NOT NULL,
+  current_revision INTEGER NOT NULL CHECK (current_revision >= 1),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (organization_id, secret_ref)
+);
+
+CREATE TABLE stored_secret_version (
+  organization_id TEXT NOT NULL,
+  secret_ref TEXT NOT NULL,
+  revision INTEGER NOT NULL CHECK (revision >= 1),
+  nonce_b64 TEXT NOT NULL,
+  ciphertext_b64 TEXT NOT NULL,
+  tag_b64 TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (organization_id, secret_ref, revision),
+  FOREIGN KEY (organization_id, secret_ref)
+    REFERENCES stored_secret (organization_id, secret_ref) ON DELETE CASCADE
+);
+
+CREATE TABLE connection_catalog (
+  organization_id TEXT NOT NULL,
+  connection_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  group_name TEXT,
+  tunnel_id TEXT,
+  secret_ref TEXT,
+  config_json TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0 CHECK (sort_order >= 0),
+  last_connected_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (organization_id, connection_id)
+);
+CREATE INDEX idx_connection_catalog_order
+  ON connection_catalog (organization_id, sort_order, connection_id);
+CREATE INDEX idx_connection_catalog_tunnel
+  ON connection_catalog (organization_id, tunnel_id) WHERE tunnel_id IS NOT NULL;
+
+CREATE TABLE connection_catalog_group (
+  organization_id TEXT NOT NULL,
+  group_name TEXT NOT NULL CHECK (group_name <> ''),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (organization_id, group_name)
+);
+
+CREATE TABLE tunnel_definition (
+  organization_id TEXT NOT NULL,
+  tunnel_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('ssh','httpProxy','websocket')),
+  secret_ref TEXT,
+  config_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (organization_id, tunnel_id)
+);
+
+CREATE TABLE execution_service_identity (
+  organization_id TEXT NOT NULL,
+  delegation_id TEXT NOT NULL,
+  service_principal TEXT NOT NULL CHECK (service_principal <> ''),
+  scope TEXT NOT NULL,
+  target_connection_id TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  revoked INTEGER NOT NULL DEFAULT 0 CHECK (revoked IN (0, 1)),
+  approved_by TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (organization_id, delegation_id)
+);
+CREATE UNIQUE INDEX uq_execution_service_identity_principal
+  ON execution_service_identity (organization_id, service_principal)
+  WHERE revoked = 0;
 "#,
 };
 

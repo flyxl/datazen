@@ -10,7 +10,7 @@
 //! | L2 [`auth`] | 登录会话 cookie → 查会话行校验 → 注入会话扩展 | **已上线（D3 第一刀）** |
 //! | L3 [`session`] | 只提取会话句柄 + runtimeEpoch 参数 | **已上线（D3 第一刀，探针形态）** |
 //! | L4 [`csrf`] | 会话绑定令牌校验（写方法）+ `csrf_rejected` 审计 | **已上线（D3 第一刀）** |
-//! | L5 体量与速率 | 令牌桶（`ratelimit.rs`） | WR-D3 后续（已推迟，见模块报告） |
+//! | L5 [`ratelimit`] | 令牌桶（principal/IP 键，429 + `Retry-After`） | **已落地（本刀）** |
 //! | L6 [`authorize`] | `PolicyService.authorize`（可见性先于动作） | **已上线（D3 第一刀，探针形态）** |
 //! | 统一错误映射 | handler 错误 → `ApiError` | 状态码表已上线（`http::response`），错误中间件随 D4 |
 //! | 审计 | `Audit` 仓储落账 | CSRF 拒绝已落账（L4，§5.3）；全量审计中间件随 D4 |
@@ -33,6 +33,7 @@ pub mod auth;
 pub mod authorize;
 pub mod body_limit;
 pub mod csrf;
+pub mod ratelimit;
 pub mod request_id;
 pub mod session;
 
