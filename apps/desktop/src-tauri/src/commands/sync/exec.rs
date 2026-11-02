@@ -718,9 +718,7 @@ pub(crate) async fn execute_data_sync_plan(
     {
         request.job_id = Some(format!("data-sync-{}", uuid::Uuid::new_v4()));
     }
-    let accepted =
-        start_apply_job(state, source_session_id, target_session_id, request)
-            .await?;
+    let accepted = start_apply_job(state, source_session_id, target_session_id, request).await?;
     let finished = super::jobs::wait_for_durable_terminal(state, accepted.job_id.as_str()).await?;
     let details = super::jobs::details_durable_job(state, finished.job_id.as_str()).await?;
     let job = details.job;

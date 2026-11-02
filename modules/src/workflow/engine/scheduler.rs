@@ -532,7 +532,9 @@ mod tests {
 
     const DEFINITION: &str = "id: job\nsteps: []\n";
 
-    fn recorded_host(workflows: Vec<WorkflowDefinition>) -> (Arc<RecordingHost>, Arc<Mutex<Vec<String>>>) {
+    fn recorded_host(
+        workflows: Vec<WorkflowDefinition>,
+    ) -> (Arc<RecordingHost>, Arc<Mutex<Vec<String>>>) {
         let executed = Arc::new(Mutex::new(Vec::new()));
         (
             Arc::new(RecordingHost {
@@ -634,14 +636,10 @@ mod tests {
 
     /// 让上膛的时钟走到触发点（把 last_run 回拨到 interval 之前）。
     async fn make_due(scheduler: &Arc<WorkflowScheduler>, workflow_id: &str, interval: u64) {
-        scheduler
-            .last_run
-            .write()
-            .await
-            .insert(
-                workflow_id.to_string(),
-                Instant::now() - Duration::from_secs(interval + 1),
-            );
+        scheduler.last_run.write().await.insert(
+            workflow_id.to_string(),
+            Instant::now() - Duration::from_secs(interval + 1),
+        );
     }
 
     /// 等待派发任务在单线程测试运行时上完成。
@@ -680,8 +678,7 @@ mod tests {
     /// 行为钉子：授权单缺失 → 拒绝派发，不落既有执行路径。
     #[tokio::test]
     async fn a_missing_schedule_grant_rejects_dispatch() {
-        let grants: Arc<dyn WorkflowScheduleGrantReader> =
-            Arc::new(MutableGrants::with(vec![]));
+        let grants: Arc<dyn WorkflowScheduleGrantReader> = Arc::new(MutableGrants::with(vec![]));
         let (scheduler, executed) = bound_scheduler(vec![wf(true, Some(60))], grants);
 
         scheduler.tick().await;
@@ -709,7 +706,7 @@ mod tests {
         let (scheduler, executed) = bound_scheduler(vec![wf(true, Some(60))], reader);
 
         scheduler.tick().await; // 上膛：冻结 v1
-        // 授权单被撤销并重发：版本前移到 2。
+                                // 授权单被撤销并重发：版本前移到 2。
         table
             .grants
             .lock()

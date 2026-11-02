@@ -74,14 +74,12 @@ impl McpToolBroker for crate::commands::AppState {
                     .map(|c| c.enabled_for_ai)
                     .unwrap_or(true)
             })
-            .map(|tool| {
-                datazen::ai::application::ports::McpBrokeredTool {
-                    server_id: tool.server_id,
-                    tool_name: tool.tool_name,
-                    qualified_name: tool.qualified_name,
-                    description: tool.description,
-                    input_schema: tool.input_schema,
-                }
+            .map(|tool| datazen::ai::application::ports::McpBrokeredTool {
+                server_id: tool.server_id,
+                tool_name: tool.tool_name,
+                qualified_name: tool.qualified_name,
+                description: tool.description,
+                input_schema: tool.input_schema,
             })
             .collect()
     }
@@ -108,7 +106,10 @@ impl datazen::mcp::tools::RedactedConnectionSource for crate::commands::AppState
         let service = crate::platform::ipc::require_connection_service(self)
             .map_err(|error| error.to_string())?;
         let scope = crate::platform::connections::local_connection_scope();
-        let connections = service.list_redacted(&scope).await.map_err(|e| e.to_string())?;
+        let connections = service
+            .list_redacted(&scope)
+            .await
+            .map_err(|e| e.to_string())?;
         Ok(connections
             .into_iter()
             .map(|c| datazen::mcp::tools::RedactedConnection {

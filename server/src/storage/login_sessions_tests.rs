@@ -100,7 +100,9 @@ fn create_rejects_an_idle_window_past_the_absolute_window() {
 
     let mut input = new_session("org-a", "user-1", "sid-bad");
     input.idle_expires_at = "2026-01-02T08:00:00.000Z".into(); // 越过 absolute
-    let error = sessions.create(input).expect_err("idle must not pass absolute");
+    let error = sessions
+        .create(input)
+        .expect_err("idle must not pass absolute");
     assert!(error.to_string().contains("ck_login_window"));
 }
 
@@ -246,7 +248,13 @@ fn revoke_marks_the_row_and_bumps_the_token_epoch_exactly_once() {
             "SELECT revoked_at, revoke_reason, token_epoch FROM login_sessions
              WHERE session_id = 'sid-1'",
             [],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, i64>(2)?)),
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            },
         )
         .expect("row");
     drop(conn);
@@ -267,10 +275,14 @@ fn revoke_all_for_principal_only_touches_live_rows_of_that_principal() {
         ("org-a", "user-2", "s-a2"),
         ("org-b", "user-1", "s-b1"),
     ] {
-        sessions.create(new_session(org, principal, sid)).expect("create");
+        sessions
+            .create(new_session(org, principal, sid))
+            .expect("create");
     }
     // 先撤销一个，验证幂等不重复计入。
-    sessions.revoke("s-a2", RevokeReason::Logout, now()).expect("revoke");
+    sessions
+        .revoke("s-a2", RevokeReason::Logout, now())
+        .expect("revoke");
 
     let revoked = sessions
         .revoke_all_for_principal("org-a", "user-1", RevokeReason::Admin, now())

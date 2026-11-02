@@ -24,13 +24,17 @@ use axum::http::{header, Method};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
-use datazen::shared::audit::{AuditEvent, AuditOutcome, AuditPayload, AuditPrincipalKind, AuditRequestContext};
+use datazen::shared::audit::{
+    AuditEvent, AuditOutcome, AuditPayload, AuditPrincipalKind, AuditRequestContext,
+};
 use datazen::shared::error::{ApiError, ApiErrorCode};
 use datazen::shared::id::{OrganizationId, PrincipalId, RequestId, Timestamp};
 
 use crate::csrf::{self, CsrfRejection, CSRF_COOKIE, CSRF_HEADER};
 use crate::http::middleware::auth::AuthenticatedSession;
-use crate::http::middleware::{auth_exempt, now_rfc3339, session_cookie, under_api, AuthChainState};
+use crate::http::middleware::{
+    auth_exempt, now_rfc3339, session_cookie, under_api, AuthChainState,
+};
 use crate::http::response::ApiErrorResponse;
 
 /// 审计动作字面量（team-server §5.3 逐字：`csrf_rejected`）。
@@ -50,11 +54,7 @@ pub(crate) async fn guard(
 
     // L2 已放行才可能到这里；扩展缺失说明装配错误（L4 在 L2 内层却拿到
     // 了无会话的请求）——fail-closed 拒绝，不猜测身份。
-    let Some(session) = req
-        .extensions()
-        .get::<AuthenticatedSession>()
-        .cloned()
-    else {
+    let Some(session) = req.extensions().get::<AuthenticatedSession>().cloned() else {
         return forbidden(None);
     };
 
@@ -76,14 +76,26 @@ pub(crate) async fn guard(
             // 会话存活标记：L2 在**本请求**刚校验过会话行（撤销/过期的
             // 会话到不了这里），`true` 是已验证的事实（§5.1 校验项 3 的
             // 层序实现，见 `crate::csrf` 模块头）。
-            csrf::verify(&state.csrf, &session.session_id, cookie_token, header_token, true)
+            csrf::verify(
+                &state.csrf,
+                &session.session_id,
+                cookie_token,
+                header_token,
+                true,
+            )
         }
         // 任一半边缺失 = 双提交不成立（§5.1 校验项 1 的入口检查）。
         _ => Err(CsrfRejection::Malformed),
     };
 
     if let Err(rejection) = verification {
-        record_csrf_rejected(&state, &session, request_id.clone(), &path, origin.as_deref());
+        record_csrf_rejected(
+            &state,
+            &session,
+            request_id.clone(),
+            &path,
+            origin.as_deref(),
+        );
         tracing::debug!(?rejection, route = %path, "csrf rejected");
         return forbidden(request_id);
     }
@@ -93,7 +105,10 @@ pub(crate) async fn guard(
 
 /// 安全方法（§5.2 的第一行）：不携带 CSRF 令牌，但仍受 L2/L6 约束。
 fn is_safe(method: &Method) -> bool {
-    matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS | Method::TRACE)
+    matches!(
+        *method,
+        Method::GET | Method::HEAD | Method::OPTIONS | Method::TRACE
+    )
 }
 
 /// 403 响应（§5.3：`PermissionDenied` / never，响应体不新增区分字段——

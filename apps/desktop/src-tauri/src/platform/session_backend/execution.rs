@@ -122,7 +122,9 @@ impl DesktopSessionBackend {
                 .input
                 .get("sql")
                 .and_then(serde_json::Value::as_str)
-                .and_then(datazen::execution::application::result_mapping::result_relation_candidate)
+                .and_then(
+                    datazen::execution::application::result_mapping::result_relation_candidate,
+                )
             {
                 if let Some(driver) = self.registry.get(&config.database_type).await {
                     match resource.driver_handle() {

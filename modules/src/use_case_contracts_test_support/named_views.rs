@@ -116,12 +116,7 @@ pub fn other_scope() -> NamedViewScope {
 }
 
 /// 夹具**已存**视图：带稳定 id，供 `seed` 直写存储。
-pub fn stored_fixture(
-    id: &str,
-    name: &str,
-    scope: &NamedViewScope,
-    is_default: bool,
-) -> NamedView {
+pub fn stored_fixture(id: &str, name: &str, scope: &NamedViewScope, is_default: bool) -> NamedView {
     NamedView {
         id: id.into(),
         name: name.into(),
@@ -160,10 +155,7 @@ pub async fn saves_a_new_view_and_returns_the_stored_record(
     binding.seed(Vec::new()).await.expect("seed an empty store");
 
     let draft = draft_fixture("Monthly orders", &contract_scope());
-    let saved = binding
-        .save(draft)
-        .await
-        .expect("a valid draft saves fine");
+    let saved = binding.save(draft).await.expect("a valid draft saves fine");
 
     assert!(
         !saved.id.trim().is_empty(),
@@ -183,9 +175,7 @@ pub async fn saves_a_new_view_and_returns_the_stored_record(
 
 /// 正常路径：菜单序（default 先、其余按名字不分大小写）与 scope 过滤。
 /// 排序与过滤是用例规则，不是存储顺序——两腿必须给出同一个序。
-pub async fn listing_orders_default_first_then_by_name(
-    binding: &dyn NamedViewsContractBinding,
-) {
+pub async fn listing_orders_default_first_then_by_name(binding: &dyn NamedViewsContractBinding) {
     binding
         .seed(vec![
             stored_fixture("view-a", "beta", &contract_scope(), false),
@@ -276,7 +266,9 @@ pub async fn the_one_default_per_scope_rule_is_enforced_in_one_write(
         .await
         .expect("list the other scope");
     assert!(
-        others.iter().any(|view| view.id == "view-3" && view.is_default),
+        others
+            .iter()
+            .any(|view| view.id == "view-3" && view.is_default),
         "the rule stops at the scope boundary"
     );
 }
@@ -287,7 +279,12 @@ pub async fn deleting_an_unknown_id_is_a_no_op_and_the_known_id_is_gone(
     binding: &dyn NamedViewsContractBinding,
 ) {
     binding
-        .seed(vec![stored_fixture("view-1", "Users", &contract_scope(), false)])
+        .seed(vec![stored_fixture(
+            "view-1",
+            "Users",
+            &contract_scope(),
+            false,
+        )])
         .await
         .expect("seed one view");
 
@@ -310,9 +307,7 @@ pub async fn deleting_an_unknown_id_is_a_no_op_and_the_known_id_is_gone(
 /// 错误路径（规则拒绝族）：scope 内同名不分大小写拒绝；拒绝携带契约码
 /// `grid.view.nameExists` 与 application 固定句——**文本不携带用户输入**
 /// （D1：宿主消息只说宿主知道的）。跨 scope 同名是合法的另一张表。
-pub async fn duplicate_names_in_one_scope_are_refused(
-    binding: &dyn NamedViewsContractBinding,
-) {
+pub async fn duplicate_names_in_one_scope_are_refused(binding: &dyn NamedViewsContractBinding) {
     binding
         .seed(vec![
             stored_fixture("view-1", "Users", &contract_scope(), false),
@@ -371,7 +366,12 @@ pub async fn invalid_records_are_refused_before_the_repository(
     binding: &dyn NamedViewsContractBinding,
 ) {
     binding
-        .seed(vec![stored_fixture("view-1", "Users", &contract_scope(), false)])
+        .seed(vec![stored_fixture(
+            "view-1",
+            "Users",
+            &contract_scope(),
+            false,
+        )])
         .await
         .expect("seed one view");
 

@@ -64,43 +64,89 @@ pub struct AuthDeps {
     pub server_secret: Vec<u8>,
     /// 空闲寿命（秒；§4.3 默认 8 小时，来自部署配置）。
     pub idle_ttl_seconds: u64,
+    /// L5 速率限制（§9.1；None = 不挂——骨架腿与最小部署形态）。
+    pub rate_limit: Option<crate::http::middleware::ratelimit::RateLimitState>,
+    /// SSE 事件流（WR-D5；None = 不挂 `/api/v1/events/*`）。
+    pub sse: Option<crate::http::sse::SseState>,
+    /// OIDC 登录面（§4；None = 不挂 `/api/v1/auth/*`——这些路径落到
+    /// fallback 501，部署未启用 OIDC 的显式形态）。
+    pub oidc: Option<crate::auth::oidc::OidcState>,
 }
 
-/// 组装带认证链的 Router：`build_router` 的全部面 + L2→L3→L4→L6。
+/// 组装带认证链的 Router：`build_router` 的全部面 + L2→L3→L4→(L5)→L6，
+/// 以及本刀点亮的域路由（OIDC 登录面 / SSE 事件流——构造参数缺省即不挂）。
 ///
 /// 层序（§3.1，请求穿过顺序）：L0 requestId → L1a Content-Length →
 /// catch-panic → L1b 流式体闸 → **L2 认证 → L3 会话参数 → L4 CSRF →
-/// L6 授权** → handler/fallback。`Router::layer` 后加的在外层，所以代码
-/// 里 L6 先写、L0 最后写。L5（体量与速率）是推迟项（见模块报告）。
+/// L5 速率 → L6 授权** → handler/fallback。`Router::layer` 后加的在外层，
+/// 所以代码里 L6 先写、L0 最后写；L5 在 L4 与 L6 之间（可选挂载）。
 ///
 /// 失败策略 fail-closed：空/坏 `server_secret` 拒绝装配（`CsrfSecret` 的
 /// 构造裁决）。幂等性同 [`build_router`]：不读环境，可反复调用。
 pub fn build_router_with_auth(deps: AuthDeps) -> Result<Router, crate::error::ServerError> {
-    let csrf_secret = crate::csrf::CsrfSecret::new(deps.server_secret).map_err(|message| {
-        crate::error::ServerError::ConfigInvalid(format!("csrf: {message}"))
-    })?;
+    use axum::routing::post;
+
+    let csrf_secret = crate::csrf::CsrfSecret::new(deps.server_secret)
+        .map_err(|message| crate::error::ServerError::ConfigInvalid(format!("csrf: {message}")))?;
     let state = middleware::AuthChainState {
         sessions: crate::storage::LoginSessions::new(deps.store.clone()),
         policy: deps.policy,
         csrf: std::sync::Arc::new(csrf_secret),
-        audit: std::sync::Arc::new(crate::storage::ServerAudit::new(deps.store)),
+        audit: std::sync::Arc::new(crate::storage::ServerAudit::new(deps.store.clone())),
         idle_ttl_seconds: deps.idle_ttl_seconds,
     };
 
-    Ok(Router::new()
+    // 域路由先挂（layer 只作用于先加的路由）；各自带独立状态。
+    let mut router = Router::new()
         .route("/healthz", get(healthz))
         .route("/readyz", get(readyz))
-        .fallback(api_or_not_found)
-        // 内 → 外：L6 → L4 → L3 → L2 → L1b → catch-panic → L1a → L0。
-        .layer(axum::middleware::from_fn_with_state(
-            state.clone(),
-            middleware::authorize::guard,
-        ))
+        .fallback(api_or_not_found);
+    if let Some(oidc) = deps.oidc.clone() {
+        // §3.3：login/callback 是 L2 豁免路径（auth_exempt）；未认证的
+        // 到达层语义由 L5 的 IP 桶承接。
+        router = router
+            .route(
+                "/api/v1/auth/login",
+                get(crate::auth::oidc::login).with_state(oidc.clone()),
+            )
+            .route(
+                "/api/v1/auth/callback",
+                get(crate::auth::oidc::callback).with_state(oidc),
+            );
+    }
+    if let Some(sse) = deps.sse.clone() {
+        // WR-D5：订阅建立（POST，L4 CSRF 适用）+ 事件流（GET，§8.1 的
+        // Origin 证明在 handler 内）。
+        router = router
+            .route(
+                "/api/v1/events/subscriptions",
+                post(crate::http::sse::create_subscription).with_state(sse.clone()),
+            )
+            .route(
+                "/api/v1/events/{streamId}",
+                get(crate::http::sse::events).with_state(sse),
+            );
+    }
+
+    // 内 → 外：L6 → (L5) → L4 → L3 → L2 → L1b → catch-panic → L1a → L0。
+    let mut router = router.layer(axum::middleware::from_fn_with_state(
+        state.clone(),
+        middleware::authorize::guard,
+    ));
+    if let Some(rate_limit) = deps.rate_limit {
+        router = router.layer(axum::middleware::from_fn_with_state(
+            rate_limit,
+            middleware::ratelimit::guard,
+        ));
+    }
+    let router = router
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             middleware::csrf::guard,
         ))
-        .layer(axum::middleware::from_fn(middleware::session::session_params))
+        .layer(axum::middleware::from_fn(
+            middleware::session::session_params,
+        ))
         .layer(axum::middleware::from_fn_with_state(
             state,
             middleware::auth::authenticate,
@@ -108,7 +154,8 @@ pub fn build_router_with_auth(deps: AuthDeps) -> Result<Router, crate::error::Se
         .layer(RequestBodyLimitLayer::new(MAX_BODY_BYTES))
         .layer(CatchPanicLayer::new())
         .layer(axum::middleware::from_fn(content_length_gate))
-        .layer(axum::middleware::from_fn(middleware::request_id::assign)))
+        .layer(axum::middleware::from_fn(middleware::request_id::assign));
+    Ok(router)
 }
 
 /// 存活探针：进程在服务即 200（team-server §2.4 / §5）。

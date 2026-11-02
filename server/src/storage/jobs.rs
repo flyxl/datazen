@@ -246,8 +246,7 @@ impl ServerJobs {
         .map_err(backend)?;
         tx.commit().map_err(backend)?;
 
-        Self::sync_get(&conn, &organization_id, &job_id)?
-            .ok_or_else(|| PortError::NotFound(job_id))
+        Self::sync_get(&conn, &organization_id, &job_id)?.ok_or_else(|| PortError::NotFound(job_id))
     }
 
     fn sync_list(
@@ -262,9 +261,8 @@ impl ServerJobs {
         let organization_id = ctx.organization_id.as_str().to_string();
         let conn = lock(&self.store)?;
 
-        let mut sql = format!(
-            "SELECT {JOB_COLUMNS}, {CLAIM_COLUMNS} FROM jobs WHERE organization_id = ?1"
-        );
+        let mut sql =
+            format!("SELECT {JOB_COLUMNS}, {CLAIM_COLUMNS} FROM jobs WHERE organization_id = ?1");
         let mut bind: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(organization_id.clone())];
         if !filter.states.is_empty() {
             let placeholders = (0..filter.states.len())
@@ -277,8 +275,8 @@ impl ServerJobs {
             }
         }
         if let Some(owner) = &filter.owner {
-            let owner_json = serde_json::to_string(owner)
-                .map_err(|_| backend("owner serialization failed"))?;
+            let owner_json =
+                serde_json::to_string(owner).map_err(|_| backend("owner serialization failed"))?;
             let index = bind.len() + 1;
             sql.push_str(&format!(" AND owner_json = ?{index}"));
             bind.push(Box::new(owner_json));
@@ -376,10 +374,7 @@ impl ServerJobs {
                     .map(|worker| worker.as_str().to_string()),
                 stage_execution_ids,
                 stage.started_at.as_ref().map(|ts| ts.as_str().to_string()),
-                stage
-                    .finished_at
-                    .as_ref()
-                    .map(|ts| ts.as_str().to_string()),
+                stage.finished_at.as_ref().map(|ts| ts.as_str().to_string()),
             ],
         )
         .map_err(backend)?;
@@ -760,9 +755,7 @@ fn backend(source: impl std::fmt::Display) -> PortError {
     PortError::BackendUnavailable(source.to_string())
 }
 
-fn lock(
-    store: &AdminStore,
-) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>, PortError> {
+fn lock(store: &AdminStore) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>, PortError> {
     store
         .lock_for_adapter()
         .map_err(|source| PortError::BackendUnavailable(source.to_string()))
@@ -793,11 +786,7 @@ fn state_from_name(name: &str) -> Option<JobState> {
 fn db_row_from_row(row: &Row<'_>) -> rusqlite::Result<JobDbRow> {
     let record = record_from_row(row)?;
     let core = JobRowCore {
-        organization_id: record
-            .definition
-            .organization_id
-            .as_str()
-            .to_string(),
+        organization_id: record.definition.organization_id.as_str().to_string(),
         job_id: record.view.job_id.as_str().to_string(),
         worker_id: row.get(17)?,
         claim_stage_id: row.get(18)?,

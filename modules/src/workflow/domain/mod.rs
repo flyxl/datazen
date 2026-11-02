@@ -16,11 +16,13 @@ pub mod repository;
 pub mod target_plan;
 
 pub use command::WorkflowCommandStep;
-pub use grant::{definition_revision, service_principal, WorkflowScheduleGrant, WorkflowScheduleScope};
 pub use error::WorkflowError;
 pub use executable::{
     ExecutableBlock, ExecutableStep, ExecutableWorkflow, TargetDeclaration, WorkflowVersion,
     HIGHEST_SUPPORTED_VERSION,
+};
+pub use grant::{
+    definition_revision, service_principal, WorkflowScheduleGrant, WorkflowScheduleScope,
 };
 pub use model::{
     BlockKind, BlockRetry, ErrorHandlingConfig, ErrorStrategy, ErrorStrategyKind, MergeSource,

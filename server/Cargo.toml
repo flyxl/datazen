@@ -29,6 +29,11 @@ description = "DataZen team web server host (P7 / web-ready WR-D): the HTTP form
 # 消费内核。后续切片按域点亮。
 datazen = { workspace = true, features = ["connection", "execution", "tunnel", "jobs"] }
 
+# WR-D2 收尾：连接目录/隧道定义的端口形状（`ConnectionConfig` /
+# `SavedTunnel`）直接来自 driver-api——模块不二次投影，server 也不得
+# 另立一份（`storage/connections.rs`、`storage/tunnels.rs`）。
+datazen-driver-api = { workspace = true }
+
 # 适配器的 `#[async_trait]`（trait 实现处直接使用，需是本 crate 的直接依赖；
 # datazen 侧的同名依赖不传递可见性）。
 async-trait = { workspace = true }
@@ -65,6 +70,15 @@ tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { workspace = true }
 
+# WR-D3 余项（OIDC 依赖方流程）：发现文档 / token 端点 / JWKS 拉取的 HTTP 客户端。
+# workspace 规格已含 rustls + json 特性（无 native-tls）。
+reqwest = { workspace = true }
+# id_token（RS256 等）JWKS 校验与测试期签名；ring 已在依赖图内（reqwest rustls），
+# 增量为零外新链。
+jsonwebtoken = "9"
+# WR-D5 SSE：mpsc 接收端 → TryStream 的包装（axum `Sse::new` 的输入形态）。
+tokio-stream = "0.1"
+
 [features]
 # WR-C3 同用例双传输测试（server 腿）：共享规格模块挂在 datazen 的
 # test-harness + named_views feature 门后，本 crate feature 把两腿依赖一起
@@ -78,6 +92,11 @@ required-features = ["use-case-contracts"]
 [dev-dependencies]
 # oneshot 驱动 Router 的集成测试需要 ServiceExt。
 tower = { version = "0.5", features = ["util"] }
+# WR-D5 SSE 集成测试：tokio 运行时 + 假体装配 + 流读取。
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync"] }
+serde_json = { workspace = true }
+futures-util = { workspace = true }
+async-trait = { workspace = true }
 
 [lints]
 workspace = true

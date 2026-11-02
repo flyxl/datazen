@@ -243,10 +243,7 @@ pub async fn list_connections(
     source: &dyn RedactedConnectionSource,
     allowed_connection_ids: &[String],
 ) -> Result<String, ToolError> {
-    let connections = source
-        .list_redacted()
-        .await
-        .map_err(internal)?;
+    let connections = source.list_redacted().await.map_err(internal)?;
     let result: Vec<serde_json::Value> = connections
         .into_iter()
         .filter(|connection| {
@@ -300,9 +297,7 @@ pub async fn run_workflow(
         .get(workflow_id)
         .await
         .map_err(internal)?
-        .ok_or_else(|| {
-            ToolError::InvalidParams(format!("Workflow '{workflow_id}' not found"))
-        })?;
+        .ok_or_else(|| ToolError::InvalidParams(format!("Workflow '{workflow_id}' not found")))?;
     let result = crate::workflow::engine::executor::WorkflowExecutor::execute_with_options(
         &workflow,
         host,
@@ -310,9 +305,7 @@ pub async fn run_workflow(
         variables,
         crate::workflow::engine::executor::WorkflowExecuteOptions {
             permission_mode: Some(mode),
-            query_row_limit: Some(
-                crate::workflow::engine::executor::WORKFLOW_QUERY_ROW_LIMIT,
-            ),
+            query_row_limit: Some(crate::workflow::engine::executor::WORKFLOW_QUERY_ROW_LIMIT),
         },
     )
     .await

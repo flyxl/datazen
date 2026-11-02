@@ -14,9 +14,7 @@ use super::util::{
 };
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
-use datazen::ai::application::chat_session::{
-    run_chat_session, ChatSessionEnv, ChatSessionInput,
-};
+use datazen::ai::application::chat_session::{run_chat_session, ChatSessionEnv, ChatSessionInput};
 use datazen::ai::application::schema_pipeline::SchemaContextPipeline;
 use datazen::ai::ownership::AiTargetClaim;
 use datazen::ai::tool_loop::AiToolLoopHost;

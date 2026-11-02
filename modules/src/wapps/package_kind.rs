@@ -45,10 +45,7 @@ mod tests {
     /// 迁自桌面 `commands/wapps/tests.rs`（B2 域刀：纯词汇解析归位 modules）。
     #[test]
     fn wapp_package_kind_parses_zip_and_folder_aliases() {
-        assert_eq!(
-            WappPackageKind::parse("zip").unwrap(),
-            WappPackageKind::Zip
-        );
+        assert_eq!(WappPackageKind::parse("zip").unwrap(), WappPackageKind::Zip);
         assert_eq!(
             WappPackageKind::parse("folder").unwrap(),
             WappPackageKind::Folder

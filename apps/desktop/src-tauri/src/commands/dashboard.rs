@@ -418,26 +418,20 @@ mod tests {
         let dash = sample_dashboard("dash-1", "wf-1");
         let saved = save_dashboard(app.state(), dash.clone()).await.unwrap();
         assert_eq!(saved.id, "dash-1");
-        let loaded = get_dashboard(app.state(), "dash-1".into())
-            .await
-            .unwrap();
+        let loaded = get_dashboard(app.state(), "dash-1".into()).await.unwrap();
         assert_eq!(loaded.name, "Test");
         assert_eq!(loaded, saved);
 
         set_dashboard_refresh_paused(app.state(), "dash-1".into(), true)
             .await
             .unwrap();
-        let paused = get_dashboard(app.state(), "dash-1".into())
-            .await
-            .unwrap();
+        let paused = get_dashboard(app.state(), "dash-1".into()).await.unwrap();
         assert!(paused.refresh_paused);
 
         delete_dashboard(app.state(), "dash-1".into())
             .await
             .unwrap();
-        assert!(get_dashboard(app.state(), "dash-1".into())
-            .await
-            .is_err());
+        assert!(get_dashboard(app.state(), "dash-1".into()).await.is_err());
     }
 
     #[tokio::test]

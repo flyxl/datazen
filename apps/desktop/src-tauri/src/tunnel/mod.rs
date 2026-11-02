@@ -154,7 +154,6 @@ pub async fn test_connection(
     driver.test_connection(&effective_config).await
 }
 
-
 async fn start_websocket(
     config: ConnectionConfig,
 ) -> Result<(ConnectionConfig, Option<Tunnel>), DriverError> {

@@ -4,12 +4,12 @@
 //! 覆盖：围栏剥离、JSON 边界提取、`parse_ai_json` 的截断/空响应/schema
 //! 失败分类、语言提示注入与多字节截断。
 
+use super::extract_json_boundary;
 use super::inject_language_hint;
 use super::language_hint;
 use super::parse_ai_json;
 use super::strip_markdown_fences;
 use super::truncate_str;
-use super::extract_json_boundary;
 use crate::ai::domain::types::{ChatMessage, MessageRole};
 
 #[test]
@@ -177,17 +177,25 @@ fn test_language_hint_unknown_locale_uses_code() {
 fn test_find_first_balanced_json_variants() {
     use super::find_first_balanced_json;
 
-    assert_eq!(find_first_balanced_json(r#"{"key": "value"}"#), Some(r#"{"key": "value"}"#));
+    assert_eq!(
+        find_first_balanced_json(r#"{"key": "value"}"#),
+        Some(r#"{"key": "value"}"#)
+    );
     assert_eq!(
         find_first_balanced_json(r#"Here is the result: {"key": "value"} and some trailing text"#),
         Some(r#"{"key": "value"}"#)
     );
     assert_eq!(
-        find_first_balanced_json("Here is the result:\n```json\n{\"key\": \"value\"}\n```\nand trailing"),
+        find_first_balanced_json(
+            "Here is the result:\n```json\n{\"key\": \"value\"}\n```\nand trailing"
+        ),
         Some(r#"{"key": "value"}"#)
     );
     assert_eq!(find_first_balanced_json("[1, 2, 3]"), Some("[1, 2, 3]"));
-    assert_eq!(find_first_balanced_json(r#"{"a": {"b": [1, 2]}}"#), Some(r#"{"a": {"b": [1, 2]}}"#));
+    assert_eq!(
+        find_first_balanced_json(r#"{"a": {"b": [1, 2]}}"#),
+        Some(r#"{"a": {"b": [1, 2]}}"#)
+    );
     assert_eq!(
         find_first_balanced_json(r#"{"msg": "hello {world}", "n": 42}"#),
         Some(r#"{"msg": "hello {world}", "n": 42}"#)
@@ -200,7 +208,8 @@ fn test_strip_fences_all_variants() {
     use super::strip_fences_all;
 
     assert_eq!(strip_fences_all("```json\n{\"a\": 1}\n```"), r#"{"a": 1}"#);
-    let multiple = strip_fences_all("```json\n{\"a\": 1}\n```\nSome text\n```json\n{\"b\": 2}\n```");
+    let multiple =
+        strip_fences_all("```json\n{\"a\": 1}\n```\nSome text\n```json\n{\"b\": 2}\n```");
     assert!(multiple.contains(r#"{"a": 1}"#));
     assert!(multiple.contains(r#"{"b": 2}"#));
     assert!(strip_fences_all("```json\n{\"a\": 1}\nno closing fence").contains(r#"{"a": 1}"#));

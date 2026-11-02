@@ -17,7 +17,7 @@ use async_trait::async_trait;
 use rusqlite::{params, OptionalExtension, Row};
 
 use datazen::connection::domain::{
-    NamespaceTarget, ProfileRecord, ProfileReader, ProfileRepository, ProfileScope,
+    NamespaceTarget, ProfileReader, ProfileRecord, ProfileRepository, ProfileScope,
 };
 use datazen::connection::dto::{ProfileDraft, ProfilePatch};
 use datazen::shared::context::RequestContext;
@@ -378,9 +378,7 @@ impl ServerProfiles {
     }
 }
 
-fn lock(
-    store: &AdminStore,
-) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>, PortError> {
+fn lock(store: &AdminStore) -> Result<std::sync::MutexGuard<'_, rusqlite::Connection>, PortError> {
     store
         .lock_for_adapter()
         .map_err(|source| PortError::BackendUnavailable(source.to_string()))
@@ -404,27 +402,28 @@ fn record_from_row(row: &Row<'_>) -> rusqlite::Result<ProfileRecord> {
     let created_at: String = row.get(14)?;
     let updated_at: String = row.get(15)?;
 
-    let initial_namespace: NamespaceTarget = serde_json::from_str(&namespace_json).map_err(|_| {
-        rusqlite::Error::FromSqlConversionFailure(
-            7,
-            rusqlite::types::Type::Text,
-            Box::new(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "namespace json",
-            )),
-        )
-    })?;
-    let driver_options: BTreeMap<String, serde_json::Value> =
-        serde_json::from_str(&options_json).map_err(|_| {
+    let initial_namespace: NamespaceTarget =
+        serde_json::from_str(&namespace_json).map_err(|_| {
             rusqlite::Error::FromSqlConversionFailure(
-                8,
+                7,
                 rusqlite::types::Type::Text,
                 Box::new(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
-                    "options json",
+                    "namespace json",
                 )),
             )
         })?;
+    let driver_options: BTreeMap<String, serde_json::Value> = serde_json::from_str(&options_json)
+        .map_err(|_| {
+        rusqlite::Error::FromSqlConversionFailure(
+            8,
+            rusqlite::types::Type::Text,
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "options json",
+            )),
+        )
+    })?;
 
     Ok(ProfileRecord {
         organization_id: OrganizationId::new(organization_id),

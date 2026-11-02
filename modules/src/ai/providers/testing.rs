@@ -8,11 +8,11 @@
 //! Prefer this over HTTP wiremock when testing orchestration: responses are
 //! queued deterministically and request payloads can be asserted.
 
+use super::super::domain::traits::AiProvider;
 use super::super::domain::types::{
     AiError, AiProviderConfig, AiProviderType, CompletionRequest, CompletionResponse, StreamChunk,
     TokenUsage, ToolCall,
 };
-use super::super::domain::traits::AiProvider;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;

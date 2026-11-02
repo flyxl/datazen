@@ -184,7 +184,9 @@ impl Role {
                 | ResourceType::Wapp => false,
             },
             Self::JobOperator => match resource {
-                ResourceType::Job => matches!(action, Action::Read | Action::Execute | Action::Cancel),
+                ResourceType::Job => {
+                    matches!(action, Action::Read | Action::Execute | Action::Cancel)
+                }
                 ResourceType::Execution => {
                     matches!(action, Action::Read | Action::Execute | Action::Cancel)
                 }

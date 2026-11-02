@@ -1,0 +1,34 @@
+{
+  "name": "datazen-web",
+  "version": "0.2.3",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "description": "DataZen web application (browser shell): the entry module and the platform/web adapters that bind @datazen/frontend's ports to browser-native halves. The shared frontend tree lives in @datazen/frontend. Zero @tauri-apps dependencies — the R5/R6 form gates apply verbatim (WR-E1).",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "node ../../scripts/ensure-generated-drivers.mjs && node ../../scripts/generate-builtin-locales.mjs && vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@codemirror/autocomplete": "6.20.1",
+    "@codemirror/commands": "6.10.3",
+    "@codemirror/lang-sql": "6.10.0",
+    "@codemirror/language": "6.12.3",
+    "@codemirror/lint": "6.9.7",
+    "@codemirror/search": "6.6.0",
+    "@codemirror/state": "6.7.4",
+    "@codemirror/view": "6.43.11",
+    "@datazen/backend-client": "workspace:*",
+    "@datazen/frontend": "workspace:*",
+    "react": "18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.4",
+    "@vitejs/plugin-react": "^4.4.1",
+    "typescript": "7.0.2",
+    "vite": "^6.2.5"
+  }
+}

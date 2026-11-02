@@ -90,23 +90,33 @@ fn transfer_history_outcome_uses_typed_table_results() {
     };
 
     assert_eq!(
-        datazen::migration::data_transfer::history_outcome::rollback_history_outcome(&result(TableExecutionOutcome::Unknown)),
+        datazen::migration::data_transfer::history_outcome::rollback_history_outcome(&result(
+            TableExecutionOutcome::Unknown
+        )),
         "unknown"
     );
     assert_eq!(
-        datazen::migration::data_transfer::history_outcome::rollback_history_outcome(&result(TableExecutionOutcome::RolledBack)),
+        datazen::migration::data_transfer::history_outcome::rollback_history_outcome(&result(
+            TableExecutionOutcome::RolledBack
+        )),
         "rolledBack"
     );
     assert_eq!(
-        datazen::migration::data_transfer::history_outcome::rollback_history_outcome(&result(TableExecutionOutcome::PartiallyApplied)),
+        datazen::migration::data_transfer::history_outcome::rollback_history_outcome(&result(
+            TableExecutionOutcome::PartiallyApplied
+        )),
         "partiallyApplied"
     );
     assert_eq!(
-        datazen::migration::data_transfer::history_outcome::rollback_history_outcome(&result(TableExecutionOutcome::NotStarted)),
+        datazen::migration::data_transfer::history_outcome::rollback_history_outcome(&result(
+            TableExecutionOutcome::NotStarted
+        )),
         "notStarted"
     );
     assert_eq!(
-        datazen::migration::data_transfer::history_outcome::rollback_history_outcome(&TransferExecutionResult::default()),
+        datazen::migration::data_transfer::history_outcome::rollback_history_outcome(
+            &TransferExecutionResult::default()
+        ),
         "notRequired"
     );
     let sql_file_partial = TransferExecutionResult {
@@ -122,7 +132,9 @@ fn transfer_history_outcome_uses_typed_table_results() {
         ..Default::default()
     };
     assert_eq!(
-        datazen::migration::data_transfer::history_outcome::rollback_history_outcome(&sql_file_partial),
+        datazen::migration::data_transfer::history_outcome::rollback_history_outcome(
+            &sql_file_partial
+        ),
         "unknown",
         "SQL-file history semantics remain outside the typed DB outcomes"
     );
@@ -146,9 +158,18 @@ fn transfer_history_outcome_uses_typed_table_results() {
         partial: true,
         ..Default::default()
     };
-    assert_eq!(datazen::migration::data_transfer::history_outcome::rollback_history_outcome(&mixed), "unknown");
-    assert_eq!(datazen::migration::data_transfer::history_outcome::error_history_outcome(false), "notStarted");
-    assert_eq!(datazen::migration::data_transfer::history_outcome::error_history_outcome(true), "unknown");
+    assert_eq!(
+        datazen::migration::data_transfer::history_outcome::rollback_history_outcome(&mixed),
+        "unknown"
+    );
+    assert_eq!(
+        datazen::migration::data_transfer::history_outcome::error_history_outcome(false),
+        "notStarted"
+    );
+    assert_eq!(
+        datazen::migration::data_transfer::history_outcome::error_history_outcome(true),
+        "unknown"
+    );
 }
 
 #[test]

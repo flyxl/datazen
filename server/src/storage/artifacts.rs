@@ -114,9 +114,8 @@ fn truncation_name(reason: AbortReason) -> &'static str {
 #[cfg(unix)]
 fn private_dir(path: &Path) -> Result<(), PortError> {
     use std::os::unix::fs::PermissionsExt;
-    fs::set_permissions(path, fs::Permissions::from_mode(0o700)).map_err(|_| {
-        backend("artifact dir permissions")
-    })
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+        .map_err(|_| backend("artifact dir permissions"))
 }
 
 #[cfg(not(unix))]
@@ -186,8 +185,7 @@ fn row_from_row(row: &Row<'_>) -> rusqlite::Result<ArtifactRow> {
         Some("consumerLimitExceeded") => Some(AbortReason::ConsumerLimitExceeded),
         _ => return Err(invalid("truncation reason")),
     };
-    let sizes: Vec<u64> =
-        serde_json::from_str(&sizes_json).map_err(|_| invalid("chunk sizes"))?;
+    let sizes: Vec<u64> = serde_json::from_str(&sizes_json).map_err(|_| invalid("chunk sizes"))?;
 
     Ok(ArtifactRow {
         delegated_execution: delegated != 0,
@@ -243,12 +241,8 @@ impl ServerArtifacts {
             let mut stmt = conn
                 .prepare(&format!("SELECT {ARTIFACT_COLUMNS} FROM artifact_metadata"))
                 .map_err(backend)?;
-            let mapped = stmt
-                .query_map([], row_from_row)
-                .map_err(backend)?;
-            mapped
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(backend)?
+            let mapped = stmt.query_map([], row_from_row).map_err(backend)?;
+            mapped.collect::<Result<Vec<_>, _>>().map_err(backend)?
         };
         for row in rows {
             let id = row.metadata.artifact_id.clone();
@@ -297,7 +291,11 @@ impl ServerArtifacts {
         }
         for item in fs::read_dir(&self.root).map_err(|_| backend("artifact root read"))? {
             let item = item.map_err(|_| backend("artifact root read"))?;
-            if !item.file_type().map_err(|_| backend("artifact root read"))?.is_dir() {
+            if !item
+                .file_type()
+                .map_err(|_| backend("artifact root read"))?
+                .is_dir()
+            {
                 continue;
             }
             let name = item.file_name().to_string_lossy().to_string();
@@ -387,8 +385,7 @@ impl ServerArtifacts {
             // （与内核 `visible` 的过滤同口径）。
             return Err(PortError::NotFound("artifact".into()));
         }
-        if row.expires_epoch <= now_epoch()
-            || row.metadata.lifecycle == ArtifactLifecycle::Expired
+        if row.expires_epoch <= now_epoch() || row.metadata.lifecycle == ArtifactLifecycle::Expired
         {
             return Err(PortError::ArtifactExpired);
         }
@@ -406,9 +403,7 @@ impl ServerArtifacts {
     ) -> Result<ArtifactRow, PortError> {
         let row = conn
             .query_row(
-                &format!(
-                    "SELECT {ARTIFACT_COLUMNS} FROM artifact_metadata WHERE artifact_id = ?1"
-                ),
+                &format!("SELECT {ARTIFACT_COLUMNS} FROM artifact_metadata WHERE artifact_id = ?1"),
                 params![writer.artifact_id.as_str()],
                 row_from_row,
             )
@@ -514,7 +509,11 @@ impl ServerArtifacts {
         let mut file = private_file(OpenOptions::new().write(true).create_new(true))
             .open(&path)
             .map_err(|_| backend("chunk file create"))?;
-        if file.write_all(&chunk.bytes).and_then(|_| file.sync_all()).is_err() {
+        if file
+            .write_all(&chunk.bytes)
+            .and_then(|_| file.sync_all())
+            .is_err()
+        {
             let _ = fs::remove_file(&path);
             return Err(backend("chunk file write"));
         }
@@ -691,7 +690,9 @@ impl ServerArtifacts {
         let result = (|| {
             for (index, size) in row.sizes.iter().enumerate() {
                 let bytes = Self::read_block(&self.chunk_path(id, index as u64), *size)?;
-                output.write_all(&bytes).map_err(|_| backend("export write"))?;
+                output
+                    .write_all(&bytes)
+                    .map_err(|_| backend("export write"))?;
                 exported_bytes += bytes.len() as u64;
             }
             // 发布边界复检：TTL/吊销在导出期间变化则丢弃产物。
@@ -712,8 +713,8 @@ impl ServerArtifacts {
     }
 
     fn sync_delete_expired(&self, at: Timestamp) -> Result<Vec<ArtifactId>, PortError> {
-        let parsed = chrono::DateTime::parse_from_rfc3339(at.as_str())
-            .map_err(|_| invalid_writer())?;
+        let parsed =
+            chrono::DateTime::parse_from_rfc3339(at.as_str()).map_err(|_| invalid_writer())?;
         let at_epoch = parsed.timestamp().max(0) as u64;
         let conn = self.lock()?;
         let tx = conn.unchecked_transaction().map_err(backend)?;
@@ -783,7 +784,9 @@ impl ServerArtifacts {
         let file = private_file(&mut options)
             .open(path)
             .map_err(|_| backend("chunk file open"))?;
-        let meta = file.metadata().map_err(|_| backend("chunk file metadata"))?;
+        let meta = file
+            .metadata()
+            .map_err(|_| backend("chunk file metadata"))?;
         if !meta.is_file() || meta.len() != size {
             return Err(backend("chunk file size mismatch"));
         }
@@ -821,13 +824,12 @@ impl ArtifactRepository for ServerArtifacts {
     ) -> Result<ChunkIndex, PortError> {
         let this = self.clone();
         let mut handle = writer.clone();
-        let (handle, outcome) =
-            tokio::task::spawn_blocking(move || {
-                let outcome = this.sync_append(&mut handle, chunk);
-                (handle, outcome)
-            })
-            .await
-            .map_err(backend)?;
+        let (handle, outcome) = tokio::task::spawn_blocking(move || {
+            let outcome = this.sync_append(&mut handle, chunk);
+            (handle, outcome)
+        })
+        .await
+        .map_err(backend)?;
         // 计数推进写回调用方句柄（同步核心已保证失败路径不动计数）。
         writer.next_chunk_index = handle.next_chunk_index;
         writer.published_chunk_count = handle.published_chunk_count;
@@ -873,11 +875,9 @@ impl ArtifactRepository for ServerArtifacts {
     ) -> Result<ArtifactChunk, PortError> {
         let this = self.clone();
         let ctx = ctx.clone();
-        tokio::task::spawn_blocking(move || {
-            this.sync_read_chunk(&ctx, &artifact_id, chunk_index)
-        })
-        .await
-        .map_err(backend)?
+        tokio::task::spawn_blocking(move || this.sync_read_chunk(&ctx, &artifact_id, chunk_index))
+            .await
+            .map_err(backend)?
     }
 
     async fn read_range(

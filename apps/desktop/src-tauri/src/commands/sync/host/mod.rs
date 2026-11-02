@@ -39,11 +39,11 @@ use crate::transfer::adapter_registry::SyncAdapterRegistry;
 use datazen::services::schema_scope::metadata_schema;
 use datazen_driver_api::LegacySqlDialect;
 
+use crate::data_sync::api::resolve_db_name;
 use crate::data_sync::filter_validation::{
     resolve_key_contracts, validate_filter_endpoints, validate_filter_schemas,
 };
 use crate::data_sync::keyset_source::DriverKeysetSource;
-use crate::data_sync::api::resolve_db_name;
 use executor::{HostKeysetSource, HostTargetExecutor};
 
 /// Everything the handler needs to read a relation, cached at

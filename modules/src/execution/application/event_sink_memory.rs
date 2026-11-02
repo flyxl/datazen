@@ -464,7 +464,11 @@ mod tests {
         }
         // 超前：位点 4 尚不存在（下一条是 4，请求 after=4 即从 5 起交付）。
         let ahead = sink
-            .subscribe(&context(), StreamId::new("stream-1"), Some(EventSequence::new(4)))
+            .subscribe(
+                &context(),
+                StreamId::new("stream-1"),
+                Some(EventSequence::new(4)),
+            )
             .await;
         assert!(
             matches!(ahead, Err(PortError::NotFound(_))),
@@ -473,7 +477,11 @@ mod tests {
 
         // 新流 + 非零位点 = 同一种超前缺口（进程重启窗口清零的正解就是它）。
         let fresh_ahead = sink
-            .subscribe(&context(), StreamId::new("stream-2"), Some(EventSequence::new(1)))
+            .subscribe(
+                &context(),
+                StreamId::new("stream-2"),
+                Some(EventSequence::new(1)),
+            )
             .await;
         assert!(matches!(fresh_ahead, Err(PortError::NotFound(_))));
 
@@ -536,7 +544,11 @@ mod tests {
         );
 
         let mut tail = sink
-            .subscribe(&context(), StreamId::new("stream-cap"), Some(EventSequence::new(1)))
+            .subscribe(
+                &context(),
+                StreamId::new("stream-cap"),
+                Some(EventSequence::new(1)),
+            )
             .await
             .expect("after=1 交付从 2 起，仍在窗口内");
         assert_eq!(sequences(&drain(&mut tail, 3)), vec![2, 3, 4]);
@@ -569,7 +581,10 @@ mod tests {
         assert_eq!(sequences(&drain(&mut fast, 3)), vec![4, 5, 6]);
 
         // slow 现在才轮询：交付时缺口 → 迭代器终止（None），绝不跳号续读。
-        assert!(slow.next().is_none(), "落出窗口的订阅必须终止，不得静默跳号");
+        assert!(
+            slow.next().is_none(),
+            "落出窗口的订阅必须终止，不得静默跳号"
+        );
 
         // fast 不受 slow 终止的影响。
         publish_reset(&sink, "stream-1", "r7").await;
@@ -601,7 +616,10 @@ mod tests {
         // 阻塞迭代器在等待中被发布方唤醒，按序收到全部实时事件。
         let seen = drain(&mut subscription, 5);
         assert_eq!(sequences(&seen), vec![1, 2, 3, 4, 5]);
-        assert_eq!(publisher.await.expect("publisher task"), vec![1, 2, 3, 4, 5]);
+        assert_eq!(
+            publisher.await.expect("publisher task"),
+            vec![1, 2, 3, 4, 5]
+        );
     }
 
     #[tokio::test]
@@ -625,12 +643,9 @@ mod tests {
         // 端口不静默丢过期纪元的事件：belongs_to 过滤发生在前端可见的一侧
         // （端口文档注释），中继必须原样送达。
         let sink = MemoryEventSink::new();
-        sink.publish(
-            &context(),
-            envelope("stream-1", "epoch-old", "stale"),
-        )
-        .await
-        .expect("publish");
+        sink.publish(&context(), envelope("stream-1", "epoch-old", "stale"))
+            .await
+            .expect("publish");
 
         let mut subscription = sink
             .subscribe(&context(), StreamId::new("stream-1"), None)

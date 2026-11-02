@@ -41,6 +41,39 @@ pub struct ServerConfig {
 
     /// 登录会话绝对寿命（秒；§4.3 默认 24 小时，部署可调）。
     pub session_absolute_seconds: u64,
+
+    /// 本服务的组织 id（单组织 v1；connection_profile / 登录会话 /
+    /// OIDC membership 映射都落在这个组织）。默认 `datazen-local-org`
+    /// （中性形态词表——共享内核禁形态专名）。
+    pub organization_id: String,
+
+    /// 对外可见 origin（§4.1 的 redirect_uri 构造 + §8.1 的 SSE Origin
+    /// 白名单来源）。未配置 = 不挂 OIDC 登录与 SSE 事件流。
+    pub public_origin: Option<String>,
+
+    /// OIDC IdP issuer（§4.1；发现文档的 issuer 必须逐字等值）。
+    pub oidc_issuer: Option<String>,
+    /// OIDC client id（本服务在 IdP 的登记名）。
+    pub oidc_client_id: Option<String>,
+    /// OIDC client secret（机密客户端；None = 纯 PKCE 公开客户端）。
+    pub oidc_client_secret: Option<String>,
+
+    /// SSE 心跳间隔（秒；§8.3 的 15s 建议值，部署可调）。
+    pub sse_keepalive_secs: u64,
+    /// SSE 首波积压上界（连接管理 §7.7 的每订阅 256 条建议值）。
+    pub sse_max_backlog_frames: usize,
+
+    /// L5 默认档桶容量（§9.1：令牌签发/开会话/提交执行/取消为严格档，
+    /// 其余默认档；全部来自部署配置）。
+    pub rate_default_capacity: u64,
+    /// L5 默认档补充速率（令牌/秒）。
+    pub rate_default_refill_per_second: f64,
+    /// L5 严格档桶容量。
+    pub rate_strict_capacity: u64,
+    /// L5 严格档补充速率（令牌/秒）。
+    pub rate_strict_refill_per_second: f64,
+    /// L5 键表上界（未认证 IP 键是内存攻击面）。
+    pub rate_max_entries: usize,
 }
 
 /// 环境变量名。`DATAZEN_` 前缀与仓库既有约定对齐。
@@ -50,6 +83,18 @@ pub const ENV_DB: &str = "DATAZEN_SERVER_DB";
 pub const ENV_SERVER_SECRET: &str = "DATAZEN_SERVER_SECRET";
 pub const ENV_SESSION_IDLE_SECS: &str = "DATAZEN_SERVER_SESSION_IDLE_SECS";
 pub const ENV_SESSION_ABSOLUTE_SECS: &str = "DATAZEN_SERVER_SESSION_ABSOLUTE_SECS";
+pub const ENV_ORGANIZATION_ID: &str = "DATAZEN_SERVER_ORGANIZATION_ID";
+pub const ENV_PUBLIC_ORIGIN: &str = "DATAZEN_SERVER_PUBLIC_ORIGIN";
+pub const ENV_OIDC_ISSUER: &str = "DATAZEN_SERVER_OIDC_ISSUER";
+pub const ENV_OIDC_CLIENT_ID: &str = "DATAZEN_SERVER_OIDC_CLIENT_ID";
+pub const ENV_OIDC_CLIENT_SECRET: &str = "DATAZEN_SERVER_OIDC_CLIENT_SECRET";
+pub const ENV_SSE_KEEPALIVE_SECS: &str = "DATAZEN_SERVER_SSE_KEEPALIVE_SECS";
+pub const ENV_SSE_MAX_BACKLOG: &str = "DATAZEN_SERVER_SSE_MAX_BACKLOG";
+pub const ENV_RATE_DEFAULT_CAPACITY: &str = "DATAZEN_SERVER_RATE_DEFAULT_CAPACITY";
+pub const ENV_RATE_DEFAULT_REFILL: &str = "DATAZEN_SERVER_RATE_DEFAULT_REFILL";
+pub const ENV_RATE_STRICT_CAPACITY: &str = "DATAZEN_SERVER_RATE_STRICT_CAPACITY";
+pub const ENV_RATE_STRICT_REFILL: &str = "DATAZEN_SERVER_RATE_STRICT_REFILL";
+pub const ENV_RATE_MAX_ENTRIES: &str = "DATAZEN_SERVER_RATE_MAX_ENTRIES";
 pub const DEFAULT_DB_FILE: &str = "datazen-admin.sqlite";
 
 /// 开发默认密钥（仅限本地验证；§4.3/§6.2 的生产密钥必须显式注入）。
@@ -58,6 +103,19 @@ pub const DEV_DEFAULT_SERVER_SECRET: &str = "dev-only-datazen-server-secret-chan
 /// §4.3 的首版建议值（来自部署配置，非协议常量）。
 pub const DEFAULT_SESSION_IDLE_SECS: u64 = 8 * 3600;
 pub const DEFAULT_SESSION_ABSOLUTE_SECS: u64 = 24 * 3600;
+
+/// 单组织 v1 的默认组织 id（中性形态词表，见字段文档）。
+pub const DEFAULT_ORGANIZATION_ID: &str = "datazen-local-org";
+/// §8.3 的心跳建议值。
+pub const DEFAULT_SSE_KEEPALIVE_SECS: u64 = 15;
+/// 连接管理 §7.7 的每订阅投递上限建议值。
+pub const DEFAULT_SSE_MAX_BACKLOG: usize = 256;
+/// §9.1 的 L5 首版建议值（宽松默认档 + 紧严格档；全部部署可调）。
+pub const DEFAULT_RATE_DEFAULT_CAPACITY: u64 = 120;
+pub const DEFAULT_RATE_DEFAULT_REFILL: f64 = 20.0;
+pub const DEFAULT_RATE_STRICT_CAPACITY: u64 = 10;
+pub const DEFAULT_RATE_STRICT_REFILL: f64 = 1.0;
+pub const DEFAULT_RATE_MAX_ENTRIES: usize = 65_536;
 
 impl ServerConfig {
     /// 从环境变量加载并校验。任一键非法即 [`ServerError::ConfigInvalid`]。
@@ -91,6 +149,61 @@ impl ServerConfig {
                  (ck_login_window)"
             )));
         }
+        let organization_id = match std::env::var(ENV_ORGANIZATION_ID).ok() {
+            Some(raw) if !raw.trim().is_empty() => raw.trim().to_string(),
+            _ => DEFAULT_ORGANIZATION_ID.to_string(),
+        };
+        let public_origin = read_optional_origin(ENV_PUBLIC_ORIGIN)?;
+        let oidc_issuer = read_optional_text(ENV_OIDC_ISSUER)?;
+        let oidc_client_id = read_optional_text(ENV_OIDC_CLIENT_ID)?;
+        let oidc_client_secret = read_optional_text(ENV_OIDC_CLIENT_SECRET)?;
+        // OIDC 三件套必须成套出现（issuer + client_id 是最小面；secret 可缺）。
+        if oidc_issuer.is_some() != oidc_client_id.is_some() {
+            return Err(ServerError::ConfigInvalid(format!(
+                "{ENV_OIDC_ISSUER} and {ENV_OIDC_CLIENT_ID} must be configured together"
+            )));
+        }
+        if oidc_issuer.is_some() && public_origin.is_none() {
+            return Err(ServerError::ConfigInvalid(format!(
+                "{ENV_PUBLIC_ORIGIN} is required when OIDC login is configured \
+                 (redirect_uri construction)"
+            )));
+        }
+        let sse_keepalive_secs = parse_seconds(
+            ENV_SSE_KEEPALIVE_SECS,
+            std::env::var(ENV_SSE_KEEPALIVE_SECS).ok(),
+            DEFAULT_SSE_KEEPALIVE_SECS,
+        )?;
+        let sse_max_backlog_frames = parse_usize(
+            ENV_SSE_MAX_BACKLOG,
+            std::env::var(ENV_SSE_MAX_BACKLOG).ok(),
+            DEFAULT_SSE_MAX_BACKLOG,
+        )?;
+        let rate_default_capacity = parse_u64(
+            ENV_RATE_DEFAULT_CAPACITY,
+            std::env::var(ENV_RATE_DEFAULT_CAPACITY).ok(),
+            DEFAULT_RATE_DEFAULT_CAPACITY,
+        )?;
+        let rate_default_refill_per_second = parse_f64(
+            ENV_RATE_DEFAULT_REFILL,
+            std::env::var(ENV_RATE_DEFAULT_REFILL).ok(),
+            DEFAULT_RATE_DEFAULT_REFILL,
+        )?;
+        let rate_strict_capacity = parse_u64(
+            ENV_RATE_STRICT_CAPACITY,
+            std::env::var(ENV_RATE_STRICT_CAPACITY).ok(),
+            DEFAULT_RATE_STRICT_CAPACITY,
+        )?;
+        let rate_strict_refill_per_second = parse_f64(
+            ENV_RATE_STRICT_REFILL,
+            std::env::var(ENV_RATE_STRICT_REFILL).ok(),
+            DEFAULT_RATE_STRICT_REFILL,
+        )?;
+        let rate_max_entries = parse_usize(
+            ENV_RATE_MAX_ENTRIES,
+            std::env::var(ENV_RATE_MAX_ENTRIES).ok(),
+            DEFAULT_RATE_MAX_ENTRIES,
+        )?;
         Ok(Self {
             listen_addr,
             log_filter,
@@ -98,8 +211,76 @@ impl ServerConfig {
             server_secret,
             session_idle_seconds,
             session_absolute_seconds,
+            organization_id,
+            public_origin,
+            oidc_issuer,
+            oidc_client_id,
+            oidc_client_secret,
+            sse_keepalive_secs,
+            sse_max_backlog_frames,
+            rate_default_capacity,
+            rate_default_refill_per_second,
+            rate_strict_capacity,
+            rate_strict_refill_per_second,
+            rate_max_entries,
         })
     }
+}
+
+fn read_optional_text(key: &str) -> Result<Option<String>, ServerError> {
+    match std::env::var(key) {
+        Ok(raw) => {
+            let trimmed = raw.trim().to_string();
+            if trimmed.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(trimmed))
+            }
+        }
+        Err(_) => Ok(None),
+    }
+}
+
+fn read_optional_origin(key: &str) -> Result<Option<String>, ServerError> {
+    let Some(value) = read_optional_text(key)? else {
+        return Ok(None);
+    };
+    // origin 形态校验（§8.1 的等值比较对象）：scheme://authority，无路径。
+    if !(value.starts_with("https://") || value.starts_with("http://")) || value.contains('/') {
+        // 允许结尾恰好一个 '/'？Origin 头不含路径——这里拒绝任何 '/'。
+        return Err(ServerError::ConfigInvalid(format!(
+            "{key} must be a bare origin (scheme://host[:port]) without a path"
+        )));
+    }
+    Ok(Some(value))
+}
+
+fn parse_usize(key: &str, raw: Option<String>, default: usize) -> Result<usize, ServerError> {
+    let Some(raw) = raw else { return Ok(default) };
+    raw.trim()
+        .parse::<usize>()
+        .map_err(|_| ServerError::ConfigInvalid(format!("{key} must be a non-negative integer")))
+}
+
+fn parse_u64(key: &str, raw: Option<String>, default: u64) -> Result<u64, ServerError> {
+    let Some(raw) = raw else { return Ok(default) };
+    raw.trim()
+        .parse::<u64>()
+        .map_err(|_| ServerError::ConfigInvalid(format!("{key} must be a non-negative integer")))
+}
+
+fn parse_f64(key: &str, raw: Option<String>, default: f64) -> Result<f64, ServerError> {
+    let Some(raw) = raw else { return Ok(default) };
+    let value = raw
+        .trim()
+        .parse::<f64>()
+        .map_err(|_| ServerError::ConfigInvalid(format!("{key} must be a number")))?;
+    if !value.is_finite() || value <= 0.0 {
+        return Err(ServerError::ConfigInvalid(format!(
+            "{key} must be a positive finite number"
+        )));
+    }
+    Ok(value)
 }
 
 fn read_db(key: &str) -> Result<PathBuf, ServerError> {
@@ -123,9 +304,9 @@ fn read_db(key: &str) -> Result<PathBuf, ServerError> {
 
 fn read_addr(key: &str) -> Result<SocketAddr, ServerError> {
     match std::env::var(key) {
-        Ok(raw) => raw
-            .parse::<SocketAddr>()
-            .map_err(|_| ServerError::ConfigInvalid(format!("{key} must be host:port (e.g. 127.0.0.1:8080)"))),
+        Ok(raw) => raw.parse::<SocketAddr>().map_err(|_| {
+            ServerError::ConfigInvalid(format!("{key} must be host:port (e.g. 127.0.0.1:8080)"))
+        }),
         Err(std::env::VarError::NotPresent) => Ok(SocketAddr::from(([127, 0, 0, 1], 8080))),
         Err(std::env::VarError::NotUnicode(_)) => Err(ServerError::ConfigInvalid(format!(
             "{key} must be valid UTF-8"
@@ -137,7 +318,9 @@ fn read_filter(key: &str) -> Result<String, ServerError> {
     match std::env::var(key) {
         Ok(raw) => {
             if raw.trim().is_empty() {
-                Err(ServerError::ConfigInvalid(format!("{key} must not be blank")))
+                Err(ServerError::ConfigInvalid(format!(
+                    "{key} must not be blank"
+                )))
             } else {
                 Ok(raw)
             }

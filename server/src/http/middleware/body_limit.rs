@@ -21,7 +21,11 @@ use crate::http::response::ApiErrorResponse;
 /// L1 前半本体：`Content-Length` 超限即 413，否则放行。
 pub async fn reject_oversized_content_length(req: Request, next: Next, max: usize) -> Response {
     if let Some(length) = req.headers().get(axum::http::header::CONTENT_LENGTH) {
-        if let Some(bytes) = length.to_str().ok().and_then(|raw| raw.parse::<usize>().ok()) {
+        if let Some(bytes) = length
+            .to_str()
+            .ok()
+            .and_then(|raw| raw.parse::<usize>().ok())
+        {
             if bytes > max {
                 return ApiErrorResponse::new(ApiError::new(
                     ApiErrorCode::PayloadTooLarge,

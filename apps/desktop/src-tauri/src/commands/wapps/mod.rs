@@ -28,8 +28,8 @@ use datazen::workspace_apps::WappManifest;
 
 // B2 域刀下沉物的宿主侧引用：投影与词汇解析的规则本体在 modules，
 // 这里只保留类型路径（`commands::wapps::WappSummary` 等旧路径不变）。
-pub use datazen::workspace_apps::summary::{WappPageSummary, WappSummary, WappThemeSummary};
 pub(crate) use datazen::workspace_apps::package_kind::{package_label, WappPackageKind};
+pub use datazen::workspace_apps::summary::{WappPageSummary, WappSummary, WappThemeSummary};
 
 pub const WAPPS_CHANGED_EVENT: &str = "wapps:changed";
 

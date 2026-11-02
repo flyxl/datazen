@@ -18,7 +18,7 @@
 use async_trait::async_trait;
 use datazen::shared::error::PortError;
 use datazen::shared::scope::OrganizationScope;
-use datazen::tunnel::domain::{usage_from_connections, summarize};
+use datazen::tunnel::domain::{summarize, usage_from_connections};
 use datazen::tunnel::TunnelRepository;
 use datazen_driver_api::{SavedTunnel, SavedTunnelSummary, TunnelUsage};
 
@@ -300,6 +300,9 @@ impl TunnelRepository for DesktopRepository {
                 connection_names: Vec::new(),
             });
         }
-        Ok(usage_from_connections(self.get_connections().await.iter(), tunnel_id))
+        Ok(usage_from_connections(
+            self.get_connections().await.iter(),
+            tunnel_id,
+        ))
     }
 }

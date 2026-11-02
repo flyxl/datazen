@@ -24,7 +24,9 @@ use axum::response::{IntoResponse, Response};
 use datazen::shared::error::{ApiError, ApiErrorCode};
 use datazen::shared::id::{RequestId, Timestamp};
 
-use crate::http::middleware::{auth_exempt, now_rfc3339, session_cookie, under_api, AuthChainState};
+use crate::http::middleware::{
+    auth_exempt, now_rfc3339, session_cookie, under_api, AuthChainState,
+};
 use crate::http::response::ApiErrorResponse;
 use crate::storage::login_sessions::LoginSessionMode;
 use crate::storage::ValidateFailure;

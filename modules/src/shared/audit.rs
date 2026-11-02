@@ -46,8 +46,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::shared::error::PortError;
 use crate::shared::id::{
-    ClientInstanceId, ConnectionId, DelegationId, OrganizationId, PrincipalId, RequestId,
-    Timestamp,
+    ClientInstanceId, ConnectionId, DelegationId, OrganizationId, PrincipalId, RequestId, Timestamp,
 };
 
 /// 主体种类。字面值与 §3.7 `ck_audit_principal` 的 CHECK 逐字一致。
@@ -398,7 +397,15 @@ mod tests {
     fn envelope_wire_never_carries_forbidden_keys() {
         let value = serde_json::to_value(&envelope()).expect("envelope serializes");
         let object = value.as_object().expect("envelope is a JSON object");
-        for forbidden in ["sessionHandle", "dbSessionId", "cancelHandle", "secret", "token", "idToken", "accessToken"] {
+        for forbidden in [
+            "sessionHandle",
+            "dbSessionId",
+            "cancelHandle",
+            "secret",
+            "token",
+            "idToken",
+            "accessToken",
+        ] {
             assert!(
                 !object.contains_key(forbidden),
                 "envelope must not carry {forbidden}"

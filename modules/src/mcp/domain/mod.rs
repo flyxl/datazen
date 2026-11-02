@@ -11,8 +11,8 @@
 
 pub mod allowlist;
 
-pub use allowlist::{ensure_connection_allowed, is_connection_allowed};
 pub use crate::execution::domain::permission;
+pub use allowlist::{ensure_connection_allowed, is_connection_allowed};
 pub use permission::{
     check_sql_allowed, check_tool_call, is_resource_listed, is_tool_listed,
     query_history_content_allowed, McpPermissionMode,

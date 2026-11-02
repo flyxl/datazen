@@ -34,9 +34,7 @@ pub async fn get_groups(state: State<'_, AppState>) -> Result<Vec<String>, Comma
 /// config 域外调用方（connection_import 的导入验收测试）读取连接分组的
 /// 共用入口。不是命令转发体：`get_groups` 命令与它共享同一其实现，
 /// 待各域把编排收编后再评估去留。
-pub(crate) async fn read_connection_groups(
-    state: &AppState,
-) -> Result<Vec<String>, CommandError> {
+pub(crate) async fn read_connection_groups(state: &AppState) -> Result<Vec<String>, CommandError> {
     let scope = state.connection_scope()?;
     let service = crate::platform::ipc::require_connection_service(state)?;
     match service.groups(&scope).await {
