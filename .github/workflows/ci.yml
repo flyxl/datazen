@@ -393,9 +393,10 @@ jobs:
       #     纯逻辑用例已归位 modules/src/workflow/domain/model_tests.rs
       #     （随 platform-crates 腿编译执行），历史持久化用例删除
       #     （宿主 workflow/history.rs 内联测试已逐例覆盖）。
-      #   - ai_e2e：只为编译防烂。没有 .env.test 时它按设计自跳过，但其
-      #     「passed」行实为跳过——读日志时以本注释为准，不要把它当成
-      #     AI 冒烟跑过的证据。真跑需要真实 LLM API（本地提供 .env.test）。
+      #   - ai_e2e 已移回 modules/tests/（被测本体是 datazen 的 AI 能力，
+      #     文件零宿主依赖）：由 platform-crates 无选择器腿自动编译执行，
+      #     不再占用宿主步名额。无 .env.test 时按设计自跳过——其
+      #     「passed」行不是 AI 冒烟跑过的证据，读日志时以本注释为准。
       # 不用 `--tests` 一次性收编：目录里若再进一个需要外部服务的文件，
       # fail-fast 的整步红掉会掩盖已可用 target 的信号；显式名单让「新
       # tests/*.rs 进 CI」是一次有意识的编辑（与 runner 拒绝维护第二份
@@ -416,7 +417,6 @@ jobs:
             --test data_sync_public_api \
             --test mcp_stdio_auth \
             --test workflow_db_tests \
-            --test ai_e2e \
             --features "$FEATURES,test-harness"
 
       - name: Restore managed files
