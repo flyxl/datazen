@@ -101,6 +101,11 @@ jobs:
       - name: Web host build (vite)
         run: pnpm --filter datazen-web build
 
+      # WR-E2 验收的 CI 载体：域契约表（41 路由 + SSE）对 web HTTP transport
+      # 的传输级断言。零网络（fetch/EventSource 全注入假体），纯 vitest。
+      - name: Web domain contract tables (vitest)
+        run: pnpm --filter datazen-web test
+
       # 5 个严格守卫合并为一步：任何失败立即停止（fail-fast），
       # 输出清晰标注哪条命令失败。省掉 5 次 shell launch 开销。
       #

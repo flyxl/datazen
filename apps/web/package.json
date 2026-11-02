@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "vite",
     "build": "node ../../scripts/ensure-generated-drivers.mjs && node ../../scripts/generate-builtin-locales.mjs && vite build",
+    "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -29,6 +30,7 @@
     "@tailwindcss/vite": "^4.1.4",
     "@vitejs/plugin-react": "^4.4.1",
     "typescript": "7.0.2",
-    "vite": "^6.2.5"
+    "vite": "^6.2.5",
+    "vitest": "^4.1.10"
   }
 }

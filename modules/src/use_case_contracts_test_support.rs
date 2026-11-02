@@ -93,3 +93,9 @@ pub type ContractResult<T> = Result<T, ContractFailure>;
 /// named_views 域的双传输规格（第一刀；选型理由见模块头）。
 #[cfg(feature = "named_views")]
 pub mod named_views;
+
+/// settings 域的双传输规格（第二刀）：`GET/PUT /api/v1/settings`（§6.1）
+/// 与桌面 `get_settings`/`save_settings` 走同一用例；本域无契约码，「无码」
+/// 即两腿一致的契约事实（选型与错误词汇见模块内文档）。
+#[cfg(feature = "settings")]
+pub mod settings;

@@ -89,8 +89,8 @@ WR-F（能力落地）在 WR-D/WR-E 期间交叉插入，单项依赖见各节�
 |---|---|---|
 | **WR-C1（核实后收窄，无需新刀）** | ~~modules 无宿主独立构建腿~~ 立项时误判：`pnpm test:platform-crates`（`scripts/run-platform-crate-tests.mjs`，CI rust job 既有步骤）已独立编译并测试 modules——无选择器腿用 27/29 显式 feature 清单（与宿主腿对齐，rust-cache 共享），另有 `FEATURE_TESTS` 分 feature profile 腿（settings/ai/connection+execution/named_views/monitor/dashboard/tunnel）。服务器 crate 落地后由同一腿自动覆盖（`TESTED_LAYERS` 已含 `'server'`，按目录发现，无需改 CI） | 已达成（既有）；本文记录核实修正 |
 | **WR-C2（已完成 2026-10-31）** | HTTP API 契约面定义。**已裁决**：HTTP 面镜像 `packages/backend-client` 的域客户端面（十个域、43 方法，42 上 HTTP、1 排除），**不镜像 IPC 命令面**。完整契约见 [http-api-contract](../../architecture/platform/http-api-contract.md)：收编概要 §6.3 骨架，补齐 settings / identity / tableData（14 方法）/ driverGateway（4+1 排除）；裁决命名视图上 HTTP（服务端存储）、`DELETE` 唯一例外、流式驱动命令走 SSE、`CapabilityUnsupported` → 405/501 | 已达成：逐方法可点到路由（§4 总账）；多余端点为零（uploads 在账带收口动作）；`WEB_CAPABILITIES` 不含桌面专属项 |
-| **WR-C3** | 同用例双传输测试基础设施：同一用例（组装 request → 调 application → 断言）在 IPC 与 HTTP 两绑定下跑（P7 交付项「桌面 IPC 与 HTTP 同用例测试」的前置抽离）。**第一刀已落地（2026-11-01，见进度区）：规格基建落 modules test-harness 门控，named_views 试点三腿同绿** | 新用例测试两腿同绿；形态差异只允许出现在装配层断言 |
-| **WR-C4** | `apps/web` 建立后 web 构建腿进 CI（typecheck + vite build + 域契约测试） | CI 腿绿；web stub 的全 throw 语义不被绕过（能力未实现时显式 `CapabilityUnsupported`） |
+| **WR-C3** | 同用例双传输测试基础设施：同一用例（组装 request → 调 application → 断言）在 IPC 与 HTTP 两绑定下跑（P7 交付项「桌面 IPC 与 HTTP 同用例测试」的前置抽离）。**第一刀已落地（2026-11-01，named_views 试点三腿同绿）；第二刀已落地（2026-11-02，settings 域三腿，见进度区）**；余下域随路由/宿主点亮逐域接入 | 新用例测试两腿同绿；形态差异只允许出现在装配层断言 |
+| **WR-C4** | `apps/web` 建立后 web 构建腿进 CI（typecheck + vite build + 域契约测试） | **已达成（2026-11-02，E2 套件落地后补「Web domain contract tables」vitest 步）**；web stub 的全 throw 语义不被绕过（能力未实现时显式 `CapabilityUnsupported`） |
 
 ## 6. WR-D server host 轨（P7 服务端本体）
 
@@ -99,10 +99,10 @@ WR-F（能力落地）在 WR-D/WR-E 期间交叉插入，单项依赖见各节�
 | 切片 | 内容 | 引用 / 验收 |
 |---|---|---|
 | **WR-D1（骨架已落地 2026-10-31；P5 拆出）** | `server/` crate 骨架：composition root（`bootstrap.rs`，serve | migrate | check-schema 三子命令，后两者显式拒绝待 WR-D2）、中间件链 L0 requestId + L1 字节闸（Content-Length 自研 + tower-http 流式）已上线、L2–L6 落点已记录、`ApiError` wire 复用 modules 定义 + 状态码表（§9.2 + 405/501 裁决）、依赖闭包门禁 `scripts/check-server-deps.mjs`（自测全绿）进 CI。**P5 目录语义化拆为独立切片**：仓库级目录大迁移（modules→crates/datazen 等，50+ 路径引用）必须跟 14 道门禁脚本一起机器验证，盲迁会把全仓 CI 推红，不盲随本刀 | §2.2 依赖闭包检查已上 CI；无 Tauri 依赖 ✓（沙箱无 cargo，编译验证由 CI 首跑，Cargo.lock 待首个有 cargo 的机器提交） |
-| **WR-D2** | 服务端仓储适配器：`ProfileRepository` / `JobRepository` / `Audit` / `ArtifactRepository` / `TunnelRepository` / `KnownHostsRepository` / `ConnectionRepository` 的服务端 SQLite 实现 + schema migration（expand/contract，不先删字段） | 同一 domain trait、另一适配器；不复用宿主 AES 落盘实现（§4.7 既定）；migration 可核验恢复 |
-| **WR-D3** | 认证授权：OIDC 登录、membership、服务端登录会话、RBAC/资源 ACL、CSRF、同源 HTTPS；授权变更与 `permissionVersion` 同事务提交。**第一刀已落地（2026-11-01，见进度区）：v5/v6 迁移、Audit 端口 + ServerAudit（WR-D2 第 5/7 片）、policy 引擎、登录会话、CSRF、L2-L4/L6 中间件**；余 OIDC IdP 端点（PKCE/JWKS）、L5 速率限制、TLS | 团队服务 §4–§6；越权/CSRF/组织隔离全部拒绝断言 |
-| **WR-D4** | 执行接线：`ExecutionGateway`、`SessionDirectory`（单进程实现）、`BudgetCoordinator`（节点额度）、`SubmissionTokenIssuer`（服务端签名密钥 + `keyVersion`）、`SecretProvider`（服务端密钥管理 + secretRef 轮换）、`NetworkProvider`（出站白名单）、`IdentityResolver`（数据库侧服务身份 + 委托） | §4.7 端口表逐项「同一端口、另一适配器」；全部入口走 ExecutionGateway |
-| **WR-D5** | `EventSink` SSE 适配：SSE 重订阅、分页/大小限制、Origin 校验、revision 缺口重读。**前置已落地（2026-11-01）：MemoryEventSink 单进程内存实现（重放/缺口/容量语义 15 钉）** | CM-55 的 W1 断言（超大 revision、乱序、重连） |
+| **WR-D2** | 服务端仓储适配器：`ProfileRepository` / `JobRepository` / `Audit` / `ArtifactRepository` / `TunnelRepository` / `KnownHostsRepository` / `ConnectionRepository` 的服务端 SQLite 实现 + schema migration（expand/contract，不先删字段）| **已达成（2026-11-01 Audit/ServerAudit + 2026-11-02 收尾 connections/tunnels + v7 迁移五表，见进度区）**；migration 可核验恢复 |
+| **WR-D3** | 认证授权：OIDC 登录、membership、服务端登录会话、RBAC/资源 ACL、CSRF、同源 HTTPS；授权变更与 `permissionVersion` 同事务提交。**第一刀已落地（2026-11-01）；余项（OIDC 登录面 + L5 速率限制）已落地（2026-11-02，见进度区）**；余 TLS → WR-G3 | 团队服务 §4–§6；越权/CSRF/组织隔离全部拒绝断言 |
+| **WR-D4** | 执行接线：`ExecutionGateway`、`SessionDirectory`（单进程实现）、`BudgetCoordinator`（节点额度）、`SubmissionTokenIssuer`（服务端签名密钥 + `keyVersion`）、`SecretProvider`（服务端密钥管理 + secretRef 轮换）、`NetworkProvider`（出站白名单）、`IdentityResolver`（数据库侧服务身份 + 委托） | **已达成（2026-11-02 六适配器全落地，见进度区）**；bootstrap 装配随 WR-D6 执行入口接线；§4.7 端口表逐项「同一端口、另一适配器」；全部入口走 ExecutionGateway |
+| **WR-D5** | `EventSink` SSE 适配：SSE 重订阅、分页/大小限制、Origin 校验、revision 缺口重读。**已达成（前置 MemoryEventSink 2026-11-01 + SSE 适配 2026-11-02，见进度区）**；余 SSE 连接 L6 复核随域路由点亮收口 | CM-55 的 W1 断言（超大 revision、乱序、重连） |
 | **WR-D6** | 配额、任务中心、结果 TTL、配置版本 CAS、权限撤销传播 | 平台计划 §11 交付项 |
 | **WR-D7** | 幂等提交、受控上传下载 | 平台计划 §11 交付项 |
 
@@ -110,8 +110,8 @@ WR-F（能力落地）在 WR-D/WR-E 期间交叉插入，单项依赖见各节�
 
 | 切片 | 内容 | 验收 |
 |---|---|---|
-| **WR-E1** | `apps/web` 宿主应用：vite + 路由；窗口能力替换为页面/面板（形态拆分既定形态） | 与 `apps/desktop` 同用 `@datazen/frontend`；无 `@tauri-apps` import（R5/R6 闸门天然合规） |
-| **WR-E2** | `WebClient` transport：`BackendTransport` 的 HTTP/SSE 实现，替换 `src/platform/web/` 全 throw stub；域客户端（F3）零改动 | 域契约表 `domainContractTables` 测试在 HTTP 腿同绿 |
+| **WR-E1** | `apps/web` 宿主应用：vite + 路由；窗口能力替换为页面/面板（形态拆分既定形态） | **已达成（2026-11-02，见进度区）**；与 `apps/desktop` 同用 `@datazen/frontend`；无 `@tauri-apps` import（R5/R6 闸门天然合规） |
+| **WR-E2** | `WebClient` transport：`BackendTransport` 的 HTTP/SSE 实现，替换 `src/platform/web/` 全 throw stub；域客户端（F3）零改动。**已落地（2026-11-02，见进度区）：42/42 方法分发表 + SSE 两步流水线 + 域契约表 76 钉** | 域契约表 `domainContractTables` 测试在 HTTP 腿同绿（✓ vitest 76/76，CI 已挂步） |
 | **WR-E3** | `PlatformServices` web 实现：文件/剪贴板/对话框走浏览器原生；导出走 Blob 半边（已示范）；宿主叠加能力（`platform.host.config.get()`）web 注入空缺省 | F5 契约测试 `platformContracts` 在 web 腿绿 |
 | **WR-E4** | capabilities 激活：`WEB_CAPABILITIES` 静态表（F5 已建）成为 web 装配的实际输入；updater/versionSource 等桌面专属项按表降级 | 无运行时形态探测（编译期同形原则不破） |
 | **WR-E5** | 部署形态：静态资源由 server host 同源服务（SSE 缺失 Origin 有明确校验的前提） | 同源 HTTPS 部署验收 |
@@ -148,6 +148,12 @@ WR-F（能力落地）在 WR-D/WR-E 期间交叉插入，单项依赖见各节�
 **可开工门槛的判定**：WR-A（1/2/4）+ WR-B（全四刀）+ WR-C（1/2/3）完成即视为 ready-to-build——此后 P7 主体（WR-D/E/F/G）不再有架构性返工风险。
 
 ## 11. 进度回写区
+
+- **2026-11-02 — 三线并行落地：WR-C3 第二刀（settings 双传输三腿）+ WR-E2（WebClient HTTP/SSE transport + 域契约表 76 钉）**（两条无冲突轨道并行：modules test-support+server tests+desktop commands / apps/web+CI；server manifest、ci.yml web 腿、进度区与任务表由主线统一收口。**顺延登记：WR-B4/M2 会话三工具归位**——共享语义层 `mcp/application/session.rs` 已就位，宿主面（mcp/session_open/cleanup/tools + tests_stateful）体量超单刀窗口，留下一波单独切刀（M1 13/13 与 M2 主体一并收官）。
+
+- **2026-11-02 — WR-C3 第二刀（settings 域，三腿同名同绿）**：沿七步模板接入 settings——共享规格 `SettingsContractBinding`（seed/get/save，application 词汇入出参，失败出 `ContractFailure`）+ `MemorySettingsStore` 内存假体（写失败开关）+ 三 scenario 逐字同名落三腿：modules 无宿主基线（`saving_settings_normalizes_and_round_trips` / `invalid_enum_values_are_refused_before_the_repository` / `a_storage_failure_surfaces_without_a_contract_code`，cfg(test) 内联 + 基线 pin）；HTTP 腿（`server/tests/use_case_contracts.rs` 追加 GET/PUT `/api/v1/settings` 最小 Router 逐字 §6.1、错误体 `{code:null,message}` 400/500 wire pin）；IPC 腿（新建 `settings_command_test_host.rs` + `settings_use_case_contract_tests.rs`：真实 `get_settings`/`save_settings` 命令入口、tempdir `DesktopRepository`、**写失败注入 = `settings.json` 换同名目录使原子 rename 必败**——只打写路径、缓存读路径不受影响的确定性注入）。**装配裁决**：settings 域无契约码（`SettingsError` 无 `code()`），三腿观测恒无码——「无码」本身即两腿一致的契约事实；存储失败文本两腿不逐字一致是既有宿主行为（宿主固定句 `Unable to persist settings`），scenario 只断言「无码 + 文本在场」，原文由各腿 pin 钉住。**主线收口**：server `use-case-contracts` feature 补 `datazen/settings`（此前隐式依赖 no-selector 大联合腿的 feature 扫描带上 settings，现为自洽显式依赖，CI 命令不变）。桌面编译由 CI 验证。
+
+- **2026-11-02 — WR-E2（WebClient transport，`apps/web` 全 throw stub 替换）**：`backendTransport.ts`（`call/subscribe/cancel/unsupportedMethods` 四件套，`createWebBackendTransport(options?)` 导出面与 WR-E1 兼容、assembly 零改动）+ `httpRoutes.ts`（**RouteSpec 数据表 41 call 路由逐字对照 http-api-contract §6**，execution/job 用概要 §6.3 骨架；PATCH `/connections/{id}` 双服务判别、`readArtifact` metadata/chunk/offset 三取法、CSRF 头 `x-dz-csrf-token`（名取自 server `csrf.rs`）+ `__Host-dz_csrf` cookie 半边、非 2xx 四字段体 → `deserializeApiError`）+ `eventStreamSource.ts`（SSE 两步流水线：POST `subscriptions` 铸一次性 wire id → GET 流；`streamResetRequired` 无 id 行合成信封投递后流继续、`auth_required`/`permission_revoked`/`session_lost` 先 close 后终结防登录风暴；**信封 streamId 回写为调用方逻辑 id**——`ExecutionProjection.accept` 按 `event.streamId === receipt.streamId` 过滤，注册表的一次性 wire id 必须在传输层映射回逻辑 id，桌面/网页两传输对消费方呈现同一流身份）+ `webUnsupportedMethods.ts`（189 legacy 键 + `open_base64_with_dialog` 全 `capability`，编译期穷尽断言）。域客户端零改动（F3 ✓）、零 `@tauri-apps` import（R5/R6 ✓）。**域契约表套件**（`apps/web` 独立 vitest 程序，node 环境、fetch/EventSource 全注入假体零网络）：`domainContractTables` 63 测（41 路由逐条 method/路径插值/query/体形状/CSRF 有无/2xx 解析 + 全路由 403 四字段体 → ApiError 逐字段 + 405/501 → `CapabilityUnsupported`+`never` + unsupported ~180 键全 call 假 fetch 零调用 + 分发表与不支持名单不相交）+ `eventStreamSource` 13 测（两步握手/失败不铸造/映射/终态/取消幂等）。**CI**：frontend job 补「Web domain contract tables」步（`pnpm --filter datazen-web test`）为 E2 验收的常驻载体。**登记**：`ArtifactReadRequest` 无 metadata 模式（按 `payload.metadata === true` 扩展接受，WR-D2 artifact handler 落地时复核 `x-dz-*` 响应头名或改回 JSON 信封）；driver 流式命令的 SSE 泵与 session/job 域路由随 server 挂载联调；`getSession.runtimeEpoch` 不上 wire（§6.4 查询白名单，冲突由服务端 409 表达）。验证：本地 tsc 7.0.2 严格零错 + vitest 76/76。
 
 - **2026-11-02 — 五切片并行落地：WR-D4 执行接线（六适配器）+ WR-D2 收尾（连接/隧道仓储）+ WR-D3 余项（OIDC + L5）+ WR-D5（SSE 适配）+ WR-E1/WR-C4（apps/web 宿主 + CI web 腿）**（四条无冲突轨道：server execution/storage / server auth+middleware / server http/sse / apps/web+CI；config、router、bootstrap 与进度区由主线统一收口）。
 
