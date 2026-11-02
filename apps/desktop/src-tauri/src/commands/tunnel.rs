@@ -1,13 +1,15 @@
 //! Tunnel entity IPC (independent of connection configs).
 //!
 //! B2 隧道域刀：`*_impl` 转发层已拆除，接线直接住在 `#[tauri::command]` 体里。
-//! 两条曾经散在宿主的逻辑收进了共享 crate 的唯一权威，命令壳只做装配：
+//! 三条曾经散在宿主的逻辑收进了共享 crate 的唯一权威，命令壳只做装配：
 //!
 //! * 名单/反向投影（`id`/`name`/`kind` 摘要与 usage 位置对齐）——
 //!   `datazen::tunnel::domain` 的 `summarize` / `usage_from_connections`，
 //!   桌面仓储（`store/tunnels.rs`）的 `list` / `usage` 实现调同一份；
 //! * 「测试隧道」探测编排（取定义 → 按种类开隧道 → 惰性种类补上游验证 →
-//!   拆掉 → 报耗时）—— `datazen::tunnel::test_saved_tunnel`。
+//!   拆掉 → 报耗时）—— `datazen::tunnel::application::test_saved_tunnel`；
+//! * 全量名单的两档组合（名单 × 单条取用，消失条目跳过）——
+//!   `datazen::tunnel::application::list_full_definitions`。
 //!
 //! IPC 契约逐字不变：命令名、参数、返回形状与错误文案（见文末
 //! `commands/ipc_surface_tests.rs` 的入口面守卫）。
@@ -34,25 +36,18 @@ fn tunnel_cmd<T>(result: Result<T, PortError>, cmd: &str) -> Result<T, CommandEr
 #[tauri::command]
 pub async fn get_tunnels(state: State<'_, AppState>) -> Result<Vec<SavedTunnel>, CommandError> {
     // 端口只有两档：名单（摘要，**不带密钥**）与单条取用（全量）。这个 IPC 的载荷是
-    // **全量**且形状冻结，因此由两档组合而成：先取名单，再逐条取用。
+    // **全量**且形状冻结，因此由两档组合而成：先取名单，再逐条取用，名单之后
+    // 消失的条目跳过而不是报错——组合语义（含这条取舍）的唯一权威是
+    // `datazen::tunnel::application::list_full_definitions`，测试也住在那里。
     //
-    // 生产代码没有它的调用方（所有列表路径都走 `get_tunnel_summaries`），但命令的
-    // 形状与载荷不变。
+    // 生产代码没有本命令的调用方（所有列表路径都走 `get_tunnel_summaries`），
+    // 但命令的形状与载荷不变。
     let scope = state.organization_scope()?;
     let services = crate::platform::ipc::require_application_services(&state)?;
-    let summaries = tunnel_cmd(services.tunnels.list(&scope).await, "get_tunnels")?;
-    let mut tunnels = Vec::with_capacity(summaries.len());
-    for summary in summaries {
-        let Some(tunnel) = tunnel_cmd(
-            services.tunnels.get(&scope, &summary.id).await,
-            "get_tunnels",
-        )?
-        else {
-            continue;
-        };
-        tunnels.push(tunnel);
-    }
-    Ok(tunnels)
+    tunnel_cmd(
+        datazen::tunnel::application::list_full_definitions(&*services.tunnels, &scope).await,
+        "get_tunnels",
+    )
 }
 
 #[tauri::command]
@@ -115,9 +110,9 @@ pub async fn get_tunnel_usage(
 
 /// Probe a saved tunnel against `target_host:target_port`; returns elapsed ms.
 ///
-/// 编排在 `datazen::tunnel::test_saved_tunnel`（形态中立）：取定义 → 按种类把
-/// 隧道真的开起来 → 惰性种类（HTTP 代理 / WebSocket）补一次上游验证 → 拆掉。
-/// 错误文案是 IPC 载荷，由那份用例逐字持有。
+/// 编排在 `datazen::tunnel::application::test_saved_tunnel`（形态中立）：取定义
+/// → 按种类把隧道真的开起来 → 惰性种类（HTTP 代理 / WebSocket）补一次上游
+/// 验证 → 拆掉。错误文案是 IPC 载荷，由那份用例逐字持有。
 #[tauri::command]
 pub async fn test_tunnel(
     state: State<'_, AppState>,
@@ -127,7 +122,7 @@ pub async fn test_tunnel(
 ) -> Result<u64, CommandError> {
     let scope = state.organization_scope()?;
     let services = crate::platform::ipc::require_application_services(&state)?;
-    let elapsed = datazen::tunnel::test_saved_tunnel(
+    let elapsed = datazen::tunnel::application::test_saved_tunnel(
         &*services.tunnels,
         &scope,
         &services.known_hosts,
@@ -160,11 +155,11 @@ mod tests {
     //! * **C1 命令入口行为**——`test_tunnel` 的参数面与毫秒换算：错误路径点名
     //!   隧道 id、成功路径返回 `u64` 毫秒。探测语义（按种类开隧道、上游验证、
     //!   拆除、BUG-001/BUG-003 回归矩阵）已随用例迁入
-    //!   `modules/src/tunnel/probe_tests.rs`；上游探针与数据路径的逐字节测试在
-    //!   `modules/src/tunnel/{http_proxy,websocket}_probe_tests.rs`。
+    //!   `modules/src/tunnel/application/probe_tests.rs`；上游探针与数据路径的
+    //!   逐字节测试在 `modules/src/tunnel/{http_proxy,websocket}_probe_tests.rs`。
 
-    use super::*;
     use super::tunnel_command_test_host::host_command_app;
+    use super::*;
     use crate::testing::app_state::{sample_postgres_config, TestAppState};
     use datazen_driver_api::{SshTunnelConfig, TunnelKind};
 
@@ -304,7 +299,7 @@ mod tests {
     /// The fixture is a local TCP listener that answers an HTTP `CONNECT` with
     /// `200`, so the assertion also holds if the lazily-started proxy path is
     /// ever made to dial eagerly (see `tunnel-backend-BUG-001`). The deeper
-    /// probe semantics live in `modules/src/tunnel/probe_tests.rs`.
+    /// probe semantics live in `modules/src/tunnel/application/probe_tests.rs`.
     #[tokio::test]
     async fn test_tester_test_tunnel_success_path_with_local_proxy_fixture() {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -349,14 +344,9 @@ mod tests {
             .unwrap();
 
         let app = host_command_app(test);
-        let elapsed_ms = test_tunnel(
-            app.state(),
-            "t-proxy".into(),
-            "127.0.0.1".into(),
-            5432,
-        )
-        .await
-        .expect("the probe must succeed for a reachable local proxy fixture");
+        let elapsed_ms = test_tunnel(app.state(), "t-proxy".into(), "127.0.0.1".into(), 5432)
+            .await
+            .expect("the probe must succeed for a reachable local proxy fixture");
         assert!(
             elapsed_ms < 5_000,
             "probe took suspiciously long: {elapsed_ms}ms"

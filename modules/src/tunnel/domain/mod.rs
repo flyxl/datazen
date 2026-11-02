@@ -5,5 +5,5 @@ mod projection;
 mod tunnel_repository;
 
 pub use known_hosts::{KnownHostEntry, KnownHostsRepository};
-pub use projection::{usage_from_connections, summarize};
+pub use projection::{summarize, usage_from_connections};
 pub use tunnel_repository::TunnelRepository;

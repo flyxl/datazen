@@ -10,20 +10,20 @@
 //! 桌面侧保留的是 C1 命令入口行为（真实 `#[tauri::command]` + 毫秒换算），
 //! 见 `apps/desktop/src-tauri/src/commands/tunnel.rs` 的测试模块。上游探针
 //! （`verify_http_proxy_upstream` / `verify_websocket_upstream`）与数据路径的
-//! 逐字节测试住在各自机制文件旁：`http_proxy_probe_tests.rs` /
-//! `websocket_probe_tests.rs`。
+//! 逐字节测试住在各自机制文件旁（本目录的上一级）：
+//! `modules/src/tunnel/{http_proxy,websocket}_probe_tests.rs`。
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use datazen_driver_api::{SavedTunnel, SshTunnelConfig, TunnelKind};
 
+use super::test_saved_tunnel;
 use crate::shared::id::OrganizationId;
 use crate::shared::scope::OrganizationScope;
 use crate::tunnel::domain::KnownHostsRepository;
 use crate::tunnel::ssh::test_fixture;
 use crate::tunnel::test_support::{MemoryKnownHosts, MemoryTunnelStore};
-use crate::tunnel::test_saved_tunnel;
 
 fn scope() -> OrganizationScope {
     OrganizationScope::new(OrganizationId::new("org-1"))
@@ -43,7 +43,12 @@ impl Probe {
         }
     }
 
-    async fn run(&self, tunnel_id: &str, target_host: &str, target_port: u16) -> Result<Duration, datazen_driver_api::DriverError> {
+    async fn run(
+        &self,
+        tunnel_id: &str,
+        target_host: &str,
+        target_port: u16,
+    ) -> Result<Duration, datazen_driver_api::DriverError> {
         test_saved_tunnel(
             &self.store,
             &scope(),
@@ -252,7 +257,9 @@ fn saved_websocket_tunnel(id: &str, port: u16) -> SavedTunnel {
 async fn test_tunnel_rejects_unreachable_http_proxy_endpoint() {
     let probe = Probe::new();
     let port = closed_local_port().await;
-    probe.store.save_tunnel(saved_proxy_tunnel("t-dead-proxy", port));
+    probe
+        .store
+        .save_tunnel(saved_proxy_tunnel("t-dead-proxy", port));
 
     let err = probe
         .run("t-dead-proxy", "127.0.0.1", 5432)
@@ -342,8 +349,7 @@ async fn test_tunnel_probes_websocket_relay_end_to_end() {
                     return;
                 };
                 if let Some(Ok(Message::Text(text))) = ws.next().await {
-                    let open: serde_json::Value =
-                        serde_json::from_str(&text).unwrap_or_default();
+                    let open: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
                     let ack = if open.get("op").and_then(|v| v.as_str()) == Some("open") {
                         r#"{"op":"opened"}"#
                     } else {
@@ -448,7 +454,11 @@ async fn test_tunnel_times_out_against_a_proxy_that_never_answers_connect() {
         .save_tunnel(saved_proxy_tunnel("t-silent-proxy", port));
 
     let started = std::time::Instant::now();
-    let outcome = tokio::time::timeout(Duration::from_secs(15), probe.run("t-silent-proxy", "127.0.0.1", 5432)).await;
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(15),
+        probe.run("t-silent-proxy", "127.0.0.1", 5432),
+    )
+    .await;
     let elapsed = started.elapsed();
 
     let result = outcome.expect(
@@ -565,7 +575,9 @@ async fn test_tester_probe_deadline_covers_a_dribbling_proxy() {
     });
 
     let probe = Probe::new();
-    probe.store.save_tunnel(saved_proxy_tunnel("t-dribble", port));
+    probe
+        .store
+        .save_tunnel(saved_proxy_tunnel("t-dribble", port));
 
     let started = std::time::Instant::now();
     let outcome = tokio::time::timeout(

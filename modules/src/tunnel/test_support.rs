@@ -14,7 +14,7 @@ use datazen_driver_api::{ConnectionConfig, SavedTunnel, SavedTunnelSummary, Tunn
 use crate::shared::error::PortError;
 use crate::shared::scope::OrganizationScope;
 use crate::tunnel::domain::{
-    usage_from_connections, summarize, KnownHostEntry, KnownHostsRepository, TunnelRepository,
+    summarize, usage_from_connections, KnownHostEntry, KnownHostsRepository, TunnelRepository,
 };
 
 /// 内存隧道仓储：测试里充当 `TunnelRepository` 的实现方。
@@ -45,7 +45,10 @@ impl MemoryTunnelStore {
 
     /// 追加一条连接定义（反向投影的输入侧）。
     pub(crate) fn add_connection(&self, conn: ConnectionConfig) {
-        self.connections.lock().expect("connections lock").push(conn);
+        self.connections
+            .lock()
+            .expect("connections lock")
+            .push(conn);
     }
 }
 
