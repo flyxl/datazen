@@ -386,9 +386,13 @@ jobs:
       #   - data_sync_public_api：公共 API 面回归（纯导入+反序列化）；
       #   - mcp_stdio_auth：spawn 宿主二进制的 stdio 认证端到端（tempdir
       #     隔离 DATAZEN_DATA_DIR，10s deadline 后 kill，全程封闭）；
-      #   - workflow_tests：纯逻辑用例真跑（YAML 解析 / 结果序列化 /
-      #     历史 persisted 重载）；6 个依赖本地 PostgreSQL/MySQL 的用例带
-      #     #[ignore]（显式 ignored，不再是静默 passed——见该文件头）；
+      #   - workflow_db_tests：跨库真 DB 用例（原 workflow_tests 的
+      #     tc02/04/05/06/07/13），全部 `#[ignore]`——本步只编译防烂
+      #     （libtest 记成显式 ignored），真跑在 workflow-db-tests.yml
+      #     的定时任务（PG/MySQL service 容器）或本地 --include-ignored。
+      #     纯逻辑用例已归位 modules/src/workflow/domain/model_tests.rs
+      #     （随 platform-crates 腿编译执行），历史持久化用例删除
+      #     （宿主 workflow/history.rs 内联测试已逐例覆盖）。
       #   - ai_e2e：只为编译防烂。没有 .env.test 时它按设计自跳过，但其
       #     「passed」行实为跳过——读日志时以本注释为准，不要把它当成
       #     AI 冒烟跑过的证据。真跑需要真实 LLM API（本地提供 .env.test）。
@@ -411,7 +415,7 @@ jobs:
             --test driver_command_ipc \
             --test data_sync_public_api \
             --test mcp_stdio_auth \
-            --test workflow_tests \
+            --test workflow_db_tests \
             --test ai_e2e \
             --features "$FEATURES,test-harness"
 

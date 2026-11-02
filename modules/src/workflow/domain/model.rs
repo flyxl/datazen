@@ -364,53 +364,5 @@ pub struct WorkflowListItem {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn legacy_query_yaml_still_deserializes() {
-        let step: WorkflowStep =
-            serde_yaml::from_str("type: query\nid: q\nsql: SELECT 1\n").unwrap();
-        assert!(matches!(step, WorkflowStep::Query { .. }));
-    }
-    #[test]
-    fn command_yaml_deserializes() {
-        let yaml = "type: command\nid: find\ncommand: find\nconnection: mongo\ninput:\n  collection: users\n";
-        let step: WorkflowStep = serde_yaml::from_str(yaml).unwrap();
-        match step {
-            WorkflowStep::Command {
-                command,
-                connection,
-                input,
-                ..
-            } => {
-                assert_eq!(command, "find");
-                assert_eq!(connection.as_deref(), Some("mongo"));
-                assert_eq!(input["collection"], "users");
-            }
-            _ => panic!("expected Command"),
-        }
-    }
-    #[test]
-    fn workflow_connection_is_optional() {
-        let workflow: WorkflowDefinition =
-            serde_yaml::from_str("id: w\nname: W\ndescription: d\nsteps: []\n").unwrap();
-        assert_eq!(workflow.connection, None);
-        assert_eq!(workflow.schedule, None);
-    }
-
-    #[test]
-    fn workflow_schedule_yaml_deserializes() {
-        let yaml = "id: w\nname: W\ndescription: d\nsteps: []\nschedule:\n  enabled: true\n  interval_secs: 120\n";
-        let workflow: WorkflowDefinition = serde_yaml::from_str(yaml).unwrap();
-        let schedule = workflow.schedule.unwrap();
-        assert!(schedule.enabled);
-        assert_eq!(schedule.interval_secs, Some(120));
-    }
-
-    #[test]
-    fn workflow_schedule_accepts_camel_case_interval() {
-        let json = r#"{"id":"w","name":"W","description":"d","steps":[],"schedule":{"enabled":true,"intervalSecs":45}}"#;
-        let workflow: WorkflowDefinition = serde_json::from_str(json).unwrap();
-        assert_eq!(workflow.schedule.unwrap().interval_secs, Some(45));
-    }
-}
+#[path = "model_tests.rs"]
+mod tests;
