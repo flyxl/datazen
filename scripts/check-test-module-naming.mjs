@@ -175,12 +175,6 @@ const ALLOWLIST = [
   { rule: 1, file: 'modules/src/execution/runtime/tunnel/journey_single_counter.rs', why: 'tunnel single-counter journey tests; legacy name' },
   { rule: 1, file: 'modules/src/execution/runtime/tunnel/single_counter_audit/mod.rs', why: 'one-count iron-law audit gate (dir module with kill_tests); legacy name' },
   { rule: 1, file: 'packages/drivers/redis/src/connect/tls_journey.rs', why: 'real Redis TLS handshake journey tests; legacy name' },
-  // ── Rule 2 · known pre-existing finding ───────────────────────────────
-  {
-    rule: 2,
-    file: 'apps/desktop/src-tauri/src/commands/named_views_error_tests.rs',
-    why: 'KNOWN pre-existing defect, not a convention exemption: declared in commands/mod.rs with only #[path] and no #[cfg(test)], so this test file is compiled into the product binary. Fix (add the gate) is pending; tracked here so the guard ships green while still catching every new violation of either rule. Delete this entry together with the fix.',
-  },
 ];
 
 /** Recursively collect .rs files under one root directory. */

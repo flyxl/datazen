@@ -453,6 +453,7 @@ mod org_scope_surface_tests;
 #[cfg(test)]
 #[path = "app_state_shape_tests.rs"]
 mod app_state_shape_tests;
+#[cfg(test)]
 #[path = "named_views_error_tests.rs"]
 mod named_views_error_tests;
 
