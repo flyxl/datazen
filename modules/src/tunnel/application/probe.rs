@@ -8,6 +8,10 @@
 //!
 //! 归位自桌面 `src/tunnel/mod.rs::test_tunnel`（B2 隧道域刀）：错误文案与
 //! 验证顺序逐字保留——它们是 IPC 载荷的一部分，前端把失败原因原样展示。
+//!
+//! 2026-11-02 结构裁决后自 `tunnel/probe.rs` 迁入本应用层：探测是**用例**
+//! （编排两个端口与全部三种机制），不是与 SSH / HTTP 代理 / WebSocket
+//! 平级的第四种机制——与 connection / mcp 域的 `application/` 布局同构。
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -67,15 +71,11 @@ async fn start_saved(
     match saved.kind {
         TunnelKind::None => Ok(None),
         TunnelKind::Ssh => {
-            let ssh = saved
-                .ssh
-                .as_ref()
-                .filter(|s| s.enabled)
-                .ok_or_else(|| {
-                    DriverError::InvalidConfig(
-                        "tunnelKind=ssh but sshTunnel is missing or disabled".into(),
-                    )
-                })?;
+            let ssh = saved.ssh.as_ref().filter(|s| s.enabled).ok_or_else(|| {
+                DriverError::InvalidConfig(
+                    "tunnelKind=ssh but sshTunnel is missing or disabled".into(),
+                )
+            })?;
             Ok(Some(StartedTunnel::Ssh(
                 SshTunnel::start(ssh, target_host, target_port, known_hosts.clone()).await?,
             )))
