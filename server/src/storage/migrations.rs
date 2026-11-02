@@ -54,8 +54,162 @@ CREATE INDEX idx_connection_profile_list
 "#,
 };
 
+/// v5：认证与授权四表（WR-D3 第一刀；`LoginSessions` / `PolicyService` 的
+/// 服务端落地）。
+///
+/// 列是 [persistence-model §3.10](../../../../../docs/architecture/platform/persistence-model.md)
+/// PostgreSQL 目标 schema 的 SQLite 等价形（与 v3/v4 同款登记口径）：
+///
+/// - `TIMESTAMPTZ → TEXT`：全部时刻列落**定宽 RFC3339 UTC（毫秒）**字符串
+///   （与 `shared::clock` 的单一形状同一口径）；适配器在边界处统一规范化。
+///   定宽是字典序比较可靠的前提——`ck_login_window` 的 `idle <= absolute`
+///   在 SQLite 里就是字符串比较。
+/// - `BOOLEAN → INTEGER 0/1` + `CHECK IN (0,1)`（v1 同款）。
+/// - 表顺序钉住 §3.10 的可执行裁决：`memberships` 先于 `login_sessions`
+///   ——后者的复合外键引用 `(organization_id, principal_id)`；同一迁移
+///   事务内后建的表不能作为外键目标（§5.5 fail-closed，起不来即暴露）。
+/// - **没有 `roles` 表**：六个固定角色由 `ck_membership_role` 的 CHECK
+///   表达（team-server §6.1：首版不可由管理员自定义；P9 引入自定义角色时
+///   再补表与外键）。
+/// - `acl_entries.resource_id` 用空串表示**组织级**条目（主键列不能为
+///   NULL）；`ck_acl_resource` 不含 `wapp`（persistence-model §3.10 的
+///   CHECK 权威——与 team-server §6.1 词表的一处登记差异，wapp 安装闸走
+///   角色基线，ACL 行不可落 wapp）。
+/// - `permission_versions` 每组织一行、只增不减、永不删除；授权变更与
+///   版本递增同事务（team-server §6.3），由 `policy::version` 的事务
+///   helper 保证，DDL 只兜底 `>= 1`。
+/// - 部分索引照抄：`idx_memberships_role ... WHERE enabled`、
+///   `idx_login_sessions_owner / _sweep ... WHERE revoked_at IS NULL`。
+/// - P8 的 `auth_mode/native_secret_hash` 已随本迁移一次给全（§3.10 注记
+///   允许 expand 提前）：cookie 会话 hash 为 NULL，native 仅存 secret 的
+///   HMAC 摘要；本刀不启用 native 路径（推迟项，见模块报告）。
+const V5_AUTHZ_BASELINE: Migration = Migration {
+    version: 5,
+    name: "authz baseline (memberships/login_sessions/acl_entries/permission_versions)",
+    expand: r#"
+CREATE TABLE memberships (
+  organization_id TEXT NOT NULL,
+  principal_id TEXT NOT NULL,
+  role_id TEXT NOT NULL
+    CHECK (role_id IN ('orgAdmin','orgMember','connectionOwner','connectionViewer','jobOperator','auditor')),
+  external_subject TEXT NOT NULL CHECK (external_subject <> ''),
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (organization_id, principal_id)
+);
+CREATE INDEX idx_memberships_role
+  ON memberships (organization_id, role_id) WHERE enabled;
+
+CREATE TABLE login_sessions (
+  organization_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  principal_id TEXT NOT NULL,
+  auth_time TEXT NOT NULL,
+  issued_at TEXT NOT NULL,
+  absolute_expires_at TEXT NOT NULL,
+  idle_expires_at TEXT NOT NULL,
+  reauth_required INTEGER NOT NULL DEFAULT 0 CHECK (reauth_required IN (0, 1)),
+  permission_version INTEGER NOT NULL CHECK (permission_version >= 1),
+  client_binding TEXT NOT NULL,
+  token_epoch INTEGER NOT NULL DEFAULT 1 CHECK (token_epoch >= 1),
+  auth_mode TEXT NOT NULL DEFAULT 'cookie' CHECK (auth_mode IN ('cookie','native')),
+  native_secret_hash TEXT,
+  revoked_at TEXT,
+  revoke_reason TEXT,
+  PRIMARY KEY (organization_id, session_id),
+  FOREIGN KEY (organization_id, principal_id)
+    REFERENCES memberships (organization_id, principal_id),
+  CONSTRAINT ck_login_native
+    CHECK ((auth_mode = 'native') = (native_secret_hash IS NOT NULL)),
+  CONSTRAINT ck_login_window CHECK (idle_expires_at <= absolute_expires_at),
+  CONSTRAINT ck_login_revoke
+    CHECK ((revoked_at IS NULL) = (revoke_reason IS NULL)),
+  CONSTRAINT ck_login_reason
+    CHECK (revoke_reason IS NULL OR revoke_reason IN ('logout','permission_revoked','admin','credential_rotated'))
+);
+CREATE INDEX idx_login_sessions_owner
+  ON login_sessions (organization_id, principal_id) WHERE revoked_at IS NULL;
+CREATE INDEX idx_login_sessions_sweep
+  ON login_sessions (idle_expires_at) WHERE revoked_at IS NULL;
+
+CREATE TABLE acl_entries (
+  organization_id TEXT NOT NULL,
+  resource_type TEXT NOT NULL
+    CHECK (resource_type IN ('connection','session','execution','job','artifact','stream')),
+  resource_id TEXT NOT NULL DEFAULT '',
+  subject_type TEXT NOT NULL CHECK (subject_type IN ('user','serviceAccount','delegated')),
+  subject_id TEXT NOT NULL,
+  action TEXT NOT NULL
+    CHECK (action IN ('read','execute','write','cancel','download','subscribe','admin')),
+  deny INTEGER NOT NULL DEFAULT 0 CHECK (deny IN (0, 1)),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (organization_id, resource_type, resource_id, subject_type, subject_id, action)
+);
+
+CREATE TABLE permission_versions (
+  organization_id TEXT NOT NULL PRIMARY KEY,
+  permission_version INTEGER NOT NULL DEFAULT 1 CHECK (permission_version >= 1),
+  updated_at TEXT NOT NULL
+);
+"#,
+};
+
+/// v6：审计事件表（WR-D3 第一刀；`ServerAudit`（`AuditSink` 端口）的落库
+/// 半边）。
+///
+/// [persistence-model §3.7](../../../../../docs/architecture/platform/persistence-model.md)
+/// 的 SQLite 等价形：
+///
+/// - `event_id BIGINT GENERATED ALWAYS AS IDENTITY → INTEGER PRIMARY KEY
+///   AUTOINCREMENT`：同为**全局单调、永不复用**的序列；`event_id` 全局唯一
+///   时 §3.7 的 `(organization_id, event_id)` 复合主键自动成立，不另设。
+///   语义钉子：它只用于排序与分页，**不是** `EventEnvelope.sequence`。
+/// - `JSONB → TEXT` JSON 投影（v3/v4 同款登记）；`payload` 只接受
+///   persistence-model §2.4 白名单键，键集合在 `shared::audit::AuditPayload`
+///   的类型与钉子测试里固定，写入路径没有「对象序列化顺带落库」的通道。
+/// - **append-only 由代码路径保证**（PostgreSQL 目标形态由应用角色授权
+///   保证：只授 INSERT/SELECT）：本 crate 对该表只有 INSERT 与 SELECT，
+///   没有任何 UPDATE/DELETE 语句（`storage::audit` 的源文本钉子测试把这条
+///   纪律钉在 CI 上）。
+const V6_AUDIT_EVENTS: Migration = Migration {
+    version: 6,
+    name: "audit_events baseline (append-only)",
+    expand: r#"
+CREATE TABLE audit_events (
+  organization_id TEXT NOT NULL,
+  event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  occurred_at TEXT NOT NULL,
+  principal_id TEXT,
+  principal_kind TEXT NOT NULL CHECK (principal_kind IN ('user','service','delegation')),
+  delegation_id TEXT,
+  client_instance_id TEXT,
+  action TEXT NOT NULL,
+  connection_id TEXT,
+  config_revision INTEGER,
+  target_projection_json TEXT,
+  outcome TEXT NOT NULL CHECK (outcome IN ('succeeded','failed','denied','unknown')),
+  error_code TEXT,
+  request_id TEXT,
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  CONSTRAINT ck_audit_action CHECK (action <> '')
+);
+CREATE INDEX idx_audit_time
+  ON audit_events (organization_id, occurred_at DESC);
+CREATE INDEX idx_audit_target
+  ON audit_events (organization_id, connection_id, occurred_at DESC);
+"#,
+};
+
 /// 全部迁移，按版本升序。执行器假定有序且无空洞。
-pub const MIGRATIONS: &[Migration] = &[V1_CONNECTION_PROFILE, V2_KNOWN_HOSTS];
+pub const MIGRATIONS: &[Migration] = &[
+    V1_CONNECTION_PROFILE,
+    V2_KNOWN_HOSTS,
+    V3_JOBS,
+    V4_ARTIFACTS,
+    V5_AUTHZ_BASELINE,
+    V6_AUDIT_EVENTS,
+];
 
 /// v2：SSH known-hosts 表（`KnownHostsRepository` 的服务端落地）。
 ///
@@ -73,6 +227,175 @@ CREATE TABLE known_hosts (
   algorithm TEXT NOT NULL,
   public_key TEXT NOT NULL,
   PRIMARY KEY (organization_id, host_key)
+);
+"#,
+};
+
+/// v3：任务受理与状态推进表（`JobRepository` 的服务端落地）。
+///
+/// 列是共享端口落盘词汇（`JobDefinition` / `JobView` / `JobClaim` /
+/// `StageRecord` / `Checkpoint` / `CommitBoundary`）的 SQLite 投影，不变量
+/// 镜像 [persistence-model §3.6](../../../../../docs/architecture/platform/persistence-model.md)
+/// 的 DDL 约束（PostgreSQL 目标 schema 的 SQLite 等价形——选型差异已在
+/// `storage/mod.rs` 登记为「首版 SQLite、生产化切片换 PostgreSQL」）：
+///
+/// - 复合主键 `(organization_id, job_id)`：组织隔离在存储层就是硬边界
+///   （CM-05）；`JobDefinition.organization_id` 与行上的组织列在受理时
+///   一起落库，读取按 `ctx` 的组织限定。
+/// - `payload_json` 是冻结计划正文（§3.6 `jobs.plan`：目标、指纹、映射、
+///   事务要求；敏感内容只允许 `SecretRef` 引用）。
+/// - `consumed_plan_id` 建立部分唯一索引：同一计划在同一组织内只能被一个
+///   apply Job 消费（§3.6 `uq_jobs_apply_plan`；失败也不释放消费资格）。
+/// - `idem_scope_key`（`org|principal|key`）+ `accept_fingerprint` 落同一张
+///   行上：幂等重放按键取回原 Job，同键不同指纹判 `IdempotencyConflict`。
+/// - claim 三元组（worker / expires / generation）镜像 §3.6 的调度租约：
+///   终态必须成对清空（`ck_jobs_claim`），running 必须有 worker
+///   （`ck_jobs_claim_live`）；`claim_stage_id` / `claimed_at` 是端口
+///   `JobClaim` 词汇的补列（PostgreSQL 目标 schema 无此二列，届时合同迁移补齐）。
+/// - 阶段、checkpoint、提交边界各自成表：checkpoint 以
+///   `(organization_id, job_id, checkpoint_version)` 为键（§3.6），版本即
+///   写入时的 `Checkpoint.state_version`（与内核内存实现同口径）；边界按
+///   产生顺序递增（§3.6 `job_checkpoints.committed_boundary` 的 durable 投影）。
+const V3_JOBS: Migration = Migration {
+    version: 3,
+    name: "jobs baseline",
+    expand: r#"
+CREATE TABLE jobs (
+  organization_id TEXT NOT NULL,
+  job_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('queued','running','succeeded','failed','cancelled')),
+  state_version INTEGER NOT NULL CHECK (state_version > 0),
+  stage TEXT,
+  owner_json TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  execution_ids_json TEXT NOT NULL DEFAULT '[]',
+  artifact_ids_json TEXT NOT NULL DEFAULT '[]',
+  effect_outcome TEXT,
+  cancel_requested INTEGER NOT NULL DEFAULT 0 CHECK (cancel_requested IN (0, 1)),
+  pending_verification_reason TEXT,
+  error TEXT,
+  progress_json TEXT NOT NULL DEFAULT '{}',
+  worker_id TEXT,
+  claim_stage_id TEXT,
+  claimed_at TEXT,
+  claim_expires_at TEXT,
+  claim_generation INTEGER NOT NULL DEFAULT 0 CHECK (claim_generation >= 0),
+  consumed_plan_id TEXT,
+  idem_scope_key TEXT,
+  accept_fingerprint TEXT,
+  PRIMARY KEY (organization_id, job_id),
+  CONSTRAINT ck_jobs_claim_pair CHECK (
+    (worker_id IS NULL) = (claim_expires_at IS NULL)
+    AND (worker_id IS NULL) = (claim_stage_id IS NULL)
+    AND (worker_id IS NULL) = (claimed_at IS NULL)
+  ),
+  CONSTRAINT ck_jobs_claim_live CHECK (state <> 'running' OR worker_id IS NOT NULL)
+);
+CREATE UNIQUE INDEX uq_jobs_idem
+  ON jobs (organization_id, idem_scope_key)
+  WHERE idem_scope_key IS NOT NULL;
+CREATE UNIQUE INDEX uq_jobs_consumed_plan
+  ON jobs (organization_id, consumed_plan_id)
+  WHERE consumed_plan_id IS NOT NULL;
+CREATE INDEX idx_jobs_list
+  ON jobs (organization_id, created_at, job_id);
+
+CREATE TABLE job_stages (
+  organization_id TEXT NOT NULL,
+  job_id TEXT NOT NULL,
+  stage_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  claimed_by TEXT,
+  execution_ids_json TEXT NOT NULL DEFAULT '[]',
+  started_at TEXT,
+  finished_at TEXT,
+  PRIMARY KEY (organization_id, job_id, stage_id)
+);
+
+CREATE TABLE job_checkpoints (
+  organization_id TEXT NOT NULL,
+  job_id TEXT NOT NULL,
+  checkpoint_version INTEGER NOT NULL CHECK (checkpoint_version > 0),
+  stable_target_fingerprint TEXT NOT NULL,
+  committed_json TEXT NOT NULL,
+  verification_evidence_json TEXT NOT NULL,
+  recovery_policy TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (organization_id, job_id, checkpoint_version)
+);
+
+CREATE TABLE job_commit_boundaries (
+  organization_id TEXT NOT NULL,
+  job_id TEXT NOT NULL,
+  boundary_index INTEGER NOT NULL CHECK (boundary_index >= 0),
+  boundary_json TEXT NOT NULL,
+  PRIMARY KEY (organization_id, job_id, boundary_index)
+);
+"#,
+};
+
+/// v4：结果产物元数据表（`ArtifactRepository` 的管理库半边；字节半边是
+/// 构造时给定的受控目录）。
+///
+/// 列是共享端口落盘词汇（`ArtifactSpec` / `ArtifactMetadata` / `Record` 的
+/// 持久化字段）的 SQLite 投影。[persistence-model §3.8](../../../../../docs/architecture/platform/persistence-model.md)
+/// 的 PostgreSQL 目标 schema 还带 `connection_id` / `job_id` / `content_digest`
+/// / `visibility` 等服务端扩展列——本切片先落端口的合同词汇，扩展列随
+/// PostgreSQL 生产化切片的合同迁移补齐（与 v3 的登记口径一致）：
+///
+/// - 复合主键 `(organization_id, artifact_id)`：组织隔离在存储层就是硬边界
+///   （CM-05）；owner 绑定在 create 时冻结（ACL 随创建走）。
+/// - `chunk_sizes_json` 是已发布块的字节长度序列（发布即追加，只增不减）——
+///   `read_range` 的偏移换算与恢复核验都以它为准。
+/// - `writer_lease` 是进程内 writer 句柄的落库投影：丢弃句柄由恢复扫描标记
+///   truncated，writer 能力永不跨重启存活（与内核 `FileArtifactRepository`
+///   的 `Record.writer` 同语义）。`ck_artifact_final` 把「尚未终结」
+///   （pending）钉在 writing/revoked/expired 三个生命周期上——写入中被吊销
+///   或到期仍是未终结产物，与 §3.8 的 `finalized_at IS NULL` 同口径。
+/// - `expires_epoch` 是 TTL 到期的 Unix 秒；`expired_artifact` 墓碑表让
+///   已删除产物在一小时宽限期内继续回答 `ArtifactExpired`（不是 `NotFound`），
+///   与内核 `FileArtifactRepository` 的内存墓碑同语义。
+/// - 字节与元数据之间的故障窗口由「先写块文件、后事务提交元数据」关闭：
+///   崩溃留下的孤儿块由打开期恢复扫描回收（§3.8 验收口径）。
+const V4_ARTIFACTS: Migration = Migration {
+    version: 4,
+    name: "artifact metadata baseline",
+    expand: r#"
+CREATE TABLE artifact_metadata (
+  organization_id TEXT NOT NULL,
+  artifact_id TEXT NOT NULL,
+  owner_principal_id TEXT NOT NULL,
+  execution_id TEXT NOT NULL,
+  delegated_execution INTEGER NOT NULL DEFAULT 0 CHECK (delegated_execution IN (0, 1)),
+  target_fingerprint TEXT NOT NULL,
+  expires_epoch INTEGER NOT NULL CHECK (expires_epoch >= 0),
+  lifecycle TEXT NOT NULL
+    CHECK (lifecycle IN ('writing','complete','truncated','revoked','expired')),
+  published_chunk_count INTEGER NOT NULL DEFAULT 0 CHECK (published_chunk_count >= 0),
+  published_byte_size INTEGER NOT NULL DEFAULT 0 CHECK (published_byte_size >= 0),
+  total_chunks INTEGER,
+  result_completeness TEXT NOT NULL
+    CHECK (result_completeness IN ('pending','complete','truncated')),
+  truncation_reason TEXT,
+  chunk_sizes_json TEXT NOT NULL DEFAULT '[]',
+  writer_lease TEXT,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (organization_id, artifact_id),
+  CONSTRAINT ck_artifact_final CHECK (
+    (result_completeness = 'pending') = (lifecycle IN ('writing','revoked','expired'))
+  )
+);
+CREATE INDEX idx_artifact_expiry
+  ON artifact_metadata (organization_id, expires_epoch);
+
+CREATE TABLE expired_artifact (
+  artifact_id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL,
+  owner_principal_id TEXT NOT NULL,
+  expires_epoch INTEGER NOT NULL
 );
 "#,
 };

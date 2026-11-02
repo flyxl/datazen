@@ -7,6 +7,7 @@ pub mod command_runtime;
 pub mod conditions;
 pub mod context;
 pub mod data_step;
+pub mod grant_reader;
 pub mod host;
 pub mod registry;
 pub mod resource_execution;

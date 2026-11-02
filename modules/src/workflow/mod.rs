@@ -18,6 +18,10 @@
 //! 边界（resource_execution 经 execution::application 端口，不持有运行时具体
 //! 类型）；调用 execution 与 jobs 的词汇；宿主只实现 host/repository 端口与
 //! 持久化（桌面 SQLite / YAML 落盘）。
+//!
+//! 调度授权（WR-A4 / P6 关闭项）：`domain::grant` 定义定时执行的服务身份与
+//! 授权单契约，`application::grant_reader` 是它的只读窄端口；调度器的派发
+//! 路径（`engine::scheduler`）在触发时经端口校验授权单后才执行既有路径。
 
 pub mod application;
 pub mod domain;
@@ -25,12 +29,14 @@ pub mod engine;
 
 // 旧扁平路径镜像（modules 垫片与 src-tauri 消费者兼容；仅保留有消费者的别名）。
 pub use application::command_runtime;
+pub use application::grant_reader;
 pub use application::host;
 pub use application::registry;
 pub use application::resource_execution;
 pub use application::runtime_reads;
 pub use domain::command;
 pub use domain::error;
+pub use domain::grant;
 pub use domain::history;
 pub use domain::model;
 pub use engine::executor;

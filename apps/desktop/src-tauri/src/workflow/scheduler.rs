@@ -1,4 +1,6 @@
 //! Desktop scheduling adapter. The clock and in-flight lifecycle live in modules.
+use super::schedule_grant::DesktopScheduleGrantReader;
+use datazen::workflow::application::grant_reader::WorkflowScheduleGrantReader;
 use datazen::workflow::scheduler::{WorkflowScheduleHost, WorkflowScheduler as CoreScheduler};
 use std::sync::Arc;
 use tauri::Manager;
@@ -12,14 +14,25 @@ impl WorkflowScheduler {
         })
     }
     pub fn start(self: &Arc<Self>, app: tauri::AppHandle) {
-        start_core_on_desktop_runtime(&self.core, Arc::new(DesktopScheduleHost(app)));
+        // 授权单端口与宿主同源装配：派生器读同一 AppState 的既有存储
+        // （WR-A4：未绑定授权单端口的调度器不派发——失败关闭）。
+        let grants = Arc::new(DesktopScheduleGrantReader::new(app.clone()));
+        start_core_on_desktop_runtime(
+            &self.core,
+            Arc::new(DesktopScheduleHost(app)),
+            grants,
+        );
     }
 }
 // Setup is synchronous; only the desktop adapter enters its owned runtime.
-fn start_core_on_desktop_runtime(core: &Arc<CoreScheduler>, host: Arc<dyn WorkflowScheduleHost>) {
+fn start_core_on_desktop_runtime(
+    core: &Arc<CoreScheduler>,
+    host: Arc<dyn WorkflowScheduleHost>,
+    grants: Arc<dyn WorkflowScheduleGrantReader>,
+) {
     let runtime = tauri::async_runtime::handle();
     let _entered = runtime.inner().enter();
-    core.start(host);
+    core.start(host, grants);
 }
 
 struct DesktopScheduleHost(tauri::AppHandle);
@@ -70,13 +83,29 @@ mod startup_tests {
             Err("empty startup schedule must not execute workflows".into())
         }
     }
+    /// 启动测试桩：空授权单源（空列表下调度器根本不会走到派发闸门）。
+    struct NoGrants;
+    #[async_trait::async_trait]
+    impl WorkflowScheduleGrantReader for NoGrants {
+        async fn schedule_grant(
+            &self,
+            _: &str,
+        ) -> Result<Option<datazen::workflow::domain::grant::WorkflowScheduleGrant>, datazen::shared::error::PortError>
+        {
+            Ok(None)
+        }
+    }
     #[test]
     fn sync_setup_starts_workflow_scheduler_without_ambient_tokio_context() {
         std::thread::spawn(|| {
             assert!(tokio::runtime::Handle::try_current().is_err());
             let (send, received) = mpsc::channel();
             let core = CoreScheduler::new();
-            start_core_on_desktop_runtime(&core, Arc::new(StartupHost(send)));
+            start_core_on_desktop_runtime(
+                &core,
+                Arc::new(StartupHost(send)),
+                Arc::new(NoGrants),
+            );
             assert!(tokio::runtime::Handle::try_current().is_err());
             received
                 .recv_timeout(Duration::from_secs(3))

@@ -22,11 +22,12 @@ description = "DataZen team web server host (P7 / web-ready WR-D): the HTTP form
 
 [dependencies]
 # 按域点亮：WR-D2 只消费 connection（ProfileRepository/DTO + shared）、
-# execution（connection DTO 引用其回执，CI FEATURE_TESTS 钉的最小有效组合）
-# 与 tunnel（KnownHostsRepository 端口在 tunnel::domain；WR-F5 的服务端隧道
-# 本就要求共用该机制 feature）。不整包开启——与桌面的全 feature 列表形成
-# 对照：宿主按需消费内核。后续切片按域点亮。
-datazen = { workspace = true, features = ["connection", "execution", "tunnel"] }
+# execution（connection DTO 引用其回执，CI FEATURE_TESTS 钉的最小有效组合）、
+# tunnel（KnownHostsRepository 端口在 tunnel::domain；WR-F5 的服务端隧道
+# 本就要求共用该机制 feature）与 jobs（JobRepository 端口 + 落盘词汇，
+# WR-D2 第三切片）。不整包开启——与桌面的全 feature 列表形成对照：宿主按需
+# 消费内核。后续切片按域点亮。
+datazen = { workspace = true, features = ["connection", "execution", "tunnel", "jobs"] }
 
 # 适配器的 `#[async_trait]`（trait 实现处直接使用，需是本 crate 的直接依赖；
 # datazen 侧的同名依赖不传递可见性）。
@@ -45,9 +46,34 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+# WR-D3 认证授权核心的密码学原语（全部沿用 workspace 根表既有规格，无锁外版本）：
+# - sha2 + hmac：policyIsolationKey（team-server §6.2）与 CSRF 会话绑定签名（§5.1）
+#   的 HMAC-SHA256；server_secret 只经 config 注入，不落库、不进日志。
+# - base64：双提交令牌与隔离键的 base64url（URL_SAFE_NO_PAD）编码。
+# - rand：CSRF random 分量与后续登录会话 id 铸造的 CSPRNG 字节。
+# - subtle：令牌比较的常量时间原语（§5.1 校验项 1 的「常量时间相等」）——
+#   手写 XOR 折叠不进安全面，用经审计的 crate。
+sha2 = { workspace = true }
+hmac = { workspace = true }
+base64 = { workspace = true }
+rand = { workspace = true }
+subtle = { version = "2.6", default-features = false }
+# 产物受控目录的 0o600/O_NOFOLLOW 文件纪律（与内核实现同款；仅 Unix 语义，
+# 非 Unix 平台降级为默认权限——见 storage/artifacts.rs 的 cfg 分支）。
+libc = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { workspace = true }
+
+[features]
+# WR-C3 同用例双传输测试（server 腿）：共享规格模块挂在 datazen 的
+# test-harness + named_views feature 门后，本 crate feature 把两腿依赖一起
+# 点亮；测试目标按 required-features 门控（普通 cargo test 不编译它）。
+use-case-contracts = ["datazen/test-harness", "datazen/named_views"]
+
+[[test]]
+name = "use_case_contracts"
+required-features = ["use-case-contracts"]
 
 [dev-dependencies]
 # oneshot 驱动 Router 的集成测试需要 ServiceExt。

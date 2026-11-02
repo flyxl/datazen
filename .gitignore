@@ -215,3 +215,6 @@ __uiBoundaryProbe__*
 # 而非可执行配置）。`pnpm typecheck` 走 tsc --noEmit 不会产生它，只有直接跑
 # `tsc -b` 才会——而那正是当初触发上一条漏洞的方式。根级名字见上方 161 行。
 /tsconfig.tsbuildinfo
+
+# 并行 agent 的工作记录（本地过程产物，不入库）
+/agent-ctx/
