@@ -14,9 +14,9 @@
 //!
 //! # 端口不许自带账
 //!
-//! 本文件的 `HostTunnelTransport` 与 `src/tunnel/harness.rs` 的夹具端口同形：
+//! 本文件的 `HostTunnelTransport` 与 `src/tunnel/harness_test_support.rs` 的夹具端口同形：
 //! 只有事件日志这一份事实，所有读数由**唯一**的纯折函数 `tally` 现折。
-//! 「唯一计数铁律」如今由 `src/tunnel/single_counter_audit/` 机械保证
+//! 「唯一计数铁律」如今由 `src/tunnel/single_counter_audit_tests/` 机械保证
 //! （随 `--lib` 跑，因此真的进 CI）：
 //! 那份闸门对本文件与 `cm28_concurrent_tunnel.rs` 的端口同样做字段审计 + 投影审计，
 //! 并把原始反例作为植入变异喂给它自己做 kill test。
@@ -36,7 +36,7 @@ use datazen::shared::id::{NetworkRouteRef, NetworkRouteRevision};
 ///
 /// `transport.rs` 模块头登记过那个已实证的伪装（给端口加一份
 /// `close_tally: Mutex<usize>` 并让观测方法改读它）。现在这条路被
-/// `tunnel::single_counter_audit` 机械杀掉（字段审计 + 投影审计，各带 kill test）。
+/// `tunnel::single_counter_audit_tests` 机械杀掉（字段审计 + 投影审计，各带 kill test）。
 struct HostTunnelTransport {
     events: Mutex<Vec<&'static str>>,
     revisions: Mutex<BTreeMap<String, u64>>,
@@ -51,7 +51,7 @@ struct PortTally {
     closed: usize,
 }
 
-/// 「事件 → 账」的唯一折法。同 `src/tunnel/harness.rs` 的 `tallies` 一个形状；
+/// 「事件 → 账」的唯一折法。同 `src/tunnel/harness_test_support.rs` 的 `tallies` 一个形状；
 /// 本文件是外部 crate，看不见那个 `#[cfg(test)]` 私有模块，所以照同一规则就地写一份
 /// —— 审计按「每份实现各自只有一个折函数」检查，不跨文件共享。
 fn tally(events: &[&'static str]) -> PortTally {

@@ -361,7 +361,7 @@ F-01…F-13 拦的是**依赖**。还有一类耦合不产生依赖边：**名�
 **判据是分词后逐词比，不是子串比**：`webhook` / `webdriver` 这类协议复合词不算形态名
 （它们切出来是整词），否则误伤会逼人把合法写法藏起来。
 
-**闸门**：`modules/src/execution/runtime/tunnel/form_neutrality.rs`（随 `--lib` 跑，因而进
+**闸门**：`modules/src/execution/runtime/tunnel/form_neutrality_tests.rs`（随 `--lib` 跑，因而进
 CI）。它扫内核 crate 的 `src/`，两层都查——**字面量**（对外产出的稳定码、租约前缀、错误码）
 与**标识符**（类型 / 常量 / 字段名）。三条配套事实：
 
@@ -1055,7 +1055,7 @@ impl OpenSessionUseCase {
 
 宿主里**只有两个**直读「桌面的安装级组织常量」的入口：
 `crate::platform::local_organization_scope()` 与
-`crate::commands::data_transfer::plan_scope::desktop_organization_scope()`。
+`crate::commands::data_transfer::plan_scope_tests::desktop_organization_scope()`。
 桌面形态下它们与正规入口解析出的值**逐字相同**；但服务端形态下，直读常量等于
 「拿桌面的组织去查服务端的多租户存储」——那是**越组织读写**，比性能问题严重：
 CM-05 要求跨组织访问按「不存在」处理，而这里是「用错组织查」，查到就是真的越界。
@@ -1082,11 +1082,11 @@ CM-05 要求跨组织访问按「不存在」处理，而这里是「用错组�
 
 **桌面行为逐字不变**：桌面上 `AppState::organization_scope()` 解析出的组织**恒为**
 `LOCAL_ORGANIZATION_ID`（请求上下文里的 `organizationId` 也恒为它）。这一点由
-`platform/scope_gate.rs` 的等价性用例实测断言。
+`platform/scope_gate_tests.rs` 的等价性用例实测断言。
 
 #### 5.2.2 形态中立闸门（防回归）
 
-`src-tauri/src/platform/scope_gate.rs` 是宿主侧的**机械闸门**：它扫描宿主 `src/` 的
+`src-tauri/src/platform/scope_gate_tests.rs` 是宿主侧的**机械闸门**：它扫描宿主 `src/` 的
 **生产代码**，找出每一次直读安装级组织常量的调用点，要求每一处都带
 `scope-gate: <id>` 标记、且 `<id>` 落在该文件内的**显式白名单**里并写明
 「为什么这里是桌面专有路径」；白名单里的 id 也必须都被用上（不许养闲条目）。
@@ -1192,7 +1192,7 @@ restore 任务（组织 = 规范值）与 transfer / schema-diff / sync 任务�
 
 #### 防回归闸门
 
-[`src-tauri/src/platform/org_literal_gate.rs`](../../../src-tauri/src/platform/org_literal_gate.rs)
+[`src-tauri/src/platform/org_literal_gate_tests.rs`](../../../src-tauri/src/platform/org_literal_gate_tests.rs)
 （`#[cfg(test)]`，随 `cargo test -p datazen_desktop --lib` 跑 ⇒ 进 CI）把「组织 id 被写死成字面量」
 钉成常驻断言：**生产代码**（排除 `#[cfg(test)]` 体与测试专用文件）里不得出现
 `OrganizationId::new("<字符串字面量>")`；取规范常量 `LOCAL_ORGANIZATION_ID` 或取运行时
@@ -1468,13 +1468,13 @@ Rust 不能复用 `scripts/lib/scanSourceCode.mjs` 的 `scanCode`：它是 JS/TS
 
 ### 8.3 CI 阻断方式
 
-`.github/workflows/ci.yml` 把 **5** 条严格守卫合并在 frontend job 的一步里（step `All strict guards (stubs, IDs, layers, boundaries, i18n keys)`，命令体为 `check-managed-stubs` / `pnpm test:ids` / `pnpm test:layers` / `pnpm test:boundaries` / `pnpm test:i18n-keys`；`ci-docs` / `version` / `guardrails` 三条在 release.yml 的 pre-release-guards，**`driver-protocol` 一条已于 2026-10-21 随门禁退役移除**），任一失败即 fail-fast；聚合 job `ci`（顶层键 `ci:`）是 `needs: [detect-changes, frontend, rust]` 的唯一 required status check。这两处按 job 键引用而非行号：聚合段在 rust job 之后，rust job 每加一个 step（如 `cdef53606` 插入的 fmt 硬门禁，+36 行）整段行号就平移，而 `ci:` / `needs:` 这两个键本身不会变。
+`.github/workflows/ci.yml` 把 **7** 条严格守卫合并在 frontend job 的一步里（step `All strict guards (stubs, IDs, layers, boundaries, i18n keys, frontend entries, test-module naming)`，命令体为 `node scripts/` 直连的 `check-managed-stubs` / `check-id-terminology` / `check-module-layers` / `check-driver-import-boundaries` / `check-frontend-public-entry` / `i18n-key-collision-check` / `check-test-module-naming`（2026-10-27 起由 `pnpm test:*` 别名改为直连，理由见该步注释）；`ci-docs` / `version` / `guardrails` 三条在 release.yml 的 pre-release-guards，**`driver-protocol` 一条已于 2026-10-21 随门禁退役移除**），任一失败即 fail-fast；聚合 job `ci`（顶层键 `ci:`）是 `needs: [detect-changes, frontend, rust]` 的唯一 required status check。这两处按 job 键引用而非行号：聚合段在 rust job 之后，rust job 每加一个 step（如 `cdef53606` 插入的 fmt 硬门禁，+36 行）整段行号就平移，而 `ci:` / `needs:` 这两个键本身不会变。
 
 平台边界规则分两处接入，**两处都是既有步骤，本次没有新增任何 CI step**：
 
 | 门禁 | 接入位置 | 理由 |
 | --- | --- | --- |
-| §8.1 的 `backend-client-transport-agnostic` 与 `driver-sdk-no-direct-tauri` | frontend job 的 `pnpm test:layers`（`ci.yml` 的 strict-guards step 里的 `pnpm test:layers`；该 step 共 **5** 条命令，`pnpm test:layers` 是**第 3 条**：`check-managed-stubs` → `test:ids` → `test:layers` → `test:boundaries` → `test:i18n-keys`） | 纯 Node 字符串扫描，无需 cargo。两条规则写在 `scripts/check-module-layers.mjs` 的 `LAYER_RULES` 表里（该表共 **4** 条规则，另两条是既有的 `shared relation metadata must not import its consumers` 与 `shared design system (@datazen/ui) must stay a host-free leaf`），脚本已存在，因此**不需要新 script、不需要新 step** |
+| §8.1 的 `backend-client-transport-agnostic` 与 `driver-sdk-no-direct-tauri` | frontend job 的 `pnpm test:layers`（`ci.yml` 的 strict-guards step 里的 `node scripts/check-module-layers.mjs`；该 step 共 **7** 条命令，`check-module-layers` 是**第 3 条**：`check-managed-stubs` → `check-id-terminology` → `check-module-layers` → `check-driver-import-boundaries` → `check-frontend-public-entry` → `i18n-key-collision-check` → `check-test-module-naming`） | 纯 Node 字符串扫描，无需 cargo。两条规则写在 `scripts/check-module-layers.mjs` 的 `LAYER_RULES` 表里（该表共 **4** 条规则，另两条是既有的 `shared relation metadata must not import its consumers` 与 `shared design system (@datazen/ui) must stay a host-free leaf`），脚本已存在，因此**不需要新 script、不需要新 step** |
 | 平台边界规则 | rust job 的 `pnpm test:platform-arch`（step `Platform crate dependency boundaries`），紧接 `Resolve drivers (basic)` 之后 | 驱动 crate 由 `scripts/resolve-drivers.mjs` 注入为 Cargo feature，注入前读 `cargo metadata` 会漏掉驱动依赖边 |
 | 初始规则的鉴别力自证（F-01..F-07 与未分类成员；不涵盖 F-11 / F-14） | rust job 末步 `pnpm test:platform-arch:mutations`（step `Platform arch guard self-proof (10 mutations)`），共 10 个变异（M9 / M10 是 F-01 的 `tauri*` 两侧） | 门禁自身会临时改写 manifest 再还原，所以必须排在 job 最后 |
 | 内核 crate 单测 | rust job 的 `pnpm test:platform-crates`（step `Rust unit tests (platform core crates)`），crate 集由脚本发现 | 新增 core crate 无需改 CI |

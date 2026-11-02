@@ -88,7 +88,7 @@ mod tests {
     use super::*;
     use crate::{
         mcp::types::{CloseSessionInput, OpenSessionInput},
-        testing::{app_state::TestAppState, mock_driver::MockDriverOptions},
+        testing::{app_state_test_support::TestAppState, mock_driver::MockDriverOptions},
     };
     use datazen::application::sessions::ConnectionUseCases;
     use datazen::execution::application::requests::OpenSessionRequest;

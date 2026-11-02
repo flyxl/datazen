@@ -5,7 +5,7 @@ use crate::data_transfer::model::{
 use crate::data_transfer::{
     TableMapping, TransferJob, TransferMode, TransferRunRequest, WriteMode,
 };
-use crate::testing::app_state::TestAppState;
+use crate::testing::app_state_test_support::TestAppState;
 use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
 use datazen_driver_api::{IndexInfo, TableOptions, TableSchema};
 use std::collections::HashMap;
@@ -31,7 +31,7 @@ fn job(source: String, target: String) -> TransferJob {
 }
 
 fn options() -> MockDriverOptions {
-    let mut options = crate::testing::app_state::rich_mock_options();
+    let mut options = crate::testing::app_state_test_support::rich_mock_options();
     options.parameterized_writes = true;
     options.execute_rows_affected = 1;
     options.columns = MockDriver::default_table_schema("users").columns.clone();
@@ -211,7 +211,7 @@ async fn mysql_bigint_key_keeps_atomic_table_boundary_resume() {
         .await;
 
     let mut source_config =
-        crate::testing::app_state::sample_postgres_config("transfer-resume-mysql-bigint-source");
+        crate::testing::app_state_test_support::sample_postgres_config("transfer-resume-mysql-bigint-source");
     source_config.database_type = "mysql".into();
     source_config.port = Some(3306);
     test.store

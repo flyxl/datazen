@@ -97,7 +97,7 @@ mod workflow_history;
 mod retention_tests;
 
 #[cfg(test)]
-#[path = "history_db/fixtures.rs"]
+#[path = "history_db/test_fixtures.rs"]
 mod fixtures;
 
 #[cfg(test)]

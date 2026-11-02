@@ -1,7 +1,7 @@
-use super::data_command_test_host::host_command_app;
 use super::test_fixtures::*;
 use super::*;
-use crate::testing::app_state::TestAppState;
+use super::data_command_test_host::host_command_app;
+use crate::testing::app_state_test_support::TestAppState;
 use datazen_driver_api::Value;
 use std::collections::BTreeMap;
 
@@ -33,7 +33,7 @@ async fn preview_builds_driver_sql_without_opening_a_transaction() {
 
 #[tokio::test]
 async fn commit_reuses_plan_fingerprint_and_returns_plan_id() {
-    let mut options = crate::testing::app_state::rich_mock_options();
+    let mut options = crate::testing::app_state_test_support::rich_mock_options();
     options.execute_rows_affected = 1;
     options.parameterized_writes = true;
     let test = TestAppState::with_resource_provider(options).await;
@@ -74,9 +74,15 @@ async fn commit_rejects_stale_fingerprint_before_execution() {
     )
     .await
     .unwrap();
-    let error = commit_pending_changes(app.state(), conn_id.clone(), None, plan, "stale".into())
-        .await
-        .unwrap_err();
+    let error = commit_pending_changes(
+        app.state(),
+        conn_id.clone(),
+        None,
+        plan,
+        "stale".into(),
+    )
+    .await
+    .unwrap_err();
 
     assert!(error.to_string().contains("fingerprint"));
     assert!(
@@ -114,7 +120,7 @@ async fn preview_rejects_changes_without_primary_key_identity() {
 
 #[tokio::test]
 async fn commit_rejects_database_context_change_without_switching_session() {
-    let mut options = crate::testing::app_state::rich_mock_options();
+    let mut options = crate::testing::app_state_test_support::rich_mock_options();
     options.execute_rows_affected = 1;
     options.parameterized_writes = true;
     let test = TestAppState::with_options(options).await;
@@ -146,7 +152,7 @@ async fn commit_rejects_database_context_change_without_switching_session() {
 
 #[tokio::test]
 async fn commit_allows_concrete_table_schema_when_connection_schema_is_unspecified() {
-    let mut options = crate::testing::app_state::rich_mock_options();
+    let mut options = crate::testing::app_state_test_support::rich_mock_options();
     options.execute_rows_affected = 1;
     options.parameterized_writes = true;
     let test = TestAppState::with_resource_provider(options).await;
@@ -176,11 +182,11 @@ async fn commit_allows_concrete_table_schema_when_connection_schema_is_unspecifi
 
 #[tokio::test]
 async fn commit_rejects_explicit_schema_context_change() {
-    let mut options = crate::testing::app_state::rich_mock_options();
+    let mut options = crate::testing::app_state_test_support::rich_mock_options();
     options.execute_rows_affected = 1;
     options.parameterized_writes = true;
     let test = TestAppState::with_options(options).await;
-    let mut config = crate::testing::app_state::sample_postgres_config("context-schema-explicit");
+    let mut config = crate::testing::app_state_test_support::sample_postgres_config("context-schema-explicit");
     config.schema = Some("private".into());
     test.store.save_connection(config).await.unwrap();
     let conn_id = test.connect_config("context-schema-explicit").await;
@@ -211,7 +217,7 @@ async fn commit_rejects_explicit_schema_context_change() {
 #[tokio::test]
 async fn empty_identity_is_rejected_before_any_sql_is_generated() {
     // `parameterized_writes` stays false: every builder call is unsupported.
-    let test = TestAppState::with_options(crate::testing::app_state::rich_mock_options()).await;
+    let test = TestAppState::with_options(crate::testing::app_state_test_support::rich_mock_options()).await;
     let (_, conn_id) = test.save_and_connect("guard-before-sql").await;
     let app = host_command_app(test);
 
@@ -248,7 +254,7 @@ async fn empty_identity_is_rejected_before_any_sql_is_generated() {
 
 #[tokio::test]
 async fn a_stale_config_revision_is_refused_with_the_stale_plan_code() {
-    let mut options = crate::testing::app_state::rich_mock_options();
+    let mut options = crate::testing::app_state_test_support::rich_mock_options();
     options.execute_rows_affected = 1;
     options.parameterized_writes = true;
     let test = TestAppState::with_options(options).await;
@@ -284,7 +290,7 @@ async fn a_stale_config_revision_is_refused_with_the_stale_plan_code() {
 
 #[tokio::test]
 async fn a_database_context_drift_is_refused_with_the_stale_plan_code() {
-    let mut options = crate::testing::app_state::rich_mock_options();
+    let mut options = crate::testing::app_state_test_support::rich_mock_options();
     options.execute_rows_affected = 1;
     options.parameterized_writes = true;
     let test = TestAppState::with_options(options).await;
@@ -322,11 +328,11 @@ async fn a_database_context_drift_is_refused_with_the_stale_plan_code() {
 
 #[tokio::test]
 async fn a_schema_context_drift_is_refused_with_the_stale_plan_code() {
-    let mut options = crate::testing::app_state::rich_mock_options();
+    let mut options = crate::testing::app_state_test_support::rich_mock_options();
     options.execute_rows_affected = 1;
     options.parameterized_writes = true;
     let test = TestAppState::with_options(options).await;
-    let mut config = crate::testing::app_state::sample_postgres_config("r4-schema-drift");
+    let mut config = crate::testing::app_state_test_support::sample_postgres_config("r4-schema-drift");
     config.schema = Some("private".into());
     test.store.save_connection(config).await.unwrap();
     let conn_id = test.connect_config("r4-schema-drift").await;
@@ -362,11 +368,11 @@ async fn a_schema_context_drift_is_refused_with_the_stale_plan_code() {
 
 #[tokio::test]
 async fn a_read_only_connection_is_refused_with_the_read_only_code() {
-    let mut options = crate::testing::app_state::rich_mock_options();
+    let mut options = crate::testing::app_state_test_support::rich_mock_options();
     options.execute_rows_affected = 1;
     options.parameterized_writes = true;
     let test = TestAppState::with_options(options).await;
-    let mut config = crate::testing::app_state::sample_postgres_config("r4-read-only");
+    let mut config = crate::testing::app_state_test_support::sample_postgres_config("r4-read-only");
     config.read_only = true;
     test.store.save_connection(config).await.unwrap();
     let conn_id = test.connect_config("r4-read-only").await;

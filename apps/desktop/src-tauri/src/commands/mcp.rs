@@ -262,7 +262,7 @@ pub async fn mcp_client_call_tool(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use tauri::Manager;
 
     #[tokio::test]

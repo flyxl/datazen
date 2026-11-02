@@ -5,12 +5,12 @@
 //! needed for a sibling glob import.
 
 use super::*;
-use crate::testing::app_state::TestAppState;
+use crate::testing::app_state_test_support::TestAppState;
 use datazen_driver_api::Value;
 use std::collections::BTreeMap;
 
 pub(super) async fn with_parameterized_driver() -> TestAppState {
-    let mut options = crate::testing::app_state::rich_mock_options();
+    let mut options = crate::testing::app_state_test_support::rich_mock_options();
     options.parameterized_writes = true;
     TestAppState::with_options(options).await
 }
@@ -74,7 +74,7 @@ pub(super) fn insert_change(values: &[(&str, Option<Value>)]) -> PendingRowChang
 }
 
 pub(super) fn insert_capable_options() -> crate::testing::mock_driver::MockDriverOptions {
-    let mut options = crate::testing::app_state::rich_mock_options();
+    let mut options = crate::testing::app_state_test_support::rich_mock_options();
     options.execute_rows_affected = 1;
     options.parameterized_writes = true;
     options

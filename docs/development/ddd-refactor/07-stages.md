@@ -210,7 +210,7 @@ AI 工具（egress 摘要 / db_tools / 连接上下文）与 MCP 的目录读取
   bin/cm60-bench、tests/（集成测试面）与全量再导出 facade
   （`datazen_runtime::connection::…` 等既有路径不变，§5.5 单向委托）。
 - 路径敏感的自检/审计测试全部重定位（epoch 单实现扫描、隧道单账审计
-  AUDITED 表、形态中立闸门扫描根、catalog_guard 文档真源、
+  AUDITED 表、形态中立闸门扫描根、catalog_guard_test_support 文档真源、
   runtime 测试的 include_str 与 MANIFEST_DIR 路径）。
 - 验证：modules 872 / runtime lib 9 + 集成 444 / platform-api 46 /
   kernel 34 / modules 765 / application 95 / schema-diff 179 全绿

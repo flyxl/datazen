@@ -5,7 +5,7 @@
 //!
 //! | 落点 | 已有用例 | 钉住什么 |
 //! |---|---|---|
-//! | `ClosePrecondition::returns_to_pool()` | `fake_resource::close_cases::pooling_refuses_a_host_ledger_that_undercounts_the_registered_handles` | 实测 vs 声明两份账分叉 ⇒ 不归池 |
+//! | `ClosePrecondition::returns_to_pool()` | `fake_resource::close_cases_tests::pooling_refuses_a_host_ledger_that_undercounts_the_registered_handles` | 实测 vs 声明两份账分叉 ⇒ 不归池 |
 //! | `HostConditionSnapshot::first_blocker()` | `tests::resource_return_to_pool::an_unreleased_session_handle_refuses_reuse_and_is_reset_before_the_close` | host 传入 `unreleased_handles` ⇒ 报 `hostUnreleasedSessionHandle` |
 //! | **`CleanupPlan::of` 的归池判据** | **本文件** | **驱动 `Clean` 单独一个不能覆盖任何一项宿主条件** |
 //!

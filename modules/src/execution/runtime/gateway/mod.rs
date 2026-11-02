@@ -83,7 +83,7 @@ mod cancel_event_tests;
 #[cfg(test)]
 mod event_repository_tests;
 #[cfg(test)]
-pub(crate) mod facade_support;
+pub(crate) mod facade_test_support;
 #[cfg(test)]
 mod facade_tests;
 // 令牌层与保留期各自单列一块，否则两个源文件都会顶破 800 行上限。

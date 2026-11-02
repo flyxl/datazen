@@ -50,7 +50,7 @@ fn driver_err_other_stays_driver() {
 
 #[tokio::test]
 async fn backup_and_restore_roundtrip() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     let test = TestAppState::with_tables_and_resource_provider().await;
     let conn_id = test.save_and_open_runtime_session("backup-cfg").await;
@@ -89,7 +89,7 @@ async fn backup_and_restore_roundtrip() {
 
 #[tokio::test]
 async fn backup_database_errors_when_not_connected() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     let test = TestAppState::with_tables().await;
     let path = test._temp.path().join("fail.sql");
@@ -102,7 +102,7 @@ async fn backup_database_errors_when_not_connected() {
 
 #[tokio::test]
 async fn unsupported_backup_option_is_rejected_before_driver_connection() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     let test = TestAppState::new().await;
     let path = test._temp.path().join("unsupported-format.dump");
@@ -126,7 +126,7 @@ async fn unsupported_backup_option_is_rejected_before_driver_connection() {
 
 #[tokio::test]
 async fn restore_database_rejects_read_only_connection() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     let test = TestAppState::with_tables_and_resource_provider().await;
     let mut cfg = test.save_connection("backup-ro").await;
@@ -151,7 +151,7 @@ async fn restore_database_rejects_read_only_connection() {
 
 #[tokio::test]
 async fn restore_database_rejects_safe_mode() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     let test = TestAppState::with_tables_and_resource_provider().await;
     let mut settings = test.state.store.get_settings().await;

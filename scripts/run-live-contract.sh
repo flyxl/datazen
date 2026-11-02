@@ -9,7 +9,7 @@
 #
 #   scripts/run-live-contract.sh                 # postgres + mysql, strict
 #   scripts/run-live-contract.sh --dry-run       # resolve + report only
-#   scripts/run-live-contract.sh --crate datazen --lib-test workflow::live_acceptance
+#   scripts/run-live-contract.sh --crate datazen --lib-test workflow::live_acceptance_tests
 #   scripts/run-live-contract.sh --no-provision  # assume fixture DBs exist
 #   scripts/run-live-contract.sh --crate datazen-driver-postgres
 #   scripts/run-live-contract.sh --crate datazen-driver-postgres --test restore_apply_job

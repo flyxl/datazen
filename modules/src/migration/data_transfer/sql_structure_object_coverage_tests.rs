@@ -20,7 +20,7 @@ use datazen_driver_api::Value;
 
 use super::model::DdlPreviewKind;
 use super::sql_structure::build_database_structure_plan;
-use super::sql_structure_fixtures::*;
+use super::sql_structure_test_fixtures::*;
 
 /// Target whose *foreign-key* constraint names are local to their table while
 /// index names stay schema-scoped (the PostgreSQL combination).

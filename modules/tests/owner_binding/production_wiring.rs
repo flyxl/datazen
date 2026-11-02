@@ -18,7 +18,7 @@
 //!
 //! * 路径里有 `tests` 目录段、或文件名以 `_test` / `_tests` 结尾 ⇒ 测试；
 //! * 父目录的 `mod.rs` / `lib.rs` / `main.rs` 用 `#[cfg(test)]` 或 `#[cfg(doctest)]` 声明了
-//!   `mod <文件名去扩展名>` ⇒ 测试（`src/gateway/` 下 `facade_support.rs` 这类「住在生产
+//!   `mod <文件名去扩展名>` ⇒ 测试（`src/gateway/` 下 `facade_test_support.rs` 这类「住在生产
 //!   目录里、实为单测」文件的判据）；其余 ⇒ 生产。
 //!
 //! 对生产文件，判定前先剥掉三层**不是接线**的东西：注释与字符串字面量的内容、
@@ -481,7 +481,7 @@ fn the_wiring_scan_actually_covers_the_gateway_and_the_host() {
 
     // 住在生产目录里、实为单测的两个文件必须被判成测试，否则这条守卫早就红了。
     for test_module in [
-        "modules/src/execution/runtime/gateway/facade_support.rs",
+        "modules/src/execution/runtime/gateway/facade_test_support.rs",
         "modules/src/execution/runtime/gateway/facade_tests.rs",
     ] {
         assert!(

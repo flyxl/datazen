@@ -11,7 +11,7 @@
 
 use crate::commands::connection::connection_command_test_host::host_command_app;
 use crate::commands::driver_command::{execute_driver_command_impl, ExecuteDriverCommandRequest};
-use crate::testing::app_state::{rich_mock_options, TestAppState};
+use crate::testing::app_state_test_support::{rich_mock_options, TestAppState};
 
 fn query(session: &str) -> ExecuteDriverCommandRequest {
     ExecuteDriverCommandRequest {

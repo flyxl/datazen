@@ -288,13 +288,13 @@ fn collect_targets(
 mod tests {
     use super::*;
     use crate::store::WorkflowVisibility;
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     /// mock_app 托管 TestAppState，返回 (app, keepalive)。预置 `conn-1` profile
     /// （SCHEDULED_YAML 的目标连接）。
     async fn host() -> (
         tauri::App<tauri::test::MockRuntime>,
-        crate::testing::app_state::TestStateKeepalive,
+        crate::testing::app_state_test_support::TestStateKeepalive,
     ) {
         let test = TestAppState::new().await;
         test.save_connection("conn-1").await;

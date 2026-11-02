@@ -1,7 +1,7 @@
     // Stateful session tests. They live in their own file because
     // server/tests_integration.rs is at the per-file size cap.
     use crate::mcp::session::DEFAULT_TTL;
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use datazen::application::identity_policy::IdentityPolicy;
     use datazen::shared::context::OwnerRef;
     use datazen::execution::SessionHandle;

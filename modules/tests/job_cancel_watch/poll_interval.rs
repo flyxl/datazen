@@ -4,7 +4,7 @@
 //! `job_cancel_watch.rs` 的 `QUIET_WINDOW`（十处"读次数增长 / 不增长"断言全部建立在
 //! "窗口至少跨过一个轮询周期"这个前提上）过去写死 400ms，
 //! `data-transfer` 侧 `kernel_cancel.rs` 的 `WATCHER_SLACK` 写死 1200ms，
-//! 宿主 `src-tauri/src/commands/sync/jobs_cancel_contract.rs` 写死 "10 个周期 ≈ 500ms"。
+//! 宿主 `src-tauri/src/commands/sync/jobs_cancel_contract_tests.rs` 写死 "10 个周期 ≈ 500ms"。
 //! 这些窗口一旦与真源脱钩，它们会**静默退化成空转**——间隔被调大之后，窗口里一次轮询
 //! 都落不下，"读次数不再增长"自动成立，一个根本没在跑的看门狗和一个正常工作的看门狗
 //! 给出完全相同的结论。
@@ -29,10 +29,10 @@
 use super::*;
 use datazen::jobs::domain::job::JobState;
 
-/// 宿主取消契约 `jobs_cancel_contract.rs` 的 `SETTLE`：放行闸门前的落定预算。
+/// 宿主取消契约 `jobs_cancel_contract_tests.rs` 的 `SETTLE`：放行闸门前的落定预算。
 ///
 /// 来源（只读证据，本轨无权修改）：
-/// `src-tauri/src/commands/sync/jobs_cancel_contract.rs`
+/// `src-tauri/src/commands/sync/jobs_cancel_contract_tests.rs`
 ///     const SETTLE: Duration = Duration::from_millis(500);
 const HOST_SETTLE: Duration = Duration::from_millis(500);
 

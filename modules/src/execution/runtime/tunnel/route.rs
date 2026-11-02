@@ -35,7 +35,7 @@
 //! 名册是**身份表，不是计数表**：它是 `spec -> Vec<LeaseId>`，长度会变、值互不相同，
 //! 全模块**不读它的长度做任何判断**（`TunnelSpec` 没有 `Ord` / `Hash`，只能线性查找）。
 //! 系统里唯一参与「能不能释放」的整数仍然只有台账的 `refs`——这一点由
-//! `tunnel::single_counter_audit` 那道闸门保证，本文件已登记进它的审计表。
+//! `tunnel::single_counter_audit_tests` 那道闸门保证，本文件已登记进它的审计表。
 //!
 //! # 仍然不做的事（不是遗漏，是边界）
 //!
@@ -52,7 +52,7 @@
 //!   （`tunnelNotShareable` / `tunnelAlreadyHeld` / `tunnelRevisionUnavailable`）
 //!   本来就是形态中立的，形态名只在这几个码上不一致，且会把「桌面」写进
 //!   web 形态同样会产出的租约与错误文本。**已裁定退场**，并由
-//!   `tunnel::form_neutrality` 那道闸门钉住（其中的
+//!   `tunnel::form_neutrality_tests` 那道闸门钉住（其中的
 //!   `the_scanner_actually_sees_the_stable_codes` 逐个断言这些码无形态名）。
 
 use std::sync::atomic::{AtomicU64, Ordering};

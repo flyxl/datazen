@@ -25,7 +25,7 @@ modules 测，宿主绑定在宿主测。**command 层不承载业务行为的�
 
 | # | 类别 | 测什么 | 仓库内范本 |
 |---|---|---|---|
-| C1 | **IPC 线格式钉子** | 参数名（camelCase）、DTO 序列化形状、错误码到信封的映射与消息首位前缀（`grid.*` 分类）、事件名与载荷（`ai:stream-chunk`）——前端分类逻辑依赖的线契约 | `named_views_error_tests.rs`、`ipc_surface_tests.rs`、`ai/ipc_contract_guards.rs`、`fk_navigation/tests.rs`（其模块文档明言「规则住在共享层并在那里测试；这里只钉壳的契约」） |
+| C1 | **IPC 线格式钉子** | 参数名（camelCase）、DTO 序列化形状、错误码到信封的映射与消息首位前缀（`grid.*` 分类）、事件名与载荷（`ai:stream-chunk`）——前端分类逻辑依赖的线契约 | `named_views_error_tests.rs`、`ipc_surface_tests.rs`、`ai/ipc_contract_guards_tests.rs`、`fk_navigation/tests.rs`（其模块文档明言「规则住在共享层并在那里测试；这里只钉壳的契约」） |
 | C2 | **宿主装配守卫** | bootstrap 注册表（合并命令注册且旧命令消失）、`AppState` 形状上限、组织作用域不得进 IPC 载荷（INV-01/P7） | `app_state_shape_tests.rs`、`org_scope_surface_tests.rs`、`wapps/tests.rs` 的注册守卫、`backup_tests.rs` 的 bootstrap 守卫 |
 | C3 | **宿主资源绑定行为** | 对话框、窗口、剪贴板、可执行文件路径、app 数据目录——只有 mock_app/真实宿主能证明的行为 | `config_tests.rs`（executable path）、`dialog.rs`/`window.rs` 相关测试 |
 | C4 | **端口适配器接线烟测** | 同一用例经宿主端口装配后端到端走通（每适配器一两根烟测；深度行为覆盖在 modules 侧） | `backup_tests.rs` 的 `backup_and_restore_roundtrip`、`ai/tests.rs` 的 `ai_providers_config_prompt_workflow` |
@@ -88,7 +88,7 @@ modules 测，宿主绑定在宿主测。**command 层不承载业务行为的�
 | ai/prompts.rs | 54 | 保留 | 提示词模板 IO 壳 |
 | ai/util.rs | 155 | 保留 | tauri 事件绑定 + 配置端口取值 + 上下文文件宿主 FS IO（`read_context_entries`）；`parse_ai_json` 包装与 JSON 修复钉子已归位 `response_tests.rs` |
 | ai/command_test_host.rs | 99 | 基建 | mock_app 托管 AppState（WR-A2 产物，C3/C4 用） |
-| ai/ipc_contract_guards.rs | 88 | 守卫 | C1 参数提取 |
+| ai/ipc_contract_guards_tests.rs | 88 | 守卫 | C1 参数提取 |
 | ai/tests.rs | 233 | 已拆（B0）+ B3 转真入口 | workflow_list 走真实命令入口；余 9 测为 C3/C4 |
 | ai/mock_provider_tests.rs | 371 | **复核改判 C4 保留（B3）** | 全部经真实命令入口驱动宿主装配（配置 CRUD、单轮命令、工具循环、错误信封）——宿主边界旅程烟测，非单元测试；modules 侧编排裁决由 `chat_session_tests` 脚本化假体钉住（wiremock/mock 假体归位后两侧覆盖互补） |
 | ai/integration_tests.rs | 1,456 | **已拆分（B3）** | 编排裁决钉子归位 modules（`chat_session_tests` 10 钉）；workflow 测试转真实命令入口；余下为 C1 事件/取消 IPC 钉子（toolCalls 载荷形状、流错误传播）+ C4 宿主装配旅程（wiremock/mock 假体走真命令入口） |
@@ -146,7 +146,7 @@ modules 侧 `migration/` 已有同域测试基建（`filter_tests.rs`、`plan_te
 | sync/apply.rs | 681 | 瘦身（5 `_impl`） | apply/compare 编排 |
 | sync/exec.rs | 1,228 | 瘦身（4 `_impl`） | 执行编排 |
 | sync/jobs.rs | 884 | 瘦身 | job 生命周期 |
-| sync/jobs_contract.rs + jobs_cancel_contract.rs | 1,063 | 守卫 + 随刀拆分 | IPC 参数契约留；job 语义随刀 |
+| sync/jobs_contract_tests.rs + jobs_cancel_contract_tests.rs | 1,063 | 守卫 + 随刀拆分 | IPC 参数契约留；job 语义随刀 |
 | sync/tasks.rs | 253 | 瘦身（4 `_impl`） | 任务 CRUD 壳 |
 | sync/job_api.rs / inspect.rs / compare.rs / keyset_source.rs / artifact_view.rs | 1,001 | 瘦身 | 逐个随刀 |
 | sync/host/*（mod/executor/recording/selection/state） | 1,348 | 保留（本切片） | 宿主执行器桥接（HostTargetExecutor 等），WR-F5 服务端需对照实现 |
@@ -157,7 +157,7 @@ modules 侧 `migration/` 已有同域测试基建（`filter_tests.rs`、`plan_te
 | schema_diff/reviewed_repository.rs | 569 | 下沉核对 | modules 侧已有 `reviewed_repository_tests`，桌面这层应只余桥接 |
 | schema_diff/unified_plan.rs | 116 | 瘦身（1 `_impl`） | 统一计划壳 |
 | schema_diff/tests.rs + tests/plan_deploy.rs | 501 | 随刀下沉 | plan/deploy 语义 |
-| data_transfer/*（exec/inspect/preview/job_api/plan_scope…） | 5,279 | 瘦身（分刀） | 最大编排域；job_api 的 admission/assembly/runtime/scope 形态中立 |
+| data_transfer/*（exec/inspect/preview/job_api/plan_scope_tests…） | 5,279 | 瘦身（分刀） | 最大编排域；job_api 的 admission/assembly/runtime/scope 形态中立 |
 | data_transfer/tests.rs | 1,069 | 随刀下沉 | 编排行为 |
 | data_transfer/job_api/tests/*（6 文件） | 2,456 | 甄别：queries/addressability/endpoint_identity 指向 modules 逻辑 → 测试迁移；mod/job_lifecycle/replay 随刀 | 逐个核对被测面 |
 | data_transfer/resume_preflight_tests.rs | 478 | 随刀下沉 | preflight 语义 |
@@ -185,7 +185,7 @@ modules 侧 `migration/` 已有同域测试基建（`filter_tests.rs`、`plan_te
 | restore_job/tests.rs | 365 | 保留（C4 适配器烟测） | 宿主边界旅程（生产上传→SQLite 准入→桌面运行时接线）；深度行为在 modules 驱动旅程（模块文档明言「PG/MySQL driver journeys own real SQL evidence」） |
 | restore_job/provider_fixture.rs | 274 | 基建（随刀） | — |
 | export.rs + export/stream.rs | 846 | 保留 | 文件导出宿主绑定 |
-| export/live_acceptance.rs | 347 | 保留（C4 验收） | 真实驱动验收烟测 |
+| export/live_acceptance_tests.rs | 347 | 保留（C4 验收） | 真实驱动验收烟测 |
 | file.rs / file_jobs.rs | 524 | 保留 | tauri 文件系绑定 |
 | dialog.rs | 528 | 保留 | tauri 对话框 |
 | window.rs | 753 | 保留 | tauri 窗口 |
@@ -224,7 +224,10 @@ modules 侧 `migration/` 已有同域测试基建（`filter_tests.rs`、`plan_te
   每域刀法与 WR-A2 AI 域相同：`_impl` 删除、逻辑内联进命令函数或下沉 modules
   用例、业务测试进 modules、C1–C4 测试留宿主、IPC 契约零变化。
   **进度（2026-10-31）**：query（11）/ dashboard（10）/ config（9）/ tunnel
-  （7，脱敏映射与探测编排下沉 `tunnel::domain::projection` + `tunnel::probe`）/
+  （7，脱敏映射下沉 `tunnel::domain::projection`、探测编排与两档组合下沉
+  `tunnel::application`——2026-11-02 结构裁决：probe 是用例非机制，自
+  `tunnel::probe` 迁 `application/probe.rs`；投影因消费者是仓储适配器而留
+  domain，裁决记录见 web-ready-plan §11）/
   connection（14，最大域；`session_info_payload`/`driver_category_label` 下沉
   `connection::api`）/ driver_command+mcp（discovery.rs 整删 + 目录合成归一
   `command_policy::discovery_definitions`，流遥测下沉 `stream_telemetry`）/

@@ -276,7 +276,7 @@ pub(crate) async fn validate_migration_profile_ref(
 mod tests {
     use super::*;
     use crate::store::QueryHistoryEntry;
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     use super::command_test_host::host_command_app;
     use chrono::Utc;

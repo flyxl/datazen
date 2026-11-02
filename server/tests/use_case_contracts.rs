@@ -4,7 +4,7 @@
 //! 冻结契约（http-api-contract §6.9）的三个端点形态，handler 调
 //! **同一个** modules 用例（`datazen::named_views::NamedViewService`，
 //! 装配层注入规格共享的夹具仓储），用 `tower::ServiceExt::oneshot`
-//! 发请求跑共享规格（`datazen::use_case_contracts::named_views`）。
+//! 发请求跑共享规格（`datazen::use_case_contracts_test_support::named_views`）。
 //!
 //! 七个 scenario 测试与 IPC 腿（桌面
 //! `commands/named_views_use_case_contract_tests.rs`）与 modules 无宿主
@@ -36,10 +36,10 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use datazen::named_views::{NamedView, NamedViewError, NamedViewScope, NamedViewService};
-use datazen::use_case_contracts::named_views::{
+use datazen::use_case_contracts_test_support::named_views::{
     self as contract, ContractIdMinter, MemoryViewStore, NamedViewsContractBinding,
 };
-use datazen::use_case_contracts::ContractResult;
+use datazen::use_case_contracts_test_support::ContractResult;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use tower::ServiceExt;
@@ -187,13 +187,13 @@ async fn wire(response: Response) -> (StatusCode, serde_json::Value) {
 fn outcome<T: DeserializeOwned>(status: StatusCode, value: serde_json::Value) -> ContractResult<T> {
     if status.is_success() {
         return serde_json::from_value(value).map_err(|error| {
-            datazen::use_case_contracts::ContractFailure {
+            datazen::use_case_contracts_test_support::ContractFailure {
                 code: None,
                 message: format!("wire body did not deserialize into the application DTO: {error}"),
             }
         });
     }
-    Err(datazen::use_case_contracts::ContractFailure {
+    Err(datazen::use_case_contracts_test_support::ContractFailure {
         code: value["code"].as_str().map(str::to_string),
         message: value["message"].as_str().unwrap_or_default().to_string(),
     })

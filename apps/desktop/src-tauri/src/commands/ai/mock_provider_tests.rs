@@ -7,8 +7,8 @@
 use datazen::ai::{ChatMessage, MessageRole, ToolCall};
 
 use super::*;
-use crate::testing::app_state::TestAppState;
-use crate::testing::mock_ai_provider::mock_ai_config;
+use crate::testing::app_state_test_support::TestAppState;
+use crate::testing::mock_ai_provider_test_support::mock_ai_config;
 
 #[tokio::test]
 async fn mock_provider_resolve_ai_and_validate() {

@@ -24,7 +24,7 @@ pub use registry::WorkflowRegistry;
 mod host;
 
 #[cfg(test)]
-mod live_acceptance;
+mod live_acceptance_tests;
 
 // 长期文档 `docs/architecture/platform/workflow-resource-model.md` 的引用新鲜度守卫。
 #[cfg(test)]

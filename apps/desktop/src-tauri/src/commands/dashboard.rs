@@ -408,7 +408,7 @@ mod tests {
     /// 深度行为（归一化、组织隔离）在 `modules/src/dashboard/domain/repository.rs` 测。
     #[tokio::test]
     async fn dashboard_crud_roundtrip() {
-        use crate::testing::app_state::TestAppState;
+        use crate::testing::app_state_test_support::TestAppState;
 
         let test = TestAppState::new().await;
         let app = host_command_app(test);
@@ -436,7 +436,7 @@ mod tests {
 
     #[tokio::test]
     async fn run_dashboard_widget_with_workflow() {
-        use crate::testing::app_state::TestAppState;
+        use crate::testing::app_state_test_support::TestAppState;
         use datazen::workflow::model::{WorkflowDefinition, WorkflowStep};
 
         let test = TestAppState::with_tables_and_resource_provider().await;

@@ -3,7 +3,7 @@
 //! → [`SingleTenantReviewedPlanRepository`]、路径改走 `datazen` 内部路径）。
 //!
 //! 夹具组织 id 用形态中性的 `"datazen-local-org"`：桌面的规范本地组织 id
-//! 含形态专名，共享内核禁止该字面量（form_neutrality 闸门）；存储对 id 的
+//! 含形态专名，共享内核禁止该字面量（form_neutrality_tests 闸门）；存储对 id 的
 //! 具体取值不做任何假设，测试语义不受影响。
 //!
 //! 装配路径（宿主身份源失败 ⇒ deny-all 兜底）留在宿主侧的

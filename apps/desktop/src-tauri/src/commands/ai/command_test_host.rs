@@ -13,7 +13,7 @@
 //! code path the desktop webview uses in production.
 
 use crate::commands::AppState;
-use crate::testing::app_state::{TestAppState, TestStateKeepalive};
+use crate::testing::app_state_test_support::{TestAppState, TestStateKeepalive};
 use std::sync::{Arc, Mutex};
 use tauri::{Listener, Manager};
 

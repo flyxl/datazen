@@ -1,16 +1,16 @@
 pub use datazen_driver_api::mock_driver;
 
 #[cfg(any(test, feature = "test-harness"))]
-pub mod app_state;
+pub mod app_state_test_support;
 
 #[cfg(any(test, feature = "test-harness"))]
-pub(crate) mod resource_provider;
+pub(crate) mod resource_provider_test_support;
 
 #[cfg(test)]
-pub mod mock_ai_provider;
+pub mod mock_ai_provider_test_support;
 
 #[cfg(test)]
-pub mod ai_wiremock;
+pub mod ai_wiremock_test_support;
 
 /// Process-wide lock for every test that touches the process environment.
 ///

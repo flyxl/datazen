@@ -485,7 +485,7 @@ mod tests {
 
     use super::connection_command_test_host::host_command_app;
     use super::*;
-    use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use crate::testing::app_state_test_support::{sample_postgres_config, TestAppState};
     use datazen_driver_api::{HttpProxyTunnelConfig, SshTunnelConfig, WebSocketTunnelConfig};
 
     #[tokio::test]
@@ -899,7 +899,7 @@ mod coverage_tests {
 
     use super::connection_command_test_host::host_command_app;
     use super::*;
-    use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use crate::testing::app_state_test_support::{sample_postgres_config, TestAppState};
     use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
 
     #[tokio::test]

@@ -8,9 +8,9 @@ use std::collections::HashMap;
 
 use datazen_driver_api::{ColumnSchema, ForeignKeyInfo, IndexInfo, TableSchema, Value};
 
-use super::command_test_host::host_command_app;
 use super::*;
-use crate::testing::app_state::TestAppState;
+use super::command_test_host::host_command_app;
+use crate::testing::app_state_test_support::TestAppState;
 use crate::testing::mock_driver::MockDriverOptions;
 
 fn column(name: &str, data_type: &str, primary: bool) -> ColumnSchema {

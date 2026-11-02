@@ -33,12 +33,12 @@
 //!    唯一折法的投影 —— 两项同时检查，缺一个都挡不住伪装。
 //!    台账自己的 `teardown_calls`（对外 `close_calls()`）是**观测**字段，
 //!    禁止出现在任何判断条件里。
-//! 3. **闸门会自证**：上述两条由 `tunnel::single_counter_audit` 对源码结构做审计
+//! 3. **闸门会自证**：上述两条由 `tunnel::single_counter_audit_tests` 对源码结构做审计
 //!    （`include_str!`，随 `--lib` 跑故而在 CI 作用域内），每条规则各带一条把**植入变异**
 //!    喂给自己的 kill test，另有一条断言「登记表不许被裁小」—— 闸门失效时
 //!    kill test 先转红，而不是安静地少扫一片。
 //!
-//! 代数不变量由 `tunnel::journey_single_counter` 的 `single_counter_algebra_holds` 钉住。
+//! 代数不变量由 `tunnel::journey_single_counter_tests` 的 `single_counter_algebra_holds` 钉住。
 //!
 //! # 失败传播（第三条断言）
 //!
@@ -123,7 +123,7 @@ struct TunnelEntry {
     /// **唯一计数铁律**：这个字段只允许被 [`TunnelEntry`] 的四个注册方法
     /// （`established` 建账 + `refs` / `add_reference` / `take_reference` 逐笔增减）
     /// 直读或直写，其余任何函数体里出现 `entry.refs` 都是第二本账的形状 ——
-    /// 由 `tunnel::single_counter_audit` 的字段审计（R1）杀掉，含一条植入变异的 kill test。
+    /// 由 `tunnel::single_counter_audit_tests` 的字段审计（R1）杀掉，含一条植入变异的 kill test。
     /// 归零路径 `drain()` 因此**按值**从 `take_reference()` 取数（R2）。
     /// 声明层面另有一条与名字无关的 R7：`TunnelEntry` 的整数字段必须**恰好一个**，
     /// 就是本字段 —— 挡的是「留着 `refs`、在旁边挂一份逐笔相同的镜像账」。
@@ -218,7 +218,7 @@ pub struct TunnelLedger {
     /// 闸门同时看两边：台账侧这条账是**观测**，所以它禁止出现在任何
     /// 判断条件里（R3 禁止它进入 `if` / `matches!` / 比较表达式；字段与访问器**刻意
     /// 不同名**，正是为了让扫描器能区分两者）；端口侧则**不允许**再长出一份自存的
-    /// 同类账 —— 见 `transport.rs` 模块头与 `tunnel::single_counter_audit`。
+    /// 同类账 —— 见 `transport.rs` 模块头与 `tunnel::single_counter_audit_tests`。
     teardown_calls: u64,
 }
 
@@ -357,7 +357,7 @@ impl TunnelLedger {
     /// 本函数**不直读 `refs` 字段**，而是按值从 `TunnelEntry::refs()` /
     /// `take_reference()` 取数。台账里参与这条路径的字段因此只有两个：计数（`refs`，
     /// 唯一来源）与 `state`（终态守卫，不参与计数）。这条形状由
-    /// `tunnel::single_counter_audit` 的源码审计（R1 / R2）钉住。
+    /// `tunnel::single_counter_audit_tests` 的源码审计（R1 / R2）钉住。
     fn drain(&mut self, index: usize) -> TunnelRelease {
         let spec = self.entries[index].spec.clone();
         let entry = &mut self.entries[index];

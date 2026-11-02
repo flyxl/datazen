@@ -8,8 +8,8 @@ use datazen_driver_api::PromptScenario;
 use super::chat::execute_db_tool;
 use super::*;
 use crate::commands::{workflow_execute, workflow_list};
-use crate::testing::ai_wiremock::WiremockAi;
-use crate::testing::app_state::TestAppState;
+use crate::testing::ai_wiremock_test_support::WiremockAi;
+use crate::testing::app_state_test_support::TestAppState;
 use datazen::ai::prompt_resolver::PromptOverrideEntry;
 
 #[tokio::test]
@@ -39,7 +39,7 @@ async fn ai_session_commands_reject_unknown_runtime_ids() {
 #[tokio::test]
 async fn ai_validate_config_hits_wiremock() {
     let (test, mock) = TestAppState::with_wiremock_ai().await;
-    let cfg = crate::testing::ai_wiremock::openai_wiremock_config(&mock);
+    let cfg = crate::testing::ai_wiremock_test_support::openai_wiremock_config(&mock);
     let app = host_command_app(test);
     ai_validate_config(app.state(), cfg).await.unwrap();
 }
@@ -426,7 +426,7 @@ async fn workflow_save_list_get_delete() {
 
 fn many_tables_mock_options() -> crate::testing::mock_driver::MockDriverOptions {
     use datazen_driver_api::{TableInfo, TableType};
-    let mut opts = crate::testing::app_state::rich_mock_options();
+    let mut opts = crate::testing::app_state_test_support::rich_mock_options();
     opts.tables = (0..35)
         .map(|i| TableInfo {
             name: format!("table_{i}"),
@@ -783,7 +783,7 @@ async fn ai_generate_sql_pins_current_table() {
 #[tokio::test]
 async fn ai_save_config_persists_wiremock_provider() {
     let (test, mock) = TestAppState::with_wiremock_ai().await;
-    let cfg = crate::testing::ai_wiremock::openai_wiremock_config(&mock);
+    let cfg = crate::testing::ai_wiremock_test_support::openai_wiremock_config(&mock);
     let app = host_command_app(test);
     ai_save_config(app.handle(), app.state(), cfg)
         .await

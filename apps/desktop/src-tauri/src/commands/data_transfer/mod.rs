@@ -24,7 +24,7 @@ mod jobs;
 ///
 /// 生产代码从宿主取作用域（`AppState::organization_scope()`）——理由见该模块的文档。
 #[cfg(test)]
-mod plan_scope;
+mod plan_scope_tests;
 mod preview;
 mod schema_loading;
 mod types;

@@ -33,7 +33,7 @@ fn plan_job(source_db_session_id: String, target_db_session_id: String) -> Trans
 }
 
 fn transfer_plan_test_options() -> crate::testing::mock_driver::MockDriverOptions {
-    let mut options = crate::testing::app_state::rich_mock_options();
+    let mut options = crate::testing::app_state_test_support::rich_mock_options();
     options.columns =
         crate::testing::mock_driver::MockDriver::default_table_schema("users").columns;
     options.parameterized_writes = true;
@@ -266,7 +266,7 @@ fn test_tester_legacy_transfer_profile_without_format_fields_is_compatible() {
 
 #[tokio::test]
 async fn transfer_profile_store_round_trip_excludes_runtime_sessions() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     test.save_connection("profile-src").await;
     let now = Utc::now();
     let profile = TransferProfile {
@@ -340,7 +340,7 @@ fn resume_checkpoint_binds_the_effective_subselection() {
 
 #[tokio::test]
 async fn test_tester_preview_execute_plan_is_opaque_and_one_shot() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     let test = TestAppState::with_options(transfer_plan_test_options()).await;
     let (_src_config, source) = test.save_and_connect("transfer-plan-src").await;
@@ -384,7 +384,7 @@ async fn test_tester_preview_execute_plan_is_opaque_and_one_shot() {
 
 #[tokio::test]
 async fn sql_file_source_inspection_returns_create_new_source_mappings() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     let test = TestAppState::with_options(transfer_plan_test_options()).await;
     let (_config, source) = test.save_and_connect("transfer-sql-file-inspect-src").await;
@@ -412,7 +412,7 @@ async fn sql_file_source_inspection_returns_create_new_source_mappings() {
 #[tokio::test]
 async fn sql_file_target_uses_opaque_path_and_publishes_atomic_output() {
     use crate::data_transfer::sql_file::register_path;
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     let test = TestAppState::with_options(transfer_plan_test_options()).await;
     let (_config, source) = test.save_and_connect("transfer-sql-file-src").await;
@@ -466,7 +466,7 @@ async fn sql_file_target_uses_opaque_path_and_publishes_atomic_output() {
 #[tokio::test]
 async fn sql_file_empty_selection_keeps_server_discovered_tables() {
     use crate::data_transfer::sql_file::register_path;
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use datazen_driver_api::{TableInfo, TableType};
 
     let mut options = transfer_plan_test_options();
@@ -534,7 +534,7 @@ async fn sql_file_empty_selection_keeps_server_discovered_tables() {
 #[tokio::test]
 async fn sql_file_preview_honors_table_selection_renames_and_skipped_columns() {
     use crate::data_transfer::sql_file::register_path;
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use datazen_driver_api::{TableInfo, TableType};
 
     let mut options = transfer_plan_test_options();
@@ -619,7 +619,7 @@ async fn sql_file_preview_honors_table_selection_renames_and_skipped_columns() {
 #[tokio::test]
 async fn sql_file_target_renders_registered_mysql_dialect() {
     use crate::data_transfer::sql_file::register_path;
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     let mut options = transfer_plan_test_options();
     // This test checks target-dialect quoting and file publication. Keep its
@@ -688,7 +688,7 @@ async fn sql_file_target_renders_registered_mysql_dialect() {
 #[tokio::test]
 async fn sql_file_target_executes_after_source_type_enrichment() {
     use crate::data_transfer::sql_file::register_path;
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use datazen_driver_api::Value;
 
     let mut options = transfer_plan_test_options();
@@ -769,7 +769,7 @@ async fn sql_file_target_executes_after_source_type_enrichment() {
 
 #[tokio::test]
 async fn test_tester_disabled_existing_table_does_not_invalidate_plan() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use datazen_driver_api::{TableInfo, TableType};
 
     let mut options = transfer_plan_test_options();
@@ -809,7 +809,7 @@ async fn test_tester_disabled_existing_table_does_not_invalidate_plan() {
 
 #[tokio::test]
 async fn test_tester_changed_driver_contract_fails_before_execution() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
 
     let test = TestAppState::with_options(transfer_plan_test_options()).await;
@@ -853,7 +853,7 @@ async fn test_tester_changed_driver_contract_fails_before_execution() {
 
 #[tokio::test]
 async fn test_tester_connection_policy_change_fails_before_target_write() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     let test = TestAppState::with_options(transfer_plan_test_options()).await;
     let (_src_config, source) = test.save_and_connect("transfer-plan-ro-src").await;
@@ -899,7 +899,7 @@ async fn test_tester_connection_policy_change_fails_before_target_write() {
 
 #[tokio::test]
 async fn transfer_partial_run_returns_resume_token_and_completes_once_recovered() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use crate::testing::mock_driver::MockDriver;
 
     let test = TestAppState::with_options(resumable_transfer_plan_test_options()).await;
@@ -970,7 +970,7 @@ async fn transfer_partial_run_returns_resume_token_and_completes_once_recovered(
 #[tokio::test]
 async fn unknown_commit_invalidates_resume_checkpoint_and_consumes_old_token() {
     use crate::data_transfer::model::TableExecutionOutcome;
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use crate::testing::mock_driver::MockDriver;
 
     let test = TestAppState::with_options(resumable_transfer_plan_test_options()).await;
@@ -1043,7 +1043,7 @@ async fn unknown_commit_invalidates_resume_checkpoint_and_consumes_old_token() {
 
 #[tokio::test]
 async fn test_tester_invalid_selection_and_unknown_plan_are_rejected() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     let test = TestAppState::with_options(transfer_plan_test_options()).await;
     let (_src_config, source) = test.save_and_connect("transfer-plan-selection-src").await;

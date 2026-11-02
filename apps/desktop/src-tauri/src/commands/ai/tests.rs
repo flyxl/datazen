@@ -12,7 +12,7 @@ use datazen::ai::*;
 
 #[tokio::test]
 async fn execute_mcp_tool_errors_when_server_not_connected() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     let test = TestAppState::new().await;
     let out = execute_mcp_tool(&test.state, "missing", "search", r#"{"q":"x"}"#).await;
@@ -22,7 +22,7 @@ async fn execute_mcp_tool_errors_when_server_not_connected() {
 
 #[tokio::test]
 async fn execute_mcp_tool_rejects_invalid_json() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     let test = TestAppState::new().await;
     let out = execute_mcp_tool(&test.state, "srv", "tool", "not-json").await;
@@ -89,7 +89,7 @@ fn test_emit_stream_chunk_builds_payload_via_callback() {
 
 #[tokio::test]
 async fn ai_providers_config_prompt_workflow() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use datazen::ai::AiProviderConfig;
     use datazen::ai::AiProviderType;
 
@@ -139,7 +139,7 @@ async fn ai_fetch_remote_models_rejects_unknown_protocol() {
 
 #[tokio::test]
 async fn ai_validate_config_rejects_missing_api_key() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use datazen::ai::AiProviderConfig;
     use datazen::ai::AiProviderType;
 
@@ -159,7 +159,7 @@ async fn ai_validate_config_rejects_missing_api_key() {
 
 #[tokio::test]
 async fn mcp_tool_definitions_empty_when_no_connections() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     let test = TestAppState::new().await;
     assert!(mcp_tool_definitions(&test.state).await.is_empty());
@@ -168,7 +168,7 @@ async fn mcp_tool_definitions_empty_when_no_connections() {
 #[tokio::test]
 async fn mcp_tool_definitions_respects_enabled_for_ai() {
     use crate::mcp::{McpServerConfig, McpToolInfo};
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use rmcp::model::{CallToolResult, ContentBlock, Tool};
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -210,7 +210,7 @@ async fn mcp_tool_definitions_respects_enabled_for_ai() {
 #[tokio::test]
 async fn mcp_connect_rejects_invalid_server_id() {
     use crate::mcp::McpServerConfig;
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use std::collections::HashMap;
 
     let test = TestAppState::new().await;
