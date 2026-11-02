@@ -370,6 +370,51 @@ jobs:
           FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
           cargo test -p datazen_desktop --lib --features "$FEATURES,datazen/test-harness"
 
+      # ── 宿主集成测试（apps/desktop/src-tauri/tests/）──
+      #
+      # 上面的 `--lib` 步按 cargo 目标选择语义只编译宿主 lib 的单元测试，
+      # src-tauri/tests/ 下的集成 target 一个都不编译——该目录因此在 CI 里
+      # 长期处于「零编译、零执行」状态。后果不是假设：mcp_stdio_auth.rs 的
+      # `env!("CARGO_BIN_EXE_datazen")` 在 F6 目录拆分后指向了不存在的 bin
+      # （宿主包的 bin 名是 datazen_desktop），该文件从那时起就无法编译，
+      # 却直到本步加入才被发现——没有任何 CI 消费者会碰它。
+      #
+      # 逐 target 选择而非 `--tests`：
+      #   - driver_command_ipc：required-features = ["test-harness"]，真实
+      #     `#[tauri::command]` 入口 + Mock Driver（无浏览器/无外部服务），
+      #     是 E2E driver-commands.ts 的 IPC 平替，价值最高；
+      #   - data_sync_public_api：公共 API 面回归（纯导入+反序列化）；
+      #   - mcp_stdio_auth：spawn 宿主二进制的 stdio 认证端到端（tempdir
+      #     隔离 DATAZEN_DATA_DIR，10s deadline 后 kill，全程封闭）；
+      #   - workflow_tests：纯逻辑用例真跑（YAML 解析 / 结果序列化 /
+      #     历史 persisted 重载）；6 个依赖本地 PostgreSQL/MySQL 的用例带
+      #     #[ignore]（显式 ignored，不再是静默 passed——见该文件头）；
+      #   - ai_e2e：只为编译防烂。没有 .env.test 时它按设计自跳过，但其
+      #     「passed」行实为跳过——读日志时以本注释为准，不要把它当成
+      #     AI 冒烟跑过的证据。真跑需要真实 LLM API（本地提供 .env.test）。
+      # 不用 `--tests` 一次性收编：目录里若再进一个需要外部服务的文件，
+      # fail-fast 的整步红掉会掩盖已可用 target 的信号；显式名单让「新
+      # tests/*.rs 进 CI」是一次有意识的编辑（与 runner 拒绝维护第二份
+      # target 名单的理由相反：那边 cargo 自带名单，这边名单就是门禁）。
+      #
+      # features 与上面 `--lib` 步同集（$FEATURES）再换成宿主自己的
+      # test-harness（= datazen/test-harness + tauri/test，是限定语法的
+      # 严格超集）：datazen 的 feature 闭包与 `--lib` 步完全一致，依赖
+      # 编译继续共享；宿主 lib 本身因多出 pub use commands::test_harness
+      # 重编译一次（该模块在 cfg(test) 下本就编译，增量极小）。driver
+      # feature 集取自同一份 .driver-features.json，位于 restore 之前，
+      # 与 `--lib` 步断言同一份注入态。
+      - name: Rust integration tests (datazen desktop host, src-tauri/tests/)
+        run: |
+          FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
+          cargo test -p datazen_desktop \
+            --test driver_command_ipc \
+            --test data_sync_public_api \
+            --test mcp_stdio_auth \
+            --test workflow_tests \
+            --test ai_e2e \
+            --features "$FEATURES,test-harness"
+
       - name: Restore managed files
         if: always()
         run: node scripts/driver-file-stash.mjs restore

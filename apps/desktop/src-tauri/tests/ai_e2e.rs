@@ -1,7 +1,9 @@
 //! End-to-end integration tests for AI features.
 //!
 //! These tests require a real LLM API and are skipped if `.env.test` is absent.
-//! Run with: `cargo test -p datazen --test ai_e2e -- --nocapture --test-threads=1`
+//! Run with: `cargo test -p datazen_desktop --test ai_e2e -- --nocapture --test-threads=1`
+//! (F6-c1 note: the file moved from the old src-tauri — the historical
+//! `-p datazen` spelling no longer resolves; the package is datazen_desktop.)
 //!
 //! Tests must run sequentially (`--test-threads=1`) to avoid API rate limiting.
 

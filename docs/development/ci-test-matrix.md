@@ -12,6 +12,7 @@
 | 驱动 UI 单测 | ✅ `pnpm test:unit:drivers` | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit:drivers` |
 | TypeScript | ✅ `pnpm typecheck`（**单引擎**：`tsrs` = TS 7.1-dev，见 §2.1.4） | 同上（`union-typecheck` **也是**只跑 `tsrs`，见 §6.2） | `pnpm typecheck` / `pnpm typecheck:tsc` / `pnpm typecheck:tsrs` |
 | Host Rust lib | ✅ `cargo test -p datazen_desktop --lib`（basic features + `datazen/test-harness`，与平台腿 feature 对齐以共享 datazen 编译，见 §2.2） | 完整 release 构建 | 同 PR CI 形 |
+| Host 集成测试（`src-tauri/tests/`） | ✅ `cargo test -p datazen_desktop --test driver_command_ipc --test data_sync_public_api --test mcp_stdio_auth --test workflow_tests --test ai_e2e`（features 同 lib 步 + 宿主 `test-harness`；workflow_tests 的 6 个跨库用例 `#[ignore]`，ai_e2e 无 `.env.test` 时自跳过——2026-11-02 起，此前该目录零编译零执行） | 完整 release 构建 | `cargo test -p datazen_desktop --test <name>`；跨库用例 `-- --include-ignored` |
 | driver-api | ✅ `cargo test -p datazen-driver-api`（lib + tests/ 4 文件 + doc test，2026-10-27 由 `--lib` 扩充） | 随构建链接 | `cargo test -p datazen-driver-api` |
 | modules（datazen）单 feature 腿 | ✅ `pnpm test:platform-crates` 的 `FEATURE_TESTS` 逐腿编译（ai 腿已覆盖 ai-api 退役前的那步组合闭包；原 `--features settings,ai,connection,named_views` 组合步于 2026-10-27 删除，理由见 §2.2） | 随构建链接 | `pnpm test:platform-crates` |
 | 平台内核 crate（`modules` / `infra`；`server` 层已武装待主体） | ✅ `pnpm test:platform-crates`，集合由脚本发现 | 随构建链接 | `pnpm test:platform-crates` |
@@ -368,6 +369,15 @@ DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen-driver-postgres -p dat
 # manifest 钉死，任何一侧单独增删 feature 会先红测试而不是悄悄退回双份编译。
 FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
 cargo test -p datazen_desktop --lib --features "$FEATURES,datazen/test-harness"
+# 宿主集成测试（src-tauri/tests/，2026-11-02 新增）：逐 target 点名而非 --tests，
+# 名单即门禁；features 换成宿主自己的 test-harness（datazen/test-harness 的
+# 严格超集），datazen 闭包与 lib 步一致、依赖编译继续共享。driver_command_ipc
+# 走真实 #[tauri::command] + Mock Driver；mcp_stdio_auth spawn 宿主 bin（其
+# CARGO_BIN_EXE_datazen_desktop 引用在 F6 拆分后烂了，本步是它的第一个编译
+# 消费者）；workflow_tests 纯逻辑用例真跑、跨库用例 #[ignore]；ai_e2e 只编译
+# 防烂（无 .env.test 自跳过，其 passed 行不是 AI 冒烟证据）。
+FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
+cargo test -p datazen_desktop --test driver_command_ipc --test data_sync_public_api --test mcp_stdio_auth --test workflow_tests --test ai_e2e --features "$FEATURES,test-harness"
 # 恢复被 inject 的 tracked 文件，确保后续步骤工作在干净状态
 node scripts/driver-file-stash.mjs restore
 # 此处曾有 `cargo test -p datazen-ai-api --lib`，后又改为

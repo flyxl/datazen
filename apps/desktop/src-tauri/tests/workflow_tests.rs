@@ -1,10 +1,29 @@
 //! Integration tests for workflow cross-database features.
 //!
-//! Requires local PostgreSQL and MySQL instances with test data
-//! from `scripts/setup-workflow-testdata.sh`.
+//! 本文件属于 `datazen_desktop` 包（apps/desktop/src-tauri/tests/，F6-c1 目录
+//! 拆分时随旧 src-tauri 迁来——旧的 `cargo test -p datazen` 指令自此失效）。
+//! 用例分两类：
 //!
-//! Run with: `cargo test -p datazen --test workflow_tests -- --nocapture`
-//! Skip if databases are unavailable (tests check connectivity first).
+//! - **纯逻辑用例**（tc01/03/08/09/10/11/12）：YAML 解析、结果序列化、
+//!   历史持久化（tempdir + SQLite）等，无外部依赖，随 CI 的宿主集成
+//!   测试步（ci.yml "Rust integration tests (datazen desktop host,
+//!   src-tauri/tests/)"）执行。
+//! - **跨库用例**（tc02/04/05/06/07/13）：需要本地 PostgreSQL 与 MySQL
+//!   （`scripts/setup-workflow-testdata.sh` 灌入数据 + 仓库根 `.env` 提供
+//!   TEST_PG_*/TEST_MYSQL_*）。这些用例带 `#[ignore]`：libtest 会在结果里
+//!   把它们记成 **ignored**（显式、可审计），而不是此前的「连接失败即
+//!   return → 记成 passed」——那种静默通过在 CI 日志里与真跑无法区分
+//!   （libtest 会吞掉通过用例的 stderr，连跳过提示都不会出现）。
+//!
+//! 本地真跑跨库用例：
+//!
+//! ```text
+//! scripts/setup-workflow-testdata.sh   # 灌数据 + 写 .env
+//! cargo test -p datazen_desktop --test workflow_tests -- --include-ignored --nocapture
+//! ```
+//!
+//! `load_env()` 与连接预检保留：显式 opt-in 的运行若缺 `.env` 或数据库
+//! 不可达，仍按原样跳过该用例（视为环境未就绪，而非断言失败）。
 
 use std::path::PathBuf;
 
@@ -129,6 +148,7 @@ fn tc01_cross_db_workflow_yaml_parses() {
 // ─── TC-02: Cross-DB Query + Template Resolution ────────────────────────────
 
 #[tokio::test]
+#[ignore = "requires local PostgreSQL/MySQL (scripts/setup-workflow-testdata.sh); run with -- --include-ignored"]
 async fn tc02_cross_db_query_and_template_resolution() {
     let cfg = match load_env() {
         Some(c) => c,
@@ -230,6 +250,7 @@ async fn tc03_structured_result_serialization() {
 // ─── TC-04: Condition with Real Data ────────────────────────────────────────
 
 #[tokio::test]
+#[ignore = "requires local PostgreSQL/MySQL (scripts/setup-workflow-testdata.sh); run with -- --include-ignored"]
 async fn tc04_condition_with_real_data() {
     let cfg = match load_env() {
         Some(c) => c,
@@ -268,6 +289,7 @@ async fn tc04_condition_with_real_data() {
 // ─── TC-05: ForEach Batch Query ─────────────────────────────────────────────
 
 #[tokio::test]
+#[ignore = "requires local PostgreSQL/MySQL (scripts/setup-workflow-testdata.sh); run with -- --include-ignored"]
 async fn tc05_foreach_batch_query() {
     let cfg = match load_env() {
         Some(c) => c,
@@ -324,6 +346,7 @@ async fn tc05_foreach_batch_query() {
 // ─── TC-06: Error Handling — Invalid SQL ────────────────────────────────────
 
 #[tokio::test]
+#[ignore = "requires local PostgreSQL/MySQL (scripts/setup-workflow-testdata.sh); run with -- --include-ignored"]
 async fn tc06_error_handling_invalid_sql() {
     let cfg = match load_env() {
         Some(c) => c,
@@ -352,6 +375,7 @@ async fn tc06_error_handling_invalid_sql() {
 // ─── TC-07: Timeout Behavior ────────────────────────────────────────────────
 
 #[tokio::test]
+#[ignore = "requires local PostgreSQL/MySQL (scripts/setup-workflow-testdata.sh); run with -- --include-ignored"]
 async fn tc07_timeout_behavior() {
     let cfg = match load_env() {
         Some(c) => c,
@@ -605,6 +629,7 @@ steps:
 // ─── TC-13: Full Cross-DB Data Flow ─────────────────────────────────────────
 
 #[tokio::test]
+#[ignore = "requires local PostgreSQL/MySQL (scripts/setup-workflow-testdata.sh); run with -- --include-ignored"]
 async fn tc13_full_cross_db_data_flow() {
     let cfg = match load_env() {
         Some(c) => c,
