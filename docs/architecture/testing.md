@@ -82,8 +82,8 @@ Host 各模块内 `#[cfg(test)]`。驱动实现的单测在 `packages/drivers/<i
 
 | 文件 | 内容 |
 |------|------|
-| `src-tauri/tests/ai_e2e.rs` | AI 功能端到端测试（NL2SQL、诊断、EXPLAIN、Chat 等）。需真实 LLM API Key，配置 `.env.test` |
-| `src-tauri/tests/workflow_tests.rs` | 跨数据库 Workflow 测试。需本地 PostgreSQL + MySQL，配置 `.env` |
+| `modules/tests/ai_e2e.rs` | AI 功能端到端测试（NL2SQL、诊断、EXPLAIN、Chat 等），2026-11-02 归位（被测本体是 datazen 的 AI 能力，随平台 crate 腿自动编译）。需真实 LLM API Key，配置 `.env.test` |
+| `src-tauri/tests/workflow_db_tests.rs` | 跨数据库 Workflow 真 DB 测试（原 workflow_tests.rs 拆分后的真 DB 半边；纯逻辑用例归位 `modules/src/workflow/domain/model_tests.rs`）。需 PostgreSQL + MySQL（配置 `.env`；CI 由 workflow-db-tests.yml 定时任务以 service 容器真跑） |
 
 ## 4. 前端测试覆盖
 

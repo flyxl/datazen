@@ -84,7 +84,7 @@ datazen crate 内各 feature 的 api 模块
 | `capabilities/default.json.host` | Tauri capability 声明：窗口集合（main/onboarding/`data-sync-*`/`data-transfer-*`/`schema-diff-*`/`backup-*`）与权限（core/dialog/notification/clipboard/os/updater/process）。`.host` 后缀属驱动注入构建链的文件管理约定（P2 手术面的一部分） |
 | `resources/` | `builtin-workflows/`（内置工作流 YAML）+ `menu-labels.json`（菜单 i18n 文案） |
 | `icons/` | 应用图标（含 Windows Store 各尺寸） |
-| `tests/` | 纯 IPC E2E（`test-harness` feature 门控）：`ai_e2e.rs`、`data_sync_public_api.rs`、`driver_command_ipc.rs`、`mcp_stdio_auth.rs`、`workflow_tests.rs`——复用 `commands::test_harness` 直接调 `*_impl`，不起 Tauri 事件循环 |
+| `tests/` | 宿主专属集成测试：`data_sync_public_api.rs`、`driver_command_ipc.rs`（`test-harness` feature 门控，复用 `commands::test_harness` 直接调 `*_impl`，不起 Tauri 事件循环）、`mcp_stdio_auth.rs`（spawn 宿主 bin）、`workflow_db_tests.rs`（跨库真 DB 用例，`#[ignore]` + 定时工作流真跑）。2026-11-02 拆分归位后不再收留零宿主依赖的文件：`ai_e2e.rs` 回 `modules/tests/`，workflow 纯逻辑用例回 `modules/src/workflow/domain/model_tests.rs` |
 | `src/driver_init.rs` | **构建期生成物，不在 git 里**：由 `resolve-drivers.mjs` 按当前驱动选择注入（`register_drivers(builder)` 就是它提供的）。这是 P2 要消灭的构建脆弱性根源——本地 checkout 若没跑过驱动解析脚本，桌面 crate 直接编不过 |
 
 ## 4. src/ 根文件（11 个生产文件，3,348 行）

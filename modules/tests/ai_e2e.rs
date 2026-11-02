@@ -3,6 +3,12 @@
 //! These tests require a real LLM API and are skipped if `.env.test` is absent.
 //! Run with: `cargo test -p datazen --test ai_e2e -- --nocapture --test-threads=1`
 //!
+//! 2026-11-02 归位：被测本体是 datazen 的 AI 能力（provider / prompt
+//! resolver），文件零宿主依赖，F6-c1 时随旧 src-tauri 迁入宿主的
+//! tests/ 目录属于搭错车——彼时它只能靠宿主集成步点名编译，归位后由
+//! platform-crates 无选择器腿自动编译执行（无 .env.test 时按设计自
+//! 跳过；其「passed」行不是 AI 冒烟证据，见 ci.yml 宿主步注释）。
+//!
 //! Tests must run sequentially (`--test-threads=1`) to avoid API rate limiting.
 
 use std::collections::HashMap;
@@ -62,7 +68,7 @@ struct DeepSeekTestConfig {
 fn read_env_file() -> Option<std::collections::HashMap<String, String>> {
     let env_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
-        .nth(3)
+        .nth(1)
         .unwrap()
         .join(".env.test");
 
@@ -141,7 +147,7 @@ mod provider_tests {
     ) -> Box<dyn AiProvider> {
         match provider_type {
             "open_ai" => {
-                let p = datazen::ai::openai::OpenAiProvider::new();
+                let p = datazen::ai::providers::openai::OpenAiProvider::new();
                 let config = AiProviderConfig {
                     provider_type: AiProviderType::OpenAi,
                     api_key: Some(api_key.to_string()),
@@ -154,7 +160,7 @@ mod provider_tests {
                 Box::new(p)
             }
             "deep_seek" => {
-                let p = datazen::ai::deepseek::DeepSeekProvider::new();
+                let p = datazen::ai::providers::deepseek::DeepSeekProvider::new();
                 let config = AiProviderConfig {
                     provider_type: AiProviderType::DeepSeek,
                     api_key: Some(api_key.to_string()),
@@ -912,7 +918,7 @@ mod deepseek_workflow_tests {
             return;
         };
 
-        let provider = datazen::ai::deepseek::DeepSeekProvider::new();
+        let provider = datazen::ai::providers::deepseek::DeepSeekProvider::new();
         let init_config = AiProviderConfig {
             provider_type: AiProviderType::DeepSeek,
             api_key: Some(cfg.api_key.clone()),
@@ -1127,7 +1133,7 @@ mod deepseek_workflow_tests {
             return;
         };
 
-        let provider = datazen::ai::deepseek::DeepSeekProvider::new();
+        let provider = datazen::ai::providers::deepseek::DeepSeekProvider::new();
         let init_config = AiProviderConfig {
             provider_type: AiProviderType::DeepSeek,
             api_key: Some(cfg.api_key.clone()),

@@ -375,7 +375,7 @@ pub mod test_harness {
     //! `test-harness` feature 一起点亮）。
 
     use super::AppState;
-    use crate::testing::app_state_test_support::{TestAppState, TestStateKeepalive};
+    use crate::testing::app_state_test_support::TestStateKeepalive;
     use datazen_driver_api::{CommandResult, DriverCommandDefinition};
     use tauri::Manager;
 
@@ -432,11 +432,22 @@ pub mod test_harness {
             .map_err(|e| e.to_string())
     }
 
+    /// Drive `execute_driver_command`'s orchestration core for a hosted app.
+    ///
+    /// 走域的跨域共享入口 [`super::driver_command::execute_driver_command_impl`]
+    /// 而非 `#[tauri::command]` 命令入口：GUI 命令多收一个具体
+    /// `tauri::AppHandle`（= Wry 运行时）参数，而 mock app 只能产出
+    /// `AppHandle<MockRuntime>`——域规则（`run_driver_command` 的可见性
+    /// 注释）明言域外调用方「一律走命令入口或跨域共享入口」，本 harness
+    /// 即后者。两个入口共用同一编排核心，对不声明保存对话框的命令行为
+    /// 逐字一致（含错误文案）；声明保存对话框的命令在共享入口被拒——
+    /// 纯 IPC 测试本就无从弹原生对话框（与
+    /// `driver_command_test_host.rs` 不托管该命令入口是同一个决定）。
     pub async fn execute_driver_command(
         host: &HostedApp,
         request: ExecuteDriverCommandRequest,
     ) -> Result<CommandResult, String> {
-        super::driver_command::execute_driver_command(host.state(), request)
+        super::driver_command::execute_driver_command_impl(&host.state(), request)
             .await
             .map_err(|e| e.to_string())
     }

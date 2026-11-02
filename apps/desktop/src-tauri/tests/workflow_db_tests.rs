@@ -1,10 +1,27 @@
-//! Integration tests for workflow cross-database features.
+//! Cross-database workflow tests — the real-DB half of the former
+//! `workflow_tests.rs` (tc02/04/05/06/07/13), which was split on 2026-11-02:
 //!
-//! Requires local PostgreSQL and MySQL instances with test data
-//! from `scripts/setup-workflow-testdata.sh`.
+//! - 纯逻辑用例（YAML 解析 / 结果序列化，原 tc01/03/08/09/11/12）归位到
+//!   `modules/src/workflow/domain/model_tests.rs`——它们只测 datazen 模型
+//!   词汇，随每条 feature 腿编译、由无选择器腿执行；
+//! - 历史持久化（原 tc10）删除——宿主 `src/workflow/history.rs` 的内联
+//!   测试（record/list/get、clear、跨重载持久化）已逐例覆盖；
+//! - 本文件保留真 DB 用例：直接以 sqlx 连 PostgreSQL 与 MySQL，验证
+//!   `scripts/test-cross-db-workflow.yaml` 描述的跨库数据流。
 //!
-//! Run with: `cargo test -p datazen --test workflow_tests -- --nocapture`
-//! Skip if databases are unavailable (tests check connectivity first).
+//! 运行形态：每个用例带 `#[ignore]`——常规 CI 的宿主集成测试步只**编译**
+//! 本文件（防烂），libtest 把用例记成显式 ignored；真跑发生在
+//! `.github/workflows/workflow-db-tests.yml`（定时任务，PG/MySQL service
+//! 容器 + `scripts/setup-workflow-testdata.sh` 灌数据后
+//! `--include-ignored`）或本地：
+//!
+//! ```text
+//! scripts/setup-workflow-testdata.sh   # 灌数据 + 写 .env
+//! cargo test -p datazen_desktop --test workflow_db_tests -- --include-ignored --nocapture
+//! ```
+//!
+//! `load_env()` 与连接预检保留：显式 opt-in 的运行若缺 `.env` 或数据库
+//! 不可达，仍按原样跳过该用例（视为环境未就绪，而非断言失败）。
 
 use std::path::PathBuf;
 
@@ -95,40 +112,10 @@ impl DbConfig {
     }
 }
 
-// ─── TC-01: Cross-DB Workflow YAML Parsing ─────────────────────────────────────
-
-use datazen::workflow::model::{WorkflowDefinition, WorkflowStep};
-
-#[test]
-fn tc01_cross_db_workflow_yaml_parses() {
-    let yaml = include_str!("../../../../scripts/test-cross-db-workflow.yaml");
-    let workflow: WorkflowDefinition = serde_yaml::from_str(yaml).unwrap();
-    assert_eq!(workflow.id, "order-logistics");
-    assert!(workflow.timeout_secs.is_some());
-    assert!(workflow.error_handling.is_some());
-
-    let conn_vars: Vec<_> = workflow
-        .variables
-        .iter()
-        .filter(|v| v.var_type == "connection")
-        .collect();
-    assert_eq!(conn_vars.len(), 2, "Should have 2 connection variables");
-
-    assert!(workflow.steps.len() >= 2, "Should have at least 2 steps");
-    match &workflow.steps[0] {
-        WorkflowStep::Query { connection, .. } => {
-            assert!(
-                connection.is_some(),
-                "First query should have per-step connection"
-            );
-        }
-        _ => panic!("First step should be Query"),
-    }
-}
-
 // ─── TC-02: Cross-DB Query + Template Resolution ────────────────────────────
 
 #[tokio::test]
+#[ignore = "requires local PostgreSQL/MySQL (scripts/setup-workflow-testdata.sh); run with -- --include-ignored"]
 async fn tc02_cross_db_query_and_template_resolution() {
     let cfg = match load_env() {
         Some(c) => c,
@@ -187,49 +174,10 @@ async fn tc02_cross_db_query_and_template_resolution() {
     mysql_pool.close().await;
 }
 
-// ─── TC-03: Structured Result Serialization ─────────────────────────────────
-
-#[tokio::test]
-async fn tc03_structured_result_serialization() {
-    use datazen::workflow::model::{StepExecutionResult, StepStatus, WorkflowExecutionResult};
-
-    let result = WorkflowExecutionResult {
-        success: true,
-        final_output: "done".into(),
-        steps: vec![StepExecutionResult {
-            step_id: "s1".into(),
-            step_type: "query".into(),
-            status: StepStatus::Success,
-            result: Some(serde_json::json!({
-                "rows": [
-                    {"order_id": "ORD-001", "amount": 100.0},
-                    {"order_id": "ORD-002", "amount": 200.0},
-                ],
-                "rows_count": 2,
-            })),
-            execution_time_ms: 10,
-            error: None,
-            connection_name: Some("PG".into()),
-            sql_executed: Some("SELECT 1".into()),
-        }],
-        total_time_ms: 10,
-        error: None,
-    };
-
-    let json = serde_json::to_string(&result).unwrap();
-    assert!(json.contains("\"stepId\""));
-    assert!(json.contains("\"finalOutput\""));
-    assert!(json.contains("\"totalTimeMs\""));
-    assert!(json.contains("ORD-001"));
-
-    let parsed: WorkflowExecutionResult = serde_json::from_str(&json).unwrap();
-    assert_eq!(parsed.steps.len(), 1);
-    assert_eq!(parsed.steps[0].step_id, "s1");
-}
-
 // ─── TC-04: Condition with Real Data ────────────────────────────────────────
 
 #[tokio::test]
+#[ignore = "requires local PostgreSQL/MySQL (scripts/setup-workflow-testdata.sh); run with -- --include-ignored"]
 async fn tc04_condition_with_real_data() {
     let cfg = match load_env() {
         Some(c) => c,
@@ -268,6 +216,7 @@ async fn tc04_condition_with_real_data() {
 // ─── TC-05: ForEach Batch Query ─────────────────────────────────────────────
 
 #[tokio::test]
+#[ignore = "requires local PostgreSQL/MySQL (scripts/setup-workflow-testdata.sh); run with -- --include-ignored"]
 async fn tc05_foreach_batch_query() {
     let cfg = match load_env() {
         Some(c) => c,
@@ -324,6 +273,7 @@ async fn tc05_foreach_batch_query() {
 // ─── TC-06: Error Handling — Invalid SQL ────────────────────────────────────
 
 #[tokio::test]
+#[ignore = "requires local PostgreSQL/MySQL (scripts/setup-workflow-testdata.sh); run with -- --include-ignored"]
 async fn tc06_error_handling_invalid_sql() {
     let cfg = match load_env() {
         Some(c) => c,
@@ -352,6 +302,7 @@ async fn tc06_error_handling_invalid_sql() {
 // ─── TC-07: Timeout Behavior ────────────────────────────────────────────────
 
 #[tokio::test]
+#[ignore = "requires local PostgreSQL/MySQL (scripts/setup-workflow-testdata.sh); run with -- --include-ignored"]
 async fn tc07_timeout_behavior() {
     let cfg = match load_env() {
         Some(c) => c,
@@ -387,224 +338,10 @@ async fn tc07_timeout_behavior() {
     pg_pool.close().await;
 }
 
-// ─── TC-08: Connection Variable Reference ───────────────────────────────────
-
-#[test]
-fn tc08_connection_variable_reference() {
-    // Verify multiple workflow steps can reference the same connection variable.
-    let yaml = r#"
-id: connection-variable-test
-name: Connection Variable
-description: Connection variable reference
-variables:
-  - name: db
-    type: connection
-    description: DB
-    required: true
-steps:
-  - type: query
-    id: s1
-    connection: "{{db}}"
-    sql: "SELECT 1"
-  - type: query
-    id: s2
-    connection: "{{db}}"
-    sql: "SELECT 2"
-"#;
-    let workflow: WorkflowDefinition = serde_yaml::from_str(yaml).unwrap();
-    match (&workflow.steps[0], &workflow.steps[1]) {
-        (
-            WorkflowStep::Query { connection: c1, .. },
-            WorkflowStep::Query { connection: c2, .. },
-        ) => {
-            assert_eq!(c1, c2, "Both steps should use the same connection variable");
-        }
-        _ => panic!("Expected 2 Query steps"),
-    }
-}
-
-// ─── TC-09: Backward Compatibility ──────────────────────────────────────────
-
-#[test]
-fn tc09_backward_compat_old_yaml() {
-    let yaml = r#"
-id: old-format
-name: Old Workflow
-description: No new fields
-variables:
-  - name: query
-    type: string
-    description: SQL
-    required: true
-steps:
-  - type: query
-    id: run
-    sql: "{{query}}"
-  - type: ai
-    id: analyze
-    prompt: "Analyze: {{steps.run.result}}"
-output:
-  format: text
-"#;
-    let workflow: WorkflowDefinition = serde_yaml::from_str(yaml).unwrap();
-    assert!(workflow.timeout_secs.is_none());
-    assert!(workflow.error_handling.is_none());
-    match &workflow.steps[0] {
-        WorkflowStep::Query {
-            connection,
-            timeout_secs,
-            on_error,
-            ..
-        } => {
-            assert!(connection.is_none());
-            assert!(timeout_secs.is_none());
-            assert!(on_error.is_none());
-        }
-        _ => panic!("Expected Query"),
-    }
-}
-
-// ─── TC-10: History Persistence ─────────────────────────────────────────────
-
-#[tokio::test]
-async fn tc10_history_persistence() {
-    use datazen::workflow::model::{StepExecutionResult, StepStatus, WorkflowExecutionResult};
-    use datazen_desktop::workflow::history::WorkflowHistoryManager;
-    use datazen_desktop::HistoryDb;
-
-    let dir = tempfile::tempdir().unwrap();
-    let mgr = WorkflowHistoryManager::new(HistoryDb::open(dir.path()).unwrap());
-
-    let result = WorkflowExecutionResult {
-        success: true,
-        final_output: "test".into(),
-        steps: vec![StepExecutionResult {
-            step_id: "s1".into(),
-            step_type: "query".into(),
-            status: StepStatus::Success,
-            result: Some(serde_json::json!({"rows": [{"order_id": "ORD-001"}]})),
-            execution_time_ms: 42,
-            error: None,
-            connection_name: Some("PG".into()),
-            sql_executed: Some("SELECT 1".into()),
-        }],
-        total_time_ms: 100,
-        error: None,
-    };
-
-    let id = mgr
-        .record(
-            "workflow-1",
-            "Workflow 1",
-            &serde_json::json!({"uid": "U001"}),
-            &result,
-        )
-        .await
-        .unwrap();
-    assert!(!id.is_empty());
-
-    let items = mgr.list(None).await;
-    assert_eq!(items.len(), 1);
-    assert!(items[0].success);
-
-    let entry = mgr.get(&id).await.unwrap();
-    assert_eq!(entry.workflow_name, "Workflow 1");
-    assert_eq!(entry.result.steps[0].step_id, "s1");
-
-    // Persist and reload
-    drop(mgr);
-    let mgr2 = WorkflowHistoryManager::new(HistoryDb::open(dir.path()).unwrap());
-    assert_eq!(mgr2.list(None).await.len(), 1);
-
-    let removed = mgr2.clear(None).await.unwrap();
-    assert_eq!(removed, 1);
-    assert_eq!(mgr2.list(None).await.len(), 0);
-}
-
-// ─── TC-11: Wildcard Template for IN Clause ─────────────────────────────────
-
-#[test]
-fn tc11_wildcard_template_for_in_clause() {
-    let yaml = r#"
-id: wildcard-test
-name: Wildcard Test
-description: Test wildcard resolution
-steps:
-  - type: query
-    id: get_orders
-    sql: "SELECT order_id FROM orders"
-  - type: query
-    id: get_logistics
-    sql: "SELECT * FROM logistics WHERE order_id IN ({{steps.get_orders.rows.*.order_id}})"
-"#;
-    let workflow: WorkflowDefinition = serde_yaml::from_str(yaml).unwrap();
-    assert_eq!(workflow.steps.len(), 2);
-    match &workflow.steps[1] {
-        WorkflowStep::Query { sql, .. } => {
-            assert!(sql.contains("{{steps.get_orders.rows.*.order_id}}"));
-        }
-        _ => panic!("Expected Query"),
-    }
-}
-
-// ─── TC-12: Nested Condition + ForEach ──────────────────────────────────────
-
-#[test]
-fn tc12_nested_condition_foreach() {
-    let yaml = r#"
-id: complex-workflow
-name: Complex
-description: Test condition + foreach nesting
-steps:
-  - type: query
-    id: get_data
-    sql: "SELECT * FROM t"
-  - type: condition
-    id: check
-    if: "steps.get_data.rows_count > 0"
-    then_steps:
-      - type: foreach
-        id: loop
-        items: "steps.get_data.rows"
-        as_var: "row"
-        max_iterations: 10
-        steps:
-          - type: query
-            id: detail
-            sql: "SELECT * FROM d WHERE id = '{{row.id}}'"
-"#;
-    let workflow: WorkflowDefinition = serde_yaml::from_str(yaml).unwrap();
-    assert_eq!(workflow.steps.len(), 2);
-
-    match &workflow.steps[1] {
-        WorkflowStep::Condition {
-            then_steps,
-            else_steps,
-            ..
-        } => {
-            assert_eq!(then_steps.len(), 1);
-            assert!(else_steps.is_none());
-            match &then_steps[0] {
-                WorkflowStep::ForEach {
-                    as_var,
-                    max_iterations,
-                    steps,
-                    ..
-                } => {
-                    assert_eq!(as_var, "row");
-                    assert_eq!(*max_iterations, Some(10));
-                    assert_eq!(steps.len(), 1);
-                }
-                _ => panic!("Expected ForEach"),
-            }
-        }
-        _ => panic!("Expected Condition"),
-    }
-}
-
 // ─── TC-13: Full Cross-DB Data Flow ─────────────────────────────────────────
 
 #[tokio::test]
+#[ignore = "requires local PostgreSQL/MySQL (scripts/setup-workflow-testdata.sh); run with -- --include-ignored"]
 async fn tc13_full_cross_db_data_flow() {
     let cfg = match load_env() {
         Some(c) => c,

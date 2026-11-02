@@ -370,6 +370,55 @@ jobs:
           FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
           cargo test -p datazen_desktop --lib --features "$FEATURES,datazen/test-harness"
 
+      # ── 宿主集成测试（apps/desktop/src-tauri/tests/）──
+      #
+      # 上面的 `--lib` 步按 cargo 目标选择语义只编译宿主 lib 的单元测试，
+      # src-tauri/tests/ 下的集成 target 一个都不编译——该目录因此在 CI 里
+      # 长期处于「零编译、零执行」状态。后果不是假设：mcp_stdio_auth.rs 的
+      # `env!("CARGO_BIN_EXE_datazen")` 在 F6 目录拆分后指向了不存在的 bin
+      # （宿主包的 bin 名是 datazen_desktop），该文件从那时起就无法编译，
+      # 却直到本步加入才被发现——没有任何 CI 消费者会碰它。
+      #
+      # 逐 target 选择而非 `--tests`：
+      #   - driver_command_ipc：required-features = ["test-harness"]，真实
+      #     `#[tauri::command]` 入口 + Mock Driver（无浏览器/无外部服务），
+      #     是 E2E driver-commands.ts 的 IPC 平替，价值最高；
+      #   - data_sync_public_api：公共 API 面回归（纯导入+反序列化）；
+      #   - mcp_stdio_auth：spawn 宿主二进制的 stdio 认证端到端（tempdir
+      #     隔离 DATAZEN_DATA_DIR，10s deadline 后 kill，全程封闭）；
+      #   - workflow_db_tests：跨库真 DB 用例（原 workflow_tests 的
+      #     tc02/04/05/06/07/13），全部 `#[ignore]`——本步只编译防烂
+      #     （libtest 记成显式 ignored），真跑在 workflow-db-tests.yml
+      #     的定时任务（PG/MySQL service 容器）或本地 --include-ignored。
+      #     纯逻辑用例已归位 modules/src/workflow/domain/model_tests.rs
+      #     （随 platform-crates 腿编译执行），历史持久化用例删除
+      #     （宿主 workflow/history.rs 内联测试已逐例覆盖）。
+      #   - ai_e2e 已移回 modules/tests/（被测本体是 datazen 的 AI 能力，
+      #     文件零宿主依赖）：由 platform-crates 无选择器腿自动编译执行，
+      #     不再占用宿主步名额。无 .env.test 时按设计自跳过——其
+      #     「passed」行不是 AI 冒烟跑过的证据，读日志时以本注释为准。
+      # 不用 `--tests` 一次性收编：目录里若再进一个需要外部服务的文件，
+      # fail-fast 的整步红掉会掩盖已可用 target 的信号；显式名单让「新
+      # tests/*.rs 进 CI」是一次有意识的编辑（与 runner 拒绝维护第二份
+      # target 名单的理由相反：那边 cargo 自带名单，这边名单就是门禁）。
+      #
+      # features 与上面 `--lib` 步同集（$FEATURES）再换成宿主自己的
+      # test-harness（= datazen/test-harness + tauri/test，是限定语法的
+      # 严格超集）：datazen 的 feature 闭包与 `--lib` 步完全一致，依赖
+      # 编译继续共享；宿主 lib 本身因多出 pub use commands::test_harness
+      # 重编译一次（该模块在 cfg(test) 下本就编译，增量极小）。driver
+      # feature 集取自同一份 .driver-features.json，位于 restore 之前，
+      # 与 `--lib` 步断言同一份注入态。
+      - name: Rust integration tests (datazen desktop host, src-tauri/tests/)
+        run: |
+          FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
+          cargo test -p datazen_desktop \
+            --test driver_command_ipc \
+            --test data_sync_public_api \
+            --test mcp_stdio_auth \
+            --test workflow_db_tests \
+            --features "$FEATURES,test-harness"
+
       - name: Restore managed files
         if: always()
         run: node scripts/driver-file-stash.mjs restore

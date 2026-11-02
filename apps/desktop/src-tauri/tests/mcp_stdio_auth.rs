@@ -1,17 +1,30 @@
 //! Integration tests for MCP stdio local token authentication.
 //!
-//! Spawns the `datazen --mcp-stdio` binary as a subprocess with an isolated
-//! `DATAZEN_DATA_DIR` so headless auth behavior is exercised end-to-end.
+//! Spawns the host binary (`datazen_desktop --mcp-stdio`) as a subprocess with
+//! an isolated `DATAZEN_DATA_DIR` so headless auth behavior is exercised
+//! end-to-end.
 //!
 //! Run with:
-//! `CARGO_TARGET_DIR=target cargo test -p datazen --test mcp_stdio_auth -- --nocapture`
+//! `cargo test -p datazen_desktop --test mcp_stdio_auth -- --nocapture`
+//!
+//! F6-c1 note: this file moved from the old src-tauri (package `datazen` at
+//! the time) together with the host. `CARGO_BIN_EXE_datazen` stopped resolving
+//! the day the host package was renamed — the env var is set per *package* bin
+//! target, and the host's bin is `datazen_desktop` (src/main.rs). The file
+//! could not compile from that day on; nothing noticed until CI gained a step
+//! that compiles this directory (see ci.yml "Rust integration tests
+//! (datazen desktop host, src-tauri/tests/)").
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
 fn datazen_bin() -> PathBuf {
-    PathBuf::from(env!("CARGO_BIN_EXE_datazen"))
+    // The host package's default bin (src/main.rs) is named after the package:
+    // `datazen_desktop`. Cargo sets CARGO_BIN_EXE_<name> per package bin when
+    // building integration tests — the old `datazen` spelling predates the
+    // package rename and no longer resolves.
+    PathBuf::from(env!("CARGO_BIN_EXE_datazen_desktop"))
 }
 
 fn token_file(data_dir: &Path) -> PathBuf {

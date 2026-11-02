@@ -109,7 +109,7 @@ Migrating all 8 pure-IPC candidates saves **~4 minutes** from the default serial
 
 - [ ] Map every `it()` / `describe()` case to a `#[tokio::test]` (or `#[test]`)
 - [ ] Use `TestAppState` instead of E2E seeded connections where possible
-- [ ] For real-DB cases (PG backup), gate on env like `workflow_tests.rs` (skip if unavailable)
+- [ ] For real-DB cases (PG backup), gate on env like `workflow_db_tests.rs` (skip if unavailable; renamed from workflow_tests.rs in the 2026-11-02 split)
 - [ ] Run `cargo test -p datazen_desktop --features test-harness --test <name>`
 - [ ] Run `cargo check -p datazen` without extra features (release path unchanged)
 - [ ] Add E2E comment marker; do not delete E2E spec yet
