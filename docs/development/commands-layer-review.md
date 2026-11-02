@@ -224,7 +224,10 @@ modules 侧 `migration/` 已有同域测试基建（`filter_tests.rs`、`plan_te
   每域刀法与 WR-A2 AI 域相同：`_impl` 删除、逻辑内联进命令函数或下沉 modules
   用例、业务测试进 modules、C1–C4 测试留宿主、IPC 契约零变化。
   **进度（2026-10-31）**：query（11）/ dashboard（10）/ config（9）/ tunnel
-  （7，脱敏映射与探测编排下沉 `tunnel::domain::projection` + `tunnel::probe`）/
+  （7，脱敏映射下沉 `tunnel::domain::projection`、探测编排与两档组合下沉
+  `tunnel::application`——2026-11-02 结构裁决：probe 是用例非机制，自
+  `tunnel::probe` 迁 `application/probe.rs`；投影因消费者是仓储适配器而留
+  domain，裁决记录见 web-ready-plan §11）/
   connection（14，最大域；`session_info_payload`/`driver_category_label` 下沉
   `connection::api`）/ driver_command+mcp（discovery.rs 整删 + 目录合成归一
   `command_policy::discovery_definitions`，流遥测下沉 `stream_telemetry`）/
