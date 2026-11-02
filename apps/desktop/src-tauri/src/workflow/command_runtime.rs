@@ -51,7 +51,7 @@ mod tests {
 
     #[tokio::test]
     async fn inherited_connection_executes_query_command() {
-        let test = crate::testing::app_state::TestAppState::with_resource_provider(
+        let test = crate::testing::app_state_test_support::TestAppState::with_resource_provider(
             crate::testing::mock_driver::MockDriverOptions::default(),
         )
         .await;
@@ -70,7 +70,7 @@ mod tests {
 
     #[tokio::test]
     async fn legacy_query_normalization_executes_through_command_runtime() {
-        let test = crate::testing::app_state::TestAppState::with_resource_provider(
+        let test = crate::testing::app_state_test_support::TestAppState::with_resource_provider(
             crate::testing::mock_driver::MockDriverOptions::default(),
         )
         .await;
@@ -89,7 +89,7 @@ mod tests {
 
     #[tokio::test]
     async fn read_only_mode_rejects_execute_command() {
-        let test = crate::testing::app_state::TestAppState::new().await;
+        let test = crate::testing::app_state_test_support::TestAppState::new().await;
         test.save_connection("wf-ro").await;
         let step = WorkflowCommandStep::new(
             "e1",
@@ -110,7 +110,7 @@ mod tests {
 
     #[tokio::test]
     async fn safe_mode_blocks_workflow_update_without_where() {
-        let test = crate::testing::app_state::TestAppState::new().await;
+        let test = crate::testing::app_state_test_support::TestAppState::new().await;
         test.save_connection("wf-safe").await;
         let step = WorkflowCommandStep::new(
             "u1",
@@ -126,8 +126,8 @@ mod tests {
 
     #[tokio::test]
     async fn connection_read_only_blocks_workflow_writes() {
-        let test = crate::testing::app_state::TestAppState::new().await;
-        let mut config = crate::testing::app_state::sample_postgres_config("wf-conn-ro");
+        let test = crate::testing::app_state_test_support::TestAppState::new().await;
+        let mut config = crate::testing::app_state_test_support::sample_postgres_config("wf-conn-ro");
         config.read_only = true;
         test.store.save_connection(config).await.unwrap();
         let step = WorkflowCommandStep::new(

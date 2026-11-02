@@ -71,7 +71,7 @@ impl ResourceOp {
 ///   （在第一个全角 `（` 处截断：F1「描述（`describeResource`）」→「描述」）。
 ///
 /// 文档表格是唯一真源，编号与阶段都由
-/// `fake_resource::catalog_guard` 在测试运行时**解析文档表格**逐条对撞，
+/// `fake_resource::catalog_guard_test_support` 在测试运行时**解析文档表格**逐条对撞，
 /// 任何一侧单独改动都会打红。
 #[derive(Debug, Clone, PartialEq)]
 pub enum FaultKind {
@@ -157,7 +157,7 @@ pub enum FaultKind {
 impl FaultKind {
     /// 文档表格里的编号，供测试与报告直接引用。
     ///
-    /// 取值以 `catalog_guard` 解析出来的表格为准：这里只放编号，
+    /// 取值以 `catalog_guard_test_support` 解析出来的表格为准：这里只放编号，
     /// 编号与阶段由测试逐条对撞文档。
     pub const fn catalog_id(&self) -> &'static str {
         match self {
@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     fn the_fault_catalogue_collides_with_the_parsed_f1_through_f12_table() {
-        crate::execution::runtime::connection::testing::fake_resource::catalog_guard::assert_catalogue_matches_doc();
+        crate::execution::runtime::connection::testing::fake_resource::catalog_guard_test_support::assert_catalogue_matches_doc();
     }
 
     #[test]

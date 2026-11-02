@@ -3,7 +3,7 @@
 pub mod auth;
 pub mod client;
 #[cfg(test)]
-mod contract;
+mod contract_tests;
 mod handler;
 mod prompts;
 mod resources;

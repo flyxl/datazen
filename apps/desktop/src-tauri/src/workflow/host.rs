@@ -161,7 +161,7 @@ mod host_execution_tests {
 
     #[tokio::test]
     async fn workflow_default_connection_is_inherited_by_legacy_query() {
-        let test = crate::testing::app_state::TestAppState::with_resource_provider(
+        let test = crate::testing::app_state_test_support::TestAppState::with_resource_provider(
             crate::testing::mock_driver::MockDriverOptions::default(),
         )
         .await;
@@ -201,7 +201,7 @@ mod host_execution_tests {
 
     #[tokio::test]
     async fn step_connection_override_executes_command() {
-        let test = crate::testing::app_state::TestAppState::with_resource_provider(
+        let test = crate::testing::app_state_test_support::TestAppState::with_resource_provider(
             crate::testing::mock_driver::MockDriverOptions::default(),
         )
         .await;
@@ -241,7 +241,7 @@ mod host_execution_tests {
 
     #[tokio::test]
     async fn merge_and_transform_steps_execute_without_db() {
-        let test = crate::testing::app_state::TestAppState::new().await;
+        let test = crate::testing::app_state_test_support::TestAppState::new().await;
         let workflow = WorkflowDefinition {
             database: None,
             id: "data-step".into(),

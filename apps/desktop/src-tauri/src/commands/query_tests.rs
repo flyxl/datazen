@@ -27,7 +27,7 @@ use crate::commands::driver_command::{
     ExecuteDriverCommandStreamRequest,
 };
 use crate::store::AppSettings;
-use crate::testing::app_state::TestAppState;
+use crate::testing::app_state_test_support::TestAppState;
 use crate::testing::mock_driver::MockDriverOptions;
 use datazen::execution::runtime::driver_registry::DriverCapabilities;
 use datazen_driver_api::{ColumnSchema, DriverError, QueryStreamCallback, QueryStreamEvent, Value};

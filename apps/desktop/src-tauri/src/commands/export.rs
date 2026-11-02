@@ -152,7 +152,7 @@ mod tests {
     #[tokio::test]
     async fn desktop_export_reads_independent_runtime_target() {
         let test =
-            crate::testing::app_state::TestAppState::with_tables_and_resource_provider().await;
+            crate::testing::app_state_test_support::TestAppState::with_tables_and_resource_provider().await;
         let session = test.save_and_open_runtime_session("export-runtime").await;
         let source = DesktopExportSource {
             platform: test.state.platform.clone(),
@@ -504,4 +504,4 @@ mod tests {
 }
 
 #[cfg(test)]
-mod live_acceptance;
+mod live_acceptance_tests;

@@ -1,9 +1,9 @@
 //! `ExecutionGateway` 的取消三态与事件交付单测。
 //!
 //! 与 `facade_tests.rs` 分开是因为单文件 800 行上限，不是语义上的分组理由。
-//! 替身与夹具在 `super::facade_support`。
+//! 替身与夹具在 `super::facade_test_support`。
 
-use super::facade_support::*;
+use super::facade_test_support::*;
 
 // ─────────────────────────── 取消三态 ───────────────────────────
 

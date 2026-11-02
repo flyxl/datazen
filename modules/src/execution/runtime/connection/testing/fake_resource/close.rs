@@ -41,11 +41,11 @@ impl FakeResourceProvider {
     /// 关键方向是「宿主声称 0、资源上其实还挂着句柄」：此时判据按**实测**
     /// 拒绝归池。若判据改读**声明**，这一笔就会伪称「宿主检查全部通过」而把带句柄的资源放回池子。
     /// 承重用例是
-    /// [`pooling_refuses_a_host_ledger_that_undercounts_the_registered_handles`](crate::execution::runtime::connection::testing::fake_resource::close_cases::pooling_refuses_a_host_ledger_that_undercounts_the_registered_handles)、
+    /// [`pooling_refuses_a_host_ledger_that_undercounts_the_registered_handles`](crate::execution::runtime::connection::testing::fake_resource::close_cases_tests::pooling_refuses_a_host_ledger_that_undercounts_the_registered_handles)、
     /// 它的姊妹例
-    /// [`pooling_refuses_a_stale_host_ledger_that_overcounts_the_registered_handles`](crate::execution::runtime::connection::testing::fake_resource::close_cases::pooling_refuses_a_stale_host_ledger_that_overcounts_the_registered_handles)
+    /// [`pooling_refuses_a_stale_host_ledger_that_overcounts_the_registered_handles`](crate::execution::runtime::connection::testing::fake_resource::close_cases_tests::pooling_refuses_a_stale_host_ledger_that_overcounts_the_registered_handles)
     /// 与对照正例
-    /// [`a_clean_resource_with_matching_ledgers_returns_to_the_pool`](crate::execution::runtime::connection::testing::fake_resource::close_cases::a_clean_resource_with_matching_ledgers_returns_to_the_pool)。
+    /// [`a_clean_resource_with_matching_ledgers_returns_to_the_pool`](crate::execution::runtime::connection::testing::fake_resource::close_cases_tests::a_clean_resource_with_matching_ledgers_returns_to_the_pool)。
     ///
     /// 同一次锁里还消掉了另外几处「快照 vs 重读」的双源：`owner`、`pool_key`、
     /// `budget_class`、`db_session_id`、`had_transaction` 现在都来自这**一个**临界区，
@@ -58,7 +58,7 @@ impl FakeResourceProvider {
     /// 两支产出**不同**的判据输入，正是「可分叉」的另一半。
     /// 现在**没有第二次查表**：这一段 `ok_or_else` 是「未知 resourceId 的关闭」唯一真正的入口，
     /// 并且有用例覆盖 ——
-    /// [`closing_an_unknown_resource_id_is_rejected_before_any_journal_write`](crate::execution::runtime::connection::testing::fake_resource::close_cases::closing_an_unknown_resource_id_is_rejected_before_any_journal_write)。
+    /// [`closing_an_unknown_resource_id_is_rejected_before_any_journal_write`](crate::execution::runtime::connection::testing::fake_resource::close_cases_tests::closing_an_unknown_resource_id_is_rejected_before_any_journal_write)。
     /// 它返回 `ProviderError::SessionLost`（不 panic）：每个操作都要校验凭证，
     /// 而「资源根本不在册」是**调用方**能造出来的输入，不是夹具内部的不变量，
     /// 按 panic-policy 也不该用 `unwrap()/expect()` 把输入错误升级成 panic。
@@ -82,7 +82,7 @@ impl FakeResourceProvider {
     /// 恰好是幂等的 —— 那是 budget 模块替关闭路径兜的底，不是关闭路径自己的判据。
     /// 后果是台账里凭空多出一整轮关闭：两条 `Closed`、两条 `ReturnedToPool`、
     /// 一次已经发生过第二次的物理归池。判负用例是
-    /// [`closing_twice_is_idempotent_and_never_pools_or_refunds_twice`](crate::execution::runtime::connection::testing::fake_resource::close_cases::closing_twice_is_idempotent_and_never_pools_or_refunds_twice)。
+    /// [`closing_twice_is_idempotent_and_never_pools_or_refunds_twice`](crate::execution::runtime::connection::testing::fake_resource::close_cases_tests::closing_twice_is_idempotent_and_never_pools_or_refunds_twice)。
     ///
     /// 门闸是 [`ClosePrecondition::freshly_closed`]（`!was_closed`，同锁实测），它同时管住
     /// `ReturnedToPool`（经 [`ClosePrecondition::returns_to_pool`]）与 `Closed`。**回执不变**：

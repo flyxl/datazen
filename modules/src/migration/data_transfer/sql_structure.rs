@@ -759,7 +759,7 @@ pub fn build_structure_plan(
 mod database_plan_tests {
     use super::*;
     use crate::migration::data_transfer::model::{TransferMode, WriteMode};
-    use crate::migration::data_transfer::sql_structure_fixtures::*;
+    use crate::migration::data_transfer::sql_structure_test_fixtures::*;
     use datazen_driver_api::ForeignKeyInfo;
     use datazen_driver_api::IndexInfo;
 
@@ -1488,7 +1488,7 @@ mod database_plan_tests {
 mod foreign_key_reference_tests {
     use super::*;
     use crate::migration::data_transfer::model::Endpoint;
-    use crate::migration::data_transfer::sql_structure_fixtures::job;
+    use crate::migration::data_transfer::sql_structure_test_fixtures::job;
     use std::collections::BTreeSet;
 
     fn selected(names: &[&str]) -> BTreeSet<String> {

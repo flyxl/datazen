@@ -35,7 +35,7 @@ use datazen_driver_api::{
 /// 调用方（待其域刀把编排收编后可回收本入口）：
 /// * 生产：`commands/query.rs`（execute_query）、`commands/schema.rs`
 ///   （run_schema_object_command）；
-/// * 测试：`commands/export/live_acceptance.rs`、`commands/schema/tests.rs`、
+/// * 测试：`commands/export/live_acceptance_tests.rs`、`commands/schema/tests.rs`、
 ///   `platform/session_backend/tests.rs`、`services/schema_metadata/tests.rs`。
 ///
 /// 不是命令转发体：GUI 命令 [`super::execute_driver_command`] 与它共享

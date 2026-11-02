@@ -101,7 +101,7 @@ fn request_defaults_input_to_null_when_omitted() {
 /// 目录合成（B2 域刀前直调 `get_connection_commands_impl`）。
 #[tokio::test]
 async fn discovers_standard_commands_from_connection() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let (_, conn_id) = test.save_and_connect("cmd-discover").await;
     let app = host_command_app(test);
     let definitions = get_connection_commands(app.state(), conn_id)
@@ -117,7 +117,7 @@ async fn discovers_standard_commands_from_connection() {
 /// the driver qualifies the SQL itself.
 #[tokio::test]
 async fn execute_driver_command_never_switches_the_session_database() {
-    let test = crate::testing::app_state::TestAppState::with_tables().await;
+    let test = crate::testing::app_state_test_support::TestAppState::with_tables().await;
     let (_, conn_id) = test.save_and_connect("cmd-pin-db").await;
     execute_driver_command_impl(
         &test.state,
@@ -144,7 +144,7 @@ async fn execute_driver_command_never_switches_the_session_database() {
 
 #[tokio::test]
 async fn execute_driver_command_never_switches_for_missing_or_same_pin() {
-    let test = crate::testing::app_state::TestAppState::with_tables().await;
+    let test = crate::testing::app_state_test_support::TestAppState::with_tables().await;
     let (_, conn_id) = test.save_and_connect("cmd-no-pin").await;
     for database in [None, Some("app".into()), Some("   ".into())] {
         execute_driver_command_impl(
@@ -166,7 +166,7 @@ async fn execute_driver_command_never_switches_for_missing_or_same_pin() {
 
 #[tokio::test]
 async fn execute_driver_command_never_switches_for_admin_commands() {
-    let test = crate::testing::app_state::TestAppState::with_tables().await;
+    let test = crate::testing::app_state_test_support::TestAppState::with_tables().await;
     let (_, conn_id) = test.save_and_connect("cmd-pin-admin").await;
     execute_driver_command_impl(
         &test.state,
@@ -186,7 +186,7 @@ async fn execute_driver_command_never_switches_for_admin_commands() {
 
 #[tokio::test]
 async fn stream_never_switches_the_session_database() {
-    let test = crate::testing::app_state::TestAppState::with_tables().await;
+    let test = crate::testing::app_state_test_support::TestAppState::with_tables().await;
     let (_, conn_id) = test.save_and_connect("stream-pin-db").await;
     let callback: QueryStreamCallback = Arc::new(|_event| {});
     execute_driver_command_stream_impl(
@@ -221,7 +221,7 @@ async fn execute_driver_command_passes_target_to_qualifying_driver() {
     // F7: envelope targeting is injected into the command input and the
     // rewrite-capable driver inlines it (marker comment proves the SQL
     // the driver actually received).
-    let test = crate::testing::app_state::TestAppState::with_options(
+    let test = crate::testing::app_state_test_support::TestAppState::with_options(
         crate::testing::mock_driver::MockDriverOptions {
             rewrite_sql_target: true,
             ..Default::default()
@@ -266,7 +266,7 @@ async fn execute_driver_command_executes_unchanged_when_driver_cannot_rewrite() 
     // F7: a driver without rewrite capability executes SQL unchanged. There is
     // no session-switch fallback any more — such a driver simply has no way to
     // address a foreign target for a hand-written statement.
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let (_, conn_id) = test.save_and_connect("cmd-target-fallback").await;
 
     let result = execute_driver_command_impl(
@@ -293,7 +293,7 @@ async fn execute_driver_command_executes_unchanged_when_driver_cannot_rewrite() 
 
 #[tokio::test]
 async fn stream_hands_targeting_to_qualifying_driver() {
-    let test = crate::testing::app_state::TestAppState::with_options(
+    let test = crate::testing::app_state_test_support::TestAppState::with_options(
         crate::testing::mock_driver::MockDriverOptions {
             rewrite_sql_target: true,
             ..Default::default()
@@ -338,7 +338,7 @@ async fn stream_hands_targeting_to_qualifying_driver() {
 
 #[tokio::test]
 async fn stream_emits_execution_started_and_cleans_host_handle() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let (_, conn_id) = test.save_and_connect("stream-lifecycle").await;
     let execution_ids: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let recorder = Arc::clone(&execution_ids);
@@ -381,7 +381,7 @@ async fn stream_emits_execution_started_and_cleans_host_handle() {
 
 #[tokio::test]
 async fn stream_without_capability_keeps_sql_and_pins_session() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let (_, conn_id) = test.save_and_connect("stream-fallback").await;
     let started: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let recorder = Arc::clone(&started);
@@ -421,7 +421,7 @@ async fn stream_without_capability_keeps_sql_and_pins_session() {
 
 #[tokio::test]
 async fn executes_query_command_through_ipc() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let (_, conn_id) = test.save_and_connect("cmd-exec").await;
     let result = execute_driver_command_impl(
         &test.state,
@@ -450,7 +450,7 @@ async fn executes_query_command_through_ipc() {
 
 #[tokio::test]
 async fn rejects_unknown_command() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let (_, conn_id) = test.save_and_connect("cmd-unknown").await;
     let err = execute_driver_command_impl(
         &test.state,
@@ -470,7 +470,7 @@ async fn rejects_unknown_command() {
 
 #[tokio::test]
 async fn rejects_invalid_query_input() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let (_, conn_id) = test.save_and_connect("cmd-invalid").await;
     let err = execute_driver_command_impl(
         &test.state,
@@ -493,7 +493,7 @@ async fn rejects_invalid_query_input() {
 /// 带档位的路径在 modules 的 MCP 工具管线里）。
 #[tokio::test]
 async fn read_only_mode_denies_execute() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let (_, conn_id) = test.save_and_connect("cmd-ro").await;
     let err = super::execute::run_driver_command(
         &test.state,
@@ -515,7 +515,7 @@ async fn read_only_mode_denies_execute() {
 
 #[tokio::test]
 async fn rejects_connection_id_on_execute_without_live_session() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     test.save_connection("cfg-only").await;
     let err = execute_driver_command_impl(
         &test.state,
@@ -539,7 +539,7 @@ async fn rejects_connection_id_on_execute_without_live_session() {
 /// C4 烟测（B2 域刀前直调 `get_connection_commands_impl`）。
 #[tokio::test]
 async fn discovers_commands_from_live_session() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let (_, db_session_id) = test.save_and_connect("cfg-discover").await;
     let app = host_command_app(test);
     let definitions = get_connection_commands(app.state(), db_session_id)
@@ -550,7 +550,7 @@ async fn discovers_commands_from_live_session() {
 
 #[tokio::test]
 async fn rejects_connection_id_on_get_connection_commands_without_live_session() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     test.save_connection("cfg-discover").await;
     let app = host_command_app(test);
     let err = get_connection_commands(app.state(), "cfg-discover".into())
@@ -565,7 +565,7 @@ async fn rejects_connection_id_on_get_connection_commands_without_live_session()
 /// C4 烟测（B2 域刀前直调 `get_driver_type_commands_impl`）。
 #[tokio::test]
 async fn discovers_commands_from_driver_type_without_connection() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let app = host_command_app(test);
     let definitions = get_driver_commands(app.state(), "postgres".into())
         .await
@@ -575,7 +575,7 @@ async fn discovers_commands_from_driver_type_without_connection() {
 
 #[tokio::test]
 async fn rejects_connection_required_command_without_connection() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let err = execute_driver_command_impl(
         &test.state,
         ExecuteDriverCommandRequest {
@@ -607,7 +607,7 @@ async fn executes_unbound_driver_command_by_type() {
             .unbound()
             .hide_from_workflow(),
     };
-    let test = crate::testing::app_state::TestAppState::with_options(
+    let test = crate::testing::app_state_test_support::TestAppState::with_options(
         crate::testing::mock_driver::MockDriverOptions {
             extra_commands: vec![ping],
             ..Default::default()
@@ -657,7 +657,7 @@ async fn save_dialog_commands_rejected_without_interactive_handle() {
                 result_path_field: "savedPath".into(),
             }),
     };
-    let test = crate::testing::app_state::TestAppState::with_options(
+    let test = crate::testing::app_state_test_support::TestAppState::with_options(
         crate::testing::mock_driver::MockDriverOptions {
             extra_commands: vec![pull],
             ..Default::default()
@@ -688,7 +688,7 @@ async fn save_dialog_commands_rejected_without_interactive_handle() {
 
 #[tokio::test]
 async fn safe_mode_blocks_update_without_where() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let (_, conn_id) = test.save_and_connect("cmd-safe").await;
     let err = execute_driver_command_impl(
         &test.state,
@@ -708,8 +708,8 @@ async fn safe_mode_blocks_update_without_where() {
 
 #[tokio::test]
 async fn connection_read_only_blocks_write_sql() {
-    let test = crate::testing::app_state::TestAppState::new().await;
-    let mut config = crate::testing::app_state::sample_postgres_config("cmd-conn-ro");
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
+    let mut config = crate::testing::app_state_test_support::sample_postgres_config("cmd-conn-ro");
     config.read_only = true;
     test.store.save_connection(config).await.unwrap();
     let conn_id = test.open_runtime_session("cmd-conn-ro").await;
@@ -731,7 +731,7 @@ async fn connection_read_only_blocks_write_sql() {
 
 #[tokio::test]
 async fn bind_params_are_substituted_before_execution() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let (_, conn_id) = test.save_and_connect("cmd-params").await;
     let result = execute_driver_command_impl(
         &test.state,
@@ -754,7 +754,7 @@ async fn bind_params_are_substituted_before_execution() {
 
 #[tokio::test]
 async fn disabling_safe_mode_allows_update_without_where() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let mut settings = test.store.get_settings().await;
     settings.safe_mode = false;
     test.store.save_settings(settings).await.unwrap();
@@ -847,7 +847,7 @@ fn test_tester_ipc_stream_request_wire_format_matches_baseline() {
 
 #[tokio::test]
 async fn test_tester_resolve_command_driver_prefers_live_session_over_driver_type() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let (_, conn_id) = test.save_and_connect("tester-resolve-prefer").await;
     let resolved = resolve_command_driver(&test.state, Some(&conn_id), Some(&"postgres".into()))
         .await
@@ -862,7 +862,7 @@ async fn test_tester_resolve_command_driver_prefers_live_session_over_driver_typ
 
 #[tokio::test]
 async fn test_tester_resolve_command_driver_requires_session_or_driver_type() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let result = resolve_command_driver(&test.state, None, None).await;
     match result {
         Err(err) => assert!(
@@ -877,7 +877,7 @@ async fn test_tester_resolve_command_driver_requires_session_or_driver_type() {
 #[tokio::test]
 async fn test_tester_execute_applies_access_via_resolve_and_helpers_pipeline() {
     // Cross-module path: resolve → access_level_for_mode → check_command_access.
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let (_, conn_id) = test.save_and_connect("tester-access-pipeline").await;
     let err = super::execute::run_driver_command(
         &test.state,
@@ -899,7 +899,7 @@ async fn test_tester_execute_applies_access_via_resolve_and_helpers_pipeline() {
 
 #[tokio::test]
 async fn test_tester_rejects_whitespace_only_db_session_id_without_driver_type() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let blank = "   ".to_string();
     assert!(nonempty(Some(&blank)).is_none());
     let err = execute_driver_command_impl(
@@ -924,7 +924,7 @@ async fn test_tester_rejects_whitespace_only_db_session_id_without_driver_type()
 
 #[tokio::test]
 async fn test_tester_rejects_empty_command_name() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let (_, conn_id) = test.save_and_connect("tester-empty-cmd").await;
     let err = execute_driver_command_impl(
         &test.state,
@@ -947,7 +947,7 @@ async fn test_tester_rejects_empty_command_name() {
 
 #[tokio::test]
 async fn test_tester_concurrent_stream_requests_get_distinct_execution_ids() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let (_, conn_id) = test.save_and_connect("tester-concurrent-stream").await;
     let ids_a: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let ids_b: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));

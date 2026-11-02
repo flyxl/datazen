@@ -33,7 +33,7 @@ fn export_options_from_settings_reflects_monitor_flag() {
 
 #[tokio::test]
 async fn app_data_export_lists_store_files_and_import_helper_extracts() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     // Export impl: real store dir → ZIP containing the JSON store files.
     let source = TestAppState::new().await;

@@ -1,5 +1,5 @@
 use super::*;
-use crate::testing::{app_state::TestAppState, mock_driver::MockDriverOptions};
+use crate::testing::{app_state_test_support::TestAppState, mock_driver::MockDriverOptions};
 
 async fn instance(test: &TestAppState) -> Arc<Instance> {
     let adapter = test.state.platform_require().unwrap().clone();

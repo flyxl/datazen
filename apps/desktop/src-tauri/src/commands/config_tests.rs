@@ -47,7 +47,7 @@ fn require_webdriver_path_ipc_gates_without_feature() {
 async fn config_store_commands_roundtrip() {
     use crate::commands::dashboard::command_test_host::host_command_app;
     use crate::store::AppSettings;
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     let test = TestAppState::new().await;
     let app = host_command_app(test);
@@ -102,7 +102,7 @@ async fn config_store_commands_roundtrip() {
 #[tokio::test]
 async fn open_path_validation_without_webdriver() {
     use crate::commands::dashboard::command_test_host::host_command_app;
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     let test = TestAppState::new().await;
     let app = host_command_app(test);
@@ -129,7 +129,7 @@ fn resolve_log_and_context_dirs_via_crate_helpers() {
 async fn get_log_path_honors_custom_log_path_setting() {
     use crate::commands::dashboard::command_test_host::host_command_app;
     use crate::store::AppSettings;
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     let test = TestAppState::new().await;
     let mut settings = AppSettings::default();

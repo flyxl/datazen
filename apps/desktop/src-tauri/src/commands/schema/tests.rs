@@ -1,6 +1,6 @@
 use super::command_test_host::host_command_app;
 use super::*;
-use crate::testing::app_state::TestAppState;
+use crate::testing::app_state_test_support::TestAppState;
 use crate::testing::mock_driver::MockDriverOptions;
 use datazen_driver_api::Value;
 use std::collections::HashMap;

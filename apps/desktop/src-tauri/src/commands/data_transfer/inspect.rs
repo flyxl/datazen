@@ -404,7 +404,7 @@ pub(crate) async fn inspect_sql_file_transfer_impl(
 mod tests {
     use super::*;
     use crate::data_transfer::model::TableMappingStatus;
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use crate::testing::mock_driver::MockDriverOptions;
     use datazen_driver_api::ColumnSchema;
     use datazen_driver_api::TableInfo;

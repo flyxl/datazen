@@ -22,7 +22,7 @@ use crate::commands::{
     remove_wapp_impl, set_wapp_enabled_impl, wapp_storage_get_impl, wapp_storage_remove_impl,
     wapp_storage_set_impl,
 };
-use crate::testing::app_state::TestAppState;
+use crate::testing::app_state_test_support::TestAppState;
 use datazen::workspace_apps::manager::WappManager;
 use datazen::workspace_apps::storage::MAX_STORAGE_BYTES;
 use datazen::workspace_apps::{

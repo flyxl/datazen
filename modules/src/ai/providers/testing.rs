@@ -1,6 +1,6 @@
 //! In-process mock LLM ([`MockAiProvider`]) — form-neutral test fixture.
 //!
-//! B4 自桌面 `testing/mock_ai_provider.rs` 下沉（tauri-free；两种宿主形态
+//! B4 自桌面 `testing/mock_ai_provider_test_support.rs` 下沉（tauri-free；两种宿主形态
 //! 的 AI 测试都要驱动同一 `AiProvider` 端口，脚本化假体是共享基建——
 //! WR-C3「同用例双传输」的既有前提）。经 `test-harness` 夹具门控
 //! （沿用 kernel/runtime 的语义），不进生产构建。

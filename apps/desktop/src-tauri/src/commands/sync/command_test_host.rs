@@ -13,7 +13,7 @@
 //! domain), so unlike the AI host this one needs no mock webview window.
 
 use crate::commands::AppState;
-use crate::testing::app_state::{TestAppState, TestStateKeepalive};
+use crate::testing::app_state_test_support::{TestAppState, TestStateKeepalive};
 use tauri::Manager;
 
 /// A mock tauri app hosting an [`AppState`] for direct command calls.

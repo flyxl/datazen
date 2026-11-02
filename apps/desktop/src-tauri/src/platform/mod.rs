@@ -25,7 +25,7 @@ mod target_metadata;
 ///
 /// 随 `--lib` 跑（因而进 CI），自带 kill test 与自证。理由与判据见该文件。
 #[cfg(test)]
-mod scope_gate;
+mod scope_gate_tests;
 
 pub use adapter::{AssemblyState, PlatformAdapter, PlatformEntry};
 pub use error::into_command_error;
@@ -116,4 +116,4 @@ pub(crate) fn fn_parameter_lists(code: &str) -> Vec<String> {
 ///
 /// 随 `--lib` 跑（因而进 CI），自带 kill test、不误伤用例与自证。理由与判据见该文件。
 #[cfg(test)]
-mod org_literal_gate;
+mod org_literal_gate_tests;

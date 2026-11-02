@@ -4,9 +4,9 @@
 //! 门面测试塞回去会顶破。测试模块与被测模块同 crate，但**只**用公开 API 驱动——
 //! 走 `pub(crate)` 捷径会让重构失去编译期护栏。
 //!
-//! 替身与夹具在 `super::facade_support`。
+//! 替身与夹具在 `super::facade_test_support`。
 
-use super::facade_support::*;
+use super::facade_test_support::*;
 
 // ─────────────────────────────── 受理 ───────────────────────────────
 

@@ -62,7 +62,7 @@ fn only_the_local_scope_counts_as_local() {
 /// 两条路径看到的组织必须一致，否则同一份数据会在两条路径上表现不同。
 #[tokio::test]
 async fn the_ipc_scope_and_the_background_scope_name_the_same_organization() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let mut state = test.state.clone();
     state.platform = ready_entry();
 
@@ -89,7 +89,7 @@ async fn the_ipc_scope_and_the_background_scope_name_the_same_organization() {
 /// 解析身份」的改动，都会先把它弄红。
 #[tokio::test]
 async fn the_ipc_scope_is_still_available_when_the_platform_adapter_failed_to_assemble() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let mut state = test.state.clone();
     state.platform = failed_entry();
 
@@ -116,7 +116,7 @@ async fn the_ipc_scope_is_still_available_when_the_platform_adapter_failed_to_as
 /// 这条用例证明：改造引入的依赖只落在**作用域的来源**上，不在存储层。
 #[tokio::test]
 async fn the_desktop_store_serves_its_own_organization_without_a_platform_adapter() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let mut state = test.state.clone();
     state.platform = failed_entry();
 

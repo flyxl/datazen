@@ -375,12 +375,12 @@ pub mod test_harness {
     //! `test-harness` feature 一起点亮）。
 
     use super::AppState;
-    use crate::testing::app_state::{TestAppState, TestStateKeepalive};
+    use crate::testing::app_state_test_support::{TestAppState, TestStateKeepalive};
     use datazen_driver_api::{CommandResult, DriverCommandDefinition};
     use tauri::Manager;
 
     pub use super::ExecuteDriverCommandRequest;
-    pub use crate::testing::app_state::TestAppState;
+    pub use crate::testing::app_state_test_support::TestAppState;
 
     /// A [`TestAppState`] hosted behind a mock command app.
     ///
@@ -453,11 +453,12 @@ mod org_scope_surface_tests;
 #[cfg(test)]
 #[path = "app_state_shape_tests.rs"]
 mod app_state_shape_tests;
+#[cfg(test)]
 #[path = "named_views_error_tests.rs"]
 mod named_views_error_tests;
 
 // WR-C3 IPC 腿（named_views 域）：同用例双传输契约测试。共享规格在
-// `datazen::use_case_contracts::named_views`，HTTP 腿在
+// `datazen::use_case_contracts_test_support::named_views`，HTTP 腿在
 // `server/tests/use_case_contracts.rs`，scenario 逐字同名。
 #[cfg(test)]
 mod named_views_use_case_contract_tests;

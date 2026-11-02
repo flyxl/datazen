@@ -40,10 +40,10 @@ fn test_profile() -> SchemaDiffProfile {
 
 async fn pg_command_test_sessions(
     options: MockDriverOptions,
-) -> (crate::testing::app_state::TestAppState, String, String) {
-    let test = crate::testing::app_state::TestAppState::with_options(options).await;
+) -> (crate::testing::app_state_test_support::TestAppState, String, String) {
+    let test = crate::testing::app_state_test_support::TestAppState::with_options(options).await;
     for (id, database) in [("source", "source_db"), ("target", "target_db")] {
-        let mut config = crate::testing::app_state::sample_postgres_config(id);
+        let mut config = crate::testing::app_state_test_support::sample_postgres_config(id);
         config.database = Some(database.into());
         config.schema = Some("public".into());
         test.store
@@ -411,7 +411,7 @@ async fn postgres_new_dependent_relation_after_review_blocks_drop_before_write()
 
 #[tokio::test]
 async fn schema_diff_profile_save_requires_existing_connections() {
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     test.save_connection("source").await;
     let profile = test_profile();
     let error = validate_schema_diff_profile_connections(&test.state, &profile)

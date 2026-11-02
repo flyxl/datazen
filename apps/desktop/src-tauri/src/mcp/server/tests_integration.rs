@@ -1,6 +1,6 @@
 #[tokio::test]
 async fn mcp_tool_handlers_with_mock_driver() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use std::sync::Arc;
 
     let test = TestAppState::with_tables_and_resource_provider().await;
@@ -116,7 +116,7 @@ async fn mcp_tool_handlers_with_mock_driver() {
 
 #[tokio::test]
 async fn mcp_search_tables_via_call_tool_inner() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use std::sync::Arc;
 
     let test = TestAppState::with_tables_and_resource_provider().await;
@@ -139,7 +139,7 @@ async fn mcp_search_tables_via_call_tool_inner() {
 
 #[tokio::test]
 async fn mcp_prompt_handlers_build_messages() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use std::sync::Arc;
 
     let test = TestAppState::with_tables_and_resource_provider().await;
@@ -211,7 +211,7 @@ async fn mcp_tool_router_lists_registered_tools() {
 
 #[tokio::test]
 async fn mcp_read_resource_inner_paths() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use std::sync::Arc;
 
     let test = TestAppState::with_tables_and_resource_provider().await;
@@ -288,7 +288,7 @@ async fn mcp_read_resource_inner_paths() {
 
 #[tokio::test]
 async fn mcp_call_tool_inner_unknown_tool_includes_help() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use std::sync::Arc;
 
     let test = TestAppState::new().await;
@@ -306,7 +306,7 @@ async fn mcp_call_tool_inner_unknown_tool_includes_help() {
 
 #[tokio::test]
 async fn mcp_call_tool_inner_disabled_tool_includes_help() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use datazen::mcp::permission::McpPermissionMode;
     use std::sync::Arc;
 
@@ -331,7 +331,7 @@ async fn mcp_call_tool_inner_disabled_tool_includes_help() {
 
 #[tokio::test]
 async fn test_tester_default_empty_allowlist_denies_all_connections() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use std::sync::Arc;
 
     let test = TestAppState::with_tables_and_resource_provider().await;
@@ -355,7 +355,7 @@ async fn test_tester_default_empty_allowlist_denies_all_connections() {
 
 #[tokio::test]
 async fn mcp_call_tool_inner_allowlist_error_includes_help() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use std::sync::Arc;
 
     let test = TestAppState::with_tables_and_resource_provider().await;
@@ -378,7 +378,7 @@ async fn mcp_call_tool_inner_allowlist_error_includes_help() {
 
 #[tokio::test]
 async fn mcp_query_rejects_disallowed_sql_in_readonly() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use datazen::mcp::permission::McpPermissionMode;
     use std::sync::Arc;
 
@@ -404,7 +404,7 @@ async fn mcp_query_rejects_disallowed_sql_in_readonly() {
 
 #[tokio::test]
 async fn mcp_get_info_exposes_capabilities() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use rmcp::ServerHandler;
     use std::sync::Arc;
 
@@ -417,7 +417,7 @@ async fn mcp_get_info_exposes_capabilities() {
 
 #[tokio::test]
 async fn mcp_disabled_tools_and_permission_mode() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use datazen::mcp::permission::McpPermissionMode;
     use std::sync::Arc;
 
@@ -443,7 +443,7 @@ async fn mcp_disabled_tools_and_permission_mode() {
 
 #[tokio::test]
 async fn mcp_list_tools_and_resources_inner() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use std::sync::Arc;
 
     let test = TestAppState::new().await;
@@ -454,7 +454,7 @@ async fn mcp_list_tools_and_resources_inner() {
 
 #[tokio::test]
 async fn mcp_call_tool_inner_database_tools() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use std::sync::Arc;
 
     let test = TestAppState::with_tables_and_resource_provider().await;
@@ -493,7 +493,7 @@ async fn mcp_call_tool_inner_database_tools() {
 
 #[tokio::test]
 async fn mcp_run_workflow_not_found() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use std::sync::Arc;
 
     let test = TestAppState::new().await;
@@ -514,7 +514,7 @@ async fn mcp_run_workflow_not_found() {
 #[tokio::test]
 async fn mcp_query_history_read_only_returns_empty() {
     use crate::store::QueryHistoryEntry;
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use datazen::mcp::permission::McpPermissionMode;
     use std::sync::Arc;
 
@@ -561,7 +561,7 @@ async fn mcp_query_history_read_only_returns_empty() {
 #[tokio::test]
 async fn mcp_query_history_respects_connection_allowlist() {
     use crate::store::QueryHistoryEntry;
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use std::sync::Arc;
 
     let test = TestAppState::with_tables_and_resource_provider().await;
@@ -609,7 +609,7 @@ async fn mcp_query_history_respects_connection_allowlist() {
 
 #[tokio::test]
 async fn mcp_connections_resource_respects_allowlist() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use std::sync::Arc;
 
     let test = TestAppState::with_tables_and_resource_provider().await;
@@ -634,7 +634,7 @@ async fn mcp_connections_resource_respects_allowlist() {
 
 #[tokio::test]
 async fn mcp_schema_resource_rejects_disallowed_connection() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use std::sync::Arc;
 
     let test = TestAppState::with_tables_and_resource_provider().await;
@@ -652,7 +652,7 @@ async fn mcp_schema_resource_rejects_disallowed_connection() {
 /// [tester] handler gate (tool_is_registered) stays aligned with tools.rs tool_router.
 #[tokio::test]
 async fn test_tester_tool_is_registered_cross_module_consistency() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use std::sync::Arc;
 
     let test = TestAppState::new().await;
@@ -678,7 +678,7 @@ async fn test_tester_tool_is_registered_cross_module_consistency() {
 /// [tester] list_resources_inner URIs are readable via read_resource_inner (resources module).
 #[tokio::test]
 async fn test_tester_listed_resources_readable_via_read_resource_inner() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use std::sync::Arc;
 
     let test = TestAppState::with_tables_and_resource_provider().await;
@@ -699,7 +699,7 @@ async fn test_tester_listed_resources_readable_via_read_resource_inner() {
 /// [tester] empty tool name rejected before tool_router dispatch (call_tool_inner path).
 #[tokio::test]
 async fn test_tester_call_tool_inner_rejects_empty_tool_name() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use std::sync::Arc;
 
     let test = TestAppState::new().await;
@@ -716,7 +716,7 @@ async fn test_tester_call_tool_inner_rejects_empty_tool_name() {
 /// [tester] blank resource URI returns resource_not_found (resources module boundary).
 #[tokio::test]
 async fn test_tester_read_resource_blank_uri_returns_not_found() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use std::sync::Arc;
 
     let test = TestAppState::new().await;
@@ -732,7 +732,7 @@ async fn test_tester_read_resource_blank_uri_returns_not_found() {
 /// [tester] concurrent list_connections + read_resource without cross-request corruption.
 #[tokio::test]
 async fn test_tester_concurrent_mcp_operations() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use std::sync::Arc;
 
     let test = TestAppState::with_tables_and_resource_provider().await;
@@ -772,7 +772,7 @@ async fn test_tester_concurrent_mcp_operations() {
 /// [tester] post-split regression: list_tools_inner names stay aligned with MCP_ALL_TOOLS.
 #[tokio::test]
 async fn test_tester_list_tools_inner_snapshot_matches_mcp_all_tools() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use std::sync::Arc;
 
     let test = TestAppState::new().await;

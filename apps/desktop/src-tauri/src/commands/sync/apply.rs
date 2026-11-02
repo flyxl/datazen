@@ -1,7 +1,7 @@
 //! Compare selected tables, generate ChangeSet SQL, and apply.
 //!
 //! B2 sync 域刀（commands-layer-review §3.5）：转发名拆除——`run_comparison`
-//! 与 `start_prepare_job` 是域内核心（命令入口 + jobs_contract 契约测试共用），
+//! 与 `start_prepare_job` 是域内核心（命令入口 + jobs_contract_tests 契约测试共用），
 //! `generate_data_sync_sql_for_tables` 供 exec 的分页 SQL 预览源与预览测试
 //! 共用；`apply_data_sync_impl`（永久拒绝）与 `revalidate_data_sync_impl`
 //! 的接线已内联进 mod.rs 的命令体，后者投影段下沉

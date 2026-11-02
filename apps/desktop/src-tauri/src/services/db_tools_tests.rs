@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::testing::{app_state::TestAppState, mock_driver::MockDriverOptions};
+    use crate::testing::{app_state_test_support::TestAppState, mock_driver::MockDriverOptions};
     use datazen::mcp::permission::McpPermissionMode;
     use datazen::services::db_tools::*;
     use datazen_driver_api::{TableInfo, TableType};

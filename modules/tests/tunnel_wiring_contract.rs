@@ -19,7 +19,7 @@
 //!
 //! 本文件**不**引入任何计数：断言一律读 `ResourceManager::tunnel_refs`，而它是
 //! `TunnelLedger::ref_count` 的直通投影。`last_cell_refuses_to_keep_a_second_tally`
-//! 把「不许有第二个计数器」钉成可执行的断言（`single_counter_audit`）。
+//! 把「不许有第二个计数器」钉成可执行的断言（`single_counter_audit_tests`）。
 //!
 //! 那条自证原先是对源码做**字面子串黑名单**，改个名就能把第二本账整套搬进来（实测
 //! `local_tunnels: AtomicU64` + `cached_refs: u32` 配 `fetch_add`/`fetch_sub` 全绿通过）。
@@ -304,7 +304,7 @@ fn cell_two_is_a_resource_permit_cell_not_a_tunnel_cell() {
 
 // ============================================================ 唯一计数器自证
 
-/// 把「不许有第二个计数器」钉成可执行的断言（`single_counter_audit`）。
+/// 把「不许有第二个计数器」钉成可执行的断言（`single_counter_audit_tests`）。
 ///
 /// 判据不是字面黑名单而是**闭合集合**，理由与全部细则在 [`single_tally_audit`]：
 ///

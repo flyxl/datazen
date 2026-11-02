@@ -176,7 +176,7 @@ fn build_import_preview_json_includes_source_format() {
 
 #[tokio::test]
 async fn apply_connection_import_impl_merges_connections_and_groups() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
     use datazen_driver_api::{ConnectionConfig, SslMode};
 
     fn conn(id: &str, group: Option<&str>) -> ConnectionConfig {
@@ -246,7 +246,7 @@ async fn apply_connection_import_impl_merges_connections_and_groups() {
 
 #[tokio::test]
 async fn merged_connections_export_roundtrips_through_preview_helper() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     let test = TestAppState::new().await;
     test.save_connection("exp-1").await;
@@ -275,7 +275,7 @@ async fn merged_connections_export_roundtrips_through_preview_helper() {
 /// inline `ssh_tunnel` locally.
 #[tokio::test]
 async fn export_materializes_referenced_ssh_tunnel() {
-    use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use crate::testing::app_state_test_support::{sample_postgres_config, TestAppState};
     use datazen_driver_api::{SavedTunnel, SshTunnelConfig, TunnelKind};
 
     let test = TestAppState::new().await;
@@ -341,7 +341,7 @@ async fn export_materializes_referenced_ssh_tunnel() {
 /// degrade to "no tunnel" instead of failing the whole export.
 #[tokio::test]
 async fn export_keeps_connections_whose_tunnel_cannot_be_exported() {
-    use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use crate::testing::app_state_test_support::{sample_postgres_config, TestAppState};
     use datazen_driver_api::{HttpProxyTunnelConfig, SavedTunnel, TunnelKind};
 
     let test = TestAppState::new().await;
@@ -406,7 +406,7 @@ async fn export_keeps_connections_whose_tunnel_cannot_be_exported() {
 /// silently rewrite the running connection configs.
 #[tokio::test]
 async fn test_tester_materialize_does_not_pollute_the_live_connection_cache() {
-    use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use crate::testing::app_state_test_support::{sample_postgres_config, TestAppState};
     use datazen_driver_api::{SavedTunnel, SshTunnelConfig, TunnelKind};
 
     let test = TestAppState::new().await;
@@ -462,7 +462,7 @@ async fn test_tester_materialize_does_not_pollute_the_live_connection_cache() {
 /// connection's own database target.
 #[tokio::test]
 async fn test_tester_materialize_degrades_every_unsupported_branch() {
-    use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use crate::testing::app_state_test_support::{sample_postgres_config, TestAppState};
     use datazen_driver_api::{SavedTunnel, SshTunnelConfig, TunnelKind, WebSocketTunnelConfig};
 
     let test = TestAppState::new().await;
@@ -569,7 +569,7 @@ async fn test_tester_materialize_degrades_every_unsupported_branch() {
 /// and the tunnel involved.
 #[tokio::test]
 async fn test_tester_materialize_warns_on_dangling_and_unsupported_references() {
-    use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use crate::testing::app_state_test_support::{sample_postgres_config, TestAppState};
     use datazen_driver_api::{SavedTunnel, TunnelKind, WebSocketTunnelConfig};
     use std::sync::{Arc, Mutex};
 
@@ -655,7 +655,7 @@ async fn test_tester_materialize_warns_on_dangling_and_unsupported_references() 
 /// the tunnel materialization now sits in front of).
 #[tokio::test]
 async fn test_tester_export_fails_when_the_destination_cannot_be_written() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     let test = TestAppState::new().await;
     test.save_connection("exp-unwritable").await;
@@ -681,7 +681,7 @@ async fn test_tester_export_fails_when_the_destination_cannot_be_written() {
 /// about, and not materialized.
 #[tokio::test]
 async fn export_warns_and_skips_a_disabled_ssh_tunnel() {
-    use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use crate::testing::app_state_test_support::{sample_postgres_config, TestAppState};
     use datazen_driver_api::{SavedTunnel, SshTunnelConfig, TunnelKind};
     use std::sync::{Arc, Mutex};
 

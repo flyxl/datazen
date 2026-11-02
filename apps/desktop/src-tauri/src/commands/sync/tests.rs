@@ -82,7 +82,7 @@ async fn desktop_sync_store_ports_admit_only_the_local_organization() {
     use datazen::shared::id::OrganizationId;
     use datazen::shared::scope::OrganizationScope;
 
-    let test = crate::testing::app_state::TestAppState::new().await;
+    let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let scope = test
         .state
         .organization_scope()
@@ -116,7 +116,7 @@ async fn desktop_sync_store_ports_admit_only_the_local_organization() {
 /// 真实命令入口）。
 #[tokio::test]
 async fn sync_profile_ipc_validates_connections_and_round_trips() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     let test = TestAppState::new().await;
     test.save_connection("sync-profile-source").await;
@@ -168,7 +168,7 @@ async fn sync_profile_ipc_validates_connections_and_round_trips() {
 #[tokio::test]
 async fn sync_task_crud_and_inspect() {
     use crate::data_sync::TableMappingStatus;
-    use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use crate::testing::app_state_test_support::{sample_postgres_config, TestAppState};
     use chrono::Utc;
 
     let test = TestAppState::with_tables().await;
@@ -250,7 +250,7 @@ async fn sync_task_crud_and_inspect() {
 /// 该转发体由其调用方域刀处置，本域只消费）。
 #[tokio::test]
 async fn compare_table_schemas_impl_returns_diff_for_table() {
-    use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use crate::testing::app_state_test_support::{sample_postgres_config, TestAppState};
 
     let test = TestAppState::new().await;
     test.store
@@ -314,7 +314,7 @@ fn legacy_transfer_ir_compare_ipc_removed() {
 #[tokio::test]
 async fn inspect_data_sync_returns_matched_tables() {
     use crate::data_sync::TableMappingStatus;
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     let test = TestAppState::with_tables().await;
     test.save_and_connect("src-ins").await;
@@ -343,7 +343,7 @@ async fn inspect_data_sync_returns_matched_tables() {
 /// Job 流水：受理 → 派发 → 终态 → 预览）。
 #[tokio::test]
 async fn compare_data_sync_returns_an_opaque_server_plan() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     let test = TestAppState::new().await;
     test.save_and_connect("src-plan").await;
@@ -376,7 +376,7 @@ async fn compare_data_sync_returns_an_opaque_server_plan() {
 #[tokio::test]
 async fn execute_data_sync_rejects_read_only_target() {
     use crate::data_sync::{ChangeOperation, SqlStatement};
-    use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use crate::testing::app_state_test_support::{sample_postgres_config, TestAppState};
 
     let test = TestAppState::new().await;
     let mut cfg = sample_postgres_config("ro-tgt");
@@ -402,7 +402,7 @@ async fn execute_data_sync_rejects_read_only_target() {
 
 #[tokio::test]
 async fn check_sync_conflicts_missing_task_errors() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     let test = TestAppState::new().await;
     let app = host_command_app(test);
@@ -413,7 +413,7 @@ async fn check_sync_conflicts_missing_task_errors() {
 
 #[tokio::test]
 async fn check_sync_conflicts_ignores_stale_session_ids_and_reconnects_by_connection() {
-    use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use crate::testing::app_state_test_support::{sample_postgres_config, TestAppState};
     use chrono::Utc;
 
     let test = TestAppState::with_tables().await;
@@ -466,7 +466,7 @@ async fn check_sync_conflicts_ignores_stale_session_ids_and_reconnects_by_connec
 
 #[tokio::test]
 async fn check_sync_conflicts_reconnects_selected_database_with_override() {
-    use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use crate::testing::app_state_test_support::{sample_postgres_config, TestAppState};
     use chrono::Utc;
 
     let test = TestAppState::with_tables().await;
@@ -524,7 +524,7 @@ async fn check_sync_conflicts_reconnects_selected_database_with_override() {
 
 #[tokio::test]
 async fn check_sync_conflicts_releases_selected_database_sessions_on_count_error() {
-    use crate::testing::app_state::{rich_mock_options, sample_postgres_config, TestAppState};
+    use crate::testing::app_state_test_support::{rich_mock_options, sample_postgres_config, TestAppState};
     use chrono::Utc;
 
     let mut options = rich_mock_options();
@@ -581,7 +581,7 @@ async fn check_sync_conflicts_releases_selected_database_sessions_on_count_error
 #[tokio::test]
 async fn cancel_data_sync_stops_execute_before_start() {
     use crate::data_sync::{ChangeOperation, SqlStatement};
-    use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use crate::testing::app_state_test_support::{sample_postgres_config, TestAppState};
 
     let test = TestAppState::new().await;
     let cfg = sample_postgres_config("cancel-tgt");
@@ -611,7 +611,7 @@ async fn cancel_data_sync_stops_execute_before_start() {
 
 #[tokio::test]
 async fn compare_rejects_mock_driver_that_repeats_keyset_pages() {
-    use crate::testing::app_state::{rich_mock_options, TestAppState};
+    use crate::testing::app_state_test_support::{rich_mock_options, TestAppState};
     use crate::testing::mock_driver::MockDriverOptions;
 
     let test = TestAppState::with_options(MockDriverOptions {
@@ -653,7 +653,7 @@ async fn compare_rejects_mock_driver_that_repeats_keyset_pages() {
 #[tokio::test]
 async fn generated_binary_preview_uses_the_target_driver_literal_renderer() {
     use crate::data_sync::{RowChange, SyncOptions, TableResult};
-    use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use crate::testing::app_state_test_support::{sample_postgres_config, TestAppState};
     use crate::testing::mock_driver::{MockDriver, MockDriverOptions};
 
     let schema = table(
@@ -726,7 +726,7 @@ async fn generated_binary_preview_uses_the_target_driver_literal_renderer() {
 /// C4/C1：legacy apply 的永久拒绝经真实命令入口，错误文案是 IPC 契约。
 #[tokio::test]
 async fn legacy_apply_rejects_unreviewed_recomparison() {
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     let test = TestAppState::with_tables().await;
     test.save_and_connect("src-ap").await;

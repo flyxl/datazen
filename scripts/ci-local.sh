@@ -79,6 +79,12 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# 3.5：Rust 测试模块命名守卫（与 ci.yml「All strict guards」步的
+# check-test-module-naming 对应；纯文本扫描，无需 cargo）。
+step "3.5/11 Guard: Rust test-module naming (tests.rs / *_tests.rs convention)"
+node scripts/check-test-module-naming.mjs || fail "check-test-module-naming"
+
+# --------------------------------------------------------------------------
 step "4/11 Frontend unit tests (pnpm test:unit; pretest/posttest 自动 codegen+restore)"
 pnpm test:unit || fail "test:unit"
 

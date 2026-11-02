@@ -57,7 +57,7 @@ pub(crate) use command_test_host::{host_command_app, CommandApp};
 mod integration_tests;
 
 #[cfg(test)]
-mod ipc_contract_guards;
+mod ipc_contract_guards_tests;
 
 #[cfg(test)]
 mod mock_provider_tests;

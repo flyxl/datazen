@@ -30,7 +30,7 @@ mod tests;
 // ── 跨域共享入口（B2 域刀保留，待调用方各自域刀内联后回收）────────────
 //
 // `execute_driver_command_impl`（生产：query.rs / schema.rs；测试：
-// export/live_acceptance.rs、schema/tests.rs、platform/session_backend/
+// export/live_acceptance_tests.rs、schema/tests.rs、platform/session_backend/
 // tests.rs、services/schema_metadata/tests.rs）与
 // `execute_driver_command_stream_impl`（测试：query_tests.rs 五个流测试；
 // query.rs 的日志卫生守卫还逐字扫它的函数体）的调用方清单见各自文件头。

@@ -1,5 +1,5 @@
 use super::*;
-use crate::testing::{app_state::TestAppState, mock_driver::MockDriverOptions};
+use crate::testing::{app_state_test_support::TestAppState, mock_driver::MockDriverOptions};
 use datazen::dashboard::repository::save_dashboard;
 use datazen::dashboard::types::*;
 use datazen::jobs::domain::job::{JobFilter, JobState};
