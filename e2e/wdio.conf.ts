@@ -255,7 +255,7 @@ export const config: WebdriverIO.Config = {
       './specs/client-parity.ts',
       './specs/conn-ctx-menu-submenus.ts',
       './specs/object-browser.ts',
-      './specs/wapps.spec.ts',
+      './specs/wapps.ts',
       './specs/workflow.ts',
       './specs/er-diagram.ts',
       './specs/multi-database.ts',
@@ -287,7 +287,7 @@ export const config: WebdriverIO.Config = {
       './specs/data-sync-window.ts',
       './specs/window-operations.ts',
       './specs/unified-tab-bar.ts',
-      './specs/wapps.spec.ts',
+      './specs/wapps.ts',
       './specs/ui-extract-dialogs.ts',
     ],
     // Real-DB Host specs incl. the host contract matrix (was `pnpm e2e:db`)

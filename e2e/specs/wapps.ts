@@ -156,7 +156,7 @@ async function openSampleTabAndAwaitBridge(): Promise<boolean> {
   );
   if (!probesLanded) {
     console.warn(
-      '[wapps.spec] wapp iframe content does not load under ' +
+      '[wapps] wapp iframe content does not load under ' +
         'WebKit automation (datazen:// subframe navigation refused); assertions ' +
         'fall back to real shell-level product behaviour',
     );
@@ -444,7 +444,7 @@ describe('UI extensions (sample extension + bridge + appearance)', () => {
     if (probe.startsWith('err:')) {
       // No reachable database in this environment (saved connection is not
       // connectable here): the RPC + error-mapping path still ran end-to-end.
-      console.warn(`[wapps.spec] J2-005 environment-gated: ${probe}`);
+      console.warn(`[wapps] J2-005 environment-gated: ${probe}`);
       return;
     }
     expect(probe).toBe('ok:1rows');
