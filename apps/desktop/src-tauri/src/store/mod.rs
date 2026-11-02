@@ -320,9 +320,8 @@ impl DesktopRepository {
                 }
                 Err(_) => {
                     let mut settings = AppSettings::default_for_first_run();
-                    settings.onboarding = Some(OnboardingState::for_existing_install(
-                        ONBOARDING_VERSION,
-                    ));
+                    settings.onboarding =
+                        Some(OnboardingState::for_existing_install(ONBOARDING_VERSION));
                     (settings, true)
                 }
             }

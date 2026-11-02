@@ -3,9 +3,9 @@
 //! Split out of `tests.rs` when that file crossed the repository's 800-line
 //! ceiling. The cases, their names and their assertions are moved verbatim.
 
+use super::data_command_test_host::host_command_app;
 use super::test_fixtures::*;
 use super::*;
-use super::data_command_test_host::host_command_app;
 use crate::testing::app_state::TestAppState;
 use datazen::data_browsing::{canonicalize_changes, changes_fingerprint, plan_changes};
 use datazen_driver_api::Value;
@@ -588,16 +588,10 @@ async fn a_drifted_manual_transaction_is_refused_as_a_stale_plan() {
         .handle;
 
     let fingerprint = plan.fingerprint.clone();
-    let error = commit_pending_changes(
-        app.state(),
-        conn_id,
-        Some(handle),
-        plan,
-        fingerprint,
-    )
-    .await
-    .unwrap_err()
-    .to_string();
+    let error = commit_pending_changes(app.state(), conn_id, Some(handle), plan, fingerprint)
+        .await
+        .unwrap_err()
+        .to_string();
 
     assert!(error.starts_with("grid.commit.stalePlan: "), "got: {error}");
     assert!(

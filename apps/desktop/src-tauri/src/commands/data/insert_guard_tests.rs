@@ -6,8 +6,8 @@
 //! additions, and keeping them in their own file also keeps both suites under
 //! the repository's 800-line ceiling.
 
-use super::*;
 use super::data_command_test_host::host_command_app;
+use super::*;
 use crate::testing::app_state::{rich_mock_options, TestAppState};
 use crate::testing::mock_driver::MockDriverOptions;
 use datazen_driver_api::ColumnSchema;

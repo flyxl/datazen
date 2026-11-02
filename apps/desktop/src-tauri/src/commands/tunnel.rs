@@ -163,8 +163,8 @@ mod tests {
     //!   `modules/src/tunnel/probe_tests.rs`；上游探针与数据路径的逐字节测试在
     //!   `modules/src/tunnel/{http_proxy,websocket}_probe_tests.rs`。
 
-    use super::*;
     use super::tunnel_command_test_host::host_command_app;
+    use super::*;
     use crate::testing::app_state::{sample_postgres_config, TestAppState};
     use datazen_driver_api::{SshTunnelConfig, TunnelKind};
 
@@ -349,14 +349,9 @@ mod tests {
             .unwrap();
 
         let app = host_command_app(test);
-        let elapsed_ms = test_tunnel(
-            app.state(),
-            "t-proxy".into(),
-            "127.0.0.1".into(),
-            5432,
-        )
-        .await
-        .expect("the probe must succeed for a reachable local proxy fixture");
+        let elapsed_ms = test_tunnel(app.state(), "t-proxy".into(), "127.0.0.1".into(), 5432)
+            .await
+            .expect("the probe must succeed for a reachable local proxy fixture");
         assert!(
             elapsed_ms < 5_000,
             "probe took suspiciously long: {elapsed_ms}ms"

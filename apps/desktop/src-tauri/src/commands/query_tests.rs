@@ -37,19 +37,9 @@ use super::query_command_test_host::{host_command_app, HostedCommandApp};
 /// Drive the real `get_query_history_page` entry with only `limit` set — the
 /// wire form of the former `HistoryPageRequest::default()` reads.
 async fn history_page(app: &HostedCommandApp, limit: usize) -> QueryHistoryPage {
-    get_query_history_page(
-        app.state(),
-        limit,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-    )
-    .await
-    .expect("history page")
+    get_query_history_page(app.state(), limit, None, None, None, None, None, None, None)
+        .await
+        .expect("history page")
 }
 
 #[tokio::test]
@@ -219,7 +209,9 @@ async fn clear_query_history() {
         .await
         .unwrap();
     // 本测试函数与命令同名，函数体内裸名解析到测试自身；全限定路由到命令。
-    crate::commands::query::clear_query_history(app.state()).await.unwrap();
+    crate::commands::query::clear_query_history(app.state())
+        .await
+        .unwrap();
     assert!(history_page(&app, 10).await.entries.is_empty());
 }
 
@@ -480,30 +472,24 @@ async fn session_transaction_begin_commit_and_status() {
     let test = TestAppState::new().await;
     let (_, conn_id) = test.save_and_connect("tx-cfg").await;
     let app = host_command_app(test);
-    assert!(
-        !session_transaction_status(app.state(), conn_id.clone())
-            .await
-            .unwrap()
-    );
+    assert!(!session_transaction_status(app.state(), conn_id.clone())
+        .await
+        .unwrap());
     begin_session_transaction(app.state(), conn_id.clone())
         .await
         .unwrap();
-    assert!(
-        session_transaction_status(app.state(), conn_id.clone())
-            .await
-            .unwrap()
-    );
+    assert!(session_transaction_status(app.state(), conn_id.clone())
+        .await
+        .unwrap());
     begin_session_transaction(app.state(), conn_id.clone())
         .await
         .unwrap();
     commit_session_transaction(app.state(), conn_id.clone())
         .await
         .unwrap();
-    assert!(
-        !session_transaction_status(app.state(), conn_id.clone())
-            .await
-            .unwrap()
-    );
+    assert!(!session_transaction_status(app.state(), conn_id.clone())
+        .await
+        .unwrap());
     begin_session_transaction(app.state(), conn_id.clone())
         .await
         .unwrap();

@@ -31,7 +31,11 @@ async fn repeated_statements_do_not_accumulate_physical_resources() {
     let test = TestAppState::with_resource_provider(rich_mock_options()).await;
     let (_config, session) = test.save_and_connect("resource-flat").await;
 
-    let adapter = test.state.platform_require().expect("platform ready").clone();
+    let adapter = test
+        .state
+        .platform_require()
+        .expect("platform ready")
+        .clone();
     let runtime = adapter.runtime().expect("runtime ready");
     let before = runtime
         .observability_snapshot()
@@ -89,7 +93,11 @@ async fn saving_a_profile_retires_its_sessions_and_reconnect_succeeds() {
     let first = test.open_runtime_session("profile-retire").await;
     let second = test.open_runtime_session("profile-retire").await;
 
-    let adapter = test.state.platform_require().expect("platform ready").clone();
+    let adapter = test
+        .state
+        .platform_require()
+        .expect("platform ready")
+        .clone();
     let runtime = adapter.runtime().expect("runtime ready");
     let before = runtime
         .observability_snapshot()

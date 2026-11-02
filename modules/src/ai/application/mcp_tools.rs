@@ -136,10 +136,7 @@ mod tests {
 
     #[tokio::test]
     async fn execution_reports_the_formatted_result() {
-        let fake = broker(
-            Vec::new(),
-            Ok("issue-42 created".to_owned()),
-        );
+        let fake = broker(Vec::new(), Ok("issue-42 created".to_owned()));
         let output = execute_mcp_tool(&fake, "linear", "create_issue", r#"{ "title": "x" }"#).await;
         assert_eq!(output, "issue-42 created");
         assert_eq!(
@@ -151,8 +148,7 @@ mod tests {
     #[tokio::test]
     async fn execution_keeps_the_error_wording_verbatim() {
         let fake = broker(Vec::new(), Err("server not connected".to_owned()));
-        let output =
-            execute_mcp_tool(&fake, "linear", "create_issue", r#"{ "title": "x" }"#).await;
+        let output = execute_mcp_tool(&fake, "linear", "create_issue", r#"{ "title": "x" }"#).await;
         assert_eq!(
             output,
             "MCP tool error (mcp/linear/create_issue): server not connected"
@@ -163,7 +159,9 @@ mod tests {
     async fn invalid_json_arguments_report_instead_of_panicking() {
         let fake = broker(Vec::new(), Ok(String::new()));
         let output = execute_mcp_tool(&fake, "linear", "create_issue", "not json").await;
-        assert!(output.starts_with("MCP tool error (mcp/linear/create_issue): invalid JSON arguments:"));
+        assert!(
+            output.starts_with("MCP tool error (mcp/linear/create_issue): invalid JSON arguments:")
+        );
         // The broker was never called with the broken payload.
         assert!(fake.seen_arguments.lock().unwrap().is_empty());
     }

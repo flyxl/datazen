@@ -67,15 +67,11 @@ async fn start_saved(
     match saved.kind {
         TunnelKind::None => Ok(None),
         TunnelKind::Ssh => {
-            let ssh = saved
-                .ssh
-                .as_ref()
-                .filter(|s| s.enabled)
-                .ok_or_else(|| {
-                    DriverError::InvalidConfig(
-                        "tunnelKind=ssh but sshTunnel is missing or disabled".into(),
-                    )
-                })?;
+            let ssh = saved.ssh.as_ref().filter(|s| s.enabled).ok_or_else(|| {
+                DriverError::InvalidConfig(
+                    "tunnelKind=ssh but sshTunnel is missing or disabled".into(),
+                )
+            })?;
             Ok(Some(StartedTunnel::Ssh(
                 SshTunnel::start(ssh, target_host, target_port, known_hosts.clone()).await?,
             )))

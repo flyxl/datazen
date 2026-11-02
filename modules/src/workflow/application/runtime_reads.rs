@@ -23,8 +23,8 @@
 //! 表述；该文案在 MCP 元数据工具的输入域内不可达（它们只提交 Read 级
 //! 命令），改写不改变任何 MCP 工具的外部文本。
 
-use crate::execution::domain::target::ExecutionTarget;
 use crate::execution::domain::permission::McpPermissionMode;
+use crate::execution::domain::target::ExecutionTarget;
 use crate::schema::application::metadata;
 use crate::workflow::domain::command::WorkflowCommandStep;
 use crate::workflow::domain::error::WorkflowError;
@@ -130,12 +130,8 @@ pub async fn read_target_command(
         .ok_or_else(|| format!("Unsupported command: {command}"))?;
     check_command_access(&definition, CommandAccessLevel::Read)
         .map_err(|_| READ_ONLY_REFUSAL.to_owned())?;
-    let step = WorkflowCommandStep::new(
-        READ_STEP_ID,
-        command,
-        Some(connection_id.to_owned()),
-        input,
-    );
+    let step =
+        WorkflowCommandStep::new(READ_STEP_ID, command, Some(connection_id.to_owned()), input);
     resource_execution::execute(
         &ReadOnlyForcedHost(host),
         &step,

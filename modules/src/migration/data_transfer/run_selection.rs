@@ -10,7 +10,7 @@
 use std::collections::HashSet;
 
 use super::model::{
-    TableExecutionResult, TransferExecutionResult, TransferJob, TransferRunSelection, TransferMode,
+    TableExecutionResult, TransferExecutionResult, TransferJob, TransferMode, TransferRunSelection,
     WriteMode,
 };
 use super::plan_store::participating_tables;
@@ -40,10 +40,14 @@ pub fn validate_selection(
             return Err("transfer selection contains an empty or duplicate source table".into());
         }
         let Some(table) = job.tables.iter().find(|table| table.source_table == *name) else {
-            return Err("transfer selection contains a table that was not in the preview plan".into());
+            return Err(
+                "transfer selection contains a table that was not in the preview plan".into(),
+            );
         };
         if !table.enabled {
-            return Err("transfer selection cannot enable a table disabled in the preview plan".into());
+            return Err(
+                "transfer selection cannot enable a table disabled in the preview plan".into(),
+            );
         }
     }
     Ok(())
@@ -65,10 +69,7 @@ pub fn apply_selection(job: &mut TransferJob, selection: &TransferRunSelection) 
 }
 
 /// The source tables a run will actually move, after the selection is applied.
-pub fn selected_source_tables(
-    job: &TransferJob,
-    selection: &TransferRunSelection,
-) -> Vec<String> {
+pub fn selected_source_tables(job: &TransferJob, selection: &TransferRunSelection) -> Vec<String> {
     job.tables
         .iter()
         .filter(|table| table.enabled)
@@ -113,7 +114,10 @@ pub fn has_unknown_outcome(result: &TransferExecutionResult) -> bool {
         .any(|table| table.outcome == Some(super::model::TableExecutionOutcome::Unknown))
 }
 
-pub fn completed_tables_from_result(prior: &[String], result: &TransferExecutionResult) -> Vec<String> {
+pub fn completed_tables_from_result(
+    prior: &[String],
+    result: &TransferExecutionResult,
+) -> Vec<String> {
     let mut completed: HashSet<String> = prior.iter().cloned().collect();
     completed.extend(
         result
@@ -211,9 +215,6 @@ mod tests {
         let selection = TransferRunSelection {
             source_tables: Some(vec!["orders".into()]),
         };
-        assert_eq!(
-            selected_source_tables(&job, &selection),
-            vec!["orders"]
-        );
+        assert_eq!(selected_source_tables(&job, &selection), vec!["orders"]);
     }
 }

@@ -8,8 +8,8 @@ use std::collections::HashMap;
 
 use datazen_driver_api::{ColumnSchema, ForeignKeyInfo, IndexInfo, TableSchema, Value};
 
-use super::*;
 use super::command_test_host::host_command_app;
+use super::*;
 use crate::testing::app_state::TestAppState;
 use crate::testing::mock_driver::MockDriverOptions;
 

@@ -82,7 +82,10 @@ impl CommandApp {
         let chunk_log = log.clone();
         self.window.listen("ai:stream-chunk", move |event| {
             if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
-                let request_id = payload["requestId"].as_str().unwrap_or_default().to_string();
+                let request_id = payload["requestId"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string();
                 let done = payload["done"].as_bool().unwrap_or(false);
                 chunk_log.lock().unwrap().push((request_id, done));
             }
@@ -90,7 +93,10 @@ impl CommandApp {
         let error_log = log.clone();
         self.window.listen("ai:stream-error", move |event| {
             if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
-                let request_id = payload["requestId"].as_str().unwrap_or_default().to_string();
+                let request_id = payload["requestId"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string();
                 error_log.lock().unwrap().push((request_id, false));
             }
         });

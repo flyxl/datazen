@@ -27,7 +27,10 @@ fn entry(fingerprint: &str) -> KnownHostEntry {
 fn empty_store_loads_empty_by_default() {
     let store = migrated_store();
     let hosts = ServerKnownHosts::new(store, "org-a");
-    assert!(hosts.load().is_empty(), "TOFU: no records means empty, not error");
+    assert!(
+        hosts.load().is_empty(),
+        "TOFU: no records means empty, not error"
+    );
 }
 
 #[test]

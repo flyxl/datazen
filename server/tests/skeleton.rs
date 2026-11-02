@@ -17,7 +17,11 @@ fn app() -> Router {
 /// GET 一个 URI，返回（状态码，原始响应体，requestId 响应头）。
 async fn get(app: Router, uri: &str) -> (StatusCode, Vec<u8>, Option<String>) {
     let response = app
-        .oneshot(Request::get(uri).body(Body::empty()).expect("request body is empty"))
+        .oneshot(
+            Request::get(uri)
+                .body(Body::empty())
+                .expect("request body is empty"),
+        )
         .await
         .expect("oneshot dispatch");
     let status = response.status();
@@ -125,7 +129,8 @@ async fn body_over_the_limit_is_rejected_before_handlers() {
     let bytes = to_bytes(response.into_body(), usize::MAX)
         .await
         .expect("response body");
-    let body: serde_json::Value = serde_json::from_slice(&bytes).expect("413 body is ApiError JSON");
+    let body: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("413 body is ApiError JSON");
     assert_eq!(body["code"], "payloadTooLarge");
     assert_eq!(body["retryDisposition"], "never");
 }

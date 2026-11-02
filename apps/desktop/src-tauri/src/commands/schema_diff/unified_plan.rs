@@ -8,7 +8,7 @@
 //! 只剩 JobRuntime 的命令入口。
 
 use super::job;
-use super::{AppState, CommandError, ColumnTypeOverride, State};
+use super::{AppState, ColumnTypeOverride, CommandError, State};
 use datazen_driver_api::DatabaseObject;
 
 #[tauri::command]

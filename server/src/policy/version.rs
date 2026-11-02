@@ -36,7 +36,11 @@ pub(crate) fn current_tx(tx: &Transaction<'_>, organization_id: &str) -> Result<
 
 /// 递增版本并返回新值（与授权变更同事务调用——顺序不裁决，事务保证
 /// 原子性）。首建行落 2（首版基线 1 + 第一次变更）。
-pub(crate) fn bump_tx(tx: &Transaction<'_>, organization_id: &str, now: &str) -> Result<i64, StorageError> {
+pub(crate) fn bump_tx(
+    tx: &Transaction<'_>,
+    organization_id: &str,
+    now: &str,
+) -> Result<i64, StorageError> {
     tx.query_row(
         "INSERT INTO permission_versions (organization_id, permission_version, updated_at)
          VALUES (?1, 2, ?2)

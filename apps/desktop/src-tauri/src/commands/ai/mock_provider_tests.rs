@@ -342,13 +342,9 @@ async fn mock_provider_complete_error_surfaces() {
     let (state, _keep) = test.into_state();
     let app = CommandApp::new(state);
 
-    let err = ai_diagnose_connection(
-        app.state(),
-        "err-cfg".into(),
-        "connection refused".into(),
-    )
-    .await
-    .unwrap_err();
+    let err = ai_diagnose_connection(app.state(), "err-cfg".into(), "connection refused".into())
+        .await
+        .unwrap_err();
     assert!(
         err.to_string().contains("503") || err.to_string().to_lowercase().contains("fail"),
         "unexpected err: {err}"

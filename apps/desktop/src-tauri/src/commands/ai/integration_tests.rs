@@ -166,9 +166,7 @@ async fn ai_diagnose_connection_parses_json() {
 async fn ai_analyze_queries_requires_history() {
     let (test, _mock) = TestAppState::with_wiremock_ai().await;
     let app = host_command_app(test);
-    let err = ai_analyze_queries(app.state(), None)
-        .await
-        .unwrap_err();
+    let err = ai_analyze_queries(app.state(), None).await.unwrap_err();
     assert!(err.to_string().contains("No query history"));
 }
 
@@ -1012,13 +1010,11 @@ async fn ai_generate_schema_doc_small_schema_single_step() {
 async fn ai_diagnose_connection_missing_config_errors() {
     let (test, _mock) = TestAppState::with_wiremock_ai().await;
     let app = host_command_app(test);
-    assert!(ai_diagnose_connection(
-        app.state(),
-        "missing".into(),
-        "connection refused".into(),
-    )
-    .await
-    .is_err());
+    assert!(
+        ai_diagnose_connection(app.state(), "missing".into(), "connection refused".into(),)
+            .await
+            .is_err()
+    );
 }
 
 #[tokio::test]
@@ -1398,7 +1394,10 @@ async fn ai_chat_ask_questions_with_executable_runs_tools_then_stops() {
     app.window().listen("ai:stream-chunk", move |event| {
         if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
             if payload["done"].as_bool().unwrap_or(false) {
-                let request_id = payload["requestId"].as_str().unwrap_or_default().to_string();
+                let request_id = payload["requestId"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string();
                 let has_tool_calls = payload.get("toolCalls").is_some();
                 done_log.lock().unwrap().push((request_id, has_tool_calls));
             }

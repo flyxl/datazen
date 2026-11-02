@@ -20,8 +20,8 @@
 
 use async_trait::async_trait;
 use datazen::named_views::{NamedView, NamedViewScope};
-use datazen::use_case_contracts::named_views::NamedViewsContractBinding;
 use datazen::use_case_contracts::named_views as contract;
+use datazen::use_case_contracts::named_views::NamedViewsContractBinding;
 use datazen::use_case_contracts::{ContractFailure, ContractResult};
 use tauri::Manager;
 

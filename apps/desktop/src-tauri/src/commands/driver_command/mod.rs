@@ -70,11 +70,7 @@ pub async fn get_driver_commands(
         .get(&driver_type)
         .await
         .ok_or_else(|| CommandError::NotFound(format!("Driver not found: {driver_type}")))?;
-    Ok(
-        datazen::mcp::application::command_policy::discovery_definitions(
-            driver.as_ref(),
-        ),
-    )
+    Ok(datazen::mcp::application::command_policy::discovery_definitions(driver.as_ref()))
 }
 
 /// Discover commands from a concrete live DB session.
@@ -87,11 +83,7 @@ pub async fn get_connection_commands(
     db_session_id: String,
 ) -> Result<Vec<DriverCommandDefinition>, CommandError> {
     let resolved = resolve::resolve_command_driver(&state, Some(&db_session_id), None).await?;
-    Ok(
-        datazen::mcp::application::command_policy::discovery_definitions(
-            resolved.driver.as_ref(),
-        ),
-    )
+    Ok(datazen::mcp::application::command_policy::discovery_definitions(resolved.driver.as_ref()))
 }
 
 /// Execute a driver command from the GUI.

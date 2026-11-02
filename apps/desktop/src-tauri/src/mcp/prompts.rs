@@ -24,7 +24,8 @@ impl DataZenMcpServer {
             self.resource_host.as_ref(),
             &args.connection_id,
         )
-        .await.map_err(DataZenMcpServer::map_err)?;
+        .await
+        .map_err(DataZenMcpServer::map_err)?;
         let lang = self.app_state.store.get_settings().await.language;
         let db_type = driver.driver_type();
         let db = args.database.as_deref().unwrap_or("");
@@ -71,7 +72,8 @@ impl DataZenMcpServer {
             self.resource_host.as_ref(),
             &args.connection_id,
         )
-        .await.map_err(DataZenMcpServer::map_err)?;
+        .await
+        .map_err(DataZenMcpServer::map_err)?;
         let lang = self.app_state.store.get_settings().await.language;
         let db_type = driver.driver_type();
 
@@ -111,7 +113,8 @@ impl DataZenMcpServer {
             self.resource_host.as_ref(),
             &args.connection_id,
         )
-        .await.map_err(DataZenMcpServer::map_err)?;
+        .await
+        .map_err(DataZenMcpServer::map_err)?;
         let lang = self.app_state.store.get_settings().await.language;
         let db_type = driver.driver_type();
 

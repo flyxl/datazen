@@ -93,7 +93,10 @@ pub struct ResourceRef {
 
 impl ResourceRef {
     /// 组织级资源引用（资源 id 为空串）。
-    pub fn organization_level(organization_id: impl Into<String>, resource_type: ResourceType) -> Self {
+    pub fn organization_level(
+        organization_id: impl Into<String>,
+        resource_type: ResourceType,
+    ) -> Self {
         Self {
             organization_id: organization_id.into(),
             resource_type,
@@ -214,14 +217,14 @@ impl PolicyService {
                 deny,
             })
             .collect::<Vec<_>>();
-        Ok(acl::evaluate(
-            role,
-            &to_acl_request(request),
-            &entries,
-        ))
+        Ok(acl::evaluate(role, &to_acl_request(request), &entries))
     }
 
-    fn read_role(&self, organization_id: &str, principal_id: &str) -> Result<Option<Role>, StorageError> {
+    fn read_role(
+        &self,
+        organization_id: &str,
+        principal_id: &str,
+    ) -> Result<Option<Role>, StorageError> {
         let conn = self.store.lock_for_adapter()?;
         read_role_conn(&conn, organization_id, principal_id)
     }
@@ -257,7 +260,13 @@ impl PolicyService {
             "INSERT INTO memberships (organization_id, principal_id, role_id, external_subject,
                                       enabled, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5)",
-            params![organization_id, principal_id, role.as_str(), external_subject, now],
+            params![
+                organization_id,
+                principal_id,
+                role.as_str(),
+                external_subject,
+                now
+            ],
         )
         .map_err(Self::backend)?;
         tx.commit().map_err(Self::backend)?;
@@ -398,7 +407,9 @@ impl PolicyService {
     ) -> Result<PolicyChange, StorageError> {
         validate_resource_ref(resource)?;
         if subject_id.is_empty() {
-            return Err(StorageError::Query("policy: subject_id must not be blank".into()));
+            return Err(StorageError::Query(
+                "policy: subject_id must not be blank".into(),
+            ));
         }
         let now = now_string();
         let mut conn = self.store.lock_for_adapter()?;
@@ -533,7 +544,8 @@ mod tests {
     }
 
     fn policy(store: Arc<AdminStore>) -> PolicyService {
-        PolicyService::new(store, b"test-server-secret-32-bytes-minimum!!".to_vec()).expect("policy")
+        PolicyService::new(store, b"test-server-secret-32-bytes-minimum!!".to_vec())
+            .expect("policy")
     }
 
     const NOW: &str = "2026-01-01T00:00:00.000Z";
@@ -564,7 +576,12 @@ mod tests {
         }
     }
 
-    fn authorize_request(org: &str, principal: &str, resource: &ResourceRef, action: Action) -> AuthorizeRequest {
+    fn authorize_request(
+        org: &str,
+        principal: &str,
+        resource: &ResourceRef,
+        action: Action,
+    ) -> AuthorizeRequest {
         AuthorizeRequest {
             organization_id: org.into(),
             principal_id: principal.into(),
@@ -632,7 +649,12 @@ mod tests {
         // 基线拒绝（orgMember 不可写）。
         assert_eq!(
             service
-                .authorize(&authorize_request("org-a", "member", &resource, Action::Write))
+                .authorize(&authorize_request(
+                    "org-a",
+                    "member",
+                    &resource,
+                    Action::Write
+                ))
                 .expect("authorize"),
             Decision::Denied
         );
@@ -650,27 +672,54 @@ mod tests {
         assert_eq!(change.permission_version, before + 1);
         assert_eq!(
             service
-                .authorize(&authorize_request("org-a", "member", &resource, Action::Write))
+                .authorize(&authorize_request(
+                    "org-a",
+                    "member",
+                    &resource,
+                    Action::Write
+                ))
                 .expect("authorize"),
             Decision::Allowed
         );
         // deny 压过 grant（§6.1 第 2 步）。
         service
-            .deny_acl("org-a", &resource, SubjectType::User, "member", Action::Write)
+            .deny_acl(
+                "org-a",
+                &resource,
+                SubjectType::User,
+                "member",
+                Action::Write,
+            )
             .expect("deny");
         assert_eq!(
             service
-                .authorize(&authorize_request("org-a", "member", &resource, Action::Write))
+                .authorize(&authorize_request(
+                    "org-a",
+                    "member",
+                    &resource,
+                    Action::Write
+                ))
                 .expect("authorize"),
             Decision::Denied
         );
         // revoke 回到基线拒绝（先移除 grant 是撤销传播的合法路径）。
         service
-            .revoke_acl("org-a", &resource, SubjectType::User, "member", Action::Write)
+            .revoke_acl(
+                "org-a",
+                &resource,
+                SubjectType::User,
+                "member",
+                Action::Write,
+            )
             .expect("revoke");
         assert_eq!(
             service
-                .authorize(&authorize_request("org-a", "member", &resource, Action::Write))
+                .authorize(&authorize_request(
+                    "org-a",
+                    "member",
+                    &resource,
+                    Action::Write
+                ))
                 .expect("authorize"),
             Decision::Denied
         );
@@ -691,14 +740,24 @@ mod tests {
         // 组织级动作：orgAdmin 允许（403 分支的 Allowed 侧）。
         assert_eq!(
             service
-                .authorize(&authorize_request("org-a", "admin", &org_level, Action::Admin))
+                .authorize(&authorize_request(
+                    "org-a",
+                    "admin",
+                    &org_level,
+                    Action::Admin
+                ))
                 .expect("authorize"),
             Decision::Allowed
         );
         // 组织级动作：orgMember 拒绝 → host 映射 403（资源 id 为空串）。
         assert_eq!(
             service
-                .authorize(&authorize_request("org-a", "member", &org_level, Action::Admin))
+                .authorize(&authorize_request(
+                    "org-a",
+                    "member",
+                    &org_level,
+                    Action::Admin
+                ))
                 .expect("authorize"),
             Decision::Denied
         );
@@ -743,7 +802,10 @@ mod tests {
 
         // 权限版本快照语义：旧会话行上的快照（1）已落后于当前版本（2），
         // 排队执行派发前比对即拒绝（§6.3 的 CM-39 路径，比对在派发层）。
-        assert_eq!(service.permission_version("org-a").expect("version"), before + 1);
+        assert_eq!(
+            service.permission_version("org-a").expect("version"),
+            before + 1
+        );
     }
 
     /// §6.2：隔离键对每个输入分量都敏感、对同输入确定。
@@ -763,11 +825,21 @@ mod tests {
             "same inputs → same partition key"
         );
         for variant in [
-            service.policy_isolation_key("org-b", "user-1", 3, 7, false).expect("key"),
-            service.policy_isolation_key("org-a", "user-2", 3, 7, false).expect("key"),
-            service.policy_isolation_key("org-a", "user-1", 4, 7, false).expect("key"),
-            service.policy_isolation_key("org-a", "user-1", 3, 8, false).expect("key"),
-            service.policy_isolation_key("org-a", "user-1", 3, 7, true).expect("key"),
+            service
+                .policy_isolation_key("org-b", "user-1", 3, 7, false)
+                .expect("key"),
+            service
+                .policy_isolation_key("org-a", "user-2", 3, 7, false)
+                .expect("key"),
+            service
+                .policy_isolation_key("org-a", "user-1", 4, 7, false)
+                .expect("key"),
+            service
+                .policy_isolation_key("org-a", "user-1", 3, 8, false)
+                .expect("key"),
+            service
+                .policy_isolation_key("org-a", "user-1", 3, 7, true)
+                .expect("key"),
         ] {
             assert_ne!(base, variant, "every input component must change the key");
         }
@@ -777,12 +849,18 @@ mod tests {
                 .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_'),
             "key must be base64url: {base}"
         );
-        assert_eq!(base.len(), 43, "HMAC-SHA256 → 32 bytes → 43 base64url chars");
+        assert_eq!(
+            base.len(),
+            43,
+            "HMAC-SHA256 → 32 bytes → 43 base64url chars"
+        );
     }
 
     #[test]
     fn an_empty_server_secret_is_rejected_at_construction() {
         let error = PolicyService::new(store(), Vec::new()).expect_err("empty secret");
-        assert!(error.to_string().contains("server_secret must not be empty"));
+        assert!(error
+            .to_string()
+            .contains("server_secret must not be empty"));
     }
 }

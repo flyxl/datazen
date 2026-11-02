@@ -230,10 +230,7 @@ async fn sync_task_crud_and_inspect() {
     super::save_sync_task_direct(app.state(), task)
         .await
         .unwrap();
-    assert_eq!(
-        super::get_sync_tasks(app.state()).await.unwrap().len(),
-        1
-    );
+    assert_eq!(super::get_sync_tasks(app.state()).await.unwrap().len(), 1);
 
     let conflicts = super::check_sync_conflicts(app.state(), "task-1".into())
         .await
@@ -322,18 +319,9 @@ async fn inspect_data_sync_returns_matched_tables() {
     let src = test.open_runtime_session("src-ins").await;
     let tgt = test.open_runtime_session("tgt-ins").await;
     let app = host_command_app(test);
-    let results = super::inspect_data_sync(
-        app.state(),
-        src,
-        tgt,
-        None,
-        None,
-        None,
-        None,
-        None,
-    )
-    .await
-    .unwrap();
+    let results = super::inspect_data_sync(app.state(), src, tgt, None, None, None, None, None)
+        .await
+        .unwrap();
     assert!(results
         .iter()
         .any(|r| r.status == TableMappingStatus::Matched && r.source_table == "users"));

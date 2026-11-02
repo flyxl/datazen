@@ -60,17 +60,13 @@ pub fn evaluate(role: Option<Role>, request: &Request<'_>, acl: &[AclEntry]) -> 
 
     // 2. 显式 deny 优先于一切 grant（§6.1 第 2 步）。
     if acl.iter().any(|entry| {
-        entry.deny
-            && entry.matches(request.principal_id)
-            && entry.action == request.action
+        entry.deny && entry.matches(request.principal_id) && entry.action == request.action
     }) {
         return Decision::Denied;
     }
     // 3. 资源 ACL grant。
     if acl.iter().any(|entry| {
-        !entry.deny
-            && entry.matches(request.principal_id)
-            && entry.action == request.action
+        !entry.deny && entry.matches(request.principal_id) && entry.action == request.action
     }) {
         return Decision::Allowed;
     }

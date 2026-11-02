@@ -200,8 +200,18 @@ fn recording_source() -> Arc<RecordingSource> {
     Arc::new(RecordingSource {
         driver: MockDriver::new("postgres", MockDriverOptions::default()),
         tables: vec![
-            TableInfo { name: "users".into(), schema: None, table_type: TableType::Table, row_count: Some(0) },
-            TableInfo { name: "orders".into(), schema: None, table_type: TableType::Table, row_count: Some(0) },
+            TableInfo {
+                name: "users".into(),
+                schema: None,
+                table_type: TableType::Table,
+                row_count: Some(0),
+            },
+            TableInfo {
+                name: "orders".into(),
+                schema: None,
+                table_type: TableType::Table,
+                row_count: Some(0),
+            },
         ],
         tables_error: Mutex::new(None),
         schema_calls: Mutex::new(Vec::new()),
@@ -599,7 +609,9 @@ async fn generate_without_tool_support_streams_plainly() {
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     let chunks = seen.lock().unwrap();
     assert!(
-        chunks.iter().any(|c| c.done && c.content == "SELECT * FROM users"),
+        chunks
+            .iter()
+            .any(|c| c.done && c.content == "SELECT * FROM users"),
         "stream chunks forwarded: {chunks:?}"
     );
 }

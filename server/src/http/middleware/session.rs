@@ -109,6 +109,10 @@ mod tests {
         let params = extract_params(&headers(Some("dbs-1"), Some("not-a-number")));
         assert_eq!(params.runtime_epoch, None);
         assert_eq!(params.malformed, vec![RUNTIME_EPOCH_HEADER]);
-        assert_eq!(params.handle.as_deref(), Some("dbs-1"), "坏 epoch 不影响句柄");
+        assert_eq!(
+            params.handle.as_deref(),
+            Some("dbs-1"),
+            "坏 epoch 不影响句柄"
+        );
     }
 }

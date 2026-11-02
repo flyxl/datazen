@@ -119,10 +119,9 @@ async fn cancel_command_answers_false_for_unknown_ids() {
     // B2 data_transfer 刀：`cancel_data_transfer_impl` 转发体已删，经真实
     // 命令入口驱动（mock app 托管 harness 态）。
     let app = super::super::super::command_test_host::host_command_app(test);
-    let answered =
-        crate::commands::data_transfer::cancel_data_transfer(app.state(), unknown)
-            .await
-            .expect("an unknown job id must not be a transport error");
+    let answered = crate::commands::data_transfer::cancel_data_transfer(app.state(), unknown)
+        .await
+        .expect("an unknown job id must not be a transport error");
     assert!(
         !answered,
         "false means nothing was cancelled so the caller must not treat it as success"

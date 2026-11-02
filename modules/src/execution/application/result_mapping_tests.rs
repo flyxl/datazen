@@ -7,7 +7,7 @@
 use super::{result_relation_candidate, verify_result_mapping};
 use crate::execution::target::NamespaceTarget;
 use crate::shared::id::ConnectionId;
-use datazen_driver_api::{ColumnSchema, ColumnInfo, TableSchema};
+use datazen_driver_api::{ColumnInfo, ColumnSchema, TableSchema};
 use serde_json::json;
 
 fn candidate(sql: &str) -> String {
@@ -43,13 +43,19 @@ fn accepts_limit_and_offset_tails_without_capturing_them() {
 
 #[test]
 fn accepts_quoted_and_multi_part_names() {
-    assert_eq!(candidate(r#"SELECT * FROM "app"."users""#), r#""app"."users""#);
+    assert_eq!(
+        candidate(r#"SELECT * FROM "app"."users""#),
+        r#""app"."users""#
+    );
     assert_eq!(
         candidate("SELECT * FROM db.app.users LIMIT 1"),
         "db.app.users"
     );
     // 引号内转义（"" 表面引号）原样保留。
-    assert_eq!(candidate(r#"SELECT * FROM "weird""name""#), r#""weird""name""#);
+    assert_eq!(
+        candidate(r#"SELECT * FROM "weird""name""#),
+        r#""weird""name""#
+    );
     // 反引号（MySQL 风格）与方括号（SQL Server 风格）。
     assert_eq!(candidate("SELECT * FROM `app`.`users`"), "`app`.`users`");
     assert_eq!(candidate("SELECT * FROM [app].[users]"), "[app].[users]");
@@ -140,7 +146,10 @@ fn verify_accepts_matching_columns_with_primary_key_coverage() {
     assert_eq!(target.namespace.database.as_deref(), Some("app"));
     assert_eq!(target.namespace.schema.as_deref(), Some("public"));
     assert_eq!(
-        target.object.as_ref().map(|o| (o.kind.as_str(), o.name.as_str())),
+        target
+            .object
+            .as_ref()
+            .map(|o| (o.kind.as_str(), o.name.as_str())),
         Some(("relation", "users"))
     );
 }
@@ -259,11 +268,6 @@ fn verify_target_namespace_carries_only_database_and_schema() {
     .expect("mapping verified");
     assert_eq!(
         target.namespace,
-        NamespaceTarget::new(
-            Some("app".into()),
-            None,
-            Some("public".into()),
-            Vec::new()
-        )
+        NamespaceTarget::new(Some("app".into()), None, Some("public".into()), Vec::new())
     );
 }

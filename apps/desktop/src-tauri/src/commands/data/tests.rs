@@ -1,6 +1,6 @@
+use super::data_command_test_host::host_command_app;
 use super::test_fixtures::*;
 use super::*;
-use super::data_command_test_host::host_command_app;
 use crate::testing::app_state::TestAppState;
 use datazen_driver_api::Value;
 use std::collections::BTreeMap;
@@ -74,15 +74,9 @@ async fn commit_rejects_stale_fingerprint_before_execution() {
     )
     .await
     .unwrap();
-    let error = commit_pending_changes(
-        app.state(),
-        conn_id.clone(),
-        None,
-        plan,
-        "stale".into(),
-    )
-    .await
-    .unwrap_err();
+    let error = commit_pending_changes(app.state(), conn_id.clone(), None, plan, "stale".into())
+        .await
+        .unwrap_err();
 
     assert!(error.to_string().contains("fingerprint"));
     assert!(

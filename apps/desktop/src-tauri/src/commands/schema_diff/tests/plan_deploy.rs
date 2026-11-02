@@ -78,12 +78,10 @@ async fn await_terminal_job(
 ) -> job::desktop::SchemaDiffJobDetails {
     tokio::time::timeout(std::time::Duration::from_secs(10), async {
         loop {
-            let details = job::desktop::get_schema_diff_job_details(
-                app.state(),
-                job_id.to_string(),
-            )
-            .await
-            .expect("accepted Schema Diff Job remains queryable");
+            let details =
+                job::desktop::get_schema_diff_job_details(app.state(), job_id.to_string())
+                    .await
+                    .expect("accepted Schema Diff Job remains queryable");
             if details.details.job.state.is_terminal() {
                 return details;
             }

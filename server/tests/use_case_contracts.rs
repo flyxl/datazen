@@ -195,10 +195,7 @@ fn outcome<T: DeserializeOwned>(status: StatusCode, value: serde_json::Value) ->
     }
     Err(datazen::use_case_contracts::ContractFailure {
         code: value["code"].as_str().map(str::to_string),
-        message: value["message"]
-            .as_str()
-            .unwrap_or_default()
-            .to_string(),
+        message: value["message"].as_str().unwrap_or_default().to_string(),
     })
 }
 
@@ -340,14 +337,15 @@ async fn save_on_the_wire_answers_201_for_a_minted_view_and_200_for_an_update() 
 
     let mut update = contract::draft_fixture("Renamed", &contract::contract_scope());
     update.id = "view-kept".into();
-    binding.seed(vec![contract::stored_fixture(
-        "view-kept",
-        "Old name",
-        &contract::contract_scope(),
-        false,
-    )])
-    .await
-    .expect("seed the known id");
+    binding
+        .seed(vec![contract::stored_fixture(
+            "view-kept",
+            "Old name",
+            &contract::contract_scope(),
+            false,
+        )])
+        .await
+        .expect("seed the known id");
     let response = binding
         .app
         .clone()
@@ -463,5 +461,9 @@ async fn a_partial_scope_query_does_not_filter_the_wire_answer() {
     let (_, value) = wire(response).await;
     let views: Vec<NamedView> =
         serde_json::from_value(value).expect("the answer is a NamedView array");
-    assert_eq!(views.len(), 2, "no table in the query means no scope filter");
+    assert_eq!(
+        views.len(),
+        2,
+        "no table in the query means no scope filter"
+    );
 }

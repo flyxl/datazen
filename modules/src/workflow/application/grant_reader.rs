@@ -115,10 +115,8 @@ mod tests {
     #[tokio::test]
     async fn the_port_is_object_safe_and_injectable_as_an_arc_trait_object() {
         assert_object_safe::<dyn WorkflowScheduleGrantReader>();
-        let reader: Arc<dyn WorkflowScheduleGrantReader> = Arc::new(StubReader::with(&[(
-            "demo",
-            Some(grant("demo")),
-        )]));
+        let reader: Arc<dyn WorkflowScheduleGrantReader> =
+            Arc::new(StubReader::with(&[("demo", Some(grant("demo")))]));
         let fetched = reader
             .schedule_grant("demo")
             .await
@@ -131,8 +129,7 @@ mod tests {
     /// 行为钉子：授权单缺失是事实（Ok(None)），不是基础设施故障。
     #[tokio::test]
     async fn a_missing_grant_is_a_fact_not_an_error() {
-        let reader: Arc<dyn WorkflowScheduleGrantReader> =
-            Arc::new(StubReader::with(&[]));
+        let reader: Arc<dyn WorkflowScheduleGrantReader> = Arc::new(StubReader::with(&[]));
         assert!(reader
             .schedule_grant("missing")
             .await

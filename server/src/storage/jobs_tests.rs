@@ -14,7 +14,7 @@ use datazen::jobs::domain::job::{
 };
 use datazen::jobs::domain::repository::JobRepository;
 use datazen::jobs::domain::time::{JobClock, SharedClock};
-use datazen::shared::context::{RequestContext, OwnerRef};
+use datazen::shared::context::{OwnerRef, RequestContext};
 use datazen::shared::error::PortError;
 use datazen::shared::id::{
     BlockId, ClientInstanceId, Counter, ExecutionId, IdempotencyKey, JobId, JobStateVersion,
@@ -79,10 +79,18 @@ fn fixture() -> Fixture {
     Fixture { jobs, clock }
 }
 
-async fn accepted(jobs: &ServerJobs, ctx: &RequestContext, job_id: &str) -> datazen::jobs::domain::job::JobRecord {
-    jobs.accept(ctx, definition(job_id, prepare_payload()), &IdempotencyKey::new(format!("idem-{job_id}")))
-        .await
-        .expect("accept succeeds")
+async fn accepted(
+    jobs: &ServerJobs,
+    ctx: &RequestContext,
+    job_id: &str,
+) -> datazen::jobs::domain::job::JobRecord {
+    jobs.accept(
+        ctx,
+        definition(job_id, prepare_payload()),
+        &IdempotencyKey::new(format!("idem-{job_id}")),
+    )
+    .await
+    .expect("accept succeeds")
 }
 
 #[tokio::test]
@@ -187,7 +195,10 @@ async fn cross_organization_reads_are_not_found_and_listings_are_empty() {
 
     let org_b = ctx("org-b", "user-2");
     let get = fixture.jobs.get(&org_b, JobId::new("job-1")).await;
-    assert!(matches!(get, Err(PortError::NotFound(_))), "越组织读取按「不存在」处理");
+    assert!(
+        matches!(get, Err(PortError::NotFound(_))),
+        "越组织读取按「不存在」处理"
+    );
 
     // 过滤器带本组织的 id、ctx 是别组织 → 空列表（不是错误，也不泄漏存在性）。
     let filter = JobFilter {
@@ -212,7 +223,11 @@ async fn cross_organization_reads_are_not_found_and_listings_are_empty() {
         after: None,
         limit: None,
     };
-    let listed = fixture.jobs.list(&org_a, own_filter).await.expect("own listing");
+    let listed = fixture
+        .jobs
+        .list(&org_a, own_filter)
+        .await
+        .expect("own listing");
     assert_eq!(listed.len(), 1);
 }
 
@@ -249,9 +264,7 @@ async fn claim_fences_worker_writes_by_generation_and_lease() {
     assert!(matches!(outcome, Err(PortError::StaleClaim)));
 
     // 租约过期后同一 worker 的写入也拒绝（fence 检查租约）。
-    fixture
-        .clock
-        .set("2026-01-01T00:02:00Z");
+    fixture.clock.set("2026-01-01T00:02:00Z");
     let stage = StageRecord {
         job_id: JobId::new("job-1"),
         stage_id: StageId::new("stage-1"),
@@ -262,7 +275,10 @@ async fn claim_fences_worker_writes_by_generation_and_lease() {
         finished_at: None,
     };
     let outcome = fixture.jobs.record_stage(&org_a, &claim, stage).await;
-    assert!(matches!(outcome, Err(PortError::StaleClaim)), "过期租约的写入一律拒绝");
+    assert!(
+        matches!(outcome, Err(PortError::StaleClaim)),
+        "过期租约的写入一律拒绝"
+    );
 }
 
 #[tokio::test]
@@ -373,7 +389,10 @@ async fn compare_and_set_rejects_stale_versions_and_clears_claim_on_terminal() {
         .jobs
         .compare_and_set_state(&org_a, &claim, JobStateVersion::new(1), JobState::Succeeded)
         .await;
-    assert!(matches!(stale, Err(PortError::CasConflict { entity: "job", .. })));
+    assert!(matches!(
+        stale,
+        Err(PortError::CasConflict { entity: "job", .. })
+    ));
 
     // 正确版本推进到终态 → claim 清空，后续写入按 StaleClaim 拒绝。
     let finished = fixture
@@ -394,7 +413,10 @@ async fn compare_and_set_rejects_stale_versions_and_clears_claim_on_terminal() {
         finished_at: None,
     };
     let outcome = fixture.jobs.record_stage(&org_a, &claim, stage).await;
-    assert!(matches!(outcome, Err(PortError::StaleClaim)), "终态后 claim 已清空");
+    assert!(
+        matches!(outcome, Err(PortError::StaleClaim)),
+        "终态后 claim 已清空"
+    );
 }
 
 #[tokio::test]
@@ -464,7 +486,10 @@ async fn checkpoints_conflict_on_repeated_versions() {
         .await;
     assert!(matches!(
         outcome,
-        Err(PortError::CasConflict { entity: "job_checkpoint", .. })
+        Err(PortError::CasConflict {
+            entity: "job_checkpoint",
+            ..
+        })
     ));
 }
 
@@ -474,9 +499,13 @@ async fn commit_boundaries_are_durable_in_submission_order() {
     let clock = SharedClock::at("2026-01-01T00:00:00Z");
     let jobs = ServerJobs::new(store.clone(), Arc::new(clock.clone()), CLAIM_TTL_SECS);
     let org_a = ctx("org-a", "user-1");
-    jobs.accept(&org_a, definition("job-1", prepare_payload()), &IdempotencyKey::new("idem-1"))
-        .await
-        .expect("accept");
+    jobs.accept(
+        &org_a,
+        definition("job-1", prepare_payload()),
+        &IdempotencyKey::new("idem-1"),
+    )
+    .await
+    .expect("accept");
     let claim = jobs
         .claim(&org_a, JobId::new("job-1"), WorkerId::new("w-1"))
         .await
@@ -550,7 +579,12 @@ async fn recoverable_scan_lists_pending_states_only() {
         .expect("claim done");
     fixture
         .jobs
-        .compare_and_set_state(&org_a, &done_claim, JobStateVersion::new(2), JobState::Succeeded)
+        .compare_and_set_state(
+            &org_a,
+            &done_claim,
+            JobStateVersion::new(2),
+            JobState::Succeeded,
+        )
         .await
         .expect("finish");
 
@@ -568,10 +602,17 @@ async fn recoverable_scan_lists_pending_states_only() {
         .iter()
         .map(|record| record.view.job_id.as_str().to_string())
         .collect();
-    assert_eq!(ids, vec!["job-queued".to_string(), "job-running".to_string()]);
+    assert_eq!(
+        ids,
+        vec!["job-queued".to_string(), "job-running".to_string()]
+    );
 
     // 别组织的待办不出现在本组织的扫描里。
-    let other = fixture.jobs.list_recoverable(&org_b, filter).await.expect("scan b");
+    let other = fixture
+        .jobs
+        .list_recoverable(&org_b, filter)
+        .await
+        .expect("scan b");
     assert_eq!(other.len(), 1);
     assert_eq!(other[0].view.job_id.as_str(), "job-b1");
 }
@@ -589,7 +630,10 @@ async fn renew_extends_the_lease_without_bumping_the_generation() {
 
     fixture.clock.set("2026-01-01T00:00:30Z");
     let renewed = fixture.jobs.renew(&claim).await.expect("renew");
-    assert_eq!(renewed.claim_generation, claim.claim_generation, "续约不变 generation");
+    assert_eq!(
+        renewed.claim_generation, claim.claim_generation,
+        "续约不变 generation"
+    );
     assert_eq!(renewed.expires_at.as_str(), "2026-01-01T00:01:30Z");
     assert_eq!(renewed.claimed_at.as_str(), "2026-01-01T00:00:30Z");
 
