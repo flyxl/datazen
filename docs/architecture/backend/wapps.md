@@ -103,7 +103,7 @@ Wapp 主题在 IPC 之后才注入 CSS，首屏无法读取 pack token。`syncWe
 - Rust 内核：`cargo test -p datazen --lib`（manifest 规则 / install 真实路径 / 存储隔离 / fixture 与 packages/wapps 双向守护 / zip 路径守卫）
 - Rust 宿主：`cargo test -p datazen_desktop --lib wapps`（`datazen://` 协议与协议安全 45 条、命令层 / bootstrap / 安装集成 19 条）
 - Host 单测：桥接语义+安全（wappBridge*.test）、主题管线（themePackApply.wappTheme.test）、壳集成（WappPageShell.bridge）、store、管理页/工作区组件
-- E2E：`e2e/specs/wapps.spec.ts` J1–J5（装→列表→Tab→桥探针→外观→停用卸载），探针经桥 `storage.set` 落盘后磁盘对账（不依赖帧内 WebDriver 自动化）
+- E2E：`e2e/specs/wapps.ts` J1–J5（装→列表→Tab→桥探针→外观→停用卸载），探针经桥 `storage.set` 落盘后磁盘对账（不依赖帧内 WebDriver 自动化）
 
 ---
 

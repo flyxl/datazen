@@ -2,7 +2,7 @@
 //!
 //! The sample wapp package must keep passing the full manifest rule set
 //! (§2.2 rules 1–7) and the real directory-install path, otherwise every
-//! journey in `e2e/specs/wapps.spec.ts` fails for fixture reasons instead of
+//! journey in `e2e/specs/wapps.ts` fails for fixture reasons instead of
 //! product reasons. Reads the fixture relative to `CARGO_MANIFEST_DIR` so the
 //! check runs both locally and in CI without any setup.
 //!

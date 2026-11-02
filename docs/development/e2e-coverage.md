@@ -142,7 +142,7 @@
 | 数据看板 | `data-dashboard-*.ts` | Covered（表格视图底部导出按钮交互见 UJ-05） |
 | 应用数据备份标签 | `app-data-backup.ts` | Covered |
 | 路径 IPC 加固 | `path-ipc-hardening.ts` | Covered |
-| 插件系统：安装（两步对话框）/ 管理卡片与权限徽标 / Workspace 导航+Tab / 桥往返（探针落盘或 shell 级降级断言，见例外）/ 双 Tab 体系独立 / 外观主题切换 / 停用联动关 Tab / 卸载确认 | `wapps.spec.ts`（J1/J2/J3/J5/J4）+ fixture `e2e/fixtures/sample-wapp/`（fixture 校验锚点：`wapps::fixture_tests` Rust 单测） | Covered（安装走 PathInput 键入路径，原生目录选择器见例外；`ui.notify` 限频、iframe 崩溃恢复与 iframe 内容加载见例外） |
+| 插件系统：安装（两步对话框）/ 管理卡片与权限徽标 / Workspace 导航+Tab / 桥往返（探针落盘或 shell 级降级断言，见例外）/ 双 Tab 体系独立 / 外观主题切换 / 停用联动关 Tab / 卸载确认 | `wapps.ts`（J1/J2/J3/J5/J4）+ fixture `e2e/fixtures/sample-wapp/`（fixture 校验锚点：`wapps::fixture_tests` Rust 单测） | Covered（安装走 PathInput 键入路径，原生目录选择器见例外；`ui.notify` 限频、iframe 崩溃恢复与 iframe 内容加载见例外） |
 
 ## 例外登记（自动化限制）
 

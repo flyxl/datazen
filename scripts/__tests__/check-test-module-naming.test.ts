@@ -4,18 +4,23 @@
  * naming guard.
  *
  * The guard has no virtual `files` option — it walks a real directory tree —
- * so every fixture below is a real tree staged under `os.tmpdir()`. Two
+ * so every fixture below is a real tree staged under `os.tmpdir()`. Three
  * properties of the guard shape those trees:
  *
  *   - it scans only its hardcoded workspace-member mirror (six fixed member
  *     directories plus `packages/drivers/*`, minus the workspace excludes), so
  *     each fixture pre-creates every member directory and `packages/drivers/`
- *     — a missing one is exit 2, not an empty scan — and every fixture file
- *     must sit under one of those paths or the guard cannot see it;
+ *     — a missing one is exit 2, not an empty scan — and every Rust fixture
+ *     file must sit under one of those paths or the guard cannot see it;
+ *   - the TS rules (3–4) add one more mirrored root: `e2e/specs` must exist
+ *     or the run is exit 2, so the skeleton stages it too — a driver
+ *     `e2e/` directory is optional and only counts as a spec tree when
+ *     present (the driver fixtures rely on that: staging
+ *     `packages/drivers/redis/e2e/…` is what bumps the tree count to 2);
  *   - the ok line reports how many files and gated modules the run actually
- *     saw, so the clean fixtures assert those numbers: a "clean" verdict must
- *     not be fakeable by a scan that found nothing (the same stance the
- *     panic-policy suite takes for its test-module case).
+ *     saw on BOTH scanners, so the clean fixtures assert those numbers: a
+ *     "clean" verdict must not be fakeable by a scan that found nothing (the
+ *     same stance the panic-policy suite takes for its test-module case).
  *
  * Findings are asserted through the guard's injectable `error` option
  * (deterministic under vitest) rather than by spying on `process.stderr`;
@@ -24,8 +29,8 @@
  *
  * Skipped coverage: the stale-allow-list exit-2 path needs a non-empty
  * ALLOWLIST const, which is module-private and empty since the rename batch,
- * so it is not exercisable from this suite — the vanished-member fixture
- * covers the exit-2 misconfiguration plumbing instead.
+ * so it is not exercisable from this suite — the vanished-member and
+ * vanished-spec-tree fixtures cover the exit-2 misconfiguration plumbing.
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
@@ -38,7 +43,8 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
 /**
  * The guard's hardcoded workspace-member mirror: every fixture must create all
- * of these (plus the `packages/drivers` glob root) or the run is exit 2.
+ * of these (plus the `packages/drivers` glob root and the `e2e/specs` spec-tree
+ * root) or the run is exit 2.
  */
 const WORKSPACE_MEMBER_DIRS = [
   'apps/desktop/src-tauri',
@@ -56,7 +62,7 @@ const fixtureRoots: string[] = [];
 function makeFixtureRoot(files: Record<string, string>): string {
   const root = mkdtempSync(join(tmpdir(), 'check-test-module-naming-'));
   fixtureRoots.push(root);
-  for (const dir of [...WORKSPACE_MEMBER_DIRS, 'packages/drivers']) {
+  for (const dir of [...WORKSPACE_MEMBER_DIRS, 'packages/drivers', 'e2e/specs']) {
     mkdirSync(join(root, dir), { recursive: true });
   }
   for (const [rel, text] of Object.entries(files)) {
@@ -109,7 +115,9 @@ describe('Rule 1 — gated module names must signal "test"', () => {
     const result = runGuard(root);
     expect(result.code).toBe(0);
     // Both numbers are asserted so a scan that saw nothing cannot fake the pass.
-    expect(result.out).toContain('ok (2 Rust files scanned, 1 cfg(test)-gated modules)');
+    expect(result.out).toContain(
+      'ok (2 Rust files scanned, 1 cfg(test)-gated modules; 0 TS files scanned, 1 wdio spec trees)',
+    );
   });
 
   it('judges a #[path] redirect by the path basename, not the mod name', () => {
@@ -121,7 +129,9 @@ describe('Rule 1 — gated module names must signal "test"', () => {
     });
     const result = runGuard(root);
     expect(result.code).toBe(0);
-    expect(result.out).toContain('ok (2 Rust files scanned, 1 cfg(test)-gated modules)');
+    expect(result.out).toContain(
+      'ok (2 Rust files scanned, 1 cfg(test)-gated modules; 0 TS files scanned, 1 wdio spec trees)',
+    );
   });
 
   it('falls back to the mod name when #[path] points at a mod.rs', () => {
@@ -180,7 +190,9 @@ describe('Rule 1 — gated module names must signal "test"', () => {
     });
     const result = runGuard(root);
     expect(result.code).toBe(0);
-    expect(result.out).toContain('ok (2 Rust files scanned, 1 cfg(test)-gated modules)');
+    expect(result.out).toContain(
+      'ok (2 Rust files scanned, 1 cfg(test)-gated modules; 0 TS files scanned, 1 wdio spec trees)',
+    );
   });
 
   it('leaves an ungated declaration of an unsignaled name alone', () => {
@@ -193,7 +205,9 @@ describe('Rule 1 — gated module names must signal "test"', () => {
     // `mod plain_helpers;` is production code as far as this guard is
     // concerned — nothing to flag.
     expect(result.code).toBe(0);
-    expect(result.out).toContain('ok (2 Rust files scanned, 0 cfg(test)-gated modules)');
+    expect(result.out).toContain(
+      'ok (2 Rust files scanned, 0 cfg(test)-gated modules; 0 TS files scanned, 1 wdio spec trees)',
+    );
   });
 });
 
@@ -229,7 +243,9 @@ describe('Rule 2 — test-named files must not reach the product binary', () => 
     });
     const result = runGuard(root);
     expect(result.code).toBe(0);
-    expect(result.out).toContain('ok (1 Rust files scanned, 0 cfg(test)-gated modules)');
+    expect(result.out).toContain(
+      'ok (1 Rust files scanned, 0 cfg(test)-gated modules; 0 TS files scanned, 1 wdio spec trees)',
+    );
   });
 
   it('accepts include!-reached tests when the gate is direct or inherited', () => {
@@ -257,7 +273,9 @@ describe('Rule 2 — test-named files must not reach the product binary', () => 
     // If include! were not a declaration channel, nested_tests.rs and
     // direct_tests.rs would be orphans; if gating were not transitive,
     // nested_tests.rs would ship in the product binary.
-    expect(result.out).toContain('ok (4 Rust files scanned, 1 cfg(test)-gated modules)');
+    expect(result.out).toContain(
+      'ok (4 Rust files scanned, 1 cfg(test)-gated modules; 0 TS files scanned, 1 wdio spec trees)',
+    );
   });
 
   it('flags a *_tests.rs whose declaring file sits in an ungated tree', () => {
@@ -275,6 +293,94 @@ describe('Rule 2 — test-named files must not reach the product binary', () => 
   });
 });
 
+describe('Rule 3 — *.spec.* is nobody’s convention here', () => {
+  it('flags a .spec file wherever it appears, in any scanned extension', () => {
+    // The incident class: `e2e/specs/wapps.spec.ts` was the only .spec file
+    // the repository ever had — a suffix from a convention nobody here uses.
+    const root = makeFixtureRoot({
+      'packages/frontend/src/commands/wapps.spec.ts': "import { it } from 'vitest';\n",
+      'scripts/probe.spec.mjs': "console.log('x');\n",
+    });
+    const result = runGuard(root);
+    expect(result.code).toBe(1);
+    expect(result.err).toContain('packages/frontend/src/commands/wapps.spec.ts:1');
+    expect(result.err).toContain('scripts/probe.spec.mjs:1');
+    // The finding must say what the conventions ARE, not just that this is
+    // not one of them — that is what makes it actionable.
+    expect(result.err).toContain('.test.* (vitest trees)');
+    expect(result.err).toContain('bare names (wdio spec trees)');
+  });
+
+  it('accepts the same files once they carry their tree’s own signal', () => {
+    const root = makeFixtureRoot({
+      // vitest tree: the suffix is the signal.
+      'packages/frontend/src/commands/wapps.test.ts': "import { it } from 'vitest';\n",
+      // wdio spec tree: the directory is the signal, the name stays bare.
+      'e2e/specs/wapps.ts': "describe('wapps', () => {});\n",
+    });
+    const result = runGuard(root);
+    expect(result.code).toBe(0);
+    expect(result.out).toContain(
+      'ok (0 Rust files scanned, 0 cfg(test)-gated modules; 2 TS files scanned, 1 wdio spec trees)',
+    );
+  });
+});
+
+describe('Rule 4 — wdio spec-tree filenames stay bare', () => {
+  it('flags a pytest-style test_ prefix inside e2e/specs (the incident file)', () => {
+    // `e2e/specs/test_tester-session-fresh.ts` was the only prefixed name in
+    // a 128-file tree of bare kebab-case siblings.
+    const root = makeFixtureRoot({
+      'e2e/specs/test_tester-session-fresh.ts':
+        "import { expect } from '@wdio/globals';\n",
+    });
+    const result = runGuard(root);
+    expect(result.code).toBe(1);
+    expect(result.err).toContain('e2e/specs/test_tester-session-fresh.ts:1');
+    expect(result.err).toContain('foreign runner signal');
+  });
+
+  it('flags a vitest-style .test.ts suffix inside a driver e2e tree', () => {
+    const root = makeFixtureRoot({
+      'packages/drivers/redis/e2e/sync-wave-one.test.ts':
+        "describe('sync', () => {});\n",
+    });
+    const result = runGuard(root);
+    expect(result.code).toBe(1);
+    expect(result.err).toContain('packages/drivers/redis/e2e/sync-wave-one.test.ts:1');
+  });
+
+  it('keeps bare names in the spec trees clean — the directory is the signal', () => {
+    const root = makeFixtureRoot({
+      'e2e/specs/tester-session-fresh.ts':
+        "import { expect } from '@wdio/globals';\n",
+      'packages/drivers/redis/e2e/redis-topology.ts':
+        "describe('topology', () => {});\n",
+    });
+    const result = runGuard(root);
+    expect(result.code).toBe(0);
+    // Staging the driver e2e/ directory is what bumps the spec-tree count
+    // from 1 to 2 — this asserts the driver trees really joined the scan.
+    expect(result.out).toContain(
+      'ok (0 Rust files scanned, 0 cfg(test)-gated modules; 2 TS files scanned, 2 wdio spec trees)',
+    );
+  });
+
+  it('does not police .test.ts outside the spec trees — vitest trees own that suffix', () => {
+    // e2e/contract is a vitest tree (its config includes
+    // `e2e/contract/**/*.test.ts`), not a wdio spec tree: the suffix there is
+    // the convention, and Rule 4 must not reach outside its trees.
+    const root = makeFixtureRoot({
+      'packages/frontend/src/lib/windowCapabilities.test.ts':
+        "import { it } from 'vitest';\n",
+      'e2e/contract/__tests__/fixtures.test.ts': "import { it } from 'vitest';\n",
+    });
+    const result = runGuard(root);
+    expect(result.code).toBe(0);
+    expect(result.out).toContain('; 2 TS files scanned, 1 wdio spec trees)');
+  });
+});
+
 describe('guard plumbing', () => {
   it('exits 2 when a mirrored workspace member directory has vanished', () => {
     // All members but `server` exist, so the walk really reaches the sixth
@@ -286,19 +392,40 @@ describe('guard plumbing', () => {
       if (dir !== 'server') mkdirSync(join(root, dir), { recursive: true });
     }
     mkdirSync(join(root, 'packages/drivers'), { recursive: true });
+    mkdirSync(join(root, 'e2e/specs'), { recursive: true });
     const result = runGuard(root);
     expect(result.code).toBe(2);
     expect(result.err).toContain('workspace member directory missing: server');
   });
 
+  it('exits 2 when the mirrored wdio spec-tree root has vanished', () => {
+    // The workspace skeleton is complete, but `e2e/specs` is gone: Rule 4's
+    // scan would silently shrink to the driver trees while the guard kept
+    // printing green — the same silent-empty-scan failure mode as a vanished
+    // member, and the same exit 2.
+    const root = mkdtempSync(join(tmpdir(), 'check-test-module-naming-'));
+    fixtureRoots.push(root);
+    for (const dir of WORKSPACE_MEMBER_DIRS) {
+      mkdirSync(join(root, dir), { recursive: true });
+    }
+    mkdirSync(join(root, 'packages/drivers'), { recursive: true });
+    const result = runGuard(root);
+    expect(result.code).toBe(2);
+    expect(result.err).toContain('wdio spec-tree root missing: e2e/specs');
+  });
+
   it('passes on the real repository tree and prints the ok line', () => {
-    // No probe lock needed: the sibling mutation probes plant .ts/.tsx files
-    // under apps/desktop/src and packages/frontend/src, and this guard scans
-    // only .rs files under the Rust workspace members — no overlap.
+    // No probe lock needed: the sibling mutation probes plant .ts files under
+    // apps/desktop/src and packages/frontend/src with convention-shaped names
+    // (a `test/` directory, vendored node_modules), never a *.spec.* name and
+    // never inside a wdio spec tree — no overlap with Rules 3–4, and the Rust
+    // rules still only see .rs files.
     const result = runGuard(REPO_ROOT);
     expect(result.err).toBe('');
     expect(result.code).toBe(0);
     // Counts drift as the repo grows, so pin the shape, not the numbers.
-    expect(result.out).toMatch(/ok \(\d+ Rust files scanned, \d+ cfg\(test\)-gated modules\)/);
+    expect(result.out).toMatch(
+      /ok \(\d+ Rust files scanned, \d+ cfg\(test\)-gated modules; \d+ TS files scanned, \d+ wdio spec trees\)/,
+    );
   });
 });

@@ -17,6 +17,26 @@
  *     `*_tests.rs` file that is NOT behind a cfg(test) gate, i.e. test code
  *     compiled into the product binary.
  *
+ * The same reader-facing question exists on the TS side, where the repo
+ * runs two runners with two disjoint filename conventions, and two more
+ * rules pin them:
+ *
+ *   - Rule 3 — a `*.spec.{ts,tsx,js,jsx,mjs,cjs}` file anywhere in authored
+ *     source. The vitest trees (a `__tests__/` directory or a colocated
+ *     `*.test.ts`) carry the signal in the SUFFIX; the wdio spec trees carry
+ *     it in the DIRECTORY. `.spec` belongs to neither convention, so a
+ *     reader cannot tell which runner — if any — picks the file up. This is
+ *     the class that produced `e2e/specs/wapps.spec.ts` (renamed to
+ *     `wapps.ts`, the only `.spec` file the repository ever had).
+ *   - Rule 4 — a wdio spec-tree file whose name carries a foreign runner's
+ *     signal: a `test_` prefix (pytest) or a `.test.ts` suffix (vitest).
+ *     Inside the wdio spec trees the directory is the test signal — like
+ *     cargo's `tests/` for Rule 2 — and every sibling spec is a bare
+ *     kebab-case name; a mixed signal misleads about which runner executes
+ *     the file. This is the class that produced
+ *     `e2e/specs/test_tester-session-fresh.ts` (renamed to
+ *     `tester-session-fresh.ts`, the only prefixed name the tree ever had).
+ *
  * What the guard accepts as "signals test":
  *   - Rule 1: the module NAME contains the substring "test" (`tests`,
  *     `*_tests`, `command_test_host`, `testing` all qualify). If the
@@ -48,19 +68,28 @@
  *     `packages/driver-api/src/resource_adapter_output_tests.rs` reaches the
  *     compiler, and it is exactly as test-only as its including file.
  *
- * Scan scope: the Rust workspace crates. The single source of truth for that
- * set is the `[workspace] members` list in the root Cargo.toml — mirrored
- * here (fixed members spelled out, the `packages/drivers/*` glob expanded
- * minus the workspace `exclude` entries) because this guard is a pure text
- * scanner that must not depend on a cargo toolchain: the frontend CI job runs
- * it, and that job has no Rust toolchain by design (see the platform-arch
- * comment in .github/workflows/ci.yml for why cargo-dependent guards cannot
- * live there). Consequence: adding a workspace member means updating this
- * list too; a mirrored directory that has vanished is an error (exit 2), not
- * a silently empty scan.
+ * Scan scope: the Rust rules walk the workspace crates; the TS rules walk
+ * every authored TS/JS file in the repository (pruned by the shared skip
+ * sets — `node_modules`, `dist`, vendored subtrees — the same scoping the
+ * other text guards use via scripts/lib/scanTargets.mjs). The single source
+ * of truth for the Rust crate set is the `[workspace] members` list in the
+ * root Cargo.toml — mirrored here (fixed members spelled out, the
+ * `packages/drivers/*` glob expanded minus the workspace `exclude` entries)
+ * because this guard is a pure text scanner that must not depend on a cargo
+ * toolchain: the frontend CI job runs it, and that job has no Rust toolchain
+ * by design (see the platform-arch comment in .github/workflows/ci.yml for
+ * why cargo-dependent guards cannot live there). Consequence: adding a
+ * workspace member means updating this list too; a mirrored directory that
+ * has vanished is an error (exit 2), not a silently empty scan. The wdio
+ * spec trees are mirrored for the same reason — resolving
+ * `e2e/wdio.conf.ts`'s imports from a text scanner would couple the guard
+ * to a TypeScript toolchain it must not have: the trees are `e2e/specs`
+ * (the main conf's `specs` glob) plus each non-excluded
+ * `packages/drivers/<driver>/e2e/` that exists (a driver without an `e2e/`
+ * directory is simply not a spec tree), and a vanished `e2e/specs` is exit 2.
  *
  * `e2e/` holds TS specs today; if it ever gains Rust sources it joins the
- * scan set — the check is dynamic, so Rust e2e helpers cannot silently
+ * Rust scan set — the check is dynamic, so Rust e2e helpers cannot silently
  * escape the guard.
  *
  * The allow-list (see below) is empty: the guard shipped inside the same
@@ -78,8 +107,9 @@
  * misconfiguration (missing scan root / stale allow-list entry).
  */
 import { existsSync, readdirSync } from 'fs';
-import { basename, dirname, join, relative, resolve } from 'path';
+import { basename, dirname, extname, join, relative, resolve } from 'path';
 import {
+  SCAN_EXTENSIONS,
   SKIP_DIR_NAMES,
   isSkippedPath,
   readScannedIfPresent,
@@ -107,6 +137,19 @@ const WORKSPACE_DRIVER_EXCLUDES = new Set([
   'packages/drivers/kiwi',
   'packages/drivers/superset',
 ]);
+
+/** The main wdio conf's spec glob root — the primary Rule 4 tree (mirrored,
+ * not discovered: see the header's scan-scope paragraph). */
+const WDIO_SPEC_TREE_ROOT = 'e2e/specs';
+/** A `*.spec.*` name — a suffix from a convention this repository does not
+ * have (its suffix standard is `.test.*`, and its wdio trees use bare
+ * names). */
+const SPEC_SUFFIX_RE = /\.spec\.(ts|tsx|js|jsx|mjs|cjs)$/;
+/** A `test_` prefix — pytest's convention, foreign to every runner here. */
+const SPEC_TREE_TEST_PREFIX_RE = /^test_/;
+/** A `.test.ts` suffix — vitest's convention; inside a wdio spec tree it
+ * misleads about which runner executes the file. */
+const SPEC_TREE_TEST_SUFFIX_RE = /\.test\.ts$/;
 
 /** External module declaration, any visibility, `;`-terminated (inline
  * `mod NAME { ... }` blocks are not declarations of a separate file). */
@@ -155,6 +198,28 @@ function walkRust(dir, root, out) {
       continue;
     }
     if (entry.name.endsWith('.rs')) out.push(full);
+  }
+}
+
+/** Recursively collect TS/JS source files (SCAN_EXTENSIONS) under one
+ * root directory — the Rule 3 walk starts at the repository root itself,
+ * so it sees exactly the authored source the other text guards see. */
+function walkTs(dir, root, out) {
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return; // vanished between listing and walk — not part of this tree
+  }
+  for (const entry of entries) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      const relDir = relative(root, full).split('\\').join('/');
+      if (isSkippedPath(relDir)) continue;
+      if (!SKIP_DIR_NAMES.has(entry.name)) walkTs(full, root, out);
+      continue;
+    }
+    if (SCAN_EXTENSIONS.has(extname(entry.name))) out.push(full);
   }
 }
 
@@ -261,6 +326,34 @@ export function checkTestModuleNaming(opts = {}) {
   walkRust(resolve(root, 'e2e'), root, e2eRust);
   if (e2eRust.length > 0) rustFiles.push(...e2eRust);
 
+  // ── TS scan set (Rules 3–4) ────────────────────────────────────────────
+  // Rule 3 looks at every authored TS/JS file; Rule 4 carves the wdio spec
+  // trees out of that same walk by path prefix, so the two rules can never
+  // disagree about which files exist.
+  const tsFiles = [];
+  walkTs(root, root, tsFiles);
+  const sortedTs = tsFiles.map((f) => toRel(root, f)).sort();
+
+  // The spec trees are mirrored, not discovered (see header). A vanished
+  // `e2e/specs` would silently shrink Rule 4's scan to nothing while the
+  // guard kept printing green — so it is exit 2, like a vanished member.
+  if (!existsSync(resolve(root, WDIO_SPEC_TREE_ROOT))) {
+    error(
+      `[check-test-module-naming] wdio spec-tree root missing: ${WDIO_SPEC_TREE_ROOT}` +
+        ` — the mirror of e2e/wdio.conf.ts's \`specs\` glob; update the mirror when the e2e layout changes`,
+    );
+    return 2;
+  }
+  const specTreePrefixes = [WDIO_SPEC_TREE_ROOT];
+  for (const entry of readdirSync(driversFull, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const rel = `${DRIVERS_DIR}/${entry.name}`;
+    if (WORKSPACE_DRIVER_EXCLUDES.has(rel)) continue; // workspace exclude
+    if (existsSync(join(driversFull, entry.name, 'e2e'))) {
+      specTreePrefixes.push(`${rel}/e2e`);
+    }
+  }
+
   const relSet = new Set(rustFiles.map((f) => toRel(root, f)));
   const sortedRels = [...relSet].sort();
 
@@ -356,7 +449,7 @@ export function checkTestModuleNaming(opts = {}) {
   }
 
   // ── Rule 1: gated module names must signal "test" ──────────────────────
-  /** @type {{rule: 1|2, file: string, text: string, reason: string}[]} */
+  /** @type {{rule: 1|2|3|4, file: string, text: string, reason: string}[]} */
   const findings = [];
   for (const d of decls) {
     if (d.kind !== 'mod' || !d.gated) continue;
@@ -410,6 +503,44 @@ export function checkTestModuleNaming(opts = {}) {
     }
   }
 
+  // ── Rule 3: *.spec.* is nobody's convention here ──────────────────────
+  for (const rel of sortedTs) {
+    if (!SPEC_SUFFIX_RE.test(basename(rel))) continue;
+    findings.push({
+      rule: 3,
+      file: rel,
+      text:
+        'test file named *.spec.* — the repo knows .test.* (vitest trees)' +
+        ' and bare names (wdio spec trees); .spec is neither',
+      reason:
+        'Rule 3: rename to the convention of the tree it lives in —' +
+        ' *.test.ts for a vitest tree, a bare name inside a wdio spec tree',
+    });
+  }
+
+  // ── Rule 4: wdio spec-tree filenames stay bare ────────────────────────
+  // The directory is the test signal (cargo's tests/ analogue), so a name
+  // that ALSO carries a runner signal is a mixed convention: it tells the
+  // reader the wrong runner, or that the file needs one to be found.
+  for (const rel of sortedTs) {
+    if (!rel.endsWith('.ts')) continue; // the wdio globs collect .ts files
+    if (!specTreePrefixes.some((p) => rel.startsWith(`${p}/`))) continue;
+    const name = basename(rel);
+    if (!SPEC_TREE_TEST_PREFIX_RE.test(name) && !SPEC_TREE_TEST_SUFFIX_RE.test(name)) {
+      continue;
+    }
+    findings.push({
+      rule: 4,
+      file: rel,
+      text:
+        'wdio spec file carries a foreign runner signal in its name' +
+        ' (test_ prefix / .test.ts suffix) — the directory already signals test',
+      reason:
+        'Rule 4: inside e2e/specs and packages/drivers/*/e2e every sibling spec is' +
+        ' a bare name — drop the prefix/suffix',
+    });
+  }
+
   // ── allow-list + staleness ─────────────────────────────────────────────
   const matched = new Set();
   const violations = findings.filter((f) => {
@@ -449,7 +580,8 @@ export function checkTestModuleNaming(opts = {}) {
   }
   log(
     `[check-test-module-naming] ok (${sortedRels.length} Rust files scanned,` +
-      ` ${gatedModCount} cfg(test)-gated modules)`,
+      ` ${gatedModCount} cfg(test)-gated modules; ${sortedTs.length} TS files scanned,` +
+      ` ${specTreePrefixes.length} wdio spec trees)`,
   );
   return 0;
 }
