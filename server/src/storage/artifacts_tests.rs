@@ -40,10 +40,8 @@ fn ctx(organization: &str, principal: &str) -> RequestContext {
 }
 
 fn unique_root(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "datazen-artifacts-{tag}-{}",
-        uuid::Uuid::new_v4()
-    ));
+    let dir =
+        std::env::temp_dir().join(format!("datazen-artifacts-{tag}-{}", uuid::Uuid::new_v4()));
     fs::create_dir_all(&dir).expect("temp root");
     dir
 }
@@ -90,7 +88,10 @@ async fn create_binds_the_acl_from_the_request_context() {
         .expect("describe during writing");
     assert_eq!(meta.lifecycle, ArtifactLifecycle::Writing);
     assert_eq!(meta.result_completeness, ResultCompleteness::Pending);
-    assert_eq!(meta.total_chunks, None, "未终结时 totalChunks 是 null 不是 0");
+    assert_eq!(
+        meta.total_chunks, None,
+        "未终结时 totalChunks 是 null 不是 0"
+    );
 
     fs::remove_dir_all(&root).ok();
 }
@@ -122,11 +123,21 @@ async fn published_chunks_are_readable_before_finalization_and_immutable() {
     let outcome = artifacts
         .append_chunk(&mut stale.clone(), ChunkPayload::new(vec![9]))
         .await;
-    assert!(matches!(outcome, Err(PortError::CasConflict { entity: "artifact", .. })));
+    assert!(matches!(
+        outcome,
+        Err(PortError::CasConflict {
+            entity: "artifact",
+            ..
+        })
+    ));
 
     // 未发布索引是参数错误，不是空块。
     let outcome = artifacts
-        .read_chunk(&context, artifact_id.clone(), datazen::shared::id::Counter::new(5))
+        .read_chunk(
+            &context,
+            artifact_id.clone(),
+            datazen::shared::id::Counter::new(5),
+        )
         .await;
     assert!(matches!(outcome, Err(PortError::CasConflict { .. })));
 
@@ -173,7 +184,10 @@ async fn finalize_completes_and_export_flows_through_the_authorized_path_only() 
         .export(
             &context,
             artifact_id.clone(),
-            ExportSink::ServerAuthorizedPath(OrganizationId::new("org-a"), target.display().to_string()),
+            ExportSink::ServerAuthorizedPath(
+                OrganizationId::new("org-a"),
+                target.display().to_string(),
+            ),
         )
         .await
         .expect("authorized export");
@@ -195,7 +209,10 @@ async fn finalize_completes_and_export_flows_through_the_authorized_path_only() 
         .export(
             &context,
             artifact_id.clone(),
-            ExportSink::ServerAuthorizedPath(OrganizationId::new("org-b"), target.display().to_string()),
+            ExportSink::ServerAuthorizedPath(
+                OrganizationId::new("org-b"),
+                target.display().to_string(),
+            ),
         )
         .await;
     assert!(matches!(outcome, Err(PortError::TokenInvalid)));
@@ -217,10 +234,7 @@ async fn abort_keeps_published_chunks_and_marks_truncation_reason() {
         .expect("chunk");
 
     artifacts
-        .abort(
-            writer,
-            datazen::execution::domain::AbortReason::Cancelled,
-        )
+        .abort(writer, datazen::execution::domain::AbortReason::Cancelled)
         .await
         .expect("abort");
 
@@ -233,11 +247,18 @@ async fn abort_keeps_published_chunks_and_marks_truncation_reason() {
         meta.truncation_reason,
         Some(datazen::execution::domain::AbortReason::Cancelled)
     );
-    assert_eq!(meta.total_chunks, Some(datazen::shared::id::Counter::new(1)));
+    assert_eq!(
+        meta.total_chunks,
+        Some(datazen::shared::id::Counter::new(1))
+    );
 
     // 已发布块保留：截断不是清空。
     let chunk = artifacts
-        .read_chunk(&context, artifact_id.clone(), datazen::shared::id::Counter::ZERO)
+        .read_chunk(
+            &context,
+            artifact_id.clone(),
+            datazen::shared::id::Counter::ZERO,
+        )
         .await
         .expect("published chunk survives abort");
     assert_eq!(chunk.bytes, vec![1]);
@@ -248,7 +269,10 @@ async fn abort_keeps_published_chunks_and_marks_truncation_reason() {
         .export(
             &context,
             artifact_id,
-            ExportSink::ServerAuthorizedPath(OrganizationId::new("org-a"), target.display().to_string()),
+            ExportSink::ServerAuthorizedPath(
+                OrganizationId::new("org-a"),
+                target.display().to_string(),
+            ),
         )
         .await;
     assert!(matches!(outcome, Err(PortError::CasConflict { .. })));
@@ -279,7 +303,10 @@ async fn cross_organization_reads_and_revocation() {
         .await
         .expect("revoke");
     let outcome = artifacts.describe(&context, artifact_id).await;
-    assert!(matches!(outcome, Err(PortError::NotFound(_))), "吊销后不可读");
+    assert!(
+        matches!(outcome, Err(PortError::NotFound(_))),
+        "吊销后不可读"
+    );
 
     fs::remove_dir_all(&root).ok();
 }

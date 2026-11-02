@@ -24,7 +24,11 @@ fn repository_root() -> PathBuf {
 ///
 /// `src-tauri/tests` 是**集成测试目标**（`cargo check -p datazen --all-targets` 会编译它），
 /// 因此它和 `src-tauri/src` 一样属于「会被编译、因而可能写错」的代码，必须一并扫。
-const SCANNED_ROOTS: &[&str] = &["apps/desktop/src-tauri/src", "apps/desktop/src-tauri/tests", "packages"];
+const SCANNED_ROOTS: &[&str] = &[
+    "apps/desktop/src-tauri/src",
+    "apps/desktop/src-tauri/tests",
+    "packages",
+];
 
 /// 目录遍历时跳过的名字：构建产物与依赖目录里没有可执行的契约。
 const SKIPPED_DIRECTORIES: &[&str] = &["target", "node_modules", ".git"];

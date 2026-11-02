@@ -13,8 +13,7 @@ use datazen::migration::data_sync::api::{
     is_self_sync, revalidation_report, validate_active_database, SQL_PREVIEW_IPC_MAX_BYTES,
 };
 use datazen::migration::data_sync::{
-    ChangeOperation, SqlStatement, SyncSourceFilter, TableMapping, TableMappingStatus,
-    TableResult,
+    ChangeOperation, SqlStatement, SyncSourceFilter, TableMapping, TableMappingStatus, TableResult,
 };
 use datazen_driver_api::{ColumnSchema, TableInfo, TableSchema, TableType, Value};
 
@@ -84,9 +83,9 @@ fn validate_active_database_rejects_when_the_side_drifts() {
 /// 迁自桌面 `sync/exec.rs::sql_preview_rejects_a_statement_that_exceeds_the_ipc_bound`。
 #[test]
 fn sql_preview_rejects_a_statement_that_exceeds_the_ipc_bound() {
-    let statement = sample_statement(vec![Value::String("x".repeat(
-        SQL_PREVIEW_IPC_MAX_BYTES + 1,
-    ))]);
+    let statement = sample_statement(vec![Value::String(
+        "x".repeat(SQL_PREVIEW_IPC_MAX_BYTES + 1),
+    )]);
     let mut statements = Vec::new();
     let mut response_bytes = 2;
     let error = append_bounded_preview_statement(&mut statements, &mut response_bytes, statement)
@@ -144,10 +143,7 @@ fn revalidation_report_lists_only_stale_rows_and_treats_empty_selection_as_all()
     assert_eq!(stale.len(), 2, "matched rows never count as stale");
 
     // 指定选集：只复核提到的表（source 或 target 名均可命中）。
-    let scoped = revalidation_report(
-        vec!["orders".into()],
-        vec![matched, incompatible, unmapped],
-    );
+    let scoped = revalidation_report(vec!["orders".into()], vec![matched, incompatible, unmapped]);
     assert_eq!(scoped["ok"], false);
     let stale = scoped["staleTables"].as_array().unwrap();
     assert_eq!(stale.len(), 1);
@@ -169,10 +165,7 @@ fn revalidation_report_lists_only_stale_rows_and_treats_empty_selection_as_all()
 fn finalize_inspect_results_enriches_matched_and_attaches_preflight_reasons() {
     let schema = TableSchema {
         table_name: "users".into(),
-        columns: vec![
-            column("id", "int", true),
-            column("name", "text", false),
-        ],
+        columns: vec![column("id", "int", true), column("name", "text", false)],
         primary_keys: vec!["id".into()],
         indexes: vec![],
         foreign_keys: vec![],
@@ -207,10 +200,19 @@ fn finalize_inspect_results_enriches_matched_and_attaches_preflight_reasons() {
 
     assert_eq!(finalized.len(), 2);
     assert_eq!(finalized[0].status, TableMappingStatus::Matched);
-    assert_eq!(finalized[0].columns, vec!["id".to_string(), "name".to_string()]);
-    assert_eq!(finalized[0].column_types, vec!["int".to_string(), "text".to_string()]);
+    assert_eq!(
+        finalized[0].columns,
+        vec!["id".to_string(), "name".to_string()]
+    );
+    assert_eq!(
+        finalized[0].column_types,
+        vec!["int".to_string(), "text".to_string()]
+    );
     assert_eq!(finalized[0].primary_keys, vec!["id".to_string()]);
-    assert!(finalized[0].source_filter.is_some(), "structured filter rides the mapping");
+    assert!(
+        finalized[0].source_filter.is_some(),
+        "structured filter rides the mapping"
+    );
 
     assert_eq!(finalized[1].status, TableMappingStatus::Incompatible);
     assert_eq!(

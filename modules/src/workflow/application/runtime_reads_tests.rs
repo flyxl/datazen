@@ -99,9 +99,14 @@ impl ResourceExecutionHost for FakeHost {
 #[tokio::test]
 async fn a_command_above_read_access_is_refused_with_form_neutral_wording() {
     let host = FakeHost::new(config(false));
-    let error = read_target_command(&host, "c1", "execute", serde_json::json!({ "sql": "SELECT 1" }))
-        .await
-        .expect_err("a write command must be refused before dispatch");
+    let error = read_target_command(
+        &host,
+        "c1",
+        "execute",
+        serde_json::json!({ "sql": "SELECT 1" }),
+    )
+    .await
+    .expect_err("a write command must be refused before dispatch");
     assert_eq!(error, READ_ONLY_REFUSAL);
     assert!(
         !host.prepare_reached.load(Ordering::SeqCst),
@@ -169,10 +174,7 @@ async fn driver_metadata_errors_keep_the_host_wording() {
     struct Unavailable;
     #[async_trait::async_trait]
     impl ResourceExecutionHost for Unavailable {
-        async fn profile(
-            &self,
-            _id: &str,
-        ) -> Result<(ConnectionConfig, u64, bool), WorkflowError> {
+        async fn profile(&self, _id: &str) -> Result<(ConnectionConfig, u64, bool), WorkflowError> {
             Err(WorkflowError::ConnectionFailed {
                 connection_id: "c1".into(),
                 message: "Connection profile unavailable".into(),
@@ -207,4 +209,3 @@ async fn driver_metadata_errors_keep_the_host_wording() {
 // `ai::application::schema_context`：它是 list_tables 迭代 + DDL 压缩的纯
 // 装配循环，依赖 ai 的 budget/format_compact_ddl，其行为由宿主侧集成旅程
 // 覆盖（桌面 wapp 测试与 MCP prompts/resources 的真实 Runtime 路径）。
-

@@ -148,7 +148,10 @@ mod tests {
 
     #[test]
     fn evidence_records_both_the_enumerable_and_readable_forms() {
-        let targets = vec![table_target("public.users", Some("public")), view(None, "v")];
+        let targets = vec![
+            table_target("public.users", Some("public")),
+            view(None, "v"),
+        ];
         let mut evidence = vec!["planTables:users".into()];
         record_target_objects(&mut evidence, &targets);
 

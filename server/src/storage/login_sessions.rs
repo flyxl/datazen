@@ -199,10 +199,9 @@ impl LoginSessions {
     fn canonical_timestamp(raw: &str, field: &'static str) -> Result<String, StorageError> {
         let parsed = chrono::DateTime::parse_from_rfc3339(raw)
             .map_err(|source| Self::backend(format!("{field} is not RFC3339: {source}")))?;
-        Ok(parsed.with_timezone(&chrono::Utc).to_rfc3339_opts(
-            chrono::SecondsFormat::Millis,
-            true,
-        ))
+        Ok(parsed
+            .with_timezone(&chrono::Utc)
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
     }
 
     // ── create ──
@@ -324,7 +323,10 @@ impl LoginSessions {
             Self::canonical_timestamp(now.as_str(), "now").map_err(ValidateFailure::Storage)?;
         let now_dt = parse_utc(&now_canonical).map_err(ValidateFailure::Storage)?;
 
-        let conn = self.store.lock_for_adapter().map_err(ValidateFailure::Storage)?;
+        let conn = self
+            .store
+            .lock_for_adapter()
+            .map_err(ValidateFailure::Storage)?;
 
         let row = self
             .read_row(&conn, session_id)
@@ -360,6 +362,43 @@ impl LoginSessions {
             idle_expires_at: new_idle,
             ..row
         })
+    }
+
+    /// 只读校验：与 [`Self::validate`] 同一套拒绝面（撤销/绝对窗/空闲窗），
+    /// 但**不写回空闲窗**。SSE 心跳周期的权限复核用这一条——team-server
+    /// §8.3 明文：心跳不刷新登录空闲期（`SessionDirectory::touch` 只更新
+    /// 业务活动时间；登录空闲期只由入站业务请求顺延）。
+    pub fn peek(
+        &self,
+        session_id: &str,
+        now: Timestamp,
+    ) -> Result<LoginSessionRow, ValidateFailure> {
+        let now_canonical =
+            Self::canonical_timestamp(now.as_str(), "now").map_err(ValidateFailure::Storage)?;
+        let now_dt = parse_utc(&now_canonical).map_err(ValidateFailure::Storage)?;
+
+        let conn = self
+            .store
+            .lock_for_adapter()
+            .map_err(ValidateFailure::Storage)?;
+
+        let row = self
+            .read_row(&conn, session_id)
+            .map_err(ValidateFailure::Storage)?
+            .ok_or(SessionRejection::Unknown)?;
+
+        if let Some(reason) = row.revoke_reason.clone() {
+            return Err(SessionRejection::Revoked(reason).into());
+        }
+        let absolute = parse_utc(&row.absolute_expires_at).map_err(ValidateFailure::Storage)?;
+        if now_dt >= absolute {
+            return Err(SessionRejection::AbsoluteExpired.into());
+        }
+        let idle = parse_utc(&row.idle_expires_at).map_err(ValidateFailure::Storage)?;
+        if now_dt >= idle {
+            return Err(SessionRejection::IdleExpired.into());
+        }
+        Ok(row)
     }
 
     // ── revoke ──
@@ -466,21 +505,26 @@ fn row_from(row: &rusqlite::Row<'_>) -> rusqlite::Result<LoginSessionRow> {
     let revoked_at: Option<String> = row.get(13)?;
     let revoke_reason_raw: Option<String> = row.get(14)?;
     let revoke_reason = match &revoke_reason_raw {
-        Some(raw) => Some(
-            RevokeReason::from_db(raw)
-                .map_err(|error| rusqlite::Error::FromSqlConversionFailure(
-                    14,
-                    rusqlite::types::Type::Text,
-                    Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, error.to_string())),
-                ))?,
-        ),
+        Some(raw) => Some(RevokeReason::from_db(raw).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(
+                14,
+                rusqlite::types::Type::Text,
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    error.to_string(),
+                )),
+            )
+        })?),
         None => None,
     };
     let mode = LoginSessionMode::from_db(&mode_raw).map_err(|error| {
         rusqlite::Error::FromSqlConversionFailure(
             11,
             rusqlite::types::Type::Text,
-            Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, error.to_string())),
+            Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                error.to_string(),
+            )),
         )
     })?;
     Ok(LoginSessionRow {

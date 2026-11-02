@@ -197,7 +197,8 @@ fn the_gate_names_are_tied_to_the_real_symbols() {
         transport.contains(TRANSPORT_TRAIT),
         "常量 TRANSPORT_TRAIT = {TRANSPORT_TRAIT:?} 与真实 trait 路径 `{transport}` 脱钩"
     );
-    let port = std::any::type_name::<super::super::harness_test_support::RecordingTunnelTransport>();
+    let port =
+        std::any::type_name::<super::super::harness_test_support::RecordingTunnelTransport>();
     assert!(
         port.ends_with(HARNESS_PORT_TYPE),
         "常量 HARNESS_PORT_TYPE = {HARNESS_PORT_TYPE:?} 与真实端口类型 `{port}` 脱钩"

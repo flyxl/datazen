@@ -17,11 +17,7 @@ impl WorkflowScheduler {
         // 授权单端口与宿主同源装配：派生器读同一 AppState 的既有存储
         // （WR-A4：未绑定授权单端口的调度器不派发——失败关闭）。
         let grants = Arc::new(DesktopScheduleGrantReader::new(app.clone()));
-        start_core_on_desktop_runtime(
-            &self.core,
-            Arc::new(DesktopScheduleHost(app)),
-            grants,
-        );
+        start_core_on_desktop_runtime(&self.core, Arc::new(DesktopScheduleHost(app)), grants);
     }
 }
 // Setup is synchronous; only the desktop adapter enters its owned runtime.
@@ -90,8 +86,10 @@ mod startup_tests {
         async fn schedule_grant(
             &self,
             _: &str,
-        ) -> Result<Option<datazen::workflow::domain::grant::WorkflowScheduleGrant>, datazen::shared::error::PortError>
-        {
+        ) -> Result<
+            Option<datazen::workflow::domain::grant::WorkflowScheduleGrant>,
+            datazen::shared::error::PortError,
+        > {
             Ok(None)
         }
     }
@@ -101,11 +99,7 @@ mod startup_tests {
             assert!(tokio::runtime::Handle::try_current().is_err());
             let (send, received) = mpsc::channel();
             let core = CoreScheduler::new();
-            start_core_on_desktop_runtime(
-                &core,
-                Arc::new(StartupHost(send)),
-                Arc::new(NoGrants),
-            );
+            start_core_on_desktop_runtime(&core, Arc::new(StartupHost(send)), Arc::new(NoGrants));
             assert!(tokio::runtime::Handle::try_current().is_err());
             received
                 .recv_timeout(Duration::from_secs(3))

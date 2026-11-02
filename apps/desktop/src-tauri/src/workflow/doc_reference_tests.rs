@@ -99,7 +99,10 @@ const CODE_REFERENCES: &[(&str, &str)] = &[
     // §2.3：version 写入点（本轨自己顶掉的 / 逐条核对过仍正确的）。
     // workflow 引擎已随 D6 item 3 切片 b 归位 modules::workflow（modules
     // 只剩再导出垫片），锚点一律指 modules 新居所。
-    ("apps/desktop/src-tauri/src/workflow/registry.rs", "version: None,"),
+    (
+        "apps/desktop/src-tauri/src/workflow/registry.rs",
+        "version: None,",
+    ),
     (
         "modules/src/workflow/application/registry.rs",
         "version: None,",
@@ -147,10 +150,7 @@ const CODE_REFERENCES: &[(&str, &str)] = &[
         "apps/desktop/src-tauri/src/commands/ai/integration_tests.rs",
         "version: Some(\"1\".into()),",
     ),
-    (
-        "modules/src/workflow/engine/scheduler.rs",
-        "version: None,",
-    ),
+    ("modules/src/workflow/engine/scheduler.rs", "version: None,"),
     (
         "modules/src/dashboard/application/archive.rs",
         "version: None,",

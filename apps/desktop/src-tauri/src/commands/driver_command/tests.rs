@@ -104,9 +104,7 @@ async fn discovers_standard_commands_from_connection() {
     let test = crate::testing::app_state_test_support::TestAppState::new().await;
     let (_, conn_id) = test.save_and_connect("cmd-discover").await;
     let app = host_command_app(test);
-    let definitions = get_connection_commands(app.state(), conn_id)
-        .await
-        .unwrap();
+    let definitions = get_connection_commands(app.state(), conn_id).await.unwrap();
     let ids: Vec<_> = definitions.iter().map(|d| d.id.as_str()).collect();
     assert!(ids.contains(&"query"));
     assert!(ids.contains(&"execute"));

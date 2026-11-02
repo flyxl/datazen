@@ -61,7 +61,9 @@ impl From<ApiError> for ApiErrorResponse {
 
 impl IntoResponse for ApiErrorResponse {
     fn into_response(self) -> Response {
-        let status = self.status_override.unwrap_or_else(|| status_for(self.error.code));
+        let status = self
+            .status_override
+            .unwrap_or_else(|| status_for(self.error.code));
         (status, Json(self.error)).into_response()
     }
 }
@@ -72,7 +74,9 @@ pub fn status_for(code: ApiErrorCode) -> StatusCode {
     use StatusCode as S;
     match code {
         // 400 参数类
-        C::InvalidArgument | C::TargetRequired | C::TargetConflict | C::TargetUnsupported => S::BAD_REQUEST,
+        C::InvalidArgument | C::TargetRequired | C::TargetConflict | C::TargetUnsupported => {
+            S::BAD_REQUEST
+        }
         // 401 认证
         C::Unauthenticated => S::UNAUTHORIZED,
         // 403 授权 / CSRF / 出站策略
@@ -91,9 +95,11 @@ pub fn status_for(code: ApiErrorCode) -> StatusCode {
         | C::IdempotencyConflict
         | C::ConfigRevisionMismatch => S::CONFLICT,
         // 429 额度 / 速率 / 队列
-        C::QuotaExceeded | C::RateLimited | C::ResourceBusy | C::QueueFull | C::SessionQuotaExceeded => {
-            S::TOO_MANY_REQUESTS
-        }
+        C::QuotaExceeded
+        | C::RateLimited
+        | C::ResourceBusy
+        | C::QueueFull
+        | C::SessionQuotaExceeded => S::TOO_MANY_REQUESTS,
         // 503 暂不可用（退避重发复用同一 idempotencyKey）
         C::ServiceUnavailable => S::SERVICE_UNAVAILABLE,
         // 405/501（http-api-contract §7）：默认 405；501 类由调用点 with_status

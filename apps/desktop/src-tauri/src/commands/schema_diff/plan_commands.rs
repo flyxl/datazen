@@ -7,7 +7,7 @@
 //! JobRuntime 的命令入口。
 
 use super::job;
-use super::{AppState, CommandError, ColumnTypeOverride, State};
+use super::{AppState, ColumnTypeOverride, CommandError, State};
 
 /// Prepare a DDL deploy plan (source = desired → target).
 #[tauri::command]

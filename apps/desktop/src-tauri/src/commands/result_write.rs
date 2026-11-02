@@ -270,7 +270,7 @@ pub(crate) async fn commit_query_result_cell(
         &schema,
         resolved,
     )
-        .as_ref()
+    .as_ref()
         != Some(relation)
     {
         return Err(CommandError::Validation(

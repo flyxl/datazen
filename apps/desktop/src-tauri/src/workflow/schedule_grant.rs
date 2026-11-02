@@ -33,8 +33,8 @@
 //! 存储打不开等基础设施故障才返回 `Err(PortError)`（失败关闭，调度器拒绝）。
 
 use crate::store::{AppDbError, WorkflowRecord};
-use datazen::connection::ProfileRepository;
 use datazen::connection::domain::ProfileReader as _;
+use datazen::connection::ProfileRepository;
 use datazen::shared::context::RequestContext;
 use datazen::shared::error::PortError;
 use datazen::shared::id::{ClientInstanceId, ConnectionId, OrganizationId, PrincipalId, RequestId};
@@ -132,11 +132,17 @@ impl<R: tauri::Runtime> WorkflowScheduleGrantReader for DesktopScheduleGrantRead
             &definition.steps,
             &mut targets,
         ) {
-            tracing::warn!(workflow_id, "workflow schedule grant: AI step or unfreezable target");
+            tracing::warn!(
+                workflow_id,
+                "workflow schedule grant: AI step or unfreezable target"
+            );
             return Ok(None);
         }
         if targets.is_empty() {
-            tracing::warn!(workflow_id, "workflow schedule grant: no data targets to freeze");
+            tracing::warn!(
+                workflow_id,
+                "workflow schedule grant: no data targets to freeze"
+            );
             return Ok(None);
         }
 
@@ -158,7 +164,10 @@ impl<R: tauri::Runtime> WorkflowScheduleGrantReader for DesktopScheduleGrantRead
                     "workflow schedule grant: profile missing, target unfreezable");
                 return Ok(None);
             };
-            revisions.insert(target.connection.clone(), profile.config_revision.counter().get());
+            revisions.insert(
+                target.connection.clone(),
+                profile.config_revision.counter().get(),
+            );
         }
 
         // 5) 组装派生单：每个字段都是（定义 YAML + profile 版本）的纯函数。
@@ -338,7 +347,9 @@ mod tests {
             .expect("grant");
         assert_eq!(first, second, "派生单必须是输入的纯函数");
         assert_eq!(first.workflow_revision, definition_revision(SCHEDULED_YAML));
-        assert!(first.service_principal.starts_with("workflow-schedule:demo:"));
+        assert!(first
+            .service_principal
+            .starts_with("workflow-schedule:demo:"));
         assert_eq!(first.approved_by, "definition-save");
         assert_eq!(first.revocation_version, 1);
         assert!(!first.revoked);

@@ -151,13 +151,7 @@ mod tests {
     const DEFINITION: &str = "id: demo\nsteps: []\n";
 
     fn scope() -> WorkflowScheduleScope {
-        WorkflowScheduleScope::namespace(
-            "conn-1",
-            Some("app".into()),
-            None,
-            3,
-            "query",
-        )
+        WorkflowScheduleScope::namespace("conn-1", Some("app".into()), None, 3, "query")
     }
 
     fn grant() -> WorkflowScheduleGrant {
@@ -203,7 +197,10 @@ mod tests {
 
         let mut uninitialized = grant();
         uninitialized.revocation_version = 0;
-        assert!(uninitialized.validate(now).is_err(), "版本为 0 的单必须拒绝");
+        assert!(
+            uninitialized.validate(now).is_err(),
+            "版本为 0 的单必须拒绝"
+        );
 
         let mut no_revision = grant();
         no_revision.workflow_revision = String::new();

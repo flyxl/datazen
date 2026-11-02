@@ -84,12 +84,9 @@ async fn config_store_commands_roundtrip() {
 
     let mut invalid = shared.clone();
     invalid.preferences.theme.mode = "neon".into();
-    let error = save_settings(
-        app.state(),
-        SaveSettingsRequest { settings: invalid },
-    )
-    .await
-    .expect_err("invalid enum must fail at the command boundary");
+    let error = save_settings(app.state(), SaveSettingsRequest { settings: invalid })
+        .await
+        .expect_err("invalid enum must fail at the command boundary");
     assert!(
         matches!(error, CommandError::Validation(message) if message == "Invalid settings enum value")
     );
@@ -182,9 +179,7 @@ fn shared_settings_commands_read_the_aggregate_not_the_host_store() {
     // 处理函数里（`&state` 解引用，私有 read_host_settings 辅助同形），
     // 守卫盯同一约定（四条设置读写命令各取一次模块服务）。
     assert_eq!(
-        production
-            .matches("require_settings_service(")
-            .count(),
+        production.matches("require_settings_service(").count(),
         4,
         "完整设置读写与共享设置读写都必须经聚合取用例"
     );

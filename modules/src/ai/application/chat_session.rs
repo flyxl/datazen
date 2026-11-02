@@ -130,12 +130,12 @@ pub async fn run_chat_session(
     // 上下文块（chat 政策：逐文件脱敏后拼装）。
     let context_block = chat_context_block(&env.context_entries, &env.gate);
 
-    let schema = schema_prompt.as_ref().map(
-        |(driver, seed)| ChatSchemaPrompt {
+    let schema = schema_prompt
+        .as_ref()
+        .map(|(driver, seed)| ChatSchemaPrompt {
             driver: driver.as_ref(),
             seed,
-        },
-    );
+        });
     let mut request = build_chat_request(
         env.prompt_resolver.as_ref(),
         ChatRequestInput {
@@ -324,7 +324,9 @@ pub async fn run_sql_generation_session(
         )
         .await
     } else {
-        let (tx, mut rx) = mpsc::channel::<Result<crate::ai::domain::types::StreamChunk, crate::ai::domain::types::AiError>>(32);
+        let (tx, mut rx) = mpsc::channel::<
+            Result<crate::ai::domain::types::StreamChunk, crate::ai::domain::types::AiError>,
+        >(32);
         let req_id_clone = input.request_id.clone();
         let on_chunk_bg = on_chunk.clone();
 

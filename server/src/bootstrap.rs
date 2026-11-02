@@ -149,7 +149,10 @@ pub fn serve() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let runtime = match tokio::runtime::Builder::new_multi_thread().enable_all().build() {
+    let runtime = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
         Ok(runtime) => runtime,
         Err(error) => {
             eprintln!("datazen-server: runtime build failed: {error}");
@@ -172,8 +175,10 @@ pub fn serve() -> ExitCode {
 async fn run(config: ServerConfig) -> Result<(), ServerError> {
     // D 步：管理库。serve 不自动迁移（migrate 是独立子命令）；schema 落后
     // 或超前都拒绝服务——fail-closed，不静默降级。
-    let store = AdminStore::open(&config.db_path)
-        .map_err(|source| ServerError::Serve(format!("admin store: {source}")))?;
+    let store = std::sync::Arc::new(
+        AdminStore::open(&config.db_path)
+            .map_err(|source| ServerError::Serve(format!("admin store: {source}")))?,
+    );
     let current = store
         .schema_version()
         .map_err(|source| ServerError::Serve(format!("admin store: {source}")))?;
@@ -187,11 +192,117 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
              run `datazen-server migrate` (or upgrade the binary)"
         )));
     }
-    // 仓储适配器在域路由点亮时注入 Router（WR-D2 后续切片）；在此之前
-    // store 在此保活，证明打开与版本检查是 serve 的真实前置。
-    let _keep_store = store;
+    // ── 装配（§2.3）：policy / 登录会话 / L5 / SSE / OIDC —— 依赖闭包
+    // 全部从 config + store 出发，不隐式构造全局单例。
+    let secret_bytes = config.server_secret.as_bytes().to_vec();
+    let policy = std::sync::Arc::new(
+        crate::policy::PolicyService::new(store.clone(), secret_bytes.clone())
+            .map_err(|source| ServerError::Serve(format!("policy: {source}")))?,
+    );
+    let clock: std::sync::Arc<dyn datazen::shared::clock::Clock> =
+        std::sync::Arc::new(datazen::shared::clock::SystemClock);
 
-    let app = http::router::build_router();
+    // L5（§9.1）：参数来自部署配置；构造非法（容量 0 等）拒绝启动。
+    let rate_limit = {
+        let limiter = crate::http::middleware::ratelimit::RateLimiter::new(
+            crate::http::middleware::ratelimit::RateLimitConfig {
+                default: crate::http::middleware::ratelimit::BucketParams {
+                    capacity: config.rate_default_capacity,
+                    refill_per_second: config.rate_default_refill_per_second,
+                },
+                strict: crate::http::middleware::ratelimit::BucketParams {
+                    capacity: config.rate_strict_capacity,
+                    refill_per_second: config.rate_strict_refill_per_second,
+                },
+                max_entries: config.rate_max_entries,
+            },
+            std::sync::Arc::new(crate::http::middleware::ratelimit::SystemClock),
+        )
+        .map_err(|message| ServerError::ConfigInvalid(format!("ratelimit: {message}")))?;
+        Some(crate::http::middleware::ratelimit::RateLimitState {
+            limiter: std::sync::Arc::new(limiter),
+        })
+    };
+
+    // SSE（WR-D5）：origin 白名单取 public_origin（§8.1）；事件后备是
+    // MemoryEventSink（单实例 v1 形态）；周期复核走标准实现。
+    let sse = config.public_origin.as_ref().map(|origin| {
+        let sse_config = crate::http::sse::SseConfig {
+            allowed_origins: vec![origin.clone()],
+            keepalive_interval: std::time::Duration::from_secs(config.sse_keepalive_secs),
+            max_backlog_frames: config.sse_max_backlog_frames,
+            ..crate::http::sse::SseConfig::default()
+        };
+        crate::http::sse::SseState {
+            registry: std::sync::Arc::new(crate::http::sse::EventStreamRegistry::new(&sse_config)),
+            sink: std::sync::Arc::new(
+                datazen::execution::application::event_sink_memory::MemoryEventSink::new(),
+            ),
+            recheck: std::sync::Arc::new(crate::http::sse::StandardRecheck::new(
+                crate::storage::LoginSessions::new(store.clone()),
+                policy.clone(),
+                clock.clone(),
+            )),
+            config: std::sync::Arc::new(sse_config),
+            now_unix: std::sync::Arc::new(|| {
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|elapsed| elapsed.as_secs())
+                    .unwrap_or(0)
+            }),
+        }
+    });
+
+    // OIDC 登录面（§4）：三件套齐备才挂载；缺省 = 未启用（/api/v1/auth/*
+    // 落到 fallback 501，部署形态显式）。
+    let oidc = match (&config.oidc_issuer, &config.oidc_client_id) {
+        (Some(issuer), Some(client_id)) => {
+            let oidc_config = crate::auth::oidc::OidcConfig {
+                issuer: issuer.clone(),
+                client_id: client_id.clone(),
+                client_secret: config.oidc_client_secret.as_ref().map(|value| {
+                    crate::auth::oidc::ClientSecret {
+                        value: value.clone(),
+                        auth_style: crate::auth::oidc::ClientAuthStyle::Post,
+                    }
+                }),
+                organization_id: config.organization_id.clone(),
+                public_origin: config.public_origin.clone().unwrap_or_default(),
+                callback_path: "/api/v1/auth/callback".into(),
+                scope: "openid profile".into(),
+                post_login_redirect: "/".into(),
+                http_timeout: std::time::Duration::from_secs(5),
+                discovery_ttl: std::time::Duration::from_secs(300),
+                jwks_ttl: std::time::Duration::from_secs(300),
+                clock_skew_leeway: std::time::Duration::from_secs(60),
+                state_ttl: std::time::Duration::from_secs(600),
+                pending_capacity: 1_024,
+                session_idle_seconds: config.session_idle_seconds,
+                session_absolute_seconds: config.session_absolute_seconds,
+            };
+            Some(std::sync::Arc::new(
+                crate::auth::oidc::OidcRelyingParty::new(
+                    oidc_config,
+                    store.clone(),
+                    policy.clone(),
+                    crate::storage::LoginSessions::new(store.clone()),
+                    std::sync::Arc::new(crate::auth::oidc::SystemClock),
+                )
+                .map_err(|message| ServerError::ConfigInvalid(format!("oidc: {message}")))?,
+            ))
+        }
+        _ => None,
+    };
+
+    let app = http::router::build_router_with_auth(http::router::AuthDeps {
+        store: store.clone(),
+        policy,
+        server_secret: secret_bytes,
+        idle_ttl_seconds: config.session_idle_seconds,
+        rate_limit,
+        sse,
+        oidc,
+    })?;
 
     let listener = tokio::net::TcpListener::bind(&config.listen_addr)
         .await

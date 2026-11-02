@@ -58,8 +58,7 @@ async fn create_persists_and_round_trips() {
     assert_eq!(record.config_revision.counter().get(), 1);
     assert!(record.enabled);
 
-    let loaded = ProfileRepository::get(
-        &profiles,&context, record.connection_id.clone())
+    let loaded = ProfileRepository::get(&profiles, &context, record.connection_id.clone())
         .await
         .expect("get succeeds")
         .expect("record exists");
@@ -104,17 +103,19 @@ async fn cross_organization_access_is_invisible() {
 
     // CM-05：get 越组织 → None（不是 NotFound，不是错误）。
     assert!(
-        ProfileRepository::get(
-            &profiles,&org_b, record.connection_id.clone())
+        ProfileRepository::get(&profiles, &org_b, record.connection_id.clone())
             .await
             .expect("get must not error")
             .is_none()
     );
     // CM-05：list 作用域越过请求组织 → 空。
     let scoped = ProfileRepository::list(
-        &profiles,&org_b, ProfileScope::new(OrganizationId::new("org-a")))
-        .await
-        .expect("list must not error");
+        &profiles,
+        &org_b,
+        ProfileScope::new(OrganizationId::new("org-a")),
+    )
+    .await
+    .expect("list must not error");
     assert!(scoped.is_empty());
     // 越组织的 CAS / disable 报 NotFound（不可区分「不存在」与「无权」）。
     match profiles
@@ -129,10 +130,7 @@ async fn cross_organization_access_is_invisible() {
         Err(PortError::NotFound(_)) => {}
         other => panic!("expected NotFound for cross-org CAS, got {other:?}"),
     }
-    match profiles
-        .disable(&org_b, record.connection_id.clone())
-        .await
-    {
+    match profiles.disable(&org_b, record.connection_id.clone()).await {
         Err(PortError::NotFound(_)) => {}
         other => panic!("expected NotFound for cross-org disable, got {other:?}"),
     }
@@ -196,7 +194,12 @@ async fn credential_patch_advances_credential_revision_only_via_secret_ref() {
     patch.credentials = Some([("password".to_string(), "never-stored".to_string())].into());
 
     let updated = profiles
-        .compare_and_set(&context, record.connection_id.clone(), record.config_revision, patch)
+        .compare_and_set(
+            &context,
+            record.connection_id.clone(),
+            record.config_revision,
+            patch,
+        )
         .await
         .expect("cas with credentials");
 
@@ -223,12 +226,15 @@ async fn disable_hides_from_list_and_bumps_config_revision() {
     let context = ctx("org-a", "user-1");
 
     let record = profiles
-        .create(&context, draft("to-disable"), &IdempotencyKey::new("idem-off"))
+        .create(
+            &context,
+            draft("to-disable"),
+            &IdempotencyKey::new("idem-off"),
+        )
         .await
         .expect("create");
     assert_eq!(
-        ProfileRepository::list(
-            &profiles,&context, ProfileScope::from_context(&context))
+        ProfileRepository::list(&profiles, &context, ProfileScope::from_context(&context))
             .await
             .expect("list")
             .len(),
@@ -243,8 +249,7 @@ async fn disable_hides_from_list_and_bumps_config_revision() {
     assert_eq!(disabled.config_revision.counter().get(), 2);
 
     assert!(
-        ProfileRepository::list(
-            &profiles,&context, ProfileScope::from_context(&context))
+        ProfileRepository::list(&profiles, &context, ProfileScope::from_context(&context))
             .await
             .expect("list")
             .is_empty(),
@@ -252,8 +257,7 @@ async fn disable_hides_from_list_and_bumps_config_revision() {
     );
     // get 仍然可见（disable ≠ 删除）。
     assert!(
-        ProfileRepository::get(
-            &profiles,&context, record.connection_id.clone())
+        ProfileRepository::get(&profiles, &context, record.connection_id.clone())
             .await
             .expect("get")
             .is_some()
@@ -277,8 +281,7 @@ async fn advance_credential_revision_touches_only_credential_version() {
         .expect("advance");
     assert_eq!(revision.counter().get(), 2);
 
-    let after = ProfileRepository::get(
-        &profiles,&context, record.connection_id.clone())
+    let after = ProfileRepository::get(&profiles, &context, record.connection_id.clone())
         .await
         .expect("get")
         .expect("still there");
@@ -309,8 +312,7 @@ async fn sensitive_public_options_are_rejected() {
         "{error:?}"
     );
     assert!(
-        ProfileRepository::list(
-            &profiles,&context, ProfileScope::from_context(&context))
+        ProfileRepository::list(&profiles, &context, ProfileScope::from_context(&context))
             .await
             .expect("list")
             .is_empty(),
@@ -325,8 +327,7 @@ async fn unknown_profile_reads_are_none_not_errors() {
     let context = ctx("org-a", "user-1");
 
     assert!(
-        ProfileRepository::get(
-            &profiles,&context, ConnectionId::new("does-not-exist"))
+        ProfileRepository::get(&profiles, &context, ConnectionId::new("does-not-exist"))
             .await
             .expect("get on missing id is Ok")
             .is_none()

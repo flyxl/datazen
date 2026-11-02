@@ -274,9 +274,7 @@ async fn execute_data_transfer_inner(
                 0,
                 // 回滚口径本体在 `datazen::migration::data_transfer::
                 // history_outcome`（B2 域刀下沉物）。
-                datazen::migration::data_transfer::history_outcome::rollback_history_outcome(
-                    value,
-                ),
+                datazen::migration::data_transfer::history_outcome::rollback_history_outcome(value),
             )
             .await
         }

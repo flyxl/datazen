@@ -42,12 +42,9 @@ impl DataZenMcpServer {
         description = "List all configured database connections. Returns connection IDs, names, database types, and hosts."
     )]
     pub(crate) async fn list_connections(&self) -> Result<String, McpError> {
-        datazen::mcp::tools::list_connections(
-            self.app_state.as_ref(),
-            &self.allowed_connection_ids,
-        )
-        .await
-        .map_err(|e| DataZenMcpServer::map_err(e.into_message()))
+        datazen::mcp::tools::list_connections(self.app_state.as_ref(), &self.allowed_connection_ids)
+            .await
+            .map_err(|e| DataZenMcpServer::map_err(e.into_message()))
     }
 
     #[tool(description = "List all databases on a connected server.")]

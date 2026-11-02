@@ -12,8 +12,8 @@
 
 use std::collections::HashMap;
 
-use datazen::tunnel::domain::{KnownHostEntry, KnownHostsRepository};
 use datazen::shared::error::PortError;
+use datazen::tunnel::domain::{KnownHostEntry, KnownHostsRepository};
 
 use super::AdminStore;
 
@@ -24,10 +24,7 @@ pub struct ServerKnownHosts {
 
 impl ServerKnownHosts {
     /// 每组织一个实例；同一 [`AdminStore`] 上的多个实例互不可见。
-    pub fn new(
-        store: std::sync::Arc<AdminStore>,
-        organization_id: impl Into<String>,
-    ) -> Self {
+    pub fn new(store: std::sync::Arc<AdminStore>, organization_id: impl Into<String>) -> Self {
         Self {
             store,
             organization_id: organization_id.into(),
