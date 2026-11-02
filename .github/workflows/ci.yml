@@ -91,6 +91,16 @@ jobs:
       - name: TypeScript typecheck
         run: pnpm typecheck
 
+      # WR-E1/WR-C4：web 宿主的独立类型面（apps/web 自带 tsconfig——
+      # 编译期同形的 web 半边，typecheck.mjs 的三个 program 不覆盖它）
+      # 与 vite 生产构建。构建走与 desktop 相同的共享前端树
+      # （@datazen/frontend），是 `apps/web` 存在后的第一位 CI 消费者。
+      - name: Web host typecheck
+        run: pnpm --filter datazen-web typecheck
+
+      - name: Web host build (vite)
+        run: pnpm --filter datazen-web build
+
       # 5 个严格守卫合并为一步：任何失败立即停止（fail-fast），
       # 输出清晰标注哪条命令失败。省掉 5 次 shell launch 开销。
       #

@@ -50,7 +50,7 @@
 | execution | 4 | 4 | 0 | |
 | job | 4 | 4 | 0 | |
 | artifact | 1 | 1 | 0 | uploads 端点另列（§6.5） |
-| events | 1 | 1 | 0 | SSE |
+| events | 2 | 2 | 0 | SSE（v1.1：订阅建立 + 流） |
 | tableData | 14 | 14 | 0 | |
 | driverGateway（过渡） | 5 | 4 | 1 | `open_base64_with_dialog` 排除（§6.9） |
 | **合计** | **43** | **42** | **1** | |
@@ -126,8 +126,9 @@ Web 形态只服务 `WEB_SETTINGS_SECTIONS`（general / appearance / dataBrowsin
 | 方法 | 路由 | 令牌 | 成功 | 请求 → 响应 |
 | --- | --- | --- | --- | --- |
 | `subscribeEvents` | `GET /api/v1/events/{streamId}` | — | 200 `text/event-stream` | `?afterSequence=` 续传 → `EventEnvelope` 流 |
+| **v1.1：`createEventSubscription`** | `POST /api/v1/events/subscriptions` | CSRF（普通 fetch） | 200 `{ "streamId" }` | 认证会话 → streamId 登记 |
 
-`SubscribeEventsRequest` 的 `streamId` 进路径、`afterSequence` 进查询参数（与 `Last-Event-ID` 头二选一，优先头）。握手鉴权不用 CSRF 头（EventSource 无法设置），用 cookie + Origin/Fetch-Metadata 证明（team-server §8.1 的既有裁决）。`streamId` 的分配随 WR-D5 落地：订阅建立路由（或会话回执内含 streamId）在实现时按 §8 机制登记进本表 **v1.1**，不另开传输。
+`SubscribeEventsRequest` 的 `streamId` 进路径、`afterSequence` 进查询参数（与 `Last-Event-ID` 头二选一，优先头）。握手鉴权不用 CSRF 头（EventSource 无法设置），用 cookie + Origin/Fetch-Metadata 证明（team-server §8.1 的既有裁决）。**v1.1（2026-11-02，WR-D5 落地登记）**：`streamId` 的分配走 `POST /api/v1/events/subscriptions`（认证链内，CSPRNG 铸造 + 归属盖章，注册表 TTL 内一次性消费——重连先 POST 再 GET，旧 id 不重放）；回放缺口与慢消费者在流内以 `streamResetRequired` 事件（无 `id` 行）落地，登录/权限复核失败以 `auth_required` / `permission_revoked` 终态事件收流（team-server §8.2–§8.4）；不另开传输。
 
 ### 6.7 tableData：读与预览（查询文档体，POST）
 
@@ -214,3 +215,4 @@ WR-D 落地时的机器核对（WR-C3 接管）：同用例双传输测试逐方
 ## 11. 变更记录
 
 - 2026-10-31：首版。收编概要 §6.3 骨架，补齐 settings / identity / tableData（14 方法）/ driverGateway（4+1 排除）；裁决命名视图上 HTTP（服务端存储）、`DELETE` 唯一例外（命名视图）、流式驱动命令走 SSE、`open_base64_with_dialog` 永不上 HTTP。
+- 2026-11-02：v1.1。events 域登记订阅建立路由 `POST /api/v1/events/subscriptions`（WR-D5 落地，§6.6 表）；域方法数 42 → 43。
