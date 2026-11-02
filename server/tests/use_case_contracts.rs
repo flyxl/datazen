@@ -1,10 +1,15 @@
-//! WR-C3 HTTP 腿：named_views 用例契约（同用例、axum 绑定）。
+//! WR-C3 HTTP 腿：named_views 与 settings 用例契约（同用例、axum 绑定）。
 //!
 //! 测试内**自建最小 axum Router**——不改 `server/src/**`：只绑定 WR-C2
-//! 冻结契约（http-api-contract §6.9）的三个端点形态，handler 调
-//! **同一个** modules 用例（`datazen::named_views::NamedViewService`，
-//! 装配层注入规格共享的夹具仓储），用 `tower::ServiceExt::oneshot`
-//! 发请求跑共享规格（`datazen::use_case_contracts_test_support::named_views`）。
+//! 冻结契约（http-api-contract §6.9 的 named-views 三端点、§6.1 的
+//! settings 两端点）的端点形态，handler 调**同一个** modules 用例
+//! （`datazen::named_views::NamedViewService` / `datazen::settings::
+//! SettingsService`，装配层注入规格共享的夹具仓储），用
+//! `tower::ServiceExt::oneshot` 发请求跑共享规格
+//! （`datazen::use_case_contracts_test_support::{named_views, settings}`）。
+//!
+//! settings 域的错误 wire 事实：该域没有 application 契约码——wire 体的
+//! `code` 字段**恒为 null**，「无码」本身是与 IPC 腿一致的契约事实。
 //!
 //! 七个 scenario 测试与 IPC 腿（桌面
 //! `commands/named_views_use_case_contract_tests.rs`）与 modules 无宿主
@@ -36,8 +41,12 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use datazen::named_views::{NamedView, NamedViewError, NamedViewScope, NamedViewService};
+use datazen::settings::{SettingsError, SettingsService, SharedSettings};
 use datazen::use_case_contracts_test_support::named_views::{
     self as contract, ContractIdMinter, MemoryViewStore, NamedViewsContractBinding,
+};
+use datazen::use_case_contracts_test_support::settings::{
+    self as settings_contract, MemorySettingsStore, SettingsContractBinding,
 };
 use datazen::use_case_contracts_test_support::ContractResult;
 use serde::de::DeserializeOwned;
@@ -466,4 +475,298 @@ async fn a_partial_scope_query_does_not_filter_the_wire_answer() {
         2,
         "no table in the query means no scope filter"
     );
+}
+
+// ── settings 域装配层：服务注入 + 端点形态（http-api-contract §6.1）────────
+
+/// 设置服务从**共享规格夹具**装配：与 IPC 腿同一份 setup 词汇，不同存储
+/// 实现（这里是内存假体——服务端的仓储适配器随 WR-D2 落地）。
+fn settings_contract_service() -> (Arc<SettingsService>, Arc<MemorySettingsStore>) {
+    let store = Arc::new(MemorySettingsStore::default());
+    let service = Arc::new(SettingsService::new(store.clone()));
+    (service, store)
+}
+
+/// settings 错误映射（装配裁决）：本域没有 application 契约码——wire 体
+/// `code` 字段**恒为 null**（与 IPC 腿一致的「无码」契约事实），application
+/// 文本进 `message` 字段；状态码按失败族给出（校验拒绝 400 / 存储失败
+/// 500）。真实 server host 的映射随 WR-D3 统一错误中间件上线；规格对
+/// 状态码零断言，这条映射只服务本腿 pin。
+fn settings_error_response(error: SettingsError) -> Response {
+    let status = match &error {
+        SettingsError::Validation(_) => StatusCode::BAD_REQUEST,
+        SettingsError::Repository(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    let code: Option<String> = None;
+    let body = serde_json::json!({
+        "code": code,
+        "message": error.to_string(),
+    });
+    (status, Json(body)).into_response()
+}
+
+/// `GET /api/v1/settings` → 200 `SharedSettings`（§6.1）。
+async fn get_settings_handler(
+    State(service): State<Arc<SettingsService>>,
+) -> Response {
+    match service.read().await {
+        Ok(settings) => (StatusCode::OK, Json(settings)).into_response(),
+        Err(error) => settings_error_response(error),
+    }
+}
+
+#[derive(Deserialize)]
+struct SaveSettingsBody {
+    settings: SharedSettings,
+}
+
+/// `PUT /api/v1/settings`（`{ settings }`）→ 200 `SharedSettings`（§6.1；
+/// 与 named-views 的铸造 201 相对——settings 无铸造，保存即 200）。
+async fn put_settings_handler(
+    State(service): State<Arc<SettingsService>>,
+    Json(body): Json<SaveSettingsBody>,
+) -> Response {
+    match service.save(body.settings).await {
+        Ok(settings) => (StatusCode::OK, Json(settings)).into_response(),
+        Err(error) => settings_error_response(error),
+    }
+}
+
+/// settings 被测 Router：端点形态与 §6.1 一一对应（GET 读、PUT 保存），
+/// 中间件链不进本刀（requestId/认证/体闸随 WR-D 真实装配）。
+fn settings_contract_router(service: Arc<SettingsService>) -> Router {
+    Router::new()
+        .route(
+            "/api/v1/settings",
+            get(get_settings_handler).put(put_settings_handler),
+        )
+        .with_state(service)
+}
+
+// ── settings binding：HTTP 腿对共享规格端口的实现 ─────────────────────────
+
+struct SettingsHttpBinding {
+    app: Router,
+    store: Arc<MemorySettingsStore>,
+}
+
+async fn settings_wire(response: Response) -> (StatusCode, serde_json::Value) {
+    let status = response.status();
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("response body");
+    let value = serde_json::from_slice::<serde_json::Value>(&bytes)
+        .expect("every body of this router is JSON");
+    (status, value)
+}
+
+/// settings 腿的 wire 结果解析：成功侧回 application DTO；错误侧把
+/// `{code: null, message}` 抽回规格的错误观测词汇（code 恒 `None`）。
+fn settings_outcome(status: StatusCode, value: serde_json::Value) -> ContractResult<SharedSettings> {
+    if status.is_success() {
+        return serde_json::from_value(value).map_err(|error| {
+            datazen::use_case_contracts_test_support::ContractFailure {
+                code: None,
+                message: format!("wire body did not deserialize into the application DTO: {error}"),
+            }
+        });
+    }
+    Err(datazen::use_case_contracts_test_support::ContractFailure {
+        code: value["code"].as_str().map(str::to_string),
+        message: value["message"].as_str().unwrap_or_default().to_string(),
+    })
+}
+
+/// `?Send` 与共享规格端口同口径（见 modules `SettingsContractBinding`
+/// 文档）：binding 由单个测试的栈持有，oneshot 顺序 await。
+#[async_trait(?Send)]
+impl SettingsContractBinding for SettingsHttpBinding {
+    async fn seed(&self, settings: SharedSettings) -> Result<(), String> {
+        // setup 直写装配的存储（不经用例、不经 HTTP）——与 IPC 腿经
+        // DesktopRepository 落盘同位。
+        self.store.seed(settings).await;
+        Ok(())
+    }
+
+    async fn fail_writes(&self) -> Result<(), String> {
+        self.store.fail_writes().await;
+        Ok(())
+    }
+
+    async fn get(&self) -> ContractResult<SharedSettings> {
+        let response = self
+            .app
+            .clone()
+            .oneshot(
+                Request::get("/api/v1/settings")
+                    .body(Body::empty())
+                    .expect("request body is empty"),
+            )
+            .await
+            .expect("oneshot dispatch");
+        let (status, value) = settings_wire(response).await;
+        settings_outcome(status, value)
+    }
+
+    async fn save(&self, settings: SharedSettings) -> ContractResult<SharedSettings> {
+        let response = self
+            .app
+            .clone()
+            .oneshot(
+                Request::put("/api/v1/settings")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        serde_json::to_vec(&serde_json::json!({ "settings": settings }))
+                            .expect("the request body serializes"),
+                    ))
+                    .expect("request body"),
+            )
+            .await
+            .expect("oneshot dispatch");
+        let (status, value) = settings_wire(response).await;
+        settings_outcome(status, value)
+    }
+}
+
+fn settings_harness() -> SettingsHttpBinding {
+    let (service, store) = settings_contract_service();
+    SettingsHttpBinding {
+        app: settings_contract_router(service),
+        store,
+    }
+}
+
+// ── settings 共享规格：三个 scenario，三腿逐字同名 ─────────────────────────
+
+#[tokio::test]
+async fn saving_settings_normalizes_and_round_trips() {
+    settings_contract::saving_settings_normalizes_and_round_trips(&settings_harness()).await;
+}
+
+#[tokio::test]
+async fn invalid_enum_values_are_refused_before_the_repository() {
+    settings_contract::invalid_enum_values_are_refused_before_the_repository(&settings_harness())
+        .await;
+}
+
+#[tokio::test]
+async fn a_storage_failure_surfaces_without_a_contract_code() {
+    settings_contract::a_storage_failure_surfaces_without_a_contract_code(&settings_harness())
+        .await;
+}
+
+// ── settings 装配层断言（形态差异唯一允许出现的位置）───────────────────────
+
+/// 端点形态 pin：GET 回 **200** + 完整共享文档；PUT 也回 **200**（§6.1
+/// 裁决——settings 无铸造语义，与 named-views 的 201 相对照）。这是传输
+/// 事实，规格不携带状态码。
+#[tokio::test]
+async fn settings_wire_answers_200_for_both_read_and_save() {
+    let binding = settings_harness();
+    let seeded = settings_contract::contract_settings();
+    binding.seed(seeded.clone()).await.expect("seed");
+
+    let response = binding
+        .app
+        .clone()
+        .oneshot(
+            Request::get("/api/v1/settings")
+                .body(Body::empty())
+                .expect("request body is empty"),
+        )
+        .await
+        .expect("oneshot dispatch");
+    assert_eq!(response.status(), StatusCode::OK);
+    let (_, value) = settings_wire(response).await;
+    let read: SharedSettings = serde_json::from_value(value).expect("the answer is SharedSettings");
+    assert_eq!(read, seeded, "the wire answer is the stored document");
+
+    let mut update = seeded.clone();
+    update.preferences.language = "zh-CN".into();
+    let response = binding
+        .app
+        .clone()
+        .oneshot(
+            Request::put("/api/v1/settings")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({ "settings": update }))
+                        .expect("the request body serializes"),
+                ))
+                .expect("request body"),
+        )
+        .await
+        .expect("oneshot dispatch");
+    assert_eq!(response.status(), StatusCode::OK, "save answers 200");
+}
+
+/// 错误 wire 形态 pin：校验拒绝是 400，wire 体是 **JSON 对象**
+/// `{code: null, message}`——`code` 恒 null 是本域契约事实（无契约码），
+/// application 原句进 `message`。
+#[tokio::test]
+async fn settings_validation_refusal_on_the_wire_is_a_400_with_a_codeless_body() {
+    let binding = settings_harness();
+    binding
+        .seed(settings_contract::contract_settings())
+        .await
+        .expect("seed");
+    let mut invalid = settings_contract::contract_settings();
+    invalid.preferences.theme.mode = "neon".into();
+
+    let response = binding
+        .app
+        .clone()
+        .oneshot(
+            Request::put("/api/v1/settings")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({ "settings": invalid }))
+                        .expect("the request body serializes"),
+                ))
+                .expect("request body"),
+        )
+        .await
+        .expect("oneshot dispatch");
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let (_, value) = settings_wire(response).await;
+    assert!(
+        value["code"].is_null(),
+        "settings has no contract code: {}",
+        value["code"]
+    );
+    assert_eq!(value["message"], "Invalid settings enum value");
+}
+
+/// 存储失败 wire 形态 pin：写路径故障是 500，wire 体 `{code: null,
+/// message}`——application 文本（`backend unavailable: …`）原样进
+/// `message`，与 IPC 腿的宿主固定句相对照（差异钉在各自装配层）。
+#[tokio::test]
+async fn settings_storage_failure_on_the_wire_is_a_500_with_a_codeless_body() {
+    let binding = settings_harness();
+    binding
+        .seed(settings_contract::contract_settings())
+        .await
+        .expect("seed");
+    binding.fail_writes().await.expect("writes fail");
+
+    let response = binding
+        .app
+        .clone()
+        .oneshot(
+            Request::put("/api/v1/settings")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "settings": settings_contract::contract_settings()
+                    }))
+                    .expect("the request body serializes"),
+                ))
+                .expect("request body"),
+        )
+        .await
+        .expect("oneshot dispatch");
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let (_, value) = settings_wire(response).await;
+    assert!(value["code"].is_null(), "storage failures carry no code");
+    assert_eq!(value["message"], "backend unavailable: write failed");
 }

@@ -283,3 +283,16 @@ pub async fn open_path(state: State<'_, AppState>, path: String) -> Result<(), C
 #[cfg(test)]
 #[path = "config_tests.rs"]
 mod tests;
+
+// WR-C3 settings 域的测试宿主：mock_app 托管 AppState（沿
+// dashboard_command_test_host 模式，一域一宿）。
+#[cfg(test)]
+#[path = "settings_command_test_host.rs"]
+pub(crate) mod settings_command_test_host;
+
+// WR-C3 IPC 腿（settings 域）：同用例双传输契约测试。共享规格在
+// `datazen::use_case_contracts_test_support::settings`，HTTP 腿在
+// `server/tests/use_case_contracts.rs`，scenario 逐字同名。
+#[cfg(test)]
+#[path = "settings_use_case_contract_tests.rs"]
+mod settings_use_case_contract_tests;

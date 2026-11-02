@@ -81,9 +81,9 @@ tokio-stream = "0.1"
 
 [features]
 # WR-C3 同用例双传输测试（server 腿）：共享规格模块挂在 datazen 的
-# test-harness + named_views feature 门后，本 crate feature 把两腿依赖一起
-# 点亮；测试目标按 required-features 门控（普通 cargo test 不编译它）。
-use-case-contracts = ["datazen/test-harness", "datazen/named_views"]
+# test-harness + named_views + settings feature 门后，本 crate feature 把
+# 各腿依赖一起点亮；测试目标按 required-features 门控（普通 cargo test 不编译它）。
+use-case-contracts = ["datazen/test-harness", "datazen/named_views", "datazen/settings"]
 
 [[test]]
 name = "use_case_contracts"
