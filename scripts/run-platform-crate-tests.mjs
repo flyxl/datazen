@@ -193,9 +193,15 @@ export const EXCLUDED_TEST_FEATURES = Object.freeze({
 });
 
 /**
- * Feature profiles that must be exercised in addition to each crate's default
- * unit-test invocation. D1's settings slice is optional by design, so a default
- * test alone would compile only the empty module root and miss the real service.
+ * Feature profiles that must be **compiled** in addition to each crate's
+ * default unit-test invocation. D1's settings slice is optional by design, so
+ * a default test alone would compile only the empty module root and miss the
+ * real service.
+ *
+ * These legs are compile-isolation checks, not test runs: they carry
+ * `--no-run` (see {@link buildCargoArgv}), because under modules/src's pure
+ * feature-union gating every test function a leg would execute is already
+ * executed — identically — by the no-selector invocation.
  */
 export const FEATURE_TESTS = Object.freeze({
   'datazen': Object.freeze([
@@ -311,6 +317,37 @@ function assertFeatureAssumptions(crates) {
  * and let EXTRA_TARGETS stay empty until a target that refuses the debug
  * profile earns its way back in.
  *
+ * ## Why the feature-profile legs carry `--no-run` (changed from bare runs)
+ *
+ * modules/src gates features as a **pure union**: zero `cfg(not(feature = …))`
+ * and zero multi-feature `cfg(all(feature = …, feature = …))` combinations
+ * exist anywhere in that tree (rg-verified at this change; the same fact was
+ * rg-verified for the 2026-10-27 removal of the settings,ai,connection,
+ * named_views leg, see the tombstone in ci.yml). Under pure-union gating a
+ * test module enabled by feature X compiles to the same code whether or not
+ * any *other* feature is on, so every test function these legs executed was
+ * re-executed verbatim by the no-selector invocation — a strict execution
+ * subset, paying 7 lib-test runs per CI for zero additional signal.
+ *
+ * What the legs uniquely verify is **compilation under feature isolation**
+ * (a feature's code — including its `#[cfg(test)]` modules — referencing
+ * another feature's API compiles in the full run and only fails here). That
+ * signal is preserved byte-for-byte: `--no-run` builds exactly the same
+ * `--lib` test target cargo built before; only the execution is skipped.
+ *
+ * The rejected alternatives, recorded because each looks like an upgrade:
+ *   * **`cargo check --no-default-features --features X --tests`** looks
+ *     cheaper, but `--tests` also compiles every `tests/*.rs` integration
+ *     target — and 54 of datazen's 56 integration files carry no crate-level
+ *     feature gate (rg `^#!\[cfg` in modules/tests/), so e.g. a `settings`-only
+ *     leg would try to compile `workflow_block_refusal.rs` against an mcp-less
+ *     datazen and go red for a reason that is not a regression. `cargo check
+ *     --lib` without a test profile would also silently stop checking the
+ *     `#[cfg(test)]` modules — a weaker compile check than what runs today.
+ *   * **Deleting the legs outright** would lose the isolation signal above;
+ *     the whole point of this table is that the empty-module-root failure mode
+ *     is real (it is how D1 was caught).
+ *
  * @param {ReadonlyArray<{ name: string, features?: object }>} crates
  * @returns {string[][]}
  */
@@ -336,6 +373,10 @@ export function buildCargoArgv(crates) {
     for (const features of FEATURE_TESTS[name] ?? []) {
       featureInvocations.push([
         'test',
+        // Compile-only: same `--lib` target the leg always built, without the
+        // duplicated execution (see the doc comment above for the evidence
+        // that the execution added zero signal under pure-union gating).
+        '--no-run',
         '--no-default-features',
         '--features',
         features,

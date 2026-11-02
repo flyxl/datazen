@@ -301,15 +301,20 @@ function parseFeatureTable(featuresText: string): Record<string, string[]> {
  */
 const WHOLE_CRATE_RUN =
   'test --no-default-features --features datazen/settings,datazen/ai,datazen/test-harness -p datazen';
+// The seven feature legs are compile-isolation checks: `--no-run` keeps the
+// exact `--lib` target they always built (cfg(test) modules included) and drops
+// only the execution, which under modules/src's pure-union feature gating was a
+// strict subset of the no-selector leg's run — see the runner's buildCargoArgv
+// doc for the evidence and the rejected `cargo check` alternatives.
 const EXPECTED_CLEAN_INVOCATIONS = [
   WHOLE_CRATE_RUN,
-  'test --no-default-features --features settings --lib -p datazen',
-  'test --no-default-features --features ai --lib -p datazen',
-  'test --no-default-features --features connection,execution --lib -p datazen',
-  'test --no-default-features --features named_views --lib -p datazen',
-  'test --no-default-features --features monitor --lib -p datazen',
-  'test --no-default-features --features dashboard --lib -p datazen',
-  'test --no-default-features --features tunnel --lib -p datazen',
+  'test --no-run --no-default-features --features settings --lib -p datazen',
+  'test --no-run --no-default-features --features ai --lib -p datazen',
+  'test --no-run --no-default-features --features connection,execution --lib -p datazen',
+  'test --no-run --no-default-features --features named_views --lib -p datazen',
+  'test --no-run --no-default-features --features monitor --lib -p datazen',
+  'test --no-run --no-default-features --features dashboard --lib -p datazen',
+  'test --no-run --no-default-features --features tunnel --lib -p datazen',
 ];
 
 function envFor(ws: StubWorkspace, cargoTestExit = 0): NodeJS.ProcessEnv {

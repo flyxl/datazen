@@ -14,7 +14,7 @@
 | Host Rust lib | ✅ `cargo test -p datazen_desktop --lib`（basic features + `datazen/test-harness`，与平台腿 feature 对齐以共享 datazen 编译，见 §2.2） | 完整 release 构建 | 同 PR CI 形 |
 | Host 集成测试（`src-tauri/tests/`） | ✅ `cargo test -p datazen_desktop --test driver_command_ipc --test data_sync_public_api --test mcp_stdio_auth --test workflow_tests --test ai_e2e`（features 同 lib 步 + 宿主 `test-harness`；workflow_tests 的 6 个跨库用例 `#[ignore]`，ai_e2e 无 `.env.test` 时自跳过——2026-11-02 起，此前该目录零编译零执行） | 完整 release 构建 | `cargo test -p datazen_desktop --test <name>`；跨库用例 `-- --include-ignored` |
 | driver-api | ✅ `cargo test -p datazen-driver-api`（lib + tests/ 4 文件 + doc test，2026-10-27 由 `--lib` 扩充） | 随构建链接 | `cargo test -p datazen-driver-api` |
-| modules（datazen）单 feature 腿 | ✅ `pnpm test:platform-crates` 的 `FEATURE_TESTS` 逐腿编译（ai 腿已覆盖 ai-api 退役前的那步组合闭包；原 `--features settings,ai,connection,named_views` 组合步于 2026-10-27 删除，理由见 §2.2） | 随构建链接 | `pnpm test:platform-crates` |
+| modules（datazen）单 feature 腿 | ✅ `pnpm test:platform-crates` 的 `FEATURE_TESTS` 逐腿**编译**（`--no-run`，2026-11-02 起：modules/src 纯并集门控下执行与无选择器腿完全重复，零信号，只保留 feature 孤立编译验证；ai 腿已覆盖 ai-api 退役前的那步组合闭包；原 `--features settings,ai,connection,named_views` 组合步于 2026-10-27 删除，理由见 §2.2） | 随构建链接 | `pnpm test:platform-crates` |
 | 平台内核 crate（`modules` / `infra`；`server` 层已武装待主体） | ✅ `pnpm test:platform-crates`，集合由脚本发现 | 随构建链接 | `pnpm test:platform-crates` |
 | 平台 crate 架构门禁（全部平台边界规则） | ✅ `pnpm test:platform-arch`，附变异自证 `pnpm test:platform-arch:mutations` | ❌ | `pnpm test:platform-arch` |
 | Basic path 驱动 lib | ✅ 四 crate 由 `--tests` 步一并运行（lib + 集成 target，见下行） | Basic SKU 内嵌 | `cargo test -p datazen-driver-<id> --lib` |
