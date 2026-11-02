@@ -11,7 +11,7 @@ use datazen_driver_api::{ForeignKeyDeferrability, ForeignKeyInfo, IndexInfo, Tab
 
 use super::model::DdlPreviewKind;
 use super::sql_structure::build_database_structure_plan;
-use super::sql_structure_fixtures::*;
+use super::sql_structure_test_fixtures::*;
 
 /// A table with one non-primary index on `label`.
 fn records_with_label_index(index_name: &str) -> TableSchema {

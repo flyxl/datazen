@@ -2,7 +2,7 @@
 //!
 //! B2 sync 域刀（commands-layer-review §3.5）：转发名拆除——
 //! `generate_data_sync_sql_for_plan` / `start_apply_job` /
-//! `execute_data_sync_plan` 是域内核心（命令入口 + jobs_contract/exec 内联
+//! `execute_data_sync_plan` 是域内核心（命令入口 + jobs_contract_tests/exec 内联
 //! 测试共用）；`validate_active_database` 与预览限幅
 //! （`SQL_PREVIEW_IPC_MAX_BYTES` / `append_bounded_preview_statement`）已下沉
 //! `data_sync::api`（纯逻辑测试随迁 modules/tests）；cfg(test) 的遗留语句
@@ -839,14 +839,14 @@ pub(crate) async fn execute_data_sync_statements(
 
 #[cfg(test)]
 mod tests {
-    use super::super::jobs_contract;
+    use super::super::jobs_contract_tests;
     use super::*;
     use crate::data_sync::execute::RecordingExecutor;
     use crate::data_sync::plan_store::{SyncRunSelection, SyncSelectionMode, SyncTableSelection};
     use crate::data_sync::{
         ChangeOperation, ComparisonResult, ConflictPolicy, RowChange, TableResult,
     };
-    use crate::testing::app_state::{rich_mock_options, TestAppState};
+    use crate::testing::app_state_test_support::{rich_mock_options, TestAppState};
     use crate::testing::mock_driver::MockDriverOptions;
 
     #[tokio::test]
@@ -1072,10 +1072,10 @@ mod tests {
         // A real pair of endpoints: the preview text and the execution must both
         // come from the ChangeSet the prepare Job froze, not from a plan minted
         // by hand (which carries no Artifact and is refused at submit time).
-        let pair = jobs_contract::diff_pair("paged-plan").await;
-        let preview = jobs_contract::compare(&pair, None, None).await.unwrap();
+        let pair = jobs_contract_tests::diff_pair("paged-plan").await;
+        let preview = jobs_contract_tests::compare(&pair, None, None).await.unwrap();
         let options = SyncOptions::default();
-        let selection = jobs_contract::insert_selection(preview.selection_revision);
+        let selection = jobs_contract_tests::insert_selection(preview.selection_revision);
 
         let sql = generate_data_sync_sql_for_plan(
             pair.state(),
@@ -1110,11 +1110,11 @@ mod tests {
         // Both endpoints already agree ⇒ the change set is empty. The refusal
         // happens before `accept`, so the planId stays unconsumed and the user
         // can re-compare instead of being locked out by a spent plan.
-        let pair = jobs_contract::identical_pair("empty-plan").await;
-        let preview = jobs_contract::compare(&pair, None, None).await.unwrap();
+        let pair = jobs_contract_tests::identical_pair("empty-plan").await;
+        let preview = jobs_contract_tests::compare(&pair, None, None).await.unwrap();
         let request = || SyncRunRequest {
             plan_id: preview.plan_id.clone(),
-            selection: jobs_contract::insert_selection(preview.selection_revision),
+            selection: jobs_contract_tests::insert_selection(preview.selection_revision),
             options: SyncOptions::default(),
             job_id: None,
         };

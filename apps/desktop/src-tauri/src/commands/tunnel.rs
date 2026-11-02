@@ -160,7 +160,7 @@ mod tests {
 
     use super::tunnel_command_test_host::host_command_app;
     use super::*;
-    use crate::testing::app_state::{sample_postgres_config, TestAppState};
+    use crate::testing::app_state_test_support::{sample_postgres_config, TestAppState};
     use datazen_driver_api::{SshTunnelConfig, TunnelKind};
 
     const SSH_PASSWORD: &str = "ssh-password-secret";

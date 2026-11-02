@@ -81,7 +81,7 @@ mod tests {
     use super::command_test_host::host_command_app;
     use super::*;
     use crate::store::favorites::ulid::Ulid;
-    use crate::testing::app_state::TestAppState;
+    use crate::testing::app_state_test_support::TestAppState;
 
     #[tokio::test]
     async fn favorite_queries_roundtrip() {

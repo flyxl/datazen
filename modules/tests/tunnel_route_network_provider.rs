@@ -13,7 +13,7 @@
 //!
 //! 替身纪律与 `cm28_concurrent_tunnel.rs`、`tunnel_refcount_contract.rs` 同形：
 //! 端口**不存**任何整数计数，所有读数都由**同一个纯折函数** [`tally`] 从事件日志算出。
-//! 这不是洁癖：`tunnel::single_counter_audit` 的 R4/R5 会机械杀掉第二本账。
+//! 这不是洁癖：`tunnel::single_counter_audit_tests` 的 R4/R5 会机械杀掉第二本账。
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -52,7 +52,7 @@ struct PortTally {
     closed: usize,
 }
 
-/// 「事件 → 账」的唯一折法。本文件是外部 crate，看不见 `src/tunnel/harness.rs` 那个
+/// 「事件 → 账」的唯一折法。本文件是外部 crate，看不见 `src/tunnel/harness_test_support.rs` 那个
 /// `#[cfg(test)]` 私有模块，所以照同一规则就地写一份 —— 审计按「每份实现各自只有一个
 /// 折函数」检查，不跨文件共享。
 fn tally(events: &[TunnelEvent]) -> PortTally {

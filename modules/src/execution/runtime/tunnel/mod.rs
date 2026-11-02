@@ -94,7 +94,7 @@
 //!
 //! 这条铁律**不由类型系统保证**：`&self` 方法并不排除 `Mutex` / `Cell` 内部可变性
 //! （两个夹具本身就在用 `Mutex`），编译器装得下第二份账。它如今由
-//! `tunnel::single_counter_audit` 这道**测试期结构闸门**保证 —— 对台账与全部三份
+//! `tunnel::single_counter_audit_tests` 这道**测试期结构闸门**保证 —— 对台账与全部三份
 //! 端口实现做源码结构审计（台账侧「计数只有一个读取面」、端口侧「不许自存一份账、
 //! 读数只能是唯一折法的投影」、观测账不得参与判断），每条规则另带一条把原始反例
 //! 当字符串喂给自己做断言的 kill test，外加一条「登记表不许被裁小」的自我约束。
@@ -106,7 +106,7 @@
 //! `TunnelEntry::take_reference`）与 `state`（终态守卫，只保证 `Closing` /
 //! `Unconfirmed` 不再发第二次 close；它**不是**第二本账，不参与计数、不增减）。
 //! 台账另有一份**观测**计数 `teardown_calls`（对外 `close_calls()`），
-//! 禁止出现在任何判断条件里。代数不变量见 `journey_single_counter`。
+//! 禁止出现在任何判断条件里。代数不变量见 `journey_single_counter_tests`。
 
 //!
 //! [`PoolKeyGeneration`]: crate::execution::runtime::resource::PoolKeyGeneration
@@ -121,35 +121,35 @@ pub use ledger::{TunnelLease, TunnelLedger, TunnelRelease, TunnelState};
 pub use route::{RouteCatalog, RouteNetworkProvider};
 pub use transport::{TunnelFault, TunnelHandle, TunnelTransport};
 
-/// 测试替身：记录式物理端口 + 可注入故障的隧道旅程。与 `resource::harness` 同一形态。
+/// 测试替身：记录式物理端口 + 可注入故障的隧道旅程。与 `resource::harness_test_support` 同一形态。
 #[cfg(test)]
-mod harness;
+mod harness_test_support;
 
 /// 共享内核的**形态中立**闸门：内核源码里不得出现形态名（桌面 / Tauri / GUI / Web）。
 /// 扫的是整个内核 crate 的 `src/`（字面量 + 标识符两层），并自带 kill test 与自证。
 /// 住在 `src/tunnel/` 而非顶层 `tests/`，是因为它随 `--lib` 跑、因而真的进 CI
 /// （与上面那道闸门同一理由）。
 #[cfg(test)]
-mod form_neutrality;
+mod form_neutrality_tests;
 /// 三个注入点的失败传播旅程（第三条断言）。
 #[cfg(test)]
-mod journey_failure;
+mod journey_failure_tests;
 /// 资源归还接线：`一次归还 = 恰好一次 release`。
 #[cfg(test)]
-mod journey_return;
+mod journey_return_tests;
 /// 主旅程：两个 session 共用隧道（第一条、第二条断言）。
 #[cfg(test)]
-mod journey_sharing;
+mod journey_sharing_tests;
 /// 唯一计数铁律的代数不变量。
 #[cfg(test)]
-mod journey_single_counter;
+mod journey_single_counter_tests;
 /// 唯一计数铁律的机械闸门 R1–R7：对台账与全部三份隧道端口做源码
 /// 结构审计，并把原始反例与同类伪装（含「换名字挂一份镜像账」）作为植入变异喂给
 /// 闸门自己做 kill test。住在 `src/tunnel/` 而非顶层 `tests/`，是因为它随 `--lib` 跑、
 /// 因而真的进 CI（见上面登记项 F 记的 CI 现状）。
 #[cfg(test)]
-mod single_counter_audit;
+mod single_counter_audit_tests;
 /// 上面那道闸门的通用词法 / 结构基元（抹串、`fn` / `impl` / 字段解析）。
 /// 单独成文件只为守单文件规模纪律，不含任何隧道语义。
 #[cfg(test)]
-mod source_scan;
+mod source_scan_test_support;

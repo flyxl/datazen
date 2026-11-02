@@ -13,7 +13,7 @@ pub mod sentinel;
 pub mod standalone;
 pub mod tls;
 #[cfg(test)]
-mod tls_journey;
+mod tls_journey_tests;
 
 /// The socket Redis dials when the config names no host. One constant feeds
 /// every defaulting site below — [`build_connection_plan`] and
@@ -229,7 +229,7 @@ mod tests {
     /// Previously `#[ignore = "requires local redis on 127.0.0.1:6379"]`.
     ///
     /// That reason is gone: the crate now starts its own `redis-server` on its
-    /// own port (see `crate::live_server`), so there is nothing left to ignore
+    /// own port (see `crate::live_server_test_support`), so there is nothing left to ignore
     /// and no fixed port to aim at. A stale ignore reason is worse than a
     /// missing test — it tells the next reader the coverage is missing when it
     /// is not.
@@ -238,7 +238,7 @@ mod tests {
     /// condition both halves are about: a server that cannot do TLS.
     #[tokio::test]
     async fn live_prefer_falls_back_to_plaintext_and_require_refuses() {
-        let server = crate::live_server::live_server_or_skip!();
+        let server = crate::live_server_test_support::live_server_or_skip!();
         server.wait_until_serving().await.expect(
             "the harness starts its own server and reports loudly if that fails; a failure here \
              means the binary is installed but unusable",

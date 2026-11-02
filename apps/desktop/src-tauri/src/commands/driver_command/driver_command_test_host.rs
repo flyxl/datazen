@@ -12,7 +12,7 @@
 //! 仍驱动域内保留的跨域共享入口（`*_impl`），见 tests.rs 的分类注释。
 
 use crate::commands::AppState;
-use crate::testing::app_state::{TestAppState, TestStateKeepalive};
+use crate::testing::app_state_test_support::{TestAppState, TestStateKeepalive};
 use tauri::Manager;
 
 /// A mock tauri app hosting an [`AppState`] for direct command calls.

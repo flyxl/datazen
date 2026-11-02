@@ -7,7 +7,7 @@
 //! read-only flag, so the host has to ask for it itself.
 
 use super::result_write::{commit_query_result_cell, ResultCellWrite};
-use crate::testing::app_state::TestAppState;
+use crate::testing::app_state_test_support::TestAppState;
 use crate::testing::mock_driver::MockDriverOptions;
 use datazen::application::sessions::ConnectionUseCases;
 use datazen::execution::application::requests::{
@@ -184,7 +184,7 @@ fn cell_write(binding: RuntimeResultBinding) -> ResultCellWrite {
 #[tokio::test]
 async fn a_read_only_connection_refuses_the_write_and_sends_no_statement() {
     let test = TestAppState::with_options(options()).await;
-    let mut config = crate::testing::app_state::sample_postgres_config("narrow-read-only");
+    let mut config = crate::testing::app_state_test_support::sample_postgres_config("narrow-read-only");
     config.read_only = true;
     test.store.save_connection(config).await.unwrap();
     let handle = open_session(&test, "narrow-read-only").await;

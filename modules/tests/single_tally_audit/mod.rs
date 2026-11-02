@@ -1,4 +1,4 @@
-//! `src/resource/**` 的**结构性**单账审计（`single_counter_audit`）。
+//! `src/resource/**` 的**结构性**单账审计（`single_counter_audit_tests`）。
 //!
 //! # 为什么是语法树而不是子串
 //!

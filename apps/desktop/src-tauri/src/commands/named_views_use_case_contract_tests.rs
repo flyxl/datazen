@@ -1,6 +1,6 @@
 //! WR-C3 IPC 腿：named_views 用例契约（同用例、Tauri IPC 绑定）。
 //!
-//! 共享规格本体住在 `datazen::use_case_contracts::named_views`（形态中立，
+//! 共享规格本体住在 `datazen::use_case_contracts_test_support::named_views`（形态中立，
 //! 不含任何 IPC 词汇；模块头登记验收口径与装配差异清单）。本文件只贡献
 //! **传输装配**：
 //!
@@ -20,13 +20,13 @@
 
 use async_trait::async_trait;
 use datazen::named_views::{NamedView, NamedViewScope};
-use datazen::use_case_contracts::named_views::NamedViewsContractBinding;
-use datazen::use_case_contracts::named_views as contract;
-use datazen::use_case_contracts::{ContractFailure, ContractResult};
+use datazen::use_case_contracts_test_support::named_views::NamedViewsContractBinding;
+use datazen::use_case_contracts_test_support::named_views as contract;
+use datazen::use_case_contracts_test_support::{ContractFailure, ContractResult};
 use tauri::Manager;
 
 use super::{delete_named_view, list_named_views, save_named_view, AppState, CommandError};
-use crate::testing::app_state::{TestAppState, TestStateKeepalive};
+use crate::testing::app_state_test_support::{TestAppState, TestStateKeepalive};
 
 // ── 装配层：mock 宿主（与 connection_command_test_host 同形）──────────────
 

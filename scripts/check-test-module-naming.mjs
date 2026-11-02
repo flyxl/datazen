@@ -63,10 +63,12 @@
  * scan set — the check is dynamic, so Rust e2e helpers cannot silently
  * escape the guard.
  *
- * Findings that predate the guard are listed in ALLOWLIST below with one
- * justification each (pattern: check-id-terminology.mjs). A stale entry that
- * matches nothing fails with exit 2, so the allow-list cannot silently
- * outlive the module it exempts.
+ * The allow-list (see below) is empty: the guard shipped inside the same
+ * PR that renamed or regated all of its legacy findings, so nothing is
+ * grandfathered. The mechanism remains for future justified exceptions
+ * (pattern: check-id-terminology.mjs): one reason per entry, and a stale
+ * entry that matches nothing fails with exit 2, so the allow-list cannot
+ * silently outlive the module it exempts.
  *
  * Usage: node scripts/check-test-module-naming.mjs [repoRoot]
  * The optional argument overrides the repository root (default: this
@@ -123,59 +125,16 @@ const PATH_ATTR_RE = /#\[\s*path\s*=\s*"([^"]*)"\s*\]/;
 const ROOT_FILE_NAMES = new Set(['mod.rs', 'lib.rs', 'main.rs', 'build.rs']);
 
 /**
- * Allow-list: findings that predate this guard (introduced at f4ae70c, the
- * commit whose review found `ipc_contract_guards.rs`). The guard's job is to
- * keep NEW modules on the convention, not to freeze legacy names in place —
- * every entry is enumerated debt with a stated reason, and every entry MUST
- * be deleted in the same change that renames, regates or removes its module
- * (a stale entry fails with exit 2 instead of rotting silently).
+ * Allow-list: justified exceptions. Empty since the PR that introduced this
+ * guard: it shipped with 36 legacy findings enumerated here (15 shared
+ * scaffolding files + 21 pure-test modules) so it could go green on day one
+ * without freezing legacy names, and the same PR renamed or regated every
+ * one of them and deleted the entries. The mechanism stays: an entry is
+ * enumerated debt with a stated reason and a removal plan, MUST be deleted
+ * in the same change that renames, regates or removes its module, and a
+ * stale entry fails with exit 2 instead of rotting silently.
  */
-const ALLOWLIST = [
-  // ── Rule 1 · shared test scaffolding ──────────────────────────────────
-  // These modules EXPORT fixtures/doubles for other test modules; the name
-  // describes the role in the test tree, not the word "test". Gating is
-  // correct — only the name predates the convention.
-  { rule: 1, file: 'apps/desktop/src-tauri/src/commands/data_transfer/plan_scope.rs', why: 'test-only fixture: the desktop plan-registry scope the transfer tests assemble' },
-  { rule: 1, file: 'apps/desktop/src-tauri/src/commands/sync/jobs_contract.rs', why: 'shared sync-job test fixture library (pub pair()/gated_pair() helpers)' },
-  { rule: 1, file: 'apps/desktop/src-tauri/src/store/history_db/fixtures.rs', why: 'history-db test fixture data (#[path]-redirected from history_db.rs)' },
-  { rule: 1, file: 'apps/desktop/src-tauri/src/testing/app_state.rs', why: 'test-harness AppState fixture (src/testing/)' },
-  { rule: 1, file: 'apps/desktop/src-tauri/src/testing/resource_provider.rs', why: 'test-harness resource-provider double (src/testing/)' },
-  { rule: 1, file: 'apps/desktop/src-tauri/src/testing/mock_ai_provider.rs', why: 'AI provider mock for AI command tests' },
-  { rule: 1, file: 'apps/desktop/src-tauri/src/testing/ai_wiremock.rs', why: 'AI wire-level mock server for AI command tests' },
-  { rule: 1, file: 'modules/src/execution/runtime/connection/testing/harness/mod.rs', why: 'shared recording-port harness for connection tests' },
-  { rule: 1, file: 'modules/src/execution/runtime/gateway/facade_support.rs', why: 'shared fixtures for facade_tests + cancel_event_tests' },
-  { rule: 1, file: 'modules/src/execution/runtime/resource/harness.rs', why: 'shared resource test double (recording ports, injectable faults)' },
-  { rule: 1, file: 'modules/src/execution/runtime/tunnel/harness.rs', why: 'shared tunnel test double (recording ports, injectable faults)' },
-  { rule: 1, file: 'modules/src/execution/runtime/tunnel/source_scan.rs', why: 'source-scan primitives shared by the tunnel audit gates' },
-  { rule: 1, file: 'modules/src/use_case_contracts.rs', why: 'WR-C3 dual-transport shared test specs (IPC + HTTP legs share the spec)' },
-  { rule: 1, file: 'modules/src/migration/data_transfer/sql_structure_fixtures.rs', why: 'SQL structure fixture data for data-transfer tests' },
-  { rule: 1, file: 'packages/drivers/redis/src/live_server.rs', why: 'shared live-Redis harness (#[ignore]-gated live tests)' },
-  // ── Rule 1 · legacy pure-test modules ─────────────────────────────────
-  // Same class as the ipc_contract_guards incident: 100% test code behind a
-  // name with no test signal. Renaming them is debt, not part of the guard's
-  // introduction; rename when next touched, then delete the entry.
-  { rule: 1, file: 'apps/desktop/src-tauri/src/commands/export/live_acceptance.rs', why: 'export live-acceptance tests; legacy name predates the guard' },
-  { rule: 1, file: 'apps/desktop/src-tauri/src/commands/sync/jobs_cancel_contract.rs', why: 'sync job-cancellation contract tests; legacy name predates the guard' },
-  { rule: 1, file: 'apps/desktop/src-tauri/src/mcp/contract.rs', why: 'MCP external-contract golden snapshot tests; legacy name predates the guard' },
-  { rule: 1, file: 'apps/desktop/src-tauri/src/platform/scope_gate.rs', why: 'org-scope shape gate: self-proving scan tests with kill test; legacy name' },
-  { rule: 1, file: 'apps/desktop/src-tauri/src/platform/org_literal_gate.rs', why: 'org-id literal gate: self-proving scan tests with kill test; legacy name' },
-  { rule: 1, file: 'apps/desktop/src-tauri/src/workflow/live_acceptance.rs', why: 'workflow live-acceptance tests; legacy name predates the guard' },
-  { rule: 1, file: 'modules/src/execution/runtime/connection/testing/fake_resource/catalog_guard.rs', why: 'fake-resource catalog guard tests; legacy name' },
-  { rule: 1, file: 'modules/src/execution/runtime/connection/testing/fake_resource/close_cases.rs', why: 'fake-resource close-order case tests; legacy name' },
-  { rule: 1, file: 'modules/src/execution/runtime/connection/testing/fake_resource/close_unconfirmed.rs', why: 'fake-resource unconfirmed-close tests; legacy name' },
-  { rule: 1, file: 'modules/src/execution/runtime/connection/testing/harness/cm73_threads.rs', why: 'CM73 real-thread eviction regression tests; legacy name' },
-  { rule: 1, file: 'modules/src/execution/runtime/connection/testing/harness/cm74_release_order.rs', why: 'CM74 release-order regression tests; legacy name' },
-  { rule: 1, file: 'modules/src/execution/runtime/resource/journey.rs', why: 'pool-return / handle-close journey tests; legacy name' },
-  { rule: 1, file: 'modules/src/execution/runtime/resource/journey_ledger.rs', why: 'resource journey ledger tests; legacy name' },
-  { rule: 1, file: 'modules/src/execution/runtime/resource/journey_rotation.rs', why: 'resource journey rotation tests; legacy name' },
-  { rule: 1, file: 'modules/src/execution/runtime/tunnel/form_neutrality.rs', why: 'kernel form-neutrality gate (scan tests); legacy name' },
-  { rule: 1, file: 'modules/src/execution/runtime/tunnel/journey_failure.rs', why: 'tunnel failure-journey tests; legacy name' },
-  { rule: 1, file: 'modules/src/execution/runtime/tunnel/journey_return.rs', why: 'tunnel return-journey tests; legacy name' },
-  { rule: 1, file: 'modules/src/execution/runtime/tunnel/journey_sharing.rs', why: 'tunnel sharing-journey tests; legacy name' },
-  { rule: 1, file: 'modules/src/execution/runtime/tunnel/journey_single_counter.rs', why: 'tunnel single-counter journey tests; legacy name' },
-  { rule: 1, file: 'modules/src/execution/runtime/tunnel/single_counter_audit/mod.rs', why: 'one-count iron-law audit gate (dir module with kill_tests); legacy name' },
-  { rule: 1, file: 'packages/drivers/redis/src/connect/tls_journey.rs', why: 'real Redis TLS handshake journey tests; legacy name' },
-];
+const ALLOWLIST = [];
 
 /** Recursively collect .rs files under one root directory. */
 function walkRust(dir, root, out) {

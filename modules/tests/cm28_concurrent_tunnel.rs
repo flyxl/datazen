@@ -13,7 +13,7 @@
 //! `tests/tunnel_refcount_contract.rs` 里的
 //! `one_return_releases_exactly_once_however_many_times_it_is_repeated`
 //! 用一个**顺序** `for returns in 1..=6` 循环重复归还，而且数的是隧道端口的
-//! `close`，不是权威计数。`src/tunnel/journey_single_counter.rs` 的
+//! `close`，不是权威计数。`src/tunnel/journey_single_counter_tests.rs` 的
 //! `single_counter_algebra_holds` 则是嵌套 `for` 的纯代数，没有线程。
 //! 「隧道不多减引用」在**真并发**下才有的两种失败 —— 丢更新（20 减成 19）
 //! 与多减（20-2）—— 两者都还没有任何测试能看见。
@@ -70,7 +70,7 @@ struct PortTally {
     closed: usize,
 }
 
-/// 「事件 → 账」的唯一折法。同 `src/tunnel/harness.rs` 的 `tallies` 一个形状；
+/// 「事件 → 账」的唯一折法。同 `src/tunnel/harness_test_support.rs` 的 `tallies` 一个形状；
 /// 本文件是外部 crate，看不见那个 `#[cfg(test)]` 私有模块，所以照同一规则就地写一份
 /// —— 审计按「每份实现各自只有一个折函数」检查，不跨文件共享。
 fn tally(events: &[TunnelEvent]) -> PortTally {

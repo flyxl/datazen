@@ -15,7 +15,7 @@
 //!
 //! ## Where the server comes from
 //!
-//! [`crate::live_server`] starts a private `redis-server` child: its own port,
+//! [`crate::live_server_test_support`] starts a private `redis-server` child: its own port,
 //! its own data directory, persistence off, killed and cleaned up on drop. That
 //! module holds the reasoning for why a child process and not a container, a
 //! reused 6379, or a fake RESP server, plus the one and only skip condition
@@ -62,7 +62,7 @@ use super::tests::{
     acquire_request, config_on, connection_handle, interactive_scope, ledger_port, BudgetLedger,
 };
 
-use crate::live_server::LiveRedis;
+use crate::live_server_test_support::LiveRedis;
 
 // ---------------------------------------------------------------------------
 // The witness
@@ -226,7 +226,7 @@ macro_rules! session_or_skip {
                 eprintln!(
                     "SKIPPED: no `redis-server` on PATH. Set {} to point at one. \
                      The live suite needs a real Redis to have anything to prove.",
-                    crate::live_server::BINARY_ENV
+                    crate::live_server_test_support::BINARY_ENV
                 );
                 return;
             }

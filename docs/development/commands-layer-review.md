@@ -146,7 +146,7 @@ modules 侧 `migration/` 已有同域测试基建（`filter_tests.rs`、`plan_te
 | sync/apply.rs | 681 | 瘦身（5 `_impl`） | apply/compare 编排 |
 | sync/exec.rs | 1,228 | 瘦身（4 `_impl`） | 执行编排 |
 | sync/jobs.rs | 884 | 瘦身 | job 生命周期 |
-| sync/jobs_contract.rs + jobs_cancel_contract.rs | 1,063 | 守卫 + 随刀拆分 | IPC 参数契约留；job 语义随刀 |
+| sync/jobs_contract_tests.rs + jobs_cancel_contract_tests.rs | 1,063 | 守卫 + 随刀拆分 | IPC 参数契约留；job 语义随刀 |
 | sync/tasks.rs | 253 | 瘦身（4 `_impl`） | 任务 CRUD 壳 |
 | sync/job_api.rs / inspect.rs / compare.rs / keyset_source.rs / artifact_view.rs | 1,001 | 瘦身 | 逐个随刀 |
 | sync/host/*（mod/executor/recording/selection/state） | 1,348 | 保留（本切片） | 宿主执行器桥接（HostTargetExecutor 等），WR-F5 服务端需对照实现 |
@@ -157,7 +157,7 @@ modules 侧 `migration/` 已有同域测试基建（`filter_tests.rs`、`plan_te
 | schema_diff/reviewed_repository.rs | 569 | 下沉核对 | modules 侧已有 `reviewed_repository_tests`，桌面这层应只余桥接 |
 | schema_diff/unified_plan.rs | 116 | 瘦身（1 `_impl`） | 统一计划壳 |
 | schema_diff/tests.rs + tests/plan_deploy.rs | 501 | 随刀下沉 | plan/deploy 语义 |
-| data_transfer/*（exec/inspect/preview/job_api/plan_scope…） | 5,279 | 瘦身（分刀） | 最大编排域；job_api 的 admission/assembly/runtime/scope 形态中立 |
+| data_transfer/*（exec/inspect/preview/job_api/plan_scope_tests…） | 5,279 | 瘦身（分刀） | 最大编排域；job_api 的 admission/assembly/runtime/scope 形态中立 |
 | data_transfer/tests.rs | 1,069 | 随刀下沉 | 编排行为 |
 | data_transfer/job_api/tests/*（6 文件） | 2,456 | 甄别：queries/addressability/endpoint_identity 指向 modules 逻辑 → 测试迁移；mod/job_lifecycle/replay 随刀 | 逐个核对被测面 |
 | data_transfer/resume_preflight_tests.rs | 478 | 随刀下沉 | preflight 语义 |
@@ -185,7 +185,7 @@ modules 侧 `migration/` 已有同域测试基建（`filter_tests.rs`、`plan_te
 | restore_job/tests.rs | 365 | 保留（C4 适配器烟测） | 宿主边界旅程（生产上传→SQLite 准入→桌面运行时接线）；深度行为在 modules 驱动旅程（模块文档明言「PG/MySQL driver journeys own real SQL evidence」） |
 | restore_job/provider_fixture.rs | 274 | 基建（随刀） | — |
 | export.rs + export/stream.rs | 846 | 保留 | 文件导出宿主绑定 |
-| export/live_acceptance.rs | 347 | 保留（C4 验收） | 真实驱动验收烟测 |
+| export/live_acceptance_tests.rs | 347 | 保留（C4 验收） | 真实驱动验收烟测 |
 | file.rs / file_jobs.rs | 524 | 保留 | tauri 文件系绑定 |
 | dialog.rs | 528 | 保留 | tauri 对话框 |
 | window.rs | 753 | 保留 | tauri 窗口 |

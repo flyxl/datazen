@@ -116,7 +116,7 @@ Contract drift must be caught in CI:
 
 | Area | Test location |
 |------|----------------|
-| MCP tool names, inputs, resources | `src-tauri/src/mcp/contract.rs` + golden JSON |
+| MCP tool names, inputs, resources | `src-tauri/src/mcp/contract_tests.rs` + golden JSON |
 | MCP input rejects removed fields | `mcp/server.rs` (`config_id` test) |
 | MCP stateful session ownership, TTL, isolation, idempotent close | `mcp/server/tests_stateful.rs` |
 | MCP session registry unit behavior (sanitize_ttl, lookup, close_client) | `mcp/session.rs` |

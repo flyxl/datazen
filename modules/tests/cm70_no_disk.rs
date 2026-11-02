@@ -124,8 +124,8 @@ const SOURCES: &[(&str, &str)] = &[
         include_str!("../../modules/src/execution/runtime/gateway/timing.rs"),
     ),
     (
-        "facade_support.rs",
-        include_str!("../../modules/src/execution/runtime/gateway/facade_support.rs"),
+        "facade_test_support.rs",
+        include_str!("../../modules/src/execution/runtime/gateway/facade_test_support.rs"),
     ),
     (
         "testing_support.rs",

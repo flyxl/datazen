@@ -16,7 +16,7 @@ fn merged_wapp_commands_gate_override_path_in_production() {
     assert!(BOOTSTRAP_RS.contains("commands::remove_wapp,"));
 }
 
-use crate::testing::app_state::TestAppState;
+use crate::testing::app_state_test_support::TestAppState;
 
 use serde_json::json;
 

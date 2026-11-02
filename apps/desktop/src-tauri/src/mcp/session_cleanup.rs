@@ -113,7 +113,7 @@ mod tests {
             session::SessionBinding,
             types::{CloseSessionInput, OpenSessionInput, UseSessionInput},
         },
-        testing::{app_state::TestAppState, mock_driver::MockDriverOptions},
+        testing::{app_state_test_support::TestAppState, mock_driver::MockDriverOptions},
     };
     use rmcp::handler::server::wrapper::Parameters;
     use std::sync::Arc;

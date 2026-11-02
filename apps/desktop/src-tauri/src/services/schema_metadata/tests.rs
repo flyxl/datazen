@@ -1,6 +1,6 @@
 use super::*;
 use crate::commands::driver_command::{execute_driver_command_impl, ExecuteDriverCommandRequest};
-use crate::testing::{app_state::TestAppState, mock_driver::MockDriverOptions};
+use crate::testing::{app_state_test_support::TestAppState, mock_driver::MockDriverOptions};
 
 async fn run(
     test: &TestAppState,

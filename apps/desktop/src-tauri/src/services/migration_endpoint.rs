@@ -291,7 +291,7 @@ mod tests {
     use super::*;
     #[tokio::test]
     async fn session_aliases_are_refused_and_cross_database_sessions_remain_legal() {
-        use crate::testing::app_state::TestAppState;
+        use crate::testing::app_state_test_support::TestAppState;
         use datazen::jobs::{detect_endpoint_overlap, EndpointRef, EndpointRole};
         let test = TestAppState::new().await;
         let (_, source) = test.save_and_connect("source-alias").await;

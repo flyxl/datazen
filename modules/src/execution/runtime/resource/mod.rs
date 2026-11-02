@@ -72,16 +72,16 @@ mod tunnel_wiring;
 
 /// 连续旅程测试的共享替身（`FakeClock` 适配、记录式物理端口、可注入故障的目录）。
 #[cfg(test)]
-mod harness;
+mod harness_test_support;
 /// 归还裁决旅程。
 #[cfg(test)]
-mod journey;
+mod journey_tests;
 /// 候选替换旅程。
 #[cfg(test)]
-mod journey_ledger;
+mod journey_ledger_tests;
 /// 轮换、配置版本与禁用旅程。
 #[cfg(test)]
-mod journey_rotation;
+mod journey_rotation_tests;
 
 pub use cleanup::{
     CancellationOutcome, CleanupDisposition, CleanupPlan, CleanupReport, DriverCleanVerdict,
@@ -311,9 +311,9 @@ mod tests {
             ("adoption.rs", include_str!("adoption.rs")),
             ("cleanup.rs", include_str!("cleanup.rs")),
             ("replacement.rs", include_str!("replacement.rs")),
-            ("harness.rs", include_str!("harness.rs")),
-            ("journey.rs", include_str!("journey.rs")),
-            ("journey_ledger.rs", include_str!("journey_ledger.rs")),
+            ("harness_test_support.rs", include_str!("harness_test_support.rs")),
+            ("journey_tests.rs", include_str!("journey_tests.rs")),
+            ("journey_ledger_tests.rs", include_str!("journey_ledger_tests.rs")),
         ];
 
         for (name, source) in sources {

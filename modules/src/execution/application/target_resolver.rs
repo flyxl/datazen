@@ -197,7 +197,7 @@ mod tests {
             .next()
             .unwrap_or_default();
         // 宿主形态词拆开拼：本文件在共享内核里，完整写出来会先被
-        // 形态中立闸门（runtime::tunnel::form_neutrality）点红。
+        // 形态中立闸门（runtime::tunnel::form_neutrality_tests）点红。
         let host_toolkit: String = ["tau", "ri"].concat();
         for forbidden in [
             "crate::store",

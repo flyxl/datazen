@@ -19,7 +19,7 @@
 //! `one_return_releases_exactly_once_however_many_times_it_is_repeated`
 //! 数的是**隧道**端口的 `close`，而且是**顺序** `for` 循环：它既数错了对象
 //! （判据第一格的主语是 **driver close**，即 [`PhysicalTransport::close`]），
-//! 也没有制造任何竞态。`src/tunnel/journey_single_counter.rs` 的
+//! 也没有制造任何竞态。`src/tunnel/journey_single_counter_tests.rs` 的
 //! `single_counter_algebra_holds` 同理 —— 嵌套 `for` 的纯代数，没有线程。
 //!
 //! # 并发形状（是「同时抵达」，不是「多线程顺序」）
@@ -194,7 +194,7 @@ struct BudgetInner {
 
 /// 第一格与第二格唯一被数的对象。
 ///
-/// 刻意**不**复用 `src/resource/harness.rs` 的替身：那种替身只记事件序列，
+/// 刻意**不**复用 `src/resource/harness_test_support.rs` 的替身：那种替身只记事件序列，
 /// 计次要靠调用方回扫，既容易数错对象，也看不出「预算有没有真的被还回去」。
 struct BudgetPort {
     inner: Mutex<BudgetInner>,

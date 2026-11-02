@@ -6,7 +6,7 @@
 use super::test_fixtures::*;
 use super::*;
 use super::data_command_test_host::host_command_app;
-use crate::testing::app_state::TestAppState;
+use crate::testing::app_state_test_support::TestAppState;
 use datazen::data_browsing::{canonicalize_changes, changes_fingerprint, plan_changes};
 use datazen_driver_api::Value;
 use std::collections::BTreeMap;
@@ -556,7 +556,7 @@ async fn a_drifted_manual_transaction_is_refused_as_a_stale_plan() {
     let mut options = insert_capable_options();
     options.execute_rows_affected = 1;
     let test = TestAppState::with_resource_provider(options).await;
-    let mut config = crate::testing::app_state::sample_postgres_config("r5-manual-drift");
+    let mut config = crate::testing::app_state_test_support::sample_postgres_config("r5-manual-drift");
     config.database = None;
     test.store.save_connection(config).await.unwrap();
     let app = host_command_app(test);
@@ -624,7 +624,7 @@ async fn an_owned_session_that_honours_the_plan_target_still_writes() {
     let mut options = insert_capable_options();
     options.execute_rows_affected = 1;
     let test = TestAppState::with_resource_provider(options).await;
-    let mut config = crate::testing::app_state::sample_postgres_config("r5-owned-ok");
+    let mut config = crate::testing::app_state_test_support::sample_postgres_config("r5-owned-ok");
     config.database = None;
     test.store.save_connection(config).await.unwrap();
     let app = host_command_app(test);

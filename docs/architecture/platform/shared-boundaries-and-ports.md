@@ -361,7 +361,7 @@ F-01…F-13 拦的是**依赖**。还有一类耦合不产生依赖边：**名�
 **判据是分词后逐词比，不是子串比**：`webhook` / `webdriver` 这类协议复合词不算形态名
 （它们切出来是整词），否则误伤会逼人把合法写法藏起来。
 
-**闸门**：`modules/src/execution/runtime/tunnel/form_neutrality.rs`（随 `--lib` 跑，因而进
+**闸门**：`modules/src/execution/runtime/tunnel/form_neutrality_tests.rs`（随 `--lib` 跑，因而进
 CI）。它扫内核 crate 的 `src/`，两层都查——**字面量**（对外产出的稳定码、租约前缀、错误码）
 与**标识符**（类型 / 常量 / 字段名）。三条配套事实：
 
@@ -1055,7 +1055,7 @@ impl OpenSessionUseCase {
 
 宿主里**只有两个**直读「桌面的安装级组织常量」的入口：
 `crate::platform::local_organization_scope()` 与
-`crate::commands::data_transfer::plan_scope::desktop_organization_scope()`。
+`crate::commands::data_transfer::plan_scope_tests::desktop_organization_scope()`。
 桌面形态下它们与正规入口解析出的值**逐字相同**；但服务端形态下，直读常量等于
 「拿桌面的组织去查服务端的多租户存储」——那是**越组织读写**，比性能问题严重：
 CM-05 要求跨组织访问按「不存在」处理，而这里是「用错组织查」，查到就是真的越界。
@@ -1082,11 +1082,11 @@ CM-05 要求跨组织访问按「不存在」处理，而这里是「用错组�
 
 **桌面行为逐字不变**：桌面上 `AppState::organization_scope()` 解析出的组织**恒为**
 `LOCAL_ORGANIZATION_ID`（请求上下文里的 `organizationId` 也恒为它）。这一点由
-`platform/scope_gate.rs` 的等价性用例实测断言。
+`platform/scope_gate_tests.rs` 的等价性用例实测断言。
 
 #### 5.2.2 形态中立闸门（防回归）
 
-`src-tauri/src/platform/scope_gate.rs` 是宿主侧的**机械闸门**：它扫描宿主 `src/` 的
+`src-tauri/src/platform/scope_gate_tests.rs` 是宿主侧的**机械闸门**：它扫描宿主 `src/` 的
 **生产代码**，找出每一次直读安装级组织常量的调用点，要求每一处都带
 `scope-gate: <id>` 标记、且 `<id>` 落在该文件内的**显式白名单**里并写明
 「为什么这里是桌面专有路径」；白名单里的 id 也必须都被用上（不许养闲条目）。
@@ -1192,7 +1192,7 @@ restore 任务（组织 = 规范值）与 transfer / schema-diff / sync 任务�
 
 #### 防回归闸门
 
-[`src-tauri/src/platform/org_literal_gate.rs`](../../../src-tauri/src/platform/org_literal_gate.rs)
+[`src-tauri/src/platform/org_literal_gate_tests.rs`](../../../src-tauri/src/platform/org_literal_gate_tests.rs)
 （`#[cfg(test)]`，随 `cargo test -p datazen_desktop --lib` 跑 ⇒ 进 CI）把「组织 id 被写死成字面量」
 钉成常驻断言：**生产代码**（排除 `#[cfg(test)]` 体与测试专用文件）里不得出现
 `OrganizationId::new("<字符串字面量>")`；取规范常量 `LOCAL_ORGANIZATION_ID` 或取运行时

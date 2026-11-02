@@ -518,7 +518,7 @@ mod tests {
     /// emitted payload, and every step of that chain needs a live connection.
     #[tokio::test]
     async fn a_delivered_message_is_attributed_to_the_persisted_connection_id() {
-        let server = crate::live_server::live_server_or_skip!();
+        let server = crate::live_server_test_support::live_server_or_skip!();
         server.wait_until_serving().await.expect(
             "the harness starts its own server and reports loudly if that fails; a failure here \
              means the binary is installed but unusable",

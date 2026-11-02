@@ -70,7 +70,7 @@
 | `.../testing/commands.rs` | 会话级句柄 fake 命令定义 | `session_handle_command_definitions()` |
 | `modules/src/bin/cm60-bench/` | CM-60 基准入口（§11） | **已实现**：独立的 bin target，不在 `testing/` 下（§11.6 要求基准不得与功能测试共用入口） |
 
-`cfg` 门控与 `src-tauri/src/testing/mod.rs` 现有写法保持一致（`app_state` 用 `#[cfg(any(test, feature = "test-harness"))]`，feature 名 `test-harness` 已在 `src-tauri/Cargo.toml` 定义；`modules/Cargo.toml` 也定义了同名 feature，夹具模块由 `lib.rs` 与 `connection/mod.rs` 两处 `#[cfg(any(test, feature = "test-harness"))]` 双重门控）。
+`cfg` 门控与 `src-tauri/src/testing/mod.rs` 现有写法保持一致（`app_state_test_support` 用 `#[cfg(any(test, feature = "test-harness"))]`，feature 名 `test-harness` 已在 `src-tauri/Cargo.toml` 定义；`modules/Cargo.toml` 也定义了同名 feature，夹具模块由 `lib.rs` 与 `connection/mod.rs` 两处 `#[cfg(any(test, feature = "test-harness"))]` 双重门控）。
 
 ```mermaid
 flowchart TD
@@ -490,7 +490,7 @@ h.clock().advance(Duration::from_secs(24 * 3600));  // 触发 IdempotencyExpired
 
 断言集合：`R2` 上不存在任何 `registered` 事件；`I1`~`I8` 全部成立；恢复流程若被触发，必须以**新 dbSessionId** 出现，旧句柄不被重建（connection-management.md §6.5）。
 
-CM-73/CM-74 的断言只依赖 Runtime 行为（回收时处理已登记活动句柄、失效后不以同一 dbSessionId 重建），不依赖 Host 管理器函数名；它们由 `modules/src/execution/runtime/connection/testing/harness/` 中的 Runtime 测试覆盖。
+CM-73/CM-74 的断言只依赖 Runtime 行为（回收时处理已登记活动句柄、失效后不以同一 dbSessionId 重建），不依赖 Host 管理器函数名；它们由 `modules/src/execution/runtime/connection/testing/harness_test_support/` 中的 Runtime 测试覆盖。
 
 ## 10. 真实驱动契约夹具模板
 

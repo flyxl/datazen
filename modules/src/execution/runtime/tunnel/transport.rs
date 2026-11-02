@@ -20,7 +20,7 @@
 //! 「全 `&self` 所以装不下第二个计数」这句话按这两行即可证伪。
 //!
 //! 因此真正的约束是**结构**上的：「端口不许自存一份账，台账的计数只有一个读取面，
-//! 而且台账的声明里只许有一份计数」。它由 `tunnel::single_counter_audit` 落成机械闸门
+//! 而且台账的声明里只许有一份计数」。它由 `tunnel::single_counter_audit_tests` 落成机械闸门
 //! （随 `--lib` 跑，因而进 CI），不是靠评审。下面三条是闸门各条规则的口径。
 //!
 //! 1. **端口只有一份事实、一个折法。** 实现本 trait 的结构体**不允许**持有任何
@@ -42,7 +42,7 @@
 //!    `TunnelBinding` 只在 `acquire` 处被快照出去，此后不再回流。
 //! 3. **观测账不得参与判断，代数另有钉子。** 台账自己的 `teardown_calls`
 //!    （对外 `close_calls()`）是**观测**字段，闸门禁止它出现在任何比较 / 条件里（R3）。
-//!    代数不变量由 `tunnel::journey_single_counter::single_counter_algebra_holds`
+//!    代数不变量由 `tunnel::journey_single_counter_tests::single_counter_algebra_holds`
 //!    钉住，三条各自独立：`open` 次数恒为 **1**（一条 spec 只开一条物理隧道，
 //!    与 acquire 次数无关）；剩余计数 == acquire 次数 − release 次数；
 //!    `close` 次数 ∈ {0, 1} —— 归零那一次为 1，重复释放不再增加。
@@ -109,7 +109,7 @@ impl std::fmt::Debug for TunnelHandle {
 ///
 /// 方法全部 `&self` 是为了让实现能放进 `Arc`，**不是**为了禁止内部计数 ——
 /// `Mutex`/`Cell` 不需要 `&mut self`。实现方因此**装得下**一份自存的账，
-/// 只是不许装：那份约束由 `tunnel::single_counter_audit` 机械执行，见模块头。
+/// 只是不许装：那份约束由 `tunnel::single_counter_audit_tests` 机械执行，见模块头。
 pub trait TunnelTransport: Send + Sync + 'static {
     /// 建立一条隧道。返回 `None` 表示「这条 `spec` 其实不需要隧道」（等价于宿主
     /// `TunnelKind::None` 直连），此时**不产生**任何引用计数。

@@ -15,7 +15,7 @@ mod driver;
 /// harness that only one module can reach is a live harness that stays
 /// `#[ignore]`d in the other one.
 #[cfg(test)]
-mod live_server;
+mod live_server_test_support;
 mod ops;
 mod resource;
 mod types;

@@ -11,9 +11,9 @@
 //! | [`ops`] | 八个操作的实现（`ResourceHandle` 逐操作校验） |
 //! | [`close`] | op 9 `closeResource`：permit 归还口径 + 释放顺序 + 归池判据 |
 //! | [`transaction`] | op 6 `transactionOperation`：回滚/提交对资源状态与 permit 的影响 |
-//! | `catalog_guard` | 只在 `#[cfg(test)]` 下编译：把 `script.rs` 的 F 编号与文档表格**对撞**（编号不得错位） |
-//! | `close_cases` | 只在 `#[cfg(test)]` 下编译：`closeResource` 的归池判据 / 凭证出口用例（句柄登记、驱动不支持重置、幂等关闭） |
-//! | `close_unconfirmed` | 只在 `#[cfg(test)]` 下编译：`closeResource` 的「关闭未确认」用例 |
+//! | `catalog_guard_test_support` | 只在 `#[cfg(test)]` 下编译：把 `script.rs` 的 F 编号与文档表格**对撞**（编号不得错位） |
+//! | `close_cases_tests` | 只在 `#[cfg(test)]` 下编译：`closeResource` 的归池判据 / 凭证出口用例（句柄登记、驱动不支持重置、幂等关闭） |
+//! | `close_unconfirmed_tests` | 只在 `#[cfg(test)]` 下编译：`closeResource` 的「关闭未确认」用例 |
 //!
 //! **依赖方向**：本目录向下依赖 `connection::{port, session, types, capability, execution}`，
 //! 向上只被 `journal` 的**测试**引用 —— 分层要求的「`journal.rs` 不依赖 `fake_resource`」
@@ -21,18 +21,18 @@
 //!
 //! 假提供方**不开任何出站 socket**；本目录没有任何网络或凭据代码。
 //!
-//! **测试辅助函数的落点**：[`tests`]、[`close_cases`] 与 [`close_unconfirmed`] 都从本文件底部那一组
+//! **测试辅助函数的落点**：[`tests`]、[`close_cases_tests`] 与 [`close_unconfirmed_tests`] 都从本文件底部那一组
 //! `#[cfg(test)]` 辅助函数取 `provider` / `acquire` / `close_and_release`，
 //! 而不是各自复制一份。复制会漂移：同一个 `pool_key` 派生算法写两遍，正例
 //! （同池复用）和反例（换 key）就会在两个文件里各自成立。
 
 #[cfg(test)]
-mod catalog_guard;
+mod catalog_guard_test_support;
 mod close;
 #[cfg(test)]
-mod close_cases;
+mod close_cases_tests;
 #[cfg(test)]
-mod close_unconfirmed;
+mod close_unconfirmed_tests;
 mod handles;
 mod ops;
 mod script;
@@ -265,13 +265,13 @@ impl FakeResourceProvider {
 }
 
 // ---------------------------------------------------------------------------
-// 测试脚手架 —— `tests.rs` / `close_cases.rs` / `close_unconfirmed.rs` 共用
+// 测试脚手架 —— `tests.rs` / `close_cases_tests.rs` / `close_unconfirmed_tests.rs` 共用
 // ---------------------------------------------------------------------------
 
 /// 夹具目标一律取自 `fixtures`，用例里不写硬编码字面量。
 #[cfg(test)]
 pub(crate) fn target() -> ExecutionTarget {
-    crate::execution::runtime::connection::testing::harness::fixture_target(
+    crate::execution::runtime::connection::testing::harness_test_support::fixture_target(
         crate::execution::runtime::connection::testing::fixtures::NS_A_KEY,
     )
 }
@@ -289,7 +289,7 @@ pub(crate) fn owner() -> OwnerRef {
 }
 
 /// `PoolKeyInputs` 派生。夹具走和
-/// [`FakeHarness::pool_key`](crate::execution::runtime::connection::testing::harness::FakeHarness::pool_key)
+/// [`FakeHarness::pool_key`](crate::execution::runtime::connection::testing::harness_test_support::FakeHarness::pool_key)
 /// 完全一样的算法，
 /// 否则「同池复用」的正例根本不成立（换 key 判据会失效）。
 #[cfg(test)]

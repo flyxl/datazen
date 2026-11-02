@@ -8,7 +8,7 @@
 //! [`inspect::run_inspect`]、[`apply::run_comparison`] /
 //! [`apply::start_prepare_job`]、[`exec::start_apply_job`] /
 //! [`exec::execute_data_sync_plan`] /
-//! [`exec::generate_data_sync_sql_for_plan`]（jobs_contract 等域内契约测试
+//! [`exec::generate_data_sync_sql_for_plan`]（jobs_contract_tests 等域内契约测试
 //! 直驱这些核心）。形态中立的投影随刀下沉 modules：检视收尾/复核报告/
 //! 活动库校验/预览限幅在 `data_sync::api`，Artifact→Comparison 重建在
 //! `data_sync::artifact_view`，keyset 页源在 `data_sync::keyset_source`
@@ -18,7 +18,7 @@
 //! 宿主形态，留宿主（B3 对照 WR-F5 服务端实现复核）。
 //!
 //! IPC 契约逐字节不变：命令名、参数（serde camelCase）、返回 JSON 与错误
-//! 文案（见 `sync/tests.rs` 的 C1 钉子与 `jobs_contract*` 契约测试）。
+//! 文案（见 `sync/tests.rs` 的 C1 钉子与 `jobs_contract_tests*` 契约测试）。
 
 mod apply;
 /// Row-count delegate shared with the data_transfer domain (cross-domain
@@ -31,9 +31,9 @@ mod inspect;
 mod job_api;
 mod jobs;
 #[cfg(test)]
-mod jobs_cancel_contract;
+mod jobs_cancel_contract_tests;
 #[cfg(test)]
-mod jobs_contract;
+mod jobs_contract_tests;
 mod tasks;
 
 #[cfg(test)]

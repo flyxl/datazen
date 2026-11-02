@@ -44,7 +44,7 @@ use crate::data_transfer::{
     TableMapping, TransferJob, TransferMode, TransferPreview, TransferRunRequest, WriteMode,
 };
 use crate::services::migration_endpoint::EndpointIdentity;
-use crate::testing::app_state::TestAppState;
+use crate::testing::app_state_test_support::TestAppState;
 
 /// A fresh plan registry for one test. The host injects **one** instance per
 /// process; a test must not share it with another test, or one test's plan
@@ -55,7 +55,7 @@ fn plan_store() -> Arc<dyn TransferPlanRepositoryPort> {
 
 /// The scope the desktop plan registry is keyed by.
 fn plan_scope() -> &'static datazen::shared::scope::OrganizationScope {
-    crate::commands::data_transfer::plan_scope::desktop_organization_scope()
+    crate::commands::data_transfer::plan_scope_tests::desktop_organization_scope()
 }
 
 /// A stand-in endpoint identity, so wiring facts can be asserted without a live
@@ -532,7 +532,7 @@ fn mock_options() -> crate::testing::mock_driver::MockDriverOptions {
     use crate::testing::mock_driver::MockDriver;
     use datazen_driver_api::{IndexInfo, TableOptions};
 
-    let mut options = crate::testing::app_state::rich_mock_options();
+    let mut options = crate::testing::app_state_test_support::rich_mock_options();
     let mut schema = MockDriver::default_table_schema("users");
     schema.indexes.push(IndexInfo {
         name: "users_pkey".to_string(),

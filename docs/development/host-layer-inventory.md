@@ -194,7 +194,7 @@ Runtime / ApplicationServices 接到桌面现实（OS 身份、SQLite、物理�
 | `handles.rs` | 422 | owner 作用域会话句柄登记（不持物理资源，物理账归 session actor） |
 | `artifact_export.rs` | 124 | 制品的原生对话框导出（1 条 IPC） |
 | `policy.rs` / `target_metadata.rs` / `diagnostics.rs` / `resource_mapping.rs` | 426 | 策略绑定、执行目标元数据、脱敏诊断、兼容 re-export |
-| `scope_gate.rs` / `org_literal_gate.rs` | 1,620(测) | **两个常驻闸门**（G1：生产代码不得直读组织常量；G-ORG-1：不得内联组织 id 字面量），`--lib` 跑即进 CI，自带 kill test |
+| `scope_gate_tests.rs` / `org_literal_gate_tests.rs` | 1,620(测) | **两个常驻闸门**（G1：生产代码不得直读组织常量；G-ORG-1：不得内联组织 id 字面量），`--lib` 跑即进 CI，自带 kill test |
 
 ### 5.4 store/ — 桌面存储实现（10,844 生产 / 7,795 测试，76 文件）
 
@@ -239,7 +239,7 @@ MCP 协议胶水 + 会话生命周期。
 `registry.rs`(420) 基于 `AppDb` 的持久化（规则在 `datazen::workflow::registry`）、
 `history.rs`(203) 执行历史、`host.rs`(316) 共享执行宿主端口（`complete_ai` 已委托
 `ai::api::resolve_active_provider`）、`scheduler.rs`(88) 调度适配（时钟在 modules）、
-`command_runtime.rs`(144) 命令步骤 → 驱动命令的桥、`live_acceptance.rs`(191) live 契约。
+`command_runtime.rs`(144) 命令步骤 → 驱动命令的桥、`live_acceptance_tests.rs`(191) live 契约。
 引擎/模型/规则全在 `datazen::workflow`。
 
 ### 5.8 dashboard/ — 仪表盘仓储绑定（1,367 生产 / 247 测试）
@@ -274,8 +274,8 @@ localStorage），原生窗口底色 + webview `initialization_script` 注入，
 
 ### 5.13 testing/ — 测试装置（1,384 行，全测试）
 
-`cfg(any(test, feature = "test-harness"))` 门控：`app_state.rs`（`TestAppState`）、
-`resource_provider.rs`(527)、`mock_ai_provider.rs`、`ai_wiremock.rs`。生产二进制零编入。
+`cfg(any(test, feature = "test-harness"))` 门控：`app_state_test_support.rs`（`TestAppState`）、
+`resource_provider_test_support.rs`(527)、`mock_ai_provider_test_support.rs`、`ai_wiremock_test_support.rs`。生产二进制零编入。
 
 ## 6. 达标状态与余留施工面
 
