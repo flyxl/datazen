@@ -31,7 +31,6 @@ use futures_util::FutureExt;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
-use crate::shared::error::PortError;
 use crate::workflow::application::grant_reader::WorkflowScheduleGrantReader;
 use crate::workflow::domain::grant::WorkflowScheduleGrant;
 use crate::workflow::domain::model::{WorkflowDefinition, WorkflowExecutionResult};
@@ -368,6 +367,7 @@ impl WorkflowScheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::shared::error::PortError;
     use crate::shared::id::Counter;
     use crate::workflow::domain::grant::{definition_revision, WorkflowScheduleScope};
     use crate::workflow::domain::model::{WorkflowDefinition, WorkflowSchedule};

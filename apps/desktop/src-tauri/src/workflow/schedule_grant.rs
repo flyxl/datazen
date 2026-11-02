@@ -33,6 +33,7 @@
 //! 存储打不开等基础设施故障才返回 `Err(PortError)`（失败关闭，调度器拒绝）。
 
 use crate::store::{AppDbError, WorkflowRecord};
+use datazen::connection::ProfileRepository;
 use datazen::connection::domain::ProfileReader as _;
 use datazen::shared::context::RequestContext;
 use datazen::shared::error::PortError;
@@ -78,10 +79,23 @@ fn background_context() -> RequestContext {
 
 /// 桌面调度授权单派生器：挂在 `tauri::AppHandle` 上（与 `DesktopScheduleHost`
 /// 同一装配形态），按 `AppState` 的既有存储派生授权单。
-pub struct DesktopScheduleGrantReader(tauri::AppHandle);
+///
+/// 泛型于 `R: tauri::Runtime`（与 commands 层 `ai_chat` 等同一先例）：生产
+/// 走 Wry，测试走 `tauri::test::MockRuntime`。泛型成立靠的是 `AppHandle<R>`
+/// 对任意 `R: Runtime` 都 `Send + Sync`（运行时句柄与 window/webview
+/// dispatcher 都走 `Send + Sync` 有界 trait）——与端口
+/// `WorkflowScheduleGrantReader: Send + Sync + 'static` 的注入形态相容。
+pub struct DesktopScheduleGrantReader<R: tauri::Runtime>(tauri::AppHandle<R>);
+
+impl<R: tauri::Runtime> DesktopScheduleGrantReader<R> {
+    /// 挂到宿主的 app 句柄上（同源装配：读同一 `AppState` 的既有存储）。
+    pub fn new(handle: tauri::AppHandle<R>) -> Self {
+        Self(handle)
+    }
+}
 
 #[async_trait::async_trait]
-impl WorkflowScheduleGrantReader for DesktopScheduleGrantReader {
+impl<R: tauri::Runtime> WorkflowScheduleGrantReader for DesktopScheduleGrantReader<R> {
     async fn schedule_grant(
         &self,
         workflow_id: &str,
@@ -300,8 +314,10 @@ mod tests {
             .expect("save workflow");
     }
 
-    fn reader(app: &tauri::App<tauri::test::MockRuntime>) -> DesktopScheduleGrantReader {
-        DesktopScheduleGrantReader(app.handle().clone())
+    fn reader(
+        app: &tauri::App<tauri::test::MockRuntime>,
+    ) -> DesktopScheduleGrantReader<tauri::test::MockRuntime> {
+        DesktopScheduleGrantReader::new(app.handle().clone())
     }
 
     /// 行为钉子：同一定义两次派生**逐字段相等**——确定性是冻结比对的承重前提。

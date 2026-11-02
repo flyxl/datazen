@@ -16,7 +16,7 @@ impl WorkflowScheduler {
     pub fn start(self: &Arc<Self>, app: tauri::AppHandle) {
         // 授权单端口与宿主同源装配：派生器读同一 AppState 的既有存储
         // （WR-A4：未绑定授权单端口的调度器不派发——失败关闭）。
-        let grants = Arc::new(DesktopScheduleGrantReader(app.clone()));
+        let grants = Arc::new(DesktopScheduleGrantReader::new(app.clone()));
         start_core_on_desktop_runtime(
             &self.core,
             Arc::new(DesktopScheduleHost(app)),

@@ -92,7 +92,10 @@ async fn harness() -> IpcBinding {
     }
 }
 
-#[async_trait]
+/// `?Send` 与共享规格端口同口径（见 modules `NamedViewsContractBinding`
+/// 文档）：mock 宿主的 `tauri::App<MockRuntime>` 本就非 `Sync`，scenario
+/// 顺序 await，binding 不跨线程。
+#[async_trait(?Send)]
 impl NamedViewsContractBinding for IpcBinding {
     async fn seed(&self, views: Vec<NamedView>) -> Result<(), String> {
         // setup 直写装配的存储（不经用例、不经 IPC）——生产路径同款

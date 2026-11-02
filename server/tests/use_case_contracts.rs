@@ -202,7 +202,9 @@ fn outcome<T: DeserializeOwned>(status: StatusCode, value: serde_json::Value) ->
     })
 }
 
-#[async_trait]
+/// `?Send` 与共享规格端口同口径（见 modules `NamedViewsContractBinding`
+/// 文档）：binding 由单个测试的栈持有，oneshot 顺序 await。
+#[async_trait(?Send)]
 impl NamedViewsContractBinding for HttpBinding {
     async fn seed(&self, views: Vec<NamedView>) -> Result<(), String> {
         // setup 直写装配的存储（不经用例、不经 HTTP）——与 IPC 腿经

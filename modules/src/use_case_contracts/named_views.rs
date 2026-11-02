@@ -29,8 +29,15 @@ use crate::use_case_contracts::{ContractFailure, ContractResult};
 /// （不经用例，对应生产的「存储里已有/没有这些行」）；三个用例方法则经
 /// 本腿的真实传输（tauri command / axum handler）触达 application。规格
 /// 对实现方式零假设。
-#[async_trait]
-pub trait NamedViewsContractBinding: Send + Sync {
+///
+/// `?Send` 是承重的（与「对实现方式零假设」同一裁决）：binding 由单个
+/// 测试的栈持有、scenario 顺序 await，规格不假设跨线程；而 IPC 腿的 mock
+/// 宿主（`tauri::App<MockRuntime>`）按 tauri 测试基建的设计就是非
+/// `Sync` 的——强加 `Send + Sync` 会让端口反过来约束宿主装配形态。
+/// 生产端口的并发纪律（`Send + Sync`）属于 application/infra 端口，
+/// 不属于本测试装配端口。
+#[async_trait(?Send)]
+pub trait NamedViewsContractBinding {
     /// setup：夹具记录直写本腿存储。
     async fn seed(&self, views: Vec<NamedView>) -> Result<(), String>;
 
@@ -406,7 +413,7 @@ mod baseline {
         store: Arc<MemoryViewStore>,
     }
 
-    #[async_trait]
+    #[async_trait(?Send)]
     impl NamedViewsContractBinding for DirectServiceBinding {
         async fn seed(&self, views: Vec<NamedView>) -> Result<(), String> {
             self.store.seed(views).await;
