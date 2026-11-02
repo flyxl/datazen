@@ -124,7 +124,7 @@ datazen crate 内各 feature 的 api 模块
 `QueryExecutionRegistry`（查询执行句柄的 owner 绑定，防跨会话取消）、
 `SyncRepositoryPorts`（Data Sync 存储端口的桌面实例）、`test_harness` 导出。
 共享基建还有：`error.rs`（629 行，`CommandError` 结构化错误 + `CmdExt::cmd_err` 脱敏日志）、
-`port_call.rs`（`PortError → CommandError` 统一收口）、`ipc_contract_guards.rs`
+`port_call.rs`（`PortError → CommandError` 统一收口）、`ipc_contract_guards_tests.rs`
 （D1 回归锚：钉死 `db_session_id` 线参名）、`result_mapping.rs` / `table_target.rs`
 （F4b 端口与保守结果映射）、`tunnel_probe_fixture.rs`（测试夹具）。
 

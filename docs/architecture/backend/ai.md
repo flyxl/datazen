@@ -273,7 +273,7 @@ AI 侧与数据库的接触分两类，边界互不重叠：
 
 **一、会话语义（诊断 / NL2SQL / EXPLAIN 分析 / Schema 文档）——只消费已存在的会话，不创建。**
 
-- 这些 IPC 的形参是 `db_session_id`（运行时会话 ID），不是 `connectionId`；`ai_chat`、SQL 生成、诊断、过滤与分析通过 Runtime session adapter 获取 live session/driver，不把运行时 ID 当持久化连接 ID。这条边界由契约测试直接对源码断言：会话语义命令的形参必须含 `db_session_id` 且**不得**含 `connection_id`，且命令体内不得出现「把名为 `connection_id` 的变量喂给 `get_session`」的写法（`commands/ai/ipc_contract_guards.rs`）。
+- 这些 IPC 的形参是 `db_session_id`（运行时会话 ID），不是 `connectionId`；`ai_chat`、SQL 生成、诊断、过滤与分析通过 Runtime session adapter 获取 live session/driver，不把运行时 ID 当持久化连接 ID。这条边界由契约测试直接对源码断言：会话语义命令的形参必须含 `db_session_id` 且**不得**含 `connection_id`，且命令体内不得出现「把名为 `connection_id` 的变量喂给 `get_session`」的写法（`commands/ai/ipc_contract_guards_tests.rs`）。
 - **`ai_chat` 的 schema 上下文是尽力而为，但降级的方向和直觉相反**。`src-tauri/src/commands/ai/chat.rs` 借用 Runtime live session 后构建 schema 上下文：会话取不到时这一整块被静默跳过，不追加 schema system prompt，而 `attach_db_tools` 保持初值 `true`，因此 DB tools 仍会加入模型请求。会话失效时的实际后果是「模型拿不到 DDL 上下文」，不是「失去模型自己查表的能力」。
 - 管线返回 `Err` 时 host 会记录 `warn!` 并把 `attach_db_tools` 置为 `false`。共享 `modules/src/ai/application/schema_pipeline.rs` 会吞掉表名和 pinned schema 的读取错误；仅在 provider 不支持 tools、而 fallback schema 也失败时向 host 返回错误。**对支持 tools 的 provider，这条告警并禁用 DB tools 的分支不可达。**
 - 与之对照，配置语义的诊断命令（`ai_diagnose_connection`）不碰会话，连接配置缺失时返回 `CommandError::NotFound`（`src-tauri/src/commands/ai/generate.rs`）。

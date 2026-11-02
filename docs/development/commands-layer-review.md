@@ -25,7 +25,7 @@ modules 测，宿主绑定在宿主测。**command 层不承载业务行为的�
 
 | # | 类别 | 测什么 | 仓库内范本 |
 |---|---|---|---|
-| C1 | **IPC 线格式钉子** | 参数名（camelCase）、DTO 序列化形状、错误码到信封的映射与消息首位前缀（`grid.*` 分类）、事件名与载荷（`ai:stream-chunk`）——前端分类逻辑依赖的线契约 | `named_views_error_tests.rs`、`ipc_surface_tests.rs`、`ai/ipc_contract_guards.rs`、`fk_navigation/tests.rs`（其模块文档明言「规则住在共享层并在那里测试；这里只钉壳的契约」） |
+| C1 | **IPC 线格式钉子** | 参数名（camelCase）、DTO 序列化形状、错误码到信封的映射与消息首位前缀（`grid.*` 分类）、事件名与载荷（`ai:stream-chunk`）——前端分类逻辑依赖的线契约 | `named_views_error_tests.rs`、`ipc_surface_tests.rs`、`ai/ipc_contract_guards_tests.rs`、`fk_navigation/tests.rs`（其模块文档明言「规则住在共享层并在那里测试；这里只钉壳的契约」） |
 | C2 | **宿主装配守卫** | bootstrap 注册表（合并命令注册且旧命令消失）、`AppState` 形状上限、组织作用域不得进 IPC 载荷（INV-01/P7） | `app_state_shape_tests.rs`、`org_scope_surface_tests.rs`、`wapps/tests.rs` 的注册守卫、`backup_tests.rs` 的 bootstrap 守卫 |
 | C3 | **宿主资源绑定行为** | 对话框、窗口、剪贴板、可执行文件路径、app 数据目录——只有 mock_app/真实宿主能证明的行为 | `config_tests.rs`（executable path）、`dialog.rs`/`window.rs` 相关测试 |
 | C4 | **端口适配器接线烟测** | 同一用例经宿主端口装配后端到端走通（每适配器一两根烟测；深度行为覆盖在 modules 侧） | `backup_tests.rs` 的 `backup_and_restore_roundtrip`、`ai/tests.rs` 的 `ai_providers_config_prompt_workflow` |
@@ -88,7 +88,7 @@ modules 测，宿主绑定在宿主测。**command 层不承载业务行为的�
 | ai/prompts.rs | 54 | 保留 | 提示词模板 IO 壳 |
 | ai/util.rs | 155 | 保留 | tauri 事件绑定 + 配置端口取值 + 上下文文件宿主 FS IO（`read_context_entries`）；`parse_ai_json` 包装与 JSON 修复钉子已归位 `response_tests.rs` |
 | ai/command_test_host.rs | 99 | 基建 | mock_app 托管 AppState（WR-A2 产物，C3/C4 用） |
-| ai/ipc_contract_guards.rs | 88 | 守卫 | C1 参数提取 |
+| ai/ipc_contract_guards_tests.rs | 88 | 守卫 | C1 参数提取 |
 | ai/tests.rs | 233 | 已拆（B0）+ B3 转真入口 | workflow_list 走真实命令入口；余 9 测为 C3/C4 |
 | ai/mock_provider_tests.rs | 371 | **复核改判 C4 保留（B3）** | 全部经真实命令入口驱动宿主装配（配置 CRUD、单轮命令、工具循环、错误信封）——宿主边界旅程烟测，非单元测试；modules 侧编排裁决由 `chat_session_tests` 脚本化假体钉住（wiremock/mock 假体归位后两侧覆盖互补） |
 | ai/integration_tests.rs | 1,456 | **已拆分（B3）** | 编排裁决钉子归位 modules（`chat_session_tests` 10 钉）；workflow 测试转真实命令入口；余下为 C1 事件/取消 IPC 钉子（toolCalls 载荷形状、流错误传播）+ C4 宿主装配旅程（wiremock/mock 假体走真命令入口） |

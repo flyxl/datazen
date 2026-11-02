@@ -355,7 +355,7 @@ mod tests {
 
     /// `(verb, tail)` pairs assembling `test_<verb>_dialog_<tail>` needles at
     /// runtime so this test's own source never contains them verbatim
-    /// (precedent: backup.rs ipc_contract_guards).
+    /// (precedent: backup_tests.rs ipc_contract_guards).
     fn injection_commands() -> [(&'static str, &'static str); 2] {
         [("inject", "result"), ("reset", "queue")]
     }
