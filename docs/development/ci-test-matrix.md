@@ -12,7 +12,8 @@
 | 驱动 UI 单测 | ✅ `pnpm test:unit:drivers` | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit:drivers` |
 | TypeScript | ✅ `pnpm typecheck`（**单引擎**：`tsrs` = TS 7.1-dev，见 §2.1.4） | 同上（`union-typecheck` **也是**只跑 `tsrs`，见 §6.2） | `pnpm typecheck` / `pnpm typecheck:tsc` / `pnpm typecheck:tsrs` |
 | Host Rust lib | ✅ `cargo test -p datazen_desktop --lib`（basic features + `datazen/test-harness`，与平台腿 feature 对齐以共享 datazen 编译，见 §2.2） | 完整 release 构建 | 同 PR CI 形 |
-| Host 集成测试（`src-tauri/tests/`） | ✅ `cargo test -p datazen_desktop --test driver_command_ipc --test data_sync_public_api --test mcp_stdio_auth --test workflow_tests --test ai_e2e`（features 同 lib 步 + 宿主 `test-harness`；workflow_tests 的 6 个跨库用例 `#[ignore]`，ai_e2e 无 `.env.test` 时自跳过——2026-11-02 起，此前该目录零编译零执行） | 完整 release 构建 | `cargo test -p datazen_desktop --test <name>`；跨库用例 `-- --include-ignored` |
+| Host 集成测试（`src-tauri/tests/`） | ✅ `cargo test -p datazen_desktop --test driver_command_ipc --test data_sync_public_api --test mcp_stdio_auth --test workflow_db_tests`（features 同 lib 步 + 宿主 `test-harness`；2026-11-02 起，此前该目录零编译零执行。同日拆分归位：workflow_tests 的纯逻辑用例进 `modules/src/workflow/domain/model_tests.rs`、真 DB 用例留宿主改名 `workflow_db_tests.rs`（本步只编译防烂，全部 `#[ignore]`）、历史持久化用例删除（`workflow/history.rs` 内联已覆盖）；ai_e2e 移回 `modules/tests/` 随平台腿自动编译） | 完整 release 构建 | `cargo test -p datazen_desktop --test <name>`；跨库用例 `-- --include-ignored` 或走定时工作流 |
+| 跨库 Workflow 真 DB 用例（PG + MySQL） | ❌ PR CI 只编译（见上行）；**每周一跑** [workflow-db-tests.yml](../../.github/workflows/workflow-db-tests.yml)：postgres:16 + mysql:8 service 容器 + `setup-workflow-testdata.sh` 灌数据后 `--include-ignored` 真跑（支持手动触发） | 随发版人工复跑 | `scripts/setup-workflow-testdata.sh` + `cargo test -p datazen_desktop --test workflow_db_tests -- --include-ignored --nocapture` |
 | driver-api | ✅ `cargo test -p datazen-driver-api`（lib + tests/ 4 文件 + doc test，2026-10-27 由 `--lib` 扩充） | 随构建链接 | `cargo test -p datazen-driver-api` |
 | modules（datazen）单 feature 腿 | ✅ `pnpm test:platform-crates` 的 `FEATURE_TESTS` 逐腿**编译**（`--no-run`，2026-11-02 起：modules/src 纯并集门控下执行与无选择器腿完全重复，零信号，只保留 feature 孤立编译验证；ai 腿已覆盖 ai-api 退役前的那步组合闭包；原 `--features settings,ai,connection,named_views` 组合步于 2026-10-27 删除，理由见 §2.2） | 随构建链接 | `pnpm test:platform-crates` |
 | 平台内核 crate（`modules` / `infra`；`server` 层已武装待主体） | ✅ `pnpm test:platform-crates`，集合由脚本发现 | 随构建链接 | `pnpm test:platform-crates` |
@@ -369,15 +370,17 @@ DATAZEN_CONTRACT_ALLOW_UNVERIFIED=1 cargo test -p datazen-driver-postgres -p dat
 # manifest 钉死，任何一侧单独增删 feature 会先红测试而不是悄悄退回双份编译。
 FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
 cargo test -p datazen_desktop --lib --features "$FEATURES,datazen/test-harness"
-# 宿主集成测试（src-tauri/tests/，2026-11-02 新增）：逐 target 点名而非 --tests，
-# 名单即门禁；features 换成宿主自己的 test-harness（datazen/test-harness 的
-# 严格超集），datazen 闭包与 lib 步一致、依赖编译继续共享。driver_command_ipc
-# 走真实 #[tauri::command] + Mock Driver；mcp_stdio_auth spawn 宿主 bin（其
-# CARGO_BIN_EXE_datazen_desktop 引用在 F6 拆分后烂了，本步是它的第一个编译
-# 消费者）；workflow_tests 纯逻辑用例真跑、跨库用例 #[ignore]；ai_e2e 只编译
-# 防烂（无 .env.test 自跳过，其 passed 行不是 AI 冒烟证据）。
+# 宿主集成测试（src-tauri/tests/，2026-11-02 新增；同日拆分归位后名单见
+# ci.yml 注释）：逐 target 点名而非 --tests，名单即门禁；features 换成宿主
+# 自己的 test-harness（datazen/test-harness 的严格超集），datazen 闭包与
+# lib 步一致、依赖编译继续共享。driver_command_ipc 走真实 #[tauri::command]
+# + Mock Driver；mcp_stdio_auth spawn 宿主 bin（其 CARGO_BIN_EXE_datazen_desktop
+# 引用在 F6 拆分后烂了，本步是它的第一个编译消费者）；workflow_db_tests
+# 是跨库真 DB 用例（全 #[ignore]，本步只编译防烂，真跑在
+# workflow-db-tests.yml 定时任务）；ai_e2e 已移 modules/tests/ 随平台腿
+# 自动编译执行（无 .env.test 自跳过，其 passed 行不是 AI 冒烟证据）。
 FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
-cargo test -p datazen_desktop --test driver_command_ipc --test data_sync_public_api --test mcp_stdio_auth --test workflow_tests --test ai_e2e --features "$FEATURES,test-harness"
+cargo test -p datazen_desktop --test driver_command_ipc --test data_sync_public_api --test mcp_stdio_auth --test workflow_db_tests --features "$FEATURES,test-harness"
 # 恢复被 inject 的 tracked 文件，确保后续步骤工作在干净状态
 node scripts/driver-file-stash.mjs restore
 # 此处曾有 `cargo test -p datazen-ai-api --lib`，后又改为
@@ -810,7 +813,42 @@ job 都长 `T_tsc`，而结束时间取最长那条 leg：墙钟同样 +`T_tsc`�
 `[profile.release]` 的 `opt-level = "z"` + fat LTO 是为压体积设的，thin LTO 会让发版二进制
 变大且幅度未实测。需要时先量体积。
 
-## 7. 相关文档
+## 7. Cargo 编译矩阵（feature / profile 组合统计）
+
+> 2026-11-02 应外部 review P2 落表：把每轮 PR CI **实际发生的 cargo 编译**数清楚，
+> 去重决策才可审计。只统计会产出编译产物的调用（`cargo metadata` / `tree` 类门禁
+> 不编译，不计）。debug profile；release 只在 release.yml。
+
+一轮完整 rust job 的编译调用与各 crate 的编译单元数：
+
+| # | 步骤 | datazen lib（~209k 行） | 宿主 lib | driver-api | 4 个 basic 驱动 | infra / server |
+|---|------|--------------------------|----------|------------|------------------|----------------|
+| 1 | driver-api 无选择器 | – | – | 1 | – | – |
+| 2 | 驱动 `--tests` | – | – | – | 各 1 | – |
+| 3 | 宿主 `--lib`（`$FEATURES,datazen/test-harness`） | **1**（全 feature 减 default/webdriver） | 1 | 缓存命中 | 作为依赖缓存命中 | 作为依赖缓存命中 |
+| 4 | 宿主集成步（`$FEATURES,test-harness`） | 缓存命中（与 #3 同集，见下） | **再 1**（test-harness 多出 `pub use`） | 缓存命中 | 缓存命中 | 缓存命中 |
+| 5 | platform-crates 无选择器（27+ feature 显式清单） | **缓存命中**（与 #3/#4 同集——2026-10-27 对齐设计的全部意义） | – | – | – | 各 1 |
+| 6–12 | platform-crates 7 条单 feature 腿（`--no-run --lib`） | **各 1**（7 个互不相同的 feature 子集） | – | – | – | – |
+| 13 | doc test（随 #5 的无选择器调用） | rustdoc 1 次另计 | – | – | – | – |
+
+结论与既有去重决策的对应关系：
+
+- **datazen lib 每轮 8 个编译单元**（1 个全 feature 共享 + 7 个单 feature 孤立
+  编译）。7 条腿是 feature 孤立验证的独有信号（D1 空模块根即由此抓到），
+  不可合并；它们的执行已被 `--no-run` 化（2026-11-02，见 §2.2 墓碑），
+  编译本身就是腿的全部价值。
+- **全 feature 那份 1 次编译被 #3/#4/#5 三步共享**是刻意设计：宿主腿用限定
+  语法 `datazen/test-harness`、集成步用宿主超集 `test-harness`、无选择器腿
+  用显式 27-feature 清单，三者对 datazen 的 feature 闭包逐字相同（等式由
+  run-platform-crate-tests 的测试对两份真实 manifest 钉死）。破坏等式的
+  任何一侧单方面改动会先红测试，而不是悄悄退回三份编译。
+- 宿主 lib 2 次（#3 cfg(test) 单测形态 + #4 带 `pub use commands::test_harness`
+  的形态）是当前下限：test-harness 模块只能在集成二进制里被点亮。
+- 驱动 crate：#2 的 default-feature 编译与 #3 依赖闭包里的注入 feature 编译
+  若 feature 集不同则各算一份（`resolve-drivers --drivers=basic` 注入的
+  feature 名单见 `.driver-features.json`）。
+
+## 8. 相关文档
 
 - [e2e-testing.md](./e2e-testing.md) — WebDriver 构建与跑法
 - [e2e-coverage.md](./e2e-coverage.md) — Host 路径覆盖矩阵
