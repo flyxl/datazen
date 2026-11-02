@@ -54,12 +54,161 @@ CREATE INDEX idx_connection_profile_list
 "#,
 };
 
+/// v5：认证与授权四表（WR-D3 第一刀；`LoginSessions` / `PolicyService` 的
+/// 服务端落地）。
+///
+/// 列是 [persistence-model §3.10](../../../../../docs/architecture/platform/persistence-model.md)
+/// PostgreSQL 目标 schema 的 SQLite 等价形（与 v3/v4 同款登记口径）：
+///
+/// - `TIMESTAMPTZ → TEXT`：全部时刻列落**定宽 RFC3339 UTC（毫秒）**字符串
+///   （与 `shared::clock` 的单一形状同一口径）；适配器在边界处统一规范化。
+///   定宽是字典序比较可靠的前提——`ck_login_window` 的 `idle <= absolute`
+///   在 SQLite 里就是字符串比较。
+/// - `BOOLEAN → INTEGER 0/1` + `CHECK IN (0,1)`（v1 同款）。
+/// - 表顺序钉住 §3.10 的可执行裁决：`memberships` 先于 `login_sessions`
+///   ——后者的复合外键引用 `(organization_id, principal_id)`；同一迁移
+///   事务内后建的表不能作为外键目标（§5.5 fail-closed，起不来即暴露）。
+/// - **没有 `roles` 表**：六个固定角色由 `ck_membership_role` 的 CHECK
+///   表达（team-server §6.1：首版不可由管理员自定义；P9 引入自定义角色时
+///   再补表与外键）。
+/// - `acl_entries.resource_id` 用空串表示**组织级**条目（主键列不能为
+///   NULL）；`ck_acl_resource` 不含 `wapp`（persistence-model §3.10 的
+///   CHECK 权威——与 team-server §6.1 词表的一处登记差异，wapp 安装闸走
+///   角色基线，ACL 行不可落 wapp）。
+/// - `permission_versions` 每组织一行、只增不减、永不删除；授权变更与
+///   版本递增同事务（team-server §6.3），由 `policy::version` 的事务
+///   helper 保证，DDL 只兜底 `>= 1`。
+/// - 部分索引照抄：`idx_memberships_role ... WHERE enabled`、
+///   `idx_login_sessions_owner / _sweep ... WHERE revoked_at IS NULL`。
+/// - P8 的 `auth_mode/native_secret_hash` 已随本迁移一次给全（§3.10 注记
+///   允许 expand 提前）：cookie 会话 hash 为 NULL，native 仅存 secret 的
+///   HMAC 摘要；本刀不启用 native 路径（推迟项，见模块报告）。
+const V5_AUTHZ_BASELINE: Migration = Migration {
+    version: 5,
+    name: "authz baseline (memberships/login_sessions/acl_entries/permission_versions)",
+    expand: r#"
+CREATE TABLE memberships (
+  organization_id TEXT NOT NULL,
+  principal_id TEXT NOT NULL,
+  role_id TEXT NOT NULL
+    CHECK (role_id IN ('orgAdmin','orgMember','connectionOwner','connectionViewer','jobOperator','auditor')),
+  external_subject TEXT NOT NULL CHECK (external_subject <> ''),
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (organization_id, principal_id)
+);
+CREATE INDEX idx_memberships_role
+  ON memberships (organization_id, role_id) WHERE enabled;
+
+CREATE TABLE login_sessions (
+  organization_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  principal_id TEXT NOT NULL,
+  auth_time TEXT NOT NULL,
+  issued_at TEXT NOT NULL,
+  absolute_expires_at TEXT NOT NULL,
+  idle_expires_at TEXT NOT NULL,
+  reauth_required INTEGER NOT NULL DEFAULT 0 CHECK (reauth_required IN (0, 1)),
+  permission_version INTEGER NOT NULL CHECK (permission_version >= 1),
+  client_binding TEXT NOT NULL,
+  token_epoch INTEGER NOT NULL DEFAULT 1 CHECK (token_epoch >= 1),
+  auth_mode TEXT NOT NULL DEFAULT 'cookie' CHECK (auth_mode IN ('cookie','native')),
+  native_secret_hash TEXT,
+  revoked_at TEXT,
+  revoke_reason TEXT,
+  PRIMARY KEY (organization_id, session_id),
+  FOREIGN KEY (organization_id, principal_id)
+    REFERENCES memberships (organization_id, principal_id),
+  CONSTRAINT ck_login_native
+    CHECK ((auth_mode = 'native') = (native_secret_hash IS NOT NULL)),
+  CONSTRAINT ck_login_window CHECK (idle_expires_at <= absolute_expires_at),
+  CONSTRAINT ck_login_revoke
+    CHECK ((revoked_at IS NULL) = (revoke_reason IS NULL)),
+  CONSTRAINT ck_login_reason
+    CHECK (revoke_reason IS NULL OR revoke_reason IN ('logout','permission_revoked','admin','credential_rotated'))
+);
+CREATE INDEX idx_login_sessions_owner
+  ON login_sessions (organization_id, principal_id) WHERE revoked_at IS NULL;
+CREATE INDEX idx_login_sessions_sweep
+  ON login_sessions (idle_expires_at) WHERE revoked_at IS NULL;
+
+CREATE TABLE acl_entries (
+  organization_id TEXT NOT NULL,
+  resource_type TEXT NOT NULL
+    CHECK (resource_type IN ('connection','session','execution','job','artifact','stream')),
+  resource_id TEXT NOT NULL DEFAULT '',
+  subject_type TEXT NOT NULL CHECK (subject_type IN ('user','serviceAccount','delegated')),
+  subject_id TEXT NOT NULL,
+  action TEXT NOT NULL
+    CHECK (action IN ('read','execute','write','cancel','download','subscribe','admin')),
+  deny INTEGER NOT NULL DEFAULT 0 CHECK (deny IN (0, 1)),
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (organization_id, resource_type, resource_id, subject_type, subject_id, action)
+);
+
+CREATE TABLE permission_versions (
+  organization_id TEXT NOT NULL PRIMARY KEY,
+  permission_version INTEGER NOT NULL DEFAULT 1 CHECK (permission_version >= 1),
+  updated_at TEXT NOT NULL
+);
+"#,
+};
+
+/// v6：审计事件表（WR-D3 第一刀；`ServerAudit`（`AuditSink` 端口）的落库
+/// 半边）。
+///
+/// [persistence-model §3.7](../../../../../docs/architecture/platform/persistence-model.md)
+/// 的 SQLite 等价形：
+///
+/// - `event_id BIGINT GENERATED ALWAYS AS IDENTITY → INTEGER PRIMARY KEY
+///   AUTOINCREMENT`：同为**全局单调、永不复用**的序列；`event_id` 全局唯一
+///   时 §3.7 的 `(organization_id, event_id)` 复合主键自动成立，不另设。
+///   语义钉子：它只用于排序与分页，**不是** `EventEnvelope.sequence`。
+/// - `JSONB → TEXT` JSON 投影（v3/v4 同款登记）；`payload` 只接受
+///   persistence-model §2.4 白名单键，键集合在 `shared::audit::AuditPayload`
+///   的类型与钉子测试里固定，写入路径没有「对象序列化顺带落库」的通道。
+/// - **append-only 由代码路径保证**（PostgreSQL 目标形态由应用角色授权
+///   保证：只授 INSERT/SELECT）：本 crate 对该表只有 INSERT 与 SELECT，
+///   没有任何 UPDATE/DELETE 语句（`storage::audit` 的源文本钉子测试把这条
+///   纪律钉在 CI 上）。
+const V6_AUDIT_EVENTS: Migration = Migration {
+    version: 6,
+    name: "audit_events baseline (append-only)",
+    expand: r#"
+CREATE TABLE audit_events (
+  organization_id TEXT NOT NULL,
+  event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  occurred_at TEXT NOT NULL,
+  principal_id TEXT,
+  principal_kind TEXT NOT NULL CHECK (principal_kind IN ('user','service','delegation')),
+  delegation_id TEXT,
+  client_instance_id TEXT,
+  action TEXT NOT NULL,
+  connection_id TEXT,
+  config_revision INTEGER,
+  target_projection_json TEXT,
+  outcome TEXT NOT NULL CHECK (outcome IN ('succeeded','failed','denied','unknown')),
+  error_code TEXT,
+  request_id TEXT,
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  CONSTRAINT ck_audit_action CHECK (action <> '')
+);
+CREATE INDEX idx_audit_time
+  ON audit_events (organization_id, occurred_at DESC);
+CREATE INDEX idx_audit_target
+  ON audit_events (organization_id, connection_id, occurred_at DESC);
+"#,
+};
+
 /// 全部迁移，按版本升序。执行器假定有序且无空洞。
 pub const MIGRATIONS: &[Migration] = &[
     V1_CONNECTION_PROFILE,
     V2_KNOWN_HOSTS,
     V3_JOBS,
     V4_ARTIFACTS,
+    V5_AUTHZ_BASELINE,
+    V6_AUDIT_EVENTS,
 ];
 
 /// v2：SSH known-hosts 表（`KnownHostsRepository` 的服务端落地）。

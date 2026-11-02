@@ -8,8 +8,12 @@
 //! 404 `notFound`。**没有 catch-all 之外的任何域端点**——契约的「多余
 //! 端点为零」验收在 D1 就成立。
 //!
-//! 中间件链的装配顺序见 [`middleware`]；请求体上限取 team-server §9.1
-//! 的首版权威值 8 MiB（L1 物理闸）。
+//! 两个装配器：
+//!
+//! - [`build_router`]：D1 骨架（L0/L1），行为被 `tests/skeleton.rs` 钉住，
+//!   **不得改动**——501/404/413/requestId 的断言一字不能破。
+//! - [`build_router_with_auth`]：WR-D3 认证链（L2→L3→L4→L6）挂载在
+//!   L1b 之内；§3.3 早期拒绝表的探针矩阵在 `tests/auth_chain.rs`。
 
 use axum::extract::Request;
 use axum::http::{StatusCode, Uri};
@@ -47,6 +51,64 @@ pub fn build_router() -> Router {
         .layer(CatchPanicLayer::new())
         .layer(axum::middleware::from_fn(content_length_gate))
         .layer(axum::middleware::from_fn(middleware::request_id::assign))
+}
+
+/// 认证链的装配依赖（composition root 或测试构造）。
+pub struct AuthDeps {
+    /// 管理库（登录会话行与 `csrf_rejected` 审计的落点；调用方负责先
+    /// `migrate`——v5 起有 `login_sessions`，v6 起有 `audit_events`）。
+    pub store: std::sync::Arc<crate::storage::AdminStore>,
+    /// 授权引擎（§6；`server_secret` 在其构造时注入）。
+    pub policy: std::sync::Arc<crate::policy::PolicyService>,
+    /// `server_secret`（§5.1 CSRF HMAC 密钥；config 注入，不落库不进日志）。
+    pub server_secret: Vec<u8>,
+    /// 空闲寿命（秒；§4.3 默认 8 小时，来自部署配置）。
+    pub idle_ttl_seconds: u64,
+}
+
+/// 组装带认证链的 Router：`build_router` 的全部面 + L2→L3→L4→L6。
+///
+/// 层序（§3.1，请求穿过顺序）：L0 requestId → L1a Content-Length →
+/// catch-panic → L1b 流式体闸 → **L2 认证 → L3 会话参数 → L4 CSRF →
+/// L6 授权** → handler/fallback。`Router::layer` 后加的在外层，所以代码
+/// 里 L6 先写、L0 最后写。L5（体量与速率）是推迟项（见模块报告）。
+///
+/// 失败策略 fail-closed：空/坏 `server_secret` 拒绝装配（`CsrfSecret` 的
+/// 构造裁决）。幂等性同 [`build_router`]：不读环境，可反复调用。
+pub fn build_router_with_auth(deps: AuthDeps) -> Result<Router, crate::error::ServerError> {
+    let csrf_secret = crate::csrf::CsrfSecret::new(deps.server_secret).map_err(|message| {
+        crate::error::ServerError::ConfigInvalid(format!("csrf: {message}"))
+    })?;
+    let state = middleware::AuthChainState {
+        sessions: crate::storage::LoginSessions::new(deps.store.clone()),
+        policy: deps.policy,
+        csrf: std::sync::Arc::new(csrf_secret),
+        audit: std::sync::Arc::new(crate::storage::ServerAudit::new(deps.store)),
+        idle_ttl_seconds: deps.idle_ttl_seconds,
+    };
+
+    Ok(Router::new()
+        .route("/healthz", get(healthz))
+        .route("/readyz", get(readyz))
+        .fallback(api_or_not_found)
+        // 内 → 外：L6 → L4 → L3 → L2 → L1b → catch-panic → L1a → L0。
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            middleware::authorize::guard,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            middleware::csrf::guard,
+        ))
+        .layer(axum::middleware::from_fn(middleware::session::session_params))
+        .layer(axum::middleware::from_fn_with_state(
+            state,
+            middleware::auth::authenticate,
+        ))
+        .layer(RequestBodyLimitLayer::new(MAX_BODY_BYTES))
+        .layer(CatchPanicLayer::new())
+        .layer(axum::middleware::from_fn(content_length_gate))
+        .layer(axum::middleware::from_fn(middleware::request_id::assign)))
 }
 
 /// 存活探针：进程在服务即 200（team-server §2.4 / §5）。

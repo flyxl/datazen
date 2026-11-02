@@ -455,3 +455,9 @@ mod org_scope_surface_tests;
 mod app_state_shape_tests;
 #[path = "named_views_error_tests.rs"]
 mod named_views_error_tests;
+
+// WR-C3 IPC 腿（named_views 域）：同用例双传输契约测试。共享规格在
+// `datazen::use_case_contracts::named_views`，HTTP 腿在
+// `server/tests/use_case_contracts.rs`，scenario 逐字同名。
+#[cfg(test)]
+mod named_views_use_case_contract_tests;
