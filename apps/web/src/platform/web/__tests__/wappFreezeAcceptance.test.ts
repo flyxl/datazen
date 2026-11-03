@@ -10,7 +10,7 @@
  * 握手故障用真实 MessageEvent 派发到 window（假 iframe 的 contentWindow
  * 只做 postMessage 记录）——没有 mock 解析器、没有 mock 校验函数。
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import {
   WAPP_ASSET_CSP,
