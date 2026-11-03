@@ -41,7 +41,11 @@ connection_import = [
     "dep:sha1",
     "dep:sha2",
     "dep:uuid",
+    # 域文件 `use crate::feature_error::FeatureError`（裸 feature 编译闸）：
+    # P3 反转后 feature_error 不再反向拉业务 feature，本域显式点名依赖。
+    "feature_error",
 ]
+
 feature_error = [
     "dep:datazen-driver-api",
     "dep:serde_json",

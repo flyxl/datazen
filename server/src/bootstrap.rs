@@ -23,6 +23,7 @@ use crate::http;
 use crate::logging;
 use crate::storage::AdminStore;
 
+use datazen::settings::SettingsRepository;
 use datazen::shared::error::ApiError;
 
 /// `migrate` 子命令的进程入口（WR-D2 第一切片）：打开管理库、执行全部
@@ -331,14 +332,15 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         budget.clone(),
         datazen::shared::id::OrganizationId::new(config.organization_id.clone()),
     ));
+    // 驱动注册表：v1 空工厂表（`with_factories([])` 是合法目录）。执行后端
+    // 与（mcp 构建下的）目标机器共享同一实例。
+    let driver_registry = std::sync::Arc::new(
+        datazen::execution::runtime::driver_registry::DriverRegistry::with_factories([])
+            .map_err(|message| ServerError::Serve(format!("driver registry: {message}")))?,
+    );
     let backend = std::sync::Arc::new(
         crate::execution::driver_exec::ServerDriverExecBackend::new(
-            std::sync::Arc::new(
-                datazen::execution::runtime::driver_registry::DriverRegistry::with_factories([])
-                    .map_err(|message| {
-                        ServerError::Serve(format!("driver registry: {message}"))
-                    })?,
-            ),
+            driver_registry.clone(),
             connections_repo.clone(),
             profiles_repo.clone(),
             datazen::connection::domain::ConnectionScope::new(config.organization_id.clone()),
@@ -383,6 +385,12 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let session_directory: std::sync::Arc<dyn datazen::execution::SessionDirectory> =
         lease_source.session_directory();
 
+    // 服务端设置存储：ai-host 域与（mcp 构建下的）目标机器共享同一实例。
+    let settings_store = std::sync::Arc::new(crate::storage::ServerSettingsStore::scoped(
+        &config.organization_id,
+        store.clone(),
+    ));
+
     // WR-C2 §6.1–§6.4 读侧域路由（薄绑定；挂载归 router）。
     let domain_routers = vec![
         crate::http::domains::settings::settings_router(
@@ -412,10 +420,7 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
             },
         ),
         crate::http::domains::ai_host::ai_host_router(crate::http::domains::ai_host::AiHostState {
-            settings: std::sync::Arc::new(crate::storage::ServerSettingsStore::scoped(
-                &config.organization_id,
-                store.clone(),
-            )),
+            settings: settings_store.clone(),
             organization_id: config.organization_id.clone(),
         }),
     ];
@@ -426,15 +431,37 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         let authenticator = CookieSessionAuthenticator {
             sessions: crate::storage::LoginSessions::new(store.clone()),
         };
+        // WR-F7 目标元数据切片：`ResourceExecutionHost` 端口 server 实现
+        // （`execution::resource_host`）。租约源与 MCP / sessions 域同一
+        // 实例（共享 sink + 会话目录）；驱动注册表与执行后端同一实例。
+        let resource_host = std::sync::Arc::new(
+            crate::execution::resource_host::ServerResourceExecutionHost::new(
+                connections_repo.clone(),
+                profiles_repo.clone(),
+                driver_registry.clone(),
+                settings_store.clone(),
+                lease_source.clone(),
+                &config.organization_id,
+            ),
+        );
+        let execution_settings = settings_store
+            .read_settings()
+            .await
+            .map(|shared| shared.execution)
+            .unwrap_or_else(|_| crate::storage::default_shared_settings().execution);
         let stateless = std::sync::Arc::new(
             crate::mcp::stateless_exec::StatelessToolExec::new(
                 std::sync::Arc::new(crate::mcp::stateless_exec::ServerRedactedConnections::new(
-                    connections_repo,
+                    connections_repo.clone(),
                     &config.organization_id,
                 )),
                 std::sync::Arc::new(crate::mcp::stateless_exec::EmptyWorkflowCatalog),
                 Vec::new(), // 连接白名单：空表 = 全拒绝（安全默认；部署配置随 settings 切片接入）
-            ),
+            )
+            .with_target_machine(crate::mcp::stateless_exec::TargetMachine {
+                host: resource_host,
+                settings: execution_settings,
+            }),
         );
         Some(crate::mcp::runtime::build_http_state(
             std::sync::Arc::new(authenticator),

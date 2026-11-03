@@ -12,7 +12,7 @@
 //! | `list_connections` | ✅ 真实现（脱敏投影 + 白名单过滤） | 目录端口 server 适配器（本文件） |
 //! | `list_workflows` | ✅ 真实现（server v1 无工作流存储 → 空目录） | `EmptyWorkflowCatalog`：空目录是诚实事实 |
 //! | `run_workflow` | ✅ 经空目录 → `Workflow not found`（参数类） | 同上 |
-//! | `query` / `list_databases` / `list_tables` / `search_tables` / `get_schema` / `explain_query` / `describe_table` | ⛔ fail-closed 登记 | 目标命令路径需要 `ResourceExecutionHost::prepare` 的规范化目标解析（桌面 `resolve_execution_target` 的元数据缓存/门锁机器），随目标元数据切片接线；在此之前不返回看似成功的结果 |
+//! | `query` / `list_databases` / `list_tables` / `search_tables` / `get_schema` / `explain_query` / `describe_table` | ✅ 目标机器接线（`TargetMachine` + `execution::resource_host`） | `ResourceExecutionHost` 端口 server 实现：profile/版本/连接/驱动闸后走 `TargetResolver` 规范化目标；v1 空驱动目录下驱动闸显式答「Driver unavailable」（链接闭包随部署构建切片）。构造未调 `with_target_machine` 时保留 fail-closed 登记（不返回看似成功的结果） |
 //!
 //! 会话三工具（open/use/close）不走本件——它们在
 //! [`crate::mcp::runtime::ModulesBackend`] 的有状态分发里。
@@ -26,6 +26,8 @@ use datazen::connection::domain::{ConnectionRepository, ConnectionScope};
 use datazen::mcp::application::tools::{
     self, RedactedConnection, RedactedConnectionSource, WorkflowCatalog,
 };
+use datazen::settings::ExecutionSettings;
+use datazen::workflow::application::resource_execution::ResourceExecutionHost;
 use datazen::workflow::domain::error::WorkflowError;
 use datazen::workflow::domain::model::{WorkflowDefinition, WorkflowListItem};
 
@@ -92,12 +94,46 @@ impl WorkflowCatalog for EmptyWorkflowCatalog {
     }
 }
 
+/// 目标命令机器：`ResourceExecutionHost` 端口实现 + 查询上限等执行设置。
+/// 权限档位 v1 固定 `SafeWrite`（与 `run_workflow` 同源；随设置切片读
+/// `ExecutionSettings::mcp_permission_mode`）。
+pub struct TargetMachine {
+    pub host: Arc<dyn ResourceExecutionHost>,
+    pub settings: ExecutionSettings,
+}
+
 /// 无状态工具分发件。构造即持有全部端口；`call` 与宿主分发的 `other`
 /// 分支对接（见 [`crate::mcp::runtime::ModulesBackend`]）。
 pub struct StatelessToolExec {
     connections: Arc<dyn RedactedConnectionSource>,
     catalog: Arc<dyn WorkflowCatalog>,
     allowed_connection_ids: Vec<String>,
+    /// 目标命令机器（七工具的执行入口）：未装配时七工具保持 fail-closed
+    /// 登记（见模块头状态表）。
+    target: Option<TargetMachine>,
+}
+
+/// 从工具参数取必填字符串。
+fn required_str<'a>(
+    tool: &str,
+    arguments: &'a Value,
+    key: &str,
+) -> Result<&'a str, ToolCallError> {
+    arguments
+        .get(key)
+        .and_then(Value::as_str)
+        .ok_or_else(|| ToolCallError::WithHelp {
+            tool: tool.to_owned(),
+            reason: format!("missing required input property: {key}"),
+        })
+}
+
+/// 从工具参数取可选字符串。
+fn optional_str(arguments: &Value, key: &str) -> Option<String> {
+    arguments
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::to_owned)
 }
 
 impl StatelessToolExec {
@@ -111,26 +147,27 @@ impl StatelessToolExec {
             connections,
             catalog,
             allowed_connection_ids,
+            target: None,
         }
+    }
+
+    /// 装配目标命令机器（七工具真分发；不调则保持 fail-closed 登记）。
+    pub fn with_target_machine(mut self, target: TargetMachine) -> Self {
+        self.target = Some(target);
+        self
     }
 
     /// 分发一个无状态工具。工具名不属于无状态集合时返回与现状一致的
     /// 「未接线」错误（宿主 match 的 session 三分支先于本件）。
     pub async fn call(&self, tool: &str, arguments: &Value) -> Result<String, ToolCallError> {
-        let result = match tool {
+        let result: Result<String, tools::ToolError> = match tool {
             "list_connections" => {
                 tools::list_connections(self.connections.as_ref(), &self.allowed_connection_ids)
                     .await
             }
             "list_workflows" => tools::list_workflows(self.catalog.as_ref()).await,
             "run_workflow" => {
-                let workflow_id = arguments
-                    .get("workflow_id")
-                    .and_then(Value::as_str)
-                    .ok_or_else(|| ToolCallError::WithHelp {
-                        tool: tool.to_owned(),
-                        reason: "missing required input property: workflow_id".into(),
-                    })?;
+                let workflow_id = required_str(tool, arguments, "workflow_id")?;
                 let connection_id = arguments.get("connection_id").and_then(Value::as_str);
                 let variables = arguments.get("variables").cloned().unwrap_or(Value::Null);
                 // 权限模式随装配参数传入（与桌面同源：ExecutionSettings 的
@@ -142,19 +179,66 @@ impl StatelessToolExec {
                     workflow_id,
                     connection_id,
                     &variables,
-                    datazen::mcp::domain::permission::McpPermissionMode::SafeWrite,
+                    datazen::execution::domain::permission::McpPermissionMode::SafeWrite,
                 )
                 .await
             }
             "query" | "list_databases" | "list_tables" | "search_tables" | "get_schema"
             | "explain_query" | "describe_table" => {
-                return Err(ToolCallError::WithHelp {
-                    tool: tool.to_owned(),
-                    reason: "target-command tools require the server resource-execution host \
-                             (canonical target metadata resolution); they arrive with the \
-                             WR-F7 metadata slice and are not silently approximated here"
-                        .into(),
-                });
+                let Some(machine) = &self.target else {
+                    return Err(ToolCallError::WithHelp {
+                        tool: tool.to_owned(),
+                        reason: "target-command tools require the server resource-execution host \
+                                 (canonical target metadata resolution); they arrive with the \
+                                 WR-F7 metadata slice and are not silently approximated here"
+                            .into(),
+                    });
+                };
+                let host = machine.host.as_ref();
+                let connection_id = required_str(tool, arguments, "connection_id")?;
+                let database = optional_str(arguments, "database");
+                let schema = optional_str(arguments, "schema");
+                match tool {
+                    "query" => {
+                        let sql = required_str(tool, arguments, "sql")?;
+                        let limit = arguments
+                            .get("limit")
+                            .and_then(Value::as_u64)
+                            .map(|value| value as u32);
+                        tools::query(
+                            host,
+                            connection_id,
+                            sql,
+                            limit,
+                            datazen::execution::domain::permission::McpPermissionMode::SafeWrite,
+                            &machine.settings,
+                        )
+                        .await
+                    }
+                    "list_databases" => tools::list_databases(host, connection_id).await,
+                    "list_tables" => {
+                        tools::list_tables(host, connection_id, database, schema).await
+                    }
+                    "search_tables" => {
+                        let pattern = required_str(tool, arguments, "pattern")?;
+                        let limit = arguments.get("limit").and_then(Value::as_u64);
+                        tools::search_tables(host, connection_id, database, schema, pattern, limit)
+                            .await
+                    }
+                    "get_schema" => {
+                        let table = required_str(tool, arguments, "table")?;
+                        tools::get_schema(host, connection_id, database, schema, table).await
+                    }
+                    "explain_query" => {
+                        let sql = required_str(tool, arguments, "sql")?;
+                        tools::explain_query(host, connection_id, sql).await
+                    }
+                    "describe_table" => {
+                        let table = required_str(tool, arguments, "table")?;
+                        tools::describe_table(host, connection_id, database, schema, table).await
+                    }
+                    _ => unreachable!("outer arm lists exactly these seven tool names"),
+                }
             }
             other => {
                 return Err(ToolCallError::internal(format!(
