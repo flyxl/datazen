@@ -136,7 +136,7 @@ pub async fn open_session(
     // §4.1: an empty explicit target is a target error, not a fallback to the GUI.
     if !namespace.has_value(TargetNamespaceLayer::Database) {
         return Err(SessionToolError::WithHelp(
-            "open_session needs an explicit target: pass database (and schema when the driver has one). The active GUI connection is never used as a fallback."
+            "open_session needs an explicit target: pass database (and schema when the driver has one). The active interactive connection is never used as a fallback."
                 .to_owned(),
         ));
     }
@@ -500,7 +500,7 @@ mod tests {
         let namespace = namespace_target(None, None);
         assert!(
             !namespace.has_value(TargetNamespaceLayer::Database),
-            "a session target must never fall back to the GUI active database"
+            "a session target must never fall back to the active interactive database"
         );
         assert!(!namespace.has_value(TargetNamespaceLayer::Schema));
     }
