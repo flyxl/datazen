@@ -23,6 +23,8 @@ use crate::http;
 use crate::logging;
 use crate::storage::AdminStore;
 
+use datazen::shared::error::ApiError;
+
 /// `migrate` 子命令的进程入口（WR-D2 第一切片）：打开管理库、执行全部
 /// pending 的 expand 迁移、逐版本打印。空跑（无 pending）也是成功——
 /// 幂等是执行器的承诺（`storage::tests` 钉住）。
@@ -202,6 +204,111 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let clock: std::sync::Arc<dyn datazen::shared::clock::Clock> =
         std::sync::Arc::new(datazen::shared::clock::SystemClock);
 
+    // ── WR-D6/D7 服务面：审计、作业仓储、提交令牌、产物库、预算协调器
+    // 与 operations/transfer 两域服务。全部从 config + store 出发（§2.3）。
+    let audit = std::sync::Arc::new(crate::storage::ServerAudit::new(store.clone()));
+    let jobs = std::sync::Arc::new(crate::storage::ServerJobs::new(
+        store.clone(),
+        std::sync::Arc::new(datazen::jobs::domain::time::PortJobClock::new(
+            datazen::shared::clock::SystemClock,
+        )),
+        900, // claim 租约首版起点（15 分钟；与内核内存实现同义）
+    ));
+    let issuer = std::sync::Arc::new(
+        crate::execution::submission_token::ServerSubmissionTokenIssuer::new(
+            secret_bytes.clone(),
+            clock.clone(),
+        )
+        .map_err(|source| ServerError::Serve(format!("submission token issuer: {source}")))?,
+    );
+    let artifacts = std::sync::Arc::new(
+        crate::storage::ServerArtifacts::open(store.clone(), &config.artifact_root)
+            .map_err(|source| ServerError::Serve(format!("artifact store: {source}")))?,
+    );
+    let budget = std::sync::Arc::new(crate::execution::budget::ServerBudgetCoordinator::new(
+        config.budget_node_limit,
+        config.budget_organization_limit,
+        datazen::shared::id::OrganizationId::new(config.organization_id.clone()),
+    ));
+    let quota_gate = std::sync::Arc::new(crate::operations::QuotaGate::new(
+        budget,
+        audit.clone() as std::sync::Arc<dyn datazen::shared::audit::AuditSink>,
+    ));
+
+    // 事件后备：单实例 v1 的 MemoryEventSink 同时承载 SSE 订阅与撤销传播
+    // （WR-D6 EventSinkBridge 近似语义，见 revocation.rs 模块文档的登记）。
+    let memory_sink: std::sync::Arc<dyn datazen::execution::application::EventSink> =
+        std::sync::Arc::new(
+            datazen::execution::application::event_sink_memory::MemoryEventSink::new(),
+        );
+    let revocation = std::sync::Arc::new(crate::operations::RevocationService::new(
+        store.clone(),
+        std::sync::Arc::new(crate::operations::revocation::EventSinkBridge::new(
+            memory_sink.clone(),
+            datazen::shared::id::StreamId::new("control-plane"),
+            datazen::shared::id::RuntimeEpoch::new("server-v1"),
+        )),
+        audit.clone() as std::sync::Arc<dyn datazen::shared::audit::AuditSink>,
+    ));
+    let ttl_sweeper = std::sync::Arc::new(crate::operations::TtlSweeper::new(
+        artifacts.clone(),
+        audit.clone() as std::sync::Arc<dyn datazen::shared::audit::AuditSink>,
+        datazen::shared::id::OrganizationId::new(config.organization_id.clone()),
+        crate::operations::TtlSweepConfig {
+            interval_seconds: config.artifact_ttl_sweep_secs,
+        },
+    ));
+    // 后台清扫：JoinHandle 随 drain 语义（WR-G3）接管优雅停机。
+    let _ttl_worker = tokio::spawn(async move { ttl_sweeper.run_forever().await });
+    let _config_cas = std::sync::Arc::new(crate::operations::ProfileConfigCas::new(store.clone()));
+    let _revocation = revocation; // L6/中间件接线随执行域路由点亮（check_session_permission）
+    let task_center = std::sync::Arc::new(crate::operations::TaskCenter::new(jobs.clone(), 50));
+    let gate = std::sync::Arc::new(QuotaPreSubmitGate {
+        quota: quota_gate.clone(),
+    });
+    let submission = std::sync::Arc::new(crate::transfer::SubmissionService::new(
+        issuer.clone(),
+        jobs.clone(),
+        gate,
+        audit.clone(),
+        clock.clone(),
+    ));
+    let uploads = std::sync::Arc::new(crate::transfer::UploadService::new(
+        artifacts.clone(),
+        audit.clone(),
+        clock.clone(),
+    ));
+    let downloads = std::sync::Arc::new(crate::transfer::DownloadService::new(
+        artifacts.clone(),
+        audit.clone(),
+        clock.clone(),
+    ));
+    let domains = http::router::DomainState {
+        issuer,
+        submission,
+        uploads,
+        downloads,
+        tasks: task_center,
+    };
+
+    // WR-F2：MCP streamable HTTP（feature 门控）。认证器 = 登录会话
+    // （与 L2 同源的 peek 校验面）；租约源 v1 fail-closed——执行后端随
+    // WR-F7 落地，此前 runtime 依赖工具如实答上游不可用。
+    #[cfg(feature = "mcp")]
+    let mcp_state = {
+        let authenticator = CookieSessionAuthenticator {
+            sessions: crate::storage::LoginSessions::new(store.clone()),
+        };
+        Some(crate::mcp::runtime::build_http_state(
+            std::sync::Arc::new(authenticator),
+            std::sync::Arc::new(FailClosedLeaseSource), // WR-F7 真租约源待 policy 适配器（见下）
+            Vec::new(), // 连接白名单：空表 = 全拒绝（安全默认；部署配置随 F7 接入）
+            datazen::execution::domain::permission::McpPermissionMode::SafeWrite,
+        ))
+    };
+    #[cfg(not(feature = "mcp"))]
+    let mcp_state = None;
+
     // L5（§9.1）：参数来自部署配置；构造非法（容量 0 等）拒绝启动。
     let rate_limit = {
         let limiter = crate::http::middleware::ratelimit::RateLimiter::new(
@@ -235,9 +342,7 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         };
         crate::http::sse::SseState {
             registry: std::sync::Arc::new(crate::http::sse::EventStreamRegistry::new(&sse_config)),
-            sink: std::sync::Arc::new(
-                datazen::execution::application::event_sink_memory::MemoryEventSink::new(),
-            ),
+            sink: memory_sink.clone(),
             recheck: std::sync::Arc::new(crate::http::sse::StandardRecheck::new(
                 crate::storage::LoginSessions::new(store.clone()),
                 policy.clone(),
@@ -302,6 +407,8 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         rate_limit,
         sse,
         oidc,
+        domains: Some(domains),
+        mcp: mcp_state,
     })?;
 
     let listener = tokio::net::TcpListener::bind(&config.listen_addr)
@@ -320,8 +427,119 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
     Ok(())
 }
 
+/// WR-F2：MCP HTTP 的登录会话认证器。校验面与 L2 中间件同源
+/// （`peek`：撤销/绝对窗/空闲窗），互斥裁决同样只服务 Cookie 模式会话
+/// （native/Bearer 凭据不经 cookie 复用，§4.6）。
+#[cfg(feature = "mcp")]
+struct CookieSessionAuthenticator {
+    sessions: crate::storage::LoginSessions,
+}
+
+#[cfg(feature = "mcp")]
+impl crate::mcp::http::SessionAuthenticator for CookieSessionAuthenticator {
+    fn authenticate(
+        &self,
+        headers: &axum::http::HeaderMap,
+    ) -> Option<crate::mcp::http::CallIdentity> {
+        let session_id = crate::http::middleware::session_cookie(
+            headers,
+            crate::http::middleware::auth::SESSION_COOKIE,
+        )?;
+        let row = self
+            .sessions
+            .peek(
+                &session_id,
+                datazen::shared::id::Timestamp::new(crate::http::middleware::now_rfc3339()),
+            )
+            .ok()?;
+        if row.mode != crate::storage::login_sessions::LoginSessionMode::Cookie {
+            return None;
+        }
+        Some(crate::mcp::http::CallIdentity {
+            organization_id: row.organization_id,
+            principal_id: row.principal_id,
+            request_id: crate::mcp::http::new_request_id(),
+        })
+    }
+}
+
+/// WR-F7 真租约源（`crate::mcp::runtime::ServerRuntimeLeaseSource::new`）
+/// 待 Wave4 接线：阻塞项 = modules `execution::application::policy::
+/// PolicyService` trait 适配器（server `policy::PolicyService` 未实现该
+/// trait，见 `driver_exec.rs` 登记表）。v1 维持 fail-closed：runtime
+/// 依赖工具如实答不可用。
+#[cfg(feature = "mcp")]
+struct FailClosedLeaseSource;
+
+#[cfg(feature = "mcp")]
+#[async_trait::async_trait]
+impl crate::mcp::runtime::RuntimeLeaseSource for FailClosedLeaseSource {
+    async fn resolve(
+        &self,
+    ) -> Result<std::sync::Arc<datazen::execution::application::RuntimeConnectionUseCases>, String>
+    {
+        Err("driver execution lease wiring lands with the WR-F7 policy adapter; \
+             runtime-backed MCP tools are unavailable in this build."
+            .to_string())
+    }
+}
+
+/// WR-F2：runtime 租约源的 server v1 形态——执行后端（驱动/会话物理
+/// 资源）随 WR-F7 落地；此前如实报错，runtime 依赖工具 fail-closed。
+#[cfg(feature = "mcp")]
+struct ServerRuntimeLeaseSource;
+
+#[cfg(feature = "mcp")]
+#[async_trait::async_trait]
+impl crate::mcp::runtime::RuntimeLeaseSource for ServerRuntimeLeaseSource {
+    async fn resolve(
+        &self,
+    ) -> Result<std::sync::Arc<datazen::execution::application::RuntimeConnectionUseCases>, String>
+    {
+        Err("driver execution backend is not assembled yet (WR-F7); \
+             runtime-backed MCP tools are unavailable in this build."
+            .to_string())
+    }
+}
+
 /// 停机信号：Ctrl-C（SIGINT）。容器场景的 SIGTERM 接线随部署切片（WR-G）。
 async fn shutdown_signal() {
     let _ = tokio::signal::ctrl_c().await;
     tracing::info!("shutdown signal received; draining");
+}
+
+/// WR-D6 QuotaGate 适配为 WR-D7 的 `PreSubmitGate`（`transfer` 模块文档
+/// 的接缝裁决）。闸门只读无副作用：重放路径同样穿过它，因此提交本身
+/// 不占用持久额度——占位检查容量后立即归还（执行期额度随 ExecutionGateway
+/// 接线收取）。拒绝用 wire 词汇原样透传，transfer 侧零翻译。
+struct QuotaPreSubmitGate {
+    quota: std::sync::Arc<crate::operations::QuotaGate<crate::execution::budget::ServerBudgetCoordinator>>,
+}
+
+#[async_trait::async_trait]
+impl crate::transfer::PreSubmitGate for QuotaPreSubmitGate {
+    async fn check_submit(
+        &self,
+        ctx: &datazen::shared::context::RequestContext,
+        _submission: &datazen::execution::application::VerifiedSubmission,
+    ) -> Result<(), ApiError> {
+        let request = datazen::execution::application::budget::BudgetRequest::new(
+            ctx.organization_id.clone(),
+            datazen::shared::id::ConnectionId::new("job-submission"),
+            datazen::execution::application::budget::BudgetPurpose::BackgroundJob,
+        );
+        match self.quota.gate(ctx, request).await {
+            Ok(admission) => {
+                let _ = self
+                    .quota
+                    .release(
+                        &admission.permit,
+                        datazen::execution::application::budget::ReleaseOutcome::Unused,
+                    )
+                    .await;
+                Ok(())
+            }
+            Err(rejection) => Err(rejection.to_api_error()),
+        }
+    }
 }

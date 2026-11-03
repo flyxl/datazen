@@ -5,15 +5,17 @@
  * **覆盖账目**（对照 `docs/architecture/platform/http-api-contract.md` §4
  * 总账与 §6.1–§6.9 逐域表；分发表本体在 `./httpRoutes`）：
  *
- * - call 面 **41/42**：42 个域客户端 call 方法中 41 个上 HTTP（分发表 41 条，
- *   PATCH 一条路由双服务 update/disable）——`open_base64_with_dialog` 排除
+ * - call 面 **42/43**：43 个域客户端 call 方法中 42 个上 HTTP（分发表 42 条，
+ *   PATCH 一条路由双服务 update/disable；WR-F6 补上 §6.5 uploads 在账端点的
+ *   `createArtifactUpload` 键，端点已在契约总账内）——`open_base64_with_dialog` 排除
  *   （§6.9/§8）；分发表本体在 `./httpRoutes`；
  * - events 域 **2 条路由走 `subscribe()` 两步流水线**（POST
  *   `/events/subscriptions` 铸造一次性 streamId → `EventSource`
  *   `GET /events/{streamId}`，契约 §6.6 v1.1），服务 `subscribeEvents`；
  * - legacy 轨 ~200 宿主命令不镜像（§8），与 `open_base64_with_dialog` 一并以
  *   `capability` 进 `unsupportedMethods`（`./webUnsupportedMethods`）；
- * - 合计对照 §4 总账的「HTTP 服务 42」：**42/42**（41 call + subscribeEvents；
+ * - 合计对照 §4 总账的「HTTP 服务 42」+ WR-F6 补键后的 uploads 端点：**43/43**
+ *   （42 call + subscribeEvents；
  *   `createEventSubscription` 是流水线的登记步，无 `MethodMap` 键）。
  *
  * HTTP 约定（契约 §3 + team-server §3–§9）：

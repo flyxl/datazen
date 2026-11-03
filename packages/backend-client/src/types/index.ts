@@ -61,7 +61,12 @@ export type {
 
 export type {
   ArtifactChunk,
+  ArtifactLifecycle,
+  ArtifactMetadata,
+  ArtifactMetadataReadRequest,
   ArtifactReadRequest,
+  ArtifactUploadEnvelope,
+  ArtifactUploadReceipt,
   CommitBoundary,
   JobDetails,
   JobDomainResult,

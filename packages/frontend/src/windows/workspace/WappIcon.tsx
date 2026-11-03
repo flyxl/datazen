@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Puzzle } from 'lucide-react';
 import { cn } from '../../lib/cn';
+import { buildWappIconSrc } from '../../lib/wappAssetOrigin';
 
 export interface WappIconProps {
   wappId?: string;
@@ -10,7 +11,8 @@ export interface WappIconProps {
 }
 
 /**
- * Renders a workspace app contributed icon through the `datazen://` asset protocol,
+ * Renders a workspace app contributed icon through the wapp asset protocol
+ * (`datazen://` on desktop, `/wapps/{id}/…` origin-relative on web — WR-F4),
  * falling back to a puzzle glyph when absent or broken.
  */
 export function WappIcon({ wappId, icon, className }: WappIconProps) {
@@ -26,7 +28,7 @@ export function WappIcon({ wappId, icon, className }: WappIconProps) {
   }
   return (
     <img
-      src={`datazen://${targetId}/${icon.replace(/^\.\//, '')}`}
+      src={buildWappIconSrc(targetId, icon)}
       alt=""
       draggable={false}
       className={cn('inline-block shrink-0 object-contain', className)}

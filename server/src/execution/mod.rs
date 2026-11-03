@@ -12,8 +12,11 @@
 //!   隧道引用计数（fail-closed：空白名单全拒）。
 //! - [`identity`]：`IdentityResolver` 数据库侧服务身份 + 委托（CM-06 的
 //!   `execution_service_identity` 表承接）。
+//! - [`driver_exec`]：WR-F7 驱动执行服务端化 —— `SessionBackend` 端口的
+//!   server v1 实现（进程内直连驱动，无 stdio 子进程）。
 
 pub mod budget;
+pub mod driver_exec;
 pub mod identity;
 pub mod network_provider;
 pub mod secret_provider;
