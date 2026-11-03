@@ -67,8 +67,17 @@ pub enum ResourceProviderLookup {
     Missing(#[from] ResourceProviderMissing),
 }
 
-/// Holds registered drivers. Starts empty; call [`DriverRegistry::ensure_type`]
-/// (or rely on [`DriverRegistry::get`]) to load a type on demand.
+/// Holds registered drivers, in one of two injection forms:
+///
+/// * **Lazy (link-time) form** — [`DriverRegistry::new`] / [`init_drivers`]:
+///   starts empty; call [`DriverRegistry::ensure_type`] (or rely on
+///   [`DriverRegistry::get`]) to load a type on demand out of the `inventory`
+///   factories the final binary links. This is the desktop host's current
+///   wiring; which types exist depends on the link closure.
+/// * **Static form** — [`DriverRegistry::with_factories`]: the host hands the
+///   factory list to the constructor; everything is admitted eagerly and the
+///   registry never consults the link-time scan again. No lazy loading, no
+///   hidden global state; a type that was not seeded fails closed.
 pub struct DriverRegistry {
     drivers: Arc<RwLock<HashMap<DatabaseType, Arc<dyn DatabaseDriver>>>>,
     capabilities: Arc<RwLock<HashMap<DatabaseType, DriverCapabilities>>>,
@@ -83,20 +92,171 @@ pub struct DriverRegistry {
     /// `every_linked_factory_resolves_or_reports_why_not` pins which drivers
     /// make that promise today.
     factories: Arc<RwLock<HashMap<DatabaseType, &'static dyn DatabaseDriverFactory>>>,
+    /// Whether a lookup miss falls back to the link-time `inventory` scan.
+    /// `true` for the lazy form, `false` for [`DriverRegistry::with_factories`].
+    inventory_fallback: bool,
+    /// Canonical ids seeded via [`DriverRegistry::with_factories`], sorted;
+    /// `None` for the lazy form. Fixed at construction — a catalog, not
+    /// mutable state — so [`DriverRegistry::available_types`] can answer
+    /// synchronously and deterministically.
+    seeded_types: Option<Vec<DatabaseType>>,
+}
+
+/// The outcome of admitting one factory: the driver instance, the driver's
+/// own type id (`actual` — it may differ from the key the type was asked
+/// under) and the static capabilities captured at admission.
+struct FactoryAdmission {
+    driver: Arc<dyn DatabaseDriver>,
+    actual: DatabaseType,
+    capabilities: DriverCapabilities,
 }
 
 impl DriverRegistry {
+    /// Lazy form: an empty registry that resolves drivers on demand out of
+    /// the `inventory` factories linked into the final binary. See
+    /// [`DriverRegistry::with_factories`] for the static form.
     pub fn new() -> Self {
         Self {
             drivers: Arc::new(RwLock::new(HashMap::new())),
             capabilities: Arc::new(RwLock::new(HashMap::new())),
             factories: Arc::new(RwLock::new(HashMap::new())),
+            inventory_fallback: true,
+            seeded_types: None,
         }
     }
 
-    /// Catalog of types this build can provide (inventory factories only).
-    /// Does **not** instantiate any driver.
+    /// Static form: build the registry from an explicitly supplied factory
+    /// list. Every factory is admitted at construction — protocol gate,
+    /// driver instance, capability capture and alias insertion all happen
+    /// here — so afterwards `ensure_type` never loads anything, and a type
+    /// that was not seeded fails closed with the same error the lazy form
+    /// produces for an absent driver.
+    ///
+    /// A factory whose `protocol_version()` is below `MIN_PROTOCOL_VERSION`
+    /// fails construction with the error the lazy form defers to the first
+    /// `ensure_type`. A later duplicate of an already-seeded id wins,
+    /// matching map-insert semantics.
+    ///
+    /// The constructor is synchronous on purpose: a host can assemble its
+    /// registry before entering any async runtime, and the catalog cannot
+    /// change behind the caller's back.
+    pub fn with_factories(
+        factories: impl IntoIterator<Item = &'static dyn DatabaseDriverFactory>,
+    ) -> Result<Self, String> {
+        let mut drivers = HashMap::new();
+        let mut capabilities = HashMap::new();
+        let mut factory_map: HashMap<DatabaseType, &'static dyn DatabaseDriverFactory> =
+            HashMap::new();
+        let mut seeded_types: Vec<DatabaseType> = Vec::new();
+        for factory in factories {
+            let db_type = factory.driver_id().to_string();
+            let admission = Self::admit_factory(&db_type, factory)?;
+            Self::install_admission(
+                &db_type,
+                factory,
+                admission,
+                &mut drivers,
+                &mut capabilities,
+                &mut factory_map,
+            );
+            if !seeded_types.contains(&db_type) {
+                seeded_types.push(db_type);
+            }
+        }
+        seeded_types.sort();
+        Ok(Self {
+            drivers: Arc::new(RwLock::new(drivers)),
+            capabilities: Arc::new(RwLock::new(capabilities)),
+            factories: Arc::new(RwLock::new(factory_map)),
+            inventory_fallback: false,
+            seeded_types: Some(seeded_types),
+        })
+    }
+
+    /// Install a resolved admission under the requested key and the driver's
+    /// own id, in the inventory path's insertion order: capabilities first,
+    /// then the factory, then the driver — under both spellings when the
+    /// driver's own type differs from the requested key. Both keys must
+    /// resolve to the same driver/factory pair, so the provider a caller
+    /// resolves is backed by the driver this registry handed out, never by a
+    /// second `create()`.
+    fn install_admission(
+        db_type: &str,
+        factory: &'static dyn DatabaseDriverFactory,
+        admission: FactoryAdmission,
+        drivers: &mut HashMap<DatabaseType, Arc<dyn DatabaseDriver>>,
+        capabilities: &mut HashMap<DatabaseType, DriverCapabilities>,
+        factory_map: &mut HashMap<DatabaseType, &'static dyn DatabaseDriverFactory>,
+    ) {
+        capabilities.insert(db_type.to_string(), admission.capabilities);
+        if admission.actual != db_type {
+            capabilities.insert(admission.actual.clone(), admission.capabilities);
+        }
+        factory_map.insert(db_type.to_string(), factory);
+        factory_map.insert(admission.actual.clone(), factory);
+        if admission.actual != db_type {
+            drivers.insert(admission.actual.clone(), admission.driver.clone());
+        }
+        drivers.insert(db_type.to_string(), admission.driver);
+    }
+
+    /// Resolve one factory against its requested registry key: apply the
+    /// protocol gate, create the driver, capture its capabilities.
+    ///
+    /// Shared by the inventory path (`register_from_inventory`) and the
+    /// static constructor (`with_factories`) so the protocol gate and the
+    /// capability capture cannot drift between the two injection paths.
+    fn admit_factory(
+        _db_type: &str,
+        factory: &'static dyn DatabaseDriverFactory,
+    ) -> Result<FactoryAdmission, String> {
+        let pv = factory.protocol_version();
+        if pv < datazen_driver_api::MIN_PROTOCOL_VERSION {
+            return Err(format!(
+                "Driver '{}' protocol version {} is too old (minimum {})",
+                factory.driver_id(),
+                pv,
+                datazen_driver_api::MIN_PROTOCOL_VERSION
+            ));
+        }
+        if pv > datazen_driver_api::PROTOCOL_VERSION {
+            tracing::warn!(
+                "Driver '{}' protocol version {} is newer than host {}. Loading with possible incompatibility.",
+                factory.driver_id(),
+                pv,
+                datazen_driver_api::PROTOCOL_VERSION
+            );
+        } else if pv < datazen_driver_api::PROTOCOL_VERSION {
+            tracing::warn!(
+                "Driver '{}' protocol version {} < host {}. Running in degraded mode \
+                 (cancel_query={}, explain={}, streaming={}).",
+                factory.driver_id(),
+                pv,
+                datazen_driver_api::PROTOCOL_VERSION,
+                factory.supports_cancel_query(),
+                factory.supports_explain(),
+                factory.supports_streaming_results(),
+            );
+        }
+
+        let driver = factory.create();
+        let actual = driver.driver_type();
+        let capabilities = DriverCapabilities::from_factory(factory, driver.as_ref());
+        Ok(FactoryAdmission {
+            driver,
+            actual,
+            capabilities,
+        })
+    }
+
+    /// Catalog of types this build can provide. For the lazy form this is
+    /// the linked `inventory` factories (deduped, link order) and does **not**
+    /// instantiate any driver; for the static form it is exactly the seeded
+    /// ids, sorted so the answer is deterministic.
     pub fn available_types(&self) -> Vec<DatabaseType> {
+        if let Some(seeded) = &self.seeded_types {
+            return seeded.clone();
+        }
         let mut types: Vec<DatabaseType> = Vec::new();
         for factory in iter_driver_factories() {
             let id = factory.driver_id().to_string();
@@ -135,6 +295,13 @@ impl DriverRegistry {
             return Ok(());
         }
 
+        if !self.inventory_fallback {
+            // Static form: construction was total, so a miss is a hard,
+            // deterministic answer — never a link-time scan behind the
+            // caller's back.
+            return Err(format!("No driver available for database type '{db_type}'"));
+        }
+
         self.register_from_inventory(db_type, &mut drivers).await?;
         tracing::info!(db_type, "Registered driver on demand");
         Ok(())
@@ -149,57 +316,20 @@ impl DriverRegistry {
             if factory.driver_id() != db_type {
                 continue;
             }
-            let pv = factory.protocol_version();
-            if pv < datazen_driver_api::MIN_PROTOCOL_VERSION {
-                return Err(format!(
-                    "Driver '{}' protocol version {} is too old (minimum {})",
-                    factory.driver_id(),
-                    pv,
-                    datazen_driver_api::MIN_PROTOCOL_VERSION
-                ));
-            }
-            if pv > datazen_driver_api::PROTOCOL_VERSION {
-                tracing::warn!(
-                    "Driver '{}' protocol version {} is newer than host {}. Loading with possible incompatibility.",
-                    factory.driver_id(),
-                    pv,
-                    datazen_driver_api::PROTOCOL_VERSION
-                );
-            } else if pv < datazen_driver_api::PROTOCOL_VERSION {
-                tracing::warn!(
-                    "Driver '{}' protocol version {} < host {}. Running in degraded mode \
-                     (cancel_query={}, explain={}, streaming={}).",
-                    factory.driver_id(),
-                    pv,
-                    datazen_driver_api::PROTOCOL_VERSION,
-                    factory.supports_cancel_query(),
-                    factory.supports_explain(),
-                    factory.supports_streaming_results(),
-                );
-            }
-
-            let driver = factory.create();
-            let actual = driver.driver_type();
-            let capabilities = DriverCapabilities::from_factory(*factory, driver.as_ref());
-            {
-                let mut capability_map = self.capabilities.write().await;
-                capability_map.insert(db_type.to_string(), capabilities);
-                if actual != db_type {
-                    capability_map.insert(actual.clone(), capabilities);
-                }
-            }
+            let admission = Self::admit_factory(db_type, *factory)?;
             // The driver and its factory are registered under the same keys, so
             // the provider a caller resolves is backed by the driver this
             // registry handed out, never by a second `create()`.
-            {
-                let mut factory_map = self.factories.write().await;
-                factory_map.insert(db_type.to_string(), *factory);
-                factory_map.insert(actual.clone(), *factory);
-            }
-            if actual != db_type {
-                drivers.insert(actual, driver.clone());
-            }
-            drivers.insert(db_type.to_string(), driver);
+            let mut capabilities = self.capabilities.write().await;
+            let mut factories = self.factories.write().await;
+            Self::install_admission(
+                db_type,
+                *factory,
+                admission,
+                drivers,
+                &mut capabilities,
+                &mut factories,
+            );
             return Ok(());
         }
         Err(format!("No driver available for database type '{db_type}'"))
@@ -321,7 +451,10 @@ impl Default for DriverRegistry {
     }
 }
 
-/// Create an empty registry. Drivers load via [`DriverRegistry::ensure_type`].
+/// Create a lazy, inventory-backed registry. Drivers load via
+/// [`DriverRegistry::ensure_type`]. For a statically seeded registry — the
+/// form a host hands its factory list to explicitly — see
+/// [`DriverRegistry::with_factories`].
 pub fn init_drivers() -> DriverRegistry {
     DriverRegistry::new()
 }
@@ -576,5 +709,105 @@ mod tests {
             registry.resource_provider(&"absent".to_string()).await,
             Err(ResourceProviderLookup::NotRegistered { .. })
         ));
+    }
+
+    /// A factory compiled against a protocol older than the host minimum.
+    /// The inventory path surfaces the gate on the first `ensure_type`; the
+    /// static constructor must surface it at construction, before any
+    /// `create()`.
+    struct AncientProtocolFactory;
+
+    impl DatabaseDriverFactory for AncientProtocolFactory {
+        fn create(&self) -> Arc<dyn DatabaseDriver> {
+            MockDriver::new("ancient", MockDriverOptions::default())
+        }
+
+        fn driver_id(&self) -> &'static str {
+            "ancient"
+        }
+
+        fn protocol_version(&self) -> u32 {
+            // One below the floor (`MIN_PROTOCOL_VERSION` is 1): trips the
+            // same gate the inventory path applies.
+            0
+        }
+    }
+
+    /// The static form serves exactly its seed: the catalog is the supplied
+    /// factory list — real drivers linked into the test binary must not leak
+    /// into it — lookups resolve from the construction-time admission, and a
+    /// type that was not seeded fails closed instead of quietly consulting
+    /// the link-time scan.
+    #[tokio::test]
+    async fn a_static_registry_serves_exactly_its_seeded_factories() {
+        let driver: Arc<dyn DatabaseDriver> =
+            MockDriver::new("memoized", MockDriverOptions::default());
+        let factory: &'static dyn DatabaseDriverFactory = Box::leak(Box::new(
+            MemoizedProviderFactory::new("memoized", Arc::clone(&driver)),
+        ));
+        let registry = DriverRegistry::with_factories([factory])
+            .expect("a current-protocol factory admits cleanly");
+
+        assert_eq!(registry.available_types(), vec!["memoized".to_string()]);
+
+        let first = registry
+            .resource_provider(&"memoized".to_string())
+            .await
+            .expect("a seeded migrated driver resolves a provider");
+        let second = registry
+            .resource_provider(&"memoized".to_string())
+            .await
+            .expect("a seeded migrated driver keeps resolving a provider");
+        assert!(Arc::ptr_eq(&first, &second));
+
+        assert!(registry
+            .get_capabilities(&"memoized".to_string())
+            .await
+            .is_some());
+
+        assert_eq!(
+            registry.ensure_type("not-seeded").await,
+            Err("No driver available for database type 'not-seeded'".to_string())
+        );
+    }
+
+    /// An empty seed is a valid, closed catalog: nothing exists and nothing
+    /// loads on demand — the shape a host without any linked driver takes.
+    #[tokio::test]
+    async fn an_empty_static_registry_is_a_closed_empty_world() {
+        let registry =
+            DriverRegistry::with_factories([]).expect("an empty seed is a valid catalog");
+
+        assert!(registry.available_types().is_empty());
+        assert!(registry.get(&"absent".to_string()).await.is_none());
+        assert!(registry
+            .get_capabilities(&"absent".to_string())
+            .await
+            .is_none());
+        assert!(matches!(
+            registry.resource_provider(&"absent".to_string()).await,
+            Err(ResourceProviderLookup::NotRegistered { .. })
+        ));
+    }
+
+    /// The protocol gate applies at static construction and names the driver.
+    #[test]
+    fn a_factory_below_the_minimum_protocol_version_fails_static_construction() {
+        let ancient: &'static dyn DatabaseDriverFactory =
+            Box::leak(Box::new(AncientProtocolFactory));
+
+        match DriverRegistry::with_factories([ancient]) {
+            Ok(_) => panic!("a too-old factory must fail static construction"),
+            Err(error) => {
+                assert!(
+                    error.contains("ancient"),
+                    "the error must name the driver: {error}"
+                );
+                assert!(
+                    error.contains("too old"),
+                    "the error must carry the protocol gate: {error}"
+                );
+            }
+        }
     }
 }

@@ -484,24 +484,6 @@ impl crate::mcp::runtime::RuntimeLeaseSource for FailClosedLeaseSource {
     }
 }
 
-/// WR-F2：runtime 租约源的 server v1 形态——执行后端（驱动/会话物理
-/// 资源）随 WR-F7 落地；此前如实报错，runtime 依赖工具 fail-closed。
-#[cfg(feature = "mcp")]
-struct ServerRuntimeLeaseSource;
-
-#[cfg(feature = "mcp")]
-#[async_trait::async_trait]
-impl crate::mcp::runtime::RuntimeLeaseSource for ServerRuntimeLeaseSource {
-    async fn resolve(
-        &self,
-    ) -> Result<std::sync::Arc<datazen::execution::application::RuntimeConnectionUseCases>, String>
-    {
-        Err("driver execution backend is not assembled yet (WR-F7); \
-             runtime-backed MCP tools are unavailable in this build."
-            .to_string())
-    }
-}
-
 /// 停机信号：Ctrl-C（SIGINT）。容器场景的 SIGTERM 接线随部署切片（WR-G）。
 async fn shutdown_signal() {
     let _ = tokio::signal::ctrl_c().await;

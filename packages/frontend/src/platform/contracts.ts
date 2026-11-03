@@ -275,6 +275,20 @@ export interface TablesExporterPort {
   onExportProgress?(handler: (event: TablesExportProgressEvent) => void): Promise<() => void>;
 }
 
+/**
+ * The Blob half's public path (WR-E3): the web assembly binds the shared
+ * demonstration exporter and the shared anchor download, and both ride this
+ * entry — the package's only sanctioned import surface for `apps/web` (the
+ * internal stub reaches them relatively; the desktop binds its own streaming
+ * half and never imports these).
+ */
+export { createBlobTablesExporter, downloadBlob } from './blobTablesExporter';
+export type {
+  TablePage,
+  TablePageReader,
+  TablePageRequestContext,
+} from './blobTablesExporter';
+
 // ── Capability table (static, compile-time; full rollout in F5) ──────────────
 
 export interface PlatformCapabilities {

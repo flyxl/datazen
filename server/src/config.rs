@@ -74,6 +74,14 @@ pub struct ServerConfig {
     pub rate_strict_refill_per_second: f64,
     /// L5 键表上界（未认证 IP 键是内存攻击面）。
     pub rate_max_entries: usize,
+    /// WR-D7 受控上传的产物落盘根。
+    pub artifact_root: PathBuf,
+    /// WR-D6 结果 TTL 清扫周期（秒）。
+    pub artifact_ttl_sweep_secs: u64,
+    /// WR-D4/D6 预算协调器节点额度。
+    pub budget_node_limit: u64,
+    /// WR-D4/D6 预算协调器组织额度。
+    pub budget_organization_limit: u64,
 }
 
 /// 环境变量名。`DATAZEN_` 前缀与仓库既有约定对齐。
@@ -95,6 +103,10 @@ pub const ENV_RATE_DEFAULT_REFILL: &str = "DATAZEN_SERVER_RATE_DEFAULT_REFILL";
 pub const ENV_RATE_STRICT_CAPACITY: &str = "DATAZEN_SERVER_RATE_STRICT_CAPACITY";
 pub const ENV_RATE_STRICT_REFILL: &str = "DATAZEN_SERVER_RATE_STRICT_REFILL";
 pub const ENV_RATE_MAX_ENTRIES: &str = "DATAZEN_SERVER_RATE_MAX_ENTRIES";
+pub const ENV_ARTIFACT_ROOT: &str = "DATAZEN_SERVER_ARTIFACT_ROOT";
+pub const ENV_ARTIFACT_TTL_SWEEP_SECS: &str = "DATAZEN_SERVER_ARTIFACT_TTL_SWEEP_SECS";
+pub const ENV_BUDGET_NODE_LIMIT: &str = "DATAZEN_SERVER_BUDGET_NODE_LIMIT";
+pub const ENV_BUDGET_ORGANIZATION_LIMIT: &str = "DATAZEN_SERVER_BUDGET_ORGANIZATION_LIMIT";
 pub const DEFAULT_DB_FILE: &str = "datazen-admin.sqlite";
 
 /// 开发默认密钥（仅限本地验证；§4.3/§6.2 的生产密钥必须显式注入）。
@@ -116,6 +128,13 @@ pub const DEFAULT_RATE_DEFAULT_REFILL: f64 = 20.0;
 pub const DEFAULT_RATE_STRICT_CAPACITY: u64 = 10;
 pub const DEFAULT_RATE_STRICT_REFILL: f64 = 1.0;
 pub const DEFAULT_RATE_MAX_ENTRIES: usize = 65_536;
+/// WR-D7 受控上传的产物落盘根（相对 cwd；部署显式注入绝对路径）。
+pub const DEFAULT_ARTIFACT_ROOT: &str = "data/artifacts";
+/// WR-D6 结果 TTL 清扫周期（与 `operations::ttl` 登记值一致）。
+pub const DEFAULT_ARTIFACT_TTL_SWEEP_SECS: u64 = 300;
+/// WR-D4/D6 预算协调器的首版额度起点（部署可调；非协议常量）。
+pub const DEFAULT_BUDGET_NODE_LIMIT: u64 = 64;
+pub const DEFAULT_BUDGET_ORGANIZATION_LIMIT: u64 = 32;
 
 impl ServerConfig {
     /// 从环境变量加载并校验。任一键非法即 [`ServerError::ConfigInvalid`]。
@@ -204,6 +223,25 @@ impl ServerConfig {
             std::env::var(ENV_RATE_MAX_ENTRIES).ok(),
             DEFAULT_RATE_MAX_ENTRIES,
         )?;
+        let artifact_root = match std::env::var(ENV_ARTIFACT_ROOT).ok() {
+            Some(raw) if !raw.trim().is_empty() => PathBuf::from(raw.trim().to_string()),
+            _ => PathBuf::from(DEFAULT_ARTIFACT_ROOT),
+        };
+        let artifact_ttl_sweep_secs = parse_seconds(
+            ENV_ARTIFACT_TTL_SWEEP_SECS,
+            std::env::var(ENV_ARTIFACT_TTL_SWEEP_SECS).ok(),
+            DEFAULT_ARTIFACT_TTL_SWEEP_SECS,
+        )?;
+        let budget_node_limit = parse_u64(
+            ENV_BUDGET_NODE_LIMIT,
+            std::env::var(ENV_BUDGET_NODE_LIMIT).ok(),
+            DEFAULT_BUDGET_NODE_LIMIT,
+        )?;
+        let budget_organization_limit = parse_u64(
+            ENV_BUDGET_ORGANIZATION_LIMIT,
+            std::env::var(ENV_BUDGET_ORGANIZATION_LIMIT).ok(),
+            DEFAULT_BUDGET_ORGANIZATION_LIMIT,
+        )?;
         Ok(Self {
             listen_addr,
             log_filter,
@@ -223,6 +261,10 @@ impl ServerConfig {
             rate_strict_capacity,
             rate_strict_refill_per_second,
             rate_max_entries,
+            artifact_root,
+            artifact_ttl_sweep_secs,
+            budget_node_limit,
+            budget_organization_limit,
         })
     }
 }

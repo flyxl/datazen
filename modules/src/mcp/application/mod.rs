@@ -6,6 +6,7 @@
 
 pub mod describe;
 pub mod session;
+pub mod session_tools;
 pub mod tools;
 
 pub use crate::execution::application::command_policy;

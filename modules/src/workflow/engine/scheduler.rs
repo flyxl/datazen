@@ -18,7 +18,9 @@
 //!   空）一律拒绝，绝不降级为无授权派发。
 //!
 //! 既有执行路径（`WorkflowScheduleHost::execute_workflow`）与其目标/结果/模板
-//! 语义逐字不变——本模块只在它前面加了一道授权闸门。
+//! 语义逐字不变——本模块只在它前面加了一道授权闸门；闸门放行后以
+//! [`application::execution_identity`] 从放行所依据的授权单派生**服务身份
+//! 执行上下文**传给宿主（owner 归属、审计主体 kind=Service、无委托）。
 
 use std::collections::{HashMap, HashSet};
 use std::panic::AssertUnwindSafe;
@@ -31,6 +33,9 @@ use futures_util::FutureExt;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
+use crate::workflow::application::execution_identity::{
+    schedule_execution_identity, ScheduledExecutionIdentity,
+};
 use crate::workflow::application::grant_reader::WorkflowScheduleGrantReader;
 use crate::workflow::domain::grant::WorkflowScheduleGrant;
 use crate::workflow::domain::model::{WorkflowDefinition, WorkflowExecutionResult};
@@ -38,7 +43,18 @@ use crate::workflow::domain::model::{WorkflowDefinition, WorkflowExecutionResult
 #[async_trait::async_trait]
 pub trait WorkflowScheduleHost: Send + Sync {
     async fn list_workflows(&self) -> Result<Vec<WorkflowDefinition>, String>;
-    async fn execute_workflow(&self, id: &str) -> Result<WorkflowExecutionResult, String>;
+
+    /// 以服务身份上下文派发。
+    ///
+    /// `identity` 由引擎从**放行所依据的授权单**派生
+    /// （`application::execution_identity`）：owner 归属授权单的组织、审计
+    /// 主体是 `service_principal`、无委托。宿主按它做归属核对与审计，
+    /// 绝不借调用方身份（调度不在请求周期内，没有用户上下文可借）。
+    async fn execute_workflow(
+        &self,
+        id: &str,
+        identity: &ScheduledExecutionIdentity,
+    ) -> Result<WorkflowExecutionResult, String>;
 }
 
 pub const MIN_INTERVAL_SECS: u64 = 30;
@@ -220,16 +236,22 @@ impl WorkflowScheduler {
             }
             // 派发前授权闸门：无有效授权单（缺失/撤销/过期/版本前移/端口故障）
             // 一律拒绝，不落到既有执行路径。
-            if let Err(reason) = self.authorize_dispatch(&grants, &workflow).await {
-                tracing::warn!(
-                    workflow_id = %workflow.id,
-                    reason,
-                    "scheduled workflow dispatch rejected by schedule grant"
-                );
-                // 拒绝也推进时钟：每个 interval 重做一次完整校验，不逐秒重试。
-                self.last_run.write().await.insert(workflow.id.clone(), now);
-                continue;
-            }
+            let grant = match self.authorize_dispatch(&grants, &workflow).await {
+                Ok(grant) => grant,
+                Err(reason) => {
+                    tracing::warn!(
+                        workflow_id = %workflow.id,
+                        reason,
+                        "scheduled workflow dispatch rejected by schedule grant"
+                    );
+                    // 拒绝也推进时钟：每个 interval 重做一次完整校验，不逐秒重试。
+                    self.last_run.write().await.insert(workflow.id.clone(), now);
+                    continue;
+                }
+            };
+            // 服务身份执行上下文（WR-A4 接线）：以放行所依据的授权单派生，
+            // 宿主以此归属 owner 与审计——绝不以用户身份派发。
+            let identity = schedule_execution_identity(&grant);
             {
                 let mut inflight = self.in_flight.write().await;
                 if !inflight.insert(workflow.id.clone()) {
@@ -250,9 +272,10 @@ impl WorkflowScheduler {
                 // catch_unwind ensures a panic inside the workflow execution
                 // does not prevent the guard from running; the panic is logged
                 // and `last_run` is still updated to avoid rapid retries.
-                let outcome = AssertUnwindSafe(async { app.execute_workflow(&id).await })
-                    .catch_unwind()
-                    .await;
+                let outcome =
+                    AssertUnwindSafe(async { app.execute_workflow(&id, &identity).await })
+                        .catch_unwind()
+                        .await;
 
                 match outcome {
                     Ok(Ok(r)) if r.success => {
@@ -532,22 +555,38 @@ mod tests {
 
     const DEFINITION: &str = "id: job\nsteps: []\n";
 
+    /// 宿主在派发时刻收到的执行上下文记录（工作流、服务身份、组织）。
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct DispatchIdentityRecord {
+        workflow_id: String,
+        service_principal: String,
+        organization_id: String,
+    }
+
     fn recorded_host(
         workflows: Vec<WorkflowDefinition>,
-    ) -> (Arc<RecordingHost>, Arc<Mutex<Vec<String>>>) {
+    ) -> (
+        Arc<RecordingHost>,
+        Arc<Mutex<Vec<String>>>,
+        Arc<Mutex<Vec<DispatchIdentityRecord>>>,
+    ) {
         let executed = Arc::new(Mutex::new(Vec::new()));
+        let identities = Arc::new(Mutex::new(Vec::new()));
         (
             Arc::new(RecordingHost {
                 workflows,
                 executed: Arc::clone(&executed),
+                identities: Arc::clone(&identities),
             }),
             executed,
+            identities,
         )
     }
 
     struct RecordingHost {
         workflows: Vec<WorkflowDefinition>,
         executed: Arc<Mutex<Vec<String>>>,
+        identities: Arc<Mutex<Vec<DispatchIdentityRecord>>>,
     }
 
     #[async_trait::async_trait]
@@ -555,11 +594,23 @@ mod tests {
         async fn list_workflows(&self) -> Result<Vec<WorkflowDefinition>, String> {
             Ok(self.workflows.clone())
         }
-        async fn execute_workflow(&self, id: &str) -> Result<WorkflowExecutionResult, String> {
+        async fn execute_workflow(
+            &self,
+            id: &str,
+            identity: &ScheduledExecutionIdentity,
+        ) -> Result<WorkflowExecutionResult, String> {
             self.executed
                 .lock()
                 .unwrap_or_else(|error| error.into_inner())
                 .push(id.to_string());
+            self.identities
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .push(DispatchIdentityRecord {
+                    workflow_id: identity.workflow_id().to_string(),
+                    service_principal: identity.service_principal().to_string(),
+                    organization_id: identity.organization_id().to_string(),
+                });
             Ok(WorkflowExecutionResult {
                 success: true,
                 final_output: String::new(),
@@ -627,11 +678,15 @@ mod tests {
     fn bound_scheduler(
         workflows: Vec<WorkflowDefinition>,
         grants: Arc<dyn WorkflowScheduleGrantReader>,
-    ) -> (Arc<WorkflowScheduler>, Arc<Mutex<Vec<String>>>) {
+    ) -> (
+        Arc<WorkflowScheduler>,
+        Arc<Mutex<Vec<String>>>,
+        Arc<Mutex<Vec<DispatchIdentityRecord>>>,
+    ) {
         let scheduler = WorkflowScheduler::new();
-        let (host, executed) = recorded_host(workflows);
+        let (host, executed, identities) = recorded_host(workflows);
         scheduler.bind(host, grants);
-        (scheduler, executed)
+        (scheduler, executed, identities)
     }
 
     /// 让上膛的时钟走到触发点（把 last_run 回拨到 interval 之前）。
@@ -654,7 +709,7 @@ mod tests {
     #[tokio::test]
     async fn a_valid_schedule_grant_dispatches_the_due_workflow() {
         let grants = Arc::new(MutableGrants::with(vec![grant_for("job", 1)]));
-        let (scheduler, executed) = bound_scheduler(vec![wf(true, Some(60))], grants);
+        let (scheduler, executed, _) = bound_scheduler(vec![wf(true, Some(60))], grants);
 
         scheduler.tick().await;
         assert!(
@@ -679,7 +734,7 @@ mod tests {
     #[tokio::test]
     async fn a_missing_schedule_grant_rejects_dispatch() {
         let grants: Arc<dyn WorkflowScheduleGrantReader> = Arc::new(MutableGrants::with(vec![]));
-        let (scheduler, executed) = bound_scheduler(vec![wf(true, Some(60))], grants);
+        let (scheduler, executed, _) = bound_scheduler(vec![wf(true, Some(60))], grants);
 
         scheduler.tick().await;
         make_due(&scheduler, "job", 60).await;
@@ -703,7 +758,7 @@ mod tests {
     async fn a_moved_revocation_version_rejects_dispatch_then_rearms() {
         let table = Arc::new(MutableGrants::with(vec![grant_for("job", 1)]));
         let reader: Arc<dyn WorkflowScheduleGrantReader> = Arc::clone(&table) as _;
-        let (scheduler, executed) = bound_scheduler(vec![wf(true, Some(60))], reader);
+        let (scheduler, executed, _) = bound_scheduler(vec![wf(true, Some(60))], reader);
 
         scheduler.tick().await; // 上膛：冻结 v1
                                 // 授权单被撤销并重发：版本前移到 2。
@@ -743,7 +798,7 @@ mod tests {
         revoked.revoked = true;
 
         let grants = Arc::new(MutableGrants::with(vec![expired, revoked]));
-        let (scheduler, executed) = bound_scheduler(
+        let (scheduler, executed, _) = bound_scheduler(
             vec![wf(true, Some(60)), {
                 let mut second = wf(true, Some(60));
                 second.id = "job-2".into();
@@ -780,7 +835,7 @@ mod tests {
             }
         }
         let grants: Arc<dyn WorkflowScheduleGrantReader> = Arc::new(BrokenReader);
-        let (scheduler, executed) = bound_scheduler(vec![wf(true, Some(60))], grants);
+        let (scheduler, executed, _) = bound_scheduler(vec![wf(true, Some(60))], grants);
 
         scheduler.tick().await;
         make_due(&scheduler, "job", 60).await;
@@ -806,7 +861,7 @@ mod tests {
 
         let table = Arc::new(MutableGrants::with(vec![first]));
         let reader: Arc<dyn WorkflowScheduleGrantReader> = Arc::clone(&table) as _;
-        let (scheduler, executed) = bound_scheduler(vec![wf(true, Some(60))], reader);
+        let (scheduler, executed, _) = bound_scheduler(vec![wf(true, Some(60))], reader);
 
         scheduler.tick().await; // 上膛：冻结旧修订
         table
@@ -841,7 +896,7 @@ mod tests {
     async fn a_grant_that_appears_after_arming_dispatches_on_the_next_due_tick() {
         let table = Arc::new(MutableGrants::with(vec![]));
         let reader: Arc<dyn WorkflowScheduleGrantReader> = Arc::clone(&table) as _;
-        let (scheduler, executed) = bound_scheduler(vec![wf(true, Some(60))], reader);
+        let (scheduler, executed, _) = bound_scheduler(vec![wf(true, Some(60))], reader);
 
         scheduler.tick().await; // 上膛：无单可冻结
         table
@@ -863,11 +918,67 @@ mod tests {
         );
     }
 
+    /// 行为钉子（WR-A4 服务身份执行上下文接线）：授权闸放行 ⇒ 宿主收到的
+    /// 执行上下文以**放行所依据的授权单**的服务身份为主体、归属授权单的
+    /// 组织、无委托；审计半边（kind=Service）由
+    /// `application::execution_identity` 的事件构造承载。夹具组织 id 用
+    /// 形态中性的 `datazen-local-org`。
+    #[tokio::test]
+    async fn dispatched_executions_carry_the_grant_service_identity() {
+        use crate::shared::audit::AuditOutcome;
+        use crate::shared::id::Timestamp;
+
+        let mut grant = grant_for("job", 1);
+        grant.organization_id = "datazen-local-org".into();
+        let grants = Arc::new(MutableGrants::with(vec![grant.clone()]));
+        let scheduler = WorkflowScheduler::new();
+        let (host, executed, identities) = recorded_host(vec![wf(true, Some(60))]);
+        scheduler.bind(host, grants);
+
+        scheduler.tick().await; // 上膛
+        make_due(&scheduler, "job", 60).await;
+        scheduler.tick().await;
+        settle().await;
+        assert_eq!(
+            *executed.lock().unwrap_or_else(|error| error.into_inner()),
+            vec!["job".to_string()],
+            "闸门放行 ⇒ 派发"
+        );
+        let records = identities
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone();
+        assert_eq!(records.len(), 1, "一次派发恰好携带一份执行上下文");
+        assert_eq!(
+            records[0],
+            DispatchIdentityRecord {
+                workflow_id: "job".into(),
+                service_principal: grant.service_principal.clone(),
+                organization_id: "datazen-local-org".into(),
+            },
+            "执行上下文 = 授权单的服务身份与组织归属"
+        );
+
+        // 审计半边：同一上下文构造的审计事件主体 kind=Service、无委托。
+        let identity = schedule_execution_identity(&grant);
+        let event = identity.audit_event(
+            "workflow_scheduled_dispatch",
+            AuditOutcome::Succeeded,
+            Timestamp::new("2026-01-01T00:00:00.000Z"),
+        );
+        assert_eq!(
+            event.principal_kind.as_str(),
+            "service",
+            "调度派发的审计主体必须是服务身份"
+        );
+        assert!(event.delegation_id.is_none(), "服务身份不走委托链路");
+    }
+
     /// 行为钉子：授权单端口未装配 ⇒ 完全不派发（失败关闭）。
     #[tokio::test]
     async fn an_unbound_grant_reader_disables_dispatch_entirely() {
         let scheduler = WorkflowScheduler::new();
-        let (host, executed) = recorded_host(vec![wf(true, Some(60))]);
+        let (host, executed, _identities) = recorded_host(vec![wf(true, Some(60))]);
         *scheduler
             .host
             .lock()

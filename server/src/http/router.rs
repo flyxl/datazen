@@ -15,18 +15,33 @@
 //! - [`build_router_with_auth`]：WR-D3 认证链（L2→L3→L4→L6）挂载在
 //!   L1b 之内；§3.3 早期拒绝表的探针矩阵在 `tests/auth_chain.rs`。
 
-use axum::extract::Request;
+use std::collections::HashMap;
+
+use axum::extract::{FromRequestParts, Path, Query, Request, State};
+use axum::http::request::Parts;
 use axum::http::{StatusCode, Uri};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
-use axum::Router;
+use axum::{Json, Router};
+use base64::Engine as _;
+use serde_json::{json, Value};
 use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::limit::RequestBodyLimitLayer;
 
+use datazen::execution::application::submission::{SubmissionPresentation, SubmissionTokenIssuer};
+use datazen::execution::application::{IdempotentOperation, SubmissionToken};
+use datazen::execution::domain::artifact_repository::ArtifactSpec;
+use datazen::jobs::domain::job::{JobDefinition, JobState};
+use datazen::shared::context::RequestContext;
+use datazen::shared::error::{ApiError, ApiErrorCode};
+use datazen::shared::id::{
+    ClientInstanceId, Counter, ExecutionId, IdempotencyKey, JobId, OrganizationId, PrincipalId,
+    RequestId, Timestamp,
+};
+
 use crate::http::middleware;
 use crate::http::response::ApiErrorResponse;
-use datazen::shared::error::{ApiError, ApiErrorCode};
 
 /// 请求体字节上限：team-server §9.1 首版权威值（8 MiB，L1 物理闸 → 413）。
 pub const MAX_BODY_BYTES: usize = 8 * 1024 * 1024;
@@ -71,6 +86,26 @@ pub struct AuthDeps {
     /// OIDC 登录面（§4；None = 不挂 `/api/v1/auth/*`——这些路径落到
     /// fallback 501，部署未启用 OIDC 的显式形态）。
     pub oidc: Option<crate::auth::oidc::OidcState>,
+    /// WR-D6/D7 域路由（jobs / submission-tokens / artifacts；None = 不挂
+    /// ——这些路径落到 fallback 501，最小部署形态显式）。
+    pub domains: Option<DomainState>,
+    /// WR-F2：MCP streamable HTTP 传输态（None = 不挂 `/mcp`）。
+    pub mcp: Option<crate::mcp::http::HttpMcpState>,
+}
+
+/// WR-D6/D7 域路由的装配状态（composition root 注入；无隐式单例）。
+#[derive(Clone)]
+pub struct DomainState {
+    /// `issueSubmissionToken` 的签发面（服务端密钥持有者，§6.3 88 行）。
+    pub issuer: std::sync::Arc<dyn SubmissionTokenIssuer>,
+    /// 幂等提交（含 `PreSubmitGate` 闸门，WR-D6 QuotaGate 适配点）。
+    pub submission: std::sync::Arc<crate::transfer::SubmissionService>,
+    /// 受控上传（begin/append/finalize 语义，wire envelope 见 handler 文档）。
+    pub uploads: std::sync::Arc<crate::transfer::UploadService>,
+    /// 受控读取（metadata/chunk/range 三取法，对齐前端 `readArtifact`）。
+    pub downloads: std::sync::Arc<crate::transfer::DownloadService>,
+    /// 任务中心查询面（list/detail/取消登记）。
+    pub tasks: std::sync::Arc<crate::operations::TaskCenter<crate::storage::ServerJobs>>,
 }
 
 /// 组装带认证链的 Router：`build_router` 的全部面 + L2→L3→L4→(L5)→L6，
@@ -126,6 +161,42 @@ pub fn build_router_with_auth(deps: AuthDeps) -> Result<Router, crate::error::Se
                 "/api/v1/events/{streamId}",
                 get(crate::http::sse::events).with_state(sse),
             );
+    }
+    if let Some(domains) = deps.domains.clone() {
+        // WR-D6/D7：jobs 域（start/list/detail/cancel）+ 提交令牌签发面 +
+        // artifacts 受控上传/读取（契约 §6.3 总账 + §6.5 在账端点）。
+        router = router
+            .route(
+                "/api/v1/jobs",
+                post(handler_jobs_submit)
+                    .get(handler_jobs_list)
+                    .with_state(domains.clone()),
+            )
+            .route(
+                "/api/v1/jobs/{id}",
+                get(handler_jobs_get).with_state(domains.clone()),
+            )
+            .route(
+                "/api/v1/jobs/{id}/cancel",
+                post(handler_jobs_cancel).with_state(domains.clone()),
+            )
+            .route(
+                "/api/v1/submission-tokens",
+                post(handler_issue_token).with_state(domains.clone()),
+            )
+            .route(
+                "/api/v1/artifacts/uploads",
+                post(handler_artifact_upload).with_state(domains.clone()),
+            )
+            .route(
+                "/api/v1/artifacts/{id}",
+                get(handler_artifact_read).with_state(domains),
+            );
+    }
+    if let Some(mcp_state) = deps.mcp.clone() {
+        // WR-F2：MCP streamable HTTP（`/mcp`，认证链内——传输层会话由
+        // 登录会话背书，工具分发走 modules application 面）。
+        router = router.merge(crate::mcp::http::mcp_router(mcp_state));
     }
 
     // 内 → 外：L6 → (L5) → L4 → L3 → L2 → L1b → catch-panic → L1a → L0。
@@ -191,6 +262,341 @@ async fn api_or_not_found(uri: Uri) -> Response {
     }
     let error = ApiError::new(ApiErrorCode::NotFound, "No such route.");
     ApiErrorResponse::new(error).into_response()
+}
+
+// ── WR-D6/D7 域 handler ─────────────────────────────────────────────────────
+//
+// 身份来源只有 L2 认证链（INV-S1：extensions 的 `AuthenticatedSession`，
+// 请求体里的身份字段永不生效）。wire 形状：契约 §6.3（jobs / submission-
+// tokens）与 §6.5（uploads 在账端点，envelope 在此定形）。
+
+/// 从 L2 认证链产物组装 `RequestContext` 的提取器——域 handler 的统一
+/// 入口（对齐 sse.rs 的模式）。
+struct SessionIdentity {
+    ctx: RequestContext,
+}
+
+impl<S: Send + Sync> FromRequestParts<S> for SessionIdentity {
+    type Rejection = Response;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        let request_id = parts.extensions.get::<RequestId>().cloned();
+        let Some(session) = parts
+            .extensions
+            .get::<crate::http::middleware::auth::AuthenticatedSession>()
+        else {
+            return Err(unauthorized());
+        };
+        let ctx = RequestContext::new(
+            OrganizationId::new(session.organization_id.clone()),
+            PrincipalId::new(session.principal_id.clone()),
+            None,
+            ClientInstanceId::new("http"),
+            request_id.unwrap_or_else(|| RequestId::new("req-http")),
+            None,
+        );
+        Ok(Self { ctx })
+    }
+}
+
+fn unauthorized() -> Response {
+    let error = ApiError::new(ApiErrorCode::Unauthenticated, "Authentication required.");
+    ApiErrorResponse::new(error)
+        .with_status(StatusCode::UNAUTHORIZED)
+        .into_response()
+}
+
+fn invalid_argument(message: impl Into<String>) -> Response {
+    let error = ApiError::new(ApiErrorCode::InvalidArgument, message.into());
+    ApiErrorResponse::new(error)
+        .with_status(StatusCode::BAD_REQUEST)
+        .into_response()
+}
+
+fn api_error_response(error: ApiError) -> Response {
+    ApiErrorResponse::new(error).into_response()
+}
+
+/// `issueSubmissionToken`（§6.3：POST /api/v1/submission-tokens）。
+///
+/// 请求 `{ operation, handle?, connectionId?, owner? }`；v1 只签发不绑定
+/// 运行时会话的操作（startJob / createProfile / cancelExecution）——会话
+/// 绑定操作需要 `SessionHandle`，随执行域路由点亮接入。201 →
+/// `SubmissionToken`（`idempotencyKey` 是 `payload.tag` 形态的不透明串，
+/// 客户端原样回传）。
+async fn handler_issue_token(
+    State(state): State<DomainState>,
+    identity: SessionIdentity,
+    Json(body): Json<Value>,
+) -> Response {
+    let Some(operation) = body.get("operation").and_then(Value::as_str) else {
+        return invalid_argument("operation is required.");
+    };
+    let operation = match operation {
+        "startJob" => IdempotentOperation::StartJob,
+        "createProfile" => IdempotentOperation::CreateProfile,
+        "cancelExecution" => IdempotentOperation::CancelExecution,
+        "openSession" | "executeInSession" | "executeAtTarget" | "setSessionContext" => {
+            return invalid_argument(
+                "session-bound operations require a runtime session handle; \
+                 they arrive with the execution domain routes.",
+            );
+        }
+        other => return invalid_argument(format!("unknown operation '{other}'.")),
+    };
+    match state.issuer.issue(&identity.ctx, operation, None).await {
+        Ok(token) => (
+            StatusCode::CREATED,
+            Json(json!({
+                "idempotencyKey": token.idempotency_key.as_str(),
+                "expiresAt": token.expires_at.as_str(),
+            })),
+        )
+            .into_response(),
+        Err(source) => api_error_response(ApiError::new(
+            ApiErrorCode::ServiceUnavailable,
+            format!("token issue failed: {source}"),
+        )),
+    }
+}
+
+/// `startJob`（§6.3：POST /api/v1/jobs，携带 `issueSubmissionToken` 签发的
+/// 幂等令牌）。请求 envelope：`{ submissionToken, definition }`——
+/// `submissionToken` 接受字符串（`payload.tag` 原文）或
+/// `{ idempotencyKey, expiresAt }`；`definition` 是 `JobDefinition` 的
+/// camelCase JSON（受理时仓储按 ctx 组织重新盖章，定义里的 organizationId
+/// 不作数）。成功 201 → `JobRecord`。
+async fn handler_jobs_submit(
+    State(state): State<DomainState>,
+    identity: SessionIdentity,
+    Json(body): Json<Value>,
+) -> Response {
+    const DISTANT_FUTURE: &str = "9999-12-31T23:59:59Z";
+    let (idempotency_key, expires_at) = match body.get("submissionToken") {
+        Some(Value::String(raw)) => (raw.clone(), DISTANT_FUTURE.to_string()),
+        Some(Value::Object(map)) => (
+            map.get("idempotencyKey")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            map.get("expiresAt")
+                .and_then(Value::as_str)
+                .unwrap_or(DISTANT_FUTURE)
+                .to_string(),
+        ),
+        _ => return invalid_argument("submissionToken is required."),
+    };
+    let definition = match serde_json::from_value::<JobDefinition>(
+        body.get("definition").cloned().unwrap_or(Value::Null),
+    ) {
+        Ok(definition) => definition,
+        Err(source) => return invalid_argument(format!("definition: {source}")),
+    };
+    // claimed 身份取自认证链事实（签名载荷与认证链不一致 → 服务判 Unauthenticated）。
+    let presentation = SubmissionPresentation {
+        token: SubmissionToken {
+            idempotency_key: IdempotencyKey::new(idempotency_key),
+            expires_at: Timestamp::new(expires_at),
+        },
+        claimed_organization_id: identity.ctx.organization_id.clone(),
+        claimed_principal_id: identity.ctx.principal_id.clone(),
+        claimed_client_instance_id: identity.ctx.client_instance_id.clone(),
+        claimed_delegation_id: identity.ctx.delegation_id.clone(),
+    };
+    match state
+        .submission
+        .submit_job(&identity.ctx, &presentation, definition)
+        .await
+    {
+        Ok(record) => (StatusCode::CREATED, Json(record)).into_response(),
+        Err(error) => api_error_response(error),
+    }
+}
+
+/// `listJobs`（§6.3：GET /api/v1/jobs；过滤包平铺为简单标量查询参数）。
+/// `states` 逗号分隔（queued/running/succeeded/failed/cancelled）、
+/// `after` 游标（十进制）、`limit` 页大小。owner 过滤随执行域路由点亮。
+async fn handler_jobs_list(
+    State(state): State<DomainState>,
+    identity: SessionIdentity,
+    Query(params): Query<HashMap<String, String>>,
+) -> Response {
+    let mut states = Vec::new();
+    if let Some(raw) = params.get("states") {
+        for part in raw.split(',').map(str::trim).filter(|p| !p.is_empty()) {
+            let job_state = match part {
+                "queued" => JobState::Queued,
+                "running" => JobState::Running,
+                "succeeded" => JobState::Succeeded,
+                "failed" => JobState::Failed,
+                "cancelled" => JobState::Cancelled,
+                other => return invalid_argument(format!("unknown job state '{other}'.")),
+            };
+            states.push(job_state);
+        }
+    }
+    let after = match params.get("after") {
+        Some(raw) => match raw.trim().parse::<u64>() {
+            Ok(value) => Some(Counter::new(value)),
+            Err(_) => return invalid_argument("after must be a decimal counter string."),
+        },
+        None => None,
+    };
+    let limit = match params.get("limit") {
+        Some(raw) => match raw.trim().parse::<u32>() {
+            Ok(value) => Some(value),
+            Err(_) => return invalid_argument("limit must be a u32."),
+        },
+        None => None,
+    };
+    match state
+        .tasks
+        .list_jobs(
+            &identity.ctx,
+            crate::operations::TaskListQuery {
+                states,
+                owner: None,
+                after,
+                limit,
+            },
+        )
+        .await
+    {
+        Ok(page) => Json(page).into_response(),
+        Err(error) => api_error_response(error),
+    }
+}
+
+/// `getJob`（§6.3：GET /api/v1/jobs/{id}）。跨组织按「不存在」答 404。
+async fn handler_jobs_get(
+    State(state): State<DomainState>,
+    identity: SessionIdentity,
+    Path(job_id): Path<String>,
+) -> Response {
+    match state.tasks.get_job(&identity.ctx, &JobId::new(job_id)).await {
+        Ok(record) => Json(record).into_response(),
+        Err(error) => api_error_response(error),
+    }
+}
+
+/// `cancelJob`（§6.3：POST /api/v1/jobs/{id}/cancel）。登记是幂等的；
+/// 已终态任务如实回答（不伪造 202）。
+async fn handler_jobs_cancel(
+    State(state): State<DomainState>,
+    identity: SessionIdentity,
+    Path(job_id): Path<String>,
+) -> Response {
+    match state
+        .tasks
+        .request_cancel(&identity.ctx, &JobId::new(job_id))
+        .await
+    {
+        Ok(outcome) => {
+            let label = match &outcome {
+                crate::operations::CancelOutcome::Registered => "registered",
+                crate::operations::CancelOutcome::AlreadyRequested => "alreadyRequested",
+                crate::operations::CancelOutcome::AlreadyTerminal { .. } => "alreadyTerminal",
+            };
+            (StatusCode::ACCEPTED, Json(json!({ "outcome": label }))).into_response()
+        }
+        Err(error) => api_error_response(error),
+    }
+}
+
+/// 在账端点 `POST /api/v1/artifacts/uploads`（§6.5）的 v1 envelope：
+/// `{ executionId, targetFingerprint, ttlSeconds?, payloadBase64,
+/// expectedSha256? }` ——单请求完成 begin+append+finalize（分块流式写
+/// 入器协议在 web 导出流立项时与 `artifactClient` 两头合拢；L1 字节闸
+/// 是单请求形态的物理上界）。成功 201 → `{ artifactId }`。
+async fn handler_artifact_upload(
+    State(state): State<DomainState>,
+    identity: SessionIdentity,
+    Json(body): Json<Value>,
+) -> Response {
+    let Some(execution_id) = body.get("executionId").and_then(Value::as_str) else {
+        return invalid_argument("executionId is required.");
+    };
+    let Some(target_fingerprint) = body.get("targetFingerprint").and_then(Value::as_str) else {
+        return invalid_argument("targetFingerprint is required.");
+    };
+    let ttl_seconds = body
+        .get("ttlSeconds")
+        .and_then(Value::as_u64)
+        .unwrap_or(3_600);
+    let Some(payload_b64) = body.get("payloadBase64").and_then(Value::as_str) else {
+        return invalid_argument("payloadBase64 is required.");
+    };
+    let expected_sha256 = body
+        .get("expectedSha256")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    let payload = match base64::engine::general_purpose::STANDARD.decode(payload_b64) {
+        Ok(bytes) => bytes,
+        Err(_) => return invalid_argument("payloadBase64 is not valid base64."),
+    };
+    let mut spec = ArtifactSpec::new(
+        identity.ctx.organization_id.clone(),
+        identity.ctx.principal_id.clone(),
+        ExecutionId::new(execution_id),
+        target_fingerprint.to_string(),
+    );
+    spec.ttl_seconds = ttl_seconds;
+    let mut session = match state.uploads.begin_upload(&identity.ctx, spec).await {
+        Ok(session) => session,
+        Err(error) => return api_error_response(error),
+    };
+    if let Err(error) = state
+        .uploads
+        .append_upload_chunk(&identity.ctx, &mut session, payload)
+        .await
+    {
+        return api_error_response(error);
+    }
+    match state
+        .uploads
+        .finalize_upload(&identity.ctx, session, expected_sha256.as_deref())
+        .await
+    {
+        Ok(artifact_id) => (
+            StatusCode::CREATED,
+            Json(json!({ "artifactId": artifact_id.as_str() })),
+        )
+            .into_response(),
+        Err(error) => api_error_response(error),
+    }
+}
+
+/// `readArtifact`（§6.3：GET /api/v1/artifacts/{id}）。三取法互斥：
+/// `?metadata=true` / `?chunkIndex=N` / `?offset=&limit=`（对齐前端
+/// `httpRoutes.ts` 的 `readArtifact` 与 `x-dz-*` 四头）。
+async fn handler_artifact_read(
+    State(state): State<DomainState>,
+    identity: SessionIdentity,
+    Path(artifact_id): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
+) -> Response {
+    let parse_u64 = |key: &str| params.get(key).and_then(|v| v.trim().parse::<u64>().ok());
+    let metadata = params
+        .get("metadata")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false);
+    let mode = match crate::transfer::ArtifactReadMode::from_query(
+        metadata,
+        parse_u64("chunkIndex"),
+        parse_u64("offset"),
+        parse_u64("limit"),
+    ) {
+        Ok(mode) => mode,
+        Err(error) => return api_error_response(error),
+    };
+    match state
+        .downloads
+        .read(&identity.ctx, &artifact_id, mode)
+        .await
+    {
+        Ok(reply) => reply.into_axum_response(),
+        Err(error) => api_error_response(error),
+    }
 }
 
 #[cfg(test)]
