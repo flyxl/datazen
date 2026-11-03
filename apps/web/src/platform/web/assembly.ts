@@ -28,9 +28,10 @@
  *   a probe);
  * - no `registerWindowChrome`: the browser ships its own chrome; the shared
  *   slot's default (null) is the documented web form (`windowChrome.ts`);
- * - `tablesExporter` is left UNBOUND on purpose: the Blob half needs a real
- *   table page reader (WR-E3), and `requireTablesExporter()` fails loudly at
- *   the user action instead of pretending an export exists.
+ * - `tablesExporter` binds the shared Blob half (`createBlobTablesExporter`)
+ *   over a paged `getTableData` reader (WR-E3): the same export request the
+ *   desktop answers with the Rust-streaming dialog writer assembles here into
+ *   CSV pages and downloads through the anchor half (`downloadBlob`).
  */
 
 import { bindHostEventListener } from '@datazen/driver-sdk';
@@ -38,17 +39,66 @@ import {
   createBackendClient,
   setBackendClient,
   setPlatformServices,
+  type BackendClient,
+  type CursorValue,
 } from '@datazen/backend-client';
 import {
   configurePlatform,
+  createBlobTablesExporter,
   createBrowserEventChannel,
   inertHostSettingsPort,
   requirePlatform,
   WEB_CAPABILITIES,
+  type TablePageReader,
 } from '@datazen/frontend';
 import { createWebBackendTransport, WEB_BACKEND_ID } from './backendTransport';
 import { createWebPlatformServices } from './platformServices';
 import { createWebWindowRouter } from './windowRouter';
+
+/**
+ * Rows per `getTableData` page while assembling an export. A short page ends
+ * the read (the backend's own paging contract: the caller never derives a
+ * boundary, it only stops when the page comes back under the asked size).
+ */
+export const WEB_EXPORT_PAGE_SIZE = 1000;
+
+/**
+ * The export reader over the web facade's `getTableData` (WR-E3). The cursor
+ * is the reader's own `{ page, afterKey }` state: page 1 first, then the next
+ * page — forwarding the backend's `nextAfterKey` when keyset paging reported
+ * one, verbatim (the caller never derives a boundary).
+ */
+function createWebTablePageReader(client: BackendClient): TablePageReader {
+  return async (tableName, cursor, context) => {
+    const state = (cursor ?? null) as { page: number; afterKey?: CursorValue[] } | null;
+    const page = state?.page ?? 1;
+    const result = await client.getTableData({
+      context: {
+        connectionId: null,
+        dbSessionId: context.dbSessionId,
+        driverType: context.driverType,
+        database: context.database,
+        schema: context.schema,
+        table: tableName,
+      },
+      page,
+      pageSize: WEB_EXPORT_PAGE_SIZE,
+      skipCount: true,
+      ...(state?.afterKey ? { afterKey: state.afterKey } : {}),
+    });
+    const afterKey = result.paging?.nextAfterKey;
+    return {
+      columns: result.columns.map((column) => column.name),
+      rows: result.rows,
+      // Short page ⇒ exhausted; a full page continues (with the backend's
+      // keyset boundary when it reported one).
+      nextCursor:
+        result.rows.length < WEB_EXPORT_PAGE_SIZE
+          ? null
+          : { page: page + 1, ...(afterKey ? { afterKey } : {}) },
+    };
+  };
+}
 
 /** Bind backend + inject ports + bind the host-event rail. Idempotent per boot. */
 export function assembleWebPlatform(): void {
@@ -74,6 +124,10 @@ export function assembleWebPlatform(): void {
     // Form-split F5: the static capability table — sections, updater and
     // version source branch on this, never on a form probe.
     capabilities: WEB_CAPABILITIES,
+    // WR-E3: the export half — the same `exportTables(request)` signature the
+    // desktop answers with the Rust-streaming dialog writer, assembled here
+    // through paged `getTableData` reads and delivered as a Blob download.
+    tablesExporter: createBlobTablesExporter(createWebTablePageReader(client)),
   });
 
   // Form-split F4 (R8 retirement): driver UI listens to host broadcasts

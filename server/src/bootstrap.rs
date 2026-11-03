@@ -23,6 +23,8 @@ use crate::http;
 use crate::logging;
 use crate::storage::AdminStore;
 
+use datazen::shared::error::ApiError;
+
 /// `migrate` 子命令的进程入口（WR-D2 第一切片）：打开管理库、执行全部
 /// pending 的 expand 迁移、逐版本打印。空跑（无 pending）也是成功——
 /// 幂等是执行器的承诺（`storage::tests` 钉住）。
@@ -202,6 +204,93 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let clock: std::sync::Arc<dyn datazen::shared::clock::Clock> =
         std::sync::Arc::new(datazen::shared::clock::SystemClock);
 
+    // ── WR-D6/D7 服务面：审计、作业仓储、提交令牌、产物库、预算协调器
+    // 与 operations/transfer 两域服务。全部从 config + store 出发（§2.3）。
+    let audit = std::sync::Arc::new(crate::storage::ServerAudit::new(store.clone()));
+    let jobs = std::sync::Arc::new(crate::storage::ServerJobs::new(
+        store.clone(),
+        std::sync::Arc::new(datazen::jobs::domain::time::PortJobClock::new(
+            datazen::shared::clock::SystemClock,
+        )),
+        900, // claim 租约首版起点（15 分钟；与内核内存实现同义）
+    ));
+    let issuer = std::sync::Arc::new(
+        crate::execution::submission_token::ServerSubmissionTokenIssuer::new(
+            secret_bytes.clone(),
+            clock.clone(),
+        )
+        .map_err(|source| ServerError::Serve(format!("submission token issuer: {source}")))?,
+    );
+    let artifacts = std::sync::Arc::new(
+        crate::storage::ServerArtifacts::open(store.clone(), &config.artifact_root)
+            .map_err(|source| ServerError::Serve(format!("artifact store: {source}")))?,
+    );
+    let budget = std::sync::Arc::new(crate::execution::budget::ServerBudgetCoordinator::new(
+        config.budget_node_limit,
+        config.budget_organization_limit,
+        datazen::shared::id::OrganizationId::new(config.organization_id.clone()),
+    ));
+    let quota_gate = std::sync::Arc::new(crate::operations::QuotaGate::new(
+        budget,
+        audit.clone() as std::sync::Arc<dyn datazen::shared::audit::AuditSink>,
+    ));
+
+    // 事件后备：单实例 v1 的 MemoryEventSink 同时承载 SSE 订阅与撤销传播
+    // （WR-D6 EventSinkBridge 近似语义，见 revocation.rs 模块文档的登记）。
+    let memory_sink: std::sync::Arc<dyn datazen::execution::application::EventSink> =
+        std::sync::Arc::new(
+            datazen::execution::application::event_sink_memory::MemoryEventSink::new(),
+        );
+    let revocation = std::sync::Arc::new(crate::operations::RevocationService::new(
+        store.clone(),
+        std::sync::Arc::new(crate::operations::revocation::EventSinkBridge::new(
+            memory_sink.clone(),
+            datazen::shared::id::StreamId::new("control-plane"),
+            datazen::shared::id::RuntimeEpoch::new("server-v1"),
+        )),
+        audit.clone() as std::sync::Arc<dyn datazen::shared::audit::AuditSink>,
+    ));
+    let ttl_sweeper = std::sync::Arc::new(crate::operations::TtlSweeper::new(
+        artifacts.clone(),
+        audit.clone() as std::sync::Arc<dyn datazen::shared::audit::AuditSink>,
+        datazen::shared::id::OrganizationId::new(config.organization_id.clone()),
+        crate::operations::TtlSweepConfig {
+            interval_seconds: config.artifact_ttl_sweep_secs,
+        },
+    ));
+    // 后台清扫：JoinHandle 随 drain 语义（WR-G3）接管优雅停机。
+    let _ttl_worker = tokio::spawn(async move { ttl_sweeper.run_forever().await });
+    let _config_cas = std::sync::Arc::new(crate::operations::ProfileConfigCas::new(store.clone()));
+    let _revocation = revocation; // L6/中间件接线随执行域路由点亮（check_session_permission）
+    let task_center = std::sync::Arc::new(crate::operations::TaskCenter::new(jobs.clone(), 50));
+    let gate = std::sync::Arc::new(QuotaPreSubmitGate {
+        quota: quota_gate.clone(),
+    });
+    let submission = std::sync::Arc::new(crate::transfer::SubmissionService::new(
+        issuer.clone(),
+        jobs.clone(),
+        gate,
+        audit.clone(),
+        clock.clone(),
+    ));
+    let uploads = std::sync::Arc::new(crate::transfer::UploadService::new(
+        artifacts.clone(),
+        audit.clone(),
+        clock.clone(),
+    ));
+    let downloads = std::sync::Arc::new(crate::transfer::DownloadService::new(
+        artifacts.clone(),
+        audit.clone(),
+        clock.clone(),
+    ));
+    let domains = http::router::DomainState {
+        issuer,
+        submission,
+        uploads,
+        downloads,
+        tasks: task_center,
+    };
+
     // L5（§9.1）：参数来自部署配置；构造非法（容量 0 等）拒绝启动。
     let rate_limit = {
         let limiter = crate::http::middleware::ratelimit::RateLimiter::new(
@@ -235,9 +324,7 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         };
         crate::http::sse::SseState {
             registry: std::sync::Arc::new(crate::http::sse::EventStreamRegistry::new(&sse_config)),
-            sink: std::sync::Arc::new(
-                datazen::execution::application::event_sink_memory::MemoryEventSink::new(),
-            ),
+            sink: memory_sink.clone(),
             recheck: std::sync::Arc::new(crate::http::sse::StandardRecheck::new(
                 crate::storage::LoginSessions::new(store.clone()),
                 policy.clone(),
@@ -302,6 +389,7 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         rate_limit,
         sse,
         oidc,
+        domains: Some(domains),
     })?;
 
     let listener = tokio::net::TcpListener::bind(&config.listen_addr)
@@ -324,4 +412,40 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
 async fn shutdown_signal() {
     let _ = tokio::signal::ctrl_c().await;
     tracing::info!("shutdown signal received; draining");
+}
+
+/// WR-D6 QuotaGate 适配为 WR-D7 的 `PreSubmitGate`（`transfer` 模块文档
+/// 的接缝裁决）。闸门只读无副作用：重放路径同样穿过它，因此提交本身
+/// 不占用持久额度——占位检查容量后立即归还（执行期额度随 ExecutionGateway
+/// 接线收取）。拒绝用 wire 词汇原样透传，transfer 侧零翻译。
+struct QuotaPreSubmitGate {
+    quota: std::sync::Arc<crate::operations::QuotaGate<crate::execution::budget::ServerBudgetCoordinator>>,
+}
+
+#[async_trait::async_trait]
+impl crate::transfer::PreSubmitGate for QuotaPreSubmitGate {
+    async fn check_submit(
+        &self,
+        ctx: &datazen::shared::context::RequestContext,
+        _submission: &datazen::execution::application::VerifiedSubmission,
+    ) -> Result<(), ApiError> {
+        let request = datazen::execution::application::budget::BudgetRequest::new(
+            ctx.organization_id.clone(),
+            datazen::shared::id::ConnectionId::new("job-submission"),
+            datazen::execution::application::budget::BudgetPurpose::BackgroundJob,
+        );
+        match self.quota.gate(ctx, request).await {
+            Ok(admission) => {
+                let _ = self
+                    .quota
+                    .release(
+                        &admission.permit,
+                        datazen::execution::application::budget::ReleaseOutcome::Unused,
+                    )
+                    .await;
+                Ok(())
+            }
+            Err(rejection) => Err(rejection.to_api_error()),
+        }
+    }
 }

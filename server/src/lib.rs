@@ -39,5 +39,7 @@ pub mod error;
 pub mod execution;
 pub mod http;
 pub mod logging;
+pub mod operations;
 pub mod policy;
 pub mod storage;
+pub mod transfer;
