@@ -1,4 +1,4 @@
-//! Web 注入点（WR-F5）：web 宿主装配 [`crate::tunnel`] 端口面的**来源三件套**。
+//! 宿主侧注入点（WR-F5）：宿主（web 形态即服务端宿主）装配 [`crate::tunnel`] 端口面的**来源三件套**。
 //!
 //! 隧道机制（SSH / HTTP CONNECT / WebSocket 本地腿、probe、加密）已在
 //! `modules` 的 tunnel feature 共用 —— 桌面与 web 形态跑同一份实现（见
@@ -7,21 +7,21 @@
 //!
 //! # 三件套
 //!
-//! 1. **存储根**（[`WebInMemoryTunnelRoot`] + known-hosts 半边
-//!    [`WebInMemoryKnownHosts`]）：对应桌面 `{appData}/tunnels.json`（加密落盘）
+//! 1. **存储根**（[`HostInMemoryTunnelRoot`] + known-hosts 半边
+//!    [`HostInMemoryKnownHosts`]）：对应桌面 `{appData}/tunnels.json`（加密落盘）
 //!    的 web 半边。
 //!    **裁决：内存语义，不选 OPFS。** web 宿主（服务端）的持久化由服务端存储
 //!    目录负责（server storage，本 wave 白名单外，后续装配时换实现）；浏览器
 //!    侧根本没有这个注入点的执行位，OPFS 既够不着也会造出第二份真相。内存根
 //!    保持端口「可装配、可同语义测试」，落盘交给装配方换实现 —— 端口契约
 //!    （两档名单/单条、组织限定、落盘加密在实现方）不变。
-//! 2. **凭据**（[`WebTunnelCredentialSource`]）：隧道定义在端口层是**内存内
+//! 2. **凭据**（[`HostTunnelCredentialSource`]）：隧道定义在端口层是**内存内
 //!    明文**（`TunnelRepository` 的既有语义），落盘加密与密钥管理由实现方
 //!    负责。web 形态的凭据以 **SecretRef**（`{domain, key}` 引用，永不传值）
 //!    进出；安全域解析器未接线前，默认实现
-//!    [`UnresolvedWebCredentials`] 抛**命名缺口** —— 沿 WR-F1#2 的登记语义
+//!    [`UnresolvedHostCredentials`] 抛**命名缺口** —— 沿 WR-F1#2 的登记语义
 //!    （显式缺口，绝不静默空答）。
-//! 3. **监听点**（[`WebListenPoint`]）：本地腿 `127.0.0.1:<port>` 的绑定方。
+//! 3. **监听点**（[`HostListenPoint`]）：本地腿 `127.0.0.1:<port>` 的绑定方。
 //!    web 形态裁决：**监听点恒在服务端**（`ServerLoopback`）—— 浏览器不开
 //!    本地套接字；驱动经服务端 host 拨 `127.0.0.1:<local_port>`，与桌面
 //!    「驱动永远连 127.0.0.1:<local_port>」的隧道不变式同形。
@@ -49,23 +49,23 @@ use datazen_driver_api::{SavedTunnel, SavedTunnelSummary, TunnelUsage};
 /// upsert 语义与桌面一致（按 id 去重）。落盘（服务端存储目录 + AES-256-GCM
 /// 同源加密）由装配方以实现替换本类型，端口不动。
 #[derive(Default)]
-pub struct WebInMemoryTunnelRoot {
+pub struct HostInMemoryTunnelRoot {
     /// 组织限定的命名空间：`(org id, tunnel definition)`。web 宿主是多租户
     /// 侧（桌面单租户），命名空间由作用域决定而非实现方猜。
     tunnels: Mutex<Vec<(String, SavedTunnel)>>,
 }
 
-impl WebInMemoryTunnelRoot {
+impl HostInMemoryTunnelRoot {
     pub fn new() -> Self {
         Self::default()
     }
 }
 
 #[async_trait]
-impl TunnelRepository for WebInMemoryTunnelRoot {
+impl TunnelRepository for HostInMemoryTunnelRoot {
     async fn list(&self, scope: &OrganizationScope) -> Result<Vec<SavedTunnelSummary>, PortError> {
         let tunnels = self.tunnels.lock().map_err(|_| {
-            PortError::BackendUnavailable("web tunnel root lock poisoned".into())
+            PortError::BackendUnavailable("tunnel root lock poisoned".into())
         })?;
         // 摘要投影用 domain 的共享 [`crate::tunnel::domain::summarize`] ——
         // web 装配钉的映射就是实现方生产路径的那一份，不另造第二份。
@@ -82,7 +82,7 @@ impl TunnelRepository for WebInMemoryTunnelRoot {
         tunnel_id: &str,
     ) -> Result<Option<SavedTunnel>, PortError> {
         let tunnels = self.tunnels.lock().map_err(|_| {
-            PortError::BackendUnavailable("web tunnel root lock poisoned".into())
+            PortError::BackendUnavailable("tunnel root lock poisoned".into())
         })?;
         Ok(tunnels
             .iter()
@@ -93,7 +93,7 @@ impl TunnelRepository for WebInMemoryTunnelRoot {
 
     async fn save(&self, scope: &OrganizationScope, tunnel: SavedTunnel) -> Result<(), PortError> {
         let mut tunnels = self.tunnels.lock().map_err(|_| {
-            PortError::BackendUnavailable("web tunnel root lock poisoned".into())
+            PortError::BackendUnavailable("tunnel root lock poisoned".into())
         })?;
         let org = scope.organization_id().as_str().to_string();
         match tunnels
@@ -108,7 +108,7 @@ impl TunnelRepository for WebInMemoryTunnelRoot {
 
     async fn delete(&self, scope: &OrganizationScope, tunnel_id: &str) -> Result<(), PortError> {
         let mut tunnels = self.tunnels.lock().map_err(|_| {
-            PortError::BackendUnavailable("web tunnel root lock poisoned".into())
+            PortError::BackendUnavailable("tunnel root lock poisoned".into())
         })?;
         let org = scope.organization_id().as_str();
         tunnels.retain(|(o, t)| !(o == org && t.id == tunnel_id));
@@ -131,17 +131,17 @@ impl TunnelRepository for WebInMemoryTunnelRoot {
 /// web 宿主的内存 known-hosts 半边（SSH TOFU）。空集合 = 首次使用即信任，
 /// 与桌面 `{appData}/ssh_known_hosts.json` 的端口语义一致。
 #[derive(Default)]
-pub struct WebInMemoryKnownHosts {
+pub struct HostInMemoryKnownHosts {
     entries: Mutex<HashMap<String, KnownHostEntry>>,
 }
 
-impl WebInMemoryKnownHosts {
+impl HostInMemoryKnownHosts {
     pub fn new() -> Self {
         Self::default()
     }
 }
 
-impl KnownHostsRepository for WebInMemoryKnownHosts {
+impl KnownHostsRepository for HostInMemoryKnownHosts {
     fn load(&self) -> HashMap<String, KnownHostEntry> {
         self.entries
             .lock()
@@ -153,7 +153,7 @@ impl KnownHostsRepository for WebInMemoryKnownHosts {
         let mut guard = self
             .entries
             .lock()
-            .map_err(|_| PortError::BackendUnavailable("web known hosts lock poisoned".into()))?;
+            .map_err(|_| PortError::BackendUnavailable("known hosts lock poisoned".into()))?;
         *guard = entries.clone();
         Ok(())
     }
@@ -166,17 +166,17 @@ impl KnownHostsRepository for WebInMemoryKnownHosts {
 /// 凭据引用（SecretRef）：web 形态的凭据跨边界**只以引用流转**，密钥本体
 /// 由服务端安全域持有 —— 与 WR-F1#2 的 `SecretRef` 同一语义。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WebSecretRef {
+pub struct HostSecretRef {
     pub domain: String,
     pub key: String,
 }
 
-impl WebSecretRef {
+impl HostSecretRef {
     /// 解析半边：坏引用在这里被拒绝（装配错误，不是密钥缺失）。
     pub fn parse(domain: &str, key: &str) -> Result<Self, String> {
         if domain.is_empty() || key.is_empty() {
             return Err(
-                "WebSecretRef: expected non-empty {domain, key} — credentials cross the \
+                "HostSecretRef: expected non-empty {domain, key} — credentials cross the \
                  boundary as references, never as values."
                     .into(),
             );
@@ -190,27 +190,27 @@ impl WebSecretRef {
 
 /// WR-F5 命名缺口：web 的安全域（服务端密钥管理）解析器尚未接线 —— 沿
 /// WR-F1#2 的登记语义：显式缺口、使用时失败、绝不静默空答。
-pub const WEB_SECRET_RESOLVER_GAP: &str =
-    "WebTunnelCredentialSource has no web resolver yet: the security-domain route for \
+pub const HOST_SECRET_RESOLVER_GAP: &str =
+    "HostTunnelCredentialSource has no secret resolver yet: the security-domain route for \
      server-side secret management is not wired. Wiring gap WR-F5#1 (沿 WR-F1#2 登记语义).";
 
 /// 隧道凭据的 web 注入面：按引用取值。桌面形没有这个端口 —— 桌面凭据从
 /// 加密落盘的隧道定义里直接解出；web 形态密钥本体在服务端安全域，隧道定义
 /// 与建连路径只携引用。
 #[async_trait]
-pub trait WebTunnelCredentialSource: Send + Sync + 'static {
-    async fn resolve(&self, credential: &WebSecretRef) -> Result<Option<String>, PortError>;
+pub trait HostTunnelCredentialSource: Send + Sync + 'static {
+    async fn resolve(&self, credential: &HostSecretRef) -> Result<Option<String>, PortError>;
 }
 
 /// 默认实现：命名缺口。任何解析请求都如实失败并点名缺口 —— 不返回看似
 /// 成功的空值，也不把引用当明文用。
-pub struct UnresolvedWebCredentials;
+pub struct UnresolvedHostCredentials;
 
 #[async_trait]
-impl WebTunnelCredentialSource for UnresolvedWebCredentials {
-    async fn resolve(&self, credential: &WebSecretRef) -> Result<Option<String>, PortError> {
+impl HostTunnelCredentialSource for UnresolvedHostCredentials {
+    async fn resolve(&self, credential: &HostSecretRef) -> Result<Option<String>, PortError> {
         Err(PortError::BackendUnavailable(format!(
-            "{WEB_SECRET_RESOLVER_GAP} (ref: {}/{}; backend unavailable is the port-level \
+            "{HOST_SECRET_RESOLVER_GAP} (ref: {}/{}; backend unavailable is the port-level \
              fact: the security-domain backend route is the missing dependency)",
             credential.domain, credential.key
         )))
@@ -224,12 +224,12 @@ impl WebTunnelCredentialSource for UnresolvedWebCredentials {
 /// 本地腿监听点的 web 形态。不变式：浏览器永不绑定本地套接字；驱动侧的
 /// 「连 127.0.0.1:<local_port>」由服务端 host 兑现。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum WebListenPoint {
+pub enum HostListenPoint {
     /// 服务端回环：`bind_host` 恒为 `127.0.0.1`，端口由服务端分配或指定。
     ServerLoopback { port: u16 },
 }
 
-impl WebListenPoint {
+impl HostListenPoint {
     pub const LOOPBACK_HOST: &str = "127.0.0.1";
 
     /// 监听点地址。唯一形态就是服务端回环 —— 浏览器侧根本没有第二变体，
@@ -247,21 +247,21 @@ impl WebListenPoint {
 
 /// web 宿主注入束：存储根 + known-hosts + 凭据来源 + 监听点。web 宿主装配
 /// 时铸一次，隧道用例（probe / 建连）与桌面共用同一批函数签名。
-pub struct WebTunnelSources {
+pub struct HostTunnelSources {
     pub storage_root: std::sync::Arc<dyn TunnelRepository>,
     pub known_hosts: std::sync::Arc<dyn KnownHostsRepository>,
-    pub credentials: std::sync::Arc<dyn WebTunnelCredentialSource>,
-    pub listen_point: WebListenPoint,
+    pub credentials: std::sync::Arc<dyn HostTunnelCredentialSource>,
+    pub listen_point: HostListenPoint,
 }
 
-impl WebTunnelSources {
+impl HostTunnelSources {
     /// 缺省装配：内存根 + 命名缺口凭据 + 服务端回环监听点。
     pub fn in_memory(listen_port: u16) -> Self {
         Self {
-            storage_root: std::sync::Arc::new(WebInMemoryTunnelRoot::new()),
-            known_hosts: std::sync::Arc::new(WebInMemoryKnownHosts::new()),
-            credentials: std::sync::Arc::new(UnresolvedWebCredentials),
-            listen_point: WebListenPoint::ServerLoopback { port: listen_port },
+            storage_root: std::sync::Arc::new(HostInMemoryTunnelRoot::new()),
+            known_hosts: std::sync::Arc::new(HostInMemoryKnownHosts::new()),
+            credentials: std::sync::Arc::new(UnresolvedHostCredentials),
+            listen_point: HostListenPoint::ServerLoopback { port: listen_port },
         }
     }
 }
@@ -302,7 +302,7 @@ mod tests {
     /// `get` 才给全量；同 id 保存是更新不是第二条。
     #[tokio::test]
     async fn memory_storage_root_keeps_the_two_tier_contract_and_upserts() {
-        let root = WebInMemoryTunnelRoot::new();
+        let root = HostInMemoryTunnelRoot::new();
 
         root.save(&scope(), ssh_tunnel("t1")).await.unwrap();
         // upsert：同 id 第二次保存覆盖。
@@ -337,14 +337,14 @@ mod tests {
     #[tokio::test]
     async fn credentials_are_references_and_resolution_names_the_gap() {
         // 引用半边：空域/空键在装配边界被拒。
-        assert!(WebSecretRef::parse("tunnel", "bastion-pass").is_ok());
-        assert!(WebSecretRef::parse("", "k").is_err());
-        assert!(WebSecretRef::parse("tunnel", "").is_err());
+        assert!(HostSecretRef::parse("tunnel", "bastion-pass").is_ok());
+        assert!(HostSecretRef::parse("", "k").is_err());
+        assert!(HostSecretRef::parse("tunnel", "").is_err());
 
-        let sources = WebTunnelSources::in_memory(0);
+        let sources = HostTunnelSources::in_memory(0);
         let err = sources
             .credentials
-            .resolve(&WebSecretRef::parse("tunnel", "bastion-pass").unwrap())
+            .resolve(&HostSecretRef::parse("tunnel", "bastion-pass").unwrap())
             .await
             .expect_err("unresolved credentials must fail, never answer empty");
         let rendered = err.to_string();
@@ -357,11 +357,11 @@ mod tests {
         assert!(rendered.contains("tunnel/bastion-pass"), "{rendered}");
 
         // 监听点：唯一形态是服务端回环 —— 浏览器不开本地套接字。
-        let sources = WebTunnelSources::in_memory(15432);
+        let sources = HostTunnelSources::in_memory(15432);
         assert_eq!(
             sources.listen_point.bind_target(),
             ("127.0.0.1".to_string(), 15432)
         );
-        assert_eq!(WebListenPoint::LOOPBACK_HOST, "127.0.0.1");
+        assert_eq!(HostListenPoint::LOOPBACK_HOST, "127.0.0.1");
     }
 }
