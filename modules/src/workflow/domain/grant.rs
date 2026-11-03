@@ -28,15 +28,18 @@
 //! | 复用 monitor 类型 | — | — | 不复用：`workflow` feature 不含 `monitor`（feature 图无环），且二者授权对象（widget 定时查询 vs 用户定时自动化）语义不同，强行共用会让两边各自长出对方的特例 |
 //! | 修订算法 | `monitor::domain::revision`（SHA-256） | [`definition_revision`]（同算法） | 三行实现各持一份，行为钉子互相钉住「同输入同输出」 |
 //! | 只读约束 | `read_only` + 只读 SQL AST 白名单 | 无 | workflow 定时任务是用户显式保存的自动化（可含写命令），授权单冻结**目标与定义修订**而非 SQL 白名单；SQL 仍走既有 `sql_guard` / 安全模式 |
-//! | TTL | 60–86400 秒显式授权 | 字段存在，桌面派生单不设到期 | 见模块尾「P6 剩余项」 |
+//! | TTL | 60–86400 秒显式授权 | 字段存在，桌面派生单不设到期 | 见模块尾「剩余项」 |
 //!
-//! # P6 剩余项（环境/UX，不在本切片）
+//! # 剩余项（环境/UX；执行上下文接线已收口）
 //!
-//! * live 验收与 e2e（真实驱动旅程）；
+//! * live 验收与 e2e（真实驱动旅程）——可码化部分已钉在桌面
+//!   `live_acceptance_tests`（fake-driver 旅程 + live 腿的 CI 策略注释）；
 //! * 桌面侧显式授权/撤销 IPC 与前端（现由定义保存动作充当批准事实，派生单
 //!   无 TTL、无独立撤销状态——需要授权单存储迁移，已登记不实现）；
-//! * 调度执行以服务身份上下文派发（`service_principal` 已进契约，执行上下文
-//!   接线登记为剩余距离）。
+//! * ~~调度执行以服务身份上下文派发~~ **已接线（`application::execution_identity`
+//!   + `engine::scheduler` 派发路径）**：闸门放行后以 [`service_principal`]
+//!   构造执行上下文（owner 归属授权单组织、审计主体 kind=Service、无委托），
+//!   宿主经 `WorkflowScheduleHost::execute_workflow` 的身份参数接收。
 
 use crate::connection::domain::NamespaceTarget;
 use crate::execution::domain::target::ExecutionTarget;
@@ -117,10 +120,12 @@ pub struct WorkflowScheduleGrant {
 impl WorkflowScheduleGrant {
     /// 派发前的授权单本体校验。
     ///
-    /// 故意**不接收** [`crate::shared::context::RequestContext`]：本切片的调度
-    /// 执行尚未以服务身份上下文派发（剩余距离已登记），上下文一致性校验接入
-    /// 时再挂（monitor 的 `validate(ctx, now)` 是它的先例）。本体校验只回答
-    /// 「这一份授权单本身还有效吗」——撤销、过期、版本、修订与作用域完备性。
+    /// 故意**不接收** [`crate::shared::context::RequestContext`]：本体校验只
+    /// 回答「这一份授权单本身还有效吗」——撤销、过期、版本、修订与作用域
+    /// 完备性。派发期的身份事实由闸门放行后的
+    /// `application::execution_identity` 从**本单**派生（服务身份上下文），
+    /// 不经本方法；若将来服务端签发流引入请求侧上下文一致性校验，再在此挂
+    /// （monitor 的 `validate(ctx, now)` 是它的先例）。
     pub fn validate(&self, now: DateTime<Utc>) -> Result<(), &'static str> {
         if self.revoked
             || self.expires_at <= now

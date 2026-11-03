@@ -21,7 +21,9 @@
 //!
 //! 调度授权（WR-A4 / P6 关闭项）：`domain::grant` 定义定时执行的服务身份与
 //! 授权单契约，`application::grant_reader` 是它的只读窄端口；调度器的派发
-//! 路径（`engine::scheduler`）在触发时经端口校验授权单后才执行既有路径。
+//! 路径（`engine::scheduler`）在触发时经端口校验授权单后才执行既有路径，
+//! 且以 `application::execution_identity` 从放行所依据的授权单派生服务身份
+//! 执行上下文（owner 归属、审计主体 kind=Service、无委托）传给宿主。
 
 pub mod application;
 pub mod domain;

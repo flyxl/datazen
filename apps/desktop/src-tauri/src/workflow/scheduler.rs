@@ -1,5 +1,6 @@
 //! Desktop scheduling adapter. The clock and in-flight lifecycle live in modules.
 use super::schedule_grant::DesktopScheduleGrantReader;
+use datazen::workflow::application::execution_identity::ScheduledExecutionIdentity;
 use datazen::workflow::application::grant_reader::WorkflowScheduleGrantReader;
 use datazen::workflow::scheduler::{WorkflowScheduleHost, WorkflowScheduler as CoreScheduler};
 use std::sync::Arc;
@@ -46,8 +47,28 @@ impl WorkflowScheduleHost for DesktopScheduleHost {
     async fn execute_workflow(
         &self,
         id: &str,
+        identity: &ScheduledExecutionIdentity,
     ) -> Result<datazen::workflow::model::WorkflowExecutionResult, String> {
         let state = self.0.state::<crate::commands::AppState>();
+        // Owner 归属核对（失败关闭）：调度执行上下文的组织必须等于宿主解析的
+        // 组织作用域——服务身份只代表授权单冻结的那个组织，归属不一致时
+        // 不落执行路径（与引擎侧授权闸门同一拒绝语义）。
+        let scope = state.organization_scope().map_err(|e| e.to_string())?;
+        if scope.organization_id().as_str() != identity.organization_id() {
+            return Err(format!(
+                "scheduled workflow '{id}' dispatch rejected: organization mismatch"
+            ));
+        }
+        // 审计（桌面形态 = 本地日志，§10.1）：主体 kind=Service（事件 envelope
+        // 由 modules `application::execution_identity` 提供，测试钉在
+        // live_acceptance_tests 的 fake-driver 旅程里）。
+        tracing::info!(
+            workflow_id = %id,
+            service_principal = %identity.service_principal(),
+            organization = %identity.organization_id(),
+            approved_by = %identity.approved_by(),
+            "workflow_scheduled_dispatch"
+        );
         crate::commands::workflow_execute_impl(
             state.inner(),
             id.into(),
@@ -75,6 +96,7 @@ mod startup_tests {
         async fn execute_workflow(
             &self,
             _: &str,
+            _identity: &ScheduledExecutionIdentity,
         ) -> Result<datazen::workflow::model::WorkflowExecutionResult, String> {
             Err("empty startup schedule must not execute workflows".into())
         }
