@@ -217,7 +217,19 @@ const ROWS: Record<string, Row> = {
     body: { submissionToken: 'tok-2' },
   },
 
-  // ── artifact（§6.5；三取法细则在下方专属 describe）──────────────────
+  // ── artifact（§6.5；uploads 单请求信封 + 三取法细则在下方专属 describe）──
+  createArtifactUpload: {
+    payload: {
+      executionId: 'exec-1',
+      targetFingerprint: 'fp-1',
+      ttlSeconds: 60,
+      payloadBase64: 'aGk=',
+      expectedSha256: 'ab',
+    },
+    path: '/artifacts/uploads',
+    // 体 = payload 原样（envelope 已在域客户端拼好，路由不二次构造）。
+    response: { artifactId: 'art-9' },
+  },
   readArtifact: {
     payload: { artifactId: 'art-5', chunkIndex: 2 },
     path: '/artifacts/art-5',
@@ -340,12 +352,12 @@ const ROWS: Record<string, Row> = {
 /* ------------------------------------------------------------------ */
 
 describe('HTTP_ROUTES 分发表账目（契约 §4 总账）', () => {
-  it('41 条分发条目；PATCH 双服务 + driver-gateway 双查询共用 → 39 个唯一 (method, pathTemplate)', () => {
+  it('42 条分发条目（WR-F6 补 uploads 在账端点键）；PATCH 双服务 + driver-gateway 双查询共用 → 40 个唯一 (method, pathTemplate)', () => {
     const entries = Object.entries(HTTP_ROUTES) as [string, RouteSpec][];
-    expect(entries).toHaveLength(41);
+    expect(entries).toHaveLength(42);
     const shapes = entries.map(([, route]) => `${route.httpMethod} ${route.pathTemplate}`);
     const unique = new Set(shapes);
-    expect(unique.size).toBe(39);
+    expect(unique.size).toBe(40);
     // 两条共用路由都有契约出处：PATCH /connections/{id}（§6.3 一路由双服务，
     // 体判别）与 GET /driver-gateway/commands（§6.9，driverType/dbSessionId 查询判别）。
     for (const shared of ['PATCH /connections/{id}', 'GET /driver-gateway/commands']) {
@@ -365,10 +377,10 @@ describe('HTTP_ROUTES 分发表账目（契约 §4 总账）', () => {
     expect(disable!.body!({ expectedRevision: 1 })).toEqual({ expectedRevision: 1, enabled: false });
   });
 
-  it('open_base64_with_dialog 不上表（§6.9/§8 排除行）；表 + 它 = 42 个域方法', () => {
+  it('open_base64_with_dialog 不上表（§6.9/§8 排除行）；表 + 它 = 43 个域方法（WR-F6 补 createArtifactUpload 后）', () => {
     expect(HTTP_ROUTES['open_base64_with_dialog']).toBeUndefined();
     const keys = new Set([...Object.keys(HTTP_ROUTES), 'open_base64_with_dialog']);
-    expect(keys.size).toBe(42);
+    expect(keys.size).toBe(43);
   });
 });
 

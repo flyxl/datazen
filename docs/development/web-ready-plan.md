@@ -123,18 +123,18 @@ WR-F（能力落地）在 WR-D/WR-E 期间交叉插入，单项依赖见各节�
 | **WR-F1** | AI 落地 web：providers 已是 modules 内 HTTP 客户端（服务端可跑）；装配点 = `AiRequestHost` web 实现、`McpToolBroker` web 实现（WR-B2 端口）、AI 密钥经 `SecretProvider`。**部分达成（2026-11-03：端口 TS 同形 + `runAiToolLoop` 有界工具循环 + 三端口 web 装配 + 8 测，循环测试零形态感知；三个命名缺口已登记——F1#1 backend-client 无 mcp 域客户端、F1#2 MethodMap 无安全域密钥方法、F1#3 AI 工具宿主域未上 HTTP，端口/测试就位待合拢）** | 密钥存放（钥匙串 → 服务端密钥管理） | AI 工具循环测试不感知形态（M3 验收的延伸） |
 | **WR-F2** | MCP Server web 形态：M1/M2 完成后宿主只剩 rmcp 传输绑定，web 侧实现 streamable HTTP（或内嵌 duplex）传输 + 服务端身份。**已落地（2026-11-03：`server/src/mcp/`——契约面 13 工具与桌面 golden fixture `include_str!` 逐字节 parity 测试、JSON-RPC wire 词汇（错误码/帮助块与桌面同形状）、`POST/DELETE /mcp` 传输会话 + L2 cookie 认证器；runtime 租约 v1 fail-closed，无状态工具分发与执行后端随 WR-F7 接入）** | **仅 Server 形态**：stdio 子进程 → streamable HTTP | golden 契约 `mcp_external_contract.json` 两形态逐字节一致 |
 | **WR-F3** | MCP Client web：`McpClientManager` 端口的 HTTP/SSE 客户端实现；stdio spawn 白名单、token 校验留桌面 | 仅传输与进程模型 | 同一 broker 端口两形态测试 |
-| **WR-F4** | Wapp web：独立真实 origin + 可嵌入 CSP + 真实 iframe 握手（P7 上线前冻结验收项）；`wappBridge` postMessage 协议不变；`datazen://` 资产服务替换为真实 origin 静态服务 | 仅资产服务协议（自定义 scheme → 真实 origin）；CSP 双源约束随之简化为单源 | 桥契约测试两形态同绿；审计（`wapp_audit_log`）等价 |
-| **WR-F5** | Tunnel：实现已在 `modules` tunnel feature 共用；web 宿主只注入存储根、凭据、监听点 | 仅注入来源 | 桌面/Web 同隧道语义测试 |
-| **WR-F6** | 导出/备份/恢复 web：服务端 `ArtifactRepository` + 受控下载；前端 Blob 下载半边已示范 | 仅字节出口（本机路径 → 受控下载） | 产物越权拒绝断言 |
-| **WR-F7** | 驱动执行：全部服务端执行；浏览器零数据库凭据；`NetworkProvider` 出站网络政策 | 无（执行位置由架构决定，非形态差异） | P7 门槛「浏览器无需数据库凭据」 |
+| **WR-F4** | Wapp web：独立真实 origin + 可嵌入 CSP + 真实 iframe 握手（P7 上线前冻结验收项）；`wappBridge` postMessage 协议不变；`datazen://` 资产服务替换为真实 origin 静态服务。**已落地（2026-11-03：`wappAssetOrigin.ts` 解析器与桌面 `parse_datazen_uri` 同构（穿越/隐藏分量/NUL 同表拒绝）+ 装配期形态注入（零运行时探测）+ 单源 CSP 常量 + 桥契约 web 形 5 测（审计等价钉住）+ origin 契约 5 测）**；余 server 静态服务路由随 P7 部署切片（协议形状已冻结） | 仅资产服务协议（自定义 scheme → 真实 origin）；CSP 双源约束随之简化为单源 | 桥契约测试两形态同绿；审计（`wapp_audit_log`）等价 |
+| **WR-F5** | Tunnel：实现已在 `modules` tunnel feature 共用；web 宿主只注入存储根、凭据、监听点。**已达成（2026-11-03：`modules/src/tunnel/web.rs` 注入点（内存存储根/SecretRef 引用解析/`ServerLoopback` 类型层唯一监听点）+ TS 注入半边 + Rust/TS 各 2 测同语义；凭据取值沿 WR-F1#2 缺口语义如实报缺）** | 仅注入来源 | 桌面/Web 同隧道语义测试 |
+| **WR-F6** | 导出/备份/恢复 web：服务端 `ArtifactRepository` + 受控下载；前端 Blob 下载半边已示范。**已达成（2026-11-03：backend-client `artifactClient` 补 `createArtifactUpload`/`createUploadWriter`/`appendUploadChunk`/`finalizeUpload` + WebCrypto sha256（契约 §6.5 收口动作落地）+ `backupTransfer.ts` 导出/恢复/导入三流 + 11 测（含越权 403 原码传播、truncated 拒恢复）；上传=客户端聚合单请求落（与 wave1 envelope 逐字对齐））** | 仅字节出口（本机路径 → 受控下载） | 产物越权拒绝断言 |
+| **WR-F7** | 驱动执行：全部服务端执行；浏览器零数据库凭据；`NetworkProvider` 出站网络政策。**部分达成（2026-11-03：`server/src/execution/driver_exec.rs` `SessionBackend` 服务端 v1（open 事务三命令/取消/句柄终结/SQL 守卫/出站闸挂点）+ 真租约源 `ServerRuntimeLeaseSource::new` + 3 钉；凭据无 wire 出口的红线核实已注释；**阻塞登记：modules PolicyService trait 适配器 + 预算桥接 + publisher 接线—— lease 上线随 Wave4**；池化/执行期 CAS 复核等登记于 driver_exec.rs 文档表）** | 无（执行位置由架构决定，非形态差异） | P7 门槛「浏览器无需数据库凭据」 |
 
 ## 9. WR-G 验收与发布轨
 
 | 切片 | 内容 | 引用 |
 |---|---|---|
-| **WR-G1** | CM W1 断言：CM-05～07、38～40、53～56、59、60 单实例部分及 CM-63、68、70、72 的 W1 断言 | 平台计划 §11 退出门槛 |
+| **WR-G1** | CM W1 断言：CM-05～07、38～40、53～56、59、60 单实例部分及 CM-63、68、70、72 的 W1 断言。**主体钉住（2026-11-03：`server/tests/g1_cm_w1_assertions.rs` 可执行账目——CM-05/06/38/39/40/59/60/70 新增 6 组钉子 + 既有覆盖盘点；账目表内嵌测试文件头）。W1 缺口四项随各自执行面接线：CM-07 请求体目标校验、CM-53 MCP 会话归属、CM-63 attach/detach HTTP 面、CM-68 替换发布 W1 面** | 平台计划 §11 退出门槛 |
 | **WR-G2** | 上线前冻结验收：授权同事务、DDL 与历史登记同事务、expand schema 兼容、授权可见性先于会话存活错误、SSE Origin 校验、Wapp 独立 origin/CSP/iframe 握手——每项配浏览器/管理库故障测试，不以 fake 替代 | 平台计划 §11 冻结清单 |
-| **WR-G3** | 部署运维：发布镜像、管理数据库、SecretProvider、网络可达性、备份恢复（不自动重放未知外部写入）、TLS、资源额度、drain 回退 | `team-service-operations.md` |
+| **WR-G3** | 部署运维：发布镜像、管理数据库、SecretProvider、网络可达性、备份恢复（不自动重放未知外部写入）、TLS、资源额度、drain 回退。**形状落地（2026-11-03：`deploy/` 三阶段 Dockerfile + compose（SIGINT 过渡+资源额度+secret 必填门）+ config 23 键 env.example + backup.sh（VACUUM INTO 快照）/restore.sh（人工确认门、不自动重放）+ `docs/development/deploy-operations.md` 九节手册（§9 已登记未实现表 8 项））**；SIGTERM 接线、`:8443` TLS、镜像真实构建/演练属环境侧 | `team-service-operations.md` |
 | **WR-G4** | P8 衔接：桌面团队客户端（backendId、版本握手、per-backend client）不在本文展开，P7 交付后按平台计划 §12 | 平台计划 §12 |
 
 ## 10. 推荐执行顺序
@@ -149,8 +149,9 @@ WR-F（能力落地）在 WR-D/WR-E 期间交叉插入，单项依赖见各节�
 
 ## 11. 进度回写区
 
-- **2026-11-03（下）— Wave2 四轨并行：WR-A4 服务身份接线+CM-53 登记 + WR-A3 P2 注入路径切片 + WR-E4 capabilities 激活 + WR-F1 web 装配（部分）+ WR-F2 MCP streamable HTTP**（四条无冲突轨道：modules workflow+desktop workflow / modules driver_registry / server mcp 新目录 / apps/web+frontend platform；server Cargo feature 链、lib.rs、router `/mcp` 挂载、bootstrap 认证器与 fail-closed 租约源、进度区由主线统一收口。本地验证：`cargo check -p datazen --features execution` ✓、workflow lib 134/134 ✓、server 双 feature（default/mcp）✓；上一 PR（#162）CI 揭示的两处错误已修：桌面 session_cleanup 缺 `ConnectionUseCases` trait 导入（4×E0599）、web platformServices `Uint8Array<ArrayBuffer>` BlobPart 型变（TS2345）；F2 装配裁决：`McpBackend` 加 `#[async_trait]`（dyn 兼容）、`HttpMcpState` Arc 包裹会话表以获 Clone、server mcp feature 链 = `datazen/mcp + datazen/application`（IdentityPolicy 在 application 编排层））。
+- **2026-11-03（三）— Wave3 四轨并行：WR-F4 Wapp origin + WR-F5 Tunnel 注入 + WR-F6 导出备份恢复 + WR-F7 驱动执行（部分）+ WR-G1 W1 断言主体 + WR-G3 部署形状**（四条无冲突轨道：modules tunnel+frontend lib / backend-client+apps/web / server execution+tests / server tests+deploy+docs；进度区由主线收口。本地验证：tunnel feature check ✓、server mcp feature check ✓、g1+driver_exec+transfer 测试链 ✓（j1，链接内存纪律）；F7 主线裁决：bootstrap v1 维持 FailClosedLeaseSource（真租约源阻塞 = modules PolicyService trait 适配器，登记 Wave4）；driver_exec_lease 测试补 ProfileReader 双实现与 ClientInstanceId 直引。G1 缺口四项（CM-07/53/63/68）与镜像构建属后续切片）。
 
+- **2026-11-03（下）— Wave2 四轨并行：WR-A4 服务身份接线+CM-53 登记 + WR-A3 P2 注入路径切片 + WR-E4 capabilities 激活 + WR-F1 web 装配（部分）+ WR-F2 MCP streamable HTTP**（四条无冲突轨道：modules workflow+desktop workflow / modules driver_registry / server mcp 新目录 / apps/web+frontend platform；server Cargo feature 链、lib.rs、router `/mcp` 挂载、bootstrap 认证器与 fail-closed 租约源、进度区由主线统一收口。本地验证：`cargo check -p datazen --features execution` ✓、workflow lib 134/134 ✓、server 双 feature（default/mcp）✓；上一 PR（#162）CI 揭示的两处错误已修：桌面 session_cleanup 缺 `ConnectionUseCases` trait 导入（4×E0599）、web platformServices `Uint8Array<ArrayBuffer>` BlobPart 型变（TS2345）；F2 装配裁决：`McpBackend` 加 `#[async_trait]`（dyn 兼容）、`HttpMcpState` Arc 包裹会话表以获 Clone、server mcp feature 链 = `datazen/mcp + datazen/application`（IdentityPolicy 在 application 编排层））。
 
 - **2026-11-03 — 四轨并行落地：WR-B3 收官（M1 13/13）+ WR-B4 宿主面归位 + WR-D6（运维五子件）+ WR-D7（幂等提交/受控上传下载）+ WR-E3（PlatformServices web）**（四条无冲突轨道：modules mcp + desktop 宿主 / server operations / server transfer / apps/web+frontend platform；config 键、bootstrap 装配、router 域路由、进度区与任务表由主线统一收口。本地验证：`cargo check -p datazen --features mcp` ✓、server 全量 226/226 ✓（lib 179 + 集成 47）；上波顺延的 WR-B4 宿主面（mcp/session_open/cleanup/tools 4,658 行）就此清零——**WR-B 一致性轨全部收官，可开工门槛仅余 WR-A4 三项**。接线要点：`QuotaPreSubmitGate` 把 D6 QuotaGate 适配进 D7 提交面（占位检查即归还，执行期额度随 ExecutionGateway 收取）；MemoryEventSink 同时供 SSE 订阅与撤销传播（EventSinkBridge 的 StreamResetRequired 近似语义已在 D6 登记）；uploads 端点 v1 envelope 定形为单请求 begin+append+finalize（契约 §6.5 在账项的收口动作落半，分块流式协议随 web 导出流合拢））。
 

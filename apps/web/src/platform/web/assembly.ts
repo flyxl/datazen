@@ -39,7 +39,16 @@
  *   decision is compile-time table → selector; there is no form probe;
  * - WR-F1: the AI trio (`WebAiRequestHost` / `McpToolBroker` /
  *   SecretProvider, `./ai/webAiAssembly`) assembles over the same
- *   `WebClient` transport; named gaps surface as `CapabilityUnsupported`.
+ *   `WebClient` transport; named gaps surface as `CapabilityUnsupported`;
+ * - WR-F6: the backup/restore pair (`createWebBackupTransfer`,
+ *   `./backupTransfer`) rides the same facade's artifact half — export lands
+ *   the payload in the server artifact library through the §6.5 uploads
+ *   envelope, restore reads it back through the three §6.5 read modes, and
+ *   the browser Blob halves (anchor save / FileReader import) stay local.
+ * - WR-F4: the wapp asset service swaps the `datazen://` custom scheme for
+ *   the `/wapps/{id}/…` real-origin static convention — the web resolver is
+ *   bound here (single-source CSP `WAPP_ASSET_CSP`; the postMessage bridge
+ *   protocol itself is unchanged).
  */
 
 import { bindHostEventListener } from '@datazen/driver-sdk';
@@ -52,11 +61,13 @@ import {
 } from '@datazen/backend-client';
 import {
   configurePlatform,
+  configureWappAssetResolver,
   createBlobTablesExporter,
   createBrowserEventChannel,
   inertHostSettingsPort,
   requirePlatform,
   WEB_CAPABILITIES,
+  WEB_WAPP_ASSET_RESOLVER,
   type TablePageReader,
 } from '@datazen/frontend';
 import { createWebBackendTransport, WEB_BACKEND_ID } from './backendTransport';
@@ -66,11 +77,18 @@ import {
   createWebAiBindings,
   type WebAiBindings,
 } from './ai/webAiAssembly';
+import {
+  createWebBackupTransfer,
+  type WebBackupTransfer,
+} from './backupTransfer';
 
 export { WEB_CAPABILITY_BINDINGS } from './capabilityBindings';
 
 /** WR-F1 装配产物：AI 三端口（装配期创建一次；测试直接走 `createWebAiBindings`）。 */
 export let WEB_AI_BINDINGS: WebAiBindings;
+
+/** WR-F6 装配产物：备份/恢复端口（装配期创建一次；测试直接走 `createWebBackupTransfer`）。 */
+export let WEB_BACKUP_TRANSFER: WebBackupTransfer;
 
 /**
  * Rows per `getTableData` page while assembling an export. A short page ends
@@ -130,6 +148,11 @@ export function assembleWebPlatform(): void {
   // server-side; the browser holds ports and secret *references* only.
   WEB_AI_BINDINGS = createWebAiBindings(client, transport);
 
+  // WR-F6: backup/restore over the same facade's artifact half — the §6.5
+  // uploads envelope lands backup payloads in the server artifact library,
+  // the three read modes bring them back, and the Blob halves stay local.
+  WEB_BACKUP_TRANSFER = createWebBackupTransfer(client);
+
   const services = createWebPlatformServices();
   setPlatformServices(services);
 
@@ -162,4 +185,10 @@ export function assembleWebPlatform(): void {
   bindHostEventListener((event, handler) =>
     requirePlatform().events.listenCrossWindow(event, handler),
   );
+
+  // WR-F4: the wapp asset service rides the real origin — bind the
+  // `/wapps/{id}/…` origin-relative resolver before the first workspace
+  // paint. The desktop assembly performs no such binding: its default IS
+  // the `datazen://` custom scheme (desktop path unchanged).
+  configureWappAssetResolver(WEB_WAPP_ASSET_RESOLVER);
 }

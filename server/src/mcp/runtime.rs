@@ -52,6 +52,51 @@ pub trait RuntimeLeaseSource: Send + Sync {
     async fn resolve(&self) -> Result<Arc<RuntimeConnectionUseCases>, String>;
 }
 
+/// WR-F7：runtime 租约源的真实现（server 形态）。
+///
+/// 三件套全部由 bootstrap 显式递交（装配清单见 WR-F7 报告）：
+/// `profiles` = `storage::ServerProfiles`（`ProfileRepository` 端口）、
+/// `policy` = 实现了 modules `execution::application::policy::PolicyService`
+/// 的授权服务、`backend` = `execution::driver_exec::ServerDriverExecBackend`
+/// （`SessionBackend` 端口的 server v1 实现）。
+///
+/// **每调用现取，禁止缓存**：`resolve()` 每次现构造
+/// `RuntimeConnectionUseCases::new(..)`——runtime 可能被吊销，端口语义
+/// 不允许把用例面缓存在租约源里。bootstrap 侧的占位
+/// `FailClosedLeaseSource`（fail-closed Err）在本实现落地后由主线摘除
+/// 并替换为本类型（接线归主线，本模块不碰 bootstrap）。
+pub struct ServerRuntimeLeaseSource {
+    profiles: Arc<dyn datazen::connection::domain::ProfileRepository>,
+    policy: Arc<dyn datazen::execution::application::policy::PolicyService>,
+    backend: Arc<dyn datazen::execution::runtime::registry::backend::SessionBackend>,
+}
+
+impl ServerRuntimeLeaseSource {
+    /// 构造（bootstrap 装配入口）。
+    pub fn new(
+        profiles: Arc<dyn datazen::connection::domain::ProfileRepository>,
+        policy: Arc<dyn datazen::execution::application::policy::PolicyService>,
+        backend: Arc<dyn datazen::execution::runtime::registry::backend::SessionBackend>,
+    ) -> Self {
+        Self {
+            profiles,
+            policy,
+            backend,
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl RuntimeLeaseSource for ServerRuntimeLeaseSource {
+    async fn resolve(&self) -> Result<Arc<RuntimeConnectionUseCases>, String> {
+        Ok(Arc::new(RuntimeConnectionUseCases::new(
+            self.profiles.clone(),
+            self.policy.clone(),
+            self.backend.clone(),
+        )))
+    }
+}
+
 /// server 形态的 `StatefulSessionHost` 内核：租约解析 + 归属裁决 +
 /// cleanup worker 调度钩子（admission/编排语义在 modules session_tools）。
 pub struct HttpStatefulSessionHost {

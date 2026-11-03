@@ -301,7 +301,7 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         };
         Some(crate::mcp::runtime::build_http_state(
             std::sync::Arc::new(authenticator),
-            std::sync::Arc::new(ServerRuntimeLeaseSource),
+            std::sync::Arc::new(FailClosedLeaseSource), // WR-F7 真租约源待 policy 适配器（见下）
             Vec::new(), // 连接白名单：空表 = 全拒绝（安全默认；部署配置随 F7 接入）
             datazen::execution::domain::permission::McpPermissionMode::SafeWrite,
         ))
@@ -463,19 +463,22 @@ impl crate::mcp::http::SessionAuthenticator for CookieSessionAuthenticator {
     }
 }
 
-/// WR-F2：runtime 租约源的 server v1 形态——执行后端（驱动/会话物理
-/// 资源）随 WR-F7 落地；此前如实报错，runtime 依赖工具 fail-closed。
+/// WR-F7 真租约源（`crate::mcp::runtime::ServerRuntimeLeaseSource::new`）
+/// 待 Wave4 接线：阻塞项 = modules `execution::application::policy::
+/// PolicyService` trait 适配器（server `policy::PolicyService` 未实现该
+/// trait，见 `driver_exec.rs` 登记表）。v1 维持 fail-closed：runtime
+/// 依赖工具如实答不可用。
 #[cfg(feature = "mcp")]
-struct ServerRuntimeLeaseSource;
+struct FailClosedLeaseSource;
 
 #[cfg(feature = "mcp")]
 #[async_trait::async_trait]
-impl crate::mcp::runtime::RuntimeLeaseSource for ServerRuntimeLeaseSource {
+impl crate::mcp::runtime::RuntimeLeaseSource for FailClosedLeaseSource {
     async fn resolve(
         &self,
     ) -> Result<std::sync::Arc<datazen::execution::application::RuntimeConnectionUseCases>, String>
     {
-        Err("driver execution backend is not assembled yet (WR-F7); \
+        Err("driver execution lease wiring lands with the WR-F7 policy adapter; \
              runtime-backed MCP tools are unavailable in this build."
             .to_string())
     }

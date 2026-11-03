@@ -8,6 +8,7 @@ import { wappCommands } from '../../commands/wapps';
 import { useWappStore } from '../../stores/wappStore';
 import { useSettingsStore } from '../../stores/settingsStore';
 import { attachBridge, type WappBridgeHandle } from '../../lib/wappBridge';
+import { buildWappAssetSrc } from '../../lib/wappAssetOrigin';
 import type { WappPermission } from '../../types/wapp';
 import type { WorkspaceTab } from '../../stores/workspaceTabsStore';
 import { WappIcon } from './WappIcon';
@@ -61,8 +62,14 @@ function cachedSrc(tab: WorkspaceTab): string | null {
   return buildSrc(targetId, hit.entry, tab.version);
 }
 
+/**
+ * WR-F4: the URL form is a form-split — the desktop keeps the `datazen://`
+ * custom scheme, the web assembly binds the `/wapps/{id}/…` origin-relative
+ * static service. Resolution lives in `wappAssetOrigin` (assembly-time
+ * binding; the desktop default is byte-identical to the previous literal).
+ */
 function buildSrc(targetId: string, entry: string, version: string): string {
-  return `datazen://${targetId}/${entry.replace(/^\.\//, '')}?v=${encodeURIComponent(version)}`;
+  return buildWappAssetSrc(targetId, entry, version);
 }
 
 type EntryPhase =

@@ -86,8 +86,19 @@ export { createExecutionMethods } from './executionClient';
 export type { JobMethodMap, JobClient } from './jobClient';
 export { createJobMethods, parseJobView, parseCancelReceipt } from './jobClient';
 
-export type { ArtifactMethodMap, ArtifactClient } from './artifactClient';
-export { createArtifactMethods } from './artifactClient';
+export type {
+  ArtifactMethodMap,
+  ArtifactClient,
+  ArtifactUploadBeginRequest,
+  ArtifactUploadFinalizeOptions,
+  ArtifactUploadWriter,
+} from './artifactClient';
+export {
+  createArtifactMethods,
+  sha256Hex,
+  toBase64,
+  UPLOAD_CHUNK_BYTES,
+} from './artifactClient';
 
 export type { TableDataMethodMap, TableDataClient } from './tableDataClient';
 export { createTableDataMethods } from './tableDataClient';

@@ -184,6 +184,57 @@ export interface JobDetails {
 export type ResultCompleteness = 'pending' | 'complete' | 'truncated';
 
 /**
+ * Lifecycle of an artifact (mirror of the kernel `ArtifactLifecycle`,
+ * camelCase on the wire). `revoked` / `expired` are unreadable: the download
+ * path answers them with the deliberate §11 404, never with bytes.
+ */
+export type ArtifactLifecycle = 'writing' | 'complete' | 'truncated' | 'revoked' | 'expired';
+
+/**
+ * The metadata read (`GET /api/v1/artifacts/{id}?metadata=1`, §6.5 third read
+ * mode) — mirror of the kernel `ArtifactMetadata`, camelCase on the wire.
+ *
+ * This is the planning half of a restore: `publishedChunkCount` bounds the
+ * chunk-mode reads and `publishedByteSize` is the reassembled total a restore
+ * reconciles against. Every read authorizes per request on the server side.
+ */
+export interface ArtifactMetadata {
+  /** Immutable target binding supplied at creation; empty for legacy artifacts. */
+  targetFingerprint: string;
+  artifactId: Id;
+  lifecycle: ArtifactLifecycle;
+  publishedChunkCount: Counter;
+  publishedByteSize: Counter;
+  /** `null` only while the write has not been finalized. */
+  totalChunks: Counter | null;
+  resultCompleteness: ResultCompleteness;
+  /** Present only when `resultCompleteness` is `truncated`. */
+  truncationReason: string | null;
+}
+
+/**
+ * The §6.5 uploads endpoint's v1 envelope — the single-request
+ * begin+append+finalize the server defines (`server/src/http/router.rs`
+ * `handler_artifact_upload`). One HTTP round trip; chunked writers aggregate
+ * client-side and land here once (see {@link ArtifactUploadBeginRequest}).
+ */
+export interface ArtifactUploadEnvelope {
+  executionId: Id;
+  targetFingerprint: string;
+  /** Server-side TTL; the handler defaults to 3600 when absent. */
+  ttlSeconds?: number;
+  /** The whole payload, standard base64. */
+  payloadBase64: string;
+  /** Lowercase hex SHA-256 of the decoded payload; mismatch aborts the artifact. */
+  expectedSha256?: string;
+}
+
+/** 201 receipt of the uploads endpoint: the server-minted artifact id. */
+export interface ArtifactUploadReceipt {
+  artifactId: Id;
+}
+
+/**
  * One authorized slice of a result artifact.
  *
  * `totalChunks` is `null` while a streamed result is still arriving, and
@@ -201,7 +252,19 @@ export interface ArtifactChunk {
   resultCompleteness: ResultCompleteness;
 }
 
-/** Either an explicit chunk index or a byte range, never both. */
+/**
+ * One of the three mutually exclusive §6.5 read modes: the metadata envelope
+ * (`?metadata=1`), an explicit chunk index, or a byte range — never more than
+ * one per request (the server's `ArtifactReadMode::from_query` and the web
+ * route table both reject a mixed or empty selection).
+ */
 export type ArtifactReadRequest =
+  | { artifactId: Id; metadata: true }
   | { artifactId: Id; chunkIndex: Counter }
   | { artifactId: Id; offset: Counter; limit: Counter };
+
+/** The metadata read mode's request, named for callers that plan a restore. */
+export interface ArtifactMetadataReadRequest {
+  artifactId: Id;
+  metadata: true;
+}

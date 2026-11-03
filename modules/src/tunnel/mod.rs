@@ -17,9 +17,15 @@ mod ssh_known_hosts;
 #[cfg(test)]
 pub(crate) mod test_support;
 mod websocket;
+/// WR-F5：宿主侧注入点（存储根 / 凭据 / 监听点）。机制共用，仅注入来源（web 形态即服务端宿主）。
+pub mod host;
 
 pub use crypto::install_default_crypto_provider;
 pub use domain::{KnownHostEntry, KnownHostsRepository, TunnelRepository};
 pub use http_proxy::{verify_upstream as verify_http_proxy_upstream, HttpProxyTunnel};
 pub use ssh::SshTunnel;
 pub use websocket::{verify_upstream as verify_websocket_upstream, WebSocketTunnel};
+pub use host::{
+    HostInMemoryKnownHosts, HostInMemoryTunnelRoot, HostListenPoint, UnresolvedHostCredentials,
+    HostSecretRef, HostTunnelCredentialSource, HostTunnelSources, HOST_SECRET_RESOLVER_GAP,
+};

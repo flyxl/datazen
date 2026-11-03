@@ -4,7 +4,9 @@
  * 请求体形状 }」的唯一定点；逐条对照契约各域表，execution/job 两域用概要
  * §6.3 的骨架表（契约 §10 声明其被收编）。
  *
- * 覆盖账目（对照契约 §4 总账；call 面 42 个域方法、排除 1、服务 41）：
+ * 覆盖账目（对照契约 §4 总账；call 面 43 个域方法、排除 1、服务 42；
+ * WR-F6 给 artifact 域补上 §6.5 在账端点 uploads 的 MethodMap 键
+ * `createArtifactUpload`——端点本身已在账，补的是方法表面不是新路由）：
  *
  * | 域 | call 方法 | 分发条目 | 依据 |
  * | settings | 2 | 2 | §6.1 |
@@ -13,10 +15,10 @@
  * | session | 6 | 6 | §6.4 |
  * | execution | 4 | 4 | 概要 §6.3 骨架 |
  * | job | 4 | 4 | 概要 §6.3 骨架 |
- * | artifact | 1 | 1（三模式互斥查询参数） | §6.5 |
+ * | artifact | 2 | 2（uploads 单请求信封 + 三模式互斥查询参数） | §6.5 |
  * | tableData | 14 | 14 | §6.7–§6.9 |
  * | driverGateway | 5 | 4（open_base64_with_dialog 排除不上表） | §6.9/§8 |
- * | **call 合计** | **42** | **41（40 条路径，PATCH 双服务）** | |
+ * | **call 合计** | **43** | **42（41 条路径，PATCH 双服务）** | |
  *
  * events 域的 2 条路由（POST /events/subscriptions + GET /events/{streamId}，
  * §6.6 v1.1）不在本表：它们由 `backendTransport.ts` 的 `subscribe()` 两步
@@ -263,7 +265,7 @@ const readArtifactDecode: RouteDecoder = (payload, response, raw) => {
 };
 
 /* ------------------------------------------------------------------ */
-/* 分发表本体：41 条分发条目覆盖 42 个 call 方法中的 41 个           */
+/* 分发表本体：42 条分发条目覆盖 43 个 call 方法中的 42 个           */
 /* （open_base64_with_dialog 排除；PATCH 一条路由双服务）。            */
 /* 键受 keyof MethodMap 约束（Partial），错名/多写编译期即失败。          */
 /* ------------------------------------------------------------------ */
@@ -358,7 +360,15 @@ export const HTTP_ROUTES: Partial<Record<keyof MethodMap, RouteSpec>> = {
     body: submissionTokenBody,
   },
 
-  // ── artifact（§6.5；三模式互斥查询参数 + 双模式响应解码）────────────
+  // ── artifact（§6.5；uploads 单请求信封 + 三模式互斥查询参数 + 双模式解码）
+  createArtifactUpload: {
+    httpMethod: 'POST',
+    // §6.5 在账端点（wave1 server 定形）：单请求 begin+append+finalize，
+    // 请求体即 v1 envelope `{ executionId, targetFingerprint, ttlSeconds?,
+    // payloadBase64, expectedSha256? }`，201 → `{ artifactId }`。体 = payload
+    // 原样（信封已在域客户端拼好，这里不做二次构造）。
+    pathTemplate: '/artifacts/uploads',
+  },
   readArtifact: {
     httpMethod: 'GET',
     pathTemplate: '/artifacts/{id}',

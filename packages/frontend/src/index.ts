@@ -26,6 +26,22 @@ export { DESKTOP_CAPABILITIES, WEB_CAPABILITIES } from './platform/capabilities'
 export { IS_DESKTOP_BUILD } from './platform/env';
 export * from './platform/contracts';
 export { createBrowserEventChannel } from './lib/crossWindowBus';
+// WR-F4: the wapp asset-origin service — the web assembly binds the web
+// resolver; shared shells call the build helpers. Desktop stays on the
+// custom scheme without any binding.
+export {
+  DESKTOP_WAPP_ASSET_RESOLVER,
+  WAPP_ASSET_CSP,
+  WAPP_ASSET_PATH_PREFIX,
+  WEB_WAPP_ASSET_RESOLVER,
+  buildWappAssetSrc,
+  buildWappIconSrc,
+  configureWappAssetResolver,
+  isSafeWappAssetPath,
+  isValidWappId,
+  parseWappAssetTarget,
+  resetWappAssetResolver,
+} from './lib/wappAssetOrigin';
 export { getWindowKind, type WindowKind } from './lib/windowKind';
 export {
   currentVariant,
