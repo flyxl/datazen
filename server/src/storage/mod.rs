@@ -31,6 +31,7 @@ pub mod known_hosts;
 pub mod login_sessions;
 pub mod migrations;
 pub mod profiles;
+pub mod settings;
 pub mod tunnels;
 
 pub use artifacts::ServerArtifacts;
@@ -40,6 +41,7 @@ pub use jobs::ServerJobs;
 pub use known_hosts::ServerKnownHosts;
 pub use login_sessions::{LoginSessions, ValidateFailure};
 pub use profiles::ServerProfiles;
+pub use settings::{default_shared_settings, ServerSettingsStore};
 pub use tunnels::ServerTunnels;
 
 #[cfg(test)]

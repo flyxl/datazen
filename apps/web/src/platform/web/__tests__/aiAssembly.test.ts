@@ -6,8 +6,9 @@
  * `tool_loop.rs` 的 `StubHost` / `chat_session_tests.rs` 的
  * `RecordingLoopHost` / `tools_tests.rs` 的假宿主）：**循环只见端口**——
  * 假 provider + 假 `AiToolLoopHost`，循环体零形态分支，行为与桌面完全
- * 同判；web 三端口（requestHost / mcpBroker / secrets）在假 transport 上
- * 各自给出「已接的路由」或「命名的 capability 缺口」。
+ * 同判。web 三端口（requestHost / mcpBroker / secrets）的 wire 线形与
+ * JSON-RPC/§13 错误归一在 `mcpSecurityAssembly.test.ts` 逐条钉住；本文件
+ * 保留循环同判与装配面里不依赖出站 HTTP 的两半（执行设置、引用解析）。
  */
 import { describe, expect, it, vi } from 'vitest';
 import type { BackendClient, BackendTransport, MethodMap } from '@datazen/backend-client';
@@ -20,9 +21,6 @@ import {
 import {
   createWebAiBindings,
   parseSecretRef,
-  WEB_AI_HOST_GAP,
-  WEB_MCP_BROKER_GAP,
-  WEB_SECRET_PROVIDER_GAP,
 } from '../ai/webAiAssembly';
 
 /** 假 transport：call 记录方法名、按表回话（web 装配测试共用）。 */
@@ -172,35 +170,7 @@ describe('WR-F1 web AI assembly over the WebClient transport', () => {
     expect(transport.calls).toEqual([]);
   });
 
-  it('requestHost names the missing AI tool-host domain for unrouted faces (claim kept in the message)', async () => {
-    const { requestHost } = createWebAiBindings(fakeClient({}), fakeTransport());
-    await expect(requestHost.getSessionConfig('session-1')).rejects.toMatchObject({
-      code: 'CapabilityUnsupported',
-    });
-    await expect(requestHost.executeTarget('conn-1', 'select', {}, { kind: 'independent' })).rejects.toThrowError(
-      WEB_AI_HOST_GAP,
-    );
-    await expect(
-      requestHost.executeTarget('conn-1', 'select', {}, { kind: 'editorGrant', grantId: 'g-1' }),
-    ).rejects.toThrowError(/claim: editorGrant/);
-  });
-
-  it('mcpBroker surfaces the named capability gap — never a silent empty tool list', async () => {
-    const transport = fakeTransport();
-    const { mcpBroker } = createWebAiBindings(fakeClient({}), transport);
-
-    await expect(mcpBroker.toolsForAi()).rejects.toThrowError(WEB_MCP_BROKER_GAP);
-    await expect(mcpBroker.callTool('srv-1', 'tool', {})).rejects.toMatchObject({
-      code: 'CapabilityUnsupported',
-      unsupportedKind: 'capability',
-    });
-    // 缺口登记在案：transport 从未被调用（没有可命中的 mcp 域路由）。
-    expect(transport.calls).toEqual([]);
-  });
-
-  it('secrets resolve as server-side references: parsing rejects bad refs, resolution names the wiring gap', async () => {
-    const { secrets } = createWebAiBindings(fakeClient({}), fakeTransport());
-
+  it('secrets parse as server-side references at the assembly boundary: bad refs never become an outbound request', () => {
     expect(parseSecretRef({ domain: 'ai-provider', key: 'openai' })).toEqual({
       domain: 'ai-provider',
       key: 'openai',
@@ -208,14 +178,17 @@ describe('WR-F1 web AI assembly over the WebClient transport', () => {
     expect(() => parseSecretRef({ domain: 'ai-provider', key: '' })).toThrowError(/references, never as values/);
     expect(() => parseSecretRef({ domain: 'browser-local', key: 'k' })).toThrowError();
     expect(() => parseSecretRef(null)).toThrowError();
+  });
 
-    // 密钥本体永不进浏览器：安全域方法缺失 = WR-F1#2 的命名缺口。
-    await expect(secrets.resolveSecret({ domain: 'ai-provider', key: 'openai' })).rejects.toThrowError(
-      WEB_SECRET_PROVIDER_GAP,
-    );
-    await expect(secrets.resolveSecret({ domain: 'ai-provider', key: 'openai' })).rejects.toMatchObject({
-      code: 'CapabilityUnsupported',
-      unsupportedKind: 'capability',
-    });
+  it('two-argument assembly stays backward compatible and exposes the wire-direct clients it holds', () => {
+    // 生产形态（assembleWebPlatform）的两参调用；wire-direct 客户端缺省
+    // 自建（node 下 fetch 缺省绑定全局，不出站 —— 三端口的具体线形由
+    // mcpSecurityAssembly.test.ts 注入假体逐条验证）。
+    const bindings = createWebAiBindings(fakeClient({}), fakeTransport());
+    expect(bindings.requestHost).toBeDefined();
+    expect(bindings.mcpBroker).toBeDefined();
+    expect(bindings.secrets).toBeDefined();
+    expect(bindings.security).toBeDefined();
+    expect(bindings.mcp).toBeDefined();
   });
 });

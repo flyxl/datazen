@@ -32,6 +32,8 @@ import { createArtifactMethods, type ArtifactClient } from './artifactClient';
 import { createTableDataMethods, type TableDataClient } from './tableDataClient';
 import { createDriverGatewayMethods, type DriverGatewayClient } from './driverGatewayClient';
 import { createEventMethods, type EventClient } from './streams';
+import type { McpDomainClient } from './mcpClient';
+import type { SecurityClient } from './securityClient';
 
 /** The domain clients of one bound backend. */
 export interface DomainClients {
@@ -53,10 +55,31 @@ export interface DomainClients {
    * domain is deleted once the kernel implements those methods.
    */
   driverGateway: DriverGatewayClient;
+  /**
+   * WR-F1#2：安全域（服务端密钥管理）。**wire-direct 域**（不进 `MethodMap`，
+   * 见 `./securityClient` 头注的登记）：调用方持有 HTTP wire 时经 `extras`
+   * 注入，缺省缺席 —— 过渡门面（`client.ts`）不 spread，web 装配直接持有。
+   */
+  readonly security?: SecurityClient;
+  /**
+   * WR-F1#1：mcp 域（datazen 服务端 /mcp 面）。同上 wire-direct（见
+   * `./mcpClient` 头注），注入或缺省缺席。
+   */
+  readonly mcp?: McpDomainClient;
+}
+
+/** wire-direct 两域的注入面：`createClients` 的调用方持有 wire 时传入。 */
+export interface WireDirectDomains {
+  readonly security?: SecurityClient;
+  readonly mcp?: McpDomainClient;
 }
 
 /** Build every domain client over one transport, sharing one guard. */
-export function createClients(transport: BackendTransport, guard: BackendGuard): DomainClients {
+export function createClients(
+  transport: BackendTransport,
+  guard: BackendGuard,
+  extras: WireDirectDomains = {},
+): DomainClients {
   return {
     settings: createSettingsMethods(transport, guard),
     identity: createIdentityMethods(transport, guard),
@@ -68,6 +91,10 @@ export function createClients(transport: BackendTransport, guard: BackendGuard):
     artifact: createArtifactMethods(transport, guard),
     tableData: createTableDataMethods(transport, guard),
     driverGateway: createDriverGatewayMethods(transport, guard),
+    // wire-direct 两域只在调用方注入时出现（无 wire 时缺席，绝不铸造
+    // 一个「会在使用时才发现没有 fetch 实现」的假成员）。
+    ...(extras.security !== undefined ? { security: extras.security } : {}),
+    ...(extras.mcp !== undefined ? { mcp: extras.mcp } : {}),
   };
 }
 

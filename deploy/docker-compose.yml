@@ -6,7 +6,7 @@
 #
 # 停止语义（重要）：当前 server 只接 SIGINT（SIGTERM 处理属 src 改动，已登记
 # 未实现，见 docs/development/deploy-operations.md §8）。因此这里显式
-# stop_signal: SIGINT，把 docker stop 的宽限期交给在途请求 drain。
+# 优雅停机：server 接 SIGTERM（SIGINT 并存），宽限期交给在途请求 drain。
 name: datazen
 
 services:
@@ -20,8 +20,9 @@ services:
       replicas: 1
     init: true
     user: "10001:10001"
-    stop_signal: SIGINT          # server 现只接 SIGINT；SIGTERM 待 src 接线
-    stop_grace_period: 30s       # drain 窗口：在途请求/Job 收尾，超时强杀
+    # WR-G3：server 已接 SIGTERM（bootstrap shutdown_signal，SIGINT 并存），
+    # docker stop 的默认 SIGTERM 即优雅停机路径；宽限期仍是部署承诺值。
+    stop_grace_period: 30s
     restart: unless-stopped
     ports:
       # 只暴露给本机反代；TLS 在反代终止（单源），不直暴容器。

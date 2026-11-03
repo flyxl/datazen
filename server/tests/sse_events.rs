@@ -652,3 +652,109 @@ async fn expired_registrations_answer_404() {
         "TTL 过期 = 未知流"
     );
 }
+
+// ── WR-G2 冻结验收：SSE Origin 校验的故障注入补钉 ─────────────────────
+// （真实故障源 = 真 HTTP 请求头组合，不是 mock——每个变体都是浏览器/
+// 代理在跨源/重定向场景实际发出的头形。权威：team-server §8.1 的
+// 「存在必须等值、缺失要求 same-origin、null/cross-site 不豁免」。）
+
+/// §8.1「存在必须**等值**于配置 origin」的边界钉：尾斜杠、大小写变体、
+/// 端口变体都不是等值——精确字符串比较，不做规范化（规范化即放宽）。
+#[tokio::test]
+async fn origin_variants_are_not_equal_to_the_configured_origin() {
+    let mut app = app(state(
+        config(&["https://ui.test"], 256, Duration::from_secs(15)),
+        Arc::new(AllowRecheck),
+    ));
+    for (label, origin) in [
+        ("尾斜杠", "https://ui.test/"),
+        ("host 大小写变体", "https://UI.test"),
+        ("scheme 大小写变体", "HTTPS://ui.test"),
+        ("端口变体", "https://ui.test:8443"),
+        ("子域", "https://cdn.ui.test"),
+    ] {
+        let stream_id = post_subscription(&mut app, true).await.expect("subscribe");
+        let response = get_stream(&mut app, &stream_id, &[("Origin", origin)], "").await;
+        assert_eq!(
+            response.status(),
+            StatusCode::FORBIDDEN,
+            "{label}: {origin} 不是配置 origin 的等值"
+        );
+    }
+}
+
+/// §8.1「缺失时要求 same-origin」：same-site / cross-site 不构成同源证明
+/// （站点级 ≠ 源级——同站不同源仍可被 CSRF 面利用）。
+#[tokio::test]
+async fn fetch_metadata_site_variants_do_not_satisfy_the_same_origin_proof() {
+    let mut app = app(state(
+        config(&["https://ui.test"], 256, Duration::from_secs(15)),
+        Arc::new(AllowRecheck),
+    ));
+    for site in ["same-site", "cross-site", "none", ""] {
+        let stream_id = post_subscription(&mut app, true).await.expect("subscribe");
+        let response = get_stream(
+            &mut app,
+            &stream_id,
+            &[("Sec-Fetch-Site", site)],
+            "",
+        )
+        .await;
+        assert_eq!(
+            response.status(),
+            StatusCode::FORBIDDEN,
+            "Sec-Fetch-Site: '{site}' 不是同源证明"
+        );
+    }
+}
+
+/// Origin 与 Fetch-Metadata 同在时：Origin 存在即按「等值」裁决——
+/// Fetch-Metadata 不构成第二证明通道（origin_proof 的 match 语义：Origin
+/// 分支独占）。跨源 Origin + same-origin 元数据 = 拒。
+#[tokio::test]
+async fn a_present_origin_is_judged_alone_even_with_same_origin_metadata() {
+    let mut app = app(state(
+        config(&["https://ui.test"], 256, Duration::from_secs(15)),
+        Arc::new(AllowRecheck),
+    ));
+    let stream_id = post_subscription(&mut app, true).await.expect("subscribe");
+    let response = get_stream(
+        &mut app,
+        &stream_id,
+        &[
+            ("Origin", "https://evil.test"),
+            ("Sec-Fetch-Site", "same-origin"),
+        ],
+        "",
+    )
+    .await;
+    assert_eq!(
+        response.status(),
+        StatusCode::FORBIDDEN,
+        "Origin 在场即独占裁决：不因 same-origin 元数据放行"
+    );
+}
+
+/// 重复 Origin 头：`HeaderMap::get` 取首值——首值为恶意源时拒绝。
+/// （头注入/代理拼接的故障面：多值 Origin 的合法场景不存在，浏览器只发一个。）
+#[tokio::test]
+async fn duplicate_origin_headers_are_judged_by_the_first_value() {
+    let mut app = app(state(
+        config(&["https://ui.test"], 256, Duration::from_secs(15)),
+        Arc::new(AllowRecheck),
+    ));
+    let stream_id = post_subscription(&mut app, true).await.expect("subscribe");
+    let mut request = HttpRequest::builder()
+        .method("GET")
+        .uri(format!("/api/v1/events/{stream_id}"))
+        .header(header::ORIGIN, "https://evil.test")
+        .header(header::ORIGIN, "https://ui.test")
+        .body(Body::empty())
+        .expect("request");
+    let response = app.oneshot(request).await.expect("call");
+    assert_eq!(
+        response.status(),
+        StatusCode::FORBIDDEN,
+        "首值 evil.test 不等值 → 拒（多值 Origin 无合法场景）"
+    );
+}

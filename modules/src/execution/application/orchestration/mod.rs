@@ -84,7 +84,10 @@ struct SessionEntry {
     closed_at: Option<Instant>,
 }
 struct RuntimeClock(Arc<dyn MonotonicClock>);
-struct SystemRuntimeClock(Instant);
+/// 标准单调时钟（进程内 `Instant`）。宿主租约源构造
+/// `RuntimeConnectionUseCases` 时的缺省时间源——pub 以便 server 形态
+/// 的每调用现取装配（`new_with_parts`）与 `new` 共用同一时间语义。
+pub struct SystemRuntimeClock(pub Instant);
 impl MonotonicClock for SystemRuntimeClock {
     fn now_nanos(&self) -> u64 {
         self.0.elapsed().as_nanos().min(u64::MAX as u128) as u64
@@ -155,7 +158,24 @@ impl RuntimeConnectionUseCases {
         backend: Arc<dyn SessionBackend>,
         clock: Arc<dyn MonotonicClock>,
     ) -> Self {
-        let sink = RuntimeResultSink::default();
+        Self::new_with_parts(profiles, policy, backend, clock, RuntimeResultSink::default())
+    }
+    /// Inject every assembly part, including a **shared result sink**.
+    ///
+    /// Hosts that re-resolve [`RuntimeConnectionUseCases`] per call (the
+    /// server lease-source shape, `RuntimeLeaseSource::resolve`) must keep
+    /// ONE result sink across those resolutions: results are published into
+    /// the sink instance that admitted the execution, and a fresh default
+    /// sink per resolve would orphan them. Passing a shared sink here keeps
+    /// the revocation semantics (fresh use cases each resolve) while making
+    /// result publication reachable from the host's publisher hook.
+    pub fn new_with_parts(
+        profiles: Arc<dyn ProfileRepository>,
+        policy: Arc<dyn PolicyService>,
+        backend: Arc<dyn SessionBackend>,
+        clock: Arc<dyn MonotonicClock>,
+        sink: RuntimeResultSink,
+    ) -> Self {
         let physical = Arc::new(Mutex::new(HashMap::new()));
         let registry = Arc::new(SessionRegistry::new(
             Arc::new(backend::ObservedBackend {

@@ -5,16 +5,15 @@
 //! 错误码、202 notification、GET 405。modules 侧真实装配
 //! （`runtime.rs`，feature 门控）由主线点亮后复用同一套断言。
 
-#[path = "../src/mcp/mod.rs"]
-mod mcp;
+use datazen_server::mcp::{contract, http, wire};
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
-use mcp::http::{CallIdentity, HttpMcpState, McpBackend, SessionAuthenticator};
-use mcp::wire::ToolCallError;
+use http::{CallIdentity, HttpMcpState, McpBackend, SessionAuthenticator};
+use wire::ToolCallError;
 
 /// 桩工具分发：记录调用并按名字返回固定结果/错误。
 struct StubBackend;
@@ -46,7 +45,7 @@ impl SessionAuthenticator for StubAuth {
             Some(CallIdentity {
                 organization_id: "org-1".to_owned(),
                 principal_id: "user-1".to_owned(),
-                request_id: mcp::http::new_request_id(),
+                request_id: http::new_request_id(),
             })
         } else {
             None
@@ -72,14 +71,14 @@ fn rpc(method: &str, id: Value, params: Value) -> Value {
 
 #[tokio::test]
 async fn unauthenticated_request_is_rejected_before_any_mcp_processing() {
-    let response = mcp::http::handle_post(&state(), None, None, rpc("initialize", json!(1), json!({}))).await;
+    let response = http::handle_post(&state(), None, None, rpc("initialize", json!(1), json!({}))).await;
     assert_eq!(response.status, StatusCode::UNAUTHORIZED);
     assert_eq!(response.body.unwrap()["error"]["code"], json!(-32600));
 }
 
 #[tokio::test]
 async fn initialize_issues_mcp_session_header_and_datazen_server_info() {
-    let response = mcp::http::handle_post(
+    let response = http::handle_post(
         &state(),
         None,
         identity(),
@@ -90,7 +89,7 @@ async fn initialize_issues_mcp_session_header_and_datazen_server_info() {
     let session = response
         .headers
         .iter()
-        .find(|(k, _)| k == mcp::wire::MCP_SESSION_ID_HEADER)
+        .find(|(k, _)| k == wire::MCP_SESSION_ID_HEADER)
         .map(|(_, v)| v.clone())
         .expect("initialize must issue Mcp-Session-Id");
     assert!(!session.is_empty());
@@ -102,7 +101,7 @@ async fn initialize_issues_mcp_session_header_and_datazen_server_info() {
 
 #[tokio::test]
 async fn requests_without_session_header_are_rejected() {
-    let response = mcp::http::handle_post(
+    let response = http::handle_post(
         &state(),
         None,
         identity(),
@@ -116,10 +115,10 @@ async fn requests_without_session_header_are_rejected() {
 #[tokio::test]
 async fn tools_list_with_valid_session_returns_all_thirteen_tools() {
     let st = state();
-    let init = mcp::http::handle_post(&st, None, identity(), rpc("initialize", json!(1), json!({}))).await;
+    let init = http::handle_post(&st, None, identity(), rpc("initialize", json!(1), json!({}))).await;
     let session = init.headers[0].1.clone();
 
-    let response = mcp::http::handle_post(
+    let response = http::handle_post(
         &st,
         Some(&session),
         identity(),
@@ -136,7 +135,7 @@ async fn tools_list_with_valid_session_returns_all_thirteen_tools() {
 
 #[tokio::test]
 async fn unknown_session_id_is_not_found() {
-    let response = mcp::http::handle_post(
+    let response = http::handle_post(
         &state(),
         Some("bogus-session"),
         identity(),
@@ -151,9 +150,9 @@ async fn tools_call_success_wraps_text_content() {
     let st = state();
     // 成功路径需要真实会话：initialize 颁发的 Mcp-Session-Id 是工具分发的
     // 前置（未知会话 → 404 已由 unknown_session_id_is_not_found 单独钉住）。
-    let init = mcp::http::handle_post(&st, None, identity(), rpc("initialize", json!(1), json!({}))).await;
+    let init = http::handle_post(&st, None, identity(), rpc("initialize", json!(1), json!({}))).await;
     let session = init.headers[0].1.clone();
-    let response = mcp::http::handle_post(
+    let response = http::handle_post(
         &st,
         Some(&session),
         identity(),
@@ -170,11 +169,11 @@ async fn tools_call_success_wraps_text_content() {
 #[tokio::test]
 async fn tools_call_maps_backend_errors_to_jsonrpc_error_codes() {
     let st = state();
-    let init = mcp::http::handle_post(&st, None, identity(), rpc("initialize", json!(1), json!({}))).await;
+    let init = http::handle_post(&st, None, identity(), rpc("initialize", json!(1), json!({}))).await;
     let session = init.headers[0].1.clone();
 
     // SessionLost 家族：裸 invalid_params，不带帮助块（桌面 wire 行为）。
-    let lost = mcp::http::handle_post(
+    let lost = http::handle_post(
         &st,
         Some(&session),
         identity(),
@@ -186,7 +185,7 @@ async fn tools_call_maps_backend_errors_to_jsonrpc_error_codes() {
     assert_eq!(error["message"], json!("SessionLost: MCP client disconnected"));
 
     // 成功调用 → text content + isError=false。
-    let ok = mcp::http::handle_post(
+    let ok = http::handle_post(
         &st,
         Some(&session),
         identity(),
@@ -202,9 +201,9 @@ async fn tools_call_maps_backend_errors_to_jsonrpc_error_codes() {
 #[tokio::test]
 async fn unknown_tool_gets_invalid_params_with_registered_tool_list() {
     let st = state();
-    let init = mcp::http::handle_post(&st, None, identity(), rpc("initialize", json!(1), json!({}))).await;
+    let init = http::handle_post(&st, None, identity(), rpc("initialize", json!(1), json!({}))).await;
     let session = init.headers[0].1.clone();
-    let response = mcp::http::handle_post(
+    let response = http::handle_post(
         &st,
         Some(&session),
         identity(),
@@ -221,9 +220,9 @@ async fn unknown_tool_gets_invalid_params_with_registered_tool_list() {
 #[tokio::test]
 async fn notification_returns_202_without_body() {
     let st = state();
-    let init = mcp::http::handle_post(&st, None, identity(), rpc("initialize", json!(1), json!({}))).await;
+    let init = http::handle_post(&st, None, identity(), rpc("initialize", json!(1), json!({}))).await;
     let session = init.headers[0].1.clone();
-    let response = mcp::http::handle_post(
+    let response = http::handle_post(
         &st,
         Some(&session),
         identity(),
@@ -237,7 +236,7 @@ async fn notification_returns_202_without_body() {
 #[tokio::test]
 async fn unknown_method_is_method_not_found() {
     let st = state();
-    let response = mcp::http::handle_post(
+    let response = http::handle_post(
         &st,
         None,
         identity(),
@@ -245,9 +244,9 @@ async fn unknown_method_is_method_not_found() {
     ).await;
     // initialize-less 请求先被会话守卫拦截；带会话后才是 method not found。
     assert_eq!(response.status, StatusCode::BAD_REQUEST);
-    let init = mcp::http::handle_post(&st, None, identity(), rpc("initialize", json!(1), json!({}))).await;
+    let init = http::handle_post(&st, None, identity(), rpc("initialize", json!(1), json!({}))).await;
     let session = init.headers[0].1.clone();
-    let response = mcp::http::handle_post(
+    let response = http::handle_post(
         &st,
         Some(&session),
         identity(),
@@ -257,21 +256,21 @@ async fn unknown_method_is_method_not_found() {
     assert_eq!(response.status, StatusCode::OK);
     assert_eq!(
         response.body.unwrap()["error"]["code"],
-        json!(mcp::wire::METHOD_NOT_FOUND)
+        json!(wire::METHOD_NOT_FOUND)
     );
 }
 
 #[tokio::test]
 async fn delete_terminates_the_session() {
     let st = state();
-    let init = mcp::http::handle_post(&st, None, identity(), rpc("initialize", json!(1), json!({}))).await;
+    let init = http::handle_post(&st, None, identity(), rpc("initialize", json!(1), json!({}))).await;
     let session = init.headers[0].1.clone();
 
-    let response = mcp::http::handle_delete(&st, Some(&session));
+    let response = http::handle_delete(&st, Some(&session));
     assert_eq!(response.status, StatusCode::ACCEPTED);
 
     // 终止后同会话请求 404（MCP streamable HTTP 会话语义）。
-    let response = mcp::http::handle_post(
+    let response = http::handle_post(
         &st,
         Some(&session),
         identity(),
@@ -283,7 +282,7 @@ async fn delete_terminates_the_session() {
 
 #[tokio::test]
 async fn router_fragment_serves_the_full_streamable_http_flow() {
-    let app = mcp::http::mcp_router(state());
+    let app = http::mcp_router(state());
 
     // GET /mcp → 405（server→client SSE 流不启用）。
     let response = app
@@ -319,7 +318,7 @@ async fn router_fragment_serves_the_full_streamable_http_flow() {
     assert_eq!(response.status(), StatusCode::OK);
     let session = response
         .headers()
-        .get(mcp::wire::MCP_SESSION_ID_HEADER)
+        .get(wire::MCP_SESSION_ID_HEADER)
         .expect("session header over real HTTP")
         .to_str()
         .unwrap()
@@ -337,7 +336,7 @@ async fn router_fragment_serves_the_full_streamable_http_flow() {
                 .uri("/mcp")
                 .header("content-type", "application/json")
                 .header("authorization", "Bearer ok")
-                .header(mcp::wire::MCP_SESSION_ID_HEADER, session)
+                .header(wire::MCP_SESSION_ID_HEADER, session)
                 .body(Body::from(
                     serde_json::to_vec(&rpc("tools/list", json!(2), json!({}))).unwrap(),
                 ))

@@ -91,6 +91,9 @@ pub struct AuthDeps {
     pub domains: Option<DomainState>,
     /// WR-F2：MCP streamable HTTP 传输态（None = 不挂 `/mcp`）。
     pub mcp: Option<crate::mcp::http::HttpMcpState>,
+    /// WR-C2 §6 读侧域路由片段（settings/identity/connections/sessions；
+    /// composition root 预装配，None = 不挂——最小部署形态显式）。
+    pub domain_routers: Option<Vec<Router>>,
 }
 
 /// WR-D6/D7 域路由的装配状态（composition root 注入；无隐式单例）。
@@ -198,6 +201,13 @@ pub fn build_router_with_auth(deps: AuthDeps) -> Result<Router, crate::error::Se
         // 登录会话背书，工具分发走 modules application 面）。
         router = router.merge(crate::mcp::http::mcp_router(mcp_state));
     }
+    if let Some(extra) = deps.domain_routers.clone() {
+        // WR-C2 §6 读侧域路由（settings/identity/connections/sessions——
+        // 各域 Router 片段带独立 state，见 http/domains/ 逐域文件）。
+        for child in extra {
+            router = router.merge(child);
+        }
+    }
 
     // 内 → 外：L6 → (L5) → L4 → L3 → L2 → L1b → catch-panic → L1a → L0。
     let mut router = router.layer(axum::middleware::from_fn_with_state(
@@ -272,8 +282,8 @@ async fn api_or_not_found(uri: Uri) -> Response {
 
 /// 从 L2 认证链产物组装 `RequestContext` 的提取器——域 handler 的统一
 /// 入口（对齐 sse.rs 的模式）。
-struct SessionIdentity {
-    ctx: RequestContext,
+pub(crate) struct SessionIdentity {
+    pub ctx: RequestContext,
 }
 
 impl<S: Send + Sync> FromRequestParts<S> for SessionIdentity {
@@ -299,21 +309,21 @@ impl<S: Send + Sync> FromRequestParts<S> for SessionIdentity {
     }
 }
 
-fn unauthorized() -> Response {
+pub(crate) fn unauthorized() -> Response {
     let error = ApiError::new(ApiErrorCode::Unauthenticated, "Authentication required.");
     ApiErrorResponse::new(error)
         .with_status(StatusCode::UNAUTHORIZED)
         .into_response()
 }
 
-fn invalid_argument(message: impl Into<String>) -> Response {
+pub(crate) fn invalid_argument(message: impl Into<String>) -> Response {
     let error = ApiError::new(ApiErrorCode::InvalidArgument, message.into());
     ApiErrorResponse::new(error)
         .with_status(StatusCode::BAD_REQUEST)
         .into_response()
 }
 
-fn api_error_response(error: ApiError) -> Response {
+pub(crate) fn api_error_response(error: ApiError) -> Response {
     ApiErrorResponse::new(error).into_response()
 }
 

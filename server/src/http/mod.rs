@@ -7,6 +7,7 @@
 //!   IPC 与 HTTP 共用同一份定义）的 HTTP 落地：状态码表 + JSON 体。
 //! - [`middleware`]：请求中间件链，L0/L1 已上线，L2–L6 的落点已记录。
 
+pub(crate) mod domains;
 pub mod middleware;
 pub mod response;
 pub mod router;

@@ -10,18 +10,27 @@
  *   `save_tunnel` 等是登记在案的 unsupported 方法），内存根只是端口
  *   「可装配、可同语义测试」的会话面，落盘归服务端，绝不造第二份真相。
  * - **凭据**：SecretRef（`{domain, key}` 引用，永不传值）。解析半边在装配
- *   边界拒绝坏引用；取值半边在安全域客户端接线前如实抛命名缺口
- *   （沿 WR-F1#2 的登记语义，`WR-F5#1`）。
+ *   边界拒绝坏引用；取值半边走 SecurityClient（`POST /api/v1/secrets/resolve`，
+ *   同 WR-F1#2 的闭合语义 —— `WR-F5#1` 已闭合；装配未注入 SecurityClient
+ *   时仍如实抛命名缺口，绝不静默空答）。
  * - **监听点**：恒为服务端回环 `127.0.0.1:<port>`（浏览器不开本地套接字；
  *   与桌面「驱动永远连 127.0.0.1:<local_port>」不变式同形）。
  *
  * 仅注入来源：本文件零隧道机制、零形态探测（编译期同形纪律照旧）。
  */
 
-/** WR-F5 命名缺口（TS 半边）：web 的隧道凭据解析器走服务端安全域，未接线。 */
+import type { SecurityClient } from '@datazen/backend-client';
+
+/**
+ * WR-F5#1 的注入缺口（历史登记，语义已更新）：凭据取值半边的客户端
+ * （SecurityClient）已就位（沿 WR-F1#2 的闭合）；本常量现在只在
+ * **装配未注入** SecurityClient 时抛出 —— 注入缺失是装配错误，如实指名。
+ */
 export const WEB_TUNNEL_SECRET_RESOLVER_GAP =
-  'WebTunnelCredentialSource has no web resolver yet: the security-domain route for ' +
-  'server-side secret management is not wired. Wiring gap WR-F5#1 (沿 WR-F1#2 登记语义).';
+  'WebTunnelCredentialSource resolves credentials through the security domain client ' +
+  '(POST /api/v1/secrets/resolve, frozen contract with the server route track), but the ' +
+  'assembly that built these bindings injected no SecurityClient. ' +
+  'Wiring gap WR-F5#1 (沿 WR-F1#2 的闭合语义).';
 
 /** 监听点裁决的常量面：本地腿只属于服务端回环。 */
 export const WEB_TUNNEL_LOOPBACK_HOST = '127.0.0.1';
@@ -75,7 +84,7 @@ export interface WebTunnelBindings {
     save(tunnel: SessionTunnelDefinition): void;
     delete(tunnelId: string): void;
   };
-  /** 凭据：按引用取值；安全域接线前如实抛命名缺口。 */
+  /** 凭据：按引用取值；走注入的 SecurityClient（未注入 = 命名缺口）。 */
   readonly credentials: {
     resolve(ref: TunnelSecretRef): Promise<string>;
   };
@@ -87,7 +96,7 @@ export interface WebTunnelBindings {
 }
 
 /** 装配入口：铸 web 宿主的隧道注入三件套（每次装配一个会话根）。 */
-export function createWebTunnelBindings(): WebTunnelBindings {
+export function createWebTunnelBindings(security?: SecurityClient): WebTunnelBindings {
   // 存储根 = 内存（裁决见模块文档）：按 id upsert、名单档即存储本身（该档
   // 形状本就不含明文凭据，最小暴露由类型保证）。
   const definitions = new Map<string, SessionTunnelDefinition>();
@@ -105,10 +114,22 @@ export function createWebTunnelBindings(): WebTunnelBindings {
     },
     credentials: {
       async resolve(ref) {
-        parseTunnelSecretRef(ref);
-        throw new Error(
-          `${WEB_TUNNEL_SECRET_RESOLVER_GAP} (ref: ${ref.domain}/${ref.key})`,
-        );
+        // 解析半边先行：坏引用是装配错误，不是凭据缺失。
+        const parsed = parseTunnelSecretRef(ref);
+        if (security === undefined) {
+          // 注入缺失 = 命名缺口（WR-F5#1）：如实失败，绝不静默空答；
+          // 错误只带引用坐标，不带凭据坐标以外的内容。
+          throw new Error(
+            `${WEB_TUNNEL_SECRET_RESOLVER_GAP} (ref: ${parsed.domain}/${parsed.key})`,
+          );
+        }
+        // 取值半边（F5#1 闭合）：同 resolveSecret 冻结契约 —— 明文只在
+        // 认证主体本人的请求响应里出现一次，引用坐标不回显。
+        const response = await security.resolveSecret({
+          domain: parsed.domain,
+          key: parsed.key,
+        });
+        return response.value;
       },
     },
     listenPoint: {

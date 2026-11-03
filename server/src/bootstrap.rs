@@ -231,7 +231,7 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         datazen::shared::id::OrganizationId::new(config.organization_id.clone()),
     ));
     let quota_gate = std::sync::Arc::new(crate::operations::QuotaGate::new(
-        budget,
+        budget.clone(),
         audit.clone() as std::sync::Arc<dyn datazen::shared::audit::AuditSink>,
     ));
 
@@ -284,30 +284,148 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         clock.clone(),
     ));
     let domains = http::router::DomainState {
-        issuer,
+        issuer: issuer.clone(),
         submission,
         uploads,
         downloads,
         tasks: task_center,
     };
 
-    // WR-F2：MCP streamable HTTP（feature 门控）。认证器 = 登录会话
-    // （与 L2 同源的 peek 校验面）；租约源 v1 fail-closed——执行后端随
-    // WR-F7 落地，此前 runtime 依赖工具如实答上游不可用。
+    // WR-F7 执行栈（无 feature 门控）：真租约源三件套全部就位——policy
+    // 适配器（policy_adapter.rs，本波解除阻塞项）+ `storage::ServerProfiles`
+    // + `driver_exec::ServerDriverExecBackend`（预算桥 + 出站闸 + 结果发布
+    // 钩子同源接线）。驱动工厂 v1 为空表（`with_factories([])` 是合法目录）：
+    // server 二进制尚不链接驱动 crate，任何连接目标都会显式答「驱动不可
+    // 用」——链接闭包随部署构建切片登记。
+    let vault = std::sync::Arc::new(
+        crate::execution::secret_provider::ServerSecretVault::new(
+            store.clone(),
+            secret_bytes.clone(),
+        )
+        .map_err(|source| ServerError::Serve(format!("secret vault: {source}")))?,
+    );
+    let connections_repo = std::sync::Arc::new(crate::storage::ServerConnections::new(
+        store.clone(),
+        vault.clone(),
+    ));
+    let profiles_repo = std::sync::Arc::new(crate::storage::ServerProfiles::new(store.clone()));
+    // 出站白名单：config 注入（空表 = 全拒，fail-closed）。
+    let network = std::sync::Arc::new(
+        crate::execution::network_provider::ServerNetworkProvider::new(
+            config.egress_allowed_hosts.clone(),
+        ),
+    );
+    let egress: crate::execution::driver_exec::EgressGate = {
+        let network = network.clone();
+        std::sync::Arc::new(move |config: &datazen_driver_api::ConnectionConfig| {
+            match &config.host {
+                Some(host) => network
+                    .whitelist_check(&format!("tcp://{host}"))
+                    .map_err(|error| error.to_string()),
+                None => Ok(()),
+            }
+        })
+    };
+    // 物理预算桥：coordinator 的同一实例（quota_gate 的份额共存）。
+    let budget_bridge = std::sync::Arc::new(crate::execution::budget_bridge::BudgetPortBridge::new(
+        budget.clone(),
+        datazen::shared::id::OrganizationId::new(config.organization_id.clone()),
+    ));
+    let backend = std::sync::Arc::new(
+        crate::execution::driver_exec::ServerDriverExecBackend::new(
+            std::sync::Arc::new(
+                datazen::execution::runtime::driver_registry::DriverRegistry::with_factories([])
+                    .map_err(|message| {
+                        ServerError::Serve(format!("driver registry: {message}"))
+                    })?,
+            ),
+            connections_repo.clone(),
+            profiles_repo.clone(),
+            datazen::connection::domain::ConnectionScope::new(config.organization_id.clone()),
+            budget_bridge,
+            Some(egress),
+        ),
+    );
+    // 结果发布钩子与租约源共享同一 RuntimeResultSink（publisher.rs 的装配
+    // 纪律）。
+    let result_sink =
+        datazen::execution::application::orchestration::RuntimeResultSink::default();
+    backend
+        .set_publisher(crate::execution::publisher::execution_result_publisher(
+            result_sink.clone(),
+        ))
+        .map_err(|error| ServerError::Serve(format!("result publisher: {error}")))?;
+    let execution_policy = std::sync::Arc::new(
+        crate::execution::policy_adapter::ServerExecutionPolicy::new(
+            policy.clone(),
+            store.clone(),
+            clock.clone(),
+        ),
+    );
+    let lease_source = std::sync::Arc::new(
+        crate::execution::lease::ServerRuntimeLeaseSource::new_with_sink(
+            profiles_repo.clone(),
+            execution_policy,
+            backend,
+            result_sink,
+        ),
+    );
+    // 执行域路由的用例面：租约委托适配器（每调用现取，与 MCP 同一租约源）。
+    let lease_cases: std::sync::Arc<dyn datazen::execution::application::use_cases::ConnectionUseCases> =
+        std::sync::Arc::new(crate::execution::lease_use_cases::LeaseConnectionUseCases::new(
+            lease_source.clone(),
+        ));
+    let session_directory: std::sync::Arc<dyn datazen::execution::SessionDirectory> =
+        std::sync::Arc::new(crate::execution::session_directory::ServerSessionDirectory::new());
+
+    // WR-C2 §6.1–§6.4 读侧域路由（薄绑定；挂载归 router）。
+    let domain_routers = vec![
+        crate::http::domains::settings::settings_router(
+            crate::http::domains::settings::SettingsState { store: store.clone() },
+        ),
+        crate::http::domains::identity::identity_router(),
+        crate::http::domains::connections::connections_router(
+            crate::http::domains::connections::ConnectionsState {
+                profiles: profiles_repo.clone(),
+                issuer: issuer.clone(),
+            },
+        ),
+        crate::http::domains::sessions::sessions_router(
+            crate::http::domains::sessions::SessionsState {
+                sessions: lease_cases,
+                directory: session_directory,
+            },
+        ),
+    ];
+
+    // WR-F2：MCP streamable HTTP（feature 门控；执行栈已在上方装配）。
     #[cfg(feature = "mcp")]
     let mcp_state = {
         let authenticator = CookieSessionAuthenticator {
             sessions: crate::storage::LoginSessions::new(store.clone()),
         };
+        let stateless = std::sync::Arc::new(
+            crate::mcp::stateless_exec::StatelessToolExec::new(
+                std::sync::Arc::new(crate::mcp::stateless_exec::ServerRedactedConnections::new(
+                    connections_repo,
+                    &config.organization_id,
+                )),
+                std::sync::Arc::new(crate::mcp::stateless_exec::EmptyWorkflowCatalog),
+                Vec::new(), // 连接白名单：空表 = 全拒绝（安全默认；部署配置随 settings 切片接入）
+            ),
+        );
         Some(crate::mcp::runtime::build_http_state(
             std::sync::Arc::new(authenticator),
-            std::sync::Arc::new(FailClosedLeaseSource), // WR-F7 真租约源待 policy 适配器（见下）
-            Vec::new(), // 连接白名单：空表 = 全拒绝（安全默认；部署配置随 F7 接入）
+            lease_source,
+            Vec::new(),
             datazen::execution::domain::permission::McpPermissionMode::SafeWrite,
+            Some(stateless),
         ))
     };
     #[cfg(not(feature = "mcp"))]
     let mcp_state = None;
+    #[cfg(not(feature = "mcp"))]
+    let _ = (&lease_source, &connections_repo); // 非 mcp 构建的租约源与连接仓储由后续域路由消费
 
     // L5（§9.1）：参数来自部署配置；构造非法（容量 0 等）拒绝启动。
     let rate_limit = {
@@ -409,7 +527,30 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         oidc,
         domains: Some(domains),
         mcp: mcp_state,
+        domain_routers: Some(domain_routers),
     })?;
+
+    // WR-E5：静态资源同源服务（配置了 `web_root` 才挂）。SPA fallback →
+    // `index.html`；`/api/` 与 `/mcp` 不受影响（fallback 只接未被域路由
+    // 认领的路径，且 api_or_not_found 在 fallback 链先注册——ServeDir 挂
+    // 在更外层的 fallback 上，仅承接 404 的非 API 路径）。SSE 缺失 Origin
+    // 的同源校验在 D5 已逐字落地（§8.1），同源静态面是其前提形态。
+    let app = match &config.web_root {
+        Some(root) => {
+            if !root.is_dir() {
+                return Err(ServerError::Serve(format!(
+                    "web_root '{}' is not a directory",
+                    root.display()
+                )));
+            }
+            let index = root.join("index.html");
+            app.fallback_service(
+                tower_http::services::ServeDir::new(root)
+                    .not_found_service(tower_http::services::ServeFile::new(index)),
+            )
+        }
+        None => app,
+    };
 
     let listener = tokio::net::TcpListener::bind(&config.listen_addr)
         .await
@@ -463,30 +604,23 @@ impl crate::mcp::http::SessionAuthenticator for CookieSessionAuthenticator {
     }
 }
 
-/// WR-F7 真租约源（`crate::mcp::runtime::ServerRuntimeLeaseSource::new`）
-/// 待 Wave4 接线：阻塞项 = modules `execution::application::policy::
-/// PolicyService` trait 适配器（server `policy::PolicyService` 未实现该
-/// trait，见 `driver_exec.rs` 登记表）。v1 维持 fail-closed：runtime
-/// 依赖工具如实答不可用。
-#[cfg(feature = "mcp")]
-struct FailClosedLeaseSource;
-
-#[cfg(feature = "mcp")]
-#[async_trait::async_trait]
-impl crate::mcp::runtime::RuntimeLeaseSource for FailClosedLeaseSource {
-    async fn resolve(
-        &self,
-    ) -> Result<std::sync::Arc<datazen::execution::application::RuntimeConnectionUseCases>, String>
-    {
-        Err("driver execution lease wiring lands with the WR-F7 policy adapter; \
-             runtime-backed MCP tools are unavailable in this build."
-            .to_string())
-    }
-}
-
-/// 停机信号：Ctrl-C（SIGINT）。容器场景的 SIGTERM 接线随部署切片（WR-G）。
+/// 停机信号：SIGINT（Ctrl-C）与 SIGTERM（容器编排的标准停机路径，WR-G3
+/// 接线完成）。两条信号先到先得；drain 语义（在飞请求排空）由
+/// `with_graceful_shutdown` 承接，后台清扫任务的停机随 drain 切片。
 async fn shutdown_signal() {
-    let _ = tokio::signal::ctrl_c().await;
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        let mut terminate = signal(SignalKind::terminate()).expect("SIGTERM handler");
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => {}
+            _ = terminate.recv() => {}
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
     tracing::info!("shutdown signal received; draining");
 }
 

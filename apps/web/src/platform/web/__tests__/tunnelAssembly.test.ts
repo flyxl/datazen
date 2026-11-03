@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import type { SecurityClient } from '@datazen/backend-client';
+
 import {
   WEB_TUNNEL_LOOPBACK_HOST,
   WEB_TUNNEL_SECRET_RESOLVER_GAP,
@@ -68,8 +70,9 @@ describe('web tunnel injection sources (WR-F5)', () => {
     expect(() => parseTunnelSecretRef({ domain: 'ai-provider', key: 'k' })).toThrowError();
     expect(() => parseTunnelSecretRef(null)).toThrowError();
 
-    // 取值半边：安全域未接线 = 命名缺口（WR-F5#1，沿 WR-F1#2 登记语义）——
-    // 如实失败，绝不静默空答；错误只带引用坐标，不带密钥坐标以外的内容。
+    // 取值半边（未注入 SecurityClient 的装配）：注入缺失 = 命名缺口
+    // （WR-F5#1，沿 WR-F1#2 的闭合语义）—— 如实失败，绝不静默空答；
+    // 错误只带引用坐标，不带密钥坐标以外的内容。
     await expect(
       bindings.credentials.resolve({ domain: 'tunnel', key: 'bastion-pass' }),
     ).rejects.toThrowError(WEB_TUNNEL_SECRET_RESOLVER_GAP);
@@ -83,5 +86,33 @@ describe('web tunnel injection sources (WR-F5)', () => {
       host: '127.0.0.1',
       port: 15432,
     });
+  });
+
+  it('credentials resolve through the injected security client (WR-F5#1 closed along WR-F1#2)', async () => {
+    // 假 SecurityClient：记下请求体，按冻结契约回 { value }。
+    const seen: { domain: string; key: string }[] = [];
+    const security: SecurityClient = {
+      async resolveSecret(request) {
+        seen.push({ domain: request.domain, key: request.key });
+        return { value: 'plaintext-only-to-the-principal' };
+      },
+      async putSecret() {
+        throw new Error('fake security client: putSecret is unreachable in the tunnel tests');
+      },
+    };
+
+    const bindings = createWebTunnelBindings(security);
+    await expect(
+      bindings.credentials.resolve({ domain: 'tunnel', key: 'bastion-pass' }),
+    ).resolves.toBe('plaintext-only-to-the-principal');
+
+    // 冻结契约的引用坐标逐字入体：{ domain, key }，无其它字段。
+    expect(seen).toEqual([{ domain: 'tunnel', key: 'bastion-pass' }]);
+
+    // 坏引用依旧在装配边界被拒（不出站）。
+    await expect(
+      bindings.credentials.resolve({ domain: 'ai-provider', key: 'k' } as never),
+    ).rejects.toThrowError(/references, never as values/);
+    expect(seen).toHaveLength(1);
   });
 });

@@ -25,3 +25,5 @@ pub mod wire;
 
 #[cfg(feature = "mcp")]
 pub mod runtime;
+#[cfg(feature = "mcp")]
+pub mod stateless_exec;

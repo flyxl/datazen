@@ -113,7 +113,9 @@
   `BUDGET_ORGANIZATION_LIMIT`（许可账，CM-60 单实例断言钉在
   `server/tests/operations_gate_and_revocation.rs`：admit/deny/release +
   drain 拒绝）、L5 速率五键（默认档/严格档/键表上界）、SSE 背压
-  （`SSE_MAX_BACKLOG`）、产物 TTL 清扫周期。额度是**部署可调值**，
+  （`SSE_MAX_BACKLOG`）、产物 TTL 清扫周期、WR-F7 出站白名单
+  （`EGRESS_ALLOWED_HOSTS`，逗号分隔；空表全拒——驱动/隧道出口的唯一
+  放行面）、WR-E5 同源静态根（`WEB_ROOT`）。额度是**部署可调值**，
   不是协议常量；改额度走配置变更，不走代码。
 - 容器层账（compose）：`mem_limit` / `cpus` / `pids_limit` / `tmpfs /tmp`
   ——两层账各自独立，cgroups 不替代预算协调器，反之亦然。
@@ -122,12 +124,11 @@
 
 ## 8. Drain 与回退（TSO §5.2 / §6 第 1 条）
 
-- **停止信号现状（如实登记）**：server 进程当前只接 `SIGINT`；
-  `SIGTERM` 处理属 src 改动，**已登记未实现**（本轮禁碰 src）。因此
-  `deploy/docker-compose.yml` 显式 `stop_signal: SIGINT` +
-  `stop_grace_period: 30s`——编排层先把 `docker stop` 的信号折算成进程
-  认识的 SIGINT，宽限期内让在途请求收尾；宽限期是部署方承诺值，不是
-  server 保证值。SIGTERM 接线完成时必须同步删掉这行并重新演练。
+- **停止信号（WR-G3 已接线）**：server 同时接 `SIGTERM` 与 `SIGINT`
+  （`bootstrap::shutdown_signal`，先到先得）；`docker stop` 的默认
+  SIGTERM 即优雅停机路径，compose 不再折算信号，`stop_grace_period: 30s`
+  是部署方承诺值，不是 server 保证值。在途请求由
+  `with_graceful_shutdown` 排空；后台清扫任务的协调停机随 drain 切片。
 - 停写 → 备份 → 升级（TSO §6 停写一致性 + §5.1）：P7 首版允许维护窗口
   停旧起新，**不宣称零停机**；升级前比对镜像 supportedSchemaMin/Max 与
   计划 migrationHead 兼容性，长 Job 先完成或结束为核验态。
@@ -141,7 +142,8 @@
 
 | 项 | 现状 | 归属 |
 | --- | --- | --- |
-| SIGTERM 停机信号 | compose 以 `stop_signal: SIGINT` 过渡 | src 改动（bootstrap 信号处理） |
+| ~~SIGTERM 停机信号~~ | **已实现（WR-G3）**：SIGTERM+SIGINT 双信号，compose 折算行已删 | ~~src 改动~~ |
+| 容器内 TLS / `:8443` | 未接线；反代单源是当前唯一承诺形态 | WR-D3 同源 HTTPS 切片 |
 | 容器内 TLS / `:8443` | 未接线；反代单源是当前唯一承诺形态 | WR-D3 同源 HTTPS 切片 |
 | PostgreSQL 管理库 | compose/备份脚本按 SQLite v1 落 | 管理库独立切片 |
 | `readyz` 语义完整度 | ready 校验面随域路由逐域点亮 | WR-D2+ 各切片 |

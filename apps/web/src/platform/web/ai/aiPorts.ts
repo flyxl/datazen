@@ -6,7 +6,9 @@
  * 归因（P6 §14.4 的 `AiRequestHost` 语义）、`SecretProvider` 的 web 语义
  * （服务端密钥管理）。端口定义在使用它的层，宿主（web 装配）提供实现——
  * 工具循环只认识这里的形状，**零形态感知**（M3 验收的延伸）：
- * 桌面绑定 stdio 子进程管理器，web 绑定 WebClient transport 的 mcp 域，
+ * 桌面绑定 stdio 子进程管理器，web 绑定 mcp 域客户端（wire 直连 datazen
+ * 服务端 /mcp 面，WR-F1#1 闭合，serverId 固定 `"datazen"`，见
+ * `packages/backend-client/src/mcpClient.ts` 的 v1 语义登记），
  * 循环体一行不改。
  */
 
@@ -40,7 +42,8 @@ export interface SecretRef {
 
 /**
  * web SecretProvider：按引用向服务端安全域取用密钥。
- * 实现走 backend transport 的安全域方法（见 webAiAssembly 的缺口登记）。
+ * 实现走 wire-direct 的 SecurityClient（`POST /api/v1/secrets/resolve`，
+ * WR-F1#2 已闭合；红线与路由形状见 `packages/backend-client/src/securityClient.ts`）。
  */
 export interface WebSecretProvider {
   resolveSecret(ref: SecretRef): Promise<string>;
@@ -50,6 +53,25 @@ export interface WebSecretProvider {
 export type AiTargetClaim =
   | { readonly kind: 'independent' }
   | { readonly kind: 'editorGrant'; readonly grantId: string };
+
+/**
+ * `aiHost.getSessionConfig` 的请求体（轨 4-e 冻结契约：payload 原样透传）。
+ * 响应为 JSON（会话配置对象），由实现归一为 `Record<string, unknown>`。
+ */
+export interface AiHostSessionConfigRequest {
+  readonly sessionId: string;
+}
+
+/**
+ * `aiHost.executeTarget` 的请求体（轨 4-e 冻结契约：payload 原样透传，
+ * `claim` 进体 —— claim 决定资源归属的归因语义与桌面同构）。
+ */
+export interface AiHostExecuteTargetRequest {
+  readonly id: string;
+  readonly command: string;
+  readonly input: unknown;
+  readonly claim: AiTargetClaim;
+}
 
 /**
  * web 形态的请求级工具宿主（`DatabaseToolHost` + claim 归因的最小读面）。

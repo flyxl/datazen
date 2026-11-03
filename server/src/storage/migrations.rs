@@ -210,7 +210,41 @@ pub const MIGRATIONS: &[Migration] = &[
     V5_AUTHZ_BASELINE,
     V6_AUDIT_EVENTS,
     V7_EXECUTION_WIRING,
+    V8_SERVER_SETTINGS,
 ];
+
+/// v8：服务端设置存储（`SettingsRepository` 的服务端落地；契约 §6.1 的
+/// settings 读侧面）。
+///
+/// 形状裁决（storage/settings 模块头登记的取舍，此处只记 DDL 口径）：
+///
+/// - **per-section 行**：每个组织每节一行（`section` = `SharedSettings`
+///   序列化后的顶层 wire 键：`preferences` / `execution` / `monitor` /
+///   `onboarding` / `rowCountMode`），`settings_json` 是该节的 JSON 投影。
+///   整档覆盖写（last-write-wins，契约 §6.1：不要求幂等令牌）按节重写，
+///   `updated_at` 让「哪节何时被谁改过」可观测（审计面随 WR-G 切片接入）。
+/// - 复合主键 `(organization_id, section)`：设置是**组织级**事实（CM-05
+///   同款硬边界）；越组织读取天然落空。
+/// - 缺行 ≠ 错误：读取按节补缺省（缺省文档在 `storage::settings` 里物化，
+///   镜像前端 `DEFAULT_SETTINGS` 的共享投影——fresh install 语义，与桌面
+///   `AppSettings::default_for_first_run` 同位）。
+/// - `TIMESTAMPTZ → TEXT`（定宽 RFC3339 UTC 毫秒，v5 起的登记口径）。
+const V8_SERVER_SETTINGS: Migration = Migration {
+    version: 8,
+    name: "server_settings baseline (per-section settings rows)",
+    expand: r#"
+CREATE TABLE server_settings (
+  organization_id TEXT NOT NULL,
+  section TEXT NOT NULL CHECK (section <> ''),
+  settings_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (organization_id, section)
+);
+CREATE INDEX idx_server_settings_org
+  ON server_settings (organization_id, updated_at);
+"#,
+};
 
 /// v2：SSH known-hosts 表（`KnownHostsRepository` 的服务端落地）。
 ///

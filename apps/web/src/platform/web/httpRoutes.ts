@@ -26,6 +26,13 @@
  * **42/42** 个域方法（§4 总账行；`createEventSubscription` 无 `MethodMap`
  * 键，是流水线的登记步而非独立可调方法）。
  *
+ * WR-F1 扩展账：mcp / security / aiHost 三域（三缺口合拢）的八条契约路由
+ * 登记在文件尾的 `WR_F1_HTTP_ROUTES`（点分契约键，**不在本表**——本表键型
+ * 被 `keyof MethodMap` 锁定，而 42 条的账目断言由冻结的
+ * `domainContractTables.test.ts` 钉住；wire-direct 域不经 `transport.call`，
+ * 逐域登记理由见 `packages/backend-client/src/{mcpClient,securityClient}.ts`
+ * 头注）。
+ *
  * 约定（契约 §3）：请求体一律 JSON；查询参数只用于简单标量；POST 读有意
  * 且照过 CSRF 头校验；{id} 从 payload 插值。除 `readArtifact`（双模式解码）
  * 外的响应处理统一在 `backendTransport.ts`。
@@ -436,5 +443,96 @@ export const HTTP_ROUTES: Partial<Record<keyof MethodMap, RouteSpec>> = {
     httpMethod: 'POST',
     pathTemplate: '/driver-gateway/stream-executions',
     body: dropOnEventBody,
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/* WR-F1 扩展账（三缺口合拢）：mcp / security / aiHost 的八条契约路由。     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * WR-F1 的**契约键**（点分域前缀；与 `keyof MethodMap` 的 camelCase 内核键、
+ * snake_case legacy 键零重名面 —— `webUnsupportedMethods.ts` 无冲突可登记，
+ * 键也不在 `unsupportedMethods` 声明面上：wire-direct 域不经 guard/transport.call）。
+ *
+ * 这些键**不是** `MethodMap` 键：`MethodMap` 对本刀冻结（交集在 transport.ts、
+ * 门面覆盖证明在 client.ts，均在白名单之外），三个域因此走注入式 HTTP wire
+ * 的直连域客户端（`packages/backend-client/src/{mcpClient,securityClient}.ts`）；
+ * aiHost 两键的可执行面在 `ai/webAiAssembly.ts`。本表是「方法 → HTTP 形状」
+ * 的登记台账，供契约文档 §6 扩展与线形复核；`mcpSecurityAssembly.test.ts`
+ * 把台账逐键钉在实际出站请求上，两处不会漂移。
+ */
+export type WrF1RouteKey =
+  | 'mcp.initialize'
+  | 'mcp.listTools'
+  | 'mcp.callTool'
+  | 'mcp.closeSession'
+  | 'security.resolveSecret'
+  | 'security.putSecret'
+  | 'aiHost.getSessionConfig'
+  | 'aiHost.executeTarget';
+
+/** WR-F1 台账条目：RouteSpec + 基路径声明（/mcp 面在服务端根，不在 /api/v1 之后）。 */
+export interface WrF1RouteSpec extends RouteSpec {
+  /** 路由基：`'/api/v1'`（§6 域面缺省）或 `'/'`（服务端根，/mcp 面）。 */
+  readonly base: '/api/v1' | '/';
+}
+
+/** 轨 4-e 冻结契约的两段路径参数：{id} = 编码后的 domain + '/' + 编码后的 key。 */
+const secretPairPathId = (payload: unknown): string =>
+  `${encodeURIComponent(String(requireField(payload, 'domain')))}/${encodeURIComponent(
+    String(requireField(payload, 'key')),
+  )}`;
+
+/** putSecret 的体只留 `{ value }`（domain/key 进路径，绝不在体里重复）。 */
+const putSecretBody = (payload: unknown): unknown => ({
+  value: field(payload, 'value'),
+});
+
+/**
+ * 八条契约路由（冻结形状，与两轨逐字一致）：
+ *
+ * | 键 | 形状 | 依据 |
+ * | mcp.*（4 条，base `/`） | JSON-RPC 2.0 单条消息 POST /mcp；initialize 的响应头 `Mcp-Session-Id` 建会话、closeSession = DELETE /mcp | server/src/mcp/http.rs + wire.rs |
+ * | security.resolveSecret | POST /api/v1/secrets/resolve，体 `{domain,key}` → `{value}` | 轨 4-e 冻结契约 |
+ * | security.putSecret | PUT /api/v1/secrets/{domain}/{key}，体 `{value}` → 204 | 轨 4-e 冻结契约 |
+ * | aiHost.getSessionConfig | POST /api/v1/ai-host/session-config，体 = payload 原样，响应 JSON | 轨 4-e 冻结契约（F1#3 的 TS 半边） |
+ * | aiHost.executeTarget | POST /api/v1/ai-host/execute-target，体 = payload 原样（claim 进体），响应 JSON | 轨 4-e 冻结契约（F1#3 的 TS 半边） |
+ *
+ * mcp 四条的**体**是 mcpClient.ts 内拼装的 JSON-RPC 信封（自增 id、会话头），
+ * RouteSpec 的 payload 直通表达不了信封与响应头读取——执行面真相在该客户端，
+ * 本表只钉 method/path/base（`body` 缺省 ≠ 实际体，见表内注释）。
+ */
+export const WR_F1_HTTP_ROUTES: Readonly<Record<WrF1RouteKey, WrF1RouteSpec>> = {
+  // ── mcp（服务端 /mcp 面；JSON-RPC 信封由 mcpClient 拼装，体直通仅示意）──
+  'mcp.initialize': { httpMethod: 'POST', pathTemplate: '/mcp', base: '/' },
+  'mcp.listTools': { httpMethod: 'POST', pathTemplate: '/mcp', base: '/' },
+  'mcp.callTool': { httpMethod: 'POST', pathTemplate: '/mcp', base: '/' },
+  'mcp.closeSession': { httpMethod: 'DELETE', pathTemplate: '/mcp', base: '/' },
+
+  // ── security（轨 4-e 冻结契约：路径/体/响应逐字）────────────────────
+  'security.resolveSecret': {
+    httpMethod: 'POST',
+    pathTemplate: '/secrets/resolve',
+    base: '/api/v1',
+  },
+  'security.putSecret': {
+    httpMethod: 'PUT',
+    pathTemplate: '/secrets/{id}',
+    pathId: secretPairPathId,
+    body: putSecretBody,
+    base: '/api/v1',
+  },
+
+  // ── aiHost（F1#3 的 TS 半边；路由由轨 4-e 落地，体 = payload 原样）────
+  'aiHost.getSessionConfig': {
+    httpMethod: 'POST',
+    pathTemplate: '/ai-host/session-config',
+    base: '/api/v1',
+  },
+  'aiHost.executeTarget': {
+    httpMethod: 'POST',
+    pathTemplate: '/ai-host/execute-target',
+    base: '/api/v1',
   },
 };

@@ -9,8 +9,7 @@
 //! axum，不依赖 modules `mcp` feature），因此在主线点亮 feature 之前即可
 //! 运行；主线接线清单见 WR-F2 报告。
 
-#[path = "../src/mcp/mod.rs"]
-mod mcp;
+use datazen_server::mcp::{contract, wire};
 
 use serde_json::{json, Value};
 
@@ -24,7 +23,7 @@ fn golden() -> Value {
 /// 两形态快照逐字节一致（验收标准原文：两形态逐字节一致）。
 #[test]
 fn server_form_snapshot_is_byte_identical_to_desktop_golden() {
-    let snapshot = mcp::contract::build_mcp_contract_snapshot();
+    let snapshot = contract::build_mcp_contract_snapshot();
     let serialized_snapshot =
         serde_json::to_string_pretty(&snapshot).expect("snapshot serializes");
     let serialized_golden = serde_json::to_string_pretty(&golden()).expect("golden serializes");
@@ -47,7 +46,7 @@ fn golden_tool_names_match_server_tool_table() {
         .iter()
         .map(|t| t["name"].as_str().expect("tool name"))
         .collect();
-    let mut expected: Vec<&str> = mcp::contract::MCP_ALL_TOOLS.to_vec();
+    let mut expected: Vec<&str> = contract::MCP_ALL_TOOLS.to_vec();
     expected.sort_unstable();
     assert_eq!(golden_names, expected);
     assert_eq!(expected.len(), 13);
@@ -62,8 +61,8 @@ fn golden_tool_names_match_server_tool_table() {
 fn per_tool_input_property_keys_match_golden() {
     let golden_value = golden();
     let golden_tools = golden_value["tools"].as_array().expect("tools array");
-    for name in mcp::contract::MCP_ALL_TOOLS {
-        let help = mcp::contract::lookup(name).unwrap_or_else(|| panic!("help for {name}"));
+    for name in contract::MCP_ALL_TOOLS {
+        let help = contract::lookup(name).unwrap_or_else(|| panic!("help for {name}"));
         let golden_tool = golden_tools
             .iter()
             .find(|t| t["name"].as_str() == Some(name))
@@ -92,7 +91,7 @@ fn per_tool_input_property_keys_match_golden() {
 /// 资源 URI 面两形态一致（fixed URIs + 模板）。
 #[test]
 fn resource_uri_surface_matches_golden() {
-    let snapshot = mcp::contract::build_mcp_contract_snapshot();
+    let snapshot = contract::build_mcp_contract_snapshot();
     assert_eq!(snapshot["resourceUris"], golden()["resourceUris"]);
     assert_eq!(
         snapshot["resourceUriTemplates"],
@@ -105,13 +104,13 @@ fn resource_uri_surface_matches_golden() {
 /// tools/list 的 wire 形状（server HTTP 形态的 `Tool` 对象）。
 #[test]
 fn list_tools_wire_shape_is_stable() {
-    let result = mcp::wire::list_tools_result();
+    let result = wire::list_tools_result();
     let tools = result["tools"].as_array().expect("tools array");
     assert_eq!(tools.len(), 13);
     for tool in tools {
         let name = tool["name"].as_str().expect("tool name");
         assert!(
-            mcp::contract::MCP_ALL_TOOLS.contains(&name),
+            contract::MCP_ALL_TOOLS.contains(&name),
             "unexpected tool {name} in tools/list"
         );
         // MCP `Tool` 三键：name / description / inputSchema（object）。
@@ -133,10 +132,10 @@ fn list_tools_wire_shape_is_stable() {
 /// initialize 结果的 wire 形状（serverInfo 与桌面 get_info 对齐）。
 #[test]
 fn initialize_wire_shape_is_stable() {
-    let result = mcp::wire::initialize_result();
+    let result = wire::initialize_result();
     assert_eq!(result["serverInfo"]["name"], json!("datazen"));
     assert!(result["serverInfo"]["version"].is_string());
-    assert_eq!(result["protocolVersion"], json!(mcp::wire::PROTOCOL_VERSION));
+    assert_eq!(result["protocolVersion"], json!(wire::PROTOCOL_VERSION));
     assert!(result["capabilities"]["tools"].is_object());
     assert!(result["instructions"].is_string());
 }
@@ -145,19 +144,19 @@ fn initialize_wire_shape_is_stable() {
 /// internal_error=-32603、SessionLost 裸文案不附帮助块）。
 #[test]
 fn tool_error_wire_codes_match_desktop_semantics() {
-    let with_help = mcp::wire::tool_call_error(mcp::wire::ToolCallError::WithHelp {
+    let with_help = wire::tool_call_error(wire::ToolCallError::WithHelp {
         tool: "query".into(),
         reason: "missing connection_id".into(),
     });
     assert_eq!(with_help["code"], json!(-32602));
     assert!(with_help["message"].as_str().unwrap().contains("Tool: query"));
 
-    let plain = mcp::wire::tool_call_error(mcp::wire::ToolCallError::Plain(
+    let plain = wire::tool_call_error(wire::ToolCallError::Plain(
         "SessionLost: MCP client disconnected".into(),
     ));
     assert_eq!(plain["code"], json!(-32602));
     assert_eq!(plain["message"], json!("SessionLost: MCP client disconnected"));
 
-    let internal = mcp::wire::tool_call_error(mcp::wire::ToolCallError::Internal("x".into()));
+    let internal = wire::tool_call_error(wire::ToolCallError::Internal("x".into()));
     assert_eq!(internal["code"], json!(-32603));
 }
