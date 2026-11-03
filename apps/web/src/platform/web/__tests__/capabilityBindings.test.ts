@@ -102,6 +102,9 @@ describe('WR-E4 capability-driven web assembly', () => {
       for (const entry of await readdir(dir, { withFileTypes: true })) {
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) {
+          // 测试目录豁免：本测试的文档注释就写着 `@tauri-apps`（审计者
+          // 不是被审计的生产面）；断言对象 = apps/web/src 生产源码树。
+          if (entry.name === '__tests__') continue;
           await walk(full);
         } else if (/\.(ts|tsx)$/.test(entry.name)) {
           sources.push(full);
@@ -110,10 +113,17 @@ describe('WR-E4 capability-driven web assembly', () => {
     };
     await walk(path.join(root, 'src'));
     expect(sources.length).toBeGreaterThan(0);
+    // 断言对象是**代码形态**，不是文档提及：import 语句形态的
+    // `@tauri-apps`，与不在反引号内的探测标识符（文档注释里对
+    // 「为什么没有探测」的解释用反引号提及，合法且应当保留）。
     for (const file of sources) {
       const text = await readFile(file, 'utf8');
-      expect(text, path.relative(root, file)).not.toMatch(/@tauri-apps/);
-      expect(text, path.relative(root, file)).not.toMatch(/IS_DESKTOP_BUILD|isTauri|__TAURI/);
+      expect(text, path.relative(root, file)).not.toMatch(
+        /from\s+['"]@tauri-apps|import\s+['"]@tauri-apps/,
+      );
+      expect(text, path.relative(root, file)).not.toMatch(
+        /(?<!`)\b(IS_DESKTOP_BUILD|isTauri|__TAURI)\b(?!`)/,
+      );
     }
   });
 });

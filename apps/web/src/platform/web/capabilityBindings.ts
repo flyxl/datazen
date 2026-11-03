@@ -44,8 +44,13 @@ export function unsupportedCapabilityPort<T>(capability: string): T {
   };
   // get 陷阱：每个属性都解析成「调用即抛」的同一静态方法——端口形状由
   // 调用点的泛型实参决定；Proxy 只提供「每个方法同一错」的机械，
-  // 不含任何形态判断（目标可以是任意冻结对象）。
-  return new Proxy(Object.freeze({ __capability: capability }), { get: () => reject }) as T;
+  // 不含任何形态判断（目标可以是任意冻结对象）。唯一例外是审计标记
+  // `__capability` 本身：冻结目标上的自有不可配置属性受 Proxy 不变量
+  // 约束，get 必须如实返回原值，否则任何深检视（测试快照/调试器）
+  // 都会 TypeError。
+  return new Proxy(Object.freeze({ __capability: capability }), {
+    get: (target, key) => (key === '__capability' ? target.__capability : reject),
+  }) as T;
 }
 
 /**
@@ -102,16 +107,15 @@ export interface WebCapabilityBindings {
   readonly updaterUnsupportedPort: never;
 }
 
-/** 由 `WEB_CAPABILITIES` 装配出的绑定账目（模块常量，非运行时探测）。 */
-
 /** 编译期证明：web 表的 `updater` 行是 `false` —— 表若翻真，此处编译失败。 */
-export type WebUpdaterOffProof = WEB_CAPABILITIES['updater'] extends false ? true : never;
+export type WebUpdaterOffProof = (typeof WEB_CAPABILITIES)['updater'] extends false ? true : never;
 
 /** 编译期证明：web 表的版本来源是构建常量（桌面专属 `host-app` 永不出现）。 */
-export type WebVersionSourceProof = WEB_CAPABILITIES['versionSource'] extends 'build-constant'
+export type WebVersionSourceProof = (typeof WEB_CAPABILITIES)['versionSource'] extends 'build-constant'
   ? true
   : never;
 
+/** 由 `WEB_CAPABILITIES` 装配出的绑定账目（模块常量，非运行时探测）。 */
 export const WEB_CAPABILITY_BINDINGS: WebCapabilityBindings = {
   capabilities: WEB_CAPABILITIES,
   updater: null,

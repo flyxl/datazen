@@ -123,11 +123,14 @@ describe('WR-F1 AI tool loop (form-agnostic)', () => {
       { toolCalls: [{ name: 'mcp/srv-2/broken', arguments: '{}' }] },
       { content: 'recovered' },
     ]);
-    const host = recordingHost({
-      async executeMcpTool() {
-        throw new Error('mcp server unavailable');
-      },
-    });
+    // 宿主方法抛错（模拟 MCP server 不可达），但调用仍要留痕——
+    // overrides 是整体替换，替身需自行先记录再抛（与 RecordingLoopHost
+    // 的记录语义一致：记录发生在分发点，不因结果成败而异）。
+    const host = recordingHost();
+    host.executeMcpTool = async (server, tool) => {
+      host.mcpCalls.push(`${server}/${tool}`);
+      throw new Error('mcp server unavailable');
+    };
 
     const answer = await runAiToolLoop(provider, host, 3, []);
 

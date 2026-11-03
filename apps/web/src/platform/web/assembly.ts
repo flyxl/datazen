@@ -117,51 +117,6 @@ function createWebTablePageReader(client: BackendClient): TablePageReader {
   };
 }
 
-/**
- * Rows per `getTableData` page while assembling an export. A short page ends
- * the read (the backend's own paging contract: the caller never derives a
- * boundary, it only stops when the page comes back under the asked size).
- */
-export const WEB_EXPORT_PAGE_SIZE = 1000;
-
-/**
- * The export reader over the web facade's `getTableData` (WR-E3). The cursor
- * is the reader's own `{ page, afterKey }` state: page 1 first, then the next
- * page — forwarding the backend's `nextAfterKey` when keyset paging reported
- * one, verbatim (the caller never derives a boundary).
- */
-function createWebTablePageReader(client: BackendClient): TablePageReader {
-  return async (tableName, cursor, context) => {
-    const state = (cursor ?? null) as { page: number; afterKey?: CursorValue[] } | null;
-    const page = state?.page ?? 1;
-    const result = await client.getTableData({
-      context: {
-        connectionId: null,
-        dbSessionId: context.dbSessionId,
-        driverType: context.driverType,
-        database: context.database,
-        schema: context.schema,
-        table: tableName,
-      },
-      page,
-      pageSize: WEB_EXPORT_PAGE_SIZE,
-      skipCount: true,
-      ...(state?.afterKey ? { afterKey: state.afterKey } : {}),
-    });
-    const afterKey = result.paging?.nextAfterKey;
-    return {
-      columns: result.columns.map((column) => column.name),
-      rows: result.rows,
-      // Short page ⇒ exhausted; a full page continues (with the backend's
-      // keyset boundary when it reported one).
-      nextCursor:
-        result.rows.length < WEB_EXPORT_PAGE_SIZE
-          ? null
-          : { page: page + 1, ...(afterKey ? { afterKey } : {}) },
-    };
-  };
-}
-
 /** Bind backend + inject ports + bind the host-event rail. Idempotent per boot. */
 export function assembleWebPlatform(): void {
   // Kernel binding: the facade over the WebClient transport. Every domain
