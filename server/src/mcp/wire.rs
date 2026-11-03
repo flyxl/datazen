@@ -118,10 +118,18 @@ pub fn initialize_result() -> Value {
 /// `tools/list` 结果（无游标分页：与桌面 `list_tools` 的 `next_cursor: None`
 /// 一致）。
 pub fn list_tools_result() -> Value {
-    let tools: Vec<Value> = contract::MCP_ALL_TOOLS
+    let mut tools: Vec<Value> = contract::MCP_ALL_TOOLS
         .iter()
         .filter_map(|name| contract::tool_definition(name))
         .collect();
+    // 两形态一致的呈现顺序：golden 契约（桌面快照）按工具名字典序排列，
+    // server wire 输出同序（tools/list 的客户端渲染与 parity 快照同基线）。
+    tools.sort_by(|a, b| {
+        a["name"]
+            .as_str()
+            .unwrap_or("")
+            .cmp(b["name"].as_str().unwrap_or(""))
+    });
     json!({ "tools": tools, "nextCursor": null })
 }
 

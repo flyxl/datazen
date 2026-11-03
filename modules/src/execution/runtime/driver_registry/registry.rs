@@ -207,7 +207,7 @@ impl DriverRegistry {
     /// static constructor (`with_factories`) so the protocol gate and the
     /// capability capture cannot drift between the two injection paths.
     fn admit_factory(
-        db_type: &str,
+        _db_type: &str,
         factory: &'static dyn DatabaseDriverFactory,
     ) -> Result<FactoryAdmission, String> {
         let pv = factory.protocol_version();

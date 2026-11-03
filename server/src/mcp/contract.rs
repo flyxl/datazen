@@ -68,7 +68,11 @@ pub const TOOL_HELPS: &[ToolHelp] = &[
         parameters:
             "connection_id (string, required); database (string, optional) — defaults to connection default",
         example: r#"{"name":"list_tables","arguments":{"connection_id":"<uuid>","database":"app"}}"#,
-        props: &[("connection_id", "string"), ("database", "string")],
+        props: &[
+            ("connection_id", "string"),
+            ("database", "string"),
+            ("schema", "string"),
+        ],
         required: &["connection_id"],
     },
     ToolHelp {
@@ -81,6 +85,7 @@ pub const TOOL_HELPS: &[ToolHelp] = &[
             ("connection_id", "string"),
             ("pattern", "string"),
             ("database", "string"),
+            ("schema", "string"),
             ("limit", "number"),
         ],
         required: &["connection_id", "pattern"],

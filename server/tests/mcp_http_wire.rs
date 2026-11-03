@@ -149,15 +149,22 @@ async fn unknown_session_id_is_not_found() {
 #[tokio::test]
 async fn tools_call_success_wraps_text_content() {
     let st = state();
+    // 成功路径需要真实会话：initialize 颁发的 Mcp-Session-Id 是工具分发的
+    // 前置（未知会话 → 404 已由 unknown_session_id_is_not_found 单独钉住）。
+    let init = mcp::http::handle_post(&st, None, identity(), rpc("initialize", json!(1), json!({}))).await;
+    let session = init.headers[0].1.clone();
     let response = mcp::http::handle_post(
         &st,
-        Some("needs-session"),
+        Some(&session),
         identity(),
         rpc("tools/call", json!(3), json!({"name": "query", "arguments": {"connection_id": "c1", "sql": "SELECT 1"}})),
     )
     .await;
-    // 未知会话在工具分发之前拦截（本例无会话头 → 400；会话语义另测）。
-    assert_eq!(response.status, StatusCode::BAD_REQUEST);
+    assert_eq!(response.status, StatusCode::OK);
+    let body = response.body.unwrap();
+    assert_eq!(body["result"]["content"][0]["type"], json!("text"));
+    assert_eq!(body["result"]["content"][0]["text"], json!(r#"{"columns":["1"],"rows":[[1]]}"#));
+    assert_eq!(body["result"]["isError"], json!(false));
 }
 
 #[tokio::test]

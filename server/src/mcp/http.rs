@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex};
 use axum::extract::State;
 use axum::http::{HeaderMap, HeaderName, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::post;
 use axum::{Json, Router};
 use serde_json::{json, Value};
 
@@ -194,7 +194,7 @@ pub async fn handle_post(
     let Some(identity) = identity else {
         return McpHttpResponse::json(
             StatusCode::UNAUTHORIZED,
-            wire::wire_error(wire::INVALID_REQUEST, "authentication required"),
+            json_rpc_error(Value::Null, wire::INVALID_REQUEST, "authentication required"),
         );
     };
 

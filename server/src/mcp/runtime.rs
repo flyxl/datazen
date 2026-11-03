@@ -28,7 +28,6 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use serde_json::Value;
 
-use crate::http::middleware::auth::AuthenticatedSession;
 use crate::mcp::http::{CallIdentity, HttpMcpState, McpBackend, SessionAuthenticator};
 use crate::mcp::wire::ToolCallError;
 
@@ -289,16 +288,6 @@ fn require_str<'a>(args: &'a Value, key: &str, tool: &str) -> Result<&'a str, To
 
 fn optional_str(args: &Value, key: &str) -> Option<String> {
     args.get(key).and_then(Value::as_str).map(str::to_owned)
-}
-
-/// L2 登录会话 → `CallIdentity` 的最小适配：主线把 cookie 解析
-/// （`middleware::auth` 已有）接成 `SessionAuthenticator` 后复用。
-pub fn call_identity_from_session(session: &AuthenticatedSession) -> CallIdentity {
-    CallIdentity {
-        organization_id: session.organization_id.clone(),
-        principal_id: session.principal_id.clone(),
-        request_id: crate::mcp::http::new_request_id(),
-    }
 }
 
 /// bootstrap 装配入口（主线调用）：登录会话认证器 + 租约来源 → 传输态。

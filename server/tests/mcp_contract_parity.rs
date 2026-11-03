@@ -40,7 +40,8 @@ fn server_form_snapshot_is_byte_identical_to_desktop_golden() {
 /// 工具清单（13 个）与 golden 一致，且包含有状态三件套。
 #[test]
 fn golden_tool_names_match_server_tool_table() {
-    let golden_names: Vec<&str> = golden()["tools"]
+    let golden_value = golden();
+    let golden_names: Vec<&str> = golden_value["tools"]
         .as_array()
         .expect("tools array")
         .iter()
@@ -59,7 +60,8 @@ fn golden_tool_names_match_server_tool_table() {
 /// `contract_tests.rs` 学到的断言样式）。
 #[test]
 fn per_tool_input_property_keys_match_golden() {
-    let golden_tools = golden()["tools"].as_array().expect("tools array");
+    let golden_value = golden();
+    let golden_tools = golden_value["tools"].as_array().expect("tools array");
     for name in mcp::contract::MCP_ALL_TOOLS {
         let help = mcp::contract::lookup(name).unwrap_or_else(|| panic!("help for {name}"));
         let golden_tool = golden_tools
