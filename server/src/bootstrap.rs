@@ -363,11 +363,14 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         ),
     );
     let lease_source = std::sync::Arc::new(
-        crate::execution::lease::ServerRuntimeLeaseSource::new_with_sink(
+        crate::execution::lease::ServerRuntimeLeaseSource::new_with_shared_parts(
             profiles_repo.clone(),
             execution_policy,
             backend,
             result_sink,
+            std::sync::Arc::new(
+                datazen::execution::runtime::directory::InMemorySessionDirectory::new(),
+            ),
         ),
     );
     // 执行域路由的用例面：租约委托适配器（每调用现取，与 MCP 同一租约源）。
@@ -375,8 +378,10 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         std::sync::Arc::new(crate::execution::lease_use_cases::LeaseConnectionUseCases::new(
             lease_source.clone(),
         ));
+    // sessions 域可见性闸的目录 = 租约源内部**同一**实例（跨 resolve 共享；
+    // 用例的 open/get 都登记/查询它——域文件模块头的接线登记落地）。
     let session_directory: std::sync::Arc<dyn datazen::execution::SessionDirectory> =
-        std::sync::Arc::new(crate::execution::session_directory::ServerSessionDirectory::new());
+        lease_source.session_directory();
 
     // WR-C2 §6.1–§6.4 读侧域路由（薄绑定；挂载归 router）。
     let domain_routers = vec![
@@ -396,6 +401,23 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
                 directory: session_directory,
             },
         ),
+        // WR-F1 服务端半边（三缺口合拢）：secrets 域（ServerSecretVault 的
+        // 受控解析/存储 + 审计）与 ai-host 域（执行设置读 + 目标执行
+        // fail-closed 登记）。挂载走 domain_routers 统一通道，认证链
+        // L2–L6 与 CSRF 覆盖由 router 的 merge 循环保证。
+        crate::http::domains::security::security_router(
+            crate::http::domains::security::SecurityState {
+                vault: vault.clone(),
+                audit: audit.clone(),
+            },
+        ),
+        crate::http::domains::ai_host::ai_host_router(crate::http::domains::ai_host::AiHostState {
+            settings: std::sync::Arc::new(crate::storage::ServerSettingsStore::scoped(
+                &config.organization_id,
+                store.clone(),
+            )),
+            organization_id: config.organization_id.clone(),
+        }),
     ];
 
     // WR-F2：MCP streamable HTTP（feature 门控；执行栈已在上方装配）。

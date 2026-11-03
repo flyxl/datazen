@@ -8,7 +8,9 @@
 //! 复用 `crate::http::router` 的共享助手（`SessionIdentity` 提取器 +
 //! 错误映射），错误 wire 与状态码全仓一处定义。
 
+pub mod ai_host;
 pub mod connections;
 pub mod identity;
+pub mod security;
 pub mod sessions;
 pub mod settings;

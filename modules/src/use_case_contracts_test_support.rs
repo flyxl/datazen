@@ -99,3 +99,23 @@ pub mod named_views;
 /// 即两腿一致的契约事实（选型与错误词汇见模块内文档）。
 #[cfg(feature = "settings")]
 pub mod settings;
+
+/// connections 域的双传输规格（第三刀，WR-C3 余域）：§6.3 的
+/// `GET/POST /api/v1/connections`、`PATCH /api/v1/connections/{id}`（一条
+/// 路由双服务）与桌面 kernel-wire 命令（`create_connection` /
+/// `update_connection` / `disable_connection` / `list_connections`）走同一
+/// Profile 端口；CAS 冲突带契约码 `configRevisionMismatch`（选型与错误
+/// 词汇见模块内文档）。消费 connection + execution 两个 feature
+/// （execution 蕴含 connection，CI 单 feature 形式即
+/// `datazen/execution,datazen/test-harness`）。
+#[cfg(all(feature = "connection", feature = "execution"))]
+pub mod connections;
+
+/// sessions 域的双传输规格（第三刀，WR-C3 余域）：§6.4 的会话生命周期
+/// 端点（open/get/context/close；attach/detach 路由同形挂载、场景随后续
+/// 登记）与桌面 kernel-wire 命令（`open_session` / `get_session` /
+/// `set_session_context` / `close_session`）走同一
+/// `RuntimeConnectionUseCases` 用例面；本域错误是 application 自己的
+/// `ApiError`，两腿逐字一致（见模块内文档）。
+#[cfg(feature = "execution")]
+pub mod sessions;

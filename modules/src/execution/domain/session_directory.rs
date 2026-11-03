@@ -99,6 +99,14 @@ pub trait SessionDirectory: Send + Sync + 'static {
 
     async fn lookup(&self, db_session_id: DbSessionId) -> Result<Option<SessionOwner>, PortError>;
 
+    /// 归属事实查询（**不筛 routable**）：已关闭/替换 prepared 的条目同样
+    /// 可查——幂等 close 的墓碑闸（§7.5）需要已关闭会话的归属事实。防枚举
+    /// 的 404 合并口径由 host 闸保持（CM-05）。
+    async fn lookup_owner(
+        &self,
+        db_session_id: DbSessionId,
+    ) -> Result<Option<SessionOwner>, PortError>;
+
     /// 只更新业务活动时间，且只在已接受的实际业务操作开始与终结时更新；
     /// 登录心跳、读取状态、订阅与 attach 均**不得**刷新
     /// （[连接 §6.4](connection-management.md)、[§9.2](connection-management.md)）。
