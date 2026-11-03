@@ -78,8 +78,8 @@ WR-F（能力落地）在 WR-D/WR-E 期间交叉插入，单项依赖见各节�
 |---|---|---|
 | **WR-B1 = M4** | 元数据读取统一：MCP 的 `runtime_schema.rs` 改走共享用例 + `ResourceExecutionHost` 端口 | 边界方案 §8.3 |
 | **WR-B2 = M3** | AI 的 MCP 工具面端口化：`McpToolBroker` 消费者端口，`commands/ai/chat.rs` 两函数改走端口；桌面实现 = 现有 `McpClientManager` | 边界方案 §8.3 |
-| **WR-B3 = M1** | MCP 工具分发归位：`modules/src/mcp/application/tools/`（13 工具定义 + 分发 + 无状态用例），宿主 `tools.rs` 变 rmcp 薄绑定 | 边界方案 §8.3 |
-| **WR-B4 = M2** | 有状态会话语义归位：TTL、归属校验、cleanup 退避策略进 `modules/src/mcp/application/session/` | 边界方案 §8.3 |
+| **WR-B3 = M1** | MCP 工具分发归位：`modules/src/mcp/application/tools/`（13 工具定义 + 分发 + 无状态用例），宿主 `tools.rs` 变 rmcp 薄绑定。**13/13 收官（2026-11-03：有状态三工具 open/use/close 经 `StatefulSessionHost` 端口归位 `application/session_tools.rs`，宿主 tools.rs 627→286 变纯 rmcp 绑定）** | 边界方案 §8.3 |
+| **WR-B4 = M2** | 有状态会话语义归位：TTL、归属校验、cleanup 退避策略进 `modules/src/mcp/application/session/`。**主体归位达成（2026-11-03：`CleanupScheduler` 退避/睡眠判定 + `own_pending`/`sweep_pending` 清扫语义下沉，宿主 session_cleanup 只留 worker 循环调度与传输钩子；上波顺延的 4,658 行宿主面就此清零）** | 边界方案 §8.3 |
 
 顺序与理由沿边界方案：M4 先行消除双路径并给 M1 铺路；M3 独立且小；M1 主体；M2 可后置。
 
@@ -103,8 +103,8 @@ WR-F（能力落地）在 WR-D/WR-E 期间交叉插入，单项依赖见各节�
 | **WR-D3** | 认证授权：OIDC 登录、membership、服务端登录会话、RBAC/资源 ACL、CSRF、同源 HTTPS；授权变更与 `permissionVersion` 同事务提交。**第一刀已落地（2026-11-01）；余项（OIDC 登录面 + L5 速率限制）已落地（2026-11-02，见进度区）**；余 TLS → WR-G3 | 团队服务 §4–§6；越权/CSRF/组织隔离全部拒绝断言 |
 | **WR-D4** | 执行接线：`ExecutionGateway`、`SessionDirectory`（单进程实现）、`BudgetCoordinator`（节点额度）、`SubmissionTokenIssuer`（服务端签名密钥 + `keyVersion`）、`SecretProvider`（服务端密钥管理 + secretRef 轮换）、`NetworkProvider`（出站白名单）、`IdentityResolver`（数据库侧服务身份 + 委托） | **已达成（2026-11-02 六适配器全落地，见进度区）**；bootstrap 装配随 WR-D6 执行入口接线；§4.7 端口表逐项「同一端口、另一适配器」；全部入口走 ExecutionGateway |
 | **WR-D5** | `EventSink` SSE 适配：SSE 重订阅、分页/大小限制、Origin 校验、revision 缺口重读。**已达成（前置 MemoryEventSink 2026-11-01 + SSE 适配 2026-11-02，见进度区）**；余 SSE 连接 L6 复核随域路由点亮收口 | CM-55 的 W1 断言（超大 revision、乱序、重连） |
-| **WR-D6** | 配额、任务中心、结果 TTL、配置版本 CAS、权限撤销传播 | 平台计划 §11 交付项 |
-| **WR-D7** | 幂等提交、受控上传下载 | 平台计划 §11 交付项 |
+| **WR-D6** | 配额、任务中心、结果 TTL、配置版本 CAS、权限撤销传播。**已达成（2026-11-03：`server/src/operations/` 五子件 + bootstrap 装配 + jobs/submission-tokens/artifacts 路由点亮，本地 server 腿 226/226，见进度区）**；余 L6 撤销复核与跨进程取消登记随执行域路由收口 | 平台计划 §11 交付项 |
+| **WR-D7** | 幂等提交、受控上传下载。**已达成（2026-11-03：`server/src/transfer/` 三服务（SubmissionService/UploadService/DownloadService）+ uploads 在账端点定形 + readArtifact 三取法 404/互斥钉，见进度区）**；分块流式写入器协议随 web 导出流两头合拢 | 平台计划 §11 交付项 |
 
 ## 7. WR-E web 前端轨
 
@@ -112,7 +112,7 @@ WR-F（能力落地）在 WR-D/WR-E 期间交叉插入，单项依赖见各节�
 |---|---|---|
 | **WR-E1** | `apps/web` 宿主应用：vite + 路由；窗口能力替换为页面/面板（形态拆分既定形态） | **已达成（2026-11-02，见进度区）**；与 `apps/desktop` 同用 `@datazen/frontend`；无 `@tauri-apps` import（R5/R6 闸门天然合规） |
 | **WR-E2** | `WebClient` transport：`BackendTransport` 的 HTTP/SSE 实现，替换 `src/platform/web/` 全 throw stub；域客户端（F3）零改动。**已落地（2026-11-02，见进度区）：42/42 方法分发表 + SSE 两步流水线 + 域契约表 76 钉** | 域契约表 `domainContractTables` 测试在 HTTP 腿同绿（✓ vitest 76/76，CI 已挂步） |
-| **WR-E3** | `PlatformServices` web 实现：文件/剪贴板/对话框走浏览器原生；导出走 Blob 半边（已示范）；宿主叠加能力（`platform.host.config.get()`）web 注入空缺省 | F5 契约测试 `platformContracts` 在 web 腿绿 |
+| **WR-E3** | `PlatformServices` web 实现：文件/剪贴板/对话框走浏览器原生；导出走 Blob 半边（已示范）；宿主叠加能力（`platform.host.config.get()`）web 注入空缺省。**已落地（2026-11-03：12/12 方法逐项实现账目 + tablesExporter 真绑定 + 13 颗新测试；Rust 腿本地全绿，前端三步 typecheck/vitest/vite build 由本刀 CI 复核）** | F5 契约测试 `platformContracts` 在 web 腿绿 |
 | **WR-E4** | capabilities 激活：`WEB_CAPABILITIES` 静态表（F5 已建）成为 web 装配的实际输入；updater/versionSource 等桌面专属项按表降级 | 无运行时形态探测（编译期同形原则不破） |
 | **WR-E5** | 部署形态：静态资源由 server host 同源服务（SSE 缺失 Origin 有明确校验的前提） | 同源 HTTPS 部署验收 |
 
@@ -148,6 +148,8 @@ WR-F（能力落地）在 WR-D/WR-E 期间交叉插入，单项依赖见各节�
 **可开工门槛的判定**：WR-A（1/2/4）+ WR-B（全四刀）+ WR-C（1/2/3）完成即视为 ready-to-build——此后 P7 主体（WR-D/E/F/G）不再有架构性返工风险。
 
 ## 11. 进度回写区
+
+- **2026-11-03 — 四轨并行落地：WR-B3 收官（M1 13/13）+ WR-B4 宿主面归位 + WR-D6（运维五子件）+ WR-D7（幂等提交/受控上传下载）+ WR-E3（PlatformServices web）**（四条无冲突轨道：modules mcp + desktop 宿主 / server operations / server transfer / apps/web+frontend platform；config 键、bootstrap 装配、router 域路由、进度区与任务表由主线统一收口。本地验证：`cargo check -p datazen --features mcp` ✓、server 全量 226/226 ✓（lib 179 + 集成 47）；上波顺延的 WR-B4 宿主面（mcp/session_open/cleanup/tools 4,658 行）就此清零——**WR-B 一致性轨全部收官，可开工门槛仅余 WR-A4 三项**。接线要点：`QuotaPreSubmitGate` 把 D6 QuotaGate 适配进 D7 提交面（占位检查即归还，执行期额度随 ExecutionGateway 收取）；MemoryEventSink 同时供 SSE 订阅与撤销传播（EventSinkBridge 的 StreamResetRequired 近似语义已在 D6 登记）；uploads 端点 v1 envelope 定形为单请求 begin+append+finalize（契约 §6.5 在账项的收口动作落半，分块流式协议随 web 导出流合拢））。
 
 - **2026-11-02 — 三线并行落地：WR-C3 第二刀（settings 双传输三腿）+ WR-E2（WebClient HTTP/SSE transport + 域契约表 76 钉）**（两条无冲突轨道并行：modules test-support+server tests+desktop commands / apps/web+CI；server manifest、ci.yml web 腿、进度区与任务表由主线统一收口。**顺延登记：WR-B4/M2 会话三工具归位**——共享语义层 `mcp/application/session.rs` 已就位，宿主面（mcp/session_open/cleanup/tools + tests_stateful）体量超单刀窗口，留下一波单独切刀（M1 13/13 与 M2 主体一并收官）。
 

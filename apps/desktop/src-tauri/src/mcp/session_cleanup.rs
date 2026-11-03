@@ -1,12 +1,12 @@
 //! One owner-bound cleanup worker per MCP client, independent of transport lifetime.
+//!
+//! M2 主体归位后本文件是传输驱动层：worker 的 CAS 启停、tokio 循环、宿主
+//! 身份装配与唤醒 select。退避策略、清扫判定与登记撤销的语义在
+//! `datazen::mcp::session`（`CleanupScheduler` / `sweep_pending`）。
 use super::server::DataZenMcpServer;
-use datazen::application::sessions::ConnectionUseCases;
-use datazen::execution::application::requests::{CloseMode, CloseSessionRequest};
-use datazen::execution::ResourceRelease;
-use std::{
-    sync::atomic::Ordering,
-    time::{Duration, Instant},
-};
+use datazen::mcp::session::{sweep_pending, CleanupScheduler};
+use datazen::shared::context::RequestContext;
+use std::{sync::atomic::Ordering, time::Instant};
 
 impl DataZenMcpServer {
     pub(crate) fn start_session_cleanup(&self) {
@@ -22,17 +22,16 @@ impl DataZenMcpServer {
         let state = self.app_state.clone();
         let client = self.client_instance_id.clone();
         tokio::spawn(async move {
-            let mut backoff = Duration::from_millis(100);
-            let mut next_retry = Instant::now();
+            let mut scheduler = CleanupScheduler::begin(Instant::now());
             loop {
                 sessions.purge_expired(Instant::now());
                 let pending = sessions.pending_cleanup();
-                if !pending.is_empty() && Instant::now() >= next_retry {
+                if !pending.is_empty() && scheduler.ready(Instant::now()) {
                     if let Ok(adapter) = state.platform_require() {
                         if let Ok(runtime) = adapter.runtime() {
                             // Reconstruct only the backend-owned client identity. Never accept an
                             // owner or handle from the caller, or scan by connectionId.
-                            let context = datazen::shared::context::RequestContext::new(
+                            let context = RequestContext::new(
                                 adapter.identity().organization_id().clone(),
                                 adapter.identity().principal_id().clone(),
                                 None,
@@ -40,35 +39,14 @@ impl DataZenMcpServer {
                                 crate::platform::identity::new_request_id(),
                                 None,
                             );
-                            for binding in pending {
-                                if binding.client_instance_id != client {
-                                    continue;
-                                }
-                                // Runtime rolls back registered handles on their original resource
-                                // and physically closes it; unknown effects remain unknown.
-                                let result = runtime
-                                    .close_session(
-                                        &context,
-                                        CloseSessionRequest::new(
-                                            binding.handle,
-                                            CloseMode::RollbackAndClose,
-                                        ),
-                                    )
-                                    .await;
-                                if matches!(result, Ok(receipt) if receipt.resource_release == ResourceRelease::Confirmed)
-                                {
-                                    sessions.confirm_cleanup(&binding.reference);
-                                }
-                                // Failure/Pending/Quarantined retains the cleanup owner. No SQL,
-                                // arguments, credentials or driver error text is logged here.
-                            }
+                            sweep_pending(&runtime, &context, &sessions, &client, pending).await;
                         }
                     }
                 }
                 let pending = !sessions.pending_cleanup().is_empty();
-                if pending && Instant::now() >= next_retry {
-                    next_retry = Instant::now() + backoff;
-                    backoff = (backoff * 2).min(Duration::from_secs(30));
+                let now = Instant::now();
+                if pending && scheduler.ready(now) {
+                    scheduler.penalize(now);
                 }
                 let expiry = sessions.next_expiry();
                 if !pending && expiry.is_none() {
@@ -85,17 +63,7 @@ impl DataZenMcpServer {
                     }
                     return;
                 }
-                let delay = if pending {
-                    next_retry.saturating_duration_since(Instant::now())
-                } else {
-                    Duration::from_secs(3600)
-                };
-                let delay = expiry
-                    .map(|at| at.saturating_duration_since(Instant::now()).min(delay))
-                    .unwrap_or(delay);
-                if !pending {
-                    backoff = Duration::from_millis(100);
-                }
+                let delay = scheduler.next_delay(now, pending, expiry);
                 tokio::select! {
                     _ = tokio::time::sleep(delay) => {},
                     _ = sessions.wake.notified() => {},
@@ -115,8 +83,11 @@ mod tests {
         },
         testing::{app_state_test_support::TestAppState, mock_driver::MockDriverOptions},
     };
+    use datazen::execution::application::requests::{CloseMode, CloseSessionRequest};
+    use datazen::execution::ResourceRelease;
     use rmcp::handler::server::wrapper::Parameters;
     use std::sync::Arc;
+    use std::time::Duration;
 
     async fn open(server: &DataZenMcpServer) -> SessionBinding {
         let reply = server

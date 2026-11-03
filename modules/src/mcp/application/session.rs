@@ -11,9 +11,16 @@
 //! 上一个客户端的句柄指向下一个客户端的会话。
 //!
 //! 归属校验、TTL 归一化与过期/清理登记（`resourceRelease=Confirmed` 才删
-//! 记录）是共享语义；定时 worker 与传输生命周期驱动留宿主。
+//! 记录）、清理的退避与清扫判定（M2 主体归位）是共享语义；worker 的
+//! CAS/spawn/select 循环与传输生命周期驱动留宿主。
 
+use crate::execution::application::requests::{CloseMode, CloseSessionRequest};
+use crate::execution::application::RuntimeConnectionUseCases;
+// 清扫经 `ConnectionUseCases`（close_session 是该 trait 的方法）。
+use crate::execution::application::use_cases::ConnectionUseCases;
+use crate::execution::ResourceRelease;
 use crate::execution::SessionHandle;
+use crate::shared::context::RequestContext;
 use crate::shared::id::Counter;
 use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard};
@@ -245,6 +252,101 @@ impl McpSessionRegistry {
     }
 }
 
+/// 清理 worker 的调度语义（纯计算，无 I/O）：退避步长、重试时刻与一轮
+/// tick 的睡眠时长判定。worker 的 CAS/spawn/唤醒 select 循环是传输驱动
+/// 层，留宿主；宿主每轮向本结构问三个问题：现在能扫吗、罚多重、睡多久。
+pub struct CleanupScheduler {
+    backoff: Duration,
+    next_retry: Instant,
+}
+
+impl CleanupScheduler {
+    /// 初始退避步长。
+    pub const INITIAL_BACKOFF: Duration = Duration::from_millis(100);
+    /// 退避上限。
+    pub const MAX_BACKOFF: Duration = Duration::from_secs(30);
+    /// 无待清理登记时的空闲轮询间隔。
+    pub const IDLE_POLL: Duration = Duration::from_secs(3600);
+
+    /// worker 启动：第一轮清扫立即放行，退避从初始步长起。
+    pub fn begin(now: Instant) -> Self {
+        Self {
+            backoff: Self::INITIAL_BACKOFF,
+            next_retry: now,
+        }
+    }
+
+    /// 现在是否到了允许清扫的时刻。
+    pub fn ready(&self, now: Instant) -> bool {
+        now >= self.next_retry
+    }
+
+    /// 清扫后仍有待清理登记：安排下一次重试并放大退避（指数翻倍，
+    /// 封顶 [`CleanupScheduler::MAX_BACKOFF`]）。失败句柄不能被忙轮询
+    /// 烧穿，也不能被无限退避搁置。
+    pub fn penalize(&mut self, now: Instant) {
+        self.next_retry = now + self.backoff;
+        self.backoff = (self.backoff * 2).min(Self::MAX_BACKOFF);
+    }
+
+    /// 本轮睡眠时长；无 pending 时退避回到初始步长。有 pending 睡到下次
+    /// 重试，无 pending 用空闲轮询；最近过期时间早于两者时被截断——
+    /// TTL 到点是登记事件，不能睡过头。
+    pub fn next_delay(
+        &mut self,
+        now: Instant,
+        has_pending: bool,
+        next_expiry: Option<Instant>,
+    ) -> Duration {
+        if !has_pending {
+            self.backoff = Self::INITIAL_BACKOFF;
+        }
+        let delay = if has_pending {
+            self.next_retry.saturating_duration_since(now)
+        } else {
+            Self::IDLE_POLL
+        };
+        next_expiry
+            .map(|at| at.saturating_duration_since(now).min(delay))
+            .unwrap_or(delay)
+    }
+}
+
+/// 本轮该由这个客户端清理的登记：只按 clientInstanceId 过滤，不按
+/// connectionId——同一个连接上别的消费者的登记不属于本客户端。
+fn own_pending(pending: Vec<SessionBinding>, client_instance_id: &str) -> Vec<SessionBinding> {
+    pending
+        .into_iter()
+        .filter(|binding| binding.client_instance_id == client_instance_id)
+        .collect()
+}
+
+/// 一轮清扫：把本客户端登记的待清理句柄 RollbackAndClose。Runtime 在原
+/// 资源上回滚已登记句柄并物理关闭；未知效果保持未知。
+/// `resourceRelease=Confirmed` 才撤销登记；失败/Pending/Quarantined 保留
+/// cleanup owner。这里不记 SQL、参数、凭据或驱动错误文本。
+/// 非本客户端的登记原样保留，等它自己的 worker。
+pub async fn sweep_pending(
+    runtime: &RuntimeConnectionUseCases,
+    context: &RequestContext,
+    registry: &McpSessionRegistry,
+    client_instance_id: &str,
+    pending: Vec<SessionBinding>,
+) {
+    for binding in own_pending(pending, client_instance_id) {
+        let result = runtime
+            .close_session(
+                context,
+                CloseSessionRequest::new(binding.handle, CloseMode::RollbackAndClose),
+            )
+            .await;
+        if matches!(result, Ok(receipt) if receipt.resource_release == ResourceRelease::Confirmed)
+        {
+            registry.confirm_cleanup(&binding.reference);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -423,5 +525,69 @@ mod tests {
         assert!(!binding.reference.contains("production-postgres"));
         assert!(!binding.reference.contains("sess-1"));
         assert!(!binding.reference.contains("mcp-a"));
+    }
+
+    #[test]
+    fn the_cleanup_backoff_doubles_up_to_the_cap_and_resets_when_idle() {
+        let t = Instant::now();
+        let mut scheduler = CleanupScheduler::begin(t);
+        assert!(scheduler.ready(t), "the first sweep is immediately allowed");
+
+        // 第一步惩罚：100ms 后才允许下一次清扫。
+        scheduler.penalize(t);
+        assert!(!scheduler.ready(t + Duration::from_millis(99)));
+        assert!(scheduler.ready(t + Duration::from_millis(100)));
+        assert_eq!(
+            scheduler.next_delay(t, true, None),
+            Duration::from_millis(100)
+        );
+
+        // 第二步：翻倍到 200ms。
+        let t2 = t + Duration::from_millis(100);
+        scheduler.penalize(t2);
+        assert_eq!(
+            scheduler.next_delay(t2, true, None),
+            Duration::from_millis(200)
+        );
+
+        // 反复惩罚步长封顶 30s，不会无限翻倍。
+        let mut at = t2 + Duration::from_millis(200);
+        for _ in 0..12 {
+            scheduler.penalize(at);
+            at += Duration::from_secs(31);
+        }
+        assert_eq!(scheduler.next_delay(at, true, None), CleanupScheduler::MAX_BACKOFF);
+
+        // 无 pending：退避回到初始步长，空闲轮询用长间隔。
+        assert_eq!(scheduler.next_delay(at, false, None), CleanupScheduler::IDLE_POLL);
+        scheduler.penalize(at);
+        assert_eq!(
+            scheduler.next_delay(at, true, None),
+            CleanupScheduler::INITIAL_BACKOFF
+        );
+
+        // 最近过期时间早于两者时截断睡眠：TTL 到点是登记事件，不能睡过头。
+        assert_eq!(
+            scheduler.next_delay(at, false, Some(at + Duration::from_secs(5))),
+            Duration::from_secs(5)
+        );
+    }
+
+    #[test]
+    fn a_cleanup_sweep_only_takes_this_clients_registrations() {
+        let now = Instant::now();
+        let registry = McpSessionRegistry::new();
+        let mine = open_for(&registry, "mcp-a", "conn-1", "sess-a", now);
+        let theirs = open_for(&registry, "mcp-b", "conn-1", "sess-b", now);
+        registry.revoke(&mine.reference, "mcp-a");
+        registry.revoke(&theirs.reference, "mcp-b");
+
+        assert_eq!(own_pending(registry.pending_cleanup(), "mcp-a"), vec![mine]);
+        // 他人的登记仍在等它自己的 worker；扫别人的队列不会动它。
+        assert_eq!(
+            own_pending(registry.pending_cleanup(), "mcp-b"),
+            vec![theirs]
+        );
+        assert_eq!(registry.pending_cleanup().len(), 2);
     }
 }
