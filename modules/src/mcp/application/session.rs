@@ -556,6 +556,10 @@ mod tests {
             scheduler.penalize(at);
             at += Duration::from_secs(31);
         }
+        // 12 轮翻倍早已触顶；delay 问的是「距下次重试还剩多久」，此刻
+        // 必须在惩罚的当下问——刚安排的重试间隔就是 30s 上限。若在
+        // 无限翻倍，这里会是 200ms·2¹²。
+        scheduler.penalize(at);
         assert_eq!(scheduler.next_delay(at, true, None), CleanupScheduler::MAX_BACKOFF);
 
         // 无 pending：退避回到初始步长，空闲轮询用长间隔。
