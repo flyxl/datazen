@@ -83,6 +83,7 @@ mod tests {
         },
         testing::{app_state_test_support::TestAppState, mock_driver::MockDriverOptions},
     };
+    use datazen::application::sessions::ConnectionUseCases;
     use datazen::execution::application::requests::{CloseMode, CloseSessionRequest};
     use datazen::execution::ResourceRelease;
     use rmcp::handler::server::wrapper::Parameters;
