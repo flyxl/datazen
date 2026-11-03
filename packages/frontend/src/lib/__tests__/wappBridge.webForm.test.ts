@@ -30,7 +30,11 @@ const {
   storageGetMock: vi.fn(),
   wappExecuteCommandMock: vi.fn(),
   getConnectionsIpcMock: vi.fn(),
-  notificationMock: vi.fn(),
+  // 端口契约：PlatformServices.showNotification 返回 Promise<void>——
+  // 裸 vi.fn() 的 undefined 返回值会让桥的 runHandler 拿不到 thenable。
+  notificationMock: vi.fn((_label: string, _input: { title: string; body?: string }) =>
+    Promise.resolve(),
+  ),
   auditLogMock: vi.fn(),
   connectionStoreState: {
     current: {
@@ -257,10 +261,11 @@ describe('wappBridge contract, web form (WR-F4)', () => {
       title: 'hello',
       body: 'world',
     });
-    const ok = env.sent[0]!;
+    // 两条回复各自异步投递，到达顺序有竞态（ok 走端口 promise 微任务，
+    // 限速走同步冷却判定）——按 reqId 取信封，不对数组下标作序断言。
+    const ok = env.sent.find((m) => m.reqId === 'n1')!;
     expect(ok.type).toBe('ui.notify.ok');
-    expect(ok.reqId).toBe('n1');
-    const limited = env.sent[1]!;
+    const limited = env.sent.find((m) => m.reqId === 'n2')!;
     expect((limited.payload as Record<string, unknown>).code).toBe(BRIDGE_ERROR.RATE_LIMIT);
     handle.detach();
   });

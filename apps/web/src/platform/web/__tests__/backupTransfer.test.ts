@@ -145,7 +145,12 @@ describe('exportBackup → POST /api/v1/artifacts/uploads（§6.5 单请求 enve
     expect(body['payloadBase64']).toBe(PAYLOAD_B64);
     // 缺省路径：客户端对聚合载荷自算 SHA-256（node:crypto 独立复算对账）。
     expect(body['expectedSha256']).toBe(PAYLOAD_SHA256);
-    expect(receipt).toEqual({ artifactId: 'art-9' });
+    // 回执 = 服务端铸造的产物 id + 客户端记账（WebBackupExportResult 全形）。
+    expect(receipt.artifactId).toBe('art-9');
+    expect(receipt.sha256).toBe(PAYLOAD_SHA256);
+    expect(receipt.byteLength).toBe(PAYLOAD.byteLength);
+    expect(receipt.chunkCount).toBe(1);
+    expect(receipt.savedLocally).toBe(false);
   });
 
   it('显式 expectedSha256 原文透传（服务端按声明摘要复核）', async () => {
@@ -353,6 +358,11 @@ describe('importBackupFile', () => {
   it('无 FileReader 的环境按 CapabilityUnsupported 显式拒绝（缺省读半边，不出站）', async () => {
     // node 环境本就无 FileReader；stubGlobal 钉住缺位，防未来 node 版本带上它。
     vi.stubGlobal('FileReader', undefined);
+    // calls 只由 stubFetchWith 清空；本用例不出站，也走同一基建并钉住
+    // 「胆敢触传输即炸」——缺省读半边的拒绝必须发生在任何 fetch 之前。
+    stubFetchWith(() => {
+      throw new Error('importBackupFile must not touch the transport');
+    });
     const backup = newBackupTransfer();
     const error = await rejectionOf(() =>
       backup.importBackupFile({ file: { name: 'x' } as unknown as File }),

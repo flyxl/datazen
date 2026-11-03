@@ -30,12 +30,15 @@ export { createBrowserEventChannel } from './lib/crossWindowBus';
 // resolver; shared shells call the build helpers. Desktop stays on the
 // custom scheme without any binding.
 export {
+  DESKTOP_WAPP_ASSET_RESOLVER,
   WAPP_ASSET_CSP,
   WAPP_ASSET_PATH_PREFIX,
   WEB_WAPP_ASSET_RESOLVER,
   buildWappAssetSrc,
   buildWappIconSrc,
   configureWappAssetResolver,
+  isSafeWappAssetPath,
+  isValidWappId,
   parseWappAssetTarget,
   resetWappAssetResolver,
 } from './lib/wappAssetOrigin';
