@@ -92,6 +92,38 @@ pub fn sessions_router(state: SessionsState) -> Router {
 /// 授权可见性闸（模块头裁决）：越组织/未知 `{id}` → 404 固定文案，
 /// 先于一切会话存活语义。命中时返回目录句柄（`getSession` 用它补全
 /// `runtimeEpoch` 半边）。
+/// close 专用闸（闭容忍）：幂等 close 的墓碑回放（§7.5）要求已关闭会话
+/// 的归属事实仍可查——`lookup_owner` 不筛 routable；防枚举的 404 合并口径
+/// 与 [`ensure_visible`] 相同（CM-05）。命中返回目录 owner（epoch 供句柄
+/// 核对），供墓碑路径继续走用例。
+async fn ensure_owner(
+    state: &SessionsState,
+    ctx: &RequestContext,
+    db_session_id: &str,
+) -> Result<SessionHandle, Response> {
+    let owner = match state
+        .directory
+        .lookup_owner(DbSessionId::new(db_session_id.to_string()))
+        .await
+    {
+        Ok(Some(owner)) => owner,
+        Ok(None) => return Err(not_visible()),
+        Err(source) => {
+            return Err(api_error_response(ApiError::new(
+                ApiErrorCode::ServiceUnavailable,
+                format!("session directory unavailable: {source}"),
+            )));
+        }
+    };
+    if owner.organization_id != ctx.organization_id {
+        return Err(not_visible());
+    }
+    Ok(SessionHandle {
+        db_session_id: DbSessionId::new(db_session_id.to_string()),
+        runtime_epoch: owner.runtime_epoch.clone(),
+    })
+}
+
 async fn ensure_visible(
     state: &SessionsState,
     ctx: &RequestContext,
@@ -287,7 +319,7 @@ async fn handler_close_session(
     Path(db_session_id): Path<String>,
     Json(body): Json<Value>,
 ) -> Response {
-    if let Err(response) = ensure_visible(&state, &identity.ctx, &db_session_id).await {
+    if let Err(response) = ensure_owner(&state, &identity.ctx, &db_session_id).await {
         return response;
     }
     let request: CloseSessionRequest = match serde_json::from_value(body) {

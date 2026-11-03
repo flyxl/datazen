@@ -168,6 +168,19 @@ impl InMemorySessionDirectory {
             .map(|entry| entry.owner().clone()))
     }
 
+    /// [`SessionDirectory::lookup_owner`] 的实体：不筛 routable——已关闭
+    /// 条目的归属事实保留（幂等 close 墓碑闸用，§7.5）。
+    pub(crate) fn do_lookup_owner(
+        &self,
+        db_session_id: DbSessionId,
+    ) -> Result<Option<SessionOwner>, PortError> {
+        let inner = self.lock_inner();
+        Ok(inner
+            .entries
+            .get(&db_session_id)
+            .map(|entry| entry.owner().clone()))
+    }
+
     pub(crate) fn do_touch(
         &self,
         handle: &SessionHandle,
@@ -644,6 +657,13 @@ impl SessionDirectory for InMemorySessionDirectory {
 
     async fn lookup(&self, db_session_id: DbSessionId) -> Result<Option<SessionOwner>, PortError> {
         self.do_lookup(db_session_id)
+    }
+
+    async fn lookup_owner(
+        &self,
+        db_session_id: DbSessionId,
+    ) -> Result<Option<SessionOwner>, PortError> {
+        self.do_lookup_owner(db_session_id)
     }
 
     async fn touch(

@@ -36,6 +36,9 @@ pub struct ServerRuntimeLeaseSource {
     backend: Arc<dyn datazen::execution::runtime::registry::backend::SessionBackend>,
     /// 跨 resolve 共享的结果 sink（WR-F7 publisher 接线的对偶）。
     sink: datazen::execution::application::orchestration::RuntimeResultSink,
+    /// 跨 resolve 共享的会话目录（sessions 域可见性闸的归属事实源——
+    /// 与用例实现持有**同一**实例；域文件模块头的接线登记在此落地）。
+    directory: Arc<datazen::execution::runtime::directory::InMemorySessionDirectory>,
 }
 
 impl ServerRuntimeLeaseSource {
@@ -47,27 +50,39 @@ impl ServerRuntimeLeaseSource {
         policy: Arc<dyn datazen::execution::application::policy::PolicyService>,
         backend: Arc<dyn datazen::execution::runtime::registry::backend::SessionBackend>,
     ) -> Self {
-        Self::new_with_sink(
+        Self::new_with_shared_parts(
             profiles,
             policy,
             backend,
             datazen::execution::application::orchestration::RuntimeResultSink::default(),
+            Arc::new(datazen::execution::runtime::directory::InMemorySessionDirectory::new()),
         )
     }
 
-    /// 构造（共享 sink 形态）：`sink` 同时交给本租约源与发布钩子。
-    pub fn new_with_sink(
+    /// 构造（共享形态）：`sink` 交给发布钩子、`directory` 交给 sessions 域
+    /// 可见性闸——两者都必须与租约源是**同一实例**（跨 resolve 共享）。
+    pub fn new_with_shared_parts(
         profiles: Arc<dyn datazen::connection::domain::ProfileRepository>,
         policy: Arc<dyn datazen::execution::application::policy::PolicyService>,
         backend: Arc<dyn datazen::execution::runtime::registry::backend::SessionBackend>,
         sink: datazen::execution::application::orchestration::RuntimeResultSink,
+        directory: Arc<datazen::execution::runtime::directory::InMemorySessionDirectory>,
     ) -> Self {
         Self {
             profiles,
             policy,
             backend,
             sink,
+            directory,
         }
+    }
+
+    /// sessions 域可见性闸用的目录出口（与每次 resolve 注入用例的是同一
+    /// 实例；bootstrap 把它递给 `domains::SessionsState.directory`）。
+    pub fn session_directory(
+        &self,
+    ) -> Arc<datazen::execution::runtime::directory::InMemorySessionDirectory> {
+        self.directory.clone()
     }
 }
 
@@ -84,6 +99,7 @@ impl RuntimeLeaseSource for ServerRuntimeLeaseSource {
                 ),
             ) as Arc<dyn datazen::execution::runtime::gateway::MonotonicClock>,
             self.sink.clone(),
+            self.directory.clone(),
         )))
     }
 }

@@ -158,7 +158,14 @@ impl RuntimeConnectionUseCases {
         backend: Arc<dyn SessionBackend>,
         clock: Arc<dyn MonotonicClock>,
     ) -> Self {
-        Self::new_with_parts(profiles, policy, backend, clock, RuntimeResultSink::default())
+        Self::new_with_parts(
+            profiles,
+            policy,
+            backend,
+            clock,
+            RuntimeResultSink::default(),
+            Arc::new(InMemorySessionDirectory::new()),
+        )
     }
     /// Inject every assembly part, including a **shared result sink**.
     ///
@@ -175,6 +182,7 @@ impl RuntimeConnectionUseCases {
         backend: Arc<dyn SessionBackend>,
         clock: Arc<dyn MonotonicClock>,
         sink: RuntimeResultSink,
+        directory: Arc<InMemorySessionDirectory>,
     ) -> Self {
         let physical = Arc::new(Mutex::new(HashMap::new()));
         let registry = Arc::new(SessionRegistry::new(
@@ -185,7 +193,6 @@ impl RuntimeConnectionUseCases {
             }),
             128,
         ));
-        let directory = Arc::new(InMemorySessionDirectory::new());
         let clock = Arc::new(RuntimeClock(clock));
         let gateway = Arc::new(ExecutionGateway::new(
             registry.clone(),

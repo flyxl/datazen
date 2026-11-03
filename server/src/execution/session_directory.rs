@@ -117,6 +117,16 @@ impl SessionDirectory for ServerSessionDirectory {
         Ok(state.live.get(&db_session_id).cloned())
     }
 
+    async fn lookup_owner(
+        &self,
+        db_session_id: DbSessionId,
+    ) -> Result<Option<SessionOwner>, PortError> {
+        // 本实现只维护活表（closed 即移除）；墓碑闸在单进程 v1 由用例的
+        // 会话账承载，这里如实回答活表事实。
+        let state = self.lock();
+        Ok(state.live.get(&db_session_id).cloned())
+    }
+
     async fn touch(
         &self,
         handle: &SessionHandle,
