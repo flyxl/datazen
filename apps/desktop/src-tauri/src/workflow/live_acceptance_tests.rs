@@ -212,7 +212,7 @@ async fn mysql_to_postgres_output_feeds_next_sql() {
 #[tokio::test]
 async fn scheduled_dispatch_journey_with_fake_driver() {
     use datazen::shared::audit::{AuditOutcome, AuditPrincipalKind};
-    use datazen::shared::clock::SystemClock;
+    use datazen::shared::clock::{Clock as _, SystemClock};
     use datazen::workflow::application::execution_identity::schedule_execution_identity;
     use datazen::workflow::application::grant_reader::WorkflowScheduleGrantReader as _;
     use datazen::workflow::scheduler::{due_decision, DueDecision};
