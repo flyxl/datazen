@@ -115,7 +115,7 @@ async function connected(overrides: Record<string, Responder> = {}) {
 function sentRequests(fetchFn: ReturnType<typeof fakeMcpServer>): SentRequest[] {
   return fetchFn.mock.calls.map(([url, init]) => ({
     url,
-    method: init.method,
+    method: init.method ?? '',
     headers: (init.headers ?? {}) as Record<string, string>,
     body: init.body ? (JSON.parse(String(init.body)) as RpcBody) : null,
   }));
