@@ -41,7 +41,15 @@
 import { ApiError, type PlatformServices } from '@datazen/backend-client';
 import { downloadBlob } from '@datazen/frontend';
 
-/** Decode a base64 payload into bytes (the web half of `SaveBinaryInput`). */
+/**
+ * Decode a base64 payload into bytes (the web half of `SaveBinaryInput`).
+ * The return type names `ArrayBuffer` (not the `Uint8Array` default,
+ * `ArrayBufferLike`) because the consumer is `downloadBlob`'s `BlobPart`,
+ * which under TS 5.7+'s parameterised typed arrays requires an
+ * `ArrayBufferView<ArrayBuffer>` — a `SharedArrayBuffer`-backed view is not a
+ * legal `BlobPart`. `new Uint8Array(length)` always allocates a plain
+ * `ArrayBuffer`, so the annotation is exact, not a cast.
+ */
 function base64ToBytes(dataBase64: string): Uint8Array<ArrayBuffer> {
   const binary = atob(dataBase64);
   const bytes = new Uint8Array(binary.length);

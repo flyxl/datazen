@@ -24,8 +24,31 @@ export interface TablePage {
   nextCursor: unknown;
 }
 
-/** Reads one page of one table. The kernel `getTableData` fits this shape. */
-export type TablePageReader = (tableName: string, cursor: unknown) => Promise<TablePage>;
+/**
+ * The request-scoped read target, forwarded to the reader on every page call
+ * (WR-E3): `dbSessionId` and the database/schema/driver hints come from the
+ * `exportTables(request)` — the reader cannot see the request, so the exporter
+ * carries these across the port. The per-table `schema` (the table's own or
+ * the request's fallback) overrides the request default per call.
+ */
+export interface TablePageRequestContext {
+  dbSessionId: string;
+  database: string | null;
+  schema: string | null;
+  driverType: string | null;
+}
+
+/**
+ * Reads one page of one table. The kernel `getTableData` fits this shape —
+ * the third argument is the request-scoped context the reader needs to
+ * address the read (see {@link TablePageRequestContext}); readers that close
+ * over their own target may ignore it.
+ */
+export type TablePageReader = (
+  tableName: string,
+  cursor: unknown,
+  context: TablePageRequestContext,
+) => Promise<TablePage>;
 
 function csvCell(value: unknown): string {
   if (value === null || value === undefined) return '';
@@ -37,8 +60,12 @@ function csvCell(value: unknown): string {
   return text;
 }
 
-/** Download `contents` as a file — the browser's path-free save. */
-export function downloadBlob(contents: string, fileName: string, mimeType = 'text/csv'): void {
+/**
+ * Download `contents` as a file — the browser's path-free save. `contents`
+ * is a `BlobPart` so the text half (CSV) and the binary half (base64-decoded
+ * bytes, `PlatformServices.saveBinaryWithDialog`) ride one implementation.
+ */
+export function downloadBlob(contents: BlobPart, fileName: string, mimeType = 'text/csv'): void {
   const blob = new Blob([contents], { type: `${mimeType};charset=utf-8` });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
@@ -70,6 +97,12 @@ export function createBlobTablesExporter(
       request: TablesExportRequest,
     ): Promise<{ Saved: number } | { Cancelled: null }> {
       const chunks: string[] = [];
+      const requestContext: TablePageRequestContext = {
+        dbSessionId: request.dbSessionId,
+        database: request.database ?? null,
+        schema: request.schema ?? null,
+        driverType: request.databaseType ?? null,
+      };
       for (const table of request.tables) {
         const name = table.schema ? `${table.schema}.${table.tableName}` : table.tableName;
         if (request.mode !== 'data_only') {
@@ -84,7 +117,10 @@ export function createBlobTablesExporter(
           // Page until the reader says the table is exhausted; each page is
           // appended so peak memory is one page, mirroring the streaming form.
           for (;;) {
-            const page = await readPage(table.tableName, cursor);
+            const page = await readPage(table.tableName, cursor, {
+              ...requestContext,
+              schema: table.schema ?? requestContext.schema,
+            });
             if (first) {
               chunks.push(page.columns.map(csvCell).join(',') + '\n');
               first = false;

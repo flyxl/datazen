@@ -44,8 +44,10 @@ describe('createBlobTablesExporter', () => {
     await expect(exporter.exportTables(REQUEST())).resolves.toEqual({ Saved: 1 });
 
     expect(readPage).toHaveBeenCalledTimes(2);
-    expect(readPage).toHaveBeenNthCalledWith(1, 'users', null);
-    expect(readPage).toHaveBeenNthCalledWith(2, 'users', 'page-2');
+    // WR-E3: 每次页读都携带请求域读目标（reader 看不到 request，由导出器过桥）。
+    const context = { dbSessionId: 'sess-1', database: null, schema: null, driverType: null };
+    expect(readPage).toHaveBeenNthCalledWith(1, 'users', null, context);
+    expect(readPage).toHaveBeenNthCalledWith(2, 'users', 'page-2', context);
     expect(delivered).toHaveLength(1);
     expect(delivered[0]?.fileName).toBe('users.csv');
     expect(delivered[0]?.contents).toContain('id,name');

@@ -1,37 +1,15 @@
 //! Acquisition ownership survives cancellation of an MCP tool request.
+//!
+//! M2 主体归位后本文件是薄壳：完成语义（守卫、盖章注册、断连拒收）在
+//! `datazen::mcp::session_tools::complete_session_open`；此处只做传输错误
+//! 映射，并保留旧方法名供传输生命周期与既有测试调用。
 use super::server::DataZenMcpServer;
 use datazen::execution::OpenSessionReceipt;
+use datazen::mcp::session_tools::{SessionToolError, StatefulSessionHost};
 use datazen::shared::error::ApiError;
 use rmcp::ErrorData as McpError;
-use std::{
-    future::Future,
-    sync::atomic::Ordering,
-    time::{Duration, Instant},
-};
+use std::{future::Future, sync::Arc, time::Duration};
 
-/// Until the caller consumes the reply, this owns the binding. A detached task's
-/// discarded output also drops this guard, revoking any late acquired resource.
-struct UndeliveredSession {
-    server: DataZenMcpServer,
-    reference: Option<String>,
-    reply: String,
-}
-impl UndeliveredSession {
-    fn deliver(mut self) -> String {
-        self.reference = None;
-        std::mem::take(&mut self.reply)
-    }
-}
-impl Drop for UndeliveredSession {
-    fn drop(&mut self) {
-        if let Some(reference) = self.reference.take() {
-            self.server
-                .sessions
-                .revoke(&reference, self.server.client_instance_id());
-            self.server.start_session_cleanup();
-        }
-    }
-}
 impl DataZenMcpServer {
     pub(crate) async fn complete_session_open(
         &self,
@@ -39,47 +17,22 @@ impl DataZenMcpServer {
         ttl: Duration,
         acquisition: impl Future<Output = Result<OpenSessionReceipt, ApiError>> + Send + 'static,
     ) -> Result<String, McpError> {
-        let server = self.clone();
-        // Dropping the request's JoinHandle detaches rather than cancels this
-        // acquisition. Its output guard then owns an unconsumed receipt.
-        let task = tokio::spawn(async move {
-            let receipt = acquisition
-                .await
-                .map_err(|error| McpError::internal_error(error.to_string(), None))?;
-            let binding = server.sessions.open(
-                server.client_instance_id(),
-                &connection_id,
-                receipt.session.handle,
-                receipt.session.context_revision,
-                ttl,
-                Instant::now(),
-            );
-            server.sessions.wake.notify_one();
-            server.start_session_cleanup();
-            let reply = serde_json::json!({
-                "clientSessionRef": binding.reference,
-                "state": receipt.session.state,
-                "contextRevision": receipt.session.context_revision,
-                "expiresInMs": ttl.as_millis().min(u128::from(u64::MAX)) as u64,
-            })
-            .to_string();
-            let owned = UndeliveredSession {
-                server,
-                reference: Some(binding.reference),
-                reply,
-            };
-            if owned.server.sessions.disconnected.load(Ordering::Acquire) {
-                return Err(McpError::invalid_params(
-                    "SessionLost: MCP client disconnected",
-                    None,
-                ));
+        let host: Arc<dyn StatefulSessionHost> = Arc::new(self.clone());
+        datazen::mcp::session_tools::complete_session_open(
+            host,
+            self.sessions.clone(),
+            self.client_instance_id.clone(),
+            connection_id,
+            ttl,
+            acquisition,
+        )
+        .await
+        .map_err(|error| match error {
+            SessionToolError::Plain(message) => McpError::invalid_params(message, None),
+            SessionToolError::WithHelp(message) | SessionToolError::Internal(message) => {
+                DataZenMcpServer::map_err(message)
             }
-            Ok(owned)
-        });
-        let owned = task
-            .await
-            .map_err(|_| McpError::internal_error("MCP session acquisition task failed", None))??;
-        Ok(owned.deliver())
+        })
     }
 }
 
@@ -99,7 +52,7 @@ mod tests {
         shared::id::ConnectionId,
     };
     use rmcp::handler::server::wrapper::Parameters;
-    use std::sync::Arc;
+    use std::time::Instant;
 
     async fn acquisition(
         server: &DataZenMcpServer,

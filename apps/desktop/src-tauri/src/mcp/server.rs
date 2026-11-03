@@ -4,9 +4,11 @@ use crate::commands::AppState;
 use crate::mcp::session::McpSessionRegistry;
 use crate::mcp::tool_help;
 use crate::platform::identity::{new_request_id, DesktopIdentity};
+use datazen::application::identity_policy::IdentityPolicy;
 use datazen::mcp::allowlist;
 use datazen::mcp::permission::McpPermissionMode;
-use datazen::shared::context::RequestContext;
+use datazen::mcp::session_tools::{StatefulCall, StatefulSessionHost};
+use datazen::shared::context::{OwnerRef, RequestContext};
 use datazen::shared::id::ClientInstanceId;
 use datazen::workflow::resource_execution::ResourceExecutionHost;
 use rmcp::ErrorData as McpError;
@@ -135,6 +137,39 @@ impl DataZenMcpServer {
 
     pub(crate) fn tool_is_registered(&self, name: &str) -> bool {
         Self::tool_router().get(name).is_some()
+    }
+}
+
+/// M2 主体归位后本机是共享有状态会话端口的形态实现：runtime 租约解析、
+/// 归属裁决（IdentityPolicy 是 application 词汇，由形态裁决）与 cleanup
+/// worker 调度钩子。admission/编排/守卫语义在 `datazen::mcp::session_tools`。
+#[async_trait::async_trait]
+impl StatefulSessionHost for DataZenMcpServer {
+    async fn resolve_call(&self) -> Result<StatefulCall, String> {
+        let adapter = self
+            .app_state
+            .platform_require()
+            .map_err(|error| error.to_string())?;
+        let runtime = adapter
+            .runtime()
+            .map_err(|error| error.to_string())?;
+        Ok(StatefulCall {
+            runtime,
+            context: self.request_context(adapter.identity()),
+        })
+    }
+
+    fn authorize_owner(&self, context: &RequestContext, owner: &OwnerRef) -> Result<(), String> {
+        // Stateful steps share one admission path: build a context whose
+        // `clientInstanceId` is the one this server generated, derive the owner
+        // from it, and let IdentityPolicy decide. MCP never carries its own allow
+        // rule for ownership — if the desktop policy rejects the owner, the tool
+        // fails.
+        IdentityPolicy::check_owner(context, owner, None).map_err(|error| error.to_string())
+    }
+
+    fn ensure_cleanup_worker(&self) {
+        self.start_session_cleanup();
     }
 }
 
