@@ -17,6 +17,14 @@
  * 运行时清单由 `LegacyCommandName` 类型钉住：写错名字过不了
  * `readonly LegacyCommandName[]` 注解，漏名字过不了文末的编译期穷尽断言
  * （`Exclude` 结果必须为 `never`）。守不住时两种失败都会指向这里。
+ *
+ * WR-F1（三缺口合拢）登记：mcp / security / aiHost 三域**不在本表**——
+ * 它们的契约键（`mcp.*` / `security.*` / `aiHost.*`，点分前缀）不在
+ * `MethodMap`（wire-direct 域，见 `packages/backend-client/src/
+ * {mcpClient,securityClient}.ts` 头注），不经 guard 的
+ * `unsupportedMethods` 面，也不经 `transport.call`；与上列 legacy
+ * snake_case 键（含 11 个 `mcp_*` 宿主命令）零重名，无冲突可记。路由形状
+ * 见 `httpRoutes.ts` 的 `WR_F1_HTTP_ROUTES`。
  */
 
 import type {

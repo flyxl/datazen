@@ -16,9 +16,14 @@
 //!   server v1 实现（进程内直连驱动，无 stdio 子进程）。
 
 pub mod budget;
+pub mod budget_bridge;
 pub mod driver_exec;
 pub mod identity;
+pub mod lease;
+pub mod lease_use_cases;
 pub mod network_provider;
+pub mod policy_adapter;
+pub mod publisher;
 pub mod secret_provider;
 pub mod session_directory;
 pub mod submission_token;

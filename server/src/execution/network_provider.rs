@@ -124,7 +124,10 @@ impl ServerNetworkProvider {
         (!host.is_empty()).then(|| host.to_ascii_lowercase())
     }
 
-    fn whitelist_check(&self, endpoint: &str) -> Result<(), PortError> {
+    /// 出站白名单判定（宿主 EgressGate 闸门复用；`pub(crate)` 供
+    /// bootstrap 的驱动出口闸注入——driver_exec.rs 账目表「未接线 = 不设防」
+    /// 的接线件）。
+    pub(crate) fn whitelist_check(&self, endpoint: &str) -> Result<(), PortError> {
         let host = Self::endpoint_host(endpoint).ok_or_else(|| {
             PortError::BackendUnavailable(format!("route endpoint is not parseable: {endpoint}"))
         })?;

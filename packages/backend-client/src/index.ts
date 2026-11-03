@@ -109,6 +109,37 @@ export { createDriverGatewayMethods } from './driverGatewayClient';
 export type { LegacyCommandName, LegacyHostMethodMap } from './legacyHostCommands';
 export { legacyInvoke } from './legacyHostCommands';
 
+// ── WR-F1 wire-direct domains (mcp / security)；共享 HTTP wire 经下方
+// `export * from './types'` 出面（types/httpWire）。──────────────────────────
+export type {
+  McpClientCoversContract,
+  McpContentBlock,
+  McpDomainClient,
+  McpInitializeOptions,
+  McpInitializeResult,
+  McpListToolsResult,
+  McpToolCallRequest,
+  McpToolCallResult,
+  McpToolDescriptor,
+} from './mcpClient';
+export {
+  createMcpClient,
+  MCP_PROTOCOL_VERSION,
+  MCP_SESSION_ID_HEADER,
+  WEB_MCP_SERVER_ID,
+} from './mcpClient';
+
+export type {
+  SecurityClient,
+  SecurityClientCoversContract,
+  SecurityPutSecretRequest,
+  SecurityResolveSecretRequest,
+  SecurityResolveSecretResponse,
+} from './securityClient';
+export { createSecurityClient } from './securityClient';
+
+export type { WireDirectDomains } from './clients';
+
 export * from './types';
 
 export * from './settings';

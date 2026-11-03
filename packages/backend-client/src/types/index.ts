@@ -131,3 +131,17 @@ export type {
   ResultTableRef,
 } from './resultOrigin';
 export * from './driverCommands';
+
+// WR-F1：wire-direct 域客户端共用的最小 HTTP wire（注入式 fetch，包内无网络
+// 原语字面量——F-07；工厂与 §13 错误归一在此，域语义在 mcp/security 客户端）。
+export type {
+  HttpWire,
+  HttpWireMethod,
+  HttpWireOptions,
+  HttpWireRequest,
+} from './httpWire';
+export {
+  apiErrorFromWireResponse,
+  createHttpWire,
+  jsonBodyOfWireResponse,
+} from './httpWire';

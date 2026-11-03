@@ -27,7 +27,7 @@ description = "DataZen team web server host (P7 / web-ready WR-D): the HTTP form
 # 本就要求共用该机制 feature）与 jobs（JobRepository 端口 + 落盘词汇，
 # WR-D2 第三切片）。不整包开启——与桌面的全 feature 列表形成对照：宿主按需
 # 消费内核。后续切片按域点亮。
-datazen = { workspace = true, features = ["connection", "execution", "tunnel", "jobs"] }
+datazen = { workspace = true, features = ["connection", "execution", "tunnel", "jobs", "settings"] }
 
 # WR-D2 收尾：连接目录/隧道定义的端口形状（`ConnectionConfig` /
 # `SavedTunnel`）直接来自 driver-api——模块不二次投影，server 也不得
@@ -39,7 +39,7 @@ datazen-driver-api = { workspace = true }
 async-trait = { workspace = true }
 
 axum = "0.8"
-tower-http = { version = "0.6", features = ["catch-panic", "limit"] }
+tower-http = { version = "0.6", features = ["catch-panic", "limit", "fs"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net"] }
 
 # WR-D2 管理库（SQLite 首版；与桌面 AppDb 同款选型，PostgreSQL 适配器是
@@ -92,6 +92,16 @@ mcp = ["datazen/mcp", "datazen/application"]
 [[test]]
 name = "use_case_contracts"
 required-features = ["use-case-contracts"]
+
+# WR-F2：MCP 契约与传输测试经 lib 公开面（`datazen_server::mcp`），按 feature
+# 门控——与此前 `#[path]` 整树 include 的「未点亮即跳过」语义一致。
+[[test]]
+name = "mcp_contract_parity"
+required-features = ["mcp"]
+
+[[test]]
+name = "mcp_http_wire"
+required-features = ["mcp"]
 
 [dev-dependencies]
 # oneshot 驱动 Router 的集成测试需要 ServiceExt。

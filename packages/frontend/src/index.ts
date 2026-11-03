@@ -42,6 +42,12 @@ export {
   parseWappAssetTarget,
   resetWappAssetResolver,
 } from './lib/wappAssetOrigin';
+export {
+  attachBridge,
+  BRIDGE_CHANNEL,
+  BRIDGE_ERROR,
+  type WappBridgeHandle,
+} from './lib/wappBridge';
 export { getWindowKind, type WindowKind } from './lib/windowKind';
 export {
   currentVariant,

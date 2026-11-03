@@ -82,6 +82,12 @@ pub struct ServerConfig {
     pub budget_node_limit: u64,
     /// WR-D4/D6 预算协调器组织额度。
     pub budget_organization_limit: u64,
+    /// WR-F7 出站白名单（驱动/隧道出口的主机表；逗号分隔；空表 = 全拒，
+    /// fail-closed——「未接线 = 不设防」在 server 形态不允许）。
+    pub egress_allowed_hosts: Vec<String>,
+    /// WR-E5 静态资源根（web 构建产物目录；None = 不挂同源静态面——
+    /// 显式部署形态：独立 origin/CDN 承载时使用）。
+    pub web_root: Option<PathBuf>,
 }
 
 /// 环境变量名。`DATAZEN_` 前缀与仓库既有约定对齐。
@@ -107,6 +113,10 @@ pub const ENV_ARTIFACT_ROOT: &str = "DATAZEN_SERVER_ARTIFACT_ROOT";
 pub const ENV_ARTIFACT_TTL_SWEEP_SECS: &str = "DATAZEN_SERVER_ARTIFACT_TTL_SWEEP_SECS";
 pub const ENV_BUDGET_NODE_LIMIT: &str = "DATAZEN_SERVER_BUDGET_NODE_LIMIT";
 pub const ENV_BUDGET_ORGANIZATION_LIMIT: &str = "DATAZEN_SERVER_BUDGET_ORGANIZATION_LIMIT";
+/// WR-F7 出站白名单（逗号分隔 host；空/未设 = 全拒）。
+pub const ENV_EGRESS_ALLOWED_HOSTS: &str = "DATAZEN_SERVER_EGRESS_ALLOWED_HOSTS";
+/// WR-E5 静态资源根（web 构建产物；未设 = 不挂同源静态面）。
+pub const ENV_WEB_ROOT: &str = "DATAZEN_SERVER_WEB_ROOT";
 pub const DEFAULT_DB_FILE: &str = "datazen-admin.sqlite";
 
 /// 开发默认密钥（仅限本地验证；§4.3/§6.2 的生产密钥必须显式注入）。
@@ -242,6 +252,23 @@ impl ServerConfig {
             std::env::var(ENV_BUDGET_ORGANIZATION_LIMIT).ok(),
             DEFAULT_BUDGET_ORGANIZATION_LIMIT,
         )?;
+        // 出站白名单：逗号分隔，空白/未设 = 空表（ServerNetworkProvider 的
+        // fail-closed 语义：空白名单全拒）。
+        let egress_allowed_hosts = match std::env::var(ENV_EGRESS_ALLOWED_HOSTS).ok() {
+            Some(raw) => raw
+                .split(',')
+                .map(str::trim)
+                .filter(|host| !host.is_empty())
+                .map(str::to_owned)
+                .collect(),
+            None => Vec::new(),
+        };
+        // WR-E5：web 构建产物根。空/未设 = 不挂同源静态面（独立 origin
+        // /CDN 承载的显式部署形态）。
+        let web_root = match std::env::var(ENV_WEB_ROOT).ok() {
+            Some(raw) if !raw.trim().is_empty() => Some(PathBuf::from(raw.trim().to_string())),
+            _ => None,
+        };
         Ok(Self {
             listen_addr,
             log_filter,
@@ -265,6 +292,8 @@ impl ServerConfig {
             artifact_ttl_sweep_secs,
             budget_node_limit,
             budget_organization_limit,
+            egress_allowed_hosts,
+            web_root,
         })
     }
 }

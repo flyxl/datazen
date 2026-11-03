@@ -46,56 +46,13 @@ use datazen::shared::id::ClientInstanceId;
 /// `mcp::server::MCP_SESSION_PURPOSE` 逐字一致；仅展示，从不作为授权输入）。
 pub const MCP_SESSION_PURPOSE: &str = "mcp-stateful-session";
 
-/// runtime 租约端口：每次调用现取当前 runtime（可能被吊销，禁止缓存）。
-#[async_trait::async_trait]
-pub trait RuntimeLeaseSource: Send + Sync {
-    async fn resolve(&self) -> Result<Arc<RuntimeConnectionUseCases>, String>;
-}
+/// runtime 租约端口：执行域中立归属（`crate::execution::lease`），
+/// 本模块 re-export 保持既有引用路径不变。
+pub use crate::execution::lease::RuntimeLeaseSource;
 
-/// WR-F7：runtime 租约源的真实现（server 形态）。
-///
-/// 三件套全部由 bootstrap 显式递交（装配清单见 WR-F7 报告）：
-/// `profiles` = `storage::ServerProfiles`（`ProfileRepository` 端口）、
-/// `policy` = 实现了 modules `execution::application::policy::PolicyService`
-/// 的授权服务、`backend` = `execution::driver_exec::ServerDriverExecBackend`
-/// （`SessionBackend` 端口的 server v1 实现）。
-///
-/// **每调用现取，禁止缓存**：`resolve()` 每次现构造
-/// `RuntimeConnectionUseCases::new(..)`——runtime 可能被吊销，端口语义
-/// 不允许把用例面缓存在租约源里。bootstrap 侧的占位
-/// `FailClosedLeaseSource`（fail-closed Err）在本实现落地后由主线摘除
-/// 并替换为本类型（接线归主线，本模块不碰 bootstrap）。
-pub struct ServerRuntimeLeaseSource {
-    profiles: Arc<dyn datazen::connection::domain::ProfileRepository>,
-    policy: Arc<dyn datazen::execution::application::policy::PolicyService>,
-    backend: Arc<dyn datazen::execution::runtime::registry::backend::SessionBackend>,
-}
-
-impl ServerRuntimeLeaseSource {
-    /// 构造（bootstrap 装配入口）。
-    pub fn new(
-        profiles: Arc<dyn datazen::connection::domain::ProfileRepository>,
-        policy: Arc<dyn datazen::execution::application::policy::PolicyService>,
-        backend: Arc<dyn datazen::execution::runtime::registry::backend::SessionBackend>,
-    ) -> Self {
-        Self {
-            profiles,
-            policy,
-            backend,
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl RuntimeLeaseSource for ServerRuntimeLeaseSource {
-    async fn resolve(&self) -> Result<Arc<RuntimeConnectionUseCases>, String> {
-        Ok(Arc::new(RuntimeConnectionUseCases::new(
-            self.profiles.clone(),
-            self.policy.clone(),
-            self.backend.clone(),
-        )))
-    }
-}
+/// `ServerRuntimeLeaseSource` 真实现移至 `crate::execution::lease`（执行域
+/// 中立归属）；本模块 re-export 保持既有引用路径不变。
+pub use crate::execution::lease::ServerRuntimeLeaseSource;
 
 /// server 形态的 `StatefulSessionHost` 内核：租约解析 + 归属裁决 +
 /// cleanup worker 调度钩子（admission/编排语义在 modules session_tools）。
@@ -196,6 +153,8 @@ pub struct ModulesBackend {
     /// 空表即全拒绝的安全默认（allowlist 语义与桌面一致）。
     allowed_connection_ids: Vec<String>,
     permission_mode: McpPermissionMode,
+    /// 无状态工具分发件（`stateless_exec.rs`；None = fail-closed 未接线）。
+    stateless: Option<Arc<crate::mcp::stateless_exec::StatelessToolExec>>,
 }
 
 impl ModulesBackend {
@@ -215,7 +174,18 @@ impl ModulesBackend {
             registry,
             allowed_connection_ids,
             permission_mode,
+            stateless: None,
         }
+    }
+
+    /// 装配无状态工具分发件（bootstrap 装配入口；None = 现状 fail-closed
+    /// 「未接线」，Some = 目录端口真分发，登记见 `stateless_exec.rs`）。
+    pub fn with_stateless(
+        mut self,
+        stateless: Arc<crate::mcp::stateless_exec::StatelessToolExec>,
+    ) -> Self {
+        self.stateless = Some(stateless);
+        self
     }
 
     /// 传输断开/会话终止路径：断连置位（后续有状态调用报 SessionLost）
@@ -300,13 +270,15 @@ impl McpBackend for ModulesBackend {
                 .await
                 .map_err(|e| map_session_tool_error(name, e))
             }
-            // 无状态工具（query/list_*/run_workflow/...）主线装配：把
-            // `storage/` 仓储适配成 modules tools.rs 的端口
-            // （RedactedConnectionSource / WorkflowCatalog）后逐工具接上；
-            // 本切片只落传输与有状态面（验收 golden 只覆盖定义与 wire）。
-            other => Err(ToolCallError::internal(format!(
-                "tool '{other}' is not wired in the server form yet (mainline assembly pending)"
-            ))),
+            // 无状态工具：装配了 [`StatelessToolExec`] 的走真分发（目录
+            // 端口适配与逐工具登记见 `stateless_exec.rs`）；未装配保持
+            // fail-closed「未接线」。
+            other => match &self.stateless {
+                Some(stateless) => stateless.call(other, &arguments).await,
+                None => Err(ToolCallError::internal(format!(
+                    "tool '{other}' is not wired in the server form yet (mainline assembly pending)"
+                ))),
+            },
         }
     }
 }
@@ -341,13 +313,12 @@ pub fn build_http_state(
     lease_source: Arc<dyn RuntimeLeaseSource>,
     allowed_connection_ids: Vec<String>,
     permission_mode: McpPermissionMode,
+    stateless: Option<Arc<crate::mcp::stateless_exec::StatelessToolExec>>,
 ) -> HttpMcpState {
-    HttpMcpState::new(
-        Arc::new(ModulesBackend::new(
-            lease_source,
-            allowed_connection_ids,
-            permission_mode,
-        )),
-        auth,
-    )
+    let backend = ModulesBackend::new(lease_source, allowed_connection_ids, permission_mode);
+    let backend = match stateless {
+        Some(exec) => backend.with_stateless(exec),
+        None => backend,
+    };
+    HttpMcpState::new(Arc::new(backend), auth)
 }
