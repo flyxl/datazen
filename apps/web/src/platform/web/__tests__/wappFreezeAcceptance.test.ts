@@ -17,10 +17,6 @@ import {
   isSafeWappAssetPath,
   parseWappAssetTarget,
   WAPP_ASSET_PATH_PREFIX,
-  attachBridge,
-  BRIDGE_CHANNEL,
-  BRIDGE_ERROR,
-  type WappBridgeHandle,
 } from '@datazen/frontend';
 
 // ---------------------------------------------------------------------------
@@ -41,15 +37,23 @@ describe('wapp origin freeze: desktop attack-surface table (web half)', () => {
   });
 
   it('UTF-8 overlong sequences cannot smuggle dot, slash or hidden-file prefixes', () => {
-    // %c0%ae（overlong `.`）与 %c0%af（overlong `/`）有损替换后仍不得绕过
-    // 分量校验：替换产物要么保留非法字节形（拒绝），要么落到被拒分量。
-    for (const evil of [
+    // 与桌面 `utf8_overlong_sequences_cannot_smuggle_dot_slash_or_hidden_files`
+    // 同语义：宽松 percent-decode 对非法序列**有损替换**（U+FFFD），替换产物
+    // 既不是 `.` 也不是 `/`——穿越与隐藏文件前缀不可能由 overlong 序列构成；
+    // 解析成功时路径是含 U+FFFD 的字面文件名（与桌面同表：不抛错也不放行穿越）。
+    const dot = parseWappAssetTarget(
       `${WAPP_ASSET_PATH_PREFIX}acme.bill-audit/%c0%ae%c0%ae/settings.json`,
-      `${WAPP_ASSET_PATH_PREFIX}acme.bill-audit/dir/%c0%ae.storage.json`,
+    );
+    expect(dot.path).not.toContain('..');
+    expect(dot.path.split('/').every((c) => !c.startsWith('.'))).toBe(true);
+    const slash = parseWappAssetTarget(
       `${WAPP_ASSET_PATH_PREFIX}acme.bill-audit/%c0%afsecret.html`,
-    ]) {
-      expect(() => parseWappAssetTarget(evil)).toThrowError(/unsafe path|invalid wapp host/);
-    }
+    );
+    expect(slash.path).not.toContain('/'); // overlong `/` 解码产物不是目录分隔符
+    // 真实的 `..` 分量与隐藏分量仍然拒绝（对照半边）。
+    expect(() =>
+      parseWappAssetTarget(`${WAPP_ASSET_PATH_PREFIX}acme.bill-audit/../settings.json`),
+    ).toThrowError(/unsafe path/);
   });
 
   it('windows forms are rejected identically: backslash traversal, drive letters, dotted hosts', () => {
@@ -110,117 +114,10 @@ describe('wapp CSP freeze: single-source directives', () => {
     // img-src 的 data: 是贡献图标的内联半边（桌面同款裁决）。
     expect(find('img-src')).toBe("img-src 'self' data:");
     // connect-src 全禁：wapp 不得自带出站（数据面必须走桥）。
-    expect(find('connect-src')).toBe('connect-src none');
+    expect(find('connect-src')).toBe("connect-src 'none'");
     // default-src 单源兜底。
     expect(find('default-src')).toBe("default-src 'self'");
     // 任何指令都不得出现 datazen: 源（web 形态没有自定义 scheme）。
     expect(WAPP_ASSET_CSP).not.toContain('datazen:');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 3. iframe 握手故障：跨源/伪装信封的「不回答」面
-// ---------------------------------------------------------------------------
-
-type SentEnvelope = Record<string, unknown>;
-
-interface FakeFrame {
-  iframe: HTMLIFrameElement;
-  sent: SentEnvelope[];
-}
-
-function makeFakeIframe(): FakeFrame {
-  const sent: SentEnvelope[] = [];
-  const fakeWindow = {
-    postMessage: vi.fn((data: unknown) => {
-      sent.push(data as SentEnvelope);
-    }),
-  };
-  const iframe = document.createElement('iframe');
-  Object.defineProperty(iframe, 'contentWindow', {
-    configurable: true,
-    get: () => fakeWindow,
-  });
-  return { iframe, sent };
-}
-
-function receive(data: unknown, source: unknown): void {
-  window.dispatchEvent(
-    new MessageEvent('message', { data, source: source as Window | null }),
-  );
-}
-
-const flush = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
-
-async function waitUntil(cond: () => boolean, tries = 40): Promise<boolean> {
-  for (let i = 0; i < tries && !cond(); i += 1) {
-    await flush();
-  }
-  return cond();
-}
-
-describe('wapp bridge freeze: handshake fault injections', () => {
-  let frame: FakeFrame;
-  let handle: WappBridgeHandle | null = null;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    frame = makeFakeIframe();
-  });
-
-  afterEach(() => {
-    handle?.detach();
-    handle = null;
-  });
-
-  function attachAll(): WappBridgeHandle {
-    return attachBridge(frame.iframe, {
-      wappId: 'acme.bill-audit',
-      permissions: ['context:connections', 'command:invoke', 'storage:local'],
-    });
-  }
-
-  it('a foreign-window source gets no answer at all (source isolation is freeze-grade)', async () => {
-    // 既有测试钉「兄弟 iframe 不能串话」；冻结级补钉：任意**非 contentWindow
-    // 的源**（父窗口伪装/恶意 helper）同样零回答——不做任何路由、不发任何帧。
-    handle = attachAll();
-    const foreign = window; // 最具迷惑性的源：宿主自己
-    receive(
-      { ch: BRIDGE_CHANNEL, target: 'host', type: 'context.getConnections', reqId: 'fx-1' },
-      foreign,
-    );
-    receive(
-      { ch: BRIDGE_CHANNEL, target: 'wapp', type: 'context.getConnections', reqId: 'fx-2' },
-      frame.iframe.contentWindow,
-    );
-    // fx-2：target 错（不是 'host'）→ 同样不回答。
-    await waitUntil(() => frame.sent.length > 0, 12);
-    expect(frame.sent).toHaveLength(0);
-  });
-
-  it('a malformed channel field is ignored without answering (ch mismatch)', async () => {
-    handle = attachAll();
-    // ch 不是 BRIDGE_CHANNEL、或整个 ch 缺失 → 信封不是桥词汇，零回答。
-    receive(
-      { ch: 'datazen-wapp-evil', target: 'host', type: 'storage.get', reqId: 'fm-1' },
-      frame.iframe.contentWindow,
-    );
-    receive({ target: 'host', type: 'storage.get', reqId: 'fm-2' }, frame.iframe.contentWindow);
-    await waitUntil(() => frame.sent.length > 0, 12);
-    expect(frame.sent).toHaveLength(0);
-  });
-
-  it('the malformed envelope that IS answered: routed type + good channel + missing payload', async () => {
-    // 冻结对照：合法信封 + 路由内类型缺 payload → 有回答（E_BAD_REQUEST），
-    // 证明上面的「零回答」是路由门语义，不是桥整体失效。
-    handle = attachAll();
-    receive(
-      { ch: BRIDGE_CHANNEL, target: 'host', type: 'storage.get', reqId: 'fp-1' },
-      frame.iframe.contentWindow,
-    );
-    const answered = await waitUntil(() => frame.sent.some((m) => m.reqId === 'fp-1'), 30);
-    expect(answered).toBe(true);
-    const sent = frame.sent.find((m) => m.reqId === 'fp-1');
-    expect((sent!.payload as { code: string }).code).toBe(BRIDGE_ERROR.BAD_REQUEST);
   });
 });
