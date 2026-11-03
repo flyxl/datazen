@@ -31,7 +31,15 @@
  * - `tablesExporter` binds the shared Blob half (`createBlobTablesExporter`)
  *   over a paged `getTableData` reader (WR-E3): the same export request the
  *   desktop answers with the Rust-streaming dialog writer assembles here into
- *   CSV pages and downloads through the anchor half (`downloadBlob`).
+ *   CSV pages and downloads through the anchor half (`downloadBlob`);
+ * - WR-E4: the static table drives the assembly's downgrades — `updater: false`
+ *   binds **nothing** (no updater slot exists here; the desktop-only item is
+ *   structurally absent, `WEB_CAPABILITY_BINDINGS` is the auditable record)
+ *   and `versionSource: 'build-constant'` resolves the build constant. The
+ *   decision is compile-time table → selector; there is no form probe;
+ * - WR-F1: the AI trio (`WebAiRequestHost` / `McpToolBroker` /
+ *   SecretProvider, `./ai/webAiAssembly`) assembles over the same
+ *   `WebClient` transport; named gaps surface as `CapabilityUnsupported`.
  */
 
 import { bindHostEventListener } from '@datazen/driver-sdk';
@@ -54,6 +62,15 @@ import {
 import { createWebBackendTransport, WEB_BACKEND_ID } from './backendTransport';
 import { createWebPlatformServices } from './platformServices';
 import { createWebWindowRouter } from './windowRouter';
+import {
+  createWebAiBindings,
+  type WebAiBindings,
+} from './ai/webAiAssembly';
+
+export { WEB_CAPABILITY_BINDINGS } from './capabilityBindings';
+
+/** WR-F1 装配产物：AI 三端口（装配期创建一次；测试直接走 `createWebAiBindings`）。 */
+export let WEB_AI_BINDINGS: WebAiBindings;
 
 /**
  * Rows per `getTableData` page while assembling an export. A short page ends
@@ -102,11 +119,16 @@ function createWebTablePageReader(client: BackendClient): TablePageReader {
 
 /** Bind backend + inject ports + bind the host-event rail. Idempotent per boot. */
 export function assembleWebPlatform(): void {
-  // Kernel binding: the facade over the all-throw transport. Every domain
-  // call surfaces as an explicit `CapabilityUnsupported` ApiError until
-  // WR-E2 binds the HTTP transport under the same port.
-  const client = createBackendClient(WEB_BACKEND_ID, createWebBackendTransport());
+  // Kernel binding: the facade over the WebClient transport. Every domain
+  // call outside the HTTP route map surfaces as an explicit
+  // `CapabilityUnsupported` ApiError (contract §4 ledger / §8 exclusions).
+  const transport = createWebBackendTransport();
+  const client = createBackendClient(WEB_BACKEND_ID, transport);
   setBackendClient(WEB_BACKEND_ID, client);
+
+  // WR-F1: the AI trio rides the same transport — provider HTTP clients run
+  // server-side; the browser holds ports and secret *references* only.
+  WEB_AI_BINDINGS = createWebAiBindings(client, transport);
 
   const services = createWebPlatformServices();
   setPlatformServices(services);
@@ -121,8 +143,11 @@ export function assembleWebPlatform(): void {
     // Form-split F4: the inert host-settings half — extras `{}`, writes are
     // a no-op, the kernel save is the whole write.
     hostSettings: inertHostSettingsPort(),
-    // Form-split F5: the static capability table — sections, updater and
-    // version source branch on this, never on a form probe.
+    // Form-split F5 + WR-E4: the static capability table — sections, updater
+    // and version source branch on this, never on a form probe. The table's
+    // `false` rows have already acted at assembly time (see
+    // `WEB_CAPABILITY_BINDINGS`): updater binds nothing, the version is the
+    // build constant, and desktop-only items are structurally absent.
     capabilities: WEB_CAPABILITIES,
     // WR-E3: the export half — the same `exportTables(request)` signature the
     // desktop answers with the Rust-streaming dialog writer, assembled here

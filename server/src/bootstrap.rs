@@ -291,6 +291,24 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         tasks: task_center,
     };
 
+    // WR-F2：MCP streamable HTTP（feature 门控）。认证器 = 登录会话
+    // （与 L2 同源的 peek 校验面）；租约源 v1 fail-closed——执行后端随
+    // WR-F7 落地，此前 runtime 依赖工具如实答上游不可用。
+    #[cfg(feature = "mcp")]
+    let mcp_state = {
+        let authenticator = CookieSessionAuthenticator {
+            sessions: crate::storage::LoginSessions::new(store.clone()),
+        };
+        Some(crate::mcp::runtime::build_http_state(
+            std::sync::Arc::new(authenticator),
+            std::sync::Arc::new(ServerRuntimeLeaseSource),
+            Vec::new(), // 连接白名单：空表 = 全拒绝（安全默认；部署配置随 F7 接入）
+            datazen::execution::domain::permission::McpPermissionMode::SafeWrite,
+        ))
+    };
+    #[cfg(not(feature = "mcp"))]
+    let mcp_state = None;
+
     // L5（§9.1）：参数来自部署配置；构造非法（容量 0 等）拒绝启动。
     let rate_limit = {
         let limiter = crate::http::middleware::ratelimit::RateLimiter::new(
@@ -390,6 +408,7 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         sse,
         oidc,
         domains: Some(domains),
+        mcp: mcp_state,
     })?;
 
     let listener = tokio::net::TcpListener::bind(&config.listen_addr)
@@ -406,6 +425,60 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         .await
         .map_err(|error| ServerError::Serve(error.to_string()))?;
     Ok(())
+}
+
+/// WR-F2：MCP HTTP 的登录会话认证器。校验面与 L2 中间件同源
+/// （`peek`：撤销/绝对窗/空闲窗），互斥裁决同样只服务 Cookie 模式会话
+/// （native/Bearer 凭据不经 cookie 复用，§4.6）。
+#[cfg(feature = "mcp")]
+struct CookieSessionAuthenticator {
+    sessions: crate::storage::LoginSessions,
+}
+
+#[cfg(feature = "mcp")]
+impl crate::mcp::http::SessionAuthenticator for CookieSessionAuthenticator {
+    fn authenticate(
+        &self,
+        headers: &axum::http::HeaderMap,
+    ) -> Option<crate::mcp::http::CallIdentity> {
+        let session_id = crate::http::middleware::session_cookie(
+            headers,
+            crate::http::middleware::auth::SESSION_COOKIE,
+        )?;
+        let row = self
+            .sessions
+            .peek(
+                &session_id,
+                datazen::shared::id::Timestamp::new(crate::http::middleware::now_rfc3339()),
+            )
+            .ok()?;
+        if row.mode != crate::storage::login_sessions::LoginSessionMode::Cookie {
+            return None;
+        }
+        Some(crate::mcp::http::CallIdentity {
+            organization_id: row.organization_id,
+            principal_id: row.principal_id,
+            request_id: crate::mcp::http::new_request_id(),
+        })
+    }
+}
+
+/// WR-F2：runtime 租约源的 server v1 形态——执行后端（驱动/会话物理
+/// 资源）随 WR-F7 落地；此前如实报错，runtime 依赖工具 fail-closed。
+#[cfg(feature = "mcp")]
+struct ServerRuntimeLeaseSource;
+
+#[cfg(feature = "mcp")]
+#[async_trait::async_trait]
+impl crate::mcp::runtime::RuntimeLeaseSource for ServerRuntimeLeaseSource {
+    async fn resolve(
+        &self,
+    ) -> Result<std::sync::Arc<datazen::execution::application::RuntimeConnectionUseCases>, String>
+    {
+        Err("driver execution backend is not assembled yet (WR-F7); \
+             runtime-backed MCP tools are unavailable in this build."
+            .to_string())
+    }
 }
 
 /// 停机信号：Ctrl-C（SIGINT）。容器场景的 SIGTERM 接线随部署切片（WR-G）。

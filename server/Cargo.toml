@@ -84,6 +84,10 @@ tokio-stream = "0.1"
 # test-harness + named_views + settings feature 门后，本 crate feature 把
 # 各腿依赖一起点亮；测试目标按 required-features 门控（普通 cargo test 不编译它）。
 use-case-contracts = ["datazen/test-harness", "datazen/named_views", "datazen/settings"]
+# WR-F2：MCP Server 的 streamable HTTP 形态（`src/mcp/`）。runtime 租约
+# 面在 feature 内；IdentityPolicy 在 application 编排层（feature 链带上）；
+# 无执行后端前 runtime 依赖工具 fail-closed（F7 登记）。
+mcp = ["datazen/mcp", "datazen/application"]
 
 [[test]]
 name = "use_case_contracts"

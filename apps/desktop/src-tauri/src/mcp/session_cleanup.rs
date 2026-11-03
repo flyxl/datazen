@@ -4,6 +4,7 @@
 //! 身份装配与唤醒 select。退避策略、清扫判定与登记撤销的语义在
 //! `datazen::mcp::session`（`CleanupScheduler` / `sweep_pending`）。
 use super::server::DataZenMcpServer;
+use datazen::execution::application::ConnectionUseCases;
 use datazen::mcp::session::{sweep_pending, CleanupScheduler};
 use datazen::shared::context::RequestContext;
 use std::{sync::atomic::Ordering, time::Instant};
@@ -83,7 +84,6 @@ mod tests {
         },
         testing::{app_state_test_support::TestAppState, mock_driver::MockDriverOptions},
     };
-    use datazen::application::sessions::ConnectionUseCases;
     use datazen::execution::application::requests::{CloseMode, CloseSessionRequest};
     use datazen::execution::ResourceRelease;
     use rmcp::handler::server::wrapper::Parameters;

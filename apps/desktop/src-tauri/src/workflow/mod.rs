@@ -26,6 +26,10 @@ mod host;
 #[cfg(test)]
 mod live_acceptance_tests;
 
+// CM-53 F 层 e2e 的自动化实现点登记（WR-A4 回写）。
+#[cfg(test)]
+mod cm53_e2e_registration_tests;
+
 // 长期文档 `docs/architecture/platform/workflow-resource-model.md` 的引用新鲜度守卫。
 #[cfg(test)]
 #[path = "doc_reference_tests.rs"]

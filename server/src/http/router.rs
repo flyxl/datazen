@@ -89,6 +89,8 @@ pub struct AuthDeps {
     /// WR-D6/D7 域路由（jobs / submission-tokens / artifacts；None = 不挂
     /// ——这些路径落到 fallback 501，最小部署形态显式）。
     pub domains: Option<DomainState>,
+    /// WR-F2：MCP streamable HTTP 传输态（None = 不挂 `/mcp`）。
+    pub mcp: Option<crate::mcp::http::HttpMcpState>,
 }
 
 /// WR-D6/D7 域路由的装配状态（composition root 注入；无隐式单例）。
@@ -190,6 +192,11 @@ pub fn build_router_with_auth(deps: AuthDeps) -> Result<Router, crate::error::Se
                 "/api/v1/artifacts/{id}",
                 get(handler_artifact_read).with_state(domains),
             );
+    }
+    if let Some(mcp_state) = deps.mcp.clone() {
+        // WR-F2：MCP streamable HTTP（`/mcp`，认证链内——传输层会话由
+        // 登录会话背书，工具分发走 modules application 面）。
+        router = router.merge(crate::mcp::http::mcp_router(mcp_state));
     }
 
     // 内 → 外：L6 → (L5) → L4 → L3 → L2 → L1b → catch-panic → L1a → L0。

@@ -23,15 +23,15 @@ const WEB_SETTINGS_SECTIONS: ReadonlySet<SettingsSection> = new Set<SettingsSect
 ]);
 
 /** The desktop form's table: everything the host supplies. */
-export const DESKTOP_CAPABILITIES: PlatformCapabilities = {
+export const DESKTOP_CAPABILITIES = {
   settingsSections: ALL_SETTINGS_SECTIONS,
   updater: true,
   versionSource: 'host-app',
-};
+} satisfies PlatformCapabilities;
 
 /** The web form's table: no host, no native updater, version from the build. */
-export const WEB_CAPABILITIES: PlatformCapabilities = {
+export const WEB_CAPABILITIES = {
   settingsSections: WEB_SETTINGS_SECTIONS,
   updater: false,
   versionSource: 'build-constant',
-};
+} satisfies PlatformCapabilities;
