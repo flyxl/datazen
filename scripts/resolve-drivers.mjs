@@ -24,8 +24,13 @@ import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
  * Custom release SKUs (e.g. akulaku) must pass an explicit comma list in CI —
  * do not add more named presets beyond basic|all|stub; use expanders in lists instead.
  *
- * Tracked managed files (Cargo.toml / capabilities) are copied into
- * `.driver-file-stash/` before injection, then restored after build.
+ * WR-A3 P2 构建期主手术面（W3-c）：15 个 path 驱动已**静态声明**在
+ * apps/desktop/src-tauri/Cargo.toml（optional 依赖 + driver-* feature + drivers 聚合），
+ * 本脚本对它们只做 codegen（generated.ts / driver_init.rs / capabilities /
+ * .driver-features.json），不再改写任何共享 tracked 文件，也不再 stash。
+ * 仅当选择了 **git 驱动**（kiwi/superset：构建期克隆，路径不存在，无法静态化）时，
+ * 才注入 desktop Cargo.toml 标记块与根 Cargo.toml [patch]，并走
+ * `.driver-file-stash/` 的 stash → inject → restore 生命周期。
  * Gitignored codegen files are written in place and left as-is.
  */
 
@@ -980,37 +985,10 @@ function cloneDrivers(drivers, registry) {
   }
 }
 
-/**
- * Replace content between marker comments in a managed file.
- * Reads the clean baseline from stash (when present), writes to the working path.
- * Markers: `# --- BEGIN <tag> ---` / `# --- END <tag> ---`
- */
-function replaceMarkerSection(relPath, tag, newContent) {
-  const begin = `# --- BEGIN ${tag} (managed by resolve-drivers.mjs, do not edit) ---`;
-  const end = `# --- END ${tag} ---`;
-  const text = readFileSync(managedReadPath(relPath), 'utf-8');
-  const re = new RegExp(
-    escapeRegex(begin) + '[\\s\\S]*?' + escapeRegex(end),
-  );
-  if (!re.test(text)) {
-    console.warn(`[resolve-drivers] marker "${tag}" not found in ${relPath}`);
-    return;
-  }
-  const body = newContent ? `${begin}\n${newContent}\n${end}` : `${begin}\n${end}`;
-  writeIfChanged(workPath(relPath), text.replace(re, body));
-}
-
 function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/**
- * Update Cargo.toml files to include only resolved drivers.
- *
- * - apps/desktop/src-tauri/Cargo.toml: adds optional path dependencies + feature flags
- * - Cargo.toml (root): adds [patch] entries when git-sourced drivers are
- *   cloned locally, so Cargo uses the local checkout instead of fetching
- */
 function crateDepPath(name, meta) {
   if (meta.source === 'path' && meta.path) {
     // apps/desktop/src-tauri/Cargo.toml → ../../../packages/drivers/X
@@ -1030,39 +1008,6 @@ function cratePackageName(name, meta) {
 
 function crateRustIdent(name, meta) {
   return cratePackageName(name, meta).replaceAll('-', '_');
-}
-
-function updateCargoFiles(drivers, registry) {
-  // --- apps/desktop/src-tauri/Cargo.toml: plugin deps ---
-  const depLines = drivers.map(name => {
-    const meta = registry[name];
-    const crateName = cratePackageName(name, meta || {});
-    const depPath = crateDepPath(name, meta || {});
-    if (meta?.tauriPlugin) {
-      return `${crateName} = { path = "${depPath}", optional = true, features = ["tauri-plugin"] }`;
-    }
-    return `${crateName} = { path = "${depPath}", optional = true }`;
-  });
-  replaceMarkerSection('apps/desktop/src-tauri/Cargo.toml', 'PLUGIN DEPS', depLines.join('\n'));
-
-  // --- apps/desktop/src-tauri/Cargo.toml: plugin features ---
-  const featureLines = drivers.map(name => {
-    const meta = registry[name];
-    const feature = meta?.feature;
-    const crateName = cratePackageName(name, meta || {});
-    return feature ? `${feature} = ["dep:${crateName}"]` : null;
-  }).filter(Boolean);
-  replaceMarkerSection('apps/desktop/src-tauri/Cargo.toml', 'PLUGIN FEATURES', featureLines.join('\n'));
-
-  // --- Root Cargo.toml: [patch] entries for git-sourced drivers ---
-  // Prefer the same builder as injectRootCargoPatches (includes driver-api unify).
-  replaceMarkerSection(
-    'Cargo.toml',
-    'DRIVER PATCHES',
-    buildRootCargoPatchLines(drivers, registry).join('\n').replace(/^\n/, ''),
-  );
-
-  console.log(`[resolve-drivers] updated Cargo.toml files (${drivers.length} driver(s))`);
 }
 
 /**
@@ -1158,8 +1103,15 @@ function replaceMarkerBlock(content, name, lines) {
 }
 
 /**
- * Inject plugin dependencies and features into apps/desktop/src-tauri/Cargo.toml at build time.
- * Uses start/end markers for idempotent injection.
+ * Inject **git-driver** dependencies and features into apps/desktop/src-tauri/Cargo.toml.
+ * Uses start/end markers for idempotent injection; the caller passes only git-sourced
+ * drivers — the 15 path drivers are statically declared outside the markers (W3-c),
+ * so writing their lines here would duplicate the dep keys and break TOML parsing.
+ *
+ * The `default = [...]` rewrite is gone (W3-c): the default feature set is now a
+ * static fact of the manifest. Every scripted build passes its driver features
+ * explicitly via `-f <.driver-features.json features>` (ci-tauri-build / tauri-dev /
+ * CI cargo invocations), so SKU semantics are unchanged.
  *
  * Drivers that declare `tauriPlugin` also enable the crate's `tauri-plugin` feature
  * so permissions/build.rs and init() are compiled in.
@@ -1196,20 +1148,8 @@ function injectCargoToml(drivers, registry) {
   content = replaceMarkerBlock(content, 'driver-dependencies', depLines);
   content = replaceMarkerBlock(content, 'driver-features', featureLines);
 
-  // Enable injected drivers by default so `tauri build --features webdriver` (and
-  // other builds that only pass extra flags) still compile plugin crates and register
-  // their Tauri ACL manifests — the `<driver-id>:default` capability entries that
-  // `syncDriverCapabilities` merges for drivers declaring non-empty `tauriPlugin.commands`.
-  const defaultFeatureNames = featureLines.map((line) => line.split('=')[0].trim());
-  content = content.replace(
-    /^default = \[[^\]]*\]/m,
-    defaultFeatureNames.length > 0
-      ? `default = [${defaultFeatureNames.map((f) => `"${f}"`).join(', ')}]`
-      : 'default = []',
-  );
-
   writeIfChanged(workPath(relPath), content);
-  console.log(`[resolve-drivers] injected ${depLines.length} deps + ${featureLines.length} features into Cargo.toml`);
+  console.log(`[resolve-drivers] injected ${depLines.length} deps + ${featureLines.length} features into Cargo.toml (git drivers only; path drivers are static)`);
 }
 
 /**
@@ -1488,18 +1428,26 @@ function main() {
   }
 
   const resolvedDrivers = resolveDrivers(driversArg, registry);
+  // W3-c: path 驱动静态化后，只有 git 驱动还需要构建期注入 tracked 文件。
+  const gitDrivers = resolvedDrivers.filter((name) => registry[name]?.source === 'git');
 
   console.log(`[resolve-drivers] resolved drivers: [${resolvedDrivers.join(', ')}]`);
+  console.log(
+    gitDrivers.length > 0
+      ? `[resolve-drivers] git drivers need build-time injection: [${gitDrivers.join(', ')}]`
+      : '[resolve-drivers] path drivers are static; no tracked-file injection, no stash',
+  );
 
-  // Stash tracked managed files, then write injected copies at original paths.
-  // Idempotent: if an outer caller already stashed *in this session*, re-inject
-  // over the working copies. A stash left over from an earlier session is not
-  // automatically reusable — .driver-file-stash/ is gitignored, so it survives
-  // `git checkout -- .` / `git reset --hard` while the managed files are reset
-  // or merged; reusing it would silently roll those changes back. Reuse is
-  // therefore gated on assertStashReusable() proving the stash is fresh.
-  // Codegen-only never touches Cargo.toml / capabilities.
-  if (!codegenOnly) {
+  // Stash tracked managed files, then write injected copies at original paths —
+  // git-driver builds only (W3-c). Idempotent: if an outer caller already
+  // stashed *in this session*, re-inject over the working copies. A stash left
+  // over from an earlier session is not automatically reusable —
+  // .driver-file-stash/ is gitignored, so it survives `git checkout -- .` /
+  // `git reset --hard` while the managed files are reset or merged; reusing it
+  // would silently roll those changes back. Reuse is therefore gated on
+  // assertStashReusable() proving the stash is fresh. Codegen-only never
+  // touches Cargo.toml / capabilities.
+  if (!codegenOnly && gitDrivers.length > 0) {
     if (allStashed()) {
       const verdict = assertStashReusable();
       console.log(
@@ -1528,16 +1476,16 @@ function main() {
       }
     }
 
-    if (!codegenOnly) {
-      injectCargoToml(resolvedDrivers, registry);
-      injectRootCargoPatches(resolvedDrivers, registry);
+    if (!codegenOnly && gitDrivers.length > 0) {
+      injectCargoToml(gitDrivers, registry);
+      injectRootCargoPatches(gitDrivers, registry);
     }
     // Always generate capabilities (default.json is gitignored, built from default_host.json + drivers).
-    // Capabilities ALWAYS mirror apps/desktop/src-tauri/Cargo.toml's actual injection state: only drivers whose
-    // cargo feature is present may contribute permissions. In full mode injectCargoToml runs first,
-    // so every selected plugin qualifies; in codegen-only / post-restore states the file stays
-    // consistent with what cargo will actually compile (otherwise tauri-build fails with
-    // "Permission <plugin>:default not found"). This also self-heals stale capabilities left by a
+    // Capabilities ALWAYS mirror apps/desktop/src-tauri/Cargo.toml's actual feature state: only drivers whose
+    // cargo feature is present may contribute permissions. Path-driver features are static now, git-driver
+    // features land via injectCargoToml first, so every selected plugin qualifies in full mode; in codegen-only /
+    // post-restore states the file stays consistent with what cargo will actually compile (otherwise tauri-build
+    // fails with "Permission <plugin>:default not found"). This also self-heals stale capabilities left by a
     // stash restore after a full build.
     syncDriverCapabilities(resolvedDrivers, registry);
 
@@ -1573,13 +1521,17 @@ function main() {
       console.log(
         '[resolve-drivers] codegen-only: wrote generated.ts / driver_init.rs',
       );
+    } else if (gitDrivers.length > 0) {
+      console.log(
+        `[resolve-drivers] managed files are injected (git drivers); run \`node scripts/driver-file-stash.mjs restore\` after build`,
+      );
     } else {
       console.log(
-        `[resolve-drivers] managed files are injected; run \`node scripts/driver-file-stash.mjs restore\` after build`,
+        '[resolve-drivers] codegen complete; path drivers are static in apps/desktop/src-tauri/Cargo.toml (no managed-file injection)',
       );
     }
   } catch (err) {
-    if (codegenOnly) {
+    if (codegenOnly || gitDrivers.length === 0) {
       throw err;
     }
     console.error('[resolve-drivers] failed; attempting stash restore...');

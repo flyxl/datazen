@@ -523,20 +523,23 @@ fn schema_snapshot(conn: &Connection) -> BTreeMap<(String, String), String> {
 
 /// 冻结项 2（平台计划 §11「schema 支持范围允许旧镜像运行于下一版 expand
 /// schema」/ storage/mod.rs 的 expand 纪律）：v6 形态旧库（真实 SQLite 文件、
-/// 带历史行）跑 `migrate()` → 只落 v7；**每一个**既有对象（表/索引）的
+/// 带历史行）跑 `migrate()` → 只落 v7..=v9 的追加步；**每一个**既有对象（表/索引）的
 /// sqlite_master DDL 文本逐字节不变（expand-only：旧列未删未改类型），全部
 /// 历史行原样，v7 六表就位，版本登记到 7。
 #[test]
 fn migrating_a_v6_library_expands_and_preserves_every_history_row() {
     let (path, before) = v6_form_library("v6-expand");
     let store = AdminStore::open(&path).expect("open v6 library");
-    let applied = store.migrate().expect("migrate v6 → 当前目标（v8）");
-    // v8（server_settings，WR-C2 §6.1 settings 域）加入后，v6 旧库一次
-    // 应用 v7、v8 两步——expand-only 纪律对每一步分别成立。
-    assert_eq!(applied.len(), 2, "v6 → 当前目标应用 v7、v8 两步");
+    let applied = store.migrate().expect("migrate v6 → 当前目标（v9）");
+    // v8（server_settings，WR-C2 §6.1 settings 域）与 v9（named_views，
+    // WR-C3 §6.9 命名视图的服务端存储）加入后，v6 旧库一次应用 v7、v8、
+    // v9 三步——expand-only 纪律对每一步分别成立（v9 随 Wave6 第三刀
+    // tableData 域落库，验收面随版本演进更新，断言形状不变）。
+    assert_eq!(applied.len(), 3, "v6 → 当前目标应用 v7、v8、v9 三步");
     assert_eq!(applied[0].version, 7);
     assert_eq!(applied[1].version, 8);
-    assert_eq!(store.schema_version().expect("schema version"), 8);
+    assert_eq!(applied[2].version, 9);
+    assert_eq!(store.schema_version().expect("schema version"), 9);
 
     let conn = probe(&path);
     // v7 新表在（执行接线的四组对象）。
@@ -578,12 +581,14 @@ fn migrating_a_v6_library_expands_and_preserves_every_history_row() {
         vec![
             ("index", "idx_connection_catalog_order"),
             ("index", "idx_connection_catalog_tunnel"),
+            ("index", "idx_named_views_scope"),
             // v8（server_settings，WR-C2 §6.1 settings 域的服务端存储）。
             ("index", "idx_server_settings_org"),
             ("index", "uq_execution_service_identity_principal"),
             ("table", "connection_catalog"),
             ("table", "connection_catalog_group"),
             ("table", "execution_service_identity"),
+            ("table", "named_views"),
             ("table", "server_settings"),
             ("table", "stored_secret"),
             ("table", "stored_secret_version"),
@@ -592,7 +597,7 @@ fn migrating_a_v6_library_expands_and_preserves_every_history_row() {
         .into_iter()
         .map(|(t, n)| (t.to_string(), n.to_string()))
         .collect::<Vec<_>>(),
-        "新增对象恰为 v7+v8 的登记清单（expand-only：每一步只加不改）"
+        "新增对象恰为 v7+v8+v9 的登记清单（expand-only：每一步只加不改）"
     );
 
     // 历史行逐字段原样（登记表/审计行不被迁移破坏）。
@@ -763,7 +768,7 @@ fn migrate_is_idempotent_over_a_history_bearing_library() {
     let (path, _) = v6_form_library("v6-idempotent");
     let store = AdminStore::open(&path).expect("open");
     let first = store.migrate().expect("first migrate");
-    assert_eq!(first.len(), 2, "v6 → 当前目标（v7+v8 两步）");
+    assert_eq!(first.len(), 3, "v6 → 当前目标（v7+v8+v9 三步）");
     let snapshot_after_first = schema_snapshot(&probe(&path));
 
     let second = store.migrate().expect("second migrate");
