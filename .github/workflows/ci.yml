@@ -123,7 +123,10 @@ jobs:
       # 守卫脚本本体不变，只是调用方式与 check-managed-stubs 对齐。
       - name: All strict guards (stubs, IDs, layers, boundaries, i18n keys, frontend entries, test-module naming)
         run: |
-          node scripts/check-managed-stubs.mjs
+          # --check-static-drivers（W3-c）：核对桌面 Cargo.toml 的静态 path 驱动
+          # 声明与 drivers-registry.json 一致（新增 path 驱动忘加 optional 依赖/
+          # feature/`drivers` 聚合位时在这里红）。
+          node scripts/check-managed-stubs.mjs --check-static-drivers
           node scripts/check-id-terminology.mjs
           node scripts/check-module-layers.mjs
           node scripts/check-driver-import-boundaries.mjs
@@ -412,8 +415,9 @@ jobs:
       # 严格超集）：datazen 的 feature 闭包与 `--lib` 步完全一致，依赖
       # 编译继续共享；宿主 lib 本身因多出 pub use commands::test_harness
       # 重编译一次（该模块在 cfg(test) 下本就编译，增量极小）。driver
-      # feature 集取自同一份 .driver-features.json，位于 restore 之前，
-      # 与 `--lib` 步断言同一份注入态。
+      # feature 集取自同一份 .driver-features.json，与 `--lib` 步断言同一份
+      # codegen 态。（W3-c：本 job 只跑 --drivers=basic，全是静态声明的 path
+      # 驱动，不再注入/恢复 tracked 文件。）
       - name: Rust integration tests (datazen desktop host, src-tauri/tests/)
         run: |
           FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
@@ -425,9 +429,10 @@ jobs:
             --test connections_sessions_use_case_contract_ipc \
             --features "$FEATURES,test-harness"
 
-      - name: Restore managed files
-        if: always()
-        run: node scripts/driver-file-stash.mjs restore
+      # （原 "Restore managed files" 步骤已随 W3-c 删除：本 job 只跑
+      # `--drivers=basic`，全部是静态声明的 path 驱动，resolve-drivers 对
+      # tracked 文件零写入；git 驱动注入的 restore 仍由 release/dev 流程内的
+      # with-driver-inject / dev.mjs / husky pre-commit 负责。）
 
       # 此处曾有一步（datazen-ai-api 于 D1.5 退役后的换代步骤）：
       #   cargo test -p datazen --lib --features settings,ai,connection,named_views
@@ -452,8 +457,9 @@ jobs:
       #
       # 必须落在这里，不能并进 frontend 的「All strict guards」：那条门禁所在 job
       # 没有 Rust 工具链（工具链在下面 rust job 的 dtolnay/rust-toolchain@stable），
-      # 而本门禁要读 `cargo metadata` 的 feature-resolved 图。放在 restore 之后，
-      # 断言的是提交态的 workspace 清单，与本地开发者看到的一致。
+      # 而本门禁要读 `cargo metadata` 的 feature-resolved 图。本 job 不再注入
+      # tracked 文件（W3-c），断言的 always 是提交态的 workspace 清单，与本地
+      # 开发者看到的一致。
       #
       # 门禁本身不带 crate 名单：清单来自 workspace membership + §2.4 的路径，
        # 新 crate 落到 modules / server 下就自动入网，
@@ -479,7 +485,7 @@ jobs:
 
       # 新增共享基础设施 crate 的 panic 门禁。同样落在这里，理由和上面那条一样：
       # 它要先解析 `cargo metadata` 才能把显式目标目录认成 workspace member，而
-      # frontend job 没有 Rust 工具链；放在 restore 之后，断言的是提交态的清单。
+      # frontend job 没有 Rust 工具链；断言的是提交态的清单（本 job 无注入，W3-c）。
       #
       # 与上面那条边界门禁的分工：边界门禁的结论行已被 R 阶段全量回归记录在案，
       # 因此本轮策略是「只约束新增 crate」（决策 c 方案 3），不追溯既有代码，也不

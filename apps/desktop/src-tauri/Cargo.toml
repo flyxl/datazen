@@ -63,9 +63,30 @@ url = { workspace = true }
 reqwest = { workspace = true }
 futures-util = { workspace = true }
 
-# Driver crates — injected by resolve-drivers.mjs at build time; do NOT add manually.
+# Driver crates — WR-A3 P2 构建期主手术面（W3-c）：15 个 path 驱动改为**静态声明**
+# （optional = true + 各自 `driver-*` feature + `drivers` 聚合 feature），
+# `resolve-drivers.mjs` 不再为本组驱动改写本文件（默认 basic / all 全是 path 驱动，
+# 构建期零注入；无驱动部署 `cargo build` 即得，全量经 `--features drivers`）。
+# 标记块只留给 **git 驱动**（kiwi/superset，构建期克隆、路径不存在，无法静态化）：
 # <<driver-dependencies>>
 # <</driver-dependencies>>
+# 静态驱动依赖（与 drivers-registry.json 的 path 条目一一对应；
+# check-managed-stubs.mjs --check-static-drivers 会核对这份清单）。
+datazen-driver-postgres = { path = "../../../packages/drivers/postgres", optional = true }
+datazen-driver-mysql = { path = "../../../packages/drivers/mysql", optional = true }
+datazen-driver-sqlite = { path = "../../../packages/drivers/sqlite", optional = true }
+datazen-driver-redis = { path = "../../../packages/drivers/redis", optional = true }
+datazen-driver-mongodb = { path = "../../../packages/drivers/mongodb", optional = true }
+datazen-driver-sqlserver = { path = "../../../packages/drivers/sqlserver", optional = true }
+datazen-driver-clickhouse = { path = "../../../packages/drivers/clickhouse", optional = true }
+datazen-driver-duckdb = { path = "../../../packages/drivers/duckdb", optional = true }
+datazen-driver-elasticsearch = { path = "../../../packages/drivers/elasticsearch", optional = true }
+datazen-driver-rqlite = { path = "../../../packages/drivers/rqlite", optional = true }
+datazen-driver-turso = { path = "../../../packages/drivers/turso", optional = true }
+datazen-driver-influxdb = { path = "../../../packages/drivers/influxdb", optional = true }
+datazen-driver-victoriametrics = { path = "../../../packages/drivers/victoriametrics", optional = true }
+datazen-driver-hbase = { path = "../../../packages/drivers/hbase", optional = true }
+datazen-driver-vector = { path = "../../../packages/drivers/vector", optional = true }
 rmcp = { version = "2.2.0", features = ["server", "client", "transport-io", "transport-child-process", "transport-streamable-http-server", "macros", "schemars"] }
 schemars = "1.2.2"
 tokio-util = { version = "0.7.19", features = ["rt", "compat"] }
@@ -100,9 +121,30 @@ webdriver = ["tauri-plugin-webdriver", "dep:objc2", "dep:objc2-app-kit", "dataze
 # the command entries need a `State<'_, AppState>` that only a Manager can
 # provide (B2 之后命令层没有 `_impl` 转发层)。
 test-harness = ["datazen/test-harness", "tauri/test"]
-# Driver features — injected by resolve-drivers.mjs at build time; do NOT add manually.
+# Path-driver features（静态；与上面依赖一一对应）+ `drivers` 聚合 feature。
+# `default` 保持 `[]`：桌面默认构建特征集零变化（此前由 resolve-drivers 注入态决定，
+# 所有脚本化构建都显式传 `-f <.driver-features.json 的 features>`；default 提前点亮
+# `drivers` 会把 basic/all SKU 与 tauri:dev 的驱动集改成全量 15 个——留给后续刀，
+# 前置条件是 ci-tauri-build / tauri-dev 先加 --no-default-features）。
 # <<driver-features>>
 # <</driver-features>>
+driver-postgres = ["dep:datazen-driver-postgres"]
+driver-mysql = ["dep:datazen-driver-mysql"]
+driver-sqlite = ["dep:datazen-driver-sqlite"]
+driver-redis = ["dep:datazen-driver-redis"]
+driver-mongodb = ["dep:datazen-driver-mongodb"]
+driver-sqlserver = ["dep:datazen-driver-sqlserver"]
+driver-clickhouse = ["dep:datazen-driver-clickhouse"]
+driver-duckdb = ["dep:datazen-driver-duckdb"]
+driver-elasticsearch = ["dep:datazen-driver-elasticsearch"]
+driver-rqlite = ["dep:datazen-driver-rqlite"]
+driver-turso = ["dep:datazen-driver-turso"]
+driver-influxdb = ["dep:datazen-driver-influxdb"]
+driver-victoriametrics = ["dep:datazen-driver-victoriametrics"]
+driver-hbase = ["dep:datazen-driver-hbase"]
+driver-vector = ["dep:datazen-driver-vector"]
+# 全量 path 驱动聚合：`cargo build -p datazen_desktop --features drivers`。
+drivers = ["driver-postgres", "driver-mysql", "driver-sqlite", "driver-redis", "driver-mongodb", "driver-sqlserver", "driver-clickhouse", "driver-duckdb", "driver-elasticsearch", "driver-rqlite", "driver-turso", "driver-influxdb", "driver-victoriametrics", "driver-hbase", "driver-vector"]
 
 
 [dev-dependencies]
@@ -124,10 +166,10 @@ name = "driver_command_ipc"
 required-features = ["test-harness"]
 
 [lints.rust]
-# Driver features are injected by resolve-drivers.mjs at build time; the set
-# depends on which drivers the build selects, so declare **every** driver
-# feature `drivers-registry.json` can produce here — standalone `cargo check`
-# then does not treat them as unexpected cfg.
+# Driver features：path 驱动为静态声明（见 [features]），git 驱动（kiwi/superset）
+# 仍由 resolve-drivers.mjs 在构建期注入；特征集取决于构建选择了哪些驱动，
+# 因此这里声明 **drivers-registry.json 能产出的每一个** driver feature ——
+# 单独 `cargo check` 不会把它们当 unexpected cfg。
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("driver-postgres", "driver-mysql", "driver-sqlite", "driver-redis", "driver-mongodb", "driver-sqlserver", "driver-clickhouse", "driver-duckdb", "driver-elasticsearch", "driver-rqlite", "driver-turso", "driver-influxdb", "driver-victoriametrics", "driver-hbase", "driver-vector", "driver-kiwi", "driver-superset"))'] }
 # 标识符只许 ASCII：中文测试名（存量已于 2026-10-27 全量改英文）会触发
 # non_snake_case 告警刷屏 CI 日志；deny 让新增非 ASCII 标识符直接红编译。

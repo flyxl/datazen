@@ -337,10 +337,10 @@ TS 快照进来。两处都用精确版本。
 | 步骤 | 命令 / 动作 | 说明 |
 |------|-------------|------|
 | 依赖 | `pnpm install --frozen-lockfile` | 注入脚本链 import `fflate`，仍需 node_modules |
-| 驱动解析 | `resolve-drivers.mjs --drivers=basic` | 写入 `.driver-features.json`、codegen |
-| 格式门禁 | `cargo fmt --all -- --check` | **硬门禁**；必须排在「驱动解析」**之后**——fmt 要加载 Cargo workspace，而 `lib.rs` 的 `mod driver_init` 指向 gitignored codegen，只由 resolve-drivers 生成，排前面会 `failed to resolve mod 'driver_init'` 直接 EXIT=1。rustfmt 由 `dtolnay/rust-toolchain` 的 `components: rustfmt` 显式安装（该 action 固定 `--profile minimal`，而 rustfmt 属 `default` profile） |
+| 驱动解析 | `resolve-drivers.mjs --drivers=basic` | 写入 `.driver-features.json`、codegen；basic 全是 path 驱动、已静态声明，对 tracked 文件零写入（W3-c） |
+| 格式门禁 | ——（CI 无此步，2026-11-04 核实修正） | `cargo fmt` 是 **husky pre-commit 钩子**的本地门禁（`.husky/pre-commit` 对 staged 的 .rs re-stage；历史原因 CI 从未跑过 fmt，仓库存在既有的全仓 fmt 漂移，不在本表管辖）。原记载「CI 硬门禁 + 必须排在驱动解析之后」与 workflows 实况不符（`cargo fmt --all -- --check` 不在 ci.yml 任何 job），按事实修正；「排在驱动解析之后」的约束对本地开发者依然成立（`lib.rs` 的 `mod driver_init` 指向 gitignored codegen） |
 | Rust | 见下表 | Rust **stable** |
-| 清理 | `driver-file-stash.mjs restore` | 恢复被 inject 的 tracked 文件（`if: always()`） |
+| 清理 | ——（原 `driver-file-stash.mjs restore` 步骤已随 W3-c 删除） | basic 全是 path 驱动，无注入可恢复；git 驱动的 restore 仍在 release/dev 流程内 |
 | 架构门禁 | `pnpm test:platform-arch` | 全部平台边界规则检查，**阻塞** |
 | 内核 crate 单测 | `pnpm test:platform-crates` | 集合由脚本按 LAYERS 发现 |
 | 门禁自证 | `pnpm test:platform-arch:mutations` | 变异证明，**job 内最后一步** |
@@ -381,8 +381,8 @@ cargo test -p datazen_desktop --lib --features "$FEATURES,datazen/test-harness"
 # 自动编译执行（无 .env.test 自跳过，其 passed 行不是 AI 冒烟证据）。
 FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
 cargo test -p datazen_desktop --test driver_command_ipc --test data_sync_public_api --test mcp_stdio_auth --test workflow_db_tests --features "$FEATURES,test-harness"
-# 恢复被 inject 的 tracked 文件，确保后续步骤工作在干净状态
-node scripts/driver-file-stash.mjs restore
+# （原「恢复被 inject 的 tracked 文件」一步已随 W3-c 删除：basic 全是 path 驱动，
+# 静态声明、零注入；git 驱动构建的 restore 仍由 with-driver-inject / dev.mjs 负责。）
 # 此处曾有 `cargo test -p datazen-ai-api --lib`，后又改为
 # `cargo test -p datazen --lib --features settings,ai,connection,named_views`；
 # 2026-10-27 删除：该组合的 feature 闭包 = platform-crate runner `ai` 腿 ∪
