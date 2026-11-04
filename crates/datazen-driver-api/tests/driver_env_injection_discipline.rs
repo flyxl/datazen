@@ -69,7 +69,7 @@ impl Finding {
 fn repo_root() -> PathBuf {
     let mut dir: &Path = Path::new(env!("CARGO_MANIFEST_DIR"));
     loop {
-        if dir.join("packages").join("drivers").is_dir() {
+        if dir.join("crates").join("drivers").is_dir() {
             return dir.to_path_buf();
         }
         dir = dir
@@ -140,7 +140,7 @@ fn collect_rust_sources(dir: &Path, out: &mut Vec<PathBuf>) {
 
 /// Every `.rs` file under `crates/drivers/*/{src,tests}` that exists right now.
 fn scanned_files(root: &Path) -> Vec<PathBuf> {
-    let drivers = root.join("packages").join("drivers");
+    let drivers = root.join("crates").join("drivers");
     let mut out = Vec::new();
     let Ok(entries) = std::fs::read_dir(&drivers) else {
         return out;
@@ -205,7 +205,7 @@ fn findings(files: &[PathBuf], root: &Path) -> Vec<Finding> {
 
 /// A `dotenv` dependency is the crate-level escape hatch around the rules above.
 fn dependency_findings(root: &Path) -> Vec<Finding> {
-    let drivers = root.join("packages").join("drivers");
+    let drivers = root.join("crates").join("drivers");
     let mut out = Vec::new();
     let Ok(entries) = std::fs::read_dir(&drivers) else {
         return out;
@@ -269,7 +269,7 @@ fn no_driver_source_reads_a_protected_env_file() {
     assert!(
         !files.is_empty(),
         "scan found no driver sources under {} — the guard is not looking at anything",
-        root.join("packages").join("drivers").display()
+        root.join("crates").join("drivers").display()
     );
     let mut found = findings(&files, &root);
     found.extend(dependency_findings(&root));
@@ -305,12 +305,12 @@ fn the_scan_covers_a_brand_new_offender() {
             .as_nanos()
     ));
     let clean = scratch
-        .join("packages")
+        .join("crates")
         .join("drivers")
         .join("brand_new_db")
         .join("src");
     let dirty = scratch
-        .join("packages")
+        .join("crates")
         .join("drivers")
         .join("brand_new_db")
         .join("tests");
@@ -350,10 +350,7 @@ fn the_scan_covers_a_brand_new_offender() {
 
     // The crate-level escape hatch: a driver that merely *can* load an env file
     // is caught even when its own source is innocent.
-    let crate_root = scratch
-        .join("packages")
-        .join("drivers")
-        .join("brand_new_db");
+    let crate_root = scratch.join("crates").join("drivers").join("brand_new_db");
     assert!(dependency_findings(&scratch).is_empty());
     std::fs::write(
         crate_root.join("Cargo.toml"),
