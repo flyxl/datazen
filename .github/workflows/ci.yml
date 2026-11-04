@@ -229,10 +229,34 @@ jobs:
     if: needs.detect-changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
+    # 本地冷构建纪律（磁盘易满）搬到 CI（2026-11-04 run 1376 教训）：
+    # debuginfo 是 target 目录的头号膨胀源（dev/test 默认 debug=2 全量符号，
+    # 本 job 一轮要编 4 驱动 tests + datazen 全量 lib（~20.9 万行）+ desktop
+    # 宿主），关掉后产物体积大幅缩水；增量编译产物对一次性 CI 无收益，纯占盘。
+    # 代价：panic 回溯无符号，排障时用本地 debug 构建补齐。
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      CARGO_INCREMENTAL: "0"
+
     steps:
       # 浅克隆即可：basic 预设全是 path 驱动，resolve-drivers 不做 git fetch；
       # 需要全量历史的 site diff 只在 frontend job。
       - uses: actions/checkout@v5
+
+      # run 1376（main a3febe1d）实测：rust job 在链接 datazen-driver-mysql
+      # 测试二进制时 `ld terminated with signal 7 (Bus error)`——SIGBUS 是磁盘
+      # 写穿的症状，job 日志尾部明确「Free space left: 16 MB」「No space left
+      # on device」。同一提交在 w7-b 分支腿（run 1375）全绿，纯 runner 容量
+      # 问题，不是代码回归。ubuntu-latest 预装了本 job 用不到的大块工具链，
+      # 清掉回收 10GB+ 量级，与上面 env 的 DEBUG=0 双保险。放最前：后面的
+      # pnpm install / apt / rust-cache 写入全部受益。
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL \
+            /usr/local/lib/android /usr/share/swift /usr/local/.ghcup
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          df -h /
 
       # resolve-drivers.mjs → resolve-pro.mjs → pack-ep.mjs 顶层 import 了
       # fflate（ESM 静态解析），所以驱动注入同样需要 node_modules。
