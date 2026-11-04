@@ -211,6 +211,7 @@ pub const MIGRATIONS: &[Migration] = &[
     V6_AUDIT_EVENTS,
     V7_EXECUTION_WIRING,
     V8_SERVER_SETTINGS,
+    V9_NAMED_VIEWS,
 ];
 
 /// v8：服务端设置存储（`SettingsRepository` 的服务端落地；契约 §6.1 的
@@ -243,6 +244,50 @@ CREATE TABLE server_settings (
 );
 CREATE INDEX idx_server_settings_org
   ON server_settings (organization_id, updated_at);
+"#,
+};
+
+/// v9：命名视图表（`NamedViewRepository` 的服务端落地；契约 §6.9 的存储
+/// 形态裁决——web 形态把「桌面存本机 named_views.json」改存服务端库，
+/// 端口形状零改动）。
+///
+/// DDL 口径（v5 起的登记纪律）：
+///
+/// - **端口是 whole-collection**（load/save 整集合替换），组织与主体隔离
+///   由适配器按「每 (organization_id, principal_id) 一个实例」实现（
+///   settings/known-hosts 同款口径）：列在行上，端口参数不带。§6.9 的
+///   归属语义是 **per principal + scope**——同一组织的两个主体各自持有
+///   自己的视图集合，越界读取天然落空（CM-05：读越界空/None）。
+/// - `id TEXT PRIMARY KEY` 单列主键：id 由服务端铸造（uuid v4，CSPRNG，
+///   全局唯一），跨主体的主键碰撞即适配器的**写越界拒绝**信号（INSERT
+///   撞键 → `NamedViewError::Storage`，绝不静默改写他人行）。
+/// - **scope 投影列**（`connection_id` / `database_name` / `schema_name` /
+///   `table_name`）镜像 `NamedViewScope`：`connection_id` NOT NULL——
+///   scope 绑定**持久 connectionId**（§6.9 明文：`dbSessionId` 是运行时
+///   状态，永不入 scope，本表没有也不允许有会话列）；`database` /
+///   `schema` 可空（引擎无该层级时为 NULL），空串与缺失同义禁止（CHECK）。
+///   投影列只服务可观测与查询，**权威是 `view_json`**（整条 `NamedView`
+///   的 JSON 投影，v3/v4/v7 同款 JSONB→TEXT 口径）。
+/// - `TIMESTAMPTZ → TEXT`（定宽 RFC3339 UTC 毫秒；`updated_at` 可空——
+///   与 `NamedView.updated_at: Option` 同形，从未改过的记录为 NULL）。
+const V9_NAMED_VIEWS: Migration = Migration {
+    version: 9,
+    name: "named_views baseline (per-principal saved views)",
+    expand: r#"
+CREATE TABLE named_views (
+  id TEXT NOT NULL PRIMARY KEY,
+  organization_id TEXT NOT NULL,
+  principal_id TEXT NOT NULL,
+  connection_id TEXT NOT NULL CHECK (connection_id <> ''),
+  database_name TEXT CHECK (database_name IS NULL OR database_name <> ''),
+  schema_name TEXT CHECK (schema_name IS NULL OR schema_name <> ''),
+  table_name TEXT NOT NULL CHECK (table_name <> ''),
+  view_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT CHECK (updated_at IS NULL OR updated_at <> '')
+);
+CREATE INDEX idx_named_views_scope
+  ON named_views (organization_id, principal_id, connection_id, table_name);
 "#,
 };
 

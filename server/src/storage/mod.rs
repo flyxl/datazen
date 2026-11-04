@@ -30,6 +30,7 @@ pub mod jobs;
 pub mod known_hosts;
 pub mod login_sessions;
 pub mod migrations;
+pub mod named_views;
 pub mod profiles;
 pub mod settings;
 pub mod tunnels;

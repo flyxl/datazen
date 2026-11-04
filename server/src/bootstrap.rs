@@ -423,6 +423,13 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
             settings: settings_store.clone(),
             organization_id: config.organization_id.clone(),
         }),
+        // WR-C3 §6.7–6.9 tableData 域（W3 刀）：命名视图三端点真实现
+        // （v9 `named_views` 表）+ tableData 读/预览/变更十一端点
+        // fail-closed 登记（501，逐方法不可服务原因）。认证链 L2–L6 与
+        // CSRF 由 merge 循环保证。
+        crate::http::domains::table_data::table_data_router(
+            crate::http::domains::table_data::TableDataState { store: store.clone() },
+        ),
     ];
 
     // WR-F2：MCP streamable HTTP（feature 门控；执行栈已在上方装配）。
