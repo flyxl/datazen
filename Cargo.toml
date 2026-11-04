@@ -22,6 +22,21 @@ datazen-infra = { path = "crates/datazen-infra" }
 datazen-driver-postgres = { path = "crates/drivers/postgres" }
 datazen-driver-mysql = { path = "crates/drivers/mysql" }
 datazen-driver-sqlite = { path = "crates/drivers/sqlite" }
+# W8-a P1：其余 12 个 path 驱动入表——server 的 `driver-*` per-driver feature
+# 按需链接（deploy-drivers 聚合；缺省不链接，注册表空表）。桌面宿主保持
+# 相对 path 写法不动（W3-c 静态声明形态）。
+datazen-driver-redis = { path = "crates/drivers/redis" }
+datazen-driver-mongodb = { path = "crates/drivers/mongodb" }
+datazen-driver-sqlserver = { path = "crates/drivers/sqlserver" }
+datazen-driver-clickhouse = { path = "crates/drivers/clickhouse" }
+datazen-driver-duckdb = { path = "crates/drivers/duckdb" }
+datazen-driver-elasticsearch = { path = "crates/drivers/elasticsearch" }
+datazen-driver-rqlite = { path = "crates/drivers/rqlite" }
+datazen-driver-turso = { path = "crates/drivers/turso" }
+datazen-driver-influxdb = { path = "crates/drivers/influxdb" }
+datazen-driver-victoriametrics = { path = "crates/drivers/victoriametrics" }
+datazen-driver-hbase = { path = "crates/drivers/hbase" }
+datazen-driver-vector = { path = "crates/drivers/vector" }
 # Shared external specs — single source of truth for the versions (and, where
 # they must stay in lockstep, the feature sets) that modules, the desktop host
 # and the driver crates consume. Members inherit with `workspace = true`.

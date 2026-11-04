@@ -35,6 +35,9 @@ pub mod auth;
 pub mod bootstrap;
 pub mod config;
 pub mod csrf;
+// 驱动链接闭包（W8-a P1）：`extern crate` × `driver-*` feature。公开为模块
+// 只是让它进入 API 面、免死代码告警——内容全是链接副作用的 extern crate。
+pub mod driver_link;
 pub mod error;
 pub mod execution;
 pub mod http;

@@ -34,6 +34,29 @@ datazen = { workspace = true, features = ["connection", "execution", "tunnel", "
 # 另立一份（`storage/connections.rs`、`storage/tunnels.rs`）。
 datazen-driver-api = { workspace = true }
 
+# W8-a P1：驱动工厂点亮——驱动 crate 按需链接（`driver-*` per-driver feature +
+# `deploy-drivers` 聚合；缺省不链接任何驱动，注册表保持空表）。链接机制见
+# `src/driver_link.rs`：extern crate 闭包 + 驱动 crate 内
+# `datazen_driver_api::inventory::submit!`（inventory）入表，与桌面宿主的
+# codegen 产物同一机制。path 依赖统一走根 [workspace.dependencies]（W7-A
+# 纪律）；git 驱动（kiwi/superset）不在此列，其目录是构建期注入的，静态
+# 声明会炸干净检出的 `cargo metadata`。
+datazen-driver-clickhouse = { workspace = true, optional = true }
+datazen-driver-duckdb = { workspace = true, optional = true }
+datazen-driver-elasticsearch = { workspace = true, optional = true }
+datazen-driver-hbase = { workspace = true, optional = true }
+datazen-driver-influxdb = { workspace = true, optional = true }
+datazen-driver-mongodb = { workspace = true, optional = true }
+datazen-driver-mysql = { workspace = true, optional = true }
+datazen-driver-postgres = { workspace = true, optional = true }
+datazen-driver-redis = { workspace = true, optional = true }
+datazen-driver-rqlite = { workspace = true, optional = true }
+datazen-driver-sqlite = { workspace = true, optional = true }
+datazen-driver-sqlserver = { workspace = true, optional = true }
+datazen-driver-turso = { workspace = true, optional = true }
+datazen-driver-vector = { workspace = true, optional = true }
+datazen-driver-victoriametrics = { workspace = true, optional = true }
+
 # 适配器的 `#[async_trait]`（trait 实现处直接使用，需是本 crate 的直接依赖；
 # datazen 侧的同名依赖不传递可见性）。
 async-trait = { workspace = true }
@@ -80,6 +103,27 @@ jsonwebtoken = "9"
 tokio-stream = "0.1"
 
 [features]
+# W8-a P1：per-driver 链接 feature——与桌面宿主同名同语义，drivers-registry.json
+# 的 feature 字段是唯一权威（check-managed-stubs --check-static-drivers 断言
+# 本清单与注册表逐条一致）。缺省不开：注册表空表，fail-closed 闸序不变。
+driver-postgres = ["dep:datazen-driver-postgres"]
+driver-mysql = ["dep:datazen-driver-mysql"]
+driver-sqlite = ["dep:datazen-driver-sqlite"]
+driver-redis = ["dep:datazen-driver-redis"]
+driver-mongodb = ["dep:datazen-driver-mongodb"]
+driver-sqlserver = ["dep:datazen-driver-sqlserver"]
+driver-clickhouse = ["dep:datazen-driver-clickhouse"]
+driver-duckdb = ["dep:datazen-driver-duckdb"]
+driver-elasticsearch = ["dep:datazen-driver-elasticsearch"]
+driver-rqlite = ["dep:datazen-driver-rqlite"]
+driver-turso = ["dep:datazen-driver-turso"]
+driver-influxdb = ["dep:datazen-driver-influxdb"]
+driver-victoriametrics = ["dep:datazen-driver-victoriametrics"]
+driver-hbase = ["dep:datazen-driver-hbase"]
+driver-vector = ["dep:datazen-driver-vector"]
+# 部署构建聚合：`cargo build -p datazen-server --features deploy-drivers`。
+# 成员清单与桌面 `drivers` 聚合逐项一致（registry 顺序）。
+deploy-drivers = ["driver-postgres", "driver-mysql", "driver-sqlite", "driver-redis", "driver-mongodb", "driver-sqlserver", "driver-clickhouse", "driver-duckdb", "driver-elasticsearch", "driver-rqlite", "driver-turso", "driver-influxdb", "driver-victoriametrics", "driver-hbase", "driver-vector"]
 # WR-C3 同用例双传输测试（server 腿）：共享规格模块挂在 datazen 的
 # test-harness + named_views + settings feature 门后，本 crate feature 把
 # 各腿依赖一起点亮；测试目标按 required-features 门控（普通 cargo test 不编译它）。
