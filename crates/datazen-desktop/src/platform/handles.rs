@@ -386,7 +386,7 @@ mod tests {
             ("handles.rs", include_str!("handles.rs")),
             (
                 "frontend_bridge.rs (modules)",
-                include_str!("../../../../../crates/datazen/src/application/frontend_bridge.rs"),
+                include_str!("../../../datazen/src/application/frontend_bridge.rs"),
             ),
             ("adapter.rs", include_str!("adapter.rs")),
             ("mod.rs", include_str!("mod.rs")),

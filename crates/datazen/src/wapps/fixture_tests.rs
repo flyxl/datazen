@@ -18,7 +18,7 @@ use crate::wapps::manifest::{parse_manifest, validate_manifest, validate_wapp_di
 use crate::wapps::WAPP_API_VERSION;
 
 fn sample_wapp_fixture() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../e2e/fixtures/sample-wapp")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../e2e/fixtures/sample-wapp")
 }
 
 fn load_fixture_manifest() -> (PathBuf, crate::wapps::WappManifest) {
@@ -95,7 +95,7 @@ fn e2e_sample_wapp_fixture_installs_through_the_real_path() {
 
 /// Source tree for repo-bundled extension packages (`packages/wapps/`).
 fn wapps_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../packages/wapps")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packages/wapps")
 }
 
 /// Guards every shipped extension package against rot: each directory under

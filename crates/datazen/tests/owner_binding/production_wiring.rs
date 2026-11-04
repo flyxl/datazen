@@ -81,7 +81,7 @@ const MUST_VISIT: &[&str] = &[
 pub(super) fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
-        .nth(1)
+        .nth(2)
         .expect("CARGO_MANIFEST_DIR 至少要有两级祖先")
         .to_path_buf()
 }

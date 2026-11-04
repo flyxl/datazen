@@ -33,39 +33,39 @@ use datazen::shared::id::{AttachmentToken, RuntimeEpoch, Timestamp};
 const SOURCES: &[(&str, &str)] = &[
     (
         "mod.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/directory/mod.rs"),
+        include_str!("../src/execution/runtime/directory/mod.rs"),
     ),
     (
         "directory.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/directory/directory.rs"),
+        include_str!("../src/execution/runtime/directory/directory.rs"),
     ),
     (
         "entry.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/directory/entry.rs"),
+        include_str!("../src/execution/runtime/directory/entry.rs"),
     ),
     (
         "lifecycle.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/directory/lifecycle.rs"),
+        include_str!("../src/execution/runtime/directory/lifecycle.rs"),
     ),
     (
         "attachment.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/directory/attachment.rs"),
+        include_str!("../src/execution/runtime/directory/attachment.rs"),
     ),
     (
         "commit.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/directory/commit.rs"),
+        include_str!("../src/execution/runtime/directory/commit.rs"),
     ),
     (
         "ttl.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/directory/ttl.rs"),
+        include_str!("../src/execution/runtime/directory/ttl.rs"),
     ),
     (
         "id.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/directory/id.rs"),
+        include_str!("../src/execution/runtime/directory/id.rs"),
     ),
     (
         "tests.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/directory/tests.rs"),
+        include_str!("../src/execution/runtime/directory/tests.rs"),
     ),
 ];
 

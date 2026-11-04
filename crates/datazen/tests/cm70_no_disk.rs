@@ -75,85 +75,81 @@ use gateway_fixtures as fx;
 const SOURCES: &[(&str, &str)] = &[
     (
         "mod.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/gateway/mod.rs"),
+        include_str!("../src/execution/runtime/gateway/mod.rs"),
     ),
     // 从 mod.rs 搬出来的 ExecutionGateway 固有方法。必须登记：漏登记不是「少测一个文件」，
     // 而是 `gateway_source_never_touches_the_filesystem` 的反面证据在这半个网关上直接失效。
     (
         "execution.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/gateway/execution.rs"),
+        include_str!("../src/execution/runtime/gateway/execution.rs"),
     ),
     (
         "request.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/gateway/request.rs"),
+        include_str!("../src/execution/runtime/gateway/request.rs"),
     ),
     (
         "owner_binding.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/gateway/owner_binding.rs"),
+        include_str!("../src/execution/runtime/gateway/owner_binding.rs"),
     ),
     (
         "request_cm06_negatives.rs",
-        include_str!(
-            "../../crates/datazen/src/execution/runtime/gateway/request_cm06_negatives.rs"
-        ),
+        include_str!("../src/execution/runtime/gateway/request_cm06_negatives.rs"),
     ),
     (
         "idempotency.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/gateway/idempotency.rs"),
+        include_str!("../src/execution/runtime/gateway/idempotency.rs"),
     ),
     (
         "token.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/gateway/token.rs"),
+        include_str!("../src/execution/runtime/gateway/token.rs"),
     ),
     (
         "retention.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/gateway/retention.rs"),
+        include_str!("../src/execution/runtime/gateway/retention.rs"),
     ),
     (
         "events.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/gateway/events.rs"),
+        include_str!("../src/execution/runtime/gateway/events.rs"),
     ),
     (
         "cancel.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/gateway/cancel.rs"),
+        include_str!("../src/execution/runtime/gateway/cancel.rs"),
     ),
     (
         "provenance.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/gateway/provenance.rs"),
+        include_str!("../src/execution/runtime/gateway/provenance.rs"),
     ),
     (
         "timing.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/gateway/timing.rs"),
+        include_str!("../src/execution/runtime/gateway/timing.rs"),
     ),
     (
         "facade_test_support.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/gateway/facade_test_support.rs"),
+        include_str!("../src/execution/runtime/gateway/facade_test_support.rs"),
     ),
     (
         "testing_support.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/gateway/testing_support.rs"),
+        include_str!("../src/execution/runtime/gateway/testing_support.rs"),
     ),
     (
         "token_tests.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/gateway/token_tests.rs"),
+        include_str!("../src/execution/runtime/gateway/token_tests.rs"),
     ),
     (
         "retention_tests.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/gateway/retention_tests.rs"),
+        include_str!("../src/execution/runtime/gateway/retention_tests.rs"),
     ),
     (
         "cancel_event_tests.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/gateway/cancel_event_tests.rs"),
+        include_str!("../src/execution/runtime/gateway/cancel_event_tests.rs"),
     ),
     (
         "event_repository_tests.rs",
-        include_str!(
-            "../../crates/datazen/src/execution/runtime/gateway/event_repository_tests.rs"
-        ),
+        include_str!("../src/execution/runtime/gateway/event_repository_tests.rs"),
     ),
     (
         "facade_tests.rs",
-        include_str!("../../crates/datazen/src/execution/runtime/gateway/facade_tests.rs"),
+        include_str!("../src/execution/runtime/gateway/facade_tests.rs"),
     ),
 ];
 

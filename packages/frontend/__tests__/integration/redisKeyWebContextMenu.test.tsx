@@ -13,7 +13,7 @@ import { showNativeContextMenu } from '@datazen/driver-sdk';
 // Host store module import triggers `bindContextMenuBridge` at load (capability
 // injection); this integration test asserts against the host web-menu store.
 import { useContextMenuStore } from '../../src/stores/contextMenuStore';
-import { buildRedisKeyContextMenuItems } from '../../../drivers/redis/ui/key-browser/redisKeyContextMenu';
+import { buildRedisKeyContextMenuItems } from '../../../../crates/drivers/redis/ui/key-browser/redisKeyContextMenu';
 
 afterEach(() => {
   useContextMenuStore.getState().hide();
@@ -68,7 +68,7 @@ describe('Redis key web context menu', () => {
     const src = fs.readFileSync(
       path.resolve(
         import.meta.dirname,
-        '../../../drivers/redis/ui/key-browser/useKeyRowActions.tsx',
+        '../../../../crates/drivers/redis/ui/key-browser/useKeyRowActions.tsx',
       ),
       'utf8',
     );

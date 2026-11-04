@@ -379,8 +379,8 @@ mod tests {
     }
 
     // Stateful session tests; include from extracted block below.
-    include!("crates/datazen-server/tests_stateful.rs");
+    include!("server/tests_stateful.rs");
 
     // Remaining integration tests live in server.rs; include from extracted block below.
-    include!("crates/datazen-server/tests_integration.rs");
+    include!("server/tests_integration.rs");
 }

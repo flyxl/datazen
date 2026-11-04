@@ -18,7 +18,7 @@ use super::*;
 
 #[test]
 fn cross_db_workflow_yaml_parses() {
-    let yaml = include_str!("../../../../scripts/test-cross-db-workflow.yaml");
+    let yaml = include_str!("../../../../../scripts/test-cross-db-workflow.yaml");
     let workflow: WorkflowDefinition = serde_yaml::from_str(yaml).unwrap();
     assert_eq!(workflow.id, "order-logistics");
     assert!(workflow.timeout_secs.is_some());

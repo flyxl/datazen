@@ -344,7 +344,7 @@ mod tests {
             include_str!("ipc.rs"),
             include_str!("identity.rs"),
             include_str!("handles.rs"),
-            include_str!("../../../../../crates/datazen/src/application/frontend_bridge.rs"),
+            include_str!("../../../datazen/src/application/frontend_bridge.rs"),
             include_str!("../commands/mod.rs"),
             include_str!("../bootstrap/app_state.rs"),
         ];

@@ -14,7 +14,7 @@ use datazen_server::mcp::{contract, wire};
 use serde_json::{json, Value};
 
 const GOLDEN: &str =
-    include_str!("../../crates/datazen-desktop/src/mcp/fixtures/mcp_external_contract.json");
+    include_str!("../../datazen-desktop/src/mcp/fixtures/mcp_external_contract.json");
 
 fn golden() -> Value {
     serde_json::from_str(GOLDEN).expect("golden MCP contract JSON must parse")

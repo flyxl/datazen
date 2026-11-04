@@ -225,7 +225,7 @@ pub fn build() -> BuildRecord {
 
 /// 工作区 `Cargo.lock` 在编译期固化：运行期去读文件系统路径，才是真的「照着产物重跑」吗？
 /// 不——是产物自己得带走它依赖的那一份，否则产物和仓库之间没有任何可核对的绑定。
-const WORKSPACE_LOCK: &str = include_str!("../../../../Cargo.lock");
+const WORKSPACE_LOCK: &str = include_str!("../../../../../Cargo.lock");
 
 /// crate 声明的 feature 及本次启用情况。
 ///

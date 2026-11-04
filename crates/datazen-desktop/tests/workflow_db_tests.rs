@@ -28,7 +28,7 @@ use std::path::PathBuf;
 fn load_env() -> Option<DbConfig> {
     let env_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
-        .nth(3)
+        .nth(2)
         .unwrap()
         .join(".env");
 

@@ -155,8 +155,8 @@ fn the_tunnel_ports_are_declared_in_the_modules_domain_only() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let root = manifest_dir
         .ancestors()
-        .nth(3)
-        .expect("src-tauri 位于 packages/desktop/ 下，上溯三级即仓库根");
+        .nth(2)
+        .expect("crates/datazen-desktop 位于 crates/ 下，上溯两级即仓库根");
     let domain = root.join("crates/datazen/src/tunnel/domain");
     let known_hosts = std::fs::read_to_string(domain.join("known_hosts.rs"))
         .expect("modules tunnel domain must contain known_hosts.rs");

@@ -250,7 +250,7 @@ struct Spec {
 impl Spec {
     fn read() -> Self {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../docs/architecture/platform/fake-runtime-fixtures.md");
+            .join("../../docs/architecture/platform/fake-runtime-fixtures.md");
         let text = fs::read_to_string(&path).unwrap_or_else(|err| {
             panic!(
                 "{}: 读不到注入点目录真源（{err}）—— 守门测试不得跳过",

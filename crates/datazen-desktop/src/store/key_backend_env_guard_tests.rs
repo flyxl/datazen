@@ -47,8 +47,8 @@ const SKIPPED_DIRECTORIES: &[&str] = &["target", "node_modules", ".git"];
 fn repository_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
-        .nth(3)
-        .expect("src-tauri 位于 packages/desktop/ 下，上溯三级即仓库根")
+        .nth(2)
+        .expect("crates/datazen-desktop 位于 crates/ 下，上溯两级即仓库根")
         .to_path_buf()
 }
 

@@ -392,7 +392,7 @@ describe('the desktop declaration against the host command registry', () => {
 
   it('declares exactly the table-data commands the host does not register', () => {
     const hostBootstrap = fs.readFileSync(
-      path.join(ROOT, 'src-tauri/src/bootstrap/run.rs'),
+      path.join(ROOT, '../../crates/datazen-desktop/src/bootstrap/run.rs'),
       'utf8',
     );
     const registeredCommands = parseRegisteredCommands(hostBootstrap);
@@ -415,7 +415,7 @@ describe('the desktop declaration against the host command registry', () => {
 
   it('reads the registrations rather than guessing at their spelling', () => {
     const hostBootstrap = fs.readFileSync(
-      path.join(ROOT, 'src-tauri/src/bootstrap/run.rs'),
+      path.join(ROOT, '../../crates/datazen-desktop/src/bootstrap/run.rs'),
       'utf8',
     );
     const registered = parseRegisteredCommands(hostBootstrap);
