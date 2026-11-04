@@ -27,6 +27,12 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   DATAZEN_KEYRING: file
   DATAZEN_VERIFY_DEPS_BEFORE_RUN: install
+  # 与 ci.yml rust job 同款磁盘纪律（2026-11-04 run 1376 教训）：本 workflow
+  # 同样是 workspace 级 cargo 重编译面，且 PG/MySQL 容器常驻占内存，debuginfo
+  # 裁剪对磁盘/内存双收益。详见 ci.yml rust job 的 env 注释。
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+  CARGO_INCREMENTAL: "0"
 
 jobs:
   workflow-db:
