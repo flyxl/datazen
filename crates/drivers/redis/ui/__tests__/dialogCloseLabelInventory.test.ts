@@ -25,13 +25,13 @@ import { dirname, join, relative, resolve } from 'node:path';
 
 /**
  * Repo root, found by walking up from this file rather than by counting `..`
- * segments: `__tests__/ → ui/ → redis/ → drivers/ → packages/ → root`, and a
+ * segments: `__tests__/ → ui/ → redis/ → drivers/ → crates/ → root`, and a
  * wrong count silently scans a neighbouring directory instead of failing.
  */
 function findRepoRoot(from: string): string {
   let dir = from;
   for (let i = 0; i < 10; i += 1) {
-    if (existsSync(join(dir, 'packages', 'drivers', 'redis'))) return dir;
+    if (existsSync(join(dir, 'crates', 'drivers', 'redis'))) return dir;
     const parent = dirname(dir);
     if (parent === dir) break;
     dir = parent;

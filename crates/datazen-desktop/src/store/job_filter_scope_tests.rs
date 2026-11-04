@@ -22,12 +22,17 @@ fn repository_root() -> PathBuf {
 
 /// 扫描范围（相对仓库根）：宿主与所有共享 crate 的 Rust 源码。
 ///
-/// `src-tauri/tests` 是**集成测试目标**（`cargo check -p datazen --all-targets` 会编译它），
-/// 因此它和 `src-tauri/src` 一样属于「会被编译、因而可能写错」的代码，必须一并扫。
+/// `crates/datazen-desktop/tests` 是**集成测试目标**（`cargo check -p datazen --all-targets`
+/// 会编译它），因此它和 `crates/datazen-desktop/src` 一样属于「会被编译、因而可能写错」
+/// 的代码，必须一并扫。共享 crate（infra、driver-api、driver-support 与全部 drivers）
+/// 在 W7-A 结构重构后从 `packages/` 迁入 `crates/`，逐个列出以保持原扫描范围不变。
 const SCANNED_ROOTS: &[&str] = &[
     "crates/datazen-desktop/src",
     "crates/datazen-desktop/tests",
-    "packages",
+    "crates/datazen-infra",
+    "crates/datazen-driver-api",
+    "crates/datazen-driver-support",
+    "crates/drivers",
 ];
 
 /// 目录遍历时跳过的名字：构建产物与依赖目录里没有可执行的契约。
