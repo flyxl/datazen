@@ -95,11 +95,22 @@ use datazen_server::http::domains::sessions::{sessions_router, SessionsState};
 use datazen_server::http::middleware::authorize::NOT_VISIBLE_MESSAGE;
 use datazen_server::http::response::status_for;
 use datazen_server::http::router::{build_router_with_auth, AuthDeps};
-use datazen_server::policy::PolicyService;
+use datazen_server::policy::{PolicyService, Role};
 use datazen_server::storage::login_sessions::{LoginSessionMode, NewLoginSession};
 use datazen_server::storage::{AdminStore, LoginSessions, ServerProfiles};
 
 const NOW: &str = "2026-01-01T00:00:00.000Z";
+/// 真实时钟戳（g2 冻结项先例）：登录会话的过期面以真实时钟判定，
+/// 硬编码日期会随真实时间腐烂成 401。
+fn now_rfc3339() -> String {
+    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+}
+
+fn future_timestamp(hours: i64) -> String {
+    (chrono::Utc::now() + chrono::Duration::hours(hours))
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+}
+
 const SERVER_SECRET: &[u8] = b"wr-g1-cm68-server-secret-32-bytes!";
 const LOGIN_SESSION_ID: &str = "sess-cm68-full";
 
@@ -382,16 +393,23 @@ async fn cm68_a_committed_replacement_publishes_the_candidate_and_retires_the_ol
     let store = Arc::new(AdminStore::open(&dir.join("admin.sqlite")).expect("file store"));
     store.migrate().expect("migrations apply");
 
+    // memberships 行是 login_sessions 的外键目标（g2 冻结项先例）：经
+    // PolicyService 的管理用例落行（同一 SQL 面），不绕过外键语义。
+    PolicyService::new(store.clone(), SERVER_SECRET.to_vec())
+        .expect("policy")
+        .create_membership("org-1", "user-1", Role::OrgMember, "idp:user-1")
+        .expect("membership");
+
     // 真登录会话行（L2）+ 真 CSRF（L4 与 router 共用同一 server_secret）。
     LoginSessions::new(store.clone())
         .create(NewLoginSession {
             organization_id: "org-1".into(),
             session_id: LOGIN_SESSION_ID.into(),
             principal_id: "user-1".into(),
-            auth_time: NOW.into(),
-            issued_at: NOW.into(),
-            absolute_expires_at: "2026-01-02T00:00:00.000Z".into(),
-            idle_expires_at: "2026-01-01T08:00:00.000Z".into(),
+            auth_time: now_rfc3339(),
+            issued_at: now_rfc3339(),
+            absolute_expires_at: future_timestamp(24),
+            idle_expires_at: future_timestamp(8),
             permission_version: 1,
             client_binding: "ua|client-1".into(),
             mode: LoginSessionMode::Cookie,
