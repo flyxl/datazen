@@ -14,8 +14,8 @@ const REGISTRY = {
 
 const CONSISTENT_TOML = `# <<driver-dependencies>>
 # <</driver-dependencies>>
-datazen-driver-postgres = { path = "../../../crates/drivers/postgres", optional = true }
-datazen-driver-redis = { path = "../../../crates/drivers/redis", optional = true }
+datazen-driver-postgres = { path = "../drivers/postgres", optional = true }
+datazen-driver-redis = { path = "../drivers/redis", optional = true }
 [features]
 default = []
 # <<driver-features>>
@@ -27,7 +27,7 @@ drivers = ["driver-postgres", "driver-redis"]
 
 describe('stripMarkerBlocks', () => {
   it('removes injected marker content but keeps the markers', () => {
-    const injected = `# <<driver-dependencies>>\ndatazen-plugin-kiwi = { path = "../../../crates/drivers/kiwi", optional = true }\n# <</driver-dependencies>>\nstatic = 1\n`;
+    const injected = `# <<driver-dependencies>>\ndatazen-plugin-kiwi = { path = "../drivers/kiwi", optional = true }\n# <</driver-dependencies>>\nstatic = 1\n`;
     const out = stripMarkerBlocks(injected);
     expect(out).not.toContain('datazen-plugin-kiwi');
     expect(out).toContain('static = 1');
@@ -69,7 +69,7 @@ describe('staticDriverDeclarationProblems', () => {
   });
 
   it('rejects a git driver statically declared outside the markers', () => {
-    const toml = `${CONSISTENT_TOML}datazen-driver-kiwi = { path = "../../../crates/drivers/kiwi", optional = true }\n`;
+    const toml = `${CONSISTENT_TOML}datazen-driver-kiwi = { path = "../drivers/kiwi", optional = true }\n`;
     expect(
       staticDriverDeclarationProblems({ registry: REGISTRY, cargoToml: toml, log, error }).some(
         (p) => p.includes('git driver "kiwi" must NOT be statically declared'),
@@ -78,7 +78,7 @@ describe('staticDriverDeclarationProblems', () => {
   });
 
   it('ignores git-driver lines that live inside the marker blocks', () => {
-    const toml = `# <<driver-dependencies>>\ndatazen-driver-kiwi = { path = "../../../crates/drivers/kiwi", optional = true }\n# <</driver-dependencies>>\n${CONSISTENT_TOML}`;
+    const toml = `# <<driver-dependencies>>\ndatazen-driver-kiwi = { path = "../drivers/kiwi", optional = true }\n# <</driver-dependencies>>\n${CONSISTENT_TOML}`;
     expect(
       staticDriverDeclarationProblems({ registry: REGISTRY, cargoToml: toml, log, error }),
     ).toEqual([]);

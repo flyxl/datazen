@@ -58,7 +58,7 @@ export function stripMarkerBlocks(content) {
  */
 function staticDepRe(id) {
   return new RegExp(
-    `^datazen-driver-${id} = \\{ path = "\\.\\./\\.\\./\\.\\./crates/drivers/${id}", optional = true \\}$`,
+    `^datazen-driver-${id} = \\{ path = "\\.\\./drivers/${id}", optional = true \\}$`,
     'm',
   );
 }
