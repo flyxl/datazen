@@ -68,7 +68,7 @@ Host 各模块内 `#[cfg(test)]`。驱动实现的单测在 `packages/drivers/<i
 | `modules/src/ai/domain/traits.rs`（内嵌单测；原 `packages/ai-api/tests/api_tests.rs` 随 D1.5 并入） | AiProvider trait、types、factory |
 | `modules/src/ai/providers/registry.rs` | AiProviderRegistry 注册与查找 |
 | `modules/src/ai/providers/openai.rs` / `anthropic.rs` | Provider 适配层 |
-| `packages/ai-providers/src/protocol/` | OpenAI Chat/Responses 与 Anthropic wire protocol |
+| `modules/src/ai/providers/protocol/` | OpenAI Chat/Responses 与 Anthropic wire protocol |
 | `modules/src/ai/application/prompt_resolver_tests.rs` | PromptResolver 解析优先级、多语言 fallback |
 | `modules/src/ai/domain/safety_tests.rs` | AI 出境脱敏与安全门 |
 | `modules/tests/monitor_authorization.rs` | Monitor 定时授权的共享策略 |

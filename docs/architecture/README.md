@@ -81,7 +81,7 @@ apps/desktop/src-tauri (desktop host, crate `datazen_desktop`)
   ├─ store/          桌面持久化（SQLite + 加密文件）
   ├─ tunnel/ + ssh_tunnel.rs   隧道装配
   ├─ wapps/          datazen:// 协议桥、WappManager
-  └─ ai/             宿主 metadata source（规则与 provider 契约在共享包）
+  └─ commands/ai/    AI IPC（契约与协议在 modules/src/ai）
   │
   ▼
 packages/
@@ -97,11 +97,17 @@ modules/（单一业务 crate `datazen`，DDD 迁移后按功能分层）
   ├─ src/jobs/          Job 运行时（原 kernel 的 Job 部分；NativeTool 子模块已随前端形态拆分方案 F1 删除）
   ├─ src/migration/     schema-diff / data-sync / data-transfer 三引擎与 common
   ├─ src/workflow/ src/ai/ src/mcp/ src/dashboard/   共享 feature 逻辑（domain/application/engine 分层）
+
+server/（crate `datazen-server`）
+  HTTP 组装根：`/healthz`、`/readyz` 与已点亮的 `/api/v1` 域。与桌面宿主互不依赖，只依赖 `modules`。
+
+apps/web/
+  浏览器壳。共享 UI 在 `packages/frontend`；本目录不含 `@tauri-apps`。
 ```
 
-依赖方向是单向的：`modules` 内 `shared` 契约层不依赖上层；各领域包的 `application` 依赖 `shared` 与 `driver-api`；`apps/desktop/src-tauri` 是当前唯一把 Tauri、存储、网络和这些内核接起来的组装根。`scripts/check-platform-crate-boundaries.mjs` 对 Tauri/HTTP/UI 依赖做硬门禁。
+依赖方向是单向的：`modules` 内 `shared` 契约层不依赖上层；各领域包的 `application` 依赖 `shared` 与 `driver-api`。`apps/desktop/src-tauri` 与 `server/` 是两个组装根，彼此不依赖。`scripts/check-platform-crate-boundaries.mjs` 与 `scripts/check-server-deps.mjs` 对 Tauri/HTTP/UI 依赖做硬门禁。
 
-当前代码没有独立的 Web Server / Domain Service 层；桌面应用直接通过 Tauri IPC 进入 Rust backend。团队 Web 形态仍属于目标设计，不应在当前架构文档中描述为已实现能力。
+桌面 GUI 仍通过 Tauri IPC 进入 Rust。团队 Web 的 HTTP 宿主和浏览器壳已经在仓库里，但不是桌面功能的替代品；未点亮的 `/api/v1` 域仍以 [HTTP API 契约](platform/http-api-contract.md) 为准，不要把未挂载的路由写成已可用产品能力。
 
 ## 2. Driver 架构
 
@@ -201,7 +207,7 @@ Data Transfer 使用 Endpoints → Setup → Objects → Mapping → Preview →
 ## 7. Workflow / AI / MCP / Dashboard
 
 - **Workflow**：共享模型、条件、模板、执行器和调度逻辑位于 `modules/src/workflow/`；`src-tauri/src/workflow/` 提供 YAML registry、Command runtime 绑定、history、桌面 runtime entry 与真实驱动验收。Workflow v1 的连接管理经 `modules command_runtime → modules resource_execution → Runtime`。
-- **AI**：Provider 契约与协议实现位于 `packages/ai-api/` 与 `packages/ai-providers/`；Prompt、Schema 上下文、NL2SQL/诊断/分析等共享逻辑位于 `modules/src/ai/`；AI 用的数据库元数据源位于 `modules/src/services/schema_context/`（宿主只注入 `ResourceExecutionHost` 与 Runtime 门面）。调用点直接引用共享包。
+- **AI**：契约、厂商协议和用例都在 `modules/src/ai/`（`domain/`、`providers/`、`application/`，`AI_PROTOCOL_VERSION = 1`）。Schema 元数据源在 `modules/src/ai/application/schema_context.rs`；桌面在 `apps/desktop/src-tauri/src/services/schema_context_source.rs` 注入宿主门面。独立 crate `packages/ai-api` 与 `packages/ai-providers` 已删除。
 - **MCP**：`modules/src/mcp/` 持有共享工具/资源逻辑，`src-tauri/src/mcp/` 提供 MCP Server 和 Client 的宿主传输、会话与权限接线，并支持 headless stdio。
 - **Dashboard**：`modules/src/dashboard/` 负责 Widget 创建/归档/调度策略，`src-tauri/src/dashboard/` 负责桌面存储与执行适配；`src-tauri/src/monitor/` 负责 MonitorEngine、定时授权与 occurrence。
 
@@ -212,7 +218,7 @@ DataZen 采用四维扩展体系：
 - **数据库驱动（Driver）**：编译时注入，基于 `@datazen/driver-sdk` 与 `packages/driver-api`，通过 inventory 注册。承载数据库连接、SQL 方言、DDL 和 Driver Command。
 - **沙箱工作区应用（Wapp）**：基于 `@datazen/wapp-sdk`、`manifest.json`、`datazen://` 协议与沙箱 `<iframe>`，运行目录 `{appData}/wapps/{publisher}.{name}/`，向用户暴露独立工作区页面与外观主题，通过受控 postMessage 桥通信；取数一律走 `execute_driver_command`；形态无关的规则/安装/存储在 `modules` 的 `workspace_apps` 模块。详见 [wapps.md](backend/wapps.md)。
 - **特权扩展点（Host Extension Points）**：基于 `@datazen/extension-points` 的 `ExtensionPoint<T>` 契约与 CodeMirror Compartment，宿主进程内（In-Process）接入，专用于 SQLEditor 增强等高性能、深交互核心模块。受根目录 **DataZen Plugin, Driver & Extension Linking Exception** 保护，支持独立许可与分发。
-- **外观主题（Theme）**：由 Wapp 以 `contributes.themes[]` 贡献的纯静态资源包（`tokens.css` / `editor.json` / `charts.json` / `icons/`），零代码执行。旧 v1 ThemePack（`packages/themes/`）已存档，`{appData}/themes/` 运行时入口已移除。详见 [wapps.md](backend/wapps.md)「主题应用」与「首屏背景缓存」。
+- **外观主题（Theme）**：由 Wapp 以 `contributes.themes[]` 贡献的纯静态资源包（`tokens.css` / `editor.json` / `charts.json` / `icons/`），零代码执行。旧 v1 `packages/themes/` 目录已从仓库删除，`{appData}/themes/` 运行时入口已移除。详见 [wapps.md](backend/wapps.md)「主题应用」与「首屏背景缓存」。
 
 此外，`@datazen/ui`（`packages/ui/`）是与宿主 Store/IPC 解耦的纯 React 基础视图组件库，供宿主、驱动 UI、Wapp 与扩展共享；它不构成第五维扩展。
 
