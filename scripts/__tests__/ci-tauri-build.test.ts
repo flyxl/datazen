@@ -23,7 +23,14 @@ describe('ci-tauri-build args', () => {
       target: 'x86_64-pc-windows-msvc',
       updaterConfigPath: configPath,
     });
-    expect(args).toEqual(['build', '--target', 'x86_64-pc-windows-msvc', '--config', configPath]);
+    expect(args).toEqual([
+      'build',
+      '--no-default-features',
+      '--target',
+      'x86_64-pc-windows-msvc',
+      '--config',
+      configPath,
+    ]);
     expect(args[args.indexOf('--config') + 1].startsWith('{')).toBe(false);
   });
 
@@ -34,7 +41,23 @@ describe('ci-tauri-build args', () => {
   });
 
   it('omits --config unless updater is requested', () => {
-    expect(buildTauriArgs({ features: ['driver-redis'] })).toEqual(['build', '-f', 'driver-redis']);
+    expect(buildTauriArgs({ features: ['driver-redis'] })).toEqual([
+      'build',
+      '--no-default-features',
+      '-f',
+      'driver-redis',
+    ]);
+  });
+
+  it('always leads with --no-default-features so SKU sets never gain default drivers', () => {
+    // W7-B turned `default = ["drivers"]` on the desktop crate. Every scripted
+    // build passes an explicit `-f` list from .driver-features.json; without
+    // --no-default-features each SKU would silently gain all 15 path drivers
+    // and basic/all/webdriver would stop being byte-identical to their
+    // default=[] feature sets.
+    expect(buildTauriArgs({ features: ['driver-redis'] })[1]).toBe('--no-default-features');
+    expect(buildTauriArgs({ features: [] })[1]).toBe('--no-default-features');
+    expect(buildTauriArgs({})[1]).toBe('--no-default-features');
   });
 
   it('resolves the JS CLI entry instead of pnpm.cmd', () => {
@@ -48,7 +71,14 @@ describe('ci-tauri-build args', () => {
       features: ['driver-redis'],
       updaterConfigPath: join(dir, 'test-pro.json'),
     });
-    expect(args).toEqual(['build', '--config', join(dir, 'test-pro.json'), '-f', 'driver-redis']);
+    expect(args).toEqual([
+      'build',
+      '--no-default-features',
+      '--config',
+      join(dir, 'test-pro.json'),
+      '-f',
+      'driver-redis',
+    ]);
   });
 
   it('never passes --profile, which tauri-cli 2.10.1 rejects', () => {
@@ -64,6 +94,7 @@ describe('ci-tauri-build args', () => {
     });
     expect(args).toEqual([
       'build',
+      '--no-default-features',
       '--target',
       'aarch64-apple-darwin',
       '--config',
@@ -157,6 +188,7 @@ describe('ci-tauri-build updater endpoint per SKU', () => {
     // Basic still relies on the base config when nothing else needs an overlay.
     expect(buildTauriArgs({ features: ['driver-redis'], variant: 'basic' })).toEqual([
       'build',
+      '--no-default-features',
       '-f',
       'driver-redis',
     ]);

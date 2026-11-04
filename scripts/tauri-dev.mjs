@@ -125,6 +125,10 @@ console.log(`[tauri:dev] resolving pro extension (edition="${edition}")...`);
 resolvePro({ edition, proPath, proGit });
 
 const tauriArgs = ['tauri', 'dev'];
+// 桌面 crate 自 W7-B 起 `default = ["drivers"]`：与 ci-tauri-build 一致，脚本化
+// 路径先关 default，再显式传 resolve-drivers 算出的特征集，保证
+// `tauri:dev --drivers=basic` 等的驱动集与 default=[] 时代相同。
+tauriArgs.push('--no-default-features');
 
 if (features.length > 0) {
   tauriArgs.push('-f', features.join(','));
