@@ -212,7 +212,10 @@ export function buildTauriArgs({
   variant = null,
   extraArgs = [],
 } = {}) {
-  const args = ['build'];
+  const args = ['build', '--no-default-features'];
+  // 桌面 crate 自 W7-B 起 `default = ["drivers"]`：脚本化 SKU 构建必须先关
+  // default，再靠下方显式 `-f <.driver-features.json>` 精确复现特征集，
+  // 保证 basic/all/webdriver 的驱动集与 default=[] 时代逐项相同。
   if (target) {
     args.push('--target', target);
   }

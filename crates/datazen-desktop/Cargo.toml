@@ -114,7 +114,13 @@ objc2 = { version = "0.6.4", optional = true }
 objc2-app-kit = { version = "0.3.2", optional = true }
 
 [features]
-default = []
+# W7-B：`drivers`（全部 15 个 path 驱动聚合）提入 default。裸 `cargo check/test/build
+# -p datazen_desktop` 自此自带驱动；git 驱动（kiwi/superset）仍由 resolve-drivers
+# 构建期注入，不入 default。
+# 脚本化构建（ci-tauri-build / e2e-tauri-build / tauri-dev）一律先传
+# `--no-default-features` 再显式传 `-f <.driver-features.json 的 features>`，
+# 因此 basic/all/webdriver SKU 的特征集与 default=[] 时代逐项相同、零变化。
+default = ["drivers"]
 webdriver = ["tauri-plugin-webdriver", "dep:objc2", "dep:objc2-app-kit", "datazen/webdriver"]
 # Enables `datazen::test_harness` for src-tauri/tests/ IPC migration integration tests.
 # `tauri/test` lights up `tauri::test::mock_app` for the harness's HostedApp —
@@ -122,10 +128,6 @@ webdriver = ["tauri-plugin-webdriver", "dep:objc2", "dep:objc2-app-kit", "dataze
 # provide (B2 之后命令层没有 `_impl` 转发层)。
 test-harness = ["datazen/test-harness", "tauri/test"]
 # Path-driver features（静态；与上面依赖一一对应）+ `drivers` 聚合 feature。
-# `default` 保持 `[]`：桌面默认构建特征集零变化（此前由 resolve-drivers 注入态决定，
-# 所有脚本化构建都显式传 `-f <.driver-features.json 的 features>`；default 提前点亮
-# `drivers` 会把 basic/all SKU 与 tauri:dev 的驱动集改成全量 15 个——留给后续刀，
-# 前置条件是 ci-tauri-build / tauri-dev 先加 --no-default-features）。
 # <<driver-features>>
 # <</driver-features>>
 driver-postgres = ["dep:datazen-driver-postgres"]

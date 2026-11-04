@@ -321,7 +321,8 @@ export function deinjectCargoContent(content) {
   for (const tag of ['PLUGIN DEPS', 'PLUGIN FEATURES', 'PLUGIN PATCHES']) {
     out = emptyBeginEndSection(out, tag);
   }
-  out = out.replace(/^default = \[[^\]]*\]/m, 'default = []');
+  // `default = ["drivers"]`（W7-B）是 tracked 真相：注入机制从不改写 default，
+  // 这里也不再把它压回空——否则去注入会把默认驱动集一起拔掉。
   return out;
 }
 
