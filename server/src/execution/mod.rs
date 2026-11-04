@@ -15,8 +15,10 @@
 //! - [`driver_exec`]：WR-F7 驱动执行服务端化 —— `SessionBackend` 端口的
 //!   server v1 实现（进程内直连驱动，无 stdio 子进程）。
 //! - [`resource_host`]：WR-F7 目标元数据切片 —— `ResourceExecutionHost`
-//!   端口的 server 实现（无状态 MCP 目标命令七工具的执行入口；mcp
-//!   feature 门控——`TargetResolver` 在 datazen `application` feature 后）。
+//!   端口的 server 实现（无状态 MCP 目标命令七工具与 driverGateway 过渡域
+//!   的执行入口；消费者：mcp 门控的 `TargetMachine` 与恒开的
+//!   `driver_gateway` 域——模块本身不再门控，`TargetResolver` 在 datazen
+//!   `application` feature 后）。
 
 pub mod budget;
 pub mod budget_bridge;
@@ -27,7 +29,6 @@ pub mod lease_use_cases;
 pub mod network_provider;
 pub mod policy_adapter;
 pub mod publisher;
-#[cfg(feature = "mcp")]
 pub mod resource_host;
 pub mod secret_provider;
 pub mod session_directory;

@@ -10,6 +10,7 @@
 
 pub mod ai_host;
 pub mod connections;
+pub mod driver_gateway;
 pub mod identity;
 pub mod security;
 pub mod sessions;

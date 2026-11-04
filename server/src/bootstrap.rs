@@ -385,11 +385,27 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let session_directory: std::sync::Arc<dyn datazen::execution::SessionDirectory> =
         lease_source.session_directory();
 
-    // 服务端设置存储：ai-host 域与（mcp 构建下的）目标机器共享同一实例。
+    // 服务端设置存储：ai-host 域、（mcp 构建下的）目标机器与 driverGateway
+    // 过渡域共享同一实例。
     let settings_store = std::sync::Arc::new(crate::storage::ServerSettingsStore::scoped(
         &config.organization_id,
         store.clone(),
     ));
+
+    // WR-F7 目标元数据切片：`ResourceExecutionHost` 端口 server 实现
+    // （`execution::resource_host`）。租约源与 MCP / sessions 域同一实例
+    // （共享 sink + 会话目录）；驱动注册表与执行后端同一实例。消费者：
+    // （mcp 构建下的）`TargetMachine` 与 driverGateway 过渡域（恒开）。
+    let resource_host = std::sync::Arc::new(
+        crate::execution::resource_host::ServerResourceExecutionHost::new(
+            connections_repo.clone(),
+            profiles_repo.clone(),
+            driver_registry.clone(),
+            settings_store.clone(),
+            lease_source.clone(),
+            &config.organization_id,
+        ),
+    );
 
     // WR-C2 §6.1–§6.4 读侧域路由（薄绑定；挂载归 router）。
     let domain_routers = vec![
@@ -406,7 +422,7 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         crate::http::domains::sessions::sessions_router(
             crate::http::domains::sessions::SessionsState {
                 sessions: lease_cases,
-                directory: session_directory,
+                directory: session_directory.clone(),
             },
         ),
         // WR-F1 服务端半边（三缺口合拢）：secrets 域（ServerSecretVault 的
@@ -430,6 +446,20 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         crate::http::domains::table_data::table_data_router(
             crate::http::domains::table_data::TableDataState { store: store.clone() },
         ),
+        // WR-C2 §6.9 driverGateway 过渡域（四方法；闸序与目标机器同一
+        // resource_host 实例；目录 = sessions 域同一实例）。
+        crate::http::domains::driver_gateway::driver_gateway_router(
+            crate::http::domains::driver_gateway::DriverGatewayState {
+                registry: driver_registry.clone(),
+                host: resource_host.clone(),
+                directory: session_directory.clone(),
+                settings: settings_store
+                    .read_settings()
+                    .await
+                    .map(|shared| shared.execution)
+                    .unwrap_or_else(|_| crate::storage::default_shared_settings().execution),
+            },
+        ),
     ];
 
     // WR-F2：MCP streamable HTTP（feature 门控；执行栈已在上方装配）。
@@ -438,19 +468,8 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         let authenticator = CookieSessionAuthenticator {
             sessions: crate::storage::LoginSessions::new(store.clone()),
         };
-        // WR-F7 目标元数据切片：`ResourceExecutionHost` 端口 server 实现
-        // （`execution::resource_host`）。租约源与 MCP / sessions 域同一
-        // 实例（共享 sink + 会话目录）；驱动注册表与执行后端同一实例。
-        let resource_host = std::sync::Arc::new(
-            crate::execution::resource_host::ServerResourceExecutionHost::new(
-                connections_repo.clone(),
-                profiles_repo.clone(),
-                driver_registry.clone(),
-                settings_store.clone(),
-                lease_source.clone(),
-                &config.organization_id,
-            ),
-        );
+        // 目标机器复用上方共享的 resource_host（驱动注册表/设置存储/租约
+        // 源同一实例）。
         let execution_settings = settings_store
             .read_settings()
             .await
@@ -481,7 +500,7 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
     #[cfg(not(feature = "mcp"))]
     let mcp_state = None;
     #[cfg(not(feature = "mcp"))]
-    let _ = (&lease_source, &connections_repo); // 非 mcp 构建的租约源与连接仓储由后续域路由消费
+    let _ = (&resource_host, &lease_source); // 非 mcp 构建由 driverGateway 域与 sessions 域消费
 
     // L5（§9.1）：参数来自部署配置；构造非法（容量 0 等）拒绝启动。
     let rate_limit = {
