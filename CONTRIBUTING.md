@@ -61,7 +61,7 @@ cargo test -p datazen --features ai --lib
 
 If you changed `site/`: `node scripts/check-site-seo.mjs`.
 
-If you changed an **optional path driver** (not in basic SKU): also run `cargo test -p datazen-driver-<id> --lib` and driver UI tests under `packages/drivers/<id>/ui/__tests__/`.
+If you changed an **optional path driver** (not in basic SKU): also run `cargo test -p datazen-driver-<id> --lib` and driver UI tests under `crates/drivers/<id>/ui/__tests__/`.
 
 E2E is **not** in PR CI but is required when you change Host UI paths — see [`e2e-testing.md`](docs/development/e2e-testing.md). Do not use a bare `cargo build` as the E2E binary.
 

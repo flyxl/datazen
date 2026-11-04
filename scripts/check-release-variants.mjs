@@ -39,7 +39,7 @@ import {
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const WORKFLOW = '.github/workflows/release.yml';
-const TAURI_CONF = 'apps/desktop/src-tauri/tauri.conf.json';
+const TAURI_CONF = 'crates/datazen-desktop/tauri.conf.json';
 
 /**
  * Packaging templates that are pasted into Homebrew / WinGet releases. They must
@@ -207,9 +207,7 @@ export function collectReleaseVariantIssues(root = ROOT) {
       // `-all.` / `-akulaku.` / `-all-` — any position, since the suffix sits
       // before the extension for installers and mid-name for the portable zip.
       if (text.includes(`-${variant}.`) || text.includes(`-${variant}-`)) {
-        issues.push(
-          `${rel}: references the "${variant}" SKU, but this channel ships Basic only`,
-        );
+        issues.push(`${rel}: references the "${variant}" SKU, but this channel ships Basic only`);
       }
     }
     if (/DataZen-[\d.]+-[a-z0-9]+-[a-z0-9]+-nsis\./.test(text)) {
@@ -230,7 +228,9 @@ export function collectReleaseVariantIssues(root = ROOT) {
   // the source of truth rather than a second list that can drift.
   const updaterJob = workflow?.jobs?.['release-updater-json'];
   if (workflow && !updaterJob) {
-    issues.push(`${WORKFLOW}: job release-updater-json is missing — no SKU would publish a manifest`);
+    issues.push(
+      `${WORKFLOW}: job release-updater-json is missing — no SKU would publish a manifest`,
+    );
   } else if (updaterJob) {
     const run = JSON.stringify(updaterJob.steps ?? []);
     const loop = `for VARIANT in ${VARIANT_NAMES.join(' ')}`;

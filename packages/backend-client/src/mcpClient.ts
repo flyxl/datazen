@@ -1,6 +1,6 @@
 /**
  * The mcp domain client — WR-F1#1. Speaks the datazen server's MCP
- * streamable HTTP face (`server/src/mcp/http.rs`, MCP 规范 2025-03-26 单
+ * streamable HTTP face (`crates/datazen-server/src/mcp/http.rs`, MCP 规范 2025-03-26 单
  * JSON 响应模式) directly over the injected HTTP wire.
  *
  * ## v1 semantics (registered, 如实差异)
@@ -11,10 +11,10 @@
  * datazen 自有 13 工具面) — one server only, so the web implementation fixes
  * the broker port's `serverId` parameter to the constant
  * {@link WEB_MCP_SERVER_ID} (`"datazen"`). The `McpToolBroker` port shape is
- * unchanged (`modules/src/ai/application/ports.rs` line 108); this
+ * unchanged (`crates/datazen/src/ai/application/ports.rs` line 108); this
  * form-factor difference is asserted by name in the web assembly tests.
  *
- * ## Wire semantics (frozen with server/src/mcp/{http,wire}.rs)
+ * ## Wire semantics (frozen with crates/datazen-server/src/mcp/{http,wire}.rs)
  *
  * - `mcp.initialize` — `POST /mcp`, body = JSON-RPC 2.0 `initialize` request
  *   (params `{ protocolVersion, capabilities, clientInfo }` — the desktop
@@ -61,7 +61,7 @@ import {
   type HttpWireOptions,
 } from './types/httpWire';
 
-/** 本实现协商的 MCP 协议版本（server/src/mcp/wire.rs 的 PROTOCOL_VERSION 同值）。 */
+/** 本实现协商的 MCP 协议版本（crates/datazen-server/src/mcp/wire.rs 的 PROTOCOL_VERSION 同值）。 */
 export const MCP_PROTOCOL_VERSION = '2025-03-26';
 
 /** streamable HTTP 传输的会话响应头（wire.rs 的 MCP_SESSION_ID_HEADER 同名）。 */
@@ -224,19 +224,29 @@ export function createMcpClient(wireOptions: HttpWireOptions = {}): McpDomainCli
     if (isJsonRpcError(error)) {
       // 工具级失败以 HTTP 200 + JSON-RPC error 到达（wire.rs tool_call_error），
       // 非 2xx 的 JSON-RPC 错误体（401/404/400）同路径。
-      throw new ApiError(apiErrorCodeForJsonRpc(error.code), `${methodLabel} failed: ${error.message}`, {
-        cause: error,
-      });
+      throw new ApiError(
+        apiErrorCodeForJsonRpc(error.code),
+        `${methodLabel} failed: ${error.message}`,
+        {
+          cause: error,
+        },
+      );
     }
     if (!response.ok) {
       // 服务端骨架 fallback（§13 四字段体）或不可读体。
       throw await apiErrorFromWireResponse(response, methodLabel);
     }
     if (parsed['id'] !== undefined && parsed['id'] !== id) {
-      throw new ApiError('ServiceUnavailable', `${methodLabel} response id does not match the request id.`);
+      throw new ApiError(
+        'ServiceUnavailable',
+        `${methodLabel} response id does not match the request id.`,
+      );
     }
     if (parsed['jsonrpc'] !== '2.0') {
-      throw new ApiError('ServiceUnavailable', `${methodLabel} response is not a JSON-RPC 2.0 envelope.`);
+      throw new ApiError(
+        'ServiceUnavailable',
+        `${methodLabel} response is not a JSON-RPC 2.0 envelope.`,
+      );
     }
     return { result: parsed['result'], response };
   }
@@ -294,13 +304,14 @@ export function createMcpClient(wireOptions: HttpWireOptions = {}): McpDomainCli
       const tools = (record['tools'] as unknown[]).map((entry): McpToolDescriptor => {
         const tool = requireRecord(entry, methodLabel);
         if (typeof tool['name'] !== 'string') {
-          throw new ApiError('ServiceUnavailable', `${methodLabel} returned a tool without a name.`);
+          throw new ApiError(
+            'ServiceUnavailable',
+            `${methodLabel} returned a tool without a name.`,
+          );
         }
         return {
           name: tool['name'],
-          ...(typeof tool['description'] === 'string'
-            ? { description: tool['description'] }
-            : {}),
+          ...(typeof tool['description'] === 'string' ? { description: tool['description'] } : {}),
           inputSchema: tool['inputSchema'],
         };
       });

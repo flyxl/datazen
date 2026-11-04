@@ -7,8 +7,8 @@
 DataZen 是 Tauri v2 + React 18 + TypeScript + Rust 的跨平台数据库管理工具，使用 pnpm 与 Cargo workspace。
 
 ```text
-apps/desktop/            桌面壳：入口、platform/desktop 适配、shell、以及 src-tauri 宿主
-apps/desktop/src-tauri/  Desktop bootstrap、commands、platform、store、宿主适配（crate `datazen_desktop`）
+packages/desktop/            桌面壳：入口、platform/desktop 适配、shell、以及 src-tauri 宿主
+crates/datazen-desktop/  Desktop bootstrap、commands、platform、store、宿主适配（crate `datazen_desktop`）
 packages/frontend/       共享 React UI（`@datazen/frontend`）：stores、组件、hooks、i18n、平台端口
 packages/                driver-api、infra、UI/SDK（backend-client、driver-sdk、wapp-sdk、extension-points、ui）、wapps、drivers/*
 modules/                 单一业务 crate `datazen`（feature 门控的领域与用例）
@@ -17,14 +17,14 @@ e2e/                     Host WebdriverIO journeys
 docs/                    features、architecture、development、blogs、已核实且明确不修的 bugs
 ```
 
-数据库驱动实现与专属测试必须在 `packages/drivers/<id>/`；Host 不得硬编码驱动方言。`packages/ui` 是纯 React 基础组件库，不能依赖宿主 Store 或 IPC。
+数据库驱动实现与专属测试必须在 `crates/drivers/<id>/`；Host 不得硬编码驱动方言。`packages/ui` 是纯 React 基础组件库，不能依赖宿主 Store 或 IPC。
 
 ## DDD 重构目标
 
 权威方案：[DDD 模块化重构](docs/development/ddd-refactor-plan.md)（总纲；实施细节按主题在同目录 `ddd-refactor/` 下，细节文件保留原 §2–§14 编号）。该方案区分当前事实与目标设计，不能把目标目录写成已实现。
 
-- 最终以一个 `modules/` crate 按功能组织 `application` / `domain`；目标 package 为 `datazen`（已落地：`modules/` 即 `datazen` crate）。
-- `apps/desktop/src-tauri` 是 Desktop 宿主（crate `datazen_desktop`）；`server/` 是团队 Web 服务宿主（crate `datazen-server`，WR-D1 骨架已落地）；目标浏览器宿主 `apps/web/`（尚未落地，不要写成已实现；Web 形态已移出 DDD 重构范围，D8 在桌面单宿主内收尾）。两个已落地宿主互不依赖，都只依赖 `modules` 内核；server 的依赖闭包由 CI 门禁 `pnpm test:server-deps` 强制无 tauri/UI。
+- 最终以一个 `crates/datazen/` crate 按功能组织 `application` / `domain`；目标 package 为 `datazen`（已落地：`crates/datazen/` 即 `datazen` crate）。
+- `crates/datazen-desktop` 是 Desktop 宿主（crate `datazen_desktop`）；`crates/datazen-server/` 是团队 Web 服务宿主（crate `datazen-server`，WR-D1 骨架已落地）；目标浏览器宿主 `packages/web/`（尚未落地，不要写成已实现；Web 形态已移出 DDD 重构范围，D8 在桌面单宿主内收尾）。两个已落地宿主互不依赖，都只依赖 `modules` 内核；server 的依赖闭包由 CI 门禁 `pnpm test:server-deps` 强制无 tauri/UI。
 - Repository trait 由所属 domain 定义，Desktop/Web infrastructure 实现；不建立全局仓储全集。
 - Controller 只做上下文、DTO、应用服务调用和错误映射，不直接访问 Store、AppDb、Driver、Runtime internals。
 - `execution::runtime` 承载 actor、lease、队列、等待、资源回收；`execution::application` 编排用例；Job 归 `jobs`。
@@ -47,8 +47,8 @@ docs/                    features、architecture、development、blogs、已核�
 ## 驱动、扩展与生成文件
 
 - `scripts/resolve-drivers.mjs` 根据 `drivers-registry.json` 注入 path/git 驱动；`resolve-pro.mjs` 处理 Community/Pro。
-- 生成文件不得提交：`packages/frontend/src/extensions/generated*.ts`、`apps/desktop/src-tauri/src/driver_init.rs`、`apps/desktop/src-tauri/capabilities/default.json`。
-- 新 Host capability 改 `apps/desktop/src-tauri/capabilities/default.json.host`，不要手改生成的 `default.json`。
+- 生成文件不得提交：`packages/frontend/src/extensions/generated*.ts`、`crates/datazen-desktop/src/driver_init.rs`、`crates/datazen-desktop/capabilities/default.json`。
+- 新 Host capability 改 `crates/datazen-desktop/capabilities/default.json.host`，不要手改生成的 `default.json`。
 - `PROTOCOL_VERSION` 或 `AI_PROTOCOL_VERSION` 变化时同步检查全部插件/Provider。
 - 四维扩展保持正交：Driver、静态 Theme、特权 EP、沙箱 Workspace App；扩展不绕过统一 Driver Command 和权限边界。
 

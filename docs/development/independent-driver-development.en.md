@@ -212,7 +212,7 @@ When driver UI needs a capability that lives on the host side, use one of these 
 - **Runtime state from a host zustand store / React hook**: use the capability injection bridge — driver code consumes the `useBoundX()` accessor from `@datazen/driver-sdk`, while the host calls `bindX()` at module load, right where its own store/hook is defined. Existing bridges: `useBoundSettingsStore`, `useBoundConnectionStore`, `useBoundConfirmDialog`, `useBoundSchemaStore`, and `showNativeContextMenu` (via `bindContextMenuBridge`). Driver code **never calls** `bindX`; consuming an unbound bridge throws during development (`'<X> has not been bound to driver-sdk yet.'`).
 
 ```tsx
-// Driver UI example (matches the live code in packages/drivers/redis/ui)
+// Driver UI example (matches the live code in crates/drivers/redis/ui)
 import { useBoundSettingsStore, useBoundConfirmDialog } from '@datazen/driver-sdk';
 
 const safeMode = useBoundSettingsStore((s) => s.settings.safeMode); // reactive subscription in a component
@@ -251,7 +251,7 @@ For Rust changes, Cargo recompiles the affected driver code. For frontend change
 
 ## 8. Test the driver independently
 
-The driver repository should keep its own tests and CI. At minimum, test the driver implementation independently of the Datazen application where practical. **Do not add driver-specific tests to the Host** (`src-tauri/`, `src/`, `e2e/specs/`). Path drivers in this monorepo follow the same rule: tests live under `packages/drivers/<id>/` (`#[cfg(test)]`, `tests/`, `ui/__tests__/`, `e2e/`). See [AGENTS.md](../../AGENTS.md)「驱动测试落点」.
+The driver repository should keep its own tests and CI. At minimum, test the driver implementation independently of the Datazen application where practical. **Do not add driver-specific tests to the Host** (`src-tauri/`, `src/`, `e2e/specs/`). Path drivers in this monorepo follow the same rule: tests live under `crates/drivers/<id>/` (`#[cfg(test)]`, `tests/`, `ui/__tests__/`, `e2e/`). See [AGENTS.md](../../AGENTS.md)「驱动测试落点」.
 
 For example:
 

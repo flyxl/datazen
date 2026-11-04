@@ -29,7 +29,7 @@
 
 **工作**：
 
-1. 建立 `modules/` Cargo 成员、模块级 application/domain、最小 shared。
+1. 建立 `crates/datazen/` Cargo 成员、模块级 application/domain、最小 shared。
 2. 按[§5.5](02-legacy-crate-migration.md)移动必要类型，旧包只再导出；接入现有桌面 Settings 适配和命令，不只交目录。
 3. 实现空 features 与该功能 feature 构建；新模块不反向依赖待退役包。
 4. 扩展 `scripts/lib/cargoWorkspace.mjs`、`scripts/check-ddd-layers.mjs`、`scripts/check-platform-crate-boundaries.mjs` 与对应自证，使新成员/内部模块真正进入扫描。
@@ -67,10 +67,10 @@ monitor reload 与 tray 同步仍由原命令路径执行。
 
 1. `ai-api` 并入 `ai-providers`：trait、类型、工厂注册移入后者（保持 `datazen-ai-api`
    的导出路径语义由 `datazen-ai-providers` 统一承担），更新全部消费者 import。
-2. 合并后的 `ai-providers` 整体并入 `modules/src/ai/`：契约（trait/类型/工厂）入
+2. 合并后的 `ai-providers` 整体并入 `crates/datazen/src/ai/`：契约（trait/类型/工厂）入
    `ai` 契约层，Provider 适配与共享 HTTP 机制入 `ai` 内部 providers 实现；
    删除 `packages/ai-api`、`packages/ai-providers` 两个 crate 与 workspace 成员。
-3. `packages/platform-infra` 改名 `packages/infra`（crate 名 `datazen-infra`），
+3. `packages/platform-infra` 改名 `crates/datazen-infra`（crate 名 `datazen-infra`），
    更新 workspace、消费者与门禁脚本中的名字。
 4. 审计 drivers / modules / web / desktop 四类消费者：任意两者共用的无业务工具
    （路径安全、凭据脱敏、原子写入等）收拢进 infra；仅单消费者使用的留在原处。
@@ -81,7 +81,7 @@ monitor reload 与 tray 同步仍由原命令路径执行。
 
 **已完成事实（2026-10-26）**：
 1. `ai-api` → `ai-providers`（`46dc15ba6`）：契约三文件随迁，导出面等价。
-2. `ai-providers` → `modules/src/ai/`（`e02d60d2c`）：domain 契约 + providers 适配
+2. `ai-providers` → `crates/datazen/src/ai/`（`e02d60d2c`）：domain 契约 + providers 适配
    + registry + 集成测试（`#![cfg(feature = "ai")]` 门控）；F-09 退役、F-14 豁免
    reqwest、F-04 允许垫底层传递边；modules / src-tauri 经
    `datazen` 的 `ai` feature 消费。

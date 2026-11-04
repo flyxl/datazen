@@ -132,7 +132,7 @@ describe('locales', () => {
     // Driver translations are owned by the driver package: importing its
     // locales entry mirrors what the app does when generated.ts loads the
     // driver UI meta. The host never aggregates driver keys itself.
-    await import('../../../../packages/drivers/redis/locales');
+    await import('../../../../crates/drivers/redis/locales');
     // Resolution contract only: which copy a driver key maps to belongs to the
     // driver's own en.ts, so no English value is pinned here.
     for (const key of ['redis.batchDelete', 'redis.console'] as const) {
@@ -157,7 +157,7 @@ describe('locales', () => {
     // '{count} docs'). Asserting the host value survives a *later* driver
     // registration is what makes this a regression test rather than a
     // dictionary snapshot: before the rename this same assertion failed.
-    await import('../../../../packages/drivers/mongodb/locales');
+    await import('../../../../crates/drivers/mongodb/locales');
 
     const docViewKeys = (Object.keys(en) as string[]).filter((k) => k.startsWith('docView.'));
     expect(docViewKeys).toHaveLength(15);

@@ -22,7 +22,10 @@ export default defineConfig({
       // infrastructure, not package resolution: the shared test setup mocks
       // the Tauri window API for jsdom, and app-owned vitest configs keep
       // this mock alias per plan §5.6 item 6.
-      '@tauri-apps/api/window': resolve(__dirname, 'packages/frontend/src/test/mocks/tauriWindow.ts'),
+      '@tauri-apps/api/window': resolve(
+        __dirname,
+        'packages/frontend/src/test/mocks/tauriWindow.ts',
+      ),
     },
   },
   test: {
@@ -107,7 +110,7 @@ export default defineConfig({
       // context menu) live with the host package, outside src/ so the
       // host-production rules (R3/R6/R7) do not adjudicate test scaffolding.
       'packages/frontend/__tests__/**/*.test.{ts,tsx}',
-      'apps/desktop/src/**/*.test.{ts,tsx}',
+      'packages/desktop/src/**/*.test.{ts,tsx}',
       'scripts/__tests__/**/*.test.{ts,mjs}',
       // SDK package tests run on the Host toolchain too (PRD F8).
       'packages/wapp-sdk/__tests__/**/*.test.{ts,tsx}',

@@ -1,5 +1,13 @@
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -28,28 +36,41 @@ describe('gate CLI entry paths', () => {
         expect(isDirectInvocation(pathToFileURL(link).href, link)).toBe(true);
         // Keep the mutation runner on its refusal path even on a clean checkout.
         const preload = join(scratch, 'preload.mjs');
-        writeFileSync(preload, `import cp from 'node:child_process';
+        writeFileSync(
+          preload,
+          `import cp from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
 const original = cp.spawnSync;
 cp.spawnSync = function(command, args, options) {
   if (command === 'git' && args.includes('status')) return { status: 0, stdout: ' M synthetic-dirty-probe\\n', stderr: '' };
   return original(command, args, options);
 };
-syncBuiltinESMExports();`);
+syncBuiltinESMExports();`,
+        );
         const result = spawnSync(process.execPath, ['--import', preload, link, ...args], {
-          cwd: root, encoding: 'utf8', timeout: 30000,
+          cwd: root,
+          encoding: 'utf8',
+          timeout: 30000,
         });
         expect(result.error).toBeUndefined();
         expect(result.signal).toBeNull();
         expect(result.status).not.toBeNull();
         expect(result.stdout + result.stderr).toContain(marker);
-      } finally { rmSync(scratch, { recursive: true, force: true }); }
+      } finally {
+        rmSync(scratch, { recursive: true, force: true });
+      }
     });
     it(`${script} remains silent when imported`, () => {
       const url = pathToFileURL(join(root, 'scripts', `${script}.mjs`)).href;
-      const result = spawnSync(process.execPath, ['--input-type=module', '-e', `await import(${JSON.stringify(url)})`], {
-        cwd: root, encoding: 'utf8', timeout: 30000,
-      });
+      const result = spawnSync(
+        process.execPath,
+        ['--input-type=module', '-e', `await import(${JSON.stringify(url)})`],
+        {
+          cwd: root,
+          encoding: 'utf8',
+          timeout: 30000,
+        },
+      );
       expect(result.status).toBe(0);
       expect(result.stdout + result.stderr).toBe('');
     });
@@ -81,36 +102,56 @@ for (const [script, args, marker] of wrapperCases) {
       // probe writers take.
       withProbeLock(() =>
         cpSync(join(root, 'scripts'), join(scratch, 'scripts'), {
-          recursive: true, filter: (path) => !path.includes('__tests__'),
+          recursive: true,
+          filter: (path) => !path.includes('__tests__'),
         }),
       );
       mkdirSync(join(scratch, 'node_modules'));
-      cpSync(join(root, 'node_modules/fflate'), join(scratch, 'node_modules/fflate'), { recursive: true, dereference: true });
+      cpSync(join(root, 'node_modules/fflate'), join(scratch, 'node_modules/fflate'), {
+        recursive: true,
+        dereference: true,
+      });
       copyFileSync(join(root, 'drivers-registry.json'), join(scratch, 'drivers-registry.json'));
-      writeFileSync(join(scratch, 'Cargo.toml'), '# <<driver-patches>>\n[patch."https://example.invalid"]\nprobe = { path = "probe" }\n# <</driver-patches>>\n');
+      writeFileSync(
+        join(scratch, 'Cargo.toml'),
+        '# <<driver-patches>>\n[patch."https://example.invalid"]\nprobe = { path = "probe" }\n# <</driver-patches>>\n',
+      );
       const link = join(scratch, '入口 link.mjs');
       symlinkSync(join(scratch, 'scripts', `${script}.mjs`), link);
       const preload = join(scratch, 'preload.mjs');
-      writeFileSync(preload, `import cp from 'node:child_process';
+      writeFileSync(
+        preload,
+        `import cp from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
 cp.execSync = function(command) {
   if (command.startsWith('git ')) return '';
   throw new Error('External command blocked by CLI regression fixture');
 };
 cp.spawnSync = function() { throw new Error('External command blocked by CLI regression fixture'); };
-syncBuiltinESMExports();`);
+syncBuiltinESMExports();`,
+      );
       const result = spawnSync(process.execPath, ['--import', preload, link, ...args], {
-        cwd: scratch, encoding: 'utf8', timeout: 30000,
+        cwd: scratch,
+        encoding: 'utf8',
+        timeout: 30000,
       });
       expect(result.error).toBeUndefined();
       expect(result.signal).toBeNull();
       expect(result.stdout + result.stderr).toContain(marker);
       const url = pathToFileURL(join(scratch, 'scripts', `${script}.mjs`)).href;
-      const imported = spawnSync(process.execPath, ['--input-type=module', '-e', `await import(${JSON.stringify(url)})`], {
-        cwd: scratch, encoding: 'utf8', timeout: 30000,
-      });
+      const imported = spawnSync(
+        process.execPath,
+        ['--input-type=module', '-e', `await import(${JSON.stringify(url)})`],
+        {
+          cwd: scratch,
+          encoding: 'utf8',
+          timeout: 30000,
+        },
+      );
       expect(imported.status).toBe(0);
       expect(imported.stdout + imported.stderr).toBe('');
-    } finally { rmSync(scratch, { recursive: true, force: true }); }
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
   });
 }

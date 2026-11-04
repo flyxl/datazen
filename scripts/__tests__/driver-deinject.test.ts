@@ -17,8 +17,8 @@ describe('driver-deinject', () => {
     expect(emptyMarkerBlock(INJECTED_CONTENTS['Cargo.toml'], 'driver-patches')).toBe(
       CLEAN_CONTENTS['Cargo.toml'],
     );
-    expect(deinjectCargoContent(INJECTED_CONTENTS['apps/desktop/src-tauri/Cargo.toml'])).toBe(
-      CLEAN_CONTENTS['apps/desktop/src-tauri/Cargo.toml'],
+    expect(deinjectCargoContent(INJECTED_CONTENTS['crates/datazen-desktop/Cargo.toml'])).toBe(
+      CLEAN_CONTENTS['crates/datazen-desktop/Cargo.toml'],
     );
   });
 

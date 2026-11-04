@@ -1,6 +1,6 @@
 # Optional path drivers
 
-DataZen ships a **Basic** SKU with four core drivers (`postgres`, `mysql`, `sqlite`, `redis`). Additional database engines live as **path drivers** under `packages/drivers/` and are listed in [`drivers-registry.json`](../../drivers-registry.json) at the repo root.
+DataZen ships a **Basic** SKU with four core drivers (`postgres`, `mysql`, `sqlite`, `redis`). Additional database engines live as **path drivers** under `crates/drivers/` and are listed in [`drivers-registry.json`](../../drivers-registry.json) at the repo root.
 
 This document covers the four optional engines maintained as path drivers: **MongoDB**, **ClickHouse**, **DuckDB**, and **SQL Server**. Git-based drivers (Kiwi, Superset) are documented in [independent driver development](independent-driver-development.en.md).
 
@@ -8,7 +8,7 @@ This document covers the four optional engines maintained as path drivers: **Mon
 
 | Registry id | Source | Crate | Category | In Basic SKU | In All SKU |
 |-------------|--------|-------|----------|--------------|------------|
-| `mongodb` | path (`packages/drivers/mongodb`) | `datazen-driver-mongodb` | document | no | yes |
+| `mongodb` | path (`crates/drivers/mongodb`) | `datazen-driver-mongodb` | document | no | yes |
 | `clickhouse` | path | `datazen-driver-clickhouse` | sql | no | yes |
 | `duckdb` | path | `datazen-driver-duckdb` | sql | no | yes |
 | `sqlserver` | path | `datazen-driver-sqlserver` | sql | no | yes |
@@ -68,7 +68,7 @@ Frontend dialect helpers (`src/lib/sqlDialects/extra.ts`) exist for formatting a
 
 - **Category:** document — `connectionView: 'document'`, `supportsSQL: false`
 - **Schema browse:** databases → collections; inferred column types from sample documents
-- **Query:** JSON command editor (`find`, aggregation pipeline, insert/update/delete) — see driver crate header in `packages/drivers/mongodb/src/mongodb.rs`
+- **Query:** JSON command editor (`find`, aggregation pipeline, insert/update/delete) — see driver crate header in `crates/drivers/mongodb/src/mongodb.rs`
 - **Export:** result grid export works like other connections
 - **Structure editor:** disabled in meta (`structureEditor.enabled: false`)
 - **Data Sync / Transfer:** not supported (document category; pairing rejects non-SQL families)
@@ -101,7 +101,7 @@ Frontend dialect helpers (`src/lib/sqlDialects/extra.ts`) exist for formatting a
 - **Schema Diff:** the driver implements `MigrationRenderer` / `MigrationCapabilities` / `TypeNormalizer`. IDENTITY rebuilds, routines/triggers/sequences/user-defined types, cross-schema object DDL and object/index features that cannot be proven safe fail closed before execution.
 - **Data Sync:** same-family only. Comparison and parameterized writes use the driver's key/ordering rules; identity values are written under a session-scoped `IDENTITY_INSERT` that is cleaned up on table switch, failure, cancellation and before commit. Text/`uniqueidentifier`/`rowversion` keys whose ordering cannot be proven are rejected.
 - **Data Transfer:** SQL Server works as source and target, including identity cleanup on the target, 2100-parameter chunking and SQL-file identity wrapping derived from the actual target catalog. Unsupported types, unrepresentable collations and incomplete structure are rejected in preflight.
-- **Live evidence:** optional live journeys live in `packages/drivers/sqlserver/e2e/` (see its README); they require `E2E_SQLSERVER_*` and are not part of default `pnpm e2e`.
+- **Live evidence:** optional live journeys live in `crates/drivers/sqlserver/e2e/` (see its README); they require `E2E_SQLSERVER_*` and are not part of default `pnpm e2e`.
 
 ## Gaps and follow-ups (driver crate scope)
 
@@ -116,11 +116,11 @@ These are **not** Host blockers; improve inside each path driver crate:
 | Data Sync | rejected (document category) | same-family only when compiled in | same-family only | same-family only |
 | Data Transfer execute | N/A (document) | same-family Insert / Truncate+Insert | same-family Insert / Truncate+Insert | same-family Insert / Truncate+Insert |
 
-Host E2E contract journeys intentionally target Basic SQL drivers (PostgreSQL / MySQL / SQLite). Optional SQL drivers should add instance-backed tests under `packages/drivers/<id>/tests/` or `e2e/` when CI fixtures exist.
+Host E2E contract journeys intentionally target Basic SQL drivers (PostgreSQL / MySQL / SQLite). Optional SQL drivers should add instance-backed tests under `crates/drivers/<id>/tests/` or `e2e/` when CI fixtures exist.
 
 ## Local driver development
 
-See [independent driver development](independent-driver-development.en.md) — path drivers use the same `DatabaseDriver` trait and `.drivers-dev.json` symlink workflow as git drivers, but the source stays in `packages/drivers/<id>/`.
+See [independent driver development](independent-driver-development.en.md) — path drivers use the same `DatabaseDriver` trait and `.drivers-dev.json` symlink workflow as git drivers, but the source stays in `crates/drivers/<id>/`.
 
 ## Related docs
 

@@ -65,7 +65,7 @@
  *     Rule 2 violations.
  *   - `include!("..._tests.rs")` counts as a declaration channel for Rule 2:
  *     textual inclusion into a test-only file is how
- *     `packages/driver-api/src/resource_adapter_output_tests.rs` reaches the
+ *     `crates/datazen-driver-api/src/resource_adapter_output_tests.rs` reaches the
  *     compiler, and it is exactly as test-only as its including file.
  *
  * Scan scope: the Rust rules walk the workspace crates; the TS rules walk
@@ -74,7 +74,7 @@
  * other text guards use via scripts/lib/scanTargets.mjs). The single source
  * of truth for the Rust crate set is the `[workspace] members` list in the
  * root Cargo.toml — mirrored here (fixed members spelled out, the
- * `packages/drivers/*` glob expanded minus the workspace `exclude` entries)
+ * `crates/drivers/*` glob expanded minus the workspace `exclude` entries)
  * because this guard is a pure text scanner that must not depend on a cargo
  * toolchain: the frontend CI job runs it, and that job has no Rust toolchain
  * by design (see the platform-arch comment in .github/workflows/ci.yml for
@@ -85,7 +85,7 @@
  * `e2e/wdio.conf.ts`'s imports from a text scanner would couple the guard
  * to a TypeScript toolchain it must not have: the trees are `e2e/specs`
  * (the main conf's `specs` glob) plus each non-excluded
- * `packages/drivers/<driver>/e2e/` that exists (a driver without an `e2e/`
+ * `crates/drivers/<driver>/e2e/` that exists (a driver without an `e2e/`
  * directory is simply not a spec tree), and a vanished `e2e/specs` is exit 2.
  *
  * `e2e/` holds TS specs today; if it ever gains Rust sources it joins the
@@ -123,20 +123,17 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
  * header comment for why it is hardcoded rather than read via cargo).
  */
 const WORKSPACE_MEMBER_DIRS = [
-  'apps/desktop/src-tauri',
-  'packages/driver-api',
-  'packages/driver-support',
-  'packages/infra',
-  'modules',
-  'server',
+  'crates/datazen-desktop',
+  'crates/datazen-driver-api',
+  'crates/datazen-driver-support',
+  'crates/datazen-infra',
+  'crates/datazen',
+  'crates/datazen-server',
 ];
-// `packages/drivers/*` from the same members list, minus the workspace
-// `exclude` entries (`packages/drivers/kiwi`, `packages/drivers/superset`).
-const DRIVERS_DIR = 'packages/drivers';
-const WORKSPACE_DRIVER_EXCLUDES = new Set([
-  'packages/drivers/kiwi',
-  'packages/drivers/superset',
-]);
+// `crates/drivers/*` from the same members list, minus the workspace
+// `exclude` entries (`crates/drivers/kiwi`, `crates/drivers/superset`).
+const DRIVERS_DIR = 'crates/drivers';
+const WORKSPACE_DRIVER_EXCLUDES = new Set(['crates/drivers/kiwi', 'crates/drivers/superset']);
 
 /** The main wdio conf's spec glob root — the primary Rule 4 tree (mirrored,
  * not discovered: see the header's scan-scope paragraph). */
@@ -393,7 +390,8 @@ export function checkTestModuleNaming(opts = {}) {
       }
       if (isMod) {
         const name = line.match(MOD_DECL_RE)[1];
-        const pathAttr = (attrLines.map((a) => a.match(PATH_ATTR_RE)).find(Boolean) ?? [])[1] ?? null;
+        const pathAttr =
+          (attrLines.map((a) => a.match(PATH_ATTR_RE)).find(Boolean) ?? [])[1] ?? null;
         decls.push({
           file: rel,
           line: i + 1,
@@ -536,7 +534,7 @@ export function checkTestModuleNaming(opts = {}) {
         'wdio spec file carries a foreign runner signal in its name' +
         ' (test_ prefix / .test.ts suffix) — the directory already signals test',
       reason:
-        'Rule 4: inside e2e/specs and packages/drivers/*/e2e every sibling spec is' +
+        'Rule 4: inside e2e/specs and crates/drivers/*/e2e every sibling spec is' +
         ' a bare name — drop the prefix/suffix',
     });
   }
@@ -544,9 +542,7 @@ export function checkTestModuleNaming(opts = {}) {
   // ── allow-list + staleness ─────────────────────────────────────────────
   const matched = new Set();
   const violations = findings.filter((f) => {
-    const hit = ALLOWLIST.findIndex(
-      (e) => e.rule === f.rule && e.file === f.file,
-    );
+    const hit = ALLOWLIST.findIndex((e) => e.rule === f.rule && e.file === f.file);
     if (hit >= 0) {
       matched.add(hit);
       return false;

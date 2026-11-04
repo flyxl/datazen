@@ -16,8 +16,8 @@ Related docs:
 | **MCP resources** (`datazen://…` URIs) | MCP clients reading connections, history, schema | URI paths and serialized JSON field names are stable |
 | **MCP prompts** | MCP clients using NL2SQL / diagnose helpers | Prompt names and argument keys are stable |
 | **Tauri IPC commands** | React frontend, E2E, extensions bridge | Command names and request/response shapes used by the Host UI |
-| **`PROTOCOL_VERSION`** (`packages/driver-api`) | Path and Git database drivers | Bump only with migration notes; drivers must recompile |
-| **`AI_PROTOCOL_VERSION`** (`modules/src/ai/mod.rs`) | AI provider extensions | Same as driver protocol |
+| **`PROTOCOL_VERSION`** (`crates/datazen-driver-api`) | Path and Git database drivers | Bump only with migration notes; drivers must recompile |
+| **`AI_PROTOCOL_VERSION`** (`crates/datazen/src/ai/mod.rs`) | AI provider extensions | Same as driver protocol |
 | **Persisted store JSON** | Upgrades across app versions | Field renames require migration or dual-read period |
 
 Internal refactors (file splits, private helper moves) are **not** contract changes as long as observable behavior and the surfaces above stay the same.
@@ -106,7 +106,7 @@ DataZen is currently **v0.x** (see `src-tauri/Cargo.toml`). Policy tightens as w
 ## Driver and AI protocol versions
 
 - **`PROTOCOL_VERSION`** and **`AI_PROTOCOL_VERSION`** are independent of the app semver.
-- Increment only when public trait signatures or wire shapes change in `packages/driver-api` or `modules/src/ai` (`AI_PROTOCOL_VERSION`).
+- Increment only when public trait signatures or wire shapes change in `crates/datazen-driver-api` or `crates/datazen/src/ai` (`AI_PROTOCOL_VERSION`).
 - When bumping, update all in-tree path drivers and document Git driver minimum host version in release notes.
 - See [`driver-api-dependency-boundary.md`](driver-api-dependency-boundary.md) for API exposure rules.
 

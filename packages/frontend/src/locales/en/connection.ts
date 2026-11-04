@@ -279,7 +279,7 @@ const pack = {
   'connection.dashboard.title': 'Dashboard',
   // KV workspace slot actions handled by the host. Namespace
   // `redis.kvSlot.*` is host-owned copy for the KV panel; the driver keeps its
-  // own `redis.*` pack in packages/drivers/redis/locales.
+  // own `redis.*` pack in crates/drivers/redis/locales.
   'redis.kvSlot.flushTitle': 'Flush the current database',
   'redis.kvSlot.flushMessage':
     'Every key in the database this panel is bound to will be deleted. This cannot be undone.',

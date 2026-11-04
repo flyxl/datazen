@@ -158,13 +158,16 @@ export function checkIdTerminology(opts = {}) {
     lines.forEach((text, i) => {
       for (const { regex } of FORBIDDEN_PATTERNS) {
         if (!regex.test(text)) continue;
-        const exempt = ALLOWLIST.some(
-          (entry) => rel === entry.file && entry.line.test(text),
-        );
+        const exempt = ALLOWLIST.some((entry) => rel === entry.file && entry.line.test(text));
         if (exempt) {
           allowed += 1;
         } else {
-          violations.push({ file: rel, line: i + 1, text: text.trim(), reason: FORBIDDEN_PATTERNS.find((p) => p.regex === regex)?.reason ?? '' });
+          violations.push({
+            file: rel,
+            line: i + 1,
+            text: text.trim(),
+            reason: FORBIDDEN_PATTERNS.find((p) => p.regex === regex)?.reason ?? '',
+          });
         }
         break;
       }

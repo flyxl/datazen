@@ -5,7 +5,7 @@
  * driver pack (the host stopped aggregating driver dictionaries), so every branch
  * of it needs a permanent test — previously the ~100 added lines had 0 %
  * coverage because the script ran its report at module load and exported
- * nothing. Fixtures are written into a temp `packages/drivers` layout.
+ * nothing. Fixtures are written into a temp `crates/drivers` layout.
  */
 import { describe, expect, it, afterEach, beforeEach } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -117,7 +117,7 @@ describe('i18n-sync-check driver locale packs', () => {
 
   beforeEach(() => {
     root = mkdtempSync(join(tmpdir(), 'i18n-sync-'));
-    driversDir = join(root, 'packages/drivers');
+    driversDir = join(root, 'crates/drivers');
     mkdirSync(driversDir, { recursive: true });
   });
 

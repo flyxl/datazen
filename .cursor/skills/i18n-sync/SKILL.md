@@ -25,7 +25,7 @@ node scripts/i18n-sync-check.mjs --verbose
      domain of the English key. ⚠️ `src/locales/<locale>.ts` is a 2-line re-export
      shim (`export { default } from './<locale>/index'`) — writing there has **no
      effect**. All 10 host locales are domain-split.
-   - **Driver pack** (`packages/drivers/<id>/locales/`) → `<locale>.ts`; driver
+   - **Driver pack** (`crates/drivers/<id>/locales/`) → `<locale>.ts`; driver
      packs are genuinely flat monoliths, so `en.ts` there is correct.
    - Translate only the changed English values; preserve the existing key order
      and file structure.
@@ -59,7 +59,7 @@ pnpm exec vitest run src/locales/locales.test.ts
 
 - **During development**: Only add keys to the host's English **domain packs**
   (`src/locales/en/<domain>.ts`; `src/locales/en.ts` is a shim). Driver packs use
-  `packages/drivers/<id>/locales/en.ts`, which is a real file. All other locales
+  `crates/drivers/<id>/locales/en.ts`, which is a real file. All other locales
   are synced before release.
 - **Before release**: Run this skill to translate all missing/stale keys.
 - The `scripts/i18n-sync-check.mjs` script returns exit code 1 if there are

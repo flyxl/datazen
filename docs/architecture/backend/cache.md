@@ -234,7 +234,7 @@ impl CacheWarmupStrategy {
 ### 1.3 优化的查询执行流程
 
 ```rust
-// modules/src/services/query_executor.rs
+// crates/datazen/src/services/query_executor.rs
 
 use datazen_driver_api::*;
 use datazen_runtime::schema_cache::SchemaCache;
@@ -427,7 +427,7 @@ pub struct TableDataResult {
 - Host 不执行额外系统表查询来补列；空结果集是否带列由 Driver 在结果/事件中表达。
 - 表结构批量读取属于 Driver 目录契约：`CatalogReader` 的 `get_columns` / `get_all_columns` 由 Driver 实现，宿主经 `list_catalog` / `read_relation_columns` 等 Driver Command 访问，并由 `SchemaCache` 按关系身份缓存。
 
-相关入口：`packages/driver-api/src/query_stream.rs` 的事件模型、`packages/driver-api/src/catalog.rs` 的 `CatalogReader`、`src-tauri/src/services/schema_metadata.rs` 的批量列读取与缓存刷新。
+相关入口：`crates/datazen-driver-api/src/query_stream.rs` 的事件模型、`crates/datazen-driver-api/src/catalog.rs` 的 `CatalogReader`、`src-tauri/src/services/schema_metadata.rs` 的批量列读取与缓存刷新。
 
 ### 1.5 缓存失效策略
 

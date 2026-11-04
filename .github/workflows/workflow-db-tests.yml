@@ -1,6 +1,6 @@
 name: Workflow DB tests
 
-# 跨库 workflow 真 DB 用例（apps/desktop/src-tauri/tests/workflow_db_tests.rs，
+# 跨库 workflow 真 DB 用例（crates/datazen-desktop/tests/workflow_db_tests.rs，
 # 原 workflow_tests.rs 的 tc02/04/05/06/07/13）的「有服务保障」运行位：
 # PR CI 只编译该文件防烂（全部 #[ignore]），真跑在这里——每周一跑一次，
 # 加手动触发（workflow_dispatch）供随时验证。

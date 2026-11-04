@@ -2,7 +2,7 @@
 
 > 状态：平台 DTO / ports / facade 已实现；P5 已把 `JobHost` 与 AppDb SQLite v2 接入 AppState，并接通 Schema Diff、Data Sync、Data Transfer 三件套的桌面 Job 生命周期。团队 server 与完整 Profile/ConnectionUseCases 仍未全部接线，不能把本机 Job adapter 当成团队服务仓储。
 >
-> **尚未完整接线的准确含义**：运行期 `JobHost` 已承载三件套的桌面 Job；Profile/ConnectionUseCases 仍不能从真实连接配置完整构造所需的 revision/credential 字段。`apps/desktop/src-tauri/src/platform/adapter.rs` 的连接用例不能为缺失字段伪造值。
+> **尚未完整接线的准确含义**：运行期 `JobHost` 已承载三件套的桌面 Job；Profile/ConnectionUseCases 仍不能从真实连接配置完整构造所需的 revision/credential 字段。`crates/datazen-desktop/src/platform/adapter.rs` 的连接用例不能为缺失字段伪造值。
 >
 > 仍待实现：团队 `server` crate、完整 Profile/ConnectionUseCases adapter，以及各节明确标为目标设计的 HTTP/多 worker 行为。P5 桌面迁移三件套独立测试与冒烟测试已通过；本机 Job host 不提供服务端或多 worker 语义。
 > 读者：本文只定义包边界、端口签名、组装方式和护栏；DTO 语义、会话状态机、资源预算算法以既有文档为权威，本文不重复定义。标为「目标设计」的段落仍是契约，未随 P1 实现。
@@ -26,14 +26,14 @@
 
 | 路径 | 状态 |
 | --- | --- |
-| `modules/src/shared` | **已实现**（`datazen::shared`，platform_api 契约层的最终落点）：ID newtype、`RequestContext` / `OwnerRef` / `DelegationRef`、`PortError` / `ApiError` / `ApiErrorCode`、`check_owner`、`Clock` 均在此 |
-| `modules` | **已实现**，`datazen::application` 命名空间（`modules/src/application/`），与领域包同属 `datazen` crate |
+| `crates/datazen/src/shared` | **已实现**（`datazen::shared`，platform_api 契约层的最终落点）：ID newtype、`RequestContext` / `OwnerRef` / `DelegationRef`、`PortError` / `ApiError` / `ApiErrorCode`、`check_owner`、`Clock` 均在此 |
+| `modules` | **已实现**，`datazen::application` 命名空间（`crates/datazen/src/application/`），与领域包同属 `datazen` crate |
 | `packages/backend-client` | **已实现**，TS 包，**不是** Cargo 成员，接线三处已补齐（§2.5） |
 | `modules` | ID / DTO 类型已统一到 `modules` 内（`shared` / `application::dto`）；runtime 侧同名旧类型仍在去重中（见 §2.6「待办：runtime 去重」） |
 | `packages/kernel` | ~~已退役（D8，2026-10-26）~~：Job、预算、SQL 安全门、Schema 缓存、驱动登记表已归 `modules`；旧 kernel crate 与 workspace 成员已删除 |
-| `server/` | **不存在**，目标设计 |
+| `crates/datazen-server/` | **不存在**，目标设计 |
 
-闭包约束以单一 `datazen`（`modules/`）为主体实测：normal + build 依赖闭包不含 `tauri*`、不含宿主 crate `datazen`、不含 `axum`/`actix-web`/`warp`/`tonic`（`cargo metadata --format-version 1` 解析 `resolve.nodes` 闭包，见 F-02 / F-03；实测输出 `ok F-02: datazen`、`ok F-03: datazen`，见 §8.3）。
+闭包约束以单一 `datazen`（`crates/datazen/`）为主体实测：normal + build 依赖闭包不含 `tauri*`、不含宿主 crate `datazen`、不含 `axum`/`actix-web`/`warp`/`tonic`（`cargo metadata --format-version 1` 解析 `resolve.nodes` 闭包，见 F-02 / F-03；实测输出 `ok F-02: datazen`、`ok F-03: datazen`，见 §8.3）。
 
 ## 2. 包边界与依赖矩阵
 
@@ -41,7 +41,7 @@
 
 | 包 | 一句话职责 | 拥有的概念 | 明确不拥有 |
 | --- | --- | --- | --- |
-| `modules/src/shared`（原 `modules/src/platform_api` 契约层，D8 后续消解） | 无平台依赖的最底层契约：ID newtype、`RequestContext`、port 错误、跨边界错误类型 | ID 类型（`id.rs`）、身份上下文（`context.rs`）、`PortError` / `ApiError` / `ApiErrorCode` / `RetryDisposition`（`error.rs`）、归属校验纯函数 `check_owner`（`policy.rs`）、`Clock`（`clock.rs`）；用例端口与请求 DTO 在 `modules/src/application/`（`dto/`、`sessions.rs`） | 任何用例逻辑、任何 I/O；实现只允许**形态中立、无副作用、无传输的进程内原语**（现状：`clock.rs` 的 `SystemClock` / `FixedClock`；端口 trait 本身随消费者住在各领域包，见 §4 / §4.10） |
+| `crates/datazen/src/shared`（原 `crates/datazen/src/platform_api` 契约层，D8 后续消解） | 无平台依赖的最底层契约：ID newtype、`RequestContext`、port 错误、跨边界错误类型 | ID 类型（`id.rs`）、身份上下文（`context.rs`）、`PortError` / `ApiError` / `ApiErrorCode` / `RetryDisposition`（`error.rs`）、归属校验纯函数 `check_owner`（`policy.rs`）、`Clock`（`clock.rs`）；用例端口与请求 DTO 在 `crates/datazen/src/application/`（`dto/`、`sessions.rs`） | 任何用例逻辑、任何 I/O；实现只允许**形态中立、无副作用、无传输的进程内原语**（现状：`clock.rs` 的 `SystemClock` / `FixedClock`；端口 trait 本身随消费者住在各领域包，见 §4 / §4.10） |
 | `modules` | 用例编排：目标解析、授权顺序、DTO 校验、错误归一、前端桥注入端口 | 目标解析（`TargetResolver`）、身份判定顺序（`IdentityPolicy`，其中 `check_owner` 委托 `shared::policy`）、用例服务与 `ApplicationServices`、前端桥窄端口（`FrontendBridge`）与注入缝隙；`ApiError` / 请求 DTO / `ConnectionUseCases` 只做**再导出**（定义在 `shared` 与 `application::dto`） | 会话状态、物理资源、驱动类型分支、任何具体传输实现 |
 | `modules`（原 `packages/kernel`） | 与连接无关的**共享机制**：Job 运行时、多端预算、SQL 安全门、Schema 元数据缓存、驱动登记表、稳定指纹 | `modules::jobs`、`execution::runtime::budget`、`execution::domain::sql_guard`、`schema`、`execution::runtime::driver_registry`、`shared::hash` | 会话状态、物理连接、租约、`Execution` 登记（这些属 `modules::execution`）；任何 I/O 与宿主词汇 |
 | `modules` | 连接运行时：session actor、资源与 lease、预算记账、execution 登记、事件 | `DbSession`、`ResourceLease`、`Execution`、Job 阶段 runtime 状态 | 权限判定来源、持久化介质、网络出口 |
@@ -49,10 +49,10 @@
 
 ### 2.2 模块树
 
-> **现状注记（2026-10-27 复核）**：下面这棵 `modules/src/platform_api/src/` 树是 P1 阶段的落地形态，保留作迁移对照。此后契约层已再消解：ID / 上下文 / 错误 / `check_owner` / `Clock` 迁入 `modules/src/shared/`，请求 DTO 与用例端口在 `modules/src/application/`（`dto/`、`sessions.rs`、`target.rs`），端口 trait 分散至各自领域包（隧道 → `modules/src/tunnel/domain/`，Profile → `modules/src/connection/domain/`，窄端口见 §4.10；NativeTool 端口已随前端形态拆分方案 F1 删除）。集中的 `PORT_TRAITS` 清单随迁移取消。
+> **现状注记（2026-10-27 复核）**：下面这棵 `crates/datazen/src/platform_api/src/` 树是 P1 阶段的落地形态，保留作迁移对照。此后契约层已再消解：ID / 上下文 / 错误 / `check_owner` / `Clock` 迁入 `crates/datazen/src/shared/`，请求 DTO 与用例端口在 `crates/datazen/src/application/`（`dto/`、`sessions.rs`、`target.rs`），端口 trait 分散至各自领域包（隧道 → `crates/datazen/src/tunnel/domain/`，Profile → `crates/datazen/src/connection/domain/`，窄端口见 §4.10；NativeTool 端口已随前端形态拆分方案 F1 删除）。集中的 `PORT_TRAITS` 清单随迁移取消。
 
 ```text
-modules/src/platform_api/src/（P1 历史形态，现 dispersed 至 shared / 领域包）
+crates/datazen/src/platform_api/src/（P1 历史形态，现 dispersed 至 shared / 领域包）
 ├── id.rs                     # ID newtype（含宏）、Counter、Timestamp
 ├── context.rs                # RequestContext、OwnerRef、DelegationRef
 ├── error.rs                  # PortError（端口事实）+ ApiError / ApiErrorCode(31) / RetryDisposition（跨边界拒绝）
@@ -84,7 +84,7 @@ modules/src/platform_api/src/（P1 历史形态，现 dispersed 至 shared / 领
 ├── use_cases/connection.rs   # ConnectionUseCases：连接 §4.1 的 13 个方法签名（由 runtime 实现）
 └── lib.rs
 
-modules/src/application/
+crates/datazen/src/application/
 ├── dto/
 │   ├── mod.rs                # re-export platform-api 的契约 DTO（不新增字段语义）
 │   ├── execution.rs          # DurableExecutionRecord（不可表示运行时绑定）
@@ -96,7 +96,7 @@ modules/src/application/
 ├── frontend_bridge.rs        # FrontendBridge 窄端口 + BridgeInjection 注入缝隙（失败关闭，§7.4）
 └── mod.rs                    # ApplicationServices（§6.2 装配顺序第 7 步）
 
-modules/src/
+crates/datazen/src/
 ├── connection/               # 见 §3（尚未迁移到 platform-api 类型，见 §2.6）
 ├── budget.rs                 # 本机多维许可（port 之后的本地实现）
 ├── execution.rs
@@ -121,18 +121,18 @@ packages/backend-client/src/
 ```mermaid
 flowchart TD
     subgraph host[Host / 装配层]
-        TA[apps/desktop/src-tauri<br/>Tauri adapter]
+        TA[crates/datazen-desktop<br/>Tauri adapter]
         SRV[server<br/>HTTP adapter]
         FE[src + packages/backend-client<br/>前端]
     end
     APP[modules]
     RT[modules]
     KER[modules（原 packages/kernel）]
-    PA[modules/src/shared]
-    DAPI[packages/driver-api]
+    PA[crates/datazen/src/shared]
+    DAPI[crates/datazen-driver-api]
     DOM[schema-diff / data-sync / data-transfer]
-    MC[modules/src/migration/common]
-    DRV[packages/drivers/*]
+    MC[crates/datazen/src/migration/common]
+    DRV[crates/drivers/*]
 
     TA --> APP
     TA --> RT
@@ -165,13 +165,13 @@ flowchart TD
 > 契约层再抄一份：两份摘要类型只会在两处之间慢慢漂移，而 IPC 载荷必须逐字不变。
 > F-04 允许这条边（它禁的是 `application` / `runtime` / 领域包 / `src-tauri`）。
 
-`modules/src/migration/schema_diff` 的生产路径通过 `datazen-driver-api::create_driver` 查询 inventory registry，再调用驱动提供的 `migration_renderer()`、`migration_capabilities()` 与 `type_normalizer()`；这些契约已覆盖 MySQL、PostgreSQL 和 SQLite 的结构迁移能力，无需在领域包绑定具体驱动。领域包的普通依赖与测试依赖均不包含具体 driver crate。方言 SQL 与真实 normalizer 的集成测试分别位于 `packages/drivers/{mysql,postgres,sqlite}/tests/schema_diff_*.rs`，由各驱动的 dev-dependency 引用领域包并链接自身注册；领域包保留纯逻辑测试与假 renderer 测试。
+`crates/datazen/src/migration/schema_diff` 的生产路径通过 `datazen-driver-api::create_driver` 查询 inventory registry，再调用驱动提供的 `migration_renderer()`、`migration_capabilities()` 与 `type_normalizer()`；这些契约已覆盖 MySQL、PostgreSQL 和 SQLite 的结构迁移能力，无需在领域包绑定具体驱动。领域包的普通依赖与测试依赖均不包含具体 driver crate。方言 SQL 与真实 normalizer 的集成测试分别位于 `crates/drivers/{mysql,postgres,sqlite}/tests/schema_diff_*.rs`，由各驱动的 dev-dependency 引用领域包并链接自身注册；领域包保留纯逻辑测试与假 renderer 测试。
 
 ### 2.4 禁止的反向依赖（可被门禁直接检查的断言）
 
 | 编号 | 断言 | 违背后果 |
 | --- | --- | --- |
-| F-01 | `packages/drivers/*` 的 crate 依赖闭包不含 `datazen`、`datazen`、`datazen::application`、`datazen::platform_api`、`datazen`（AI 契约自 D1.5 起住在 modules），且不含任何 `tauri*` crate；闭包侧与声明边侧任一出现即违规，**已武装为阻断门禁** | 驱动反向引用宿主或宿主框架，Web 端与宿主无关的构建被拖垮 |
+| F-01 | `crates/drivers/*` 的 crate 依赖闭包不含 `datazen`、`datazen`、`datazen::application`、`datazen::platform_api`、`datazen`（AI 契约自 D1.5 起住在 modules），且不含任何 `tauri*` crate；闭包侧与声明边侧任一出现即违规，**已武装为阻断门禁** | 驱动反向引用宿主或宿主框架，Web 端与宿主无关的构建被拖垮 |
 | F-02 | `modules` 的 normal + build 依赖闭包不含任何 `tauri*` crate，且不含 `datazen` 宿主 crate | 内核无法在没有 Tauri 的进程（测试、server worker）中编译 |
 | F-03 | `modules` 不含 `axum`、`actix-web`、`warp`、`tonic` 等 HTTP/传输框架 | 传输策略渗入业务内核 |
 | F-04 | ~~已退役（2026-10-27，D8）~~：platform-api 契约已归入 `datazen::platform_api`，不再存在独立 crate 边界；modules 内部模块不形成 Cargo 依赖边 | ports 与用例循环依赖 |
@@ -179,16 +179,16 @@ flowchart TD
 | F-06 | `server` 的 normal + build 依赖闭包不含 `tauri*` 与 `datazen` 宿主 crate | server 无法独立构建 |
 | F-07 | `packages/backend-client` 不含 `@tauri-apps/` 前缀、`fetch(`、`XMLHttpRequest` 字面量 | 传输无关契约被具体传输污染 |
 | F-09 | ~~已退役（2026-10-26，D1.5）~~：`ai-api` 并入 `ai-providers` 后整体并入 `modules::ai`，主体不复存在；「AI 代码不得拖入 `tauri*` 或宿主」的约束由 F-14 对 `modules` 的断言继续承担 | 主体消失后规则空转，保留只会掩盖真正的边界 |
-| F-11 | `packages/infra` 的 normal + build 工作区依赖只允许自身；不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react`。改名与定位扩展见 §2.5.1 | 公共基础设施一旦依赖任一上层 crate 或平台传输，就从「垫底」退化成所有形态被迫共同链接的耦合中枢 |
+| F-11 | `crates/datazen-infra` 的 normal + build 工作区依赖只允许自身；不含 `tauri`、`axum`、`actix-web`、`warp`、`tonic`、`react`。改名与定位扩展见 §2.5.1 | 公共基础设施一旦依赖任一上层 crate 或平台传输，就从「垫底」退化成所有形态被迫共同链接的耦合中枢 |
 | F-13 | ~~已退役（2026-10-26，D6 Tunnel）~~：隧道机制已并入 `modules::tunnel`；其形态中立依赖由 F-14 的 modules 闭包统一检查 | 避免为 modules 内部 feature 保留一套与 modules 重复的 crate 级边界规则 |
-| F-14 | `modules` 的 normal + build 依赖闭包不含 apps/desktop/src-tauri、`datazen`，也不含 `tauri*`、`axum`、`actix-web`、`warp`、`tonic`；`reqwest` 自 D1.5 起豁免——AI Provider 适配（出站 HTTP 客户端）随 ai feature 住在 `modules::ai::providers`，这是 2026-10-26 的用户决策，不是传输框架渗入 | 功能模块必须由自身 domain/application 契约承载，不能把桌面宿主、旧横向运行时或传输实现带回模块 crate |
+| F-14 | `modules` 的 normal + build 依赖闭包不含 crates/datazen-desktop、`datazen`，也不含 `tauri*`、`axum`、`actix-web`、`warp`、`tonic`；`reqwest` 自 D1.5 起豁免——AI Provider 适配（出站 HTTP 客户端）随 ai feature 住在 `modules::ai::providers`，这是 2026-10-26 的用户决策，不是传输框架渗入 | 功能模块必须由自身 domain/application 契约承载，不能把桌面宿主、旧横向运行时或传输实现带回模块 crate |
 **F-01 的作用域同时覆盖两侧：manifest 声明边与解析闭包。** 上面"crate 依赖闭包"若按字面只理解为 `cargo metadata` 的 `resolve` 图，是**不够的**：那个图是 **feature-resolved 的**，只含当前 feature 解析下真正被链接的边。无人启用的 feature 背后的 optional 依赖根本不在 `resolve.nodes[].deps[]` 里，任何闭包遍历都看不见它。因此 F-01 也约束 `Cargo.toml` 的**声明边**——声明了、但当前 feature 解析不链接的边，同样算违反。两侧任一出现即违规。
 
-**F-01 两侧都已是阻断判定；主体是 `packages/drivers/*`，两侧都按主体范围判定。** 宿主 `datazen` 自己声明 `tauri-plugin-webdriver`（Tauri 自己的 webdriver 插件，宿主本来就该有）是**合法的**：它不在 `packages/drivers/*` 里，因此声明边那一侧只把它报成 advisory，不判 violation。驱动的豁免必须是**显式**的：规则表里的 `exemptions` 列表（成员 + 家族 + 理由）为空即无豁免，且过期条目（成员不是本规则主体、或家族不是本规则禁的）直接报 **error**——它什么也没保护，却看起来像在保护。
+**F-01 两侧都已是阻断判定；主体是 `crates/drivers/*`，两侧都按主体范围判定。** 宿主 `datazen` 自己声明 `tauri-plugin-webdriver`（Tauri 自己的 webdriver 插件，宿主本来就该有）是**合法的**：它不在 `crates/drivers/*` 里，因此声明边那一侧只把它报成 advisory，不判 violation。驱动的豁免必须是**显式**的：规则表里的 `exemptions` 列表（成员 + 家族 + 理由）为空即无豁免，且过期条目（成员不是本规则主体、或家族不是本规则禁的）直接报 **error**——它什么也没保护，却看起来像在保护。
 
-这条不是修辞上的严谨，是实测出来的盲点：`packages/drivers/redis/Cargo.toml` 曾声明的 `tauri = { version = "2", optional = true }` 与 `apps/desktop/src-tauri/Cargo.toml` 的 `tauri-plugin-webdriver = { version = "0.2", optional = true }` 都不在解析图里，只读闭包的守卫对它们完全失明。判定方式与告警含义见 §8.2 注 3。
+这条不是修辞上的严谨，是实测出来的盲点：`crates/drivers/redis/Cargo.toml` 曾声明的 `tauri = { version = "2", optional = true }` 与 `crates/datazen-desktop/Cargo.toml` 的 `tauri-plugin-webdriver = { version = "0.2", optional = true }` 都不在解析图里，只读闭包的守卫对它们完全失明。判定方式与告警含义见 §8.2 注 3。
 
-**redis 驱动已不再有任何 `tauri` 依赖。** 它的 Pub/Sub 事件出口原先经一个 Tauri 插件注入（驱动 crate 内的 `plugin.rs` + `build.rs`，均已删除），这正是 `tauri` 进了该驱动可选依赖闭包的唯一原因：server 形态要支持 Redis Pub/Sub 就得启用 `tauri-plugin` feature，把 Tauri 拖进 server 的依赖闭包，直接撞上 §2.2 对 server 的禁令 —— **Pub/Sub 曾经是「桌面独占」能力，根因是注入通道的形态，不是能力本身。** 注入通道改成形态中立的 `inventory` 事件出口注册后（契约见 `packages/driver-api/src/event_sink.rs`：`DriverEventOutlet` / `DriverEventSink` / `register_event_outlet!` / `iter_event_outlets()`），驱动的 `tauri` 可选依赖、`tauri-plugin` 构建依赖、`build.rs` 与插件 ACL 目录一并删除：**redis 驱动的解析闭包与声明边都不再触及 `tauri*`**，同一份驱动 crate 可被 server 形态复用。宿主侧的桌面实现见 `apps/desktop/src-tauri/src/platform/event_sink.rs`。
+**redis 驱动已不再有任何 `tauri` 依赖。** 它的 Pub/Sub 事件出口原先经一个 Tauri 插件注入（驱动 crate 内的 `plugin.rs` + `build.rs`，均已删除），这正是 `tauri` 进了该驱动可选依赖闭包的唯一原因：server 形态要支持 Redis Pub/Sub 就得启用 `tauri-plugin` feature，把 Tauri 拖进 server 的依赖闭包，直接撞上 §2.2 对 server 的禁令 —— **Pub/Sub 曾经是「桌面独占」能力，根因是注入通道的形态，不是能力本身。** 注入通道改成形态中立的 `inventory` 事件出口注册后（契约见 `crates/datazen-driver-api/src/event_sink.rs`：`DriverEventOutlet` / `DriverEventSink` / `register_event_outlet!` / `iter_event_outlets()`），驱动的 `tauri` 可选依赖、`tauri-plugin` 构建依赖、`build.rs` 与插件 ACL 目录一并删除：**redis 驱动的解析闭包与声明边都不再触及 `tauri*`**，同一份驱动 crate 可被 server 形态复用。宿主侧的桌面实现见 `crates/datazen-desktop/src/platform/event_sink.rs`。
 
 **F-09 的两条实现路径，缺一不可。** 一条是依赖闭包：`forbiddenLayers: ['host']` 与
 `forbiddenCrates`（F-09 写死 `['tauri']`），按 `cargo metadata` 的解析图闭包遍历。另一条是
@@ -203,9 +203,9 @@ flowchart TD
 其 `specCrates` 同样点名 `axum`、`actix-web`、`warp`、`tonic`，覆盖范围比原 F-10 更宽
 （连带 `tauri`、`react` 与桌面宿主层）。因此 F-10 整条删除，其断言不被削弱。
 
-**`packages/driver-support` 归入 driver-api 层（2026-10-30，F3 下沉注册）。** 该 crate 是
+**`crates/datazen-driver-support` 归入 driver-api 层（2026-10-30，F3 下沉注册）。** 该 crate 是
 `sql_split` 与 `sql_identifiers` 的零依赖文本工具（刻意连 serde 都不带），单一消费者是
-`packages/driver-api`。守卫侧的 `LAYERS`（`scripts/lib/cargoWorkspace.mjs`）给它的是**既有
+`crates/datazen-driver-api`。守卫侧的 `LAYERS`（`scripts/lib/cargoWorkspace.mjs`）给它的是**既有
 `driver-api` 层**，不是新开一层：F-01 的 `allowedLayers: ['driver','driver-api']` 因此当天就
 覆盖它——驱动插件作者可以单独取用文本工具（这是 F3 的既定意图），而新开一层会让这条边变成
 违规、直到有人显式放宽。本段是分类决定的登记处，不新增 F 行：该 crate 零依赖，没有需要
@@ -219,30 +219,30 @@ F-xx 断言的依赖面。
 ```toml
 [workspace]
 members = [
-    "apps/desktop/src-tauri",
-    "packages/driver-api",
-    "packages/driver-support",
-    "packages/infra",
+    "crates/datazen-desktop",
+    "crates/datazen-driver-api",
+    "crates/datazen-driver-support",
+    "crates/datazen-infra",
     "modules",
-    "packages/drivers/*",
+    "crates/drivers/*",
 ]
 # exclude 与 workspace.dependencies 中的 datazen-driver-api 写法保持原样
 
 [workspace.dependencies]
-datazen = { path = "modules", default-features = false }
+datazen = { path = "crates/datazen", default-features = false }
 ```
 
-其中 `packages/driver-support` 是 F3 下沉的零依赖文本工具 crate（`sql_split` +
-`sql_identifiers`），单一消费者 `packages/driver-api`；层归属与边界登记见 §2.4 末段。
+其中 `crates/datazen-driver-support` 是 F3 下沉的零依赖文本工具 crate（`sql_split` +
+`sql_identifiers`），单一消费者 `crates/datazen-driver-api`；层归属与边界登记见 §2.4 末段。
 
-与本文早期草案的差异：`server/` **没有**加进 `members`——`server/` 在仓库中不存在，该 crate 属更晚阶段；
-`packages/backend-client` 是 TypeScript 包，**不得**加入 Cargo `members`。`packages/drivers/*` 的通配与两个
+与本文早期草案的差异：`crates/datazen-server/` **没有**加进 `members`——`crates/datazen-server/` 在仓库中不存在，该 crate 属更晚阶段；
+`packages/backend-client` 是 TypeScript 包，**不得**加入 Cargo `members`。`crates/drivers/*` 的通配与两个
 `exclude`（kiwi / superset）保持原样，驱动注入仍由 `scripts/resolve-drivers.mjs` 写入占位段。
 
 Wave-2 在此基础上又新增 `packages/ai-providers` 成员（AI provider 协议适配实现），其边界由
 F-09 断言。`packages/ai-providers` **不在**「禁服务端框架进入内核」的作用域内：它按定义就是一个
 HTTP *客户端*适配层（依赖 `reqwest` 访问各 provider 的端点），那条约束禁的是服务端框架进入内核，
-不是禁内核发请求。**接入方式是消费方写显式 `path`**：`apps/desktop/src-tauri/Cargo.toml` 顶部以
+不是禁内核发请求。**接入方式是消费方写显式 `path`**：`crates/datazen-desktop/Cargo.toml` 顶部以
 `datazen-ai-providers = { path = "../packages/ai-providers" }` 引入（与 Wave-1 各平台 crate 同风格，
 不是 `{ workspace = true }`，因为根 `[workspace.dependencies]` 里没有这一条）。
 
@@ -251,16 +251,16 @@ Workspace App 本身是一个通用 feature，其内核（manifest 规则、包�
 已安装包注册表、URI 语法与路由判定）不再自成一个包，而是并入 `modules`，
 成为 `modules::workspace_apps` 模块——与其它共享 feature（ai / workflow / dashboard /
 export / backup）并列。根 `Cargo.toml` 的 `members` 相应移除 `packages/workspace-apps`，
-`apps/desktop/src-tauri/Cargo.toml` 移除 `datazen-workspace-apps = { path = "../packages/workspace-apps" }`，
+`crates/datazen-desktop/Cargo.toml` 移除 `datazen-workspace-apps = { path = "../packages/workspace-apps" }`，
 改由既有的 `datazen` 依赖承接。其边界由 F-14 断言（见 §2.4）。
 
-#### 2.5.1 公共基础设施层 `packages/infra`（已实现；2026-10-26 由 `platform-infra` 改名，D1.5）
+#### 2.5.1 公共基础设施层 `crates/datazen-infra`（已实现；2026-10-26 由 `platform-infra` 改名，D1.5）
 
 > 改名同时扩展定位：本层收拢 **drivers / modules / web / desktop 四类消费者中任意两者
 > 共用**的无业务工具；仅单消费者使用的实现留在消费者处（详见
 > `docs/development/ddd-refactor/02-legacy-crate-migration.md` §5.4）。
 
-根 `Cargo.toml` 的 `members` 含 `packages/infra`（成员路径随改名更新），同样**不**进 `[workspace.dependencies]`
+根 `Cargo.toml` 的 `members` 含 `crates/datazen-infra`（成员路径随改名更新），同样**不**进 `[workspace.dependencies]`
 （它没有任何 `datazen-*` 依赖，加进去只会诱发 `src-tauri` 侧改用 `{ workspace = true }`，
 而新 crate 的依赖必须写在 `# <<driver-dependencies>>` 占位段之外）。
 
@@ -270,7 +270,7 @@ export / backup）并列。根 `Cargo.toml` 的 `members` 相应移除 `packages
 `redact_url_for_log` 只清洗 URL、`sql_preview_for_log` 截断 SQL 预览；覆盖面是凭据 userinfo、
 整段查询串、`Bearer`、`password` 字段。本层是唯一实现，实测全仓 19 处调用点都经过它：
 宿主 18 处直接引 `datazen_platform_infra::redaction::*`（原 `src-tauri/src/log_redact.rs` 薄壳已删除），
-`modules/src/ai/providers/custom.rs` 同样直接引垫底层（自 D1.5 起）。
+`crates/datazen/src/ai/providers/custom.rs` 同样直接引垫底层（自 D1.5 起）。
 此前只有宿主那一份；Wave-2 抽取 `ai-providers` 时因跨 crate 不可见，它在 `protocol/mod.rs` 里
 手写了第二份更弱的实现（只处理 userinfo 与整段 query，漏掉 `Bearer`、`?token=`、`"password":`）。
 该重复已删除。
@@ -278,7 +278,7 @@ export / backup）并列。根 `Cargo.toml` 的 `members` 相应移除 `packages
 凭据原样进日志。这是从宿主原实现逐字继承的，尚未修复。
 
 **路径安全**（`path_safety`）：zip 条目名的 zip-slip 守卫与压缩比上限。此前同样是两份逐字节
-相同的实现（`src-tauri/src/app_data_archive.rs` 与 `packages/infra/src/path_safety.rs`），
+相同的实现（`src-tauri/src/app_data_archive.rs` 与 `crates/datazen-infra/src/path_safety.rs`），
 各自被自己的测试钉住，单边改动会让安全检查在另一侧继续按旧规则放行。现已收敛为本层唯一实现：
 `modules::workspace_apps` 的 `install` / `manifest` 与宿主 app-data 备份/恢复都调用它，
 宿主 `src-tauri/src/app_data_archive.rs` 退化为同名 `pub use` 薄壳，调用点零改动。
@@ -308,7 +308,7 @@ export / backup）并列。根 `Cargo.toml` 的 `members` 相应移除 `packages
 
 > **尚未实现**：仓库 `vitest.config.ts` 的 `include` 通配与 `resolve.alias` 未覆盖 `packages/backend-client`（两者都在 CI 轨道的改动范围）。P1 的 40 条前端单测用临时 vitest 配置在本地跑通，合并后需把该包的测试纳入默认 `npx vitest run`。
 
-#### 2.5.2 形态中立隧道层 `modules/src/tunnel`（已实现）
+#### 2.5.2 形态中立隧道层 `crates/datazen/src/tunnel`（已实现）
 
 根 `Cargo.toml` 的 `members` 新增 `modules`，crate 名 `datazen`；`modules::tunnel`
 是其中的功能模块。这一层装的是**隧道机制本身**：
@@ -324,7 +324,7 @@ rustls provider 选择。
 `run-platform-crate-tests.mjs` 的 feature 矩阵纳入 CI。
 
 > **两处宿主符号随之改属**：① 进程级 rustls provider 的选择函数 `install_default_crypto_provider`
-> 原本住在 `src-tauri/src/tls.rs`，其**实现体**下移到 `modules/src/tunnel/crypto.rs`——因为 `https://`
+> 原本住在 `src-tauri/src/tls.rs`，其**实现体**下移到 `crates/datazen/src/tunnel/crypto.rs`——因为 `https://`
 > 代理腿与 `wss://` 中继腿都要建**自动探测**的 `ClientConfig`，这个决策不能留在宿主边界之后。宿主侧
 > `src-tauri/src/tls.rs` 保留模块文档、宿主接线守卫（`main()` 必须在解析 argv 前安装）与全部测试，并以
 > `pub use` 原样再导出该函数，因此 `datazen::install_default_crypto_provider()` 这条对外路径、调用时机与
@@ -336,7 +336,7 @@ rustls provider 选择。
 > 在宿主（`src-tauri/src/platform/known_hosts.rs`），web 形态由服务端 host 实现（服务端存储目录 /
 > 组织级存储）。**共享包不再读本机文件。**
 > **端口本身由本领域拥有**（D6 Tunnel）：`KnownHostsRepository`、`KnownHostEntry` 与
-> `TunnelRepository` 位于 `modules/src/tunnel/domain/`；platform-api 不再声明或再导出这组端口。
+> `TunnelRepository` 位于 `crates/datazen/src/tunnel/domain/`；platform-api 不再声明或再导出这组端口。
 
 ### 2.6 待办：runtime 去重（超出 P1 交付范围）
 
@@ -361,7 +361,7 @@ F-01…F-13 拦的是**依赖**。还有一类耦合不产生依赖边：**名�
 **判据是分词后逐词比，不是子串比**：`webhook` / `webdriver` 这类协议复合词不算形态名
 （它们切出来是整词），否则误伤会逼人把合法写法藏起来。
 
-**闸门**：`modules/src/execution/runtime/tunnel/form_neutrality_tests.rs`（随 `--lib` 跑，因而进
+**闸门**：`crates/datazen/src/execution/runtime/tunnel/form_neutrality_tests.rs`（随 `--lib` 跑，因而进
 CI）。它扫内核 crate 的 `src/`，两层都查——**字面量**（对外产出的稳定码、租约前缀、错误码）
 与**标识符**（类型 / 常量 / 字段名）。三条配套事实：
 
@@ -376,7 +376,7 @@ CI）。它扫内核 crate 的 `src/`，两层都查——**字面量**（对外
 
 其余共享包与子树里的形态名**未纳入**这道闸门，原因是它们确有**领域含义**而非形态耦合：
 `ExportSink` 的另一支 `ServerAuthorizedPath` 指「服务端授权的存储路径」。
-`modules/src/ai` 的 `HttpClient::desktop()` 是一份**出网策略预设**（允许内网地址 + 走
+`crates/datazen/src/ai` 的 `HttpClient::desktop()` 是一份**出网策略预设**（允许内网地址 + 走
 环境代理），端口 `EgressPolicy` 本身形态中立，web 形态可以自带策略——该子树以
 `MODULES_EXEMPT` 整体豁免（见闸门源码注释）。把这两处一并禁掉是误伤，不是治理。
 `AlertChannel` 曾是这里的第三个例子（`Desktop` 变体指「桌面通知」渠道）；D6 形态中立
@@ -406,7 +406,7 @@ CI）。它扫内核 crate 的 `src/`，两层都查——**字面量**（对外
 | --- | --- | --- |
 | `StoredPlan` / `StoredSyncPlan` / `StoredTransferPlan` / `StoredSelection` | schema-diff / data-sync / data-transfer / 宿主 | `Stored` 是**过去分词**（已存储的**数据**）：它们是装在仓储里的东西，不是仓储本身 |
 | `StoreCache` | `src-tauri/src/store/models.rs` | 缓存类型，不是存储抽象；`Store` 指宿主持久化层（层名保留） |
-| `StoreOwnerMarker` | `modules/src/migration/data_sync/comparison_store/recovery.rs` | 落盘 marker 的**记录载荷**，不是抽象；`store-owner.json` 是冻结的落盘格式 |
+| `StoreOwnerMarker` | `crates/datazen/src/migration/data_sync/comparison_store/recovery.rs` | 落盘 marker 的**记录载荷**，不是抽象；`store-owner.json` 是冻结的落盘格式 |
 | `CommandError::Store` 等错误**变体** | 宿主 | 变体名不是类型名；错误文案是前端可见的 IPC 错误串，不在本节范围 |
 | `RootCertStore` | rustls | 第三方类型 |
 | 前端 Zustand 的 `*Store`（`useXxxStore`、`src/stores/*.Store.ts`） | 前端 `src/stores/` | **前端生态约定**，不是存储抽象：`useXxxStore` 是 React 社区与 zustand 官方文档的标准叫法，本规约不适用 |
@@ -419,10 +419,10 @@ CI）。它扫内核 crate 的 `src/`，两层都查——**字面量**（对外
 
 ### 3.1 目录约定
 
-拟新增模块全部落在 `modules/src/execution/runtime/connection/`，与[连接管理 §14](connection-management.md#14-开发步骤与文件职责)的模块划分一一对应；runtime 的非连接职责（job 阶段调度、事件分发）留在 `modules/src/` 顶层，不进入 `connection/`。
+拟新增模块全部落在 `crates/datazen/src/execution/runtime/connection/`，与[连接管理 §14](connection-management.md#14-开发步骤与文件职责)的模块划分一一对应；runtime 的非连接职责（job 阶段调度、事件分发）留在 `crates/datazen/src/` 顶层，不进入 `connection/`。
 
 ```text
-modules/src/execution/runtime/connection/
+crates/datazen/src/execution/runtime/connection/
 ├── mod.rs
 ├── types.rs          # 1 types/error
 ├── error.rs          # 1 types/error
@@ -460,33 +460,33 @@ modules/src/execution/runtime/connection/
 
 ## 4. 端口 trait（已实现；契约分散于各领域包，见下方落地形态）
 
-> 落地形态（2026-10-27 复核）：端口 trait 随消费者分散在各领域包与 `modules/src/application/`——隧道端口在 `modules/src/tunnel/domain/`，Profile 系在 `modules/src/connection/domain/`，窄端口见 §4.10（NativeTool 端口已随前端形态拆分方案 F1 删除）；P1 阶段集中的 `PORT_TRAITS` 清单（原 `platform_api/src/ports/inventory.rs`）随契约层消解而取消，端口归属以各领域包模块源码为准。`#[async_trait]` + `Send + Sync + 'static` + `Arc<dyn X>` 注入，`PortError` 七个变体只派生 `Debug` 与 `thiserror::Error`（刻意不实现 `Serialize`，用例测试 `the_port_error_has_no_wire_shape_of_its_own` 守住）。`application` 与 `runtime` 通过 `pub use datazen::platform_api::…` 再导出，不重复定义。**端口 trait 本身只定义签名，不含任何实现**——**带副作用或带传输**的实现由端口的提供方 crate 各自承担，不得回填进 `platform-api`（否则契约与实现耦合，`platform-api` 的平台中立性即被破坏），也不得让两个提供方为同一端口各写一份。**例外说明**：只有形态中立、无副作用、无传输的进程内原语实现可以随端口一起提供，因为它没有第二份实现可写（先例 `ports::budget::pool_ledger`，见 §4.9 的 `Clock`）；其余实现一律不得回填。
+> 落地形态（2026-10-27 复核）：端口 trait 随消费者分散在各领域包与 `crates/datazen/src/application/`——隧道端口在 `crates/datazen/src/tunnel/domain/`，Profile 系在 `crates/datazen/src/connection/domain/`，窄端口见 §4.10（NativeTool 端口已随前端形态拆分方案 F1 删除）；P1 阶段集中的 `PORT_TRAITS` 清单（原 `platform_api/src/ports/inventory.rs`）随契约层消解而取消，端口归属以各领域包模块源码为准。`#[async_trait]` + `Send + Sync + 'static` + `Arc<dyn X>` 注入，`PortError` 七个变体只派生 `Debug` 与 `thiserror::Error`（刻意不实现 `Serialize`，用例测试 `the_port_error_has_no_wire_shape_of_its_own` 守住）。`application` 与 `runtime` 通过 `pub use datazen::platform_api::…` 再导出，不重复定义。**端口 trait 本身只定义签名，不含任何实现**——**带副作用或带传输**的实现由端口的提供方 crate 各自承担，不得回填进 `platform-api`（否则契约与实现耦合，`platform-api` 的平台中立性即被破坏），也不得让两个提供方为同一端口各写一份。**例外说明**：只有形态中立、无副作用、无传输的进程内原语实现可以随端口一起提供，因为它没有第二份实现可写（先例 `ports::budget::pool_ledger`，见 §4.9 的 `Clock`）；其余实现一律不得回填。
 
 - 所有 ID 参数使用 `platform-api` 的 newtype（`OrganizationId`、`PrincipalId`、`ConnectionId`、`DbSessionId`、`JobId`、`ExecutionId`、`ArtifactId`、`StreamId`、`RuntimeEpoch`…），**不使用裸 `String` 标识语义**。`connectionId` = 持久化配置 ID，`dbSessionId` = 运行时会话 ID，两者永不混用（[ID 术语规范](../../../AGENTS.md#id-术语规范)）。
 - **`RequestContext` 与全部 ID newtype 定义在 `platform-api`**，无行为、无平台依赖；`application` 与 `runtime` 用 `pub use` 再导出。这样端口签名（`platform-api`）与用例签名（`application`）共用同一份类型定义而不产生依赖倒置（否则 `platform-api` 必须反向依赖 `application`，与 F-04 冲突）。
 - 端口 trait 一律 `#[async_trait] pub trait X: Send + Sync + 'static`，对象安全，通过 `Arc<dyn X>` 注入。
 - 端口错误统一 `PortError`；**业务拒绝不在端口层抛出**，由用例层转 `ApiError`（码表见[连接 §13](connection-management.md#13-错误重试和事件)）；执行终态错误走 `ExecutionErrorCode`，与 `ApiError.code` 是两个独立命名空间。
-- **能力事实用「值」表达，不塞进 `PortError`**：例如「这个驱动 / 这个命令 / 这个目标不被支持」是**能力事实**（不是基础设施故障），端口用**返回值形状**承载它——见 §4.10 的 `TargetResolution::Unsupported { reason_code }`，由用例层翻译成 `ApiErrorCode::TargetUnsupported`。`PortError` 的变体集合已被 `modules/src/shared/error.rs` 的用例测试 `variant_set_includes_the_p5_job_contract` 钉死、**不可扩展**，所以新增一类「不被支持」只能靠返回值形状承载，**不得**为它新增 `PortError` 变体。
+- **能力事实用「值」表达，不塞进 `PortError`**：例如「这个驱动 / 这个命令 / 这个目标不被支持」是**能力事实**（不是基础设施故障），端口用**返回值形状**承载它——见 §4.10 的 `TargetResolution::Unsupported { reason_code }`，由用例层翻译成 `ApiErrorCode::TargetUnsupported`。`PortError` 的变体集合已被 `crates/datazen/src/shared/error.rs` 的用例测试 `variant_set_includes_the_p5_job_contract` 钉死、**不可扩展**，所以新增一类「不被支持」只能靠返回值形状承载，**不得**为它新增 `PortError` 变体。
 - 端口不做重试、不做权限判定、不做缓存。缓存与版本计算由 port 的提供方负责（例如 `SecretProvider` 负责 `credentialRevision`）。
 
 **类型名的来源声明（本文集中说明一次）**：§4.3–§4.6 签名里出现的类型分两类，不得混为一谈。
 
 - **复用既有文档的既有类型，形状不在本文重定义**：`RequestContext`（[概要 §6.1](system-overview.md#61-应用上下文)）、`OwnerRef`、`ExecutionTarget`、`SessionHandle`、`ConnectionEvent`、`IdempotentOperation`、`SubmissionToken`、`EventEnvelope`、`ExecutionErrorCode`（[连接 §4](connection-management.md#4-dto-与字段定义) 与 [§4.1](connection-management.md#41-服务接口与补充响应)）、`ProfileDraft`、`ProfilePatch`、`JobState`、`ArtifactChunk`（[概要 §6.2 BackendClient 与领域客户端](system-overview.md#62-backendclient-与领域客户端)）、`ApiError`（[概要 §6.3 首版 HTTP 映射](system-overview.md#63-首版-http-映射)、[连接 §13](connection-management.md#13-错误重试和事件)）。其中 `SubmissionToken.idempotencyKey` 的标量类型在本文记作 `IdempotencyKey`，指的就是该字段本身，不是新概念。
   - **已知偏差（实测，Wave-4 复核）**：上面这份清单里，`OwnerRef` 是**当前唯一**在代码中存在两种不同形状的名字。
-    契约是 `modules/src/shared/context.rs` 的 `OwnerRef`，与本表所指的[连接 §4](connection-management.md#4-dto-与字段定义) **逐字段一致**；
-    `modules/src/execution/runtime/connection/types.rs` 另有一份**内核** `OwnerRef`，变体名相同、4 个变体里 3 个字段集不同，
+    契约是 `crates/datazen/src/shared/context.rs` 的 `OwnerRef`，与本表所指的[连接 §4](connection-management.md#4-dto-与字段定义) **逐字段一致**；
+    `crates/datazen/src/execution/runtime/connection/types.rs` 另有一份**内核** `OwnerRef`，变体名相同、4 个变体里 3 个字段集不同，
     serde 属性也不同（契约用 `rename_all_fields`，内核只用 `rename_all`）。
     内核那份多带的 `organization_id` / `principal_id` / `connection_id` 是**承重**的：
-    `modules/src/execution/runtime/gateway/owner_binding.rs` 的归属闸门靠它做 CM-06 的跨租户 / 跨主体拒绝，
+    `crates/datazen/src/execution/runtime/gateway/owner_binding.rs` 的归属闸门靠它做 CM-06 的跨租户 / 跨主体拒绝，
     `OwnerRef::hash()` 靠它生成 `runtimeEpoch` 指纹。
     该债已在三处代码注释中登记（`runtime/src/connection/types.rs`、`runtime/src/gateway/owner_binding.rs`、`application/src/identity_policy.rs`），
-    并明确「刻意不去重：合并会改动序列化后的线上字面量」；`modules/tests/owner_binding.rs` 另有守卫测试钉住内核 `OwnerRef::Job` 的字段表。
+    并明确「刻意不去重：合并会改动序列化后的线上字面量」；`crates/datazen/tests/owner_binding.rs` 另有守卫测试钉住内核 `OwnerRef::Job` 的字段表。
     **按本表，平台文档认的目标形态是契约那一份**，内核那份是偏离目标的内核形态。
     统一两者属于契约 + CM-06 安全语义变更，需设计裁定，不在共享层迁移范围内。
 - **本文新定义的类型**（这些名字在既有文档中或只被引用而无形体定义（如 `AuthorizationDecision`、`PortError`），或只以字段名/裸 `Counter` 出现（`delegationId`、`afterSequence`、`secretRef`、`credentialRevision`、`policyIsolationKey`、`executionIdentityKey`、`networkRouteRef`）；类型定义随 P1 一起在本包建立，语义仍以既有文档为权威）：§4.1 的 `PortError`；§4.3 的 `ProfileScope`/`ProfileRecord`/`ConfigRevision`/`JobDefinition`/`JobRecord`/`StageRecord`/`JobStateVersion`/`JobFilter`/`RecoveryFilter`/`Checkpoint`（形状即[连接 §4.2](connection-management.md#42-内部记录) 的 `JobCheckpoint`，端口层另起本名）/`CommitBoundary`/`JobClaim`/`WorkerId`/`AuthorizationSubject`/`AuthorizationAction`/`AuthorizationDecision`/`DelegationRef`/`DelegationGrant`/`PolicyIsolationKey`/`PolicyChangeStream`/`ExecutionIdentity`；§4.4 的 `SecretRef`/`SecretPurpose`/`ResolvedCredential`/`CredentialRevision`/`NetworkRouteRef`/`NetworkRouteRevision`/`RoutePlan`/`TunnelSpec`/`TunnelBinding`；§4.5 的 `SessionOwner`/`ReplacementCommit`/`ReplacementOutcome`/`InvalidationReason`/`CloseDisposition`/`BudgetRequest`/`BudgetPermit`/`BudgetPermitSet`/`NodeLease`/`DrainScope`/`DrainStatus`/`ReleaseOutcome`/`BudgetSnapshot`/`SubmissionPresentation`/`VerifiedSubmission`/`KeyVersion`；§4.6 的 `ArtifactSpec`/`ArtifactWriter`/`ChunkPayload`/`ChunkIndex`/`ByteRange`/`ExportSink`/`ExportReceipt`/`RevokeReason`/`EventSubscription`/`EventSequence`。它们是端口契约的私有词汇表，落盘与序列化规则各自写在其方法注释里。
 
 ```rust
-// modules/src/shared/error.rs（已实现）
+// crates/datazen/src/shared/error.rs（已实现）
 #[derive(Debug, thiserror::Error)]
 pub enum PortError {
     #[error("backend unavailable: {0}")]           BackendUnavailable(String),
@@ -639,7 +639,7 @@ pub trait TunnelRepository: Send + Sync + 'static {
   `ApplicationServices` 与会话后端（建连时解引用 `tunnelId`）。**没有进程级全局。**
 
 **`KnownHostsRepository`（SSH known-hosts 存储）**：
-`modules/src/tunnel/domain/known_hosts.rs`。能力只有两条：**读出全部条目 / 保存全部条目**。
+`crates/datazen/src/tunnel/domain/known_hosts.rs`。能力只有两条：**读出全部条目 / 保存全部条目**。
 其 `load` 失败降级为空集合、`save` 返回 `PortError` 的语义由领域端口拥有；文件 I/O 仍在
 宿主 `src-tauri/src/platform/known_hosts.rs`，并由 `ApplicationServices` 与会话后端共享同一实例。
 
@@ -647,13 +647,13 @@ pub trait TunnelRepository: Send + Sync + 'static {
 > `DashboardRepository`、`DashboardRunRepository` 与 Schema Diff 的
 > `SchemaDiffProfileRepository` 四个端口由领域包
 > （`modules` 的 `services::named_views` / `dashboard::repository` /
-> `dashboard::runs` / `modules/src/migration/schema_diff::profile_repository`）定义，被
+> `dashboard::runs` / `crates/datazen/src/migration/schema_diff::profile_repository`）定义，被
 > `ApplicationServices` 持有，宿主 `DesktopRepository` / `AppDb` 实现。
 > 它们**不进** `PORT_TRAITS`，因为把它们搬进 `platform-api` 会违反 F-04
 > （`platform-api` 不得依赖领域包，而端口签名里全是领域模型：`DashboardRecord`、
 > `WidgetRunRecord`……）——那正是 §5.1.2 第四步被「领域包原生端口」取代的同一条理由。
 > 代价（不可清单化）因此**必须换一种方式**盯住，实际落点有三处：
-> 聚合字段的构造参数不变式（`modules/src/application/mod.rs` 的
+> 聚合字段的构造参数不变式（`crates/datazen/src/application/mod.rs` 的
 > `the_aggregate_holds_the_form_neutral_storage_ports` 系列断言）、宿主侧的
 > 「生产半边不再直读 `state.store`」断言（`the_command_shell_reads_the_aggregate_not_the_host_residue`
 > 等），以及 `scripts/check-ddd-layers.mjs` 的层间方向检查。
@@ -898,10 +898,10 @@ flowchart LR
 
 ### 4.9 时基端口 `Clock`（已实现）
 
-`Clock` 是端口 trait 之一，实现在 `modules/src/shared/clock.rs`，已接入调用方。它**不在** [概要 §6.4](system-overview.md#64-repositories-与环境-ports) 的端口表里（与 §4.2 对 `IdentityResolver` 的口径一致）：时刻不是仓库，是一个原语。
+`Clock` 是端口 trait 之一，实现在 `crates/datazen/src/shared/clock.rs`，已接入调用方。它**不在** [概要 §6.4](system-overview.md#64-repositories-与环境-ports) 的端口表里（与 §4.2 对 `IdentityResolver` 的口径一致）：时刻不是仓库，是一个原语。
 
 ```rust
-// modules/src/shared/clock.rs（已实现）
+// crates/datazen/src/shared/clock.rs（已实现）
 pub trait Clock: Send + Sync + 'static {
     fn now(&self) -> Timestamp;      // 定宽 RFC3339（UTC，毫秒）：2026-01-01T00:00:00.000Z
 }
@@ -912,17 +912,17 @@ pub struct FixedClock { /* … */ }    // 测试替身：at(ts) / set(ts)，克�
 - **同步方法、不返回 `Result`**：§4.1 的 `#[async_trait]` + `PortError` 约定针对**会等待、会失败**的端口；读一次系统时间两者都不是，所以本端口没有 `Result`——也没有哪个 `PortError` 变体能表示「时钟坏了」。对象安全与 `Arc<dyn Clock>` 注入不变。
 - **端口只生产一种输出形状**：`now()` 一律写成毫秒精度 UTC 的定宽 RFC3339（`2026-01-01T00:00:00.000Z`）。`Timestamp` 的排序是字符串序，**同一整秒内**用不同精度书写会让字典序与真实先后不一致（`…T00:00:00Z` > `…T00:00:00.500Z`：`'Z'` 0x5A > `'.'` 0x2E），所以「谁写什么形状」必须收口到端口这一处。
 - **实现体为什么在契约层（与 §4 开头规则的关系）**：时基没有传输差异（不存在「服务端时钟」与「桌面时钟」两种语义），故 `SystemClock` / `FixedClock` 随端口一起提供。§4 的开头规则约束的是**带传输 / 存储 / 副作用的适配器实现**；本条属于**形态中立的进程内原语**，见 §4 开头的例外说明。先例是 `ports::budget::pool_ledger` 的 `InMemoryDriverPoolBudget`，本条是**第二处**同类豁免（不是「唯一豁免」）。豁免范围严格限定为平台中立、无 I/O 依赖的原语，其余任何端口实现仍必须留在提供方 crate。
-- **装配（已实现）**：桌面组装根 `src-tauri/src/bootstrap/app_state.rs` 注入的 `SystemJobClock` 现在委托 `SystemClock`（`modules/src/jobs/domain/time.rs`），`PortJobClock<C: Clock>` 可把任意时钟接成 `JobClock`；`SchemaDiffHandler::with_clock`、`DataTransferHandler::with_clock` 与 `BoundedPipelineContext::clock` 是同一注入缝隙。固定时钟的可替换性各有断言：`ports/clock.rs`、`modules/src/jobs/domain/time.rs`、`schema-diff/src/job/handler.rs`（提交边界时刻）、`data-transfer/src/job/checkpoint.rs`、`data-transfer/src/job/tests/snapshot_paging.rs`（整条有界管道 + 三条提交边界）；过期判定的整秒边界另有常驻断言：`schema-diff/src/job/plan.rs` 的 `expiry_verdict_is_unchanged_by_the_second_to_millisecond_shape_switch`。
+- **装配（已实现）**：桌面组装根 `src-tauri/src/bootstrap/app_state.rs` 注入的 `SystemJobClock` 现在委托 `SystemClock`（`crates/datazen/src/jobs/domain/time.rs`），`PortJobClock<C: Clock>` 可把任意时钟接成 `JobClock`；`SchemaDiffHandler::with_clock`、`DataTransferHandler::with_clock` 与 `BoundedPipelineContext::clock` 是同一注入缝隙。固定时钟的可替换性各有断言：`ports/clock.rs`、`crates/datazen/src/jobs/domain/time.rs`、`schema-diff/src/job/handler.rs`（提交边界时刻）、`data-transfer/src/job/checkpoint.rs`、`data-transfer/src/job/tests/snapshot_paging.rs`（整条有界管道 + 三条提交边界）；过期判定的整秒边界另有常驻断言：`schema-diff/src/job/plan.rs` 的 `expiry_verdict_is_unchanged_by_the_second_to_millisecond_shape_switch`。
 - **已知限制与遗留清单（逐条登记，未改造）**：本端口的收口范围是**本轨声明的 5 处直调中的 4 处 + runtime / data-transfer 的装配点**，不是全仓。复测命令与实跑行数：`grep -rnE "Utc::now\(\)|Local::now\(\)|SystemTime::now\(\)" packages --include=*.rs` = **19 行**；加上 `| grep -v "/tests/"` = **12 行**，被过滤的 7 行全在驱动集成测试里（`drivers/http-support/tests/support/` ×3、`drivers/postgres/tests/` ×1、`drivers/mysql/tests/` ×1、`drivers/sqlserver/tests/common/` ×1、`driver-api/tests/` ×1）。12 行的分解 = 端口自身实现 1（`ports/clock.rs::SystemClock::now`）+ 端口单测 1 + 本清单的解释注释 1 + 基准工具 `runtime/src/bin/cm60-bench/report.rs` 2 + 驱动内的 `#[cfg(test)]` live 测试 1（`drivers/postgres/src/admin_commands.rs`，在 src 下所以不被 `/tests/` 过滤）+ **6 处生产直调**（下面 6 条）。条目一律用「文件::函数 / 类型」定位，不用行号——行号会被注释漂移（本轮就漂过一次）。
-  1. `packages/driver-api/src/sql_dump/dump.rs::dump_sql_database_with_progress`（转储头 `-- Date:` 那一行）—— 驱动公共契约层不得依赖 platform-api（见紧随其后的驱动边界说明）。
-  2. `packages/drivers/redis/src/ops/pubsub.rs::now_millis` —— 同一理由的驱动侧直调。
-  3. `modules/src/execution/application/operations.rs::utc_now` —— 产出注册回执的 UTC 字符串，经 `directory::ClockBase::project` 投影，不是 `Timestamp` 直出；收口要把时钟穿过 application 的 operation 构造与宿主装配点，属独立变更。
-  4. `modules/src/execution/application/tokens.rs::issue`（令牌有效期）—— 幂等令牌 `expiresAt`（`now + 86400s` 后投影），与上一条同因。
-  5. `modules/src/execution/runtime/artifact/mod.rs::now` —— 产物记账用的是 **epoch 秒整数**，端口产出的是格式化字符串；接端口要先解析回数值，而契约层刻意不解析时刻（`id.rs` 的 `Timestamp` 约定），改造要先动记账类型。
-  6. `modules/src/execution/runtime/directory/mod.rs::SystemDirectoryClock::new` —— **第二份系统时钟**（`Instant` 量经过时间 + `SystemTime` 钉 UTC 起点）。本端口只有 UTC 一个维度，装不下单调维度；收编即契约扩展，不在本次范围。
+  1. `crates/datazen-driver-api/src/sql_dump/dump.rs::dump_sql_database_with_progress`（转储头 `-- Date:` 那一行）—— 驱动公共契约层不得依赖 platform-api（见紧随其后的驱动边界说明）。
+  2. `crates/drivers/redis/src/ops/pubsub.rs::now_millis` —— 同一理由的驱动侧直调。
+  3. `crates/datazen/src/execution/application/operations.rs::utc_now` —— 产出注册回执的 UTC 字符串，经 `directory::ClockBase::project` 投影，不是 `Timestamp` 直出；收口要把时钟穿过 application 的 operation 构造与宿主装配点，属独立变更。
+  4. `crates/datazen/src/execution/application/tokens.rs::issue`（令牌有效期）—— 幂等令牌 `expiresAt`（`now + 86400s` 后投影），与上一条同因。
+  5. `crates/datazen/src/execution/runtime/artifact/mod.rs::now` —— 产物记账用的是 **epoch 秒整数**，端口产出的是格式化字符串；接端口要先解析回数值，而契约层刻意不解析时刻（`id.rs` 的 `Timestamp` 约定），改造要先动记账类型。
+  6. `crates/datazen/src/execution/runtime/directory/mod.rs::SystemDirectoryClock::new` —— **第二份系统时钟**（`Instant` 量经过时间 + `SystemTime` 钉 UTC 起点）。本端口只有 UTC 一个维度，装不下单调维度；收编即契约扩展，不在本次范围。
 - **宿主层不在本端口范围内**：`src-tauri/` 有大量生产直调墙上时钟（`Utc::now` / `Local::now` / `SystemTime::now`）：同一条 grep 在 `src-tauri/src` 下命中 **93 行 / 41 个文件**（排除 `*_tests.rs`、`/tests/`）；验证方按另一口径测得 40 处 / 28 个文件——**数字随口径变化**，故本节只给命令与上面的逐条清单，不写「全仓唯一」这类会被下一次 grep 推翻的话。该层属宿主侧独立变更。
-- **形状切换不改变 `expires_at < now` 的逐案判定（实测 + 常驻断言）**：schema-diff handler 的时间来源由秒级形状换成端口的毫秒形状，**这不是行为变更**（早先的提交说明写成「更严、到秒即过期」，方向是反的，以本节为准）。字典序下：同一整秒内，秒级 `expires_at` 的下一位是 `'Z'`(0x5A)、毫秒级 `now` 的下一位是 `'.'`(0x2E)，`'Z' > '.'` ⇒ `expires_at > now` ⇒ 判**未过期**，与秒级 `now` 逐案相同；下一秒才判过期。常驻断言：`modules/src/migration/schema_diff/job/plan.rs` 的 `expiry_verdict_is_unchanged_by_the_second_to_millisecond_shape_switch`（同一整秒：秒级 / 毫秒级 now 各一遍 → 未过期；下一秒：两种形状各一遍 → 过期）。若要「整秒即过期」，改的是 `expires_at` 的生产形状（`src-tauri/src/commands/schema_diff/job.rs`）或比较前归一，**不是**把 `now` 毫秒化。
-- **已知遗留（形状）**：`modules/src/jobs/domain/time.rs::after_seconds` 不读系统时间、只做算术，但产出秒级形状（chrono 模板 `%Y-%m-%dT%H:%M:%SZ`），与毫秒形状同列排序存在整秒翻转；收口前不要把它与 `Clock` 的输出放进同一排序。
+- **形状切换不改变 `expires_at < now` 的逐案判定（实测 + 常驻断言）**：schema-diff handler 的时间来源由秒级形状换成端口的毫秒形状，**这不是行为变更**（早先的提交说明写成「更严、到秒即过期」，方向是反的，以本节为准）。字典序下：同一整秒内，秒级 `expires_at` 的下一位是 `'Z'`(0x5A)、毫秒级 `now` 的下一位是 `'.'`(0x2E)，`'Z' > '.'` ⇒ `expires_at > now` ⇒ 判**未过期**，与秒级 `now` 逐案相同；下一秒才判过期。常驻断言：`crates/datazen/src/migration/schema_diff/job/plan.rs` 的 `expiry_verdict_is_unchanged_by_the_second_to_millisecond_shape_switch`（同一整秒：秒级 / 毫秒级 now 各一遍 → 未过期；下一秒：两种形状各一遍 → 过期）。若要「整秒即过期」，改的是 `expires_at` 的生产形状（`src-tauri/src/commands/schema_diff/job.rs`）或比较前归一，**不是**把 `now` 毫秒化。
+- **已知遗留（形状）**：`crates/datazen/src/jobs/domain/time.rs::after_seconds` 不读系统时间、只做算术，但产出秒级形状（chrono 模板 `%Y-%m-%dT%H:%M:%SZ`），与毫秒形状同列排序存在整秒翻转；收口前不要把它与 `Clock` 的输出放进同一排序。
 
 ### 4.10 窄端口（应用装配用，已实现；随消费者住在各领域包）
 
@@ -932,15 +932,15 @@ pub struct FixedClock { /* … */ }    // 测试替身：at(ts) / set(ts)，克�
 
 | 端口 | 文件 | 取代的宿主位置（只因「读一点」而持着整个 `Arc<DesktopRepository>`） | 方法 |
 | --- | --- | --- | --- |
-| `ProfileReader` | `modules/src/connection/domain/profile.rs` | `src-tauri/src/platform/repositories.rs` 的 `DesktopProfiles`；`src-tauri/src/store/platform_profiles.rs` 的 `platform_profile(owner)` | `get` / `list` |
-| `MonitorGrantReader` | `modules/src/monitor/application/grant_reader.rs` | `src-tauri/src/monitor/grants.rs` 的 `current(store, ctx)`；`src-tauri/src/platform/execution_identity.rs` 的 `MonitorDelegationScope` | `grant_scopes` / `authorized_target` |
-| `ExecutionSettingsReader` | `modules/src/execution/application/settings_reader.rs` | `src-tauri/src/store/mod.rs` 的 `execution_settings()` | `read` |
-| `ExecutionTargetResolver` | `modules/src/execution/application/target_resolver.rs` | `src-tauri/src/platform/adapter.rs` 的 `PlatformAdapter::resolve_execution_target` | `resolve` |
-| `MasterKeyProvider` | `modules/src/execution/application/master_key.rs` | `src-tauri/src/platform/execution_identity.rs` 的 `for_desktop(store, …)` | `master_key` / `derive_subkey` |
-| `MigrationProfileReader` | `modules/src/application/migration_profile.rs` | 三件套的只读 profile 投影；桌面实现为 `src-tauri/src/store/migration_profile_reader.rs` 的 `DesktopRepository`，由 `ApplicationServices::migration_profiles` 注入历史 revision 校验 | `list_transfer_profiles` / `list_sync_profiles` / `list_schema_diff_profiles` |
+| `ProfileReader` | `crates/datazen/src/connection/domain/profile.rs` | `src-tauri/src/platform/repositories.rs` 的 `DesktopProfiles`；`src-tauri/src/store/platform_profiles.rs` 的 `platform_profile(owner)` | `get` / `list` |
+| `MonitorGrantReader` | `crates/datazen/src/monitor/application/grant_reader.rs` | `src-tauri/src/monitor/grants.rs` 的 `current(store, ctx)`；`src-tauri/src/platform/execution_identity.rs` 的 `MonitorDelegationScope` | `grant_scopes` / `authorized_target` |
+| `ExecutionSettingsReader` | `crates/datazen/src/execution/application/settings_reader.rs` | `src-tauri/src/store/mod.rs` 的 `execution_settings()` | `read` |
+| `ExecutionTargetResolver` | `crates/datazen/src/execution/application/target_resolver.rs` | `src-tauri/src/platform/adapter.rs` 的 `PlatformAdapter::resolve_execution_target` | `resolve` |
+| `MasterKeyProvider` | `crates/datazen/src/execution/application/master_key.rs` | `src-tauri/src/platform/execution_identity.rs` 的 `for_desktop(store, …)` | `master_key` / `derive_subkey` |
+| `MigrationProfileReader` | `crates/datazen/src/application/migration_profile.rs` | 三件套的只读 profile 投影；桌面实现为 `src-tauri/src/store/migration_profile_reader.rs` 的 `DesktopRepository`，由 `ApplicationServices::migration_profiles` 注入历史 revision 校验 | `list_transfer_profiles` / `list_sync_profiles` / `list_schema_diff_profiles` |
 
 ```rust
-// modules/src/connection/domain/profile.rs（已实现）
+// crates/datazen/src/connection/domain/profile.rs（已实现）
 #[async_trait]
 pub trait ProfileReader: Send + Sync + 'static {
     async fn get(&self, ctx: &RequestContext, connection_id: ConnectionId)
@@ -949,7 +949,7 @@ pub trait ProfileReader: Send + Sync + 'static {
         -> Result<Vec<ProfileRecord>, PortError>;
 }
 
-// modules/src/monitor/application/grant_reader.rs（已实现）
+// crates/datazen/src/monitor/application/grant_reader.rs（已实现）
 #[async_trait]
 pub trait MonitorGrantReader: Send + Sync + 'static {
     async fn grant_scopes(&self, ctx: &RequestContext)
@@ -958,20 +958,20 @@ pub trait MonitorGrantReader: Send + Sync + 'static {
         -> Result<ExecutionTarget, PortError>;
 }
 
-// modules/src/execution/application/settings_reader.rs（已实现）
+// crates/datazen/src/execution/application/settings_reader.rs（已实现）
 #[async_trait]
 pub trait ExecutionSettingsReader: Send + Sync + 'static {
     async fn read(&self, ctx: &RequestContext) -> Result<ExecutionPolicy, PortError>;
 }
 
-// modules/src/execution/application/target_resolver.rs（已实现）
+// crates/datazen/src/execution/application/target_resolver.rs（已实现）
 #[async_trait]
 pub trait ExecutionTargetResolver: Send + Sync + 'static {
     async fn resolve(&self, ctx: &RequestContext, expected_config_revision: ConfigRevision,
         command: &str, target: &ExecutionTarget) -> Result<TargetResolution, PortError>;
 }
 
-// modules/src/execution/application/master_key.rs（已实现）
+// crates/datazen/src/execution/application/master_key.rs（已实现）
 #[async_trait]
 pub trait MasterKeyProvider: Send + Sync + 'static {
     async fn master_key(&self, ctx: &RequestContext) -> Result<KeyMaterial, PortError>;
@@ -979,7 +979,7 @@ pub trait MasterKeyProvider: Send + Sync + 'static {
         -> Result<KeyMaterial, PortError>;
 }
 
-// modules/src/application/migration_profile.rs（已实现）
+// crates/datazen/src/application/migration_profile.rs（已实现）
 #[async_trait]
 pub trait MigrationProfileReader: Send + Sync + 'static {
     async fn list_transfer_profiles(&self, ctx: &RequestContext)
@@ -1368,7 +1368,7 @@ F-07 是唯一不经过 `cargo metadata` 的规则：它的主体没有 `Cargo.t
 | --- | --- |
 | 读 `cargo metadata --format-version 1` | `cargoWorkspace.mjs` 的 `runCargoMetadata` |
 | 只用 `resolve.nodes`（feature-resolved 图），`packages[].dependencies` 不参与判定 | `cargoWorkspace.mjs` 的 `buildWorkspaceIndex` |
-| 层归属按**目录路径**而非 crate 名：`src-tauri`=host、`packages/drivers/*`=driver、`server`=server、`packages/backend-client` 是 `kind:'ts'`；`packages/driver-api` 与 `packages/driver-support` 同属 driver-api 层（§2.4 末段） | `cargoWorkspace.mjs` 的 `LAYERS` 与 `classifyMemberDir` |
+| 层归属按**目录路径**而非 crate 名：`src-tauri`=host、`crates/drivers/*`=driver、`server`=server、`packages/backend-client` 是 `kind:'ts'`；`crates/datazen-driver-api` 与 `crates/datazen-driver-support` 同属 driver-api 层（§2.4 末段） | `cargoWorkspace.mjs` 的 `LAYERS` 与 `classifyMemberDir` |
 | 闭包 = normal + build，`dev` 边不计（`#[cfg(test)]` 依赖不算出货依赖） | `cargoWorkspace.mjs` 的 `normalBuildClosure`，只跟随 `dep_kinds` 为 `null` 或 `"build"` 的边 |
 | 列不出层的 workspace member 是 error 不是 pass | `check-platform-crate-boundaries.mjs` 里 `for (const bad of index.unclassified)` 那段 |
 | violations / errors → exit 1；advisory 只打印，不计入失败 | 退出码只看 `violations.length + errors.length`；advisory 走 `result.advisories` 单独打印 |
@@ -1384,30 +1384,30 @@ F-07 是唯一不经过 `cargo metadata` 的规则：它的主体没有 `Cargo.t
 
 | 本节条目 | 实现位置 | 判定方式 | 状态 |
 | --- | --- | --- | --- |
-| F-01 · 驱动依赖闭包不含宿主 / platform crate，且不含 `tauri*` | `RULES` 里的 `F-01` 条目 | `allowedLayers: ['driver','driver-api']` **反向白名单**：`LAYERS` 里新增任何一层，当天即对驱动禁用，放行必须是一次显式编辑（`forbiddenNames` 的推导处）。`forbiddenCrates: ['tauri']`（家族匹配：`tauri` 命中 `tauri-plugin` / `tauri-utils` / `tauri-build` …，不命中 `taurium`），故 `tauri*` 侧**产 violation**。`declaredEdges: true` 让声明边侧同样参与判定（见下注 3）。`specTokens: ['packages/drivers/*','tauri']` 把 §2.4 的行钉住，`subjectsFromSpec: true` 让主体路径集合双向相等 | ✅ **已武装为阻断门禁**：宿主 / platform crate 侧与 `tauri*` 侧都产 violation，`packages/drivers/*` 全部纳入；驱动的 `tauri*` 边已清零（redis 驱动已无任何 `tauri` 依赖），实测 `ok F-01`；**豁免只能显式写进 `exemptions`（成员 + 家族 + 理由），过期条目报 error** |
+| F-01 · 驱动依赖闭包不含宿主 / platform crate，且不含 `tauri*` | `RULES` 里的 `F-01` 条目 | `allowedLayers: ['driver','driver-api']` **反向白名单**：`LAYERS` 里新增任何一层，当天即对驱动禁用，放行必须是一次显式编辑（`forbiddenNames` 的推导处）。`forbiddenCrates: ['tauri']`（家族匹配：`tauri` 命中 `tauri-plugin` / `tauri-utils` / `tauri-build` …，不命中 `taurium`），故 `tauri*` 侧**产 violation**。`declaredEdges: true` 让声明边侧同样参与判定（见下注 3）。`specTokens: ['crates/drivers/*','tauri']` 把 §2.4 的行钉住，`subjectsFromSpec: true` 让主体路径集合双向相等 | ✅ **已武装为阻断门禁**：宿主 / platform crate 侧与 `tauri*` 侧都产 violation，`crates/drivers/*` 全部纳入；驱动的 `tauri*` 边已清零（redis 驱动已无任何 `tauri` 依赖），实测 `ok F-01`；**豁免只能显式写进 `exemptions`（成员 + 家族 + 理由），过期条目报 error** |
 | F-02 · 内核 normal+build 闭包无 `tauri*`、无 `datazen` | `RULES` 里的 `F-02` 条目 | `forbiddenLayers:['host']` + `forbiddenCrates:['tauri']`，`specSubsetOnly` 表示文档多写的 `datazen` 由 host 层覆盖 | ✅ 已武装，实测 `ok F-02: datazen`（无真空；主体自 D8 起为单一 `modules` crate） |
 | F-03 · 内核无 HTTP / 传输框架 | `RULES` 里的 `F-03` 条目 | `forbiddenCrates:'spec'` 从 §2.4 行里取 crate token 双向核对，`specCrates` 预置 `axum`/`actix-web`/`warp`/`tonic`，新增 token 无需改脚本 | ✅ 已武装，实测 `ok F-03: datazen`（无真空） |
 | F-04 · platform-api 只依赖 port 层 | ~~`RULES` 里的 `F-04` 条目~~（已随主体退役删除） | 同 F-01 的反向白名单形态；D8 后不再存在独立 crate 边界（见 §2.4 退役记录） | ~~已退役（2026-10-27，D8）~~：`platform-api` 归入 `modules` 后无独立闭包可查 |
 | F-05 · 无 UI 运行时标识 | `RULES` 里的 `F-05` 条目 | Rust 侧按 crate 名（`react`）；`@tauri-apps/api` 被 `parseSpecRow` 归为**前端 token**（`parseSpecRow` 的 frontend 分支），不由本门禁判定 | 🔶 Rust 半边已武装，实测 `ok F-05: datazen`；前端半边在 §7 与 §8.1 |
-| F-06 · `server` 闭包无 `tauri*`、无 `datazen` | `RULES` 里的 `F-06` 条目 | 同 F-02 | ⚠️ 已武装但**真空**：`server/` 未落地，实测输出 `VACUOUS F-06`（见下注 1） |
+| F-06 · `server` 闭包无 `tauri*`、无 `datazen` | `RULES` 里的 `F-06` 条目 | 同 F-02 | ⚠️ 已武装但**真空**：`crates/datazen-server/` 未落地，实测输出 `VACUOUS F-06`（见下注 1） |
 | F-07 · `packages/backend-client` 不含 `@tauri-apps/`、`fetch(`、`XMLHttpRequest` | `RULES` 里的 `F-07` 条目、`checkTsLayer` | 源码扫描：注释与字符串字面量先被 `scripts/lib/scanSourceCode.mjs` 挖空，代码通道按**标识符左边界**查 `fetch(` / `XMLHttpRequest`（`q.refetch()`、`cache.prefetch()` 不误伤），字面量通道查 `@tauri-apps/` | ✅ 已强制（该包已落地），且 `DEFAULT_REQUIRED_LAYERS` 已武装 |
 | F-09 · `packages/ai-providers` 闭包无 `tauri*`、无 `datazen` 宿主 crate | ~~`RULES` 里的 `F-09` 条目~~（已随主体退役删除） | 与 F-02 同形态；主体 `ai-providers` 并入 `modules::ai` 后由 F-14 对 `modules` 的断言继续承担（见 §2.4 退役记录） | ~~已退役（2026-10-26，D1.5）~~：主体消失，规则空转，保留只会掩盖真正的边界 |
-| F-11 · `packages/infra` 只依赖自身（原 `platform-infra`，D1.5 改名） | `RULES` 里的 `F-11` 条目 | 反向白名单（垫底层不允许依赖任何其它层，新加一层当天即被禁）+ `forbiddenCrates:'spec'` | ✅ 已武装，实测 `ok F-11: datazen-infra`（无真空） |
+| F-11 · `crates/datazen-infra` 只依赖自身（原 `platform-infra`，D1.5 改名） | `RULES` 里的 `F-11` 条目 | 反向白名单（垫底层不允许依赖任何其它层，新加一层当天即被禁）+ `forbiddenCrates:'spec'` | ✅ 已武装，实测 `ok F-11: datazen-infra`（无真空） |
 | F-12 · `modules` 不依赖桌面宿主层与传输框架 | ~~`RULES` 里的 `F-12` 条目~~（规则集收敛时删除） | 原 11 层反向白名单随 DDD 单 crate 化失效；该约束由 F-14 对 `modules` 闭包的断言继续承担 | ~~已退役~~：`ok F-12` 不再出现于实跑输出，约束由 F-14 承担 |
 | F-13 · 隧道独立 crate 边界 | ~~`RULES` 里的 F-13 条目~~ | D6 Tunnel 已并入 `modules::tunnel`，由 F-14 的 modules 闭包统一覆盖；旧 F-13 规则删除，避免重复门禁 | ✅ 已退役（2026-10-26） |
 
 仍然真空或刻意不判的部分（不要读成 pass）：
 
-1. **F-06 的主体 `server/` 尚未落地**：`datazen-server` crate 与目录都不存在。守卫输出 `VACUOUS F-06: no \`server\` yet — rule armed, nothing to check` 并 exit 0；这是"布防但无主体"，不是"检查通过"。`server/` 落地后用 `--require-layers=server`（或把它加进 `DEFAULT_REQUIRED_LAYERS`）把它变成硬失败。
-   > 此前本条还写着 `modules`、`modules/src/platform_api` 也不存在。**已过时**：两个目录与其 `Cargo.toml` 现已进 workspace member，F-02/F-03/F-04/F-05 在实测输出里都是 `ok`，不是 `VACUOUS`。整条门禁现在只剩 F-06 一处真空。
+1. **F-06 的主体 `crates/datazen-server/` 尚未落地**：`datazen-server` crate 与目录都不存在。守卫输出 `VACUOUS F-06: no \`server\` yet — rule armed, nothing to check` 并 exit 0；这是"布防但无主体"，不是"检查通过"。`crates/datazen-server/` 落地后用 `--require-layers=server`（或把它加进 `DEFAULT_REQUIRED_LAYERS`）把它变成硬失败。
+   > 此前本条还写着 `modules`、`crates/datazen/src/platform_api` 也不存在。**已过时**：两个目录与其 `Cargo.toml` 现已进 workspace member，F-02/F-03/F-04/F-05 在实测输出里都是 `ok`，不是 `VACUOUS`。整条门禁现在只剩 F-06 一处真空。
    >
    > `packages/backend-client` 是第三种情况：目录存在但**没有 `Cargo.toml`**，因此永不是 Cargo member。它的"存在"只能按目录判定（见上表 `resolveSubject`），不能按 cargo 索引判定。
 2. **F-05 的 `@tauri-apps/api` 前端半边不由本门禁判**，它归 §7 的源码扫描与 §8.1 的 `backend-client-transport-agnostic` / `driver-sdk-no-direct-tauri`。
 3. **驱动的 `tauri*` 边已清零；F-01 的 `tauri*` 侧已武装为阻断判定（两侧都判）。** `check-platform-crate-boundaries.mjs` 的 F-01 规则现在是 `forbiddenCrates: ['tauri']` + `declaredEdges: true`：**闭包侧**（`cargo metadata` 的 resolve 图）与**声明边侧**（直接读 `Cargo.toml` 的声明行，报告"声明了但解析图不包含"的休眠边）任一出现都是 **violation**，不再有 advisory。**redis 驱动已去掉 `tauri` 与 `[build-dependencies] tauri-plugin` 两条声明边**（连同 `build.rs`、插件 ACL 目录与 `tauri-plugin` feature 一并删除），所以武装当天 CI 仍然是绿的；驱动侧的前置条件与门禁脚本侧的两条（声明边读取失败改 error、`forbiddenCrates` 由 `[]` 改为 `['tauri']`）已在同一次提交里落地，归属表见 [ci-test-matrix §2.3.1](../../development/ci-test-matrix.md)。
-   > **判定按主体范围，不按工作区。** F-01 的主体是 `driver` 层（`packages/drivers/*`），**两侧都按主体范围判定**：驱动里的休眠 `tauri*` 边是 violation；宿主 `datazen` 的休眠 `tauri*` 边**不是** F-01 的事（宿主本来就该依赖 Tauri），只报成 advisory。宿主那条见下注 4。
+   > **判定按主体范围，不按工作区。** F-01 的主体是 `driver` 层（`crates/drivers/*`），**两侧都按主体范围判定**：驱动里的休眠 `tauri*` 边是 violation；宿主 `datazen` 的休眠 `tauri*` 边**不是** F-01 的事（宿主本来就该依赖 Tauri），只报成 advisory。宿主那条见下注 4。
    >
    > **豁免必须显式。** 规则表的 `exemptions` 列表（成员 + 家族 + 理由）是唯一的放行通道，空即无豁免；过期条目（成员不是本规则主体、或家族不是本规则禁的）报 **error**。**没有**"降级成 advisory 就放过"这种口子。
-4. **`tauri-plugin-webdriver` 是同一个盲点，且长在宿主自己身上。** `apps/desktop/src-tauri/Cargo.toml` 里的 `tauri-plugin-webdriver = { version = "0.2", optional = true }`，由该文件 `webdriver` feature 数组里的 `tauri-plugin-webdriver` 门控，不在 `resolve.deps[]` 里。该 feature 数组共 **4** 项：`webdriver = ["tauri-plugin-webdriver", "dep:objc2", "dep:objc2-app-kit", "datazen::data_transfer/webdriver"]`——只有第一项属 tauri 家族，`dep:objc2` / `dep:objc2-app-kit` 是 macOS 静默 E2E 的两个支撑 crate，第四项把 `datazen::data_transfer` 的 `webdriver` feature 一并打开；`default = []`，所以整条数组都在默认 feature 之外。宿主 manifest 一直"看起来干净"，只是因为里面没有任何 tauri 边可达，不代表它干净。**F-01 武装后它仍然合法**：宿主不在 F-01 的主体范围内，这条边只报 advisory。
+4. **`tauri-plugin-webdriver` 是同一个盲点，且长在宿主自己身上。** `crates/datazen-desktop/Cargo.toml` 里的 `tauri-plugin-webdriver = { version = "0.2", optional = true }`，由该文件 `webdriver` feature 数组里的 `tauri-plugin-webdriver` 门控，不在 `resolve.deps[]` 里。该 feature 数组共 **4** 项：`webdriver = ["tauri-plugin-webdriver", "dep:objc2", "dep:objc2-app-kit", "datazen::data_transfer/webdriver"]`——只有第一项属 tauri 家族，`dep:objc2` / `dep:objc2-app-kit` 是 macOS 静默 E2E 的两个支撑 crate，第四项把 `datazen::data_transfer` 的 `webdriver` feature 一并打开；`default = []`，所以整条数组都在默认 feature 之外。宿主 manifest 一直"看起来干净"，只是因为里面没有任何 tauri 边可达，不代表它干净。**F-01 武装后它仍然合法**：宿主不在 F-01 的主体范围内，这条边只报 advisory。
 5. **怎么读 declared-minus-resolved 这类告警（别只记"共几条"）。** 对某个成员，令 D = manifest 声明的 tauri 家族集合，R = normal+build 闭包解析到的 tauri 家族集合：
    - `D∖R`（声明了但当前 feature 解析不链接的**休眠边**）**才是信号**，且只有 manifest 扫描看得见；
    - `R∖D`（解析到了但未声明 = **传递依赖**）**不是信号**——任何有传递依赖的 crate 都成立，拿它告警会天天误报。
@@ -1451,13 +1451,13 @@ F-07 是唯一不经过 `cargo metadata` 的规则：它的主体没有 `Cargo.t
 | T-02 · 源码 use | driver 自己的 `.rs` 里出现**另一个 driver 的 Rust 标识符**（左右边界都验） | 取一个与别的 driver 前缀相同但更长的 crate 名；写在注释/字符串里（会被挖空） |
 | T-03 · `#[path]` 收录 | 源码里 `#[path = …]` / `include!(…)` 的目标落在**另一个 driver 的目录**内 | ——（这是本仓库真实存在的形状：Cargo 图里没有这条边，只有文件系统知道） |
 
-driver 集合**不是手写名单**：由每个 crate 自己的源码里有没有 `impl … DatabaseDriver for` 决定，据此把 `packages/drivers/http-support` 这类共享支持库剔到 advisory（实测它 0 处契约标记，被 10 个 crate 依赖）。若把 `packages/drivers/*` 全当 driver，干净树会被 10 条合法 `→ http-support` 边打红，守卫反而不可用。
+driver 集合**不是手写名单**：由每个 crate 自己的源码里有没有 `impl … DatabaseDriver for` 决定，据此把 `crates/drivers/http-support` 这类共享支持库剔到 advisory（实测它 0 处契约标记，被 10 个 crate 依赖）。若把 `crates/drivers/*` 全当 driver，干净树会被 10 条合法 `→ http-support` 边打红，守卫反而不可用。
 
 互校的部分：cargo 的 member 清单、各 member 自己的 `manifest_path`（扫描路径）、`drivers-registry.json` 的 path 条目（选型清单）两两比对，分歧一律进 `errors` 而非静默跳过（注册表说它是 driver 但源码没有契约标记 / 说它在但 cargo 看不到它 / 源码是 driver 但没注册）。**驱动集合缩到 1 个时直接报错退出**：此时任何一条规则都在算术上无法触发，exit 0 不携带任何信息。
 
 真空态与 §8.2 同形：`reason:'absent'`（目录不在）与 `reason:'empty'`（目录在但没有可读的 `.rs`）分开报。两者本身不改写退出码，由上面那轮注册表互校把"注册了却读不到"提升成 error。
 
-已知盲区：**git driver 不覆盖**。它们由 `resolve-drivers.mjs` 克隆到 `packages/drivers/<id>/`、不是 Cargo member，cargo 侧无从枚举；要守得换成一条以 `drivers-registry.json` 的 `git` 条目为起点的扫描，那是另一个守卫的事。本守卫对它们只做到"不误伤"：实测 2 个 git driver（kiwi / superset）连 `src-tauri/src/driver_init.rs` 都不注入，不构成 driver→driver 边。
+已知盲区：**git driver 不覆盖**。它们由 `resolve-drivers.mjs` 克隆到 `crates/drivers/<id>/`、不是 Cargo member，cargo 侧无从枚举；要守得换成一条以 `drivers-registry.json` 的 `git` 条目为起点的扫描，那是另一个守卫的事。本守卫对它们只做到"不误伤"：实测 2 个 git driver（kiwi / superset）连 `src-tauri/src/driver_init.rs` 都不注入，不构成 driver→driver 边。
 
 变异自证（每次都先 `grep` 确认注入生效再跑，回退后再跑一次确认恢复绿）：注入 `use datazen_driver_redis::…` → EXIT=1；注入 `datazen-driver-redis = { path = … }` → EXIT=1 且**只有 T-01 报**；注入 `#[path = "../../redis/src/…"]` → EXIT=1 且**只有 T-03 报**。三种"必须保持绿"的合法形态实测 EXIT=0：`use datazen_driver_api::…`、`use datazen_driver_http_support::…`、名字更长的前缀相似 crate、`#[path]` 指向自己 crate、raw string 里写着自己的 crate 名。
 
@@ -1486,7 +1486,7 @@ Rust 不能复用 `scripts/lib/scanSourceCode.mjs` 的 `scanCode`：它是 JS/TS
 关于本节此前列出的三项，逐一核对代码后更正：
 
 - **`pnpm test:deps` 不存在**，`package.json` 里没有这个 script，`scripts/check-rust-dependency-boundaries.mjs` 也不存在 —— 原表把它列为「拟新增」是错的：同一个判定已经由 `pnpm test:platform-arch` 承担（见 §8.2）。
-- **`datazen-server` crate 与 `server/` 目录在基线上不存在**，所以 `cargo build -p datazen-server` 无法作为验收步骤。F-06 目前是布防但真空（§8.2 末第 1 条）。
+- **`datazen-server` crate 与 `crates/datazen-server/` 目录在基线上不存在**，所以 `cargo build -p datazen-server` 无法作为验收步骤。F-06 目前是布防但真空（§8.2 末第 1 条）。
 - **`scripts/run-regression.sh` 目前不含本门禁**：该脚本只跑 `check-driver-import-boundaries.mjs` 与 `check-id-terminology.mjs` 两条护栏，不跑 `check-platform-crate-boundaries.mjs`，也不跑 `check-module-layers.mjs`。原句「本地全量门禁同步追加同一条命令」是目标而非现状；补进去需要改 `run-regression.sh`，不在本节范围内。
 
 任一失败 → 对应 job 失败 → 聚合 job `ci` 失败 → 分支保护的 required check 阻断合并。
@@ -1540,7 +1540,7 @@ Rust 不能复用 `scripts/lib/scanSourceCode.mjs` 的 `scanCode`：它是 JS/TS
 | --- | --- | --- | --- |
 | E-1 | CM-01（ID 类型与序列化）、CM-03 会话创建幂等、CM-04 禁止配置 ID 回退、CM-05 跨用户/组织访问、CM-06 前端伪造 owner、CM-07 目标缺失与冲突的类型与 schema 断言 | `cargo test -p datazen::platform_api`、`cargo test -p datazen::application` | 已覆盖：ID newtype 无交叉 `From`、幂等键与接受记录、`OwnerRef::Editor` 绑定校验、§4.3 六步目标解析的必填/冲突/不适用断言 |
 | E-2 | DTO 往返：`SessionView`、`ExecutionView`、`ContextChangeReceipt`、`CloseReceipt`、`CancelReceipt`、`OpenSessionReceipt` 经 adapter 序列化后反序列化字段等价 | 双向 round-trip 单测，含 64 位 Counter 以十进制字符串往返 | 已覆盖，见 §9.3 往返测试清单 |
-| E-3 | 内核无 Tauri 编译：`modules`（时点形态含 `runtime` / `platform-api`，现同 crate）在没有 Tauri 的测试进程中可用 | `cargo test -p datazen --lib` 通过（时点形态为 `-p datazen::application`），且 F-02 门禁全绿 | 部分：两个新 crate（`datazen::application` / `datazen`）闭包无 `tauri*`（实测 normal + build 闭包规模 67 / 100 个 crate，口径同 `cargoWorkspace.mjs` 的 `normalBuildClosure`：`dev` 边不计；三个内核 crate 的 tauri 家族命中数均为 0）；`datazen` 已依赖 `platform-api`（`modules/Cargo.toml`），其 `connection/types.rs` 的 `pub use datazen::platform_api::id::{…}` 起改为 re-export `platform-api::id`，不再自带 `string_id!` / `Counter` 实现。ID 口径必须分开数：**re-export 的标识符共 18 个**（其中 17 个是 `string_id!` newtype，含 `Timestamp`；唯一例外是 `Counter`——它是手写的 `pub struct Counter(pub u64)`，不属 `string_id!` 族）；**平台侧定义的 `string_id!` newtype 共 22 个**（`modules/src/platform_api/src/id.rs`，另有 7 个 `opaque_id!`、6 个 `version_id!` 与 `Counter` 不计入该数）。两个数不是同一个口径，不能互相替换；`datazen` 的闭包是否无 `tauri*` 实测为**是**（tauri 家族命中数 0，F-02 门禁亦全绿） |
+| E-3 | 内核无 Tauri 编译：`modules`（时点形态含 `runtime` / `platform-api`，现同 crate）在没有 Tauri 的测试进程中可用 | `cargo test -p datazen --lib` 通过（时点形态为 `-p datazen::application`），且 F-02 门禁全绿 | 部分：两个新 crate（`datazen::application` / `datazen`）闭包无 `tauri*`（实测 normal + build 闭包规模 67 / 100 个 crate，口径同 `cargoWorkspace.mjs` 的 `normalBuildClosure`：`dev` 边不计；三个内核 crate 的 tauri 家族命中数均为 0）；`datazen` 已依赖 `platform-api`（`crates/datazen/Cargo.toml`），其 `connection/types.rs` 的 `pub use datazen::platform_api::id::{…}` 起改为 re-export `platform-api::id`，不再自带 `string_id!` / `Counter` 实现。ID 口径必须分开数：**re-export 的标识符共 18 个**（其中 17 个是 `string_id!` newtype，含 `Timestamp`；唯一例外是 `Counter`——它是手写的 `pub struct Counter(pub u64)`，不属 `string_id!` 族）；**平台侧定义的 `string_id!` newtype 共 22 个**（`crates/datazen/src/platform_api/src/id.rs`，另有 7 个 `opaque_id!`、6 个 `version_id!` 与 `Counter` 不计入该数）。两个数不是同一个口径，不能互相替换；`datazen` 的闭包是否无 `tauri*` 实测为**是**（tauri 家族命中数 0，F-02 门禁亦全绿） |
 | E-4 | CI 依赖图检查通过 | `pnpm test:deps`（拟新增）与 `pnpm test:layers` 在 CI 中 exit 0 | **未实现**：脚本不存在，属 CI 轨道 |
 | E-5 | 旧桌面基本连接/查询流程保持可用 | 现有 `cargo test -p datazen_desktop --lib` 与 `npx vitest run` 不回归；基本连接 + 查询的人工旅程可用 | 未验证：P1 未触碰既有链路，也未运行全量回归 |
 | E-6 | RequestContext 三来源可验证 | 用例签名不接受身份字段的编译期断言 + 三来源字段装配单测 | 已覆盖：`ConnectionUseCases` 每个方法首个参数是 `&RequestContext`，无身份字段入参；结构扫描用例守签名形状 |

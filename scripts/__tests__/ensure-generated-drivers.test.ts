@@ -13,7 +13,10 @@ import {
 import { FULLY_GENERATED_MANAGED } from '../driver-deinject.mjs';
 import { resetDir } from './fixture';
 
-const ALL_GENERATED = [...FULLY_GENERATED_MANAGED, 'apps/desktop/src-tauri/capabilities/default.json'];
+const ALL_GENERATED = [
+  ...FULLY_GENERATED_MANAGED,
+  'crates/datazen-desktop/capabilities/default.json',
+];
 
 /** Content that satisfies every marker `generated.ts` is required to export. */
 const CURRENT_GENERATED_TS = Object.entries(REQUIRED_CODEGEN_MARKERS)

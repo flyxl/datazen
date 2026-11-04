@@ -23,9 +23,9 @@ describe('path IPC frontend wiring', () => {
     // desktop host services (the HostSettingsPort impl); shared
     // settingsCommands routes through the port.
     // form-split F6-c1: the desktop host-services implementation moved
-    // to the app zone; read it from apps/desktop.
+    // to the app zone; read it from packages/desktop.
     const hostServices = fs.readFileSync(
-      path.join(ROOT, '../../../apps/desktop/src/platform/desktop/hostServices.ts'),
+      path.join(ROOT, '../../../packages/desktop/src/platform/desktop/hostServices.ts'),
       'utf8',
     );
     expect(hostServices).toContain("invoke<void>('open_known_dir', { kind: 'log' })");
@@ -36,7 +36,7 @@ describe('path IPC frontend wiring', () => {
     expect(hostServices).not.toContain("'open_context_dir'");
 
     const hostBootstrap = fs.readFileSync(
-      path.join(ROOT, '../../../apps/desktop/src-tauri/src/bootstrap/run.rs'),
+      path.join(ROOT, '../../../crates/datazen-desktop/src/bootstrap/run.rs'),
       'utf8',
     );
     expect(hostBootstrap).toContain('commands::open_known_dir,');
@@ -67,15 +67,20 @@ describe('path IPC frontend wiring', () => {
     expect(src).not.toMatch(/invoke[<(]/);
 
     const hostBootstrap = fs.readFileSync(
-      path.join(ROOT, '../../../apps/desktop/src-tauri/src/bootstrap/run.rs'),
+      path.join(ROOT, '../../../crates/datazen-desktop/src/bootstrap/run.rs'),
       'utf8',
     );
     expect(hostBootstrap).not.toContain('adb_list_packages');
     expect(hostBootstrap).not.toContain('adb_pull_database');
 
-    const hostMod = fs.readFileSync(path.join(ROOT, '../../../apps/desktop/src-tauri/src/commands/mod.rs'), 'utf8');
+    const hostMod = fs.readFileSync(
+      path.join(ROOT, '../../../crates/datazen-desktop/src/commands/mod.rs'),
+      'utf8',
+    );
     expect(hostMod).not.toContain('mod adb');
-    expect(fs.existsSync(path.join(ROOT, '../../../apps/desktop/src-tauri/src/commands/adb.rs'))).toBe(false);
+    expect(
+      fs.existsSync(path.join(ROOT, '../../../crates/datazen-desktop/src/commands/adb.rs')),
+    ).toBe(false);
   });
 
   it('backup command wrapper exposes encryption key dialog IPC', () => {
@@ -115,7 +120,7 @@ describe('path IPC frontend wiring', () => {
 
     // Host registration surface matches the merge.
     const hostBootstrap = fs.readFileSync(
-      path.join(ROOT, '../../../apps/desktop/src-tauri/src/bootstrap/run.rs'),
+      path.join(ROOT, '../../../crates/datazen-desktop/src/bootstrap/run.rs'),
       'utf8',
     );
     expect(hostBootstrap).toContain('commands::backup_database,');
@@ -187,7 +192,7 @@ describe('path IPC frontend wiring', () => {
 
     // Host registration surface matches the merge.
     const hostBootstrap = fs.readFileSync(
-      path.join(ROOT, '../../../apps/desktop/src-tauri/src/bootstrap/run.rs'),
+      path.join(ROOT, '../../../crates/datazen-desktop/src/bootstrap/run.rs'),
       'utf8',
     );
     for (const kept of [
@@ -206,7 +211,7 @@ describe('path IPC frontend wiring', () => {
     // The merged picker lives in the dialog gateway with the other native
     // dialog invocations (R-1.3 centralization).
     const rustDialog = fs.readFileSync(
-      path.join(ROOT, '../../../apps/desktop/src-tauri/src/commands/dialog.rs'),
+      path.join(ROOT, '../../../crates/datazen-desktop/src/commands/dialog.rs'),
       'utf8',
     );
     expect(rustDialog).toContain('pub async fn pick_import_file');
@@ -236,7 +241,7 @@ describe('path IPC frontend wiring', () => {
     expect(connection).not.toContain("'pick_connections_import_file'");
 
     const rustConfig = fs.readFileSync(
-      path.join(ROOT, '../../../apps/desktop/src-tauri/src/commands/connection_import/ipc.rs'),
+      path.join(ROOT, '../../../crates/datazen-desktop/src/commands/connection_import/ipc.rs'),
       'utf8',
     );
     expect(rustConfig).not.toContain('pub async fn pick_connection_import_path_with_dialog');
@@ -249,7 +254,7 @@ describe('path IPC frontend wiring', () => {
     // shim (macOS anti-freeze pattern) lives there — feature modules must not
     // call plugin-dialog directly.
     const rustDialog = fs.readFileSync(
-      path.join(ROOT, '../../../apps/desktop/src-tauri/src/commands/dialog.rs'),
+      path.join(ROOT, '../../../crates/datazen-desktop/src/commands/dialog.rs'),
       'utf8',
     );
     expect(rustDialog).toContain('async fn run_blocking_dialog');
@@ -301,7 +306,7 @@ describe('path IPC frontend wiring', () => {
     expect(wm).not.toContain("openSingletonWindow('settings-singleton'");
 
     const hostCaps = fs.readFileSync(
-      path.join(ROOT, '../../../apps/desktop/src-tauri/capabilities/default.json.host'),
+      path.join(ROOT, '../../../crates/datazen-desktop/capabilities/default.json.host'),
       'utf8',
     );
     expect(hostCaps).not.toContain('settings-singleton');
@@ -311,7 +316,10 @@ describe('path IPC frontend wiring', () => {
     const docsUrls = readSrc('lib/docsUrls.ts');
     expect(docsUrls).toContain('flyxl.github.io/datazen/manual.html');
 
-    const rustMenu = fs.readFileSync(path.join(ROOT, '../../../apps/desktop/src-tauri/src/app_menu.rs'), 'utf8');
+    const rustMenu = fs.readFileSync(
+      path.join(ROOT, '../../../crates/datazen-desktop/src/app_menu.rs'),
+      'utf8',
+    );
     expect(rustMenu).toContain('register_handler_once');
     expect(rustMenu).toContain('take_once_slot');
   });
@@ -323,7 +331,7 @@ describe('path IPC frontend wiring', () => {
     // looked at the handler list was reading `bootstrap.rs`, which `lib.rs` had
     // stopped compiling. Diff the two sides directly instead.
     const hostBootstrap = fs.readFileSync(
-      path.join(ROOT, '../../../apps/desktop/src-tauri/src/bootstrap/run.rs'),
+      path.join(ROOT, '../../../crates/datazen-desktop/src/bootstrap/run.rs'),
       'utf8',
     );
     const registered = new Set(

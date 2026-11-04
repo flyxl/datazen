@@ -80,8 +80,7 @@ export type SslMode = 'disable' | 'prefer' | 'require' | 'verifyCa' | 'verifyFul
 
 export type DatabaseObjectKind = 'function' | 'procedure' | 'trigger' | 'sequence' | 'type';
 
-export type CountStrategy = 'exact' | 'estimated' | 'unsupported'
-;
+export type CountStrategy = 'exact' | 'estimated' | 'unsupported';
 
 export type FilterOperator =
   | 'eq'
@@ -139,8 +138,7 @@ export type CellType =
   | 'bytes' // binary
   | 'enum' // enum / low-cardinality column
   | 'uuid' // UUID / uniqueidentifier
-  | 'unknown'
-;
+  | 'unknown';
 
 export type CellTypeMatch =
   | 'exact' // the whole name equals the pattern
@@ -148,8 +146,7 @@ export type CellTypeMatch =
   | 'suffix' // the name ends with the pattern
   | 'token' // some token equals the pattern
   | 'tokenPrefix' // some token starts with the pattern
-  | 'substring'
-;
+  | 'substring';
 
 export interface CellTypeRule {
   readonly match: CellTypeMatch;
@@ -197,7 +194,7 @@ export type ConnectionMode = 'server' | 'file' | 'url';
  * the backward-compatibility contract of this field.
  *
  * Add the declaration in the driver's own meta file (e.g. redis:
- * `packages/drivers/redis/ui/shared/meta.ts`), never in the host.
+ * `crates/drivers/redis/ui/shared/meta.ts`), never in the host.
  */
 export interface KvWorkspaceCapabilities {
   /** Fill the 48px content-toolbar left cluster (db picker, key counts, …). */

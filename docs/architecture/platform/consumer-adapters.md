@@ -40,7 +40,7 @@ metadata 工具只读；写工具仍需执行权限与破坏性确认。模型�
 
 用户显式允许某次 AI 会话使用编辑器状态时，宿主建立内存 grant：grantId、principal、clientInstanceId、AI invocation 范围、目标 session 身份、contextVersion、允许工具/action、到期时间与撤销状态。grantId 不是 attachment token，模型和 Provider 不得到 live session handle。
 
-> 2026-10-17 实现现状：桌面 grant 已落地 `{grantId, clientInstanceId, editorSessionId, connectionId, database, configRevision, editorSessionId 对应的活 SessionHandle, deadline, revoked}`（`modules/src/ai/application/ownership.rs`）；`principal`、AI invocation 范围、允许工具/action 与 contextVersion 的独立记录仍是目标设计，当前以 configRevision + 归属校验覆盖。
+> 2026-10-17 实现现状：桌面 grant 已落地 `{grantId, clientInstanceId, editorSessionId, connectionId, database, configRevision, editorSessionId 对应的活 SessionHandle, deadline, revoked}`（`crates/datazen/src/ai/application/ownership.rs`）；`principal`、AI invocation 范围、允许工具/action 与 contextVersion 的独立记录仍是目标设计，当前以 configRevision + 归属校验覆盖。
 
 共享工具在同一 session actor 队列排队，能观察同一事务和临时对象；不建立第二套事务管理器。开启/提交/回滚用户事务必须有单独明确授权，普通“查询当前状态”授权不包含这些动作。
 
@@ -115,7 +115,7 @@ Monitor 周期轮询与手动刷新现已使用不同入口。手动刷新沿用
 
 撤销/禁用阻止后续派发，不伪造已在途执行的取消或回滚。已观察结果保持真实；撤权后无法继续读取 receipt 时保留 SqlUnconfirmed/Unknown。每次周期执行先接受一个 SQLite durable `monitorOccurrence` Job；其严格投影只保存 schedule、定义版本、计划时间、授权身份与只读目标范围，不保存凭据。`scheduleId + definitionRevision + scheduledAt` 派生幂等 receipt，重启或重复 tick 命中已有 receipt 时不再派发查询。启动恢复会将未完成的 Monitor Job 标记为待验证并要求人工复核，不恢复 handler 或重放查询。此闭环已覆盖本地持久化与重复提交；不表示 P6 整体退出或桌面完整 scheduler / occurrence / 真实数据库链路已经验收。
 
-PostgreSQL 与 MySQL 的 driver 专属 `packages/drivers/{postgres,mysql}/tests/monitor_scheduled_query.rs` 现提供同层级 live 证据：安全 migration fixture gate 下，生产 Monitor 只读 SQL 校验与精确 grant scope 匹配，经 `workflow::resource_execution::execute`、Runtime 和真实 ResourceProvider 执行聚合查询，读取实际 Artifact 结果并由独立连接核对；危险 SQL、限定 relation、越界 database 与撤销 grant 不新增物理 SQL 执行，短资源确认关闭。测试 host 的 Profile/Policy/SessionBackend 是端口接缝；不覆盖 Tauri AppState、后端 grant 签发/持久化、SQLite occurrence admission、duplicate-tick receipt 或完整 scheduler，不能称为完整 Monitor scheduled E2E。
+PostgreSQL 与 MySQL 的 driver 专属 `crates/drivers/{postgres,mysql}/tests/monitor_scheduled_query.rs` 现提供同层级 live 证据：安全 migration fixture gate 下，生产 Monitor 只读 SQL 校验与精确 grant scope 匹配，经 `workflow::resource_execution::execute`、Runtime 和真实 ResourceProvider 执行聚合查询，读取实际 Artifact 结果并由独立连接核对；危险 SQL、限定 relation、越界 database 与撤销 grant 不新增物理 SQL 执行，短资源确认关闭。测试 host 的 Profile/Policy/SessionBackend 是端口接缝；不覆盖 Tauri AppState、后端 grant 签发/持久化、SQLite occurrence admission、duplicate-tick receipt 或完整 scheduler，不能称为完整 Monitor scheduled E2E。
 
 这些 live 查询暴露并修复了委托结果发布的 P6 阻塞：普通 FileArtifactRepository 拒绝 delegated create/read，过去即使 SQL 成功也会在发布结果时失败。Runtime 现使用专用内部 `ExecutionArtifactScope`，只从当前 admitted execution entry 取得完整组织、主体、客户端、认证会话、delegation 与 execution 绑定；读时先经当前 PolicyService 重验，再检查同一 live entry / artifact / execution。普通 Artifact API 仍拒绝委托任意创建、读取及导出，同 owner 的普通上下文也不能读取受限结果。scope 不序列化，metadata 只保留受限结果标记；TTL 到期清理，撤权后不可读，重开 ArtifactRepository 清理这种进程内结果，不恢复 delegated access 或重放查询。Runtime 回归另覆盖身份不符、其他有效 delegation、任意 Artifact ID、撤权、TTL 与重启拒绝。
 
@@ -125,7 +125,7 @@ PostgreSQL 与 MySQL 的 driver 专属 `packages/drivers/{postgres,mysql}/tests/
 
 ### NativeTool 环境端口（已删除，2026-10-28）
 
-> **历史记录**：本节原描述 NativeTool 环境端口（部署锚定的 `pg_dump` / `mysqldump --version` 探针）的目标协议、kernel 实现、桌面部署登记与产品 IPC。随前端形态拆分方案 **F1**（裁决 #3）整体删除：产品零使用、无 UI、探针登记表默认空即拒绝一切，契约先行预留却从未被消费。删除面：`modules/src/jobs/{domain,application}/native_tool*`、`src-tauri/src/{commands,platform}/native_tool*`、`src-tauri/resources/native-tool-probes.json`、`owner.rs` 的 `verify_native_selection`、codec 的 `nativeToolProbe` 校验分支与 IPC 五命令。旧库遗留的 `nativeToolProbe` 作业行由宿主 schema migration v6 在启动时一次性 purge（子表全部 ON DELETE CASCADE）。若未来需要数据库原生 CLI 能力，须重新立项；本节保留删除事实与回滚边界（revert 无数据迁移逆向，purge 不恢复旧记录——记录本身无产品价值）。
+> **历史记录**：本节原描述 NativeTool 环境端口（部署锚定的 `pg_dump` / `mysqldump --version` 探针）的目标协议、kernel 实现、桌面部署登记与产品 IPC。随前端形态拆分方案 **F1**（裁决 #3）整体删除：产品零使用、无 UI、探针登记表默认空即拒绝一切，契约先行预留却从未被消费。删除面：`crates/datazen/src/jobs/{domain,application}/native_tool*`、`src-tauri/src/{commands,platform}/native_tool*`、`src-tauri/resources/native-tool-probes.json`、`owner.rs` 的 `verify_native_selection`、codec 的 `nativeToolProbe` 校验分支与 IPC 五命令。旧库遗留的 `nativeToolProbe` 作业行由宿主 schema migration v6 在启动时一次性 purge（子表全部 ON DELETE CASCADE）。若未来需要数据库原生 CLI 能力，须重新立项；本节保留删除事实与回滚边界（revert 无数据迁移逆向，purge 不恢复旧记录——记录本身无产品价值）。
 
 ## 8. 接口落地与旧路径删除
 
@@ -149,7 +149,7 @@ Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管
 
 | 旅程 | 必须观察到的结果 | 关联用例 |
 | --- | --- | --- |
-| AI 默认查询 → 授权共享 → 临时对象查询 → 撤销 → 下一次工具 | 共享时同队列可见；撤销后拒绝且编辑器资源仍存活 | CM-53、73、74（**H 层已交付**：`modules/src/ai/application/ownership.rs` 的 grant 生命周期 + `src-tauri/src/commands/ai/grant.rs` 的 `ai_grant_editor_session`/`ai_revoke_editor_grant`/`ai_touch_editor_grant`；F 层真实 UI 旅程待补） |
+| AI 默认查询 → 授权共享 → 临时对象查询 → 撤销 → 下一次工具 | 共享时同队列可见；撤销后拒绝且编辑器资源仍存活 | CM-53、73、74（**H 层已交付**：`crates/datazen/src/ai/application/ownership.rs` 的 grant 生命周期 + `src-tauri/src/commands/ai/grant.rs` 的 `ai_grant_editor_session`/`ai_revoke_editor_grant`/`ai_touch_editor_grant`；F 层真实 UI 旅程待补） |
 | MCP A/B 同连接 → A 开事务 → A 断开 → B 继续 | 资源隔离、A 清理完成、B 不被取消 | CM-53、54 |
 | Wapp 请求 → 重载 → 旧响应/取消到达 | 旧 nonce 被拒绝，新实例状态不受影响 | CM-53、55 |
 | schedule 入队 → ACL 撤销 → 派发 | 不取得资源、不写数据库，记录拒绝原因 | CM-59、65、67 |

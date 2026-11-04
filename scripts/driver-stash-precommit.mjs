@@ -21,11 +21,7 @@ import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
-import {
-  createDriverFileStash,
-  MANAGED_FILES,
-  ROOT,
-} from './driver-file-stash.mjs';
+import { createDriverFileStash, MANAGED_FILES, ROOT } from './driver-file-stash.mjs';
 import { driverAclIds } from './driver-deinject.mjs';
 
 export { driverAclIds };
@@ -222,9 +218,7 @@ export function runDriverStashPrecommit(opts = {}) {
     return { status: 1, reason: 'stash-dir-remains', restored: true };
   }
 
-  log(
-    '[pre-commit] Restored injected files: user edits kept, driver injection removed.',
-  );
+  log('[pre-commit] Restored injected files: user edits kept, driver injection removed.');
   return { status: 0, restored: true };
 }
 

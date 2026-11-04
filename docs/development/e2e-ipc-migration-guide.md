@@ -59,7 +59,7 @@ The `test-harness` feature exposes `datazen::test_harness` (mock driver, temp st
 When the assertion is purely driver dialect behavior (not host IPC wiring), test the driver crate directly:
 
 ```rust
-// packages/drivers/<id>/tests/ or driver crate #[cfg(test)]
+// crates/drivers/<id>/tests/ or driver crate #[cfg(test)]
 use datazen_driver_api::DatabaseDriver;
 ```
 

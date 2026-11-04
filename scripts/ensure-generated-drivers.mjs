@@ -5,8 +5,8 @@ import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
  *
  * Files:
  *   src/extensions/generated.ts
- *   apps/desktop/src-tauri/src/driver_init.rs
- *   apps/desktop/src-tauri/capabilities/default.json (merged from default_host.json + drivers)
+ *   crates/datazen-desktop/src/driver_init.rs
+ *   crates/datazen-desktop/capabilities/default.json (merged from default_host.json + drivers)
  *
  * Used by `pnpm install` (prepare) and `pnpm build` so tsc / rust-analyzer /
  * beforeBuildCommand work on a fresh clone without injecting Cargo.toml.
@@ -27,7 +27,7 @@ export const ROOT = resolve(__dirname, '..');
 
 const GENERATED_FILES = [
   ...FULLY_GENERATED_MANAGED,
-  'apps/desktop/src-tauri/capabilities/default.json',
+  'crates/datazen-desktop/capabilities/default.json',
 ];
 
 /**

@@ -55,11 +55,7 @@ export const ROOT = resolve(__dirname, '..');
  * injection markers, so it is restored wholesale from the stash rather than
  * deinjected in place — see `deinjectManagedContent`.
  */
-export const MANAGED_FILES = [
-  'Cargo.toml',
-  'apps/desktop/src-tauri/Cargo.toml',
-  'Cargo.lock',
-];
+export const MANAGED_FILES = ['Cargo.toml', 'crates/datazen-desktop/Cargo.toml', 'Cargo.lock'];
 
 /**
  * Metadata sidecar written into `.driver-file-stash/` by `stashManagedFiles`.
@@ -221,7 +217,8 @@ export function createDriverFileStash(root, options = {}) {
   const STASH_DIR = resolve(root, '.driver-file-stash');
   const resolveHead = options.resolveHead ?? (() => gitHeadAt(root));
   const listManagedFilesChanged =
-    options.listManagedFilesChanged ?? ((fromSha, toSha) => gitManagedFilesChangedBetween(root, fromSha, toSha));
+    options.listManagedFilesChanged ??
+    ((fromSha, toSha) => gitManagedFilesChangedBetween(root, fromSha, toSha));
 
   function metaPath() {
     return resolve(STASH_DIR, STASH_META_FILE);
@@ -372,9 +369,7 @@ export function createDriverFileStash(root, options = {}) {
       return;
     }
     if (!hasWork) {
-      throw new Error(
-        `[driver-file-stash] cannot restore; missing work and stash for: ${relPath}`,
-      );
+      throw new Error(`[driver-file-stash] cannot restore; missing work and stash for: ${relPath}`);
     }
 
     const workContent = readFileSync(work, 'utf-8');
@@ -458,7 +453,9 @@ export function createDriverFileStash(root, options = {}) {
     if (allStashed()) {
       const f = inspectFreshness();
       console.log(`  freshness: ${f.stale ? 'STALE' : 'fresh'} (reason=${f.reason})`);
-      console.log(`  stash head: ${f.stashHead ?? 'unknown'} createdAt: ${f.createdAt ?? 'unknown'}`);
+      console.log(
+        `  stash head: ${f.stashHead ?? 'unknown'} createdAt: ${f.createdAt ?? 'unknown'}`,
+      );
       console.log(`  current head: ${f.currentHead ?? 'unknown'}`);
       if (f.changed.length > 0) {
         console.log(`  managed files changed since stash: ${f.changed.join(', ')}`);

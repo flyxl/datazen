@@ -35,7 +35,7 @@
 | HC-OBJ | 例程面板 | **skip**（无 objects） |
 | HC-EXPLAIN | EXPLAIN 面板 | run |
 
-实现：`e2e/contract/` + `e2e/specs/host-contract-matrix.ts`。方言深度仍在 `packages/drivers/<id>/e2e/`。
+实现：`e2e/contract/` + `e2e/specs/host-contract-matrix.ts`。方言深度仍在 `crates/drivers/<id>/e2e/`。
 
 ## 主窗口 / 连接 / SQL
 

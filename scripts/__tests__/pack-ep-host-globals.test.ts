@@ -259,7 +259,7 @@ describe('externalize / allow-list asymmetry probe (G1 red line)', () => {
       return { ...m.dependencies, ...m.devDependencies, ...m.peerDependencies };
     };
     const hostDeps = {
-      ...readManifest('apps/desktop/package.json'),
+      ...readManifest('packages/desktop/package.json'),
       ...readManifest('packages/frontend/package.json'),
     };
     const hostCodeMirror = Object.keys(hostDeps)

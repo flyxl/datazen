@@ -52,8 +52,7 @@ function readManifest() {
     .filter((e) => typeof e?.code === 'string' && e.code)
     .map((e) => ({
       code: e.code,
-      label:
-        typeof e.label === 'string' && e.label ? e.label : (ENDONYMS[e.code] ?? e.code),
+      label: typeof e.label === 'string' && e.label ? e.label : (ENDONYMS[e.code] ?? e.code),
     }));
 }
 
@@ -129,9 +128,7 @@ export type { TranslationKey };
 
 function regenerate(entries) {
   writeFileSync(OUT, buildTs(entries), 'utf-8');
-  console.log(
-    `[generate-builtin-locales] wrote ${OUT} (${entries.map((e) => e.code).join(', ')})`,
-  );
+  console.log(`[generate-builtin-locales] wrote ${OUT} (${entries.map((e) => e.code).join(', ')})`);
 }
 
 const [, , sub = 'generate', ...args] = process.argv;

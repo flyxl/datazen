@@ -61,10 +61,7 @@ export function parsePrivateKeyMaterial(raw) {
   if (buf.length === 32) {
     // raw 32-byte Ed25519 seed
     return createPrivateKey({
-      key: Buffer.concat([
-        Buffer.from('302e020100300506032b657004220420', 'hex'),
-        buf,
-      ]),
+      key: Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), buf]),
       format: 'der',
       type: 'pkcs8',
     });
@@ -83,9 +80,7 @@ export function parsePrivateKeyMaterial(raw) {
  * @returns {import('node:crypto').KeyObject}
  */
 export function resolveSigningPrivateKey(env = process.env) {
-  const envVal =
-    env.DATAZEN_EP_PRIVATE_KEY?.trim() ||
-    env.DATAZEN_EP_SIGNING_PRIVATE_KEY?.trim();
+  const envVal = env.DATAZEN_EP_PRIVATE_KEY?.trim() || env.DATAZEN_EP_SIGNING_PRIVATE_KEY?.trim();
   if (envVal) {
     return parsePrivateKeyMaterial(envVal);
   }

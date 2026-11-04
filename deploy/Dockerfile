@@ -43,7 +43,7 @@ RUN apt-get update \
 COPY --from=server /out-datazen-server /usr/local/bin/datazen-server
 COPY --from=frontend /webapp/dist /webapp/dist
 
-# 配置面全部走环境变量（server/src/config.rs 的 DATAZEN_SERVER_* 全键清单，
+# 配置面全部走环境变量（crates/datazen-server/src/config.rs 的 DATAZEN_SERVER_* 全键清单，
 # 见 deploy/config/env.example）。这里只落「目录形态」默认值，不落任何秘密。
 ENV DATAZEN_SERVER_DB=/var/lib/datazen/datazen-admin.sqlite \
     DATAZEN_SERVER_ARTIFACT_ROOT=/var/lib/datazen/artifacts \

@@ -1,6 +1,6 @@
 /**
  * form-split F6-c3 (plan §5.6 item 9 / ruling D1): moved from
- * packages/drivers/redis/ui/__tests__/ — the host↔driver integration fixture
+ * crates/drivers/redis/ui/__tests__/ — the host↔driver integration fixture
  * lives with the HOST now, which retires the two R1 ALLOWLIST exemptions it
  * carried (see the coordinator notes in check-driver-import-boundaries.mjs).
  */
@@ -66,7 +66,10 @@ describe('Redis key web context menu', () => {
     // D-0 split moved the row actions out of the workbench wall into the hook
     // that owns them; the assertion is unchanged (seam + coords, not copy).
     const src = fs.readFileSync(
-      path.resolve(import.meta.dirname, '../../../drivers/redis/ui/key-browser/useKeyRowActions.tsx'),
+      path.resolve(
+        import.meta.dirname,
+        '../../../drivers/redis/ui/key-browser/useKeyRowActions.tsx',
+      ),
       'utf8',
     );
     expect(src).toContain('showNativeContextMenu');

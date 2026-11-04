@@ -188,7 +188,11 @@ export function planTypecheckCommands(root = ROOT, engineIds = [DEFAULT_ENGINE])
  * Run the gate. Fails at the first failing command — a typecheck gate that
  * prints three compilers' worth of the same errors is noise, not signal.
  */
-export function runTypecheck({ root = ROOT, engineIds = [DEFAULT_ENGINE], log = console.log } = {}) {
+export function runTypecheck({
+  root = ROOT,
+  engineIds = [DEFAULT_ENGINE],
+  log = console.log,
+} = {}) {
   const commands = planTypecheckCommands(root, engineIds);
   if (commands.length === 0) {
     throw new Error('no typecheck engine is installed — run `pnpm install` first');
@@ -196,9 +200,7 @@ export function runTypecheck({ root = ROOT, engineIds = [DEFAULT_ENGINE], log = 
 
   for (const command of commands) {
     const version = engineVersion(root, command.engine);
-    log(
-      `[typecheck] ${command.engine}${version ? ` ${version}` : ''} — ${command.program}`,
-    );
+    log(`[typecheck] ${command.engine}${version ? ` ${version}` : ''} — ${command.program}`);
     const result = spawnSync(command.cmd, command.args, {
       cwd: root,
       stdio: 'inherit',

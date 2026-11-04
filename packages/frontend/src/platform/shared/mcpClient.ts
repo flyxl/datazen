@@ -1,6 +1,6 @@
 /**
  * MCP Client, web form (WR-F3) — the browser counterpart of the desktop
- * `McpClientManager` (`apps/desktop/src-tauri/src/mcp/client.rs`): browsers
+ * `McpClientManager` (`crates/datazen-desktop/src/mcp/client.rs`): browsers
  * reach external MCP servers directly over streamable HTTP instead of stdio
  * subprocesses.
  *
@@ -12,9 +12,9 @@
  * 2. 服务端身份校验与 stdio spawn 白名单（`validate_mcp_spawn_command`、
  *    env/token 校验）留在桌面；本文件的 `WebMcpServerConfig` 类型上就没有
  *    command/args/env/token 字段，只有 `serverId`/`url`/`headers?`。
- * 3. 两形态共用同一个消费者端口 `McpToolBroker`（modules/src/ai/application/
+ * 3. 两形态共用同一个消费者端口 `McpToolBroker`（crates/datazen/src/ai/application/
  *    ports.rs：tools_for_ai / call_tool）。桌面半边由 host `McpClientManager`
- *    实现；web 半边的 broker 适配由 apps/web 装配层完成（收口刀），本文件只
+ *    实现；web 半边的 broker 适配由 packages/web 装配层完成（收口刀），本文件只
  *    提供 client 层，不改任何装配。
  *
  * 所有 fetch 由构造注入（`McpFetch`）：测试零网络；web 装配层传
@@ -372,8 +372,7 @@ export class WebMcpClient {
       toolName: tool.name,
       qualifiedName: mcpQualifiedName(this.serverId, tool.name),
       description: typeof tool.description === 'string' ? tool.description : null,
-      inputSchema:
-        tool.inputSchema && typeof tool.inputSchema === 'object' ? tool.inputSchema : {},
+      inputSchema: tool.inputSchema && typeof tool.inputSchema === 'object' ? tool.inputSchema : {},
     }));
     this.toolsCache = mapped;
     return mapped;

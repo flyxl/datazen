@@ -19,15 +19,17 @@ describe('checkIdTerminology', () => {
 
   const run = () => {
     const errors: string[] = [];
-    const code = checkIdTerminology({ root, dirs: ['src'], log: () => {}, error: (msg) => errors.push(String(msg)) });
+    const code = checkIdTerminology({
+      root,
+      dirs: ['src'],
+      log: () => {},
+      error: (msg) => errors.push(String(msg)),
+    });
     return { code, errors };
   };
 
   it('returns 0 for a clean file', () => {
-    writeFileSync(
-      join(root, 'src', 'clean.ts'),
-      'const entry = { connectionId, dbSessionId };\n',
-    );
+    writeFileSync(join(root, 'src', 'clean.ts'), 'const entry = { connectionId, dbSessionId };\n');
     expect(run().code).toBe(0);
   });
 

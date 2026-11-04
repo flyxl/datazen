@@ -13,10 +13,10 @@
  * That is exactly how the host's `mongo.*` set (src/locales/<loc>/connection.ts,
  * consumed by 19 changed lines in src/windows/connection/DocumentConnectionView.tsx
  * holding 21 `t()` calls over 15 distinct keys — lines 369 and 604 carry two calls
- * each) and the mongodb driver pack's `mongo.*` set (packages/drivers/mongodb/locales/*)
+ * each) and the mongodb driver pack's `mongo.*` set (crates/drivers/mongodb/locales/*)
  * ended up defining the same 15 keys. The driver pack self-registers second
  * (host registers at src/locales/index.ts module load; the pack registers via
- * packages/drivers/<id>/ui/meta.ts → locales/index.ts, imported later through
+ * crates/drivers/<id>/ui/meta.ts → locales/index.ts, imported later through
  * src/extensions/generated.ts), so 15/15 host values were overwritten and 9/15
  * English strings the host actually renders were replaced by the driver's
  * wording ('Insert document' → 'Insert', '{count} document(s)' → '{count} docs').
@@ -238,9 +238,7 @@ export function findKeyCollisions({ localesDir, driversDir }) {
     }
   }
 
-  collisions.sort(
-    (a, b) => a.key.localeCompare(b.key) || a.driver.localeCompare(b.driver),
-  );
+  collisions.sort((a, b) => a.key.localeCompare(b.key) || a.driver.localeCompare(b.driver));
   packCollisions.sort(
     (a, b) => a.key.localeCompare(b.key) || a.drivers[0].localeCompare(b.drivers[0]),
   );
@@ -269,7 +267,7 @@ export function checkI18nKeyCollisions(opts = {}) {
 
   const result = findKeyCollisions({
     localesDir: join(root, 'packages/frontend/src/locales'),
-    driversDir: join(root, 'packages/drivers'),
+    driversDir: join(root, 'crates/drivers'),
   });
 
   // Positive control: refuse to report success if either side came back empty.
@@ -337,9 +335,7 @@ export function checkI18nKeyCollisions(opts = {}) {
     error(`    Give each driver its own namespace, e.g. '${first}.' / '${second}.' prefixes.`);
   }
 
-  const packSummary = result.packs
-    .map((p) => `${p.driver}=${p.keyCount}`)
-    .join(' ');
+  const packSummary = result.packs.map((p) => `${p.driver}=${p.keyCount}`).join(' ');
   if (result.collisions.length > 0) {
     error(
       `${TAG} FAILED: ${result.collisions.length} key(s) defined by both the host and a driver pack.`,

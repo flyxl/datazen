@@ -5,8 +5,10 @@ import { pathToFileURL } from 'node:url';
 export function isDirectInvocation(moduleUrl, entry = process.argv[1]) {
   if (!entry) return false;
   try {
-    return moduleUrl === pathToFileURL(realpathSync(entry)).href ||
-      moduleUrl === pathToFileURL(entry).href;
+    return (
+      moduleUrl === pathToFileURL(realpathSync(entry)).href ||
+      moduleUrl === pathToFileURL(entry).href
+    );
   } catch {
     return moduleUrl === pathToFileURL(entry).href;
   }

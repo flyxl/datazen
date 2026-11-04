@@ -44,7 +44,7 @@ node scripts/with-driver-inject.mjs [--drivers=basic] -- node scripts/e2e-tauri-
 | **UI 交互全覆盖** | 所有用户可操作的 Host UI 控件/对话框，须有 `e2e/specs/` 走到该交互，并断言可见结果；仅「文案出现」不算覆盖。 |
 | **用户路径全覆盖** | 所有用户可走到的交互路径（入口 → 操作 → 结果/错误态）须有 E2E；含关键空态/失败态（例：未完成筛选不得出现「加载表数据失败」）。 |
 | **同 PR 更新** | 新增或变更 Host UI / 用户路径时，必须同 PR 补齐或更新 E2E。 |
-| **驱动边界** | 驱动方言 / 专属 Command / 专属 UI → `packages/drivers/<id>/e2e/`（或插件仓），不进 Host `e2e/specs/`。 |
+| **驱动边界** | 驱动方言 / 专属 Command / 专属 UI → `crates/drivers/<id>/e2e/`（或插件仓），不进 Host `e2e/specs/`。 |
 | **例外登记** | 自动化无法稳定覆盖的路径，必须在 [e2e-coverage.md](./e2e-coverage.md) 登记原因、替代测试与手工项。 |
 
 覆盖矩阵与缺口跟踪：[docs/e2e-coverage.md](./e2e-coverage.md)。
@@ -97,7 +97,7 @@ pnpm e2e:skip-build -- --spec e2e/specs/path-ipc-hardening.ts
 pnpm e2e:core
 pnpm e2e:db
 pnpm e2e:ai
-pnpm e2e:redis          # 显式：packages/drivers/redis/e2e/（不进默认 pnpm e2e）
+pnpm e2e:redis          # 显式：crates/drivers/redis/e2e/（不进默认 pnpm e2e）
 pnpm e2e:schema-tree-objects  # MySQL/PostgreSQL Schema Tree 对象 journey（驱动 crate 内用例）
 pnpm e2e:i18n-backup
 pnpm e2e:path-ipc
@@ -125,14 +125,14 @@ MySQL 和 PostgreSQL 的长期手测对象与 E2E 临时对象分开保存。安
 
 | 驱动 | 数据库 | 对象范围 |
 |---|---|---|
-| MySQL | `datazen_manual_schema_tree` | 表、外键/索引、视图、函数、存储过程和触发器；[安装器与 SQL](../../packages/drivers/mysql/e2e/install-manual-schema-tree-fixtures.sh)。 |
-| PostgreSQL | `datazen_manual_schema_tree`，schema `manual_schema_tree` | 表、外键/索引、视图、函数、存储过程、触发器、序列、enum 和 domain；[安装器与 SQL](../../packages/drivers/postgres/e2e/install-manual-schema-tree.sh)。 |
+| MySQL | `datazen_manual_schema_tree` | 表、外键/索引、视图、函数、存储过程和触发器；[安装器与 SQL](../../crates/drivers/mysql/e2e/install-manual-schema-tree-fixtures.sh)。 |
+| PostgreSQL | `datazen_manual_schema_tree`，schema `manual_schema_tree` | 表、外键/索引、视图、函数、存储过程、触发器、序列、enum 和 domain；[安装器与 SQL](../../crates/drivers/postgres/e2e/install-manual-schema-tree.sh)。 |
 
 首次安装或需要重建 fixture 时，在仓库根目录运行：
 
 ```bash
-bash packages/drivers/mysql/e2e/install-manual-schema-tree-fixtures.sh
-bash packages/drivers/postgres/e2e/install-manual-schema-tree.sh
+bash crates/drivers/mysql/e2e/install-manual-schema-tree-fixtures.sh
+bash crates/drivers/postgres/e2e/install-manual-schema-tree.sh
 ```
 
 `pnpm e2e:schema-tree-objects` 则在每次 journey 中创建带随机后缀的临时数据库/schema，断言对象树、对象定义和数据操作，并在 finally/after 中仅清理本次成功创建的对象；这些临时对象与上面的长期手测 fixtures 相互隔离。
@@ -196,9 +196,9 @@ runner 向 WDIO 注入 `E2E_INSTANCES`、`E2E_WD_PORTS`、`E2E_DATA_DIRS`；`e2e
 
 | 类型 | 命令 / 位置 |
 |------|-------------|
-| Path 驱动 UI 单测 | `pnpm test:unit:drivers`（**不是** `pnpm test:unit`）→ `packages/drivers/<id>/ui/__tests__/` |
+| Path 驱动 UI 单测 | `pnpm test:unit:drivers`（**不是** `pnpm test:unit`）→ `crates/drivers/<id>/ui/__tests__/` |
 | Path 驱动 Rust | `cargo test -p datazen-driver-<id>`（**不是** `-p datazen`） |
-| Redis E2E | `pnpm e2e:redis` → `packages/drivers/redis/e2e/` |
+| Redis E2E | `pnpm e2e:redis` → `crates/drivers/redis/e2e/` |
 | Kiwi E2E | 在 `datazen-driver-kiwi` 执行 `pnpm e2e:kiwi`（定位 Host 后跑本仓 spec） |
 
 **Agent 推荐流程：**
@@ -425,7 +425,7 @@ e2e/wdio.conf.ts
 | i18n | `i18n-10-locales.ts`, `system-locale.ts`, `i18n-menu.ts` |
 | AI / Workflow | `ai-features.ts`, `ai-context.ts`, `workflow.ts`, `workflow-window.ts`, `driver-commands.ts` |
 | 驱动（Host） | `sqlite.ts`, `mysql.ts`（及其他 SQL Host specs） |
-| Redis E2E（插件包，非默认） | `packages/drivers/redis/e2e/redis.ts`, `redis-topology.ts` — `pnpm e2e:redis` |
+| Redis E2E（插件包，非默认） | `crates/drivers/redis/e2e/redis.ts`, `redis-topology.ts` — `pnpm e2e:redis` |
 | Kiwi E2E（插件仓，非默认） | `datazen-driver-kiwi`：`pnpm e2e:kiwi` |
 
 覆盖矩阵（UI 交互 / 用户路径）：[e2e-coverage.md](./e2e-coverage.md)。

@@ -2,7 +2,7 @@
 import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
 /**
  * Fail if git-tracked managed files look injected, or if the static path-driver
- * declaration in apps/desktop/src-tauri/Cargo.toml drifted from
+ * declaration in crates/datazen-desktop/Cargo.toml drifted from
  * drivers-registry.json.
  *
  * Two checks:
@@ -12,7 +12,7 @@ import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
  * 2. Static-declaration consistency (W3-c, `--check-static-drivers`): every
  *    `path` driver in drivers-registry.json must have an optional dep + a
  *    `driver-*` feature (+ a seat in the `drivers` aggregate) statically
- *    declared in apps/desktop/src-tauri/Cargo.toml, and every `git` driver must
+ *    declared in crates/datazen-desktop/Cargo.toml, and every `git` driver must
  *    have none (its dep/feature lines are build-time injected inside the
  *    `<<driver-*>>` markers; a statically declared git driver would break every
  *    clean checkout because its clone dir does not exist yet).
@@ -28,7 +28,7 @@ import { fileHasInjection } from './driver-stash-precommit.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = resolve(__dirname, '..');
 
-const DESKTOP_CARGO_TOML = 'apps/desktop/src-tauri/Cargo.toml';
+const DESKTOP_CARGO_TOML = 'crates/datazen-desktop/Cargo.toml';
 const DRIVERS_REGISTRY = 'drivers-registry.json';
 
 /** Marker blocks whose content is build-time injected, not static. */
@@ -58,7 +58,7 @@ export function stripMarkerBlocks(content) {
  */
 function staticDepRe(id) {
   return new RegExp(
-    `^datazen-driver-${id} = \\{ path = "\\.\\./\\.\\./\\.\\./packages/drivers/${id}", optional = true \\}$`,
+    `^datazen-driver-${id} = \\{ path = "\\.\\./\\.\\./\\.\\./crates/drivers/${id}", optional = true \\}$`,
     'm',
   );
 }
@@ -85,7 +85,12 @@ function staticFeatureRe(id, feature) {
  * }} opts
  * @returns {string[]} human-readable problems (empty = consistent)
  */
-export function staticDriverDeclarationProblems({ registry, cargoToml, log = () => {}, error = () => {} }) {
+export function staticDriverDeclarationProblems({
+  registry,
+  cargoToml,
+  log = () => {},
+  error = () => {},
+}) {
   const problems = [];
   const staticToml = stripMarkerBlocks(cargoToml);
 
@@ -101,7 +106,9 @@ export function staticDriverDeclarationProblems({ registry, cargoToml, log = () 
       problems.push(`missing static optional dep for path driver "${id}" in ${DESKTOP_CARGO_TOML}`);
     }
     if (!staticFeatureRe(id, meta.feature).test(staticToml)) {
-      problems.push(`missing static feature "${meta.feature}" for path driver "${id}" in ${DESKTOP_CARGO_TOML}`);
+      problems.push(
+        `missing static feature "${meta.feature}" for path driver "${id}" in ${DESKTOP_CARGO_TOML}`,
+      );
     }
   }
 
@@ -116,7 +123,9 @@ export function staticDriverDeclarationProblems({ registry, cargoToml, log = () 
     }
     for (const [, meta] of gitDrivers) {
       if (meta.feature && aggregate[1].includes(`"${meta.feature}"`)) {
-        problems.push(`"drivers" aggregate must not enable git-driver feature "${meta.feature}" (build-time injected)`);
+        problems.push(
+          `"drivers" aggregate must not enable git-driver feature "${meta.feature}" (build-time injected)`,
+        );
       }
     }
   }
@@ -131,7 +140,9 @@ export function staticDriverDeclarationProblems({ registry, cargoToml, log = () 
   }
 
   if (problems.length === 0) {
-    log(`[check-managed-stubs] ok static driver declaration (${pathDrivers.length} path / ${gitDrivers.length} git)`);
+    log(
+      `[check-managed-stubs] ok static driver declaration (${pathDrivers.length} path / ${gitDrivers.length} git)`,
+    );
   } else {
     for (const p of problems) error(`[check-managed-stubs] ${p}`);
   }
@@ -166,9 +177,7 @@ export function checkManagedStubs(opts = {}) {
     }
     const content = readFileSync(path, 'utf-8');
     if (fileHasInjection(rel, content)) {
-      error(
-        `[check-managed-stubs] ${rel} looks injected (driver deps / ACL present).`,
-      );
+      error(`[check-managed-stubs] ${rel} looks injected (driver deps / ACL present).`);
       error('  Restore with: node scripts/driver-file-stash.mjs restore');
       failed = true;
       continue;
@@ -187,7 +196,9 @@ export function checkManagedStubs(opts = {}) {
         cargoToml = readFileSync(resolve(root, DESKTOP_CARGO_TOML), 'utf-8');
       }
     } catch (e) {
-      error(`[check-managed-stubs] cannot read static-declaration inputs: ${e instanceof Error ? e.message : e}`);
+      error(
+        `[check-managed-stubs] cannot read static-declaration inputs: ${e instanceof Error ? e.message : e}`,
+      );
       return 1;
     }
     const problems = staticDriverDeclarationProblems({ registry, cargoToml, log, error });

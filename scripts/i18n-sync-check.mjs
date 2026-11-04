@@ -7,7 +7,7 @@
  *
  * Two scopes, same contract (`en.ts` is the single source of truth):
  *   1. Host dictionaries — src/locales domain packs
- *   2. Driver-owned locale packs — packages/drivers/<id>/locales
+ *   2. Driver-owned locale packs — crates/drivers/<id>/locales
  *      (driver packs self-register into the shared @datazen/ui registry, so
  *      nothing else validates their completeness)
  *
@@ -32,7 +32,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 const localesDir = resolve(root, 'packages/frontend/src/locales');
-const driversDir = resolve(root, 'packages/drivers');
+const driversDir = resolve(root, 'crates/drivers');
 
 const LOCALE_FILES = ['de', 'es', 'fr', 'ja', 'ko', 'pt-BR', 'ru', 'zh-TW', 'zh-CN'];
 
@@ -96,9 +96,9 @@ function readPackKeys(filePath) {
 }
 
 /**
- * Every `packages/drivers/<id>/locales/` directory shipping an en.ts source.
+ * Every `crates/drivers/<id>/locales/` directory shipping an en.ts source.
  *
- * @param {string} dir absolute path of `packages/drivers`
+ * @param {string} dir absolute path of `crates/drivers`
  * @returns {Array<{ driver: string, dir: string }>} sorted by driver id
  */
 export function findDriverLocalePacks(dir) {
@@ -187,7 +187,7 @@ export function inspectDriverLocalePack(pack) {
 /**
  * Scan every driver locale pack below `driversDir`.
  *
- * @param {string} driversDir absolute path of `packages/drivers`
+ * @param {string} driversDir absolute path of `crates/drivers`
  */
 export function checkDriverLocalePacks(driversDir) {
   const packs = findDriverLocalePacks(driversDir);
@@ -420,7 +420,7 @@ function runCli() {
     }
   }
 
-  // Driver-owned locale packs (packages/drivers/<id>/locales/) — see
+  // Driver-owned locale packs (crates/drivers/<id>/locales/) — see
   // checkDriverLocalePacks(): the host aggregates nothing anymore, so this
   // guard is the only automated completeness check on a driver pack.
   const driverScan = checkDriverLocalePacks(driversDir);

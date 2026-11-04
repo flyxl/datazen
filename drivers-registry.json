@@ -1,91 +1,91 @@
 {
   "postgres": {
     "source": "path",
-    "path": "packages/drivers/postgres",
+    "path": "crates/drivers/postgres",
     "feature": "driver-postgres",
     "description": "PostgreSQL + QuestDB/Cloudberry wire reuse"
   },
   "mysql": {
     "source": "path",
-    "path": "packages/drivers/mysql",
+    "path": "crates/drivers/mysql",
     "feature": "driver-mysql",
     "description": "MySQL / MariaDB + Doris/StarRocks/Manticore/OceanBase wire reuse"
   },
   "sqlite": {
     "source": "path",
-    "path": "packages/drivers/sqlite",
+    "path": "crates/drivers/sqlite",
     "feature": "driver-sqlite",
     "description": "SQLite driver"
   },
   "redis": {
     "source": "path",
-    "path": "packages/drivers/redis",
+    "path": "crates/drivers/redis",
     "feature": "driver-redis",
     "description": "Redis key-value store"
   },
   "mongodb": {
     "source": "path",
-    "path": "packages/drivers/mongodb",
+    "path": "crates/drivers/mongodb",
     "feature": "driver-mongodb",
     "description": "MongoDB document store"
   },
   "sqlserver": {
     "source": "path",
-    "path": "packages/drivers/sqlserver",
+    "path": "crates/drivers/sqlserver",
     "feature": "driver-sqlserver",
     "description": "Microsoft SQL Server"
   },
   "clickhouse": {
     "source": "path",
-    "path": "packages/drivers/clickhouse",
+    "path": "crates/drivers/clickhouse",
     "feature": "driver-clickhouse",
     "description": "ClickHouse HTTP interface"
   },
   "duckdb": {
     "source": "path",
-    "path": "packages/drivers/duckdb",
+    "path": "crates/drivers/duckdb",
     "feature": "driver-duckdb",
     "description": "DuckDB embedded analytics"
   },
   "elasticsearch": {
     "source": "path",
-    "path": "packages/drivers/elasticsearch",
+    "path": "crates/drivers/elasticsearch",
     "feature": "driver-elasticsearch",
     "description": "Elasticsearch"
   },
   "rqlite": {
     "source": "path",
-    "path": "packages/drivers/rqlite",
+    "path": "crates/drivers/rqlite",
     "feature": "driver-rqlite",
     "description": "RQLite distributed SQLite"
   },
   "turso": {
     "source": "path",
-    "path": "packages/drivers/turso",
+    "path": "crates/drivers/turso",
     "feature": "driver-turso",
     "description": "Turso / libSQL"
   },
   "influxdb": {
     "source": "path",
-    "path": "packages/drivers/influxdb",
+    "path": "crates/drivers/influxdb",
     "feature": "driver-influxdb",
     "description": "InfluxDB"
   },
   "victoriametrics": {
     "source": "path",
-    "path": "packages/drivers/victoriametrics",
+    "path": "crates/drivers/victoriametrics",
     "feature": "driver-victoriametrics",
     "description": "VictoriaMetrics"
   },
   "hbase": {
     "source": "path",
-    "path": "packages/drivers/hbase",
+    "path": "crates/drivers/hbase",
     "feature": "driver-hbase",
     "description": "HBase REST"
   },
   "vector": {
     "source": "path",
-    "path": "packages/drivers/vector",
+    "path": "crates/drivers/vector",
     "feature": "driver-vector",
     "description": "Vector database (generic HTTP)"
   },

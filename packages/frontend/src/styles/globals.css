@@ -1,10 +1,10 @@
 @import 'tailwindcss' source(none);
 @import './themes.css';
 
-@config '../../../../apps/desktop/tailwind.config.ts';
+@config '../../../../packages/desktop/tailwind.config.ts';
 
-@source '../../../../apps/desktop/index.html';
-@source '../../../../apps/desktop/window.html';
+@source '../../../../packages/desktop/index.html';
+@source '../../../../packages/desktop/window.html';
 @source '..';
 @source '../../../ui/src';
 @source '../../../drivers/*/ui';

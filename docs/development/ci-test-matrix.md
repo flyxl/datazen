@@ -12,10 +12,10 @@
 | 驱动 UI 单测 | ✅ `pnpm test:unit:drivers` | 构建前 `pnpm build`（含 typecheck） | `pnpm test:unit:drivers` |
 | TypeScript | ✅ `pnpm typecheck`（**单引擎**：`tsrs` = TS 7.1-dev，见 §2.1.4） | 同上（`union-typecheck` **也是**只跑 `tsrs`，见 §6.2） | `pnpm typecheck` / `pnpm typecheck:tsc` / `pnpm typecheck:tsrs` |
 | Host Rust lib | ✅ `cargo test -p datazen_desktop --lib`（basic features + `datazen/test-harness`，与平台腿 feature 对齐以共享 datazen 编译，见 §2.2） | 完整 release 构建 | 同 PR CI 形 |
-| Host 集成测试（`src-tauri/tests/`） | ✅ `cargo test -p datazen_desktop --test driver_command_ipc --test data_sync_public_api --test mcp_stdio_auth --test workflow_db_tests --test connections_sessions_use_case_contract_ipc`（features 同 lib 步 + 宿主 `test-harness`；2026-11-02 起，此前该目录零编译零执行。同日拆分归位：workflow_tests 的纯逻辑用例进 `modules/src/workflow/domain/model_tests.rs`、真 DB 用例留宿主改名 `workflow_db_tests.rs`（本步只编译防烂，全部 `#[ignore]`）、历史持久化用例删除（`workflow/history.rs` 内联已覆盖）；ai_e2e 移回 `modules/tests/` 随平台腿自动编译） | 完整 release 构建 | `cargo test -p datazen_desktop --test <name>`；跨库用例 `-- --include-ignored` 或走定时工作流 |
+| Host 集成测试（`src-tauri/tests/`） | ✅ `cargo test -p datazen_desktop --test driver_command_ipc --test data_sync_public_api --test mcp_stdio_auth --test workflow_db_tests --test connections_sessions_use_case_contract_ipc`（features 同 lib 步 + 宿主 `test-harness`；2026-11-02 起，此前该目录零编译零执行。同日拆分归位：workflow_tests 的纯逻辑用例进 `crates/datazen/src/workflow/domain/model_tests.rs`、真 DB 用例留宿主改名 `workflow_db_tests.rs`（本步只编译防烂，全部 `#[ignore]`）、历史持久化用例删除（`workflow/history.rs` 内联已覆盖）；ai_e2e 移回 `crates/datazen/tests/` 随平台腿自动编译） | 完整 release 构建 | `cargo test -p datazen_desktop --test <name>`；跨库用例 `-- --include-ignored` 或走定时工作流 |
 | 跨库 Workflow 真 DB 用例（PG + MySQL） | ❌ PR CI 只编译（见上行）；**每周一跑** [workflow-db-tests.yml](../../.github/workflows/workflow-db-tests.yml)：postgres:16 + mysql:8 service 容器 + `setup-workflow-testdata.sh` 灌数据后 `--include-ignored` 真跑（支持手动触发） | 随发版人工复跑 | `scripts/setup-workflow-testdata.sh` + `cargo test -p datazen_desktop --test workflow_db_tests -- --include-ignored --nocapture` |
 | driver-api | ✅ `cargo test -p datazen-driver-api`（lib + tests/ 4 文件 + doc test，2026-10-27 由 `--lib` 扩充） | 随构建链接 | `cargo test -p datazen-driver-api` |
-| modules（datazen）单 feature 腿 | ✅ `pnpm test:platform-crates` 的 `FEATURE_TESTS` 逐腿**编译**（`--no-run`，2026-11-02 起：modules/src 纯并集门控下执行与无选择器腿完全重复，零信号，只保留 feature 孤立编译验证；ai 腿已覆盖 ai-api 退役前的那步组合闭包；原 `--features settings,ai,connection,named_views` 组合步于 2026-10-27 删除，理由见 §2.2） | 随构建链接 | `pnpm test:platform-crates` |
+| modules（datazen）单 feature 腿 | ✅ `pnpm test:platform-crates` 的 `FEATURE_TESTS` 逐腿**编译**（`--no-run`，2026-11-02 起：crates/datazen/src 纯并集门控下执行与无选择器腿完全重复，零信号，只保留 feature 孤立编译验证；ai 腿已覆盖 ai-api 退役前的那步组合闭包；原 `--features settings,ai,connection,named_views` 组合步于 2026-10-27 删除，理由见 §2.2） | 随构建链接 | `pnpm test:platform-crates` |
 | 平台内核 crate（`modules` / `infra`；`server` 层已武装待主体） | ✅ `pnpm test:platform-crates`，集合由脚本发现 | 随构建链接 | `pnpm test:platform-crates` |
 | 平台 crate 架构门禁（全部平台边界规则） | ✅ `pnpm test:platform-arch`，附变异自证 `pnpm test:platform-arch:mutations` | ❌ | `pnpm test:platform-arch` |
 | Basic path 驱动 lib | ✅ 四 crate 由 `--tests` 步一并运行（lib + 集成 target，见下行） | Basic SKU 内嵌 | `cargo test -p datazen-driver-<id> --lib` |
@@ -25,13 +25,13 @@
 | Git 驱动（kiwi/superset） | ❌ | **Akulaku SKU**（需 Deploy Key） | 见 [ci-private-drivers.md](./ci-private-drivers.md) |
 | Host E2E | ❌ | ❌（发版后手工 / R 阶段） | `pnpm e2e` / `pnpm e2e:minimal` |
 | Host 契约矩阵 E2E | ❌ | ❌ | `pnpm e2e:contract:matrix` |
-| 驱动专属 E2E | ❌ | ❌ | `packages/drivers/<id>/e2e/` |
+| 驱动专属 E2E | ❌ | ❌ | `crates/drivers/<id>/e2e/` |
 
 **原则**
 
 1. **Basic 必测**：每个 PR 与 `main` push 均跑 basic 四驱动 + Host 三件套（TS 单测 / Host lib / driver-api；modules 单 feature 腿由 `pnpm test:platform-crates` 覆盖）。
 2. **All 只进 Host 单测，不进编译矩阵**：`resolve-drivers --drivers=all` 的 codegen 让 PR CI 把 Host 前端单测中**codegen 敏感的那部分**（模块图会执行 `generated.ts` 的测试文件，运行期由 `select-codegen-sensitive-tests.mjs` 选出）在 `all` 下再判一遍——前端驱动形态是编译期 codegen，验证它不需要编译 Rust 驱动，因此 `all` 在 PR 上是廉价的；而 `cargo` 侧编译全部 path 驱动仍然只发生在 Release **All** SKU 与本地全量验证（`--drivers=all` 约 5 分钟重编译），不占 PR 流水线。
-3. **Path 轮转（维护者策略）**：可选 path 驱动（mongodb、clickhouse、duckdb、sqlserver、elasticsearch 等）的 **Rust lib 不在 PR CI 矩阵内**；其 **UI 单测全部进 PR CI**（`pnpm test:unit:drivers` 按文件系统收集 `packages/drivers/*/ui/__tests__/`，与 `--drivers=` 选型无关，因此可选驱动同样被覆盖）。改 Rust 时作者仍须在 PR 说明中列出 `cargo test -p datazen-driver-<id> --lib`（及该 crate 内 E2E）。发版 **All** SKU 是对全部 path 驱动的集成校验。
+3. **Path 轮转（维护者策略）**：可选 path 驱动（mongodb、clickhouse、duckdb、sqlserver、elasticsearch 等）的 **Rust lib 不在 PR CI 矩阵内**；其 **UI 单测全部进 PR CI**（`pnpm test:unit:drivers` 按文件系统收集 `crates/drivers/*/ui/__tests__/`，与 `--drivers=` 选型无关，因此可选驱动同样被覆盖）。改 Rust 时作者仍须在 PR 说明中列出 `cargo test -p datazen-driver-<id> --lib`（及该 crate 内 E2E）。发版 **All** SKU 是对全部 path 驱动的集成校验。
 4. **契约矩阵**：Host Connection Contract（`e2e/contract/`）验证 PG/MySQL/SQLite 上同一套 Host UI journey；**不进 PR CI**，由维护者在合并前或 R 阶段跑 `pnpm e2e:contract:matrix`；fixtures 单测 `pnpm test:unit:e2e-contract` 可在本地或后续 CI 扩展中启用。
 
 ## 2. PR CI 步骤（与 workflow 对齐）
@@ -52,7 +52,7 @@
 | 守卫 | `check-managed-stubs.mjs`、`check-id-terminology.mjs`、`check-module-layers.mjs` 等 | 防止误提交 inject 产物、ID 术语回退、分层倒置。`check-structure-editor-guardrails.mjs` 已移至发布前，见 §2.1.3 |
 | Host 单测 | `pnpm test:unit` | Vitest。驱动集不是由 `pretest:unit` 定的：pnpm ≥ 7 默认不跑 `pre`/`post` 脚本（无 `.npmrc` 开 `enable-pre-post-scripts`），该 hook 实为惰性；真正把 codegen 落成 `basic` 的是 `pnpm install` 的 `prepare` → `ensure-generated-drivers.mjs` → `resolve-drivers.mjs` 默认值 |
 | Host 单测（`all`） | `pnpm test:unit:driver-set` | `scripts/run-unit-driver-set.mjs`：`resolve-drivers.mjs --codegen-only --drivers=all` → `generate-builtin-locales.mjs` → **运行期收窄** → `vitest run <选中文件>`。收窄自同一份 `include` glob：只有模块图**执行** `src/extensions/generated.ts` 的测试文件才可能观察到驱动集（判定口径与 fail-closed 清单见 `scripts/select-codegen-sensitive-tests.mjs`），其余文件在两轮跑的是同一份字节码，由上面的 `basic` 步判过。`all` = 全部 **path** 驱动（不含 kiwi/superset），故无需 Deploy Key 与网络。**硬门禁**（无 `continue-on-error`），理由见 §2.1.1；重新加回软门禁时**必须同时**改 `scripts/__tests__/run-unit-driver-set.test.ts`（见 §2.1.1 末） |
-| 驱动 UI 单测 | `pnpm test:unit:drivers` | `packages/drivers/*/ui/__tests__/`；与 Host 单测互不收集，两步都必须跑 |
+| 驱动 UI 单测 | `pnpm test:unit:drivers` | `crates/drivers/*/ui/__tests__/`；与 Host 单测互不收集，两步都必须跑 |
 | Site（条件） | `check-site-seo.mjs` | 仅当 diff 含 `site/`（`fetch-depth: 0` 仅此 job 需要） |
 
 ### 2.1.1 该步为何是硬门禁，以及 `testTimeout` 为何取 10s
@@ -377,7 +377,7 @@ cargo test -p datazen_desktop --lib --features "$FEATURES,datazen/test-harness"
 # + Mock Driver；mcp_stdio_auth spawn 宿主 bin（其 CARGO_BIN_EXE_datazen_desktop
 # 引用在 F6 拆分后烂了，本步是它的第一个编译消费者）；workflow_db_tests
 # 是跨库真 DB 用例（全 #[ignore]，本步只编译防烂，真跑在
-# workflow-db-tests.yml 定时任务）；ai_e2e 已移 modules/tests/ 随平台腿
+# workflow-db-tests.yml 定时任务）；ai_e2e 已移 crates/datazen/tests/ 随平台腿
 # 自动编译执行（无 .env.test 自跳过，其 passed 行不是 AI 冒烟证据）。
 FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
 cargo test -p datazen_desktop --test driver_command_ipc --test data_sync_public_api --test mcp_stdio_auth --test workflow_db_tests --features "$FEATURES,test-harness"
@@ -386,7 +386,7 @@ cargo test -p datazen_desktop --test driver_command_ipc --test data_sync_public_
 # 此处曾有 `cargo test -p datazen-ai-api --lib`，后又改为
 # `cargo test -p datazen --lib --features settings,ai,connection,named_views`；
 # 2026-10-27 删除：该组合的 feature 闭包 = platform-crate runner `ai` 腿 ∪
-# `named_views` 腿，modules/src 无 cfg(all(feature)) 组合门控，全部 ~1,317 个
+# `named_views` 腿，crates/datazen/src 无 cfg(all(feature)) 组合门控，全部 ~1,317 个
 # 测试函数都在那两条腿里再跑一遍——零覆盖增益，却多付一次完整 datazen lib
 # 编译。恢复前先读 ci.yml 同位置的墓碑注释。
 # 此处还曾有「CM-60 latency benchmark (release)」步（cargo run --release …
@@ -411,7 +411,7 @@ feature-resolved 图，而 `dtolnay/rust-toolchain@stable` 只装在 rust job；
 
 **为什么这里没有任何 crate 名单**：`scripts/lib/cargoWorkspace.mjs` 的 `LAYERS` 表把
 `manifest_path` 映射到层，规则的主体由 §2.4 的路径推出。因此 `modules`、
-`modules/src/platform_api`、`server/` 一旦被加进 workspace `members`，立刻自动入网——
+`crates/datazen/src/platform_api`、`crates/datazen-server/` 一旦被加进 workspace `members`，立刻自动入网——
 **新增内核 crate 不需要改 `ci.yml`，也不需要改 `package.json`**。列不出来的 member 是
 **error** 不是 pass：门禁无法分类的成员，就是没有任何规则覆盖的成员。
 
@@ -461,7 +461,7 @@ feature-resolved 图，而 `dtolnay/rust-toolchain@stable` 只装在 rust job；
 ```
 ADVISORY F-01?  datazen (src-tauri/Cargo.toml) declares tauri-plugin-webdriver in
                 [dependencies], which the resolved graph does not contain. Not blocking:
-                F-01's subjects are `packages/drivers/*`, and `datazen` is not one of them.
+                F-01's subjects are `crates/drivers/*`, and `datazen` is not one of them.
 ```
 
 `datazen-driver-redis` 已不在任何 tauri advisory 里：它的 `[dependencies] tauri`、
@@ -474,7 +474,7 @@ ADVISORY F-01?  datazen (src-tauri/Cargo.toml) declares tauri-plugin-webdriver i
 
 | # | 前置条件 | 位置 | 归属 | 状态 |
 |---|---------|------|------|------|
-| 1 | redis 去掉 `tauri` 声明（`packages/drivers/redis/Cargo.toml` 的 `[dependencies] tauri`）与 `[build-dependencies] tauri-plugin` | `packages/drivers/**` | 驱动轨 | ✅ 已完成 |
+| 1 | redis 去掉 `tauri` 声明（`crates/drivers/redis/Cargo.toml` 的 `[dependencies] tauri`）与 `[build-dependencies] tauri-plugin` | `crates/drivers/**` | 驱动轨 | ✅ 已完成 |
 | 2 | manifest 读取失败路径由 advisory 改为 error（§2.3.2） | `scripts/**` | 门禁脚本轨 | ✅ 已完成 |
 | 3 | `F-01` 的 `forbiddenCrates` 由 `[]` 改为 `['tauri']` | `scripts/**` | 门禁脚本轨 | ✅ 已完成 |
 
@@ -484,7 +484,7 @@ tauri，它**真的解析到** `tauri-plugin` 与 `tauri-utils`——无论把�
 上，阻断式检查都会当场把 CI 转红。redis 的声明边与解析闭包都不含 tauri 家族之后，
 武装本身是绿的；剩下的两条前置条件都只动 `scripts/**`，与驱动侧的前置条件**同一次落地**。
 
-**武装后不会误伤宿主**：F-01 的 `subjects` 是 `['driver']`（`packages/drivers/*`），**闭包侧与
+**武装后不会误伤宿主**：F-01 的 `subjects` 是 `['driver']`（`crates/drivers/*`），**闭包侧与
 声明边侧都按这个主体范围判定**。`src-tauri` 那 9 条 tauri 声明（宿主本来就该依赖 tauri）
 不在该规则主体内：闭包侧本来就不查宿主，声明边侧把宿主那条报成 advisory 而**不是** violation。
 若按"工作区里所有成员"判，宿主自己声明的 `tauri-plugin-webdriver`（Tauri 自己的 webdriver
@@ -598,7 +598,7 @@ pnpm test:platform-crates
 | `pnpm e2e` | 当前 inject 选型 | 全量 Host E2E | ❌ |
 | `pnpm e2e:contract:matrix` | PG + MySQL + SQLite | Host UI 契约 × 驱动 | ❌ |
 | `pnpm test:unit:e2e-contract` | — | contract fixtures 单测 | ❌ |
-| `packages/drivers/<id>/e2e/` | 单驱动 | 方言 / 专属 UI | ❌ |
+| `crates/drivers/<id>/e2e/` | 单驱动 | 方言 / 专属 UI | ❌ |
 
 契约 journey 列表见 [e2e-coverage.md](./e2e-coverage.md) §「Host Connection Contract × Driver」。
 
@@ -693,14 +693,14 @@ e2e/run.mjs:50-54          → bash e2e/setup-e2e-env.sh
 
 ### 5.5 驱动 E2E 接线现状
 
-`packages/drivers/<id>/e2e/` 按 `AGENTS.md` 本就「显式脚本，不进默认 `pnpm e2e`」。
+`crates/drivers/<id>/e2e/` 按 `AGENTS.md` 本就「显式脚本，不进默认 `pnpm e2e`」。
 但「显式」不等于「可跑」——实测接线情况：
 
 **已接入 suite（可用 `pnpm e2e:<group>` 跑）：**
 
 | 驱动 | 接线位置 | 覆盖 spec |
 |------|----------|-----------|
-| redis | `wdio.conf.ts` 的 `redis` suite（glob `../packages/drivers/redis/e2e/*.ts`） | 2 / 2 |
+| redis | `wdio.conf.ts` 的 `redis` suite（glob `../crates/drivers/redis/e2e/*.ts`） | 2 / 2 |
 | mysql + postgres | `wdio.conf.ts` 的 `schema-tree-objects` suite | 各 1 / 7、1 / 6 |
 
 **完全没有任何接线**（未进 `wdio.conf.ts` 任何 suite、CI 也不引用，需手动

@@ -278,7 +278,7 @@ const pack = {
   'connection.dashboard.title': '대시보드',
   // KV workspace slot actions handled by the host. Namespace
   // `redis.kvSlot.*` is host-owned copy for the KV panel; the driver keeps its
-  // own `redis.*` pack in packages/drivers/redis/locales.
+  // own `redis.*` pack in crates/drivers/redis/locales.
   'redis.kvSlot.flushTitle': '현재 데이터베이스 비우기',
   'redis.kvSlot.flushMessage':
     '이 패널이 바인딩된 데이터베이스의 모든 키가 삭제됩니다. 되돌릴 수 없습니다.',

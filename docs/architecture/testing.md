@@ -9,24 +9,24 @@
 | Host Rust 单元测试 | `cargo test -p datazen` | `src-tauri` 各模块 `#[cfg(test)]` |
 | Host Rust 集成测试 | `cargo test -p datazen` | `src-tauri/tests/`（宿主编排，如 AI / Workflow / IPC） |
 | 共享 crate 测试 | `cargo test -p datazen-<crate>` | `packages/` 下的 runtime / application / modules / 领域引擎 |
-| 驱动 Rust 测试 | `cargo test -p datazen-driver-<id>` | `packages/drivers/<id>/` 的 `#[cfg(test)]` 与 `tests/` |
+| 驱动 Rust 测试 | `cargo test -p datazen-driver-<id>` | `crates/drivers/<id>/` 的 `#[cfg(test)]` 与 `tests/` |
 | Host 前端单元测试 | Vitest | `src/**/__tests__/`（`pnpm test:unit`） |
-| 驱动 UI 单测 | Vitest | `packages/drivers/<id>/ui/__tests__/`（`pnpm test:unit:drivers`） |
+| 驱动 UI 单测 | Vitest | `crates/drivers/<id>/ui/__tests__/`（`pnpm test:unit:drivers`） |
 | Host E2E | WebdriverIO | `e2e/specs/` |
-| 驱动 E2E | WebdriverIO | `packages/drivers/<id>/e2e/`（显式脚本，不进默认 `pnpm e2e`） |
+| 驱动 E2E | WebdriverIO | `crates/drivers/<id>/e2e/`（显式脚本，不进默认 `pnpm e2e`） |
 
 ### 1.1 驱动测试必须写在驱动 crate 内
 
 **凡只验证某一个驱动实现、SQL/KV 方言、专属 UI 或 Driver Command 的用例，写到该驱动目录，禁止放到 Host。**
 
-Path 驱动（`packages/drivers/<id>/`，crate `datazen-driver-<id>`）：
+Path 驱动（`crates/drivers/<id>/`，crate `datazen-driver-<id>`）：
 
 | 类型 | 落点 | 命令 |
 |------|------|------|
 | Rust 单元 | 实现文件旁 `#[cfg(test)]` | `cargo test -p datazen-driver-<id>` |
-| Rust 集成 | `packages/drivers/<id>/tests/` | `cargo test -p datazen-driver-<id> --test <name>` |
-| UI 单测 | `packages/drivers/<id>/ui/__tests__/` | `pnpm test:unit:drivers` |
-| E2E | `packages/drivers/<id>/e2e/` | 如 `pnpm e2e:redis` |
+| Rust 集成 | `crates/drivers/<id>/tests/` | `cargo test -p datazen-driver-<id> --test <name>` |
+| UI 单测 | `crates/drivers/<id>/ui/__tests__/` | `pnpm test:unit:drivers` |
+| E2E | `crates/drivers/<id>/e2e/` | 如 `pnpm e2e:redis` |
 
 Git 驱动（Kiwi 等）：测试在**驱动仓库**维护，不要提交到 Host。
 
@@ -61,20 +61,20 @@ pnpm e2e:core / e2e:db / e2e:ai    # 分组（默认 skip-build）
 
 ### 3.1 单元测试
 
-Host 各模块内 `#[cfg(test)]`。驱动实现的单测在 `packages/drivers/<id>/`，用 `cargo test -p datazen-driver-<id>`，见 §1.1。
+Host 各模块内 `#[cfg(test)]`。驱动实现的单测在 `crates/drivers/<id>/`，用 `cargo test -p datazen-driver-<id>`，见 §1.1。
 
 | 模块 | 测试范围 |
 |------|---------|
-| `modules/src/ai/domain/traits.rs`（内嵌单测；原 `packages/ai-api/tests/api_tests.rs` 随 D1.5 并入） | AiProvider trait、types、factory |
-| `modules/src/ai/providers/registry.rs` | AiProviderRegistry 注册与查找 |
-| `modules/src/ai/providers/openai.rs` / `anthropic.rs` | Provider 适配层 |
-| `modules/src/ai/providers/protocol/` | OpenAI Chat/Responses 与 Anthropic wire protocol |
-| `modules/src/ai/application/prompt_resolver_tests.rs` | PromptResolver 解析优先级、多语言 fallback |
-| `modules/src/ai/domain/safety_tests.rs` | AI 出境脱敏与安全门 |
-| `modules/tests/monitor_authorization.rs` | Monitor 定时授权的共享策略 |
-| `modules/tests/workflow_block_refusal.rs` | Workflow 资源块的失败关闭 |
+| `crates/datazen/src/ai/domain/traits.rs`（内嵌单测；原 `packages/ai-api/tests/api_tests.rs` 随 D1.5 并入） | AiProvider trait、types、factory |
+| `crates/datazen/src/ai/providers/registry.rs` | AiProviderRegistry 注册与查找 |
+| `crates/datazen/src/ai/providers/openai.rs` / `anthropic.rs` | Provider 适配层 |
+| `crates/datazen/src/ai/providers/protocol/` | OpenAI Chat/Responses 与 Anthropic wire protocol |
+| `crates/datazen/src/ai/application/prompt_resolver_tests.rs` | PromptResolver 解析优先级、多语言 fallback |
+| `crates/datazen/src/ai/domain/safety_tests.rs` | AI 出境脱敏与安全门 |
+| `crates/datazen/tests/monitor_authorization.rs` | Monitor 定时授权的共享策略 |
+| `crates/datazen/tests/workflow_block_refusal.rs` | Workflow 资源块的失败关闭 |
 | `src-tauri/src/mcp/server.rs` | MCP Server tools |
-| `modules/src/workflow/` | Workflows 系统 |
+| `crates/datazen/src/workflow/` | Workflows 系统 |
 | `src-tauri/src/mcp/client.rs` | MCP Client |
 | `src-tauri/src/commands/context.rs` | AI 上下文文件（路径遍历防护、扩展名白名单、大小限制） |
 
@@ -82,8 +82,8 @@ Host 各模块内 `#[cfg(test)]`。驱动实现的单测在 `packages/drivers/<i
 
 | 文件 | 内容 |
 |------|------|
-| `modules/tests/ai_e2e.rs` | AI 功能端到端测试（NL2SQL、诊断、EXPLAIN、Chat 等），2026-11-02 归位（被测本体是 datazen 的 AI 能力，随平台 crate 腿自动编译）。需真实 LLM API Key，配置 `.env.test` |
-| `src-tauri/tests/workflow_db_tests.rs` | 跨数据库 Workflow 真 DB 测试（原 workflow_tests.rs 拆分后的真 DB 半边；纯逻辑用例归位 `modules/src/workflow/domain/model_tests.rs`）。需 PostgreSQL + MySQL（配置 `.env`；CI 由 workflow-db-tests.yml 定时任务以 service 容器真跑） |
+| `crates/datazen/tests/ai_e2e.rs` | AI 功能端到端测试（NL2SQL、诊断、EXPLAIN、Chat 等），2026-11-02 归位（被测本体是 datazen 的 AI 能力，随平台 crate 腿自动编译）。需真实 LLM API Key，配置 `.env.test` |
+| `src-tauri/tests/workflow_db_tests.rs` | 跨数据库 Workflow 真 DB 测试（原 workflow_tests.rs 拆分后的真 DB 半边；纯逻辑用例归位 `crates/datazen/src/workflow/domain/model_tests.rs`）。需 PostgreSQL + MySQL（配置 `.env`；CI 由 workflow-db-tests.yml 定时任务以 service 容器真跑） |
 
 ## 4. 前端测试覆盖
 
@@ -151,7 +151,7 @@ Host 各模块内 `#[cfg(test)]`。驱动实现的单测在 `packages/drivers/<i
 | 单测 / 覆盖率 | `vitest.e2e-contract.config.ts` | fixtures/plan 单测；`pnpm test:unit:e2e-contract:coverage` |
 | 运行命令 | `pnpm e2e:contract:matrix` | PG + MySQL + SQLite 全矩阵 |
 
-方言深度（跨库目录、专属 Command、Redis KV 等）仍在 `packages/drivers/<id>/` 的 crate 内测试，不进 Host 默认 `pnpm e2e`。
+方言深度（跨库目录、专属 Command、Redis KV 等）仍在 `crates/drivers/<id>/` 的 crate 内测试，不进 Host 默认 `pnpm e2e`。
 
 ## 5. E2E 测试
 
@@ -174,10 +174,10 @@ WebdriverIO E2E spec（Host：`e2e/specs/`）：
 
 | 类型 | 位置 / 命令 |
 |------|-------------|
-| Path 驱动 Rust | `packages/drivers/<id>/` — `cargo test -p datazen-driver-<id>` |
-| Redis UI 单测 | `packages/drivers/redis/ui/__tests__/` — `pnpm test:unit:drivers` |
-| Redis E2E | `packages/drivers/redis/e2e/` — `pnpm e2e:redis` |
-| PG / MySQL 跨库目录 | `packages/drivers/{postgres,mysql}/tests/*_cross_database.rs` |
+| Path 驱动 Rust | `crates/drivers/<id>/` — `cargo test -p datazen-driver-<id>` |
+| Redis UI 单测 | `crates/drivers/redis/ui/__tests__/` — `pnpm test:unit:drivers` |
+| Redis E2E | `crates/drivers/redis/e2e/` — `pnpm e2e:redis` |
+| PG / MySQL 跨库目录 | `crates/drivers/{postgres,mysql}/tests/*_cross_database.rs` |
 | Kiwi 元数据单测 | `datazen-driver-kiwi` `ui/plugin-meta.test.ts` |
 | Kiwi E2E | `datazen-driver-kiwi`：`pnpm e2e:kiwi` |
 

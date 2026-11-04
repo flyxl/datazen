@@ -1,14 +1,14 @@
 # 宿主边界后续：实施方案
 
 > **状态：已确认的实施方案，代码尚未按本文改动。**
-> 确认日期：2026-10-29。基线：`main` 上 form-split 已落地（`apps/desktop`、`packages/frontend`、`modules` crate `datazen`）。
+> 确认日期：2026-10-29。基线：`main` 上 form-split 已落地（`packages/desktop`、`packages/frontend`、`modules` crate `datazen`）。
 > 2026-10-30 更新（`review/code-organization-2026-10` 分支）：F0、F1、F2 已在该分支
 > 落地（F0 经 cargo tree 等价验证 26=26；F1 经 45/45 comparison_store + 244/244
 > data_sync 测试验证；F2 含三处实施偏差，见 §6 末尾的实施记录）；F3 第一刀
 > 已落地（`sql_split` + `sql_identifiers` 下沉 `driver-support`，见 §6 末尾实施记录；后续候选
 > filters / keyset / dialect 已复核完毕，判决不搬，F3 收口，见 §6 复核结论）；
-> F4a 第一刀已落地（`modules/src/connection/api.rs` 固定 api 模块写法，见 §6 末尾
-> 实施记录）；F4b 第二刀已落地（`modules/src/table_browsing/api.rs` 收表读取
+> F4a 第一刀已落地（`crates/datazen/src/connection/api.rs` 固定 api 模块写法，见 §6 末尾
+> 实施记录）；F4b 第二刀已落地（`crates/datazen/src/table_browsing/api.rs` 收表读取
 > 两用例与 `TargetCommandRunner` 端口，见 §6 末尾实施记录）；F4c sync 写路径刀
 > 已落地（`data_sync::api` 收复核批次/键读/preview 装配，宿主 `statements.rs`/
 > `select.rs` 删除、`apply.rs` 委托去重，见 §6 末尾实施记录）；F4c data_transfer
@@ -29,9 +29,9 @@
 2. `connection_import` 里的 SQLite 只用于读取 **DBX** 的 `dbx.db`，不能拿掉。
 3. 传输无关的命令体进 `datazen` crate；`datazen_desktop` 只留 Tauri 胶水。
 4. 桌面 Cargo feature 列表写成显式全集，含今天被传递打开的 feature。
-5. Rust 共享实现新建 `packages/driver-support`。现有 `@datazen/driver-sdk` 保持 TypeScript，不改名、不搬语言。
+5. Rust 共享实现新建 `crates/datazen-driver-support`。现有 `@datazen/driver-sdk` 保持 TypeScript，不改名、不搬语言。
 6. 隧道协议实现继续留在 `modules` 的 `tunnel` feature，桌面和 Web 共用。宿主只注入存储根、凭据和监听点。
-7. `@datazen/frontend` 收成稳定入口；桌面专用文件挪到 `apps/desktop`。禁止新增 `@datazen/frontend/src/**` 深导入。
+7. `@datazen/frontend` 收成稳定入口；桌面专用文件挪到 `packages/desktop`。禁止新增 `@datazen/frontend/src/**` 深导入。
 
 不做的事：
 
@@ -49,7 +49,7 @@
 
 ### 现在实际在锁什么
 
-`modules/src/migration/data_sync/comparison_store/` 的比较正文 **不是** SQLite：
+`crates/datazen/src/migration/data_sync/comparison_store/` 的比较正文 **不是** SQLite：
 
 - 小于 `COMPARISON_MEMORY_LIMIT`（8 MiB）的结果留在内存。
 - 更大的结果写到调用方给的存储根下：`manifest.json` + `table-*.rows`。翻页按偏移读，不反序列化整份比较。
@@ -75,7 +75,7 @@
 1. `OwnerLease` 改为持有锁文件的 `File`（`fd-lock`）。获取失败的语义与现在的 `DatabaseBusy` / `DatabaseLocked` 对齐：别人还活着，不回收。
 2. 回收路径改为：能抢到锁才删除对应 `comparison-*` 目录，然后立刻放锁或关闭 fd。
 3. 删掉 `recovery.rs` 对 `rusqlite` 的依赖。若 `data_sync` 不再使用 `rusqlite`，从该 feature 去掉 `dep:rusqlite`。
-4. 更新 `modules/Cargo.toml` 里 `data_sync` 的注释，写明 SQLite 租约已替换。
+4. 更新 `crates/datazen/Cargo.toml` 里 `data_sync` 的注释，写明 SQLite 租约已替换。
 5. 保留并改写 `recovery` / `tester_recovery` 测试：制造「锁被持有」与「锁已关闭」两种夹具，不再打开 SQLite。
 
 `connection_import` 的 `rusqlite` 与此无关，见下一节，不要在 F1 里删。
@@ -84,7 +84,7 @@
 
 ## 2. `connection_import` 的「别人」是谁
 
-`modules/src/connection_import/mod.rs` 的导入格式是：
+`crates/datazen/src/connection_import/mod.rs` 的导入格式是：
 
 | `ImportFormat` | 来源 | 文件 | 是否 SQLite |
 |---|---|---|---|
@@ -106,12 +106,12 @@
 
 ## 3. 命令体：桌面与 Web 共用
 
-`apps/desktop/src-tauri/src/commands/` 里体积大的是编排（同步执行、传输预览、schema diff job），不是 DTO 映射。DTO 和错误映射若留在 `datazen_desktop`，Web 宿主会再写一遍。
+`crates/datazen-desktop/src/commands/` 里体积大的是编排（同步执行、传输预览、schema diff job），不是 DTO 映射。DTO 和错误映射若留在 `datazen_desktop`，Web 宿主会再写一遍。
 
 三层，依赖只向下：
 
 ```text
-datazen_desktop 或未来 apps/web
+datazen_desktop 或未来 packages/web
   传输胶水（Tauri command / HTTP handler）、窗口、对话框、钥匙串、托盘
         │  只调用
         ▼
@@ -124,7 +124,7 @@ datazen crate 内各 feature 的 api 模块
 
 约定：
 
-- `api` 模块放在对应 feature 下，例如 `modules/src/connection/api.rs`，不要新建一个包揽全部命令的 crate，也不要做全局 `host_api` 上帝模块。
+- `api` 模块放在对应 feature 下，例如 `crates/datazen/src/connection/api.rs`，不要新建一个包揽全部命令的 crate，也不要做全局 `host_api` 上帝模块。
 - `api` 不依赖 Tauri、Axum、`AppState`。入参是 `RequestContext`（或现有 `OrganizationScope`）加上已经构造好的端口/服务。
 - 序列化形状与今天的 IPC 一致：前端 camelCase，Rust snake_case + `#[serde(rename_all = "camelCase")]`。能复用 `datazen-driver-api` 里已有 DTO 的不要再定义一份。
 - 错误用 `modules` 已有的 `ApiError` / feature error。桌面把它们映射成 `CommandError`，Web 以后映射成 HTTP 状态。映射表只许有一份桌面版、一份 Web 版，业务错误文本在 `api` 层定稿。
@@ -137,7 +137,7 @@ datazen crate 内各 feature 的 api 模块
 // modules::connection::api
 pub async fn list_connections(ctx: &RequestContext, svc: &ConnectionService) -> Result<Vec<ConnectionConfig>, ApiError>;
 
-// apps/desktop command
+// packages/desktop command
 #[tauri::command]
 pub async fn get_connections(state: State<'_, AppState>) -> Result<Vec<ConnectionConfig>, CommandError> {
     let ctx = state.request_context()?;
@@ -159,7 +159,7 @@ pub async fn get_connections(state: State<'_, AppState>) -> Result<Vec<Connectio
 
 **切口**：`commands/ai/config.rs` 的 8 个命令、`AppState::ensure_ai_ready`、`util.rs` 的 `resolve_ai`/`resolve_safety_gate`，以及 chat / generate 里的 8 处 `state.store.get_settings().await.language`——command 层直读 AppState 编排 AI 配置，是 §3 形态在 AI 族的唯一漏网（其余族经 F4a / F4b / F4c / P3 / D1 / D6 item 5 已达标）。
 
-**下沉**：`modules/src/ai/api.rs` 新增（F4a `connection/api` 先例形态），13 个用例函数：`ensure_ai_ready`（注册 → 首次注册恢复配置 → 按语言装模板）、`list_providers`、`validate_provider_config`、`save_provider_config`（先 initialize 后落盘）、`get_provider_config`、`delete_provider_config`（先 reset 全部再清盘）、`get_settings_config`、`save_settings_config`、`set_active_profile`（先落盘再热初始化）、`resolve_active_provider`（码文本 `AI_NOT_CONFIGURED` / `AI_PROVIDER_NOT_AVAILABLE` 逐字保留）、`effective_safety_gate`、`fetch_remote_models`（协议字符串 IPC 词汇表迁入，含拒绝文案）、`settings_language`。`ProviderListItem` 展示 DTO 随迁 modules（字段与 serde 形状逐字不变，宿主 `pub use` 保住 `commands::ProviderListItem` 旧路径）。
+**下沉**：`crates/datazen/src/ai/api.rs` 新增（F4a `connection/api` 先例形态），13 个用例函数：`ensure_ai_ready`（注册 → 首次注册恢复配置 → 按语言装模板）、`list_providers`、`validate_provider_config`、`save_provider_config`（先 initialize 后落盘）、`get_provider_config`、`delete_provider_config`（先 reset 全部再清盘）、`get_settings_config`、`save_settings_config`、`set_active_profile`（先落盘再热初始化）、`resolve_active_provider`（码文本 `AI_NOT_CONFIGURED` / `AI_PROVIDER_NOT_AVAILABLE` 逐字保留）、`effective_safety_gate`、`fetch_remote_models`（协议字符串 IPC 词汇表迁入，含拒绝文案）、`settings_language`。`ProviderListItem` 展示 DTO 随迁 modules（字段与 serde 形状逐字不变，宿主 `pub use` 保住 `commands::ProviderListItem` 旧路径）。
 
 **端口**：`AiConfigStore` 落 `ai/application/ports.rs`（与 `DatabaseToolHost` 同居）——取 / 存 / 删六法 + 两个设置派生读量（提示词语言、执行设置，安全门要读）。桌面实现挂 `DesktopRepository`（`store/ai_config.rs`），存储错误折 `AiUseCaseError::Internal`：Display 文本原样透传，且旧路径 `CommandError::Store` 的序列化也只是打印错误文本——IPC 逐字节一致。错误映射沿用既有唯一桌面表 `From<AiUseCaseError>`（同桶）。宿主 `workflow/host.rs` 的 `complete_ai`（`WorkflowHost` 端口实现）同步改为委托 `resolve_active_provider` + `effective_safety_gate`，消灭与命令层重复的解析编排；`WorkflowError` 两段文案（"AI not configured" / "AI provider not available"）按原样映射。
 
@@ -177,7 +177,7 @@ host 层全部目录的职责全景（254 条 IPC 的族级达标表、platform/
 
 ## 4. 桌面 feature 显式全集
 
-今天 `apps/desktop/src-tauri/Cargo.toml` 的 `datazen` features 没有写出 `jobs`、`workflow`、`mcp`、`common`，但它们被 `schema_diff` / `data_sync` / `data_transfer` / `ai` 传递打开。读清单的人会以为 MCP 没编进桌面。
+今天 `crates/datazen-desktop/Cargo.toml` 的 `datazen` features 没有写出 `jobs`、`workflow`、`mcp`、`common`，但它们被 `schema_diff` / `data_sync` / `data_transfer` / `ai` 传递打开。读清单的人会以为 MCP 没编进桌面。
 
 F0 把传递依赖改成显式列出，并在注释中写「桌面二进制启用全部已落地业务 feature；未列出的 feature 不得被桌面意外打开」。至少补上：
 
@@ -193,11 +193,11 @@ F0 把传递依赖改成显式列出，并在注释中写「桌面二进制启�
 
 | 路径 | 包名 | 语言 | 内容 |
 |---|---|---|---|
-| `packages/driver-api` | `datazen-driver-api` | Rust | **只留** trait、跨驱动 DTO、`PROTOCOL_VERSION`。Host 与每个 driver crate 都依赖它 |
-| `packages/driver-support`（新建） | `datazen-driver-support` | Rust | 共享 **实现**：已稳定的类型解析/格式化辅助、流式读取骨架、备份分块里与方言无关的部分。只被 `packages/drivers/*` 依赖，不被前端依赖 |
+| `crates/datazen-driver-api` | `datazen-driver-api` | Rust | **只留** trait、跨驱动 DTO、`PROTOCOL_VERSION`。Host 与每个 driver crate 都依赖它 |
+| `crates/datazen-driver-support`（新建） | `datazen-driver-support` | Rust | 共享 **实现**：已稳定的类型解析/格式化辅助、流式读取骨架、备份分块里与方言无关的部分。只被 `crates/drivers/*` 依赖，不被前端依赖 |
 | `packages/driver-sdk` | `@datazen/driver-sdk` | TypeScript | 维持现状：metadata、SQL dialect、schema bridge、driver command 的前端契约。peer 依赖 React。不放入 Rust 代码 |
 
-`driver-support` 没有 `package.json`。Cargo workspace `members` 用现有的 `packages/drivers/*` 不够覆盖它，要在根 `Cargo.toml` 的 `members` 里加 `packages/driver-support`。
+`driver-support` 没有 `package.json`。Cargo workspace `members` 用现有的 `crates/drivers/*` 不够覆盖它，要在根 `Cargo.toml` 的 `members` 里加 `crates/datazen-driver-support`。
 
 搬迁规则：
 
@@ -214,7 +214,7 @@ F0 把传递依赖改成显式列出，并在注释中写「桌面二进制启�
 
 `packages/frontend/package.json` 的 `"."` 指向 `src/index.ts`，而该文件只导出 `DESKTOP_CAPABILITIES`、`WEB_CAPABILITIES`、`IS_DESKTOP_BUILD`。
 
-桌面真实入口不走这个文件。[apps/desktop/src/main.tsx](../../apps/desktop/src/main.tsx) 直接：
+桌面真实入口不走这个文件。[packages/desktop/src/main.tsx](../../packages/desktop/src/main.tsx) 直接：
 
 ```ts
 import App from '@datazen/frontend/src/App';
@@ -228,7 +228,7 @@ import { useSchemaStore } from '@datazen/frontend/src/stores/schemaStore';
 
 ### 目标入口
 
-改完后 `apps/desktop` 只能使用下面三个说明符（测试 mock 也一样）：
+改完后 `packages/desktop` 只能使用下面三个说明符（测试 mock 也一样）：
 
 | 说明符 | 导出 |
 |---|---|
@@ -256,8 +256,8 @@ startSharedApp();
 
 ### 文件去留
 
-- 挪到 `apps/desktop/src/platform/desktop/tauriEventCompat.ts`：`packages/frontend/src/lib/tauriEventCompat.ts`。共享包不再提到 Tauri unlisten 竞态。
-- 留在 `apps/desktop`：`updater.ts`、`TitleBar.tsx`、`WindowControls.tsx`、`assembly.ts`。TitleBar 改为从 `@datazen/frontend/shell` 取状态，不再从 `@datazen/frontend/src/stores/uiStore` 取。
+- 挪到 `packages/desktop/src/platform/desktop/tauriEventCompat.ts`：`packages/frontend/src/lib/tauriEventCompat.ts`。共享包不再提到 Tauri unlisten 竞态。
+- 留在 `packages/desktop`：`updater.ts`、`TitleBar.tsx`、`WindowControls.tsx`、`assembly.ts`。TitleBar 改为从 `@datazen/frontend/shell` 取状态，不再从 `@datazen/frontend/src/stores/uiStore` 取。
 - 留在 `packages/frontend`：`App`、stores、hooks、locales、components、`extensions/generated*.ts`（驱动 UI 注册表是共享的，由 `startSharedApp` 调用，桌面入口不再直接 import）。
 - `registerWindowChrome` 仍然通过 `@datazen/extension-points`。不要把 TitleBar 搬进共享包去「消灭」最后一个桌面文件。
 
@@ -270,7 +270,7 @@ startSharedApp();
 5. 全仓库搜索 `@datazen/frontend/src/`。生产代码和测试都改为上述三个说明符。`packages/frontend` 内部不准使用这个前缀。
 6. 加 `scripts/check-frontend-public-entry.mjs`：`apps/`、`packages/`（排除 `packages/frontend`）、`e2e/` 中出现 `@datazen/frontend/src/` 即失败。接到现有的边界检查脚本旁，不新造 CI。
 
-完成标准：`apps/desktop/src/main.tsx` 不再 import 任何 store 或 `App` 的深路径；`rg @datazen/frontend/src apps packages e2e` 无匹配。
+完成标准：`packages/desktop/src/main.tsx` 不再 import 任何 store 或 `App` 的深路径；`rg @datazen/frontend/src apps packages e2e` 无匹配。
 
 ### 实施记录（2026-10-30，`review/code-organization-2026-10` 分支）
 
@@ -289,9 +289,9 @@ F3 第一刀已落地：
 
 F3 后续候选复核结论（2026-10-30，F3 至此收口）：**filters / keyset / dialect 三候选均不搬，判决依据是方案自身的分批判据与消费者实测**——
 
-1. **filters（371 行）**：全文件为 IPC 契约 DTO（`FilterConnector` / `FilterCondition` / `FilterOperator` 含 arity 分类、`SortCondition`），WHERE 构建器早已在 modules（`data_sync/filter.rs`、`data_transfer/filter.rs`）。DTO 正是 §5「driver-api 只留 trait、跨驱动 DTO、PROTOCOL_VERSION」的正确内容；消费者全在 modules（4 域）+ 宿主间接，零驱动消费者，搬去 driver-support 反而违反「只被 packages/drivers/* 依赖」。
+1. **filters（371 行）**：全文件为 IPC 契约 DTO（`FilterConnector` / `FilterCondition` / `FilterOperator` 含 arity 分类、`SortCondition`），WHERE 构建器早已在 modules（`data_sync/filter.rs`、`data_transfer/filter.rs`）。DTO 正是 §5「driver-api 只留 trait、跨驱动 DTO、PROTOCOL_VERSION」的正确内容；消费者全在 modules（4 域）+ 宿主间接，零驱动消费者，搬去 driver-support 反而违反「只被 crates/drivers/* 依赖」。
 2. **dialect（275 行）**：`SqlDialect` 是驱动方拥有的 SQL 文本契约 trait（§5「只留 trait」的正确内容），`LegacySqlDialect` 是该 trait 的单向迁移适配器（文档注释明示「old trait keeps the only implementation while call sites move」）——trait 配套适配器随 trait 走，消费者同样全在 modules，零驱动消费者。
-3. **keyset（486 行）**：内容是方言 SQL 装配（`row_value_seek_predicate` / `lexicographic_seek_predicate` / `build_keyset_select_sql*`），被 §5 第一批判据「不含方言 SQL」直接排除；消费者为 3 个驱动（trait 默认实现回调）+ modules `table_browsing`，下沉会让 modules 直依 driver-support，违反「只被 packages/drivers/* 依赖」。
+3. **keyset（486 行）**：内容是方言 SQL 装配（`row_value_seek_predicate` / `lexicographic_seek_predicate` / `build_keyset_select_sql*`），被 §5 第一批判据「不含方言 SQL」直接排除；消费者为 3 个驱动（trait 默认实现回调）+ modules `table_browsing`，下沉会让 modules 直依 driver-support，违反「只被 crates/drivers/* 依赖」。
 4. **结构性障碍（即便放宽上述判据仍在）**：keyset/filters 需要 `Value` / `DatabaseDriver`，driver-support 必须反向依赖 driver-api，与既有 `pub use datazen_driver_support::{sql_identifiers, sql_split}` 桥接 re-export 构成 cargo 环依赖；拆桥需改 11 处 `datazen_driver_api::sql_{split,identifiers}` 消费者并放弃第一刀的零依赖卖点（「驱动插件作者可单独取文本工具」）。收益（driver-api 减 ~1.1k 行）不抵三项判据违反 + 桥接拆除波及。
 5. **残余路径**：若未来 driver-api 瘦身仍要推进，正确切口不是 driver-support，而是把「只被 modules 消费的实现」迁 modules（如 `LegacySqlDialect` 若 `SqlDialect` 迁移完成后的退役路径），或等 P3 feature 图修剪时一并评估。记入路线图，不在本组 PR 强推。
 
@@ -382,10 +382,10 @@ Web 宿主仍然不在这组 PR 里创建。`api` 模块不引用 Axum。隧道�
 
 | 层 | 位置 | 形态中立性 |
 |---|---|---|
-| 工具定义（5 个只读工具） | `modules/src/ai/application/tools.rs::db_tool_definitions()` | ✅ 共享 |
-| 工具执行 | `modules/src/ai/application/db_tools.rs`，经 `DatabaseToolHost` 端口（`ai/application/ports.rs`） | ✅ 端口化 |
-| 工具循环 + 守卫 | `modules/src/ai/application/tool_loop.rs` + `AiToolLoopHost` 端口 | ✅ 共享 |
-| schema 上下文 | `modules/src/ai/application/schema_context.rs::RuntimeSchemaContextSource`，只吃 `SessionConnectionLookup` + `ResourceExecutionHost` 两个端口 | ✅ 端口化 |
+| 工具定义（5 个只读工具） | `crates/datazen/src/ai/application/tools.rs::db_tool_definitions()` | ✅ 共享 |
+| 工具执行 | `crates/datazen/src/ai/application/db_tools.rs`，经 `DatabaseToolHost` 端口（`ai/application/ports.rs`） | ✅ 端口化 |
+| 工具循环 + 守卫 | `crates/datazen/src/ai/application/tool_loop.rs` + `AiToolLoopHost` 端口 | ✅ 共享 |
+| schema 上下文 | `crates/datazen/src/ai/application/schema_context.rs::RuntimeSchemaContextSource`，只吃 `SessionConnectionLookup` + `ResourceExecutionHost` 两个端口 | ✅ 端口化 |
 | 桌面装配 | `AppState` 实现 `DatabaseToolHost`（`services/feature_ports.rs`）、`AiRequestHost` 按 claim 分流（`commands/ai/grant.rs`）、`services/schema_context_source.rs` 注入两端口 | ✅ 属于「形态实现」 |
 | **缺口：MCP 工具面** | `commands/ai/chat.rs` 的 `mcp_tool_definitions` / `execute_mcp_tool` 直接绑桌面 `state.mcp_client_manager`（stdio 子进程管理器） | ❌ 无端口，web 落地时不可实现 → M3 |
 
@@ -393,7 +393,7 @@ Web 宿主仍然不在这组 PR 里创建。`api` 模块不引用 Axum。隧道�
 
 | 层 | 位置 | 行数 |
 |---|---|---|
-| 已共享 | `modules/src/mcp/`：`domain/permission.rs`（三档权限）、`domain/allowlist.rs`、`application/command_policy.rs`（命令准备，主消费者其实是 driver_command 适配器）、`application/describe.rs` | 751 |
+| 已共享 | `crates/datazen/src/mcp/`：`domain/permission.rs`（三档权限）、`domain/allowlist.rs`、`application/command_policy.rs`（命令准备，主消费者其实是 driver_command 适配器）、`application/describe.rs` | 751 |
 | 宿主私有 | `src-tauri/src/mcp/`：13 个工具实现（`MCP_ALL_TOOLS`：10 无状态 + 3 有状态；tools.rs，直连 AppState / `RuntimeCommandSource` / `WorkflowExecutor`）、有状态会话协议（`session*.rs`：open/use/close、TTL、cleanup worker 与 RollbackAndClose 退避）、`tool_help.rs`、`resources.rs`、`prompts.rs`、rmcp handler/server、`client.rs`（MCP Client）、stdio token 认证与 golden 契约 | ~4,200 |
 
 后果：web 宿主落地时要重写 13 个工具 + 有状态会话语义 + Resources/Prompts——违反「差异应只有 Server 形态不同」。
@@ -417,15 +417,15 @@ Web 宿主仍然不在这组 PR 里创建。`api` 模块不引用 Axum。隧道�
 
 | 刀 | 内容 | 验收 |
 |---|---|---|
-| **M4（已落地，2026-10-31）** | 元数据读取统一：`read_target_command`/`driver_for_connection` 用例化进 `modules/src/workflow/application/runtime_reads.rs`（吃 `ResourceExecutionHost` 端口；`ReadOnlyForcedHost` 只读强制随之归共享语义），姊妹用例 `connection_schema_context`（token 预算的表结构装配）落 `modules/src/ai/application/schema_context.rs`；宿主 `RuntimeCommandSource` 删去 inherent 捷径方法，回归端口实现 + 导出装配；宿主 `mcp/runtime_schema.rs` 删除，`DataZenMcpServer` 新增 `resource_host: Arc<dyn ResourceExecutionHost>` 字段由 `services::runtime_command_source::resource_host()` 装配；Wapp `driver.rs` 同步换轨。**归属与方案原文的差异**：原计划落 `modules/src/mcp/application`，实施发现 feature 环（`workflow` 已依赖 `mcp`、`ai` 已依赖 `workflow`，`mcp` 不能反向依赖两者），故命令用例落 workflow、上下文装配落 ai——依赖方向无环，调用面不变 | 宿主 `mcp/` 不再引用 `RuntimeCommandSource`（仅 server.rs 装配行经 `services::resource_host()` 间接构造，类型不再出现在 `mcp/` 内）；MCP 元数据工具错误文本不变（profile/driver/禁用/未知命令四类文案逐字保留；唯一改写的访问级拒绝文案原为 Wapp 专属不可达路径）；step id `"wapp-command"` → `"read-only-command"`（仅日志/审计，不入 MCP 输出）；modules 侧新增 6 个行为钉子测试 |
-| **M3（已落地，2026-10-31）** | AI 的 MCP 工具面端口化：`McpToolBroker` 消费者端口（`tools_for_ai` / `call_tool`，返回预格式化文本——rmcp 结果格式化是传输形状留实现侧）+ `McpBrokeredTool` 中立结构落 `modules/src/ai/application/ports.rs`；装配用例（qualified 命名规则、`ToolDefinition` 映射、tool loop 的 `String` 执行契约与错误文案）落 `modules/src/ai/application/mcp_tools.rs`；桌面实现 = `AppState`（`services/feature_ports.rs`：`enabled_for_ai` 过滤读设置存储、stdio 子进程管理器、spawn 白名单与 token 校验留桌面）；`commands/ai/chat.rs` 两函数变薄壳，桌面 `mcp_qualified_name` 变共享规则转发（单一规则源，client 测试零改动） | AI 工具循环测试不感知形态（`AiToolLoopHost` 的 `String` 契约未动）；桌面 MCP client 既有测试零改动；错误文案 "MCP tool error ({qualified}): …" 逐字保留；共享层新增 5 个用例测试 |
-| **M1（主体已落地 10/13，2026-10-31）** | MCP 工具分发归位。**前置刀**：`permission` + `command_policy` 自 mcp 迁 `execution`（它们是 workflow/ai/table_browsing/MCP 共用的执行分级词汇；mcp 保持旧路径垫片，宿主 import 零改动；workflow/table-browsing/ai 删 mcp feature 边）——解 feature 环。**切片一（七工具）**：list_databases/list_tables/search_tables/query/get_schema/explain_query/describe_table 用例进 `modules/src/mcp/application/tools.rs`，吃 `ResourceExecutionHost` 端口；query 含权限档位分级、limit 解析与执行设置上限。**切片二/三（三工具）**：list_connections（`RedactedConnectionSource` 端口 + 白名单过滤 + 字段映射）、list_workflows / run_workflow（`WorkflowCatalog` 端口 + 共享 `WorkflowExecutor`/`WorkflowHost`）。错误通道以中立 `ToolError`（InvalidParams/Internal）两分，宿主 `tool_shell_error` 映射 invalid_params+help / internal_error。宿主 `tools.rs` 十函数变薄壳；`#[tool]` 宏、Input JsonSchema、rmcp 错误、`ensure_allowed` 留绑定层。会话三工具（open/use/close）的映射语义随 M2 归位，其宿主函数体是 rmcp 绑定 + Runtime 驱动，留绑定层 | golden 契约 `mcp_external_contract.json` 不变（`#[tool]` 属性与输出文本逐字保留，错误通道两分与宿主原行为一致）；宿主不再含无状态工具业务；`--features mcp` 编译由 platform-crates 腿验证 |
-| **M2（已落地，2026-10-31）** | 有状态会话映射语义归位：`McpSessionRegistry` + `SessionBinding` + TTL 归一化 + 归属校验 + 过期/清理登记（含内嵌语义测试）整体自宿主迁 `modules/src/mcp/application/session.rs`（依赖仅共享词汇 + uuid + tokio Notify）；宿主 `mcp/session.rs` 变垫片（open/use/close 工具、cleanup worker 与传输生命周期驱动的 import 零改动）。**范围裁决**：cleanup 的退避计算（100ms–30s）与 open 的未交付守卫（`UndeliveredSession`）依赖 rmcp 错误/宿主类型/tokio 驱动，属于传输驱动层，随宿主保留——语义测试（TTL/归属/不重建/幂等关闭）已随 registry 迁入 modules | 桌面行为不变（`session_cleanup` 既有测试全绿；语义测试随文件迁 modules）；`mcp` feature 增 uuid/tokio 两个既有 optional 依赖 |
+| **M4（已落地，2026-10-31）** | 元数据读取统一：`read_target_command`/`driver_for_connection` 用例化进 `crates/datazen/src/workflow/application/runtime_reads.rs`（吃 `ResourceExecutionHost` 端口；`ReadOnlyForcedHost` 只读强制随之归共享语义），姊妹用例 `connection_schema_context`（token 预算的表结构装配）落 `crates/datazen/src/ai/application/schema_context.rs`；宿主 `RuntimeCommandSource` 删去 inherent 捷径方法，回归端口实现 + 导出装配；宿主 `mcp/runtime_schema.rs` 删除，`DataZenMcpServer` 新增 `resource_host: Arc<dyn ResourceExecutionHost>` 字段由 `services::runtime_command_source::resource_host()` 装配；Wapp `driver.rs` 同步换轨。**归属与方案原文的差异**：原计划落 `crates/datazen/src/mcp/application`，实施发现 feature 环（`workflow` 已依赖 `mcp`、`ai` 已依赖 `workflow`，`mcp` 不能反向依赖两者），故命令用例落 workflow、上下文装配落 ai——依赖方向无环，调用面不变 | 宿主 `mcp/` 不再引用 `RuntimeCommandSource`（仅 server.rs 装配行经 `services::resource_host()` 间接构造，类型不再出现在 `mcp/` 内）；MCP 元数据工具错误文本不变（profile/driver/禁用/未知命令四类文案逐字保留；唯一改写的访问级拒绝文案原为 Wapp 专属不可达路径）；step id `"wapp-command"` → `"read-only-command"`（仅日志/审计，不入 MCP 输出）；modules 侧新增 6 个行为钉子测试 |
+| **M3（已落地，2026-10-31）** | AI 的 MCP 工具面端口化：`McpToolBroker` 消费者端口（`tools_for_ai` / `call_tool`，返回预格式化文本——rmcp 结果格式化是传输形状留实现侧）+ `McpBrokeredTool` 中立结构落 `crates/datazen/src/ai/application/ports.rs`；装配用例（qualified 命名规则、`ToolDefinition` 映射、tool loop 的 `String` 执行契约与错误文案）落 `crates/datazen/src/ai/application/mcp_tools.rs`；桌面实现 = `AppState`（`services/feature_ports.rs`：`enabled_for_ai` 过滤读设置存储、stdio 子进程管理器、spawn 白名单与 token 校验留桌面）；`commands/ai/chat.rs` 两函数变薄壳，桌面 `mcp_qualified_name` 变共享规则转发（单一规则源，client 测试零改动） | AI 工具循环测试不感知形态（`AiToolLoopHost` 的 `String` 契约未动）；桌面 MCP client 既有测试零改动；错误文案 "MCP tool error ({qualified}): …" 逐字保留；共享层新增 5 个用例测试 |
+| **M1（主体已落地 10/13，2026-10-31）** | MCP 工具分发归位。**前置刀**：`permission` + `command_policy` 自 mcp 迁 `execution`（它们是 workflow/ai/table_browsing/MCP 共用的执行分级词汇；mcp 保持旧路径垫片，宿主 import 零改动；workflow/table-browsing/ai 删 mcp feature 边）——解 feature 环。**切片一（七工具）**：list_databases/list_tables/search_tables/query/get_schema/explain_query/describe_table 用例进 `crates/datazen/src/mcp/application/tools.rs`，吃 `ResourceExecutionHost` 端口；query 含权限档位分级、limit 解析与执行设置上限。**切片二/三（三工具）**：list_connections（`RedactedConnectionSource` 端口 + 白名单过滤 + 字段映射）、list_workflows / run_workflow（`WorkflowCatalog` 端口 + 共享 `WorkflowExecutor`/`WorkflowHost`）。错误通道以中立 `ToolError`（InvalidParams/Internal）两分，宿主 `tool_shell_error` 映射 invalid_params+help / internal_error。宿主 `tools.rs` 十函数变薄壳；`#[tool]` 宏、Input JsonSchema、rmcp 错误、`ensure_allowed` 留绑定层。会话三工具（open/use/close）的映射语义随 M2 归位，其宿主函数体是 rmcp 绑定 + Runtime 驱动，留绑定层 | golden 契约 `mcp_external_contract.json` 不变（`#[tool]` 属性与输出文本逐字保留，错误通道两分与宿主原行为一致）；宿主不再含无状态工具业务；`--features mcp` 编译由 platform-crates 腿验证 |
+| **M2（已落地，2026-10-31）** | 有状态会话映射语义归位：`McpSessionRegistry` + `SessionBinding` + TTL 归一化 + 归属校验 + 过期/清理登记（含内嵌语义测试）整体自宿主迁 `crates/datazen/src/mcp/application/session.rs`（依赖仅共享词汇 + uuid + tokio Notify）；宿主 `mcp/session.rs` 变垫片（open/use/close 工具、cleanup worker 与传输生命周期驱动的 import 零改动）。**范围裁决**：cleanup 的退避计算（100ms–30s）与 open 的未交付守卫（`UndeliveredSession`）依赖 rmcp 错误/宿主类型/tokio 驱动，属于传输驱动层，随宿主保留——语义测试（TTL/归属/不重建/幂等关闭）已随 registry 迁入 modules | 桌面行为不变（`session_cleanup` 既有测试全绿；语义测试随文件迁 modules）；`mcp` feature 增 uuid/tokio 两个既有 optional 依赖 |
 
 顺序理由：M4 消除双路径并给 M1 铺路；M3 独立且小；M1 是主体；M2 独立于 M1 可后置。
 
 ### 8.4 文档修正（随本节一并完成）
 
-- `mcp.md` §1.1：删去不成立的「共享的工具/资源/提示词逻辑位于 `modules/src/mcp/`」，改记真实分层并指向本节；`packages/kernel/src/sql_guard/` 路径修正为 `modules/src/execution/domain/sql_guard/`。
+- `mcp.md` §1.1：删去不成立的「共享的工具/资源/提示词逻辑位于 `crates/datazen/src/mcp/`」，改记真实分层并指向本节；`packages/kernel/src/sql_guard/` 路径修正为 `crates/datazen/src/execution/domain/sql_guard/`。
 - `ai.md` §1.11：`query_db` 不存在于工具面（实际为 5 个只读工具），已修正；MCP 工具面缺口标注 M3。
 

@@ -22,7 +22,7 @@ const DEV_OVERRIDE_PATH = resolve(ROOT, '.drivers-dev.json');
  * Driver ACL ids that can actually appear in the generated Tauri capabilities.
  *
  * `resolve-drivers.mjs`'s `syncDriverCapabilities` merges `<tauriPlugin.id>:default`
- * into `apps/desktop/src-tauri/capabilities/default.json` for every active driver whose registry
+ * into `crates/datazen-desktop/capabilities/default.json` for every active driver whose registry
  * entry declares a `tauriPlugin` block with **non-empty** `commands`; a driver without
  * commands ships no ACL permission manifest, so referencing `<id>:default` would fail
  * the build. The detection list is therefore derived from the same source instead of
@@ -64,16 +64,16 @@ export function driverAclIds(registryPath = REGISTRY_PATH) {
 }
 
 export const FULLY_GENERATED_MANAGED = [
-  'apps/desktop/src-tauri/src/driver_init.rs',
+  'crates/datazen-desktop/src/driver_init.rs',
   'packages/frontend/src/extensions/generated.ts',
   'packages/frontend/src/extensions/generated-pro.ts',
 ];
 
 export function isFullyGeneratedManagedFile(relPath) {
   return (
-    relPath.endsWith('driver_init.rs')
-    || relPath.endsWith('generated.ts')
-    || relPath.endsWith('generated-pro.ts')
+    relPath.endsWith('driver_init.rs') ||
+    relPath.endsWith('generated.ts') ||
+    relPath.endsWith('generated-pro.ts')
   );
 }
 
@@ -292,9 +292,7 @@ function escapeRegex(s) {
 export function emptyMarkerBlock(content, name) {
   const startTag = `# <<${name}>>`;
   const endTag = `# <</${name}>>`;
-  const re = new RegExp(
-    escapeRegex(startTag) + '[\\s\\S]*?' + escapeRegex(endTag),
-  );
+  const re = new RegExp(escapeRegex(startTag) + '[\\s\\S]*?' + escapeRegex(endTag));
   if (!re.test(content)) return content;
   return content.replace(re, `${startTag}\n${endTag}`);
 }
@@ -307,9 +305,7 @@ export function emptyMarkerBlock(content, name) {
 export function emptyBeginEndSection(content, tag) {
   const begin = `# --- BEGIN ${tag} (managed by resolve-drivers.mjs, do not edit) ---`;
   const end = `# --- END ${tag} ---`;
-  const re = new RegExp(
-    escapeRegex(begin) + '[\\s\\S]*?' + escapeRegex(end),
-  );
+  const re = new RegExp(escapeRegex(begin) + '[\\s\\S]*?' + escapeRegex(end));
   if (!re.test(content)) return content;
   return content.replace(re, `${begin}\n${end}`);
 }
@@ -319,11 +315,7 @@ export function emptyBeginEndSection(content, tag) {
  */
 export function deinjectCargoContent(content) {
   let out = content;
-  for (const name of [
-    'driver-dependencies',
-    'driver-features',
-    'driver-patches',
-  ]) {
+  for (const name of ['driver-dependencies', 'driver-features', 'driver-patches']) {
     out = emptyMarkerBlock(out, name);
   }
   for (const tag of ['PLUGIN DEPS', 'PLUGIN FEATURES', 'PLUGIN PATCHES']) {

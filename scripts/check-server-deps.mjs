@@ -69,7 +69,9 @@ function violationsOf(names) {
   for (const name of names) {
     for (const rule of FORBIDDEN) {
       const hit =
-        rule.kind === 'prefix' ? name === rule.name || name.startsWith(`${rule.name}-`) : name === rule.name;
+        rule.kind === 'prefix'
+          ? name === rule.name || name.startsWith(`${rule.name}-`)
+          : name === rule.name;
       if (hit) hits.push({ name, rule });
     }
   }
@@ -120,7 +122,9 @@ function main(argv) {
   const violations = violationsOf(names);
   if (violations.length > 0) {
     for (const { name, rule } of violations)
-      fail(`forbidden crate in the datazen-server dependency closure: ${name} (rule: ${rule.kind} ${rule.name})`);
+      fail(
+        `forbidden crate in the datazen-server dependency closure: ${name} (rule: ${rule.kind} ${rule.name})`,
+      );
     fail(
       `${violations.length} forbidden crate(s). The server host must depend on the shared ` +
         `kernel (datazen), never on the desktop host (datazen_desktop) or any UI/WebView layer — ` +
@@ -138,7 +142,12 @@ function selfTest() {
   const cases = [
     {
       what: 'clean closure passes (kernel allowed)',
-      text: ['datazen v0.1.0 (path+file:///…/modules)', 'axum v0.8.4', 'tokio v1.47.0', 'serde v1.0.219 (*)'].join('\n'),
+      text: [
+        'datazen v0.1.0 (path+file:///…/modules)',
+        'axum v0.8.4',
+        'tokio v1.47.0',
+        'serde v1.0.219 (*)',
+      ].join('\n'),
       expect: 0,
     },
     {
@@ -163,7 +172,9 @@ function selfTest() {
     const bad = expect === 0 ? violations.length !== 0 : violations.length === 0;
     if (bad) {
       failures += 1;
-      console.error(`${PREFIX} self-test FAIL: ${what} (expected ${expect} violation(s), got ${violations.length})`);
+      console.error(
+        `${PREFIX} self-test FAIL: ${what} (expected ${expect} violation(s), got ${violations.length})`,
+      );
     } else {
       console.log(`${PREFIX} self-test ok: ${what}`);
     }

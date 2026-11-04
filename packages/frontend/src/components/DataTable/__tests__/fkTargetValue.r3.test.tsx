@@ -11,7 +11,7 @@
  * This file checks that the assertion **holds for every driver shape**:
  *
  * - PostgreSQL reports the referenced table with its schema
- *   (`packages/drivers/postgres/src/schema.rs:308`,
+ *   (`crates/drivers/postgres/src/schema.rs:308`,
  *   `qualified_pg_table_identity`), so the marker is
  *   `public._e2e_fk_parent.cust_no`;
  * - MySQL and SQLite report the bare name, so the marker is
@@ -49,8 +49,7 @@ function singleKey(driver: 'postgres' | 'mysql'): ForeignKeyInfo {
   return {
     name: '_e2e_fk_child_customer_id_fkey',
     columns: ['customer_id'],
-    referencedTable:
-      driver === 'postgres' ? 'public._e2e_fk_parent' : '_e2e_fk_parent',
+    referencedTable: driver === 'postgres' ? 'public._e2e_fk_parent' : '_e2e_fk_parent',
     referencedColumns: ['cust_no'],
   };
 }
@@ -59,8 +58,7 @@ function compositeKey(driver: 'postgres' | 'mysql'): ForeignKeyInfo {
   return {
     name: '_e2e_fk_child_comp_fk',
     columns: ['parent_px', 'parent_py'],
-    referencedTable:
-      driver === 'postgres' ? 'public._e2e_fk_comp_parent' : '_e2e_fk_comp_parent',
+    referencedTable: driver === 'postgres' ? 'public._e2e_fk_comp_parent' : '_e2e_fk_comp_parent',
     referencedColumns: ['px', 'py'],
   };
 }
@@ -90,13 +88,9 @@ function markerOf(
 
 describe('audit: the E2E assertion shape holds on every driver', () => {
   it('holds for the single-column key on PostgreSQL', () => {
-    const marked = markerOf(
-      singleKey('postgres'),
-      'customer_id',
-      ['customer_id'],
-      [7],
-      { customer_id: 7 },
-    );
+    const marked = markerOf(singleKey('postgres'), 'customer_id', ['customer_id'], [7], {
+      customer_id: 7,
+    });
     // The exact value PostgreSQL produces.
     expect(marked).toBe('public._e2e_fk_parent.cust_no');
     // …and the assertion the E2E uses.
@@ -104,13 +98,9 @@ describe('audit: the E2E assertion shape holds on every driver', () => {
   });
 
   it('holds for the single-column key on MySQL and SQLite', () => {
-    const marked = markerOf(
-      singleKey('mysql'),
-      'customer_id',
-      ['customer_id'],
-      [7],
-      { customer_id: 7 },
-    );
+    const marked = markerOf(singleKey('mysql'), 'customer_id', ['customer_id'], [7], {
+      customer_id: 7,
+    });
     expect(marked).toBe('_e2e_fk_parent.cust_no');
     expect(marked?.endsWith('_e2e_fk_parent.cust_no')).toBe(true);
   });
@@ -140,20 +130,15 @@ describe('audit: the E2E assertion shape holds on every driver', () => {
     // absence may be asserted: the only thing both drivers agree on is the
     // tail.
     for (const driver of ['postgres', 'mysql'] as const) {
-      const marked = markerOf(
-        singleKey(driver),
-        'customer_id',
-        ['customer_id'],
-        [7],
-        { customer_id: 7 },
-      );
+      const marked = markerOf(singleKey(driver), 'customer_id', ['customer_id'], [7], {
+        customer_id: 7,
+      });
       expect(marked).toContain('_e2e_fk_parent');
       expect(marked).toContain('cust_no');
       // The prefix is not asserted in either direction — the two shapes are
       // both accepted.
       expect(
-        marked === 'public._e2e_fk_parent.cust_no' ||
-          marked === '_e2e_fk_parent.cust_no',
+        marked === 'public._e2e_fk_parent.cust_no' || marked === '_e2e_fk_parent.cust_no',
       ).toBe(true);
     }
   });

@@ -129,7 +129,7 @@ importers:
         specifier: ^5.0.3
         version: 5.0.12(@types/react@18.3.28)(immer@11.1.15)(react@18.3.1)(use-sync-external-store@1.6.0(react@18.3.1))
 
-  apps/desktop:
+  packages/desktop:
     dependencies:
       '@codemirror/autocomplete':
         specifier: 6.20.1
@@ -193,7 +193,7 @@ importers:
         specifier: ^16.3.2
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
 
-  apps/web:
+  packages/web:
     dependencies:
       '@codemirror/autocomplete':
         specifier: 6.20.1

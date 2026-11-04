@@ -102,9 +102,7 @@ describe('checkModuleLayers', () => {
   });
 
   it('guards the shared relation-metadata layer against importing its consumers', () => {
-    const rule = LAYER_RULES.find(
-      (r) => r.from === 'packages/frontend/src/lib/relationMetadata',
-    );
+    const rule = LAYER_RULES.find((r) => r.from === 'packages/frontend/src/lib/relationMetadata');
     expect(rule).toBeDefined();
     expect(rule!.forbidden).toEqual(
       expect.arrayContaining([
@@ -142,8 +140,8 @@ describe('checkModuleLayers · @datazen/ui must stay a host-free leaf', () => {
     expect(rule.forbidden).toEqual(
       expect.arrayContaining([
         'packages/frontend/src',
-        'apps/desktop/src',
-        'packages/drivers',
+        'packages/desktop/src',
+        'crates/drivers',
         'packages/driver-sdk',
         'packages/wapp-sdk',
         'packages/extension-points',
@@ -201,8 +199,8 @@ describe('checkModuleLayers · @datazen/ui must stay a host-free leaf', () => {
     },
     {
       what: 'a relative climb into a driver package',
-      body: "import { redisMeta } from '../../drivers/redis/ui/shared/meta';\nexport default redisMeta;\n",
-      expectedTarget: 'packages/drivers/redis/ui/shared/meta',
+      body: "import { redisMeta } from '../../../crates/drivers/redis/ui/shared/meta';\nexport default redisMeta;\n",
+      expectedTarget: 'crates/drivers/redis/ui/shared/meta',
     },
   ];
 

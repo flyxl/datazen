@@ -267,7 +267,7 @@ const pack = {
   'connection.dashboard.title': '儀表板',
   // KV workspace slot actions handled by the host. Namespace
   // `redis.kvSlot.*` is host-owned copy for the KV panel; the driver keeps its
-  // own `redis.*` pack in packages/drivers/redis/locales.
+  // own `redis.*` pack in crates/drivers/redis/locales.
   'redis.kvSlot.flushTitle': '清空目前的資料庫',
   'redis.kvSlot.flushMessage': '此面板所綁定的資料庫中，每一個鍵都會被刪除，且此操作無法復原。',
   'redis.kvSlot.flushBlocked': '安全模式已封鎖清空資料庫。請於「設定」中關閉安全模式後再繼續。',

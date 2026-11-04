@@ -8,8 +8,8 @@
 
 - `src/commands/database.ts` 的表数据请求与 `src/platform/tauriBackendTransport.ts` 的 transport 映射。
 - `src-tauri/src/commands/data.rs` 的 `get_table_data_at_target` 与 `commands/table_target.rs` 的 `read` / `execute`。
-- `modules/src/services/query_executor/` 的旧查询服务及 `commands/schema.rs` 的旧 `get_table_data`。
-- `modules/src/execution/application/` 的执行、事务与结果实现。
+- `crates/datazen/src/services/query_executor/` 的旧查询服务及 `commands/schema.rs` 的旧 `get_table_data`。
+- `crates/datazen/src/execution/application/` 的执行、事务与结果实现。
 - `src/stores/tableDataStore.ts` 的分页、结果合并和前端状态处理。
 
 旧链路不等于可以直接删除的死代码。实施前搜索全部前端、MCP、Workflow、测试和注册入口，确认是否存在只提供 session 的调用方。
@@ -54,7 +54,7 @@ Controller 将既有 wire 请求映射为 `table_browsing::application` 的读�
     （仍互依赖的合成图必须报警、单向图必须不报警）。
 - **第二条命令族（2026-10-23，仪表盘）**：聚合增加
   `dashboard: Arc<dyn DashboardRepository>` 与 `dashboard_runs: Arc<dyn DashboardRunRepository>`
-  （两个端口都由 `modules/src/dashboard/` 定义，桌面实现都是 `AppDb` ⇒
+  （两个端口都由 `crates/datazen/src/dashboard/` 定义，桌面实现都是 `AppDb` ⇒
   端口定义在领域包、实现在宿主，聚合只拿 trait 对象）。`commands/dashboard.rs` 的 14 处
   `state.store.app_db()` 中 **8 处归位聚合**（仓储 6 + 运行历史 2），残留 6 处**有名字**的
   形态专属用途（组件创建 3、导入导出 2、手工执行 1），由断言
@@ -83,7 +83,7 @@ Controller 将既有 wire 请求映射为 `table_browsing::application` 的读�
    同时钉住设置/分组不得直读 store 与四条设置读写路径必须经过聚合。
 - **第五条命令族（Schema Diff profile 与 owner 配置读取）**：Schema Diff 领域包新增
   `SchemaDiffProfileRepository`，端口与 `SchemaDiffProfile` 词汇同住
-  `modules/src/migration/schema_diff`；`ApplicationServices` 持有该端口，桌面实现仍是同一个加密
+  `crates/datazen/src/migration/schema_diff`；`ApplicationServices` 持有该端口，桌面实现仍是同一个加密
   `DesktopRepository`。`profile_commands.rs` 的 profile 增删查、部署前的持久化只读检查、
   Job capability / target database / target schema 的 owner 配置读取统一经
   `ApplicationServices.connections`，`commands/schema_diff/` 生产半边的 `state.store`

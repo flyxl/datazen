@@ -5,8 +5,8 @@ import { browser } from '@wdio/globals';
 export const config: WebdriverIO.Config = {
   ...base,
   specs: [
-    '../packages/drivers/postgres/e2e/data-transfer-rollback-continue-pg-mysql.ts',
-    '../packages/drivers/mysql/e2e/data-transfer-rollback-continue-mysql-pg.ts',
+    '../crates/drivers/postgres/e2e/data-transfer-rollback-continue-pg-mysql.ts',
+    '../crates/drivers/mysql/e2e/data-transfer-rollback-continue-mysql-pg.ts',
   ],
   maxInstances: 1,
   maxInstancesPerCapability: 1,

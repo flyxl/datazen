@@ -20,7 +20,9 @@ const ROOT = resolve(__dirname, '..');
 
 const featuresPath = resolve(ROOT, '.driver-features.json');
 if (!existsSync(featuresPath)) {
-  console.error('[e2e-tauri-build] missing .driver-features.json — run resolve-drivers / with-driver-inject first');
+  console.error(
+    '[e2e-tauri-build] missing .driver-features.json — run resolve-drivers / with-driver-inject first',
+  );
   process.exit(1);
 }
 
@@ -44,9 +46,7 @@ const args = buildTauriArgs({
 if (edition === 'pro') {
   const missing = checkProStagingReady();
   if (missing.length > 0) {
-    console.error(
-      `[e2e-tauri-build] pro staging incomplete, missing: ${missing.join(', ')}`,
-    );
+    console.error(`[e2e-tauri-build] pro staging incomplete, missing: ${missing.join(', ')}`);
     process.exit(1);
   }
 }

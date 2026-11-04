@@ -324,18 +324,18 @@ export const config: WebdriverIO.Config = {
     // `pnpm e2e:contract:pg` adds --mochaOpts.grep 'Host contract @ postgres')
     contract: ['./specs/host-contract-matrix.ts'],
     // Redis driver's own E2E, not part of default full run (`pnpm e2e:redis`)
-    redis: ['../packages/drivers/redis/e2e/*.ts'],
+    redis: ['../crates/drivers/redis/e2e/*.ts'],
     // Driver-owned MySQL/PostgreSQL schema-tree object journeys. These create
     // isolated fixtures and clean them up in the driver E2E specs.
     'schema-tree-objects': [
-      '../packages/drivers/mysql/e2e/schema-tree-objects.ts',
-      '../packages/drivers/postgres/e2e/schema-tree-objects.ts',
+      '../crates/drivers/mysql/e2e/schema-tree-objects.ts',
+      '../crates/drivers/postgres/e2e/schema-tree-objects.ts',
     ],
     // Driver-owned CM-38/CM-67 journey: per-target pooling, exact physical
     // accounting, and config-revision rotation on a real PostgreSQL server
     // (`pnpm e2e:skip-build -- --suite connection-pool`). Not part of the
     // default full run, which only globs `./specs/**`.
-    'connection-pool': ['../packages/drivers/postgres/e2e/connection-pool-rotation.ts'],
+    'connection-pool': ['../crates/drivers/postgres/e2e/connection-pool-rotation.ts'],
     // Host-owned SQL editor gestures: Mod+D, multi-cursor, rectangular
     // selection (`pnpm e2e:sql-editor-prod`). Both specs are Community
     // behaviour, so this suite runs on any build. The Pro-only counterparts

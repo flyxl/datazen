@@ -85,7 +85,9 @@ export function parseUnitDriverSetArgs(argv = process.argv.slice(2), env = proce
   // An explicitly supplied set (flag or env) is authoritative even when blank,
   // so a typo fails loudly instead of quietly falling back to `basic` and
   // reporting green for the wrong driver set.
-  const requested = argv.find((a) => a.startsWith('--drivers='))?.slice('--drivers='.length) ?? env.DATAZEN_UNIT_DRIVERS;
+  const requested =
+    argv.find((a) => a.startsWith('--drivers='))?.slice('--drivers='.length) ??
+    env.DATAZEN_UNIT_DRIVERS;
   const drivers = requested === undefined ? DEFAULT_DRIVER_SET : requested.trim();
   for (const arg of argv) {
     if (!arg.startsWith('--drivers=')) vitestArgs.push(arg);
@@ -127,7 +129,10 @@ export function planDriverSetCommands(options) {
     // `--codegen-only`: this gate needs the frontend driver set only. Skip the
     // full path so Cargo.toml is never touched and no stash/restore is needed
     // (driver-file-stash.mjs owns Cargo.toml / Cargo.lock, not generated.ts).
-    { cmd: process.execPath, args: [join(root, RESOLVE_DRIVERS), '--codegen-only', `--drivers=${options.drivers}`] },
+    {
+      cmd: process.execPath,
+      args: [join(root, RESOLVE_DRIVERS), '--codegen-only', `--drivers=${options.drivers}`],
+    },
     { cmd: process.execPath, args: [join(root, GENERATE_BUILTIN_LOCALES)] },
     { cmd: process.execPath, args: [join(root, VITEST), 'run', ...vitestArgs] },
   ];

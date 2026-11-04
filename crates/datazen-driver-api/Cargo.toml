@@ -1,0 +1,33 @@
+[package]
+name = "datazen-driver-api"
+version = "0.0.21"
+edition = "2021"
+description = "Public API (traits and types) for DataZen database driver plugins"
+license-file = "LICENSE-MIT"
+repository = "https://github.com/flyxl/datazen"
+homepage = "https://flyxl.github.io/datazen/"
+documentation = "https://docs.rs/datazen-driver-api"
+readme = "README.md"
+keywords = ["datazen", "database", "driver", "plugin"]
+categories = ["database", "api-bindings"]
+
+[dependencies]
+async-trait = "0.1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+inventory = "0.3"
+tracing = "0.1"
+tokio = { version = "1", features = ["sync"] }
+# F7: AST-level dialect-aware SQL target qualification (shared engine used by
+# the SQL driver crates; each driver crate also depends on sqlparser directly
+# to bind its own dialect).
+sqlparser = { version = "0.59", features = ["visitor"] }
+# F3: pure SQL text helpers moved to driver-support; re-exported from lib.rs
+# so downstream paths stay stable. Single consumer — per the P1 policy a
+# single-consumer path dep is not hoisted to the workspace root table.
+datazen-driver-support = { path = "../datazen-driver-support" }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

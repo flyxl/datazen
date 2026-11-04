@@ -80,7 +80,6 @@ export function stagedTreeUsable(builtinEpDir) {
   );
 }
 
-
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ROOT = resolve(__dirname, '..');
 export const PRO_EXT_DIR = resolve(ROOT, 'packages/pro-extensions');
@@ -177,7 +176,7 @@ export function writeProCodegen(dest = GENERATED_PRO_TS, { proPath = DEFAULT_PRO
  * Edition: pro (track B: staged builtin-ep bundle loaded at runtime).
  *
  * The SQL Editor Pro extension ships as a STAGED asset
- * (\`apps/desktop/src-tauri/resources/builtin-ep/sql-editor-pro/\`, packed by pack-ep.mjs:
+ * (\`crates/datazen-desktop/resources/builtin-ep/sql-editor-pro/\`, packed by pack-ep.mjs:
  * \`manifest.json\` + rewritten \`dist/index.esm.js\` + \`signature.sig\`) and is
  * loaded through \`hostExtensionLoader.loadFromUrl\` AFTER signature
  * verification. The rewrite step (pack-ep) redirects every bare import to the
@@ -247,7 +246,7 @@ async function resolveBuiltinEpPackage(): Promise<{
     } catch {
       signatureContent = null;
     }
-    const entryPath = await extDir('apps/desktop/dist', 'index.esm.js');
+    const entryPath = await extDir('packages/desktop/dist', 'index.esm.js');
     const assetUrl = convertFileSrc(entryPath);
     const resp = await fetch(assetUrl);
     if (!resp.ok) {
@@ -308,7 +307,9 @@ export function initProExtensions(): void {
 `;
   mkdirSync(dirname(dest), { recursive: true });
   writeFileSync(dest, content, 'utf-8');
-  console.log('[resolve-pro] generated-pro.ts written for Pro edition (track B builtin-ep loader active)');
+  console.log(
+    '[resolve-pro] generated-pro.ts written for Pro edition (track B builtin-ep loader active)',
+  );
 }
 
 /**
@@ -346,7 +347,10 @@ export function downloadPrebuiltEp({ prebuiltUrl, extension = 'sql-editor-pro', 
   // fewer files than the tree it replaces.
   rmSync(target, { recursive: true, force: true });
   mkdirSync(target, { recursive: true });
-  markStagingIncomplete(target, `prebuilt download from ${prebuiltUrl} started at ${new Date().toISOString()}`);
+  markStagingIncomplete(
+    target,
+    `prebuilt download from ${prebuiltUrl} started at ${new Date().toISOString()}`,
+  );
 
   const tmpDir = resolve(ROOT, '.pro-prebuilt-download');
   mkdirSync(tmpDir, { recursive: true });
@@ -364,23 +368,14 @@ export function downloadPrebuiltEp({ prebuiltUrl, extension = 'sql-editor-pro', 
     }
 
     try {
-      execSync(
-        `curl -fsSL -o "${tarball}" "${prebuiltUrl}"`,
-        { stdio: 'pipe' }
-      );
+      execSync(`curl -fsSL -o "${tarball}" "${prebuiltUrl}"`, { stdio: 'pipe' });
     } catch {
       // curl failed — try wget
-      execSync(
-        `wget -q -O "${tarball}" "${prebuiltUrl}"`,
-        { stdio: 'pipe' }
-      );
+      execSync(`wget -q -O "${tarball}" "${prebuiltUrl}"`, { stdio: 'pipe' });
     }
 
     // Extract to target dir
-    execSync(
-      `tar -xzf "${tarball}" -C "${target}"`,
-      { stdio: 'pipe' }
-    );
+    execSync(`tar -xzf "${tarball}" -C "${target}"`, { stdio: 'pipe' });
 
     // Verify required files
     const required = ['manifest.json', 'dist/index.esm.js'];
@@ -403,7 +398,9 @@ export function downloadPrebuiltEp({ prebuiltUrl, extension = 'sql-editor-pro', 
     throw err;
   } finally {
     // Cleanup temp files
-    try { rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+    try {
+      rmSync(tmpDir, { recursive: true, force: true });
+    } catch {}
   }
 }
 
@@ -558,9 +555,7 @@ export function ensureProCheckout({
 export function resolvePro(opts = {}) {
   const parsed = parseArgs();
   const explicitEdition =
-    opts.edition ??
-    parsed.explicitEdition ??
-    (process.env.DATAZEN_EDITION ? parsed.edition : null);
+    opts.edition ?? parsed.explicitEdition ?? (process.env.DATAZEN_EDITION ? parsed.edition : null);
   const edition = explicitEdition ?? 'community';
   const proPath = opts.proPath ?? parsed.proPath;
   const restore = opts.restore ?? parsed.restore;
@@ -609,7 +604,9 @@ export function resolvePro(opts = {}) {
         writeProCodegen(codegenPath, { proPath: targetPath || proPath || DEFAULT_PRO_DEST });
         return { edition: 'pro', active: true, path: targetPath, prebuilt: true };
       } catch (err) {
-        console.warn(`[resolve-pro] prebuilt download failed, falling back to git clone: ${err.message}`);
+        console.warn(
+          `[resolve-pro] prebuilt download failed, falling back to git clone: ${err.message}`,
+        );
       }
     }
 

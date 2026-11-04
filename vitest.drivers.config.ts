@@ -11,12 +11,11 @@ export default defineConfig({
   // same resolution works for manifest-carrying consumers.
   test: {
     environment: 'jsdom',
-    setupFiles: ['./packages/frontend/src/test/setup.ts', './packages/frontend/src/test/driverUiSetup.ts'],
-    include: ['packages/drivers/**/*.test.{ts,tsx}', 'packages/drivers/**/__tests__/**/*.{ts,tsx}'],
-    exclude: [
-      '**/node_modules/**',
-      'packages/drivers/kiwi/**',
-      'packages/drivers/superset/**',
+    setupFiles: [
+      './packages/frontend/src/test/setup.ts',
+      './packages/frontend/src/test/driverUiSetup.ts',
     ],
+    include: ['crates/drivers/**/*.test.{ts,tsx}', 'crates/drivers/**/__tests__/**/*.{ts,tsx}'],
+    exclude: ['**/node_modules/**', 'crates/drivers/kiwi/**', 'crates/drivers/superset/**'],
   },
 });

@@ -284,7 +284,7 @@ const pack = {
   'connection.dashboard.title': 'Painel',
   // Ações do slot de workspace KV tratadas pelo host. O namespace
   // `redis.kvSlot.*` é texto do host para o painel KV; o driver mantém seu
-  // próprio pack `redis.*` em packages/drivers/redis/locales.
+  // próprio pack `redis.*` em crates/drivers/redis/locales.
   'redis.kvSlot.flushTitle': 'Limpar o banco de dados atual',
   'redis.kvSlot.flushMessage':
     'Todas as chaves do banco de dados ao qual este painel está vinculado serão excluídas. Isso não pode ser desfeito.',

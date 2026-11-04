@@ -249,7 +249,7 @@ describe('[tester] inline tunnel validation equivalence matrix', () => {
     //
     // That gap used to be PR CI's own: PR builds `--drivers=basic`, where the sqlserver
     // row above is skipped and this file never checks the registration in the pipeline
-    // that gates merges. `packages/drivers/sqlserver/ui/__tests__/connectionFormRegistration.test.ts`
+    // that gates merges. `crates/drivers/sqlserver/ui/__tests__/connectionFormRegistration.test.ts`
     // closes it — it asks the generator what it would emit instead of reading the current
     // `generated.ts`, so it holds in every set, `--drivers=basic` included. Verified by
     // mutation there: deleting `validator: { export: 'sqlServerValidate' }` from

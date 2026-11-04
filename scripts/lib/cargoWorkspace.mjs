@@ -21,7 +21,7 @@ import { join, relative, resolve, sep } from 'path';
  * `cargo metadata` (no `--no-deps`) returns `resolve`: the **feature-resolved**
  * graph. `packages[].dependencies` is the *declared* one, which lists optional
  * dependencies whether or not anything enables them. Measured on this repo at
- * 6175f1c1f: `packages/drivers/redis/Cargo.toml:27` declares
+ * 6175f1c1f: `crates/drivers/redis/Cargo.toml:27` declares
  * `tauri = { version = "2", optional = true }` behind a `tauri-plugin` feature
  * that no workspace member enables, so the declared form would report a Tauri
  * edge into the driver layer for a crate that is never linked. Only the
@@ -64,18 +64,18 @@ const METADATA_MAX_BUFFER = 128 * 1024 * 1024;
  * A path ending in `/*` matches any directory strictly beneath it.
  */
 export const LAYERS = Object.freeze([
-  { id: 'host', path: 'apps/desktop/src-tauri', kind: 'rust' },
-  { id: 'modules', path: 'modules', kind: 'rust' },
-  { id: 'infra', path: 'packages/infra', kind: 'rust' },
-  { id: 'server', path: 'server', kind: 'rust' },
-  // `packages/driver-support`（F3 下沉的零依赖文本工具）与 driver-api 同层：
+  { id: 'host', path: 'crates/datazen-desktop', kind: 'rust' },
+  { id: 'modules', path: 'crates/datazen', kind: 'rust' },
+  { id: 'infra', path: 'crates/datazen-infra', kind: 'rust' },
+  { id: 'server', path: 'crates/datazen-server', kind: 'rust' },
+  // `crates/datazen-driver-support`（F3 下沉的零依赖文本工具）与 driver-api 同层：
   // 同一「驱动契约」地层的两个 crate。归入既有层而不是新开一层，是让
   // F-01 的 allowedLayers ['driver','driver-api'] 当天就对它生效——驱动
   // 插件作者可以单独取用文本工具（F3 实施记录的既定意图），而新开一层
   // 会把这条边变成违规，直到有人显式放宽。
-  { id: 'driver-api', path: 'packages/driver-api', kind: 'rust' },
-  { id: 'driver-api', path: 'packages/driver-support', kind: 'rust' },
-  { id: 'driver', path: 'packages/drivers/*', kind: 'rust' },
+  { id: 'driver-api', path: 'crates/datazen-driver-api', kind: 'rust' },
+  { id: 'driver-api', path: 'crates/datazen-driver-support', kind: 'rust' },
+  { id: 'driver', path: 'crates/drivers/*', kind: 'rust' },
   { id: 'backend-client', path: 'packages/backend-client', kind: 'ts' },
 ]);
 
@@ -104,8 +104,8 @@ export function classifyMemberDir(relDir) {
   for (const layer of LAYERS) {
     if (layer.path.endsWith('/*')) {
       const prefix = layer.path.slice(0, -2);
-      // Segment-boundary match: `packages/drivers/foo` is a driver,
-      // `packages/drivers-archive/foo` is not.
+      // Segment-boundary match: `crates/drivers/foo` is a driver,
+      // `crates/drivers-archive/foo` is not.
       if (relDir.startsWith(`${prefix}/`)) return { ...layer };
     } else if (relDir === layer.path) {
       return { ...layer };
@@ -319,7 +319,7 @@ export function dependencyTableOf(key) {
  *
  *   * the resolve graph is **feature-resolved**, so a dependency behind a
  *     feature nobody enables is absent from it entirely. Measured at 2530161ac:
- *     `packages/drivers/redis/Cargo.toml:27` declares
+ *     `crates/drivers/redis/Cargo.toml:27` declares
  *     `tauri = { version = "2", optional = true }`, yet `tauri` does not appear
  *     in redis's `resolve.deps[]` at all, while the sibling build-dependency
  *     `tauri-plugin` on line 31 does. A closure walk cannot see line 27.

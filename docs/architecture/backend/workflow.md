@@ -6,10 +6,10 @@
 
 ## 模块结构
 
-Workflow 的执行语义与宿主绑定分开：共享执行器位于 `modules/src/workflow/`，宿主目录只保留 YAML 仓储、桌面历史、scheduler runtime entry 和 Runtime 接线。
+Workflow 的执行语义与宿主绑定分开：共享执行器位于 `crates/datazen/src/workflow/`，宿主目录只保留 YAML 仓储、桌面历史、scheduler runtime entry 和 Runtime 接线。
 
 ```text
-modules/src/workflow/
+crates/datazen/src/workflow/
 ├── mod.rs               # 共享模块出口
 ├── model.rs             # WorkflowDefinition / WorkflowStep 等数据模型
 ├── executor.rs          # WorkflowExecutor：步骤编排、错误策略、超时
@@ -38,7 +38,7 @@ src-tauri/src/workflow/
 
 宿主不再保留任何 workflow 的 re-export 门面文件：共享类型的调用点直接引用 `datazen::workflow::…`。
 
-宿主侧的 Command 桥只做「同一条链的桌面绑定」：显式 `database`/`schema` 校验、connection 继承解析、命令派发这三条规则都在 `modules/src/workflow/application/command_runtime.rs`，宿主那三个函数只把 `AppState` 传进去。
+宿主侧的 Command 桥只做「同一条链的桌面绑定」：显式 `database`/`schema` 校验、connection 继承解析、命令派发这三条规则都在 `crates/datazen/src/workflow/application/command_runtime.rs`，宿主那三个函数只把 `AppState` 传进去。
 
 ## 执行模型
 
@@ -228,8 +228,8 @@ Workflow 曾支持一种 `migration` step：在 workflow 里以 step 的形式�
 **三件套本身不受影响**：Schema Diff / Data Sync / Data Transfer 作为独立功能（命令、
 存储、端口、UI）全部保留，只是不再能以 workflow step 的形式调用。
 
-已删除的实现：`modules/src/workflow/migration.rs`、
-`modules/src/workflow/migration_outcome.rs`、
+已删除的实现：`crates/datazen/src/workflow/migration.rs`、
+`crates/datazen/src/workflow/migration_outcome.rs`、
 `src-tauri/src/workflow/migration.rs`，以及 `WorkflowStep::Migration` 变体、
 `WorkflowMigrationOperation` / `UnattendedDestructivePolicy` 枚举、
 `WorkflowHost::execute_profile_step` 端口，与前端对应的 step 类型、表单与文案。
@@ -261,7 +261,7 @@ Command 的输入使用 JSON，Driver 通过 manifest / definition 声明 schema
 - IPC：`src-tauri/src/commands/workflow.rs` 的 `workflow_*` / `workflow_history_*`；以及 Driver Command IPC
 - GUI：`WorkflowPanel` / `WorkflowPage`
 - MCP：`list_workflows` / `run_workflow`、`datazen://workflows`（工具清单在 `mcp/server.rs`，执行在 `mcp/tools.rs`）
-- Driver API：`packages/driver-api/src/command.rs`、`traits.rs`
+- Driver API：`crates/datazen-driver-api/src/command.rs`、`traits.rs`
 
 **用户手册（YAML 语法与用法）：** [Workflow 使用手册](../../features/workflow-guide.zh-CN.md)
 

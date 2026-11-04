@@ -16,7 +16,7 @@
  *   web semantics (§7.1), not a probe;
  * - the export flow binds the Blob half of the F4 dual-flow demonstration.
  *
- * `assembleWebPlatformStub()` is the future `apps/web` assembly root's
+ * `assembleWebPlatformStub()` is the future `packages/web` assembly root's
  * skeleton: when the web form lands, the throws become a real HTTP transport
  * and the inert ports stay exactly as they are.
  */
