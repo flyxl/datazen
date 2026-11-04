@@ -76,7 +76,14 @@ import { dirname, resolve } from 'node:path';
 const MIN_BLOCK_LINES = 5;
 const HARNESS = 'scripts/mutation-check-pane-focus.mjs';
 /** @type {readonly string[]} */
-const FS_CALLS = ['unlinkSync', 'writeFileSync', 'readFileSync', 'chmodSync', 'renameSync', 'rmSync'];
+const FS_CALLS = [
+  'unlinkSync',
+  'writeFileSync',
+  'readFileSync',
+  'chmodSync',
+  'renameSync',
+  'rmSync',
+];
 
 /**
  * Blank out comments and string literals, so a call named inside prose or a
@@ -250,7 +257,9 @@ function scanBlock(text, open, close) {
     // Both boundaries matter: the right one keeps `throwx` out, the left one keeps
     // `rethrow(` out — that is an identifier, and it is not a throw statement.
     if (text.startsWith('throw', i) && !isWordChar(text[i + 5]) && !isWordChar(text[i - 1])) {
-      findings.push(`line ${lineOf(i)}: throw in the block — a re-throw escapes the try it sits in`);
+      findings.push(
+        `line ${lineOf(i)}: throw in the block — a re-throw escapes the try it sits in`,
+      );
     }
   }
   if (linesChecked < MIN_BLOCK_LINES) {
@@ -324,7 +333,13 @@ function checkSource(src) {
     linesChecked += one.linesChecked;
     for (const f of one.findings) findings.push(`finally block at line ${lineOf(open)}: ${f}`);
   }
-  return { ok: findings.length === 0, blockFound: true, blocksChecked: opens.length, linesChecked, findings };
+  return {
+    ok: findings.length === 0,
+    blockFound: true,
+    blocksChecked: opens.length,
+    linesChecked,
+    findings,
+  };
 }
 
 /**
@@ -370,10 +385,12 @@ function fixtures() {
     {
       name: 'one bare unlinkSync — the bug this guard exists for (must FAIL)',
       src:
-        head + tail +
+        head +
+        tail +
         '  try { writeFileSync(STORE, a); } catch (e) { note(e); }\n' +
         '  // padding so this fixture fails for the bare call and nothing else\n' +
-        '  // padding\n  unlinkSync(STORE);\n' + end,
+        '  // padding\n  unlinkSync(STORE);\n' +
+        end,
       expect: false,
     },
     {
@@ -392,10 +409,12 @@ function fixtures() {
       // without the brace-stack pass every later call looks guarded.
       name: 'single-line try/catch leaking depth, then a bare chmodSync (must FAIL)',
       src:
-        head + tail +
+        head +
+        tail +
         '  try { readFileSync(STORE); } catch (e) { note(e); }\n' +
         '  // distinct from the unlinkSync fixture: different call, no earlier one to lean on\n' +
-        '  // padding\n  // padding\n  // padding\n  chmodSync(STORE, 0o644);\n' + end,
+        '  // padding\n  // padding\n  // padding\n  chmodSync(STORE, 0o644);\n' +
+        end,
       expect: false,
     },
     {
@@ -404,21 +423,23 @@ function fixtures() {
         head +
         tail +
         '  try { unlinkSync(STORE); } finally { note(1); }\n' +
-        '  // padding\n  // padding\n  // padding\n' + end,
+        '  // padding\n  // padding\n  // padding\n' +
+        end,
       expect: false,
     },
     {
       name: 'guarded, but the catch re-throws (must FAIL — depth alone is not enough)',
       src:
-        head + tail +
+        head +
+        tail +
         '  // padding so this fixture fails for the re-throw and nothing else\n' +
-        '  // padding\n  try { unlinkSync(STORE); } catch (e) { throw e; }\n' + end,
+        '  // padding\n  try { unlinkSync(STORE); } catch (e) { throw e; }\n' +
+        end,
       expect: false,
     },
     {
       name: 'a longer compliant finally ABOVE a bare unlinkSync (must FAIL — the decoy)',
-      src:
-        decoy + head + tail + '  unlinkSync(STORE);\n' + end,
+      src: decoy + head + tail + '  unlinkSync(STORE);\n' + end,
       expect: false,
     },
     {
@@ -427,8 +448,11 @@ function fixtures() {
       // failing on every file instead of by looking at the right one.
       name: 'the same compliant helper above a fully guarded block (must PASS)',
       src:
-        decoy + head + tail +
-        '  // padding\n  // padding\n  try { unlinkSync(STORE); } catch (e) { note(e); }\n' + end,
+        decoy +
+        head +
+        tail +
+        '  // padding\n  // padding\n  try { unlinkSync(STORE); } catch (e) { note(e); }\n' +
+        end,
       expect: true,
     },
     {
@@ -437,9 +461,11 @@ function fixtures() {
       // invisible — the checker reads this file, it does not call it.
       name: 'a helper named rethrow( is not a throw statement (must PASS — known limit)',
       src:
-        head + tail +
+        head +
+        tail +
         '  // padding so this fixture stands or falls on the identifier alone\n' +
-        '  // padding\n  try { unlinkSync(STORE); } catch (e) { rethrow(e); }\n' + end,
+        '  // padding\n  try { unlinkSync(STORE); } catch (e) { rethrow(e); }\n' +
+        end,
       expect: true,
     },
     {
@@ -486,9 +512,15 @@ function main(args) {
     const real = checkSource(readFileSync(resolve(HARNESS), 'utf8'));
     const realOk = real.ok;
     if (!realOk) bad++;
-    console.log(`  ${realOk ? 'ok  ' : 'FAIL'}  expected PASS, got ${real.ok ? 'PASS' : 'FAIL'}  — the real ${HARNESS} (${real.blocksChecked} finally block(s))`);
+    console.log(
+      `  ${realOk ? 'ok  ' : 'FAIL'}  expected PASS, got ${real.ok ? 'PASS' : 'FAIL'}  — the real ${HARNESS} (${real.blocksChecked} finally block(s))`,
+    );
     for (const line of real.findings) console.log(`          ${line}`);
-    console.log(bad === 0 ? '\nselftest: the check can report failure. good.' : `\nselftest: ${bad} case(s) wrong.`);
+    console.log(
+      bad === 0
+        ? '\nselftest: the check can report failure. good.'
+        : `\nselftest: ${bad} case(s) wrong.`,
+    );
     return bad === 0 ? 0 : 1;
   }
 

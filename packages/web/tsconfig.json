@@ -1,0 +1,34 @@
+{
+  "$comment": [
+    "packages/web standalone program (WR-E1). The root tsconfig.json does not",
+    "include packages/web (its include list is not this file's to extend), so this",
+    "program is self-contained: same compilerOptions as the root program",
+    "(inherited via extends), which is the exact option set the desktop form",
+    "is compiled under — the compile-time same-shape guarantee. The whole",
+    "@datazen/frontend source graph is pulled in through the package exports",
+    "(source-package mode: consumers import TypeScript directly), so this",
+    "program typechecks the web assembly against every port the desktop",
+    "assembly binds.",
+    "",
+    "types adds 'vite/client' on top of the root's list: the frontend's own",
+    "vite-env.d.ts ambient augmentation is NOT part of this program (it is",
+    "picked up by the root program's include globs, never by imports), so",
+    "import.meta.env — used by packages/frontend's env.ts and bootstrap —",
+    "needs the Vite contract here.",
+    "",
+    "TypeScript 7 does not auto-discover node_modules/@types; the 'node' /",
+    "'react' / 'react-dom' entries reproduce the root program's set and",
+    "resolve from the workspace root's node_modules/@types (packages/web declares",
+    "no @types of its own, mirroring packages/desktop). See the root tsconfig.json",
+    "for the full maintenance rule.",
+    "",
+    "The exclude keeps the guards' throwaway probe files out of this program",
+    "(same pattern as the root tsconfig.json and packages/backend-client)."
+  ],
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "react", "react-dom", "vite/client"]
+  },
+  "include": ["src", "vite.config.ts"],
+  "exclude": ["**/__boundaryProbe__*", "**/__uiBoundaryProbe__*"]
+}

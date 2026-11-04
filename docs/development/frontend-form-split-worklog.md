@@ -21,9 +21,9 @@
   为共享行为字段，便携快照**应当**包含它；测试还停在「monitor 是
   native 字段」的旧世界观（is_none → is_some 反转）。
 - **doc_reference_tests 两红**：行号断言里 OnboardingState 已随 F4a
-  迁至 `modules/src/settings/domain.rs:37`（原指 host settings.rs:15）；
+  迁至 `crates/datazen/src/settings/domain.rs:37`（原指 host settings.rs:15）；
   workflow-resource-model.md 三处相对链接因 F6 搬迁断链
-  （src-tauri/ → apps/desktop/src-tauri/，src/ → packages/frontend/src/），
+  （src-tauri/ → crates/datazen-desktop/，src/ → packages/frontend/src/），
   全部重定向。本地以脚本全量复扫行号表 15 条 + 文档链接 15 个，
   ALL PASS 才推送。
 
@@ -81,7 +81,7 @@
 - 横向排查：adapter 无 `.native` 残留；`get_settings_impl` 其它调用方
   只读共享字段；cfg 门控 glob 导出仅 dialog 一处。
 - TS 面：pathIpcWiring 9/9（handler 列表未动）；修复全部落在
-  `apps/desktop/src-tauri/src`，typecheck 域外。
+  `crates/datazen-desktop/src`，typecheck 域外。
 - Rust 编译真值仍只能由 CI 裁决（本地无 cargo），本批随推送验证。
 
 ### 教训（防复发）
@@ -95,16 +95,16 @@
 ## 2026-10-29（会话八·续）— F6-c3 补丁：src-tauri 搬迁余波修复（CI 全红 → 绿）
 
 > F6-c3 推送后 CI 的 frontend / rust 两个 job 全红。根因单一且集中：
-> **F6-c1 把 `src-tauri/` 从仓库根搬进 `apps/desktop/` 时，只搬了目录、
+> **F6-c1 把 `src-tauri/` 从仓库根搬进 `packages/desktop/` 时，只搬了目录、
 > 没搬「以 src-tauri 为基准的相对路径宇宙」**。cargo 无法解析 workspace
-> （`apps/desktop/packages/infra` 不存在），`cargo metadata` exit 101 连带
+> （`packages/desktop/crates/datazen-infra` 不存在），`cargo metadata` exit 101 连带
 > 打红 frontend job 的 2 个门禁测试与 rust job 的全部 cargo 步骤。
 
 ### 症状与根因
 
 - rust job：`failed to load manifest for workspace member
-  apps/desktop/src-tauri … failed to read apps/desktop/packages/infra/Cargo.toml`
-  ——`../packages/…` 从新位置解析落到不存在的 `apps/desktop/packages/`。
+  crates/datazen-desktop … failed to read packages/desktop/crates/datazen-infra/Cargo.toml`
+  ——`../packages/…` 从新位置解析落到不存在的 `packages/desktop/packages/`。
 - frontend job：`check-driver-type-isolation` / `schema-diff-driver-boundary`
   两个测试内嵌 `cargo metadata`，被同一个 workspace 解析失败连带打红
   （本地因无 cargo 一直显示 ENOENT，CI 有 cargo 才暴露——已知 2 失败
@@ -112,7 +112,7 @@
 
 ### 修复面（13 文件）
 
-1. **`apps/desktop/src-tauri/Cargo.toml`**：4 处 path 依赖
+1. **`crates/datazen-desktop/Cargo.toml`**：4 处 path 依赖
    `../packages/…` → `../../../packages/…`（infra + 三个 driver dev-dep）。
 2. **`scripts/resolve-drivers.mjs` `crateDepPath()`**：注入路径基准同步
    上溯三级；`<<driver-dependencies>>` 注入产物随 registry 全量实测。
@@ -121,7 +121,7 @@
    `key_backend_env_guard_tests` / `app_state_shape_tests` /
    `tunnel_probe_fixture`；三份扫描表的根相对字符串
    （`SCANNED_ROOTS` / `SELF` / `ALLOWED_HELPERS` / `LINE_REFERENCES`）
-   全部加 `apps/desktop/` 前缀——不加不是报错而是**静默扫空**（read_dir
+   全部加 `packages/desktop/` 前缀——不加不是报错而是**静默扫空**（read_dir
    失败被 `continue` 吞掉），闸门假绿比红更危险。
 4. **编译期 include_str 出仓**：`platform/ipc.rs`、`platform/handles.rs`
    的 `frontend_bridge.rs` 从 `../../../` → `../../../../../`
@@ -133,7 +133,7 @@
    `tauri-dev.mjs` / `ci-tauri-build.mjs` 均 `cwd: ROOT`）——恢复
    `pnpm build` / `node scripts/upx-compress.mjs` 根语义，dev 命令补
    vite root 参数。`frontendDist: "../dist"` 恰好新旧都对（vite root
-   同步迁到 apps/desktop，产物落 `apps/desktop/dist`）。
+   同步迁到 packages/desktop，产物落 `packages/desktop/dist`）。
 
 ### 验证
 
@@ -153,7 +153,7 @@
   根相对字符串表五类，缺一不可）；只搬目录等于埋雷。
 - **本地 ENOENT 的失败要当「未验证」而非「已豁免」**：cargo 类门禁
   在无工具链的本地永远显示 ENOENT，真值只在 CI。
-- rg 输出带文件路径前缀，`| rg -v 'apps/desktop'` 会把命中行全部过滤
+- rg 输出带文件路径前缀，`| rg -v 'packages/desktop'` 会把命中行全部过滤
   掉造成「无残留」假象——排查时用 Grep 工具或去掉前缀过滤。
 
 ## 2026-10-30（会话八）— F6-c3：R5 闸门上线 + redis 夹具搬家 + parity 归位消费者（F6 收官）
@@ -176,7 +176,7 @@
 
 ### redis 集成夹具搬家（注销 2 条 R1 豁免）
 
-- `packages/drivers/redis/ui/__tests__/redisKeyWebContextMenu.test.tsx`
+- `crates/drivers/redis/ui/__tests__/redisKeyWebContextMenu.test.tsx`
   → `packages/frontend/__tests__/integration/`（宿主↔驱动集成夹具
   归宿主）；vitest include 增该目录。
 - ALLOWLIST 注销其携带的 2 条 R1 豁免，**兑现 coordinator 注记
@@ -196,7 +196,7 @@
 
 ### 闸门测试对齐（53/53 全绿）
 
-- R1 族合成夹具改爬 `apps/desktop/src`（R1 双目录语义不变；apps 不在
+- R1 族合成夹具改爬 `packages/desktop/src`（R1 双目录语义不变；apps 不在
   R5 范围 → 每条规则保有自己的夹具面，互不借位）。
 - 新增 R5 专属 describe 块 7 例：裸 import/深子路径/vi.mock 形态、
   相对爬升、frontend 自身豁免、apps 合法消费、姐妹包说明符、
@@ -231,7 +231,7 @@
 > 计划 §5.6 项 2/3/4/6 落地。**四张 alias 表全部退役**（tsconfig paths /
 > vite / vitest 主配置 / vitest.drivers / vitest.e2e-contract——比计划多
 > 两张，drivers 与 e2e-contract 配置也有自己的表），解析全部改走
-> workspace 链接 + package exports。生产构建 `vite build apps/desktop`
+> workspace 链接 + package exports。生产构建 `vite build packages/desktop`
 > 4.9M 产物成功，typecheck 四阶段绿，测试面全绿。
 
 ### 新增 manifest
@@ -246,7 +246,7 @@
   react-dom/zustand/@codemirror 八件（实版本由 app 提供，跟随 ui/
   extension-points 惯例）；devDeps：testing-library + theme-one-dark
   （仅测试消费）。
-- **`apps/desktop/package.json`**：`@datazen/frontend: workspace:*` +
+- **`packages/desktop/package.json`**：`@datazen/frontend: workspace:*` +
   backend-client + **@tauri-apps 全家 5 件（api + 4 plugin）从根
   dependencies 挪入——运行时 @tauri-apps 声明自此只存在于 app 包（D2
   包级强化）** + react 实版本 + 全部 peers + testing-library devDeps。
@@ -294,7 +294,7 @@
 ### 连带修复
 
 - `packages/frontend/src/styles/globals.css`：`@config`/`@source` 六处
-  爬升未随 c1 迁移（vite build 首跑暴露）→ 重指 apps/desktop 配置与
+  爬升未随 c1 迁移（vite build 首跑暴露）→ 重指 packages/desktop 配置与
   重组 @source 根。
 - vitest 主配置 alias 单行化（select-codegen-sensitive-tests 的
   parseVitestTestConfig 只认单行 resolve(__dirname, '…') 形态）。
@@ -314,15 +314,15 @@
 
 ### 修复分五类（44 文件）
 
-- **真实路径读取**：pack-ep-host-globals（src/main.tsx → apps/desktop）、
+- **真实路径读取**：pack-ep-host-globals（src/main.tsx → packages/desktop）、
   release-workflow / check-release-variants / tauri-window-config
-  （src-tauri/* → apps/desktop/src-tauri/*）、ci-tauri-build +
+  （src-tauri/* → crates/datazen-desktop/*）、ci-tauri-build +
   pack-ep.staging-invalidation（staging join）、driver-init-rustfmt
   （ARTIFACT_REL）、error-banner-call-site-parity（10 个 file 字面量）、
   run-platform-crate-tests（真实宿主 manifest 两处读）、resolve-drivers
   （icon specifier 2 级爬 → 4 级爬）。
 - **scratch fixture 布局镜像**：check-version-consistency（fixture 写
-  apps/desktop/src-tauri）、i18n-sync-apply / i18n-key-collision-check
+  crates/datazen-desktop）、i18n-sync-apply / i18n-key-collision-check
   （locales 迁 packages/frontend/src/locales，含真实树断言）、
   select-codegen-sensitive-tests（fixture 整树迁移 + CODEGEN_TARGETS 对齐，
   坑：6 空格 fixture 模式是 8 空格断言的子串，替换顺序必须断言先行）、
@@ -334,8 +334,8 @@
   check-platform-crate-boundaries.test.ts（CORE dir + F-01 advisory 正则）。
 - **闸门自身覆盖洞（真 bug）**：`scripts/lib/cargoWorkspace.mjs` LAYERS
   host 路径未迁（host crate 会 classify 失配）→ 改
-  `apps/desktop/src-tauri`；check-module-layers UI 规则 forbidden
-  `'src'` → `'packages/frontend/src'` + `'apps/desktop/src'`（UI 包
+  `crates/datazen-desktop`；check-module-layers UI 规则 forbidden
+  `'src'` → `'packages/frontend/src'` + `'packages/desktop/src'`（UI 包
   import 宿主会漏检）；select-codegen-sensitive-tests walk 根
   `walk('src')` → `walk('packages') + walk('apps') + walk('scripts')`
   （apps include 模式 fail-closed 报错即为此洞）。
@@ -346,7 +346,7 @@
 ### 归位迁移（测试随宿主走）
 
 - `mainE2eHandles.test.ts`：断言**应用入口**（main.tsx 已归 app）→
-  `apps/desktop/src/__tests__/`，readApp/readFrontend 双根。
+  `packages/desktop/src/__tests__/`，readApp/readFrontend 双根。
 - `tester_tunnelFieldContracts`：cwd 相对 `src/` → `packages/frontend/src/`。
 - `sqlserver connectionFormRegistration`：GENERATED_DIR →
   `packages/frontend/src/extensions`；redis `kvSlotRegistration`：
@@ -371,7 +371,7 @@
 
 ---
 
-## 2026-10-30（会话七）— F6-c1：目录搬家（src/ → packages/frontend/src + apps/desktop），路径/配置/闸门/gitignore 全量重指向【checkpoint 提交】
+## 2026-10-30（会话七）— F6-c1：目录搬家（src/ → packages/frontend/src + packages/desktop），路径/配置/闸门/gitignore 全量重指向【checkpoint 提交】
 
 > F6 第一批解耦：纯机械目录迁移。共 2108 处 git status 变更（2015 纯 R、
 > 40 RM、48 M）。本条目为**保底 checkpoint**（用户指令：先提交防丢），
@@ -383,7 +383,7 @@
 
 - `src/` → `packages/frontend/src/`（共享源码包，源码包模式，c2 起
   由 package.json exports 接管解析；c1 阶段由三处 alias 表重指向）。
-- 桌面专属物 → `apps/desktop/`：`index.html`、`postcss.config.js`、
+- 桌面专属物 → `packages/desktop/`：`index.html`、`postcss.config.js`、
   `src-tauri/` 整树（Cargo.toml/build.rs/capabilities/icons/src/…）、
   `vite.config.ts`、`tailwind.config.ts`、`window.html`、`src/main.tsx`、
   `src/platform/`（desktop 实现 + web stub + `__tests__/` 13 桌面测试）、
@@ -393,17 +393,17 @@
 
 ### 配置重指向
 
-- `tsconfig.json`：include 改 `packages/frontend/src` + `apps/desktop/src`；
+- `tsconfig.json`：include 改 `packages/frontend/src` + `packages/desktop/src`；
   paths 增 `@datazen/frontend/src/*` 与 `@datazen/frontend`。
-- `apps/desktop/vite.config.ts`：全部 alias 加 `../../`，新增 frontend
+- `packages/desktop/vite.config.ts`：全部 alias 加 `../../`，新增 frontend
   两条深路径 alias。
-- `apps/desktop/tailwind.config.ts`：content 增
+- `packages/desktop/tailwind.config.ts`：content 增
   `../../packages/frontend/src/**/*`。
 - `vitest.config.ts`：alias/setupFiles/include/coverage 四处重指向；
   `vitest.drivers.config.ts` setupFiles 两条。
 - 根 `package.json`：build/build:bundle/build:with-drivers 的
-  `vite build apps/desktop`。
-- `Cargo.toml` members 增 `apps/desktop/src-tauri`；
+  `vite build packages/desktop`。
+- `Cargo.toml` members 增 `crates/datazen-desktop`；
   `tauri.conf.json` beforeBuildCommand `pnpm --dir ../.. run build`、
   beforeBundleCommand `node ../../scripts/upx-compress.mjs`。
 - **`.gitignore` 10 处旧路径模式迁移**（generated.ts/generated-pro.ts/
@@ -419,7 +419,7 @@
 
 ### 闸门适配（`scripts/check-driver-import-boundaries.mjs`）
 
-- HOST_SRC_DIR=`packages/frontend/src`、APP_SRC_DIR=`apps/desktop/src`；
+- HOST_SRC_DIR=`packages/frontend/src`、APP_SRC_DIR=`packages/desktop/src`；
   walk 根 `['packages', APP_SRC_DIR]`；R3 双前缀；R1 target 双目录判定；
   R2 范围排除 `packages/frontend/`；ALLOWLIST 6 条 specifier 更新
   （redis 2 条 5 级爬升、locales 2 条 + driverUiSetup 2 条 4 级）。
@@ -435,7 +435,7 @@
   5 级 + src/lib 前缀）、themePackApply（fixtures 5 级）、wappSdkInterop
   （HOST_ROOT=包根 3 级 + wapp-sdk css 5 级）、wappThemes（WAPPS_ROOT
   5 级）、windowCapabilities（src-tauri 4 级含 `.json.host` 变体）、
-  tailwind-colour-classes（`../../apps/desktop/tailwind.config.ts` 2 级）、
+  tailwind-colour-classes（`../../packages/desktop/tailwind.config.ts` 2 级）、
   redisKeyWebContextMenu（5 级）、WindowControls.test（useI18n mock 改
   包名深路径）。
 
@@ -476,7 +476,7 @@
 ### 终态审计（生产树 @tauri-apps）
 
 - 真实 import 全部收拢桌面隔离区：`src/platform/desktop/*`（8 文件）+
-  `src/shell/desktop/TitleBar.tsx`（1）——共 9 处，全部 F6 随 apps/desktop 走。
+  `src/shell/desktop/TitleBar.tsx`（1）——共 9 处，全部 F6 随 packages/desktop 走。
 - 其余匹配全是**注释**（wappStore/useClipboardCopyFeedback/contracts/
   BrandSidebar/SettingsContent/tauriWindow 基建）与 gitignored 产物内的
   本批注释。
@@ -509,7 +509,7 @@
   这批测试绑**真实** `createDesktopBackendTransport()` 并断言 IPC 层契约
   （`resolve_foreign_key_targets` 等命令名/参数封窗、宿主错误文本经
   ApiError cause 链回环、Channel 订阅机器）——本质是「组件 × 桌面轨道」
-  的集成审计，归桌面区测试，F6 目录迁移时随 apps/desktop 走：
+  的集成审计，归桌面区测试，F6 目录迁移时随 packages/desktop 走：
   fkErrorRoundTrip / fkJumpSemantics.audit / gridErrorRoundTrip.audit /
   namedViews.contract / fkArrowRequest.audit / fkNavigation.journey /
   fkViewportRestore.audit / desktopSubscription（纯 transport subscribe
@@ -527,7 +527,7 @@
   OnboardingWizard 的**注释**、pathIpcWiring 的**字符串断言**（断言源码
   不含 `@tauri-apps/api/core`，非 import）。
 - 桌面区测试（platform/__tests__ 14 件 + shell/desktop 1 件）保留 tauri
-  mock——它们随 F6 目录迁移进 apps/desktop。
+  mock——它们随 F6 目录迁移进 packages/desktop。
 
 ### 验证
 
@@ -655,7 +655,7 @@
 ## 2026-10-29（会话五）— F6-a：workspace 协议落地（packages 字段 + install 实测）
 
 > 计划 §5.6 项1 / §7.1 风险项。此提交只落地协议本身：`pnpm-workspace.yaml`
-> 增补 `packages: [apps/*, packages/*, packages/drivers/*]`，五个 TS 包成为
+> 增补 `packages: [apps/*, packages/*, crates/drivers/*]`，五个 TS 包成为
 > 真 importer；跨包解析**仍骑 alias 表**（F6-b 才退役）——零行为变化，
 > 闸门/typecheck/测试全绿即证。
 
@@ -864,7 +864,7 @@
 - **F6 本体**（workspace 协议 + 目录迁移 + R5 闸门）依计划为单个大 PR，
   须在上述归零后执行；worktree checkout `pnpm install` 实测为 §7.1 强制风险项。
 - 续作路径：①烧 core-invoke 台账（按域分批）→ ②F6 restructure
-  （`pnpm-workspace.yaml` packages 字段 + apps/desktop + packages/frontend + alias 退役）。
+  （`pnpm-workspace.yaml` packages 字段 + packages/desktop + packages/frontend + alias 退役）。
 
 ---
 

@@ -33,7 +33,9 @@ if (!locale || !jsonPath) {
   process.exit(1);
 }
 
-const enMap = parseLocaleTs(readFileSync(resolve(ROOT, 'packages/frontend/src/locales/en.ts'), 'utf-8'));
+const enMap = parseLocaleTs(
+  readFileSync(resolve(ROOT, 'packages/frontend/src/locales/en.ts'), 'utf-8'),
+);
 const overrides = JSON.parse(readFileSync(jsonPath, 'utf-8'));
 
 const missing = [];
@@ -45,10 +47,14 @@ for (const key of enMap.keys()) {
   if (!(key in overrides)) missing.push(key);
 }
 if (extra.length > 0) {
-  console.warn(`[build-locale] ${locale}: extra keys (${extra.length}): ${extra.slice(0, 5).join(', ')}...`);
+  console.warn(
+    `[build-locale] ${locale}: extra keys (${extra.length}): ${extra.slice(0, 5).join(', ')}...`,
+  );
 }
 if (missing.length > 0) {
-  console.error(`[build-locale] ${locale}: missing keys (${missing.length}):\n  - ${missing.join('\n  - ')}`);
+  console.error(
+    `[build-locale] ${locale}: missing keys (${missing.length}):\n  - ${missing.join('\n  - ')}`,
+  );
   process.exit(1);
 }
 

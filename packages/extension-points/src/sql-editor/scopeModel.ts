@@ -365,5 +365,5 @@ function extractReferences(
   return references;
 }
 
-// Re-export token helpers used by downstream modules/tests.
+// Re-export token helpers used by downstream crates/datazen/tests.
 export { meaningfulTokens } from './scope/utils';

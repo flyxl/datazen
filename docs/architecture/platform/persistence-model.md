@@ -682,7 +682,7 @@ expiredHeld 的 `amount - returned_amount` 继续计入 reserved；TTL 到期、
 
 ### 5.2 迁移文件
 
-- 位置：`server/migrations/`，随二进制内嵌（路径与加载方式见[团队服务 §13](team-server-and-auth.md#13-schema-migration-运行方式)）。
+- 位置：`crates/datazen-server/migrations/`，随二进制内嵌（路径与加载方式见[团队服务 §13](team-server-and-auth.md#13-schema-migration-运行方式)）。
 - 命名：`NNNN_snake_case_name.sql`，四位零填充序号 + 单下划线 + 语义名。序号即执行顺序，`VARCHAR` 字典序与数值序一致（例如 `0001_create_connections.sql`、`0002_add_job_claim_columns.sql`）。
 - 不可变性：**已合入的迁移文件永不修改**。写错了（例如先删字段后发现有问题）就发新版本向前修，不回头改旧文件——否则 `checksum` 校验会拒绝启动。
 - `checksum` = 规范化后文件内容的 SHA-256（统一 LF、去掉 BOM、去掉行尾空白）。`name` 列必须与文件名去掉扩展名后一致，由加载器断言。

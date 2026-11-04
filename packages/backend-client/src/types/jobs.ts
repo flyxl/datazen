@@ -214,7 +214,7 @@ export interface ArtifactMetadata {
 
 /**
  * The §6.5 uploads endpoint's v1 envelope — the single-request
- * begin+append+finalize the server defines (`server/src/http/router.rs`
+ * begin+append+finalize the server defines (`crates/datazen-server/src/http/router.rs`
  * `handler_artifact_upload`). One HTTP round trip; chunked writers aggregate
  * client-side and land here once (see {@link ArtifactUploadBeginRequest}).
  */

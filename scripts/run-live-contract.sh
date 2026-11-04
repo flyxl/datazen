@@ -98,7 +98,7 @@ load_dotenv() {
 }
 
 FOUND_ANY_FILE=0
-for f in "$ROOT/.env" "$ROOT/.env.test" "$ROOT/packages/drivers/.env"; do
+for f in "$ROOT/.env" "$ROOT/.env.test" "$ROOT/crates/drivers/.env"; do
   if [ -f "$f" ]; then
     FOUND_ANY_FILE=1
     load_dotenv "$f"
@@ -106,7 +106,7 @@ for f in "$ROOT/.env" "$ROOT/.env.test" "$ROOT/packages/drivers/.env"; do
   fi
 done
 [ "$FOUND_ANY_FILE" = 1 ] || {
-  echo "no env file found; looked for .env, .env.test, packages/drivers/.env" >&2
+  echo "no env file found; looked for .env, .env.test, crates/drivers/.env" >&2
   exit 1
 }
 

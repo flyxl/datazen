@@ -178,10 +178,7 @@ describe('selectCodegenSensitiveTests on a fixture tree', () => {
   it('throws when a setup file reaches the codegen target', () => {
     const root = makeFixtureTree('setup-sensitive', {
       extra: [
-        [
-          'packages/frontend/src/test/setup.ts',
-          "import { G } from '../extensions/generated';\n",
-        ],
+        ['packages/frontend/src/test/setup.ts', "import { G } from '../extensions/generated';\n"],
       ],
     });
     try {
@@ -206,9 +203,7 @@ describe('selectCodegenSensitiveTests on a fixture tree', () => {
       ].join('\n'),
     });
     try {
-      expect(() => selectCodegenSensitiveTests({ root, log: () => {} })).toThrow(
-        /matched no file/,
-      );
+      expect(() => selectCodegenSensitiveTests({ root, log: () => {} })).toThrow(/matched no file/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

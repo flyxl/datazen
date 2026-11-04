@@ -23,7 +23,7 @@ const BUILD_NEEDS = ['prepare-pro-extension', 'union-typecheck', 'pre-release-gu
 const buildNeeds = (YAML.parse(releaseWorkflow) as { jobs: Record<string, { needs?: unknown }> })
   .jobs.build.needs;
 const windowsConfig = JSON.parse(
-  readFileSync(resolve(root, 'apps/desktop/src-tauri/tauri.windows.conf.json'), 'utf8'),
+  readFileSync(resolve(root, 'crates/datazen-desktop/tauri.windows.conf.json'), 'utf8'),
 );
 const windowsReleaseDocs = [
   '.github/workflows/release.yml',

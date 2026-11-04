@@ -4,7 +4,7 @@
  *
  * ## Why this exists
  *
- * `apps/desktop/src-tauri/tauri.conf.json` compiles **one** global updater endpoint into
+ * `crates/datazen-desktop/tauri.conf.json` compiles **one** global updater endpoint into
  * every build, and the Tauri updater picks a manifest entry by *platform* only
  * (`darwin-aarch64`, `windows-x86_64`, …). Neither the manifest nor the running
  * app carried any notion of which SKU an artifact was built for, so a user who

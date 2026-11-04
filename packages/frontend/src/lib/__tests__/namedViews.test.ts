@@ -4,7 +4,7 @@
  * Two things are pinned here besides the behaviour:
  *
  * - the **key sets** of the record, with the same literals the Rust suite
- *   uses (`modules/src/named_views/tests.rs`). A field
+ *   uses (`crates/datazen/src/named_views/tests.rs`). A field
  *   that appears on one side only is a contract break that neither side can
  *   see alone.
  * - the **parity** of the two `FilterCondition` definitions — the port's

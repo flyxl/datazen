@@ -91,10 +91,10 @@ jobs:
       - name: TypeScript typecheck
         run: pnpm typecheck
 
-      # WR-E1/WR-C4：web 宿主的独立类型面（apps/web 自带 tsconfig——
+      # WR-E1/WR-C4：web 宿主的独立类型面（packages/web 自带 tsconfig——
       # 编译期同形的 web 半边，typecheck.mjs 的三个 program 不覆盖它）
       # 与 vite 生产构建。构建走与 desktop 相同的共享前端树
-      # （@datazen/frontend），是 `apps/web` 存在后的第一位 CI 消费者。
+      # （@datazen/frontend），是 `packages/web` 存在后的第一位 CI 消费者。
       - name: Web host typecheck
         run: pnpm --filter datazen-web typecheck
 
@@ -144,7 +144,7 @@ jobs:
         run: pnpm test:unit
 
       # Path 驱动 UI 单测（AGENTS.md「驱动测试落点」表）。宿主单测不碰
-      # packages/drivers，所以 `pnpm test:unit` 从不收集这些用例；不单独跑一步
+      # crates/drivers，所以 `pnpm test:unit` 从不收集这些用例；不单独跑一步
       # 就没有任何合并门禁执行它们。放在 codegen（`pretest:unit` 产生的
       # generated.ts）之后、site 检查之前，避开 rust job 里 resolve-drivers 那段。
       - name: Driver UI unit tests
@@ -316,7 +316,7 @@ jobs:
       # 已过时：tests/ 现有 connector_wire_tester / driver_env_injection_discipline
       # / resource_contract / row_write_sql 四个文件，此前只在
       # publish-driver-api.yml（tag / 手动触发）才执行。其中
-      # driver_env_injection_discipline 是守卫型测试（扫描 packages/drivers/
+      # driver_env_injection_discipline 是守卫型测试（扫描 crates/drivers/
       # 全树、断言任何驱动源码不得读取 .env 文件），性质上属于 PR 门禁：
       # 此前这类违规最早要到发布流水线才会被看到。补齐后 PR 阶段即可拦截。
       #
@@ -378,7 +378,7 @@ jobs:
           FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
           cargo test -p datazen_desktop --lib --features "$FEATURES,datazen/test-harness"
 
-      # ── 宿主集成测试（apps/desktop/src-tauri/tests/）──
+      # ── 宿主集成测试（crates/datazen-desktop/tests/）──
       #
       # 上面的 `--lib` 步按 cargo 目标选择语义只编译宿主 lib 的单元测试，
       # src-tauri/tests/ 下的集成 target 一个都不编译——该目录因此在 CI 里
@@ -398,10 +398,10 @@ jobs:
       #     tc02/04/05/06/07/13），全部 `#[ignore]`——本步只编译防烂
       #     （libtest 记成显式 ignored），真跑在 workflow-db-tests.yml
       #     的定时任务（PG/MySQL service 容器）或本地 --include-ignored。
-      #     纯逻辑用例已归位 modules/src/workflow/domain/model_tests.rs
+      #     纯逻辑用例已归位 crates/datazen/src/workflow/domain/model_tests.rs
       #     （随 platform-crates 腿编译执行），历史持久化用例删除
       #     （宿主 workflow/history.rs 内联测试已逐例覆盖）。
-      #   - ai_e2e 已移回 modules/tests/（被测本体是 datazen 的 AI 能力，
+      #   - ai_e2e 已移回 crates/datazen/tests/（被测本体是 datazen 的 AI 能力，
       #     文件零宿主依赖）：由 platform-crates 无选择器腿自动编译执行，
       #     不再占用宿主步名额。无 .env.test 时按设计自跳过——其
       #     「passed」行不是 AI 冒烟跑过的证据，读日志时以本注释为准。
@@ -444,7 +444,7 @@ jobs:
       #    （modules/Cargo.toml），workflow → execution, schema, table-editing；
       #    加上 named_views 自身。即 F1 = {settings, ai, connection,
       #    named_views, mcp, workflow, execution, schema, table-editing}。
-      # 2. modules/src 全仓无任何 cfg(all(feature = …)) 组合门控（rg 验证），
+      # 2. crates/datazen/src 全仓无任何 cfg(all(feature = …)) 组合门控（rg 验证），
       #    feature 组合是纯并集：F1 编译出的每个测试函数都已在 `ai` 腿或
       #    `named_views` 腿中编译并执行（~1,317 个测试函数每轮重复跑一遍）。
       # 3. 组合层面的依赖统一冲突由 runner 的无选择器腿覆盖（2026-10-27 起
@@ -490,7 +490,7 @@ jobs:
       # 与上面那条边界门禁的分工：边界门禁的结论行已被 R 阶段全量回归记录在案，
       # 因此本轮策略是「只约束新增 crate」（决策 c 方案 3），不追溯既有代码，也不
       # 改动那条门禁。所以本门禁的范围由脚本里的显式 TARGET_CRATES 列表决定
-      # （当前仅 packages/infra），而不是由 workspace 路径推导。
+      # （当前仅 crates/datazen-infra），而不是由 workspace 路径推导。
       #
       # 只禁裸 unwrap()：expect("…") 一律放行（AGENTS.md 禁的是「裸」）。#[cfg(test)]
       # item 与 #[test] / #[tokio::test] 函数按语法整段剔除，不按文件名。目标 crate

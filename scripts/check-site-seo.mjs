@@ -1,18 +1,18 @@
 #!/usr/bin/env node
-import fs from "node:fs";
-import path from "node:path";
+import fs from 'node:fs';
+import path from 'node:path';
 
-const ROOT = path.resolve("site");
-const ORIGIN = "https://flyxl.github.io/datazen";
+const ROOT = path.resolve('site');
+const ORIGIN = 'https://flyxl.github.io/datazen';
 const PAGES = [
-  "apps/desktop/index.html",
-  "features.html",
-  "ai.html",
-  "charts.html",
-  "workflow.html",
-  "databases.html",
-  "download.html",
-  "manual.html",
+  'packages/desktop/index.html',
+  'features.html',
+  'ai.html',
+  'charts.html',
+  'workflow.html',
+  'databases.html',
+  'download.html',
+  'manual.html',
 ];
 const errors = [];
 
@@ -26,7 +26,7 @@ function read(rel) {
     fail(`missing file: ${rel}`);
     return null;
   }
-  return fs.readFileSync(p, "utf8");
+  return fs.readFileSync(p, 'utf8');
 }
 
 function mustInclude(html, rel, needle) {
@@ -40,7 +40,7 @@ function mustInclude(html, rel, needle) {
  * before matching.
  */
 function normalizeLinks(html) {
-  return html.replace(/<link\b[\s\S]*?>/g, (tag) => tag.replace(/\s+/g, " ").trim());
+  return html.replace(/<link\b[\s\S]*?>/g, (tag) => tag.replace(/\s+/g, ' ').trim());
 }
 
 function mustNotInclude(html, rel, needle) {
@@ -49,14 +49,12 @@ function mustNotInclude(html, rel, needle) {
 
 for (const file of PAGES) {
   const enRel = file;
-  const zhRel = path.join("zh", file);
+  const zhRel = path.join('zh', file);
   const en = normalizeLinks(read(enRel));
   const zh = normalizeLinks(read(zhRel));
 
-  const enCanon =
-    file === "apps/desktop/index.html" ? `${ORIGIN}/` : `${ORIGIN}/${file}`;
-  const zhCanon =
-    file === "apps/desktop/index.html" ? `${ORIGIN}/zh/` : `${ORIGIN}/zh/${file}`;
+  const enCanon = file === 'packages/desktop/index.html' ? `${ORIGIN}/` : `${ORIGIN}/${file}`;
+  const zhCanon = file === 'packages/desktop/index.html' ? `${ORIGIN}/zh/` : `${ORIGIN}/zh/${file}`;
 
   if (en) {
     mustInclude(en, enRel, 'lang="en"');
@@ -72,9 +70,9 @@ for (const file of PAGES) {
     mustInclude(en, enRel, 'name="twitter:card" content="summary_large_image"');
     mustInclude(en, enRel, 'href="assets/css/site.css"');
     mustInclude(en, enRel, 'src="assets/js/site.js"');
-    mustNotInclude(en, enRel, "60 秒");
-    mustNotInclude(en, enRel, "demo.mp4");
-    mustNotInclude(en, enRel, "video-box");
+    mustNotInclude(en, enRel, '60 秒');
+    mustNotInclude(en, enRel, 'demo.mp4');
+    mustNotInclude(en, enRel, 'video-box');
   }
 
   if (zh) {
@@ -91,37 +89,35 @@ for (const file of PAGES) {
     mustInclude(zh, zhRel, 'name="twitter:card" content="summary_large_image"');
     mustInclude(zh, zhRel, 'href="../assets/css/site.css"');
     mustInclude(zh, zhRel, 'src="../assets/js/site.js"');
-    mustNotInclude(zh, zhRel, "60 秒");
-    mustNotInclude(zh, zhRel, "demo.mp4");
-    mustNotInclude(zh, zhRel, "video-box");
+    mustNotInclude(zh, zhRel, '60 秒');
+    mustNotInclude(zh, zhRel, 'demo.mp4');
+    mustNotInclude(zh, zhRel, 'video-box');
   }
 }
 
-const enIndex = read("apps/desktop/index.html");
-const zhIndex = read("zh/index.html");
-mustInclude(enIndex, "apps/desktop/index.html", "application/ld+json");
-mustInclude(enIndex, "apps/desktop/index.html", "SoftwareApplication");
-mustInclude(zhIndex, "zh/index.html", "application/ld+json");
-mustInclude(zhIndex, "zh/index.html", "SoftwareApplication");
+const enIndex = read('packages/desktop/index.html');
+const zhIndex = read('zh/index.html');
+mustInclude(enIndex, 'packages/desktop/index.html', 'application/ld+json');
+mustInclude(enIndex, 'packages/desktop/index.html', 'SoftwareApplication');
+mustInclude(zhIndex, 'zh/index.html', 'application/ld+json');
+mustInclude(zhIndex, 'zh/index.html', 'SoftwareApplication');
 
-const robots = read("robots.txt");
-mustInclude(robots, "robots.txt", `Sitemap: ${ORIGIN}/sitemap.xml`);
+const robots = read('robots.txt');
+mustInclude(robots, 'robots.txt', `Sitemap: ${ORIGIN}/sitemap.xml`);
 
-const sitemap = read("sitemap.xml");
+const sitemap = read('sitemap.xml');
 if (sitemap) {
   for (const file of PAGES) {
-    const enUrl =
-      file === "apps/desktop/index.html" ? `${ORIGIN}/` : `${ORIGIN}/${file}`;
-    const zhUrl =
-      file === "apps/desktop/index.html" ? `${ORIGIN}/zh/` : `${ORIGIN}/zh/${file}`;
-    mustInclude(sitemap, "sitemap.xml", enUrl);
-    mustInclude(sitemap, "sitemap.xml", zhUrl);
+    const enUrl = file === 'packages/desktop/index.html' ? `${ORIGIN}/` : `${ORIGIN}/${file}`;
+    const zhUrl = file === 'packages/desktop/index.html' ? `${ORIGIN}/zh/` : `${ORIGIN}/zh/${file}`;
+    mustInclude(sitemap, 'sitemap.xml', enUrl);
+    mustInclude(sitemap, 'sitemap.xml', zhUrl);
   }
 }
 
 if (errors.length) {
-  for (const e of errors) console.error("FAIL:", e);
+  for (const e of errors) console.error('FAIL:', e);
   console.error(`\n${errors.length} check(s) failed`);
   process.exit(1);
 }
-console.log("OK: site SEO/i18n structural checks passed");
+console.log('OK: site SEO/i18n structural checks passed');

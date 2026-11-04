@@ -9,13 +9,16 @@ function globToRegExp(pattern: string): RegExp {
 }
 
 function loadCapabilityWindowPatterns(): string[] {
-  const path = resolve(__dirname, '../../../../apps/desktop/src-tauri/capabilities/default.json');
+  const path = resolve(__dirname, '../../../../crates/datazen-desktop/capabilities/default.json');
   const json = JSON.parse(readFileSync(path, 'utf-8')) as { windows: string[] };
   return json.windows;
 }
 
 function loadHostCapabilityWindowPatterns(): string[] {
-  const path = resolve(__dirname, '../../../../apps/desktop/src-tauri/capabilities/default.json.host');
+  const path = resolve(
+    __dirname,
+    '../../../../crates/datazen-desktop/capabilities/default.json.host',
+  );
   const json = JSON.parse(readFileSync(path, 'utf-8')) as { windows: string[] };
   return json.windows;
 }

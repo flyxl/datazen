@@ -9,7 +9,7 @@
  *   2. each driver pack — registered as a *side effect of the driver UI entry
  *      module* (`ui/shared/meta.ts` for redis, `ui/meta.ts` for mongodb),
  *      which is exactly the module `src/extensions/generated.ts` imports in
- *      the real app. The entry module in turn pulls `packages/drivers/<id>/
+ *      the real app. The entry module in turn pulls `crates/drivers/<id>/
  *      locales/index.ts`.
  *
  * The harness deliberately goes through the meta entry and never imports a
@@ -19,7 +19,7 @@
  * pack here instead would hide a broken/removed side-effect line in meta.
  *
  * Host-only test runs keep using `./setup.ts`; this file exists so the driver
- * suites get real strings without any `src/**` import inside `packages/drivers`.
+ * suites get real strings without any `src/**` import inside `crates/drivers`.
  */
 import { vi } from 'vitest';
 
@@ -63,5 +63,5 @@ vi.mock('@tanstack/react-virtual', () => ({
 }));
 
 import '../locales';
-import '../../../../packages/drivers/redis/ui/shared/meta';
-import '../../../../packages/drivers/mongodb/ui/meta';
+import '../../../../crates/drivers/redis/ui/shared/meta';
+import '../../../../crates/drivers/mongodb/ui/meta';

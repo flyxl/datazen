@@ -74,7 +74,7 @@ export interface HttpWireOptions {
 /** CSRF 令牌的公开半边 cookie（team-server §4.4；server `CSRF_COOKIE` 同名）。 */
 const CSRF_COOKIE_NAME = '__Host-dz_csrf';
 
-/** CSRF 请求头（server `server/src/csrf.rs` 的 `CSRF_HEADER`；双提交 header 半边）。 */
+/** CSRF 请求头（server `crates/datazen-server/src/csrf.rs` 的 `CSRF_HEADER`；双提交 header 半边）。 */
 const CSRF_HEADER_NAME = 'x-dz-csrf-token';
 
 /** §6 域面的同源缺省基路径（web transport 的 `DEFAULT_BASE_URL` 同值）。 */

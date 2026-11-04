@@ -487,9 +487,9 @@ if [ "$_drv_ok" = 1 ]; then
       skipped "git 驱动未注入 capabilities：${_drv_git_missing}" \
         "resolve-drivers 报 not-injected —— --codegen-only 不注入 src-tauri/Cargo.toml，capabilities 只反映已注入的 cargo feature" \
         "cd ${WT} && node scripts/resolve-drivers.mjs --drivers=${DRIVERS}   # 真实构建自行重注入并重算 capabilities" \
-        "只影响 gitignored 的 src-tauri/capabilities/default.json（宿主单测与 tsc 读不到它）；这些 git 驱动已克隆进 packages/drivers/ 且已进 generated.ts。真正 cargo/tauri 构建时 resolve-drivers 会重新生成 capabilities，不会带着这份过期权限跑完整构建。"
+        "只影响 gitignored 的 src-tauri/capabilities/default.json（宿主单测与 tsc 读不到它）；这些 git 驱动已克隆进 crates/drivers/ 且已进 generated.ts。真正 cargo/tauri 构建时 resolve-drivers 会重新生成 capabilities，不会带着这份过期权限跑完整构建。"
     else
-      ok "git 驱动 [${_drv_git}]：已克隆进 packages/drivers/ 并进入 generated.ts，无未注入项"
+      ok "git 驱动 [${_drv_git}]：已克隆进 crates/drivers/ 并进入 generated.ts，无未注入项"
     fi
   fi
 else

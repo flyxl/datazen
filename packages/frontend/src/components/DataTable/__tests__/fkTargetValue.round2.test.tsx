@@ -7,13 +7,13 @@
  * metadata, and **the driver decides its shape**:
  *
  * - PostgreSQL reports `ForeignKeyInfo.referenced_table` as
- *   `"{schema}.{table}"` — `packages/drivers/postgres/src/schema.rs:308`
+ *   `"{schema}.{table}"` — `crates/drivers/postgres/src/schema.rs:308`
  *   (`qualified_pg_table_identity`), fed by the catalog's `ref_ns.nspname`
- *   (`packages/drivers/postgres/src/schema_table.rs:234-237`). A table in the
+ *   (`crates/drivers/postgres/src/schema_table.rs:234-237`). A table in the
  *   `public` schema therefore reports `public.parents`;
  * - MySQL and SQLite report the **bare** table name
- *   (`packages/drivers/mysql/src/mysql/ddl_parser.rs:27`,
- *   `packages/drivers/sqlite/src/sqlite/schema.rs:361`).
+ *   (`crates/drivers/mysql/src/mysql/ddl_parser.rs:27`,
+ *   `crates/drivers/sqlite/src/sqlite/schema.rs:361`).
  *
  * The front end never splits the name (`src/lib/fkNavigation.ts`
  * `targetLabelOf`), so the attribute is:
@@ -62,8 +62,7 @@ function foreignKeyOf(driver: 'postgres' | 'mysql'): ForeignKeyInfo {
   return {
     name: '_e2e_fk_child_customer_id_fkey',
     columns: ['customer_id'],
-    referencedTable:
-      driver === 'postgres' ? 'public._e2e_fk_parent' : '_e2e_fk_parent',
+    referencedTable: driver === 'postgres' ? 'public._e2e_fk_parent' : '_e2e_fk_parent',
     referencedColumns: ['cust_no'],
   };
 }

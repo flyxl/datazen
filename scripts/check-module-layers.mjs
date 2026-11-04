@@ -66,7 +66,12 @@ export const LAYER_RULES = [
   {
     name: 'shared relation metadata must not import its consumers',
     from: 'packages/frontend/src/lib/relationMetadata',
-    forbidden: ['packages/frontend/src/components', 'packages/frontend/src/stores', 'packages/frontend/src/windows', 'packages/frontend/src/hooks'],
+    forbidden: [
+      'packages/frontend/src/components',
+      'packages/frontend/src/stores',
+      'packages/frontend/src/windows',
+      'packages/frontend/src/hooks',
+    ],
   },
   {
     name: 'shared design system (@datazen/ui) must stay a host-free leaf',
@@ -76,8 +81,8 @@ export const LAYER_RULES = [
     // layering every other package is built on.
     forbidden: [
       'packages/frontend/src',
-      'apps/desktop/src',
-      'packages/drivers',
+      'packages/desktop/src',
+      'crates/drivers',
       'packages/driver-sdk',
       'packages/wapp-sdk',
       'packages/extension-points',
@@ -141,7 +146,7 @@ function collectSourceFiles(dir) {
     for (const entry of readdirSync(current, { withFileTypes: true })) {
       // Vendored / generated trees are somebody else's source. Skipping them
       // here matters more than it looks: `packages/ui/` has no `node_modules`
-      // or `apps/desktop/dist` today, so without this a single `npm install` under the
+      // or `packages/desktop/dist` today, so without this a single `npm install` under the
       // design system would start failing the gate on third-party code.
       if (entry.isDirectory() && SKIP_DIR_NAMES.has(entry.name)) continue;
       const full = resolve(current, entry.name);

@@ -43,7 +43,7 @@ modules 测，宿主绑定在宿主测。**command 层不承载业务行为的�
 
 ## 2. 数据总览（问题 3 的测量基线）
 
-`apps/desktop/src-tauri/src/commands/` 共 **150 个文件、51,793 行**：
+`crates/datazen-desktop/src/commands/` 共 **150 个文件、51,793 行**：
 
 | 构成 | 文件数 | 行数 | 占比 |
 |---|---|---|---|
@@ -151,7 +151,7 @@ modules 侧 `migration/` 已有同域测试基建（`filter_tests.rs`、`plan_te
 | sync/job_api.rs / inspect.rs / compare.rs / keyset_source.rs / artifact_view.rs | 1,001 | 瘦身 | 逐个随刀 |
 | sync/host/*（mod/executor/recording/selection/state） | 1,348 | 保留（本切片） | 宿主执行器桥接（HostTargetExecutor 等），WR-F5 服务端需对照实现 |
 | sync/tests.rs | 887 | 随刀下沉 | 直调 `*_impl` |
-| ~~sync/filter_validation_tests.rs~~ | ~~501~~ | **已迁移（本轮）** | → `modules/src/migration/data_sync/filter_validation_tests.rs` |
+| ~~sync/filter_validation_tests.rs~~ | ~~501~~ | **已迁移（本轮）** | → `crates/datazen/src/migration/data_sync/filter_validation_tests.rs` |
 | schema_diff.rs + compare/deploy/plan/profile_commands | 846 | 瘦身 | 命令壳 |
 | schema_diff/job.rs + job/desktop.rs + job/recovery.rs | 1,590 | 瘦身 | job 编排（`reviewed_repository` 已在 modules 有测试） |
 | schema_diff/reviewed_repository.rs | 569 | 下沉核对 | modules 侧已有 `reviewed_repository_tests`，桌面这层应只余桥接 |
@@ -180,7 +180,7 @@ modules 侧 `migration/` 已有同域测试基建（`filter_tests.rs`、`plan_te
 | schema.rs | 127 | 瘦身（2 `_impl`） | 壳 |
 | schema/tests.rs + count_tests.rs | 432 | 随刀下沉 | `read_databases` 等读取语义 |
 | backup.rs | 362 | 保留 | 对话框/路径/事件绑定；网关在 modules |
-| ~~backup_tests.rs（原 322）~~ | 276 | **已拆（本轮）** | 5 个纯逻辑测试 → `modules/src/backup/options_tests.rs`；留 From 守卫/bootstrap 守卫/IPC 参数守卫/往返烟测（C1/C2/C4） |
+| ~~backup_tests.rs（原 322）~~ | 276 | **已拆（本轮）** | 5 个纯逻辑测试 → `crates/datazen/src/backup/options_tests.rs`；留 From 守卫/bootstrap 守卫/IPC 参数守卫/往返烟测（C1/C2/C4） |
 | restore_gateway.rs / restore_job.rs / restore_job/input.rs | 399 | 保留（桥接核对） | modules `backup::restore_*` 已有对应本体 |
 | restore_job/tests.rs | 365 | 保留（C4 适配器烟测） | 宿主边界旅程（生产上传→SQLite 准入→桌面运行时接线）；深度行为在 modules 驱动旅程（模块文档明言「PG/MySQL driver journeys own real SQL evidence」） |
 | restore_job/provider_fixture.rs | 274 | 基建（随刀） | — |
@@ -193,7 +193,7 @@ modules 侧 `migration/` 已有同域测试基建（`filter_tests.rs`、`plan_te
 | app_archive.rs | 131 | 保留 | app 数据目录 ZIP |
 | port_call.rs | 37 | **复核改判保留（B4，C1）** | `PortError` → 宿主 `CommandError` 信封映射即 C1 核心（`NotFound` 必须保留成 `NotFound`）；宿主错误类型在共享层无对应物，映射必须住在宿主；与 WR-C 错误词汇对齐核查完成（detail 脱敏透传、与 `CmdExt::cmd_err` 同形日志） |
 | connection_import/ipc.rs | 509 | 保留（拆分甄别） | 文件对话框 + 密码校验；导入解析已在 modules（各格式有测试） |
-| connection_import/ipc_tests.rs | 783 | **已拆（本轮 B1）** | 加密往返 2 测已迁 `modules/src/connection_import/datazen.rs`（内联）；merge/preview/export 构建逻辑被困宿主 → B2 刀；文件过滤/密码校验留 C3 |
+| connection_import/ipc_tests.rs | 783 | **已拆（本轮 B1）** | 加密往返 2 测已迁 `crates/datazen/src/connection_import/datazen.rs`（内联）；merge/preview/export 构建逻辑被困宿主 → B2 刀；文件过滤/密码校验留 C3 |
 | wapps/mod.rs / driver.rs / sessions.rs / storage.rs / registry.rs | 1,161 | 瘦身（分刀） | 会话/存储编排部分形态中立 |
 | wapps/tests.rs | 472 | 守卫（注册部分）+ 随刀拆分 | — |
 | wapps/session_tests.rs | 151 | 随刀下沉 | 会话语义 |
@@ -211,9 +211,9 @@ modules 侧 `migration/` 已有同域测试基建（`filter_tests.rs`、`plan_te
 - **B1（完成）**：`connection_import/ipc_tests` 加密往返 2 测归位；
   `restore_job/tests` 复核为 C4 烟测保留；`driver_command/tests` 拆分完成
   （2 测迁 `execution/application/command_policy.rs`——命令策略逻辑真身在
-  execution 而非 mcp 垫片；1 测与 `packages/infra` redaction 测试逐字重复
+  execution 而非 mcp 垫片；1 测与 `crates/datazen-infra` redaction 测试逐字重复
   删除；37 留）；`job_api/tests` 全五件甄别完成（`endpoint_identity` 12 测
-  迁 `modules/tests/job_endpoint_identity.rs` 与 cm31_* 内核规则互补；
+  迁 `crates/datazen/tests/job_endpoint_identity.rs` 与 cm31_* 内核规则互补；
   queries/addressability/replay/job_lifecycle 实测面为桌面编排——原 §3.5
   「指向 modules 逻辑」的判断被证伪，改判随刀（B2 data_transfer 刀），
   3 C1 + 1 C2 永留）。

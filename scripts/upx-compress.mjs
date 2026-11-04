@@ -49,7 +49,8 @@ export function shouldCompressPlatform(platform = process.platform, env = proces
   }
   return {
     shouldRun: false,
-    reason: 'Linux skipped by default (conflicts with Tauri patchelf bundler). Set DATAZEN_UPX_FORCE=1 to force.',
+    reason:
+      'Linux skipped by default (conflicts with Tauri patchelf bundler). Set DATAZEN_UPX_FORCE=1 to force.',
   };
 }
 

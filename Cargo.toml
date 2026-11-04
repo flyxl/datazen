@@ -1,27 +1,27 @@
 [workspace]
 resolver = "2"
 members = [
-    "apps/desktop/src-tauri",
-    "packages/driver-api",
-    "packages/driver-support",
-    "packages/infra",
-    "modules",
-    "server",
-    "packages/drivers/*",
+    "crates/datazen-desktop",
+    "crates/datazen-driver-api",
+    "crates/datazen-driver-support",
+    "crates/datazen-infra",
+    "crates/datazen",
+    "crates/datazen-server",
+    "crates/drivers/*",
 ]
 exclude = [
-    "packages/drivers/kiwi",
-    "packages/drivers/superset",
+    "crates/drivers/kiwi",
+    "crates/drivers/superset",
 ]
 
 [workspace.dependencies]
 # Path crates — the only place a member's relative path is spelled out.
-datazen-driver-api = { path = "packages/driver-api" }
-datazen = { path = "modules", default-features = false }
-datazen-infra = { path = "packages/infra" }
-datazen-driver-postgres = { path = "packages/drivers/postgres" }
-datazen-driver-mysql = { path = "packages/drivers/mysql" }
-datazen-driver-sqlite = { path = "packages/drivers/sqlite" }
+datazen-driver-api = { path = "crates/datazen-driver-api" }
+datazen = { path = "crates/datazen", default-features = false }
+datazen-infra = { path = "crates/datazen-infra" }
+datazen-driver-postgres = { path = "crates/drivers/postgres" }
+datazen-driver-mysql = { path = "crates/drivers/mysql" }
+datazen-driver-sqlite = { path = "crates/drivers/sqlite" }
 # Shared external specs — single source of truth for the versions (and, where
 # they must stay in lockstep, the feature sets) that modules, the desktop host
 # and the driver crates consume. Members inherit with `workspace = true`.

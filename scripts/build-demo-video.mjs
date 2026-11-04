@@ -41,7 +41,17 @@ const run = (args, label) => {
 const probeSize = (file) => {
   const out = execFileSync(
     'ffprobe',
-    ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=s=x:p=0', file],
+    [
+      '-v',
+      'error',
+      '-select_streams',
+      'v:0',
+      '-show_entries',
+      'stream=width,height',
+      '-of',
+      'csv=s=x:p=0',
+      file,
+    ],
     { encoding: 'utf8' },
   ).trim();
   const [w, h] = out.split('x').map(Number);
@@ -76,7 +86,9 @@ const wrong = sources.filter((f) => {
 });
 if (wrong.length) {
   console.error(`Not all frames are ${WIDTH}x${HEIGHT}:`);
-  wrong.forEach((f) => console.error(`  ${f} (${probeSize(join(SRC_DIR, f)).w}x${probeSize(join(SRC_DIR, f)).h})`));
+  wrong.forEach((f) =>
+    console.error(`  ${f} (${probeSize(join(SRC_DIR, f)).w}x${probeSize(join(SRC_DIR, f)).h})`),
+  );
   process.exit(1);
 }
 
@@ -97,12 +109,28 @@ try {
     // yields a single frame and the whole chain collapses to 0.1s.
     run(
       [
-        '-y', '-loop', '1', '-framerate', String(FPS), '-t', String(SLIDE_SECONDS),
-        '-i', join(SRC_DIR, name),
-        '-vf', 'setsar=1,format=yuv420p',
-        '-frames:v', String(slideFrames),
-        '-c:v', 'libx264', '-preset', 'veryslow', '-crf', '18',
-        '-r', String(FPS), out,
+        '-y',
+        '-loop',
+        '1',
+        '-framerate',
+        String(FPS),
+        '-t',
+        String(SLIDE_SECONDS),
+        '-i',
+        join(SRC_DIR, name),
+        '-vf',
+        'setsar=1,format=yuv420p',
+        '-frames:v',
+        String(slideFrames),
+        '-c:v',
+        'libx264',
+        '-preset',
+        'veryslow',
+        '-crf',
+        '18',
+        '-r',
+        String(FPS),
+        out,
       ],
       `[${i + 1}/${sources.length}] ${name}`,
     );
@@ -124,28 +152,60 @@ try {
   for (let i = 1; i < segments.length; i++) {
     const label = `xf${i}`;
     const offset = (i * step).toFixed(3);
-    chain.push(`${last}[${i}:v]xfade=transition=fade:duration=${FADE_SECONDS}:offset=${offset}[${label}]`);
+    chain.push(
+      `${last}[${i}:v]xfade=transition=fade:duration=${FADE_SECONDS}:offset=${offset}[${label}]`,
+    );
     last = `[${label}]`;
   }
   const total = segments.length * SLIDE_SECONDS - (segments.length - 1) * FADE_SECONDS;
 
   run(
     [
-      '-y', ...inputs,
-      '-filter_complex', chain.join(';') + `;[${last === '[0:v]' ? '0:v' : 'xf' + (segments.length - 1)}]null[out]`,
-      '-map', '[out]',
-      '-c:v', 'libx264', '-preset', 'slow', '-crf', '20',
-      '-pix_fmt', 'yuv420p', '-r', String(FPS),
+      '-y',
+      ...inputs,
+      '-filter_complex',
+      chain.join(';') + `;[${last === '[0:v]' ? '0:v' : 'xf' + (segments.length - 1)}]null[out]`,
+      '-map',
+      '[out]',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'slow',
+      '-crf',
+      '20',
+      '-pix_fmt',
+      'yuv420p',
+      '-r',
+      String(FPS),
       // `+faststart` moves the index to the front so the hero video starts
       // playing before the whole file lands.
-      '-movflags', '+faststart',
+      '-movflags',
+      '+faststart',
       MP4,
     ],
     `Cross-dissolving ${segments.length} segments (${total.toFixed(1)}s)`,
   );
 
   // ── Stage 3: WebM twin ──────────────────────────────────────────────────
-  run(['-y', '-i', MP4, '-c:v', 'libvpx-vp9', '-crf', '32', '-b:v', '0', '-row-mt', '1', '-pix_fmt', 'yuv420p', WEBM], 'Encoding WebM/VP9');
+  run(
+    [
+      '-y',
+      '-i',
+      MP4,
+      '-c:v',
+      'libvpx-vp9',
+      '-crf',
+      '32',
+      '-b:v',
+      '0',
+      '-row-mt',
+      '1',
+      '-pix_fmt',
+      'yuv420p',
+      WEBM,
+    ],
+    'Encoding WebM/VP9',
+  );
 
   // ── Stage 4: poster from a clean frame, clear of any cross-dissolve ─────
   // 2.5s lands inside slide 1, not inside a transition.

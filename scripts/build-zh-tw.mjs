@@ -55,8 +55,12 @@ const MANUAL = {
 };
 
 const converter = OpenCC.Converter({ from: 'cn', to: 'tw' });
-const zhCN = parseLocaleTs(readFileSync(resolve(ROOT, 'packages/frontend/src/locales/zh-CN.ts'), 'utf-8'));
-const en = parseLocaleTs(readFileSync(resolve(ROOT, 'packages/frontend/src/locales/en.ts'), 'utf-8'));
+const zhCN = parseLocaleTs(
+  readFileSync(resolve(ROOT, 'packages/frontend/src/locales/zh-CN.ts'), 'utf-8'),
+);
+const en = parseLocaleTs(
+  readFileSync(resolve(ROOT, 'packages/frontend/src/locales/en.ts'), 'utf-8'),
+);
 
 const lines = [];
 for (const [key, cnVal] of zhCN) {

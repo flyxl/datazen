@@ -99,10 +99,14 @@ function parseArgs(argv) {
 export function packAtRef(root, ref, locale) {
   let files;
   try {
-    files = execFileSync('git', ['ls-tree', '-r', '--name-only', ref, '--', `packages/frontend/src/locales/${locale}`], {
-      cwd: root,
-      encoding: 'utf-8',
-    })
+    files = execFileSync(
+      'git',
+      ['ls-tree', '-r', '--name-only', ref, '--', `packages/frontend/src/locales/${locale}`],
+      {
+        cwd: root,
+        encoding: 'utf-8',
+      },
+    )
       .split('\n')
       .filter((p) => p.endsWith('.ts'));
   } catch {
@@ -128,12 +132,16 @@ export function verifyLocale(root, locale, baseline) {
   const enDir = resolve(root, 'packages/frontend/src/locales/en');
   const localeDir = resolve(root, 'packages/frontend/src/locales', locale);
   const en = {};
-  const enFiles = readdirSync(enDir).filter((f) => f.endsWith('.ts')).sort();
+  const enFiles = readdirSync(enDir)
+    .filter((f) => f.endsWith('.ts'))
+    .sort();
   for (const f of enFiles) Object.assign(en, parsePack(readFileSync(resolve(enDir, f), 'utf-8')));
 
   const local = {};
   const localFiles = existsSync(localeDir)
-    ? readdirSync(localeDir).filter((f) => f.endsWith('.ts')).sort()
+    ? readdirSync(localeDir)
+        .filter((f) => f.endsWith('.ts'))
+        .sort()
     : [];
   for (const f of localFiles) {
     Object.assign(local, parsePack(readFileSync(resolve(localeDir, f), 'utf-8')));
@@ -178,7 +186,12 @@ export function verifyLocale(root, locale, baseline) {
     });
   }
 
-  const problems = missing.length + extra.length + placeholderMismatches.length + newlyIdentical.length + corrupt.length;
+  const problems =
+    missing.length +
+    extra.length +
+    placeholderMismatches.length +
+    newlyIdentical.length +
+    corrupt.length;
   return {
     problems,
     report: {
@@ -223,7 +236,9 @@ export function runCli({ argv = process.argv.slice(2) } = {}) {
     for (const m of report.placeholderMismatches) {
       out(`     ${m.key}: en=[${m.en}] loc=[${m.loc}]`);
     }
-    out(`   byte-identical to English=${report.identicalCount} (new vs ${args.baseline}: ${report.newlyIdentical.length})`);
+    out(
+      `   byte-identical to English=${report.identicalCount} (new vs ${args.baseline}: ${report.newlyIdentical.length})`,
+    );
     for (const k of report.newlyIdentical) out(`     NEW: ${k}`);
     out(`   entry integrity: ${report.corrupt.length} broken`);
     for (const c of report.corrupt) out(`     ${c.file}:${c.line} ${c.key}`);

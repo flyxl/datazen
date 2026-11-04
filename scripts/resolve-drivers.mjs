@@ -25,7 +25,7 @@ import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
  * do not add more named presets beyond basic|all|stub; use expanders in lists instead.
  *
  * WR-A3 P2 构建期主手术面（W3-c）：15 个 path 驱动已**静态声明**在
- * apps/desktop/src-tauri/Cargo.toml（optional 依赖 + driver-* feature + drivers 聚合），
+ * crates/datazen-desktop/Cargo.toml（optional 依赖 + driver-* feature + drivers 聚合），
  * 本脚本对它们只做 codegen（generated.ts / driver_init.rs / capabilities /
  * .driver-features.json），不再改写任何共享 tracked 文件，也不再 stash。
  * 仅当选择了 **git 驱动**（kiwi/superset：构建期克隆，路径不存在，无法静态化）时，
@@ -56,7 +56,7 @@ import { hasUpdaterChannel, normalizeVariant } from './release-variants.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = STASH_ROOT;
-const DRIVERS_DIR = resolve(ROOT, 'packages/drivers');
+const DRIVERS_DIR = resolve(ROOT, 'crates/drivers');
 
 /** CLI flag / env var naming the release SKU this build belongs to. */
 export const VARIANT_FLAG = '--variant';
@@ -203,7 +203,10 @@ export function resolveDrivers(driversArg, registry) {
     return pathDriverIds(registry);
   }
 
-  const requested = driversArg.split(',').map((x) => x.trim()).filter(Boolean);
+  const requested = driversArg
+    .split(',')
+    .map((x) => x.trim())
+    .filter(Boolean);
   const resolved = [];
   const seen = new Set();
 
@@ -235,9 +238,7 @@ export function resolveDrivers(driversArg, registry) {
 }
 
 function generateCargoFeatures(drivers, registry) {
-  return drivers
-    .map(name => registry[name]?.feature)
-    .filter(Boolean);
+  return drivers.map((name) => registry[name]?.feature).filter(Boolean);
 }
 
 /**
@@ -278,7 +279,7 @@ export function collectDriverKvSlotEntries(config = FRONTEND_DRIVER_CONFIG, ids)
     const cfg = config[id];
     const slots = cfg?.kvSlots;
     if (!slots) continue;
-    const dbTypes = (cfg.dbTypes ?? []).map(dt => dt.id);
+    const dbTypes = (cfg.dbTypes ?? []).map((dt) => dt.id);
     for (const slot of KV_SLOT_NAMES) {
       const slotCfg = slots[slot];
       if (!slotCfg?.component || !slotCfg?.path) continue;
@@ -302,12 +303,12 @@ const DRIVER_ICON_PARENT = {
 
 /**
  * Candidate badge dirs for a driver, in probe order. Convention is
- * `packages/drivers/<id>/ui/icons/<dbType>.svg`, but a meta file may live in a
+ * `crates/drivers/<id>/ui/icons/<dbType>.svg`, but a meta file may live in a
  * nested feature dir (redis: `ui/shared/meta.ts`), so probe both the meta file's
  * own directory and the enclosing `ui/` directory.
  */
 function driverIconDirs(metaPath) {
-  // metaPath like '../../../../packages/drivers/postgres/ui/meta' (from src/extensions)
+  // metaPath like '../../../../crates/drivers/postgres/ui/meta' (from src/extensions)
   const absMetaTs = resolve(ROOT, 'packages/frontend/src/extensions', `${metaPath}.ts`);
   const dirs = [dirname(absMetaTs)];
   const segments = relative(ROOT, absMetaTs).split(/[\\/]/);
@@ -321,8 +322,13 @@ export function resolveDriverIconImport(metaPath, dbTypeId) {
     const abs = join(dir, 'icons', `${dbTypeId}.svg`);
     if (!existsSync(abs)) continue;
     // import path relative to src/extensions/generated.ts
-    const relFromExtensions = relative(resolve(ROOT, 'packages/frontend/src/extensions'), abs).replaceAll('\\', '/');
-    const importPath = relFromExtensions.startsWith('.') ? relFromExtensions : `./${relFromExtensions}`;
+    const relFromExtensions = relative(
+      resolve(ROOT, 'packages/frontend/src/extensions'),
+      abs,
+    ).replaceAll('\\', '/');
+    const importPath = relFromExtensions.startsWith('.')
+      ? relFromExtensions
+      : `./${relFromExtensions}`;
     return { abs, importPath: `${importPath}?url`, fileKey: dbTypeId };
   }
   return null;
@@ -335,7 +341,7 @@ const BASIC_PATH_FRONTEND = {
       { id: 'questdb', metaExport: 'questdbMeta' },
       { id: 'cloudberry', metaExport: 'cloudberryMeta' },
     ],
-    metaPath: '../../../../packages/drivers/postgres/ui/meta',
+    metaPath: '../../../../crates/drivers/postgres/ui/meta',
   },
   mysql: {
     dbTypes: [
@@ -346,18 +352,18 @@ const BASIC_PATH_FRONTEND = {
       { id: 'manticore', metaExport: 'manticoreMeta' },
       { id: 'ob_oracle', metaExport: 'obOracleMeta' },
     ],
-    metaPath: '../../../../packages/drivers/mysql/ui/meta',
+    metaPath: '../../../../crates/drivers/mysql/ui/meta',
   },
   sqlite: {
     dbTypes: [{ id: 'sqlite', metaExport: 'sqliteMeta' }],
-    metaPath: '../../../../packages/drivers/sqlite/ui/meta',
+    metaPath: '../../../../crates/drivers/sqlite/ui/meta',
   },
   redis: {
     dbTypes: [{ id: 'redis', metaExport: 'redisMeta' }],
-    metaPath: '../../../../packages/drivers/redis/ui/shared/meta',
+    metaPath: '../../../../crates/drivers/redis/ui/shared/meta',
     connectionForm: {
       component: 'RedisConnectionWizard',
-      path: '../../../../packages/drivers/redis/ui/connection/ConnectionWizard',
+      path: '../../../../crates/drivers/redis/ui/connection/ConnectionWizard',
       formVariant: 'redis',
       advanced: 'RedisTlsFields',
       validator: { export: 'redisValidate' },
@@ -366,12 +372,12 @@ const BASIC_PATH_FRONTEND = {
       {
         dbType: 'redis',
         export: 'parseRedisConnectionClipboard',
-        path: '../../../../packages/drivers/redis/ui/connection/parseRedisClipboard',
+        path: '../../../../crates/drivers/redis/ui/connection/parseRedisClipboard',
       },
     ],
     connectionView: {
       component: 'RedisConnectionView',
-      path: '../../../../packages/drivers/redis/ui/connection/RedisConnectionView',
+      path: '../../../../crates/drivers/redis/ui/connection/RedisConnectionView',
       viewMode: 'keyvalue',
     },
     // KV workspace slots (host contract F-3). Declared slot by slot, in
@@ -381,36 +387,36 @@ const BASIC_PATH_FRONTEND = {
     kvSlots: {
       statusBar: {
         component: 'RedisKvStatusBar',
-        path: '../../../../packages/drivers/redis/ui/kv-bar',
+        path: '../../../../crates/drivers/redis/ui/kv-bar',
       },
       keyPropsSidebar: {
         component: 'RedisKeyPropsSidebar',
-        path: '../../../../packages/drivers/redis/ui/kv-bar',
+        path: '../../../../crates/drivers/redis/ui/kv-bar',
       },
       connectionHome: {
         component: 'RedisOverviewHome',
-        path: '../../../../packages/drivers/redis/ui/overview/RedisOverviewHome',
+        path: '../../../../crates/drivers/redis/ui/overview/RedisOverviewHome',
       },
     },
     settings: {
       driverId: 'redis',
       label: 'Redis',
       sectionExport: 'RedisSettingsSection',
-      sectionPath: '../../../../packages/drivers/redis/ui/connection/settings',
+      sectionPath: '../../../../crates/drivers/redis/ui/connection/settings',
       schemaExport: 'redisSettingsSchema',
-      schemaPath: '../../../../packages/drivers/redis/ui/connection/settings',
+      schemaPath: '../../../../crates/drivers/redis/ui/connection/settings',
     },
   },
   mongodb: {
     dbTypes: [{ id: 'mongodb', metaExport: 'mongodbMeta' }],
-    metaPath: '../../../../packages/drivers/mongodb/ui/meta',
+    metaPath: '../../../../crates/drivers/mongodb/ui/meta',
   },
   sqlserver: {
     dbTypes: [{ id: 'sqlserver', metaExport: 'sqlserverMeta' }],
-    metaPath: '../../../../packages/drivers/sqlserver/ui/meta',
+    metaPath: '../../../../crates/drivers/sqlserver/ui/meta',
     connectionForm: {
       component: 'SqlServerConnectionFields',
-      path: '../../../../packages/drivers/sqlserver/ui/ConnectionFields',
+      path: '../../../../crates/drivers/sqlserver/ui/ConnectionFields',
       formVariant: 'sqlserver',
       advanced: 'SqlServerConnectionAdvanced',
       validator: { export: 'sqlServerValidate' },
@@ -418,39 +424,39 @@ const BASIC_PATH_FRONTEND = {
   },
   clickhouse: {
     dbTypes: [{ id: 'clickhouse', metaExport: 'clickhouseMeta' }],
-    metaPath: '../../../../packages/drivers/clickhouse/ui/meta',
+    metaPath: '../../../../crates/drivers/clickhouse/ui/meta',
   },
   duckdb: {
     dbTypes: [{ id: 'duckdb', metaExport: 'duckdbMeta' }],
-    metaPath: '../../../../packages/drivers/duckdb/ui/meta',
+    metaPath: '../../../../crates/drivers/duckdb/ui/meta',
   },
   elasticsearch: {
     dbTypes: [{ id: 'elasticsearch', metaExport: 'elasticsearchMeta' }],
-    metaPath: '../../../../packages/drivers/elasticsearch/ui/meta',
+    metaPath: '../../../../crates/drivers/elasticsearch/ui/meta',
   },
   rqlite: {
     dbTypes: [{ id: 'rqlite', metaExport: 'rqliteMeta' }],
-    metaPath: '../../../../packages/drivers/rqlite/ui/meta',
+    metaPath: '../../../../crates/drivers/rqlite/ui/meta',
   },
   turso: {
     dbTypes: [{ id: 'turso', metaExport: 'tursoMeta' }],
-    metaPath: '../../../../packages/drivers/turso/ui/meta',
+    metaPath: '../../../../crates/drivers/turso/ui/meta',
   },
   influxdb: {
     dbTypes: [{ id: 'influxdb', metaExport: 'influxdbMeta' }],
-    metaPath: '../../../../packages/drivers/influxdb/ui/meta',
+    metaPath: '../../../../crates/drivers/influxdb/ui/meta',
   },
   victoriametrics: {
     dbTypes: [{ id: 'victoriametrics', metaExport: 'victoriametricsMeta' }],
-    metaPath: '../../../../packages/drivers/victoriametrics/ui/meta',
+    metaPath: '../../../../crates/drivers/victoriametrics/ui/meta',
   },
   hbase: {
     dbTypes: [{ id: 'hbase', metaExport: 'hbaseMeta' }],
-    metaPath: '../../../../packages/drivers/hbase/ui/meta',
+    metaPath: '../../../../crates/drivers/hbase/ui/meta',
   },
   vector: {
     dbTypes: [{ id: 'vector', metaExport: 'vectorMeta' }],
-    metaPath: '../../../../packages/drivers/vector/ui/meta',
+    metaPath: '../../../../crates/drivers/vector/ui/meta',
   },
 };
 
@@ -461,26 +467,26 @@ const FRONTEND_DRIVER_CONFIG = {
   ...BASIC_PATH_FRONTEND,
   kiwi: {
     dbTypes: [{ id: 'kiwi', metaExport: 'kiwiMeta' }],
-    metaPath: '../../../../packages/drivers/kiwi/ui/plugin-meta',
+    metaPath: '../../../../crates/drivers/kiwi/ui/plugin-meta',
     connectionForm: {
       component: 'KiwiConnectionFields',
-      path: '../../../../packages/drivers/kiwi/ui/KiwiConnectionFields',
+      path: '../../../../crates/drivers/kiwi/ui/KiwiConnectionFields',
       formVariant: 'kiwi',
     },
     sqlDialects: [],
   },
   superset: {
     dbTypes: [{ id: 'superset', metaExport: 'supersetMeta' }],
-    metaPath: '../../../../packages/drivers/superset/ui/plugin-meta',
+    metaPath: '../../../../crates/drivers/superset/ui/plugin-meta',
     connectionForm: {
       component: 'SupersetConnectionFields',
-      path: '../../../../packages/drivers/superset/ui/SupersetConnectionFields',
+      path: '../../../../crates/drivers/superset/ui/SupersetConnectionFields',
       formVariant: 'superset',
       validator: { export: 'supersetValidate' },
     },
     schemaTree: {
       component: 'SupersetSchemaTree',
-      path: '../../../../packages/drivers/superset/ui/SupersetSchemaTree',
+      path: '../../../../crates/drivers/superset/ui/SupersetSchemaTree',
       dbType: 'superset',
     },
     sqlDialects: [],
@@ -520,7 +526,7 @@ export function renderFrontendRegistry(drivers, variant) {
     if (!cfg) continue;
 
     // Import meta exports
-    const metaExports = cfg.dbTypes.map(dt => dt.metaExport).join(', ');
+    const metaExports = cfg.dbTypes.map((dt) => dt.metaExport).join(', ');
     importLines.push(`import { ${metaExports} } from '${cfg.metaPath}';`);
 
     // DB type entries
@@ -557,37 +563,33 @@ export function renderFrontendRegistry(drivers, variant) {
       if (cfg.connectionForm.validator) {
         formImports.push(cfg.connectionForm.validator.export);
         validatorEntryLines.push(
-          `  ${cfg.connectionForm.formVariant}: ${cfg.connectionForm.validator.export},`
+          `  ${cfg.connectionForm.formVariant}: ${cfg.connectionForm.validator.export},`,
         );
       }
-      importLines.push(
-        `import { ${formImports.join(', ')} } from '${cfg.connectionForm.path}';`
-      );
+      importLines.push(`import { ${formImports.join(', ')} } from '${cfg.connectionForm.path}';`);
       const advancedPart = cfg.connectionForm.advanced
         ? `, advanced: ${cfg.connectionForm.advanced}`
         : '';
       formEntryLines.push(
-        `  { formVariant: '${cfg.connectionForm.formVariant}', component: ${cfg.connectionForm.component}${advancedPart} },`
+        `  { formVariant: '${cfg.connectionForm.formVariant}', component: ${cfg.connectionForm.component}${advancedPart} },`,
       );
     }
 
     // Schema tree
     if (cfg.schemaTree) {
-      importLines.push(
-        `import { ${cfg.schemaTree.component} } from '${cfg.schemaTree.path}';`
-      );
+      importLines.push(`import { ${cfg.schemaTree.component} } from '${cfg.schemaTree.path}';`);
       schemaTreeEntryLines.push(
-        `  { dbType: '${cfg.schemaTree.dbType}', component: ${cfg.schemaTree.component} },`
+        `  { dbType: '${cfg.schemaTree.dbType}', component: ${cfg.schemaTree.component} },`,
       );
     }
 
     // Connection view (e.g. Redis keyvalue shell)
     if (cfg.connectionView) {
       importLines.push(
-        `import { ${cfg.connectionView.component} } from '${cfg.connectionView.path}';`
+        `import { ${cfg.connectionView.component} } from '${cfg.connectionView.path}';`,
       );
       connectionViewEntryLines.push(
-        `  { viewMode: '${cfg.connectionView.viewMode}', component: ${cfg.connectionView.component} },`
+        `  { viewMode: '${cfg.connectionView.viewMode}', component: ${cfg.connectionView.component} },`,
       );
     }
 
@@ -601,16 +603,14 @@ export function renderFrontendRegistry(drivers, variant) {
         kvSlotImportsByPath.set(slot.path, new Set([slot.component]));
       }
       kvSlotEntryLines.push(
-        `  { dbType: '${slot.dbType}', slot: '${slot.slot}', component: ${slot.component} },`
+        `  { dbType: '${slot.dbType}', slot: '${slot.slot}', component: ${slot.component} },`,
       );
     }
 
     // Clipboard parsers (new-connection auto-detect)
     for (const parser of cfg.clipboardParsers || []) {
       importLines.push(`import { ${parser.export} } from '${parser.path}';`);
-      clipboardParserEntryLines.push(
-        `  { dbType: '${parser.dbType}', parse: ${parser.export} },`,
-      );
+      clipboardParserEntryLines.push(`  { dbType: '${parser.dbType}', parse: ${parser.export} },`);
     }
 
     // SQL dialects
@@ -627,14 +627,9 @@ export function renderFrontendRegistry(drivers, variant) {
       if (s.schemaExport) settingsImports.add(s.schemaExport);
       const settingsPath = s.sectionPath || s.schemaPath;
       if (settingsPath && settingsImports.size > 0) {
-        importLines.push(
-          `import { ${[...settingsImports].join(', ')} } from '${settingsPath}';`,
-        );
+        importLines.push(`import { ${[...settingsImports].join(', ')} } from '${settingsPath}';`);
       }
-      const entryParts = [
-        `driverId: '${s.driverId}'`,
-        `label: '${s.label.replace(/'/g, "\\'")}'`,
-      ];
+      const entryParts = [`driverId: '${s.driverId}'`, `label: '${s.label.replace(/'/g, "\\'")}'`];
       if (s.sectionExport) {
         entryParts.push(`SettingsSection: ${s.sectionExport}`);
       }
@@ -650,9 +645,8 @@ export function renderFrontendRegistry(drivers, variant) {
     importLines.push(`import { ${[...components].join(', ')} } from '${path}';`);
   }
 
-  const typeUnion = driverDbTypes.length > 0
-    ? driverDbTypes.map(t => `'${t}'`).join(' | ')
-    : 'never';
+  const typeUnion =
+    driverDbTypes.length > 0 ? driverDbTypes.map((t) => `'${t}'`).join(' | ') : 'never';
 
   // Driver commands registry
   const driverCommandLines = [];
@@ -662,10 +656,8 @@ export function renderFrontendRegistry(drivers, variant) {
     const registryEntry = JSON.parse(readFileSync(resolve(ROOT, 'drivers-registry.json'), 'utf-8'));
     const meta = registryEntry[id];
     if (meta?.tauriPlugin?.commands?.length > 0) {
-      const cmds = meta.tauriPlugin.commands.map(c => `'${c}'`).join(', ');
-      driverCommandLines.push(
-        `  { driverId: '${meta.tauriPlugin.id}', commands: [${cmds}] },`
-      );
+      const cmds = meta.tauriPlugin.commands.map((c) => `'${c}'`).join(', ');
+      driverCommandLines.push(`  { driverId: '${meta.tauriPlugin.id}', commands: [${cmds}] },`);
     }
   }
 
@@ -906,7 +898,7 @@ function generateFrontendRegistry(drivers, variant) {
 }
 
 /**
- * Clone or update git/local drivers into packages/drivers/<name>/.
+ * Clone or update git/local drivers into crates/drivers/<name>/.
  * Supports git (clone from remote) and local (symlink from local path).
  * Git drivers may pin `ref` (commit SHA or tag) in drivers-registry.json.
  * These checkouts are gitignored and excluded from the Cargo workspace.
@@ -991,11 +983,11 @@ function escapeRegex(s) {
 
 function crateDepPath(name, meta) {
   if (meta.source === 'path' && meta.path) {
-    // apps/desktop/src-tauri/Cargo.toml → ../../../packages/drivers/X
-    // (F6 目录搬迁：src-tauri 从仓库根迁至 apps/desktop/，需上溯三级到根。)
+    // crates/datazen-desktop/Cargo.toml → ../../../crates/drivers/X
+    // (F6 目录搬迁：src-tauri 从仓库根迁至 packages/desktop/，需上溯三级到根。)
     return `../../../${meta.path}`;
   }
-  return `../../../packages/drivers/${name}`;
+  return `../../../crates/drivers/${name}`;
 }
 
 /** Path drivers use datazen-driver-*; git drivers keep their published crate name (usually datazen-plugin-*). */
@@ -1011,7 +1003,7 @@ function crateRustIdent(name, meta) {
 }
 
 /**
- * Generate apps/desktop/src-tauri/src/driver_init.rs — Rust plugin Tauri-plugin registration.
+ * Generate crates/datazen-desktop/src/driver_init.rs — Rust plugin Tauri-plugin registration.
  *
  * For each plugin that declares a `tauriPlugin` block in the registry,
  * generates a #[cfg(feature = "...")] guarded .plugin() call.
@@ -1045,7 +1037,9 @@ function generateRustDriverInit(drivers, registry) {
   // id — crateRustIdent rewrites `-` to `_`, so the two orders can disagree.
   // Plain byte-wise `<`/`>` rather than localeCompare, so the emitted order
   // does not depend on the machine's locale.
-  externEntries.sort((a, b) => (a.crateName < b.crateName ? -1 : a.crateName > b.crateName ? 1 : 0));
+  externEntries.sort((a, b) =>
+    a.crateName < b.crateName ? -1 : a.crateName > b.crateName ? 1 : 0,
+  );
 
   const externCrateLines = [];
   for (const { feature, crateName } of externEntries) {
@@ -1053,17 +1047,16 @@ function generateRustDriverInit(drivers, registry) {
     externCrateLines.push(`extern crate ${crateName};`);
   }
 
-  const externBlock = externCrateLines.length > 0
-    ? externCrateLines.join('\n') + '\n'
-    : '';
+  const externBlock = externCrateLines.length > 0 ? externCrateLines.join('\n') + '\n' : '';
 
   // Each plugin block appends a trailing blank line so blocks stay separated.
   // The last one must not survive into the template, or the emitted file ends
   // up with two blank lines before `builder` — which rustfmt collapses, so
   // `cargo fmt --check` fails. Strip trailing newlines from the joined body.
-  const body = driverInitLines.length > 0
-    ? driverInitLines.join('\n').replace(/\n+$/, '')
-    : '    // No drivers with Tauri commands enabled';
+  const body =
+    driverInitLines.length > 0
+      ? driverInitLines.join('\n').replace(/\n+$/, '')
+      : '    // No drivers with Tauri commands enabled';
 
   const content = `// AUTO-GENERATED by resolve-drivers.mjs — DO NOT EDIT MANUALLY
 //
@@ -1082,7 +1075,7 @@ ${body}
 }
 `;
 
-  const outPath = workPath('apps/desktop/src-tauri/src/driver_init.rs');
+  const outPath = workPath('crates/datazen-desktop/src/driver_init.rs');
   reportWrite(outPath, writeIfChanged(outPath, content));
 }
 
@@ -1093,17 +1086,14 @@ ${body}
 function replaceMarkerBlock(content, name, lines) {
   const startTag = `# <<${name}>>`;
   const endTag = `# <</${name}>>`;
-  const re = new RegExp(
-    escapeRegex(startTag) + '[\\s\\S]*?' + escapeRegex(endTag),
-  );
-  const replacement = lines.length > 0
-    ? `${startTag}\n${lines.join('\n')}\n${endTag}`
-    : `${startTag}\n${endTag}`;
+  const re = new RegExp(escapeRegex(startTag) + '[\\s\\S]*?' + escapeRegex(endTag));
+  const replacement =
+    lines.length > 0 ? `${startTag}\n${lines.join('\n')}\n${endTag}` : `${startTag}\n${endTag}`;
   return content.replace(re, replacement);
 }
 
 /**
- * Inject **git-driver** dependencies and features into apps/desktop/src-tauri/Cargo.toml.
+ * Inject **git-driver** dependencies and features into crates/datazen-desktop/Cargo.toml.
  * Uses start/end markers for idempotent injection; the caller passes only git-sourced
  * drivers — the 15 path drivers are statically declared outside the markers (W3-c),
  * so writing their lines here would duplicate the dep keys and break TOML parsing.
@@ -1117,7 +1107,7 @@ function replaceMarkerBlock(content, name, lines) {
  * so permissions/build.rs and init() are compiled in.
  */
 function injectCargoToml(drivers, registry) {
-  const relPath = 'apps/desktop/src-tauri/Cargo.toml';
+  const relPath = 'crates/datazen-desktop/Cargo.toml';
   let content = readFileSync(managedReadPath(relPath), 'utf-8');
 
   // Build dependency lines (path-based, optional)
@@ -1149,7 +1139,9 @@ function injectCargoToml(drivers, registry) {
   content = replaceMarkerBlock(content, 'driver-features', featureLines);
 
   writeIfChanged(workPath(relPath), content);
-  console.log(`[resolve-drivers] injected ${depLines.length} deps + ${featureLines.length} features into Cargo.toml (git drivers only; path drivers are static)`);
+  console.log(
+    `[resolve-drivers] injected ${depLines.length} deps + ${featureLines.length} features into Cargo.toml (git drivers only; path drivers are static)`,
+  );
 }
 
 /**
@@ -1160,13 +1152,13 @@ function injectCargoToml(drivers, registry) {
  * Writes the merged result to `default.json` (gitignored).
  */
 function syncDriverCapabilities(drivers, registry) {
-  const hostPath = workPath('apps/desktop/src-tauri/capabilities/default.json.host');
+  const hostPath = workPath('crates/datazen-desktop/capabilities/default.json.host');
   if (!existsSync(hostPath)) {
     console.warn(`[resolve-drivers] host capabilities file not found: ${hostPath}`);
     return;
   }
 
-  const tomlPath = workPath('apps/desktop/src-tauri/Cargo.toml');
+  const tomlPath = workPath('crates/datazen-desktop/Cargo.toml');
   const toml = existsSync(tomlPath) ? readFileSync(tomlPath, 'utf-8') : '';
   const effective = drivers.filter((name) => {
     const feat = registry[name]?.feature;
@@ -1212,9 +1204,9 @@ function syncDriverCapabilities(drivers, registry) {
     `}`,
     ``,
   ].join('\n');
-  // tauri-build re-runs on changes under apps/desktop/src-tauri/capabilities, so avoid
+  // tauri-build re-runs on changes under crates/datazen-desktop/capabilities, so avoid
   // touching the file when the merged permissions are identical.
-  const capPath = workPath('apps/desktop/src-tauri/capabilities/default.json');
+  const capPath = workPath('crates/datazen-desktop/capabilities/default.json');
   writeIfChanged(capPath, content);
   console.log(
     `[resolve-drivers] generated capabilities (host + drivers): [${added.join(', ') || 'no drivers'}]`,
@@ -1237,12 +1229,12 @@ export function buildRootCargoPatchLines(drivers, registry) {
     const crateName = cratePackageName(name, meta);
     patchLines.push('');
     patchLines.push(`[patch."${meta.git}"]`);
-    patchLines.push(`${crateName} = { path = "packages/drivers/${name}" }`);
+    patchLines.push(`${crateName} = { path = "crates/drivers/${name}" }`);
   }
   if (hasGitDriver) {
     patchLines.push('');
     patchLines.push('[patch.crates-io]');
-    patchLines.push('datazen-driver-api = { path = "packages/driver-api" }');
+    patchLines.push('datazen-driver-api = { path = "crates/datazen-driver-api" }');
   }
   return patchLines;
 }
@@ -1409,7 +1401,9 @@ function main() {
   // tauri.conf.json declares `resources/builtin-ep` unconditionally and the
   // directory is gitignored, so tauri-build fails on a clean checkout ("resource
   // path ... doesn't exist"); every cargo path runs this script first — create it.
-  mkdirSync(resolve(ROOT, 'apps/desktop/src-tauri', 'resources', 'builtin-ep'), { recursive: true });
+  mkdirSync(resolve(ROOT, 'crates/datazen-desktop', 'resources', 'builtin-ep'), {
+    recursive: true,
+  });
 
   if (wantsRestoreOnly()) {
     restoreManagedFiles();
@@ -1481,7 +1475,7 @@ function main() {
       injectRootCargoPatches(gitDrivers, registry);
     }
     // Always generate capabilities (default.json is gitignored, built from default_host.json + drivers).
-    // Capabilities ALWAYS mirror apps/desktop/src-tauri/Cargo.toml's actual feature state: only drivers whose
+    // Capabilities ALWAYS mirror crates/datazen-desktop/Cargo.toml's actual feature state: only drivers whose
     // cargo feature is present may contribute permissions. Path-driver features are static now, git-driver
     // features land via injectCargoToml first, so every selected plugin qualifies in full mode; in codegen-only /
     // post-restore states the file stays consistent with what cargo will actually compile (otherwise tauri-build
@@ -1496,9 +1490,7 @@ function main() {
       drivers: resolvedDrivers,
       features,
       variant,
-      cargoArgs: features.length > 0
-        ? `--features "${features.join(',')}"`
-        : '',
+      cargoArgs: features.length > 0 ? `--features "${features.join(',')}"` : '',
     };
 
     const outPath = resolve(ROOT, '.driver-features.json');
@@ -1518,16 +1510,14 @@ function main() {
       console.log(`  cargo build`);
     }
     if (codegenOnly) {
-      console.log(
-        '[resolve-drivers] codegen-only: wrote generated.ts / driver_init.rs',
-      );
+      console.log('[resolve-drivers] codegen-only: wrote generated.ts / driver_init.rs');
     } else if (gitDrivers.length > 0) {
       console.log(
         `[resolve-drivers] managed files are injected (git drivers); run \`node scripts/driver-file-stash.mjs restore\` after build`,
       );
     } else {
       console.log(
-        '[resolve-drivers] codegen complete; path drivers are static in apps/desktop/src-tauri/Cargo.toml (no managed-file injection)',
+        '[resolve-drivers] codegen complete; path drivers are static in crates/datazen-desktop/Cargo.toml (no managed-file injection)',
       );
     }
   } catch (err) {
@@ -1538,7 +1528,10 @@ function main() {
     try {
       restoreManagedFiles();
     } catch (restoreErr) {
-      console.error('[resolve-drivers] stash restore also failed:', restoreErr instanceof Error ? restoreErr.message : restoreErr);
+      console.error(
+        '[resolve-drivers] stash restore also failed:',
+        restoreErr instanceof Error ? restoreErr.message : restoreErr,
+      );
     }
     throw err;
   }

@@ -1,7 +1,7 @@
 /**
  * Shared app bootstrap (host-boundary follow-up F2).
  *
- * Everything here used to live in `apps/desktop/src/main.tsx` behind deep
+ * Everything here used to live in `packages/desktop/src/main.tsx` behind deep
  * `@datazen/frontend/src/...` imports: the startup marks, global CSS, the
  * PRO host-module table, the E2E store bridge, locale / icon / scroll-lock /
  * PRO initialization, the settings preload and the React root. The desktop

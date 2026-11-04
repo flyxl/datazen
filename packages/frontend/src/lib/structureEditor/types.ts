@@ -1,6 +1,6 @@
 export type { StructureEditorUiConfig } from '@datazen/extension-points';
 
-/** Mirrors `packages/driver-api` structure editor types (serde camelCase JSON). */
+/** Mirrors `crates/datazen-driver-api` structure editor types (serde camelCase JSON). */
 
 export type AlterStrategy = 'none' | 'direct' | 'sqliteRebuild';
 

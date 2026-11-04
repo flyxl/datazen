@@ -6,7 +6,7 @@ import { driverCommands } from './driver';
 // dedicated host IPCs. The JSON shapes match the former host commands so
 // component types stay unchanged.
 
-/** ADB driver command ids (declared by packages/drivers/sqlite). */
+/** ADB driver command ids (declared by crates/drivers/sqlite). */
 export const ADB_DRIVER_TYPE = 'sqlite';
 export type AdbCommand = 'adb_list_packages' | 'adb_list_databases' | 'adb_pull_database';
 
@@ -19,7 +19,10 @@ export interface AdbDatabaseFile {
   name: string;
 }
 
-async function executeAdbCommand<T>(command: AdbCommand, input: Record<string, unknown>): Promise<T> {
+async function executeAdbCommand<T>(
+  command: AdbCommand,
+  input: Record<string, unknown>,
+): Promise<T> {
   const result = await driverCommands.execute({
     // Unbound driver command: no connection session required.
     driverType: ADB_DRIVER_TYPE,

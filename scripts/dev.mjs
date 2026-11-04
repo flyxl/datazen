@@ -33,8 +33,13 @@ function restoreStash() {
 }
 
 const args = process.argv.slice(2);
-if (args.some((a) => a === '--plugins' || a.startsWith('--plugins=')) || process.env.DATAZEN_PLUGINS) {
-  console.error('[dev] --plugins / DATAZEN_PLUGINS are no longer supported. Use --drivers=... or DATAZEN_DRIVERS.');
+if (
+  args.some((a) => a === '--plugins' || a.startsWith('--plugins=')) ||
+  process.env.DATAZEN_PLUGINS
+) {
+  console.error(
+    '[dev] --plugins / DATAZEN_PLUGINS are no longer supported. Use --drivers=... or DATAZEN_DRIVERS.',
+  );
   process.exit(1);
 }
 

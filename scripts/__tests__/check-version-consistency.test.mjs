@@ -16,15 +16,18 @@ const SCRIPT_SRC = join(REPO_ROOT, 'scripts/check-version-consistency.mjs');
 
 function writeVersionFixture(root, { pkg, cargo, tauri }) {
   mkdirSync(join(root, 'scripts'), { recursive: true });
-  mkdirSync(join(root, 'apps/desktop/src-tauri'), { recursive: true });
+  mkdirSync(join(root, 'crates/datazen-desktop'), { recursive: true });
   cpSync(SCRIPT_SRC, join(root, 'scripts/check-version-consistency.mjs'));
-  writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'fixture', version: pkg }, null, 2));
   writeFileSync(
-    join(root, 'apps/desktop/src-tauri/Cargo.toml'),
+    join(root, 'package.json'),
+    JSON.stringify({ name: 'fixture', version: pkg }, null, 2),
+  );
+  writeFileSync(
+    join(root, 'crates/datazen-desktop/Cargo.toml'),
     `[package]\nname = "fixture"\nversion = "${cargo}"\n`,
   );
   writeFileSync(
-    join(root, 'apps/desktop/src-tauri/tauri.conf.json'),
+    join(root, 'crates/datazen-desktop/tauri.conf.json'),
     JSON.stringify({ version: tauri }, null, 2),
   );
 }
@@ -57,12 +60,15 @@ describe('[tester] check-version-consistency', () => {
   it('test_tester_fails_on_missing_version_field', () => {
     const root = mkdtempSync(join(tmpdir(), 'ver-guard-missing-'));
     mkdirSync(join(root, 'scripts'), { recursive: true });
-    mkdirSync(join(root, 'apps/desktop/src-tauri'), { recursive: true });
+    mkdirSync(join(root, 'crates/datazen-desktop'), { recursive: true });
     cpSync(SCRIPT_SRC, join(root, 'scripts/check-version-consistency.mjs'));
     writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'fixture' }, null, 2));
-    writeFileSync(join(root, 'apps/desktop/src-tauri/Cargo.toml'), '[package]\nversion = "1.0.0"\n');
     writeFileSync(
-      join(root, 'apps/desktop/src-tauri/tauri.conf.json'),
+      join(root, 'crates/datazen-desktop/Cargo.toml'),
+      '[package]\nversion = "1.0.0"\n',
+    );
+    writeFileSync(
+      join(root, 'crates/datazen-desktop/tauri.conf.json'),
       JSON.stringify({ version: '1.0.0' }),
     );
     const result = runGuard(root);

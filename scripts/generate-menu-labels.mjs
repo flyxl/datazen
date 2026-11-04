@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Generate apps/desktop/src-tauri/resources/menu-labels.json from frontend locale files.
+ * Generate crates/datazen-desktop/resources/menu-labels.json from frontend locale files.
  *
  * Single source of truth: src/locales/<locale>/*.ts (or src/locales/<locale>.ts
  * for locales that have not been split into domain packs).
@@ -19,7 +19,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
-const OUT = resolve(ROOT, 'apps/desktop/src-tauri/resources/menu-labels.json');
+const OUT = resolve(ROOT, 'crates/datazen-desktop/resources/menu-labels.json');
 
 /**
  * Rust menu lookup key → frontend TranslationKey.
@@ -89,7 +89,9 @@ const RUST_TO_LOCALE = {
 function builtinLocales() {
   let raw;
   try {
-    raw = JSON.parse(readFileSync(resolve(ROOT, 'packages/frontend/src/locales/builtin-locales.json'), 'utf-8'));
+    raw = JSON.parse(
+      readFileSync(resolve(ROOT, 'packages/frontend/src/locales/builtin-locales.json'), 'utf-8'),
+    );
   } catch {
     return ['en', 'zh-CN'];
   }

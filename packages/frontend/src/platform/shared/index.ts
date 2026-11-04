@@ -1,7 +1,7 @@
 /**
  * Shared platform layer (form-split): implementations that answer shared
  * contracts with browser APIs only — no host runtime (R6-clean). Assemblies
- * (apps/web, apps/desktop) bind these alongside the ports; shared features
+ * (packages/web, packages/desktop) bind these alongside the ports; shared features
  * import through this barrel.
  */
 export {

@@ -43,10 +43,10 @@ Java `interface` 和 Rust `trait` 是语言提供的接口机制；Port 描述�
 
 以下是当前事实，不是最终设计：
 
-- 根 `Cargo.toml` 仍列有 `modules`、`modules/src/platform_api`、`modules`、`packages/kernel`、`modules` 和迁移领域包；尚无根目录 `modules/`、`web/` 成员。
-- `modules/src/application/lib.rs` 的 `ApplicationServices` 持有多个仓储和会话接口；这不等于所有命令的业务编排已经进入应用层。
-- `modules/src/platform_api/src/ports/` 集中存放 Profile、连接目录、设置、Job 等接口；领域仓储也有一部分位于各自领域包。
-- `modules/src/execution/application/mod.rs` 的 `RuntimeConnectionUseCases` 同时持有 Profile / Policy、registry、gateway 和资源状态，需要按职责拆开。
+- 根 `Cargo.toml` 仍列有 `modules`、`crates/datazen/src/platform_api`、`modules`、`packages/kernel`、`modules` 和迁移领域包；尚无根目录 `crates/datazen/`、`web/` 成员。
+- `crates/datazen/src/application/lib.rs` 的 `ApplicationServices` 持有多个仓储和会话接口；这不等于所有命令的业务编排已经进入应用层。
+- `crates/datazen/src/platform_api/src/ports/` 集中存放 Profile、连接目录、设置、Job 等接口；领域仓储也有一部分位于各自领域包。
+- `crates/datazen/src/execution/application/mod.rs` 的 `RuntimeConnectionUseCases` 同时持有 Profile / Policy、registry、gateway 和资源状态，需要按职责拆开。
 - `packages/kernel/src/lib.rs` 导出 Job、budget、schema cache、SQL guard 和 driver registry，不应整包复制成新公共模块。
 - `src-tauri/src/commands/table_target.rs` 仍从 Store 读取 Profile、选择 Driver、提交执行、每 25ms 查询终态并读取结果块，是首批完整迁移链路。
 
@@ -54,11 +54,11 @@ Java `interface` 和 Rust `trait` 是语言提供的接口机制；Port 描述�
 
 ### 3.2 五类核心组织单元
 
-1. **driver-api**：保留 `packages/driver-api` 的独立驱动契约地位，本轮不为目录整齐搬它。
-2. **modules**：新增根目录 `modules/`，Cargo package 目标名 `datazen`，Rust 路径 `datazen`。它是**一个 crate**，内部按功能划分。AI Provider 契约与适配实现也并入本 crate 的 `ai` 模块（2026-10-26 决策，见[§5.4](02-legacy-crate-migration.md)）。
+1. **driver-api**：保留 `crates/datazen-driver-api` 的独立驱动契约地位，本轮不为目录整齐搬它。
+2. **modules**：新增根目录 `crates/datazen/`，Cargo package 目标名 `datazen`，Rust 路径 `datazen`。它是**一个 crate**，内部按功能划分。AI Provider 契约与适配实现也并入本 crate 的 `ai` 模块（2026-10-26 决策，见[§5.4](02-legacy-crate-migration.md)）。
 3. **src-tauri**：桌面宿主，保留现有 crate 名和入口，承载 IPC、桌面适配与装配。
 4. **web**：目标 Rust Web 后端目录 `web/`，目标 package 名 `datazen-web`；不是 React 前端目录，也不是桌面的子模块。
-5. **infra**：`packages/infra`（由 `platform-infra` 改名，crate 名 `datazen-infra`），**无业务的基础设施工具 crate**：凡被 drivers / modules / web / desktop 四类消费者中任意两者共用的工具代码（路径安全、凭据脱敏、原子写入等）放这里，提高复用率；仅单消费者使用的留在消费者处。
+5. **infra**：`crates/datazen-infra`（由 `platform-infra` 改名，crate 名 `datazen-infra`），**无业务的基础设施工具 crate**：凡被 drivers / modules / web / desktop 四类消费者中任意两者共用的工具代码（路径安全、凭据脱敏、原子写入等）放这里，提高复用率；仅单消费者使用的留在消费者处。
 
 “五类”不是强制全仓只剩五个 crate。具体数据库驱动、前端 SDK 等具有独立许可证、构建或插件协议边界的包仍可独立存在；不能把它们塞进 driver-api。独立扩展的许可证、构建和协议边界保持不变。
 
@@ -67,9 +67,9 @@ Java `interface` 和 Rust `trait` 是语言提供的接口机制；Port 描述�
 下面全部是目标目录；已有代码迁移按[阶段计划](07-stages.md)执行。
 
 ```text
-packages/driver-api/                  # 保留：驱动契约
-packages/drivers/<id>/                # 保留：驱动实现与专属测试
-packages/infra/                       # datazen-infra：四类消费者共用的无业务工具（改名自 platform-infra）
+crates/datazen-driver-api/                  # 保留：驱动契约
+crates/drivers/<id>/                # 保留：驱动实现与专属测试
+crates/datazen-infra/                       # datazen-infra：四类消费者共用的无业务工具（改名自 platform-infra）
 modules/
   Cargo.toml                         # datazen
   src/
@@ -127,7 +127,7 @@ web/
     bootstrap/
 ```
 
-不创建 `modules/src/application/`、全局 `modules/src/runtime/` 或新的 `modules/src/platform_api/` 来重新包装旧横向分层。一个功能可以按复杂度增加私有子模块，但不为凑目录创建空 service、entity、repository。
+不创建 `crates/datazen/src/application/`、全局 `crates/datazen/src/runtime/` 或新的 `crates/datazen/src/platform_api/` 来重新包装旧横向分层。一个功能可以按复杂度增加私有子模块，但不为凑目录创建空 service、entity、repository。
 
 `shared` 与 `migration/common` 是基础词汇/纯算法模块，不是独立用户功能，不强制给它们创建空 application 层。
 

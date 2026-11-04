@@ -39,7 +39,7 @@ afterAll(() => {
   for (const root of roots) rmSync(root, { recursive: true, force: true });
 });
 
-/** A crate under `packages/drivers/*` that is not a driver: real code, no contract. */
+/** A crate under `crates/drivers/*` that is not a driver: real code, no contract. */
 const SUPPORT_SOURCE = 'pub fn value_display(v: &str) -> String {\n    v.to_string()\n}\n';
 
 /**
@@ -53,7 +53,7 @@ function contractSource(id: string): string {
 }
 
 type Member = {
-  /** Directory under `packages/drivers/`, or `driver-api` for the shared API. */
+  /** Directory under `crates/drivers/`, or `driver-api` for the shared API. */
   id: string;
   /** Write `src/<id>.rs` with the DatabaseDriver contract marker. */
   contract?: boolean;
@@ -94,7 +94,7 @@ function makeRepo(spec: RepoSpec): { root: string; metadata: object; registry: o
 
   const dirOf = new Map<string, string>();
   for (const m of spec.members) {
-    dirOf.set(m.id, m.id === 'driver-api' ? 'packages/driver-api' : `packages/drivers/${m.id}`);
+    dirOf.set(m.id, m.id === 'driver-api' ? 'crates/datazen-driver-api' : `crates/drivers/${m.id}`);
   }
   for (const name of spec.external ?? []) dirOf.set(name, null as unknown as string);
 
@@ -105,7 +105,10 @@ function makeRepo(spec: RepoSpec): { root: string; metadata: object; registry: o
   for (const m of spec.members) {
     const dir = dirOf.get(m.id) as string;
     mkdirSync(join(root, dir, 'src'), { recursive: true });
-    writeFileSync(join(root, dir, 'Cargo.toml'), `[package]\nname = "${nameOf(m.id)}"\nversion = "0.0.0"\n`);
+    writeFileSync(
+      join(root, dir, 'Cargo.toml'),
+      `[package]\nname = "${nameOf(m.id)}"\nversion = "0.0.0"\n`,
+    );
     // A support crate is a real crate with real source that simply does not
     // implement the contract — an absent file would make it `reason:'empty'`,
     // which is a different condition and a different sentence.
@@ -135,7 +138,10 @@ function makeRepo(spec: RepoSpec): { root: string; metadata: object; registry: o
           pkg: idOf(target),
           dep_kinds: [
             {
-              kind: spec.kinds?.[`${name}->${target}`] === undefined ? null : spec.kinds[`${name}->${target}`],
+              kind:
+                spec.kinds?.[`${name}->${target}`] === undefined
+                  ? null
+                  : spec.kinds[`${name}->${target}`],
               target: null,
             },
           ],
@@ -145,9 +151,10 @@ function makeRepo(spec: RepoSpec): { root: string; metadata: object; registry: o
   };
 
   const registry: Record<string, unknown> = {};
-  for (const id of spec.registry ?? spec.members.filter((m) => m.contract !== false).map((m) => m.id)) {
+  for (const id of spec.registry ??
+    spec.members.filter((m) => m.contract !== false).map((m) => m.id)) {
     if (id === 'driver-api') continue;
-    registry[id] = { source: 'path', path: `packages/drivers/${id}`, feature: `driver-${id}` };
+    registry[id] = { source: 'path', path: `crates/drivers/${id}`, feature: `driver-${id}` };
   }
 
   return { root, metadata, registry };
@@ -229,8 +236,12 @@ describe('findWholeIdentifier', () => {
     // its needles end in `(`. Here the needles are crate names, so a longer
     // driver whose name starts the same must not match the shorter one.
     expect(findWholeIdentifier('datazen_driver_redis::T', 'datazen_driver_redis')).toHaveLength(1);
-    expect(findWholeIdentifier('datazen_driver_redis_extra::T', 'datazen_driver_redis')).toHaveLength(0);
-    expect(findWholeIdentifier('my_datazen_driver_redis::T', 'datazen_driver_redis')).toHaveLength(0);
+    expect(
+      findWholeIdentifier('datazen_driver_redis_extra::T', 'datazen_driver_redis'),
+    ).toHaveLength(0);
+    expect(findWholeIdentifier('my_datazen_driver_redis::T', 'datazen_driver_redis')).toHaveLength(
+      0,
+    );
   });
 });
 
@@ -264,12 +275,12 @@ describe('findFileIncludes', () => {
 describe('readRegistry', () => {
   it('takes path drivers and ignores git drivers, which have no path', () => {
     const parsed = {
-      pg: { source: 'path', path: 'packages/drivers/pg/' },
+      pg: { source: 'path', path: 'crates/drivers/pg/' },
       kiwi: { source: 'git', git: 'https://example.invalid/kiwi.git' },
       broken: { source: 'path' },
       notObject: 7,
     };
-    expect(readRegistry(parsed)).toEqual([{ id: 'pg', path: 'packages/drivers/pg' }]);
+    expect(readRegistry(parsed)).toEqual([{ id: 'pg', path: 'crates/drivers/pg' }]);
   });
 });
 
@@ -298,7 +309,11 @@ describe('clean tree', () => {
         { id: 'http-support', contract: false },
         { id: 'driver-api' },
       ],
-      edges: { pg: ['driver-api', 'http-support'], redis: ['driver-api'], 'http-support': ['driver-api'] },
+      edges: {
+        pg: ['driver-api', 'http-support'],
+        redis: ['driver-api'],
+        'http-support': ['driver-api'],
+      },
     });
     expect(code).toBe(0);
     expect(result.supportCrates.map((s: { name: string }) => s.name)).toEqual([
@@ -309,7 +324,10 @@ describe('clean tree', () => {
 
 describe('T-01 dependency edges', () => {
   it('fails on a normal edge from one driver to another', () => {
-    const { code, result } = run({ ...BASE, edges: { pg: ['driver-api', 'redis'], redis: ['driver-api'] } });
+    const { code, result } = run({
+      ...BASE,
+      edges: { pg: ['driver-api', 'redis'], redis: ['driver-api'] },
+    });
     expect(code).toBe(1);
     expect(result.violations).toHaveLength(1);
     expect(result.violations[0]).toContain('T-01');
@@ -330,7 +348,12 @@ describe('T-01 dependency edges', () => {
 
   it('does not follow a dependency library dev edge into another driver', () => {
     const { code, result } = run({
-      members: [{ id: 'pg' }, { id: 'redis' }, { id: 'bridge', contract: false }, { id: 'driver-api' }],
+      members: [
+        { id: 'pg' },
+        { id: 'redis' },
+        { id: 'bridge', contract: false },
+        { id: 'driver-api' },
+      ],
       edges: { pg: ['bridge'], bridge: ['redis'], redis: ['driver-api'] },
       kinds: { 'bridge->redis': 'dev' },
     });
@@ -348,7 +371,11 @@ describe('T-01 dependency edges', () => {
         { id: 'bridge', contract: false },
         { id: 'driver-api' },
       ],
-      edges: { pg: ['driver-api', 'bridge'], bridge: ['driver-api', 'redis'], redis: ['driver-api'] },
+      edges: {
+        pg: ['driver-api', 'bridge'],
+        bridge: ['driver-api', 'redis'],
+        redis: ['driver-api'],
+      },
     });
     expect(code).toBe(1);
     expect(result.violations[0]).toContain('transitive reach');
@@ -377,7 +404,8 @@ describe('T-02 source text', () => {
         {
           id: 'pg',
           files: {
-            'src/borrow.rs': "fn borrow<'a>(x: &datazen_driver_redis::Conn, y: &'a str) -> &'a str { y }\n",
+            'src/borrow.rs':
+              "fn borrow<'a>(x: &datazen_driver_redis::Conn, y: &'a str) -> &'a str { y }\n",
           },
         },
         { id: 'redis' },
@@ -409,7 +437,10 @@ describe('T-02 source text', () => {
     const { code } = run({
       ...BASE,
       members: [
-        { id: 'pg', files: { 'src/shape.rs': 'type Shape = datazen_driver_redis_extra::Config;\n' } },
+        {
+          id: 'pg',
+          files: { 'src/shape.rs': 'type Shape = datazen_driver_redis_extra::Config;\n' },
+        },
         { id: 'redis' },
         { id: 'driver-api' },
       ],
@@ -438,7 +469,8 @@ describe('T-03 path includes', () => {
         {
           id: 'pg',
           files: {
-            'src/lib.rs': contractSource('pg') + '#[path = "../../redis/src/commands/mod.rs"]\nmod borrowed;\n',
+            'src/lib.rs':
+              contractSource('pg') + '#[path = "../../redis/src/commands/mod.rs"]\nmod borrowed;\n',
             '../redis/src/commands/mod.rs': 'pub struct Conn;\n',
           },
         },
@@ -470,16 +502,25 @@ describe('T-03 path includes', () => {
 
   it('passes on a #[path] into the shared support library', () => {
     // The idiom this repository actually uses:
-    // packages/drivers/postgres/tests/real_driver_contract.rs:16 pulls in
+    // crates/drivers/postgres/tests/real_driver_contract.rs:16 pulls in
     // ../../http-support/tests/support/real_driver_contract.rs.
     const { code } = run({
       members: [
-        { id: 'pg', files: { 'tests/contract.rs': '#[path = "../../http-support/tests/support/t.rs"]\nmod c;\n' } },
+        {
+          id: 'pg',
+          files: {
+            'tests/contract.rs': '#[path = "../../http-support/tests/support/t.rs"]\nmod c;\n',
+          },
+        },
         { id: 'redis' },
         { id: 'http-support', contract: false },
         { id: 'driver-api' },
       ],
-      edges: { pg: ['driver-api', 'http-support'], redis: ['driver-api'], 'http-support': ['driver-api'] },
+      edges: {
+        pg: ['driver-api', 'http-support'],
+        redis: ['driver-api'],
+        'http-support': ['driver-api'],
+      },
     });
     expect(code).toBe(0);
   });
@@ -515,13 +556,13 @@ describe('the guard refuses to report a green it cannot mean', () => {
 
     // Now remove a driver's directory while cargo still lists it as a member and
     // the registry still advertises it.
-    rmSync(join(root, 'packages/drivers/redis'), { recursive: true, force: true });
+    rmSync(join(root, 'crates/drivers/redis'), { recursive: true, force: true });
     const absent = checkDriverTypeIsolation({ root, metadata, registry });
     expect(absent.vacuous).toEqual([
       {
         rule: 'T-01..T-03',
         driver: 'datazen-driver-redis',
-        relDir: 'packages/drivers/redis',
+        relDir: 'crates/drivers/redis',
         reason: 'absent',
       },
     ]);
@@ -529,7 +570,7 @@ describe('the guard refuses to report a green it cannot mean', () => {
     // a registered driver the guard cannot read is a registration the build
     // would honour and the review would not.
     expect(exitCodeFor(absent)).toBe(1);
-    expect(absent.errors.join('\n')).toContain('packages/drivers/redis');
+    expect(absent.errors.join('\n')).toContain('crates/drivers/redis');
   });
 
   it('reports reason=empty for a driver whose directory holds no .rs file', () => {
@@ -537,10 +578,12 @@ describe('the guard refuses to report a green it cannot mean', () => {
       members: [{ id: 'pg' }, { id: 'redis' }, { id: 'driver-api' }],
     });
     for (const id of ['pg', 'redis']) {
-      rmSync(join(root, 'packages/drivers', id, 'src', `${id}.rs`), { force: true });
+      rmSync(join(root, 'crates/drivers', id, 'src', `${id}.rs`), { force: true });
     }
     const result = checkDriverTypeIsolation({ root, metadata, registry });
-    expect(result.vacuous.map((v: { driver: string; reason: string }) => [v.driver, v.reason])).toEqual([
+    expect(
+      result.vacuous.map((v: { driver: string; reason: string }) => [v.driver, v.reason]),
+    ).toEqual([
       ['datazen-driver-pg', 'empty'],
       ['datazen-driver-redis', 'empty'],
     ]);
@@ -588,7 +631,9 @@ describe('registry cross-check', () => {
 describe('DRIVER_CONTRACT_RE', () => {
   it('matches a real driver implementation', () => {
     expect(DRIVER_CONTRACT_RE.test('impl DatabaseDriver for PgDriver {}')).toBe(true);
-    expect(DRIVER_CONTRACT_RE.test('impl datazen_driver_api::DatabaseDriver for PgDriver {}')).toBe(true);
+    expect(DRIVER_CONTRACT_RE.test('impl datazen_driver_api::DatabaseDriver for PgDriver {}')).toBe(
+      true,
+    );
   });
 
   it('does not promote a mere mention of the trait to a driver', () => {

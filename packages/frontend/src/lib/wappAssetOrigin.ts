@@ -2,14 +2,14 @@
  * WR-F4: wapp 资产服务的**双形态解析**（`datazen://` → 真实 origin 静态服务）。
  *
  * 桌面形态沿用自定义 scheme（`datazen://<id>/<path>`，Tauri URI scheme 协议
- * 处理，见 apps/desktop `wapps/protocol.rs`）；web 形态把资产服务换成
+ * 处理，见 packages/desktop `wapps/protocol.rs`）；web 形态把资产服务换成
  * **同源静态路径约定**：`{origin}/wapps/{wapp id}/{package-relative path}`。
  * 仅资产服务协议随形态变化 —— 路径段、查询串、wapp id 文法与路径安全规则
- * 与桌面 `parse_datazen_uri` 逐字同构（shared kernel：modules/src/wapps/protocol.rs）。
+ * 与桌面 `parse_datazen_uri` 逐字同构（shared kernel：crates/datazen/src/wapps/protocol.rs）。
  *
  * 形态选择走**装配期注入**（与 `configurePlatform` 同一登记风格），不是
  * 运行时探测：共享代码调 `buildWappAssetSrc`，默认绑定桌面解析器（桌面
- * 产物逐字节不变），web 装配根（apps/web `platform/web/assembly.ts`）绑
+ * 产物逐字节不变），web 装配根（packages/web `platform/web/assembly.ts`）绑
  * `WEB_WAPP_ASSET_RESOLVER`。编译期同形纪律：零 `@tauri-apps`、零
  * `IS_DESKTOP_BUILD` 运行时分支外泄到调用点。
  */

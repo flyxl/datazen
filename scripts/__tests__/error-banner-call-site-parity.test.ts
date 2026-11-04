@@ -206,7 +206,7 @@ const SITES: readonly Site[] = [
   {
     // `boxed` + `px-2 py-1.5`; no colour override.
     label: 'StringEditor save error',
-    file: 'packages/drivers/redis/ui/value-editors/StringEditor.tsx',
+    file: 'crates/drivers/redis/ui/value-editors/StringEditor.tsx',
     count: 1,
     base: 'rounded-md border border-danger/20 bg-danger/10 px-2 py-1.5 text-danger',
     colour: 'border-danger/20 bg-danger/10 text-danger',
@@ -218,7 +218,7 @@ const SITES: readonly Site[] = [
     // *only because* the nearest font-size ancestor is `text-xs`
     // (KeyEditors' root). That is a cascade fact, not a class-set fact, so it
     // is proved by the rendered-ancestor test in
-    // packages/drivers/redis/ui/__tests__/stringEditorFontInheritance.test.tsx
+    // crates/drivers/redis/ui/__tests__/stringEditorFontInheritance.test.tsx
     // rather than asserted here.
     extraAllowed: ['p-2', 'text-xs'],
   },

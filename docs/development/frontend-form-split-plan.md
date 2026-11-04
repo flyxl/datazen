@@ -13,9 +13,9 @@
 > 3. 删除 NativeTool（部署锚定的 `pg_dump` / `mysqldump --version` 探针，SHA-256 白名单默认空即拒绝一切，产品零使用）。
 > 4. 不实施 Web 形态，但打好基础（编译期同形、端口完整、契约可测）。
 > 5. 平台形态在**编译期**确定；消灭一切运行时形态探测（`__TAURI_INTERNALS__` 三元、`backendId === 'desktop'` 分支）。浏览器 dev 模式的便利分支用 Tauri vite 插件的编译期常量（`import.meta.env.TAURI_ENV_*`）替代 `isTauri()`，不恢复运行时探测。
-> 6. `BackendClient` 按 DDD 拆为域客户端（参照 `modules/` crate 的域划分）。
+> 6. `BackendClient` 按 DDD 拆为域客户端（参照 `crates/datazen/` crate 的域划分）。
 > 7. 共享代码只依赖共享接口：宿主叠加能力（`platform.host.config.get()` 一类）由平台组合根在装配时注入，桌面注入实现、Web 注入空缺省——共享代码不静态 import 任何宿主实体，因此 Web 构建在**类型层面**就不存在这些名字，不存在「运行时报不报错」的问题。
-> 8. 前端代码组织参照后端拓扑：`packages/frontend`（共享 lib）+ `apps/desktop`（宿主 app，未来 `apps/web`），与 `modules/`（共享 Rust）↔ `src-tauri/`（桌面宿主）镜像。
+> 8. 前端代码组织参照后端拓扑：`packages/frontend`（共享 lib）+ `packages/desktop`（宿主 app，未来 `packages/web`），与 `crates/datazen/`（共享 Rust）↔ `src-tauri/`（桌面宿主）镜像。
 > 9. `@datazen/frontend` 必须是**完整 workspace 包**（真实 pnpm 协议消费），不是 vite alias——当前 TS 侧根本没有 workspace 协议，本方案将第一次建立它。
 > 10. `@datazen/frontend` 的合法消费者只有 `apps/*`；其他任何包不得依赖它（闸门 R5 强制）。
 > 11. 实施顺序：**先清场（F2 原地隔离），后分家（F6 目录拆分与包完整化）**。此项已裁决，不再复议。
@@ -48,7 +48,7 @@
 IPC 审查（272 个注册命令：266 常驻 + 6 `cfg(test)` 门控）确认的根因是**双轨**：
 
 - **legacy 宿主命令**：前端直调 `invoke('get_settings')` 等，操作完整 `AppSettings`（= `SharedSettings` + 桌面特有字段：logPath / contextDir / monitor / mcpClientServers / 更新器等）；
-- **kernel surface**：`modules/` crate 用例 + `packages/backend-client` 门面（`MethodMap` + `tauriBackendTransport.ts` 的 `commandOverrides`），操作 `SharedSettings` / `ProfileView`。
+- **kernel surface**：`crates/datazen/` crate 用例 + `packages/backend-client` 门面（`MethodMap` + `tauriBackendTransport.ts` 的 `commandOverrides`），操作 `SharedSettings` / `ProfileView`。
 
 `commandOverrides` 的存在使 kernel 轨的真实用量对字面 `invoke` 搜索不可见——审查方法论规则：出现在 `commandOverrides` 中的命令一律视为 kernel 在用或预留（`platform_create/update/disable_profile` 即预留，非死命令）。死命令最终核定为 17（后随合并簇与删除项继续收敛，轨迹见 §8）。
 
@@ -69,8 +69,8 @@ IPC 审查（272 个注册命令：266 常驻 + 6 `cfg(test)` 门控）确认的
 已核实的现存缺陷（F2/F4 修复项）：
 
 - `src/windows/settings/SettingsContent.tsx:75`：`const desktop = backend === null || backend.backendId === 'desktop'`——浏览器 dev（backend 未绑定，`null`）被误判为桌面形态。布尔探测已经出错的活证据。
-- `packages/drivers/redis/ui/observe/PubSubPanel.tsx:3`：驱动包直接 `listen('redis-pubsub-message')`——驱动包边界违规（闸门 R4 只覆盖 `packages/ui`，缺口见 §6.2）。
-- `packages/drivers/redis/ui/__tests__/redisKeyWebContextMenu.test.tsx:5,9`：深路径爬回宿主 `src/`——`check-driver-import-boundaries.mjs` ALLOWLIST 中有 coordinator ruling 记录的合法豁免（driver↔host 集成夹具），注记标明 *remove together with the WebContextMenuHost exemption*。F6 以搬家注销。
+- `crates/drivers/redis/ui/observe/PubSubPanel.tsx:3`：驱动包直接 `listen('redis-pubsub-message')`——驱动包边界违规（闸门 R4 只覆盖 `packages/ui`，缺口见 §6.2）。
+- `crates/drivers/redis/ui/__tests__/redisKeyWebContextMenu.test.tsx:5,9`：深路径爬回宿主 `src/`——`check-driver-import-boundaries.mjs` ALLOWLIST 中有 coordinator ruling 记录的合法豁免（driver↔host 集成夹具），注记标明 *remove together with the WebContextMenuHost exemption*。F6 以搬家注销。
 
 ### 2.3 已有基建盘点（可直接复用的资产）
 
@@ -105,7 +105,7 @@ datazen/                        # 纯 workspace 根（pnpm packages + Cargo memb
 │  │  │  │                      #   / windowRouter / eventChannel / hostServices / updater / os
 │  │  │  └─ chrome/             # TitleBar / WindowControls / MenuBar / UpdateSection / splash 时序
 │  │  │                          #   ——经 extension-points 注册进共享窗口页
-│  │  └─ src-tauri/             # Rust 宿主（移入 apps/desktop/ 或原地改 frontendDist 指向，二选一）
+│  │  └─ src-tauri/             # Rust 宿主（移入 packages/desktop/ 或原地改 frontendDist 指向，二选一）
 │  └─ web/                      # 未来。现阶段最多放一个全端口 throw 实现的 typecheck stub
 │                               #   （保住编译期同形校验 + 单消费者 lib 的诚实性保险，§7.2）
 ├─ packages/
@@ -118,21 +118,21 @@ datazen/                        # 纯 workspace 根（pnpm packages + Cargo memb
 └─ scripts/ e2e/ packaging/ site/
 ```
 
-与后端的镜像关系（用户裁决 #8 的落地）：`modules/`（共享 Rust）↔ `packages/frontend`（共享 TS）；`src-tauri/`（桌面宿主）↔ `apps/desktop`。`modules/src/application/` 的用例编排对应 frontend 的 stores/commands；`src-tauri/platform/` 的宿主适配对应 `apps/desktop/src/platform/`。
+与后端的镜像关系（用户裁决 #8 的落地）：`crates/datazen/`（共享 Rust）↔ `packages/frontend`（共享 TS）；`src-tauri/`（桌面宿主）↔ `packages/desktop`。`crates/datazen/src/application/` 的用例编排对应 frontend 的 stores/commands；`src-tauri/platform/` 的宿主适配对应 `packages/desktop/src/platform/`。
 
 ### 3.2 依赖方向规则
 
 | # | 规则 | 现状违规 | 闸门 |
 |---|---|---|---|
 | D1 | `@datazen/frontend` 的合法消费者只有 `apps/*`；`packages/**` 不得 import `@datazen/frontend`，亦不得相对路径解析进 `packages/frontend/` | 生产代码**零违规**；唯二深路径引用是 redis 集成测试的 ALLOWLIST 豁免（F6 搬家注销） | R5（§6.2） |
-| D2 | TS 侧 `@tauri-apps/*` 只允许出现在 `apps/desktop/`。比「放 desktop」更强：drivers 不是 desktop 的一部分，是被两形态共享的包，碰 Tauri 即违规（走 backend-client 事件流） | 48 文件（F2/F4 清场对象）+ PubSubPanel 驱动包违规 | eslint 闸门（§6.1）+ R4 范围扩展 |
+| D2 | TS 侧 `@tauri-apps/*` 只允许出现在 `packages/desktop/`。比「放 desktop」更强：drivers 不是 desktop 的一部分，是被两形态共享的包，碰 Tauri 即违规（走 backend-client 事件流） | 48 文件（F2/F4 清场对象）+ PubSubPanel 驱动包违规 | eslint 闸门（§6.1）+ R4 范围扩展 |
 | D3 | frontend 不得反向依赖任何 app；包间能力获取只走缝隙接口 + 宿主 bind 注入（`settingsStoreBridge` 先例），不开新依赖方向 | 零违规（既有） | R5 顺带覆盖 |
 
-D2 的包级强化：`@tauri-apps/*` 依赖声明从仓库根 `package.json` 挪入 `apps/desktop/package.json` 后，「只有 app 能碰 Tauri」同时成为**包级依赖事实**——frontend 的 package.json 没有这个依赖，谁想 import 谁自己装，装了就会在依赖审查里露出来。
+D2 的包级强化：`@tauri-apps/*` 依赖声明从仓库根 `package.json` 挪入 `packages/desktop/package.json` 后，「只有 app 能碰 Tauri」同时成为**包级依赖事实**——frontend 的 package.json 没有这个依赖，谁想 import 谁自己装，装了就会在依赖审查里露出来。
 
 ### 3.3 平台端口契约（四个接口 + 注入器 + capabilities）
 
-设计原则：**砍掉大而全 `Platform` 接口，换成窄端口**。`hostConfig`（get_settings / rebuild_menu / log path）与 updater 是纯桌面、只被设置页桌面区块和 boot 消费——它们不进共享槽位，从具体平台目录导出，共享层类型上不可见（裁决 #7 的机制实现）。共享槽位只暴露三个窄端口；`DesktopHostServices` 是第四个接口但**只从 `apps/desktop` 具体导出**。
+设计原则：**砍掉大而全 `Platform` 接口，换成窄端口**。`hostConfig`（get_settings / rebuild_menu / log path）与 updater 是纯桌面、只被设置页桌面区块和 boot 消费——它们不进共享槽位，从具体平台目录导出，共享层类型上不可见（裁决 #7 的机制实现）。共享槽位只暴露三个窄端口；`DesktopHostServices` 是第四个接口但**只从 `packages/desktop` 具体导出**。
 
 **命名消解**：`src/hooks/usePlatform.ts:3` 已占用 `Platform`（OS 维度：`'macos' | 'windows' | 'linux' | 'unknown'`，TitleBar 用于 mac 交通灯 vs win/linux 自绘）。形态与 OS 是两个正交维度（web 构建照样区分 mac/win 浏览器），因此：能力端口沿用仓库的 `PlatformServices`（扩成员）；原方案的 `DesktopPlatform` 更名 **`DesktopHostServices`**；`usePlatform` 的 OS 检测保留并迁入平台目录作为 `os` 能力（两形态通用）。
 
@@ -173,7 +173,7 @@ export interface EventChannel {
   listenCrossWindow(event: string, handler: (payload?: unknown) => void): Promise<() => void>;
 }
 
-// ── 端口四：桌面宿主叠加（纯桌面，只从 apps/desktop 具体导出，不进共享槽位类型）──
+// ── 端口四：桌面宿主叠加（纯桌面，只从 packages/desktop 具体导出，不进共享槽位类型）──
 export interface DesktopHostServices {
   getHostSettings(): Promise<AppSettings>;        // legacy get_settings（桌面字段全量）
   saveHostSettings(s: AppSettings): Promise<void>; // legacy save_settings
@@ -208,7 +208,7 @@ export interface PlatformCapabilities {
 
 **契约要点**：
 
-- `WindowRouter` 收编 `windowManager.ts` 后，`openDataSyncWindow()` / `openBackupWindow()` 等 20 个导出**签名不变**——`src/lib/windowManager.ts` 变为转发层（薄再导出，调用方零改动），实现住进 `apps/desktop/src/platform/windowRouter.ts`（含浏览器 tab 分支，F2 期间住 `src/platform/desktop/`）。
+- `WindowRouter` 收编 `windowManager.ts` 后，`openDataSyncWindow()` / `openBackupWindow()` 等 20 个导出**签名不变**——`src/lib/windowManager.ts` 变为转发层（薄再导出，调用方零改动），实现住进 `packages/desktop/src/platform/windowRouter.ts`（含浏览器 tab 分支，F2 期间住 `src/platform/desktop/`）。
 - `EventChannel` 与 kernel 事件流**并存不合并**：kernel 事件走 `BackendTransport.subscribe`（`EventStreamSource` 拉式抽象，断线可续订，`streams.ts` 已存在）；宿主广播事件（`menu:*`、`datazen:open-connection`、`ai:stream-*` 等非 kernel 事件）走 `EventChannel`。15 个生产 `listen()` 点按此二分归位。
 - 文件对话框的 Rust 侧设计（路径永不回 JS、`begin_save_with_dialog` token 流式写）在 web 天然成立——浏览器 file input / Blob download 本来就路径无关。F4 以「导出」做双流程示范：桌面实现走 save-dialog token 流式写，web 实现走 Blob download，共享签名 `exportTables(request): Promise<ExportResult>`。
 
@@ -217,7 +217,7 @@ export interface PlatformCapabilities {
 **bootstrap 注入，不走 alias、不做构造器穿透**（裁决 #7 的机制面）。app 的 `main.tsx` 在首屏渲染前：
 
 ```typescript
-// apps/desktop/src/main.tsx（装配根，原 src/main.tsx 的平台相关部分）
+// packages/desktop/src/main.tsx（装配根，原 src/main.tsx 的平台相关部分）
 bindDesktopBackend();                        // 既有：transport 绑定
 setPlatformServices(createDesktopPlatformServices());  // 缺失的线：F2 补上（文档 §7.3 早写明）
 configurePlatform({
@@ -236,7 +236,7 @@ registerWindowChrome({ TitleBar, WindowControls, MenuBar });  // extension-point
 
 ### 3.5 web 形态预留（不实施）
 
-`apps/web/` 现阶段最多包含：一个把四端口全部实现为显式 throw 的 typecheck stub + capabilities 空集。它的作用不是跑起来，而是（a）让「共享代码只依赖共享接口」在编译期被真实消费验证；（b）做单消费者 lib 的诚实性保险（§7.2）。真实施工（HTTP transport、SSE 事件流、路由化多窗）留给平台产品计划 P 阶段，本方案不设计。
+`packages/web/` 现阶段最多包含：一个把四端口全部实现为显式 throw 的 typecheck stub + capabilities 空集。它的作用不是跑起来，而是（a）让「共享代码只依赖共享接口」在编译期被真实消费验证；（b）做单消费者 lib 的诚实性保险（§7.2）。真实施工（HTTP transport、SSE 事件流、路由化多窗）留给平台产品计划 P 阶段，本方案不设计。
 
 ## 4. 实测基线详表（基线 `c85e3bd`）
 
@@ -255,12 +255,12 @@ registerWindowChrome({ TitleBar, WindowControls, MenuBar });  // extension-point
 
 ### 4.2 运行时形态探测点清单（F2 逐点清除对象）
 
-生产代码 ~20 处（`packages/drivers/**/e2e/**` 的 `__TAURI_INTERNALS__` 是 webdriver 测试桥，**不是**探测点，保留）：
+生产代码 ~20 处（`crates/drivers/**/e2e/**` 的 `__TAURI_INTERNALS__` 是 webdriver 测试桥，**不是**探测点，保留）：
 
 | 文件 | 位置 | 形态 | 替换 |
 |---|---|---|---|
 | `src/main.tsx` | :122、:163 | `__TAURI_INTERNALS__ in globalThis` | 装配根整段进 app，探测删除（app 内无形态二义） |
-| `src/components/TitleBar.tsx` | :55、:117 | 同上 | 组件迁 `shell/desktop`→`apps/desktop/chrome`，删守卫 |
+| `src/components/TitleBar.tsx` | :55、:117 | 同上 | 组件迁 `shell/desktop`→`packages/desktop/chrome`，删守卫 |
 | `src/stores/aiStore.ts` | :53、:80、:168、:647、:904（5 处） | 同上 | 订阅生命周期改走 `EventChannel`，注入时序保证存在性 |
 | `src/stores/uiStore.ts` | :77 | 同上 | `WindowRouter.windowChrome` |
 | `src/stores/wappStore.ts` | :73（listen） | 事件 | `EventChannel` |
@@ -290,7 +290,7 @@ registerWindowChrome({ TitleBar, WindowControls, MenuBar });  // extension-point
 
 | # | 差异 | 实测落点 | web 形态 |
 |---|---|---|---|
-| R1 | 窗口 chrome：mac 原生 overlay 交通灯 vs win/linux 无边框自绘拖拽（startDragging 移动阈值逻辑、fullscreen-changed 同步） | `TitleBar.tsx`（182 行）、`WindowControls.tsx`；9 个窗口页面消费 | 整条消失——浏览器自带 chrome；组件进 `apps/desktop/chrome`，经 extension-points 注册 |
+| R1 | 窗口 chrome：mac 原生 overlay 交通灯 vs win/linux 无边框自绘拖拽（startDragging 移动阈值逻辑、fullscreen-changed 同步） | `TitleBar.tsx`（182 行）、`WindowControls.tsx`；9 个窗口页面消费 | 整条消失——浏览器自带 chrome；组件进 `packages/desktop/chrome`，经 extension-points 注册 |
 | R2 | 设置页 7/12 桌面专属 section | `settingsSections.ts:65` | capabilities 驱动；ai/prompts/tunnels 理论上 server 形态可提供，不写死「隐藏 7 个」 |
 | R3 | 更新区块 | `UpdateSection.tsx`、`updater.ts`（SKU manifest 体系，`getUpdateChannel()` 已有 `'none'` 分支） | 整块不存在，进 app |
 | R4 | 版本号来源 | `SettingsContent.tsx:99`、`BrandSidebar.tsx:23` 的 `getVersion()` | capabilities.versionSource：`'build-constant'` 或 `'http'` |
@@ -336,7 +336,7 @@ registerWindowChrome({ TitleBar, WindowControls, MenuBar });  // extension-point
 - 平台模块：`src-tauri/src/platform/native_tool/` 目录；
 - 装配接线：`src-tauri/src/adapter.rs` 4 处；
 - 资源：`resources/native-tool-probes.json`（`include_str!` 编译期嵌入，随代码删）；
-- modules 侧：`modules/src/jobs/domain/native_tool*`、`modules/src/jobs/application/native_tool*`、`owner.rs` 的 `verify_native_selection`、`codec.rs` 的 `nativeToolProbe` 校验分支 + 防御性启动 purge 迁移（旧持久化记录清空）；
+- modules 侧：`crates/datazen/src/jobs/domain/native_tool*`、`crates/datazen/src/jobs/application/native_tool*`、`owner.rs` 的 `verify_native_selection`、`codec.rs` 的 `nativeToolProbe` 校验分支 + 防御性启动 purge 迁移（旧持久化记录清空）；
 - 文档：7 篇涉及 NativeTool 的文档段落。
 
 **退出标准**：`cargo build` + 全量测试绿；`rg -i nativetool` 在 src-tauri/modules/ 仅命中 CHANGELOG 与历史文档；注册命令数 272 → 267（对照 `ipc_audit` 台账）。
@@ -410,7 +410,7 @@ registerWindowChrome({ TitleBar, WindowControls, MenuBar });  // extension-point
 
 1. **静态 capabilities 表**：`DESKTOP_CAPABILITIES` 常量（§3.3），机制沿用 `DATAZEN_UPDATER_CHANNEL` 编译期生成先例（`scripts/resolve-drivers.mjs` 同族脚本生成或手写常量）；`settingsSectionsForBackend` 定型为 capabilities 驱动；`UpdateSection` / `getVersion` 消费 `capabilities.updater` / `capabilities.versionSource`；
 2. **每域契约测试**：每个域客户端一份「方法 × 请求形状 × 响应形状」表驱动测试，fake transport（`__tests__` 已有 spy 模式可复用）；`PlatformServices` / `WindowRouter` / `EventChannel` 各一份「未注入显式错误 + 注入后行为」契约测试；
-3. **web stub**：`apps/web/`（若 F6 未先行）或 `src/platform/web/` 全 throw 实现 + 空 capabilities，纳入 typecheck——编译期同形的持续验证；
+3. **web stub**：`packages/web/`（若 F6 未先行）或 `src/platform/web/` 全 throw 实现 + 空 capabilities，纳入 typecheck——编译期同形的持续验证；
 4. **playbook**：新增域客户端 / 新增平台能力的操作手册（含「何时该扩 PlatformServices、何时该进 DesktopHostServices、何时只是普通 invoke 迁移」的判别树）。
 
 **退出标准**：capabilities 驱动全部形态分支（§4.2 表中 capabilities 列全绿）；每域至少一份契约测试；web stub 通过 typecheck。
@@ -423,11 +423,11 @@ registerWindowChrome({ TitleBar, WindowControls, MenuBar });  // extension-point
 
 **工作项**：
 
-1. **workspace 基建**：`pnpm-workspace.yaml` 增补 `packages: [apps/*, packages/*, packages/drivers/*]`。⚠ 先在 worktree checkout 上实测 `pnpm install`（§7.1 风险项），确认 node_modules 软链行为后才可合入；
+1. **workspace 基建**：`pnpm-workspace.yaml` 增补 `packages: [apps/*, packages/*, crates/drivers/*]`。⚠ 先在 worktree checkout 上实测 `pnpm install`（§7.1 风险项），确认 node_modules 软链行为后才可合入；
 2. **`packages/frontend/package.json`**：源码包模式（`main`/`types`/`exports` 三件套指 `src/index.ts`，与既有包形态一致——但这次被协议真实消费）；`dependencies` 声明 `@datazen/backend-client` 等 `workspace:*`；`peerDependencies`：react / react-dom / zustand / @codemirror（跟随 ui / extension-points 的 peer 惯例，实版本由 app 提供）；
-3. **`apps/desktop/package.json`**：`@datazen/frontend: workspace:*` + `@tauri-apps/*` 全家（**从仓库根 dependencies 挪入——`@tauri-apps` 依赖声明从此只存在于 app 包**，D2 的包级强化）+ react 实版本；
+3. **`packages/desktop/package.json`**：`@datazen/frontend: workspace:*` + `@tauri-apps/*` 全家（**从仓库根 dependencies 挪入——`@tauri-apps` 依赖声明从此只存在于 app 包**，D2 的包级强化）+ react 实版本；
 4. **根 package.json 退化**为工具链持有（vite / vitest / tailwind / typescript / husky / wdio）；
-5. **目录迁移**：`src/main.tsx`、双 html 入口、vite/tailwind/postcss/tauri 配置、`src/platform/desktop/`、`src/shell/desktop/`（连同测试）→ `apps/desktop/`；`src/` 其余整体改名 `packages/frontend/`（930 文件相对路径 import，零代码改动）；`src-tauri/` 移入 `apps/desktop/`（Cargo.toml members 一行）或原地改 `frontendDist` 指向（二选一，倾向前者）；
+5. **目录迁移**：`src/main.tsx`、双 html 入口、vite/tailwind/postcss/tauri 配置、`src/platform/desktop/`、`src/shell/desktop/`（连同测试）→ `packages/desktop/`；`src/` 其余整体改名 `packages/frontend/`（930 文件相对路径 import，零代码改动）；`src-tauri/` 移入 `packages/desktop/`（Cargo.toml members 一行）或原地改 `frontendDist` 指向（二选一，倾向前者）；
 6. **alias 表退役**：vite / tsconfig / vitest 三处 `@datazen/*` 条目删除（exports 接管）；app 的 vitest 保留 `@tauri-apps/api/window → tauriWindow.ts` mock 别名（测试基建归 app）；vitest 配置拆 lib / app 两半；
 7. **tsconfig 变体核对**（实测清单）：`tsconfig.json`（include 改 `apps/*` + `packages/*`）、`tsconfig.pack-ep.json`（pack-ep 的 HOST_SHARED_MODULES 与 include 空表同步）、`tsconfig.scripts.json` / `tsconfig.scripts-checkjs.json`（不受影响，核对即可）；
 8. **脚本路径**：`scripts/typecheck.mjs`、`pack-ep.mjs`（HOST_SHARED_MODULES 与 `__DATAZEN_HOST__` 表两侧同步，`pack-ep.test.ts` 会拦漂移）、`e2e-tauri-build.mjs` 等的入口指向更新；
@@ -461,7 +461,7 @@ registerWindowChrome({ TitleBar, WindowControls, MenuBar });  // extension-point
     }]}
   },
   {
-    "files": ["packages/drivers/**/*.{ts,tsx}"],
+    "files": ["crates/drivers/**/*.{ts,tsx}"],
     "rules": { "no-restricted-imports": ["error", {
       "patterns": [{ "group": ["@tauri-apps/*"],
         "message": "驱动包是两形态共享层——事件走 backend-client 事件流（裁决 D2）。" }]
@@ -474,7 +474,7 @@ registerWindowChrome({ TitleBar, WindowControls, MenuBar });  // extension-point
 
 既有 R1–R4 保持不动（实测基线：2056 文件、0 blocking、1 advisory）。两处变更：
 
-- **R4 范围扩展**：`packages/ui` 的 host-free / runtime-free 断言扩展到全部非 app 包（`packages/drivers/**` 的 `@tauri-apps` 禁令从 eslint 补强为构建闸门——eslint 拦编辑期，脚本拦 CI）。已知违例 `PubSubPanel.tsx:3` 在 F4 修复后才可置 blocking（脚本自身注释记录的同一治理模式：DocumentConnectionView 的 R3 advisory 就是这么挂账的）；
+- **R4 范围扩展**：`packages/ui` 的 host-free / runtime-free 断言扩展到全部非 app 包（`crates/drivers/**` 的 `@tauri-apps` 禁令从 eslint 补强为构建闸门——eslint 拦编辑期，脚本拦 CI）。已知违例 `PubSubPanel.tsx:3` 在 F4 修复后才可置 blocking（脚本自身注释记录的同一治理模式：DocumentConnectionView 的 R3 advisory 就是这么挂账的）；
 - **R5 新增**：`packages/**` 不得 import `@datazen/frontend`，亦不得相对路径解析进 `packages/frontend/`。扫描口径照抄 R1 的教训——**所有字符串字面量**（plain import / `export … from` / 动态 `import()` / `vi.mock()` / `vi.doMock()` / `require()`），因为 Wave 2 有 8 个 `vi.mock` 违规从只扫 `from` 的基线漏网。豁免治理沿用 ALLOWLIST 三元组（rule, file, specifier）+ 注记义务。
 
 ### 6.3 契约测试模板（F5）
@@ -509,7 +509,7 @@ lib 今天只有一个消费者，会悄悄积累 app 形状假设（多窗口 U
 
 ### 7.4 与 DDD 重构（D 阶段）的交叉
 
-F1 落在 `modules/src/jobs/` 既有结构上（NativeTool 的 domain/application 子模块）；若 D 阶段同期推进 jobs 域，F1 先行合入可减少 D 的迁移面。F3 的域客户端划分以 `system-overview.md §6.2` 为权威，与 D 阶段的 modules 域划分保持同名映射（`modules/src/connection` ↔ `connectionClient.ts` 等），两侧演进各自独立、命名对齐即可，不设硬同步门槛。
+F1 落在 `crates/datazen/src/jobs/` 既有结构上（NativeTool 的 domain/application 子模块）；若 D 阶段同期推进 jobs 域，F1 先行合入可减少 D 的迁移面。F3 的域客户端划分以 `system-overview.md §6.2` 为权威，与 D 阶段的 modules 域划分保持同名映射（`crates/datazen/src/connection` ↔ `connectionClient.ts` 等），两侧演进各自独立、命名对齐即可，不设硬同步门槛。
 
 ## 8. IPC 命令轨迹与验收对照
 

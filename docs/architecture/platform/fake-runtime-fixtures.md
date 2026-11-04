@@ -1,6 +1,6 @@
 # DataZen P0 transport-neutral fake resource 夹具与基准 harness 详细设计
 
-> 状态：**夹具已落地**，实现位于 `datazen`（`modules/`）的 `src/connection/testing/`：§1–§9 的 fake resource provider、§4 的 F1–F12 逐阶段故障注入、§5 CommandJournal、§6 Barrier/DrainBarrier、§7 FakeClock、§8 FakeIds（含强制碰撞）与 §9 的会话级句柄命令均已实现并有单测，CM-71/CM-73/CM-74 的竞态与碰撞用例也已落地。**§11 CM-60 基准 harness 的两半都已落地**：压力半是集成测试 `modules/tests/cm60_pressure_drain.rs`（`2bef5bee1`），延迟半是独立 bin `modules/src/bin/cm60-bench/`（`37526e084`，CI 门禁见 `05ca8c3a9`）。**§10 真实驱动契约夹具仍是目标设计**，尚未实现。基线：2026-09-30，`8592b0fe1`。本文不代表连接管理重构已完成。
+> 状态：**夹具已落地**，实现位于 `datazen`（`crates/datazen/`）的 `src/connection/testing/`：§1–§9 的 fake resource provider、§4 的 F1–F12 逐阶段故障注入、§5 CommandJournal、§6 Barrier/DrainBarrier、§7 FakeClock、§8 FakeIds（含强制碰撞）与 §9 的会话级句柄命令均已实现并有单测，CM-71/CM-73/CM-74 的竞态与碰撞用例也已落地。**§11 CM-60 基准 harness 的两半都已落地**：压力半是集成测试 `crates/datazen/tests/cm60_pressure_drain.rs`（`2bef5bee1`），延迟半是独立 bin `crates/datazen/src/bin/cm60-bench/`（`37526e084`，CI 门禁见 `05ca8c3a9`）。**§10 真实驱动契约夹具仍是目标设计**，尚未实现。基线：2026-09-30，`8592b0fe1`。本文不代表连接管理重构已完成。
 > 读者：负责 [连接管理详细设计](connection-management.md) §14 开发步骤第 2 项（`testing/fake_resource`）、§6.5 句柄登记与 §15.3 基准 harness 的实现者。
 > 配套：[连接管理详细设计](connection-management.md)、[平台开发计划](../../development/platform-development-plan.md)、[系统概要](system-overview.md)、[测试架构](../testing.md)、[E2E 测试指南](../../development/e2e-testing.md)。
 
@@ -17,7 +17,7 @@
 
 三条前置约定，实现时不得偏离：
 
-1. **fake 位于资源层，不位于驱动层。** fake provider 实现 connection-management.md §5.1 的资源级端口，一个 fake resource 等价于真实驱动的一个底层会话（池大小 1）。它不实现 `packages/driver-api` 的 `DatabaseDriver` trait，因此**不能**用它验证任何方言语义。
+1. **fake 位于资源层，不位于驱动层。** fake provider 实现 connection-management.md §5.1 的资源级端口，一个 fake resource 等价于真实驱动的一个底层会话（池大小 1）。它不实现 `crates/datazen-driver-api` 的 `DatabaseDriver` trait，因此**不能**用它验证任何方言语义。
 2. **§4 的 DTO 不在本文重定义。** `SessionView`、`ExecutionReceipt`、`SessionHandleRef`（§6.5）、`ExecutionState`、`ExecutionErrorCode` 等一律按 connection-management.md §4/§6.5 引用，本文只给夹具侧的构造与断言。
 3. **fake 的可编程状态是唯一输入。** 任何行为差异只能来自 `FakeScript`（故障与延迟）与 `FakeClock`（时间），不得在夹具内部写随机数、真实 `Instant::now()` 或真实 socket。
 
@@ -45,10 +45,10 @@
 
 | 维度 | 现有 `MockDriver` | 本文 fake resource provider |
 | --- | --- | --- |
-| 落点 | `packages/driver-api/src/mock_driver.rs`（`MockDriver` / `MockDriverOptions`） | `modules/src/execution/runtime/connection/testing/`（已落地） |
+| 落点 | `crates/datazen-driver-api/src/mock_driver.rs`（`MockDriver` / `MockDriverOptions`） | `crates/datazen/src/execution/runtime/connection/testing/`（已落地） |
 | 抽象层 | `datazen_driver_api::DatabaseDriver` | connection-management.md §5.1 资源级端口 |
 | 典型调用 | 测试直接 `driver.query(&handle, ...)` | runtime actor / 执行网关 |
-| 能表达的句柄 | `ConnectionHandle` / `TransactionHandle`（`packages/driver-api/src/types.rs`） | `ResourceHandle` + §6.5 `SessionHandleRef` |
+| 能表达的句柄 | `ConnectionHandle` / `TransactionHandle`（`crates/datazen-driver-api/src/types.rs`） | `ResourceHandle` + §6.5 `SessionHandleRef` |
 | 多进程/多 worker | 否 | 可配 `workerId`，可表达 epoch 碰撞 |
 | 现状 | 已可运行 | 不存在 |
 
@@ -56,11 +56,11 @@
 
 ## 2. 落点与模块划分
 
-实际目录（runtime crate `datazen` 已创建，位于 `modules/`；两个 target：`lib` 与 `cm60-bench` 这个 bin——§11.6 要求基准不得与功能测试共用入口）：
+实际目录（runtime crate `datazen` 已创建，位于 `crates/datazen/`；两个 target：`lib` 与 `cm60-bench` 这个 bin——§11.6 要求基准不得与功能测试共用入口）：
 
 | 路径 | 职责 | 关键导出 |
 | --- | --- | --- |
-| `modules/src/execution/runtime/connection/testing/mod.rs` | 模块入口与 `#[cfg(any(test, feature = "test-harness"))]` 门控 | `FakeHarness` |
+| `crates/datazen/src/execution/runtime/connection/testing/mod.rs` | 模块入口与 `#[cfg(any(test, feature = "test-harness"))]` 门控 | `FakeHarness` |
 | `.../testing/fake_resource/` | fake provider、fake resource 状态机、§5.1 九个操作、§4 注入点分派与目录守卫 | `FakeResourceProvider`、`FakeResource`、`FakeScript` |
 | `.../testing/journal/` | CommandJournal 与变化点断言 | `CommandJournal`、`JournalAssert` |
 | `.../testing/barrier/` | 命令级 barrier、协议 drain barrier | `Barrier`、`DrainBarrier` |
@@ -68,9 +68,9 @@
 | `.../testing/ids.rs` | 可预测 ID 生成与强制碰撞 | `FakeIds`、`FakeIdScope` |
 | `.../testing/fixtures.rs` | 固定实体（组织/用户/profile/命名空间 A、B） | `fixtures()` 常量与 `install_fixtures` |
 | `.../testing/commands.rs` | 会话级句柄 fake 命令定义 | `session_handle_command_definitions()` |
-| `modules/src/bin/cm60-bench/` | CM-60 基准入口（§11） | **已实现**：独立的 bin target，不在 `testing/` 下（§11.6 要求基准不得与功能测试共用入口） |
+| `crates/datazen/src/bin/cm60-bench/` | CM-60 基准入口（§11） | **已实现**：独立的 bin target，不在 `testing/` 下（§11.6 要求基准不得与功能测试共用入口） |
 
-`cfg` 门控与 `src-tauri/src/testing/mod.rs` 现有写法保持一致（`app_state_test_support` 用 `#[cfg(any(test, feature = "test-harness"))]`，feature 名 `test-harness` 已在 `src-tauri/Cargo.toml` 定义；`modules/Cargo.toml` 也定义了同名 feature，夹具模块由 `lib.rs` 与 `connection/mod.rs` 两处 `#[cfg(any(test, feature = "test-harness"))]` 双重门控）。
+`cfg` 门控与 `src-tauri/src/testing/mod.rs` 现有写法保持一致（`app_state_test_support` 用 `#[cfg(any(test, feature = "test-harness"))]`，feature 名 `test-harness` 已在 `src-tauri/Cargo.toml` 定义；`crates/datazen/Cargo.toml` 也定义了同名 feature，夹具模块由 `lib.rs` 与 `connection/mod.rs` 两处 `#[cfg(any(test, feature = "test-harness"))]` 双重门控）。
 
 ```mermaid
 flowchart TD
@@ -459,7 +459,7 @@ h.clock().advance(Duration::from_secs(24 * 3600));  // 触发 IdempotencyExpired
 | `commit_with_stale_handle` | Write | `handleId`, `runtimeEpoch` | — | **反例**：携带旧 epoch 的句柄，必须被拒绝 |
 | `handle_from_other_resource` | Write | `resourceId` | — | **反例**：跨 resource 句柄复用，必须被拒绝 |
 
-每条命令都给出 `DriverCommandDefinition`（`packages/driver-api/src/command.rs`：`id`/`name`/`description`/`input_schema`/`output_schema`/`permissions`/`metadata`），`metadata.requires_connection = true`，`metadata.category` 按读写设置，`metadata.risk` 对写操作显式声明 `CommandAccessLevel::Write`。command 通过 driver-api 的 `command_definitions()` / `execute_command()` 通道执行，fake driver 侧仍返回标准 `CommandResult { data }`。
+每条命令都给出 `DriverCommandDefinition`（`crates/datazen-driver-api/src/command.rs`：`id`/`name`/`description`/`input_schema`/`output_schema`/`permissions`/`metadata`），`metadata.requires_connection = true`，`metadata.category` 按读写设置，`metadata.risk` 对写操作显式声明 `CommandAccessLevel::Write`。command 通过 driver-api 的 `command_definitions()` / `execute_command()` 通道执行，fake driver 侧仍返回标准 `CommandResult { data }`。
 
 ### 9.2 登记与注销断言
 
@@ -490,13 +490,13 @@ h.clock().advance(Duration::from_secs(24 * 3600));  // 触发 IdempotencyExpired
 
 断言集合：`R2` 上不存在任何 `registered` 事件；`I1`~`I8` 全部成立；恢复流程若被触发，必须以**新 dbSessionId** 出现，旧句柄不被重建（connection-management.md §6.5）。
 
-CM-73/CM-74 的断言只依赖 Runtime 行为（回收时处理已登记活动句柄、失效后不以同一 dbSessionId 重建），不依赖 Host 管理器函数名；它们由 `modules/src/execution/runtime/connection/testing/harness_test_support/` 中的 Runtime 测试覆盖。
+CM-73/CM-74 的断言只依赖 Runtime 行为（回收时处理已登记活动句柄、失效后不以同一 dbSessionId 重建），不依赖 Host 管理器函数名；它们由 `crates/datazen/src/execution/runtime/connection/testing/harness_test_support/` 中的 Runtime 测试覆盖。
 
 ## 10. 真实驱动契约夹具模板
 
 ### 10.1 适用范围与落点
 
-真实方言测试**严格**落在 `packages/drivers/<id>/tests/`（AGENTS.md「驱动测试落点」）。Host 只运行 transport-neutral 的统一 contract（用 §3 的 fake resource provider）。fake driver 模拟一般会话语义，不包含任何 MySQL/PostgreSQL 等方言实现。
+真实方言测试**严格**落在 `crates/drivers/<id>/tests/`（AGENTS.md「驱动测试落点」）。Host 只运行 transport-neutral 的统一 contract（用 §3 的 fake resource provider）。fake driver 模拟一般会话语义，不包含任何 MySQL/PostgreSQL 等方言实现。
 
 ### 10.2 专用测试环境与 A/B 目标
 
@@ -520,7 +520,7 @@ INSERT INTO dz_target_marker (id, marker, written_at) VALUES (1, :marker, :now);
 
 ### 10.3 每类驱动的差异维度
 
-`packages/drivers/` 下现有目录：clickhouse、duckdb、elasticsearch、hbase、http-support、influxdb、kiwi、mongodb、mysql、postgres、redis、rqlite、sqlite、sqlserver、superset、turso、vector、victoriametrics（其中 kiwi、superset 不在 Cargo workspace 成员内，被 workspace `exclude`）。**各驱动的具体能力本文不预设结论**，必须由各驱动自己的能力声明与测试确认；夹具模板只要求每个驱动回答同一组问题并在测试中固化：
+`crates/drivers/` 下现有目录：clickhouse、duckdb、elasticsearch、hbase、http-support、influxdb、kiwi、mongodb、mysql、postgres、redis、rqlite、sqlite、sqlserver、superset、turso、vector、victoriametrics（其中 kiwi、superset 不在 Cargo workspace 成员内，被 workspace `exclude`）。**各驱动的具体能力本文不预设结论**，必须由各驱动自己的能力声明与测试确认；夹具模板只要求每个驱动回答同一组问题并在测试中固化：
 
 | 维度 | 驱动需声明 | 测试形态 |
 | --- | --- | --- |
@@ -536,7 +536,7 @@ INSERT INTO dz_target_marker (id, marker, written_at) VALUES (1, :marker, :now);
 
 - 能力 `Unsupported` 的用例断言「**正确拒绝**」，不能静默 `skip`；若因环境缺失无法运行，必须在报告中写明未验证范围。
 - 真实测试环境不可用时，**不得用 fake 代替真实协议结论**：fake 只能证明网关/运行时行为，不能证明驱动语义。
-- 现有可运行示例：`cargo test -p datazen-driver-postgres --test postgres_cross_database`（该测试在无 Postgres 时干净跳过）。它是本文模板的起点，凭据**只从进程环境取**（`TEST_PG_*`），无文件回退：该测试曾回退去解析 `packages/drivers/.env`，与 AGENTS.md「本地环境变量文件保护」冲突，已移除——静默解析凭据文件的测试无法证明它的 secret 从何而来。注入由 CI secret、开发者 shell，或 `scripts/run-live-contract.sh` 承担（后者解析 `.env` / `.env.test` 后 `export`，不 `source`，因为 `source` 会执行文件内容）；运行器读文件本身符合 AGENTS.md，不得因而禁止运行；Agent 不查看文件内容。新 fake 不依赖真实配置，真实驱动契约按程序/CI 注入并保证输出脱敏。
+- 现有可运行示例：`cargo test -p datazen-driver-postgres --test postgres_cross_database`（该测试在无 Postgres 时干净跳过）。它是本文模板的起点，凭据**只从进程环境取**（`TEST_PG_*`），无文件回退：该测试曾回退去解析 `crates/drivers/.env`，与 AGENTS.md「本地环境变量文件保护」冲突，已移除——静默解析凭据文件的测试无法证明它的 secret 从何而来。注入由 CI secret、开发者 shell，或 `scripts/run-live-contract.sh` 承担（后者解析 `.env` / `.env.test` 后 `export`，不 `source`，因为 `source` 会执行文件内容）；运行器读文件本身符合 AGENTS.md，不得因而禁止运行；Agent 不查看文件内容。新 fake 不依赖真实配置，真实驱动契约按程序/CI 注入并保证输出脱敏。
 
 ## 11. 基准 harness（CM-60）
 
@@ -580,7 +580,7 @@ INSERT INTO dz_target_marker (id, marker, written_at) VALUES (1, :marker, :now);
 
 | 产物 | 内容 | 落点 |
 | --- | --- | --- |
-| 原始计时 | 每请求两段纳秒值、轮次、并发度 | `target/bench/cm60-raw-<ts>.json`（由 `modules/src/bin/cm60-bench` 输出） |
+| 原始计时 | 每请求两段纳秒值、轮次、并发度 | `target/bench/cm60-raw-<ts>.json`（由 `crates/datazen/src/bin/cm60-bench` 输出） |
 | 环境记录 | CPU 核数、内存、OS、编译器版本 | 同上文件 `environment` 段 |
 | 构建参数 | profile、features、依赖锁文件摘要 | 同上文件 `build` 段 |
 | journal | 资源/permit/句柄全量 journal 摘要 | 同上文件 `journal` 段 |
@@ -613,7 +613,7 @@ pnpm e2e:skip-build           # 复用已编译 debug 二进制
 pnpm e2e:contract:matrix      # Host 契约 × 驱动矩阵
 ```
 
-**已落地、可立即运行**（runtime crate 已创建，核对自 `modules/Cargo.toml`）：
+**已落地、可立即运行**（runtime crate 已创建，核对自 `crates/datazen/Cargo.toml`）：
 
 ```bash
 cargo test -p datazen --lib                      # 夹具单测（383 个用例，crate 的 lib target）
@@ -639,8 +639,8 @@ cargo run --release -p datazen --bin cm60-bench     # CM-60 延迟半基准（§
 | 禁止读取受保护 env 文件 | 任何 Agent（含子代理）不得打开、读取、解析、`source` 或打印仓库及 worktree 中 `.env` / `.env.test` 的内容；只允许检查文件是否存在与 Git 忽略状态。**测试程序运行时读 `.env` 是合法的**——集成测试本就需要其中的 `DATABASE_URL`，`load_dotenv` 类调用因此不因「读文件」本身被禁；被禁的是「把内容读进上下文」，而不是「程序读文件」 |
 | 输出保护与 fake 隔离 | 不得执行会把上述文件的**内容带进上下文或报告**的命令；真实测试程序读取合法，fake 不读取真实配置且不出站 |
 | 真实凭据注入方式 | 由 CI secret 或已获授权的进程环境变量注入；不写入提示、日志、报告或测试输出 |
-| 测试只认进程环境 | `packages/drivers/postgres/tests/postgres_cross_database.rs` 解析 `TEST_PG_*` 只走 `std::env::var`，无文件回退，源码注释写明理由：静默解析凭据文件的测试无法证明其 secret 来源。旧的 `packages/drivers/.env` 回退已移除，注入改由 CI secret 或 `scripts/run-live-contract.sh` 承担；新夹具沿用「只认进程环境」这一写法 |
-| 启动器检查 | 开发前检查测试启动器不回显受保护文件内容；Host E2E 必须经 `pnpm tauri:build:webdriver` 或 `pnpm e2e` 触发，不得裸 `cargo build」。**P0 检查结论：11 个 shell 脚本会 `source` 受保护 env 文件**（`scripts/setup-workflow-testdata.sh:10`、`scripts/run-full-automation-test.sh:49`、`scripts/run-e2e-minimal.sh:234` 经 `--env-file`/`E2E_ENV_FILE`、`packages/drivers/postgres/e2e/install-manual-schema-tree.sh:13`、`packages/drivers/mysql/e2e/install-manual-schema-tree-fixtures.sh:11`、`e2e/setup-e2e-env.sh:12`、`e2e/teardown-e2e-env.sh:12`、`e2e/setup-sync-dbs.sh:12`、`e2e/setup-demo-data.sh:13`、`e2e/setup-schema-diff-e2e.sh:10`、`e2e/setup-data-transfer-e2e.sh:10`）。全部是**本地操作者手动执行的 E2E 准备脚本**，不进 CI、不是夹具、也不由任何测试断言调用；`run-e2e-minimal.sh:226` 只打印变量**名**不打印值。已确认的合规样例是同目录的 `.mjs` 版本，只读 `process.env.E2E_MYSQL_*`。本阶段按「检查」交付，不改造这些脚本——改造会改变本地开发流程，属独立决策；复扫命令见下 |
+| 测试只认进程环境 | `crates/drivers/postgres/tests/postgres_cross_database.rs` 解析 `TEST_PG_*` 只走 `std::env::var`，无文件回退，源码注释写明理由：静默解析凭据文件的测试无法证明其 secret 来源。旧的 `crates/drivers/.env` 回退已移除，注入改由 CI secret 或 `scripts/run-live-contract.sh` 承担；新夹具沿用「只认进程环境」这一写法 |
+| 启动器检查 | 开发前检查测试启动器不回显受保护文件内容；Host E2E 必须经 `pnpm tauri:build:webdriver` 或 `pnpm e2e` 触发，不得裸 `cargo build」。**P0 检查结论：11 个 shell 脚本会 `source` 受保护 env 文件**（`scripts/setup-workflow-testdata.sh:10`、`scripts/run-full-automation-test.sh:49`、`scripts/run-e2e-minimal.sh:234` 经 `--env-file`/`E2E_ENV_FILE`、`crates/drivers/postgres/e2e/install-manual-schema-tree.sh:13`、`crates/drivers/mysql/e2e/install-manual-schema-tree-fixtures.sh:11`、`e2e/setup-e2e-env.sh:12`、`e2e/teardown-e2e-env.sh:12`、`e2e/setup-sync-dbs.sh:12`、`e2e/setup-demo-data.sh:13`、`e2e/setup-schema-diff-e2e.sh:10`、`e2e/setup-data-transfer-e2e.sh:10`）。全部是**本地操作者手动执行的 E2E 准备脚本**，不进 CI、不是夹具、也不由任何测试断言调用；`run-e2e-minimal.sh:226` 只打印变量**名**不打印值。已确认的合规样例是同目录的 `.mjs` 版本，只读 `process.env.E2E_MYSQL_*`。本阶段按「检查」交付，不改造这些脚本——改造会改变本地开发流程，属独立决策；复扫命令见下 |
 | 日志脱敏 | 夹具的 journal 不得记录凭据、附件令牌与幂等令牌 nonce；故障注入的脚本 id 可记录，字面量不可记录 |
 | 夹具不产生真实外部连接 | fake provider 禁止任何出站 socket；真实驱动测试的连接目标必须是已证明的专用测试环境 |
 | 「无 env 文件读取」结论的边界 | 该结论来自对**绑定本契约模板的 crate 源码**的静态扫描（`real_driver_contract.rs` 的 `test_sources_never_read_env_files`）。带 `tests/` 却从不绑定模板的 crate 不在其中，其名单由 `UNGUARDED_DRIVER_CRATES` 机器渲染进范围报告的「免检驱动 crate」一节，并由 `the_report_names_every_crate_this_guard_does_not_scan` 的 golden 逐字钉住。golden 只拦下**未经复核的**新增文字，拦不住与 golden 同一次提交里一起改掉的措辞；报告其余部分的散文不在该钉的范围内，由 §10.4 的结论纪律负责 |
@@ -669,7 +669,7 @@ P0 退出门槛要求的三项能力——CM-01/04/07 基线、可复现的 CM-7
 
 - [连接管理详细设计](connection-management.md) 是本文的上位契约：§5.1 提供九个资源操作与其强制语义，§5.2 提供十项能力，§6.5 定义会话级句柄登记，§9.2/§9.3/§9.4 定义期限、预算与归池前置，§14 把 `testing/fake_resource` 定为开发顺序第 2 步，§15.1~§15.3 给出 fake 与真实夹具的分工、测试层次与基准参数，§16 给出 CM-01~CM-74 用例。本文只把这些条款落成可实现的夹具接口、断言与产物，不新增也不修改上位契约。
 - [平台开发计划](../../development/platform-development-plan.md) §4 的 P0 交付项（transport-neutral fake resource、真实固定会话/事务/目标/清理契约测试、测试环境注入方式与启动器检查）在本文分别对应 §2~§9、§10、§13；§15.1 的已存在命令表与 §15.2 的 CI 门禁对应 §12。
-- [测试架构](../testing.md) 的分层与运行命令对应 §10.1 的落点纪律与 §12 的命令分区：运行时单测/集成属于新 runtime crate，Host 集成留在 `src-tauri`，驱动 Rust 集成严格留在 `packages/drivers/<id>/tests/`。
+- [测试架构](../testing.md) 的分层与运行命令对应 §10.1 的落点纪律与 §12 的命令分区：运行时单测/集成属于新 runtime crate，Host 集成留在 `src-tauri`，驱动 Rust 集成严格留在 `crates/drivers/<id>/tests/`。
 - [系统概要](system-overview.md) 描述平台整体形态，本文不重复其内容。
 - [E2E 测试指南](../../development/e2e-testing.md) 的构建纪律对应 §13；本文不设计 WDIO 场景。
 
@@ -678,7 +678,7 @@ P0 退出门槛要求的三项能力——CM-01/04/07 基线、可复现的 CM-7
 - 连接管理运行时本身（actor、注册表、预算会计、执行网关）的内部设计——见 connection-management.md §6~§9。
 - §4 的 DTO 定义、字段语义与版本化枚举取值——本文只引用。
 - 任何真实数据库方言的行为：真实方言测试严格落在对应驱动 crate。
-- 驱动 Command API 的完整目录与前端 Command SDK 语义——见 `packages/driver-api` 与 `packages/driver-sdk`。
+- 驱动 Command API 的完整目录与前端 Command SDK 语义——见 `crates/datazen-driver-api` 与 `packages/driver-sdk`。
 - 前端 UI 绑定、Zustand store 与 i18n 文案。
 - 基准结果的结论与性能调优方案；本文只定义如何测量与判定。
 - Host `ConnectionManager` 已删除；本篇描述 Runtime fake resource fixtures，不承担连接迁移进度跟踪。

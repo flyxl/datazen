@@ -108,7 +108,7 @@ function scanRoots(): string[] {
   return [...roots];
 }
 
-/** Expand one workspace member pattern (`packages/drivers/*` is a glob). */
+/** Expand one workspace member pattern (`crates/drivers/*` is a glob). */
 function expandMember(member: string): string[] {
   if (!member.endsWith('/*')) return [member];
   const parent = join(REPO_ROOT, member.slice(0, -1));

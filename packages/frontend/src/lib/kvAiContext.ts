@@ -11,7 +11,7 @@
  * session id, the database the panel is bound to and the key the panel's relay
  * reports as selected. A type / TTL / size / value digest is equally a Redis fact,
  * but those come from `key_object_info`, which the driver's own key-props sidebar
- * fetches inside `packages/drivers/redis/**`; the frozen `KvSlotState` shape carries
+ * fetches inside `crates/drivers/redis/**`; the frozen `KvSlotState` shape carries
  * the scalars the status bar renders, not a key snapshot. Reaching them
  * from here would mean either duplicating a driver command or building a cache in
  * front of the relay, and both are ruled out — that state belongs to the UI

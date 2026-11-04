@@ -2,7 +2,7 @@
  * @datazen/frontend/shell — the shell-facing slice (host-boundary follow-up F2).
  *
  * Desktop-owned shell components (TitleBar, WindowControls in
- * `apps/desktop/src/shell/desktop/`) render inside the app frame but live in
+ * `packages/desktop/src/shell/desktop/`) render inside the app frame but live in
  * the app, not in this package. This subpath is the minimal shared surface
  * they may pull from: the i18n hook, the OS-dimension platform hook, the UI
  * store and the window-surface color helper.

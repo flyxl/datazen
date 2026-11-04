@@ -226,8 +226,8 @@ const MODULES_FEATURES = [
   'test-harness = []',
   'webdriver = []',
 ].join('\n');
-const MODULES = { dir: 'modules', name: 'datazen', features: MODULES_FEATURES };
-const DRIVER = { dir: 'packages/drivers/postgres', name: 'datazen-driver-postgres' };
+const MODULES = { dir: 'crates/datazen', name: 'datazen', features: MODULES_FEATURES };
+const DRIVER = { dir: 'crates/drivers/postgres', name: 'datazen-driver-postgres' };
 /** A real directory below no `LAYERS` path, so `classifyMemberDir` must reject it. */
 const UNCLASSIFIABLE = { dir: 'crates/mystery', name: 'mystery' };
 
@@ -303,7 +303,7 @@ const WHOLE_CRATE_RUN =
   'test --no-default-features --features datazen/settings,datazen/ai,datazen/test-harness -p datazen';
 // The seven feature legs are compile-isolation checks: `--no-run` keeps the
 // exact `--lib` target they always built (cfg(test) modules included) and drops
-// only the execution, which under modules/src's pure-union feature gating was a
+// only the execution, which under crates/datazen/src's pure-union feature gating was a
 // strict subset of the no-selector leg's run — see the runner's buildCargoArgv
 // doc for the evidence and the rejected `cargo check` alternatives.
 const EXPECTED_CLEAN_INVOCATIONS = [
@@ -545,9 +545,9 @@ describe('buildCargoArgv keeps the whole-crate run structural', () => {
     // The binary the selector-free run reaches really exists on disk; without
     // this, the required-features reasoning above would hold over a crate
     // whose bin had been renamed away.
-    expect(existsSync(join(REPO_ROOT, 'modules', 'src', 'bin', 'cm60-bench', 'main.rs'))).toBe(
-      true,
-    );
+    expect(
+      existsSync(join(REPO_ROOT, 'crates/datazen', 'src', 'bin', 'cm60-bench', 'main.rs')),
+    ).toBe(true);
   });
 
   it('names the host-aligned feature set, not --all-features', () => {
@@ -638,7 +638,7 @@ describe('buildCargoArgv keeps the whole-crate run structural', () => {
         const flag = args[0];
         const targetIndex = args.indexOf('--bin');
         const name = targetIndex >= 0 ? args[targetIndex + 1] : undefined;
-        const path = join(REPO_ROOT, 'modules', 'src', 'bin', name ?? '', 'main.rs');
+        const path = join(REPO_ROOT, 'crates/datazen', 'src', 'bin', name ?? '', 'main.rs');
         expect([flag, crate, existsSync(path)], `${crate} ${flag} ${name}`).toEqual([
           flag,
           crate,
@@ -672,14 +672,11 @@ describe('excluded-feature invariants (fail-closed)', () => {
     // growing a dependency through the back door must redden the runner
     // before any cargo invocation, not silently narrow what the leg compiles.
     const stale = {
-      dir: 'modules',
+      dir: 'crates/datazen',
       name: 'datazen',
-      features: [
-        '[features]',
-        'default = []',
-        'settings = []',
-        'webdriver = ["dep:serde"]',
-      ].join('\n'),
+      features: ['[features]', 'default = []', 'settings = []', 'webdriver = ["dep:serde"]'].join(
+        '\n',
+      ),
     };
     const ws = makeWorkspace('stale-exclusion', [stale, DRIVER]);
     const run = runIn(ws, []);
@@ -691,7 +688,7 @@ describe('excluded-feature invariants (fail-closed)', () => {
   });
 
   it('keeps test-harness named — integration fixtures and bin required-features need it', () => {
-    // modules/tests/* link the fixture tree gated
+    // crates/datazen/tests/* link the fixture tree gated
     // `cfg(any(test, feature = "test-harness"))` on the lib side, and
     // cm60-bench declares `required-features = ["execution", "jobs",
     // "test-harness"]`. Dropping test-harness from the named list would keep
@@ -718,7 +715,7 @@ describe('excluded-feature invariants (fail-closed)', () => {
  * features precisely so that the host leg and this runner's whole-crate leg
  * compile datazen with the SAME feature set — the ~209k-line lib then builds
  * once per CI run instead of twice. That equality spans three manifests
- * (modules/Cargo.toml's feature graph, apps/desktop/src-tauri/Cargo.toml's dependency
+ * (modules/Cargo.toml's feature graph, crates/datazen-desktop/Cargo.toml's dependency
  * features, the root workspace template's default-features=false), and a
  * change to any one of them can break it silently: the tests stay green while
  * cargo quietly goes back to compiling two different datazens. These
@@ -758,22 +755,20 @@ describe('host/platform datazen feature alignment (real manifests)', () => {
 
   /** The datazen dependency's `features = [...]` from the host manifest. */
   function parseHostDatazenFeatures(hostManifest: string): string[] {
-    const m = /^datazen = \{ workspace = true, features = \[([^\]]*)\] \}$/m.exec(
-      hostManifest,
-    );
+    const m = /^datazen = \{ workspace = true, features = \[([^\]]*)\] \}$/m.exec(hostManifest);
     if (m === null)
       throw new Error(
-        'apps/desktop/src-tauri/Cargo.toml: the datazen dependency line is not in the expected single-line shape',
+        'crates/datazen-desktop/Cargo.toml: the datazen dependency line is not in the expected single-line shape',
       );
     return (m[1].match(/"[^"]*"/g) ?? []).map((q) => q.slice(1, -1));
   }
 
   it('host closure ∪ {test-harness} equals all datazen features minus default/webdriver', () => {
     const datazenFeatures = parseManifestFeatures(
-      readFileSync(join(REPO_ROOT, 'modules', 'Cargo.toml'), 'utf8'),
+      readFileSync(join(REPO_ROOT, 'crates/datazen', 'Cargo.toml'), 'utf8'),
     );
     const hostFeatures = parseHostDatazenFeatures(
-      readFileSync(join(REPO_ROOT, 'apps/desktop/src-tauri', 'Cargo.toml'), 'utf8'),
+      readFileSync(join(REPO_ROOT, 'crates/datazen-desktop', 'Cargo.toml'), 'utf8'),
     );
     expect(Object.keys(datazenFeatures).length).toBeGreaterThan(0);
 
@@ -804,25 +799,20 @@ describe('host/platform datazen feature alignment (real manifests)', () => {
     // default-features=false; if the template ever flips, the two legs
     // re-diverge by the `default` feature and the shared compile is lost.
     const root = readFileSync(join(REPO_ROOT, 'Cargo.toml'), 'utf8');
-    expect(/^datazen = \{ path = "modules", default-features = false \}$/m.test(root)).toBe(
+    expect(/^datazen = \{ path = "crates\/datazen", default-features = false \}$/m.test(root)).toBe(
       true,
     );
-    const host = readFileSync(join(REPO_ROOT, 'apps/desktop/src-tauri', 'Cargo.toml'), 'utf8');
+    const host = readFileSync(join(REPO_ROOT, 'crates/datazen-desktop', 'Cargo.toml'), 'utf8');
     const dep = /^datazen = \{.*$/m.exec(host)?.[0] ?? '';
     expect(dep).not.toContain('default-features = true');
   });
 
   it('the runner names exactly that set for the real datazen table', () => {
     const table = parseManifestFeatures(
-      readFileSync(join(REPO_ROOT, 'modules', 'Cargo.toml'), 'utf8'),
+      readFileSync(join(REPO_ROOT, 'crates/datazen', 'Cargo.toml'), 'utf8'),
     );
     const [whole] = buildCargoArgv([{ name: 'datazen', features: table }]);
-    const flags =
-      whole
-        .join(' ')
-        .split('--features ')[1]
-        ?.split(' -p ')[0]
-        ?.split(',') ?? [];
+    const flags = whole.join(' ').split('--features ')[1]?.split(' -p ')[0]?.split(',') ?? [];
     expect(flags).toEqual(
       Object.keys(table)
         .filter((f) => f !== 'default' && f !== 'webdriver')
@@ -865,9 +855,7 @@ describe('run-platform-crate-tests guard negative controls', () => {
     // Same hole, quieter route: `--tests` "looks" like it covers integration
     // binaries and a reader skims it as a fix rather than a swap.
     const mutated = EXPECTED_CLEAN_INVOCATIONS.map((line) =>
-      line === WHOLE_CRATE_RUN
-        ? 'test --no-default-features --tests -p datazen'
-        : line,
+      line === WHOLE_CRATE_RUN ? 'test --no-default-features --tests -p datazen' : line,
     );
 
     expect(mutated).not.toEqual(EXPECTED_CLEAN_INVOCATIONS);

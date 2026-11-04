@@ -37,7 +37,7 @@ import {
 } from './lib/scanTargets.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
-const SCAN_ROOTS = ['apps', 'packages', 'e2e'];
+const SCAN_ROOTS = ['packages', 'e2e'];
 const FRONTEND_PACKAGE_ROOT = 'packages/frontend';
 const DEEP_PREFIX = '@datazen/frontend/src/';
 const TESTING_PREFIX = '@datazen/frontend/testing/';

@@ -5,7 +5,7 @@ import { valueInputFor } from '../../lib/filterOperators';
  * Whether a condition carries everything it needs to be sent to the database.
  *
  * The predicate mirrors the back end's `filter_is_complete`
- * (`modules/src/table_browsing/executor/filter_sql`): the operators that carry no value
+ * (`crates/datazen/src/table_browsing/executor/filter_sql`): the operators that carry no value
  * are complete on their own, the set operators need at least one value, and
  * the range operators need exactly two bounds.
  *

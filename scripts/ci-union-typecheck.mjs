@@ -121,7 +121,9 @@ export function runTypecheck({ root = ROOT, log = console.log } = {}) {
     return { status: 1 };
   }
   if (engine.reason) {
-    log(`[ci-union-typecheck] tsrs is unavailable here (${engine.reason}) — falling back to ${engine.engine}`);
+    log(
+      `[ci-union-typecheck] tsrs is unavailable here (${engine.reason}) — falling back to ${engine.engine}`,
+    );
   }
   const result = spawnSync(engine.command.cmd, engine.command.args, {
     cwd: root,

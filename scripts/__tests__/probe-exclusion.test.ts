@@ -84,7 +84,9 @@ function resolvedConfig(config: string): { exclude?: unknown } {
 
 function excludePatterns(config: string): string[] {
   const exclude = resolvedConfig(config).exclude;
-  return Array.isArray(exclude) ? exclude.filter((entry): entry is string => typeof entry === 'string') : [];
+  return Array.isArray(exclude)
+    ? exclude.filter((entry): entry is string => typeof entry === 'string')
+    : [];
 }
 
 describe('probe files never enter a TypeScript program', () => {

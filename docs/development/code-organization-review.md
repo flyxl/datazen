@@ -21,7 +21,7 @@ DDD 重构（D0–D8）与 form-split（F1–F6）刚收口后的整体判断：
 
 | 维度 | 评价 | 依据 |
 |---|---|---|
-| 架构方向 | 好 | 形态中立内核（`modules`）+ 薄宿主（`apps/desktop/src-tauri`）+ 契约 crate（`driver-api`），依赖单向，`shared-boundaries-and-ports.md` §2.4 规则表有脚本门禁背书 |
+| 架构方向 | 好 | 形态中立内核（`modules`）+ 薄宿主（`crates/datazen-desktop`）+ 契约 crate（`driver-api`），依赖单向，`shared-boundaries-and-ports.md` §2.4 规则表有脚本门禁背书 |
 | crate 拆分粒度 | 好 | 20 个成员各层有存在理由；不提前为 Web 宿主拆 crate 的决策有书面记录（modules/Cargo.toml `ai` feature 注释） |
 | workspace 卫生 | 待改进 | `[workspace.dependencies]` 仅 2 项 path 条目被使用；约 25 个共享依赖在 modules / desktop / drivers 间各写一份，已现漂移（§3 F-2） |
 | feature 组织 | 可接受 | 28 个 feature、最深 8 层链；`feature_error` 依赖方向倒挂（§3 F-5）；桌面清单已按边界方案 F0 补全（本分支） |
@@ -36,10 +36,10 @@ DDD 重构（D0–D8）与 form-split（F1–F6）刚收口后的整体判断：
 | 成员 | 版本 | 角色 | 发布状态 |
 |---|---|---|---|
 | `modules`（crate `datazen`） | 0.0.1 | 形态中立内核：领域词汇、仓储端口、应用用例，feature 门控 | 不发布 |
-| `apps/desktop/src-tauri`（`datazen_desktop`） | 0.2.3 | Tauri 宿主/适配器，开 23 个 `datazen` features | 应用 |
-| `packages/driver-api`（`datazen-driver-api`） | 0.0.21 | 驱动契约（traits + 类型），MIT 双许可 | **已发布 crates.io**（`publish-driver-api.yml`） |
-| `packages/infra`（`datazen-infra`） | 0.1.0 | 脱敏 / 路径安全原语，零 datazen-* 依赖（F-11） | 不发布 |
-| `packages/drivers/*` ×16 | 各自 0.0.x | 15 个驱动 + `http-support` 共享件 | 驱动独立版本 |
+| `crates/datazen-desktop`（`datazen_desktop`） | 0.2.3 | Tauri 宿主/适配器，开 23 个 `datazen` features | 应用 |
+| `crates/datazen-driver-api`（`datazen-driver-api`） | 0.0.21 | 驱动契约（traits + 类型），MIT 双许可 | **已发布 crates.io**（`publish-driver-api.yml`） |
+| `crates/datazen-infra`（`datazen-infra`） | 0.1.0 | 脱敏 / 路径安全原语，零 datazen-* 依赖（F-11） | 不发布 |
+| `crates/drivers/*` ×16 | 各自 0.0.x | 15 个驱动 + `http-support` 共享件 | 驱动独立版本 |
 
 版本观察：`driver-api` 高频迭代（0.0.21）而核心 crate 零迭代（0.0.1）符合"契约 vs 内核"的
 节奏差；但六套版本号（含 `@datazen/frontend` 0.1.0、宿主 0.2.3、驱动 0.0.10 等）目前无任何
@@ -126,17 +126,17 @@ graph TD
 
 | # | 级别 | 发现 | 证据 | 影响 |
 |---|---|---|---|---|
-| F-1 | 高 | workspace 依赖继承基本未使用：根表仅 `datazen-driver-api`、`datazen` 两条，其余约 25 个共享依赖在成员间逐份重复 | 根 `Cargo.toml` vs `modules/Cargo.toml` / `apps/desktop/src-tauri/Cargo.toml` / 驱动 manifests | 规格漂移无结构性防线；每次升级要改多处 |
+| F-1 | 高 | workspace 依赖继承基本未使用：根表仅 `datazen-driver-api`、`datazen` 两条，其余约 25 个共享依赖在成员间逐份重复 | 根 `Cargo.toml` vs `crates/datazen/Cargo.toml` / `crates/datazen-desktop/Cargo.toml` / 驱动 manifests | 规格漂移无结构性防线；每次升级要改多处 |
 | F-2 | 高 | 版本/规格漂移已发生：`serde_yaml` "0.9" vs "0.9.34"；`regex` "1" vs "1.13.1"；**`dirs` 5 与 6 并存**（Cargo.lock 同时锁 5.0.1 与 6.0.0，modules 用 5、desktop 用 6） | `Cargo.lock` | dirs 双版本意味着同一语义两套实现共存，行为差异风险 |
-| F-3 | 中 | `packages/infra` 注释腐化：声称根表 "carries only the seven path crates"，实际两条 | `packages/infra/Cargo.toml` 依赖区注释 | "为什么不继承"的辩护词本身过期，误导后续维护者 |
+| F-3 | 中 | `crates/datazen-infra` 注释腐化：声称根表 "carries only the seven path crates"，实际两条 | `crates/datazen-infra/Cargo.toml` 依赖区注释 | "为什么不继承"的辩护词本身过期，误导后续维护者 |
 | F-4 | 中 | 构建期改写 VCS 跟踪的 manifest：`resolve-drivers.mjs` 在根/desktop 的 `<<driver-*>>` 标记间注入依赖与 feature，`driver-file-stash.mjs` stash/restore 整文件；desktop 曾因 macOS 依赖插入位置错误导致跨平台构建失败（现注释记录该事故） | `scripts/resolve-drivers.mjs`、desktop `Cargo.toml` L74–80 注释 | 有状态构建；CI 中断留脏树；标记顺序敏感 |
-| F-5 | 中 | feature 图结构问题：`feature_error` 倒挂（见 §2.3）；`services` 与 `application` 两个伞 feature 的划分边界需要读注释才能解释——边界是 D 序号迁移批次的化石，尚非领域语义 | `modules/Cargo.toml` features 区 | 最小构建推理成本高；开"错误诊断"链接整个 AI 栈违反直觉（桌面清单可见性问题已由边界方案 F0 在本分支修复，图结构本身仍待 P3） |
+| F-5 | 中 | feature 图结构问题：`feature_error` 倒挂（见 §2.3）；`services` 与 `application` 两个伞 feature 的划分边界需要读注释才能解释——边界是 D 序号迁移批次的化石，尚非领域语义 | `crates/datazen/Cargo.toml` features 区 | 最小构建推理成本高；开"错误诊断"链接整个 AI 栈违反直觉（桌面清单可见性问题已由边界方案 F0 在本分支修复，图结构本身仍待 P3） |
 | F-6 | 中 | AGENTS.md 仓库地图过期：仍描述 `src/`、`src-tauri/` 顶层布局与已合并的 `runtime`、`application`、`platform-api` 包；生成文件路径 `src/extensions/generated*.ts` 等未更新 | `AGENTS.md` §项目与目录（本分支已修） | 对 agent 协作是直接误导——地图错比没有更糟 |
 | F-7 | 低 | `.d31_events_block.txt`（1.6KB Rust 草稿）误提交在根目录 | git tree（本分支已删） | 噪音 |
 | F-8 | 中 | `@datazen/frontend` 子路径 exports 指向不存在的文件：`"./src/*": "./src/*.js"`，而源码树全是 `.ts`；兄弟包（ui / wapp-sdk 等）全部直接指向 `.ts`。当前 tsc / vite / vitest 靠解析器回退行为正常工作，但任何严格按 exports 解析的消费者（Node ESM 直载、未来 bundler 严格模式）会断 | `packages/frontend/package.json` vs `packages/frontend/src/platform/env.ts`（本分支已修） | 埋雷型问题：平时无感，切换工具链时爆炸 |
 | F-9 | 中 | `xlsx@^0.18.5` 已知漏洞：CVE-2023-30533（原型污染）与 CVE-2024-22363（ReDoS）；修复版只经 cdn.sheetjs.com 分发，npm 源冻结在 0.18.5。导入链路解析用户提供的表格文件（正是触发场景；纯导出不受影响） | `packages/frontend/package.json` dependencies；Snyk / SheetJS 官方安装文档 | 依赖安全问题，建议尽快处置 |
 | F-10 | 低 | README 宣称 "18 database drivers"，`drivers-registry.json` 为 17（15 path + kiwi / superset git） | `README.md` L20 vs `drivers-registry.json` | 口径差，建议注明计数方式或对齐 |
-| F-11 | 低 | `modules/src/lib.rs` 根部 `pub use execution::*` 等 glob 再导出，注释自辩"避免重建水平 platform-api 命名空间"——glob 恰恰在 crate 根重建了一个隐式水平命名空间 | `modules/src/lib.rs` 尾部 | 命名冲突面；团队在 D3 评审修复中已有"glob 改命名再导出"先例，可复用 |
+| F-11 | 低 | `crates/datazen/src/lib.rs` 根部 `pub use execution::*` 等 glob 再导出，注释自辩"避免重建水平 platform-api 命名空间"——glob 恰恰在 crate 根重建了一个隐式水平命名空间 | `crates/datazen/src/lib.rs` 尾部 | 命名冲突面；团队在 D3 评审修复中已有"glob 改命名再导出"先例，可复用 |
 | F-12 | 低 | `hub.md` 头部"全局状态"仍写"D3 基本完成、下一步 D4"，正文表格显示 D5 收官、D6 item 1–5 已完成 | `hub.md` | 协调文件头部落后正文两个阶段；建议头部摘要由脚本生成或明确更新责任 |
 
 正向确认（无需动作）：`@datazen/ui` 零宿主依赖、peers 声明规范；`non_ascii_idents = "deny"`
@@ -159,7 +159,7 @@ graph TD
 > | 4 | F1 | 比对租约 flock 化，data_sync 去 rusqlite | ✅ 已实施：fd-lock 4 替换 SQLite 排他事务，锁住不回收/放锁后回收双向测试，45/45 comparison_store + 244/244 data_sync 全绿；遗留 .sqlite 租约不读不删（fail closed，见提交说明） |
 > | 5 | F2 | 前端稳定入口 + 门禁 | ✅ 已实施（含三处偏差，见边界方案 §6 实施记录：新增 `./app` 轻入口、`./testing/*` 测试镜像、镜像导入带扩展名） |
 > | 6 | P2 ∥ F3 | 驱动注入静态化 ∥ 新建 driver-support | F3 第一刀已实施：`sql_split` + `sql_identifiers`（仅有的零依赖纯模块，780 行）下沉新 crate，模块级 re-export 保下游路径，三级 cargo check + 14 内嵌测试全绿，`PROTOCOL_VERSION` 不变；后续候选（filters/keyset/dialect）已复核完毕：三候选均不满足方案分批判据（filters 是 IPC 契约 DTO、dialect 是 trait 配套适配器、keyset 含方言 SQL 装配且消费者含 modules），且下沉与桥接 re-export 构成环依赖，判决不搬，F3 收口（见边界方案 §6 复核结论）。P2 待做，两项无耦合可并行 |
-> | 7 | F4a…F4n | 命令体按用例下沉各 feature `api` 模块 | F4a 已实施：`modules/src/connection/api.rs` 固定 api 写法（错误走 feature error 路线，避免发明 ApiErrorCode 协议取值；IPC 错误码逐字节不变），8 处桌面调用点改委托，`resolve_test_config` 密钥合并逻辑下沉；modules 1487/1487 绿。F4b 已实施：`modules/src/table_browsing/api.rs` 收表读取两用例（`read_table_page`/`preview_table_read`，含 DB-15 单点拼装、计数回退、双形态结果合并），`TargetCommandRunner` 消费者端口落宿主实现，宿主 `table_target.rs` 874→270 行只剩传输胶水与端口；table-browsing 闭包 1125/1125 绿、全 feature check 绿。复核：export/backup 无需 F4 刀（D6 item 5 已落目标形态）。F4c sync 写路径刀已实施：`data_sync::api` 收复核批次（`generate_reviewed_batch_sql` + `BatchSqlHost` 端口）、键读 `select_by_key_sql` 与共享装配 `generate_write_sql_for_table`，宿主 `sync/host/statements.rs`、`select.rs` 删除、`apply.rs` 1177→682 行委托去重（ui-preview 与复核批次共用同一装配），门禁先于端口的顺序契约以测试钉死；data_sync 闭包 258/258 绿、宿主 feature 联合 check 绿。F4c data_transfer 预览刀已实施：源范围装配闭包六处（宿主 preview.rs 四环 + modules sql_file/dispatcher/handler）收进 `recordset::build_source_scope_for_driver`（Job handler 走 `for_family` 保端点配置类型来源），COUNT 装配/解析下沉 `count_scoped_rows_sql`/`parse_scoped_row_count`（执行留宿主租约侧），宿主 `preview.rs` 858→775 行只剩传输编排，错误装饰留调用点、IPC 字节不变；data_transfer 闭包 1212/1212 绿（+6 新测）、modules 27 feature 全集 2573/2573 绿。F4c schema_diff 复核刀已实施：宿主 schema_diff 域算法面六文件下沉 `schema_diff::api`（2,369 行收目录/快照/计划展开/复核消费/部署验证/单表对比），`SchemaDiffAdapterHost`/`ComparisonPreviewHost` 端口落宿主，宿主域 6,108→3,612 行、净删 2,705 行，sync 域 IR 对比算法顺带归位。F4c 残余收口已实施：sync COUNT 装配下沉 `data_sync::api::count_table_rows`、result_write 确认读下沉 `table_editing::result_edit::confirm_unchanged_read_sql`，data_transfer 复核无需新刀——`commands/` 生产代码零 SQL 拼装，§3 全树口径验收达成（modules 三 feature 并跑 1448/1448 绿）。F4 系列至此全部完成 |
+> | 7 | F4a…F4n | 命令体按用例下沉各 feature `api` 模块 | F4a 已实施：`crates/datazen/src/connection/api.rs` 固定 api 写法（错误走 feature error 路线，避免发明 ApiErrorCode 协议取值；IPC 错误码逐字节不变），8 处桌面调用点改委托，`resolve_test_config` 密钥合并逻辑下沉；modules 1487/1487 绿。F4b 已实施：`crates/datazen/src/table_browsing/api.rs` 收表读取两用例（`read_table_page`/`preview_table_read`，含 DB-15 单点拼装、计数回退、双形态结果合并），`TargetCommandRunner` 消费者端口落宿主实现，宿主 `table_target.rs` 874→270 行只剩传输胶水与端口；table-browsing 闭包 1125/1125 绿、全 feature check 绿。复核：export/backup 无需 F4 刀（D6 item 5 已落目标形态）。F4c sync 写路径刀已实施：`data_sync::api` 收复核批次（`generate_reviewed_batch_sql` + `BatchSqlHost` 端口）、键读 `select_by_key_sql` 与共享装配 `generate_write_sql_for_table`，宿主 `sync/host/statements.rs`、`select.rs` 删除、`apply.rs` 1177→682 行委托去重（ui-preview 与复核批次共用同一装配），门禁先于端口的顺序契约以测试钉死；data_sync 闭包 258/258 绿、宿主 feature 联合 check 绿。F4c data_transfer 预览刀已实施：源范围装配闭包六处（宿主 preview.rs 四环 + modules sql_file/dispatcher/handler）收进 `recordset::build_source_scope_for_driver`（Job handler 走 `for_family` 保端点配置类型来源），COUNT 装配/解析下沉 `count_scoped_rows_sql`/`parse_scoped_row_count`（执行留宿主租约侧），宿主 `preview.rs` 858→775 行只剩传输编排，错误装饰留调用点、IPC 字节不变；data_transfer 闭包 1212/1212 绿（+6 新测）、modules 27 feature 全集 2573/2573 绿。F4c schema_diff 复核刀已实施：宿主 schema_diff 域算法面六文件下沉 `schema_diff::api`（2,369 行收目录/快照/计划展开/复核消费/部署验证/单表对比），`SchemaDiffAdapterHost`/`ComparisonPreviewHost` 端口落宿主，宿主域 6,108→3,612 行、净删 2,705 行，sync 域 IR 对比算法顺带归位。F4c 残余收口已实施：sync COUNT 装配下沉 `data_sync::api::count_table_rows`、result_write 确认读下沉 `table_editing::result_edit::confirm_unchanged_read_sql`，data_transfer 复核无需新刀——`commands/` 生产代码零 SQL 拼装，§3 全树口径验收达成（modules 三 feature 并跑 1448/1448 绿）。F4 系列至此全部完成 |
 > | 8 | P3 / P5 | feature 图修剪 / 目录语义化 | 记录方向，见各自触发条件。P4 两项评估同日收口：tsconfig project references 不引入（tsrs 主引擎未验证 references 支持 + 15 个无包身份驱动 UI 树 + F2 门禁在岗，重评条件已记 P4-2）；根 devDeps 无需下放（逐项实测根表即真实消费者，前置是 P5 驱动 UI 包身份，见 P4-3） |
 > | 9 | M4→M3→M1→M2 | 跨形态一致性收敛（AI 工具 / MCP / runtime 读取路径，2026-10-31 立项） | 方案与现状核对见边界方案 §8；M4（MCP 元数据读取走共享端口）先行 |
 >
@@ -240,7 +240,7 @@ P3 才动图的结构。F0 留下的守护注释（未列出的 feature 不得�
    `0.18.0-ts7.1.0-dev`，`scripts/typecheck.mjs` 明文「The gate runs tsrs alone」），其
    0.18 开发线对 composite/project-references 的支持未经验证，引入即把门禁押在未验证面上；
    (b) 根 `tsconfig.json` 的单程序 include 含 **15 个无 package.json 的驱动 UI 树**
-   （`packages/drivers/*/ui`），project references 要求每个被引用工程有自己的 tsconfig +
+   （`crates/drivers/*/ui`），project references 要求每个被引用工程有自己的 tsconfig +
    composite 配置，等于给 16 个驱动目录各造一份编译清单——而 P5 的方向恰恰是把驱动目录
    挪出 TS workspace glob；(c) 边界违规当前由 F2 门禁 + `check-module-layers` 等 5 个
    脚本在 CI 兜住，违规会被拦截而非静默通过，「靠约定不靠编译器」的表述已过时。重评条件：
@@ -248,7 +248,7 @@ P3 才动图的结构。F0 留下的守护注释（未列出的 feature 不得�
 3. 根 package.json 的 react / zustand 等 devDependencies 下放（2026-10-30 复核完毕，
    结论：**无需下放，根表每项都有真实根上下文消费者**）：逐项实测后，评审点名的
    react / react-dom / @types/react / zustand / lucide-react / @testing-library/react
-   都是被**无 package.json 的驱动 UI 树**（`packages/drivers/*/ui`，15 个目录，经根
+   都是被**无 package.json 的驱动 UI 树**（`crates/drivers/*/ui`，15 个目录，经根
    node_modules 解析、且在根 tsconfig 单程序与 `vitest.drivers.config.ts` 的 include 里）
    与根上下文消费（`scripts/*.mjs` 的 type-only react 导入、`scripts/__tests__` 对
    @testing-library/react 与 tailwind-merge 的直接导入、根 vitest/vite 配置）——
@@ -259,11 +259,11 @@ P3 才动图的结构。F0 留下的守护注释（未列出的 feature 不得�
 
 ### P5 — 目录语义化（Web 宿主重新立项时一并做，当前不动）
 
-`modules/` → `crates/datazen/`、`packages/drivers/` → `crates/drivers/`（目录与 crate 同名，
-对齐 tauri / zed 惯例）；`packages/` 收敛为纯 TS 包，pnpm glob 从 `packages/drivers/*` 收紧，
+`crates/datazen/` → `crates/datazen/`、`crates/drivers/` → `crates/drivers/`（目录与 crate 同名，
+对齐 tauri / zed 惯例）；`packages/` 收敛为纯 TS 包，pnpm glob 从 `crates/drivers/*` 收紧，
 避免未来驱动目录加 package.json 被静默吸入 TS workspace。D7 已移出重构范围（hub.md 范围
-决策），本阶段无触发条件，仅记录方向。注：边界方案 F3 会新增 `packages/driver-support`
-（Rust crate），加深 packages/ 混装现状——接受为过渡态，本阶段迁移时随 `packages/drivers/*`
+决策），本阶段无触发条件，仅记录方向。注：边界方案 F3 会新增 `crates/datazen-driver-support`
+（Rust crate），加深 packages/ 混装现状——接受为过渡态，本阶段迁移时随 `crates/drivers/*`
 一并挪入 `crates/`。
 
 ## 5. 社区基准对照

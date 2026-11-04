@@ -33,7 +33,7 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
 describe('violationMentions', () => {
   const stdout = [
-    '[check-platform-arch] VIOLATION F-01  datazen-driver-redis (packages/drivers/redis/Cargo.toml) → tauri in its normal+build closure [crate family]: drivers stay host-free and platform-free.',
+    '[check-platform-arch] VIOLATION F-01  datazen-driver-redis (crates/drivers/redis/Cargo.toml) → tauri in its normal+build closure [crate family]: drivers stay host-free and platform-free.',
     '[check-platform-arch] ok F-01: datazen-driver-redis',
   ].join('\n');
 

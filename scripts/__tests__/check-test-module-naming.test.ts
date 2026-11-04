@@ -8,15 +8,15 @@
  * properties of the guard shape those trees:
  *
  *   - it scans only its hardcoded workspace-member mirror (six fixed member
- *     directories plus `packages/drivers/*`, minus the workspace excludes), so
- *     each fixture pre-creates every member directory and `packages/drivers/`
+ *     directories plus `crates/drivers/*`, minus the workspace excludes), so
+ *     each fixture pre-creates every member directory and `crates/drivers/`
  *     — a missing one is exit 2, not an empty scan — and every Rust fixture
  *     file must sit under one of those paths or the guard cannot see it;
  *   - the TS rules (3–4) add one more mirrored root: `e2e/specs` must exist
  *     or the run is exit 2, so the skeleton stages it too — a driver
  *     `e2e/` directory is optional and only counts as a spec tree when
  *     present (the driver fixtures rely on that: staging
- *     `packages/drivers/redis/e2e/…` is what bumps the tree count to 2);
+ *     `crates/drivers/redis/e2e/…` is what bumps the tree count to 2);
  *   - the ok line reports how many files and gated modules the run actually
  *     saw on BOTH scanners, so the clean fixtures assert those numbers: a
  *     "clean" verdict must not be fakeable by a scan that found nothing (the
@@ -43,16 +43,16 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
 /**
  * The guard's hardcoded workspace-member mirror: every fixture must create all
- * of these (plus the `packages/drivers` glob root and the `e2e/specs` spec-tree
+ * of these (plus the `crates/drivers` glob root and the `e2e/specs` spec-tree
  * root) or the run is exit 2.
  */
 const WORKSPACE_MEMBER_DIRS = [
-  'apps/desktop/src-tauri',
-  'packages/driver-api',
-  'packages/driver-support',
-  'packages/infra',
-  'modules',
-  'server',
+  'crates/datazen-desktop',
+  'crates/datazen-driver-api',
+  'crates/datazen-driver-support',
+  'crates/datazen-infra',
+  'crates/datazen',
+  'crates/datazen-server',
 ];
 
 /** Fixture roots staged so far; removed once in `afterAll`. */
@@ -62,7 +62,7 @@ const fixtureRoots: string[] = [];
 function makeFixtureRoot(files: Record<string, string>): string {
   const root = mkdtempSync(join(tmpdir(), 'check-test-module-naming-'));
   fixtureRoots.push(root);
-  for (const dir of [...WORKSPACE_MEMBER_DIRS, 'packages/drivers', 'e2e/specs']) {
+  for (const dir of [...WORKSPACE_MEMBER_DIRS, 'crates/drivers', 'e2e/specs']) {
     mkdirSync(join(root, dir), { recursive: true });
   }
   for (const [rel, text] of Object.entries(files)) {
@@ -94,23 +94,23 @@ describe('Rule 1 — gated module names must signal "test"', () => {
     // The incident class that motivated the guard: `ipc_contract_guards.rs`
     // was 100% test code behind a gate, invisible to triage.
     const root = makeFixtureRoot({
-      'modules/src/lib.rs': '#[cfg(test)]\nmod ipc_contract_guards;\n',
-      'modules/src/ipc_contract_guards.rs': 'use super::*;\n',
+      'crates/datazen/src/lib.rs': '#[cfg(test)]\nmod ipc_contract_guards;\n',
+      'crates/datazen/src/ipc_contract_guards.rs': 'use super::*;\n',
     });
     const result = runGuard(root);
     expect(result.code).toBe(1);
     // The finding names the misclassified FILE (what a reader misclassifies)…
-    expect(result.err).toContain('modules/src/ipc_contract_guards.rs:1');
+    expect(result.err).toContain('crates/datazen/src/ipc_contract_guards.rs:1');
     // …and the declaration site — the line a fix would edit.
     expect(result.err).toContain('mod ipc_contract_guards;');
-    expect(result.err).toContain('modules/src/lib.rs:2');
+    expect(result.err).toContain('crates/datazen/src/lib.rs:2');
     expect(result.err).toContain('without any "test" signal');
   });
 
   it('accepts the same module once its name carries the test signal', () => {
     const root = makeFixtureRoot({
-      'apps/desktop/src-tauri/src/lib.rs': '#[cfg(test)]\nmod ipc_contract_guards_tests;\n',
-      'apps/desktop/src-tauri/src/ipc_contract_guards_tests.rs': 'use super::*;\n',
+      'crates/datazen-desktop/src/lib.rs': '#[cfg(test)]\nmod ipc_contract_guards_tests;\n',
+      'crates/datazen-desktop/src/ipc_contract_guards_tests.rs': 'use super::*;\n',
     });
     const result = runGuard(root);
     expect(result.code).toBe(0);
@@ -124,8 +124,8 @@ describe('Rule 1 — gated module names must signal "test"', () => {
     // The repo's `#[cfg(test)] #[path = "backup_tests.rs"] mod tests;` pattern:
     // the basename carries the signal, the mod name does not have to.
     const root = makeFixtureRoot({
-      'modules/src/lib.rs': '#[cfg(test)]\n#[path = "backup_tests.rs"]\nmod tests;\n',
-      'modules/src/backup_tests.rs': 'use super::*;\n',
+      'crates/datazen/src/lib.rs': '#[cfg(test)]\n#[path = "backup_tests.rs"]\nmod tests;\n',
+      'crates/datazen/src/backup_tests.rs': 'use super::*;\n',
     });
     const result = runGuard(root);
     expect(result.code).toBe(0);
@@ -136,27 +136,28 @@ describe('Rule 1 — gated module names must signal "test"', () => {
 
   it('falls back to the mod name when #[path] points at a mod.rs', () => {
     const root = makeFixtureRoot({
-      'modules/src/lib.rs': '#[cfg(test)]\n#[path = "helper_suite/mod.rs"]\nmod helpers;\n',
-      'modules/src/helper_suite/mod.rs': 'use super::*;\n',
+      'crates/datazen/src/lib.rs': '#[cfg(test)]\n#[path = "helper_suite/mod.rs"]\nmod helpers;\n',
+      'crates/datazen/src/helper_suite/mod.rs': 'use super::*;\n',
     });
     const result = runGuard(root);
     // A `mod.rs` basename carries no signal, so NAME decides — and `helpers`
     // has none: the violation names the redirected file.
     expect(result.code).toBe(1);
-    expect(result.err).toContain('modules/src/helper_suite/mod.rs:1');
+    expect(result.err).toContain('crates/datazen/src/helper_suite/mod.rs:1');
     expect(result.err).toContain('#[path = "helper_suite/mod.rs"] mod helpers;');
   });
 
   it('treats cfg(all(test, feature = "…")) as gated', () => {
     const root = makeFixtureRoot({
-      'server/src/lib.rs': '#[cfg(all(test, feature = "slow"))]\nmod plain_helpers;\n',
-      'server/src/plain_helpers.rs': 'use super::*;\n',
+      'crates/datazen-server/src/lib.rs':
+        '#[cfg(all(test, feature = "slow"))]\nmod plain_helpers;\n',
+      'crates/datazen-server/src/plain_helpers.rs': 'use super::*;\n',
     });
     const result = runGuard(root);
     // Only a recognized gate can produce this Rule 1 finding: if cfg(all(…))
     // stopped counting as test-gated, the declaration would be skipped.
     expect(result.code).toBe(1);
-    expect(result.err).toContain('server/src/plain_helpers.rs:1');
+    expect(result.err).toContain('crates/datazen-server/src/plain_helpers.rs:1');
   });
 
   it('does not treat feature = "integration_tests" / "testing" as a test gate', () => {
@@ -164,29 +165,29 @@ describe('Rule 1 — gated module names must signal "test"', () => {
     // string. Both spellings would gate under a naive substring match, which
     // would silently ship these test files in the product binary.
     const root = makeFixtureRoot({
-      'packages/driver-api/src/lib.rs': [
+      'crates/datazen-driver-api/src/lib.rs': [
         '#[cfg(feature = "integration_tests")]',
         'mod report_tests;',
         '#[cfg(feature = "testing")]',
         'mod audit_tests;',
       ].join('\n'),
-      'packages/driver-api/src/report_tests.rs': 'use super::*;\n',
-      'packages/driver-api/src/audit_tests.rs': 'use super::*;\n',
+      'crates/datazen-driver-api/src/report_tests.rs': 'use super::*;\n',
+      'crates/datazen-driver-api/src/audit_tests.rs': 'use super::*;\n',
     });
     const result = runGuard(root);
     expect(result.code).toBe(1);
-    expect(result.err).toContain('packages/driver-api/src/report_tests.rs:1');
-    expect(result.err).toContain('packages/driver-api/src/audit_tests.rs:1');
+    expect(result.err).toContain('crates/datazen-driver-api/src/report_tests.rs:1');
+    expect(result.err).toContain('crates/datazen-driver-api/src/audit_tests.rs:1');
     expect(result.err).toContain('compiled into the product binary');
   });
 
   it('treats cfg(any(test, feature = "…")) as gated', () => {
     const root = makeFixtureRoot({
-      'packages/driver-support/src/lib.rs': [
+      'crates/datazen-driver-support/src/lib.rs': [
         '#[cfg(any(test, feature = "extra"))]',
         'mod misc_tests;',
       ].join('\n'),
-      'packages/driver-support/src/misc_tests.rs': 'use super::*;\n',
+      'crates/datazen-driver-support/src/misc_tests.rs': 'use super::*;\n',
     });
     const result = runGuard(root);
     expect(result.code).toBe(0);
@@ -197,8 +198,8 @@ describe('Rule 1 — gated module names must signal "test"', () => {
 
   it('leaves an ungated declaration of an unsignaled name alone', () => {
     const root = makeFixtureRoot({
-      'modules/src/lib.rs': 'mod plain_helpers;\n',
-      'modules/src/plain_helpers.rs': 'pub fn helper() {}\n',
+      'crates/datazen/src/lib.rs': 'mod plain_helpers;\n',
+      'crates/datazen/src/plain_helpers.rs': 'pub fn helper() {}\n',
     });
     const result = runGuard(root);
     // Scoping pin: Rule 1 covers gated decls only, so a gateless
@@ -214,24 +215,24 @@ describe('Rule 1 — gated module names must signal "test"', () => {
 describe('Rule 2 — test-named files must not reach the product binary', () => {
   it('flags a *_tests.rs declared without a cfg(test) gate', () => {
     const root = makeFixtureRoot({
-      'modules/src/lib.rs': 'mod backup_tests;\n',
-      'modules/src/backup_tests.rs': 'use super::*;\n',
+      'crates/datazen/src/lib.rs': 'mod backup_tests;\n',
+      'crates/datazen/src/backup_tests.rs': 'use super::*;\n',
     });
     const result = runGuard(root);
     expect(result.code).toBe(1);
-    expect(result.err).toContain('modules/src/backup_tests.rs:1');
+    expect(result.err).toContain('crates/datazen/src/backup_tests.rs:1');
     expect(result.err).toContain('compiled into the product binary');
     // The declaring site is part of the finding: that is where the gate belongs.
-    expect(result.err).toContain('modules/src/lib.rs (mod)');
+    expect(result.err).toContain('crates/datazen/src/lib.rs (mod)');
   });
 
   it('flags an orphan *_tests.rs that no declaration reaches', () => {
     const root = makeFixtureRoot({
-      'packages/infra/src/floating_tests.rs': 'use super::*;\n',
+      'crates/datazen-infra/src/floating_tests.rs': 'use super::*;\n',
     });
     const result = runGuard(root);
     expect(result.code).toBe(1);
-    expect(result.err).toContain('packages/infra/src/floating_tests.rs:1');
+    expect(result.err).toContain('crates/datazen-infra/src/floating_tests.rs:1');
     expect(result.err).toContain('orphan');
   });
 
@@ -239,7 +240,7 @@ describe('Rule 2 — test-named files must not reach the product binary', () => 
     // cargo only builds a `tests/` target for `cargo test`: the directory is
     // its own gate, no declaration needed.
     const root = makeFixtureRoot({
-      'modules/tests/foo_tests.rs': 'use datazen_modules::*;\n',
+      'crates/datazen/tests/foo_tests.rs': 'use datazen_modules::*;\n',
     });
     const result = runGuard(root);
     expect(result.code).toBe(0);
@@ -254,19 +255,19 @@ describe('Rule 2 — test-named files must not reach the product binary', () => 
     // UNGATED include! — clean only because its including file is itself
     // test-only (transitive gating), and `direct_tests.rs` is gated in place.
     const root = makeFixtureRoot({
-      'packages/drivers/redis/src/lib.rs': [
+      'crates/drivers/redis/src/lib.rs': [
         '#[cfg(test)]',
         'mod suite_tests;',
         '// A second gated channel: textual inclusion straight from the crate root.',
         '#[cfg(test)]',
         'include!("direct_tests.rs");',
       ].join('\n'),
-      'packages/drivers/redis/src/suite_tests.rs': [
+      'crates/drivers/redis/src/suite_tests.rs': [
         '// Gating is inherited from the declaring module tree — not restated here.',
         'include!("nested_tests.rs");',
       ].join('\n'),
-      'packages/drivers/redis/src/direct_tests.rs': 'use super::*;\n',
-      'packages/drivers/redis/src/nested_tests.rs': 'use super::*;\n',
+      'crates/drivers/redis/src/direct_tests.rs': 'use super::*;\n',
+      'crates/drivers/redis/src/nested_tests.rs': 'use super::*;\n',
     });
     const result = runGuard(root);
     expect(result.code).toBe(0);
@@ -282,14 +283,14 @@ describe('Rule 2 — test-named files must not reach the product binary', () => 
     // Transitivity must not over-pardon: support.rs is plain production code,
     // so its child test file compiles into the product binary.
     const root = makeFixtureRoot({
-      'modules/src/lib.rs': 'mod support;\n',
-      'modules/src/support.rs': 'mod deep_tests;\n',
-      'modules/src/support/deep_tests.rs': 'use super::*;\n',
+      'crates/datazen/src/lib.rs': 'mod support;\n',
+      'crates/datazen/src/support.rs': 'mod deep_tests;\n',
+      'crates/datazen/src/support/deep_tests.rs': 'use super::*;\n',
     });
     const result = runGuard(root);
     expect(result.code).toBe(1);
-    expect(result.err).toContain('modules/src/support/deep_tests.rs:1');
-    expect(result.err).toContain('modules/src/support.rs (mod)');
+    expect(result.err).toContain('crates/datazen/src/support/deep_tests.rs:1');
+    expect(result.err).toContain('crates/datazen/src/support.rs (mod)');
   });
 });
 
@@ -331,8 +332,7 @@ describe('Rule 4 — wdio spec-tree filenames stay bare', () => {
     // `e2e/specs/test_tester-session-fresh.ts` was the only prefixed name in
     // a 128-file tree of bare kebab-case siblings.
     const root = makeFixtureRoot({
-      'e2e/specs/test_tester-session-fresh.ts':
-        "import { expect } from '@wdio/globals';\n",
+      'e2e/specs/test_tester-session-fresh.ts': "import { expect } from '@wdio/globals';\n",
     });
     const result = runGuard(root);
     expect(result.code).toBe(1);
@@ -342,20 +342,17 @@ describe('Rule 4 — wdio spec-tree filenames stay bare', () => {
 
   it('flags a vitest-style .test.ts suffix inside a driver e2e tree', () => {
     const root = makeFixtureRoot({
-      'packages/drivers/redis/e2e/sync-wave-one.test.ts':
-        "describe('sync', () => {});\n",
+      'crates/drivers/redis/e2e/sync-wave-one.test.ts': "describe('sync', () => {});\n",
     });
     const result = runGuard(root);
     expect(result.code).toBe(1);
-    expect(result.err).toContain('packages/drivers/redis/e2e/sync-wave-one.test.ts:1');
+    expect(result.err).toContain('crates/drivers/redis/e2e/sync-wave-one.test.ts:1');
   });
 
   it('keeps bare names in the spec trees clean — the directory is the signal', () => {
     const root = makeFixtureRoot({
-      'e2e/specs/tester-session-fresh.ts':
-        "import { expect } from '@wdio/globals';\n",
-      'packages/drivers/redis/e2e/redis-topology.ts':
-        "describe('topology', () => {});\n",
+      'e2e/specs/tester-session-fresh.ts': "import { expect } from '@wdio/globals';\n",
+      'crates/drivers/redis/e2e/redis-topology.ts': "describe('topology', () => {});\n",
     });
     const result = runGuard(root);
     expect(result.code).toBe(0);
@@ -371,8 +368,7 @@ describe('Rule 4 — wdio spec-tree filenames stay bare', () => {
     // `e2e/contract/**/*.test.ts`), not a wdio spec tree: the suffix there is
     // the convention, and Rule 4 must not reach outside its trees.
     const root = makeFixtureRoot({
-      'packages/frontend/src/lib/windowCapabilities.test.ts':
-        "import { it } from 'vitest';\n",
+      'packages/frontend/src/lib/windowCapabilities.test.ts': "import { it } from 'vitest';\n",
       'e2e/contract/__tests__/fixtures.test.ts': "import { it } from 'vitest';\n",
     });
     const result = runGuard(root);
@@ -389,13 +385,13 @@ describe('guard plumbing', () => {
     const root = mkdtempSync(join(tmpdir(), 'check-test-module-naming-'));
     fixtureRoots.push(root);
     for (const dir of WORKSPACE_MEMBER_DIRS) {
-      if (dir !== 'server') mkdirSync(join(root, dir), { recursive: true });
+      if (dir !== 'crates/datazen-server') mkdirSync(join(root, dir), { recursive: true });
     }
-    mkdirSync(join(root, 'packages/drivers'), { recursive: true });
+    mkdirSync(join(root, 'crates/drivers'), { recursive: true });
     mkdirSync(join(root, 'e2e/specs'), { recursive: true });
     const result = runGuard(root);
     expect(result.code).toBe(2);
-    expect(result.err).toContain('workspace member directory missing: server');
+    expect(result.err).toContain('workspace member directory missing: crates/datazen-server');
   });
 
   it('exits 2 when the mirrored wdio spec-tree root has vanished', () => {
@@ -408,7 +404,7 @@ describe('guard plumbing', () => {
     for (const dir of WORKSPACE_MEMBER_DIRS) {
       mkdirSync(join(root, dir), { recursive: true });
     }
-    mkdirSync(join(root, 'packages/drivers'), { recursive: true });
+    mkdirSync(join(root, 'crates/drivers'), { recursive: true });
     const result = runGuard(root);
     expect(result.code).toBe(2);
     expect(result.err).toContain('wdio spec-tree root missing: e2e/specs');
@@ -416,7 +412,7 @@ describe('guard plumbing', () => {
 
   it('passes on the real repository tree and prints the ok line', () => {
     // No probe lock needed: the sibling mutation probes plant .ts files under
-    // apps/desktop/src and packages/frontend/src with convention-shaped names
+    // packages/desktop/src and packages/frontend/src with convention-shaped names
     // (a `test/` directory, vendored node_modules), never a *.spec.* name and
     // never inside a wdio spec tree — no overlap with Rules 3–4, and the Rust
     // rules still only see .rs files.

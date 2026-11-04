@@ -6,7 +6,7 @@
 > 本文描述的 deploy/ 文件均为形状定义：镜像未真实构建过、脚本未在真实部署
 > 演练过之前，不得当作已验收的运维流程引用（TSO 卷首同款纪律）。
 
-服务端配置面唯一来源：`server/src/config.rs` 的 `DATAZEN_SERVER_*` 全键清单
+服务端配置面唯一来源：`crates/datazen-server/src/config.rs` 的 `DATAZEN_SERVER_*` 全键清单
 （23 键，含默认值与校验规则）；镜像与 compose 不新增配置来源。进程面是
 一个二进制、三个子命令：`serve`（监听）、`migrate`（expand 迁移，落后退出 3）、
 `check-schema`（只读版本报告，落后 3 / 超前 4）。
@@ -36,7 +36,7 @@
 - schema 演进：expand-only（先 expand 后 contract，TSO §5.1）；`migrate` 必须
   在独占迁移锁下执行，非事务迁移按对象核验，不靠「文件名已出现」判断成功。
 - 探查口径：管理库是普通 SQLite 文件，运维可用 `sqlite3` 只读探查
-  （`server/tests/transfer_submission.rs` 的审计直查即此口径）；不要在
+  （`crates/datazen-server/tests/transfer_submission.rs` 的审计直查即此口径）；不要在
   WAL 活跃期用只读模式抢 shm，读写打开与生产探查同形。
 
 ## 3. SecretProvider 与密钥注入（TSO §2「密钥」行）
@@ -61,10 +61,10 @@
   worker 可达的目标/代理/隧道路由按部署显式配置，未配置路线默认拒绝。
 - `Forwarded / X-Forwarded-*` 只信任明确代理网段；直连客户端不能伪造
   HTTPS、host 或 principal（TSO §2 原文；server 侧 SSE 的 Origin 校验已由
-  `server/tests/sse_events.rs` 钉住：无 origin 证明拒绝、跨源拒绝、同源
+  `crates/datazen-server/tests/sse_events.rs` 钉住：无 origin 证明拒绝、跨源拒绝、同源
   `Sec-Fetch-Site` 放行）。
 - SSE/流式：反代必须禁用对 `text/event-stream` 的无限缓冲，透传
-  `x-request-id`（骨架钉子见 `server/tests/skeleton.rs`）。
+  `x-request-id`（骨架钉子见 `crates/datazen-server/tests/skeleton.rs`）。
 - OIDC 回调、SSE、Wapp 跨 origin 分别验证（TSO §2）；`public_origin` 配置
   OIDC 时必填且必须是裸 origin（config.rs 校验）。
 
@@ -111,7 +111,7 @@
 
 - 应用层账（config.rs 全键）：`DATAZEN_SERVER_BUDGET_NODE_LIMIT` /
   `BUDGET_ORGANIZATION_LIMIT`（许可账，CM-60 单实例断言钉在
-  `server/tests/operations_gate_and_revocation.rs`：admit/deny/release +
+  `crates/datazen-server/tests/operations_gate_and_revocation.rs`：admit/deny/release +
   drain 拒绝）、L5 速率五键（默认档/严格档/键表上界）、SSE 背压
   （`SSE_MAX_BACKLOG`）、产物 TTL 清扫周期、WR-F7 出站白名单
   （`EGRESS_ALLOWED_HOSTS`，逗号分隔；空表全拒——驱动/隧道出口的唯一

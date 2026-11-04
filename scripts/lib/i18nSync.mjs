@@ -78,10 +78,7 @@ export function parseEntries(source) {
       const raw = m[2] ?? m[3] ?? '';
       entries.push({
         key,
-        value: raw
-          .replace(/\\'/g, "'")
-          .replace(/\\"/g, '"')
-          .replace(/\\\\/g, '\\'),
+        value: raw.replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/\\\\/g, '\\'),
         line: i,
         endLine: i,
       });

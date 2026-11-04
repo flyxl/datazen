@@ -710,9 +710,10 @@ try {
   // "the last cell already wrote" would print `false` and `true` on one line, and
   // the one place that matters most is the case where the tree is still holding an
   // injected mutation.
-  const wroteBackNote = wroteBack && restoreError
-    ? ' (true only because the last cell already wrote it — the final restore never landed)'
-    : '';
+  const wroteBackNote =
+    wroteBack && restoreError
+      ? ' (true only because the last cell already wrote it — the final restore never landed)'
+      : '';
   console.log(`  on disk == the bytes this run wrote back     : ${wroteBack}${wroteBackNote}`);
   console.log(`  on disk == git HEAD (${STORE_REL}) : ${atHead}`);
   console.log(`  on disk right now                           : ${fingerprint(now)}`);
@@ -724,7 +725,9 @@ try {
     );
   }
   if (abortError) {
-    console.log(`  ✖ the loop stopped early, so the counts above do not cover all ${MUTATIONS.length} cells.`);
+    console.log(
+      `  ✖ the loop stopped early, so the counts above do not cover all ${MUTATIONS.length} cells.`,
+    );
   }
   if (!wroteBack) {
     // A failed restore must never delete the only copy of the good bytes.

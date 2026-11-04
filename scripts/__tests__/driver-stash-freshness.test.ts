@@ -99,7 +99,7 @@ describe('staleStashMessage (pure text)', () => {
     expect(message).toContain('- Cargo.lock');
     expect(message).toContain('rm -rf .driver-file-stash');
     expect(message).toContain(
-      'git checkout HEAD -- Cargo.toml apps/desktop/src-tauri/Cargo.toml Cargo.lock',
+      'git checkout HEAD -- Cargo.toml crates/datazen-desktop/Cargo.toml Cargo.lock',
     );
   });
 

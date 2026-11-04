@@ -1,9 +1,9 @@
 # Tunnel
 
-> Source of truth: `modules/src/tunnel/`（形态中立的隧道机制内核）、`src-tauri/src/tunnel/`（宿主装配层）、
+> Source of truth: `crates/datazen/src/tunnel/`（形态中立的隧道机制内核）、`src-tauri/src/tunnel/`（宿主装配层）、
 > `src-tauri/src/platform/session_backend/`、`src-tauri/src/store/tunnels.rs`、
-> `modules/src/tunnel/domain/tunnel_repository.rs`（隧道定义仓储端口）、
-> `packages/driver-api/src/tunnel_types.rs`。
+> `crates/datazen/src/tunnel/domain/tunnel_repository.rs`（隧道定义仓储端口）、
+> `crates/datazen-driver-api/src/tunnel_types.rs`。
 
 隧道子系统解决的是「数据库不在本机、也不在可达网段」时的连接问题。**核心设计约束只有一条：驱动零改动。** 隧道不进入 `DatabaseDriver` trait，也不进入 `PROTOCOL_VERSION`——桌面 `DesktopSessionBackend` 在 Runtime 打开 Driver resource 前改写地址，并把 Tunnel 句柄保存在该 Runtime resource 上。
 
@@ -13,15 +13,15 @@
 rustls provider 选择）住在形态中立的 `datazen::tunnel`（边界由共享模块 F-14 断言）；宿主侧
 `src-tauri/src/tunnel/` 只留装配与形态相关接线（`resolve_tunnel_kind` /
 `start_for_connection` / `test_tunnel`、`DesktopTunnelHost`）。进程级 rustls provider 的**实现体**在
-`modules/src/tunnel/crypto.rs`，宿主 `src-tauri/src/tls.rs` 只保留接线守卫与 `pub use` 再导出——理由见
+`crates/datazen/src/tunnel/crypto.rs`，宿主 `src-tauri/src/tls.rs` 只保留接线守卫与 `pub use` 再导出——理由见
 [security.md §](../security.md)。
 
 **两处存储走端口**（本轨的结构改造）：
 
 | 存什么 | 端口 | 住在哪 | 桌面实现 | web 形态 |
 |---|---|---|---|---|
-| 隧道定义 | `TunnelRepository` | `modules/src/tunnel/domain/tunnel_repository.rs`（跨形态端口家族） | `src-tauri/src/store/tunnels.rs` 的 `impl TunnelRepository for DesktopRepository`（加密落盘 `{appData}/tunnels.json`） | 服务端库上的组织级存储（同一端口、另一适配器） |
-| SSH known-hosts | `KnownHostsRepository` | `modules/src/tunnel/domain/known_hosts.rs`（跨形态端口；**同步**，`load` 读不到即空集合） | `src-tauri/src/platform/known_hosts.rs` 的 `DesktopKnownHostsRepository`（读 `{appData}/ssh_known_hosts.json`） | 服务端存储目录 / 组织级存储 |
+| 隧道定义 | `TunnelRepository` | `crates/datazen/src/tunnel/domain/tunnel_repository.rs`（跨形态端口家族） | `src-tauri/src/store/tunnels.rs` 的 `impl TunnelRepository for DesktopRepository`（加密落盘 `{appData}/tunnels.json`） | 服务端库上的组织级存储（同一端口、另一适配器） |
+| SSH known-hosts | `KnownHostsRepository` | `crates/datazen/src/tunnel/domain/known_hosts.rs`（跨形态端口；**同步**，`load` 读不到即空集合） | `src-tauri/src/platform/known_hosts.rs` 的 `DesktopKnownHostsRepository`（读 `{appData}/ssh_known_hosts.json`） | 服务端存储目录 / 组织级存储 |
 
 两者的**规则**都在共享包里（`SavedTunnel` 的形状、TOFU 判定、指纹与错误文案），**文件 I/O 与落盘加密**
 在宿主：**共享包不再读本机文件**。两个端口实例都由宿主在组装期创建一次，交给
@@ -48,18 +48,18 @@ DesktopSessionBackend                └── 上游（跳板机 / 代理 / 中
    Driver.connect()（完全不知情）
 ```
 
-驱动只看见 `127.0.0.1:<随机端口>`。加一层隧道、新增一种隧道类型或换一个中继，对驱动与 `packages/driver-api` 契约都没有影响。全仓不存在任何「用隧道配置拼连接串」的代码。
+驱动只看见 `127.0.0.1:<随机端口>`。加一层隧道、新增一种隧道类型或换一个中继，对驱动与 `crates/datazen-driver-api` 契约都没有影响。全仓不存在任何「用隧道配置拼连接串」的代码。
 
 ## 2. 四种互斥状态
 
-`TunnelKind`（`packages/driver-api/src/tunnel_types.rs:24`）是互斥枚举，序列化为 `none` / `ssh` / `httpProxy` / `websocket`：
+`TunnelKind`（`crates/datazen-driver-api/src/tunnel_types.rs:24`）是互斥枚举，序列化为 `none` / `ssh` / `httpProxy` / `websocket`：
 
 | `TunnelKind` | 配置字段 | 上游形态 |
 |---|---|---|
 | `none` | — | 直连 |
-| `ssh` | `ConnectionConfig.ssh_tunnel`（`SshTunnelConfig`，`types.rs:68`） | SSH 端口转发（`datazen::tunnel::SshTunnel`，`modules/src/tunnel/ssh.rs`） |
-| `httpProxy` | `ConnectionConfig.http_proxy_tunnel` | 本机监听 → HTTP `CONNECT` 代理 → 真实库（`modules/src/tunnel/http_proxy.rs`） |
-| `websocket` | `ConnectionConfig.websocket_tunnel` | 本机监听 → WebSocket 中继 → 真实库（`modules/src/tunnel/websocket.rs`） |
+| `ssh` | `ConnectionConfig.ssh_tunnel`（`SshTunnelConfig`，`types.rs:68`） | SSH 端口转发（`datazen::tunnel::SshTunnel`，`crates/datazen/src/tunnel/ssh.rs`） |
+| `httpProxy` | `ConnectionConfig.http_proxy_tunnel` | 本机监听 → HTTP `CONNECT` 代理 → 真实库（`crates/datazen/src/tunnel/http_proxy.rs`） |
+| `websocket` | `ConnectionConfig.websocket_tunnel` | 本机监听 → WebSocket 中继 → 真实库（`crates/datazen/src/tunnel/websocket.rs`） |
 
 `SshTunnelConfig` 支持三种认证（`password` / `private_key` / `agent`）与**递归 ProxyJump**（`jump: Option<Box<SshTunnelConfig>>`），多层跳板由 `_upstream` 持有，任一层随 session 一起拆除。
 
@@ -167,7 +167,7 @@ connection id**：隧道定义是独立聚合，连接侧只存 `tunnelId`。
 的 `DesktopKnownHostsRepository`），采用 TOFU 策略：首次接受并记录指纹，不匹配则拒绝并回传精确错误（`ssh_tunnel.rs:37-95`）。
 **文件 I/O 是端口**（`KnownHostsRepository`，见[共享边界与端口 §4.3](../platform/shared-boundaries-and-ports.md#43-持久化与授权端口)），
 **规则**（`KnownHostEntry` / `HostKeyDecision` / `verify_host_key` / `mismatch_error_message`）留在
-`modules/src/tunnel`；端口的降级语义属于契约：`load` **不失败**（读不到一律按空集合处理），
+`crates/datazen/src/tunnel`；端口的降级语义属于契约：`load` **不失败**（读不到一律按空集合处理），
 `save` 失败如实报错。落盘格式（文件、JSON 形状、字段名 `public_key`、两条 warn 文案、三条错误文案）
 **逐字不变**。
 
@@ -251,7 +251,7 @@ connection id**：隧道定义是独立聚合，连接侧只存 `tunnelId`。
 
 以下是当前实现的客观事实，接手时不要误读为「已保证」：
 
-1. **不附带 WebSocket 中继服务端。** `modules/src/tunnel/websocket.rs` 只是客户端；`datazen_v1` 所需的 `open` / `opened` / `error` / `close` 四操作 JSON 协议，DataZen **没有实现**任何一端。中继需自行提供。
+1. **不附带 WebSocket 中继服务端。** `crates/datazen/src/tunnel/websocket.rs` 只是客户端；`datazen_v1` 所需的 `open` / `opened` / `error` / `close` 四操作 JSON 协议，DataZen **没有实现**任何一端。中继需自行提供。
 2. **内联（非保存）的 HTTP 代理密码与 WS token 明文落盘。** `store/connections.rs:64-126` 只加密 `conn.password` 与 `ssh_tunnel.password/passphrase`——**既不覆盖 jump 跳板，也不覆盖 `http_proxy_tunnel.password` 与 `websocket_tunnel.authToken`**。同一份凭据存进 `tunnels.json` 是加密的。这是一处真实的加密覆盖缺口，不是设计取舍。
 3. **`headers` 一律明文**（两个存储都如此）。把密钥放进自定义 header 就会明文落盘。
 4. **无文件权限加固。** 整个 store 的写盘路径只有「临时文件 + rename」，没有 `set_permissions`；`tunnels.json`（含加密密文）与 `ssh_known_hosts.json` 的权限继承 umask。
@@ -266,6 +266,6 @@ connection id**：隧道定义是独立聚合，连接侧只存 `tunnelId`。
 
 ## 10. 能力位：Rust 侧没有，TS 侧只有一个
 
-- **Rust 契约零隧道概念。** `DatabaseDriver` trait 与 `PROTOCOL_VERSION = 6` 完全不含隧道方法；`packages/drivers/*/src/` 中没有任何驱动读取或声明隧道支持（仅有测试夹具把 `ConnectionConfig` 的五个隧道字段置 `None`）。这与 `supports_offset()` / `supports_explain()` 的模型不同，勿混。
+- **Rust 契约零隧道概念。** `DatabaseDriver` trait 与 `PROTOCOL_VERSION = 6` 完全不含隧道方法；`crates/drivers/*/src/` 中没有任何驱动读取或声明隧道支持（仅有测试夹具把 `ConnectionConfig` 的五个隧道字段置 `None`）。这与 `supports_offset()` / `supports_explain()` 的模型不同，勿混。
 - **`DB_REGISTRY[...].supportsSSH` 是 UI 元数据，不是协议契约。** 它只决定**连接表单是否渲染 SSH 区块**，共三处消费：内联 kind 下拉列表（`ConnectionAdvancedSettings.tsx:53`）、SSH 字段挂载守卫（`:326`、`SshTunnelFields.tsx:28`）、切换驱动时的降级（`useConnectionForm.ts:443`）。取 `false` 的是无 host:port 形态的驱动（sqlite、kiwi）。它**不参与 Rust 契约、不影响隧道运行时**。
 - 设置页的隧道编辑器**硬编码 `supportsSSH: true`**（`TunnelEditDialog.tsx:129`）——保存的 SSH 隧道不受任何驱动开关影响，这与「隧道是宿主层实体」的定位一致。

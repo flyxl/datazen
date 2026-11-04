@@ -102,10 +102,7 @@ console.log(`[publish-pro-prebuilt] Staged to ${stagingDir}`);
 console.log(`\n[publish-pro-prebuilt] Creating tarball: ${tarballName}`);
 
 try {
-  execSync(
-    `tar -czf "${tarballPath}" -C "${stagingDir}" .`,
-    { stdio: 'pipe' }
-  );
+  execSync(`tar -czf "${tarballPath}" -C "${stagingDir}" .`, { stdio: 'pipe' });
 } catch (err) {
   console.error(`[publish-pro-prebuilt] tar failed:`, err.message);
   process.exit(1);
@@ -117,7 +114,12 @@ console.log(`[publish-pro-prebuilt] Tarball: ${(size / 1024).toFixed(1)} KB`);
 // Show contents
 try {
   const listing = execSync(`tar -tzf "${tarballPath}"`, { encoding: 'utf-8' }).trim();
-  console.log(`[publish-pro-prebuilt] Contents:\n${listing.split('\n').map(l => '  ' + l).join('\n')}`);
+  console.log(
+    `[publish-pro-prebuilt] Contents:\n${listing
+      .split('\n')
+      .map((l) => '  ' + l)
+      .join('\n')}`,
+  );
 } catch {}
 
 if (dryRun) {
@@ -132,10 +134,10 @@ console.log(`\n[publish-pro-prebuilt] Uploading to GitHub Release...`);
 
 try {
   // Delete existing release (ignore if not found)
-  execSync(
-    `gh release delete "${tag}" --repo "${proRepo}" --yes 2>/dev/null || true`,
-    { stdio: 'pipe', env: process.env }
-  );
+  execSync(`gh release delete "${tag}" --repo "${proRepo}" --yes 2>/dev/null || true`, {
+    stdio: 'pipe',
+    env: process.env,
+  });
 
   // Create release and upload asset
   execSync(
@@ -146,7 +148,7 @@ try {
       `--notes "Prebuilt SQL Editor Pro extension for host CI."`,
       `--latest=false`,
     ].join(' '),
-    { stdio: 'inherit', env: process.env }
+    { stdio: 'inherit', env: process.env },
   );
 
   console.log(`\n[publish-pro-prebuilt] ✅ Uploaded to ${proRepo} release "${tag}"`);
@@ -158,7 +160,11 @@ try {
 }
 
 // ── 6. Cleanup ───────────────────────────────────────────────────────────────
-try { unlinkSync(tarballPath); } catch {}
-try { execSync(`rm -rf "${stagingDir}"`, { stdio: 'pipe' }); } catch {}
+try {
+  unlinkSync(tarballPath);
+} catch {}
+try {
+  execSync(`rm -rf "${stagingDir}"`, { stdio: 'pipe' });
+} catch {}
 
 console.log('[publish-pro-prebuilt] Done ✓');
