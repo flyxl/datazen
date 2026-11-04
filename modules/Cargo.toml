@@ -41,14 +41,16 @@ connection_import = [
     "dep:sha1",
     "dep:sha2",
     "dep:uuid",
+    # 域文件 `use crate::feature_error::FeatureError`（裸 feature 编译闸）：
+    # P3 反转后 feature_error 不再反向拉业务 feature，本域显式点名依赖。
+    "feature_error",
 ]
-feature_error = [
-    "dep:datazen-driver-api",
-    "dep:serde_json",
-    "ai",
-    "table-editing",
-    "export",
-]
+
+# WR-A3 P3 反向依赖反转：FeatureError 只留基础变体，不再反向拉业务 feature
+# （旧定义含 ai / table-editing / export）。域错误 → FeatureError 的 From 边
+# 下沉到各域 error.rs 尾部（feature_error 门控）；裸 feature_error 闭包 =
+# shared（常驻）+ datazen-driver-api + serde_json，零域符号。
+feature_error = ["dep:datazen-driver-api", "dep:serde_json"]
 services = [
     "dep:async-trait",
     "dep:datazen-driver-api",

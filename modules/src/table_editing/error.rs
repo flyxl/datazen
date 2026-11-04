@@ -2,7 +2,9 @@
 //!
 //! 变体与 `Display` 字符串与旧 `FeatureError` 对应变体**逐字一致**；
 //! modules 侧 `From<TableEditingError> for FeatureError` 保证留守消费者
-//! （result_edit / workflow / 宿主命令）零改动（§5.5 单向委托）。
+//! （result_edit / workflow / 宿主命令）零改动（§5.5 单向委托）。WR-A3
+//! P3 反转后该映射边落在本文件尾部（`feature_error` 门控），feature_error
+//! 不再反向拉 table-editing。
 
 #[derive(Debug, thiserror::Error)]
 pub enum TableEditingError {
@@ -70,6 +72,23 @@ impl From<crate::shared::error::ApiError> for TableEditingError {
             | ApiErrorCode::CleanupFailed
             | ApiErrorCode::PlanStale
             | ApiErrorCode::TargetUnsupported => Self::Internal(message),
+        }
+    }
+}
+
+// WR-A3 P3 反向依赖反转：映射边自 modules/src/feature_error.rs 原样下沉到
+// 本域文件尾部（信封不再反向拉 table-editing）；7 臂同桶同消息逐字一致。
+#[cfg(feature = "feature_error")]
+impl From<TableEditingError> for crate::feature_error::FeatureError {
+    fn from(error: TableEditingError) -> Self {
+        match error {
+            TableEditingError::Validation(message) => Self::Validation(message),
+            TableEditingError::NotFound(message) => Self::NotFound(message),
+            TableEditingError::NotConfigured(message) => Self::NotConfigured(message),
+            TableEditingError::Internal(message) => Self::Internal(message),
+            TableEditingError::Driver(error) => Self::Driver(error),
+            TableEditingError::Io(error) => Self::Io(error),
+            TableEditingError::Json(error) => Self::Json(error),
         }
     }
 }

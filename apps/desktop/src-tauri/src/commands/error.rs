@@ -507,8 +507,10 @@ impl From<datazen::schema::application::SchemaError> for CommandError {
 impl From<datazen::error::FeatureError> for CommandError {
     fn from(error: datazen::error::FeatureError) -> Self {
         use datazen::error::FeatureError;
+        // WR-A3 P3 反向依赖反转后 FeatureError 不再携带域类型（`Ai` 变体
+        // 已删）：AI 错误的宿主映射走 `From<AiError>` 与
+        // `From<AiUseCaseError>` 两条独立路径，IPC 文案不变。
         match error {
-            FeatureError::Ai(error) => Self::Ai(error),
             FeatureError::Validation(message) => Self::Validation(message),
             FeatureError::NotFound(message) => Self::NotFound(message),
             FeatureError::NotConfigured(message) => Self::NotConfigured(message),

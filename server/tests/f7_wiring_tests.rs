@@ -325,6 +325,293 @@ async fn stateless_workflow_listing_answers_an_honest_empty_catalog() {
     }
 }
 
+// ── 目标元数据切片（WR-F7 Wave6 第二刀）：七工具真分发 ───────────────────
+//
+// 被测件：`execution::resource_host::ServerResourceExecutionHost`（端口闸序）
+// 经 `StatelessToolExec.with_target_machine` 的端到端接线。可达分支按
+// `read_target_command` 的闸序钉住：profile 缺失 → 连接配置缺失 → 驱动闸
+// （v1 空目录逐字「Driver unavailable」）。驱动闸之后的绿路径（目标规范化
+// → 用例面执行）需要链接真实驱动 + 管理面授权种子，随部署构建切片收口
+// （模块头登记的同款口径），不在本文件硬凑。
+//
+// 与桌面 `resolve_execution_target` 的形状差异（无缓存直取、服务主体占位）
+// 登记在 `resource_host.rs` 模块头。
+
+mod target_machine {
+    use super::*;
+
+    use datazen::connection::domain::catalog::{ConnectionRepository, ConnectionScope};
+    use datazen::connection::domain::profile::ProfileRepository;
+    use datazen::connection::dto::ProfileDraft;
+    use datazen::execution::application::orchestration::RuntimeResultSink;
+    use datazen::shared::id::{ClientInstanceId, IdempotencyKey, RequestId};
+    use datazen_driver_api::ConnectionConfig;
+
+    use datazen_server::execution::lease::ServerRuntimeLeaseSource;
+    use datazen_server::execution::resource_host::ServerResourceExecutionHost;
+    use datazen_server::mcp::stateless_exec::{StatelessToolExec, TargetMachine};
+    use datazen_server::storage::{
+        AdminStore, ServerConnections, ServerProfiles, ServerSettingsStore,
+    };
+
+    fn org() -> &'static str {
+        "f7-target-org"
+    }
+
+    fn context() -> RequestContext {
+        RequestContext::new(
+            OrganizationId::new(org()),
+            PrincipalId::new("f7-target-principal"),
+            None,
+            ClientInstanceId::new("test"),
+            RequestId::new("req-target-1"),
+            None,
+        )
+    }
+
+    /// 真实装配的最小链路：存储 + 空驱动注册表 + 预算桥 + 执行后端 +
+    /// 租约源 + 目标机器（与 bootstrap 同构；v1 空目录下驱动闸先于租约
+    /// resolve 触发，链路后半段在绿路径测试中随部署切片收口）。
+    async fn wired_exec(store: &Arc<AdminStore>) -> StatelessToolExec {
+        let vault = Arc::new(
+            datazen_server::execution::secret_provider::ServerSecretVault::new(
+                store.clone(),
+                b"f7-target-secret".to_vec(),
+            )
+            .expect("secret vault"),
+        );
+        let connections = Arc::new(ServerConnections::new(store.clone(), vault));
+        let profiles = Arc::new(ServerProfiles::new(store.clone()));
+        let registry = Arc::new(
+            datazen::execution::runtime::driver_registry::DriverRegistry::with_factories([])
+                .expect("empty registry is a legal catalog"),
+        );
+        let lease = target_lease(store, connections.clone(), profiles.clone(), registry.clone());
+        let host = Arc::new(ServerResourceExecutionHost::new(
+            connections,
+            profiles,
+            registry,
+            Arc::new(ServerSettingsStore::scoped(org(), store.clone())),
+            lease,
+            org(),
+        ));
+        StatelessToolExec::new(
+            Arc::new(NoConnections),
+            Arc::new(datazen_server::mcp::stateless_exec::EmptyWorkflowCatalog),
+            Vec::new(),
+        )
+        .with_target_machine(TargetMachine {
+            host,
+            settings: datazen_server::storage::default_shared_settings().execution,
+        })
+    }
+
+    fn target_lease(
+        store: &Arc<AdminStore>,
+        connections: Arc<ServerConnections>,
+        profiles: Arc<ServerProfiles>,
+        registry: Arc<datazen::execution::runtime::driver_registry::DriverRegistry>,
+    ) -> Arc<ServerRuntimeLeaseSource> {
+        let bridge = Arc::new(
+            datazen_server::execution::budget_bridge::BudgetPortBridge::new(
+                coordinator(8),
+                datazen::shared::id::OrganizationId::new(org()),
+            ),
+        );
+        let backend = Arc::new(
+            datazen_server::execution::driver_exec::ServerDriverExecBackend::new(
+                registry,
+                connections,
+                profiles.clone(),
+                ConnectionScope::new(org()),
+                bridge,
+                None,
+            ),
+        );
+        Arc::new(ServerRuntimeLeaseSource::new_with_shared_parts(
+            profiles,
+            Arc::new(policy_for(store)),
+            backend,
+            RuntimeResultSink::default(),
+            Arc::new(
+                datazen::execution::runtime::directory::InMemorySessionDirectory::new(),
+            ),
+        ))
+    }
+
+    fn internal_reason(error: datazen_server::mcp::wire::ToolCallError) -> String {
+        match error {
+            datazen_server::mcp::wire::ToolCallError::Internal(reason) => reason,
+            datazen_server::mcp::wire::ToolCallError::WithHelp { reason, .. } => {
+                panic!("expected Internal, got WithHelp: {reason}")
+            }
+            datazen_server::mcp::wire::ToolCallError::Plain(reason) => {
+                panic!("expected Internal, got Plain: {reason}")
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn wired_target_commands_refuse_a_missing_profile_before_any_driver_lookup() {
+        let store = store();
+        let exec = wired_exec(&store).await;
+        let error = exec
+            .call(
+                "list_databases",
+                &serde_json::json!({ "connection_id": "no-such-connection" }),
+            )
+            .await
+            .expect_err("an unknown profile is refused");
+        let reason = internal_reason(error);
+        assert!(
+            reason.contains("profile unavailable"),
+            "the profile gate answers the registered sentence: {reason}"
+        );
+    }
+
+    #[tokio::test]
+    async fn wired_target_commands_refuse_a_catalog_row_that_has_no_connection_config() {
+        let store = store();
+        let profiles = ServerProfiles::new(store.clone());
+        let record = profiles
+            .create(
+                &context(),
+                ProfileDraft::new("profile-only", "postgres"),
+                &IdempotencyKey::new("idem-target-profile-only"),
+            )
+            .await
+            .expect("profile create");
+        let exec = wired_exec(&store).await;
+        let error = exec
+            .call(
+                "list_databases",
+                &serde_json::json!({ "connection_id": record.connection_id.as_str() }),
+            )
+            .await
+            .expect_err("the profile row exists but the catalog row was never saved");
+        let reason = internal_reason(error);
+        assert!(
+            reason.contains("connection config unavailable"),
+            "the catalog gate answers the registered sentence: {reason}"
+        );
+    }
+
+    #[tokio::test]
+    async fn wired_target_commands_answer_the_honest_driver_gate_on_an_empty_registry() {
+        let store = store();
+        let profiles = ServerProfiles::new(store.clone());
+        let record = profiles
+            .create(
+                &context(),
+                ProfileDraft::new("target-pair", "postgres"),
+                &IdempotencyKey::new("idem-target-pair"),
+            )
+            .await
+            .expect("profile create");
+        let vault = Arc::new(
+            datazen_server::execution::secret_provider::ServerSecretVault::new(
+                store.clone(),
+                b"f7-target-secret".to_vec(),
+            )
+            .expect("secret vault"),
+        );
+        let connections = Arc::new(ServerConnections::new(store.clone(), vault));
+        connections
+            .save(
+                &ConnectionScope::new(org()),
+                ConnectionConfig {
+                    id: record.connection_id.as_str().to_owned(),
+                    name: "target-pair".into(),
+                    database_type: "postgres".into(),
+                    host: Some("127.0.0.1".into()),
+                    port: Some(5432),
+                    database: Some("app".into()),
+                    schema: None,
+                    username: None,
+                    password: None,
+                    ssl_mode: datazen_driver_api::SslMode::Disable,
+                    connection_timeout: 30,
+                    max_pool_size: 10,
+                    ssh_tunnel: None,
+                    tunnel_kind: None,
+                    tunnel_id: None,
+                    http_proxy_tunnel: None,
+                    websocket_tunnel: None,
+                    color_tag: None,
+                    group: None,
+                    last_connected_at: None,
+                    server_version: None,
+                    options: None,
+                    read_only: false,
+                    pinned: false,
+                },
+            )
+            .await
+            .expect("catalog save");
+        let registry = Arc::new(
+            datazen::execution::runtime::driver_registry::DriverRegistry::with_factories([])
+                .expect("empty registry is a legal catalog"),
+        );
+        let lease = target_lease(
+            &store,
+            connections.clone(),
+            Arc::new(profiles),
+            registry.clone(),
+        );
+        let host = Arc::new(ServerResourceExecutionHost::new(
+            connections,
+            Arc::new(ServerProfiles::new(store.clone())),
+            registry,
+            Arc::new(ServerSettingsStore::scoped(org(), store.clone())),
+            lease,
+            org(),
+        ));
+        let exec = StatelessToolExec::new(
+            Arc::new(NoConnections),
+            Arc::new(datazen_server::mcp::stateless_exec::EmptyWorkflowCatalog),
+            Vec::new(),
+        )
+        .with_target_machine(TargetMachine {
+            host,
+            settings: datazen_server::storage::default_shared_settings().execution,
+        });
+        let error = exec
+            .call(
+                "list_databases",
+                &serde_json::json!({ "connection_id": record.connection_id.as_str() }),
+            )
+            .await
+            .expect_err("an empty driver directory answers the honest sentence");
+        let reason = internal_reason(error);
+        assert!(
+            reason.contains("Driver unavailable"),
+            "the v1 empty registry answers the registered fail-closed sentence: {reason}"
+        );
+    }
+
+    #[tokio::test]
+    async fn wired_target_commands_validate_required_arguments_before_the_machine() {
+        let store = store();
+        let exec = wired_exec(&store).await;
+        let error = exec
+            .call("get_schema", &serde_json::json!({}))
+            .await
+            .expect_err("a missing connection_id is a parameter-class error");
+        match error {
+            datazen_server::mcp::wire::ToolCallError::WithHelp { reason, .. } => assert!(
+                reason.contains("missing required input property: connection_id"),
+                "the argument gate names the missing property: {reason}"
+            ),
+            datazen_server::mcp::wire::ToolCallError::Plain(reason) => {
+                panic!("expected WithHelp, got Plain: {reason}")
+            }
+            datazen_server::mcp::wire::ToolCallError::Internal(reason) => {
+                panic!("expected WithHelp, got Internal: {reason}")
+            }
+        }
+    }
+}
+
 // ── ResultPublisher ──────────────────────────────────────────────────────
 
 #[tokio::test]

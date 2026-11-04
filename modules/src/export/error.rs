@@ -7,6 +7,9 @@
 //!
 //! 本信封为**文件产物族共用**：export（表导出/FileArtifactJob）与
 //! backup（备份/SQL 恢复）同族同错误语义，不另立第二信封。
+//!
+//! WR-A3 P3 反转后 `From<ExportError> for FeatureError` 落在本文件尾部
+//! （`feature_error` 门控），feature_error 不再反向拉 export。
 
 /// Errors from portable export use cases. Hosts map these to their transport envelope.
 #[derive(Debug, thiserror::Error)]
@@ -30,5 +33,22 @@ pub enum ExportError {
 impl From<String> for ExportError {
     fn from(value: String) -> Self {
         Self::Internal(value)
+    }
+}
+
+// WR-A3 P3 反向依赖反转：映射边自 modules/src/feature_error.rs 原样下沉到
+// 本域文件尾部（信封不再反向拉 export）；7 臂同桶同消息逐字一致。
+#[cfg(feature = "feature_error")]
+impl From<ExportError> for crate::feature_error::FeatureError {
+    fn from(error: ExportError) -> Self {
+        match error {
+            ExportError::Validation(message) => Self::Validation(message),
+            ExportError::NotFound(message) => Self::NotFound(message),
+            ExportError::NotConfigured(message) => Self::NotConfigured(message),
+            ExportError::Internal(message) => Self::Internal(message),
+            ExportError::Driver(error) => Self::Driver(error),
+            ExportError::Io(error) => Self::Io(error),
+            ExportError::Json(error) => Self::Json(error),
+        }
     }
 }

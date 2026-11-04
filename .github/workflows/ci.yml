@@ -422,6 +422,7 @@ jobs:
             --test data_sync_public_api \
             --test mcp_stdio_auth \
             --test workflow_db_tests \
+            --test connections_sessions_use_case_contract_ipc \
             --features "$FEATURES,test-harness"
 
       - name: Restore managed files
