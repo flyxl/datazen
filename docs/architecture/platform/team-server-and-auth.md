@@ -61,15 +61,15 @@ server/
 `server` 允许的依赖方向：
 
 ```text
-server ──→ modules, modules
-      ├──→ modules/src/platform_api（SessionDirectory / BudgetCoordinator 等 ports）
-      ├──→ packages/driver-api、packages/ai-api；异构三件套经 modules 暴露的 port 访问宿主内 src-tauri/src/{schema_diff,data_sync,data_transfer}
+server ──→ modules（crate `datazen`）
+      ├──→ modules/src/shared（SessionDirectory / BudgetCoordinator 等 ports；没有 modules/src/platform_api）
+      ├──→ packages/driver-api；AI 走 modules/src/ai，没有 packages/ai-api
       └──→ HTTP 框架、tokio、管理库客户端、序列化
 
-application/runtime ──→ platform-api / driver-api；driver ──→ driver-api
+modules ──→ driver-api；driver ──→ driver-api
 ```
 
-`server` **禁止**出现在依赖闭包中的一切：任何 `tauri*` crate（含 `tauri-plugin-*`）、`wry`/`tao`、桌面 host crate `datazen`（`src-tauri` 的 package 名）、任何前端 UI runtime。
+`server` **禁止**出现在依赖闭包中的一切：任何 `tauri*` crate（含 `tauri-plugin-*`）、`wry`/`tao`、桌面 host crate `datazen_desktop`（`apps/desktop/src-tauri`）、任何前端 UI runtime。现行门禁是 `scripts/check-server-deps.mjs`。
 
 这条约束由 CI 执行，而非靠评审自觉：
 
@@ -656,7 +656,7 @@ flowchart LR
 
 ## 12. 出站网络策略
 
-目标服务端 `NetworkProvider` 在**每次实际建连前**执行解析与校验，不信任请求体中的任何地址。当前端口只实现数据库路由/隧道；AI HTTP 已使用独立可注入的 `datazen_ai_providers::http::HttpClient` 出站边界，服务端需注入默认 `PublicInternet` 或管理员策略（见 [AI 架构](../backend/ai.md#ai-http-出站边界)）：
+目标服务端 `NetworkProvider` 在**每次实际建连前**执行解析与校验，不信任请求体中的任何地址。当前端口只实现数据库路由/隧道；AI HTTP 已使用独立可注入的 `datazen::ai::providers::http::HttpClient` 出站边界，服务端需注入默认 `PublicInternet` 或管理员策略（见 [AI 架构](../backend/ai.md#ai-http-出站边界)）：
 
 ```mermaid
 flowchart TD

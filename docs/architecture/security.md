@@ -66,7 +66,7 @@ CSP 以对象形式写在 `src-tauri/tauri.conf.json` 的 `security.csp`，当�
 
 - `default-src 'self'` — 默认仅允许同源资源
 - `script-src` 含 `blob: asset: http://asset.localhost` — Tauri 资源协议加载本地 bundle 所需，仍禁止远程脚本
-- `connect-src 'self' ipc: http://ipc.localhost asset://localhost` — 仅 Tauri 2 的 IPC 通道，**不含任意外网**。AI Provider、MCP Server 等出站请求全部由 Rust 侧发起（`packages/ai-providers` 的 reqwest、`src-tauri/src/mcp/` 的 Rust client），webview 的 connect-src 不需要也不应放行 `https:` / `http:`
+- `connect-src 'self' ipc: http://ipc.localhost asset://localhost` — 仅 Tauri 2 的 IPC 通道，**不含任意外网**。AI Provider、MCP Server 等出站请求全部由 Rust 侧发起（`modules/src/ai/providers/` 的 reqwest、`apps/desktop/src-tauri/src/mcp/` 的 Rust client），webview 的 connect-src 不需要也不应放行 `https:` / `http:`
 - `frame-src 'self' datazen:` — Workspace App 的 iframe 沙箱运行在 `datazen://` 协议下
 
 ## 4. AI 安全

@@ -4,7 +4,7 @@
 
 ## Provider 抽象
 
-`packages/ai-api` 定义 `AiProvider`、配置、消息、流式 Chunk、Tool Definition、Tool Call、ModelInfo 和 `AiError`。Host 只依赖 trait，不依赖 OpenAI 或 Anthropic 的 SDK 类型。
+`modules/src/ai/domain` 定义 `AiProvider`、配置、消息、流式 Chunk、Tool Definition、Tool Call、ModelInfo 和 `AiError`。Host 只依赖 trait，不依赖 OpenAI 或 Anthropic 的 SDK 类型。独立 crate `packages/ai-api` 已并入该模块。
 
 Provider 需要实现配置校验、初始化、非流式完成、流式完成，并声明是否支持 streaming 和 tools：
 
@@ -54,10 +54,10 @@ AI 配置存储在 `ai_config.enc`，使用 AES-256-GCM；日志中只记录 Pro
 
 ## 测试重点
 
-Provider 单测验证协议解析、流式事件和错误转换；`ai-api` 测试验证 trait 和 factory；Host 测试验证 Prompt 优先级、Schema 上下文预算与权限；不应在测试日志中打印真实 Key 或完整 SQL。
+Provider 单测验证协议解析、流式事件和错误转换；`modules/src/ai/domain` 测试验证 trait 和 factory；Host 测试验证 Prompt 优先级、Schema 上下文预算与权限；不应在测试日志中打印真实 Key 或完整 SQL。
 
 ## 结语
 
 多 Provider AI 架构的关键不是“支持更多模型”，而是把模型差异、数据库上下文和执行权限分开。Provider 负责生成，ContextBuilder 负责提供最小必要上下文，Command/MCP Runtime 负责执行和门控。下一篇将沿着这条边界进入 MCP，看看 DataZen 如何同时成为 MCP Server 和 MCP Client。
 
-相关资料：[AI 模块](../architecture/backend/ai.md) · [AI API](../../packages/ai-api/src/lib.rs) · [上下文文件技能](../../.agents/skills/gen-ctx-yaml/SKILL.md)
+相关资料：[AI 模块](../architecture/backend/ai.md) · [AI 模块入口](../../modules/src/ai/mod.rs) · [上下文文件技能](../../.cursor/skills/gen-ctx-yaml/SKILL.md)

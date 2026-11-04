@@ -142,7 +142,7 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 | 闸门 | 位置 | `pv < MIN` | `pv > PROTOCOL_VERSION` | `MIN <= pv < PROTOCOL_VERSION` |
 | --- | --- | --- | --- | --- |
 | 驱动 | `modules/src/execution/runtime/driver_registry/registry.rs` 的 `register_from_inventory` | `return Err`，硬拒绝、不创建驱动 | 只 `tracing::warn!`，照常加载 | `warn!` 提示降级后照常加载 |
-| AI Provider | `modules/src/ai/providers/registry.rs` 的 factory 遍历（`AI_PROTOCOL_VERSION` / `MIN_AI_PROTOCOL_VERSION` 是 `packages/ai-api` 的另一套常量） | `tracing::error!` 后 `continue`，跳过注册 | 只 `warn!`，照常注册 | `warn!` 降级提示 |
+| AI Provider | `modules/src/ai/providers/registry.rs` 的 factory 遍历（`AI_PROTOCOL_VERSION` / `MIN_AI_PROTOCOL_VERSION` 定义在 `modules/src/ai/mod.rs`） | `tracing::error!` 后 `continue`，跳过注册 | 只 `warn!`，照常注册 | `warn!` 降级提示 |
 
 **降级模式并不真的把能力改写成 `false`**：两处降级分支只打一条日志，消息里回显的是 factory **自己声明**的能力值（驱动侧 `supports_cancel_query` / `supports_explain` / `supports_streaming_results`，Provider 侧 `supports_streaming` / `supports_tools`），驱动随后照常 `create()` 并按自己声明的能力运行。这是 `driver-api` 侧写下的契约承诺与宿主当前实现之间的已知差距。
 

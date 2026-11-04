@@ -4,60 +4,37 @@
 
 ### 1.1 概述
 
-AI 模块采用与数据库驱动相同的 **Provider 抽象 + Registry** 模式：`packages/ai-api` 定义统一契约与 active → default → first 的共享 Profile 选择规则，`packages/ai-providers` 提供各厂商实现、共享 HTTP 协议和现有 Provider 的默认 endpoint/protocol 元数据。`modules/src/ai/` 持有与运行形态无关的工具循环、安全门、Prompt 解析、Schema 上下文、NL2SQL 请求组装、单轮诊断与分析用例、智能过滤、Schema 文档生成、预算、取消和 editor grant 所有权策略。AI 需要的数据库元数据（表 / 列 / 类型 / schema）同样在共享层：`modules/src/services/schema_context/` 里的 `RuntimeSchemaContextSource` 实现 `LogicalSchemaContextSource` 端口，用 `RuntimeConnectionUseCases` 解析会话归属、用注入的 `ResourceExecutionHost` 取 profile / 驱动并经共享执行网关读元数据；物理句柄契约 `PhysicalSchemaContextSource` 只对真正持有句柄的形态开放，共享层用 `PhysicalSchemaContextAdapter` 把两者接起来并持有缓存；桌面只在 `src-tauri/src/services/schema_context_source.rs` 注入这两个跨形态件，不再有自己的 AI 适配层。调用点直接引用 `datazen_ai_api` / `datazen_ai_providers` / `datazen::ai`，宿主不再有 AI 门面；Tauri 命令负责 IPC、宿主存储与连接查询、上下文文件读取、事件流和取消接线。
+AI 模块与数据库驱动一样采用 **Provider 抽象 + Registry**，但自 D1.5（2026-10-26）起不再有独立 crate。契约、厂商实现和用例都在 `modules/src/ai/`：
+
+- `domain/`：`AiProvider` trait、请求/响应类型、`AI_PROTOCOL_VERSION`（当前 1，最低兼容 1）、工厂注册，以及预算 / `.ctx.yaml` / 出境安全门词汇。
+- `providers/`：OpenAI、Anthropic、DeepSeek、Ollama、Custom，共享 HTTP 协议与 `HttpClient`，以及 `AiProviderRegistry`。
+- `application/`：Prompt 解析、Schema 上下文、NL2SQL、单轮诊断与分析、智能过滤、Schema 文档、工具循环、取消和 editor grant。
+
+Schema 元数据源也在这一层：`modules/src/ai/application/schema_context.rs`（D6 从 `modules/src/services/schema_context/` 归位）。桌面只在 `apps/desktop/src-tauri/src/services/schema_context_source.rs` 注入 `ResourceExecutionHost` 与 Runtime 门面。调用点使用 `datazen::ai`（`datazen_ai_api` / `datazen_ai_providers` 这两个 crate 名已不存在）。Tauri 命令只做 IPC、宿主存储、连接查询、上下文文件读取、事件流和取消接线。
 
 ### 1.2 架构分层
 
 ```
-packages/ai-api/                    # 公共 AI Provider API crate
-├── src/
-│   ├── lib.rs                      # AI_PROTOCOL_VERSION（当前 1，最低兼容 1）+ re-exports
-│   ├── traits.rs                   # AiProvider trait (async_trait, Send+Sync)
-│   ├── types.rs                    # AiProviderConfig, ChatMessage, StreamChunk, AiError,
-│   │                               # ToolDefinition, ToolCall, ToolResult, ModelInfo,
-│   │                               # AiSettingsConfig::selected_profile shared fallback
-│   └── factory.rs                  # AiProviderFactory + inventory + register_ai_provider!
+modules/src/ai/
+├── mod.rs                          # AI_PROTOCOL_VERSION = 1，MIN_AI_PROTOCOL_VERSION = 1
+├── domain/
+│   ├── traits.rs                   # AiProvider
+│   ├── types.rs                    # AiProviderConfig, ChatMessage, StreamChunk, AiError, tools
+│   ├── factory.rs                  # AiProviderFactory + inventory
+│   ├── budget.rs / ctx_yaml.rs / safety.rs
+├── providers/
+│   ├── openai.rs / anthropic.rs / deepseek.rs / ollama.rs / custom.rs
+│   ├── registry.rs / metadata.rs / http.rs
+│   └── protocol/                   # openai_chat, openai_responses, anthropic, test_support
+└── application/
+    ├── context.rs / schema_context.rs / schema_pipeline.rs
+    ├── prompt_resolver.rs / chat_request.rs / sql_generation.rs / single_turn.rs
+    ├── filter.rs / schema_doc.rs / tool_loop.rs / tools.rs / db_tools.rs
+    ├── cancel.rs / ownership.rs / chat_session.rs
+    └── ports.rs
 
-packages/ai-providers/              # Provider 实现 + 共享 HTTP 协议（传输层，不依赖宿主）
-│   src/
-│   ├── lib.rs                      # 模块组织 + re-exports
-│   ├── openai.rs                   # OpenAI Provider (Chat Completions API)
-│   ├── anthropic.rs                # Anthropic Provider (Messages API)
-│   ├── deepseek.rs                 # DeepSeek Provider (Responses API, reasoning 支持)
-│   ├── ollama.rs                   # Ollama Provider (本地端点)
-│   ├── custom.rs                   # 自定义 Provider (三种协议: Chat/Responses/Anthropic 兼容,
-│   │                               #   远程模型列表获取)
-│   ├── registry.rs                 # AiProviderRegistry (动态注册/获取, inventory 发现)
-│   ├── metadata.rs                 # 现有 Provider 的默认 endpoint/protocol 元数据
-│   └── protocol/                   # 共享 HTTP 协议实现
-│       ├── mod.rs                  # ProtocolConfig, timeouts, URL normalization, 端点日志脱敏
-│       ├── openai_chat.rs          # OpenAI Chat Completions API (streaming + non-streaming)
-│       ├── openai_responses.rs     # OpenAI Responses API (DeepSeek/custom Responses 模式)
-│       ├── anthropic.rs            # Anthropic Messages API
-│       └── test_support.rs         # 协议层单测共享的 wiremock 夹具
-
-modules/src/ai/       # 共享 AI 应用逻辑，不依赖 Tauri
-├── context.rs                      # SchemaContextBuilder (DDL 上下文) + context-file prompt block 格式
-├── prompt_resolver.rs              # PromptResolver (覆盖、模板与方言提示)
-├── safety.rs / tool_loop.rs        # 出境分级、工具调用校验与流式循环
-├── schema_pipeline.rs / ctx_yaml.rs # Schema 上下文预算与 .ctx.yaml 解析
-├── chat_request.rs / sql_generation.rs # Chat/NL2SQL 请求组装与通用工具定义
-├── single_turn.rs                   # SQL 诊断、EXPLAIN、连接摘要格式/诊断与历史分析
-├── filter.rs / schema_doc.rs       # 智能过滤与 Schema 文档生成用例
-├── budget.rs / cancel.rs           # token 预算与按 owner 隔离的取消
-└── ownership.rs                    # AiGrantRegistry / AiGrantService、editor 归属、DB 目标绑定与结果 attribution
-
-modules/src/services/schema_context/  # 共享元数据源（表/列/类型/schema）
-├── source.rs                       # RuntimeSchemaContextSource：会话→连接映射 + 独立 Runtime 目标上的元数据读取
-└── tests.rs                        # 端口契约测试（假 ResourceExecutionHost + 假 runtime）
-
-src-tauri/src/services/             # 桌面适配
-└── schema_context_source.rs        # 向共享实现注入 ResourceExecutionHost 与 Runtime 门面
-
-src-tauri/src/commands/ai/           # Tauri IPC 与平台接线
-├── generate.rs                     # 配置/会话/历史读取、脱敏、流式交付与共享用例调用
-├── chat.rs / grant.rs              # Tauri 事件流、MCP 与 Runtime 工具宿主、editor grant IPC
-└── config.rs / prompts.rs          # Provider/Profile 持久化与 Prompt 管理 IPC
+apps/desktop/src-tauri/src/services/schema_context_source.rs   # 桌面注入
+apps/desktop/src-tauri/src/commands/ai/                        # generate / chat / grant / config / prompts
 ```
 
 Chat 和单轮用例接收宿主已选择的 Provider、语言、driver、schema seed 与安全处理后的输入；共享代码组装 prompt、请求、通用工具声明和结构化响应。共享层也格式化宿主已读取的 context 文件内容与连接诊断摘要；文件/连接配置读取及 egress 脱敏仍由 host 负责。连接 Profile、SchemaCache、查询历史、Provider 配置/凭据、MCP 工具发现、Tauri 事件、Runtime 工具调用与请求取消仍由 host 提供；共享层不读取本地存储或选择数据库会话。流式生命周期和工具宿主继续由平台适配器接线。
@@ -86,8 +63,7 @@ pub trait AiProvider: Send + Sync {
 
 ### 1.4 Provider 协议层
 
-多个 Provider 共享底层 HTTP 协议实现，避免重复代码。协议层位于 `packages/ai-providers/src/protocol/`，
-宿主直接引用 `datazen_ai_api` 与 `datazen_ai_providers`，不再经由门面中转：
+多个 Provider 共享底层 HTTP 协议实现，避免重复代码。协议层位于 `modules/src/ai/providers/protocol/`，宿主引用 `datazen::ai`：
 
 | Provider | 协议 | 模块 |
 |----------|------|------|
@@ -96,7 +72,7 @@ pub trait AiProvider: Send + Sync {
 | Anthropic | Messages API | `modules/src/ai/providers/protocol/anthropic.rs` |
 | Custom | 三选一：Chat / Responses / Anthropic | 对应 protocol 模块 |
 
-`modules::ai::providers`（原 `packages/ai-providers`，D1.5 并入后 `ai-api` 契约同迁）只依赖 HTTP 客户端，不依赖 Tauri 与宿主存储：
+`modules::ai::providers`（原 `packages/ai-providers`，D1.5 起 `ai-api` 契约一并迁入）只依赖 HTTP 客户端，不依赖 Tauri 与宿主存储：
 Provider 配置的持久化留在宿主。启动时的两步拆成两个方法——
 `AiProviderRegistry::ensure_registered()` 负责内置 Provider 的注册与去重，
 并在**首次**调用时返回 `true`；宿主据此只在该次调用后读取已解密配置并交给
@@ -120,7 +96,7 @@ pub async fn ensure_ai_ready(&self) {
 ### AI HTTP 出站边界
 
 内置 Provider 与三种共享协议的模型列表、连接测试、普通与流式完成请求统一经
-`datazen_ai_providers::http::HttpClient` 发送。该传输边界与数据库 `NetworkProvider`
+`datazen::ai::providers::http::HttpClient` 发送。该传输边界与数据库 `NetworkProvider`
 的路由/隧道职责分离；不把 HTTP 请求伪装为数据库路由。
 
 `HttpClient::default()` 使用 `PublicInternet` 策略。每次请求解析全部 A/AAAA 地址，任一地址
