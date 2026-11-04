@@ -88,7 +88,7 @@ function cycle(graph) {
 
 function modulesSourceViolations() {
   const problems = [];
-  const root = path.join(ROOT, 'modules', 'src');
+  const root = path.join(ROOT, 'crates', 'datazen', 'src');
   const forbidden =
     /datazen_(application|runtime|platform_api|kernel)::|datazen-(application|runtime|platform-api|kernel)/;
   function walk(dir) {

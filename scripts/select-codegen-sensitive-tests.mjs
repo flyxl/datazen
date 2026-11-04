@@ -196,12 +196,11 @@ export function collectSourceFiles(root) {
       else if (/\.(ts|tsx|mjs)$/.test(rel)) out.add(rel.split('\\').join('/'));
     }
   };
-  // F6 layout: shared sources live under packages/frontend/src, the desktop
-  // app under packages/desktop/src. Walking 'packages' and 'apps' covers both and
-  // any future sibling packages/apps; 'scripts' completes the module graph
-  // roots a test file can import from.
+  // F6/W7-A layout: shared sources live under packages/frontend/src, the desktop
+  // app under packages/desktop/src (Rust crates under crates/ carry no TS test
+  // roots). Walking 'packages' and 'scripts' covers every root a test file can
+  // import from.
   walk('packages');
-  walk('apps');
   walk('scripts');
   return out;
 }

@@ -46,7 +46,7 @@
     "createUpdaterArtifacts": false,
     "targets": "all",
     "resources": {
-      "../../datazen/resources/prompts": "prompts",
+      "../datazen/resources/prompts": "prompts",
       "resources/builtin-ep": "builtin-ep"
     },
     "icon": [
