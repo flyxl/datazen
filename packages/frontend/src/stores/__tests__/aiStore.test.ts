@@ -102,6 +102,7 @@ describe('aiStore', () => {
         streamingSql: '',
         streamingPreview: '',
         generatedSql: '',
+        memoryUsed: [],
         isGenerating: false,
         requestId: null,
       },
@@ -188,6 +189,24 @@ describe('aiStore', () => {
     it('generateSql skips empty input', async () => {
       await useAiStore.getState().generateSql({ dbSessionId: 'c', database: 'db' });
       expect(mockAiCommands.generateSql).not.toHaveBeenCalled();
+    });
+
+    it('forwards connection and memory policy to the command', async () => {
+      useAiStore.getState().setNl2SqlInput('show users');
+      await useAiStore.getState().generateSql({
+        dbSessionId: 'c',
+        database: 'db',
+        connectionId: 'conn-1',
+        memoryMode: 'auto',
+        memoryScope: 'user',
+      });
+      expect(mockAiCommands.generateSql).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionId: 'conn-1',
+          memoryMode: 'auto',
+          memoryScope: 'user',
+        }),
+      );
     });
 
     it('generateSql sets generating and handles error', async () => {
@@ -501,6 +520,7 @@ describe('aiStore', () => {
           streamingSql: '',
           streamingPreview: '',
           generatedSql: '',
+          memoryUsed: [],
           isGenerating: true,
           requestId,
         },
@@ -512,6 +532,40 @@ describe('aiStore', () => {
 
       useAiStore.getState().handleStreamChunk({ requestId, content: '', done: true });
       expect(useAiStore.getState().nl2sql.isGenerating).toBe(false);
+    });
+
+    it('handleStreamChunk saves memoryUsed on the NL2SQL state', () => {
+      const requestId = 'req-nl2sql-memory';
+      useAiStore.setState({
+        nl2sql: {
+          input: 'q',
+          streamingSql: '',
+          streamingPreview: '',
+          generatedSql: '',
+          memoryUsed: [],
+          isGenerating: true,
+          requestId,
+        },
+      });
+      const memoryUsed = [
+        {
+          reference: 'M1',
+          id: 'mem-1',
+          subject: 'Timezone preference',
+          kind: 'preference',
+          scope: 'user',
+          score: 0.9,
+        },
+      ];
+      useAiStore.getState().handleStreamChunk({
+        requestId,
+        content: 'SELECT 1',
+        done: false,
+        memoryUsed,
+      });
+      expect(useAiStore.getState().nl2sql.memoryUsed).toEqual(memoryUsed);
+      useAiStore.getState().handleStreamChunk({ requestId, content: '', done: true });
+      expect(useAiStore.getState().nl2sql.memoryUsed).toEqual(memoryUsed);
     });
 
     it('handleStreamChunk completes chat session', () => {
@@ -773,6 +827,7 @@ describe('aiStore', () => {
           streamingSql: '',
           streamingPreview: '',
           generatedSql: '',
+          memoryUsed: [],
           isGenerating: true,
           requestId: 'err-req',
         },

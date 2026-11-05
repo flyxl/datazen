@@ -135,12 +135,15 @@ export function handleStreamChunk(get: GetState, set: SetState, payload: StreamC
       ? nl2sql.streamingSql + payload.content
       : nl2sql.streamingSql;
     const streamingPreview = extractSqlStreaming(accumulated);
+    const memoryUsed =
+      payload.memoryUsed && payload.memoryUsed.length > 0 ? payload.memoryUsed : nl2sql.memoryUsed;
     set({
       nl2sql: {
         ...nl2sql,
         streamingSql: accumulated,
         streamingPreview,
         generatedSql: payload.done ? extractSqlFromResponse(accumulated) : nl2sql.generatedSql,
+        memoryUsed,
         isGenerating: payload.done ? false : nl2sql.isGenerating,
       },
     });

@@ -4,6 +4,7 @@ import type {
   AiChatContextSnapshot,
   AiChatMessage,
   AiChatSession,
+  AiMemoryReference,
   AiModelProfile,
   AiProviderConfig,
   AiSettingsConfig,
@@ -30,6 +31,8 @@ export interface Nl2SqlState {
   streamingPreview: string;
   /** Final cleaned SQL after generation completes. */
   generatedSql: string;
+  /** Memories the host injected for the latest generation. */
+  memoryUsed: AiMemoryReference[];
   isGenerating: boolean;
   requestId: string | null;
 }
@@ -39,6 +42,7 @@ export const initialNl2Sql: Nl2SqlState = {
   streamingSql: '',
   streamingPreview: '',
   generatedSql: '',
+  memoryUsed: [],
   isGenerating: false,
   requestId: null,
 };
@@ -95,7 +99,14 @@ export interface AiStore {
     contextTables?: string[];
     connectionId?: string;
     memoryMode?: 'off' | 'ask' | 'auto';
-    memoryScope?: 'organization' | 'user' | 'connection' | 'database' | 'schema' | 'table' | 'column';
+    memoryScope?:
+      | 'organization'
+      | 'user'
+      | 'connection'
+      | 'database'
+      | 'schema'
+      | 'table'
+      | 'column';
   }) => Promise<void>;
   clearNl2Sql: () => void;
 
@@ -141,7 +152,14 @@ export interface AiStore {
     /** Target this run claims; omitted = independent. */
     targetClaim?: AiTargetClaim;
     memoryMode?: 'off' | 'ask' | 'auto';
-    memoryScope?: 'organization' | 'user' | 'connection' | 'database' | 'schema' | 'table' | 'column';
+    memoryScope?:
+      | 'organization'
+      | 'user'
+      | 'connection'
+      | 'database'
+      | 'schema'
+      | 'table'
+      | 'column';
   }) => Promise<void>;
   clearChat: () => void;
   /** Cancel the in-flight chat run; resolves with the host receipt. */

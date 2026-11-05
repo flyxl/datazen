@@ -63,6 +63,13 @@ interface AiChatPanelProps {
   /** Persisted connection id of the active workspace, for editor-session grants. */
   connectionId?: string;
   /**
+   * Memory policy override. Until T13 ships a settings switch the panel sends
+   * an explicit `auto` + `user` default rather than relying on the backend's
+   * backward-compatible `off` default.
+   */
+  memoryMode?: 'off' | 'ask' | 'auto';
+  memoryScope?: 'organization' | 'user' | 'connection' | 'database' | 'schema' | 'table' | 'column';
+  /**
    * Stable owner id (pane key) of the editor session this panel may share.
    * `undefined` when the active tab has no query editor.
    */
@@ -91,6 +98,8 @@ export function AiChatPanel({
   draftRequest,
   onDraftConsumed,
   connectionId,
+  memoryMode = 'auto',
+  memoryScope = 'user',
   editorSessionId,
   autoContext,
 }: AiChatPanelProps) {
@@ -287,6 +296,8 @@ export function AiChatPanel({
       content: composeKvAiMessage(input.trim(), kvContext ?? null),
       contextFiles: contextFiles.length > 0 ? contextFiles : undefined,
       contextTables: contextTables.length > 0 ? contextTables : undefined,
+      memoryMode,
+      memoryScope,
       ...(hasSnapshotContent(snapshot) ? { autoContext: snapshot } : {}),
       targetClaim: claimForSend(),
     });
@@ -299,6 +310,8 @@ export function AiChatPanel({
     sendMessage,
     dbSessionId,
     connectionId,
+    memoryMode,
+    memoryScope,
     database,
     databaseType,
     agentMode,
@@ -583,6 +596,8 @@ export function AiChatPanel({
                     database,
                     agentMode,
                     content: answers,
+                    memoryMode,
+                    memoryScope,
                   });
                 }}
                 isLastAssistant={
@@ -600,8 +615,7 @@ export function AiChatPanel({
                     role: 'assistant',
                     content: chatSession.streamContent,
                     reasoning: chatSession.streamReasoning || undefined,
-                    memoryUsed:
-                      chatSession.streamMemoryUsed ?? chatSession.memoryUsed ?? undefined,
+                    memoryUsed: chatSession.streamMemoryUsed ?? chatSession.memoryUsed ?? undefined,
                   }}
                   sqlDialect={sqlDialect}
                   isStreaming
@@ -867,9 +881,7 @@ function ChatBubble({
   const memoryUsed = message.memoryUsed ?? [];
 
   const handleMemoryCitationClick = (event: MouseEvent<HTMLDivElement>) => {
-    const target = (event.target as HTMLElement).closest<HTMLAnchorElement>(
-      'a[href^="#memory-"]',
-    );
+    const target = (event.target as HTMLElement).closest<HTMLAnchorElement>('a[href^="#memory-"]');
     if (!target) return;
     event.preventDefault();
     const reference = target.getAttribute('href')?.slice('#memory-'.length);

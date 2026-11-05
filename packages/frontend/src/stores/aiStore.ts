@@ -274,6 +274,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
         streamingSql: '',
         streamingPreview: '',
         generatedSql: '',
+        memoryUsed: [],
         isGenerating: true,
         requestId,
       },

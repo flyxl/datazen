@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Sparkles, Trash2, Settings, Square, Copy, Check } from 'lucide-react';
+import {
+  Sparkles,
+  Trash2,
+  Settings,
+  Square,
+  Copy,
+  Check,
+  BookOpen,
+  ChevronDown,
+  ChevronRight,
+} from 'lucide-react';
 import { Button } from '../ui/Button';
 import { SqlCodeBlock } from '../SqlCodeBlock';
 import { useCopyFeedback } from '../ui/useCopyFeedback';
@@ -10,7 +20,7 @@ import { openSettingsWindow } from '../../lib/windowManager';
 import { AiInput } from './AiInput';
 import { AiEgressNotice } from './AiEgressNotice';
 import { splitContextItems } from '../../lib/contextItems';
-import type { ContextItem } from '../../types';
+import type { AiMemoryReference, ContextItem } from '../../types';
 import { Spinner } from '../ui/Spinner';
 
 /** How long the copy button keeps its check icon before reverting. */
@@ -20,6 +30,11 @@ interface Nl2SqlPanelProps {
   dbSessionId: string;
   database: string;
   currentTable?: string;
+  /** Persisted connection id of the active editor session. */
+  connectionId?: string;
+  /** Memory policy override; defaults keep memory on until T13 adds settings. */
+  memoryMode?: 'off' | 'ask' | 'auto';
+  memoryScope?: 'organization' | 'user' | 'connection' | 'database' | 'schema' | 'table' | 'column';
   /** Stream / write generated SQL into the SQL editor. */
   onSqlChange: (sql: string) => void;
 }
@@ -28,10 +43,16 @@ export function Nl2SqlPanel({
   dbSessionId,
   database,
   currentTable,
+  connectionId,
+  memoryMode = 'auto',
+  memoryScope = 'user',
   onSqlChange,
 }: Nl2SqlPanelProps) {
   const { t } = useI18n();
   const nl2sql = useAiStore((s) => s.nl2sql);
+  const [memoryOpen, setMemoryOpen] = useState(false);
+  const memoryListRef = useRef<HTMLDivElement>(null);
+  const memoryUsed: AiMemoryReference[] = nl2sql.memoryUsed ?? [];
   const nl2sqlError = useAiStore((s) => s.nl2sqlError);
   const isConfigured = useAiStore((s) => s.isConfigured);
   const setNl2SqlInput = useAiStore((s) => s.setNl2SqlInput);
@@ -61,6 +82,9 @@ export function Nl2SqlPanel({
       currentTable,
       contextFiles: contextFiles.length > 0 ? contextFiles : undefined,
       contextTables: contextTables.length > 0 ? contextTables : undefined,
+      connectionId,
+      memoryMode,
+      memoryScope,
     });
     setContextItems([]);
   }, [
@@ -68,6 +92,9 @@ export function Nl2SqlPanel({
     dbSessionId,
     database,
     currentTable,
+    connectionId,
+    memoryMode,
+    memoryScope,
     nl2sql.input,
     nl2sql.isGenerating,
     contextItems,
@@ -88,6 +115,17 @@ export function Nl2SqlPanel({
   // Determine what SQL to show in the preview
   const showPreview = nl2sql.isGenerating || !!nl2sql.generatedSql;
   const previewSql = nl2sql.isGenerating ? nl2sql.streamingPreview : nl2sql.generatedSql;
+
+  const focusMemory = useCallback((reference: string) => {
+    setMemoryOpen(true);
+    window.setTimeout(() => {
+      const item = memoryListRef.current?.querySelector<HTMLElement>(
+        `[data-memory-reference="${reference}"]`,
+      );
+      item?.scrollIntoView({ block: 'nearest' });
+      item?.focus();
+    }, 0);
+  }, []);
 
   if (!isConfigured) {
     return (
@@ -180,6 +218,58 @@ export function Nl2SqlPanel({
           <div className="max-h-60 overflow-auto">
             <SqlCodeBlock code={previewSql} />
           </div>
+        </div>
+      )}
+
+      {memoryUsed.length > 0 && (
+        <div className="mx-2 mb-2 rounded border border-edge bg-surface px-2 py-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              className="flex items-center gap-1 rounded px-1 py-0.5 text-[10px] text-fg-muted transition-colors hover:bg-surface-alt hover:text-fg"
+              onClick={() => setMemoryOpen((open) => !open)}
+              aria-expanded={memoryOpen}
+              data-testid="ai-memory-chip"
+            >
+              <BookOpen className="h-2.5 w-2.5" />
+              {t('chat.memory.used', { count: memoryUsed.length })}
+              {memoryOpen ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+            </button>
+            {memoryUsed.map((memory) => (
+              <button
+                key={`${memory.id}-${memory.reference}`}
+                type="button"
+                className="rounded px-1 py-0.5 font-mono text-[10px] text-fg-muted hover:bg-surface-alt hover:text-fg"
+                onClick={() => focusMemory(memory.reference)}
+                data-testid={`ai-memory-citation-${memory.reference}`}
+              >
+                [{memory.reference}]
+              </button>
+            ))}
+          </div>
+          {memoryOpen && (
+            <div ref={memoryListRef} className="mt-1 space-y-0.5" data-testid="ai-memory-expanded">
+              {memoryUsed.map((memory) => (
+                <div
+                  key={`${memory.id}-${memory.reference}`}
+                  tabIndex={-1}
+                  data-memory-reference={memory.reference}
+                  data-testid={`ai-memory-item-${memory.reference}`}
+                  className="rounded px-1.5 py-1 text-[10px] text-fg-muted focus:bg-surface-alt focus:outline-none"
+                >
+                  <span className="mr-1 font-mono text-fg-secondary">[{memory.reference}]</span>
+                  {memory.subject}
+                  <span className="ml-1 text-fg-muted/70">
+                    {memory.kind} · {memory.scope}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

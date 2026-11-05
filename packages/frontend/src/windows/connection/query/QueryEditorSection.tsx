@@ -606,6 +606,7 @@ export function QueryEditorSection({
         {nl2sqlVisible && (
           <Nl2SqlPanel
             dbSessionId={dbSessionId}
+            connectionId={connectionId}
             database={selectedDatabase ?? ''}
             onSqlChange={onApplyAiSql}
           />

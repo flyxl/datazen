@@ -284,6 +284,8 @@ describe('AiChatPanel', () => {
       content: 'hello',
       contextFiles: undefined,
       contextTables: undefined,
+      memoryMode: 'auto',
+      memoryScope: 'user',
       // P6 §14.4: default target is independent unless the user shares a pane.
       targetClaim: { kind: 'independent' },
     });
@@ -698,6 +700,8 @@ describe('AiChatPanel — KV panel context', () => {
       content: 'hello',
       contextFiles: undefined,
       contextTables: undefined,
+      memoryMode: 'auto',
+      memoryScope: 'user',
       targetClaim: { kind: 'independent' },
     });
   });
