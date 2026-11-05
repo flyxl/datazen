@@ -254,6 +254,10 @@ pub struct AppState {
     ///
     /// 作用域只在这里确定一次，请求体里的任何字段都覆盖不了它（INV-01）。
     pub organization_scope: OrganizationScope,
+    /// The Tauri handle used by the AI tool-confirmation dialog. Injected by
+    /// `bootstrap::run` after assembly and before `app.manage`; headless or
+    /// test states leave it empty, where confirmation fails closed.
+    pub(crate) app_handle: Arc<std::sync::OnceLock<tauri::AppHandle>>,
 }
 
 impl AppState {
@@ -278,6 +282,12 @@ impl AppState {
     /// 按请求解析组织，那一步是可以失败的。桌面形态不会失败。
     pub fn organization_scope(&self) -> Result<OrganizationScope, CommandError> {
         Ok(self.organization_scope.clone())
+    }
+
+    /// Attach the production Tauri handle after assembly. Calling this more
+    /// than once keeps the first handle; tests never need it.
+    pub(crate) fn set_app_handle(&self, handle: tauri::AppHandle) {
+        let _ = self.app_handle.set(handle);
     }
 
     /// 模块连接目录的作用域（D2）：连接用例归

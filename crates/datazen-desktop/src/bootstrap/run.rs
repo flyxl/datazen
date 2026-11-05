@@ -156,6 +156,7 @@ pub fn run() {
                 );
             });
 
+            app_state.set_app_handle(handle.clone());
             app.manage(app_state);
 
             {

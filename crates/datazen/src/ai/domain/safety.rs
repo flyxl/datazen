@@ -15,7 +15,9 @@ use regex::Regex;
 use serde_json::{Map, Value};
 use std::sync::OnceLock;
 
-use crate::ai::domain::types::{AiDataEgressLevel, AiSafetyGateConfig, AiSettingsConfig};
+use crate::ai::domain::types::{
+    AiDataEgressLevel, AiProviderType, AiSafetyGateConfig, AiSettingsConfig,
+};
 use crate::settings::ExecutionSettings;
 
 const MAX_AI_TEXT_BYTES: usize = 4_000;
@@ -354,13 +356,48 @@ pub fn redact_for_gate(value: &str, gate: &AiSafetyGateConfig) -> String {
     truncate_to_bytes(text, limit)
 }
 
+/// Whether a provider is local enough to permit `redact_credentials=false`.
+///
+/// Cloud providers never get the opt-out. Ollama is local by definition;
+/// a Custom provider qualifies only when its endpoint host is loopback.
+pub fn provider_allows_unredacted_credentials(
+    provider_type: AiProviderType,
+    endpoint: Option<&str>,
+) -> bool {
+    match provider_type {
+        AiProviderType::Ollama => true,
+        AiProviderType::Custom => endpoint.and_then(loopback_host).is_some(),
+        AiProviderType::OpenAi | AiProviderType::Anthropic | AiProviderType::DeepSeek => false,
+    }
+}
+
+fn loopback_host(endpoint: &str) -> Option<&str> {
+    let rest = endpoint
+        .trim()
+        .split_once("://")
+        .map(|(_, rest)| rest)
+        .unwrap_or_else(|| endpoint.trim());
+    let authority = rest.split(['/', '?', '#']).next()?;
+    let host_port = authority.rsplit('@').next()?;
+    let host = if let Some(without_open) = host_port.strip_prefix('[') {
+        without_open.split(']').next()?
+    } else {
+        host_port.split(':').next()?
+    };
+    matches!(host, "localhost" | "127.0.0.1" | "::1").then_some(host)
+}
+
 /// Global execution policy can tighten a model profile's egress level.
+///
+/// Credential redaction can only be disabled for a local provider. Cloud
+/// profiles are forced back to `redact_credentials=true`, regardless of what
+/// was persisted in the gate config.
 pub fn effective_safety_gate(
     settings: &AiSettingsConfig,
     policy: &ExecutionSettings,
 ) -> AiSafetyGateConfig {
-    let mut gate = settings
-        .selected_profile()
+    let selected = settings.selected_profile();
+    let mut gate = selected
         .map(|profile| profile.safety_gate.clone())
         .unwrap_or_else(|| AiSafetyGateConfig {
             data_egress_level: AiDataEgressLevel::Unrestricted,
@@ -368,6 +405,11 @@ pub fn effective_safety_gate(
         });
     if policy.ai_strict_egress {
         gate.data_egress_level = AiDataEgressLevel::Strict;
+    }
+    if !selected.is_some_and(|profile| {
+        provider_allows_unredacted_credentials(profile.provider_type, profile.endpoint.as_deref())
+    }) {
+        gate.redact_credentials = true;
     }
     gate
 }

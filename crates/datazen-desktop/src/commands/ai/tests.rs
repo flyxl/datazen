@@ -232,3 +232,97 @@ async fn mcp_connect_rejects_invalid_server_id() {
         .unwrap_err();
     assert!(err.contains("Invalid MCP server id"));
 }
+
+// ── desktop AI tool confirmation port ──
+
+#[tokio::test]
+async fn desktop_tool_confirmation_accepts_and_rejects_through_the_injected_port() {
+    use super::chat::confirm_tool_call_with;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    let app = tauri::test::mock_app();
+    let handle = app.handle().clone();
+    let called = Arc::new(AtomicBool::new(false));
+    let called_for_accept = called.clone();
+
+    let accepted = confirm_tool_call_with(
+        Some(handle.clone()),
+        "query_readonly",
+        r#"{"sql":"SELECT 1"}"#,
+        Duration::from_secs(1),
+        move |_app, title, message| {
+            called_for_accept.store(true, Ordering::SeqCst);
+            assert!(title.contains("query_readonly"));
+            assert!(message.contains("SELECT 1"));
+            Box::pin(async { Ok::<bool, crate::commands::error::CommandError>(true) })
+        },
+    )
+    .await;
+    assert!(accepted);
+    assert!(called.load(Ordering::SeqCst));
+
+    let rejected = confirm_tool_call_with(
+        Some(handle),
+        "query_readonly",
+        "{}",
+        Duration::from_secs(1),
+        |_app, _title, _message| {
+            Box::pin(async { Ok::<bool, crate::commands::error::CommandError>(false) })
+        },
+    )
+    .await;
+    assert!(!rejected);
+}
+
+#[tokio::test]
+async fn desktop_tool_confirmation_timeout_and_missing_handle_are_denied() {
+    use super::chat::confirm_tool_call_with;
+    use std::time::Duration;
+
+    let app = tauri::test::mock_app();
+    let handle = app.handle().clone();
+    let timed_out = confirm_tool_call_with(
+        Some(handle),
+        "query_readonly",
+        "{}",
+        Duration::from_millis(5),
+        |_app, _title, _message| {
+            Box::pin(async {
+                std::future::pending::<Result<bool, crate::commands::error::CommandError>>().await
+            })
+        },
+    )
+    .await;
+    assert!(!timed_out);
+
+    let no_handle = confirm_tool_call_with(
+        None::<tauri::AppHandle<tauri::test::MockRuntime>>,
+        "query_readonly",
+        "{}",
+        Duration::from_millis(5),
+        |_app, _title, _message| {
+            Box::pin(async { Ok::<bool, crate::commands::error::CommandError>(true) })
+        },
+    )
+    .await;
+    assert!(!no_handle, "headless/test state must fail closed");
+}
+
+#[test]
+fn tool_confirmation_prompt_redacts_credentials_and_bounds_arguments() {
+    use super::chat::tool_confirmation_prompt;
+
+    let (title, message) = tool_confirmation_prompt(
+        "query_readonly",
+        &format!(
+            r#"{{"password":"super-secret","sql":"SELECT 1","blob":"{}"}}"#,
+            "x".repeat(2_000)
+        ),
+    );
+
+    assert!(title.contains("query_readonly"));
+    assert!(!message.contains("super-secret"), "{message}");
+    assert!(message.len() < 1_200, "dialog text must stay bounded");
+}

@@ -599,3 +599,94 @@ fn disabling_credential_redaction_still_applies_egress_and_byte_limits() {
     assert!(!output.contains("resultRows"), "{output}");
     assert!(!output.contains("user@example.test"), "{output}");
 }
+
+// ── credential opt-out is limited to local providers ──
+
+fn profile_with_redaction_off(
+    provider_type: crate::ai::domain::types::AiProviderType,
+    endpoint: Option<&str>,
+) -> crate::ai::domain::types::AiModelProfile {
+    crate::ai::domain::types::AiModelProfile {
+        id: "profile".into(),
+        name: "profile".into(),
+        provider_type,
+        api_key: None,
+        endpoint: endpoint.map(str::to_string),
+        model: "model".into(),
+        max_tokens: 1_000,
+        extra: serde_json::Value::Null,
+        safety_gate: AiSafetyGateConfig {
+            redact_credentials: false,
+            ..Default::default()
+        },
+        is_default: true,
+    }
+}
+
+fn non_strict_execution_policy() -> crate::settings::ExecutionSettings {
+    crate::settings::ExecutionSettings {
+        limit_select_results: false,
+        query_result_limit: 5000,
+        safe_mode: true,
+        connection_pool_size: 10,
+        mcp_disabled_tools: vec![],
+        mcp_permission_mode: "safe_write".into(),
+        mcp_allowed_connection_ids: vec![],
+        driver_settings: serde_json::Map::new(),
+        ai_strict_egress: false,
+    }
+}
+
+#[test]
+fn credential_opt_out_is_allowed_only_for_local_providers() {
+    use crate::ai::domain::types::AiProviderType;
+
+    assert!(provider_allows_unredacted_credentials(
+        AiProviderType::Ollama,
+        None
+    ));
+    assert!(provider_allows_unredacted_credentials(
+        AiProviderType::Custom,
+        Some("http://localhost:11434/v1")
+    ));
+    assert!(provider_allows_unredacted_credentials(
+        AiProviderType::Custom,
+        Some("http://[::1]:8080/v1")
+    ));
+    assert!(!provider_allows_unredacted_credentials(
+        AiProviderType::Custom,
+        Some("https://api.example.com/v1")
+    ));
+    assert!(!provider_allows_unredacted_credentials(
+        AiProviderType::OpenAi,
+        None
+    ));
+}
+
+#[test]
+fn effective_gate_forces_redaction_for_cloud_profiles() {
+    use crate::ai::domain::types::AiProviderType;
+
+    let policy = non_strict_execution_policy();
+    for (provider_type, endpoint, expected) in [
+        (AiProviderType::OpenAi, None, true),
+        (AiProviderType::Anthropic, None, true),
+        (
+            AiProviderType::Custom,
+            Some("https://api.example.com"),
+            true,
+        ),
+        (AiProviderType::Ollama, None, false),
+        (AiProviderType::Custom, Some("http://127.0.0.1:1234"), false),
+    ] {
+        let settings = AiSettingsConfig {
+            active_profile_id: "profile".into(),
+            profiles: vec![profile_with_redaction_off(provider_type, endpoint)],
+        };
+        assert_eq!(
+            effective_safety_gate(&settings, &policy).redact_credentials,
+            expected,
+            "{provider_type:?} {endpoint:?}"
+        );
+    }
+}

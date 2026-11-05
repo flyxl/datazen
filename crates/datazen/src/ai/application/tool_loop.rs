@@ -14,8 +14,28 @@ use crate::ai::domain::types::{
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::mpsc;
 pub type StreamCallback = Arc<dyn Fn(&str, Result<StreamChunk, AiError>) + Send + Sync>;
+
+/// Shared upper bound around the host confirmation port. Hosts may impose a
+/// shorter UI timeout; this one guarantees the loop itself cannot hang.
+pub const TOOL_CONFIRM_TIMEOUT: Duration = Duration::from_secs(60);
+
+async fn confirm_tool_with_timeout(
+    host: &dyn AiToolLoopHost,
+    tool: &str,
+    arguments: &str,
+    timeout: Duration,
+) -> bool {
+    match tokio::time::timeout(timeout, host.confirm_tool_call(tool, arguments)).await {
+        Ok(accepted) => accepted,
+        Err(_) => {
+            tracing::warn!(tool, ?timeout, "tool confirmation timed out; denying");
+            false
+        }
+    }
+}
 
 /// Per-request policy for database tools.
 ///
@@ -526,7 +546,10 @@ pub async fn run_streaming_tool_loop(
                 ToolKind::Mcp { .. } => mcp_tool_requires_confirmation(gate.mcp_tool_policy),
                 _ => false,
             };
-            if needs_confirm && !host.confirm_tool_call(&tc.name, &tc.arguments).await {
+            if needs_confirm
+                && !confirm_tool_with_timeout(host, &tc.name, &tc.arguments, TOOL_CONFIRM_TIMEOUT)
+                    .await
+            {
                 tracing::info!(
                     %request_id,
                     tool_name = %tc.name,
@@ -680,6 +703,7 @@ mod tests {
         mcp_tool_calls: AtomicUsize,
         confirm_calls: AtomicUsize,
         confirm_result: AtomicBool,
+        confirm_hangs: AtomicBool,
     }
 
     impl StubHost {
@@ -706,6 +730,9 @@ mod tests {
         }
         async fn confirm_tool_call(&self, _tool: &str, _arguments: &str) -> bool {
             self.confirm_calls.fetch_add(1, Ordering::SeqCst);
+            if self.confirm_hangs.load(Ordering::SeqCst) {
+                std::future::pending::<bool>().await;
+            }
             self.confirm_result.load(Ordering::SeqCst)
         }
     }
@@ -1027,6 +1054,21 @@ mod tests {
         assert!(result.is_ok(), "{result:?}");
         assert_eq!(host.confirm_calls.load(Ordering::SeqCst), 1);
         assert_eq!(host.mcp_tool_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn confirmation_timeout_denies() {
+        let host = StubHost {
+            confirm_hangs: AtomicBool::new(true),
+            ..StubHost::default()
+        };
+
+        let allowed =
+            confirm_tool_with_timeout(&host, "list_connections", "{}", Duration::from_millis(5))
+                .await;
+
+        assert!(!allowed);
+        assert_eq!(host.confirm_calls.load(Ordering::SeqCst), 1);
     }
 
     #[tokio::test]

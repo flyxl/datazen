@@ -19,7 +19,73 @@ use datazen::ai::application::schema_pipeline::SchemaContextPipeline;
 use datazen::ai::ownership::AiTargetClaim;
 use datazen::ai::tool_loop::{AiToolContext, AiToolLoopHost};
 use datazen::ai::*;
-use tauri::{State, WebviewWindow};
+use std::future::Future;
+use std::pin::Pin;
+use std::time::Duration;
+use tauri::{Runtime, State, WebviewWindow};
+
+/// Hard upper bound for one native tool-approval dialog.
+pub(crate) const TOOL_CONFIRM_TIMEOUT: Duration = Duration::from_secs(60);
+
+pub(crate) type ConfirmToolFuture =
+    Pin<Box<dyn Future<Output = Result<bool, CommandError>> + Send>>;
+
+fn truncate_chars(value: &str, max_chars: usize) -> String {
+    value.chars().take(max_chars).collect()
+}
+
+/// Build the exact prompt shown by the host confirmation dialog. Arguments
+/// are credential-redacted and byte-bounded before they can reach a window.
+pub(crate) fn tool_confirmation_prompt(tool: &str, arguments: &str) -> (String, String) {
+    let gate = AiSafetyGateConfig {
+        max_context_bytes: 600,
+        ..Default::default()
+    };
+    let safe_args = datazen::ai::safety::redact_for_gate(arguments, &gate);
+    let safe_args = if safe_args.trim().is_empty() {
+        "(none)".to_string()
+    } else {
+        safe_args
+    };
+    let safe_tool = truncate_chars(&tool.replace(['\n', '\r'], " "), 120);
+    let title = format!("Allow AI tool '{safe_tool}'?");
+    let message = format!(
+        "The AI assistant wants to run this tool once.\n\nTool: {safe_tool}\nArguments:\n{safe_args}\n\nClick OK to allow this call, or Cancel to deny it."
+    );
+    (title, message)
+}
+
+/// Confirm one tool call through an injectable dialog port. The production
+/// callers pass `dialog::confirm_message`; tests inject accept/reject/pending
+/// answers without opening native UI. Missing handle, dialog error and timeout
+/// all fail closed.
+pub(crate) async fn confirm_tool_call_with<R: Runtime, F>(
+    app: Option<tauri::AppHandle<R>>,
+    tool: &str,
+    arguments: &str,
+    timeout: Duration,
+    confirm: F,
+) -> bool
+where
+    F: FnOnce(tauri::AppHandle<R>, String, String) -> ConfirmToolFuture,
+{
+    let Some(app) = app else {
+        tracing::warn!(tool, "AI tool confirmation requested without an app handle");
+        return false;
+    };
+    let (title, message) = tool_confirmation_prompt(tool, arguments);
+    match tokio::time::timeout(timeout, async move { confirm(app, title, message).await }).await {
+        Ok(Ok(accepted)) => accepted,
+        Ok(Err(error)) => {
+            tracing::warn!(tool, error = %error, "AI tool confirmation dialog failed");
+            false
+        }
+        Err(_) => {
+            tracing::warn!(tool, ?timeout, "AI tool confirmation timed out");
+            false
+        }
+    }
+}
 
 // ─── Database Tool Definitions & Execution ───
 
@@ -68,15 +134,19 @@ impl AiToolLoopHost for AppState {
     async fn execute_mcp_tool(&self, server: &str, tool: &str, arguments: &str) -> String {
         execute_mcp_tool(self, server, tool, arguments).await
     }
-    async fn confirm_tool_call(&self, tool: &str, _arguments: &str) -> bool {
-        // T24 adds the precise approval UI. Until then the desktop host is
-        // intentionally fail-closed: a policy that requires confirmation
-        // refuses the call instead of silently approving it.
-        tracing::warn!(
+    async fn confirm_tool_call(&self, tool: &str, arguments: &str) -> bool {
+        confirm_tool_call_with(
+            self.app_handle.get().cloned(),
             tool,
-            "AI tool confirmation requested but no desktop UI is wired"
-        );
-        false
+            arguments,
+            TOOL_CONFIRM_TIMEOUT,
+            |app, title, message| {
+                Box::pin(async move {
+                    crate::commands::dialog::confirm_message(&app, &title, &message).await
+                })
+            },
+        )
+        .await
     }
 }
 

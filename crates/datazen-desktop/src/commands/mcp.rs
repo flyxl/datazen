@@ -59,6 +59,7 @@ fn clone_app_state(state: &AppState) -> Arc<AppState> {
         transfer_plans: state.transfer_plans.clone(),
         platform: state.platform.clone(),
         organization_scope: state.organization_scope.clone(),
+        app_handle: state.app_handle.clone(),
     })
 }
 
