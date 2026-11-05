@@ -25,7 +25,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use datazen::connection::domain::catalog::{ConnectionRepository as _, ConnectionScope};
@@ -229,7 +228,19 @@ async fn live_fixture(pg: &LivePg) -> LiveFixture {
     )
     .with_target_machine(TargetMachine {
         host,
-        settings: ExecutionSettings::default(),
+        // storage fresh-install 的 execution 缺省形状（`ExecutionSettings`
+        // 无 Default，字段全列；settings.rs 装配面同值）。
+        settings: ExecutionSettings {
+            limit_select_results: false,
+            query_result_limit: 5000,
+            safe_mode: true,
+            connection_pool_size: 10,
+            mcp_disabled_tools: Vec::new(),
+            mcp_permission_mode: "safe_write".into(),
+            mcp_allowed_connection_ids: Vec::new(),
+            driver_settings: serde_json::Map::new(),
+            ai_strict_egress: true,
+        },
     });
     let mcp_backend = ModulesBackend::new(
         Arc::new(FixedLeaseSource(runtime)),
@@ -254,11 +265,23 @@ fn identity() -> CallIdentity {
     }
 }
 
-async fn call_tool_ok(backend: &McpBackend, tool: &str, arguments: Value) -> Value {
+async fn call_tool_ok(backend: &ModulesBackend, tool: &str, arguments: Value) -> Value {
     match backend.call_tool(&identity(), tool, arguments).await {
         Ok(text) => serde_json::from_str(&text)
             .unwrap_or_else(|panic| panic!("tool {tool} returned non-JSON text: {panic}")),
-        Err(error) => panic!("tool {tool} should take the live green path, got: {error:?}"),
+        Err(error) => panic!(
+            "tool {tool} should take the live green path, got: {}",
+            render(&error)
+        ),
+    }
+}
+
+/// `ToolCallError` 的文本化（wire 层未派生 Debug/Display；诊断消息用）。
+fn render(error: &ToolCallError) -> String {
+    match error {
+        ToolCallError::WithHelp { reason, .. } => format!("with_help({reason})"),
+        ToolCallError::Plain(reason) => format!("plain({reason})"),
+        ToolCallError::Internal(reason) => format!("internal({reason})"),
     }
 }
 
@@ -375,6 +398,9 @@ async fn live_postgres_use_session_on_a_bogus_ref_is_session_lost() {
                 "a bogus ref answers SessionLost, got: {reason}"
             );
         }
-        other => panic!("a bogus ref must be the bare SessionLost family, got: {other:?}"),
+        other => panic!(
+            "a bogus ref must be the bare SessionLost family, got: {}",
+            render(&other)
+        ),
     }
 }

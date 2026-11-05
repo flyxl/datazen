@@ -49,8 +49,9 @@
 //! `LegacyResourceAdapter` 资源提供者 + 预算桥 + `ServerDriverExecBackend`
 //! + `ServerExecutionPolicy` + `ServerRuntimeLeaseSource` +
 //! `ServerResourceExecutionHost` + `StatelessToolExec(TargetMachine)` +
-//! `ModulesBackend`。会话连续性沿 `FixedLeaseSource` 先例（g1 CM-63）：
-//! 未吊销的 runtime 定为单例，会话/令牌签发与消费落在同一份内存账上。
+//! `ModulesBackend`。会话连续性沿 `FixedLeaseSource` 先例（g1_w1_gaps）：夹
+//! 具恒返同一 runtime，会话/令牌签发与消费落在同一份内存账上——刀0（CM-63）
+//! 后主线 `ServerRuntimeLeaseSource` 自身即持当前单元直至吊销，两侧语义同效。
 //!
 //! serde_json `preserve_order`（bson/mongodb 等驱动传递启用）会让键序随
 //! feature 组合漂移——本文件全部做**结构断言**（按键取值），不做字节级
@@ -58,7 +59,6 @@
 
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use datazen::connection::domain::catalog::{ConnectionRepository as _, ConnectionScope};
@@ -67,7 +67,6 @@ use datazen::connection::dto::ProfileDraft;
 use datazen::execution::application::orchestration::{
     RuntimeConnectionUseCases, RuntimeResultSink, SystemRuntimeClock,
 };
-use datazen::mcp::application::tools::{RedactedConnectionSource, WorkflowCatalog};
 use datazen::settings::ExecutionSettings;
 use datazen::shared::context::RequestContext;
 use datazen::shared::id::{
@@ -79,7 +78,7 @@ use datazen_driver_api::resource_adapter::LegacyResourceAdapter;
 use datazen_driver_api::{
     explain_command_definition, ColumnSchema, ConnectionConfig, DatabaseDriver,
     DatabaseDriverFactory, ExplainResult, ForeignKeyInfo, IndexInfo, SslMode, TableInfo,
-    TableSchema, TableType, Value,
+    TableSchema, TableType, Value as DriverValue,
 };
 use datazen_server::execution::budget_bridge::BudgetPortBridge;
 use datazen_server::execution::driver_exec::ServerDriverExecBackend;
@@ -153,11 +152,11 @@ impl DatabaseDriverFactory for GreenMockFactory {
     }
 }
 
-/// 会话连续性的测试形（`g1_w1_gaps.rs` / `table_data_routes.rs` 先例）：
-/// 主线 `ServerRuntimeLeaseSource` 每 resolve 新建 runtime 私有的
-/// sessions/tokens map，issue/consume 跨 resolve 必然失联（g1 CM-63 登记）。
-/// 夹具把「未吊销的 runtime」定为单例，open/use/close 三次调用落在同一份
-/// 内存账上；执行后端与共享 sink/directory 仍与主线同构。
+/// 会话连续性的测试形（`g1_w1_gaps.rs` 先例）：恒返回**同一** runtime 实例，
+/// open/use/close 三次调用落在同一份内存账上。刀0（CM-63）后主线的
+/// `ServerRuntimeLeaseSource` 自身即「持当前单元直至吊销」（未吊销窗口内
+/// resolve 恒同一 `Arc`），本形与该语义同效；执行后端与共享 sink/directory
+/// 仍与主线同构。
 struct FixedLeaseSource(Arc<RuntimeConnectionUseCases>);
 
 #[async_trait::async_trait]
@@ -196,8 +195,8 @@ fn green_options() -> MockDriverOptions {
         columns: columns.clone(),
         primary_keys: vec!["id".into()],
         query_rows: vec![vec![
-            Some(Value::Integer(42)),
-            Some(Value::String("ada@example.test".into())),
+            Some(DriverValue::Integer(42)),
+            Some(DriverValue::String("ada@example.test".into())),
         ]],
         count_total: 2,
         databases: vec!["app".into(), "archive".into()],
@@ -415,7 +414,19 @@ async fn mcp_fixture(opts: MockDriverOptions) -> McpFixture {
     )
     .with_target_machine(TargetMachine {
         host,
-        settings: ExecutionSettings::default(),
+        // storage fresh-install 的 execution 缺省形状（`ExecutionSettings`
+        // 无 Default，字段全列；settings.rs 装配面同值）。
+        settings: ExecutionSettings {
+            limit_select_results: false,
+            query_result_limit: 5000,
+            safe_mode: true,
+            connection_pool_size: 10,
+            mcp_disabled_tools: Vec::new(),
+            mcp_permission_mode: "safe_write".into(),
+            mcp_allowed_connection_ids: Vec::new(),
+            driver_settings: serde_json::Map::new(),
+            ai_strict_egress: true,
+        },
     });
     let mcp_backend = ModulesBackend::new(
         Arc::new(FixedLeaseSource(runtime)),
@@ -442,7 +453,7 @@ fn identity(org: &str, principal: &str) -> CallIdentity {
 
 /// 成功调用：返回解析后的 JSON 结果（结构断言，不做字节级比较）。
 async fn call_tool_ok(
-    backend: &McpBackend,
+    backend: &ModulesBackend,
     identity: &CallIdentity,
     tool: &str,
     arguments: Value,
@@ -450,13 +461,25 @@ async fn call_tool_ok(
     match backend.call_tool(identity, tool, arguments).await {
         Ok(text) => serde_json::from_str(&text)
             .unwrap_or_else(|panic| panic!("tool {tool} returned non-JSON text: {panic}")),
-        Err(error) => panic!("tool {tool} should take the green path, got: {error:?}"),
+        Err(error) => panic!(
+            "tool {tool} should take the green path, got: {}",
+            render(&error)
+        ),
+    }
+}
+
+/// `ToolCallError` 的文本化（wire 层未派生 Debug/Display；诊断消息用）。
+fn render(error: &ToolCallError) -> String {
+    match error {
+        ToolCallError::WithHelp { reason, .. } => format!("with_help({reason})"),
+        ToolCallError::Plain(reason) => format!("plain({reason})"),
+        ToolCallError::Internal(reason) => format!("internal({reason})"),
     }
 }
 
 /// 期望失败调用：返回错误并附上工具名便于诊断。
 async fn call_tool_err(
-    backend: &McpBackend,
+    backend: &ModulesBackend,
     identity: &CallIdentity,
     tool: &str,
     arguments: Value,
@@ -578,7 +601,10 @@ async fn the_stateful_session_journey_opens_executes_reads_and_closes() {
                 "the closed ref answers SessionLost, got: {reason}"
             );
         }
-        other => panic!("a use on a closed ref must be the bare SessionLost family, got: {other:?}"),
+        other => panic!(
+            "a use on a closed ref must be the bare SessionLost family, got: {}",
+            render(&other)
+        ),
     }
 }
 
@@ -652,7 +678,7 @@ async fn each_of_the_seven_target_command_tools_answers_through_the_target_machi
         .iter()
         .filter_map(|t| t["name"].as_str())
         .collect();
-    assert_eq!(names, vec!["users", "audit_log"], "{tables}");
+    assert_eq!(names, vec!["users", "audit_log"], "{tables:?}");
     assert_eq!(tables[0]["tableType"], json!("table"));
     assert_eq!(tables[0]["rowCount"], json!(2));
 
@@ -686,7 +712,7 @@ async fn each_of_the_seven_target_command_tools_answers_through_the_target_machi
     )
     .await;
     let schema = schema.as_array().expect("get_schema wraps one schema");
-    assert_eq!(schema.len(), 1, "{schema}");
+    assert_eq!(schema.len(), 1, "{schema:?}");
     assert_eq!(schema[0]["tableName"], json!("users"));
     assert_eq!(schema[0]["primaryKeys"], json!(["id"]));
     assert_eq!(schema[0]["columns"][1]["name"], json!("email"));
@@ -821,7 +847,10 @@ async fn every_contract_example_seed_takes_its_honest_green_path() {
                         );
                     }
                     other => {
-                        panic!("run_workflow's example must map to invalid_params, got: {other:?}")
+                        panic!(
+                            "run_workflow's example must map to invalid_params, got: {}",
+                            render(&other)
+                        )
                     }
                 }
             }
@@ -954,7 +983,8 @@ async fn the_per_call_identity_drives_the_authorization_face() {
             }
             other => {
                 panic!(
-                    "open_session by {other:?} identity must fail at the authorization face"
+                    "open_session by {} identity must fail at the authorization face",
+                    render(&other)
                 )
             }
         }
