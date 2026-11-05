@@ -1,4 +1,5 @@
 import { aiCommands } from '../../commands/ai';
+import { useActiveConnectionStore } from '../activeConnectionStore';
 import type {
   AiChatMessage,
   AiChatSession,
@@ -357,6 +358,38 @@ async function listForScope(key: SessionKey, scope: SessionScope): Promise<AiSes
 }
 
 /**
+ * If the legacy key's first segment is a runtime dbSessionId that the active
+ * connection store already maps to a persistent connectionId, migrate it
+ * directly under the new key. Without a live mapping the row stays under the
+ * legacy key and restore can bind it later once the session id is known.
+ */
+function legacyTargetKey(
+  key: SessionKey,
+  database: string | undefined,
+): {
+  connectionId?: string;
+  sessionKey: SessionKey;
+} {
+  const [legacyConnection, legacyDatabase = ''] = key.split('::');
+  const databaseName = database ?? legacyDatabase;
+  const active = useActiveConnectionStore.getState().connections;
+  const entry = Object.values(active).find(
+    (candidate) => candidate.dbSessionId !== '' && candidate.dbSessionId === legacyConnection,
+  );
+  if (!entry) {
+    return { connectionId: legacyConnection || undefined, sessionKey: key };
+  }
+  return {
+    connectionId: entry.connectionId,
+    sessionKey: computeSessionKey(entry.connectionId, legacyConnection, databaseName),
+  };
+}
+
+function normalizeDatabase(value: string | null | undefined): string {
+  return value ?? '';
+}
+
+/**
  * Migrate every legacy localStorage session into AppDb once. Deterministic
  * ids make a partially failed/retried migration idempotent; the old key is
  * retained and only marked after every row succeeded (so a failed migration
@@ -374,13 +407,14 @@ export async function migrateLocalSessionsToBackend(): Promise<{
   try {
     for (const [key, stored] of entries) {
       const scope = splitLegacyKey(key);
+      const target = legacyTargetKey(key, scope.database);
       const lastAccess = Number.isFinite(stored.lastAccess)
         ? new Date(stored.lastAccess).toISOString()
         : new Date().toISOString();
       await aiCommands.sessionsUpsert({
         id: `legacy:${key}`,
-        sessionKey: key,
-        connectionId: scope.connectionId,
+        sessionKey: target.sessionKey,
+        connectionId: target.connectionId,
         database: scope.database,
         title: stored.title,
         metadata: stored.metadata,
@@ -405,6 +439,53 @@ export async function migrateLocalSessionsToBackend(): Promise<{
       error: `AI session migration failed; using local history: ${errorMessage(error)}`,
     };
   }
+}
+
+/**
+ * Find an AppDb row still stored under the old `dbSessionId::database` key and
+ * confirm it belongs to the current database/session before adopting it. The
+ * query deliberately ignores connection_id because migration ran before the
+ * connection was known; the key and database are the identity proof.
+ */
+function activeDbSessionId(scope: SessionScope): string | undefined {
+  if (scope.dbSessionId) return scope.dbSessionId;
+  if (!scope.connectionId) return undefined;
+  return (
+    useActiveConnectionStore.getState().connections[scope.connectionId]?.dbSessionId || undefined
+  );
+}
+
+async function findLegacyDetailForScope(
+  key: SessionKey,
+  scope: SessionScope,
+): Promise<AiSessionDetail | null> {
+  const dbSessionId = activeDbSessionId(scope);
+  if (!scope.connectionId || !dbSessionId) return null;
+  const legacyKey = computeSessionKey(undefined, dbSessionId, scope.database);
+  if (legacyKey === key) return null;
+  const summaries = await aiCommands.sessionsList({
+    connectionId: null,
+    database: null,
+    sessionKey: legacyKey,
+  });
+  const summary = summaries.find(
+    (candidate) =>
+      candidate.sessionKey === legacyKey &&
+      normalizeDatabase(candidate.database) === normalizeDatabase(scope.database),
+  );
+  if (!summary) return null;
+  const detail = await aiCommands.sessionsGet(summary.id);
+  if (detail.sessionKey !== legacyKey) return null;
+  if (normalizeDatabase(detail.database) !== normalizeDatabase(scope.database)) return null;
+  const boundConnection = detail.connectionId;
+  if (
+    boundConnection &&
+    boundConnection !== dbSessionId &&
+    boundConnection !== scope.connectionId
+  ) {
+    return null;
+  }
+  return detail;
 }
 
 export async function restoreChatSession(
@@ -433,6 +514,30 @@ export async function restoreChatSession(
         backendAvailable: true,
       };
     }
+    let legacy: AiSessionDetail | null = null;
+    try {
+      legacy = await findLegacyDetailForScope(key, scope);
+    } catch (error) {
+      migrationError ??= `AI legacy session lookup failed: ${errorMessage(error)}`;
+    }
+    if (legacy) {
+      const rebound = chatSessionFromDetail(legacy);
+      rebound.sessionKey = key;
+      rebound.connectionId = scope.connectionId ?? null;
+      rebound.database = scope.database ?? null;
+      const saved = await persistChatSession(rebound);
+      const summaries = (await listForScope(key, scope).catch(() => [])) ?? [];
+      return {
+        session: rebound,
+        summaries,
+        migrationError: saved.ok
+          ? migrationError
+          : `AI legacy session was found but could not be bound: ${saved.error ?? 'unknown error'}`,
+        migrationSuccess,
+        backendAvailable: true,
+      };
+    }
+
     // Backend is reachable but has no row yet: keep a local-only conversation
     // (for example one written while the backend was unavailable) instead of
     // discarding it. A successful delete removes the local mirror first.
@@ -462,10 +567,24 @@ export async function listChatSessions(
   scope: SessionScope,
   key?: SessionKey,
 ): Promise<AiSessionSummary[]> {
-  return listForScope(
-    key ?? computeSessionKey(scope.connectionId, scope.dbSessionId, scope.database),
-    scope,
-  );
+  const targetKey = key ?? computeSessionKey(scope.connectionId, scope.dbSessionId, scope.database);
+  const summaries = await listForScope(targetKey, scope);
+  if (summaries.length > 0 || !scope.connectionId || !activeDbSessionId(scope)) {
+    return summaries;
+  }
+  try {
+    const legacy = await findLegacyDetailForScope(targetKey, scope);
+    if (!legacy) return summaries;
+    const rebound = chatSessionFromDetail(legacy);
+    rebound.sessionKey = targetKey;
+    rebound.connectionId = scope.connectionId;
+    rebound.database = scope.database ?? null;
+    const saved = await persistChatSession(rebound);
+    if (!saved.ok) return summaries;
+    return (await listForScope(targetKey, scope)) ?? [];
+  } catch {
+    return summaries;
+  }
 }
 
 export async function loadChatSession(id: string): Promise<AiSessionDetail> {

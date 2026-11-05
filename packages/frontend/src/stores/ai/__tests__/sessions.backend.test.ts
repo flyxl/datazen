@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockAiCommands = vi.hoisted(() => ({
   sessionsList: vi.fn(),
@@ -10,16 +10,24 @@ const mockAiCommands = vi.hoisted(() => ({
 
 vi.mock('../../../commands/ai', () => ({ aiCommands: mockAiCommands }));
 
+import { useActiveConnectionStore } from '../../activeConnectionStore';
 import {
   chatSessionFromDetail,
   chatSessionToUpsertInput,
   exportChatSession,
+  listChatSessions,
   loadSessions,
   migrateLocalSessionsToBackend,
   persistChatSession,
   restoreChatSession,
 } from '../sessions';
-import type { AiChatSession, AiSessionDetail, AiSessionSummary } from '../../../types';
+import type {
+  AiChatSession,
+  AiSessionDetail,
+  AiSessionMessage,
+  AiSessionSummary,
+  AiSessionUpsertInput,
+} from '../../../types';
 
 const summary: AiSessionSummary = {
   id: 's1',
@@ -89,6 +97,10 @@ beforeEach(() => {
       for (const key of Object.keys(store)) delete store[key];
     }),
   });
+});
+
+afterEach(() => {
+  useActiveConnectionStore.setState({ connections: {} });
 });
 
 describe('backend-first session restore', () => {
@@ -167,6 +179,238 @@ describe('backend-first session restore', () => {
     ]);
     expect(restored.session?.messages[1].status).toBe('cancelled');
     expect(restored.migrationError).toContain('offline');
+  });
+});
+
+describe('legacy dbSessionId key rebinding', () => {
+  function installBackend(): Map<string, AiSessionDetail> {
+    const rows = new Map<string, AiSessionDetail>();
+    const toSummary = (row: AiSessionDetail): AiSessionSummary => ({
+      ...row,
+      messageCount: row.messages.length,
+      preview: row.messages.find((message) => message.role === 'user')?.content ?? '',
+    });
+    mockAiCommands.sessionsList.mockImplementation(
+      async (args: {
+        connectionId?: string | null;
+        database?: string | null;
+        sessionKey?: string | null;
+      }) =>
+        [...rows.values()]
+          .filter((row) => !args.connectionId || row.connectionId === args.connectionId)
+          .filter((row) => !args.database || row.database === args.database)
+          .filter((row) => !args.sessionKey || row.sessionKey === args.sessionKey)
+          .map(toSummary),
+    );
+    mockAiCommands.sessionsGet.mockImplementation(async (id: string) => {
+      const row = rows.get(id);
+      if (!row) throw new Error('not found');
+      return row;
+    });
+    mockAiCommands.sessionsUpsert.mockImplementation(async (input: AiSessionUpsertInput) => {
+      const id = input.id ?? 'generated';
+      const previous = rows.get(id);
+      const messages: AiSessionMessage[] = input.messages.map((message, index) => ({
+        id: message.id ?? `${id}:m${index}`,
+        role: message.role,
+        content: message.content,
+        status: message.status ?? 'complete',
+        metadata: message.metadata ?? null,
+        createdAt: message.createdAt ?? '2026-01-01T00:00:00Z',
+      }));
+      const row: AiSessionDetail = {
+        id,
+        sessionKey: input.sessionKey,
+        connectionId: input.connectionId ?? null,
+        database: input.database ?? null,
+        title: input.title ?? previous?.title ?? '',
+        metadata: input.metadata ?? previous?.metadata ?? null,
+        messageCount: messages.length,
+        preview: messages.find((message) => message.role === 'user')?.content ?? '',
+        createdAt: previous?.createdAt ?? '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:02Z',
+        lastAccessAt: input.lastAccessAt ?? '2026-01-01T00:00:02Z',
+        messages,
+      };
+      rows.set(id, row);
+      return row;
+    });
+    return rows;
+  }
+
+  it('binds the legacy row when the session list is refreshed before chat restore', async () => {
+    localStorage.setItem(
+      'datazen.aiSessions.v1',
+      JSON.stringify({
+        'db-sess::db': {
+          messages: [{ role: 'user', content: 'old question' }],
+          lastAccess: 1000,
+        },
+      }),
+    );
+    const rows = installBackend();
+    await migrateLocalSessionsToBackend();
+
+    const listed = await listChatSessions(
+      { connectionId: 'conn-1', dbSessionId: 'db-sess', database: 'db' },
+      'conn-1::db',
+    );
+
+    expect(listed).toHaveLength(1);
+    expect(listed[0].sessionKey).toBe('conn-1::db');
+    expect(listed[0].connectionId).toBe('conn-1');
+    expect(rows.size).toBe(1);
+  });
+
+  it('migrates directly to the current connection key when the active map is known', async () => {
+    useActiveConnectionStore.setState({
+      connections: {
+        'conn-1': {
+          dbSessionId: 'db-sess',
+          connectionId: 'conn-1',
+          status: 'connected',
+          serverInfo: null,
+          currentDatabase: 'db',
+          error: null,
+        },
+      },
+    });
+    localStorage.setItem(
+      'datazen.aiSessions.v1',
+      JSON.stringify({
+        'db-sess::db': {
+          messages: [{ role: 'user', content: 'old question' }],
+          lastAccess: 1000,
+        },
+      }),
+    );
+
+    await migrateLocalSessionsToBackend();
+
+    expect(mockAiCommands.sessionsUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'legacy:db-sess::db',
+        sessionKey: 'conn-1::db',
+        connectionId: 'conn-1',
+      }),
+    );
+  });
+
+  it('binds an old dbSessionId key to the current connection without duplicating it', async () => {
+    localStorage.setItem(
+      'datazen.aiSessions.v1',
+      JSON.stringify({
+        'db-sess::db': {
+          messages: [
+            { role: 'user', content: 'old question' },
+            { role: 'assistant', content: 'old answer', cancelled: true },
+          ],
+          lastAccess: 1000,
+        },
+      }),
+    );
+    const rows = installBackend();
+    const migrated = await migrateLocalSessionsToBackend();
+    expect(migrated.migrated).toBe(1);
+    expect(mockAiCommands.sessionsUpsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'legacy:db-sess::db',
+        sessionKey: 'db-sess::db',
+        connectionId: 'db-sess',
+      }),
+    );
+
+    const first = await restoreChatSession('conn-1::db', {
+      connectionId: 'conn-1',
+      dbSessionId: 'db-sess',
+      database: 'db',
+    });
+    expect(first.session?.messages.map((message) => message.content)).toEqual([
+      'old question',
+      'old answer',
+    ]);
+    expect(first.session?.messages[1].status).toBe('cancelled');
+    expect(first.session?.sessionKey).toBe('conn-1::db');
+    expect(first.session?.connectionId).toBe('conn-1');
+    const rebound = [...rows.values()];
+    expect(rebound).toHaveLength(1);
+    expect(rebound[0].id).toBe('legacy:db-sess::db');
+    expect(rebound[0].sessionKey).toBe('conn-1::db');
+    expect(rebound[0].connectionId).toBe('conn-1');
+
+    const reopened = await restoreChatSession('conn-1::db', {
+      connectionId: 'conn-1',
+      dbSessionId: 'db-sess',
+      database: 'db',
+    });
+    expect(reopened.session?.messages.map((message) => message.content)).toEqual([
+      'old question',
+      'old answer',
+    ]);
+    expect(reopened.session?.messages[1].status).toBe('cancelled');
+    expect(rows.size).toBe(1);
+  });
+
+  it('resolves the runtime session from the active connection when scope lacks dbSessionId', async () => {
+    localStorage.setItem(
+      'datazen.aiSessions.v1',
+      JSON.stringify({
+        'db-sess::db': {
+          messages: [{ role: 'user', content: 'old question' }],
+          lastAccess: 1000,
+        },
+      }),
+    );
+    installBackend();
+    await migrateLocalSessionsToBackend();
+    useActiveConnectionStore.setState({
+      connections: {
+        'conn-1': {
+          dbSessionId: 'db-sess',
+          connectionId: 'conn-1',
+          status: 'connected',
+          serverInfo: null,
+          currentDatabase: 'db',
+          error: null,
+        },
+      },
+    });
+
+    const restored = await restoreChatSession('conn-1::db', {
+      connectionId: 'conn-1',
+      database: 'db',
+    });
+
+    expect(restored.session?.messages[0].content).toBe('old question');
+    expect(restored.session?.sessionKey).toBe('conn-1::db');
+  });
+
+  it('does not bind that legacy key to a different connection or database', async () => {
+    localStorage.setItem(
+      'datazen.aiSessions.v1',
+      JSON.stringify({
+        'db-sess::db': {
+          messages: [{ role: 'user', content: 'old question' }],
+          lastAccess: 1000,
+        },
+      }),
+    );
+    installBackend();
+    await migrateLocalSessionsToBackend();
+
+    const otherConnection = await restoreChatSession('conn-2::db', {
+      connectionId: 'conn-2',
+      dbSessionId: 'other-db',
+      database: 'db',
+    });
+    expect(otherConnection.session?.messages).toEqual([]);
+
+    const otherDatabase = await restoreChatSession('conn-1::other', {
+      connectionId: 'conn-1',
+      dbSessionId: 'db-sess',
+      database: 'other',
+    });
+    expect(otherDatabase.session?.messages).toEqual([]);
   });
 });
 
