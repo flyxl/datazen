@@ -16,7 +16,7 @@
 | T12 Memory IPC、Chat 注入、引用流 | 已完成 |
 | T13 Memory 设置、列表、候选 UI | 已完成 |
 | T14 Memory v1：纠正、模式、冲突、失效 | 已完成 |
-| T15 会话持久化、导出、提示历史 | 未开始 |
+| T15 会话持久化、导出、提示历史 | 进行中 |
 | T16 Provider 预设扩展 | 未开始 |
 | T17 Skills 加载与工具 | 未开始 |
 | T18 CLI 与 Agent Skill | 未开始 |
