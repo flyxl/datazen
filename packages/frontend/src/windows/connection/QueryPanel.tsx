@@ -28,6 +28,10 @@ import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { resolveSqlParameterPolicy } from '../../lib/sqlDialects/sqlParameterPolicy';
 import { resolveExportScope } from '../../lib/exportCapability';
 import { toQueryExecutionViewModel } from '../../lib/queryExecutionViewModel';
+import {
+  markStaleForSchemaDrops,
+  submitMemoryCorrectionIfNeeded,
+} from '../../lib/aiMemoryCorrection';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { ResultMessageDialog } from '../../components/ui/ResultMessageDialog';
 import {
@@ -126,6 +130,17 @@ export function QueryPanel({
   const togglePinResult = usePanelStore((s) => s.togglePinResult);
 
   const editorRef = useRef<SqlEditorHandle>(null);
+  // The SQL last written by NL2SQL / a chat code block, per pane. A successful
+  // execution of a *modified* version of it is the T14 correction signal.
+  const aiGeneratedSqlRef = useRef(new Map<string, string>());
+  const applyAiSql = useCallback(
+    (sql: string, targetPane?: string) => {
+      aiGeneratedSqlRef.current.set(paneKey(panelId, targetPane), sql);
+      if (targetPane === undefined) updateSql(panelId, sql);
+      else updateSql(panelId, sql, ...paneArgs(targetPane));
+    },
+    [panelId, updateSql],
+  );
   const handleEditorSelectionChange = useCallback(
     (selection: string) => setEditorSelection(panelId, selection),
     [panelId],
@@ -479,6 +494,26 @@ export function QueryPanel({
     onExecutionComplete: () => {
       bindState.markSubmitted(bindState.values);
       setExecutionSeq((seq) => seq + 1);
+      const key = paneKey(panelId, paneId);
+      const completed = usePanelStore.getState().queryExec.get(key);
+      if (completed?.terminalState !== 'succeeded') return;
+      const originalSql = aiGeneratedSqlRef.current.get(key);
+      if (originalSql && completed.sql.trim() !== originalSql.trim()) {
+        // Keep the baseline while the AI SQL runs unchanged; the user may
+        // still edit it and execute the correction on a later run.
+        aiGeneratedSqlRef.current.delete(key);
+        void submitMemoryCorrectionIfNeeded({
+          originalSql,
+          currentSql: completed.sql,
+          connectionId,
+          database: selectedDatabase ?? database,
+        });
+      }
+      void markStaleForSchemaDrops({
+        sql: completed.sql,
+        connectionId,
+        database: selectedDatabase ?? database,
+      });
     },
   });
 
@@ -818,7 +853,7 @@ export function QueryPanel({
             onBeginTx={tx.handleBeginTx}
             onCommitTx={tx.handleCommitTx}
             onRollbackTx={tx.handleRollbackTx}
-            onApplyAiSql={(v) => updateSql(panelId, v)}
+            onApplyAiSql={(v) => applyAiSql(v, paneId)}
             onOpenAddFavoriteDialog={workflows.openAddFavoriteDialog}
             onQualifiedPath={contextPathState.handleQualifiedPath}
             onSelectContextLevel={contextPathState.handleSelectContextLevel}
@@ -878,7 +913,7 @@ export function QueryPanel({
                 onExplainError={workflows.handleExplainError}
                 retryActionEnabled={workflows.retryAction.enabled}
                 addToDashboardOpen={workflows.addToDashboardOpen}
-                onApplyAiSql={(v) => updateSql(panelId, v, ...paneArgs(paneId))}
+                onApplyAiSql={(v) => applyAiSql(v, paneId)}
                 onApplyFixSql={workflows.handleApplyFixSql}
                 onRetry={workflows.handleRetry}
                 onSetActiveResult={(idx) => setActiveResult(panelId, idx, ...paneArgs(paneId))}

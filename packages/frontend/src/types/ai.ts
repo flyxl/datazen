@@ -224,6 +224,8 @@ export interface AiMemoryEntry {
   sensitivity: AiMemorySensitivity;
   status: AiMemoryStatus;
   pinned: boolean;
+  /** True when a learned candidate collides with an active slot. */
+  conflict?: boolean;
   useCount: number;
   lastUsedAt: string | null;
   expiresAt: string | null;
@@ -267,6 +269,35 @@ export interface AiMemoryCreateInput {
   expiresAt?: string;
 }
 
+export interface AiMemoryCorrectionInput {
+  originalSql: string;
+  newSql: string;
+  connectionId?: string;
+  database?: string;
+}
+
+export interface AiMemorySqlSample {
+  sql: string;
+  observedAt: string;
+}
+
+export interface AiMemoryExtractionInput {
+  sql: string;
+  connectionId?: string;
+  database?: string;
+  history?: AiMemorySqlSample[];
+  windowDays?: number;
+  minOccurrences?: number;
+  modelOutputJson?: string;
+}
+
+export interface AiMemoryStaleInput {
+  connectionId?: string;
+  database?: string;
+  schema?: string;
+  table?: string;
+  column?: string;
+}
 export interface AiMemoryUpdateInput {
   subject?: string;
   content?: string;

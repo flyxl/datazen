@@ -40,6 +40,9 @@ const CLOUD_POLICY_LABEL_KEYS = {
 
 const EMPTY_STATS: AiMemoryStats = { total: 0, byStatus: {}, byKind: {}, byScope: {} };
 
+/** Conservative pre-flight estimate for one automatic extraction pass. */
+const MEMORY_EXTRACTION_TOKEN_ESTIMATE = 320;
+
 function downloadText(filename: string, content: string, mime: string): void {
   if (typeof URL.createObjectURL !== 'function' || navigator.userAgent.includes('jsdom')) return;
   const url = URL.createObjectURL(new Blob([content], { type: mime }));
@@ -264,6 +267,13 @@ export function MemorySection({ config }: { config: AiSettingsConfig }) {
           onChange={(next) => void persist({ ...memory, autoLearn: next })}
           testId="ai-memory-auto-learn"
         />
+        {memory.autoLearn && (
+          <p className="text-[11px] text-fg-muted" data-testid="ai-memory-auto-learn-cost">
+            {t('settings.ai.memory.autoLearnCost', {
+              tokens: MEMORY_EXTRACTION_TOKEN_ESTIMATE,
+            })}
+          </p>
+        )}
         <div className="flex items-center justify-between gap-4">
           <div className="text-sm text-fg-secondary">
             {t('settings.ai.memory.cloudPolicy')}
@@ -553,6 +563,22 @@ export function MemorySection({ config }: { config: AiSettingsConfig }) {
                           <span className="rounded bg-surface-alt px-1 text-[9px] text-fg-muted">
                             {entry.kind}
                           </span>
+                          {entry.status === 'stale' && (
+                            <span
+                              className="rounded border border-amber-500/40 bg-amber-500/10 px-1 text-[9px] text-amber-600 dark:text-amber-400"
+                              data-testid={`ai-memory-stale-${entry.id}`}
+                            >
+                              {t('settings.ai.memory.staleReview')}
+                            </span>
+                          )}
+                          {entry.conflict && (
+                            <span
+                              className="rounded border border-red-500/40 bg-red-500/10 px-1 text-[9px] text-red-600 dark:text-red-400"
+                              data-testid={`ai-memory-conflict-${entry.id}`}
+                            >
+                              {t('settings.ai.memory.conflict')}
+                            </span>
+                          )}
                           <span className="text-[9px] text-fg-muted">
                             {entry.scopeType} · {entry.confidence.toFixed(2)} · {entry.source}
                           </span>
@@ -564,6 +590,16 @@ export function MemorySection({ config }: { config: AiSettingsConfig }) {
                     )}
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
+                    {entry.status === 'stale' && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => void updateRow(entry.id, { status: 'active' })}
+                        data-testid={`ai-memory-review-stale-${entry.id}`}
+                      >
+                        {t('settings.ai.memory.markReviewed')}
+                      </Button>
+                    )}
                     {entry.status === 'candidate' && (
                       <>
                         <Button

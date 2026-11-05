@@ -7,6 +7,7 @@
 //! retriever/injector into Chat/NL2SQL.
 
 pub mod domain;
+pub mod extraction;
 pub mod injector;
 pub mod repository;
 pub mod retriever;
@@ -17,6 +18,11 @@ pub use domain::{
     MemoryConflictResolution, MemoryContext, MemoryEntry, MemoryKind, MemoryMode, MemoryScope,
     MemoryScopeKind, MemoryScore, MemorySensitivity, MemorySource, MemoryStatus, CONFIDENCE_WEIGHT,
     CONFLICT_WEIGHT, PINNED_WEIGHT, RECENCY_WEIGHT, SCOPE_WEIGHT, USAGE_WEIGHT,
+};
+pub use extraction::{
+    correction_candidate, extract_candidates, normalize_sql_literals, parse_extraction_json,
+    sql_fingerprint, summarize_sql_diff, ExtractionContext, ExtractionLimits, MemoryCandidate,
+    SqlHistorySample,
 };
 pub use injector::{
     escape_memory_text, sanitize_memory_text, InjectedMemory, MemoryInjection,

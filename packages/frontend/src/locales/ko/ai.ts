@@ -39,6 +39,10 @@ const pack = {
   'settings.ai.memory.autoLearn': 'Generate candidates from corrections and repeated patterns',
   'settings.ai.memory.autoLearnHint':
     'Candidates wait for your confirmation. Automatic extraction can consume provider tokens.',
+  'settings.ai.memory.autoLearnCost': '추출 1회당 약 {tokens} 토큰을 사용합니다.',
+  'settings.ai.memory.staleReview': '스키마가 변경되었습니다. 이 메모리를 검토하세요.',
+  'settings.ai.memory.conflict': '충돌',
+  'settings.ai.memory.markReviewed': '검토 완료',
   'settings.ai.memory.cloudPolicy': 'Cloud Provider policy',
   'settings.ai.memory.cloudPolicyHint':
     'Controls which sensitivity levels may be sent to a cloud model.',

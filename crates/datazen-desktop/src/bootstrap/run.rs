@@ -429,10 +429,13 @@ pub fn run() {
             // ── AI：记忆 ──
             crate::commands::ai_memory_clear,
             crate::commands::ai_memory_confirm,
+            crate::commands::ai_memory_correction_candidate,
             crate::commands::ai_memory_create,
             crate::commands::ai_memory_delete,
             crate::commands::ai_memory_export,
+            crate::commands::ai_memory_extract_candidates,
             crate::commands::ai_memory_list,
+            crate::commands::ai_memory_mark_stale,
             crate::commands::ai_memory_reject,
             crate::commands::ai_memory_search,
             crate::commands::ai_memory_stats,

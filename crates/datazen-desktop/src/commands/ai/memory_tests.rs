@@ -640,3 +640,263 @@ async fn database_scope_memory_is_recalled_with_host_qualified_id() {
     assert_eq!(found.used.len(), 1);
     assert_eq!(found.used[0].id, created.id);
 }
+
+async fn enable_auto_learn(app: &HostedCommandApp) {
+    enable_memory(app).await;
+    let mut settings = app.state().store.get_ai_settings_config().await;
+    settings.memory.auto_learn = true;
+    app.state()
+        .store
+        .save_ai_settings_config(&settings)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn correction_candidate_stays_pending_and_literal_only_edits_are_ignored() {
+    let app = app().await;
+    enable_auto_learn(&app).await;
+    let corrected = ai_memory_correction_candidate(
+        app.state(),
+        AiMemoryCorrectionInput {
+            original_sql: "SELECT * FROM orders o JOIN users u ON o.user_id = u.id".into(),
+            new_sql: "SELECT * FROM orders o JOIN users u ON o.customer_id = u.id".into(),
+            connection_id: Some("conn-1".into()),
+            database: Some("sales".into()),
+        },
+    )
+    .await
+    .unwrap()
+    .expect("correction candidate");
+    assert_eq!(corrected.status, MemoryStatus::Candidate);
+    assert_eq!(corrected.source, MemorySource::Correction);
+    assert_eq!(corrected.kind, MemoryKind::Correction);
+    assert_eq!(corrected.connection_id.as_deref(), Some("conn-1"));
+    assert_eq!(corrected.database_name.as_deref(), Some("sales"));
+    assert!(!corrected.conflict);
+    assert!(corrected
+        .structured_json
+        .as_ref()
+        .and_then(|value| value.get("diffSummary"))
+        .is_some());
+    let repeated = ai_memory_correction_candidate(
+        app.state(),
+        AiMemoryCorrectionInput {
+            original_sql: "SELECT * FROM orders o JOIN users u ON o.user_id = u.id".into(),
+            new_sql: "SELECT * FROM orders o JOIN users u ON o.customer_id = u.id".into(),
+            connection_id: Some("conn-1".into()),
+            database: Some("sales".into()),
+        },
+    )
+    .await
+    .unwrap()
+    .expect("deduped correction");
+    assert_eq!(repeated.id, corrected.id);
+
+    let before = list_all(&app).await.total;
+    let literal_only = ai_memory_correction_candidate(
+        app.state(),
+        AiMemoryCorrectionInput {
+            original_sql: "SELECT * FROM orders WHERE id = 1".into(),
+            new_sql: "SELECT * FROM orders WHERE id = 2".into(),
+            connection_id: Some("conn-1".into()),
+            database: Some("sales".into()),
+        },
+    )
+    .await
+    .unwrap();
+    assert!(literal_only.is_none());
+    assert_eq!(list_all(&app).await.total, before);
+}
+
+#[tokio::test]
+async fn candidate_extraction_is_off_when_auto_learn_is_off() {
+    let app = app().await;
+    enable_memory(&app).await;
+    let corrected = ai_memory_correction_candidate(
+        app.state(),
+        AiMemoryCorrectionInput {
+            original_sql: "SELECT * FROM orders o JOIN users u ON o.user_id = u.id".into(),
+            new_sql: "SELECT * FROM orders o JOIN users u ON o.customer_id = u.id".into(),
+            connection_id: None,
+            database: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(corrected.is_none());
+    let extracted = ai_memory_extract_candidates(
+        app.state(),
+        AiMemoryExtractionInput {
+            sql: "SELECT * FROM orders o JOIN users u ON o.user_id = u.id".into(),
+            connection_id: None,
+            database: None,
+            history: Vec::new(),
+            window_days: None,
+            min_occurrences: None,
+            model_output_json: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(extracted.is_empty());
+    assert_eq!(list_all(&app).await.total, 0);
+}
+
+#[tokio::test]
+async fn conflicting_candidate_preserves_active_memory_and_marks_conflict() {
+    let app = app().await;
+    enable_memory(&app).await;
+    let active = ai_memory_create(app.state(), input("Report locale", "Use en-US for reports"))
+        .await
+        .unwrap();
+    let mut candidate_input = input("Report locale", "Use en-GB for reports");
+    candidate_input.status = Some(MemoryStatus::Candidate);
+    candidate_input.source = Some(MemorySource::Correction);
+    let candidate = ai_memory_create(app.state(), candidate_input)
+        .await
+        .unwrap();
+    assert_eq!(candidate.status, MemoryStatus::Candidate);
+    assert!(candidate.conflict);
+    let structured = candidate.structured_json.unwrap();
+    assert_eq!(structured["conflict"], true);
+    assert_eq!(structured["conflictWith"][0], active.id.as_str());
+    assert!(structured.get("conflictResolution").is_some());
+
+    let all = list_all(&app).await;
+    assert_eq!(all.total, 2);
+    let still_active = all
+        .entries
+        .iter()
+        .find(|entry| entry.id == active.id)
+        .expect("active row");
+    assert_eq!(still_active.status, MemoryStatus::Active);
+    assert_eq!(still_active.content, "Use en-US for reports");
+}
+
+#[tokio::test]
+async fn extraction_creates_repeated_pattern_candidate_with_strict_json_fallback() {
+    let app = app().await;
+    enable_auto_learn(&app).await;
+    let sql = "SELECT DATE_TRUNC('week', paid_at), SUM(amount) FROM orders o JOIN users u ON o.user_id = u.id WHERE o.status != 'legacy' GROUP BY 1";
+    let history = vec![
+        AiMemorySqlSample {
+            sql: sql.into(),
+            observed_at: now() - chrono::Duration::days(2),
+        },
+        AiMemorySqlSample {
+            sql: sql.into(),
+            observed_at: now() - chrono::Duration::days(1),
+        },
+    ];
+    let candidates = ai_memory_extract_candidates(
+        app.state(),
+        AiMemoryExtractionInput {
+            sql: sql.into(),
+            connection_id: Some("conn-1".into()),
+            database: Some("sales".into()),
+            history,
+            window_days: Some(14),
+            min_occurrences: Some(3),
+            model_output_json: Some("not valid json".into()),
+        },
+    )
+    .await
+    .unwrap();
+    assert!(candidates
+        .iter()
+        .any(|candidate| candidate.kind == MemoryKind::Pattern
+            && candidate.status == MemoryStatus::Candidate));
+    assert!(candidates
+        .iter()
+        .all(|candidate| candidate.status == MemoryStatus::Candidate));
+    assert!(
+        candidates
+            .iter()
+            .filter(|candidate| candidate.kind == MemoryKind::Pattern)
+            .count()
+            >= 1
+    );
+    let rerun = ai_memory_extract_candidates(
+        app.state(),
+        AiMemoryExtractionInput {
+            sql: sql.into(),
+            connection_id: Some("conn-1".into()),
+            database: Some("sales".into()),
+            history: Vec::new(),
+            window_days: None,
+            min_occurrences: None,
+            model_output_json: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(rerun
+        .iter()
+        .all(|candidate| !candidates.iter().any(|first| first.id == candidate.id)));
+    assert_eq!(list_all(&app).await.total, candidates.len());
+}
+
+#[tokio::test]
+async fn schema_deletion_marks_table_memories_stale() {
+    let app = app().await;
+    enable_memory(&app).await;
+    let mut table_input = input("Orders grain", "One row per order");
+    table_input.scope_type = MemoryScopeKind::Table;
+    table_input.connection_id = Some("conn-1".into());
+    table_input.database_name = Some("sales".into());
+    table_input.table_name = Some("orders".into());
+    let table_memory = ai_memory_create(app.state(), table_input).await.unwrap();
+    let mut unrelated = input("Other grain", "One row per customer");
+    unrelated.scope_type = MemoryScopeKind::Table;
+    unrelated.connection_id = Some("conn-1".into());
+    unrelated.database_name = Some("sales".into());
+    unrelated.table_name = Some("customers".into());
+    let unrelated = ai_memory_create(app.state(), unrelated).await.unwrap();
+
+    let stale = ai_memory_mark_stale(
+        app.state(),
+        AiMemoryStaleInput {
+            connection_id: Some("conn-1".into()),
+            database: Some("sales".into()),
+            schema: None,
+            table: Some("orders".into()),
+            column: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(stale.len(), 1);
+    assert_eq!(stale[0].id, table_memory.id);
+    assert_eq!(stale[0].status, MemoryStatus::Stale);
+
+    let all = list_all(&app).await;
+    let table = all
+        .entries
+        .iter()
+        .find(|entry| entry.id == table_memory.id)
+        .unwrap();
+    assert_eq!(table.status, MemoryStatus::Stale);
+    let other = all
+        .entries
+        .iter()
+        .find(|entry| entry.id == unrelated.id)
+        .unwrap();
+    assert_eq!(other.status, MemoryStatus::Active);
+
+    let injected = resolve_chat_memory(
+        &app.state(),
+        MemoryMode::Auto,
+        Some(MemoryScopeKind::User),
+        Some("conn-1"),
+        Some("sales"),
+        "orders grain",
+        false,
+        AiDataEgressLevel::Strict,
+        datazen::ai::AiMemoryCloudPolicy::NormalOnly,
+    )
+    .await
+    .unwrap();
+    assert!(injected.injection.is_none());
+    assert!(injected.used.is_empty());
+}

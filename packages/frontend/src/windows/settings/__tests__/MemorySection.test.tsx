@@ -177,6 +177,45 @@ describe('MemorySection', () => {
     );
   });
 
+  it('shows the extraction cost and surfaces stale/conflicting memories', async () => {
+    const stale = memoryEntry({
+      id: 'm-stale',
+      subject: 'Orders grain',
+      status: 'stale',
+    });
+    const conflicted = memoryEntry({
+      id: 'm-conflict',
+      subject: 'Report locale',
+      conflict: true,
+    });
+    commands.memoryList.mockResolvedValue({
+      entries: [stale, conflicted],
+      total: 2,
+      limit: 200,
+      offset: 0,
+    });
+    commands.memoryStats.mockResolvedValue({
+      total: 2,
+      byStatus: { stale: 1, candidate: 1 },
+      byKind: { preference: 2 },
+      byScope: { user: 2 },
+    });
+    const { getByTestId } = render(
+      <MemorySection
+        config={{ ...config, memory: { ...baseMemory, enabled: true, autoLearn: true } }}
+      />,
+    );
+    await waitFor(() => expect(getByTestId('ai-memory-stale-m-stale')).toBeInTheDocument());
+    expect(getByTestId('ai-memory-auto-learn-cost').textContent).toContain(
+      'settings.ai.memory.autoLearnCost',
+    );
+    expect(getByTestId('ai-memory-conflict-m-conflict')).toBeInTheDocument();
+    fireEvent.click(getByTestId('ai-memory-review-stale-m-stale'));
+    await waitFor(() =>
+      expect(commands.memoryUpdate).toHaveBeenCalledWith('m-stale', { status: 'active' }),
+    );
+  });
+
   it('filters by status through the shared Select', async () => {
     const { getByTestId, getByRole } = render(
       <MemorySection config={{ ...config, memory: { ...baseMemory, enabled: true } }} />,

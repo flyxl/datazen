@@ -4,6 +4,7 @@
 //! never from the request body. `secret` memories are rejected before they
 //! reach AppDb; the T09 store enforces the same rule a second time.
 
+use super::util::resolve_memory_settings;
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
 use crate::store::ai_memory::AiMemoryRecord;
@@ -12,10 +13,12 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use datazen::ai::domain::types::AiDataEgressLevel;
 use datazen::ai::memory::{
-    MemoryContext, MemoryEntry, MemoryError, MemoryInjection, MemoryInjectionPolicy,
-    MemoryInjector, MemoryKind, MemoryMode, MemoryQuery, MemoryReference, MemoryRepository,
-    MemoryRetrievalRequest, MemoryRetriever, MemoryScope, MemoryScopeKind, MemorySensitivity,
-    MemorySource, MemoryStatus,
+    correction_candidate, extract_candidates, normalize_memory_subject, parse_extraction_json,
+    resolve_memory_conflict, ExtractionContext, ExtractionLimits, MemoryCandidate, MemoryContext,
+    MemoryEntry, MemoryError, MemoryInjection, MemoryInjectionPolicy, MemoryInjector, MemoryKind,
+    MemoryMode, MemoryQuery, MemoryReference, MemoryRepository, MemoryRetrievalRequest,
+    MemoryRetriever, MemoryScope, MemoryScopeKind, MemorySensitivity, MemorySource, MemoryStatus,
+    SqlHistorySample,
 };
 use datazen::ai::safety::provider_allows_unredacted_credentials;
 use datazen::ai::AiMemoryCloudPolicy;
@@ -96,6 +99,9 @@ pub struct AiMemoryDto {
     pub sensitivity: MemorySensitivity,
     pub status: MemoryStatus,
     pub pinned: bool,
+    /// Candidate-level conflict marker derived from `structuredJson`, so a
+    /// learned candidate can never silently replace an active slot.
+    pub conflict: bool,
     pub use_count: u32,
     pub last_used_at: Option<DateTime<Utc>>,
     pub expires_at: Option<DateTime<Utc>>,
@@ -158,6 +164,53 @@ pub struct AiMemoryUpdateInput {
     pub status: Option<MemoryStatus>,
     pub pinned: Option<bool>,
     pub expires_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiMemoryCorrectionInput {
+    pub original_sql: String,
+    pub new_sql: String,
+    #[serde(alias = "connection")]
+    pub connection_id: Option<String>,
+    #[serde(alias = "databaseName")]
+    pub database: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiMemorySqlSample {
+    pub sql: String,
+    pub observed_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiMemoryExtractionInput {
+    pub sql: String,
+    #[serde(alias = "connection")]
+    pub connection_id: Option<String>,
+    #[serde(alias = "databaseName")]
+    pub database: Option<String>,
+    #[serde(default)]
+    pub history: Vec<AiMemorySqlSample>,
+    pub window_days: Option<u32>,
+    pub min_occurrences: Option<u32>,
+    pub model_output_json: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiMemoryStaleInput {
+    #[serde(alias = "connection")]
+    pub connection_id: Option<String>,
+    #[serde(alias = "databaseName")]
+    pub database: Option<String>,
+    pub schema: Option<String>,
+    #[serde(alias = "tableName")]
+    pub table: Option<String>,
+    #[serde(alias = "columnName")]
+    pub column: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -237,6 +290,11 @@ fn record_to_dto(record: AiMemoryRecord) -> Result<AiMemoryDto, CommandError> {
         .map_err(|error| {
             CommandError::Internal(format!("invalid persisted memory JSON: {error}"))
         })?;
+    let conflict = structured_json
+        .as_ref()
+        .and_then(|value: &serde_json::Value| value.get("conflict"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
     Ok(AiMemoryDto {
         id: record.id,
         scope_type,
@@ -256,6 +314,7 @@ fn record_to_dto(record: AiMemoryRecord) -> Result<AiMemoryDto, CommandError> {
         sensitivity,
         status,
         pinned: record.pinned,
+        conflict,
         use_count: record.use_count.max(0) as u32,
         last_used_at: record
             .last_used_at
@@ -419,6 +478,27 @@ fn append_audit(
     before_hash: Option<String>,
     after_hash: Option<String>,
 ) -> Result<(), CommandError> {
+    append_audit_detail(
+        state,
+        memory_id,
+        action,
+        actor,
+        before_hash,
+        after_hash,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn append_audit_detail(
+    state: &AppState,
+    memory_id: &str,
+    action: &str,
+    actor: &str,
+    before_hash: Option<String>,
+    after_hash: Option<String>,
+    detail: Option<serde_json::Value>,
+) -> Result<(), CommandError> {
     state
         .store
         .app_db()
@@ -429,7 +509,10 @@ fn append_audit(
             actor_principal_id: actor.to_string(),
             before_hash,
             after_hash,
-            detail_json: None,
+            detail_json: detail
+                .map(|value| serde_json::to_string(&value))
+                .transpose()
+                .map_err(CommandError::Json)?,
             created_at: now().to_rfc3339(),
         })
         .map_err(map_storage_error)
@@ -456,6 +539,239 @@ fn append_inject_audit(state: &AppState, principal_id: &str, references: &[Memor
         if let Err(error) = state.store.app_db().append_ai_memory_audit(&audit) {
             tracing::warn!(error = %error, memory_id = %reference.id, "failed to audit AI memory injection");
         }
+    }
+}
+
+fn active_conflict(
+    state: &AppState,
+    candidate: &MemoryCandidate,
+) -> Result<Option<AiMemoryRecord>, CommandError> {
+    let (organization_id, principal_id) = scope(state)?;
+    let records = state
+        .store
+        .app_db()
+        .list_ai_memories(&organization_id, &principal_id)
+        .map_err(map_storage_error)?;
+    let subject = normalize_memory_subject(&candidate.subject);
+    Ok(records.into_iter().find(|record| {
+        record.status == MemoryStatus::Active.as_str()
+            && record.scope_type == candidate.scope.kind.as_str()
+            && record.scope_id == candidate.scope.id
+            && record.kind == candidate.kind.as_str()
+            && normalize_memory_subject(&record.subject) == subject
+    }))
+}
+
+fn candidate_entry(id: &str, candidate: &MemoryCandidate, timestamp: DateTime<Utc>) -> MemoryEntry {
+    let mut entry = MemoryEntry::new(
+        id,
+        candidate.scope.clone(),
+        candidate.kind,
+        candidate.subject.clone(),
+        candidate.content.clone(),
+    );
+    entry.structured_json = Some(candidate.structured_json.clone());
+    entry.source = candidate.source;
+    entry.confidence = candidate.confidence;
+    entry.status = MemoryStatus::Candidate;
+    entry.created_at = timestamp;
+    entry.updated_at = timestamp;
+    entry
+}
+
+fn existing_entry(record: &AiMemoryRecord) -> MemoryEntry {
+    let scope_kind = MemoryScopeKind::parse(&record.scope_type).unwrap_or(MemoryScopeKind::User);
+    let kind = MemoryKind::parse(&record.kind).unwrap_or(MemoryKind::Preference);
+    let mut entry = MemoryEntry::new(
+        record.id.clone(),
+        MemoryScope::new(scope_kind, record.scope_id.clone()),
+        kind,
+        record.subject.clone(),
+        record.content.clone(),
+    );
+    entry.source = MemorySource::parse(&record.source).unwrap_or_default();
+    entry.confidence = record.confidence;
+    entry.status = MemoryStatus::parse(&record.status).unwrap_or(MemoryStatus::Active);
+    entry
+}
+
+fn decorate_conflict(
+    structured: Option<serde_json::Value>,
+    existing: &AiMemoryRecord,
+    incoming: &MemoryEntry,
+) -> serde_json::Value {
+    let mut object = match structured {
+        Some(serde_json::Value::Object(map)) => map,
+        Some(other) => {
+            let mut map = serde_json::Map::new();
+            map.insert("value".into(), other);
+            map
+        }
+        None => serde_json::Map::new(),
+    };
+    object.insert("conflict".into(), serde_json::Value::Bool(true));
+    object.insert(
+        "conflictWith".into(),
+        serde_json::Value::Array(vec![serde_json::Value::String(existing.id.clone())]),
+    );
+    object.insert(
+        "conflictReason".into(),
+        serde_json::Value::String("same_scope_kind_subject".into()),
+    );
+    let resolution = resolve_memory_conflict(&existing_entry(existing), incoming);
+    object.insert(
+        "conflictResolution".into(),
+        serde_json::to_value(resolution).unwrap_or(serde_json::Value::Null),
+    );
+    serde_json::Value::Object(object)
+}
+
+fn candidate_signature(candidate: &MemoryCandidate) -> Option<String> {
+    let value = candidate.structured_json.as_object()?;
+    if let Some(fingerprint) = value.get("fingerprint").and_then(serde_json::Value::as_str) {
+        return Some(format!("fingerprint:{fingerprint}"));
+    }
+    let original = value
+        .get("originalSql")
+        .and_then(serde_json::Value::as_str)?;
+    let new = value.get("newSql").and_then(serde_json::Value::as_str)?;
+    Some(format!("correction:{original}:{new}"))
+}
+
+fn record_signature(record: &AiMemoryRecord) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(record.structured_json.as_deref()?).ok()?;
+    let value = value.as_object()?;
+    if let Some(fingerprint) = value.get("fingerprint").and_then(serde_json::Value::as_str) {
+        return Some(format!("fingerprint:{fingerprint}"));
+    }
+    let original = value
+        .get("originalSql")
+        .and_then(serde_json::Value::as_str)?;
+    let new = value.get("newSql").and_then(serde_json::Value::as_str)?;
+    Some(format!("correction:{original}:{new}"))
+}
+
+fn duplicate_learned_candidate(
+    state: &AppState,
+    candidate: &MemoryCandidate,
+) -> Result<Option<AiMemoryDto>, CommandError> {
+    let (organization_id, principal_id) = scope(state)?;
+    let records = state
+        .store
+        .app_db()
+        .list_ai_memories(&organization_id, &principal_id)
+        .map_err(map_storage_error)?;
+    let subject = normalize_memory_subject(&candidate.subject);
+    let signature = candidate_signature(candidate);
+    let content_hash = content_hash(&candidate.content);
+    for record in records {
+        if !matches!(record.status.as_str(), "active" | "candidate")
+            || record.scope_type != candidate.scope.kind.as_str()
+            || record.scope_id != candidate.scope.id
+            || record.kind != candidate.kind.as_str()
+            || normalize_memory_subject(&record.subject) != subject
+        {
+            continue;
+        }
+        let same_shape = match (&signature, record_signature(&record)) {
+            (Some(left), Some(right)) => left == &right,
+            _ => record.content_hash == content_hash,
+        };
+        if same_shape {
+            return record_to_dto(record).map(Some);
+        }
+    }
+    Ok(None)
+}
+
+fn save_learned_candidate(
+    state: &AppState,
+    mut candidate: MemoryCandidate,
+    context: &ExtractionContext,
+) -> Result<AiMemoryDto, CommandError> {
+    if candidate.status != MemoryStatus::Candidate {
+        return Err(CommandError::Internal(
+            "learned memory candidate must remain a candidate".into(),
+        ));
+    }
+    let (organization_id, principal_id) = scope(state)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let timestamp = now();
+    if let Some(existing) = active_conflict(state, &candidate)? {
+        let incoming = candidate_entry(&id, &candidate, timestamp);
+        candidate.structured_json =
+            decorate_conflict(Some(candidate.structured_json), &existing, &incoming);
+        candidate.status = MemoryStatus::Candidate;
+    }
+    candidate.subject = candidate.subject.trim().to_string();
+    candidate.content = candidate.content.trim().to_string();
+    if candidate.subject.is_empty() || candidate.content.is_empty() {
+        return Err(CommandError::Validation(
+            "learned memory candidate is empty".into(),
+        ));
+    }
+    let record = AiMemoryRecord {
+        id: id.clone(),
+        organization_id,
+        owner_principal_id: principal_id.clone(),
+        scope_type: candidate.scope.kind.as_str().to_string(),
+        scope_id: candidate.scope.id.clone(),
+        connection_id: context
+            .connection_id
+            .clone()
+            .filter(|value| !value.trim().is_empty()),
+        database_name: context
+            .database
+            .clone()
+            .filter(|value| !value.trim().is_empty()),
+        schema_name: None,
+        table_name: None,
+        column_name: None,
+        kind: candidate.kind.as_str().to_string(),
+        subject: candidate.subject.clone(),
+        content: candidate.content.clone(),
+        structured_json: Some(
+            serde_json::to_string(&candidate.structured_json).map_err(CommandError::Json)?,
+        ),
+        source: candidate.source.as_str().to_string(),
+        source_ref: None,
+        confidence: candidate.confidence,
+        sensitivity: MemorySensitivity::Normal.as_str().to_string(),
+        status: MemoryStatus::Candidate.as_str().to_string(),
+        pinned: false,
+        use_count: 0,
+        last_used_at: None,
+        expires_at: None,
+        content_hash: content_hash(&candidate.content),
+        created_at: timestamp.to_rfc3339(),
+        updated_at: timestamp.to_rfc3339(),
+    };
+    state
+        .store
+        .app_db()
+        .upsert_ai_memory(&record)
+        .map_err(map_storage_error)?;
+    append_audit_detail(
+        state,
+        &id,
+        "create",
+        &principal_id,
+        None,
+        Some(record.content_hash.clone()),
+        Some(serde_json::json!({
+            "status": "candidate",
+            "kind": candidate.kind.as_str(),
+            "conflict": candidate.structured_json.get("conflict").and_then(serde_json::Value::as_bool).unwrap_or(false),
+            "windowDays": ExtractionLimits::default().window_days,
+        })),
+    )?;
+    record_to_dto(record)
+}
+
+fn extraction_context(input: &AiMemoryExtractionInput) -> ExtractionContext {
+    ExtractionContext {
+        connection_id: input.connection_id.clone(),
+        database: input.database.clone(),
     }
 }
 
@@ -493,7 +809,7 @@ pub async fn ai_memory_create(
 ) -> Result<AiMemoryDto, CommandError> {
     // Memory is opt-in. The UI blocks "remember this" while the switch is off,
     // but every renderer reaches the same IPC, so enforce it here as well.
-    let memory_settings = super::resolve_memory_settings(&state).await;
+    let memory_settings = resolve_memory_settings(&state).await;
     if !memory_settings.enabled {
         return Err(CommandError::Validation(
             "memory is disabled; enable cross-session memory before creating memories".into(),
@@ -517,8 +833,30 @@ pub async fn ai_memory_create(
     let scope_id = derive_scope_id(&input, &organization_id, &principal_id)?;
     let id = input.id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let timestamp = now().to_rfc3339();
-    let structured_json = input
-        .structured_json
+    let current = now();
+    let mut status = input.status.unwrap_or(MemoryStatus::Active);
+    let mut structured_value = input.structured_json.clone();
+    // A candidate may not silently occupy an active slot. Keep both rows,
+    // force the incoming row back to `candidate`, and record the T11
+    // adjudication recommendation in its structured metadata.
+    if status != MemoryStatus::Active {
+        let candidate = MemoryCandidate {
+            kind: input.kind,
+            subject: input.subject.clone(),
+            content: input.content.clone(),
+            confidence,
+            source: input.source.unwrap_or_default(),
+            status: MemoryStatus::Candidate,
+            scope: MemoryScope::new(input.scope_type, scope_id.clone()),
+            structured_json: structured_value.clone().unwrap_or(serde_json::Value::Null),
+        };
+        if let Some(existing) = active_conflict(&state, &candidate)? {
+            let incoming = candidate_entry(&id, &candidate, current);
+            structured_value = Some(decorate_conflict(structured_value, &existing, &incoming));
+            status = MemoryStatus::Candidate;
+        }
+    }
+    let structured_json = structured_value
         .as_ref()
         .map(serde_json::to_string)
         .transpose()
@@ -543,11 +881,7 @@ pub async fn ai_memory_create(
         source_ref: input.source_ref,
         confidence,
         sensitivity: sensitivity.as_str().to_string(),
-        status: input
-            .status
-            .unwrap_or(MemoryStatus::Active)
-            .as_str()
-            .to_string(),
+        status: status.as_str().to_string(),
         pinned: input.pinned.unwrap_or(false),
         use_count: 0,
         last_used_at: None,
@@ -570,6 +904,177 @@ pub async fn ai_memory_create(
         Some(record.content_hash.clone()),
     )?;
     record_to_dto(record)
+}
+
+#[tauri::command]
+pub async fn ai_memory_correction_candidate(
+    state: State<'_, AppState>,
+    input: AiMemoryCorrectionInput,
+) -> Result<Option<AiMemoryDto>, CommandError> {
+    let memory_settings = resolve_memory_settings(&state).await;
+    // Extraction is opt-in and separately gated from manual "remember".
+    if !memory_settings.enabled || !memory_settings.auto_learn {
+        return Ok(None);
+    }
+    if input.original_sql.trim().is_empty() || input.new_sql.trim().is_empty() {
+        return Err(CommandError::Validation(
+            "originalSql and newSql are required".into(),
+        ));
+    }
+    let context = ExtractionContext {
+        connection_id: input.connection_id,
+        database: input.database,
+    };
+    let Some(candidate) = correction_candidate(&input.original_sql, &input.new_sql, &context)
+    else {
+        return Ok(None);
+    };
+    if let Some(existing) = duplicate_learned_candidate(&state, &candidate)? {
+        return Ok(Some(existing));
+    }
+    Ok(Some(save_learned_candidate(&state, candidate, &context)?))
+}
+
+#[tauri::command]
+pub async fn ai_memory_extract_candidates(
+    state: State<'_, AppState>,
+    input: AiMemoryExtractionInput,
+) -> Result<Vec<AiMemoryDto>, CommandError> {
+    let memory_settings = resolve_memory_settings(&state).await;
+    if !memory_settings.enabled || !memory_settings.auto_learn {
+        return Ok(Vec::new());
+    }
+    if input.sql.trim().is_empty() {
+        return Err(CommandError::Validation("sql is required".into()));
+    }
+    let context = extraction_context(&input);
+    let limits = ExtractionLimits {
+        window_days: input.window_days.unwrap_or(14),
+        min_occurrences: input.min_occurrences.unwrap_or(3),
+    };
+    let history: Vec<SqlHistorySample> = input
+        .history
+        .iter()
+        .map(|sample| SqlHistorySample {
+            sql: sample.sql.clone(),
+            observed_at: sample.observed_at,
+        })
+        .collect();
+    let mut candidates = extract_candidates(&input.sql, &context, &history, limits, now());
+    if let Some(raw) = input
+        .model_output_json
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        // Malformed schema output contributes nothing; deterministic
+        // candidates are unaffected.
+        candidates.extend(parse_extraction_json(raw, &context));
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    candidates.retain(|candidate| {
+        seen.insert(format!(
+            "{}:{}",
+            candidate.kind.as_str(),
+            normalize_memory_subject(&candidate.subject)
+        ))
+    });
+    let mut saved = Vec::with_capacity(candidates.len());
+    for candidate in candidates {
+        // Re-running extraction must not accumulate identical candidates.
+        if duplicate_learned_candidate(&state, &candidate)?.is_some() {
+            continue;
+        }
+        saved.push(save_learned_candidate(&state, candidate, &context)?);
+    }
+    Ok(saved)
+}
+
+#[tauri::command]
+pub async fn ai_memory_mark_stale(
+    state: State<'_, AppState>,
+    input: AiMemoryStaleInput,
+) -> Result<Vec<AiMemoryDto>, CommandError> {
+    if input.connection_id.is_none()
+        && input.database.is_none()
+        && input.schema.is_none()
+        && input.table.is_none()
+        && input.column.is_none()
+    {
+        return Err(CommandError::Validation(
+            "a connection, database, schema, table, or column is required".into(),
+        ));
+    }
+    let (organization_id, principal_id) = scope(&state)?;
+    let records = state
+        .store
+        .app_db()
+        .list_ai_memories(&organization_id, &principal_id)
+        .map_err(map_storage_error)?;
+    let db = state.store.app_db();
+    let mut stale = Vec::new();
+    for mut record in records {
+        if matches!(record.status.as_str(), "stale" | "archived" | "rejected") {
+            continue;
+        }
+        let connection_matches = input
+            .connection_id
+            .as_deref()
+            .is_none_or(|value| record.connection_id.as_deref() == Some(value));
+        let database_matches = input
+            .database
+            .as_deref()
+            .is_none_or(|value| record.database_name.as_deref() == Some(value));
+        let scope_parts: Vec<&str> = record.scope_id.rsplit('/').collect();
+        let schema_matches = input.schema.as_deref().is_none_or(|value| {
+            record.schema_name.as_deref() == Some(value) || scope_parts.get(1) == Some(&value)
+        });
+        let table_matches = input.table.as_deref().is_none_or(|value| {
+            record.table_name.as_deref() == Some(value)
+                || (record.scope_type == "table" && scope_parts.first() == Some(&value))
+                || record
+                    .structured_json
+                    .as_deref()
+                    .is_some_and(|json| json.to_lowercase().contains(&value.to_lowercase()))
+        });
+        let column_matches = input.column.as_deref().is_none_or(|value| {
+            record.column_name.as_deref() == Some(value)
+                || (record.scope_type == "column" && scope_parts.first() == Some(&value))
+                || record
+                    .structured_json
+                    .as_deref()
+                    .is_some_and(|json| json.to_lowercase().contains(&value.to_lowercase()))
+        });
+        if !(connection_matches
+            && database_matches
+            && schema_matches
+            && table_matches
+            && column_matches)
+        {
+            continue;
+        }
+        record.status = MemoryStatus::Stale.as_str().to_string();
+        record.updated_at = now().to_rfc3339();
+        db.upsert_ai_memory(&record).map_err(map_storage_error)?;
+        append_audit_detail(
+            &state,
+            &record.id,
+            "update",
+            &principal_id,
+            Some(record.content_hash.clone()),
+            Some(record.content_hash.clone()),
+            Some(serde_json::json!({
+                "reason": "schema-object-removed",
+                "connectionId": input.connection_id,
+                "database": input.database,
+                "schema": input.schema,
+                "table": input.table,
+                "column": input.column,
+            })),
+        )?;
+        stale.push(record_to_dto(record)?);
+    }
+    Ok(stale)
 }
 
 #[tauri::command]

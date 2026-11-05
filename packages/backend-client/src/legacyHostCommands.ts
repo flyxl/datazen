@@ -36,7 +36,8 @@ export type LegacyCommandName =
   'ai_connection_notes_get' | 'ai_connection_notes_set' | 'ai_connection_context_counts' |
   'ai_memory_list' | 'ai_memory_search' | 'ai_memory_stats' | 'ai_memory_create' |
   'ai_memory_update' | 'ai_memory_confirm' | 'ai_memory_reject' | 'ai_memory_delete' |
-  'ai_memory_clear' | 'ai_memory_export' |
+  'ai_memory_clear' | 'ai_memory_export' | 'ai_memory_correction_candidate' |
+  'ai_memory_extract_candidates' | 'ai_memory_mark_stale' |
   'append_save_text' | 'apply_data_sync' | 'apply_data_transfer_job' | 'authorize_monitor_widget_schedule' |
   'backup_database' | 'begin_save_with_dialog' | 'begin_session_transaction' | 'cancel_data_sync' |
   'cancel_data_transfer' | 'cancel_query' | 'cancel_schema_diff_deploy' | 'check_sync_conflicts' |

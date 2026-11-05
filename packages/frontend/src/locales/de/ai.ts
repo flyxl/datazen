@@ -39,6 +39,10 @@ const pack = {
   'settings.ai.memory.autoLearn': 'Generate candidates from corrections and repeated patterns',
   'settings.ai.memory.autoLearnHint':
     'Candidates wait for your confirmation. Automatic extraction can consume provider tokens.',
+  'settings.ai.memory.autoLearnCost': 'Geschätzte Kosten: etwa {tokens} Tokens pro Extraktion.',
+  'settings.ai.memory.staleReview': 'Schema geändert — diese Erinnerung prüfen.',
+  'settings.ai.memory.conflict': 'Konflikt',
+  'settings.ai.memory.markReviewed': 'Als geprüft markieren',
   'settings.ai.memory.cloudPolicy': 'Cloud Provider policy',
   'settings.ai.memory.cloudPolicyHint':
     'Controls which sensitivity levels may be sent to a cloud model.',

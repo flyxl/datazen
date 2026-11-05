@@ -6,10 +6,13 @@ import type {
   AiAgentMode,
   AiChatContextSnapshot,
   AiChatMessage,
+  AiMemoryCorrectionInput,
   AiMemoryCreateInput,
   AiMemoryEntry,
+  AiMemoryExtractionInput,
   AiMemoryListParams,
   AiMemoryPage,
+  AiMemoryStaleInput,
   AiMemoryStats,
   AiMemoryStatus,
   AiMemoryUpdateInput,
@@ -121,6 +124,12 @@ export const aiCommands = {
   memoryStats: () => invoke<AiMemoryStats>('ai_memory_stats'),
   memoryCreate: (input: AiMemoryCreateInput) =>
     invoke<AiMemoryEntry>('ai_memory_create', { input }),
+  memoryCorrectionCandidate: (input: AiMemoryCorrectionInput) =>
+    invoke<AiMemoryEntry | null>('ai_memory_correction_candidate', { input }),
+  memoryExtractCandidates: (input: AiMemoryExtractionInput) =>
+    invoke<AiMemoryEntry[]>('ai_memory_extract_candidates', { input }),
+  memoryMarkStale: (input: AiMemoryStaleInput) =>
+    invoke<AiMemoryEntry[]>('ai_memory_mark_stale', { input }),
   memoryUpdate: (id: string, patch: AiMemoryUpdateInput) =>
     invoke<AiMemoryEntry>('ai_memory_update', { id, patch }),
   memoryConfirm: (id: string) => invoke<AiMemoryEntry>('ai_memory_confirm', { id }),
