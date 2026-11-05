@@ -2,8 +2,28 @@
 //!
 //! 原 `mcp::runtime` 内定义（随 WR-F2 引入）；WR-F7 真租约源落地后，执行
 //! 域路由的用例适配器（`lease_use_cases.rs`）与 MCP 后端共用同一端口——
-//! 端口归执行域，MCP 传输与 HTTP 域路由都是它的消费者。语义不变：
-//! **每调用现取，禁止缓存**（runtime 可能被吊销）。
+//! 端口归执行域，MCP 传输与 HTTP 域路由都是它的消费者。
+//!
+//! ## 「每调用现取，禁止缓存」约束的是消费者（CM-63 落地后的语义）
+//!
+//! 端口契约 `resolve()` 的硬规则面向**消费者**：`LeaseConnectionUseCases`、
+//! `ServerTargetRunner`、`ServerResourceExecutionHost`、MCP 后端都不得把
+//! 用例面缓存跨请求持有——每次用例调用前必须向租约源索要，从而尊重
+//! 「当前实例可能被吊销」。这条纪律与历史版本一致，消费者侧零改动。
+//!
+//! 租约源**自身**则是「当前实例」的唯一归属者：CM-63 起
+//! `ServerRuntimeLeaseSource` 在内部持有一个当前 `RuntimeConnectionUseCases`
+//! 单元（`current` cell），`resolve()` 未吊销时恒返同一 `Arc`。cell 是被
+//! 认可的归属——「禁止缓存」禁令不再约束租约源本身。跨 resolve 的会话、
+//! 令牌、幂等回执因此连续（CM-63：此前每 resolve 现构造新实例，A 请求开的
+//! 会话对 B 请求必然 `SessionNotFound`）。
+//!
+//! 吊销语义：[`ServerRuntimeLeaseSource::revoke`] 置空 cell，下一次
+//! `resolve()` 重建新实例。旧实例整体作废——旧会话按既有 `SessionLost`
+//! 语义失效（会话账随旧实例不可达，等价于「从未存在」的 `SessionNotFound`；
+//! 结果不受影响，结果落共享 sink）。v1 只暴露 API，bootstrap 不接线：
+//! profiles/policy/backend 都是长生命周期 `Arc`，配置漂移由每请求 CAS 拒绝，
+//! 不存在「实例整体过期」的现实触发条件。
 
 use std::sync::Arc;
 
@@ -11,7 +31,8 @@ use async_trait::async_trait;
 
 use datazen::execution::application::RuntimeConnectionUseCases;
 
-/// runtime 租约端口：每次调用现取当前 runtime（可能被吊销，禁止缓存）。
+/// runtime 租约端口：消费者每次调用前现取当前 runtime（可能被吊销，
+/// 禁止跨请求缓存——见模块头「约束的是消费者」）。
 #[async_trait::async_trait]
 pub trait RuntimeLeaseSource: Send + Sync {
     async fn resolve(&self) -> Result<Arc<RuntimeConnectionUseCases>, String>;
@@ -26,10 +47,13 @@ pub trait RuntimeLeaseSource: Send + Sync {
 /// `execution::driver_exec::ServerDriverExecBackend`（`SessionBackend` 端口
 /// 的 server v1 实现）。
 ///
-/// **每调用现取，禁止缓存**：`resolve()` 每次现构造
-/// `RuntimeConnectionUseCases::new_with_parts(..)`——runtime 可能被吊销，
-/// 端口语义不允许把用例面缓存在租约源里；共享的 `RuntimeResultSink` 是
-/// 例外（结果必须落进准入执行时的那一个 sink，见模块文档）。
+/// **当前实例归属（CM-63）**：`resolve()` 快路返回 cell 里的当前实例；
+/// 慢路（未建/已吊销）在锁内现构造
+/// `RuntimeConnectionUseCases::new_with_parts(..)` 并存入 cell——构建全同步
+/// （Arc 克隆 + 小 map + 随机 secret），无 await 点，std::sync::Mutex 即可
+/// 且不跨 await 持锁。共享的 `RuntimeResultSink` 与会话目录跨 resolve/
+/// 吊销保持同一实例（结果必须落进准入执行时的那一个 sink；目录是 sessions
+/// 域可见性闸的归属事实源）。
 pub struct ServerRuntimeLeaseSource {
     profiles: Arc<dyn datazen::connection::domain::ProfileRepository>,
     policy: Arc<dyn datazen::execution::application::policy::PolicyService>,
@@ -39,6 +63,9 @@ pub struct ServerRuntimeLeaseSource {
     /// 跨 resolve 共享的会话目录（sessions 域可见性闸的归属事实源——
     /// 与用例实现持有**同一**实例；域文件模块头的接线登记在此落地）。
     directory: Arc<datazen::execution::runtime::directory::InMemorySessionDirectory>,
+    /// 当前 runtime 单元（CM-63）：`Some` 即「未吊销的当前实例」，`resolve()`
+    /// 恒返同一 `Arc`；`None` 触发下次 resolve 重建。吊销走 [`Self::revoke`]。
+    current: std::sync::Mutex<Option<Arc<RuntimeConnectionUseCases>>>,
 }
 
 impl ServerRuntimeLeaseSource {
@@ -74,6 +101,7 @@ impl ServerRuntimeLeaseSource {
             backend,
             sink,
             directory,
+            current: std::sync::Mutex::new(None),
         }
     }
 
@@ -84,12 +112,43 @@ impl ServerRuntimeLeaseSource {
     ) -> Arc<datazen::execution::runtime::directory::InMemorySessionDirectory> {
         self.directory.clone()
     }
+
+    /// 吊销当前 runtime 单元（CM-63）：cell 置空，下一次 `resolve()` 重建
+    /// 新实例。旧实例整体作废，旧会话按既有 `SessionLost` 语义失效；结果
+    /// 落共享 sink，不受吊销影响。v1 只暴露 API，bootstrap 不接线（模块头
+    /// 「吊销语义」登记了触发点裁决）。
+    pub fn revoke(&self) {
+        *self
+            .current
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+    }
 }
 
 #[async_trait::async_trait]
 impl RuntimeLeaseSource for ServerRuntimeLeaseSource {
+    /// 快路：cell 有当前实例 → clone `Arc` 返回（O(1)，无重建）。慢路：
+    /// 锁内 `new_with_parts(...)`（与 CM-63 前的逐参构造一致，
+    /// `SystemRuntimeClock(Instant::now())` 语义不变）→ 存入 cell → 返回。
+    /// 构建全同步且无 I/O，锁内重建窗口不产生「半成品」实例；锁不跨 await。
     async fn resolve(&self) -> Result<Arc<RuntimeConnectionUseCases>, String> {
-        Ok(Arc::new(RuntimeConnectionUseCases::new_with_parts(
+        if let Some(runtime) = self
+            .current
+            .lock()
+            .map(|cell| cell.clone())
+            .unwrap_or_else(|poisoned| poisoned.into_inner().clone())
+        {
+            return Ok(runtime);
+        }
+        let mut cell = self
+            .current
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // 双检：并发慢路里先到者已建好，后来者直接复用（单元仍只建一次）。
+        if let Some(runtime) = cell.clone() {
+            return Ok(runtime);
+        }
+        let runtime = Arc::new(RuntimeConnectionUseCases::new_with_parts(
             self.profiles.clone(),
             self.policy.clone(),
             self.backend.clone(),
@@ -100,6 +159,8 @@ impl RuntimeLeaseSource for ServerRuntimeLeaseSource {
             ) as Arc<dyn datazen::execution::runtime::gateway::MonotonicClock>,
             self.sink.clone(),
             self.directory.clone(),
-        )))
+        ));
+        *cell = Some(Arc::clone(&runtime));
+        Ok(runtime)
     }
 }

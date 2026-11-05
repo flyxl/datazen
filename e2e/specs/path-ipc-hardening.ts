@@ -24,17 +24,15 @@ import {
   openNewConnectionDialogFromUi,
   selectNewConnectionDriver,
 } from '../helpers.js';
+import { REPO_ROOT, desktopPackage, desktopSource, frontendSource } from '../lib/repoPaths.js';
 
-const ROOT = path.resolve(import.meta.dirname, '../..');
-const FILE_CONNECTION_FIELDS = path.join(
-  ROOT,
-  'src/components/connection/FileConnectionFields.tsx',
-);
-const SETTINGS_TS = path.join(ROOT, 'src/commands/settings.ts');
-const HOST_SERVICES = path.join(ROOT, 'src/platform/desktop/hostServices.ts');
-const SETTINGS_CONTENT = path.join(ROOT, 'src/windows/settings/SettingsContent.tsx');
-const AI_SETTINGS = path.join(ROOT, 'src/windows/settings/AiSettingsSection.tsx');
-const ADB_TS = path.join(ROOT, 'src/commands/adb.ts');
+const ROOT = REPO_ROOT;
+const FILE_CONNECTION_FIELDS = frontendSource('components/connection/FileConnectionFields.tsx');
+const SETTINGS_TS = frontendSource('commands/settings.ts');
+const HOST_SERVICES = desktopPackage('src/platform/desktop/hostServices.ts');
+const SETTINGS_CONTENT = frontendSource('windows/settings/SettingsContent.tsx');
+const AI_SETTINGS = frontendSource('windows/settings/AiSettingsSection.tsx');
+const ADB_TS = frontendSource('commands/adb.ts');
 
 async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
   const result = await browser.executeAsync(
@@ -198,7 +196,7 @@ describe('Path IPC Hardening (PIH-001~PIH-006)', () => {
     expect(adbSrc).toContain('savedPath');
     expect(adbSrc).not.toMatch(/invoke[<(]/);
 
-    const hostLib = fs.readFileSync(path.join(ROOT, 'src-tauri/src/lib.rs'), 'utf8');
+    const hostLib = fs.readFileSync(desktopSource('lib.rs'), 'utf8');
     expect(hostLib).not.toContain('adb_list_packages');
     expect(hostLib).not.toContain('adb_pull_database');
 

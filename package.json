@@ -1,7 +1,7 @@
 {
   "name": "datazen",
   "private": true,
-  "version": "0.2.3",
+  "version": "0.3.0",
   "license": "GPL-3.0-or-later",
   "type": "module",
   "scripts": {
@@ -136,6 +136,8 @@
     "@datazen/wapp-sdk": "workspace:*",
     "@iamtraction/google-translate": "^3.0.0",
     "@tailwindcss/vite": "^4.1.4",
+    "@tanstack/react-virtual": "^3.13.6",
+    "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/cli": "^2.10.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^20.19.39",

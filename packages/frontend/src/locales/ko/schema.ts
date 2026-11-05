@@ -314,7 +314,10 @@ const pack = {
   'fkNav.error.targetUnresolved':
     '{target}(으)로 갈 수 없습니다. 존재하지 않거나, 다른 데이터베이스에 있거나, 읽을 수 없을 수 있습니다',
   'fkNav.error.probeFailed': '대상 테이블을 찾았지만 읽지 못했습니다',
+  'fkNav.error.noReferences': '이 행을 참조하는 테이블이 없습니다.',
   'fkNav.error.unknown': '외래 키 탐색에 실패했습니다',
+  'fkSelector.pickFrom': '{target}에서 참조 값을 선택하세요.',
+  'fkSelector.notUnique': '참조된 열이 고유하지 않으므로 값을 안전하게 선택할 수 없습니다.',
   'schemaTree.generateSql': 'SQL 생성',
   'schemaTree.generateSelect': 'SELECT 생성',
   'schemaTree.generateInsert': 'INSERT 생성',

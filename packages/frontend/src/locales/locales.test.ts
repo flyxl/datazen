@@ -79,6 +79,10 @@ describe('locales', () => {
     expect(BUILTIN_LOCALES.length).toBeGreaterThan(0);
   });
 
+  it('ships only English and Simplified Chinese host dictionaries', () => {
+    expect(BUILTIN_LOCALES).toEqual(['en', 'zh-CN']);
+  });
+
   it('loads every built-in locale with non-empty host dictionaries', () => {
     for (const locale of BUILTIN_LOCALES) {
       const dict = getHostTranslations(locale);

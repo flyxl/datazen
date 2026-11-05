@@ -22,10 +22,9 @@
  *    why the toolchain below compares against the English byte-wise and
  *    reports the difference — a universal-symbol whitelist for the stale rule
  *    is tracked separately (R stage), not invented here.
- * 3. **`LOCALE_FILES` lists 9 locales.** `de es fr ja ko pt-BR ru zh-TW zh-CN`
- *    — zh-CN is included since it was added to the gate; every tool in this
- *    toolchain therefore treats zh-CN like any other locale (no special-casing
- *    on the Chinese scripts).
+ * 3. **`LOCALE_FILES` lists the shipped non-English locale.** The app currently
+ *    packages Simplified Chinese (`zh-CN`) alongside English. Other translation
+ *    files stay in source control but are not release targets.
  *
  * ## What a placeholder is, and what is not
  *
@@ -44,7 +43,7 @@
  */
 
 /** The locales the release gate checks (mirrors `LOCALE_FILES` in the gate). */
-export const LOCALE_FILES = ['de', 'es', 'fr', 'ja', 'ko', 'pt-BR', 'ru', 'zh-TW', 'zh-CN'];
+export const LOCALE_FILES = ['zh-CN'];
 
 /**
  * Match one locale-pack entry: `'key': 'value'` or `'key': "value"`.

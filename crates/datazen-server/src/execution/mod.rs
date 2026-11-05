@@ -22,6 +22,9 @@
 //! - [`target_runner`]：W8-a P2 —— `table_browsing::api::TargetCommandRunner`
 //!   端口的 server 实现（tableData 读半边的执行面：目标解析、提交、轮询、
 //!   产物分块收集；消费者：tableData 域路由）。
+//! - [`table_columns`]：W8 刀1 —— `table_editing::TableColumnSource` 端口的
+//!   server 实现（变更二端点的命令面列源备料件：`get_table_schema` 经
+//!   runner target 分支现查；组件按请求构造，不进全局装配图）。
 
 pub mod budget;
 pub mod budget_bridge;
@@ -36,6 +39,7 @@ pub mod resource_host;
 pub mod secret_provider;
 pub mod session_directory;
 pub mod submission_token;
+pub mod table_columns;
 pub mod target_runner;
 
 #[cfg(test)]
