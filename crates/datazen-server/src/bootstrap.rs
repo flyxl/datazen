@@ -295,9 +295,9 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
     // WR-F7 执行栈（无 feature 门控）：真租约源三件套全部就位——policy
     // 适配器（policy_adapter.rs，本波解除阻塞项）+ `storage::ServerProfiles`
     // + `driver_exec::ServerDriverExecBackend`（预算桥 + 出站闸 + 结果发布
-    // 钩子同源接线）。驱动工厂 v1 为空表（`with_factories([])` 是合法目录）：
-    // server 二进制尚不链接驱动 crate，任何连接目标都会显式答「驱动不可
-    // 用」——链接闭包随部署构建切片登记。
+    // 钩子同源接线）。驱动工厂按部署构建切片点亮（W8-a P1）：`driver-*`
+    // per-driver feature 选择性链接驱动 crate，`deploy-drivers` 聚合一次
+    // 全量；缺省（无 driver-*）目录为空表，任何连接目标显式答「驱动不可用」。
     let vault = std::sync::Arc::new(
         crate::execution::secret_provider::ServerSecretVault::new(
             store.clone(),
@@ -333,12 +333,14 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
             budget.clone(),
             datazen::shared::id::OrganizationId::new(config.organization_id.clone()),
         ));
-    // 驱动注册表：v1 空工厂表（`with_factories([])` 是合法目录）。执行后端
+    // 驱动注册表：inventory 懒形（`DriverRegistry::new()`）。驱动 crate 由
+    // `driver-*` per-driver feature 选择性链接（`driver_link.rs` 的 extern
+    // crate 闭包），链接即经 `datazen_driver_api::inventory::submit!`（inventory）
+    // 入表；不开任何 driver-* 时目录为空表——与 v1 的 `with_factories([])`
+    // 同一语义，任何连接目标照旧显式答「驱动不可用」（W8-a P1）。执行后端
     // 与（mcp 构建下的）目标机器共享同一实例。
-    let driver_registry = std::sync::Arc::new(
-        datazen::execution::runtime::driver_registry::DriverRegistry::with_factories([])
-            .map_err(|message| ServerError::Serve(format!("driver registry: {message}")))?,
-    );
+    let driver_registry =
+        std::sync::Arc::new(datazen::execution::runtime::driver_registry::DriverRegistry::new());
     let backend = std::sync::Arc::new(crate::execution::driver_exec::ServerDriverExecBackend::new(
         driver_registry.clone(),
         connections_repo.clone(),

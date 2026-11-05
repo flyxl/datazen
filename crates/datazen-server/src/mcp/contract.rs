@@ -224,9 +224,33 @@ pub fn tool_definition(name: &str) -> Option<Value> {
     }))
 }
 
+/// 键序规范化：递归把对象键重建为字母序。
+///
+/// serde_json 的 `preserve_order` feature（`bson`/`mongodb` 等驱动依赖
+/// 传递启用，feature 统一后波及全图）会把 `Map` 换成 IndexMap，
+/// `json!` 宏的插入序随之泄漏到序列化输出；golden fixture 按字母序存储。
+/// 这里把快照统一规范化为字母序，保证在任意 feature 组合下
+/// `tests/mcp_contract_parity.rs` 的逐字节比对都成立。
+fn canonical_json(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let mut keys: Vec<&str> = map.keys().map(String::as_str).collect();
+            keys.sort_unstable();
+            let mut sorted = serde_json::Map::new();
+            for key in keys {
+                sorted.insert(key.to_owned(), canonical_json(&map[key]));
+            }
+            Value::Object(sorted)
+        }
+        Value::Array(items) => Value::Array(items.iter().map(canonical_json).collect()),
+        other => other.clone(),
+    }
+}
+
 /// 桌面形态 `build_mcp_contract_snapshot` 的 server 侧镜像（同形输出）：
 /// golden 契约的快照源——`tests/mcp_contract_parity.rs` 用它与桌面
-/// fixture 逐字节比对。
+/// fixture 逐字节比对。输出经 [`canonical_json`] 键序规范化，
+/// 与 golden 的字母序存储一致，不随 feature 组合漂移。
 pub fn build_mcp_contract_snapshot() -> Value {
     let mut tools: Vec<Value> = MCP_ALL_TOOLS
         .iter()
@@ -254,7 +278,7 @@ pub fn build_mcp_contract_snapshot() -> Value {
             .cmp(&b.get("name").and_then(|n| n.as_str()))
     });
 
-    json!({
+    let snapshot = json!({
         "contractVersion": 1,
         "serverName": SERVER_NAME,
         "tools": tools,
@@ -273,7 +297,8 @@ pub fn build_mcp_contract_snapshot() -> Value {
             "toolInputKeys": "snake_case",
             "resourceJsonFields": "camelCase"
         }
-    })
+    });
+    canonical_json(&snapshot)
 }
 
 #[cfg(test)]

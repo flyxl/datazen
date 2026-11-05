@@ -16,6 +16,9 @@ import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
  *    have none (its dep/feature lines are build-time injected inside the
  *    `<<driver-*>>` markers; a statically declared git driver would break every
  *    clean checkout because its clone dir does not exist yet).
+ *    W8-a P1: the same two assertions run against crates/datazen-server/
+ *    Cargo.toml (server-form dep line `workspace = true, optional = true`,
+ *    same per-driver feature names, `deploy-drivers` aggregate).
  *
  * Driver codegen (generated.ts / driver_init.rs) is gitignored and not checked.
  */
@@ -29,6 +32,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ROOT = resolve(__dirname, '..');
 
 const DESKTOP_CARGO_TOML = 'crates/datazen-desktop/Cargo.toml';
+const SERVER_CARGO_TOML = 'crates/datazen-server/Cargo.toml';
 const DRIVERS_REGISTRY = 'drivers-registry.json';
 
 /** Marker blocks whose content is build-time injected, not static. */
@@ -59,6 +63,19 @@ export function stripMarkerBlocks(content) {
 function staticDepRe(id) {
   return new RegExp(
     `^datazen-driver-${id} = \\{ path = "\\.\\./drivers/${id}", optional = true \\}$`,
+    'm',
+  );
+}
+
+/**
+ * Server-form dep line (W8-a P1): path comes from the root workspace table,
+ * the member line only marks it optional.
+ * @param {string} id
+ * @returns {RegExp}
+ */
+function serverDepRe(id) {
+  return new RegExp(
+    `^datazen-driver-${id} = \\{ workspace = true, optional = true \\}$`,
     'm',
   );
 }
@@ -150,12 +167,91 @@ export function staticDriverDeclarationProblems({
 }
 
 /**
+ * Static-declaration consistency between drivers-registry.json and the server
+ * Cargo.toml (W8-a P1). Same shape as the desktop leg; the dep line is the
+ * server form (workspace = true, optional = true) and the aggregate feature is
+ * `deploy-drivers`. Pure given the two file contents.
+ *
+ * @param {{
+ *   registry: Record<string, { source?: string, feature?: string }>,
+ *   cargoToml: string,
+ *   log?: (...args: unknown[]) => void,
+ *   error?: (...args: unknown[]) => void,
+ * }} opts
+ * @returns {string[]} human-readable problems (empty = consistent)
+ */
+export function serverDriverDeclarationProblems({
+  registry,
+  cargoToml,
+  log = () => {},
+  error = () => {},
+}) {
+  const problems = [];
+  const staticToml = stripMarkerBlocks(cargoToml);
+
+  const pathDrivers = Object.entries(registry).filter(([, m]) => m?.source === 'path');
+  const gitDrivers = Object.entries(registry).filter(([, m]) => m?.source === 'git');
+
+  for (const [id, meta] of pathDrivers) {
+    if (!meta.feature) {
+      problems.push(`path driver "${id}" has no cargo feature in ${DRIVERS_REGISTRY}`);
+      continue;
+    }
+    if (!serverDepRe(id).test(staticToml)) {
+      problems.push(`missing static optional dep for path driver "${id}" in ${SERVER_CARGO_TOML}`);
+    }
+    if (!staticFeatureRe(id, meta.feature).test(staticToml)) {
+      problems.push(
+        `missing static feature "${meta.feature}" for path driver "${id}" in ${SERVER_CARGO_TOML}`,
+      );
+    }
+  }
+
+  const aggregate = staticToml.match(/^deploy-drivers = \[([^\]]*)\]/m);
+  if (!aggregate) {
+    problems.push(`missing "deploy-drivers" aggregate feature in ${SERVER_CARGO_TOML}`);
+  } else {
+    for (const [, meta] of pathDrivers) {
+      if (meta.feature && !aggregate[1].includes(`"${meta.feature}"`)) {
+        problems.push(`"deploy-drivers" aggregate is missing path-driver feature "${meta.feature}"`);
+      }
+    }
+    for (const [, meta] of gitDrivers) {
+      if (meta.feature && aggregate[1].includes(`"${meta.feature}"`)) {
+        problems.push(
+          `"deploy-drivers" aggregate must not enable git-driver feature "${meta.feature}" (build-time injected)`,
+        );
+      }
+    }
+  }
+
+  for (const [id] of gitDrivers) {
+    if (serverDepRe(id).test(staticToml)) {
+      problems.push(
+        `git driver "${id}" must NOT be statically declared in ${SERVER_CARGO_TOML} ` +
+          `(its clone dir does not exist on a clean checkout; injection owns its lines)`,
+      );
+    }
+  }
+
+  if (problems.length === 0) {
+    log(
+      `[check-managed-stubs] ok server static driver declaration (${pathDrivers.length} path / ${gitDrivers.length} git)`,
+    );
+  } else {
+    for (const p of problems) error(`[check-managed-stubs] ${p}`);
+  }
+  return problems;
+}
+
+/**
  * @param {{
  *   root?: string,
  *   files?: string[],
  *   checkStaticDrivers?: boolean,
  *   registry?: Record<string, unknown>,
  *   desktopCargoToml?: string,
+ *   serverCargoToml?: string,
  *   log?: (...args: unknown[]) => void,
  *   error?: (...args: unknown[]) => void,
  * }} [opts]
@@ -188,12 +284,16 @@ export function checkManagedStubs(opts = {}) {
   if (opts.checkStaticDrivers) {
     let registry = opts.registry;
     let cargoToml = opts.desktopCargoToml;
+    let serverCargoToml = opts.serverCargoToml;
     try {
       if (registry == null) {
         registry = JSON.parse(readFileSync(resolve(root, DRIVERS_REGISTRY), 'utf-8'));
       }
       if (cargoToml == null) {
         cargoToml = readFileSync(resolve(root, DESKTOP_CARGO_TOML), 'utf-8');
+      }
+      if (serverCargoToml == null) {
+        serverCargoToml = readFileSync(resolve(root, SERVER_CARGO_TOML), 'utf-8');
       }
     } catch (e) {
       error(
@@ -203,6 +303,13 @@ export function checkManagedStubs(opts = {}) {
     }
     const problems = staticDriverDeclarationProblems({ registry, cargoToml, log, error });
     if (problems.length > 0) failed = true;
+    const serverProblems = serverDriverDeclarationProblems({
+      registry,
+      cargoToml: serverCargoToml,
+      log,
+      error,
+    });
+    if (serverProblems.length > 0) failed = true;
   }
 
   return failed ? 1 : 0;
