@@ -13,7 +13,7 @@ use super::is_readonly_db_tool;
 use super::mcp_needs_confirm;
 use super::AiToolContext;
 use super::ToolKind;
-use super::ToolLoopGuard;
+use super::{ToolLoopGuard, ToolLoopLimits};
 use crate::ai::application::ports::DatabaseToolHost;
 use crate::ai::domain::types::{MessageRole, TokenUsage};
 use crate::connection::domain::{ConnectionRepository, ConnectionRepositoryError, ConnectionScope};
@@ -543,6 +543,83 @@ fn test_guard_check_round_fails_on_max_rounds() {
         err.contains("max rounds"),
         "error should mention max rounds: {err}"
     );
+}
+
+#[test]
+fn agent_limits_and_gate_defaults_are_thirty_round_multi_k() {
+    let agent = ToolLoopLimits::agent();
+    assert_eq!(agent.max_rounds, 30);
+    assert_eq!(agent.max_total_tokens, 48_000);
+    assert_eq!(agent.max_duration, std::time::Duration::from_secs(300));
+    assert_eq!(agent.per_tool_cap, 8_192);
+
+    let gate = crate::ai::domain::types::AiSafetyGateConfig::default();
+    let from_gate = ToolLoopLimits::from_gate(&gate);
+    assert_eq!(from_gate, agent);
+}
+
+#[test]
+fn custom_max_rounds_allows_thirty_then_stops_at_thirty_one() {
+    let mut guard = ToolLoopGuard::with_limits(ToolLoopLimits {
+        max_rounds: 30,
+        max_duration: std::time::Duration::from_secs(300),
+        ..ToolLoopLimits::default()
+    });
+    for round in 1..=30 {
+        assert!(guard.check_round().is_ok(), "round {round} must be allowed");
+    }
+    let error = guard.check_round().expect_err("round 31 must stop");
+    assert!(error.contains("(30)"), "{error}");
+}
+
+#[test]
+fn custom_max_rounds_one_stops_on_the_second_round() {
+    let mut guard = ToolLoopGuard::with_limits(ToolLoopLimits {
+        max_rounds: 1,
+        ..ToolLoopLimits::default()
+    });
+    assert!(guard.check_round().is_ok());
+    let error = guard.check_round().expect_err("second round must stop");
+    assert!(error.contains("(1)"), "{error}");
+}
+
+#[test]
+fn custom_token_budget_and_duration_are_enforced() {
+    let mut guard = ToolLoopGuard::with_limits(ToolLoopLimits {
+        max_total_tokens: 100,
+        ..ToolLoopLimits::default()
+    });
+    guard.accumulate_usage(&TokenUsage {
+        prompt_tokens: 60,
+        completion_tokens: 40,
+        total_tokens: 100,
+    });
+    let error = guard.check_round().expect_err("token budget must stop");
+    assert!(error.contains("token budget"), "{error}");
+
+    let mut slow = ToolLoopGuard::with_limits(ToolLoopLimits {
+        max_duration: std::time::Duration::from_millis(1),
+        ..ToolLoopLimits::default()
+    });
+    std::thread::sleep(std::time::Duration::from_millis(5));
+    let error = slow.check_round().expect_err("duration must stop");
+    assert!(error.contains("time limit"), "{error}");
+}
+
+#[test]
+fn custom_per_tool_cap_truncates_results() {
+    let guard = ToolLoopGuard::with_limits(ToolLoopLimits {
+        per_tool_cap: 8,
+        ..ToolLoopLimits::default()
+    });
+    let call = tool("query_readonly", "{}");
+    let message = guard.truncate_and_wrap(&call, "0123456789abcdef".into());
+    assert!(
+        message.content.starts_with("01234567"),
+        "{}",
+        message.content
+    );
+    assert!(message.content.contains("truncated"), "{}", message.content);
 }
 
 #[test]

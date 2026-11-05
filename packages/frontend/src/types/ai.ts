@@ -18,6 +18,11 @@ export interface AiSafetyGateConfig {
   mcpToolPolicy: AiToolPermissionPolicy;
   requireSqlConfirm: boolean;
   maxContextBytes: number;
+  maxToolRounds: number;
+  maxToolTokens: number;
+  maxToolResultBytes: number;
+  maxToolDurationSecs: number;
+  apiRetries: number;
 }
 
 export interface AiModelProfile {

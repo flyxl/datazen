@@ -250,6 +250,11 @@ const pack = {
   'settings.ai.egressUnrestricted':
     'Без ограничений (Разрешить полные результаты, только локально/интранет)',
   'settings.ai.maxSampleRows': 'Максимум строк в выборке',
+  'settings.ai.maxToolRounds': 'Максимум раундов инструмента',
+  'settings.ai.apiRetries': 'Повторы API',
+  'settings.ai.maxToolTokens': 'Максимум токенов инструмента',
+  'settings.ai.maxToolResultBytes': 'Максимум байт результата',
+  'settings.ai.maxToolDurationSecs': 'Максимальная длительность (секунды)',
   'settings.ai.dbToolPolicy': 'Разрешения инструментов БД',
   'settings.ai.mcpToolPolicy': 'Разрешения инструментов MCP',
   'settings.ai.policyDisabled': 'Отключено',

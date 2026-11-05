@@ -1,11 +1,13 @@
 //! Streaming AI tool-loop orchestration; provider streaming and tool I/O are injected.
 use super::error::AiUseCaseError as CommandError;
-use super::tools::{classify_tool, is_readonly_db_tool, ToolKind, ToolLoopGuard};
+use super::retry::RetryPolicy;
+use super::tools::{classify_tool, is_readonly_db_tool, ToolKind, ToolLoopGuard, ToolLoopLimits};
 use crate::ai::domain::safety::redact_for_gate;
 use crate::ai::domain::traits::AiProvider;
 use crate::ai::domain::types::{
     AiError, AiSafetyGateConfig, ChatMessage, CompletionRequest, MessageRole, StreamChunk, ToolCall,
 };
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 pub type StreamCallback = Arc<dyn Fn(&str, Result<StreamChunk, AiError>) + Send + Sync>;
@@ -53,11 +55,12 @@ pub async fn run_streaming_tool_loop(
     on_chunk: StreamCallback,
     request_id: &str,
     mut request: CompletionRequest,
-    _max_rounds: usize,
+    limits: ToolLoopLimits,
     cmd_label: &str,
     gate: &AiSafetyGateConfig,
 ) -> Result<String, CommandError> {
-    let mut guard = ToolLoopGuard::new();
+    let mut guard = ToolLoopGuard::with_limits(limits);
+    let retry_policy = RetryPolicy::from_gate(gate);
 
     // ── FR-13: Send egress summary before AI reply begins ──
     {
@@ -118,82 +121,132 @@ pub async fn run_streaming_tool_loop(
             );
             return Ok(request_id.to_string());
         }
-        let (tx, mut rx) = mpsc::channel::<Result<StreamChunk, AiError>>(32);
+        let mut retries_done = 0u32;
+        let result = loop {
+            let (tx, mut rx) = mpsc::channel::<Result<StreamChunk, AiError>>(32);
 
-        let (result_tx, result_rx) = tokio::sync::oneshot::channel::<StreamRoundResult>();
-        let on_chunk_c = on_chunk.clone();
-        let rid_c = request_id.to_string();
+            let (result_tx, result_rx) = tokio::sync::oneshot::channel::<StreamRoundResult>();
+            let on_chunk_c = on_chunk.clone();
+            let rid_c = request_id.to_string();
+            let saw_output = Arc::new(AtomicBool::new(false));
+            let saw_output_task = saw_output.clone();
 
-        tokio::spawn(async move {
-            let mut full_content = String::new();
-            let mut full_reasoning = String::new();
-            let mut final_tool_calls: Option<Vec<ToolCall>> = None;
-            let mut final_usage = None;
-            let mut final_response_id = None;
-            let mut had_error = false;
+            tokio::spawn(async move {
+                let mut full_content = String::new();
+                let mut full_reasoning = String::new();
+                let mut final_tool_calls: Option<Vec<ToolCall>> = None;
+                let mut final_usage = None;
+                let mut final_response_id = None;
+                let mut had_error = false;
 
-            while let Some(chunk_result) = rx.recv().await {
-                match chunk_result {
-                    Ok(chunk) => {
-                        if chunk.done {
-                            let content = chunk.content;
-                            let reasoning = chunk.reasoning;
-                            full_content.push_str(&content);
-                            if let Some(r) = &reasoning {
-                                full_reasoning.push_str(r);
+                while let Some(chunk_result) = rx.recv().await {
+                    saw_output_task.store(true, Ordering::SeqCst);
+                    match chunk_result {
+                        Ok(chunk) => {
+                            if chunk.done {
+                                let content = chunk.content;
+                                let reasoning = chunk.reasoning;
+                                full_content.push_str(&content);
+                                if let Some(r) = &reasoning {
+                                    full_reasoning.push_str(r);
+                                }
+                                final_tool_calls = chunk.tool_calls;
+                                final_usage = chunk.usage;
+                                final_response_id = chunk.response_id;
+                                if !content.is_empty() || reasoning.is_some() {
+                                    on_chunk_c(
+                                        &rid_c,
+                                        Ok(StreamChunk {
+                                            content,
+                                            reasoning,
+                                            done: false,
+                                            cancelled: false,
+                                            usage: None,
+                                            tool_calls: None,
+                                            response_id: None,
+                                            egress_summary: None,
+                                        }),
+                                    );
+                                }
+                            } else {
+                                full_content.push_str(&chunk.content);
+                                if let Some(r) = &chunk.reasoning {
+                                    full_reasoning.push_str(r);
+                                }
+                                on_chunk_c(&rid_c, Ok(chunk));
                             }
-                            final_tool_calls = chunk.tool_calls;
-                            final_usage = chunk.usage;
-                            final_response_id = chunk.response_id;
-                            if !content.is_empty() || reasoning.is_some() {
-                                on_chunk_c(
-                                    &rid_c,
-                                    Ok(StreamChunk {
-                                        content,
-                                        reasoning,
-                                        done: false,
-                                        cancelled: false,
-                                        usage: None,
-                                        tool_calls: None,
-                                        response_id: None,
-                                        egress_summary: None,
-                                    }),
-                                );
-                            }
-                        } else {
-                            full_content.push_str(&chunk.content);
-                            if let Some(r) = &chunk.reasoning {
-                                full_reasoning.push_str(r);
-                            }
-                            on_chunk_c(&rid_c, Ok(chunk));
+                        }
+                        Err(e) => {
+                            on_chunk_c(&rid_c, Err(e));
+                            had_error = true;
+                            break;
                         }
                     }
-                    Err(e) => {
-                        on_chunk_c(&rid_c, Err(e));
-                        had_error = true;
-                        break;
-                    }
                 }
+
+                let _ = result_tx.send(StreamRoundResult {
+                    content: full_content,
+                    reasoning: full_reasoning,
+                    tool_calls: final_tool_calls,
+                    usage: final_usage,
+                    had_error,
+                    response_id: final_response_id,
+                });
+            });
+
+            let stream_error = provider.stream_complete(&request, tx).await.err();
+
+            let result = result_rx
+                .await
+                .map_err(|_| CommandError::Internal("Stream result channel closed".into()))?;
+
+            let Some(error) = stream_error else {
+                break result;
+            };
+
+            // Once any chunk reached the caller a retry would replay output
+            // (and possibly duplicate tool calls). Only pre-first-chunk start
+            // failures are safe to retry.
+            if saw_output.load(Ordering::SeqCst) {
+                if result.had_error {
+                    return Ok(request_id.to_string());
+                }
+                return Err(CommandError::Ai(error));
             }
 
-            let _ = result_tx.send(StreamRoundResult {
-                content: full_content,
-                reasoning: full_reasoning,
-                tool_calls: final_tool_calls,
-                usage: final_usage,
-                had_error,
-                response_id: final_response_id,
-            });
-        });
+            if !retry_policy.should_retry(retries_done, &error) {
+                return Err(CommandError::Ai(error));
+            }
 
-        provider
-            .stream_complete(&request, tx)
-            .await
-            .map_err(CommandError::Ai)?;
-
-        let result = result_rx
-            .await
-            .map_err(|_| CommandError::Internal("Stream result channel closed".into()))?;
+            tracing::warn!(
+                %request_id,
+                retry = retries_done + 1,
+                max = retry_policy.max_retries,
+                error = %error,
+                "{cmd_label}: transient provider start failure, retrying"
+            );
+            if !retry_policy
+                .wait_before_retry(retries_done, request.cancel_token.as_ref())
+                .await
+            {
+                tracing::info!(%request_id, "{cmd_label}: cancelled during retry backoff");
+                on_chunk(
+                    request_id,
+                    Ok(StreamChunk {
+                        content: String::new(),
+                        reasoning: None,
+                        done: true,
+                        cancelled: true,
+                        usage: None,
+                        tool_calls: None,
+                        response_id: None,
+                        egress_summary: None,
+                    }),
+                );
+                return Ok(request_id.to_string());
+            }
+            retries_done += 1;
+        };
 
         if result.had_error {
             return Ok(request_id.to_string());
@@ -541,11 +594,29 @@ mod tests {
         }
     }
 
-    async fn collect(
+    async fn run_loop(
         provider: Arc<dyn AiProvider>,
         host: &StubHost,
         token: CancellationToken,
-    ) -> Vec<StreamChunk> {
+        gate_config: AiSafetyGateConfig,
+    ) -> (Result<String, CommandError>, Vec<StreamChunk>) {
+        run_loop_with_limits(
+            provider,
+            host,
+            token,
+            gate_config,
+            ToolLoopLimits::default(),
+        )
+        .await
+    }
+
+    async fn run_loop_with_limits(
+        provider: Arc<dyn AiProvider>,
+        host: &StubHost,
+        token: CancellationToken,
+        gate_config: AiSafetyGateConfig,
+        limits: ToolLoopLimits,
+    ) -> (Result<String, CommandError>, Vec<StreamChunk>) {
         let seen: Arc<Mutex<Vec<StreamChunk>>> = Arc::new(Mutex::new(Vec::new()));
         let sink = seen.clone();
         let on_chunk: StreamCallback = Arc::new(move |_id, chunk| {
@@ -560,14 +631,237 @@ mod tests {
             on_chunk,
             "req-1",
             request(Some(token)),
-            6,
+            limits,
             "test",
-            &gate(),
+            &gate_config,
         )
         .await;
-        assert!(result.is_ok(), "loop must converge: {result:?}");
         let chunks = seen.lock().expect("chunk sink").clone();
+        (result, chunks)
+    }
+
+    async fn collect(
+        provider: Arc<dyn AiProvider>,
+        host: &StubHost,
+        token: CancellationToken,
+    ) -> Vec<StreamChunk> {
+        let (result, chunks) = run_loop(provider, host, token, gate()).await;
+        assert!(result.is_ok(), "loop must converge: {result:?}");
         chunks
+    }
+
+    struct ToolCallingProvider {
+        calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait::async_trait]
+    impl AiProvider for ToolCallingProvider {
+        fn provider_type(&self) -> AiProviderType {
+            AiProviderType::Custom
+        }
+        fn display_name(&self) -> &str {
+            "test-tool-calling"
+        }
+        async fn validate_config(&self, _config: &AiProviderConfig) -> Result<(), AiError> {
+            Ok(())
+        }
+        async fn initialize(&self, _config: &AiProviderConfig) -> Result<(), AiError> {
+            Ok(())
+        }
+        async fn complete(
+            &self,
+            _request: &CompletionRequest,
+        ) -> Result<CompletionResponse, AiError> {
+            Err(AiError::NotConfigured("complete is not used".into()))
+        }
+        async fn stream_complete(
+            &self,
+            _request: &CompletionRequest,
+            sender: mpsc::Sender<Result<StreamChunk, AiError>>,
+        ) -> Result<(), AiError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            let _ = sender
+                .send(Ok(StreamChunk {
+                    content: String::new(),
+                    reasoning: None,
+                    done: true,
+                    cancelled: false,
+                    usage: None,
+                    tool_calls: Some(vec![ToolCall {
+                        id: format!("call-{}", self.calls.load(Ordering::SeqCst)),
+                        name: "list_connections".into(),
+                        arguments: "{}".into(),
+                    }]),
+                    response_id: None,
+                    egress_summary: None,
+                }))
+                .await;
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn caller_max_rounds_stops_the_second_round() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let provider = Arc::new(ToolCallingProvider {
+            calls: calls.clone(),
+        });
+        let host = StubHost::default();
+        let token = CancellationToken::new();
+
+        let (result, chunks) = run_loop_with_limits(
+            provider,
+            &host,
+            token,
+            gate_with_retries(0),
+            ToolLoopLimits {
+                max_rounds: 1,
+                ..ToolLoopLimits::default()
+            },
+        )
+        .await;
+
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "second round must stop");
+        assert_eq!(host.db_tool_calls.load(Ordering::SeqCst), 1);
+        assert!(
+            chunks
+                .iter()
+                .any(|chunk| chunk.content.contains("max rounds (1)")),
+            "guard stop must be visible: {chunks:?}"
+        );
+    }
+
+    struct FlakyStartProvider {
+        calls: Arc<AtomicUsize>,
+        fail_times: usize,
+        emit_before_error: bool,
+    }
+
+    #[async_trait::async_trait]
+    impl AiProvider for FlakyStartProvider {
+        fn provider_type(&self) -> AiProviderType {
+            AiProviderType::Custom
+        }
+        fn display_name(&self) -> &str {
+            "test-flaky-start"
+        }
+        async fn validate_config(&self, _config: &AiProviderConfig) -> Result<(), AiError> {
+            Ok(())
+        }
+        async fn initialize(&self, _config: &AiProviderConfig) -> Result<(), AiError> {
+            Ok(())
+        }
+        async fn complete(
+            &self,
+            _request: &CompletionRequest,
+        ) -> Result<CompletionResponse, AiError> {
+            Err(AiError::NotConfigured("complete is not used".into()))
+        }
+        async fn stream_complete(
+            &self,
+            _request: &CompletionRequest,
+            sender: mpsc::Sender<Result<StreamChunk, AiError>>,
+        ) -> Result<(), AiError> {
+            let call = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+            if self.emit_before_error && call == 1 {
+                let _ = sender
+                    .send(Ok(StreamChunk {
+                        content: "partial".into(),
+                        reasoning: None,
+                        done: false,
+                        cancelled: false,
+                        usage: None,
+                        tool_calls: None,
+                        response_id: None,
+                        egress_summary: None,
+                    }))
+                    .await;
+                return Err(AiError::RateLimited {
+                    retry_after_secs: 0,
+                });
+            }
+            if call <= self.fail_times {
+                return Err(AiError::RateLimited {
+                    retry_after_secs: 0,
+                });
+            }
+            let _ = sender
+                .send(Ok(StreamChunk {
+                    content: "ok".into(),
+                    reasoning: None,
+                    done: true,
+                    cancelled: false,
+                    usage: None,
+                    tool_calls: None,
+                    response_id: None,
+                    egress_summary: None,
+                }))
+                .await;
+            Ok(())
+        }
+    }
+
+    fn gate_with_retries(retries: u32) -> AiSafetyGateConfig {
+        let mut gate = gate();
+        gate.api_retries = retries;
+        gate
+    }
+
+    #[tokio::test]
+    async fn retries_a_transient_start_failure_then_streams() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let provider = Arc::new(FlakyStartProvider {
+            calls: calls.clone(),
+            fail_times: 1,
+            emit_before_error: false,
+        });
+        let host = StubHost::default();
+        let token = CancellationToken::new();
+
+        let (result, chunks) = run_loop(provider, &host, token, gate_with_retries(1)).await;
+
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(calls.load(Ordering::SeqCst), 2, "one retry");
+        assert!(chunks.iter().any(|chunk| chunk.content == "ok"));
+    }
+
+    #[tokio::test]
+    async fn zero_retries_fails_immediately() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let provider = Arc::new(FlakyStartProvider {
+            calls: calls.clone(),
+            fail_times: 5,
+            emit_before_error: false,
+        });
+        let host = StubHost::default();
+        let token = CancellationToken::new();
+
+        let (result, _chunks) = run_loop(provider, &host, token, gate_with_retries(0)).await;
+
+        assert!(result.is_err(), "no retry means the error surfaces");
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn does_not_retry_after_the_first_stream_chunk() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let provider = Arc::new(FlakyStartProvider {
+            calls: calls.clone(),
+            fail_times: 1,
+            emit_before_error: true,
+        });
+        let host = StubHost::default();
+        let token = CancellationToken::new();
+
+        let (result, chunks) = run_loop(provider, &host, token, gate_with_retries(2)).await;
+
+        assert!(
+            result.is_err(),
+            "stream errors after output are not replayed"
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "no replay after output");
+        assert!(chunks.iter().any(|chunk| chunk.content == "partial"));
     }
 
     #[tokio::test]

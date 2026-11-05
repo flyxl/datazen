@@ -258,6 +258,11 @@ const pack = {
   'settings.ai.egressUnrestricted':
     'Sans restriction (Autoriser tous les résultats, local/intranet uniquement)',
   'settings.ai.maxSampleRows': 'Lignes d’échantillon maximales',
+  'settings.ai.maxToolRounds': 'Tours d’outil maximum',
+  'settings.ai.apiRetries': 'Nouvelles tentatives API',
+  'settings.ai.maxToolTokens': 'Tokens d’outil maximum',
+  'settings.ai.maxToolResultBytes': 'Octets de résultat maximum',
+  'settings.ai.maxToolDurationSecs': 'Durée d’outil maximum (secondes)',
   'settings.ai.dbToolPolicy': 'Autorisation des outils de base de données',
   'settings.ai.mcpToolPolicy': 'Autorisation des outils MCP',
   'settings.ai.policyDisabled': 'Désactivé',

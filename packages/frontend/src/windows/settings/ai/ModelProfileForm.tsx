@@ -265,6 +265,95 @@ export function ModelProfileForm({
             </SettingRow>
           )}
 
+          <SettingRow label={`${t('settings.ai.maxToolRounds')} (1-50)`}>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={1}
+                max={50}
+                value={d.draft.safetyGate.maxToolRounds}
+                onChange={(e) => d.updateGate('maxToolRounds', parseInt(e.target.value, 10) || 30)}
+                className="flex-1"
+              />
+              <span className="w-8 text-center font-mono text-xs text-fg">
+                {d.draft.safetyGate.maxToolRounds}
+              </span>
+            </div>
+          </SettingRow>
+
+          <SettingRow label={`${t('settings.ai.apiRetries')} (0-10)`}>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={0}
+                max={10}
+                value={d.draft.safetyGate.apiRetries}
+                onChange={(e) => d.updateGate('apiRetries', parseInt(e.target.value, 10) || 0)}
+                className="flex-1"
+              />
+              <span className="w-6 text-center font-mono text-xs text-fg">
+                {d.draft.safetyGate.apiRetries}
+              </span>
+            </div>
+          </SettingRow>
+
+          <SettingRow label={`${t('settings.ai.maxToolTokens')} (1000-200000)`}>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={1000}
+                max={200000}
+                step={1000}
+                value={d.draft.safetyGate.maxToolTokens}
+                onChange={(e) =>
+                  d.updateGate('maxToolTokens', parseInt(e.target.value, 10) || 48000)
+                }
+                className="flex-1"
+              />
+              <span className="w-16 text-center font-mono text-xs text-fg">
+                {d.draft.safetyGate.maxToolTokens}
+              </span>
+            </div>
+          </SettingRow>
+
+          <SettingRow label={`${t('settings.ai.maxToolResultBytes')} (256-65536)`}>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={256}
+                max={65536}
+                step={256}
+                value={d.draft.safetyGate.maxToolResultBytes}
+                onChange={(e) =>
+                  d.updateGate('maxToolResultBytes', parseInt(e.target.value, 10) || 8192)
+                }
+                className="flex-1"
+              />
+              <span className="w-16 text-center font-mono text-xs text-fg">
+                {d.draft.safetyGate.maxToolResultBytes}
+              </span>
+            </div>
+          </SettingRow>
+
+          <SettingRow label={`${t('settings.ai.maxToolDurationSecs')} (10-1800)`}>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={10}
+                max={1800}
+                step={10}
+                value={d.draft.safetyGate.maxToolDurationSecs}
+                onChange={(e) =>
+                  d.updateGate('maxToolDurationSecs', parseInt(e.target.value, 10) || 300)
+                }
+                className="flex-1"
+              />
+              <span className="w-10 text-center font-mono text-xs text-fg">
+                {d.draft.safetyGate.maxToolDurationSecs}
+              </span>
+            </div>
+          </SettingRow>
+
           <SettingRow label={t('settings.ai.dbToolPolicy')}>
             <Select
               value={d.draft.safetyGate.dbToolPolicy}

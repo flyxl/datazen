@@ -11,6 +11,11 @@ export const AI_SAFETY_PRESETS: Record<AiSafetyPresetType, AiSafetyGateConfig> =
     mcpToolPolicy: 'disabled',
     requireSqlConfirm: true,
     maxContextBytes: 32000,
+    maxToolRounds: 30,
+    maxToolTokens: 48000,
+    maxToolResultBytes: 8192,
+    maxToolDurationSecs: 300,
+    apiRetries: 2,
   },
   enterprise_balanced: {
     redactCredentials: true,
@@ -20,6 +25,11 @@ export const AI_SAFETY_PRESETS: Record<AiSafetyPresetType, AiSafetyGateConfig> =
     mcpToolPolicy: 'require_confirm',
     requireSqlConfirm: true,
     maxContextBytes: 32000,
+    maxToolRounds: 30,
+    maxToolTokens: 48000,
+    maxToolResultBytes: 8192,
+    maxToolDurationSecs: 300,
+    apiRetries: 2,
   },
   local_trust: {
     redactCredentials: true,
@@ -29,6 +39,11 @@ export const AI_SAFETY_PRESETS: Record<AiSafetyPresetType, AiSafetyGateConfig> =
     mcpToolPolicy: 'unrestricted',
     requireSqlConfirm: false,
     maxContextBytes: 64000,
+    maxToolRounds: 30,
+    maxToolTokens: 48000,
+    maxToolResultBytes: 8192,
+    maxToolDurationSecs: 300,
+    apiRetries: 2,
   },
 };
 

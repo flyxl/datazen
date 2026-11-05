@@ -158,6 +158,60 @@ pub fn classify_tool(name: &str) -> ToolKind {
 
 // ─── Tool Loop Guard (FR-05) ───
 
+/// Limits for one streaming tool loop. `Default` keeps the pre-T05 values;
+/// Agent chat swaps in [`ToolLoopLimits::agent`] or values from the safety gate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ToolLoopLimits {
+    pub max_rounds: usize,
+    pub max_total_tokens: usize,
+    pub max_duration: std::time::Duration,
+    pub per_tool_cap: usize,
+    pub per_round_cap: usize,
+}
+
+impl ToolLoopLimits {
+    pub const DEFAULT_MAX_ROUNDS: usize = 6;
+    pub const DEFAULT_MAX_TOTAL_TOKENS: usize = 24_000;
+    pub const DEFAULT_MAX_DURATION_SECS: u64 = 180;
+    pub const DEFAULT_PER_TOOL_CAP: usize = 2048;
+    pub const DEFAULT_PER_ROUND_CAP: usize = 12_288;
+
+    /// Agent chat defaults: longer loop, larger token budget and tool results.
+    pub fn agent() -> Self {
+        Self {
+            max_rounds: 30,
+            max_total_tokens: 48_000,
+            max_duration: std::time::Duration::from_secs(300),
+            per_tool_cap: 8_192,
+            per_round_cap: Self::DEFAULT_PER_ROUND_CAP,
+        }
+    }
+
+    /// Read the configurable values from a safety gate. Zero/invalid values are
+    /// clamped to one so a malformed profile cannot disable the guard entirely.
+    pub fn from_gate(gate: &crate::ai::domain::types::AiSafetyGateConfig) -> Self {
+        Self {
+            max_rounds: gate.max_tool_rounds.max(1),
+            max_total_tokens: gate.max_tool_tokens.max(1),
+            max_duration: std::time::Duration::from_secs(gate.max_tool_duration_secs.max(1)),
+            per_tool_cap: gate.max_tool_result_bytes.max(1),
+            per_round_cap: Self::DEFAULT_PER_ROUND_CAP,
+        }
+    }
+}
+
+impl Default for ToolLoopLimits {
+    fn default() -> Self {
+        Self {
+            max_rounds: Self::DEFAULT_MAX_ROUNDS,
+            max_total_tokens: Self::DEFAULT_MAX_TOTAL_TOKENS,
+            max_duration: std::time::Duration::from_secs(Self::DEFAULT_MAX_DURATION_SECS),
+            per_tool_cap: Self::DEFAULT_PER_TOOL_CAP,
+            per_round_cap: Self::DEFAULT_PER_ROUND_CAP,
+        }
+    }
+}
+
 /// Safety guardrails for the streaming tool loop. Prevents runaway loops by
 /// enforcing round count, token budget, and duration limits.
 pub struct ToolLoopGuard {
@@ -173,20 +227,17 @@ pub struct ToolLoopGuard {
 }
 
 impl ToolLoopGuard {
-    /// Default limits per FR-05.
-    const DEFAULT_MAX_ROUNDS: usize = 6;
-    const DEFAULT_MAX_TOTAL_TOKENS: usize = 24_000;
-    const DEFAULT_MAX_DURATION_SECS: u64 = 180;
-    const DEFAULT_PER_TOOL_CAP: usize = 2048;
-    const DEFAULT_PER_ROUND_CAP: usize = 12_288;
-
     pub fn new() -> Self {
+        Self::with_limits(ToolLoopLimits::default())
+    }
+
+    pub fn with_limits(limits: ToolLoopLimits) -> Self {
         Self {
-            max_rounds: Self::DEFAULT_MAX_ROUNDS,
-            max_total_tokens: Self::DEFAULT_MAX_TOTAL_TOKENS,
-            max_duration: std::time::Duration::from_secs(Self::DEFAULT_MAX_DURATION_SECS),
-            per_tool_cap: Self::DEFAULT_PER_TOOL_CAP,
-            per_round_cap: Self::DEFAULT_PER_ROUND_CAP,
+            max_rounds: limits.max_rounds,
+            max_total_tokens: limits.max_total_tokens,
+            max_duration: limits.max_duration,
+            per_tool_cap: limits.per_tool_cap,
+            per_round_cap: limits.per_round_cap,
             round: 0,
             total_tokens: 0,
             start_time: std::time::Instant::now(),

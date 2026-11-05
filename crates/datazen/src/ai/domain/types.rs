@@ -105,6 +105,16 @@ pub struct AiSafetyGateConfig {
     pub require_sql_confirm: bool,
     #[serde(default = "default_max_context_bytes")]
     pub max_context_bytes: usize,
+    #[serde(default = "default_max_tool_rounds")]
+    pub max_tool_rounds: usize,
+    #[serde(default = "default_max_tool_tokens")]
+    pub max_tool_tokens: usize,
+    #[serde(default = "default_max_tool_result_bytes")]
+    pub max_tool_result_bytes: usize,
+    #[serde(default = "default_max_tool_duration_secs")]
+    pub max_tool_duration_secs: u64,
+    #[serde(default = "default_api_retries")]
+    pub api_retries: u32,
 }
 
 fn default_true() -> bool {
@@ -119,6 +129,26 @@ fn default_max_context_bytes() -> usize {
     32_000
 }
 
+fn default_max_tool_rounds() -> usize {
+    30
+}
+
+fn default_max_tool_tokens() -> usize {
+    48_000
+}
+
+fn default_max_tool_result_bytes() -> usize {
+    8_192
+}
+
+fn default_max_tool_duration_secs() -> u64 {
+    300
+}
+
+fn default_api_retries() -> u32 {
+    2
+}
+
 impl Default for AiSafetyGateConfig {
     fn default() -> Self {
         Self {
@@ -129,6 +159,11 @@ impl Default for AiSafetyGateConfig {
             mcp_tool_policy: AiToolPermissionPolicy::ReadOnly,
             require_sql_confirm: true,
             max_context_bytes: 32_000,
+            max_tool_rounds: 30,
+            max_tool_tokens: 48_000,
+            max_tool_result_bytes: 8_192,
+            max_tool_duration_secs: 300,
+            api_retries: 2,
         }
     }
 }
@@ -495,4 +530,39 @@ pub struct Suggestion {
     pub description: String,
     pub sql: Option<String>,
     pub impact: String,
+}
+
+#[cfg(test)]
+mod safety_gate_serde_tests {
+    use super::AiSafetyGateConfig;
+
+    #[test]
+    fn old_profiles_get_new_tool_loop_and_retry_defaults() {
+        let gate: AiSafetyGateConfig =
+            serde_json::from_str(r#"{"maxSampleRows":3}"#).expect("legacy gate");
+        assert_eq!(gate.max_tool_rounds, 30);
+        assert_eq!(gate.max_tool_tokens, 48_000);
+        assert_eq!(gate.max_tool_result_bytes, 8_192);
+        assert_eq!(gate.max_tool_duration_secs, 300);
+        assert_eq!(gate.api_retries, 2);
+    }
+
+    #[test]
+    fn configured_tool_loop_and_retry_values_round_trip() {
+        let gate = AiSafetyGateConfig {
+            max_tool_rounds: 12,
+            max_tool_tokens: 9_000,
+            max_tool_result_bytes: 1_024,
+            max_tool_duration_secs: 45,
+            api_retries: 0,
+            ..AiSafetyGateConfig::default()
+        };
+        let encoded = serde_json::to_string(&gate).expect("serialize gate");
+        let decoded: AiSafetyGateConfig = serde_json::from_str(&encoded).expect("deserialize gate");
+        assert_eq!(decoded.max_tool_rounds, 12);
+        assert_eq!(decoded.max_tool_tokens, 9_000);
+        assert_eq!(decoded.max_tool_result_bytes, 1_024);
+        assert_eq!(decoded.max_tool_duration_secs, 45);
+        assert_eq!(decoded.api_retries, 0);
+    }
 }

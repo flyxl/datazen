@@ -235,6 +235,11 @@ const pack = {
   'settings.ai.egressUnrestricted':
     '完全許可（完全な結果セットを許可、ローカル/社内ネットワーク限定）',
   'settings.ai.maxSampleRows': '最大サンプル行数',
+  'settings.ai.maxToolRounds': '最大ツールラウンド数',
+  'settings.ai.apiRetries': 'API 再試行回数',
+  'settings.ai.maxToolTokens': '最大ツールトークン数',
+  'settings.ai.maxToolResultBytes': 'ツール結果の最大バイト数',
+  'settings.ai.maxToolDurationSecs': 'ツール最大時間（秒）',
   'settings.ai.dbToolPolicy': 'データベースツール権限',
   'settings.ai.mcpToolPolicy': 'MCP ツール権限',
   'settings.ai.policyDisabled': '無効',

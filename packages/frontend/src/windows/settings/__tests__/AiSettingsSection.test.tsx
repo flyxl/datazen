@@ -72,6 +72,15 @@ describe('AiSettingsSection', () => {
       expect(screen.getByText('settings.ai.tabBasic')).toBeDefined();
       expect(screen.getByText('settings.ai.tabSafety')).toBeDefined();
     });
+
+    fireEvent.click(screen.getByText('settings.ai.tabSafety'));
+    await waitFor(() => {
+      expect(screen.getByText(/settings\.ai\.maxToolRounds/)).toBeDefined();
+      expect(screen.getByText(/settings\.ai\.apiRetries/)).toBeDefined();
+      expect(screen.getByText(/settings\.ai\.maxToolTokens/)).toBeDefined();
+      expect(screen.getByText(/settings\.ai\.maxToolResultBytes/)).toBeDefined();
+      expect(screen.getByText(/settings\.ai\.maxToolDurationSecs/)).toBeDefined();
+    });
   });
 
   it('renders empty state when no profiles exist', () => {

@@ -24,6 +24,7 @@ pub mod ownership;
 pub mod ports;
 pub mod prompt_resolver;
 pub mod response;
+pub mod retry;
 pub mod schema_context;
 pub mod schema_doc;
 pub mod schema_pipeline;

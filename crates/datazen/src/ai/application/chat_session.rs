@@ -19,7 +19,7 @@ use super::prompt_resolver::PromptResolver;
 use super::schema_pipeline::{compose_schema_system_suffix, PromptSeed, SchemaContextPipeline};
 use super::sql_generation::build_sql_generation_request;
 use super::tool_loop::{run_streaming_tool_loop, AiToolContext, AiToolLoopHost, StreamCallback};
-use super::tools::db_tool_definitions;
+use super::tools::{db_tool_definitions, ToolLoopLimits};
 use crate::ai::ctx_yaml::extract_ctx_yaml_tables;
 use crate::ai::domain::budget;
 use crate::ai::domain::safety::redact_for_gate;
@@ -195,7 +195,7 @@ pub async fn run_chat_session(
         on_chunk,
         &input.request_id,
         request,
-        10,
+        ToolLoopLimits::from_gate(&env.gate),
         "ai_chat",
         &env.gate,
     )
@@ -348,7 +348,7 @@ pub async fn run_sql_generation_session(
             on_chunk,
             &input.request_id,
             request,
-            10,
+            ToolLoopLimits::default(),
             "ai_generate_sql",
             &env.gate,
         )
