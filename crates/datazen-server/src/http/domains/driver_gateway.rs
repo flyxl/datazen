@@ -58,6 +58,9 @@
 //!   `unwrap_or(true)` 同缺省）。
 //! * 动作词：`driver_command_{command}`（如 `driver_command_query`）——
 //!   payload 是 §2.4 白名单投影（四键），命令名只能住在 `action` 开放词表。
+//! * 流式请求体的 `applyResultLimit`（桌面 `unwrap_or(true)` 同缺省）控制
+//!   结果限额是否注入 `input`（只对 `query` 生效，桌面 streaming 同款门）；
+//!   非流请求体没有该字段（桌面同形状），限额恒注入。
 //! * 成功 → `AuditOutcome::Succeeded`；执行失败 → `Failed` + 错误码
 //!   （桌面 `record_sql_command_outcome` 的成败两录同语义；流式路径 202 已
 //!   返回，审计是失败事实的唯一服务端账面）。闸序/编排拒绝（400/403/404/503
@@ -377,6 +380,7 @@ async fn orchestrate_command(
     state: &DriverGatewayState,
     driver: &dyn DatabaseDriver,
     bound: bool,
+    apply_result_limit: bool,
     command: &str,
     input: &mut Value,
     database: Option<&str>,
@@ -390,8 +394,9 @@ async fn orchestrate_command(
     // `bound` 按路径传：会话绑定 true / driverType 直取 false（桌面同参）。
     validate_invocation(&definition, bound, None, false).map_err(WorkflowError::Validation)?;
     let is_sql_command = matches!(definition.id.as_str(), "query" | "execute");
-    if definition.id == "query" {
-        // 结果限额随执行设置（与 MCP query 工具同一 `ExecutionSettings` 面）。
+    if definition.id == "query" && apply_result_limit {
+        // 结果限额随执行设置（与 MCP query 工具同一 `ExecutionSettings` 面）；
+        // 流式路径按请求体开关（桌面 streaming 同款门），其余路径恒开。
         state.settings.apply_result_limit(input);
     }
     if is_sql_command {
@@ -479,6 +484,7 @@ async fn handler_execute_command(
                 body.input,
                 body.database,
                 body.schema,
+                true,
             )
             .await;
             finish_with_history(
@@ -549,7 +555,7 @@ async fn run_driver_direct(
     database: Option<&str>,
     schema: Option<&str>,
 ) -> Result<CommandResult, WorkflowError> {
-    orchestrate_command(state, driver, false, command, &mut input, database, schema).await?;
+    orchestrate_command(state, driver, false, true, command, &mut input, database, schema).await?;
     // 句柄消费（一次有效 + 归属核对）：执行编排用掉它的唯一一跳。同一请求
     // 内的冒领不可能成立（句柄不离开 handler），这一跳是资源生命周期的
     // 正常终结；核对失败按环境不可用回答（fail-closed）。
@@ -579,12 +585,14 @@ async fn run_session_bound(
     mut input: Value,
     database: Option<String>,
     schema: Option<String>,
+    apply_result_limit: bool,
 ) -> Result<CommandResult, WorkflowError> {
     let driver = connection_driver(state, connection_id).await?;
     orchestrate_command(
         state,
         driver.as_ref(),
         true,
+        apply_result_limit,
         &command,
         &mut input,
         database.as_deref(),
@@ -793,6 +801,7 @@ async fn handler_execute_stream(
         database: body.database,
         schema: body.schema,
         stream_id: stream_id.clone(),
+        apply_result_limit: body.apply_result_limit.unwrap_or(true),
         record_history: body.record_history.unwrap_or(true),
     };
     tokio::spawn(task.run());
@@ -812,6 +821,9 @@ struct StreamExecutionTask {
     database: Option<String>,
     schema: Option<String>,
     stream_id: StreamId,
+    /// 请求体 `applyResultLimit`（缺省 true，桌面同缺省）：`query` 的结果
+    /// 限额注入开关（模块头「命令历史」同一段登记）。
+    apply_result_limit: bool,
     record_history: bool,
 }
 
@@ -831,6 +843,7 @@ impl StreamExecutionTask {
             self.input.clone(),
             self.database.clone(),
             self.schema.clone(),
+            self.apply_result_limit,
         )
         .await;
         match outcome {
@@ -896,68 +909,64 @@ impl StreamExecutionTask {
 
     /// `CommandResult` → 桌面词汇帧序列（模块头映射表）：查询形状逐语句
     /// statementStart → rows（500 行/帧）→ statementEnd；收尾 done 终态帧。
-    async fn publish_result_frames(&mut self, result: &CommandResult) -> i64 {
+    /// 返回值是**终态帧**（done）的 sequence——审计 `streamRef` 的落点；
+    /// 中间帧的 sequence 不进账。
+    async fn publish_result_frames(&self, result: &CommandResult) -> i64 {
         let data = &result.data;
         let statements = data
             .get("results")
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default();
-        let mut last = 0i64;
         for (index, statement) in statements.iter().enumerate() {
             let columns = statement
                 .get("columns")
                 .cloned()
                 .and_then(|value| serde_json::from_value::<Vec<ColumnInfo>>(value).ok())
                 .unwrap_or_default();
-            last = self
-                .publish_query_frame(QueryStreamEvent::StatementStart {
-                    index,
-                    sql: statement
-                        .get("sql")
-                        .and_then(Value::as_str)
-                        .unwrap_or_default()
-                        .to_owned(),
-                    columns,
-                })
-                .await;
+            self.publish_query_frame(QueryStreamEvent::StatementStart {
+                index,
+                sql: statement
+                    .get("sql")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_owned(),
+                columns,
+            })
+            .await;
             let rows: Vec<Vec<Option<datazen_driver_api::Value>>> = statement
                 .get("rows")
                 .cloned()
                 .and_then(|value| serde_json::from_value(value).ok())
                 .unwrap_or_default();
             for chunk in rows.chunks(QUERY_STREAM_BATCH_SIZE) {
-                last = self
-                    .publish_query_frame(QueryStreamEvent::Rows {
-                        index,
-                        rows: chunk.to_vec(),
-                    })
-                    .await;
-            }
-            last = self
-                .publish_query_frame(QueryStreamEvent::StatementEnd {
+                self.publish_query_frame(QueryStreamEvent::Rows {
                     index,
-                    rows_affected: statement.get("rowsAffected").and_then(Value::as_u64),
-                    execution_time_ms: statement
-                        .get("executionTimeMs")
-                        .and_then(Value::as_u64)
-                        .unwrap_or(0),
-                    truncated: statement
-                        .get("truncated")
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false),
+                    rows: chunk.to_vec(),
                 })
                 .await;
-        }
-        last = self
-            .publish_query_frame(QueryStreamEvent::Done {
-                total_time_ms: data
-                    .get("totalTimeMs")
+            }
+            self.publish_query_frame(QueryStreamEvent::StatementEnd {
+                index,
+                rows_affected: statement.get("rowsAffected").and_then(Value::as_u64),
+                execution_time_ms: statement
+                    .get("executionTimeMs")
                     .and_then(Value::as_u64)
                     .unwrap_or(0),
+                truncated: statement
+                    .get("truncated")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
             })
             .await;
-        last
+        }
+        self.publish_query_frame(QueryStreamEvent::Done {
+            total_time_ms: data
+                .get("totalTimeMs")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+        })
+        .await
     }
 
     /// 错误/超时终态帧：统一事件词汇的既有 `executionChanged`
