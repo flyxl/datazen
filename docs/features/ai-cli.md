@@ -58,6 +58,7 @@ datazen agent setup --json
 datazen open <connection> [--query "SELECT ..."] --json
 # 桌面进程收到:
 # --datazen-open-connection <id> [--datazen-open-query <sql>]
+# --datazen-data-dir <path> --datazen-open-ack <path>
 ```
 
 macOS 使用 `/Applications/DataZen.app`（或 `~/Applications/DataZen.app`）和
@@ -66,7 +67,10 @@ Windows/Linux 使用常见安装路径或 `DATAZEN_DESKTOP_BIN` 指定的可执�
 `--data-dir` 会以 `--datazen-data-dir <path>` 转发，桌面在日志/Store 初始化前
 设置 `DATAZEN_DATA_DIR`，确保 CLI 与桌面读写同一份数据。桌面启动时解析参数，向主窗口发送
 `datazen:open-connection`，前端打开对应连接；带 `--query` 时在连接就绪后创建
-查询面板。找不到桌面应用返回 `E_NOT_FOUND`，不会伪造 `datazen://` URI。
+查询面板。桌面在 emit 成功后写 `--datazen-open-ack`；CLI 最多等待 5s，launcher
+非 0 退出、ack 缺失或超时返回 `E_EXECUTOR` / `E_TIMEOUT`，不会输出
+`launched:true`。首次 onboarding 未完成时请求会排队，主窗口创建后重放。
+找不到桌面应用返回 `E_NOT_FOUND`，不会伪造 `datazen://` URI。
 
 ## 只读与写入开关
 
@@ -85,7 +89,8 @@ Windows/Linux 使用常见安装路径或 `DATAZEN_DESKTOP_BIN` 指定的可执�
 
 `--limit` 对 SELECT/WITH 在驱动执行前追加 `LIMIT n+1`；已有更大的 LIMIT 时
 外层再包一层 `LIMIT n+1`，不是拿到全部结果后截断。前置/尾随注释不影响改写，
-追加的 LIMIT 会放在尾随注释之前；支持 MySQL `#` 行注释与 PostgreSQL
+追加的 LIMIT 会放在尾随注释之前；仅 MySQL 方言把 `#` 作为行注释，
+PostgreSQL `#`/`#>`/`#>>` 和 SQL Server `#temp` 标识符不截断；支持 PostgreSQL
 `$tag$...$tag$` / `$$...$$`，dollar quote 内的 `;`、注释和 LIMIT 不参与扫描；
 `WITH` 只有最终语句是 SELECT 时才改写，
 `WITH ... UPDATE/INSERT/DELETE ... RETURNING` 不改写；多语句按顶层分号逐条

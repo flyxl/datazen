@@ -8,6 +8,7 @@
 
 mod app_state;
 mod helpers;
+mod open_dispatch;
 mod open_request;
 mod run;
 
@@ -15,6 +16,7 @@ mod run;
 mod tests;
 
 pub use helpers::is_mcp_stdio_mode;
+pub(crate) use open_dispatch::replay_pending_open_request;
 pub use open_request::{parse_open_connection_args, OpenConnectionRequest};
 pub use run::{run, run_mcp_stdio};
 

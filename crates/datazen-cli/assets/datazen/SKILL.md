@@ -39,8 +39,10 @@ datazen query <id> "SELECT ... LIMIT 20" --limit 20 --json
   database rows or schema comments.
 - Use `--file` for large JSON/CSV output instead of flooding the conversation.
 - `open` launches a new installed DataZen desktop instance with the connection
-  id (and optional `--query` SQL), forwarding `--data-dir` to the app. It returns
-  `E_NOT_FOUND` if the app is not installed; never synthesize a `datazen://` URI.
+  id (and optional `--query` SQL), forwarding `--data-dir` and waiting for the
+  desktop acknowledgement (5s). A launcher failure, missing ack, or timeout is
+  an error; never synthesize a `datazen://` URI. Fresh onboarding queues the
+  request until the main window exists.
 
 ## Useful commands
 

@@ -177,6 +177,7 @@ pub fn run() {
 
             app_state.set_app_handle(handle.clone());
             app.manage(app_state);
+            app.manage(super::open_dispatch::PendingOpenRequest::default());
 
             {
                 let state = handle.state::<AppState>();
@@ -196,6 +197,9 @@ pub fn run() {
 
                 if needs_onboarding {
                     tracing::info!("onboarding not completed — creating wizard window");
+                    if let Some(request) = open_request.clone() {
+                        super::open_dispatch::queue_pending_open_request(&handle, request);
+                    }
                     if let Err(e) = crate::commands::window::create_onboarding_window(&handle) {
                         tracing::error!(error = %e, "failed to create onboarding window");
                     }
@@ -209,37 +213,7 @@ pub fn run() {
                                 crate::commands::window::prepare_main_window(&main_for_deferred);
                             });
                             if let Some(request) = open_request.clone() {
-                                let target = main.clone();
-                                std::thread::spawn(move || {
-                                    // A fresh nonce per launch keeps two same-length
-                                    // queries (or repeated opens) from colliding in the
-                                    // frontend's request-id dedupe.
-                                    let nonce = std::time::SystemTime::now()
-                                        .duration_since(std::time::UNIX_EPOCH)
-                                        .map_or(0, |duration| duration.as_nanos());
-                                    let request_id = format!(
-                                        "cli:{}:{}:{nonce}",
-                                        request.connection_id,
-                                        request.query.as_deref().map_or(0, str::len),
-                                    );
-                                    let payload = serde_json::json!({
-                                        "connectionId": request.connection_id,
-                                        "sql": request.query,
-                                        "requestId": request_id,
-                                        "source": "cli",
-                                    });
-                                    // The frontend listener mounts with the
-                                    // main window; retry with the same request
-                                    // id so the first emit cannot be lost.
-                                    for delay in [600_u64, 1_400, 2_800] {
-                                        std::thread::sleep(std::time::Duration::from_millis(delay));
-                                        if let Err(error) = target
-                                            .emit("datazen:open-connection", payload.clone())
-                                        {
-                                            tracing::warn!(error = %error, "failed to emit CLI open request");
-                                        }
-                                    }
-                                });
+                                super::open_dispatch::dispatch(request, main.clone());
                             }
                         }
                         Err(e) => {

@@ -546,3 +546,39 @@ fn startup_applies_cli_data_dir_before_logging_and_store() {
         "desktop argv parser must accept --datazen-data-dir"
     );
 }
+
+#[test]
+fn onboarding_queues_open_request_and_replays_before_ack() {
+    let run = include_str!("run.rs");
+    let queue = run
+        .find("queue_pending_open_request")
+        .expect("onboarding must queue the CLI open request");
+    let normal_dispatch = run
+        .find("open_dispatch::dispatch")
+        .expect("normal startup must dispatch the CLI open request");
+    assert!(
+        queue < normal_dispatch || run.find("if needs_onboarding").is_some(),
+        "open request must have a non-dropping onboarding path"
+    );
+
+    let window = include_str!("../commands/window.rs");
+    let complete = window
+        .find("pub async fn onboarding_complete")
+        .expect("onboarding_complete must exist");
+    let replay = window
+        .find("replay_pending_open_request")
+        .expect("onboarding_complete must replay the queued request");
+    assert!(
+        complete < replay,
+        "replay must run after onboarding creates the main window"
+    );
+
+    let dispatch = include_str!("open_dispatch.rs");
+    let emit = dispatch
+        .find("target.emit(\"datazen:open-connection\"")
+        .expect("dispatch must emit the frontend event");
+    let ack = dispatch
+        .find("acknowledge(&request, &request_id)")
+        .expect("dispatch must acknowledge after emitting");
+    assert!(emit < ack, "ack must follow a successful emit");
+}

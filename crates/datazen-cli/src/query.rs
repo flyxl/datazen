@@ -131,7 +131,7 @@ pub struct DriverExecutor {
 impl QueryExecutor for DriverExecutor {
     async fn execute(&self, request: &QueryRequest) -> Result<QueryResult, CliError> {
         ensure_supported_host_wiring(&self.config)?;
-        let sql = limited_sql(&request.sql, request.limit);
+        let sql = limited_sql(&request.sql, request.limit, &self.config.database_type);
         execute_driver_query(&self.config, &sql).await
     }
 }
@@ -164,8 +164,15 @@ pub fn ensure_supported_host_wiring(config: &ConnectionConfig) -> Result<(), Cli
 /// truncation. Leading/trivia comments are skipped for classification, the cap
 /// is inserted before trailing comments, `WITH` only accepts a final SELECT,
 /// and multi-statement payloads are left untouched.
-fn limited_sql(sql: &str, limit: usize) -> String {
+fn limited_sql(sql: &str, limit: usize, database_type: &str) -> String {
     let cap = limit.min(u32::MAX as usize - 1) as u32;
+    // MySQL treats `#` as a line comment. PostgreSQL uses `#`, `#>`, `#>>` as
+    // operators and SQL Server uses `#name` for temp tables, so only enable
+    // hash comments for MySQL-family dialects.
+    let hash_comments = matches!(
+        database_type.trim().to_ascii_lowercase().as_str(),
+        "mysql" | "mariadb" | "doris" | "starrocks"
+    );
     // A multi-statement payload cannot take one trailing LIMIT. Split on
     // top-level semicolons and cap every statement independently; non-SELECT
     // statements (including CTE DML) pass through untouched.
@@ -179,7 +186,7 @@ fn limited_sql(sql: &str, limit: usize) -> String {
             index = end;
         } else if rest.starts_with("--") {
             index = skip_line_comment(sql, index, 2);
-        } else if rest.starts_with('#') {
+        } else if hash_comments && rest.starts_with('#') {
             index = skip_line_comment(sql, index, 1);
         } else if rest.starts_with("/*") {
             index = skip_block_comment(sql, index);
@@ -187,18 +194,21 @@ fn limited_sql(sql: &str, limit: usize) -> String {
             index = skip_quoted(sql, index, ch);
         } else {
             if ch == ';' {
-                out.push_str(&limited_statement(&sql[start..=index], cap));
+                out.push_str(&limited_statement(&sql[start..=index], cap, hash_comments));
                 start = index + 1;
             }
             index += ch.len_utf8();
         }
     }
-    out.push_str(&limited_statement(&sql[start..], cap));
+    out.push_str(&limited_statement(&sql[start..], cap, hash_comments));
     out
 }
 
-fn limited_statement(sql: &str, cap: u32) -> String {
-    let (Some(first), Some(last)) = (first_code_index(sql), last_code_end(sql)) else {
+fn limited_statement(sql: &str, cap: u32, hash_comments: bool) -> String {
+    let (Some(first), Some(last)) = (
+        first_code_index(sql, hash_comments),
+        last_code_end(sql, hash_comments),
+    ) else {
         return sql.to_string();
     };
     let leading = &sql[..first];
@@ -207,7 +217,7 @@ fn limited_statement(sql: &str, cap: u32) -> String {
     // Mask strings/identifiers, dollar-quoted bodies and comments before
     // tokenizing. Their content can contain `LIMIT`, `;`, `#` or `--` and must
     // never change where the real cap is inserted.
-    let masked = mask_sql(core);
+    let masked = mask_sql(core, hash_comments);
     let tokens = tokenize_sql(&masked);
     let Some(main) = find_main_verb_index(&tokens) else {
         return sql.to_string();
@@ -240,7 +250,7 @@ fn limited_statement(sql: &str, cap: u32) -> String {
 }
 
 /// Skip whitespace and leading comments (`--`, `#`, `/* */`).
-fn first_code_index(sql: &str) -> Option<usize> {
+fn first_code_index(sql: &str, hash_comments: bool) -> Option<usize> {
     let mut index = 0;
     while index < sql.len() {
         let rest = &sql[index..];
@@ -249,7 +259,7 @@ fn first_code_index(sql: &str) -> Option<usize> {
             index += ch.len_utf8();
         } else if rest.starts_with("--") {
             index = skip_line_comment(sql, index, 2);
-        } else if rest.starts_with('#') {
+        } else if hash_comments && rest.starts_with('#') {
             index = skip_line_comment(sql, index, 1);
         } else if rest.starts_with("/*") {
             index = skip_block_comment(sql, index);
@@ -262,7 +272,7 @@ fn first_code_index(sql: &str) -> Option<usize> {
 
 /// End index (exclusive) of the last code character, before trailing
 /// whitespace/comments and the statement-ending semicolon.
-fn last_code_end(sql: &str) -> Option<usize> {
+fn last_code_end(sql: &str, hash_comments: bool) -> Option<usize> {
     let mut index = 0;
     let mut last = None;
     while index < sql.len() {
@@ -277,7 +287,7 @@ fn last_code_end(sql: &str) -> Option<usize> {
             index = skip_line_comment(sql, index, 2);
             continue;
         }
-        if rest.starts_with('#') {
+        if hash_comments && rest.starts_with('#') {
             index = skip_line_comment(sql, index, 1);
             continue;
         }
@@ -302,7 +312,7 @@ fn last_code_end(sql: &str) -> Option<usize> {
 
 /// Replace comments and quoted/dollar-quoted bodies with spaces so keyword
 /// scanning cannot see tokens that are actually data.
-fn mask_sql(sql: &str) -> String {
+fn mask_sql(sql: &str, hash_comments: bool) -> String {
     let mut out = String::with_capacity(sql.len());
     let mut index = 0;
     while index < sql.len() {
@@ -312,7 +322,7 @@ fn mask_sql(sql: &str) -> String {
             Some(end)
         } else if rest.starts_with("--") {
             Some(skip_line_comment(sql, index, 2))
-        } else if rest.starts_with('#') {
+        } else if hash_comments && rest.starts_with('#') {
             Some(skip_line_comment(sql, index, 1))
         } else if rest.starts_with("/*") {
             Some(skip_block_comment(sql, index))
@@ -745,6 +755,13 @@ pub async fn run_with_executor(
 
 #[cfg(test)]
 mod tests {
+    fn limited_pg(sql: &str, limit: usize) -> String {
+        limited_sql(sql, limit, "postgresql")
+    }
+
+    fn limited_mysql(sql: &str, limit: usize) -> String {
+        limited_sql(sql, limit, "mysql")
+    }
     use super::*;
     use datazen_driver_api::{ColumnInfo, ConnectionConfig};
     use std::sync::Mutex;
@@ -976,16 +993,16 @@ mod tests {
     #[test]
     fn limit_is_pushed_into_select_but_not_dml() {
         assert_eq!(
-            limited_sql("SELECT * FROM t", 10),
+            limited_pg("SELECT * FROM t", 10),
             "SELECT * FROM t LIMIT 11"
         );
         assert_eq!(
-            limited_sql("WITH x AS (SELECT 1) SELECT * FROM x;", 5),
+            limited_pg("WITH x AS (SELECT 1) SELECT * FROM x;", 5),
             "WITH x AS (SELECT 1) SELECT * FROM x LIMIT 6;"
         );
-        assert_eq!(limited_sql("UPDATE t SET x = 1", 10), "UPDATE t SET x = 1");
+        assert_eq!(limited_pg("UPDATE t SET x = 1", 10), "UPDATE t SET x = 1");
         assert_eq!(
-            limited_sql("SELECT * FROM t LIMIT 100", 1),
+            limited_pg("SELECT * FROM t LIMIT 100", 1),
             "SELECT * FROM (SELECT * FROM t LIMIT 100) AS datazen_limit LIMIT 2"
         );
     }
@@ -993,39 +1010,63 @@ mod tests {
     #[test]
     fn limit_respects_leading_and_trailing_comments() {
         assert_eq!(
-            limited_sql("-- lead\nSELECT * FROM t -- tail", 1),
+            limited_pg("-- lead\nSELECT * FROM t -- tail", 1),
             "-- lead\nSELECT * FROM t LIMIT 2 -- tail"
         );
         assert_eq!(
-            limited_sql("/* lead */ SELECT 1; -- tail", 1),
+            limited_pg("/* lead */ SELECT 1; -- tail", 1),
             "/* lead */ SELECT 1 LIMIT 2; -- tail"
         );
         assert_eq!(
-            limited_sql("SELECT 1 /* tail */", 1),
+            limited_pg("SELECT 1 /* tail */", 1),
             "SELECT 1 LIMIT 2 /* tail */"
         );
     }
 
     #[test]
-    fn limit_ignores_dollar_quotes_and_hash_comments() {
+    fn limit_ignores_dollar_quotes() {
         assert_eq!(
-            limited_sql("SELECT $$a;b$$ AS s -- limit", 1),
+            limited_pg("SELECT $$a;b$$ AS s -- limit", 1),
             "SELECT $$a;b$$ AS s LIMIT 2 -- limit"
         );
         assert_eq!(
-            limited_sql("SELECT $tag$; -- LIMIT 99$tag$ AS s", 1),
+            limited_pg("SELECT $tag$; -- LIMIT 99$tag$ AS s", 1),
             "SELECT $tag$; -- LIMIT 99$tag$ AS s LIMIT 2"
         );
         assert_eq!(
-            limited_sql("SELECT SLEEP(0.2) # tail", 1),
+            limited_pg("SELECT 1; SELECT $$x;y$$", 1),
+            "SELECT 1 LIMIT 2; SELECT $$x;y$$ LIMIT 2"
+        );
+    }
+
+    #[test]
+    fn hash_is_a_line_comment_only_for_mysql_dialects() {
+        // PostgreSQL operators: `#` and `#>` are code, not comments.
+        assert_eq!(limited_pg("SELECT 5 # 3", 5), "SELECT 5 # 3 LIMIT 6");
+        assert_eq!(
+            limited_pg("SELECT '{\"a\":1}'::jsonb #> '{a}'", 5),
+            "SELECT '{\"a\":1}'::jsonb #> '{a}' LIMIT 6"
+        );
+        assert_eq!(
+            limited_pg("SELECT '{\"a\":1}'::jsonb #>> '{a}'", 5),
+            "SELECT '{\"a\":1}'::jsonb #>> '{a}' LIMIT 6"
+        );
+        // SQL Server temp-table identifiers start with `#`; do not cut them.
+        assert_eq!(
+            limited_sql("SELECT * FROM #temp", 5, "sqlserver"),
+            "SELECT * FROM #temp LIMIT 6"
+        );
+        // MySQL keeps the comment after the injected LIMIT.
+        assert_eq!(
+            limited_mysql("SELECT SLEEP(0.2) # tail", 1),
             "SELECT SLEEP(0.2) LIMIT 2 # tail"
         );
         assert_eq!(
-            limited_sql("# lead\nSELECT 1 # tail", 1),
+            limited_mysql("# lead\nSELECT 1 # tail", 1),
             "# lead\nSELECT 1 LIMIT 2 # tail"
         );
         assert_eq!(
-            limited_sql("SELECT 1; SELECT $$x;y$$ # tail", 1),
+            limited_mysql("SELECT 1; SELECT $$x;y$$ # tail", 1),
             "SELECT 1 LIMIT 2; SELECT $$x;y$$ LIMIT 2 # tail"
         );
     }
@@ -1033,34 +1074,34 @@ mod tests {
     #[test]
     fn limit_respects_with_final_statement_and_multiple_statements() {
         assert_eq!(
-            limited_sql("WITH x AS (SELECT 1) SELECT * FROM x -- tail", 1),
+            limited_pg("WITH x AS (SELECT 1) SELECT * FROM x -- tail", 1),
             "WITH x AS (SELECT 1) SELECT * FROM x LIMIT 2 -- tail"
         );
         assert_eq!(
-            limited_sql("WITH x AS (SELECT 1) UPDATE t SET x = 1 RETURNING x", 1),
+            limited_pg("WITH x AS (SELECT 1) UPDATE t SET x = 1 RETURNING x", 1),
             "WITH x AS (SELECT 1) UPDATE t SET x = 1 RETURNING x"
         );
         assert_eq!(
-            limited_sql("WITH x AS (DELETE FROM t RETURNING 1) SELECT * FROM x", 1),
+            limited_pg("WITH x AS (DELETE FROM t RETURNING 1) SELECT * FROM x", 1),
             "WITH x AS (DELETE FROM t RETURNING 1) SELECT * FROM x LIMIT 2"
         );
         assert_eq!(
-            limited_sql(
+            limited_pg(
                 "WITH x AS (SELECT 1) INSERT INTO t SELECT * FROM x RETURNING id",
                 1
             ),
             "WITH x AS (SELECT 1) INSERT INTO t SELECT * FROM x RETURNING id"
         );
         assert_eq!(
-            limited_sql("WITH x AS (SELECT 1) DELETE FROM t RETURNING id", 1),
+            limited_pg("WITH x AS (SELECT 1) DELETE FROM t RETURNING id", 1),
             "WITH x AS (SELECT 1) DELETE FROM t RETURNING id"
         );
         assert_eq!(
-            limited_sql("SELECT 1; SELECT 2", 1),
+            limited_pg("SELECT 1; SELECT 2", 1),
             "SELECT 1 LIMIT 2; SELECT 2 LIMIT 2"
         );
         assert_eq!(
-            limited_sql("SELECT 1; -- tail", 1),
+            limited_pg("SELECT 1; -- tail", 1),
             "SELECT 1 LIMIT 2; -- tail"
         );
     }

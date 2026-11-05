@@ -372,6 +372,13 @@ pub async fn onboarding_complete(app: AppHandle) -> Result<(), CommandError> {
         }
     }
 
+    // `datazen open` may have arrived before onboarding finished. Replay only
+    // after the main window exists so the event has a real listener and the
+    // waiting CLI receives its ack instead of a false `launched: true`.
+    if let Some(main) = app.get_webview_window("main") {
+        crate::bootstrap::replay_pending_open_request(&app, main);
+    }
+
     Ok(())
 }
 

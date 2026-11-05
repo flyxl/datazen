@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 use serde_json::{json, Value};
@@ -260,24 +260,31 @@ fn tunnel_config_fails_closed_instead_of_direct_connect() {
 }
 
 #[cfg(unix)]
-#[test]
-fn open_launches_desktop_with_argv_and_never_emits_a_uri() {
+fn fake_launcher(temp: &Path, exit_code: i32, write_ack: bool) -> (PathBuf, PathBuf) {
     use std::os::unix::fs::PermissionsExt;
 
-    let temp = TempDir::new().unwrap();
-    let connection = sqlite_connection(temp.path(), "local");
-    write_connections(temp.path(), json!([connection]));
-    let args_file = temp.path().join("launch-args.txt");
-    let script = temp.path().join("fake-datazen");
+    let args_file = temp.join("launch-args.txt");
+    let script = temp.join(format!("fake-datazen-{exit_code}-{write_ack}"));
+    let ack = if write_ack { 1 } else { 0 };
     std::fs::write(
         &script,
         format!(
-            "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\n",
+            "#!/bin/sh\n             printf '%s\\n' \"$@\" > '{}'\n             ack=''\n             prev=''\n             for arg in \"$@\"; do\n               if [ \"$prev\" = '--datazen-open-ack' ]; then ack=\"$arg\"; fi\n               prev=\"$arg\"\n             done\n             if [ {ack} -eq 1 ] && [ -n \"$ack\" ]; then\n               printf '%s\\n' '{{\"ok\":true}}' > \"$ack\"\n             fi\n             exit {exit_code}\n",
             args_file.display()
         ),
     )
     .unwrap();
     std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    (script, args_file)
+}
+
+#[cfg(unix)]
+#[test]
+fn open_launches_desktop_with_argv_and_never_emits_a_uri() {
+    let temp = TempDir::new().unwrap();
+    let connection = sqlite_connection(temp.path(), "local");
+    write_connections(temp.path(), json!([connection]));
+    let (script, args_file) = fake_launcher(temp.path(), 0, true);
 
     let output = run_env(
         temp.path(),
@@ -306,10 +313,54 @@ fn open_launches_desktop_with_argv_and_never_emits_a_uri() {
     assert!(args.contains("--datazen-open-query"), "{args}");
     assert!(args.contains("SELECT 1"), "{args}");
     assert!(args.contains("--datazen-data-dir"), "{args}");
+    assert!(args.contains("--datazen-open-ack"), "{args}");
     assert!(
         args.contains(temp.path().to_str().unwrap()),
         "data dir missing from {args}"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn open_fails_when_launcher_exits_nonzero_without_ack() {
+    let temp = TempDir::new().unwrap();
+    let connection = sqlite_connection(temp.path(), "local");
+    write_connections(temp.path(), json!([connection]));
+    let (script, _) = fake_launcher(temp.path(), 1, false);
+
+    let output = run_env(
+        temp.path(),
+        &["open", "local", "--json"],
+        &[("DATAZEN_DESKTOP_BIN", script.to_str().unwrap())],
+    );
+    assert_eq!(output.status.code(), Some(12));
+    assert!(output.stdout.is_empty());
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["code"], "E_EXECUTOR");
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("launched"));
+}
+
+#[cfg(unix)]
+#[test]
+fn open_times_out_when_launcher_exits_zero_without_ack() {
+    let temp = TempDir::new().unwrap();
+    let connection = sqlite_connection(temp.path(), "local");
+    write_connections(temp.path(), json!([connection]));
+    let (script, _) = fake_launcher(temp.path(), 0, false);
+
+    let output = run_env(
+        temp.path(),
+        &["open", "local", "--json"],
+        &[
+            ("DATAZEN_DESKTOP_BIN", script.to_str().unwrap()),
+            ("DATAZEN_OPEN_ACK_TIMEOUT_MS", "200"),
+        ],
+    );
+    assert_eq!(output.status.code(), Some(10));
+    assert!(output.stdout.is_empty());
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["code"], "E_TIMEOUT");
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("launched"));
 }
 
 #[test]

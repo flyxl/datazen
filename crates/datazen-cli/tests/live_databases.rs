@@ -172,6 +172,44 @@ fn postgres_dollar_quote_keeps_value_and_limit_contract() {
 }
 
 #[test]
+#[ignore = "requires a local PostgreSQL instance; set DATAZEN_TEST_PG_*"]
+fn postgres_hash_operators_survive_default_limit() {
+    let Some(port) = std::env::var("DATAZEN_TEST_PG_PORT").ok() else {
+        return;
+    };
+    let temp = TempDir::new().unwrap();
+    write_connections(
+        temp.path(),
+        connection(
+            "postgresql",
+            &env_or("DATAZEN_TEST_PG_HOST", "127.0.0.1"),
+            port.parse().unwrap(),
+            &env_or("DATAZEN_TEST_PG_DATABASE", "postgres"),
+            &env_or("DATAZEN_TEST_PG_USER", "postgres"),
+            &env_or("DATAZEN_TEST_PG_PASSWORD", ""),
+        ),
+    );
+    // No explicit --limit: the default cap must not turn `#`/`#>` into a
+    // comment or cut the SQL at the operator.
+    let output = run(
+        temp.path().to_str().unwrap(),
+        &[
+            "query",
+            "live",
+            "SELECT 5 # 3 AS x, '{\"a\":1}'::jsonb #> '{a}' AS y",
+            "--json",
+        ],
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["rows"][0][0], json!(6));
+}
+
+#[test]
 #[ignore = "requires a local MySQL instance; set DATAZEN_TEST_MYSQL_*"]
 fn mysql_sleep_with_hash_comment_is_limited() {
     let Some(port) = std::env::var("DATAZEN_TEST_MYSQL_PORT").ok() else {
