@@ -651,6 +651,64 @@ describe('AiChatPanel automatic context snapshot', () => {
     expect(document.querySelector('[data-testid="ai-auto-context-chips"]')).toBeNull();
   });
 
+  it('shows, removes, and sends the selection chip', () => {
+    const { getByTestId, queryByTestId, rerender } = render(
+      <AiChatPanel dbSessionId="c1" database="db" autoContext={{ selection: 'WHERE id=1' }} />,
+    );
+    expect(getByTestId('ai-auto-context-selection')).toHaveTextContent(
+      'chat.autoContext.selection',
+    );
+
+    fireEvent.change(getByTestId('chat-input'), { target: { value: 'explain' } });
+    fireEvent.click(getByTestId('chat-send'));
+    expect(aiState.sendChatMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ autoContext: { selection: 'WHERE id=1' } }),
+    );
+
+    // A changed host selection re-arms the chip; removing it then sends plain.
+    rerender(
+      <AiChatPanel dbSessionId="c1" database="db" autoContext={{ selection: 'WHERE id=2' }} />,
+    );
+    fireEvent.click(getByTestId('ai-auto-context-selection-remove'));
+    expect(queryByTestId('ai-auto-context-selection')).toBeNull();
+    fireEvent.change(getByTestId('chat-input'), { target: { value: 'plain' } });
+    fireEvent.click(getByTestId('chat-send'));
+    expect(aiState.sendChatMessage).toHaveBeenLastCalledWith(
+      expect.not.objectContaining({ autoContext: expect.anything() }),
+    );
+  });
+
+  it('does not resurrect a removed chip on an ordinary rerender', () => {
+    const { getByTestId, queryByTestId, rerender } = render(
+      <AiChatPanel dbSessionId="c1" database="db" autoContext={SNAPSHOT} />,
+    );
+    fireEvent.click(getByTestId('ai-auto-context-sql-remove'));
+    expect(queryByTestId('ai-auto-context-sql')).toBeNull();
+
+    rerender(
+      <AiChatPanel
+        dbSessionId="c1"
+        database="db"
+        autoContext={{ ...SNAPSHOT, resultPreview: { ...SNAPSHOT.resultPreview } }}
+      />,
+    );
+    expect(queryByTestId('ai-auto-context-sql')).toBeNull();
+  });
+
+  it('keeps the sent snapshot frozen when the host changes afterwards', () => {
+    const { getByTestId, rerender } = render(
+      <AiChatPanel dbSessionId="c1" database="db" autoContext={{ editorSql: 'SELECT 1' }} />,
+    );
+    fireEvent.change(getByTestId('chat-input'), { target: { value: 'first' } });
+    fireEvent.click(getByTestId('chat-send'));
+    const sent = aiState.sendChatMessage.mock.calls[0]?.[0];
+
+    rerender(
+      <AiChatPanel dbSessionId="c1" database="db" autoContext={{ editorSql: 'SELECT 2' }} />,
+    );
+    expect(sent?.autoContext).toEqual({ editorSql: 'SELECT 1' });
+  });
+
   it('does not attach an empty snapshot', () => {
     const { getByTestId } = render(<AiChatPanel dbSessionId="c1" database="db" />);
     fireEvent.change(getByTestId('chat-input'), { target: { value: 'hello' } });

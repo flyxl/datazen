@@ -39,6 +39,7 @@ import { metadataCache } from '../../components/sql-editor/metadata/metadataCach
 import type { QueryPanelProps } from './query/contracts';
 import { QuerySidebarSection, useQueryContextPath } from './query/QuerySidebarSection';
 import { QueryEditorSection } from './query/QueryEditorSection';
+import { clearEditorSelection, setEditorSelection } from '../../stores/editorSelectionStore';
 import { useQueryBuilderContribution } from './query/useQueryBuilderContribution';
 import {
   QueryTransactionModals,
@@ -124,6 +125,11 @@ export function QueryPanel({
   const togglePinResult = usePanelStore((s) => s.togglePinResult);
 
   const editorRef = useRef<SqlEditorHandle>(null);
+  const handleEditorSelectionChange = useCallback(
+    (selection: string) => setEditorSelection(panelId, selection),
+    [panelId],
+  );
+  useEffect(() => () => clearEditorSelection(panelId), [panelId]);
   const enhanced = useExtension(sqlEditorEnhancedEP);
   const bindParameterPolicy = useMemo(
     () => resolveSqlParameterPolicy(databaseType),
@@ -743,6 +749,7 @@ export function QueryPanel({
             dbSessionId={dbSessionId}
             databaseType={databaseType}
             editorRef={editorRef}
+            onSelectionChange={handleEditorSelectionChange}
             toolbarRef={toolbarRef}
             compactToolbar={compactToolbar}
             sql={exec.sql}

@@ -82,6 +82,8 @@ export interface UpdateListenerRefs {
   onChange: MutableRefObject<(value: string) => void>;
   onQualifiedPath: MutableRefObject<((parents: string[]) => void) | undefined>;
   lastParents: MutableRefObject<string[]>;
+  /** Optional selection channel used by chat auto-context. */
+  onSelectionChange?: MutableRefObject<((selection: string) => void) | undefined>;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -739,6 +741,8 @@ export function createUpdateListener(refs: UpdateListenerRefs): Extension {
       refs.onChange.current(update.state.doc.toString());
     }
     if (update.docChanged || update.selectionSet) {
+      const selected = update.state.selection.main;
+      refs.onSelectionChange?.current?.(update.state.sliceDoc(selected.from, selected.to));
       const parents = parseQualifiedPathParents(
         update.state.doc.toString(),
         update.state.selection.main.head,

@@ -324,7 +324,7 @@ async fn mock_provider_chat_auto_context_reaches_the_prompt() {
         None,
         None,
         Some("SELECT * FROM orders".into()),
-        None,
+        Some("WHERE id=1".into()),
         Some("syntax error near FROM".into()),
         Some(datazen::ai::chat_session::ChatResultPreview {
             columns: vec!["id".into()],
@@ -344,6 +344,11 @@ async fn mock_provider_chat_auto_context_reaches_the_prompt() {
         .find(|message| message.role == MessageRole::User)
         .expect("user message");
     assert!(user.content.contains("[Current SQL]"), "{}", user.content);
+    assert!(
+        user.content.contains("[Editor selection]\nWHERE id=1"),
+        "{}",
+        user.content
+    );
     assert!(
         user.content.contains("[Recent query error]"),
         "{}",

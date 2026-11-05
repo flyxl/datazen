@@ -13,6 +13,7 @@ import {
   type ServerEditability,
 } from '../../lib/resultEditability';
 import { useTableDataStore } from '../../stores/tableDataStore';
+import { useEditorSelectionStore } from '../../stores/editorSelectionStore';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { rowToRecord } from '../../lib/rowToRecord';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
@@ -151,6 +152,9 @@ export function ContentViewDrawers({
       ? s.queryExec.get(paneKey(activePanel.id, resolveFocusedPaneId(focusedPaneId)))
       : undefined,
   );
+  const activeEditorSelection = useEditorSelectionStore((s) =>
+    activePanel?.type === 'query' ? (s.byPanel[activePanel.id] ?? '') : '',
+  );
   const updateResultCell = usePanelStore((s) => s.updateResultCell);
   const updateQuerySql = usePanelStore((s) => s.updateSql);
 
@@ -185,13 +189,14 @@ export function ContentViewDrawers({
         : undefined;
     const snapshot: AiChatContextSnapshot = {
       editorSql: editorSql || undefined,
+      selection: activeEditorSelection.trim() || undefined,
       lastError: activeQueryExec.error || undefined,
       resultPreview,
     };
-    return snapshot.editorSql || snapshot.lastError || snapshot.resultPreview
+    return snapshot.editorSql || snapshot.selection || snapshot.lastError || snapshot.resultPreview
       ? snapshot
       : undefined;
-  }, [activePanel?.type, activeQueryExec, activeQueryResult]);
+  }, [activePanel?.type, activeQueryExec, activeQueryResult, activeEditorSelection]);
 
   // The write-back verdict of the result on screen. It is fetched per result
   // and dropped again when the result is replaced, so a verdict never outlives

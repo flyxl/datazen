@@ -159,6 +159,25 @@ describe('[tester] editorExtensions factories', () => {
     expect(onDropTable).not.toHaveBeenCalled();
   });
 
+  it('createUpdateListener reports the selected text on selection changes', () => {
+    const onSelectionChange = vi.fn();
+    const { view, cleanup } = mountView([
+      createUpdateListener({
+        onChange: { current: vi.fn() },
+        onQualifiedPath: { current: undefined },
+        lastParents: { current: [] },
+        onSelectionChange: { current: onSelectionChange },
+      }),
+    ]);
+    cleanups.push(cleanup);
+
+    view.dispatch({ selection: { anchor: 0, head: 'SELECT 1'.length } });
+    expect(onSelectionChange).toHaveBeenLastCalledWith('SELECT 1');
+
+    view.dispatch({ selection: { anchor: 9 } });
+    expect(onSelectionChange).toHaveBeenLastCalledWith('');
+  });
+
   it('createUpdateListener notifies onQualifiedPath when parents change', () => {
     const onChange = vi.fn();
     const onQualifiedPath = vi.fn();

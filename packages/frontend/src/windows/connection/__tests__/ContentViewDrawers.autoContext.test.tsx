@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ContentViewDrawers } from '../ContentViewDrawers';
 import { EMPTY_QUERY_EXEC, usePanelStore } from '../../../stores/panelStore';
 import { usePanelResultEdit } from '../../../stores/panelResultEdit';
+import { useEditorSelectionStore } from '../../../stores/editorSelectionStore';
 import type { Panel } from '../../../stores/panelStore';
 import type { AiChatContextSnapshot } from '../../../types';
 import type { StatementResult } from '../../../types';
@@ -20,6 +21,7 @@ vi.mock('../../../components/ai/AiChatPanel', () => ({
     <div
       data-testid="mock-ai-chat-panel"
       data-auto-sql={autoContext?.editorSql ?? ''}
+      data-auto-selection={autoContext?.selection ?? ''}
       data-auto-error={autoContext?.lastError ?? ''}
       data-auto-rows={String(autoContext?.resultPreview?.rows.length ?? 0)}
       data-auto-row-count={String(autoContext?.resultPreview?.rowCount ?? 0)}
@@ -71,6 +73,9 @@ function renderDrawers() {
 
 beforeEach(() => {
   usePanelResultEdit.setState({ verdicts: {}, resolving: {}, errors: {} });
+  useEditorSelectionStore.setState({
+    byPanel: { [PANEL.id]: '  WHERE id = 1  ' },
+  });
   usePanelStore.setState({
     panels: [PANEL],
     activePanelId: PANEL.id,
@@ -94,6 +99,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   usePanelStore.setState({ panels: [], activePanelId: null, queryExec: new Map() });
+  useEditorSelectionStore.setState({ byPanel: {} });
 });
 
 describe('ContentViewDrawers automatic chat context', () => {
@@ -102,6 +108,7 @@ describe('ContentViewDrawers automatic chat context', () => {
     const panel = document.querySelector('[data-testid="mock-ai-chat-panel"]')!;
 
     expect(panel.getAttribute('data-auto-sql')).toBe('SELECT id FROM orders');
+    expect(panel.getAttribute('data-auto-selection')).toBe('WHERE id = 1');
     expect(panel.getAttribute('data-auto-error')).toBe('syntax error near FROM');
     expect(panel.getAttribute('data-auto-rows')).toBe('5');
     expect(panel.getAttribute('data-auto-row-count')).toBe('7');

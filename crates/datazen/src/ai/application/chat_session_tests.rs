@@ -1132,3 +1132,33 @@ async fn chat_attaches_auto_context_before_picked_files() {
     assert!(user.content.contains("[Recent query error]"));
     assert!(user.content.contains("alice"));
 }
+
+#[test]
+fn auto_context_dedupes_a_result_preview_already_in_a_picked_file() {
+    let preview = preview(vec![row(1, "alice")], 1);
+    let rendered = render_result_preview(&preview).expect("rendered preview");
+    let input = snapshot_input(None, None, None, Some(preview));
+    let entries = vec![("rows.txt".into(), rendered)];
+
+    assert!(
+        build_auto_context_block(&input, &AiSafetyGateConfig::default(), &entries).is_none(),
+        "preview already present in the picked file must not be repeated"
+    );
+}
+
+#[test]
+fn auto_context_preview_caps_columns() {
+    let columns = (0..25).map(|i| format!("c{i}")).collect();
+    let preview = ChatResultPreview {
+        columns,
+        rows: vec![vec![serde_json::json!(1)]],
+        row_count: Some(1),
+        elapsed_ms: None,
+    };
+    let input = snapshot_input(None, None, None, Some(preview));
+    let block = build_auto_context_block(&input, &AiSafetyGateConfig::default(), &[])
+        .expect("preview block");
+
+    assert!(block.contains("c19"), "{block}");
+    assert!(!block.contains("c20"), "column 21 must be omitted: {block}");
+}
