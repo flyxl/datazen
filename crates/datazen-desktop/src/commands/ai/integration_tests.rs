@@ -1282,7 +1282,7 @@ async fn ai_chat_mcp_tool_roundtrip() {
         None,
         None,
         None,
-        None,
+        Some(datazen::ai::AiAgentMode::Agent),
     )
     .await
     .unwrap();
@@ -1364,7 +1364,7 @@ async fn ai_chat_mcp_and_db_same_round() {
         None,
         None,
         None,
-        None,
+        Some(datazen::ai::AiAgentMode::Agent),
     )
     .await
     .unwrap();
@@ -1468,7 +1468,7 @@ async fn ai_chat_ask_questions_with_executable_runs_tools_then_stops() {
         None,
         None,
         None,
-        None,
+        Some(datazen::ai::AiAgentMode::Agent),
     )
     .await
     .unwrap();

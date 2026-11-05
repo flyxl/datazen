@@ -455,7 +455,7 @@ describe('aiStore', () => {
       mockAiCommands.chat.mockResolvedValueOnce(undefined);
       await useAiStore.getState().sendWorkflowChatMessage({ content: 'gen workflow' });
       expect(mockAiCommands.chat).toHaveBeenCalledWith(
-        expect.objectContaining({ scenario: 'workflow_generate' }),
+        expect.objectContaining({ scenario: 'workflow_generate', agentMode: 'agent' }),
       );
       useAiStore.getState().clearWorkflowChat();
       expect(useAiStore.getState().workflowChat!.messages).toEqual([]);

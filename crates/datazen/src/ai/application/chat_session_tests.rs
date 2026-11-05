@@ -647,13 +647,18 @@ async fn chat_workflow_scenario_injects_connections_context() {
             include_schema: false,
             scenario: ChatScenario::WorkflowGenerate,
             context_tables: None,
-            agent_mode: AiAgentMode::Ask,
+            agent_mode: AiAgentMode::Agent,
         },
     )
     .await
     .expect("workflow chat completes");
 
     let request = provider.last_request().expect("request");
+    let tools = request.tools.as_ref().expect("workflow tools");
+    assert!(
+        tools.iter().any(|tool| tool.name == "list_tables"),
+        "workflow generation keeps DB tools under Agent mode"
+    );
     let system = &request.messages[0];
     assert!(
         system.content.contains("cfg-x available"),

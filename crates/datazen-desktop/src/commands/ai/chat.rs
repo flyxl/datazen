@@ -163,7 +163,13 @@ pub async fn ai_chat<R: tauri::Runtime>(
                 datazen::ai::chat_request::ChatScenario::Chat
             },
             context_tables,
-            agent_mode: agent_mode.unwrap_or_default(),
+            // Workflow generation keeps its historical tool access unless the
+            // caller explicitly picks a mode; plain chat defaults to Ask.
+            agent_mode: agent_mode.unwrap_or(if is_workflow {
+                AiAgentMode::Agent
+            } else {
+                AiAgentMode::Ask
+            }),
         },
     )
     .await

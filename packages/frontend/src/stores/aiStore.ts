@@ -434,7 +434,6 @@ export const useAiStore = create<AiStore>((set, get) => ({
       database,
       contentLen: content.length,
       includeSchema,
-      agentMode,
       historyLen: chatSession.messages.length,
     });
 
@@ -599,6 +598,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
         requestId,
         includeSchema,
         scenario: 'workflow_generate',
+        agentMode: 'agent',
         contextFiles,
         contextTables,
       });

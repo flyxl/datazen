@@ -291,6 +291,47 @@ async fn mock_provider_chat_stream() {
 }
 
 #[tokio::test]
+async fn mock_provider_workflow_defaults_to_agent_tools() {
+    let (test, mock) = TestAppState::with_mock_ai_tables().await;
+    test.save_connection("wf-default-agent").await;
+    mock.push_stream_text("workflow yaml");
+
+    let (state, _keep) = test.into_state();
+    let app = CommandApp::new(state);
+
+    ai_chat(
+        app.state(),
+        app.window(),
+        None,
+        None,
+        vec![ChatMessage {
+            role: MessageRole::User,
+            content: "Build a workflow".into(),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }],
+        "req-wf-default".into(),
+        false,
+        Some("workflow_generate".into()),
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    let request = mock.last_request().expect("workflow request");
+    let tools = request.tools.expect("tools attached");
+    assert!(
+        tools.iter().any(|tool| tool.name == "list_tables"),
+        "workflow generation must default to Agent tools"
+    );
+}
+
+#[tokio::test]
 async fn mock_provider_chat_tool_loop_then_text() {
     let (test, mock) = TestAppState::with_mock_ai_tables().await;
     test.save_connection("mock-tool-cfg").await;
@@ -327,7 +368,7 @@ async fn mock_provider_chat_tool_loop_then_text() {
         None,
         None,
         None,
-        None,
+        Some(datazen::ai::AiAgentMode::Agent),
     )
     .await
     .unwrap();
