@@ -166,9 +166,10 @@ impl TableColumnSource for ServerTableColumnSource {
                 table.table
             )));
         }
+        let primary_keys = parsed.effective_primary_keys();
         Ok(CachedColumns {
             columns: parsed.columns,
-            primary_keys: parsed.effective_primary_keys(),
+            primary_keys,
             table_name: parsed.table_name,
             cached_at: Instant::now(),
         })

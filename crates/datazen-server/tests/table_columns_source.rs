@@ -50,8 +50,9 @@ use datazen::table_editing::{TableColumnSource, TableEditingError};
 use datazen_driver_api::capabilities;
 use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
 use datazen_driver_api::resource_adapter::LegacyResourceAdapter;
-use datazen_driver_api::types::{ColumnSchema, TableSchema};
-use datazen_driver_api::{ConnectionConfig, DatabaseDriver, DatabaseDriverFactory, SslMode};
+use datazen_driver_api::{
+    ColumnSchema, ConnectionConfig, DatabaseDriver, DatabaseDriverFactory, SslMode, TableSchema,
+};
 use datazen_server::execution::budget::ServerBudgetCoordinator;
 use datazen_server::execution::budget_bridge::BudgetPortBridge;
 use datazen_server::execution::driver_exec::ServerDriverExecBackend;
@@ -134,6 +135,19 @@ struct ColumnSourceFixture {
     /// profile 创建时铸造的 config_revision（happy path 的 CAS 基准）。
     revision: Counter,
     connection_id: String,
+}
+
+impl ColumnSourceFixture {
+    /// 组件铸造：与刀3 handler 调用点同款组装（runner/registry 同实例，
+    /// ctx 是请求真主体，revision 是已读 config_revision）。
+    fn source(&self) -> ServerTableColumnSource {
+        ServerTableColumnSource::new(
+            self.runner.clone(),
+            self.registry.clone(),
+            self.ctx.clone(),
+            self.revision,
+        )
+    }
 }
 
 async fn fixture(opts: MockDriverOptions, schema_level: bool) -> ColumnSourceFixture {
@@ -451,8 +465,8 @@ async fn t1_columns_arrive_field_by_field_through_the_full_stack() {
     let mut opts = MockDriverOptions::default();
     opts.table_schema = Some(schema_with_primary_keys_field());
     let fx = fixture(opts, false).await;
-    let source = source_of(fx.runner.clone(), fx.registry.clone(), fx.revision);
-    let columns = source
+    let columns = fx
+        .source()
         .table_columns(&table_context(&fx.connection_id, "mockdb", None))
         .await
         .expect("the schema round trip answers columns");
@@ -480,8 +494,8 @@ async fn t1_primary_keys_fall_back_to_column_marks() {
     let mut opts = MockDriverOptions::default();
     opts.table_schema = Some(schema_with_marked_columns_only());
     let fx = fixture(opts, false).await;
-    let source = source_of(fx.runner.clone(), fx.registry.clone(), fx.revision);
-    let columns = source
+    let columns = fx
+        .source()
         .table_columns(&table_context(&fx.connection_id, "mockdb", None))
         .await
         .expect("the marked column becomes the primary key");
@@ -497,8 +511,8 @@ async fn t2_an_empty_column_answer_is_an_explicit_validation_error() {
     let mut opts = MockDriverOptions::default();
     opts.table_schema = Some(empty_columns_schema());
     let fx = fixture(opts, false).await;
-    let source = source_of(fx.runner.clone(), fx.registry.clone(), fx.revision);
-    let error = source
+    let error = fx
+        .source()
         .table_columns(&table_context(&fx.connection_id, "mockdb", None))
         .await
         .expect_err("an empty answer must be an explicit error");
@@ -549,6 +563,11 @@ async fn t3_a_schema_argument_is_dropped_for_a_schema_less_driver() {
     assert_eq!(record.input["table"], "users");
     assert_eq!(record.input["database"], "app");
     assert_eq!(
+        record.revision,
+        Counter::ZERO.get(),
+        "the binding rides the caller's read revision"
+    );
+    assert_eq!(
         record.namespace_schema, None,
         "the target namespace carries no schema either"
     );
@@ -569,8 +588,8 @@ async fn t3_a_schema_aware_driver_receives_the_context_schema_end_to_end() {
     opts.has_schema_level = true;
     opts.table_schema = Some(schema_with_primary_keys_field());
     let fx = fixture(opts, true).await;
-    let source = source_of(fx.runner.clone(), fx.registry.clone(), fx.revision);
-    let columns = source
+    let columns = fx
+        .source()
         .table_columns(&table_context(&fx.connection_id, "mockdb", Some("public")))
         .await
         .expect("a schema-aware driver gets the context schema");
@@ -584,8 +603,8 @@ async fn t3_a_schema_aware_driver_receives_the_context_schema_end_to_end() {
 #[tokio::test]
 async fn t4_an_unknown_driver_answers_not_configured() {
     let fx = fixture(MockDriverOptions::default(), false).await;
-    let source = source_of(fx.runner.clone(), fx.registry.clone(), fx.revision);
-    let error = source
+    let error = fx
+        .source()
         .table_columns(&table_context(&fx.connection_id, "nosuchdb", None))
         .await
         .expect_err("an unknown driver must refuse");
@@ -603,7 +622,12 @@ async fn t4_an_unknown_driver_answers_not_configured() {
 async fn t5_a_revision_drift_is_refused_as_a_validation_error() {
     let fx = fixture(MockDriverOptions::default(), false).await;
     let drifted = Counter::new(fx.revision.get() + 1);
-    let source = source_of(fx.runner.clone(), fx.registry.clone(), drifted);
+    let source = ServerTableColumnSource::new(
+        fx.runner.clone(),
+        fx.registry.clone(),
+        fx.ctx.clone(),
+        drifted,
+    );
     let error = source
         .table_columns(&table_context(&fx.connection_id, "mockdb", None))
         .await
@@ -627,8 +651,8 @@ async fn t6_a_command_result_without_a_schema_payload_is_a_validation_error() {
     opts.command_results
         .insert("get_table_schema".to_owned(), json!({ "unrelated": true }));
     let fx = fixture(opts, false).await;
-    let source = source_of(fx.runner.clone(), fx.registry.clone(), fx.revision);
-    let error = source
+    let error = fx
+        .source()
         .table_columns(&table_context(&fx.connection_id, "mockdb", None))
         .await
         .expect_err("a schema-less payload must refuse");
