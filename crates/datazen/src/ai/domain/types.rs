@@ -73,6 +73,21 @@ impl Default for AiToolPermissionPolicy {
     }
 }
 
+/// Explicit chat mode: Ask answers from supplied context only; Agent may use
+/// database and MCP tools to investigate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AiAgentMode {
+    Ask,
+    Agent,
+}
+
+impl Default for AiAgentMode {
+    fn default() -> Self {
+        Self::Ask
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiSafetyGateConfig {
@@ -203,6 +218,20 @@ mod ai_settings_config_tests {
             safety_gate: AiSafetyGateConfig::default(),
             is_default,
         }
+    }
+
+    #[test]
+    fn agent_mode_defaults_to_ask_and_uses_snake_case() {
+        assert_eq!(AiAgentMode::default(), AiAgentMode::Ask);
+        assert_eq!(serde_json::to_string(&AiAgentMode::Ask).unwrap(), "\"ask\"");
+        assert_eq!(
+            serde_json::to_string(&AiAgentMode::Agent).unwrap(),
+            "\"agent\""
+        );
+        assert_eq!(
+            serde_json::from_str::<AiAgentMode>("\"agent\"").unwrap(),
+            AiAgentMode::Agent
+        );
     }
 
     #[test]

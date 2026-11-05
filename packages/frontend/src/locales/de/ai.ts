@@ -8,6 +8,10 @@ const pack = {
   'chat.shareEditor.label': 'Aktuelle Editor-Sitzung teilen',
   'chat.shareEditor.unavailable': 'Öffnen Sie einen Abfrage-Editor, um dessen Sitzung zu teilen.',
   'chat.shareEditor.error': 'Die Editor-Sitzung konnte nicht geteilt werden: {error}',
+  'chat.mode.ask': 'Fragen',
+  'chat.mode.agent': 'Agent',
+  'chat.mode.askHint': 'Antwortet nur aus dem Kontext – keine Datenbanktools.',
+  'chat.mode.agentHint': 'Kann Datenbank- und MCP-Tools zur Prüfung nutzen.',
   'chat.thinking': 'Denken…',
   'chat.callingMcpTool': 'MCP-Tool {name} wird aufgerufen…',
   'common.aiNotConfigured':

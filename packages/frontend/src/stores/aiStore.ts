@@ -420,6 +420,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
     database,
     content,
     includeSchema = true,
+    agentMode = 'ask',
     contextFiles,
     contextTables,
     targetClaim,
@@ -433,6 +434,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
       database,
       contentLen: content.length,
       includeSchema,
+      agentMode,
       historyLen: chatSession.messages.length,
     });
 
@@ -480,6 +482,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
         messages: [...chatSession.messages, ...newMessages],
         requestId,
         includeSchema,
+        agentMode,
         contextFiles,
         contextTables,
         targetClaim,

@@ -4,6 +4,8 @@
 
 export type AiProviderType = 'open_ai' | 'deep_seek' | 'ollama' | 'custom';
 
+export type AiAgentMode = 'ask' | 'agent';
+
 export type AiDataEgressLevel = 'strict' | 'sample_masked' | 'unrestricted';
 
 export type AiToolPermissionPolicy = 'disabled' | 'read_only' | 'require_confirm' | 'unrestricted';

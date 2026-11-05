@@ -24,7 +24,7 @@ use crate::ai::ctx_yaml::extract_ctx_yaml_tables;
 use crate::ai::domain::budget;
 use crate::ai::domain::safety::redact_for_gate;
 use crate::ai::domain::traits::AiProvider;
-use crate::ai::domain::types::{AiSafetyGateConfig, ChatMessage, ToolDefinition};
+use crate::ai::domain::types::{AiAgentMode, AiSafetyGateConfig, ChatMessage, ToolDefinition};
 use datazen_driver_api::DatabaseDriver;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -67,6 +67,7 @@ pub struct ChatSessionInput {
     pub include_schema: bool,
     pub scenario: ChatScenario,
     pub context_tables: Option<Vec<String>>,
+    pub agent_mode: AiAgentMode,
 }
 
 /// `ai_chat` 编排本体：schema 管线裁决 + 请求组装 + 取消登记 + 工具循环。
@@ -84,6 +85,7 @@ pub async fn run_chat_session(
         messages_count = input.messages.len(),
         include_schema = input.include_schema,
         scenario = ?input.scenario,
+        agent_mode = ?input.agent_mode,
         context_tables_count = input.context_tables.as_ref().map(|t| t.len()).unwrap_or(0),
         last_user_msg_len = input.messages.last().map(|m| m.content.len()).unwrap_or(0),
         "ai_chat: start"
@@ -134,6 +136,12 @@ pub async fn run_chat_session(
     // 上下文块（chat 政策：逐文件脱敏后拼装）。
     let context_block = chat_context_block(&env.context_entries, &env.gate);
 
+    // Ask never sees DB or MCP tools. A schema seed that says
+    // `attach_db_tools = false` still wins for Agent, and a failed schema
+    // resolve still stays tool-less under the existing contract.
+    let agent_tools_allowed = input.agent_mode == AiAgentMode::Agent;
+    attach_db_tools = agent_tools_allowed && attach_db_tools;
+
     let schema = schema_prompt
         .as_ref()
         .map(|(driver, seed)| ChatSchemaPrompt {
@@ -153,7 +161,11 @@ pub async fn run_chat_session(
             context_block: context_block.as_deref(),
             safety_gate: &env.gate,
             attach_db_tools,
-            mcp_tools: env.mcp_tools,
+            mcp_tools: if agent_tools_allowed {
+                env.mcp_tools
+            } else {
+                Vec::new()
+            },
         },
     )
     .await;

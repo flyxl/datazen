@@ -30,7 +30,7 @@ import { detectSafetyPreset } from '../../lib/aiSafetyPresets';
 import { Select } from '../ui/Select';
 import { composeKvAiMessage } from '../../lib/kvAiContext';
 import type { KvAiContext } from '../../lib/kvAiContext';
-import type { AiChatMessage, AiQuestion, ContextItem } from '../../types';
+import type { AiAgentMode, AiChatMessage, AiQuestion, ContextItem } from '../../types';
 import type { AiChatDraftRequest } from '../../windows/connection/query/aiDraftBridge';
 import { Spinner } from '../ui/Spinner';
 
@@ -111,6 +111,7 @@ export function AiChatPanel({
 
   const [input, setInput] = useState('');
   const [tab, setTab] = useState<'chat' | 'workflows'>('chat');
+  const [agentMode, setAgentMode] = useState<AiAgentMode>('ask');
   const [contextItems, setContextItems] = useState<ContextItem[]>([]);
   const { atBottom, unreadCount, jumpToBottom, onScroll, containerRef } = useAutoScroll();
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -207,6 +208,7 @@ export function AiChatPanel({
       dbSessionId,
       connectionId,
       database,
+      agentMode,
       // KV panels ride their host-owned facts along with the question;
       // `composeKvAiMessage` is the identity function when there is no context.
       content: composeKvAiMessage(input.trim(), kvContext ?? null),
@@ -216,7 +218,18 @@ export function AiChatPanel({
     });
     setInput('');
     setContextItems([]);
-  }, [input, chatSession, sendMessage, dbSessionId, connectionId, database, contextItems, kvContext, claimForSend]);
+  }, [
+    input,
+    chatSession,
+    sendMessage,
+    dbSessionId,
+    connectionId,
+    database,
+    agentMode,
+    contextItems,
+    kvContext,
+    claimForSend,
+  ]);
 
   // BUG-01: Provide onStop so users can cancel streaming replies. The store
   // owns the receipt handling (marked / alreadyFinished / forbidden).
@@ -323,6 +336,58 @@ export function AiChatPanel({
         </div>
       </div>
 
+      {tab === 'chat' && (
+        <div
+          className="flex shrink-0 items-center gap-2 border-b border-edge/60 px-3 py-1"
+          data-testid="ai-agent-mode-row"
+        >
+          <div
+            role="group"
+            aria-label={`${t('chat.mode.ask')} / ${t('chat.mode.agent')}`}
+            className="inline-flex overflow-hidden rounded border border-edge"
+          >
+            <button
+              type="button"
+              data-testid="ai-agent-mode-ask"
+              aria-pressed={agentMode === 'ask'}
+              title={t('chat.mode.askHint')}
+              className={cn(
+                'px-2 py-0.5 text-[10px] transition-colors',
+                agentMode === 'ask'
+                  ? 'bg-accent/15 font-medium text-accent'
+                  : 'text-fg-muted hover:bg-surface-alt hover:text-fg',
+              )}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setAgentMode('ask')}
+            >
+              {t('chat.mode.ask')}
+            </button>
+            <button
+              type="button"
+              data-testid="ai-agent-mode-agent"
+              aria-pressed={agentMode === 'agent'}
+              title={t('chat.mode.agentHint')}
+              className={cn(
+                'border-l border-edge px-2 py-0.5 text-[10px] transition-colors',
+                agentMode === 'agent'
+                  ? 'bg-accent/15 font-medium text-accent'
+                  : 'text-fg-muted hover:bg-surface-alt hover:text-fg',
+              )}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setAgentMode('agent')}
+            >
+              {t('chat.mode.agent')}
+            </button>
+          </div>
+          <span
+            className="min-w-0 truncate text-[10px] text-fg-muted"
+            data-testid="ai-agent-mode-hint"
+          >
+            {t(agentMode === 'ask' ? 'chat.mode.askHint' : 'chat.mode.agentHint')}
+          </span>
+        </div>
+      )}
+
       {tab === 'chat' && settingsConfig && settingsConfig.profiles.length > 0 && (
         <div className="flex shrink-0 items-center justify-between border-b border-edge/60 bg-surface-alt/40 px-3 py-1 text-xs">
           <div className="flex items-center gap-1.5 text-fg-muted">
@@ -411,7 +476,13 @@ export function AiChatPanel({
                 onRunCode={onRunCode}
                 onNewQuery={onNewQuery}
                 onAnswerQuestions={(answers) => {
-                  void sendMessage({ dbSessionId, connectionId, database, content: answers });
+                  void sendMessage({
+                    dbSessionId,
+                    connectionId,
+                    database,
+                    agentMode,
+                    content: answers,
+                  });
                 }}
                 isLastAssistant={
                   msg.role === 'assistant' &&

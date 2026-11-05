@@ -295,6 +295,7 @@ async fn ai_chat_with_schema_and_stream() {
         None,
         None,
         Some(conn_id),
+        Some(datazen::ai::AiAgentMode::Agent),
     )
     .await
     .unwrap();
@@ -324,6 +325,7 @@ async fn ai_chat_workflow_scenario_builds_system_prompt() {
         "req-wf".into(),
         false,
         Some("workflow_generate".into()),
+        None,
         None,
         None,
         None,
@@ -658,6 +660,7 @@ async fn ai_chat_injects_context_files_into_user_message() {
         None,
         None,
         None,
+        None,
     )
     .await
     .unwrap();
@@ -683,6 +686,7 @@ async fn ai_chat_schema_resolve_failure_still_streams() {
         }],
         "req-fail-schema".into(),
         true,
+        None,
         None,
         None,
         None,
@@ -842,6 +846,7 @@ async fn ai_chat_stream_http_error_propagates() {
         None,
         None,
         None,
+        None,
     )
     .await
     .is_err());
@@ -911,6 +916,7 @@ data: [DONE]
         }],
         "req-ask".into(),
         false,
+        None,
         None,
         None,
         None,
@@ -1055,6 +1061,7 @@ async fn ai_chat_connected_english_schema_message() {
         }],
         "req-en".into(),
         true,
+        None,
         None,
         None,
         None,
@@ -1275,6 +1282,7 @@ async fn ai_chat_mcp_tool_roundtrip() {
         None,
         None,
         None,
+        None,
     )
     .await
     .unwrap();
@@ -1351,6 +1359,7 @@ async fn ai_chat_mcp_and_db_same_round() {
         }],
         "req-mcp-db-same".into(),
         false,
+        None,
         None,
         None,
         None,
@@ -1454,6 +1463,7 @@ async fn ai_chat_ask_questions_with_executable_runs_tools_then_stops() {
         }],
         "req-mixed".into(),
         false,
+        None,
         None,
         None,
         None,

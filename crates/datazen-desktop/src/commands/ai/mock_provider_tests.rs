@@ -280,6 +280,7 @@ async fn mock_provider_chat_stream() {
         None,
         None,
         None,
+        None,
     )
     .await
     .unwrap();
@@ -321,6 +322,7 @@ async fn mock_provider_chat_tool_loop_then_text() {
         }],
         "req-tool-loop".into(),
         true,
+        None,
         None,
         None,
         None,

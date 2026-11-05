@@ -182,12 +182,31 @@ describe('AiChatPanel', () => {
       dbSessionId: 'c1',
       connectionId: undefined,
       database: 'db',
+      agentMode: 'ask',
       content: 'hello',
       contextFiles: undefined,
       contextTables: undefined,
       // P6 §14.4: default target is independent unless the user shares a pane.
       targetClaim: { kind: 'independent' },
     });
+  });
+
+  it('defaults to Ask mode and shows the mode switch', () => {
+    const { getByTestId } = render(<AiChatPanel dbSessionId="c1" database="db" />);
+    expect(getByTestId('ai-agent-mode-ask')).toHaveAttribute('aria-pressed', 'true');
+    expect(getByTestId('ai-agent-mode-agent')).toHaveAttribute('aria-pressed', 'false');
+    expect(getByTestId('ai-agent-mode-hint')).toHaveTextContent('chat.mode.askHint');
+  });
+
+  it('sends the toggled Agent mode', () => {
+    const { getByTestId } = render(<AiChatPanel dbSessionId="c1" database="db" />);
+    fireEvent.click(getByTestId('ai-agent-mode-agent'));
+    expect(getByTestId('ai-agent-mode-hint')).toHaveTextContent('chat.mode.agentHint');
+    fireEvent.change(getByTestId('chat-input'), { target: { value: 'check live data' } });
+    fireEvent.click(getByTestId('chat-send'));
+    expect(aiState.sendChatMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ agentMode: 'agent', content: 'check live data' }),
+    );
   });
 
   it('renders messages with inline code blocks and insert SQL', () => {
@@ -547,6 +566,7 @@ describe('AiChatPanel — KV panel context', () => {
       dbSessionId: 'sess-1',
       connectionId: undefined,
       database: undefined,
+      agentMode: 'ask',
       content: 'hello',
       contextFiles: undefined,
       contextTables: undefined,

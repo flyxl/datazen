@@ -242,6 +242,18 @@ fn test_env(provider: Arc<dyn AiProvider>, src: Arc<RecordingSource>) -> ChatSes
     }
 }
 
+fn mcp_tool_definition() -> ToolDefinition {
+    ToolDefinition {
+        name: "mcp/demo/ping".into(),
+        description: "Ping the demo MCP server".into(),
+        parameters: serde_json::json!({
+            "type": "object",
+            "properties": {},
+            "required": []
+        }),
+    }
+}
+
 fn stream_chunk(content: &str, done: bool) -> StreamChunkT {
     StreamChunkT {
         content: content.into(),
@@ -347,6 +359,7 @@ async fn chat_with_driver_resolves_schema_and_keeps_db_tools() {
             include_schema: true,
             scenario: ChatScenario::Chat,
             context_tables: Some(vec!["users".into()]),
+            agent_mode: AiAgentMode::Agent,
         },
     )
     .await
@@ -366,6 +379,84 @@ async fn chat_with_driver_resolves_schema_and_keeps_db_tools() {
         "schema suffix expected"
     );
     assert!(system.content.contains("users"));
+}
+
+#[tokio::test]
+async fn chat_ask_mode_strips_db_and_mcp_tools() {
+    let provider = Arc::new(ScriptedProvider::default().with_tools());
+    provider.push_stream(vec![stream_chunk("answer", true)]);
+    let mut env = test_env(provider.clone(), recording_source());
+    env.schema_driver = Some(MockDriver::new("postgres", MockDriverOptions::default()));
+    env.mcp_tools = vec![mcp_tool_definition()];
+    let host = RecordingLoopHost::default();
+    let (on_chunk, _seen) = sink();
+
+    run_chat_session(
+        env,
+        &host,
+        on_chunk,
+        ChatSessionInput {
+            request_id: "req-ask-mode".into(),
+            db_session_id: Some("sess-1".into()),
+            connection_id: Some("conn-1".into()),
+            database: Some("app".into()),
+            messages: vec![user_message("What is a join?")],
+            include_schema: true,
+            scenario: ChatScenario::Chat,
+            context_tables: None,
+            agent_mode: AiAgentMode::Ask,
+        },
+    )
+    .await
+    .expect("ask chat completes");
+
+    let request = provider.last_request().expect("request");
+    let tools = request.tools.expect("tools attached");
+    assert_eq!(
+        tools
+            .iter()
+            .map(|tool| tool.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["ask_questions"],
+        "Ask must expose only ask_questions"
+    );
+}
+
+#[tokio::test]
+async fn chat_agent_mode_exposes_db_and_mcp_tools() {
+    let provider = Arc::new(ScriptedProvider::default().with_tools());
+    provider.push_stream(vec![stream_chunk("answer", true)]);
+    let mut env = test_env(provider.clone(), recording_source());
+    env.schema_driver = Some(MockDriver::new("postgres", MockDriverOptions::default()));
+    env.mcp_tools = vec![mcp_tool_definition()];
+    let host = RecordingLoopHost::default();
+    let (on_chunk, _seen) = sink();
+
+    run_chat_session(
+        env,
+        &host,
+        on_chunk,
+        ChatSessionInput {
+            request_id: "req-agent-mode".into(),
+            db_session_id: Some("sess-1".into()),
+            connection_id: Some("conn-1".into()),
+            database: Some("app".into()),
+            messages: vec![user_message("List the tables")],
+            include_schema: true,
+            scenario: ChatScenario::Chat,
+            context_tables: None,
+            agent_mode: AiAgentMode::Agent,
+        },
+    )
+    .await
+    .expect("agent chat completes");
+
+    let request = provider.last_request().expect("request");
+    let tools = request.tools.expect("tools attached");
+    let names: Vec<&str> = tools.iter().map(|tool| tool.name.as_str()).collect();
+    assert!(names.contains(&"ask_questions"));
+    assert!(names.contains(&"list_tables"), "Agent keeps DB tools");
+    assert!(names.contains(&"mcp/demo/ping"), "Agent keeps MCP tools");
 }
 
 #[test]
@@ -396,6 +487,7 @@ fn chat_logs_persisted_connection_id() {
                 include_schema: false,
                 scenario: ChatScenario::Chat,
                 context_tables: None,
+                agent_mode: AiAgentMode::Ask,
             },
         )
         .await
@@ -432,6 +524,7 @@ async fn chat_unknown_session_skips_schema_silently_and_keeps_tools() {
             include_schema: true,
             scenario: ChatScenario::Chat,
             context_tables: None,
+            agent_mode: AiAgentMode::Agent,
         },
     )
     .await
@@ -472,6 +565,7 @@ async fn chat_schema_pipeline_failure_disables_db_tools_but_streams() {
             include_schema: true,
             scenario: ChatScenario::Chat,
             context_tables: None,
+            agent_mode: AiAgentMode::Agent,
         },
     )
     .await
@@ -507,6 +601,7 @@ async fn chat_context_entries_are_redacted_then_formatted() {
             include_schema: false,
             scenario: ChatScenario::Chat,
             context_tables: None,
+            agent_mode: AiAgentMode::Ask,
         },
     )
     .await
@@ -552,6 +647,7 @@ async fn chat_workflow_scenario_injects_connections_context() {
             include_schema: false,
             scenario: ChatScenario::WorkflowGenerate,
             context_tables: None,
+            agent_mode: AiAgentMode::Ask,
         },
     )
     .await
@@ -588,6 +684,7 @@ async fn chat_unregisters_cancel_entry_after_completion() {
             include_schema: false,
             scenario: ChatScenario::Chat,
             context_tables: None,
+            agent_mode: AiAgentMode::Ask,
         },
     )
     .await

@@ -385,7 +385,20 @@ describe('aiStore', () => {
           dbSessionId: 'db-sess',
           connectionId: 'conn-1',
           database: 'db',
+          agentMode: 'ask',
         }),
+      );
+    });
+
+    it('sendChatMessage forwards the selected Agent mode', async () => {
+      localStorage.clear();
+      useAiStore.getState().initChatSession();
+      mockAiCommands.chat.mockResolvedValueOnce(undefined);
+
+      await useAiStore.getState().sendChatMessage({ content: 'check data', agentMode: 'agent' });
+
+      expect(mockAiCommands.chat).toHaveBeenCalledWith(
+        expect.objectContaining({ agentMode: 'agent' }),
       );
     });
 

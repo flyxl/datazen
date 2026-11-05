@@ -3,6 +3,7 @@ import { requirePlatform } from '../platform/contracts';
 
 type UnlistenFn = () => void;
 import type {
+  AiAgentMode,
   AiChatMessage,
   AiProviderConfig,
   AiSettingsConfig,
@@ -131,6 +132,7 @@ export const aiCommands = {
     requestId: string;
     includeSchema?: boolean;
     scenario?: PromptScenario;
+    agentMode?: AiAgentMode;
     contextFiles?: string[];
     contextTables?: string[];
     targetClaim?: AiTargetClaim;
