@@ -176,7 +176,27 @@ impl AppDb {
     pub(crate) fn upsert_ai_memory(&self, memory: &AiMemoryRecord) -> Result<(), AppDbError> {
         validate_memory(memory)?;
         self.with_conn(|conn| {
-            conn.execute(
+            // A memory id is globally unique. An update may change content and
+            // scope metadata, but it must never re-home an existing row to a
+            // different organization or owner (that would defeat every scoped
+            // read/search below).
+            let existing: Option<(String, String)> = conn
+                .query_row(
+                    "SELECT organization_id, owner_principal_id FROM ai_memories WHERE id=?1",
+                    [memory.id.as_str()],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()?;
+            if let Some((organization_id, owner_principal_id)) = existing {
+                if organization_id != memory.organization_id
+                    || owner_principal_id != memory.owner_principal_id
+                {
+                    return Err(AppDbError::Validation(
+                        "an existing AI memory cannot change organization or owner".into(),
+                    ));
+                }
+            }
+            let changed = conn.execute(
                 "INSERT INTO ai_memories (\
                    id, organization_id, owner_principal_id, scope_type, scope_id, connection_id, \
                    database_name, schema_name, table_name, column_name, kind, subject, content, \
@@ -209,7 +229,9 @@ impl AppDb {
                    last_used_at=excluded.last_used_at, \
                    expires_at=excluded.expires_at, \
                    content_hash=excluded.content_hash, \
-                   updated_at=excluded.updated_at",
+                   updated_at=excluded.updated_at \
+                 WHERE ai_memories.organization_id=excluded.organization_id \
+                   AND ai_memories.owner_principal_id=excluded.owner_principal_id",
                 params![
                     memory.id,
                     memory.organization_id,
@@ -239,6 +261,14 @@ impl AppDb {
                     memory.updated_at
                 ],
             )?;
+            // The WHERE above makes a cross-owner conflict a no-op instead of
+            // a re-home; treat that as a validation failure even if the
+            // pre-check raced with another writer.
+            if changed == 0 {
+                return Err(AppDbError::Validation(
+                    "an existing AI memory cannot change organization or owner".into(),
+                ));
+            }
             Ok(())
         })
     }

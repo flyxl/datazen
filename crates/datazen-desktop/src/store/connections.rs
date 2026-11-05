@@ -184,42 +184,48 @@ impl DesktopRepository {
     }
 
     pub async fn delete_connection(&self, id: &str) -> Result<(), DesktopRepositoryError> {
-        // Serialize the whole delete→snapshot→persist sequence under the
+        // Serialize the whole snapshot→purge→persist sequence under the
         // store-wide write lock, mirroring save_connection: without it a
         // concurrent save/touch could persist a snapshot that still contains
         // the deleted row after this delete already wrote the file (lost
         // delete — the same stale-snapshot race the save path fixed).
         let _guard = self.write_lock.lock().await;
 
-        {
-            let mut cache = self.cache.write().await;
-            cache.connections.retain(|c| c.id != id);
-        }
-
-        let snapshot = {
+        let next_snapshot = {
             let cache = self.cache.read().await;
-            cache.connections.clone()
+            let mut connections = cache.connections.clone();
+            connections.retain(|c| c.id != id);
+            connections
         };
 
+        // Purge AI data FIRST. A failed purge leaves both the in-memory cache
+        // and connections.json untouched, so the caller sees an error and the
+        // connection is still usable. The AI tables themselves are cleaned in
+        // one Immediate transaction inside AppDb.
+        //
+        // This ordering has one deliberate trade-off: if the JSON persist
+        // fails after a successful purge, the connection remains (cache and
+        // disk are untouched) but its AI data is already gone. There is no
+        // cross-store transaction between JSON and SQLite; keeping the
+        // connection is safer than leaving permanent AI orphans, and the
+        // cache never reflects the failed delete.
+        self.app_db
+            .purge_connection_ai_data(id, crate::platform::LOCAL_ORGANIZATION_ID)
+            .map_err(|error| {
+                DesktopRepositoryError::WriteError(format!(
+                    "AI cleanup failed for connection {id}: {error}"
+                ))
+            })?;
+
         // Already holding write_lock — use the non-locking persist variant.
-        let persisted = self.persist_connections_locked(&snapshot).await;
-        if persisted.is_ok() {
-            // The connection catalog is JSON, so this cannot share SQLite's
-            // transaction with the AI tables. The AI cleanup itself is one
-            // Immediate transaction (notes + memories + audit); a cleanup
-            // failure is logged rather than resurrecting the deleted catalog.
-            if let Err(error) = self
-                .app_db
-                .purge_connection_ai_data(id, crate::platform::LOCAL_ORGANIZATION_ID)
-            {
-                tracing::warn!(
-                    connection_id = %id,
-                    error = %error,
-                    "connection deleted but AI notes/memories cleanup failed"
-                );
-            }
+        // Persist before mutating the cache: a persist failure leaves the
+        // connection visible in both cache and disk.
+        self.persist_connections_locked(&next_snapshot).await?;
+        {
+            let mut cache = self.cache.write().await;
+            cache.connections = next_snapshot;
         }
-        persisted
+        Ok(())
     }
 
     /// Returns the union of persisted custom groups and groups found on connections.

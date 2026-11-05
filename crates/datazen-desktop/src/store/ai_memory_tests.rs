@@ -414,3 +414,36 @@ fn connection_purge_removes_notes_memories_fts_and_audit_for_target_only() {
         1
     );
 }
+
+#[test]
+fn existing_memory_cannot_be_rehomed_to_another_owner_or_org() {
+    let db = AppDb::open_in_memory().unwrap();
+    db.upsert_ai_memory(&memory("m-owned", "original")).unwrap();
+
+    let mut other_owner = memory("m-owned", "owner-hijack");
+    other_owner.owner_principal_id = "other-owner".into();
+    assert!(matches!(
+        db.upsert_ai_memory(&other_owner),
+        Err(AppDbError::Validation(_))
+    ));
+
+    let mut other_org = memory("m-owned", "org-hijack");
+    other_org.organization_id = "other-org".into();
+    assert!(matches!(
+        db.upsert_ai_memory(&other_org),
+        Err(AppDbError::Validation(_))
+    ));
+
+    let original = db.get_ai_memory(ORG, OWNER, "m-owned").unwrap().unwrap();
+    assert_eq!(original.content, "original");
+    assert_eq!(original.organization_id, ORG);
+    assert_eq!(original.owner_principal_id, OWNER);
+    assert!(db
+        .get_ai_memory(ORG, "other-owner", "m-owned")
+        .unwrap()
+        .is_none());
+    assert!(db
+        .get_ai_memory("other-org", OWNER, "m-owned")
+        .unwrap()
+        .is_none());
+}

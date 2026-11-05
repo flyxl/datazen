@@ -221,3 +221,140 @@ async fn deleting_connection_purges_ai_notes_memories_and_audit() {
         .unwrap()
         .is_empty());
 }
+
+/// Purge-first delete: a failed AI cleanup must surface as an error and leave
+/// both the catalog connection and its AI data (including audit) intact.
+#[tokio::test]
+async fn delete_connection_cleanup_failure_is_recoverable_and_keeps_ai_data() {
+    use crate::platform::LOCAL_ORGANIZATION_ID;
+    use crate::store::ai_memory::{AiConnectionNoteRecord, AiMemoryAuditRecord, AiMemoryRecord};
+
+    let dir = tempfile::tempdir().unwrap();
+    let store = init_store_for_test(dir.path()).await;
+    let app_db = store.app_db();
+    let ts = "2026-11-05T00:00:00Z";
+    let owner = "owner-fail";
+
+    app_db
+        .upsert_ai_connection_note(&AiConnectionNoteRecord {
+            connection_id: "c-fail".into(),
+            organization_id: LOCAL_ORGANIZATION_ID.into(),
+            owner_principal_id: owner.into(),
+            content: "keep me".into(),
+            updated_at: ts.into(),
+        })
+        .unwrap();
+    app_db
+        .upsert_ai_memory(&AiMemoryRecord {
+            id: "m-fail".into(),
+            organization_id: LOCAL_ORGANIZATION_ID.into(),
+            owner_principal_id: owner.into(),
+            scope_type: "connection".into(),
+            scope_id: "c-fail".into(),
+            connection_id: Some("c-fail".into()),
+            database_name: None,
+            schema_name: None,
+            table_name: None,
+            column_name: None,
+            kind: "preference".into(),
+            subject: "keep me".into(),
+            content: "failtoken".into(),
+            structured_json: None,
+            source: "explicit".into(),
+            source_ref: None,
+            confidence: 0.5,
+            sensitivity: "normal".into(),
+            status: "active".into(),
+            pinned: false,
+            use_count: 0,
+            last_used_at: None,
+            expires_at: None,
+            content_hash: "hash-fail".into(),
+            created_at: ts.into(),
+            updated_at: ts.into(),
+        })
+        .unwrap();
+    app_db
+        .append_ai_memory_audit(&AiMemoryAuditRecord {
+            id: "a-fail".into(),
+            memory_id: "m-fail".into(),
+            action: "create".into(),
+            actor_principal_id: owner.into(),
+            before_hash: None,
+            after_hash: Some("hash-fail".into()),
+            detail_json: None,
+            created_at: ts.into(),
+        })
+        .unwrap();
+    app_db
+        .with_conn(|conn| {
+            conn.execute_batch(
+                "CREATE TRIGGER fail_ai_note_delete
+                 BEFORE DELETE ON ai_connection_notes
+                 WHEN old.connection_id = 'c-fail'
+                 BEGIN
+                   SELECT RAISE(ABORT, 'forced AI cleanup failure');
+                 END;",
+            )?;
+            Ok(())
+        })
+        .unwrap();
+
+    let mut conn = sample_connection_with_ssh();
+    conn.id = "c-fail".into();
+    store.save_connection(conn).await.unwrap();
+
+    let error = store.delete_connection("c-fail").await.unwrap_err();
+    assert!(error.to_string().contains("AI cleanup failed"), "{error}");
+    assert!(store.get_connection("c-fail").await.is_some());
+    let on_disk = tokio::fs::read_to_string(dir.path().join("connections.json"))
+        .await
+        .unwrap();
+    assert!(
+        on_disk.contains("c-fail"),
+        "failed cleanup must not persist the catalog delete"
+    );
+    assert_eq!(
+        app_db
+            .get_ai_connection_note("c-fail")
+            .unwrap()
+            .unwrap()
+            .content,
+        "keep me"
+    );
+    assert!(app_db
+        .get_ai_memory(LOCAL_ORGANIZATION_ID, owner, "m-fail")
+        .unwrap()
+        .is_some());
+    assert_eq!(
+        app_db
+            .search_ai_memories(LOCAL_ORGANIZATION_ID, owner, "failtoken", 10)
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(app_db.list_ai_memory_audit("m-fail").unwrap().len(), 1);
+
+    app_db
+        .with_conn(|conn| {
+            conn.execute("DROP TRIGGER fail_ai_note_delete", [])?;
+            Ok(())
+        })
+        .unwrap();
+    store.delete_connection("c-fail").await.unwrap();
+    assert!(store.get_connection("c-fail").await.is_none());
+    let on_disk = tokio::fs::read_to_string(dir.path().join("connections.json"))
+        .await
+        .unwrap();
+    assert!(!on_disk.contains("c-fail"));
+    assert!(app_db.get_ai_connection_note("c-fail").unwrap().is_none());
+    assert!(app_db
+        .get_ai_memory(LOCAL_ORGANIZATION_ID, owner, "m-fail")
+        .unwrap()
+        .is_none());
+    assert!(app_db
+        .search_ai_memories(LOCAL_ORGANIZATION_ID, owner, "failtoken", 10)
+        .unwrap()
+        .is_empty());
+    assert!(app_db.list_ai_memory_audit("m-fail").unwrap().is_empty());
+}

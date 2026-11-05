@@ -221,6 +221,7 @@
 - `safety.rs`：`redact_credentials` 决定是否强制凭据脱敏；保留默认 true。只有 Ollama（或 loopback 的 Custom endpoint）可以关闭凭据脱敏，云 Provider 在 `effective_safety_gate` 边界强制 true。
 - `AiToolLoopHost` 增加 `confirm_tool_call(tool, args) -> bool` 端口；桌面复用 `dialog::confirm_message` 弹窗，参数先脱敏/截断，60s 超时拒绝；共享工具循环另有 60s 超时兜底。
 - `sample_rows` 由宿主生成有上限的采样 SQL，不接受模型 SQL；因此 `require_sql_confirm` 只约束 `query_readonly`，`sample_rows` 仅受 `db_tool_policy` 约束（`RequireConfirm` 时仍会确认）。
+- 删除连接采用 **purge-first**：先用一个 AppDb `Immediate` 事务清理 notes/memories/audit；失败则返回错误，连接 catalog（JSON + cache）保持不变；成功后才持久化 catalog。JSON 与 SQLite 无跨存储事务，若 catalog persist 在 purge 后失败，连接保留而 AI 数据已清理（cache 不更新）；不再静默吞掉清理失败。
 - 生产库只读/写入拒绝沿用现有 SQL guard。
 
 **验收**：
