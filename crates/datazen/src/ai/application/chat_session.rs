@@ -26,6 +26,7 @@ use crate::ai::domain::safety::redact_for_gate;
 use crate::ai::domain::traits::AiProvider;
 use crate::ai::domain::types::{AiAgentMode, AiSafetyGateConfig, ChatMessage, ToolDefinition};
 use datazen_driver_api::DatabaseDriver;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -68,6 +69,25 @@ pub struct ChatSessionInput {
     pub scenario: ChatScenario,
     pub context_tables: Option<Vec<String>>,
     pub agent_mode: AiAgentMode,
+    /// Auto-context snapshot frozen by the frontend on send.
+    pub editor_sql: Option<String>,
+    pub selection: Option<String>,
+    pub last_error: Option<String>,
+    pub result_preview: Option<ChatResultPreview>,
+}
+
+/// Structured query-result excerpt attached to a chat turn automatically.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatResultPreview {
+    #[serde(default)]
+    pub columns: Vec<String>,
+    #[serde(default)]
+    pub rows: Vec<Vec<serde_json::Value>>,
+    #[serde(default)]
+    pub row_count: Option<u64>,
+    #[serde(default)]
+    pub elapsed_ms: Option<u64>,
 }
 
 /// `ai_chat` 编排本体：schema 管线裁决 + 请求组装 + 取消登记 + 工具循环。
@@ -133,8 +153,10 @@ pub async fn run_chat_session(
         }
     }
 
-    // 上下文块（chat 政策：逐文件脱敏后拼装）。
-    let context_block = chat_context_block(&env.context_entries, &env.gate);
+    // 上下文块：自动快照在前，手选 @ 文件在后；逐段脱敏、整体按 gate 截断。
+    let auto_context = build_auto_context_block(&input, &env.gate, &env.context_entries);
+    let picked_context = chat_context_block(&env.context_entries, &env.gate);
+    let context_block = merge_context_blocks(auto_context, picked_context, &env.gate);
 
     // Ask never sees DB or MCP tools. A schema seed that says
     // `attach_db_tools = false` still wins for Agent, and a failed schema
@@ -206,6 +228,166 @@ pub async fn run_chat_session(
         .unregister(&input.request_id, &env.cancel_owner)
         .await;
     result
+}
+
+const AUTO_PREVIEW_MAX_ROWS: usize = 5;
+const AUTO_PREVIEW_MAX_COLUMNS: usize = 20;
+const AUTO_PREVIEW_MAX_CELL_CHARS: usize = 200;
+
+/// Build the automatic context block from the frozen editor/error/result
+/// snapshot. Empty fields contribute no heading or blank block. The hand-picked
+/// `@` entries and the last user message are used to avoid repeating the same
+/// SQL/selection/error in two places.
+fn build_auto_context_block(
+    input: &ChatSessionInput,
+    gate: &AiSafetyGateConfig,
+    picked_entries: &[(String, String)],
+) -> Option<String> {
+    let last_user = input
+        .messages
+        .iter()
+        .rev()
+        .find(|message| message.role == crate::ai::domain::types::MessageRole::User)
+        .map(|message| message.content.as_str())
+        .unwrap_or("");
+    let already_present = |text: &str| {
+        !text.is_empty()
+            && (last_user.contains(text)
+                || picked_entries
+                    .iter()
+                    .any(|(_, content)| content.contains(text)))
+    };
+
+    let mut sections = Vec::new();
+    if let Some(sql) = input.editor_sql.as_deref().map(str::trim) {
+        if !sql.is_empty() && !already_present(sql) {
+            sections.push(format!("[Current SQL]\n{sql}"));
+        }
+    }
+    if let Some(selection) = input.selection.as_deref().map(str::trim) {
+        if !selection.is_empty()
+            && input.editor_sql.as_deref().map(str::trim) != Some(selection)
+            && !already_present(selection)
+        {
+            sections.push(format!("[Editor selection]\n{selection}"));
+        }
+    }
+    if let Some(error) = input.last_error.as_deref().map(str::trim) {
+        if !error.is_empty() && !already_present(error) {
+            sections.push(format!("[Recent query error]\n{error}"));
+        }
+    }
+    if let Some(preview) = input.result_preview.as_ref() {
+        if let Some(rendered) = render_result_preview(preview) {
+            if !already_present(&rendered) {
+                sections.push(rendered);
+            }
+        }
+    }
+
+    if sections.is_empty() {
+        return None;
+    }
+    let block = redact_for_gate(&sections.join("\n\n"), gate);
+    let block = truncate_bytes(&block, gate.max_context_bytes.max(1));
+    if block.trim().is_empty() {
+        None
+    } else {
+        Some(block)
+    }
+}
+
+fn render_result_preview(preview: &ChatResultPreview) -> Option<String> {
+    let columns: Vec<&str> = preview
+        .columns
+        .iter()
+        .take(AUTO_PREVIEW_MAX_COLUMNS)
+        .map(String::as_str)
+        .collect();
+    let rows: Vec<&Vec<serde_json::Value>> =
+        preview.rows.iter().take(AUTO_PREVIEW_MAX_ROWS).collect();
+    if columns.is_empty() && rows.is_empty() {
+        return None;
+    }
+
+    let total = preview.row_count.unwrap_or(preview.rows.len() as u64);
+    let elapsed = preview
+        .elapsed_ms
+        .map(|ms| format!(", {ms}ms"))
+        .unwrap_or_default();
+    let mut lines = vec![format!(
+        "[Recent result preview: showing {} of {} rows{}]",
+        rows.len(),
+        total,
+        elapsed
+    )];
+    if !columns.is_empty() {
+        lines.push(columns.join(" | "));
+    }
+    for row in rows {
+        let cells: Vec<String> = row
+            .iter()
+            .take(AUTO_PREVIEW_MAX_COLUMNS)
+            .map(format_preview_cell)
+            .collect();
+        lines.push(cells.join(" | "));
+    }
+    if preview.rows.len() > AUTO_PREVIEW_MAX_ROWS {
+        lines.push(format!(
+            "… {} more preview rows omitted",
+            preview.rows.len() - AUTO_PREVIEW_MAX_ROWS
+        ));
+    }
+    Some(lines.join("\n"))
+}
+
+fn format_preview_cell(value: &serde_json::Value) -> String {
+    let raw = match value {
+        serde_json::Value::Null => "NULL".to_string(),
+        serde_json::Value::String(text) => text.clone(),
+        other => other.to_string(),
+    };
+    let single_line = raw.replace(['\n', '\r'], " ").replace('|', "\\|");
+    truncate_chars(&single_line, AUTO_PREVIEW_MAX_CELL_CHARS)
+}
+
+fn truncate_chars(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    let mut out: String = text.chars().take(max_chars).collect();
+    out.push('…');
+    out
+}
+
+fn truncate_bytes(text: &str, max_bytes: usize) -> String {
+    if text.len() <= max_bytes {
+        return text.to_string();
+    }
+    let mut end = max_bytes;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text[..end].to_string()
+}
+
+fn merge_context_blocks(
+    auto: Option<String>,
+    picked: Option<String>,
+    gate: &AiSafetyGateConfig,
+) -> Option<String> {
+    let combined = match (auto, picked) {
+        (Some(auto), Some(picked)) => format!("{auto}\n\n{picked}"),
+        (Some(auto), None) => auto,
+        (None, Some(picked)) => picked,
+        (None, None) => return None,
+    };
+    let truncated = truncate_bytes(&combined, gate.max_context_bytes.max(1));
+    if truncated.trim().is_empty() {
+        None
+    } else {
+        Some(truncated)
+    }
 }
 
 /// chat 的上下文块政策：逐文件内容脱敏，再走共享拼装格式。

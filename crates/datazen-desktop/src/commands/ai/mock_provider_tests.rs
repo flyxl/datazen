@@ -281,6 +281,10 @@ async fn mock_provider_chat_stream() {
         None,
         None,
         None,
+        None,
+        None,
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -288,6 +292,69 @@ async fn mock_provider_chat_stream() {
     assert_eq!(rid, "req-mock-chat");
     let req = mock.last_request().unwrap();
     assert!(req.messages.iter().any(|m| m.role == MessageRole::User));
+}
+
+#[tokio::test]
+async fn mock_provider_chat_auto_context_reaches_the_prompt() {
+    let (test, mock) = TestAppState::with_mock_ai_tables().await;
+    let (_, conn_id) = test.save_and_connect("mock-auto-context").await;
+    mock.push_stream_text("seen");
+
+    let (state, _keep) = test.into_state();
+    let app = CommandApp::new(state);
+
+    ai_chat(
+        app.state(),
+        app.window(),
+        Some(conn_id),
+        Some("app".into()),
+        vec![ChatMessage {
+            role: MessageRole::User,
+            content: "why did this fail?".into(),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }],
+        "req-auto-context".into(),
+        false,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some("SELECT * FROM orders".into()),
+        None,
+        Some("syntax error near FROM".into()),
+        Some(datazen::ai::chat_session::ChatResultPreview {
+            columns: vec!["id".into()],
+            rows: vec![vec![serde_json::json!(7)]],
+            row_count: Some(1),
+            elapsed_ms: Some(3),
+        }),
+    )
+    .await
+    .unwrap();
+
+    let request = mock.last_request().unwrap();
+    let user = request
+        .messages
+        .iter()
+        .rev()
+        .find(|message| message.role == MessageRole::User)
+        .expect("user message");
+    assert!(user.content.contains("[Current SQL]"), "{}", user.content);
+    assert!(
+        user.content.contains("[Recent query error]"),
+        "{}",
+        user.content
+    );
+    assert!(
+        user.content.contains("[Recent result preview"),
+        "{}",
+        user.content
+    );
+    assert!(user.content.contains('7'), "{}", user.content);
 }
 
 #[tokio::test]
@@ -314,6 +381,10 @@ async fn mock_provider_workflow_defaults_to_agent_tools() {
         "req-wf-default".into(),
         false,
         Some("workflow_generate".into()),
+        None,
+        None,
+        None,
+        None,
         None,
         None,
         None,
@@ -378,6 +449,10 @@ async fn mock_provider_chat_tool_loop_then_text() {
         None,
         None,
         Some(datazen::ai::AiAgentMode::Agent),
+        None,
+        None,
+        None,
+        None,
     )
     .await
     .unwrap();

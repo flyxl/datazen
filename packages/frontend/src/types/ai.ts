@@ -116,6 +116,22 @@ export interface AiToolResult {
   content: string;
 }
 
+/** Result excerpt frozen into a chat turn; the Rust side re-caps it. */
+export interface AiChatResultPreview {
+  columns: string[];
+  rows: (string | number | boolean | null)[][];
+  rowCount?: number;
+  elapsedMs?: number;
+}
+
+/** Auto-attached editor/result facts, frozen when the user sends. */
+export interface AiChatContextSnapshot {
+  editorSql?: string;
+  selection?: string;
+  lastError?: string;
+  resultPreview?: AiChatResultPreview;
+}
+
 export interface AiChatMessage {
   /** Unique message identifier for stable React keys. */
   id?: string;

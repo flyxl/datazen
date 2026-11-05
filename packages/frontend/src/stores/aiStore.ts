@@ -423,6 +423,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
     agentMode = 'ask',
     contextFiles,
     contextTables,
+    autoContext,
     targetClaim,
   }) => {
     const { chatSession } = get();
@@ -485,6 +486,10 @@ export const useAiStore = create<AiStore>((set, get) => ({
         contextFiles,
         contextTables,
         targetClaim,
+        editorSql: autoContext?.editorSql,
+        selection: autoContext?.selection,
+        lastError: autoContext?.lastError,
+        resultPreview: autoContext?.resultPreview,
       });
     } catch (e) {
       getStreamRegistry().settle(requestId, 'error');

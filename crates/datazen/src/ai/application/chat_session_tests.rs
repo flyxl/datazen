@@ -364,6 +364,10 @@ async fn chat_with_driver_resolves_schema_and_keeps_db_tools() {
             scenario: ChatScenario::Chat,
             context_tables: Some(vec!["users".into()]),
             agent_mode: AiAgentMode::Agent,
+            editor_sql: None,
+            selection: None,
+            last_error: None,
+            result_preview: None,
         },
     )
     .await
@@ -409,6 +413,10 @@ async fn chat_ask_mode_strips_db_and_mcp_tools() {
             scenario: ChatScenario::Chat,
             context_tables: None,
             agent_mode: AiAgentMode::Ask,
+            editor_sql: None,
+            selection: None,
+            last_error: None,
+            result_preview: None,
         },
     )
     .await
@@ -450,6 +458,10 @@ async fn chat_agent_mode_exposes_db_and_mcp_tools() {
             scenario: ChatScenario::Chat,
             context_tables: None,
             agent_mode: AiAgentMode::Agent,
+            editor_sql: None,
+            selection: None,
+            last_error: None,
+            result_preview: None,
         },
     )
     .await
@@ -497,6 +509,10 @@ fn chat_logs_persisted_connection_id() {
                 scenario: ChatScenario::Chat,
                 context_tables: None,
                 agent_mode: AiAgentMode::Ask,
+                editor_sql: None,
+                selection: None,
+                last_error: None,
+                result_preview: None,
             },
         )
         .await
@@ -534,6 +550,10 @@ async fn chat_unknown_session_skips_schema_silently_and_keeps_tools() {
             scenario: ChatScenario::Chat,
             context_tables: None,
             agent_mode: AiAgentMode::Agent,
+            editor_sql: None,
+            selection: None,
+            last_error: None,
+            result_preview: None,
         },
     )
     .await
@@ -575,6 +595,10 @@ async fn chat_schema_pipeline_failure_disables_db_tools_but_streams() {
             scenario: ChatScenario::Chat,
             context_tables: None,
             agent_mode: AiAgentMode::Agent,
+            editor_sql: None,
+            selection: None,
+            last_error: None,
+            result_preview: None,
         },
     )
     .await
@@ -611,6 +635,10 @@ async fn chat_context_entries_are_redacted_then_formatted() {
             scenario: ChatScenario::Chat,
             context_tables: None,
             agent_mode: AiAgentMode::Ask,
+            editor_sql: None,
+            selection: None,
+            last_error: None,
+            result_preview: None,
         },
     )
     .await
@@ -657,6 +685,10 @@ async fn chat_workflow_scenario_injects_connections_context() {
             scenario: ChatScenario::WorkflowGenerate,
             context_tables: None,
             agent_mode: AiAgentMode::Agent,
+            editor_sql: None,
+            selection: None,
+            last_error: None,
+            result_preview: None,
         },
     )
     .await
@@ -708,6 +740,10 @@ async fn chat_unregisters_cancel_entry_after_completion() {
             scenario: ChatScenario::Chat,
             context_tables: None,
             agent_mode: AiAgentMode::Ask,
+            editor_sql: None,
+            selection: None,
+            last_error: None,
+            result_preview: None,
         },
     )
     .await
@@ -922,4 +958,177 @@ async fn generate_unregisters_cancel_entry_after_tool_loop() {
             request_id: "req-gen-cancel".into()
         }
     );
+}
+
+// ── 自动上下文快照 ──
+
+fn snapshot_input(
+    editor_sql: Option<&str>,
+    selection: Option<&str>,
+    last_error: Option<&str>,
+    result_preview: Option<ChatResultPreview>,
+) -> ChatSessionInput {
+    ChatSessionInput {
+        request_id: "req-snapshot".into(),
+        db_session_id: None,
+        connection_id: None,
+        database: Some("app".into()),
+        messages: vec![user_message("what changed?")],
+        include_schema: false,
+        scenario: ChatScenario::Chat,
+        context_tables: None,
+        agent_mode: AiAgentMode::Ask,
+        editor_sql: editor_sql.map(str::to_string),
+        selection: selection.map(str::to_string),
+        last_error: last_error.map(str::to_string),
+        result_preview,
+    }
+}
+
+fn preview(rows: Vec<Vec<serde_json::Value>>, row_count: u64) -> ChatResultPreview {
+    ChatResultPreview {
+        columns: vec!["id".into(), "name".into()],
+        rows,
+        row_count: Some(row_count),
+        elapsed_ms: Some(12),
+    }
+}
+
+fn row(id: u64, name: &str) -> Vec<serde_json::Value> {
+    vec![serde_json::json!(id), serde_json::json!(name)]
+}
+
+#[test]
+fn auto_context_orders_sql_selection_error_then_preview() {
+    let input = snapshot_input(
+        Some("SELECT * FROM users"),
+        Some("SELECT * FROM users WHERE id = 1"),
+        Some("syntax error near FROM"),
+        Some(preview(vec![row(1, "alice")], 1)),
+    );
+    let block = build_auto_context_block(&input, &AiSafetyGateConfig::default(), &[])
+        .expect("snapshot block");
+
+    let sql_at = block.find("[Current SQL]").expect("SQL section");
+    let selection_at = block.find("[Editor selection]").expect("selection section");
+    let error_at = block.find("[Recent query error]").expect("error section");
+    let preview_at = block
+        .find("[Recent result preview")
+        .expect("preview section");
+    assert!(sql_at < selection_at);
+    assert!(selection_at < error_at);
+    assert!(error_at < preview_at);
+    assert!(block.contains("SELECT * FROM users"));
+    assert!(block.contains("syntax error near FROM"));
+    assert!(block.contains("alice"));
+    assert!(block.contains("showing 1 of 1 rows, 12ms"));
+}
+
+#[test]
+fn auto_context_partial_and_empty_fields_produce_no_empty_headings() {
+    let only_error = snapshot_input(None, None, Some("boom"), None);
+    let block = build_auto_context_block(&only_error, &AiSafetyGateConfig::default(), &[])
+        .expect("error block");
+    assert!(block.contains("[Recent query error]\nboom"));
+    assert!(!block.contains("[Current SQL]"));
+    assert!(!block.contains("[Editor selection]"));
+    assert!(!block.contains("[Recent result preview"));
+
+    let empty = snapshot_input(Some("   "), Some(""), Some(" \n "), None);
+    assert!(
+        build_auto_context_block(&empty, &AiSafetyGateConfig::default(), &[]).is_none(),
+        "empty fields must not create headings"
+    );
+}
+
+#[test]
+fn auto_context_is_truncated_and_redacted() {
+    let long_sql = format!(
+        "SELECT * FROM users WHERE password=supersecret -- {}",
+        "x".repeat(400)
+    );
+    let input = snapshot_input(Some(&long_sql), None, None, None);
+    let gate = AiSafetyGateConfig {
+        max_context_bytes: 120,
+        ..AiSafetyGateConfig::default()
+    };
+    let block = build_auto_context_block(&input, &gate, &[]).expect("truncated block");
+    assert!(
+        block.len() <= 120,
+        "block must respect gate cap: {}",
+        block.len()
+    );
+    assert!(!block.contains("supersecret"), "{block}");
+}
+
+#[test]
+fn auto_context_preview_keeps_five_rows_and_omits_the_rest() {
+    let rows = (0..8).map(|id| row(id, &format!("name-{id}"))).collect();
+    let input = snapshot_input(None, None, None, Some(preview(rows, 8)));
+    let block = build_auto_context_block(&input, &AiSafetyGateConfig::default(), &[])
+        .expect("preview block");
+
+    assert!(block.contains("name-4"), "{block}");
+    assert!(!block.contains("name-5"), "row 6 must be omitted: {block}");
+    assert!(block.contains("showing 5 of 8 rows, 12ms"));
+    assert!(block.contains("3 more preview rows omitted"));
+}
+
+#[test]
+fn auto_context_dedupes_picked_files_and_query_error_prompt() {
+    let sql = "SELECT * FROM users";
+    let input = snapshot_input(Some(sql), None, Some("relation users does not exist"), None);
+    let entries = vec![("query.sql".into(), sql.to_string())];
+    let block = build_auto_context_block(&input, &AiSafetyGateConfig::default(), &entries)
+        .expect("error only");
+    assert!(!block.contains("[Current SQL]"), "{block}");
+    assert!(block.contains("[Recent query error]"));
+
+    let mut prompt_input = snapshot_input(None, None, Some("relation users does not exist"), None);
+    prompt_input.messages = vec![user_message(
+        "Please explain this error: relation users does not exist",
+    )];
+    let block = build_auto_context_block(&prompt_input, &AiSafetyGateConfig::default(), &[]);
+    assert!(
+        block.is_none(),
+        "query-error prompt already carries the error"
+    );
+}
+
+#[tokio::test]
+async fn chat_attaches_auto_context_before_picked_files() {
+    let provider = Arc::new(ScriptedProvider::default());
+    provider.push_stream(vec![stream_chunk("ok", true)]);
+    let src = recording_source();
+    let mut env = test_env(provider.clone(), src);
+    env.context_entries = vec![("notes.md".into(), "picked notes".into())];
+    let host = RecordingLoopHost::default();
+    let (on_chunk, _seen) = sink();
+    let mut input = snapshot_input(
+        Some("SELECT * FROM users"),
+        None,
+        Some("syntax error near FROM"),
+        Some(preview(vec![row(1, "alice")], 1)),
+    );
+    input.messages = vec![user_message("why did this fail?")];
+
+    run_chat_session(env, &host, on_chunk, input)
+        .await
+        .expect("chat session completes");
+
+    let request = provider.last_request().expect("request");
+    let user = request
+        .messages
+        .iter()
+        .rev()
+        .find(|message| message.role == MessageRoleT::User)
+        .expect("user request");
+    let auto_at = user.content.find("[Current SQL]").expect("auto block");
+    let picked_at = user
+        .content
+        .find("[Context: notes.md]")
+        .expect("picked block");
+    assert!(auto_at < picked_at, "{}", user.content);
+    assert!(user.content.contains("[Recent query error]"));
+    assert!(user.content.contains("alice"));
 }

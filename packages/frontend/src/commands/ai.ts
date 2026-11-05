@@ -4,6 +4,7 @@ import { requirePlatform } from '../platform/contracts';
 type UnlistenFn = () => void;
 import type {
   AiAgentMode,
+  AiChatContextSnapshot,
   AiChatMessage,
   AiProviderConfig,
   AiSettingsConfig,
@@ -136,6 +137,10 @@ export const aiCommands = {
     contextFiles?: string[];
     contextTables?: string[];
     targetClaim?: AiTargetClaim;
+    editorSql?: string;
+    selection?: string;
+    lastError?: string;
+    resultPreview?: AiChatContextSnapshot['resultPreview'];
   }) => e2eStubInvoke('ai_chat', params, () => invoke<string>('ai_chat', params)),
   parseFilter: (params: {
     dbSessionId: string;

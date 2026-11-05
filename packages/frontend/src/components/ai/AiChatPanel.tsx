@@ -12,6 +12,7 @@ import {
   Wand2,
   Send,
   Wrench,
+  X,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { AiInput } from './AiInput';
@@ -30,7 +31,13 @@ import { detectSafetyPreset } from '../../lib/aiSafetyPresets';
 import { Select } from '../ui/Select';
 import { composeKvAiMessage } from '../../lib/kvAiContext';
 import type { KvAiContext } from '../../lib/kvAiContext';
-import type { AiAgentMode, AiChatMessage, AiQuestion, ContextItem } from '../../types';
+import type {
+  AiAgentMode,
+  AiChatContextSnapshot,
+  AiChatMessage,
+  AiQuestion,
+  ContextItem,
+} from '../../types';
 import type { AiChatDraftRequest } from '../../windows/connection/query/aiDraftBridge';
 import { Spinner } from '../ui/Spinner';
 
@@ -59,6 +66,11 @@ interface AiChatPanelProps {
    * `undefined` when the active tab has no query editor.
    */
   editorSessionId?: string;
+  /**
+   * Host-owned editor/result snapshot for the active query panel. The panel
+   * freezes it on send and lets the user drop individual chips.
+   */
+  autoContext?: AiChatContextSnapshot | null;
 }
 
 function formatMcpToolDisplayName(qualifiedName: string): string {
@@ -78,6 +90,7 @@ export function AiChatPanel({
   onDraftConsumed,
   connectionId,
   editorSessionId,
+  autoContext,
 }: AiChatPanelProps) {
   const { t } = useI18n();
   const chatSession = useAiStore((s) => s.chatSession);
@@ -89,6 +102,47 @@ export function AiChatPanel({
   const settingsConfig = useAiStore((s) => s.settingsConfig);
   const setActiveProfile = useAiStore((s) => s.setActiveProfile);
   const loadConfig = useAiStore((s) => s.loadConfig);
+
+  // Keep the chips in sync with the host snapshot, but never resurrect a field
+  // the user explicitly removed unless its value changes.
+  useEffect(() => {
+    const previous = previousAutoContextRef.current;
+    previousAutoContextRef.current = autoContext ?? null;
+    setSnapshot((current) => {
+      const next: AiChatContextSnapshot = { ...(current ?? {}) };
+      let changed = false;
+      if (autoContext?.editorSql !== previous?.editorSql) {
+        changed = true;
+        if (autoContext?.editorSql) next.editorSql = autoContext.editorSql;
+        else delete next.editorSql;
+      }
+      if (autoContext?.selection !== previous?.selection) {
+        changed = true;
+        if (autoContext?.selection) next.selection = autoContext.selection;
+        else delete next.selection;
+      }
+      if (autoContext?.lastError !== previous?.lastError) {
+        changed = true;
+        if (autoContext?.lastError) next.lastError = autoContext.lastError;
+        else delete next.lastError;
+      }
+      if (autoContext?.resultPreview !== previous?.resultPreview) {
+        changed = true;
+        if (autoContext?.resultPreview) next.resultPreview = autoContext.resultPreview;
+        else delete next.resultPreview;
+      }
+      return changed ? (hasSnapshotContent(next) ? next : null) : current;
+    });
+  }, [autoContext]);
+
+  const removeSnapshotField = useCallback((field: keyof AiChatContextSnapshot) => {
+    setSnapshot((current) => {
+      if (!current) return null;
+      const next = { ...current };
+      delete next[field];
+      return hasSnapshotContent(next) ? next : null;
+    });
+  }, []);
 
   useEffect(() => {
     void loadConfig?.();
@@ -110,6 +164,8 @@ export function AiChatPanel({
         : 'text-blue-400';
 
   const [input, setInput] = useState('');
+  const [snapshot, setSnapshot] = useState<AiChatContextSnapshot | null>(null);
+  const previousAutoContextRef = useRef<AiChatContextSnapshot | null>(null);
   const [tab, setTab] = useState<'chat' | 'workflows'>('chat');
   const [agentMode, setAgentMode] = useState<AiAgentMode>('ask');
   const [contextItems, setContextItems] = useState<ContextItem[]>([]);
@@ -118,7 +174,13 @@ export function AiChatPanel({
 
   // P6 §14.4: sharing the current editor session is opt-in. Default stays
   // `independent`; a denied grant shows an error and stays independent.
-  const { canShare, sharing, error: shareError, setSharing, claimForSend } = useAiEditorGrant({
+  const {
+    canShare,
+    sharing,
+    error: shareError,
+    setSharing,
+    claimForSend,
+  } = useAiEditorGrant({
     connectionId,
     database,
     editorSessionId,
@@ -214,10 +276,12 @@ export function AiChatPanel({
       content: composeKvAiMessage(input.trim(), kvContext ?? null),
       contextFiles: contextFiles.length > 0 ? contextFiles : undefined,
       contextTables: contextTables.length > 0 ? contextTables : undefined,
+      ...(hasSnapshotContent(snapshot) ? { autoContext: snapshot } : {}),
       targetClaim: claimForSend(),
     });
     setInput('');
     setContextItems([]);
+    setSnapshot(null);
   }, [
     input,
     chatSession,
@@ -228,6 +292,7 @@ export function AiChatPanel({
     agentMode,
     contextItems,
     kvContext,
+    snapshot,
     claimForSend,
   ]);
 
@@ -543,6 +608,43 @@ export function AiChatPanel({
             <div className="mb-2">
               <AiEgressNotice contextItems={contextItems} />
             </div>
+            {hasSnapshotContent(snapshot) && (
+              <div
+                className="mb-2 flex flex-wrap items-center gap-1.5"
+                data-testid="ai-auto-context-chips"
+              >
+                {snapshot?.editorSql && (
+                  <AutoContextChip
+                    label={t('chat.autoContext.sql')}
+                    testId="ai-auto-context-sql"
+                    onRemove={() => removeSnapshotField('editorSql')}
+                  />
+                )}
+                {snapshot?.selection && (
+                  <AutoContextChip
+                    label={t('chat.autoContext.selection')}
+                    testId="ai-auto-context-selection"
+                    onRemove={() => removeSnapshotField('selection')}
+                  />
+                )}
+                {snapshot?.lastError && (
+                  <AutoContextChip
+                    label={t('chat.autoContext.error')}
+                    testId="ai-auto-context-error"
+                    onRemove={() => removeSnapshotField('lastError')}
+                  />
+                )}
+                {snapshot?.resultPreview &&
+                  (snapshot.resultPreview.columns.length > 0 ||
+                    snapshot.resultPreview.rows.length > 0) && (
+                    <AutoContextChip
+                      label={t('chat.autoContext.result')}
+                      testId="ai-auto-context-result"
+                      onRemove={() => removeSnapshotField('resultPreview')}
+                    />
+                  )}
+              </div>
+            )}
             {/*
               The KV facts leave with every message while a key is in scope, so the
               chip says so before the user sends — and names the key it is about.
@@ -610,6 +712,47 @@ export function AiChatPanel({
         </>
       )}
     </div>
+  );
+}
+
+function hasSnapshotContent(
+  snapshot: AiChatContextSnapshot | null | undefined,
+): snapshot is AiChatContextSnapshot {
+  if (!snapshot) return false;
+  return Boolean(
+    snapshot.editorSql?.trim() ||
+      snapshot.selection?.trim() ||
+      snapshot.lastError?.trim() ||
+      (snapshot.resultPreview &&
+        (snapshot.resultPreview.columns.length > 0 || snapshot.resultPreview.rows.length > 0)),
+  );
+}
+
+function AutoContextChip({
+  label,
+  testId,
+  onRemove,
+}: {
+  label: string;
+  testId: string;
+  onRemove: () => void;
+}) {
+  return (
+    <span
+      className="inline-flex max-w-full items-center gap-1 rounded border border-edge bg-surface-alt px-1.5 py-0.5 text-[10px] text-fg-muted"
+      data-testid={testId}
+    >
+      <span className="truncate">{label}</span>
+      <button
+        type="button"
+        className="shrink-0 rounded p-0.5 text-fg-muted hover:bg-surface hover:text-fg"
+        onClick={onRemove}
+        aria-label={`remove ${label}`}
+        data-testid={`${testId}-remove`}
+      >
+        <X className="h-2.5 w-2.5" />
+      </button>
+    </span>
   );
 }
 

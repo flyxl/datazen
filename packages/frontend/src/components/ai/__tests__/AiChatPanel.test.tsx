@@ -604,3 +604,59 @@ describe('AiChatPanel — KV panel context', () => {
     expect(second?.content as string).toContain('selected_key=orders:99');
   });
 });
+
+describe('AiChatPanel automatic context snapshot', () => {
+  const SNAPSHOT = {
+    editorSql: 'SELECT * FROM orders',
+    lastError: 'relation orders does not exist',
+    resultPreview: {
+      columns: ['id'],
+      rows: [[1] as (string | number | boolean | null)[]],
+      rowCount: 1,
+      elapsedMs: 4,
+    },
+  };
+
+  it('shows chips for the host snapshot and lets each be removed', () => {
+    const { getByTestId, queryByTestId } = render(
+      <AiChatPanel dbSessionId="c1" database="db" autoContext={SNAPSHOT} />,
+    );
+
+    expect(getByTestId('ai-auto-context-sql')).toHaveTextContent('chat.autoContext.sql');
+    expect(getByTestId('ai-auto-context-error')).toHaveTextContent('chat.autoContext.error');
+    expect(getByTestId('ai-auto-context-result')).toHaveTextContent('chat.autoContext.result');
+
+    fireEvent.click(getByTestId('ai-auto-context-sql-remove'));
+    expect(queryByTestId('ai-auto-context-sql')).toBeNull();
+    expect(getByTestId('ai-auto-context-error')).toBeInTheDocument();
+  });
+
+  it('sends only the remaining chips and freezes them into the request', () => {
+    const { getByTestId } = render(
+      <AiChatPanel dbSessionId="c1" database="db" autoContext={SNAPSHOT} />,
+    );
+    fireEvent.click(getByTestId('ai-auto-context-sql-remove'));
+    fireEvent.change(getByTestId('chat-input'), { target: { value: 'why did this fail?' } });
+    fireEvent.click(getByTestId('chat-send'));
+
+    expect(aiState.sendChatMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        autoContext: {
+          lastError: SNAPSHOT.lastError,
+          resultPreview: SNAPSHOT.resultPreview,
+        },
+      }),
+    );
+    // The chips are consumed by the send; the next turn starts from fresh host facts.
+    expect(document.querySelector('[data-testid="ai-auto-context-chips"]')).toBeNull();
+  });
+
+  it('does not attach an empty snapshot', () => {
+    const { getByTestId } = render(<AiChatPanel dbSessionId="c1" database="db" />);
+    fireEvent.change(getByTestId('chat-input'), { target: { value: 'hello' } });
+    fireEvent.click(getByTestId('chat-send'));
+    expect(aiState.sendChatMessage).toHaveBeenCalledWith(
+      expect.not.objectContaining({ autoContext: expect.anything() }),
+    );
+  });
+});

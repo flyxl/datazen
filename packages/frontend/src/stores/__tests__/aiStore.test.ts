@@ -390,6 +390,36 @@ describe('aiStore', () => {
       );
     });
 
+    it('sendChatMessage forwards the frozen auto-context snapshot', async () => {
+      localStorage.clear();
+      useAiStore.getState().initChatSession();
+      mockAiCommands.chat.mockResolvedValueOnce(undefined);
+      const resultPreview = {
+        columns: ['id'],
+        rows: [[1] as (string | number | boolean | null)[]],
+        rowCount: 1,
+        elapsedMs: 3,
+      };
+
+      await useAiStore.getState().sendChatMessage({
+        content: 'why?',
+        autoContext: {
+          editorSql: 'SELECT 1',
+          lastError: 'boom',
+          resultPreview,
+        },
+      });
+
+      expect(mockAiCommands.chat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          editorSql: 'SELECT 1',
+          selection: undefined,
+          lastError: 'boom',
+          resultPreview,
+        }),
+      );
+    });
+
     it('sendChatMessage forwards the selected Agent mode', async () => {
       localStorage.clear();
       useAiStore.getState().initChatSession();

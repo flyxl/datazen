@@ -87,6 +87,10 @@ pub async fn ai_chat<R: tauri::Runtime>(
     target_claim: Option<AiTargetClaim>,
     connection_id: Option<String>,
     agent_mode: Option<AiAgentMode>,
+    editor_sql: Option<String>,
+    selection: Option<String>,
+    last_error: Option<String>,
+    result_preview: Option<datazen::ai::chat_session::ChatResultPreview>,
 ) -> Result<String, CommandError> {
     let on_chunk = window_stream_callback(&window);
     let is_workflow = scenario.as_deref() == Some("workflow_generate");
@@ -174,6 +178,10 @@ pub async fn ai_chat<R: tauri::Runtime>(
             } else {
                 AiAgentMode::Ask
             }),
+            editor_sql,
+            selection,
+            last_error,
+            result_preview,
         },
     )
     .await

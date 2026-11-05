@@ -20,7 +20,7 @@ import { DetailPanel } from '../../components/DataTable/DetailPanel';
 import { AiChatPanel } from '../../components/ai/AiChatPanel';
 import { buildKvAiContext } from '../../lib/kvAiContext';
 import { useKvSlotSelectedKey } from '../../hooks/useKvSlotSelectedKey';
-import type { ColumnSchema, DatabaseType } from '../../types';
+import type { AiChatContextSnapshot, ColumnSchema, DatabaseType } from '../../types';
 import type { KvSlotState } from '@datazen/driver-sdk';
 import type { AiChatDraftRequest } from './query/aiDraftBridge';
 import type { KvKeyPropsSidebarBinding } from './useKvWorkspaceSlots';
@@ -159,6 +159,39 @@ export function ContentViewDrawers({
       ? (activeQueryExec.results[activeQueryExec.activeResultIdx] ?? null)
       : null;
   const resultDetailRowIndex = activeQueryExec?.resultDetailRowIndex ?? null;
+
+  // The assistant gets the active query's current facts as one frozen-on-send
+  // snapshot. Rows are cut here as well as in Rust so a wide result never
+  // crosses IPC just to be discarded.
+  const autoContext = useMemo<AiChatContextSnapshot | undefined>(() => {
+    if (activePanel?.type !== 'query' || !activeQueryExec) return undefined;
+    const editorSql = activeQueryExec.sql.trim() || activeQueryResult?.sql;
+    const resultPreview =
+      activeQueryResult &&
+      (activeQueryResult.columns.length > 0 || activeQueryResult.rows.length > 0)
+        ? {
+            columns: activeQueryResult.columns.slice(0, 20).map((column) => column.name),
+            rows: activeQueryResult.rows.slice(0, 5).map((row) =>
+              row.slice(0, 20).map((cell) => {
+                if (cell == null) return null;
+                if (typeof cell === 'string') return cell.slice(0, 500);
+                if (typeof cell === 'number' || typeof cell === 'boolean') return cell;
+                return JSON.stringify(cell)?.slice(0, 500) ?? null;
+              }),
+            ),
+            rowCount: activeQueryResult.rows.length,
+            elapsedMs: activeQueryExec.executionTimeMs ?? activeQueryResult.executionTimeMs,
+          }
+        : undefined;
+    const snapshot: AiChatContextSnapshot = {
+      editorSql: editorSql || undefined,
+      lastError: activeQueryExec.error || undefined,
+      resultPreview,
+    };
+    return snapshot.editorSql || snapshot.lastError || snapshot.resultPreview
+      ? snapshot
+      : undefined;
+  }, [activePanel?.type, activeQueryExec, activeQueryResult]);
 
   // The write-back verdict of the result on screen. It is fetched per result
   // and dropped again when the result is replaced, so a verdict never outlives
@@ -384,6 +417,7 @@ export function ContentViewDrawers({
                 }
               }}
               kvContext={kvAiContext}
+              autoContext={autoContext}
               draftRequest={pendingDraftRequest}
               onDraftConsumed={onDraftConsumed}
             />

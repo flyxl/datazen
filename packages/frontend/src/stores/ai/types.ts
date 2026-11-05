@@ -1,6 +1,7 @@
 import type { AiTargetClaim, CancelReceipt } from '../../ai/targetClaim';
 import type {
   AiAgentMode,
+  AiChatContextSnapshot,
   AiChatMessage,
   AiChatSession,
   AiModelProfile,
@@ -128,6 +129,8 @@ export interface AiStore {
     agentMode?: AiAgentMode;
     contextFiles?: string[];
     contextTables?: string[];
+    /** Frozen editor/error/result snapshot for this turn. */
+    autoContext?: AiChatContextSnapshot;
     /** Target this run claims; omitted = independent. */
     targetClaim?: AiTargetClaim;
   }) => Promise<void>;
