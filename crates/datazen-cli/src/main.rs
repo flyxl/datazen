@@ -1,6 +1,7 @@
 mod app_data;
 mod cli;
 mod commands;
+mod desktop_launch;
 mod error;
 mod output;
 mod platform_vault;

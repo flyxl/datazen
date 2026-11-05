@@ -52,9 +52,19 @@ datazen agent setup --json
 `<connection>` 优先按 id 匹配，其次按唯一名称匹配；同名时返回 `E_USAGE`，要求
 使用 id。`--file -` 等同 stdout。
 
-`open` 当前**失败关闭**：桌面没有注册按连接 id 打开的路由，CLI 也不伪造
-`datazen://` URI，而是返回 `E_UNSUPPORTED`。在宿主启动/路由实现前，请使用
-`context` 或桌面 UI 打开连接。
+`open` 会定位已安装的 DataZen 桌面应用，并以 argv 契约启动它：
+
+```bash
+datazen open <connection> [--query "SELECT ..."] --json
+# 桌面进程收到:
+# --datazen-open-connection <id> [--datazen-open-query <sql>]
+```
+
+macOS 使用 `/Applications/DataZen.app`（或 `~/Applications/DataZen.app`）和
+`open -a ... --args`；Windows/Linux 使用常见安装路径或
+`DATAZEN_DESKTOP_BIN` 指定的可执行文件。桌面启动时解析参数，向主窗口发送
+`datazen:open-connection`，前端打开对应连接；带 `--query` 时在连接就绪后创建
+查询面板。找不到桌面应用返回 `E_NOT_FOUND`，不会伪造 `datazen://` URI。
 
 ## 只读与写入开关
 
@@ -72,7 +82,10 @@ datazen agent setup --json
 `PRAGMA journal_mode`）放行。
 
 `--limit` 对 SELECT/WITH 在驱动执行前追加 `LIMIT n+1`；已有更大的 LIMIT 时
-外层再包一层 `LIMIT n+1`，不是拿到全部结果后截断。非 SELECT 不改写。
+外层再包一层 `LIMIT n+1`，不是拿到全部结果后截断。前置/尾随注释不影响改写，
+追加的 LIMIT 会放在尾随注释之前；`WITH` 只有最终语句是 SELECT 时才改写，
+`WITH ... UPDATE/INSERT/DELETE ... RETURNING` 不改写；多语句按顶层分号逐条
+处理，每条 SELECT 各自追加，避免把 LIMIT 写到错误位置。非 SELECT 不改写。
 `--timeout` 接受裸秒数、`s` 或 `ms`；超时返回 `E_TIMEOUT`。
 
 ## 输出
@@ -88,7 +101,7 @@ datazen agent setup --json
 | --- | --- |
 | `E_USAGE` | 参数/选择歧义 |
 | `E_CONFIG` | 应用数据或 profile 配置不可用 |
-| `E_NOT_FOUND` | 连接不存在 |
+| `E_NOT_FOUND` | 连接或桌面应用不存在 |
 | `E_CREDENTIAL` | 凭据/加密密钥不可用，拒绝继续 |
 | `E_READ_ONLY` | 默认只读策略或连接只读 |
 | `E_WRITE_FLAG` | 缺少 `--allow-writes` 或 flag 组合不成立 |
@@ -98,7 +111,7 @@ datazen agent setup --json
 | `E_DRIVER` | 驱动未编译或连接失败 |
 | `E_EXECUTOR` | 执行器装配错误 |
 | `E_OUTPUT` | 输出参数/写文件错误 |
-| `E_UNSUPPORTED` | 宿主尚未装配的能力（隧道、open 路由） |
+| `E_UNSUPPORTED` | 宿主尚未装配的能力（隧道、不支持的平台） |
 | `E_INTERNAL` | 未分类的内部错误（退出码 1） |
 
 退出码依次为：`1` internal、`2` usage、`3` config、`4` not found、`5` credential、
@@ -114,4 +127,16 @@ datazen agent setup --json
 - 平台 vault：macOS 读取 `security` 中的 DataZen master key，Windows 读取 DPAPI
   blob；其他平台使用 `DATAZEN_KEYRING=file`/`keyring`。无法读取密钥时返回
   `E_CREDENTIAL`。
-- `open` 尚无桌面 deep-link 路由，因此明确失败；不输出不可消费的 URI。
+- `open` 启动真实桌面进程并复用启动事件/前端路由；不输出不可消费的 URI。
+- `query` 目前由 CLI 直接构造共享驱动执行；`datazen::execution` 的
+  Runtime/Session 端口还没有可注入 CLI 的适配器（见下方装配边界）。
+
+## Runtime 装配边界
+
+CLI 没有伪造 Runtime 集成。宿主执行 Runtime 的入口
+`RuntimeConnectionUseCases::new` 需要 `ProfileRepository`、`PolicyService` 和
+`SessionBackend` 三个真实端口；其中 `SessionBackend` 还要承担打开物理资源、
+执行/取消、终结句柄和关闭资源，并依赖宿主的 owner/lease/epoch/隧道装配。
+CLI 只有解析后的 `ConnectionConfig` 与 `create_driver`，没有这些宿主对象；
+桌面实现（如 `DesktopSessionBackend`）也不在 CLI 的依赖闭包里。因此本轮保持
+真实共享驱动直连，不把测试替身包装成 Runtime。

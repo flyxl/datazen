@@ -163,22 +163,197 @@ pub fn ensure_supported_host_wiring(config: &ConnectionConfig) -> Result<(), Cli
 }
 
 /// The driver API's SQL limit is a row cap on the server, not a display
-/// truncation. A trailing statement semicolon is removed first so the cap can
-/// be appended safely; non-SELECT/WITH statements are returned unchanged.
+/// truncation. Leading/trivia comments are skipped for classification, the cap
+/// is inserted before trailing comments, `WITH` only accepts a final SELECT,
+/// and multi-statement payloads are left untouched.
 fn limited_sql(sql: &str, limit: usize) -> String {
-    let trimmed = sql.trim().trim_end_matches(';').trim_end();
     let cap = limit.min(u32::MAX as usize - 1) as u32;
-    let (out, applied) = append_select_limit(trimmed, Some(cap));
-    if applied.is_some() && out == trimmed {
+    // A multi-statement payload cannot take one trailing LIMIT. Split on
+    // top-level semicolons and cap every statement independently; non-SELECT
+    // statements (including CTE DML) pass through untouched.
+    let mut out = String::with_capacity(sql.len());
+    let mut start = 0;
+    let mut index = 0;
+    while index < sql.len() {
+        let rest = &sql[index..];
+        let ch = rest.chars().next().unwrap_or_default();
+        if rest.starts_with("--") {
+            index = skip_line_comment(sql, index);
+        } else if rest.starts_with("/*") {
+            index = skip_block_comment(sql, index);
+        } else if matches!(ch, '\'' | '"' | '`') {
+            index = skip_quoted(sql, index, ch);
+        } else {
+            if ch == ';' {
+                out.push_str(&limited_statement(&sql[start..=index], cap));
+                start = index + 1;
+            }
+            index += ch.len_utf8();
+        }
+    }
+    out.push_str(&limited_statement(&sql[start..], cap));
+    out
+}
+
+fn limited_statement(sql: &str, cap: u32) -> String {
+    let (Some(first), Some(last)) = (first_code_index(sql), last_code_end(sql)) else {
+        return sql.to_string();
+    };
+    let leading = &sql[..first];
+    let core = &sql[first..last];
+    let suffix = &sql[last..];
+    let tokens = tokenize_sql(&strip_comments_for_tokenize(core));
+    let Some(main) = find_main_verb_index(&tokens) else {
+        return sql.to_string();
+    };
+    let main_verb = tokens[main].to_ascii_uppercase();
+    let appendable = if main_verb == "SELECT" {
+        true
+    } else if main_verb == "WITH" {
+        final_with_verb(&tokens).as_deref() == Some("SELECT")
+    } else {
+        false
+    };
+    if !appendable {
+        return sql.to_string();
+    }
+
+    let (out, applied) = append_select_limit(core, Some(cap));
+    if applied.is_some() && out == core {
         // The statement already has a LIMIT. Keep it, but wrap the statement
         // with a second cap so a larger user-authored LIMIT cannot make
         // `--limit` a display-only truncation.
         return format!(
-            "SELECT * FROM ({trimmed}) AS datazen_limited LIMIT {}",
+            "{leading}SELECT * FROM ({core}) AS datazen_limit LIMIT {}{suffix}",
             cap + 1
         );
     }
-    out
+    format!("{leading}{out}{suffix}")
+}
+
+/// Skip whitespace and leading `--` / `/* */` comments.
+fn first_code_index(sql: &str) -> Option<usize> {
+    let mut index = 0;
+    while index < sql.len() {
+        let rest = &sql[index..];
+        let ch = rest.chars().next()?;
+        if ch.is_whitespace() {
+            index += ch.len_utf8();
+        } else if rest.starts_with("--") {
+            index = skip_line_comment(sql, index);
+        } else if rest.starts_with("/*") {
+            index = skip_block_comment(sql, index);
+        } else {
+            return Some(index);
+        }
+    }
+    None
+}
+
+/// End index (exclusive) of the last code character, before trailing
+/// whitespace/comments and the statement-ending semicolon.
+fn last_code_end(sql: &str) -> Option<usize> {
+    let mut index = 0;
+    let mut last = None;
+    while index < sql.len() {
+        let rest = &sql[index..];
+        let ch = rest.chars().next()?;
+        if rest.starts_with("--") {
+            index = skip_line_comment(sql, index);
+            continue;
+        }
+        if rest.starts_with("/*") {
+            index = skip_block_comment(sql, index);
+            continue;
+        }
+        if ch.is_whitespace() || ch == ';' {
+            index += ch.len_utf8();
+            continue;
+        }
+        if matches!(ch, '\'' | '"' | '`') {
+            index = skip_quoted(sql, index, ch);
+            last = Some(index);
+            continue;
+        }
+        index += ch.len_utf8();
+        last = Some(index);
+    }
+    last
+}
+
+fn skip_line_comment(sql: &str, mut index: usize) -> usize {
+    index += 2;
+    while index < sql.len() {
+        let ch = sql[index..].chars().next().unwrap_or('\n');
+        index += ch.len_utf8();
+        if ch == '\n' {
+            break;
+        }
+    }
+    index
+}
+
+fn skip_block_comment(sql: &str, mut index: usize) -> usize {
+    index += 2;
+    while index < sql.len() {
+        if sql[index..].starts_with("*/") {
+            return index + 2;
+        }
+        index += sql[index..].chars().next().unwrap_or(' ').len_utf8();
+    }
+    index
+}
+
+fn skip_quoted(sql: &str, mut index: usize, quote: char) -> usize {
+    index += quote.len_utf8();
+    while index < sql.len() {
+        let ch = sql[index..].chars().next().unwrap_or(quote);
+        index += ch.len_utf8();
+        if ch == quote {
+            if sql[index..].starts_with(quote) {
+                // SQL escapes a quote by doubling it.
+                index += quote.len_utf8();
+                continue;
+            }
+            break;
+        }
+    }
+    index
+}
+
+/// For `WITH ...`, the final top-level statement verb. CTE bodies live inside
+/// parentheses, so only depth-zero verbs are candidates.
+fn final_with_verb(tokens: &[String]) -> Option<String> {
+    let main = find_main_verb_index(tokens)?;
+    if !tokens[main].eq_ignore_ascii_case("WITH") {
+        return None;
+    }
+    let mut depth = 0usize;
+    let mut final_verb = None;
+    for token in tokens.iter().skip(main + 1) {
+        match token.as_str() {
+            "(" => depth += 1,
+            ")" => depth = depth.saturating_sub(1),
+            _ if depth == 0 => {
+                let upper = token.to_ascii_uppercase();
+                if matches!(
+                    upper.as_str(),
+                    "SELECT"
+                        | "INSERT"
+                        | "UPDATE"
+                        | "DELETE"
+                        | "MERGE"
+                        | "REPLACE"
+                        | "VALUES"
+                        | "TABLE"
+                ) {
+                    final_verb = Some(upper);
+                }
+            }
+            _ => {}
+        }
+    }
+    final_verb
 }
 
 async fn execute_driver_query(
@@ -322,7 +497,10 @@ fn pragma_name(tokens: &[String], main: usize) -> Option<(String, bool)> {
     if tokens.get(index + 1).is_some_and(|token| token == ".") {
         index += 2;
     }
-    let name = tokens.get(index)?.to_ascii_lowercase();
+    let raw = tokens.get(index)?;
+    // The tokenizer keeps `schema.name` as one token (the dot is not a
+    // separator), so normalise `PRAGMA main.table_info` to its pragma name.
+    let name = raw.rsplit('.').next().unwrap_or(raw).to_ascii_lowercase();
     let has_arg = tokens.get(index + 1).is_some_and(|token| token == "(");
     Some((name, has_arg))
 }
@@ -656,6 +834,19 @@ mod tests {
         assert!(guard_sql("PRAGMA journal_mode", &config, both).is_ok());
         assert!(guard_sql("PRAGMA table_info(items)", &config, both).is_ok());
         assert!(guard_sql("PRAGMA user_version", &config, both).is_ok());
+        assert!(guard_sql("PRAGMA main.table_info(items)", &config, both).is_ok());
+        assert_eq!(
+            guard_sql("PRAGMA main.user_version=7", &config, both)
+                .unwrap_err()
+                .code,
+            E_PRODUCTION_WRITE
+        );
+        assert_eq!(
+            guard_sql("PRAGMA main.journal_mode=WAL", &config, both)
+                .unwrap_err()
+                .code,
+            E_PRODUCTION_WRITE
+        );
     }
 
     #[test]
@@ -705,12 +896,63 @@ mod tests {
         );
         assert_eq!(
             limited_sql("WITH x AS (SELECT 1) SELECT * FROM x;", 5),
-            "WITH x AS (SELECT 1) SELECT * FROM x LIMIT 6"
+            "WITH x AS (SELECT 1) SELECT * FROM x LIMIT 6;"
         );
         assert_eq!(limited_sql("UPDATE t SET x = 1", 10), "UPDATE t SET x = 1");
         assert_eq!(
             limited_sql("SELECT * FROM t LIMIT 100", 1),
-            "SELECT * FROM (SELECT * FROM t LIMIT 100) AS datazen_limited LIMIT 2"
+            "SELECT * FROM (SELECT * FROM t LIMIT 100) AS datazen_limit LIMIT 2"
+        );
+    }
+
+    #[test]
+    fn limit_respects_leading_and_trailing_comments() {
+        assert_eq!(
+            limited_sql("-- lead\nSELECT * FROM t -- tail", 1),
+            "-- lead\nSELECT * FROM t LIMIT 2 -- tail"
+        );
+        assert_eq!(
+            limited_sql("/* lead */ SELECT 1; -- tail", 1),
+            "/* lead */ SELECT 1 LIMIT 2; -- tail"
+        );
+        assert_eq!(
+            limited_sql("SELECT 1 /* tail */", 1),
+            "SELECT 1 LIMIT 2 /* tail */"
+        );
+    }
+
+    #[test]
+    fn limit_respects_with_final_statement_and_multiple_statements() {
+        assert_eq!(
+            limited_sql("WITH x AS (SELECT 1) SELECT * FROM x -- tail", 1),
+            "WITH x AS (SELECT 1) SELECT * FROM x LIMIT 2 -- tail"
+        );
+        assert_eq!(
+            limited_sql("WITH x AS (SELECT 1) UPDATE t SET x = 1 RETURNING x", 1),
+            "WITH x AS (SELECT 1) UPDATE t SET x = 1 RETURNING x"
+        );
+        assert_eq!(
+            limited_sql("WITH x AS (DELETE FROM t RETURNING 1) SELECT * FROM x", 1),
+            "WITH x AS (DELETE FROM t RETURNING 1) SELECT * FROM x LIMIT 2"
+        );
+        assert_eq!(
+            limited_sql(
+                "WITH x AS (SELECT 1) INSERT INTO t SELECT * FROM x RETURNING id",
+                1
+            ),
+            "WITH x AS (SELECT 1) INSERT INTO t SELECT * FROM x RETURNING id"
+        );
+        assert_eq!(
+            limited_sql("WITH x AS (SELECT 1) DELETE FROM t RETURNING id", 1),
+            "WITH x AS (SELECT 1) DELETE FROM t RETURNING id"
+        );
+        assert_eq!(
+            limited_sql("SELECT 1; SELECT 2", 1),
+            "SELECT 1 LIMIT 2; SELECT 2 LIMIT 2"
+        );
+        assert_eq!(
+            limited_sql("SELECT 1; -- tail", 1),
+            "SELECT 1 LIMIT 2; -- tail"
         );
     }
 

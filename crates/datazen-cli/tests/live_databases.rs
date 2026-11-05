@@ -109,7 +109,7 @@ fn postgres_limit_is_pushed_into_execution() {
         &[
             "query",
             "live",
-            "SELECT i, pg_sleep(0.1) FROM generate_series(1, 10) AS i",
+            "/* lead */ SELECT i, pg_sleep(0.1) FROM generate_series(1, 10) AS i -- tail",
             "--limit",
             "1",
             "--timeout",

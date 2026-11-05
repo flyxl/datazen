@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import {
   consumePendingConnection,
+  enrichOpenConnectionPayload,
   makeTabFromPayload,
   removeConnectionFromStores,
   syncStoresActiveConnection,
@@ -43,6 +44,30 @@ describe('[tester] connectionPageUtils', () => {
         databaseType: 'postgresql',
       })?.status,
     ).toBe('connected');
+  });
+
+  it('enrichOpenConnectionPayload fills name/type/database from the store record', () => {
+    expect(
+      enrichOpenConnectionPayload(
+        { connectionId: 'cfg-1', requestId: 'cli:cfg-1:0' },
+        [
+          {
+            id: 'cfg-1',
+            name: 'Local PG',
+            databaseType: 'postgresql',
+            database: 'app',
+          },
+        ],
+      ),
+    ).toMatchObject({
+      connectionId: 'cfg-1',
+      connectionName: 'Local PG',
+      databaseType: 'postgresql',
+      database: 'app',
+    });
+    expect(enrichOpenConnectionPayload({ connectionId: 'missing' }, [])).toEqual({
+      connectionId: 'missing',
+    });
   });
 
   it('consumePendingConnection reads and clears localStorage payload', () => {

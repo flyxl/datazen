@@ -87,6 +87,16 @@ pub fn run() {
         .with(fmt::layer().with_writer(non_blocking).with_ansi(false))
         .init();
 
+    let open_request = match super::open_request::parse_open_connection_args(
+        &std::env::args().collect::<Vec<_>>(),
+    ) {
+        Ok(request) => request,
+        Err(error) => {
+            tracing::warn!(error = %error, "ignoring malformed --datazen-open-* arguments");
+            None
+        }
+    };
+
     // 静默 E2E：必须早于事件循环。tao 在 `applicationDidFinishLaunching`
     // （`AppState::launched`）里就会 `activateIgnoringOtherApps`，那一次发生在
     // Tauri 的 setup 钩子之前，钩子里再拦已经晚了。
@@ -189,6 +199,33 @@ pub fn run() {
                                 std::thread::sleep(std::time::Duration::from_millis(500));
                                 crate::commands::window::prepare_main_window(&main_for_deferred);
                             });
+                            if let Some(request) = open_request.clone() {
+                                let target = main.clone();
+                                std::thread::spawn(move || {
+                                    let request_id = format!(
+                                        "cli:{}:{}",
+                                        request.connection_id,
+                                        request.query.as_deref().map_or(0, str::len)
+                                    );
+                                    let payload = serde_json::json!({
+                                        "connectionId": request.connection_id,
+                                        "sql": request.query,
+                                        "requestId": request_id,
+                                        "source": "cli",
+                                    });
+                                    // The frontend listener mounts with the
+                                    // main window; retry with the same request
+                                    // id so the first emit cannot be lost.
+                                    for delay in [600_u64, 1_400, 2_800] {
+                                        std::thread::sleep(std::time::Duration::from_millis(delay));
+                                        if let Err(error) = target
+                                            .emit("datazen:open-connection", payload.clone())
+                                        {
+                                            tracing::warn!(error = %error, "failed to emit CLI open request");
+                                        }
+                                    }
+                                });
+                            }
                         }
                         Err(e) => {
                             tracing::error!(error = %e, "failed to create main window");

@@ -31,6 +31,32 @@ export function makeTabFromPayload(data: Record<string, string>): ConnectionTab 
   };
 }
 
+export interface ConnectionLookup {
+  id: string;
+  name: string;
+  databaseType: string;
+  database?: string | null;
+}
+
+/** Merge a host startup event that only knows the connection id with the store
+ * record, so the existing tab/query UI receives a complete payload. */
+export function enrichOpenConnectionPayload(
+  data: Record<string, string>,
+  connections: readonly ConnectionLookup[],
+): Record<string, string> {
+  const connection = connections.find((item) => item.id === data.connectionId);
+  if (!connection) return data;
+  const enriched: Record<string, string> = {
+    ...data,
+    connectionName: data.connectionName || connection.name,
+    databaseType: data.databaseType || connection.databaseType,
+  };
+  if (!enriched.database && connection.database) {
+    enriched.database = connection.database;
+  }
+  return enriched;
+}
+
 export function consumePendingConnection(): { tab: ConnectionTab; action?: string } | null {
   try {
     const raw = localStorage.getItem(PENDING_CONNECTION_KEY);

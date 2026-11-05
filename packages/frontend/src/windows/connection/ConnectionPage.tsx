@@ -29,6 +29,7 @@ import {
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import type { ConnectionViewActions } from '../../lib/connectionViews/types';
 import {
+  enrichOpenConnectionPayload,
   makeTabFromPayload,
   removeConnectionFromStores,
   syncStoresActiveConnection,
@@ -107,6 +108,8 @@ export function ConnectionPage() {
   // ── Post-onboarding: auto-open sample connection + preset query ──
   const postOnboardingRef = useRef<PostOnboardingSample | null>(null);
   const postOnboardingConsumedRef = useRef(false);
+  const openRequestRef = useRef<string | null>(null);
+  const pendingOpenQueryRef = useRef<{ connectionId: string; sql: string } | null>(null);
   const workspaceSidebarMode = useUiStore((s) => s.workspaceSidebarMode);
   const toggleWorkspaceSidebarMode = useUiStore((s) => s.toggleWorkspaceSidebarMode);
   const sidebarExpanded = workspaceSidebarMode === 'expanded';
@@ -206,8 +209,22 @@ export function ConnectionPage() {
   useEffect(() => {
     let cleanup: (() => void) | undefined;
     void listenCrossWindow('datazen:open-connection', (payload) => {
-      const data = payload as Record<string, string> | undefined;
-      if (!data?.connectionId) return;
+      const raw = payload as Record<string, string> | undefined;
+      if (!raw?.connectionId) return;
+      if (raw.requestId) {
+        if (openRequestRef.current === raw.requestId) return;
+        openRequestRef.current = raw.requestId;
+      }
+      const data = enrichOpenConnectionPayload(
+        raw,
+        useConnectionStore.getState().connections,
+      );
+      if (data.sql) {
+        pendingOpenQueryRef.current = {
+          connectionId: data.connectionId,
+          sql: data.sql,
+        };
+      }
       setWorkspaceMode('connections');
 
       try {
@@ -548,6 +565,23 @@ export function ConnectionPage() {
     postOnboardingRef.current = null;
     actionsRef.current?.newQuery?.(directive.sql);
   }, [tabs, connections, allPanels]);
+
+  // A CLI/startup open request may carry a preset SQL statement. Wait until
+  // the tab is connected, then create the query panel exactly once.
+  useEffect(() => {
+    const pending = pendingOpenQueryRef.current;
+    if (!pending) return;
+    const tab = tabs.find(
+      (t) => t.connectionId === pending.connectionId && t.status === 'connected',
+    );
+    if (!tab) return;
+    if (allPanels.some((p) => p.connectionId === pending.connectionId)) {
+      pendingOpenQueryRef.current = null;
+      return;
+    }
+    pendingOpenQueryRef.current = null;
+    actionsRef.current?.newQuery?.(pending.sql);
+  }, [tabs, allPanels]);
 
   const handleExportConfig = useCallback(async () => {
     let saved: boolean;

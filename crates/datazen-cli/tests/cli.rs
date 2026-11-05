@@ -36,12 +36,16 @@ fn sqlite_connection(dir: &Path, name: &str) -> Value {
 }
 
 fn run(dir: &Path, args: &[&str]) -> Output {
-    bin()
-        .arg("--data-dir")
-        .arg(dir)
-        .args(args)
-        .output()
-        .expect("run datazen")
+    run_env(dir, args, &[])
+}
+
+fn run_env(dir: &Path, args: &[&str], envs: &[(&str, &str)]) -> Output {
+    let mut command = bin();
+    command.arg("--data-dir").arg(dir).args(args);
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+    command.output().expect("run datazen")
 }
 
 #[test]
@@ -226,15 +230,14 @@ fn production_refuses_mutating_pragma_with_both_flags() {
     assert_eq!(result["rows"][0][0], 0);
 
     // Read-only PRAGMA introspection stays available on production.
-    let introspection = run(
-        temp.path(),
-        &["query", "local", "PRAGMA table_info(items)", "--json"],
-    );
-    assert!(
-        introspection.status.success(),
-        "{}",
-        String::from_utf8_lossy(&introspection.stderr)
-    );
+    for pragma in ["PRAGMA table_info(items)", "PRAGMA main.table_info(items)"] {
+        let introspection = run(temp.path(), &["query", "local", pragma, "--json"]);
+        assert!(
+            introspection.status.success(),
+            "{pragma}: {}",
+            String::from_utf8_lossy(&introspection.stderr)
+        );
+    }
 }
 
 #[test]
@@ -256,17 +259,69 @@ fn tunnel_config_fails_closed_instead_of_direct_connect() {
     assert!(error["message"].as_str().unwrap().contains("tunnel"));
 }
 
+#[cfg(unix)]
 #[test]
-fn open_does_not_emit_an_unconsumable_uri() {
+fn open_launches_desktop_with_argv_and_never_emits_a_uri() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = TempDir::new().unwrap();
+    let connection = sqlite_connection(temp.path(), "local");
+    write_connections(temp.path(), json!([connection]));
+    let args_file = temp.path().join("launch-args.txt");
+    let script = temp.path().join("fake-datazen");
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\n",
+            args_file.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+    let output = run_env(
+        temp.path(),
+        &["open", "local", "--query", "SELECT 1", "--json"],
+        &[("DATAZEN_DESKTOP_BIN", script.to_str().unwrap())],
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(!String::from_utf8_lossy(&output.stdout).contains("datazen://"));
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["launched"], true);
+    assert_eq!(report["queryProvided"], true);
+
+    let mut args = String::new();
+    for _ in 0..50 {
+        if let Ok(value) = std::fs::read_to_string(&args_file) {
+            args = value;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert!(args.contains("--datazen-open-connection"), "{args}");
+    assert!(args.contains("--datazen-open-query"), "{args}");
+    assert!(args.contains("SELECT 1"), "{args}");
+}
+
+#[test]
+fn open_missing_desktop_is_not_found_without_emitting_a_uri() {
     let temp = TempDir::new().unwrap();
     let connection = sqlite_connection(temp.path(), "local");
     write_connections(temp.path(), json!([connection]));
 
-    let output = run(temp.path(), &["open", "local", "--json"]);
-    assert_eq!(output.status.code(), Some(14));
+    let output = run_env(
+        temp.path(),
+        &["open", "local", "--json"],
+        &[("DATAZEN_DESKTOP_BIN", "/definitely/missing/datazen-desktop")],
+    );
+    assert_eq!(output.status.code(), Some(4));
     assert!(output.stdout.is_empty());
     let error: Value = serde_json::from_slice(&output.stderr).unwrap();
-    assert_eq!(error["code"], "E_UNSUPPORTED");
+    assert_eq!(error["code"], "E_NOT_FOUND");
     assert!(!String::from_utf8_lossy(&output.stderr).contains("datazen://"));
 }
 
