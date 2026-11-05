@@ -84,11 +84,7 @@ export async function cancelChat(
  * 8s fallback: the backend never delivered its terminal chunk. Finalise the
  * visible session locally as cancelled so the stop button cannot spin forever.
  */
-export function handleCancelTimeout(
-  get: GetState,
-  set: SetState,
-  requestId: string,
-): void {
+export function handleCancelTimeout(get: GetState, set: SetState, requestId: string): void {
   const { chatSession, workflowChat } = get();
   if (chatSession?.requestId === requestId) {
     set({ chatSession: finalizeCancelledSession(chatSession) });
@@ -127,11 +123,7 @@ function finalizeCancelledSession<T extends NonNullable<AiStore['chatSession']>>
 }
 
 /** Apply a stream chunk, dropping late/duplicate chunks through the registry. */
-export function handleStreamChunk(
-  get: GetState,
-  set: SetState,
-  payload: StreamChunkPayload,
-): void {
+export function handleStreamChunk(get: GetState, set: SetState, payload: StreamChunkPayload): void {
   const { nl2sql, chatSession, workflowChat } = get();
 
   // ── NL2SQL routing (not part of the chat lifecycle registry) ──
@@ -175,6 +167,9 @@ export function handleStreamChunk(
   }
 
   const session = (targetSession === 'chatSession' ? chatSession : workflowChat)!;
+  // The host sends the scope on the first chunk; later chunks must not replace
+  // it within the same run.
+  const egressSummary = session.egressSummary || payload.egressSummary?.trim() || null;
   const newContent = (session.streamContent || '') + (payload.content || '');
   const newReasoning = (session.streamReasoning || '') + (payload.reasoning || '');
   const mcpToolName = findMcpToolName(payload.toolCalls) ?? session.streamMcpToolName ?? null;
@@ -205,6 +200,7 @@ export function handleStreamChunk(
       streamContent: '',
       streamReasoning: '',
       streamMcpToolName: null,
+      egressSummary,
       requestId: null,
     };
     set({ [targetSession]: nextSession });
@@ -235,17 +231,14 @@ export function handleStreamChunk(
         streamContent: newContent,
         streamReasoning: newReasoning,
         streamMcpToolName: mcpToolName,
+        egressSummary,
       },
     });
   }
 }
 
 /** Out-of-band stream error: terminal once, idempotent on repeats. */
-export function handleStreamError(
-  get: GetState,
-  set: SetState,
-  payload: StreamErrorPayload,
-): void {
+export function handleStreamError(get: GetState, set: SetState, payload: StreamErrorPayload): void {
   const { nl2sql, chatSession, workflowChat } = get();
   if (payload.requestId === nl2sql.requestId) {
     unregisterRequestId(payload.requestId);

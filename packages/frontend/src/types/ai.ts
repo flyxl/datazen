@@ -155,6 +155,8 @@ export interface AiChatSession {
   streamReasoning: string;
   /** Qualified MCP tool name (mcp/server/tool) shown during streaming tool execution. */
   streamMcpToolName: string | null;
+  /** Host-provided egress scope from the first chunk of this run. */
+  egressSummary?: string | null;
   requestId: string | null;
   /**
    * Non-secret attribution of the last run started from this session: which
@@ -176,6 +178,8 @@ export interface StreamChunkPayload {
   cancelled?: boolean;
   usage?: { promptTokens: number; completionTokens: number; totalTokens: number };
   toolCalls?: AiToolCall[];
+  /** FR-13 egress scope; the host sends it on the first chunk only. */
+  egressSummary?: string;
 }
 
 export interface StreamErrorPayload {

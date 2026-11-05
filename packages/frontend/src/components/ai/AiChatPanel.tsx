@@ -606,7 +606,11 @@ export function AiChatPanel({
           {/* Input */}
           <div className="shrink-0 border-t border-edge p-2">
             <div className="mb-2">
-              <AiEgressNotice contextItems={contextItems} />
+              <AiEgressNotice
+                contextItems={contextItems}
+                egressSummary={chatSession?.egressSummary}
+                database={database}
+              />
             </div>
             {hasSnapshotContent(snapshot) && (
               <div

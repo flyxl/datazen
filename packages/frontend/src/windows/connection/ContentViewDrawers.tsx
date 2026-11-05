@@ -77,6 +77,10 @@ export interface ContentViewDrawersProps {
   pendingDraftRequest: AiChatDraftRequest | null;
   /** Called after AiChatPanel writes the draft to its textarea. */
   onDraftConsumed: (requestId: string) => void;
+  /** Run a SQL code block through the owning query panel's execution gate. */
+  onRunCode?: (code: string, language: string) => void;
+  /** Create a new query tab prefilled with a SQL code block. */
+  onNewQuery?: (code: string) => void;
 }
 
 /**
@@ -101,6 +105,8 @@ export function ContentViewDrawers({
   keyPropsSidebarSlot,
   pendingDraftRequest,
   onDraftConsumed,
+  onRunCode,
+  onNewQuery,
 }: ContentViewDrawersProps) {
   const { t } = useI18n();
   const { size: aiSidebarWidth, handleRef: aiHandleRef } = useResizable({
@@ -421,6 +427,8 @@ export function ContentViewDrawers({
                   updateQuerySql(activePanel.id, sql);
                 }
               }}
+              onRunCode={onRunCode}
+              onNewQuery={onNewQuery}
               kvContext={kvAiContext}
               autoContext={autoContext}
               draftRequest={pendingDraftRequest}

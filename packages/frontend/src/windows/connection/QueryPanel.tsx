@@ -40,6 +40,7 @@ import type { QueryPanelProps } from './query/contracts';
 import { QuerySidebarSection, useQueryContextPath } from './query/QuerySidebarSection';
 import { QueryEditorSection } from './query/QueryEditorSection';
 import { clearEditorSelection, setEditorSelection } from '../../stores/editorSelectionStore';
+import { registerQueryRunner } from '../../stores/queryRunRequestStore';
 import { useQueryBuilderContribution } from './query/useQueryBuilderContribution';
 import {
   QueryTransactionModals,
@@ -480,6 +481,21 @@ export function QueryPanel({
       setExecutionSeq((seq) => seq + 1);
     },
   });
+
+  // Chat code blocks ask this panel to run a statement through the same
+  // execution gate as the toolbar/editor. Passing `confirmWrites` makes an
+  // AI-generated non-read statement ask for confirmation even when the normal
+  // risk rules would allow it silently.
+  const runChatSql = useCallback(
+    (sql: string) => {
+      // Put the generated SQL in the editor first; the gate's stale-snapshot
+      // check then compares the same statement the user is about to run.
+      updateSql(panelId, sql);
+      void executionGate.requestExecute('selection', sql, { confirmWrites: true });
+    },
+    [panelId, updateSql, executionGate.requestExecute],
+  );
+  useEffect(() => registerQueryRunner(panelId, runChatSql), [panelId, runChatSql]);
 
   const workflows = useQueryPanelWorkflows({
     panelId,

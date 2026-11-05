@@ -82,6 +82,7 @@ const aiState = vi.hoisted(() => ({
     streamContent: '',
     streamReasoning: '',
     streamMcpToolName: null as string | null,
+    egressSummary: null as string | null,
   },
   initChatSession: vi.fn(),
   sendChatMessage: vi.fn().mockResolvedValue(undefined),
@@ -118,6 +119,7 @@ beforeEach(() => {
     streamContent: '',
     streamReasoning: '',
     streamMcpToolName: null,
+    egressSummary: null,
   };
   aiState.settingsConfig = null;
   Object.defineProperty(navigator, 'clipboard', {
@@ -147,6 +149,7 @@ describe('AiChatPanel', () => {
       streamContent: '',
       streamReasoning: '',
       streamMcpToolName: null,
+      egressSummary: null,
     };
     rerender(<AiChatPanel dbSessionId="c1" database="db" connectionId="conn-1" />);
     expect(getByText('chat.welcome')).toBeInTheDocument();
@@ -207,6 +210,36 @@ describe('AiChatPanel', () => {
     expect(aiState.sendChatMessage).toHaveBeenCalledWith(
       expect.objectContaining({ agentMode: 'agent', content: 'check live data' }),
     );
+  });
+
+  it('flips both mode buttons when switching Ask and Agent', () => {
+    const { getByTestId } = render(<AiChatPanel dbSessionId="c1" database="db" />);
+    fireEvent.click(getByTestId('ai-agent-mode-agent'));
+    expect(getByTestId('ai-agent-mode-agent')).toHaveAttribute('aria-pressed', 'true');
+    expect(getByTestId('ai-agent-mode-ask')).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(getByTestId('ai-agent-mode-ask'));
+    expect(getByTestId('ai-agent-mode-ask')).toHaveAttribute('aria-pressed', 'true');
+    expect(getByTestId('ai-agent-mode-agent')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('shows the host egress summary and bound database once the first chunk arrives', () => {
+    aiState.chatSession.egressSummary = '3 connections (postgresql, mysql) accessible via tools.';
+    const { getByTestId } = render(<AiChatPanel dbSessionId="c1" database="appdb" />);
+
+    expect(getByTestId('ai-egress-summary')).toHaveTextContent(
+      '3 connections (postgresql, mysql) accessible via tools.',
+    );
+    expect(getByTestId('ai-egress-database')).toHaveTextContent('chat.egressDatabase');
+  });
+
+  it('keeps tool output collapsed until the user expands it', () => {
+    aiState.chatSession.messages = [{ role: 'tool', content: 'rows: 2' }];
+    const { getByTestId, queryByText } = render(<AiChatPanel dbSessionId="c1" />);
+
+    expect(queryByText('rows: 2')).toBeNull();
+    fireEvent.click(getByTestId('tool-role-toggle'));
+    expect(queryByText('rows: 2')).toBeInTheDocument();
   });
 
   it('renders messages with inline code blocks and insert SQL', () => {

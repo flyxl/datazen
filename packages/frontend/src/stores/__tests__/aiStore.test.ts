@@ -551,6 +551,46 @@ describe('aiStore', () => {
       expect(useAiStore.getState().chatSession!.streamMcpToolName).toBe('mcp/files/read_file');
     });
 
+    it('stores the first-chunk egress summary and resets it on send/clear', async () => {
+      useAiStore.getState().initChatSession();
+      const requestId = 'req-egress';
+      useAiStore.setState({
+        chatSession: {
+          ...useAiStore.getState().chatSession!,
+          requestId,
+          isStreaming: true,
+        },
+      });
+
+      useAiStore.getState().handleStreamChunk({
+        requestId,
+        content: '',
+        done: false,
+        egressSummary: '2 connections (postgresql) accessible via tools.',
+      });
+      expect(useAiStore.getState().chatSession!.egressSummary).toBe(
+        '2 connections (postgresql) accessible via tools.',
+      );
+
+      // A later chunk keeps the first chunk's scope, even if it carries another.
+      useAiStore.getState().handleStreamChunk({ requestId, content: 'hi', done: false });
+      useAiStore
+        .getState()
+        .handleStreamChunk({ requestId, content: '', done: false, egressSummary: 'other' });
+      expect(useAiStore.getState().chatSession!.egressSummary).toContain('2 connections');
+
+      mockAiCommands.chat.mockResolvedValueOnce(undefined);
+      const pending = useAiStore.getState().sendChatMessage({ content: 'next' });
+      expect(useAiStore.getState().chatSession!.egressSummary).toBeNull();
+      await pending;
+
+      useAiStore.setState((state) => ({
+        chatSession: { ...state.chatSession!, egressSummary: 'old scope' },
+      }));
+      useAiStore.getState().clearChat();
+      expect(useAiStore.getState().chatSession!.egressSummary).toBeNull();
+    });
+
     it('records run attribution and forwards the target claim', async () => {
       useAiStore.getState().initChatSession('db-sess', 'db');
       mockAiCommands.chat.mockResolvedValueOnce(undefined);
