@@ -13,6 +13,8 @@
 //!   deepseek / ollama / custom), the shared wire [`providers::protocol`],
 //!   the shared [`providers::http`] client, and the
 //!   [`providers::registry::AiProviderRegistry`];
+//! - [`memory`]: storage-neutral memory vocabulary, retrieval/scoring, and
+//!   safe `<memory>` prompt injection (T11);
 //! - [`application`]: the provider-neutral business — prompt resolution and
 //!   response text handling (slice 3, 2026-10-26); chat orchestration
 //!   (chat_request / sql_generation / single_turn / filter / schema_doc /
@@ -27,6 +29,7 @@
 pub mod api;
 pub mod application;
 pub mod domain;
+pub mod memory;
 pub mod providers;
 
 // Compatibility-shaped flat exports for hosts that previously consumed the
