@@ -137,3 +137,87 @@ async fn concurrent_save_groups_all_succeed() {
         .collect();
     assert!(!entries.iter().any(|n| n.contains(".tmp")));
 }
+
+/// Deleting a connection must remove its AI notes, memories (including FTS
+/// entries), and audit rows. The AI cleanup is one AppDb transaction invoked
+/// by `DesktopRepository::delete_connection`.
+#[tokio::test]
+async fn deleting_connection_purges_ai_notes_memories_and_audit() {
+    use crate::platform::LOCAL_ORGANIZATION_ID;
+    use crate::store::ai_memory::{AiConnectionNoteRecord, AiMemoryAuditRecord, AiMemoryRecord};
+
+    let dir = tempfile::tempdir().unwrap();
+    let store = init_store_for_test(dir.path()).await;
+    let app_db = store.app_db();
+    let ts = "2026-11-05T00:00:00Z";
+    let owner = "owner-delete";
+
+    app_db
+        .upsert_ai_connection_note(&AiConnectionNoteRecord {
+            connection_id: "c-delete".into(),
+            organization_id: LOCAL_ORGANIZATION_ID.into(),
+            owner_principal_id: owner.into(),
+            content: "note".into(),
+            updated_at: ts.into(),
+        })
+        .unwrap();
+    app_db
+        .upsert_ai_memory(&AiMemoryRecord {
+            id: "m-delete".into(),
+            organization_id: LOCAL_ORGANIZATION_ID.into(),
+            owner_principal_id: owner.into(),
+            scope_type: "connection".into(),
+            scope_id: "c-delete".into(),
+            connection_id: Some("c-delete".into()),
+            database_name: None,
+            schema_name: None,
+            table_name: None,
+            column_name: None,
+            kind: "preference".into(),
+            subject: "delete me".into(),
+            content: "deletetoken".into(),
+            structured_json: None,
+            source: "explicit".into(),
+            source_ref: None,
+            confidence: 0.5,
+            sensitivity: "normal".into(),
+            status: "active".into(),
+            pinned: false,
+            use_count: 0,
+            last_used_at: None,
+            expires_at: None,
+            content_hash: "hash-delete".into(),
+            created_at: ts.into(),
+            updated_at: ts.into(),
+        })
+        .unwrap();
+    app_db
+        .append_ai_memory_audit(&AiMemoryAuditRecord {
+            id: "a-delete".into(),
+            memory_id: "m-delete".into(),
+            action: "create".into(),
+            actor_principal_id: owner.into(),
+            before_hash: None,
+            after_hash: Some("hash-delete".into()),
+            detail_json: None,
+            created_at: ts.into(),
+        })
+        .unwrap();
+
+    let mut conn = sample_connection_with_ssh();
+    conn.id = "c-delete".into();
+    store.save_connection(conn).await.unwrap();
+    store.delete_connection("c-delete").await.unwrap();
+
+    assert!(store.get_connection("c-delete").await.is_none());
+    assert!(app_db.get_ai_connection_note("c-delete").unwrap().is_none());
+    assert!(app_db
+        .get_ai_memory(LOCAL_ORGANIZATION_ID, owner, "m-delete")
+        .unwrap()
+        .is_none());
+    assert!(app_db.list_ai_memory_audit("m-delete").unwrap().is_empty());
+    assert!(app_db
+        .search_ai_memories(LOCAL_ORGANIZATION_ID, owner, "deletetoken", 10)
+        .unwrap()
+        .is_empty());
+}

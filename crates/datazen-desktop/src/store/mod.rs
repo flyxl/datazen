@@ -1,6 +1,7 @@
 //! Local encrypted persistence for connections, settings, and history.
 
 mod ai_config;
+pub(crate) mod ai_memory;
 pub(crate) mod app_db;
 mod connections;
 pub(crate) mod favorites;

@@ -202,7 +202,24 @@ impl DesktopRepository {
         };
 
         // Already holding write_lock — use the non-locking persist variant.
-        self.persist_connections_locked(&snapshot).await
+        let persisted = self.persist_connections_locked(&snapshot).await;
+        if persisted.is_ok() {
+            // The connection catalog is JSON, so this cannot share SQLite's
+            // transaction with the AI tables. The AI cleanup itself is one
+            // Immediate transaction (notes + memories + audit); a cleanup
+            // failure is logged rather than resurrecting the deleted catalog.
+            if let Err(error) = self
+                .app_db
+                .purge_connection_ai_data(id, crate::platform::LOCAL_ORGANIZATION_ID)
+            {
+                tracing::warn!(
+                    connection_id = %id,
+                    error = %error,
+                    "connection deleted but AI notes/memories cleanup failed"
+                );
+            }
+        }
+        persisted
     }
 
     /// Returns the union of persisted custom groups and groups found on connections.

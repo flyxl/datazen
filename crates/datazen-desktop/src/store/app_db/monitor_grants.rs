@@ -57,7 +57,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let db = AppDb::open(temp.path()).unwrap();
         db.with_conn(|conn| {
-            conn.execute_batch("ALTER TABLE jobs DROP COLUMN claim_client_instance_id; DROP TABLE monitor_schedule_grants; DELETE FROM schema_migrations WHERE version>2; INSERT INTO workflows(id,name,definition_yaml,updated_at,created_at) VALUES('saved','Saved','id: saved','','');")?;
+            conn.execute_batch("ALTER TABLE jobs DROP COLUMN claim_client_instance_id; DROP TABLE monitor_schedule_grants; DROP TRIGGER IF EXISTS ai_memories_ai; DROP TRIGGER IF EXISTS ai_memories_ad; DROP TRIGGER IF EXISTS ai_memories_au; DROP TABLE IF EXISTS ai_memories_fts; DROP TABLE IF EXISTS ai_memory_audit; DROP TABLE IF EXISTS ai_memories; DROP TABLE IF EXISTS ai_connection_notes; DELETE FROM schema_migrations WHERE version>2; INSERT INTO workflows(id,name,definition_yaml,updated_at,created_at) VALUES('saved','Saved','id: saved','','');")?;
             Ok(())
         }).unwrap();
         drop(db);

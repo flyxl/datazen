@@ -125,7 +125,18 @@ async fn seed_v4_database(dir: &Path, rows: &[SeedRow<'_>]) {
     }
     // 版本回退：v5 未登记 ⇒ 下次打开时执行 v5 迁移。
     db.with_conn(|conn| {
-        conn.execute("DELETE FROM schema_migrations WHERE version >= 5", [])?;
+        // Simulate a real v4 database: later schema (including the v7 AI
+        // tables) must not already be present when the v5 migration reruns.
+        conn.execute_batch(
+            "DROP TRIGGER IF EXISTS ai_memories_ai;
+             DROP TRIGGER IF EXISTS ai_memories_ad;
+             DROP TRIGGER IF EXISTS ai_memories_au;
+             DROP TABLE IF EXISTS ai_memories_fts;
+             DROP TABLE IF EXISTS ai_memory_audit;
+             DROP TABLE IF EXISTS ai_memories;
+             DROP TABLE IF EXISTS ai_connection_notes;
+             DELETE FROM schema_migrations WHERE version >= 5;",
+        )?;
         Ok(())
     })
     .expect("schema version rewound to v4");
