@@ -214,7 +214,7 @@ jobs:
         run: node scripts/i18n-sync-check.mjs
 
   build:
-    # Secrets (Deploy Keys, Windows signing) live in Environment "release"
+    # Secrets (Deploy Keys, Windows signing, Apple signing/notarization) live in Environment "release"
     # — see docs/development/ci-private-drivers.md
     needs: [prepare-pro-extension, union-typecheck, pre-release-guards]
     environment: release
@@ -475,6 +475,43 @@ jobs:
           Remove-Item -Path certificate/certificate.pfx
         shell: pwsh
 
+      - name: Import Apple Developer ID signing certificate
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${APPLE_CERTIFICATE:?Add APPLE_CERTIFICATE to the release environment secrets}"
+          : "${APPLE_CERTIFICATE_PASSWORD:?Add APPLE_CERTIFICATE_PASSWORD to the release environment secrets}"
+
+          CERTIFICATE_PATH="$RUNNER_TEMP/apple-developer-id.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/apple-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 32)"
+          printf '%s' "$APPLE_CERTIFICATE" | openssl base64 -d -A -out "$CERTIFICATE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -k "$KEYCHAIN_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s \
+            "$KEYCHAIN_PATH" "$HOME/Library/Keychains/login.keychain-db" /Library/Keychains/System.keychain
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
+
+          APPLE_SIGNING_IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+            | awk -F '"' '/Developer ID Application:/{print $2; exit}')"
+          if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
+            echo "::error::No valid Developer ID Application identity found in APPLE_CERTIFICATE"
+            exit 1
+          fi
+          echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY" >> "$GITHUB_ENV"
+          rm -f "$CERTIFICATE_PATH"
+          echo "Imported Apple signing identity: $APPLE_SIGNING_IDENTITY"
+
       - name: Install frontend dependencies
         run: pnpm install
 
@@ -531,6 +568,26 @@ jobs:
           DATAZEN_EP_SIGNING_PRIVATE_KEY: ${{ secrets.DATAZEN_EP_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Tauri notarizes macOS bundles when these credentials are present.
+          # The certificate import step above supplies APPLE_SIGNING_IDENTITY.
+          APPLE_ID: ${{ runner.os == 'macOS' && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ runner.os == 'macOS' && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ runner.os == 'macOS' && secrets.APPLE_TEAM_ID || '' }}
+
+      - name: Verify macOS code signature
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          BUNDLE_DIR: target/${{ matrix.target }}/release/bundle
+        run: |
+          set -euo pipefail
+          APP_DIR="$(find "$BUNDLE_DIR/macos" -name '*.app' -type d -print -quit)"
+          if [ -z "$APP_DIR" ]; then
+            echo "::error::macOS .app bundle not found in $BUNDLE_DIR/macos"
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$APP_DIR"
+          codesign -dv --verbose=4 "$APP_DIR" 2>&1 | grep -F "Authority=$APPLE_SIGNING_IDENTITY"
 
       - name: Verify Pro extension is bundled in app
         if: matrix.needs_pro
