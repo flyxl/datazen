@@ -1,6 +1,7 @@
 //! Reusable AI tool definitions, dispatch and tool-loop limits.
 
 use super::ports::DatabaseToolHost;
+use super::tool_loop::AiToolContext;
 use crate::ai::domain::types::{ChatMessage, MessageRole, TokenUsage, ToolCall, ToolDefinition};
 use crate::connection::domain::{ConnectionRepository, ConnectionScope};
 pub fn db_tool_definitions() -> Vec<ToolDefinition> {
@@ -70,6 +71,43 @@ pub fn db_tool_definitions() -> Vec<ToolDefinition> {
     ]
 }
 
+/// Chat/Agent DB tools: metadata discovery plus read-only query and sampling.
+///
+/// Kept separate from [`db_tool_definitions`] because SQL generation must stay
+/// on metadata tools only.
+pub fn agent_db_tool_definitions() -> Vec<ToolDefinition> {
+    let mut tools = db_tool_definitions();
+    tools.push(ToolDefinition {
+        name: "query_readonly".into(),
+        description: "Run a read-only SQL query against the current chat connection. Write statements are rejected. Prefer adding a LIMIT; the tool caps results at 1000 rows.".into(),
+        parameters: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "connection_id": { "type": "string", "description": "The current session connection ID" },
+                "sql": { "type": "string", "description": "A read-only SQL statement (SELECT/EXPLAIN/SHOW)" },
+                "limit": { "type": "integer", "description": "Max rows to return (default 100, max 1000)", "default": 100, "minimum": 1, "maximum": 1000 }
+            },
+            "required": ["connection_id", "sql"]
+        }),
+    });
+    tools.push(ToolDefinition {
+        name: "sample_rows".into(),
+        description: "Read a small sample of rows from one table on the current chat connection. Use this to inspect real values without writing SQL.".into(),
+        parameters: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "connection_id": { "type": "string", "description": "The current session connection ID" },
+                "database": { "type": "string", "description": "Database name (optional for some database types)" },
+                "schema": { "type": "string", "description": "Schema name (optional)" },
+                "table": { "type": "string", "description": "Table name to sample" },
+                "limit": { "type": "integer", "description": "Max rows to return (defaults to the safety gate sample limit, max 100)", "minimum": 1, "maximum": 100 }
+            },
+            "required": ["connection_id", "table"]
+        }),
+    });
+    tools
+}
+
 pub fn is_db_tool(name: &str) -> bool {
     matches!(
         name,
@@ -78,6 +116,8 @@ pub fn is_db_tool(name: &str) -> bool {
             | "list_tables"
             | "search_tables"
             | "get_table_schema"
+            | "query_readonly"
+            | "sample_rows"
     )
 }
 
@@ -253,6 +293,8 @@ pub fn is_readonly_db_tool(name: &str) -> bool {
             | "list_tables"
             | "search_tables"
             | "get_table_schema"
+            | "query_readonly"
+            | "sample_rows"
     )
 }
 
@@ -272,8 +314,30 @@ pub fn mcp_needs_confirm(tool_name: &str, input_schema: &serde_json::Value) -> b
         .any(|kw| lower.contains(kw))
 }
 
+fn allowed_connection_id<'a>(ctx: &AiToolContext, requested: &'a str) -> Result<&'a str, String> {
+    let requested = requested.trim();
+    if requested.is_empty() {
+        return Err("connection_id is required".into());
+    }
+    if let Some(allowed) = ctx.allowed_connection_id.as_deref() {
+        if requested != allowed {
+            return Err(format!(
+                "connection_id '{requested}' is not allowed; the current session is bound to '{allowed}'"
+            ));
+        }
+    }
+    Ok(requested)
+}
+
+fn clamp_tool_limit(raw: Option<u64>, default: u32, max: u32) -> u32 {
+    raw.and_then(|value| u32::try_from(value).ok())
+        .unwrap_or(default)
+        .clamp(1, max)
+}
+
 pub async fn execute_db_tool(
     host: &dyn DatabaseToolHost,
+    ctx: &AiToolContext,
     catalog: &dyn ConnectionRepository,
     scope: &ConnectionScope,
     tool_call: &ToolCall,
@@ -331,6 +395,43 @@ pub async fn execute_db_tool(
                 args["schema"].as_str(),
             )
             .await
+        }
+        "query_readonly" => {
+            match allowed_connection_id(ctx, args["connection_id"].as_str().unwrap_or("")) {
+                Ok(connection_id) => {
+                    let sql = args["sql"].as_str().unwrap_or("").trim();
+                    if sql.is_empty() {
+                        Err("sql is required".into())
+                    } else {
+                        let limit = clamp_tool_limit(args["limit"].as_u64(), 100, 1000);
+                        super::db_tools::query_readonly(cm, connection_id, sql, Some(limit)).await
+                    }
+                }
+                Err(error) => Err(error),
+            }
+        }
+        "sample_rows" => {
+            match allowed_connection_id(ctx, args["connection_id"].as_str().unwrap_or("")) {
+                Ok(connection_id) => {
+                    let table = args["table"].as_str().unwrap_or("").trim();
+                    if table.is_empty() {
+                        Err("table is required".into())
+                    } else {
+                        let default_limit = ctx.max_sample_rows.max(1);
+                        let limit = clamp_tool_limit(args["limit"].as_u64(), default_limit, 100);
+                        super::db_tools::sample_rows(
+                            cm,
+                            connection_id,
+                            args["database"].as_str(),
+                            args["schema"].as_str(),
+                            table,
+                            limit,
+                        )
+                        .await
+                    }
+                }
+                Err(error) => Err(error),
+            }
         }
         other => Err(format!("Unknown tool: {other}")),
     };

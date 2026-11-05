@@ -17,7 +17,7 @@ use crate::commands::AppState;
 use datazen::ai::application::chat_session::{run_chat_session, ChatSessionEnv, ChatSessionInput};
 use datazen::ai::application::schema_pipeline::SchemaContextPipeline;
 use datazen::ai::ownership::AiTargetClaim;
-use datazen::ai::tool_loop::AiToolLoopHost;
+use datazen::ai::tool_loop::{AiToolContext, AiToolLoopHost};
 use datazen::ai::*;
 use tauri::{State, WebviewWindow};
 
@@ -41,12 +41,16 @@ pub(crate) async fn execute_mcp_tool(
     datazen::ai::mcp_tools::execute_mcp_tool(state, server_id, tool_name, arguments).await
 }
 
-pub(crate) async fn execute_db_tool(state: &AppState, tool_call: &ToolCall) -> String {
+pub(crate) async fn execute_db_tool(
+    state: &AppState,
+    ctx: &AiToolContext,
+    tool_call: &ToolCall,
+) -> String {
     let Ok(scope) = state.connection_scope() else {
         return "Error: connection scope unavailable".into();
     };
     let catalog = crate::platform::connections::DesktopConnectionStore::new(state.store.clone());
-    datazen::ai::tools::execute_db_tool(state, &catalog, &scope, tool_call).await
+    datazen::ai::tools::execute_db_tool(state, ctx, &catalog, &scope, tool_call).await
 }
 
 #[async_trait::async_trait]
@@ -58,8 +62,8 @@ impl AiToolLoopHost for AppState {
         let catalog = crate::platform::connections::DesktopConnectionStore::new(self.store.clone());
         datazen::ai::tools::build_egress_summary(&catalog, &scope).await
     }
-    async fn execute_db_tool(&self, call: &ToolCall) -> String {
-        execute_db_tool(self, call).await
+    async fn execute_db_tool(&self, ctx: &AiToolContext, call: &ToolCall) -> String {
+        execute_db_tool(self, ctx, call).await
     }
     async fn execute_mcp_tool(&self, server: &str, tool: &str, arguments: &str) -> String {
         execute_mcp_tool(self, server, tool, arguments).await

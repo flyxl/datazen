@@ -11,7 +11,7 @@ pub use datazen::ai::ownership::AiGrantService;
 use datazen::ai::ownership::{
     verify_session_ownership, AiGrantIssue, AiGrantReceipt, AiGrantRejection, AiTargetClaim,
 };
-use datazen::ai::tool_loop::AiToolLoopHost;
+use datazen::ai::tool_loop::{AiToolContext, AiToolLoopHost};
 use datazen::application::sessions::ConnectionUseCases;
 use datazen::execution::SessionHandle;
 use datazen::services::ports::DatabaseToolHost;
@@ -253,13 +253,13 @@ impl AiToolLoopHost for AiRequestHost<'_> {
         AiToolLoopHost::egress_summary(self.state).await
     }
 
-    async fn execute_db_tool(&self, call: &datazen::ai::ToolCall) -> String {
+    async fn execute_db_tool(&self, ctx: &AiToolContext, call: &datazen::ai::ToolCall) -> String {
         let raw = match self.state.connection_scope() {
             Ok(scope) => {
                 let catalog = crate::platform::connections::DesktopConnectionStore::new(
                     self.state.store.clone(),
                 );
-                datazen::ai::tools::execute_db_tool(self, &catalog, &scope, call).await
+                datazen::ai::tools::execute_db_tool(self, ctx, &catalog, &scope, call).await
             }
             Err(_) => "Error: connection scope unavailable".into(),
         };

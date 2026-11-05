@@ -9,10 +9,31 @@ use crate::ai::domain::types::{
 use std::sync::Arc;
 use tokio::sync::mpsc;
 pub type StreamCallback = Arc<dyn Fn(&str, Result<StreamChunk, AiError>) + Send + Sync>;
+
+/// Per-request policy for database tools.
+///
+/// `allowed_connection_id` confines read-only query/sampling to the chat's
+/// active connection; `max_sample_rows` is the safety-gate default for
+/// `sample_rows` when the model omits a limit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AiToolContext {
+    pub allowed_connection_id: Option<String>,
+    pub max_sample_rows: u32,
+}
+
+impl Default for AiToolContext {
+    fn default() -> Self {
+        Self {
+            allowed_connection_id: None,
+            max_sample_rows: 100,
+        }
+    }
+}
+
 #[async_trait::async_trait]
 pub trait AiToolLoopHost: Send + Sync {
     async fn egress_summary(&self) -> String;
-    async fn execute_db_tool(&self, call: &ToolCall) -> String;
+    async fn execute_db_tool(&self, ctx: &AiToolContext, call: &ToolCall) -> String;
     async fn execute_mcp_tool(&self, server: &str, tool: &str, arguments: &str) -> String;
 }
 struct StreamRoundResult {
@@ -27,6 +48,7 @@ struct StreamRoundResult {
 pub async fn run_streaming_tool_loop(
     provider: Arc<dyn AiProvider>,
     host: &dyn AiToolLoopHost,
+    tool_ctx: &AiToolContext,
     on_chunk: StreamCallback,
     request_id: &str,
     mut request: CompletionRequest,
@@ -384,7 +406,7 @@ pub async fn run_streaming_tool_loop(
                 return Ok(request_id.to_string());
             }
             let tool_result = match kind {
-                ToolKind::Db(_) => host.execute_db_tool(tc).await,
+                ToolKind::Db(_) => host.execute_db_tool(tool_ctx, tc).await,
                 ToolKind::Mcp {
                     server_id,
                     tool_name,
@@ -509,7 +531,7 @@ mod tests {
         async fn egress_summary(&self) -> String {
             String::new()
         }
-        async fn execute_db_tool(&self, _call: &ToolCall) -> String {
+        async fn execute_db_tool(&self, _ctx: &AiToolContext, _call: &ToolCall) -> String {
             self.db_tool_calls.fetch_add(1, Ordering::SeqCst);
             "{}".into()
         }
@@ -533,6 +555,7 @@ mod tests {
         let result = run_streaming_tool_loop(
             provider,
             host,
+            &AiToolContext::default(),
             on_chunk,
             "req-1",
             request(Some(token)),

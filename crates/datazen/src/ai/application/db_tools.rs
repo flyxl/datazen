@@ -139,6 +139,51 @@ pub fn resolve_query_limit(limit: Option<u32>) -> Option<u32> {
             .min(MCP_QUERY_MAX_LIMIT),
     )
 }
+/// Read a bounded sample from one table using the driver's identifier quoting.
+///
+/// `_database` is accepted for tool-shape parity with the catalog metadata
+/// tools; the actual target database is still the connection profile's
+/// database, exactly as with [`query`].
+pub async fn sample_rows(
+    host: &dyn DatabaseToolHost,
+    id: &str,
+    _database: Option<&str>,
+    schema: Option<&str>,
+    table: &str,
+    limit: u32,
+) -> Result<String, String> {
+    let table = table.trim();
+    if table.is_empty() {
+        return Err("sample_rows: table is required".into());
+    }
+    let driver = host.driver_for_connection(id).await?;
+    let table = driver.quote_ident(table);
+    let relation = match schema.map(str::trim).filter(|name| !name.is_empty()) {
+        Some(schema) => format!("{}.{}", driver.quote_ident(schema), table),
+        None => table,
+    };
+    let limit = limit.clamp(1, 100);
+    let sql = format!("SELECT * FROM {relation} LIMIT {limit}");
+    query_readonly(host, id, &sql, Some(limit)).await
+}
+
+/// Read-only SQL for AI tools.
+///
+/// [`McpPermissionMode::ReadOnly`] is a deny-all-SQL mode for the MCP surface
+/// (that surface does not expose a query tool at all). AI read-only tools need
+/// the other meaning: SELECT-class statements run, writes are refused. Keep
+/// that policy here, independently of the connection's own read-only flag.
+pub async fn query_readonly(
+    host: &dyn DatabaseToolHost,
+    id: &str,
+    sql: &str,
+    limit: Option<u32>,
+) -> Result<String, String> {
+    let policy = host.execution_settings().await;
+    crate::execution::domain::sql_guard::check_sql(sql, true, policy.safe_mode)?;
+    query(host, id, sql, limit, None).await
+}
+
 pub async fn query(
     host: &dyn DatabaseToolHost,
     id: &str,

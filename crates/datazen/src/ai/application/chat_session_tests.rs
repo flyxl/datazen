@@ -106,7 +106,11 @@ impl AiToolLoopHost for RecordingLoopHost {
     async fn egress_summary(&self) -> String {
         String::new()
     }
-    async fn execute_db_tool(&self, _call: &crate::ai::domain::types::ToolCall) -> String {
+    async fn execute_db_tool(
+        &self,
+        _ctx: &AiToolContext,
+        _call: &crate::ai::domain::types::ToolCall,
+    ) -> String {
         self.db_calls.fetch_add(1, Ordering::SeqCst);
         "{}".into()
     }
@@ -456,6 +460,11 @@ async fn chat_agent_mode_exposes_db_and_mcp_tools() {
     let names: Vec<&str> = tools.iter().map(|tool| tool.name.as_str()).collect();
     assert!(names.contains(&"ask_questions"));
     assert!(names.contains(&"list_tables"), "Agent keeps DB tools");
+    assert!(
+        names.contains(&"query_readonly"),
+        "Agent exposes read-only query"
+    );
+    assert!(names.contains(&"sample_rows"), "Agent exposes sampling");
     assert!(names.contains(&"mcp/demo/ping"), "Agent keeps MCP tools");
 }
 
@@ -759,7 +768,16 @@ async fn generate_pins_merge_yaml_then_request_then_current_table_first() {
     // 工具分支：请求被替换为 DB 工具集。
     let request = provider.last_request().expect("request");
     let tools = request.tools.expect("db tools attached");
-    assert!(tools.iter().any(|t| t.name == "list_tables"));
+    let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
+    assert!(names.contains(&"list_tables"));
+    assert!(
+        !names.contains(&"query_readonly"),
+        "SQL generation must not expose query_readonly"
+    );
+    assert!(
+        !names.contains(&"sample_rows"),
+        "SQL generation must not expose sample_rows"
+    );
     // yaml 注释块进 NL（前缀），且 yaml 文件本身不重复出现为上下文块。
     let user = request
         .messages

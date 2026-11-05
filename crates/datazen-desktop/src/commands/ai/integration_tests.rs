@@ -214,7 +214,12 @@ async fn execute_db_tool_list_connections() {
         name: "list_connections".into(),
         arguments: "{}".into(),
     };
-    let out = execute_db_tool(&test.state, &tool).await;
+    let out = execute_db_tool(
+        &test.state,
+        &datazen::ai::tool_loop::AiToolContext::default(),
+        &tool,
+    )
+    .await;
     assert!(out.contains("tool-cfg"));
 }
 
@@ -228,8 +233,52 @@ async fn execute_db_tool_list_tables() {
         name: "list_tables".into(),
         arguments: r#"{"connection_id":"tables-cfg","database":"app"}"#.into(),
     };
-    let out = execute_db_tool(&test.state, &tool).await;
+    let out = execute_db_tool(
+        &test.state,
+        &datazen::ai::tool_loop::AiToolContext::default(),
+        &tool,
+    )
+    .await;
     assert!(out.contains("users"));
+}
+
+#[tokio::test]
+async fn execute_db_tool_query_readonly_reads_rows_on_current_connection() {
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("query-tool").await;
+
+    let ctx = datazen::ai::tool_loop::AiToolContext {
+        allowed_connection_id: Some("query-tool".into()),
+        max_sample_rows: 3,
+    };
+    let tool = ToolCall {
+        id: "q1".into(),
+        name: "query_readonly".into(),
+        arguments: r#"{"connection_id":"query-tool","sql":"SELECT * FROM users","limit":10}"#
+            .into(),
+    };
+    let out = execute_db_tool(&test.state, &ctx, &tool).await;
+    assert!(!out.contains("Error"), "{out}");
+    assert!(out.contains("alice"), "{out}");
+}
+
+#[tokio::test]
+async fn execute_db_tool_sample_rows_quotes_and_limits() {
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("sample-tool").await;
+
+    let ctx = datazen::ai::tool_loop::AiToolContext {
+        allowed_connection_id: Some("sample-tool".into()),
+        max_sample_rows: 3,
+    };
+    let tool = ToolCall {
+        id: "s1".into(),
+        name: "sample_rows".into(),
+        arguments: r#"{"connection_id":"sample-tool","schema":"public","table":"users"}"#.into(),
+    };
+    let out = execute_db_tool(&test.state, &ctx, &tool).await;
+    assert!(!out.contains("Error"), "{out}");
+    assert!(out.contains("alice"), "{out}");
 }
 
 #[tokio::test]
@@ -603,7 +652,12 @@ async fn execute_db_tool_unknown_returns_error_string() {
         name: "nope".into(),
         arguments: "{}".into(),
     };
-    let out = execute_db_tool(&test.state, &tool).await;
+    let out = execute_db_tool(
+        &test.state,
+        &datazen::ai::tool_loop::AiToolContext::default(),
+        &tool,
+    )
+    .await;
     assert!(out.contains("Unknown tool"));
 }
 
@@ -617,7 +671,12 @@ async fn execute_db_tool_get_table_schema() {
         name: "get_table_schema".into(),
         arguments: r#"{"connection_id":"schema-tool","tables":["users"]}"#.into(),
     };
-    let out = execute_db_tool(&test.state, &tool).await;
+    let out = execute_db_tool(
+        &test.state,
+        &datazen::ai::tool_loop::AiToolContext::default(),
+        &tool,
+    )
+    .await;
     assert!(out.contains("users"));
 }
 
@@ -729,7 +788,12 @@ async fn execute_db_tool_list_databases() {
         name: "list_databases".into(),
         arguments: r#"{"connection_id":"db-tool"}"#.into(),
     };
-    let out = execute_db_tool(&test.state, &tool).await;
+    let out = execute_db_tool(
+        &test.state,
+        &datazen::ai::tool_loop::AiToolContext::default(),
+        &tool,
+    )
+    .await;
     assert!(out.contains("app"));
 }
 

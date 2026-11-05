@@ -18,7 +18,7 @@ use super::error::AiUseCaseError;
 use super::prompt_resolver::PromptResolver;
 use super::schema_pipeline::{compose_schema_system_suffix, PromptSeed, SchemaContextPipeline};
 use super::sql_generation::build_sql_generation_request;
-use super::tool_loop::{run_streaming_tool_loop, AiToolLoopHost, StreamCallback};
+use super::tool_loop::{run_streaming_tool_loop, AiToolContext, AiToolLoopHost, StreamCallback};
 use super::tools::db_tool_definitions;
 use crate::ai::ctx_yaml::extract_ctx_yaml_tables;
 use crate::ai::domain::budget;
@@ -142,6 +142,11 @@ pub async fn run_chat_session(
     let agent_tools_allowed = input.agent_mode == AiAgentMode::Agent;
     attach_db_tools = agent_tools_allowed && attach_db_tools;
 
+    let tool_context = AiToolContext {
+        allowed_connection_id: input.connection_id.clone(),
+        max_sample_rows: env.gate.max_sample_rows,
+    };
+
     let schema = schema_prompt
         .as_ref()
         .map(|(driver, seed)| ChatSchemaPrompt {
@@ -161,6 +166,7 @@ pub async fn run_chat_session(
             context_block: context_block.as_deref(),
             safety_gate: &env.gate,
             attach_db_tools,
+            attach_agent_db_tools: agent_tools_allowed,
             mcp_tools: if agent_tools_allowed {
                 env.mcp_tools
             } else {
@@ -180,6 +186,7 @@ pub async fn run_chat_session(
     let result = run_streaming_tool_loop(
         env.provider.clone(),
         tool_loop_host,
+        &tool_context,
         on_chunk,
         &input.request_id,
         request,
@@ -326,11 +333,13 @@ pub async fn run_sql_generation_session(
         "ai_generate_sql: sending to provider (stream)"
     );
 
+    let tool_context = AiToolContext::default();
     let result = if seed.attach_db_tools {
         request.tools = Some(db_tool_definitions());
         run_streaming_tool_loop(
             env.provider.clone(),
             tool_loop_host,
+            &tool_context,
             on_chunk,
             &input.request_id,
             request,

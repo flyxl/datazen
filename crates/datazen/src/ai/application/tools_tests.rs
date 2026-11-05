@@ -4,14 +4,184 @@
 //! `is_readonly_db_tool`/`mcp_needs_confirm` 钉子自桌面 `commands/ai/chat.rs`
 //! 内联测试归位）。
 
+use super::agent_db_tool_definitions;
 use super::classify_tool;
 use super::db_tool_definitions;
+use super::execute_db_tool;
 use super::is_db_tool;
 use super::is_readonly_db_tool;
 use super::mcp_needs_confirm;
+use super::AiToolContext;
 use super::ToolKind;
 use super::ToolLoopGuard;
+use crate::ai::application::ports::DatabaseToolHost;
 use crate::ai::domain::types::{MessageRole, TokenUsage};
+use crate::connection::domain::{ConnectionRepository, ConnectionRepositoryError, ConnectionScope};
+use crate::settings::ExecutionSettings;
+use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
+use datazen_driver_api::{CommandResult, ConnectionConfig, DatabaseDriver};
+use std::sync::{Arc, Mutex};
+
+fn test_config() -> ConnectionConfig {
+    ConnectionConfig {
+        id: "conn-1".into(),
+        name: "fixture".into(),
+        database_type: "postgres".into(),
+        host: None,
+        port: None,
+        database: Some("app".into()),
+        schema: None,
+        username: None,
+        password: None,
+        ssl_mode: Default::default(),
+        connection_timeout: 30,
+        max_pool_size: 10,
+        ssh_tunnel: None,
+        tunnel_kind: None,
+        tunnel_id: None,
+        http_proxy_tunnel: None,
+        websocket_tunnel: None,
+        color_tag: None,
+        group: None,
+        last_connected_at: None,
+        server_version: None,
+        options: None,
+        read_only: false,
+        pinned: false,
+    }
+}
+
+fn execution_settings() -> ExecutionSettings {
+    ExecutionSettings {
+        limit_select_results: false,
+        query_result_limit: 0,
+        safe_mode: false,
+        connection_pool_size: 10,
+        mcp_disabled_tools: Vec::new(),
+        mcp_permission_mode: "read_only".into(),
+        mcp_allowed_connection_ids: Vec::new(),
+        driver_settings: serde_json::Map::new(),
+        ai_strict_egress: false,
+    }
+}
+
+/// Fake host that records the exact `query` target input and returns rows.
+struct TestDbHost {
+    config: ConnectionConfig,
+    driver: Arc<dyn DatabaseDriver>,
+    executions: Mutex<Vec<(String, serde_json::Value)>>,
+}
+
+impl TestDbHost {
+    fn new() -> Self {
+        Self {
+            config: test_config(),
+            driver: MockDriver::new("postgres", MockDriverOptions::default()),
+            executions: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn executions(&self) -> Vec<(String, serde_json::Value)> {
+        self.executions.lock().expect("executions").clone()
+    }
+}
+
+#[async_trait::async_trait]
+impl DatabaseToolHost for TestDbHost {
+    async fn get_session_config(&self, _id: &str) -> Result<ConnectionConfig, String> {
+        Ok(self.config.clone())
+    }
+    async fn driver_for_connection(&self, _id: &str) -> Result<Arc<dyn DatabaseDriver>, String> {
+        Ok(self.driver.clone())
+    }
+    async fn execute_target(
+        &self,
+        _id: &str,
+        command: &str,
+        input: serde_json::Value,
+    ) -> Result<CommandResult, String> {
+        self.executions
+            .lock()
+            .expect("executions")
+            .push((command.to_string(), input));
+        Ok(CommandResult::new(
+            serde_json::json!({ "columns": ["n"], "rows": [[1]] }),
+        ))
+    }
+    async fn execution_settings(&self) -> ExecutionSettings {
+        execution_settings()
+    }
+}
+
+/// The read-only tools never touch the catalog, but `execute_db_tool` still
+/// takes its port; keep the fake explicit so no test accidentally reaches it.
+struct EmptyCatalog;
+
+#[async_trait::async_trait]
+impl ConnectionRepository for EmptyCatalog {
+    async fn list(
+        &self,
+        _scope: &ConnectionScope,
+    ) -> Result<Vec<ConnectionConfig>, ConnectionRepositoryError> {
+        Ok(Vec::new())
+    }
+    async fn get(
+        &self,
+        _scope: &ConnectionScope,
+        _connection_id: &str,
+    ) -> Result<Option<ConnectionConfig>, ConnectionRepositoryError> {
+        Ok(None)
+    }
+    async fn save(
+        &self,
+        _scope: &ConnectionScope,
+        _config: ConnectionConfig,
+    ) -> Result<(), ConnectionRepositoryError> {
+        Ok(())
+    }
+    async fn delete(
+        &self,
+        _scope: &ConnectionScope,
+        _connection_id: &str,
+    ) -> Result<(), ConnectionRepositoryError> {
+        Ok(())
+    }
+    async fn reorder(
+        &self,
+        _scope: &ConnectionScope,
+        _ordered_ids: Vec<String>,
+    ) -> Result<(), ConnectionRepositoryError> {
+        Ok(())
+    }
+    async fn touch_last_connected_at(
+        &self,
+        _scope: &ConnectionScope,
+        _connection_id: &str,
+    ) -> Result<(), ConnectionRepositoryError> {
+        Ok(())
+    }
+    async fn groups(
+        &self,
+        _scope: &ConnectionScope,
+    ) -> Result<Vec<String>, ConnectionRepositoryError> {
+        Ok(Vec::new())
+    }
+    async fn save_groups(
+        &self,
+        _scope: &ConnectionScope,
+        _groups: Vec<String>,
+    ) -> Result<(), ConnectionRepositoryError> {
+        Ok(())
+    }
+}
+
+fn tool(name: &str, arguments: &str) -> crate::ai::domain::types::ToolCall {
+    crate::ai::domain::types::ToolCall {
+        id: "call-1".into(),
+        name: name.into(),
+        arguments: arguments.into(),
+    }
+}
 
 #[test]
 fn test_is_db_tool() {
@@ -19,6 +189,8 @@ fn test_is_db_tool() {
     assert!(is_db_tool("list_databases"));
     assert!(is_db_tool("list_tables"));
     assert!(is_db_tool("get_table_schema"));
+    assert!(is_db_tool("query_readonly"));
+    assert!(is_db_tool("sample_rows"));
     assert!(!is_db_tool("ask_questions"));
     assert!(!is_db_tool("unknown_tool"));
     assert!(!is_db_tool(""));
@@ -36,6 +208,8 @@ fn test_classify_tool() {
     assert!(matches!(classify_tool("list_tables"), ToolKind::Db(_)));
     assert!(matches!(classify_tool("search_tables"), ToolKind::Db(_)));
     assert!(matches!(classify_tool("get_table_schema"), ToolKind::Db(_)));
+    assert!(matches!(classify_tool("query_readonly"), ToolKind::Db(_)));
+    assert!(matches!(classify_tool("sample_rows"), ToolKind::Db(_)));
     assert_eq!(
         classify_tool("mcp/files/read_file"),
         ToolKind::Mcp {
@@ -77,6 +251,213 @@ fn test_db_tool_definitions_count() {
     assert!(names.contains(&"list_databases"));
     assert!(names.contains(&"list_tables"));
     assert!(names.contains(&"get_table_schema"));
+}
+
+#[test]
+fn test_agent_db_tool_definitions_adds_readonly_tools() {
+    let names = |tools: Vec<super::ToolDefinition>| {
+        tools
+            .into_iter()
+            .map(|tool| tool.name)
+            .collect::<Vec<String>>()
+    };
+    let metadata = names(db_tool_definitions());
+    assert_eq!(metadata.len(), 5);
+    assert!(!metadata.contains(&"query_readonly".into()));
+    assert!(!metadata.contains(&"sample_rows".into()));
+
+    let agent = names(agent_db_tool_definitions());
+    assert_eq!(agent.len(), 7);
+    assert!(agent.contains(&"query_readonly".into()));
+    assert!(agent.contains(&"sample_rows".into()));
+    for name in metadata {
+        assert!(agent.contains(&name), "metadata tool {name} must stay");
+    }
+}
+
+#[tokio::test]
+async fn query_readonly_returns_rows_and_clamps_limit() {
+    let host = TestDbHost::new();
+    let ctx = AiToolContext {
+        allowed_connection_id: Some("conn-1".into()),
+        max_sample_rows: 3,
+    };
+    let catalog = EmptyCatalog;
+    let scope = ConnectionScope::new("org");
+
+    let out = execute_db_tool(
+        &host,
+        &ctx,
+        &catalog,
+        &scope,
+        &tool(
+            "query_readonly",
+            r#"{"connection_id":"conn-1","sql":"SELECT 1","limit":5000}"#,
+        ),
+    )
+    .await;
+    assert!(out.contains("\"rows\""), "{out}");
+    let executed = host.executions();
+    assert_eq!(executed.len(), 1);
+    assert_eq!(executed[0].0, "query");
+    assert_eq!(executed[0].1["sql"], "SELECT 1");
+    assert_eq!(executed[0].1["limit"], 1000, "query limit caps at 1000");
+}
+
+#[tokio::test]
+async fn query_readonly_defaults_to_100_and_rejects_zero_to_one() {
+    let host = TestDbHost::new();
+    let ctx = AiToolContext {
+        allowed_connection_id: Some("conn-1".into()),
+        max_sample_rows: 3,
+    };
+    let catalog = EmptyCatalog;
+    let scope = ConnectionScope::new("org");
+
+    for (limit, expected) in [(None, 100), (Some(0), 1)] {
+        let arguments = match limit {
+            Some(limit) => {
+                format!(r#"{{"connection_id":"conn-1","sql":"SELECT 1","limit":{limit}}}"#)
+            }
+            None => r#"{"connection_id":"conn-1","sql":"SELECT 1"}"#.to_string(),
+        };
+        execute_db_tool(
+            &host,
+            &ctx,
+            &catalog,
+            &scope,
+            &tool("query_readonly", &arguments),
+        )
+        .await;
+        let executed = host.executions();
+        assert_eq!(executed.last().expect("execution").1["limit"], expected);
+    }
+}
+
+#[tokio::test]
+async fn sample_rows_quotes_relation_and_uses_gate_limit() {
+    let host = TestDbHost::new();
+    let ctx = AiToolContext {
+        allowed_connection_id: Some("conn-1".into()),
+        max_sample_rows: 7,
+    };
+    let catalog = EmptyCatalog;
+    let scope = ConnectionScope::new("org");
+
+    execute_db_tool(
+        &host,
+        &ctx,
+        &catalog,
+        &scope,
+        &tool(
+            "sample_rows",
+            r#"{"connection_id":"conn-1","database":"app","schema":"public","table":"users"}"#,
+        ),
+    )
+    .await;
+
+    let executed = host.executions();
+    assert_eq!(executed.len(), 1);
+    assert_eq!(
+        executed[0].1["sql"],
+        "SELECT * FROM \"public\".\"users\" LIMIT 7"
+    );
+    assert_eq!(executed[0].1["limit"], 7);
+
+    execute_db_tool(
+        &host,
+        &ctx,
+        &catalog,
+        &scope,
+        &tool(
+            "sample_rows",
+            r#"{"connection_id":"conn-1","table":"orders","limit":500}"#,
+        ),
+    )
+    .await;
+    let executed = host.executions();
+    assert_eq!(executed.len(), 2);
+    assert_eq!(executed[1].1["sql"], "SELECT * FROM \"orders\" LIMIT 100");
+    assert_eq!(executed[1].1["limit"], 100);
+}
+
+#[tokio::test]
+async fn query_readonly_rejects_writes_without_execution() {
+    let host = TestDbHost::new();
+    let ctx = AiToolContext {
+        allowed_connection_id: Some("conn-1".into()),
+        max_sample_rows: 3,
+    };
+    let catalog = EmptyCatalog;
+    let scope = ConnectionScope::new("org");
+
+    let out = execute_db_tool(
+        &host,
+        &ctx,
+        &catalog,
+        &scope,
+        &tool(
+            "query_readonly",
+            r#"{"connection_id":"conn-1","sql":"UPDATE users SET name = 'x'"}"#,
+        ),
+    )
+    .await;
+    assert!(out.contains("read-only"), "{out}");
+    assert!(host.executions().is_empty(), "writes must not execute");
+}
+
+#[tokio::test]
+async fn sample_rows_zero_gate_limit_still_reads_one_row() {
+    let host = TestDbHost::new();
+    let ctx = AiToolContext {
+        allowed_connection_id: Some("conn-1".into()),
+        max_sample_rows: 0,
+    };
+    let catalog = EmptyCatalog;
+    let scope = ConnectionScope::new("org");
+
+    execute_db_tool(
+        &host,
+        &ctx,
+        &catalog,
+        &scope,
+        &tool(
+            "sample_rows",
+            r#"{"connection_id":"conn-1","table":"users"}"#,
+        ),
+    )
+    .await;
+
+    let executed = host.executions();
+    assert_eq!(executed.len(), 1);
+    assert_eq!(executed[0].1["sql"], "SELECT * FROM \"users\" LIMIT 1");
+    assert_eq!(executed[0].1["limit"], 1);
+}
+
+#[tokio::test]
+async fn read_only_tools_reject_cross_connection_without_execution() {
+    let host = TestDbHost::new();
+    let ctx = AiToolContext {
+        allowed_connection_id: Some("conn-1".into()),
+        max_sample_rows: 3,
+    };
+    let catalog = EmptyCatalog;
+    let scope = ConnectionScope::new("org");
+
+    for (name, arguments) in [
+        (
+            "query_readonly",
+            r#"{"connection_id":"other","sql":"SELECT 1"}"#,
+        ),
+        (
+            "sample_rows",
+            r#"{"connection_id":"other","table":"users"}"#,
+        ),
+    ] {
+        let out = execute_db_tool(&host, &ctx, &catalog, &scope, &tool(name, arguments)).await;
+        assert!(out.contains("not allowed"), "{name}: {out}");
+    }
+    assert!(host.executions().is_empty(), "nothing may execute");
 }
 
 #[test]
@@ -226,6 +607,8 @@ fn test_is_readonly_db_tool() {
     assert!(is_readonly_db_tool("list_tables"));
     assert!(is_readonly_db_tool("search_tables"));
     assert!(is_readonly_db_tool("get_table_schema"));
+    assert!(is_readonly_db_tool("query_readonly"));
+    assert!(is_readonly_db_tool("sample_rows"));
     assert!(!is_readonly_db_tool("ask_questions"));
     assert!(!is_readonly_db_tool("unknown"));
 }

@@ -34,6 +34,9 @@ pub struct ChatRequestInput<'a> {
     pub context_block: Option<&'a str>,
     pub safety_gate: &'a AiSafetyGateConfig,
     pub attach_db_tools: bool,
+    /// Agent chat gets read-only query/sampling in addition to metadata tools.
+    /// SQL generation keeps using [`super::tools::db_tool_definitions`].
+    pub attach_agent_db_tools: bool,
     pub mcp_tools: Vec<ToolDefinition>,
 }
 
@@ -68,7 +71,11 @@ pub async fn build_chat_request(
 
     let mut tools = vec![ask_questions_tool_definition()];
     if input.attach_db_tools {
-        tools.extend(super::tools::db_tool_definitions());
+        if input.attach_agent_db_tools {
+            tools.extend(super::tools::agent_db_tool_definitions());
+        } else {
+            tools.extend(super::tools::db_tool_definitions());
+        }
     }
     tools.extend(input.mcp_tools);
 
@@ -209,6 +216,7 @@ mod tests {
                 context_block: Some("Context file: notes.txt\nRelevant facts."),
                 safety_gate: &gate,
                 attach_db_tools: true,
+                attach_agent_db_tools: false,
                 mcp_tools: Vec::new(),
             },
         )
@@ -229,5 +237,46 @@ mod tests {
             Some("ask_questions")
         );
         assert!(tools.iter().any(|tool| tool.name == "list_tables"));
+    }
+
+    #[tokio::test]
+    async fn chat_request_agent_flag_adds_readonly_query_tools() {
+        let directory = tempfile::tempdir().expect("temporary prompt root");
+        let resolver = PromptResolver::new(directory.path(), None);
+        let gate = AiSafetyGateConfig::default();
+        let request = build_chat_request(
+            &resolver,
+            ChatRequestInput {
+                request_id: "request-agent",
+                model: "model-1",
+                lang: "en",
+                scenario: ChatScenario::Chat,
+                schema: None,
+                connections_context: "",
+                messages: vec![ChatMessage {
+                    role: MessageRole::User,
+                    content: "inspect".into(),
+                    reasoning: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                }],
+                context_block: None,
+                safety_gate: &gate,
+                attach_db_tools: true,
+                attach_agent_db_tools: true,
+                mcp_tools: Vec::new(),
+            },
+        )
+        .await;
+
+        let names = request
+            .tools
+            .expect("tools")
+            .into_iter()
+            .map(|tool| tool.name)
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"list_tables".into()));
+        assert!(names.contains(&"query_readonly".into()));
+        assert!(names.contains(&"sample_rows".into()));
     }
 }
