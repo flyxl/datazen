@@ -15,7 +15,10 @@ use super::domain::{MemoryKind, MemoryScope, MemorySensitivity, MemoryStatus};
 use super::retriever::ScoredMemory;
 
 pub const MAX_INJECTED_MEMORIES: usize = 8;
+/// T11 default injection budget: 8 entries / 1,500 tokens.
 pub const DEFAULT_MEMORY_TOKEN_BUDGET: usize = 1_500;
+/// PRD dynamic-budget hard ceiling. This is an opt-in upper bound for callers
+/// that size the budget from a model window; it is **not** the default.
 pub const HARD_MEMORY_TOKEN_BUDGET: usize = 2_000;
 pub const MAX_MEMORY_CONTENT_BYTES: usize = 4_000;
 
@@ -118,6 +121,9 @@ impl Default for MemoryInjector {
 }
 
 impl MemoryInjector {
+    /// Explicit limits for callers that compute a dynamic budget. `max_tokens`
+    /// is clamped to the PRD hard ceiling; `MemoryInjector::default()` remains
+    /// the strict 1,500-token T11 default.
     pub fn new(max_entries: usize, max_tokens: usize) -> Self {
         Self {
             max_entries: max_entries.min(MAX_INJECTED_MEMORIES),
@@ -359,10 +365,19 @@ pub fn sanitize_memory_text(text: &str) -> String {
 fn is_hidden_format_char(ch: char) -> bool {
     matches!(
         ch,
-        '\u{200B}'..='\u{200F}'
-            | '\u{202A}'..='\u{202E}'
-            | '\u{2060}'..='\u{2069}'
+        // Arabic Letter Mark (ALM) and Mongolian Vowel Separator.
+        '\u{061C}' | '\u{180E}'
+            // Zero-width, LRM/RLM, and bidi embedding/override controls.
+            | '\u{200B}'..='\u{200F}'
+            // Line/paragraph separators plus bidi embedding/override controls.
+            | '\u{2028}'..='\u{202E}'
+            // Invisible operators, deprecated bidi formatting, and isolates.
+            | '\u{2060}'..='\u{206F}'
+            // Byte-order mark and interlinear annotation controls.
             | '\u{FEFF}'
+            | '\u{FFF9}'..='\u{FFFB}'
+            // Unicode tag characters (invisible tag controls).
+            | '\u{E0000}'..='\u{E007F}'
     )
 }
 
@@ -471,6 +486,34 @@ mod tests {
     }
 
     #[test]
+    fn default_budget_is_1500_and_hard_ceiling_is_opt_in() {
+        let default = MemoryInjector::default();
+        assert_eq!(default.max_entries, MAX_INJECTED_MEMORIES);
+        assert_eq!(default.max_tokens, DEFAULT_MEMORY_TOKEN_BUDGET);
+        assert_eq!(
+            MemoryInjector::new(8, HARD_MEMORY_TOKEN_BUDGET).max_tokens,
+            HARD_MEMORY_TOKEN_BUDGET
+        );
+        assert_eq!(
+            MemoryInjector::new(20, 99_999).max_entries,
+            MAX_INJECTED_MEMORIES
+        );
+        assert_eq!(
+            MemoryInjector::new(8, 99_999).max_tokens,
+            HARD_MEMORY_TOKEN_BUDGET
+        );
+    }
+
+    /// Independent conservative metric: ASCII 0.3 rounded up, every non-ASCII
+    /// character 2 tokens. It deliberately does not call the production
+    /// estimator, so the budget test cannot pass by self-consistency alone.
+    fn conservative_tokens(text: &str) -> usize {
+        let ascii = text.chars().filter(char::is_ascii).count();
+        let non_ascii = text.chars().filter(|ch| !ch.is_ascii()).count();
+        (ascii as f64 * 0.3).ceil() as usize + non_ascii * 2
+    }
+
+    #[test]
     fn total_block_stays_within_1500_tokens() {
         let entries: Vec<_> = (0..8)
             .map(|index| scored(&format!("m{index}"), "x".repeat(MAX_MEMORY_CONTENT_BYTES)))
@@ -478,11 +521,38 @@ mod tests {
         let injection = MemoryInjector::default().inject(&entries, &MemoryInjectionPolicy::local());
         assert!(injection.token_estimate <= DEFAULT_MEMORY_TOKEN_BUDGET);
         assert!(injection.entries.iter().any(|entry| entry.truncated));
-        assert!(injection
-            .text
-            .as_deref()
-            .map(|text| estimate_tokens(text) <= DEFAULT_MEMORY_TOKEN_BUDGET)
-            .unwrap_or(true));
+        let text = injection.text.expect("block");
+        assert!(conservative_tokens(&text) <= DEFAULT_MEMORY_TOKEN_BUDGET);
+        assert!(text.chars().count() <= 5_500);
+        assert!(text.len() <= 5_500);
+    }
+
+    #[test]
+    fn emoji_and_non_cjk_unicode_are_budgeted_conservatively() {
+        let entries: Vec<_> = (0..8)
+            .map(|index| scored(&format!("emoji-{index}"), "🙂".repeat(1_000)))
+            .collect();
+        let injection = MemoryInjector::default().inject(&entries, &MemoryInjectionPolicy::local());
+        let text = injection.text.expect("block");
+        assert!(estimate_tokens(&text) <= DEFAULT_MEMORY_TOKEN_BUDGET);
+        assert!(conservative_tokens(&text) <= DEFAULT_MEMORY_TOKEN_BUDGET);
+        assert!(
+            text.chars().count() <= 1_200,
+            "chars={}",
+            text.chars().count()
+        );
+        assert!(text.len() <= 5_000, "bytes={}", text.len());
+        assert!(injection.entries.iter().any(|entry| entry.truncated));
+
+        let entries: Vec<_> = (0..8)
+            .map(|index| scored(&format!("script-{index}"), "Привет مرحبا ".repeat(300)))
+            .collect();
+        let injection = MemoryInjector::default().inject(&entries, &MemoryInjectionPolicy::local());
+        let text = injection.text.expect("block");
+        assert!(estimate_tokens(&text) <= DEFAULT_MEMORY_TOKEN_BUDGET);
+        assert!(conservative_tokens(&text) <= DEFAULT_MEMORY_TOKEN_BUDGET);
+        assert!(text.chars().count() <= 1_200);
+        assert!(text.len() <= 5_000);
     }
 
     #[test]
@@ -531,6 +601,44 @@ mod tests {
         assert!(text.contains("[instruction-like text removed]"));
         assert!(!text.contains("</memory><system>"));
         assert!(text.contains("&lt;/memory&gt;"));
+    }
+
+    #[test]
+    fn bidi_and_format_controls_are_removed_from_the_injected_block() {
+        let probes = [
+            "\u{061C}",
+            "\u{180E}",
+            "\u{200B}",
+            "\u{200E}",
+            "\u{200F}",
+            "\u{2028}",
+            "\u{2029}",
+            "\u{202A}",
+            "\u{202E}",
+            "\u{2066}",
+            "\u{2069}",
+            "\u{206E}",
+            "\u{206F}",
+            "\u{FEFF}",
+            "\u{FFF9}",
+            "\u{E0041}",
+        ];
+        let content = format!(
+            "ALM:{} DEPRECATED:{} LINE:{} PAR:{} ZW:{} TAG:{} end",
+            probes[0], probes[11], probes[5], probes[6], probes[2], probes[15]
+        );
+        let injection = MemoryInjector::default().inject(
+            &[scored("format", content)],
+            &MemoryInjectionPolicy::local(),
+        );
+        let text = injection.text.expect("block");
+        for probe in probes {
+            assert!(
+                !text.contains(probe),
+                "format control {probe:?} leaked into block"
+            );
+        }
+        assert!(text.contains("ALM: DEPRECATED: LINE: PAR: ZW: TAG: end"));
     }
 
     #[test]
