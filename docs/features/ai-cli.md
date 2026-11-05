@@ -61,8 +61,10 @@ datazen open <connection> [--query "SELECT ..."] --json
 ```
 
 macOS 使用 `/Applications/DataZen.app`（或 `~/Applications/DataZen.app`）和
-`open -a ... --args`；Windows/Linux 使用常见安装路径或
-`DATAZEN_DESKTOP_BIN` 指定的可执行文件。桌面启动时解析参数，向主窗口发送
+`open -n -a ... --args`（`-n` 强制新实例，避免参数被已有进程吞掉）；
+Windows/Linux 使用常见安装路径或 `DATAZEN_DESKTOP_BIN` 指定的可执行文件。
+`--data-dir` 会以 `--datazen-data-dir <path>` 转发，桌面在日志/Store 初始化前
+设置 `DATAZEN_DATA_DIR`，确保 CLI 与桌面读写同一份数据。桌面启动时解析参数，向主窗口发送
 `datazen:open-connection`，前端打开对应连接；带 `--query` 时在连接就绪后创建
 查询面板。找不到桌面应用返回 `E_NOT_FOUND`，不会伪造 `datazen://` URI。
 
@@ -83,7 +85,9 @@ macOS 使用 `/Applications/DataZen.app`（或 `~/Applications/DataZen.app`）�
 
 `--limit` 对 SELECT/WITH 在驱动执行前追加 `LIMIT n+1`；已有更大的 LIMIT 时
 外层再包一层 `LIMIT n+1`，不是拿到全部结果后截断。前置/尾随注释不影响改写，
-追加的 LIMIT 会放在尾随注释之前；`WITH` 只有最终语句是 SELECT 时才改写，
+追加的 LIMIT 会放在尾随注释之前；支持 MySQL `#` 行注释与 PostgreSQL
+`$tag$...$tag$` / `$$...$$`，dollar quote 内的 `;`、注释和 LIMIT 不参与扫描；
+`WITH` 只有最终语句是 SELECT 时才改写，
 `WITH ... UPDATE/INSERT/DELETE ... RETURNING` 不改写；多语句按顶层分号逐条
 处理，每条 SELECT 各自追加，避免把 LIMIT 写到错误位置。非 SELECT 不改写。
 `--timeout` 接受裸秒数、`s` 或 `ms`；超时返回 `E_TIMEOUT`。

@@ -12,9 +12,7 @@ use datazen::execution::domain::sql_guard::{
     check_sql, find_main_verb_index, normalize_fullwidth, reject_null_bytes,
     strip_comments_for_tokenize, tokenize_sql,
 };
-use datazen_driver_api::{
-    append_select_limit, create_driver, ConnectionConfig, QueryResult, Value,
-};
+use datazen_driver_api::{create_driver, ConnectionConfig, QueryResult, Value};
 use serde::Serialize;
 
 use crate::error::{
@@ -177,8 +175,12 @@ fn limited_sql(sql: &str, limit: usize) -> String {
     while index < sql.len() {
         let rest = &sql[index..];
         let ch = rest.chars().next().unwrap_or_default();
-        if rest.starts_with("--") {
-            index = skip_line_comment(sql, index);
+        if let Some(end) = dollar_quote_end(sql, index) {
+            index = end;
+        } else if rest.starts_with("--") {
+            index = skip_line_comment(sql, index, 2);
+        } else if rest.starts_with('#') {
+            index = skip_line_comment(sql, index, 1);
         } else if rest.starts_with("/*") {
             index = skip_block_comment(sql, index);
         } else if matches!(ch, '\'' | '"' | '`') {
@@ -202,7 +204,11 @@ fn limited_statement(sql: &str, cap: u32) -> String {
     let leading = &sql[..first];
     let core = &sql[first..last];
     let suffix = &sql[last..];
-    let tokens = tokenize_sql(&strip_comments_for_tokenize(core));
+    // Mask strings/identifiers, dollar-quoted bodies and comments before
+    // tokenizing. Their content can contain `LIMIT`, `;`, `#` or `--` and must
+    // never change where the real cap is inserted.
+    let masked = mask_sql(core);
+    let tokens = tokenize_sql(&masked);
     let Some(main) = find_main_verb_index(&tokens) else {
         return sql.to_string();
     };
@@ -218,8 +224,10 @@ fn limited_statement(sql: &str, cap: u32) -> String {
         return sql.to_string();
     }
 
-    let (out, applied) = append_select_limit(core, Some(cap));
-    if applied.is_some() && out == core {
+    let has_limit = tokens
+        .iter()
+        .any(|token| token.eq_ignore_ascii_case("LIMIT"));
+    if has_limit {
         // The statement already has a LIMIT. Keep it, but wrap the statement
         // with a second cap so a larger user-authored LIMIT cannot make
         // `--limit` a display-only truncation.
@@ -228,10 +236,10 @@ fn limited_statement(sql: &str, cap: u32) -> String {
             cap + 1
         );
     }
-    format!("{leading}{out}{suffix}")
+    format!("{leading}{core} LIMIT {}{suffix}", cap + 1)
 }
 
-/// Skip whitespace and leading `--` / `/* */` comments.
+/// Skip whitespace and leading comments (`--`, `#`, `/* */`).
 fn first_code_index(sql: &str) -> Option<usize> {
     let mut index = 0;
     while index < sql.len() {
@@ -240,7 +248,9 @@ fn first_code_index(sql: &str) -> Option<usize> {
         if ch.is_whitespace() {
             index += ch.len_utf8();
         } else if rest.starts_with("--") {
-            index = skip_line_comment(sql, index);
+            index = skip_line_comment(sql, index, 2);
+        } else if rest.starts_with('#') {
+            index = skip_line_comment(sql, index, 1);
         } else if rest.starts_with("/*") {
             index = skip_block_comment(sql, index);
         } else {
@@ -258,8 +268,17 @@ fn last_code_end(sql: &str) -> Option<usize> {
     while index < sql.len() {
         let rest = &sql[index..];
         let ch = rest.chars().next()?;
+        if let Some(end) = dollar_quote_end(sql, index) {
+            index = end;
+            last = Some(end);
+            continue;
+        }
         if rest.starts_with("--") {
-            index = skip_line_comment(sql, index);
+            index = skip_line_comment(sql, index, 2);
+            continue;
+        }
+        if rest.starts_with('#') {
+            index = skip_line_comment(sql, index, 1);
             continue;
         }
         if rest.starts_with("/*") {
@@ -281,8 +300,40 @@ fn last_code_end(sql: &str) -> Option<usize> {
     last
 }
 
-fn skip_line_comment(sql: &str, mut index: usize) -> usize {
-    index += 2;
+/// Replace comments and quoted/dollar-quoted bodies with spaces so keyword
+/// scanning cannot see tokens that are actually data.
+fn mask_sql(sql: &str) -> String {
+    let mut out = String::with_capacity(sql.len());
+    let mut index = 0;
+    while index < sql.len() {
+        let rest = &sql[index..];
+        let ch = rest.chars().next().unwrap_or_default();
+        let end = if let Some(end) = dollar_quote_end(sql, index) {
+            Some(end)
+        } else if rest.starts_with("--") {
+            Some(skip_line_comment(sql, index, 2))
+        } else if rest.starts_with('#') {
+            Some(skip_line_comment(sql, index, 1))
+        } else if rest.starts_with("/*") {
+            Some(skip_block_comment(sql, index))
+        } else if matches!(ch, '\'' | '"' | '`') {
+            Some(skip_quoted(sql, index, ch))
+        } else {
+            None
+        };
+        if let Some(end) = end {
+            out.push(' ');
+            index = end;
+        } else {
+            out.push(ch);
+            index += ch.len_utf8();
+        }
+    }
+    out
+}
+
+fn skip_line_comment(sql: &str, mut index: usize, marker_len: usize) -> usize {
+    index += marker_len;
     while index < sql.len() {
         let ch = sql[index..].chars().next().unwrap_or('\n');
         index += ch.len_utf8();
@@ -319,6 +370,40 @@ fn skip_quoted(sql: &str, mut index: usize, quote: char) -> usize {
         }
     }
     index
+}
+
+/// If `index` starts a PostgreSQL dollar-quoted string, return the index just
+/// past its closing delimiter (or end-of-input when unterminated).
+///
+/// Tags are the PostgreSQL `$tag$` shape; positional parameters such as `$1`
+/// are not delimiters because they do not have a second `$`.
+fn dollar_quote_end(sql: &str, index: usize) -> Option<usize> {
+    let rest = sql.get(index..)?;
+    if !rest.starts_with('$') {
+        return None;
+    }
+    let bytes = rest.as_bytes();
+    let mut tag_end = 1;
+    while tag_end < bytes.len() {
+        let byte = bytes[tag_end];
+        if byte == b'$' {
+            break;
+        }
+        if !byte.is_ascii_alphanumeric() && byte != b'_' {
+            return None;
+        }
+        tag_end += 1;
+    }
+    if tag_end >= bytes.len() {
+        return None;
+    }
+    let delimiter = &rest[..=tag_end];
+    let after = index + delimiter.len();
+    Some(
+        sql[after..]
+            .find(delimiter)
+            .map_or(sql.len(), |offset| after + offset + delimiter.len()),
+    )
 }
 
 /// For `WITH ...`, the final top-level statement verb. CTE bodies live inside
@@ -918,6 +1003,30 @@ mod tests {
         assert_eq!(
             limited_sql("SELECT 1 /* tail */", 1),
             "SELECT 1 LIMIT 2 /* tail */"
+        );
+    }
+
+    #[test]
+    fn limit_ignores_dollar_quotes_and_hash_comments() {
+        assert_eq!(
+            limited_sql("SELECT $$a;b$$ AS s -- limit", 1),
+            "SELECT $$a;b$$ AS s LIMIT 2 -- limit"
+        );
+        assert_eq!(
+            limited_sql("SELECT $tag$; -- LIMIT 99$tag$ AS s", 1),
+            "SELECT $tag$; -- LIMIT 99$tag$ AS s LIMIT 2"
+        );
+        assert_eq!(
+            limited_sql("SELECT SLEEP(0.2) # tail", 1),
+            "SELECT SLEEP(0.2) LIMIT 2 # tail"
+        );
+        assert_eq!(
+            limited_sql("# lead\nSELECT 1 # tail", 1),
+            "# lead\nSELECT 1 LIMIT 2 # tail"
+        );
+        assert_eq!(
+            limited_sql("SELECT 1; SELECT $$x;y$$ # tail", 1),
+            "SELECT 1 LIMIT 2; SELECT $$x;y$$ LIMIT 2 # tail"
         );
     }
 

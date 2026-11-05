@@ -32,7 +32,7 @@ pub enum Command {
     Query(QueryArgs),
     /// Show a connection plus its table context.
     Context(ContextArgs),
-    /// Print the descriptor an external opener can use for a connection.
+    /// Open a saved connection in the DataZen desktop app.
     Open(OpenArgs),
     /// Install the official DataZen Agent Skill.
     Agent(AgentArgs),
@@ -107,9 +107,10 @@ pub struct ContextArgs {
 
 #[derive(Debug, Args)]
 pub struct OpenArgs {
-    /// Connection id or name.
+    /// Connection id or unique display name.
     pub connection: String,
-    #[arg(long)]
+    /// SQL to preload in a new query panel after the connection is ready.
+    #[arg(long, value_name = "SQL")]
     pub query: Option<String>,
     #[command(flatten)]
     pub output: OutputArgs,

@@ -57,6 +57,28 @@ export function enrichOpenConnectionPayload(
   return enriched;
 }
 
+export interface PendingOpenQuery {
+  connectionId: string;
+  sql: string;
+  requestId?: string;
+}
+
+/** SQL that a pending host open request should preload, or null when the
+ * connection is not ready or a query panel already exists. */
+export function pendingOpenQuerySql(
+  pending: PendingOpenQuery | null,
+  tabs: readonly Pick<ConnectionTab, 'connectionId' | 'status'>[],
+  panels: readonly Pick<{ connectionId: string }, 'connectionId'>[],
+): string | null {
+  if (!pending) return null;
+  const connected = tabs.some(
+    (tab) => tab.connectionId === pending.connectionId && tab.status === 'connected',
+  );
+  if (!connected) return null;
+  if (panels.some((panel) => panel.connectionId === pending.connectionId)) return null;
+  return pending.sql;
+}
+
 export function consumePendingConnection(): { tab: ConnectionTab; action?: string } | null {
   try {
     const raw = localStorage.getItem(PENDING_CONNECTION_KEY);

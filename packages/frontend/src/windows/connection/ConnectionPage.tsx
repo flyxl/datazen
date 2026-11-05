@@ -31,6 +31,7 @@ import type { ConnectionViewActions } from '../../lib/connectionViews/types';
 import {
   enrichOpenConnectionPayload,
   makeTabFromPayload,
+  pendingOpenQuerySql,
   removeConnectionFromStores,
   syncStoresActiveConnection,
   type ConnectionTab,
@@ -109,7 +110,13 @@ export function ConnectionPage() {
   const postOnboardingRef = useRef<PostOnboardingSample | null>(null);
   const postOnboardingConsumedRef = useRef(false);
   const openRequestRef = useRef<string | null>(null);
-  const pendingOpenQueryRef = useRef<{ connectionId: string; sql: string } | null>(null);
+  const pendingOpenQueryRef = useRef<{
+    connectionId: string;
+    sql: string;
+    requestId?: string;
+  } | null>(null);
+  const [openQueryTick, setOpenQueryTick] = useState(0);
+  const openQueryAttemptsRef = useRef(0);
   const workspaceSidebarMode = useUiStore((s) => s.workspaceSidebarMode);
   const toggleWorkspaceSidebarMode = useUiStore((s) => s.toggleWorkspaceSidebarMode);
   const sidebarExpanded = workspaceSidebarMode === 'expanded';
@@ -215,15 +222,18 @@ export function ConnectionPage() {
         if (openRequestRef.current === raw.requestId) return;
         openRequestRef.current = raw.requestId;
       }
-      const data = enrichOpenConnectionPayload(
-        raw,
-        useConnectionStore.getState().connections,
-      );
+      const data = enrichOpenConnectionPayload(raw, useConnectionStore.getState().connections);
       if (data.sql) {
         pendingOpenQueryRef.current = {
           connectionId: data.connectionId,
           sql: data.sql,
+          requestId: data.requestId,
         };
+        openQueryAttemptsRef.current = 0;
+        // The tab/panel arrays may already be in their final state (for
+        // example, clicking an already-connected connection). Tick state
+        // guarantees the pending-query effect runs at least once.
+        setOpenQueryTick((tick) => tick + 1);
       }
       setWorkspaceMode('connections');
 
@@ -571,17 +581,22 @@ export function ConnectionPage() {
   useEffect(() => {
     const pending = pendingOpenQueryRef.current;
     if (!pending) return;
-    const tab = tabs.find(
-      (t) => t.connectionId === pending.connectionId && t.status === 'connected',
-    );
-    if (!tab) return;
-    if (allPanels.some((p) => p.connectionId === pending.connectionId)) {
-      pendingOpenQueryRef.current = null;
+    const sql = pendingOpenQuerySql(pending, tabs, allPanels);
+    if (!sql) {
+      if (allPanels.some((p) => p.connectionId === pending.connectionId)) {
+        pendingOpenQueryRef.current = null;
+      }
       return;
     }
+    if (!actionsRef.current?.newQuery) {
+      if (openQueryAttemptsRef.current >= 40) return;
+      openQueryAttemptsRef.current += 1;
+      const timer = window.setTimeout(() => setOpenQueryTick((tick) => tick + 1), 50);
+      return () => window.clearTimeout(timer);
+    }
     pendingOpenQueryRef.current = null;
-    actionsRef.current?.newQuery?.(pending.sql);
-  }, [tabs, allPanels]);
+    actionsRef.current.newQuery(sql);
+  }, [tabs, allPanels, openQueryTick]);
 
   const handleExportConfig = useCallback(async () => {
     let saved: boolean;

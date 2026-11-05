@@ -304,7 +304,9 @@ async fn query(deps: &Deps, args: QueryArgs) -> Result<(), CliError> {
 
 async fn open(deps: &Deps, args: OpenArgs) -> Result<(), CliError> {
     let (_store, config) = resolve_connection(deps, &args.connection).await?;
-    crate::desktop_launch::launch(&config.id, args.query.as_deref())?;
+    let data_dir = std::path::absolute(&deps.data_dir)
+        .map_err(|error| CliError::new(E_CONFIG, format!("cannot resolve data dir: {error}")))?;
+    crate::desktop_launch::launch(&config.id, args.query.as_deref(), Some(&data_dir))?;
     let report = json!({
         "connection": summary(&config),
         "launched": true,

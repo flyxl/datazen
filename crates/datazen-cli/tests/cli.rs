@@ -295,7 +295,7 @@ fn open_launches_desktop_with_argv_and_never_emits_a_uri() {
     assert_eq!(report["queryProvided"], true);
 
     let mut args = String::new();
-    for _ in 0..50 {
+    for _ in 0..200 {
         if let Ok(value) = std::fs::read_to_string(&args_file) {
             args = value;
             break;
@@ -305,6 +305,25 @@ fn open_launches_desktop_with_argv_and_never_emits_a_uri() {
     assert!(args.contains("--datazen-open-connection"), "{args}");
     assert!(args.contains("--datazen-open-query"), "{args}");
     assert!(args.contains("SELECT 1"), "{args}");
+    assert!(args.contains("--datazen-data-dir"), "{args}");
+    assert!(
+        args.contains(temp.path().to_str().unwrap()),
+        "data dir missing from {args}"
+    );
+}
+
+#[test]
+fn open_help_describes_desktop_dispatch_and_query() {
+    let temp = TempDir::new().unwrap();
+    let output = run(temp.path(), &["open", "--help"]);
+    assert!(output.status.success());
+    let help = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        help.contains("Open a saved connection in the DataZen desktop app"),
+        "{help}"
+    );
+    assert!(help.contains("--query"), "{help}");
+    assert!(help.contains("SQL to preload"), "{help}");
 }
 
 #[test]

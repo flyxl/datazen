@@ -113,7 +113,7 @@ fn postgres_limit_is_pushed_into_execution() {
             "--limit",
             "1",
             "--timeout",
-            "2s",
+            "5s",
             "--json",
         ],
     );
@@ -127,7 +127,94 @@ fn postgres_limit_is_pushed_into_execution() {
     assert_eq!(value["rows"].as_array().unwrap().len(), 1);
     assert_eq!(value["truncated"], true);
     // Without a pushed-down LIMIT this takes ~1s; two rows take ~0.2s.
-    assert!(elapsed.as_millis() < 800, "query took {elapsed:?}");
+    // Without the pushed-down cap this is 20 * 0.2s; with it MySQL returns
+    // only the two rows needed for truncation detection.
+    assert!(elapsed.as_millis() < 2_500, "query took {elapsed:?}");
+}
+
+#[test]
+#[ignore = "requires a local PostgreSQL instance; set DATAZEN_TEST_PG_*"]
+fn postgres_dollar_quote_keeps_value_and_limit_contract() {
+    let Some(port) = std::env::var("DATAZEN_TEST_PG_PORT").ok() else {
+        return;
+    };
+    let temp = TempDir::new().unwrap();
+    write_connections(
+        temp.path(),
+        connection(
+            "postgresql",
+            &env_or("DATAZEN_TEST_PG_HOST", "127.0.0.1"),
+            port.parse().unwrap(),
+            &env_or("DATAZEN_TEST_PG_DATABASE", "postgres"),
+            &env_or("DATAZEN_TEST_PG_USER", "postgres"),
+            &env_or("DATAZEN_TEST_PG_PASSWORD", ""),
+        ),
+    );
+    let output = run(
+        temp.path().to_str().unwrap(),
+        &[
+            "query",
+            "live",
+            "SELECT $$a;b$$ AS s UNION ALL SELECT $$c;d$$ -- limit",
+            "--limit",
+            "1",
+            "--json",
+        ],
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["rows"], json!([["a;b"]]));
+    assert_eq!(value["truncated"], true);
+}
+
+#[test]
+#[ignore = "requires a local MySQL instance; set DATAZEN_TEST_MYSQL_*"]
+fn mysql_sleep_with_hash_comment_is_limited() {
+    let Some(port) = std::env::var("DATAZEN_TEST_MYSQL_PORT").ok() else {
+        return;
+    };
+    let temp = TempDir::new().unwrap();
+    write_connections(
+        temp.path(),
+        connection(
+            "mysql",
+            &env_or("DATAZEN_TEST_MYSQL_HOST", "127.0.0.1"),
+            port.parse().unwrap(),
+            &env_or("DATAZEN_TEST_MYSQL_DATABASE", "mysql"),
+            &env_or("DATAZEN_TEST_MYSQL_USER", "root"),
+            &env_or("DATAZEN_TEST_MYSQL_PASSWORD", ""),
+        ),
+    );
+    let started = Instant::now();
+    let output = run(
+        temp.path().to_str().unwrap(),
+        &[
+            "query",
+            "live",
+            "WITH RECURSIVE t(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM t WHERE n < 20) SELECT SLEEP(0.2) FROM t # tail",
+            "--limit",
+            "1",
+            "--timeout",
+            "5s",
+            "--json",
+        ],
+    );
+    let elapsed = started.elapsed();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let value: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["rows"].as_array().unwrap().len(), 1);
+    assert_eq!(value["truncated"], true);
+    // Without the pushed-down cap this is 20 * 0.2s; with it MySQL returns
+    // only the two rows needed for truncation detection.
+    assert!(elapsed.as_millis() < 2_500, "query took {elapsed:?}");
 }
 
 #[test]

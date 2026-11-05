@@ -70,6 +70,21 @@ pub fn run_mcp_stdio() {
 
 /// Entry point invoked by `main.rs`.
 pub fn run() {
+    let (open_request, open_error) = match super::open_request::parse_open_connection_args(
+        &std::env::args().collect::<Vec<_>>(),
+    ) {
+        Ok(request) => (request, None),
+        Err(error) => (None, Some(error)),
+    };
+    if let Some(data_dir) = open_request
+        .as_ref()
+        .and_then(|request| request.data_dir.as_deref())
+    {
+        // This must happen before logging/store initialization: the desktop
+        // store and log directory both resolve DATAZEN_DATA_DIR at startup.
+        std::env::set_var("DATAZEN_DATA_DIR", data_dir);
+    }
+
     let (log_level, log_dir) = resolve_log_settings();
 
     let _ = std::fs::create_dir_all(&log_dir);
@@ -87,15 +102,9 @@ pub fn run() {
         .with(fmt::layer().with_writer(non_blocking).with_ansi(false))
         .init();
 
-    let open_request = match super::open_request::parse_open_connection_args(
-        &std::env::args().collect::<Vec<_>>(),
-    ) {
-        Ok(request) => request,
-        Err(error) => {
-            tracing::warn!(error = %error, "ignoring malformed --datazen-open-* arguments");
-            None
-        }
-    };
+    if let Some(error) = open_error {
+        tracing::warn!(error = %error, "ignoring malformed --datazen-open-* arguments");
+    }
 
     // 静默 E2E：必须早于事件循环。tao 在 `applicationDidFinishLaunching`
     // （`AppState::launched`）里就会 `activateIgnoringOtherApps`，那一次发生在
@@ -202,10 +211,16 @@ pub fn run() {
                             if let Some(request) = open_request.clone() {
                                 let target = main.clone();
                                 std::thread::spawn(move || {
+                                    // A fresh nonce per launch keeps two same-length
+                                    // queries (or repeated opens) from colliding in the
+                                    // frontend's request-id dedupe.
+                                    let nonce = std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .map_or(0, |duration| duration.as_nanos());
                                     let request_id = format!(
-                                        "cli:{}:{}",
+                                        "cli:{}:{}:{nonce}",
                                         request.connection_id,
-                                        request.query.as_deref().map_or(0, str::len)
+                                        request.query.as_deref().map_or(0, str::len),
                                     );
                                     let payload = serde_json::json!({
                                         "connectionId": request.connection_id,

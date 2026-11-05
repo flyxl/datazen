@@ -4,6 +4,7 @@
 //! argv contract the desktop parses at startup:
 //!
 //! `--datazen-open-connection <id> [--datazen-open-query <sql>]`
+//! `[--datazen-data-dir <path>]`
 //!
 //! `DATAZEN_DESKTOP_BIN` is an explicit test/advanced override; normal installs
 //! use the platform application locations below.
@@ -15,12 +16,21 @@ use crate::error::{CliError, E_NOT_FOUND};
 
 const OPEN_CONNECTION_ARG: &str = "--datazen-open-connection";
 const OPEN_QUERY_ARG: &str = "--datazen-open-query";
+const DATA_DIR_ARG: &str = "--datazen-data-dir";
 
-pub fn launch(connection_id: &str, query: Option<&str>) -> Result<(), CliError> {
+pub fn launch(
+    connection_id: &str,
+    query: Option<&str>,
+    data_dir: Option<&Path>,
+) -> Result<(), CliError> {
     let mut forwarded = vec![OPEN_CONNECTION_ARG.to_string(), connection_id.to_string()];
     if let Some(query) = query {
         forwarded.push(OPEN_QUERY_ARG.to_string());
         forwarded.push(query.to_string());
+    }
+    if let Some(data_dir) = data_dir {
+        forwarded.push(DATA_DIR_ARG.to_string());
+        forwarded.push(data_dir.to_string_lossy().into_owned());
     }
 
     if let Some(path) = env_override()? {
@@ -98,6 +108,7 @@ mod macos {
                 )
             })?;
         let status = Command::new("/usr/bin/open")
+            .arg("-n")
             .arg("-a")
             .arg(&app)
             .arg("--args")

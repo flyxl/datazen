@@ -17,4 +17,4 @@
 | BUG-013 | T15 | 旧 localStorage `dbSessionId::db` 会话迁移到 AppDb 后仍按旧 key 存储，当前 connectionId 会话列表/恢复看不到，迁移成功提示失真 | 已验证 |
 | BUG-014 | T16 | 新兼容预设 validate_config 只依赖 `/models`，未回退 probe，仅实现 chat/messages 的兼容端点验证误报 | 已验证 |
 | BUG-015 | T17 | autoUse 为死设置且 listing 无显式选择门控；同名技能未并列；缺 2-skill 正文预算 | 已验证 |
-| BUG-016 | T18 | `open` 对已运行 App 不送达参数；`--limit` 仍有 PG dollar-quote/MySQL `#` 边界；CLI 未接 shared execution Runtime | 未修复（见 BUG-016） |
+| BUG-016 | T18 | `open` 对已运行 App 不送达参数；`--limit` 仍有 PG dollar-quote/MySQL `#` 边界；CLI 未接 shared execution Runtime | `open`/`--limit`/pending query 本轮已修复；shared Runtime 未接（明确边界），待黑盒复测（见 BUG-016） |

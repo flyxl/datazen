@@ -523,3 +523,26 @@ fn every_tauri_command_is_registered_and_resolvable() {
         "bootstrap/run.rs registers commands that no longer exist: {dangling:?}"
     );
 }
+
+#[test]
+fn startup_applies_cli_data_dir_before_logging_and_store() {
+    let run = include_str!("run.rs");
+    let parse = run
+        .find("parse_open_connection_args")
+        .expect("run must parse the CLI open argv");
+    let apply = run
+        .find("set_var(\"DATAZEN_DATA_DIR\"")
+        .expect("run must apply the forwarded data dir");
+    let logging = run
+        .find("resolve_log_settings()")
+        .expect("run must resolve logging");
+    assert!(
+        parse < apply && apply < logging,
+        "DATAZEN_DATA_DIR must be set before log/store resolution"
+    );
+    assert!(
+        run.contains("--datazen-data-dir")
+            || include_str!("open_request.rs").contains("--datazen-data-dir"),
+        "desktop argv parser must accept --datazen-data-dir"
+    );
+}
