@@ -632,6 +632,9 @@ export const useAiStore = create<AiStore>((set, get) => ({
       });
     }
 
+    const loadedSkillIds = (chatSession.loadedSkills ?? []).flatMap((skill) =>
+      skill.id || skill.name ? [skill.id || skill.name] : [],
+    );
     const requestId = crypto.randomUUID();
     const key = computeSessionKey(connectionId, dbSessionId, database);
     registerRequestId(requestId, key);
@@ -672,6 +675,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
         requestId,
         includeSchema,
         agentMode,
+        loadedSkillIds,
         contextFiles,
         contextTables,
         targetClaim,

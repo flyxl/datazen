@@ -83,6 +83,9 @@ pub struct ChatSessionInput {
     pub scenario: ChatScenario,
     pub context_tables: Option<Vec<String>>,
     pub agent_mode: AiAgentMode,
+    /// Session-level skill ids whose bodies were already loaded. Hosts seed the
+    /// catalog with them so the two-body budget survives across turns.
+    pub loaded_skill_ids: Option<Vec<String>>,
     /// Auto-context snapshot frozen by the frontend on send.
     pub editor_sql: Option<String>,
     pub selection: Option<String>,

@@ -453,6 +453,28 @@ describe('aiStore', () => {
       );
     });
 
+    it('sendChatMessage forwards the session loaded skill ids across turns', async () => {
+      localStorage.clear();
+      useAiStore.getState().initChatSession();
+      const session = useAiStore.getState().chatSession!;
+      useAiStore.setState({
+        chatSession: {
+          ...session,
+          loadedSkills: [
+            { id: 'user:one', name: 'one', loadedAt: new Date().toISOString() },
+            { name: 'legacy-two', loadedAt: new Date().toISOString() },
+          ],
+        },
+      });
+      mockAiCommands.chat.mockResolvedValueOnce(undefined);
+
+      await useAiStore.getState().sendChatMessage({ content: 'continue' });
+
+      expect(mockAiCommands.chat).toHaveBeenCalledWith(
+        expect.objectContaining({ loadedSkillIds: ['user:one', 'legacy-two'] }),
+      );
+    });
+
     it('sendChatMessage no-ops without session', async () => {
       await useAiStore.getState().sendChatMessage({ content: 'hi' });
       expect(mockAiCommands.chat).not.toHaveBeenCalled();

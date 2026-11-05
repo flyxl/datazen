@@ -193,6 +193,41 @@ impl SkillCatalog {
         self.enabled
     }
 
+    /// Seed the cross-turn body budget from the session's already loaded ids.
+    /// Unknown ids are ignored; a legacy display name is accepted only when it
+    /// resolves to exactly one discovered skill. No bodies are read here.
+    pub fn with_loaded_ids(self, ids: &[String]) -> Self {
+        let entries = self.entries();
+        let mut loaded: Vec<String> = Vec::new();
+        for raw in ids {
+            let id = raw.trim();
+            if id.is_empty() || loaded.len() >= MAX_LOADED_SKILLS {
+                continue;
+            }
+            if let Some(entry) = entries.iter().find(|entry| entry.summary.id == id) {
+                if !loaded.iter().any(|existing| existing == &entry.summary.id) {
+                    loaded.push(entry.summary.id.clone());
+                }
+                continue;
+            }
+            let matches: Vec<_> = entries
+                .iter()
+                .filter(|entry| entry.summary.name == id)
+                .collect();
+            if matches.len() == 1
+                && !loaded
+                    .iter()
+                    .any(|existing| existing == &matches[0].summary.id)
+            {
+                loaded.push(matches[0].summary.id.clone());
+            }
+        }
+        if let Ok(mut current) = self.loaded.lock() {
+            *current = loaded;
+        }
+        self
+    }
+
     /// Listing visible to the model: all skills when auto-use is on, otherwise
     /// only ids the user explicitly selected in Settings.
     pub fn list(&self) -> Vec<SkillSummary> {

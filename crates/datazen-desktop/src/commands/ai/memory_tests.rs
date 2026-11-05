@@ -346,6 +346,7 @@ async fn chat_auto_injects_memory_and_emits_reference_chunk() {
         None,
         Some(MemoryMode::Auto),
         Some(MemoryScopeKind::User),
+        None,
     )
     .await
     .unwrap();
@@ -423,6 +424,7 @@ async fn chat_auto_is_forced_off_when_memory_setting_is_disabled() {
         None,
         Some(MemoryMode::Auto),
         Some(MemoryScopeKind::User),
+        None,
     )
     .await
     .unwrap();
@@ -506,6 +508,7 @@ async fn chat_off_and_ask_never_inject_memory() {
             None,
             Some(mode),
             Some(MemoryScopeKind::User),
+            None,
         )
         .await
         .unwrap();

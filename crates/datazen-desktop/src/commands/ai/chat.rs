@@ -197,6 +197,7 @@ pub async fn ai_chat<R: tauri::Runtime>(
     database_type: Option<String>,
     memory_mode: Option<MemoryMode>,
     memory_scope: Option<MemoryScopeKind>,
+    loaded_skill_ids: Option<Vec<String>>,
 ) -> Result<String, CommandError> {
     let on_chunk = window_stream_callback(&window);
     let is_workflow = scenario.as_deref() == Some("workflow_generate");
@@ -205,6 +206,7 @@ pub async fn ai_chat<R: tauri::Runtime>(
     } else {
         AiAgentMode::Ask
     });
+    let loaded_skill_ids = loaded_skill_ids.unwrap_or_default();
 
     // 端口取值（thin binding）。
     let (provider, ai_config) = resolve_ai(&state).await?;
@@ -310,9 +312,10 @@ pub async fn ai_chat<R: tauri::Runtime>(
     let host = super::AiRequestHost {
         state: &state,
         claim: target_claim.unwrap_or(AiTargetClaim::Independent),
-        skills: Some(datazen::ai::skills::SkillCatalog::from_settings(
-            &settings.skills,
-        )),
+        skills: Some(
+            datazen::ai::skills::SkillCatalog::from_settings(&settings.skills)
+                .with_loaded_ids(&loaded_skill_ids),
+        ),
     };
     let env = ChatSessionEnv {
         provider,
@@ -352,6 +355,7 @@ pub async fn ai_chat<R: tauri::Runtime>(
             // Workflow generation keeps its historical tool access unless the
             // caller explicitly picks a mode; plain chat defaults to Ask.
             agent_mode: requested_agent_mode,
+            loaded_skill_ids: Some(loaded_skill_ids),
             editor_sql,
             selection,
             last_error,

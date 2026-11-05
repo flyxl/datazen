@@ -415,3 +415,55 @@ fn third_distinct_body_is_rejected_before_reading_it() {
     ));
     assert_eq!(catalog.loaded_skill_ids().len(), 2);
 }
+
+#[test]
+fn loaded_ids_carry_the_two_body_budget_across_turns() {
+    let home = tempfile::tempdir().unwrap();
+    write_skill(
+        home.path(),
+        "one",
+        "name: one\ndescription: One",
+        "one body",
+    );
+    write_skill(
+        home.path(),
+        "two",
+        "name: two\ndescription: Two",
+        "two body",
+    );
+    write_skill(
+        home.path(),
+        "three",
+        "name: three\ndescription: Three",
+        "three body",
+    );
+
+    let first = gated_catalog(home.path(), true, Vec::new());
+    assert!(first.use_skill("one").is_ok());
+    assert!(first.use_skill("two").is_ok());
+    let loaded = first.loaded_skill_ids();
+    assert_eq!(loaded.len(), 2);
+
+    let second = gated_catalog(home.path(), true, Vec::new()).with_loaded_ids(&loaded);
+    assert_eq!(second.loaded_skill_ids(), loaded);
+    assert!(second.use_skill("one").is_ok(), "reloading is idempotent");
+    assert!(matches!(
+        second.use_skill("three"),
+        Err(SkillError::TooManyLoaded { limit: 2 })
+    ));
+    assert_eq!(second.loaded_skill_ids().len(), 2);
+}
+
+#[test]
+fn loaded_ids_ignore_unknown_and_accept_a_unique_legacy_name() {
+    let home = tempfile::tempdir().unwrap();
+    write_skill(
+        home.path(),
+        "one",
+        "name: one\ndescription: One",
+        "one body",
+    );
+    let catalog = gated_catalog(home.path(), true, Vec::new())
+        .with_loaded_ids(&["user:missing".into(), "one".into()]);
+    assert_eq!(catalog.loaded_skill_ids(), vec!["user:one".to_string()]);
+}

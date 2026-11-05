@@ -203,6 +203,7 @@ export const aiCommands = {
     includeSchema?: boolean;
     scenario?: PromptScenario;
     agentMode?: AiAgentMode;
+    loadedSkillIds?: string[];
     contextFiles?: string[];
     contextTables?: string[];
     targetClaim?: AiTargetClaim;
