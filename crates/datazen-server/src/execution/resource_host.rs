@@ -258,7 +258,7 @@ impl ResourceExecutionHost for ServerResourceExecutionHost {
 /// 现取的 runtime 投影到同一 `ArtifactChunkReader` 端口形状，与 target
 /// 分支（`PreparedExecution.artifacts`）共享收集逻辑。
 pub(crate) struct ServerArtifactChunks(
-    Arc<datazen::execution::application::orchestration::RuntimeConnectionUseCases>,
+    pub(crate) Arc<datazen::execution::application::orchestration::RuntimeConnectionUseCases>,
 );
 
 #[async_trait]
