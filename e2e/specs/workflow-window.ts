@@ -1,6 +1,7 @@
 import { CONNECT_COMMANDS, dbSessionIdOf } from '../lib/sessionId.js';
 import { expect, browser, $, $$ } from '@wdio/globals';
 import { closeExtraWindows, captureJourneyStep, switchWorkspaceNav } from '../helpers.js';
+import { desktopPackage, frontendSource } from '../lib/repoPaths.js';
 import { t } from '../i18n.js';
 
 /**
@@ -500,13 +501,11 @@ describe('Workflow Tab System (WORKFLOW-WINDOW)', () => {
 
     // Tauri 2 freezes invoke — assert source wiring + button click + IPC availability.
     const fs = await import('node:fs');
-    const path = await import('node:path');
-    const root = path.resolve(import.meta.dirname, '../..');
-    const wfWin = fs.readFileSync(path.join(root, 'src/windows/workflow/WorkflowPage.tsx'), 'utf8');
+    const wfWin = fs.readFileSync(frontendSource('windows/workflow/WorkflowPage.tsx'), 'utf8');
     // Form-split F4c: the named dir openers merged into open_known_dir(kind);
     // the invoke lives in the desktop host-services zone.
     const hostServices = fs.readFileSync(
-      path.join(root, 'src/platform/desktop/hostServices.ts'),
+      desktopPackage('src/platform/desktop/hostServices.ts'),
       'utf8',
     );
     expect(hostServices).toContain("invoke<void>('open_known_dir', { kind: 'workflows' })");
