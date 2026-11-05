@@ -63,6 +63,18 @@ const pack = {
   'settings.defaultTableSort.none': '並べ替えない',
   'settings.defaultTableSort.hint':
     '"並べ替えない" を選ぶと大きなテーブルでページングが速くなりますが、行がページをまたいで重複または欠落する可能性があります。',
+  'settings.gridDensity': 'グリッド密度',
+  'settings.gridDensity.hint': 'データグリッドの行の高さ。コンパクトでは、画面上により多くの行が収まります。リラックスした方が読みやすいです。',
+  'settings.gridDensity.compact': 'コンパクト',
+  'settings.gridDensity.standard': '標準',
+  'settings.gridDensity.relaxed': 'リラックスした',
+  'settings.gridAlternatingRows': '交互の行の背景',
+  'settings.gridAlternatingRows.hint': 'データ グリッドの 1 行おきに色を付けます。',
+  'settings.gridRowNumbers': '行番号',
+  'settings.gridRowNumbers.hint':
+    'データグリッドの # ガター。これをオフにすると、クリックして選択ボタンも削除されます。行をクリックすると、行の選択が引き続き機能します。',
+  'settings.gridAutoHideScrollbar': 'グリッドスクロールバーを自動的に非表示にする',
+  'settings.gridAutoHideScrollbar.hint': 'スクロールバーは、グリッドがホバーまたはフォーカスされているときにのみ表示されます。',
   'settings.connectionPoolSize': 'コネクションプールサイズ',
   'settings.connectionPoolSizeHint': 'データベース接続ごとに保持する最大コネクション数。',
   'settings.limitSelect': 'SELECT 結果を制限する',

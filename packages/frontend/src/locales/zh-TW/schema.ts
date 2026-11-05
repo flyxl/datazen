@@ -311,6 +311,9 @@ const pack = {
   'fkNav.error.valueNull': '複合主鍵的某部分為 NULL',
   'fkNav.error.targetUnresolved': '無法連到 {target}；它可能不存在、位於其他資料庫，或無法讀取',
   'fkNav.error.probeFailed': '已找到目標資料表，但無法讀取',
+  'fkNav.error.noReferences': '沒有表格引用該行',
   'fkNav.error.unknown': '外鍵瀏覽失敗',
+  'fkSelector.pickFrom': '從 {target} 選擇一個參考值',
+  'fkSelector.notUnique': '引用的列不是唯一的，因此無法安全地選取值',
 } as const;
 export default pack;

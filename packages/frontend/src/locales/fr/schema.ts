@@ -320,7 +320,11 @@ const pack = {
   'fkNav.error.targetUnresolved':
     'Impossible d’atteindre {target} ; la table est peut-être absente, dans une autre base de données ou illisible',
   'fkNav.error.probeFailed': 'La table cible a été trouvée, mais elle n’a pas pu être lue',
+  'fkNav.error.noReferences': 'Aucun tableau ne fait référence à cette ligne',
   'fkNav.error.unknown': 'La navigation par clé étrangère a échoué',
+  'fkSelector.pickFrom': 'Choisissez une valeur référencée dans {target}',
+  'fkSelector.notUnique':
+    'Les colonnes référencées ne sont pas uniques, donc une valeur ne peut pas être sélectionnée en toute sécurité',
   'schemaTree.generateSql': 'Générer du SQL',
   'schemaTree.generateSelect': 'Générer SELECT',
   'schemaTree.generateInsert': 'Générer INSERT',
