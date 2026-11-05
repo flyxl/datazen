@@ -13,8 +13,8 @@
 | T09 AppDb v7：AI 笔记/记忆/FTS/审计 | 已完成 |
 | T10 连接笔记、全局指令、Prompt 模板 | 已完成 |
 | T11 Memory 领域、检索、注入 | 已完成 |
-| T12 Memory IPC、Chat 注入、引用流 | 进行中 |
-| T13 Memory 设置、列表、候选 UI | 未开始 |
+| T12 Memory IPC、Chat 注入、引用流 | 已完成 |
+| T13 Memory 设置、列表、候选 UI | 进行中 |
 | T14 Memory v1：纠正、模式、冲突、失效 | 未开始 |
 | T15 会话持久化、导出、提示历史 | 未开始 |
 | T16 Provider 预设扩展 | 未开始 |
