@@ -242,6 +242,19 @@ fn test_classify_tool() {
     assert_eq!(classify_tool("mcp//tool"), ToolKind::Unknown);
     assert_eq!(classify_tool("mcp/"), ToolKind::Unknown);
     assert_eq!(classify_tool("mcp/server/"), ToolKind::Unknown);
+    assert_eq!(
+        classify_tool("list_skills"),
+        ToolKind::Skill("list_skills".into())
+    );
+    assert_eq!(
+        classify_tool("use_skill"),
+        ToolKind::Skill("use_skill".into())
+    );
+    assert_eq!(
+        classify_tool("read_skill_file"),
+        ToolKind::Skill("read_skill_file".into())
+    );
+    assert!(!is_db_tool("use_skill"));
     assert_eq!(classify_tool("unknown_tool"), ToolKind::Unknown);
     assert_eq!(classify_tool("nonexistent_tool"), ToolKind::Unknown);
 }

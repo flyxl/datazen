@@ -238,6 +238,7 @@ fn test_env(provider: Arc<dyn AiProvider>, src: Arc<RecordingSource>) -> ChatSes
         lang: "en".into(),
         connections_context: String::new(),
         mcp_tools: Vec::new(),
+        skill_tools: Vec::new(),
         context_entries: Vec::new(),
         schema_driver: None,
         prompt_resolver: Arc::new(PromptResolver::new(&overrides, None)),
@@ -400,6 +401,7 @@ async fn chat_ask_mode_strips_db_and_mcp_tools() {
     let mut env = test_env(provider.clone(), recording_source());
     env.schema_driver = Some(MockDriver::new("postgres", MockDriverOptions::default()));
     env.mcp_tools = vec![mcp_tool_definition()];
+    env.skill_tools = crate::ai::skills::tools::skill_tool_definitions();
     let host = RecordingLoopHost::default();
     let (on_chunk, _seen) = sink();
 
@@ -436,6 +438,49 @@ async fn chat_ask_mode_strips_db_and_mcp_tools() {
         vec!["ask_questions"],
         "Ask must expose only ask_questions"
     );
+}
+
+#[tokio::test]
+async fn chat_agent_mode_exposes_skill_tools_but_ask_does_not() {
+    let provider = Arc::new(ScriptedProvider::default().with_tools());
+    provider.push_stream(vec![stream_chunk("answer", true)]);
+    let mut env = test_env(provider.clone(), recording_source());
+    env.skill_tools = crate::ai::skills::tools::skill_tool_definitions();
+    let host = RecordingLoopHost::default();
+    let (on_chunk, _seen) = sink();
+
+    run_chat_session(
+        env,
+        &host,
+        on_chunk,
+        ChatSessionInput {
+            request_id: "req-skill-agent".into(),
+            db_session_id: None,
+            connection_id: None,
+            database: None,
+            messages: vec![user_message("Use a skill")],
+            include_schema: false,
+            scenario: ChatScenario::Chat,
+            context_tables: None,
+            agent_mode: AiAgentMode::Agent,
+            editor_sql: None,
+            selection: None,
+            last_error: None,
+            result_preview: None,
+        },
+    )
+    .await
+    .expect("agent chat completes");
+    let request = provider.last_request().expect("request");
+    let names: Vec<_> = request
+        .tools
+        .expect("tools")
+        .into_iter()
+        .map(|tool| tool.name)
+        .collect();
+    assert!(names.contains(&"list_skills".to_string()));
+    assert!(names.contains(&"use_skill".to_string()));
+    assert!(names.contains(&"read_skill_file".to_string()));
 }
 
 #[tokio::test]

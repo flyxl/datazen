@@ -327,3 +327,62 @@ fn tool_confirmation_prompt_redacts_credentials_and_bounds_arguments() {
     assert!(!message.contains("super-secret"), "{message}");
     assert!(message.len() < 1_200, "dialog text must stay bounded");
 }
+
+#[tokio::test]
+async fn ai_list_skills_projects_the_enabled_catalog_only() {
+    use crate::testing::app_state_test_support::TestAppState;
+
+    let test = TestAppState::new().await;
+    let (state, _keep) = test.into_state();
+    let app = CommandApp::new(state);
+
+    // Disabled by default: no directory is scanned and no name leaks.
+    assert!(ai_list_skills(app.state()).await.unwrap().is_empty());
+
+    let root =
+        std::env::temp_dir().join(format!("datazen-skills-command-{}", uuid::Uuid::new_v4()));
+    let skill_dir = root.join("review-sql-t17");
+    std::fs::create_dir_all(&skill_dir).unwrap();
+    std::fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: review-sql-t17\ndescription: Review SQL\n---\nBODY_SHOULD_NOT_LEAK\n",
+    )
+    .unwrap();
+
+    let mut config = datazen::ai::api::get_settings_config(app.state().store.as_ref()).await;
+    config.skills.enabled = true;
+    config.skills.custom_dir = Some(root.to_string_lossy().into_owned());
+    datazen::ai::api::save_settings_config(
+        &app.state().ai_registry,
+        app.state().store.as_ref(),
+        config,
+    )
+    .await
+    .unwrap();
+
+    let listed = ai_list_skills(app.state()).await.unwrap();
+    let review = listed
+        .iter()
+        .find(|skill| skill.name == "review-sql-t17")
+        .expect("custom skill is listed");
+    assert_eq!(review.description, "Review SQL");
+    assert!(
+        listed
+            .iter()
+            .all(|skill| !skill.description.contains("BODY")),
+        "listing never carries bodies"
+    );
+
+    let mut config = datazen::ai::api::get_settings_config(app.state().store.as_ref()).await;
+    config.skills.enabled = false;
+    datazen::ai::api::save_settings_config(
+        &app.state().ai_registry,
+        app.state().store.as_ref(),
+        config,
+    )
+    .await
+    .unwrap();
+    assert!(ai_list_skills(app.state()).await.unwrap().is_empty());
+
+    let _ = std::fs::remove_dir_all(root);
+}

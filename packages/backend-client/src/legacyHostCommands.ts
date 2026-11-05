@@ -30,7 +30,7 @@ export type LegacyCommandName =
   'abort_save' | 'add_favorite_query' | 'ai_analyze_explain' | 'ai_analyze_queries' |
   'ai_cancel' | 'ai_chat' | 'ai_delete_config' | 'ai_diagnose_connection' |
   'ai_diagnose_error' | 'ai_fetch_remote_models' | 'ai_generate_schema_doc' | 'ai_generate_sql' |
-  'ai_get_config' | 'ai_get_providers' | 'ai_get_settings_config' | 'ai_parse_filter' |
+  'ai_get_config' | 'ai_get_providers' | 'ai_get_settings_config' | 'ai_list_skills' | 'ai_parse_filter' |
   'ai_grant_editor_session' | 'ai_revoke_editor_grant' | 'ai_touch_editor_grant' |
   'ai_save_config' | 'ai_save_settings_config' | 'ai_set_active_profile' | 'ai_validate_config' |
   'ai_connection_notes_get' | 'ai_connection_notes_set' | 'ai_connection_context_counts' |

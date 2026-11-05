@@ -181,6 +181,11 @@ pub async fn ai_chat<R: tauri::Runtime>(
 ) -> Result<String, CommandError> {
     let on_chunk = window_stream_callback(&window);
     let is_workflow = scenario.as_deref() == Some("workflow_generate");
+    let requested_agent_mode = agent_mode.unwrap_or(if is_workflow {
+        AiAgentMode::Agent
+    } else {
+        AiAgentMode::Ask
+    });
 
     // 端口取值（thin binding）。
     let (provider, ai_config) = resolve_ai(&state).await?;
@@ -261,6 +266,14 @@ pub async fn ai_chat<R: tauri::Runtime>(
     }
 
     let settings = datazen::ai::api::get_settings_config(state.store.as_ref()).await;
+    let skill_tools = if settings.skills.enabled
+        && requested_agent_mode == AiAgentMode::Agent
+        && provider.supports_tools()
+    {
+        datazen::ai::skills::tools::skill_tool_definitions()
+    } else {
+        Vec::new()
+    };
     let connection_notes = connection_id
         .as_deref()
         .filter(|id| !id.trim().is_empty())
@@ -292,6 +305,7 @@ pub async fn ai_chat<R: tauri::Runtime>(
         lang,
         connections_context,
         mcp_tools,
+        skill_tools,
         context_entries,
         schema_driver,
         prompt_resolver: state.prompt_resolver.clone(),
@@ -318,11 +332,7 @@ pub async fn ai_chat<R: tauri::Runtime>(
             context_tables,
             // Workflow generation keeps its historical tool access unless the
             // caller explicitly picks a mode; plain chat defaults to Ask.
-            agent_mode: agent_mode.unwrap_or(if is_workflow {
-                AiAgentMode::Agent
-            } else {
-                AiAgentMode::Ask
-            }),
+            agent_mode: requested_agent_mode,
             editor_sql,
             selection,
             last_error,

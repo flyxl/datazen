@@ -779,6 +779,27 @@ export function AiChatPanel({
                 egressSummary={chatSession?.egressSummary}
                 database={database}
               />
+              {(chatSession?.loadedSkills?.length ?? 0) > 0 && (
+                <div
+                  className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-fg-muted"
+                  data-testid="ai-loaded-skills"
+                >
+                  <BookOpen className="h-3 w-3" />
+                  <span>
+                    {t('chat.skillsLoaded', {
+                      count: String(chatSession?.loadedSkills?.length ?? 0),
+                    })}
+                  </span>
+                  {chatSession?.loadedSkills?.map((skill) => (
+                    <span
+                      key={skill.name}
+                      className="rounded border border-edge bg-surface-alt px-1.5 py-0.5 font-mono text-[10px] text-fg-secondary"
+                    >
+                      {skill.name}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
             {hasSnapshotContent(snapshot) && (
               <div

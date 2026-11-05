@@ -293,14 +293,16 @@ vi.mock('@datazen/ui', async (importOriginal) => {
       onChange,
       placeholder,
       className,
+      inputTestId,
     }: {
       value: string;
       onChange: (v: string) => void;
       placeholder?: string;
       className?: string;
+      inputTestId?: string;
     }) => (
       <input
-        data-testid="path-input"
+        data-testid={inputTestId === 'ai-skills-dir' ? inputTestId : 'path-input'}
         type="text"
         value={value}
         placeholder={placeholder}

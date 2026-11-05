@@ -96,6 +96,7 @@ const aiState = vi.hoisted(() => ({
     streamReasoning: '',
     streamMcpToolName: null as string | null,
     egressSummary: null as string | null,
+    loadedSkills: [] as { name: string; source?: string; loadedAt: string }[],
     injection: null as null | {
       templateName?: string | null;
       hasConnectionNotes: boolean;
@@ -146,6 +147,7 @@ beforeEach(() => {
     streamReasoning: '',
     streamMcpToolName: null,
     egressSummary: null,
+    loadedSkills: [],
     injection: null,
   };
   aiState.settingsConfig = null;
@@ -178,6 +180,7 @@ describe('AiChatPanel', () => {
       streamReasoning: '',
       streamMcpToolName: null,
       egressSummary: null,
+      loadedSkills: [],
       injection: null,
     };
     rerender(<AiChatPanel dbSessionId="c1" database="db" connectionId="conn-1" />);
@@ -208,6 +211,7 @@ describe('AiChatPanel', () => {
       streamReasoning: '',
       streamMcpToolName: null,
       egressSummary: null,
+      loadedSkills: [],
       injection: null,
     };
     const { getByTestId, getByText, queryByTestId } = render(
@@ -236,6 +240,7 @@ describe('AiChatPanel', () => {
       streamReasoning: '',
       streamMcpToolName: null,
       egressSummary: null,
+      loadedSkills: [],
       injection: null,
     };
     const { queryByTestId } = render(<AiChatPanel dbSessionId="c1" database="db" />);
@@ -251,6 +256,7 @@ describe('AiChatPanel', () => {
       streamReasoning: '',
       streamMcpToolName: null,
       egressSummary: null,
+      loadedSkills: [],
       injection: {
         templateName: 'Postgres style',
         hasConnectionNotes: true,
@@ -407,6 +413,15 @@ describe('AiChatPanel', () => {
       '3 connections (postgresql, mysql) accessible via tools.',
     );
     expect(getByTestId('ai-egress-database')).toHaveTextContent('chat.egressDatabase');
+  });
+
+  it('shows skills whose bodies were loaded in this session', () => {
+    aiState.chatSession.loadedSkills = [
+      { name: 'sql-review', source: 'user', loadedAt: '2026-01-01T00:00:00Z' },
+    ];
+    const { getByTestId } = render(<AiChatPanel dbSessionId="c1" />);
+    expect(getByTestId('ai-loaded-skills')).toHaveTextContent('chat.skillsLoaded');
+    expect(getByTestId('ai-loaded-skills')).toHaveTextContent('sql-review');
   });
 
   it('keeps tool output collapsed until the user expands it', () => {

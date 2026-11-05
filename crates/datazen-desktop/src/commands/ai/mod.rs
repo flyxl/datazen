@@ -8,6 +8,7 @@ mod memory;
 mod notes;
 mod prompts;
 mod sessions;
+mod skills;
 mod util;
 
 pub use chat::*;
@@ -18,6 +19,7 @@ pub use memory::*;
 pub use notes::*;
 pub use prompts::*;
 pub use sessions::*;
+pub use skills::*;
 pub(crate) use util::language_hint;
 
 use crate::commands::error::CommandError;

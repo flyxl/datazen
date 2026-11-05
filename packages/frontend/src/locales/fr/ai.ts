@@ -1,5 +1,27 @@
 /** Auto-split domain: ai (fr) */
 const pack = {
+  'settings.ai.skills.title': 'Compétences',
+  'settings.ai.skills.description':
+    'Répertoires SKILL.md locaux. Seuls le nom et la description sont listés ; le corps est lu à la demande.',
+  'settings.ai.skills.enabled': 'Activer les compétences',
+  'settings.ai.skills.enabledHint':
+    'Désactivé par défaut. Ce sont des données et règles locales, pas des permissions.',
+  'settings.ai.skills.autoUse': 'Utiliser automatiquement',
+  'settings.ai.skills.autoUseHint':
+    'Désactivé par défaut. Rien n’est listé, injecté ou appelé automatiquement.',
+  'settings.ai.skills.customDir': 'Répertoire de compétences personnalisé',
+  'settings.ai.skills.customDirHint': 'Optionnel. Un répertoire en plus de ~/.agents/skills.',
+  'settings.ai.skills.saveDir': 'Enregistrer',
+  'settings.ai.skills.defaultDir': 'Répertoire fixe : ~/.agents/skills',
+  'settings.ai.skills.empty': 'Aucun SKILL.md valide trouvé.',
+  'settings.ai.skills.loading': 'Analyse des compétences…',
+  'settings.ai.skills.refresh': 'Réanalyser',
+  'settings.ai.skills.loadError': 'Impossible de lister les compétences.',
+  'settings.ai.skills.sourceUser': 'utilisateur',
+  'settings.ai.skills.sourceCustom': 'personnalisé',
+  'settings.ai.skills.disabledHint':
+    'Les compétences sont désactivées. Activez-les pour découvrir les répertoires locaux.',
+  'chat.skillsLoaded': 'Compétences chargées : {count}',
   'chat.placeholder': 'Posez une question sur votre base de données…',
   'chat.send': 'Envoyer',
   'chat.clear': 'Effacer le chat',

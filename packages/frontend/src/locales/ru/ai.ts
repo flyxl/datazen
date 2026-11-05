@@ -1,5 +1,28 @@
 /** Auto-split domain: ai (ru) */
 const pack = {
+  'settings.ai.skills.title': 'Навыки',
+  'settings.ai.skills.description':
+    'Локальные каталоги SKILL.md. В списке только имя и описание; текст читается по запросу.',
+  'settings.ai.skills.enabled': 'Включить навыки',
+  'settings.ai.skills.enabledHint':
+    'По умолчанию выключено. Навыки — это данные и правила, а не права на инструменты.',
+  'settings.ai.skills.autoUse': 'Автоматически использовать',
+  'settings.ai.skills.autoUseHint':
+    'По умолчанию выключено. Ничего не перечисляется, не внедряется и не вызывается автоматически.',
+  'settings.ai.skills.customDir': 'Пользовательский каталог навыков',
+  'settings.ai.skills.customDirHint':
+    'Необязательно. Дополнительный каталог кроме ~/.agents/skills.',
+  'settings.ai.skills.saveDir': 'Сохранить',
+  'settings.ai.skills.defaultDir': 'Фиксированный каталог: ~/.agents/skills',
+  'settings.ai.skills.empty': 'Действительные SKILL.md не найдены.',
+  'settings.ai.skills.loading': 'Сканирование навыков…',
+  'settings.ai.skills.refresh': 'Пересканировать',
+  'settings.ai.skills.loadError': 'Не удалось получить список навыков.',
+  'settings.ai.skills.sourceUser': 'пользователь',
+  'settings.ai.skills.sourceCustom': 'пользовательский',
+  'settings.ai.skills.disabledHint':
+    'Навыки отключены. Включите их, чтобы находить локальные SKILL.md.',
+  'chat.skillsLoaded': 'Загружено навыков: {count}',
   'chat.placeholder': 'Задайте вопрос о вашей базе данных…',
   'chat.send': 'Отправить',
   'chat.clear': 'Очистить чат',

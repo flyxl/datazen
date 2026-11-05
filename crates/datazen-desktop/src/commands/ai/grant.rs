@@ -19,7 +19,7 @@ use datazen::shared::id::{ClientInstanceId, EditorSessionId};
 use datazen::workflow::command::WorkflowCommandStep;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::State;
+use tauri::{Emitter, State};
 
 pub(crate) fn now_ms() -> i64 {
     SystemTime::now()
@@ -268,6 +268,29 @@ impl AiToolLoopHost for AiRequestHost<'_> {
 
     async fn execute_mcp_tool(&self, server: &str, tool: &str, arguments: &str) -> String {
         AiToolLoopHost::execute_mcp_tool(self.state, server, tool, arguments).await
+    }
+
+    async fn execute_skill_tool(&self, call: &datazen::ai::ToolCall) -> String {
+        let settings = datazen::ai::api::get_settings_config(self.state.store.as_ref()).await;
+        if !settings.skills.enabled {
+            return "Error: Skills are disabled".into();
+        }
+        let catalog = datazen::ai::skills::SkillCatalog::from_settings(&settings.skills);
+        datazen::ai::skills::tools::execute_skill_tool(&catalog, call)
+    }
+
+    async fn on_skill_used(&self, request_id: &str, name: &str, source: &str) {
+        let Some(app) = self.state.app_handle.get() else {
+            return;
+        };
+        let _ = app.emit(
+            "ai:skill-used",
+            serde_json::json!({
+                "requestId": request_id,
+                "name": name,
+                "source": source,
+            }),
+        );
     }
 
     async fn confirm_tool_call(&self, tool: &str, arguments: &str) -> bool {

@@ -166,6 +166,7 @@ pub fn db_tool_requires_confirmation(gate: &AiSafetyGateConfig, name: &str) -> b
 pub enum ToolKind {
     AskQuestions,
     Db(String),
+    Skill(String),
     Mcp {
         server_id: String,
         tool_name: String,
@@ -179,6 +180,9 @@ pub fn classify_tool(name: &str) -> ToolKind {
     }
     if is_db_tool(name) {
         return ToolKind::Db(name.to_string());
+    }
+    if crate::ai::skills::tools::is_skill_tool(name) {
+        return ToolKind::Skill(name.to_string());
     }
     if let Some(rest) = name.strip_prefix("mcp/") {
         if let Some((server_id, tool_name)) = rest.split_once('/') {

@@ -1,5 +1,28 @@
 /** Auto-split domain: ai (en) */
 const pack = {
+  'settings.ai.skills.title': 'Skills',
+  'settings.ai.skills.description':
+    'Local SKILL.md directories. Only name and description are listed; bodies are read on demand.',
+  'settings.ai.skills.enabled': 'Enable skills',
+  'settings.ai.skills.enabledHint':
+    'Off by default. Skills are local data and rules, never tool permissions.',
+  'settings.ai.skills.autoUse': 'Auto-use skills',
+  'settings.ai.skills.autoUseHint':
+    'Off by default. When off, no skill is automatically listed, injected, or called.',
+  'settings.ai.skills.customDir': 'Custom skills directory',
+  'settings.ai.skills.customDirHint':
+    'Optional. One extra directory in addition to ~/.agents/skills.',
+  'settings.ai.skills.saveDir': 'Save',
+  'settings.ai.skills.defaultDir': 'Fixed directory: ~/.agents/skills',
+  'settings.ai.skills.empty': 'No valid SKILL.md found in the configured directories.',
+  'settings.ai.skills.loading': 'Scanning skills…',
+  'settings.ai.skills.refresh': 'Rescan skills',
+  'settings.ai.skills.loadError': 'Could not list skills.',
+  'settings.ai.skills.sourceUser': 'user',
+  'settings.ai.skills.sourceCustom': 'custom',
+  'settings.ai.skills.disabledHint':
+    'Skills are disabled. Enable them to discover local SKILL.md directories.',
+  'chat.skillsLoaded': 'Skills loaded: {count}',
   'chat.placeholder': 'Ask a question about your database…',
   'chat.send': 'Send',
   'chat.clear': 'Clear Chat',

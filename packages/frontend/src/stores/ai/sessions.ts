@@ -1,4 +1,5 @@
 import { aiCommands } from '../../commands/ai';
+import { normalizeLoadedSkills } from '../../lib/aiSkills';
 import { useActiveConnectionStore } from '../activeConnectionStore';
 import type {
   AiChatMessage,
@@ -283,6 +284,7 @@ export function chatSessionFromDetail(detail: AiSessionDetail): AiChatSession {
     egressSummary: null,
     streamMemoryUsed: null,
     memoryUsed: null,
+    loadedSkills: normalizeLoadedSkills(metadata?.loadedSkills),
     requestId: null,
     attribution: null,
   };
@@ -308,6 +310,7 @@ function chatSessionFromStored(
     egressSummary: null,
     streamMemoryUsed: null,
     memoryUsed: null,
+    loadedSkills: normalizeLoadedSkills(stored.metadata?.loadedSkills),
     requestId: null,
     attribution: null,
   };
@@ -338,6 +341,7 @@ export function newChatSession(scope: SessionScope, key?: SessionKey): AiChatSes
     egressSummary: null,
     streamMemoryUsed: null,
     memoryUsed: null,
+    loadedSkills: [],
     requestId: null,
     attribution: null,
   };

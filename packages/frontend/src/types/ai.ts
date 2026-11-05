@@ -74,12 +74,42 @@ export const defaultAiMemorySettings: AiMemorySettings = {
   privacyAcknowledged: false,
 };
 
+export interface AiSkillsSettings {
+  /** Master switch; skills remain invisible and untoolable when false. */
+  enabled: boolean;
+  /** One optional directory in addition to `~/.agents/skills`. */
+  customDir: string | null;
+  /** Off by default: no skill listing/body is injected automatically. */
+  autoUse: boolean;
+}
+
+export const defaultAiSkillsSettings: AiSkillsSettings = {
+  enabled: false,
+  customDir: null,
+  autoUse: false,
+};
+
+export interface AiSkillSummary {
+  name: string;
+  description: string;
+  source: 'user' | 'custom';
+  version?: string;
+}
+
+export interface AiSkillContent extends AiSkillSummary {
+  content: string;
+  resources: string[];
+  metadata: Record<string, string>;
+}
+
 export interface AiSettingsConfig {
   activeProfileId: string;
   profiles: AiModelProfile[];
   globalInstructions: string;
   promptTemplates: PromptTemplate[];
   memory: AiMemorySettings;
+  /** Optional for settings returned by pre-T17 hosts. */
+  skills?: AiSkillsSettings;
 }
 
 export interface AiProviderConfig {
@@ -353,6 +383,12 @@ export interface AiChatMessage {
   memoryUsed?: AiMemoryReference[];
 }
 
+export interface AiLoadedSkill {
+  name: string;
+  source?: string;
+  loadedAt: string;
+}
+
 export interface AiChatInjectionSnapshot {
   templateId?: string | null;
   templateName?: string | null;
@@ -444,6 +480,8 @@ export interface AiChatSession {
   streamMemoryUsed?: AiMemoryReference[] | null;
   /** Latest run's memory references; reset on send/clear/new session. */
   memoryUsed?: AiMemoryReference[] | null;
+  /** Skills whose bodies were loaded in this session (session-scoped). */
+  loadedSkills?: AiLoadedSkill[];
   /** Host-provided prompt material snapshot for this run's chips. */
   injection?: AiChatInjectionSnapshot | null;
   requestId: string | null;

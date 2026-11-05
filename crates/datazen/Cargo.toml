@@ -310,6 +310,7 @@ ai = [
     "dep:datazen-infra",
     "dep:datazen-driver-api",
     "dep:uuid",
+    "dep:dirs",
     "settings",
     "connection",
     "workflow",

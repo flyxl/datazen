@@ -64,6 +64,18 @@ pub trait AiToolLoopHost: Send + Sync {
     async fn execute_db_tool(&self, ctx: &AiToolContext, call: &ToolCall) -> String;
     async fn execute_mcp_tool(&self, server: &str, tool: &str, arguments: &str) -> String;
 
+    /// Read a local skill through the host's configured catalog. Defaults to a
+    /// readable failure so test hosts and forms without skill storage do not
+    /// accidentally expose files.
+    async fn execute_skill_tool(&self, call: &ToolCall) -> String {
+        let _ = call;
+        "Error: skills are not available in this host".into()
+    }
+
+    /// Notify the host/UI that `use_skill` actually succeeded. The default is a
+    /// no-op so unit hosts need no event plumbing.
+    async fn on_skill_used(&self, _request_id: &str, _name: &str, _source: &str) {}
+
     /// Ask the user to approve one tool call. The loop calls this before a
     /// DB/MCP tool when the active policy requires confirmation.
     ///
@@ -401,7 +413,12 @@ pub async fn run_streaming_tool_loop(
 
         let executable_count = classified
             .iter()
-            .filter(|(_, kind)| matches!(kind, ToolKind::Db(_) | ToolKind::Mcp { .. }))
+            .filter(|(_, kind)| {
+                matches!(
+                    kind,
+                    ToolKind::Db(_) | ToolKind::Mcp { .. } | ToolKind::Skill(_)
+                )
+            })
             .count();
 
         let has_ask_questions = classified
@@ -582,6 +599,25 @@ pub async fn run_streaming_tool_loop(
                 } => {
                     host.execute_mcp_tool(server_id, tool_name, &tc.arguments)
                         .await
+                }
+                ToolKind::Skill(name) => {
+                    let result = host.execute_skill_tool(tc).await;
+                    if tc.name == "use_skill" && !result.starts_with("Error:") {
+                        let args: serde_json::Value =
+                            serde_json::from_str(&tc.arguments).unwrap_or_default();
+                        let skill_name = args["name"].as_str().unwrap_or(name);
+                        let source = serde_json::from_str::<serde_json::Value>(&result)
+                            .ok()
+                            .and_then(|value| {
+                                value
+                                    .get("source")
+                                    .and_then(serde_json::Value::as_str)
+                                    .map(str::to_owned)
+                            })
+                            .unwrap_or_default();
+                        host.on_skill_used(request_id, skill_name, &source).await;
+                    }
+                    result
                 }
                 _ => continue,
             };

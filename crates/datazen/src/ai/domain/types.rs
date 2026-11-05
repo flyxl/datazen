@@ -286,6 +286,29 @@ pub struct AiMemorySettings {
     pub privacy_acknowledged: bool,
 }
 
+/// Skills are opt-in. `auto_use` is intentionally off by default: loading a
+/// skill body is an explicit tool call, never an automatic request side effect.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiSkillsSettings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub custom_dir: Option<String>,
+    #[serde(default)]
+    pub auto_use: bool,
+}
+
+impl Default for AiSkillsSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            custom_dir: None,
+            auto_use: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiSettingsConfig {
@@ -299,6 +322,8 @@ pub struct AiSettingsConfig {
     pub prompt_templates: Vec<PromptTemplate>,
     #[serde(default)]
     pub memory: AiMemorySettings,
+    #[serde(default)]
+    pub skills: AiSkillsSettings,
 }
 
 impl AiSettingsConfig {
@@ -386,6 +411,51 @@ impl AiSettingsConfig {
             .find(|profile| profile.id == self.active_profile_id)
             .or_else(|| self.profiles.iter().find(|profile| profile.is_default))
             .or_else(|| self.profiles.first())
+    }
+}
+
+#[cfg(test)]
+mod skills_settings_tests {
+    use super::{AiSettingsConfig, AiSkillsSettings};
+
+    #[test]
+    fn skills_default_to_disabled_and_auto_use_off() {
+        let settings = AiSkillsSettings::default();
+        assert!(!settings.enabled);
+        assert!(!settings.auto_use);
+        assert_eq!(settings.custom_dir, None);
+
+        let config = AiSettingsConfig::default();
+        assert!(!config.skills.enabled);
+        assert!(!config.skills.auto_use);
+    }
+
+    #[test]
+    fn old_settings_load_without_breaking_skills() {
+        let config: AiSettingsConfig = serde_json::from_str(
+            r#"{"activeProfileId":"p","profiles":[],"globalInstructions":""}"#,
+        )
+        .unwrap();
+        assert!(!config.skills.enabled);
+        assert!(!config.skills.auto_use);
+    }
+
+    #[test]
+    fn skills_settings_round_trip_with_camel_case_keys() {
+        let config = AiSettingsConfig {
+            skills: AiSkillsSettings {
+                enabled: true,
+                custom_dir: Some("~/skills".into()),
+                auto_use: false,
+            },
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(json.contains("\"customDir\":\"~/skills\""));
+        assert!(json.contains("\"autoUse\":false"));
+        let restored: AiSettingsConfig = serde_json::from_str(&json).unwrap();
+        assert!(restored.skills.enabled);
+        assert_eq!(restored.skills.custom_dir.as_deref(), Some("~/skills"));
     }
 }
 

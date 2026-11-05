@@ -1,5 +1,27 @@
 /** Auto-split domain: ai (es) */
 const pack = {
+  'settings.ai.skills.title': 'Habilidades',
+  'settings.ai.skills.description':
+    'Directorios locales de SKILL.md. Solo se listan nombre y descripción; el cuerpo se lee bajo demanda.',
+  'settings.ai.skills.enabled': 'Activar habilidades',
+  'settings.ai.skills.enabledHint':
+    'Desactivado por defecto. Son datos y reglas locales, no permisos de herramientas.',
+  'settings.ai.skills.autoUse': 'Usar habilidades automáticamente',
+  'settings.ai.skills.autoUseHint':
+    'Desactivado por defecto. No se lista, inyecta ni llama nada automáticamente.',
+  'settings.ai.skills.customDir': 'Directorio de habilidades personalizado',
+  'settings.ai.skills.customDirHint': 'Opcional. Un directorio extra además de ~/.agents/skills.',
+  'settings.ai.skills.saveDir': 'Guardar',
+  'settings.ai.skills.defaultDir': 'Directorio fijo: ~/.agents/skills',
+  'settings.ai.skills.empty': 'No se encontró ningún SKILL.md válido.',
+  'settings.ai.skills.loading': 'Escaneando habilidades…',
+  'settings.ai.skills.refresh': 'Volver a escanear',
+  'settings.ai.skills.loadError': 'No se pudieron listar las habilidades.',
+  'settings.ai.skills.sourceUser': 'usuario',
+  'settings.ai.skills.sourceCustom': 'personalizado',
+  'settings.ai.skills.disabledHint':
+    'Las habilidades están desactivadas. Actívalas para descubrir directorios locales.',
+  'chat.skillsLoaded': 'Habilidades cargadas: {count}',
   'chat.placeholder': 'Haga una pregunta sobre su base de datos...',
   'chat.send': 'Enviar',
   'chat.clear': 'Borrar chat',

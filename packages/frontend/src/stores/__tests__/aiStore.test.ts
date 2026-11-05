@@ -58,6 +58,7 @@ vi.mock('../settingsStore', () => ({
 const mockUnlisten = vi.fn();
 const streamChunkHandler = vi.fn();
 const streamErrorHandler = vi.fn();
+const skillUsedHandler = vi.fn();
 
 vi.mock('../../commands/ai', () => ({
   aiCommands: mockAiCommands,
@@ -85,6 +86,7 @@ describe('aiStore', () => {
         listenCrossWindow: vi.fn().mockImplementation((evt: string, cb: (p?: unknown) => void) => {
           if (evt === 'ai:stream-chunk') streamChunkHandler.mockImplementation(cb);
           if (evt === 'ai:stream-error') streamErrorHandler.mockImplementation(cb);
+          if (evt === 'ai:skill-used') skillUsedHandler.mockImplementation(cb);
           return Promise.resolve(mockUnlisten);
         }),
       },
@@ -814,6 +816,27 @@ describe('aiStore', () => {
       expect(receipt?.kind).toBe('alreadyFinished');
       expect(useAiStore.getState().chatSession!.isStreaming).toBe(true);
       expect(useAiStore.getState().chatSession!.requestId).toBe(requestId);
+    });
+
+    it('records used skills on the active chat session only', async () => {
+      const cleanup = await useAiStore.getState().setupEventListeners();
+      useAiStore.getState().initChatSession('skill-db', 'db');
+      const session = useAiStore.getState().chatSession!;
+      useAiStore.setState({ chatSession: { ...session, requestId: 'skill-req' } });
+
+      skillUsedHandler({ requestId: 'other', name: 'ignored', source: 'user' });
+      expect(useAiStore.getState().chatSession!.loadedSkills).toEqual([]);
+
+      skillUsedHandler({ requestId: 'skill-req', name: 'sql-review', source: 'user' });
+      expect(useAiStore.getState().chatSession!.loadedSkills).toEqual([
+        expect.objectContaining({ name: 'sql-review', source: 'user' }),
+      ]);
+      expect(useAiStore.getState().chatSession!.metadata).toEqual(
+        expect.objectContaining({
+          loadedSkills: [expect.objectContaining({ name: 'sql-review' })],
+        }),
+      );
+      cleanup();
     });
 
     it('setupEventListeners wires chunk and error handlers', async () => {

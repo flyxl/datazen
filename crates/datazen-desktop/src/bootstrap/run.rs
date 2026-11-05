@@ -440,6 +440,8 @@ pub fn run() {
             crate::commands::ai_memory_search,
             crate::commands::ai_memory_stats,
             crate::commands::ai_memory_update,
+            // ── AI：Skills ──
+            crate::commands::ai_list_skills,
             // ── AI：会话 ──
             crate::commands::ai_sessions_delete,
             crate::commands::ai_sessions_export,

@@ -18,6 +18,7 @@ import type {
   AiMemoryUpdateInput,
   AiProviderConfig,
   AiSessionDetail,
+  AiSkillSummary,
   AiSessionSummary,
   AiSessionUpsertInput,
   AiSettingsConfig,
@@ -114,6 +115,7 @@ export const aiCommands = {
   validateConfig: (config: AiProviderConfig) => invoke<void>('ai_validate_config', { config }),
   saveConfig: (config: AiProviderConfig) => invoke<void>('ai_save_config', { config }),
   getConfig: () => invoke<AiProviderConfig | null>('ai_get_config'),
+  listSkills: () => invoke<AiSkillSummary[]>('ai_list_skills'),
   deleteConfig: () => invoke<void>('ai_delete_config'),
   getSettingsConfig: () => invoke<AiSettingsConfig>('ai_get_settings_config'),
   saveSettingsConfig: (config: AiSettingsConfig) =>

@@ -1,5 +1,6 @@
 import type { AiMemoryCloudPolicy, AiMemorySettings, AiSettingsConfig } from '../types';
 import { defaultAiMemorySettings } from '../types';
+import { normalizeAiSkillsSettings } from './aiSkills';
 
 const CLOUD_POLICIES: AiMemoryCloudPolicy[] = ['normal_only', 'allow_internal', 'disable_cloud'];
 
@@ -22,7 +23,11 @@ export function normalizeMemorySettings(
 
 /** Normalize a settings config returned by an older host. */
 export function normalizeAiSettingsConfig(config: AiSettingsConfig): AiSettingsConfig {
-  return { ...config, memory: normalizeMemorySettings(config.memory) };
+  return {
+    ...config,
+    memory: normalizeMemorySettings(config.memory),
+    skills: normalizeAiSkillsSettings(config.skills),
+  };
 }
 
 /** Memory is opt-in; an unset/disabled config must send `off`. */

@@ -1,5 +1,28 @@
 /** Auto-split domain: ai (de) */
 const pack = {
+  'settings.ai.skills.title': 'Skills',
+  'settings.ai.skills.description':
+    'Lokale SKILL.md-Verzeichnisse. Nur Name und Beschreibung werden gelistet; Inhalte werden bei Bedarf gelesen.',
+  'settings.ai.skills.enabled': 'Skills aktivieren',
+  'settings.ai.skills.enabledHint':
+    'Standardmäßig aus. Skills sind lokale Daten und Regeln, keine Tool-Berechtigungen.',
+  'settings.ai.skills.autoUse': 'Skills automatisch nutzen',
+  'settings.ai.skills.autoUseHint':
+    'Standardmäßig aus. Es wird nichts automatisch gelistet, injiziert oder aufgerufen.',
+  'settings.ai.skills.customDir': 'Benutzerdefiniertes Skill-Verzeichnis',
+  'settings.ai.skills.customDirHint':
+    'Optional. Ein zusätzliches Verzeichnis neben ~/.agents/skills.',
+  'settings.ai.skills.saveDir': 'Speichern',
+  'settings.ai.skills.defaultDir': 'Festes Verzeichnis: ~/.agents/skills',
+  'settings.ai.skills.empty': 'Keine gültige SKILL.md in den konfigurierten Verzeichnissen.',
+  'settings.ai.skills.loading': 'Skills werden gescannt…',
+  'settings.ai.skills.refresh': 'Skills neu scannen',
+  'settings.ai.skills.loadError': 'Skills konnten nicht gelistet werden.',
+  'settings.ai.skills.sourceUser': 'Benutzer',
+  'settings.ai.skills.sourceCustom': 'Benutzerdefiniert',
+  'settings.ai.skills.disabledHint':
+    'Skills sind deaktiviert. Aktivieren, um lokale SKILL.md-Verzeichnisse zu finden.',
+  'chat.skillsLoaded': 'Skills geladen: {count}',
   'chat.placeholder': 'Stellen Sie eine Frage zu Ihrer Datenbank…',
   'chat.send': 'Senden',
   'chat.clear': 'Chat löschen',

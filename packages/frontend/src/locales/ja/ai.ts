@@ -1,5 +1,26 @@
 /** Auto-split domain: ai (ja) */
 const pack = {
+  'settings.ai.skills.title': 'スキル',
+  'settings.ai.skills.description':
+    'ローカルの SKILL.md ディレクトリ。一覧は名前と説明のみで、本文は必要時に読み込みます。',
+  'settings.ai.skills.enabled': 'スキルを有効化',
+  'settings.ai.skills.enabledHint':
+    '既定では無効。スキルはローカルのデータとルールであり、ツール権限ではありません。',
+  'settings.ai.skills.autoUse': 'スキルを自動使用',
+  'settings.ai.skills.autoUseHint': '既定では無効。自動的な一覧化・注入・呼び出しは行いません。',
+  'settings.ai.skills.customDir': 'カスタムスキルディレクトリ',
+  'settings.ai.skills.customDirHint': '任意。~/.agents/skills に加えて追加で走査します。',
+  'settings.ai.skills.saveDir': '保存',
+  'settings.ai.skills.defaultDir': '固定ディレクトリ: ~/.agents/skills',
+  'settings.ai.skills.empty': '有効な SKILL.md が見つかりません。',
+  'settings.ai.skills.loading': 'スキルを走査中…',
+  'settings.ai.skills.refresh': '再走査',
+  'settings.ai.skills.loadError': 'スキルを一覧できませんでした。',
+  'settings.ai.skills.sourceUser': 'ユーザー',
+  'settings.ai.skills.sourceCustom': 'カスタム',
+  'settings.ai.skills.disabledHint':
+    'スキルは無効です。有効化するとローカルの SKILL.md を検出します。',
+  'chat.skillsLoaded': '読み込み済みスキル: {count}',
   'chat.placeholder': 'データベースについて質問してください…',
   'chat.send': '送信',
   'chat.clear': 'チャットをクリアする',

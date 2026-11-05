@@ -31,6 +31,7 @@ pub mod application;
 pub mod domain;
 pub mod memory;
 pub mod providers;
+pub mod skills;
 
 // Compatibility-shaped flat exports for hosts that previously consumed the
 // modules facade. The definitions remain owned by their DDD layer above.

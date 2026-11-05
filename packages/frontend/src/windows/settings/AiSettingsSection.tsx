@@ -13,6 +13,7 @@ import { ModelProfileListItem } from './ai/ModelProfileListItem';
 import { ModelProfileDialog } from './ai/ModelProfileDialog';
 import { AiContextSettings } from './ai/AiContextSettings';
 import { MemorySection } from './MemorySection';
+import { SkillsSection } from './SkillsSection';
 import { tid } from '../../lib/tid';
 import { pickPath } from '../../lib/pathPicker';
 
@@ -132,6 +133,7 @@ export function AiSettingsSection() {
       <ContextDirSetting />
 
       {settingsConfig && <AiContextSettings config={settingsConfig} />}
+      {settingsConfig && <SkillsSection config={settingsConfig} />}
       {settingsConfig && <MemorySection config={settingsConfig} />}
 
       <div className="flex items-center justify-between border-b border-edge/60 pb-3">

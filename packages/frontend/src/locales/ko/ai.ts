@@ -1,5 +1,26 @@
 /** Auto-split domain: ai (ko) */
 const pack = {
+  'settings.ai.skills.title': '스킬',
+  'settings.ai.skills.description':
+    '로컬 SKILL.md 디렉터리입니다. 목록에는 이름과 설명만 포함되며 본문은 필요할 때 읽습니다.',
+  'settings.ai.skills.enabled': '스킬 활성화',
+  'settings.ai.skills.enabledHint':
+    '기본적으로 꺼짐. 스킬은 로컬 데이터와 규칙이며 도구 권한이 아닙니다.',
+  'settings.ai.skills.autoUse': '스킬 자동 사용',
+  'settings.ai.skills.autoUseHint': '기본적으로 꺼짐. 자동으로 나열, 주입, 호출하지 않습니다.',
+  'settings.ai.skills.customDir': '사용자 지정 스킬 디렉터리',
+  'settings.ai.skills.customDirHint': '선택 사항. ~/.agents/skills 외에 하나 더 검사합니다.',
+  'settings.ai.skills.saveDir': '저장',
+  'settings.ai.skills.defaultDir': '고정 디렉터리: ~/.agents/skills',
+  'settings.ai.skills.empty': '유효한 SKILL.md가 없습니다.',
+  'settings.ai.skills.loading': '스킬 검사 중…',
+  'settings.ai.skills.refresh': '다시 검사',
+  'settings.ai.skills.loadError': '스킬을 나열할 수 없습니다.',
+  'settings.ai.skills.sourceUser': '사용자',
+  'settings.ai.skills.sourceCustom': '사용자 지정',
+  'settings.ai.skills.disabledHint':
+    '스킬이 꺼져 있습니다. 활성화하면 로컬 SKILL.md 디렉터리를 찾습니다.',
+  'chat.skillsLoaded': '로드된 스킬: {count}',
   'chat.placeholder': '데이터베이스에 대해 질문하세요…',
   'chat.send': '보내다',
   'chat.clear': '채팅 지우기',

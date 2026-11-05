@@ -55,6 +55,9 @@ pub struct ChatSessionEnv {
     pub memory_used: Vec<MemoryReference>,
     /// MCP 工具面（宿主按 `provider.supports_tools()` 决定是否取空）。
     pub mcp_tools: Vec<ToolDefinition>,
+    /// Skill tools, only when the host enabled skills and the provider accepts
+    /// tools. Empty keeps CLI/local-agent providers and Ask sessions unchanged.
+    pub skill_tools: Vec<ToolDefinition>,
     /// 上下文文件条目（宿主 FS IO 读出，未脱敏；空 = 无上下文）。
     pub context_entries: Vec<(String, String)>,
     /// chat：schema 管线用的 live 驱动。`None` = 会话未知/未请求 schema
@@ -215,6 +218,15 @@ pub async fn run_chat_session(
         },
     )
     .await;
+
+    if agent_tools_allowed && !env.skill_tools.is_empty() {
+        let tools = request.tools.get_or_insert_with(Vec::new);
+        for tool in env.skill_tools {
+            if !tools.iter().any(|existing| existing.name == tool.name) {
+                tools.push(tool);
+            }
+        }
+    }
 
     // Register cancel token so `ai_cancel` IPC can interrupt this stream.
     let cancel_token = env

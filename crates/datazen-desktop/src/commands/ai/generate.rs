@@ -112,6 +112,7 @@ pub async fn ai_generate_sql<R: tauri::Runtime>(
         lang,
         connections_context: String::new(),
         mcp_tools: Vec::new(),
+        skill_tools: Vec::new(),
         context_entries,
         schema_driver: None,
         prompt_resolver: state.prompt_resolver.clone(),
