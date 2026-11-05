@@ -351,8 +351,12 @@ function goToSection(label: string) {
 }
 
 /** Open a Select combobox and pick an option by visible label. */
-function pickSelectOption(comboboxIndex: number, optionLabel: string) {
-  const triggers = screen
+function pickSelectOption(
+  comboboxIndex: number,
+  optionLabel: string,
+  scope: HTMLElement = document.body,
+) {
+  const triggers = within(scope)
     .getAllByRole('button', { hidden: false })
     .filter((b) => b.getAttribute('aria-haspopup') === 'listbox');
   fireEvent.click(triggers[comboboxIndex]);
@@ -654,8 +658,9 @@ describe('SettingsContent', () => {
 
     fireEvent.click(screen.getByText('settings.ai.addModel'));
 
-    pickSelectOption(0, 'Custom');
-    pickSelectOption(1, 'settings.ai.protocolAnthropic');
+    const dialog = screen.getByRole('dialog');
+    pickSelectOption(0, 'Custom', dialog);
+    pickSelectOption(1, 'settings.ai.protocolAnthropic', dialog);
 
     const apiKey = document.querySelector('input[type="password"]') as HTMLInputElement;
     fireEvent.change(apiKey, { target: { value: 'key' } });

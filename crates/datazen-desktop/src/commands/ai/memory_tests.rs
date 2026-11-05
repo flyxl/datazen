@@ -42,6 +42,16 @@ async fn enable_memory(app: &HostedCommandApp) {
         .unwrap();
 }
 
+async fn disable_memory(app: &HostedCommandApp) {
+    let mut settings = app.state().store.get_ai_settings_config().await;
+    settings.memory.enabled = false;
+    app.state()
+        .store
+        .save_ai_settings_config(&settings)
+        .await
+        .unwrap();
+}
+
 async fn list_all(app: &HostedCommandApp) -> AiMemoryPage {
     ai_memory_list(app.state(), None, None, None, None, None, None, None, None)
         .await
@@ -51,6 +61,7 @@ async fn list_all(app: &HostedCommandApp) -> AiMemoryPage {
 #[tokio::test]
 async fn memory_ipc_create_list_update_status_delete_and_stats() {
     let app = app().await;
+    enable_memory(&app).await;
     let created = ai_memory_create(
         app.state(),
         input("Customer locale", "Use en-US for reports"),
@@ -110,6 +121,7 @@ async fn memory_ipc_create_list_update_status_delete_and_stats() {
 #[tokio::test]
 async fn memory_ipc_paginates_and_searches_fts() {
     let app = app().await;
+    enable_memory(&app).await;
     for (subject, content) in [
         ("postgres preference", "Customer prefers PostgreSQL"),
         ("report timezone", "Reports use UTC"),
@@ -170,6 +182,7 @@ async fn memory_ipc_paginates_and_searches_fts() {
 #[tokio::test]
 async fn memory_ipc_rejects_secret_and_invalid_confidence() {
     let app = app().await;
+    enable_memory(&app).await;
     let mut secret = input("secret", "password=hunter2");
     secret.sensitivity = Some(MemorySensitivity::Secret);
     let error = ai_memory_create(app.state(), secret).await.unwrap_err();
@@ -187,6 +200,7 @@ async fn memory_ipc_rejects_secret_and_invalid_confidence() {
 #[tokio::test]
 async fn memory_ipc_scopes_to_organization_and_principal() {
     let app = app().await;
+    enable_memory(&app).await;
     ai_memory_create(app.state(), input("mine", "visible"))
         .await
         .unwrap();
@@ -232,6 +246,7 @@ async fn memory_ipc_scopes_to_organization_and_principal() {
 #[tokio::test]
 async fn memory_ipc_export_and_clear_are_scoped_and_formatted() {
     let app = app().await;
+    enable_memory(&app).await;
     ai_memory_create(app.state(), input("one", "alpha"))
         .await
         .unwrap();
@@ -259,6 +274,26 @@ async fn memory_ipc_export_and_clear_are_scoped_and_formatted() {
 }
 
 #[tokio::test]
+async fn memory_create_is_rejected_while_settings_are_disabled() {
+    let app = app().await;
+    let mut candidate = input("disabled candidate", "must not be stored");
+    candidate.status = Some(MemoryStatus::Candidate);
+    let error = ai_memory_create(app.state(), candidate.clone())
+        .await
+        .unwrap_err();
+    assert!(
+        format!("{error:?}").contains("memory is disabled"),
+        "unexpected error: {error:?}"
+    );
+    assert_eq!(list_all(&app).await.total, 0);
+
+    enable_memory(&app).await;
+    let created = ai_memory_create(app.state(), candidate).await.unwrap();
+    assert_eq!(created.status, MemoryStatus::Candidate);
+    assert_eq!(list_all(&app).await.total, 1);
+}
+
+#[tokio::test]
 async fn chat_auto_injects_memory_and_emits_reference_chunk() {
     use datazen::ai::{ChatMessage, MessageRole};
     use std::sync::{Arc, Mutex};
@@ -266,13 +301,13 @@ async fn chat_auto_injects_memory_and_emits_reference_chunk() {
 
     let (test, mock) = TestAppState::with_wiremock_ai().await;
     let app = host_command_app(test);
+    enable_memory(&app).await;
     let created = ai_memory_create(
         app.state(),
         input("timezone preference", "question: reports must use UTC"),
     )
     .await
     .unwrap();
-    enable_memory(&app).await;
     mock.mount_chat_stream_text("SELECT 1").await;
 
     let chunks = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
@@ -350,12 +385,14 @@ async fn chat_auto_is_forced_off_when_memory_setting_is_disabled() {
 
     let (test, mock) = TestAppState::with_wiremock_ai().await;
     let app = host_command_app(test);
+    enable_memory(&app).await;
     let created = ai_memory_create(
         app.state(),
         input("timezone preference", "question: reports must use UTC"),
     )
     .await
     .unwrap();
+    disable_memory(&app).await;
     mock.mount_chat_stream_text("SELECT 1").await;
 
     ai_chat(
@@ -413,13 +450,13 @@ async fn chat_off_and_ask_never_inject_memory() {
 
     let (test, mock) = TestAppState::with_wiremock_ai().await;
     let app = host_command_app(test);
+    enable_memory(&app).await;
     let created = ai_memory_create(
         app.state(),
         input("timezone preference", "question: reports must use UTC"),
     )
     .await
     .unwrap();
-    enable_memory(&app).await;
     mock.mount_chat_stream_text("SELECT 1").await;
 
     let chunks = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
@@ -492,6 +529,7 @@ async fn chat_off_and_ask_never_inject_memory() {
 #[tokio::test]
 async fn strict_cloud_retrieval_excludes_internal_memories() {
     let app = app().await;
+    enable_memory(&app).await;
     let mut internal = input("internal-only", "question: keep this on device");
     internal.sensitivity = Some(MemorySensitivity::Internal);
     ai_memory_create(app.state(), internal).await.unwrap();
@@ -578,6 +616,7 @@ async fn strict_cloud_retrieval_excludes_internal_memories() {
 #[tokio::test]
 async fn database_scope_memory_is_recalled_with_host_qualified_id() {
     let app = app().await;
+    enable_memory(&app).await;
     let mut memory = input("database timezone", "question: database uses UTC");
     memory.scope_type = MemoryScopeKind::Database;
     memory.connection_id = Some("conn-1".into());

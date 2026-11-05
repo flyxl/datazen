@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Download, Pencil, RefreshCw, Trash2, X } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
+import { Select } from '../../components/ui/Select';
 import { useI18n } from '../../hooks/useI18n';
 import { useAiStore } from '../../stores/aiStore';
 import { useConnectionStore } from '../../stores/connectionStore';
@@ -30,6 +31,12 @@ const KINDS: AiMemoryKind[] = [
 const STATUSES: AiMemoryStatus[] = ['candidate', 'active', 'rejected', 'archived', 'stale'];
 
 const CLOUD_POLICIES = ['normal_only', 'allow_internal', 'disable_cloud'] as const;
+
+const CLOUD_POLICY_LABEL_KEYS = {
+  normal_only: 'cloudNormalOnly',
+  allow_internal: 'cloudAllowInternal',
+  disable_cloud: 'cloudDisable',
+} as const;
 
 const EMPTY_STATS: AiMemoryStats = { total: 0, byStatus: {}, byKind: {}, byScope: {} };
 
@@ -264,18 +271,18 @@ export function MemorySection({ config }: { config: AiSettingsConfig }) {
               {t('settings.ai.memory.cloudPolicyHint')}
             </p>
           </div>
-          <select
-            className="rounded border border-edge bg-surface px-2 py-1 text-xs text-fg"
+          <Select
+            className="min-w-36 text-xs"
             value={memory.cloudPolicy}
-            onChange={(event) => setCloudPolicy(event.target.value)}
+            options={CLOUD_POLICIES.map((policy) => ({
+              value: policy,
+              label: t(`settings.ai.memory.${CLOUD_POLICY_LABEL_KEYS[policy]}`),
+            }))}
+            onChange={setCloudPolicy}
             disabled={!memory.enabled}
-            aria-label={t('settings.ai.memory.cloudPolicy')}
+            title={t('settings.ai.memory.cloudPolicy')}
             data-testid="ai-memory-cloud-policy"
-          >
-            <option value="normal_only">{t('settings.ai.memory.cloudNormalOnly')}</option>
-            <option value="allow_internal">{t('settings.ai.memory.cloudAllowInternal')}</option>
-            <option value="disable_cloud">{t('settings.ai.memory.cloudDisable')}</option>
-          </select>
+          />
         </div>
 
         {pendingEnable && (
@@ -350,48 +357,45 @@ export function MemorySection({ config }: { config: AiSettingsConfig }) {
             aria-label={t('settings.ai.memory.searchPlaceholder')}
             data-testid="ai-memory-search"
           />
-          <select
-            className="rounded border border-edge bg-surface px-2 py-1.5 text-xs text-fg"
+          <Select
+            className="min-w-36 text-xs"
             value={connectionFilter}
-            onChange={(event) => setConnectionFilter(event.target.value)}
-            aria-label={t('settings.ai.memory.allConnections')}
+            options={[
+              { value: '', label: t('settings.ai.memory.allConnections') },
+              ...connectionOptions.map(([id, name]) => ({ value: id, label: name })),
+            ]}
+            onChange={setConnectionFilter}
+            title={t('settings.ai.memory.allConnections')}
             data-testid="ai-memory-filter-connection"
-          >
-            <option value="">{t('settings.ai.memory.allConnections')}</option>
-            {connectionOptions.map(([id, name]) => (
-              <option key={id} value={id}>
-                {name}
-              </option>
-            ))}
-          </select>
-          <select
-            className="rounded border border-edge bg-surface px-2 py-1.5 text-xs text-fg"
+          />
+          <Select
+            className="min-w-32 text-xs"
             value={kindFilter}
-            onChange={(event) => setKindFilter(event.target.value)}
-            aria-label={t('settings.ai.memory.allKinds')}
+            options={[
+              { value: '', label: t('settings.ai.memory.allKinds') },
+              ...KINDS.map((kind) => ({
+                value: kind,
+                label: t(`settings.ai.memory.kind.${kind}`),
+              })),
+            ]}
+            onChange={setKindFilter}
+            title={t('settings.ai.memory.allKinds')}
             data-testid="ai-memory-filter-kind"
-          >
-            <option value="">{t('settings.ai.memory.allKinds')}</option>
-            {KINDS.map((kind) => (
-              <option key={kind} value={kind}>
-                {t(`settings.ai.memory.kind.${kind}`)}
-              </option>
-            ))}
-          </select>
-          <select
-            className="rounded border border-edge bg-surface px-2 py-1.5 text-xs text-fg"
+          />
+          <Select
+            className="min-w-32 text-xs"
             value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
-            aria-label={t('settings.ai.memory.allStatuses')}
+            options={[
+              { value: '', label: t('settings.ai.memory.allStatuses') },
+              ...STATUSES.map((status) => ({
+                value: status,
+                label: t(`settings.ai.memory.status.${status}`),
+              })),
+            ]}
+            onChange={setStatusFilter}
+            title={t('settings.ai.memory.allStatuses')}
             data-testid="ai-memory-filter-status"
-          >
-            <option value="">{t('settings.ai.memory.allStatuses')}</option>
-            {STATUSES.map((status) => (
-              <option key={status} value={status}>
-                {t(`settings.ai.memory.status.${status}`)}
-              </option>
-            ))}
-          </select>
+          />
           <Button
             variant="ghost"
             size="sm"

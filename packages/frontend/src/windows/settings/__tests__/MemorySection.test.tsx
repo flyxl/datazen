@@ -148,6 +148,22 @@ describe('MemorySection', () => {
     });
   });
 
+  it('persists the cloud policy through the shared Select', async () => {
+    const { getByTestId, getByRole } = render(
+      <MemorySection config={{ ...config, memory: { ...baseMemory, enabled: true } }} />,
+    );
+    await waitFor(() => expect(getByTestId('ai-memory-row-m1')).toBeInTheDocument());
+    fireEvent.click(getByTestId('ai-memory-cloud-policy'));
+    fireEvent.mouseDown(getByRole('option', { name: 'settings.ai.memory.cloudDisable' }));
+    await waitFor(() =>
+      expect(store.saveSettingsConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          memory: expect.objectContaining({ cloudPolicy: 'disable_cloud' }),
+        }),
+      ),
+    );
+  });
+
   it('persists auto-learn independently of the master switch', async () => {
     const { getByTestId } = render(
       <MemorySection config={{ ...config, memory: { ...baseMemory, enabled: true } }} />,
@@ -157,6 +173,20 @@ describe('MemorySection', () => {
     await waitFor(() =>
       expect(store.saveSettingsConfig).toHaveBeenCalledWith(
         expect.objectContaining({ memory: expect.objectContaining({ autoLearn: true }) }),
+      ),
+    );
+  });
+
+  it('filters by status through the shared Select', async () => {
+    const { getByTestId, getByRole } = render(
+      <MemorySection config={{ ...config, memory: { ...baseMemory, enabled: true } }} />,
+    );
+    await waitFor(() => expect(getByTestId('ai-memory-row-m1')).toBeInTheDocument());
+    fireEvent.click(getByTestId('ai-memory-filter-status'));
+    fireEvent.mouseDown(getByRole('option', { name: 'settings.ai.memory.status.active' }));
+    await waitFor(() =>
+      expect(commands.memoryList).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'active' }),
       ),
     );
   });
@@ -172,13 +202,12 @@ describe('MemorySection', () => {
       limit: 200,
       offset: 0,
     }));
-    const { getByTestId, getByText } = render(
+    const { getByTestId, getByRole, getByText } = render(
       <MemorySection config={{ ...config, memory: { ...baseMemory, enabled: true } }} />,
     );
     await waitFor(() => expect(getByTestId('ai-memory-row-m2')).toBeInTheDocument());
-    fireEvent.change(getByTestId('ai-memory-filter-kind'), {
-      target: { value: 'relationship' },
-    });
+    fireEvent.click(getByTestId('ai-memory-filter-kind'));
+    fireEvent.mouseDown(getByRole('option', { name: 'settings.ai.memory.kind.relationship' }));
     await waitFor(() => expect(getByTestId('ai-memory-row-m2')).toBeInTheDocument());
     await waitFor(() => expect(getByText('settings.ai.memory.confirmAll:1')).toBeInTheDocument());
     fireEvent.click(getByTestId('ai-memory-confirm-all'));

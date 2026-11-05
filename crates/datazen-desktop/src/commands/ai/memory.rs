@@ -491,6 +491,14 @@ pub async fn ai_memory_create(
     state: State<'_, AppState>,
     input: AiMemoryCreateInput,
 ) -> Result<AiMemoryDto, CommandError> {
+    // Memory is opt-in. The UI blocks "remember this" while the switch is off,
+    // but every renderer reaches the same IPC, so enforce it here as well.
+    let memory_settings = super::resolve_memory_settings(&state).await;
+    if !memory_settings.enabled {
+        return Err(CommandError::Validation(
+            "memory is disabled; enable cross-session memory before creating memories".into(),
+        ));
+    }
     let (organization_id, principal_id) = scope(&state)?;
     let sensitivity = input.sensitivity.unwrap_or(MemorySensitivity::Normal);
     validate_sensitivity(sensitivity)?;
