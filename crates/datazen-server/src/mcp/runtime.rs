@@ -272,10 +272,17 @@ impl McpBackend for ModulesBackend {
                 .map_err(|e| map_session_tool_error(name, e))
             }
             // 无状态工具：装配了 [`StatelessToolExec`] 的走真分发（目录
-            // 端口适配与逐工具登记见 `stateless_exec.rs`）；未装配保持
-            // fail-closed「未接线」。
+            // 端口适配与逐工具登记见 `stateless_exec.rs`）；W8-a P3 授权
+            // 种子：传输层真实主体（`CallIdentity` → `request_context`，
+            // 会话工具 `PerCallHost` 同源）随调用下发——目标机器执行面
+            // 不再落到合成主体（登记见 `stateless_exec.rs` 模块头）。
+            // 未装配保持 fail-closed「未接线」。
             other => match &self.stateless {
-                Some(stateless) => stateless.call(other, &arguments).await,
+                Some(stateless) => {
+                    stateless
+                        .call(self.host.request_context(identity), other, &arguments)
+                        .await
+                }
                 None => Err(ToolCallError::internal(format!(
                     "tool '{other}' is not wired in the server form yet (mainline assembly pending)"
                 ))),

@@ -15,11 +15,17 @@
 //!    形状与命令要求写进跨请求缓存并持门锁序列化（IPC 面多请求共享）；
 //!    server 侧每次 `prepare` 现建快照（驱动目录 v1 为空表，直取没有
 //!    竞争面），快照生命周期就是本次解析——语义等价，登记差异。
-//! 2. **服务主体占位**：v1 MCP 线路层未把 L2 cookie 的真实主体传入工具
-//!    分发（`stateless_exec` 模块头同款登记），请求上下文用合成服务主体
-//!    `server-mcp-tool`。v1 空驱动目录下驱动闸先于任何策略求值触发
-//!    （`read_target_command` 的顺序：profile → driver → 命令目录 →
-//!    执行），主体身份传播随部署/身份切片收口。
+//! 2. **服务主体残留（W8-a P3 授权种子后收窄）**：本宿主内部构造的
+//!    `RequestContext` 仍用合成服务主体 `server-mcp-tool`——**闸序读半边**
+//!    （`profile` / `driver` / `safe_mode` / `prepare` 的 profile 读取）
+//!    组织口径正确（org 来自装配配置），主体合成仅残留于审计行。
+//!    **执行面已收口**：七工具经 `stateless_exec::PrincipalScopedHost`
+//!    （P3 种子，`PerCallHost` 无状态镜像）在 `prepare` 返回后把
+//!    `PreparedExecution.context` 覆写为请求真主体（`CallIdentity` 传播）；
+//!    tableData 读半边（`target_runner.rs`）执行面直接用 `run()` 的真主体。
+//!    端口签名手术（四方法全带 ctx，读半边同步真主体化）为后续刀。
+//!    driverGateway 过渡域的 execute 路径同残留，随其接线刀收口。
+//!    （`stateless_exec` 模块头同款登记。）
 //! 3. **租约纪律**：`PreparedExecution.use_cases` 经
 //!    [`crate::execution::lease::ServerRuntimeLeaseSource::resolve`]
 //!    每调用现取（runtime 可能被吊销，端口语义禁止缓存用例面），共享
