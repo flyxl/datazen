@@ -7,7 +7,9 @@
 use super::agent_db_tool_definitions;
 use super::classify_tool;
 use super::db_tool_definitions;
+use super::db_tool_requires_confirmation;
 use super::execute_db_tool;
+use super::filter_db_tool_definitions;
 use super::is_db_tool;
 use super::is_readonly_db_tool;
 use super::mcp_needs_confirm;
@@ -15,7 +17,9 @@ use super::AiToolContext;
 use super::ToolKind;
 use super::{ToolLoopGuard, ToolLoopLimits};
 use crate::ai::application::ports::DatabaseToolHost;
-use crate::ai::domain::types::{MessageRole, TokenUsage};
+use crate::ai::domain::types::{
+    AiSafetyGateConfig, AiToolPermissionPolicy, MessageRole, TokenUsage, ToolDefinition,
+};
 use crate::connection::domain::{ConnectionRepository, ConnectionRepositoryError, ConnectionScope};
 use crate::settings::ExecutionSettings;
 use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
@@ -750,4 +754,64 @@ fn test_mcp_needs_confirm_readonly() {
     let schema = serde_json::json!({});
     assert!(!mcp_needs_confirm("get_data", &schema));
     assert!(!mcp_needs_confirm("list_files", &schema));
+}
+
+// ── db_tool_policy tool-face filtering ──
+
+fn fake_db_tool(name: &str) -> ToolDefinition {
+    ToolDefinition {
+        name: name.into(),
+        description: name.into(),
+        parameters: serde_json::json!({"type": "object"}),
+    }
+}
+
+#[test]
+fn db_policy_disabled_removes_every_tool() {
+    let tools = filter_db_tool_definitions(
+        vec![fake_db_tool("list_tables"), fake_db_tool("query_readonly")],
+        AiToolPermissionPolicy::Disabled,
+    );
+    assert!(tools.is_empty());
+}
+
+#[test]
+fn db_policy_read_only_drops_a_future_write_tool() {
+    let tools = filter_db_tool_definitions(
+        vec![fake_db_tool("list_tables"), fake_db_tool("drop_table")],
+        AiToolPermissionPolicy::ReadOnly,
+    );
+    let names = tools.into_iter().map(|tool| tool.name).collect::<Vec<_>>();
+    assert_eq!(names, vec!["list_tables"]);
+}
+
+#[test]
+fn db_policy_require_confirm_and_unrestricted_keep_the_full_face() {
+    for policy in [
+        AiToolPermissionPolicy::RequireConfirm,
+        AiToolPermissionPolicy::Unrestricted,
+    ] {
+        let tools = filter_db_tool_definitions(
+            vec![fake_db_tool("list_tables"), fake_db_tool("drop_table")],
+            policy,
+        );
+        assert_eq!(tools.len(), 2, "{policy:?}");
+    }
+}
+
+#[test]
+fn db_confirmation_policy_covers_policy_and_model_sql_switch() {
+    let mut gate = AiSafetyGateConfig::default();
+    gate.db_tool_policy = AiToolPermissionPolicy::Unrestricted;
+    gate.require_sql_confirm = true;
+    assert!(db_tool_requires_confirmation(&gate, "query_readonly"));
+    assert!(!db_tool_requires_confirmation(&gate, "sample_rows"));
+    assert!(!db_tool_requires_confirmation(&gate, "list_tables"));
+
+    gate.require_sql_confirm = false;
+    assert!(!db_tool_requires_confirmation(&gate, "query_readonly"));
+
+    gate.db_tool_policy = AiToolPermissionPolicy::RequireConfirm;
+    assert!(db_tool_requires_confirmation(&gate, "list_tables"));
+    assert!(db_tool_requires_confirmation(&gate, "sample_rows"));
 }

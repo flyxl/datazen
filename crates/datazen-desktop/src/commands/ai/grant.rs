@@ -269,4 +269,8 @@ impl AiToolLoopHost for AiRequestHost<'_> {
     async fn execute_mcp_tool(&self, server: &str, tool: &str, arguments: &str) -> String {
         AiToolLoopHost::execute_mcp_tool(self.state, server, tool, arguments).await
     }
+
+    async fn confirm_tool_call(&self, tool: &str, arguments: &str) -> bool {
+        AiToolLoopHost::confirm_tool_call(self.state, tool, arguments).await
+    }
 }

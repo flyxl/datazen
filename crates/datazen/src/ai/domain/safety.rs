@@ -269,7 +269,11 @@ fn sanitize_json_with_gate(value: Value, depth: usize, gate: &AiSafetyGateConfig
     }
 
     match value {
-        Value::String(s) => Value::String(redact_plain_text(&s)),
+        Value::String(s) => Value::String(if gate.redact_credentials {
+            redact_plain_text(&s)
+        } else {
+            s
+        }),
         Value::Array(values) => {
             let max_items = match gate.data_egress_level {
                 AiDataEgressLevel::Strict => 0,
@@ -289,7 +293,7 @@ fn sanitize_json_with_gate(value: Value, depth: usize, gate: &AiSafetyGateConfig
         Value::Object(map) => {
             let mut sanitized = Map::new();
             for (key, value) in map.into_iter().take(MAX_JSON_OBJECT_KEYS) {
-                if is_sensitive_key(&key) {
+                if gate.redact_credentials && is_sensitive_key(&key) {
                     continue;
                 }
                 if gate.data_egress_level == AiDataEgressLevel::Strict && is_result_key(&key) {
@@ -330,16 +334,23 @@ fn truncate_to_bytes(value: String, limit: usize) -> String {
 
 /// Sanitize caller-provided text before it becomes AI prompt content.
 ///
-/// This is the **single public entry point**.  Credentials are always redacted.
-/// Result/payload row stripping and array limits are governed by the gate
-/// configuration from the active model profile.
+/// This is the **single public entry point**. Credential redaction follows
+/// [`AiSafetyGateConfig::redact_credentials`] (default `true`); disabling it
+/// never disables result/payload stripping, array limits or the
+/// `max_context_bytes` truncation below.
 pub fn redact_for_gate(value: &str, gate: &AiSafetyGateConfig) -> String {
     let limit = if gate.max_context_bytes > 0 {
         gate.max_context_bytes
     } else {
         MAX_AI_TEXT_BYTES
     };
-    let text = redact_json_text_with_gate(value, gate).unwrap_or_else(|| redact_plain_text(value));
+    let text = redact_json_text_with_gate(value, gate).unwrap_or_else(|| {
+        if gate.redact_credentials {
+            redact_plain_text(value)
+        } else {
+            value.to_string()
+        }
+    });
     truncate_to_bytes(text, limit)
 }
 

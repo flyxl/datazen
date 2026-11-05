@@ -68,6 +68,16 @@ impl AiToolLoopHost for AppState {
     async fn execute_mcp_tool(&self, server: &str, tool: &str, arguments: &str) -> String {
         execute_mcp_tool(self, server, tool, arguments).await
     }
+    async fn confirm_tool_call(&self, tool: &str, _arguments: &str) -> bool {
+        // T24 adds the precise approval UI. Until then the desktop host is
+        // intentionally fail-closed: a policy that requires confirmation
+        // refuses the call instead of silently approving it.
+        tracing::warn!(
+            tool,
+            "AI tool confirmation requested but no desktop UI is wired"
+        );
+        false
+    }
 }
 
 // ─── AI Chat ───

@@ -558,3 +558,44 @@ fn global_strict_policy_tightens_an_unconfigured_profile_gate() {
         AiDataEgressLevel::Unrestricted
     );
 }
+
+// ── redact_credentials is a real switch (default stays true) ──
+
+#[test]
+fn disabling_credential_redaction_keeps_text_and_json_credentials() {
+    let gate = AiSafetyGateConfig {
+        redact_credentials: false,
+        data_egress_level: AiDataEgressLevel::Unrestricted,
+        ..Default::default()
+    };
+    let text = "password=db-secret url=mysql://user:uri-secret@db.example/app";
+    let output = redact_for_gate(text, &gate);
+    assert_eq!(output, text);
+    assert!(!output.contains("[REDACTED]"));
+
+    let json = r#"{"clientSecret":"top-secret","nested":{"password":"p"}}"#;
+    let output = redact_for_gate(json, &gate);
+    let parsed: Value = serde_json::from_str(&output).expect("JSON is preserved");
+    assert_eq!(parsed["clientSecret"], "top-secret");
+    assert_eq!(parsed["nested"]["password"], "p");
+}
+
+#[test]
+fn disabling_credential_redaction_still_applies_egress_and_byte_limits() {
+    let gate = AiSafetyGateConfig {
+        redact_credentials: false,
+        data_egress_level: AiDataEgressLevel::Strict,
+        max_context_bytes: 24,
+        ..Default::default()
+    };
+    let input = serde_json::json!({
+        "password": "kept-by-request",
+        "resultRows": [{"email": "user@example.test"}],
+    })
+    .to_string();
+    let output = redact_for_gate(&input, &gate);
+
+    assert!(output.len() <= 24, "{output}");
+    assert!(!output.contains("resultRows"), "{output}");
+    assert!(!output.contains("user@example.test"), "{output}");
+}

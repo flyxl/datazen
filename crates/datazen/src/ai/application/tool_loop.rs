@@ -1,12 +1,17 @@
 //! Streaming AI tool-loop orchestration; provider streaming and tool I/O are injected.
 use super::error::AiUseCaseError as CommandError;
+use super::mcp_tools::mcp_tool_requires_confirmation;
 use super::retry::RetryPolicy;
-use super::tools::{classify_tool, is_readonly_db_tool, ToolKind, ToolLoopGuard, ToolLoopLimits};
+use super::tools::{
+    classify_tool, db_tool_requires_confirmation, is_readonly_db_tool, ToolKind, ToolLoopGuard,
+    ToolLoopLimits,
+};
 use crate::ai::domain::safety::redact_for_gate;
 use crate::ai::domain::traits::AiProvider;
 use crate::ai::domain::types::{
     AiError, AiSafetyGateConfig, ChatMessage, CompletionRequest, MessageRole, StreamChunk, ToolCall,
 };
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -38,6 +43,16 @@ pub trait AiToolLoopHost: Send + Sync {
     async fn egress_summary(&self) -> String;
     async fn execute_db_tool(&self, ctx: &AiToolContext, call: &ToolCall) -> String;
     async fn execute_mcp_tool(&self, server: &str, tool: &str, arguments: &str) -> String;
+
+    /// Ask the user to approve one tool call. The loop calls this before a
+    /// DB/MCP tool when the active policy requires confirmation.
+    ///
+    /// Fail-closed by default: hosts without a precise confirmation surface
+    /// (the desktop host until T24) must not fabricate approval. A timeout or
+    /// dismissal is represented the same way as an explicit rejection.
+    async fn confirm_tool_call(&self, _tool: &str, _arguments: &str) -> bool {
+        false
+    }
 }
 struct StreamRoundResult {
     content: String,
@@ -309,6 +324,53 @@ pub async fn run_streaming_tool_loop(
             })
             .collect();
 
+        // The provider may only call tools this request actually declared.
+        // Policy filtering removes tools from the face, but a hallucinated or
+        // stale tool_call must never reach a host executor just because its
+        // name happens to be classifiable.
+        let declared_tools: HashSet<&str> = request
+            .tools
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .map(|tool| tool.name.as_str())
+            .collect();
+        if let Some((tc, _)) = classified
+            .iter()
+            .find(|(tc, _)| !declared_tools.contains(tc.name.as_str()))
+        {
+            tracing::warn!(
+                %request_id,
+                tool_name = %tc.name,
+                "tool requested by provider was not declared in this request"
+            );
+            let err_msg = format!(
+                "Tool '{}' is not available: this request did not declare it.",
+                tc.name
+            );
+            request.messages.push(ChatMessage {
+                role: MessageRole::Tool,
+                content: err_msg.clone(),
+                reasoning: None,
+                tool_calls: None,
+                tool_call_id: Some(tc.id.clone()),
+            });
+            on_chunk(
+                request_id,
+                Ok(StreamChunk {
+                    content: err_msg,
+                    reasoning: None,
+                    done: true,
+                    cancelled: false,
+                    usage: result.usage,
+                    tool_calls: None,
+                    response_id: result.response_id,
+                    egress_summary: None,
+                }),
+            );
+            return Ok(request_id.to_string());
+        }
+
         let executable_count = classified
             .iter()
             .filter(|(_, kind)| matches!(kind, ToolKind::Db(_) | ToolKind::Mcp { .. }))
@@ -459,6 +521,24 @@ pub async fn run_streaming_tool_loop(
                 );
                 return Ok(request_id.to_string());
             }
+            let needs_confirm = match kind {
+                ToolKind::Db(name) => db_tool_requires_confirmation(gate, name),
+                ToolKind::Mcp { .. } => mcp_tool_requires_confirmation(gate.mcp_tool_policy),
+                _ => false,
+            };
+            if needs_confirm && !host.confirm_tool_call(&tc.name, &tc.arguments).await {
+                tracing::info!(
+                    %request_id,
+                    tool_name = %tc.name,
+                    "tool call denied by confirmation port; host execution skipped"
+                );
+                let denied = format!(
+                    "Tool '{}' was not executed: user confirmation was denied or timed out.",
+                    tc.name
+                );
+                request.messages.push(guard.truncate_and_wrap(tc, denied));
+                continue;
+            }
             let tool_result = match kind {
                 ToolKind::Db(_) => host.execute_db_tool(tool_ctx, tc).await,
                 ToolKind::Mcp {
@@ -503,7 +583,11 @@ pub async fn run_streaming_tool_loop(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai::domain::types::{AiProviderConfig, AiProviderType, CompletionResponse};
+    use crate::ai::application::tools::agent_db_tool_definitions;
+    use crate::ai::domain::types::{
+        AiProviderConfig, AiProviderType, AiToolPermissionPolicy, CompletionResponse,
+        ToolDefinition,
+    };
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
     use tokio_util::sync::CancellationToken;
@@ -519,10 +603,25 @@ mod tests {
             messages: vec![],
             temperature: None,
             stop: None,
-            tools: None,
+            tools: Some(test_tools()),
             previous_response_id: None,
             cancel_token: token,
         }
+    }
+
+    fn test_tools() -> Vec<ToolDefinition> {
+        let mut tools = agent_db_tool_definitions(true);
+        tools.push(ToolDefinition {
+            name: "mcp/demo/write_file".into(),
+            description: "Write a demo file".into(),
+            parameters: serde_json::json!({"type": "object", "x-write": true}),
+        });
+        tools.push(ToolDefinition {
+            name: "ask_questions".into(),
+            description: "Ask the user".into(),
+            parameters: serde_json::json!({"type": "object"}),
+        });
+        tools
     }
 
     /// Provider that cancels the request while its stream is still open. This is
@@ -578,6 +677,18 @@ mod tests {
     #[derive(Default)]
     struct StubHost {
         db_tool_calls: AtomicUsize,
+        mcp_tool_calls: AtomicUsize,
+        confirm_calls: AtomicUsize,
+        confirm_result: AtomicBool,
+    }
+
+    impl StubHost {
+        fn approving() -> Self {
+            Self {
+                confirm_result: AtomicBool::new(true),
+                ..Self::default()
+            }
+        }
     }
 
     #[async_trait::async_trait]
@@ -590,7 +701,12 @@ mod tests {
             "{}".into()
         }
         async fn execute_mcp_tool(&self, _server: &str, _tool: &str, _args: &str) -> String {
+            self.mcp_tool_calls.fetch_add(1, Ordering::SeqCst);
             "{}".into()
+        }
+        async fn confirm_tool_call(&self, _tool: &str, _arguments: &str) -> bool {
+            self.confirm_calls.fetch_add(1, Ordering::SeqCst);
+            self.confirm_result.load(Ordering::SeqCst)
         }
     }
 
@@ -698,6 +814,262 @@ mod tests {
                 .await;
             Ok(())
         }
+    }
+
+    struct OneToolProvider {
+        calls: Arc<AtomicUsize>,
+        requests: Arc<Mutex<Vec<CompletionRequest>>>,
+        tool: ToolCall,
+    }
+
+    impl OneToolProvider {
+        fn new(tool: ToolCall) -> Self {
+            Self {
+                calls: Arc::new(AtomicUsize::new(0)),
+                requests: Arc::new(Mutex::new(Vec::new())),
+                tool,
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl AiProvider for OneToolProvider {
+        fn provider_type(&self) -> AiProviderType {
+            AiProviderType::Custom
+        }
+        fn display_name(&self) -> &str {
+            "test-one-tool"
+        }
+        async fn validate_config(&self, _config: &AiProviderConfig) -> Result<(), AiError> {
+            Ok(())
+        }
+        async fn initialize(&self, _config: &AiProviderConfig) -> Result<(), AiError> {
+            Ok(())
+        }
+        async fn complete(
+            &self,
+            _request: &CompletionRequest,
+        ) -> Result<CompletionResponse, AiError> {
+            Err(AiError::NotConfigured("complete is not used".into()))
+        }
+        async fn stream_complete(
+            &self,
+            request: &CompletionRequest,
+            sender: mpsc::Sender<Result<StreamChunk, AiError>>,
+        ) -> Result<(), AiError> {
+            self.requests.lock().unwrap().push(request.clone());
+            let call = self.calls.fetch_add(1, Ordering::SeqCst);
+            let chunk = if call == 0 {
+                StreamChunk {
+                    content: String::new(),
+                    reasoning: None,
+                    done: true,
+                    cancelled: false,
+                    usage: None,
+                    tool_calls: Some(vec![self.tool.clone()]),
+                    response_id: None,
+                    egress_summary: None,
+                }
+            } else {
+                StreamChunk {
+                    content: "done".into(),
+                    reasoning: None,
+                    done: true,
+                    cancelled: false,
+                    usage: None,
+                    tool_calls: None,
+                    response_id: None,
+                    egress_summary: None,
+                }
+            };
+            let _ = sender.send(Ok(chunk)).await;
+            Ok(())
+        }
+    }
+
+    fn list_connections_call() -> ToolCall {
+        ToolCall {
+            id: "call-1".into(),
+            name: "list_connections".into(),
+            arguments: "{}".into(),
+        }
+    }
+
+    fn query_readonly_call() -> ToolCall {
+        ToolCall {
+            id: "call-query".into(),
+            name: "query_readonly".into(),
+            arguments: r#"{"connection_id":"conn-1","sql":"SELECT 1"}"#.into(),
+        }
+    }
+
+    fn mcp_write_call() -> ToolCall {
+        ToolCall {
+            id: "call-mcp".into(),
+            name: "mcp/demo/write_file".into(),
+            arguments: r#"{"path":"x"}"#.into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn require_confirm_db_policy_denies_execution_and_records_readable_error() {
+        let mut gate = gate();
+        gate.db_tool_policy = AiToolPermissionPolicy::RequireConfirm;
+        let provider = Arc::new(OneToolProvider::new(list_connections_call()));
+        let host = StubHost::default();
+        let token = CancellationToken::new();
+
+        let (result, _chunks) = run_loop(provider.clone(), &host, token, gate).await;
+
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(host.confirm_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(host.db_tool_calls.load(Ordering::SeqCst), 0);
+        let requests = provider.requests.lock().unwrap();
+        let second = requests.get(1).expect("second provider round");
+        let tool_message = second
+            .messages
+            .iter()
+            .find(|message| message.role == MessageRole::Tool)
+            .expect("tool error message");
+        assert!(
+            tool_message.content.contains("not executed"),
+            "{tool_message:?}"
+        );
+        assert!(
+            tool_message.content.contains("confirmation"),
+            "{tool_message:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn require_confirm_db_policy_executes_after_approval() {
+        let mut gate = gate();
+        gate.db_tool_policy = AiToolPermissionPolicy::RequireConfirm;
+        let provider = Arc::new(OneToolProvider::new(list_connections_call()));
+        let host = StubHost::approving();
+        let token = CancellationToken::new();
+
+        let (result, _chunks) = run_loop(provider, &host, token, gate).await;
+
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(host.confirm_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(host.db_tool_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn require_sql_confirm_denies_query_readonly_execution() {
+        let mut gate = gate();
+        gate.db_tool_policy = AiToolPermissionPolicy::Unrestricted;
+        gate.require_sql_confirm = true;
+        let provider = Arc::new(OneToolProvider::new(query_readonly_call()));
+        let host = StubHost::default();
+        let token = CancellationToken::new();
+
+        let (result, _chunks) = run_loop(provider, &host, token, gate).await;
+
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(host.confirm_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(host.db_tool_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn require_sql_confirm_does_not_confirm_metadata_or_sampling() {
+        // Metadata tools and bounded sampling are not model SQL execution;
+        // only `query_readonly` (and future SQL executors) use this switch.
+        for tool in [
+            list_connections_call(),
+            ToolCall {
+                id: "call-sample".into(),
+                name: "sample_rows".into(),
+                arguments: r#"{"connection_id":"conn-1","table":"users"}"#.into(),
+            },
+        ] {
+            let mut gate = gate();
+            gate.db_tool_policy = AiToolPermissionPolicy::Unrestricted;
+            gate.require_sql_confirm = true;
+            let provider = Arc::new(OneToolProvider::new(tool));
+            let host = StubHost::default();
+            let token = CancellationToken::new();
+
+            let (result, _chunks) = run_loop(provider, &host, token, gate).await;
+
+            assert!(result.is_ok(), "{result:?}");
+            assert_eq!(host.confirm_calls.load(Ordering::SeqCst), 0);
+            assert_eq!(host.db_tool_calls.load(Ordering::SeqCst), 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn require_confirm_mcp_policy_denies_execution_without_host_call() {
+        let mut gate = gate();
+        gate.mcp_tool_policy = AiToolPermissionPolicy::RequireConfirm;
+        let provider = Arc::new(OneToolProvider::new(mcp_write_call()));
+        let host = StubHost::default();
+        let token = CancellationToken::new();
+
+        let (result, _chunks) = run_loop(provider, &host, token, gate).await;
+
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(host.confirm_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(host.mcp_tool_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn require_confirm_mcp_policy_executes_after_approval() {
+        let mut gate = gate();
+        gate.mcp_tool_policy = AiToolPermissionPolicy::RequireConfirm;
+        let provider = Arc::new(OneToolProvider::new(mcp_write_call()));
+        let host = StubHost::approving();
+        let token = CancellationToken::new();
+
+        let (result, _chunks) = run_loop(provider, &host, token, gate).await;
+
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(host.confirm_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(host.mcp_tool_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn undeclared_tool_call_is_rejected_before_any_host_execution() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let provider = Arc::new(ToolCallingProvider {
+            calls: calls.clone(),
+        });
+        let host = StubHost::default();
+        let token = CancellationToken::new();
+        let seen: Arc<Mutex<Vec<StreamChunk>>> = Arc::new(Mutex::new(Vec::new()));
+        let sink = seen.clone();
+        let on_chunk: StreamCallback = Arc::new(move |_id, chunk| {
+            if let Ok(chunk) = chunk {
+                sink.lock().expect("chunk sink").push(chunk);
+            }
+        });
+        let mut undeclared_request = request(Some(token));
+        undeclared_request.tools = Some(Vec::new());
+
+        let result = run_streaming_tool_loop(
+            provider,
+            &host,
+            &AiToolContext::default(),
+            on_chunk,
+            "req-1",
+            undeclared_request,
+            ToolLoopLimits::default(),
+            "test",
+            &gate(),
+        )
+        .await;
+
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(host.db_tool_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "provider is not replayed");
+        assert!(
+            seen.lock()
+                .unwrap()
+                .iter()
+                .any(|chunk| chunk.content.contains("did not declare")),
+            "the undeclared call must return a readable error"
+        );
     }
 
     #[tokio::test]

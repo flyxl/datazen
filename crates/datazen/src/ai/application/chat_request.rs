@@ -74,15 +74,20 @@ pub async fn build_chat_request(
 
     let mut tools = vec![ask_questions_tool_definition()];
     if input.attach_db_tools {
-        if input.attach_agent_db_tools {
-            tools.extend(super::tools::agent_db_tool_definitions(
-                input.attach_agent_query_tools,
-            ));
+        let db_tools = if input.attach_agent_db_tools {
+            super::tools::agent_db_tool_definitions(input.attach_agent_query_tools)
         } else {
-            tools.extend(super::tools::db_tool_definitions());
-        }
+            super::tools::db_tool_definitions()
+        };
+        tools.extend(super::tools::filter_db_tool_definitions(
+            db_tools,
+            input.safety_gate.db_tool_policy,
+        ));
     }
-    tools.extend(input.mcp_tools);
+    tools.extend(super::mcp_tools::filter_mcp_tool_definitions(
+        input.mcp_tools,
+        input.safety_gate.mcp_tool_policy,
+    ));
 
     let mut request = CompletionRequest {
         request_id: input.request_id.to_string(),
@@ -287,5 +292,251 @@ mod tests {
         assert!(names.contains(&"list_tables".into()));
         assert!(names.contains(&"query_readonly".into()));
         assert!(names.contains(&"sample_rows".into()));
+    }
+
+    async fn agent_request(
+        gate: &AiSafetyGateConfig,
+        mcp_tools: Vec<ToolDefinition>,
+    ) -> CompletionRequest {
+        let directory = tempfile::tempdir().expect("temporary prompt root");
+        let resolver = PromptResolver::new(directory.path(), None);
+        build_chat_request(
+            &resolver,
+            ChatRequestInput {
+                request_id: "request-policy",
+                model: "model-1",
+                lang: "en",
+                scenario: ChatScenario::Chat,
+                schema: None,
+                connections_context: "",
+                messages: vec![ChatMessage {
+                    role: MessageRole::User,
+                    content: "inspect".into(),
+                    reasoning: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                }],
+                context_block: None,
+                safety_gate: gate,
+                attach_db_tools: true,
+                attach_agent_db_tools: true,
+                attach_agent_query_tools: true,
+                mcp_tools,
+            },
+        )
+        .await
+    }
+
+    fn mcp_tool(name: &str, parameters: serde_json::Value) -> ToolDefinition {
+        ToolDefinition {
+            name: name.into(),
+            description: name.into(),
+            parameters,
+        }
+    }
+
+    #[tokio::test]
+    async fn redact_credentials_false_keeps_user_message_secrets() {
+        let gate = AiSafetyGateConfig {
+            redact_credentials: false,
+            ..Default::default()
+        };
+        let directory = tempfile::tempdir().expect("temporary prompt root");
+        let resolver = PromptResolver::new(directory.path(), None);
+        let request = build_chat_request(
+            &resolver,
+            ChatRequestInput {
+                request_id: "request-redact",
+                model: "model-1",
+                lang: "en",
+                scenario: ChatScenario::Chat,
+                schema: None,
+                connections_context: "",
+                messages: vec![ChatMessage {
+                    role: MessageRole::User,
+                    content: "password=db-secret".into(),
+                    reasoning: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                }],
+                context_block: None,
+                safety_gate: &gate,
+                attach_db_tools: false,
+                attach_agent_db_tools: false,
+                attach_agent_query_tools: false,
+                mcp_tools: Vec::new(),
+            },
+        )
+        .await;
+
+        let user_message = request
+            .messages
+            .iter()
+            .find(|message| message.role == MessageRole::User)
+            .expect("user message");
+        assert_eq!(user_message.content, "password=db-secret");
+    }
+
+    #[tokio::test]
+    async fn db_policy_disabled_attaches_only_ask_questions() {
+        let gate = AiSafetyGateConfig {
+            db_tool_policy: crate::ai::domain::types::AiToolPermissionPolicy::Disabled,
+            ..Default::default()
+        };
+        let request = agent_request(&gate, Vec::new()).await;
+
+        let names = request
+            .tools
+            .expect("tools")
+            .into_iter()
+            .map(|tool| tool.name)
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["ask_questions"]);
+    }
+
+    #[tokio::test]
+    async fn db_policy_read_only_keeps_read_only_query_and_sampling_tools() {
+        let gate = AiSafetyGateConfig {
+            db_tool_policy: crate::ai::domain::types::AiToolPermissionPolicy::ReadOnly,
+            ..Default::default()
+        };
+        let request = agent_request(&gate, Vec::new()).await;
+        let names = request
+            .tools
+            .expect("tools")
+            .into_iter()
+            .map(|tool| tool.name)
+            .collect::<Vec<_>>();
+
+        assert!(names.contains(&"list_tables".into()));
+        assert!(names.contains(&"query_readonly".into()));
+        assert!(names.contains(&"sample_rows".into()));
+    }
+
+    #[tokio::test]
+    async fn db_policy_require_confirm_still_attaches_database_tools() {
+        let gate = AiSafetyGateConfig {
+            db_tool_policy: crate::ai::domain::types::AiToolPermissionPolicy::RequireConfirm,
+            ..Default::default()
+        };
+        let request = agent_request(&gate, Vec::new()).await;
+        let names = request
+            .tools
+            .expect("tools")
+            .into_iter()
+            .map(|tool| tool.name)
+            .collect::<Vec<_>>();
+
+        assert!(names.contains(&"list_tables".into()));
+        assert!(names.contains(&"query_readonly".into()));
+    }
+
+    #[tokio::test]
+    async fn mcp_policy_disabled_removes_every_mcp_tool() {
+        let gate = AiSafetyGateConfig {
+            mcp_tool_policy: crate::ai::domain::types::AiToolPermissionPolicy::Disabled,
+            ..Default::default()
+        };
+        let request = agent_request(
+            &gate,
+            vec![
+                mcp_tool("mcp/demo/list_files", serde_json::json!({})),
+                mcp_tool(
+                    "mcp/demo/write_file",
+                    serde_json::json!({"type": "object", "x-write": true}),
+                ),
+            ],
+        )
+        .await;
+        let names = request
+            .tools
+            .expect("tools")
+            .into_iter()
+            .map(|tool| tool.name)
+            .collect::<Vec<_>>();
+
+        assert!(!names.iter().any(|name| name.starts_with("mcp/")));
+    }
+
+    #[tokio::test]
+    async fn mcp_policy_read_only_drops_write_capable_tools() {
+        let gate = AiSafetyGateConfig {
+            mcp_tool_policy: crate::ai::domain::types::AiToolPermissionPolicy::ReadOnly,
+            ..Default::default()
+        };
+        let request = agent_request(
+            &gate,
+            vec![
+                mcp_tool("mcp/demo/list_files", serde_json::json!({})),
+                mcp_tool(
+                    "mcp/demo/write_file",
+                    serde_json::json!({"type": "object", "x-write": true}),
+                ),
+                mcp_tool("mcp/demo/create_issue", serde_json::json!({})),
+            ],
+        )
+        .await;
+        let names = request
+            .tools
+            .expect("tools")
+            .into_iter()
+            .map(|tool| tool.name)
+            .collect::<Vec<_>>();
+
+        assert!(names.contains(&"mcp/demo/list_files".into()));
+        assert!(!names.contains(&"mcp/demo/write_file".into()));
+        assert!(!names.contains(&"mcp/demo/create_issue".into()));
+    }
+
+    #[tokio::test]
+    async fn mcp_policy_require_confirm_keeps_write_tools_for_the_gate() {
+        let gate = AiSafetyGateConfig {
+            mcp_tool_policy: crate::ai::domain::types::AiToolPermissionPolicy::RequireConfirm,
+            ..Default::default()
+        };
+        let request = agent_request(
+            &gate,
+            vec![mcp_tool(
+                "mcp/demo/write_file",
+                serde_json::json!({"type": "object", "x-write": true}),
+            )],
+        )
+        .await;
+        let names = request
+            .tools
+            .expect("tools")
+            .into_iter()
+            .map(|tool| tool.name)
+            .collect::<Vec<_>>();
+
+        assert!(names.contains(&"mcp/demo/write_file".into()));
+    }
+
+    #[tokio::test]
+    async fn mcp_policy_unrestricted_keeps_the_full_face() {
+        let gate = AiSafetyGateConfig {
+            mcp_tool_policy: crate::ai::domain::types::AiToolPermissionPolicy::Unrestricted,
+            ..Default::default()
+        };
+        let request = agent_request(
+            &gate,
+            vec![
+                mcp_tool("mcp/demo/list_files", serde_json::json!({})),
+                mcp_tool(
+                    "mcp/demo/write_file",
+                    serde_json::json!({"type": "object", "x-write": true}),
+                ),
+            ],
+        )
+        .await;
+        let names = request
+            .tools
+            .expect("tools")
+            .into_iter()
+            .map(|tool| tool.name)
+            .collect::<Vec<_>>();
+
+        assert!(names.contains(&"mcp/demo/list_files".into()));
+        assert!(names.contains(&"mcp/demo/write_file".into()));
     }
 }

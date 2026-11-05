@@ -2,7 +2,10 @@
 
 use super::ports::DatabaseToolHost;
 use super::tool_loop::AiToolContext;
-use crate::ai::domain::types::{ChatMessage, MessageRole, TokenUsage, ToolCall, ToolDefinition};
+use crate::ai::domain::types::{
+    AiSafetyGateConfig, AiToolPermissionPolicy, ChatMessage, MessageRole, TokenUsage, ToolCall,
+    ToolDefinition,
+};
 use crate::connection::domain::{ConnectionRepository, ConnectionScope};
 pub fn db_tool_definitions() -> Vec<ToolDefinition> {
     vec![
@@ -123,6 +126,40 @@ pub fn is_db_tool(name: &str) -> bool {
             | "query_readonly"
             | "sample_rows"
     )
+}
+
+/// Apply the DB tool permission policy at the provider tool-face boundary.
+///
+/// - `Disabled`: no DB tools at all (chat still keeps `ask_questions`).
+/// - `ReadOnly`: only tools that cannot write. Today every DB tool is
+///   read-only, but the filter is deliberate so a future write tool cannot
+///   leak into this policy.
+/// - `RequireConfirm` / `Unrestricted`: expose the full mode-appropriate set;
+///   confirmation is enforced by the tool loop.
+pub fn filter_db_tool_definitions(
+    tools: Vec<ToolDefinition>,
+    policy: AiToolPermissionPolicy,
+) -> Vec<ToolDefinition> {
+    match policy {
+        AiToolPermissionPolicy::Disabled => Vec::new(),
+        AiToolPermissionPolicy::ReadOnly => tools
+            .into_iter()
+            .filter(|tool| is_readonly_db_tool(&tool.name))
+            .collect(),
+        AiToolPermissionPolicy::RequireConfirm | AiToolPermissionPolicy::Unrestricted => tools,
+    }
+}
+
+/// Whether a DB tool must pass through the host confirmation port before it
+/// executes.
+///
+/// `require_sql_confirm` is intentionally scoped to tools that run model-
+/// supplied SQL (`query_readonly` today; future SQL execution tools join this
+/// match). `sample_rows` builds a bounded host-side sample query and is not a
+/// model SQL execution tool, so it follows only the DB policy.
+pub fn db_tool_requires_confirmation(gate: &AiSafetyGateConfig, name: &str) -> bool {
+    gate.db_tool_policy == AiToolPermissionPolicy::RequireConfirm
+        || (gate.require_sql_confirm && name == "query_readonly")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -356,7 +393,6 @@ pub fn is_readonly_db_tool(name: &str) -> bool {
 /// Returns `true` if the MCP tool needs user confirmation before execution.
 /// Heuristic: tool name contains write/delete/drop/update/create/insert, or
 /// the input schema has `x-write: true`.
-#[allow(dead_code)]
 pub fn mcp_needs_confirm(tool_name: &str, input_schema: &serde_json::Value) -> bool {
     // Schema-based check
     if input_schema.get("x-write") == Some(&serde_json::Value::Bool(true)) {
