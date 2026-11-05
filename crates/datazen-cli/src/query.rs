@@ -9,13 +9,17 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use datazen::execution::domain::sql_guard::{
-    check_sql, normalize_fullwidth, reject_null_bytes, strip_comments_for_tokenize, tokenize_sql,
+    check_sql, find_main_verb_index, normalize_fullwidth, reject_null_bytes,
+    strip_comments_for_tokenize, tokenize_sql,
 };
-use datazen_driver_api::{create_driver, ConnectionConfig, QueryResult, Value};
+use datazen_driver_api::{
+    append_select_limit, create_driver, ConnectionConfig, QueryResult, Value,
+};
 use serde::Serialize;
 
 use crate::error::{
-    CliError, E_DANGEROUS_SQL, E_DRIVER, E_PRODUCTION_WRITE, E_READ_ONLY, E_TIMEOUT, E_WRITE_FLAG,
+    CliError, E_DANGEROUS_SQL, E_DRIVER, E_PRODUCTION_WRITE, E_READ_ONLY, E_TIMEOUT, E_UNSUPPORTED,
+    E_WRITE_FLAG,
 };
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -128,8 +132,53 @@ pub struct DriverExecutor {
 #[async_trait]
 impl QueryExecutor for DriverExecutor {
     async fn execute(&self, request: &QueryRequest) -> Result<QueryResult, CliError> {
-        execute_driver_query(&self.config, &request.sql).await
+        ensure_supported_host_wiring(&self.config)?;
+        let sql = limited_sql(&request.sql, request.limit);
+        execute_driver_query(&self.config, &sql).await
     }
+}
+
+/// Fail closed when a saved profile depends on host-side tunnel wiring the CLI
+/// does not assemble. Silently connecting to the origin host would bypass the
+/// user's network policy, so an explicit unsupported error is mandatory.
+pub fn ensure_supported_host_wiring(config: &ConnectionConfig) -> Result<(), CliError> {
+    let ssh_configured = config
+        .ssh_tunnel
+        .as_ref()
+        .is_some_and(|tunnel| tunnel.enabled);
+    let other_tunnel = config.tunnel_id.is_some()
+        || config.tunnel_kind.is_some()
+        || config.http_proxy_tunnel.is_some()
+        || config.websocket_tunnel.is_some();
+    if ssh_configured || other_tunnel {
+        return Err(CliError::new(
+            E_UNSUPPORTED,
+            format!(
+                "connection '{}' uses a tunnel; the CLI does not assemble tunnel transports and refuses to connect directly",
+                config.name
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// The driver API's SQL limit is a row cap on the server, not a display
+/// truncation. A trailing statement semicolon is removed first so the cap can
+/// be appended safely; non-SELECT/WITH statements are returned unchanged.
+fn limited_sql(sql: &str, limit: usize) -> String {
+    let trimmed = sql.trim().trim_end_matches(';').trim_end();
+    let cap = limit.min(u32::MAX as usize - 1) as u32;
+    let (out, applied) = append_select_limit(trimmed, Some(cap));
+    if applied.is_some() && out == trimmed {
+        // The statement already has a LIMIT. Keep it, but wrap the statement
+        // with a second cap so a larger user-authored LIMIT cannot make
+        // `--limit` a display-only truncation.
+        return format!(
+            "SELECT * FROM ({trimmed}) AS datazen_limited LIMIT {}",
+            cap + 1
+        );
+    }
+    out
 }
 
 async fn execute_driver_query(
@@ -187,25 +236,37 @@ pub fn is_production(config: &ConnectionConfig, explicit: bool) -> bool {
 pub fn guard_sql(sql: &str, config: &ConnectionConfig, safety: Safety) -> Result<(), CliError> {
     reject_null_bytes(sql).map_err(|message| CliError::new(E_READ_ONLY, message))?;
     let normalized = normalize_fullwidth(sql);
-    let write = check_sql(&normalized, true, false).is_err();
     let tokens = tokenize_sql(&strip_comments_for_tokenize(&normalized));
+    let write = check_sql(&normalized, true, false).is_err();
+    let mutating_pragma = has_mutating_pragma(&tokens);
+    let read_only_pragma = is_read_only_pragma(&tokens);
     let dangerous = tokens.iter().any(|token| is_dangerous_keyword(token));
+    let admin_state_change = tokens.iter().any(|token| is_state_changing_verb(token));
+    // Production protection is deliberately broader than `check_sql`: admin
+    // verbs such as ATTACH/DETACH/VACUUM, session/transaction control, and
+    // mutating PRAGMA assignments can change state without appearing in the DML
+    // verb table. A read-only PRAGMA introspection query is the only PRAGMA form
+    // allowed to pass untouched.
+    let state_changing =
+        write || admin_state_change || mutating_pragma || (dangerous && !read_only_pragma);
 
-    if write && is_production(config, safety.production) {
+    if state_changing && is_production(config, safety.production) {
         return Err(CliError::new(
             E_PRODUCTION_WRITE,
-            "writes are refused on production connections",
+            "state-changing SQL is refused on production connections",
         ));
     }
-    if config.read_only && (write || dangerous) {
+    if config.read_only && state_changing {
         return Err(CliError::new(
             E_READ_ONLY,
             format!(
-                "connection '{}' is read-only; writes are not allowed",
+                "connection '{}' is read-only; state-changing SQL is not allowed",
                 config.name
             ),
         ));
     }
+
+    let dangerous = dangerous && !read_only_pragma;
     if dangerous {
         if !safety.allow_dangerous_sql {
             if !safety.allow_writes {
@@ -234,6 +295,139 @@ pub fn guard_sql(sql: &str, config: &ConnectionConfig, safety: Safety) -> Result
 
     Ok(())
 }
+
+fn is_state_changing_verb(verb: &str) -> bool {
+    matches!(
+        verb.to_ascii_uppercase().as_str(),
+        "ANALYZE"
+            | "BEGIN"
+            | "CHECKPOINT"
+            | "COMMIT"
+            | "DISCARD"
+            | "END"
+            | "LOCK"
+            | "RELEASE"
+            | "ROLLBACK"
+            | "SAVEPOINT"
+            | "SET"
+            | "START"
+            | "UNLOCK"
+            | "USE"
+    )
+}
+
+/// Return the pragma name and whether it has a parenthesized argument.
+fn pragma_name(tokens: &[String], main: usize) -> Option<(String, bool)> {
+    let mut index = main + 1;
+    if tokens.get(index + 1).is_some_and(|token| token == ".") {
+        index += 2;
+    }
+    let name = tokens.get(index)?.to_ascii_lowercase();
+    let has_arg = tokens.get(index + 1).is_some_and(|token| token == "(");
+    Some((name, has_arg))
+}
+
+fn is_read_only_pragma_at(tokens: &[String], main: usize) -> bool {
+    let Some((name, has_arg)) = pragma_name(tokens, main) else {
+        return false;
+    };
+    if tokens.iter().any(|token| token == "=") {
+        return false;
+    }
+    if has_arg && !PRAGMA_ARG_READS.contains(&name.as_str()) {
+        return false;
+    }
+    PRAGMA_READS.contains(&name.as_str())
+}
+
+fn is_read_only_pragma(tokens: &[String]) -> bool {
+    find_main_verb_index(tokens).is_some_and(|main| {
+        tokens
+            .get(main)
+            .is_some_and(|verb| verb.eq_ignore_ascii_case("PRAGMA"))
+            && is_read_only_pragma_at(tokens, main)
+    })
+}
+
+/// A multi-statement payload can hide a mutating PRAGMA after a read-only one;
+/// inspect every PRAGMA token, not only the first statement.
+fn has_mutating_pragma(tokens: &[String]) -> bool {
+    tokens.iter().enumerate().any(|(index, token)| {
+        token.eq_ignore_ascii_case("PRAGMA") && !is_read_only_pragma_at(tokens, index)
+    })
+}
+
+const PRAGMA_READS: &[&str] = &[
+    "application_id",
+    "auto_vacuum",
+    "automatic_index",
+    "busy_timeout",
+    "cache_size",
+    "cache_spill",
+    "case_sensitive_like",
+    "cell_size_check",
+    "checkpoint_fullfsync",
+    "collation_list",
+    "compile_options",
+    "count_changes",
+    "data_version",
+    "database_list",
+    "defer_foreign_keys",
+    "empty_result_callbacks",
+    "encoding",
+    "foreign_key_check",
+    "foreign_key_list",
+    "foreign_keys",
+    "freelist_count",
+    "full_column_names",
+    "fullfsync",
+    "function_list",
+    "ignore_check_constraints",
+    "index_info",
+    "index_list",
+    "index_xinfo",
+    "integrity_check",
+    "journal_mode",
+    "journal_size_limit",
+    "legacy_alter_table",
+    "locking_mode",
+    "max_page_count",
+    "mmap_size",
+    "module_list",
+    "page_count",
+    "page_size",
+    "pragma_list",
+    "query_only",
+    "quick_check",
+    "read_uncommitted",
+    "recursive_triggers",
+    "reverse_unordered_selects",
+    "schema_version",
+    "secure_delete",
+    "short_column_names",
+    "synchronous",
+    "table_info",
+    "table_list",
+    "table_xinfo",
+    "temp_store",
+    "threads",
+    "trusted_schema",
+    "user_version",
+    "writable_schema",
+];
+
+const PRAGMA_ARG_READS: &[&str] = &[
+    "foreign_key_check",
+    "foreign_key_list",
+    "index_info",
+    "index_list",
+    "index_xinfo",
+    "integrity_check",
+    "quick_check",
+    "table_info",
+    "table_xinfo",
+    "table_list",
+];
 
 fn is_dangerous_keyword(token: &str) -> bool {
     matches!(
@@ -417,6 +611,125 @@ mod tests {
             ..Safety::default()
         };
         assert!(guard_sql("PRAGMA journal_mode=DELETE", &config, both).is_ok());
+    }
+
+    #[test]
+    fn production_refuses_mutating_pragma_with_both_flags() {
+        let config = config("prod-db");
+        let both = Safety {
+            allow_writes: true,
+            allow_dangerous_sql: true,
+            ..Safety::default()
+        };
+        assert_eq!(
+            guard_sql("PRAGMA journal_mode=WAL", &config, both)
+                .unwrap_err()
+                .code,
+            E_PRODUCTION_WRITE
+        );
+        assert_eq!(
+            guard_sql("PRAGMA user_version=7", &config, both)
+                .unwrap_err()
+                .code,
+            E_PRODUCTION_WRITE
+        );
+        assert_eq!(
+            guard_sql(
+                "PRAGMA table_info(items); PRAGMA user_version=7",
+                &config,
+                both
+            )
+            .unwrap_err()
+            .code,
+            E_PRODUCTION_WRITE
+        );
+    }
+
+    #[test]
+    fn production_allows_read_only_pragma_introspection() {
+        let config = config("prod-db");
+        let both = Safety {
+            allow_writes: true,
+            allow_dangerous_sql: true,
+            ..Safety::default()
+        };
+        assert!(guard_sql("PRAGMA journal_mode", &config, both).is_ok());
+        assert!(guard_sql("PRAGMA table_info(items)", &config, both).is_ok());
+        assert!(guard_sql("PRAGMA user_version", &config, both).is_ok());
+    }
+
+    #[test]
+    fn production_refuses_admin_state_changes_even_with_both_flags() {
+        let config = config("prod-db");
+        let both = Safety {
+            allow_writes: true,
+            allow_dangerous_sql: true,
+            ..Safety::default()
+        };
+        for sql in [
+            "ANALYZE",
+            "SET search_path = public",
+            "BEGIN",
+            "USE other_database",
+            "REINDEX",
+        ] {
+            assert_eq!(
+                guard_sql(sql, &config, both).unwrap_err().code,
+                E_PRODUCTION_WRITE,
+                "{sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn production_refuses_admin_verbs_even_with_both_flags() {
+        let config = config("prod-db");
+        let both = Safety {
+            allow_writes: true,
+            allow_dangerous_sql: true,
+            ..Safety::default()
+        };
+        assert_eq!(
+            guard_sql("ATTACH DATABASE 'x' AS aux", &config, both)
+                .unwrap_err()
+                .code,
+            E_PRODUCTION_WRITE
+        );
+    }
+
+    #[test]
+    fn limit_is_pushed_into_select_but_not_dml() {
+        assert_eq!(
+            limited_sql("SELECT * FROM t", 10),
+            "SELECT * FROM t LIMIT 11"
+        );
+        assert_eq!(
+            limited_sql("WITH x AS (SELECT 1) SELECT * FROM x;", 5),
+            "WITH x AS (SELECT 1) SELECT * FROM x LIMIT 6"
+        );
+        assert_eq!(limited_sql("UPDATE t SET x = 1", 10), "UPDATE t SET x = 1");
+        assert_eq!(
+            limited_sql("SELECT * FROM t LIMIT 100", 1),
+            "SELECT * FROM (SELECT * FROM t LIMIT 100) AS datazen_limited LIMIT 2"
+        );
+    }
+
+    #[test]
+    fn tunnel_configuration_fails_closed() {
+        let mut config = config("local");
+        config.ssh_tunnel = Some(
+            serde_json::from_value(serde_json::json!({
+                "enabled": true,
+                "host": "127.0.0.1",
+                "port": 1,
+                "username": "nobody"
+            }))
+            .unwrap(),
+        );
+        assert_eq!(
+            ensure_supported_host_wiring(&config).unwrap_err().code,
+            E_UNSUPPORTED
+        );
     }
 
     #[test]

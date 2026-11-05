@@ -18,6 +18,7 @@ pub const E_TIMEOUT: &str = "E_TIMEOUT";
 pub const E_DRIVER: &str = "E_DRIVER";
 pub const E_EXECUTOR: &str = "E_EXECUTOR";
 pub const E_OUTPUT: &str = "E_OUTPUT";
+pub const E_UNSUPPORTED: &str = "E_UNSUPPORTED";
 pub const E_INTERNAL: &str = "E_INTERNAL";
 
 #[derive(Debug, Clone, Error)]
@@ -50,6 +51,7 @@ impl CliError {
             E_DRIVER => 11,
             E_EXECUTOR => 12,
             E_OUTPUT => 13,
+            E_UNSUPPORTED => 14,
             _ => 1,
         }
     }

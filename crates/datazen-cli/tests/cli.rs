@@ -174,6 +174,103 @@ fn query_limit_and_csv_output_are_parseable() {
 }
 
 #[test]
+fn production_refuses_mutating_pragma_with_both_flags() {
+    let temp = TempDir::new().unwrap();
+    let connection = sqlite_connection(temp.path(), "prod-db");
+    write_connections(temp.path(), json!([connection]));
+
+    let denied = run(
+        temp.path(),
+        &[
+            "query",
+            "local",
+            "PRAGMA journal_mode=WAL",
+            "--allow-writes",
+            "--allow-dangerous-sql",
+            "--json",
+        ],
+    );
+    assert_eq!(
+        denied.status.code(),
+        Some(9),
+        "{}",
+        String::from_utf8_lossy(&denied.stderr)
+    );
+    let error: Value = serde_json::from_slice(&denied.stderr).unwrap();
+    assert_eq!(error["code"], "E_PRODUCTION_WRITE");
+
+    let version_denied = run(
+        temp.path(),
+        &[
+            "query",
+            "local",
+            "PRAGMA user_version=7",
+            "--allow-writes",
+            "--allow-dangerous-sql",
+            "--json",
+        ],
+    );
+    assert_eq!(version_denied.status.code(), Some(9));
+
+    // The rejected statements must not have changed persisted SQLite state.
+    let read = run(
+        temp.path(),
+        &["query", "local", "PRAGMA user_version", "--json"],
+    );
+    assert!(
+        read.status.success(),
+        "{}",
+        String::from_utf8_lossy(&read.stderr)
+    );
+    let result: Value = serde_json::from_slice(&read.stdout).unwrap();
+    assert_eq!(result["rows"][0][0], 0);
+
+    // Read-only PRAGMA introspection stays available on production.
+    let introspection = run(
+        temp.path(),
+        &["query", "local", "PRAGMA table_info(items)", "--json"],
+    );
+    assert!(
+        introspection.status.success(),
+        "{}",
+        String::from_utf8_lossy(&introspection.stderr)
+    );
+}
+
+#[test]
+fn tunnel_config_fails_closed_instead_of_direct_connect() {
+    let temp = TempDir::new().unwrap();
+    let mut connection = sqlite_connection(temp.path(), "tunneled");
+    connection["sshTunnel"] = json!({
+        "enabled": true,
+        "host": "127.0.0.1",
+        "port": 1,
+        "username": "nobody"
+    });
+    write_connections(temp.path(), json!([connection]));
+
+    let output = run(temp.path(), &["query", "local", "SELECT 1", "--json"]);
+    assert_eq!(output.status.code(), Some(14));
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["code"], "E_UNSUPPORTED");
+    assert!(error["message"].as_str().unwrap().contains("tunnel"));
+}
+
+#[test]
+fn open_does_not_emit_an_unconsumable_uri() {
+    let temp = TempDir::new().unwrap();
+    let connection = sqlite_connection(temp.path(), "local");
+    write_connections(temp.path(), json!([connection]));
+
+    let output = run(temp.path(), &["open", "local", "--json"]);
+    assert_eq!(output.status.code(), Some(14));
+    assert!(output.stdout.is_empty());
+    let error: Value = serde_json::from_slice(&output.stderr).unwrap();
+    assert_eq!(error["code"], "E_UNSUPPORTED");
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("datazen://"));
+}
+
+#[test]
 fn production_writes_are_refused_with_both_flags() {
     let temp = TempDir::new().unwrap();
     let connection = sqlite_connection(temp.path(), "prod-db");

@@ -52,8 +52,9 @@ datazen agent setup --json
 `<connection>` 优先按 id 匹配，其次按唯一名称匹配；同名时返回 `E_USAGE`，要求
 使用 id。`--file -` 等同 stdout。
 
-`open` 输出 `datazen://connection/<id>` 描述符和连接摘要，供桌面 App/外部
-opener 接手；CLI 本身不启动 GUI。
+`open` 当前**失败关闭**：桌面没有注册按连接 id 打开的路由，CLI 也不伪造
+`datazen://` URI，而是返回 `E_UNSUPPORTED`。在宿主启动/路由实现前，请使用
+`context` 或桌面 UI 打开连接。
 
 ## 只读与写入开关
 
@@ -66,6 +67,12 @@ opener 接手；CLI 本身不启动 GUI。
 - 生产连接（`--production`、`environment=production`，或名称/分组 token 为
   `prod`/`production`）即使带两个 flag 也返回 `E_PRODUCTION_WRITE`。
 
+生产连接对会改变状态的 `PRAGMA`（如 `journal_mode=WAL`、`user_version=7`）、
+`ATTACH`/`DETACH`/`VACUUM` 也一律拒绝；只读 PRAGMA 查询（如 `PRAGMA table_info`、
+`PRAGMA journal_mode`）放行。
+
+`--limit` 对 SELECT/WITH 在驱动执行前追加 `LIMIT n+1`；已有更大的 LIMIT 时
+外层再包一层 `LIMIT n+1`，不是拿到全部结果后截断。非 SELECT 不改写。
 `--timeout` 接受裸秒数、`s` 或 `ms`；超时返回 `E_TIMEOUT`。
 
 ## 输出
@@ -91,16 +98,20 @@ opener 接手；CLI 本身不启动 GUI。
 | `E_DRIVER` | 驱动未编译或连接失败 |
 | `E_EXECUTOR` | 执行器装配错误 |
 | `E_OUTPUT` | 输出参数/写文件错误 |
+| `E_UNSUPPORTED` | 宿主尚未装配的能力（隧道、open 路由） |
 | `E_INTERNAL` | 未分类的内部错误（退出码 1） |
 
 退出码依次为：`1` internal、`2` usage、`3` config、`4` not found、`5` credential、
 `6` read-only、`7` write flag、`8` dangerous、`9` production write、`10` timeout、
-`11` driver、`12` executor、`13` output。
+`11` driver、`12` executor、`13` output、`14` unsupported。
 
 ## 边界
 
 - `query`/`schema`/`context` 使用真实共享驱动执行；测试通过可注入
   `QueryExecutor` 覆盖 flag、limit、timeout，不伪造真实查询结果。
-- 需要桌面隧道（SSH/HTTP/WebSocket）或平台 vault 的凭据路径尚未在 CLI 装配；
-  使用 `DATAZEN_KEYRING=file` 或 `keyring`。这是明确的宿主装配边界，不是静默
-  使用假数据。
+- SSH/HTTP/WebSocket 隧道尚未在 CLI 装配。检测到隧道配置时命令返回
+  `E_UNSUPPORTED` 并拒绝连接，绝不会降级为直连绕过隧道。
+- 平台 vault：macOS 读取 `security` 中的 DataZen master key，Windows 读取 DPAPI
+  blob；其他平台使用 `DATAZEN_KEYRING=file`/`keyring`。无法读取密钥时返回
+  `E_CREDENTIAL`。
+- `open` 尚无桌面 deep-link 路由，因此明确失败；不输出不可消费的 URI。

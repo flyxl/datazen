@@ -3,8 +3,6 @@ use std::time::Duration;
 
 use clap::{Args, Parser, Subcommand};
 
-use crate::error::{CliError, E_USAGE};
-
 #[derive(Debug, Parser)]
 #[command(
     name = "datazen",

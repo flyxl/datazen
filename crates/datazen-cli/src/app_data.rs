@@ -63,12 +63,17 @@ impl AppDataStore {
     }
 
     pub fn key_backend(&self) -> &'static str {
-        if self.key_file_exists() {
-            "file"
-        } else if std::env::var("DATAZEN_KEYRING").ok().as_deref() == Some("keyring") {
-            "keyring"
-        } else {
-            "unavailable"
+        match std::env::var("DATAZEN_KEYRING").ok().as_deref() {
+            Some("keyring") => "keyring",
+            Some("file") => {
+                if self.key_file_exists() {
+                    "file"
+                } else {
+                    "unavailable"
+                }
+            }
+            _ if self.key_file_exists() => "file",
+            _ => auto_key_backend(),
         }
     }
 
@@ -138,17 +143,40 @@ impl AppDataStore {
     }
 
     fn encryption_key(&self) -> Result<[u8; 32], CliError> {
+        match std::env::var("DATAZEN_KEYRING").ok().as_deref() {
+            Some("keyring") => return read_keyring_key(),
+            Some("file") => return read_key_file(&self.data_dir),
+            _ => {}
+        }
         if self.key_file_exists() {
             return read_key_file(&self.data_dir);
         }
-        if std::env::var("DATAZEN_KEYRING").ok().as_deref() == Some("keyring") {
-            return read_keyring_key();
+        if crate::platform_vault::preferred() {
+            match crate::platform_vault::load().map_err(|error| {
+                CliError::new(
+                    E_CREDENTIAL,
+                    format!("cannot read the platform vault: {error}"),
+                )
+            })? {
+                Some(key) => return Ok(key),
+                None if cfg!(target_os = "windows") => {
+                    return Err(CliError::new(
+                        E_CREDENTIAL,
+                        "credentials are encrypted but the DPAPI vault has no DataZen master key",
+                    ));
+                }
+                None => {}
+            }
         }
-        Err(CliError::new(
-            E_CREDENTIAL,
-            "credentials are encrypted but no CLI key backend is available; \
-             set DATAZEN_KEYRING=file with the existing app .key, or DATAZEN_KEYRING=keyring",
-        ))
+        read_keyring_key()
+    }
+}
+
+fn auto_key_backend() -> &'static str {
+    if crate::platform_vault::preferred() {
+        "platform-vault"
+    } else {
+        "keyring"
     }
 }
 

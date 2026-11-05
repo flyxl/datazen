@@ -3,6 +3,7 @@ mod cli;
 mod commands;
 mod error;
 mod output;
+mod platform_vault;
 mod query;
 mod skill;
 

@@ -12,9 +12,12 @@ use crate::app_data::AppDataStore;
 use crate::cli::{
     AgentAction, Cli, Command, ContextArgs, OpenArgs, OutputArgs, QueryArgs, SchemaArgs,
 };
-use crate::error::{CliError, E_CONFIG, E_DRIVER, E_NOT_FOUND, E_TIMEOUT, E_USAGE};
+use crate::error::{CliError, E_CONFIG, E_DRIVER, E_NOT_FOUND, E_TIMEOUT, E_UNSUPPORTED, E_USAGE};
 use crate::output::{emit, Table};
-use crate::query::{guard_sql, is_production, run_with_executor, DriverExecutor, Safety};
+use crate::query::{
+    ensure_supported_host_wiring, guard_sql, is_production, run_with_executor, DriverExecutor,
+    Safety,
+};
 use crate::skill;
 
 pub struct Deps {
@@ -301,30 +304,22 @@ async fn query(deps: &Deps, args: QueryArgs) -> Result<(), CliError> {
 
 async fn open(deps: &Deps, args: OpenArgs) -> Result<(), CliError> {
     let (_store, config) = resolve_connection(deps, &args.connection).await?;
-    let mut uri = format!("datazen://connection/{}", config.id);
-    if let Some(query) = args.query.as_deref() {
-        uri.push_str(&format!("?query={}", encode_uri_component(query)));
-    }
-    let value = json!({
-        "connection": summary(&config),
-        "uri": uri,
-        "note": "hand this descriptor to the DataZen desktop app; the CLI does not execute the open",
-    });
-    let mut table = Table::new(["connection", "uri"]);
-    table.push([config.id, uri]);
-    emit(&value, &table, &opts(&args.output))
-}
-
-fn encode_uri_component(value: &str) -> String {
-    let mut out = String::new();
-    for byte in value.bytes() {
-        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
-            out.push(byte as char);
-        } else {
-            out.push_str(&format!("%{byte:02X}"));
-        }
-    }
-    out
+    // There is no host route registered for a connection id: `datazen://`
+    // hosts must be installed wapps, and the desktop has no CLI launch/deep-link
+    // handler. Emitting a fake URI would be worse than failing closed, so the
+    // command refuses until a real host route exists.
+    let suffix = if args.query.is_some() {
+        " and --query cannot be routed"
+    } else {
+        ""
+    };
+    Err(CliError::new(
+        E_UNSUPPORTED,
+        format!(
+            "opening connection '{}' from the CLI is not wired to a desktop route{}; no connection URI was emitted",
+            config.name, suffix
+        ),
+    ))
 }
 
 async fn agent(deps: &Deps, args: crate::cli::AgentArgs) -> Result<(), CliError> {
@@ -357,6 +352,7 @@ async fn fetch_tables(
     timeout: Duration,
     limit: usize,
 ) -> Result<Vec<TableInfo>, CliError> {
+    ensure_supported_host_wiring(config)?;
     let driver = create_driver(&config.database_type).ok_or_else(|| {
         CliError::new(
             E_DRIVER,
@@ -408,19 +404,6 @@ fn tables_table(tables: &[TableInfo]) -> Table {
         ]);
     }
     out
-}
-
-pub fn command_names() -> Vec<&'static str> {
-    vec![
-        "doctor",
-        "capabilities",
-        "connections",
-        "schema",
-        "query",
-        "context",
-        "open",
-        "agent",
-    ]
 }
 
 #[cfg(test)]
