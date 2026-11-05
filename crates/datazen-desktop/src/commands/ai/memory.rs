@@ -1147,6 +1147,51 @@ pub async fn ai_memory_update(
     record_to_dto(record)
 }
 
+fn structured_conflict(record: &AiMemoryRecord) -> bool {
+    record
+        .structured_json
+        .as_deref()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+        .and_then(|value| value.get("conflict").and_then(serde_json::Value::as_bool))
+        .unwrap_or(false)
+}
+
+fn resolved_conflict_metadata(
+    structured: Option<&str>,
+    archive_ids: &[String],
+    resolutions: &[serde_json::Value],
+) -> Result<Option<String>, CommandError> {
+    let mut object =
+        match structured.and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok()) {
+            Some(serde_json::Value::Object(map)) => map,
+            Some(other) => {
+                let mut map = serde_json::Map::new();
+                map.insert("value".into(), other);
+                map
+            }
+            None => serde_json::Map::new(),
+        };
+    object.insert("conflict".into(), serde_json::Value::Bool(false));
+    object.remove("conflictWith");
+    object.insert("conflictResolved".into(), serde_json::Value::Bool(true));
+    object.insert(
+        "conflictResolution".into(),
+        serde_json::Value::Array(resolutions.to_vec()),
+    );
+    object.insert(
+        "archivedIds".into(),
+        serde_json::Value::Array(
+            archive_ids
+                .iter()
+                .map(|id| serde_json::Value::String(id.clone()))
+                .collect(),
+        ),
+    );
+    Ok(Some(
+        serde_json::to_string(&serde_json::Value::Object(object)).map_err(CommandError::Json)?,
+    ))
+}
+
 async fn set_status(
     state: &State<'_, AppState>,
     id: &str,
@@ -1178,7 +1223,78 @@ pub async fn ai_memory_confirm(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<AiMemoryDto, CommandError> {
-    set_status(&state, &id, MemoryStatus::Active, "confirm").await
+    let (organization_id, principal_id) = scope(&state)?;
+    let db = state.store.app_db();
+    let mut record = db
+        .get_ai_memory(&organization_id, &principal_id, &id)
+        .map_err(map_storage_error)?
+        .ok_or_else(|| CommandError::NotFound("memory not found".into()))?;
+    let records = db
+        .list_ai_memories(&organization_id, &principal_id)
+        .map_err(map_storage_error)?;
+    let subject = normalize_memory_subject(&record.subject);
+    let same_slot: Vec<&AiMemoryRecord> = records
+        .iter()
+        .filter(|other| {
+            other.id != record.id
+                && other.status == MemoryStatus::Active.as_str()
+                && other.scope_type == record.scope_type
+                && other.scope_id == record.scope_id
+                && other.kind == record.kind
+                && normalize_memory_subject(&other.subject) == subject
+        })
+        .collect();
+    let incoming = existing_entry(&record);
+    let mut archive_ids = Vec::with_capacity(same_slot.len());
+    let mut resolutions = Vec::with_capacity(same_slot.len());
+    for other in &same_slot {
+        let resolution = resolve_memory_conflict(&existing_entry(other), &incoming);
+        resolutions.push(serde_json::json!({
+            "memoryId": other.id,
+            "resolution": resolution,
+        }));
+        archive_ids.push(other.id.clone());
+    }
+    record.status = MemoryStatus::Active.as_str().to_string();
+    record.updated_at = now().to_rfc3339();
+    if !archive_ids.is_empty() || structured_conflict(&record) {
+        record.structured_json = resolved_conflict_metadata(
+            record.structured_json.as_deref(),
+            &archive_ids,
+            &resolutions,
+        )?;
+    }
+    db.confirm_ai_memory_and_archive(&record, &archive_ids)
+        .map_err(map_storage_error)?;
+    let detail = serde_json::json!({
+        "choice": "confirmed-candidate",
+        "archivedIds": archive_ids,
+        "resolutions": resolutions,
+    });
+    append_audit_detail(
+        &state,
+        &id,
+        "confirm",
+        &principal_id,
+        Some(record.content_hash.clone()),
+        Some(record.content_hash.clone()),
+        Some(detail.clone()),
+    )?;
+    for other in same_slot {
+        append_audit_detail(
+            &state,
+            &other.id,
+            "archive",
+            &principal_id,
+            Some(other.content_hash.clone()),
+            Some(other.content_hash.clone()),
+            Some(serde_json::json!({
+                "reason": "superseded-by-confirm",
+                "confirmedId": record.id,
+            })),
+        )?;
+    }
+    record_to_dto(record)
 }
 
 #[tauri::command]

@@ -17,6 +17,7 @@ import {
   useConnectionColumnMaps,
 } from '../../stores/schemaStore';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { useAiStore } from '../../stores/aiStore';
 import { useI18n } from '../../hooks/useI18n';
 import { useResizable } from '../../hooks/useResizable';
 import { useCompactToolbar } from '../../hooks/useCompactToolbar';
@@ -32,6 +33,7 @@ import {
   markStaleForSchemaDrops,
   submitMemoryCorrectionIfNeeded,
 } from '../../lib/aiMemoryCorrection';
+import { extractMemoryPatternsIfNeeded } from '../../lib/aiMemoryPatterns';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { ResultMessageDialog } from '../../components/ui/ResultMessageDialog';
 import {
@@ -128,6 +130,10 @@ export function QueryPanel({
   const setChartConfig = usePanelStore((s) => s.setChartConfig);
   const setResultViewModeStore = usePanelStore((s) => s.setResultViewMode);
   const togglePinResult = usePanelStore((s) => s.togglePinResult);
+  const memoryAutoLearn = useAiStore((s) => {
+    const memory = s.settingsConfig?.memory;
+    return memory?.enabled === true && memory.autoLearn === true;
+  });
 
   const editorRef = useRef<SqlEditorHandle>(null);
   // The SQL last written by NL2SQL / a chat code block, per pane. A successful
@@ -514,6 +520,12 @@ export function QueryPanel({
         connectionId,
         database: selectedDatabase ?? database,
       });
+      void extractMemoryPatternsIfNeeded({
+        sql: completed.sql,
+        connectionId,
+        database: selectedDatabase ?? database,
+        autoLearn: memoryAutoLearn,
+      });
     },
   });
 
@@ -524,11 +536,12 @@ export function QueryPanel({
   const runChatSql = useCallback(
     (sql: string) => {
       // Put the generated SQL in the editor first; the gate's stale-snapshot
-      // check then compares the same statement the user is about to run.
-      updateSql(panelId, sql);
+      // check then compares the same statement the user is about to run. The
+      // baseline is what lets a later user edit become a T14 correction.
+      applyAiSql(sql, paneId);
       void executionGate.requestExecute('selection', sql, { confirmWrites: true });
     },
-    [panelId, updateSql, executionGate.requestExecute],
+    [applyAiSql, paneId, executionGate.requestExecute],
   );
   useEffect(() => registerQueryRunner(panelId, runChatSql), [panelId, runChatSql]);
 

@@ -9,7 +9,7 @@
 //! v7 migration, so these methods never write `ai_memories_fts` directly.
 
 use chrono::Utc;
-use rusqlite::{params, OptionalExtension, Row};
+use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::Serialize;
 
 use super::{AppDb, AppDbError};
@@ -272,100 +272,39 @@ impl AppDb {
 
     pub(crate) fn upsert_ai_memory(&self, memory: &AiMemoryRecord) -> Result<(), AppDbError> {
         validate_memory(memory)?;
-        self.with_conn(|conn| {
-            // A memory id is globally unique. An update may change content and
-            // scope metadata, but it must never re-home an existing row to a
-            // different organization or owner (that would defeat every scoped
-            // read/search below).
-            let existing: Option<(String, String)> = conn
-                .query_row(
-                    "SELECT organization_id, owner_principal_id FROM ai_memories WHERE id=?1",
-                    [memory.id.as_str()],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
-                )
-                .optional()?;
-            if let Some((organization_id, owner_principal_id)) = existing {
-                if organization_id != memory.organization_id
-                    || owner_principal_id != memory.owner_principal_id
-                {
-                    return Err(AppDbError::Validation(
-                        "an existing AI memory cannot change organization or owner".into(),
-                    ));
+        self.with_conn(|conn| upsert_ai_memory_on(conn, memory))
+    }
+
+    /// Activate a confirmed candidate and archive every superseded active row in
+    /// the same slot atomically. The caller has already chosen the candidate as
+    /// the winner; the archived ids are still supplied explicitly so a typo
+    /// cannot widen the archive set.
+    pub(crate) fn confirm_ai_memory_and_archive(
+        &self,
+        memory: &AiMemoryRecord,
+        archive_ids: &[String],
+    ) -> Result<(), AppDbError> {
+        validate_memory(memory)?;
+        self.with_conn_mut(|conn| {
+            let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            for id in archive_ids {
+                if id == &memory.id {
+                    continue;
                 }
+                tx.execute(
+                    "UPDATE ai_memories SET status='archived', updated_at=?1 \
+                      WHERE id=?2 AND organization_id=?3 AND owner_principal_id=?4 \
+                        AND status='active'",
+                    params![
+                        memory.updated_at,
+                        id,
+                        memory.organization_id,
+                        memory.owner_principal_id
+                    ],
+                )?;
             }
-            let changed = conn.execute(
-                "INSERT INTO ai_memories (\
-                   id, organization_id, owner_principal_id, scope_type, scope_id, connection_id, \
-                   database_name, schema_name, table_name, column_name, kind, subject, content, \
-                   structured_json, source, source_ref, confidence, sensitivity, status, pinned, \
-                   use_count, last_used_at, expires_at, content_hash, created_at, updated_at\
-                 ) VALUES (\
-                   ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, \
-                   ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26\
-                 ) ON CONFLICT(id) DO UPDATE SET \
-                   organization_id=excluded.organization_id, \
-                   owner_principal_id=excluded.owner_principal_id, \
-                   scope_type=excluded.scope_type, \
-                   scope_id=excluded.scope_id, \
-                   connection_id=excluded.connection_id, \
-                   database_name=excluded.database_name, \
-                   schema_name=excluded.schema_name, \
-                   table_name=excluded.table_name, \
-                   column_name=excluded.column_name, \
-                   kind=excluded.kind, \
-                   subject=excluded.subject, \
-                   content=excluded.content, \
-                   structured_json=excluded.structured_json, \
-                   source=excluded.source, \
-                   source_ref=excluded.source_ref, \
-                   confidence=excluded.confidence, \
-                   sensitivity=excluded.sensitivity, \
-                   status=excluded.status, \
-                   pinned=excluded.pinned, \
-                   use_count=excluded.use_count, \
-                   last_used_at=excluded.last_used_at, \
-                   expires_at=excluded.expires_at, \
-                   content_hash=excluded.content_hash, \
-                   updated_at=excluded.updated_at \
-                 WHERE ai_memories.organization_id=excluded.organization_id \
-                   AND ai_memories.owner_principal_id=excluded.owner_principal_id",
-                params![
-                    memory.id,
-                    memory.organization_id,
-                    memory.owner_principal_id,
-                    memory.scope_type,
-                    memory.scope_id,
-                    memory.connection_id,
-                    memory.database_name,
-                    memory.schema_name,
-                    memory.table_name,
-                    memory.column_name,
-                    memory.kind,
-                    memory.subject,
-                    memory.content,
-                    memory.structured_json,
-                    memory.source,
-                    memory.source_ref,
-                    memory.confidence,
-                    memory.sensitivity,
-                    memory.status,
-                    if memory.pinned { 1_i64 } else { 0 },
-                    memory.use_count,
-                    memory.last_used_at,
-                    memory.expires_at,
-                    memory.content_hash,
-                    memory.created_at,
-                    memory.updated_at
-                ],
-            )?;
-            // The WHERE above makes a cross-owner conflict a no-op instead of
-            // a re-home; treat that as a validation failure even if the
-            // pre-check raced with another writer.
-            if changed == 0 {
-                return Err(AppDbError::Validation(
-                    "an existing AI memory cannot change organization or owner".into(),
-                ));
-            }
+            upsert_ai_memory_on(&tx, memory)?;
+            tx.commit()?;
             Ok(())
         })
     }
@@ -545,6 +484,103 @@ impl AppDb {
             Ok(())
         })
     }
+}
+
+fn upsert_ai_memory_on(conn: &Connection, memory: &AiMemoryRecord) -> Result<(), AppDbError> {
+    // A memory id is globally unique. An update may change content and
+    // scope metadata, but it must never re-home an existing row to a
+    // different organization or owner (that would defeat every scoped
+    // read/search below).
+    let existing: Option<(String, String)> = conn
+        .query_row(
+            "SELECT organization_id, owner_principal_id FROM ai_memories WHERE id=?1",
+            [memory.id.as_str()],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    if let Some((organization_id, owner_principal_id)) = existing {
+        if organization_id != memory.organization_id
+            || owner_principal_id != memory.owner_principal_id
+        {
+            return Err(AppDbError::Validation(
+                "an existing AI memory cannot change organization or owner".into(),
+            ));
+        }
+    }
+    let changed = conn.execute(
+        "INSERT INTO ai_memories (\
+                   id, organization_id, owner_principal_id, scope_type, scope_id, connection_id, \
+                   database_name, schema_name, table_name, column_name, kind, subject, content, \
+                   structured_json, source, source_ref, confidence, sensitivity, status, pinned, \
+                   use_count, last_used_at, expires_at, content_hash, created_at, updated_at\
+                 ) VALUES (\
+                   ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, \
+                   ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26\
+                 ) ON CONFLICT(id) DO UPDATE SET \
+                   organization_id=excluded.organization_id, \
+                   owner_principal_id=excluded.owner_principal_id, \
+                   scope_type=excluded.scope_type, \
+                   scope_id=excluded.scope_id, \
+                   connection_id=excluded.connection_id, \
+                   database_name=excluded.database_name, \
+                   schema_name=excluded.schema_name, \
+                   table_name=excluded.table_name, \
+                   column_name=excluded.column_name, \
+                   kind=excluded.kind, \
+                   subject=excluded.subject, \
+                   content=excluded.content, \
+                   structured_json=excluded.structured_json, \
+                   source=excluded.source, \
+                   source_ref=excluded.source_ref, \
+                   confidence=excluded.confidence, \
+                   sensitivity=excluded.sensitivity, \
+                   status=excluded.status, \
+                   pinned=excluded.pinned, \
+                   use_count=excluded.use_count, \
+                   last_used_at=excluded.last_used_at, \
+                   expires_at=excluded.expires_at, \
+                   content_hash=excluded.content_hash, \
+                   updated_at=excluded.updated_at \
+                 WHERE ai_memories.organization_id=excluded.organization_id \
+                   AND ai_memories.owner_principal_id=excluded.owner_principal_id",
+        params![
+            memory.id,
+            memory.organization_id,
+            memory.owner_principal_id,
+            memory.scope_type,
+            memory.scope_id,
+            memory.connection_id,
+            memory.database_name,
+            memory.schema_name,
+            memory.table_name,
+            memory.column_name,
+            memory.kind,
+            memory.subject,
+            memory.content,
+            memory.structured_json,
+            memory.source,
+            memory.source_ref,
+            memory.confidence,
+            memory.sensitivity,
+            memory.status,
+            if memory.pinned { 1_i64 } else { 0 },
+            memory.use_count,
+            memory.last_used_at,
+            memory.expires_at,
+            memory.content_hash,
+            memory.created_at,
+            memory.updated_at
+        ],
+    )?;
+    // The WHERE above makes a cross-owner conflict a no-op instead of
+    // a re-home; treat that as a validation failure even if the
+    // pre-check raced with another writer.
+    if changed == 0 {
+        return Err(AppDbError::Validation(
+            "an existing AI memory cannot change organization or owner".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_memory(memory: &AiMemoryRecord) -> Result<(), AppDbError> {

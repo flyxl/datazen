@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
-import { render, fireEvent, cleanup, screen, act } from '@testing-library/react';
+import { render, fireEvent, cleanup, screen, act, waitFor } from '@testing-library/react';
 import { QueryPanel } from '../QueryPanel';
 import {
   usePanelStore,
@@ -8,6 +8,10 @@ import {
 } from '../../../stores/panelStore';
 import { EMPTY_QUERY_EXEC } from '../../../stores/queryExecActions';
 import { extensionRegistry, sqlEditorEnhancedEP } from '@datazen/extension-points';
+import { aiCommands } from '../../../commands/ai';
+import { queryCommands } from '../../../commands/query';
+import { requestQueryRun } from '../../../stores/queryRunRequestStore';
+import type { QueryHistoryEntry } from '../../../types';
 
 /**
  * Editor surface consumed by QueryPanel. Recorded on every render so the test
@@ -64,6 +68,14 @@ const panelConnectionState = vi.hoisted(() => ({
 
 const activeConnectionStoreState = vi.hoisted(() => ({
   connections: {} as Record<string, typeof panelConnectionState>,
+}));
+
+const aiState = vi.hoisted(() => ({
+  diagnosis: null as unknown,
+  isDiagnosing: false,
+  diagnosisError: null as string | null,
+  isConfigured: true,
+  settingsConfig: null as null | { memory: { enabled: boolean; autoLearn: boolean } },
 }));
 
 const schemaStoreState = vi.hoisted(() => ({
@@ -135,8 +147,7 @@ vi.mock('../../../components/ai/ExplainPanel', () => ({ ExplainPanel: () => null
 vi.mock('../../../components/ai/DiagnosisPanel', () => ({ DiagnosisPanel: () => null }));
 
 vi.mock('../../../stores/aiStore', () => ({
-  useAiStore: (sel: (s: unknown) => unknown) =>
-    sel({ diagnosis: null, isDiagnosing: false, diagnosisError: null, isConfigured: true }),
+  useAiStore: (sel: (s: typeof aiState) => unknown) => sel(aiState),
 }));
 
 extensionRegistry.register(sqlEditorEnhancedEP, {
@@ -216,6 +227,7 @@ const spies = vi.hoisted(() => ({
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
 });
 
@@ -440,5 +452,100 @@ describe('QueryPanel routes editor actions to the focused pane', () => {
       editor().onChange?.('SELECT 666666');
     });
     expect(spies.updateSql).toHaveBeenCalledWith(PANEL_ID, 'SELECT 666666');
+  });
+  it('extracts candidate patterns after a successful execution from recent history', async () => {
+    aiState.settingsConfig = { memory: { enabled: true, autoLearn: true } };
+    const repeated = 'SELECT * FROM orders o JOIN users u ON o.user_id = u.id';
+    const history: QueryHistoryEntry[] = [1, 2, 3].map((index) => ({
+      id: `h-${index}`,
+      connectionId: 'cfg-1',
+      database: 'app',
+      sql: repeated,
+      executedAt: `2026-04-1${index}T12:00:00.000Z`,
+      executionTimeMs: 5,
+      success: true,
+    }));
+    const historySpy = vi
+      .spyOn(queryCommands, 'getQueryHistoryPage')
+      .mockResolvedValue({ entries: history, total: history.length });
+    const extractSpy = vi.spyOn(aiCommands, 'memoryExtractCandidates').mockResolvedValue([]);
+
+    renderPanel();
+    usePanelStore.setState({
+      queryExec: new Map([
+        [
+          KEY_2,
+          {
+            ...EMPTY_QUERY_EXEC,
+            sql: repeated,
+            terminalState: 'succeeded' as const,
+          },
+        ],
+      ]),
+    });
+
+    await act(async () => {
+      editor().onExecute?.();
+    });
+    await waitFor(() => expect(extractSpy).toHaveBeenCalledTimes(1));
+
+    expect(historySpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        limit: 100,
+        connectionId: 'cfg-1',
+        database: 'app',
+        order: 'recent',
+      }),
+    );
+    expect(extractSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sql: repeated,
+        connectionId: 'cfg-1',
+        database: 'app',
+        history: expect.arrayContaining([expect.objectContaining({ sql: repeated })]),
+        windowDays: 14,
+        minOccurrences: 3,
+      }),
+    );
+    const sent = extractSpy.mock.calls[0][0] as { sql: string; history: unknown[] };
+    expect(1 + sent.history.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('turns a Chat SQL edit that later succeeds into a correction candidate', async () => {
+    const correctionSpy = vi.spyOn(aiCommands, 'memoryCorrectionCandidate').mockResolvedValue(null);
+
+    renderPanel();
+    await act(async () => {
+      requestQueryRun(PANEL_ID, 'SELECT chat_generated');
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(spies.executeSelection).toHaveBeenCalled());
+    expect(spies.updateSql).toHaveBeenCalledWith(PANEL_ID, 'SELECT chat_generated', PANE_2);
+
+    // The user edits the Chat-provided SQL and reruns it successfully.
+    usePanelStore.setState({
+      queryExec: new Map([
+        [
+          KEY_2,
+          {
+            ...EMPTY_QUERY_EXEC,
+            sql: 'SELECT chat_edited',
+            terminalState: 'succeeded' as const,
+          },
+        ],
+      ]),
+    });
+    await act(async () => {
+      editor().onExecute?.();
+    });
+
+    await waitFor(() =>
+      expect(correctionSpy).toHaveBeenCalledWith({
+        originalSql: 'SELECT chat_generated',
+        newSql: 'SELECT chat_edited',
+        connectionId: 'cfg-1',
+        database: 'app',
+      }),
+    );
   });
 });

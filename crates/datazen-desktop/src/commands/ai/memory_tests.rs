@@ -772,6 +772,36 @@ async fn conflicting_candidate_preserves_active_memory_and_marks_conflict() {
         .expect("active row");
     assert_eq!(still_active.status, MemoryStatus::Active);
     assert_eq!(still_active.content, "Use en-US for reports");
+
+    let confirmed = ai_memory_confirm(app.state(), candidate.id.clone())
+        .await
+        .unwrap();
+    assert_eq!(confirmed.status, MemoryStatus::Active);
+    assert!(!confirmed.conflict);
+    assert_eq!(
+        confirmed
+            .structured_json
+            .as_ref()
+            .and_then(|value| value.get("conflictResolved"))
+            .and_then(serde_json::Value::as_bool),
+        Some(true)
+    );
+    let all = list_all(&app).await;
+    assert_eq!(
+        all.entries
+            .iter()
+            .filter(|entry| entry.status == MemoryStatus::Active)
+            .count(),
+        1,
+        "PRD requires exactly one active row per slot"
+    );
+    let old = all
+        .entries
+        .iter()
+        .find(|entry| entry.id == active.id)
+        .expect("old active row");
+    assert_eq!(old.status, MemoryStatus::Archived);
+    assert_eq!(confirmed.content, "Use en-GB for reports");
 }
 
 #[tokio::test]
