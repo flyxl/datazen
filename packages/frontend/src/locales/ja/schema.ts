@@ -318,7 +318,10 @@ const pack = {
   'fkNav.error.targetUnresolved':
     '{target} に到達できません。存在しないか、別のデータベースにあるか、読み取れない可能性があります',
   'fkNav.error.probeFailed': '対象テーブルは見つかりましたが、読み取れませんでした',
+  'fkNav.error.noReferences': 'この行を参照するテーブルはありません',
   'fkNav.error.unknown': '外部キーのナビゲーションに失敗しました',
+  'fkSelector.pickFrom': '{target} から参照値を選択します',
+  'fkSelector.notUnique': '参照される列が一意ではないため、値を安全に選択できません',
   'schemaTree.generateSql': 'SQL 生成',
   'schemaTree.generateSelect': 'SELECT を生成',
   'schemaTree.generateInsert': 'INSERT を生成',

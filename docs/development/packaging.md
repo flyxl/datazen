@@ -50,20 +50,17 @@ xattr -cr /Applications/DataZen.app
 
 The Homebrew cask template runs `xattr -cr` in `postflight` (see [`packaging/homebrew/datazen.rb`](../../packaging/homebrew/datazen.rb)). GitHub release bodies include the same instructions (`.github/workflows/release.yml`).
 
-### Notarization checklist (release ops — docs only)
+### GitHub Actions signing and notarization
 
-Do **not** commit signing secrets. When enabling notarization in CI or manual release:
+The macOS matrix in `.github/workflows/release.yml` imports the Developer ID identity from the `release` environment before building. Export the identity, including its private key, as a password-protected `.p12`; do **not** commit the file or any signing secrets.
 
-| Step | Action |
-|------|--------|
-| 1. Apple Developer | Enroll in Apple Developer Program; create **Developer ID Application** certificate |
-| 2. Keychain / CI secret | Export cert + private key as `.p12`; store as GitHub **release** environment secret (e.g. `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`) |
-| 3. Notary credentials | App-specific password or App Store Connect API key (`APPLE_ID`, `APPLE_TEAM_ID`, `APPLE_API_KEY_*`) |
-| 4. Sign app bundle | `codesign --force --deep --options runtime --sign "Developer ID Application: …" DataZen.app` |
-| 5. Notarize | `xcrun notarytool submit DataZen.dmg --apple-id … --team-id … --password … --wait` (or API key variant) |
-| 6. Staple | `xcrun stapler staple DataZen.dmg` (and/or staple the `.app` before bundling) |
-| 7. Verify | `spctl -a -vv -t install /Applications/DataZen.app` → `accepted` / `source=Notarized Developer ID` |
-| 8. User docs | Once notarized, update release notes to **remove** mandatory `xattr` steps; keep as fallback for side-loaded copies |
+| GitHub `release` environment secret | Contents |
+|------------------------------------|----------|
+| `APPLE_CERTIFICATE` | Base64-encoded `.p12` containing the Developer ID Application certificate and private key |
+| `APPLE_CERTIFICATE_PASSWORD` | Password used when exporting the `.p12` |
+| `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` | Optional notarization credentials; use an app-specific password for `APPLE_PASSWORD` |
+
+The workflow imports the certificate into a temporary macOS keychain and derives `APPLE_SIGNING_IDENTITY` from it. If notarization credentials are present, Tauri notarizes and staples the macOS bundle during the build. Until then, the app can be signed but Gatekeeper may still warn that it is not notarized. Verify a notarized build with `spctl -a -vv -t exec /Applications/DataZen.app` and `xcrun stapler validate /Applications/DataZen.app`.
 
 Tauri v2 signing hooks live in `tauri.conf.json` (`bundle.macOS.signingIdentity`, etc.). Updater minisign keys ([`updater.md`](updater.md)) are **independent** of Apple code signing.
 

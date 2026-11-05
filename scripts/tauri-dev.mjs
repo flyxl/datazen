@@ -128,10 +128,15 @@ const tauriArgs = ['tauri', 'dev'];
 // 桌面 crate 自 W7-B 起 `default = ["drivers"]`：与 ci-tauri-build 一致，脚本化
 // 路径先关 default，再显式传 resolve-drivers 算出的特征集，保证
 // `tauri:dev --drivers=basic` 等的驱动集与 default=[] 时代相同。
-tauriArgs.push('--no-default-features');
+// CLI 2.10.1 起 build/dev 都不再把 `--no-default-features` 当自己的开关，
+// 要走 `--` 交给 cargo（与 ci-tauri-build / e2e-tauri-build 一致）。
+if (features.length === 0) {
+  tauriArgs.push('--', '--no-default-features');
+}
 
 if (features.length > 0) {
   tauriArgs.push('-f', features.join(','));
+  tauriArgs.push('--', '--no-default-features');
 }
 
 tauriArgs.push(...otherArgs);

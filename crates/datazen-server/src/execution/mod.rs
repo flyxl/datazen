@@ -25,6 +25,9 @@
 //! - [`ephemeral`]：W8-b ② —— driverType 直取（无连接执行）的内存
 //!   ephemeral 会话注册表（CSPRNG 句柄 + 归属盖章 + TTL；消费者：
 //!   driverGateway 域的 driverType 直取分支）。
+//! - [`table_columns`]：W8 刀1 —— `table_editing::TableColumnSource` 端口的
+//!   server 实现（变更二端点的命令面列源备料件：`get_table_schema` 经
+//!   runner target 分支现查；组件按请求构造，不进全局装配图）。
 
 pub mod budget;
 pub mod budget_bridge;
@@ -40,6 +43,7 @@ pub mod resource_host;
 pub mod secret_provider;
 pub mod session_directory;
 pub mod submission_token;
+pub mod table_columns;
 pub mod target_runner;
 
 #[cfg(test)]

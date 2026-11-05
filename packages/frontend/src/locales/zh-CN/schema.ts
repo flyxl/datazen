@@ -312,6 +312,9 @@ const pack = {
   'fkNav.error.valueNull': '复合主键的某一部分为 NULL',
   'fkNav.error.targetUnresolved': '无法访问 {target}；它可能不存在、位于其他数据库中，或无法读取',
   'fkNav.error.probeFailed': '已找到目标表，但无法读取',
+  'fkNav.error.noReferences': '没有表引用该行',
   'fkNav.error.unknown': '外键导航失败',
+  'fkSelector.pickFrom': '从 {target} 中选择一个参考值',
+  'fkSelector.notUnique': '引用的列不是唯一的，因此无法安全地选取值',
 } as const;
 export default pack;

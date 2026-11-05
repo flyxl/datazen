@@ -12,46 +12,31 @@
  * turns the assertions below red (`ui/mongodbFind.test.ts` is logic-only and
  * cannot see the registry at all).
  *
- * It also pins the conventions the contract relies on: the registered locale
- * codes are exactly the language files shipped in `locales/`, and every key of
- * every shipped dictionary lands in the registry with its shipped value.
+ * It also pins the bundle boundary: only English and Simplified Chinese are
+ * imported, while the other locale source files stay out of the runtime pack.
+ * Every bundled dictionary key must land in the registry with its shipped value.
  */
 import { describe, expect, it } from 'vitest';
-import { readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { getRegisteredTranslations, t } from '@datazen/ui';
 
 // Real loading path — the module generated.ts imports. Not locales/index.ts.
 import '../meta';
 
-import de from '../../locales/de';
 import en from '../../locales/en';
-import es from '../../locales/es';
-import fr from '../../locales/fr';
-import ja from '../../locales/ja';
-import ko from '../../locales/ko';
-import ptBR from '../../locales/pt-BR';
-import ru from '../../locales/ru';
 import zhCN from '../../locales/zh-CN';
-import zhTW from '../../locales/zh-TW';
 
 const PACK_PREFIX = 'mongo.';
 
-/** Locale codes the pack registers — must match host `src/locales/` literals. */
+/** Locale codes bundled by the app: English and Simplified Chinese. */
 const SHIPPED_LOCALES: Record<string, Record<string, string>> = {
   en,
   'zh-CN': zhCN,
-  'zh-TW': zhTW,
-  de,
-  es,
-  fr,
-  ja,
-  ko,
-  'pt-BR': ptBR,
-  ru,
 };
 
 const localesDir = resolve(import.meta.dirname, '../../locales');
+const SOURCE_ONLY_LOCALES = ['de', 'es', 'fr', 'ja', 'ko', 'pt-BR', 'ru', 'zh-TW'];
 
 const driverKeysOf = (locale: string): string[] =>
   Object.keys(getRegisteredTranslations(locale)).filter((key) => key.startsWith(PACK_PREFIX));
@@ -91,13 +76,16 @@ describe('[tester] mongodb locale pack self-registration via ui entry module', (
     expect(driverKeySetOf('en')).toEqual([...Object.keys(en)].sort());
   });
 
-  it('keeps the registered locale-code literals in sync with locales/*.ts', () => {
-    const fileCodes = readdirSync(localesDir)
-      .filter((name) => name.endsWith('.ts') && name !== 'index.ts')
-      .map((name) => name.replace(/\.ts$/, ''))
+  it('imports only the shipped locale dictionaries', () => {
+    const indexSource = readFileSync(resolve(localesDir, 'index.ts'), 'utf-8');
+    const importedLocales = [...indexSource.matchAll(/from '\.\/([^']+)'/g)]
+      .map((match) => match[1])
       .sort();
 
-    expect(fileCodes).toEqual([...Object.keys(SHIPPED_LOCALES)].sort());
+    expect(importedLocales).toEqual([...Object.keys(SHIPPED_LOCALES)].sort());
+    for (const locale of SOURCE_ONLY_LOCALES) {
+      expect(getRegisteredTranslations(locale), `${locale} should remain source-only`).toEqual({});
+    }
   });
 
   it('registers every key of every shipped dictionary with its shipped value', () => {
@@ -114,10 +102,9 @@ describe('[tester] mongodb locale pack self-registration via ui entry module', (
   });
 
   it('registers each locale under its exact hyphenated code only', () => {
-    expect(driverKeySetOf('pt-BR')).toEqual([...Object.keys(ptBR)].sort());
     expect(driverKeySetOf('zh-CN')).toEqual([...Object.keys(zhCN)].sort());
-    expect(driverKeySetOf('zh-TW')).toEqual([...Object.keys(zhTW)].sort());
-    expect(getRegisteredTranslations('pt_BR')).toEqual({});
+    expect(getRegisteredTranslations('zh-TW')).toEqual({});
+    expect(getRegisteredTranslations('de')).toEqual({});
     expect(getRegisteredTranslations('zh_cn')).toEqual({});
   });
 });

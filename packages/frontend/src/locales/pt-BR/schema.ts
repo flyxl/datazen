@@ -316,7 +316,11 @@ const pack = {
   'fkNav.error.targetUnresolved':
     'Não foi possível acessar {target}; ela pode estar ausente, em outro banco de dados ou ilegível',
   'fkNav.error.probeFailed': 'A tabela de destino foi encontrada, mas não pôde ser lida',
+  'fkNav.error.noReferences': 'Nenhuma tabela faz referência a esta linha',
   'fkNav.error.unknown': 'A navegação pela chave estrangeira falhou',
+  'fkSelector.pickFrom': 'Escolha um valor referenciado em {target}',
+  'fkSelector.notUnique':
+    'As colunas referenciadas não são exclusivas, portanto, um valor não pode ser escolhido com segurança',
   'schemaTree.generateSql': 'Gerar SQL',
   'schemaTree.generateSelect': 'Gerar SELECT',
   'schemaTree.generateInsert': 'Gerar INSERT',

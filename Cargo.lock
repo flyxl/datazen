@@ -2052,7 +2052,7 @@ dependencies = [
 
 [[package]]
 name = "datazen_desktop"
-version = "0.2.3"
+version = "0.3.0"
 dependencies = [
  "aes-gcm 0.10.3",
  "async-trait",

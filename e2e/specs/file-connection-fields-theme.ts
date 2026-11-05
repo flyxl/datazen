@@ -8,15 +8,13 @@ import {
   openNewConnectionDialogFromUi,
   selectNewConnectionDriver,
 } from '../helpers.js';
+import { FRONTEND_SRC, REPO_ROOT, desktopPackage, frontendSource } from '../lib/repoPaths.js';
 
-const ROOT = path.resolve(import.meta.dirname, '../..');
-const FILE_CONNECTION_FIELDS = path.join(
-  ROOT,
-  'src/components/connection/FileConnectionFields.tsx',
-);
-const THEMES_CSS = path.join(ROOT, 'src/styles/themes.css');
-const TAILWIND_CONFIG = path.join(ROOT, 'tailwind.config.ts');
-const CONNECTION_DIR = path.join(ROOT, 'src/components/connection');
+const ROOT = REPO_ROOT;
+const FILE_CONNECTION_FIELDS = frontendSource('components/connection/FileConnectionFields.tsx');
+const THEMES_CSS = frontendSource('styles/themes.css');
+const TAILWIND_CONFIG = desktopPackage('tailwind.config.ts');
+const CONNECTION_DIR = path.join(FRONTEND_SRC, 'components/connection');
 
 const HARDCODED_NEUTRAL_PATTERN = /\bneutral-(300|400|500|600|700|800)\b/;
 const REQUIRED_SEMANTIC_CLASSES = [

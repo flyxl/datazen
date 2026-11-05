@@ -27,11 +27,16 @@ env:
 jobs:
   # Run only the CI half changed since the last successful run for this PR or
   # branch. A first run checks the whole PR/push range; manual runs stay full.
+  # docs-only PR（merge-base diff 全部落入 scripts/ci_scope.py 的 DOCS_ONLY
+  # 白名单）豁免 rust/frontend/ci：判定只看 PR 自身的 merge-base diff，与
+  # run 间窗口无关——merge 过 main 的分支会把产品变更（版本号 bump 等）带进
+  # 窗口（PR #182 教训），那不是 PR 的变更。push / 手动事件不受影响。
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
       frontend: ${{ steps.scope.outputs.frontend }}
       rust: ${{ steps.scope.outputs.rust }}
+      docs_only: ${{ steps.scope.outputs.docs_only }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -59,7 +64,8 @@ jobs:
   # 前端段不消费 cargo 产物），墙钟时间 = max(前端, Rust) 而非两者之和。
   frontend:
     needs: [detect-changes]
-    if: needs.detect-changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
+    # docs-only PR 跳过重型 job；括号不能省（&& 优先级高于 ||）。
+    if: needs.detect-changes.outputs.docs_only != 'true' && (needs.detect-changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
 
     steps:
@@ -226,7 +232,8 @@ jobs:
   # ── Rust 段：工具链 → 系统依赖 → rust-cache → 驱动注入 → cargo 测试 ──
   rust:
     needs: [detect-changes]
-    if: needs.detect-changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch'
+    # docs-only PR 跳过重型 job；括号不能省（&& 优先级高于 ||）。
+    if: needs.detect-changes.outputs.docs_only != 'true' && (needs.detect-changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
 
     # 本地冷构建纪律（磁盘易满）搬到 CI（2026-11-04 run 1376 教训）：
@@ -563,7 +570,9 @@ jobs:
   # 分支保护的 required status check 盯 `ci` 一个即可，拆分 job 不影响它。
   ci:
     needs: [detect-changes, frontend, rust]
-    if: always()
+    # docs-only PR：本 job 也跳过（skipped check 视为满足分支保护要求）；
+    # detect-changes 失败时 docs_only 为空 ≠ 'true'，本 job 照常跑并红。
+    if: needs.detect-changes.outputs.docs_only != 'true' && always()
     runs-on: ubuntu-latest
     steps:
       - name: Verify selected checks passed

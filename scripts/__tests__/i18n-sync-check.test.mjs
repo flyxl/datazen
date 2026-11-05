@@ -125,7 +125,7 @@ describe('i18n-sync-check driver locale packs', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  /** Write one driver pack; `importedLocales` defaults to every locale file. */
+  /** Write one driver pack; `importedLocales` defaults to the shipped locale files. */
   const writePack = (driver, { en, locales = {}, index = true, importedLocales }) => {
     const dir = join(driversDir, driver, 'locales');
     mkdirSync(dir, { recursive: true });
@@ -142,7 +142,7 @@ describe('i18n-sync-check driver locale packs', () => {
       );
     }
     if (index) {
-      const codes = importedLocales ?? Object.keys(locales);
+      const codes = importedLocales ?? ['en', ...Object.keys(locales)];
       writeFileSync(join(dir, 'index.ts'), indexSource(codes));
     }
     return dir;
@@ -199,7 +199,10 @@ describe('i18n-sync-check driver locale packs', () => {
     it('reports a clean pack with no issue and no output line', () => {
       const dir = writePack('redis', {
         en: { 'redis.a': 'A', 'redis.b': 'B' },
-        locales: { de: { 'redis.a': 'A-de', 'redis.b': 'B-de' } },
+        locales: {
+          'zh-CN': { 'redis.a': '甲', 'redis.b': '乙' },
+          de: { 'redis.a': 'A-de' },
+        },
       });
       expect(inspectDriverLocalePack({ driver: 'redis', dir })).toEqual({
         lines: [],
@@ -211,7 +214,7 @@ describe('i18n-sync-check driver locale packs', () => {
     it('counts a missing locales/index.ts as a structural issue', () => {
       const dir = writePack('redis', {
         en: { 'redis.a': 'A' },
-        locales: { de: { 'redis.a': 'A-de' } },
+        locales: { 'zh-CN': { 'redis.a': '甲' } },
         index: false,
       });
       const result = inspectDriverLocalePack({ driver: 'redis', dir });
@@ -224,27 +227,27 @@ describe('i18n-sync-check driver locale packs', () => {
     it('lists locale files the index forgot to import', () => {
       const dir = writePack('redis', {
         en: { 'redis.a': 'A' },
-        locales: { de: { 'redis.a': 'A-de' }, ja: { 'redis.a': 'A-ja' } },
-        importedLocales: ['de'],
+        locales: { 'zh-CN': { 'redis.a': '甲' }, de: { 'redis.a': 'A-de' } },
+        importedLocales: ['en'],
       });
       const result = inspectDriverLocalePack({ driver: 'redis', dir });
       expect(result.structural).toBe(1);
       expect(result.lines.join('\n')).toContain(
-        '[driver.redis] locales/index.ts does not import 1 locale file(s): ja.ts',
+        '[driver.redis] locales/index.ts does not import 1 locale file(s): zh-CN.ts',
       );
     });
 
     it('counts keys missing against en.ts and truncates the listing at 10', () => {
       const en = {};
-      const de = {};
+      const zhCN = {};
       for (let i = 0; i < 20; i += 1) en[`redis.k${i}`] = `V${i}`;
-      for (let i = 0; i < 5; i += 1) de[`redis.k${i}`] = `v${i}`;
-      const dir = writePack('redis', { en, locales: { de } });
+      for (let i = 0; i < 5; i += 1) zhCN[`redis.k${i}`] = `v${i}`;
+      const dir = writePack('redis', { en, locales: { 'zh-CN': zhCN } });
       const result = inspectDriverLocalePack({ driver: 'redis', dir });
       const text = result.lines.join('\n');
       expect(result.missing).toBe(15);
       expect(result.structural).toBe(0);
-      expect(text).toContain('[driver.redis/de]');
+      expect(text).toContain('[driver.redis/zh-CN]');
       expect(text).toContain('Missing 15 key(s):');
       expect(text.trimEnd().endsWith('…')).toBe(true);
     });
@@ -252,7 +255,7 @@ describe('i18n-sync-check driver locale packs', () => {
     it('lists extra keys without failing the run', () => {
       const dir = writePack('redis', {
         en: { 'redis.a': 'A' },
-        locales: { de: { 'redis.a': 'A-de', 'redis.stale': 'Alt' } },
+        locales: { 'zh-CN': { 'redis.a': '甲', 'redis.stale': '旧' } },
       });
       const result = inspectDriverLocalePack({ driver: 'redis', dir });
       expect(result.missing).toBe(0);
@@ -264,7 +267,7 @@ describe('i18n-sync-check driver locale packs', () => {
       const dir = writePack('redis', {
         en: { 'redis.a': 'A', 'redis.b': 'B' },
         locales: {
-          de: dictSource(["  'redis.a':", "    'A long German value',", "  'redis.b': 'B-de',"]),
+          'zh-CN': dictSource(["  'redis.a':", "    '一个较长的翻译',", "  'redis.b': '乙',"]),
         },
       });
       expect(inspectDriverLocalePack({ driver: 'redis', dir }).missing).toBe(0);
@@ -275,11 +278,11 @@ describe('i18n-sync-check driver locale packs', () => {
     it('aggregates every pack below the drivers directory', () => {
       writePack('redis', {
         en: { 'redis.a': 'A' },
-        locales: { de: {} },
+        locales: { 'zh-CN': {} },
       });
       writePack('mongodb', {
         en: { 'mongo.a': 'A' },
-        locales: { de: { 'mongo.a': 'A-de' } },
+        locales: { 'zh-CN': { 'mongo.a': '甲' } },
         index: false,
       });
       const result = checkDriverLocalePacks(driversDir);
@@ -306,7 +309,7 @@ describe('i18n-sync-check driver locale packs', () => {
       expect(
         buildSyncReport({ totalMissing: 0, totalStale: 0, totalStructural: 0, driverPackCount: 2 }),
       ).toEqual({
-        lines: ['All locale files are in sync with en.ts.'],
+        lines: ['All shipped locale files are in sync with en.ts.'],
         exitCode: 0,
       });
     });
@@ -320,7 +323,7 @@ describe('i18n-sync-check driver locale packs', () => {
       });
       expect(report.exitCode).toBe(1);
       expect(report.lines[0].trim()).toBe(
-        'Summary: 3 missing key(s), 0 stale translation(s) across 9 host locales; 0 driver pack issue(s) across 2 driver locale pack(s).',
+        'Summary: 3 missing key(s), 0 stale translation(s) across 1 host locales; 0 driver pack issue(s) across 2 driver locale pack(s).',
       );
     });
 
