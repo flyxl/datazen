@@ -159,6 +159,47 @@ mod tests {
     }
 
     #[test]
+    fn non_matching_database_default_is_not_injected_without_a_generic_default() {
+        let settings = AiSettingsConfig {
+            prompt_templates: vec![template("mysql-only", &["mysql"], true)],
+            ..Default::default()
+        };
+        assert!(settings
+            .select_prompt_template(None, Some("postgresql"))
+            .is_none());
+        assert!(settings.select_prompt_template(None, None).is_none());
+        assert_eq!(
+            settings
+                .select_prompt_template(None, Some("mysql"))
+                .map(|t| t.id.as_str()),
+            Some("mysql-only")
+        );
+    }
+
+    #[test]
+    fn generic_default_still_covers_an_unmatched_or_absent_database_type() {
+        let settings = AiSettingsConfig {
+            prompt_templates: vec![
+                template("mysql-only", &["mysql"], true),
+                template("generic", &[], true),
+            ],
+            ..Default::default()
+        };
+        assert_eq!(
+            settings
+                .select_prompt_template(None, Some("postgresql"))
+                .map(|t| t.id.as_str()),
+            Some("generic")
+        );
+        assert_eq!(
+            settings
+                .select_prompt_template(None, None)
+                .map(|t| t.id.as_str()),
+            Some("generic")
+        );
+    }
+
+    #[test]
     fn unknown_explicit_id_falls_back_to_default() {
         let settings = AiSettingsConfig {
             prompt_templates: vec![template("generic", &[], true)],

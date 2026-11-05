@@ -285,8 +285,9 @@ impl AiSettingsConfig {
     }
 
     /// Explicit template id first; otherwise the first default whose
-    /// `databaseTypes` matches (empty list = every database), falling back to
-    /// a generic default.
+    /// `databaseTypes` matches. A generic default (empty `databaseTypes`)
+    /// covers an unmatched/absent database type. When neither matches, return
+    /// `None`: never inject a template that targets another database.
     pub fn select_prompt_template(
         &self,
         template_id: Option<&str>,
@@ -320,7 +321,6 @@ impl AiSettingsConfig {
             .iter()
             .copied()
             .find(|template| template.database_types.is_empty())
-            .or_else(|| defaults.first().copied())
     }
 
     pub fn selected_prompt_template(

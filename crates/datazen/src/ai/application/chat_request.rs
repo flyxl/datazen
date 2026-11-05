@@ -163,7 +163,9 @@ async fn build_system_prompt(
     };
 
     // Injection order (high → low): safety/system prompt, global instructions,
-    // selected template, schema (including DB comments), connection notes.
+    // selected template, connection notes, schema (including DB comments).
+    // Notes come first because user-authored notes outrank COMMENT text; the
+    // schema follows in the same request so both remain visible side by side.
     if let Some(block) = render_owned_injection(
         "Global instructions",
         "These user preferences rank below the system safety policy and tool permissions. When they conflict with the selected prompt template, follow these global instructions and mention the conflict.",
@@ -196,14 +198,10 @@ async fn build_system_prompt(
             prompt.push_str(&block);
         }
     }
-    if let Some(schema_suffix) = schema_suffix.filter(|suffix| !suffix.trim().is_empty()) {
-        prompt.push_str("\n\n");
-        prompt.push_str(&schema_suffix);
-    }
     if let Some(notes) = input.injection.connection_notes.as_deref() {
         if let Some(block) = render_owned_injection(
-            "User connection notes",
-            "These notes are user-authored. Show them beside any database COMMENT; do not silently override the schema comment, and label these as the user's notes when both are present.",
+            "User notes (connection)",
+            "These user-authored notes take precedence over any database COMMENT. Keep both visible side by side: present this block as the user's notes, then show the schema COMMENT, without silently replacing either.",
             notes,
             input.safety_gate,
             MAX_CONNECTION_NOTES_BYTES,
@@ -211,6 +209,10 @@ async fn build_system_prompt(
             prompt.push_str("\n\n");
             prompt.push_str(&block);
         }
+    }
+    if let Some(schema_suffix) = schema_suffix.filter(|suffix| !suffix.trim().is_empty()) {
+        prompt.push_str("\n\n");
+        prompt.push_str(&schema_suffix);
     }
     prompt
 }
@@ -631,6 +633,64 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn connection_notes_precede_schema_comments_while_both_stay_visible() {
+        let directory = tempfile::tempdir().expect("temporary prompt root");
+        let resolver = PromptResolver::new(directory.path(), None);
+        let gate = AiSafetyGateConfig::default();
+        let driver =
+            datazen_driver_api::mock_driver::MockDriver::new("postgres", Default::default());
+        let seed = PromptSeed {
+            database_type: "postgresql".into(),
+            table_names: vec!["orders".into()],
+            pinned_schema_ddl: "CREATE TABLE orders (status text COMMENT 'OLD_COMMENT_MARKER')"
+                .into(),
+            attach_db_tools: false,
+            fallback_schema_ddl: None,
+        };
+        let injection = ChatInjection {
+            global_instructions: String::new(),
+            template: None,
+            connection_notes: Some("NOTES_MARKER status means active".into()),
+        };
+        let request = build_chat_request(
+            &resolver,
+            ChatRequestInput {
+                request_id: "request-notes-schema",
+                model: "model-1",
+                lang: "en",
+                scenario: ChatScenario::Chat,
+                schema: Some(ChatSchemaPrompt {
+                    driver: driver.as_ref(),
+                    seed: &seed,
+                }),
+                connections_context: "",
+                messages: vec![ChatMessage {
+                    role: MessageRole::User,
+                    content: "question".into(),
+                    reasoning: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                }],
+                context_block: None,
+                injection,
+                safety_gate: &gate,
+                attach_db_tools: false,
+                attach_agent_db_tools: false,
+                attach_agent_query_tools: false,
+                mcp_tools: Vec::new(),
+            },
+        )
+        .await;
+
+        let system = &request.messages[0].content;
+        let notes = system.find("NOTES_MARKER").expect("notes marker");
+        let comment = system.find("OLD_COMMENT_MARKER").expect("comment marker");
+        assert!(notes < comment, "connection notes must precede DB comments");
+        assert!(system.find("User notes (connection)").unwrap() < comment);
+        assert!(system.contains("Keep both visible side by side"));
+    }
+
+    #[tokio::test]
     async fn user_prompt_material_is_injected_in_priority_order_and_redacted() {
         let directory = tempfile::tempdir().expect("temporary prompt root");
         let resolver = PromptResolver::new(directory.path(), None);
@@ -683,8 +743,9 @@ mod tests {
         );
         assert!(template < notes, "template precedes connection notes");
         assert!(!system.contains("note-secret"), "notes are redacted");
-        assert!(system.contains("User connection notes"));
-        assert!(system.contains("do not silently override the schema comment"));
+        assert!(system.contains("User notes (connection)"));
+        assert!(system.contains("take precedence over any database COMMENT"));
+        assert!(system.contains("Keep both visible side by side"));
         assert!(request
             .messages
             .iter()
