@@ -22,10 +22,14 @@
 //! - [`target_runner`]：W8-a P2 —— `table_browsing::api::TargetCommandRunner`
 //!   端口的 server 实现（tableData 读半边的执行面：目标解析、提交、轮询、
 //!   产物分块收集；消费者：tableData 域路由）。
+//! - [`ephemeral`]：W8-b ② —— driverType 直取（无连接执行）的内存
+//!   ephemeral 会话注册表（CSPRNG 句柄 + 归属盖章 + TTL；消费者：
+//!   driverGateway 域的 driverType 直取分支）。
 
 pub mod budget;
 pub mod budget_bridge;
 pub mod driver_exec;
+pub mod ephemeral;
 pub mod identity;
 pub mod lease;
 pub mod lease_use_cases;
