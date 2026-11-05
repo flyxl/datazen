@@ -34,6 +34,7 @@ import { pruneKvSlotStates } from '../../lib/kvSlotState';
 import { ContentViewDialogs } from './ContentViewDialogs';
 import { ContentViewDrawers } from './ContentViewDrawers';
 import { requestQueryRun } from '../../stores/queryRunRequestStore';
+import { isSqlCodeBlock } from '../../lib/aiMessageBlocks';
 import { ConnectionWorkspaceHome } from './ConnectionWorkspaceHome';
 import { openHistoryQuery } from './openHistoryQuery';
 import { openNewConnectionDialog } from '../../lib/windowManager';
@@ -299,7 +300,7 @@ export function ContentView({
 
   const handleRunCodeFromChat = useCallback(
     (code: string, language: string) => {
-      if (language !== 'sql') return;
+      if (!isSqlCodeBlock(language, code)) return;
       const state = usePanelStore.getState();
       const current = state.panels.find((panel) => panel.id === state.activePanelId);
       if (current?.type === 'query') {

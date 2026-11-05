@@ -33,6 +33,16 @@ describe('query run request store', () => {
     unregister();
   });
 
+  it('queues consecutive requests in order instead of keeping only the last', () => {
+    expect(requestQueryRun(PANEL_ID, 'SELECT 2a')).toBe(false);
+    expect(requestQueryRun(PANEL_ID, 'SELECT 2b')).toBe(false);
+
+    const runner = vi.fn();
+    const unregister = registerQueryRunner(PANEL_ID, runner);
+    expect(runner.mock.calls).toEqual([['SELECT 2a'], ['SELECT 2b']]);
+    unregister();
+  });
+
   it('does not call a stale runner after unregister', () => {
     const runner = vi.fn();
     const unregister = registerQueryRunner(PANEL_ID, runner);

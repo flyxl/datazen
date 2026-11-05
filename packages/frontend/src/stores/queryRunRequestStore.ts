@@ -6,23 +6,24 @@
  * lives inside the panel's execution gate. This registry lets the chat hand a
  * statement to the owning panel without re-implementing that gate.
  *
- * A request that arrives before the panel has registered is kept as pending
- * and consumed exactly once when the panel mounts. That is what makes
- * "create a query tab and run once" a single user action.
+ * Requests that arrive before the panel has registered are kept in order as
+ * pending and flushed once when the panel mounts. That is what makes
+ * "create a query tab and run once" a single user action, while two quick
+ * clicks cannot lose the first statement.
  */
 
 type QueryRunner = (sql: string) => void;
 
 const runners = new Map<string, QueryRunner>();
-const pending = new Map<string, string>();
+const pending = new Map<string, string[]>();
 
 /** Register the active panel's runner and flush a request queued while mounting. */
 export function registerQueryRunner(panelId: string, runner: QueryRunner): () => void {
   runners.set(panelId, runner);
   const queued = pending.get(panelId);
-  if (queued !== undefined) {
+  if (queued?.length) {
     pending.delete(panelId);
-    runner(queued);
+    for (const sql of queued) runner(sql);
   }
   return () => {
     if (runners.get(panelId) === runner) runners.delete(panelId);
@@ -40,6 +41,8 @@ export function requestQueryRun(panelId: string, sql: string): boolean {
     runner(sql);
     return true;
   }
-  pending.set(panelId, sql);
+  const queue = pending.get(panelId);
+  if (queue) queue.push(sql);
+  else pending.set(panelId, [sql]);
   return false;
 }

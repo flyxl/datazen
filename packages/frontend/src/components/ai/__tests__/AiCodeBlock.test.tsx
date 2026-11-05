@@ -69,6 +69,23 @@ describe('AiCodeBlock', () => {
     expect(onRunCode).toHaveBeenCalledWith('SELECT 1', 'sql');
   });
 
+  it.each([
+    ['postgresql', 'SELECT 42'],
+    ['mysql', 'SELECT 42'],
+    ['sqlite', 'SELECT 42'],
+    ['mariadb', 'SELECT 42'],
+    ['SQL', 'SELECT 42'],
+    ['', 'SELECT 42'],
+    ['text', 'SELECT 42'],
+  ])('shows and runs a SQL-looking block tagged %s', (language, code) => {
+    const onRunCode = vi.fn();
+    const { getByTestId } = render(
+      <AiCodeBlock language={language} code={code} onRunCode={onRunCode} />,
+    );
+    fireEvent.click(getByTestId('ai-code-run'));
+    expect(onRunCode).toHaveBeenCalledWith(code, language || 'sql');
+  });
+
   it('hides run button for non-SQL blocks', () => {
     const { queryByTestId } = render(
       <AiCodeBlock language="python" code="print('hi')" onRunCode={vi.fn()} />,

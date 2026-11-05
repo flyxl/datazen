@@ -589,6 +589,13 @@ describe('aiStore', () => {
       }));
       useAiStore.getState().clearChat();
       expect(useAiStore.getState().chatSession!.egressSummary).toBeNull();
+
+      // Session (re)initialisation starts a fresh egress state as well.
+      useAiStore.setState((state) => ({
+        chatSession: { ...state.chatSession!, egressSummary: 'stale scope' },
+      }));
+      useAiStore.getState().initChatSession();
+      expect(useAiStore.getState().chatSession!.egressSummary).toBeNull();
     });
 
     it('records run attribution and forwards the target claim', async () => {
