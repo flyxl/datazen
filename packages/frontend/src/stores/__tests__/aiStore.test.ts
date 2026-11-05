@@ -348,6 +348,47 @@ describe('aiStore', () => {
   });
 
   describe('chat', () => {
+    it('initChatSession prefers connectionId and keeps the two-arg key compatible', () => {
+      localStorage.clear();
+      useAiStore.getState().initChatSession('db-sess', 'db', 'conn-1');
+      expect(useAiStore.getState().chatSession!.sessionKey).toBe('conn-1::db');
+
+      localStorage.setItem(
+        'datazen.aiSessions.v1',
+        JSON.stringify({
+          'db-sess::db': {
+            messages: [{ role: 'user', content: 'old history' }],
+            lastAccess: 1,
+          },
+        }),
+      );
+      useAiStore.getState().initChatSession('db-sess', 'db');
+      const session = useAiStore.getState().chatSession!;
+      expect(session.sessionKey).toBe('db-sess::db');
+      expect(session.messages[0]?.content).toBe('old history');
+    });
+
+    it('sendChatMessage forwards connectionId and keys the run by it', async () => {
+      localStorage.clear();
+      useAiStore.getState().initChatSession('db-sess', 'db', 'conn-1');
+      mockAiCommands.chat.mockResolvedValueOnce(undefined);
+
+      await useAiStore.getState().sendChatMessage({
+        dbSessionId: 'db-sess',
+        connectionId: 'conn-1',
+        database: 'db',
+        content: 'hello',
+      });
+
+      expect(mockAiCommands.chat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dbSessionId: 'db-sess',
+          connectionId: 'conn-1',
+          database: 'db',
+        }),
+      );
+    });
+
     it('sendChatMessage no-ops without session', async () => {
       await useAiStore.getState().sendChatMessage({ content: 'hi' });
       expect(mockAiCommands.chat).not.toHaveBeenCalled();

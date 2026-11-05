@@ -20,6 +20,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { useAutoScroll } from '../../hooks/useAutoScroll';
 import { useAiEditorGrant } from '../../hooks/useAiEditorGrant';
 import { useAiStore } from '../../stores/aiStore';
+import { computeSessionKey } from '../../stores/ai/sessions';
 import { cn } from '../../lib/cn';
 import { openDocsWindow, openSettingsWindow } from '../../lib/windowManager';
 import { WorkflowPanel } from './WorkflowPanel';
@@ -128,11 +129,14 @@ export function AiChatPanel({
   // Conflict resolution: pending draft waiting for user decision.
   const [pendingConflictDraft, setPendingConflictDraft] = useState<AiChatDraftRequest | null>(null);
 
+  // The persisted connection id is the stable session identity. A reconnect
+  // changes `dbSessionId` but must not switch the conversation; a real
+  // connection change must re-key it even though a chat session already exists.
+  const desiredSessionKey = computeSessionKey(connectionId, dbSessionId, database);
   useEffect(() => {
-    if (!chatSession) {
-      initChat(dbSessionId, database);
-    }
-  }, [chatSession, initChat, dbSessionId, database]);
+    if (chatSession?.sessionKey === desiredSessionKey) return;
+    initChat(dbSessionId, database, connectionId);
+  }, [desiredSessionKey, chatSession?.sessionKey, initChat, dbSessionId, database, connectionId]);
 
   // Auto-scroll to bottom when new messages arrive while already at bottom
   useEffect(() => {
@@ -201,6 +205,7 @@ export function AiChatPanel({
     const { contextFiles, contextTables } = splitContextItems(contextItems);
     void sendMessage({
       dbSessionId,
+      connectionId,
       database,
       // KV panels ride their host-owned facts along with the question;
       // `composeKvAiMessage` is the identity function when there is no context.
@@ -211,7 +216,7 @@ export function AiChatPanel({
     });
     setInput('');
     setContextItems([]);
-  }, [input, chatSession, sendMessage, dbSessionId, database, contextItems, kvContext, claimForSend]);
+  }, [input, chatSession, sendMessage, dbSessionId, connectionId, database, contextItems, kvContext, claimForSend]);
 
   // BUG-01: Provide onStop so users can cancel streaming replies. The store
   // owns the receipt handling (marked / alreadyFinished / forbidden).
@@ -406,7 +411,7 @@ export function AiChatPanel({
                 onRunCode={onRunCode}
                 onNewQuery={onNewQuery}
                 onAnswerQuestions={(answers) => {
-                  void sendMessage({ dbSessionId, database, content: answers });
+                  void sendMessage({ dbSessionId, connectionId, database, content: answers });
                 }}
                 isLastAssistant={
                   msg.role === 'assistant' &&

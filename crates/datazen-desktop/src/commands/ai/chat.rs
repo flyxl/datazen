@@ -81,6 +81,7 @@ pub async fn ai_chat<R: tauri::Runtime>(
     context_files: Option<Vec<String>>,
     context_tables: Option<Vec<String>>,
     target_claim: Option<AiTargetClaim>,
+    connection_id: Option<String>,
 ) -> Result<String, CommandError> {
     let on_chunk = window_stream_callback(&window);
     let is_workflow = scenario.as_deref() == Some("workflow_generate");
@@ -151,6 +152,7 @@ pub async fn ai_chat<R: tauri::Runtime>(
         ChatSessionInput {
             request_id,
             db_session_id,
+            connection_id,
             database,
             messages,
             include_schema,

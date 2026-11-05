@@ -394,8 +394,8 @@ export const useAiStore = create<AiStore>((set, get) => ({
 
   // ── Chat ──
 
-  initChatSession: (dbSessionId?: string, database?: string) => {
-    const key = computeSessionKey(undefined, dbSessionId, database);
+  initChatSession: (dbSessionId?: string, database?: string, connectionId?: string) => {
+    const key = computeSessionKey(connectionId, dbSessionId, database);
     const sessions = loadSessions();
     const stored = sessions[key];
 
@@ -416,6 +416,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
 
   sendChatMessage: async ({
     dbSessionId,
+    connectionId,
     database,
     content,
     includeSchema = true,
@@ -428,6 +429,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
 
     console.debug('[AI] sendChatMessage:', {
       dbSessionId,
+      connectionId,
       database,
       contentLen: content.length,
       includeSchema,
@@ -453,7 +455,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
     }
 
     const requestId = crypto.randomUUID();
-    const key = computeSessionKey(undefined, dbSessionId, database);
+    const key = computeSessionKey(connectionId, dbSessionId, database);
     registerRequestId(requestId, key);
     getStreamRegistry().begin(key, requestId);
 
@@ -473,6 +475,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
     try {
       await aiCommands.chat({
         dbSessionId,
+        connectionId,
         database,
         messages: [...chatSession.messages, ...newMessages],
         requestId,

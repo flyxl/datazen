@@ -66,6 +66,7 @@ vi.mock('../AiInput', () => ({
 const aiState = vi.hoisted(() => ({
   isConfigured: true,
   chatSession: {
+    sessionKey: 'c1::',
     messages: [] as {
       role: 'user' | 'assistant' | 'tool';
       content: string;
@@ -111,6 +112,7 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
   aiState.isConfigured = true;
   aiState.chatSession = {
+    sessionKey: 'c1::',
     messages: [],
     isStreaming: false,
     streamContent: '',
@@ -132,19 +134,44 @@ describe('AiChatPanel', () => {
     expect(openSettingsWindow).toHaveBeenCalledWith('ai');
   });
 
-  it('initializes chat session and shows welcome', () => {
+  it('initializes chat session with the stable connection id and shows welcome', () => {
     aiState.chatSession = null as unknown as typeof aiState.chatSession;
-    const { getByText, rerender } = render(<AiChatPanel dbSessionId="c1" />);
-    expect(aiState.initChatSession).toHaveBeenCalled();
+    const { getByText, rerender } = render(
+      <AiChatPanel dbSessionId="c1" database="db" connectionId="conn-1" />,
+    );
+    expect(aiState.initChatSession).toHaveBeenCalledWith('c1', 'db', 'conn-1');
     aiState.chatSession = {
+      sessionKey: 'conn-1::db',
       messages: [],
       isStreaming: false,
       streamContent: '',
       streamReasoning: '',
       streamMcpToolName: null,
     };
-    rerender(<AiChatPanel dbSessionId="c1" />);
+    rerender(<AiChatPanel dbSessionId="c1" database="db" connectionId="conn-1" />);
     expect(getByText('chat.welcome')).toBeInTheDocument();
+  });
+
+  it('keeps the conversation when dbSessionId changes on the same connection', () => {
+    aiState.chatSession.sessionKey = 'conn-1::db';
+    const { rerender } = render(
+      <AiChatPanel dbSessionId="db-a" database="db" connectionId="conn-1" />,
+    );
+    expect(aiState.initChatSession).not.toHaveBeenCalled();
+
+    rerender(<AiChatPanel dbSessionId="db-b" database="db" connectionId="conn-1" />);
+    expect(aiState.initChatSession).not.toHaveBeenCalled();
+  });
+
+  it('reinitializes when the connection id changes', () => {
+    aiState.chatSession.sessionKey = 'conn-1::db';
+    const { rerender } = render(
+      <AiChatPanel dbSessionId="db-sess" database="db" connectionId="conn-1" />,
+    );
+    expect(aiState.initChatSession).not.toHaveBeenCalled();
+
+    rerender(<AiChatPanel dbSessionId="db-sess" database="db" connectionId="conn-2" />);
+    expect(aiState.initChatSession).toHaveBeenCalledWith('db-sess', 'db', 'conn-2');
   });
 
   it('sends message from input', () => {
@@ -153,6 +180,7 @@ describe('AiChatPanel', () => {
     fireEvent.click(getByTestId('chat-send'));
     expect(aiState.sendChatMessage).toHaveBeenCalledWith({
       dbSessionId: 'c1',
+      connectionId: undefined,
       database: 'db',
       content: 'hello',
       contextFiles: undefined,
@@ -517,6 +545,7 @@ describe('AiChatPanel — KV panel context', () => {
     fireEvent.click(getByTestId('chat-send'));
     expect(aiState.sendChatMessage).toHaveBeenCalledWith({
       dbSessionId: 'sess-1',
+      connectionId: undefined,
       database: undefined,
       content: 'hello',
       contextFiles: undefined,

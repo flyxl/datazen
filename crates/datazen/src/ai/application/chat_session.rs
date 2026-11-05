@@ -59,6 +59,9 @@ pub struct ChatSessionEnv {
 pub struct ChatSessionInput {
     pub request_id: String,
     pub db_session_id: Option<String>,
+    /// Persisted connection id: the stable identity for the chat session.
+    /// `db_session_id` remains the runtime handle for schema borrowing only.
+    pub connection_id: Option<String>,
     pub database: Option<String>,
     pub messages: Vec<ChatMessage>,
     pub include_schema: bool,
@@ -76,6 +79,7 @@ pub async fn run_chat_session(
     tracing::info!(
         request_id = %input.request_id,
         db_session_id = ?input.db_session_id,
+        connection_id = ?input.connection_id,
         database = ?input.database,
         messages_count = input.messages.len(),
         include_schema = input.include_schema,

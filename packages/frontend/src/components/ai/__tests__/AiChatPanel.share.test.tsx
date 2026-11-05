@@ -68,6 +68,7 @@ vi.mock('../AiInput', () => ({
 const aiState = vi.hoisted(() => ({
   isConfigured: true,
   chatSession: {
+    sessionKey: 'conn-1::db',
     messages: [] as { role: 'user' | 'assistant'; content: string }[],
     isStreaming: false,
     streamContent: '',
@@ -136,6 +137,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   aiState.isConfigured = true;
   aiState.chatSession = {
+    sessionKey: 'conn-1::db',
     messages: [],
     isStreaming: false,
     streamContent: '',

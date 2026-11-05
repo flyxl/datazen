@@ -117,9 +117,10 @@ export interface AiStore {
   }) => Promise<FilterCondition[] | null>;
   clearNlFilter: () => void;
 
-  initChatSession: (dbSessionId?: string, database?: string) => void;
+  initChatSession: (dbSessionId?: string, database?: string, connectionId?: string) => void;
   sendChatMessage: (params: {
     dbSessionId?: string;
+    connectionId?: string;
     database?: string;
     content: string;
     includeSchema?: boolean;

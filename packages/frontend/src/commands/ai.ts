@@ -125,6 +125,7 @@ export const aiCommands = {
     invoke<ExplainAnalysis>('ai_analyze_explain', params),
   chat: (params: {
     dbSessionId?: string;
+    connectionId?: string;
     database?: string;
     messages: AiChatMessage[];
     requestId: string;

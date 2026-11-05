@@ -38,7 +38,6 @@ fn session_semantics_commands_take_db_session_id() {
         "ai_diagnose_error",
         "ai_analyze_explain",
         "ai_parse_filter",
-        "ai_chat",
         "ai_generate_schema_doc",
         "ai_analyze_queries",
     ] {
@@ -53,6 +52,22 @@ fn session_semantics_commands_take_db_session_id() {
             "`{cmd}` must not take (or also take) `connection_id`; got: {params}"
         );
     }
+}
+
+#[test]
+fn ai_chat_takes_runtime_session_and_stable_connection_id() {
+    // ai_chat is the one command that legitimately carries both identities:
+    // `db_session_id` is the live runtime handle used to borrow the schema
+    // driver; `connection_id` is the persisted identity for session keys.
+    let params = command_params("ai_chat");
+    assert!(
+        params.contains("db_session_id"),
+        "`ai_chat` must keep `db_session_id` for the runtime schema borrow; got: {params}"
+    );
+    assert!(
+        params.contains("connection_id"),
+        "`ai_chat` must also take `connection_id` for stable session identity; got: {params}"
+    );
 }
 
 #[test]

@@ -286,6 +286,7 @@ async fn chat_with_driver_resolves_schema_and_keeps_db_tools() {
         ChatSessionInput {
             request_id: "req-chat-schema".into(),
             db_session_id: Some("sess-1".into()),
+            connection_id: Some("conn-1".into()),
             database: Some("app".into()),
             messages: vec![user_message("Hi")],
             include_schema: true,
@@ -312,6 +313,80 @@ async fn chat_with_driver_resolves_schema_and_keeps_db_tools() {
     assert!(system.content.contains("users"));
 }
 
+#[test]
+fn chat_logs_persisted_connection_id() {
+    use std::fmt::Write as _;
+    use std::sync::{Arc, Mutex};
+    use tracing::{Event, Subscriber};
+    use tracing_subscriber::layer::{Context, Layer};
+    use tracing_subscriber::prelude::*;
+
+    #[derive(Clone, Default)]
+    struct Capture(Arc<Mutex<Vec<String>>>);
+    struct Visitor(String);
+
+    impl tracing::field::Visit for Visitor {
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            let _ = write!(self.0, "{}={value:?};", field.name());
+        }
+    }
+
+    impl<S> Layer<S> for Capture
+    where
+        S: Subscriber,
+    {
+        fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+            let mut visitor = Visitor(String::new());
+            event.record(&mut visitor);
+            self.0.lock().unwrap().push(visitor.0);
+        }
+    }
+
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let subscriber = tracing_subscriber::registry()
+        .with(tracing_subscriber::filter::LevelFilter::INFO)
+        .with(Capture(events.clone()));
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("test runtime");
+
+    tracing::subscriber::with_default(subscriber, || {
+        runtime.block_on(async {
+            let provider = Arc::new(ScriptedProvider::default());
+            provider.push_stream(vec![stream_chunk("ok", true)]);
+            let env = test_env(provider, recording_source());
+            let host = RecordingLoopHost::default();
+            let (on_chunk, _seen) = sink();
+
+            run_chat_session(
+                env,
+                &host,
+                on_chunk,
+                ChatSessionInput {
+                    request_id: "req-log-conn".into(),
+                    db_session_id: Some("runtime-session-1".into()),
+                    connection_id: Some("persisted-conn-1".into()),
+                    database: Some("app".into()),
+                    messages: vec![user_message("Hi")],
+                    include_schema: false,
+                    scenario: ChatScenario::Chat,
+                    context_tables: None,
+                },
+            )
+            .await
+            .expect("chat completes");
+        });
+    });
+
+    let logged = events.lock().unwrap().join("\n");
+    assert!(
+        logged.contains("connection_id=Some(\"persisted-conn-1\")"),
+        "ai_chat log must carry the persisted connection id: {logged}"
+    );
+    assert!(logged.contains("ai_chat: start"));
+}
+
 #[tokio::test]
 async fn chat_unknown_session_skips_schema_silently_and_keeps_tools() {
     let provider = Arc::new(ScriptedProvider::default().with_tools());
@@ -328,6 +403,7 @@ async fn chat_unknown_session_skips_schema_silently_and_keeps_tools() {
         ChatSessionInput {
             request_id: "req-unknown".into(),
             db_session_id: Some("not-connected".into()),
+            connection_id: None,
             database: Some("app".into()),
             messages: vec![user_message("Hi")],
             include_schema: true,
@@ -367,6 +443,7 @@ async fn chat_schema_pipeline_failure_disables_db_tools_but_streams() {
         ChatSessionInput {
             request_id: "req-pipeline-fail".into(),
             db_session_id: Some("sess-1".into()),
+            connection_id: None,
             database: Some("app".into()),
             messages: vec![user_message("Hi")],
             include_schema: true,
@@ -401,6 +478,7 @@ async fn chat_context_entries_are_redacted_then_formatted() {
         ChatSessionInput {
             request_id: "req-ctx".into(),
             db_session_id: None,
+            connection_id: None,
             database: None,
             messages: vec![user_message("Question")],
             include_schema: false,
@@ -445,6 +523,7 @@ async fn chat_workflow_scenario_injects_connections_context() {
         ChatSessionInput {
             request_id: "req-wf".into(),
             db_session_id: None,
+            connection_id: None,
             database: None,
             messages: vec![user_message("Build a workflow")],
             include_schema: false,
@@ -480,6 +559,7 @@ async fn chat_unregisters_cancel_entry_after_completion() {
         ChatSessionInput {
             request_id: "req-cancel".into(),
             db_session_id: None,
+            connection_id: None,
             database: None,
             messages: vec![user_message("Hi")],
             include_schema: false,
