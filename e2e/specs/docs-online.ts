@@ -18,16 +18,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, browser, $ } from '@wdio/globals';
 import { connectSeededPgInWorkspace, openQueryTab } from '../helpers.js';
+import { REPO_ROOT, desktopPackage, desktopSource, frontendSource } from '../lib/repoPaths.js';
 import { t } from '../i18n.js';
 
-const ROOT = path.resolve(import.meta.dirname, '../..');
-const WINDOW_MANAGER = path.join(ROOT, 'src/lib/windowManager.ts');
-const DOCS_URLS = path.join(ROOT, 'src/lib/docsUrls.ts');
-const SETTINGS_CMD = path.join(ROOT, 'src/commands/settings.ts');
-const APP_TSX = path.join(ROOT, 'src/App.tsx');
-const WINDOW_KIND = path.join(ROOT, 'src/lib/windowKind.ts');
-const MENU_BAR = path.join(ROOT, 'src/components/MenuBar.tsx');
-const RUST_WINDOW = path.join(ROOT, 'src-tauri/src/commands/window.rs');
+const ROOT = REPO_ROOT;
+const WINDOW_MANAGER = frontendSource('lib/windowManager.ts');
+const DOCS_URLS = frontendSource('lib/docsUrls.ts');
+const SETTINGS_CMD = frontendSource('commands/settings.ts');
+const APP_TSX = frontendSource('App.tsx');
+const WINDOW_KIND = frontendSource('lib/windowKind.ts');
+const MENU_BAR = frontendSource('components/MenuBar.tsx');
+const RUST_WINDOW = desktopSource('commands/window.rs');
+const HOST_SERVICES = desktopPackage('src/platform/desktop/hostServices.ts');
 
 const DOCS_BASE_EN = 'https://flyxl.github.io/datazen/manual.html';
 const DOCS_BASE_ZH = 'https://flyxl.github.io/datazen/zh/manual.html';
@@ -64,8 +66,12 @@ describe('Online Help Docs', () => {
     const openDocsBlock = wm.slice(wm.indexOf('export function openDocsWindow'));
     expect(openDocsBlock).not.toContain('create_sub_window');
 
+    // 前端不再直连 invoke：`commands/settings.ts` 只经 host 端口转发，
+    // 真正的 `open_path` 落在 desktop 壳的 hostServices（H 拆分后如此）。
     const settings = fs.readFileSync(SETTINGS_CMD, 'utf8');
-    expect(settings).toContain("invoke<void>('open_path', { path })");
+    expect(settings).toContain('openPath: (path: string) => requireHostSettings().openPath(path)');
+    const hostServices = fs.readFileSync(HOST_SERVICES, 'utf8');
+    expect(hostServices).toContain("invoke<void>('open_path', { path })");
   });
 
   it('docsUrls.ts defines manual.html bases and legacy section remap', () => {
