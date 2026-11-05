@@ -162,15 +162,31 @@ impl AiProvider for CompatibleProvider {
             max_tokens: config.max_tokens,
             max_request_timeout: Duration::from_secs(120),
         };
-        match self.kind {
-            CompatibleKind::OpenAiChat => {
-                protocol::openai_chat::fetch_models(&cfg).await?;
-            }
-            CompatibleKind::Anthropic => {
-                protocol::anthropic::fetch_models(&cfg).await?;
-            }
+        // Prefer model listing, but not every compatible endpoint implements it.
+        // Only auth/rate-limit failures are definitive; other errors fall back to
+        // the protocol's own lightweight probe (BUG-014).
+        let models_error = match self.kind {
+            CompatibleKind::OpenAiChat => match protocol::openai_chat::fetch_models(&cfg).await {
+                Ok(_) => return Ok(()),
+                Err(error) => error,
+            },
+            CompatibleKind::Anthropic => match protocol::anthropic::fetch_models(&cfg).await {
+                Ok(_) => return Ok(()),
+                Err(error) => error,
+            },
+        };
+
+        if matches!(
+            models_error,
+            AiError::InvalidApiKey | AiError::RateLimited { .. }
+        ) {
+            return Err(models_error);
         }
-        Ok(())
+
+        match self.kind {
+            CompatibleKind::OpenAiChat => protocol::openai_chat::probe(&cfg, &config.model).await,
+            CompatibleKind::Anthropic => protocol::anthropic::probe(&cfg, &config.model).await,
+        }
     }
 
     async fn initialize(&self, config: &AiProviderConfig) -> Result<(), AiError> {
@@ -321,5 +337,142 @@ mod tests {
                 "API keys must never be logged: {line}"
             );
         }
+    }
+    fn test_provider(provider_type: AiProviderType) -> CompatibleProvider {
+        CompatibleProvider::with_http_client(provider_type, HttpClient::desktop()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn models_endpoint_unavailable_falls_back_to_openai_probe() {
+        for provider_type in [
+            AiProviderType::Gemini,
+            AiProviderType::Qwen,
+            AiProviderType::MiniMax,
+            AiProviderType::OpenAiCompatible,
+        ] {
+            for models_status in [404, 501] {
+                let server = MockServer::start().await;
+                Mock::given(method("GET"))
+                    .and(path("/v1/models"))
+                    .respond_with(ResponseTemplate::new(models_status))
+                    .mount(&server)
+                    .await;
+                Mock::given(method("POST"))
+                    .and(path("/v1/chat/completions"))
+                    .and(header("Authorization", "Bearer probe-key"))
+                    .respond_with(ResponseTemplate::new(200))
+                    .mount(&server)
+                    .await;
+
+                let provider = test_provider(provider_type);
+                provider
+                    .validate_config(&config(
+                        provider_type,
+                        format!("{}/v1", server.uri()),
+                        "probe-key",
+                    ))
+                    .await
+                    .unwrap_or_else(|error| {
+                        panic!(
+                            "{provider_type:?} must fall back after /models {models_status}: {error}"
+                        )
+                    });
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn models_endpoint_unavailable_falls_back_to_anthropic_messages_probe() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/models"))
+            .respond_with(ResponseTemplate::new(501))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/messages"))
+            .and(header("x-api-key", "probe-key"))
+            .and(header("anthropic-version", "2023-06-01"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+
+        let provider = test_provider(AiProviderType::AnthropicCompatible);
+        provider
+            .validate_config(&config(
+                AiProviderType::AnthropicCompatible,
+                server.uri(),
+                "probe-key",
+            ))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn probe_auth_and_server_errors_are_surfaced() {
+        for (probe_status, expected_auth) in [(401, true), (500, false)] {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path("/v1/models"))
+                .respond_with(ResponseTemplate::new(501))
+                .mount(&server)
+                .await;
+            Mock::given(method("POST"))
+                .and(path("/v1/chat/completions"))
+                .respond_with(ResponseTemplate::new(probe_status))
+                .mount(&server)
+                .await;
+
+            let provider = test_provider(AiProviderType::OpenAiCompatible);
+            let error = provider
+                .validate_config(&config(
+                    AiProviderType::OpenAiCompatible,
+                    format!("{}/v1", server.uri()),
+                    "probe-key",
+                ))
+                .await
+                .unwrap_err();
+            if expected_auth {
+                assert!(
+                    matches!(error, AiError::InvalidApiKey),
+                    "401 probe must surface an auth error, got {error:?}"
+                );
+            } else {
+                assert!(
+                    matches!(error, AiError::RequestFailed(_)),
+                    "500 probe must surface the request failure, got {error:?}"
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn models_auth_failure_is_not_masked_by_a_successful_probe() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/models"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+        Mock::given(method("POST"))
+            .and(path("/v1/chat/completions"))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(&server)
+            .await;
+
+        let provider = test_provider(AiProviderType::OpenAiCompatible);
+        let error = provider
+            .validate_config(&config(
+                AiProviderType::OpenAiCompatible,
+                format!("{}/v1", server.uri()),
+                "bad-key",
+            ))
+            .await
+            .unwrap_err();
+        assert!(matches!(error, AiError::InvalidApiKey), "{error:?}");
+        assert!(
+            !error.to_string().contains("bad-key"),
+            "errors must not leak keys"
+        );
     }
 }
