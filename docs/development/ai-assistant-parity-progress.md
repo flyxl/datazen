@@ -11,8 +11,8 @@
 | T07 Chat 动作、模式与 egress UI | 已完成 |
 | T08 安全开关真正生效 | 已完成 |
 | T09 AppDb v7：AI 笔记/记忆/FTS/审计 | 已完成 |
-| T10 连接笔记、全局指令、Prompt 模板 | 进行中 |
-| T11 Memory 领域、检索、注入 | 未开始 |
+| T10 连接笔记、全局指令、Prompt 模板 | 已完成 |
+| T11 Memory 领域、检索、注入 | 进行中 |
 | T12 Memory IPC、Chat 注入、引用流 | 未开始 |
 | T13 Memory 设置、列表、候选 UI | 未开始 |
 | T14 Memory v1：纠正、模式、冲突、失效 | 未开始 |
