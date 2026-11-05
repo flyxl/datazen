@@ -63,6 +63,13 @@ export function SkillsSection({ config }: { config: AiSettingsConfig }) {
     await refresh();
   };
 
+  const toggleSelected = async (id: string, checked: boolean) => {
+    const selected = checked
+      ? [...new Set([...skills.selected, id])]
+      : skills.selected.filter((current) => current !== id);
+    await persist({ ...skills, selected });
+  };
+
   return (
     <div className="space-y-3 border-t border-edge/60 pt-4" {...tid('ai-skills-section')}>
       <SectionTitle hint={t('settings.ai.skills.description')}>
@@ -115,6 +122,12 @@ export function SkillsSection({ config }: { config: AiSettingsConfig }) {
 
       {error && <p className="select-text text-xs text-red-500">{error}</p>}
 
+      {skills.enabled && !skills.autoUse && (
+        <p className="text-[11px] text-fg-muted" data-testid="ai-skills-selection-hint">
+          {t('settings.ai.skills.selectHint')}
+        </p>
+      )}
+
       {!skills.enabled ? (
         <p className="text-xs text-fg-muted" data-testid="ai-skills-disabled">
           {t('settings.ai.skills.disabledHint')}
@@ -130,23 +143,37 @@ export function SkillsSection({ config }: { config: AiSettingsConfig }) {
           className="flex flex-col divide-y divide-edge rounded-xl border border-edge bg-surface"
           data-testid="ai-skills-list"
         >
-          {listing.map((skill) => (
-            <div
-              key={skill.name}
-              className="flex flex-col gap-1 px-3 py-2"
-              data-testid={`ai-skills-row-${skill.name}`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium text-fg">{skill.name}</span>
-                <span className="rounded bg-surface-alt px-1.5 py-0.5 text-[10px] text-fg-muted">
-                  {skill.source === 'custom'
-                    ? t('settings.ai.skills.sourceCustom')
-                    : t('settings.ai.skills.sourceUser')}
-                </span>
+          {listing.map((skill) => {
+            const checked = skills.autoUse || skills.selected.includes(skill.id);
+            return (
+              <div
+                key={skill.id}
+                className="flex flex-col gap-1 px-3 py-2"
+                data-testid={`ai-skills-row-${skill.id}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <label className="flex min-w-0 items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={skills.autoUse}
+                      onChange={(event) => void toggleSelected(skill.id, event.target.checked)}
+                      data-testid={`ai-skills-select-${skill.id}`}
+                      aria-label={`${t('settings.ai.skills.selectSkill')} ${skill.name}`}
+                    />
+                    <span className="truncate text-sm font-medium text-fg">{skill.name}</span>
+                  </label>
+                  <span className="shrink-0 rounded bg-surface-alt px-1.5 py-0.5 text-[10px] text-fg-muted">
+                    {skill.source === 'custom'
+                      ? t('settings.ai.skills.sourceCustom')
+                      : t('settings.ai.skills.sourceUser')}
+                    {` · ${skill.path}`}
+                  </span>
+                </div>
+                {skill.description && <p className="text-xs text-fg-muted">{skill.description}</p>}
               </div>
-              {skill.description && <p className="text-xs text-fg-muted">{skill.description}</p>}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

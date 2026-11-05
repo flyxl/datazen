@@ -155,6 +155,25 @@ impl AiToolLoopHost for AppState {
 
 // ─── AI Chat ───
 
+/// Skill tools are exposed only when the provider accepts tools in Agent mode
+/// and at least one skill is authorized (auto-use on, or an explicit selection).
+/// The catalog still enforces the same selection on every tool call.
+pub(crate) fn skill_tools_for(
+    settings: &datazen::ai::AiSkillsSettings,
+    agent_mode: AiAgentMode,
+    supports_tools: bool,
+) -> Vec<datazen::ai::ToolDefinition> {
+    if settings.enabled
+        && (settings.auto_use || !settings.selected.is_empty())
+        && agent_mode == AiAgentMode::Agent
+        && supports_tools
+    {
+        datazen::ai::skills::tools::skill_tool_definitions()
+    } else {
+        Vec::new()
+    }
+}
+
 #[tauri::command]
 pub async fn ai_chat<R: tauri::Runtime>(
     state: State<'_, AppState>,
@@ -266,14 +285,11 @@ pub async fn ai_chat<R: tauri::Runtime>(
     }
 
     let settings = datazen::ai::api::get_settings_config(state.store.as_ref()).await;
-    let skill_tools = if settings.skills.enabled
-        && requested_agent_mode == AiAgentMode::Agent
-        && provider.supports_tools()
-    {
-        datazen::ai::skills::tools::skill_tool_definitions()
-    } else {
-        Vec::new()
-    };
+    let skill_tools = skill_tools_for(
+        &settings.skills,
+        requested_agent_mode,
+        provider.supports_tools(),
+    );
     let connection_notes = connection_id
         .as_deref()
         .filter(|id| !id.trim().is_empty())
@@ -294,6 +310,9 @@ pub async fn ai_chat<R: tauri::Runtime>(
     let host = super::AiRequestHost {
         state: &state,
         claim: target_claim.unwrap_or(AiTargetClaim::Independent),
+        skills: Some(datazen::ai::skills::SkillCatalog::from_settings(
+            &settings.skills,
+        )),
     };
     let env = ChatSessionEnv {
         provider,

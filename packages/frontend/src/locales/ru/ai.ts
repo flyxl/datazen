@@ -13,6 +13,8 @@ const pack = {
   'settings.ai.skills.customDirHint':
     'Необязательно. Дополнительный каталог кроме ~/.agents/skills.',
   'settings.ai.skills.saveDir': 'Сохранить',
+  'settings.ai.skills.selectHint': 'Выберите навыки, которые может использовать этот чат.',
+  'settings.ai.skills.selectSkill': 'Выбрать навык',
   'settings.ai.skills.defaultDir': 'Фиксированный каталог: ~/.agents/skills',
   'settings.ai.skills.empty': 'Действительные SKILL.md не найдены.',
   'settings.ai.skills.loading': 'Сканирование навыков…',

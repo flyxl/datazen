@@ -81,18 +81,23 @@ export interface AiSkillsSettings {
   customDir: string | null;
   /** Off by default: no skill listing/body is injected automatically. */
   autoUse: boolean;
+  /** Explicitly selected stable skill ids used while autoUse is false. */
+  selected: string[];
 }
 
 export const defaultAiSkillsSettings: AiSkillsSettings = {
   enabled: false,
   customDir: null,
   autoUse: false,
+  selected: [],
 };
 
 export interface AiSkillSummary {
+  id: string;
   name: string;
   description: string;
   source: 'user' | 'custom';
+  path: string;
   version?: string;
 }
 
@@ -384,6 +389,7 @@ export interface AiChatMessage {
 }
 
 export interface AiLoadedSkill {
+  id?: string;
   name: string;
   source?: string;
   loadedAt: string;

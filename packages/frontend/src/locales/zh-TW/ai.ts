@@ -9,6 +9,8 @@ const pack = {
   'settings.ai.skills.customDir': '自訂技能目錄',
   'settings.ai.skills.customDirHint': '選用。在 ~/.agents/skills 之外額外掃描一個目錄。',
   'settings.ai.skills.saveDir': '儲存',
+  'settings.ai.skills.selectHint': '選擇此對話可以使用的技能。',
+  'settings.ai.skills.selectSkill': '選擇技能',
   'settings.ai.skills.defaultDir': '固定目錄：~/.agents/skills',
   'settings.ai.skills.empty': '設定的目錄中沒有有效的 SKILL.md。',
   'settings.ai.skills.loading': '正在掃描技能…',

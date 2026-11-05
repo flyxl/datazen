@@ -11,6 +11,8 @@ const pack = {
   'settings.ai.skills.customDir': '사용자 지정 스킬 디렉터리',
   'settings.ai.skills.customDirHint': '선택 사항. ~/.agents/skills 외에 하나 더 검사합니다.',
   'settings.ai.skills.saveDir': '저장',
+  'settings.ai.skills.selectHint': '이 채팅에서 사용할 스킬을 선택하세요.',
+  'settings.ai.skills.selectSkill': '스킬 선택',
   'settings.ai.skills.defaultDir': '고정 디렉터리: ~/.agents/skills',
   'settings.ai.skills.empty': '유효한 SKILL.md가 없습니다.',
   'settings.ai.skills.loading': '스킬 검사 중…',

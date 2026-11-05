@@ -792,7 +792,7 @@ export function AiChatPanel({
                   </span>
                   {chatSession?.loadedSkills?.map((skill) => (
                     <span
-                      key={skill.name}
+                      key={skill.id ?? skill.name}
                       className="rounded border border-edge bg-surface-alt px-1.5 py-0.5 font-mono text-[10px] text-fg-secondary"
                     >
                       {skill.name}

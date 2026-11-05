@@ -827,9 +827,14 @@ describe('aiStore', () => {
       skillUsedHandler({ requestId: 'other', name: 'ignored', source: 'user' });
       expect(useAiStore.getState().chatSession!.loadedSkills).toEqual([]);
 
-      skillUsedHandler({ requestId: 'skill-req', name: 'sql-review', source: 'user' });
+      skillUsedHandler({
+        requestId: 'skill-req',
+        id: 'user:sql-review',
+        name: 'sql-review',
+        source: 'user',
+      });
       expect(useAiStore.getState().chatSession!.loadedSkills).toEqual([
-        expect.objectContaining({ name: 'sql-review', source: 'user' }),
+        expect.objectContaining({ id: 'user:sql-review', name: 'sql-review', source: 'user' }),
       ]);
       expect(useAiStore.getState().chatSession!.metadata).toEqual(
         expect.objectContaining({

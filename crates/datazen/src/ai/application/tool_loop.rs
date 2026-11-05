@@ -74,7 +74,7 @@ pub trait AiToolLoopHost: Send + Sync {
 
     /// Notify the host/UI that `use_skill` actually succeeded. The default is a
     /// no-op so unit hosts need no event plumbing.
-    async fn on_skill_used(&self, _request_id: &str, _name: &str, _source: &str) {}
+    async fn on_skill_used(&self, _request_id: &str, _id: &str, _name: &str, _source: &str) {}
 
     /// Ask the user to approve one tool call. The loop calls this before a
     /// DB/MCP tool when the active policy requires confirmation.
@@ -605,17 +605,26 @@ pub async fn run_streaming_tool_loop(
                     if tc.name == "use_skill" && !result.starts_with("Error:") {
                         let args: serde_json::Value =
                             serde_json::from_str(&tc.arguments).unwrap_or_default();
-                        let skill_name = args["name"].as_str().unwrap_or(name);
-                        let source = serde_json::from_str::<serde_json::Value>(&result)
-                            .ok()
-                            .and_then(|value| {
-                                value
-                                    .get("source")
-                                    .and_then(serde_json::Value::as_str)
-                                    .map(str::to_owned)
-                            })
+                        let parsed = serde_json::from_str::<serde_json::Value>(&result).ok();
+                        let skill_id = parsed
+                            .as_ref()
+                            .and_then(|value| value.get("id"))
+                            .and_then(serde_json::Value::as_str)
+                            .or_else(|| args["id"].as_str())
+                            .unwrap_or(name);
+                        let skill_name = parsed
+                            .as_ref()
+                            .and_then(|value| value.get("name"))
+                            .and_then(serde_json::Value::as_str)
+                            .or_else(|| args["name"].as_str())
+                            .unwrap_or(name);
+                        let source = parsed
+                            .as_ref()
+                            .and_then(|value| value.get("source"))
+                            .and_then(serde_json::Value::as_str)
                             .unwrap_or_default();
-                        host.on_skill_used(request_id, skill_name, &source).await;
+                        host.on_skill_used(request_id, skill_id, skill_name, source)
+                            .await;
                     }
                     result
                 }

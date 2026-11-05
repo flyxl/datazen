@@ -297,6 +297,10 @@ pub struct AiSkillsSettings {
     pub custom_dir: Option<String>,
     #[serde(default)]
     pub auto_use: bool,
+    /// Explicit stable skill ids selected in Settings. Only these are visible
+    /// to `list_skills`/`use_skill` while `auto_use` is false.
+    #[serde(default)]
+    pub selected: Vec<String>,
 }
 
 impl Default for AiSkillsSettings {
@@ -305,6 +309,7 @@ impl Default for AiSkillsSettings {
             enabled: false,
             custom_dir: None,
             auto_use: false,
+            selected: Vec::new(),
         }
     }
 }
@@ -424,10 +429,12 @@ mod skills_settings_tests {
         assert!(!settings.enabled);
         assert!(!settings.auto_use);
         assert_eq!(settings.custom_dir, None);
+        assert!(settings.selected.is_empty());
 
         let config = AiSettingsConfig::default();
         assert!(!config.skills.enabled);
         assert!(!config.skills.auto_use);
+        assert!(config.skills.selected.is_empty());
     }
 
     #[test]
@@ -438,6 +445,7 @@ mod skills_settings_tests {
         .unwrap();
         assert!(!config.skills.enabled);
         assert!(!config.skills.auto_use);
+        assert!(config.skills.selected.is_empty());
     }
 
     #[test]
@@ -447,15 +455,18 @@ mod skills_settings_tests {
                 enabled: true,
                 custom_dir: Some("~/skills".into()),
                 auto_use: false,
+                selected: vec!["user:alpha".into()],
             },
             ..Default::default()
         };
         let json = serde_json::to_string(&config).unwrap();
         assert!(json.contains("\"customDir\":\"~/skills\""));
         assert!(json.contains("\"autoUse\":false"));
+        assert!(json.contains("\"selected\":[\"user:alpha\"]"));
         let restored: AiSettingsConfig = serde_json::from_str(&json).unwrap();
         assert!(restored.skills.enabled);
         assert_eq!(restored.skills.custom_dir.as_deref(), Some("~/skills"));
+        assert_eq!(restored.skills.selected, vec!["user:alpha".to_string()]);
     }
 }
 

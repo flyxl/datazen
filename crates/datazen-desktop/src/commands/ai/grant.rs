@@ -145,6 +145,8 @@ pub async fn ai_touch_editor_grant(
 pub(crate) struct AiRequestHost<'a> {
     pub state: &'a AppState,
     pub claim: AiTargetClaim,
+    /// One catalog per request so the two-body budget spans all tool calls.
+    pub skills: Option<datazen::ai::skills::SkillCatalog>,
 }
 
 impl AiRequestHost<'_> {
@@ -271,15 +273,13 @@ impl AiToolLoopHost for AiRequestHost<'_> {
     }
 
     async fn execute_skill_tool(&self, call: &datazen::ai::ToolCall) -> String {
-        let settings = datazen::ai::api::get_settings_config(self.state.store.as_ref()).await;
-        if !settings.skills.enabled {
-            return "Error: Skills are disabled".into();
-        }
-        let catalog = datazen::ai::skills::SkillCatalog::from_settings(&settings.skills);
-        datazen::ai::skills::tools::execute_skill_tool(&catalog, call)
+        let Some(catalog) = self.skills.as_ref() else {
+            return "Error: skills are not available in this host".into();
+        };
+        datazen::ai::skills::tools::execute_skill_tool(catalog, call)
     }
 
-    async fn on_skill_used(&self, request_id: &str, name: &str, source: &str) {
+    async fn on_skill_used(&self, request_id: &str, id: &str, name: &str, source: &str) {
         let Some(app) = self.state.app_handle.get() else {
             return;
         };
@@ -287,6 +287,7 @@ impl AiToolLoopHost for AiRequestHost<'_> {
             "ai:skill-used",
             serde_json::json!({
                 "requestId": request_id,
+                "id": id,
                 "name": name,
                 "source": source,
             }),

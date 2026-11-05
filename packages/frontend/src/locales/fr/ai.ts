@@ -12,6 +12,8 @@ const pack = {
   'settings.ai.skills.customDir': 'Répertoire de compétences personnalisé',
   'settings.ai.skills.customDirHint': 'Optionnel. Un répertoire en plus de ~/.agents/skills.',
   'settings.ai.skills.saveDir': 'Enregistrer',
+  'settings.ai.skills.selectHint': 'Sélectionnez les compétences que ce chat peut utiliser.',
+  'settings.ai.skills.selectSkill': 'Sélectionner la compétence',
   'settings.ai.skills.defaultDir': 'Répertoire fixe : ~/.agents/skills',
   'settings.ai.skills.empty': 'Aucun SKILL.md valide trouvé.',
   'settings.ai.skills.loading': 'Analyse des compétences…',

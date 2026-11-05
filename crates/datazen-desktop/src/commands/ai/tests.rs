@@ -386,3 +386,31 @@ async fn ai_list_skills_projects_the_enabled_catalog_only() {
 
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[test]
+fn skill_tools_require_agent_mode_and_an_authorized_selection() {
+    use datazen::ai::{AiAgentMode, AiSkillsSettings};
+
+    let mut settings = AiSkillsSettings {
+        enabled: true,
+        custom_dir: None,
+        auto_use: false,
+        selected: Vec::new(),
+    };
+    assert!(super::chat::skill_tools_for(&settings, AiAgentMode::Agent, true).is_empty());
+    assert!(super::chat::skill_tools_for(&settings, AiAgentMode::Ask, true).is_empty());
+
+    settings.selected = vec!["user:alpha".into()];
+    assert_eq!(
+        super::chat::skill_tools_for(&settings, AiAgentMode::Agent, true).len(),
+        3
+    );
+    assert!(super::chat::skill_tools_for(&settings, AiAgentMode::Agent, false).is_empty());
+
+    settings.auto_use = true;
+    settings.selected.clear();
+    assert_eq!(
+        super::chat::skill_tools_for(&settings, AiAgentMode::Agent, true).len(),
+        3
+    );
+}

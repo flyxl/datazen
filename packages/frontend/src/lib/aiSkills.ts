@@ -10,6 +10,9 @@ export function normalizeAiSkillsSettings(
     enabled: skills?.enabled === true,
     autoUse: skills?.autoUse === true,
     customDir: typeof skills?.customDir === 'string' ? skills.customDir : null,
+    selected: Array.isArray(skills?.selected)
+      ? [...new Set(skills.selected.filter((id): id is string => typeof id === 'string'))]
+      : [],
   };
 }
 
@@ -22,6 +25,7 @@ export function normalizeLoadedSkills(value: unknown): AiLoadedSkill[] {
     if (typeof record.name !== 'string' || !record.name.trim()) return [];
     return [
       {
+        id: typeof record.id === 'string' ? record.id : undefined,
         name: record.name,
         source: typeof record.source === 'string' ? record.source : undefined,
         loadedAt: typeof record.loadedAt === 'string' ? record.loadedAt : new Date().toISOString(),

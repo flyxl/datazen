@@ -101,6 +101,7 @@ pub async fn ai_generate_sql<R: tauri::Runtime>(
     let host = super::AiRequestHost {
         state: &state,
         claim: target_claim.unwrap_or(AiTargetClaim::Independent),
+        skills: None,
     };
     let env = ChatSessionEnv {
         provider,

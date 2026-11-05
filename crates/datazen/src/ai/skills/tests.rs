@@ -5,7 +5,8 @@ fn settings(enabled: bool, custom: Option<&str>) -> AiSkillsSettings {
     AiSkillsSettings {
         enabled,
         custom_dir: custom.map(str::to_string),
-        auto_use: false,
+        auto_use: true,
+        selected: Vec::new(),
     }
 }
 
@@ -194,7 +195,7 @@ fn disabled_catalog_has_no_skills_and_rejects_use() {
 }
 
 #[test]
-fn custom_directory_is_scanned_and_duplicate_names_keep_the_first_source() {
+fn custom_directory_is_scanned_and_duplicate_names_are_listed_side_by_side() {
     let home = tempfile::tempdir().unwrap();
     let custom = tempfile::tempdir().unwrap();
     write_skill(
@@ -212,9 +213,26 @@ fn custom_directory_is_scanned_and_duplicate_names_keep_the_first_source() {
     .unwrap();
     let catalog = catalog(home.path(), Some(custom.path()));
     let listing = catalog.list();
-    assert_eq!(listing.len(), 1);
+    assert_eq!(listing.len(), 2);
+    assert_eq!(listing[0].name, "shared");
+    assert_eq!(listing[1].name, "shared");
+    assert_ne!(listing[0].id, listing[1].id);
     assert_eq!(listing[0].source, SkillSource::User);
+    assert_eq!(listing[1].source, SkillSource::Custom);
     assert_eq!(listing[0].description, "User copy");
+    assert_eq!(listing[1].description, "Custom copy");
+    assert!(matches!(
+        catalog.use_skill("shared"),
+        Err(SkillError::Ambiguous(_))
+    ));
+    assert_eq!(
+        catalog
+            .use_skill_by_id(&listing[1].id)
+            .unwrap()
+            .content
+            .trim(),
+        "custom"
+    );
 }
 
 #[test]
@@ -288,4 +306,112 @@ fn tilde_custom_directory_expands_against_the_injected_home() {
     assert_eq!(listing.len(), 1);
     assert_eq!(listing[0].name, "team");
     assert_eq!(listing[0].source, SkillSource::Custom);
+}
+
+fn gated_catalog(home: &Path, auto_use: bool, selected: Vec<String>) -> SkillCatalog {
+    SkillCatalog::from_settings_and_home(
+        &AiSkillsSettings {
+            enabled: true,
+            custom_dir: None,
+            auto_use,
+            selected,
+        },
+        Some(home.to_path_buf()),
+    )
+}
+
+#[test]
+fn auto_use_off_without_selection_hides_listing_and_blocks_use() {
+    let home = tempfile::tempdir().unwrap();
+    write_skill(
+        home.path(),
+        "alpha",
+        "name: alpha\ndescription: Alpha description",
+        "Alpha body",
+    );
+    let catalog = gated_catalog(home.path(), false, Vec::new());
+
+    assert!(catalog.list().is_empty());
+    assert_eq!(catalog.list_all().len(), 1);
+    assert!(matches!(
+        catalog.use_skill("alpha"),
+        Err(SkillError::NotSelected(_))
+    ));
+    let listing = tools::execute_skill_tool(
+        &catalog,
+        &ToolCall {
+            id: "call-1".into(),
+            name: "list_skills".into(),
+            arguments: "{}".into(),
+        },
+    );
+    assert_eq!(listing, "[]");
+}
+
+#[test]
+fn auto_use_off_selected_id_is_visible_and_usable() {
+    let home = tempfile::tempdir().unwrap();
+    write_skill(
+        home.path(),
+        "alpha",
+        "name: alpha\ndescription: Alpha description",
+        "Alpha body",
+    );
+    let discovered = gated_catalog(home.path(), true, Vec::new());
+    let id = discovered.list_all()[0].id.clone();
+    let catalog = gated_catalog(home.path(), false, vec![id.clone()]);
+
+    let listing = catalog.list();
+    assert_eq!(listing.len(), 1);
+    assert_eq!(listing[0].id, id);
+    assert_eq!(
+        catalog.use_skill_by_id(&id).unwrap().content.trim(),
+        "Alpha body"
+    );
+    let tool_listing = tools::execute_skill_tool(
+        &catalog,
+        &ToolCall {
+            id: "call-1".into(),
+            name: "list_skills".into(),
+            arguments: "{}".into(),
+        },
+    );
+    assert!(tool_listing.contains(&id));
+    assert!(!tool_listing.contains("Alpha body"));
+}
+
+#[test]
+fn third_distinct_body_is_rejected_before_reading_it() {
+    let home = tempfile::tempdir().unwrap();
+    write_skill(
+        home.path(),
+        "one",
+        "name: one\ndescription: One",
+        "one body",
+    );
+    write_skill(
+        home.path(),
+        "two",
+        "name: two\ndescription: Two",
+        "two body",
+    );
+    let third = home.path().join(DEFAULT_SKILLS_DIR).join("three");
+    fs::create_dir_all(&third).unwrap();
+    let mut bytes = b"---\nname: three\ndescription: Three\n---\n".to_vec();
+    bytes.extend([0xff, 0xfe]);
+    fs::write(third.join(SKILL_FILE), bytes).unwrap();
+
+    let catalog = gated_catalog(home.path(), true, Vec::new());
+    assert!(catalog.use_skill("one").is_ok());
+    assert!(
+        catalog.use_skill("one").is_ok(),
+        "reloading is not a new body"
+    );
+    assert!(catalog.use_skill("two").is_ok());
+    assert_eq!(catalog.loaded_skill_ids().len(), 2);
+    assert!(matches!(
+        catalog.use_skill("three"),
+        Err(SkillError::TooManyLoaded { limit: 2 })
+    ));
+    assert_eq!(catalog.loaded_skill_ids().len(), 2);
 }

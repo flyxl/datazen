@@ -5,11 +5,7 @@ import { getPlatformOrNull } from '../platform/contracts';
 import { redactSensitiveText } from '../lib/aiQueryActions';
 import { normalizeAiProviders } from '../lib/aiProviders';
 import { normalizeAiSettingsConfig } from '../lib/aiMemorySettings';
-import {
-  defaultAiMemorySettings,
-  type AiChatMessage,
-  type AiLoadedSkill,
-} from '../types';
+import { defaultAiMemorySettings, type AiChatMessage, type AiLoadedSkill } from '../types';
 import { normalizeLoadedSkills } from '../lib/aiSkills';
 import {
   chatSessionFromDetail,
@@ -905,14 +901,21 @@ export const useAiStore = create<AiStore>((set, get) => ({
       if (count > 0) set({ memoryCandidateNotice: { requestId: event.requestId, count } });
     });
     const unSkillUsed = await events.listenCrossWindow('ai:skill-used', (payload) => {
-      const event = payload as { requestId?: string; name?: string; source?: string };
+      const event = payload as {
+        requestId?: string;
+        id?: string;
+        name?: string;
+        source?: string;
+      };
       const session = get().chatSession;
       if (!session || !event?.name || session.requestId !== event.requestId) return;
+      const identity = event.id || event.name;
       const loaded: AiLoadedSkill[] = [
         ...normalizeLoadedSkills(session.loadedSkills).filter(
-          (skill) => skill.name !== event.name,
+          (skill) => (skill.id || skill.name) !== identity,
         ),
         {
+          id: event.id,
           name: event.name,
           source: event.source || undefined,
           loadedAt: new Date().toISOString(),

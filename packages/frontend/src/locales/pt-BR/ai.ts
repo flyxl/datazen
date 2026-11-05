@@ -12,6 +12,8 @@ const pack = {
   'settings.ai.skills.customDir': 'Diretório de habilidades personalizado',
   'settings.ai.skills.customDirHint': 'Opcional. Um diretório extra além de ~/.agents/skills.',
   'settings.ai.skills.saveDir': 'Salvar',
+  'settings.ai.skills.selectHint': 'Selecione as habilidades que este chat pode usar.',
+  'settings.ai.skills.selectSkill': 'Selecionar habilidade',
   'settings.ai.skills.defaultDir': 'Diretório fixo: ~/.agents/skills',
   'settings.ai.skills.empty': 'Nenhum SKILL.md válido encontrado.',
   'settings.ai.skills.loading': 'Verificando habilidades…',

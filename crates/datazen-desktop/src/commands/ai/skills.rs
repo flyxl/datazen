@@ -10,5 +10,5 @@ use tauri::State;
 #[tauri::command]
 pub async fn ai_list_skills(state: State<'_, AppState>) -> Result<Vec<SkillSummary>, CommandError> {
     let settings = ai_api::get_settings_config(state.store.as_ref()).await;
-    Ok(SkillCatalog::from_settings(&settings.skills).list())
+    Ok(SkillCatalog::from_settings(&settings.skills).list_all())
 }

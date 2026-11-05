@@ -8,11 +8,12 @@
 
 use crate::ai::domain::types::AiSkillsSettings;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 use std::fs;
 use std::io::{BufRead, BufReader, Read};
 use std::path::{Component, Path, PathBuf};
+use std::sync::Mutex;
 
 pub const DEFAULT_SKILLS_DIR: &str = ".agents/skills";
 pub const SKILL_FILE: &str = "SKILL.md";
@@ -22,6 +23,8 @@ pub const MAX_SKILL_BYTES: u64 = 8 * 1024;
 /// to keep a hostile skill from turning a tool call into a memory bomb.
 pub const MAX_RESOURCE_BYTES: u64 = 1024 * 1024;
 pub const MAX_RESOURCES: usize = 100;
+/// PRD budget: at most two skill bodies may enter one model context/session.
+pub const MAX_LOADED_SKILLS: usize = 2;
 /// Only the frontmatter prefix is read while listing. Full body reads happen
 /// exclusively through [`SkillCatalog::use_skill`].
 const MAX_FRONTMATTER_BYTES: usize = 16 * 1024;
@@ -46,9 +49,13 @@ impl SkillSource {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillSummary {
+    /// Stable selection identity (`<source>:<directory>`), never the display name.
+    pub id: String,
     pub name: String,
     pub description: String,
     pub source: SkillSource,
+    /// Directory name relative to its root; safe to show and disambiguates names.
+    pub path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
 }
@@ -57,9 +64,11 @@ pub struct SkillSummary {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillContent {
+    pub id: String,
     pub name: String,
     pub description: String,
     pub source: SkillSource,
+    pub path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
     pub content: String,
@@ -91,6 +100,9 @@ pub enum SkillError {
     Symlink(String),
     TooLarge { path: String, limit: u64 },
     NotUtf8(String),
+    NotSelected(String),
+    Ambiguous(String),
+    TooManyLoaded { limit: usize },
     Io(String),
     InvalidFrontmatter(String),
 }
@@ -110,6 +122,16 @@ impl fmt::Display for SkillError {
                 write!(f, "Skill file '{path}' exceeds the {limit} byte limit")
             }
             Self::NotUtf8(path) => write!(f, "Skill file '{path}' is not valid UTF-8"),
+            Self::NotSelected(name) => {
+                write!(f, "Skill '{name}' is not selected (auto-use is off)")
+            }
+            Self::Ambiguous(name) => {
+                write!(f, "Skill name '{name}' is ambiguous; choose one by id")
+            }
+            Self::TooManyLoaded { limit } => write!(
+                f,
+                "At most {limit} skill bodies can be loaded in this session"
+            ),
             Self::Io(message) => write!(f, "Skill file error: {message}"),
             Self::InvalidFrontmatter(message) => {
                 write!(f, "Invalid SKILL.md frontmatter: {message}")
@@ -124,6 +146,9 @@ impl std::error::Error for SkillError {}
 pub struct SkillCatalog {
     roots: Vec<SkillRoot>,
     enabled: bool,
+    auto_use: bool,
+    selected: HashSet<String>,
+    loaded: Mutex<Vec<String>>,
 }
 
 impl SkillCatalog {
@@ -158,6 +183,9 @@ impl SkillCatalog {
         Self {
             roots,
             enabled: settings.enabled,
+            auto_use: settings.auto_use,
+            selected: settings.selected.iter().cloned().collect(),
+            loaded: Mutex::new(Vec::new()),
         }
     }
 
@@ -165,26 +193,122 @@ impl SkillCatalog {
         self.enabled
     }
 
-    /// List skills using frontmatter only. Missing/invalid skills are skipped;
-    /// a duplicate name keeps the first deterministic source (user root first).
+    /// Listing visible to the model: all skills when auto-use is on, otherwise
+    /// only ids the user explicitly selected in Settings.
     pub fn list(&self) -> Vec<SkillSummary> {
+        self.entries()
+            .into_iter()
+            .filter(|entry| self.is_visible(entry))
+            .map(|entry| entry.summary)
+            .collect()
+    }
+
+    /// Full discovery listing for the Settings panel. It never includes bodies.
+    pub fn list_all(&self) -> Vec<SkillSummary> {
         self.entries()
             .into_iter()
             .map(|entry| entry.summary)
             .collect()
     }
 
-    /// Load one skill body. This is the only listing-adjacent call that reads
-    /// the body; `read_skill_file` reads one attachment at a time.
+    /// Ids whose bodies were loaded successfully in this catalog instance.
+    pub fn loaded_skill_ids(&self) -> Vec<String> {
+        self.loaded
+            .lock()
+            .map(|loaded| loaded.clone())
+            .unwrap_or_default()
+    }
+
+    /// Load one skill body by display name. Ambiguous names must be resolved by
+    /// id; an unselected skill is never readable while auto-use is off.
     pub fn use_skill(&self, name: &str) -> Result<SkillContent, SkillError> {
+        let entry = self.resolve_name(name)?;
+        self.load_entry(entry)
+    }
+
+    pub fn use_skill_by_id(&self, id: &str) -> Result<SkillContent, SkillError> {
+        let entry = self.resolve_id(id)?;
+        self.load_entry(entry)
+    }
+
+    /// Read one relative resource by display name.
+    pub fn read_skill_file(&self, name: &str, relative_path: &str) -> Result<String, SkillError> {
+        let entry = self.resolve_name(name)?;
+        self.read_entry(&entry, relative_path)
+    }
+
+    pub fn read_skill_file_by_id(
+        &self,
+        id: &str,
+        relative_path: &str,
+    ) -> Result<String, SkillError> {
+        let entry = self.resolve_id(id)?;
+        self.read_entry(&entry, relative_path)
+    }
+
+    fn is_visible(&self, entry: &SkillEntry) -> bool {
+        self.auto_use || self.selected.contains(&entry.summary.id)
+    }
+
+    fn resolve_id(&self, id: &str) -> Result<SkillEntry, SkillError> {
         if !self.enabled {
             return Err(SkillError::Disabled);
         }
         let entry = self
             .entries()
             .into_iter()
-            .find(|entry| entry.summary.name == name)
-            .ok_or_else(|| SkillError::NotFound(name.to_string()))?;
+            .find(|entry| entry.summary.id == id)
+            .ok_or_else(|| SkillError::NotFound(id.to_string()))?;
+        if !self.is_visible(&entry) {
+            return Err(SkillError::NotSelected(id.to_string()));
+        }
+        Ok(entry)
+    }
+
+    fn resolve_name(&self, name: &str) -> Result<SkillEntry, SkillError> {
+        if !self.enabled {
+            return Err(SkillError::Disabled);
+        }
+        let matches: Vec<_> = self
+            .entries()
+            .into_iter()
+            .filter(|entry| entry.summary.name == name)
+            .collect();
+        if matches.is_empty() {
+            return Err(SkillError::NotFound(name.to_string()));
+        }
+        let visible: Vec<_> = matches
+            .into_iter()
+            .filter(|entry| self.is_visible(entry))
+            .collect();
+        match visible.len() {
+            0 => Err(SkillError::NotSelected(name.to_string())),
+            1 => visible
+                .into_iter()
+                .next()
+                .ok_or_else(|| SkillError::NotFound(name.to_string())),
+            _ => Err(SkillError::Ambiguous(name.to_string())),
+        }
+    }
+
+    fn load_entry(&self, entry: SkillEntry) -> Result<SkillContent, SkillError> {
+        let already_loaded = self
+            .loaded
+            .lock()
+            .map(|loaded| loaded.iter().any(|id| id == &entry.summary.id))
+            .unwrap_or(false);
+        if !already_loaded {
+            let count = self
+                .loaded
+                .lock()
+                .map(|loaded| loaded.len())
+                .unwrap_or_default();
+            if count >= MAX_LOADED_SKILLS {
+                return Err(SkillError::TooManyLoaded {
+                    limit: MAX_LOADED_SKILLS,
+                });
+            }
+        }
         let skill_file = entry.root.join(SKILL_FILE);
         let bytes = read_confined(&entry.root, &skill_file, MAX_SKILL_BYTES)?;
         let text = decode_utf8(&skill_file, bytes)?;
@@ -196,10 +320,19 @@ impl SkillCatalog {
         })?;
         let content = body.trim_start_matches('\n').to_string();
         let resources = list_resources(&entry.root);
+        if !already_loaded {
+            if let Ok(mut loaded) = self.loaded.lock() {
+                if !loaded.iter().any(|id| id == &entry.summary.id) {
+                    loaded.push(entry.summary.id.clone());
+                }
+            }
+        }
         Ok(SkillContent {
+            id: entry.summary.id,
             name: entry.summary.name,
             description: entry.summary.description,
             source: entry.summary.source,
+            path: entry.summary.path,
             version: entry.summary.version,
             content,
             resources,
@@ -207,18 +340,7 @@ impl SkillCatalog {
         })
     }
 
-    /// Read one relative resource from a skill directory. Absolute paths,
-    /// traversal, symlinks, non-files, oversize files and non-UTF-8 content are
-    /// all rejected before any bytes are returned.
-    pub fn read_skill_file(&self, name: &str, relative_path: &str) -> Result<String, SkillError> {
-        if !self.enabled {
-            return Err(SkillError::Disabled);
-        }
-        let entry = self
-            .entries()
-            .into_iter()
-            .find(|entry| entry.summary.name == name)
-            .ok_or_else(|| SkillError::NotFound(name.to_string()))?;
+    fn read_entry(&self, entry: &SkillEntry, relative_path: &str) -> Result<String, SkillError> {
         let relative = validate_relative_path(relative_path)?;
         let target = entry.root.join(&relative);
         let bytes = read_confined(&entry.root, &target, MAX_RESOURCE_BYTES)?;
@@ -230,7 +352,6 @@ impl SkillCatalog {
             return Vec::new();
         }
         let mut entries = Vec::new();
-        let mut seen = std::collections::HashSet::new();
         for root in &self.roots {
             let canonical_root = match canonical_dir(&root.path) {
                 Some(path) => path,
@@ -262,20 +383,18 @@ impl SkillCatalog {
                         continue;
                     }
                 };
-                let name = meta.name.unwrap_or(dir_name);
+                let name = meta.name.unwrap_or_else(|| dir_name.clone());
                 if !valid_skill_name(&name) {
                     tracing::warn!(name = %name, "skills: skipping invalid skill name");
                     continue;
                 }
-                if !seen.insert(name.clone()) {
-                    tracing::warn!(name = %name, "skills: duplicate skill name ignored");
-                    continue;
-                }
                 entries.push(SkillEntry {
                     summary: SkillSummary {
+                        id: format!("{}:{dir_name}", root.source.as_str()),
                         name,
                         description: meta.description.unwrap_or_default(),
                         source: root.source,
+                        path: dir_name,
                         version: meta.version,
                     },
                     root: child.path(),
@@ -590,7 +709,7 @@ pub mod tools {
         vec![
             ToolDefinition {
                 name: "list_skills".into(),
-                description: "List available local skills as name/description pairs. This never returns skill bodies; call use_skill only after the user or task explicitly selects one.".into(),
+                description: "List skills visible under the current selection policy: id, name and description only. This never returns bodies. Pass the id to use_skill to disambiguate duplicate names.".into(),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {},
@@ -603,9 +722,10 @@ pub mod tools {
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
-                        "name": { "type": "string", "description": "Skill name from list_skills" }
+                        "id": { "type": "string", "description": "Stable skill id from list_skills" },
+                        "name": { "type": "string", "description": "Skill name; ambiguous names must use id" }
                     },
-                    "required": ["name"]
+                    "required": []
                 }),
             },
             ToolDefinition {
@@ -614,10 +734,11 @@ pub mod tools {
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
-                        "name": { "type": "string", "description": "Skill name from list_skills" },
+                        "id": { "type": "string", "description": "Stable skill id from list_skills" },
+                        "name": { "type": "string", "description": "Skill name; ambiguous names must use id" },
                         "path": { "type": "string", "description": "Relative resource path inside that skill directory" }
                     },
-                    "required": ["name", "path"]
+                    "required": ["path"]
                 }),
             },
         ]
@@ -630,16 +751,16 @@ pub mod tools {
     pub fn execute_skill_tool(catalog: &SkillCatalog, tool_call: &ToolCall) -> String {
         let args: serde_json::Value =
             serde_json::from_str(&tool_call.arguments).unwrap_or_default();
+        let id = args["id"].as_str().filter(|id| !id.trim().is_empty());
+        let name = args["name"].as_str().filter(|name| !name.trim().is_empty());
         let result = match tool_call.name.as_str() {
             "list_skills" => {
-                // The model only needs routing metadata. Source/version stay in
-                // the UI listing and must not turn the tool result into a body
-                // or an authority claim.
                 let listing: Vec<serde_json::Value> = catalog
                     .list()
                     .into_iter()
                     .map(|skill| {
                         serde_json::json!({
+                            "id": skill.id,
                             "name": skill.name,
                             "description": skill.description,
                         })
@@ -647,17 +768,27 @@ pub mod tools {
                     .collect();
                 serde_json::to_string(&listing).map_err(|error| SkillError::Io(error.to_string()))
             }
-            "use_skill" => {
-                let name = args["name"].as_str().unwrap_or("");
-                catalog.use_skill(name).and_then(|skill| {
-                    serde_json::to_string(&skill).map_err(|error| SkillError::Io(error.to_string()))
-                })
+            "use_skill" => match (id, name) {
+                (Some(id), _) => catalog.use_skill_by_id(id),
+                (None, Some(name)) => catalog.use_skill(name),
+                (None, None) => Err(SkillError::InvalidName(
+                    "use_skill requires id or name".into(),
+                )),
             }
+            .and_then(|skill| {
+                serde_json::to_string(&skill).map_err(|error| SkillError::Io(error.to_string()))
+            }),
             "read_skill_file" => {
-                let name = args["name"].as_str().unwrap_or("");
                 let path = args["path"].as_str().unwrap_or("");
-                catalog.read_skill_file(name, path).map(|content| {
-                    serde_json::json!({ "name": name, "path": path, "content": content })
+                let read = match (id, name) {
+                    (Some(id), _) => catalog.read_skill_file_by_id(id, path),
+                    (None, Some(name)) => catalog.read_skill_file(name, path),
+                    (None, None) => Err(SkillError::InvalidName(
+                        "read_skill_file requires id or name".into(),
+                    )),
+                };
+                read.map(|content| {
+                    serde_json::json!({ "id": id, "name": name, "path": path, "content": content })
                         .to_string()
                 })
             }
@@ -679,6 +810,15 @@ pub mod tools {
             SkillError::Symlink(_) => "symbolic links are not allowed".into(),
             SkillError::TooLarge { limit, .. } => format!("file exceeds the {limit} byte limit"),
             SkillError::NotUtf8(_) => "file is not valid UTF-8".into(),
+            SkillError::NotSelected(name) => {
+                format!("skill '{name}' is not selected (auto-use is off)")
+            }
+            SkillError::Ambiguous(name) => {
+                format!("skill name '{name}' is ambiguous; choose one by id")
+            }
+            SkillError::TooManyLoaded { limit } => {
+                format!("at most {limit} skill bodies can be loaded in this session")
+            }
             SkillError::Io(_) => "could not read the skill file".into(),
             SkillError::InvalidFrontmatter(_) => "invalid SKILL.md frontmatter".into(),
         }

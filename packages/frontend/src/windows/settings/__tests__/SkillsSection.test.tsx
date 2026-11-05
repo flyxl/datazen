@@ -52,6 +52,7 @@ function configWith(overrides: Partial<AiSettingsConfig['skills']> = {}): AiSett
       enabled: true,
       customDir: null,
       autoUse: false,
+      selected: [],
       ...overrides,
     },
   };
@@ -61,9 +62,11 @@ describe('SkillsSection', () => {
   beforeEach(() => {
     commands.listSkills.mockResolvedValue([
       {
+        id: 'user:sql-review',
         name: 'sql-review',
         description: 'Review SQL safely',
         source: 'user',
+        path: 'sql-review',
       },
     ]);
   });
@@ -90,9 +93,39 @@ describe('SkillsSection', () => {
 
   it('renders the name/description listing without loading bodies', async () => {
     render(<SkillsSection config={configWith()} />);
-    await waitFor(() => expect(screen.getByTestId('ai-skills-row-sql-review')).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByTestId('ai-skills-row-user:sql-review')).toBeInTheDocument(),
+    );
     expect(screen.getByText('Review SQL safely')).toBeInTheDocument();
     expect(commands.listSkills).toHaveBeenCalledTimes(1);
+  });
+
+  it('persists explicit selection while auto-use is off', async () => {
+    render(<SkillsSection config={configWith()} />);
+    await waitFor(() =>
+      expect(screen.getByTestId('ai-skills-row-user:sql-review')).toBeInTheDocument(),
+    );
+
+    const checkbox = screen.getByTestId('ai-skills-select-user:sql-review');
+    expect(checkbox).not.toBeChecked();
+    fireEvent.click(checkbox);
+    await waitFor(() =>
+      expect(store.saveSettingsConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          skills: expect.objectContaining({ selected: ['user:sql-review'] }),
+        }),
+      ),
+    );
+  });
+
+  it('auto-use checks and disables per-skill selection', async () => {
+    render(<SkillsSection config={configWith({ autoUse: true })} />);
+    await waitFor(() =>
+      expect(screen.getByTestId('ai-skills-row-user:sql-review')).toBeInTheDocument(),
+    );
+    const checkbox = screen.getByTestId('ai-skills-select-user:sql-review');
+    expect(checkbox).toBeChecked();
+    expect(checkbox).toBeDisabled();
   });
 
   it('does not scan when skills are disabled and explains why', async () => {
