@@ -349,6 +349,20 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         budget_bridge,
         Some(egress),
     ));
+    // W8 刀2：活连接出向端口适配器——backend 尚未被租约源移动，clone 一份
+    // 给它（`by_session` 反向索引随 backend.open 同帧写入，两份 Arc 必须
+    // 指向**同一** backend 实例；连接目录与 registry 同实例既有纪律）。
+    let live_source = std::sync::Arc::new(
+        crate::execution::live_source::ServerLiveConnectionSource::new(
+            backend.clone(),
+            connections_repo.clone(),
+            driver_registry.clone(),
+            datazen::connection::domain::ConnectionScope::new(config.organization_id.clone()),
+        ),
+    );
+    // W8 刀2：SchemaCache 全局一个实例（缓存键第一维 connection_id，天然按
+    // 连接分桶；TTL 300s 与桌面同口径；失效接线随写半边的后续刀定）。
+    let schema_cache = std::sync::Arc::new(datazen::schema::cache::SchemaCache::new());
     // 结果发布钩子与租约源共享同一 RuntimeResultSink（publisher.rs 的装配
     // 纪律）。
     let result_sink = datazen::execution::application::orchestration::RuntimeResultSink::default();
@@ -373,7 +387,11 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
             std::sync::Arc::new(
                 datazen::execution::runtime::directory::InMemorySessionDirectory::new(),
             ),
-        ),
+        )
+        // W8 刀2：活连接端口随实例装配——慢路构造的每个新 runtime 实例
+        // 构造后立即接线；吊销→重建自动重接（lease.rs 模块头「活连接端口
+        // 随实例装配」）。
+        .with_live_source(live_source),
     );
     // 执行域路由的用例面：租约委托适配器（每调用现取，与 MCP 同一租约源）。
     let lease_cases: std::sync::Arc<
@@ -490,8 +508,10 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         // 语义），directory/sessions 与 sessions 域同一实例；W8 刀3：
         // 变更二端点（change-plan-previews / change-commits）点亮，`lease`
         // 是 commit 写半边单次 resolve 的源（与 MCP / sessions 域同一
-        // 实例）；其余六端点 fail-closed（501，逐端口收窄原因）。认证链
-        // L2–L6 与 CSRF 由 merge 循环保证。
+        // 实例）；W8 刀2：FK 二 + 值搜索 + origin 四读端点点亮（`lease`
+        // 兼活句柄借出源 + `schema_cache` 目录缓存读通路径）；其余二端点
+        // fail-closed（501，逐端口收窄原因）。认证链 L2–L6 与 CSRF 由
+        // merge 循环保证。
         crate::http::domains::table_data::table_data_router(
             crate::http::domains::table_data::TableDataState {
                 store: store.clone(),
@@ -502,6 +522,7 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
                 directory: session_directory.clone(),
                 sessions: lease_cases.clone(),
                 lease: lease_source.clone(),
+                schema_cache: schema_cache.clone(),
             },
         ),
         // WR-C2 §6.9 driverGateway 过渡域（四方法；闸序与目标机器同一
