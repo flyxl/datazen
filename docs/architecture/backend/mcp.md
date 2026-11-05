@@ -4,29 +4,40 @@
 
 ### 1.1 MCP Server
 
-DataZen 作为 MCP Server 暴露数据库操作能力给外部 LLM 应用（Claude Desktop、Cursor 等）。**目标分层**（DDD 目标架构 §3.3）：工具业务分发位于 `crates/datazen/src/mcp/`，宿主只留传输与登录。**当前事实**（基线 `528f10e`，2026-10-31 核对）：共享层只有权限/白名单/命令准备/表格描述策略（751 行）；工具实现、Resources、Prompts、有状态会话协议与 MCP Client 仍在 `src-tauri/src/mcp/`（约 4,200 行）——归位工作立项为[边界方案 §8 M 系列](../../development/host-boundary-followups.md#8-跨形态一致性收敛m-系列)，完成前 Web 宿主无法以「只换 Server 形态」复用 MCP 能力。
+DataZen 作为 MCP Server 暴露数据库操作能力给外部 LLM 应用（Claude Desktop、Cursor 等）。**目标分层**（DDD 目标架构 §3.3）：工具业务语义位于 `crates/datazen/src/mcp/`，宿主只留传输、认证与装配。**当前事实**（2026-11-05 核对）：共享层已承载连接白名单、权限词汇垫片、表描述、无状态工具用例与有状态会话语义；`#[tool]` 宏、Resources、Prompts、stdio 传输、MCP Client 与会话清理 worker 仍在桌面宿主 `crates/datazen-desktop/src/mcp/`。Streamable HTTP 尚未实现（实现文档 T21 规划）。其他宿主目前仍无法只替换 Server 形态就复用完整 MCP 能力。
 
 ```
-crates/datazen/src/mcp/   # 已共享：权限/白名单/命令准备/表格描述策略；工具分发归位 = 边界方案 M1
-src-tauri/src/mcp/
+crates/datazen/src/mcp/   # 已共享：白名单、权限词汇垫片、表描述、工具用例与会话语义
+├── domain/
+│   ├── allowlist.rs      # 连接白名单（空 = deny-all）
+│   └── mod.rs            # 白名单导出 + execution::domain::permission 旧路径垫片
+└── application/
+    ├── describe.rs       # 表描述格式化
+    ├── tools.rs          # 无状态工具用例（元数据/查询/工作流）
+    ├── session.rs        # 会话注册表、TTL、归属校验、清理登记
+    └── session_tools.rs  # open_session / use_session / close_session 编排
+
+crates/datazen-desktop/src/mcp/
 ├── mod.rs          # 启动/停止与 stdio 传输装配（含断连清理）
 ├── auth.rs         # stdio 本地 token 认证（`mcp.token` + `DATAZEN_MCP_TOKEN`）
-├── (allowlist/permission 在 crates/datazen/src/mcp/{domain,application}，宿主经 `datazen::mcp::` 引用)
+├── (allowlist/permission 在 crates/datazen/src/mcp/domain/，宿主经 `datazen::mcp::` 引用)
 ├── server.rs       # MCP Server 实例与工具清单 `MCP_ALL_TOOLS`
-├── server/         # 有状态会话等 Server 测试
+├── server/         # 集成与有状态协议测试（tests_integration.rs / tests_stateful.rs）
 ├── tools.rs        # 工具实现的宿主绑定（含 workflow 与有状态会话工具）
 ├── tool_help.rs    # 工具说明、参数示例与输入 schema
 ├── types.rs        # 工具入参 DTO（snake_case）
-├── handler.rs      # `call_tool` 门控：注册表 → 权限 → 路由
-├── session.rs      # 有状态会话引用注册表（仅内存，不落盘）
+├── handler.rs      # `call_tool` 门控：注册表 → 权限 → 白名单 → 路由
+├── session.rs      # `datazen::mcp::session` 的兼容再导出
+├── session_open.rs # 有状态会话打开、取消与未交付清理
+├── session_cleanup.rs # 会话清理 worker（TTL / 断连 / 未确认释放）
 ├── resources.rs    # Resources
 ├── prompts.rs      # Prompts
-├── contract.rs     # 外部契约快照与 golden 测试
+├── contract_tests.rs # 外部契约快照与 golden 测试
 ├── fixtures/       # `mcp_external_contract.json` golden 契约
 └── client.rs       # MCP Client 管理
 ```
 
-modules 内的 `permission.rs` / `allowlist.rs` 只承载 MCP 专属的权限策略（三档模式、白名单、工具/资源门控）。SQL 主关键字分类（`sql_main_keyword`、`tokenize_sql`、`find_main_verb_index`）与注释剥离等**与传输无关**的 SQL 判读能力位于共享层 `crates/datazen/src/execution/domain/sql_guard/`，宿主直接复用，未来服务端入口共用同一份实现。
+`crates/datazen/src/mcp/domain/` 只再导出 MCP 专属的权限策略（三档模式、白名单、工具/资源门控）；权限模式与 SQL 分类的唯一定义在共享层 `crates/datazen/src/execution/domain/permission.rs` 与 `crates/datazen/src/execution/domain/sql_guard/`。SQL 主关键字分类（`sql_main_keyword`、`tokenize_sql`、`find_main_verb_index`）与注释剥离等**与传输无关**的 SQL 判读能力位于 `crates/datazen/src/execution/domain/sql_guard/`，宿主直接复用，未来服务端入口共用同一份实现。
 
 Workflow 引擎本身见 [`workflow` 模块](./workflow.md)，MCP 仅通过 Tools/Resources 暴露。
 
@@ -36,7 +47,7 @@ Workflow 引擎本身见 [`workflow` 模块](./workflow.md)，MCP 仅通过 Tool
 |------|------|
 | `mcpPermissionMode` | `read_only` / `safe_write`（默认）/ `high_risk_write` |
 | `mcpDisabledTools` | 工具 denylist |
-| `mcpAllowedConnectionIds` | 连接白名单；**空数组 = 暴露全部已保存连接** |
+| `mcpAllowedConnectionIds` | 连接白名单；**空数组 = 拒绝一切连接（deny-all 默认）**，必须显式加入连接才可访问 |
 
 修改权限/白名单/工具后，嵌入式 MCP Server 会自动热重载；独立 `datazen --mcp` 进程需重启后生效。
 
@@ -65,7 +76,7 @@ datazen --mcp-stdio
 |------|-------|-----------|
 | `mcpAllowedConnectionIds` | 带 `connection_id` 的工具 | `connections`、`query-history`（按条目 `connectionId` 过滤）、`schema/{connectionId}/…` |
 | `read_only` | 屏蔽 `query` / `run_workflow` | `query-history` 从列表隐藏且读取返回 `[]`（不泄露 SQL） |
-| `safe_write` / `high_risk_write` | SQL 分类门控（分类器来自 `packages/kernel/src/sql_guard/`） | 全量 resources（仍受 allowlist 约束） |
+| `safe_write` / `high_risk_write` | SQL 分类门控（分类器来自 `crates/datazen/src/execution/domain/sql_guard/`） | 全量 resources（仍受 allowlist 约束） |
 
 **Server Tools（无状态）：**
 - `list_connections` / `list_databases` / `list_tables` / `search_tables` / `query` / `get_schema`
@@ -107,12 +118,14 @@ Settings → **External MCP Servers** 管理已保存配置与运行时连接态
 
 | 层 | 职责 |
 |----|------|
-| `McpClientManager` | stdio 子进程生命周期、工具发现、`call_tool` |
-| `commands/mcp.rs` | IPC：`mcp_client_connect` / `disconnect` / `list` / `tools` / `call_tool` |
-| `commands/ai/mod.rs` | `collect_mcp_tool_definitions()` 合并 DB tools + MCP tools；`run_streaming_tool_loop` 路由 `mcp/*` 前缀 |
-| 前端 `McpClientSection` | 配置 CRUD、env 编辑、连接/重试、运行时工具列表 |
+| `McpClientManager`（`crates/datazen-desktop/src/mcp/client.rs`） | stdio 子进程生命周期、工具发现、`call_tool` |
+| `crates/datazen-desktop/src/commands/mcp.rs` | IPC：`mcp_client_connect` / `disconnect` / `list` / `tools` / `call_tool` |
+| `crates/datazen-desktop/src/commands/ai/chat.rs` | IPC 薄壳：取 `datazen::ai::mcp_tools` 的工具定义与执行端口 |
+| `crates/datazen/src/ai/application/mcp_tools.rs` | 共享层合并 DB tools + MCP tools（`mcp/{serverId}/{toolName}`）并路由 `mcp/*` |
+| `crates/datazen/src/ai/application/tool_loop.rs` | 流式工具循环与工具调用分发 |
+| `packages/frontend/src/windows/settings/McpClientSection.tsx` | 配置 CRUD、env 编辑、连接/重试、运行时工具列表 |
 
-AI Chat（`ai_chat`）在已连接外部 MCP 时将 MCP 工具与内置 DB tools 一并注入 Provider；模型调用 `mcp/…` 工具时由后端经 `McpClientManager` 转发至对应子进程。详见 [`ai.md` — AI Chat MCP 工具](./ai.md#111-ai-chat-mcp-工具)。
+AI Chat（`ai_chat`）在已连接外部 MCP 时将 MCP 工具与内置 DB tools 一并注入 Provider；内置 DB tools 只有 5 个只读元数据工具，不能执行 SQL。模型调用 `mcp/…` 工具时由后端经 `McpClientManager` 转发至对应子进程。详见 [`ai.md`](./ai.md)。
 
 ### 1.3 连接 ID（connection_id vs db_session_id）
 
@@ -139,11 +152,11 @@ MCP 侧只有一个执行类入口会绕过 db tools：`run_workflow` 把 `conne
 
 `open_session` → `use_session` → `close_session` 是**显式的三步协议**，也是 §1.3 那条「无状态工具不做会话管理」的唯一例外。无状态工具拿的是调用方完整写出的目标；有状态工具让调用方先把「开一条会话」这件事本身做成一个可引用的对象，后续命令只带引用。
 
-- **`open_session(connectionId, database, schema?, ttlMs?)`**：`database` 是必填的，不接受「省略即用当前库」——省略会被明确拒绝，而不是回退到 GUI 当前目标。成功后返回 `{"clientSessionRef", "state", "contextRevision", "expiresInMs"}`。
-- **`use_session(clientSessionRef, command, input, timeoutMs?)`**：在映射到的那条会话里跑一个 Driver Command。`query` / `execute` 仍要过 SQL 权限闸（`read_only` 模式下照样被拦），结果行从执行产物（artifact）读出，最多返回 200 行并在 `rowsTruncated` 标记截断。
-- **`close_session(clientSessionRef, mode?)`**：关闭会话并删掉映射。`mode` 取 `requireNoTransaction`（默认）或回滚未结束事务后关闭的 `rollbackAndClose`，其他字符串直接拒绝，不会静默降级成「丢弃未提交工作」。
+- **`open_session(connection_id, database, schema?, ttl_ms?)`**：`database` 是必填的，不接受「省略即用当前库」——省略会被明确拒绝，而不是回退到 GUI 当前目标。成功后返回 `{"clientSessionRef", "state", "contextRevision", "expiresInMs"}`。
+- **`use_session(client_session_ref, command, input, timeout_ms?)`**：在映射到的那条会话里跑一个 Driver Command。`query` / `execute` 仍要过 SQL 权限闸（`read_only` 模式下照样被拦），结果行从执行产物（artifact）读出，最多返回 200 行并在 `rowsTruncated` 标记截断。
+- **`close_session(client_session_ref, mode?)`**：关闭会话并删掉映射。`mode` 取 `requireNoTransaction`（默认）或回滚未结束事务后关闭的 `rollbackAndClose`，其他字符串直接拒绝，不会静默降级成「丢弃未提交工作」。
 
-`clientSessionRef` 是**不透明引用**：客户端拿到的 uuid 无法反推 `dbSessionId`、连接或主机进程。`reference → handle` 的映射只存在于 [src-tauri/src/mcp/session.rs](../../../src-tauri/src/mcp/session.rs) 的内存里，绑定 principal、后端生成的 clientInstanceId、运行句柄、`contextRevision` 与到期时刻；它**不写入** Workflow 定义、执行历史或数据库配置，因此进程退出即全部失效，也不会跨 MCP 进程共享。
+`clientSessionRef` 是**不透明引用**：客户端拿到的 uuid 无法反推 `dbSessionId`、连接或主机进程。`reference → handle` 的映射只存在于 [crates/datazen/src/mcp/application/session.rs](../../../crates/datazen/src/mcp/application/session.rs) 的内存里，绑定 principal、后端生成的 clientInstanceId、运行句柄、`contextRevision` 与到期时刻；它**不写入** Workflow 定义、执行历史或数据库配置，因此进程退出即全部失效，也不会跨 MCP 进程共享。
 
 归属与失效判定有三条硬边界：
 
@@ -157,5 +170,5 @@ MCP 侧只有一个执行类入口会绕过 db tools：`run_workflow` 把 `conne
 
 客户端断开时，`release_sessions` 先禁止该 client 新增有状态请求，并撤销所有归属 binding；在途 open 返回的资源也转入清理，不向已断开的 client 发新引用。 `session_open.rs` 由独立任务持有完整 Runtime 获取过程：MCP 请求取消只丢弃等待方，不取消获取 owner；未消费的回复由 RAII guard 撤销 binding，并交给同一 cleanup worker。因而即使请求在获取中被取消、断连后才拿到资源，也不会丢失原 owner/handle。成功交付引用后 guard 解除，正常 TTL 与显式 close 语义继续生效。每个 client 至多一个 `session_cleanup.rs` worker，以原 owner 对原 Runtime 句柄调用 `RollbackAndClose`。它不会按 connectionId 扫描其他消费者资源。只有 `resourceRelease=Confirmed` 删除 cleanup record；错误、Pending、Quarantined 均保留，按 100ms 起、上限 30s 退避。未知效果不改写为已回滚，不重放应用 SQL。已隔离且无法确认物理释放的 owner 记录保持在进程内，不能宣称已清理；进程退出不持久化这些句柄。显式 close 收到未确认释放时返回 `closed:false, cleanupPending:true` 并转入同一路径。worker 在 binding 和 cleanup record 均为空后退出。
 
-请求取消/断连与获取交错、晚到资源及预算回收、正常交付后幂等关闭的 Host Runtime fixture 回归在 `src-tauri/src/mcp/session_open.rs`；这些受控测试不替代 PG/MySQL 实库/传输旅程。Runtime-backed TTL、active transaction 断连回滚、预算/registry 释放、其他 client 隔离与未确认关闭 owner 保留测试在 `src-tauri/src/mcp/session_cleanup.rs`。协议回归测试落在 `src-tauri/src/mcp/server/tests_stateful.rs`（他人引用不可用、未知引用不重建、TTL 过期、关闭被网关拒绝时保留映射、重复关闭幂等、断开只释放自己的映射、归属身份与 Job owner 越权被拒）。
+请求取消/断连与获取交错、晚到资源及预算回收、正常交付后幂等关闭的 Host Runtime fixture 回归在 `crates/datazen-desktop/src/mcp/session_open.rs`；这些受控测试不替代 PG/MySQL 实库/传输旅程。Runtime-backed TTL、active transaction 断连回滚、预算/registry 释放、其他 client 隔离与未确认关闭 owner 保留测试在 `crates/datazen-desktop/src/mcp/session_cleanup.rs`。协议回归测试落在 `crates/datazen-desktop/src/mcp/server/tests_stateful.rs`（他人引用不可用、未知引用不重建、TTL 过期、关闭被网关拒绝时保留映射、重复关闭幂等、断开只释放自己的映射、归属身份与 Job owner 越权被拒）。
 
