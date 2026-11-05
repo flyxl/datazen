@@ -1,8 +1,8 @@
 # W8 交接文档：点亮路径两刀（server 执行面绿路径）
 
-> **交接日期**：2026-11-05。**交接范围**：Wave8-a（点亮上半）与 Wave8-b（点亮下半）的全部剩余工作。
-> **当前基线**：main `7fad412`（PR #175 合并后）；W8-a P1 已完成并推送至分支 `w8-a`。
-> **权威台账**：[web-ready-plan.md §11](web-ready-plan.md#11-进度回写区)（2026-11-05 Wave8-a P1 条目含全部设计裁决）。
+> **交接日期**：2026-11-05（第三版刷新）。**交接范围**：Wave8-a 余项（十一端点接线 + seed-example）与 Wave8-b（点亮下半）。
+> **当前基线**：main `412b494`（PR #178 合并后）；**W8-a P1（#176）/ P2（#177）/ P3（#178）已全部合并**。
+> **权威台账**：[web-ready-plan.md §11](web-ready-plan.md#11-进度回写区)（2026-11-05 Wave8-a P1/P2/P3 三条目含全部设计裁决与实现事实）。
 > 本文是接手人视角的操作手册：先读「现状」，再按「剩余工作」逐刀执行，「环境须知」与「执行纪律」两节是本沙箱/本仓的硬约束。
 
 ## 1. 现状（截至交接时）
@@ -40,31 +40,25 @@
 - ⚠️ `cargo check -p datazen-server --features deploy-drivers`（聚合形态，15 驱动全链接）编译至驱动 crate 层无错后被沙箱重置中断——**push 后以 CI 复验为准**
 - git 驱动（kiwi/superset）不在此列（维持现状裁决：私有仓约束，构建期注入，静态声明会炸干净检出的 `cargo metadata`）
 
+### 1.3 W8-a P2 已完成（PR #177 合并，`fb0bb74`）
+
+`crates/datazen-server/src/execution/target_runner.rs`：`ServerTargetRunner { host, lease }` 实现端口 `TargetCommandRunner`（桌面 `DesktopTargetRunner` 的 server 同构投影）。target 分支 = `host.prepare`（WR-F7 闸序）→ `ExecuteAtTarget`（规范化目标 + CAS）→ 25ms 轮询 → Succeeded → `PreparedExecution.artifacts` 端口分块收集；manual_handle 分支 = 租约每调用现取 → `get_session` 三字段校验 → `ExecuteInSession`（context_revision CAS）→ 经 `resource_host::ServerArtifactChunks`（pub(crate)）投影共享收集。授权语：执行面全用 `run()` 真主体。装配：`TableDataState` +registry +runner（与 driverGateway/MCP 同实例）；datazen features 增 `table-browsing`。全量测试绿（lib 193 → P3 后 194）。
+
+### 1.4 W8-a P3 已完成（PR #178 合并，`412b494`）
+
+授权种子（server 局部刀）：`stateless_exec::PrincipalScopedHost`（会话工具 `PerCallHost` 的无状态镜像）——四方法委托共享宿主，`prepare` 返回后覆写 `PreparedExecution.context` 为请求真主体；`ModulesBackend` 无状态分支 `stateless.call(request_context(identity), ...)`。**七工具执行面全链真主体化**；残留（闸序读半边合成主体、driverGateway execute 路径）登记在 `resource_host.rs` 第 2 条（已收窄版）——读半边组织口径正确、仅审计行主体合成，端口签名手术留后续刀。新测试 `principal_scoped_host_overrides_the_prepared_context` 钉住传播。
+
 ## 2. 剩余工作
 
-### 2.1 W8-a 余项（点亮上半，接 P2/P3/接线）
+### 2.1 W8-a 余项（点亮上半收尾，两刀）
 
-**P2：`TargetCommandRunner` server 实现**（设计已裁决入账，直接照做）
+**接线刀：tableData 十一端点 501 → 真用例接线**（`runner`/`registry` 已在 `TableDataState` 就位，handler 逐条换真实现）
 
-- 落点：`crates/datazen-server/src/execution/target_runner.rs`（新文件）。
-- 结构：`pub struct ServerTargetRunner { host: Arc<dyn ResourceExecutionHost>, lease: Arc<dyn RuntimeLeaseSource> }`。
-- 端口：`datazen::table_browsing::api::TargetCommandRunner`（`api.rs:196`，单方法 `run(&self, context, binding, command, input) -> Result<Vec<Json>, ApiError>`）；`TargetBinding = ExecutionTarget + revision: Counter + manual_handle: Option<SessionHandle>`。
-- 参考实现（桌面）：`crates/datazen-desktop/src/commands/table_target.rs`（`DesktopTargetRunner`，57–154 行）。
-- **target 分支**：`host.prepare(&connection_id, revision.get(), command, target)`（复用 WR-F7 闸序，返回 `PreparedExecution { use_cases, artifacts, context, target }`）→ `prepared.use_cases.issue_submission_token(context, ExecuteAtTarget, None)` → `execute_at_target`（`ExecuteAtTargetRequest { target: prepared.target, expected_config_revision: binding.revision, call, idempotency_key }`）→ 轮询 `get_execution`（25ms 间隔）到 terminal → 要求 `Succeeded` → 逐 artifact 分块收集（`prepared.artifacts.read_chunk`，首块读 `published_chunk_count` 后循环取块）。
-- **manual_handle 分支**：`lease.resolve()` **每调用现取**（租约纪律：禁止缓存 `RuntimeConnectionUseCases`）→ `get_session` → 三字段校验（`connection_id`/`config_revision`/`observed_context.namespace` 与 binding 不符 → `InvalidArgument "Manual table session target changed"`）→ `issue_submission_token(ExecuteInSession, Some(handle))` → `execute_in_session`（带 `expected_context_revision: Some(session.context_revision)`）→ 轮询收集（用 `runtime.read_artifact_chunk` 固有方法——`ConnectionUseCases` trait 无此方法，target 分支因此用 `PreparedExecution.artifacts` 端口）。
-- **授权语**：执行面（token/execute/poll/collect）全用 `run()` 的 `RequestContext`（请求真主体）；`prepare` 内部 profile 读取沿用 host 合成主体 `server-mcp-tool`（P3 收口点）。
-- **错误映射**：`WorkflowError` → `ApiError` 沿用 `driver_gateway.rs:139` 既有裁决（`Driver`/`ConnectionFailed` → `ServiceUnavailable`；其余 → `InvalidArgument`）。
-- **装配**：bootstrap `TableDataState` 扩展（+`registry` +`runner`），与 driverGateway/MCP 共享 host/lease/registry 同一实例（bootstrap 既有纪律）。
+- 读三端点（`getTableData`/`previewTableReadSql`/`estimateTableRows`）：`read_table_page`/`preview_table_read` 用例 + `state.registry.get_sql_driver_by_name(database_type)` + `state.runner`；handler 形态照桌面 `table_target.rs::read/preview`（输入校验 → profile/metadata → driver → `validate_filters` → 调用例）；连接上下文的真主体从 `SessionIdentity.ctx` 取（P3 语义延伸到 HTTP 面）。绑定铸造：`TargetBinding { target: ExecutionTarget{connection_id, namespace(表), object}, revision: Counter(profile.config_revision), manual_handle: None }`（v1 HTTP 面无手动会话句柄）。
+- FK 四端点 + 变更四端点：宿主端口依赖（`ForeignKeyNavigationSource`、`TableColumnSource`、会话执行面）逐条评估——能以既有 server 件组合的接，不能的保持 501 并把不可服务原因收窄为逐端口缺失；每接一条删一条 501，`table_data.rs` 模块头 14 方法状态表同步。
+- 测试：`table_data_routes.rs` 夹具把占位 `FixtureRunner` 换成真 `ServerTargetRunner` + fake-driver 注册表（`DriverRegistry::with_factories(vec![...])` 静态形与懒形并存）。
 
-**P3：授权种子**——把 `resource_host.rs` 的合成服务主体（`server-mcp-tool`）替换/收口为请求真主体的传播机制（`stateless_exec` 模块头同款登记，见 `resource_host.rs` 模块头登记第 2 条）。
-
-**tableData 十一端点换真用例接线**（501 → 真实现，逐条按 `table_data.rs` 模块头状态表）：
-
-- 读三端点（`getTableData`/`previewTableReadSql`/`estimateTableRows`）：`read_table_page`/`preview_table_read` 用例 + `registry.get_sql_driver_by_name(database_type)` + runner；handler 形态照桌面 `table_target.rs::read/preview`（输入校验 → profile/metadata → driver → `validate_filters` → 调用例）。
-- FK 四端点 + 变更四端点：各有宿主端口依赖（`ForeignKeyNavigationSource`、`TableColumnSource`、会话执行面），依赖清单与不可服务原因逐条登记在 `crates/datazen-server/src/http/domains/table_data.rs` 模块头 14 方法状态表——接一条删一条 501，状态表同步。
-- 测试：`crates/datazen-server/tests/table_data_routes.rs` 扩容（fixture 已有真存储/登录会话/CSRF 通道；驱动 mock 用 `DriverRegistry::with_factories([mock])` 自装配——registry 懒形与静态形并存，测试可用静态形）。
-
-**mcp seed-example + 七工具绿路径**：常态 CI 用 fake-driver（桌面 fake-driver 先例），真方言 `#[ignore]`。七工具经 `read_target_command` 的闸序（profile → driver → 命令目录 → 执行）不变。
+**绿路径刀：mcp seed-example + 七工具**：常态 CI 用 fake-driver（桌面 fake-driver 先例），真方言 `#[ignore]`；七工具经 `read_target_command` 闸序（profile → driver → 命令目录 → 执行）不变，P3 后执行面带真主体。
 
 ### 2.2 W8-b（点亮下半）
 
@@ -134,8 +128,7 @@ CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0 cargo c
 
 ## 5. 接手第一步（建议顺序）
 
-1. `git fetch origin && git checkout w8-a`（P1 代码在此）。
-2. 本地跑一遍 §3 验证清单（快验证项），确认 P1 状态。
-3. 开 PR（W8-a P1），等 CI 4/4——CI 的 rust job 会同时验证聚合形态所需的全部驱动 crate 编译。
-4. 合并后从 main 拉新分支做 P2（§2.1 设计已裁决，含桌面参考实现的文件行号）。
-5. 每完成一段，回写 §11 台账。
+1. `git fetch origin && git checkout main`（P1/P2/P3 均已合并，无 WIP 分支遗留）。
+2. 本地跑一遍 §3 验证清单（快验证项）确认基线绿：stub 双腿、scripts vitest、`cargo check -p datazen-server`。
+3. 开接线刀分支（建议 `w8-a-wire`）：十一端点 501 → 真用例接线（§2.1 第一项；读三端点先行，FK/变更端点按端口依赖逐条评估）。
+4. 每完成一段，回写 §11 台账（倒序，历史条目不回改）。
