@@ -142,6 +142,10 @@ pub async fn run_chat_session(
     let agent_tools_allowed = input.agent_mode == AiAgentMode::Agent;
     attach_db_tools = agent_tools_allowed && attach_db_tools;
 
+    let has_bound_connection = input
+        .connection_id
+        .as_deref()
+        .is_some_and(|id| !id.trim().is_empty());
     let tool_context = AiToolContext {
         allowed_connection_id: input.connection_id.clone(),
         max_sample_rows: env.gate.max_sample_rows,
@@ -167,6 +171,7 @@ pub async fn run_chat_session(
             safety_gate: &env.gate,
             attach_db_tools,
             attach_agent_db_tools: agent_tools_allowed,
+            attach_agent_query_tools: agent_tools_allowed && has_bound_connection,
             mcp_tools: if agent_tools_allowed {
                 env.mcp_tools
             } else {

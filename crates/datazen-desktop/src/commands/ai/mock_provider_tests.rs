@@ -325,9 +325,18 @@ async fn mock_provider_workflow_defaults_to_agent_tools() {
 
     let request = mock.last_request().expect("workflow request");
     let tools = request.tools.expect("tools attached");
+    let names: Vec<&str> = tools.iter().map(|tool| tool.name.as_str()).collect();
     assert!(
-        tools.iter().any(|tool| tool.name == "list_tables"),
-        "workflow generation must default to Agent tools"
+        names.contains(&"list_tables"),
+        "workflow generation must default to Agent metadata tools"
+    );
+    assert!(
+        !names.contains(&"query_readonly"),
+        "workflow without a bound connection must not expose query_readonly"
+    );
+    assert!(
+        !names.contains(&"sample_rows"),
+        "workflow without a bound connection must not expose sample_rows"
     );
 }
 

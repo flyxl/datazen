@@ -266,13 +266,49 @@ fn test_agent_db_tool_definitions_adds_readonly_tools() {
     assert!(!metadata.contains(&"query_readonly".into()));
     assert!(!metadata.contains(&"sample_rows".into()));
 
-    let agent = names(agent_db_tool_definitions());
-    assert_eq!(agent.len(), 7);
-    assert!(agent.contains(&"query_readonly".into()));
-    assert!(agent.contains(&"sample_rows".into()));
+    let unbound = names(agent_db_tool_definitions(false));
+    assert_eq!(unbound.len(), 5);
+    assert!(!unbound.contains(&"query_readonly".into()));
+    assert!(!unbound.contains(&"sample_rows".into()));
     for name in metadata {
-        assert!(agent.contains(&name), "metadata tool {name} must stay");
+        assert!(unbound.contains(&name), "metadata tool {name} must stay");
     }
+
+    let bound = names(agent_db_tool_definitions(true));
+    assert_eq!(bound.len(), 7);
+    assert!(bound.contains(&"query_readonly".into()));
+    assert!(bound.contains(&"sample_rows".into()));
+    for name in unbound {
+        assert!(bound.contains(&name), "metadata tool {name} must stay");
+    }
+}
+
+#[tokio::test]
+async fn default_context_fails_closed_for_query_and_sampling() {
+    // SQL generation also dispatches with `AiToolContext::default()`; a
+    // hard-issued query/sample call must be refused before host execution.
+    let host = TestDbHost::new();
+    let ctx = AiToolContext::default();
+    let catalog = EmptyCatalog;
+    let scope = ConnectionScope::new("org");
+
+    for (name, arguments) in [
+        (
+            "query_readonly",
+            r#"{"connection_id":"other","sql":"SELECT 1"}"#,
+        ),
+        (
+            "sample_rows",
+            r#"{"connection_id":"other","table":"users"}"#,
+        ),
+    ] {
+        let out = execute_db_tool(&host, &ctx, &catalog, &scope, &tool(name, arguments)).await;
+        assert!(out.contains("no active connection bound"), "{name}: {out}");
+    }
+    assert!(
+        host.executions().is_empty(),
+        "unbound context must not execute"
+    );
 }
 
 #[tokio::test]

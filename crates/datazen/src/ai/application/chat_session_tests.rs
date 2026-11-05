@@ -664,9 +664,18 @@ async fn chat_workflow_scenario_injects_connections_context() {
 
     let request = provider.last_request().expect("request");
     let tools = request.tools.as_ref().expect("workflow tools");
+    let names: Vec<&str> = tools.iter().map(|tool| tool.name.as_str()).collect();
     assert!(
-        tools.iter().any(|tool| tool.name == "list_tables"),
-        "workflow generation keeps DB tools under Agent mode"
+        names.contains(&"list_tables"),
+        "workflow generation keeps metadata tools under Agent mode"
+    );
+    assert!(
+        !names.contains(&"query_readonly"),
+        "unbound workflow must not expose query_readonly"
+    );
+    assert!(
+        !names.contains(&"sample_rows"),
+        "unbound workflow must not expose sample_rows"
     );
     let system = &request.messages[0];
     assert!(

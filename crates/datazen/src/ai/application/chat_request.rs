@@ -37,6 +37,9 @@ pub struct ChatRequestInput<'a> {
     /// Agent chat gets read-only query/sampling in addition to metadata tools.
     /// SQL generation keeps using [`super::tools::db_tool_definitions`].
     pub attach_agent_db_tools: bool,
+    /// Query/sampling are only exposed when the session is bound to a concrete
+    /// connection. This is an explicit caller decision, not inferred from tools.
+    pub attach_agent_query_tools: bool,
     pub mcp_tools: Vec<ToolDefinition>,
 }
 
@@ -72,7 +75,9 @@ pub async fn build_chat_request(
     let mut tools = vec![ask_questions_tool_definition()];
     if input.attach_db_tools {
         if input.attach_agent_db_tools {
-            tools.extend(super::tools::agent_db_tool_definitions());
+            tools.extend(super::tools::agent_db_tool_definitions(
+                input.attach_agent_query_tools,
+            ));
         } else {
             tools.extend(super::tools::db_tool_definitions());
         }
@@ -217,6 +222,7 @@ mod tests {
                 safety_gate: &gate,
                 attach_db_tools: true,
                 attach_agent_db_tools: false,
+                attach_agent_query_tools: false,
                 mcp_tools: Vec::new(),
             },
         )
@@ -237,6 +243,8 @@ mod tests {
             Some("ask_questions")
         );
         assert!(tools.iter().any(|tool| tool.name == "list_tables"));
+        assert!(!tools.iter().any(|tool| tool.name == "query_readonly"));
+        assert!(!tools.iter().any(|tool| tool.name == "sample_rows"));
     }
 
     #[tokio::test]
@@ -264,6 +272,7 @@ mod tests {
                 safety_gate: &gate,
                 attach_db_tools: true,
                 attach_agent_db_tools: true,
+                attach_agent_query_tools: true,
                 mcp_tools: Vec::new(),
             },
         )

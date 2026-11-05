@@ -71,12 +71,16 @@ pub fn db_tool_definitions() -> Vec<ToolDefinition> {
     ]
 }
 
-/// Chat/Agent DB tools: metadata discovery plus read-only query and sampling.
+/// Chat/Agent DB tools: metadata discovery, plus read-only query and sampling
+/// only when the session is bound to a concrete connection.
 ///
 /// Kept separate from [`db_tool_definitions`] because SQL generation must stay
 /// on metadata tools only.
-pub fn agent_db_tool_definitions() -> Vec<ToolDefinition> {
+pub fn agent_db_tool_definitions(allow_query: bool) -> Vec<ToolDefinition> {
     let mut tools = db_tool_definitions();
+    if !allow_query {
+        return tools;
+    }
     tools.push(ToolDefinition {
         name: "query_readonly".into(),
         description: "Run a read-only SQL query against the current chat connection. Write statements are rejected. Prefer adding a LIMIT; the tool caps results at 1000 rows.".into(),
@@ -315,16 +319,20 @@ pub fn mcp_needs_confirm(tool_name: &str, input_schema: &serde_json::Value) -> b
 }
 
 fn allowed_connection_id<'a>(ctx: &AiToolContext, requested: &'a str) -> Result<&'a str, String> {
+    let Some(allowed) = ctx.allowed_connection_id.as_deref() else {
+        return Err(
+            "no active connection bound; read-only query/sample tools require a connection-bound session"
+                .into(),
+        );
+    };
     let requested = requested.trim();
     if requested.is_empty() {
         return Err("connection_id is required".into());
     }
-    if let Some(allowed) = ctx.allowed_connection_id.as_deref() {
-        if requested != allowed {
-            return Err(format!(
-                "connection_id '{requested}' is not allowed; the current session is bound to '{allowed}'"
-            ));
-        }
+    if requested != allowed {
+        return Err(format!(
+            "connection_id '{requested}' is not allowed; the current session is bound to '{allowed}'"
+        ));
     }
     Ok(requested)
 }

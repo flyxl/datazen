@@ -12,9 +12,10 @@ pub type StreamCallback = Arc<dyn Fn(&str, Result<StreamChunk, AiError>) + Send 
 
 /// Per-request policy for database tools.
 ///
-/// `allowed_connection_id` confines read-only query/sampling to the chat's
-/// active connection; `max_sample_rows` is the safety-gate default for
-/// `sample_rows` when the model omits a limit.
+/// `allowed_connection_id` is required for read-only query/sampling: it
+/// confines them to the chat's active connection, and `None` fails closed
+/// (no bound connection means no query permission). `max_sample_rows` is the
+/// safety-gate default for `sample_rows` when the model omits a limit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AiToolContext {
     pub allowed_connection_id: Option<String>,
