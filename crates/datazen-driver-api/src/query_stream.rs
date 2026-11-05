@@ -15,7 +15,10 @@ pub const QUERY_STREAM_BATCH_SIZE: usize = 500;
 
 pub type QueryStreamCallback = Arc<dyn Fn(QueryStreamEvent) + Send + Sync>;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+// `PartialEq` 是 W8-b 事件桥的加法派生：桌面词汇的原样承载（wire 形态逐字
+// 不变），随 `ConnectionEvent::QueryStream` 进入统一事件信封（信封派生
+// PartialEq）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum QueryStreamEvent {
     #[serde(rename_all = "camelCase")]

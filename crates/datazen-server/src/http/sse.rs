@@ -64,6 +64,7 @@ use datazen::execution::application::{ConnectionEvent, ConnectionEventEnvelope};
 use datazen::shared::context::RequestContext;
 use datazen::shared::error::{ApiError, PortError};
 use datazen::shared::id::{Counter, OrganizationId, PrincipalId, RequestId, StreamId};
+use datazen_driver_api::QueryStreamEvent;
 
 use crate::http::middleware::auth::AuthenticatedSession;
 use crate::http::response::{status_for, ApiErrorResponse};
@@ -78,6 +79,9 @@ pub const DEFAULT_KEEPALIVE: Duration = Duration::from_secs(15);
 pub const DEFAULT_SUBSCRIPTION_TTL: Duration = Duration::from_secs(300);
 /// 默认注册表容量（未消费的 streamId 是内存攻击面）。
 pub const DEFAULT_REGISTRY_CAPACITY: usize = 4_096;
+
+/// 服务端事件信封的运行时纪元（撤销桥与 driverGateway 流投递桥同一来源）。
+pub const SERVER_RUNTIME_EPOCH: &str = "server-v1";
 
 /// SSE 适配层配置（全部来自部署配置；§8 各建议值的默认在这里）。
 #[derive(Debug, Clone)]
@@ -629,11 +633,21 @@ fn sse_response(
 
 /// 信封 → SSE 帧：`id: <sequence>` / `event: <kind>` / `data: <json>`。
 /// 序列化失败 = Err（防御面；端口产出的信封是合法 JSON 形状）。
+///
+/// 词汇映射表（W8-b 登记）：统一事件载荷 → `event:` 行字面量。
+/// * `SessionChanged` → `sessionChanged`、`ExecutionChanged` → `executionChanged`、
+///   `ResultChunk` → `resultChunk`（既有词汇）；
+/// * `QueryStream` → 桌面 `QueryStreamEvent` 的 `type` tag 原样
+///   （executionStarted / statementStart / rows / statementEnd / done）——
+///   driverGateway 流投递桥按桌面词汇最小登记，映射表全貌见
+///   `driver_gateway.rs` 模块头；
+/// * `StreamResetRequired` → `streamResetRequired`（既有词汇）。
 fn frame_of(envelope: &ConnectionEventEnvelope) -> Result<Event, ()> {
     let kind = match &envelope.payload {
         ConnectionEvent::SessionChanged { .. } => "sessionChanged",
         ConnectionEvent::ExecutionChanged { .. } => "executionChanged",
         ConnectionEvent::ResultChunk(_) => "resultChunk",
+        ConnectionEvent::QueryStream(event) => query_stream_kind(event),
         ConnectionEvent::StreamResetRequired { .. } => "streamResetRequired",
     };
     let data = serde_json::to_string(envelope).map_err(|_| ())?;
@@ -641,6 +655,18 @@ fn frame_of(envelope: &ConnectionEventEnvelope) -> Result<Event, ()> {
         .id(envelope.sequence.get().to_string())
         .event(kind)
         .data(data))
+}
+
+/// 桌面 `QueryStreamEvent` 种类 → SSE `event:` 行字面量（wire `type` tag
+/// 的同名词汇，见 `datazen_driver_api::query_stream` 的 wire 测试）。
+fn query_stream_kind(event: &QueryStreamEvent) -> &'static str {
+    match event {
+        QueryStreamEvent::ExecutionStarted { .. } => "executionStarted",
+        QueryStreamEvent::StatementStart { .. } => "statementStart",
+        QueryStreamEvent::Rows { .. } => "rows",
+        QueryStreamEvent::StatementEnd { .. } => "statementEnd",
+        QueryStreamEvent::Done { .. } => "done",
+    }
 }
 
 /// 适配层合成的 `streamResetRequired` 帧（无 `id` 行——端口不伪造
