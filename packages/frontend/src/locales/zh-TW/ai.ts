@@ -9,6 +9,8 @@ const pack = {
   'settings.ai.skills.customDir': '自訂技能目錄',
   'settings.ai.skills.customDirHint': '選用。在 ~/.agents/skills 之外額外掃描一個目錄。',
   'settings.ai.skills.saveDir': '儲存',
+  'settings.ai.skills.cliInstallHint':
+    '使用 `datazen agent setup` 安裝官方 Agent Skill；不會覆寫使用者已有的 Skill。',
   'settings.ai.skills.selectHint': '選擇此對話可以使用的技能。',
   'settings.ai.skills.selectSkill': '選擇技能',
   'settings.ai.skills.defaultDir': '固定目錄：~/.agents/skills',

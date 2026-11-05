@@ -76,6 +76,10 @@ export function SkillsSection({ config }: { config: AiSettingsConfig }) {
         {t('settings.ai.skills.title')}
       </SectionTitle>
 
+      <p className="text-[11px] text-fg-muted" data-testid="ai-skills-cli-hint">
+        {t('settings.ai.skills.cliInstallHint')}
+      </p>
+
       <ToggleRow
         label={t('settings.ai.skills.enabled')}
         hint={t('settings.ai.skills.enabledHint')}

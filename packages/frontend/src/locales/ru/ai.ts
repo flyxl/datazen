@@ -13,6 +13,8 @@ const pack = {
   'settings.ai.skills.customDirHint':
     'Необязательно. Дополнительный каталог кроме ~/.agents/skills.',
   'settings.ai.skills.saveDir': 'Сохранить',
+  'settings.ai.skills.cliInstallHint':
+    'Установите официальный навык агента командой `datazen agent setup`; существующий навык не перезаписывается.',
   'settings.ai.skills.selectHint': 'Выберите навыки, которые может использовать этот чат.',
   'settings.ai.skills.selectSkill': 'Выбрать навык',
   'settings.ai.skills.defaultDir': 'Фиксированный каталог: ~/.agents/skills',

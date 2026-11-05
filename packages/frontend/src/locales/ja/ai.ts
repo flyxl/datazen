@@ -11,6 +11,8 @@ const pack = {
   'settings.ai.skills.customDir': 'カスタムスキルディレクトリ',
   'settings.ai.skills.customDirHint': '任意。~/.agents/skills に加えて追加で走査します。',
   'settings.ai.skills.saveDir': '保存',
+  'settings.ai.skills.cliInstallHint':
+    '公式 Agent Skill は `datazen agent setup` でインストールします。既存の Skill は上書きされません。',
   'settings.ai.skills.selectHint': 'このチャットで使用できるスキルを選択します。',
   'settings.ai.skills.selectSkill': 'スキルを選択',
   'settings.ai.skills.defaultDir': '固定ディレクトリ: ~/.agents/skills',

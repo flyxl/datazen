@@ -12,6 +12,8 @@ const pack = {
   'settings.ai.skills.customDir': 'Directorio de habilidades personalizado',
   'settings.ai.skills.customDirHint': 'Opcional. Un directorio extra además de ~/.agents/skills.',
   'settings.ai.skills.saveDir': 'Guardar',
+  'settings.ai.skills.cliInstallHint':
+    'Instala la habilidad oficial del agente con `datazen agent setup`; nunca se sobrescribe una existente.',
   'settings.ai.skills.selectHint': 'Selecciona las habilidades que puede usar este chat.',
   'settings.ai.skills.selectSkill': 'Seleccionar habilidad',
   'settings.ai.skills.defaultDir': 'Directorio fijo: ~/.agents/skills',

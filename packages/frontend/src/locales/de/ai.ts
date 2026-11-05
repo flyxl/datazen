@@ -13,6 +13,8 @@ const pack = {
   'settings.ai.skills.customDirHint':
     'Optional. Ein zusätzliches Verzeichnis neben ~/.agents/skills.',
   'settings.ai.skills.saveDir': 'Speichern',
+  'settings.ai.skills.cliInstallHint':
+    'Installiere den offiziellen Agent-Skill mit `datazen agent setup`; ein vorhandener Skill wird nie überschrieben.',
   'settings.ai.skills.selectHint': 'Wähle die Skills, die dieser Chat nutzen darf.',
   'settings.ai.skills.selectSkill': 'Skill auswählen',
   'settings.ai.skills.defaultDir': 'Festes Verzeichnis: ~/.agents/skills',
