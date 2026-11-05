@@ -266,6 +266,61 @@ fn sink() -> (StreamCallback, Arc<Mutex<Vec<StreamChunkT>>>) {
     (on_chunk, seen)
 }
 
+// ── log capture ──
+
+/// Process-global capture installed once. A thread-local `with_default` is
+/// not enough: tracing caches callsite interest globally, and a parallel test
+/// that emits this callsite first without a subscriber can cache it as
+/// `never`. A global subscriber keeps the callsite enabled regardless of test
+/// scheduling, so assertions do not depend on which test runs first.
+mod log_capture {
+    use std::fmt::Write as _;
+    use std::sync::{Mutex, Once};
+    use tracing::{Event, Subscriber};
+    use tracing_subscriber::layer::{Context, Layer};
+    use tracing_subscriber::prelude::*;
+
+    static EVENTS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+    static INSTALL: Once = Once::new();
+
+    struct Capture;
+
+    struct Visitor(String);
+
+    impl tracing::field::Visit for Visitor {
+        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+            let _ = write!(self.0, "{}={value:?};", field.name());
+        }
+    }
+
+    impl<S> Layer<S> for Capture
+    where
+        S: Subscriber,
+    {
+        fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+            let mut visitor = Visitor(String::new());
+            event.record(&mut visitor);
+            EVENTS.lock().unwrap().push(visitor.0);
+        }
+    }
+
+    pub(super) fn install() {
+        INSTALL.call_once(|| {
+            let subscriber = tracing_subscriber::registry()
+                .with(tracing_subscriber::filter::LevelFilter::INFO)
+                .with(Capture);
+            tracing::subscriber::set_global_default(subscriber)
+                .expect("global capture subscriber installs once");
+            tracing::callsite::rebuild_interest_cache();
+        });
+        EVENTS.lock().unwrap().clear();
+    }
+
+    pub(super) fn joined() -> String {
+        EVENTS.lock().unwrap().join("\n")
+    }
+}
+
 // ── chat 编排 ──
 
 #[tokio::test]
@@ -315,71 +370,39 @@ async fn chat_with_driver_resolves_schema_and_keeps_db_tools() {
 
 #[test]
 fn chat_logs_persisted_connection_id() {
-    use std::fmt::Write as _;
-    use std::sync::{Arc, Mutex};
-    use tracing::{Event, Subscriber};
-    use tracing_subscriber::layer::{Context, Layer};
-    use tracing_subscriber::prelude::*;
-
-    #[derive(Clone, Default)]
-    struct Capture(Arc<Mutex<Vec<String>>>);
-    struct Visitor(String);
-
-    impl tracing::field::Visit for Visitor {
-        fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-            let _ = write!(self.0, "{}={value:?};", field.name());
-        }
-    }
-
-    impl<S> Layer<S> for Capture
-    where
-        S: Subscriber,
-    {
-        fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
-            let mut visitor = Visitor(String::new());
-            event.record(&mut visitor);
-            self.0.lock().unwrap().push(visitor.0);
-        }
-    }
-
-    let events = Arc::new(Mutex::new(Vec::new()));
-    let subscriber = tracing_subscriber::registry()
-        .with(tracing_subscriber::filter::LevelFilter::INFO)
-        .with(Capture(events.clone()));
+    log_capture::install();
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("test runtime");
 
-    tracing::subscriber::with_default(subscriber, || {
-        runtime.block_on(async {
-            let provider = Arc::new(ScriptedProvider::default());
-            provider.push_stream(vec![stream_chunk("ok", true)]);
-            let env = test_env(provider, recording_source());
-            let host = RecordingLoopHost::default();
-            let (on_chunk, _seen) = sink();
+    runtime.block_on(async {
+        let provider = Arc::new(ScriptedProvider::default());
+        provider.push_stream(vec![stream_chunk("ok", true)]);
+        let env = test_env(provider, recording_source());
+        let host = RecordingLoopHost::default();
+        let (on_chunk, _seen) = sink();
 
-            run_chat_session(
-                env,
-                &host,
-                on_chunk,
-                ChatSessionInput {
-                    request_id: "req-log-conn".into(),
-                    db_session_id: Some("runtime-session-1".into()),
-                    connection_id: Some("persisted-conn-1".into()),
-                    database: Some("app".into()),
-                    messages: vec![user_message("Hi")],
-                    include_schema: false,
-                    scenario: ChatScenario::Chat,
-                    context_tables: None,
-                },
-            )
-            .await
-            .expect("chat completes");
-        });
+        run_chat_session(
+            env,
+            &host,
+            on_chunk,
+            ChatSessionInput {
+                request_id: "req-log-conn".into(),
+                db_session_id: Some("runtime-session-1".into()),
+                connection_id: Some("persisted-conn-1".into()),
+                database: Some("app".into()),
+                messages: vec![user_message("Hi")],
+                include_schema: false,
+                scenario: ChatScenario::Chat,
+                context_tables: None,
+            },
+        )
+        .await
+        .expect("chat completes");
     });
 
-    let logged = events.lock().unwrap().join("\n");
+    let logged = log_capture::joined();
     assert!(
         logged.contains("connection_id=Some(\"persisted-conn-1\")"),
         "ai_chat log must carry the persisted connection id: {logged}"
