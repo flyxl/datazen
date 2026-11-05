@@ -93,6 +93,9 @@ export interface AiStore {
     recentQueries?: string[];
     contextFiles?: string[];
     contextTables?: string[];
+    connectionId?: string;
+    memoryMode?: 'off' | 'ask' | 'auto';
+    memoryScope?: 'organization' | 'user' | 'connection' | 'database' | 'schema' | 'table' | 'column';
   }) => Promise<void>;
   clearNl2Sql: () => void;
 
@@ -137,6 +140,8 @@ export interface AiStore {
     databaseType?: string;
     /** Target this run claims; omitted = independent. */
     targetClaim?: AiTargetClaim;
+    memoryMode?: 'off' | 'ask' | 'auto';
+    memoryScope?: 'organization' | 'user' | 'connection' | 'database' | 'schema' | 'table' | 'column';
   }) => Promise<void>;
   clearChat: () => void;
   /** Cancel the in-flight chat run; resolves with the host receipt. */

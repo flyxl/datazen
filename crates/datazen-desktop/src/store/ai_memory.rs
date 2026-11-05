@@ -422,7 +422,7 @@ impl AppDb {
         if query.is_empty() || limit == 0 {
             return Ok(Vec::new());
         }
-        let limit = limit.clamp(1, 100);
+        let limit = limit.clamp(1, 200);
         self.with_conn(|conn| {
             let mut statement = conn.prepare(&format!(
                 "SELECT {MEMORY_COLUMNS} FROM ai_memories m \

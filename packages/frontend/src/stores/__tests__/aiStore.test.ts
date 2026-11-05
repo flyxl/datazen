@@ -536,6 +536,53 @@ describe('aiStore', () => {
       expect(msgs[msgs.length - 1].role).toBe('assistant');
     });
 
+    it('stores memory references, attaches them to the assistant turn and resets', async () => {
+      useAiStore.getState().initChatSession();
+      const requestId = 'req-memory';
+      useAiStore.setState({
+        chatSession: {
+          ...useAiStore.getState().chatSession!,
+          requestId,
+          isStreaming: true,
+        },
+      });
+      const memoryUsed = [
+        {
+          reference: 'M1',
+          id: 'mem-1',
+          subject: 'Timezone preference',
+          kind: 'preference',
+          scope: 'user:me',
+          score: 0.9,
+        },
+      ];
+      useAiStore.getState().handleStreamChunk({
+        requestId,
+        content: '',
+        done: false,
+        memoryUsed,
+      });
+      expect(useAiStore.getState().chatSession!.streamMemoryUsed).toEqual(memoryUsed);
+      expect(useAiStore.getState().chatSession!.memoryUsed).toEqual(memoryUsed);
+
+      useAiStore.getState().handleStreamChunk({ requestId, content: 'UTC', done: true });
+      const messages = useAiStore.getState().chatSession!.messages;
+      expect(messages[messages.length - 1].memoryUsed).toEqual(memoryUsed);
+      expect(useAiStore.getState().chatSession!.streamMemoryUsed).toBeNull();
+      expect(useAiStore.getState().chatSession!.memoryUsed).toEqual(memoryUsed);
+
+      mockAiCommands.chat.mockResolvedValueOnce(undefined);
+      await useAiStore.getState().sendChatMessage({
+        content: 'next',
+        memoryMode: 'auto',
+        memoryScope: 'user',
+      });
+      expect(mockAiCommands.chat).toHaveBeenLastCalledWith(
+        expect.objectContaining({ memoryMode: 'auto', memoryScope: 'user' }),
+      );
+      expect(useAiStore.getState().chatSession!.streamMemoryUsed).toBeNull();
+    });
+
     it('handleStreamChunk tracks MCP tool name during stream', () => {
       useAiStore.getState().initChatSession();
       const requestId = useAiStore.getState().chatSession!.requestId ?? 'req-mcp';

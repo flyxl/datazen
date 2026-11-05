@@ -412,6 +412,8 @@ export const useAiStore = create<AiStore>((set, get) => ({
       streamReasoning: '',
       streamMcpToolName: null,
       egressSummary: null,
+      streamMemoryUsed: null,
+      memoryUsed: null,
       requestId: null,
       attribution: null,
     };
@@ -432,6 +434,8 @@ export const useAiStore = create<AiStore>((set, get) => ({
     templateId,
     databaseType,
     targetClaim,
+    memoryMode,
+    memoryScope,
   }) => {
     const { chatSession } = get();
     if (!chatSession) return;
@@ -477,6 +481,8 @@ export const useAiStore = create<AiStore>((set, get) => ({
         streamReasoning: '',
         streamMcpToolName: null,
         egressSummary: null,
+        streamMemoryUsed: null,
+        memoryUsed: null,
         injection: null,
         requestId,
         attribution: attributionFor(targetClaim),
@@ -501,6 +507,8 @@ export const useAiStore = create<AiStore>((set, get) => ({
         resultPreview: autoContext?.resultPreview,
         templateId,
         databaseType,
+        memoryMode,
+        memoryScope,
       });
     } catch (e) {
       getStreamRegistry().settle(requestId, 'error');
@@ -514,6 +522,8 @@ export const useAiStore = create<AiStore>((set, get) => ({
             streamContent: '',
             streamReasoning: '',
             streamMcpToolName: null,
+            streamMemoryUsed: null,
+            memoryUsed: null,
             requestId: null,
             messages: [
               ...session.messages,
@@ -541,6 +551,8 @@ export const useAiStore = create<AiStore>((set, get) => ({
           streamReasoning: '',
           streamMcpToolName: null,
           egressSummary: null,
+          streamMemoryUsed: null,
+          memoryUsed: null,
           requestId: null,
           attribution: null,
         },
@@ -563,6 +575,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
         streamReasoning: '',
         streamMcpToolName: null,
         egressSummary: null,
+        streamMemoryUsed: null,
         requestId: null,
       },
     });
@@ -658,6 +671,8 @@ export const useAiStore = create<AiStore>((set, get) => ({
           streamReasoning: '',
           streamMcpToolName: null,
           egressSummary: null,
+          streamMemoryUsed: null,
+          memoryUsed: null,
           requestId: null,
           attribution: null,
         },

@@ -1,3 +1,5 @@
+import type { AiMemoryReference } from '../../types';
+
 /**
  * Session isolation for AI chat.
  *
@@ -35,6 +37,8 @@ interface StoredMessage {
   toolCallId?: string;
   /** The run was stopped by the user; kept so reload does not show it as complete. */
   cancelled?: boolean;
+  /** Retained so a reloaded answer keeps its citation chip. */
+  memoryUsed?: AiMemoryReference[];
 }
 
 interface StoredSession {

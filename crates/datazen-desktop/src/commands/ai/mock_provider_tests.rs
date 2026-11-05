@@ -243,6 +243,9 @@ async fn mock_provider_generate_sql_stream() {
         None,
         None,
         None,
+        None,
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -275,6 +278,8 @@ async fn mock_provider_chat_stream() {
         }],
         "req-mock-chat".into(),
         true,
+        None,
+        None,
         None,
         None,
         None,
@@ -336,6 +341,8 @@ async fn mock_provider_chat_auto_context_reaches_the_prompt() {
         }),
         None,
         None,
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -390,6 +397,8 @@ async fn mock_provider_workflow_defaults_to_agent_tools() {
         "req-wf-default".into(),
         false,
         Some("workflow_generate".into()),
+        None,
+        None,
         None,
         None,
         None,
@@ -460,6 +469,8 @@ async fn mock_provider_chat_tool_loop_then_text() {
         None,
         None,
         Some(datazen::ai::AiAgentMode::Agent),
+        None,
+        None,
         None,
         None,
         None,

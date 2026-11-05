@@ -21,6 +21,7 @@ const pack = {
   'chat.injection.template': 'Template: {name}',
   'chat.injection.notes': 'Connection notes included',
   'chat.injection.priority': 'Global instructions take precedence',
+  'chat.memory.used': 'Used {count} memories',
   'chat.injection.priorityHint': 'If the global instructions conflict with the template, the global instructions win.',
   'chat.injection.readOnlyHint': 'Injected for this message (read-only)',
   'chat.thinking': '考え…',

@@ -71,16 +71,31 @@ impl Default for MemoryInjectionPolicy {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InjectedMemory {
     pub memory_id: String,
     /// Stable answer reference (`M1`, `M2`, ...) for citation chips.
     pub reference: String,
+    pub subject: String,
     pub kind: MemoryKind,
     pub scope: MemoryScope,
+    pub score: f64,
     pub token_estimate: usize,
     pub truncated: bool,
+}
+
+/// Non-secret citation metadata sent to the UI with the stream.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryReference {
+    /// Stable answer reference (`M1`, `M2`, ...).
+    pub reference: String,
+    pub id: String,
+    pub subject: String,
+    pub kind: MemoryKind,
+    pub scope: String,
+    pub score: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -101,6 +116,21 @@ impl MemoryInjection {
         self.entries
             .iter()
             .map(|entry| entry.memory_id.as_str())
+            .collect()
+    }
+
+    /// Citation references in `[M1]`, `[M2]`, ... order.
+    pub fn references(&self) -> Vec<MemoryReference> {
+        self.entries
+            .iter()
+            .map(|entry| MemoryReference {
+                reference: entry.reference.clone(),
+                id: entry.memory_id.clone(),
+                subject: entry.subject.clone(),
+                kind: entry.kind,
+                scope: entry.scope.label(),
+                score: entry.score,
+            })
             .collect()
     }
 }
@@ -192,8 +222,10 @@ impl MemoryInjector {
                 entries.push(InjectedMemory {
                     memory_id: candidate.entry.id.clone(),
                     reference,
+                    subject: candidate.entry.subject.clone(),
                     kind: candidate.entry.kind,
                     scope: candidate.entry.scope.clone(),
+                    score: candidate.score.total,
                     token_estimate: fitted_tokens,
                     truncated: byte_truncated || content_truncated,
                 });
@@ -202,8 +234,10 @@ impl MemoryInjector {
                 entries.push(InjectedMemory {
                     memory_id: candidate.entry.id.clone(),
                     reference,
+                    subject: candidate.entry.subject.clone(),
                     kind: candidate.entry.kind,
                     scope: candidate.entry.scope.clone(),
+                    score: candidate.score.total,
                     token_estimate: entry_tokens,
                     truncated: byte_truncated,
                 });

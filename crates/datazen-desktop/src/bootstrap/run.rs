@@ -426,6 +426,17 @@ pub fn run() {
             crate::commands::ai_save_settings_config,
             crate::commands::ai_set_active_profile,
             crate::commands::ai_validate_config,
+            // ── AI：记忆 ──
+            crate::commands::ai_memory_clear,
+            crate::commands::ai_memory_confirm,
+            crate::commands::ai_memory_create,
+            crate::commands::ai_memory_delete,
+            crate::commands::ai_memory_export,
+            crate::commands::ai_memory_list,
+            crate::commands::ai_memory_reject,
+            crate::commands::ai_memory_search,
+            crate::commands::ai_memory_stats,
+            crate::commands::ai_memory_update,
             // ── AI：连接笔记 ──
             crate::commands::ai_connection_context_counts,
             crate::commands::ai_connection_notes_get,

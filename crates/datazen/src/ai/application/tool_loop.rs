@@ -111,6 +111,7 @@ pub async fn run_streaming_tool_loop(
                 tool_calls: None,
                 response_id: None,
                 egress_summary: Some(summary),
+                memory_used: None,
             }),
         );
     }
@@ -132,6 +133,7 @@ pub async fn run_streaming_tool_loop(
                         tool_calls: None,
                         response_id: None,
                         egress_summary: None,
+                        memory_used: None,
                     }),
                 );
                 return Ok(request_id.to_string());
@@ -152,6 +154,7 @@ pub async fn run_streaming_tool_loop(
                     tool_calls: None,
                     response_id: None,
                     egress_summary: None,
+                    memory_used: None,
                 }),
             );
             return Ok(request_id.to_string());
@@ -200,6 +203,7 @@ pub async fn run_streaming_tool_loop(
                                             tool_calls: None,
                                             response_id: None,
                                             egress_summary: None,
+                                            memory_used: None,
                                         }),
                                     );
                                 }
@@ -276,6 +280,7 @@ pub async fn run_streaming_tool_loop(
                         tool_calls: None,
                         response_id: None,
                         egress_summary: None,
+                        memory_used: None,
                     }),
                 );
                 return Ok(request_id.to_string());
@@ -306,6 +311,7 @@ pub async fn run_streaming_tool_loop(
                     tool_calls: None,
                     response_id: result.response_id,
                     egress_summary: None,
+                    memory_used: None,
                 }),
             );
             return Ok(request_id.to_string());
@@ -330,6 +336,7 @@ pub async fn run_streaming_tool_loop(
                         tool_calls: result.tool_calls,
                         response_id: result.response_id,
                         egress_summary: None,
+                        memory_used: None,
                     }),
                 );
                 return Ok(request_id.to_string());
@@ -386,6 +393,7 @@ pub async fn run_streaming_tool_loop(
                     tool_calls: None,
                     response_id: result.response_id,
                     egress_summary: None,
+                    memory_used: None,
                 }),
             );
             return Ok(request_id.to_string());
@@ -415,6 +423,7 @@ pub async fn run_streaming_tool_loop(
                     tool_calls: Some(classified.iter().map(|(tc, _)| tc.clone()).collect()),
                     response_id: result.response_id,
                     egress_summary: None,
+                    memory_used: None,
                 }),
             );
             return Ok(request_id.to_string());
@@ -465,6 +474,7 @@ pub async fn run_streaming_tool_loop(
                     tool_calls: Some(mcp_tool_calls),
                     response_id: None,
                     egress_summary: None,
+                    memory_used: None,
                 }),
             );
         }
@@ -501,6 +511,7 @@ pub async fn run_streaming_tool_loop(
                             tool_calls: None,
                             response_id: result.response_id,
                             egress_summary: None,
+                            memory_used: None,
                         }),
                     );
                     return Ok(request_id.to_string());
@@ -537,6 +548,7 @@ pub async fn run_streaming_tool_loop(
                         tool_calls: None,
                         response_id: result.response_id,
                         egress_summary: None,
+                        memory_used: None,
                     }),
                 );
                 return Ok(request_id.to_string());
@@ -594,6 +606,7 @@ pub async fn run_streaming_tool_loop(
                     tool_calls: Some(ask_tool_calls),
                     response_id: result.response_id,
                     egress_summary: None,
+                    memory_used: None,
                 }),
             );
             return Ok(request_id.to_string());
@@ -691,6 +704,7 @@ mod tests {
                     tool_calls: None,
                     response_id: None,
                     egress_summary: None,
+                    memory_used: None,
                 }))
                 .await;
             Ok(())
@@ -837,6 +851,7 @@ mod tests {
                     }]),
                     response_id: None,
                     egress_summary: None,
+                    memory_used: None,
                 }))
                 .await;
             Ok(())
@@ -896,6 +911,7 @@ mod tests {
                     tool_calls: Some(vec![self.tool.clone()]),
                     response_id: None,
                     egress_summary: None,
+                    memory_used: None,
                 }
             } else {
                 StreamChunk {
@@ -907,6 +923,7 @@ mod tests {
                     tool_calls: None,
                     response_id: None,
                     egress_summary: None,
+                    memory_used: None,
                 }
             };
             let _ = sender.send(Ok(chunk)).await;
@@ -1189,6 +1206,7 @@ mod tests {
                         tool_calls: None,
                         response_id: None,
                         egress_summary: None,
+                        memory_used: None,
                     }))
                     .await;
                 return Err(AiError::RateLimited {
@@ -1210,6 +1228,7 @@ mod tests {
                     tool_calls: None,
                     response_id: None,
                     egress_summary: None,
+                    memory_used: None,
                 }))
                 .await;
             Ok(())

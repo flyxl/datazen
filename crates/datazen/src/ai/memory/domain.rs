@@ -18,6 +18,7 @@ pub const CONFLICT_WEIGHT: f64 = 0.40;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MemoryScopeKind {
+    #[serde(rename = "org", alias = "organization")]
     Organization,
     User,
     Connection,
@@ -28,6 +29,33 @@ pub enum MemoryScopeKind {
 }
 
 impl MemoryScopeKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Organization => "org",
+            Self::User => "user",
+            Self::Connection => "connection",
+            Self::Database => "database",
+            Self::Schema => "schema",
+            Self::Table => "table",
+            Self::Column => "column",
+        }
+    }
+
+    /// Parse the persisted/IPC spelling. `organization` is accepted as an
+    /// alias for the storage value `org`.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim() {
+            "org" | "organization" => Some(Self::Organization),
+            "user" => Some(Self::User),
+            "connection" => Some(Self::Connection),
+            "database" => Some(Self::Database),
+            "schema" => Some(Self::Schema),
+            "table" => Some(Self::Table),
+            "column" => Some(Self::Column),
+            _ => None,
+        }
+    }
+
     pub fn is_context_layer(self) -> bool {
         matches!(
             self,
@@ -126,6 +154,22 @@ impl MemoryKind {
     }
 }
 
+impl MemoryKind {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim() {
+            "preference" => Some(Self::Preference),
+            "glossary" => Some(Self::Glossary),
+            "relationship" => Some(Self::Relationship),
+            "pattern" => Some(Self::Pattern),
+            "correction" => Some(Self::Correction),
+            "environment" => Some(Self::Environment),
+            "negative" => Some(Self::Negative),
+            "schema_note" => Some(Self::SchemaNote),
+            _ => None,
+        }
+    }
+}
+
 impl std::fmt::Display for MemoryKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
@@ -142,12 +186,54 @@ pub enum MemoryStatus {
     Stale,
 }
 
+impl MemoryStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Candidate => "candidate",
+            Self::Active => "active",
+            Self::Rejected => "rejected",
+            Self::Archived => "archived",
+            Self::Stale => "stale",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim() {
+            "candidate" => Some(Self::Candidate),
+            "active" => Some(Self::Active),
+            "rejected" => Some(Self::Rejected),
+            "archived" => Some(Self::Archived),
+            "stale" => Some(Self::Stale),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MemorySensitivity {
     Normal,
     Internal,
     Secret,
+}
+
+impl MemorySensitivity {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Normal => "normal",
+            Self::Internal => "internal",
+            Self::Secret => "secret",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim() {
+            "normal" => Some(Self::Normal),
+            "internal" => Some(Self::Internal),
+            "secret" => Some(Self::Secret),
+            _ => None,
+        }
+    }
 }
 
 #[derive(
@@ -163,6 +249,48 @@ pub enum MemorySource {
     SchemaNote,
     Import,
     Org,
+}
+
+impl MemorySource {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Explicit => "explicit",
+            Self::Correction => "correction",
+            Self::Usage => "usage",
+            Self::Feedback => "feedback",
+            Self::SchemaNote => "schema_note",
+            Self::Import => "import",
+            Self::Org => "org",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim() {
+            "explicit" => Some(Self::Explicit),
+            "correction" => Some(Self::Correction),
+            "usage" => Some(Self::Usage),
+            "feedback" => Some(Self::Feedback),
+            "schema_note" => Some(Self::SchemaNote),
+            "import" => Some(Self::Import),
+            "org" => Some(Self::Org),
+            _ => None,
+        }
+    }
+}
+
+/// How a turn uses memory.
+///
+/// `Ask` recalls candidates for the UI but never injects them silently;
+/// only `Auto` builds a `<memory>` block.
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryMode {
+    #[default]
+    Off,
+    Ask,
+    Auto,
 }
 
 /// A persisted memory entry. Hosts map their row into this value; retrieval

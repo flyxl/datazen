@@ -185,6 +185,8 @@ async fn ai_chat_emits_injection_snapshot_without_prompt_bodies() {
         None,
         Some("pg-template".into()),
         Some("postgresql".into()),
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -478,6 +480,9 @@ async fn ai_generate_sql_stream_without_tools() {
         None,
         None,
         None,
+        None,
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -519,6 +524,8 @@ async fn ai_chat_with_schema_and_stream() {
         None,
         None,
         None,
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -548,6 +555,8 @@ async fn ai_chat_workflow_scenario_builds_system_prompt() {
         "req-wf".into(),
         false,
         Some("workflow_generate".into()),
+        None,
+        None,
         None,
         None,
         None,
@@ -743,6 +752,9 @@ data: [DONE]
         None,
         None,
         None,
+        None,
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -809,6 +821,9 @@ async fn ai_generate_sql_injects_context_file() {
         None,
         None,
         Some(vec!["notes.md".into()]),
+        None,
+        None,
+        None,
         None,
         None,
     )
@@ -906,6 +921,8 @@ async fn ai_chat_injects_context_files_into_user_message() {
         None,
         None,
         None,
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -931,6 +948,8 @@ async fn ai_chat_schema_resolve_failure_still_streams() {
         }],
         "req-fail-schema".into(),
         true,
+        None,
+        None,
         None,
         None,
         None,
@@ -1039,6 +1058,9 @@ async fn ai_generate_sql_pins_current_table() {
         None,
         Some(vec!["orders".into()]),
         None,
+        None,
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -1097,6 +1119,8 @@ async fn ai_chat_stream_http_error_propagates() {
         }],
         "req-err".into(),
         false,
+        None,
+        None,
         None,
         None,
         None,
@@ -1190,6 +1214,8 @@ data: [DONE]
         None,
         None,
         None,
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -1268,6 +1294,9 @@ async fn ai_generate_sql_recent_queries_chinese_label() {
         None,
         None,
         None,
+        None,
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -1329,6 +1358,8 @@ async fn ai_chat_connected_english_schema_message() {
         }],
         "req-en".into(),
         true,
+        None,
+        None,
         None,
         None,
         None,
@@ -1533,6 +1564,7 @@ async fn ai_chat_mcp_tool_roundtrip() {
         }]),
         response_id: None,
         egress_summary: None,
+        memory_used: None,
     }]);
     mock.push_stream_text("done");
 
@@ -1557,6 +1589,8 @@ async fn ai_chat_mcp_tool_roundtrip() {
         None,
         None,
         Some(datazen::ai::AiAgentMode::Agent),
+        None,
+        None,
         None,
         None,
         None,
@@ -1621,6 +1655,7 @@ async fn ai_chat_mcp_and_db_same_round() {
         ]),
         response_id: None,
         egress_summary: None,
+        memory_used: None,
     }]);
     mock.push_stream_text("all done");
 
@@ -1645,6 +1680,8 @@ async fn ai_chat_mcp_and_db_same_round() {
         None,
         None,
         Some(datazen::ai::AiAgentMode::Agent),
+        None,
+        None,
         None,
         None,
         None,
@@ -1733,6 +1770,7 @@ async fn ai_chat_ask_questions_with_executable_runs_tools_then_stops() {
         ]),
         response_id: None,
         egress_summary: None,
+        memory_used: None,
     }]);
 
     ai_chat(
@@ -1755,6 +1793,8 @@ async fn ai_chat_ask_questions_with_executable_runs_tools_then_stops() {
         None,
         None,
         Some(datazen::ai::AiAgentMode::Agent),
+        None,
+        None,
         None,
         None,
         None,

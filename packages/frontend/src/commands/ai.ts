@@ -116,6 +116,9 @@ export const aiCommands = {
     recentQueries?: string[];
     contextFiles?: string[];
     contextTables?: string[];
+    connectionId?: string;
+    memoryMode?: 'off' | 'ask' | 'auto';
+    memoryScope?: 'organization' | 'user' | 'connection' | 'database' | 'schema' | 'table' | 'column';
   }) => e2eStubInvoke('ai_generate_sql', params, () => invoke<string>('ai_generate_sql', params)),
   diagnoseError: (params: {
     dbSessionId: string;
@@ -143,6 +146,8 @@ export const aiCommands = {
     resultPreview?: AiChatContextSnapshot['resultPreview'];
     templateId?: string;
     databaseType?: string;
+    memoryMode?: 'off' | 'ask' | 'auto';
+    memoryScope?: 'organization' | 'user' | 'connection' | 'database' | 'schema' | 'table' | 'column';
   }) => e2eStubInvoke('ai_chat', params, () => invoke<string>('ai_chat', params)),
   connectionNotesGet: (connectionId: string) =>
     invoke<string | null>('ai_connection_notes_get', { connectionId }),

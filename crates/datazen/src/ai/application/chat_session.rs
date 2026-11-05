@@ -25,7 +25,10 @@ use crate::ai::ctx_yaml::extract_ctx_yaml_tables;
 use crate::ai::domain::budget;
 use crate::ai::domain::safety::redact_for_gate;
 use crate::ai::domain::traits::AiProvider;
-use crate::ai::domain::types::{AiAgentMode, AiSafetyGateConfig, ChatMessage, ToolDefinition};
+use crate::ai::domain::types::{
+    AiAgentMode, AiSafetyGateConfig, ChatMessage, StreamChunk, ToolDefinition,
+};
+use crate::ai::memory::{MemoryInjection, MemoryReference};
 use datazen_driver_api::DatabaseDriver;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -46,6 +49,10 @@ pub struct ChatSessionEnv {
     /// Resolved global instructions / template / connection notes for this
     /// turn. Host resolves storage and scope; insertion stays in this layer.
     pub injection: ChatInjection,
+    /// Host-resolved, already budgeted memory block for this turn (`Auto`).
+    pub memory_injection: Option<MemoryInjection>,
+    /// Memories carried into the first stream chunk for citation chips.
+    pub memory_used: Vec<MemoryReference>,
     /// MCP 工具面（宿主按 `provider.supports_tools()` 决定是否取空）。
     pub mcp_tools: Vec<ToolDefinition>,
     /// 上下文文件条目（宿主 FS IO 读出，未脱敏；空 = 无上下文）。
@@ -195,6 +202,7 @@ pub async fn run_chat_session(
             messages: input.messages,
             context_block: context_block.as_deref(),
             injection: env.injection,
+            memory: env.memory_injection,
             safety_gate: &env.gate,
             attach_db_tools,
             attach_agent_db_tools: agent_tools_allowed,
@@ -215,6 +223,7 @@ pub async fn run_chat_session(
         .await;
     request.cancel_token = Some(cancel_token);
 
+    emit_memory_used(&on_chunk, &input.request_id, &env.memory_used);
     let result = run_streaming_tool_loop(
         env.provider.clone(),
         tool_loop_host,
@@ -233,6 +242,26 @@ pub async fn run_chat_session(
         .unregister(&input.request_id, &env.cancel_owner)
         .await;
     result
+}
+
+fn emit_memory_used(on_chunk: &StreamCallback, request_id: &str, memory_used: &[MemoryReference]) {
+    if memory_used.is_empty() {
+        return;
+    }
+    on_chunk(
+        request_id,
+        Ok(StreamChunk {
+            content: String::new(),
+            reasoning: None,
+            done: false,
+            cancelled: false,
+            usage: None,
+            tool_calls: None,
+            response_id: None,
+            egress_summary: None,
+            memory_used: Some(memory_used.to_vec()),
+        }),
+    );
 }
 
 const AUTO_PREVIEW_MAX_ROWS: usize = 5;
@@ -505,6 +534,10 @@ pub async fn run_sql_generation_session(
         &seed,
         natural_language,
         &input.recent_queries,
+        env.memory_injection
+            .as_ref()
+            .filter(|memory| !memory.is_empty())
+            .and_then(|memory| memory.text.as_deref()),
         &env.gate,
     )
     .await;
@@ -515,6 +548,7 @@ pub async fn run_sql_generation_session(
         .register(&input.request_id, &env.cancel_owner)
         .await;
     request.cancel_token = Some(cancel_token);
+    emit_memory_used(&on_chunk, &input.request_id, &env.memory_used);
 
     tracing::debug!(
         request_id = %input.request_id,

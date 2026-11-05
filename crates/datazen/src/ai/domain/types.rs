@@ -590,6 +590,9 @@ pub struct StreamChunk {
     /// Contains a brief summary of connections/tables the AI has access to.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub egress_summary: Option<String>,
+    /// Memories actually injected into this run, with stable `[M1]` references.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_used: Option<Vec<crate::ai::memory::MemoryReference>>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

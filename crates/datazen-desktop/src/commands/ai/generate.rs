@@ -17,6 +17,7 @@ use datazen::ai::application::chat_session::{
     run_sql_generation_session, ChatSessionEnv, SqlGenerationInput,
 };
 use datazen::ai::application::schema_pipeline::SchemaContextPipeline;
+use datazen::ai::memory::{MemoryMode, MemoryScopeKind};
 use datazen::ai::ownership::AiTargetClaim;
 use datazen::ai::safety::redact_for_gate;
 use datazen::ai::*;
@@ -39,6 +40,9 @@ pub async fn ai_generate_sql<R: tauri::Runtime>(
     context_files: Option<Vec<String>>,
     context_tables: Option<Vec<String>>,
     target_claim: Option<AiTargetClaim>,
+    connection_id: Option<String>,
+    memory_mode: Option<MemoryMode>,
+    memory_scope: Option<MemoryScopeKind>,
 ) -> Result<String, CommandError> {
     let on_chunk = window_stream_callback(&window);
     let gate = resolve_safety_gate(&state).await;
@@ -64,6 +68,29 @@ pub async fn ai_generate_sql<R: tauri::Runtime>(
         .driver()
         .clone();
 
+    let memory_mode = memory_mode.unwrap_or_default();
+    let memory = match super::resolve_chat_memory(
+        &state,
+        memory_mode,
+        memory_scope,
+        connection_id.as_deref(),
+        Some(&database),
+        &natural_language,
+        super::provider_is_cloud(provider.as_ref(), &ai_config),
+        gate.data_egress_level,
+    )
+    .await
+    {
+        Ok(memory) => memory,
+        Err(error) => {
+            tracing::warn!(error = %error, "ai_generate_sql: memory retrieval failed; continuing without memory");
+            super::ChatMemory::default()
+        }
+    };
+    if memory_mode == MemoryMode::Ask && !memory.candidates.is_empty() {
+        super::emit_memory_candidates(&window, &request_id, &memory.candidates).await;
+    }
+
     // 编排本体在 modules（B3 下沉）；claim 归由请求级宿主提供。
     let host = super::AiRequestHost {
         state: &state,
@@ -74,6 +101,8 @@ pub async fn ai_generate_sql<R: tauri::Runtime>(
         model: ai_config.model,
         gate,
         injection: datazen::ai::chat_injection::ChatInjection::default(),
+        memory_injection: memory.injection,
+        memory_used: memory.used,
         lang,
         connections_context: String::new(),
         mcp_tools: Vec::new(),

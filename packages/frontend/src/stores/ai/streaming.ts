@@ -108,6 +108,8 @@ function finalizeCancelledSession<T extends NonNullable<AiStore['chatSession']>>
     streamReasoning: '',
     streamMcpToolName: null,
     requestId: null,
+    streamMemoryUsed: null,
+    memoryUsed: session.streamMemoryUsed ?? null,
     messages: [
       ...session.messages,
       {
@@ -116,6 +118,7 @@ function finalizeCancelledSession<T extends NonNullable<AiStore['chatSession']>>
         content: session.streamContent || '',
         reasoning: session.streamReasoning || undefined,
         cancelled: true,
+        memoryUsed: session.streamMemoryUsed ?? undefined,
       },
     ],
   };
@@ -170,6 +173,10 @@ export function handleStreamChunk(get: GetState, set: SetState, payload: StreamC
   // The host sends the scope on the first chunk; later chunks must not replace
   // it within the same run.
   const egressSummary = session.egressSummary || payload.egressSummary?.trim() || null;
+  const memoryUsed =
+    payload.memoryUsed && payload.memoryUsed.length > 0
+      ? payload.memoryUsed
+      : (session.streamMemoryUsed ?? null);
   const newContent = (session.streamContent || '') + (payload.content || '');
   const newReasoning = (session.streamReasoning || '') + (payload.reasoning || '');
   const mcpToolName = findMcpToolName(payload.toolCalls) ?? session.streamMcpToolName ?? null;
@@ -192,6 +199,7 @@ export function handleStreamChunk(get: GetState, set: SetState, payload: StreamC
       questions,
       toolCalls,
       cancelled: payload.cancelled === true,
+      memoryUsed: memoryUsed ?? undefined,
     };
     const nextSession = {
       ...session,
@@ -201,6 +209,8 @@ export function handleStreamChunk(get: GetState, set: SetState, payload: StreamC
       streamReasoning: '',
       streamMcpToolName: null,
       egressSummary,
+      streamMemoryUsed: null,
+      memoryUsed: memoryUsed ?? null,
       requestId: null,
     };
     set({ [targetSession]: nextSession });
@@ -219,6 +229,7 @@ export function handleStreamChunk(get: GetState, set: SetState, payload: StreamC
           toolCalls: m.toolCalls,
           toolCallId: m.toolCallId,
           cancelled: m.cancelled,
+          memoryUsed: m.memoryUsed,
         })),
         lastAccess: Date.now(),
       };
@@ -232,6 +243,8 @@ export function handleStreamChunk(get: GetState, set: SetState, payload: StreamC
         streamReasoning: newReasoning,
         streamMcpToolName: mcpToolName,
         egressSummary,
+        streamMemoryUsed: memoryUsed,
+        memoryUsed: memoryUsed ?? null,
       },
     });
   }
@@ -270,6 +283,8 @@ export function handleStreamError(get: GetState, set: SetState, payload: StreamE
       streamContent: '',
       streamReasoning: '',
       streamMcpToolName: null,
+      streamMemoryUsed: null,
+      memoryUsed: null,
       requestId: null,
       messages: [...session.messages, { role: 'assistant', content: `Error: ${payload.error}` }],
     },

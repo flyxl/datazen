@@ -142,6 +142,17 @@ export interface AiChatContextSnapshot {
   resultPreview?: AiChatResultPreview;
 }
 
+/** Non-secret citation metadata for one memory injected into a chat run. */
+export interface AiMemoryReference {
+  /** Stable answer reference (`M1`, `M2`, ...). */
+  reference: string;
+  id: string;
+  subject: string;
+  kind: string;
+  scope: string;
+  score: number;
+}
+
 export interface AiChatMessage {
   /** Unique message identifier for stable React keys. */
   id?: string;
@@ -153,6 +164,8 @@ export interface AiChatMessage {
   toolCallId?: string;
   /** Terminal marker: the run ended because the user cancelled it. */
   cancelled?: boolean;
+  /** Active memories injected for this assistant turn, if any. */
+  memoryUsed?: AiMemoryReference[];
 }
 
 export interface AiChatInjectionSnapshot {
@@ -180,6 +193,10 @@ export interface AiChatSession {
   streamMcpToolName: string | null;
   /** Host-provided egress scope from the first chunk of this run. */
   egressSummary?: string | null;
+  /** Accumulated memory references for the in-flight run. */
+  streamMemoryUsed?: AiMemoryReference[] | null;
+  /** Latest run's memory references; reset on send/clear/new session. */
+  memoryUsed?: AiMemoryReference[] | null;
   /** Host-provided prompt material snapshot for this run's chips. */
   injection?: AiChatInjectionSnapshot | null;
   requestId: string | null;
@@ -205,6 +222,8 @@ export interface StreamChunkPayload {
   toolCalls?: AiToolCall[];
   /** FR-13 egress scope; the host sends it on the first chunk only. */
   egressSummary?: string;
+  /** Active memories injected into this run; the host sends it once up front. */
+  memoryUsed?: AiMemoryReference[];
 }
 
 export interface StreamErrorPayload {

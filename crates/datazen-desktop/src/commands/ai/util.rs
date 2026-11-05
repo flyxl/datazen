@@ -178,6 +178,9 @@ pub(crate) fn emit_stream_chunk_or_error<R: tauri::Runtime>(
             if let Some(tool_calls) = &chunk.tool_calls {
                 payload["toolCalls"] = serde_json::to_value(tool_calls).unwrap_or_default();
             }
+            if let Some(memory_used) = &chunk.memory_used {
+                payload["memoryUsed"] = serde_json::to_value(memory_used).unwrap_or_default();
+            }
             let _ = emitter.emit("ai:stream-chunk", payload);
         }
         Err(e) => {

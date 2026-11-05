@@ -21,6 +21,7 @@ const pack = {
   'chat.injection.template': '模板：{name}',
   'chat.injection.notes': '已包含连接备注',
   'chat.injection.priority': '全局指令优先',
+  'chat.memory.used': '已使用 {count} 条记忆',
   'chat.injection.priorityHint': '全局指令与模板冲突时，以全局指令为准。',
   'chat.injection.readOnlyHint': '该注入内容随消息冻结，只读展示',
   'chat.thinking': '思考中…',

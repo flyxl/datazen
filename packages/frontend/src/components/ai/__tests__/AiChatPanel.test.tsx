@@ -71,6 +71,14 @@ const aiState = vi.hoisted(() => ({
       role: 'user' | 'assistant' | 'tool';
       content: string;
       reasoning?: string;
+      memoryUsed?: {
+        reference: string;
+        id: string;
+        subject: string;
+        kind: string;
+        scope: string;
+        score: number;
+      }[];
       questions?: {
         id: string;
         prompt: string;
@@ -160,6 +168,64 @@ describe('AiChatPanel', () => {
     };
     rerender(<AiChatPanel dbSessionId="c1" database="db" connectionId="conn-1" />);
     expect(getByText('chat.welcome')).toBeInTheDocument();
+  });
+
+  it('renders an expandable memory chip and wires citation clicks', () => {
+    aiState.chatSession = {
+      sessionKey: 'c1::',
+      messages: [
+        {
+          role: 'assistant',
+          content: 'Use UTC [M1].',
+          memoryUsed: [
+            {
+              reference: 'M1',
+              id: 'mem-1',
+              subject: 'Timezone preference',
+              kind: 'preference',
+              scope: 'user:me',
+              score: 0.9,
+            },
+          ],
+        },
+      ],
+      isStreaming: false,
+      streamContent: '',
+      streamReasoning: '',
+      streamMcpToolName: null,
+      egressSummary: null,
+      injection: null,
+    };
+    const { getByTestId, getByText, queryByTestId } = render(
+      <AiChatPanel dbSessionId="c1" database="db" />,
+    );
+    expect(getByTestId('ai-memory-chip')).toBeInTheDocument();
+    expect(getByText('chat.memory.used')).toBeInTheDocument();
+    expect(queryByTestId('ai-memory-expanded')).toBeNull();
+
+    fireEvent.click(getByTestId('ai-memory-chip'));
+    expect(getByTestId('ai-memory-expanded')).toBeInTheDocument();
+    expect(getByText('Timezone preference')).toBeInTheDocument();
+
+    fireEvent.click(getByTestId('ai-memory-chip'));
+    expect(queryByTestId('ai-memory-expanded')).toBeNull();
+    fireEvent.click(getByText('[M1]'));
+    expect(getByTestId('ai-memory-expanded')).toBeInTheDocument();
+  });
+
+  it('hides the memory chip when no memories were used', () => {
+    aiState.chatSession = {
+      sessionKey: 'c1::',
+      messages: [{ role: 'assistant', content: 'No memory here.' }],
+      isStreaming: false,
+      streamContent: '',
+      streamReasoning: '',
+      streamMcpToolName: null,
+      egressSummary: null,
+      injection: null,
+    };
+    const { queryByTestId } = render(<AiChatPanel dbSessionId="c1" database="db" />);
+    expect(queryByTestId('ai-memory-chip')).toBeNull();
   });
 
   it('renders template and notes chips from the injection snapshot', () => {

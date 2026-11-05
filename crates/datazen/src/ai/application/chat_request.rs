@@ -9,6 +9,7 @@ use crate::ai::domain::types::{
     AiSafetyGateConfig, ChatMessage, CompletionRequest, MessageRole, ToolDefinition,
     MAX_CONNECTION_NOTES_BYTES, MAX_GLOBAL_INSTRUCTIONS_BYTES, MAX_PROMPT_TEMPLATE_BYTES,
 };
+use crate::ai::memory::MemoryInjection;
 use datazen_driver_api::{DatabaseDriver, PromptScenario};
 use std::collections::HashMap;
 
@@ -35,6 +36,8 @@ pub struct ChatRequestInput<'a> {
     /// remain in the host; this layer only inserts it into the last user turn.
     pub context_block: Option<&'a str>,
     pub injection: ChatInjection,
+    /// Already retrieved and budgeted `<memory>` block (host retrieval).
+    pub memory: Option<MemoryInjection>,
     pub safety_gate: &'a AiSafetyGateConfig,
     pub attach_db_tools: bool,
     /// Agent chat gets read-only query/sampling in addition to metadata tools.
@@ -210,6 +213,15 @@ async fn build_system_prompt(
             prompt.push_str(&block);
         }
     }
+    if let Some(memory_text) = input
+        .memory
+        .as_ref()
+        .filter(|memory| !memory.is_empty())
+        .and_then(|memory| memory.text.as_deref())
+    {
+        prompt.push_str("\n\n");
+        prompt.push_str(memory_text);
+    }
     if let Some(schema_suffix) = schema_suffix.filter(|suffix| !suffix.trim().is_empty()) {
         prompt.push_str("\n\n");
         prompt.push_str(&schema_suffix);
@@ -313,6 +325,7 @@ mod tests {
                 }],
                 context_block: Some("Context file: notes.txt\nRelevant facts."),
                 injection: ChatInjection::default(),
+                memory: None,
                 safety_gate: &gate,
                 attach_db_tools: true,
                 attach_agent_db_tools: false,
@@ -364,6 +377,7 @@ mod tests {
                 }],
                 context_block: None,
                 injection: ChatInjection::default(),
+                memory: None,
                 safety_gate: &gate,
                 attach_db_tools: true,
                 attach_agent_db_tools: true,
@@ -408,6 +422,7 @@ mod tests {
                 }],
                 context_block: None,
                 injection: ChatInjection::default(),
+                memory: None,
                 safety_gate: gate,
                 attach_db_tools: true,
                 attach_agent_db_tools: true,
@@ -452,6 +467,7 @@ mod tests {
                 }],
                 context_block: None,
                 injection: ChatInjection::default(),
+                memory: None,
                 safety_gate: &gate,
                 attach_db_tools: false,
                 attach_agent_db_tools: false,
@@ -673,6 +689,7 @@ mod tests {
                 }],
                 context_block: None,
                 injection,
+                memory: None,
                 safety_gate: &gate,
                 attach_db_tools: false,
                 attach_agent_db_tools: false,
@@ -724,6 +741,7 @@ mod tests {
                 }],
                 context_block: None,
                 injection,
+                memory: None,
                 safety_gate: &gate,
                 attach_db_tools: false,
                 attach_agent_db_tools: false,

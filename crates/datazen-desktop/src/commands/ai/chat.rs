@@ -17,6 +17,7 @@ use crate::commands::AppState;
 use datazen::ai::application::chat_injection::resolve_chat_injection;
 use datazen::ai::application::chat_session::{run_chat_session, ChatSessionEnv, ChatSessionInput};
 use datazen::ai::application::schema_pipeline::SchemaContextPipeline;
+use datazen::ai::memory::{MemoryMode, MemoryScopeKind};
 use datazen::ai::ownership::AiTargetClaim;
 use datazen::ai::tool_loop::{AiToolContext, AiToolLoopHost};
 use datazen::ai::*;
@@ -174,6 +175,8 @@ pub async fn ai_chat<R: tauri::Runtime>(
     result_preview: Option<datazen::ai::chat_session::ChatResultPreview>,
     template_id: Option<String>,
     database_type: Option<String>,
+    memory_mode: Option<MemoryMode>,
+    memory_scope: Option<MemoryScopeKind>,
 ) -> Result<String, CommandError> {
     let on_chunk = window_stream_callback(&window);
     let is_workflow = scenario.as_deref() == Some("workflow_generate");
@@ -221,6 +224,35 @@ pub async fn ai_chat<R: tauri::Runtime>(
     // Resolve user-authored prompt material on the host (storage + scope),
     // then hand the immutable decision to the shared use case. The UI receives
     // only identity/existence, never the note or template body.
+    let memory_mode = memory_mode.unwrap_or_default();
+    let last_user_text = messages
+        .iter()
+        .rev()
+        .find(|message| message.role == datazen::ai::domain::types::MessageRole::User)
+        .map(|message| message.content.clone())
+        .unwrap_or_default();
+    let memory = match super::resolve_chat_memory(
+        &state,
+        memory_mode,
+        memory_scope,
+        connection_id.as_deref(),
+        database.as_deref(),
+        &last_user_text,
+        super::provider_is_cloud(provider.as_ref(), &ai_config),
+        gate.data_egress_level,
+    )
+    .await
+    {
+        Ok(memory) => memory,
+        Err(error) => {
+            tracing::warn!(error = %error, "ai_chat: memory retrieval failed; continuing without memory");
+            super::ChatMemory::default()
+        }
+    };
+    if memory_mode == MemoryMode::Ask && !memory.candidates.is_empty() {
+        super::emit_memory_candidates(&window, &request_id, &memory.candidates).await;
+    }
+
     let settings = datazen::ai::api::get_settings_config(state.store.as_ref()).await;
     let connection_notes = connection_id
         .as_deref()
@@ -248,6 +280,8 @@ pub async fn ai_chat<R: tauri::Runtime>(
         model: ai_config.model,
         gate,
         injection,
+        memory_injection: memory.injection,
+        memory_used: memory.used,
         lang,
         connections_context,
         mcp_tools,

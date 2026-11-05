@@ -93,6 +93,7 @@ impl MockAiProvider {
                 tool_calls: None,
                 response_id: None,
                 egress_summary: None,
+                memory_used: None,
             },
             StreamChunk {
                 content: String::new(),
@@ -107,6 +108,7 @@ impl MockAiProvider {
                 tool_calls: None,
                 response_id: None,
                 egress_summary: None,
+                memory_used: None,
             },
         ]);
     }
@@ -122,6 +124,7 @@ impl MockAiProvider {
             tool_calls: Some(vec![tool]),
             response_id: None,
             egress_summary: None,
+            memory_used: None,
         }]);
         self.push_stream_text(final_text);
     }
@@ -236,6 +239,7 @@ impl AiProvider for MockAiProvider {
                         tool_calls: response.tool_calls,
                         response_id: response.response_id,
                         egress_summary: None,
+                        memory_used: None,
                     }))
                     .await;
                 Ok(())

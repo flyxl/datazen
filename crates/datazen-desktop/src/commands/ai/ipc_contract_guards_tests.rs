@@ -34,7 +34,6 @@ fn command_params(command: &str) -> String {
 #[test]
 fn session_semantics_commands_take_db_session_id() {
     for cmd in [
-        "ai_generate_sql",
         "ai_diagnose_error",
         "ai_analyze_explain",
         "ai_parse_filter",
@@ -52,6 +51,19 @@ fn session_semantics_commands_take_db_session_id() {
             "`{cmd}` must not take (or also take) `connection_id`; got: {params}"
         );
     }
+}
+
+#[test]
+fn ai_generate_sql_takes_runtime_session_and_stable_connection_id_for_memory() {
+    let params = command_params("ai_generate_sql");
+    assert!(
+        params.contains("db_session_id"),
+        "`ai_generate_sql` keeps the runtime session handle; got: {params}"
+    );
+    assert!(
+        params.contains("connection_id"),
+        "`ai_generate_sql` also takes the stable connection id for memory scope; got: {params}"
+    );
 }
 
 #[test]

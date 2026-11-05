@@ -233,6 +233,8 @@ fn test_env(provider: Arc<dyn AiProvider>, src: Arc<RecordingSource>) -> ChatSes
         model: "test-model".into(),
         gate: AiSafetyGateConfig::default(),
         injection: crate::ai::chat_injection::ChatInjection::default(),
+        memory_injection: None,
+        memory_used: Vec::new(),
         lang: "en".into(),
         connections_context: String::new(),
         mcp_tools: Vec::new(),
@@ -269,6 +271,7 @@ fn stream_chunk(content: &str, done: bool) -> StreamChunkT {
         tool_calls: None,
         response_id: None,
         egress_summary: None,
+        memory_used: None,
     }
 }
 

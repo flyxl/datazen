@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
 import {
   ArrowDown,
   BookOpen,
@@ -564,7 +564,14 @@ export function AiChatPanel({
             {chatSession?.messages.map((msg, i) => (
               <ChatBubble
                 key={msg.id ?? i}
-                message={msg}
+                message={
+                  msg.memoryUsed ||
+                  msg.role !== 'assistant' ||
+                  i !== chatSession.messages.length - 1 ||
+                  !chatSession.memoryUsed
+                    ? msg
+                    : { ...msg, memoryUsed: chatSession.memoryUsed }
+                }
                 sqlDialect={sqlDialect}
                 onInsertSql={onInsertSql}
                 onRunCode={onRunCode}
@@ -593,6 +600,8 @@ export function AiChatPanel({
                     role: 'assistant',
                     content: chatSession.streamContent,
                     reasoning: chatSession.streamReasoning || undefined,
+                    memoryUsed:
+                      chatSession.streamMemoryUsed ?? chatSession.memoryUsed ?? undefined,
                   }}
                   sqlDialect={sqlDialect}
                   isStreaming
@@ -853,6 +862,27 @@ function ChatBubble({
   const isTool = message.role === 'tool';
   const [reasoningOpen, setReasoningOpen] = useState(false);
   const [toolCollapsed, setToolCollapsed] = useState(true);
+  const [memoryOpen, setMemoryOpen] = useState(false);
+  const memoryListRef = useRef<HTMLDivElement>(null);
+  const memoryUsed = message.memoryUsed ?? [];
+
+  const handleMemoryCitationClick = (event: MouseEvent<HTMLDivElement>) => {
+    const target = (event.target as HTMLElement).closest<HTMLAnchorElement>(
+      'a[href^="#memory-"]',
+    );
+    if (!target) return;
+    event.preventDefault();
+    const reference = target.getAttribute('href')?.slice('#memory-'.length);
+    if (!reference) return;
+    setMemoryOpen(true);
+    window.setTimeout(() => {
+      const item = memoryListRef.current?.querySelector<HTMLElement>(
+        `[data-memory-reference="${reference}"]`,
+      );
+      item?.scrollIntoView({ block: 'nearest' });
+      item?.focus();
+    }, 0);
+  };
 
   const hasQuestions = !isUser && !isStreaming && message.questions && message.questions.length > 0;
 
@@ -924,15 +954,61 @@ function ChatBubble({
           (isUser ? (
             <pre className="whitespace-pre-wrap font-sans">{message.content}</pre>
           ) : (
-            <AiMessageContent
-              content={message.content}
-              sqlDialect={sqlDialect}
-              onInsertSql={onInsertSql}
-              onRunCode={onRunCode}
-              onNewQuery={onNewQuery}
-              isStreaming={isStreaming}
-            />
+            <div onClick={handleMemoryCitationClick}>
+              <AiMessageContent
+                content={message.content}
+                sqlDialect={sqlDialect}
+                onInsertSql={onInsertSql}
+                onRunCode={onRunCode}
+                onNewQuery={onNewQuery}
+                isStreaming={isStreaming}
+                memoryReferences={memoryUsed.map((memory) => memory.reference)}
+              />
+            </div>
           ))}
+
+        {!isUser && memoryUsed.length > 0 && (
+          <div className="mt-2 border-t border-edge/50 pt-1.5">
+            <button
+              type="button"
+              className="flex items-center gap-1 rounded px-1 py-0.5 text-[10px] text-fg-muted transition-colors hover:bg-surface hover:text-fg"
+              onClick={() => setMemoryOpen((open) => !open)}
+              aria-expanded={memoryOpen}
+              data-testid="ai-memory-chip"
+            >
+              <BookOpen className="h-2.5 w-2.5" />
+              {t('chat.memory.used', { count: memoryUsed.length })}
+              {memoryOpen ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+            </button>
+            {memoryOpen && (
+              <div
+                ref={memoryListRef}
+                className="mt-1 space-y-0.5"
+                data-testid="ai-memory-expanded"
+              >
+                {memoryUsed.map((memory) => (
+                  <div
+                    key={`${memory.id}-${memory.reference}`}
+                    tabIndex={-1}
+                    data-memory-reference={memory.reference}
+                    data-testid={`ai-memory-item-${memory.reference}`}
+                    className="rounded px-1.5 py-1 text-[10px] text-fg-muted focus:bg-surface focus:outline-none"
+                  >
+                    <span className="mr-1 font-mono text-fg-secondary">[{memory.reference}]</span>
+                    {memory.subject}
+                    <span className="ml-1 text-fg-muted/70">
+                      {memory.kind} · {memory.scope}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {!message.content && isStreaming && message.reasoning && (
           <div className="flex items-center gap-1 text-[10px] text-fg-muted mt-1">
