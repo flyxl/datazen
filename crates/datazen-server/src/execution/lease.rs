@@ -136,7 +136,7 @@ impl RuntimeLeaseSource for ServerRuntimeLeaseSource {
             .current
             .lock()
             .map(|cell| cell.clone())
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(|poisoned| poisoned.into_inner().clone())
         {
             return Ok(runtime);
         }
