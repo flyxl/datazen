@@ -16,19 +16,20 @@
 //! | `listInboundForeignKeys` | `POST /api/v1/table-data/inbound-foreign-keys` | ⛔ fail-closed | `services::referenced_by` 同上（同一端口同一句柄依赖）→ 501 |
 //! | `searchTableValues` | `POST /api/v1/table-data/value-searches` | ⛔ fail-closed | `services::value_search` 直接在活 `ConnectionHandle` 上跑驱动查询；无直连句柄面 → 501 |
 //! | `resolveResultOrigin` | `POST /api/v1/table-data/result-origins` | ⛔ fail-closed | 来源重推导要求驱动在活句柄上应答（`describe_result_origin(&handle)`）+ 目录缓存同句柄读；无直连句柄面 → 501 |
-//! | `previewPendingChanges` | `POST /api/v1/table-data/change-plan-previews` | ⛔ fail-closed | `table_editing::preview_changes` 要求 server 侧 `TableColumnSource`（目录缓存机，真实列/主键应答）——未装配；且其 commit 半边同样未装配，单独点亮预览是半能力（fail-closed 优先）→ 501 |
-//! | `commitPendingChanges` | `POST /api/v1/table-data/change-commits` | ⛔ fail-closed | `commit_changes` 的 runtime 写半边（`execute_plan`）未装配 → 501 |
+//! | `previewPendingChanges` | `POST /api/v1/table-data/change-plan-previews` | ✅ 真实现 | `preview_changes` 用例（W8 刀3）：读三端点同款闸序 → `ServerTableColumnSource` 命令面列源（刀1 件）现查列/主键 → 200 `RowChangePlan`；`configRevision` 盖预览时刻的 profile revision（commit CAS 基准）；不设 read_only 闸（桌面镜像：预览不执行任何语句） |
+//! | `commitPendingChanges` | `POST /api/v1/table-data/change-commits` | ✅ 真实现 | `commit_changes` + `execute_plan`（W8 刀3）：单次 lease resolve 的 runtime 实例贯穿提交序列；恒 owned-session（宿主开/驱动/关计划自己的会话），`manualHandle` 在场 → 501 明拒（绝不静默降级）；共享层五道闸（上下文/漂移/CAS/read_only/schema 比对）全重检 |
 //! | `commitQueryResultCell` | `POST /api/v1/table-data/result-cell-commits` | ⛔ fail-closed | 来源重推导（活句柄）+ 写半边（`execute_plan`）双双缺失 → 501 |
 //! | `previewResultCellChange` | `POST /api/v1/table-data/result-cell-change-previews` | ⛔ fail-closed | 同上（写前 origin 重读也是活句柄依赖）→ 501 |
 //!
 //! fail-closed 的形状沿 `ai_host::execute_target` 先例：路由照常挂载（§6.7
 //! / §6.8 在账），handler 显式回答 **501 `capabilityUnsupported`**（
 //! not-implemented 类，`http::response` 状态码表的 with_status 覆盖），文案
-//! 携带逐端口的不可服务原因——**绝不返回看似成功的结果**。8 条 ⛔ 路由
+//! 携带逐端口的不可服务原因——**绝不返回看似成功的结果**。剩 6 条 ⛔ 路由
 //! 的不可服务原因已收窄为逐端口缺失：FK/值搜索/来源重推导卡「活
-//! `ConnectionHandle` 面」，变更四卡「`TableColumnSource` 目录源 + runtime
-//! 写半边」。点亮它们的切片在 W8-b（stream 投递桥 / driverType 直取 /
-//! 命令历史落账）之后按端口逐条排刀。
+//! `ConnectionHandle` 面」（刀2 的活句柄面），result-cell 二卡「原会话绑定
+//! + 执行期结果映射探针」且 preview 被其 commit 半边封住（成对原则的剩余
+//! 封条）。变更二（preview/commit）已由 W8 刀3 点亮（命令面列源 + runtime
+//! 写半边 + 单次 resolve 的会话序列）。
 //!
 //! ## 命名视图的 wire 形状（与 WR-C3 契约腿逐字一致）
 //!
@@ -79,6 +80,7 @@ use datazen::connection::domain::profile::ProfileRepository;
 use datazen::execution::application::use_cases::ConnectionUseCases;
 use datazen::execution::target::{ExecutionTarget, ObjectTarget};
 use datazen::execution::SessionDirectory;
+use datazen::execution::SessionHandle;
 use datazen::named_views::{NamedView, NamedViewError, NamedViewScope, NamedViewService};
 use datazen::schema::application::scope::{
     embedded_schema_of, metadata_schema, table_read_database,
@@ -94,8 +96,14 @@ use datazen::table_browsing::api::{
 };
 use datazen::table_browsing::executor::filter_sql::validate_filters;
 use datazen::table_editing::validate_table_context;
+use datazen::table_editing::{
+    commit_changes, preview_changes, ArtifactChunkReader, CommitPendingChangesRequest,
+    ConnectionFacts, PendingRowChange, RowChangePlan, RowChangeTableContext, TableEditingError,
+};
 use datazen_driver_api::ConnectionConfig;
 
+use crate::execution::resource_host::ServerArtifactChunks;
+use crate::execution::table_columns::ServerTableColumnSource;
 use crate::http::middleware::authorize::NOT_VISIBLE_MESSAGE;
 use crate::http::response::ApiErrorResponse;
 use crate::http::router::{api_error_response, invalid_argument, SessionIdentity};
@@ -130,6 +138,12 @@ pub struct TableDataState {
     /// 会话用例面（W8-a 接线刀）：estimateTableRows 的 `get_session`；与
     /// sessions 域同一实例（`LeaseConnectionUseCases`，每调用现取租约）。
     pub sessions: Arc<dyn ConnectionUseCases>,
+    /// runtime 租约源（W8 刀3）：commitPendingChanges 的写半边经**单次
+    /// resolve** 取 `Arc<RuntimeConnectionUseCases>`，贯穿 open_session /
+    /// issue_submission_token / execute_in_session / get_execution 轮询 /
+    /// close_session 的整个提交序列（CM-63 cell 语义 + 「单次 resolve 是对
+    /// 的构造」裁决）。与 MCP / sessions 域同一实例（bootstrap 既有纪律）。
+    pub lease: Arc<dyn crate::execution::lease::RuntimeLeaseSource>,
 }
 
 impl TableDataState {
@@ -652,12 +666,227 @@ fn not_visible() -> Response {
     api_error_response(ApiError::new(ApiErrorCode::NotFound, NOT_VISIBLE_MESSAGE))
 }
 
-// ── 变更与 FK/来源/值搜索（§6.7/§6.8，⛔ fail-closed：逐端口收窄）──────────
+// ── 变更两段式（§6.8，✅ W8 刀3）──────────────────────────────────────
 //
-// 八条路由逐一显式登记（模块头状态表）。不可服务原因已按端口收窄：
+// 成对点亮（评估档 §6.1 硬原则：预览与提交必须同刀亮起——预览先亮 = 调用方
+// 拿到永远无法提交的计划，是半个答案）。两条 handler 共用读三端点的闸序
+// （`resolve_read_target`）与刀1 的命令面列源；写半边经单次 lease resolve
+// 的 runtime 实例贯穿整个提交序列（open/token/execute/close 落同一实例的
+// 私有账，CM-63 cell 语义 + 评估档 §4 表第 6 行的构造裁决）。
+//
+// 语义边界（如实登记）：commit 不提供请求级幂等——HTTP 重试是一次新请求、
+// 新令牌、新会话，fingerprint 守计划内容而不守「恰好一次」（共享层既有
+// 语义，桌面同权；请求级幂等头留给后续刀，前端重试只在网络层失败且未收到
+// 响应时进行）。
+
+/// `POST /api/v1/table-data/change-plan-previews` 的体（契约
+/// `PreviewPendingChangesRequest`）。前端 `PendingRowChange.rowIndex` 是
+/// UI-only 提示字段，serde 默认忽略未知字段——不做 `deny_unknown_fields`。
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PreviewPendingChangesBody {
+    context: RowChangeTableContext,
+    changes: Vec<PendingRowChange>,
+}
+
+/// `POST /api/v1/table-data/change-commits` 的体（契约
+/// `CommitPendingChangesRequest`）。
+///
+/// `manual_handle` 必须显式反序列化并显式拒绝（Some → 501）：serde 默认
+/// 忽略未知字段，省掉它会静默把 manual 提交降级为 owned-session 执行——
+/// 调用方以为写进了自己的事务，实际落在一个已提交并关闭的陌生会里，
+/// 比拒绝更危险。web 形态没有编辑事务面（legacy 轨不上 HTTP、
+/// `platform.*` 不进驱动命令目录），manual 路在本宿主显式 closed；放开
+/// 条件（web 面出现编辑事务形态）登记在 `w8-knife3-mutation-pair-design.md`
+/// §0.2。
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CommitPendingChangesBody {
+    db_session_id: String,
+    #[serde(default)]
+    manual_handle: Option<SessionHandle>,
+    plan: RowChangePlan,
+    fingerprint: String,
+}
+
+/// `previewPendingChanges`（POST /api/v1/table-data/change-plan-previews）
+/// → 200 `RowChangePlan`（不执行任何语句）。
+///
+/// 闸序：serde 解析 → 共享层上下文校验 → 读三端点同款闸序（profile 存在
+/// → 未禁用 → 驱动类型漂移 → 方言驱动；preview 不设 read_only 闸——
+/// 桌面镜像）→ 列源现查（每调用经命令面跑 `get_table_schema`，预览永远答
+/// 「当下」的列与主键）→ `preview_changes` 建计划并盖 config_revision 章
+/// （commit CAS 的基准）。
+async fn handler_preview_pending_changes(
+    State(state): State<TableDataState>,
+    identity: SessionIdentity,
+    Json(body): Json<Value>,
+) -> Response {
+    let request: PreviewPendingChangesBody = match serde_json::from_value(body) {
+        Ok(request) => request,
+        Err(source) => return invalid_argument(format!("preview: {source}")),
+    };
+    if let Err(error) = validate_table_context(&request.context) {
+        return api_error_response(ApiError::new(
+            ApiErrorCode::InvalidArgument,
+            error.to_string(),
+        ));
+    }
+    let (_config, revision, driver) =
+        match resolve_read_target(&state, &identity.ctx, &request.context).await {
+            Ok(resolved) => resolved,
+            Err(response) => return response,
+        };
+    let columns = ServerTableColumnSource::new(
+        state.runner.clone(),
+        state.registry.clone(),
+        identity.ctx.clone(),
+        revision,
+    );
+    match preview_changes(
+        driver.as_ref(),
+        request.context,
+        &request.changes,
+        &columns,
+        revision.get(),
+    )
+    .await
+    {
+        Ok(plan) => (StatusCode::OK, Json(plan)).into_response(),
+        Err(error) => table_editing_error_response(error),
+    }
+}
+
+/// `commitPendingChanges`（POST /api/v1/table-data/change-commits）→ 200
+/// `CommitPendingChangesResponse`（同步回执；契约 §6.8：结果在响应体里的
+/// 用 200）。
+///
+/// 闸序：serde 解析 → manual 路明拒（501，先于一切执行触碰）→ 共享层
+/// 上下文校验（桌面「feature layer re-checks the context」双检序镜像）→
+/// 读三端点同款闸序（未知/禁用 profile 在任何会话资源分配之前 404，
+/// 防枚举口径与读端点同一条）→ 单次 lease resolve → facts 组装 →
+/// `commit_changes`（共享层五道闸全重检 → 重读列 → 不可变计划重建 →
+/// `execute_plan` owned-session 全链；CAS 双闸：facts 对过期计划拒绝、
+/// 会话开立后再对 `opened.config_revision` 复验）。
+async fn handler_commit_pending_changes(
+    State(state): State<TableDataState>,
+    identity: SessionIdentity,
+    Json(body): Json<Value>,
+) -> Response {
+    let body: CommitPendingChangesBody = match serde_json::from_value(body) {
+        Ok(body) => body,
+        Err(source) => return invalid_argument(format!("commit: {source}")),
+    };
+    if body.manual_handle.is_some() {
+        // manual 会话事务在本宿主显式 closed（501 而非 400：删掉 manualHandle
+        // 字段请求即合法，「这个子能力此宿主尚未提供」是装配事实而不是请求
+        // 错误；与同域其余 not-served 面同一 wire 词汇）。
+        let error = ApiError::new(
+            ApiErrorCode::CapabilityUnsupported,
+            "commitPendingChanges does not serve manual session transactions \
+             (manualHandle) on this host yet: the host opens, drives and closes \
+             the plan's own session (owned-session mode); send manualHandle as \
+             null or omit the field. No statement ran and nothing was written.",
+        );
+        return ApiErrorResponse::new(error)
+            .with_status(StatusCode::NOT_IMPLEMENTED)
+            .into_response();
+    }
+    let request = CommitPendingChangesRequest {
+        db_session_id: body.db_session_id,
+        plan: body.plan,
+        fingerprint: body.fingerprint,
+    };
+    if let Err(error) = validate_table_context(&request.plan.table) {
+        return api_error_response(ApiError::new(
+            ApiErrorCode::InvalidArgument,
+            error.to_string(),
+        ));
+    }
+    let (config, revision, driver) =
+        match resolve_read_target(&state, &identity.ctx, &request.plan.table).await {
+            Ok(resolved) => resolved,
+            Err(response) => return response,
+        };
+    // 单次 resolve 的实例贯穿整个提交序列：open_session 回执、令牌签发、
+    // execute_in_session 消费、轮询、close_session 幂等回放落同一实例的
+    // 私有账（刀0 cell 快路下每调用 resolve 也恒返同一 Arc，但那是碰巧；
+    // 单次 resolve 是构造）。持有 Arc 使在途提交对中途 revoke() 免疫
+    // （吊销只影响后续 resolve，不影响已借出的实例）。
+    let runtime = match state.lease.resolve().await {
+        Ok(runtime) => runtime,
+        Err(message) => {
+            return api_error_response(ApiError::new(
+                ApiErrorCode::ServiceUnavailable,
+                message,
+            ));
+        }
+    };
+    let facts = ConnectionFacts {
+        database_type: config.database_type.clone(),
+        read_only: config.read_only,
+        database: config.database.clone(),
+        schema: config.schema.clone(),
+        config_revision: revision.get(),
+    };
+    let columns = ServerTableColumnSource::new(
+        state.runner.clone(),
+        state.registry.clone(),
+        identity.ctx.clone(),
+        revision,
+    );
+    let artifacts = Arc::new(ServerArtifactChunks(runtime.clone())) as Arc<dyn ArtifactChunkReader>;
+    match commit_changes(
+        driver.as_ref(),
+        request,
+        &facts,
+        &columns,
+        None, // manual 路已被上面显式拒绝；HTTP 面恒 owned-session
+        runtime,
+        artifacts,
+        identity.ctx.clone(),
+    )
+    .await
+    {
+        Ok(receipt) => (StatusCode::OK, Json(receipt)).into_response(),
+        Err(error) => table_editing_error_response(error),
+    }
+}
+
+/// `TableEditingError` → wire 映射（写半边的宿主自持 HTTP 版；desktop 的
+/// `From<TableEditingError> for CommandError` 是桌面那份）。`Validation` →
+/// 400（stalePlan / readOnly / affectedMismatch 等共享层守卫文案都是调用方
+/// 可修正的输入或状态问题，消息原样上 wire——前端按 `grid.commit.*` 码
+/// 前缀分支）；`NotFound` → 404（封闭码表的 404 行）；`NotConfigured` /
+/// `Internal` / `Driver` / `Io` / `Json` → 503（用例层故障不是调用方的输入
+/// 错误，closed 码表里最近的诚实类别）。
+///
+/// 已知状态码漂移（如实登记）：`From<ApiError> for TableEditingError` 的
+/// 兼容桶把 `ConfigRevisionMismatch`（原生 409）折进 Validation（此处
+/// 400）、`SessionQuotaExceeded`（原生 429）折进 Internal（此处 503）——
+/// 共享层既定桶定义的投影后果，非本刀新语义；消息文本（含 `grid.commit.*`
+/// 码前缀与 requestId 尾注）不受影响，状态码归一属 WR-D4 错误映射刀。
+fn table_editing_error_response(error: TableEditingError) -> Response {
+    let (code, message) = match error {
+        TableEditingError::Validation(message) => (ApiErrorCode::InvalidArgument, message),
+        TableEditingError::NotFound(message) => (ApiErrorCode::NotFound, message),
+        TableEditingError::NotConfigured(message) => (ApiErrorCode::ServiceUnavailable, message),
+        TableEditingError::Internal(message) => (ApiErrorCode::ServiceUnavailable, message),
+        TableEditingError::Driver(error) => (ApiErrorCode::ServiceUnavailable, error.to_string()),
+        TableEditingError::Io(error) => (ApiErrorCode::ServiceUnavailable, error.to_string()),
+        TableEditingError::Json(error) => (ApiErrorCode::ServiceUnavailable, error.to_string()),
+    };
+    api_error_response(ApiError::new(code, message))
+}
+
+// ── FK/来源/值搜索与 result-cell（§6.7/§6.8，⛔ fail-closed：逐端口收窄）──
+//
+// 六条路由逐一显式登记（模块头状态表）。不可服务原因已按端口收窄：
 // FK / 值搜索 / 来源重推导卡「活 ConnectionHandle 面」（server 执行面
-// 命令经 runtime 派发，无直连句柄），变更四卡「TableColumnSource 目录源
-// + runtime 写半边」。`SessionIdentity` 提取即认证链声明：未认证请求在
+// 命令经 runtime 派发，无直连句柄；刀2 的活句柄面点亮它们），result-cell
+// 二卡「原会话绑定 + 执行期结果映射探针」且 preview 被其 commit 半边封住
+// （成对原则的剩余封条，REASON_COMMIT 仍被它消费）。变更二已由刀3 点亮，
+// 不在本节。`SessionIdentity` 提取即认证链声明：未认证请求在
 // L2 已 401，不进入本层。
 
 /// 501 `capabilityUnsupported`（not-implemented 类；`ai_host::execute_target`
@@ -686,10 +915,6 @@ runtime and exposes no direct handle surface.";
 const REASON_ORIGIN: &str = "origin re-derivation asks the driver at a live \
 connection handle (describe_result_origin) and reads the catalog cache with \
 the same handle; the server execution face exposes no direct handle surface.";
-const REASON_PLAN: &str = "change planning needs a server TableColumnSource \
-(the catalog machine answering real columns and primary keys) and the commit \
-half is not served either; a preview the caller could never commit would be a \
-half answer, so both stay closed until the catalog source lands.";
 const REASON_COMMIT: &str = "change commit executes a fingerprint-confirmed plan \
 through the runtime write half (execute_plan) and answers synchronously; the \
 write half is not assembled on this host.";
@@ -716,17 +941,6 @@ async fn handler_resolve_result_origin(_identity: SessionIdentity) -> Response {
     fail_closed("resolveResultOrigin", REASON_ORIGIN)
 }
 
-/// `previewPendingChanges`（POST /api/v1/table-data/change-plan-previews）
-/// → 501。
-async fn handler_preview_pending_changes(_identity: SessionIdentity) -> Response {
-    fail_closed("previewPendingChanges", REASON_PLAN)
-}
-
-/// `commitPendingChanges`（POST /api/v1/table-data/change-commits）→ 501。
-async fn handler_commit_pending_changes(_identity: SessionIdentity) -> Response {
-    fail_closed("commitPendingChanges", REASON_COMMIT)
-}
-
 /// `commitQueryResultCell`（POST /api/v1/table-data/result-cell-commits）
 /// → 501。
 async fn handler_commit_query_result_cell(_identity: SessionIdentity) -> Response {
@@ -737,4 +951,72 @@ async fn handler_commit_query_result_cell(_identity: SessionIdentity) -> Respons
 /// /api/v1/table-data/result-cell-change-previews）→ 501。
 async fn handler_preview_result_cell_change(_identity: SessionIdentity) -> Response {
     fail_closed("previewResultCellChange", REASON_ORIGIN)
+}
+
+// ── t11 错误映射臂钉（W8 刀3；组件级单测——`table_editing_error_response`
+// 是本模块私有 fn，集成测试 crate 不可达，臂钉因此落在 `#[cfg(test)]`）。
+
+#[cfg(test)]
+mod mutation_error_mapping {
+    use super::*;
+    use axum::body::to_bytes;
+
+    async fn wire(error: TableEditingError) -> (StatusCode, serde_json::Value) {
+        let response = table_editing_error_response(error);
+        let status = response.status();
+        let bytes = to_bytes(response.into_body(), 64 * 1024)
+            .await
+            .expect("error body reads");
+        let body: serde_json::Value =
+            serde_json::from_slice(&bytes).expect("error body is the four-field wire shape");
+        (status, body)
+    }
+
+    /// `Validation` → 400 `invalidArgument`（stalePlan / readOnly /
+    /// affectedMismatch 的桶；`grid.commit.*` 码前缀原样上 wire）。
+    #[tokio::test]
+    async fn validation_maps_to_400_invalid_argument() {
+        let (status, body) = wire(TableEditingError::Validation(
+            "grid.commit.stalePlan: Connection configuration changed; preview the changes again"
+                .into(),
+        ))
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body["code"], "invalidArgument");
+        assert!(body["message"]
+            .as_str()
+            .expect("message")
+            .contains("grid.commit.stalePlan"));
+    }
+
+    /// `NotFound` → 404 `notFound`（封闭码表的 404 行；`From<ApiError>` 的
+    /// NotFound 桶回投影）。
+    #[tokio::test]
+    async fn not_found_maps_to_404() {
+        let (status, body) =
+            wire(TableEditingError::NotFound("session has been released".into())).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body["code"], "notFound");
+    }
+
+    /// `NotConfigured` / `Internal` / `Driver` / `Io` / `Json` → 503
+    /// `serviceUnavailable`（用例层故障不是调用方的输入错误）。
+    #[tokio::test]
+    async fn host_faults_map_to_503_service_unavailable() {
+        for (status, body) in [
+            wire(TableEditingError::NotConfigured("Driver unavailable".into())).await,
+            wire(TableEditingError::Internal("quota gate failed".into())).await,
+            wire(TableEditingError::Driver(datazen_driver_api::DriverError::Unsupported(
+                "no such command".into(),
+            )))
+            .await,
+            wire(TableEditingError::Io(std::io::Error::other("sink unavailable"))).await,
+            wire(TableEditingError::Json(serde_json::from_str::<serde_json::Value>("{")
+                .expect_err("malformed json")))
+            .await,
+        ] {
+            assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
+            assert_eq!(body["code"], "serviceUnavailable", "{body}");
+        }
+    }
 }

@@ -30,6 +30,7 @@ use super::change_set::{
 use super::insert_plan::bound_insert_statement_for_plan;
 use crate::connection::domain::NamespaceTarget;
 use crate::execution::application::use_cases::ConnectionUseCases;
+use crate::execution::domain::session::ContextConfidence;
 use crate::execution::domain::ExecutionTarget;
 use crate::execution::requests::*;
 use crate::execution::{IdempotentOperation, SessionHandle};
@@ -147,8 +148,7 @@ impl TableSession {
                 if let Some(affected) = chunk
                     .output
                     .as_ref()
-                    .and_then(|output| output.get("rowsAffected"))
-                    .and_then(serde_json::Value::as_u64)
+                    .and_then(rows_affected_of_output)
                 {
                     return Ok(Some(affected));
                 }
@@ -156,6 +156,24 @@ impl TableSession {
         }
         Ok(None)
     }
+}
+
+/// 产物摘要的 `rowsAffected` 读取，兼容两种既有产物形状：顶层字段（桌面
+/// 侧历史形状与测试假件）与 `commandResult` 包裹的 `data` 内字段——
+/// `LegacyResourceAdapter` 非 query 命令的产物是
+/// `{"kind":"commandResult","data":{"rowsAffected":N}}`
+/// （`execute_standard_sql_command` 的应答被 adapter 原样包裹），server
+/// 形态的写执行链读的是后者。摘要字段的两种历史形状都认，不做形状裁决。
+fn rows_affected_of_output(output: &serde_json::Value) -> Option<u64> {
+    output
+        .get("rowsAffected")
+        .and_then(serde_json::Value::as_u64)
+        .or_else(|| {
+            output
+                .get("data")
+                .and_then(|data| data.get("rowsAffected"))
+                .and_then(serde_json::Value::as_u64)
+        })
 }
 
 pub async fn execute_plan(
@@ -243,12 +261,24 @@ pub async fn execute_plan(
         context,
         handle: Some(opened.handle),
     };
-    if opened.observed_context.namespace.database != plan.table.database
-        || plan
-            .table
-            .schema
-            .as_ref()
-            .is_some_and(|schema| opened.observed_context.namespace.schema.as_ref() != Some(schema))
+    // 目标复验只在「会话上下文已确认」时拿 namespace 说话：
+    // `ContextConfidence::Confirmed` 是观察事实的唯一准入（`SessionContext`
+    // 文档；`SessionContext::unobserved()` 刻意不携带 namespace，「不拿
+    // initialTarget 假装确认」是可检查裁决）。unobservable 观察（legacy
+    // 驱动无读回 API——`LegacyResourceAdapter::observe_session` 全 unknown，
+    // server 形态的全部驱动都走这条路）携带不了 namespace：那是**观察能力
+    // 缺失**，不是目标漂移；把 Unknown 当漂移拒，owned-session 提交在所有
+    // legacy 驱动下结构性不可服务。漂移的真实防线不在此处：开立目标由本
+    // 函数自己铸造（initial_target 就是 plan 的 database/schema），物理
+    // 开立按请求 target 执行，且 config_revision 复验（下方）守的是非
+    // 观察事实。
+    if opened.observed_context.confidence == ContextConfidence::Confirmed
+        && (opened.observed_context.namespace.database != plan.table.database
+            || plan
+                .table
+                .schema
+                .as_ref()
+                .is_some_and(|schema| opened.observed_context.namespace.schema.as_ref() != Some(schema)))
     {
         if manual {
             session.handle = None;

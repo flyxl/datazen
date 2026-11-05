@@ -752,6 +752,8 @@ async fn http_fixture(count_estimate_rows: i64) -> HttpFixture {
                 connections,
                 directory: directory_face,
                 sessions: cases.clone(),
+                // W8 刀3：commit 写半边的租约源（真租约源同源装配）。
+                lease: lease_source.clone(),
             }),
         ]),
     })

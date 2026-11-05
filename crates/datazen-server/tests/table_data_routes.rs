@@ -185,7 +185,7 @@ async fn fixture() -> (Arc<AdminStore>, axum::Router, Account, Account, Account)
         RuntimeResultSink::default(),
         Arc::new(InMemorySessionDirectory::new()),
     ));
-    let lease_cases = Arc::new(LeaseConnectionUseCases::new(lease_source));
+    let lease_cases = Arc::new(LeaseConnectionUseCases::new(lease_source.clone()));
 
     let router = build_router_with_auth(AuthDeps {
         store: store.clone(),
@@ -207,6 +207,7 @@ async fn fixture() -> (Arc<AdminStore>, axum::Router, Account, Account, Account)
             connections,
             directory: Arc::new(InMemorySessionDirectory::new()),
             sessions: lease_cases,
+            lease: lease_source,
         })]),
     })
     .expect("router");
@@ -750,10 +751,14 @@ async fn an_invalid_draft_is_refused_with_the_application_code() {
     assert_eq!(body["code"], "grid.view.invalid");
 }
 
-// ── ⛔ fail-closed 登记（§6.7/§6.8 剩余八端点）──────────────────────────────
+// ── ⛔ fail-closed 登记（§6.7/§6.8 剩余六端点）──────────────────────────────
+//
+// W8 刀3 起 `change-plan-previews` / `change-commits` 已点亮为真实现
+// （`mutation_pair_routes.rs`），探针集合随之收窄为其余 fail-closed 面；
+// 逐条断言与文案要求一字不改。
 
-/// 变更与 FK/值搜索路由恒 501 `capabilityUnsupported`，文案显式声明无副作用
-/// 且携带逐端口收窄原因（读三端点已真实现，见下方绿路径腿）。
+/// FK/值搜索/来源路由恒 501 `capabilityUnsupported`，文案显式声明无副作用
+/// 且携带逐端口收窄原因（读三端点与变更二已真实现，见下方绿路径腿）。
 #[tokio::test]
 async fn driver_bound_table_data_routes_fail_closed_as_not_implemented() {
     let (_store, app, primary, _same_org, _other_org) = fixture().await;
@@ -763,7 +768,6 @@ async fn driver_bound_table_data_routes_fail_closed_as_not_implemented() {
             "/api/v1/table-data/foreign-key-targets",
             "resolveForeignKeyTargets",
         ),
-        ("/api/v1/table-data/change-commits", "commitPendingChanges"),
         ("/api/v1/table-data/result-origins", "resolveResultOrigin"),
     ] {
         let (status, body) = call(
@@ -1061,7 +1065,7 @@ async fn wired_fixture(opts: MockDriverOptions) -> WireFixture {
         profiles.clone(),
         registry.clone(),
         Arc::new(ServerSettingsStore::scoped("org-1", store.clone())),
-        real_lease,
+        real_lease.clone(),
         "org-1",
     ));
     // runner 的 manual 分支吃固定租约源（会话连续性），target 分支经 host
@@ -1093,6 +1097,9 @@ async fn wired_fixture(opts: MockDriverOptions) -> WireFixture {
             connections,
             directory,
             sessions: runtime.clone(),
+            // W8 刀3：commit 写半边的租约源——真租约源贴近生产（单次 resolve
+            // 的实例贯穿提交序列，CM-63 cell 语义）。
+            lease: real_lease,
         })]),
     })
     .expect("router");
