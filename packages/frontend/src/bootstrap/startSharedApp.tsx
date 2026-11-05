@@ -16,7 +16,12 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 
-import App from '../App';
+// 显式带上扩展名：`src/App.tsx`（组件）与 `src/app.ts`（`@datazen/frontend/app`
+// 入口 barrel）只差大小写，在大小写不敏感的文件系统（macOS 默认 APFS、Windows）
+// 上 `'../App'` 会被解析成 `app.ts`，于是默认导出消失、`tsc` 报 TS1149/TS1192，
+// `pnpm build` 与 `pnpm tauri:build:webdriver` 直接失败。CI 跑在大小写敏感的
+// Linux 上看不到这个问题。
+import App from '../App.tsx';
 import '../styles/globals.css';
 
 import * as extensionPoints from '@datazen/extension-points';
