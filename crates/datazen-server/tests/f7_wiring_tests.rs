@@ -273,6 +273,7 @@ async fn stateless_target_commands_fail_closed_with_the_registered_reason() {
     );
     let error = exec
         .call(
+            context("org-a", "user-1"),
             "query",
             &serde_json::json!({ "connection_id": "c", "sql": "SELECT 1" }),
         )
@@ -300,7 +301,11 @@ async fn stateless_workflow_listing_answers_an_honest_empty_catalog() {
         Vec::new(),
     );
     let answer = exec
-        .call("list_workflows", &serde_json::json!({}))
+        .call(
+            context("org-a", "user-1"),
+            "list_workflows",
+            &serde_json::json!({}),
+        )
         .await
         .unwrap_or_else(|error| match error {
             datazen_server::mcp::wire::ToolCallError::Internal(reason) => {
@@ -320,6 +325,7 @@ async fn stateless_workflow_listing_answers_an_honest_empty_catalog() {
     );
     let error = exec
         .call(
+            context("org-a", "user-1"),
             "run_workflow",
             &serde_json::json!({ "workflow_id": "missing" }),
         )
@@ -474,6 +480,7 @@ mod target_machine {
         let exec = wired_exec(&store).await;
         let error = exec
             .call(
+                context(),
                 "list_databases",
                 &serde_json::json!({ "connection_id": "no-such-connection" }),
             )
@@ -501,6 +508,7 @@ mod target_machine {
         let exec = wired_exec(&store).await;
         let error = exec
             .call(
+                context(),
                 "list_databases",
                 &serde_json::json!({ "connection_id": record.connection_id.as_str() }),
             )
@@ -594,6 +602,7 @@ mod target_machine {
         });
         let error = exec
             .call(
+                context(),
                 "list_databases",
                 &serde_json::json!({ "connection_id": record.connection_id.as_str() }),
             )
@@ -611,7 +620,7 @@ mod target_machine {
         let store = store();
         let exec = wired_exec(&store).await;
         let error = exec
-            .call("get_schema", &serde_json::json!({}))
+            .call(context(), "get_schema", &serde_json::json!({}))
             .await
             .expect_err("a missing connection_id is a parameter-class error");
         match error {

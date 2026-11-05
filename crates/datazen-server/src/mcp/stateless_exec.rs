@@ -12,7 +12,7 @@
 //! | `list_connections` | ✅ 真实现（脱敏投影 + 白名单过滤） | 目录端口 server 适配器（本文件） |
 //! | `list_workflows` | ✅ 真实现（server v1 无工作流存储 → 空目录） | `EmptyWorkflowCatalog`：空目录是诚实事实 |
 //! | `run_workflow` | ✅ 经空目录 → `Workflow not found`（参数类） | 同上 |
-//! | `query` / `list_databases` / `list_tables` / `search_tables` / `get_schema` / `explain_query` / `describe_table` | ✅ 目标机器接线（`TargetMachine` + `execution::resource_host`） | `ResourceExecutionHost` 端口 server 实现：profile/版本/连接/驱动闸后走 `TargetResolver` 规范化目标；v1 空驱动目录下驱动闸显式答「Driver unavailable」（链接闭包随部署构建切片）。构造未调 `with_target_machine` 时保留 fail-closed 登记（不返回看似成功的结果） |
+//! | `query` / `list_databases` / `list_tables` / `search_tables` / `get_schema` / `explain_query` / `describe_table` | ✅ 目标机器接线（`TargetMachine` + `execution::resource_host`） | `ResourceExecutionHost` 端口 server 实现：profile/版本/连接/驱动闸后走 `TargetResolver` 规范化目标；驱动闸语义随部署构建切片（`driver-*` feature 链接闭包）。**W8-a P3 授权种子**：每调用包 [`PrincipalScopedHost`]——执行面（`prepared.context`）携带请求真主体（`CallIdentity` → `request_context`，会话工具 `PerCallHost` 的无状态镜像）；闸序读半边委托共享宿主（主体合成残留登记见 `resource_host.rs` 第 2 条）。构造未调 `with_target_machine` 时保留 fail-closed 登记（不返回看似成功的结果） |
 //!
 //! 会话三工具（open/use/close）不走本件——它们在
 //! [`crate::mcp::runtime::ModulesBackend`] 的有状态分发里。
@@ -27,9 +27,13 @@ use datazen::mcp::application::tools::{
     self, RedactedConnection, RedactedConnectionSource, WorkflowCatalog,
 };
 use datazen::settings::ExecutionSettings;
-use datazen::workflow::application::resource_execution::ResourceExecutionHost;
+use datazen::shared::context::RequestContext;
+use datazen::workflow::application::resource_execution::{
+    PreparedExecution, ResourceExecutionHost,
+};
 use datazen::workflow::domain::error::WorkflowError;
 use datazen::workflow::domain::model::{WorkflowDefinition, WorkflowListItem};
+use datazen_driver_api::ConnectionConfig;
 
 use crate::mcp::wire::ToolCallError;
 use crate::storage::ServerConnections;
@@ -102,6 +106,51 @@ pub struct TargetMachine {
     pub settings: ExecutionSettings,
 }
 
+/// 每调用主体作用域宿主（W8-a P3 授权种子，`PerCallHost` 的无状态镜像）：
+/// 把传输层的真实主体上下文（`CallIdentity` → `request_context`）注入
+/// `PreparedExecution.context`——工作流执行面的全部调用
+/// （token / execute / poll / collect）随之携带请求真主体，不再落到
+/// `server-mcp-tool` 合成主体上。
+///
+/// 闸序读半边（`profile` / `driver` / `safe_mode`）委托共享宿主：组织
+/// 口径正确（org 来自装配配置），主体合成残留登记见
+/// `resource_host.rs` 模块头第 2 条——端口签名手术（四方法全带 ctx）
+/// 为后续刀，不在种子范围内。
+struct PrincipalScopedHost {
+    inner: Arc<dyn ResourceExecutionHost>,
+    context: RequestContext,
+}
+
+#[async_trait]
+impl ResourceExecutionHost for PrincipalScopedHost {
+    async fn profile(&self, id: &str) -> Result<(ConnectionConfig, u64, bool), WorkflowError> {
+        self.inner.profile(id).await
+    }
+
+    async fn driver(
+        &self,
+        config: &ConnectionConfig,
+    ) -> Result<Arc<dyn datazen_driver_api::DatabaseDriver>, WorkflowError> {
+        self.inner.driver(config).await
+    }
+
+    async fn safe_mode(&self) -> bool {
+        self.inner.safe_mode().await
+    }
+
+    async fn prepare(
+        &self,
+        id: &str,
+        revision: u64,
+        command: &str,
+        target: datazen::execution::ExecutionTarget,
+    ) -> Result<PreparedExecution, WorkflowError> {
+        let mut prepared = self.inner.prepare(id, revision, command, target).await?;
+        prepared.context = self.context.clone();
+        Ok(prepared)
+    }
+}
+
 /// 无状态工具分发件。构造即持有全部端口；`call` 与宿主分发的 `other`
 /// 分支对接（见 [`crate::mcp::runtime::ModulesBackend`]）。
 pub struct StatelessToolExec {
@@ -155,7 +204,12 @@ impl StatelessToolExec {
 
     /// 分发一个无状态工具。工具名不属于无状态集合时返回与现状一致的
     /// 「未接线」错误（宿主 match 的 session 三分支先于本件）。
-    pub async fn call(&self, tool: &str, arguments: &Value) -> Result<String, ToolCallError> {
+    pub async fn call(
+        &self,
+        context: RequestContext,
+        tool: &str,
+        arguments: &Value,
+    ) -> Result<String, ToolCallError> {
         let result: Result<String, tools::ToolError> = match tool {
             "list_connections" => {
                 tools::list_connections(self.connections.as_ref(), &self.allowed_connection_ids)
@@ -190,7 +244,13 @@ impl StatelessToolExec {
                             .into(),
                     });
                 };
-                let host = machine.host.as_ref();
+                // W8-a P3 授权种子：每调用包一层主体作用域宿主——执行面
+                // （prepared.context）携带请求真主体；闸序读半边委托共享
+                // 宿主（残留登记见模块头与 resource_host.rs 第 2 条）。
+                let host = PrincipalScopedHost {
+                    inner: machine.host.clone(),
+                    context,
+                };
                 let connection_id = required_str(tool, arguments, "connection_id")?;
                 let database = optional_str(arguments, "database");
                 let schema = optional_str(arguments, "schema");
@@ -202,7 +262,7 @@ impl StatelessToolExec {
                             .and_then(Value::as_u64)
                             .map(|value| value as u32);
                         tools::query(
-                            host,
+                            &host,
                             connection_id,
                             sql,
                             limit,
@@ -211,27 +271,27 @@ impl StatelessToolExec {
                         )
                         .await
                     }
-                    "list_databases" => tools::list_databases(host, connection_id).await,
+                    "list_databases" => tools::list_databases(&host, connection_id).await,
                     "list_tables" => {
-                        tools::list_tables(host, connection_id, database, schema).await
+                        tools::list_tables(&host, connection_id, database, schema).await
                     }
                     "search_tables" => {
                         let pattern = required_str(tool, arguments, "pattern")?;
                         let limit = arguments.get("limit").and_then(Value::as_u64);
-                        tools::search_tables(host, connection_id, database, schema, pattern, limit)
+                        tools::search_tables(&host, connection_id, database, schema, pattern, limit)
                             .await
                     }
                     "get_schema" => {
                         let table = required_str(tool, arguments, "table")?;
-                        tools::get_schema(host, connection_id, database, schema, table).await
+                        tools::get_schema(&host, connection_id, database, schema, table).await
                     }
                     "explain_query" => {
                         let sql = required_str(tool, arguments, "sql")?;
-                        tools::explain_query(host, connection_id, sql).await
+                        tools::explain_query(&host, connection_id, sql).await
                     }
                     "describe_table" => {
                         let table = required_str(tool, arguments, "table")?;
-                        tools::describe_table(host, connection_id, database, schema, table).await
+                        tools::describe_table(&host, connection_id, database, schema, table).await
                     }
                     _ => unreachable!("outer arm lists exactly these seven tool names"),
                 }
@@ -281,5 +341,146 @@ impl datazen::workflow::application::host::WorkflowHost for UnwiredWorkflowHost 
         Err(WorkflowError::Validation(
             "workflow host is not wired in the server form yet".into(),
         ))
+    }
+}
+
+#[cfg(test)]
+mod principal_seed_tests {
+    //! W8-a P3 授权种子的钉子：`PrincipalScopedHost.prepare` 必须把
+    //! `PreparedExecution.context` 覆写为调用侧真实主体——工作流执行面
+    //! （token/execute/poll/collect）携带请求主体，绝不落合成主体。
+
+    use std::sync::Arc;
+
+    use async_trait::async_trait;
+
+    use datazen::execution::application::orchestration::RuntimeConnectionUseCases;
+    use datazen::execution::ExecutionTarget;
+    use datazen::shared::context::RequestContext;
+    use datazen::shared::error::{ApiError, ApiErrorCode};
+    use datazen::shared::id::{
+        ArtifactId, ClientInstanceId, ConnectionId, Counter, OrganizationId, PrincipalId, RequestId,
+    };
+    use datazen::table_editing::ports::ArtifactChunkReader;
+    use datazen::workflow::application::resource_execution::PreparedExecution;
+    use datazen::workflow::domain::error::WorkflowError;
+    use datazen_driver_api::{ConnectionConfig, DatabaseDriver};
+
+    use super::{PrincipalScopedHost, ResourceExecutionHost};
+    use crate::execution::lease::RuntimeLeaseSource;
+    use crate::execution::lease_use_cases::LeaseConnectionUseCases;
+
+    fn context(principal: &str) -> RequestContext {
+        RequestContext::new(
+            OrganizationId::new("org-test"),
+            PrincipalId::new(principal),
+            None,
+            ClientInstanceId::new("test"),
+            RequestId::new("req-principal-seed"),
+            None,
+        )
+    }
+
+    /// 租约替身：不解析（执行面不参与本断言，类型上需一份实现）。
+    struct ErrLeaseSource;
+
+    #[async_trait]
+    impl RuntimeLeaseSource for ErrLeaseSource {
+        async fn resolve(&self) -> Result<Arc<RuntimeConnectionUseCases>, String> {
+            Err("test double: lease not resolvable".into())
+        }
+    }
+
+    struct NoChunks;
+
+    #[async_trait]
+    impl ArtifactChunkReader for NoChunks {
+        async fn read_chunk(
+            &self,
+            _ctx: &RequestContext,
+            _artifact: &ArtifactId,
+            _index: Counter,
+        ) -> Result<datazen::execution::ResultChunk, ApiError> {
+            Err(ApiError::new(
+                ApiErrorCode::CapabilityUnsupported,
+                "test double: artifacts not resolvable",
+            ))
+        }
+    }
+
+    /// 内层宿主替身：`prepare` 返回携带合成主体的 `PreparedExecution`
+    /// （模拟共享宿主的现状），闸序读半边拒绝——不参与本断言。
+    struct MarkerHost;
+
+    #[async_trait]
+    impl ResourceExecutionHost for MarkerHost {
+        async fn profile(&self, _id: &str) -> Result<(ConnectionConfig, u64, bool), WorkflowError> {
+            Err(WorkflowError::Validation(
+                "test double: profile gate not exercised here".into(),
+            ))
+        }
+
+        async fn driver(
+            &self,
+            _config: &ConnectionConfig,
+        ) -> Result<Arc<dyn DatabaseDriver>, WorkflowError> {
+            Err(WorkflowError::Validation(
+                "test double: driver gate not exercised here".into(),
+            ))
+        }
+
+        async fn safe_mode(&self) -> bool {
+            true
+        }
+
+        async fn prepare(
+            &self,
+            _id: &str,
+            _revision: u64,
+            _command: &str,
+            _target: ExecutionTarget,
+        ) -> Result<PreparedExecution, WorkflowError> {
+            Ok(PreparedExecution {
+                use_cases: Arc::new(LeaseConnectionUseCases::new(Arc::new(ErrLeaseSource))),
+                artifacts: Arc::new(NoChunks),
+                context: context("server-mcp-tool"),
+                target: ExecutionTarget {
+                    connection_id: ConnectionId::new("c".to_owned()),
+                    namespace: datazen::execution::target::NamespaceTarget::database("app"),
+                    object: None,
+                },
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn principal_scoped_host_overrides_the_prepared_context() {
+        let scoped = PrincipalScopedHost {
+            inner: Arc::new(MarkerHost),
+            context: context("request-principal"),
+        };
+        let prepared = scoped
+            .prepare(
+                "c",
+                0,
+                "query",
+                ExecutionTarget {
+                    connection_id: ConnectionId::new("c".to_owned()),
+                    namespace: datazen::execution::target::NamespaceTarget::database("app"),
+                    object: None,
+                },
+            )
+            .await
+            .expect("the seed wrapper delegates prepare and rewrites the context");
+        assert_eq!(
+            prepared.context.principal_id.as_str(),
+            "request-principal",
+            "the execution face carries the request's real principal"
+        );
+        assert_ne!(
+            prepared.context.principal_id.as_str(),
+            "server-mcp-tool",
+            "the synthetic service principal never reaches the execution face"
+        );
     }
 }
