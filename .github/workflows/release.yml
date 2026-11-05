@@ -722,13 +722,13 @@ jobs:
         shell: pwsh
         run: |
           $releaseDir = Join-Path "target/${{ matrix.target }}" "release"
-          $executable = Join-Path $releaseDir "datazen.exe"
-          if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
-            $executable = Join-Path $releaseDir "DataZen.exe"
-          }
+          $executable = @("datazen.exe", "DataZen.exe", "datazen_desktop.exe") |
+            ForEach-Object { Join-Path $releaseDir $_ } |
+            Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+            Select-Object -First 1
           $prompts = Join-Path $releaseDir "prompts"
-          if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
-            throw "Portable executable not found: $executable"
+          if (-not $executable -or -not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+            throw "Portable executable not found in $releaseDir (checked datazen.exe, DataZen.exe, datazen_desktop.exe)"
           }
           if (-not (Test-Path -LiteralPath $prompts -PathType Container)) {
             throw "Portable resources not found: $prompts"

@@ -51,6 +51,7 @@ describe('Windows release packaging', () => {
     expect(releaseWorkflow).toContain('Package Windows portable archive');
     // New naming: DataZen-{version}-{osLabel}[-variant]-portable.zip
     expect(releaseWorkflow).toContain('DataZen-$version-$osLabel-portable.zip');
+    expect(releaseWorkflow).toContain('datazen_desktop.exe');
     expect(releaseWorkflow).toContain('Copy-Item -LiteralPath $prompts');
     // Portable includes Pro extension resources
     expect(releaseWorkflow).toContain('builtin-ep');
