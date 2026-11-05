@@ -32,6 +32,16 @@ fn input(subject: &str, content: &str) -> AiMemoryCreateInput {
     }
 }
 
+async fn enable_memory(app: &HostedCommandApp) {
+    let mut settings = app.state().store.get_ai_settings_config().await;
+    settings.memory.enabled = true;
+    app.state()
+        .store
+        .save_ai_settings_config(&settings)
+        .await
+        .unwrap();
+}
+
 async fn list_all(app: &HostedCommandApp) -> AiMemoryPage {
     ai_memory_list(app.state(), None, None, None, None, None, None, None, None)
         .await
@@ -262,6 +272,7 @@ async fn chat_auto_injects_memory_and_emits_reference_chunk() {
     )
     .await
     .unwrap();
+    enable_memory(&app).await;
     mock.mount_chat_stream_text("SELECT 1").await;
 
     let chunks = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
@@ -334,6 +345,67 @@ async fn chat_auto_injects_memory_and_emits_reference_chunk() {
 }
 
 #[tokio::test]
+async fn chat_auto_is_forced_off_when_memory_setting_is_disabled() {
+    use datazen::ai::{ChatMessage, MessageRole};
+
+    let (test, mock) = TestAppState::with_wiremock_ai().await;
+    let app = host_command_app(test);
+    let created = ai_memory_create(
+        app.state(),
+        input("timezone preference", "question: reports must use UTC"),
+    )
+    .await
+    .unwrap();
+    mock.mount_chat_stream_text("SELECT 1").await;
+
+    ai_chat(
+        app.state(),
+        app.window(),
+        None,
+        None,
+        vec![ChatMessage {
+            role: MessageRole::User,
+            content: "question: what timezone?".into(),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }],
+        "req-memory-disabled".into(),
+        false,
+        None,
+        None,
+        None,
+        None,
+        Some("conn-memory".into()),
+        Some(datazen::ai::AiAgentMode::Ask),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(MemoryMode::Auto),
+        Some(MemoryScopeKind::User),
+    )
+    .await
+    .unwrap();
+    mock.mount_chat_stream_text("SELECT 1").await;
+
+    let requests = mock.server.received_requests().await.unwrap_or_default();
+    let body: serde_json::Value =
+        serde_json::from_slice(&requests.last().expect("provider request").body).unwrap();
+    let system = body["messages"][0]["content"].as_str().unwrap_or_default();
+    assert!(!system.contains("<memory>"));
+    let audit = app
+        .state()
+        .store
+        .app_db()
+        .list_ai_memory_audit(&created.id)
+        .unwrap();
+    assert!(!audit.iter().any(|entry| entry.action == "inject"));
+}
+
+#[tokio::test]
 async fn chat_off_and_ask_never_inject_memory() {
     use datazen::ai::{ChatMessage, MessageRole};
     use std::sync::{Arc, Mutex};
@@ -347,6 +419,7 @@ async fn chat_off_and_ask_never_inject_memory() {
     )
     .await
     .unwrap();
+    enable_memory(&app).await;
     mock.mount_chat_stream_text("SELECT 1").await;
 
     let chunks = Arc::new(Mutex::new(Vec::<serde_json::Value>::new()));
@@ -432,6 +505,7 @@ async fn strict_cloud_retrieval_excludes_internal_memories() {
         "question",
         true,
         AiDataEgressLevel::Strict,
+        datazen::ai::AiMemoryCloudPolicy::AllowInternal,
     )
     .await
     .unwrap();
@@ -447,10 +521,58 @@ async fn strict_cloud_retrieval_excludes_internal_memories() {
         "question",
         false,
         AiDataEgressLevel::Strict,
+        datazen::ai::AiMemoryCloudPolicy::NormalOnly,
     )
     .await
     .unwrap();
     assert_eq!(local.used.len(), 1);
+
+    // "Normal only" filters internal material before the injector sees it.
+    let normal_only = resolve_chat_memory(
+        &app.state(),
+        MemoryMode::Auto,
+        Some(MemoryScopeKind::User),
+        None,
+        None,
+        "question",
+        true,
+        AiDataEgressLevel::Unrestricted,
+        datazen::ai::AiMemoryCloudPolicy::NormalOnly,
+    )
+    .await
+    .unwrap();
+    assert!(normal_only.used.is_empty());
+
+    // "Disable cloud" keeps cloud providers memory-free while local providers
+    // still retrieve it.
+    let disabled_cloud = resolve_chat_memory(
+        &app.state(),
+        MemoryMode::Auto,
+        Some(MemoryScopeKind::User),
+        None,
+        None,
+        "question",
+        true,
+        AiDataEgressLevel::Unrestricted,
+        datazen::ai::AiMemoryCloudPolicy::DisableCloud,
+    )
+    .await
+    .unwrap();
+    assert!(disabled_cloud.used.is_empty());
+    let local_allowed = resolve_chat_memory(
+        &app.state(),
+        MemoryMode::Auto,
+        Some(MemoryScopeKind::User),
+        None,
+        None,
+        "question",
+        false,
+        AiDataEgressLevel::Unrestricted,
+        datazen::ai::AiMemoryCloudPolicy::DisableCloud,
+    )
+    .await
+    .unwrap();
+    assert_eq!(local_allowed.used.len(), 1);
 }
 
 #[tokio::test]
@@ -472,6 +594,7 @@ async fn database_scope_memory_is_recalled_with_host_qualified_id() {
         "question",
         false,
         AiDataEgressLevel::Unrestricted,
+        datazen::ai::AiMemoryCloudPolicy::NormalOnly,
     )
     .await
     .unwrap();

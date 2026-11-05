@@ -20,6 +20,7 @@ import { openSettingsWindow } from '../../lib/windowManager';
 import { AiInput } from './AiInput';
 import { AiEgressNotice } from './AiEgressNotice';
 import { splitContextItems } from '../../lib/contextItems';
+import { memoryModeFor } from '../../lib/aiMemorySettings';
 import type { AiMemoryReference, ContextItem } from '../../types';
 import { Spinner } from '../ui/Spinner';
 
@@ -44,12 +45,14 @@ export function Nl2SqlPanel({
   database,
   currentTable,
   connectionId,
-  memoryMode = 'auto',
+  memoryMode,
   memoryScope = 'user',
   onSqlChange,
 }: Nl2SqlPanelProps) {
   const { t } = useI18n();
   const nl2sql = useAiStore((s) => s.nl2sql);
+  const settingsConfig = useAiStore((s) => s.settingsConfig);
+  const effectiveMemoryMode = memoryMode ?? memoryModeFor(settingsConfig?.memory);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const memoryListRef = useRef<HTMLDivElement>(null);
   const memoryUsed: AiMemoryReference[] = nl2sql.memoryUsed ?? [];
@@ -83,7 +86,7 @@ export function Nl2SqlPanel({
       contextFiles: contextFiles.length > 0 ? contextFiles : undefined,
       contextTables: contextTables.length > 0 ? contextTables : undefined,
       connectionId,
-      memoryMode,
+      memoryMode: effectiveMemoryMode,
       memoryScope,
     });
     setContextItems([]);
@@ -93,7 +96,7 @@ export function Nl2SqlPanel({
     database,
     currentTable,
     connectionId,
-    memoryMode,
+    effectiveMemoryMode,
     memoryScope,
     nl2sql.input,
     nl2sql.isGenerating,

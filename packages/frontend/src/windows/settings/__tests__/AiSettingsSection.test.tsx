@@ -47,6 +47,12 @@ describe('AiSettingsSection', () => {
         ],
         globalInstructions: '',
         promptTemplates: [],
+        memory: {
+          enabled: false,
+          autoLearn: false,
+          cloudPolicy: 'normal_only',
+          privacyAcknowledged: false,
+        },
       },
       providers: [],
     });
@@ -93,9 +99,7 @@ describe('AiSettingsSection', () => {
     expect(screen.getByTestId('ai-global-instructions-count').textContent).toContain('8 / 4096');
 
     fireEvent.change(input, { target: { value: 'a'.repeat(4097) } });
-    expect(screen.getByTestId('ai-global-instructions-count').textContent).toContain(
-      '4097 / 4096',
-    );
+    expect(screen.getByTestId('ai-global-instructions-count').textContent).toContain('4097 / 4096');
     expect(screen.getByTestId('ai-global-instructions-count').textContent).toContain(
       'settings.ai.overLimitHint',
     );
@@ -149,16 +153,12 @@ describe('AiSettingsSection', () => {
     fireEvent.change(screen.getByTestId('ai-template-content'), {
       target: { value: 'Prefer explicit JOINs.' },
     });
-    expect(screen.getByTestId('ai-template-content-count').textContent).toContain(
-      '22 / 8192',
-    );
+    expect(screen.getByTestId('ai-template-content-count').textContent).toContain('22 / 8192');
     fireEvent.click(screen.getByText('common.confirm'));
 
     expect(screen.getByText('Postgres style')).toBeDefined();
     expect(screen.getByText(/postgresql, mysql/)).toBeDefined();
-    expect(screen.getByTestId('ai-templates-total-count').textContent).toContain(
-      '22 / 16384',
-    );
+    expect(screen.getByTestId('ai-templates-total-count').textContent).toContain('22 / 16384');
   });
 
   it('renders empty state when no profiles exist', () => {
@@ -168,6 +168,12 @@ describe('AiSettingsSection', () => {
         profiles: [],
         globalInstructions: '',
         promptTemplates: [],
+        memory: {
+          enabled: false,
+          autoLearn: false,
+          cloudPolicy: 'normal_only',
+          privacyAcknowledged: false,
+        },
       },
     });
 

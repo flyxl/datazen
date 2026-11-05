@@ -19,6 +19,11 @@ vi.mock('../../../hooks/useAutoScroll', () => ({
   }),
 }));
 
+const aiCommandsMock = vi.hoisted(() => ({
+  memoryCreate: vi.fn().mockResolvedValue({ id: 'candidate-1' }),
+}));
+vi.mock('../../../commands/ai', () => ({ aiCommands: aiCommandsMock }));
+
 const openSettingsWindow = vi.fn();
 const openDocsWindow = vi.fn();
 vi.mock('../../../lib/windowManager', () => ({
@@ -100,6 +105,8 @@ const aiState = vi.hoisted(() => ({
   initChatSession: vi.fn(),
   sendChatMessage: vi.fn().mockResolvedValue(undefined),
   clearChat: vi.fn(),
+  memoryCandidateNotice: null as { requestId: string; count: number } | null,
+  dismissMemoryCandidateNotice: vi.fn(),
   cancelChat: vi.fn().mockResolvedValue(null),
   settingsConfig: null as {
     activeProfileId: string;
@@ -110,6 +117,12 @@ const aiState = vi.hoisted(() => ({
       isDefault?: boolean;
       safetyGate?: string;
     }[];
+    memory?: {
+      enabled: boolean;
+      autoLearn: boolean;
+      cloudPolicy: 'normal_only' | 'allow_internal' | 'disable_cloud';
+      privacyAcknowledged: boolean;
+    };
   } | null,
   setActiveProfile: vi.fn().mockResolvedValue(undefined),
   loadConfig: vi.fn(),
@@ -136,6 +149,7 @@ beforeEach(() => {
     injection: null,
   };
   aiState.settingsConfig = null;
+  aiState.memoryCandidateNotice = null;
   Object.defineProperty(navigator, 'clipboard', {
     configurable: true,
     value: { writeText: vi.fn().mockResolvedValue(undefined) },
@@ -284,11 +298,76 @@ describe('AiChatPanel', () => {
       content: 'hello',
       contextFiles: undefined,
       contextTables: undefined,
-      memoryMode: 'auto',
+      memoryMode: 'off',
       memoryScope: 'user',
       // P6 §14.4: default target is independent unless the user shares a pane.
       targetClaim: { kind: 'independent' },
     });
+  });
+
+  it('creates a candidate for the latest assistant message via Remember this', async () => {
+    aiState.chatSession.messages = [
+      { role: 'user', content: 'Which timezone?' },
+      { role: 'assistant', content: 'Reports should always use UTC.\nKeep it consistent.' },
+    ];
+    aiState.settingsConfig = {
+      activeProfileId: '',
+      profiles: [],
+      memory: {
+        enabled: true,
+        autoLearn: false,
+        cloudPolicy: 'normal_only',
+        privacyAcknowledged: true,
+      },
+    };
+    const { getByTestId } = render(<AiChatPanel dbSessionId="c1" database="db" />);
+    fireEvent.click(getByTestId('ai-memory-remember'));
+    await waitFor(() =>
+      expect(aiCommandsMock.memoryCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'candidate',
+          source: 'explicit',
+          kind: 'preference',
+          content: 'Reports should always use UTC.\nKeep it consistent.',
+        }),
+      ),
+    );
+    expect(getByTestId('ai-memory-remember-toast')).toBeInTheDocument();
+  });
+
+  it('does not create a candidate from Remember this while memory is off', async () => {
+    aiState.chatSession.messages = [{ role: 'assistant', content: 'Default LIMIT is 100.' }];
+    const { getByTestId } = render(<AiChatPanel dbSessionId="c1" database="db" />);
+    fireEvent.click(getByTestId('ai-memory-remember'));
+    await waitFor(() =>
+      expect(getByTestId('ai-memory-remember-toast')).toHaveTextContent('chat.memoryDisabled'),
+    );
+    expect(aiCommandsMock.memoryCreate).not.toHaveBeenCalled();
+  });
+
+  it('shows the Ask-mode candidate toast without making candidates active', () => {
+    aiState.memoryCandidateNotice = { requestId: 'r1', count: 2 };
+    const { getByTestId } = render(<AiChatPanel dbSessionId="c1" database="db" />);
+    expect(getByTestId('ai-memory-candidate-toast')).toBeInTheDocument();
+  });
+
+  it('sends memory auto when the setting is enabled', () => {
+    aiState.settingsConfig = {
+      activeProfileId: '',
+      profiles: [],
+      memory: {
+        enabled: true,
+        autoLearn: false,
+        cloudPolicy: 'normal_only',
+        privacyAcknowledged: true,
+      },
+    };
+    const { getByTestId } = render(<AiChatPanel dbSessionId="c1" database="db" />);
+    fireEvent.change(getByTestId('chat-input'), { target: { value: 'hello' } });
+    fireEvent.click(getByTestId('chat-send'));
+    expect(aiState.sendChatMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ memoryMode: 'auto', memoryScope: 'user' }),
+    );
   });
 
   it('defaults to Ask mode and shows the mode switch', () => {
@@ -700,7 +779,7 @@ describe('AiChatPanel — KV panel context', () => {
       content: 'hello',
       contextFiles: undefined,
       contextTables: undefined,
-      memoryMode: 'auto',
+      memoryMode: 'off',
       memoryScope: 'user',
       targetClaim: { kind: 'independent' },
     });

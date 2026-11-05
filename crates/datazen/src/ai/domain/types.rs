@@ -241,6 +241,35 @@ pub struct PromptTemplate {
     pub is_default: bool,
 }
 
+/// How memories may leave the machine when the active Provider is cloud-backed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AiMemoryCloudPolicy {
+    /// Send only `normal` memories; `internal` stays local.
+    #[default]
+    NormalOnly,
+    /// Allow `internal` memories subject to the safety gate's egress level.
+    AllowInternal,
+    /// Never use memories with a cloud Provider.
+    DisableCloud,
+}
+
+/// Persisted Memory settings. Memory is opt-in: both flags default to false so
+/// configs written before T13 keep the previous "no memory" behavior.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiMemorySettings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub auto_learn: bool,
+    #[serde(default)]
+    pub cloud_policy: AiMemoryCloudPolicy,
+    /// Set once the user has seen the first-use privacy explanation.
+    #[serde(default)]
+    pub privacy_acknowledged: bool,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiSettingsConfig {
@@ -252,6 +281,8 @@ pub struct AiSettingsConfig {
     pub global_instructions: String,
     #[serde(default)]
     pub prompt_templates: Vec<PromptTemplate>,
+    #[serde(default)]
+    pub memory: AiMemorySettings,
 }
 
 impl AiSettingsConfig {
@@ -382,7 +413,29 @@ mod ai_settings_config_tests {
         assert_eq!(config.active_profile_id, "p1");
         assert!(config.global_instructions.is_empty());
         assert!(config.prompt_templates.is_empty());
+        assert_eq!(config.memory, AiMemorySettings::default());
+        assert!(!config.memory.enabled);
+        assert!(!config.memory.auto_learn);
+        assert_eq!(config.memory.cloud_policy, AiMemoryCloudPolicy::NormalOnly);
+        assert!(!config.memory.privacy_acknowledged);
         assert!(config.validate_prompt_limits().is_ok());
+    }
+
+    #[test]
+    fn memory_settings_round_trip_with_snake_case_cloud_policy() {
+        let settings = AiMemorySettings {
+            enabled: true,
+            auto_learn: true,
+            cloud_policy: AiMemoryCloudPolicy::DisableCloud,
+            privacy_acknowledged: true,
+        };
+        let value = serde_json::to_value(&settings).unwrap();
+        assert_eq!(value["enabled"], true);
+        assert_eq!(value["autoLearn"], true);
+        assert_eq!(value["cloudPolicy"], "disable_cloud");
+        assert_eq!(value["privacyAcknowledged"], true);
+        let parsed: AiMemorySettings = serde_json::from_value(value).unwrap();
+        assert_eq!(parsed, settings);
     }
 
     #[test]

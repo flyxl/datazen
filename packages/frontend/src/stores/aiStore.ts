@@ -4,7 +4,8 @@ import { getBackendClient } from '@datazen/backend-client';
 import { getPlatformOrNull } from '../platform/contracts';
 import { redactSensitiveText } from '../lib/aiQueryActions';
 import { normalizeAiProviders } from '../lib/aiProviders';
-import type { AiChatMessage } from '../types';
+import { normalizeAiSettingsConfig } from '../lib/aiMemorySettings';
+import { defaultAiMemorySettings, type AiChatMessage } from '../types';
 import { computeSessionKey, loadSessions } from './ai/sessions';
 import { initialNl2Sql, type AiStore } from './ai/types';
 import {
@@ -42,6 +43,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
   explainError: null,
 
   chatSession: null,
+  memoryCandidateNotice: null,
 
   nlFilterInput: '',
   parsedFilters: null,
@@ -67,11 +69,13 @@ export const useAiStore = create<AiStore>((set, get) => ({
           ? aiCommands.getSettingsConfig().catch(() => null)
           : Promise.resolve(null),
       ]);
+      const normalizedSettings = settingsConfig ? normalizeAiSettingsConfig(settingsConfig) : null;
       set({
         config,
-        settingsConfig,
+        settingsConfig: normalizedSettings,
         isConfigured:
-          config !== null || (settingsConfig !== null && settingsConfig.profiles.length > 0),
+          config !== null ||
+          (normalizedSettings !== null && normalizedSettings.profiles.length > 0),
         configLoading: false,
       });
     } catch (e) {
@@ -87,10 +91,12 @@ export const useAiStore = create<AiStore>((set, get) => ({
     try {
       const settingsConfig = await aiCommands.getSettingsConfig();
       const config = await aiCommands.getConfig();
+      const normalizedSettings = normalizeAiSettingsConfig(settingsConfig);
       set({
-        settingsConfig,
+        settingsConfig: normalizedSettings,
         config,
-        isConfigured: config !== null || (settingsConfig && settingsConfig.profiles.length > 0),
+        isConfigured:
+          config !== null || (normalizedSettings && normalizedSettings.profiles.length > 0),
       });
     } catch (e) {
       set({
@@ -137,6 +143,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
       profiles: [],
       globalInstructions: '',
       promptTemplates: [],
+      memory: defaultAiMemorySettings,
     };
     const exists = current.profiles.some((p) => p.id === profile.id);
     let updatedProfiles = exists
@@ -419,7 +426,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
       attribution: null,
     };
 
-    set({ chatSession: session });
+    set({ chatSession: session, memoryCandidateNotice: null });
   },
 
   sendChatMessage: async ({
@@ -488,6 +495,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
         requestId,
         attribution: attributionFor(targetClaim),
       },
+      memoryCandidateNotice: null,
     });
 
     try {
@@ -557,9 +565,12 @@ export const useAiStore = create<AiStore>((set, get) => ({
           requestId: null,
           attribution: null,
         },
+        memoryCandidateNotice: null,
       });
     }
   },
+
+  dismissMemoryCandidateNotice: () => set({ memoryCandidateNotice: null }),
 
   // ── Workflow Chat ──
 
@@ -677,6 +688,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
           requestId: null,
           attribution: null,
         },
+        memoryCandidateNotice: null,
       });
     }
   },
@@ -710,10 +722,18 @@ export const useAiStore = create<AiStore>((set, get) => ({
       if (!session || !event || session.requestId !== event.requestId) return;
       set({ chatSession: { ...session, injection: event.snapshot } });
     });
+    const unMemoryCandidates = await events.listenCrossWindow('ai:memory-candidates', (payload) => {
+      const event = payload as import('../types').AiMemoryCandidatesEvent;
+      const session = get().chatSession;
+      if (!session || !event || session.requestId !== event.requestId) return;
+      const count = Array.isArray(event.candidates) ? event.candidates.length : 0;
+      if (count > 0) set({ memoryCandidateNotice: { requestId: event.requestId, count } });
+    });
     return () => {
       unChunk();
       unError();
       unInjection();
+      unMemoryCandidates();
     };
   },
 

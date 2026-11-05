@@ -10,7 +10,8 @@
 
 use super::util::{
     borrow_runtime_session, build_connections_context, load_connection_note, read_context_entries,
-    resolve_ai, resolve_language, resolve_safety_gate, window_stream_callback,
+    resolve_ai, resolve_language, resolve_memory_settings, resolve_safety_gate,
+    window_stream_callback,
 };
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
@@ -224,7 +225,12 @@ pub async fn ai_chat<R: tauri::Runtime>(
     // Resolve user-authored prompt material on the host (storage + scope),
     // then hand the immutable decision to the shared use case. The UI receives
     // only identity/existence, never the note or template body.
-    let memory_mode = memory_mode.unwrap_or_default();
+    let memory_settings = resolve_memory_settings(&state).await;
+    let memory_mode = if memory_settings.enabled {
+        memory_mode.unwrap_or_default()
+    } else {
+        MemoryMode::Off
+    };
     let last_user_text = messages
         .iter()
         .rev()
@@ -240,6 +246,7 @@ pub async fn ai_chat<R: tauri::Runtime>(
         &last_user_text,
         super::provider_is_cloud(provider.as_ref(), &ai_config),
         gate.data_egress_level,
+        memory_settings.cloud_policy,
     )
     .await
     {

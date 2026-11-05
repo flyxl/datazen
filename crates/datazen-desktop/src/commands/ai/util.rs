@@ -38,6 +38,12 @@ pub(crate) async fn resolve_safety_gate(state: &AppState) -> AiSafetyGateConfig 
     datazen::ai::api::effective_safety_gate(state.store.as_ref()).await
 }
 
+/// Memory settings live in the encrypted AI settings config. Host handlers
+/// enforce the opt-in switch even when a caller passes `auto` directly.
+pub(crate) async fn resolve_memory_settings(state: &AppState) -> datazen::ai::AiMemorySettings {
+    state.store.get_ai_settings_config().await.memory
+}
+
 pub(crate) async fn resolve_ai(
     state: &AppState,
 ) -> Result<(Arc<dyn AiProvider>, AiProviderConfig), CommandError> {

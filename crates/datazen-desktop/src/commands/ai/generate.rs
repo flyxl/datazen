@@ -9,7 +9,7 @@
 
 use super::util::{
     borrow_runtime_session, read_context_entries, resolve_ai, resolve_language,
-    resolve_safety_gate, runtime_session, window_stream_callback,
+    resolve_memory_settings, resolve_safety_gate, runtime_session, window_stream_callback,
 };
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
@@ -68,7 +68,12 @@ pub async fn ai_generate_sql<R: tauri::Runtime>(
         .driver()
         .clone();
 
-    let memory_mode = memory_mode.unwrap_or_default();
+    let memory_settings = resolve_memory_settings(&state).await;
+    let memory_mode = if memory_settings.enabled {
+        memory_mode.unwrap_or_default()
+    } else {
+        MemoryMode::Off
+    };
     let memory = match super::resolve_chat_memory(
         &state,
         memory_mode,
@@ -78,6 +83,7 @@ pub async fn ai_generate_sql<R: tauri::Runtime>(
         &natural_language,
         super::provider_is_cloud(provider.as_ref(), &ai_config),
         gate.data_egress_level,
+        memory_settings.cloud_policy,
     )
     .await
     {

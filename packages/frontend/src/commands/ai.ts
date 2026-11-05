@@ -6,6 +6,13 @@ import type {
   AiAgentMode,
   AiChatContextSnapshot,
   AiChatMessage,
+  AiMemoryCreateInput,
+  AiMemoryEntry,
+  AiMemoryListParams,
+  AiMemoryPage,
+  AiMemoryStats,
+  AiMemoryStatus,
+  AiMemoryUpdateInput,
   AiProviderConfig,
   AiSettingsConfig,
   ConnectionDiagnosis,
@@ -107,6 +114,26 @@ export const aiCommands = {
     invoke<void>('ai_save_settings_config', { config }),
   setActiveProfile: (profileId: string) => invoke<void>('ai_set_active_profile', { profileId }),
 
+  memoryList: (params: AiMemoryListParams = {}) =>
+    invoke<AiMemoryPage>('ai_memory_list', { ...params }),
+  memorySearch: (params: AiMemoryListParams & { query: string }) =>
+    invoke<AiMemoryPage>('ai_memory_search', { ...params }),
+  memoryStats: () => invoke<AiMemoryStats>('ai_memory_stats'),
+  memoryCreate: (input: AiMemoryCreateInput) =>
+    invoke<AiMemoryEntry>('ai_memory_create', { input }),
+  memoryUpdate: (id: string, patch: AiMemoryUpdateInput) =>
+    invoke<AiMemoryEntry>('ai_memory_update', { id, patch }),
+  memoryConfirm: (id: string) => invoke<AiMemoryEntry>('ai_memory_confirm', { id }),
+  memoryReject: (id: string) => invoke<AiMemoryEntry>('ai_memory_reject', { id }),
+  memoryDelete: (id: string) => invoke<boolean>('ai_memory_delete', { id }),
+  memoryClear: (params: { scopeType?: string; scopeId?: string; status?: AiMemoryStatus } = {}) =>
+    invoke<number>('ai_memory_clear', params),
+  memoryExport: (params: {
+    format: 'json' | 'markdown';
+    scopeType?: string;
+    status?: AiMemoryStatus;
+  }) => invoke<string>('ai_memory_export', params),
+
   generateSql: (params: {
     dbSessionId: string;
     database: string;
@@ -118,7 +145,14 @@ export const aiCommands = {
     contextTables?: string[];
     connectionId?: string;
     memoryMode?: 'off' | 'ask' | 'auto';
-    memoryScope?: 'organization' | 'user' | 'connection' | 'database' | 'schema' | 'table' | 'column';
+    memoryScope?:
+      | 'organization'
+      | 'user'
+      | 'connection'
+      | 'database'
+      | 'schema'
+      | 'table'
+      | 'column';
   }) => e2eStubInvoke('ai_generate_sql', params, () => invoke<string>('ai_generate_sql', params)),
   diagnoseError: (params: {
     dbSessionId: string;
@@ -147,7 +181,14 @@ export const aiCommands = {
     templateId?: string;
     databaseType?: string;
     memoryMode?: 'off' | 'ask' | 'auto';
-    memoryScope?: 'organization' | 'user' | 'connection' | 'database' | 'schema' | 'table' | 'column';
+    memoryScope?:
+      | 'organization'
+      | 'user'
+      | 'connection'
+      | 'database'
+      | 'schema'
+      | 'table'
+      | 'column';
   }) => e2eStubInvoke('ai_chat', params, () => invoke<string>('ai_chat', params)),
   connectionNotesGet: (connectionId: string) =>
     invoke<string | null>('ai_connection_notes_get', { connectionId }),

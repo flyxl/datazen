@@ -18,6 +18,7 @@ use datazen::ai::memory::{
     MemorySource, MemoryStatus,
 };
 use datazen::ai::safety::provider_allows_unredacted_credentials;
+use datazen::ai::AiMemoryCloudPolicy;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -1048,8 +1049,12 @@ pub(crate) async fn resolve_chat_memory(
     query_text: &str,
     provider_is_cloud: bool,
     egress_level: AiDataEgressLevel,
+    cloud_policy: AiMemoryCloudPolicy,
 ) -> Result<ChatMemory, CommandError> {
     if mode == MemoryMode::Off {
+        return Ok(ChatMemory::default());
+    }
+    if provider_is_cloud && cloud_policy == AiMemoryCloudPolicy::DisableCloud {
         return Ok(ChatMemory::default());
     }
     let (organization_id, principal_id) = scope(state)?;
@@ -1066,10 +1071,15 @@ pub(crate) async fn resolve_chat_memory(
         include_candidates: mode == MemoryMode::Ask,
         ..Default::default()
     };
-    let scored = MemoryRetriever::new(&repository)
+    let mut scored = MemoryRetriever::new(&repository)
         .retrieve(&context, &request)
         .await
         .map_err(|error| CommandError::Internal(error.to_string()))?;
+    // "Normal only" keeps internal material local even for relaxed egress
+    // levels; "allow internal" still honors the injector's strict-cloud rule.
+    if provider_is_cloud && cloud_policy == AiMemoryCloudPolicy::NormalOnly {
+        scored.retain(|entry| entry.entry.sensitivity != MemorySensitivity::Internal);
+    }
     if mode == MemoryMode::Ask {
         return Ok(ChatMemory {
             injection: None,

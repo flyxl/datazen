@@ -67,6 +67,8 @@ export interface AiStore {
   explainError: string | null;
 
   chatSession: AiChatSession | null;
+  /** Non-blocking Ask-mode candidate notice; cleared by the user or a new run. */
+  memoryCandidateNotice: { requestId: string; count: number } | null;
 
   nlFilterInput: string;
   parsedFilters: FilterCondition[] | null;
@@ -162,6 +164,7 @@ export interface AiStore {
       | 'column';
   }) => Promise<void>;
   clearChat: () => void;
+  dismissMemoryCandidateNotice: () => void;
   /** Cancel the in-flight chat run; resolves with the host receipt. */
   cancelChat: (requestId?: string) => Promise<CancelReceipt | null>;
   /** Called by the session canceller's 8s fallback. */

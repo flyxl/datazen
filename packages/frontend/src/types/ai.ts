@@ -46,11 +46,30 @@ export interface PromptTemplate {
   isDefault: boolean;
 }
 
+export type AiMemoryCloudPolicy = 'normal_only' | 'allow_internal' | 'disable_cloud';
+
+export interface AiMemorySettings {
+  /** Opt-in switch. Older configs omit this and therefore stay disabled. */
+  enabled: boolean;
+  autoLearn: boolean;
+  cloudPolicy: AiMemoryCloudPolicy;
+  /** True after the first-use privacy explanation was acknowledged. */
+  privacyAcknowledged: boolean;
+}
+
+export const defaultAiMemorySettings: AiMemorySettings = {
+  enabled: false,
+  autoLearn: false,
+  cloudPolicy: 'normal_only',
+  privacyAcknowledged: false,
+};
+
 export interface AiSettingsConfig {
   activeProfileId: string;
   profiles: AiModelProfile[];
   globalInstructions: string;
   promptTemplates: PromptTemplate[];
+  memory: AiMemorySettings;
 }
 
 export interface AiProviderConfig {
@@ -153,6 +172,125 @@ export interface AiMemoryReference {
   score: number;
 }
 
+export type AiMemoryScopeKind =
+  | 'org'
+  | 'organization'
+  | 'user'
+  | 'connection'
+  | 'database'
+  | 'schema'
+  | 'table'
+  | 'column';
+
+export type AiMemoryKind =
+  | 'preference'
+  | 'glossary'
+  | 'relationship'
+  | 'pattern'
+  | 'correction'
+  | 'environment'
+  | 'negative'
+  | 'schema_note';
+
+export type AiMemoryStatus = 'candidate' | 'active' | 'rejected' | 'archived' | 'stale';
+
+export type AiMemorySensitivity = 'normal' | 'internal' | 'secret';
+
+export type AiMemorySource =
+  | 'explicit'
+  | 'correction'
+  | 'usage'
+  | 'feedback'
+  | 'schema_note'
+  | 'import'
+  | 'org';
+
+export interface AiMemoryEntry {
+  id: string;
+  scopeType: AiMemoryScopeKind;
+  scopeId: string;
+  connectionId: string | null;
+  databaseName: string | null;
+  schemaName: string | null;
+  tableName: string | null;
+  columnName: string | null;
+  kind: AiMemoryKind;
+  subject: string;
+  content: string;
+  structuredJson: Record<string, unknown> | null;
+  source: AiMemorySource;
+  sourceRef: string | null;
+  confidence: number;
+  sensitivity: AiMemorySensitivity;
+  status: AiMemoryStatus;
+  pinned: boolean;
+  useCount: number;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AiMemoryPage {
+  entries: AiMemoryEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface AiMemoryStats {
+  total: number;
+  byStatus: Record<string, number>;
+  byKind: Record<string, number>;
+  byScope: Record<string, number>;
+}
+
+export interface AiMemoryCreateInput {
+  id?: string;
+  scopeType: AiMemoryScopeKind;
+  scopeId?: string;
+  connectionId?: string;
+  databaseName?: string;
+  schemaName?: string;
+  tableName?: string;
+  columnName?: string;
+  kind: AiMemoryKind;
+  subject: string;
+  content: string;
+  structuredJson?: Record<string, unknown>;
+  source?: AiMemorySource;
+  sourceRef?: string;
+  confidence?: number;
+  sensitivity?: AiMemorySensitivity;
+  status?: AiMemoryStatus;
+  pinned?: boolean;
+  expiresAt?: string;
+}
+
+export interface AiMemoryUpdateInput {
+  subject?: string;
+  content?: string;
+  kind?: AiMemoryKind;
+  structuredJson?: Record<string, unknown>;
+  sourceRef?: string;
+  confidence?: number;
+  sensitivity?: AiMemorySensitivity;
+  status?: AiMemoryStatus;
+  pinned?: boolean;
+  expiresAt?: string;
+}
+
+export interface AiMemoryListParams {
+  scopeType?: AiMemoryScopeKind;
+  scopeId?: string;
+  status?: AiMemoryStatus;
+  kind?: AiMemoryKind;
+  query?: string;
+  connectionId?: string;
+  limit?: number;
+  offset?: number;
+}
+
 export interface AiChatMessage {
   /** Unique message identifier for stable React keys. */
   id?: string;
@@ -179,6 +317,11 @@ export interface AiChatInjectionSnapshot {
 export interface AiChatInjectionEvent {
   requestId: string;
   snapshot: AiChatInjectionSnapshot;
+}
+
+export interface AiMemoryCandidatesEvent {
+  requestId: string;
+  candidates: AiMemoryReference[];
 }
 
 export interface AiChatSession {

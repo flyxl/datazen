@@ -14,6 +14,14 @@ vi.mock('../../../lib/windowManager', () => ({
 
 const aiState = vi.hoisted(() => ({
   isConfigured: true,
+  settingsConfig: null as {
+    memory?: {
+      enabled: boolean;
+      autoLearn: boolean;
+      cloudPolicy: 'normal_only' | 'allow_internal' | 'disable_cloud';
+      privacyAcknowledged: boolean;
+    };
+  } | null,
   nl2sql: {
     input: '',
     isGenerating: false,
@@ -66,6 +74,14 @@ beforeEach(() => {
   aiState.isConfigured = true;
   aiState.nl2sql = { input: 'list users', isGenerating: false, generatedSql: '', memoryUsed: [] };
   aiState.nl2sqlError = null;
+  aiState.settingsConfig = {
+    memory: {
+      enabled: true,
+      autoLearn: false,
+      cloudPolicy: 'normal_only',
+      privacyAcknowledged: true,
+    },
+  };
 });
 
 describe('Nl2SqlPanel', () => {
@@ -112,6 +128,17 @@ describe('Nl2SqlPanel', () => {
       />,
     );
     await waitFor(() => expect(onSqlChange).toHaveBeenCalledWith('SELECT 1'));
+  });
+
+  it('does not request memory when the setting is disabled', () => {
+    aiState.settingsConfig = null;
+    const { getByText } = render(
+      <Nl2SqlPanel dbSessionId="c1" connectionId="conn-1" database="mydb" onSqlChange={vi.fn()} />,
+    );
+    fireEvent.click(getByText('nl2sql.generate'));
+    expect(aiState.generateSql).toHaveBeenCalledWith(
+      expect.objectContaining({ memoryMode: 'off' }),
+    );
   });
 
   it('clears input and shows error', () => {

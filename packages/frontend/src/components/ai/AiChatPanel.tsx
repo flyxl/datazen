@@ -21,6 +21,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { useAutoScroll } from '../../hooks/useAutoScroll';
 import { useAiEditorGrant } from '../../hooks/useAiEditorGrant';
 import { useAiStore } from '../../stores/aiStore';
+import { aiCommands } from '../../commands/ai';
 import { computeSessionKey } from '../../stores/ai/sessions';
 import { cn } from '../../lib/cn';
 import { openDocsWindow, openSettingsWindow } from '../../lib/windowManager';
@@ -28,6 +29,7 @@ import { WorkflowPanel } from './WorkflowPanel';
 import { splitContextItems } from '../../lib/contextItems';
 import { AiEgressNotice } from './AiEgressNotice';
 import { detectSafetyPreset } from '../../lib/aiSafetyPresets';
+import { memoryModeFor } from '../../lib/aiMemorySettings';
 import { Select } from '../ui/Select';
 import { composeKvAiMessage } from '../../lib/kvAiContext';
 import type { KvAiContext } from '../../lib/kvAiContext';
@@ -98,19 +100,22 @@ export function AiChatPanel({
   draftRequest,
   onDraftConsumed,
   connectionId,
-  memoryMode = 'auto',
+  memoryMode,
   memoryScope = 'user',
   editorSessionId,
   autoContext,
 }: AiChatPanelProps) {
   const { t } = useI18n();
   const chatSession = useAiStore((s) => s.chatSession);
+  const memoryCandidateNotice = useAiStore((s) => s.memoryCandidateNotice);
+  const dismissMemoryCandidateNotice = useAiStore((s) => s.dismissMemoryCandidateNotice);
   const isConfigured = useAiStore((s) => s.isConfigured);
   const initChat = useAiStore((s) => s.initChatSession);
   const sendMessage = useAiStore((s) => s.sendChatMessage);
   const clearChat = useAiStore((s) => s.clearChat);
   const cancelChat = useAiStore((s) => s.cancelChat);
   const settingsConfig = useAiStore((s) => s.settingsConfig);
+  const effectiveMemoryMode = memoryMode ?? memoryModeFor(settingsConfig?.memory);
   const setActiveProfile = useAiStore((s) => s.setActiveProfile);
   const loadConfig = useAiStore((s) => s.loadConfig);
   const templates = settingsConfig?.promptTemplates ?? [];
@@ -181,6 +186,7 @@ export function AiChatPanel({
   const [tab, setTab] = useState<'chat' | 'workflows'>('chat');
   const [agentMode, setAgentMode] = useState<AiAgentMode>('ask');
   const [templateId, setTemplateId] = useState('');
+  const [rememberNotice, setRememberNotice] = useState<string | null>(null);
   // A template choice is scoped to one connection/database type; switching
   // returns to automatic default selection instead of carrying a stale pick.
   useEffect(() => {
@@ -281,6 +287,38 @@ export function AiChatPanel({
     setPendingConflictDraft(null);
   }, []);
 
+  const handleRemember = useCallback(
+    async (message: AiChatMessage) => {
+      const content = message.content.trim();
+      if (!content) return;
+      if (!settingsConfig?.memory?.enabled) {
+        setRememberNotice(t('chat.memoryDisabled'));
+        window.setTimeout(() => setRememberNotice(null), 4000);
+        return;
+      }
+      const firstLine = content.split('\n').find((line) => line.trim()) ?? content;
+      try {
+        await aiCommands.memoryCreate({
+          scopeType: connectionId ? 'connection' : 'user',
+          connectionId: connectionId || undefined,
+          kind: 'preference',
+          subject: firstLine.trim().slice(0, 80),
+          content,
+          source: 'explicit',
+          sourceRef: chatSession?.sessionKey,
+          status: 'candidate',
+          sensitivity: 'normal',
+          confidence: 0.6,
+        });
+        setRememberNotice(t('chat.remembered'));
+        window.setTimeout(() => setRememberNotice(null), 4000);
+      } catch {
+        setRememberNotice(t('chat.rememberFailed'));
+      }
+    },
+    [connectionId, chatSession?.sessionKey, settingsConfig?.memory?.enabled, t],
+  );
+
   const handleSend = useCallback(() => {
     if (!input.trim() || chatSession?.isStreaming) return;
     const { contextFiles, contextTables } = splitContextItems(contextItems);
@@ -296,7 +334,7 @@ export function AiChatPanel({
       content: composeKvAiMessage(input.trim(), kvContext ?? null),
       contextFiles: contextFiles.length > 0 ? contextFiles : undefined,
       contextTables: contextTables.length > 0 ? contextTables : undefined,
-      memoryMode,
+      memoryMode: effectiveMemoryMode,
       memoryScope,
       ...(hasSnapshotContent(snapshot) ? { autoContext: snapshot } : {}),
       targetClaim: claimForSend(),
@@ -310,7 +348,7 @@ export function AiChatPanel({
     sendMessage,
     dbSessionId,
     connectionId,
-    memoryMode,
+    effectiveMemoryMode,
     memoryScope,
     database,
     databaseType,
@@ -564,6 +602,46 @@ export function AiChatPanel({
         </div>
       ) : (
         <>
+          {(memoryCandidateNotice || rememberNotice) && (
+            <div className="shrink-0 space-y-1 px-3 pt-2">
+              {memoryCandidateNotice && (
+                <div
+                  className="flex items-center gap-2 rounded border border-accent/30 bg-accent/5 px-2 py-1.5 text-[11px] text-fg-secondary"
+                  data-testid="ai-memory-candidate-toast"
+                >
+                  <BookOpen className="h-3 w-3 text-accent" />
+                  <span className="min-w-0 flex-1">
+                    {t('chat.memoryCandidates', { count: memoryCandidateNotice.count })}
+                  </span>
+                  <button
+                    type="button"
+                    className="text-fg-muted hover:text-fg"
+                    onClick={dismissMemoryCandidateNotice}
+                    aria-label={t('chat.dismiss')}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
+              {rememberNotice && (
+                <div
+                  className="flex items-center gap-2 rounded border border-edge bg-surface-alt px-2 py-1.5 text-[11px] text-fg-secondary"
+                  data-testid="ai-memory-remember-toast"
+                >
+                  <BookOpen className="h-3 w-3 text-accent" />
+                  <span className="min-w-0 flex-1">{rememberNotice}</span>
+                  <button
+                    type="button"
+                    className="text-fg-muted hover:text-fg"
+                    onClick={() => setRememberNotice(null)}
+                    aria-label={t('chat.dismiss')}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           {/* Messages */}
           <div
             ref={containerRef}
@@ -589,6 +667,7 @@ export function AiChatPanel({
                 onInsertSql={onInsertSql}
                 onRunCode={onRunCode}
                 onNewQuery={onNewQuery}
+                onRemember={handleRemember}
                 onAnswerQuestions={(answers) => {
                   void sendMessage({
                     dbSessionId,
@@ -596,7 +675,7 @@ export function AiChatPanel({
                     database,
                     agentMode,
                     content: answers,
-                    memoryMode,
+                    memoryMode: effectiveMemoryMode,
                     memoryScope,
                   });
                 }}
@@ -860,6 +939,7 @@ function ChatBubble({
   onRunCode,
   onNewQuery,
   onAnswerQuestions,
+  onRemember,
   isLastAssistant,
 }: {
   message: AiChatMessage;
@@ -869,6 +949,7 @@ function ChatBubble({
   onRunCode?: (code: string, language: string) => void;
   onNewQuery?: (code: string) => void;
   onAnswerQuestions?: (formatted: string) => void;
+  onRemember?: (message: AiChatMessage) => void;
   isLastAssistant?: boolean;
 }) {
   const { t } = useI18n();
@@ -1020,6 +1101,18 @@ function ChatBubble({
               </div>
             )}
           </div>
+        )}
+
+        {!isUser && isLastAssistant && !isStreaming && message.content && onRemember && (
+          <button
+            type="button"
+            className="mt-1 flex items-center gap-1 rounded px-1 py-0.5 text-[10px] text-fg-muted transition-colors hover:bg-surface hover:text-fg"
+            onClick={() => onRemember(message)}
+            data-testid="ai-memory-remember"
+          >
+            <BookOpen className="h-2.5 w-2.5" />
+            {t('chat.rememberThis')}
+          </button>
         )}
 
         {!message.content && isStreaming && message.reasoning && (
