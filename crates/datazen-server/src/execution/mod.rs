@@ -19,6 +19,9 @@
 //!   的执行入口；消费者：mcp 门控的 `TargetMachine` 与恒开的
 //!   `driver_gateway` 域——模块本身不再门控，`TargetResolver` 在 datazen
 //!   `application` feature 后）。
+//! - [`target_runner`]：W8-a P2 —— `table_browsing::api::TargetCommandRunner`
+//!   端口的 server 实现（tableData 读半边的执行面：目标解析、提交、轮询、
+//!   产物分块收集；消费者：tableData 域路由）。
 
 pub mod budget;
 pub mod budget_bridge;
@@ -33,6 +36,7 @@ pub mod resource_host;
 pub mod secret_provider;
 pub mod session_directory;
 pub mod submission_token;
+pub mod target_runner;
 
 #[cfg(test)]
 mod budget_tests;
