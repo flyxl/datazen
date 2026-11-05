@@ -253,7 +253,11 @@ impl ResourceExecutionHost for ServerResourceExecutionHost {
 
 /// 结果块读取的 server 形态（桌面 `HostArtifactChunks` 的同构投影）：
 /// 转发给 Runtime 门面的 `read_artifact_chunk`（含其授权与分页）。
-struct ServerArtifactChunks(
+///
+/// W8-a P2 起 `pub(crate)`：`target_runner` 的 manual_handle 分支把租约
+/// 现取的 runtime 投影到同一 `ArtifactChunkReader` 端口形状，与 target
+/// 分支（`PreparedExecution.artifacts`）共享收集逻辑。
+pub(crate) struct ServerArtifactChunks(
     Arc<datazen::execution::application::orchestration::RuntimeConnectionUseCases>,
 );
 

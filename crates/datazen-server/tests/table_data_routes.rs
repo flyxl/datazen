@@ -19,18 +19,24 @@
 //!   恒 501 `capabilityUnsupported`，文案显式声明「没有执行任何语句、
 //!   没有构建任何计划、没有写任何东西」。
 //! - **MockDriver 读路径：接不上，不硬凑（登记）**——真路由 handler 是
-//!   fail-closed 501；用例面（`read_table_page`）的 `TargetCommandRunner`
-//!   server 适配尚不存在，测试侧仿一个驱动进不了真路由的执行半边。登记
-//!   为后续切片（`TargetCommandRunner` server 实现 + 驱动注册表点开）。
+//!   fail-closed 501；W8-a P2 起 `TableDataState` 已注入 server 运行器
+//!   （`TableDataState.runner`）与驱动注册表（`.registry`），但十一端点
+//!   接线尚未发生，handler 依旧不读它们——本夹具给空注册表 + 永不应答的
+//!   占位运行器。登记为后续接线刀（501 → 真用例接线时换真运行器 +
+//!   fake-driver）。
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use axum::body::Body;
 use axum::http::{header, Request as HttpRequest, StatusCode};
 use tower::ServiceExt;
 
 use datazen::named_views::NamedViewRepository;
+use datazen::shared::context::RequestContext;
+use datazen::shared::error::{ApiError, ApiErrorCode};
+use datazen::table_browsing::api::{TargetBinding, TargetCommandRunner};
 use datazen_server::csrf::{self, CsrfSecret};
 use datazen_server::http::domains::table_data::{table_data_router, TableDataState};
 use datazen_server::http::router::{build_router_with_auth, AuthDeps};
@@ -38,8 +44,30 @@ use datazen_server::policy::{PolicyService, Role};
 use datazen_server::storage::login_sessions::{LoginSessionMode, NewLoginSession};
 use datazen_server::storage::named_views::ServerNamedViewStore;
 use datazen_server::storage::{AdminStore, LoginSessions};
+use serde_json::Value as Json;
 
 const SERVER_SECRET: &[u8] = b"w3-table-data-server-secret-32-bytes!";
+
+/// 十一端点接线前的占位运行器（W8-a P2 形状填充）：handler 尚不读
+/// `TableDataState.runner`，本件永不应答——若未来某处误调，显式拒绝而不是
+/// 佯装成功（fail-closed 与生产同则）。
+struct FixtureRunner;
+
+#[async_trait]
+impl TargetCommandRunner for FixtureRunner {
+    async fn run(
+        &self,
+        _context: &RequestContext,
+        _binding: &TargetBinding,
+        _command: &str,
+        _input: Json,
+    ) -> Result<Vec<Json>, ApiError> {
+        Err(ApiError::new(
+            ApiErrorCode::CapabilityUnsupported,
+            "tableData endpoints are not wired in this fixture yet",
+        ))
+    }
+}
 
 /// 真实时钟戳（g1 冻结项先例）：登录会话的过期面以真实时钟判定，
 /// 硬编码日期会随真实时间腐烂成 401。
@@ -121,6 +149,8 @@ async fn fixture() -> (Arc<AdminStore>, axum::Router, Account, Account, Account)
         mcp: None,
         domain_routers: Some(vec![table_data_router(TableDataState {
             store: store.clone(),
+            registry: Arc::new(datazen::execution::runtime::driver_registry::DriverRegistry::new()),
+            runner: Arc::new(FixtureRunner),
         })]),
     })
     .expect("router");

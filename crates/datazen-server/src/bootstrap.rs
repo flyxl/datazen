@@ -408,6 +408,16 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         ),
     );
 
+    // W8-a P2：tableData 域的执行半边——`TargetCommandRunner` 端口 server
+    // 实现（`execution::target_runner`）。host/lease 与 driverGateway、
+    // （mcp 构建下的）目标机器同一实例（bootstrap 既有纪律）；执行面授权
+    // 语见 target_runner 模块头（P3 收口点登记在案）。
+    let table_target_runner: std::sync::Arc<dyn datazen::table_browsing::api::TargetCommandRunner> =
+        std::sync::Arc::new(crate::execution::target_runner::ServerTargetRunner::new(
+            resource_host.clone(),
+            lease_source.clone(),
+        ));
+
     // WR-C2 §6.1–§6.4 读侧域路由（薄绑定；挂载归 router）。
     let domain_routers = vec![
         crate::http::domains::settings::settings_router(
@@ -449,6 +459,8 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         crate::http::domains::table_data::table_data_router(
             crate::http::domains::table_data::TableDataState {
                 store: store.clone(),
+                registry: driver_registry.clone(),
+                runner: table_target_runner.clone(),
             },
         ),
         // WR-C2 §6.9 driverGateway 过渡域（四方法；闸序与目标机器同一

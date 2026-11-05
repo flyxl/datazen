@@ -77,6 +77,7 @@ use serde_json::Value;
 
 use datazen::named_views::{NamedView, NamedViewError, NamedViewScope, NamedViewService};
 use datazen::shared::error::{ApiError, ApiErrorCode};
+use datazen::table_browsing::api::TargetCommandRunner;
 
 use crate::http::response::ApiErrorResponse;
 use crate::http::router::{invalid_argument, SessionIdentity};
@@ -84,10 +85,18 @@ use crate::storage::named_views::{ServerNamedViewStore, UuidNamedViewIdMinter};
 use crate::storage::AdminStore;
 
 /// tableData 域的装配状态：管理库句柄（v9 `named_views` 表；调用方负责
-/// 先 `migrate`）+ 每请求按会话组织与主体装配 service。
+/// 先 `migrate`）+ 驱动注册表与执行半边（W8-a P2；十一端点接线未发生，
+/// 501 行为不变——接线刀逐条换真用例时消费这两件）。
 #[derive(Clone)]
 pub struct TableDataState {
     pub store: Arc<AdminStore>,
+    /// 驱动注册表（inventory 懒形；与执行后端 / driverGateway / mcp 目标
+    /// 机器同一实例）。读三端点接线时取方言驱动用。
+    pub registry: Arc<datazen::execution::runtime::driver_registry::DriverRegistry>,
+    /// tableData 执行半边（W8-a P2）：[`TargetCommandRunner`] 端口 server
+    /// 实现（`execution::target_runner`）；host/lease 与 driverGateway /
+    /// mcp 目标机器同一实例（bootstrap 既有纪律）。
+    pub runner: Arc<dyn TargetCommandRunner>,
 }
 
 impl TableDataState {
