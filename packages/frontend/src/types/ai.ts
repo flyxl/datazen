@@ -333,6 +333,10 @@ export interface AiChatMessage {
   toolCallId?: string;
   /** Terminal marker: the run ended because the user cancelled it. */
   cancelled?: boolean;
+  /** Persisted terminal state; cancellation/failure survives a reload. */
+  status?: AiMessageStatus;
+  /** Stable creation time so AppDb replace updates keep message timestamps. */
+  createdAt?: string;
   /** Active memories injected for this assistant turn, if any. */
   memoryUsed?: AiMemoryReference[];
 }
@@ -355,10 +359,67 @@ export interface AiMemoryCandidatesEvent {
   candidates: AiMemoryReference[];
 }
 
+export type AiMessageStatus = 'complete' | 'cancelled' | 'failed';
+
+export interface AiSessionMessage {
+  id: string;
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string;
+  status: AiMessageStatus;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface AiSessionSummary {
+  id: string;
+  sessionKey: string;
+  connectionId?: string | null;
+  database?: string | null;
+  title: string;
+  metadata?: Record<string, unknown> | null;
+  messageCount: number;
+  preview: string;
+  createdAt: string;
+  updatedAt: string;
+  lastAccessAt: string;
+}
+
+export interface AiSessionDetail extends AiSessionSummary {
+  messages: AiSessionMessage[];
+}
+
+export interface AiSessionMessageInput {
+  id?: string;
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string;
+  status?: AiMessageStatus;
+  createdAt?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AiSessionUpsertInput {
+  id?: string;
+  sessionKey: string;
+  connectionId?: string;
+  database?: string;
+  title?: string;
+  metadata?: Record<string, unknown>;
+  lastAccessAt?: string;
+  messages: AiSessionMessageInput[];
+  /** False (default) replaces all messages; true appends and de-duplicates ids. */
+  append?: boolean;
+}
+
 export interface AiChatSession {
   id: string;
   /** Session isolation key used for localStorage persistence. */
   sessionKey: string;
+  /** Connection/database scope used by the backend session list. */
+  connectionId?: string | null;
+  database?: string | null;
+  title?: string;
+  /** Prompt template / memory policy metadata retained with the session. */
+  metadata?: Record<string, unknown> | null;
   messages: AiChatMessage[];
   isStreaming: boolean;
   streamContent: string;

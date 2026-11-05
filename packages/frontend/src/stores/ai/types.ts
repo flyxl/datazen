@@ -7,6 +7,7 @@ import type {
   AiMemoryReference,
   AiModelProfile,
   AiProviderConfig,
+  AiSessionSummary,
   AiSettingsConfig,
   ConnectionDiagnosis,
   DiagnosisResult,
@@ -67,6 +68,14 @@ export interface AiStore {
   explainError: string | null;
 
   chatSession: AiChatSession | null;
+  /** Sessions for the current connection/database, newest first. */
+  chatSessions: AiSessionSummary[];
+  sessionHistoryLoading: boolean;
+  sessionHistoryError: string | null;
+  /** Visible failure of legacy localStorage -> AppDb migration/fallback. */
+  sessionMigrationError: string | null;
+  /** Count of legacy conversations migrated successfully on this load. */
+  sessionMigrationSuccess: number;
   /** Non-blocking Ask-mode candidate notice; cleared by the user or a new run. */
   memoryCandidateNotice: { requestId: string; count: number } | null;
 
@@ -135,7 +144,16 @@ export interface AiStore {
   }) => Promise<FilterCondition[] | null>;
   clearNlFilter: () => void;
 
-  initChatSession: (dbSessionId?: string, database?: string, connectionId?: string) => void;
+  initChatSession: (
+    dbSessionId?: string,
+    database?: string,
+    connectionId?: string,
+  ) => Promise<void>;
+  refreshChatSessions: () => Promise<void>;
+  selectChatSession: (id: string) => Promise<void>;
+  newChatSession: () => void;
+  deleteChatSession: (id: string) => Promise<void>;
+  exportChatSession: (format: 'json' | 'markdown') => Promise<void>;
   sendChatMessage: (params: {
     dbSessionId?: string;
     connectionId?: string;

@@ -440,6 +440,12 @@ pub fn run() {
             crate::commands::ai_memory_search,
             crate::commands::ai_memory_stats,
             crate::commands::ai_memory_update,
+            // ── AI：会话 ──
+            crate::commands::ai_sessions_delete,
+            crate::commands::ai_sessions_export,
+            crate::commands::ai_sessions_get,
+            crate::commands::ai_sessions_list,
+            crate::commands::ai_sessions_upsert,
             // ── AI：连接笔记 ──
             crate::commands::ai_connection_context_counts,
             crate::commands::ai_connection_notes_get,

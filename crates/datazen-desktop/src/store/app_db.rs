@@ -10,7 +10,8 @@ use rusqlite::{params, Connection};
 use thiserror::Error;
 pub const APP_DB_FILE: &str = "datazen.sqlite";
 /// v7 = AI 笔记/记忆/FTS/审计（T09，PRD §6.9）。
-pub const SCHEMA_VERSION: i32 = 7;
+/// v8 = AI 聊天会话与消息（T15）。
+pub const SCHEMA_VERSION: i32 = 8;
 pub const MAX_RUN_ROWS: usize = datazen::dashboard::execute::MAX_RUN_ROWS;
 
 /// 历史遗留的桌面本地组织 id（**不是**规范值）。
@@ -98,6 +99,42 @@ CREATE TRIGGER ai_memories_au AFTER UPDATE ON ai_memories BEGIN
   INSERT INTO ai_memories_fts(rowid, subject, content, kind, scope_id)
   VALUES (new.rowid, new.subject, new.content, new.kind, new.scope_id);
 END;
+"#;
+
+const AI_SESSION_SCHEMA_V8: &str = r#"
+CREATE TABLE ai_sessions (
+  id TEXT PRIMARY KEY NOT NULL,
+  organization_id TEXT NOT NULL,
+  owner_principal_id TEXT NOT NULL,
+  session_key TEXT NOT NULL,
+  connection_id TEXT,
+  database_name TEXT,
+  title TEXT NOT NULL DEFAULT '',
+  metadata_json TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  last_access_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_ai_sessions_scope
+  ON ai_sessions (organization_id, owner_principal_id, connection_id, database_name, last_access_at DESC);
+CREATE INDEX idx_ai_sessions_key
+  ON ai_sessions (organization_id, owner_principal_id, session_key, last_access_at DESC);
+
+CREATE TABLE ai_session_messages (
+  id TEXT PRIMARY KEY NOT NULL,
+  session_id TEXT NOT NULL REFERENCES ai_sessions(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL CHECK (position >= 0),
+  role TEXT NOT NULL CHECK (role IN ('user','assistant','tool','system')),
+  content TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'complete' CHECK (status IN ('complete','cancelled','failed')),
+  metadata_json TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE (session_id, position)
+);
+
+CREATE INDEX idx_ai_session_messages_session
+  ON ai_session_messages (session_id, position);
 "#;
 
 const JOB_SCHEMA_V2: &str = r#"
@@ -449,6 +486,12 @@ impl AppDb {
                 // 登记同属一个 Immediate 事务：任何一条失败都回滚到 v6。
                 tx.execute_batch(AI_MEMORY_SCHEMA_V7)?;
                 tx.execute("INSERT INTO schema_migrations(version,applied_at) VALUES (7,?1)", params![Utc::now().to_rfc3339()])?;
+            }
+            if current < 8 {
+                // v8：AI 会话与消息（T15）。整批 DDL 与版本登记同事务，失败
+                // 回滚到 v7；消息表通过外键级联删除。
+                tx.execute_batch(AI_SESSION_SCHEMA_V8)?;
+                tx.execute("INSERT INTO schema_migrations(version,applied_at) VALUES (8,?1)", params![Utc::now().to_rfc3339()])?;
             }
             tx.commit()?;
             Ok(())

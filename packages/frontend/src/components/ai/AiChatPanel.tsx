@@ -4,6 +4,7 @@ import {
   BookOpen,
   ChevronDown,
   ChevronRight,
+  History,
   MessageSquare,
   Settings,
   Sparkles,
@@ -42,6 +43,7 @@ import type {
 } from '../../types';
 import type { AiChatDraftRequest } from '../../windows/connection/query/aiDraftBridge';
 import { Spinner } from '../ui/Spinner';
+import { AiSessionHistory } from './AiSessionHistory';
 
 interface AiChatPanelProps {
   dbSessionId: string;
@@ -109,6 +111,8 @@ export function AiChatPanel({
   const chatSession = useAiStore((s) => s.chatSession);
   const memoryCandidateNotice = useAiStore((s) => s.memoryCandidateNotice);
   const dismissMemoryCandidateNotice = useAiStore((s) => s.dismissMemoryCandidateNotice);
+  const sessionMigrationError = useAiStore((s) => s.sessionMigrationError);
+  const sessionMigrationSuccess = useAiStore((s) => s.sessionMigrationSuccess);
   const isConfigured = useAiStore((s) => s.isConfigured);
   const initChat = useAiStore((s) => s.initChatSession);
   const sendMessage = useAiStore((s) => s.sendChatMessage);
@@ -184,6 +188,7 @@ export function AiChatPanel({
   const [snapshot, setSnapshot] = useState<AiChatContextSnapshot | null>(null);
   const previousAutoContextRef = useRef<AiChatContextSnapshot | null>(null);
   const [tab, setTab] = useState<'chat' | 'workflows'>('chat');
+  const [sessionHistoryOpen, setSessionHistoryOpen] = useState(false);
   const [agentMode, setAgentMode] = useState<AiAgentMode>('ask');
   const [templateId, setTemplateId] = useState('');
   const [rememberNotice, setRememberNotice] = useState<string | null>(null);
@@ -437,6 +442,17 @@ export function AiChatPanel({
               <Button
                 variant="ghost"
                 className="h-6 px-1.5 text-[11px]"
+                title={t('chat.sessions.open')}
+                aria-label={t('chat.sessions.open')}
+                data-testid="ai-session-history-toggle"
+                aria-expanded={sessionHistoryOpen}
+                onClick={() => setSessionHistoryOpen((open) => !open)}
+              >
+                <History className="h-3 w-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                className="h-6 px-1.5 text-[11px]"
                 title={t('docs.openAiHelp')}
                 onClick={() => openDocsWindow('context')}
               >
@@ -464,6 +480,27 @@ export function AiChatPanel({
           )}
         </div>
       </div>
+
+      {tab === 'chat' && (
+        <AiSessionHistory open={sessionHistoryOpen} onClose={() => setSessionHistoryOpen(false)} />
+      )}
+
+      {tab === 'chat' && sessionMigrationError && (
+        <div
+          className="shrink-0 border-b border-danger/30 bg-danger/5 px-3 py-1 text-[10px] text-danger"
+          data-testid="ai-session-migration-banner"
+        >
+          {sessionMigrationError}
+        </div>
+      )}
+      {tab === 'chat' && sessionMigrationSuccess > 0 && !sessionMigrationError && (
+        <div
+          className="shrink-0 border-b border-success/30 bg-success/5 px-3 py-1 text-[10px] text-success"
+          data-testid="ai-session-migration-success-banner"
+        >
+          {t('chat.sessions.migrationSuccess', { count: sessionMigrationSuccess })}
+        </div>
+      )}
 
       {tab === 'chat' && (
         <div

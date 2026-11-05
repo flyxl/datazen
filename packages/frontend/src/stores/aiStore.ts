@@ -6,7 +6,19 @@ import { redactSensitiveText } from '../lib/aiQueryActions';
 import { normalizeAiProviders } from '../lib/aiProviders';
 import { normalizeAiSettingsConfig } from '../lib/aiMemorySettings';
 import { defaultAiMemorySettings, type AiChatMessage } from '../types';
-import { computeSessionKey, loadSessions } from './ai/sessions';
+import {
+  chatSessionFromDetail,
+  computeSessionKey,
+  deleteChatSession as deletePersistedChatSession,
+  downloadSessionExport,
+  exportChatSession as exportPersistedChatSession,
+  listChatSessions,
+  loadChatSession,
+  localChatSessionForScope,
+  newChatSession as createChatSession,
+  persistChatSession,
+  restoreChatSession,
+} from './ai/sessions';
 import { initialNl2Sql, type AiStore } from './ai/types';
 import {
   attributionFor,
@@ -22,6 +34,21 @@ import { useSettingsStore } from './settingsStore';
 
 export type { AiStore } from './ai/types';
 export { initialNl2Sql } from './ai/types';
+
+let chatInitToken = 0;
+
+function persistLiveChatSession(
+  get: () => AiStore,
+  set: (partial: Partial<AiStore>) => void,
+): void {
+  const session = get().chatSession;
+  if (!session) return;
+  void persistChatSession(session).then((result) => {
+    if (!result.ok) {
+      set({ sessionMigrationError: result.error ?? 'AI session backend write failed' });
+    }
+  });
+}
 
 export const useAiStore = create<AiStore>((set, get) => ({
   config: null,
@@ -43,6 +70,11 @@ export const useAiStore = create<AiStore>((set, get) => ({
   explainError: null,
 
   chatSession: null,
+  chatSessions: [],
+  sessionHistoryLoading: false,
+  sessionHistoryError: null,
+  sessionMigrationError: null,
+  sessionMigrationSuccess: 0,
   memoryCandidateNotice: null,
 
   nlFilterInput: '',
@@ -408,25 +440,138 @@ export const useAiStore = create<AiStore>((set, get) => ({
 
   initChatSession: (dbSessionId?: string, database?: string, connectionId?: string) => {
     const key = computeSessionKey(connectionId, dbSessionId, database);
-    const sessions = loadSessions();
-    const stored = sessions[key];
+    const token = ++chatInitToken;
+    const scope = { connectionId, dbSessionId, database };
+    const initial = localChatSessionForScope(key, scope) ?? createChatSession(scope, key);
+    set({
+      chatSession: initial,
+      chatSessions: [],
+      sessionMigrationError: null,
+      sessionMigrationSuccess: 0,
+      sessionHistoryError: null,
+      sessionHistoryLoading: true,
+      memoryCandidateNotice: null,
+    });
+    return restoreChatSession(key, scope).then((restored) => {
+      if (token !== chatInitToken) return;
+      const current = get().chatSession;
+      // Do not clobber a run/message the user started while AppDb was loading.
+      // A backend session may legitimately have a different id than the local
+      // cache, so id equality is not the guard; user actions bump the token or
+      // change the visible message count.
+      if (!current || current.isStreaming || current.messages.length !== initial.messages.length) {
+        return;
+      }
+      set({
+        chatSession: restored.session,
+        chatSessions: restored.summaries,
+        sessionMigrationError: restored.migrationError,
+        sessionMigrationSuccess: restored.migrationSuccess,
+        sessionHistoryLoading: false,
+      });
+    });
+  },
 
-    const session = {
-      id: crypto.randomUUID(),
-      sessionKey: key,
-      messages: (stored?.messages ?? []) as AiChatMessage[],
-      isStreaming: false,
-      streamContent: '',
-      streamReasoning: '',
-      streamMcpToolName: null,
-      egressSummary: null,
-      streamMemoryUsed: null,
-      memoryUsed: null,
-      requestId: null,
-      attribution: null,
-    };
+  refreshChatSessions: async () => {
+    const current = get().chatSession;
+    if (!current) return;
+    set({ sessionHistoryLoading: true, sessionHistoryError: null });
+    try {
+      const summaries = await listChatSessions(
+        {
+          connectionId: current.connectionId ?? undefined,
+          database: current.database ?? undefined,
+        },
+        current.sessionKey,
+      );
+      set({ chatSessions: summaries, sessionHistoryLoading: false });
+    } catch (e) {
+      set({
+        sessionHistoryLoading: false,
+        sessionHistoryError: e instanceof Error ? e.message : String(e),
+      });
+    }
+  },
 
+  selectChatSession: async (id: string) => {
+    const current = get().chatSession;
+    if (!current || current.isStreaming) return;
+    chatInitToken += 1;
+    set({ sessionHistoryLoading: true, sessionHistoryError: null });
+    try {
+      const detail = await loadChatSession(id);
+      const next = chatSessionFromDetail(detail);
+      set({ chatSession: next, sessionHistoryLoading: false });
+      // Selecting an older conversation makes it the newest for the next
+      // restart while keeping the same explicit replace semantics.
+      void persistChatSession(next).then((result) => {
+        if (!result.ok) {
+          set({ sessionMigrationError: result.error ?? 'AI session backend write failed' });
+        }
+      });
+    } catch (e) {
+      set({
+        sessionHistoryLoading: false,
+        sessionHistoryError: e instanceof Error ? e.message : String(e),
+      });
+    }
+  },
+
+  newChatSession: () => {
+    const current = get().chatSession;
+    if (!current || current.isStreaming) return;
+    chatInitToken += 1;
+    const session = createChatSession(
+      {
+        connectionId: current.connectionId ?? undefined,
+        database: current.database ?? undefined,
+      },
+      current.sessionKey,
+    );
     set({ chatSession: session, memoryCandidateNotice: null });
+  },
+
+  deleteChatSession: async (id: string) => {
+    const current = get().chatSession;
+    if (!current) return;
+    if (current.isStreaming) {
+      set({ sessionHistoryError: 'Cannot delete a conversation while it is streaming.' });
+      return;
+    }
+    set({ sessionHistoryLoading: true, sessionHistoryError: null });
+    const result = await deletePersistedChatSession(id, current.sessionKey);
+    const remaining = get().chatSessions.filter((session) => session.id !== id);
+    if (id === current.id) {
+      set({
+        chatSession: createChatSession(
+          {
+            connectionId: current.connectionId ?? undefined,
+            database: current.database ?? undefined,
+          },
+          current.sessionKey,
+        ),
+        chatSessions: remaining,
+        sessionHistoryLoading: false,
+        sessionHistoryError: result.ok ? null : (result.error ?? null),
+      });
+      return;
+    }
+    set({
+      chatSessions: remaining,
+      sessionHistoryLoading: false,
+      sessionHistoryError: result.ok ? null : (result.error ?? null),
+    });
+  },
+
+  exportChatSession: async (format: 'json' | 'markdown') => {
+    const current = get().chatSession;
+    if (!current) return;
+    try {
+      const exported = await exportPersistedChatSession(current, format);
+      downloadSessionExport(exported);
+    } catch (e) {
+      set({ sessionHistoryError: e instanceof Error ? e.message : String(e) });
+    }
   },
 
   sendChatMessage: async ({
@@ -467,12 +612,23 @@ export const useAiStore = create<AiStore>((set, get) => ({
           role: 'tool',
           content,
           toolCallId: askCall.id,
+          createdAt: new Date().toISOString(),
         });
       } else {
-        newMessages.push({ id: crypto.randomUUID(), role: 'user', content });
+        newMessages.push({
+          id: crypto.randomUUID(),
+          role: 'user',
+          content,
+          createdAt: new Date().toISOString(),
+        });
       }
     } else {
-      newMessages.push({ id: crypto.randomUUID(), role: 'user', content });
+      newMessages.push({
+        id: crypto.randomUUID(),
+        role: 'user',
+        content,
+        createdAt: new Date().toISOString(),
+      });
     }
 
     const requestId = crypto.randomUUID();
@@ -494,9 +650,17 @@ export const useAiStore = create<AiStore>((set, get) => ({
         injection: null,
         requestId,
         attribution: attributionFor(targetClaim),
+        metadata: {
+          ...(chatSession.metadata ?? {}),
+          ...(templateId ? { templateId } : {}),
+          ...(agentMode ? { agentMode } : {}),
+          ...(memoryMode ? { memoryMode } : {}),
+          ...(memoryScope ? { memoryScope } : {}),
+        },
       },
       memoryCandidateNotice: null,
     });
+    persistLiveChatSession(get, set);
 
     try {
       await aiCommands.chat({
@@ -540,10 +704,13 @@ export const useAiStore = create<AiStore>((set, get) => ({
                 id: crypto.randomUUID(),
                 role: 'assistant',
                 content: `Error: ${e instanceof Error ? e.message : String(e)}`,
+                status: 'failed' as const,
+                createdAt: new Date().toISOString(),
               },
             ],
           },
         });
+        persistLiveChatSession(get, set);
       }
     }
   },
@@ -567,6 +734,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
         },
         memoryCandidateNotice: null,
       });
+      persistLiveChatSession(get, set);
     }
   },
 

@@ -67,7 +67,9 @@ fn audit(id: &str, memory_id: &str) -> AiMemoryAuditRecord {
 fn rewind_to_v6(db: &AppDb) {
     db.with_conn(|conn| {
         conn.execute_batch(
-            "DROP TRIGGER IF EXISTS ai_memories_ai;
+            "DROP TABLE IF EXISTS ai_session_messages;
+             DROP TABLE IF EXISTS ai_sessions;
+             DROP TRIGGER IF EXISTS ai_memories_ai;
              DROP TRIGGER IF EXISTS ai_memories_ad;
              DROP TRIGGER IF EXISTS ai_memories_au;
              DROP TABLE IF EXISTS ai_memories_fts;
@@ -104,14 +106,14 @@ fn object_count(db: &AppDb, kind: &str, name: &str) -> i64 {
 }
 
 #[test]
-fn v6_database_upgrades_to_v7_and_reopens_idempotently() {
+fn v6_database_upgrades_to_latest_and_reopens_idempotently() {
     let temp = tempfile::tempdir().unwrap();
     let db = AppDb::open(temp.path()).unwrap();
     rewind_to_v6(&db);
     drop(db);
 
-    let db = AppDb::open(temp.path()).expect("v6 database upgrades to v7");
-    assert_eq!(schema_version(&db), 7);
+    let db = AppDb::open(temp.path()).expect("v6 database upgrades to the latest schema");
+    assert_eq!(schema_version(&db), 8);
     assert_eq!(schema_version(&db), SCHEMA_VERSION);
     for table in [
         "ai_connection_notes",
@@ -137,8 +139,8 @@ fn v6_database_upgrades_to_v7_and_reopens_idempotently() {
     }
     drop(db);
 
-    let db = AppDb::open(temp.path()).expect("reopening a v7 database is a no-op");
-    assert_eq!(schema_version(&db), 7);
+    let db = AppDb::open(temp.path()).expect("reopening a v8 database is a no-op");
+    assert_eq!(schema_version(&db), 8);
     let version_rows: i64 = db
         .with_conn(|conn| {
             Ok(conn.query_row(

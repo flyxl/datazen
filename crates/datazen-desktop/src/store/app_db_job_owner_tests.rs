@@ -185,6 +185,8 @@ async fn v3_running_claims_migrate_with_null_instance_and_remain_unusable() {
                 "DROP TRIGGER IF EXISTS ai_memories_ai; ",
                 "DROP TRIGGER IF EXISTS ai_memories_ad; ",
                 "DROP TRIGGER IF EXISTS ai_memories_au; ",
+                "DROP TABLE IF EXISTS ai_session_messages; ",
+                "DROP TABLE IF EXISTS ai_sessions; ",
                 "DROP TABLE IF EXISTS ai_memories_fts; ",
                 "DROP TABLE IF EXISTS ai_memory_audit; ",
                 "DROP TABLE IF EXISTS ai_memories; ",

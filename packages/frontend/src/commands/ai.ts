@@ -17,6 +17,9 @@ import type {
   AiMemoryStatus,
   AiMemoryUpdateInput,
   AiProviderConfig,
+  AiSessionDetail,
+  AiSessionSummary,
+  AiSessionUpsertInput,
   AiSettingsConfig,
   ConnectionDiagnosis,
   DiagnosisResult,
@@ -130,6 +133,24 @@ export const aiCommands = {
     invoke<AiMemoryEntry[]>('ai_memory_extract_candidates', { input }),
   memoryMarkStale: (input: AiMemoryStaleInput) =>
     invoke<AiMemoryEntry[]>('ai_memory_mark_stale', { input }),
+  sessionsList: (
+    params: {
+      connectionId?: string | null;
+      database?: string | null;
+      sessionKey?: string | null;
+    } = {},
+  ) =>
+    invoke<AiSessionSummary[]>('ai_sessions_list', {
+      connectionId: params.connectionId ?? null,
+      database: params.database ?? null,
+      sessionKey: params.sessionKey ?? null,
+    }),
+  sessionsGet: (id: string) => invoke<AiSessionDetail>('ai_sessions_get', { id }),
+  sessionsUpsert: (input: AiSessionUpsertInput) =>
+    invoke<AiSessionDetail>('ai_sessions_upsert', { input }),
+  sessionsDelete: (id: string) => invoke<boolean>('ai_sessions_delete', { id }),
+  sessionsExport: (id: string, format: 'json' | 'markdown') =>
+    invoke<string>('ai_sessions_export', { id, format }),
   memoryUpdate: (id: string, patch: AiMemoryUpdateInput) =>
     invoke<AiMemoryEntry>('ai_memory_update', { id, patch }),
   memoryConfirm: (id: string) => invoke<AiMemoryEntry>('ai_memory_confirm', { id }),

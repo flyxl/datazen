@@ -7,6 +7,7 @@ mod grant;
 mod memory;
 mod notes;
 mod prompts;
+mod sessions;
 mod util;
 
 pub use chat::*;
@@ -16,6 +17,7 @@ pub use grant::*;
 pub use memory::*;
 pub use notes::*;
 pub use prompts::*;
+pub use sessions::*;
 pub(crate) use util::language_hint;
 
 use crate::commands::error::CommandError;
@@ -62,6 +64,9 @@ mod integration_tests;
 
 #[cfg(test)]
 mod ipc_contract_guards_tests;
+
+#[cfg(test)]
+mod sessions_tests;
 
 #[cfg(test)]
 mod mock_provider_tests;

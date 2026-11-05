@@ -131,6 +131,8 @@ async fn seed_v4_database(dir: &Path, rows: &[SeedRow<'_>]) {
             "DROP TRIGGER IF EXISTS ai_memories_ai;
              DROP TRIGGER IF EXISTS ai_memories_ad;
              DROP TRIGGER IF EXISTS ai_memories_au;
+             DROP TABLE IF EXISTS ai_session_messages;
+             DROP TABLE IF EXISTS ai_sessions;
              DROP TABLE IF EXISTS ai_memories_fts;
              DROP TABLE IF EXISTS ai_memory_audit;
              DROP TABLE IF EXISTS ai_memories;

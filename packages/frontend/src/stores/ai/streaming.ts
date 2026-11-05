@@ -14,7 +14,7 @@ import { StreamRegistry } from '../../ai/streamRegistry';
 import { SessionCanceller } from '../../ai/sessionCancel';
 import { attributionOf, type AiTargetClaim, type CancelReceipt } from '../../ai/targetClaim';
 import { aiCommands } from '../../commands/ai';
-import { loadSessions, saveSessions, touchSession } from './sessions';
+import { persistChatSession } from './sessions';
 import type { AiStore } from './types';
 
 type GetState = () => AiStore;
@@ -87,8 +87,10 @@ export async function cancelChat(
 export function handleCancelTimeout(get: GetState, set: SetState, requestId: string): void {
   const { chatSession, workflowChat } = get();
   if (chatSession?.requestId === requestId) {
-    set({ chatSession: finalizeCancelledSession(chatSession) });
+    const next = finalizeCancelledSession(chatSession);
+    set({ chatSession: next });
     unregisterRequestId(requestId);
+    persistStreamSession(get, set, next);
     return;
   }
   if (workflowChat?.requestId === requestId) {
@@ -118,11 +120,26 @@ function finalizeCancelledSession<T extends NonNullable<AiStore['chatSession']>>
         content: session.streamContent || '',
         reasoning: session.streamReasoning || undefined,
         cancelled: true,
+        status: 'cancelled' as const,
+        createdAt: new Date().toISOString(),
         memoryUsed: session.streamMemoryUsed ?? undefined,
       },
     ],
   };
   return next;
+}
+
+function persistStreamSession(
+  get: GetState,
+  set: SetState,
+  session: NonNullable<AiStore['chatSession']>,
+): void {
+  if (get().chatSession?.id !== session.id) return;
+  void persistChatSession(session).then((result) => {
+    if (!result.ok) {
+      set({ sessionMigrationError: result.error ?? 'AI session backend write failed' });
+    }
+  });
 }
 
 /** Apply a stream chunk, dropping late/duplicate chunks through the registry. */
@@ -196,12 +213,15 @@ export function handleStreamChunk(get: GetState, set: SetState, payload: StreamC
     }
 
     const assistantMessage: AiChatMessage = {
+      id: crypto.randomUUID(),
       role: 'assistant',
       content: cleanContent,
       reasoning: newReasoning || undefined,
       questions,
       toolCalls,
       cancelled: payload.cancelled === true,
+      status: payload.cancelled === true ? 'cancelled' : 'complete',
+      createdAt: new Date().toISOString(),
       memoryUsed: memoryUsed ?? undefined,
     };
     const nextSession = {
@@ -218,25 +238,8 @@ export function handleStreamChunk(get: GetState, set: SetState, payload: StreamC
     };
     set({ [targetSession]: nextSession });
 
-    // Persist chat history to localStorage
     if (targetSession === 'chatSession') {
-      const key = nextSession.sessionKey;
-      const sessions = loadSessions();
-      const updated = touchSession(sessions, key);
-      updated[key] = {
-        ...updated[key],
-        messages: nextSession.messages.map((m) => ({
-          role: m.role as 'user' | 'assistant' | 'tool' | 'system',
-          content: m.content,
-          reasoning: m.reasoning,
-          toolCalls: m.toolCalls,
-          toolCallId: m.toolCallId,
-          cancelled: m.cancelled,
-          memoryUsed: m.memoryUsed,
-        })),
-        lastAccess: Date.now(),
-      };
-      saveSessions(updated);
+      persistStreamSession(get, set, nextSession);
     }
   } else {
     set({
@@ -279,17 +282,28 @@ export function handleStreamError(get: GetState, set: SetState, payload: StreamE
 
   unregisterRequestId(payload.requestId);
   const session = (errTarget === 'chatSession' ? chatSession : workflowChat)!;
-  set({
-    [errTarget]: {
-      ...session,
-      isStreaming: false,
-      streamContent: '',
-      streamReasoning: '',
-      streamMcpToolName: null,
-      streamMemoryUsed: null,
-      memoryUsed: null,
-      requestId: null,
-      messages: [...session.messages, { role: 'assistant', content: `Error: ${payload.error}` }],
-    },
-  });
+  const next = {
+    ...session,
+    isStreaming: false,
+    streamContent: '',
+    streamReasoning: '',
+    streamMcpToolName: null,
+    streamMemoryUsed: null,
+    memoryUsed: null,
+    requestId: null,
+    messages: [
+      ...session.messages,
+      {
+        id: crypto.randomUUID(),
+        role: 'assistant' as const,
+        content: `Error: ${payload.error}`,
+        status: 'failed' as const,
+        createdAt: new Date().toISOString(),
+      },
+    ],
+  };
+  set({ [errTarget]: next });
+  if (errTarget === 'chatSession') {
+    persistStreamSession(get, set, next);
+  }
 }

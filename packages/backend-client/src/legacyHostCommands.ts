@@ -38,6 +38,7 @@ export type LegacyCommandName =
   'ai_memory_update' | 'ai_memory_confirm' | 'ai_memory_reject' | 'ai_memory_delete' |
   'ai_memory_clear' | 'ai_memory_export' | 'ai_memory_correction_candidate' |
   'ai_memory_extract_candidates' | 'ai_memory_mark_stale' |
+  'ai_sessions_list' | 'ai_sessions_get' | 'ai_sessions_upsert' | 'ai_sessions_delete' | 'ai_sessions_export' |
   'append_save_text' | 'apply_data_sync' | 'apply_data_transfer_job' | 'authorize_monitor_widget_schedule' |
   'backup_database' | 'begin_save_with_dialog' | 'begin_session_transaction' | 'cancel_data_sync' |
   'cancel_data_transfer' | 'cancel_query' | 'cancel_schema_diff_deploy' | 'check_sync_conflicts' |
