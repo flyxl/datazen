@@ -30,7 +30,7 @@ packages/frontend/src/windows/workflow/
 - 文本输入区域（可自适应高度或固定高度）
 - `@` 触发上下文文件引用（激活 `ContextPicker`，默认 `position="above"`，因组件位于面板底部）
 - 已选上下文文件的 chips 显示在输入框边框容器内部起始位置（与 textarea 同行内联，Cursor 风格），可单独移除；不再作为独立行渲染在输入框上方
-- 外层输入容器使用 `flex-wrap items-end` 布局，chips 与 textarea、发送按钮在同一边框内换行排列
+- 外层输入容器使用 `flex-wrap items-center` 布局，chips 与 textarea、发送按钮在同一边框内换行排列
 - 发送 / 停止按钮
 - 键盘快捷键（Enter 发送，Shift+Enter 换行）
 
@@ -66,10 +66,10 @@ packages/frontend/src/windows/workflow/
 | AI 配置 | providerType、model、apiKey、endpoint、maxTokens |
 | NL2SQL | nl2sql（input、streamingSql、streamingPreview、generatedSql、isGenerating、requestId） |
 | 诊断 | diagnosis、isDiagnosing |
-| EXPLAIN | explainAnalysis、isAnalyzing |
+| EXPLAIN | explainAnalysis、isAnalyzingExplain |
 | Chat | chatSession（messages、isStreaming、streamContent、streamReasoning、requestId） |
 | Workflow Chat | workflowChat |
-| 筛选 | parsedFilters、isParsing |
+| 筛选 | parsedFilters、isParsingFilter |
 | Schema 文档 | schemaDoc、isGeneratingSchemaDoc |
 | 连接诊断 | connectionDiagnosis、isDiagnosingConnection |
 | 查询分析 | queryAnalysis、isAnalyzingQueries |
@@ -97,15 +97,14 @@ AI Chat 当前只挂载 5 个只读元数据 DB 工具（`list_connections` / `l
 | QueryEditorSection 顶部 | `Nl2SqlPanel` | NL2SQL 输入（含生成、复制、清除、`@` 上下文引用） |
 | QueryPanel 错误区域 | `DiagnosisPanel` | SQL 错误诊断 |
 | QueryPanel 结果 Tab | `ExplainPanel` | EXPLAIN AI 分析 |
-| ConnectionView 侧边栏（`ContentViewDrawers`） | `AiChatPanel` | AI 对话 + Workflows 标签页（`@` 上下文引用） |
+| `ContentView` 侧边栏（`ContentViewDrawers`） | `AiChatPanel` | AI 对话 + Workflows 标签页（`@` 上下文引用） |
 | `AiChatPanel` Workflows 标签页 | `WorkflowPanel` | Workflows 管理和执行 |
 | 主窗口功能 sidebar | `ConnectionPage` 内 Workflow / Dashboard 入口 | 主工作区内导航 |
 | TableView 筛选区域 | `NlFilterInput` | 自然语言筛选 |
-| ChartToolbar NL输入 | `nlConfig.ts` | 自然语言图表配置调整 |
-| SettingsPage / SettingsContent | AI 配置 | Provider/Model/Key/MaxTokens |
-| SettingsPage / SettingsContent | MCP Server/Client | 启停/连接管理 |
-| SettingsPage / SettingsContent | 上下文目录 | `contextDir` 路径配置 |
-| SettingsPage / SettingsContent | Prompt 覆盖 | 各场景 Prompt 自定义 |
+| `SettingsContent` | AI 配置 | Provider/Model/Key/MaxTokens |
+| `SettingsContent` | MCP Server/Client | 启停/连接管理 |
+| `SettingsContent` | 上下文目录 | `contextDir` 路径配置 |
+| `SettingsContent` | Prompt 覆盖 | 各场景 Prompt 自定义 |
 
 ### 1.8 AI 入口可见性
 
