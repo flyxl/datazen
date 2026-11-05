@@ -317,7 +317,11 @@ const pack = {
   'fkNav.error.targetUnresolved':
     'Не удалось перейти к {target}; объект может отсутствовать, находиться в другой базе данных или быть недоступным для чтения',
   'fkNav.error.probeFailed': 'Целевая таблица найдена, но не может быть прочитана',
+  'fkNav.error.noReferences': 'Ни одна таблица не ссылается на эту строку',
   'fkNav.error.unknown': 'Переход по внешнему ключу не удался',
+  'fkSelector.pickFrom': 'Выберите указанное значение из {target}.',
+  'fkSelector.notUnique':
+    'Столбцы, на которые имеются ссылки, не уникальны, поэтому безопасно выбрать значение невозможно.',
   'schemaTree.generateSql': 'Сгенерировать SQL',
   'schemaTree.generateSelect': 'Сгенерировать SELECT',
   'schemaTree.generateInsert': 'Сгенерировать INSERT',

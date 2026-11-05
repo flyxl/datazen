@@ -981,13 +981,10 @@ function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function crateDepPath(name, meta) {
-  if (meta.source === 'path' && meta.path) {
-    // crates/datazen-desktop/Cargo.toml → ../../../crates/drivers/X
-    // (F6 目录搬迁：src-tauri 从仓库根迁至 packages/desktop/，需上溯三级到根。)
-    return `../../../${meta.path}`;
-  }
-  return `../../../crates/drivers/${name}`;
+export function crateDepPath(name) {
+  // Cargo resolves this relative to crates/datazen-desktop/Cargo.toml; each
+  // driver checkout is its sibling under crates/drivers/<id>.
+  return `../drivers/${name}`;
 }
 
 /** Path drivers use datazen-driver-*; git drivers keep their published crate name (usually datazen-plugin-*). */

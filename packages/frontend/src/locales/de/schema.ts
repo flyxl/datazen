@@ -320,7 +320,11 @@ const pack = {
   'fkNav.error.targetUnresolved':
     '{target} ist nicht erreichbar; die Tabelle fehlt möglicherweise, liegt in einer anderen Datenbank oder ist nicht lesbar',
   'fkNav.error.probeFailed': 'Die Zieltabelle wurde gefunden, konnte aber nicht gelesen werden',
+  'fkNav.error.noReferences': 'Keine Tabelle verweist auf diese Zeile',
   'fkNav.error.unknown': 'Navigation über den Fremdschlüssel fehlgeschlagen',
+  'fkSelector.pickFrom': 'Wählen Sie einen referenzierten Wert aus {target} aus.',
+  'fkSelector.notUnique':
+    'Die referenzierten Spalten sind nicht eindeutig, daher kann ein Wert nicht sicher ausgewählt werden',
   'schemaTree.generateSql': 'SQL generieren',
   'schemaTree.generateSelect': 'SELECT-Abfrage generieren',
   'schemaTree.generateInsert': 'INSERT generieren',
