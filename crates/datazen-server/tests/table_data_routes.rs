@@ -124,7 +124,21 @@ fn register_login(
 /// 真路由装配：真 SQLite 文件库（v9 含在内）+ `table_data_router` 进
 /// `domain_routers` 槽。返回库里三个账号：主账号（org-1/user-1）、同组织
 /// 异主体（org-1/user-1b）、异组织（org-2/user-2）。
+///
+/// W8-a 接线刀起 `TableDataState` 需要会话面：本夹具装配最小租约链
+/// （f7_wiring_tests 同构；空注册表 + 占位 runner——本夹具只测命名视图与
+/// 501 探针，读三端点的绿路径在下方 `wired_fixture`）。
 async fn fixture() -> (Arc<AdminStore>, axum::Router, Account, Account, Account) {
+    use datazen::execution::application::orchestration::RuntimeResultSink;
+    use datazen::execution::runtime::directory::InMemorySessionDirectory;
+    use datazen_server::execution::budget_bridge::BudgetPortBridge;
+    use datazen_server::execution::driver_exec::ServerDriverExecBackend;
+    use datazen_server::execution::lease::ServerRuntimeLeaseSource;
+    use datazen_server::execution::lease_use_cases::LeaseConnectionUseCases;
+    use datazen_server::execution::policy_adapter::ServerExecutionPolicy;
+    use datazen_server::execution::secret_provider::ServerSecretVault;
+    use datazen_server::storage::{ServerConnections, ServerProfiles};
+
     let dir: PathBuf =
         std::env::temp_dir().join(format!("dz-w3-table-data-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).expect("temp dir");
@@ -134,6 +148,44 @@ async fn fixture() -> (Arc<AdminStore>, axum::Router, Account, Account, Account)
     let primary = register_login(&store, "org-1", "user-1", "sess-w3-primary");
     let same_org_other_principal = register_login(&store, "org-1", "user-1b", "sess-w3-1b");
     let other_org = register_login(&store, "org-2", "user-2", "sess-w3-org2");
+
+    let registry = Arc::new(datazen::execution::runtime::driver_registry::DriverRegistry::new());
+    let vault = Arc::new(
+        ServerSecretVault::new(store.clone(), SERVER_SECRET.to_vec()).expect("secret vault"),
+    );
+    let connections = Arc::new(ServerConnections::new(store.clone(), vault));
+    let profiles = Arc::new(ServerProfiles::new(store.clone()));
+    let bridge = Arc::new(BudgetPortBridge::new(
+        Arc::new(
+            datazen_server::execution::budget::ServerBudgetCoordinator::new(
+                8,
+                10_000,
+                datazen::shared::id::OrganizationId::new("org-1"),
+            ),
+        ),
+        datazen::shared::id::OrganizationId::new("org-1"),
+    ));
+    let backend = Arc::new(ServerDriverExecBackend::new(
+        registry.clone(),
+        connections.clone(),
+        profiles.clone(),
+        datazen::connection::domain::catalog::ConnectionScope::new("org-1"),
+        bridge,
+        None,
+    ));
+    let policy = Arc::new(ServerExecutionPolicy::new(
+        Arc::new(PolicyService::new(store.clone(), SERVER_SECRET.to_vec()).expect("policy")),
+        store.clone(),
+        Arc::new(datazen::shared::clock::SystemClock),
+    ));
+    let lease_source = Arc::new(ServerRuntimeLeaseSource::new_with_shared_parts(
+        profiles,
+        policy,
+        backend,
+        RuntimeResultSink::default(),
+        Arc::new(InMemorySessionDirectory::new()),
+    ));
+    let lease_cases = Arc::new(LeaseConnectionUseCases::new(lease_source));
 
     let router = build_router_with_auth(AuthDeps {
         store: store.clone(),
@@ -149,8 +201,12 @@ async fn fixture() -> (Arc<AdminStore>, axum::Router, Account, Account, Account)
         mcp: None,
         domain_routers: Some(vec![table_data_router(TableDataState {
             store: store.clone(),
-            registry: Arc::new(datazen::execution::runtime::driver_registry::DriverRegistry::new()),
+            registry,
             runner: Arc::new(FixtureRunner),
+            profiles: Arc::new(datazen_server::storage::ServerProfiles::new(store.clone())),
+            connections,
+            directory: Arc::new(InMemorySessionDirectory::new()),
+            sessions: lease_cases,
         })]),
     })
     .expect("router");
@@ -694,16 +750,21 @@ async fn an_invalid_draft_is_refused_with_the_application_code() {
     assert_eq!(body["code"], "grid.view.invalid");
 }
 
-// ── ⛔ fail-closed 登记（§6.7/§6.8）────────────────────────────────────────
+// ── ⛔ fail-closed 登记（§6.7/§6.8 剩余八端点）──────────────────────────────
 
-/// driver 依赖的 tableData 路由恒 501 `capabilityUnsupported`，文案显式
-/// 声明无副作用（读一条、值搜索一条探针；全表见域路由模块头状态表）。
+/// 变更与 FK/值搜索路由恒 501 `capabilityUnsupported`，文案显式声明无副作用
+/// 且携带逐端口收窄原因（读三端点已真实现，见下方绿路径腿）。
 #[tokio::test]
 async fn driver_bound_table_data_routes_fail_closed_as_not_implemented() {
     let (_store, app, primary, _same_org, _other_org) = fixture().await;
     for (uri, method_name) in [
-        ("/api/v1/table-data/reads", "getTableData"),
         ("/api/v1/table-data/value-searches", "searchTableValues"),
+        (
+            "/api/v1/table-data/foreign-key-targets",
+            "resolveForeignKeyTargets",
+        ),
+        ("/api/v1/table-data/change-commits", "commitPendingChanges"),
+        ("/api/v1/table-data/result-origins", "resolveResultOrigin"),
     ] {
         let (status, body) = call(
             &app,
@@ -731,4 +792,603 @@ async fn the_named_view_face_sits_inside_the_auth_chain() {
     let (_store, app, _primary, _same_org, _other_org) = fixture().await;
     let (status, _) = call(&app, "GET", "/api/v1/named-views", "", None, None).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+// ── ✅ 读三端点真实现（W8-a 接线刀）─────────────────────────────────────────
+//
+// 装配与 bootstrap 同构（`f7_wiring_tests` 先例 + 桌面 fake-driver 腿同源）：
+// 真 SQLite 管理库（profile 行 + 连接目录行）+ MockDriver 工厂注册进
+// `DriverRegistry::register_test_factory`（`datazen` test-harness 门后面）
+// + `LegacyResourceAdapter` 资源提供者（共享层件：命令 → MockDriver 应答 →
+// `kind: rows` / `commandResult` 产物）+ 预算桥 + `ServerDriverExecBackend`
+// + `ServerRuntimeLeaseSource` + `ServerTargetRunner`。结果发布钩子与租约
+// 源共享同一 `RuntimeResultSink`（bootstrap 既有纪律）。会话经真
+// `open_session` 用例开立（目录 = 租约源同一实例）。
+
+use datazen::connection::domain::catalog::{ConnectionRepository as _, ConnectionScope};
+use datazen::connection::domain::profile::ProfileRepository as _;
+use datazen::connection::dto::ProfileDraft;
+use datazen::execution::application::orchestration::RuntimeResultSink;
+use datazen::execution::application::requests::OpenSessionRequest;
+use datazen::execution::target::NamespaceTarget;
+use datazen::shared::context::OwnerRef;
+use datazen::shared::id::{ClientInstanceId, EditorSessionId, IdempotencyKey};
+use datazen_driver_api::capabilities;
+use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
+use datazen_driver_api::resource_adapter::LegacyResourceAdapter;
+use datazen_driver_api::{DatabaseDriver, DatabaseDriverFactory, SslMode, Value};
+
+/// sessions 域同一条固定文案（防 ID 枚举口径的断言基准）。
+use datazen_server::http::middleware::authorize::NOT_VISIBLE_MESSAGE as NOT_VISIBLE_MESSAGE_SENTINEL;
+
+/// 把 [`MockDriver`] 连同 [`LegacyResourceAdapter`] 包成静态工厂
+/// （`register_test_factory` 吃 `&'static dyn DatabaseDriverFactory`；
+/// desktop `TestMockDriverFactory` 的 server 端最小同构）。
+struct WireMockFactory {
+    driver_id: &'static str,
+    driver: Arc<dyn DatabaseDriver>,
+}
+
+impl DatabaseDriverFactory for WireMockFactory {
+    fn create(&self) -> Arc<dyn DatabaseDriver> {
+        Arc::clone(&self.driver)
+    }
+
+    fn driver_id(&self) -> &'static str {
+        self.driver_id
+    }
+
+    fn resource_provider(&self) -> Option<Arc<dyn datazen_driver_api::resource::ResourceProvider>> {
+        let shape = datazen_driver_api::namespace::NamespaceShape {
+            levels: vec![
+                datazen_driver_api::namespace::NamespaceLevel::present(
+                    datazen_driver_api::namespace::NamespaceLevelKind::Database,
+                    false,
+                ),
+                datazen_driver_api::namespace::NamespaceLevel::absent(
+                    datazen_driver_api::namespace::NamespaceLevelKind::Catalog,
+                ),
+                datazen_driver_api::namespace::NamespaceLevel::present(
+                    datazen_driver_api::namespace::NamespaceLevelKind::Schema,
+                    false,
+                ),
+            ],
+            ..datazen_driver_api::namespace::NamespaceShape::default()
+        };
+        let mut capabilities = capabilities::CapabilitySet::default();
+        capabilities.stateful_session = capabilities::Availability::Supported;
+        capabilities.namespace_switch = capabilities::NamespaceSwitch::Unsupported;
+        capabilities.context_observation = capabilities::ContextObservation::Full;
+        capabilities.session_scoped_handles = capabilities::SessionScopedHandleSupport::Supported;
+        capabilities.reset_for_reuse = capabilities::ResetForReuse::Unsupported;
+        Some(Arc::new(LegacyResourceAdapter::new(
+            Arc::clone(&self.driver),
+            self.driver_id,
+            "wire-test",
+            1,
+            shape,
+            capabilities,
+        )))
+    }
+}
+
+/// 会话连续性的测试形（`g1_w1_gaps.rs` 先例）：主线
+/// `ServerRuntimeLeaseSource` 每 resolve 新建 runtime 私有的 sessions/tokens
+/// map——issue/consume 跨 resolve 必然失联（g1 CM-63 登记）。夹具把
+/// 「未吊销的 runtime」定为单例，固定租约源恒返同一实例，会话/令牌的
+/// 签发与消费落在同一份内存账上；执行后端（SessionBackend）与共享
+/// sink/directory 仍与主线同构。
+struct FixedLeaseSource(Arc<datazen::execution::application::RuntimeConnectionUseCases>);
+
+#[async_trait::async_trait]
+impl datazen_server::execution::lease::RuntimeLeaseSource for FixedLeaseSource {
+    async fn resolve(
+        &self,
+    ) -> Result<Arc<datazen::execution::application::RuntimeConnectionUseCases>, String> {
+        Ok(self.0.clone())
+    }
+}
+
+/// 接线夹具：真 runner + 真闸序 + MockDriver 全栈。
+struct WireFixture {
+    _store: Arc<AdminStore>,
+    app: axum::Router,
+    primary: Account,
+    other_org: Account,
+    connection_id: String,
+    sessions: Arc<dyn datazen::execution::application::use_cases::ConnectionUseCases>,
+    ctx: RequestContext,
+}
+
+async fn wired_fixture(opts: MockDriverOptions) -> WireFixture {
+    use datazen::execution::application::orchestration::{
+        RuntimeConnectionUseCases, SystemRuntimeClock,
+    };
+    use datazen_server::execution::budget_bridge::BudgetPortBridge;
+    use datazen_server::execution::driver_exec::ServerDriverExecBackend;
+    use datazen_server::execution::lease::ServerRuntimeLeaseSource;
+    use datazen_server::execution::publisher::execution_result_publisher;
+    use datazen_server::execution::resource_host::ServerResourceExecutionHost;
+    use datazen_server::execution::secret_provider::ServerSecretVault;
+    use datazen_server::execution::target_runner::ServerTargetRunner;
+    use datazen_server::storage::{ServerConnections, ServerProfiles, ServerSettingsStore};
+
+    let dir: PathBuf =
+        std::env::temp_dir().join(format!("dz-w8-table-data-wire-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).expect("temp dir");
+    let store = Arc::new(AdminStore::open(&dir.join("admin.sqlite")).expect("file store"));
+    store.migrate().expect("migrations apply v1..=v9");
+
+    let primary = register_login(&store, "org-1", "user-1", "sess-w8-primary");
+    let other_org = register_login(&store, "org-2", "user-2", "sess-w8-org2");
+
+    let ctx = RequestContext::new(
+        datazen::shared::id::OrganizationId::new("org-1"),
+        datazen::shared::id::PrincipalId::new("user-1"),
+        None,
+        // HTTP 面的 SessionIdentity 固定铸造 `http`（router.rs 提取器）；
+        // open_session 的 owner 校验（check_owner）要求 owner 与 ctx 同一
+        // 客户端实例，fixture ctx 随之对齐。
+        ClientInstanceId::new("http"),
+        datazen::shared::id::RequestId::new("req-w8-wire"),
+        None,
+    );
+
+    // 驱动注册表：懒形 + 测试驱动 + 测试工厂（生产缺省形态零依赖边的对偶
+    // 面；`register_test_driver` 供 `get_sql_driver_by_name` 直取，
+    // `register_test_factory` 供 `resource_provider` 闸）。
+    let registry = Arc::new(datazen::execution::runtime::driver_registry::DriverRegistry::new());
+    let driver = MockDriver::new("mockdb", opts);
+    registry
+        .register_test_driver("mockdb", driver.clone())
+        .await;
+    registry
+        .register_test_factory(
+            "mockdb",
+            Box::leak(Box::new(WireMockFactory {
+                driver_id: "mockdb",
+                driver: driver.clone(),
+            })),
+        )
+        .await;
+
+    let vault = Arc::new(
+        ServerSecretVault::new(store.clone(), b"w8-wire-secret".to_vec()).expect("secret vault"),
+    );
+    let connections = Arc::new(ServerConnections::new(store.clone(), vault));
+    let profiles = Arc::new(ServerProfiles::new(store.clone()));
+
+    // profile 行 + 连接目录行（同一连接 id 两半都齐，闸序可达驱动层）。
+    let record = profiles
+        .create(
+            &ctx,
+            ProfileDraft::new("wire-conn", "mockdb"),
+            &IdempotencyKey::new("idem-w8-wire-profile"),
+        )
+        .await
+        .expect("profile create");
+    let connection_id = record.connection_id.as_str().to_owned();
+    let scope = ConnectionScope::new("org-1");
+    connections
+        .save(
+            &scope,
+            datazen_driver_api::ConnectionConfig {
+                id: connection_id.clone(),
+                name: "wire conn".into(),
+                database_type: "mockdb".into(),
+                host: Some("localhost".into()),
+                port: Some(1),
+                database: Some("app".into()),
+                schema: None,
+                username: None,
+                password: None,
+                ssl_mode: SslMode::Disable,
+                connection_timeout: 30,
+                max_pool_size: 10,
+                ssh_tunnel: None,
+                tunnel_kind: None,
+                tunnel_id: None,
+                http_proxy_tunnel: None,
+                websocket_tunnel: None,
+                color_tag: None,
+                group: None,
+                last_connected_at: None,
+                server_version: None,
+                options: None,
+                read_only: false,
+                pinned: false,
+            },
+        )
+        .await
+        .expect("connection config saved");
+
+    // 执行后端 + 结果发布钩子 + 共享 sink/directory（bootstrap 同构）。
+    let bridge = Arc::new(BudgetPortBridge::new(
+        Arc::new(
+            datazen_server::execution::budget::ServerBudgetCoordinator::new(
+                8,
+                10_000,
+                datazen::shared::id::OrganizationId::new("org-1"),
+            ),
+        ),
+        datazen::shared::id::OrganizationId::new("org-1"),
+    ));
+    let backend = Arc::new(ServerDriverExecBackend::new(
+        registry.clone(),
+        connections.clone(),
+        profiles.clone(),
+        scope,
+        bridge,
+        None,
+    ));
+    let sink = RuntimeResultSink::default();
+    backend
+        .set_publisher(execution_result_publisher(sink.clone()))
+        .expect("publisher installed");
+    let policy = Arc::new(
+        datazen_server::execution::policy_adapter::ServerExecutionPolicy::new(
+            Arc::new(
+                datazen_server::policy::PolicyService::new(store.clone(), SERVER_SECRET.to_vec())
+                    .expect("policy engine"),
+            ),
+            store.clone(),
+            Arc::new(datazen::shared::clock::SystemClock),
+        ),
+    );
+    let directory =
+        Arc::new(datazen::execution::runtime::directory::InMemorySessionDirectory::new());
+    // 会话面单例（FixedLeaseSource 先例注释）：签发/消费同一 runtime。
+    let runtime = Arc::new(RuntimeConnectionUseCases::new_with_parts(
+        profiles.clone(),
+        policy.clone(),
+        backend.clone(),
+        Arc::new(SystemRuntimeClock(std::time::Instant::now()))
+            as Arc<dyn datazen::execution::runtime::gateway::MonotonicClock>,
+        sink.clone(),
+        directory.clone(),
+    ));
+    // 资源宿主（target 分支闸序）持真租约源——prepare 的 resolve 自洽
+    // （闸序 + 用例面同源于 PreparedExecution）。
+    let real_lease = Arc::new(ServerRuntimeLeaseSource::new_with_shared_parts(
+        profiles.clone(),
+        policy,
+        backend,
+        sink,
+        directory.clone(),
+    ));
+    let host = Arc::new(ServerResourceExecutionHost::new(
+        connections.clone(),
+        profiles.clone(),
+        registry.clone(),
+        Arc::new(ServerSettingsStore::scoped("org-1", store.clone())),
+        real_lease,
+        "org-1",
+    ));
+    // runner 的 manual 分支吃固定租约源（会话连续性），target 分支经 host
+    // 的真租约源自洽。
+    let runner = Arc::new(ServerTargetRunner::new(
+        host,
+        Arc::new(FixedLeaseSource(runtime.clone()))
+            as Arc<dyn datazen_server::execution::lease::RuntimeLeaseSource>,
+    ));
+
+    let app = build_router_with_auth(AuthDeps {
+        store: store.clone(),
+        policy: Arc::new(
+            datazen_server::policy::PolicyService::new(store.clone(), SERVER_SECRET.to_vec())
+                .expect("policy"),
+        ),
+        server_secret: SERVER_SECRET.to_vec(),
+        idle_ttl_seconds: 3600,
+        rate_limit: None,
+        sse: None,
+        oidc: None,
+        domains: None,
+        mcp: None,
+        domain_routers: Some(vec![table_data_router(TableDataState {
+            store: store.clone(),
+            registry,
+            runner,
+            profiles,
+            connections,
+            directory,
+            sessions: runtime.clone(),
+        })]),
+    })
+    .expect("router");
+
+    WireFixture {
+        _store: store,
+        app,
+        primary,
+        other_org,
+        connection_id,
+        sessions: runtime,
+        ctx,
+    }
+}
+
+impl WireFixture {
+    /// 经真 `open_session` 用例开立会话，返回 dbSessionId。幂等键走
+    /// 预签发令牌（用例层核验签名，_sessions 域同一令牌面）。
+    async fn open_session(&self, namespace_database: &str) -> String {
+        use datazen::execution::application::idempotency::IdempotentOperation;
+        let target = datazen::execution::ExecutionTarget::new(
+            datazen::shared::id::ConnectionId::new(self.connection_id.clone()),
+            NamespaceTarget::new(Some(namespace_database.to_owned()), None, None, Vec::new()),
+        );
+        let token = self
+            .sessions
+            .issue_submission_token(&self.ctx, IdempotentOperation::OpenSession, None)
+            .await
+            .expect("submission token issued");
+        let receipt = self
+            .sessions
+            .open_session(
+                &self.ctx,
+                OpenSessionRequest::new(
+                    target,
+                    OwnerRef::Editor {
+                        // HTTP 面的 SessionIdentity 固定铸造 `http` 客户端
+                        // 实例（router.rs 提取器）；会话归属必须与之一致，
+                        // 否则 session_entry 的 ctx 过滤判 SessionNotFound。
+                        client_instance_id: ClientInstanceId::new("http"),
+                        editor_session_id: EditorSessionId::new("wire-editor-1"),
+                    },
+                    token.idempotency_key,
+                ),
+            )
+            .await
+            .expect("session opens through the real use case");
+        receipt.session.handle.db_session_id.as_str().to_owned()
+    }
+
+    /// `getTableData` 的最小合法体（camelCase 契约；dbSessionId 是共享层
+    /// 上下文校验的必填字段——桌面网格读携带同一上下文词汇）。
+    fn read_body(&self, database: &str) -> serde_json::Value {
+        serde_json::json!({
+            "context": {
+                "connectionId": self.connection_id,
+                "dbSessionId": "wire-grid-session",
+                "driverType": "mockdb",
+                "database": database,
+                "schema": null,
+                "table": "users",
+            },
+            "page": 1,
+            "pageSize": 50,
+        })
+    }
+}
+
+/// 读三端点在认证链内：无 cookie 的读在 L2 被 401 拒绝。
+#[tokio::test]
+async fn the_wired_read_face_sits_inside_the_auth_chain() {
+    let fixture = wired_fixture(MockDriverOptions::default()).await;
+    let (status, _) = call(
+        &fixture.app,
+        "POST",
+        "/api/v1/table-data/reads",
+        "",
+        None,
+        Some(serde_json::json!({})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+/// `getTableData` 绿路径：真 runner target 分支（prepare 闸序 → CAS → 执行
+/// → 轮询 → 产物收集）经 MockDriver 走通，200 `TableDataResult` 携带行。
+/// `skipCount` 的裁决：MockDriver 的 `query_multi` 是单语句实现，双语句
+/// batch（count + rows）只会应答 COUNT 拦截——桌面网格同款限制，与生产
+/// 驱动的 batch 能力无关；行集绿路径因此以 skip_count 读证明。
+#[tokio::test]
+async fn a_table_read_runs_through_the_real_runner_and_answers_rows() {
+    let mut opts = MockDriverOptions::default();
+    opts.query_rows = vec![vec![Some(Value::Integer(1))], vec![Some(Value::Integer(2))]];
+    let fixture = wired_fixture(opts).await;
+    let mut body = fixture.read_body("app");
+    body["skipCount"] = serde_json::json!(true);
+    let (status, body) = call(
+        &fixture.app,
+        "POST",
+        "/api/v1/table-data/reads",
+        &fixture.primary.cookie,
+        Some(&fixture.primary.csrf),
+        Some(body),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let rows = body["rows"].as_array().expect("rows array");
+    assert_eq!(rows.len(), 2, "the page rows arrive: {body}");
+    assert_eq!(rows[0][0], serde_json::json!(1), "{body}");
+    assert!(
+        body["columns"].as_array().expect("columns").len() > 0,
+        "the schema round trip through the runner answers columns: {body}"
+    );
+    assert_eq!(
+        body["totalRowsKind"],
+        serde_json::Value::Null,
+        "skip_count reuses the caller's total: {body}"
+    );
+}
+
+/// 未知连接的读 → 404（profile 闸先于一切执行面触碰）。
+#[tokio::test]
+async fn a_read_of_an_unknown_connection_is_refused_with_not_found() {
+    let mut opts = MockDriverOptions::default();
+    opts.query_rows = vec![vec![Some(Value::Integer(1))]];
+    let fixture = wired_fixture(opts).await;
+    let mut body = fixture.read_body("app");
+    body["context"]["connectionId"] = serde_json::json!("no-such-connection");
+    let (status, body) = call(
+        &fixture.app,
+        "POST",
+        "/api/v1/table-data/reads",
+        &fixture.primary.cookie,
+        Some(&fixture.primary.csrf),
+        Some(body),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    assert_eq!(body["message"], "Connection profile unavailable", "{body}");
+}
+
+/// 驱动类型漂移的读 → 400（profile 存在但请求声称的 driverType 与目录
+/// 不符——desktop「Table connection context changed」同款拒绝）。
+#[tokio::test]
+async fn a_read_whose_driver_type_drifted_is_refused() {
+    let fixture = wired_fixture(MockDriverOptions::default()).await;
+    let mut body = fixture.read_body("app");
+    body["context"]["driverType"] = serde_json::json!("postgres");
+    let (status, body) = call(
+        &fixture.app,
+        "POST",
+        "/api/v1/table-data/reads",
+        &fixture.primary.cookie,
+        Some(&fixture.primary.csrf),
+        Some(body),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert_eq!(
+        body["message"], "Table connection context changed",
+        "{body}"
+    );
+}
+
+/// `previewTableReadSql` 绿路径：同一闸序，200 预览体（数据语句 + 计数
+/// 语句 + 精确计数 + kind），且不执行任何语句（MockDriver query 计数为 0
+/// 无法直接断言——预览用例本身不触 runner 执行，体形状即证据）。
+#[tokio::test]
+async fn a_sql_preview_assembles_statements_without_running_them() {
+    let fixture = wired_fixture(MockDriverOptions::default()).await;
+    let body = serde_json::json!({
+        "context": {
+            "connectionId": fixture.connection_id,
+            "dbSessionId": "wire-grid-session",
+            "driverType": "mockdb",
+            "database": "app",
+            "schema": null,
+            "table": "users",
+        },
+        "page": 1,
+        "pageSize": 50,
+    });
+    let (status, body) = call(
+        &fixture.app,
+        "POST",
+        "/api/v1/table-data/read-sql-previews",
+        &fixture.primary.cookie,
+        Some(&fixture.primary.csrf),
+        Some(body),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let data_sql = body["dataSql"].as_str().expect("dataSql");
+    assert!(data_sql.to_uppercase().contains("SELECT"), "{data_sql}");
+    assert!(data_sql.to_uppercase().contains("USERS"), "{data_sql}");
+    assert!(
+        body["exactCountSql"].as_str().is_some(),
+        "the exact count statement is always present: {body}"
+    );
+    assert_eq!(body["countKind"], "exact", "{body}");
+}
+
+/// `estimateTableRows` 绿路径（会话面）：真 open_session → 目录可见性闸 →
+/// get_session → 估算语句经 runner manual 分支在会话内执行 → 200 数字。
+#[tokio::test]
+async fn an_estimate_runs_in_the_session_and_answers_a_number() {
+    let mut opts = MockDriverOptions::default();
+    opts.count_estimate_rows = Some(12345);
+    let fixture = wired_fixture(opts).await;
+    let db_session_id = fixture.open_session("app").await;
+    let (status, body) = call(
+        &fixture.app,
+        "POST",
+        "/api/v1/table-data/row-count-estimates",
+        &fixture.primary.cookie,
+        Some(&fixture.primary.csrf),
+        Some(serde_json::json!({
+            "dbSessionId": db_session_id,
+            "table": "users",
+            "database": "app",
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body,
+        serde_json::json!(12345),
+        "the estimate rides the wire: {body}"
+    );
+}
+
+/// 驱动不能估算 → 200 `null`（答案，不是错误；**没有**隐藏的精确计数回退
+/// ——估算用例从不跑 `COUNT(*)`）。
+#[tokio::test]
+async fn an_estimate_of_an_unsupporting_driver_answers_null() {
+    // MockDriverOptions::default() 的 count_estimate_rows = None：
+    // count_estimate_sql 返回 None，估算语句根本不存在。
+    let fixture = wired_fixture(MockDriverOptions::default()).await;
+    let db_session_id = fixture.open_session("app").await;
+    let (status, body) = call(
+        &fixture.app,
+        "POST",
+        "/api/v1/table-data/row-count-estimates",
+        &fixture.primary.cookie,
+        Some(&fixture.primary.csrf),
+        Some(serde_json::json!({
+            "dbSessionId": db_session_id,
+            "table": "users",
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        body,
+        serde_json::Value::Null,
+        "null is the honest answer: {body}"
+    );
+}
+
+/// 未知/越组织的会话 id → 404 固定文案（sessions 域同一条，防 ID 枚举）。
+#[tokio::test]
+async fn an_estimate_of_an_unknown_session_is_not_visible() {
+    let fixture = wired_fixture(MockDriverOptions::default()).await;
+    let (status, body) = call(
+        &fixture.app,
+        "POST",
+        "/api/v1/table-data/row-count-estimates",
+        &fixture.primary.cookie,
+        Some(&fixture.primary.csrf),
+        Some(serde_json::json!({
+            "dbSessionId": "no-such-session",
+            "table": "users",
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    assert_eq!(body["message"], NOT_VISIBLE_MESSAGE_SENTINEL, "{body}");
+}
+
+/// 越组织主体的估算 → 404（可见性先于会话存活；org-2 看不见 org-1 的会话）。
+#[tokio::test]
+async fn an_estimate_across_organizations_is_not_visible() {
+    let fixture = wired_fixture(MockDriverOptions::default()).await;
+    let db_session_id = fixture.open_session("app").await;
+    let (status, body) = call(
+        &fixture.app,
+        "POST",
+        "/api/v1/table-data/row-count-estimates",
+        &fixture.other_org.cookie,
+        Some(&fixture.other_org.csrf),
+        Some(serde_json::json!({
+            "dbSessionId": db_session_id,
+            "table": "users",
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
+    assert_eq!(body["message"], NOT_VISIBLE_MESSAGE_SENTINEL, "{body}");
 }

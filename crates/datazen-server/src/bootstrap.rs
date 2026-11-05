@@ -434,7 +434,9 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         ),
         crate::http::domains::sessions::sessions_router(
             crate::http::domains::sessions::SessionsState {
-                sessions: lease_cases,
+                // W8-a 接线刀起 tableData 域共享同一用例面（estimate 的
+                // get_session），此处改 clone。
+                sessions: lease_cases.clone(),
                 directory: session_directory.clone(),
             },
         ),
@@ -453,14 +455,21 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
             organization_id: config.organization_id.clone(),
         }),
         // WR-C3 §6.7–6.9 tableData 域（W3 刀）：命名视图三端点真实现
-        // （v9 `named_views` 表）+ tableData 读/预览/变更十一端点
-        // fail-closed 登记（501，逐方法不可服务原因）。认证链 L2–L6 与
-        // CSRF 由 merge 循环保证。
+        // （v9 `named_views` 表）。W8-a 接线刀：读三端点（reads /
+        // read-sql-previews / row-count-estimates）501 → 真用例接线——
+        // profiles/connections 按请求组织读取（SessionIdentity.ctx 真主体
+        // 语义），directory/sessions 与 sessions 域同一实例；其余八端点
+        // fail-closed（501，逐端口收窄原因）。认证链 L2–L6 与 CSRF 由
+        // merge 循环保证。
         crate::http::domains::table_data::table_data_router(
             crate::http::domains::table_data::TableDataState {
                 store: store.clone(),
                 registry: driver_registry.clone(),
                 runner: table_target_runner.clone(),
+                profiles: profiles_repo.clone(),
+                connections: connections_repo.clone(),
+                directory: session_directory.clone(),
+                sessions: lease_cases.clone(),
             },
         ),
         // WR-C2 §6.9 driverGateway 过渡域（四方法；闸序与目标机器同一

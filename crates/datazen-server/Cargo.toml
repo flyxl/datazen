@@ -155,6 +155,11 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time",
 serde_json = { workspace = true }
 futures-util = { workspace = true }
 async-trait = { workspace = true }
+# W8-a 接线刀：table_data_routes 的绿路径夹具把 MockDriver 工厂注册进
+# `DriverRegistry::register_test_factory`（`datazen` 的 test-harness 门后
+# 面）。dev-deps 的 feature 叠加只影响测试编译单元，生产构建闭包不变
+# （server-deps 门禁不受影响）。
+datazen = { workspace = true, features = ["test-harness"] }
 
 [lints]
 workspace = true

@@ -817,6 +817,49 @@ pub async fn preview_table_read(
     })
 }
 
+/// Estimate the row count of one table through a session-bound command run.
+///
+/// The estimate-only read: the driver's own estimate statement runs at the
+/// binding and the number it reports is the answer. There is **no fallback** —
+/// a driver that cannot estimate (or an estimate statement that fails) answers
+/// `Ok(None)`, never a hidden exact `COUNT(*)`. Deciding to spend that work is
+/// the caller's business (the desktop command's contract, DB-15 lineage).
+///
+/// The binding is minted by the host: an estimate is session-bound (the wire
+/// request names `dbSessionId`), so the host resolves the session and hands
+/// the binding over — the target branch of the runner port is never engaged
+/// by this use case. The count cell is parsed with the same verdict the page
+/// read applies to its estimated plan ([`browsing::estimated_count_cell`]):
+/// a negative number is a failed lookup, zero is a legal answer.
+pub async fn estimate_table_rows(
+    driver: &dyn DatabaseDriver,
+    binding: &TargetBinding,
+    database: &str,
+    schema: Option<&str>,
+    table: &str,
+    context: RequestContext,
+    runner: &dyn TargetCommandRunner,
+) -> Result<Option<i64>, TableReadError> {
+    let Some(sql) = driver.count_estimate_sql(database, schema, table) else {
+        // "This driver cannot estimate this table" is an answer, not a
+        // failure: nothing ran, so there is no statement outcome to report.
+        return Ok(None);
+    };
+    let outputs = runner
+        .run(&context, binding, "query", json!({"sql": sql}))
+        .await?;
+    let statements = statement_row_sets(outputs)?;
+    let rows = statements
+        .into_values()
+        .next()
+        .ok_or_else(|| TableReadError::Internal("Estimate statement published no result".into()))?;
+    let cell = rows
+        .first()
+        .and_then(|row| row.first())
+        .and_then(|cell| cell.as_ref());
+    Ok(cell.and_then(browsing::estimated_count_cell))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
