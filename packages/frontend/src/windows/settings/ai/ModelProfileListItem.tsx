@@ -2,6 +2,7 @@ import { Shield, Star, Copy, Edit2, Trash2, CheckCircle2 } from 'lucide-react';
 import { Button } from '../../../components/ui/Button';
 import { useI18n } from '../../../hooks/useI18n';
 import { detectSafetyPreset } from '../../../lib/aiSafetyPresets';
+import { PROVIDER_PRESETS } from '../../../lib/aiProviders';
 import type { AiModelProfile } from '../../../types';
 import { tid } from '../../../lib/tid';
 import { cn } from '../../../lib/cn';
@@ -108,7 +109,7 @@ export function ModelProfileListItem({
 
         <div className="flex flex-wrap items-center gap-2 text-xs text-fg-muted">
           <span className="rounded bg-surface-alt px-1.5 py-0.5 font-mono text-[11px] text-fg-subtle border border-edge">
-            {profile.providerType}
+            {PROVIDER_PRESETS[profile.providerType]?.displayName ?? profile.providerType}
           </span>
           <span>•</span>
           <span

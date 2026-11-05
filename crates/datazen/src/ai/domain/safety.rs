@@ -367,7 +367,14 @@ pub fn provider_allows_unredacted_credentials(
     match provider_type {
         AiProviderType::Ollama => true,
         AiProviderType::Custom => endpoint.and_then(loopback_host).is_some(),
-        AiProviderType::OpenAi | AiProviderType::Anthropic | AiProviderType::DeepSeek => false,
+        AiProviderType::OpenAi
+        | AiProviderType::Anthropic
+        | AiProviderType::DeepSeek
+        | AiProviderType::Gemini
+        | AiProviderType::Qwen
+        | AiProviderType::MiniMax
+        | AiProviderType::OpenAiCompatible
+        | AiProviderType::AnthropicCompatible => false,
     }
 }
 

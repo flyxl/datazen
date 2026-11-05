@@ -25,6 +25,7 @@ fn remote_models_log_endpoint(endpoint: &str) -> String {
 pub enum CustomProtocol {
     OpenAiCompatible,
     OpenAiResponses,
+    #[serde(alias = "anthropic")]
     AnthropicCompatible,
 }
 
@@ -287,6 +288,16 @@ mod tests {
 
         assert!(log_setup.contains("endpoint = %safe_endpoint"));
         assert!(!log_setup.contains("api_key"));
+    }
+
+    #[test]
+    fn legacy_anthropic_protocol_value_maps_to_the_compatible_wire_format() {
+        let parsed: CustomProtocol = serde_json::from_str("\"anthropic\"").unwrap();
+        assert_eq!(parsed, CustomProtocol::AnthropicCompatible);
+        assert_eq!(
+            serde_json::to_string(&CustomProtocol::AnthropicCompatible).unwrap(),
+            "\"anthropic_compatible\""
+        );
     }
 
     #[test]

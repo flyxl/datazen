@@ -2,7 +2,17 @@
 
 // ── AI Types ──
 
-export type AiProviderType = 'open_ai' | 'deep_seek' | 'ollama' | 'custom';
+export type AiProviderType =
+  | 'open_ai'
+  | 'anthropic'
+  | 'deep_seek'
+  | 'ollama'
+  | 'custom'
+  | 'gemini'
+  | 'qwen'
+  | 'mini_max'
+  | 'open_ai_compatible'
+  | 'anthropic_compatible';
 
 export type AiAgentMode = 'ask' | 'agent';
 
@@ -96,6 +106,8 @@ export interface ProviderListItem {
   supportsTools: boolean;
   defaultEndpoint: string;
   defaultProtocol: string;
+  /** Model preselected by the preset; empty for compatible/custom endpoints. */
+  defaultModel?: string;
 }
 
 export interface DiagnosisResult {

@@ -5,6 +5,7 @@
 //! `AiProviderType` to a concrete provider and restores persisted configs.
 
 pub mod anthropic;
+pub mod compatible;
 pub mod custom;
 pub mod deepseek;
 pub mod http;

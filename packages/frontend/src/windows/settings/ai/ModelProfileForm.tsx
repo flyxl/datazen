@@ -86,6 +86,7 @@ export function ModelProfileForm({
               value={d.draft.providerType}
               options={d.providerOptions}
               onChange={d.handleProviderChange}
+              data-testid="ai-provider-select"
             />
           </SettingRow>
 

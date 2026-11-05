@@ -7,10 +7,21 @@ use thiserror::Error;
 #[serde(rename_all = "snake_case")]
 pub enum AiProviderType {
     OpenAi,
+    /// Legacy Claude entry persisted before the provider preset expansion.
+    /// Kept serialized as `anthropic` so old `ai_config.enc` files keep loading.
+    #[serde(alias = "claude")]
     Anthropic,
     DeepSeek,
     Ollama,
     Custom,
+    Gemini,
+    Qwen,
+    #[serde(rename = "mini_max", alias = "minimax")]
+    MiniMax,
+    #[serde(rename = "open_ai_compatible", alias = "openai_compatible")]
+    OpenAiCompatible,
+    #[serde(rename = "anthropic_compatible", alias = "anthropic_compat")]
+    AnthropicCompatible,
 }
 
 impl std::fmt::Display for AiProviderType {
@@ -21,6 +32,11 @@ impl std::fmt::Display for AiProviderType {
             Self::DeepSeek => write!(f, "DeepSeek"),
             Self::Ollama => write!(f, "Ollama"),
             Self::Custom => write!(f, "Custom"),
+            Self::Gemini => write!(f, "Google Gemini"),
+            Self::Qwen => write!(f, "Qwen"),
+            Self::MiniMax => write!(f, "MiniMax"),
+            Self::OpenAiCompatible => write!(f, "OpenAI Compatible"),
+            Self::AnthropicCompatible => write!(f, "Anthropic Compatible"),
         }
     }
 }
@@ -370,6 +386,88 @@ impl AiSettingsConfig {
             .find(|profile| profile.id == self.active_profile_id)
             .or_else(|| self.profiles.iter().find(|profile| profile.is_default))
             .or_else(|| self.profiles.first())
+    }
+}
+
+#[cfg(test)]
+mod provider_type_serde_tests {
+    use super::AiProviderType;
+
+    #[test]
+    fn legacy_provider_values_still_deserialize() {
+        for (value, expected) in [
+            ("\"open_ai\"", AiProviderType::OpenAi),
+            ("\"anthropic\"", AiProviderType::Anthropic),
+            ("\"deep_seek\"", AiProviderType::DeepSeek),
+            ("\"ollama\"", AiProviderType::Ollama),
+            ("\"custom\"", AiProviderType::Custom),
+            ("\"claude\"", AiProviderType::Anthropic),
+        ] {
+            let parsed: AiProviderType = serde_json::from_str(value).unwrap();
+            assert_eq!(parsed, expected, "legacy value {value} must keep loading");
+        }
+    }
+
+    #[test]
+    fn legacy_anthropic_config_keeps_endpoint_and_key() {
+        let encoded = r#"{
+            "providerType": "anthropic",
+            "apiKey": "sk-ant-legacy",
+            "endpoint": "https://api.anthropic.com",
+            "model": "claude-sonnet-4-20250514",
+            "maxTokens": 200000,
+            "extra": {}
+        }"#;
+        let config: super::AiProviderConfig = serde_json::from_str(encoded).unwrap();
+        assert_eq!(config.provider_type, AiProviderType::Anthropic);
+        assert_eq!(config.api_key.as_deref(), Some("sk-ant-legacy"));
+        assert_eq!(
+            config.endpoint.as_deref(),
+            Some("https://api.anthropic.com")
+        );
+        let round_tripped: super::AiProviderConfig =
+            serde_json::from_str(&serde_json::to_string(&config).unwrap()).unwrap();
+        assert_eq!(round_tripped.provider_type, AiProviderType::Anthropic);
+        assert_eq!(round_tripped.api_key.as_deref(), Some("sk-ant-legacy"));
+    }
+
+    #[test]
+    fn legacy_anthropic_profile_deserializes_inside_settings() {
+        let settings: super::AiSettingsConfig = serde_json::from_str(
+            r#"{
+                "activeProfileId": "legacy",
+                "profiles": [{
+                    "id": "legacy",
+                    "name": "Old Claude",
+                    "providerType": "anthropic",
+                    "apiKey": "sk-ant-legacy",
+                    "endpoint": "https://api.anthropic.com",
+                    "model": "claude-sonnet-4-20250514",
+                    "maxTokens": 200000,
+                    "isDefault": true
+                }]
+            }"#,
+        )
+        .unwrap();
+        let profile = settings.selected_profile().unwrap();
+        assert_eq!(profile.provider_type, AiProviderType::Anthropic);
+        assert_eq!(profile.api_key.as_deref(), Some("sk-ant-legacy"));
+    }
+
+    #[test]
+    fn preset_provider_values_round_trip_as_snake_case() {
+        for (value, expected) in [
+            ("gemini", AiProviderType::Gemini),
+            ("qwen", AiProviderType::Qwen),
+            ("mini_max", AiProviderType::MiniMax),
+            ("open_ai_compatible", AiProviderType::OpenAiCompatible),
+            ("anthropic_compatible", AiProviderType::AnthropicCompatible),
+        ] {
+            let encoded = serde_json::to_string(&expected).unwrap();
+            assert_eq!(encoded, format!("\"{value}\""));
+            let decoded: AiProviderType = serde_json::from_str(&encoded).unwrap();
+            assert_eq!(decoded, expected);
+        }
     }
 }
 

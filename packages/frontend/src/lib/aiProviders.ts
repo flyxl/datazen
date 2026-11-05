@@ -1,54 +1,147 @@
 import type { AiProviderType, ProviderListItem } from '../types';
 
-export const DEEP_SEEK_PROVIDER: ProviderListItem = {
-  providerType: 'deep_seek',
-  displayName: 'DeepSeek',
-  supportsStreaming: true,
-  supportsTools: true,
-  defaultEndpoint: 'https://api.deepseek.com',
-  defaultProtocol: 'open_ai_responses',
+const supportsBoth = { supportsStreaming: true, supportsTools: true } as const;
+
+/** Canonical metadata for the ten API presets in PRD order. */
+export const PROVIDER_PRESETS: Record<AiProviderType, ProviderListItem> = {
+  anthropic: {
+    providerType: 'anthropic',
+    displayName: 'Anthropic (Claude)',
+    ...supportsBoth,
+    defaultEndpoint: 'https://api.anthropic.com',
+    defaultProtocol: 'anthropic_compatible',
+    defaultModel: 'claude-sonnet-4-20250514',
+  },
+  open_ai: {
+    providerType: 'open_ai',
+    displayName: 'OpenAI',
+    ...supportsBoth,
+    defaultEndpoint: 'https://api.openai.com/v1',
+    defaultProtocol: 'open_ai_compatible',
+    defaultModel: 'gpt-4o',
+  },
+  gemini: {
+    providerType: 'gemini',
+    displayName: 'Google Gemini',
+    ...supportsBoth,
+    defaultEndpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+    defaultProtocol: 'open_ai_compatible',
+    defaultModel: 'gemini-2.5-pro',
+  },
+  deep_seek: {
+    providerType: 'deep_seek',
+    displayName: 'DeepSeek',
+    ...supportsBoth,
+    defaultEndpoint: 'https://api.deepseek.com',
+    defaultProtocol: 'open_ai_responses',
+    defaultModel: 'deepseek-chat',
+  },
+  qwen: {
+    providerType: 'qwen',
+    displayName: 'Qwen',
+    ...supportsBoth,
+    defaultEndpoint: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    defaultProtocol: 'open_ai_compatible',
+    defaultModel: 'qwen-plus',
+  },
+  mini_max: {
+    providerType: 'mini_max',
+    displayName: 'MiniMax',
+    ...supportsBoth,
+    defaultEndpoint: 'https://api.minimax.io/v1',
+    defaultProtocol: 'open_ai_compatible',
+    defaultModel: 'MiniMax-M3.1-Flash',
+  },
+  ollama: {
+    providerType: 'ollama',
+    displayName: 'Ollama',
+    ...supportsBoth,
+    defaultEndpoint: 'http://127.0.0.1:11434/v1',
+    defaultProtocol: 'open_ai_compatible',
+    defaultModel: 'llama3.2',
+  },
+  open_ai_compatible: {
+    providerType: 'open_ai_compatible',
+    displayName: 'OpenAI Compatible',
+    ...supportsBoth,
+    defaultEndpoint: '',
+    defaultProtocol: 'open_ai_compatible',
+    defaultModel: '',
+  },
+  anthropic_compatible: {
+    providerType: 'anthropic_compatible',
+    displayName: 'Anthropic Compatible',
+    ...supportsBoth,
+    defaultEndpoint: '',
+    defaultProtocol: 'anthropic_compatible',
+    defaultModel: '',
+  },
+  custom: {
+    providerType: 'custom',
+    displayName: 'Custom',
+    ...supportsBoth,
+    defaultEndpoint: '',
+    defaultProtocol: 'open_ai_compatible',
+    defaultModel: '',
+  },
 };
 
-export const OLLAMA_PROVIDER: ProviderListItem = {
-  providerType: 'ollama',
-  displayName: 'Ollama',
-  supportsStreaming: true,
-  supportsTools: true,
-  defaultEndpoint: 'http://127.0.0.1:11434/v1',
-  defaultProtocol: 'open_ai_compatible',
-};
+export const PROVIDER_ORDER: AiProviderType[] = [
+  'anthropic',
+  'open_ai',
+  'gemini',
+  'deep_seek',
+  'qwen',
+  'mini_max',
+  'ollama',
+  'open_ai_compatible',
+  'anthropic_compatible',
+  'custom',
+];
 
-const PROVIDER_ORDER: AiProviderType[] = ['open_ai', 'deep_seek', 'ollama', 'custom'];
+export const DEEP_SEEK_PROVIDER = PROVIDER_PRESETS.deep_seek;
+export const OLLAMA_PROVIDER = PROVIDER_PRESETS.ollama;
 
 export function isKnownProviderType(value: string): value is AiProviderType {
-  return value === 'open_ai' || value === 'deep_seek' || value === 'ollama' || value === 'custom';
+  return (PROVIDER_ORDER as string[]).includes(value);
 }
 
-/** Hide legacy Anthropic built-in provider; ensure DeepSeek / Ollama defaults. */
+function mergeProvider(provider: ProviderListItem, preset: ProviderListItem): ProviderListItem {
+  return {
+    ...preset,
+    ...provider,
+    providerType: preset.providerType,
+    displayName: provider.displayName || preset.displayName,
+    defaultEndpoint: provider.defaultEndpoint || preset.defaultEndpoint,
+    defaultProtocol: provider.defaultProtocol || preset.defaultProtocol,
+    defaultModel: provider.defaultModel || preset.defaultModel,
+  };
+}
+
+/**
+ * Normalize backend provider metadata into the ten canonical presets. Old
+ * backends only return five entries; new presets are filled in locally so the
+ * form never silently loses a preset. Legacy `anthropic` is now a first-class
+ * Claude preset instead of being hidden.
+ */
 export function normalizeAiProviders(providers: ProviderListItem[]): ProviderListItem[] {
   const byType = new Map<AiProviderType, ProviderListItem>();
 
   for (const provider of providers) {
-    if ((provider.providerType as string) === 'anthropic') continue;
-    if (provider.providerType === 'deep_seek') {
-      byType.set('deep_seek', { ...provider, ...DEEP_SEEK_PROVIDER });
+    if (!isKnownProviderType(provider.providerType)) continue;
+    const preset = PROVIDER_PRESETS[provider.providerType];
+    // DeepSeek/Ollama historically shipped stale backend defaults; keep the
+    // frontend canonical endpoints so existing profiles migrate predictably.
+    if (provider.providerType === 'deep_seek' || provider.providerType === 'ollama') {
+      byType.set(provider.providerType, preset);
       continue;
     }
-    if (provider.providerType === 'ollama') {
-      byType.set('ollama', { ...provider, ...OLLAMA_PROVIDER });
-      continue;
-    }
-    if (isKnownProviderType(provider.providerType)) {
-      byType.set(provider.providerType, provider);
-    }
+    byType.set(provider.providerType, mergeProvider(provider, preset));
   }
 
-  if (!byType.has('deep_seek')) {
-    byType.set('deep_seek', DEEP_SEEK_PROVIDER);
-  }
-  if (!byType.has('ollama')) {
-    byType.set('ollama', OLLAMA_PROVIDER);
+  for (const type of PROVIDER_ORDER) {
+    if (!byType.has(type)) byType.set(type, PROVIDER_PRESETS[type]);
   }
 
-  return PROVIDER_ORDER.filter((type) => byType.has(type)).map((type) => byType.get(type)!);
+  return PROVIDER_ORDER.map((type) => byType.get(type)!);
 }
