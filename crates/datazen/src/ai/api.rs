@@ -147,6 +147,9 @@ pub async fn save_settings_config(
     store: &dyn AiConfigStore,
     config: AiSettingsConfig,
 ) -> Result<(), AiUseCaseError> {
+    config
+        .validate_prompt_limits()
+        .map_err(AiUseCaseError::Validation)?;
     if let Some(profile) = config.selected_profile() {
         let provider_config = AiProviderConfig::from(profile);
         if let Some(provider) = registry.get(&provider_config.provider_type).await {

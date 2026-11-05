@@ -37,6 +37,174 @@ async fn ai_session_commands_reject_unknown_runtime_ids() {
 }
 
 #[tokio::test]
+async fn save_settings_config_rejects_prompt_over_limit_before_ai_readiness() {
+    let test = TestAppState::new().await;
+    let app = host_command_app(test);
+    let config = datazen::ai::AiSettingsConfig {
+        global_instructions: "a".repeat(datazen::ai::MAX_GLOBAL_INSTRUCTIONS_BYTES + 1),
+        ..Default::default()
+    };
+    let error = ai_save_settings_config(app.handle(), app.state(), config)
+        .await
+        .expect_err("over-limit global instructions are rejected");
+    assert!(matches!(
+        error,
+        crate::commands::error::CommandError::Validation(_)
+    ));
+}
+
+#[tokio::test]
+async fn connection_notes_ipc_round_trips_and_counts_are_scoped() {
+    let test = TestAppState::new().await;
+    let app = host_command_app(test);
+
+    assert_eq!(
+        ai_connection_notes_get("c-notes".into(), app.state())
+            .await
+            .unwrap(),
+        None
+    );
+    ai_connection_notes_set("c-notes".into(), "use UTC".into(), app.state())
+        .await
+        .unwrap();
+    assert_eq!(
+        ai_connection_notes_get("c-notes".into(), app.state())
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("use UTC")
+    );
+
+    let counts = ai_connection_context_counts("c-notes".into(), app.state())
+        .await
+        .unwrap();
+    assert_eq!(counts.note_count, 1);
+    assert_eq!(counts.memory_count, 0);
+
+    let too_long = "a".repeat(datazen::ai::MAX_CONNECTION_NOTES_BYTES + 1);
+    let error = ai_connection_notes_set("c-notes".into(), too_long, app.state())
+        .await
+        .expect_err("over-limit notes are rejected");
+    assert!(matches!(
+        error,
+        crate::commands::error::CommandError::Validation(_)
+    ));
+    assert_eq!(
+        ai_connection_notes_get("c-notes".into(), app.state())
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("use UTC")
+    );
+
+    // Empty content deletes instead of persisting a blank note.
+    ai_connection_notes_set("c-notes".into(), "  \n".into(), app.state())
+        .await
+        .unwrap();
+    assert_eq!(
+        ai_connection_notes_get("c-notes".into(), app.state())
+            .await
+            .unwrap(),
+        None
+    );
+}
+
+#[tokio::test]
+async fn ai_chat_emits_injection_snapshot_without_prompt_bodies() {
+    use datazen::ai::PromptTemplate;
+    use std::sync::Mutex;
+    use tauri::Listener;
+
+    let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
+    test.save_connection("inject-cfg").await;
+    mock.mount_chat_stream_text("ok").await;
+
+    let mut settings = test.store.get_ai_settings_config().await;
+    settings.global_instructions = "Use UTC.".into();
+    settings.prompt_templates = vec![PromptTemplate {
+        id: "pg-template".into(),
+        name: "Postgres style".into(),
+        content: "PRIVATE_TEMPLATE_BODY prefer explicit joins".into(),
+        database_types: vec!["postgresql".into()],
+        is_default: true,
+    }];
+    test.store.save_ai_settings_config(&settings).await.unwrap();
+
+    let organization_id = test
+        .state
+        .organization_scope()
+        .unwrap()
+        .organization_id()
+        .as_str()
+        .to_string();
+    let owner = crate::platform::local_principal()
+        .map(|principal| principal.as_str().to_string())
+        .unwrap_or_else(|| "datazen-local-user".to_string());
+    test.store
+        .app_db()
+        .set_ai_connection_note(
+            &organization_id,
+            &owner,
+            "inject-cfg",
+            "PRIVATE_NOTE_BODY customer means account",
+        )
+        .unwrap();
+
+    let app = host_command_app(test);
+    let payloads: Arc<Mutex<Vec<serde_json::Value>>> = Arc::new(Mutex::new(Vec::new()));
+    let captured = payloads.clone();
+    app.window().listen("ai:chat-injection", move |event| {
+        if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
+            captured.lock().unwrap().push(payload);
+        }
+    });
+
+    ai_chat(
+        app.state(),
+        app.window(),
+        None,
+        None,
+        vec![ChatMessage {
+            role: MessageRole::User,
+            content: "question".into(),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }],
+        "req-injection".into(),
+        false,
+        None,
+        None,
+        None,
+        None,
+        Some("inject-cfg".into()),
+        Some(datazen::ai::AiAgentMode::Ask),
+        None,
+        None,
+        None,
+        None,
+        Some("pg-template".into()),
+        Some("postgresql".into()),
+    )
+    .await
+    .unwrap();
+
+    let payloads = payloads.lock().unwrap();
+    let payload = payloads
+        .iter()
+        .find(|payload| payload["requestId"] == "req-injection")
+        .expect("injection event");
+    assert_eq!(payload["snapshot"]["templateId"], "pg-template");
+    assert_eq!(payload["snapshot"]["templateName"], "Postgres style");
+    assert!(payload["snapshot"]["templateHash"].as_str().is_some());
+    assert_eq!(payload["snapshot"]["hasConnectionNotes"], true);
+    assert_eq!(payload["snapshot"]["hasGlobalInstructions"], true);
+    let serialized = payload.to_string();
+    assert!(!serialized.contains("PRIVATE_TEMPLATE_BODY"));
+    assert!(!serialized.contains("PRIVATE_NOTE_BODY"));
+}
+
+#[tokio::test]
 async fn ai_validate_config_hits_wiremock() {
     let (test, mock) = TestAppState::with_wiremock_ai().await;
     let cfg = crate::testing::ai_wiremock_test_support::openai_wiremock_config(&mock);
@@ -349,6 +517,8 @@ async fn ai_chat_with_schema_and_stream() {
         None,
         None,
         None,
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -378,6 +548,8 @@ async fn ai_chat_workflow_scenario_builds_system_prompt() {
         "req-wf".into(),
         false,
         Some("workflow_generate".into()),
+        None,
+        None,
         None,
         None,
         None,
@@ -732,6 +904,8 @@ async fn ai_chat_injects_context_files_into_user_message() {
         None,
         None,
         None,
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -757,6 +931,8 @@ async fn ai_chat_schema_resolve_failure_still_streams() {
         }],
         "req-fail-schema".into(),
         true,
+        None,
+        None,
         None,
         None,
         None,
@@ -931,6 +1107,8 @@ async fn ai_chat_stream_http_error_propagates() {
         None,
         None,
         None,
+        None,
+        None,
     )
     .await
     .is_err());
@@ -1000,6 +1178,8 @@ data: [DONE]
         }],
         "req-ask".into(),
         false,
+        None,
+        None,
         None,
         None,
         None,
@@ -1149,6 +1329,8 @@ async fn ai_chat_connected_english_schema_message() {
         }],
         "req-en".into(),
         true,
+        None,
+        None,
         None,
         None,
         None,
@@ -1379,6 +1561,8 @@ async fn ai_chat_mcp_tool_roundtrip() {
         None,
         None,
         None,
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -1461,6 +1645,8 @@ async fn ai_chat_mcp_and_db_same_round() {
         None,
         None,
         Some(datazen::ai::AiAgentMode::Agent),
+        None,
+        None,
         None,
         None,
         None,
@@ -1569,6 +1755,8 @@ async fn ai_chat_ask_questions_with_executable_runs_tools_then_stops() {
         None,
         None,
         Some(datazen::ai::AiAgentMode::Agent),
+        None,
+        None,
         None,
         None,
         None,

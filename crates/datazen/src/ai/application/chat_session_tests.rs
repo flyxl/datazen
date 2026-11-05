@@ -232,6 +232,7 @@ fn test_env(provider: Arc<dyn AiProvider>, src: Arc<RecordingSource>) -> ChatSes
         provider,
         model: "test-model".into(),
         gate: AiSafetyGateConfig::default(),
+        injection: crate::ai::chat_injection::ChatInjection::default(),
         lang: "en".into(),
         connections_context: String::new(),
         mcp_tools: Vec::new(),

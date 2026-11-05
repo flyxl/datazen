@@ -4,6 +4,7 @@ const pack = {
   'common.cancel': '취소',
   'common.skip': '건너뛰기',
   'common.back': '뒤로',
+  'common.edit': 'Edit',
   'common.save': '구하다',
   'common.close': '닫다',
   'common.delete': '삭제',
@@ -114,6 +115,7 @@ const pack = {
   'main.ctx.server': '서버',
   'main.ctx.organize': '연결 관리',
   'main.ctx.createNew': '새로 만들기',
+  'main.ctx.confirmDeleteConnectionWithAi': 'Delete connection "{name}"? This also removes {noteCount} connection note(s) and {memoryCount} related AI memories. This cannot be undone.',
   'main.ctx.confirmDeleteConnection':
     '"{name}" 연결을 삭제하시겠습니까? 이 작업은 취소할 수 없습니다.',
   'main.groupNamePlaceholder': '그룹 이름을 입력하세요',

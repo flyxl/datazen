@@ -141,7 +141,17 @@ export const aiCommands = {
     selection?: string;
     lastError?: string;
     resultPreview?: AiChatContextSnapshot['resultPreview'];
+    templateId?: string;
+    databaseType?: string;
   }) => e2eStubInvoke('ai_chat', params, () => invoke<string>('ai_chat', params)),
+  connectionNotesGet: (connectionId: string) =>
+    invoke<string | null>('ai_connection_notes_get', { connectionId }),
+  connectionNotesSet: (connectionId: string, content: string) =>
+    invoke<void>('ai_connection_notes_set', { connectionId, content }),
+  connectionContextCounts: (connectionId: string) =>
+    invoke<{ noteCount: number; memoryCount: number }>('ai_connection_context_counts', {
+      connectionId,
+    }),
   parseFilter: (params: {
     dbSessionId: string;
     database: string;

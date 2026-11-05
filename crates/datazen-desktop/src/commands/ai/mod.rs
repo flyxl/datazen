@@ -4,6 +4,7 @@ mod chat;
 mod config;
 mod generate;
 mod grant;
+mod notes;
 mod prompts;
 mod util;
 
@@ -11,6 +12,7 @@ pub use chat::*;
 pub use config::*;
 pub use generate::*;
 pub use grant::*;
+pub use notes::*;
 pub use prompts::*;
 pub(crate) use util::language_hint;
 

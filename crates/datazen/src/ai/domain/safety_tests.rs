@@ -682,6 +682,7 @@ fn effective_gate_forces_redaction_for_cloud_profiles() {
         let settings = AiSettingsConfig {
             active_profile_id: "profile".into(),
             profiles: vec![profile_with_redaction_off(provider_type, endpoint)],
+            ..Default::default()
         };
         assert_eq!(
             effective_safety_gate(&settings, &policy).redact_credentials,

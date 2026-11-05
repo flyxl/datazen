@@ -13,6 +13,7 @@
 //! 认证/stdio/HTTP 登录/事件传输在宿主；授权数据库工具走同一执行入口。
 
 pub mod cancel;
+pub mod chat_injection;
 pub mod chat_request;
 pub mod chat_session;
 pub mod context;

@@ -12,6 +12,7 @@
 //! （桌面侧行为钉子 `ai_chat_*` / `ai_generate_sql_*` 继续钉住入口）。
 
 use super::cancel::CancellationRegistry;
+use super::chat_injection::ChatInjection;
 use super::chat_request::{build_chat_request, ChatRequestInput, ChatScenario, ChatSchemaPrompt};
 use super::context::format_context_block;
 use super::error::AiUseCaseError;
@@ -42,6 +43,9 @@ pub struct ChatSessionEnv {
     pub lang: String,
     /// workflow 场景的连接清单块（非 workflow 场景传空串）。
     pub connections_context: String,
+    /// Resolved global instructions / template / connection notes for this
+    /// turn. Host resolves storage and scope; insertion stays in this layer.
+    pub injection: ChatInjection,
     /// MCP 工具面（宿主按 `provider.supports_tools()` 决定是否取空）。
     pub mcp_tools: Vec<ToolDefinition>,
     /// 上下文文件条目（宿主 FS IO 读出，未脱敏；空 = 无上下文）。
@@ -190,6 +194,7 @@ pub async fn run_chat_session(
             connections_context: &env.connections_context,
             messages: input.messages,
             context_block: context_block.as_deref(),
+            injection: env.injection,
             safety_gate: &env.gate,
             attach_db_tools,
             attach_agent_db_tools: agent_tools_allowed,

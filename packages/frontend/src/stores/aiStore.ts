@@ -135,6 +135,8 @@ export const useAiStore = create<AiStore>((set, get) => ({
     const current = get().settingsConfig || {
       activeProfileId: profile.id,
       profiles: [],
+      globalInstructions: '',
+      promptTemplates: [],
     };
     const exists = current.profiles.some((p) => p.id === profile.id);
     let updatedProfiles = exists
@@ -149,6 +151,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
     }
 
     const nextConfig = {
+      ...current,
       activeProfileId: profile.isDefault ? profile.id : current.activeProfileId || profile.id,
       profiles: updatedProfiles,
     };
@@ -164,6 +167,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
       nextActiveId = remaining[0]?.id || '';
     }
     const nextConfig = {
+      ...current,
       activeProfileId: nextActiveId,
       profiles: remaining,
     };
@@ -425,6 +429,8 @@ export const useAiStore = create<AiStore>((set, get) => ({
     contextFiles,
     contextTables,
     autoContext,
+    templateId,
+    databaseType,
     targetClaim,
   }) => {
     const { chatSession } = get();
@@ -471,6 +477,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
         streamReasoning: '',
         streamMcpToolName: null,
         egressSummary: null,
+        injection: null,
         requestId,
         attribution: attributionFor(targetClaim),
       },
@@ -492,6 +499,8 @@ export const useAiStore = create<AiStore>((set, get) => ({
         selection: autoContext?.selection,
         lastError: autoContext?.lastError,
         resultPreview: autoContext?.resultPreview,
+        templateId,
+        databaseType,
       });
     } catch (e) {
       getStreamRegistry().settle(requestId, 'error');
@@ -679,9 +688,16 @@ export const useAiStore = create<AiStore>((set, get) => ({
     const unError = await events.listenCrossWindow('ai:stream-error', (payload) => {
       applyStreamError(get, set, payload as import('../types').StreamErrorPayload);
     });
+    const unInjection = await events.listenCrossWindow('ai:chat-injection', (payload) => {
+      const event = payload as import('../types').AiChatInjectionEvent;
+      const session = get().chatSession;
+      if (!session || !event || session.requestId !== event.requestId) return;
+      set({ chatSession: { ...session, injection: event.snapshot } });
+    });
     return () => {
       unChunk();
       unError();
+      unInjection();
     };
   },
 

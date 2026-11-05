@@ -8,7 +8,9 @@
 //! The external-content FTS table is synchronised by the three triggers in the
 //! v7 migration, so these methods never write `ai_memories_fts` directly.
 
+use chrono::Utc;
 use rusqlite::{params, OptionalExtension, Row};
+use serde::Serialize;
 
 use super::{AppDb, AppDbError};
 
@@ -93,6 +95,14 @@ pub(crate) struct AiMemoryRecord {
     pub updated_at: String,
 }
 
+/// Counts shown before deleting a connection: one note at most, N memories.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AiConnectionContextCounts {
+    pub note_count: i64,
+    pub memory_count: i64,
+}
+
 /// The persisted shape of one `ai_memory_audit` row.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct AiMemoryAuditRecord {
@@ -113,7 +123,30 @@ impl AppDb {
         &self,
         note: &AiConnectionNoteRecord,
     ) -> Result<(), AppDbError> {
+        if note.content.len() > datazen::ai::MAX_CONNECTION_NOTES_BYTES {
+            return Err(AppDbError::Validation(format!(
+                "connection notes exceed {} bytes",
+                datazen::ai::MAX_CONNECTION_NOTES_BYTES
+            )));
+        }
         self.with_conn(|conn| {
+            let existing: Option<(String, String)> = conn
+                .query_row(
+                    "SELECT organization_id, owner_principal_id FROM ai_connection_notes \
+                      WHERE connection_id=?1",
+                    [note.connection_id.as_str()],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()?;
+            if let Some((organization_id, owner_principal_id)) = existing {
+                if organization_id != note.organization_id
+                    || owner_principal_id != note.owner_principal_id
+                {
+                    return Err(AppDbError::Validation(
+                        "an existing connection note cannot change organization or owner".into(),
+                    ));
+                }
+            }
             conn.execute(
                 "INSERT INTO ai_connection_notes \
                    (connection_id, organization_id, owner_principal_id, content, updated_at) \
@@ -135,15 +168,46 @@ impl AppDb {
         })
     }
 
+    /// Write one connection note with the user-facing 4KB cap. Empty or
+    /// whitespace-only content deletes the row instead of persisting it.
+    pub(crate) fn set_ai_connection_note(
+        &self,
+        organization_id: &str,
+        owner_principal_id: &str,
+        connection_id: &str,
+        content: &str,
+    ) -> Result<(), AppDbError> {
+        if content.len() > datazen::ai::MAX_CONNECTION_NOTES_BYTES {
+            return Err(AppDbError::Validation(format!(
+                "connection notes exceed {} bytes",
+                datazen::ai::MAX_CONNECTION_NOTES_BYTES
+            )));
+        }
+        if content.trim().is_empty() {
+            self.delete_ai_connection_note(organization_id, owner_principal_id, connection_id)?;
+            return Ok(());
+        }
+        self.upsert_ai_connection_note(&AiConnectionNoteRecord {
+            connection_id: connection_id.to_string(),
+            organization_id: organization_id.to_string(),
+            owner_principal_id: owner_principal_id.to_string(),
+            content: content.to_string(),
+            updated_at: Utc::now().to_rfc3339(),
+        })
+    }
+
     pub(crate) fn get_ai_connection_note(
         &self,
+        organization_id: &str,
+        owner_principal_id: &str,
         connection_id: &str,
     ) -> Result<Option<AiConnectionNoteRecord>, AppDbError> {
         self.with_conn(|conn| {
             conn.query_row(
                 "SELECT connection_id, organization_id, owner_principal_id, content, updated_at \
-                   FROM ai_connection_notes WHERE connection_id=?1",
-                [connection_id],
+                   FROM ai_connection_notes \
+                  WHERE connection_id=?1 AND organization_id=?2 AND owner_principal_id=?3",
+                params![connection_id, organization_id, owner_principal_id],
                 |row| {
                     Ok(AiConnectionNoteRecord {
                         connection_id: row.get(0)?,
@@ -161,13 +225,46 @@ impl AppDb {
 
     pub(crate) fn delete_ai_connection_note(
         &self,
+        organization_id: &str,
+        owner_principal_id: &str,
         connection_id: &str,
     ) -> Result<bool, AppDbError> {
         self.with_conn(|conn| {
             Ok(conn.execute(
-                "DELETE FROM ai_connection_notes WHERE connection_id=?1",
-                [connection_id],
+                "DELETE FROM ai_connection_notes \
+                  WHERE connection_id=?1 AND organization_id=?2 AND owner_principal_id=?3",
+                params![connection_id, organization_id, owner_principal_id],
             )? > 0)
+        })
+    }
+
+    /// Counts for the delete-connection confirmation. One note max; memories
+    /// are counted by both the explicit connection id and the legacy
+    /// connection-scoped predicate used by the purge.
+    pub(crate) fn count_ai_connection_context(
+        &self,
+        organization_id: &str,
+        owner_principal_id: &str,
+        connection_id: &str,
+    ) -> Result<AiConnectionContextCounts, AppDbError> {
+        self.with_conn(|conn| {
+            let note_count = conn.query_row(
+                "SELECT COUNT(*) FROM ai_connection_notes \
+                  WHERE connection_id=?1 AND organization_id=?2 AND owner_principal_id=?3",
+                params![connection_id, organization_id, owner_principal_id],
+                |row| row.get(0),
+            )?;
+            let memory_count = conn.query_row(
+                "SELECT COUNT(*) FROM ai_memories \
+                  WHERE organization_id=?1 \
+                    AND (connection_id=?2 OR (scope_type='connection' AND scope_id=?2))",
+                params![organization_id, connection_id],
+                |row| row.get(0),
+            )?;
+            Ok(AiConnectionContextCounts {
+                note_count,
+                memory_count,
+            })
         })
     }
 

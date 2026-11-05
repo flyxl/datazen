@@ -210,7 +210,10 @@ async fn deleting_connection_purges_ai_notes_memories_and_audit() {
     store.delete_connection("c-delete").await.unwrap();
 
     assert!(store.get_connection("c-delete").await.is_none());
-    assert!(app_db.get_ai_connection_note("c-delete").unwrap().is_none());
+    assert!(app_db
+        .get_ai_connection_note(LOCAL_ORGANIZATION_ID, owner, "c-delete")
+        .unwrap()
+        .is_none());
     assert!(app_db
         .get_ai_memory(LOCAL_ORGANIZATION_ID, owner, "m-delete")
         .unwrap()
@@ -316,7 +319,7 @@ async fn delete_connection_cleanup_failure_is_recoverable_and_keeps_ai_data() {
     );
     assert_eq!(
         app_db
-            .get_ai_connection_note("c-fail")
+            .get_ai_connection_note(LOCAL_ORGANIZATION_ID, owner, "c-fail")
             .unwrap()
             .unwrap()
             .content,
@@ -347,7 +350,10 @@ async fn delete_connection_cleanup_failure_is_recoverable_and_keeps_ai_data() {
         .await
         .unwrap();
     assert!(!on_disk.contains("c-fail"));
-    assert!(app_db.get_ai_connection_note("c-fail").unwrap().is_none());
+    assert!(app_db
+        .get_ai_connection_note(LOCAL_ORGANIZATION_ID, owner, "c-fail")
+        .unwrap()
+        .is_none());
     assert!(app_db
         .get_ai_memory(LOCAL_ORGANIZATION_ID, owner, "m-fail")
         .unwrap()

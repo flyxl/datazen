@@ -9,11 +9,12 @@
 //! 与请求级 [`AiRequestHost`]（claim 归因，P6 §14.4）。
 
 use super::util::{
-    borrow_runtime_session, build_connections_context, read_context_entries, resolve_ai,
-    resolve_language, resolve_safety_gate, window_stream_callback,
+    borrow_runtime_session, build_connections_context, load_connection_note, read_context_entries,
+    resolve_ai, resolve_language, resolve_safety_gate, window_stream_callback,
 };
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
+use datazen::ai::application::chat_injection::resolve_chat_injection;
 use datazen::ai::application::chat_session::{run_chat_session, ChatSessionEnv, ChatSessionInput};
 use datazen::ai::application::schema_pipeline::SchemaContextPipeline;
 use datazen::ai::ownership::AiTargetClaim;
@@ -22,7 +23,7 @@ use datazen::ai::*;
 use std::future::Future;
 use std::pin::Pin;
 use std::time::Duration;
-use tauri::{Runtime, State, WebviewWindow};
+use tauri::{Emitter, Runtime, State, WebviewWindow};
 
 /// Hard upper bound for one native tool-approval dialog.
 pub(crate) const TOOL_CONFIRM_TIMEOUT: Duration = Duration::from_secs(60);
@@ -171,6 +172,8 @@ pub async fn ai_chat<R: tauri::Runtime>(
     selection: Option<String>,
     last_error: Option<String>,
     result_preview: Option<datazen::ai::chat_session::ChatResultPreview>,
+    template_id: Option<String>,
+    database_type: Option<String>,
 ) -> Result<String, CommandError> {
     let on_chunk = window_stream_callback(&window);
     let is_workflow = scenario.as_deref() == Some("workflow_generate");
@@ -215,6 +218,26 @@ pub async fn ai_chat<R: tauri::Runtime>(
         Vec::new()
     };
 
+    // Resolve user-authored prompt material on the host (storage + scope),
+    // then hand the immutable decision to the shared use case. The UI receives
+    // only identity/existence, never the note or template body.
+    let settings = datazen::ai::api::get_settings_config(state.store.as_ref()).await;
+    let connection_notes = connection_id
+        .as_deref()
+        .filter(|id| !id.trim().is_empty())
+        .and_then(|id| load_connection_note(&state, id));
+    let injection = resolve_chat_injection(
+        &settings,
+        template_id.as_deref(),
+        database_type.as_deref(),
+        connection_notes,
+    );
+    let snapshot = injection.snapshot();
+    let _ = window.emit(
+        "ai:chat-injection",
+        serde_json::json!({ "requestId": request_id, "snapshot": snapshot }),
+    );
+
     // 编排本体在 modules（B3 下沉）；claim 归因由请求级宿主提供。
     let host = super::AiRequestHost {
         state: &state,
@@ -224,6 +247,7 @@ pub async fn ai_chat<R: tauri::Runtime>(
         provider,
         model: ai_config.model,
         gate,
+        injection,
         lang,
         connections_context,
         mcp_tools,

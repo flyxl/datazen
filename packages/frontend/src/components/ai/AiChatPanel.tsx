@@ -44,6 +44,7 @@ import { Spinner } from '../ui/Spinner';
 interface AiChatPanelProps {
   dbSessionId: string;
   database?: string;
+  databaseType?: string;
   sqlDialect?: string;
   onInsertSql?: (sql: string) => void;
   onRunCode?: (code: string, language: string) => void;
@@ -81,6 +82,7 @@ function formatMcpToolDisplayName(qualifiedName: string): string {
 export function AiChatPanel({
   dbSessionId,
   database,
+  databaseType,
   sqlDialect,
   onInsertSql,
   onRunCode,
@@ -102,6 +104,7 @@ export function AiChatPanel({
   const settingsConfig = useAiStore((s) => s.settingsConfig);
   const setActiveProfile = useAiStore((s) => s.setActiveProfile);
   const loadConfig = useAiStore((s) => s.loadConfig);
+  const templates = settingsConfig?.promptTemplates ?? [];
 
   // Keep the chips in sync with the host snapshot, but never resurrect a field
   // the user explicitly removed unless its value changes.
@@ -168,6 +171,12 @@ export function AiChatPanel({
   const previousAutoContextRef = useRef<AiChatContextSnapshot | null>(null);
   const [tab, setTab] = useState<'chat' | 'workflows'>('chat');
   const [agentMode, setAgentMode] = useState<AiAgentMode>('ask');
+  const [templateId, setTemplateId] = useState('');
+  // A template choice is scoped to one connection/database type; switching
+  // returns to automatic default selection instead of carrying a stale pick.
+  useEffect(() => {
+    setTemplateId('');
+  }, [connectionId, databaseType]);
   const [contextItems, setContextItems] = useState<ContextItem[]>([]);
   const { atBottom, unreadCount, jumpToBottom, onScroll, containerRef } = useAutoScroll();
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -271,6 +280,8 @@ export function AiChatPanel({
       connectionId,
       database,
       agentMode,
+      templateId: templateId || undefined,
+      databaseType,
       // KV panels ride their host-owned facts along with the question;
       // `composeKvAiMessage` is the identity function when there is no context.
       content: composeKvAiMessage(input.trim(), kvContext ?? null),
@@ -289,7 +300,9 @@ export function AiChatPanel({
     dbSessionId,
     connectionId,
     database,
+    databaseType,
     agentMode,
+    templateId,
     contextItems,
     kvContext,
     snapshot,
@@ -450,6 +463,22 @@ export function AiChatPanel({
           >
             {t(agentMode === 'ask' ? 'chat.mode.askHint' : 'chat.mode.agentHint')}
           </span>
+          {templates.length > 0 && (
+            <div className="ml-auto w-36 shrink-0" data-testid="ai-template-select">
+              <Select
+                value={templateId}
+                options={[
+                  { value: '', label: t('chat.template.auto') },
+                  ...templates.map((template) => ({
+                    value: template.id,
+                    label: template.name || template.id,
+                  })),
+                ]}
+                onChange={setTemplateId}
+                aria-label={t('chat.template.label')}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -649,6 +678,46 @@ export function AiChatPanel({
                   )}
               </div>
             )}
+            {chatSession?.injection &&
+              (chatSession.injection.templateName ||
+                chatSession.injection.hasConnectionNotes ||
+                chatSession.injection.hasGlobalInstructions) && (
+                <div
+                  className="mb-2 flex flex-wrap items-center gap-1.5 text-[10px] text-fg-muted"
+                  data-testid="ai-injection-chips"
+                >
+                  {chatSession.injection.templateName && (
+                    <span
+                      className="rounded-full border border-edge bg-surface-alt px-2 py-0.5"
+                      data-testid="ai-injection-template"
+                      title={t('chat.injection.readOnlyHint')}
+                    >
+                      {t('chat.injection.template', {
+                        name: chatSession.injection.templateName,
+                      })}
+                    </span>
+                  )}
+                  {chatSession.injection.hasConnectionNotes && (
+                    <span
+                      className="rounded-full border border-edge bg-surface-alt px-2 py-0.5"
+                      data-testid="ai-injection-notes"
+                      title={t('chat.injection.readOnlyHint')}
+                    >
+                      {t('chat.injection.notes')}
+                    </span>
+                  )}
+                  {chatSession.injection.hasGlobalInstructions &&
+                    chatSession.injection.templateName && (
+                      <span
+                        className="rounded-full border border-edge bg-surface-alt px-2 py-0.5"
+                        data-testid="ai-injection-priority"
+                        title={t('chat.injection.priorityHint')}
+                      >
+                        {t('chat.injection.priority')}
+                      </span>
+                    )}
+                </div>
+              )}
             {/*
               The KV facts leave with every message while a key is in scope, so the
               chip says so before the user sends — and names the key it is about.

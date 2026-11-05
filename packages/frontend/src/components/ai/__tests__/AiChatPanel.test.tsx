@@ -83,6 +83,11 @@ const aiState = vi.hoisted(() => ({
     streamReasoning: '',
     streamMcpToolName: null as string | null,
     egressSummary: null as string | null,
+    injection: null as null | {
+      templateName?: string | null;
+      hasConnectionNotes: boolean;
+      hasGlobalInstructions: boolean;
+    },
   },
   initChatSession: vi.fn(),
   sendChatMessage: vi.fn().mockResolvedValue(undefined),
@@ -120,6 +125,7 @@ beforeEach(() => {
     streamReasoning: '',
     streamMcpToolName: null,
     egressSummary: null,
+    injection: null,
   };
   aiState.settingsConfig = null;
   Object.defineProperty(navigator, 'clipboard', {
@@ -150,9 +156,32 @@ describe('AiChatPanel', () => {
       streamReasoning: '',
       streamMcpToolName: null,
       egressSummary: null,
+      injection: null,
     };
     rerender(<AiChatPanel dbSessionId="c1" database="db" connectionId="conn-1" />);
     expect(getByText('chat.welcome')).toBeInTheDocument();
+  });
+
+  it('renders template and notes chips from the injection snapshot', () => {
+    aiState.chatSession = {
+      sessionKey: 'c1::',
+      messages: [],
+      isStreaming: false,
+      streamContent: '',
+      streamReasoning: '',
+      streamMcpToolName: null,
+      egressSummary: null,
+      injection: {
+        templateName: 'Postgres style',
+        hasConnectionNotes: true,
+        hasGlobalInstructions: true,
+      },
+    };
+    const { getByTestId } = render(<AiChatPanel dbSessionId="c1" database="db" />);
+
+    expect(getByTestId('ai-injection-template').textContent).toContain('chat.injection.template');
+    expect(getByTestId('ai-injection-notes')).toBeDefined();
+    expect(getByTestId('ai-injection-priority')).toBeDefined();
   });
 
   it('keeps the conversation when dbSessionId changes on the same connection', () => {

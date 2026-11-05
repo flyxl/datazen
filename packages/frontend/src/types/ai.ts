@@ -38,9 +38,19 @@ export interface AiModelProfile {
   isDefault?: boolean;
 }
 
+export interface PromptTemplate {
+  id: string;
+  name: string;
+  content: string;
+  databaseTypes: string[];
+  isDefault: boolean;
+}
+
 export interface AiSettingsConfig {
   activeProfileId: string;
   profiles: AiModelProfile[];
+  globalInstructions: string;
+  promptTemplates: PromptTemplate[];
 }
 
 export interface AiProviderConfig {
@@ -145,6 +155,19 @@ export interface AiChatMessage {
   cancelled?: boolean;
 }
 
+export interface AiChatInjectionSnapshot {
+  templateId?: string | null;
+  templateName?: string | null;
+  templateHash?: string | null;
+  hasConnectionNotes: boolean;
+  hasGlobalInstructions: boolean;
+}
+
+export interface AiChatInjectionEvent {
+  requestId: string;
+  snapshot: AiChatInjectionSnapshot;
+}
+
 export interface AiChatSession {
   id: string;
   /** Session isolation key used for localStorage persistence. */
@@ -157,6 +180,8 @@ export interface AiChatSession {
   streamMcpToolName: string | null;
   /** Host-provided egress scope from the first chunk of this run. */
   egressSummary?: string | null;
+  /** Host-provided prompt material snapshot for this run's chips. */
+  injection?: AiChatInjectionSnapshot | null;
   requestId: string | null;
   /**
    * Non-secret attribution of the last run started from this session: which

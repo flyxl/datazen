@@ -192,20 +192,157 @@ fn notes_upsert_read_and_delete() {
     let db = AppDb::open_in_memory().unwrap();
     db.upsert_ai_connection_note(&note("c1", "first")).unwrap();
     assert_eq!(
-        db.get_ai_connection_note("c1").unwrap().unwrap().content,
+        db.get_ai_connection_note(ORG, OWNER, "c1")
+            .unwrap()
+            .unwrap()
+            .content,
         "first"
     );
 
     let mut updated = note("c1", "second");
     updated.updated_at = "2026-11-05T01:00:00Z".into();
     db.upsert_ai_connection_note(&updated).unwrap();
-    let got = db.get_ai_connection_note("c1").unwrap().unwrap();
+    let got = db
+        .get_ai_connection_note(ORG, OWNER, "c1")
+        .unwrap()
+        .unwrap();
     assert_eq!(got.content, "second");
     assert_eq!(got.updated_at, "2026-11-05T01:00:00Z");
 
-    assert!(db.delete_ai_connection_note("c1").unwrap());
-    assert!(db.get_ai_connection_note("c1").unwrap().is_none());
-    assert!(!db.delete_ai_connection_note("missing").unwrap());
+    assert!(db.delete_ai_connection_note(ORG, OWNER, "c1").unwrap());
+    assert!(db
+        .get_ai_connection_note(ORG, OWNER, "c1")
+        .unwrap()
+        .is_none());
+    assert!(!db.delete_ai_connection_note(ORG, OWNER, "missing").unwrap());
+}
+
+#[test]
+fn notes_are_scoped_to_organization_and_owner() {
+    let db = AppDb::open_in_memory().unwrap();
+    db.upsert_ai_connection_note(&note("c1", "private-note"))
+        .unwrap();
+
+    assert!(db
+        .get_ai_connection_note("other-org", OWNER, "c1")
+        .unwrap()
+        .is_none());
+    assert!(db
+        .get_ai_connection_note(ORG, "other-owner", "c1")
+        .unwrap()
+        .is_none());
+    assert!(!db
+        .delete_ai_connection_note("other-org", OWNER, "c1")
+        .unwrap());
+    assert!(!db
+        .delete_ai_connection_note(ORG, "other-owner", "c1")
+        .unwrap());
+    assert_eq!(
+        db.get_ai_connection_note(ORG, OWNER, "c1")
+            .unwrap()
+            .unwrap()
+            .content,
+        "private-note"
+    );
+
+    let rehome = db.set_ai_connection_note("other-org", OWNER, "c1", "takeover");
+    assert!(matches!(rehome, Err(AppDbError::Validation(_))));
+    assert_eq!(
+        db.get_ai_connection_note(ORG, OWNER, "c1")
+            .unwrap()
+            .unwrap()
+            .content,
+        "private-note"
+    );
+}
+
+#[test]
+fn note_set_enforces_4kb_and_empty_content_deletes() {
+    let db = AppDb::open_in_memory().unwrap();
+    db.set_ai_connection_note(ORG, OWNER, "c1", "hello")
+        .unwrap();
+    assert_eq!(
+        db.get_ai_connection_note(ORG, OWNER, "c1")
+            .unwrap()
+            .unwrap()
+            .content,
+        "hello"
+    );
+
+    let too_long = "a".repeat(datazen::ai::MAX_CONNECTION_NOTES_BYTES + 1);
+    assert!(matches!(
+        db.set_ai_connection_note(ORG, OWNER, "c1", &too_long),
+        Err(AppDbError::Validation(_))
+    ));
+    assert_eq!(
+        db.get_ai_connection_note(ORG, OWNER, "c1")
+            .unwrap()
+            .unwrap()
+            .content,
+        "hello",
+        "rejected writes leave the previous note intact"
+    );
+
+    let at_limit = "a".repeat(datazen::ai::MAX_CONNECTION_NOTES_BYTES);
+    db.set_ai_connection_note(ORG, OWNER, "c1", &at_limit)
+        .unwrap();
+    assert_eq!(
+        db.get_ai_connection_note(ORG, OWNER, "c1")
+            .unwrap()
+            .unwrap()
+            .content
+            .len(),
+        datazen::ai::MAX_CONNECTION_NOTES_BYTES
+    );
+
+    db.set_ai_connection_note(ORG, OWNER, "c1", "   \n")
+        .unwrap();
+    assert!(db
+        .get_ai_connection_note(ORG, OWNER, "c1")
+        .unwrap()
+        .is_none());
+}
+
+#[test]
+fn connection_context_counts_notes_and_memories_by_scope() {
+    let db = AppDb::open_in_memory().unwrap();
+    db.upsert_ai_connection_note(&note("c1", "note")).unwrap();
+
+    let mut by_id = memory("m-by-id", "one");
+    by_id.connection_id = Some("c1".into());
+    by_id.scope_type = "connection".into();
+    by_id.scope_id = "c1".into();
+    db.upsert_ai_memory(&by_id).unwrap();
+
+    let mut by_scope = memory("m-by-scope", "two");
+    by_scope.scope_type = "connection".into();
+    by_scope.scope_id = "c1".into();
+    db.upsert_ai_memory(&by_scope).unwrap();
+
+    let mut other = memory("m-other", "three");
+    other.connection_id = Some("c2".into());
+    other.scope_type = "connection".into();
+    other.scope_id = "c2".into();
+    db.upsert_ai_memory(&other).unwrap();
+
+    let counts = db.count_ai_connection_context(ORG, OWNER, "c1").unwrap();
+    assert_eq!(counts.note_count, 1);
+    assert_eq!(counts.memory_count, 2);
+    let json = serde_json::to_value(counts).unwrap();
+    assert_eq!(json["noteCount"], 1);
+    assert_eq!(json["memoryCount"], 2);
+
+    let counts = db
+        .count_ai_connection_context(ORG, OWNER, "missing")
+        .unwrap();
+    assert_eq!(counts.note_count, 0);
+    assert_eq!(counts.memory_count, 0);
+
+    let counts = db
+        .count_ai_connection_context("other-org", OWNER, "c1")
+        .unwrap();
+    assert_eq!(counts.note_count, 0);
+    assert_eq!(counts.memory_count, 0);
 }
 
 #[test]
@@ -389,9 +526,15 @@ fn connection_purge_removes_notes_memories_fts_and_audit_for_target_only() {
 
     db.purge_connection_ai_data("c1", ORG).unwrap();
 
-    assert!(db.get_ai_connection_note("c1").unwrap().is_none());
+    assert!(db
+        .get_ai_connection_note(ORG, OWNER, "c1")
+        .unwrap()
+        .is_none());
     assert_eq!(
-        db.get_ai_connection_note("c2").unwrap().unwrap().content,
+        db.get_ai_connection_note(ORG, OWNER, "c2")
+            .unwrap()
+            .unwrap()
+            .content,
         "note-c2"
     );
     assert!(db.get_ai_memory(ORG, OWNER, "m-c1").unwrap().is_none());

@@ -108,6 +108,7 @@ const {
     saveProfile: vi.fn().mockResolvedValue(true),
     deleteProfile: vi.fn().mockResolvedValue(true),
     setActiveProfile: vi.fn().mockResolvedValue(true),
+    saveSettingsConfig: vi.fn().mockResolvedValue(true),
     settingsConfig: {
       activeProfileId: 'profile-1',
       profiles: [
@@ -136,6 +137,8 @@ const {
           isDefault: true,
         },
       ],
+      globalInstructions: '',
+      promptTemplates: [],
     },
     fetchRemoteModels: vi.fn().mockResolvedValue([]),
     clearError: vi.fn(),

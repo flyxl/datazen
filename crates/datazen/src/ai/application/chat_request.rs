@@ -1,11 +1,13 @@
 //! Shared chat prompt and completion-request construction.
 
+use super::chat_injection::ChatInjection;
 use super::prompt_resolver::PromptResolver;
 use super::response::inject_language_hint;
 use super::schema_pipeline::{compose_schema_system_suffix, PromptSeed};
 use crate::ai::domain::safety::redact_for_gate;
 use crate::ai::domain::types::{
     AiSafetyGateConfig, ChatMessage, CompletionRequest, MessageRole, ToolDefinition,
+    MAX_CONNECTION_NOTES_BYTES, MAX_GLOBAL_INSTRUCTIONS_BYTES, MAX_PROMPT_TEMPLATE_BYTES,
 };
 use datazen_driver_api::{DatabaseDriver, PromptScenario};
 use std::collections::HashMap;
@@ -32,6 +34,7 @@ pub struct ChatRequestInput<'a> {
     /// Already formatted context-file content. File access and path policy
     /// remain in the host; this layer only inserts it into the last user turn.
     pub context_block: Option<&'a str>,
+    pub injection: ChatInjection,
     pub safety_gate: &'a AiSafetyGateConfig,
     pub attach_db_tools: bool,
     /// Agent chat gets read-only query/sampling in addition to metadata tools.
@@ -113,7 +116,7 @@ async fn build_system_prompt(
     };
     let is_workflow = input.scenario == ChatScenario::WorkflowGenerate;
 
-    if let Some(schema) = &input.schema {
+    let (mut prompt, schema_suffix) = if let Some(schema) = &input.schema {
         let db_type = schema.seed.database_type.as_str();
         let mut vars = HashMap::new();
         vars.insert("db_type", db_type);
@@ -137,10 +140,7 @@ async fn build_system_prompt(
         } else {
             format!("{base}\n\nThe user is connected to a {db_type} database.")
         };
-        format!(
-            "{description}\n\n{}",
-            compose_schema_system_suffix(schema.seed)
-        )
+        (description, Some(compose_schema_system_suffix(schema.seed)))
     } else if is_workflow {
         let mut vars = HashMap::new();
         vars.insert("connections", input.connections_context);
@@ -149,12 +149,98 @@ async fn build_system_prompt(
         let template = prompt_resolver
             .resolve(prompt_scenario, None, input.lang)
             .await;
-        super::prompt_resolver::render_template(&template, &vars)
+        (
+            super::prompt_resolver::render_template(&template, &vars),
+            None,
+        )
     } else {
-        prompt_resolver
-            .resolve(prompt_scenario, None, input.lang)
-            .await
+        (
+            prompt_resolver
+                .resolve(prompt_scenario, None, input.lang)
+                .await,
+            None,
+        )
+    };
+
+    // Injection order (high → low): safety/system prompt, global instructions,
+    // selected template, schema (including DB comments), connection notes.
+    if let Some(block) = render_owned_injection(
+        "Global instructions",
+        "These user preferences rank below the system safety policy and tool permissions. When they conflict with the selected prompt template, follow these global instructions and mention the conflict.",
+        &input.injection.global_instructions,
+        input.safety_gate,
+        MAX_GLOBAL_INSTRUCTIONS_BYTES,
+    ) {
+        prompt.push_str("\n\n");
+        prompt.push_str(&block);
     }
+    if let Some(template) = input
+        .injection
+        .template
+        .as_ref()
+        .filter(|template| !template.content.trim().is_empty())
+    {
+        let heading = if template.name.trim().is_empty() {
+            "Selected prompt template".to_string()
+        } else {
+            format!("Selected prompt template: {}", template.name.trim())
+        };
+        if let Some(block) = render_owned_injection(
+            &heading,
+            "This template is lower priority than the global instructions and the safety policy.",
+            &template.content,
+            input.safety_gate,
+            MAX_PROMPT_TEMPLATE_BYTES,
+        ) {
+            prompt.push_str("\n\n");
+            prompt.push_str(&block);
+        }
+    }
+    if let Some(schema_suffix) = schema_suffix.filter(|suffix| !suffix.trim().is_empty()) {
+        prompt.push_str("\n\n");
+        prompt.push_str(&schema_suffix);
+    }
+    if let Some(notes) = input.injection.connection_notes.as_deref() {
+        if let Some(block) = render_owned_injection(
+            "User connection notes",
+            "These notes are user-authored. Show them beside any database COMMENT; do not silently override the schema comment, and label these as the user's notes when both are present.",
+            notes,
+            input.safety_gate,
+            MAX_CONNECTION_NOTES_BYTES,
+        ) {
+            prompt.push_str("\n\n");
+            prompt.push_str(&block);
+        }
+    }
+    prompt
+}
+
+fn render_owned_injection(
+    heading: &str,
+    guidance: &str,
+    content: &str,
+    gate: &AiSafetyGateConfig,
+    max_bytes: usize,
+) -> Option<String> {
+    if content.trim().is_empty() {
+        return None;
+    }
+    let content = clip_utf8(&redact_for_gate(content, gate), max_bytes);
+    if content.trim().is_empty() {
+        return None;
+    }
+    Some(format!("## {heading}\n{guidance}\n{content}"))
+}
+
+fn clip_utf8(text: &str, max_bytes: usize) -> String {
+    if text.len() <= max_bytes {
+        return text.to_string();
+    }
+    let mut end = max_bytes;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…", &text[..end])
 }
 
 fn ask_questions_tool_definition() -> ToolDefinition {
@@ -224,6 +310,7 @@ mod tests {
                     tool_call_id: None,
                 }],
                 context_block: Some("Context file: notes.txt\nRelevant facts."),
+                injection: ChatInjection::default(),
                 safety_gate: &gate,
                 attach_db_tools: true,
                 attach_agent_db_tools: false,
@@ -274,6 +361,7 @@ mod tests {
                     tool_call_id: None,
                 }],
                 context_block: None,
+                injection: ChatInjection::default(),
                 safety_gate: &gate,
                 attach_db_tools: true,
                 attach_agent_db_tools: true,
@@ -317,6 +405,7 @@ mod tests {
                     tool_call_id: None,
                 }],
                 context_block: None,
+                injection: ChatInjection::default(),
                 safety_gate: gate,
                 attach_db_tools: true,
                 attach_agent_db_tools: true,
@@ -360,6 +449,7 @@ mod tests {
                     tool_call_id: None,
                 }],
                 context_block: None,
+                injection: ChatInjection::default(),
                 safety_gate: &gate,
                 attach_db_tools: false,
                 attach_agent_db_tools: false,
@@ -538,5 +628,67 @@ mod tests {
 
         assert!(names.contains(&"mcp/demo/list_files".into()));
         assert!(names.contains(&"mcp/demo/write_file".into()));
+    }
+
+    #[tokio::test]
+    async fn user_prompt_material_is_injected_in_priority_order_and_redacted() {
+        let directory = tempfile::tempdir().expect("temporary prompt root");
+        let resolver = PromptResolver::new(directory.path(), None);
+        let gate = AiSafetyGateConfig::default();
+        let injection = ChatInjection {
+            global_instructions: "GLOBAL_MARKER use UTC".into(),
+            template: Some(crate::ai::domain::types::PromptTemplate {
+                id: "pg".into(),
+                name: "Postgres style".into(),
+                content: "TEMPLATE_MARKER prefer explicit joins".into(),
+                database_types: vec!["postgresql".into()],
+                is_default: true,
+            }),
+            connection_notes: Some("NOTES_MARKER password=note-secret".into()),
+        };
+        let request = build_chat_request(
+            &resolver,
+            ChatRequestInput {
+                request_id: "request-injection",
+                model: "model-1",
+                lang: "en",
+                scenario: ChatScenario::Chat,
+                schema: None,
+                connections_context: "",
+                messages: vec![ChatMessage {
+                    role: MessageRole::User,
+                    content: "USER_MARKER question".into(),
+                    reasoning: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                }],
+                context_block: None,
+                injection,
+                safety_gate: &gate,
+                attach_db_tools: false,
+                attach_agent_db_tools: false,
+                attach_agent_query_tools: false,
+                mcp_tools: Vec::new(),
+            },
+        )
+        .await;
+
+        let system = &request.messages[0].content;
+        let global = system.find("GLOBAL_MARKER").expect("global marker");
+        let template = system.find("TEMPLATE_MARKER").expect("template marker");
+        let notes = system.find("NOTES_MARKER").expect("notes marker");
+        assert!(
+            global < template,
+            "global instructions precede the template"
+        );
+        assert!(template < notes, "template precedes connection notes");
+        assert!(!system.contains("note-secret"), "notes are redacted");
+        assert!(system.contains("User connection notes"));
+        assert!(system.contains("do not silently override the schema comment"));
+        assert!(request
+            .messages
+            .iter()
+            .any(|message| message.role == MessageRole::User
+                && message.content.contains("USER_MARKER")));
     }
 }

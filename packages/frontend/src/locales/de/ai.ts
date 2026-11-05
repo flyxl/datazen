@@ -16,6 +16,13 @@ const pack = {
   'chat.mode.agent': 'Agent',
   'chat.mode.askHint': 'Antwortet nur aus dem Kontext – keine Datenbanktools.',
   'chat.mode.agentHint': 'Kann Datenbank- und MCP-Tools zur Prüfung nutzen.',
+  'chat.template.label': 'Prompt template',
+  'chat.template.auto': 'Auto template',
+  'chat.injection.template': 'Template: {name}',
+  'chat.injection.notes': 'Connection notes included',
+  'chat.injection.priority': 'Global instructions take precedence',
+  'chat.injection.priorityHint': 'If the global instructions conflict with the template, the global instructions win.',
+  'chat.injection.readOnlyHint': 'Injected for this message (read-only)',
   'chat.thinking': 'Denken…',
   'chat.callingMcpTool': 'MCP-Tool {name} wird aufgerufen…',
   'common.aiNotConfigured':

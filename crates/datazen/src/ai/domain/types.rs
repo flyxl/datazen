@@ -217,14 +217,120 @@ impl From<&AiProviderConfig> for AiModelProfile {
     }
 }
 
+/// Upper bounds shared by the settings store, IPC validation and the prompt
+/// injector. They are UTF-8 byte limits, not character counts.
+pub const MAX_GLOBAL_INSTRUCTIONS_BYTES: usize = 4 * 1024;
+pub const MAX_PROMPT_TEMPLATE_BYTES: usize = 8 * 1024;
+pub const MAX_PROMPT_TEMPLATES_TOTAL_BYTES: usize = 16 * 1024;
+pub const MAX_CONNECTION_NOTES_BYTES: usize = 4 * 1024;
+
+/// A user-authored system prompt template.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PromptTemplate {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub content: String,
+    /// Empty means the template is eligible for every database type.
+    #[serde(default)]
+    pub database_types: Vec<String>,
+    #[serde(default)]
+    pub is_default: bool,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiSettingsConfig {
+    #[serde(default)]
     pub active_profile_id: String,
+    #[serde(default)]
     pub profiles: Vec<AiModelProfile>,
+    #[serde(default)]
+    pub global_instructions: String,
+    #[serde(default)]
+    pub prompt_templates: Vec<PromptTemplate>,
 }
 
 impl AiSettingsConfig {
+    /// Validate user-authored prompt limits. Reject rather than truncate: a
+    /// silently shortened instruction or template is worse than a visible
+    /// validation error.
+    pub fn validate_prompt_limits(&self) -> Result<(), String> {
+        if self.global_instructions.len() > MAX_GLOBAL_INSTRUCTIONS_BYTES {
+            return Err(format!(
+                "global instructions exceed {} bytes",
+                MAX_GLOBAL_INSTRUCTIONS_BYTES
+            ));
+        }
+        let mut total = 0usize;
+        for template in &self.prompt_templates {
+            if template.content.len() > MAX_PROMPT_TEMPLATE_BYTES {
+                return Err(format!(
+                    "prompt template '{}' exceeds {} bytes",
+                    template.name, MAX_PROMPT_TEMPLATE_BYTES
+                ));
+            }
+            total = total.saturating_add(template.content.len());
+        }
+        if total > MAX_PROMPT_TEMPLATES_TOTAL_BYTES {
+            return Err(format!(
+                "prompt templates exceed {} bytes in total",
+                MAX_PROMPT_TEMPLATES_TOTAL_BYTES
+            ));
+        }
+        Ok(())
+    }
+
+    /// Explicit template id first; otherwise the first default whose
+    /// `databaseTypes` matches (empty list = every database), falling back to
+    /// a generic default.
+    pub fn select_prompt_template(
+        &self,
+        template_id: Option<&str>,
+        database_type: Option<&str>,
+    ) -> Option<&PromptTemplate> {
+        if let Some(id) = template_id.map(str::trim).filter(|id| !id.is_empty()) {
+            if let Some(template) = self.prompt_templates.iter().find(|t| t.id == id) {
+                return Some(template);
+            }
+        }
+        let database_type = database_type
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_ascii_lowercase);
+        let defaults: Vec<&PromptTemplate> = self
+            .prompt_templates
+            .iter()
+            .filter(|template| template.is_default)
+            .collect();
+        if let Some(database_type) = database_type.as_deref() {
+            if let Some(template) = defaults.iter().copied().find(|template| {
+                template
+                    .database_types
+                    .iter()
+                    .any(|value| value.eq_ignore_ascii_case(database_type))
+            }) {
+                return Some(template);
+            }
+        }
+        defaults
+            .iter()
+            .copied()
+            .find(|template| template.database_types.is_empty())
+            .or_else(|| defaults.first().copied())
+    }
+
+    pub fn selected_prompt_template(
+        &self,
+        template_id: Option<&str>,
+        database_type: Option<&str>,
+    ) -> Option<&PromptTemplate> {
+        self.select_prompt_template(template_id, database_type)
+    }
+
     /// Resolve the selected model profile using the shared fallback order:
     /// active id, explicitly default profile, then the first configured one.
     pub fn selected_profile(&self) -> Option<&AiModelProfile> {
@@ -270,6 +376,50 @@ mod ai_settings_config_tests {
     }
 
     #[test]
+    fn old_settings_without_prompt_fields_deserialize_with_defaults() {
+        let config: AiSettingsConfig =
+            serde_json::from_str(r#"{"activeProfileId":"p1","profiles":[]}"#).unwrap();
+        assert_eq!(config.active_profile_id, "p1");
+        assert!(config.global_instructions.is_empty());
+        assert!(config.prompt_templates.is_empty());
+        assert!(config.validate_prompt_limits().is_ok());
+    }
+
+    #[test]
+    fn prompt_limits_are_utf8_bytes_and_reject_instead_of_truncating() {
+        let mut config = AiSettingsConfig::default();
+        config.global_instructions = "a".repeat(MAX_GLOBAL_INSTRUCTIONS_BYTES + 1);
+        assert!(config.validate_prompt_limits().is_err());
+        config.global_instructions = "中".repeat(MAX_GLOBAL_INSTRUCTIONS_BYTES / 3 + 1);
+        assert!(config.validate_prompt_limits().is_err());
+
+        let mut config = AiSettingsConfig::default();
+        config.prompt_templates.push(PromptTemplate {
+            id: "too-big".into(),
+            name: "Too big".into(),
+            content: "a".repeat(MAX_PROMPT_TEMPLATE_BYTES + 1),
+            database_types: Vec::new(),
+            is_default: true,
+        });
+        assert!(config.validate_prompt_limits().is_err());
+
+        let mut config = AiSettingsConfig::default();
+        for index in 0..3 {
+            config.prompt_templates.push(PromptTemplate {
+                id: format!("t{index}"),
+                name: format!("Template {index}"),
+                content: "a".repeat(MAX_PROMPT_TEMPLATE_BYTES),
+                database_types: Vec::new(),
+                is_default: index == 0,
+            });
+        }
+        assert!(config.validate_prompt_limits().is_err());
+
+        config.prompt_templates.truncate(2);
+        assert!(config.validate_prompt_limits().is_ok());
+    }
+
+    #[test]
     fn selected_profile_prefers_active_then_default_then_first() {
         let config = AiSettingsConfig {
             active_profile_id: "active".into(),
@@ -278,6 +428,7 @@ mod ai_settings_config_tests {
                 profile("default", true),
                 profile("active", false),
             ],
+            ..Default::default()
         };
         assert_eq!(
             config.selected_profile().map(|value| value.id.as_str()),
@@ -287,6 +438,7 @@ mod ai_settings_config_tests {
         let config = AiSettingsConfig {
             active_profile_id: "missing".into(),
             profiles: vec![profile("first", false), profile("default", true)],
+            ..Default::default()
         };
         assert_eq!(
             config.selected_profile().map(|value| value.id.as_str()),
@@ -296,6 +448,7 @@ mod ai_settings_config_tests {
         let config = AiSettingsConfig {
             active_profile_id: "missing".into(),
             profiles: vec![profile("first", false), profile("second", false)],
+            ..Default::default()
         };
         assert_eq!(
             config.selected_profile().map(|value| value.id.as_str()),

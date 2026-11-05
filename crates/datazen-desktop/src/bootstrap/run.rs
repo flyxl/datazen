@@ -426,6 +426,10 @@ pub fn run() {
             crate::commands::ai_save_settings_config,
             crate::commands::ai_set_active_profile,
             crate::commands::ai_validate_config,
+            // ── AI：连接笔记 ──
+            crate::commands::ai_connection_context_counts,
+            crate::commands::ai_connection_notes_get,
+            crate::commands::ai_connection_notes_set,
             // ── AI：取消 ──
             crate::commands::ai_cancel,
             crate::commands::ai_grant_editor_session,

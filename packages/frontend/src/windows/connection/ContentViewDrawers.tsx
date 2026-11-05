@@ -421,6 +421,7 @@ export function ContentViewDrawers({
               connectionId={connectionId}
               editorSessionId={editorSessionId}
               database={currentDatabase ?? undefined}
+              databaseType={databaseType}
               sqlDialect={databaseType ? DB_REGISTRY[databaseType]?.sqlDialect : undefined}
               onInsertSql={(sql) => {
                 if (activePanel?.type === 'query') {

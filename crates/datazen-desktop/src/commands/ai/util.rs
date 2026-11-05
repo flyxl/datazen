@@ -64,6 +64,31 @@ pub(crate) async fn build_connections_context(state: &AppState, lang: &str) -> S
     datazen::ai::response::build_connections_context(&catalog, &scope, lang).await
 }
 
+/// Load one connection's user-authored AI note for prompt injection. Scope is
+/// organization + current desktop principal, exactly like the notes IPC.
+pub(crate) fn load_connection_note(state: &AppState, connection_id: &str) -> Option<String> {
+    let organization_id = state
+        .organization_scope()
+        .ok()?
+        .organization_id()
+        .as_str()
+        .to_string();
+    let principal_id = crate::platform::local_principal()
+        .map(|principal| principal.as_str().to_string())
+        .unwrap_or_else(|| "datazen-local-user".to_string());
+    match state.store.app_db().get_ai_connection_note(
+        &organization_id,
+        &principal_id,
+        connection_id,
+    ) {
+        Ok(note) => note.map(|note| note.content),
+        Err(error) => {
+            tracing::warn!(connection_id, error = %error, "failed to load AI connection note");
+            None
+        }
+    }
+}
+
 /// Resolve an AI command's runtime session and borrow its already-open driver
 /// connection. The IPC contract remains a scalar `dbSessionId`; the Runtime
 /// enforces ownership, epoch validation, and physical-resource lifetime.

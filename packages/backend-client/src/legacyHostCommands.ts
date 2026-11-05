@@ -33,6 +33,7 @@ export type LegacyCommandName =
   'ai_get_config' | 'ai_get_providers' | 'ai_get_settings_config' | 'ai_parse_filter' |
   'ai_grant_editor_session' | 'ai_revoke_editor_grant' | 'ai_touch_editor_grant' |
   'ai_save_config' | 'ai_save_settings_config' | 'ai_set_active_profile' | 'ai_validate_config' |
+  'ai_connection_notes_get' | 'ai_connection_notes_set' | 'ai_connection_context_counts' |
   'append_save_text' | 'apply_data_sync' | 'apply_data_transfer_job' | 'authorize_monitor_widget_schedule' |
   'backup_database' | 'begin_save_with_dialog' | 'begin_session_transaction' | 'cancel_data_sync' |
   'cancel_data_transfer' | 'cancel_query' | 'cancel_schema_diff_deploy' | 'check_sync_conflicts' |

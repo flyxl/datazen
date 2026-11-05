@@ -131,6 +131,10 @@ export interface AiStore {
     contextTables?: string[];
     /** Frozen editor/error/result snapshot for this turn. */
     autoContext?: AiChatContextSnapshot;
+    /** Explicit Prompt template selection; omitted = database default. */
+    templateId?: string;
+    /** Database type used to pick a default Prompt template. */
+    databaseType?: string;
     /** Target this run claims; omitted = independent. */
     targetClaim?: AiTargetClaim;
   }) => Promise<void>;

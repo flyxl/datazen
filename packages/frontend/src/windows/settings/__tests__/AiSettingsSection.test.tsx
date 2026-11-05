@@ -45,6 +45,8 @@ describe('AiSettingsSection', () => {
             isDefault: true,
           },
         ],
+        globalInstructions: '',
+        promptTemplates: [],
       },
       providers: [],
     });
@@ -83,11 +85,89 @@ describe('AiSettingsSection', () => {
     });
   });
 
+  it('renders global instructions with a byte counter and blocks over-limit saves', () => {
+    render(<AiSettingsSection />);
+
+    const input = screen.getByTestId('ai-global-instructions') as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: 'Use UTC.' } });
+    expect(screen.getByTestId('ai-global-instructions-count').textContent).toContain('8 / 4096');
+
+    fireEvent.change(input, { target: { value: 'a'.repeat(4097) } });
+    expect(screen.getByTestId('ai-global-instructions-count').textContent).toContain(
+      '4097 / 4096',
+    );
+    expect(screen.getByTestId('ai-global-instructions-count').textContent).toContain(
+      'settings.ai.overLimitHint',
+    );
+    expect(screen.getByTestId('ai-context-save')).toBeDisabled();
+  });
+
+  it('saves instructions and templates together with the existing profiles', async () => {
+    const saveSettingsConfig = vi.fn(async () => true);
+    useAiStore.setState({ saveSettingsConfig });
+    render(<AiSettingsSection />);
+
+    fireEvent.change(screen.getByTestId('ai-global-instructions'), {
+      target: { value: 'Use UTC.' },
+    });
+    fireEvent.click(screen.getByText('settings.ai.addTemplate'));
+    fireEvent.change(screen.getByTestId('ai-template-name'), {
+      target: { value: 'Default' },
+    });
+    fireEvent.change(screen.getByTestId('ai-template-content'), {
+      target: { value: 'Be concise.' },
+    });
+    fireEvent.click(screen.getByText('common.confirm'));
+    fireEvent.click(screen.getByTestId('ai-context-save'));
+
+    await waitFor(() =>
+      expect(saveSettingsConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          activeProfileId: 'profile-1',
+          globalInstructions: 'Use UTC.',
+          promptTemplates: [
+            expect.objectContaining({
+              name: 'Default',
+              content: 'Be concise.',
+            }),
+          ],
+        }),
+      ),
+    );
+  });
+
+  it('creates a prompt template and tracks the 8KB/16KB limits', () => {
+    render(<AiSettingsSection />);
+
+    fireEvent.click(screen.getByText('settings.ai.addTemplate'));
+    fireEvent.change(screen.getByTestId('ai-template-name'), {
+      target: { value: 'Postgres style' },
+    });
+    fireEvent.change(screen.getByTestId('ai-template-database-types'), {
+      target: { value: 'postgresql, mysql' },
+    });
+    fireEvent.change(screen.getByTestId('ai-template-content'), {
+      target: { value: 'Prefer explicit JOINs.' },
+    });
+    expect(screen.getByTestId('ai-template-content-count').textContent).toContain(
+      '22 / 8192',
+    );
+    fireEvent.click(screen.getByText('common.confirm'));
+
+    expect(screen.getByText('Postgres style')).toBeDefined();
+    expect(screen.getByText(/postgresql, mysql/)).toBeDefined();
+    expect(screen.getByTestId('ai-templates-total-count').textContent).toContain(
+      '22 / 16384',
+    );
+  });
+
   it('renders empty state when no profiles exist', () => {
     useAiStore.setState({
       settingsConfig: {
         activeProfileId: '',
         profiles: [],
+        globalInstructions: '',
+        promptTemplates: [],
       },
     });
 

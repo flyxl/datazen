@@ -73,6 +73,7 @@ pub async fn ai_generate_sql<R: tauri::Runtime>(
         provider,
         model: ai_config.model,
         gate,
+        injection: datazen::ai::chat_injection::ChatInjection::default(),
         lang,
         connections_context: String::new(),
         mcp_tools: Vec::new(),

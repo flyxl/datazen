@@ -11,6 +11,7 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { useAiStore } from '../../stores/aiStore';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { connectionCommands } from '../../commands/connection';
+import { aiCommands } from '../../commands/ai';
 import { backupCommands } from '../../commands/backup';
 import { emitCrossWindow, listenCrossWindow } from '../../lib/crossWindowBus';
 import { getPlatformOrNull } from '../../platform/contracts';
@@ -426,18 +427,30 @@ export function ConnectionPage() {
   );
 
   const handleDeleteConnection = useCallback(
-    (connectionId: string) => {
+    async (connectionId: string) => {
       const conn = connections.find((c) => c.id === connectionId);
       if (!conn) return;
-      void confirmDelete({
+      let message = t('main.ctx.confirmDeleteConnection', { name: conn.name });
+      try {
+        const counts = await aiCommands.connectionContextCounts(connectionId);
+        if (counts.noteCount > 0 || counts.memoryCount > 0) {
+          message = t('main.ctx.confirmDeleteConnectionWithAi', {
+            name: conn.name,
+            noteCount: counts.noteCount,
+            memoryCount: counts.memoryCount,
+          });
+        }
+      } catch {
+        // Counts are advisory: delete still works if the AI store is unavailable.
+      }
+      const ok = await confirmDelete({
         title: t('common.deleteConnection'),
-        message: t('main.ctx.confirmDeleteConnection', { name: conn.name }),
+        message,
         kind: 'warning',
-      }).then((ok) => {
-        if (!ok) return;
-        void handleCloseTab(connectionId);
-        void deleteConnection(connectionId);
       });
+      if (!ok) return;
+      void handleCloseTab(connectionId);
+      void deleteConnection(connectionId);
     },
     [connections, confirmDelete, handleCloseTab, deleteConnection, t],
   );
