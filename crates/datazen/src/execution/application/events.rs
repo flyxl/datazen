@@ -11,6 +11,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use datazen_driver_api::QueryStreamEvent;
+
 use crate::execution::domain::SessionHandle;
 use crate::execution::domain::StatementResultSource;
 use crate::shared::id::{ArtifactId, Counter, ExecutionId, JobId, RuntimeEpoch, StreamId};
@@ -91,6 +93,13 @@ pub enum ConnectionEvent {
     ExecutionChanged { execution: ExecutionView },
     /// 结果块到达。
     ResultChunk(ResultChunkEvent),
+    /// 查询流帧（W8-b driverGateway stream-executions 投递桥的载荷）。
+    ///
+    /// 桌面 `QueryStreamEvent` 词汇（`datazen_driver_api::query_stream`）的
+    /// **原样承载**：wire 形态（`type` tag + camelCase 字段）逐字不变，SSE
+    /// `event:` 行用它的种类字面量（executionStarted / statementStart / rows /
+    /// statementEnd / done）。映射登记见 server `driver_gateway.rs` 模块头。
+    QueryStream(QueryStreamEvent),
     /// 流已失效，客户端必须重新订阅；**不得**据此推断执行未发生。
     StreamResetRequired { reason: String },
 }

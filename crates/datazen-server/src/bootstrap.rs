@@ -247,7 +247,7 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         std::sync::Arc::new(crate::operations::revocation::EventSinkBridge::new(
             memory_sink.clone(),
             datazen::shared::id::StreamId::new("control-plane"),
-            datazen::shared::id::RuntimeEpoch::new("server-v1"),
+            datazen::shared::id::RuntimeEpoch::new(crate::http::sse::SERVER_RUNTIME_EPOCH),
         )),
         audit.clone() as std::sync::Arc<dyn datazen::shared::audit::AuditSink>,
     ));
@@ -418,6 +418,35 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
             lease_source.clone(),
         ));
 
+    // SSE（WR-D5，W8-b 起提前到域路由装配之前）：origin 白名单取
+    // public_origin（§8.1）；事件后备是 MemoryEventSink（单实例 v1 形态）；
+    // 周期复核走标准实现。`Option` = publicOrigin 缺席时不挂事件端点；
+    // driverGateway 流投递桥与挂载端点共享同一实例（registry/sink 同源）。
+    let sse = config.public_origin.as_ref().map(|origin| {
+        let sse_config = crate::http::sse::SseConfig {
+            allowed_origins: vec![origin.clone()],
+            keepalive_interval: std::time::Duration::from_secs(config.sse_keepalive_secs),
+            max_backlog_frames: config.sse_max_backlog_frames,
+            ..crate::http::sse::SseConfig::default()
+        };
+        crate::http::sse::SseState {
+            registry: std::sync::Arc::new(crate::http::sse::EventStreamRegistry::new(&sse_config)),
+            sink: memory_sink.clone(),
+            recheck: std::sync::Arc::new(crate::http::sse::StandardRecheck::new(
+                crate::storage::LoginSessions::new(store.clone()),
+                policy.clone(),
+                clock.clone(),
+            )),
+            config: std::sync::Arc::new(sse_config),
+            now_unix: std::sync::Arc::new(|| {
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|elapsed| elapsed.as_secs())
+                    .unwrap_or(0)
+            }),
+        }
+    });
+
     // WR-C2 §6.1–§6.4 读侧域路由（薄绑定；挂载归 router）。
     let domain_routers = vec![
         crate::http::domains::settings::settings_router(
@@ -473,7 +502,9 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
             },
         ),
         // WR-C2 §6.9 driverGateway 过渡域（四方法；闸序与目标机器同一
-        // resource_host 实例；目录 = sessions 域同一实例）。
+        // resource_host 实例；目录 = sessions 域同一实例）。W8-b：统一事件
+        // 面（SSE 同一 registry/sink）、审计端口与 ephemeral 会话注册表
+        // 同源装配。
         crate::http::domains::driver_gateway::driver_gateway_router(
             crate::http::domains::driver_gateway::DriverGatewayState {
                 registry: driver_registry.clone(),
@@ -484,6 +515,19 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
                     .await
                     .map(|shared| shared.execution)
                     .unwrap_or_else(|_| crate::storage::default_shared_settings().execution),
+                sse: sse.clone(),
+                audit: audit.clone()
+                    as std::sync::Arc<dyn datazen::shared::audit::AuditSink>,
+                clock: clock.clone(),
+                ephemeral: std::sync::Arc::new(
+                    crate::execution::ephemeral::EphemeralSessions::new(),
+                ),
+                now_unix: std::sync::Arc::new(|| {
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|elapsed| elapsed.as_secs())
+                        .unwrap_or(0)
+                }),
             },
         ),
     ];
@@ -549,33 +593,6 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
             limiter: std::sync::Arc::new(limiter),
         })
     };
-
-    // SSE（WR-D5）：origin 白名单取 public_origin（§8.1）；事件后备是
-    // MemoryEventSink（单实例 v1 形态）；周期复核走标准实现。
-    let sse = config.public_origin.as_ref().map(|origin| {
-        let sse_config = crate::http::sse::SseConfig {
-            allowed_origins: vec![origin.clone()],
-            keepalive_interval: std::time::Duration::from_secs(config.sse_keepalive_secs),
-            max_backlog_frames: config.sse_max_backlog_frames,
-            ..crate::http::sse::SseConfig::default()
-        };
-        crate::http::sse::SseState {
-            registry: std::sync::Arc::new(crate::http::sse::EventStreamRegistry::new(&sse_config)),
-            sink: memory_sink.clone(),
-            recheck: std::sync::Arc::new(crate::http::sse::StandardRecheck::new(
-                crate::storage::LoginSessions::new(store.clone()),
-                policy.clone(),
-                clock.clone(),
-            )),
-            config: std::sync::Arc::new(sse_config),
-            now_unix: std::sync::Arc::new(|| {
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|elapsed| elapsed.as_secs())
-                    .unwrap_or(0)
-            }),
-        }
-    });
 
     // OIDC 登录面（§4）：三件套齐备才挂载；缺省 = 未启用（/api/v1/auth/*
     // 落到 fallback 501，部署形态显式）。

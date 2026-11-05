@@ -13,9 +13,10 @@
 //! - `get_connection_commands`：防枚举 404（未知/越组织，CM-05）+ 注册会
 //!   话的驱动闸 503；
 //! - `execute_driver_command`：体解析闸 + 缺 command 闸 + driverType 直取
-//!   的诚实 404 + 会话绑定路径的 profile/驱动闸 503；
-//! - `execute_driver_command_stream`：缺 dbSessionId 闸 + 同款闸序 + 驱动
-//!   闸先于 501 的裁决（空目录下 503 可达，501 随驱动点亮）；
+//!   的诚实 404（W8-b 起 registry 点亮前绿路径随 registry 自动可达）+ 会话
+//!   绑定路径的 profile/驱动闸 503；
+//! - `execute_driver_command_stream`：SQL 命令收窄闸 + 缺 dbSessionId 闸 +
+//!   同款闸序（驱动闸先于订阅登记——闸不过不建流，域文件模块头）；
 //! - 认证链钉：未认证 401、无 CSRF 的 POST 403（L2/L4 由
 //!   `build_router_with_auth` 保证）。
 
@@ -33,6 +34,8 @@ use datazen::connection::domain::profile::ProfileRepository;
 use datazen::connection::dto::ProfileDraft;
 use datazen::execution::application::orchestration::RuntimeResultSink;
 use datazen::execution::domain::session_directory::SessionOwner;
+use datazen::shared::audit::AuditSink;
+use datazen::shared::clock::{Clock, SystemClock};
 use datazen::shared::context::{OwnerRef, RequestContext};
 use datazen::shared::id::{
     ClientInstanceId, ConnectionId, DbSessionId, OrganizationId, PrincipalId, RequestId,
@@ -40,6 +43,7 @@ use datazen::shared::id::{
 };
 
 use datazen_server::csrf::{self, CsrfSecret};
+use datazen_server::execution::ephemeral::EphemeralSessions;
 use datazen_server::execution::lease::ServerRuntimeLeaseSource;
 use datazen_server::execution::resource_host::ServerResourceExecutionHost;
 use datazen_server::http::domains::driver_gateway::{driver_gateway_router, DriverGatewayState};
@@ -48,7 +52,7 @@ use datazen_server::http::router::{build_router_with_auth, AuthDeps};
 use datazen_server::policy::{PolicyService, Role};
 use datazen_server::storage::login_sessions::{LoginSessionMode, NewLoginSession};
 use datazen_server::storage::{
-    AdminStore, LoginSessions, ServerConnections, ServerProfiles, ServerSettingsStore,
+    AdminStore, LoginSessions, ServerAudit, ServerConnections, ServerProfiles, ServerSettingsStore,
 };
 
 const SERVER_SECRET: &[u8] = b"w3-driver-gateway-secret-32-bytes!";
@@ -198,6 +202,18 @@ fn gateway_state(store: &Arc<AdminStore>) -> DriverGatewayState {
             datazen::execution::runtime::directory::InMemorySessionDirectory::new(),
         ),
         settings: datazen_server::storage::default_shared_settings().execution,
+        // W8-b 装配面：本套件钉的是闸序（事件面未配置 = sse None），审计落
+        // 真存储（审计断言随命令历史面测试补），时钟与 TTL 来源同 bootstrap。
+        sse: None,
+        audit: Arc::new(ServerAudit::new(store.clone())) as Arc<dyn AuditSink>,
+        clock: Arc::new(SystemClock) as Arc<dyn Clock>,
+        ephemeral: Arc::new(EphemeralSessions::new()),
+        now_unix: Arc::new(|| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_secs())
+                .unwrap_or(0)
+        }),
     }
 }
 
@@ -516,10 +532,11 @@ async fn executions_refuse_a_request_without_either_binding() {
     );
 }
 
-/// driverType 直取（无连接执行）：v1 空注册表下是 registry 的诚实 404；
-/// registry 点亮后的 501（无连接执行面未装配）在部署切片的测试面。
+/// driverType 直取（无连接执行）：v1 空注册表下是 registry 的诚实 404。
+/// W8-b 起 registry 点亮后的绿路径（ephemeral 句柄 + 同一份编排）随驱动
+/// 目录自动可达，测试面不需要重写。
 #[tokio::test]
-async fn direct_driver_executions_answer_the_registry_before_the_501() {
+async fn direct_driver_executions_answer_the_registry_404() {
     let (app, primary, _other) = fixture().await;
     let (status, body) = call(
         &app,
@@ -622,7 +639,31 @@ async fn session_bound_executions_answer_the_profile_gate_for_a_missing_connecti
     );
 }
 
-// ── POST /stream-executions：同款闸序 + 501 裁决 ─────────────────────────
+// ── POST /stream-executions：SQL 命令收窄 + 同款闸序 ─────────────────────────────
+
+/// 行块词汇只对 SQL 命令成立（桌面流式面同款收窄）：其余命令 400 指回
+/// 非流端点；这闸先于 dbSessionId 闸（命令形状是请求自身的错误）。
+#[tokio::test]
+async fn stream_executions_frame_only_sql_commands() {
+    let (app, primary, _other) = fixture().await;
+    let (status, body) = call(
+        &app,
+        "POST",
+        "/api/v1/driver-gateway/stream-executions",
+        &primary.cookie,
+        Some(&primary.csrf),
+        Some(serde_json::json!({ "command": "list_databases", "input": {} })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("stream executions frame SQL results"),
+        "{body}"
+    );
+}
 
 #[tokio::test]
 async fn stream_executions_refuse_a_missing_db_session_id() {
@@ -633,7 +674,7 @@ async fn stream_executions_refuse_a_missing_db_session_id() {
         "/api/v1/driver-gateway/stream-executions",
         &primary.cookie,
         Some(&primary.csrf),
-        Some(serde_json::json!({ "command": "query_stream", "input": {} })),
+        Some(serde_json::json!({ "command": "query", "input": { "sql": "SELECT 1" } })),
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
@@ -659,13 +700,13 @@ async fn stream_executions_run_the_same_gates_as_the_sync_path() {
         Some(&fixture.primary.csrf),
         Some(serde_json::json!({
             "dbSessionId": db_session_id,
-            "command": "query_stream",
+            "command": "query",
             "input": { "sql": "SELECT 1" }
         })),
     )
     .await;
-    // 驱动闸先于 501：v1 空目录下这里是 503，事件投递桥的 501 只在驱动
-    // 可达之后才该出现（闸序裁决，域文件模块头）。
+    // 驱动闸先于订阅登记：v1 空目录下这里是 503（闸不过不建流，域文件
+    // 模块头）——投递桥（202 + streamId）只在驱动可达之后才该出现。
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{body}");
     assert!(
         body["message"]
@@ -687,8 +728,8 @@ async fn stream_executions_refuse_unknown_sessions_with_the_shared_404() {
         Some(&primary.csrf),
         Some(serde_json::json!({
             "dbSessionId": "no-such-session",
-            "command": "query_stream",
-            "input": {}
+            "command": "query",
+            "input": { "sql": "SELECT 1" }
         })),
     )
     .await;
