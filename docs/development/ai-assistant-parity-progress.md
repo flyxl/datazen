@@ -18,8 +18,8 @@
 | T14 Memory v1：纠正、模式、冲突、失效 | 已完成 |
 | T15 会话持久化、导出、提示历史 | 已完成 |
 | T16 Provider 预设扩展 | 已完成 |
-| T17 Skills 加载与工具 | 进行中 |
-| T18 CLI 与 Agent Skill | 未开始 |
+| T17 Skills 加载与工具 | 已完成 |
+| T18 CLI 与 Agent Skill | 进行中 |
 | T19 MCP scope、逐次审批、审计 | 未开始 |
 | T20 MCP batch 与 Redis 只读工具 | 未开始 |
 | T21 MCP Streamable HTTP | 未开始 |
