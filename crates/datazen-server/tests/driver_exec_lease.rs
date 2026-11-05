@@ -3,9 +3,10 @@
 //! 钉住的契约（不依赖真数据库；驱动用 `driver-api` 的 `MockDriver` /
 //! `DriverRegistry::with_factories` 静态形态，后端/仓储用本文件的最小假体）：
 //!
-//! 1. **租约源 resolve 成功路径**：`ServerRuntimeLeaseSource::resolve()` 每次
-//!    现构造 `RuntimeConnectionUseCases`（两次 resolve 不是同一个 Arc——
-//!    端口语义禁止缓存，runtime 可能被吊销）。
+//! 1. **租约源 resolve 成功路径**：`ServerRuntimeLeaseSource::resolve()` 持
+//!    「当前 runtime 单元直至吊销」（未吊销窗口内两次 resolve 是同一
+//!    Arc——CM-63 租约连续性，会话/令牌/回执跨 resolve 可见；`revoke()`
+//!    换入新实例，旧会话按既有 SessionLost 语义失效）。
 //! 2. **无驱动类型 fail-closed 报错文案**：连接声明的 `databaseType` 没有被
 //!    装配进 registry → `open` 拒绝，且文案逐字携带 registry 的配置事实
 //!    （`driver type '…' is not registered in this build`）。
@@ -426,7 +427,7 @@ mod lease_source {
     use datazen_server::mcp::runtime::{RuntimeLeaseSource, ServerRuntimeLeaseSource};
 
     #[tokio::test]
-    async fn resolve_returns_a_fresh_runtime_per_call() {
+    async fn resolve_returns_the_current_runtime_until_revoked() {
         let source = ServerRuntimeLeaseSource::new(
             Arc::new(Profiles),
             Arc::new(AllowAllPolicy),
@@ -439,12 +440,24 @@ mod lease_source {
         let second = source
             .resolve()
             .await
-            .expect("second resolve must assemble again");
-        // 每调用现取：两次 resolve 不得共享同一个 runtime 实例（端口语义
-        // 禁止缓存——runtime 可能被吊销）。
+            .expect("second resolve must succeed");
+        // CM-63：租约源是「当前 runtime 单元」的唯一归属者——未吊销窗口内
+        // resolve 恒同一 Arc（会话/令牌/回执跨 resolve 连续）。「每调用现取，
+        // 禁止缓存」禁令约束的是消费者，不约束租约源自身。
         assert!(
-            !Arc::ptr_eq(&first, &second),
-            "lease source must not cache the runtime across calls"
+            Arc::ptr_eq(&first, &second),
+            "the lease source owns the current runtime unit until revoked"
+        );
+        // 吊销换入新实例：旧会话按既有 SessionLost 语义失效（账随旧实例
+        // 不可达），结果落共享 sink 不受影响。
+        source.revoke();
+        let third = source
+            .resolve()
+            .await
+            .expect("resolve after revoke must rebuild");
+        assert!(
+            !Arc::ptr_eq(&first, &third),
+            "revocation replaces the current runtime unit"
         );
     }
 }
