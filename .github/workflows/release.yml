@@ -509,6 +509,24 @@ jobs:
           rm -f "$CERTIFICATE_PATH"
           echo "Imported Apple signing identity: $APPLE_SIGNING_IDENTITY"
 
+      - name: Configure Apple notarization credentials
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$APPLE_ID" && -n "$APPLE_PASSWORD" && -n "$APPLE_TEAM_ID" ]]; then
+            printf 'APPLE_ID=%s\n' "$APPLE_ID" >> "$GITHUB_ENV"
+            printf 'APPLE_PASSWORD=%s\n' "$APPLE_PASSWORD" >> "$GITHUB_ENV"
+            printf 'APPLE_TEAM_ID=%s\n' "$APPLE_TEAM_ID" >> "$GITHUB_ENV"
+            echo "Apple notarization credentials configured."
+          else
+            echo "::notice::Apple notarization credentials are incomplete; notarization will be skipped while code signing remains enabled."
+          fi
+
       - name: Install frontend dependencies
         run: pnpm install
 
@@ -565,11 +583,6 @@ jobs:
           DATAZEN_EP_SIGNING_PRIVATE_KEY: ${{ secrets.DATAZEN_EP_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Tauri notarizes macOS bundles when these credentials are present.
-          # The certificate import step above supplies APPLE_SIGNING_IDENTITY.
-          APPLE_ID: ${{ runner.os == 'macOS' && secrets.APPLE_ID || '' }}
-          APPLE_PASSWORD: ${{ runner.os == 'macOS' && secrets.APPLE_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ runner.os == 'macOS' && secrets.APPLE_TEAM_ID || '' }}
 
       - name: Verify macOS code signature
         if: runner.os == 'macOS'

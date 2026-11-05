@@ -267,6 +267,25 @@ describe('Per-SKU updater channels', () => {
   const buildSteps = workflow.jobs.build.steps;
   const stepNamed = (name: string) => buildSteps.find((s) => s.name === name);
 
+  it('only enables Apple notarization when all three credentials are configured', () => {
+    const notarizationStep = stepNamed('Configure Apple notarization credentials');
+    expect(notarizationStep?.if).toBe("runner.os == 'macOS'");
+    expect(notarizationStep?.env).toMatchObject({
+      APPLE_ID: '${{ secrets.APPLE_ID }}',
+      APPLE_PASSWORD: '${{ secrets.APPLE_PASSWORD }}',
+      APPLE_TEAM_ID: '${{ secrets.APPLE_TEAM_ID }}',
+    });
+    expect(notarizationStep?.run).toContain(
+      '[[ -n "$APPLE_ID" && -n "$APPLE_PASSWORD" && -n "$APPLE_TEAM_ID" ]]',
+    );
+    expect(notarizationStep?.run).toContain('>> "$GITHUB_ENV"');
+
+    const buildStep = stepNamed('Resolve drivers and build Tauri app');
+    expect(buildStep?.env).not.toHaveProperty('APPLE_ID');
+    expect(buildStep?.env).not.toHaveProperty('APPLE_PASSWORD');
+    expect(buildStep?.env).not.toHaveProperty('APPLE_TEAM_ID');
+  });
+
   it('signs every variant, not just Basic', () => {
     // Gating the key on `matrix.variant_suffix == ''` is what left -all /
     // -akulaku with no signed artifacts: their only reachable manifest was
