@@ -34,11 +34,11 @@ use crate::ai::domain::types::{
 /// After the direct child exits, descendants may still hold the stdout/stderr
 /// pipes open. Give the readers a short grace to drain buffered output, then
 /// kill the process group so a background helper cannot turn completion into
-/// an unbounded wait.
+/// an unbounded wait. A drain that has to kill descendants is not a successful
+/// completion: it is reported as a timeout, even when the direct child exited 0.
 const PIPE_DRAIN_GRACE: Duration = Duration::from_millis(500);
 /// After killing the group, allow the readers a final moment to observe EOF
-/// before aborting them. Normal output has already been copied into the shared
-/// buffers, so aborting never truncates the output seen by `complete()`.
+/// before aborting them. Output already read stays in the shared buffers.
 const PIPE_ABORT_GRACE: Duration = Duration::from_millis(150);
 
 /// Environment variables allowed into a local CLI child process.
@@ -700,6 +700,10 @@ async fn abort_reader_tasks(
     let _ = stderr_task.await;
 }
 
+/// Result of waiting for stdout/stderr after the direct child was reaped.
+///
+/// Natural pipe EOF means the child completed cleanly. Killing descendants to
+/// unblock a held pipe is reported as `timed_out` instead of a false success.
 struct DrainedOutput {
     stdout: String,
     stderr: String,
@@ -708,10 +712,11 @@ struct DrainedOutput {
 }
 
 /// Drain the pipe readers after `child.wait()` has returned. Normal CLIs close
-/// both pipes immediately; one that forked a background helper can keep them
-/// open forever. Wait `PIPE_DRAIN_GRACE`, then kill the saved process group,
-/// then abort the readers if EOF still has not arrived. Output already read is
-/// kept in the shared buffers, so an abort only drops bytes not yet received.
+/// both pipes immediately. One that forked a background helper can keep them
+/// open forever: after `PIPE_DRAIN_GRACE` (or the remaining request timeout),
+/// kill the saved process group, then abort the readers if EOF still has not
+/// arrived. Only natural EOF is a successful completion; a forced drain is
+/// reported as a timeout. Output already read is kept in the shared buffers.
 async fn drain_pipe_tasks(
     stdin_task: tokio::task::JoinHandle<()>,
     mut stdout_task: tokio::task::JoinHandle<()>,
@@ -776,10 +781,13 @@ async fn drain_pipe_tasks(
             }
             _ = tokio::time::sleep_until(drain_deadline), if !killed_group && !cancelled => {
                 // The leader is already reaped; kill by the saved group id so
-                // background descendants holding stdout/stderr also die.
+                // background descendants holding stdout/stderr also die. A
+                // pipe held past the drain window means we cannot distinguish
+                // complete output from a helper still writing, so report a
+                // timeout instead of returning a partial success.
                 kill_process_group(process_group);
+                timed_out = true;
                 if drain_hits_timeout {
-                    timed_out = true;
                     break;
                 }
                 killed_group = true;
@@ -1310,13 +1318,13 @@ mod tests {
             pid_file.display()
         );
         let path = script(&dir, &script_body);
-        let provider = provider_for(&path, 10).await;
+        let provider = provider_for(&path, 30).await;
         let started = Instant::now();
-        let response = provider
+        let error = provider
             .complete(&request("req-exited-orphan"))
             .await
-            .unwrap();
-        assert_eq!(response.content, "started\n");
+            .unwrap_err();
+        assert!(matches!(error, AiError::Timeout(30)), "{error}");
         assert!(started.elapsed() < Duration::from_secs(5));
         let pid: i32 = std::fs::read_to_string(&pid_file)
             .unwrap()
@@ -1335,20 +1343,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn timeout_one_bounds_an_exited_child_with_a_pipe_holding_descendant() {
+    async fn timeout_one_reports_timeout_for_an_exited_child_holding_pipes() {
         let dir = tempfile::tempdir().unwrap();
         let path = script(&dir, "sleep 3 & printf 'started\n'; exit 0");
         let provider = provider_for(&path, 1).await;
         let started = Instant::now();
-        let result = provider.complete(&request("req-timeout-orphan")).await;
-        // Under a loaded test runner startup can consume the budget, in which
-        // case the timeout path is correct; the bound, not the variant, is the
-        // regression assertion here.
+        // `started` may already be in the shared buffer, but a forced drain is
+        // not a successful response and must not be returned as `Ok`.
+        let error = provider
+            .complete(&request("req-timeout-orphan"))
+            .await
+            .unwrap_err();
+        assert!(matches!(error, AiError::Timeout(1)), "{error}");
         assert!(started.elapsed() < Duration::from_secs(3));
-        match result {
-            Ok(response) => assert!(response.content.contains("started")),
-            Err(error) => assert!(matches!(error, AiError::Timeout(1)), "{error}"),
-        }
     }
 
     #[tokio::test]
@@ -1378,7 +1385,6 @@ mod tests {
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
-        tokio::time::sleep(Duration::from_millis(50)).await;
         let started = Instant::now();
         provider.cancel("req-drain-cancel").await.unwrap();
         let mut saw_cancelled = false;
@@ -1405,6 +1411,36 @@ mod tests {
             tokio::time::sleep(Duration::from_millis(50)).await;
         }
         assert!(gone, "orphan {pid} survived cancellation during drain");
+    }
+
+    #[tokio::test]
+    async fn forced_drain_timeout_is_not_reported_as_stream_success() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = script(&dir, "sleep 30 & printf 'started\n'; exit 0");
+        let provider = provider_for(&path, 30).await;
+        let (tx, mut rx) = mpsc::channel(16);
+        let handle = tokio::spawn(async move {
+            provider
+                .stream_complete(&request("req-stream-timeout"), tx)
+                .await
+        });
+        let mut content = String::new();
+        let mut terminal_error = None;
+        let mut saw_done = false;
+        while let Some(item) = rx.recv().await {
+            match item {
+                Ok(chunk) => {
+                    content.push_str(&chunk.content);
+                    saw_done |= chunk.done;
+                }
+                Err(error) => terminal_error = Some(error),
+            }
+        }
+        let error = handle.await.unwrap().unwrap_err();
+        assert!(matches!(error, AiError::Timeout(30)), "{error}");
+        assert_eq!(content, "started\n");
+        assert!(!saw_done);
+        assert!(matches!(terminal_error, Some(AiError::Timeout(30))));
     }
 
     #[tokio::test]
