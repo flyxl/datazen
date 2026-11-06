@@ -312,22 +312,7 @@ vi.mock('../AppearanceSection', () => ({
 }));
 
 vi.mock('../UpdateSection', () => ({
-  UpdateSection: ({
-    checkOnStartup,
-    onCheckOnStartupChange,
-  }: {
-    checkOnStartup: boolean;
-    onCheckOnStartupChange: (v: boolean) => void;
-  }) => (
-    <label data-testid="update-section">
-      <input
-        type="checkbox"
-        checked={checkOnStartup}
-        onChange={(e) => onCheckOnStartupChange(e.target.checked)}
-      />
-      update-check
-    </label>
-  ),
+  UpdateSection: () => <div data-testid="update-section">update-check</div>,
 }));
 
 vi.mock('../DriverSettingsSection', () => ({
@@ -484,10 +469,7 @@ describe('SettingsContent', () => {
     pickSelectOption(0, 'English');
     await waitFor(() => expect(updateSettingsMock).toHaveBeenCalledWith({ language: 'en' }));
 
-    fireEvent.click(within(screen.getByTestId('update-section')).getByRole('checkbox'));
-    await waitFor(() =>
-      expect(updateSettingsMock).toHaveBeenCalledWith({ checkForUpdatesOnStartup: false }),
-    );
+    expect(within(screen.getByTestId('update-section')).queryByRole('checkbox')).toBeNull();
   });
 
   it('renders back button in nav when onBack is provided', async () => {

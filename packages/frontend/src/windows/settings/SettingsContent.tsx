@@ -409,12 +409,7 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                 />
               </SettingRow>
 
-              {(capabilities?.updater ?? true) && (
-                <UpdateSection
-                  checkOnStartup={settings.checkForUpdatesOnStartup}
-                  onCheckOnStartupChange={(v) => updateField('checkForUpdatesOnStartup', v)}
-                />
-              )}
+              {(capabilities?.updater ?? true) && <UpdateSection />}
 
               {renderSectionContributions('general')}
 
