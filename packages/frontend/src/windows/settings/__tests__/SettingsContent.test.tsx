@@ -790,6 +790,8 @@ describe('SettingsContent', () => {
 
     await waitFor(() => expect(screen.getByText('alice')).toBeInTheDocument());
     expect(screen.getByText('deny')).toBeInTheDocument();
+    expect(screen.getByText('req-1')).toBeInTheDocument();
+    expect(screen.getByText('mcp.audit.requestId')).toBeInTheDocument();
     expect(screen.getByText('7')).toBeInTheDocument();
 
     const textareas = document.querySelectorAll('textarea');

@@ -137,7 +137,11 @@ impl McpToolPolicy {
     /// Scope check for schema resources, which have a database but no tool
     /// arguments and no namespace. Kept separate from `evaluate` so disabling
     /// the `get_schema` tool does not silently disable the resource endpoint.
-    pub fn ensure_schema_resource_scope(&self, database: &str) -> Result<(), String> {
+    pub fn ensure_schema_resource_scope(
+        &self,
+        database: &str,
+        namespace: Option<&str>,
+    ) -> Result<(), String> {
         if !self.allowed_databases.is_empty()
             && !self
                 .allowed_databases
@@ -149,10 +153,19 @@ impl McpToolPolicy {
             ));
         }
         if !self.allowed_namespaces.is_empty() {
-            return Err(
-                "MCP namespace scope is restricted; schema resources cannot verify a namespace"
-                    .to_string(),
-            );
+            let namespace = namespace.ok_or_else(|| {
+                "MCP namespace scope is restricted; the actual schema for this resource is unknown"
+                    .to_string()
+            })?;
+            if !self
+                .allowed_namespaces
+                .iter()
+                .any(|entry| entry.trim() == "*" || entry.trim() == namespace)
+            {
+                return Err(format!(
+                    "namespace '{namespace}' is outside the MCP namespace scope for schema resources"
+                ));
+            }
         }
         Ok(())
     }

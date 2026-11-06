@@ -30,3 +30,4 @@ pub use domain::allowlist;
 pub use domain::approval;
 pub use domain::permission;
 pub use domain::policy;
+pub use domain::sql_scope;

@@ -101,6 +101,7 @@ const pack = {
   'mcp.audit.connection': 'Connection',
   'mcp.audit.tool': 'Tool',
   'mcp.audit.decision': 'Decision',
+  'mcp.audit.requestId': 'Request ID',
   'mcp.audit.rows': 'Rows',
   'mcp.audit.error': 'Failed to load MCP audit log',
   'mcp.approval.title': 'Approve MCP call',

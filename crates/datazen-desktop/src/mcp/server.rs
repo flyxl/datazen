@@ -10,9 +10,11 @@ use datazen::mcp::approval::{approval_preview, McpApprovalDecision, McpApprovalP
 use datazen::mcp::permission::McpPermissionMode;
 use datazen::mcp::policy::{McpCallPlan, McpToolPolicy};
 use datazen::mcp::session_tools::{StatefulCall, StatefulSessionHost};
+use datazen::mcp::sql_scope::{validate_sql_scope, SqlScopeDialect};
 use datazen::shared::context::{OwnerRef, RequestContext};
 use datazen::shared::id::ClientInstanceId;
 use datazen::workflow::resource_execution::ResourceExecutionHost;
+use datazen_driver_api::ConnectionConfig;
 use rmcp::ErrorData as McpError;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -160,16 +162,32 @@ impl DataZenMcpServer {
     }
 
     /// Pre-dispatch gate. A plan can only come back after permission, scope,
-    /// and (for writes) an explicit Allow once. Denied calls are audited here
-    /// and never reach a tool body.
+    /// SQL-target validation, and (for writes) an explicit Allow once. Denied
+    /// calls are audited here and never reach a tool body.
     pub(crate) async fn prepare_tool_call(
         &self,
         tool_name: &str,
         arguments: Option<&serde_json::Map<String, serde_json::Value>>,
     ) -> Result<PreparedToolCall, McpError> {
-        let scoped_arguments = self.with_scope_defaults(arguments).await;
-        let target_arguments = scoped_arguments.as_ref().or(arguments);
-        let plan = match self.tool_policy().evaluate(tool_name, target_arguments) {
+        let request_id = new_request_id().to_string();
+        let scoped = self.with_scope_context(tool_name, arguments).await;
+        if let Some(error) = scoped.error.as_deref() {
+            let (connection_id, database, namespace) =
+                audit_target(scoped.arguments.as_ref().or(arguments));
+            self.audit_tool_call(
+                tool_name,
+                connection_id,
+                database,
+                namespace,
+                "deny",
+                None,
+                Some(request_id),
+            )
+            .await;
+            return Err(tool_help::tool_error(tool_name, error));
+        }
+        let target_arguments = scoped.arguments.as_ref().or(arguments);
+        let mut plan = match self.tool_policy().evaluate(tool_name, target_arguments) {
             Ok(plan) => plan,
             Err(error) => {
                 let (connection_id, database, namespace) = audit_target(target_arguments);
@@ -180,16 +198,88 @@ impl DataZenMcpServer {
                     namespace,
                     "deny",
                     None,
-                    None,
+                    Some(request_id),
                 )
                 .await;
                 return Err(tool_help::tool_error(tool_name, &error));
             }
         };
+        if plan.connection_id.is_none() {
+            plan.connection_id = scoped.connection_id.clone();
+        }
+        if plan.database.is_none() {
+            plan.database = scoped.default_database.clone();
+        }
+        if plan.namespace.is_none() {
+            plan.namespace = scoped.default_namespace.clone();
+        }
 
-        let mut approval_request_id = None;
+        if self.sql_scope_is_active() && sql_carrying_tool(tool_name, target_arguments) {
+            let Some(sql) = plan.sql.as_deref() else {
+                self.audit_tool_call(
+                    tool_name,
+                    plan.connection_id.clone(),
+                    plan.database.clone(),
+                    plan.namespace.clone(),
+                    "deny",
+                    None,
+                    Some(request_id),
+                )
+                .await;
+                return Err(tool_help::tool_error(
+                    tool_name,
+                    "MCP SQL scope: SQL is required and could not be verified",
+                ));
+            };
+            let Some(dialect) = scoped.dialect else {
+                self.audit_tool_call(
+                    tool_name,
+                    plan.connection_id.clone(),
+                    plan.database.clone(),
+                    plan.namespace.clone(),
+                    "deny",
+                    None,
+                    Some(request_id),
+                )
+                .await;
+                return Err(tool_help::tool_error(
+                    tool_name,
+                    "MCP SQL scope: this driver's SQL target shape cannot be verified",
+                ));
+            };
+            match validate_sql_scope(
+                sql,
+                dialect,
+                scoped.default_database.as_deref(),
+                scoped.default_namespace.as_deref(),
+                &self.allowed_databases,
+                &self.allowed_namespaces,
+            ) {
+                Ok(targets) => {
+                    if let Some(database) = targets.database_label() {
+                        plan.database = Some(database);
+                    }
+                    if let Some(namespace) = targets.namespace_label() {
+                        plan.namespace = Some(namespace);
+                    }
+                }
+                Err(error) => {
+                    self.audit_tool_call(
+                        tool_name,
+                        plan.connection_id.clone(),
+                        plan.database.clone(),
+                        plan.namespace.clone(),
+                        "deny",
+                        None,
+                        Some(request_id),
+                    )
+                    .await;
+                    return Err(tool_help::tool_error(tool_name, &error));
+                }
+            }
+        }
+
         if plan.requires_approval {
-            let request_id = new_request_id().to_string();
             let timeout = Duration::from_secs(5 * 60);
             let now = chrono::Utc::now();
             let request = approval_preview(
@@ -227,42 +317,206 @@ impl DataZenMcpServer {
                     &format!("MCP call was not executed: {reason}"),
                 ));
             }
-            approval_request_id = Some(request_id);
         }
 
-        Ok(PreparedToolCall {
-            plan,
-            approval_request_id,
-        })
+        Ok(PreparedToolCall { plan, request_id })
     }
 
-    /// Fill the connection's own default database/schema before scope
-    /// evaluation. MCP `query` and metadata tools do not take a database
-    /// argument, so without this a restricted database scope would reject the
-    /// connection's normal default target even when that target is allowed.
-    async fn with_scope_defaults(
+    fn sql_scope_is_active(&self) -> bool {
+        !self.allowed_databases.is_empty() || !self.allowed_namespaces.is_empty()
+    }
+
+    /// Resolve the call target before policy evaluation. Scope must use the
+    /// connection's *actual* default database/schema: profiles saved before the
+    /// fields existed often have `null`, and copying only `Some` values made
+    /// valid defaults look out of scope. The driver is probed for the missing
+    /// dimension; with no active scope a probe failure is non-fatal and only
+    /// leaves the audit target empty.
+    async fn with_scope_context(
         &self,
+        tool_name: &str,
         arguments: Option<&serde_json::Map<String, serde_json::Value>>,
-    ) -> Option<serde_json::Map<String, serde_json::Value>> {
-        if self.allowed_databases.is_empty() && self.allowed_namespaces.is_empty() {
-            return arguments.cloned();
-        }
+    ) -> ScopeContext {
+        let mut context = ScopeContext {
+            arguments: arguments.cloned(),
+            ..ScopeContext::default()
+        };
         let connection_id = arguments
             .and_then(|args| args.get("connection_id"))
-            .and_then(|value| value.as_str())?;
-        let connection = self.app_state.store.get_connection(connection_id).await?;
-        let mut scoped = arguments.cloned().unwrap_or_default();
-        if !self.allowed_databases.is_empty() && !scoped.contains_key("database") {
-            if let Some(database) = connection.database {
-                scoped.insert("database".into(), serde_json::Value::String(database));
+            .and_then(|value| value.as_str())
+            .map(str::to_owned)
+            .or_else(|| {
+                if tool_name != "use_session" {
+                    return None;
+                }
+                let reference = argument_string(arguments, "client_session_ref")?;
+                self.sessions
+                    .lookup(
+                        &reference,
+                        &self.client_instance_id,
+                        std::time::Instant::now(),
+                    )
+                    .ok()
+                    .map(|binding| binding.connection_id)
+            });
+        context.connection_id = connection_id.clone();
+        let scope_active = self.sql_scope_is_active();
+        let audit_target_needed = connection_id.is_some();
+        if !scope_active && !audit_target_needed {
+            return context;
+        }
+        let Some(connection_id) = connection_id else {
+            if scope_active && sql_carrying_tool(tool_name, arguments) {
+                context.error = Some(
+                    "MCP SQL scope: connection_id is required to resolve the actual default target"
+                        .to_string(),
+                );
+            }
+            return context;
+        };
+
+        let (config, _, enabled) = match self.resource_host.profile(&connection_id).await {
+            Ok(profile) => profile,
+            Err(error) => {
+                if scope_active {
+                    context.error = Some(format!(
+                        "MCP SQL scope: connection profile could not be resolved: {error}"
+                    ));
+                }
+                return context;
+            }
+        };
+        if !enabled {
+            if scope_active {
+                context.error = Some("MCP SQL scope: connection profile is disabled".to_string());
+            }
+            return context;
+        }
+        context.dialect = SqlScopeDialect::from_driver_id(&config.database_type);
+        if scope_active && context.dialect.is_none() {
+            context.error = Some(
+                "MCP SQL scope: this driver's SQL target shape cannot be verified".to_string(),
+            );
+            return context;
+        }
+        if scope_active
+            && !self.allowed_namespaces.is_empty()
+            && context
+                .dialect
+                .is_some_and(|dialect| !dialect.has_namespace_level())
+        {
+            context.error =
+                Some("MCP SQL scope: this driver has no verifiable namespace level".to_string());
+            return context;
+        }
+
+        let mut database =
+            argument_string(arguments, "database").or_else(|| nonblank(config.database.clone()));
+        let mut namespace = argument_string(arguments, "schema")
+            .or_else(|| argument_string(arguments, "namespace"))
+            .or_else(|| nonblank(config.schema.clone()));
+        let needs_probe =
+            database.is_none() || (namespace.is_none() && !self.allowed_namespaces.is_empty());
+        if needs_probe {
+            match self
+                .probe_connection_defaults(&connection_id, &config)
+                .await
+            {
+                Ok((probed_database, probed_namespace)) => {
+                    if database.is_none() {
+                        database = probed_database;
+                    }
+                    if namespace.is_none() {
+                        namespace = probed_namespace;
+                    }
+                }
+                Err(error) => {
+                    let missing_required_database =
+                        !self.allowed_databases.is_empty() && database.is_none();
+                    let missing_required_namespace =
+                        !self.allowed_namespaces.is_empty() && namespace.is_none();
+                    if scope_active && (missing_required_database || missing_required_namespace) {
+                        context.error = Some(format!(
+                            "MCP SQL scope: actual default database/schema could not be resolved: {error}"
+                        ));
+                        return context;
+                    }
+                }
             }
         }
-        if !self.allowed_namespaces.is_empty() && !scoped.contains_key("schema") {
-            if let Some(schema) = connection.schema {
-                scoped.insert("schema".into(), serde_json::Value::String(schema));
+        if database.is_none()
+            && config
+                .database_type
+                .to_ascii_lowercase()
+                .starts_with("sqlite")
+        {
+            database = Some("main".to_string());
+        }
+        if scope_active && !self.allowed_databases.is_empty() && database.is_none() {
+            context.error = Some(
+                "MCP SQL scope: the actual default database is unknown; refusing the call"
+                    .to_string(),
+            );
+            return context;
+        }
+        if scope_active
+            && !self.allowed_namespaces.is_empty()
+            && namespace.is_none()
+            && context.dialect.is_some_and(|dialect| {
+                matches!(
+                    dialect,
+                    SqlScopeDialect::PostgreSql | SqlScopeDialect::MsSql | SqlScopeDialect::DuckDb
+                )
+            })
+        {
+            context.error = Some(
+                "MCP SQL scope: the actual default schema is unknown; refusing the call"
+                    .to_string(),
+            );
+            return context;
+        }
+        context.default_database = database.clone();
+        context.default_namespace = namespace.clone();
+        if let Some(arguments) = context.arguments.as_mut() {
+            if let Some(database) = database {
+                arguments
+                    .entry("database".to_string())
+                    .or_insert(serde_json::Value::String(database));
+            }
+            if let Some(namespace) = namespace {
+                arguments
+                    .entry("schema".to_string())
+                    .or_insert(serde_json::Value::String(namespace));
             }
         }
-        Some(scoped)
+        context
+    }
+
+    /// Probe the live connection for its actual default target. The profile
+    /// fields are authoritative when present; the probe fills only the missing
+    /// dimension, so a declared target is never silently replaced.
+    pub(crate) async fn probe_connection_defaults(
+        &self,
+        connection_id: &str,
+        config: &ConnectionConfig,
+    ) -> Result<(Option<String>, Option<String>), String> {
+        let dialect = SqlScopeDialect::from_driver_id(&config.database_type)
+            .ok_or_else(|| "unsupported SQL driver".to_string())?;
+        let probe_sql = default_target_probe_sql(dialect);
+        // Resolve through the same read-only workflow command path used by the
+        // rest of the host. Opening the driver directly can hit a runtime pool
+        // that is only wired by the session boundary.
+        let value = datazen::workflow::runtime_reads::read_target_command(
+            self.resource_host.as_ref(),
+            connection_id,
+            "query",
+            serde_json::json!({ "sql": probe_sql }),
+        )
+        .await
+        .map_err(|error| format!("default target probe failed: {error}"))?;
+        let (database, namespace) = find_default_probe_row(&value)
+            .ok_or_else(|| "default target probe returned no row".to_string())?;
+        Ok((database, namespace))
     }
 
     /// Persist the final allow/deny outcome. Audit failures are logged and
@@ -319,7 +573,7 @@ impl DataZenMcpServer {
             matches!(tool_name, "query" | "use_session" | "run_workflow")
                 .then(|| row_count_from_output(result_text))
                 .flatten(),
-            prepared.approval_request_id.clone(),
+            Some(prepared.request_id.clone()),
         )
         .await;
     }
@@ -377,7 +631,93 @@ fn default_approval_port(app_state: &Arc<AppState>) -> Arc<dyn McpApprovalPort> 
 /// the exact target and rowcount.
 pub(crate) struct PreparedToolCall {
     pub(crate) plan: McpCallPlan,
-    pub(crate) approval_request_id: Option<String>,
+    pub(crate) request_id: String,
+}
+
+#[derive(Default)]
+struct ScopeContext {
+    arguments: Option<serde_json::Map<String, serde_json::Value>>,
+    connection_id: Option<String>,
+    default_database: Option<String>,
+    default_namespace: Option<String>,
+    dialect: Option<SqlScopeDialect>,
+    error: Option<String>,
+}
+
+fn sql_carrying_tool(
+    tool_name: &str,
+    arguments: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> bool {
+    matches!(tool_name, "query" | "explain_query")
+        || (tool_name == "use_session"
+            && matches!(
+                argument_string(arguments, "command").as_deref(),
+                Some("query" | "execute")
+            ))
+}
+
+fn argument_string(
+    arguments: Option<&serde_json::Map<String, serde_json::Value>>,
+    key: &str,
+) -> Option<String> {
+    arguments
+        .and_then(|args| args.get(key))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+}
+
+pub(crate) fn nonblank(value: Option<String>) -> Option<String> {
+    value
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+}
+
+fn find_default_probe_row(value: &serde_json::Value) -> Option<(Option<String>, Option<String>)> {
+    let rows = value
+        .get("rows")
+        .and_then(serde_json::Value::as_array)
+        .or_else(|| {
+            value
+                .get("results")
+                .and_then(serde_json::Value::as_array)
+                .and_then(|results| results.first())
+                .and_then(|first| first.get("rows"))
+                .and_then(serde_json::Value::as_array)
+        })?;
+    let row = rows.first()?.as_array()?;
+    let text = |index: usize| {
+        row.get(index)
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_owned)
+    };
+    Some((text(0), text(1)))
+}
+
+fn default_target_probe_sql(dialect: SqlScopeDialect) -> &'static str {
+    match dialect {
+        SqlScopeDialect::PostgreSql => {
+            "/* datazen:mcp-defaults */ SELECT current_database() AS database_name, current_schema() AS schema_name"
+        }
+        SqlScopeDialect::DuckDb => {
+            "/* datazen:mcp-defaults */ SELECT current_database() AS database_name, current_schema() AS schema_name"
+        }
+        SqlScopeDialect::MsSql => {
+            "/* datazen:mcp-defaults */ SELECT DB_NAME() AS database_name, SCHEMA_NAME() AS schema_name"
+        }
+        SqlScopeDialect::MySql => {
+            "/* datazen:mcp-defaults */ SELECT DATABASE() AS database_name, NULL AS schema_name"
+        }
+        SqlScopeDialect::ClickHouse => {
+            "/* datazen:mcp-defaults */ SELECT currentDatabase() AS database_name, NULL AS schema_name"
+        }
+        SqlScopeDialect::Sqlite => {
+            "/* datazen:mcp-defaults */ SELECT 'main' AS database_name, NULL AS schema_name"
+        }
+    }
 }
 
 fn audit_target(
@@ -406,13 +746,15 @@ fn find_row_count(value: &serde_json::Value) -> Option<i64> {
         return values.iter().find_map(find_row_count);
     }
     let object = value.as_object()?;
+    // A SELECT carries its row count in `rows`; MySQL reports 0 in
+    // `rowsAffected` for SELECT, so that field must never win over real rows.
+    if let Some(rows) = object.get("rows").and_then(|v| v.as_array()) {
+        return Some(rows.len() as i64);
+    }
     for key in ["rowCount", "row_count", "rowsAffected", "rows_affected"] {
         if let Some(count) = object.get(key).and_then(|v| v.as_i64()) {
             return Some(count.max(0));
         }
-    }
-    if let Some(rows) = object.get("rows").and_then(|v| v.as_array()) {
-        return Some(rows.len() as i64);
     }
     for nested in object.values() {
         if let Some(count) = find_row_count(nested) {

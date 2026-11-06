@@ -1,6 +1,6 @@
 //! MCP resource listing/reading and test-oriented tool dispatch helpers.
 
-use super::server::{DataZenMcpServer, MCP_ALL_TOOLS};
+use super::server::{nonblank, DataZenMcpServer, MCP_ALL_TOOLS};
 #[cfg(test)]
 use super::types::*;
 use crate::mcp::tool_help;
@@ -17,6 +17,7 @@ impl DataZenMcpServer {
         &self,
         uri: &str,
     ) -> Result<ReadResourceResult, McpError> {
+        let request_id = crate::platform::identity::new_request_id().to_string();
         if uri == "datazen://connections" {
             let connections =
                 match crate::platform::ipc::require_connection_service(&self.app_state) {
@@ -46,6 +47,15 @@ impl DataZenMcpServer {
                 .collect();
             let json = serde_json::to_string_pretty(&result)
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            self.audit_resource_read(
+                &request_id,
+                "resource:connections",
+                None,
+                None,
+                None,
+                "read",
+            )
+            .await;
             return Ok(ReadResourceResult::new(vec![ResourceContents::text(
                 json, uri,
             )]));
@@ -61,6 +71,8 @@ impl DataZenMcpServer {
             let workflows = self.app_state.workflow_registry.list(&scope).await;
             let json = serde_json::to_string_pretty(&workflows)
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            self.audit_resource_read(&request_id, "resource:workflows", None, None, None, "read")
+                .await;
             return Ok(ReadResourceResult::new(vec![ResourceContents::text(
                 json, uri,
             )]));
@@ -68,6 +80,15 @@ impl DataZenMcpServer {
 
         if uri == "datazen://query-history" {
             if !permission::query_history_content_allowed(self.permission_mode) {
+                self.audit_resource_read(
+                    &request_id,
+                    "resource:query-history",
+                    None,
+                    None,
+                    None,
+                    "read",
+                )
+                .await;
                 return Ok(ReadResourceResult::new(vec![ResourceContents::text(
                     "[]", uri,
                 )]));
@@ -88,6 +109,15 @@ impl DataZenMcpServer {
                 .collect();
             let json = serde_json::to_string_pretty(&filtered)
                 .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+            self.audit_resource_read(
+                &request_id,
+                "resource:query-history",
+                None,
+                None,
+                None,
+                "read",
+            )
+            .await;
             return Ok(ReadResourceResult::new(vec![ResourceContents::text(
                 json, uri,
             )]));
@@ -103,22 +133,56 @@ impl DataZenMcpServer {
                 .ok_or_else(|| McpError::invalid_params("Missing connection ID in URI", None))?;
             let db = parts.get(1).copied().unwrap_or("");
 
-            self.ensure_allowed("schema_resource", connection_id)?;
-            // Schema resources are data access too: an active database scope
-            // must reject a resource URI naming a database outside it before
-            // the schema reader runs. A namespace scope has no verifiable
-            // namespace in this URI shape and therefore fails closed.
-            self.tool_policy()
-                .ensure_schema_resource_scope(db)
-                .map_err(|error| tool_help::tool_error("schema_resource", &error))?;
+            if let Err(error) = self.ensure_allowed("schema_resource", connection_id) {
+                self.audit_resource_read(
+                    &request_id,
+                    "resource:schema",
+                    Some(connection_id.to_string()),
+                    Some(db.to_string()),
+                    None,
+                    "deny",
+                )
+                .await;
+                return Err(error);
+            }
+            // The URI names a database but not a schema. Resolve the actual
+            // connection schema, so an allowed `postgres` + `public` scope can
+            // read the default schema instead of rejecting every resource.
+            let (effective_database, effective_namespace) =
+                self.resource_target(connection_id, db).await;
+            let scope_database = effective_database.as_deref().unwrap_or(db);
+            if let Err(error) = self
+                .tool_policy()
+                .ensure_schema_resource_scope(scope_database, effective_namespace.as_deref())
+            {
+                self.audit_resource_read(
+                    &request_id,
+                    "resource:schema",
+                    Some(connection_id.to_string()),
+                    Some(scope_database.to_string()),
+                    effective_namespace.clone(),
+                    "deny",
+                )
+                .await;
+                return Err(tool_help::tool_error("schema_resource", &error));
+            }
             let schema_ddl = datazen::ai::schema_context::connection_schema_context(
                 self.resource_host.as_ref(),
                 connection_id,
-                db,
+                scope_database,
                 budget::MCP_RESOURCE,
             )
             .await
             .map_err(DataZenMcpServer::map_err)?;
+            self.audit_resource_read(
+                &request_id,
+                "resource:schema",
+                Some(connection_id.to_string()),
+                Some(scope_database.to_string()),
+                effective_namespace,
+                "read",
+            )
+            .await;
 
             return Ok(ReadResourceResult::new(vec![ResourceContents::text(
                 schema_ddl, uri,
@@ -275,5 +339,58 @@ impl DataZenMcpServer {
         .filter(|(uri, _)| permission::is_resource_listed(uri, self.permission_mode))
         .map(|(uri, name)| Resource::new(uri, name))
         .collect()
+    }
+}
+
+impl DataZenMcpServer {
+    async fn audit_resource_read(
+        &self,
+        request_id: &str,
+        tool: &str,
+        connection_id: Option<String>,
+        database: Option<String>,
+        namespace: Option<String>,
+        decision: &str,
+    ) {
+        self.audit_tool_call(
+            tool,
+            connection_id,
+            database,
+            namespace,
+            decision,
+            None,
+            Some(request_id.to_string()),
+        )
+        .await;
+    }
+
+    async fn resource_target(
+        &self,
+        connection_id: &str,
+        requested_database: &str,
+    ) -> (Option<String>, Option<String>) {
+        let (config, _, enabled) = match self.resource_host.profile(connection_id).await {
+            Ok(profile) => profile,
+            Err(_) => return (nonblank(Some(requested_database.to_string())), None),
+        };
+        if !enabled {
+            return (nonblank(Some(requested_database.to_string())), None);
+        }
+        let mut database = nonblank(Some(requested_database.to_string()))
+            .or_else(|| nonblank(config.database.clone()));
+        let mut namespace = nonblank(config.schema.clone());
+        if database.is_none() || namespace.is_none() {
+            if let Ok((probed_database, probed_namespace)) =
+                self.probe_connection_defaults(connection_id, &config).await
+            {
+                if database.is_none() {
+                    database = probed_database;
+                }
+                if namespace.is_none() {
+                    namespace = probed_namespace;
+                }
+            }
+        }
+        (database, namespace)
     }
 }

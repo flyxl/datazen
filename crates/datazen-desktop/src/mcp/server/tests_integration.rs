@@ -982,6 +982,8 @@ async fn mcp_read_only_query_is_allowed_without_approval_and_audited() {
     assert_eq!(rows[0].decision, "allow");
     assert_eq!(rows[0].row_count, Some(1));
     assert_eq!(rows[0].connection_id.as_deref(), Some("audit-cfg"));
+    assert_eq!(rows[0].database_name.as_deref(), Some("app"));
+    assert!(rows[0].request_id.is_some(), "allow needs a requestId");
 }
 
 #[tokio::test]
@@ -1047,4 +1049,251 @@ async fn mcp_schema_resource_respects_database_scope() {
         .read_resource_inner("datazen://schema/scope-resource/app")
         .await
         .expect("allowed database resource");
+}
+
+#[tokio::test]
+async fn mcp_mysql_sql_scope_blocks_cross_database_and_information_schema_before_execution() {
+    use crate::testing::app_state_test_support::{rich_mock_options, TestAppState};
+    use crate::testing::mock_driver::MockDriver;
+    use crate::testing::mock_driver::MockDriverOptions;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_resource_provider(MockDriverOptions {
+        databases: vec!["mysql".into()],
+        current_database: Some("mysql"),
+        ..rich_mock_options()
+    })
+    .await;
+    let mysql_mock = MockDriver::new(
+        "mysql",
+        MockDriverOptions {
+            databases: vec!["mysql".into()],
+            current_database: Some("mysql"),
+            ..rich_mock_options()
+        },
+    );
+    test.register_runtime_driver(
+        "mysql",
+        mysql_mock.clone() as Arc<dyn datazen_driver_api::DatabaseDriver>,
+    )
+    .await;
+    let mut config = test.save_connection("scope-mysql").await;
+    config.database_type = "mysql".into();
+    config.database = Some("mysql".into());
+    config.schema = None;
+    test.store
+        .save_connection(config)
+        .await
+        .expect("save mysql profile");
+
+    let server = mcp_server_allowing(Arc::new(test.state), &["scope-mysql"])
+        .with_allowed_scopes(&["mysql".into()], &[]);
+    for sql in [
+        "SELECT COUNT(*) FROM datazen_demo.test_orders",
+        "SELECT COUNT(*) FROM information_schema.tables",
+    ] {
+        let error = server
+            .call_tool_inner(
+                "query",
+                Some(serde_json::json!({
+                    "connection_id": "scope-mysql",
+                    "sql": sql,
+                })),
+            )
+            .await
+            .unwrap_err();
+        assert!(error.message.contains("scope"), "sql={sql} got: {error}");
+    }
+    assert!(
+        mysql_mock.query_calls() == 0,
+        "scope rejection must happen before the SQL body"
+    );
+}
+
+#[tokio::test]
+async fn mcp_postgres_namespace_scope_blocks_system_schemas_and_allows_public() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use crate::testing::mock_driver::MockDriverOptions;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_resource_provider(MockDriverOptions {
+        databases: vec!["postgres".into()],
+        query_rows: vec![vec![Some(datazen_driver_api::Value::Integer(1))]],
+        has_schema_level: true,
+        default_schema: Some("public"),
+        current_database: Some("postgres"),
+        current_schema: Some("public"),
+        ..Default::default()
+    })
+    .await;
+    let mut config = test.save_connection("scope-pg").await;
+    config.database = Some("postgres".into());
+    config.schema = Some("public".into());
+    test.store
+        .save_connection(config)
+        .await
+        .expect("save postgres profile");
+
+    let server = mcp_server_allowing(Arc::new(test.state), &["scope-pg"])
+        .with_allowed_scopes(&["postgres".into()], &["public".into()]);
+    for sql in [
+        "SELECT COUNT(*) FROM information_schema.tables",
+        "SELECT COUNT(*) FROM pg_catalog.pg_class",
+    ] {
+        let error = server
+            .call_tool_inner(
+                "query",
+                Some(serde_json::json!({
+                    "connection_id": "scope-pg",
+                    "sql": sql,
+                })),
+            )
+            .await
+            .unwrap_err();
+        assert!(error.message.contains("scope"), "sql={sql} got: {error}");
+    }
+    server
+        .call_tool_inner(
+            "query",
+            Some(serde_json::json!({
+                "connection_id": "scope-pg",
+                "sql": "SELECT 1 FROM public.users",
+            })),
+        )
+        .await
+        .expect("public is inside the allowed namespace");
+}
+
+#[tokio::test]
+async fn mcp_null_profile_defaults_are_probed_and_audited() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use crate::testing::mock_driver::MockDriverOptions;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_resource_provider(MockDriverOptions {
+        databases: vec!["postgres".into()],
+        query_rows: vec![vec![Some(datazen_driver_api::Value::Integer(1))]],
+        has_schema_level: true,
+        default_schema: Some("public"),
+        current_database: Some("postgres"),
+        current_schema: Some("public"),
+        ..Default::default()
+    })
+    .await;
+    let mut config = test.save_connection("scope-null").await;
+    config.database = None;
+    config.schema = None;
+    test.store
+        .save_connection(config)
+        .await
+        .expect("save null-default profile");
+
+    let server = mcp_server_allowing(Arc::new(test.state.clone()), &["scope-null"])
+        .with_allowed_scopes(&["postgres".into()], &["public".into()]);
+    server
+        .call_tool_inner(
+            "query",
+            Some(serde_json::json!({
+                "connection_id": "scope-null",
+                "sql": "SELECT 1 AS ok",
+            })),
+        )
+        .await
+        .expect("actual driver defaults are inside the scope");
+
+    let rows = test
+        .state
+        .store
+        .mcp_audit_log()
+        .list(10)
+        .await
+        .expect("audit rows");
+    let row = rows.first().expect("audit row");
+    assert_eq!(row.decision, "allow");
+    assert_eq!(row.database_name.as_deref(), Some("postgres"));
+    assert_eq!(row.namespace.as_deref(), Some("public"));
+    assert_eq!(row.row_count, Some(1));
+    assert!(row.request_id.is_some(), "every call needs a requestId");
+}
+
+#[tokio::test]
+async fn mcp_schema_resource_allows_the_resolved_default_namespace() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use crate::testing::mock_driver::MockDriverOptions;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_resource_provider(MockDriverOptions {
+        databases: vec!["postgres".into()],
+        has_schema_level: true,
+        default_schema: Some("public"),
+        current_database: Some("postgres"),
+        current_schema: Some("public"),
+        ..Default::default()
+    })
+    .await;
+    let mut config = test.save_connection("scope-resource-pg").await;
+    config.database = Some("postgres".into());
+    config.schema = None;
+    test.store
+        .save_connection(config)
+        .await
+        .expect("save resource profile");
+
+    let server = mcp_server_allowing(Arc::new(test.state), &["scope-resource-pg"])
+        .with_allowed_scopes(&["postgres".into()], &["public".into()]);
+    server
+        .read_resource_inner("datazen://schema/scope-resource-pg/postgres")
+        .await
+        .expect("postgres + public schema resource is inside scope");
+
+    let rows = test
+        .store
+        .mcp_audit_log()
+        .list(10)
+        .await
+        .expect("audit rows");
+    let read = rows
+        .iter()
+        .find(|row| row.decision == "read")
+        .expect("schema resource read audit");
+    assert_eq!(read.database_name.as_deref(), Some("postgres"));
+    assert_eq!(read.namespace.as_deref(), Some("public"));
+    assert!(read.request_id.is_some(), "read needs a requestId");
+}
+
+#[tokio::test]
+async fn mcp_scope_denial_is_audited_with_request_id() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    let mut config = test.save_connection("audit-deny").await;
+    config.database = Some("app".into());
+    config.schema = Some("public".into());
+    test.store
+        .save_connection(config)
+        .await
+        .expect("save scoped profile");
+    let server = mcp_server_allowing(Arc::new(test.state.clone()), &["audit-deny"])
+        .with_allowed_scopes(&["app".into()], &["public".into()]);
+    server
+        .call_tool_inner(
+            "query",
+            Some(serde_json::json!({
+                "connection_id": "audit-deny",
+                "sql": "SELECT * FROM information_schema.tables",
+            })),
+        )
+        .await
+        .unwrap_err();
+    let rows = test
+        .state
+        .store
+        .mcp_audit_log()
+        .list(10)
+        .await
+        .expect("audit rows");
+    let row = rows.first().expect("deny audit row");
+    assert_eq!(row.decision, "deny");
+    assert!(row.request_id.is_some(), "deny needs a requestId");
 }

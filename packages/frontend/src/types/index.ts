@@ -680,7 +680,7 @@ export interface McpAuditRecord {
   databaseName?: string | null;
   namespace?: string | null;
   tool: string;
-  decision: 'allow' | 'deny' | 'timeout' | 'cancel';
+  decision: 'allow' | 'deny' | 'timeout' | 'cancel' | 'read';
   rowCount?: number | null;
   requestId?: string | null;
   createdAt: string;

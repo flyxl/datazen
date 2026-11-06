@@ -94,6 +94,7 @@ const pack = {
   'mcp.audit.connection': '连接',
   'mcp.audit.tool': '工具',
   'mcp.audit.decision': '决定',
+  'mcp.audit.requestId': '請求 ID',
   'mcp.audit.rows': '行数',
   'mcp.audit.error': '加载 MCP 审计日志失败',
   'mcp.approval.title': '批准 MCP 调用',

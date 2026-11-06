@@ -543,6 +543,7 @@ export function McpSettingsSection({
                   <th className="px-2 py-1.5 font-medium">{t('mcp.audit.connection')}</th>
                   <th className="px-2 py-1.5 font-medium">{t('mcp.audit.tool')}</th>
                   <th className="px-2 py-1.5 font-medium">{t('mcp.audit.decision')}</th>
+                  <th className="px-2 py-1.5 font-medium">{t('mcp.audit.requestId')}</th>
                   <th className="px-2 py-1.5 font-medium">{t('mcp.audit.rows')}</th>
                 </tr>
               </thead>
@@ -556,9 +557,11 @@ export function McpSettingsSection({
                     <td className="px-2 py-1.5 font-mono text-fg">
                       {row.connectionId ?? '—'}
                       {row.databaseName ? `/${row.databaseName}` : ''}
+                      {row.namespace ? `/${row.namespace}` : ''}
                     </td>
                     <td className="px-2 py-1.5 font-mono text-fg">{row.tool}</td>
                     <td className="px-2 py-1.5 text-fg">{row.decision}</td>
+                    <td className="px-2 py-1.5 font-mono text-fg-muted">{row.requestId ?? '—'}</td>
                     <td className="px-2 py-1.5 text-fg">{row.rowCount ?? '—'}</td>
                   </tr>
                 ))}

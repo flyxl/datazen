@@ -12,6 +12,7 @@
 pub mod allowlist;
 pub mod approval;
 pub mod policy;
+pub mod sql_scope;
 
 pub use crate::execution::domain::permission;
 pub use allowlist::{ensure_connection_allowed, is_connection_allowed};
@@ -21,3 +22,4 @@ pub use permission::{
     query_history_content_allowed, McpPermissionMode,
 };
 pub use policy::{McpCallPlan, McpToolPolicy};
+pub use sql_scope::{validate_sql_scope, SqlScopeDialect, SqlScopeTargets};

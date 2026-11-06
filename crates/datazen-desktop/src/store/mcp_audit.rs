@@ -55,7 +55,7 @@ impl McpAuditLog {
     pub async fn append(&self, record: &McpAuditRecord) -> Result<(), DesktopRepositoryError> {
         if !matches!(
             record.decision.as_str(),
-            "allow" | "deny" | "timeout" | "cancel"
+            "allow" | "deny" | "timeout" | "cancel" | "read"
         ) {
             return Err(DesktopRepositoryError::ParseError(format!(
                 "invalid MCP audit decision: {}",
