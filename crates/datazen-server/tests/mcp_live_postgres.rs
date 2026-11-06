@@ -33,7 +33,6 @@ use datazen::connection::dto::ProfileDraft;
 use datazen::execution::application::orchestration::{
     RuntimeConnectionUseCases, RuntimeResultSink, SystemRuntimeClock,
 };
-use datazen::mcp::application::tools::{RedactedConnectionSource, WorkflowCatalog};
 use datazen::settings::ExecutionSettings;
 use datazen::shared::context::RequestContext;
 use datazen::shared::id::{ClientInstanceId, IdempotencyKey, OrganizationId, PrincipalId, RequestId};
@@ -398,9 +397,12 @@ async fn live_postgres_use_session_on_a_bogus_ref_is_session_lost() {
                 "a bogus ref answers SessionLost, got: {reason}"
             );
         }
-        other => panic!(
-            "a bogus ref must be the bare SessionLost family, got: {}",
-            render(&other)
-        ),
+        other => match other {
+            Ok(text) => panic!("a bogus ref must fail SessionLost, got ok text: {text}"),
+            Err(error) => panic!(
+                "a bogus ref must be the bare SessionLost family, got: {}",
+                render(&error)
+            ),
+        },
     }
 }
