@@ -127,7 +127,7 @@ class CiScopeTests(unittest.TestCase):
         self.assertTrue(had_prior)
         self.assertEqual(previous["head_sha"], "sha-last-good")
 
-    def test_unvalidated_prior_run_is_reported_without_using_failed_head_as_base(self) -> None:
+    def test_unvalidated_prior_pr_run_uses_full_pr_diff_for_path_scoping(self) -> None:
         runs = [
             self._run(30, "2026-10-21T12:00:00Z", "sha-current", 76, "completed", "success"),
             self._run(29, "2026-10-21T11:00:00Z", "sha-failed", 76, "completed", "failure"),
@@ -154,6 +154,19 @@ class CiScopeTests(unittest.TestCase):
                 api_ok=current_found,
                 pr_base_sha="base-sha",
                 event_before="",
+            ),
+            ("base-sha", "merge-base"),
+        )
+
+    def test_unvalidated_prior_push_run_still_runs_both_ci_halves(self) -> None:
+        self.assertEqual(
+            select_ci_baseline(
+                event_name="push",
+                previous_success=None,
+                had_prior_run=True,
+                api_ok=True,
+                pr_base_sha="",
+                event_before="before-sha",
             ),
             ("", "all"),
         )
