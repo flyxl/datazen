@@ -162,6 +162,76 @@ impl DataZenMcpServer {
     }
 
     #[tool(
+        description = "Execute a batch of SQL statements. Read-only by default: any write statement rejects the whole batch before execution. Set allow_writes=true only when the permission mode and approval flow allow writes. Set transaction=true to run all statements in one transaction; a failure rolls the whole batch back. Returns one result per attempted statement plus ok, stoppedAt, rolledBack, and an aggregate rowCount.",
+        annotations(
+            title = "Execute SQL batch",
+            read_only_hint = false,
+            destructive_hint = true,
+            idempotent_hint = false,
+            open_world_hint = false
+        )
+    )]
+    pub(crate) async fn execute_batch(
+        &self,
+        Parameters(input): Parameters<ExecuteBatchInput>,
+    ) -> Result<String, McpError> {
+        self.ensure_allowed("execute_batch", &input.connection_id)?;
+        if input.allow_writes && self.app_state.store.execution_settings().await.safe_mode {
+            return Err(tool_shell_error(
+                "execute_batch",
+                ToolError::InvalidParams(
+                    "execute_batch cannot write while execution safe mode is enabled".into(),
+                ),
+            ));
+        }
+        let request = datazen::mcp::application::batch::BatchRequest {
+            connection_id: &input.connection_id,
+            database: input.database,
+            schema: input.schema,
+            sql: &input.sql,
+            transaction: input.transaction,
+            allow_writes: input.allow_writes,
+            limit: input.limit,
+            timeout_ms: input.timeout_ms,
+            mode: self.permission_mode,
+        };
+        datazen::mcp::application::batch::execute_batch(self.resource_host.as_ref(), request)
+            .await
+            .map_err(|error| tool_shell_error("execute_batch", error))
+    }
+
+    #[tool(
+        description = "Run one read-only Redis command on a Redis connection. Write, dangerous (including FLUSHALL/KEYS), and administrative (CONFIG/EVAL) commands are rejected before execution. Use key_pattern to restrict readable keys; SCAN is the supported enumeration command and its MATCH must stay inside key_pattern. limit bounds keys/results and timeout_ms bounds execution.",
+        annotations(
+            title = "Run read-only Redis command",
+            read_only_hint = true,
+            destructive_hint = false,
+            idempotent_hint = true,
+            open_world_hint = false
+        )
+    )]
+    pub(crate) async fn redis_command(
+        &self,
+        Parameters(input): Parameters<RedisCommandInput>,
+    ) -> Result<String, McpError> {
+        self.ensure_allowed("redis_command", &input.connection_id)?;
+        let executor =
+            crate::mcp::redis_executor::DesktopRedisExecutor::new(self.app_state.clone());
+        datazen::mcp::redis::execute_redis_read(
+            &executor,
+            &input.connection_id,
+            input.database.as_deref(),
+            &input.command,
+            &input.args,
+            input.key_pattern.as_deref(),
+            input.limit,
+            input.timeout_ms,
+        )
+        .await
+        .map_err(|error| tool_shell_error("redis_command", error))
+    }
+
+    #[tool(
         description = "Get a human-readable description of a table including columns, types, constraints, and indexes."
     )]
     pub(crate) async fn describe_table(

@@ -35,7 +35,7 @@ fn server_form_snapshot_is_byte_identical_to_desktop_golden() {
     );
 }
 
-/// 工具清单（13 个）与 golden 一致，且包含有状态三件套。
+/// 工具清单（15 个）与 golden 一致，且包含有状态三件套。
 #[test]
 fn golden_tool_names_match_server_tool_table() {
     let golden_value = golden();
@@ -48,7 +48,7 @@ fn golden_tool_names_match_server_tool_table() {
     let mut expected: Vec<&str> = contract::MCP_ALL_TOOLS.to_vec();
     expected.sort_unstable();
     assert_eq!(golden_names, expected);
-    assert_eq!(expected.len(), 13);
+    assert_eq!(expected.len(), 15);
     for name in ["open_session", "use_session", "close_session"] {
         assert!(expected.contains(&name), "stateful tool {name} missing");
     }
@@ -108,7 +108,7 @@ fn resource_uri_surface_matches_golden() {
 fn list_tools_wire_shape_is_stable() {
     let result = wire::list_tools_result();
     let tools = result["tools"].as_array().expect("tools array");
-    assert_eq!(tools.len(), 13);
+    assert_eq!(tools.len(), 15);
     for tool in tools {
         let name = tool["name"].as_str().expect("tool name");
         assert!(

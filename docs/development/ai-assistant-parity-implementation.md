@@ -27,7 +27,7 @@
 - 工具循环固定 6 轮 / 24k token / 180s / 2KB；调用方传入的 10 轮未生效。
 - AppDb 当前 `SCHEMA_VERSION = 6`；本实现升级到 v7，一次性加入 AI 笔记/记忆/审计/FTS。
 - 会话历史当前只在 localStorage；R2 改为 AppDb 持久化并保留 localStorage 迁移。
-- MCP Server 当前 13 个工具、仅 stdio、无逐次审批/审计/HTTP。
+- MCP Server 当前 15 个工具（T20 后新增 `execute_batch`/`redis_command`）、仅 stdio、无逐次审批/审计/HTTP。
 - 本地 CLI Agent、Skills、插件工具桥、组织记忆当前不存在，按 R2/R3 新建。
 
 ## 2. 任务总览
@@ -512,7 +512,7 @@
 **改动**：
 
 - 桌面 MCP server 增加 HTTP transport：loopback + bearer token；默认关闭；设置页启用/生成 token。
-- 复用现有 13 工具 + T19/T20 扩展；会话/取消/超时语义保持一致。
+- 复用现有 15 工具（含 T19/T20 扩展）；会话/取消/超时语义保持一致。
 - 文档补 curl/MCP client 配置。
 
 **验收**：

@@ -11,6 +11,7 @@
 
 pub mod allowlist;
 pub mod approval;
+pub mod batch;
 pub mod policy;
 pub mod sql_scope;
 

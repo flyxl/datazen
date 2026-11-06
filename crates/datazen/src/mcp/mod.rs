@@ -22,12 +22,15 @@ pub mod application;
 pub mod domain;
 
 // 旧扁平路径镜像（modules 垫片与直接消费者兼容）。
+pub use application::batch as batch_execution;
 pub use application::describe;
+pub use application::redis;
 pub use application::session;
 pub use application::session_tools;
 pub use application::tools;
 pub use domain::allowlist;
 pub use domain::approval;
+pub use domain::batch;
 pub use domain::permission;
 pub use domain::policy;
 pub use domain::sql_scope;

@@ -1458,3 +1458,76 @@ async fn mcp_live_postgres_null_defaults_execute_and_audit_the_resolved_target()
     assert_eq!(row.namespace.as_deref(), Some("public"));
     assert!(row.request_id.is_some());
 }
+
+#[tokio::test]
+async fn mcp_execute_batch_read_only_returns_structured_results() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use serde_json::Value;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("batch-cfg").await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["batch-cfg"]);
+    let output = server
+        .call_tool_inner(
+            "execute_batch",
+            Some(serde_json::json!({
+                "connection_id": "batch-cfg",
+                "sql": "SELECT 1; SELECT 2",
+            })),
+        )
+        .await
+        .expect("read-only batch");
+    let text = output.content[0].as_text().expect("batch text").text.as_str();
+    let value: Value = serde_json::from_str(text).expect("batch json");
+    assert_eq!(value["ok"], true);
+    assert_eq!(value["transaction"], false);
+    assert_eq!(value["rolledBack"], false);
+    assert_eq!(value["statements"].as_array().map(Vec::len), Some(2));
+    assert!(value["rowCount"].as_u64().is_some());
+}
+
+#[tokio::test]
+async fn mcp_execute_batch_write_is_rejected_by_default() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("batch-write-cfg").await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["batch-write-cfg"]);
+    let error = server
+        .call_tool_inner(
+            "execute_batch",
+            Some(serde_json::json!({
+                "connection_id": "batch-write-cfg",
+                "sql": "SELECT 1; DELETE FROM users",
+            })),
+        )
+        .await
+        .expect_err("write batch must be rejected");
+    assert!(error.message.contains("statement 2"), "got: {error}");
+}
+
+#[tokio::test]
+async fn mcp_redis_command_write_is_rejected_before_the_driver() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("redis-policy-cfg").await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["redis-policy-cfg"]);
+    for command in ["SET", "DEL", "FLUSHALL", "CONFIG", "EVAL"] {
+        let error = server
+            .call_tool_inner(
+                "redis_command",
+                Some(serde_json::json!({
+                    "connection_id": "redis-policy-cfg",
+                    "command": command,
+                    "args": ["k", "v"],
+                })),
+            )
+            .await
+            .expect_err("write/dangerous Redis command must be rejected");
+        assert!(error.message.contains("only read-only"), "got: {error}");
+    }
+}

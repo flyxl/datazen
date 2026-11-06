@@ -7,6 +7,7 @@ pub mod client;
 mod contract_tests;
 mod handler;
 mod prompts;
+mod redis_executor;
 mod resources;
 mod server;
 pub mod session;

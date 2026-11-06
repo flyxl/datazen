@@ -324,6 +324,30 @@ impl DataZenMcpServer {
                     }))
                     .await?
                 }
+                "execute_batch" => {
+                    let input: ExecuteBatchInput = serde_json::from_value(
+                        arguments.clone().unwrap_or_else(|| serde_json::json!({})),
+                    )
+                    .map_err(|error| {
+                        tool_help::tool_error(
+                            "execute_batch",
+                            &format!("invalid arguments: {error}"),
+                        )
+                    })?;
+                    self.execute_batch(Parameters(input)).await?
+                }
+                "redis_command" => {
+                    let input: RedisCommandInput = serde_json::from_value(
+                        arguments.clone().unwrap_or_else(|| serde_json::json!({})),
+                    )
+                    .map_err(|error| {
+                        tool_help::tool_error(
+                            "redis_command",
+                            &format!("invalid arguments: {error}"),
+                        )
+                    })?;
+                    self.redis_command(Parameters(input)).await?
+                }
                 other => return Err(tool_help::unknown_tool_error(other)),
             };
             Ok(text)

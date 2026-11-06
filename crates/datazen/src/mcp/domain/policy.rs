@@ -13,6 +13,7 @@ use serde_json::{Map, Value};
 use crate::execution::domain::permission::{self, McpPermissionMode};
 use crate::execution::domain::sql_guard::sql_main_keyword;
 use crate::mcp::domain::allowlist;
+use crate::mcp::domain::batch;
 
 /// The complete pre-dispatch policy for one MCP tool call.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,6 +84,33 @@ impl McpToolPolicy {
                 .and_then(Value::as_str)
                 .map(str::to_owned)
         });
+
+        if tool_name == "execute_batch" {
+            let sql = sql.as_deref().ok_or_else(|| {
+                "Tool 'execute_batch' requires a non-empty sql script".to_string()
+            })?;
+            let statements = batch::parse_sql_batch(sql)?;
+            let allow_writes = arguments
+                .and_then(|args| args.get("allow_writes"))
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            if !allow_writes {
+                batch::ensure_default_read_only(&statements)?;
+            }
+            for (index, statement) in statements.iter().enumerate() {
+                let allowed = if self.permission_mode == permission::McpPermissionMode::ReadOnly {
+                    is_read_only_sql(statement)
+                } else {
+                    permission::check_sql_allowed(statement, self.permission_mode).is_ok()
+                };
+                if !allowed {
+                    return Err(format!(
+                        "execute_batch statement {} is not allowed in the current MCP permission mode",
+                        index + 1
+                    ));
+                }
+            }
+        }
 
         self.ensure_scope(
             "database",
@@ -210,7 +238,9 @@ fn targets_database(tool_name: &str) -> bool {
             | "get_schema"
             | "describe_table"
             | "query"
+            | "execute_batch"
             | "explain_query"
+            | "redis_command"
             | "open_session"
             | "use_session"
             | "run_workflow"
@@ -220,7 +250,12 @@ fn targets_database(tool_name: &str) -> bool {
 fn targets_namespace(tool_name: &str) -> bool {
     matches!(
         tool_name,
-        "list_tables" | "search_tables" | "get_schema" | "describe_table" | "open_session"
+        "list_tables"
+            | "search_tables"
+            | "get_schema"
+            | "describe_table"
+            | "execute_batch"
+            | "open_session"
     )
 }
 
@@ -242,6 +277,11 @@ pub fn requires_approval(tool_name: &str, sql: Option<&str>, command: Option<&st
     match tool_name {
         "run_workflow" => true,
         "query" => sql.is_some_and(|sql| !is_read_only_sql(sql)),
+        "execute_batch" => sql.is_some_and(|sql| {
+            batch::parse_sql_batch(sql)
+                .map(|statements| !batch::write_statement_indexes(&statements).is_empty())
+                .unwrap_or(true)
+        }),
         "use_session" => command.is_some_and(|command| !is_read_only_command(command, sql)),
         _ => false,
     }
@@ -519,6 +559,62 @@ mod tests {
             )
             .unwrap_err()
             .contains("must specify a schema"));
+    }
+
+    #[test]
+    fn batch_writes_are_rejected_by_default_before_approval() {
+        let error = policy(McpPermissionMode::HighRiskWrite)
+            .evaluate(
+                "execute_batch",
+                Some(&args(serde_json::json!({
+                    "connection_id": "c1",
+                    "sql": "SELECT 1; UPDATE t SET x = 1"
+                }))),
+            )
+            .unwrap_err();
+        assert!(error.contains("statement 2"), "{error}");
+    }
+
+    #[test]
+    fn batch_read_only_is_allowed_and_writes_require_approval_when_explicit() {
+        let read = policy(McpPermissionMode::ReadOnly)
+            .evaluate(
+                "execute_batch",
+                Some(&args(serde_json::json!({
+                    "connection_id": "c1",
+                    "sql": "SELECT 1; SELECT 2"
+                }))),
+            )
+            .expect("read-only batch");
+        assert!(!read.requires_approval);
+
+        let write = policy(McpPermissionMode::HighRiskWrite)
+            .evaluate(
+                "execute_batch",
+                Some(&args(serde_json::json!({
+                    "connection_id": "c1",
+                    "sql": "SELECT 1; UPDATE t SET x = 1",
+                    "allow_writes": true
+                }))),
+            )
+            .expect("explicit write batch");
+        assert!(write.requires_approval);
+    }
+
+    #[test]
+    fn batch_scope_requires_a_target_for_every_validated_statement() {
+        let mut scoped = policy(McpPermissionMode::SafeWrite);
+        scoped.allowed_databases = vec!["analytics".into()];
+        assert!(scoped
+            .evaluate(
+                "execute_batch",
+                Some(&args(serde_json::json!({
+                    "connection_id": "c1",
+                    "sql": "SELECT 1; SELECT 2"
+                })))
+            )
+            .unwrap_err()
+            .contains("must specify a database"));
     }
 
     #[test]

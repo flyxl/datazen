@@ -115,6 +115,10 @@ pub struct MockDriverOptions {
     pub extra_commands: Vec<DriverCommandDefinition>,
     pub command_results: HashMap<String, serde_json::Value>,
     pub query_error: Option<String>,
+    /// Fail only the selected 1-based `query` call. Lets batch tests model a
+    /// failure after earlier statements already succeeded. `None` keeps the
+    /// historical all-or-nothing `query_error` behavior.
+    pub query_error_on_call: Option<u32>,
     /// When set, precise execution-handle cancellation returns a driver-level
     /// error for command tests. The legacy session-wide method remains a
     /// separate counter and is never used by the Host cancel path.
@@ -262,6 +266,7 @@ impl Default for MockDriverOptions {
             command_results: HashMap::new(),
             query_rows_affected: None,
             query_error: None,
+            query_error_on_call: None,
             cancel_error: None,
             execute_rows_affected: 0,
             parameterized_writes: false,
@@ -832,12 +837,17 @@ impl DatabaseDriver for MockDriver {
         _handle: &ConnectionHandle,
         sql: &str,
     ) -> Result<QueryResult, DriverError> {
-        self.query_calls.fetch_add(1, Ordering::Relaxed);
+        let call = self.query_calls.fetch_add(1, Ordering::Relaxed) + 1;
         if let Ok(mut log) = self.query_log.lock() {
             log.push(sql.to_string());
         }
         if let Some(msg) = &self.opts.query_error {
             return Err(DriverError::QueryFailed(msg.clone()));
+        }
+        if self.opts.query_error_on_call == Some(call) {
+            return Err(DriverError::QueryFailed(format!(
+                "synthetic query failure on call {call}"
+            )));
         }
         // A mutation sent down the `query` channel reports an affected-row
         // count, not the configured read rows. Opt-in, so the historical mock

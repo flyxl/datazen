@@ -31,6 +31,7 @@ use datazen_driver_api::{DatabaseType, TableSchema};
 ///   拒绝、workflow 不存在）。宿主映射 `invalid_params` 并附工具帮助块。
 /// - [`ToolError::Internal`]：读取或执行失败（连接不可用、命令失败、
 ///   序列化失败）。宿主映射 `internal_error`。
+#[derive(Debug)]
 pub enum ToolError {
     InvalidParams(String),
     Internal(String),

@@ -5,9 +5,9 @@ use schemars::schema_for;
 use serde_json::Value;
 
 use super::server::{
-    CloseSessionInput, DescribeTableInput, ExplainQueryInput, GetSchemaInput, ListDatabasesInput,
-    ListTablesInput, OpenSessionInput, QueryInput, RunWorkflowInput, SearchTablesInput,
-    UseSessionInput,
+    CloseSessionInput, DescribeTableInput, ExecuteBatchInput, ExplainQueryInput, GetSchemaInput,
+    ListDatabasesInput, ListTablesInput, OpenSessionInput, QueryInput, RedisCommandInput,
+    RunWorkflowInput, SearchTablesInput, UseSessionInput,
 };
 
 /// Static help metadata for a registered MCP tool.
@@ -105,6 +105,20 @@ const TOOL_HELPS: &[ToolHelp] = &[
             "client_session_ref (string, required); mode (string, optional: requireNoTransaction default, rollbackAndClose)",
         example: r#"{"name":"close_session","arguments":{"client_session_ref":"<opaque-ref>","mode":"rollbackAndClose"}}"#,
     },
+    ToolHelp {
+        name: "execute_batch",
+        description: "Execute a batch of SQL statements. Read-only by default: any write statement rejects the whole batch before execution. Set allow_writes=true only when the permission mode and approval flow allow writes. Set transaction=true to run all statements in one transaction; a failure rolls the whole batch back. Returns one result per attempted statement plus ok, stoppedAt, rolledBack, and an aggregate rowCount.",
+        parameters:
+            "connection_id (string, required); sql (string, required); transaction (boolean, optional, default false); allow_writes (boolean, optional, default false); limit (number, optional, default 100, max 5000); timeout_ms (number, optional, default 30000, max 60000)",
+        example: r#"{"name":"execute_batch","arguments":{"connection_id":"<uuid>","sql":"SELECT 1; SELECT 2","transaction":false,"allow_writes":false}}"#,
+    },
+    ToolHelp {
+        name: "redis_command",
+        description: "Run one read-only Redis command on a Redis connection. Write, dangerous (including FLUSHALL/KEYS), and administrative (CONFIG/EVAL) commands are rejected before execution. Use key_pattern to restrict readable keys; SCAN is the supported enumeration command and its MATCH must stay inside key_pattern. limit bounds keys/results and timeout_ms bounds execution.",
+        parameters:
+            "connection_id (string, required); command (string, required); args (array of strings, optional); key_pattern (string, optional, default *); limit (number, optional, default 100, max 1000); timeout_ms (number, optional, default 5000, max 30000); database (string, optional)",
+        example: r#"{"name":"redis_command","arguments":{"connection_id":"<uuid>","command":"GET","args":["user:1"],"key_pattern":"user:*","limit":100}}"#,
+    },
 ];
 
 /// Lookup static help for a tool name.
@@ -126,6 +140,8 @@ pub fn input_schema_json(tool_name: &str) -> Option<String> {
         "open_session" => schema_for!(OpenSessionInput),
         "use_session" => schema_for!(UseSessionInput),
         "close_session" => schema_for!(CloseSessionInput),
+        "execute_batch" => schema_for!(ExecuteBatchInput),
+        "redis_command" => schema_for!(RedisCommandInput),
         "list_connections" | "list_workflows" => return None,
         _ => return None,
     };

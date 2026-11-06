@@ -7,6 +7,7 @@ use crate::platform::identity::{new_request_id, DesktopIdentity};
 use datazen::application::identity_policy::IdentityPolicy;
 use datazen::mcp::allowlist;
 use datazen::mcp::approval::{approval_preview, McpApprovalDecision, McpApprovalPort};
+use datazen::mcp::batch;
 use datazen::mcp::permission::McpPermissionMode;
 use datazen::mcp::policy::{McpCallPlan, McpToolPolicy};
 use datazen::mcp::session_tools::{StatefulCall, StatefulSessionHost};
@@ -70,6 +71,9 @@ pub const MCP_ALL_TOOLS: &[&str] = &[
     "open_session",
     "use_session",
     "close_session",
+    // T20: bounded batch and read-only Redis surface.
+    "execute_batch",
+    "redis_command",
 ];
 
 impl DataZenMcpServer {
@@ -247,51 +251,87 @@ impl DataZenMcpServer {
                     "MCP SQL scope: this driver's SQL target shape cannot be verified",
                 ));
             };
-            match validate_sql_scope(
-                sql,
-                dialect,
-                scoped.default_database.as_deref(),
-                scoped.default_namespace.as_deref(),
-                &self.allowed_databases,
-                &self.allowed_namespaces,
-            ) {
-                Ok(targets) => {
-                    if let Some(database) = targets.database_label() {
-                        plan.database = Some(database);
-                    }
-                    if let Some(namespace) = targets.namespace_label() {
-                        plan.namespace = Some(namespace);
+            let statements = if tool_name == "execute_batch" {
+                match batch::parse_sql_batch(sql) {
+                    Ok(statements) => statements,
+                    Err(error) => {
+                        self.audit_tool_call(
+                            tool_name,
+                            plan.connection_id.clone(),
+                            plan.database.clone(),
+                            plan.namespace.clone(),
+                            "deny",
+                            None,
+                            Some(request_id),
+                        )
+                        .await;
+                        return Err(tool_help::tool_error(
+                            tool_name,
+                            &format!("MCP SQL scope: {error}"),
+                        ));
                     }
                 }
-                Err(error) => {
-                    // Audit the target the statement actually attempted, not
-                    // the allowed default. This is the difference between
-                    // `datazen_demo`/`information_schema` and `mysql`/`public`
-                    // in the denial evidence.
-                    if let Some(attempted) = attempted_sql_targets(
-                        sql,
-                        dialect,
-                        scoped.default_database.as_deref(),
-                        scoped.default_namespace.as_deref(),
-                    ) {
-                        if let Some(database) = attempted.database_label() {
-                            plan.database = Some(database);
-                        }
-                        if let Some(namespace) = attempted.namespace_label() {
-                            plan.namespace = Some(namespace);
+            } else {
+                vec![sql.to_owned()]
+            };
+            let mut resolved_target = None;
+            for (index, statement) in statements.iter().enumerate() {
+                match validate_sql_scope(
+                    statement,
+                    dialect,
+                    scoped.default_database.as_deref(),
+                    scoped.default_namespace.as_deref(),
+                    &self.allowed_databases,
+                    &self.allowed_namespaces,
+                ) {
+                    Ok(targets) => {
+                        if resolved_target.is_none() {
+                            resolved_target = Some(targets);
                         }
                     }
-                    self.audit_tool_call(
-                        tool_name,
-                        plan.connection_id.clone(),
-                        plan.database.clone(),
-                        plan.namespace.clone(),
-                        "deny",
-                        None,
-                        Some(request_id),
-                    )
-                    .await;
-                    return Err(tool_help::tool_error(tool_name, &error));
+                    Err(error) => {
+                        // Audit the target the statement actually attempted,
+                        // not the allowed default.
+                        let attempted = attempted_sql_targets(
+                            statement,
+                            dialect,
+                            scoped.default_database.as_deref(),
+                            scoped.default_namespace.as_deref(),
+                        )
+                        .or(resolved_target);
+                        if let Some(attempted) = attempted {
+                            if let Some(database) = attempted.database_label() {
+                                plan.database = Some(database);
+                            }
+                            if let Some(namespace) = attempted.namespace_label() {
+                                plan.namespace = Some(namespace);
+                            }
+                        }
+                        self.audit_tool_call(
+                            tool_name,
+                            plan.connection_id.clone(),
+                            plan.database.clone(),
+                            plan.namespace.clone(),
+                            "deny",
+                            None,
+                            Some(request_id),
+                        )
+                        .await;
+                        let reason = if tool_name == "execute_batch" {
+                            format!("MCP SQL scope: statement {}: {error}", index + 1)
+                        } else {
+                            format!("MCP SQL scope: {error}")
+                        };
+                        return Err(tool_help::tool_error(tool_name, &reason));
+                    }
+                }
+            }
+            if let Some(targets) = resolved_target {
+                if let Some(database) = targets.database_label() {
+                    plan.database = Some(database);
+                }
+                if let Some(namespace) = targets.namespace_label() {
+                    plan.namespace = Some(namespace);
                 }
             }
         }
@@ -415,6 +455,32 @@ impl DataZenMcpServer {
             return context;
         }
         context.dialect = SqlScopeDialect::from_driver_id(&config.database_type);
+        if tool_name == "redis_command" {
+            if scope_active && !self.allowed_namespaces.is_empty() {
+                context.error = Some(
+                    "MCP namespace scope: Redis has no namespace level; refusing the call"
+                        .to_string(),
+                );
+                return context;
+            }
+            let database = argument_string(arguments, "database")
+                .or_else(|| nonblank(config.database.clone()))
+                .or_else(|| Some("0".to_string()));
+            if scope_active && !self.allowed_databases.is_empty() && database.is_none() {
+                context.error = Some(
+                    "MCP database scope: the Redis database index is unknown; refusing the call"
+                        .to_string(),
+                );
+                return context;
+            }
+            context.default_database = database.clone();
+            if let (Some(arguments), Some(database)) = (context.arguments.as_mut(), database) {
+                arguments
+                    .entry("database".to_string())
+                    .or_insert(serde_json::Value::String(database));
+            }
+            return context;
+        }
         if scope_active && context.dialect.is_none() {
             context.error = Some(
                 "MCP SQL scope: this driver's SQL target shape cannot be verified".to_string(),
@@ -687,7 +753,9 @@ pub(crate) fn inject_resolved_target(
     if !matches!(
         tool_name,
         "query"
+            | "execute_batch"
             | "explain_query"
+            | "redis_command"
             | "list_tables"
             | "search_tables"
             | "get_schema"
@@ -695,7 +763,9 @@ pub(crate) fn inject_resolved_target(
     ) {
         return;
     }
-    let (database, namespace) = if matches!(tool_name, "query" | "explain_query") {
+    let (database, namespace) = if tool_name == "redis_command" {
+        (plan.database.as_deref(), None)
+    } else if matches!(tool_name, "query" | "execute_batch" | "explain_query") {
         (default_database, default_namespace)
     } else {
         (plan.database.as_deref(), plan.namespace.as_deref())
@@ -737,7 +807,7 @@ fn sql_carrying_tool(
     tool_name: &str,
     arguments: Option<&serde_json::Map<String, serde_json::Value>>,
 ) -> bool {
-    matches!(tool_name, "query" | "explain_query")
+    matches!(tool_name, "query" | "execute_batch" | "explain_query")
         || (tool_name == "use_session"
             && matches!(
                 argument_string(arguments, "command").as_deref(),
@@ -1009,7 +1079,7 @@ mod tests {
 
     #[test]
     fn mcp_all_tools_list_is_stable() {
-        assert_eq!(MCP_ALL_TOOLS.len(), 13);
+        assert_eq!(MCP_ALL_TOOLS.len(), 15);
         assert!(MCP_ALL_TOOLS.contains(&"list_connections"));
         assert!(MCP_ALL_TOOLS.contains(&"search_tables"));
         assert!(MCP_ALL_TOOLS.contains(&"run_workflow"));
