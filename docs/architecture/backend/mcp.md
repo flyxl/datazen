@@ -4,7 +4,7 @@
 
 ### 1.1 MCP Server
 
-DataZen 作为 MCP Server 暴露数据库操作能力给外部 LLM 应用（Claude Desktop、Cursor 等）。**目标分层**（DDD 目标架构 §3.3）：工具业务语义位于 `crates/datazen/src/mcp/`，宿主只留传输、认证与装配。**当前事实**（2026-11-05 核对）：共享层已承载连接白名单、权限词汇垫片、表描述、无状态工具用例与有状态会话语义；`#[tool]` 宏、Resources、Prompts、stdio 传输、MCP Client 与会话清理 worker 仍在桌面宿主 `crates/datazen-desktop/src/mcp/`。Streamable HTTP 尚未实现（实现文档 T21 规划）。其他宿主目前仍无法只替换 Server 形态就复用完整 MCP 能力。
+DataZen 作为 MCP Server 暴露数据库操作能力给外部 LLM 应用（Claude Desktop、Cursor 等）。**目标分层**（DDD 目标架构 §3.3）：工具业务语义位于 `crates/datazen/src/mcp/`，宿主只留传输、认证与装配。**当前事实**（2026-11-06 核对）：共享层已承载连接白名单、权限词汇垫片、表描述、无状态工具用例与有状态会话语义；`#[tool]` 宏、Resources、Prompts、stdio / Streamable HTTP 传输、MCP Client 与会话清理 worker 仍在桌面宿主 `crates/datazen-desktop/src/mcp/`。Streamable HTTP 是桌面设置页的显式 opt-in，仅绑定 IPv4 loopback。其他宿主目前仍无法只替换 Server 形态就复用完整 MCP 能力。
 
 ```
 crates/datazen/src/mcp/   # 已共享：白名单、权限词汇垫片、表描述、工具用例与会话语义
@@ -20,6 +20,7 @@ crates/datazen/src/mcp/   # 已共享：白名单、权限词汇垫片、表描�
 crates/datazen-desktop/src/mcp/
 ├── mod.rs          # 启动/停止与 stdio 传输装配（含断连清理）
 ├── auth.rs         # stdio 本地 token 认证（`mcp.token` + `DATAZEN_MCP_TOKEN`）
+├── http.rs         # opt-in Streamable HTTP：127.0.0.1 bind、Bearer 认证、token 轮换、会话回收
 ├── (allowlist/permission 在 crates/datazen/src/mcp/domain/，宿主经 `datazen::mcp::` 引用)
 ├── server.rs       # MCP Server 实例与工具清单 `MCP_ALL_TOOLS`
 ├── server/         # 集成与有状态协议测试（tests_integration.rs / tests_stateful.rs）
@@ -49,7 +50,7 @@ Workflow 引擎本身见 [`workflow` 模块](./workflow.md)，MCP 仅通过 Tool
 | `mcpDisabledTools` | 工具 denylist |
 | `mcpAllowedConnectionIds` | 连接白名单；**空数组 = 拒绝一切连接（deny-all 默认）**，必须显式加入连接才可访问 |
 
-修改权限/白名单/工具后，嵌入式 MCP Server 会自动热重载；独立 `datazen --mcp` 进程需重启后生效。
+修改权限/白名单/工具后，嵌入式 stdio / HTTP MCP Server 会自动热重载；独立 `datazen --mcp` 进程需重启后生效。HTTP listener 启动时取得设置快照，该 listener 下的 session 共享此快照；重载会关闭旧 listener 与其 session，并以新快照重启。
 
 **stdio 本地认证（`--mcp` / `--mcp-stdio`）：**
 
@@ -69,6 +70,61 @@ datazen --mcp-stdio
 export DATAZEN_MCP_TOKEN="$(tr -d '\n' < "$APP_DATA/mcp.token")"
 datazen --mcp-stdio
 ```
+
+**Streamable HTTP（桌面设置页，默认关闭）：**
+
+| 项目 | 行为 |
+|------|------|
+| 启用 | `mcpHttpEnabled`（默认 `false`）；启用时才创建 listener |
+| 绑定 | 固定 `127.0.0.1`，不会监听 `0.0.0.0` 或 IPv6；端口配置为 `0` 时由 OS 分配随机端口，命令/状态返回实际端口 |
+| 端点 | `http://127.0.0.1:{port}/mcp` |
+| 认证 | 每个 `/mcp` 请求必须带 `Authorization: Bearer <token>`；缺失或错误统一 `401` + `WWW-Authenticate: Bearer`，不做常量时间之外的额外区分 |
+| token 生命周期 | 设置页启用时首次生成 32 字节随机 token（base64url），**只返回这一次**；持久化文件 `{appData}/mcp-http-token.json` 只存 SHA-256 hash 与末四位，权限 `0600`；轮换后旧 token 立即失效 |
+| 工具语义 | 与 stdio 完全复用 `DataZenMcpServer` 的 15 个工具、连接/库/namespace scope、三档权限、逐次审批与审计 |
+| 并发/隔离 | 每个 HTTP MCP session 独立创建 `DataZenMcpServer` 与客户端会话 id；并发 session 不共享有状态会话映射 |
+| 断连/Stop | HTTP `DELETE` 或停止 listener 会关闭该 session，释放该 client 打开的有状态数据库会话；进程停止时 listener 一并停止 |
+
+启用后设置页会显示实际 URL、实际端口、token 末四位和运行状态。API 命令：`mcp_http_status` / `mcp_http_enable(port?)` / `mcp_http_disable` / `mcp_http_regenerate_token` / `mcp_http_reload`；启用/轮换响应中的 `token` 字段仅在生成该 token 的那一次出现。
+
+curl 验证（需要先启动 listener 并取得 token；把 `TOKEN` 与 `PORT` 换成设置页显示值）：
+
+```bash
+# initialize（服务端用 SSE 事件返回 JSON-RPC；先取 Mcp-Session-Id）
+curl -i -sS -X POST "http://127.0.0.1:$PORT/mcp" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Accept: application/json, text/event-stream' \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"1"}}}'
+
+# 后续请求带上 initialize 响应头里的 Mcp-Session-Id
+curl -sS -X POST "http://127.0.0.1:$PORT/mcp" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Accept: application/json, text/event-stream' \
+  -H 'Content-Type: application/json' \
+  -H "Mcp-Session-Id: $SESSION" \
+  -H 'MCP-Protocol-Version: 2025-06-18' \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
+
+# 显式结束 session（释放该 client 的有状态会话）
+curl -i -sS -X DELETE "http://127.0.0.1:$PORT/mcp" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Mcp-Session-Id: $SESSION"
+```
+
+MCP client 配置（Claude Desktop / Cursor 等支持 Streamable HTTP 的客户端；若客户端要求固定入口，请先配置固定端口再启用）：
+
+```json
+{
+  "mcpServers": {
+    "datazen": {
+      "url": "http://127.0.0.1:8787/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+不要把 token 写入仓库、日志或共享配置；设置页只显示末四位，丢失后使用“轮换 token”生成新值并更新客户端。
 
 **Resource 与 Tool 策略对齐：**
 

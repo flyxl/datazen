@@ -2174,6 +2174,7 @@ version = "0.2.3"
 dependencies = [
  "aes-gcm 0.10.3",
  "async-trait",
+ "axum",
  "base64 0.22.1",
  "chrono",
  "datazen",
@@ -2215,6 +2216,7 @@ dependencies = [
  "serde_norway",
  "sha2 0.10.9",
  "sqlx",
+ "subtle",
  "sys-locale",
  "sysinfo",
  "tauri",

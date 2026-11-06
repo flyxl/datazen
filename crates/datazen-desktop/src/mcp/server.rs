@@ -50,6 +50,35 @@ pub struct DataZenMcpServer {
     /// Backend-generated client instance id (consumer-adapters §4.1). One per MCP
     /// server instance; never taken from the client.
     pub(crate) client_instance_id: String,
+    /// HTTP sessions are owned by one `StreamableHttpService` worker. When the
+    /// last clone of that session's server is dropped (DELETE, idle expiry, or
+    /// Stop), this guard releases the stateful mappings the client opened.
+    pub(crate) _http_cleanup: Option<Arc<HttpSessionCleanup>>,
+}
+
+pub(crate) struct HttpSessionCleanup {
+    app_state: Arc<AppState>,
+    sessions: Arc<McpSessionRegistry>,
+    client_instance_id: String,
+}
+
+impl Drop for HttpSessionCleanup {
+    fn drop(&mut self) {
+        self.sessions
+            .disconnected
+            .store(true, std::sync::atomic::Ordering::Release);
+        self.sessions.close_client(&self.client_instance_id);
+        // The cleanup sweep is async; a runtime may already be shutting down
+        // when this guard drops. In that case the mappings are still closed
+        // synchronously above and no worker can be spawned.
+        if tokio::runtime::Handle::try_current().is_ok() {
+            super::session_cleanup::start_session_cleanup_worker(
+                self.app_state.clone(),
+                self.sessions.clone(),
+                self.client_instance_id.clone(),
+            );
+        }
+    }
 }
 
 /// Owner purpose recorded for stateful MCP sessions. Display only — never an
@@ -90,7 +119,21 @@ impl DataZenMcpServer {
             approvals,
             sessions: Arc::new(McpSessionRegistry::new()),
             client_instance_id: crate::platform::identity::new_client_instance_id().to_string(),
+            _http_cleanup: None,
         }
+    }
+
+    /// Attach a transport-lifetime cleanup guard. The HTTP factory creates a
+    /// fresh server for every MCP session, so the last clone's drop is exactly
+    /// that session ending.
+    pub(crate) fn with_http_cleanup(mut self) -> Self {
+        let cleanup = Arc::new(HttpSessionCleanup {
+            app_state: self.app_state.clone(),
+            sessions: self.sessions.clone(),
+            client_instance_id: self.client_instance_id.clone(),
+        });
+        self._http_cleanup = Some(cleanup);
+        self
     }
 
     /// Backend-generated client instance id of this MCP server instance.

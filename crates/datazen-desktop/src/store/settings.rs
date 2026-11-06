@@ -75,6 +75,14 @@ pub struct AppSettings {
     /// Default false — MCP for external clients should use `datazen --mcp`.
     #[serde(default)]
     pub mcp_server_enabled: bool,
+    /// When true, GUI starts the opt-in MCP Streamable HTTP listener on launch.
+    /// Default false: the HTTP transport is a separate surface from stdio MCP.
+    #[serde(default)]
+    pub mcp_http_enabled: bool,
+    /// Configured Streamable HTTP port. `0` asks the OS for a random port; the
+    /// actual port is reported by `mcp_http_status` / the enable command.
+    #[serde(default)]
+    pub mcp_http_port: u16,
     #[serde(default)]
     pub mcp_disabled_tools: Vec<String>,
     /// MCP tool permission tier for external AI clients (default: safe_write).
@@ -245,6 +253,8 @@ impl Default for AppSettings {
             log_level: default_log_level(),
             log_path: String::new(),
             mcp_server_enabled: false,
+            mcp_http_enabled: false,
+            mcp_http_port: 0,
             mcp_disabled_tools: Vec::new(),
             mcp_permission_mode: McpPermissionMode::default(),
             mcp_allowed_connection_ids: Vec::new(),

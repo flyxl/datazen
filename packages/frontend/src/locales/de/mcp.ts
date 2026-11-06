@@ -25,6 +25,30 @@ const pack = {
   'mcp.tools.applyHint':
     'Speichern, um Tool-Änderungen sofort anzuwenden, wenn der MCP-Server läuft',
   'mcp.toggleError': 'Der MCP-Server konnte nicht gestartet/gestoppt werden',
+  'mcp.http.title': 'Streamable HTTP (optional)',
+  'mcp.http.description':
+    'Lokaler MCP-Endpunkt für Clients mit Streamable HTTP. Der Listener bindet nur 127.0.0.1 und verlangt ein Bearer-Token.',
+  'mcp.http.enable': 'HTTP-Endpunkt aktivieren',
+  'mcp.http.enableHint':
+    'Standardmäßig aus. Der Endpunkt ist nur von diesem Rechner erreichbar; jede Anfrage benötigt das Bearer-Token.',
+  'mcp.http.port': 'Port',
+  'mcp.http.portHint':
+    '0 wählt einen zufälligen freien Port; der tatsächliche Port wird oben angezeigt.',
+  'mcp.http.applyPort': 'Port anwenden',
+  'mcp.http.portInvalid': 'Der Port muss eine ganze Zahl zwischen 0 und 65535 sein.',
+  'mcp.http.running': 'HTTP-Endpunkt läuft',
+  'mcp.http.stopped': 'HTTP-Endpunkt gestoppt',
+  'mcp.http.actualPort': 'Tatsächlicher Port: {port}',
+  'mcp.http.tokenLast4': 'Bearer-Token endet auf ••••{last4}',
+  'mcp.http.noToken': 'Noch kein Bearer-Token erzeugt',
+  'mcp.http.generateToken': 'Token erzeugen',
+  'mcp.http.regenerateToken': 'Token erneuern',
+  'mcp.http.tokenOnce':
+    'Token jetzt kopieren. Er wird nur einmal angezeigt; gespeichert werden nur Hash und die letzten vier Zeichen.',
+  'mcp.http.token': 'Bearer-Token',
+  'mcp.http.copyToken': 'Token kopieren',
+  'mcp.http.copied': 'Kopiert',
+  'mcp.http.toggleError': 'HTTP-Endpunkt konnte nicht gestartet/gestoppt werden',
   'mcp.permission.title': 'Berechtigungsmodus',
   'mcp.permission.readOnly': 'Nur lesen',
   'mcp.permission.readOnlyHint': 'Nur Schema-Introspektion; blockiert query und run_workflow',

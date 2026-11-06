@@ -34,6 +34,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   logLevel: 'info',
   logPath: '',
   mcpServerEnabled: false,
+  mcpHttpEnabled: false,
+  mcpHttpPort: 0,
   mcpDisabledTools: [],
   mcpPermissionMode: 'safe_write',
   mcpAllowedConnectionIds: [],

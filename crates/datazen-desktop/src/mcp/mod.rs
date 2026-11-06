@@ -6,6 +6,7 @@ pub mod client;
 #[cfg(test)]
 mod contract_tests;
 mod handler;
+pub mod http;
 mod prompts;
 mod redis_executor;
 mod resources;

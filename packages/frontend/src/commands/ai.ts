@@ -31,6 +31,7 @@ import type {
   McpAuditRecord,
   McpApprovalDecision,
   McpClientStatus,
+  McpHttpStatus,
   McpServerConfig,
   McpToolInfo,
   ModelInfo,
@@ -241,6 +242,12 @@ export const aiCommands = {
   }) => invoke<FilterCondition[]>('ai_parse_filter', params),
 
   mcpGetStatus: () => invoke<{ running: boolean; transport: string }>('mcp_get_status'),
+  mcpHttpStatus: () => invoke<McpHttpStatus>('mcp_http_status'),
+  mcpHttpEnable: (port?: number) =>
+    invoke<McpHttpStatus>('mcp_http_enable', port === undefined ? {} : { port }),
+  mcpHttpDisable: () => invoke<McpHttpStatus>('mcp_http_disable'),
+  mcpHttpRegenerateToken: () => invoke<McpHttpStatus>('mcp_http_regenerate_token'),
+  mcpHttpReload: () => invoke<McpHttpStatus>('mcp_http_reload'),
   mcpStartStdio: () => invoke<void>('mcp_start_stdio'),
   mcpStop: () => invoke<void>('mcp_stop'),
   mcpReload: () => invoke<void>('mcp_reload'),

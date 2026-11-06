@@ -28,6 +28,11 @@ const {
   mcpListAllToolsMock,
   mcpListAuditLogMock,
   mcpGetStatusMock,
+  mcpHttpStatusMock,
+  mcpHttpEnableMock,
+  mcpHttpDisableMock,
+  mcpHttpRegenerateTokenMock,
+  mcpHttpReloadMock,
   mcpStartStdioMock,
   mcpStopMock,
   mcpReloadMock,
@@ -50,6 +55,8 @@ const {
     logLevel: 'info',
     logPath: '',
     mcpServerEnabled: false,
+    mcpHttpEnabled: false,
+    mcpHttpPort: 0,
     mcpDisabledTools: [],
     mcpPermissionMode: 'read_only',
     contextDir: '/tmp/context',
@@ -200,6 +207,17 @@ const {
     mcpListAllToolsMock: vi.fn().mockResolvedValue(['query_db', 'list_tables']),
     mcpListAuditLogMock: vi.fn().mockResolvedValue([]),
     mcpGetStatusMock: vi.fn().mockResolvedValue({ running: false, transport: 'stdio' }),
+    mcpHttpStatusMock: vi.fn().mockResolvedValue({
+      running: false,
+      enabled: false,
+      transport: 'none',
+      configuredPort: 0,
+      tokenConfigured: false,
+    }),
+    mcpHttpEnableMock: vi.fn(),
+    mcpHttpDisableMock: vi.fn(),
+    mcpHttpRegenerateTokenMock: vi.fn(),
+    mcpHttpReloadMock: vi.fn(),
     mcpStartStdioMock: vi.fn().mockResolvedValue(undefined),
     mcpStopMock: vi.fn().mockResolvedValue(undefined),
     mcpReloadMock: vi.fn().mockResolvedValue(undefined),
@@ -283,6 +301,11 @@ vi.mock('../../../commands/ai', () => ({
     mcpListAllTools: (...a: unknown[]) => mcpListAllToolsMock(...a),
     mcpListAuditLog: (...a: unknown[]) => mcpListAuditLogMock(...a),
     mcpGetStatus: (...a: unknown[]) => mcpGetStatusMock(...a),
+    mcpHttpStatus: (...a: unknown[]) => mcpHttpStatusMock(...a),
+    mcpHttpEnable: (...a: unknown[]) => mcpHttpEnableMock(...a),
+    mcpHttpDisable: (...a: unknown[]) => mcpHttpDisableMock(...a),
+    mcpHttpRegenerateToken: (...a: unknown[]) => mcpHttpRegenerateTokenMock(...a),
+    mcpHttpReload: (...a: unknown[]) => mcpHttpReloadMock(...a),
     mcpStartStdio: (...a: unknown[]) => mcpStartStdioMock(...a),
     mcpStop: (...a: unknown[]) => mcpStopMock(...a),
     mcpReload: (...a: unknown[]) => mcpReloadMock(...a),
@@ -401,6 +424,17 @@ beforeEach(() => {
   mcpListAllToolsMock.mockResolvedValue(['query_db', 'list_tables']);
   mcpListAuditLogMock.mockResolvedValue([]);
   mcpGetStatusMock.mockResolvedValue({ running: false, transport: 'stdio' });
+  mcpHttpStatusMock.mockResolvedValue({
+    running: false,
+    enabled: false,
+    transport: 'none',
+    configuredPort: 0,
+    tokenConfigured: false,
+  });
+  mcpHttpEnableMock.mockReset();
+  mcpHttpDisableMock.mockReset();
+  mcpHttpRegenerateTokenMock.mockReset();
+  mcpHttpReloadMock.mockReset();
   mcpStartStdioMock.mockResolvedValue(undefined);
   mcpStopMock.mockResolvedValue(undefined);
   mcpReloadMock.mockResolvedValue(undefined);
@@ -764,6 +798,49 @@ describe('SettingsContent', () => {
     fireEvent.click(screen.getByText('mcp.tools.enableAll'));
     fireEvent.click(enabledSwitch);
     await waitFor(() => expect(mcpStopMock).toHaveBeenCalled());
+  });
+
+  it('enables Streamable HTTP, reveals the token once, and rotates it', async () => {
+    mcpHttpEnableMock.mockResolvedValue({
+      running: true,
+      enabled: true,
+      transport: 'http',
+      url: 'http://127.0.0.1:4321/mcp',
+      port: 4321,
+      configuredPort: 0,
+      tokenLast4: 'wxyz',
+      tokenConfigured: true,
+      token: 'first-only-token',
+    });
+    mcpHttpRegenerateTokenMock.mockResolvedValue({
+      running: true,
+      enabled: true,
+      transport: 'http',
+      url: 'http://127.0.0.1:4321/mcp',
+      port: 4321,
+      configuredPort: 0,
+      tokenLast4: '2345',
+      tokenConfigured: true,
+      token: 'rotated-only-token',
+    });
+
+    render(<SettingsContent />);
+    await waitForSettingsLoad();
+    goToSection('settings.mcp.title');
+    await waitFor(() => expect(mcpHttpStatusMock).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByTestId('mcp-http-toggle'));
+    await waitFor(() => expect(mcpHttpEnableMock).toHaveBeenCalledWith(0));
+    await waitFor(() =>
+      expect(screen.getByTestId('mcp-http-token')).toHaveValue('first-only-token'),
+    );
+    expect(screen.getByText('http://127.0.0.1:4321/mcp')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('mcp-http-regenerate'));
+    await waitFor(() => expect(mcpHttpRegenerateTokenMock).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByTestId('mcp-http-token')).toHaveValue('rotated-only-token'),
+    );
   });
 
   it('saves database/namespace scope and renders audit decisions', async () => {

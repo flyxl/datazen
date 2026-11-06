@@ -235,6 +235,15 @@ pub fn run() {
                         tracing::warn!(error = %e, "Failed to auto-start embedded MCP Server");
                     }
                 }
+                let http_enabled =
+                    tauri::async_runtime::block_on(state.store.get_settings()).mcp_http_enabled;
+                if http_enabled {
+                    if let Err(e) = tauri::async_runtime::block_on(crate::commands::start_http_mcp(
+                        state.inner(),
+                    )) {
+                        tracing::warn!(error = %e, "Failed to auto-start MCP HTTP listener");
+                    }
+                }
 
                 let client_configs = tauri::async_runtime::block_on(state.store.get_settings())
                     .mcp_client_servers
@@ -428,6 +437,11 @@ pub fn run() {
             crate::commands::mcp_client_list,
             crate::commands::mcp_client_tools,
             crate::commands::mcp_get_status,
+            crate::commands::mcp_http_disable,
+            crate::commands::mcp_http_enable,
+            crate::commands::mcp_http_regenerate_token,
+            crate::commands::mcp_http_reload,
+            crate::commands::mcp_http_status,
             crate::commands::mcp_cancel_all_approvals,
             crate::commands::mcp_cancel_approval,
             crate::commands::mcp_list_all_tools,

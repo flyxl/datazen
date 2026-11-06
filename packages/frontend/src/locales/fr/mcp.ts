@@ -24,6 +24,29 @@ const pack = {
   'mcp.tools.applyHint':
     "Enregistrez pour appliquer immédiatement les modifications d'outils lorsque le MCP Server est en cours d'exécution",
   'mcp.toggleError': 'Échec du démarrage/arrêt du serveur MCP',
+  'mcp.http.title': 'Streamable HTTP (optionnel)',
+  'mcp.http.description':
+    'Point d’accès MCP local pour les clients Streamable HTTP. Le listener n’écoute que sur 127.0.0.1 et exige un jeton Bearer.',
+  'mcp.http.enable': 'Activer le point d’accès HTTP',
+  'mcp.http.enableHint':
+    'Désactivé par défaut. Accessible uniquement depuis cette machine ; chaque requête exige le jeton Bearer.',
+  'mcp.http.port': 'Port',
+  'mcp.http.portHint': '0 choisit un port libre aléatoire ; le port réel est affiché ci-dessus.',
+  'mcp.http.applyPort': 'Appliquer le port',
+  'mcp.http.portInvalid': 'Le port doit être un entier entre 0 et 65535.',
+  'mcp.http.running': 'Point d’accès HTTP actif',
+  'mcp.http.stopped': 'Point d’accès HTTP arrêté',
+  'mcp.http.actualPort': 'Port réel : {port}',
+  'mcp.http.tokenLast4': 'Jeton Bearer se terminant par ••••{last4}',
+  'mcp.http.noToken': 'Aucun jeton Bearer généré',
+  'mcp.http.generateToken': 'Générer un jeton',
+  'mcp.http.regenerateToken': 'Renouveler le jeton',
+  'mcp.http.tokenOnce':
+    'Copiez ce jeton maintenant. Il n’est affiché qu’une fois ; seuls le hash et les quatre derniers caractères sont stockés.',
+  'mcp.http.token': 'Jeton Bearer',
+  'mcp.http.copyToken': 'Copier le jeton',
+  'mcp.http.copied': 'Copié',
+  'mcp.http.toggleError': 'Impossible de démarrer/arrêter le point d’accès HTTP',
   'mcp.permission.title': 'Mode de permission',
   'mcp.permission.readOnly': 'Lecture seule',
   'mcp.permission.readOnlyHint':
