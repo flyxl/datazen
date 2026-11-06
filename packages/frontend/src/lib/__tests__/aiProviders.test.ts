@@ -21,7 +21,7 @@ describe('isKnownProviderType', () => {
 });
 
 describe('provider presets', () => {
-  it('exposes ten presets in the stable PRD order', () => {
+  it('exposes ten API presets plus eight local CLI agents in stable order', () => {
     expect(PROVIDER_ORDER).toEqual([
       'anthropic',
       'open_ai',
@@ -33,8 +33,30 @@ describe('provider presets', () => {
       'open_ai_compatible',
       'anthropic_compatible',
       'custom',
+      'claude_code',
+      'codex',
+      'cursor',
+      'opencode',
+      'grok',
+      'qoder',
+      'codebuddy',
+      'pi',
     ]);
-    expect(Object.keys(PROVIDER_PRESETS)).toHaveLength(10);
+    expect(Object.keys(PROVIDER_PRESETS)).toHaveLength(18);
+    for (const type of [
+      'claude_code',
+      'codex',
+      'cursor',
+      'opencode',
+      'grok',
+      'qoder',
+      'codebuddy',
+      'pi',
+    ] as const) {
+      expect(PROVIDER_PRESETS[type].defaultProtocol).toBe('local_cli');
+      expect(PROVIDER_PRESETS[type].supportsTools).toBe(false);
+      expect(PROVIDER_PRESETS[type].defaultEndpoint).toBe('');
+    }
   });
 
   it('uses the real compatible endpoints and protocol for each cloud preset', () => {

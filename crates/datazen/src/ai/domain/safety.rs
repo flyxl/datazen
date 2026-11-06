@@ -374,7 +374,17 @@ pub fn provider_allows_unredacted_credentials(
         | AiProviderType::Qwen
         | AiProviderType::MiniMax
         | AiProviderType::OpenAiCompatible
-        | AiProviderType::AnthropicCompatible => false,
+        | AiProviderType::AnthropicCompatible
+        // A local CLI is still a client of a vendor model; execution location
+        // does not make its upstream egress local.
+        | AiProviderType::ClaudeCode
+        | AiProviderType::Codex
+        | AiProviderType::Cursor
+        | AiProviderType::OpenCode
+        | AiProviderType::Grok
+        | AiProviderType::Qoder
+        | AiProviderType::CodeBuddy
+        | AiProviderType::Pi => false,
     }
 }
 

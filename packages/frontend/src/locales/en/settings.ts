@@ -193,6 +193,13 @@ const pack = {
   'settings.monitor.emailPort': 'SMTP port',
   'settings.monitor.emailFrom': 'From address',
   'settings.monitor.emailTo': 'Recipients',
+  'settings.ai.localCliHint':
+    'Runs a local CLI agent as a child process. The prompt is sent over stdin; inherited API keys and proxy credentials are not passed to it. Use Detect to verify the executable.',
+  'settings.ai.localCliPath': 'Executable path (optional)',
+  'settings.ai.localCliPathPlaceholder': 'Auto-detect from PATH, or enter an absolute path',
+  'settings.ai.localCliWorkspace': 'Working directory (optional)',
+  'settings.ai.localCliWorkspacePlaceholder': 'Use an isolated temporary directory by default',
+  'settings.ai.localCliDetect': 'Detect CLI',
   'settings.ai.provider': 'AI Provider',
   'settings.ai.model': 'Model',
   'settings.ai.maxTokens': 'Max Tokens',

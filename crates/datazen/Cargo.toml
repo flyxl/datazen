@@ -306,6 +306,7 @@ ai = [
     "dep:tokio-util",
     "dep:futures-util",
     "dep:reqwest",
+    "dep:libc",
     "dep:tracing",
     "dep:datazen-infra",
     "dep:datazen-driver-api",
@@ -381,7 +382,7 @@ sha1 = { version = "0.10", optional = true }
 # ai feature：契约层链接期工厂注册
 inventory = { workspace = true, optional = true }
 # ai feature：providers 的并发与流式传输
-tokio = { version = "1", features = ["rt", "sync", "time", "macros", "net", "fs", "io-util"], optional = true }
+tokio = { version = "1", features = ["rt", "sync", "time", "macros", "net", "fs", "io-util", "process"], optional = true }
 tokio-util = { version = "0.7", features = ["rt"], optional = true }
 futures-util = { workspace = true, optional = true }
 russh = { workspace = true, optional = true }

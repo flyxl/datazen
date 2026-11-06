@@ -89,6 +89,70 @@ fn test_emit_stream_chunk_builds_payload_via_callback() {
 }
 
 #[tokio::test]
+async fn local_cli_presets_are_listed_and_validation_detects_the_executable() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use datazen::ai::AiProviderConfig;
+    use datazen::ai::AiProviderType;
+
+    let test = TestAppState::new().await;
+    let (state, _keep) = test.into_state();
+    let app = CommandApp::new(state);
+    let providers = ai_get_providers(app.state()).await.unwrap();
+    for (provider_type, display_name) in [
+        (AiProviderType::ClaudeCode, "Claude Code"),
+        (AiProviderType::Codex, "Codex"),
+        (AiProviderType::Cursor, "Cursor"),
+        (AiProviderType::OpenCode, "OpenCode"),
+        (AiProviderType::Grok, "Grok"),
+        (AiProviderType::Qoder, "Qoder"),
+        (AiProviderType::CodeBuddy, "CodeBuddy"),
+        (AiProviderType::Pi, "Pi"),
+    ] {
+        let item = providers
+            .iter()
+            .find(|item| item.provider_type == provider_type)
+            .unwrap_or_else(|| panic!("{display_name} missing from provider list"));
+        assert_eq!(item.display_name, display_name);
+        assert_eq!(item.default_protocol, "local_cli");
+        assert!(!item.supports_tools);
+    }
+
+    let missing = AiProviderConfig {
+        provider_type: AiProviderType::ClaudeCode,
+        api_key: None,
+        endpoint: None,
+        model: String::new(),
+        max_tokens: 1,
+        extra: serde_json::json!({ "executablePath": "definitely-not-a-real-cli" }),
+    };
+    let error = ai_validate_config(app.state(), missing).await.unwrap_err();
+    assert!(
+        error.to_string().contains("not found") || error.to_string().contains("not executable"),
+        "{error}"
+    );
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fake-claude");
+        std::fs::write(&path, "#!/bin/sh\nexit 0\n").unwrap();
+        let mut permissions = std::fs::metadata(&path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&path, permissions).unwrap();
+        let config = AiProviderConfig {
+            provider_type: AiProviderType::ClaudeCode,
+            api_key: None,
+            endpoint: None,
+            model: String::new(),
+            max_tokens: 1,
+            extra: serde_json::json!({ "executablePath": path }),
+        };
+        ai_validate_config(app.state(), config).await.unwrap();
+    }
+}
+
+#[tokio::test]
 async fn ai_providers_config_prompt_workflow() {
     use crate::testing::app_state_test_support::TestAppState;
     use datazen::ai::AiProviderConfig;

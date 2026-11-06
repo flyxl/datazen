@@ -4,6 +4,7 @@ import { setBackendClient } from '@datazen/backend-client';
 import { AiSettingsSection } from '../AiSettingsSection';
 import { useAiStore } from '../../../stores/aiStore';
 import { getDefaultSafetyGate } from '../../../lib/aiSafetyPresets';
+import { LOCAL_CLI_PROVIDER_TYPES, PROVIDER_PRESETS } from '../../../lib/aiProviders';
 
 // Form-split R6/F6-prep: the context commands ride the legacy invoke rail,
 // which resolves the bound backend facade — the section's dir effect fires on
@@ -159,6 +160,44 @@ describe('AiSettingsSection', () => {
     expect(screen.getByText('Postgres style')).toBeDefined();
     expect(screen.getByText(/postgresql, mysql/)).toBeDefined();
     expect(screen.getByTestId('ai-templates-total-count').textContent).toContain('22 / 16384');
+  });
+
+  it('selects a local CLI agent, exposes path/workspace fields, and validates it', async () => {
+    const validateConfig = vi.fn(async () => true);
+    useAiStore.setState({
+      providers: LOCAL_CLI_PROVIDER_TYPES.map((type) => PROVIDER_PRESETS[type]),
+      validateConfig,
+    });
+    render(<AiSettingsSection />);
+
+    fireEvent.click(screen.getByText('settings.ai.addModel'));
+    await waitFor(() => expect(screen.getByTestId('ai-provider-select')).toBeDefined());
+    fireEvent.click(screen.getByTestId('ai-provider-select'));
+    fireEvent.mouseDown(await screen.findByText('Claude Code'));
+
+    expect(screen.getByTestId('ai-local-cli-path')).toBeDefined();
+    expect(screen.getByTestId('ai-local-cli-workspace')).toBeDefined();
+    expect(screen.queryByText('settings.ai.apiKey')).toBeNull();
+
+    fireEvent.change(screen.getByTestId('ai-local-cli-path'), {
+      target: { value: '/usr/local/bin/claude' },
+    });
+    fireEvent.change(screen.getByTestId('ai-local-cli-workspace'), {
+      target: { value: '/tmp/datazen-project' },
+    });
+    fireEvent.click(screen.getByTestId('ai-profile-validate'));
+
+    await waitFor(() =>
+      expect(validateConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          providerType: 'claude_code',
+          extra: {
+            executablePath: '/usr/local/bin/claude',
+            workspaceDir: '/tmp/datazen-project',
+          },
+        }),
+      ),
+    );
   });
 
   it('renders empty state when no profiles exist', () => {

@@ -50,6 +50,10 @@ pub use domain::types::*;
 
 pub use providers::custom;
 pub use providers::http;
+pub use providers::local_cli::{
+    detect_local_cli, local_cli_presets, preset_for_type, LocalCliAvailability, LocalCliPreset,
+    LocalCliProvider, SAFE_ENV_VARS,
+};
 pub use providers::metadata::provider_defaults;
 pub use providers::protocol;
 pub use providers::registry::{init_ai_providers, register_ai_providers, AiProviderRegistry};

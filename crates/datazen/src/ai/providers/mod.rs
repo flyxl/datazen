@@ -9,6 +9,8 @@ pub mod compatible;
 pub mod custom;
 pub mod deepseek;
 pub mod http;
+pub mod local_cli;
+pub mod local_cli_presets;
 pub mod metadata;
 pub mod ollama;
 pub mod openai;

@@ -12,7 +12,15 @@ export type AiProviderType =
   | 'qwen'
   | 'mini_max'
   | 'open_ai_compatible'
-  | 'anthropic_compatible';
+  | 'anthropic_compatible'
+  | 'claude_code'
+  | 'codex'
+  | 'cursor'
+  | 'opencode'
+  | 'grok'
+  | 'qoder'
+  | 'codebuddy'
+  | 'pi';
 
 export type AiAgentMode = 'ask' | 'agent';
 

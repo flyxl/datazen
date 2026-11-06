@@ -84,7 +84,95 @@ export const PROVIDER_PRESETS: Record<AiProviderType, ProviderListItem> = {
     defaultProtocol: 'open_ai_compatible',
     defaultModel: '',
   },
+  claude_code: {
+    providerType: 'claude_code',
+    displayName: 'Claude Code',
+    supportsStreaming: true,
+    supportsTools: false,
+    defaultEndpoint: '',
+    defaultProtocol: 'local_cli',
+    defaultModel: '',
+  },
+  codex: {
+    providerType: 'codex',
+    displayName: 'Codex',
+    supportsStreaming: true,
+    supportsTools: false,
+    defaultEndpoint: '',
+    defaultProtocol: 'local_cli',
+    defaultModel: '',
+  },
+  cursor: {
+    providerType: 'cursor',
+    displayName: 'Cursor',
+    supportsStreaming: true,
+    supportsTools: false,
+    defaultEndpoint: '',
+    defaultProtocol: 'local_cli',
+    defaultModel: '',
+  },
+  opencode: {
+    providerType: 'opencode',
+    displayName: 'OpenCode',
+    supportsStreaming: true,
+    supportsTools: false,
+    defaultEndpoint: '',
+    defaultProtocol: 'local_cli',
+    defaultModel: '',
+  },
+  grok: {
+    providerType: 'grok',
+    displayName: 'Grok',
+    supportsStreaming: true,
+    supportsTools: false,
+    defaultEndpoint: '',
+    defaultProtocol: 'local_cli',
+    defaultModel: '',
+  },
+  qoder: {
+    providerType: 'qoder',
+    displayName: 'Qoder',
+    supportsStreaming: true,
+    supportsTools: false,
+    defaultEndpoint: '',
+    defaultProtocol: 'local_cli',
+    defaultModel: '',
+  },
+  codebuddy: {
+    providerType: 'codebuddy',
+    displayName: 'CodeBuddy',
+    supportsStreaming: true,
+    supportsTools: false,
+    defaultEndpoint: '',
+    defaultProtocol: 'local_cli',
+    defaultModel: '',
+  },
+  pi: {
+    providerType: 'pi',
+    displayName: 'Pi',
+    supportsStreaming: true,
+    supportsTools: false,
+    defaultEndpoint: '',
+    defaultProtocol: 'local_cli',
+    defaultModel: '',
+  },
 };
+
+/** Local CLI agents are advertised after the ten API presets. */
+export const LOCAL_CLI_PROVIDER_TYPES: AiProviderType[] = [
+  'claude_code',
+  'codex',
+  'cursor',
+  'opencode',
+  'grok',
+  'qoder',
+  'codebuddy',
+  'pi',
+];
+
+export function isLocalCliProvider(value: AiProviderType | string): boolean {
+  return (LOCAL_CLI_PROVIDER_TYPES as string[]).includes(value);
+}
 
 export const PROVIDER_ORDER: AiProviderType[] = [
   'anthropic',
@@ -97,6 +185,7 @@ export const PROVIDER_ORDER: AiProviderType[] = [
   'open_ai_compatible',
   'anthropic_compatible',
   'custom',
+  ...LOCAL_CLI_PROVIDER_TYPES,
 ];
 
 export const DEEP_SEEK_PROVIDER = PROVIDER_PRESETS.deep_seek;

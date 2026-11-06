@@ -22,6 +22,19 @@ pub enum AiProviderType {
     OpenAiCompatible,
     #[serde(rename = "anthropic_compatible", alias = "anthropic_compat")]
     AnthropicCompatible,
+    /// Local CLI agents. They are launched as child processes and share the
+    /// same streaming contract as API providers; the persisted configuration
+    /// carries the optional executable/working-directory overrides in `extra`.
+    ClaudeCode,
+    Codex,
+    Cursor,
+    #[serde(rename = "opencode", alias = "open_code", alias = "open-code")]
+    OpenCode,
+    Grok,
+    Qoder,
+    #[serde(rename = "codebuddy", alias = "code_buddy", alias = "code-buddy")]
+    CodeBuddy,
+    Pi,
 }
 
 impl std::fmt::Display for AiProviderType {
@@ -37,6 +50,14 @@ impl std::fmt::Display for AiProviderType {
             Self::MiniMax => write!(f, "MiniMax"),
             Self::OpenAiCompatible => write!(f, "OpenAI Compatible"),
             Self::AnthropicCompatible => write!(f, "Anthropic Compatible"),
+            Self::ClaudeCode => write!(f, "Claude Code"),
+            Self::Codex => write!(f, "Codex"),
+            Self::Cursor => write!(f, "Cursor"),
+            Self::OpenCode => write!(f, "OpenCode"),
+            Self::Grok => write!(f, "Grok"),
+            Self::Qoder => write!(f, "Qoder"),
+            Self::CodeBuddy => write!(f, "CodeBuddy"),
+            Self::Pi => write!(f, "Pi"),
         }
     }
 }

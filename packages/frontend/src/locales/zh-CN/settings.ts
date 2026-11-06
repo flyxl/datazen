@@ -165,6 +165,13 @@ const pack = {
   'settings.monitor.emailPort': 'SMTP 端口',
   'settings.monitor.emailFrom': '发件地址',
   'settings.monitor.emailTo': '收件人',
+  'settings.ai.localCliHint':
+    '以子进程运行本地 CLI Agent。Prompt 经 stdin 传入，不会继承 API Key/代理凭据；可用“检测 CLI”验证可执行文件。',
+  'settings.ai.localCliPath': '可执行文件路径（可选）',
+  'settings.ai.localCliPathPlaceholder': '默认从 PATH 检测，也可填绝对路径',
+  'settings.ai.localCliWorkspace': '工作目录（可选）',
+  'settings.ai.localCliWorkspacePlaceholder': '默认使用隔离的临时目录',
+  'settings.ai.localCliDetect': '检测 CLI',
   'settings.ai.provider': 'AI 服务商',
   'settings.ai.model': '模型',
   'settings.ai.maxTokens': '最大 Token 数',

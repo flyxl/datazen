@@ -7,7 +7,11 @@ import {
   isLocalEndpoint,
   type AiSafetyPresetType,
 } from '../../../lib/aiSafetyPresets';
-import { normalizeAiProviders, PROVIDER_PRESETS } from '../../../lib/aiProviders';
+import {
+  isLocalCliProvider,
+  normalizeAiProviders,
+  PROVIDER_PRESETS,
+} from '../../../lib/aiProviders';
 import type {
   AiModelProfile,
   AiProviderType,
@@ -115,6 +119,11 @@ export function useModelProfileDraft({
 
   const isCustom = draft.providerType === 'custom';
   const isOllama = draft.providerType === 'ollama';
+  const isLocalCli = isLocalCliProvider(draft.providerType);
+  const localCliPath =
+    typeof draft.extra?.executablePath === 'string' ? draft.extra.executablePath : '';
+  const localCliWorkspace =
+    typeof draft.extra?.workspaceDir === 'string' ? draft.extra.workspaceDir : '';
   const selectedProvider = providerDefaults.find((p) => p.providerType === draft.providerType);
 
   // Provider metadata loads asynchronously: fill the default endpoint once it
@@ -161,16 +170,23 @@ export function useModelProfileDraft({
       const provider =
         providerDefaults.find((p) => p.providerType === providerType) ??
         PROVIDER_PRESETS[providerType];
-      const isLocal = providerType === 'ollama';
+      const isOllama = providerType === 'ollama';
+      const isCli = isLocalCliProvider(providerType);
       const protocol = normalizeCustomProtocol(provider?.defaultProtocol);
       setDraft((d) => ({
         ...d,
         providerType,
-        apiKey: isLocal ? 'ollama' : '',
-        endpoint: provider?.defaultEndpoint ?? '',
+        apiKey: isOllama ? 'ollama' : '',
+        endpoint: isCli ? '' : (provider?.defaultEndpoint ?? ''),
         model: provider?.defaultModel ?? '',
-        safetyGate: getDefaultSafetyGate(isLocal ? 'local_trust' : 'cloud_strict'),
-        extra: providerType === 'custom' ? { protocol } : undefined,
+        // A local CLI is a client of a vendor model, not a trusted local
+        // endpoint; keep the same strict egress default as cloud API presets.
+        safetyGate: getDefaultSafetyGate(isOllama ? 'local_trust' : 'cloud_strict'),
+        extra: isCli
+          ? { executablePath: '', workspaceDir: '' }
+          : providerType === 'custom'
+            ? { protocol }
+            : undefined,
       }));
       setCustomProtocol(protocol);
       setManualModelInput(false);
@@ -183,6 +199,17 @@ export function useModelProfileDraft({
     setCustomProtocol(value);
     setDraft((d) => ({ ...d, extra: { protocol: value } }));
   }, []);
+
+  const handleLocalCliPathChange = useCallback(
+    (key: 'executablePath' | 'workspaceDir', value: string) => {
+      setDraft((d) => ({
+        ...d,
+        extra: { ...(d.extra ?? {}), [key]: value },
+      }));
+      setValidateOk(false);
+    },
+    [],
+  );
 
   const handleFetchModels = useCallback(async () => {
     const endpoint = draft.endpoint?.trim();
@@ -233,14 +260,14 @@ export function useModelProfileDraft({
     setSavingState(true);
     const profileToSave: AiModelProfile = {
       ...draft,
-      name: draft.name.trim() || draft.model || draft.providerType,
+      name: draft.name.trim() || draft.model || selectedProvider?.displayName || draft.providerType,
       extra: isCustom ? { protocol: customProtocol } : draft.extra,
     };
     const success = await onSave(profileToSave);
     setSavingState(false);
     if (success) onSaved?.(profileToSave);
     return success;
-  }, [customProtocol, draft, isCustom, onSave, onSaved]);
+  }, [customProtocol, draft, isCustom, onSave, onSaved, selectedProvider]);
 
   /**
    * Save entry point: unrestricted egress on a remote endpoint asks for an
@@ -264,7 +291,7 @@ export function useModelProfileDraft({
   const currentPreset = detectSafetyPreset(draft.safetyGate);
 
   /** Enough input to talk to a provider (Ollama needs no key). */
-  const hasCredentials = isOllama || Boolean(draft.apiKey?.trim());
+  const hasCredentials = isOllama || isLocalCli || Boolean(draft.apiKey?.trim());
 
   return {
     // state
@@ -290,12 +317,16 @@ export function useModelProfileDraft({
     // derived
     isCustom,
     isOllama,
+    isLocalCli,
+    localCliPath,
+    localCliWorkspace,
     selectedProvider,
     currentPreset,
     hasCredentials,
     // actions
     handleProviderChange,
     handleProtocolChange,
+    handleLocalCliPathChange,
     handleFetchModels,
     handleValidate,
     applyPreset,

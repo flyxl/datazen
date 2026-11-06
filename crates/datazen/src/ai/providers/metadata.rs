@@ -23,6 +23,14 @@ pub fn provider_defaults(provider_type: AiProviderType) -> (&'static str, &'stat
         AiProviderType::MiniMax => ("https://api.minimax.io/v1", "open_ai_compatible"),
         AiProviderType::OpenAiCompatible => ("", "open_ai_compatible"),
         AiProviderType::AnthropicCompatible => ("", "anthropic_compatible"),
+        AiProviderType::ClaudeCode
+        | AiProviderType::Codex
+        | AiProviderType::Cursor
+        | AiProviderType::OpenCode
+        | AiProviderType::Grok
+        | AiProviderType::Qoder
+        | AiProviderType::CodeBuddy
+        | AiProviderType::Pi => ("", "local_cli"),
     }
 }
 
@@ -40,6 +48,14 @@ pub fn provider_default_model(provider_type: AiProviderType) -> &'static str {
         AiProviderType::MiniMax => "MiniMax-M3.1-Flash",
         AiProviderType::OpenAiCompatible => "",
         AiProviderType::AnthropicCompatible => "",
+        AiProviderType::ClaudeCode
+        | AiProviderType::Codex
+        | AiProviderType::Cursor
+        | AiProviderType::OpenCode
+        | AiProviderType::Grok
+        | AiProviderType::Qoder
+        | AiProviderType::CodeBuddy
+        | AiProviderType::Pi => "",
     }
 }
 
@@ -95,6 +111,19 @@ mod tests {
             provider_defaults(AiProviderType::AnthropicCompatible),
             ("", "anthropic_compatible")
         );
+        for provider_type in [
+            AiProviderType::ClaudeCode,
+            AiProviderType::Codex,
+            AiProviderType::Cursor,
+            AiProviderType::OpenCode,
+            AiProviderType::Grok,
+            AiProviderType::Qoder,
+            AiProviderType::CodeBuddy,
+            AiProviderType::Pi,
+        ] {
+            assert_eq!(provider_defaults(provider_type), ("", "local_cli"));
+            assert!(provider_default_model(provider_type).is_empty());
+        }
     }
 
     #[test]
