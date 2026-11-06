@@ -22,7 +22,7 @@
 | T18 CLI 与 Agent Skill | 已完成 |
 | T19 MCP scope、逐次审批、审计 | 已完成 |
 | T20 MCP batch 与 Redis 只读工具 | 已完成 |
-| T21 MCP Streamable HTTP | 已完成 |
+| T21 MCP Streamable HTTP | 未通过（BUG-019） |
 | T22 插件/Workflow 工具桥 | 未开始 |
 | T23 本地 CLI Agent Provider | 未开始 |
 | T24 写入提案与精确确认 | 未开始 |

@@ -20,6 +20,7 @@
 | BUG-016 | T18 | `#` 方言、CLI ack、onboarding、macOS bundle argv、SQL Server 非法 LIMIT 已修复 | 已验证 |
 | BUG-017 | T19 | MCP database/namespace scope 只校验工具参数，SQL 可跨库/跨 schema 执行；schema resource 与默认解析误拒；审计目标/行数/requestId 不完整 | 已验证 |
 | BUG-018 | T20 | Redis key_pattern 可被多 key EXISTS 绕过；拒绝的 Redis 命令审计记为 allow；batch 无逐语句审计且审计 rowCount 为空 | 已验证 |
+| BUG-019 | T21 | HTTP token 输入框使用未定义的 Tailwind 颜色类 `bg-bg`，`tailwind-colour-classes` 门禁失败 | 待修复 |
 
 
 ## T19 MCP scope / 逐次审批 / 审计验收记录（已验证）
@@ -100,3 +101,40 @@ JSONL，审计 append 失败不影响主调用。`8fa40665a` 的 7 个代码文�
 | 全量前端 `vitest` | 8231 passed / 8 failed（环境用例，非 T20） |
 | `pnpm typecheck:tsc` / `cargo fmt --all -- --check` / `git diff --check` | 通过 / 0 / 0 |
 | T20 修复范围 | 5 个 T20 文件；无 generated/无关文件 |
+
+## T21 MCP Streamable HTTP 独立复测（2026-11-06，`3b83395f3`）
+
+**结论：不通过（BUG-019）。** `3b83395f3`（`feat: add opt-in MCP Streamable HTTP transport`）
+的 transport/auth/cleanup/typecheck 主路径通过，但新增 token 输入框使用未定义
+`bg-bg`，导致项目 `tailwind-colour-classes` 门禁失败；该 T21 前端问题阻断了验收。
+
+- 默认不监听；启用后真实 `TcpListener` 只绑定 `127.0.0.1`，端口 0 返回实际端口与 URL；
+  disable/Stop 关闭 listener；端口冲突返回可读 `could not bind`，且不留下 enabled 开关或
+  一次性 token。
+- Bearer token：缺失/错误/轮换前旧 token 均 401；正确 token 可 initialize、tools/list、
+  tools/call；轮换后旧 token 立即 401。token 文件仅 `version/hash/last4`，Unix 权限 0600；
+  只有 enable/regenerate 生成响应返回一次明文，status/日志/IPC 其余路径不回显。
+- HTTP 复用同一 `DataZenMcpServer` 工具/scope/权限/审批/审计：临时 HTTP 集成验证了
+  T19 scope deny + audit、T20 `execute_batch` 逐语句 index、Stop 后端口拒绝连接。
+- 并发 session 隔离、DELETE 关闭、Stop 释放有状态会话，以及 stdio 下 T19/T20 回归测试均通过。
+- 前端开关/端口/实际 URL/状态/token 一次性显示；临时测试验证运行中改端口与 disable 清空 token。
+- `pnpm typecheck:tsc` 在临时映射 `@datazen/*` 后通过。未映射时复现 43 errors（其中 5 个
+  `mcp_http_*` + 既有 stale-main 类型），但 worktree 的 `LegacyCommandName` 已包含全部 5 个
+  新命令；映射后无错误，故不是 T21 类型回归。
+- **BUG-019**：`McpSettingsSection.tsx:469` 的一次性 token 输入框使用 `bg-bg`；该颜色
+  token 不存在。`vitest run scripts/__tests__/tailwind-colour-classes.test.ts` 得到
+  `["...McpSettingsSection.tsx:469 `bg-bg`"]`，7 项中 1 failed / 6 passed。这是 T21
+  新增 UI 引起的真实门禁失败，不是既有环境用例；详见
+  [BUG-019](ai-assistant-parity-bugs/BUG-019.md)。
+
+| 范围 | 结果 |
+|---|---|
+| `cargo test -p datazen --features mcp --lib` | 1707 passed |
+| `cargo test -p datazen_desktop --lib` | 1383 passed / 10 ignored |
+| `cargo test -p datazen_desktop --lib mcp::http::tests` | 12 passed |
+| `cargo test -p datazen_desktop --lib commands::mcp::tests` | 10 passed |
+| `cargo test -p datazen-server --features mcp --locked` | 361 passed |
+| T21 定向前端（SettingsContent + McpApprovalHost） | 38 passed |
+| 全量前端 `vitest` | 8231 passed / 9 failed（8 个既有 Pro/tauri/driver 环境用例 + 1 个 BUG-019 `bg-bg`） |
+| `pnpm typecheck:tsc` / `cargo fmt --all -- --check` / `git diff --check` | 通过 / 0 / 0 |
+| T21 范围 | 29 个 T21 文件；无 generated/无关文件 |
