@@ -147,6 +147,21 @@ required-features = ["mcp"]
 name = "mcp_http_wire"
 required-features = ["mcp"]
 
+# 绿路径刀：mcp seed-example + 七工具的 server 绿路径（MockDriver fake-driver
+# 常态 CI 腿）。runtime/stateless_exec 装配面在 mcp feature 内。
+[[test]]
+name = "mcp_green_path"
+required-features = ["mcp"]
+
+# 绿路径刀的真方言腿：postgres 同款绿路径，测试恒 #[ignore]，连接事实从
+# DATAZEN_LIVE_PG_* 环境变量取（缺省早退）。run-live：
+#   cargo test -p datazen-server --features mcp,driver-postgres \
+#     --test mcp_live_postgres -- --ignored
+# 常态 CI（全 feature 腿）即使编译也不执行。
+[[test]]
+name = "mcp_live_postgres"
+required-features = ["mcp", "driver-postgres"]
+
 [dev-dependencies]
 # oneshot 驱动 Router 的集成测试需要 ServiceExt。
 tower = { version = "0.5", features = ["util"] }
