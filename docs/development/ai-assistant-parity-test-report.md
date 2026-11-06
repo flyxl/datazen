@@ -589,3 +589,36 @@ error TS2322: Type 'null' is not assignable to type 'number'.
 
 4f1b49a3a 仅 5 个 T24 文件；无 generated/凭据/无关。**T24：通过（BUG-023/
 BUG-024/BUG-025 已验证）。**
+
+## T25 `21a6e6015` 复测：通过
+
+- 服务端 V10 `org_memories` / `org_memory_audit` 迁移生效；GET/POST/DELETE
+  `/api/v1/org-memory` 与 audit/injections 路由可用。org A/B 的 list、audit、
+  publish 幂等及 injection 互不可见；跨组织 revoke/injection 返回 masked 404。
+- 成员可 list，publish/revoke/audit 返回 403；真实 `PolicyService::is_org_admin`
+  + `Role::OrgAdmin` 鉴权；无 session 的请求 401。
+- publish 即审批并版本化；新版本发布后旧版本立即 revoked；list 仅返回最新 active；
+  revoke 后 list 立即为空，旧版本/revoked 版本的 injection audit 记 suppressed。
+- 审计行包含 who/organization/memory/version/action/decision，无 subject/content/
+  凭据；publish/revoke/inject 均落审计。
+- 桌面仅新增 `ai_org_memory_list` 只读命令；本地 org create/update/confirm/reject/
+  delete/clear/mark-stale/学习候选均返回 read-only，未改变 org 行。列表按本地
+  organization 隔离，retriever 在读取后再次只保留 active org 行；本地私有记忆没有
+  upload 路径。
+- 前端 MemorySection 只渲染组织记忆只读块，无编辑/删除入口；空列表有 empty 状态。
+
+| 范围 | 结果 |
+|---|---|
+| `datazen-server --features mcp` | 370 passed |
+| `datazen --features ai` | 1702 passed |
+| `datazen_desktop` | 1416 passed / 10 ignored |
+| T25 server routes | 5 passed |
+| T25 server storage | 4 passed |
+| T25 frontend MemorySection | 10 passed（含 org 只读 1） |
+| 全量前端 | 8241 passed / 8 既有环境失败 |
+| worktree 映射 typecheck | OK |
+| server deps gate（CARGO_HOME=/tmp/t18-cargo-home） | 292 crates / 0 forbidden |
+| fmt / diff | 0 / 0 |
+
+21a6e6015 的 26 个文件均属 T25；无 generated/凭据/无关。主检出 clean；worktree
+仅测试报告修改；独立临时测试已删除。**T25：通过。**
