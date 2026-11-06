@@ -18,6 +18,7 @@
 | BUG-014 | T16 | 新兼容预设 validate_config 只依赖 `/models`，未回退 probe，仅实现 chat/messages 的兼容端点验证误报 | 已验证 |
 | BUG-015 | T17 | autoUse 为死设置且 listing 无显式选择门控；同名技能未并列；缺 2-skill 正文预算 | 已验证 |
 | BUG-016 | T18 | `#` 方言、CLI ack、onboarding、macOS bundle argv、SQL Server 非法 LIMIT 已修复 | 已验证 |
+| BUG-017 | T19 | MCP database/namespace scope 只校验工具参数，SQL 可跨库/跨 schema 执行；schema resource 与默认解析误拒；审计目标/行数/requestId 不完整 | 待修复 |
 
 ## T19 MCP scope / 逐次审批 / 审计验收记录
 
@@ -40,3 +41,31 @@
 > shared settings 类型。本次 `pnpm typecheck:tsc` 在把 `@datazen/*` 临时指向当前
 > worktree 包的映射下执行，检查完成后已删除映射；这是并行 worktree 的环境动作，
 > 不进入提交。
+
+## T19 独立复测结论（2026-11-06，`57bb4f4bd`）
+
+**结论：不通过。** 审批主路径和显式参数 scope 可用，但 BUG-017 记录了三类硬缺口：
+database/namespace scope 不约束 `query` 的 SQL 目标（真实 MySQL 允许库 `mysql` 时
+读取 `datazen_demo.test_orders` 成功；PostgreSQL 允许 namespace `public` 时读取
+`information_schema` / `pg_catalog` 成功）；namespace scope 下 schema resource 全部
+误拒；默认 database/schema 为 null 时误拒；审计的 database/namespace/requestId
+不完整，MySQL SELECT 的 1 行被记为 `rowCount: 0`。详见
+[BUG-017](ai-assistant-parity-bugs/BUG-017.md)。
+
+独立复测统计：
+
+| 范围 | 结果 |
+|---|---|
+| `cargo test -p datazen --features mcp --lib mcp::domain` | 16 passed |
+| `cargo test -p datazen_desktop --lib mcp::server::tests` | 57 passed |
+| `cargo test -p datazen_desktop --lib` | 1353 passed / 9 ignored |
+| `cargo test -p datazen --features mcp --lib` | 1672 passed |
+| T19 定向前端（`McpApprovalHost` + `SettingsContent`） | 37 passed |
+| 全量前端 `vitest` | 8231 passed / 8 failed；失败为 worktree 的 Pro/驱动构建环境用例，非 T19 文件 |
+| `pnpm typecheck:tsc` | 临时映射 `@datazen/*` 到当前 worktree 后通过；未映射时因主检出旧类型失败 |
+| `cargo fmt --all -- --check` / `git diff --check` | 0 |
+| 变更文件 | 50 个，全部 T19，无 generated/无关文件 |
+
+黑盒 MCP 使用隔离 `DATAZEN_DATA_DIR` 的 `datazen_desktop --mcp`；审批在 headless 无
+presenter 时一律 Deny，Allow once 由桌面集成测试覆盖。审计 append 失败时查询仍成功，
+未阻断调用。
