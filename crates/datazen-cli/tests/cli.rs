@@ -260,22 +260,79 @@ fn tunnel_config_fails_closed_instead_of_direct_connect() {
 }
 
 #[cfg(unix)]
-fn fake_launcher(temp: &Path, exit_code: i32, write_ack: bool) -> (PathBuf, PathBuf) {
+fn write_recording_script(script: &Path, args_file: &Path, exit_code: i32, write_ack: bool) {
     use std::os::unix::fs::PermissionsExt;
 
-    let args_file = temp.join("launch-args.txt");
-    let script = temp.join(format!("fake-datazen-{exit_code}-{write_ack}"));
+    if let Some(parent) = script.parent() {
+        std::fs::create_dir_all(parent).unwrap();
+    }
     let ack = if write_ack { 1 } else { 0 };
     std::fs::write(
-        &script,
+        script,
         format!(
-            "#!/bin/sh\n             printf '%s\\n' \"$@\" > '{}'\n             ack=''\n             prev=''\n             for arg in \"$@\"; do\n               if [ \"$prev\" = '--datazen-open-ack' ]; then ack=\"$arg\"; fi\n               prev=\"$arg\"\n             done\n             if [ {ack} -eq 1 ] && [ -n \"$ack\" ]; then\n               printf '%s\\n' '{{\"ok\":true}}' > \"$ack\"\n             fi\n             exit {exit_code}\n",
+            "#!/bin/sh\n\
+             printf '%s\\n' \"$@\" > '{}'\n\
+             ack=''\n\
+             prev=''\n\
+             for arg in \"$@\"; do\n\
+               if [ \"$prev\" = '--datazen-open-ack' ]; then ack=\"$arg\"; fi\n\
+               prev=\"$arg\"\n\
+             done\n\
+             if [ {ack} -eq 1 ] && [ -n \"$ack\" ]; then\n\
+               printf '%s\\n' '{{\"ok\":true}}' > \"$ack\"\n\
+             fi\n\
+             exit {exit_code}\n",
             args_file.display()
         ),
     )
     .unwrap();
-    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::set_permissions(script, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+#[cfg(unix)]
+fn fake_launcher(temp: &Path, exit_code: i32, write_ack: bool) -> (PathBuf, PathBuf) {
+    let args_file = temp.join("launch-args.txt");
+    let script = temp.join(format!("fake-datazen-{exit_code}-{write_ack}"));
+    write_recording_script(&script, &args_file, exit_code, write_ack);
     (script, args_file)
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn open_launches_macos_bundle_executable_with_all_argv() {
+    let temp = TempDir::new().unwrap();
+    let connection = sqlite_connection(temp.path(), "local");
+    write_connections(temp.path(), json!([connection]));
+    let app = temp.path().join("DataZen.app");
+    let executable = app.join("Contents/MacOS/datazen_desktop");
+    let args_file = temp.path().join("bundle-args.txt");
+    write_recording_script(&executable, &args_file, 0, true);
+
+    let output = run_env(
+        temp.path(),
+        &["open", "local", "--query", "SELECT 1", "--json"],
+        &[("DATAZEN_DESKTOP_APP", app.to_str().unwrap())],
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["launched"], true);
+    assert_eq!(report["queryProvided"], true);
+
+    let args = std::fs::read_to_string(&args_file).unwrap();
+    assert!(args.contains("--datazen-open-connection"), "{args}");
+    assert!(args.contains("local"), "{args}");
+    assert!(args.contains("--datazen-open-query"), "{args}");
+    assert!(args.contains("SELECT 1"), "{args}");
+    assert!(args.contains("--datazen-data-dir"), "{args}");
+    assert!(args.contains("--datazen-open-ack"), "{args}");
+    assert!(
+        args.contains(temp.path().to_str().unwrap()),
+        "data dir missing from {args}"
+    );
 }
 
 #[cfg(unix)]

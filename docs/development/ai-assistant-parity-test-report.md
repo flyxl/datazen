@@ -17,4 +17,4 @@
 | BUG-013 | T15 | 旧 localStorage `dbSessionId::db` 会话迁移到 AppDb 后仍按旧 key 存储，当前 connectionId 会话列表/恢复看不到，迁移成功提示失真 | 已验证 |
 | BUG-014 | T16 | 新兼容预设 validate_config 只依赖 `/models`，未回退 probe，仅实现 chat/messages 的兼容端点验证误报 | 已验证 |
 | BUG-015 | T17 | autoUse 为死设置且 listing 无显式选择门控；同名技能未并列；缺 2-skill 正文预算 | 已验证 |
-| BUG-016 | T18 | `#` 方言扫描、CLI ack、direct spawn、onboarding 队列已修复；macOS `open -n` 本机不送 `--args`，SQL Server `#temp` 仍被默认 LIMIT 破坏 | 未修复（见 BUG-016；shared Runtime 可按声明边界接受） |
+| BUG-016 | T18 | `#` 方言、CLI ack、onboarding、macOS bundle argv、SQL Server 非法 LIMIT 已修复 | 待黑盒复测（见 BUG-016；shared Runtime 为声明边界） |

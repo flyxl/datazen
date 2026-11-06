@@ -61,9 +61,11 @@ datazen open <connection> [--query "SELECT ..."] --json
 # --datazen-data-dir <path> --datazen-open-ack <path>
 ```
 
-macOS 使用 `/Applications/DataZen.app`（或 `~/Applications/DataZen.app`）和
-`open -n -a ... --args`（`-n` 强制新实例，避免参数被已有进程吞掉）；
-Windows/Linux 使用常见安装路径或 `DATAZEN_DESKTOP_BIN` 指定的可执行文件。
+macOS 直接定位 `/Applications/DataZen.app`（或 `~/Applications/DataZen.app`）的
+`Contents/MacOS/<exe>` 并 spawn，完整 argv 不经过 LaunchServices；只有找不到 bundle
+可执行文件时才回退 `/usr/bin/open -n -a ... --args`；回退同样等待 ack，无法验证
+ack 时返回 `E_UNSUPPORTED`，不会报成功。测试可用 `DATAZEN_DESKTOP_APP` 指向临时 `.app`。Windows/Linux 使用常见
+安装路径或 `DATAZEN_DESKTOP_BIN` 指定的可执行文件。
 `--data-dir` 会以 `--datazen-data-dir <path>` 转发，桌面在日志/Store 初始化前
 设置 `DATAZEN_DATA_DIR`，确保 CLI 与桌面读写同一份数据。桌面启动时解析参数，向主窗口发送
 `datazen:open-connection`，前端打开对应连接；带 `--query` 时在连接就绪后创建

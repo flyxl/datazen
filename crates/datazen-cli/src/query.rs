@@ -163,8 +163,19 @@ pub fn ensure_supported_host_wiring(config: &ConnectionConfig) -> Result<(), Cli
 /// The driver API's SQL limit is a row cap on the server, not a display
 /// truncation. Leading/trivia comments are skipped for classification, the cap
 /// is inserted before trailing comments, `WITH` only accepts a final SELECT,
-/// and multi-statement payloads are left untouched.
+/// and multi-statement payloads are left untouched. SQL Server has no LIMIT;
+/// it keeps the original SQL and relies on client-side row truncation.
 fn limited_sql(sql: &str, limit: usize, database_type: &str) -> String {
+    // T-SQL has no LIMIT clause, and appending one to `SELECT * FROM #temp`
+    // turns a valid query into a syntax error. SQL Server therefore keeps the
+    // statement untouched; `QueryOutput::from_result` still truncates the
+    // returned rows client-side to the requested limit.
+    if matches!(
+        database_type.trim().to_ascii_lowercase().as_str(),
+        "sqlserver" | "mssql"
+    ) {
+        return sql.to_string();
+    }
     let cap = limit.min(u32::MAX as usize - 1) as u32;
     // MySQL treats `#` as a line comment. PostgreSQL uses `#`, `#>`, `#>>` as
     // operators and SQL Server uses `#name` for temp tables, so only enable
@@ -762,6 +773,10 @@ mod tests {
     fn limited_mysql(sql: &str, limit: usize) -> String {
         limited_sql(sql, limit, "mysql")
     }
+
+    fn limited_sqlserver(sql: &str, limit: usize) -> String {
+        limited_sql(sql, limit, "sqlserver")
+    }
     use super::*;
     use datazen_driver_api::{ColumnInfo, ConnectionConfig};
     use std::sync::Mutex;
@@ -1053,8 +1068,8 @@ mod tests {
         );
         // SQL Server temp-table identifiers start with `#`; do not cut them.
         assert_eq!(
-            limited_sql("SELECT * FROM #temp", 5, "sqlserver"),
-            "SELECT * FROM #temp LIMIT 6"
+            limited_sqlserver("SELECT * FROM #temp", 5),
+            "SELECT * FROM #temp"
         );
         // MySQL keeps the comment after the injected LIMIT.
         assert_eq!(
@@ -1069,6 +1084,23 @@ mod tests {
             limited_mysql("SELECT 1; SELECT $$x;y$$ # tail", 1),
             "SELECT 1 LIMIT 2; SELECT $$x;y$$ LIMIT 2 # tail"
         );
+    }
+
+    #[test]
+    fn sqlserver_never_appends_limit_and_keeps_temp_tables() {
+        assert_eq!(
+            limited_sqlserver("SELECT * FROM #temp", 5),
+            "SELECT * FROM #temp"
+        );
+        assert_eq!(
+            limited_sqlserver("SELECT TOP (3) * FROM #temp -- tail", 5),
+            "SELECT TOP (3) * FROM #temp -- tail"
+        );
+        assert_eq!(
+            limited_sqlserver("WITH x AS (SELECT 1) SELECT * FROM #temp", 5),
+            "WITH x AS (SELECT 1) SELECT * FROM #temp"
+        );
+        assert!(!limited_sqlserver("SELECT * FROM #temp", 5).contains("LIMIT"));
     }
 
     #[test]

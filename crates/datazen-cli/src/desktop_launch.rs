@@ -11,13 +11,14 @@
 //! a false `launched: true`.
 //!
 //! `DATAZEN_DESKTOP_BIN` is an explicit test/advanced override; normal installs
-//! use the platform application locations below.
+//! use the platform application locations below. macOS tests can point
+//! `DATAZEN_DESKTOP_APP` at a temporary `.app` bundle.
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crate::error::{CliError, E_EXECUTOR, E_INTERNAL, E_NOT_FOUND, E_TIMEOUT};
+use crate::error::{CliError, E_EXECUTOR, E_INTERNAL, E_NOT_FOUND, E_TIMEOUT, E_UNSUPPORTED};
 
 const OPEN_CONNECTION_ARG: &str = "--datazen-open-connection";
 const OPEN_QUERY_ARG: &str = "--datazen-open-query";
@@ -44,12 +45,39 @@ pub fn launch(
     forwarded.push(OPEN_ACK_ARG.to_string());
     forwarded.push(ack.path.to_string_lossy().into_owned());
 
-    let mut child = if let Some(path) = env_override()? {
-        spawn_direct(&path, &forwarded)?
+    let LaunchedProcess {
+        mut child,
+        used_open_fallback,
+    } = if let Some(path) = env_override()? {
+        LaunchedProcess {
+            child: spawn_direct(&path, &forwarded)?,
+            used_open_fallback: false,
+        }
     } else {
         spawn_platform(&forwarded)?
     };
-    wait_for_ack(&mut child, &ack.path, ack_timeout())
+    wait_for_launch_ack(&mut child, &ack.path, ack_timeout(), used_open_fallback)
+}
+
+fn wait_for_launch_ack(
+    child: &mut Child,
+    ack: &Path,
+    timeout: Duration,
+    used_open_fallback: bool,
+) -> Result<(), CliError> {
+    match wait_for_ack(child, ack, timeout) {
+        Ok(()) => Ok(()),
+        Err(_error) if used_open_fallback => Err(CliError::new(
+            E_UNSUPPORTED,
+            "macOS /usr/bin/open fallback could not verify the open acknowledgement",
+        )),
+        Err(error) => Err(error),
+    }
+}
+
+struct LaunchedProcess {
+    child: Child,
+    used_open_fallback: bool,
 }
 
 fn ack_timeout() -> Duration {
@@ -141,7 +169,7 @@ fn wait_for_ack(child: &mut Child, ack: &Path, timeout: Duration) -> Result<(), 
     }
 }
 
-fn spawn_platform(forwarded: &[String]) -> Result<Child, CliError> {
+fn spawn_platform(forwarded: &[String]) -> Result<LaunchedProcess, CliError> {
     #[cfg(target_os = "macos")]
     {
         return macos::launch(forwarded);
@@ -200,8 +228,61 @@ fn spawn_direct(path: &Path, forwarded: &[String]) -> Result<Child, CliError> {
 mod macos {
     use super::*;
 
-    pub(super) fn launch(forwarded: &[String]) -> Result<Child, CliError> {
-        let app = app_candidates()
+    pub(super) fn launch(forwarded: &[String]) -> Result<LaunchedProcess, CliError> {
+        let app = app_path()?;
+        if let Some(executable) = bundle_executable(&app) {
+            // Directly spawning the bundle executable is the only path that
+            // reliably preserves argv when the app is already running; `open`
+            // may hand the launch to an existing process and lose arguments.
+            return Ok(LaunchedProcess {
+                child: spawn_direct(&executable, forwarded)?,
+                used_open_fallback: false,
+            });
+        }
+
+        // Defensive fallback for a malformed bundle. It is only acceptable
+        // when the launch carries the ack file: `wait_for_ack` must be able to
+        // prove that the desktop consumed the request.
+        if !forwarded.iter().any(|arg| arg == OPEN_ACK_ARG) {
+            return Err(CliError::new(
+                E_UNSUPPORTED,
+                "cannot verify a DataZen launch without --datazen-open-ack",
+            ));
+        }
+        Command::new("/usr/bin/open")
+            .arg("-n")
+            .arg("-a")
+            .arg(&app)
+            .arg("--args")
+            .args(forwarded)
+            .spawn()
+            .map(|child| LaunchedProcess {
+                child,
+                used_open_fallback: true,
+            })
+            .map_err(|error| {
+                CliError::new(
+                    E_UNSUPPORTED,
+                    format!(
+                        "cannot launch {} directly or via /usr/bin/open: {error}",
+                        app.display()
+                    ),
+                )
+            })
+    }
+
+    fn app_path() -> Result<PathBuf, CliError> {
+        if let Some(path) = std::env::var_os("DATAZEN_DESKTOP_APP") {
+            let path = PathBuf::from(path);
+            if path.is_dir() {
+                return Ok(path);
+            }
+            return Err(CliError::new(
+                E_NOT_FOUND,
+                "DATAZEN_DESKTOP_APP does not point at a .app directory",
+            ));
+        }
+        app_candidates()
             .into_iter()
             .find(|path| path.is_dir())
             .ok_or_else(|| {
@@ -210,20 +291,37 @@ mod macos {
                     "DataZen.app was not found in /Applications or ~/Applications; \
                      set DATAZEN_DESKTOP_BIN to launch a development build",
                 )
-            })?;
-        Command::new("/usr/bin/open")
-            .arg("-n")
-            .arg("-a")
-            .arg(&app)
-            .arg("--args")
-            .args(forwarded)
-            .spawn()
-            .map_err(|error| {
-                CliError::new(
-                    E_NOT_FOUND,
-                    format!("cannot run /usr/bin/open for {}: {error}", app.display()),
-                )
             })
+    }
+
+    /// Resolve `Contents/MacOS/<exe>` without relying on LaunchServices.
+    /// Known Tauri binary names win; a custom `CFBundleExecutable` name is
+    /// found by taking the first regular file in `Contents/MacOS`.
+    fn bundle_executable(app: &Path) -> Option<PathBuf> {
+        use std::os::unix::fs::PermissionsExt;
+
+        fn executable_file(path: &Path) -> bool {
+            path.metadata()
+                .map(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
+                .unwrap_or(false)
+        }
+
+        let macos = app.join("Contents/MacOS");
+        for name in ["datazen_desktop", "datazen"] {
+            let candidate = macos.join(name);
+            if executable_file(&candidate) {
+                return Some(candidate);
+            }
+        }
+        std::fs::read_dir(&macos).ok()?.find_map(|entry| {
+            let entry = entry.ok()?;
+            let name = entry.file_name();
+            if name.to_string_lossy().starts_with('.') {
+                return None;
+            }
+            let path = entry.path();
+            executable_file(&path).then_some(path)
+        })
     }
 
     fn app_candidates() -> Vec<PathBuf> {
@@ -239,7 +337,7 @@ mod macos {
 mod windows {
     use super::*;
 
-    pub(super) fn launch(forwarded: &[String]) -> Result<Child, CliError> {
+    pub(super) fn launch(forwarded: &[String]) -> Result<LaunchedProcess, CliError> {
         let Some(path) = candidate_paths().into_iter().find(|path| path.is_file()) else {
             return Err(CliError::new(
                 E_NOT_FOUND,
@@ -247,7 +345,10 @@ mod windows {
                  set DATAZEN_DESKTOP_BIN to launch a development build",
             ));
         };
-        spawn_direct(&path, forwarded)
+        Ok(LaunchedProcess {
+            child: spawn_direct(&path, forwarded)?,
+            used_open_fallback: false,
+        })
     }
 
     fn candidate_paths() -> Vec<PathBuf> {
@@ -268,7 +369,7 @@ mod windows {
 mod linux {
     use super::*;
 
-    pub(super) fn launch(forwarded: &[String]) -> Result<Child, CliError> {
+    pub(super) fn launch(forwarded: &[String]) -> Result<LaunchedProcess, CliError> {
         let candidates = [
             PathBuf::from("/usr/bin/datazen-desktop"),
             PathBuf::from("/usr/local/bin/datazen-desktop"),
@@ -281,6 +382,60 @@ mod linux {
                  set DATAZEN_DESKTOP_BIN to launch a development build",
             ));
         };
-        spawn_direct(&path, forwarded)
+        Ok(LaunchedProcess {
+            child: spawn_direct(&path, forwarded)?,
+            used_open_fallback: false,
+        })
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    fn failing_child() -> Child {
+        Command::new("/bin/sh")
+            .arg("-c")
+            .arg("exit 1")
+            .spawn()
+            .expect("spawn failing child")
+    }
+
+    #[test]
+    fn open_fallback_ack_failure_is_unsupported() {
+        let mut child = failing_child();
+        let ack = std::env::temp_dir().join(format!("datazen-missing-ack-{}", std::process::id()));
+        let error = wait_for_launch_ack(&mut child, &ack, Duration::from_millis(200), true)
+            .expect_err("failing fallback must not succeed");
+        assert_eq!(error.code, E_UNSUPPORTED);
+        let _ = child.wait();
+    }
+
+    #[test]
+    fn open_fallback_accepts_ack_file() {
+        let ack = std::env::temp_dir().join(format!("datazen-valid-ack-{}", std::process::id()));
+        let mut child = Command::new("/bin/sh")
+            .arg("-c")
+            .arg(format!(
+                "printf '%s\\n' '{{\"ok\":true}}' > '{}'",
+                ack.display()
+            ))
+            .spawn()
+            .expect("spawn ack-writing child");
+        wait_for_launch_ack(&mut child, &ack, Duration::from_secs(2), true)
+            .expect("ack file must satisfy the fallback");
+        let _ = child.wait();
+        let _ = std::fs::remove_file(&ack);
+    }
+
+    #[test]
+    fn direct_ack_failure_keeps_executor_error() {
+        let mut child = failing_child();
+        let ack =
+            std::env::temp_dir().join(format!("datazen-missing-direct-ack-{}", std::process::id()));
+        let error = wait_for_launch_ack(&mut child, &ack, Duration::from_millis(200), false)
+            .expect_err("failing direct launch must not succeed");
+        assert_eq!(error.code, E_EXECUTOR);
+        let _ = child.wait();
     }
 }
