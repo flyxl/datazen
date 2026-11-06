@@ -437,10 +437,7 @@ mod lease_source {
             .resolve()
             .await
             .expect("resolve must assemble the runtime");
-        let second = source
-            .resolve()
-            .await
-            .expect("second resolve must succeed");
+        let second = source.resolve().await.expect("second resolve must succeed");
         // CM-63：租约源是「当前 runtime 单元」的唯一归属者——未吊销窗口内
         // resolve 恒同一 Arc（会话/令牌/回执跨 resolve 连续）。「每调用现取，
         // 禁止缓存」禁令约束的是消费者，不约束租约源自身。

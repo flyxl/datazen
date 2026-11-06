@@ -173,9 +173,7 @@ mod tests {
         let registry = EphemeralSessions::new();
         let handle = registry.mint("org-1", "user-1", now()).expect("mint");
         assert!(
-            registry
-                .take(&handle, "org-1", "user-1", now())
-                .is_some(),
+            registry.take(&handle, "org-1", "user-1", now()).is_some(),
             "归属一致的一次消费成立"
         );
         assert!(
@@ -191,9 +189,7 @@ mod tests {
         // 越组织冒领：拒绝，且不销毁原条目（打掉他人句柄不是能力）。
         assert!(registry.take(&handle, "org-2", "user-1", now()).is_none());
         assert!(
-            registry
-                .take(&handle, "org-1", "user-1", now())
-                .is_some(),
+            registry.take(&handle, "org-1", "user-1", now()).is_some(),
             "被冒领后的原句柄仍归原主体消费"
         );
         // 越主体同理。
@@ -208,7 +204,9 @@ mod tests {
         // TTL 30 分钟：把 now 拨过期限再取，必须落空（惰性 prune）。
         let after_ttl = now() + EPHEMERAL_TTL.as_secs() + 1;
         assert!(
-            registry.take(&handle, "org-1", "user-1", after_ttl).is_none(),
+            registry
+                .take(&handle, "org-1", "user-1", after_ttl)
+                .is_none(),
             "过期句柄不可消费"
         );
     }

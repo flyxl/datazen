@@ -43,13 +43,13 @@ use tower::ServiceExt;
 use datazen::connection::domain::catalog::{ConnectionRepository as _, ConnectionScope};
 use datazen::connection::domain::profile::ProfileRepository as _;
 // 用例方法与租约端口都是 trait 面——方法调用要求 trait 在作用域内。
-use datazen::execution::application::ConnectionUseCases as _;
 use datazen::connection::dto::ProfileDraft;
 use datazen::execution::application::idempotency::IdempotentOperation;
 use datazen::execution::application::requests::{
     CloseMode, CloseSessionRequest, CommandCall, ExecuteAtTargetRequest, ExecuteInSessionRequest,
     OpenSessionRequest,
 };
+use datazen::execution::application::ConnectionUseCases as _;
 use datazen::execution::target::NamespaceTarget;
 use datazen::execution::ExecutionTarget;
 use datazen::shared::context::{OwnerRef, RequestContext};
@@ -144,8 +144,7 @@ async fn core_fixture(opts: MockDriverOptions) -> CoreFixture {
     use datazen_server::execution::publisher::execution_result_publisher;
     use datazen_server::execution::secret_provider::ServerSecretVault;
 
-    let dir: PathBuf =
-        std::env::temp_dir().join(format!("dz-cm63-core-{}", uuid::Uuid::new_v4()));
+    let dir: PathBuf = std::env::temp_dir().join(format!("dz-cm63-core-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).expect("temp dir");
     let store = Arc::new(AdminStore::open(&dir.join("admin.sqlite")).expect("file store"));
     store.migrate().expect("migrations apply v1..=v9");
@@ -253,14 +252,11 @@ async fn core_fixture(opts: MockDriverOptions) -> CoreFixture {
         .set_publisher(execution_result_publisher(sink.clone()))
         .expect("publisher installed");
     let policy = Arc::new(ServerExecutionPolicy::new(
-        Arc::new(
-            PolicyService::new(store.clone(), SERVER_SECRET.to_vec()).expect("policy engine"),
-        ),
+        Arc::new(PolicyService::new(store.clone(), SERVER_SECRET.to_vec()).expect("policy engine")),
         store.clone(),
         Arc::new(datazen::shared::clock::SystemClock),
     ));
-    let directory =
-        Arc::new(InMemorySessionDirectory::new());
+    let directory = Arc::new(InMemorySessionDirectory::new());
     let lease = Arc::new(ServerRuntimeLeaseSource::new_with_shared_parts(
         profiles.clone(),
         policy,
@@ -377,7 +373,8 @@ async fn t2_an_idempotent_close_replays_the_same_receipt_across_resolves() {
     let c = lease_cases(&fx);
 
     let receipt = open_session(&fx, a.as_ref(), "cm63-editor-2").await;
-    let request = CloseSessionRequest::new(receipt.session.handle.clone(), CloseMode::RollbackAndClose);
+    let request =
+        CloseSessionRequest::new(receipt.session.handle.clone(), CloseMode::RollbackAndClose);
 
     let first = b
         .close_session(&fx.ctx, request.clone())
@@ -415,7 +412,11 @@ async fn t3_a_token_issued_on_one_resolve_is_consumable_on_another() {
     let opened = open_session(&fx, a.as_ref(), "cm63-editor-3").await;
     let handle = opened.session.handle.clone();
     let token = a
-        .issue_submission_token(&fx.ctx, IdempotentOperation::ExecuteInSession, Some(&handle))
+        .issue_submission_token(
+            &fx.ctx,
+            IdempotentOperation::ExecuteInSession,
+            Some(&handle),
+        )
         .await
         .expect("in-session token issued");
 
@@ -516,7 +517,11 @@ async fn t5_revocation_replaces_the_runtime_and_orphans_its_sessions() {
     let db_session_id = opened.session.handle.db_session_id.as_str().to_owned();
 
     fx.lease.revoke();
-    let after = fx.lease.resolve().await.expect("lease resolves after revoke");
+    let after = fx
+        .lease
+        .resolve()
+        .await
+        .expect("lease resolves after revoke");
     assert!(
         !Arc::ptr_eq(&before, &after),
         "the revocation replaces the current runtime unit"
@@ -568,8 +573,7 @@ async fn http_fixture(count_estimate_rows: i64) -> HttpFixture {
     use datazen_server::storage::LoginSessions;
     use datazen_server::storage::ServerSettingsStore;
 
-    let dir: PathBuf =
-        std::env::temp_dir().join(format!("dz-cm63-http-{}", uuid::Uuid::new_v4()));
+    let dir: PathBuf = std::env::temp_dir().join(format!("dz-cm63-http-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).expect("temp dir");
     let store = Arc::new(AdminStore::open(&dir.join("admin.sqlite")).expect("file store"));
     store.migrate().expect("migrations apply v1..=v9");
@@ -699,9 +703,7 @@ async fn http_fixture(count_estimate_rows: i64) -> HttpFixture {
         .set_publisher(execution_result_publisher(sink.clone()))
         .expect("publisher installed");
     let execution_policy = Arc::new(ServerExecutionPolicy::new(
-        Arc::new(
-            PolicyService::new(store.clone(), SERVER_SECRET.to_vec()).expect("policy engine"),
-        ),
+        Arc::new(PolicyService::new(store.clone(), SERVER_SECRET.to_vec()).expect("policy engine")),
         store.clone(),
         Arc::new(datazen::shared::clock::SystemClock),
     ));

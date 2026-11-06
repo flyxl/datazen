@@ -387,8 +387,8 @@ async fn orchestrate_command(
     schema: Option<&str>,
 ) -> Result<DriverCommandDefinition, WorkflowError> {
     let envelope_has_target = database.is_some() || schema.is_some();
-    let definition =
-        resolve_definition(driver, command, envelope_has_target).map_err(WorkflowError::Validation)?;
+    let definition = resolve_definition(driver, command, envelope_has_target)
+        .map_err(WorkflowError::Validation)?;
     // HTTP 形态没有原生对话框：声明保存对话框的命令被拒（interactive=false，
     // 与桌面内部复用路径同语义）；permission_mode=None（GUI 全量档位）。
     // `bound` 按路径传：会话绑定 true / driverType 直取 false（桌面同参）。
@@ -462,14 +462,7 @@ async fn handler_execute_command(
                 body.schema.as_deref(),
             )
             .await;
-            finish_with_history(
-                &state,
-                &identity.ctx,
-                None,
-                &command,
-                outcome,
-                None,
-            )
+            finish_with_history(&state, &identity.ctx, None, &command, outcome, None)
         }
         (None, Some(db_session_id)) => {
             let connection_id =
@@ -555,14 +548,22 @@ async fn run_driver_direct(
     database: Option<&str>,
     schema: Option<&str>,
 ) -> Result<CommandResult, WorkflowError> {
-    orchestrate_command(state, driver, false, true, command, &mut input, database, schema).await?;
+    orchestrate_command(
+        state, driver, false, true, command, &mut input, database, schema,
+    )
+    .await?;
     // 句柄消费（一次有效 + 归属核对）：执行编排用掉它的唯一一跳。同一请求
     // 内的冒领不可能成立（句柄不离开 handler），这一跳是资源生命周期的
     // 正常终结；核对失败按环境不可用回答（fail-closed）。
     let now_unix = (state.now_unix)();
     if state
         .ephemeral
-        .take(&handle, ctx.organization_id.as_str(), ctx.principal_id.as_str(), now_unix)
+        .take(
+            &handle,
+            ctx.organization_id.as_str(),
+            ctx.principal_id.as_str(),
+            now_unix,
+        )
         .is_none()
     {
         return Err(WorkflowError::Driver(
@@ -606,15 +607,7 @@ async fn run_session_bound(
         Some(connection_id.to_owned()),
         input,
     );
-    resource_execution::execute(
-        state.host.as_ref(),
-        &step,
-        connection_id,
-        None,
-        None,
-        false,
-    )
-    .await
+    resource_execution::execute(state.host.as_ref(), &step, connection_id, None, None, false).await
 }
 
 /// 执行终态 → HTTP 应答 + 命令历史落账（W8-b ③；best-effort，落账失败
@@ -764,10 +757,11 @@ async fn handler_execute_stream(
         .into_response();
     };
     let now_unix = (sse.now_unix)();
-    let stream_id = match sse
-        .registry
-        .create(identity.ctx.organization_id.as_str(), identity.ctx.principal_id.as_str(), now_unix)
-    {
+    let stream_id = match sse.registry.create(
+        identity.ctx.organization_id.as_str(),
+        identity.ctx.principal_id.as_str(),
+        now_unix,
+    ) {
         Ok(stream_id) => stream_id,
         Err(PortError::QuotaExceeded(_)) => {
             let mut response = ApiErrorResponse::new(ApiError::new(
@@ -806,7 +800,11 @@ async fn handler_execute_stream(
     };
     tokio::spawn(task.run());
     // 与 SSE 订阅应答同一形状（`{streamId}`）；执行已启动 → 202。
-    (StatusCode::ACCEPTED, Json(json!({ "streamId": stream_id.as_str() }))).into_response()
+    (
+        StatusCode::ACCEPTED,
+        Json(json!({ "streamId": stream_id.as_str() })),
+    )
+        .into_response()
 }
 
 /// 流投递桥的后台执行任务（模块头「最小组合裁决」）。
@@ -961,10 +959,7 @@ impl StreamExecutionTask {
             .await;
         }
         self.publish_query_frame(QueryStreamEvent::Done {
-            total_time_ms: data
-                .get("totalTimeMs")
-                .and_then(Value::as_u64)
-                .unwrap_or(0),
+            total_time_ms: data.get("totalTimeMs").and_then(Value::as_u64).unwrap_or(0),
         })
         .await
     }
