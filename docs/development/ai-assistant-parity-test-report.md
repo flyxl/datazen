@@ -25,8 +25,8 @@
 | BUG-021 | T22 | Workflow 工具参数未转义：模型可改写只读 Workflow 的 SQL | 已验证 |
 | BUG-022 | T23 | 本地 CLI 子进程退出后子孙持有 stdout 时 timeout/cancel 挂起并留下孤儿 | 已验证 |
 | BUG-023 | T24 | apply_write 允许只读 SQL 执行；applied 回执/审计缺少 rowCount | 已验证 |
-| BUG-024 | T24 | 数据修改 CTE 影响预览/Safe Mode 失效；函数式写 PRAGMA 被拒 | 待修复 |
-| BUG-025 | T24 | AiWriteProposalHost 测试 rowCount mock 类型导致 tsc 失败 | 待修复 |
+| BUG-024 | T24 | 数据修改 CTE 影响预览/Safe Mode 失效；函数式写 PRAGMA 被拒 | 已验证 |
+| BUG-025 | T24 | AiWriteProposalHost 测试 rowCount mock 类型导致 tsc 失败 | 已验证 |
 
 
 ## T19 MCP scope / 逐次审批 / 审计验收记录（已验证）
@@ -563,3 +563,29 @@ error TS2322: Type 'null' is not assignable to type 'number'.
 
 独立临时测试已删除；b9272596c 17 个文件均属 T24，无 generated/凭据/无关。
 **T24：未通过（BUG-024、BUG-025）。**
+
+## T24 `4f1b49a3a` 最终复测：BUG-024、BUG-025 已验证
+
+- 数据修改 CTE：impact `writes_data=true`、tables 含 users、summary 含 DELETE；
+  nested/multiple CTE 的 DML 均识别；safe_mode=true 的无 WHERE DELETE/UPDATE
+  apply 返回 `GuardRejected`，带 WHERE 的 CTE 可执行。
+- 函数式写 PRAGMA `journal_mode(WAL)`、`foreign_keys(ON)` 可提案；
+  `table_info/index_list/database_list`、value-less `journal_mode` 仍拒绝。
+- BUG-023 的只读 SQL 拒绝、token/过期/篡改/生产保护、rowCount/UI unknown 不回归。
+- BUG-025：worktree 映射 `pnpm typecheck:tsc`（等价 `scripts/typecheck.mjs
+  --engine=tsc`）0 errors，`AiWriteProposalHost.test.tsx` 通过。
+
+| 范围 | 结果 |
+|---|---|
+| `datazen --features ai` | 1698 passed |
+| `datazen --features ai,workflow,wapps` | 1764 passed |
+| `datazen --features mcp` | 1768 passed |
+| `datazen_desktop` | 1413 passed / 10 ignored |
+| `datazen-server --features mcp` | 361 passed |
+| T24 UI 定向 | 6 passed |
+| 全量前端 | 8240 passed / 8 既有环境失败 |
+| 映射 worktree typecheck | OK |
+| fmt / diff | 0 / 0 |
+
+4f1b49a3a 仅 5 个 T24 文件；无 generated/凭据/无关。**T24：通过（BUG-023/
+BUG-024/BUG-025 已验证）。**
