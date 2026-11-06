@@ -57,6 +57,7 @@
 //! feature 组合漂移——本文件全部做**结构断言**（按键取值），不做字节级
 //! JSON 比较。
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde_json::{json, Value};
@@ -245,6 +246,18 @@ fn green_options() -> MockDriverOptions {
             estimated_rows: Some(2),
         },
         extra_commands: vec![explain_command_definition()],
+        // MockDriver 的 extra_commands echo 分支会遮蔽真 explain 驱动方法，
+        // 直接编程命令应答（output_schema 要求 planText；与 opts.explain_plan
+        // 同一内容）。
+        command_results: HashMap::from([(
+            "explain".to_string(),
+            serde_json::json!({
+                "planText": "Seq Scan on users",
+                "planJson": null,
+                "totalCost": null,
+                "estimatedRows": 2,
+            }),
+        )]),
         ..MockDriverOptions::default()
     }
 }
@@ -491,7 +504,22 @@ async fn call_tool_err(
     }
 }
 
-/// ExecutionState 的 wire 序列化值（不猜 serde 命名约定）。
+/// 成功调用：返回原始文本应答（describe_table 等文本型工具不保证 JSON）。
+async fn call_tool_ok_text(
+    backend: &ModulesBackend,
+    identity: &CallIdentity,
+    tool: &str,
+    arguments: Value,
+) -> String {
+    match backend.call_tool(identity, tool, arguments).await {
+        Ok(text) => text,
+        Err(error) => panic!(
+            "tool {tool} should take the green path, got: {}",
+            render(&error)
+        ),
+    }
+}
+
 fn state_wire(state: datazen::execution::ExecutionState) -> Value {
     serde_json::to_value(state).expect("state serializes")
 }
@@ -523,10 +551,13 @@ async fn the_stateful_session_journey_opens_executes_reads_and_closes() {
     assert_ne!(reference, fx.connection_id, "the ref is opaque, not an id");
     assert_eq!(
         opened["state"],
-        state_wire(datazen::execution::ExecutionState::Succeeded),
-        "the opened session reports its live state"
+        json!("ready"),
+        "a freshly opened session reports its live SessionState (open 回执的 state 是会话态，不是执行态)"
     );
-    assert!(opened["contextRevision"].is_u64(), "context revision stamped");
+    assert!(
+        opened["contextRevision"].is_string(),
+        "context revision stamped (CM-01 十进制字符串): {opened}"
+    );
     assert_eq!(opened["expiresInMs"], json!(600_000), "ttl echoed in ms");
 
     // use_session(query)：真闸序（token → 提交 → 等终态 → 读产物块）。
@@ -562,12 +593,14 @@ async fn the_stateful_session_journey_opens_executes_reads_and_closes() {
         "row batches arrived via published artifacts: {used}"
     );
 
-    // close_session：确认释放。
+    // close_session：确认释放（跑过命令的会话必须显式选 rollbackAndClose：
+    // 适配器事务观测不可证无事务，默认 requireNoTransaction 会被闸拒绝——
+    // 这正是 transactionResolutionRequired 的设计语义：客户端必须裁决）。
     let closed = call_tool_ok(
         fx.backend.as_ref(),
         &who,
         "close_session",
-        json!({ "client_session_ref": reference }),
+        json!({ "client_session_ref": reference, "mode": "rollbackAndClose" }),
     )
     .await;
     assert_eq!(closed, json!({"closed": true}), "a confirmed close: {closed}");
@@ -731,8 +764,9 @@ async fn each_of_the_seven_target_command_tools_answers_through_the_target_machi
     .await;
     assert_eq!(explain["planText"], json!("Seq Scan on users"), "{explain}");
 
-    // describe_table：人类可读描述（列 + 主键 + 外键面）。
-    let describe = call_tool_ok(
+    // describe_table：人类可读描述（列 + 主键 + 外键面）。文本型工具，
+    // 不经 JSON 解析。
+    let description = call_tool_ok_text(
         fx.backend.as_ref(),
         &who,
         "describe_table",
@@ -743,14 +777,11 @@ async fn each_of_the_seven_target_command_tools_answers_through_the_target_machi
         }),
     )
     .await;
-    let description = describe.as_str().expect("describe_table answers text");
     assert!(description.contains("Table: users"), "{description}");
     assert!(description.contains("id integer PK"), "{description}");
     assert!(description.contains("Primary Key: (id)"), "{description}");
-    assert!(
-        description.contains("fk_users_org"),
-        "the FK surface reaches the description: {description}"
-    );
+    assert!(description.contains("fk_users_org"),
+        "the FK surface reaches the description: {description}");
 
     // 登记面：七工具与契约表逐一对齐（防名单漂移）。
     for tool in SEVEN_TARGET_COMMAND_TOOLS {
@@ -827,7 +858,7 @@ async fn every_contract_example_seed_takes_its_honest_green_path() {
         .expect("the open_session example seeds a live ref")
         .to_owned();
 
-    for tool in tools {
+    for tool in tools.iter().copied().filter(|tool| *tool != "describe_table") {
         let seeded = seed_arguments(
             tool,
             &example_arguments(tool),
@@ -835,7 +866,7 @@ async fn every_contract_example_seed_takes_its_honest_green_path() {
             &reference,
             "app",
         );
-        match *tool {
+        match tool {
             // 空目录的诚实应答：参数类「不存在」，example 参数本身过契约。
             "run_workflow" => {
                 let error = call_tool_err(fx.backend.as_ref(), &who, tool, seeded).await;
@@ -857,7 +888,7 @@ async fn every_contract_example_seed_takes_its_honest_green_path() {
             // 其余 12 个 example 全绿（可达结果形状的断到形状）。
             _ => {
                 let result = call_tool_ok(fx.backend.as_ref(), &who, tool, seeded).await;
-                match *tool {
+                match tool {
                     "list_connections" => {
                         let entries = result.as_array().expect("a redacted directory");
                         assert!(
@@ -879,9 +910,9 @@ async fn every_contract_example_seed_takes_its_honest_green_path() {
                     "open_session" | "use_session" | "close_session" => {
                         // 旅程回执在上方 open/use/close 已断形状；此处钉住
                         // close 的确认面。
-                        if *tool == "close_session" {
+                        if tool == "close_session" {
                             assert_eq!(result, json!({"closed": true}));
-                        } else if *tool == "use_session" {
+                        } else if tool == "use_session" {
                             assert_eq!(
                                 result["state"],
                                 state_wire(datazen::execution::ExecutionState::Succeeded)
@@ -898,7 +929,9 @@ async fn every_contract_example_seed_takes_its_honest_green_path() {
                         assert_eq!(result[0]["name"], json!("users"), "{result}");
                     }
                     "search_tables" => {
-                        assert_eq!(result["matched"][0]["name"], json!("audit_log"));
+                        // 契约 example 的 pattern 是 "user"（contract.rs）：
+                        // contains 匹配 "users"，"audit_log" 不含该子串。
+                        assert_eq!(result["matched"][0]["name"], json!("users"));
                         assert_eq!(result["totalTables"], json!(2));
                     }
                     "get_schema" => {
@@ -907,12 +940,7 @@ async fn every_contract_example_seed_takes_its_honest_green_path() {
                     "explain_query" => {
                         assert_eq!(result["planText"], json!("Seq Scan on users"));
                     }
-                    "describe_table" => {
-                        assert!(
-                            result.as_str().is_some_and(|text| text.contains("Table: users")),
-                            "{result}"
-                        );
-                    }
+                    "describe_table" => unreachable!("asserted separately (text answer)"),
                     other => panic!("unhandled contract tool {other}"),
                 }
             }
@@ -1013,7 +1041,7 @@ async fn the_per_call_identity_drives_the_authorization_face() {
         fx.backend.as_ref(),
         &member,
         "close_session",
-        json!({ "client_session_ref": reference }),
+        json!({ "client_session_ref": reference, "mode": "rollbackAndClose" }),
     )
     .await;
     assert_eq!(closed, json!({"closed": true}));
@@ -1123,13 +1151,13 @@ async fn the_session_journey_keeps_its_wire_shape_over_streamable_http() {
     );
     assert_eq!(used["rows"][0][0], json!(42));
 
-    // close_session over wire。
+    // close_session over wire（跑过命令 → 显式 rollbackAndClose，同上）。
     let (status, body) = rpc_call(
         &state,
         Some(&session),
         json!(4),
         "close_session",
-        json!({"client_session_ref": reference}),
+        json!({"client_session_ref": reference, "mode": "rollbackAndClose"}),
     )
     .await;
     assert_eq!(status, axum::http::StatusCode::OK);
