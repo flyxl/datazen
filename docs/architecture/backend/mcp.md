@@ -4,16 +4,22 @@
 
 ### 1.1 MCP Server
 
-DataZen 作为 MCP Server 暴露数据库操作能力给外部 LLM 应用（Claude Desktop、Cursor 等）。**目标分层**（DDD 目标架构 §3.3）：工具业务语义位于 `crates/datazen/src/mcp/`，宿主只留传输、认证与装配。**当前事实**（2026-11-06 核对）：共享层已承载连接白名单、权限词汇垫片、表描述、无状态工具用例与有状态会话语义；`#[tool]` 宏、Resources、Prompts、stdio / Streamable HTTP 传输、MCP Client 与会话清理 worker 仍在桌面宿主 `crates/datazen-desktop/src/mcp/`。Streamable HTTP 是桌面设置页的显式 opt-in，仅绑定 IPv4 loopback。其他宿主目前仍无法只替换 Server 形态就复用完整 MCP 能力。
+DataZen 作为 MCP Server 暴露数据库操作能力给外部 LLM 应用（Claude Desktop、Cursor 等）。**目标分层**（DDD 目标架构 §3.3）：工具业务语义位于 `crates/datazen/src/mcp/`，宿主只留传输、认证与装配。**当前事实**（2026-11-07 核对）：共享层已承载连接/库/namespace scope、权限策略、批量 SQL 与 Redis 只读用例、逐次审批契约与审计决策词汇、无状态工具用例与有状态会话语义；`#[tool]` 宏、Resources、Prompts、stdio / Streamable HTTP 传输、MCP Client 与会话清理 worker 仍在桌面宿主 `crates/datazen-desktop/src/mcp/`。Streamable HTTP 是桌面设置页的显式 opt-in，仅绑定 IPv4 loopback。其他宿主目前仍无法只替换 Server 形态就复用完整 MCP 能力。
 
 ```
-crates/datazen/src/mcp/   # 已共享：白名单、权限词汇垫片、表描述、工具用例与会话语义
+crates/datazen/src/mcp/   # 已共享：scope、权限、批量/Redis、审批/审计词汇、工具与会话语义
 ├── domain/
 │   ├── allowlist.rs      # 连接白名单（空 = deny-all）
+│   ├── approval.rs       # Allow once / Deny / Timeout 契约与安全预览
+│   ├── batch.rs          # 批量 SQL 分帧、默认只读拒绝
+│   ├── policy.rs         # 三档权限、只读分类与工具/资源门控
+│   ├── sql_scope.rs      # 连接/库/namespace scope 校验
 │   └── mod.rs            # 白名单导出 + execution::domain::permission 旧路径垫片
 └── application/
     ├── describe.rs       # 表描述格式化
     ├── tools.rs          # 无状态工具用例（元数据/查询/工作流）
+    ├── batch.rs          # execute_batch 事务/逐条结果/错误脱敏
+    ├── redis.rs          # redis_command 只读命令分类与 key/limit/timeout 计划
     ├── session.rs        # 会话注册表、TTL、归属校验、清理登记
     └── session_tools.rs  # open_session / use_session / close_session 编排
 
@@ -134,9 +140,11 @@ MCP client 配置（Claude Desktop / Cursor 等支持 Streamable HTTP 的客户�
 | `read_only` | 屏蔽 `query` / `run_workflow` | `query-history` 从列表隐藏且读取返回 `[]`（不泄露 SQL） |
 | `safe_write` / `high_risk_write` | SQL 分类门控（分类器来自 `crates/datazen/src/execution/domain/sql_guard/`） | 全量 resources（仍受 allowlist 约束） |
 
-**Server Tools（无状态）：**
-- `list_connections` / `list_databases` / `list_tables` / `search_tables` / `query` / `get_schema`
-- `explain_query` / `describe_table` / `list_workflows` / `run_workflow`
+**Server Tools（无状态，12 个；另有 3 个有状态工具，合计 15）：**
+- 元数据/查询：`list_connections` / `list_databases` / `list_tables` / `search_tables` / `query` / `get_schema`
+- 解释与描述：`explain_query` / `describe_table`
+- Workflow：`list_workflows` / `run_workflow`
+- 批量与 Redis：`execute_batch` / `redis_command`
 
 **Server Tools（有状态，`open_session` → `use_session` → `close_session`）：**
 - `open_session`：在显式目标上开会话，返回不透明 `clientSessionRef`
@@ -144,6 +152,12 @@ MCP client 配置（Claude Desktop / Cursor 等支持 Streamable HTTP 的客户�
 - `close_session`：释放该引用（幂等）
 
 三者只存在于**这个 MCP 进程实例**的内存里，语义见 [§1.4 有状态会话工具](#14-有状态会话工具)。
+
+**`execute_batch`：** 先按顶层分号把 SQL 分成语句列表，硬上限 50 条，默认仍只读；`transaction:true` 时显式开启事务并保证所有语句在同一物理连接上执行。返回结构化 `{ok, stoppedAt, rolledBack, statements[]}`，逐条带 index/verb/rowCount/decision/error；前面语句失败后不再执行后续语句，事务模式下回滚。`limit` 默认 100、上限 5000；timeout 上限 60s。驱动错误只映射为稳定 code 与固定文案，不把驱动原文（可能含 SQL/参数/标识符/凭据）回传。
+
+**`redis_command`：** 只读命令白名单（GET/MGET/SCAN/TYPE/TTL/INFO 等）；WRITE/DANGEROUS/ADMIN/UNSUPPORTED 一律拒绝，命令名必须单个 token、参数单独传入，避免把整条命令拼进一个字符串。支持 `key_pattern`、有界 `limit` 与 timeout；返回结构和拒绝原因固定，不泄露服务端错误正文。
+
+**逐次审批与审计（T19）：** 非只读 SQL、非只读 Workflow、非只读 Redis/桥接调用在 tool body 执行前走 `McpApprovalPort`：Allow once / Deny / 5 分钟超时 / Stop 取消。审批预览只展示经过脱敏的 SQL/参数摘要，不能借预览把凭据带出。审计追加到 App data 下的 `mcp-audit.jsonl`，字段为 who/when/connection/tool/rowCount/decision/requestId，不写 SQL、参数或凭据；查询命令 `mcp_list_audit_log`。审计写失败只 `warn` 并广播 `mcp:audit-error`，不阻断工具调用。批量为每条已执行语句写一行审计，未执行语句也保留 denied/skipped 记录。
 
 **Data Sync (not exposed via MCP in V1):** GUI Data Sync (`compare_data_sync` / `apply_data_sync` / `execute_data_sync`) is intentionally **not** registered as MCP tools. Row-level sync apply is high-risk write; compare would require runtime `dbSessionId` pairs and table mapping context. External agents should use read-only schema tools (`list_tables`, `get_schema`) plus the GUI or future dedicated APIs if added. Any future MCP exposure must reuse the same permission model: compare-only tools allowed in `read_only`; apply/execute tools blocked by default (`mcpDisabledTools`) and must honor target connection `read_only` gates.
 
@@ -181,7 +195,7 @@ Settings → **External MCP Servers** 管理已保存配置与运行时连接态
 | `crates/datazen/src/ai/application/tool_loop.rs` | 流式工具循环与工具调用分发 |
 | `packages/frontend/src/windows/settings/McpClientSection.tsx` | 配置 CRUD、env 编辑、连接/重试、运行时工具列表 |
 
-AI Chat（`ai_chat`）在已连接外部 MCP 时将 MCP 工具与内置 DB tools 一并注入 Provider；内置 DB tools 只有 5 个只读元数据工具，不能执行 SQL。模型调用 `mcp/…` 工具时由后端经 `McpClientManager` 转发至对应子进程。详见 [`ai.md`](./ai.md)。
+AI Chat（`ai_chat`）在已连接外部 MCP 时将 MCP 工具与内置 DB tools 一并注入 Provider。内置 DB tools 在 Ask 模式为零，在 Agent 模式至少有 5 个只读元数据工具；模型 Profile 允许查询时还会加入 `query_readonly` / `sample_rows` / `propose_write`。模型调用 `mcp/…` 工具时由后端经 `McpClientManager` 转发至对应子进程；只读策略与逐次审批同时适用于 MCP 工具。详见 [`ai.md`](./ai.md)。
 
 ### 1.3 连接 ID（connection_id vs db_session_id）
 

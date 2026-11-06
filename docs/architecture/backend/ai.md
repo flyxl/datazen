@@ -7,8 +7,10 @@
 AI 模块与数据库驱动一样采用 **Provider 抽象 + Registry**，但自 D1.5（2026-10-26）起不再有独立 crate。契约、厂商实现和用例都在 `crates/datazen/src/ai/`：
 
 - `domain/`：`AiProvider` trait、请求/响应类型、`AI_PROTOCOL_VERSION`（当前 1，最低兼容 1）、工厂注册，以及预算 / `.ctx.yaml` / 出境安全门词汇。
-- `providers/`：OpenAI、Anthropic、DeepSeek、Ollama、Custom，共享 HTTP 协议与 `HttpClient`，以及 `AiProviderRegistry`。
-- `application/`：Prompt 解析、Schema 上下文、NL2SQL、单轮诊断与分析、智能过滤、Schema 文档、工具循环、取消和 editor grant。
+- `providers/`：OpenAI、Anthropic、DeepSeek、Ollama、Custom；`compatible.rs` 承载 Gemini/Qwen/MiniMax 等 OpenAI 兼容端点，`local_cli.rs` 承载 8 个本地 CLI Agent preset；共享 HTTP 协议与 `HttpClient`，以及 `AiProviderRegistry`。
+- `memory/`：分层记忆、FTS 检索、注入、候选抽取和组织记忆审批（§1.15）。
+- `skills/`：`SKILL.md` 发现、显式 `list_skills` / `use_skill` 工具面（§1.16）。
+- `application/`：Prompt 解析、Schema 上下文、NL2SQL、单轮诊断与分析、智能过滤、Schema 文档、工具循环、MCP/插件/Workflow 工具桥、写入提案、重试、取消和 editor grant。
 
 Schema 元数据源也在这一层：`crates/datazen/src/ai/application/schema_context.rs`（D6 从 `crates/datazen/src/services/schema_context/` 归位）。桌面只在 `crates/datazen-desktop/src/services/schema_context_source.rs` 注入 `ResourceExecutionHost` 与 Runtime 门面。调用点使用 `datazen::ai`（`datazen_ai_api` / `datazen_ai_providers` 这两个 crate 名已不存在）。Tauri 命令只做 IPC、宿主存储、连接查询、上下文文件读取、事件流和取消接线。
 
@@ -24,17 +26,21 @@ crates/datazen/src/ai/
 │   ├── budget.rs / ctx_yaml.rs / safety.rs
 ├── providers/
 │   ├── openai.rs / anthropic.rs / deepseek.rs / ollama.rs / custom.rs
+│   ├── compatible.rs / local_cli.rs / local_cli_presets.rs
 │   ├── registry.rs / metadata.rs / http.rs
 │   └── protocol/                   # openai_chat, openai_responses, anthropic, test_support
+├── memory/                         # domain / extraction / injector / retriever / repository / org
+├── skills/                         # SKILL.md 发现、解析、工具面与资源读取
 └── application/
-    ├── context.rs / schema_context.rs / schema_pipeline.rs
+    ├── context.rs / schema_context.rs / schema_pipeline.rs / chat_injection.rs
     ├── prompt_resolver.rs / chat_request.rs / sql_generation.rs / single_turn.rs
     ├── filter.rs / schema_doc.rs / tool_loop.rs / tools.rs / db_tools.rs
+    ├── mcp_tools.rs / tool_bridge.rs / write_proposal.rs / retry.rs
     ├── cancel.rs / ownership.rs / chat_session.rs
     └── ports.rs
 
 crates/datazen-desktop/src/services/schema_context_source.rs   # 桌面注入
-crates/datazen-desktop/src/commands/ai/                        # generate / chat / grant / config / prompts
+crates/datazen-desktop/src/commands/ai/                        # generate / chat / grant / memory / skills / write / config / prompts
 ```
 
 Chat 和单轮用例接收宿主已选择的 Provider、语言、driver、schema seed 与安全处理后的输入；共享代码组装 prompt、请求、通用工具声明和结构化响应。共享层也格式化宿主已读取的 context 文件内容与连接诊断摘要；文件/连接配置读取及 egress 脱敏仍由 host 负责。连接 Profile、SchemaCache、查询历史、Provider 配置/凭据、MCP 工具发现、Tauri 事件、Runtime 工具调用与请求取消仍由 host 提供；共享层不读取本地存储或选择数据库会话。流式生命周期和工具宿主继续由平台适配器接线。
@@ -121,11 +127,21 @@ trait 注入管理员出站策略，并将相同客户端传给 `fetch_remote_mo
 | `ai_generate_sql` | NL2SQL | Tauri Events |
 | `ai_diagnose_error` | SQL 错误诊断 | - |
 | `ai_analyze_explain` | EXPLAIN 计划 AI 分析 | - |
-| `ai_chat` | AI 对话（DB tools + 已连接 MCP Client tools） | Tauri Events |
+| `ai_chat` | AI 对话（Ask/Agent；DB/MCP/Skill/插件/Workflow tools） | Tauri Events |
+| `ai_cancel` | 按调用 ID + owner 取消流 | - |
 | `ai_parse_filter` | 自然语言筛选解析 | - |
 | `ai_generate_schema_doc` | Schema 文档生成 | - |
 | `ai_diagnose_connection` | 连接故障排查 | - |
 | `ai_analyze_queries` | 查询历史分析 | - |
+| `ai_get_config` / `ai_save_config` / `ai_delete_config` | Provider 配置与凭据 | - |
+| `ai_get_settings_config` / `ai_save_settings_config` | Profile、安全门、记忆、Skills 设置 | - |
+| `ai_connection_notes_get` / `ai_connection_notes_set` / `ai_connection_context_counts` | 连接笔记与上下文统计 | - |
+| `ai_memory_*` | 记忆列表/搜索/创建/更新/确认/拒绝/纠正/失效/统计/导出/清理 | - |
+| `ai_org_memory_list` | 组织记忆只读缓存列表（发布/撤销走 server API） | - |
+| `ai_sessions_*` | 会话 upsert / list / get / delete / export | - |
+| `ai_list_skills` | 列出可用 Skill（受设置开关约束） | - |
+| `ai_propose_write` / `ai_apply_write` / `ai_deny_write` / `ai_list_write_audit` | 写入提案、一次授权、拒绝与审计 | - |
+| `ai_grant_editor_session` / `ai_revoke_editor_grant` / `ai_touch_editor_grant` | 编辑器会话借用授权 | - |
 | `workflow_list` | 列出所有 Workflows | - |
 | `workflow_execute` | 执行 Workflow | - |
 | `workflow_save` / `workflow_delete` | Workflow CRUD | - |
@@ -235,7 +251,7 @@ groups:
 1. **DB tools** — `list_connections`、`list_databases`、`list_tables`、`search_tables`、`get_table_schema` 五个只读工具（`db_tool_definitions()` 全集，无写工具），经共享 Runtime resource execution / Driver Command API 执行。
 2. **MCP Client tools** — 来自 Settings 中已连接的外部 MCP Server，qualified name 形如 `mcp/{serverId}/{toolName}`。
 
-实现要点（Tauri 适配在 `src-tauri/src/commands/ai/chat.rs`，共享工具定义与循环在 `crates/datazen/src/ai/`）：
+实现要点（Tauri 适配在 `crates/datazen-desktop/src/commands/ai/chat.rs`，共享工具定义与循环在 `crates/datazen/src/ai/`）：
 
 - `mcp_tool_definitions()` 从 `McpClientManager` 拉取已连接 server 的 tool schema，转换为 Provider 的 `ToolDefinition`；MCP 连接发现和调用留在 Tauri adapter（AI 侧的 MCP 工具面尚未端口化——web 形态落地前需抽消费者端口，见[边界方案 §8 M3](../../development/host-boundary-followups.md#8-跨形态一致性收敛m-系列)）。
 - `ai/chat_request.rs` 组装通用 Chat 请求与工具定义；`ai/tool_loop.rs` 识别 `mcp/` 前缀并经 `AiToolLoopHost` 调用 MCP，DB tool 与 MCP tool 可在同一轮对话中交替执行。
@@ -250,9 +266,9 @@ AI 侧与数据库的接触分两类，边界互不重叠：
 **一、会话语义（诊断 / NL2SQL / EXPLAIN 分析 / Schema 文档）——只消费已存在的会话，不创建。**
 
 - 这些 IPC 的形参是 `db_session_id`（运行时会话 ID），不是 `connectionId`；`ai_chat`、SQL 生成、诊断、过滤与分析通过 Runtime session adapter 获取 live session/driver，不把运行时 ID 当持久化连接 ID。这条边界由契约测试直接对源码断言：会话语义命令的形参必须含 `db_session_id` 且**不得**含 `connection_id`，且命令体内不得出现「把名为 `connection_id` 的变量喂给 `get_session`」的写法（`commands/ai/ipc_contract_guards_tests.rs`）。
-- **`ai_chat` 的 schema 上下文是尽力而为，但降级的方向和直觉相反**。`src-tauri/src/commands/ai/chat.rs` 借用 Runtime live session 后构建 schema 上下文：会话取不到时这一整块被静默跳过，不追加 schema system prompt，而 `attach_db_tools` 保持初值 `true`，因此 DB tools 仍会加入模型请求。会话失效时的实际后果是「模型拿不到 DDL 上下文」，不是「失去模型自己查表的能力」。
+- **`ai_chat` 的 schema 上下文是尽力而为，但降级的方向和直觉相反**。`crates/datazen-desktop/src/commands/ai/chat.rs` 借用 Runtime live session 后构建 schema 上下文：会话取不到时这一整块被静默跳过，不追加 schema system prompt，而 `attach_db_tools` 保持初值 `true`，因此 DB tools 仍会加入模型请求。会话失效时的实际后果是「模型拿不到 DDL 上下文」，不是「失去模型自己查表的能力」。
 - 管线返回 `Err` 时 host 会记录 `warn!` 并把 `attach_db_tools` 置为 `false`。共享 `crates/datazen/src/ai/application/schema_pipeline.rs` 会吞掉表名和 pinned schema 的读取错误；仅在 provider 不支持 tools、而 fallback schema 也失败时向 host 返回错误。**对支持 tools 的 provider，这条告警并禁用 DB tools 的分支不可达。**
-- 与之对照，配置语义的诊断命令（`ai_diagnose_connection`）不碰会话，连接配置缺失时返回 `CommandError::NotFound`（`src-tauri/src/commands/ai/generate.rs`）。
+- 与之对照，配置语义的诊断命令（`ai_diagnose_connection`）不碰会话，连接配置缺失时返回 `CommandError::NotFound`（`crates/datazen-desktop/src/commands/ai/generate.rs`）。
 - **目标不切库**。AI 与其他消费方一样把目标 database / schema 随命令传递；宿主不实现生产环境的切库路径。
 
 **二、配置语义（`ai_diagnose_connection`）——收 `connectionId`，读的是落盘配置**，用于「连不上」的故障排查，与已建立会话无关。契约测试同样钉住这一侧。
@@ -286,8 +302,76 @@ AI 默认**独立操作**：每个 DB 工具调用经共享 `ResourceExecutionHo
 
 **七、验收落点。**
 
-- H 层（已跑）：`crates/datazen/src/ai/application/ownership.rs` 的 grant 生命周期与三条撤销轴（按 grant / 按连接 / 按借用的 db session）；`ai/cancel.rs` 的 owner 隔离与三态回执；`ai/tool_loop.rs` 的取消终态（`done && cancelled`，且取消后不再派发工具）；`src-tauri/src/commands/ai/grant.rs` 的六条归属拒绝。
+- H 层（已跑）：`crates/datazen/src/ai/application/ownership.rs` 的 grant 生命周期与三条撤销轴（按 grant / 按连接 / 按借用的 db session）；`ai/cancel.rs` 的 owner 隔离与三态回执；`ai/tool_loop.rs` 的取消终态（`done && cancelled`，且取消后不再派发工具）；`crates/datazen-desktop/src/commands/ai/grant.rs` 的六条归属拒绝。
 - F 层（已编写、**尚未执行**）：`e2e/specs/ai-grant-lifecycle-journey.ts` 通过真实 IPC 驱动 `open_session → ai_grant_editor_session → touch/revoke → 伪造 client / 他 pane 拒绝 → close_session 后 grant 失效`。它不调用 Provider，因此不依赖 AI 密钥。
   **发布前必做**：`pnpm tauri:build:webdriver` 后执行该 spec（`pnpm e2e`）。本地 DMG 打包失败不算功能阻塞，以应用启动与 WDIO 结果判定；执行结果须回写本节，把「尚未执行」改成实测结论。在这条跑通之前，CM-53 的 F 层不合格，P6 不关闭。
 
 > 当前限制（P6 未关闭）：上述 F 层旅程尚未在 packaged app 上执行，§9 那条旅程目前只有 H 层实测证据；MCP 工具仍走各自会话，`editorGrant` 只覆盖 DB 工具。仅 PG + MySQL 在本轮验证范围内。
+
+### 1.13 Ask / Agent 与工具面
+
+`AiAgentMode` 只有 `ask` 与 `agent` 两档，默认 `ask`。模式是**请求级输入**，不是前端提示词：
+
+- **Ask**：Provider 请求不挂载任何数据库、MCP、插件或 Workflow 工具；只保留 `ask_questions`（必要时向用户追问）。适合解释、改写、纯文本推理。
+- **Agent**：挂载只读元数据工具（`list_connections` / `list_databases` / `list_tables` / `search_tables` / `get_table_schema`）；只有当前模型 Profile 允许查询时，才追加 `query_readonly`、`sample_rows` 和 `propose_write`。所有 DB 工具都绑定当前 Chat 的 `connection_id`，请求里不会出现其他连接。
+
+`query_readonly` 必须经共享 SQL guard（只允许 SELECT/EXPLAIN/SHOW 等只读语句），默认 100 行、硬上限 1000 行；`sample_rows` 由宿主用方言安全引用标识符并生成有界查询，默认取安全门的 `maxSampleRows`、硬上限 100 行。宿主在派发前再次核对连接、数据库与目标，跨连接请求直接拒绝，不做静默改写。
+
+安全门 `AiSafetyGateConfig` 的 `dbToolPolicy` / `mcpToolPolicy` 取 `disabled | read_only | require_confirm | unrestricted`；`requireSqlConfirm` 只对模型生成的 SQL 工具生效。`maxToolRounds`、`maxToolTokens`、`maxToolResultBytes`、`maxToolDurationSecs`、`apiRetries` 都是可配置值，默认 30 轮、2 次重试；取消不重试。工具循环对每一轮重新检查取消令牌，停止时返回 `done:true, cancelled:true`，不把取消伪装成正常完成。
+
+外部工具与桥接工具在同一工具循环中路由：
+
+- MCP Client 工具使用 `mcp/{serverId}/{toolName}` 命名空间；只读策略会过滤掉名称/参数启发式判定为写入的工具，`require_confirm` 在调用前走审批端口。
+- 插件工具使用 `plugin_<pluginId>__<toolName>`，Workflow 工具使用 `workflow_<id>`；只有设置中显式启用的 id 才会出现在当轮工具面（每轮重新解析，关闭后立即消失）。
+- 桥接结果先经 Provider 边界脱敏，再受 64 KiB 上限约束；Workflow 只有所有可达步骤（含错误回退）可静态判定为只读时才直跑，否则走 5 分钟审批（Allow once / Deny / Timeout / Cancel）。
+
+### 1.14 上下文快照、会话与流式
+
+Chat 请求可以携带结构化 `AiChatContextSnapshot`：当前编辑器 SQL、选区、最近错误、结果预览（columns/rows/rowCount/elapsedMs，前端先截断）与手选 `@` 文件。共享层按「连接笔记 → 当前 SQL/选区 → 错误 → 结果预览 → 手选上下文」拼装，受 `maxContextBytes` 限制；发送时前端冻结快照，之后编辑器变化不影响已发出的请求。文件内容仍由宿主读取，共享层只格式化已读取内容。
+
+会话身份优先使用持久化 `connectionId`，而不是运行时 `dbSessionId`：同一连接重开、运行时 ID 变化后仍命中同一 Chat 会话；前端 `computeSessionKey` 保证切换连接不串会话。AppDb v8 的 `ai_sessions` 保存会话标题、连接、数据库、消息与时间戳，支持列表、读取、删除和导出；会话持久化不改变 Provider/MCP 的权限边界。
+
+流式事件仍是 `ai:stream-chunk` / `ai:stream-error`：`content` 与 `reasoning` 分开累积，结束时合并为一条消息；推理区域默认折叠。所有 AI 流共用按「调用 ID + owner 指纹」隔离的取消注册表；同名请求属于其他 owner 时返回禁止，而不是取消别人的流。
+
+### 1.15 记忆：分层、检索、注入与组织记忆
+
+**本地记忆。** AppDb v7 新增 `ai_connection_notes`、`ai_memories`、`ai_memories_fts`（三触发器同步）、`ai_memory_audit`。记忆按 `scope_type` 分为 `user / connection / database / schema / table / column / org`，带有 `kind`、`subject`、`content`、`confidence`、`status`（active/archived 等）和版本信息；检索按组织 + 主体 + 上下文分层打分，FTS 只用于找候选，最终注入前仍逐条校验状态与可见范围。
+
+**注入。** `MemoryMode` 为 `off / ask / auto`；`off` 不读记忆，`ask` 只在用户明确请求时检索，`auto` 在每轮按上下文检索。注入结果带稳定引用 `M1`、`M2`…，前端可显示引用来源；注入审计按 memory id 写 `action=inject`，detail 只含稳定引用与会话 actor，不记录记忆正文。`cloudPolicy` 为 `normal_only / allow_internal / disable_cloud`：`disable_cloud` 完全禁止云端 Provider 使用记忆，`normal_only` 不发送 internal 敏感级别内容。候选抽取只产生待确认候选，`autoLearn` 也不直接写入；用户确认/拒绝/纠正后才改变记忆状态。
+
+**组织记忆。** 组织记忆的权威存储在 server：`V10_ORG_MEMORIES` 创建 `org_memories`（主键 `organization_id + id + version`、active/revoked 状态）和 `org_memory_audit`。组织只来自认证会话 `SessionIdentity`，绝不由请求体指定；成员只能读，发布/撤销要求真实 `Role::OrgAdmin`（`PolicyService::is_org_admin`），没有桌面本地管理员角色。发布即审批并生成 `max(version)+1`，同时把旧 active 版本标记为 revoked；撤销把该记忆所有 active 行置为 revoked。列表与注入只取 active 版本，因此撤销后下一次检索立即不可见。
+
+服务端 API：`GET /api/v1/org-memory`（成员）、`POST /api/v1/org-memory`（管理员）、`DELETE /api/v1/org-memory/{id}`（管理员）、`GET /api/v1/org-memory/audit`（管理员）、`POST /api/v1/org-memory/{id}/injections`（成员上报注入结果）。跨组织对象按 404 处理，不暴露存在性。审计只含组织、memory id、版本、动作、actor、decision 与时间，不含 subject/content/凭据。
+
+桌面端没有组织角色，因此**不伪造本地管理员**：桌面只把 server 同步/缓存的 org 记忆作为只读列表展示（`ai_org_memory_list`），所有本地创建、更新、确认、拒绝、删除、清空、标失效和学习候选都拒绝 `org` scope；本地私有记忆没有上传路径。组织发布/撤销仍由 server API 的真实管理员完成。本地缓存查询只返回 `status=active` 的 org 行，retriever 合并后再次过滤，保证撤销/归档不会继续注入。
+
+### 1.16 Skills
+
+Skills 默认关闭。启用后从 `~/.agents/skills` 与可选的自定义目录发现 `SKILL.md`，解析稳定 id、名称、描述、版本、资源清单与元数据；`customDir` 只能指定一个额外目录，路径穿越和符号链接逃逸被拒绝。`autoUse=false` 时只暴露设置中显式选择的 stable id；`autoUse=true` 也只通过工具按需加载，不在每轮自动把正文塞进 prompt。
+
+工具面固定为 `list_skills`、`use_skill`、`read_skill_file`：列表只含已启用且可见的 skill；`use_skill` 加载正文；`read_skill_file` 只允许读取该 skill 目录内的声明资源，大小与路径都受限。Skill 内容属于用户文件，仍走统一的 Provider 边界脱敏；关闭开关后工具立即消失。
+
+### 1.17 Provider 预设与本地 CLI Agent
+
+API Provider 除内置 OpenAI、Anthropic、DeepSeek、Ollama、Custom 外，还包括 Gemini、Qwen、MiniMax、OpenAI-compatible、Anthropic-compatible；兼容端点只改变协议/默认 endpoint，不绕过 `HttpClient` 的出站策略、私网限制与超时。
+
+本地 CLI Agent 复用同一 `AiProvider` trait，覆盖 8 个 preset：Claude Code、Codex、Cursor、OpenCode、Grok、Qoder、CodeBuddy、Pi。适配器只从 allow-list 继承环境变量（`PATH`、用户目录、区域/临时目录等），不把 `*_API_KEY`、token、代理凭据或 shell 配置带进子进程；prompt 只写 stdin，不出现在 argv/进程表；每次调用有独立工作目录和超时。stdout 作为 `content` 流，stderr 只以脱敏后的 `reasoning` 流回传；取消/超时杀死整个进程组，子进程残留 pipe 不能把完成变成无界等待。Settings 只显示 basename 和可用性，不回传完整可执行路径或凭据。
+
+### 1.18 写入提案与一次授权
+
+Agent 永不直接执行写语句。`propose_write` 生成一个**可审阅、不可执行**的提案：
+
+- 绑定 `connectionId`、database、逐字节 SQL、SHA-256 `sqlHash` 与 300 秒过期时间；`proposalId` 同时是一次性 apply token。
+- 返回静态影响摘要（语句数、涉及表、是否有 WHERE、是否 destructive、是否改 schema）、可选 review diff；这些信息由 SQL 解析生成，不执行语句。
+- 生产环境或只读连接仍展示提案，但 `production_protected=true`、`apply_allowed=false`，永远不会被应用。
+- `ai_apply_write` 必须同时匹配 token、连接、库和精确 SQL；服务端重新跑 SQL guard 与生产/只读检查，首次成功即消费 token，重复、过期、任一字段不匹配都拒绝。`ai_deny_write` 显式丢弃提案。
+- 应用动作走现有 `DatabaseToolHost::execute_target` 单一执行入口；审计记录 who、连接、库、语句 hash/摘要、decision 与结果，不记录完整 SQL 或参数值。
+
+### 1.19 安全门与审计边界
+
+- 凭据、token、连接串、原始结果行、MCP 原始 payload 不进入 prompt；`redact_for_gate` 是共享层唯一公开脱敏入口，Provider 边界会再次处理。
+- `AiDataEgressLevel` 为 `strict / sample_masked / unrestricted`：strict 只发 schema 元数据；sample_masked 只发脱敏样本；unrestricted 才允许用户明确选择的完整上下文。结果类字段（`rows`、`records`、`resultSet`、`payload` 等）在识别为数据负载时整体剔除，不能靠改字段名绕过。
+- MCP 审批与桥接审批都要求 Allow once；5 分钟超时/Stop 均拒绝。审计写入 `mcp-audit.jsonl`，只含 who/when/connection/tool/rowCount/decision/requestId，不写 SQL/参数/凭据；写入失败只告警，不阻断调用。
+- T25 组织记忆审计与 T24 写入审计都使用结构化字段，不复用含正文的日志。
+
+> 本轮 T26 只折叠实现结论，不删除 `docs/development/` 下的 implementation/progress/test-report/bugs；这些过程文件待最终验收后由负责人清理。

@@ -17,7 +17,18 @@ datazen agent setup
 ```
 
 命令把 `SKILL.md` 安装到 `~/.agents/skills/datazen/SKILL.md`。如果该文件已存在，
-命令返回 `alreadyInstalled` 且**不覆盖**用户已有内容。
+命令返回 `alreadyInstalled` 且**不覆盖**用户已有内容。安装的 Skill 只是调用指南，
+不是授权：它要求 Agent 默认只读、显式选择连接 id、始终加 limit/timeout、从不询问
+密码，也不把数据库行里的文本当作指令。重复执行幂等，不会创建半成品文件。
+
+`datazen` CLI 与桌面 Settings 里的“本地 CLI Agent Provider”是两件事：前者让外部
+Agent 通过只读优先的 CLI 访问数据库；后者把 Claude Code、Codex、Cursor 等编码 CLI
+作为桌面 AI Chat 的模型后端。两者都不伪造组织管理员，也不能绕过桌面/服务端的写入
+确认与生产保护。
+
+`--limit` 在 SQL Server 上不会改写 T-SQL（没有通用 LIMIT 语法），而是执行后的
+客户端行数上限；其余支持 LIMIT 的方言在驱动执行前追加。因此大表查询仍应写选择
+性谓词，不能只依赖 `--limit`。
 
 ## 连接与凭据
 
