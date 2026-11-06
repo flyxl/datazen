@@ -185,6 +185,9 @@ impl DataZenMcpServer {
                 None,
                 target_arguments,
                 sql,
+                scoped.dialect,
+                scoped.default_database.as_deref(),
+                scoped.default_namespace.as_deref(),
                 "deny",
                 error,
                 &request_id,
@@ -204,6 +207,9 @@ impl DataZenMcpServer {
                     None,
                     target_arguments,
                     sql,
+                    scoped.dialect,
+                    scoped.default_database.as_deref(),
+                    scoped.default_namespace.as_deref(),
                     "deny",
                     &error,
                     &request_id,
@@ -229,6 +235,9 @@ impl DataZenMcpServer {
                     Some(&plan),
                     target_arguments,
                     None,
+                    scoped.dialect,
+                    scoped.default_database.as_deref(),
+                    scoped.default_namespace.as_deref(),
                     "deny",
                     "MCP SQL scope: SQL is required and could not be verified",
                     &request_id,
@@ -245,6 +254,9 @@ impl DataZenMcpServer {
                     Some(&plan),
                     target_arguments,
                     Some(sql),
+                    scoped.dialect,
+                    scoped.default_database.as_deref(),
+                    scoped.default_namespace.as_deref(),
                     "deny",
                     "MCP SQL scope: this driver's SQL target shape cannot be verified",
                     &request_id,
@@ -265,6 +277,9 @@ impl DataZenMcpServer {
                             Some(&plan),
                             target_arguments,
                             Some(sql),
+                            scoped.dialect,
+                            scoped.default_database.as_deref(),
+                            scoped.default_namespace.as_deref(),
                             "deny",
                             &reason,
                             &request_id,
@@ -319,6 +334,9 @@ impl DataZenMcpServer {
                             Some(&plan),
                             target_arguments,
                             Some(sql),
+                            scoped.dialect,
+                            scoped.default_database.as_deref(),
+                            scoped.default_namespace.as_deref(),
                             "deny",
                             &reason,
                             &request_id,
@@ -360,6 +378,9 @@ impl DataZenMcpServer {
                     Some(&plan),
                     target_arguments,
                     plan.sql.as_deref(),
+                    scoped.dialect,
+                    scoped.default_database.as_deref(),
+                    scoped.default_namespace.as_deref(),
                     decision.audit_decision(),
                     decision.audit_decision(),
                     &request_id,
@@ -383,6 +404,7 @@ impl DataZenMcpServer {
             request_id,
             default_database: scoped.default_database,
             default_namespace: scoped.default_namespace,
+            dialect: scoped.dialect,
         })
     }
 
@@ -653,6 +675,7 @@ impl DataZenMcpServer {
             decision,
             row_count,
             None,
+            None,
             request_id,
         )
         .await;
@@ -669,6 +692,7 @@ impl DataZenMcpServer {
         decision: &str,
         row_count: Option<i64>,
         reason: Option<String>,
+        index: Option<usize>,
         request_id: Option<String>,
     ) {
         let (organization_id, principal_id) = self.audit_identity();
@@ -684,6 +708,7 @@ impl DataZenMcpServer {
             request_id,
         );
         record.reason = reason;
+        record.index = index;
         if self
             .app_state
             .store
@@ -789,6 +814,7 @@ impl DataZenMcpServer {
             decision,
             None,
             Some(reason),
+            None,
             Some(prepared.request_id.clone()),
         )
         .await;
@@ -799,7 +825,7 @@ impl DataZenMcpServer {
         prepared: &PreparedToolCall,
         arguments: Option<&serde_json::Map<String, serde_json::Value>>,
         result_text: Option<&str>,
-        error: Option<&str>,
+        _error: Option<&str>,
     ) {
         let report =
             result_text.and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok());
@@ -843,20 +869,29 @@ impl DataZenMcpServer {
             indexes.sort_unstable();
             indexes.dedup();
             for index in indexes {
+                let statement_sql = parsed.get(index).map(String::as_str).unwrap_or("");
+                let (database, namespace) = batch_statement_target(
+                    &prepared.plan,
+                    statement_sql,
+                    prepared.dialect,
+                    prepared.default_database.as_deref(),
+                    prepared.default_namespace.as_deref(),
+                );
                 let Some(frames) = reported.get(&index) else {
                     // Parsed but never attempted because an earlier statement
                     // failed. Keep one audit row per statement regardless.
                     self.audit_tool_call_with_reason(
                         "execute_batch",
                         prepared.plan.connection_id.clone(),
-                        prepared.plan.database.clone(),
-                        prepared.plan.namespace.clone(),
+                        database,
+                        namespace,
                         "deny",
                         Some(0),
                         Some(format!(
                             "batch statement {} not executed after an earlier failure",
                             index + 1
                         )),
+                        Some(index),
                         Some(prepared.request_id.clone()),
                     )
                     .await;
@@ -873,10 +908,10 @@ impl DataZenMcpServer {
                         .and_then(serde_json::Value::as_bool)
                         .unwrap_or(false)
                 });
-                let detail = frames
+                let error_code = frames
                     .iter()
-                    .find_map(|frame| frame.get("error").and_then(serde_json::Value::as_str))
-                    .unwrap_or("batch statement failed");
+                    .find_map(|frame| frame.get("errorCode").and_then(serde_json::Value::as_str))
+                    .unwrap_or("queryFailed");
                 let (decision, reason) = if statement_ok && overall_ok {
                     ("allow", format!("batch statement {} executed", index + 1))
                 } else if statement_ok && !transaction {
@@ -898,17 +933,18 @@ impl DataZenMcpServer {
                 } else {
                     (
                         "deny",
-                        format!("batch statement {} denied: {detail}", index + 1),
+                        format!("batch statement {} denied: {error_code}", index + 1),
                     )
                 };
                 self.audit_tool_call_with_reason(
                     "execute_batch",
                     prepared.plan.connection_id.clone(),
-                    prepared.plan.database.clone(),
-                    prepared.plan.namespace.clone(),
+                    database,
+                    namespace,
                     decision,
                     Some(row_count),
                     Some(reason),
+                    Some(index),
                     Some(prepared.request_id.clone()),
                 )
                 .await;
@@ -922,11 +958,23 @@ impl DataZenMcpServer {
             } else if rolled_back {
                 "batch rolled back".to_string()
             } else {
-                report
-                    .get("error")
+                let code = report
+                    .get("errorCode")
                     .and_then(serde_json::Value::as_str)
-                    .unwrap_or("batch did not complete")
-                    .to_string()
+                    .or_else(|| {
+                        report
+                            .get("statements")
+                            .and_then(serde_json::Value::as_array)
+                            .and_then(|statements| {
+                                statements.iter().find_map(|statement| {
+                                    statement
+                                        .get("errorCode")
+                                        .and_then(serde_json::Value::as_str)
+                                })
+                            })
+                    })
+                    .unwrap_or("batchFailed");
+                format!("batch failed: {code}")
             };
             self.audit_tool_call_with_reason(
                 "execute_batch",
@@ -936,6 +984,7 @@ impl DataZenMcpServer {
                 if overall_ok { "allow" } else { "deny" },
                 Some(summary_rows),
                 Some(summary_reason),
+                None,
                 Some(prepared.request_id.clone()),
             )
             .await;
@@ -948,17 +997,26 @@ impl DataZenMcpServer {
             .and_then(|args| args.get("sql"))
             .and_then(serde_json::Value::as_str)
             .unwrap_or("");
-        let reason = error.unwrap_or("batch did not execute");
+        // Body failure before a structured report. The error text may still
+        // carry driver payload, so audit a stable code only.
         let statements = batch::parse_sql_batch(sql).unwrap_or_default();
-        for (index, _) in statements.iter().enumerate() {
+        for (index, statement) in statements.iter().enumerate() {
+            let (database, namespace) = batch_statement_target(
+                &prepared.plan,
+                statement,
+                prepared.dialect,
+                prepared.default_database.as_deref(),
+                prepared.default_namespace.as_deref(),
+            );
             self.audit_tool_call_with_reason(
                 "execute_batch",
                 prepared.plan.connection_id.clone(),
-                prepared.plan.database.clone(),
-                prepared.plan.namespace.clone(),
+                database,
+                namespace,
                 "deny",
                 Some(0),
-                Some(format!("batch statement {} denied: {reason}", index + 1)),
+                Some(format!("batch statement {} denied: batchFailed", index + 1)),
+                Some(index),
                 Some(prepared.request_id.clone()),
             )
             .await;
@@ -970,7 +1028,8 @@ impl DataZenMcpServer {
             prepared.plan.namespace.clone(),
             "deny",
             Some(0),
-            Some(reason.to_string()),
+            Some("batch failed: batchFailed".to_string()),
+            None,
             Some(prepared.request_id.clone()),
         )
         .await;
@@ -983,6 +1042,9 @@ impl DataZenMcpServer {
         &self,
         plan: &McpCallPlan,
         sql: Option<&str>,
+        dialect: Option<SqlScopeDialect>,
+        default_database: Option<&str>,
+        default_namespace: Option<&str>,
         decision: &str,
         reason: &str,
         request_id: &str,
@@ -991,15 +1053,23 @@ impl DataZenMcpServer {
             .map(batch::parse_sql_batch)
             .and_then(Result::ok)
             .unwrap_or_default();
-        for (index, _) in statements.iter().enumerate() {
+        for (index, statement) in statements.iter().enumerate() {
+            let (database, namespace) = batch_statement_target(
+                plan,
+                statement,
+                dialect,
+                default_database,
+                default_namespace,
+            );
             self.audit_tool_call_with_reason(
                 "execute_batch",
                 plan.connection_id.clone(),
-                plan.database.clone(),
-                plan.namespace.clone(),
+                database,
+                namespace,
                 decision,
                 Some(0),
                 Some(format!("batch statement {} denied: {reason}", index + 1)),
+                Some(index),
                 Some(request_id.to_string()),
             )
             .await;
@@ -1012,6 +1082,7 @@ impl DataZenMcpServer {
             decision,
             Some(0),
             Some(reason.to_string()),
+            None,
             Some(request_id.to_string()),
         )
         .await;
@@ -1025,6 +1096,9 @@ impl DataZenMcpServer {
         plan: Option<&McpCallPlan>,
         arguments: Option<&serde_json::Map<String, serde_json::Value>>,
         sql: Option<&str>,
+        dialect: Option<SqlScopeDialect>,
+        default_database: Option<&str>,
+        default_namespace: Option<&str>,
         decision: &str,
         reason: &str,
         request_id: &str,
@@ -1046,8 +1120,17 @@ impl DataZenMcpServer {
                 sql: sql.map(str::to_owned),
                 requires_approval: false,
             };
-            self.audit_batch_denied(&owned, sql, decision, reason, request_id)
-                .await;
+            self.audit_batch_denied(
+                &owned,
+                sql,
+                dialect,
+                default_database,
+                default_namespace,
+                decision,
+                reason,
+                request_id,
+            )
+            .await;
             return;
         }
         let (connection_id, database, namespace) = plan
@@ -1088,6 +1171,7 @@ impl DataZenMcpServer {
             decision,
             None,
             Some(reason),
+            None,
             Some(request_id.to_string()),
         )
         .await;
@@ -1194,6 +1278,9 @@ pub(crate) struct PreparedToolCall {
     /// execute against these when the caller omitted an explicit target.
     pub(crate) default_database: Option<String>,
     pub(crate) default_namespace: Option<String>,
+    /// SQL parser family for this connection, retained so each batch statement
+    /// can be audited against its own target rather than the call default.
+    pub(crate) dialect: Option<SqlScopeDialect>,
 }
 
 #[derive(Default)]
@@ -1204,6 +1291,30 @@ struct ScopeContext {
     default_namespace: Option<String>,
     dialect: Option<SqlScopeDialect>,
     error: Option<String>,
+}
+
+/// Resolve the target a single batch statement actually names. Qualified
+/// relations override the call/connection default; a statement without a
+/// relation still points at that default. Parse failure falls back to the
+/// already-resolved call target so audit remains available but conservative.
+fn batch_statement_target(
+    plan: &McpCallPlan,
+    sql: &str,
+    dialect: Option<SqlScopeDialect>,
+    default_database: Option<&str>,
+    default_namespace: Option<&str>,
+) -> (Option<String>, Option<String>) {
+    let Some(dialect) = dialect else {
+        return (plan.database.clone(), plan.namespace.clone());
+    };
+    let Some(targets) = attempted_sql_targets(sql, dialect, default_database, default_namespace)
+    else {
+        return (plan.database.clone(), plan.namespace.clone());
+    };
+    (
+        targets.database_label().or_else(|| plan.database.clone()),
+        targets.namespace_label().or_else(|| plan.namespace.clone()),
+    )
 }
 
 fn sql_carrying_tool(

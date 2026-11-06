@@ -1667,3 +1667,149 @@ async fn mcp_execute_batch_partial_failure_audits_skipped_statements() {
         .iter()
         .any(|row| row.decision == "deny" && row.row_count == Some(0)));
 }
+
+#[tokio::test]
+async fn mcp_execute_batch_failure_audit_never_stores_sql_or_credentials() {
+    use crate::testing::app_state_test_support::{rich_mock_options, TestAppState};
+    use serde_json::Value;
+    use std::sync::Arc;
+
+    let mut options = rich_mock_options();
+    options.query_error = Some(
+        "Query failed: [SELECT no_such_column_t20, 'secret-pw-t20'] (connection secret-pw-t20)"
+            .into(),
+    );
+    let test = TestAppState::with_resource_provider(options).await;
+    test.save_connection("batch-leak-cfg").await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["batch-leak-cfg"]);
+    let output = server
+        .call_tool_inner(
+            "execute_batch",
+            Some(serde_json::json!({
+                "connection_id": "batch-leak-cfg",
+                "sql": "SELECT no_such_column_t20, 'secret-pw-t20'",
+            })),
+        )
+        .await
+        .expect("structured failure report");
+    let text = output.content[0].as_text().expect("batch text").text.as_str();
+    let value: Value = serde_json::from_str(text).expect("batch json");
+    assert_eq!(value["statements"][0]["errorCode"], "queryFailed");
+    for forbidden in ["no_such_column_t20", "secret-pw-t20", "SELECT"] {
+        assert!(!text.contains(forbidden), "tool output leaked {forbidden}: {text}");
+    }
+
+    let rows = test.store.mcp_audit_log().list(10).await.expect("audit rows");
+    assert_eq!(rows.len(), 2, "one failed statement plus the batch summary");
+    for row in &rows {
+        let reason = row.reason.as_deref().unwrap_or_default();
+        for forbidden in ["no_such_column_t20", "secret-pw-t20", "SELECT"] {
+            assert!(!reason.contains(forbidden), "audit leaked {forbidden}: {reason}");
+        }
+    }
+    assert!(rows
+        .iter()
+        .any(|row| row.index == Some(0) && row.decision == "deny"));
+    assert!(rows
+        .iter()
+        .any(|row| row.reason.as_deref() == Some("batch failed: queryFailed")));
+    let raw = tokio::fs::read_to_string(test.store.mcp_audit_log().path())
+        .await
+        .expect("audit file");
+    for forbidden in ["no_such_column_t20", "secret-pw-t20"] {
+        assert!(!raw.contains(forbidden), "audit file leaked {forbidden}");
+    }
+}
+
+#[tokio::test]
+async fn mcp_execute_batch_audits_actual_statement_target_and_structured_index() {
+    use crate::testing::app_state_test_support::{
+        rich_mock_options, sample_postgres_config, TestAppState,
+    };
+    use serde_json::Value;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_resource_provider(rich_mock_options()).await;
+    let mut config = sample_postgres_config("batch-target-cfg");
+    config.database_type = "mysql".into();
+    config.database = Some("datazen_demo".into());
+    test.store
+        .save_connection(config)
+        .await
+        .expect("mysql test profile");
+    test.registry
+        .register_test_driver("mysql", test.mock.clone())
+        .await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["batch-target-cfg"]);
+    let output = server
+        .call_tool_inner(
+            "execute_batch",
+            Some(serde_json::json!({
+                "connection_id": "batch-target-cfg",
+                "sql": "SELECT 1; SELECT COUNT(*) FROM datazen_t18.datazen_t18_probe",
+            })),
+        )
+        .await
+        .expect("batch output");
+    let text = output.content[0].as_text().expect("batch text").text.as_str();
+    let value: Value = serde_json::from_str(text).expect("batch json");
+    assert_eq!(value["ok"], true);
+
+    let rows = test.store.mcp_audit_log().list(10).await.expect("audit rows");
+    assert_eq!(rows.len(), 3, "two statements plus the batch summary");
+    let first = rows
+        .iter()
+        .find(|row| row.index == Some(0))
+        .expect("statement 0 audit");
+    assert_eq!(first.database_name.as_deref(), Some("datazen_demo"));
+    let second = rows
+        .iter()
+        .find(|row| row.index == Some(1))
+        .expect("statement 1 audit");
+    assert_eq!(second.database_name.as_deref(), Some("datazen_t18"));
+    assert!(rows
+        .iter()
+        .any(|row| row.index.is_none() && row.reason.as_deref() == Some("batch committed")));
+}
+
+#[tokio::test]
+async fn mcp_execute_batch_scope_denial_audits_attempted_statement_target() {
+    use crate::testing::app_state_test_support::{
+        rich_mock_options, sample_postgres_config, TestAppState,
+    };
+    use std::sync::Arc;
+
+    let test = TestAppState::with_resource_provider(rich_mock_options()).await;
+    let mut config = sample_postgres_config("batch-denied-target-cfg");
+    config.database_type = "mysql".into();
+    config.database = Some("datazen_demo".into());
+    test.store
+        .save_connection(config)
+        .await
+        .expect("mysql test profile");
+    test.registry
+        .register_test_driver("mysql", test.mock.clone())
+        .await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["batch-denied-target-cfg"])
+        .with_allowed_scopes(&["datazen_demo".into()], &[]);
+    let error = server
+        .call_tool_inner(
+            "execute_batch",
+            Some(serde_json::json!({
+                "connection_id": "batch-denied-target-cfg",
+                "sql": "SELECT 1; SELECT COUNT(*) FROM datazen_t18.datazen_t18_probe",
+            })),
+        )
+        .await
+        .expect_err("second statement target is outside scope");
+    assert!(error.message.contains("datazen_t18"), "got: {error}");
+
+    let rows = test.store.mcp_audit_log().list(10).await.expect("audit rows");
+    assert_eq!(rows.len(), 3, "two statements plus the batch summary");
+    let second = rows
+        .iter()
+        .find(|row| row.index == Some(1))
+        .expect("statement 1 audit");
+    assert_eq!(second.decision, "deny");
+    assert_eq!(second.database_name.as_deref(), Some("datazen_t18"));
+}

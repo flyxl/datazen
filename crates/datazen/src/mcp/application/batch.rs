@@ -20,13 +20,51 @@ use crate::mcp::application::tools::ToolError;
 use crate::mcp::domain::batch;
 use crate::mcp::domain::policy::is_read_only_sql;
 use crate::workflow::application::resource_execution::ResourceExecutionHost;
-use datazen_driver_api::DatabaseDriver;
+use datazen_driver_api::{DatabaseDriver, DriverError};
 use std::sync::Arc;
 
 pub const DEFAULT_LIMIT: u32 = 100;
 pub const MAX_LIMIT: u32 = 5_000;
 pub const MAX_TIMEOUT_MS: u64 = 60_000;
 const DEFAULT_TIMEOUT_MS: u64 = 30_000;
+
+/// A driver failure reduced to a stable code and a fixed, non-sensitive
+/// explanation. Never include the driver payload: it can echo SQL, parameter
+/// values, identifiers, or credentials.
+pub fn sanitized_driver_error(error: &DriverError) -> (&'static str, &'static str) {
+    match error {
+        DriverError::SessionLost => ("sessionLost", "database session lost"),
+        DriverError::ConnectionFailed(_) => ("connectionFailed", "database connection failed"),
+        DriverError::QueryFailed(_) => ("queryFailed", "database query failed"),
+        DriverError::ConnectionTimeout => ("connectionTimeout", "database connection timed out"),
+        DriverError::AuthenticationFailed(_) => {
+            ("authenticationFailed", "database authentication failed")
+        }
+        DriverError::SslError(_) => ("sslError", "database TLS connection failed"),
+        DriverError::SshTunnelError(_) => ("sshTunnelError", "database SSH tunnel failed"),
+        DriverError::HttpProxyTunnelError(_) => {
+            ("httpProxyTunnelError", "database HTTP proxy tunnel failed")
+        }
+        DriverError::WebSocketTunnelError(_) => {
+            ("webSocketTunnelError", "database WebSocket tunnel failed")
+        }
+        DriverError::InvalidConfig(_) => ("invalidConfig", "database configuration is invalid"),
+        DriverError::DriverNotFound(_) => ("driverNotFound", "database driver not found"),
+        DriverError::PoolExhausted => ("poolExhausted", "database connection pool exhausted"),
+        DriverError::TransactionError(_) => ("transactionFailed", "database transaction failed"),
+        DriverError::NotSupported(_) => ("notSupported", "database operation is not supported"),
+        DriverError::Unsupported(_) => ("unsupported", "database operation is unsupported"),
+        DriverError::QueryExecutionNotFound(_) => (
+            "queryExecutionNotFound",
+            "database query execution was not found",
+        ),
+        DriverError::QueryExecutionSessionMismatch => (
+            "queryExecutionSessionMismatch",
+            "database query execution belongs to another session",
+        ),
+        DriverError::QueryCancelled => ("queryCancelled", "database query was cancelled"),
+    }
+}
 
 pub struct BatchRequest<'a> {
     pub connection_id: &'a str,
@@ -68,17 +106,15 @@ pub async fn execute_batch(
     let limit = request.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
     let timeout_ms =
         u64::from(request.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS as u32)).min(MAX_TIMEOUT_MS);
-    let (config, _, enabled) = host
-        .profile(request.connection_id)
-        .await
-        .map_err(|error| ToolError::Internal(error.to_string()))?;
+    let (config, _, enabled) = host.profile(request.connection_id).await.map_err(|_| {
+        ToolError::Internal("execute_batch could not resolve the connection profile".into())
+    })?;
     if !enabled {
         return Err(ToolError::Internal("Connection profile is disabled".into()));
     }
-    let driver = host
-        .driver(&config)
-        .await
-        .map_err(|error| ToolError::Internal(error.to_string()))?;
+    let driver = host.driver(&config).await.map_err(|_| {
+        ToolError::Internal("execute_batch could not resolve the database driver".into())
+    })?;
     let database = request
         .database
         .as_deref()
@@ -104,10 +140,12 @@ pub async fn execute_batch(
         connect_config.schema = Some(schema.to_owned());
     }
 
-    let handle = driver
-        .connect(&connect_config)
-        .await
-        .map_err(|error| ToolError::Internal(error.to_string()))?;
+    let handle = driver.connect(&connect_config).await.map_err(|error| {
+        let (code, message) = sanitized_driver_error(&error);
+        ToolError::Internal(format!(
+            "execute_batch could not connect: {code}: {message}"
+        ))
+    })?;
     let execution = tokio::time::timeout(
         Duration::from_millis(timeout_ms),
         run_batch(&*driver, &handle, &statements, request.transaction, limit),
@@ -135,14 +173,14 @@ async fn run_batch(
     let mut total_rows: u64 = 0;
     let mut stopped_at: Option<usize> = None;
     let mut rolled_back = false;
-    let mut transaction_error: Option<String> = None;
+    let mut transaction_error: Option<(&'static str, &'static str)> = None;
     let mut transaction = if transactional {
-        Some(
-            driver
-                .begin_transaction(handle)
-                .await
-                .map_err(|error| ToolError::Internal(error.to_string()))?,
-        )
+        Some(driver.begin_transaction(handle).await.map_err(|error| {
+            let (code, message) = sanitized_driver_error(&error);
+            ToolError::Internal(format!(
+                "execute_batch could not begin a transaction: {code}: {message}"
+            ))
+        })?)
     } else {
         None
     };
@@ -190,19 +228,21 @@ async fn run_batch(
             }
             Err(error) => {
                 stopped_at = Some(index);
+                let (code, message) = sanitized_driver_error(&error);
                 outcomes.push(json!({
                     "index": index,
                     "ok": false,
                     "rowCount": 0,
-                    "error": error.to_string(),
+                    "errorCode": code,
+                    "error": message,
                 }));
                 if let Some(tx) = transaction.take() {
                     match driver.rollback(tx).await {
                         Ok(()) => rolled_back = true,
-                        Err(rollback_error) => {
-                            transaction_error = Some(format!(
-                                "statement {} failed and rollback also failed: {rollback_error}",
-                                index + 1
+                        Err(_) => {
+                            transaction_error = Some((
+                                "rollbackFailed",
+                                "batch statement failed and rollback also failed",
                             ));
                         }
                     }
@@ -213,8 +253,8 @@ async fn run_batch(
     }
 
     if let Some(tx) = transaction.take() {
-        if let Err(error) = driver.commit(tx).await {
-            transaction_error = Some(error.to_string());
+        if driver.commit(tx).await.is_err() {
+            transaction_error = Some(("commitFailed", "batch commit failed"));
         }
     }
 
@@ -227,8 +267,9 @@ async fn run_batch(
         "stoppedAt": stopped_at,
         "rolledBack": rolled_back,
     });
-    if let Some(error) = transaction_error {
-        report["error"] = json!(error);
+    if let Some((code, message)) = transaction_error {
+        report["errorCode"] = json!(code);
+        report["error"] = json!(message);
     }
     Ok(report)
 }
@@ -272,6 +313,48 @@ mod tests {
             self.prepare_reached.store(true, Ordering::SeqCst);
             Err(WorkflowError::Validation("prepare not used".into()))
         }
+    }
+
+    #[test]
+    fn driver_errors_reduce_to_stable_codes_without_payloads() {
+        let (code, message) = sanitized_driver_error(&DriverError::QueryFailed(
+            "Query failed: SELECT no_such_column_t20, 'secret-pw-t20'".into(),
+        ));
+        assert_eq!(code, "queryFailed");
+        assert_eq!(message, "database query failed");
+        assert!(!message.contains("no_such_column_t20"));
+        assert!(!message.contains("secret-pw-t20"));
+        assert!(!message.contains("SELECT"));
+    }
+
+    #[tokio::test]
+    async fn failed_statement_report_does_not_echo_driver_error_text() {
+        let options = MockDriverOptions {
+            query_error: Some("Query failed: [SELECT no_such_column_t20, 'secret-pw-t20']".into()),
+            ..Default::default()
+        };
+        let host = host(options);
+        let output = execute_batch(
+            &host,
+            BatchRequest {
+                connection_id: "batch",
+                database: Some("app".into()),
+                schema: None,
+                sql: "SELECT no_such_column_t20, 'secret-pw-t20'",
+                transaction: false,
+                allow_writes: false,
+                limit: None,
+                timeout_ms: None,
+                mode: McpPermissionMode::SafeWrite,
+            },
+        )
+        .await
+        .expect("structured report");
+        assert!(!output.contains("no_such_column_t20"));
+        assert!(!output.contains("secret-pw-t20"));
+        let value: Value = serde_json::from_str(&output).expect("json");
+        assert_eq!(value["statements"][0]["errorCode"], "queryFailed");
+        assert_eq!(value["statements"][0]["error"], "database query failed");
     }
 
     fn config() -> ConnectionConfig {

@@ -683,6 +683,7 @@ export interface McpAuditRecord {
   decision: 'allow' | 'deny' | 'timeout' | 'cancel' | 'read';
   rowCount?: number | null;
   reason?: string | null;
+  index?: number | null;
   requestId?: string | null;
   createdAt: string;
 }

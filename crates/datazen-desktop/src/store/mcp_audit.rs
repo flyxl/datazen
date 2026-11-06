@@ -32,6 +32,10 @@ pub struct McpAuditRecord {
     /// statement index). Never contains credentials or full SQL.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    /// Zero-based batch statement index. Absent for the batch summary and for
+    /// non-batch tools.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index: Option<usize>,
     pub request_id: Option<String>,
     pub created_at: String,
 }
@@ -137,6 +141,7 @@ pub fn new_audit_record(
         decision: decision.into(),
         row_count,
         reason: None,
+        index: None,
         request_id,
         created_at: Utc::now().to_rfc3339(),
     }
@@ -163,6 +168,7 @@ mod tests {
         );
         first.created_at = "2026-01-01T00:00:00Z".into();
         first.reason = Some("query executed".into());
+        first.index = Some(2);
         let mut second = new_audit_record(
             "org",
             "who",
@@ -184,6 +190,7 @@ mod tests {
         assert_eq!(rows[0].decision, "deny");
         assert_eq!(rows[1].row_count, Some(7));
         assert_eq!(rows[1].reason.as_deref(), Some("query executed"));
+        assert_eq!(rows[1].index, Some(2));
         let raw = tokio::fs::read_to_string(log.path()).await.unwrap();
         assert!(!raw.contains("password"));
         assert!(!raw.contains("SELECT"));
