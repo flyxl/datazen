@@ -45,6 +45,9 @@ FRONTEND_ROOTS = (
     "packages/wapps/",
 )
 SHARED_ROOTS = ("scripts/", ".github/workflows/", ".github/actions/")
+# These files are validated by the lightweight detect-changes job itself.
+# They affect CI scope selection, not application build/test inputs.
+CI_SCOPE_ONLY_FILES = frozenset({"scripts/ci_scope.py", "scripts/test_ci_scope.py"})
 FRONTEND_SUFFIXES = {".ts", ".tsx", ".js", ".jsx", ".css"}
 ALL_ZERO_SHA = "0" * 40
 
@@ -56,7 +59,9 @@ def classify_changed_paths(paths: list[str]) -> tuple[bool, bool]:
         path = PurePosixPath(name)
         parts = path.parts
         suffix = path.suffix
-        if name.startswith("docs/") or suffix == ".md" or name.startswith(".superpowers/"):
+        if name in CI_SCOPE_ONLY_FILES:
+            continue
+        elif name.startswith("docs/") or suffix == ".md" or name.startswith(".superpowers/"):
             continue
         if name.startswith(SHARED_ROOTS) or name in {
             "package.json",
