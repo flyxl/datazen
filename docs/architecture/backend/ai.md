@@ -244,18 +244,19 @@ groups:
 
 **前端识别**：`ContextPicker` 中 `.ctx.yaml` 文件使用 `Layers` 图标区分于普通文件。
 
-### 1.11 AI Chat MCP 工具
+### 1.11 AI Chat 工具面与 MCP 集成
 
-`ai_chat` 在流式 tool loop 中合并两类工具定义：
+`ai_chat` 的流式 tool loop 不是固定五个工具；工具面由 Ask/Agent 模式、连接绑定、schema seed 与安全策略共同决定：
 
-1. **DB tools** — `list_connections`、`list_databases`、`list_tables`、`search_tables`、`get_table_schema` 五个只读工具（`db_tool_definitions()` 全集，无写工具），经共享 Runtime resource execution / Driver Command API 执行。
-2. **MCP Client tools** — 来自 Settings 中已连接的外部 MCP Server，qualified name 形如 `mcp/{serverId}/{toolName}`。
+1. **DB tools** — Ask 不挂载任何 DB 工具，只保留 `ask_questions`。Agent 在 `attach_db_tools` 为真时先有 `list_connections`、`list_databases`、`list_tables`、`search_tables`、`get_table_schema` 五个只读元数据工具；本次 Chat 绑定到具体连接时，`agent_db_tool_definitions(true)` 再追加 `query_readonly`、`sample_rows`、`propose_write`，随后由 `dbToolPolicy` 过滤：`disabled` 去掉全部 DB 工具，`read_only` 去掉写入提案 `propose_write`，`require_confirm` / `unrestricted` 保留三者。schema seed 返回 `attach_db_tools=false` 时，Agent 连五个元数据工具也不挂载。DB 工具经共享 Runtime resource execution / Driver Command API 执行。
+2. **MCP Client tools** — 只有 Agent 注入；来自 Settings 中已连接且 `enabledForAi` 的外部 MCP Server，qualified name 形如 `mcp/{serverId}/{toolName}`，再按 `mcpToolPolicy` 过滤。Ask 的 `mcp_tools` 在共享用例中被置空。
+3. **Skill / 插件 / Workflow 桥接工具** — 只有 Agent 且 Settings 显式启用时才加入当轮工具面；Skills 见 §1.16，插件/Workflow 桥接见 §1.13。
 
 实现要点（Tauri 适配在 `crates/datazen-desktop/src/commands/ai/chat.rs`，共享工具定义与循环在 `crates/datazen/src/ai/`）：
 
-- `mcp_tool_definitions()` 从 `McpClientManager` 拉取已连接 server 的 tool schema，转换为 Provider 的 `ToolDefinition`；MCP 连接发现和调用留在 Tauri adapter（AI 侧的 MCP 工具面尚未端口化——web 形态落地前需抽消费者端口，见[边界方案 §8 M3](../../development/host-boundary-followups.md#8-跨形态一致性收敛m-系列)）。
+- MCP 工具面已端口化：共享消费者端口 `McpToolBroker` 定义在 `crates/datazen/src/ai/application/ports.rs`，`mcp_tools.rs` 负责 qualified 命名、`ToolDefinition` 映射、策略过滤与 `String` 执行契约；桌面实现位于 `crates/datazen-desktop/src/services/feature_ports.rs`，stdio 子进程发现与生命周期仍在 `McpClientManager`。web 形态可用 HTTP/SSE 实现同一端口（见[边界方案 §8 M3](../../development/host-boundary-followups.md#8-跨形态一致性收敛m-系列)）。
 - `ai/chat_request.rs` 组装通用 Chat 请求与工具定义；`ai/tool_loop.rs` 识别 `mcp/` 前缀并经 `AiToolLoopHost` 调用 MCP，DB tool 与 MCP tool 可在同一轮对话中交替执行。
-- 未连接 MCP Server 时行为与原先一致，仅暴露 DB tools。
+- Agent 未连接 MCP Server 时只暴露 DB tools；Ask 始终只有 `ask_questions`，不会因为配置了 MCP 或启用了插件而获得工具。
 
 配置与连接管理见 [`mcp.md` — MCP Client AI 集成](./mcp.md#mcp-client-ai-集成)。
 
@@ -313,7 +314,7 @@ AI 默认**独立操作**：每个 DB 工具调用经共享 `ResourceExecutionHo
 `AiAgentMode` 只有 `ask` 与 `agent` 两档，默认 `ask`。模式是**请求级输入**，不是前端提示词：
 
 - **Ask**：Provider 请求不挂载任何数据库、MCP、插件或 Workflow 工具；只保留 `ask_questions`（必要时向用户追问）。适合解释、改写、纯文本推理。
-- **Agent**：挂载只读元数据工具（`list_connections` / `list_databases` / `list_tables` / `search_tables` / `get_table_schema`）；只有当前模型 Profile 允许查询时，才追加 `query_readonly`、`sample_rows` 和 `propose_write`。所有 DB 工具都绑定当前 Chat 的 `connection_id`，请求里不会出现其他连接。
+- **Agent**：`attach_db_tools` 为真时先挂载五个只读元数据工具（`list_connections` / `list_databases` / `list_tables` / `search_tables` / `get_table_schema`）；只有当前 Chat 绑定到具体连接时，才追加 `query_readonly`、`sample_rows`、`propose_write`。随后统一由 `dbToolPolicy` 过滤：`disabled` 去掉全部 DB 工具，`read_only` 去掉非只读的 `propose_write`，`require_confirm` / `unrestricted` 保留全部。所有 DB 工具都绑定当前 Chat 的 `connection_id`，请求里不会出现其他连接。
 
 `query_readonly` 必须经共享 SQL guard（只允许 SELECT/EXPLAIN/SHOW 等只读语句），默认 100 行、硬上限 1000 行；`sample_rows` 由宿主用方言安全引用标识符并生成有界查询，默认取安全门的 `maxSampleRows`、硬上限 100 行。宿主在派发前再次核对连接、数据库与目标，跨连接请求直接拒绝，不做静默改写。
 

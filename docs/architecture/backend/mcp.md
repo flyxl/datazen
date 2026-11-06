@@ -190,12 +190,12 @@ Settings → **External MCP Servers** 管理已保存配置与运行时连接态
 |----|------|
 | `McpClientManager`（`crates/datazen-desktop/src/mcp/client.rs`） | stdio 子进程生命周期、工具发现、`call_tool` |
 | `crates/datazen-desktop/src/commands/mcp.rs` | IPC：`mcp_client_connect` / `disconnect` / `list` / `tools` / `call_tool` |
-| `crates/datazen-desktop/src/commands/ai/chat.rs` | IPC 薄壳：取 `datazen::ai::mcp_tools` 的工具定义与执行端口 |
-| `crates/datazen/src/ai/application/mcp_tools.rs` | 共享层合并 DB tools + MCP tools（`mcp/{serverId}/{toolName}`）并路由 `mcp/*` |
+| `crates/datazen-desktop/src/commands/ai/chat.rs` | IPC 薄壳：把 `AppState` 作为 `McpToolBroker`，调用共享工具定义/执行并装配到 Chat |
+| `crates/datazen/src/ai/application/mcp_tools.rs` | MCP 工具定义映射、`mcpToolPolicy` 过滤与 `mcp/{serverId}/{toolName}` 调用路由；DB/MCP 合并由 `chat_request.rs` 完成 |
 | `crates/datazen/src/ai/application/tool_loop.rs` | 流式工具循环与工具调用分发 |
 | `packages/frontend/src/windows/settings/McpClientSection.tsx` | 配置 CRUD、env 编辑、连接/重试、运行时工具列表 |
 
-AI Chat（`ai_chat`）在已连接外部 MCP 时将 MCP 工具与内置 DB tools 一并注入 Provider。内置 DB tools 在 Ask 模式为零，在 Agent 模式至少有 5 个只读元数据工具；模型 Profile 允许查询时还会加入 `query_readonly` / `sample_rows` / `propose_write`。模型调用 `mcp/…` 工具时由后端经 `McpClientManager` 转发至对应子进程；只读策略与逐次审批同时适用于 MCP 工具。详见 [`ai.md`](./ai.md)。
+AI Chat（`ai_chat`）只有 **Agent** 模式注入 DB/MCP/桥接工具：Agent 在已连接且 `enabledForAi` 的外部 MCP Server 存在时，把 MCP 工具与内置 DB tools 一并注入 Provider；未连接 MCP 时只注入 DB tools。**Ask 模式不注入任何 MCP 或 DB 工具**——共享 `chat_session.rs` 把 `mcp_tools` 置空并关闭 `attach_db_tools`，只保留 `ask_questions`。Agent 在 `attach_db_tools` 为真时先包含 5 个只读元数据工具；绑定具体连接时才追加 `query_readonly` / `sample_rows` / `propose_write`，再由 `dbToolPolicy` 过滤（`read_only` 去掉 `propose_write`，`disabled` 去掉全部）。MCP 工具面由 `mcpToolPolicy` 单独过滤。模型调用 `mcp/…` 工具时，共享 tool loop 经 `McpToolBroker` 端口路由，桌面实现再交给 `McpClientManager` 转发至对应子进程；只读策略与逐次审批同时适用于 MCP 工具。详见 [`ai.md`](./ai.md)。
 
 ### 1.3 连接 ID（connection_id vs db_session_id）
 

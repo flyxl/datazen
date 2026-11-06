@@ -83,7 +83,7 @@ CSP 以对象形式写在 `src-tauri/tauri.conf.json` 的 `security.csp`，当�
 | 本地 CLI Agent | 子进程环境变量 allow-list，不继承 API key/token；prompt 只走 stdin；取消/超时杀进程组；stderr 脱敏后只作 reasoning |
 | MCP 审批 | 非只读工具在 body 前 Allow once/Deny/5 分钟超时/Stop；审计只含 who/connection/tool/rowCount/decision/requestId |
 
-AI 笔记、记忆、会话消息保存在 `{appData}/datazen.sqlite`，当前为**明文**（见[持久化模型 §4.1](../platform/persistence-model.md#41-桌面本地持久化现状已实现)）；备份/同步 app data 目录必须视同敏感数据。`ai_config.enc` 只保护 Provider 配置，不覆盖这些内容。
+AI 笔记、记忆、会话消息保存在 `{appData}/datazen.sqlite`，当前为**明文**（见[持久化模型 §4.1](platform/persistence-model.md#41-桌面本地持久化现状已实现)）；备份/同步 app data 目录必须视同敏感数据。`ai_config.enc` 只保护 Provider 配置，不覆盖这些内容。
 
 ### 4.1 端到端数据边界
 

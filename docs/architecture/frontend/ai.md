@@ -89,7 +89,7 @@ packages/frontend/src/windows/workflow/
 | Workflows | workflows、workflowsLoading、isExecutingWorkflow、workflowExecutionResult |
 | MCP Client | mcpServers、mcpTools、mcpConnecting、mcpError |
 
-AI Chat 的 Ask 模式不挂任何 DB 工具；Agent 模式挂 5 个只读元数据工具，并在 Profile 允许查询时追加 `query_readonly`、`sample_rows` 和 `propose_write`。写操作永远只生成提案，必须由用户在 `AiWriteProposalHost` 确认精确 SQL 后才可一次应用。工具调用、审批状态和写入提案都不持久化到会话正文，只保留必要的消息/引用元数据。
+AI Chat 的 Ask 模式不挂任何 DB/MCP 工具，只保留 `ask_questions`；Agent 模式在 `attach_db_tools` 为真时挂 5 个只读元数据工具，绑定连接时再追加 `query_readonly`、`sample_rows`、`propose_write`，并由 `dbToolPolicy` 过滤（`read_only` 去掉 `propose_write`，`disabled` 去掉全部）。MCP 工具只在 Agent 且 Server 启用给 AI 时注入。写操作永远只生成提案，必须由用户在 `AiWriteProposalHost` 确认精确 SQL 后才可一次应用。工具调用、审批状态和写入提案都不持久化到会话正文，只保留必要的消息/引用元数据。
 
 Memory、Skills 与写入提案的编辑态由各自的设置/组件局部状态管理，不塞进 `aiStore`：Memory 只在打开设置或插入引用时按需查询，Skills 在设置页加载可用列表，写入提案由 `AiWriteProposalHost` 持有当前审阅对象。
 
