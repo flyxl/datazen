@@ -276,6 +276,17 @@ fn query_step_sql(sql: &str) -> WorkflowStep {
     }
 }
 
+fn query_step_with_id(id: &str, sql: &str) -> WorkflowStep {
+    WorkflowStep::Query {
+        id: id.into(),
+        sql: sql.into(),
+        connection: None,
+        database: None,
+        timeout_secs: None,
+        on_error: None,
+    }
+}
+
 fn command_step_sql(command: &str, sql: &str) -> WorkflowStep {
     WorkflowStep::Command {
         id: "c1".into(),
@@ -331,6 +342,17 @@ fn ctx() -> AiToolContext {
         max_sample_rows: 100,
         cancel_token: None,
     }
+}
+
+async fn audit_for(test: &TestAppState, request_id: &str) -> crate::store::McpAuditRecord {
+    test.store
+        .mcp_audit_log()
+        .list(50)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|row| row.request_id.as_deref() == Some(request_id))
+        .unwrap_or_else(|| panic!("missing audit row for {request_id}"))
 }
 
 #[tokio::test]
@@ -928,6 +950,232 @@ async fn workflow_loop_value_is_known_during_prevalidation_and_escaped_at_execut
     assert!(output.contains("\"success\":true"), "{output}");
     let log = test.mock.query_log();
     assert!(log.iter().any(|sql| sql.contains("'O''Brien'")), "{log:?}");
+}
+
+#[tokio::test]
+async fn workflow_step_ids_include_condition_and_foreach_branches() {
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection(CONNECTION_ID).await;
+    let mut wf = workflow(
+        "wf-nested-steps",
+        query_step_with_id("seed", "SELECT * FROM users"),
+    );
+    wf.steps.extend([
+        WorkflowStep::Condition {
+            id: "branch".into(),
+            expr: "true".into(),
+            then_steps: vec![query_step_with_id(
+                "then_q",
+                "SELECT '{{steps.seed.rows[0].name}}' AS value",
+            )],
+            else_steps: Some(vec![query_step_with_id(
+                "else_q",
+                "SELECT '{{steps.then_q.rows[0].name}}' AS value",
+            )]),
+        },
+        WorkflowStep::ForEach {
+            id: "loop".into(),
+            items: "[]".into(),
+            as_var: "item".into(),
+            steps: vec![query_step_with_id(
+                "body_q",
+                "SELECT '{{steps.else_q.rows[0].name}}' AS value",
+            )],
+            max_iterations: None,
+        },
+    ]);
+    test.state
+        .workflow_registry
+        .save_workflow(&crate::platform::local_organization_scope(), &wf)
+        .await
+        .unwrap();
+    opt_in(&test.state, &[], &["wf-nested-steps"]).await;
+
+    let port = ScriptedApproval::new(McpApprovalDecision::Deny);
+    let decision = authorize_bridge_tool_with_port(
+        &test.state,
+        &port,
+        "req-wf-nested-steps",
+        "workflow_wf-nested-steps",
+        "{}",
+        None,
+    )
+    .await;
+    assert_eq!(decision, BridgeToolDecision::Allow, "{decision:?}");
+    assert_eq!(port.request_count(), 0);
+}
+
+#[tokio::test]
+async fn execute_revalidates_invalid_template_and_audits_deny_before_dispatch() {
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection(CONNECTION_ID).await;
+    let mut wf = workflow(
+        "wf-exec-invalid",
+        query_step_sql("SELECT * FROM users WHERE name = {{name}}"),
+    );
+    wf.variables = vec![string_variable("name")];
+    test.state
+        .workflow_registry
+        .save_workflow(&crate::platform::local_organization_scope(), &wf)
+        .await
+        .unwrap();
+    opt_in(&test.state, &[], &["wf-exec-invalid"]).await;
+
+    let before = test.mock.query_calls();
+    let output = execute_workflow_tool(
+        &test.state,
+        "req-exec-invalid",
+        &ctx(),
+        &call("workflow_wf-exec-invalid", r#"{"name":"O'Brien"}"#),
+    )
+    .await;
+    assert!(!output.contains("\"success\":true"), "{output}");
+    assert_eq!(test.mock.query_calls(), before);
+    let audit = audit_for(&test, "req-exec-invalid").await;
+    assert_eq!(audit.decision, "deny");
+    assert_eq!(
+        audit.reason.as_deref(),
+        Some("workflowTemplateInvalid"),
+        "{audit:?}"
+    );
+}
+
+#[tokio::test]
+async fn execute_revalidates_a_definition_changed_after_authorization() {
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection(CONNECTION_ID).await;
+    let mut wf = workflow(
+        "wf-toctou",
+        query_step_sql("SELECT '{{name}}' AS name FROM users"),
+    );
+    wf.variables = vec![string_variable("name")];
+    test.state
+        .workflow_registry
+        .save_workflow(&crate::platform::local_organization_scope(), &wf)
+        .await
+        .unwrap();
+    opt_in(&test.state, &[], &["wf-toctou"]).await;
+
+    let port = ScriptedApproval::new(McpApprovalDecision::Deny);
+    let decision = authorize_bridge_tool_with_port(
+        &test.state,
+        &port,
+        "req-wf-toctou",
+        "workflow_wf-toctou",
+        r#"{"name":"O'Brien"}"#,
+        None,
+    )
+    .await;
+    assert_eq!(decision, BridgeToolDecision::Allow);
+    assert_eq!(port.request_count(), 0);
+
+    let mut changed = wf.clone();
+    changed.steps = vec![query_step_sql("SELECT * FROM users WHERE name = {{name}}")];
+    test.state
+        .workflow_registry
+        .save_workflow(&crate::platform::local_organization_scope(), &changed)
+        .await
+        .unwrap();
+
+    let before = test.mock.query_calls();
+    let output = execute_workflow_tool(
+        &test.state,
+        "req-wf-toctou",
+        &ctx(),
+        &call("workflow_wf-toctou", r#"{"name":"O'Brien"}"#),
+    )
+    .await;
+    assert!(!output.contains("\"success\":true"), "{output}");
+    assert_eq!(test.mock.query_calls(), before);
+    let audit = audit_for(&test, "req-wf-toctou").await;
+    assert_eq!(audit.decision, "deny");
+    assert_eq!(
+        audit.reason.as_deref(),
+        Some("workflowTemplateInvalid"),
+        "{audit:?}"
+    );
+}
+
+#[tokio::test]
+async fn workflow_undefined_step_and_malformed_path_are_rejected() {
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection(CONNECTION_ID).await;
+
+    for (workflow_id, sql) in [
+        (
+            "wf-undefined-step",
+            "SELECT '{{steps.nope.rows[0].name}}' AS value",
+        ),
+        (
+            "wf-malformed-path",
+            "SELECT '{{steps.q1.rows[abc].name}}' AS value",
+        ),
+        ("wf-unclosed-path", "SELECT '{{steps.q1.rows[0}}' AS value"),
+    ] {
+        let wf = workflow(workflow_id, query_step_sql(sql));
+        test.state
+            .workflow_registry
+            .save_workflow(&crate::platform::local_organization_scope(), &wf)
+            .await
+            .unwrap();
+        opt_in(&test.state, &[], &[workflow_id]).await;
+
+        let port = ScriptedApproval::new(McpApprovalDecision::AllowOnce);
+        let decision = authorize_bridge_tool_with_port(
+            &test.state,
+            &port,
+            &format!("req-{workflow_id}"),
+            &format!("workflow_{workflow_id}"),
+            "{}",
+            None,
+        )
+        .await;
+        assert!(!decision.is_allowed(), "{workflow_id}: {decision:?}");
+        assert_eq!(port.request_count(), 0, "{workflow_id}");
+    }
+}
+
+#[tokio::test]
+async fn workflow_valid_steps_path_survives_prevalidation_and_execution() {
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection(CONNECTION_ID).await;
+    let mut wf = workflow(
+        "wf-valid-steps",
+        query_step_with_id("q1", "SELECT * FROM users"),
+    );
+    wf.steps.push(query_step_with_id(
+        "q2",
+        "SELECT '{{steps.q1.rows[0].name}}' AS value",
+    ));
+    test.state
+        .workflow_registry
+        .save_workflow(&crate::platform::local_organization_scope(), &wf)
+        .await
+        .unwrap();
+    opt_in(&test.state, &[], &["wf-valid-steps"]).await;
+
+    let port = ScriptedApproval::new(McpApprovalDecision::Deny);
+    let decision = authorize_bridge_tool_with_port(
+        &test.state,
+        &port,
+        "req-wf-valid-steps",
+        "workflow_wf-valid-steps",
+        "{}",
+        None,
+    )
+    .await;
+    assert_eq!(decision, BridgeToolDecision::Allow);
+    assert_eq!(port.request_count(), 0);
+
+    let output = execute_workflow_tool(
+        &test.state,
+        "req-wf-valid-steps",
+        &ctx(),
+        &call("workflow_wf-valid-steps", "{}"),
+    )
+    .await;
+    assert!(output.contains("\"success\":true"), "{output}");
+    assert_eq!(test.mock.query_calls(), 2);
 }
 
 #[tokio::test]

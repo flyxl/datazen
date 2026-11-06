@@ -38,6 +38,52 @@ pub fn workflow_loop_variables(workflow: &WorkflowDefinition) -> HashSet<&str> {
     names
 }
 
+/// Every step id in the workflow graph, including condition branches, foreach
+/// bodies and error fallbacks. A `steps.<id>` template may only name one of
+/// these ids; existence is static even though the step result is not.
+pub fn workflow_step_ids(workflow: &WorkflowDefinition) -> HashSet<&str> {
+    let mut ids = HashSet::new();
+    collect_step_ids(&workflow.steps, &mut ids);
+    ids
+}
+
+fn collect_step_ids<'a>(steps: &'a [WorkflowStep], ids: &mut HashSet<&'a str>) {
+    for step in steps {
+        ids.insert(step_id(step));
+        match step {
+            WorkflowStep::Condition {
+                then_steps,
+                else_steps,
+                ..
+            } => {
+                collect_step_ids(then_steps, ids);
+                if let Some(else_steps) = else_steps {
+                    collect_step_ids(else_steps, ids);
+                }
+            }
+            WorkflowStep::ForEach { steps, .. } => collect_step_ids(steps, ids),
+            _ => {}
+        }
+        if let Some(config) = step_on_error(step) {
+            if let Some(steps) = config.fallback_steps.as_deref() {
+                collect_step_ids(steps, ids);
+            }
+        }
+    }
+}
+
+fn step_id(step: &WorkflowStep) -> &str {
+    match step {
+        WorkflowStep::Query { id, .. }
+        | WorkflowStep::Command { id, .. }
+        | WorkflowStep::Ai { id, .. }
+        | WorkflowStep::Condition { id, .. }
+        | WorkflowStep::ForEach { id, .. }
+        | WorkflowStep::Merge { id, .. }
+        | WorkflowStep::Transform { id, .. } => id,
+    }
+}
+
 fn collect_loop_variables<'a>(steps: &'a [WorkflowStep], names: &mut HashSet<&'a str>) {
     for step in steps {
         match step {

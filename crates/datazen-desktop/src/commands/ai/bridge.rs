@@ -18,7 +18,7 @@ use datazen::mcp::approval::{
     approval_preview, redacted_approval_arguments, McpApprovalDecision, McpApprovalPort,
 };
 use datazen::workflow::application::sql_templates::{
-    workflow_loop_variables, workflow_sql_templates,
+    workflow_loop_variables, workflow_sql_templates, workflow_step_ids,
 };
 use datazen::workflow::executor::WorkflowExecutor;
 use datazen::workflow::model::{WorkflowDefinition, WorkflowExecutionResult};
@@ -27,6 +27,7 @@ use std::collections::HashSet;
 use tokio_util::sync::CancellationToken;
 
 const MAX_BRIDGE_TOOLS: usize = 64;
+const WORKFLOW_TEMPLATE_INVALID_REASON: &str = "workflowTemplateInvalid";
 
 #[derive(Debug, Clone)]
 struct PluginToolSpec {
@@ -238,25 +239,84 @@ fn workflow_template_values(
 fn workflow_template_value(
     values: &Map<String, Value>,
     loop_vars: &HashSet<String>,
+    step_ids: &HashSet<String>,
     expression: &str,
 ) -> Result<Value, String> {
     if let Some(value) = values.get(expression) {
         return Ok(value.clone());
     }
-    if expression.starts_with("steps.") {
+    if let Some(rest) = expression.strip_prefix("steps.") {
+        let Some((step_id, path)) = rest.split_once('.') else {
+            return Err("unresolvable workflow step path".into());
+        };
+        if step_id.is_empty() || !step_ids.contains(step_id) {
+            return Err(format!("unknown workflow step '{step_id}'"));
+        }
+        validate_workflow_step_path(path)?;
         return Ok(Value::Null);
     }
-    let first = expression
-        .split('.')
-        .next()
-        .unwrap_or(expression)
-        .split('[')
-        .next()
-        .unwrap_or(expression);
-    if loop_vars.contains(first) {
+    if let Some(separator) = expression.find(|ch| ch == '.' || ch == '[') {
+        let var_name = &expression[..separator];
+        if loop_vars.contains(var_name) {
+            let path = expression[separator..].trim_start_matches('.');
+            validate_workflow_step_path(path)?;
+            return Ok(Value::Null);
+        }
+    }
+    if loop_vars.contains(expression) {
         return Ok(Value::Null);
     }
     Err(format!("unknown workflow template value '{expression}'"))
+}
+
+/// Validate the static shape of a `steps.<id>.<path>` or loop path.
+///
+/// Runtime values do not exist during authorization, but the path grammar is
+/// static. Missing step ids, empty/double segments, unterminated brackets,
+/// non-numeric indices and characters that the resolver cannot address are
+/// rejected before approval or execution.
+fn validate_workflow_step_path(path: &str) -> Result<(), String> {
+    if path.is_empty() {
+        return Err("unresolvable workflow step path".into());
+    }
+    for part in path.split('.') {
+        if part.is_empty() {
+            return Err("unresolvable workflow step path".into());
+        }
+        if let Some(bracket) = part.find('[') {
+            if !part.ends_with(']') {
+                return Err("unresolvable workflow step path".into());
+            }
+            let field = &part[..bracket];
+            let index = &part[bracket + 1..part.len() - 1];
+            if index.is_empty() || !index.bytes().all(|byte| byte.is_ascii_digit()) {
+                return Err("unresolvable workflow step path".into());
+            }
+            if index.parse::<usize>().is_err() {
+                return Err("unresolvable workflow step path".into());
+            }
+            if !field.is_empty() {
+                validate_workflow_path_segment(field)?;
+            }
+        } else {
+            validate_workflow_path_segment(part)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_workflow_path_segment(segment: &str) -> Result<(), String> {
+    if segment == "*" {
+        return Ok(());
+    }
+    if !segment.is_empty()
+        && segment
+            .chars()
+            .all(|ch| ch.is_alphanumeric() || ch == '_' || ch == '-')
+    {
+        return Ok(());
+    }
+    Err("unresolvable workflow step path".into())
 }
 
 async fn validate_workflow_sql_templates(
@@ -264,6 +324,7 @@ async fn validate_workflow_sql_templates(
     workflow: &WorkflowDefinition,
     values: &Map<String, Value>,
     loop_vars: &HashSet<String>,
+    step_ids: &HashSet<String>,
 ) -> Result<(), String> {
     let templates = workflow_sql_templates(workflow).map_err(|error| error.to_string())?;
     for template in templates {
@@ -272,7 +333,7 @@ async fn validate_workflow_sql_templates(
             None => SqlTemplateDialect::default(),
         };
         render_sql_template_with_resolver(template.sql, dialect, |expression| {
-            workflow_template_value(values, loop_vars, expression)
+            workflow_template_value(values, loop_vars, step_ids, expression)
         })
         .map_err(|error| format!("step '{}': {error}", template.step_id))?;
     }
@@ -284,6 +345,7 @@ async fn render_workflow_preview_sql(
     workflow: &WorkflowDefinition,
     values: &Map<String, Value>,
     loop_vars: &HashSet<String>,
+    step_ids: &HashSet<String>,
 ) -> Option<String> {
     let templates = workflow_sql_templates(workflow).ok()?;
     if templates.is_empty() {
@@ -296,7 +358,7 @@ async fn render_workflow_preview_sql(
             None => SqlTemplateDialect::default(),
         };
         let sql = render_sql_template_with_resolver(template.sql, dialect, |expression| {
-            workflow_template_value(values, loop_vars, expression)
+            workflow_template_value(values, loop_vars, step_ids, expression)
         })
         .ok()?;
         rendered.push(sql);
@@ -407,8 +469,12 @@ pub(crate) async fn authorize_bridge_tool_with_port(
             .into_iter()
             .map(str::to_owned)
             .collect();
+        let step_ids: HashSet<String> = workflow_step_ids(workflow)
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
         if let Err(error) =
-            validate_workflow_sql_templates(state, workflow, &values, &loop_vars).await
+            validate_workflow_sql_templates(state, workflow, &values, &loop_vars, &step_ids).await
         {
             let reason = format!("invalid workflow SQL template: {error}");
             audit_bridge_decision(
@@ -419,7 +485,7 @@ pub(crate) async fn authorize_bridge_tool_with_port(
                 "deny",
                 None,
                 Some(request_id.to_string()),
-                Some("invalid template".into()),
+                Some(WORKFLOW_TEMPLATE_INVALID_REASON.into()),
             )
             .await;
             return BridgeToolDecision::Deny { reason };
@@ -427,6 +493,7 @@ pub(crate) async fn authorize_bridge_tool_with_port(
         Some((
             workflow_template_values(workflow, &parsed_arguments, true),
             loop_vars,
+            step_ids,
         ))
     } else {
         None
@@ -448,8 +515,8 @@ pub(crate) async fn authorize_bridge_tool_with_port(
                 render_input_template_with_dialect(&spec_input_template(&spec), &args, dialect).ok()
             })
             .and_then(|input| input.get("sql").and_then(Value::as_str).map(str::to_owned)),
-        (BridgeSpec::Workflow(workflow), Some((values, loop_vars))) => {
-            render_workflow_preview_sql(state, workflow, values, loop_vars).await
+        (BridgeSpec::Workflow(workflow), Some((values, loop_vars, step_ids))) => {
+            render_workflow_preview_sql(state, workflow, values, loop_vars, step_ids).await
         }
         (BridgeSpec::Workflow(_), None) => None,
     };
@@ -775,6 +842,41 @@ pub(crate) async fn execute_workflow_tool(
             return format!("Error: workflow arguments rejected: {error}");
         }
     };
+
+    // Revalidate against the definition just re-read above. Approval and
+    // execution are separate registry reads; a workflow edited in between must
+    // not reach the executor with a template that only passed prevalidation
+    // for the earlier revision.
+    let values = workflow_template_values(&workflow, &variables, false);
+    let loop_vars: HashSet<String> = workflow_loop_variables(&workflow)
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    let step_ids: HashSet<String> = workflow_step_ids(&workflow)
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    if let Err(error) =
+        validate_workflow_sql_templates(state, &workflow, &values, &loop_vars, &step_ids).await
+    {
+        tracing::warn!(
+            workflow = %workflow.id,
+            error = %error,
+            "workflow SQL template rejected at execution"
+        );
+        audit_bridge_decision(
+            state,
+            &call.name,
+            workflow.connection.clone(),
+            workflow.database.clone(),
+            "deny",
+            None,
+            Some(request_id.to_string()),
+            Some(WORKFLOW_TEMPLATE_INVALID_REASON.into()),
+        )
+        .await;
+        return format!("Error: workflow template rejected: {WORKFLOW_TEMPLATE_INVALID_REASON}");
+    }
 
     let execution = WorkflowExecutor::execute(&workflow, state, None, &variables);
     let result = if let Some(token) = ctx.cancel_token.as_ref() {

@@ -22,7 +22,7 @@
 | BUG-018 | T20 | Redis key_pattern 可被多 key EXISTS 绕过；拒绝的 Redis 命令审计记为 allow；batch 无逐语句审计且审计 rowCount 为空 | 已验证 |
 | BUG-019 | T21 | HTTP token 输入框使用未定义的 Tailwind 颜色类 `bg-bg`，`tailwind-colour-classes` 门禁失败 | 已验证 |
 | BUG-020 | T22 | 插件模板参数未转义：审批 SQL 泄漏凭据，SQL 字面量可被参数改变 | 已验证 |
-| BUG-021 | T22 | Workflow 工具参数未转义：模型可改写只读 Workflow 的 SQL | 待修复（复测未通过） |
+| BUG-021 | T22 | Workflow 工具参数未转义：模型可改写只读 Workflow 的 SQL | 已修复（待独立复测） |
 
 
 ## T19 MCP scope / 逐次审批 / 审计验收记录（已验证）
@@ -294,3 +294,24 @@ loop/方言/数字 LIMIT/注释/dollar/标识符/未闭合、condition/fallback 
 复跑：datazen 1721、desktop 1397/10 ignored、server 361、host 14、全量前端
 8233/8 既有环境失败、映射 typecheck OK、fmt/diff 0。详见
 [BUG-021](ai-assistant-parity-bugs/BUG-021.md)。
+
+## T22 BUG-021 第二次修复：execute 预校验 / steps fail closed
+
+`fix: revalidate workflow templates at execute` 补齐独立复测发现的两项：
+
+- `execute_workflow_tool` 重新读取当前定义并在 executor 前再次预校验 SQL 模板；
+  失败 audit `deny`（reason `workflowTemplateInvalid`），不执行、不产生查询。
+- `steps.*` 不再无条件 Null：新增共享 step 图遍历（含 condition/foreach/
+  fallback），校验 step id 存在及路径语法；未定义 step、非法索引、未闭合路径
+  在 authorize/execute 前拒绝，合法 steps/loop 路径保持通过。
+- 新增 TOCTOU、execute 直接调用、未定义/非法路径、合法 steps 和
+  condition/foreach 可达 step 测试。
+
+| 范围 | 结果 |
+|---|---|
+| `cargo test -p datazen --lib --features ai,workflow,wapps` | 1721 passed / 0 failed |
+| `cargo test -p datazen --lib --features mcp` | 1725 passed / 0 failed |
+| `cargo test -p datazen_desktop --lib` | 1402 passed / 0 failed / 10 ignored |
+| T22 host bridge | 19 passed |
+| 全量前端（未改前端） | 8233 passed / 8 既有环境失败 |
+| fmt / diff | 0 / 0 |
