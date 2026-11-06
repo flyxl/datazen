@@ -52,6 +52,15 @@ def _init_repository(repository: Path) -> None:
 
 
 class CiScopeTests(unittest.TestCase):
+    def test_scope_resolver_changes_only_run_their_own_unit_tests(self) -> None:
+        self.assertEqual(
+            classify_changed_paths([
+                "scripts/ci_scope.py",
+                "scripts/test_ci_scope.py",
+            ]),
+            (False, False),
+        )
+
     def test_crates_rust_source_and_manifest_changes_skip_frontend(self) -> None:
         self.assertEqual(
             classify_changed_paths([
