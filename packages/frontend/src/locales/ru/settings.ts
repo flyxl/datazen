@@ -224,6 +224,13 @@ const pack = {
   'settings.ai.strictEgress': 'Строгая защита передачи данных ИИ (рекомендуется)',
   'settings.ai.strictEgressHint':
     'При включении строки результатов запросов и полезная нагрузка удаляются перед отправкой поставщику ИИ. Учетные данные всегда маскируются.',
+  'settings.ai.toolsTitle': 'Инструменты плагинов и Workflow',
+  'settings.ai.toolsHint': 'Agent получает только инструменты плагинов и Workflow, включённых здесь. Вызовы, не являющиеся только чтением, запрашивают подтверждение; Stop отменяет ожидающий вызов.',
+  'settings.ai.toolsPlugins': 'Плагины',
+  'settings.ai.toolsWorkflows': 'Workflow',
+  'settings.ai.toolsNoPlugins': 'Ни один установленный плагин не объявляет ИИ-инструменты.',
+  'settings.ai.toolsNoWorkflows': 'Нет сохранённых Workflow.',
+  'settings.ai.toolsPluginDisabled': 'Сначала включите этот плагин.',
   'settings.ai.strictEgressDisableTitle': 'Разрешить передачу большего объема данных с устройства?',
   'settings.ai.strictEgressDisableMessage':
     'Отключение строгой защиты может передавать строки результатов запросов, содержимое файлов и выводы инструментов вашему поставщику ИИ. Отключайте только в том случае, если вы согласны на передачу данных.',

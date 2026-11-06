@@ -209,6 +209,13 @@ const pack = {
   'settings.ai.strictEgress': '厳格な AI 送信保護（推奨）',
   'settings.ai.strictEgressHint':
     '有効にすると、クエリ結果の行データやペイロードが削除された状態でAIプロバイダーに送信されます。認証情報は常にマスクされます。',
+  'settings.ai.toolsTitle': 'プラグインと Workflow ツール',
+  'settings.ai.toolsHint': 'ここで有効にしたプラグインと Workflow のツールだけが Agent に提供されます。読み取り専用でない呼び出しは承認を求め、Stop で保留中の呼び出しをキャンセルできます。',
+  'settings.ai.toolsPlugins': 'プラグイン',
+  'settings.ai.toolsWorkflows': 'Workflow',
+  'settings.ai.toolsNoPlugins': 'AI ツールを宣言したインストール済みプラグインはありません。',
+  'settings.ai.toolsNoWorkflows': '保存済みの Workflow はありません。',
+  'settings.ai.toolsPluginDisabled': '先にこのプラグインを有効にしてください。',
   'settings.ai.strictEgressDisableTitle': 'より多くのデータを端末外へ送信することを許可しますか？',
   'settings.ai.strictEgressDisableMessage':
     '厳格な保護を無効にすると、クエリ結果の行、ファイル内容、ツールの出力が設定したAIプロバイダーに送信される可能性があります。端末外への送信を許可する場合にのみ無効にしてください。',

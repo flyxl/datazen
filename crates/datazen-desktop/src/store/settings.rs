@@ -97,6 +97,13 @@ pub struct AppSettings {
     /// Additional schema/namespace scope. Empty = no additional restriction.
     #[serde(default)]
     pub mcp_allowed_namespaces: Vec<String>,
+    /// Plugin ids whose manifest-declared AI tools the user enabled.
+    /// Empty is the default: declarations alone never expose tools.
+    #[serde(default)]
+    pub ai_plugin_tool_ids: Vec<String>,
+    /// Workflow ids exposed as `workflow_<id>` AI tools. Empty is the default.
+    #[serde(default)]
+    pub ai_workflow_tool_ids: Vec<String>,
     #[serde(default)]
     pub context_dir: String,
     /// Directory holding the user's favorites, one `.sql` file each.
@@ -260,6 +267,8 @@ impl Default for AppSettings {
             mcp_allowed_connection_ids: Vec::new(),
             mcp_allowed_databases: Vec::new(),
             mcp_allowed_namespaces: Vec::new(),
+            ai_plugin_tool_ids: Vec::new(),
+            ai_workflow_tool_ids: Vec::new(),
             context_dir: String::new(),
             favorites_root: None,
             check_for_updates_on_startup: false,

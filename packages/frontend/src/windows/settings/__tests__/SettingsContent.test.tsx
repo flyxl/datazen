@@ -309,7 +309,35 @@ vi.mock('../../../commands/ai', () => ({
     mcpStartStdio: (...a: unknown[]) => mcpStartStdioMock(...a),
     mcpStop: (...a: unknown[]) => mcpStopMock(...a),
     mcpReload: (...a: unknown[]) => mcpReloadMock(...a),
+    workflowList: vi.fn().mockResolvedValue([
+      { id: 'wf-1', name: 'Weekly report', description: 'Read only', variables: [] },
+    ]),
   },
+}));
+
+vi.mock('../../../stores/wappStore', () => ({
+  useWappStore: (
+    sel: (s: {
+      wapps: {
+        id: string;
+        name: string;
+        enabled: boolean;
+        aiTools: { name: string; readOnly: boolean }[];
+      }[];
+      fetch: () => Promise<void>;
+    }) => unknown,
+  ) =>
+    sel({
+      wapps: [
+        {
+          id: 'acme.demo',
+          name: 'Demo Plugin',
+          enabled: true,
+          aiTools: [{ name: 'list_users', readOnly: true }],
+        },
+      ],
+      fetch: async () => {},
+    }),
 }));
 
 vi.mock('@datazen/ui', async (importOriginal) => {
@@ -531,6 +559,21 @@ describe('SettingsContent', () => {
     fireEvent.mouseEnter(screen.getByRole('button', { name: 'settings.ai.modelsTitle' }));
     expect(screen.getByRole('tooltip')).toHaveTextContent('settings.ai.description');
     expect(loadProvidersMock).toHaveBeenCalled();
+  });
+
+  it('opts a plugin and workflow into the AI tool bridge', async () => {
+    render(<SettingsContent initialSection="ai" />);
+    await waitForSettingsLoad();
+
+    fireEvent.click(await screen.findByTestId('ai-plugin-tool-acme.demo'));
+    expect(updateSettingsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ aiPluginToolIds: ['acme.demo'] }),
+    );
+
+    fireEvent.click(await screen.findByTestId('ai-workflow-tool-wf-1'));
+    expect(updateSettingsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ aiWorkflowToolIds: ['wf-1'] }),
+    );
   });
 
   it('edits general settings and saves immediately', async () => {

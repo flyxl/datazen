@@ -421,6 +421,7 @@ async fn execute_db_tool_query_readonly_reads_rows_on_current_connection() {
     let ctx = datazen::ai::tool_loop::AiToolContext {
         allowed_connection_id: Some("query-tool".into()),
         max_sample_rows: 3,
+        cancel_token: None,
     };
     let tool = ToolCall {
         id: "q1".into(),
@@ -441,6 +442,7 @@ async fn execute_db_tool_sample_rows_quotes_and_limits() {
     let ctx = datazen::ai::tool_loop::AiToolContext {
         allowed_connection_id: Some("sample-tool".into()),
         max_sample_rows: 3,
+        cancel_token: None,
     };
     let tool = ToolCall {
         id: "s1".into(),

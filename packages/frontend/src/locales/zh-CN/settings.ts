@@ -197,6 +197,13 @@ const pack = {
   'settings.ai.strictEgress': '严格 AI 出域（推荐）',
   'settings.ai.strictEgressHint':
     '开启后，发往 AI 提供商的内容会移除查询结果行与 payload；凭据始终会被脱敏。',
+  'settings.ai.toolsTitle': '插件与 Workflow 工具',
+  'settings.ai.toolsHint': '只有在此启用的插件与 Workflow 才会提供给 Agent。非只读调用会请求确认；Stop 可取消待处理调用。',
+  'settings.ai.toolsPlugins': '插件',
+  'settings.ai.toolsWorkflows': 'Workflow',
+  'settings.ai.toolsNoPlugins': '没有已安装插件声明 AI 工具。',
+  'settings.ai.toolsNoWorkflows': '没有已保存的 Workflow。',
+  'settings.ai.toolsPluginDisabled': '请先启用该插件。',
   'settings.ai.strictEgressDisableTitle': '允许更多数据离开本机？',
   'settings.ai.strictEgressDisableMessage':
     '关闭严格出域后，查询结果行、上下文文件与工具输出可能会发送到你配置的 AI 提供商。仅在您接受数据可能离开本机时再关闭。',

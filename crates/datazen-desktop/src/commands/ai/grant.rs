@@ -297,4 +297,33 @@ impl AiToolLoopHost for AiRequestHost<'_> {
     async fn confirm_tool_call(&self, tool: &str, arguments: &str) -> bool {
         AiToolLoopHost::confirm_tool_call(self.state, tool, arguments).await
     }
+
+    async fn authorize_bridge_tool(
+        &self,
+        request_id: &str,
+        tool: &str,
+        arguments: &str,
+        cancel_token: Option<&tokio_util::sync::CancellationToken>,
+    ) -> datazen::ai::application::tool_bridge::BridgeToolDecision {
+        AiToolLoopHost::authorize_bridge_tool(self.state, request_id, tool, arguments, cancel_token)
+            .await
+    }
+
+    async fn execute_plugin_tool(
+        &self,
+        request_id: &str,
+        ctx: &datazen::ai::tool_loop::AiToolContext,
+        call: &datazen::ai::ToolCall,
+    ) -> String {
+        AiToolLoopHost::execute_plugin_tool(self.state, request_id, ctx, call).await
+    }
+
+    async fn execute_workflow_tool(
+        &self,
+        request_id: &str,
+        ctx: &datazen::ai::tool_loop::AiToolContext,
+        call: &datazen::ai::ToolCall,
+    ) -> String {
+        AiToolLoopHost::execute_workflow_tool(self.state, request_id, ctx, call).await
+    }
 }

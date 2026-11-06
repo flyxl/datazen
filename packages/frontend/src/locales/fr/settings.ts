@@ -232,6 +232,13 @@ const pack = {
   'settings.ai.strictEgress': 'Protection stricte des données IA (recommandé)',
   'settings.ai.strictEgressHint':
     'Lorsqu’elle est activée, les lignes de résultats et les charges utiles sont supprimées avant l’envoi au fournisseur d’IA. Les identifiants sont toujours masqués.',
+  'settings.ai.toolsTitle': 'Outils de plugins et workflows',
+  'settings.ai.toolsHint': 'Seuls les outils des plugins et workflows activés ici sont proposés à l’Agent. Les appels non en lecture seule demandent une approbation ; Stop annule un appel en attente.',
+  'settings.ai.toolsPlugins': 'Plugins',
+  'settings.ai.toolsWorkflows': 'Workflows',
+  'settings.ai.toolsNoPlugins': 'Aucun plugin installé ne déclare d’outils IA.',
+  'settings.ai.toolsNoWorkflows': 'Aucun workflow enregistré.',
+  'settings.ai.toolsPluginDisabled': 'Activez d’abord ce plugin.',
   'settings.ai.strictEgressDisableTitle': 'Autoriser davantage de données à quitter cet appareil ?',
   'settings.ai.strictEgressDisableMessage':
     'Désactiver la protection stricte peut envoyer les lignes de résultats, contenus de fichiers et sorties d’outils à votre fournisseur d’IA configuré. Ne désactivez cette option que si vous acceptez que des données quittent votre machine.',

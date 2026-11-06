@@ -39,8 +39,8 @@ pub const WAPP_API_VERSION: u32 = 2;
 #[allow(unused_imports)]
 pub use manifest::{
     allowed_wapp_file_ext, is_valid_wapp_id, parse_manifest, validate_manifest, validate_wapp_dir,
-    Contributions, PageContribution, Permission, ThemeContribution, WappManifest, MAX_WAPP_FILES,
-    MAX_WAPP_UNCOMPRESSED,
+    Contributions, PageContribution, Permission, ThemeContribution, WappAiContribution, WappAiTool,
+    WappManifest, MAX_WAPP_FILES, MAX_WAPP_UNCOMPRESSED,
 };
 #[allow(unused_imports)]
 pub use storage::{storage_get, storage_remove, storage_set};

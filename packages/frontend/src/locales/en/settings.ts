@@ -226,6 +226,13 @@ const pack = {
   'settings.ai.strictEgress': 'Strict AI egress (recommended)',
   'settings.ai.strictEgressHint':
     'When enabled, query result rows and payloads are removed before content is sent to the AI provider. Credentials are always redacted.',
+  'settings.ai.toolsTitle': 'Plugin & workflow tools',
+  'settings.ai.toolsHint': 'Only tools from the plugins and workflows enabled here are offered to the Agent. Non-read-only calls ask for approval; Stop cancels a pending call.',
+  'settings.ai.toolsPlugins': 'Plugins',
+  'settings.ai.toolsWorkflows': 'Workflows',
+  'settings.ai.toolsNoPlugins': 'No installed plugin declares AI tools.',
+  'settings.ai.toolsNoWorkflows': 'No saved workflows.',
+  'settings.ai.toolsPluginDisabled': 'Enable this plugin first.',
   'settings.ai.strictEgressDisableTitle': 'Allow more data to leave this device?',
   'settings.ai.strictEgressDisableMessage':
     'Disabling strict egress may send query result rows, file contents, and tool outputs to your configured AI provider. Only turn this off if you accept that data may leave your machine.',

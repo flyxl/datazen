@@ -31,6 +31,7 @@ pub mod schema_doc;
 pub mod schema_pipeline;
 pub mod single_turn;
 pub mod sql_generation;
+pub mod tool_bridge;
 pub mod tool_loop;
 pub mod tools;
 

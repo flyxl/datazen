@@ -137,6 +137,31 @@ impl AiToolLoopHost for AppState {
     async fn execute_mcp_tool(&self, server: &str, tool: &str, arguments: &str) -> String {
         execute_mcp_tool(self, server, tool, arguments).await
     }
+    async fn authorize_bridge_tool(
+        &self,
+        request_id: &str,
+        tool: &str,
+        arguments: &str,
+        cancel_token: Option<&tokio_util::sync::CancellationToken>,
+    ) -> datazen::ai::application::tool_bridge::BridgeToolDecision {
+        super::bridge::authorize_bridge_tool(self, request_id, tool, arguments, cancel_token).await
+    }
+    async fn execute_plugin_tool(
+        &self,
+        request_id: &str,
+        ctx: &AiToolContext,
+        call: &ToolCall,
+    ) -> String {
+        super::bridge::execute_plugin_tool(self, request_id, ctx, call).await
+    }
+    async fn execute_workflow_tool(
+        &self,
+        request_id: &str,
+        ctx: &AiToolContext,
+        call: &ToolCall,
+    ) -> String {
+        super::bridge::execute_workflow_tool(self, request_id, ctx, call).await
+    }
     async fn confirm_tool_call(&self, tool: &str, arguments: &str) -> bool {
         confirm_tool_call_with(
             self.app_handle.get().cloned(),
@@ -247,6 +272,11 @@ pub async fn ai_chat<R: tauri::Runtime>(
     } else {
         Vec::new()
     };
+    let bridge_tools = if provider.supports_tools() && requested_agent_mode == AiAgentMode::Agent {
+        super::bridge::bridge_tool_definitions(&state).await
+    } else {
+        Vec::new()
+    };
 
     // Resolve user-authored prompt material on the host (storage + scope),
     // then hand the immutable decision to the shared use case. The UI receives
@@ -328,6 +358,7 @@ pub async fn ai_chat<R: tauri::Runtime>(
         connections_context,
         mcp_tools,
         skill_tools,
+        bridge_tools,
         context_entries,
         schema_driver,
         prompt_resolver: state.prompt_resolver.clone(),

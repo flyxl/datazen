@@ -336,6 +336,7 @@ async fn query_readonly_returns_rows_and_clamps_limit() {
     let ctx = AiToolContext {
         allowed_connection_id: Some("conn-1".into()),
         max_sample_rows: 3,
+        cancel_token: None,
     };
     let catalog = EmptyCatalog;
     let scope = ConnectionScope::new("org");
@@ -365,6 +366,7 @@ async fn query_readonly_defaults_to_100_and_rejects_zero_to_one() {
     let ctx = AiToolContext {
         allowed_connection_id: Some("conn-1".into()),
         max_sample_rows: 3,
+        cancel_token: None,
     };
     let catalog = EmptyCatalog;
     let scope = ConnectionScope::new("org");
@@ -395,6 +397,7 @@ async fn sample_rows_quotes_relation_and_uses_gate_limit() {
     let ctx = AiToolContext {
         allowed_connection_id: Some("conn-1".into()),
         max_sample_rows: 7,
+        cancel_token: None,
     };
     let catalog = EmptyCatalog;
     let scope = ConnectionScope::new("org");
@@ -442,6 +445,7 @@ async fn query_readonly_rejects_writes_without_execution() {
     let ctx = AiToolContext {
         allowed_connection_id: Some("conn-1".into()),
         max_sample_rows: 3,
+        cancel_token: None,
     };
     let catalog = EmptyCatalog;
     let scope = ConnectionScope::new("org");
@@ -467,6 +471,7 @@ async fn sample_rows_zero_gate_limit_still_reads_one_row() {
     let ctx = AiToolContext {
         allowed_connection_id: Some("conn-1".into()),
         max_sample_rows: 0,
+        cancel_token: None,
     };
     let catalog = EmptyCatalog;
     let scope = ConnectionScope::new("org");
@@ -495,6 +500,7 @@ async fn read_only_tools_reject_cross_connection_without_execution() {
     let ctx = AiToolContext {
         allowed_connection_id: Some("conn-1".into()),
         max_sample_rows: 3,
+        cancel_token: None,
     };
     let catalog = EmptyCatalog;
     let scope = ConnectionScope::new("org");

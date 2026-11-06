@@ -2,6 +2,7 @@
 use super::error::AiUseCaseError as CommandError;
 use super::mcp_tools::mcp_tool_requires_confirmation;
 use super::retry::RetryPolicy;
+use super::tool_bridge::BridgeToolDecision;
 use super::tools::{
     classify_tool, db_tool_requires_confirmation, is_readonly_db_tool, ToolKind, ToolLoopGuard,
     ToolLoopLimits,
@@ -16,6 +17,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 pub type StreamCallback = Arc<dyn Fn(&str, Result<StreamChunk, AiError>) + Send + Sync>;
 
 /// Shared upper bound around the host confirmation port. Hosts may impose a
@@ -43,10 +45,14 @@ async fn confirm_tool_with_timeout(
 /// confines them to the chat's active connection, and `None` fails closed
 /// (no bound connection means no query permission). `max_sample_rows` is the
 /// safety-gate default for `sample_rows` when the model omits a limit.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct AiToolContext {
     pub allowed_connection_id: Option<String>,
     pub max_sample_rows: u32,
+    /// The request's AI cancellation token. Bridge tools watch it while an
+    /// approval or a long workflow is in flight so Stop actually interrupts
+    /// the call instead of waiting for the host timeout.
+    pub cancel_token: Option<CancellationToken>,
 }
 
 impl Default for AiToolContext {
@@ -54,6 +60,7 @@ impl Default for AiToolContext {
         Self {
             allowed_connection_id: None,
             max_sample_rows: 100,
+            cancel_token: None,
         }
     }
 }
@@ -63,6 +70,44 @@ pub trait AiToolLoopHost: Send + Sync {
     async fn egress_summary(&self) -> String;
     async fn execute_db_tool(&self, ctx: &AiToolContext, call: &ToolCall) -> String;
     async fn execute_mcp_tool(&self, server: &str, tool: &str, arguments: &str) -> String;
+
+    /// Authorize one plugin/workflow bridge call. Hosts resolve the current
+    /// opt-in state and read-only classification; read-only calls return
+    /// `Allow` without presenting a dialog, non-read-only calls present the
+    /// T19 approval surface and wait for its five-minute decision. The default
+    /// fails closed for hosts that do not implement the bridge.
+    async fn authorize_bridge_tool(
+        &self,
+        _request_id: &str,
+        _tool: &str,
+        _arguments: &str,
+        _cancel_token: Option<&CancellationToken>,
+    ) -> BridgeToolDecision {
+        BridgeToolDecision::Deny {
+            reason: "plugin/workflow tools are not available in this host".into(),
+        }
+    }
+
+    /// Execute a plugin tool after authorization. The default is a readable
+    /// failure, matching `execute_skill_tool`.
+    async fn execute_plugin_tool(
+        &self,
+        _request_id: &str,
+        _ctx: &AiToolContext,
+        _call: &ToolCall,
+    ) -> String {
+        "Error: plugin tools are not available in this host".into()
+    }
+
+    /// Execute a workflow tool after authorization.
+    async fn execute_workflow_tool(
+        &self,
+        _request_id: &str,
+        _ctx: &AiToolContext,
+        _call: &ToolCall,
+    ) -> String {
+        "Error: workflow tools are not available in this host".into()
+    }
 
     /// Read a local skill through the host's configured catalog. Defaults to a
     /// readable failure so test hosts and forms without skill storage do not
@@ -570,6 +615,46 @@ pub async fn run_streaming_tool_loop(
                 );
                 return Ok(request_id.to_string());
             }
+            let is_bridge = matches!(kind, ToolKind::Plugin { .. } | ToolKind::Workflow { .. });
+            if is_bridge {
+                let decision = host
+                    .authorize_bridge_tool(
+                        request_id,
+                        &tc.name,
+                        &tc.arguments,
+                        request.cancel_token.as_ref(),
+                    )
+                    .await;
+                if !decision.is_allowed() {
+                    if decision.is_cancelled() {
+                        on_chunk(
+                            request_id,
+                            Ok(StreamChunk {
+                                content: String::new(),
+                                reasoning: None,
+                                done: true,
+                                cancelled: true,
+                                usage: result.usage,
+                                tool_calls: None,
+                                response_id: result.response_id,
+                                egress_summary: None,
+                                memory_used: None,
+                            }),
+                        );
+                        return Ok(request_id.to_string());
+                    }
+                    let reason = decision.refusal_reason();
+                    tracing::info!(
+                        %request_id,
+                        tool_name = %tc.name,
+                        decision = decision.audit_decision(),
+                        "bridge tool not executed"
+                    );
+                    let denied = format!("Tool '{}' was not executed: {reason}.", tc.name);
+                    request.messages.push(guard.truncate_and_wrap(tc, denied));
+                    continue;
+                }
+            }
             let needs_confirm = match kind {
                 ToolKind::Db(name) => db_tool_requires_confirmation(gate, name),
                 ToolKind::Mcp { .. } => mcp_tool_requires_confirmation(gate.mcp_tool_policy),
@@ -599,6 +684,10 @@ pub async fn run_streaming_tool_loop(
                 } => {
                     host.execute_mcp_tool(server_id, tool_name, &tc.arguments)
                         .await
+                }
+                ToolKind::Plugin { .. } => host.execute_plugin_tool(request_id, tool_ctx, tc).await,
+                ToolKind::Workflow { .. } => {
+                    host.execute_workflow_tool(request_id, tool_ctx, tc).await
                 }
                 ToolKind::Skill(name) => {
                     let result = host.execute_skill_tool(tc).await;
@@ -702,6 +791,11 @@ mod tests {
             description: "Ask the user".into(),
             parameters: serde_json::json!({"type": "object"}),
         });
+        tools.push(ToolDefinition {
+            name: "plugin_acme.demo__list_users".into(),
+            description: "List users".into(),
+            parameters: serde_json::json!({"type": "object"}),
+        });
         tools
     }
 
@@ -760,6 +854,8 @@ mod tests {
     struct StubHost {
         db_tool_calls: AtomicUsize,
         mcp_tool_calls: AtomicUsize,
+        bridge_authorize_calls: AtomicUsize,
+        bridge_execute_calls: AtomicUsize,
         confirm_calls: AtomicUsize,
         confirm_result: AtomicBool,
         confirm_hangs: AtomicBool,
@@ -786,6 +882,25 @@ mod tests {
         async fn execute_mcp_tool(&self, _server: &str, _tool: &str, _args: &str) -> String {
             self.mcp_tool_calls.fetch_add(1, Ordering::SeqCst);
             "{}".into()
+        }
+        async fn authorize_bridge_tool(
+            &self,
+            _request_id: &str,
+            _tool: &str,
+            _arguments: &str,
+            _cancel_token: Option<&CancellationToken>,
+        ) -> BridgeToolDecision {
+            self.bridge_authorize_calls.fetch_add(1, Ordering::SeqCst);
+            BridgeToolDecision::Allow
+        }
+        async fn execute_plugin_tool(
+            &self,
+            _request_id: &str,
+            _ctx: &AiToolContext,
+            _call: &ToolCall,
+        ) -> String {
+            self.bridge_execute_calls.fetch_add(1, Ordering::SeqCst);
+            r#"{"password":"hunter2","rows":[]}"#.into()
         }
         async fn confirm_tool_call(&self, _tool: &str, _arguments: &str) -> bool {
             self.confirm_calls.fetch_add(1, Ordering::SeqCst);
@@ -850,6 +965,35 @@ mod tests {
         let (result, chunks) = run_loop(provider, host, token, gate()).await;
         assert!(result.is_ok(), "loop must converge: {result:?}");
         chunks
+    }
+
+    #[tokio::test]
+    async fn bridge_tool_uses_the_host_bridge_and_gate_redacts_its_result() {
+        let host = StubHost::default();
+        let provider = Arc::new(OneToolProvider::new(ToolCall {
+            id: "bridge-call".into(),
+            name: "plugin_acme.demo__list_users".into(),
+            arguments: "{}".into(),
+        }));
+        let (result, _chunks) =
+            run_loop(provider.clone(), &host, CancellationToken::new(), gate()).await;
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(host.bridge_authorize_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(host.bridge_execute_calls.load(Ordering::SeqCst), 1);
+
+        let requests = provider.requests.lock().expect("requests");
+        assert_eq!(requests.len(), 2, "tool result must feed the next round");
+        let tool_message = requests[1]
+            .messages
+            .iter()
+            .find(|message| message.role == MessageRole::Tool)
+            .expect("tool result message");
+        assert!(!tool_message.content.contains("hunter2"));
+        assert!(
+            !tool_message.content.contains("password"),
+            "sensitive keys are stripped by the gate: {}",
+            tool_message.content
+        );
     }
 
     struct ToolCallingProvider {

@@ -268,6 +268,10 @@ export interface AppSettings extends UserPreferences, ExecutionSettings {
   monitor: MonitorSettings;
   /** Saved external MCP Client server configs. Runtime connections are separate. */
   mcpClientServers?: McpServerConfig[];
+  /** Plugin ids whose manifest-declared AI tools are exposed to the Agent. */
+  aiPluginToolIds?: string[];
+  /** Workflow ids exposed as `workflow_<id>` Agent tools. */
+  aiWorkflowToolIds?: string[];
   /** Onboarding wizard state. `undefined` or `version < 1` → show wizard. */
   onboarding?: { completed: boolean; version: number };
   /**

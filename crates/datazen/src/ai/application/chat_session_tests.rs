@@ -239,6 +239,7 @@ fn test_env(provider: Arc<dyn AiProvider>, src: Arc<RecordingSource>) -> ChatSes
         connections_context: String::new(),
         mcp_tools: Vec::new(),
         skill_tools: Vec::new(),
+        bridge_tools: Vec::new(),
         context_entries: Vec::new(),
         schema_driver: None,
         prompt_resolver: Arc::new(PromptResolver::new(&overrides, None)),
@@ -484,6 +485,63 @@ async fn chat_agent_mode_exposes_skill_tools_but_ask_does_not() {
     assert!(names.contains(&"list_skills".to_string()));
     assert!(names.contains(&"use_skill".to_string()));
     assert!(names.contains(&"read_skill_file".to_string()));
+}
+
+#[tokio::test]
+async fn chat_agent_mode_exposes_bridge_tools_but_ask_does_not() {
+    for (mode, expected) in [(AiAgentMode::Agent, true), (AiAgentMode::Ask, false)] {
+        let provider = Arc::new(ScriptedProvider::default().with_tools());
+        provider.push_stream(vec![stream_chunk("answer", true)]);
+        let mut env = test_env(provider.clone(), recording_source());
+        env.bridge_tools = vec![crate::ai::application::tool_bridge::plugin_tool_definition(
+            "acme.demo",
+            "list_users",
+            "List users",
+            &serde_json::json!({
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+            }),
+        )];
+        let host = RecordingLoopHost::default();
+        let (on_chunk, _seen) = sink();
+
+        run_chat_session(
+            env,
+            &host,
+            on_chunk,
+            ChatSessionInput {
+                request_id: format!("req-bridge-{mode:?}"),
+                db_session_id: None,
+                connection_id: None,
+                database: None,
+                messages: vec![user_message("List users")],
+                include_schema: false,
+                scenario: ChatScenario::Chat,
+                context_tables: None,
+                agent_mode: mode,
+                loaded_skill_ids: None,
+                editor_sql: None,
+                selection: None,
+                last_error: None,
+                result_preview: None,
+            },
+        )
+        .await
+        .expect("chat completes");
+        let request = provider.last_request().expect("request");
+        let names: Vec<_> = request
+            .tools
+            .unwrap_or_default()
+            .into_iter()
+            .map(|tool| tool.name)
+            .collect();
+        assert_eq!(
+            names.contains(&"plugin_acme.demo__list_users".to_string()),
+            expected,
+            "{mode:?}: {names:?}"
+        );
+    }
 }
 
 #[tokio::test]

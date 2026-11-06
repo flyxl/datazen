@@ -1,5 +1,6 @@
 //! AI-related Tauri IPC commands.
 
+mod bridge;
 mod chat;
 mod config;
 mod generate;
@@ -11,6 +12,7 @@ mod sessions;
 mod skills;
 mod util;
 
+pub use bridge::*;
 pub use chat::*;
 pub use config::*;
 pub use generate::*;
@@ -54,6 +56,9 @@ pub async fn ai_cancel(
 
 #[cfg(test)]
 pub(crate) use util::*;
+
+#[cfg(test)]
+mod bridge_tests;
 
 #[cfg(test)]
 mod command_test_host;

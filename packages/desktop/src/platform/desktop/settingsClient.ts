@@ -38,6 +38,8 @@ export interface DesktopSettings extends SharedSettings {
   mcpHttpEnabled?: boolean;
   mcpHttpPort?: number;
   mcpClientServers?: AppSettings['mcpClientServers'];
+  aiPluginToolIds?: string[];
+  aiWorkflowToolIds?: string[];
   contextDir: string;
   favoritesRoot?: string;
   checkForUpdatesOnStartup: boolean;
@@ -57,6 +59,8 @@ const HOST_EXTRAS_KEYS = [
   'mcpHttpEnabled',
   'mcpHttpPort',
   'mcpClientServers',
+  'aiPluginToolIds',
+  'aiWorkflowToolIds',
   'contextDir',
   'favoritesRoot',
   'checkForUpdatesOnStartup',

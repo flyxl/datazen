@@ -171,6 +171,13 @@ pub enum ToolKind {
         server_id: String,
         tool_name: String,
     },
+    Plugin {
+        plugin_id: String,
+        tool_name: String,
+    },
+    Workflow {
+        workflow_id: String,
+    },
     Unknown,
 }
 
@@ -194,7 +201,19 @@ pub fn classify_tool(name: &str) -> ToolKind {
             }
         }
     }
-    ToolKind::Unknown
+    match super::tool_bridge::parse_bridge_tool(name) {
+        Some(super::tool_bridge::BridgeToolKind::Plugin {
+            plugin_id,
+            tool_name,
+        }) => ToolKind::Plugin {
+            plugin_id,
+            tool_name,
+        },
+        Some(super::tool_bridge::BridgeToolKind::Workflow { workflow_id }) => {
+            ToolKind::Workflow { workflow_id }
+        }
+        None => ToolKind::Unknown,
+    }
 }
 
 // ─── Tool Loop Guard (FR-05) ───

@@ -229,6 +229,13 @@ const pack = {
   'settings.ai.strictEgress': 'Strikte KI-Datenausgabe (empfohlen)',
   'settings.ai.strictEgressHint':
     'Wenn aktiviert, werden Abfrageergebniszeilen und Payloads entfernt, bevor Inhalte an den KI-Anbieter gesendet werden. Anmeldedaten werden immer geschwärzt.',
+  'settings.ai.toolsTitle': 'Plugin- und Workflow-Tools',
+  'settings.ai.toolsHint': 'Nur Tools aus hier aktivierten Plugins und Workflows werden dem Agent angeboten. Nicht schreibgeschützte Aufrufe fragen nach; Stop bricht einen ausstehenden Aufruf ab.',
+  'settings.ai.toolsPlugins': 'Plugins',
+  'settings.ai.toolsWorkflows': 'Workflows',
+  'settings.ai.toolsNoPlugins': 'Kein installiertes Plugin deklariert AI-Tools.',
+  'settings.ai.toolsNoWorkflows': 'Keine gespeicherten Workflows.',
+  'settings.ai.toolsPluginDisabled': 'Aktiviere zuerst dieses Plugin.',
   'settings.ai.strictEgressDisableTitle': 'Mehr Datenübertragung von diesem Gerät zulassen?',
   'settings.ai.strictEgressDisableMessage':
     'Das Deaktivieren der strikten Datenausgabe kann Abfrageergebniszeilen, Dateiinhalte und Tool-Ausgaben an Ihren konfigurierten KI-Anbieter senden. Deaktivieren Sie dies nur, wenn Sie damit einverstanden sind, dass Daten Ihr Gerät verlassen.',

@@ -58,6 +58,9 @@ pub struct ChatSessionEnv {
     /// Skill tools, only when the host enabled skills and the provider accepts
     /// tools. Empty keeps CLI/local-agent providers and Ask sessions unchanged.
     pub skill_tools: Vec<ToolDefinition>,
+    /// Opt-in plugin/workflow tools resolved by the host for this turn. Empty
+    /// when no plugin/workflow is enabled or the provider cannot use tools.
+    pub bridge_tools: Vec<ToolDefinition>,
     /// 上下文文件条目（宿主 FS IO 读出，未脱敏；空 = 无上下文）。
     pub context_entries: Vec<(String, String)>,
     /// chat：schema 管线用的 live 驱动。`None` = 会话未知/未请求 schema
@@ -185,9 +188,10 @@ pub async fn run_chat_session(
         .connection_id
         .as_deref()
         .is_some_and(|id| !id.trim().is_empty());
-    let tool_context = AiToolContext {
+    let mut tool_context = AiToolContext {
         allowed_connection_id: input.connection_id.clone(),
         max_sample_rows: env.gate.max_sample_rows,
+        cancel_token: None,
     };
 
     let schema = schema_prompt
@@ -230,13 +234,22 @@ pub async fn run_chat_session(
             }
         }
     }
+    if agent_tools_allowed && !env.bridge_tools.is_empty() {
+        let tools = request.tools.get_or_insert_with(Vec::new);
+        for tool in env.bridge_tools {
+            if !tools.iter().any(|existing| existing.name == tool.name) {
+                tools.push(tool);
+            }
+        }
+    }
 
     // Register cancel token so `ai_cancel` IPC can interrupt this stream.
     let cancel_token = env
         .cancel_registry
         .register(&input.request_id, &env.cancel_owner)
         .await;
-    request.cancel_token = Some(cancel_token);
+    request.cancel_token = Some(cancel_token.clone());
+    tool_context.cancel_token = Some(cancel_token);
 
     emit_memory_used(&on_chunk, &input.request_id, &env.memory_used);
     let result = run_streaming_tool_loop(

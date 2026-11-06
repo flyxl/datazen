@@ -216,6 +216,13 @@ const pack = {
   'settings.ai.strictEgress': '엄격한 AI 데이터 전송 보호 (권장)',
   'settings.ai.strictEgressHint':
     '활성화하면 쿼리 결과 행과 페이로드가 제거된 상태로 AI 제공자에게 전송됩니다. 인증 정보는 항상 마스킹됩니다.',
+  'settings.ai.toolsTitle': '플러그인 및 Workflow 도구',
+  'settings.ai.toolsHint': '여기서 활성화한 플러그인과 Workflow의 도구만 Agent에 제공됩니다. 읽기 전용이 아닌 호출은 승인을 요청하며 Stop으로 대기 중인 호출을 취소할 수 있습니다.',
+  'settings.ai.toolsPlugins': '플러그인',
+  'settings.ai.toolsWorkflows': 'Workflow',
+  'settings.ai.toolsNoPlugins': 'AI 도구를 선언한 설치된 플러그인이 없습니다.',
+  'settings.ai.toolsNoWorkflows': '저장된 Workflow가 없습니다.',
+  'settings.ai.toolsPluginDisabled': '먼저 이 플러그인을 활성화하세요.',
   'settings.ai.strictEgressDisableTitle': '더 많은 데이터가 장치를 벗어나는 것을 허용하시겠습니까?',
   'settings.ai.strictEgressDisableMessage':
     '엄격한 전송 보호를 해제하면 쿼리 결과 행, 파일 내용, 도구 출력이 구성된 AI 제공자에게 전송될 수 있습니다. 데이터 유출 가능성을 수용하는 경우에만 해제하세요.',

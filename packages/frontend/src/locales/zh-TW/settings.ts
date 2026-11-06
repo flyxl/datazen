@@ -207,6 +207,13 @@ const pack = {
   'settings.ai.strictEgress': '嚴格 AI 出站（推薦）',
   'settings.ai.strictEgressHint':
     '開啟後，傳往 AI 服務商的內容會移除查詢結果資料列與 payload；認證憑證一律都會被脫敏。',
+  'settings.ai.toolsTitle': '外掛與 Workflow 工具',
+  'settings.ai.toolsHint': '只有在此啟用的外掛與 Workflow 才會提供給 Agent。非唯讀呼叫會請求確認；Stop 可取消待處理呼叫。',
+  'settings.ai.toolsPlugins': '外掛',
+  'settings.ai.toolsWorkflows': 'Workflow',
+  'settings.ai.toolsNoPlugins': '沒有已安裝外掛宣告 AI 工具。',
+  'settings.ai.toolsNoWorkflows': '沒有已儲存的 Workflow。',
+  'settings.ai.toolsPluginDisabled': '請先啟用此外掛。',
   'settings.ai.strictEgressDisableTitle': '允許更多資料離開本機？',
   'settings.ai.strictEgressDisableMessage':
     '關閉嚴格出站後，查詢結果資料列、上下文檔案與工具輸出可能會傳送到您設定的 AI 服務商。僅在您接受資料可能離開本機時才關閉。',

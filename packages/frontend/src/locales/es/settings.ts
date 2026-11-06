@@ -228,6 +228,13 @@ const pack = {
   'settings.ai.strictEgress': 'Protección estricta de salida de IA (recomendado)',
   'settings.ai.strictEgressHint':
     'Al activarse, las filas de resultados y las cargas útiles se eliminan antes de enviar el contenido al proveedor de IA. Las credenciales siempre se anonimizan.',
+  'settings.ai.toolsTitle': 'Herramientas de plugins y workflows',
+  'settings.ai.toolsHint': 'Solo las herramientas de los plugins y workflows habilitados aquí se ofrecen al Agent. Las llamadas no de solo lectura piden aprobación; Stop cancela una llamada pendiente.',
+  'settings.ai.toolsPlugins': 'Plugins',
+  'settings.ai.toolsWorkflows': 'Workflows',
+  'settings.ai.toolsNoPlugins': 'Ningún plugin instalado declara herramientas de IA.',
+  'settings.ai.toolsNoWorkflows': 'No hay workflows guardados.',
+  'settings.ai.toolsPluginDisabled': 'Habilita este plugin primero.',
   'settings.ai.strictEgressDisableTitle': '¿Permitir que más datos salgan de este dispositivo?',
   'settings.ai.strictEgressDisableMessage':
     'Desactivar la protección estricta puede enviar filas de resultados, contenidos de archivos y salidas de herramientas a su proveedor de IA configurado. Desactívelo solo si acepta que los datos salgan de su máquina.',
