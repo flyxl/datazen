@@ -21,6 +21,7 @@
 | BUG-017 | T19 | MCP database/namespace scope 只校验工具参数，SQL 可跨库/跨 schema 执行；schema resource 与默认解析误拒；审计目标/行数/requestId 不完整 | 已验证 |
 | BUG-018 | T20 | Redis key_pattern 可被多 key EXISTS 绕过；拒绝的 Redis 命令审计记为 allow；batch 无逐语句审计且审计 rowCount 为空 | 已验证 |
 | BUG-019 | T21 | HTTP token 输入框使用未定义的 Tailwind 颜色类 `bg-bg`，`tailwind-colour-classes` 门禁失败 | 已验证 |
+| BUG-020 | T22 | 插件模板参数未转义：审批 SQL 泄漏凭据，SQL 字面量可被参数改变 | 待修复 |
 
 
 ## T19 MCP scope / 逐次审批 / 审计验收记录（已验证）
@@ -135,3 +136,38 @@ JSONL，审计 append 失败不影响主调用。`8fa40665a` 的 7 个代码文�
 | 全量前端 `vitest` | 8232 passed / 8 failed（均为既有 Pro/tauri/driver 环境用例） |
 | `pnpm typecheck:tsc` / `cargo fmt --all -- --check` / `git diff --check` | 通过 / 0 / 0 |
 | T21 范围 | 29 个 T21 文件；无 generated/无关文件 |
+
+## T22 插件/Workflow 工具桥独立复测（2026-11-06，`fc97c8647`）
+
+**结论：不通过（BUG-020）。** opt-in、运行时 disable、命名、schema 校验、只读直跑、
+非只读审批、Stop、结果 gate、审计和前端开关主路径通过；但插件 `input` 模板参数未转义，
+审批 SQL 可泄漏凭据，字符串参数可改变 SQL。两处均见
+[BUG-020](ai-assistant-parity-bugs/BUG-020.md)。
+
+- 未 opt-in 时无工具定义；运行时禁用插件后定义消失，旧工具调用 fail closed、不弹审批、
+  不执行；独立临时测试通过。
+- 命名 `plugin_<id>__<tool>` / `workflow_<id>` 唯一；非法/未知参数在审批前拒绝。
+- 只读 workflow 直跑；非只读 plugin/workflow 走 T19 审批 broker；Deny/Timeout/Cancel
+  不执行；Stop 取消；结果 64 KiB 截断；工具结果经 gate 脱敏。
+- 独立临时测试发现：模板 `SELECT '{{password}}'` 的审批 `sql` 原样含 `hunter2`
+  （`arguments.password` 已 `[REDACTED]`）；模板 `name = '{{name}}'` 对 `O'Brien`
+  原样渲染，未做 SQL 字面量转义。临时测试已删除，未修改生产代码。
+- T19/T20/T21 回归套件随完整 Rust/前端测试通过。
+
+| 范围 | 结果 |
+|---|---|
+| `cargo test -p datazen --features mcp --lib` | 1714 passed |
+| `cargo test -p datazen_desktop --lib` | 1389 passed / 10 ignored |
+| T22 core bridge | 5 passed |
+| T22 host bridge | 6 passed |
+| `cargo test -p datazen-server --features mcp --locked` | 361 passed |
+| T22 前端（SettingsContent 34 + settingsClient 6 + McpApprovalHost 5） | 45 passed |
+| `tailwind-colour-classes` | 7 passed |
+| 全量前端 | 8233 passed / 8 failed（均为既有 Pro/tauri/driver 环境用例） |
+| `pnpm typecheck:tsc`（临时映射 `@datazen/*`） | 通过 |
+| `cargo fmt --all -- --check` / `git diff --check` | 0 / 0 |
+| T22 范围 | 41 个 T22 文件；无 generated/无关文件 |
+
+> 未映射的 `@datazen/*` 仍解析到主检出旧包，`mcpAllowedDatabases/Namespaces` 与
+> `LegacyCommandName` 报错属于并行 worktree 环境；映射到当前 worktree 后 tsc 通过，
+> 未发现 T22 新增类型错误。
