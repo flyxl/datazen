@@ -19,7 +19,7 @@
 | BUG-015 | T17 | autoUse 为死设置且 listing 无显式选择门控；同名技能未并列；缺 2-skill 正文预算 | 已验证 |
 | BUG-016 | T18 | `#` 方言、CLI ack、onboarding、macOS bundle argv、SQL Server 非法 LIMIT 已修复 | 已验证 |
 | BUG-017 | T19 | MCP database/namespace scope 只校验工具参数，SQL 可跨库/跨 schema 执行；schema resource 与默认解析误拒；审计目标/行数/requestId 不完整 | 已验证 |
-| BUG-018 | T20 | Redis key_pattern 可被多 key EXISTS 绕过；拒绝的 Redis 命令审计记为 allow；batch 无逐语句审计且审计 rowCount 为空 | 待修复 |
+| BUG-018 | T20 | Redis key_pattern 可被多 key EXISTS 绕过；拒绝的 Redis 命令审计记为 allow；batch 无逐语句审计且审计 rowCount 为空 | 已验证 |
 
 
 ## T19 MCP scope / 逐次审批 / 审计验收记录（已验证）
@@ -74,39 +74,29 @@ JSONL，审计 append 失败不影响主调用。`8fa40665a` 的 7 个代码文�
 > worktree 包的映射下执行，检查完成后已恢复软链；这是并行 worktree 的环境动作，
 > 不进入提交。
 
-## T20 MCP batch/Redis 独立复测（2026-11-06，`70ed89d18`）
+## T20 MCP batch/Redis 独立复测（2026-11-06，`4d3de19d2`）
 
-**结论：不通过。** `70ed89d18`（父 `abe888ec8`）修复了原始 9b7277f8a 的三个问题：
-Redis `EXISTS`/`MGET` 多 key 均校验 key_pattern、`TOUCH` 归为写命令、拒绝的 Redis
-命令审计为 `deny`、batch 增加逐语句/汇总审计并覆盖 rollback/未执行。详见
+**结论：已验证。** `4d3de19d2`（父 `0c601ddfa`）修复了 batch 审计的 SQL/凭据泄漏、
+逐语句实际 target 和结构化 index，并保持 Redis/T19 行为。详见
 [BUG-018](ai-assistant-parity-bugs/BUG-018.md)。
 
-仍有 2 个阻断项：
-
-- **P0：batch 失败审计泄漏完整 SQL 和凭据。** 失败语句的 reason 直接拼接 driver
-  error；`SELECT no_such_column_t20, 'secret-pw-t20'` 的审计 reason 同时包含完整
-  SQL 和合成凭据。
-- **P1：batch 逐语句审计 target 不是该语句实际 target。** MySQL
-  `SELECT 1; SELECT COUNT(*) FROM datazen_t18.datazen_t18_probe` 两条审计都记录
-  `datazen_demo`，但第二条实际访问 `datazen_t18`。
-
-已通过的主路径：batch 默认只读、写语句整批拒绝且无副作用、`transaction=true` 才开
-事务、失败 `rolledBack=true`、部分失败 `stoppedAt`/aggregate rowCount 正确；逐语句
-scope 拒绝 `information_schema`/`pg_catalog`/`template1`；SQL 字符串/注释/多语句边界
-安全。Redis GET/MGET/SCAN、写/危险/管理拒绝、多 key pattern、limit/COUNT、输出体积、
-参数转义、真实 Redis、scope 均通过。DML `rowsAffected` 通过临时注入测试验证为 3
-（rowCount/审计一致）。工具契约 15 个工具及注解通过；T19 query/list_tables/scope/
-审批/审计回归通过。
-
-`pnpm typecheck:tsc` 在临时把 `@datazen/*` 指向当前 worktree 包后通过；不映射时
-`LegacyCommandName`/`mcpAllowedDatabases` 报错来自主检出旧包，不是 T20/T19 类型回归。
+- `SELECT no_such_column_t20, 'secret-pw-t20'` 的 tool 输出和审计 raw JSON 均不含
+  SQL/列名/合成凭据，只暴露 `errorCode` 和安全描述；连接、commit、rollback 失败同样安全。
+- MySQL `SELECT 1; SELECT COUNT(*) FROM datazen_t18.datazen_t18_probe` 的审计 index
+  0/1 分别记录 `datazen_demo` 和实际 `datazen_t18`；越界/跳过语句记录尝试 target，
+  汇总行保留且无 index。
+- 审计 `index` 为零基结构化字段，前端类型同步为 `index?: number | null`，typecheck 通过。
+- Redis EXISTS/MGET 多 key、TOUCH/写拒绝、deny/allow 审计不回归；T19 query/list_tables/
+  scope/审批/审计不回归。
+- `pnpm typecheck:tsc` 在临时把 `@datazen/*` 指向当前 worktree 包后通过；不映射时的
+  `LegacyCommandName`/`mcpAllowedDatabases` 报错来自主检出旧包，不是 T20/T19 类型回归。
 
 | 范围 | 结果 |
 |---|---|
-| `cargo test -p datazen --features mcp --lib` | 1705 passed |
-| `cargo test -p datazen_desktop --lib` | 1365 passed / 10 ignored |
+| `cargo test -p datazen --features mcp --lib` | 1707 passed |
+| `cargo test -p datazen_desktop --lib` | 1368 passed / 10 ignored |
 | `cargo test -p datazen-server --features mcp --locked` | 361 passed |
 | T19 定向前端 | 39 passed |
 | 全量前端 `vitest` | 8231 passed / 8 failed（环境用例，非 T20） |
 | `pnpm typecheck:tsc` / `cargo fmt --all -- --check` / `git diff --check` | 通过 / 0 / 0 |
-| T20 修复范围 | 8 个 T20 文件；无 generated/无关文件 |
+| T20 修复范围 | 5 个 T20 文件；无 generated/无关文件 |
