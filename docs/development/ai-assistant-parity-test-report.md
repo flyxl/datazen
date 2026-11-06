@@ -69,3 +69,24 @@ database/namespace scope 不约束 `query` 的 SQL 目标（真实 MySQL 允许�
 黑盒 MCP 使用隔离 `DATAZEN_DATA_DIR` 的 `datazen_desktop --mcp`；审批在 headless 无
 presenter 时一律 Deny，Allow once 由桌面集成测试覆盖。审计 append 失败时查询仍成功，
 未阻断调用。
+
+
+## BUG-017 修复后复测（2026-11-06，`f1a94b2d1`）
+
+**结论：仍不通过，BUG-017 保持“待修复”。** 该提交相对 `a0676c8f0` 仅增加审计表
+namespace 展示，Rust SQL scope 逻辑未变。真实 MCP 黑盒仍复现：
+
+- MySQL 允许库 `mysql` 时，`SHOW TABLES FROM datazen_demo`、`SHOW DATABASES`、
+  `SHOW CREATE TABLE datazen_demo.test_orders` 均执行成功，SQL scope 未覆盖 `SHOW`；
+  审计把目标记为 `mysql`。
+- PostgreSQL 连接 `database=null`、`schema=null`、scope `postgres` 时，`SELECT 1`
+  在解析前报默认目标探针 `has no database`，仍无法按实际默认库解析。
+- 允许 `postgres` + `public` 时，schema resource 不再报错，但返回内容为空（PG 驱动
+  要求显式 schema，`connection_schema_context` 固定传 `schema: null`）。
+- 其余重点通过：显式默认库下 MySQL/PG 跨库跨 schema 的普通 SELECT、CTE、子查询、
+  UNION、JOIN、DML、多语句、USE/SET、解析失败均在执行前拒绝；schema 非 null 时
+  namespace 探针可用；SELECT rowCount/requestId、前端审计列、审批回归正常。
+
+复跑统计：`datazen` 1679 passed；`datazen_desktop` 1358 passed / 9 ignored；T19
+定向前端 39 passed；全量前端 8231 passed / 8 failed（环境用例）；临时映射
+`pnpm typecheck:tsc` 通过；`cargo fmt --all -- --check`、`git diff --check` 为 0。
