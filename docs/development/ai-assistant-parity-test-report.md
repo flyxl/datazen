@@ -27,7 +27,8 @@
 | BUG-023 | T24 | apply_write 允许只读 SQL 执行；applied 回执/审计缺少 rowCount | 已验证 |
 | BUG-024 | T24 | 数据修改 CTE 影响预览/Safe Mode 失效；函数式写 PRAGMA 被拒 | 已验证 |
 | BUG-025 | T24 | AiWriteProposalHost 测试 rowCount mock 类型导致 tsc 失败 | 已验证 |
-| BUG-027 | T26 | T26 文档链接失效且 MCP/Agent 工具面描述与实现不符 | 待修复 |
+| BUG-027 | T26 | T26 文档链接失效且 MCP/Agent 工具面描述与实现不符 | 已验证 |
+| BUG-028 | T26 | persistence-model 仍有 22 处 `src-tauri` 旧路径链接不可达 | 待修复 |
 
 
 ## T19 MCP scope / 逐次审批 / 审计验收记录（已验证）
@@ -669,3 +670,42 @@ skill 均有对应实现/测试。
 注入 MCP 工具。后者与实际 `chat_session.rs` 的 Ask 清零逻辑及 frontend 文档
 §1.9 冲突。详见 [BUG-027](ai-assistant-parity-bugs/BUG-027.md)。
 **T26：未通过（BUG-027）。**
+
+## T26 `040bfcd26` 复验：BUG-027 已验证；仍被 BUG-028 阻塞
+
+`docs: correct AI parity documentation drift` 只改 4 个长期文档
+（`backend/ai.md`、`backend/mcp.md`、`frontend/ai.md`、`security.md`），无代码
+变更、无 generated/temp/凭据。`git diff 3833ae919..040bfcd26` 的代码文件为空，
+工作区 clean。
+
+BUG-027 的 4 项已逐项关闭：
+
+| 验收项 | 结果 |
+|---|---|
+| security 链接 + anchor | 从 `security.md` 可达 `docs/architecture/platform/persistence-model.md`；`### 4.1 桌面本地持久化现状（已实现）` anchor 存在 |
+| backend/ai §1.11 Ask/Agent | Ask 仅 `ask_questions`；Agent 5 元数据 + 绑定连接 `query_readonly`/`sample_rows`/`propose_write`，`dbToolPolicy` 过滤正确；与 §1.13 一致 |
+| MCP 端口描述 | “尚未端口化”已删；`McpToolBroker`/`mcp_tools.rs`/`feature_ports.rs` 描述与代码一致 |
+| backend/mcp Ask | Ask 不注入 MCP/DB，只有 Agent 注入；与 `chat_session.rs` 及 frontend §1.9 一致 |
+| 工具数 / ci-docs | `MCP_ALL_TOOLS == 15`（12 + 3）；`ci-docs` 通过 |
+
+回归门禁（均与 T26 首次一致）：
+
+| 范围 | 结果 |
+|---|---|
+| `datazen --lib --features ai,workflow,wapps` | 1768 passed |
+| `datazen_desktop --lib` | 1416 passed / 10 ignored |
+| `datazen-server --features mcp` | 370 passed |
+| `datazen-cli` | 51 passed / 6 ignored |
+| 全量前端 | 8241 passed / 8 既有 scripts 失败 / 9 worktree 软链 suite 加载失败 |
+| DDD layers / server deps / platform boundaries | 23 无环 / 292、0 forbidden / 0 violation |
+| fmt / diff | 0 / 0 |
+| 根 `pnpm typecheck` | 48 个旧主检出软链错误（与首次一致） |
+| 映射 `typecheck:tsc` / `build:bundle` | 0 / 0 |
+
+但 T26 的“六份长期文档链接全量可达”仍不成立：`persistence-model.md` 有
+22 处 `../../../src-tauri/...` 指向已不存在的目录（12 个唯一目标），另有 1 个
+stale `#11-artifactstore-服务端实现` anchor（实际标题为
+`ArtifactRepository`）。这些在 3833ae919 前已存在，不是 040bfcd26 的回归，但
+仍属于 T26 所改文档。详见 [BUG-028](ai-assistant-parity-bugs/BUG-028.md)。
+
+**T26：BUG-027 已验证；仍不通过（BUG-028）。**
