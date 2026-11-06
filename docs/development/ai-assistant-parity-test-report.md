@@ -90,3 +90,24 @@ namespace 展示，Rust SQL scope 逻辑未变。真实 MCP 黑盒仍复现：
 复跑统计：`datazen` 1679 passed；`datazen_desktop` 1358 passed / 9 ignored；T19
 定向前端 39 passed；全量前端 8231 passed / 8 failed（环境用例）；临时映射
 `pnpm typecheck:tsc` 通过；`cargo fmt --all -- --check`、`git diff --check` 为 0。
+
+
+## BUG-017 SHOW/默认目标修复后复测（2026-11-06，`0006d30ca`）
+
+**结论：仍不通过，BUG-017 保持“待修复”。** SHOW/schema resource/拒绝审计缺口已
+修复，但默认库为 null 的 query 执行仍未打通：
+
+- MySQL 允许 `mysql` 时，`SHOW TABLES FROM datazen_demo`、`SHOW DATABASES`、
+  `SHOW CREATE TABLE datazen_demo.test_orders`、`SHOW COLUMNS/INDEX/TABLE STATUS`
+  的 scope 外目标均在执行前拒绝；`SHOW TABLES FROM mysql` 等 scope 内 SHOW 正常。
+- PG `information_schema`/`pg_catalog` 的普通 SELECT、SHOW TABLES/CREATE/INDEX
+  均拒绝，拒绝审计记录实际 namespace。
+- schema resource `postgres` + `public` 返回非空 DDL（1547 chars），不再误拒/空内容。
+- 阻断项：`conn_e2e_pg` 的 `database=null`、`schema=null`、scope `postgres` 时，
+  `SELECT 1 AS ok` 仍报 `Query step 'read-only-command' has no database`；探针和
+  审计已是 `postgres/public`，但 query 命令没有接收解析出的 database。`schema=null`
+  但 `database=postgres` 时同一语句通过。
+
+复跑统计：`datazen` 1683 passed；`datazen_desktop` 1358 passed / 9 ignored；T19
+定向前端 37 passed；全量前端 8231 passed / 8 failed（环境用例）；临时映射
+`pnpm typecheck:tsc` 通过；`cargo fmt --all -- --check`、`git diff --check` 为 0。
