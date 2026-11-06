@@ -25,9 +25,12 @@ pub(crate) fn stale_manual_target_error() -> FeatureError {
 }
 
 use super::change_set::{
-    bound_statement_for_plan, CommitPendingChangesResponse, RowChangePlan, RowCommitStatementResult,
+    bound_statement_for_plan, validate_immutable_plan, validate_table_context,
+    CommitPendingChangesRequest, CommitPendingChangesResponse, PlannedStatement, RowChangePlan,
+    RowCommitStatementResult,
 };
 use super::insert_plan::bound_insert_statement_for_plan;
+use super::{validate_commit_facts, validate_connection_facts, ConnectionFacts, TableColumnSource};
 use crate::connection::domain::NamespaceTarget;
 use crate::execution::application::use_cases::ConnectionUseCases;
 use crate::execution::domain::session::ContextConfidence;
@@ -35,10 +38,10 @@ use crate::execution::domain::ExecutionTarget;
 use crate::execution::requests::*;
 use crate::execution::{IdempotentOperation, SessionHandle};
 use crate::shared::context::{OwnerRef, RequestContext};
-use crate::shared::id::ConnectionId;
+use crate::shared::id::{ConnectionId, Counter};
 use crate::table_editing::error::TableEditingError as FeatureError;
 use crate::table_editing::ports::ArtifactChunkReader;
-use datazen_driver_api::DatabaseDriver;
+use datazen_driver_api::{BoundSqlStatement, DatabaseDriver};
 use std::sync::Arc;
 
 struct TableSession {
@@ -145,11 +148,7 @@ impl TableSession {
                     )
                     .await
                     .map_err(FeatureError::from)?;
-                if let Some(affected) = chunk
-                    .output
-                    .as_ref()
-                    .and_then(rows_affected_of_output)
-                {
+                if let Some(affected) = chunk.output.as_ref().and_then(rows_affected_of_output) {
                     return Ok(Some(affected));
                 }
             }
@@ -176,17 +175,15 @@ fn rows_affected_of_output(output: &serde_json::Value) -> Option<u64> {
         })
 }
 
-pub async fn execute_plan(
+/// The plan's writes in execution order: new rows first (a child row may
+/// reference a parent inserted in the same batch), then updates, then deletes.
+/// Both commit halves (the ChangeSet's `execute_plan` and the result-cell's
+/// `commit_result_cell_changes`) share the order and the statement rendering,
+/// so the two transports run the same statements in the same sequence.
+fn plan_writes<'a>(
     driver: &dyn DatabaseDriver,
-    plan: &RowChangePlan,
-    manual_handle: Option<SessionHandle>,
-    runtime: Arc<dyn ConnectionUseCases>,
-    artifacts: Arc<dyn ArtifactChunkReader>,
-    context: RequestContext,
-) -> Result<CommitPendingChangesResponse, FeatureError> {
-    // Execution order is fixed: new rows first (a child row may reference a
-    // parent inserted in the same batch), then updates, then deletes. All three
-    // share the transaction opened below.
+    plan: &'a RowChangePlan,
+) -> Result<Vec<(&'static str, &'a PlannedStatement, BoundSqlStatement)>, FeatureError> {
     let mut writes = Vec::new();
     for change in &plan.inserts {
         let statement = bound_insert_statement_for_plan(driver, &plan.table.table, change)?;
@@ -199,6 +196,21 @@ pub async fn execute_plan(
             writes.push((operation, change, statement));
         }
     }
+    Ok(writes)
+}
+
+pub async fn execute_plan(
+    driver: &dyn DatabaseDriver,
+    plan: &RowChangePlan,
+    manual_handle: Option<SessionHandle>,
+    runtime: Arc<dyn ConnectionUseCases>,
+    artifacts: Arc<dyn ArtifactChunkReader>,
+    context: RequestContext,
+) -> Result<CommitPendingChangesResponse, FeatureError> {
+    // Execution order is fixed: new rows first (a child row may reference a
+    // parent inserted in the same batch), then updates, then deletes. All three
+    // share the transaction opened below.
+    let writes = plan_writes(driver, plan)?;
     if writes.is_empty() {
         return Ok(CommitPendingChangesResponse {
             plan_id: plan.plan_id.clone(),
@@ -274,11 +286,9 @@ pub async fn execute_plan(
     // 观察事实。
     if opened.observed_context.confidence == ContextConfidence::Confirmed
         && (opened.observed_context.namespace.database != plan.table.database
-            || plan
-                .table
-                .schema
-                .as_ref()
-                .is_some_and(|schema| opened.observed_context.namespace.schema.as_ref() != Some(schema)))
+            || plan.table.schema.as_ref().is_some_and(|schema| {
+                opened.observed_context.namespace.schema.as_ref() != Some(schema)
+            }))
     {
         if manual {
             session.handle = None;
@@ -379,4 +389,140 @@ pub async fn execute_plan(
         (Err(error), Ok(_)) => Err(error),
         (Err(error), Err(_)) => Err(FeatureError::Validation(format!("{error}; rollback could not be confirmed. Reload and verify the target before retrying."))),
     }
+}
+
+/// The result-cell commit half's stale refusal: the plan's target and the
+/// original session no longer agree (the session moved, or the result's
+/// session was recreated). Same user action as any stale plan.
+pub(crate) fn stale_result_target_error() -> FeatureError {
+    FeatureError::Validation(
+        "grid.commit.stalePlan: Result session no longer matches the plan's target; execute the query again and preview the change"
+            .into(),
+    )
+}
+
+/// Execute a fingerprint-confirmed single-cell plan in the session that
+/// produced the result (the original-session binding behind
+/// `commitQueryResultCell`).
+///
+/// The gates are [`super::commit_changes`]' five — context facts, the config
+/// CAS, the read-only refusal, namespace drift and the immutable-plan rebuild
+/// against freshly loaded columns — via the same helpers, in the same order.
+/// The execution half differs on purpose:
+///
+/// * the plan runs in the **caller's session** (`handle`) through
+///   `execute_in_session` — the original-session binding is the point of the
+///   feature, so no session is opened and none is closed (the client keeps
+///   the result grid and may edit more cells on it);
+/// * no transaction is begun or committed here: transaction semantics follow
+///   the session (`w8-knife4-result-cell-design.md` §1 step 6). A session
+///   inside an explicit transaction keeps the write in it; an autocommit
+///   session commits the single statement — the desktop write path behaves
+///   the same way, and an ambiguous affected-row report is refused with
+///   `grid.commit.affectedMismatch` telling the caller to inspect the target.
+/// * the session re-validation is capability-aware (the same ruling as the
+///   owned-session path above): `connection_id` is a registry fact and is
+///   always checked, while namespace claims are observations — checked only
+///   when the driver could actually observe them. Every server-shape driver
+///   is unobservable today, so treating an absent observation as drift would
+///   make the endpoint structurally unserviceable.
+#[allow(clippy::too_many_arguments)]
+pub async fn commit_result_cell_changes(
+    driver: &dyn DatabaseDriver,
+    request: CommitPendingChangesRequest,
+    facts: &ConnectionFacts,
+    columns: &dyn TableColumnSource,
+    handle: SessionHandle,
+    runtime: Arc<dyn ConnectionUseCases>,
+    artifacts: Arc<dyn ArtifactChunkReader>,
+    context: RequestContext,
+) -> Result<CommitPendingChangesResponse, FeatureError> {
+    validate_table_context(&request.plan.table)?;
+    validate_connection_facts(facts, &request.plan.table)?;
+    validate_commit_facts(&request, facts)?;
+    let loaded = columns.table_columns(&request.plan.table).await?;
+    let plan = validate_immutable_plan(
+        driver,
+        &request.db_session_id,
+        &request.plan,
+        &request.fingerprint,
+        &loaded,
+    )?;
+    let writes = plan_writes(driver, &plan)?;
+    if writes.is_empty() {
+        return Ok(CommitPendingChangesResponse {
+            plan_id: plan.plan_id.clone(),
+            fingerprint: plan.fingerprint.clone(),
+            statements: Vec::new(),
+            affected_rows: 0,
+        });
+    }
+    let view = runtime
+        .get_session(&context, handle.clone())
+        .await
+        .map_err(FeatureError::from)?;
+    if view.connection_id.as_str() != plan.table.connection_id {
+        return Err(stale_result_target_error());
+    }
+    if view.observed_context.confidence == ContextConfidence::Confirmed
+        && (view.observed_context.namespace.database != plan.table.database
+            || plan.table.schema.as_ref().is_some_and(|schema| {
+                view.observed_context.namespace.schema.as_ref() != Some(schema)
+            }))
+    {
+        return Err(stale_result_target_error());
+    }
+    if plan.config_revision != Some(view.config_revision) {
+        return Err(FeatureError::Validation(
+            "grid.commit.stalePlan: Connection configuration changed before execution; preview again"
+                .into(),
+        ));
+    }
+    let mut session = TableSession {
+        runtime,
+        artifacts,
+        context,
+        handle: Some(handle),
+    };
+    let result = async {
+        let mut statements = Vec::new();
+        for (operation, change, statement) in writes {
+            let affected = session
+                .execute(
+                    "execute",
+                    serde_json::json!({
+                        "sql": statement.sql, "boundParameters": statement.parameters,
+                    }),
+                )
+                .await?
+                .ok_or_else(|| {
+                    FeatureError::Validation(
+                        "grid.commit.affectedMismatch: Driver did not report affected rows"
+                            .into(),
+                    )
+                })?;
+            if affected != 1 {
+                return Err(FeatureError::Validation(format!(
+                    "grid.commit.affectedMismatch: Result edit affected {affected} rows; inspect the target and current transaction before retrying"
+                )));
+            }
+            statements.push(RowCommitStatementResult {
+                operation: operation.into(),
+                row_identity: change.row_identity.clone(),
+                affected_rows: affected,
+            });
+        }
+        Ok(CommitPendingChangesResponse {
+            plan_id: plan.plan_id.clone(),
+            fingerprint: plan.fingerprint.clone(),
+            affected_rows: statements.len() as u64,
+            statements,
+        })
+    }
+    .await;
+    // The original session stays alive whatever the outcome: it is the
+    // client's live query session, never this commit's resource. Clearing the
+    // handle keeps `TableSession`'s Drop from closing it.
+    session.handle = None;
+    result
 }

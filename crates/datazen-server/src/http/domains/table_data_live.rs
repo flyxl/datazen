@@ -60,8 +60,8 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use datazen::connection::domain::catalog::ConnectionRepository as _;
-use datazen::execution::application::LivePurpose;
 use datazen::execution::application::orchestration::{LiveConnectionError, LiveConnectionLease};
+use datazen::execution::application::LivePurpose;
 use datazen::schema::application::scope::{
     embedded_schema_of, metadata_schema, table_read_database,
 };
@@ -75,16 +75,22 @@ use datazen::shared::error::{ApiError, ApiErrorCode};
 use datazen::shared::id::DbSessionId;
 use datazen_driver_api::{ConnectionHandle, LegacyCatalogReader, SqlTarget};
 
-use crate::http::domains::table_data::{TableDataState, not_visible, profile_unavailable};
+use crate::http::domains::table_data::{not_visible, profile_unavailable, TableDataState};
 use crate::http::router::{api_error_response, invalid_argument, SessionIdentity};
 
 // ── 共享借出助手 ────────────────────────────────────────────────────────────
 
 /// 借出结果：会话视图（连接 id / 配置版本的权威投影）+ 活连接租约（RAII，
-/// 掉出作用域即归还）。
+/// 掉出作用域即归还）+ 本次借出 resolve 到的 runtime 实例（刀 0 cell 语义：
+/// 与开会话的实例是同一个 `Arc`；result-cell 写半边要拿它读执行台账与
+/// 产物块——同一请求内不再二次 resolve，「单次 resolve 是构造」的刀 3
+/// 裁决沿用到写半边）。
 pub(crate) struct BorrowedLive {
     pub session: datazen::execution::SessionView,
     pub lease: LiveConnectionLease,
+    /// 本次借出内部 resolve 到的 runtime 实例（与 borrow 走的是同一个
+    /// `Arc`，不是第二次 resolve）。
+    pub runtime: Arc<datazen::execution::application::orchestration::RuntimeConnectionUseCases>,
 }
 
 /// 四条读端点共用的活句柄借出路径（estimate 闸序的活句柄版）：
@@ -125,7 +131,11 @@ pub(crate) async fn borrow_live_for_session(
         .borrow_live_connection_by_id(ctx, db_session_id, LivePurpose::CommandExecution)
         .await
         .map_err(api_error_response)?;
-    Ok(BorrowedLive { session, lease })
+    Ok(BorrowedLive {
+        session,
+        lease,
+        runtime,
+    })
 }
 
 /// 取出借用的 `(driver, handle)`。借出刚刚成功，`connection()` 在这里拒绝只
@@ -133,7 +143,15 @@ pub(crate) async fn borrow_live_for_session(
 /// `convert::live` 逐臂同码表（SessionLost 桶 → 409；NotWired/Refused 桶 →
 /// 503），宁可让调用方走执行路径拿 `SessionLost`，不许拿看似可用的句柄打
 /// 驱动。
-pub(crate) fn lend(connection: Result<&datazen::execution::application::LiveConnection, LiveConnectionError>) -> Result<(Arc<dyn datazen_driver_api::DatabaseDriver>, ConnectionHandle), Response> {
+pub(crate) fn lend(
+    connection: Result<&datazen::execution::application::LiveConnection, LiveConnectionError>,
+) -> Result<
+    (
+        Arc<dyn datazen_driver_api::DatabaseDriver>,
+        ConnectionHandle,
+    ),
+    Response,
+> {
     let connection = connection.map_err(|error| {
         let code = match &error {
             LiveConnectionError::SessionLost(_)
@@ -187,9 +205,7 @@ impl ServerForeignKeyNavigationSource {
         Self {
             lease: state.lease.clone(),
             connections: state.connections.clone(),
-            scope: datazen::connection::domain::ConnectionScope::new(
-                ctx.organization_id.as_str(),
-            ),
+            scope: datazen::connection::domain::ConnectionScope::new(ctx.organization_id.as_str()),
             ctx,
         }
     }
@@ -218,9 +234,9 @@ impl ForeignKeyNavigationSource for ServerForeignKeyNavigationSource {
                     FkSessionError::Unavailable(error.to_string())
                 }
             })?;
-        let connection = lease.connection().map_err(|error| {
-            FkSessionError::Unavailable(error.to_string())
-        })?;
+        let connection = lease
+            .connection()
+            .map_err(|error| FkSessionError::Unavailable(error.to_string()))?;
         let config = self
             .connections
             .get(&self.scope, session.connection_id.as_str())
@@ -246,12 +262,10 @@ impl ForeignKeyNavigationSource for ServerForeignKeyNavigationSource {
 /// 规则失败，不带 grid 前缀。
 fn fk_navigation_error_response(error: FkNavigationError) -> Response {
     match error {
-        FkNavigationError::Coded { code, message } => {
-            api_error_response(ApiError::new(
-                ApiErrorCode::InvalidArgument,
-                format!("{code}: {message}"),
-            ))
-        }
+        FkNavigationError::Coded { code, message } => api_error_response(ApiError::new(
+            ApiErrorCode::InvalidArgument,
+            format!("{code}: {message}"),
+        )),
         FkNavigationError::Session(FkSessionError::NotFound(message)) => {
             api_error_response(ApiError::new(ApiErrorCode::NotFound, message))
         }
@@ -351,8 +365,12 @@ pub(crate) async fn handler_search_table_values(
         Ok(lent) => lent,
         Err(response) => return response,
     };
-    let config = match connection_config_of(&state, &identity.ctx, borrowed.session.connection_id.as_str())
-        .await
+    let config = match connection_config_of(
+        &state,
+        &identity.ctx,
+        borrowed.session.connection_id.as_str(),
+    )
+    .await
     {
         Ok(config) => config,
         Err(response) => return response,
@@ -438,8 +456,12 @@ pub(crate) async fn handler_resolve_result_origin(
         Ok(lent) => lent,
         Err(response) => return response,
     };
-    let config = match connection_config_of(&state, &identity.ctx, borrowed.session.connection_id.as_str())
-        .await
+    let config = match connection_config_of(
+        &state,
+        &identity.ctx,
+        borrowed.session.connection_id.as_str(),
+    )
+    .await
     {
         Ok(config) => config,
         Err(response) => return response,
@@ -452,9 +474,7 @@ pub(crate) async fn handler_resolve_result_origin(
         .map(str::to_owned);
     let schema = nonblank(request.schema.as_deref())
         .filter(|_| driver.has_schema_level())
-        .or_else(|| {
-            nonblank(config.schema.as_deref()).filter(|_| driver.has_schema_level())
-        })
+        .or_else(|| nonblank(config.schema.as_deref()).filter(|_| driver.has_schema_level()))
         .map(str::to_owned);
     let target = SqlTarget::new(database.as_deref(), schema.as_deref());
     let origin = match driver
@@ -507,8 +527,11 @@ pub(crate) async fn handler_resolve_result_origin(
 ///
 /// `None` means the catalog could not answer. The caller treats that as
 /// "nothing is provable", never as "the table has no key".
+///
+/// `pub(crate)`：刀 4 的 result-cell 写半边（`table_data.rs`）写前 origin
+/// 重读走同一份规则（列/主键半边单一事实源，不复制）。
 #[allow(clippy::too_many_arguments)]
-async fn source_table_columns(
+pub(crate) async fn source_table_columns(
     state: &TableDataState,
     connection_id: &str,
     driver: &dyn datazen_driver_api::DatabaseDriver,
@@ -531,9 +554,7 @@ async fn source_table_columns(
     // declaration first.
     let schema = nonblank(schema)
         .filter(|_| driver.has_schema_level())
-        .or_else(|| {
-            nonblank(config.schema.as_deref()).filter(|_| driver.has_schema_level())
-        });
+        .or_else(|| nonblank(config.schema.as_deref()).filter(|_| driver.has_schema_level()));
     let catalog = LegacyCatalogReader::new(driver);
     state
         .schema_cache
@@ -556,6 +577,7 @@ fn origin_table_name(origin: &datazen_driver_api::ResultOrigin) -> Option<String
 }
 
 /// 归一化可空字符串：去空白，空白等同缺省（桌面 `nonblank` 同形）。
-fn nonblank(value: Option<&str>) -> Option<&str> {
+/// `pub(crate)`：刀 4 的 result-cell 写半边共用同一条梯子语义。
+pub(crate) fn nonblank(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|value| !value.is_empty())
 }

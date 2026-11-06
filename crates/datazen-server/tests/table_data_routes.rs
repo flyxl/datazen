@@ -15,11 +15,12 @@
 //!   不可见（CM-05，含跨组织 DELETE 不产生副作用）、跨主体不可见、
 //!   application 错误码 wire（`grid.view.nameExists` → 409 /
 //!   `grid.view.invalid` → 400，与 WR-C3 契约腿逐字一致）。
-//! - **⛔ fail-closed 登记**：tableData 域剩余 fail-closed 路由（result-cell
-//!   二，§6.8）恒 501 `capabilityUnsupported`，文案显式声明「没有执行任何语句、
-//!   没有构建任何计划、没有写任何东西」。读三端点（W8-a 接线刀）、变更二
-//!   （W8 刀3）与 FK 二/值搜索/origin（W8 刀2）已随各自接刀点亮为真实现，
-//!   探针集合逐刀收窄；绿腿见各自新测试文件。
+//! - **✅ tableData 域 14 方法全部点亮，探针退役（W8 刀4）**：本文件曾是
+//!   fail-closed 探针的落点——501 集合逐刀收窄（读三端点 → W8-a 接线刀、
+//!   变更二 → 刀3、FK 二/值搜索/origin → 刀2、result-cell 二 → 刀4），
+//!   刀4 后域内已无 fail-closed 路由，探针测试随之移除（绿腿见
+//!   `mutation_pair_routes.rs` / `result_cell_routes.rs` / `table_data_live`
+//!   面的共享借出路径）。
 //! - **MockDriver 读路径：接不上，不硬凑（登记）**——真路由 handler 是
 //!   fail-closed 501；W8-a P2 起 `TableDataState` 已注入 server 运行器
 //!   （`TableDataState.runner`）与驱动注册表（`.registry`），但十一端点
@@ -754,48 +755,15 @@ async fn an_invalid_draft_is_refused_with_the_application_code() {
     assert_eq!(body["code"], "grid.view.invalid");
 }
 
-// ── ⛔ fail-closed 登记（§6.7/§6.8 剩余 result-cell 二）──────────────────
+// ── ✅ fail-closed 探针退役（W8 刀4）──────────────────────────────────
 //
-// W8 刀3 起 `change-plan-previews` / `change-commits` 已点亮为真实现
-// （`mutation_pair_routes.rs`）；W8 刀2 起 `foreign-key-targets` /
-// `inbound-foreign-keys` / `value-searches` / `result-origins` 也已点亮
-// （`table_data_live_routes.rs` 绿腿接管）。探针集合随之收窄为剩余的
-// result-cell 二（刀4 范围）；逐条断言与文案要求一字不改。
-
-/// result-cell 二路由恒 501 `capabilityUnsupported`，文案显式声明无副作用
-/// 且携带逐端口收窄原因（读三端点与变更二、FK/值搜索/origin 已真实现）。
-#[tokio::test]
-async fn driver_bound_table_data_routes_fail_closed_as_not_implemented() {
-    let (_store, app, primary, _same_org, _other_org) = fixture().await;
-    for (uri, method_name) in [
-        (
-            "/api/v1/table-data/result-cell-commits",
-            "commitQueryResultCell",
-        ),
-        (
-            "/api/v1/table-data/result-cell-change-previews",
-            "previewResultCellChange",
-        ),
-    ] {
-        let (status, body) = call(
-            &app,
-            "POST",
-            uri,
-            &primary.cookie,
-            Some(&primary.csrf),
-            Some(serde_json::json!({ "connectionId": "conn-1" })),
-        )
-        .await;
-        assert_eq!(status, StatusCode::NOT_IMPLEMENTED, "{uri}: {body}");
-        assert_eq!(body["code"], "capabilityUnsupported", "{uri}");
-        let message = body["message"].as_str().expect("message");
-        assert!(message.contains(method_name), "{uri}: {message}");
-        assert!(
-            message.contains("No statement ran"),
-            "the copy must rule out silent side effects: {message}"
-        );
-    }
-}
+// 本文件曾是 tableData 域 fail-closed 面的探针落点：501 集合逐刀收窄——
+// 读三端点（W8-a 接线刀）、变更二（W8 刀3 → `mutation_pair_routes.rs`）、
+// FK 二/值搜索/origin（W8 刀2 → `table_data_live` 面的共享借出路径）、
+// result-cell 二（W8 刀4 → `result_cell_routes.rs`）。刀4 后域内 14 方法
+// 全部真实现，探针测试（`driver_bound_table_data_routes_fail_closed_as_
+// not_implemented`，最后两条 URI 断言）随之移除：空探针不是证明，退役才是
+// 诚实收口。
 
 /// 命名视图面在认证链内：无 cookie 的请求在 L2 被 401 拒绝，不泄露目录。
 #[tokio::test]

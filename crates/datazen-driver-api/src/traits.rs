@@ -25,7 +25,7 @@ use crate::{
 
 mod command_api;
 mod keyset;
-mod result_origin;
+pub(crate) mod result_origin;
 mod schema_target;
 pub(crate) mod sql_text;
 mod streaming;
