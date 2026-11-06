@@ -37,6 +37,7 @@ pub mod budget_bridge;
 pub mod driver_exec;
 pub mod ephemeral;
 pub mod identity;
+pub mod idle_reclaimer;
 pub mod lease;
 pub mod lease_use_cases;
 pub mod live_source;

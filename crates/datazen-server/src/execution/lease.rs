@@ -84,6 +84,11 @@ pub struct ServerRuntimeLeaseSource {
     /// 后立即 `with_live_connections` 接线（覆盖语义，慢路重入无副作用）；
     /// `None` 保持 unwired（fail-closed：借出路径得 `NotWired` → 503）。
     live_source: Option<Arc<dyn LiveConnectionSource>>,
+    /// 空闲回收策略（IdleReclaimer 武装刀）：装配期注入，慢路构造的每个
+    /// 新实例 `with_idle_policy` 接线（覆盖语义，重入无副作用）。缺省 =
+    /// `IdlePolicy::default()`，与今日实例内缺省逐字节一致——本字段本身
+    /// 是零行为变化；bootstrap 经 config 两键装配（enabled/scan/ttl）。
+    idle_policy: datazen::execution::application::orchestration::IdlePolicy,
 }
 
 impl ServerRuntimeLeaseSource {
@@ -121,7 +126,19 @@ impl ServerRuntimeLeaseSource {
             directory,
             current: std::sync::Mutex::new(None),
             live_source: None,
+            idle_policy: datazen::execution::application::orchestration::IdlePolicy::default(),
         }
+    }
+
+    /// 注入空闲回收策略（IdleReclaimer 武装刀）：builder 形状——既有
+    /// 构造器与不调用本方法的实例零改动（缺省 = 内核默认 30 分钟）。
+    /// 覆盖语义；慢路重入无副作用。
+    pub fn with_idle_policy(
+        mut self,
+        policy: datazen::execution::application::orchestration::IdlePolicy,
+    ) -> Self {
+        self.idle_policy = policy;
+        self
     }
 
     /// 注入活连接出向端口适配器（W8 刀2）：`resolve()` 慢路构造的每个新
@@ -193,6 +210,10 @@ impl RuntimeLeaseSource for ServerRuntimeLeaseSource {
         if let Some(live) = &self.live_source {
             runtime.with_live_connections(live.clone());
         }
+        // 空闲回收策略随实例装配（IdleReclaimer 武装刀）：同理写在慢路，
+        // 吊销→重建的下一个实例天然带策略（驱动器每 tick 现取当前实例，
+        // 策略面随实例走，无跨实例漂移）。
+        runtime.with_idle_policy(self.idle_policy.clone());
         *cell = Some(Arc::clone(&runtime));
         Ok(runtime)
     }
