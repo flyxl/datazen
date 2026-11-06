@@ -24,6 +24,7 @@
 | BUG-020 | T22 | 插件模板参数未转义：审批 SQL 泄漏凭据，SQL 字面量可被参数改变 | 已验证 |
 | BUG-021 | T22 | Workflow 工具参数未转义：模型可改写只读 Workflow 的 SQL | 已验证 |
 | BUG-022 | T23 | 本地 CLI 子进程退出后子孙持有 stdout 时 timeout/cancel 挂起并留下孤儿 | 已验证 |
+| BUG-023 | T24 | apply_write 允许只读 SQL 执行；applied 回执/审计缺少 rowCount | 待修复 |
 
 
 ## T19 MCP scope / 逐次审批 / 审计验收记录（已验证）
@@ -488,3 +489,40 @@ sleep 3 & printf 'started\n'; exit 0
 | fmt / diff | 0 / 0 |
 
 a3990293e 仅改 `local_cli.rs`；独立临时测试已删除。**T23：通过（BUG-022 已验证）。**
+
+## T24 写入提案与精确确认独立复测：未通过（BUG-023）
+
+通过：proposal 绑定 connection/database/exact SQL/SHA-256/expiry；UUID token；
+一次性/过期/篡改 SQL/连接/库拒绝；生产库/只读连接不执行；apply 前 guard；
+propose 不执行；Agent 工具只返回 proposal；UI exact SQL/diff/影响、Allow once/
+Deny、过期自动拒绝；Deny 不执行；审计 proposal/applied/denied 无 SQL/凭据；
+失败可读。
+
+**阻塞失败 1**：只读 SQL 可执行。临时 store 测试中
+`propose("SELECT * FROM users")` 成功，exact `apply` 返回 Ok；宿主临时测试中
+`apply_write_for_state` 返回 receipt 且 Mock `execute_calls()==1`，SELECT 被
+`execute_target("execute")` 实际执行。根因是 `sql_guard::check_sql` 在
+`!read_only && !safe_mode` 时直接放行，proposal 层没有“必须是写语句”校验。
+
+**阻塞失败 2**：applied rowCount 丢失。对 UPDATE 的 apply 回执
+`row_count=None`，实际驱动结果是
+`{"results":[{"rowsAffected":0,...}],"totalTimeMs":0}`；`affected_rows` 只看顶层
+字段/直接数组，未进入 `results`，audit applied.row_count 也为 null。违反审计
+rowCount 验收；UI 回执把 null 显示为 0。
+
+详见 [BUG-023](ai-assistant-parity-bugs/BUG-023.md)。
+
+| 范围 | 结果 |
+|---|---|
+| `datazen --features ai` | 1691 passed |
+| `datazen --features ai,workflow,wapps` | 1757 passed |
+| `datazen --features mcp` | 1761 passed |
+| `datazen_desktop` | 1409 passed / 10 ignored |
+| `datazen-server --features mcp` | 361 passed |
+| T24 定向前端 | 12 passed |
+| 全量前端 | 8239 passed / 8 既有环境失败 |
+| 映射 worktree typecheck | OK |
+| fmt / diff | 0 / 0 |
+
+独立临时测试已删除；`d79466e2` 36 个文件均为 T24 相关，无 generated/凭据/无关。
+**T24：未通过（BUG-023）。**
