@@ -19,8 +19,8 @@
 | T15 会话持久化、导出、提示历史 | 已完成 |
 | T16 Provider 预设扩展 | 已完成 |
 | T17 Skills 加载与工具 | 已完成 |
-| T18 CLI 与 Agent Skill | 进行中 |
-| T19 MCP scope、逐次审批、审计 | 未开始 |
+| T18 CLI 与 Agent Skill | 已完成 |
+| T19 MCP scope、逐次审批、审计 | 进行中 |
 | T20 MCP batch 与 Redis 只读工具 | 未开始 |
 | T21 MCP Streamable HTTP | 未开始 |
 | T22 插件/Workflow 工具桥 | 未开始 |
