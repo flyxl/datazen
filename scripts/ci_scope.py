@@ -203,17 +203,20 @@ def select_ci_baseline(
     pr_base_sha: str,
     event_before: str,
 ) -> tuple[str, str]:
-    """Choose an incremental base, or run both CI halves when history is unsafe."""
+    """Choose an incremental base while preserving complete PR change coverage."""
     if event_name == "workflow_dispatch":
         return "", "all"
     if previous_success:
         return str(previous_success["head_sha"]), "direct"
-    if api_ok and had_prior_run:
-        # A previous failed/cancelled run has unvalidated changes. Run both halves.
-        return "", "all"
     if event_name == "pull_request" and pr_base_sha:
-        # No prior run (or API unavailable): cover the full PR from its merge base.
+        # With no successful PR baseline, classify the entire PR diff. This also
+        # covers changes from failed/in-progress prior runs without forcing both
+        # CI halves when the changed paths are safely scoped.
         return pr_base_sha, "merge-base"
+    if api_ok and had_prior_run:
+        # For push events, a failed/cancelled prior run may contain changes that
+        # are absent from EVENT_BEFORE, so history is unsafe: run both halves.
+        return "", "all"
     if event_name == "push" and api_ok:
         if event_before and event_before != ALL_ZERO_SHA:
             return event_before, "direct"
