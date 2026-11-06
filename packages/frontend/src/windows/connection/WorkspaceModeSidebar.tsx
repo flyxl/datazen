@@ -1,5 +1,6 @@
 import {
   Database,
+  Download,
   Gauge,
   LayoutGrid,
   PanelLeftClose,
@@ -13,6 +14,7 @@ import { ThemedIcon } from '../../components/ThemedIcon';
 import { useI18n } from '../../hooks/useI18n';
 import type { UiIconId } from '../../lib/iconIds';
 import type { WorkspaceMode } from './connectionPageUtils';
+import { useUpdateReminderStore } from '../../stores/updateReminderStore';
 
 interface WorkspaceShortcutButtonProps {
   icon: LucideIcon;
@@ -73,6 +75,23 @@ export function WorkspaceModeSidebar({
   onToggleSidebarMode,
 }: Readonly<WorkspaceModeSidebarProps>) {
   const { t } = useI18n();
+  const availableVersion = useUpdateReminderStore((state) => state.availableVersion);
+  const isInstalling = useUpdateReminderStore((state) => state.isInstalling);
+  const progress = useUpdateReminderStore((state) => state.progress);
+  const error = useUpdateReminderStore((state) => state.error);
+  const installUpdate = useUpdateReminderStore((state) => state.installUpdate);
+  const progressLabel =
+    progress?.phase === 'downloading' && progress.total
+      ? t('settings.updater.downloading').replace(
+          '{pct}',
+          String(Math.min(100, Math.round((progress.downloaded / progress.total) * 100))),
+        )
+      : progress?.phase === 'installing'
+        ? t('settings.updater.installing')
+        : t('settings.updater.sidebarInstalling');
+  const updateLabel = isInstalling
+    ? progressLabel
+    : t('settings.updater.sidebarAvailable').replace('{version}', availableVersion ?? '');
 
   return (
     <aside
@@ -128,6 +147,28 @@ export function WorkspaceModeSidebar({
         />
       </div>
       <div className="mt-auto flex flex-col">
+        {availableVersion && (
+          <button
+            type="button"
+            data-testid="workspace-nav-update"
+            aria-label={updateLabel}
+            title={error ?? updateLabel}
+            disabled={isInstalling}
+            onClick={() => void installUpdate()}
+            className={`flex h-10 w-full items-center text-xs transition-colors disabled:cursor-wait ${
+              sidebarExpanded ? 'justify-start gap-2.5 px-3' : 'justify-center'
+            } text-accent hover:bg-accent/10`}
+          >
+            <span className="relative">
+              <Download className="h-4 w-4 shrink-0" />
+              <span
+                aria-hidden="true"
+                className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-danger ring-1 ring-surface-alt"
+              />
+            </span>
+            {sidebarExpanded && <span className="truncate">{updateLabel}</span>}
+          </button>
+        )}
         <WorkspaceModeButton
           icon={Settings}
           iconId="nav.settings"

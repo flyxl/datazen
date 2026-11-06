@@ -30,7 +30,7 @@ function renderSection(channel: 'auto' | 'manual' | 'none') {
   mockGetUpdateChannel.mockReturnValue(channel);
   mockIsUpdaterSupported.mockReturnValue(channel === 'auto');
   mockCurrentVariant.mockReturnValue('all');
-  return render(<UpdateSection checkOnStartup={false} onCheckOnStartupChange={() => {}} />);
+  return render(<UpdateSection />);
 }
 
 describe('UpdateSection by update channel', () => {
