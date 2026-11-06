@@ -112,7 +112,7 @@ impl WorkflowContext {
                 return Err(format!("missing workflow template value '{expr}'"));
             };
             let step_id = &rest[..dot_pos];
-            let path = &rest[dot_pos + 1..];
+            let path = normalize_template_path(&rest[dot_pos + 1..], expr, false)?;
             let step_value = self
                 .step_results
                 .get(step_id)
@@ -123,7 +123,7 @@ impl WorkflowContext {
         if let Some(separator) = expr.find(|ch| ch == '.' || ch == '[') {
             let var_name = &expr[..separator];
             if let Some(loop_val) = self.loop_vars.get(var_name) {
-                let path = expr[separator..].trim_start_matches('.');
+                let path = normalize_template_path(&expr[separator..], expr, true)?;
                 return Ok(self.resolve_json_path_value(loop_val, path));
             }
         }
@@ -309,6 +309,22 @@ pub fn json_value_to_string(val: &serde_json::Value) -> String {
     }
 }
 
+fn normalize_template_path<'a>(
+    rest: &'a str,
+    expression: &str,
+    includes_separator: bool,
+) -> Result<&'a str, String> {
+    let path = if includes_separator {
+        rest.strip_prefix('.').unwrap_or(rest)
+    } else {
+        rest
+    };
+    if path.is_empty() || path.starts_with('.') || path.ends_with('.') || path.contains("..") {
+        return Err(format!("invalid workflow template path '{expression}'"));
+    }
+    Ok(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -367,6 +383,15 @@ mod tests {
             serde_json::json!(11)
         );
         assert!(ctx.resolve_expression_value("missing").is_err());
+        assert!(ctx.resolve_expression_value("item..id").is_err());
+        assert!(ctx.resolve_expression_value("item.").is_err());
+        assert!(ctx.resolve_expression_value("row...id").is_err());
+        assert!(ctx
+            .resolve_expression_value("steps.q1..rows_count")
+            .is_err());
+        assert!(ctx
+            .resolve_expression_value("steps.q1.rows_count.")
+            .is_err());
     }
 
     #[test]

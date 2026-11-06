@@ -1111,6 +1111,11 @@ async fn workflow_undefined_step_and_malformed_path_are_rejected() {
             "SELECT '{{steps.q1.rows[abc].name}}' AS value",
         ),
         ("wf-unclosed-path", "SELECT '{{steps.q1.rows[0}}' AS value"),
+        ("wf-step-double-dot", "SELECT '{{steps.q1..name}}' AS value"),
+        (
+            "wf-step-trailing-dot",
+            "SELECT '{{steps.q1.id..}}' AS value",
+        ),
     ] {
         let wf = workflow(workflow_id, query_step_sql(sql));
         test.state
@@ -1176,6 +1181,100 @@ async fn workflow_valid_steps_path_survives_prevalidation_and_execution() {
     .await;
     assert!(output.contains("\"success\":true"), "{output}");
     assert_eq!(test.mock.query_calls(), 2);
+}
+
+#[tokio::test]
+async fn workflow_malformed_loop_paths_are_rejected() {
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection(CONNECTION_ID).await;
+    for (workflow_id, sql) in [
+        ("wf-loop-double-dot", "SELECT '{{item..id}}' AS value"),
+        ("wf-loop-trailing-dot", "SELECT '{{item.}}' AS value"),
+        ("wf-loop-leading-dot", "SELECT '{{.id}}' AS value"),
+        ("wf-loop-triple-dot", "SELECT '{{item...id}}' AS value"),
+    ] {
+        let mut wf = workflow(
+            workflow_id,
+            WorkflowStep::ForEach {
+                id: "loop".into(),
+                items: "{{items}}".into(),
+                as_var: "item".into(),
+                steps: vec![query_step_sql(sql)],
+                max_iterations: None,
+            },
+        );
+        wf.variables = vec![array_variable("items")];
+        test.state
+            .workflow_registry
+            .save_workflow(&crate::platform::local_organization_scope(), &wf)
+            .await
+            .unwrap();
+        opt_in(&test.state, &[], &[workflow_id]).await;
+
+        let port = ScriptedApproval::new(McpApprovalDecision::AllowOnce);
+        let decision = authorize_bridge_tool_with_port(
+            &test.state,
+            &port,
+            &format!("req-{workflow_id}"),
+            &format!("workflow_{workflow_id}"),
+            r#"{"items":[{"id":"O'Brien"}]}"#,
+            None,
+        )
+        .await;
+        assert!(!decision.is_allowed(), "{workflow_id}: {decision:?}");
+        assert_eq!(port.request_count(), 0, "{workflow_id}");
+    }
+}
+
+#[tokio::test]
+async fn workflow_legal_loop_paths_pass_and_escape() {
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection(CONNECTION_ID).await;
+    let mut wf = workflow(
+        "wf-loop-paths",
+        WorkflowStep::ForEach {
+            id: "loop".into(),
+            items: "{{items}}".into(),
+            as_var: "item".into(),
+            steps: vec![query_step_sql(
+                "SELECT '{{item.id}}' AS id, '{{item.rows[0].name}}' AS name",
+            )],
+            max_iterations: None,
+        },
+    );
+    wf.variables = vec![array_variable("items")];
+    test.state
+        .workflow_registry
+        .save_workflow(&crate::platform::local_organization_scope(), &wf)
+        .await
+        .unwrap();
+    opt_in(&test.state, &[], &["wf-loop-paths"]).await;
+
+    let args = r#"{"items":[{"id":"O'Brien","rows":[{"name":"Ada"}]}]}"#;
+    let port = ScriptedApproval::new(McpApprovalDecision::Deny);
+    let decision = authorize_bridge_tool_with_port(
+        &test.state,
+        &port,
+        "req-wf-loop-paths",
+        "workflow_wf-loop-paths",
+        args,
+        None,
+    )
+    .await;
+    assert_eq!(decision, BridgeToolDecision::Allow);
+    assert_eq!(port.request_count(), 0);
+
+    let output = execute_workflow_tool(
+        &test.state,
+        "req-wf-loop-paths",
+        &ctx(),
+        &call("workflow_wf-loop-paths", args),
+    )
+    .await;
+    assert!(output.contains("\"success\":true"), "{output}");
+    let log = test.mock.query_log();
+    assert!(log.iter().any(|sql| sql.contains("'O''Brien'")), "{log:?}");
+    assert!(log.iter().any(|sql| sql.contains("'Ada'")), "{log:?}");
 }
 
 #[tokio::test]

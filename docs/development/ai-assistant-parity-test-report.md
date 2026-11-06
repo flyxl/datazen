@@ -295,7 +295,7 @@ loop/方言/数字 LIMIT/注释/dollar/标识符/未闭合、condition/fallback 
 8233/8 既有环境失败、映射 typecheck OK、fmt/diff 0。详见
 [BUG-021](ai-assistant-parity-bugs/BUG-021.md)。
 
-## T22 BUG-021 第二次修复：execute 预校验 / steps fail closed（loop 双段仍未通过）
+## T22 BUG-021 第二次修复：execute 预校验 / steps fail closed
 
 `fix: revalidate workflow templates at execute` 补齐独立复测发现的两项：
 
@@ -338,3 +338,23 @@ authorize => Allow（期望 deny）
 复跑：datazen 1721、desktop 1402/10 ignored、server 361、T22 host 19、全量前端
 8233/8 既有环境失败、映射 typecheck OK、fmt/diff 0。详见
 [BUG-021](ai-assistant-parity-bugs/BUG-021.md)。
+
+## T22 BUG-021 第四次修复：loop 双段路径
+
+`fix: reject malformed loop template paths`：
+
+- loop 路径只去除恰好一个分隔点；空路径、重复点、首尾点、`..` 残留均 deny。
+- 共享 typed resolver 同步对 step/loop 路径做同样的 fail-closed 校验，避免
+  执行层回退到空段跳过语义。
+- 新增 `item..id`、`item.`、`.id`、`item...id` deny 测试，以及合法
+  `item.id`/`item.rows[0].name` 审批与执行转义回归。
+- 新增 step 双段/尾点 deny 测试。
+
+| 范围 | 结果 |
+|---|---|
+| `cargo test -p datazen --lib --features ai,workflow,wapps` | 1721 passed / 0 failed |
+| `cargo test -p datazen --lib --features mcp` | 1725 passed / 0 failed |
+| `cargo test -p datazen_desktop --lib` | 1404 passed / 0 failed / 10 ignored |
+| T22 host bridge | 21 passed |
+| 全量前端（未改前端） | 8233 passed / 8 既有环境失败 |
+| fmt / diff | 0 / 0 |

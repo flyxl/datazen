@@ -258,7 +258,11 @@ fn workflow_template_value(
     if let Some(separator) = expression.find(|ch| ch == '.' || ch == '[') {
         let var_name = &expression[..separator];
         if loop_vars.contains(var_name) {
-            let path = expression[separator..].trim_start_matches('.');
+            let rest = &expression[separator..];
+            let path = rest.strip_prefix('.').unwrap_or(rest);
+            if path.is_empty() || path.starts_with('.') {
+                return Err("unresolvable workflow template path".into());
+            }
             validate_workflow_step_path(path)?;
             return Ok(Value::Null);
         }
