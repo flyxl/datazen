@@ -10,11 +10,11 @@ use datazen::mcp::approval::{approval_preview, McpApprovalDecision, McpApprovalP
 use datazen::mcp::permission::McpPermissionMode;
 use datazen::mcp::policy::{McpCallPlan, McpToolPolicy};
 use datazen::mcp::session_tools::{StatefulCall, StatefulSessionHost};
-use datazen::mcp::sql_scope::{validate_sql_scope, SqlScopeDialect};
+use datazen::mcp::sql_scope::{attempted_sql_targets, validate_sql_scope, SqlScopeDialect};
 use datazen::shared::context::{OwnerRef, RequestContext};
 use datazen::shared::id::ClientInstanceId;
 use datazen::workflow::resource_execution::ResourceExecutionHost;
-use datazen_driver_api::ConnectionConfig;
+use datazen_driver_api::{ConnectionConfig, QueryResult, Value};
 use rmcp::ErrorData as McpError;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -264,6 +264,23 @@ impl DataZenMcpServer {
                     }
                 }
                 Err(error) => {
+                    // Audit the target the statement actually attempted, not
+                    // the allowed default. This is the difference between
+                    // `datazen_demo`/`information_schema` and `mysql`/`public`
+                    // in the denial evidence.
+                    if let Some(attempted) = attempted_sql_targets(
+                        sql,
+                        dialect,
+                        scoped.default_database.as_deref(),
+                        scoped.default_namespace.as_deref(),
+                    ) {
+                        if let Some(database) = attempted.database_label() {
+                            plan.database = Some(database);
+                        }
+                        if let Some(namespace) = attempted.namespace_label() {
+                            plan.namespace = Some(namespace);
+                        }
+                    }
                     self.audit_tool_call(
                         tool_name,
                         plan.connection_id.clone(),
@@ -503,9 +520,33 @@ impl DataZenMcpServer {
         let dialect = SqlScopeDialect::from_driver_id(&config.database_type)
             .ok_or_else(|| "unsupported SQL driver".to_string())?;
         let probe_sql = default_target_probe_sql(dialect);
-        // Resolve through the same read-only workflow command path used by the
-        // rest of the host. Opening the driver directly can hit a runtime pool
-        // that is only wired by the session boundary.
+        // Resolve the defaults from the live driver handle. A profile with a
+        // null database must not go through `read_target_command`, which
+        // requires an explicit database for multi-database drivers.
+        let direct = tokio::time::timeout(Duration::from_secs(3), async {
+            let driver = self
+                .resource_host
+                .driver(config)
+                .await
+                .map_err(|error| format!("driver resolution failed: {error}"))?;
+            let handle = driver
+                .connect(config)
+                .await
+                .map_err(|error| format!("driver connect failed: {error}"))?;
+            let result = driver.query(&handle, probe_sql).await;
+            let _ = driver.disconnect(handle).await;
+            result.map_err(|error| format!("driver query failed: {error}"))
+        })
+        .await;
+        if let Ok(Ok(result)) = direct {
+            if let Some(defaults) = find_driver_probe_row(&result) {
+                return Ok(defaults);
+            }
+        }
+
+        // Some runtime-only test/runtime hosts expose a pooled handle that is
+        // not connected on this path. Keep the command fallback for those
+        // hosts; real drivers resolve above without requiring a database.
         let value = datazen::workflow::runtime_reads::read_target_command(
             self.resource_host.as_ref(),
             connection_id,
@@ -672,6 +713,26 @@ pub(crate) fn nonblank(value: Option<String>) -> Option<String> {
     value
         .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty())
+}
+
+fn find_driver_probe_row(result: &QueryResult) -> Option<(Option<String>, Option<String>)> {
+    let row = result.rows.first()?;
+    let text = |index: usize| {
+        row.get(index)
+            .and_then(Option::as_ref)
+            .and_then(driver_value_text)
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    };
+    Some((text(0), text(1)))
+}
+
+fn driver_value_text(value: &Value) -> Option<String> {
+    match value {
+        Value::String(value) | Value::Timestamp(value) => Some(value.clone()),
+        Value::Json(serde_json::Value::String(value)) => Some(value.clone()),
+        _ => None,
+    }
 }
 
 fn find_default_probe_row(value: &serde_json::Value) -> Option<(Option<String>, Option<String>)> {

@@ -34,6 +34,7 @@ impl DataZenMcpServer {
             self.resource_host.as_ref(),
             &args.connection_id,
             db,
+            None,
             datazen::ai::budget::FALLBACK_DDL,
         )
         .await

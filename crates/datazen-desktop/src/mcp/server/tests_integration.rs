@@ -1086,11 +1086,16 @@ async fn mcp_mysql_sql_scope_blocks_cross_database_and_information_schema_before
         .await
         .expect("save mysql profile");
 
-    let server = mcp_server_allowing(Arc::new(test.state), &["scope-mysql"])
+    let server = mcp_server_allowing(Arc::new(test.state.clone()), &["scope-mysql"])
         .with_allowed_scopes(&["mysql".into()], &[]);
     for sql in [
         "SELECT COUNT(*) FROM datazen_demo.test_orders",
         "SELECT COUNT(*) FROM information_schema.tables",
+        "SHOW TABLES FROM datazen_demo",
+        "SHOW DATABASES",
+        "SHOW CREATE TABLE datazen_demo.test_orders",
+        "SHOW INDEX FROM datazen_demo.test_orders",
+        "SHOW COLUMNS FROM information_schema.columns",
     ] {
         let error = server
             .call_tool_inner(
@@ -1108,6 +1113,27 @@ async fn mcp_mysql_sql_scope_blocks_cross_database_and_information_schema_before
         mysql_mock.query_calls() == 0,
         "scope rejection must happen before the SQL body"
     );
+    let denies = test
+        .state
+        .store
+        .mcp_audit_log()
+        .list(20)
+        .await
+        .expect("audit rows");
+    assert!(
+        denies.iter().any(|row| {
+            row.decision == "deny" && row.database_name.as_deref() == Some("datazen_demo")
+        }),
+        "denied SQL/SHOW must audit the attempted database, got: {denies:?}"
+    );
+    assert!(
+        denies.iter().any(|row| {
+            row.decision == "deny"
+                && row.database_name.as_deref() == Some("information_schema")
+        }),
+        "denied information_schema access must audit the attempted database"
+    );
+
 }
 
 #[tokio::test]
@@ -1134,11 +1160,15 @@ async fn mcp_postgres_namespace_scope_blocks_system_schemas_and_allows_public() 
         .await
         .expect("save postgres profile");
 
-    let server = mcp_server_allowing(Arc::new(test.state), &["scope-pg"])
+    let server = mcp_server_allowing(Arc::new(test.state.clone()), &["scope-pg"])
         .with_allowed_scopes(&["postgres".into()], &["public".into()]);
     for sql in [
         "SELECT COUNT(*) FROM information_schema.tables",
         "SELECT COUNT(*) FROM pg_catalog.pg_class",
+        "SHOW TABLES FROM information_schema",
+        "SHOW SCHEMAS",
+        "SHOW CREATE TABLE pg_catalog.pg_class",
+        "SHOW INDEX FROM pg_catalog.pg_class",
     ] {
         let error = server
             .call_tool_inner(
@@ -1162,6 +1192,27 @@ async fn mcp_postgres_namespace_scope_blocks_system_schemas_and_allows_public() 
         )
         .await
         .expect("public is inside the allowed namespace");
+
+    let denies = test
+        .state
+        .store
+        .mcp_audit_log()
+        .list(20)
+        .await
+        .expect("audit rows");
+    assert!(
+        denies.iter().any(|row| {
+            row.decision == "deny"
+                && row.namespace.as_deref() == Some("information_schema")
+        }),
+        "denied SQL/SHOW must audit the attempted namespace"
+    );
+    assert!(
+        denies.iter().any(|row| {
+            row.decision == "deny" && row.namespace.as_deref() == Some("pg_catalog")
+        }),
+        "denied pg_catalog access must audit the attempted namespace"
+    );
 }
 
 #[tokio::test]
@@ -1222,8 +1273,32 @@ async fn mcp_schema_resource_allows_the_resolved_default_namespace() {
     use crate::testing::mock_driver::MockDriverOptions;
     use std::sync::Arc;
 
+    use datazen_driver_api::{ColumnSchema, TableInfo, TableType};
+    use std::collections::HashMap;
+
     let test = TestAppState::with_resource_provider(MockDriverOptions {
         databases: vec!["postgres".into()],
+        tables: vec![TableInfo {
+            name: "users".into(),
+            schema: Some("public".into()),
+            table_type: TableType::Table,
+            row_count: Some(1),
+        }],
+        columns_by_database: HashMap::from([(
+            "postgres".to_string(),
+            HashMap::from([(
+                "users".to_string(),
+                vec![ColumnSchema {
+                    name: "id".into(),
+                    data_type: "integer".into(),
+                    nullable: false,
+                    default_value: None,
+                    comment: None,
+                    is_primary_key: true,
+                    is_auto_increment: false,
+                }],
+            )]),
+        )]),
         has_schema_level: true,
         default_schema: Some("public"),
         current_database: Some("postgres"),
@@ -1241,10 +1316,20 @@ async fn mcp_schema_resource_allows_the_resolved_default_namespace() {
 
     let server = mcp_server_allowing(Arc::new(test.state), &["scope-resource-pg"])
         .with_allowed_scopes(&["postgres".into()], &["public".into()]);
-    server
+    let resource = server
         .read_resource_inner("datazen://schema/scope-resource-pg/postgres")
         .await
         .expect("postgres + public schema resource is inside scope");
+    match &resource.contents[0] {
+        ResourceContents::TextResourceContents { text, .. } => {
+            assert!(
+                text.contains("users"),
+                "schema resource must contain the resolved public table, got: {text}"
+            );
+            assert!(!text.trim().is_empty());
+        }
+        _ => panic!("expected text resource"),
+    }
 
     let rows = test
         .store

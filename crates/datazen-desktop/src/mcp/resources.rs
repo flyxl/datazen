@@ -170,6 +170,7 @@ impl DataZenMcpServer {
                 self.resource_host.as_ref(),
                 connection_id,
                 scope_database,
+                effective_namespace.as_deref(),
                 budget::MCP_RESOURCE,
             )
             .await
