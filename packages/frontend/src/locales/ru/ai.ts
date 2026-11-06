@@ -67,6 +67,7 @@ const pack = {
   'ai.write.respondFailed': 'Could not send the write decision',
   'ai.write.auditFailed': 'AI write audit failed',
   'ai.write.applied': 'Write applied: {count} row(s) affected',
+  'ai.write.appliedUnknown': 'Write applied: affected rows unknown',
   'ai.write.dismiss': 'Dismiss',
   'chat.template.label': 'Prompt template',
   'chat.template.auto': 'Auto template',

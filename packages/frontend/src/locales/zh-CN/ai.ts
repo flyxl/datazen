@@ -60,6 +60,7 @@ const pack = {
   'ai.write.respondFailed': '无法提交写入决定',
   'ai.write.auditFailed': 'AI 写入审计失败',
   'ai.write.applied': '写入已执行：影响 {count} 行',
+  'ai.write.appliedUnknown': '写入已执行：影响行数未知',
   'ai.write.dismiss': '关闭',
   'chat.template.label': 'Prompt 模板',
   'chat.template.auto': '自动选择模板',

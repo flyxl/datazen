@@ -359,23 +359,77 @@ fn audit_identity(state: &AppState) -> (String, String) {
     )
 }
 
+/// Extract the affected-row count from a driver response. `execute` returns a
+/// `MultiQueryResult` (`{"results":[{"rowsAffected":0}, ...]}`), not a flat
+/// value, so sum every statement's count. If any statement has no numeric
+/// count the total is unknown (`None`) — never report a fabricated zero.
 fn affected_rows(data: &serde_json::Value) -> Option<u64> {
-    for key in [
+    if let Some(value) = numeric_affected_rows(data) {
+        return Some(value);
+    }
+    if let Some(results) = data.get("results").and_then(serde_json::Value::as_array) {
+        return sum_affected_rows(results);
+    }
+    data.as_array().and_then(|rows| sum_affected_rows(rows))
+}
+
+fn numeric_affected_rows(value: &serde_json::Value) -> Option<u64> {
+    [
         "rowsAffected",
         "rows_affected",
         "affectedRows",
         "affected_rows",
-    ] {
-        if let Some(value) = data.get(key).and_then(serde_json::Value::as_u64) {
-            return Some(value);
-        }
+        "rowCount",
+        "row_count",
+    ]
+    .iter()
+    .find_map(|key| value.get(key).and_then(serde_json::Value::as_u64))
+}
+
+fn sum_affected_rows(results: &[serde_json::Value]) -> Option<u64> {
+    if results.is_empty() {
+        return None;
     }
-    data.get("rowCount")
-        .and_then(serde_json::Value::as_u64)
-        .or_else(|| {
-            data.as_array()
-                .and_then(|rows| rows.first())
-                .and_then(|row| row.get("rowsAffected"))
-                .and_then(serde_json::Value::as_u64)
-        })
+    results.iter().try_fold(0u64, |total, result| {
+        total.checked_add(numeric_affected_rows(result)?)
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::affected_rows;
+    use serde_json::json;
+
+    #[test]
+    fn reads_flat_driver_counts() {
+        assert_eq!(affected_rows(&json!({ "rowsAffected": 4 })), Some(4));
+        assert_eq!(affected_rows(&json!({ "affected_rows": 0 })), Some(0));
+    }
+
+    #[test]
+    fn sums_multiquery_result_counts() {
+        assert_eq!(
+            affected_rows(&json!({
+                "results": [{ "rowsAffected": 0 }, { "rowsAffected": 3 }],
+                "totalTimeMs": 2
+            })),
+            Some(3)
+        );
+    }
+
+    #[test]
+    fn reports_unknown_when_any_statement_has_no_count() {
+        assert_eq!(affected_rows(&json!({ "results": [] })), None);
+        assert_eq!(
+            affected_rows(&json!({ "results": [{ "columns": [], "rows": [] }] })),
+            None
+        );
+        assert_eq!(
+            affected_rows(&json!({
+                "results": [{ "rowsAffected": 1 }, { "columns": [], "rows": [] }]
+            })),
+            None
+        );
+        assert_eq!(affected_rows(&json!({ "rowCount": null })), None);
+    }
 }

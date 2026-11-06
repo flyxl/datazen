@@ -116,6 +116,25 @@ describe('AiWriteProposalHost', () => {
       sql: "UPDATE users SET role = 'admin' WHERE id = 42",
     });
     expect(await screen.findByTestId('ai-write-applied-receipt')).toBeTruthy();
+    expect(screen.getByTestId('ai-write-applied-receipt').textContent).toContain(
+      'ai.write.applied',
+    );
+  });
+
+  it('reports unknown when the driver returned no numeric row count', async () => {
+    applyMock.mockResolvedValueOnce({
+      proposalId: 'proposal-1',
+      connectionId: 'conn-1',
+      database: 'app',
+      sqlHash: 'a'.repeat(64),
+      rowCount: null,
+      result: { results: [{ columns: [], rows: [] }] },
+    });
+    render(<AiWriteProposalHost />);
+    await emit(proposal());
+    fireEvent.click(await screen.findByTestId('ai-write-proposal-allow'));
+    expect(await screen.findByText('ai.write.appliedUnknown')).toBeTruthy();
+    expect(screen.queryByText('ai.write.applied')).toBeNull();
   });
 
   it('Deny never calls apply and removes the proposal', async () => {

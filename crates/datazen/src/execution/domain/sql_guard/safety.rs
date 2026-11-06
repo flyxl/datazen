@@ -410,6 +410,84 @@ pub fn is_write_sql(sql: &str) -> bool {
     })
 }
 
+/// True only when **every** statement is a write statement.
+///
+/// `check_sql` is a connection-level safety guard: with a writable connection
+/// and Safe Mode off it deliberately allows reads. A write proposal is a
+/// stronger contract — it represents an exact statement the user is approving
+/// as a write — so SELECT/SHOW/EXPLAIN/read-only PRAGMA and read-only CTE
+/// statements must never enter or leave the proposal store.
+///
+/// A data-modifying CTE (`WITH d AS (DELETE ... RETURNING *) SELECT ...`) is a
+/// write even though its main verb is SELECT; `has_data_modifying_cte`
+/// detects that. Plan-only EXPLAIN is rejected explicitly because its payload is a
+/// query, not the write being confirmed.
+pub fn is_write_only_sql(sql: &str) -> bool {
+    let Ok(sql) = normalize_sql(sql) else {
+        return false;
+    };
+    let mut saw_statement = false;
+    for stmt in split_statements(&sql) {
+        let stripped = strip_sql_comments(&stmt);
+        let tokens = tokenize_sql(&stripped);
+        if tokens.is_empty() {
+            // A trailing `; -- note` chunk is not a statement.
+            continue;
+        }
+        saw_statement = true;
+        let Some(main_index) = find_main_verb_index(&tokens) else {
+            return false;
+        };
+        let Some(verb) = tokens.get(main_index) else {
+            return false;
+        };
+        if ["EXPLAIN", "SHOW", "DESCRIBE", "DESC"]
+            .iter()
+            .any(|read| verb.eq_ignore_ascii_case(read))
+        {
+            return false;
+        }
+        if verb.eq_ignore_ascii_case("PRAGMA") {
+            if !pragma_is_write(&tokens) {
+                return false;
+            }
+            continue;
+        }
+        let is_write = is_dml_or_ddl(verb)
+            // A data-modifying CTE is a write hidden behind SELECT. A plain
+            // SELECT (including SELECT ... INTO) is still rejected: the
+            // proposal must name an explicit DML/DDL statement.
+            || (verb.eq_ignore_ascii_case("SELECT") && has_data_modifying_cte(&tokens));
+        if !is_write {
+            return false;
+        }
+    }
+    saw_statement
+}
+
+fn is_dml_or_ddl(verb: &str) -> bool {
+    [
+        "INSERT", "UPDATE", "DELETE", "MERGE", "UPSERT", "REPLACE", "CREATE", "ALTER", "DROP",
+        "TRUNCATE", "RENAME", "COMMENT",
+    ]
+    .iter()
+    .any(|allowed| verb.eq_ignore_ascii_case(allowed))
+}
+
+/// A read-only PRAGMA is introspection (`PRAGMA table_info(users)`); a write
+/// PRAGMA sets a value (`PRAGMA journal_mode = WAL`, `PRAGMA user_version = 1`).
+/// SQLite also accepts `PRAGMA name(value)` for setters, but the same spelling
+/// is used for readers; only the unambiguous assignment form is accepted.
+fn pragma_is_write(tokens: &[String]) -> bool {
+    tokens
+        .first()
+        .is_some_and(|token| token.eq_ignore_ascii_case("PRAGMA"))
+        && tokens
+            .iter()
+            .skip(1)
+            .any(|token| token == "=" || token.contains('='))
+}
+
 fn has_top_level_where(sql: &str) -> bool {
     let chars: Vec<char> = sql.chars().collect();
     let mut i = 0;

@@ -260,9 +260,9 @@ export function AiWriteProposalHost() {
           className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 rounded border border-edge bg-surface px-4 py-2 text-xs text-fg-secondary shadow-lg"
           data-testid="ai-write-applied-receipt"
         >
-          {t('ai.write.applied', {
-            count: receipt.rowCount ?? 0,
-          })}
+          {receipt.rowCount == null
+            ? t('ai.write.appliedUnknown')
+            : t('ai.write.applied', { count: receipt.rowCount })}
           <button
             type="button"
             className="ml-3 text-fg-muted hover:text-fg"

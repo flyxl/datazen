@@ -124,6 +124,7 @@ pub enum WriteProposalError {
     SqlMismatch,
     ProductionProtected,
     ReadOnly,
+    NotWriteSql,
     GuardRejected(String),
 }
 
@@ -138,6 +139,7 @@ impl WriteProposalError {
             Self::SqlMismatch => "sql_mismatch",
             Self::ProductionProtected => "production_protected",
             Self::ReadOnly => "read_only",
+            Self::NotWriteSql => "not_write_sql",
             Self::GuardRejected(_) => "guard_rejected",
         }
     }
@@ -156,6 +158,10 @@ impl std::fmt::Display for WriteProposalError {
                 write!(f, "production connections never allow writes")
             }
             Self::ReadOnly => write!(f, "connection is read-only"),
+            Self::NotWriteSql => write!(
+                f,
+                "not a write statement: only INSERT/UPDATE/DELETE/DDL or a write PRAGMA can be proposed; SELECT/SHOW/EXPLAIN and read-only PRAGMA are rejected"
+            ),
             Self::GuardRejected(message) => write!(f, "SQL guard rejected the write: {message}"),
         }
     }
@@ -276,6 +282,7 @@ impl WriteProposalStore {
                 "token is required".to_string(),
             ));
         }
+        ensure_write_sql(&request.sql)?;
         let mut inner = self
             .inner
             .lock()
@@ -378,6 +385,7 @@ fn validate_request(request: &WriteProposalRequest) -> Result<(), WriteProposalE
             "sql contains a null byte".to_string(),
         ));
     }
+    ensure_write_sql(&request.sql)?;
     Ok(())
 }
 
@@ -393,6 +401,17 @@ fn prune_expired(inner: &mut HashMap<String, StoredProposal>, now: DateTime<Utc>
             .map(|expiry| now < expiry)
             .unwrap_or(false)
     });
+}
+
+/// Reject read-only SQL before a proposal is minted and again before apply.
+/// This is intentionally stricter than `check_sql`: a writable connection with
+/// Safe Mode off still must not turn the confirmation channel into a read path.
+fn ensure_write_sql(sql: &str) -> Result<(), WriteProposalError> {
+    if sql_guard::is_write_only_sql(sql) {
+        Ok(())
+    } else {
+        Err(WriteProposalError::NotWriteSql)
+    }
 }
 
 /// SHA-256 of the exact SQL text, lowercase hex.
@@ -851,6 +870,94 @@ mod tests {
         let diff = proposal.diff.expect("diff");
         assert!(diff.contains("-UPDATE t SET a = 1 WHERE id = 7"));
         assert!(diff.contains("+UPDATE t SET a = 2 WHERE id = 7"));
+    }
+
+    #[test]
+    fn read_only_sql_never_gets_a_proposal() {
+        let store = WriteProposalStore::new();
+        let now = Utc.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap();
+        for sql in [
+            "SELECT * FROM users",
+            "WITH c AS (SELECT 1) SELECT * FROM c",
+            "EXPLAIN SELECT * FROM users",
+            "EXPLAIN ANALYZE UPDATE users SET role = 'admin' WHERE id = 1",
+            "SHOW TABLES",
+            "DESCRIBE users",
+            "PRAGMA table_info(users)",
+            "VALUES (1)",
+            "SELECT * FROM users FOR UPDATE",
+            "UPDATE users SET role = 'admin' WHERE id = 1; SELECT * FROM users",
+            "UPDATE users SET role = 'admin' WHERE id = 1; PRAGMA table_info(users)",
+            "SELECT * INTO archive FROM users",
+            "CALL refresh_stats()",
+            "VACUUM",
+            "SET search_path = public",
+            "-- just a comment",
+        ] {
+            let error = store
+                .propose(&request(sql), &config(None, false), false, now)
+                .expect_err(sql);
+            assert!(
+                matches!(error, WriteProposalError::NotWriteSql),
+                "{sql}: {error}"
+            );
+            assert_eq!(error.code(), "not_write_sql");
+            assert_eq!(store.len(), 0, "{sql} must not be stored");
+        }
+    }
+
+    #[test]
+    fn write_sql_and_data_modifying_ctes_are_allowed() {
+        let store = WriteProposalStore::new();
+        let now = Utc.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap();
+        for sql in [
+            "INSERT INTO users (id) VALUES (1)",
+            "UPDATE users SET role = 'admin' WHERE id = 1",
+            "DELETE FROM users WHERE id = 1",
+            "CREATE TABLE audit_log (id bigint)",
+            "PRAGMA journal_mode = WAL",
+            "PRAGMA foreign_keys=ON",
+            "UPDATE users SET role = 'admin' WHERE id = 1; -- done",
+            "WITH d AS (DELETE FROM users WHERE id = 1 RETURNING *) SELECT * FROM d",
+            "UPDATE users SET role = 'admin' WHERE id = 1; DELETE FROM users WHERE id = 2",
+        ] {
+            store
+                .propose(&request(sql), &config(None, false), false, now)
+                .unwrap_or_else(|error| panic!("{sql} should be a write: {error}"));
+        }
+    }
+
+    #[test]
+    fn apply_rejects_read_only_sql_even_for_a_stored_proposal() {
+        let store = WriteProposalStore::new();
+        let now = Utc.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap();
+        let mut proposal = store
+            .propose(
+                &request("UPDATE users SET role = 'admin' WHERE id = 1"),
+                &config(None, false),
+                false,
+                now,
+            )
+            .unwrap();
+        // Simulate a proposal written by an older build: apply must still
+        // refuse to turn it into a read execution.
+        proposal.sql = "SELECT * FROM users".into();
+        proposal.sql_hash = sql_hash(&proposal.sql);
+        store.inner.lock().unwrap().insert(
+            proposal.proposal_id.clone(),
+            StoredProposal {
+                proposal: proposal.clone(),
+            },
+        );
+        let error = store
+            .apply(&apply(&proposal), &config(None, false), false, now)
+            .expect_err("read-only apply");
+        assert_eq!(error, WriteProposalError::NotWriteSql);
+        assert_eq!(
+            store.len(),
+            1,
+            "a rejected apply must not consume the token"
+        );
     }
 
     #[test]

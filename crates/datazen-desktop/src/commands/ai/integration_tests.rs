@@ -1846,6 +1846,11 @@ async fn confirmed_write_executes_only_after_exact_apply_and_audits_lifecycle() 
         .expect("exact apply");
     assert_eq!(receipt.proposal_id, proposal.proposal_id);
     assert_eq!(receipt.sql_hash, proposal.sql_hash);
+    assert_eq!(
+        receipt.row_count,
+        Some(0),
+        "MultiQueryResult rowsAffected must survive"
+    );
     assert_eq!(test.mock.execute_calls(), 1, "apply executes exactly once");
 
     let reuse = apply_write_for_state(&test.state, &proposal.token, "write-cfg", "app", sql)
@@ -1862,7 +1867,11 @@ async fn confirmed_write_executes_only_after_exact_apply_and_audits_lifecycle() 
         .await
         .expect("audit");
     assert!(rows.iter().any(|row| row.decision == "proposal"));
-    assert!(rows.iter().any(|row| row.decision == "applied"));
+    let applied = rows
+        .iter()
+        .find(|row| row.decision == "applied")
+        .expect("applied audit");
+    assert_eq!(applied.row_count, Some(0));
     assert!(rows.iter().any(|row| row.decision == "denied"));
     assert!(rows.iter().all(|row| row.sql_hash.len() == 64));
     let raw = tokio::fs::read_to_string(test.state.store.ai_write_audit_log().path())
@@ -1913,4 +1922,52 @@ async fn tampered_or_production_apply_never_reaches_the_driver() {
     .expect_err("exact SQL is required");
     assert!(error.to_string().contains("SQL"), "{error}");
     assert_eq!(test.mock.execute_calls(), 0);
+}
+
+#[tokio::test]
+async fn read_only_sql_never_creates_a_proposal_or_executes() {
+    let test = TestAppState::new().await;
+    test.save_connection("write-readonly-sql").await;
+
+    for sql in [
+        "SELECT * FROM users",
+        "WITH c AS (SELECT 1) SELECT * FROM c",
+        "EXPLAIN SELECT * FROM users",
+        "EXPLAIN ANALYZE UPDATE users SET role = 'admin' WHERE id = 1",
+        "SHOW TABLES",
+        "PRAGMA table_info(users)",
+    ] {
+        let error =
+            propose_write_for_state(&test.state, "write-readonly-sql", Some("app"), sql, None)
+                .await
+                .expect_err(sql);
+        assert!(error.to_string().contains("not a write"), "{sql}: {error}");
+        assert_eq!(test.mock.execute_calls(), 0, "{sql} must not execute");
+    }
+
+    let error = apply_write_for_state(
+        &test.state,
+        "unused-token",
+        "write-readonly-sql",
+        "app",
+        "SELECT * FROM users",
+    )
+    .await
+    .expect_err("apply must reject a read even if a caller invents a token");
+    assert!(error.to_string().contains("not a write"), "{error}");
+    assert_eq!(
+        test.mock.execute_calls(),
+        0,
+        "apply never reaches the driver"
+    );
+    let rows = test
+        .state
+        .store
+        .ai_write_audit_log()
+        .list(20)
+        .await
+        .unwrap();
+    assert!(rows
+        .iter()
+        .any(|row| row.decision == "denied" && row.reason.as_deref() == Some("not_write_sql")));
 }
