@@ -136,6 +136,8 @@ pub async fn search_tables(
 pub async fn query(
     host: &dyn ResourceExecutionHost,
     connection_id: &str,
+    database: Option<String>,
+    schema: Option<String>,
     sql: &str,
     limit: Option<u32>,
     mode: McpPermissionMode,
@@ -146,6 +148,12 @@ pub async fn query(
         "sql": sql,
         "limit": resolve_query_limit(limit),
     });
+    if let Some(database) = database {
+        command_input["database"] = serde_json::Value::String(database);
+    }
+    if let Some(schema) = schema {
+        command_input["schema"] = serde_json::Value::String(schema);
+    }
     settings.apply_result_limit(&mut command_input);
     let output = runtime_reads::read_target_command(host, connection_id, "query", command_input)
         .await
@@ -181,16 +189,20 @@ pub async fn get_schema(
 pub async fn explain_query(
     host: &dyn ResourceExecutionHost,
     connection_id: &str,
+    database: Option<String>,
+    schema: Option<String>,
     sql: &str,
 ) -> Result<String, ToolError> {
-    let output = runtime_reads::read_target_command(
-        host,
-        connection_id,
-        "explain",
-        serde_json::json!({ "sql": sql }),
-    )
-    .await
-    .map_err(internal)?;
+    let mut command_input = serde_json::json!({ "sql": sql });
+    if let Some(database) = database {
+        command_input["database"] = serde_json::Value::String(database);
+    }
+    if let Some(schema) = schema {
+        command_input["schema"] = serde_json::Value::String(schema);
+    }
+    let output = runtime_reads::read_target_command(host, connection_id, "explain", command_input)
+        .await
+        .map_err(internal)?;
     serde_json::to_string_pretty(&output).map_err(|error| internal(error.to_string()))
 }
 
@@ -318,4 +330,151 @@ mod tests {
     //! 行为钉子集中在 `workflow::application::runtime_reads_tests`（端口伪造
     //! 与文案）；本层的增量是纯装配（JSON 组装与格式化），由宿主侧
     //! golden 契约（`mcp_external_contract.json`）与既有集成旅程覆盖。
+}
+
+#[cfg(test)]
+mod real_multi_database_tests {
+    use super::*;
+    use crate::execution::domain::target::ExecutionTarget;
+    use crate::settings::ExecutionSettings;
+    use crate::workflow::application::resource_execution::PreparedExecution;
+    use crate::workflow::application::runtime_reads;
+    use crate::workflow::domain::error::WorkflowError;
+    use datazen_driver_api::{ConnectionConfig, DatabaseDriver};
+    use datazen_driver_postgres::PostgresDriver;
+    use std::sync::{Arc, Mutex};
+
+    struct PostgresProbeHost {
+        config: ConnectionConfig,
+        target: Mutex<Option<ExecutionTarget>>,
+    }
+
+    #[async_trait::async_trait]
+    impl ResourceExecutionHost for PostgresProbeHost {
+        async fn profile(&self, _id: &str) -> Result<(ConnectionConfig, u64, bool), WorkflowError> {
+            Ok((self.config.clone(), 1, true))
+        }
+
+        async fn driver(
+            &self,
+            _config: &ConnectionConfig,
+        ) -> Result<Arc<dyn DatabaseDriver>, WorkflowError> {
+            Ok(Arc::new(PostgresDriver::new()) as Arc<dyn DatabaseDriver>)
+        }
+
+        async fn safe_mode(&self) -> bool {
+            false
+        }
+
+        async fn prepare(
+            &self,
+            _connection_id: &str,
+            _revision: u64,
+            _command: &str,
+            target: ExecutionTarget,
+        ) -> Result<PreparedExecution, WorkflowError> {
+            *self.target.lock().expect("target lock") = Some(target);
+            Err(WorkflowError::Validation("prepare reached".into()))
+        }
+    }
+
+    fn host() -> PostgresProbeHost {
+        PostgresProbeHost {
+            config: ConnectionConfig {
+                id: "real-pg".into(),
+                name: "real-pg".into(),
+                database_type: "postgresql".into(),
+                host: None,
+                port: None,
+                database: None,
+                schema: None,
+                username: None,
+                password: None,
+                ssl_mode: Default::default(),
+                connection_timeout: 30,
+                max_pool_size: 10,
+                ssh_tunnel: None,
+                tunnel_kind: None,
+                tunnel_id: None,
+                http_proxy_tunnel: None,
+                websocket_tunnel: None,
+                color_tag: None,
+                group: None,
+                last_connected_at: None,
+                server_version: None,
+                options: None,
+                read_only: false,
+                pinned: false,
+            },
+            target: Mutex::new(None),
+        }
+    }
+
+    fn settings() -> ExecutionSettings {
+        ExecutionSettings {
+            limit_select_results: false,
+            query_result_limit: 100,
+            safe_mode: false,
+            connection_pool_size: 10,
+            mcp_disabled_tools: Vec::new(),
+            mcp_permission_mode: "safe_write".into(),
+            mcp_allowed_connection_ids: Vec::new(),
+            mcp_allowed_databases: Vec::new(),
+            mcp_allowed_namespaces: Vec::new(),
+            driver_settings: serde_json::Map::new(),
+            ai_strict_egress: false,
+        }
+    }
+
+    /// The real PostgreSQL driver has a multi-database shape. Without a
+    /// database, the shared runtime refuses the command before any network
+    /// access; this is the exact path the MCP null-default query used to hit.
+    #[tokio::test]
+    async fn real_postgres_rejects_a_query_without_a_database() {
+        let host = host();
+        let error = runtime_reads::read_target_command(
+            &host,
+            "real-pg",
+            "query",
+            serde_json::json!({ "sql": "SELECT 1" }),
+        )
+        .await
+        .expect_err("the real multi-database driver must reject a missing database");
+        assert!(
+            error.contains("has no database"),
+            "unexpected error: {error}"
+        );
+        assert!(host.target.lock().expect("target lock").is_none());
+    }
+
+    /// The MCP `query` use case injects the host-resolved default before the
+    /// real driver's missing-database guard. `prepare` is reached, so the
+    /// command is no longer refused for an absent database.
+    #[tokio::test]
+    async fn query_injects_resolved_defaults_before_the_real_driver_guard() {
+        let host = host();
+        let error = query(
+            &host,
+            "real-pg",
+            Some("postgres".into()),
+            Some("public".into()),
+            "SELECT 1",
+            None,
+            McpPermissionMode::SafeWrite,
+            &settings(),
+        )
+        .await
+        .expect_err("the probe host stops at prepare");
+        let message = error.into_message();
+        assert!(message.contains("prepare reached"), "{message}");
+
+        let target = host
+            .target
+            .lock()
+            .expect("target lock")
+            .clone()
+            .expect("prepare target");
+        assert_eq!(target.namespace.database.as_deref(), Some("postgres"));
+        assert_eq!(target.namespace.schema.as_deref(), Some("public"));
+    }
 }

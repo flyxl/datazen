@@ -336,7 +336,12 @@ impl DataZenMcpServer {
             }
         }
 
-        Ok(PreparedToolCall { plan, request_id })
+        Ok(PreparedToolCall {
+            plan,
+            request_id,
+            default_database: scoped.default_database,
+            default_namespace: scoped.default_namespace,
+        })
     }
 
     fn sql_scope_is_active(&self) -> bool {
@@ -668,11 +673,54 @@ fn default_approval_port(app_state: &Arc<AppState>) -> Arc<dyn McpApprovalPort> 
     broker
 }
 
+/// Inject the resolved default target into tool arguments that accept a
+/// database/schema. Query tools have no public namespace field, so the host
+/// uses the private optional fields on their input types; metadata tools keep
+/// any explicit caller target and only fill the missing dimension.
+pub(crate) fn inject_resolved_target(
+    tool_name: &str,
+    arguments: &mut serde_json::Map<String, serde_json::Value>,
+    plan: &McpCallPlan,
+    default_database: Option<&str>,
+    default_namespace: Option<&str>,
+) {
+    if !matches!(
+        tool_name,
+        "query"
+            | "explain_query"
+            | "list_tables"
+            | "search_tables"
+            | "get_schema"
+            | "describe_table"
+    ) {
+        return;
+    }
+    let (database, namespace) = if matches!(tool_name, "query" | "explain_query") {
+        (default_database, default_namespace)
+    } else {
+        (plan.database.as_deref(), plan.namespace.as_deref())
+    };
+    if let Some(database) = database {
+        arguments
+            .entry("database".to_string())
+            .or_insert_with(|| serde_json::Value::String(database.to_string()));
+    }
+    if let Some(namespace) = namespace {
+        arguments
+            .entry("schema".to_string())
+            .or_insert_with(|| serde_json::Value::String(namespace.to_string()));
+    }
+}
+
 /// The policy result retained across execution so the allow audit can record
 /// the exact target and rowcount.
 pub(crate) struct PreparedToolCall {
     pub(crate) plan: McpCallPlan,
     pub(crate) request_id: String,
+    /// Actual connection defaults resolved before SQL validation. SQL tools
+    /// execute against these when the caller omitted an explicit target.
+    pub(crate) default_database: Option<String>,
+    pub(crate) default_namespace: Option<String>,
 }
 
 #[derive(Default)]

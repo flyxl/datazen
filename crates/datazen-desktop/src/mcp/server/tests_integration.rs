@@ -61,6 +61,8 @@ async fn mcp_tool_handlers_with_mock_driver() {
             ExplainQueryInput {
                 connection_id: "mcp-cfg".into(),
                 sql: "SELECT 1".into(),
+                database: None,
+                schema: None,
             },
         ))
         .await
@@ -72,6 +74,8 @@ async fn mcp_tool_handlers_with_mock_driver() {
             connection_id: "mcp-cfg".into(),
             sql: "SELECT 1".into(),
             limit: Some(10),
+            database: None,
+            schema: None,
         }))
         .await
         .unwrap();
@@ -392,6 +396,8 @@ async fn mcp_query_rejects_disallowed_sql_in_readonly() {
             connection_id: "ro-cfg".into(),
             sql: "DELETE FROM users".into(),
             limit: None,
+            database: None,
+            schema: None,
         }))
         .await
         .unwrap_err();
@@ -1381,4 +1387,74 @@ async fn mcp_scope_denial_is_audited_with_request_id() {
     let row = rows.first().expect("deny audit row");
     assert_eq!(row.decision, "deny");
     assert!(row.request_id.is_some(), "deny needs a requestId");
+}
+
+/// Live PostgreSQL proof for the null-profile path. Gated because the rest of
+/// the suite must run without a database server; run with
+/// `DATAZEN_LIVE_PG=1 cargo test ... -- --ignored` on a local PostgreSQL.
+#[tokio::test]
+#[ignore = "requires live PostgreSQL on 127.0.0.1:5432"]
+async fn mcp_live_postgres_null_defaults_execute_and_audit_the_resolved_target() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use datazen_driver_postgres::PostgresDriver;
+    use std::sync::Arc;
+
+    if std::env::var_os("DATAZEN_LIVE_PG").is_none() {
+        return;
+    }
+    let test = TestAppState::with_resource_provider(Default::default()).await;
+    test.register_runtime_driver(
+        "postgresql",
+        Arc::new(PostgresDriver::new()) as Arc<dyn datazen_driver_api::DatabaseDriver>,
+    )
+    .await;
+    let mut config = test.save_connection("live-null-pg").await;
+    config.database_type = "postgresql".into();
+    config.host = Some("127.0.0.1".into());
+    config.port = Some(5432);
+    config.database = None;
+    config.schema = None;
+    config.username = Some("postgres".into());
+    config.password = None;
+    config.ssl_mode = datazen_driver_api::SslMode::Disable;
+    test.store
+        .save_connection(config)
+        .await
+        .expect("save live profile");
+
+    let server = mcp_server_allowing(Arc::new(test.state.clone()), &["live-null-pg"])
+        .with_allowed_scopes(&["postgres".into()], &["public".into()]);
+    server
+        .call_tool_inner(
+            "list_tables",
+            Some(serde_json::json!({ "connection_id": "live-null-pg" })),
+        )
+        .await
+        .expect("null database/schema metadata must use the probed defaults");
+    server
+        .call_tool_inner(
+            "query",
+            Some(serde_json::json!({
+                "connection_id": "live-null-pg",
+                "sql": "SELECT 1 AS ok",
+            })),
+        )
+        .await
+        .expect("null database/schema query must execute with probed defaults");
+
+    let rows = test
+        .state
+        .store
+        .mcp_audit_log()
+        .list(10)
+        .await
+        .expect("audit rows");
+    let row = rows
+        .iter()
+        .find(|row| row.tool == "query")
+        .expect("allow audit row");
+    assert_eq!(row.decision, "allow");
+    assert_eq!(row.database_name.as_deref(), Some("postgres"));
+    assert_eq!(row.namespace.as_deref(), Some("public"));
+    assert!(row.request_id.is_some());
 }

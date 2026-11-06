@@ -1,6 +1,6 @@
 //! MCP resource listing/reading and test-oriented tool dispatch helpers.
 
-use super::server::{nonblank, DataZenMcpServer, MCP_ALL_TOOLS};
+use super::server::{inject_resolved_target, nonblank, DataZenMcpServer, MCP_ALL_TOOLS};
 #[cfg(test)]
 use super::types::*;
 use crate::mcp::tool_help;
@@ -207,6 +207,16 @@ impl DataZenMcpServer {
         }
         let arg_map = arguments.as_ref().and_then(|v| v.as_object());
         let prepared = self.prepare_tool_call(name, arg_map).await?;
+        let mut arguments = arguments;
+        if let Some(map) = arguments.as_mut().and_then(|value| value.as_object_mut()) {
+            inject_resolved_target(
+                name,
+                map,
+                &prepared.plan,
+                prepared.default_database.as_deref(),
+                prepared.default_namespace.as_deref(),
+            );
+        }
 
         let outcome: Result<String, McpError> = async {
             let text = match name {
@@ -295,10 +305,22 @@ impl DataZenMcpServer {
                         .and_then(|a| a.get("limit"))
                         .and_then(|v| v.as_u64())
                         .map(|n| n as u32);
+                    let database = arguments
+                        .as_ref()
+                        .and_then(|a| a.get("database"))
+                        .and_then(|v| v.as_str())
+                        .map(String::from);
+                    let schema = arguments
+                        .as_ref()
+                        .and_then(|a| a.get("schema"))
+                        .and_then(|v| v.as_str())
+                        .map(String::from);
                     self.query(Parameters(QueryInput {
                         connection_id: connection_id.into(),
                         sql: sql.into(),
                         limit,
+                        database,
+                        schema,
                     }))
                     .await?
                 }

@@ -11,6 +11,14 @@ pub struct QueryInput {
     pub sql: String,
     /// Maximum rows to return (default: 100, max: 50000)
     pub limit: Option<u32>,
+    /// Resolved target injected by the host; clients normally omit it.
+    #[serde(default)]
+    #[schemars(skip)]
+    pub database: Option<String>,
+    /// Resolved namespace injected by the host; clients normally omit it.
+    #[serde(default)]
+    #[schemars(skip)]
+    pub schema: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -55,6 +63,14 @@ pub struct ExplainQueryInput {
     pub connection_id: String,
     /// SQL query to analyze
     pub sql: String,
+    /// Resolved target injected by the host; clients normally omit it.
+    #[serde(default)]
+    #[schemars(skip)]
+    pub database: Option<String>,
+    /// Resolved namespace injected by the host; clients normally omit it.
+    #[serde(default)]
+    #[schemars(skip)]
+    pub schema: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]

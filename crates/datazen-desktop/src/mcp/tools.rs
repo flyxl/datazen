@@ -112,6 +112,8 @@ impl DataZenMcpServer {
         datazen::mcp::tools::query(
             self.resource_host.as_ref(),
             &input.connection_id,
+            input.database.clone(),
+            input.schema.clone(),
             &input.sql,
             input.limit,
             self.permission_mode,
@@ -151,6 +153,8 @@ impl DataZenMcpServer {
         datazen::mcp::tools::explain_query(
             self.resource_host.as_ref(),
             &input.connection_id,
+            input.database.clone(),
+            input.schema.clone(),
             &input.sql,
         )
         .await

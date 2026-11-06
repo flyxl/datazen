@@ -1,6 +1,6 @@
 //! MCP `ServerHandler` implementation — tools, resources, and capabilities.
 
-use super::server::DataZenMcpServer;
+use super::server::{inject_resolved_target, DataZenMcpServer};
 use crate::mcp::tool_help;
 use rmcp::model::*;
 use rmcp::service::RequestContext;
@@ -36,6 +36,15 @@ impl ServerHandler for DataZenMcpServer {
             .prepare_tool_call(&tool_name, request.arguments.as_ref())
             .await?;
 
+        let mut request = request;
+        let arguments = request.arguments.get_or_insert_with(serde_json::Map::new);
+        inject_resolved_target(
+            &tool_name,
+            arguments,
+            &prepared.plan,
+            prepared.default_database.as_deref(),
+            prepared.default_namespace.as_deref(),
+        );
         let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
         let outcome = Self::tool_router().call(tcc).await;
         let text = outcome
