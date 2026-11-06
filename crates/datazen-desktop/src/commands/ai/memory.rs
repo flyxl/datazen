@@ -43,6 +43,32 @@ fn scope(state: &AppState) -> Result<(String, String), CommandError> {
     Ok((organization_id, principal_id))
 }
 
+/// The desktop has no organization-role authority. Organization memories are
+/// published/revoked by the server's `OrgAdmin` (T25); a local renderer must
+/// never be able to turn a private memory into an organization one. This guard
+/// is deliberately at every local mutation boundary, not only create.
+fn reject_organization_mutation() -> CommandError {
+    CommandError::Validation(
+        "organization memories are read-only on the desktop; an organization administrator \
+         publishes or revokes them through the server API"
+            .into(),
+    )
+}
+
+fn ensure_private_scope(scope_type: MemoryScopeKind) -> Result<(), CommandError> {
+    if scope_type == MemoryScopeKind::Organization {
+        return Err(reject_organization_mutation());
+    }
+    Ok(())
+}
+
+fn ensure_private_record(record: &AiMemoryRecord) -> Result<(), CommandError> {
+    if record.scope_type == MemoryScopeKind::Organization.as_str() {
+        return Err(reject_organization_mutation());
+    }
+    Ok(())
+}
+
 fn map_storage_error(error: AppDbError) -> CommandError {
     match error {
         AppDbError::Validation(message) => CommandError::Validation(message),
@@ -689,6 +715,7 @@ fn save_learned_candidate(
     mut candidate: MemoryCandidate,
     context: &ExtractionContext,
 ) -> Result<AiMemoryDto, CommandError> {
+    ensure_private_scope(candidate.scope.kind)?;
     if candidate.status != MemoryStatus::Candidate {
         return Err(CommandError::Internal(
             "learned memory candidate must remain a candidate".into(),
@@ -802,6 +829,23 @@ pub async fn ai_memory_list(
     page(records, limit, offset)
 }
 
+/// Read-only organization memories. The caller's organization comes from the
+/// host scope gate; no request field can select another tenant.
+#[tauri::command]
+pub async fn ai_org_memory_list(
+    state: State<'_, AppState>,
+    limit: Option<u32>,
+    offset: Option<u32>,
+) -> Result<AiMemoryPage, CommandError> {
+    let (organization_id, _) = scope(&state)?;
+    let records = state
+        .store
+        .app_db()
+        .list_ai_org_memories(&organization_id)
+        .map_err(map_storage_error)?;
+    page(records, limit, offset)
+}
+
 #[tauri::command]
 pub async fn ai_memory_create(
     state: State<'_, AppState>,
@@ -815,6 +859,7 @@ pub async fn ai_memory_create(
             "memory is disabled; enable cross-session memory before creating memories".into(),
         ));
     }
+    ensure_private_scope(input.scope_type)?;
     let (organization_id, principal_id) = scope(&state)?;
     let sensitivity = input.sensitivity.unwrap_or(MemorySensitivity::Normal);
     validate_sensitivity(sensitivity)?;
@@ -1014,6 +1059,7 @@ pub async fn ai_memory_mark_stale(
     let db = state.store.app_db();
     let mut stale = Vec::new();
     for mut record in records {
+        ensure_private_record(&record)?;
         if matches!(record.status.as_str(), "stale" | "archived" | "rejected") {
             continue;
         }
@@ -1089,6 +1135,7 @@ pub async fn ai_memory_update(
         .get_ai_memory(&organization_id, &principal_id, &id)
         .map_err(map_storage_error)?
         .ok_or_else(|| CommandError::NotFound("memory not found".into()))?;
+    ensure_private_record(&existing)?;
     let mut record = existing.clone();
     if let Some(subject) = patch.subject {
         if subject.trim().is_empty() {
@@ -1204,6 +1251,7 @@ async fn set_status(
         .get_ai_memory(&organization_id, &principal_id, id)
         .map_err(map_storage_error)?
         .ok_or_else(|| CommandError::NotFound("memory not found".into()))?;
+    ensure_private_record(&record)?;
     record.status = status.as_str().to_string();
     record.updated_at = now().to_rfc3339();
     db.upsert_ai_memory(&record).map_err(map_storage_error)?;
@@ -1229,6 +1277,7 @@ pub async fn ai_memory_confirm(
         .get_ai_memory(&organization_id, &principal_id, &id)
         .map_err(map_storage_error)?
         .ok_or_else(|| CommandError::NotFound("memory not found".into()))?;
+    ensure_private_record(&record)?;
     let records = db
         .list_ai_memories(&organization_id, &principal_id)
         .map_err(map_storage_error)?;
@@ -1315,6 +1364,9 @@ pub async fn ai_memory_delete(
     let existing = db
         .get_ai_memory(&organization_id, &principal_id, &id)
         .map_err(map_storage_error)?;
+    if let Some(record) = &existing {
+        ensure_private_record(record)?;
+    }
     let deleted = db
         .delete_ai_memory(&organization_id, &principal_id, &id)
         .map_err(map_storage_error)?;
@@ -1339,6 +1391,9 @@ pub async fn ai_memory_clear(
     scope_id: Option<String>,
     status: Option<MemoryStatus>,
 ) -> Result<usize, CommandError> {
+    if scope_type == Some(MemoryScopeKind::Organization) {
+        return Err(reject_organization_mutation());
+    }
     let (organization_id, principal_id) = scope(&state)?;
     let filter = MemoryFilter {
         scope_type,
@@ -1352,6 +1407,7 @@ pub async fn ai_memory_clear(
     let db = state.store.app_db();
     let mut deleted = 0usize;
     for record in records {
+        ensure_private_record(&record)?;
         if db
             .delete_ai_memory(&organization_id, &principal_id, &record.id)
             .map_err(map_storage_error)?
@@ -1508,7 +1564,7 @@ impl DesktopMemoryRepository {
 
     fn load(&self, text: &str, limit: usize) -> Result<Vec<AiMemoryRecord>, MemoryError> {
         let limit = limit.clamp(1, MAX_PAGE_LIMIT as usize) as u32;
-        let rows = if text.trim().is_empty() {
+        let mut rows = if text.trim().is_empty() {
             self.db
                 .list_ai_memories(&self.organization_id, &self.principal_id)
                 .map_err(|error| MemoryError::Repository(error.to_string()))?
@@ -1521,6 +1577,23 @@ impl DesktopMemoryRepository {
                 .search_ai_memories(&self.organization_id, &self.principal_id, &query, limit)
                 .map_err(|error| MemoryError::Repository(error.to_string()))?
         };
+        // Approved organization memories are shared across principals. The
+        // store's read-only query excludes revoked/archived rows, so a revoke
+        // takes effect on the next retrieval without a process restart.
+        rows.extend(
+            self.db
+                .list_ai_org_memories(&self.organization_id)
+                .map_err(|error| MemoryError::Repository(error.to_string()))?,
+        );
+        // Revocation is a retrieval-time decision, not only a list-view
+        // filter: a row that reached the cache before the revoke must never
+        // enter scoring. Only active organization versions are injectable.
+        rows.retain(|row| {
+            row.scope_type != MemoryScopeKind::Organization.as_str()
+                || row.status == MemoryStatus::Active.as_str()
+        });
+        let mut seen = std::collections::BTreeSet::new();
+        rows.retain(|row| seen.insert(row.id.clone()));
         Ok(rows.into_iter().take(limit as usize).collect())
     }
 }

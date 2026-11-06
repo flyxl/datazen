@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemorySection } from '../MemorySection';
 import type { AiMemoryEntry, AiSettingsConfig } from '../../../types';
 
 const commands = vi.hoisted(() => ({
   memoryList: vi.fn(),
+  orgMemoryList: vi.fn(),
   memorySearch: vi.fn(),
   memoryStats: vi.fn(),
   memoryCreate: vi.fn(),
@@ -93,6 +94,7 @@ const entries = [
 
 beforeEach(() => {
   vi.clearAllMocks();
+  commands.orgMemoryList.mockResolvedValue({ entries: [], total: 0, limit: 200, offset: 0 });
   store.saveSettingsConfig.mockResolvedValue(true);
   commands.memoryList.mockResolvedValue({ entries, total: entries.length, limit: 200, offset: 0 });
   commands.memorySearch.mockResolvedValue({
@@ -311,5 +313,34 @@ describe('MemorySection', () => {
     fireEvent.click(getByTestId('ai-memory-delete-m1'));
     await waitFor(() => expect(commands.memoryDelete).toHaveBeenCalledWith('m1'));
     await waitFor(() => expect(queryByTestId('ai-memory-row-m1')).toBeNull());
+  });
+});
+
+describe('organization memory', () => {
+  it('renders server-approved organization memories as a read-only list', async () => {
+    commands.orgMemoryList.mockResolvedValue({
+      entries: [
+        memoryEntry({
+          id: 'org-1',
+          scopeType: 'org',
+          scopeId: 'org-a',
+          source: 'org',
+          status: 'active',
+          subject: 'Revenue definition',
+          content: 'Revenue uses paid_at',
+        }),
+      ],
+      total: 1,
+      limit: 200,
+      offset: 0,
+    });
+    render(<MemorySection config={config} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('ai-org-memory-row-org-1')).toBeTruthy();
+    });
+    expect(screen.getByTestId('ai-org-memory-note').textContent).toContain('orgReadOnly');
+    expect(screen.queryByTestId('ai-org-memory-edit-org-1')).toBeNull();
+    expect(screen.queryByTestId('ai-org-memory-delete-org-1')).toBeNull();
   });
 });

@@ -308,14 +308,14 @@ async fn named_views_list_an_empty_directory() {
 }
 
 /// save 铸 id：空 id → 201，铸造非空 id、时间戳齐备，记录真实落库
-/// （v9 迁移随之断言），list 原样回读。
+/// （v10 迁移随之断言），list 原样回读。
 #[tokio::test]
 async fn a_view_saved_without_an_id_is_minted_with_one() {
     let (store, app, primary, _same_org, _other_org) = fixture().await;
     assert_eq!(
         store.schema_version().expect("schema version"),
-        9,
-        "v9 named_views migration applied"
+        10,
+        "v10 org-memory migration applied"
     );
 
     let draft = view_draft(

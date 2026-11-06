@@ -63,6 +63,7 @@ export function MemorySection({ config }: { config: AiSettingsConfig }) {
   );
   const [pendingEnable, setPendingEnable] = useState(false);
   const [entries, setEntries] = useState<AiMemoryEntry[]>([]);
+  const [organizationEntries, setOrganizationEntries] = useState<AiMemoryEntry[]>([]);
   const [stats, setStats] = useState<AiMemoryStats>(EMPTY_STATS);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -128,6 +129,23 @@ export function MemorySection({ config }: { config: AiSettingsConfig }) {
     }, 200);
     return () => window.clearTimeout(timer);
   }, [search, connectionFilter, kindFilter, statusFilter, refreshToken]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const page = await aiCommands.orgMemoryList({ limit: 200 });
+        if (!cancelled) setOrganizationEntries(page?.entries ?? []);
+      } catch {
+        // Organization memory is optional: a local-only host without a
+        // configured team server simply shows an empty read-only list.
+        if (!cancelled) setOrganizationEntries([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshToken]);
 
   const candidateEntries = useMemo(
     () => entries.filter((entry) => entry.status === 'candidate'),
@@ -327,6 +345,41 @@ export function MemorySection({ config }: { config: AiSettingsConfig }) {
           <p className="text-[11px] text-fg-muted" data-testid="ai-memory-disabled-note">
             {t('settings.ai.memory.disabledNote')}
           </p>
+        )}
+      </div>
+
+      <div className="space-y-2" data-testid="ai-org-memory-section">
+        <SectionTitle>{t('settings.ai.memory.orgTitle')}</SectionTitle>
+        <p className="text-[11px] text-fg-muted" data-testid="ai-org-memory-note">
+          {t('settings.ai.memory.orgReadOnly')}
+        </p>
+        {organizationEntries.length === 0 ? (
+          <p className="text-xs text-fg-muted" data-testid="ai-org-memory-empty">
+            {t('settings.ai.memory.orgEmpty')}
+          </p>
+        ) : (
+          <div className="space-y-1.5" data-testid="ai-org-memory-list">
+            {organizationEntries.map((entry) => (
+              <div
+                key={entry.id}
+                className="rounded border border-edge/70 bg-surface p-2"
+                data-testid={`ai-org-memory-row-${entry.id}`}
+              >
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-xs font-medium text-fg">{entry.subject}</span>
+                  <span className="rounded bg-surface-alt px-1 text-[9px] text-fg-muted">
+                    {t('settings.ai.memory.orgBadge')}
+                  </span>
+                  <span className="rounded bg-surface-alt px-1 text-[9px] text-fg-muted">
+                    {entry.kind}
+                  </span>
+                </div>
+                <p className="mt-1 whitespace-pre-wrap text-[11px] text-fg-muted">
+                  {entry.content}
+                </p>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 

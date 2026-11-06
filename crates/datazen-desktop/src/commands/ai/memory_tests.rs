@@ -933,3 +933,187 @@ async fn schema_deletion_marks_table_memories_stale() {
     assert!(injected.injection.is_none());
     assert!(injected.used.is_empty());
 }
+
+#[tokio::test]
+async fn organization_memories_are_read_only_and_server_published_on_desktop() {
+    let app = app().await;
+    enable_memory(&app).await;
+    let mut org = input("Revenue", "Use paid_at for revenue");
+    org.scope_type = MemoryScopeKind::Organization;
+    let error = ai_memory_create(app.state(), org).await.unwrap_err();
+    assert!(
+        format!("{error:?}").contains("read-only"),
+        "unexpected error: {error:?}"
+    );
+    assert_eq!(list_all(&app).await.total, 0);
+
+    let organization_id = crate::platform::LOCAL_ORGANIZATION_ID.to_string();
+    let principal_id = crate::platform::local_principal()
+        .map(|value| value.as_str().to_string())
+        .unwrap_or_else(|| "datazen-local-user".into());
+    let now = Utc::now();
+    let record = AiMemoryRecord {
+        id: "org-memory-1".into(),
+        organization_id: organization_id.clone(),
+        owner_principal_id: principal_id.clone(),
+        scope_type: "org".into(),
+        scope_id: organization_id.clone(),
+        connection_id: None,
+        database_name: None,
+        schema_name: None,
+        table_name: None,
+        column_name: None,
+        kind: "glossary".into(),
+        subject: "Revenue".into(),
+        content: "Use paid_at for revenue".into(),
+        structured_json: None,
+        source: "org".into(),
+        source_ref: Some("server:v1".into()),
+        confidence: 0.9,
+        sensitivity: "normal".into(),
+        status: "active".into(),
+        pinned: false,
+        use_count: 0,
+        last_used_at: None,
+        expires_at: None,
+        content_hash: "sha256:org".into(),
+        created_at: now.to_rfc3339(),
+        updated_at: now.to_rfc3339(),
+    };
+    app.state()
+        .store
+        .app_db()
+        .upsert_ai_memory(&record)
+        .unwrap();
+
+    let listed = ai_org_memory_list(app.state(), None, None).await.unwrap();
+    assert_eq!(listed.total, 1);
+    assert_eq!(listed.entries[0].scope_type, MemoryScopeKind::Organization);
+    assert_eq!(listed.entries[0].id, "org-memory-1");
+
+    for result in [
+        ai_memory_update(
+            app.state(),
+            "org-memory-1".into(),
+            AiMemoryUpdateInput {
+                subject: Some("changed".into()),
+                content: None,
+                kind: None,
+                structured_json: None,
+                source_ref: None,
+                confidence: None,
+                sensitivity: None,
+                status: None,
+                pinned: None,
+                expires_at: None,
+            },
+        )
+        .await
+        .map(|_| ()),
+        ai_memory_reject(app.state(), "org-memory-1".into())
+            .await
+            .map(|_| ()),
+        ai_memory_delete(app.state(), "org-memory-1".into())
+            .await
+            .map(|_| ()),
+        ai_memory_clear(app.state(), Some(MemoryScopeKind::Organization), None, None)
+            .await
+            .map(|_| ()),
+        ai_memory_clear(app.state(), None, None, None)
+            .await
+            .map(|_| ()),
+    ] {
+        let error = result.expect_err("organization mutation must be rejected");
+        assert!(
+            format!("{error:?}").contains("read-only"),
+            "unexpected error: {error:?}"
+        );
+    }
+
+    // Revocation is represented by removing the active row from the read-only
+    // cache (or archiving it); the next list and retrieval must not see it.
+    let mut revoked = record;
+    revoked.status = "archived".into();
+    revoked.updated_at = Utc::now().to_rfc3339();
+    app.state()
+        .store
+        .app_db()
+        .upsert_ai_memory(&revoked)
+        .unwrap();
+    assert_eq!(
+        ai_org_memory_list(app.state(), None, None)
+            .await
+            .unwrap()
+            .total,
+        0
+    );
+}
+
+#[tokio::test]
+async fn organization_memory_cache_is_injectable_and_disappears_on_revoke() {
+    let app = app().await;
+    enable_memory(&app).await;
+    let organization_id = crate::platform::LOCAL_ORGANIZATION_ID.to_string();
+    let now = Utc::now();
+    let record = AiMemoryRecord {
+        id: "org-memory-inject".into(),
+        organization_id: organization_id.clone(),
+        owner_principal_id: "server-sync".into(),
+        scope_type: "org".into(),
+        scope_id: organization_id.clone(),
+        connection_id: None,
+        database_name: None,
+        schema_name: None,
+        table_name: None,
+        column_name: None,
+        kind: "glossary".into(),
+        subject: "Revenue definition".into(),
+        content: "Revenue uses paid_at".into(),
+        structured_json: None,
+        source: "org".into(),
+        source_ref: Some("server:v1".into()),
+        confidence: 0.95,
+        sensitivity: "normal".into(),
+        status: "active".into(),
+        pinned: false,
+        use_count: 0,
+        last_used_at: None,
+        expires_at: None,
+        content_hash: "sha256:org-inject".into(),
+        created_at: now.to_rfc3339(),
+        updated_at: now.to_rfc3339(),
+    };
+    app.state()
+        .store
+        .app_db()
+        .upsert_ai_memory(&record)
+        .unwrap();
+
+    let repository = DesktopMemoryRepository::new(app.state().inner()).unwrap();
+    let scope = MemoryScope::new(MemoryScopeKind::Organization, organization_id.clone());
+    let entries = repository
+        .list_by_scope(&scope, Some(MemoryStatus::Active))
+        .await
+        .unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].id, "org-memory-inject");
+
+    // The server revokes by making the version non-active; the desktop cache
+    // reflects that, and the same scoped query immediately returns nothing.
+    let mut revoked = record;
+    revoked.status = "archived".into();
+    revoked.updated_at = Utc::now().to_rfc3339();
+    app.state()
+        .store
+        .app_db()
+        .upsert_ai_memory(&revoked)
+        .unwrap();
+    let entries = repository
+        .list_by_scope(&scope, Some(MemoryStatus::Active))
+        .await
+        .unwrap();
+    assert!(
+        entries.is_empty(),
+        "revoked organization memory was injected"
+    );
+}

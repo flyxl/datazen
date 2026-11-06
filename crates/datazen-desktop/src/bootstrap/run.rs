@@ -479,6 +479,7 @@ pub fn run() {
             crate::commands::ai_memory_export,
             crate::commands::ai_memory_extract_candidates,
             crate::commands::ai_memory_list,
+            crate::commands::ai_org_memory_list,
             crate::commands::ai_memory_mark_stale,
             crate::commands::ai_memory_reject,
             crate::commands::ai_memory_search,

@@ -348,6 +348,23 @@ impl AppDb {
         })
     }
 
+    /// Read-only organization-memory cache. Organization rows are shared
+    /// across principals in one organization; unlike [`Self::list_ai_memories`]
+    /// this deliberately does not filter by owner. Local commands never write
+    /// these rows — the server is the publisher of record (T25).
+    pub(crate) fn list_ai_org_memories(
+        &self,
+        organization_id: &str,
+    ) -> Result<Vec<AiMemoryRecord>, AppDbError> {
+        self.with_conn(|conn| {
+            let mut statement = conn.prepare(&format!(
+                "SELECT {MEMORY_COLUMNS} FROM ai_memories m                   WHERE m.organization_id=?1 AND m.scope_type='org' AND m.status='active'                   ORDER BY m.updated_at DESC, m.id"
+            ))?;
+            let rows = statement.query_map([organization_id], memory_from_row)?;
+            rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+        })
+    }
+
     /// FTS5 search scoped to the caller's organization and principal. The
     /// caller supplies FTS5 query syntax; an empty query returns no rows.
     pub(crate) fn search_ai_memories(

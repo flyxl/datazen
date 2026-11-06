@@ -592,3 +592,49 @@ fn existing_memory_cannot_be_rehomed_to_another_owner_or_org() {
         .unwrap()
         .is_none());
 }
+
+#[test]
+fn org_memory_reads_are_shared_but_never_cross_organization_or_revoked() {
+    let db = AppDb::open_in_memory().unwrap();
+    let mut first = memory("org-m1", "shared org fact");
+    first.scope_type = "org".into();
+    first.scope_id = ORG.into();
+    first.source = "org".into();
+    db.upsert_ai_memory(&first).unwrap();
+
+    let mut other_member = memory("org-m1", "shared org fact");
+    other_member.scope_type = "org".into();
+    other_member.scope_id = ORG.into();
+    other_member.source = "org".into();
+    other_member.owner_principal_id = "other-member".into();
+    assert!(
+        db.upsert_ai_memory(&other_member).is_err(),
+        "id must stay owned"
+    );
+
+    let mut second = memory("org-m2", "another org fact");
+    second.scope_type = "org".into();
+    second.scope_id = ORG.into();
+    second.source = "org".into();
+    second.owner_principal_id = "other-member".into();
+    db.upsert_ai_memory(&second).unwrap();
+
+    let mut foreign = memory("org-m3", "foreign org fact");
+    foreign.scope_type = "org".into();
+    foreign.scope_id = "other-org".into();
+    foreign.source = "org".into();
+    foreign.organization_id = "other-org".into();
+    foreign.owner_principal_id = "other-member".into();
+    db.upsert_ai_memory(&foreign).unwrap();
+
+    let rows = db.list_ai_org_memories(ORG).unwrap();
+    assert_eq!(rows.len(), 2);
+    assert!(rows.iter().all(|row| row.organization_id == ORG));
+
+    let mut revoked = first.clone();
+    revoked.status = "archived".into();
+    db.upsert_ai_memory(&revoked).unwrap();
+    let rows = db.list_ai_org_memories(ORG).unwrap();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].id, "org-m2");
+}

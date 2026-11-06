@@ -106,6 +106,11 @@ const pack = {
     'DataZen 只在本地数据库保存结构化事实（不保存结果行或凭据）。你可以查看、编辑、导出或删除每条记忆，也可随时关闭。',
   'settings.ai.memory.firstUseConfirm': '启用记忆',
   'settings.ai.memory.disabledNote': '记忆已关闭；已有条目仍可管理和导出。',
+  'settings.ai.memory.orgTitle': '组织记忆',
+  'settings.ai.memory.orgReadOnly':
+    '由团队服务器上的组织管理员发布。成员可以使用这些记忆，但不能在此编辑或撤销。',
+  'settings.ai.memory.orgBadge': '组织 · 只读',
+  'settings.ai.memory.orgEmpty': '尚未发布组织记忆。',
   'settings.ai.memory.listTitle': '记忆列表',
   'settings.ai.memory.searchPlaceholder': '搜索主题或内容…',
   'settings.ai.memory.allConnections': '全部连接',

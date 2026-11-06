@@ -119,6 +119,11 @@ const pack = {
   'settings.ai.memory.firstUseConfirm': 'Enable memory',
   'settings.ai.memory.disabledNote':
     'Memory is off. Existing entries remain available for management and export.',
+  'settings.ai.memory.orgTitle': 'Organization memories',
+  'settings.ai.memory.orgReadOnly':
+    'Published by an organization administrator on the team server. Members can use these memories but cannot edit or revoke them here.',
+  'settings.ai.memory.orgBadge': 'Organization · read-only',
+  'settings.ai.memory.orgEmpty': 'No organization memories have been published.',
   'settings.ai.memory.listTitle': 'Memories',
   'settings.ai.memory.searchPlaceholder': 'Search subject or content…',
   'settings.ai.memory.allConnections': 'All connections',

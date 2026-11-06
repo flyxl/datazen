@@ -130,6 +130,8 @@ export const aiCommands = {
 
   memoryList: (params: AiMemoryListParams = {}) =>
     invoke<AiMemoryPage>('ai_memory_list', { ...params }),
+  orgMemoryList: (params: AiMemoryListParams = {}) =>
+    invoke<AiMemoryPage>('ai_org_memory_list', { ...params }),
   memorySearch: (params: AiMemoryListParams & { query: string }) =>
     invoke<AiMemoryPage>('ai_memory_search', { ...params }),
   memoryStats: () => invoke<AiMemoryStats>('ai_memory_stats'),

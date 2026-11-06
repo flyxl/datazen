@@ -59,6 +59,7 @@ export type LegacyCommandName =
   | 'ai_connection_notes_set'
   | 'ai_connection_context_counts'
   | 'ai_memory_list'
+  | 'ai_org_memory_list'
   | 'ai_memory_search'
   | 'ai_memory_stats'
   | 'ai_memory_create'

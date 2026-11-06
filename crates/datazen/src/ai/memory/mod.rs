@@ -9,6 +9,7 @@
 pub mod domain;
 pub mod extraction;
 pub mod injector;
+pub mod org;
 pub mod repository;
 pub mod retriever;
 
@@ -28,6 +29,11 @@ pub use injector::{
     escape_memory_text, sanitize_memory_text, InjectedMemory, MemoryInjection,
     MemoryInjectionPolicy, MemoryInjector, MemoryReference, DEFAULT_MEMORY_TOKEN_BUDGET,
     HARD_MEMORY_TOKEN_BUDGET, MAX_INJECTED_MEMORIES, MAX_MEMORY_CONTENT_BYTES,
+};
+pub use org::{
+    latest_active_org_memories, next_org_memory_version, validate_org_memory_draft,
+    OrgMemoryAuditAction, OrgMemoryAuditEntry, OrgMemoryDecision, OrgMemoryDraft, OrgMemoryEntry,
+    OrgMemoryError, OrgMemoryStatus, MAX_ORG_MEMORY_CONTENT_BYTES, MAX_ORG_MEMORY_SUBJECT_CHARS,
 };
 pub use repository::{MemoryError, MemoryQuery, MemoryRepository};
 pub use retriever::{
