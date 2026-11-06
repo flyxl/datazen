@@ -22,7 +22,7 @@
 | BUG-018 | T20 | Redis key_pattern 可被多 key EXISTS 绕过；拒绝的 Redis 命令审计记为 allow；batch 无逐语句审计且审计 rowCount 为空 | 已验证 |
 | BUG-019 | T21 | HTTP token 输入框使用未定义的 Tailwind 颜色类 `bg-bg`，`tailwind-colour-classes` 门禁失败 | 已验证 |
 | BUG-020 | T22 | 插件模板参数未转义：审批 SQL 泄漏凭据，SQL 字面量可被参数改变 | 已验证 |
-| BUG-021 | T22 | Workflow 工具参数未转义：模型可改写只读 Workflow 的 SQL | 已修复（待独立复测） |
+| BUG-021 | T22 | Workflow 工具参数未转义：模型可改写只读 Workflow 的 SQL | 待修复（复测未通过） |
 
 
 ## T19 MCP scope / 逐次审批 / 审计验收记录（已验证）
@@ -295,7 +295,7 @@ loop/方言/数字 LIMIT/注释/dollar/标识符/未闭合、condition/fallback 
 8233/8 既有环境失败、映射 typecheck OK、fmt/diff 0。详见
 [BUG-021](ai-assistant-parity-bugs/BUG-021.md)。
 
-## T22 BUG-021 第二次修复：execute 预校验 / steps fail closed
+## T22 BUG-021 第二次修复：execute 预校验 / steps fail closed（loop 双段仍未通过）
 
 `fix: revalidate workflow templates at execute` 补齐独立复测发现的两项：
 
@@ -315,3 +315,26 @@ loop/方言/数字 LIMIT/注释/dollar/标识符/未闭合、condition/fallback 
 | T22 host bridge | 19 passed |
 | 全量前端（未改前端） | 8233 passed / 8 既有环境失败 |
 | fmt / diff | 0 / 0 |
+
+## T22 `07d65b919` 复测：loop 双段路径仍未 fail closed
+
+上一轮两项已确认修复：直接 execute 非法模板 audit deny（reason
+`workflowTemplateInvalid`）、零查询；authorize 后修改定义（TOCTOU）同样 deny、
+零查询。未定义 step、非法索引/未闭合路径被拒绝；合法
+`steps.q1.rows[0].name`、condition/foreach 可达 step、合法 loop `item.id`
+通过并按 typed value 转义。
+
+独立临时测试仍失败：
+
+```text
+ForEach as_var=item, body: SELECT '{{item..id}}' AS value
+authorize => Allow（期望 deny）
+```
+
+`workflow_template_value` 的 loop 分支使用
+`trim_start_matches('.')`，把 `item..id` 的前导双点全部吞掉，绕过了“空/重复段”
+校验。合法 `item.id` 已验证执行时输出 `'O''Brien'`。
+
+复跑：datazen 1721、desktop 1402/10 ignored、server 361、T22 host 19、全量前端
+8233/8 既有环境失败、映射 typecheck OK、fmt/diff 0。详见
+[BUG-021](ai-assistant-parity-bugs/BUG-021.md)。
