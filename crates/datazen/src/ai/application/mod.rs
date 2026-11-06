@@ -34,6 +34,7 @@ pub mod sql_generation;
 pub mod tool_bridge;
 pub mod tool_loop;
 pub mod tools;
+pub mod write_proposal;
 
 pub use error::AiUseCaseError;
 pub use prompt_resolver::*;

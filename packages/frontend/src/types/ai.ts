@@ -200,6 +200,72 @@ export interface AiToolResult {
   content: string;
 }
 
+/** T24: one statement inside a write proposal. */
+export interface AiWriteStatement {
+  index: number;
+  verb: string;
+  table?: string;
+  hasWhere: boolean;
+  destructive: boolean;
+  sqlHash: string;
+}
+
+/** T24: static impact preview; no statement is executed to build it. */
+export interface AiWriteImpact {
+  statementCount: number;
+  tables: string[];
+  hasWhere: boolean;
+  destructive: boolean;
+  writesData: boolean;
+  schemaChanges: boolean;
+  summary: string;
+}
+
+/**
+ * T24: a reviewable exact-text write proposal. `proposalId` doubles as the
+ * one-time apply token; the UI must send it back with the exact SQL and target.
+ */
+export interface AiWriteProposal {
+  proposalId: string;
+  token: string;
+  connectionId: string;
+  database: string;
+  sql: string;
+  sqlHash: string;
+  createdAt: string;
+  expiresAt: string;
+  diff?: string;
+  statements: AiWriteStatement[];
+  impact: AiWriteImpact;
+  productionProtected: boolean;
+  applyAllowed: boolean;
+}
+
+/** T24: result of one successful apply. */
+export interface AiWriteApplyReceipt {
+  proposalId: string;
+  connectionId: string;
+  database: string;
+  sqlHash: string;
+  rowCount: number | null;
+  result: unknown;
+}
+
+/** T24: proposal lifecycle audit row; never contains SQL or credentials. */
+export interface AiWriteAuditRecord {
+  id: string;
+  organizationId: string;
+  principalId: string;
+  proposalId: string | null;
+  connectionId: string | null;
+  databaseName: string | null;
+  sqlHash: string;
+  decision: 'proposal' | 'applied' | 'denied' | string;
+  rowCount: number | null;
+  reason?: string;
+  createdAt: string;
+}
+
 /** Result excerpt frozen into a chat turn; the Rust side re-caps it. */
 export interface AiChatResultPreview {
   columns: string[];

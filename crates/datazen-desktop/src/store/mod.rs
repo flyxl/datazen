@@ -3,6 +3,7 @@
 mod ai_config;
 pub(crate) mod ai_memory;
 pub(crate) mod ai_sessions;
+mod ai_write_audit;
 pub(crate) mod app_db;
 mod connections;
 pub(crate) mod favorites;
@@ -29,6 +30,10 @@ mod tunnels;
 /// backend is a startup-time fact, never a per-call env lookup.
 pub(crate) use key_backend::KeyBackend;
 
+pub use ai_write_audit::{
+    new_ai_write_audit_record, AiWriteAuditLog, AiWriteAuditRecord, NewAiWriteAuditRecord,
+    AI_WRITE_AUDIT_FILE,
+};
 #[allow(unused_imports)] // public re-exports for IPC / other modules
 pub use app_db::{
     AppDb, AppDbError, DashboardRecord, WidgetRecord, WidgetRunRecord, WorkflowRecord,

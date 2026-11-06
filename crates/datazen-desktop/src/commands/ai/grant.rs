@@ -232,6 +232,19 @@ impl DatabaseToolHost for AiRequestHost<'_> {
         DatabaseToolHost::driver_for_connection(self.state, id).await
     }
 
+    fn write_proposal_store(
+        &self,
+    ) -> Option<Arc<datazen::ai::application::write_proposal::WriteProposalStore>> {
+        DatabaseToolHost::write_proposal_store(self.state)
+    }
+
+    async fn write_proposal_created(
+        &self,
+        proposal: &datazen::ai::application::write_proposal::WriteProposal,
+    ) -> Result<(), String> {
+        DatabaseToolHost::write_proposal_created(self.state, proposal).await
+    }
+
     async fn execute_target(
         &self,
         id: &str,

@@ -21,6 +21,9 @@ import type {
   AiSkillSummary,
   AiSessionSummary,
   AiSessionUpsertInput,
+  AiWriteApplyReceipt,
+  AiWriteAuditRecord,
+  AiWriteProposal,
   AiSettingsConfig,
   ConnectionDiagnosis,
   DiagnosisResult,
@@ -252,6 +255,22 @@ export const aiCommands = {
   mcpStop: () => invoke<void>('mcp_stop'),
   mcpReload: () => invoke<void>('mcp_reload'),
   mcpListAllTools: () => invoke<string[]>('mcp_list_all_tools'),
+  aiProposeWrite: (params: {
+    connectionId: string;
+    database?: string;
+    sql: string;
+    previousSql?: string;
+  }) => invoke<AiWriteProposal>('ai_propose_write', params),
+  aiApplyWrite: (params: {
+    proposalId: string;
+    connectionId: string;
+    database: string;
+    sql: string;
+  }) => invoke<AiWriteApplyReceipt>('ai_apply_write', params),
+  aiDenyWrite: (proposalId: string) => invoke<boolean>('ai_deny_write', { proposalId }),
+  aiListWriteAudit: (limit?: number) =>
+    invoke<AiWriteAuditRecord[]>('ai_list_write_audit', { limit: limit ?? null }),
+
   mcpRespondApproval: (requestId: string, decision: McpApprovalDecision) =>
     invoke<boolean>('mcp_respond_approval', { requestId, decision }),
   mcpCancelApproval: (requestId: string) => invoke<boolean>('mcp_cancel_approval', { requestId }),

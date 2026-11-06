@@ -311,6 +311,7 @@ ai = [
     "dep:datazen-infra",
     "dep:datazen-driver-api",
     "dep:uuid",
+    "dep:sha2",
     "dep:dirs",
     "settings",
     "connection",

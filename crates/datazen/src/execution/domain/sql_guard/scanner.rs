@@ -51,7 +51,7 @@ pub(crate) fn push_separator(out: &mut String) {
     }
 }
 
-pub(crate) fn split_statements(sql: &str) -> Vec<String> {
+pub fn split_statements(sql: &str) -> Vec<String> {
     let chars: Vec<char> = sql.chars().collect();
     let mut stmts = Vec::new();
     let mut start = 0;

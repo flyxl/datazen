@@ -10,6 +10,7 @@ pub use keyword::{
 };
 pub use params::apply_params;
 pub use safety::{check_sql, normalize_fullwidth, reject_null_bytes};
+pub use scanner::split_statements as split_sql_statements;
 
 #[cfg(test)]
 pub use safety::is_write_sql;

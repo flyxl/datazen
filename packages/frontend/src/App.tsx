@@ -4,6 +4,7 @@ import { mark } from './lib/startupTimer';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { WebContextMenuHost } from './components/ui/WebContextMenu';
 import { McpApprovalHost } from './components/McpApprovalHost';
+import { AiWriteProposalHost } from './components/AiWriteProposalHost';
 import { WindowChromeFallback } from './components/WindowChromeFallback';
 import { hideSplash } from './lib/splash';
 import {
@@ -100,6 +101,7 @@ export default function App() {
       </Suspense>
       <WebContextMenuHost />
       <McpApprovalHost />
+      <AiWriteProposalHost />
     </ErrorBoundary>
   );
 }

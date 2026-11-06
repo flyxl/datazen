@@ -17,6 +17,9 @@ use super::AiToolContext;
 use super::ToolKind;
 use super::{ToolLoopGuard, ToolLoopLimits};
 use crate::ai::application::ports::DatabaseToolHost;
+use crate::ai::application::write_proposal::{
+    ApplyWriteRequest, WriteProposal, WriteProposalStore,
+};
 use crate::ai::domain::types::{
     AiSafetyGateConfig, AiToolPermissionPolicy, MessageRole, TokenUsage, ToolDefinition,
 };
@@ -76,6 +79,7 @@ struct TestDbHost {
     config: ConnectionConfig,
     driver: Arc<dyn DatabaseDriver>,
     executions: Mutex<Vec<(String, serde_json::Value)>>,
+    proposals: Arc<WriteProposalStore>,
 }
 
 impl TestDbHost {
@@ -84,6 +88,7 @@ impl TestDbHost {
             config: test_config(),
             driver: MockDriver::new("postgres", MockDriverOptions::default()),
             executions: Mutex::new(Vec::new()),
+            proposals: Arc::new(WriteProposalStore::new()),
         }
     }
 
@@ -116,6 +121,9 @@ impl DatabaseToolHost for TestDbHost {
     }
     async fn execution_settings(&self) -> ExecutionSettings {
         execution_settings()
+    }
+    fn write_proposal_store(&self) -> Option<Arc<WriteProposalStore>> {
+        Some(self.proposals.clone())
     }
 }
 
@@ -196,6 +204,7 @@ fn test_is_db_tool() {
     assert!(is_db_tool("list_tables"));
     assert!(is_db_tool("get_table_schema"));
     assert!(is_db_tool("query_readonly"));
+    assert!(is_db_tool("propose_write"));
     assert!(is_db_tool("sample_rows"));
     assert!(!is_db_tool("ask_questions"));
     assert!(!is_db_tool("unknown_tool"));
@@ -215,6 +224,7 @@ fn test_classify_tool() {
     assert!(matches!(classify_tool("search_tables"), ToolKind::Db(_)));
     assert!(matches!(classify_tool("get_table_schema"), ToolKind::Db(_)));
     assert!(matches!(classify_tool("query_readonly"), ToolKind::Db(_)));
+    assert!(matches!(classify_tool("propose_write"), ToolKind::Db(_)));
     assert!(matches!(classify_tool("sample_rows"), ToolKind::Db(_)));
     assert_eq!(
         classify_tool("mcp/files/read_file"),
@@ -294,8 +304,9 @@ fn test_agent_db_tool_definitions_adds_readonly_tools() {
     }
 
     let bound = names(agent_db_tool_definitions(true));
-    assert_eq!(bound.len(), 7);
+    assert_eq!(bound.len(), 8);
     assert!(bound.contains(&"query_readonly".into()));
+    assert!(bound.contains(&"propose_write".into()));
     assert!(bound.contains(&"sample_rows".into()));
     for name in unbound {
         assert!(bound.contains(&name), "metadata tool {name} must stay");
@@ -736,6 +747,95 @@ fn test_guard_truncate_and_wrap_truncates_large() {
     assert!(msg.content.contains("truncated"));
 }
 
+#[tokio::test]
+async fn propose_write_tool_returns_binding_and_never_executes() {
+    let host = TestDbHost::new();
+    let ctx = AiToolContext {
+        allowed_connection_id: Some("conn-1".into()),
+        max_sample_rows: 3,
+        ..AiToolContext::default()
+    };
+    let catalog = EmptyCatalog;
+    let scope = ConnectionScope::new("org");
+    let sql = "UPDATE users SET role = 'admin' WHERE id = 42";
+    let out = execute_db_tool(
+        &host,
+        &ctx,
+        &catalog,
+        &scope,
+        &tool(
+            "propose_write",
+            &format!(r#"{{"connection_id":"conn-1","sql":"{sql}"}}"#),
+        ),
+    )
+    .await;
+    let proposal: WriteProposal = serde_json::from_str(&out).expect("proposal json");
+    assert_eq!(proposal.connection_id, "conn-1");
+    assert_eq!(proposal.database, "app");
+    assert_eq!(proposal.sql, sql);
+    assert_eq!(proposal.impact.statement_count, 1);
+    assert!(
+        host.executions().is_empty(),
+        "propose_write must not touch execute_target"
+    );
+
+    let applied = host
+        .proposals
+        .apply(
+            &ApplyWriteRequest {
+                token: proposal.token.clone(),
+                connection_id: proposal.connection_id.clone(),
+                database: proposal.database.clone(),
+                sql: proposal.sql.clone(),
+            },
+            &test_config(),
+            false,
+            chrono::Utc::now(),
+        )
+        .expect("exact binding applies");
+    assert_eq!(applied.proposal.sql, sql);
+    assert!(
+        host.executions().is_empty(),
+        "store apply only authorizes; the host still owns execution"
+    );
+    assert_eq!(
+        host.proposals.apply(
+            &ApplyWriteRequest {
+                token: proposal.token,
+                connection_id: proposal.connection_id,
+                database: proposal.database,
+                sql: proposal.sql,
+            },
+            &test_config(),
+            false,
+            chrono::Utc::now(),
+        ),
+        Err(crate::ai::application::write_proposal::WriteProposalError::NotFound)
+    );
+}
+
+#[tokio::test]
+async fn propose_write_tool_rejects_unbound_connection_without_proposing() {
+    let host = TestDbHost::new();
+    let ctx = AiToolContext::default();
+    let catalog = EmptyCatalog;
+    let scope = ConnectionScope::new("org");
+    let out = execute_db_tool(
+        &host,
+        &ctx,
+        &catalog,
+        &scope,
+        &tool(
+            "propose_write",
+            r#"{"connection_id":"conn-1","sql":"DELETE FROM users WHERE id = 1"}"#,
+        ),
+    )
+    .await;
+    assert!(out.contains("no active connection bound"), "{out}");
+    assert!(host.proposals.is_empty());
+    assert!(host.executions().is_empty());
+}
+
 // ── is_readonly_db_tool（B3 归位）──
 
 #[test]
@@ -747,6 +847,7 @@ fn test_is_readonly_db_tool() {
     assert!(is_readonly_db_tool("get_table_schema"));
     assert!(is_readonly_db_tool("query_readonly"));
     assert!(is_readonly_db_tool("sample_rows"));
+    assert!(!is_readonly_db_tool("propose_write"));
     assert!(!is_readonly_db_tool("ask_questions"));
     assert!(!is_readonly_db_tool("unknown"));
 }
@@ -799,7 +900,11 @@ fn db_policy_disabled_removes_every_tool() {
 #[test]
 fn db_policy_read_only_drops_a_future_write_tool() {
     let tools = filter_db_tool_definitions(
-        vec![fake_db_tool("list_tables"), fake_db_tool("drop_table")],
+        vec![
+            fake_db_tool("list_tables"),
+            fake_db_tool("propose_write"),
+            fake_db_tool("drop_table"),
+        ],
         AiToolPermissionPolicy::ReadOnly,
     );
     let names = tools.into_iter().map(|tool| tool.name).collect::<Vec<_>>();

@@ -1821,3 +1821,96 @@ async fn ai_chat_ask_questions_with_executable_runs_tools_then_stops() {
     assert_eq!(mcp_calls.load(Ordering::SeqCst), 1);
     assert_eq!(mock.call_count(), 1, "should stop after mixed round");
 }
+
+#[tokio::test]
+async fn confirmed_write_executes_only_after_exact_apply_and_audits_lifecycle() {
+    let test = TestAppState::new().await;
+    test.save_connection("write-cfg").await;
+    let sql = "UPDATE users SET role = 'admin' WHERE id = 42";
+
+    let proposal = propose_write_for_state(&test.state, "write-cfg", Some("app"), sql, None)
+        .await
+        .expect("proposal");
+    assert_eq!(proposal.connection_id, "write-cfg");
+    assert_eq!(proposal.database, "app");
+    assert_eq!(proposal.sql, sql);
+    assert!(proposal.apply_allowed);
+    assert_eq!(
+        test.mock.execute_calls(),
+        0,
+        "proposal must not execute the write"
+    );
+
+    let receipt = apply_write_for_state(&test.state, &proposal.token, "write-cfg", "app", sql)
+        .await
+        .expect("exact apply");
+    assert_eq!(receipt.proposal_id, proposal.proposal_id);
+    assert_eq!(receipt.sql_hash, proposal.sql_hash);
+    assert_eq!(test.mock.execute_calls(), 1, "apply executes exactly once");
+
+    let reuse = apply_write_for_state(&test.state, &proposal.token, "write-cfg", "app", sql)
+        .await
+        .expect_err("one-time token");
+    assert!(reuse.to_string().contains("already used"), "{reuse}");
+    assert_eq!(test.mock.execute_calls(), 1, "reuse never executes");
+
+    let rows = test
+        .state
+        .store
+        .ai_write_audit_log()
+        .list(20)
+        .await
+        .expect("audit");
+    assert!(rows.iter().any(|row| row.decision == "proposal"));
+    assert!(rows.iter().any(|row| row.decision == "applied"));
+    assert!(rows.iter().any(|row| row.decision == "denied"));
+    assert!(rows.iter().all(|row| row.sql_hash.len() == 64));
+    let raw = tokio::fs::read_to_string(test.state.store.ai_write_audit_log().path())
+        .await
+        .unwrap();
+    assert!(!raw.contains("UPDATE users"));
+}
+
+#[tokio::test]
+async fn tampered_or_production_apply_never_reaches_the_driver() {
+    let test = TestAppState::new().await;
+    let mut production = test.save_connection("prod-write").await;
+    production.group = Some("preset:production".into());
+    test.store.save_connection(production).await.unwrap();
+    let sql = "DELETE FROM users WHERE id = 7";
+
+    let proposal = propose_write_for_state(&test.state, "prod-write", Some("app"), sql, None)
+        .await
+        .expect("proposal still shows the blocked target");
+    assert!(proposal.production_protected);
+    assert!(!proposal.apply_allowed);
+    assert_eq!(test.mock.execute_calls(), 0);
+
+    let error = apply_write_for_state(&test.state, &proposal.token, "prod-write", "app", sql)
+        .await
+        .expect_err("production writes are never executed");
+    assert!(error.to_string().contains("production"), "{error}");
+    assert_eq!(test.mock.execute_calls(), 0);
+
+    test.save_connection("write-tamper").await;
+    let proposal = propose_write_for_state(
+        &test.state,
+        "write-tamper",
+        Some("app"),
+        "UPDATE users SET role = 'admin' WHERE id = 1",
+        None,
+    )
+    .await
+    .expect("proposal");
+    let error = apply_write_for_state(
+        &test.state,
+        &proposal.token,
+        "write-tamper",
+        "app",
+        "UPDATE users SET role = 'admin' WHERE id = 2",
+    )
+    .await
+    .expect_err("exact SQL is required");
+    assert!(error.to_string().contains("SQL"), "{error}");
+    assert_eq!(test.mock.execute_calls(), 0);
+}

@@ -167,6 +167,44 @@ pub async fn sample_rows(
     query_readonly(host, id, &sql, Some(limit)).await
 }
 
+/// Create an exact-text write proposal for the bound connection.
+///
+/// The proposal is review metadata, not execution: no target command is sent
+/// here. A successful apply must go through `WriteProposalStore::apply` and
+/// then the host's single `execute_target` entry.
+pub async fn propose_write(
+    host: &dyn DatabaseToolHost,
+    id: &str,
+    database: Option<&str>,
+    sql: &str,
+    previous_sql: Option<&str>,
+) -> Result<String, String> {
+    let config = host.profile_config(id).await?;
+    let policy = host.execution_settings().await;
+    let store = host
+        .write_proposal_store()
+        .ok_or_else(|| "write proposals are not supported by this host".to_string())?;
+    let database = database
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .or_else(|| config.database.clone())
+        .unwrap_or_default();
+    let request = crate::ai::application::write_proposal::WriteProposalRequest {
+        connection_id: id.trim().to_string(),
+        database,
+        sql: sql.to_string(),
+        previous_sql: previous_sql.map(str::to_string),
+    };
+    let proposal = store
+        .propose(&request, &config, policy.safe_mode, chrono::Utc::now())
+        .map_err(|error| error.to_string())?;
+    if let Err(error) = host.write_proposal_created(&proposal).await {
+        tracing::warn!(%error, "write proposal created but host notification failed");
+    }
+    serde_json::to_string_pretty(&proposal).map_err(|error| error.to_string())
+}
+
 /// Read-only SQL for AI tools.
 ///
 /// [`McpPermissionMode::ReadOnly`] is a deny-all-SQL mode for the MCP surface

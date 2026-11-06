@@ -38,7 +38,7 @@ pub mod skills;
 pub use application::{
     cancel, chat_injection, chat_request, chat_session, context, db_tools, filter, mcp_tools,
     ownership, retry, schema_context, schema_doc, schema_pipeline, single_turn, sql_generation,
-    tool_bridge, tool_loop, tools,
+    tool_bridge, tool_loop, tools, write_proposal,
 };
 pub use domain::{budget, ctx_yaml, safety};
 

@@ -11,6 +11,7 @@ mod prompts;
 mod sessions;
 mod skills;
 mod util;
+mod write;
 
 pub use bridge::*;
 pub use chat::*;
@@ -23,6 +24,7 @@ pub use prompts::*;
 pub use sessions::*;
 pub use skills::*;
 pub(crate) use util::language_hint;
+pub use write::*;
 
 use crate::commands::error::CommandError;
 use crate::commands::AppState;

@@ -98,6 +98,20 @@ pub fn agent_db_tool_definitions(allow_query: bool) -> Vec<ToolDefinition> {
         }),
     });
     tools.push(ToolDefinition {
+        name: "propose_write".into(),
+        description: "Create a reviewable write proposal for the current chat connection. This NEVER executes SQL. The user must approve the exact SQL in the UI before a separate one-time apply can run. Use for INSERT/UPDATE/DELETE/DDL requested by the user; give the complete exact SQL.".into(),
+        parameters: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "connection_id": { "type": "string", "description": "The current session connection ID" },
+                "database": { "type": "string", "description": "Target database (defaults to the connection database)" },
+                "sql": { "type": "string", "description": "The complete exact SQL to propose; it will not run until the user allows it" },
+                "previous_sql": { "type": "string", "description": "Optional current editor SQL, used only to show a review diff" }
+            },
+            "required": ["connection_id", "sql"]
+        }),
+    });
+    tools.push(ToolDefinition {
         name: "sample_rows".into(),
         description: "Read a small sample of rows from one table on the current chat connection. Use this to inspect real values without writing SQL.".into(),
         parameters: serde_json::json!({
@@ -124,6 +138,7 @@ pub fn is_db_tool(name: &str) -> bool {
             | "search_tables"
             | "get_table_schema"
             | "query_readonly"
+            | "propose_write"
             | "sample_rows"
     )
 }
@@ -523,6 +538,26 @@ pub async fn execute_db_tool(
                     } else {
                         let limit = clamp_tool_limit(args["limit"].as_u64(), 100, 1000);
                         super::db_tools::query_readonly(cm, connection_id, sql, Some(limit)).await
+                    }
+                }
+                Err(error) => Err(error),
+            }
+        }
+        "propose_write" => {
+            match allowed_connection_id(ctx, args["connection_id"].as_str().unwrap_or("")) {
+                Ok(connection_id) => {
+                    let sql = args["sql"].as_str().unwrap_or("");
+                    if sql.trim().is_empty() {
+                        Err("sql is required".into())
+                    } else {
+                        super::db_tools::propose_write(
+                            cm,
+                            connection_id,
+                            args["database"].as_str(),
+                            sql,
+                            args["previous_sql"].as_str(),
+                        )
+                        .await
                     }
                 }
                 Err(error) => Err(error),
