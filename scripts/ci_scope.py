@@ -70,7 +70,7 @@ def classify_changed_paths(paths: list[str]) -> tuple[bool, bool]:
             frontend = rust = True
         elif name.startswith(("src/", "e2e/", "site/", "test/", "public/", "fixtures/themes/")):
             frontend = True
-        elif name.startswith("src-tauri/") or (
+        elif name.startswith(("src-tauri/", "crates/")) or (
             name.startswith("packages/") and suffix in {".rs", ".toml"}
         ):
             rust = True
