@@ -215,7 +215,8 @@ impl WriteProposalStore {
         validate_request(request)?;
         let sql_hash = sql_hash(&request.sql);
         let statements = summarize_statements(&request.sql);
-        let impact = build_impact(&statements);
+        let effects = collect_write_effects(&request.sql);
+        let impact = build_impact(&statements, &effects);
         let production_protected = is_production_connection(config);
         let read_only = config.read_only;
         let apply_allowed = !production_protected && !read_only;
@@ -478,38 +479,116 @@ fn token_after<'a>(tokens: &'a [String], keyword: &str) -> Option<&'a str> {
         .and_then(|position| tokens.get(position + 1).map(String::as_str))
 }
 
-fn build_impact(statements: &[WriteStatement]) -> WriteImpact {
+/// One actual data-changing effect, including DML found inside a CTE. The
+/// top-level statement list cannot represent this: a `WITH ... SELECT` still
+/// deletes rows in its CTE.
+#[derive(Debug, Clone)]
+struct WriteEffect {
+    verb: String,
+    table: Option<String>,
+    has_where: bool,
+    destructive: bool,
+}
+
+fn collect_write_effects(sql: &str) -> Vec<WriteEffect> {
+    let mut effects = Vec::new();
+    for statement in sql_guard::split_sql_statements(sql) {
+        let tokens = tokenize_sql(&statement);
+        if let Some(effect) = write_effect(&tokens) {
+            effects.push(effect);
+        }
+        for body in sql_guard::data_modifying_cte_bodies(&tokens) {
+            if let Some(effect) = write_effect(body) {
+                effects.push(effect);
+            }
+        }
+    }
+    effects
+}
+
+fn write_effect(tokens: &[String]) -> Option<WriteEffect> {
+    let main = find_main_verb_index(tokens)?;
+    let verb = tokens.get(main)?.to_uppercase();
+    if !is_effect_verb(&verb) {
+        return None;
+    }
+    let has_where = sql_guard::has_top_level_where(&tokens.join(" "));
+    Some(WriteEffect {
+        table: statement_table(&verb, tokens),
+        destructive: matches!(verb.as_str(), "DROP" | "TRUNCATE")
+            || (verb == "DELETE" && !has_where),
+        verb,
+        has_where,
+    })
+}
+
+fn is_effect_verb(verb: &str) -> bool {
+    matches!(
+        verb,
+        "INSERT"
+            | "UPDATE"
+            | "DELETE"
+            | "MERGE"
+            | "UPSERT"
+            | "REPLACE"
+            | "COPY"
+            | "LOAD"
+            | "CREATE"
+            | "ALTER"
+            | "DROP"
+            | "TRUNCATE"
+            | "RENAME"
+            | "COMMENT"
+            | "GRANT"
+            | "REVOKE"
+    )
+}
+
+fn build_impact(statements: &[WriteStatement], effects: &[WriteEffect]) -> WriteImpact {
     let mut tables = Vec::new();
-    for statement in statements {
-        if let Some(table) = &statement.table {
+    for effect in effects {
+        if let Some(table) = &effect.table {
             if !tables.iter().any(|existing| existing == table) {
                 tables.push(table.clone());
             }
         }
     }
-    let has_where = statements
-        .iter()
-        .all(|statement| match statement.verb.as_str() {
-            "UPDATE" | "DELETE" => statement.has_where,
-            _ => true,
-        });
-    let destructive = statements.iter().any(|statement| statement.destructive);
-    let writes_data = statements.iter().any(|statement| {
+    if effects.is_empty() {
+        // Keep the preview useful for statements without a data effect (for
+        // example a write PRAGMA).
+        for statement in statements {
+            if let Some(table) = &statement.table {
+                if !tables.iter().any(|existing| existing == table) {
+                    tables.push(table.clone());
+                }
+            }
+        }
+    }
+    let has_where = effects.iter().all(|effect| match effect.verb.as_str() {
+        "UPDATE" | "DELETE" => effect.has_where,
+        _ => true,
+    });
+    let destructive = effects.iter().any(|effect| effect.destructive);
+    let writes_data = effects.iter().any(|effect| {
         matches!(
-            statement.verb.as_str(),
+            effect.verb.as_str(),
             "INSERT" | "UPDATE" | "DELETE" | "MERGE" | "UPSERT" | "REPLACE" | "COPY" | "LOAD"
         )
     });
-    let schema_changes = statements.iter().any(|statement| {
+    let schema_changes = effects.iter().any(|effect| {
         matches!(
-            statement.verb.as_str(),
+            effect.verb.as_str(),
             "CREATE" | "ALTER" | "DROP" | "TRUNCATE" | "RENAME" | "COMMENT" | "GRANT" | "REVOKE"
         )
     });
-    let verbs: Vec<String> = statements
-        .iter()
-        .map(|statement| statement.verb.clone())
-        .collect();
+    let verbs: Vec<String> = if effects.is_empty() {
+        statements
+            .iter()
+            .map(|statement| statement.verb.clone())
+            .collect()
+    } else {
+        effects.iter().map(|effect| effect.verb.clone()).collect()
+    };
     let summary = format!(
         "{} statement(s): {}{}",
         statements.len(),
@@ -884,6 +963,9 @@ mod tests {
             "SHOW TABLES",
             "DESCRIBE users",
             "PRAGMA table_info(users)",
+            "PRAGMA index_list(users)",
+            "PRAGMA database_list",
+            "PRAGMA journal_mode",
             "VALUES (1)",
             "SELECT * FROM users FOR UPDATE",
             "UPDATE users SET role = 'admin' WHERE id = 1; SELECT * FROM users",
@@ -917,6 +999,8 @@ mod tests {
             "CREATE TABLE audit_log (id bigint)",
             "PRAGMA journal_mode = WAL",
             "PRAGMA foreign_keys=ON",
+            "PRAGMA journal_mode(WAL)",
+            "PRAGMA foreign_keys(ON)",
             "UPDATE users SET role = 'admin' WHERE id = 1; -- done",
             "WITH d AS (DELETE FROM users WHERE id = 1 RETURNING *) SELECT * FROM d",
             "UPDATE users SET role = 'admin' WHERE id = 1; DELETE FROM users WHERE id = 2",
@@ -925,6 +1009,120 @@ mod tests {
                 .propose(&request(sql), &config(None, false), false, now)
                 .unwrap_or_else(|error| panic!("{sql} should be a write: {error}"));
         }
+    }
+
+    #[test]
+    fn data_modifying_cte_impact_comes_from_nested_dml() {
+        let store = WriteProposalStore::new();
+        let now = Utc.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap();
+        let proposal = store
+            .propose(
+                &request("WITH d AS (DELETE FROM users RETURNING *) SELECT * FROM d"),
+                &config(None, false),
+                false,
+                now,
+            )
+            .unwrap();
+        assert!(
+            proposal.impact.writes_data,
+            "a data-modifying CTE is a write: {:?}",
+            proposal.impact
+        );
+        assert!(proposal.impact.tables.iter().any(|table| table == "users"));
+        assert!(proposal.impact.summary.contains("DELETE"));
+        assert!(!proposal.impact.has_where);
+        assert!(proposal.impact.destructive);
+    }
+
+    #[test]
+    fn nested_and_multiple_ctes_contribute_all_write_effects() {
+        let store = WriteProposalStore::new();
+        let now = Utc.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap();
+        let nested = store
+            .propose(
+                &request(
+                    "WITH outer AS (WITH inner AS (DELETE FROM users WHERE id = 1 RETURNING *) SELECT * FROM inner) SELECT * FROM outer",
+                ),
+                &config(None, false),
+                false,
+                now,
+            )
+            .unwrap();
+        assert!(nested.impact.writes_data);
+        assert!(nested.impact.tables.iter().any(|table| table == "users"));
+        assert!(nested.impact.summary.contains("DELETE"));
+        assert_eq!(
+            nested.impact.summary.matches("DELETE").count(),
+            1,
+            "nested CTE effects must not be collected twice"
+        );
+
+        let multiple = store
+            .propose(
+                &request(
+                    "WITH d AS (DELETE FROM users WHERE id = 1 RETURNING *), u AS (UPDATE accounts SET role = 'admin' WHERE id = 2 RETURNING *) SELECT * FROM d, u",
+                ),
+                &config(None, false),
+                false,
+                now,
+            )
+            .unwrap();
+        assert!(multiple.impact.writes_data);
+        assert!(multiple.impact.tables.iter().any(|table| table == "users"));
+        assert!(multiple
+            .impact
+            .tables
+            .iter()
+            .any(|table| table == "accounts"));
+        assert!(multiple.impact.summary.contains("DELETE"));
+        assert!(multiple.impact.summary.contains("UPDATE"));
+        assert!(multiple.impact.has_where);
+    }
+
+    #[test]
+    fn safe_mode_guards_nested_cte_updates_and_deletes() {
+        let store = WriteProposalStore::new();
+        let now = Utc.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap();
+        let unsafely = store
+            .propose(
+                &request("WITH d AS (DELETE FROM users RETURNING *) SELECT * FROM d"),
+                &config(None, false),
+                false,
+                now,
+            )
+            .unwrap();
+        assert!(matches!(
+            store.apply(&apply(&unsafely), &config(None, false), true, now),
+            Err(WriteProposalError::GuardRejected(_))
+        ));
+        assert_eq!(store.len(), 1, "a guarded apply must not consume the token");
+
+        let nested = store
+            .propose(
+                &request(
+                    "WITH outer AS (WITH inner AS (UPDATE users SET role = 'admin' RETURNING *) SELECT * FROM inner) SELECT * FROM outer",
+                ),
+                &config(None, false),
+                false,
+                now,
+            )
+            .unwrap();
+        assert!(matches!(
+            store.apply(&apply(&nested), &config(None, false), true, now),
+            Err(WriteProposalError::GuardRejected(_))
+        ));
+
+        let safely = store
+            .propose(
+                &request("WITH d AS (DELETE FROM users WHERE id = 1 RETURNING *) SELECT * FROM d"),
+                &config(None, false),
+                false,
+                now,
+            )
+            .unwrap();
+        assert!(store
+            .apply(&apply(&safely), &config(None, false), true, now)
+            .is_ok());
     }
 
     #[test]

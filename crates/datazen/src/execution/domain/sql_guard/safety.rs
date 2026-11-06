@@ -141,13 +141,21 @@ fn matching_close_paren(tokens: &[String], open: usize) -> Option<usize> {
     None
 }
 
-/// Detect data-modifying CTE bodies, including multiple CTEs and PostgreSQL's
-/// optional `MATERIALIZED` modifiers. Scanning every `AS (...)` also finds a
-/// nested `WITH` inside a subquery; a valid SQL column alias cannot be followed
-/// directly by a parenthesized expression.
-fn has_data_modifying_cte(tokens: &[String]) -> bool {
-    for (index, token) in tokens.iter().enumerate() {
-        if !token.eq_ignore_ascii_case("AS") {
+/// Every data-modifying CTE body in `tokens`, recursively including nested
+/// WITH clauses and multiple CTEs. Scanning every `AS (...)` also finds a
+/// subquery alias; if that body starts with a write verb it is still a real
+/// data modification, so it must be reviewed and guarded.
+pub fn data_modifying_cte_bodies<'a>(tokens: &'a [String]) -> Vec<&'a [String]> {
+    let mut bodies = Vec::new();
+    collect_data_modifying_cte_bodies(tokens, &mut bodies);
+    bodies
+}
+
+fn collect_data_modifying_cte_bodies<'a>(tokens: &'a [String], out: &mut Vec<&'a [String]>) {
+    let mut index = 0;
+    while index < tokens.len() {
+        if !tokens[index].eq_ignore_ascii_case("AS") {
+            index += 1;
             continue;
         }
         let mut open = index + 1;
@@ -169,20 +177,30 @@ fn has_data_modifying_cte(tokens: &[String]) -> bool {
             open += 1;
         }
         if tokens.get(open).map(String::as_str) != Some("(") {
+            index += 1;
             continue;
         }
         let Some(close) = matching_close_paren(tokens, open) else {
+            index += 1;
             continue;
         };
         let body = &tokens[open + 1..close];
-        let Some(main) = find_main_verb_index(body) else {
-            continue;
-        };
-        if is_write_verb(&body[main]) {
-            return true;
+        if find_main_verb_index(body)
+            .and_then(|main| body.get(main))
+            .is_some_and(|verb| is_write_verb(verb))
+        {
+            out.push(body);
         }
+        // Nested CTEs: `WITH outer AS (WITH inner AS (DELETE ...) SELECT ...)`.
+        // Recurse and skip the body so the outer loop does not collect the
+        // same nested AS a second time.
+        collect_data_modifying_cte_bodies(body, out);
+        index = close + 1;
     }
-    false
+}
+
+fn has_data_modifying_cte(tokens: &[String]) -> bool {
+    !data_modifying_cte_bodies(tokens).is_empty()
 }
 
 /// Returns the statement executed by `EXPLAIN ANALYZE`, accounting for both
@@ -394,6 +412,40 @@ pub fn check_sql(sql: &str, read_only: bool, safe_mode: bool) -> Result<(), Stri
                 "Comment hides a write verb; '{verb}' statement is not allowed"
             ));
         }
+
+        // A data-modifying CTE hides its DML behind a top-level SELECT. The
+        // connection-level guard must inspect every recursive CTE body too,
+        // otherwise Safe Mode's WHERE/DROP rules are bypassed.
+        for body in data_modifying_cte_bodies(&tokens) {
+            let Some(body_main) = find_main_verb_index(body) else {
+                continue;
+            };
+            let Some(body_verb) = body.get(body_main).map(|value| value.to_uppercase()) else {
+                continue;
+            };
+            if read_only && is_write_verb(&body_verb) {
+                return Err(format!(
+                    "Connection is read-only; '{body_verb}' statements are not allowed"
+                ));
+            }
+            if safe_mode
+                && SAFE_MODE_BLOCKED
+                    .iter()
+                    .any(|value| body_verb.eq_ignore_ascii_case(value))
+            {
+                return Err(format!("Safe Mode blocks CTE {body_verb}"));
+            }
+            if safe_mode
+                && SAFE_MODE_NEEDS_WHERE
+                    .iter()
+                    .any(|value| body_verb.eq_ignore_ascii_case(value))
+                && !has_top_level_where(&body.join(" "))
+            {
+                return Err(format!(
+                    "Safe Mode requires a WHERE clause on CTE {body_verb} statements"
+                ));
+            }
+        }
     }
     Ok(())
 }
@@ -474,21 +526,70 @@ fn is_dml_or_ddl(verb: &str) -> bool {
     .any(|allowed| verb.eq_ignore_ascii_case(allowed))
 }
 
-/// A read-only PRAGMA is introspection (`PRAGMA table_info(users)`); a write
-/// PRAGMA sets a value (`PRAGMA journal_mode = WAL`, `PRAGMA user_version = 1`).
-/// SQLite also accepts `PRAGMA name(value)` for setters, but the same spelling
-/// is used for readers; only the unambiguous assignment form is accepted.
+/// SQLite accepts setters as `PRAGMA name = value` and `PRAGMA name(value)`.
+/// The function form is ambiguous with readers (`PRAGMA table_info(users)`), so
+/// only known writable pragma names are accepted that way.
+const WRITABLE_PRAGMAS: &[&str] = &[
+    "application_id",
+    "auto_vacuum",
+    "automatic_index",
+    "busy_timeout",
+    "cache_size",
+    "case_sensitive_like",
+    "checkpoint_fullfsync",
+    "defer_foreign_keys",
+    "foreign_keys",
+    "fullfsync",
+    "ignore_check_constraints",
+    "journal_mode",
+    "journal_size_limit",
+    "legacy_alter_table",
+    "locking_mode",
+    "max_page_count",
+    "mmap_size",
+    "page_size",
+    "query_only",
+    "read_uncommitted",
+    "recursive_triggers",
+    "reverse_unordered_selects",
+    "secure_delete",
+    "soft_heap_limit",
+    "synchronous",
+    "temp_store",
+    "threads",
+    "trusted_schema",
+    "user_version",
+    "wal_autocheckpoint",
+    "writable_schema",
+];
+
 fn pragma_is_write(tokens: &[String]) -> bool {
-    tokens
+    if !tokens
         .first()
         .is_some_and(|token| token.eq_ignore_ascii_case("PRAGMA"))
-        && tokens
-            .iter()
-            .skip(1)
-            .any(|token| token == "=" || token.contains('='))
+    {
+        return false;
+    }
+    if tokens
+        .iter()
+        .skip(1)
+        .any(|token| token == "=" || token.contains('='))
+    {
+        return true;
+    }
+    let Some(name) = tokens.get(1) else {
+        return false;
+    };
+    if tokens.get(2).map(String::as_str) != Some("(") {
+        return false;
+    }
+    let name = name.rsplit('.').next().unwrap_or(name.as_str());
+    WRITABLE_PRAGMAS
+        .iter()
+        .any(|writable| name.eq_ignore_ascii_case(writable))
 }
 
-fn has_top_level_where(sql: &str) -> bool {
+pub fn has_top_level_where(sql: &str) -> bool {
     let chars: Vec<char> = sql.chars().collect();
     let mut i = 0;
     let mut depth = 0;

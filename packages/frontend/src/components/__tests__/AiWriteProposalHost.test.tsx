@@ -1,18 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AiWriteProposalHost } from '../AiWriteProposalHost';
-import type { AiWriteProposal } from '../../types';
+import type { AiWriteApplyReceipt, AiWriteProposal } from '../../types';
 
 const { listeners, applyMock, denyMock } = vi.hoisted(() => ({
   listeners: new Map<string, (payload?: unknown) => void>(),
-  applyMock: vi.fn(async () => ({
-    proposalId: 'proposal-1',
-    connectionId: 'conn-1',
-    database: 'app',
-    sqlHash: 'a'.repeat(64),
-    rowCount: 3,
-    result: {},
-  })),
+  applyMock: vi.fn(
+    async (): Promise<AiWriteApplyReceipt> => ({
+      proposalId: 'proposal-1',
+      connectionId: 'conn-1',
+      database: 'app',
+      sqlHash: 'a'.repeat(64),
+      rowCount: 3,
+      result: {},
+    }),
+  ),
   denyMock: vi.fn(async () => true),
 }));
 

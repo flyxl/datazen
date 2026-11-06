@@ -9,7 +9,10 @@ pub use keyword::{
     find_main_verb_index, sql_main_keyword, strip_comments_for_tokenize, tokenize_sql,
 };
 pub use params::apply_params;
-pub use safety::{check_sql, is_write_only_sql, normalize_fullwidth, reject_null_bytes};
+pub use safety::{
+    check_sql, data_modifying_cte_bodies, has_top_level_where, is_write_only_sql,
+    normalize_fullwidth, reject_null_bytes,
+};
 pub use scanner::split_statements as split_sql_statements;
 
 #[cfg(test)]
