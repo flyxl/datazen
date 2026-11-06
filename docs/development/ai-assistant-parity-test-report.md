@@ -22,7 +22,7 @@
 | BUG-018 | T20 | Redis key_pattern 可被多 key EXISTS 绕过；拒绝的 Redis 命令审计记为 allow；batch 无逐语句审计且审计 rowCount 为空 | 已验证 |
 | BUG-019 | T21 | HTTP token 输入框使用未定义的 Tailwind 颜色类 `bg-bg`，`tailwind-colour-classes` 门禁失败 | 已验证 |
 | BUG-020 | T22 | 插件模板参数未转义：审批 SQL 泄漏凭据，SQL 字面量可被参数改变 | 已验证 |
-| BUG-021 | T22 | Workflow 工具参数未转义：模型可改写只读 Workflow 的 SQL | 已修复（待独立复测） |
+| BUG-021 | T22 | Workflow 工具参数未转义：模型可改写只读 Workflow 的 SQL | 待修复（复测未通过） |
 
 
 ## T19 MCP scope / 逐次审批 / 审计验收记录（已验证）
@@ -241,7 +241,7 @@ Workflow 仍失败：独立临时测试让只读 Workflow 的 Query 模板
 `620133a10` 的 7 个文件均为本修复相关；无 generated/无关文件。
 
 
-## T22 BUG-021 修复（本地待独立复测）
+## T22 BUG-021 修复（独立复测未通过）
 
 本地 `fix: apply SQL-safe rendering to workflow templates` 已修复
 [BUG-021](ai-assistant-parity-bugs/BUG-021.md)：
@@ -274,3 +274,23 @@ Workflow 仍失败：独立临时测试让只读 Workflow 的 Query 模板
 非只读审批 SQL 含 `[REDACTED]`、`O''Brien`、`LIMIT 10` 且不含明文凭据；
 未定义 Workflow 模板变量在审批前 deny；foreach 变量在预校验阶段已知、执行时按
 typed value 转义。
+
+## T22 `c1946962a` 独立复测：BUG-021 未通过
+
+正常路径已通过：只读 Workflow `O'Brien` 实际 query log 为 `O''Brien`；`steps.*`/
+loop/方言/数字 LIMIT/注释/dollar/标识符/未闭合、condition/fallback 分支预校验、
+非 SQL prompt 原样、非只读审批 SQL 无凭据、插件 BUG-020 回归均通过。
+
+两个独立临时测试仍失败：
+
+1. **execute 入口未预校验，失败审计为 allow**：直接调用
+   `execute_workflow_tool` 执行 `SELECT * FROM users WHERE name = {{name}}`，
+   executor 在派发前拒绝（无查询副作用），但 `mcp-audit` 记录 `allow`；要求
+   authorize/execute 前预校验且失败 audit deny。
+2. **未定义 `steps.*` 未 fail closed**：只读 Workflow
+   `SELECT '{{steps.nope.rows[0].name}}'` 的 authorize 返回 `Allow`；
+   `workflow_template_value` 对任何 `steps.` 前缀直接给 Null，没有校验 step id。
+
+复跑：datazen 1721、desktop 1397/10 ignored、server 361、host 14、全量前端
+8233/8 既有环境失败、映射 typecheck OK、fmt/diff 0。详见
+[BUG-021](ai-assistant-parity-bugs/BUG-021.md)。
