@@ -290,7 +290,9 @@ async fn mcp_fixture(opts: MockDriverOptions) -> McpFixture {
     // `resource_provider` 闸）。
     let registry = Arc::new(datazen::execution::runtime::driver_registry::DriverRegistry::new());
     let driver = MockDriver::new("mockdb", opts);
-    registry.register_test_driver("mockdb", driver.clone()).await;
+    registry
+        .register_test_driver("mockdb", driver.clone())
+        .await;
     registry
         .register_test_factory(
             "mockdb",
@@ -418,10 +420,7 @@ async fn mcp_fixture(opts: MockDriverOptions) -> McpFixture {
     ));
     // 七工具目标命令机器 + 会话三工具租约源 → MCP 后端。
     let stateless = StatelessToolExec::new(
-        Arc::new(ServerRedactedConnections::new(
-            connections,
-            "org-1",
-        )),
+        Arc::new(ServerRedactedConnections::new(connections, "org-1")),
         Arc::new(EmptyWorkflowCatalog),
         vec![connection_id.clone()],
     )
@@ -499,7 +498,9 @@ async fn call_tool_err(
 ) -> ToolCallError {
     let text = arguments.to_string();
     match backend.call_tool(identity, tool, arguments).await {
-        Ok(reply) => panic!("tool {tool} should fail, but answered green with: {reply} (args {text})"),
+        Ok(reply) => {
+            panic!("tool {tool} should fail, but answered green with: {reply} (args {text})")
+        }
         Err(error) => error,
     }
 }
@@ -577,19 +578,28 @@ async fn the_stateful_session_journey_opens_executes_reads_and_closes() {
         state_wire(datazen::execution::ExecutionState::Succeeded)
     );
     assert!(
-        used["executionId"].as_str().is_some_and(|id| !id.is_empty()),
+        used["executionId"]
+            .as_str()
+            .is_some_and(|id| !id.is_empty()),
         "execution id present: {used}"
     );
     assert_eq!(
-        used["rowsTruncated"], json!(false),
+        used["rowsTruncated"],
+        json!(false),
         "a two-cell row is nowhere near the 200-row cap"
     );
     let rows = used["rows"].as_array().expect("rows array");
     assert_eq!(rows.len(), 1, "the mock answers exactly one row: {used}");
-    assert_eq!(rows[0][0], json!(42), "the mock's seeded cell reaches the report");
+    assert_eq!(
+        rows[0][0],
+        json!(42),
+        "the mock's seeded cell reaches the report"
+    );
     assert_eq!(rows[0][1], json!("ada@example.test"));
     assert!(
-        used["artifactIds"].as_array().is_some_and(|ids| !ids.is_empty()),
+        used["artifactIds"]
+            .as_array()
+            .is_some_and(|ids| !ids.is_empty()),
         "row batches arrived via published artifacts: {used}"
     );
 
@@ -603,7 +613,11 @@ async fn the_stateful_session_journey_opens_executes_reads_and_closes() {
         json!({ "client_session_ref": reference, "mode": "rollbackAndClose" }),
     )
     .await;
-    assert_eq!(closed, json!({"closed": true}), "a confirmed close: {closed}");
+    assert_eq!(
+        closed,
+        json!({"closed": true}),
+        "a confirmed close: {closed}"
+    );
 
     // 幂等重关：不区分未知/过期/异主，一律 closed=false（§4.2）。
     let reclosed = call_tool_ok(
@@ -674,7 +688,8 @@ async fn each_of_the_seven_target_command_tools_answers_through_the_target_machi
     .await;
     let statement = &query["results"][0];
     assert_eq!(
-        statement["sql"], json!("SELECT id, email FROM users"),
+        statement["sql"],
+        json!("SELECT id, email FROM users"),
         "the statement is echoed verbatim: {query}"
     );
     assert_eq!(statement["columns"][0]["name"], json!("id"));
@@ -707,10 +722,7 @@ async fn each_of_the_seven_target_command_tools_answers_through_the_target_machi
     )
     .await;
     let tables = tables.as_array().expect("list_tables answers an array");
-    let names: Vec<&str> = tables
-        .iter()
-        .filter_map(|t| t["name"].as_str())
-        .collect();
+    let names: Vec<&str> = tables.iter().filter_map(|t| t["name"].as_str()).collect();
     assert_eq!(names, vec!["users", "audit_log"], "{tables:?}");
     assert_eq!(tables[0]["tableType"], json!("table"));
     assert_eq!(tables[0]["rowCount"], json!(2));
@@ -749,7 +761,10 @@ async fn each_of_the_seven_target_command_tools_answers_through_the_target_machi
     assert_eq!(schema[0]["tableName"], json!("users"));
     assert_eq!(schema[0]["primaryKeys"], json!(["id"]));
     assert_eq!(schema[0]["columns"][1]["name"], json!("email"));
-    assert_eq!(schema[0]["foreignKeys"][0]["referencedTable"], json!("orgs"));
+    assert_eq!(
+        schema[0]["foreignKeys"][0]["referencedTable"],
+        json!("orgs")
+    );
 
     // explain_query：驱动 EXPLAIN 计划。
     let explain = call_tool_ok(
@@ -780,8 +795,10 @@ async fn each_of_the_seven_target_command_tools_answers_through_the_target_machi
     assert!(description.contains("Table: users"), "{description}");
     assert!(description.contains("id integer PK"), "{description}");
     assert!(description.contains("Primary Key: (id)"), "{description}");
-    assert!(description.contains("fk_users_org"),
-        "the FK surface reaches the description: {description}");
+    assert!(
+        description.contains("fk_users_org"),
+        "the FK surface reaches the description: {description}"
+    );
 
     // 登记面：七工具与契约表逐一对齐（防名单漂移）。
     for tool in SEVEN_TARGET_COMMAND_TOOLS {
@@ -858,7 +875,11 @@ async fn every_contract_example_seed_takes_its_honest_green_path() {
         .expect("the open_session example seeds a live ref")
         .to_owned();
 
-    for tool in tools.iter().copied().filter(|tool| *tool != "describe_table") {
+    for tool in tools
+        .iter()
+        .copied()
+        .filter(|tool| *tool != "describe_table")
+    {
         let seeded = seed_arguments(
             tool,
             &example_arguments(tool),
@@ -1141,10 +1162,9 @@ async fn the_session_journey_keeps_its_wire_shape_over_streamable_http() {
     .await;
     assert_eq!(status, axum::http::StatusCode::OK);
     assert_eq!(body["result"]["isError"], json!(false));
-    let used: Value = serde_json::from_str(
-        body["result"]["content"][0]["text"].as_str().expect("text"),
-    )
-    .expect("use payload parses");
+    let used: Value =
+        serde_json::from_str(body["result"]["content"][0]["text"].as_str().expect("text"))
+            .expect("use payload parses");
     assert_eq!(
         used["state"],
         state_wire(datazen::execution::ExecutionState::Succeeded)
@@ -1161,10 +1181,9 @@ async fn the_session_journey_keeps_its_wire_shape_over_streamable_http() {
     )
     .await;
     assert_eq!(status, axum::http::StatusCode::OK);
-    let closed: Value = serde_json::from_str(
-        body["result"]["content"][0]["text"].as_str().expect("text"),
-    )
-    .expect("close payload parses");
+    let closed: Value =
+        serde_json::from_str(body["result"]["content"][0]["text"].as_str().expect("text"))
+            .expect("close payload parses");
     assert_eq!(closed, json!({"closed": true}));
 
     // 未接线清单的诚实应答照旧：SessionLost 家族裸 invalid_params。

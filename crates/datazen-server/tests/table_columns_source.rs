@@ -435,7 +435,11 @@ fn fixture_ctx() -> RequestContext {
 
 /// 变更上下文的最小合法体（`validate_table_context` 已保证 database 非空；
 /// 列源不再兜底）。
-fn table_context(connection_id: &str, driver_type: &str, schema: Option<&str>) -> RowChangeTableContext {
+fn table_context(
+    connection_id: &str,
+    driver_type: &str,
+    schema: Option<&str>,
+) -> RowChangeTableContext {
     RowChangeTableContext {
         connection_id: connection_id.to_owned(),
         db_session_id: "wire-change-session".to_owned(),
@@ -518,7 +522,10 @@ async fn t2_an_empty_column_answer_is_an_explicit_validation_error() {
         .expect_err("an empty answer must be an explicit error");
     match error {
         TableEditingError::Validation(message) => {
-            assert!(message.contains("users"), "table name in message: {message}");
+            assert!(
+                message.contains("users"),
+                "table name in message: {message}"
+            );
             assert!(
                 message.contains("no columns"),
                 "the reason names the empty column set: {message}"

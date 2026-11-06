@@ -28,9 +28,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use datazen_driver_api::TransactionHandle;
 use axum::body::Body;
 use axum::http::{header, Request as HttpRequest, StatusCode};
+use datazen_driver_api::TransactionHandle;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
@@ -188,8 +188,7 @@ impl DatabaseDriverFactory for WireMockFactory {
         capability_set.stateful_session = capabilities::Availability::Supported;
         capability_set.namespace_switch = capabilities::NamespaceSwitch::Unsupported;
         capability_set.context_observation = capabilities::ContextObservation::Full;
-        capability_set.session_scoped_handles =
-            capabilities::SessionScopedHandleSupport::Supported;
+        capability_set.session_scoped_handles = capabilities::SessionScopedHandleSupport::Supported;
         capability_set.reset_for_reuse = capabilities::ResetForReuse::Unsupported;
         Some(Arc::new(TransactionalMockProvider::new(
             Arc::clone(&self.driver),
@@ -268,8 +267,10 @@ impl datazen_driver_api::resource::ResourceProvider for TransactionalMockProvide
     async fn describe_resource(
         &self,
         request: &datazen_driver_api::resource::DescribeResourceRequest,
-    ) -> Result<datazen_driver_api::resource::ResourceDescriptor, datazen_driver_api::resource::ResourceError>
-    {
+    ) -> Result<
+        datazen_driver_api::resource::ResourceDescriptor,
+        datazen_driver_api::resource::ResourceError,
+    > {
         self.inner.describe_resource(request).await
     }
 
@@ -277,8 +278,10 @@ impl datazen_driver_api::resource::ResourceProvider for TransactionalMockProvide
         &self,
         request: &datazen_driver_api::resource::AcquireResourceRequest,
         budget: &Arc<dyn datazen_driver_api::resource::BudgetPort>,
-    ) -> Result<datazen_driver_api::resource::ResourceHandle, datazen_driver_api::resource::ResourceError>
-    {
+    ) -> Result<
+        datazen_driver_api::resource::ResourceHandle,
+        datazen_driver_api::resource::ResourceError,
+    > {
         self.inner.acquire_resource(request, budget).await
     }
 
@@ -288,16 +291,22 @@ impl datazen_driver_api::resource::ResourceProvider for TransactionalMockProvide
         execution_id: &datazen_driver_api::QueryExecutionId,
         call: &datazen_driver_api::resource::CommandCall,
         sink: &dyn datazen_driver_api::resource::ResultSink,
-    ) -> Result<datazen_driver_api::session::ExecutionCompletion, datazen_driver_api::resource::ResourceError>
-    {
-        self.inner.execute_on_resource(handle, execution_id, call, sink).await
+    ) -> Result<
+        datazen_driver_api::session::ExecutionCompletion,
+        datazen_driver_api::resource::ResourceError,
+    > {
+        self.inner
+            .execute_on_resource(handle, execution_id, call, sink)
+            .await
     }
 
     async fn observe_session(
         &self,
         handle: &datazen_driver_api::resource::ResourceHandle,
-    ) -> Result<datazen_driver_api::session::SessionObservation, datazen_driver_api::resource::ResourceError>
-    {
+    ) -> Result<
+        datazen_driver_api::session::SessionObservation,
+        datazen_driver_api::resource::ResourceError,
+    > {
         self.inner.observe_session(handle).await
     }
 
@@ -305,8 +314,10 @@ impl datazen_driver_api::resource::ResourceProvider for TransactionalMockProvide
         &self,
         handle: &datazen_driver_api::resource::ResourceHandle,
         desired: &datazen_driver_api::namespace::NamespaceTarget,
-    ) -> Result<datazen_driver_api::session::ContextChangeDisposition, datazen_driver_api::resource::ResourceError>
-    {
+    ) -> Result<
+        datazen_driver_api::session::ContextChangeDisposition,
+        datazen_driver_api::resource::ResourceError,
+    > {
         self.inner.change_context(handle, desired).await
     }
 
@@ -314,8 +325,10 @@ impl datazen_driver_api::resource::ResourceProvider for TransactionalMockProvide
         &self,
         handle: &datazen_driver_api::resource::ResourceHandle,
         options: &datazen_driver_api::session::TransactionOptions,
-    ) -> Result<datazen_driver_api::session::TransactionObservation, datazen_driver_api::resource::ResourceError>
-    {
+    ) -> Result<
+        datazen_driver_api::session::TransactionObservation,
+        datazen_driver_api::resource::ResourceError,
+    > {
         let _ = options;
         let connection = self.inner.connection_handle(handle)?;
         let tx = self
@@ -328,67 +341,83 @@ impl datazen_driver_api::resource::ResourceProvider for TransactionalMockProvide
             .lock()
             .expect("mock provider txs")
             .insert(handle.resource_key().to_owned(), tx);
-        Ok(datazen_driver_api::session::TransactionObservation::begun(tx_id, 0))
+        Ok(datazen_driver_api::session::TransactionObservation::begun(
+            tx_id, 0,
+        ))
     }
 
     async fn commit_transaction(
         &self,
         handle: &datazen_driver_api::resource::ResourceHandle,
-    ) -> Result<datazen_driver_api::session::TransactionObservation, datazen_driver_api::resource::ResourceError>
-    {
+    ) -> Result<
+        datazen_driver_api::session::TransactionObservation,
+        datazen_driver_api::resource::ResourceError,
+    > {
         let tx = self
             .txs
             .lock()
             .expect("mock provider txs")
             .remove(handle.resource_key())
-            .ok_or_else(|| datazen_driver_api::resource::ResourceError::InvalidResourceState {
-                resource_key: handle.resource_key().to_owned(),
-                operation: "commit_transaction".into(),
-                state: "no transaction open".into(),
-            })?;
+            .ok_or_else(
+                || datazen_driver_api::resource::ResourceError::InvalidResourceState {
+                    resource_key: handle.resource_key().to_owned(),
+                    operation: "commit_transaction".into(),
+                    state: "no transaction open".into(),
+                },
+            )?;
         self.driver
             .commit(tx)
             .await
             .map_err(datazen_driver_api::resource::ResourceError::Driver)?;
-        Ok(datazen_driver_api::session::TransactionObservation::finished(
-            datazen_driver_api::session::TransactionState::Idle,
-            datazen_driver_api::session::EffectOutcome::Completed,
-            0,
-        ))
+        Ok(
+            datazen_driver_api::session::TransactionObservation::finished(
+                datazen_driver_api::session::TransactionState::Idle,
+                datazen_driver_api::session::EffectOutcome::Completed,
+                0,
+            ),
+        )
     }
 
     async fn rollback_transaction(
         &self,
         handle: &datazen_driver_api::resource::ResourceHandle,
-    ) -> Result<datazen_driver_api::session::TransactionObservation, datazen_driver_api::resource::ResourceError>
-    {
+    ) -> Result<
+        datazen_driver_api::session::TransactionObservation,
+        datazen_driver_api::resource::ResourceError,
+    > {
         let tx = self
             .txs
             .lock()
             .expect("mock provider txs")
             .remove(handle.resource_key())
-            .ok_or_else(|| datazen_driver_api::resource::ResourceError::InvalidResourceState {
-                resource_key: handle.resource_key().to_owned(),
-                operation: "rollback_transaction".into(),
-                state: "no transaction open".into(),
-            })?;
+            .ok_or_else(
+                || datazen_driver_api::resource::ResourceError::InvalidResourceState {
+                    resource_key: handle.resource_key().to_owned(),
+                    operation: "rollback_transaction".into(),
+                    state: "no transaction open".into(),
+                },
+            )?;
         self.driver
             .rollback(tx)
             .await
             .map_err(datazen_driver_api::resource::ResourceError::Driver)?;
-        Ok(datazen_driver_api::session::TransactionObservation::finished(
-            datazen_driver_api::session::TransactionState::Idle,
-            datazen_driver_api::session::EffectOutcome::RolledBack,
-            0,
-        ))
+        Ok(
+            datazen_driver_api::session::TransactionObservation::finished(
+                datazen_driver_api::session::TransactionState::Idle,
+                datazen_driver_api::session::EffectOutcome::RolledBack,
+                0,
+            ),
+        )
     }
 
     async fn request_cancel(
         &self,
         handle: &datazen_driver_api::resource::ResourceHandle,
         execution_id: &datazen_driver_api::QueryExecutionId,
-    ) -> Result<datazen_driver_api::session::CancelReceipt, datazen_driver_api::resource::ResourceError>
-    {
+    ) -> Result<
+        datazen_driver_api::session::CancelReceipt,
+        datazen_driver_api::resource::ResourceError,
+    > {
         self.inner.request_cancel(handle, execution_id).await
     }
 
@@ -396,16 +425,20 @@ impl datazen_driver_api::resource::ResourceProvider for TransactionalMockProvide
         &self,
         handle: &datazen_driver_api::resource::ResourceHandle,
         baseline: &datazen_driver_api::resource::Baseline,
-    ) -> Result<datazen_driver_api::session::ResetDisposition, datazen_driver_api::resource::ResourceError>
-    {
+    ) -> Result<
+        datazen_driver_api::session::ResetDisposition,
+        datazen_driver_api::resource::ResourceError,
+    > {
         self.inner.reset_resource(handle, baseline).await
     }
 
     async fn close_resource(
         &self,
         handle: &datazen_driver_api::resource::ResourceHandle,
-    ) -> Result<datazen_driver_api::session::CloseDisposition, datazen_driver_api::resource::ResourceError>
-    {
+    ) -> Result<
+        datazen_driver_api::session::CloseDisposition,
+        datazen_driver_api::resource::ResourceError,
+    > {
         self.inner.close_resource(handle).await
     }
 
@@ -424,9 +457,7 @@ struct FixedLeaseSource(Arc<RuntimeConnectionUseCases>);
 
 #[async_trait::async_trait]
 impl RuntimeLeaseSource for FixedLeaseSource {
-    async fn resolve(
-        &self,
-    ) -> Result<Arc<RuntimeConnectionUseCases>, String> {
+    async fn resolve(&self) -> Result<Arc<RuntimeConnectionUseCases>, String> {
         Ok(self.0.clone())
     }
 }
@@ -460,8 +491,20 @@ async fn mutation_fixture(read_only: bool, opts: MockDriverOptions) -> MutationF
     // 的矩阵调整属产品授权面，登记为开放问题随台账上交。因此本夹具的
     // 提交主体是 OrgAdmin；「OrgMember 提交变更」是前端产品语义问题，
     // 不在本测试文件里裁决。
-    let primary = register_login(&store, "org-1", "user-1", "sess-w8-mutation-primary", Role::OrgAdmin);
-    let other_org = register_login(&store, "org-2", "user-2", "sess-w8-mutation-org2", Role::OrgMember);
+    let primary = register_login(
+        &store,
+        "org-1",
+        "user-1",
+        "sess-w8-mutation-primary",
+        Role::OrgAdmin,
+    );
+    let other_org = register_login(
+        &store,
+        "org-2",
+        "user-2",
+        "sess-w8-mutation-org2",
+        Role::OrgMember,
+    );
 
     let ctx = RequestContext::new(
         datazen::shared::id::OrganizationId::new("org-1"),
@@ -475,8 +518,7 @@ async fn mutation_fixture(read_only: bool, opts: MockDriverOptions) -> MutationF
         None,
     );
 
-    let registry =
-        Arc::new(datazen::execution::runtime::driver_registry::DriverRegistry::new());
+    let registry = Arc::new(datazen::execution::runtime::driver_registry::DriverRegistry::new());
     let driver = MockDriver::new("mockdb", opts);
     registry
         .register_test_driver("mockdb", driver.clone())
@@ -600,8 +642,7 @@ async fn mutation_fixture(read_only: bool, opts: MockDriverOptions) -> MutationF
     ));
     let runner = Arc::new(ServerTargetRunner::new(
         host,
-        Arc::new(FixedLeaseSource(runtime.clone()))
-            as Arc<dyn RuntimeLeaseSource>,
+        Arc::new(FixedLeaseSource(runtime.clone())) as Arc<dyn RuntimeLeaseSource>,
     ));
 
     let app = build_router_with_auth(AuthDeps {
@@ -740,19 +781,34 @@ async fn t1_a_preview_answers_a_fingerprinted_plan_through_the_column_source() {
         "plan id is minted: {body}"
     );
     let fingerprint = body["fingerprint"].as_str().expect("fingerprint");
-    assert!(!fingerprint.is_empty(), "fingerprint rides the plan: {body}");
+    assert!(
+        !fingerprint.is_empty(),
+        "fingerprint rides the plan: {body}"
+    );
     assert_eq!(
-        body["configRevision"], json!("1"),
+        body["configRevision"],
+        json!("1"),
         "the plan stamps the preview-time profile revision (decimal string): {body}"
     );
     let updates = body["updates"].as_array().expect("updates");
     assert_eq!(updates.len(), 1, "one update statement: {body}");
     assert!(
-        updates[0]["sqlTemplate"].as_str().expect("sql").contains("UPDATE"),
+        updates[0]["sqlTemplate"]
+            .as_str()
+            .expect("sql")
+            .contains("UPDATE"),
         "the driver-rendered preview mentions UPDATE: {body}"
     );
-    assert_eq!(body["table"]["table"], json!("users"), "table echoes: {body}");
-    assert_eq!(body["table"]["connectionId"], json!(fx.connection_id), "{body}");
+    assert_eq!(
+        body["table"]["table"],
+        json!("users"),
+        "table echoes: {body}"
+    );
+    assert_eq!(
+        body["table"]["connectionId"],
+        json!(fx.connection_id),
+        "{body}"
+    );
 }
 
 // ── t2：commit 绿路径（owned-session 全链）────────────────────────────────
@@ -897,10 +953,13 @@ async fn t4_a_tampered_plan_is_refused_and_never_touches_the_write_path() {
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
-    assert!(body["message"]
-        .as_str()
-        .expect("message")
-        .contains("fingerprint is stale or was modified"), "{body}");
+    assert!(
+        body["message"]
+            .as_str()
+            .expect("message")
+            .contains("fingerprint is stale or was modified"),
+        "{body}"
+    );
     assert_eq!(fx.driver.execute_with_params_calls(), 0, "{body}");
 
     // 腿 2：plan 的 configRevision 漂移 → 共享层 CAS 在重读列之前拒绝。
@@ -916,10 +975,13 @@ async fn t4_a_tampered_plan_is_refused_and_never_touches_the_write_path() {
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
-    assert!(body["message"]
-        .as_str()
-        .expect("message")
-        .contains("Connection configuration changed"), "{body}");
+    assert!(
+        body["message"]
+            .as_str()
+            .expect("message")
+            .contains("Connection configuration changed"),
+        "{body}"
+    );
     assert_eq!(fx.driver.execute_with_params_calls(), 0, "{body}");
 }
 
@@ -951,10 +1013,13 @@ async fn t5_a_read_only_connection_previews_but_never_commits() {
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
-    assert!(body["message"]
-        .as_str()
-        .expect("message")
-        .contains("grid.cell.readOnly"), "{body}");
+    assert!(
+        body["message"]
+            .as_str()
+            .expect("message")
+            .contains("grid.cell.readOnly"),
+        "{body}"
+    );
     assert_eq!(
         fx.driver.execute_with_params_calls(),
         0,
@@ -1003,10 +1068,13 @@ async fn t6_a_config_change_between_preview_and_commit_is_refused_as_stale() {
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
-    assert!(body["message"]
-        .as_str()
-        .expect("message")
-        .contains("Connection configuration changed"), "{body}");
+    assert!(
+        body["message"]
+            .as_str()
+            .expect("message")
+            .contains("Connection configuration changed"),
+        "{body}"
+    );
     assert_eq!(fx.driver.execute_with_params_calls(), 0, "{body}");
 
     // 对照腿：重新 preview 盖新 revision → commit 绿。
@@ -1061,10 +1129,13 @@ async fn t7_an_ambiguous_write_is_refused_and_the_transaction_never_commits() {
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
-    assert!(body["message"]
-        .as_str()
-        .expect("message")
-        .contains("grid.commit.affectedMismatch"), "{body}");
+    assert!(
+        body["message"]
+            .as_str()
+            .expect("message")
+            .contains("grid.commit.affectedMismatch"),
+        "{body}"
+    );
     assert_eq!(
         fx.driver.commit_calls(),
         0,
@@ -1089,7 +1160,11 @@ async fn t8_cross_org_and_anonymous_callers_are_refused() {
     )
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{body}");
-    assert_eq!(body["message"], json!("Connection profile unavailable"), "{body}");
+    assert_eq!(
+        body["message"],
+        json!("Connection profile unavailable"),
+        "{body}"
+    );
 
     let (status, _) = call(
         &fx.app,

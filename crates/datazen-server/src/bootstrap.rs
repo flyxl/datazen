@@ -540,8 +540,7 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
                     .map(|shared| shared.execution)
                     .unwrap_or_else(|_| crate::storage::default_shared_settings().execution),
                 sse: sse.clone(),
-                audit: audit.clone()
-                    as std::sync::Arc<dyn datazen::shared::audit::AuditSink>,
+                audit: audit.clone() as std::sync::Arc<dyn datazen::shared::audit::AuditSink>,
                 clock: clock.clone(),
                 ephemeral: std::sync::Arc::new(
                     crate::execution::ephemeral::EphemeralSessions::new(),

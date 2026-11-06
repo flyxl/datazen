@@ -87,9 +87,9 @@ async fn default_database(
             if !enabled {
                 return Err(internal("Connection profile is disabled".into()));
             }
-            config
-                .database
-                .ok_or_else(|| internal("the connection has no default database; pass database explicitly".into()))
+            config.database.ok_or_else(|| {
+                internal("the connection has no default database; pass database explicitly".into())
+            })
         }
     }
 }

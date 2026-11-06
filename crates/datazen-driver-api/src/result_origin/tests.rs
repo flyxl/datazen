@@ -29,21 +29,56 @@ fn detail(origin: &ResultOrigin) -> &crate::result_origin::ResultOriginDetail {
 
 #[tokio::test]
 async fn default_impl_is_undeterminable() {
+    // The default lives in `traits::result_origin` (the reasoning's one
+    // home). The mock now honours the contract like a real SQL driver
+    // (describe_result_origin forwards to the shared catalog helper), so the
+    // pin calls the default helper itself — a driver that does not implement
+    // the capability still gets exactly this verdict.
     let driver = MockDriver::new("sqlite", MockDriverOptions::default());
-    let origin = driver
-        .describe_result_origin(
-            &handle(),
-            SqlTarget::new(None, None),
-            &columns(&["id"]),
-            "SELECT id FROM orders",
-        )
-        .await
-        .expect("the default implementation answers, it does not fail");
+    let origin = crate::traits::result_origin::describe_result_origin(
+        driver.as_ref(),
+        &handle(),
+        SqlTarget::new(None, None),
+        &columns(&["id"]),
+        "SELECT id FROM orders",
+    )
+    .await
+    .expect("the default implementation answers, it does not fail");
 
     assert_eq!(
         origin,
         ResultOrigin::Undeterminable(UndeterminableReason::NotImplemented)
     );
+}
+
+#[tokio::test]
+async fn the_mock_answers_the_contract_through_the_shared_helper() {
+    // The mock stands in for a real SQL driver: it answers through the shared
+    // reader plus its own catalog (the same shape a real driver's opt-in
+    // produces), so mock-backed origin verdicts are exercisable in tests.
+    let mut opts = MockDriverOptions::default();
+    opts.tables = vec![TableInfo {
+        name: "orders".into(),
+        schema: None,
+        table_type: TableType::Table,
+        row_count: None,
+    }];
+    let driver = MockDriver::new("sqlite", opts);
+    let origin = driver
+        .describe_result_origin(
+            &handle(),
+            SqlTarget::new(Some("app"), None),
+            &columns(&["id"]),
+            "SELECT id FROM orders",
+        )
+        .await
+        .expect("the mock answers, it does not fail");
+    let detail = detail(&origin);
+    assert_eq!(detail.object_kind, ResultObjectKind::BaseTable);
+    assert_eq!(detail.shape, ResultShape::SingleBaseTable);
+    assert_eq!(detail.columns.len(), 1);
+    assert!(detail.columns[0].passthrough);
+    assert_eq!(detail.columns[0].source_column.as_deref(), Some("id"));
 }
 
 #[test]

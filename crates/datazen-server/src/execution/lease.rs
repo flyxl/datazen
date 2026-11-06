@@ -42,8 +42,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use datazen::execution::application::RuntimeConnectionUseCases;
 use datazen::execution::application::orchestration::LiveConnectionSource;
+use datazen::execution::application::RuntimeConnectionUseCases;
 
 /// runtime 租约端口：消费者每次调用前现取当前 runtime（可能被吊销，
 /// 禁止跨请求缓存——见模块头「约束的是消费者」）。

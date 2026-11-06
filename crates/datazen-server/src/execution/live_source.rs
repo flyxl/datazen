@@ -146,9 +146,15 @@ impl LiveConnectionSource for ServerLiveConnectionSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::execution::budget::ServerBudgetCoordinator;
+    use crate::execution::budget_bridge::BudgetPortBridge;
+    use crate::execution::secret_provider::ServerSecretVault;
+    use crate::storage::{AdminStore, ServerConnections, ServerProfiles};
     use datazen::connection::domain::profile::ProfileRepository as _;
     use datazen::connection::dto::ProfileDraft;
-    use datazen::execution::runtime::connection::{ConfigRevision, DbSessionId, NamespaceTarget, OwnerRef};
+    use datazen::execution::runtime::connection::{
+        ConfigRevision, DbSessionId, NamespaceTarget, OwnerRef,
+    };
     use datazen::execution::runtime::registry::backend::{OpenResource, SessionBackend as _};
     use datazen::shared::context::RequestContext;
     use datazen::shared::id::{
@@ -159,10 +165,6 @@ mod tests {
     use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
     use datazen_driver_api::resource_adapter::LegacyResourceAdapter;
     use datazen_driver_api::{DatabaseDriver, DatabaseDriverFactory, SslMode};
-    use crate::execution::budget::ServerBudgetCoordinator;
-    use crate::execution::budget_bridge::BudgetPortBridge;
-    use crate::execution::secret_provider::ServerSecretVault;
-    use crate::storage::{AdminStore, ServerConnections, ServerProfiles};
 
     /// 把 [`MockDriver`] 连同 [`LegacyResourceAdapter`] 包成静态工厂
     /// （`register_test_factory` 吃 `&'static dyn DatabaseDriverFactory`）。
@@ -180,7 +182,9 @@ mod tests {
             self.driver_id
         }
 
-        fn resource_provider(&self) -> Option<Arc<dyn datazen_driver_api::resource::ResourceProvider>> {
+        fn resource_provider(
+            &self,
+        ) -> Option<Arc<dyn datazen_driver_api::resource::ResourceProvider>> {
             let shape = datazen_driver_api::namespace::NamespaceShape {
                 levels: vec![
                     datazen_driver_api::namespace::NamespaceLevel::present(
@@ -245,7 +249,9 @@ mod tests {
 
         let registry = Arc::new(DriverRegistry::new());
         let driver = MockDriver::new("mockdb", MockDriverOptions::default());
-        registry.register_test_driver("mockdb", driver.clone()).await;
+        registry
+            .register_test_driver("mockdb", driver.clone())
+            .await;
         registry
             .register_test_factory(
                 "mockdb",
@@ -388,7 +394,10 @@ mod tests {
             .open_live(request("s-none", 7, &fx.connection_id))
             .await
             .expect_err("unknown session refuses");
-        assert!(matches!(error, LiveConnectionError::SessionLost(_)), "{error}");
+        assert!(
+            matches!(error, LiveConnectionError::SessionLost(_)),
+            "{error}"
+        );
     }
 
     /// epoch 漂移：上一个纪元的残留行 → `SessionLost`（INV-07 在第①步内
@@ -402,7 +411,10 @@ mod tests {
             .open_live(request("s-1", 8, &fx.connection_id))
             .await
             .expect_err("stale epoch refuses");
-        assert!(matches!(error, LiveConnectionError::SessionLost(_)), "{error}");
+        assert!(
+            matches!(error, LiveConnectionError::SessionLost(_)),
+            "{error}"
+        );
     }
 
     /// profile 缺席：连接目录答不出 driver type → `Refused`，绝不猜驱动。
