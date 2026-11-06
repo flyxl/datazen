@@ -23,7 +23,7 @@
 | BUG-019 | T21 | HTTP token 输入框使用未定义的 Tailwind 颜色类 `bg-bg`，`tailwind-colour-classes` 门禁失败 | 已验证 |
 | BUG-020 | T22 | 插件模板参数未转义：审批 SQL 泄漏凭据，SQL 字面量可被参数改变 | 已验证 |
 | BUG-021 | T22 | Workflow 工具参数未转义：模型可改写只读 Workflow 的 SQL | 已验证 |
-| BUG-022 | T23 | 本地 CLI 子进程退出后子孙持有 stdout 时 timeout/cancel 挂起并留下孤儿 | 待修复 |
+| BUG-022 | T23 | 本地 CLI 子进程退出后子孙持有 stdout 时 timeout/cancel 挂起并留下孤儿 | 已验证 |
 
 
 ## T19 MCP scope / 逐次审批 / 审计验收记录（已验证）
@@ -459,3 +459,32 @@ sleep 3 & printf 'started\n'; exit 0
 | fmt / diff | 0 / 0 |
 
 独立临时测试已删除；`b124878a1` 仅改 `local_cli.rs`。**T23：未通过（BUG-022）。**
+
+## T23 `a3990293e` 最终复测：BUG-022 已验证
+
+`fix: report drained CLI hangs as timeouts` 修复了 timeout 语义：被迫 drain 杀进程组
+不再返回 Ok。
+
+| 验收项 | 结果 |
+|---|---|
+| `sleep 3 & ...` + timeoutSecs=1 | `Err(Timeout(1))`，~0.7s，孤儿清理 |
+| 主进程退 + background sleep 30 | `Err(Timeout(30))`，<5s，孤儿清理 |
+| stream 变体 | 已收到 `started` 后仍 Timeout；无 done；返回 Err |
+| cancel during drain | Cancelled，孤儿清理 |
+| 自然 EOF alpha/beta/gamma | 完整 `Ok` |
+| 非 0/缺失/早取消/stderr/env/cwd | 不回归 |
+
+| 范围 | 结果 |
+|---|---|
+| `datazen --features ai` | 1677 passed |
+| `datazen --features ai,workflow,wapps` | 1743 passed |
+| `datazen --features mcp` | 1747 passed |
+| `datazen_desktop` | 1405 passed / 10 ignored |
+| `datazen-server --features mcp` | 361 passed |
+| local_cli 定向 | 22 passed |
+| T23 定向前端 | 20 passed |
+| 全量前端 | 8234 passed / 8 既有环境失败 |
+| 映射 worktree typecheck | OK |
+| fmt / diff | 0 / 0 |
+
+a3990293e 仅改 `local_cli.rs`；独立临时测试已删除。**T23：通过（BUG-022 已验证）。**
