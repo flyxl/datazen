@@ -21,7 +21,8 @@
 | BUG-017 | T19 | MCP database/namespace scope 只校验工具参数，SQL 可跨库/跨 schema 执行；schema resource 与默认解析误拒；审计目标/行数/requestId 不完整 | 已验证 |
 | BUG-018 | T20 | Redis key_pattern 可被多 key EXISTS 绕过；拒绝的 Redis 命令审计记为 allow；batch 无逐语句审计且审计 rowCount 为空 | 已验证 |
 | BUG-019 | T21 | HTTP token 输入框使用未定义的 Tailwind 颜色类 `bg-bg`，`tailwind-colour-classes` 门禁失败 | 已验证 |
-| BUG-020 | T22 | 插件模板参数未转义：审批 SQL 泄漏凭据，SQL 字面量可被参数改变 | 待修复 |
+| BUG-020 | T22 | 插件模板参数未转义：审批 SQL 泄漏凭据，SQL 字面量可被参数改变 | 已验证 |
+| BUG-021 | T22 | Workflow 工具参数未转义：模型可改写只读 Workflow 的 SQL | 待修复 |
 
 
 ## T19 MCP scope / 逐次审批 / 审计验收记录（已验证）
@@ -139,10 +140,11 @@ JSONL，审计 append 失败不影响主调用。`8fa40665a` 的 7 个代码文�
 
 ## T22 插件/Workflow 工具桥独立复测（2026-11-06，`fc97c8647`）
 
-**结论：不通过（BUG-020）。** opt-in、运行时 disable、命名、schema 校验、只读直跑、
-非只读审批、Stop、结果 gate、审计和前端开关主路径通过；但插件 `input` 模板参数未转义，
-审批 SQL 可泄漏凭据，字符串参数可改变 SQL。两处均见
-[BUG-020](ai-assistant-parity-bugs/BUG-020.md)。
+**结论：插件 BUG-020 已在 `620133a10` 验证；T22 仍因 BUG-021 不通过。** opt-in、运行时 disable、命名、schema 校验、只读直跑、
+非只读审批、Stop、结果 gate、审计和前端开关主路径通过；插件 `input` 模板转义
+与审批 SQL 脱敏已修复，但 Workflow 工具参数未转义。详见
+[BUG-020](ai-assistant-parity-bugs/BUG-020.md) 与
+[BUG-021](ai-assistant-parity-bugs/BUG-021.md)。
 
 - 未 opt-in 时无工具定义；运行时禁用插件后定义消失，旧工具调用 fail closed、不弹审批、
   不执行；独立临时测试通过。
@@ -173,7 +175,7 @@ JSONL，审计 append 失败不影响主调用。`8fa40665a` 的 7 个代码文�
 > 未发现 T22 新增类型错误。
 
 
-## T22 BUG-020 修复（本地待独立复测）
+## T22 BUG-020 修复（已独立复测）
 
 本地 `fix: escape plugin SQL templates and redact previews` 已修复
 [BUG-020](ai-assistant-parity-bugs/BUG-020.md) 的两个根因：
@@ -203,3 +205,37 @@ JSONL，审计 append 失败不影响主调用。`8fa40665a` 的 7 个代码文�
 未闭合字符串/注释/dollar quote、MySQL 反斜杠方言、反斜杠转义吞掉 placeholder 起始
 花括号、NO_BACKSLASH_ESCAPES 下的反斜杠引号歧义、只读直跑输入转义、非只读审批
 SQL 无 `hunter2` 且非敏感参数正确转义。
+
+## T22 `620133a10` 独立复测（BUG-020 已验证，T22 不通过 BUG-021）
+
+`620133a10` 的插件部分通过独立复测：
+
+- `'{{name}}'` + `O'Brien` -> `O''Brien`；`x' OR '1'='1` 不能改写条件。
+- `\{{name}}` 半渲染、MySQL/ClickHouse `\'` 歧义 fail closed；PG `E'...'` 正常。
+- 字符串外仅 number/bool/NULL；标识符/表达式拒绝；dollar quote、双引号、反引号、
+  方括号、注释内 placeholder 与未闭合结构均 fail closed。
+- 审批 `SELECT '{{password}}'` 预览为 `SELECT '[REDACTED]'`，无 `hunter2`；
+  `arguments` 脱敏；非敏感参数显示并转义；预校验在任何 Allow/审批/执行前，
+  不安全模板 audit deny 且无执行。
+
+Workflow 仍失败：独立临时测试让只读 Workflow 的 Query 模板
+`SELECT * FROM users WHERE name = '{{name}}'` 接收 `{"name":"O'Brien"}`，
+`authorize` 直接 Allow（无审批），`execute` 成功，`mock.query_log()` 为
+`SELECT * FROM users WHERE name = 'O'Brien'`，未转义为 `O''Brien`。
+根因是 `execute_workflow_tool` 把变量直接交给 `WorkflowExecutor`，后者
+`resolve_template` 正则原样替换；见 [BUG-021](ai-assistant-parity-bugs/BUG-021.md)。
+
+| 范围 | 结果 |
+|---|---|
+| `cargo test -p datazen --lib --features ai,workflow,wapps` | 1715 passed |
+| `cargo test -p datazen_desktop --lib` | 1391 passed / 10 ignored |
+| T22 core renderer | 10 passed |
+| T22 host bridge | 8 passed |
+| T22 定向前端（SettingsContent + AiSettingsSection + settingsClient） | 46 passed |
+| `tailwind-colour-classes` | 7 passed |
+| 全量前端 | 8233 passed / 8 failed（既有 Pro/tauri/driver 环境用例） |
+| `cargo test -p datazen-server --features mcp --locked` | 361 passed |
+| 映射 worktree 包的 `pnpm typecheck:tsc` | 通过 |
+| `cargo fmt --all -- --check` / `git diff --check` | 0 / 0 |
+
+`620133a10` 的 7 个文件均为本修复相关；无 generated/无关文件。
