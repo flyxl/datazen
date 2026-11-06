@@ -1,5 +1,10 @@
 //! 空闲回收：把「开了却不设期限」这件事从**建好就废**改成**接线即生效**。
 //!
+//! 形态接线现状（IdleReclaimer 武装刀起）：桌面 adapter 已武装（§1.2 的
+//! 薄适配器）；server 侧**不用**本模块的 `start_idle_reclaimer`（绑死实例
+//! 两个后果，设计档 §3.4），改用 server 自建驱动器
+//! `datazen-server/src/execution/idle_reclaimer.rs`（每 tick 现取当前实例）。
+//!
 //! 基线上 [`crate::execution::runtime::registry::OpenRequest::idle_deadline_ms`] 在应用层恒为 `None`，
 //! 于是 [`crate::execution::runtime::registry::registry::SessionRegistry::evict_idle_at`] 的第二道闸门
 //! （未设期限 ⇒ `Ok(None)`）永远成立：回收器**建好了，却一次也够不着会话**。

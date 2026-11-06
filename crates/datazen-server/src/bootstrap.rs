@@ -387,7 +387,30 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         // W8 刀2：活连接端口随实例装配——慢路构造的每个新 runtime 实例
         // 构造后立即接线；吊销→重建自动重接（lease.rs 模块头「活连接端口
         // 随实例装配」）。
-        .with_live_source(live_source),
+        .with_live_source(live_source)
+        // 空闲回收策略随实例装配（IdleReclaimer 武装刀）：config 两键 →
+        // `IdlePolicy` 的唯一映射在 `config::idle_policy_from_config`；
+        // 慢路每个新实例 `with_idle_policy` 接线，吊销→重建天然跟随。
+        .with_idle_policy(crate::config::idle_policy_from_config(
+            config.runtime_idle_ttl_secs,
+            config.runtime_idle_scan_secs,
+        )),
+    );
+    // 空闲回收驱动器起跑（设计档 §4.2 装配点）：租约源与全部消费者装配
+    // **之后** spawn（无反序窗口）；每 tick 现取当前实例（吊销跟随）。
+    // `axum::serve` 的 graceful drain 完成后 stop（Drop 为兑底）。
+    let idle_reclaimer = crate::execution::idle_reclaimer::ServerIdleReclaimer::spawn(
+        lease_source.clone(),
+        crate::config::idle_policy_from_config(
+            config.runtime_idle_ttl_secs,
+            config.runtime_idle_scan_secs,
+        ),
+    );
+    tracing::info!(
+        idle_reclaim_enabled = config.runtime_idle_ttl_secs != 0,
+        idle_ttl_secs = config.runtime_idle_ttl_secs,
+        idle_scan_secs = config.runtime_idle_scan_secs,
+        "runtime wiring: idle reclaimer configured"
     );
     // 执行域路由的用例面：租约委托适配器（每调用现取，与 MCP 同一租约源）。
     let lease_cases: std::sync::Arc<
@@ -726,6 +749,9 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         .with_graceful_shutdown(shutdown_signal())
         .await
         .map_err(|error| ServerError::Serve(error.to_string()))?;
+    // serve 返回（drain 完成）后停车：空闲回收驱动器在下一轮循环边界退出
+    // （幂等）；`idle_reclaimer` 离开作用域时 Drop 兜底（stop + abort）。
+    idle_reclaimer.stop();
     Ok(())
 }
 
