@@ -27,6 +27,7 @@
 | BUG-023 | T24 | apply_write 允许只读 SQL 执行；applied 回执/审计缺少 rowCount | 已验证 |
 | BUG-024 | T24 | 数据修改 CTE 影响预览/Safe Mode 失效；函数式写 PRAGMA 被拒 | 已验证 |
 | BUG-025 | T24 | AiWriteProposalHost 测试 rowCount mock 类型导致 tsc 失败 | 已验证 |
+| BUG-027 | T26 | T26 文档链接失效且 MCP/Agent 工具面描述与实现不符 | 待修复 |
 
 
 ## T19 MCP scope / 逐次审批 / 审计验收记录（已验证）
@@ -622,3 +623,49 @@ BUG-024/BUG-025 已验证）。**
 
 21a6e6015 的 26 个文件均属 T25；无 generated/凭据/无关。主检出 clean；worktree
 仅测试报告修改；独立临时测试已删除。**T25：通过。**
+
+## T26 `3833ae919` 独立验收：未通过（BUG-027）
+
+提交只改 6 个长期文档：`backend/ai.md`、`backend/mcp.md`、
+`frontend/ai.md`、`platform/persistence-model.md`、`security.md`、
+`features/ai-cli.md`；无 generated/temp/凭据文件。主检出与 worktree 均 clean；
+implementation/progress/test-report/bugs 过程文件按 T26 约定仍保留。
+
+代码门禁全部通过：
+
+| 范围 | 结果 |
+|---|---|
+| `datazen --lib --features ai,workflow,wapps` | 1768 passed |
+| `datazen_desktop --lib` | 1416 passed / 10 ignored |
+| `datazen-server --features mcp` | 370 passed |
+| `datazen-cli` | 51 passed / 6 ignored |
+| 全量前端 | 8241 passed / 8 既有 scripts 失败 / 9 worktree 软链 suite 加载失败 |
+| DDD layers | 23 生产 crate，无环 |
+| server deps | 292 crates / 0 forbidden |
+| platform boundaries | 0 violation / 0 error / 1 advisory |
+| shared-crate panic policy | 0 violation |
+| fmt / diff | 0 / 0 |
+| 根 `pnpm typecheck` | 48 个旧主检出软链错误（预期，已单独复现） |
+| worktree 映射 `typecheck:tsc` | 0 |
+| worktree 映射 `build:bundle` | 0 |
+
+全量前端 8 个失败均为既有 scripts 测试（driver type isolation、ci-tauri-build、
+resolve-pro 等由既有脚本版本/环境决定）；9 个失败 suite 是 worktree
+`packages/desktop` 经主检出软链加载 `crates/drivers/postgres/...svg?url` 时被
+Vite 拒绝，不是本提交代码失败。根 typecheck 的 48 个错误同样来自旧主检出
+`@datazen/*` 软链（新增 `LegacyCommandName`/`AppSettings` 字段未解析），映射到
+worktree 包后 tsc 0。
+
+T01–T26 生产代码抽查未发现 `todo!()`/`unimplemented!()`；`panic!` 仅出现在
+`#[cfg(test)]` 模块。安全字段（`production_protected`/`apply_allowed`/
+`egressSummary`/`mcpAllowedDatabases`/`mcpAllowedNamespaces`/`cloudPolicy`）
+均有实际消费者；无 generated 提交。MCP 12 无状态 + 3 有状态、batch/Redis、
+HTTP scope/审批/审计、插件/Workflow 桥、本地 CLI、写入提案、组织记忆、CLI
+skill 均有对应实现/测试。
+
+**文档验收不通过：BUG-027。** `security.md` 新增的持久化模型链接解析到不存在的
+`docs/platform/persistence-model.md`；`backend/ai.md` §1.11 仍称 DB tools 只有
+五个只读工具且 MCP 工具面尚未端口化；`backend/mcp.md` §1.2 把 Ask 模式写成仍
+注入 MCP 工具。后者与实际 `chat_session.rs` 的 Ask 清零逻辑及 frontend 文档
+§1.9 冲突。详见 [BUG-027](ai-assistant-parity-bugs/BUG-027.md)。
+**T26：未通过（BUG-027）。**
