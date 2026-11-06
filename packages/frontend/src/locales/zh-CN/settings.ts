@@ -33,6 +33,8 @@ const pack = {
   'settings.updater.title': '更新',
   'settings.updater.description':
     '从 GitHub Releases 检查并安装 Basic 版本更新（需已签名的发布包）。',
+  'settings.updater.sidebarAvailable': '更新 {version}',
+  'settings.updater.sidebarInstalling': '正在更新…',
   'settings.updater.check': '检查更新',
   'settings.updater.downloadInstall': '下载并安装',
   'settings.updater.checkOnStartup': '启动时检查更新',
@@ -72,7 +74,8 @@ const pack = {
   'settings.gridAlternatingRows': '交替行背景',
   'settings.gridAlternatingRows.hint': '对数据网格的每隔一行着色。',
   'settings.gridRowNumbers': '行数',
-  'settings.gridRowNumbers.hint': '数据网格的 # 装订线。关闭它也会删除它的点击选择按钮；行选择仍然可以通过单击行进行。',
+  'settings.gridRowNumbers.hint':
+    '数据网格的 # 装订线。关闭它也会删除它的点击选择按钮；行选择仍然可以通过单击行进行。',
   'settings.gridAutoHideScrollbar': '自动隐藏网格滚动条',
   'settings.gridAutoHideScrollbar.hint': '仅当网格悬停或聚焦时才会出现滚动条。',
   'settings.connectionPoolSize': '连接池大小',

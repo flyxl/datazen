@@ -6,6 +6,12 @@ const fetchConnectionsMock = vi.fn().mockResolvedValue(undefined);
 const fetchGroupsMock = vi.fn().mockResolvedValue(undefined);
 const listenCrossWindowMock = vi.fn().mockResolvedValue(() => {});
 const openNewConnectionDialogMock = vi.fn();
+const stopUpdateReminderMock = vi.fn();
+const startUpdateReminderMock = vi.fn(() => stopUpdateReminderMock);
+
+vi.mock('../../../lib/updateReminderSchedule', () => ({
+  startUpdateReminderSchedule: () => startUpdateReminderMock(),
+}));
 
 const storeState = {
   connections: [] as Array<{ id: string }>,
@@ -97,6 +103,13 @@ afterEach(() => {
 });
 
 describe('MainPage', () => {
+  it('starts the update schedule on mount and stops it on unmount', () => {
+    const view = render(<MainPage />);
+    expect(startUpdateReminderMock).toHaveBeenCalledOnce();
+    view.unmount();
+    expect(stopUpdateReminderMock).toHaveBeenCalledOnce();
+  });
+
   it('renders nothing until connections are loaded', () => {
     render(<MainPage />);
     expect(screen.queryByTestId('connection-page-shell')).not.toBeInTheDocument();

@@ -14,6 +14,7 @@ import { ConnectionEditorDialogHost } from '../../components/connection/NewConne
 import { ConnectionShareDialogHost } from '../../components/connection/ConnectionShareDialogHost';
 import { ConnectionPage } from '../connection/ConnectionPage';
 import { RunningExecutionCloseHost } from './RunningExecutionCloseHost';
+import { startUpdateReminderSchedule } from '../../lib/updateReminderSchedule';
 
 /**
  * Main window entry.
@@ -34,6 +35,8 @@ export function MainPage() {
   const loadError = useConnectionStore((s) => s.error);
   const fetchConnections = useConnectionStore((s) => s.fetchConnections);
   const fetchGroups = useConnectionStore((s) => s.fetchGroups);
+
+  useEffect(() => startUpdateReminderSchedule(), []);
 
   useEffect(() => {
     void fetchConnections();
