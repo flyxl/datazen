@@ -24,7 +24,7 @@
 | T20 MCP batch 与 Redis 只读工具 | 已完成 |
 | T21 MCP Streamable HTTP | 已完成 |
 | T22 插件/Workflow 工具桥 | 已完成 |
-| T23 本地 CLI Agent Provider | 进行中 |
+| T23 本地 CLI Agent Provider | 未通过（BUG-022） |
 | T24 写入提案与精确确认 | 未开始 |
 | T25 组织记忆与管理员审批 | 未开始 |
 | T26 全量回归、文档折叠、过程文件清理 | 未开始 |

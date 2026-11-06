@@ -23,6 +23,7 @@
 | BUG-019 | T21 | HTTP token 输入框使用未定义的 Tailwind 颜色类 `bg-bg`，`tailwind-colour-classes` 门禁失败 | 已验证 |
 | BUG-020 | T22 | 插件模板参数未转义：审批 SQL 泄漏凭据，SQL 字面量可被参数改变 | 已验证 |
 | BUG-021 | T22 | Workflow 工具参数未转义：模型可改写只读 Workflow 的 SQL | 已验证 |
+| BUG-022 | T23 | 本地 CLI 子进程退出后子孙持有 stdout 时 timeout/cancel 挂起并留下孤儿 | 待修复 |
 
 
 ## T19 MCP scope / 逐次审批 / 审计验收记录（已验证）
@@ -383,3 +384,41 @@ authorize => Allow（期望 deny）
 | fmt / diff | 0 / 0 |
 
 独立临时测试已删除；`4242cbee0` 5 个文件均为本修复相关。**BUG-021：已验证。**
+
+## T23 本地 CLI Agent Provider 独立复测：未通过（BUG-022）
+
+正常路径通过：8 个预设（Claude Code、Codex、Cursor、OpenCode、Grok、Qoder、
+CodeBuddy、Pi）命令/参数/检测；缺失可执行文件错误可读；stdout 流式顺序；
+stderr 凭据/绝对路径脱敏；敏感 env 不继承；默认隔离临时 cwd；非 0 退出；
+直接子进程运行中的 cancel 杀进程组；设置页选择/自定义 path/workspace/校验。
+
+**阻塞失败**：直接子进程已退出、后台子孙仍持有 stdout/stderr 时，适配器在
+`WaitResult::Exited` 分支无 timeout、无 cancel 地等待 reader EOF。
+
+```sh
+#!/bin/sh
+sleep 3 & printf 'started\n'; exit 0
+```
+
+`timeoutSecs=1` 的 `complete()` 外层 2 秒仍未返回；`started\n` 后直接 shell
+退出，再调用 `cancel()` 的 `stream_complete()` 也外层 2 秒未返回。后台子孙成为
+孤儿。根因是 timeout/cancel 只与 `child.wait()` 竞争，进入 `Exited` 后
+`stdout_task.await` / `stderr_task.await` 不再受约束，且未调用
+`kill_process_tree`。详见 [BUG-022](ai-assistant-parity-bugs/BUG-022.md)。
+
+| 范围 | 结果 |
+|---|---|
+| `datazen --features ai` | 1672 passed |
+| `datazen --features ai,workflow,wapps` | 1738 passed |
+| `datazen --features mcp` | 1742 passed |
+| `datazen_desktop` | 1405 passed / 10 ignored |
+| `datazen-server --features mcp` | 361 passed |
+| T23 local_cli 定向 | 17 passed |
+| T23 host 定向 | 1 passed |
+| T23 定向前端 | 20 passed |
+| 全量前端 | 8234 passed / 8 既有环境失败 |
+| 映射 worktree typecheck | OK |
+| fmt / diff | 0 / 0 |
+
+独立临时测试已删除；`68470a6f5` 18 个文件均为 T23 相关。**T23：未通过
+（BUG-022）。**
