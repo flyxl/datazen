@@ -45,6 +45,9 @@ FRONTEND_ROOTS = (
     "packages/wapps/",
 )
 SHARED_ROOTS = ("scripts/", ".github/workflows/", ".github/actions/")
+# These files are validated by the lightweight detect-changes job itself.
+# They affect CI scope selection, not application build/test inputs.
+CI_SCOPE_ONLY_FILES = frozenset({"scripts/ci_scope.py", "scripts/test_ci_scope.py"})
 FRONTEND_SUFFIXES = {".ts", ".tsx", ".js", ".jsx", ".css"}
 ALL_ZERO_SHA = "0" * 40
 
@@ -56,7 +59,9 @@ def classify_changed_paths(paths: list[str]) -> tuple[bool, bool]:
         path = PurePosixPath(name)
         parts = path.parts
         suffix = path.suffix
-        if name.startswith("docs/") or suffix == ".md" or name.startswith(".superpowers/"):
+        if name in CI_SCOPE_ONLY_FILES:
+            continue
+        elif name.startswith("docs/") or suffix == ".md" or name.startswith(".superpowers/"):
             continue
         if name.startswith(SHARED_ROOTS) or name in {
             "package.json",
@@ -70,7 +75,7 @@ def classify_changed_paths(paths: list[str]) -> tuple[bool, bool]:
             frontend = rust = True
         elif name.startswith(("src/", "e2e/", "site/", "test/", "public/", "fixtures/themes/")):
             frontend = True
-        elif name.startswith("src-tauri/") or (
+        elif name.startswith(("src-tauri/", "crates/")) or (
             name.startswith("packages/") and suffix in {".rs", ".toml"}
         ):
             rust = True
@@ -198,17 +203,20 @@ def select_ci_baseline(
     pr_base_sha: str,
     event_before: str,
 ) -> tuple[str, str]:
-    """Choose an incremental base, or run both CI halves when history is unsafe."""
+    """Choose an incremental base while preserving complete PR change coverage."""
     if event_name == "workflow_dispatch":
         return "", "all"
     if previous_success:
         return str(previous_success["head_sha"]), "direct"
-    if api_ok and had_prior_run:
-        # A previous failed/cancelled run has unvalidated changes. Run both halves.
-        return "", "all"
     if event_name == "pull_request" and pr_base_sha:
-        # No prior run (or API unavailable): cover the full PR from its merge base.
+        # With no successful PR baseline, classify the entire PR diff. This also
+        # covers changes from failed/in-progress prior runs without forcing both
+        # CI halves when the changed paths are safely scoped.
         return pr_base_sha, "merge-base"
+    if api_ok and had_prior_run:
+        # For push events, a failed/cancelled prior run may contain changes that
+        # are absent from EVENT_BEFORE, so history is unsafe: run both halves.
+        return "", "all"
     if event_name == "push" and api_ok:
         if event_before and event_before != ALL_ZERO_SHA:
             return event_before, "direct"
