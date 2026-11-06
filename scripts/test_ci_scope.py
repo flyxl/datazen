@@ -52,6 +52,20 @@ def _init_repository(repository: Path) -> None:
 
 
 class CiScopeTests(unittest.TestCase):
+    def test_crates_rust_source_and_manifest_changes_skip_frontend(self) -> None:
+        self.assertEqual(
+            classify_changed_paths([
+                "crates/datazen-server/tests/table_data_live_routes.rs",
+                "crates/datazen-server/Cargo.toml",
+            ]),
+            (False, True),
+        )
+
+    def test_workspace_root_cargo_manifest_changes_still_run_both(self) -> None:
+        self.assertEqual(
+            classify_changed_paths(["Cargo.toml", "Cargo.lock"]),
+            (True, True),
+        )
     def test_diff_covers_all_commits_since_last_success_not_only_head_commit(self) -> None:
         with tempfile.TemporaryDirectory(
             prefix="datazen-ci-scope-", ignore_cleanup_errors=True
