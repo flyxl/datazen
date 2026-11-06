@@ -19,6 +19,7 @@
 | BUG-015 | T17 | autoUse 为死设置且 listing 无显式选择门控；同名技能未并列；缺 2-skill 正文预算 | 已验证 |
 | BUG-016 | T18 | `#` 方言、CLI ack、onboarding、macOS bundle argv、SQL Server 非法 LIMIT 已修复 | 已验证 |
 | BUG-017 | T19 | MCP database/namespace scope 只校验工具参数，SQL 可跨库/跨 schema 执行；schema resource 与默认解析误拒；审计目标/行数/requestId 不完整 | 已验证 |
+| BUG-018 | T20 | Redis key_pattern 可被多 key EXISTS 绕过；拒绝的 Redis 命令审计记为 allow；batch 无逐语句审计且审计 rowCount 为空 | 待修复 |
 
 
 ## T19 MCP scope / 逐次审批 / 审计验收记录（已验证）
@@ -72,3 +73,33 @@ JSONL，审计 append 失败不影响主调用。`8fa40665a` 的 7 个代码文�
 > shared settings 类型。本次 `pnpm typecheck:tsc` 在把 `@datazen/*` 临时指向当前
 > worktree 包的映射下执行，检查完成后已恢复软链；这是并行 worktree 的环境动作，
 > 不进入提交。
+
+## T20 MCP batch/Redis 独立复测（2026-11-06，`9b7277f8a`）
+
+**结论：不通过。** 9b7277f8a（父 `25ad7feb0`）新增 `execute_batch`/`redis_command`，
+主路径和 15 工具契约可用，但仍有 3 个验收缺口，详见
+[BUG-018](ai-assistant-parity-bugs/BUG-018.md)：
+
+- **P0：Redis `EXISTS` 多 key 绕过 key_pattern。** `key_pattern=t20:*` 时
+  `EXISTS ["t20:key","other:key"]` 返回 `value="2"`；只传 `other:key` 才被拒绝。
+- **P1：拒绝的 Redis 命令审计为 allow。** `SET`/`DEL`/`FLUSHALL`/`KEYS`/`CONFIG`/`EVAL`
+  均在 driver 前拒绝且未执行，但审计 `decision=allow`、`rowCount=null`。
+- **P1：batch 无逐语句审计/rowCount。** `SELECT 1; SELECT 2` 的审计只有 1 条且
+  `rowCount=null`，工具返回体中的逐语句 `index/ok/rowCount` 未进入审计。
+
+已通过的主路径：batch 默认只读、写语句整批拒绝且无副作用、`transaction=true` 才开
+事务、失败 `rolledBack=true`、部分失败 `stoppedAt`/aggregate rowCount 正确；逐语句
+scope 拒绝 `information_schema`/`pg_catalog`/`template1`；SQL 字符串/注释/多语句边界
+安全。Redis GET/MGET/SCAN、写/危险/管理拒绝、key pattern（单 key）、limit/COUNT、
+输出体积、参数转义、真实 Redis、scope 均通过。工具契约 15 个工具及注解通过；T19
+query/list_tables/scope/审批/审计回归通过。
+
+| 范围 | 结果 |
+|---|---|
+| `cargo test -p datazen --features mcp --lib` | 1702 passed |
+| `cargo test -p datazen_desktop --lib` | 1363 passed / 10 ignored |
+| `cargo test -p datazen-server --features mcp --locked` | 361 passed |
+| T19 定向前端 | 39 passed |
+| 全量前端 `vitest` | 8231 passed / 8 failed（环境用例，非 T20） |
+| `pnpm typecheck:tsc` / `cargo fmt --all -- --check` / `git diff --check` | 通过 / 0 / 0 |
+| T20 范围 | 24 个代码/契约文件 + 3 个文档，全部 T20；无 generated/无关文件 |
