@@ -628,6 +628,7 @@ async fn mutation_fixture(read_only: bool, opts: MockDriverOptions) -> MutationF
             // commit 写半边的租约源：真租约源贴近生产（单次 resolve 的
             // 实例贯穿提交序列，CM-63 cell 语义）。
             lease: real_lease,
+            schema_cache: Arc::new(datazen::schema::cache::SchemaCache::new()),
         })]),
     })
     .expect("router");

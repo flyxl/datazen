@@ -12,24 +12,24 @@
 //! | `getTableData` | `POST /api/v1/table-data/reads` | ✅ 真实现 | `read_table_page` 用例（W8-a 接线刀）：profile/config/驱动闸序（handler 侧副本保错误序稳定）→ `ServerTargetRunner` target 分支执行；授权语 = `SessionIdentity.ctx` 真主体 |
 //! | `previewTableReadSql` | `POST /api/v1/table-data/read-sql-previews` | ✅ 真实现 | `preview_table_read` 用例（同一闸序；不执行任何语句） |
 //! | `estimateTableRows` | `POST /api/v1/table-data/row-count-estimates` | ✅ 真实现 | `estimate_table_rows` 用例（会话面）：目录可见性闸 → `get_session` → 驱动估算语句经 runner manual 分支执行；null = 驱动不能估算，是答案不是错误，**无精确计数回退** |
-//! | `resolveForeignKeyTargets` | `POST /api/v1/table-data/foreign-key-targets` | ⛔ fail-closed | `services::fk_navigation` 要求 `ForeignKeyNavigationSource.bind_session` 交出**活 `ConnectionHandle`**（三条驱动往返共享一次绑定）；server 执行面命令经 runtime 派发、无直连句柄面 → 501 |
-//! | `listInboundForeignKeys` | `POST /api/v1/table-data/inbound-foreign-keys` | ⛔ fail-closed | `services::referenced_by` 同上（同一端口同一句柄依赖）→ 501 |
-//! | `searchTableValues` | `POST /api/v1/table-data/value-searches` | ⛔ fail-closed | `services::value_search` 直接在活 `ConnectionHandle` 上跑驱动查询；无直连句柄面 → 501 |
-//! | `resolveResultOrigin` | `POST /api/v1/table-data/result-origins` | ⛔ fail-closed | 来源重推导要求驱动在活句柄上应答（`describe_result_origin(&handle)`）+ 目录缓存同句柄读；无直连句柄面 → 501 |
+//! | `resolveForeignKeyTargets` | `POST /api/v1/table-data/foreign-key-targets` | ✅ 真实现 | FK 跳转（W8 刀2）：共享借出助手（可见性闸 → 单次 resolve → `borrow_live_connection_by_id` 活句柄）→ `ServerForeignKeyNavigationSource` 绑定 → `services::fk_navigation::resolve_foreign_key_targets` 原样跑（三条驱动往返共享一次绑定，`exists:false` 是成功答案）；实现在 `table_data_live.rs` |
+//! | `listInboundForeignKeys` | `POST /api/v1/table-data/inbound-foreign-keys` | ✅ 真实现 | 反向目录（W8 刀2）：同一端口同一适配器 → `services::referenced_by::list_inbound_foreign_keys`（≤200 次 schema 读，`truncated` 如实早停）；实现在 `table_data_live.rs` |
+//! | `searchTableValues` | `POST /api/v1/table-data/value-searches` | ✅ 真实现 | 值搜索（W8 刀2）：活句柄借出 → estimate 同款共享梯子（`table_read_database`/`metadata_schema`）→ `services::value_search::search_table_values` 原样跑（绑定或内联二形、LIKE 转义全在共享层）；实现在 `table_data_live.rs` |
+//! | `resolveResultOrigin` | `POST /api/v1/table-data/result-origins` | ✅ 真实现 | 来源重推导读半边（W8 刀2）：活句柄借出 → `describe_result_origin(&handle)`（驱动答不出 → 400 + `grid.result.originUnavailable`，不是错误）→ 列/主键半边走 `schema_cache`（miss = nothing is provable，按只读处理）→ `evaluate_result_editability`（只读裁决带 reason 也是 200）；实现在 `table_data_live.rs` |
 //! | `previewPendingChanges` | `POST /api/v1/table-data/change-plan-previews` | ✅ 真实现 | `preview_changes` 用例（W8 刀3）：读三端点同款闸序 → `ServerTableColumnSource` 命令面列源（刀1 件）现查列/主键 → 200 `RowChangePlan`；`configRevision` 盖预览时刻的 profile revision（commit CAS 基准）；不设 read_only 闸（桌面镜像：预览不执行任何语句） |
 //! | `commitPendingChanges` | `POST /api/v1/table-data/change-commits` | ✅ 真实现 | `commit_changes` + `execute_plan`（W8 刀3）：单次 lease resolve 的 runtime 实例贯穿提交序列；恒 owned-session（宿主开/驱动/关计划自己的会话），`manualHandle` 在场 → 501 明拒（绝不静默降级）；共享层五道闸（上下文/漂移/CAS/read_only/schema 比对）全重检 |
-//! | `commitQueryResultCell` | `POST /api/v1/table-data/result-cell-commits` | ⛔ fail-closed | 来源重推导（活句柄）+ 写半边（`execute_plan`）双双缺失 → 501 |
-//! | `previewResultCellChange` | `POST /api/v1/table-data/result-cell-change-previews` | ⛔ fail-closed | 同上（写前 origin 重读也是活句柄依赖）→ 501 |
+//! | `commitQueryResultCell` | `POST /api/v1/table-data/result-cell-commits` | ⛔ fail-closed | 执行期结果映射探针未移植（`driver_exec.rs` 缺口登记）+ 原会话绑定（`RuntimeResultBinding`）不可跨请求解析 → 501 |
+//! | `previewResultCellChange` | `POST /api/v1/table-data/result-cell-change-previews` | ⛔ fail-closed | 写前 origin 重读的读半边已随刀2 在场，但 commit 半边（`commitQueryResultCell`）不可亮则预览不可单独亮（成对原则封条；`REASON_ORIGIN` 登记真实剩余 blocker）→ 501 |
 //!
 //! fail-closed 的形状沿 `ai_host::execute_target` 先例：路由照常挂载（§6.7
 //! / §6.8 在账），handler 显式回答 **501 `capabilityUnsupported`**（
 //! not-implemented 类，`http::response` 状态码表的 with_status 覆盖），文案
-//! 携带逐端口的不可服务原因——**绝不返回看似成功的结果**。剩 6 条 ⛔ 路由
-//! 的不可服务原因已收窄为逐端口缺失：FK/值搜索/来源重推导卡「活
-//! `ConnectionHandle` 面」（刀2 的活句柄面），result-cell 二卡「原会话绑定
-//! + 执行期结果映射探针」且 preview 被其 commit 半边封住（成对原则的剩余
-//! 封条）。变更二（preview/commit）已由 W8 刀3 点亮（命令面列源 + runtime
-//! 写半边 + 单次 resolve 的会话序列）。
+//! 携带逐端口的不可服务原因——**绝不返回看似成功的结果**。剩 2 条 ⛔ 路由
+//! 的不可服务原因已收窄为逐端口缺失：result-cell 二卡「执行期结果映射探针
+//! + 原会话绑定」，且 preview 被其 commit 半边封住（成对原则的剩余封条）。
+//! 变更二（preview/commit）已由 W8 刀3 点亮（命令面列源 + runtime 写半边 +
+//! 单次 resolve 的会话序列）；FK 二 + 值搜索 + 来源重推导已由 W8 刀2 点亮
+//! （活句柄面 + `SchemaCache`，读半边落在 `table_data_live.rs`）。
 //!
 //! ## 命名视图的 wire 形状（与 WR-C3 契约腿逐字一致）
 //!
@@ -104,6 +104,10 @@ use datazen_driver_api::ConnectionConfig;
 
 use crate::execution::resource_host::ServerArtifactChunks;
 use crate::execution::table_columns::ServerTableColumnSource;
+use crate::http::domains::table_data_live::{
+    handler_list_inbound_foreign_keys, handler_resolve_foreign_key_targets,
+    handler_resolve_result_origin, handler_search_table_values,
+};
 use crate::http::middleware::authorize::NOT_VISIBLE_MESSAGE;
 use crate::http::response::ApiErrorResponse;
 use crate::http::router::{api_error_response, invalid_argument, SessionIdentity};
@@ -143,7 +147,15 @@ pub struct TableDataState {
     /// issue_submission_token / execute_in_session / get_execution 轮询 /
     /// close_session 的整个提交序列（CM-63 cell 语义 + 「单次 resolve 是对
     /// 的构造」裁决）。与 MCP / sessions 域同一实例（bootstrap 既有纪律）。
+    /// W8 刀2：四读端点（FK 二/值搜索/origin）的活句柄借出经同一字段
+    /// resolve 当前实例——设计档的 `lease_source` 字段由刀3 已加的本字段
+    /// 承担（同型，不另立重复字段）。
     pub lease: Arc<dyn crate::execution::lease::RuntimeLeaseSource>,
+    /// 目录缓存（W8 刀2）：origin 的列/主键读通路径（`schema/cache.rs` 的
+    /// `get_columns`，TTL 300s、缓存键第一维 connection_id）。bootstrap
+    /// 全局一个实例（与桌面 `state.schema_cache` 同形）；失效接线
+    /// （DDL/刷新 → `invalidate`）随刀3 的写半边定，不在刀2。
+    pub schema_cache: Arc<datazen::schema::cache::SchemaCache>,
 }
 
 impl TableDataState {
@@ -192,6 +204,7 @@ pub fn table_data_router(state: TableDataState) -> Router {
         )
         .route(
             "/api/v1/table-data/foreign-key-targets",
+            // W8 刀2：活句柄面真实现（table_data_live.rs）。
             post(handler_resolve_foreign_key_targets),
         )
         .route(
@@ -410,8 +423,9 @@ async fn resolve_read_target(
 }
 
 /// 未知/禁用 profile 的统一 404（desktop 副本文案；防枚举口径与 sessions
-/// 域一致——不区分「不存在」与「不可见」）。
-fn profile_unavailable() -> Response {
+/// 域一致——不区分「不存在」与「不可见」）。`pub(crate)`：活句柄面
+/// （`table_data_live.rs`）的档案回退 miss 同一条文案，规则单家不复制。
+pub(crate) fn profile_unavailable() -> Response {
     api_error_response(ApiError::new(
         ApiErrorCode::NotFound,
         "Connection profile unavailable",
@@ -662,7 +676,8 @@ async fn handler_estimate_table_rows(
 }
 
 /// 越组织/不存在的统一 404（sessions 域同一条固定文案；防 ID 枚举）。
-fn not_visible() -> Response {
+/// `pub(crate)`：活句柄面（`table_data_live.rs`）的可见性闸同一条文案。
+pub(crate) fn not_visible() -> Response {
     api_error_response(ApiError::new(ApiErrorCode::NotFound, NOT_VISIBLE_MESSAGE))
 }
 
@@ -879,15 +894,14 @@ fn table_editing_error_response(error: TableEditingError) -> Response {
     api_error_response(ApiError::new(code, message))
 }
 
-// ── FK/来源/值搜索与 result-cell（§6.7/§6.8，⛔ fail-closed：逐端口收窄）──
+// ── 来源/单元格（§6.7/§6.8，⛔ fail-closed：逐端口收窄）──────────
 //
-// 六条路由逐一显式登记（模块头状态表）。不可服务原因已按端口收窄：
-// FK / 值搜索 / 来源重推导卡「活 ConnectionHandle 面」（server 执行面
-// 命令经 runtime 派发，无直连句柄；刀2 的活句柄面点亮它们），result-cell
-// 二卡「原会话绑定 + 执行期结果映射探针」且 preview 被其 commit 半边封住
-// （成对原则的剩余封条，REASON_COMMIT 仍被它消费）。变更二已由刀3 点亮，
-// 不在本节。`SessionIdentity` 提取即认证链声明：未认证请求在
-// L2 已 401，不进入本层。
+// W8 刀2 后剩两条 501：`result-cell-commits` 与 `result-cell-change-previews`
+// （result-cell 二，刀4 范围）。不可服务原因已按端口收窄：执行期结果映射
+// 探针未移植 + 原会话绑定不可跨请求解析；preview 被其 commit 半边封住
+// （成对原则的剩余封条，REASON_COMMIT / REASON_ORIGIN 仍被它们消费）。
+// FK / 值搜索 / origin 读半边已由刀2 点亮，不在本节。`SessionIdentity`
+// 提取即认证链声明：未认证请求在 L2 已 401，不进入本层。
 
 /// 501 `capabilityUnsupported`（not-implemented 类；`ai_host::execute_target`
 /// 先例同款——`CapabilityUnsupported` 默认 405，501 类由调用点 with_status
@@ -905,41 +919,15 @@ fn fail_closed(method: &'static str, reason: &'static str) -> Response {
         .into_response()
 }
 
-const REASON_FK_SOURCE: &str = "the foreign-key services resolve through a \
-ForeignKeyNavigationSource whose binding carries a live ConnectionHandle for \
-the driver round trips; the server execution face dispatches commands through \
-the runtime and exposes no direct handle surface.";
-const REASON_DRIVER_QUERY: &str = "the service runs its driver queries at a live \
-connection handle; the server execution face dispatches commands through the \
-runtime and exposes no direct handle surface.";
-const REASON_ORIGIN: &str = "origin re-derivation asks the driver at a live \
-connection handle (describe_result_origin) and reads the catalog cache with \
-the same handle; the server execution face exposes no direct handle surface.";
+const REASON_ORIGIN: &str = "previewResultCellChange re-reads the result origin \
+before the write (that read half is lit on this host) and then renders a change \
+plan whose commit half (commitQueryResultCell) is not assembled: the execution \
+time result-mapping probe is not ported and the original-session binding cannot \
+be resolved across requests. The preview is sealed by its commit half (paired \
+capability).";
 const REASON_COMMIT: &str = "change commit executes a fingerprint-confirmed plan \
 through the runtime write half (execute_plan) and answers synchronously; the \
 write half is not assembled on this host.";
-
-/// `resolveForeignKeyTargets`（POST /api/v1/table-data/foreign-key-targets）
-/// → 501。
-async fn handler_resolve_foreign_key_targets(_identity: SessionIdentity) -> Response {
-    fail_closed("resolveForeignKeyTargets", REASON_FK_SOURCE)
-}
-
-/// `listInboundForeignKeys`（POST /api/v1/table-data/inbound-foreign-keys）
-/// → 501。
-async fn handler_list_inbound_foreign_keys(_identity: SessionIdentity) -> Response {
-    fail_closed("listInboundForeignKeys", REASON_FK_SOURCE)
-}
-
-/// `searchTableValues`（POST /api/v1/table-data/value-searches）→ 501。
-async fn handler_search_table_values(_identity: SessionIdentity) -> Response {
-    fail_closed("searchTableValues", REASON_DRIVER_QUERY)
-}
-
-/// `resolveResultOrigin`（POST /api/v1/table-data/result-origins）→ 501。
-async fn handler_resolve_result_origin(_identity: SessionIdentity) -> Response {
-    fail_closed("resolveResultOrigin", REASON_ORIGIN)
-}
 
 /// `commitQueryResultCell`（POST /api/v1/table-data/result-cell-commits）
 /// → 501。

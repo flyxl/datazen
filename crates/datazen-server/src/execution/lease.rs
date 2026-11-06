@@ -24,12 +24,26 @@
 //! 结果不受影响，结果落共享 sink）。v1 只暴露 API，bootstrap 不接线：
 //! profiles/policy/backend 都是长生命周期 `Arc`，配置漂移由每请求 CAS 拒绝，
 //! 不存在「实例整体过期」的现实触发条件。
+//!
+//! ## 活连接端口随实例装配（W8 刀2）
+//!
+//! `RuntimeConnectionUseCases::new_with_parts` 构造的实例自带未接线的
+//! `LiveConnections`（`LiveConnections::unwired()`）——借出路径在未接线时
+//! 得到 `NotWired` → `convert::live` 映射 `ServiceUnavailable`（诚实失败）。
+//! server 的 runtime 出生地在租约源慢路（cell 懒构造），宿主能摸到新生实例
+//! 的唯一位置就是 `resolve()` 自己——接线因此写在慢路里：`live_source`
+//! 字段（[`Self::with_live_source`] 注入）为 `Some` 时，每个新造实例构造后
+//! 立即 `with_live_connections` 接线。`with_live_connections` 是**覆盖**语义，
+//! 慢路重入无副作用；吊销→重建的下一个实例**天然带端口**（外部「resolve
+//! 一次再接线」的形状会在重建窗口后退化回 NotWired）。缺省 `None` 保持
+//! unwired——既有构造器与全部既有测试零改动，行为与刀2 前逐字节一致。
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
 
 use datazen::execution::application::RuntimeConnectionUseCases;
+use datazen::execution::application::orchestration::LiveConnectionSource;
 
 /// runtime 租约端口：消费者每次调用前现取当前 runtime（可能被吊销，
 /// 禁止跨请求缓存——见模块头「约束的是消费者」）。
@@ -66,6 +80,10 @@ pub struct ServerRuntimeLeaseSource {
     /// 当前 runtime 单元（CM-63）：`Some` 即「未吊销的当前实例」，`resolve()`
     /// 恒返同一 `Arc`；`None` 触发下次 resolve 重建。吊销走 [`Self::revoke`]。
     current: std::sync::Mutex<Option<Arc<RuntimeConnectionUseCases>>>,
+    /// 活连接出向端口适配器（W8 刀2）：`Some` 时每个新造 runtime 实例构造
+    /// 后立即 `with_live_connections` 接线（覆盖语义，慢路重入无副作用）；
+    /// `None` 保持 unwired（fail-closed：借出路径得 `NotWired` → 503）。
+    live_source: Option<Arc<dyn LiveConnectionSource>>,
 }
 
 impl ServerRuntimeLeaseSource {
@@ -102,7 +120,17 @@ impl ServerRuntimeLeaseSource {
             sink,
             directory,
             current: std::sync::Mutex::new(None),
+            live_source: None,
         }
+    }
+
+    /// 注入活连接出向端口适配器（W8 刀2）：`resolve()` 慢路构造的每个新
+    /// 实例构造后立即 `with_live_connections` 接线。builder 形状——既有
+    /// 构造器（`new` / `new_with_shared_parts`）与不调用本方法的实例零改动
+    /// （缺省 unwired，fail-closed）。
+    pub fn with_live_source(mut self, source: Arc<dyn LiveConnectionSource>) -> Self {
+        self.live_source = Some(source);
+        self
     }
 
     /// sessions 域可见性闸用的目录出口（与每次 resolve 注入用例的是同一
@@ -160,6 +188,11 @@ impl RuntimeLeaseSource for ServerRuntimeLeaseSource {
             self.sink.clone(),
             self.directory.clone(),
         ));
+        // 活连接端口随实例装配（W8 刀2）：接线写在慢路里，吊销→重建的
+        // 下一个实例天然带端口；`with_live_connections` 覆盖语义，重入无副作用。
+        if let Some(live) = &self.live_source {
+            runtime.with_live_connections(live.clone());
+        }
         *cell = Some(Arc::clone(&runtime));
         Ok(runtime)
     }

@@ -754,6 +754,8 @@ async fn http_fixture(count_estimate_rows: i64) -> HttpFixture {
                 sessions: cases.clone(),
                 // W8 刀3：commit 写半边的租约源（真租约源同源装配）。
                 lease: lease_source.clone(),
+                // W8 刀2：目录缓存字段（本文件不消费 origin 路径）。
+                schema_cache: Arc::new(datazen::schema::cache::SchemaCache::new()),
             }),
         ]),
     })

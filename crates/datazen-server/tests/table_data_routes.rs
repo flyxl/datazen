@@ -15,9 +15,11 @@
 //!   不可见（CM-05，含跨组织 DELETE 不产生副作用）、跨主体不可见、
 //!   application 错误码 wire（`grid.view.nameExists` → 409 /
 //!   `grid.view.invalid` → 400，与 WR-C3 契约腿逐字一致）。
-//! - **⛔ fail-closed 登记**：driver 依赖的 tableData 路由（§6.7/§6.8）
-//!   恒 501 `capabilityUnsupported`，文案显式声明「没有执行任何语句、
-//!   没有构建任何计划、没有写任何东西」。
+//! - **⛔ fail-closed 登记**：tableData 域剩余 fail-closed 路由（result-cell
+//!   二，§6.8）恒 501 `capabilityUnsupported`，文案显式声明「没有执行任何语句、
+//!   没有构建任何计划、没有写任何东西」。读三端点（W8-a 接线刀）、变更二
+//!   （W8 刀3）与 FK 二/值搜索/origin（W8 刀2）已随各自接刀点亮为真实现，
+//!   探针集合逐刀收窄；绿腿见各自新测试文件。
 //! - **MockDriver 读路径：接不上，不硬凑（登记）**——真路由 handler 是
 //!   fail-closed 501；W8-a P2 起 `TableDataState` 已注入 server 运行器
 //!   （`TableDataState.runner`）与驱动注册表（`.registry`），但十一端点
@@ -208,6 +210,7 @@ async fn fixture() -> (Arc<AdminStore>, axum::Router, Account, Account, Account)
             directory: Arc::new(InMemorySessionDirectory::new()),
             sessions: lease_cases,
             lease: lease_source,
+            schema_cache: Arc::new(datazen::schema::cache::SchemaCache::new()),
         })]),
     })
     .expect("router");
@@ -751,24 +754,28 @@ async fn an_invalid_draft_is_refused_with_the_application_code() {
     assert_eq!(body["code"], "grid.view.invalid");
 }
 
-// ── ⛔ fail-closed 登记（§6.7/§6.8 剩余六端点）──────────────────────────────
+// ── ⛔ fail-closed 登记（§6.7/§6.8 剩余 result-cell 二）──────────────────
 //
 // W8 刀3 起 `change-plan-previews` / `change-commits` 已点亮为真实现
-// （`mutation_pair_routes.rs`），探针集合随之收窄为其余 fail-closed 面；
-// 逐条断言与文案要求一字不改。
+// （`mutation_pair_routes.rs`）；W8 刀2 起 `foreign-key-targets` /
+// `inbound-foreign-keys` / `value-searches` / `result-origins` 也已点亮
+// （`table_data_live_routes.rs` 绿腿接管）。探针集合随之收窄为剩余的
+// result-cell 二（刀4 范围）；逐条断言与文案要求一字不改。
 
-/// FK/值搜索/来源路由恒 501 `capabilityUnsupported`，文案显式声明无副作用
-/// 且携带逐端口收窄原因（读三端点与变更二已真实现，见下方绿路径腿）。
+/// result-cell 二路由恒 501 `capabilityUnsupported`，文案显式声明无副作用
+/// 且携带逐端口收窄原因（读三端点与变更二、FK/值搜索/origin 已真实现）。
 #[tokio::test]
 async fn driver_bound_table_data_routes_fail_closed_as_not_implemented() {
     let (_store, app, primary, _same_org, _other_org) = fixture().await;
     for (uri, method_name) in [
-        ("/api/v1/table-data/value-searches", "searchTableValues"),
         (
-            "/api/v1/table-data/foreign-key-targets",
-            "resolveForeignKeyTargets",
+            "/api/v1/table-data/result-cell-commits",
+            "commitQueryResultCell",
         ),
-        ("/api/v1/table-data/result-origins", "resolveResultOrigin"),
+        (
+            "/api/v1/table-data/result-cell-change-previews",
+            "previewResultCellChange",
+        ),
     ] {
         let (status, body) = call(
             &app,
@@ -1100,6 +1107,7 @@ async fn wired_fixture(opts: MockDriverOptions) -> WireFixture {
             // W8 刀3：commit 写半边的租约源——真租约源贴近生产（单次 resolve
             // 的实例贯穿提交序列，CM-63 cell 语义）。
             lease: real_lease,
+            schema_cache: Arc::new(datazen::schema::cache::SchemaCache::new()),
         })]),
     })
     .expect("router");

@@ -28,6 +28,9 @@
 //! - [`table_columns`]：W8 刀1 —— `table_editing::TableColumnSource` 端口的
 //!   server 实现（变更二端点的命令面列源备料件：`get_table_schema` 经
 //!   runner target 分支现查；组件按请求构造，不进全局装配图）。
+//! - [`live_source`]：W8 刀2 —— `LiveConnectionSource` 出向端口的 server
+//!   实现（四读端点的活句柄面：反查物理资源 → 权威 driver type → 同实例
+//!   驱动 Arc → 借出句柄；经租约源 `with_live_source` 随实例装配）。
 
 pub mod budget;
 pub mod budget_bridge;
@@ -36,6 +39,7 @@ pub mod ephemeral;
 pub mod identity;
 pub mod lease;
 pub mod lease_use_cases;
+pub mod live_source;
 pub mod network_provider;
 pub mod policy_adapter;
 pub mod publisher;

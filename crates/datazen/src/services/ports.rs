@@ -10,10 +10,15 @@ pub use crate::table_editing::ports::ArtifactChunkReader;
 // D6 item 4 收尾：AI 消费者端口（DatabaseToolHost / SessionConnectionLookup）
 // 迁入 modules::ai::application::ports（其消费者），这里再导出保旧路径；
 // Arc 前转实现随端口唯一定义在模块内（孤儿规则）。
+// W8 刀2 刻痕修复：`services` 不再硬编码 `ai`，re-export 挂回自己的门
+// （桌面 ai + services 同开，门恒真；server 开 services 不被动拖入 ai）。
+#[cfg(feature = "ai")]
 pub use crate::ai::application::ports::{DatabaseToolHost, SessionConnectionLookup};
 use std::sync::Arc;
 // D6 item 5 切片 b：备份输出端口（BackupOutputBinder / BackupOutputGuard）
 // 迁入 modules::backup::ports（其消费者 backup_gateway），这里再导出保旧路径。
+// 刻痕修复：backup 模块门独立于 services（lib.rs），re-export 挂自己的门。
+#[cfg(feature = "backup")]
 pub use crate::backup::ports::{BackupOutputBinder, BackupOutputGuard};
 /// Why a live session could not be bound for a foreign-key navigation probe.
 ///
