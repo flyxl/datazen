@@ -179,6 +179,41 @@ driverGateway（**过渡域**，snake_case 名保留——它们是现存 IPC �
 
 流式驱动命令在桌面用 Tauri `Channel` 推送；HTTP 形态把 `onEvent` 替换为既有 SSE 机制：`POST` 接受执行（202 + `streamId`），事件经统一事件端点投递，复用 team-server §8 的回放、心跳与授权复核。`applyResultLimit`/`recordHistory` 随请求体透传。
 
+### 6.10 execution
+
+| 方法 | 路由 | 令牌 | 成功 | 请求 → 响应 |
+| --- | --- | --- | --- | --- |
+| `executeInSession` | `POST /api/v1/sessions/{id}/executions` | ✓ | 202 | `ExecuteInSessionRequest & SubmitRequest` → `ExecutionReceipt` |
+| `executeAtTarget` | `POST /api/v1/executions` | ✓ | 202 | `ExecuteAtTargetRequest & SubmitRequest` → `ExecutionReceipt` |
+| `getExecution` | `GET /api/v1/executions/{id}` | — | 200 | — → `ExecutionView` |
+| `cancelExecution` | `POST /api/v1/executions/{id}/cancel` | ✓ | 200 | `SubmitRequest` → `CancelReceipt` |
+
+裁决：
+
+- **异步接受语义（§3 规则 3，team-server §9.3）**：两条 execute 路由回 `202` + 稳定
+  `executionId`（`ExecutionReceipt`：`executionId` / `streamId` / `state`）。已接受 ≠ SQL 成功
+  ——终态经 `getExecution` 或事件流（§6.6）取。
+- **会话内执行闸序**（`setSessionContext` 同款，§6.4）：令牌在场 → 可见性（越组织/未知会话
+  `404` 合并）→ 体解析 → `handle.dbSessionId` 与路由 `{id}` 一致性（`400`）→ DTO 校验 → 用例。
+  体 handle 原样传递、不以目录条目改写——epoch 核对归用例层。
+- **组织闸**：`executeAtTarget` 的 `target.connectionId` 归属与 `getExecution` /
+  `cancelExecution` 的可见性由用例层闭环（sink `visible_to` 的 `404` 合并口径），HTTP 层不做
+  第二套组织判定。`cancelExecution` 体只留幂等凭据（`submissionTokenBody` 半边），
+  `disposition: unsupported` / `alreadyFinished` 是正常取值。
+- **令牌签发的会话绑定操作**：`issueSubmissionToken`（§6.2）对 `openSession` /
+  `executeInSession` / `executeAtTarget` / `setSessionContext` / `cancelExecution` 经**执行用例
+  面**签发（令牌注册进运行时令牌表，与 execute/cancel 路径的核验同一实例闭环）；
+  `startJob` / `createProfile` 维持 HMAC 签发器（`SubmissionService` 的 `verify` 是同一签发器）。
+
+### 6.11 job
+
+| 方法 | 路由 | 令牌 | 成功 | 请求 → 响应 |
+| --- | --- | --- | --- | --- |
+| `startJob` | `POST /api/v1/jobs` | ✓ | 201 | `{ submissionToken, definition }` → `JobRecord` |
+| `listJobs` | `GET /api/v1/jobs` | — | 200 | `?states=&after=&limit=`（过滤包平铺为查询参数）→ `JobRecord[]` 页 |
+| `getJob` | `GET /api/v1/jobs/{id}` | — | 200 | — → `JobRecord`（跨组织按不存在答 `404`） |
+| `cancelJob` | `POST /api/v1/jobs/{id}/cancel` | ✓ | 202 | — → `{ outcome: registered \| alreadyRequested \| alreadyTerminal }`（幂等登记；已终态如实回答） |
+
 ## 7. 能力差异：`WEB_CAPABILITIES` 与 `unsupportedMethods`
 
 - **桌面专属能力不出现在 HTTP 面**：updater、window、native dialog、本机 OS 集成。它们的形态差异由 `packages/frontend/src/platform/capabilities.ts` 的静态表声明（`WEB_CAPABILITIES.updater: false`、`settingsSections` 收窄），前端**编译期分支**，不做运行时形态探测。
@@ -217,3 +252,4 @@ WR-D 落地时的机器核对（WR-C3 接管）：同用例双传输测试逐方
 - 2026-10-31：首版。收编概要 §6.3 骨架，补齐 settings / identity / tableData（14 方法）/ driverGateway（4+1 排除）；裁决命名视图上 HTTP（服务端存储）、`DELETE` 唯一例外（命名视图）、流式驱动命令走 SSE、`open_base64_with_dialog` 永不上 HTTP。
 - 2026-11-02：v1.1。events 域登记订阅建立路由 `POST /api/v1/events/subscriptions`（WR-D5 落地，§6.6 表）；域方法数 42 → 43。
 - 2026-11-03：v1.2（WR-F1 扩展面登记）。**mcp 客户端面**（`mcp.initialize/listTools/callTool/closeSession`）走服务端 `/mcp` streamable HTTP（WR-F2 传输，§6.6 之外的服务面；JSON-RPC 2.0 信封 + `Mcp-Session-Id` 头，L2 cookie 即身份——INV-S1），wire-direct 不入 `MethodMap` 主表（`transport.ts` 类型冻结，逐域登记于 web 侧 `WR_F1_HTTP_ROUTES`）；web broker 的 `serverId` 固定 `"datazen"`（v1 语义：工具面 = datazen 自有 13 工具，与桌面多外部服务器 broker 的差异如实登记）。**security 域**（`security.resolveSecret` → `POST /api/v1/secrets/resolve`、`security.putSecret` → `PUT /api/v1/secrets/{domain}/{key}`）与 **aiHost 域**（`aiHost.getSessionConfig` → `POST /api/v1/ai-host/session-config`、`aiHost.executeTarget` → `POST /api/v1/ai-host/execute-target`）客户端面已定形（web 侧真实现 + 契约测试），**服务端路由未点亮**（部署未挂 = 501/404 显式形态）——服务端半边随执行域路由切片落地，点亮前 web 端如实报 `CapabilityUnsupported` 的替身面保持。
+- 2026-11-06：v1.3（execution 域路由收口刀）。§6.10 execution 四端点点亮（`POST /api/v1/sessions/{id}/executions`、`POST /api/v1/executions`、`GET /api/v1/executions/{id}`、`POST /api/v1/executions/{id}/cancel`）——§4 总账的 execution 4/4 由「计账」变「实服务」；§6.11 job 表补登（四端点此前已服务但无逐域路由表）；§6.2 `issueSubmissionToken` 的会话绑定操作改为经执行用例面签发（修复 openSession/cancelExecution 在 HTTP 面必然 `TokenInvalid` 的端到端断点）；aiHost.executeTarget（§6.2 表）501 → 200 `CommandResult`。

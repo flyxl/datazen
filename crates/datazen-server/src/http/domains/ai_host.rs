@@ -5,7 +5,7 @@
 //! | 方法 | 路由 | 令牌 | 成功 | 请求 → 响应 |
 //! | --- | --- | --- | --- | --- |
 //! | `aiHost.getSessionConfig` | `POST /api/v1/ai-host/session-config` | — | 200 | payload 原样 → `ExecutionSettings` JSON |
-//! | `aiHost.executeTarget` | `POST /api/v1/ai-host/execute-target` | — | **501** | payload 原样（claim 进体）→ `capabilityUnsupported` |
+//! | `aiHost.executeTarget` | `POST /api/v1/ai-host/execute-target` | — | 200 | `{id, command, input, claim?}` → `CommandResult`（`WorkflowError` → driver_gateway 同表错误映射） |
 //!
 //! 域裁决：
 //!
@@ -15,11 +15,18 @@
 //!   ——v1 的会话配置是服务端事实，不由请求塑形；体缺失/非 JSON 也按
 //!   `None` 接受（payload 原样透传的宽容读面）。缺行按节补缺省
 //!   （fresh install 语义，`storage::settings` 的装配口径）。
-//! - **executeTarget fail-closed（v1 登记）**：目标执行机器（规范化目标
-//!   元数据）随无状态 MCP 目标命令切片——本刀没有执行面，回答 501
-//!   `capabilityUnsupported` + 精确文案，**绝不返回看似成功**（也不发稳定
-//!   执行 id；异步接受语义 202 + 稳定 id 属该切片的契约 §3 规则 3）。
-//!   payload 在 fail-closed 之前不解读、不落任何执行面。
+//! - **executeTarget = 目标命令执行（执行域路由收口刀点亮）**：体
+//!   `{id, command, input, claim?}`——`id` 是连接 id，`command` 是驱动命令
+//!   目录名，`input` 是命令输入（claim 原样接受不解读：授予态是客户端
+//!   事实，桌面 `execute_target` 同款不消费它）。执行经共享
+//!   `workflow::resource_execution::execute`（宿主 = bootstrap 装配的
+//!   `ServerResourceExecutionHost`，与 MCP 目标机器 / driverGateway 同一
+//!   实例）；目标闸序（驱动可用性、safe_mode、目标要求）全部复用该层。
+//!   成功 200 → `CommandResult`；`WorkflowError` →
+//!   driver_gateway 同一张错误映射表（503 连接/驱动不可用等）。同步
+//!   应答：本端点不签发稳定执行 id、不入异步执行记录（与桌面 IPC 同一
+//!   形态——异步语义属 execution 域的 `executeAtTarget`，见契约
+//!   §6.10）。payload 在缺 `id`/`command` 时 400 明拒，绝不假装成功。
 //! - **组织边界（INV-01）**：[`AiHostState`] 由 composition root 绑定部署
 //!   组织（`config.organization_id`，预装配 scoped store——settings.rs 的
 //!   「每组织一个实例」口径）；会话组织与绑定组织不一致时，该 store 不服务
@@ -41,8 +48,7 @@ use datazen::settings::SettingsRepository;
 use datazen::shared::error::{ApiError, ApiErrorCode};
 
 use crate::http::middleware::authorize::NOT_VISIBLE_MESSAGE;
-use crate::http::response::ApiErrorResponse;
-use crate::http::router::{api_error_response, SessionIdentity};
+use crate::http::router::{api_error_response, invalid_argument, SessionIdentity};
 use crate::storage::ServerSettingsStore;
 
 /// ai-host 域的装配状态（composition root 注入；无隐式单例）。
@@ -53,6 +59,10 @@ pub struct AiHostState {
     pub settings: Arc<ServerSettingsStore>,
     /// 本 state 绑定的组织（INV-01：与会话组织不一致的请求一律 404）。
     pub organization_id: String,
+    /// 目标执行宿主（执行域路由收口刀新增）：bootstrap 装配的
+    /// `ServerResourceExecutionHost`，与 MCP 目标机器 / driverGateway 同一
+    /// 实例（共享驱动注册表 / 设置存储 / 租约源）。
+    pub host: Arc<crate::execution::resource_host::ServerResourceExecutionHost>,
 }
 
 /// ai-host 域 Router 片段：`POST /api/v1/ai-host/{session-config,execute-target}`。
@@ -114,11 +124,14 @@ async fn handler_get_session_config(
 }
 
 /// `aiHost.executeTarget`（POST /api/v1/ai-host/execute-target，体 =
-/// payload 原样，`AiTargetClaim` 进体）→ **501 `capabilityUnsupported`**。
+/// `{id, command, input, claim?}`）→ 200 `CommandResult`。
 ///
-/// fail-closed 登记（见模块头）：目标执行机器随无状态 MCP 目标命令切片。
-/// 文案显式声明「没有开始任何执行、没有签发任何执行 id」——调用方不能把
-/// 本响应解读成受理。payload 只被原样接受，不解读、不落执行面。
+/// 目标命令执行（执行域路由收口刀点亮，桌面 `execute_target` 同一执行
+/// 路径）：`WorkflowCommandStep`（kind="tool"，connection=id）经共享
+/// `workflow::resource_execution::execute` 跑在 bootstrap 装配的
+/// `ServerResourceExecutionHost` 上。`claim` 原样接受不解读（授予态是
+/// 客户端事实，桌面同款）；缺 `id` / `command`（或类型不符）→ 400，
+/// 绝不假装成功；`WorkflowError` → driver_gateway 同一张错误映射表。
 async fn handler_execute_target(
     State(state): State<AiHostState>,
     identity: SessionIdentity,
@@ -127,17 +140,35 @@ async fn handler_execute_target(
     if let Err(response) = ensure_bound_organization(&state, &identity) {
         return response;
     }
-    let _ = body;
-    let error = ApiError::new(
-        ApiErrorCode::CapabilityUnsupported,
-        "aiHost.executeTarget is not served by this host yet: the target execution machine \
-         (normalized target metadata) arrives with the stateless MCP target-command slice. \
-         No execution was started and no stable execution id was issued.",
+    let Some(Json(body)) = body else {
+        return invalid_argument("aiHost.executeTarget requires a JSON body.");
+    };
+    let Some(connection_id) = body.get("id").and_then(Value::as_str) else {
+        return invalid_argument("id (connection id) is required.");
+    };
+    let Some(command) = body.get("command").and_then(Value::as_str) else {
+        return invalid_argument("command (driver command name) is required.");
+    };
+    let input = body.get("input").cloned().unwrap_or(Value::Null);
+    // claim 原样接受不解读（见模块头）；体其余字段不阻断（payload 原样
+    // 透传的宽容读面）。
+    let step = datazen::workflow::domain::command::WorkflowCommandStep::new(
+        "tool",
+        command,
+        Some(connection_id.to_owned()),
+        input,
     );
-    // 501（not-implemented 类）：`CapabilityUnsupported` 默认 405，501 类由
-    // 调用点 `with_status` 显式覆盖（http::response 状态码表的同款先例——
-    // 骨架 fallback 对未点亮 /api/ 路径的回答）。
-    ApiErrorResponse::new(error)
-        .with_status(StatusCode::NOT_IMPLEMENTED)
-        .into_response()
+    match datazen::workflow::resource_execution::execute(
+        state.host.as_ref(),
+        &step,
+        connection_id,
+        None,
+        None,
+        false,
+    )
+    .await
+    {
+        Ok(result) => (StatusCode::OK, Json(result)).into_response(),
+        Err(error) => crate::http::domains::driver_gateway::workflow_error_response(error),
+    }
 }

@@ -222,7 +222,9 @@ pub fn driver_gateway_router(state: DriverGatewayState) -> Router {
 // ── 错误映射 ───────────────────────────────────────────────────────────────
 
 /// `WorkflowError` → HTTP（裁决见模块头；每一个状态码都可以指回变体集）。
-fn workflow_error_response(error: WorkflowError) -> Response {
+/// `pub(crate)`：aiHost.executeTarget（执行域路由收口刀点亮）与
+/// driverGateway 同一张错误映射表。
+pub(crate) fn workflow_error_response(error: WorkflowError) -> Response {
     let status = match &error {
         WorkflowError::Driver(_) | WorkflowError::ConnectionFailed { .. } => {
             StatusCode::SERVICE_UNAVAILABLE

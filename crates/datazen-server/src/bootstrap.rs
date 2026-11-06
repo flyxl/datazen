@@ -284,13 +284,9 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         audit.clone(),
         clock.clone(),
     ));
-    let domains = http::router::DomainState {
-        issuer: issuer.clone(),
-        submission,
-        uploads,
-        downloads,
-        tasks: task_center,
-    };
+    // DomainState 装配后移到 session_directory 定义之后（execution 域路由
+    // 刀：令牌签发的会话绑定操作需要目录核对归属，见 router.rs 的
+    // `handler_issue_token`）。
 
     // WR-F7 执行栈（无 feature 门控）：真租约源三件套全部就位——policy
     // 适配器（policy_adapter.rs，本波解除阻塞项）+ `storage::ServerProfiles`
@@ -404,6 +400,18 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let session_directory: std::sync::Arc<dyn datazen::execution::SessionDirectory> =
         lease_source.session_directory();
 
+    // WR-D6/D7 域路由态（jobs / submission-tokens / artifacts）+ 执行域路由
+    // 刀新增的用例面（issue-token 的会话绑定操作经它签发，与运行时令牌表
+    // 同一实例闭环）。
+    let domains = http::router::DomainState {
+        issuer: issuer.clone(),
+        submission,
+        uploads,
+        downloads,
+        tasks: task_center,
+        sessions: lease_cases.clone(),
+    };
+
     // 服务端设置存储：ai-host 域、（mcp 构建下的）目标机器与 driverGateway
     // 过渡域共享同一实例。
     let settings_store = std::sync::Arc::new(crate::storage::ServerSettingsStore::scoped(
@@ -487,6 +495,15 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
                 directory: session_directory.clone(),
             },
         ),
+        // execution 域路由（契约 §6.10；执行域路由收口刀）：会话内执行 /
+        // 目标执行 / 执行视图 / 取消登记——用例面与 sessions 域同一实例
+        // （租约委托适配器），目录与 sessions 域同一实例（同一可见性事实）。
+        crate::http::domains::execution::execution_router(
+            crate::http::domains::execution::ExecutionState {
+                sessions: lease_cases.clone(),
+                directory: session_directory.clone(),
+            },
+        ),
         // WR-F1 服务端半边（三缺口合拢）：secrets 域（ServerSecretVault 的
         // 受控解析/存储 + 审计）与 ai-host 域（执行设置读 + 目标执行
         // fail-closed 登记）。挂载走 domain_routers 统一通道，认证链
@@ -500,6 +517,9 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         crate::http::domains::ai_host::ai_host_router(crate::http::domains::ai_host::AiHostState {
             settings: settings_store.clone(),
             organization_id: config.organization_id.clone(),
+            // 执行域路由收口刀：目标执行宿主与 MCP 目标机器 / driverGateway
+            // 同一实例（共享驱动注册表 / 设置存储 / 租约源）。
+            host: resource_host.clone(),
         }),
         // WR-C3 §6.7–6.9 tableData 域（W3 刀）：命名视图三端点真实现
         // （v9 `named_views` 表）。W8-a 接线刀：读三端点（reads /
