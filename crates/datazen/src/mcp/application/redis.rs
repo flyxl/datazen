@@ -50,9 +50,8 @@ pub fn classify_redis_command(command: &str) -> RedisCommandClass {
         | "BLMPOP" | "SADD" | "SREM" | "SINTERSTORE" | "SUNIONSTORE" | "SDIFFSTORE" | "ZADD"
         | "ZREM" | "ZINCRBY" | "ZDIFFSTORE" | "ZINTERSTORE" | "ZUNIONSTORE" | "ZREMRANGEBYRANK"
         | "ZREMRANGEBYSCORE" | "HSET" | "HMSET" | "HDEL" | "HINCRBY" | "HINCRBYFLOAT" | "XADD"
-        | "XACK" | "XDEL" | "XTRIM" | "XSETID" | "PUBLISH" | "MIGRATE" | "RESTORE" | "LINK" => {
-            RedisCommandClass::Write
-        }
+        | "XACK" | "XDEL" | "XTRIM" | "XSETID" | "PUBLISH" | "MIGRATE" | "RESTORE" | "LINK"
+        | "TOUCH" => RedisCommandClass::Write,
 
         "FLUSHDB" | "FLUSHALL" | "KEYS" | "EVAL" | "EVALSHA" | "SCRIPT" | "FUNCTION" | "FCALL"
         | "FCALL_RO" | "SORT" | "SWAPDB" | "SUBSCRIBE" | "PSUBSCRIBE" | "UNSUBSCRIBE"
@@ -158,7 +157,10 @@ fn validate_key_args(
     limit: u32,
 ) -> Result<(), String> {
     let positions: Vec<usize> = match command {
-        "MGET" => {
+        // These read commands take a variable number of keys: every argument
+        // is a key and every one must stay inside key_pattern. HMGET below is
+        // different: only args[0] is a key; the rest are fields.
+        "MGET" | "EXISTS" => {
             if args.is_empty() {
                 return Err(format!(
                     "Redis command '{command}' requires at least one key"
@@ -416,6 +418,55 @@ mod tests {
     }
 
     #[test]
+    fn every_key_of_a_multi_key_read_must_match_the_pattern() {
+        let exists = plan_redis_command(
+            "EXISTS",
+            &strings(&["t20:key", "t20:other"]),
+            Some("t20:*"),
+            Some(100),
+            None,
+        );
+        assert!(exists.is_ok(), "{exists:?}");
+        let mixed = plan_redis_command(
+            "EXISTS",
+            &strings(&["t20:key", "other:key"]),
+            Some("t20:*"),
+            Some(100),
+            None,
+        )
+        .unwrap_err();
+        assert!(mixed.contains("other:key"), "{mixed}");
+        let single = plan_redis_command(
+            "EXISTS",
+            &strings(&["other:key"]),
+            Some("t20:*"),
+            Some(100),
+            None,
+        )
+        .unwrap_err();
+        assert!(single.contains("other:key"), "{single}");
+        let mget_mixed = plan_redis_command(
+            "MGET",
+            &strings(&["t20:key", "other:key"]),
+            Some("t20:*"),
+            Some(100),
+            None,
+        )
+        .unwrap_err();
+        assert!(mget_mixed.contains("other:key"), "{mget_mixed}");
+        for command in ["DEL", "UNLINK", "TOUCH"] {
+            assert!(plan_redis_command(
+                command,
+                &strings(&["t20:key", "t20:other"]),
+                Some("t20:*"),
+                Some(100),
+                None,
+            )
+            .is_err());
+        }
+    }
+
+    #[test]
     fn mget_and_scan_limits_are_enforced() {
         let error = plan_redis_command("MGET", &strings(&["a", "b", "c"]), None, Some(2), None)
             .unwrap_err();
@@ -487,6 +538,51 @@ mod tests {
             executor.calls.lock().expect("calls").as_slice(),
             ["GET user:1"]
         );
+    }
+
+    #[tokio::test]
+    async fn multi_key_scope_violation_never_calls_the_executor() {
+        for command in ["EXISTS", "MGET"] {
+            let executor = FakeExecutor {
+                calls: Mutex::new(Vec::new()),
+                result: json!({ "results": [] }),
+            };
+            let error = execute_redis_read(
+                &executor,
+                "redis-cfg",
+                None,
+                command,
+                &strings(&["t20:key", "other:key"]),
+                Some("t20:*"),
+                Some(100),
+                None,
+            )
+            .await
+            .expect_err("mixed keys must be rejected");
+            assert!(error.into_message().contains("other:key"));
+            assert!(executor.calls.lock().expect("calls").is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn exists_with_all_keys_inside_the_pattern_reaches_the_executor() {
+        let executor = FakeExecutor {
+            calls: Mutex::new(Vec::new()),
+            result: json!({ "results": [{ "result": "2" }] }),
+        };
+        execute_redis_read(
+            &executor,
+            "redis-cfg",
+            None,
+            "EXISTS",
+            &strings(&["t20:key", "t20:other"]),
+            Some("t20:*"),
+            Some(100),
+            None,
+        )
+        .await
+        .expect("all keys are in scope");
+        assert_eq!(executor.calls.lock().expect("calls").len(), 1);
     }
 
     #[tokio::test]

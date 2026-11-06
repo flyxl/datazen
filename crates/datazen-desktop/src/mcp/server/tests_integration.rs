@@ -1485,6 +1485,36 @@ async fn mcp_execute_batch_read_only_returns_structured_results() {
     assert_eq!(value["rolledBack"], false);
     assert_eq!(value["statements"].as_array().map(Vec::len), Some(2));
     assert!(value["rowCount"].as_u64().is_some());
+
+    let rows = test.store.mcp_audit_log().list(10).await.expect("audit rows");
+    assert_eq!(rows.len(), 3, "two statements plus the batch summary");
+    assert!(rows.iter().all(|row| row.decision == "allow"));
+    assert!(rows.iter().all(|row| row.row_count.is_some()));
+    assert!(rows
+        .iter()
+        .any(|row| row.reason.as_deref() == Some("batch committed")));
+    for (index, statement) in value["statements"]
+        .as_array()
+        .expect("statements")
+        .iter()
+        .enumerate()
+    {
+        let expected = statement["rowCount"].as_i64().expect("rowCount");
+        let audited = rows
+            .iter()
+            .find(|row| {
+                row.reason
+                    .as_deref()
+                    .is_some_and(|reason| reason == format!("batch statement {} executed", index + 1))
+            })
+            .expect("statement audit row");
+        assert_eq!(audited.row_count, Some(expected));
+    }
+    let summary = rows
+        .iter()
+        .find(|row| row.reason.as_deref() == Some("batch committed"))
+        .expect("summary audit");
+    assert_eq!(summary.row_count, value["rowCount"].as_i64());
 }
 
 #[tokio::test]
@@ -1506,6 +1536,15 @@ async fn mcp_execute_batch_write_is_rejected_by_default() {
         .await
         .expect_err("write batch must be rejected");
     assert!(error.message.contains("statement 2"), "got: {error}");
+
+    let rows = test.store.mcp_audit_log().list(10).await.expect("audit rows");
+    assert_eq!(rows.len(), 3, "two statements plus the batch summary");
+    assert!(rows.iter().all(|row| row.decision == "deny"));
+    assert!(rows.iter().all(|row| row.row_count == Some(0)));
+    assert!(rows.iter().any(|row| row
+        .reason
+        .as_deref()
+        .is_some_and(|reason| reason.contains("statement 2"))));
 }
 
 #[tokio::test]
@@ -1530,4 +1569,101 @@ async fn mcp_redis_command_write_is_rejected_before_the_driver() {
             .expect_err("write/dangerous Redis command must be rejected");
         assert!(error.message.contains("only read-only"), "got: {error}");
     }
+    let rows = test.store.mcp_audit_log().list(20).await.expect("audit rows");
+    assert_eq!(rows.len(), 5);
+    assert!(rows.iter().all(|row| row.decision == "deny"));
+    for command in ["SET", "DEL", "FLUSHALL", "CONFIG", "EVAL"] {
+        assert!(
+            rows.iter().any(|row| row
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains(command)
+                    && reason.contains("keys=k,v"))),
+            "missing command/key deny reason for {command}: {rows:?}"
+        );
+    }
+    assert!(rows.iter().all(|row| row.row_count.is_none()));
+    assert!(rows.iter().all(|row| row.tool == "redis_command"));
+}
+
+
+#[tokio::test]
+async fn mcp_execute_batch_transaction_rollback_audits_each_statement_as_deny() {
+    use crate::testing::app_state_test_support::{rich_mock_options, TestAppState};
+    use serde_json::Value;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_resource_provider(crate::testing::mock_driver::MockDriverOptions {
+        query_error_on_call: Some(2),
+        ..rich_mock_options()
+    })
+    .await;
+    test.save_connection("batch-rollback-cfg").await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["batch-rollback-cfg"]);
+    let output = server
+        .call_tool_inner(
+            "execute_batch",
+            Some(serde_json::json!({
+                "connection_id": "batch-rollback-cfg",
+                "sql": "SELECT 1; SELECT 2",
+                "transaction": true,
+            })),
+        )
+        .await
+        .expect("structured rollback result");
+    let text = output.content[0].as_text().expect("batch text").text.as_str();
+    let value: Value = serde_json::from_str(text).expect("batch json");
+    assert_eq!(value["ok"], false);
+    assert_eq!(value["rolledBack"], true);
+
+    let rows = test.store.mcp_audit_log().list(10).await.expect("audit rows");
+    assert_eq!(rows.len(), 3, "two statements plus the batch summary");
+    assert!(rows.iter().all(|row| row.decision == "deny"));
+    assert!(rows.iter().all(|row| row.row_count.is_some()));
+    assert!(rows
+        .iter()
+        .any(|row| row.reason.as_deref() == Some("batch rolled back")));
+}
+
+
+#[tokio::test]
+async fn mcp_execute_batch_partial_failure_audits_skipped_statements() {
+    use crate::testing::app_state_test_support::{rich_mock_options, TestAppState};
+    use serde_json::Value;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_resource_provider(crate::testing::mock_driver::MockDriverOptions {
+        query_error_on_call: Some(2),
+        ..rich_mock_options()
+    })
+    .await;
+    test.save_connection("batch-skip-cfg").await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["batch-skip-cfg"]);
+    let output = server
+        .call_tool_inner(
+            "execute_batch",
+            Some(serde_json::json!({
+                "connection_id": "batch-skip-cfg",
+                "sql": "SELECT 1; SELECT 2; SELECT 3",
+            })),
+        )
+        .await
+        .expect("structured partial result");
+    let text = output.content[0].as_text().expect("batch text").text.as_str();
+    let value: Value = serde_json::from_str(text).expect("batch json");
+    assert_eq!(value["ok"], false);
+    assert_eq!(value["stoppedAt"], 1);
+
+    let rows = test.store.mcp_audit_log().list(10).await.expect("audit rows");
+    assert_eq!(rows.len(), 4, "three statements plus the batch summary");
+    assert!(rows.iter().any(|row| row
+        .reason
+        .as_deref()
+        .is_some_and(|reason| reason == "batch statement 3 not executed after an earlier failure")));
+    assert!(rows
+        .iter()
+        .any(|row| row.decision == "allow" && row.row_count == Some(1)));
+    assert!(rows
+        .iter()
+        .any(|row| row.decision == "deny" && row.row_count == Some(0)));
 }

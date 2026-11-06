@@ -45,6 +45,7 @@ impl ServerHandler for DataZenMcpServer {
             prepared.default_database.as_deref(),
             prepared.default_namespace.as_deref(),
         );
+        let audit_arguments = request.arguments.clone();
         let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
         let outcome = Self::tool_router().call(tcc).await;
         let text = outcome
@@ -54,7 +55,14 @@ impl ServerHandler for DataZenMcpServer {
             .and_then(|content| content.as_text())
             .map(|text| text.text.as_str())
             .unwrap_or("");
-        self.audit_allowed_call(&tool_name, &prepared, text).await;
+        self.audit_call_outcome(
+            &tool_name,
+            &prepared,
+            audit_arguments.as_ref(),
+            outcome.as_ref().ok().map(|_| text),
+            outcome.as_ref().err().map(|error| error.message.as_ref()),
+        )
+        .await;
         outcome.map_err(|e| tool_help::enrich_tool_error(&tool_name, e))
     }
 

@@ -198,8 +198,9 @@ pub async fn mcp_cancel_all_approvals() -> Result<usize, CommandError> {
     Ok(mcp::approval_broker().cancel_all())
 }
 
-/// Newest-first audit rows for the MCP settings panel. No SQL or arguments are
-/// stored, so this response cannot leak credentials.
+/// Newest-first audit rows for the MCP settings panel. No SQL or credentials
+/// are stored; a denied Redis call records only its command and keys in the
+/// reason field for auditability.
 #[tauri::command]
 pub async fn mcp_list_audit_log(
     state: State<'_, AppState>,

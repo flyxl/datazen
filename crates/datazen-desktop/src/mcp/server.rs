@@ -176,16 +176,18 @@ impl DataZenMcpServer {
         let request_id = new_request_id().to_string();
         let scoped = self.with_scope_context(tool_name, arguments).await;
         if let Some(error) = scoped.error.as_deref() {
-            let (connection_id, database, namespace) =
-                audit_target(scoped.arguments.as_ref().or(arguments));
-            self.audit_tool_call(
+            let target_arguments = scoped.arguments.as_ref().or(arguments);
+            let sql = target_arguments
+                .and_then(|args| args.get("sql"))
+                .and_then(serde_json::Value::as_str);
+            self.audit_denied_call(
                 tool_name,
-                connection_id,
-                database,
-                namespace,
-                "deny",
                 None,
-                Some(request_id),
+                target_arguments,
+                sql,
+                "deny",
+                error,
+                &request_id,
             )
             .await;
             return Err(tool_help::tool_error(tool_name, error));
@@ -194,15 +196,17 @@ impl DataZenMcpServer {
         let mut plan = match self.tool_policy().evaluate(tool_name, target_arguments) {
             Ok(plan) => plan,
             Err(error) => {
-                let (connection_id, database, namespace) = audit_target(target_arguments);
-                self.audit_tool_call(
+                let sql = target_arguments
+                    .and_then(|args| args.get("sql"))
+                    .and_then(serde_json::Value::as_str);
+                self.audit_denied_call(
                     tool_name,
-                    connection_id,
-                    database,
-                    namespace,
-                    "deny",
                     None,
-                    Some(request_id),
+                    target_arguments,
+                    sql,
+                    "deny",
+                    &error,
+                    &request_id,
                 )
                 .await;
                 return Err(tool_help::tool_error(tool_name, &error));
@@ -220,14 +224,14 @@ impl DataZenMcpServer {
 
         if self.sql_scope_is_active() && sql_carrying_tool(tool_name, target_arguments) {
             let Some(sql) = plan.sql.as_deref() else {
-                self.audit_tool_call(
+                self.audit_denied_call(
                     tool_name,
-                    plan.connection_id.clone(),
-                    plan.database.clone(),
-                    plan.namespace.clone(),
-                    "deny",
+                    Some(&plan),
+                    target_arguments,
                     None,
-                    Some(request_id),
+                    "deny",
+                    "MCP SQL scope: SQL is required and could not be verified",
+                    &request_id,
                 )
                 .await;
                 return Err(tool_help::tool_error(
@@ -236,14 +240,14 @@ impl DataZenMcpServer {
                 ));
             };
             let Some(dialect) = scoped.dialect else {
-                self.audit_tool_call(
+                self.audit_denied_call(
                     tool_name,
-                    plan.connection_id.clone(),
-                    plan.database.clone(),
-                    plan.namespace.clone(),
+                    Some(&plan),
+                    target_arguments,
+                    Some(sql),
                     "deny",
-                    None,
-                    Some(request_id),
+                    "MCP SQL scope: this driver's SQL target shape cannot be verified",
+                    &request_id,
                 )
                 .await;
                 return Err(tool_help::tool_error(
@@ -255,20 +259,18 @@ impl DataZenMcpServer {
                 match batch::parse_sql_batch(sql) {
                     Ok(statements) => statements,
                     Err(error) => {
-                        self.audit_tool_call(
+                        let reason = format!("MCP SQL scope: {error}");
+                        self.audit_denied_call(
                             tool_name,
-                            plan.connection_id.clone(),
-                            plan.database.clone(),
-                            plan.namespace.clone(),
+                            Some(&plan),
+                            target_arguments,
+                            Some(sql),
                             "deny",
-                            None,
-                            Some(request_id),
+                            &reason,
+                            &request_id,
                         )
                         .await;
-                        return Err(tool_help::tool_error(
-                            tool_name,
-                            &format!("MCP SQL scope: {error}"),
-                        ));
+                        return Err(tool_help::tool_error(tool_name, &reason));
                     }
                 }
             } else {
@@ -307,21 +309,21 @@ impl DataZenMcpServer {
                                 plan.namespace = Some(namespace);
                             }
                         }
-                        self.audit_tool_call(
-                            tool_name,
-                            plan.connection_id.clone(),
-                            plan.database.clone(),
-                            plan.namespace.clone(),
-                            "deny",
-                            None,
-                            Some(request_id),
-                        )
-                        .await;
                         let reason = if tool_name == "execute_batch" {
                             format!("MCP SQL scope: statement {}: {error}", index + 1)
                         } else {
                             format!("MCP SQL scope: {error}")
                         };
+                        self.audit_denied_call(
+                            tool_name,
+                            Some(&plan),
+                            target_arguments,
+                            Some(sql),
+                            "deny",
+                            &reason,
+                            &request_id,
+                        )
+                        .await;
                         return Err(tool_help::tool_error(tool_name, &reason));
                     }
                 }
@@ -353,14 +355,14 @@ impl DataZenMcpServer {
             );
             let decision = self.approvals.decide(&request).await;
             if !decision.is_allowed() {
-                self.audit_tool_call(
+                self.audit_denied_call(
                     tool_name,
-                    plan.connection_id.clone(),
-                    plan.database.clone(),
-                    plan.namespace.clone(),
+                    Some(&plan),
+                    target_arguments,
+                    plan.sql.as_deref(),
                     decision.audit_decision(),
-                    None,
-                    Some(request_id),
+                    decision.audit_decision(),
+                    &request_id,
                 )
                 .await;
                 let reason = match decision {
@@ -643,8 +645,34 @@ impl DataZenMcpServer {
         row_count: Option<i64>,
         request_id: Option<String>,
     ) {
+        self.audit_tool_call_with_reason(
+            tool_name,
+            connection_id,
+            database,
+            namespace,
+            decision,
+            row_count,
+            None,
+            request_id,
+        )
+        .await;
+    }
+
+    /// Audit one decision with an optional reason (batch statement index,
+    /// Redis command/key). Reasons never carry credentials or full SQL.
+    pub(crate) async fn audit_tool_call_with_reason(
+        &self,
+        tool_name: &str,
+        connection_id: Option<String>,
+        database: Option<String>,
+        namespace: Option<String>,
+        decision: &str,
+        row_count: Option<i64>,
+        reason: Option<String>,
+        request_id: Option<String>,
+    ) {
         let (organization_id, principal_id) = self.audit_identity();
-        let record = crate::store::new_audit_record(
+        let mut record = crate::store::new_audit_record(
             organization_id,
             principal_id,
             connection_id,
@@ -655,6 +683,7 @@ impl DataZenMcpServer {
             row_count,
             request_id,
         );
+        record.reason = reason;
         if self
             .app_state
             .store
@@ -682,10 +711,384 @@ impl DataZenMcpServer {
             prepared.plan.database.clone(),
             prepared.plan.namespace.clone(),
             "allow",
-            matches!(tool_name, "query" | "use_session" | "run_workflow")
-                .then(|| row_count_from_output(result_text))
-                .flatten(),
+            matches!(
+                tool_name,
+                "query" | "use_session" | "run_workflow" | "execute_batch"
+            )
+            .then(|| row_count_from_output(result_text))
+            .flatten(),
             Some(prepared.request_id.clone()),
+        )
+        .await;
+    }
+
+    /// Audit a tool body outcome. Redis denials and batch statements get
+    /// dedicated rows; every batch row carries a non-null rowCount.
+    pub(crate) async fn audit_call_outcome(
+        &self,
+        tool_name: &str,
+        prepared: &PreparedToolCall,
+        arguments: Option<&serde_json::Map<String, serde_json::Value>>,
+        result_text: Option<&str>,
+        error: Option<&str>,
+    ) {
+        match tool_name {
+            "redis_command" => {
+                self.audit_redis_outcome(prepared, arguments, error).await;
+            }
+            "execute_batch" => {
+                self.audit_batch_outcome(prepared, arguments, result_text, error)
+                    .await;
+            }
+            _ => {
+                // Generic tool bodies keep the historical contract: the call
+                // passed the pre-dispatch gate and execution was attempted, so
+                // a driver/body error still records allow. Redis and batch are
+                // handled above with explicit deny/rollback rows.
+                self.audit_allowed_call(tool_name, prepared, result_text.unwrap_or(""))
+                    .await;
+            }
+        }
+    }
+
+    async fn audit_redis_outcome(
+        &self,
+        prepared: &PreparedToolCall,
+        arguments: Option<&serde_json::Map<String, serde_json::Value>>,
+        error: Option<&str>,
+    ) {
+        let command = arguments
+            .and_then(|args| args.get("command"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("<missing>");
+        let keys: Vec<&str> = arguments
+            .and_then(|args| args.get("args"))
+            .and_then(serde_json::Value::as_array)
+            .map(|args| args.iter().filter_map(serde_json::Value::as_str).collect())
+            .unwrap_or_default();
+        let key_summary = if keys.is_empty() {
+            "<none>".to_string()
+        } else {
+            keys.join(",")
+        };
+        let (decision, reason) = match error {
+            Some(error) => (
+                "deny",
+                format!("redis command {command} rejected: {error}; keys={key_summary}"),
+            ),
+            None => (
+                "allow",
+                format!("redis command {command} executed; keys={key_summary}"),
+            ),
+        };
+        self.audit_tool_call_with_reason(
+            "redis_command",
+            prepared.plan.connection_id.clone(),
+            prepared.plan.database.clone(),
+            prepared.plan.namespace.clone(),
+            decision,
+            None,
+            Some(reason),
+            Some(prepared.request_id.clone()),
+        )
+        .await;
+    }
+
+    async fn audit_batch_outcome(
+        &self,
+        prepared: &PreparedToolCall,
+        arguments: Option<&serde_json::Map<String, serde_json::Value>>,
+        result_text: Option<&str>,
+        error: Option<&str>,
+    ) {
+        let report =
+            result_text.and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok());
+        if let Some(report) = report {
+            let overall_ok = report
+                .get("ok")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+            let transaction = report
+                .get("transaction")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+            let rolled_back = report
+                .get("rolledBack")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+            let mut total: i64 = 0;
+            let statements: &[serde_json::Value] = report
+                .get("statements")
+                .and_then(serde_json::Value::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+            let mut reported: std::collections::BTreeMap<usize, Vec<&serde_json::Value>> =
+                std::collections::BTreeMap::new();
+            for (position, statement) in statements.iter().enumerate() {
+                let index = statement
+                    .get("index")
+                    .and_then(serde_json::Value::as_u64)
+                    .map(|value| value as usize)
+                    .unwrap_or(position);
+                reported.entry(index).or_default().push(statement);
+            }
+            let parsed = arguments
+                .and_then(|args| args.get("sql"))
+                .and_then(serde_json::Value::as_str)
+                .map(batch::parse_sql_batch)
+                .and_then(Result::ok)
+                .unwrap_or_default();
+            let mut indexes: Vec<usize> = (0..parsed.len()).collect();
+            indexes.extend(reported.keys().copied());
+            indexes.sort_unstable();
+            indexes.dedup();
+            for index in indexes {
+                let Some(frames) = reported.get(&index) else {
+                    // Parsed but never attempted because an earlier statement
+                    // failed. Keep one audit row per statement regardless.
+                    self.audit_tool_call_with_reason(
+                        "execute_batch",
+                        prepared.plan.connection_id.clone(),
+                        prepared.plan.database.clone(),
+                        prepared.plan.namespace.clone(),
+                        "deny",
+                        Some(0),
+                        Some(format!(
+                            "batch statement {} not executed after an earlier failure",
+                            index + 1
+                        )),
+                        Some(prepared.request_id.clone()),
+                    )
+                    .await;
+                    continue;
+                };
+                let row_count = frames
+                    .iter()
+                    .filter_map(|frame| frame.get("rowCount").and_then(serde_json::Value::as_i64))
+                    .sum::<i64>();
+                total += row_count;
+                let statement_ok = frames.iter().all(|frame| {
+                    frame
+                        .get("ok")
+                        .and_then(serde_json::Value::as_bool)
+                        .unwrap_or(false)
+                });
+                let detail = frames
+                    .iter()
+                    .find_map(|frame| frame.get("error").and_then(serde_json::Value::as_str))
+                    .unwrap_or("batch statement failed");
+                let (decision, reason) = if statement_ok && overall_ok {
+                    ("allow", format!("batch statement {} executed", index + 1))
+                } else if statement_ok && !transaction {
+                    (
+                        "allow",
+                        format!(
+                            "batch statement {} executed before a later statement failed",
+                            index + 1
+                        ),
+                    )
+                } else if statement_ok && rolled_back {
+                    (
+                        "deny",
+                        format!(
+                            "batch statement {} rolled back by the transaction",
+                            index + 1
+                        ),
+                    )
+                } else {
+                    (
+                        "deny",
+                        format!("batch statement {} denied: {detail}", index + 1),
+                    )
+                };
+                self.audit_tool_call_with_reason(
+                    "execute_batch",
+                    prepared.plan.connection_id.clone(),
+                    prepared.plan.database.clone(),
+                    prepared.plan.namespace.clone(),
+                    decision,
+                    Some(row_count),
+                    Some(reason),
+                    Some(prepared.request_id.clone()),
+                )
+                .await;
+            }
+            let summary_rows = report
+                .get("rowCount")
+                .and_then(serde_json::Value::as_i64)
+                .unwrap_or(total);
+            let summary_reason = if overall_ok {
+                "batch committed".to_string()
+            } else if rolled_back {
+                "batch rolled back".to_string()
+            } else {
+                report
+                    .get("error")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("batch did not complete")
+                    .to_string()
+            };
+            self.audit_tool_call_with_reason(
+                "execute_batch",
+                prepared.plan.connection_id.clone(),
+                prepared.plan.database.clone(),
+                prepared.plan.namespace.clone(),
+                if overall_ok { "allow" } else { "deny" },
+                Some(summary_rows),
+                Some(summary_reason),
+                Some(prepared.request_id.clone()),
+            )
+            .await;
+            return;
+        }
+
+        // The body failed before a report existed: audit every parsed statement
+        // as denied rather than leaving a single allow row.
+        let sql = arguments
+            .and_then(|args| args.get("sql"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("");
+        let reason = error.unwrap_or("batch did not execute");
+        let statements = batch::parse_sql_batch(sql).unwrap_or_default();
+        for (index, _) in statements.iter().enumerate() {
+            self.audit_tool_call_with_reason(
+                "execute_batch",
+                prepared.plan.connection_id.clone(),
+                prepared.plan.database.clone(),
+                prepared.plan.namespace.clone(),
+                "deny",
+                Some(0),
+                Some(format!("batch statement {} denied: {reason}", index + 1)),
+                Some(prepared.request_id.clone()),
+            )
+            .await;
+        }
+        self.audit_tool_call_with_reason(
+            "execute_batch",
+            prepared.plan.connection_id.clone(),
+            prepared.plan.database.clone(),
+            prepared.plan.namespace.clone(),
+            "deny",
+            Some(0),
+            Some(reason.to_string()),
+            Some(prepared.request_id.clone()),
+        )
+        .await;
+    }
+
+    /// Per-statement denial evidence when the pre-dispatch gate rejects a
+    /// batch (default write guard, SQL scope, or policy). The batch summary is
+    /// recorded after the statement rows.
+    pub(crate) async fn audit_batch_denied(
+        &self,
+        plan: &McpCallPlan,
+        sql: Option<&str>,
+        decision: &str,
+        reason: &str,
+        request_id: &str,
+    ) {
+        let statements = sql
+            .map(batch::parse_sql_batch)
+            .and_then(Result::ok)
+            .unwrap_or_default();
+        for (index, _) in statements.iter().enumerate() {
+            self.audit_tool_call_with_reason(
+                "execute_batch",
+                plan.connection_id.clone(),
+                plan.database.clone(),
+                plan.namespace.clone(),
+                decision,
+                Some(0),
+                Some(format!("batch statement {} denied: {reason}", index + 1)),
+                Some(request_id.to_string()),
+            )
+            .await;
+        }
+        self.audit_tool_call_with_reason(
+            "execute_batch",
+            plan.connection_id.clone(),
+            plan.database.clone(),
+            plan.namespace.clone(),
+            decision,
+            Some(0),
+            Some(reason.to_string()),
+            Some(request_id.to_string()),
+        )
+        .await;
+    }
+
+    /// Audit a pre-dispatch denial. Batch denials get one row per parsed
+    /// statement plus a summary; other tools keep the single-row behavior.
+    async fn audit_denied_call(
+        &self,
+        tool_name: &str,
+        plan: Option<&McpCallPlan>,
+        arguments: Option<&serde_json::Map<String, serde_json::Value>>,
+        sql: Option<&str>,
+        decision: &str,
+        reason: &str,
+        request_id: &str,
+    ) {
+        if tool_name == "execute_batch" {
+            let (connection_id, database, namespace) = plan
+                .map(|plan| {
+                    (
+                        plan.connection_id.clone(),
+                        plan.database.clone(),
+                        plan.namespace.clone(),
+                    )
+                })
+                .unwrap_or_else(|| audit_target(arguments));
+            let owned = McpCallPlan {
+                connection_id,
+                database,
+                namespace,
+                sql: sql.map(str::to_owned),
+                requires_approval: false,
+            };
+            self.audit_batch_denied(&owned, sql, decision, reason, request_id)
+                .await;
+            return;
+        }
+        let (connection_id, database, namespace) = plan
+            .map(|plan| {
+                (
+                    plan.connection_id.clone(),
+                    plan.database.clone(),
+                    plan.namespace.clone(),
+                )
+            })
+            .unwrap_or_else(|| audit_target(arguments));
+        let reason = if tool_name == "redis_command" {
+            let command = arguments
+                .and_then(|args| args.get("command"))
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("<missing>");
+            let keys: Vec<&str> = arguments
+                .and_then(|args| args.get("args"))
+                .and_then(serde_json::Value::as_array)
+                .map(|args| args.iter().filter_map(serde_json::Value::as_str).collect())
+                .unwrap_or_default();
+            format!(
+                "{reason}; redis command {command}; keys={}",
+                if keys.is_empty() {
+                    "<none>".to_string()
+                } else {
+                    keys.join(",")
+                }
+            )
+        } else {
+            reason.to_string()
+        };
+        self.audit_tool_call_with_reason(
+            tool_name,
+            connection_id,
+            database,
+            namespace,
+            decision,
+            None,
+            Some(reason),
+            Some(request_id.to_string()),
         )
         .await;
     }

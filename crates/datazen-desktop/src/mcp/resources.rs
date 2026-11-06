@@ -356,11 +356,25 @@ impl DataZenMcpServer {
 
         match outcome {
             Ok(text) => {
-                self.audit_allowed_call(name, &prepared, &text).await;
+                self.audit_call_outcome(
+                    name,
+                    &prepared,
+                    arguments.as_ref().and_then(|value| value.as_object()),
+                    Some(&text),
+                    None,
+                )
+                .await;
                 Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
             }
             Err(error) => {
-                self.audit_allowed_call(name, &prepared, "").await;
+                self.audit_call_outcome(
+                    name,
+                    &prepared,
+                    arguments.as_ref().and_then(|value| value.as_object()),
+                    None,
+                    Some(error.message.as_ref()),
+                )
+                .await;
                 Err(error)
             }
         }
