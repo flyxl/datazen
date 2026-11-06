@@ -1,23 +1,58 @@
 use super::context::WorkflowContext;
 use crate::workflow::domain::model::MergeSource;
 use datazen_driver_api::MultiQueryResult;
-pub(in crate::workflow) fn resolve_json_templates(
+/// Resolve a command step's input. SQL-shaped fields use the shared SQL-aware
+/// renderer; every other field keeps the legacy workflow substitution exactly.
+pub(in crate::workflow) fn resolve_command_input_templates(
     value: &serde_json::Value,
     context: &WorkflowContext,
+    dialect: crate::sql_template::SqlTemplateDialect,
+) -> Result<serde_json::Value, String> {
+    resolve_command_value(value, context, dialect, false)
+}
+
+fn resolve_command_value(
+    value: &serde_json::Value,
+    context: &WorkflowContext,
+    dialect: crate::sql_template::SqlTemplateDialect,
+    is_sql: bool,
 ) -> Result<serde_json::Value, String> {
     match value {
-        serde_json::Value::String(s) => Ok(serde_json::Value::String(context.resolve_template(s)?)),
-        serde_json::Value::Array(items) => Ok(serde_json::Value::Array(
-            items
-                .iter()
-                .map(|v| resolve_json_templates(v, context))
-                .collect::<Result<_, _>>()?,
-        )),
-        serde_json::Value::Object(map) => Ok(serde_json::Value::Object(
-            map.iter()
-                .map(|(k, v)| Ok((k.clone(), resolve_json_templates(v, context)?)))
-                .collect::<Result<_, String>>()?,
-        )),
+        serde_json::Value::String(s) => {
+            if is_sql {
+                return Ok(serde_json::Value::String(
+                    crate::sql_template::render_sql_template_with_resolver(s, dialect, |expr| {
+                        context.resolve_expression_value(expr)
+                    })?,
+                ));
+            }
+            Ok(serde_json::Value::String(context.resolve_template(s)?))
+        }
+        serde_json::Value::Array(items) => {
+            if is_sql {
+                return Err("a SQL template must be a string".into());
+            }
+            Ok(serde_json::Value::Array(
+                items
+                    .iter()
+                    .map(|item| resolve_command_value(item, context, dialect, false))
+                    .collect::<Result<_, _>>()?,
+            ))
+        }
+        serde_json::Value::Object(map) => {
+            if is_sql {
+                return Err("a SQL template must be a string".into());
+            }
+            let mut out = serde_json::Map::new();
+            for (key, item) in map {
+                let child_is_sql = crate::sql_template::is_sql_template_key(key);
+                out.insert(
+                    key.clone(),
+                    resolve_command_value(item, context, dialect, child_is_sql)?,
+                );
+            }
+            Ok(serde_json::Value::Object(out))
+        }
         other => Ok(other.clone()),
     }
 }

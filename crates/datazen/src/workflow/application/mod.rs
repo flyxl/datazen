@@ -13,5 +13,6 @@ pub mod host;
 pub mod registry;
 pub mod resource_execution;
 pub mod runtime_reads;
+pub mod sql_templates;
 // 家族内部结果组装（executor 与 data_step 消费），不进公开面。
 pub(in crate::workflow) mod results;

@@ -261,6 +261,24 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// Resolve the target connection's SQL literal dialect for shared SQL-safe
+    /// template rendering. Unknown connections fail safe to the standard.
+    pub(crate) async fn connection_sql_dialect(
+        &self,
+        connection_id: &str,
+    ) -> datazen::sql_template::SqlTemplateDialect {
+        let Some(config) = self.store.get_connection(connection_id).await else {
+            return datazen::sql_template::SqlTemplateDialect::default();
+        };
+        let Some(driver) = self.driver_registry.get(&config.database_type).await else {
+            return datazen::sql_template::SqlTemplateDialect::default();
+        };
+        driver
+            .sql_literal_dialect()
+            .map(datazen::sql_template::SqlTemplateDialect::from)
+            .unwrap_or_default()
+    }
+
     /// 取 platform adapter；组装失败 ⇒ 返回原始 `ApiError`，不做任何回落。
     ///
     /// 命令侧的统一入口：新接线的能力一律从这里进，避免每个命令各写一遍

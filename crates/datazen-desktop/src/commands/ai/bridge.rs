@@ -8,18 +8,21 @@
 use crate::commands::AppState;
 use datazen::ai::application::tool_bridge::{
     count_result_rows, parse_and_validate_arguments, parse_bridge_tool, plugin_tool_definition,
-    render_input_template_with_dialect, truncate_bridge_result, workflow_is_read_only,
-    workflow_tool_definition, BridgeToolDecision, BridgeToolKind, SqlTemplateDialect,
-    BRIDGE_APPROVAL_TIMEOUT,
+    render_input_template_with_dialect, render_sql_template_with_resolver, truncate_bridge_result,
+    workflow_is_read_only, workflow_tool_definition, BridgeToolDecision, BridgeToolKind,
+    SqlTemplateDialect, BRIDGE_APPROVAL_TIMEOUT,
 };
 use datazen::ai::tool_loop::AiToolContext;
 use datazen::ai::{ToolCall, ToolDefinition};
 use datazen::mcp::approval::{
     approval_preview, redacted_approval_arguments, McpApprovalDecision, McpApprovalPort,
 };
+use datazen::workflow::application::sql_templates::{
+    workflow_loop_variables, workflow_sql_templates,
+};
 use datazen::workflow::executor::WorkflowExecutor;
 use datazen::workflow::model::{WorkflowDefinition, WorkflowExecutionResult};
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::collections::HashSet;
 use tokio_util::sync::CancellationToken;
 
@@ -189,16 +192,116 @@ fn spec_is_read_only(spec: &BridgeSpec) -> bool {
 }
 
 async fn plugin_sql_dialect(state: &AppState, connection_id: &str) -> SqlTemplateDialect {
-    let Some(config) = state.store.get_connection(connection_id).await else {
-        return SqlTemplateDialect::default();
-    };
-    let Some(driver) = state.driver_registry.get(&config.database_type).await else {
-        return SqlTemplateDialect::default();
-    };
-    driver
-        .sql_literal_dialect()
-        .map(SqlTemplateDialect::from)
-        .unwrap_or_default()
+    state.connection_sql_dialect(connection_id).await
+}
+
+/// Values available to Workflow SQL templates before execution.
+///
+/// `steps.*` and loop values do not exist yet; the resolver maps them to SQL
+/// NULL for validation/preview. They are never rendered from an untyped raw
+/// replacement.
+fn workflow_template_values(
+    workflow: &WorkflowDefinition,
+    arguments: &Value,
+    redact: bool,
+) -> Map<String, Value> {
+    let mut values = arguments.as_object().cloned().unwrap_or_default();
+    for variable in &workflow.variables {
+        if values.contains_key(&variable.name) {
+            continue;
+        }
+        if let Some(default) = &variable.default {
+            values.insert(variable.name.clone(), default.clone());
+        }
+    }
+    let now = chrono::Local::now();
+    for (name, value) in [
+        ("current_month", now.format("%Y-%m").to_string()),
+        ("current_date", now.format("%Y-%m-%d").to_string()),
+        ("current_year", now.format("%Y").to_string()),
+        ("current_time", now.format("%H:%M:%S").to_string()),
+    ] {
+        values
+            .entry(name.to_string())
+            .or_insert_with(|| Value::String(value));
+    }
+    if redact {
+        redacted_approval_arguments(&values)
+            .as_object()
+            .cloned()
+            .unwrap_or_default()
+    } else {
+        values
+    }
+}
+
+fn workflow_template_value(
+    values: &Map<String, Value>,
+    loop_vars: &HashSet<String>,
+    expression: &str,
+) -> Result<Value, String> {
+    if let Some(value) = values.get(expression) {
+        return Ok(value.clone());
+    }
+    if expression.starts_with("steps.") {
+        return Ok(Value::Null);
+    }
+    let first = expression
+        .split('.')
+        .next()
+        .unwrap_or(expression)
+        .split('[')
+        .next()
+        .unwrap_or(expression);
+    if loop_vars.contains(first) {
+        return Ok(Value::Null);
+    }
+    Err(format!("unknown workflow template value '{expression}'"))
+}
+
+async fn validate_workflow_sql_templates(
+    state: &AppState,
+    workflow: &WorkflowDefinition,
+    values: &Map<String, Value>,
+    loop_vars: &HashSet<String>,
+) -> Result<(), String> {
+    let templates = workflow_sql_templates(workflow).map_err(|error| error.to_string())?;
+    for template in templates {
+        let dialect = match template.connection {
+            Some(connection) => state.connection_sql_dialect(connection).await,
+            None => SqlTemplateDialect::default(),
+        };
+        render_sql_template_with_resolver(template.sql, dialect, |expression| {
+            workflow_template_value(values, loop_vars, expression)
+        })
+        .map_err(|error| format!("step '{}': {error}", template.step_id))?;
+    }
+    Ok(())
+}
+
+async fn render_workflow_preview_sql(
+    state: &AppState,
+    workflow: &WorkflowDefinition,
+    values: &Map<String, Value>,
+    loop_vars: &HashSet<String>,
+) -> Option<String> {
+    let templates = workflow_sql_templates(workflow).ok()?;
+    if templates.is_empty() {
+        return None;
+    }
+    let mut rendered = Vec::with_capacity(templates.len());
+    for template in templates {
+        let dialect = match template.connection {
+            Some(connection) => state.connection_sql_dialect(connection).await,
+            None => SqlTemplateDialect::default(),
+        };
+        let sql = render_sql_template_with_resolver(template.sql, dialect, |expression| {
+            workflow_template_value(values, loop_vars, expression)
+        })
+        .ok()?;
+        rendered.push(sql);
+    }
+    Some(rendered.join("\n\n"))
 }
 
 /// Authorize one bridge call. Read-only calls return Allow without prompting
@@ -298,6 +401,36 @@ pub(crate) async fn authorize_bridge_tool_with_port(
             return BridgeToolDecision::Deny { reason };
         }
     }
+    let workflow_preview_values = if let BridgeSpec::Workflow(workflow) = &spec {
+        let values = workflow_template_values(workflow, &parsed_arguments, false);
+        let loop_vars: HashSet<String> = workflow_loop_variables(workflow)
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
+        if let Err(error) =
+            validate_workflow_sql_templates(state, workflow, &values, &loop_vars).await
+        {
+            let reason = format!("invalid workflow SQL template: {error}");
+            audit_bridge_decision(
+                state,
+                tool,
+                workflow.connection.clone(),
+                workflow.database.clone(),
+                "deny",
+                None,
+                Some(request_id.to_string()),
+                Some("invalid template".into()),
+            )
+            .await;
+            return BridgeToolDecision::Deny { reason };
+        }
+        Some((
+            workflow_template_values(workflow, &parsed_arguments, true),
+            loop_vars,
+        ))
+    } else {
+        None
+    };
     if spec_is_read_only(&spec) {
         return BridgeToolDecision::Allow;
     }
@@ -307,13 +440,19 @@ pub(crate) async fn authorize_bridge_tool_with_port(
     // from the same redacted arguments the approval payload exposes. Rendering
     // from the raw map would put a password back into `sql` even though
     // `arguments` is already `[REDACTED]`.
-    let sql = preview_args
-        .as_ref()
-        .map(redacted_approval_arguments)
-        .and_then(|args| {
-            render_input_template_with_dialect(&spec_input_template(&spec), &args, dialect).ok()
-        })
-        .and_then(|input| input.get("sql").and_then(Value::as_str).map(str::to_owned));
+    let sql = match (&spec, workflow_preview_values.as_ref()) {
+        (BridgeSpec::Plugin(_), _) => preview_args
+            .as_ref()
+            .map(redacted_approval_arguments)
+            .and_then(|args| {
+                render_input_template_with_dialect(&spec_input_template(&spec), &args, dialect).ok()
+            })
+            .and_then(|input| input.get("sql").and_then(Value::as_str).map(str::to_owned)),
+        (BridgeSpec::Workflow(workflow), Some((values, loop_vars))) => {
+            render_workflow_preview_sql(state, workflow, values, loop_vars).await
+        }
+        (BridgeSpec::Workflow(_), None) => None,
+    };
     let created_at = chrono::Utc::now();
     let expires_at =
         created_at + chrono::Duration::from_std(BRIDGE_APPROVAL_TIMEOUT).unwrap_or_default();
