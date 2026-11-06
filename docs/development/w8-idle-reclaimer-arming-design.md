@@ -1,6 +1,6 @@
 # W8 IdleReclaimer 武装设计：共享内核复用 + server 接线（TTL 策略与 revoke 触发点裁决）
 
-> **设计日期**：2026-11-08。**基线**：main `0d1185a8`（#195 刀4 result-cell 合入点，分支 `w8-idle-reclaimer-design` 逐行核实）。
+> **设计日期**：2026-11-06。**基线**：main `0d1185a8`（#195 刀4 result-cell 合入点，分支 `w8-idle-reclaimer-design` 逐行核实）。
 > **输入**：[w8-mutation-knife0-1-design.md](w8-mutation-knife0-1-design.md) §1.5 风险 3 与 [web-ready-plan.md](web-ready-plan.md) §11 2026-11-05 台账条目（「server 武装 IdleReclaimer + TTL 策略……登记为后续刀」）+ 用户拍板方向（2026-11-06：IdleReclaimer 能力必须共享层实现，策略+调度内核下沉共享层，两形态各写薄适配器，TTL/策略参数分开配置）。
 > **性质**：纯设计文档，零产品代码。本文每个断言指回真实 `file:line`（在基线 `0d1185a8` 上逐行核实，非转录台账）。
 > **验证基线**：server 全量本地验证须 `cargo test -p datazen-server --features mcp,use-case-contracts`（w8-handoff §3 纪律 3）。
