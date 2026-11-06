@@ -118,13 +118,15 @@ async fn ensure_owner(
     })
 }
 
-async fn ensure_visible(
-    state: &SessionsState,
+/// `pub(crate)`：execution 域的会话内执行路由（`POST
+/// /api/v1/sessions/{id}/executions`）与 sessions 域同一条可见性闸——同一
+/// 目录实例（bootstrap 装配纪律），同一 404 合并口径。
+pub(crate) async fn ensure_visible(
+    directory: &Arc<dyn SessionDirectory>,
     ctx: &RequestContext,
     db_session_id: &str,
 ) -> Result<SessionHandle, Response> {
-    let owner = match state
-        .directory
+    let owner = match directory
         .lookup(DbSessionId::new(db_session_id.to_string()))
         .await
     {
@@ -144,12 +146,17 @@ async fn ensure_visible(
 }
 
 /// 越组织/不存在的统一 404（防 ID 枚举；与 L6 同一条固定文案）。
-fn not_visible() -> Response {
+/// `pub(crate)`：execution 域路由复用同一口径。
+pub(crate) fn not_visible() -> Response {
     api_error_response(ApiError::new(ApiErrorCode::NotFound, NOT_VISIBLE_MESSAGE))
 }
 
 /// 体 handle 与路由 `{id}` 的一致性（`{id}` 是 dbSessionId 的取值）。
-fn ensure_handle_matches_path(handle: &SessionHandle, db_session_id: &str) -> Result<(), Response> {
+/// `pub(crate)`：execution 域路由复用同一条一致性闸。
+pub(crate) fn ensure_handle_matches_path(
+    handle: &SessionHandle,
+    db_session_id: &str,
+) -> Result<(), Response> {
     if handle.db_session_id.as_str() != db_session_id {
         return Err(invalid_argument(
             "handle.dbSessionId does not match the addressed session.",
@@ -158,9 +165,10 @@ fn ensure_handle_matches_path(handle: &SessionHandle, db_session_id: &str) -> Re
     Ok(())
 }
 
-/// 令牌在场性 + `idempotencyKey` 绑定核对（令牌列 ✓ 的两条路由；签名与
+/// 令牌在场性 + `idempotencyKey` 绑定核对（令牌列 ✓ 的路由；签名与
 /// operation 绑定由用例层核验，见模块头）。
-fn ensure_submission_token(body: &Value) -> Result<(), Response> {
+/// `pub(crate)`：execution 域三条令牌路由复用同一条在场性闸。
+pub(crate) fn ensure_submission_token(body: &Value) -> Result<(), Response> {
     let Some(token) = body.get("submissionToken") else {
         return Err(invalid_argument("submissionToken is required."));
     };
@@ -208,7 +216,7 @@ async fn handler_get_session(
     identity: SessionIdentity,
     Path(db_session_id): Path<String>,
 ) -> Response {
-    let handle = match ensure_visible(&state, &identity.ctx, &db_session_id).await {
+    let handle = match ensure_visible(&state.directory, &identity.ctx, &db_session_id).await {
         Ok(handle) => handle,
         Err(response) => return response,
     };
@@ -230,7 +238,7 @@ async fn handler_set_session_context(
     if let Err(response) = ensure_submission_token(&body) {
         return response;
     }
-    if let Err(response) = ensure_visible(&state, &identity.ctx, &db_session_id).await {
+    if let Err(response) = ensure_visible(&state.directory, &identity.ctx, &db_session_id).await {
         return response;
     }
     let request: SetSessionContextRequest = match serde_json::from_value(body) {
@@ -284,7 +292,7 @@ async fn attach_detach(
     body: Value,
     attach: bool,
 ) -> Response {
-    if let Err(response) = ensure_visible(&state, &identity.ctx, &db_session_id).await {
+    if let Err(response) = ensure_visible(&state.directory, &identity.ctx, &db_session_id).await {
         return response;
     }
     let request: AttachmentRequest = match serde_json::from_value(body) {

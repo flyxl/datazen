@@ -7,7 +7,8 @@
 //!   覆盖、组织隔离、登录要求、审计行落库（坐标在账、明文永不进审计）。
 //! - aiHost（WR-F1#3 的服务端半边）：session-config 回答
 //!   `ExecutionSettings` 形状（缺省文档 + 存储切片回读）、executeTarget
-//!   501 `capabilityUnsupported` fail-closed、组织边界、登录要求。
+//!   目标命令执行（执行域路由收口刀点亮：payload 校验 400 / 未知连接
+//!   503，空驱动注册表下「驱动不可用」显式应答）、组织边界、登录要求。
 //!
 //! L2 在真实装配里注入 `AuthenticatedSession`；本文件以请求扩展直接注入
 //! （同一扩展类型，先例照 `tests/sse_events.rs`；装配语义由主线集成腿复核）。
@@ -25,14 +26,20 @@ use axum::Router;
 use tower::ServiceExt;
 
 use datazen::settings::SettingsRepository;
+use datazen::shared::id::OrganizationId;
 use datazen_server::execution::secret_provider::ServerSecretVault;
 use datazen_server::http::domains::ai_host::{ai_host_router, AiHostState};
 use datazen_server::http::domains::security::{security_router, SecurityState};
 use datazen_server::http::middleware::auth::AuthenticatedSession;
 use datazen_server::http::middleware::authorize::NOT_VISIBLE_MESSAGE;
+use datazen_server::policy::PolicyService;
 use datazen_server::storage::{
-    default_shared_settings, AdminStore, ServerAudit, ServerSettingsStore,
+    default_shared_settings, AdminStore, ServerAudit, ServerConnections, ServerProfiles,
+    ServerSettingsStore,
 };
+
+/// server_secret（CsrfSecret 的构造裁决：非空即可；不参与本文件的断言）。
+const SERVER_SECRET: &[u8] = b"f1-security-aihost-server-secret";
 
 /// 审计红线的探针明文：审计测试用它作为 put 的 value，断言任何审计行都
 /// 不携带它（与请求体里的字面量同源，杜绝「探针值与真实值不一致」的假绿）。
@@ -80,9 +87,70 @@ fn security_app(store: Arc<AdminStore>) -> Router {
 }
 
 fn ai_host_app(store: Arc<AdminStore>, organization_id: &str) -> Router {
+    // 与 bootstrap / driver_gateway_routes 夹具同构的最小目标执行宿主
+    // （存储 + 空驱动注册表 + 预算桥 + 执行后端 + 租约源）：executeTarget
+    // 走真宿主，未知连接/空驱动注册表的显式应答由此层给出。
+    let vault = Arc::new(
+        ServerSecretVault::new(store.clone(), SERVER_SECRET.to_vec()).expect("secret vault"),
+    );
+    let connections = Arc::new(ServerConnections::new(store.clone(), vault));
+    let profiles = Arc::new(ServerProfiles::new(store.clone()));
+    let registry = Arc::new(
+        datazen::execution::runtime::driver_registry::DriverRegistry::with_factories([])
+            .expect("empty registry is a legal catalog"),
+    );
+    let bridge = Arc::new(
+        datazen_server::execution::budget_bridge::BudgetPortBridge::new(
+            Arc::new(
+                datazen_server::execution::budget::ServerBudgetCoordinator::new(
+                    8,
+                    10_000,
+                    OrganizationId::new(organization_id.to_owned()),
+                ),
+            ),
+            OrganizationId::new(organization_id.to_owned()),
+        ),
+    );
+    let backend = Arc::new(
+        datazen_server::execution::driver_exec::ServerDriverExecBackend::new(
+            registry.clone(),
+            connections.clone(),
+            profiles.clone(),
+            datazen::connection::domain::catalog::ConnectionScope::new(organization_id),
+            bridge,
+            None,
+        ),
+    );
+    let engine =
+        Arc::new(PolicyService::new(store.clone(), SERVER_SECRET.to_vec()).expect("policy engine"));
+    let policy = datazen_server::execution::policy_adapter::ServerExecutionPolicy::new(
+        engine,
+        store.clone(),
+        Arc::new(datazen::shared::clock::SystemClock),
+    );
+    let lease = Arc::new(
+        datazen_server::execution::lease::ServerRuntimeLeaseSource::new_with_shared_parts(
+            profiles.clone(),
+            Arc::new(policy),
+            backend,
+            datazen::execution::application::orchestration::RuntimeResultSink::default(),
+            Arc::new(datazen::execution::runtime::directory::InMemorySessionDirectory::new()),
+        ),
+    );
+    let host = Arc::new(
+        datazen_server::execution::resource_host::ServerResourceExecutionHost::new(
+            connections,
+            profiles,
+            registry,
+            Arc::new(ServerSettingsStore::scoped(organization_id, store.clone())),
+            lease,
+            organization_id,
+        ),
+    );
     ai_host_router(AiHostState {
         settings: Arc::new(ServerSettingsStore::scoped(organization_id, store)),
         organization_id: organization_id.to_string(),
+        host,
     })
 }
 
@@ -414,14 +482,52 @@ async fn session_config_reflects_the_stored_execution_section() {
     assert_eq!(body["queryResultLimit"], 1234);
 }
 
-// ── aiHost：executeTarget fail-closed ───────────────────────────────────────
+// ── aiHost：executeTarget 目标命令执行（执行域路由收口刀点亮）──────────────
 
 #[tokio::test]
-async fn execute_target_is_fail_closed_501_capability_unsupported() {
+async fn execute_target_rejects_incomplete_payload() {
     let mut app = ai_host_app(memory_store(), "org-a");
     let session = session_of("org-a", "user-1");
 
-    // 体 = payload 原样（AiTargetClaim 进体，TS 半边 aiPorts.ts 的形状）。
+    // 缺 command → 400 明拒（绝不假装成功）。
+    let no_command = post_json(
+        &mut app,
+        "/api/v1/ai-host/execute-target",
+        r#"{"id":"conn-1","input":{"database":"main"}}"#,
+        Some(&session),
+    )
+    .await;
+    assert_eq!(no_command.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(json_of(no_command).await["code"], "invalidArgument");
+
+    // 缺 id → 400。
+    let no_id = post_json(
+        &mut app,
+        "/api/v1/ai-host/execute-target",
+        r#"{"command":"listTables"}"#,
+        Some(&session),
+    )
+    .await;
+    assert_eq!(no_id.status(), StatusCode::BAD_REQUEST);
+
+    // 空体 → 400。
+    let no_body = post_json(
+        &mut app,
+        "/api/v1/ai-host/execute-target",
+        r#"null"#,
+        Some(&session),
+    )
+    .await;
+    assert_eq!(no_body.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn execute_target_unknown_connection_maps_to_503() {
+    let mut app = ai_host_app(memory_store(), "org-a");
+    let session = session_of("org-a", "user-1");
+
+    // 形状完整 + 连接不存在：宿主 profile 查不到 → ConnectionFailed →
+    // driver_gateway 同表错误映射（503 serviceUnavailable）。
     let response = post_json(
         &mut app,
         "/api/v1/ai-host/execute-target",
@@ -429,17 +535,13 @@ async fn execute_target_is_fail_closed_501_capability_unsupported() {
         Some(&session),
     )
     .await;
-    assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     let wire = json_of(response).await;
-    assert_eq!(wire["code"], "capabilityUnsupported");
+    assert_eq!(wire["code"], "serviceUnavailable");
     let message = wire["message"].as_str().expect("message");
     assert!(
-        message.contains("target execution machine"),
-        "precise copy names the missing capability: {message}"
-    );
-    assert!(
-        message.contains("No execution was started"),
-        "must never read as acceptance: {message}"
+        message.contains("conn-1"),
+        "error names the failed connection: {message}"
     );
 }
 
@@ -469,7 +571,7 @@ async fn ai_host_state_is_bound_to_its_organization() {
     assert_eq!(
         target.status(),
         StatusCode::NOT_FOUND,
-        "org guard precedes the 501 fail-closed answer"
+        "org guard precedes the execute path"
     );
 }
 
