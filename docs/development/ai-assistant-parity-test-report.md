@@ -422,3 +422,40 @@ sleep 3 & printf 'started\n'; exit 0
 
 独立临时测试已删除；`68470a6f5` 18 个文件均为 T23 相关。**T23：未通过
 （BUG-022）。**
+
+## T23 `b124878a1` 复测：BUG-022 仍未通过（timeout 语义）
+
+`fix: bound CLI pipe drain and kill orphan descendants` 已修复挂起/孤儿主路径：
+
+| 验收项 | 结果 |
+|---|---|
+| cancel during exited-child pipe drain | 快速 Cancelled，后台 PID 消失 |
+| 主进程退出 + background sleep 30 | ~500ms grace 内返回，后台 PID 消失 |
+| normal alpha/beta/gamma | 完整输出，不截断 |
+| 非 0/缺失/早取消/stderr/env/cwd | 不回归 |
+
+但 item 1 的 timeout 结果不满足：
+
+```sh
+sleep 3 & printf 'started\n'; exit 0
+# timeoutSecs=1
+```
+
+实际约 854ms 返回 `Ok(..., content: "started\n")`，后台 sleep 已清理，但不是
+`Err(AiError::Timeout(1))`。原因是 500ms pipe drain grace 先于 timeout，杀进程组
+后按成功返回。详见 [BUG-022](ai-assistant-parity-bugs/BUG-022.md)。
+
+| 范围 | 结果 |
+|---|---|
+| `datazen --features ai` | 1676 passed |
+| `datazen --features ai,workflow,wapps` | 1742 passed |
+| `datazen --features mcp` | 1746 passed |
+| `datazen_desktop` | 1405 passed / 10 ignored |
+| `datazen-server --features mcp` | 361 passed |
+| local_cli 定向 | 21 passed |
+| T23 定向前端 | 20 passed |
+| 全量前端 | 8234 passed / 8 既有环境失败 |
+| 映射 worktree typecheck | OK |
+| fmt / diff | 0 / 0 |
+
+独立临时测试已删除；`b124878a1` 仅改 `local_cli.rs`。**T23：未通过（BUG-022）。**
