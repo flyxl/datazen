@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -30,6 +30,16 @@ use crate::ai::domain::types::{
     AiError, AiProviderConfig, AiProviderType, CompletionRequest, CompletionResponse, MessageRole,
     StreamChunk, TokenUsage,
 };
+
+/// After the direct child exits, descendants may still hold the stdout/stderr
+/// pipes open. Give the readers a short grace to drain buffered output, then
+/// kill the process group so a background helper cannot turn completion into
+/// an unbounded wait.
+const PIPE_DRAIN_GRACE: Duration = Duration::from_millis(500);
+/// After killing the group, allow the readers a final moment to observe EOF
+/// before aborting them. Normal output has already been copied into the shared
+/// buffers, so aborting never truncates the output seen by `complete()`.
+const PIPE_ABORT_GRACE: Duration = Duration::from_millis(150);
 
 /// Environment variables allowed into a local CLI child process.
 ///
@@ -539,9 +549,13 @@ impl LocalCliProvider {
                 self.preset.display_name
             ))
         })?;
+        // Save the leader id before `wait()` can reap the child. A Unix child
+        // spawned with `process_group(0)` uses its pid as the group id, so this
+        // remains valid after the leader exits and can still kill descendants.
+        let process_group = child.id();
 
         let Some(mut stdin) = child.stdin.take() else {
-            kill_process_tree(&mut child).await;
+            kill_process_tree(&mut child, process_group).await;
             return Err(AiError::RequestFailed(format!(
                 "{} did not provide stdin",
                 self.preset.display_name
@@ -557,22 +571,50 @@ impl LocalCliProvider {
 
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
-        let stdout_task = tokio::spawn(read_stdout(stdout, sender.clone()));
-        let stderr_task = tokio::spawn(read_stderr(stderr, sender.clone()));
+        let stdout_buffer = Arc::new(Mutex::new(String::new()));
+        let stderr_buffer = Arc::new(Mutex::new(String::new()));
+        let stdout_task = tokio::spawn(read_stdout(
+            stdout,
+            sender.clone(),
+            Arc::clone(&stdout_buffer),
+        ));
+        let stderr_task = tokio::spawn(read_stderr(
+            stderr,
+            sender.clone(),
+            Arc::clone(&stderr_buffer),
+        ));
 
+        let timeout_deadline = tokio::time::Instant::now() + state.timeout;
         let result = tokio::select! {
             status = child.wait() => WaitResult::Exited(status),
-            _ = wait_for_cancel(request_cancel) => WaitResult::Cancelled,
+            _ = wait_for_cancel(request_cancel.clone()) => WaitResult::Cancelled,
             _ = token.cancelled() => WaitResult::Cancelled,
-            _ = tokio::time::sleep(state.timeout) => WaitResult::Timeout,
+            _ = tokio::time::sleep_until(timeout_deadline) => WaitResult::Timeout,
         };
 
         match result {
             WaitResult::Exited(Ok(status)) => {
-                let _ = stdin_task.await;
-                let content = stdout_task.await.unwrap_or_default();
-                let stderr = stderr_task.await.unwrap_or_default();
+                let drained = drain_pipe_tasks(
+                    stdin_task,
+                    stdout_task,
+                    stderr_task,
+                    process_group,
+                    &stdout_buffer,
+                    &stderr_buffer,
+                    &token,
+                    request_cancel.as_ref(),
+                    timeout_deadline,
+                )
+                .await;
                 workspace.cleanup();
+                if drained.cancelled {
+                    return Err(AiError::Cancelled(request.request_id.clone()));
+                }
+                if drained.timed_out {
+                    return Err(AiError::Timeout(state.timeout.as_secs()));
+                }
+                let content = drained.stdout;
+                let stderr = drained.stderr;
                 if !status.success() {
                     let detail = if stderr.trim().is_empty() {
                         "no error output".to_string()
@@ -590,7 +632,7 @@ impl LocalCliProvider {
                 })
             }
             WaitResult::Exited(Err(error)) => {
-                kill_process_tree(&mut child).await;
+                kill_process_tree(&mut child, process_group).await;
                 abort_reader_tasks(stdin_task, stdout_task, stderr_task).await;
                 workspace.cleanup();
                 Err(AiError::Internal(format!(
@@ -599,13 +641,13 @@ impl LocalCliProvider {
                 )))
             }
             WaitResult::Cancelled => {
-                kill_process_tree(&mut child).await;
+                kill_process_tree(&mut child, process_group).await;
                 abort_reader_tasks(stdin_task, stdout_task, stderr_task).await;
                 workspace.cleanup();
                 Err(AiError::Cancelled(request.request_id.clone()))
             }
             WaitResult::Timeout => {
-                kill_process_tree(&mut child).await;
+                kill_process_tree(&mut child, process_group).await;
                 abort_reader_tasks(stdin_task, stdout_task, stderr_task).await;
                 workspace.cleanup();
                 Err(AiError::Timeout(state.timeout.as_secs()))
@@ -644,8 +686,8 @@ enum WaitResult {
 
 async fn abort_reader_tasks(
     stdin_task: tokio::task::JoinHandle<()>,
-    stdout_task: tokio::task::JoinHandle<String>,
-    stderr_task: tokio::task::JoinHandle<String>,
+    stdout_task: tokio::task::JoinHandle<()>,
+    stderr_task: tokio::task::JoinHandle<()>,
 ) {
     // After a kill the direct child may have left a descendant holding the
     // pipes open. Do not let those pipes turn a cancellation into a timeout:
@@ -658,6 +700,117 @@ async fn abort_reader_tasks(
     let _ = stderr_task.await;
 }
 
+struct DrainedOutput {
+    stdout: String,
+    stderr: String,
+    cancelled: bool,
+    timed_out: bool,
+}
+
+/// Drain the pipe readers after `child.wait()` has returned. Normal CLIs close
+/// both pipes immediately; one that forked a background helper can keep them
+/// open forever. Wait `PIPE_DRAIN_GRACE`, then kill the saved process group,
+/// then abort the readers if EOF still has not arrived. Output already read is
+/// kept in the shared buffers, so an abort only drops bytes not yet received.
+async fn drain_pipe_tasks(
+    stdin_task: tokio::task::JoinHandle<()>,
+    mut stdout_task: tokio::task::JoinHandle<()>,
+    mut stderr_task: tokio::task::JoinHandle<()>,
+    process_group: Option<u32>,
+    stdout_buffer: &Arc<Mutex<String>>,
+    stderr_buffer: &Arc<Mutex<String>>,
+    token: &CancellationToken,
+    request_cancel: Option<&CancellationToken>,
+    timeout_deadline: tokio::time::Instant,
+) -> DrainedOutput {
+    // The child is gone, so no one is waiting for more stdin. Abort a writer
+    // that is still blocked on a full pipe instead of waiting for it.
+    stdin_task.abort();
+    let _ = stdin_task.await;
+
+    let mut cancelled =
+        token.is_cancelled() || request_cancel.is_some_and(CancellationToken::is_cancelled);
+    if cancelled {
+        kill_process_group(process_group);
+        stdout_task.abort();
+        stderr_task.abort();
+        let _ = stdout_task.await;
+        let _ = stderr_task.await;
+        return DrainedOutput {
+            stdout: snapshot_buffer(stdout_buffer),
+            stderr: snapshot_buffer(stderr_buffer),
+            cancelled: true,
+            timed_out: false,
+        };
+    }
+
+    let grace_deadline = tokio::time::Instant::now() + PIPE_DRAIN_GRACE;
+    let drain_deadline = grace_deadline.min(timeout_deadline);
+    let drain_hits_timeout = drain_deadline == timeout_deadline;
+    let abort_deadline = drain_deadline + PIPE_ABORT_GRACE;
+    let mut stdout_done = false;
+    let mut stderr_done = false;
+    let mut killed_group = false;
+    let mut timed_out = false;
+
+    loop {
+        if stdout_done && stderr_done {
+            break;
+        }
+        tokio::select! {
+            _ = &mut stdout_task, if !stdout_done => {
+                stdout_done = true;
+            }
+            _ = &mut stderr_task, if !stderr_done => {
+                stderr_done = true;
+            }
+            _ = token.cancelled(), if !cancelled => {
+                cancelled = true;
+                kill_process_group(process_group);
+                break;
+            }
+            _ = wait_for_cancel(request_cancel.cloned()), if !cancelled => {
+                cancelled = true;
+                kill_process_group(process_group);
+                break;
+            }
+            _ = tokio::time::sleep_until(drain_deadline), if !killed_group && !cancelled => {
+                // The leader is already reaped; kill by the saved group id so
+                // background descendants holding stdout/stderr also die.
+                kill_process_group(process_group);
+                if drain_hits_timeout {
+                    timed_out = true;
+                    break;
+                }
+                killed_group = true;
+            }
+            _ = tokio::time::sleep_until(abort_deadline), if killed_group && !cancelled => {
+                break;
+            }
+        }
+    }
+
+    if !stdout_done {
+        stdout_task.abort();
+        let _ = stdout_task.await;
+    }
+    if !stderr_done {
+        stderr_task.abort();
+        let _ = stderr_task.await;
+    }
+
+    DrainedOutput {
+        stdout: snapshot_buffer(stdout_buffer),
+        stderr: snapshot_buffer(stderr_buffer),
+        cancelled,
+        timed_out,
+    }
+}
+
+fn snapshot_buffer(buffer: &Arc<Mutex<String>>) -> String {
+    buffer.lock().map(|value| value.clone()).unwrap_or_default()
+}
+
 async fn wait_for_cancel(token: Option<CancellationToken>) {
     match token {
         Some(token) => token.cancelled().await,
@@ -668,19 +821,19 @@ async fn wait_for_cancel(token: Option<CancellationToken>) {
 async fn read_stdout(
     stdout: Option<tokio::process::ChildStdout>,
     sender: Option<mpsc::Sender<Result<StreamChunk, AiError>>>,
-) -> String {
+    output: Arc<Mutex<String>>,
+) {
     let Some(stdout) = stdout else {
-        return String::new();
+        return;
     };
     let mut reader = stdout;
     let mut buffer = [0u8; 4096];
-    let mut output = String::new();
     loop {
         match reader.read(&mut buffer).await {
             Ok(0) => break,
             Ok(read) => {
                 let text = String::from_utf8_lossy(&buffer[..read]).into_owned();
-                output.push_str(&text);
+                push_buffer(&output, &text);
                 if let Some(sender) = sender.as_ref() {
                     let _ = sender
                         .send(Ok(StreamChunk {
@@ -700,18 +853,17 @@ async fn read_stdout(
             Err(_) => break,
         }
     }
-    output
 }
 
 async fn read_stderr(
     stderr: Option<tokio::process::ChildStderr>,
     sender: Option<mpsc::Sender<Result<StreamChunk, AiError>>>,
-) -> String {
+    output: Arc<Mutex<String>>,
+) {
     let Some(stderr) = stderr else {
-        return String::new();
+        return;
     };
     let mut reader = BufReader::new(stderr);
-    let mut output = String::new();
     let mut line = String::new();
     loop {
         line.clear();
@@ -722,7 +874,7 @@ async fn read_stderr(
                 if sanitized.trim().is_empty() {
                     continue;
                 }
-                output.push_str(&sanitized);
+                push_buffer(&output, &sanitized);
                 if let Some(sender) = sender.as_ref() {
                     let _ = sender
                         .send(Ok(StreamChunk {
@@ -742,7 +894,12 @@ async fn read_stderr(
             Err(_) => break,
         }
     }
-    output
+}
+
+fn push_buffer(output: &Arc<Mutex<String>>, text: &str) {
+    if let Ok(mut buffer) = output.lock() {
+        buffer.push_str(text);
+    }
 }
 
 /// Remove credentials and absolute paths from child stderr before it reaches
@@ -853,9 +1010,20 @@ impl Drop for WorkspaceGuard {
     }
 }
 
-async fn kill_process_tree(child: &mut Child) {
+async fn kill_process_tree(child: &mut Child, process_group: Option<u32>) {
+    // The saved group id is authoritative after the leader was reaped;
+    // `child.id()` can already be `None` at this point.
+    kill_process_group(process_group.or_else(|| child.id()));
+    let _ = child.kill().await;
+    let _ = child.wait().await;
+}
+
+fn kill_process_group(process_group: Option<u32>) {
+    let Some(pid) = process_group else {
+        return;
+    };
     #[cfg(unix)]
-    if let Some(pid) = child.id() {
+    {
         // The child was spawned as a process-group leader. Killing the group
         // also terminates helper processes started by the CLI (MCP servers,
         // language servers, shell wrappers).
@@ -864,13 +1032,11 @@ async fn kill_process_tree(child: &mut Child) {
         }
     }
     #[cfg(windows)]
-    if let Some(pid) = child.id() {
+    {
         let _ = std::process::Command::new("taskkill")
             .args(["/PID", &pid.to_string(), "/T", "/F"])
             .output();
     }
-    let _ = child.kill().await;
-    let _ = child.wait().await;
 }
 
 #[cfg(all(test, unix))]
@@ -1133,6 +1299,124 @@ mod tests {
             .unwrap_err();
         assert!(matches!(error, AiError::Timeout(1)), "{error}");
         assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[tokio::test]
+    async fn exited_child_with_pipe_holding_descendant_returns_quickly_and_kills_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let pid_file = dir.path().join("orphan.pid");
+        let script_body = format!(
+            "sleep 30 & child=$!; printf '%s\n' \"$child\" > {}; printf 'started\n'; exit 0",
+            pid_file.display()
+        );
+        let path = script(&dir, &script_body);
+        let provider = provider_for(&path, 10).await;
+        let started = Instant::now();
+        let response = provider
+            .complete(&request("req-exited-orphan"))
+            .await
+            .unwrap();
+        assert_eq!(response.content, "started\n");
+        assert!(started.elapsed() < Duration::from_secs(5));
+        let pid: i32 = std::fs::read_to_string(&pid_file)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        let mut gone = false;
+        for _ in 0..40 {
+            if unsafe { libc::kill(pid, 0) } != 0 {
+                gone = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(gone, "orphan {pid} survived the bounded pipe drain");
+    }
+
+    #[tokio::test]
+    async fn timeout_one_bounds_an_exited_child_with_a_pipe_holding_descendant() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = script(&dir, "sleep 3 & printf 'started\n'; exit 0");
+        let provider = provider_for(&path, 1).await;
+        let started = Instant::now();
+        let result = provider.complete(&request("req-timeout-orphan")).await;
+        // Under a loaded test runner startup can consume the budget, in which
+        // case the timeout path is correct; the bound, not the variant, is the
+        // regression assertion here.
+        assert!(started.elapsed() < Duration::from_secs(3));
+        match result {
+            Ok(response) => assert!(response.content.contains("started")),
+            Err(error) => assert!(matches!(error, AiError::Timeout(1)), "{error}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn cancel_during_exited_child_pipe_drain_kills_orphan_and_returns() {
+        let dir = tempfile::tempdir().unwrap();
+        let pid_file = dir.path().join("cancel-orphan.pid");
+        let script_body = format!(
+            "printf 'started\n'; sleep 0.2; sleep 3 & child=$!; printf '%s\n' \"$child\" > {}; exit 0",
+            pid_file.display()
+        );
+        let path = script(&dir, &script_body);
+        let provider = Arc::new(provider_for(&path, 30).await);
+        let (tx, mut rx) = mpsc::channel(16);
+        let runner = provider.clone();
+        let handle = tokio::spawn(async move {
+            runner
+                .stream_complete(&request("req-drain-cancel"), tx)
+                .await
+        });
+        let _ = rx.recv().await;
+        // Wait until the leader has forked the background sleep. It may exit
+        // before or after the cancel call; both paths must kill the group and
+        // return without waiting for the background pipe EOF.
+        for _ in 0..40 {
+            if pid_file.exists() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let started = Instant::now();
+        provider.cancel("req-drain-cancel").await.unwrap();
+        let mut saw_cancelled = false;
+        while let Some(item) = rx.recv().await {
+            if let Err(error) = item {
+                saw_cancelled |= matches!(error, AiError::Cancelled(_));
+            }
+        }
+        let error = handle.await.unwrap().unwrap_err();
+        assert!(matches!(error, AiError::Cancelled(_)), "{error}");
+        assert!(saw_cancelled);
+        assert!(started.elapsed() < Duration::from_secs(2));
+        let pid: i32 = std::fs::read_to_string(&pid_file)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        let mut gone = false;
+        for _ in 0..40 {
+            if unsafe { libc::kill(pid, 0) } != 0 {
+                gone = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(gone, "orphan {pid} survived cancellation during drain");
+    }
+
+    #[tokio::test]
+    async fn normal_fast_output_is_not_truncated_by_pipe_grace() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = script(&dir, "printf 'alpha\n'; printf 'beta\n'; printf 'gamma\n'");
+        let provider = provider_for(&path, 10).await;
+        let response = provider
+            .complete(&request("req-fast-output"))
+            .await
+            .unwrap();
+        assert_eq!(response.content, "alpha\nbeta\ngamma\n");
     }
 
     #[tokio::test]
