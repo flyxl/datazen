@@ -72,6 +72,14 @@ impl McpApprovalPort for DenyAllApproval {
     }
 }
 
+/// Redact approval arguments with the same credential-key rules used by
+/// [`approval_preview`]. Hosts that render a SQL preview from template
+/// arguments must render from this redacted value, never from the raw
+/// arguments, so a credential cannot reappear inside the SQL text.
+pub fn redacted_approval_arguments(arguments: &Map<String, Value>) -> Value {
+    redact_json(&Value::Object(arguments.clone()), &preview_gate())
+}
+
 /// Build the payload shown to the user. SQL is kept exact for the approver
 /// while credential-bearing values are replaced; audit never persists this.
 pub fn approval_preview(

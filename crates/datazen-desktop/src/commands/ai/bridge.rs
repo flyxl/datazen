@@ -8,12 +8,15 @@
 use crate::commands::AppState;
 use datazen::ai::application::tool_bridge::{
     count_result_rows, parse_and_validate_arguments, parse_bridge_tool, plugin_tool_definition,
-    render_input_template, truncate_bridge_result, workflow_is_read_only, workflow_tool_definition,
-    BridgeToolDecision, BridgeToolKind, BRIDGE_APPROVAL_TIMEOUT,
+    render_input_template_with_dialect, truncate_bridge_result, workflow_is_read_only,
+    workflow_tool_definition, BridgeToolDecision, BridgeToolKind, SqlTemplateDialect,
+    BRIDGE_APPROVAL_TIMEOUT,
 };
 use datazen::ai::tool_loop::AiToolContext;
 use datazen::ai::{ToolCall, ToolDefinition};
-use datazen::mcp::approval::{approval_preview, McpApprovalDecision, McpApprovalPort};
+use datazen::mcp::approval::{
+    approval_preview, redacted_approval_arguments, McpApprovalDecision, McpApprovalPort,
+};
 use datazen::workflow::executor::WorkflowExecutor;
 use datazen::workflow::model::{WorkflowDefinition, WorkflowExecutionResult};
 use serde_json::Value;
@@ -185,8 +188,22 @@ fn spec_is_read_only(spec: &BridgeSpec) -> bool {
     }
 }
 
-/// Authorize one bridge call. Read-only calls return Allow immediately; a
-/// non-read-only call pauses on the T19 broker for at most five minutes.
+async fn plugin_sql_dialect(state: &AppState, connection_id: &str) -> SqlTemplateDialect {
+    let Some(config) = state.store.get_connection(connection_id).await else {
+        return SqlTemplateDialect::default();
+    };
+    let Some(driver) = state.driver_registry.get(&config.database_type).await else {
+        return SqlTemplateDialect::default();
+    };
+    driver
+        .sql_literal_dialect()
+        .map(SqlTemplateDialect::from)
+        .unwrap_or_default()
+}
+
+/// Authorize one bridge call. Read-only calls return Allow without prompting
+/// once schema/template checks pass; a non-read-only call pauses on the T19
+/// broker for at most five minutes.
 pub(crate) async fn authorize_bridge_tool(
     state: &AppState,
     request_id: &str,
@@ -236,32 +253,65 @@ pub(crate) async fn authorize_bridge_tool_with_port(
             return BridgeToolDecision::Deny { reason };
         }
     };
-    if let Err(reason) = parse_and_validate_arguments(arguments, &spec.input_schema()) {
-        let reason = format!("invalid arguments: {reason}");
-        audit_bridge_decision(
-            state,
-            tool,
-            spec.connection_id(),
-            spec.database(),
-            "deny",
-            None,
-            Some(request_id.to_string()),
-            Some("invalid arguments".into()),
-        )
-        .await;
-        return BridgeToolDecision::Deny { reason };
+    let parsed_arguments = match parse_and_validate_arguments(arguments, &spec.input_schema()) {
+        Ok(value) => value,
+        Err(reason) => {
+            let reason = format!("invalid arguments: {reason}");
+            audit_bridge_decision(
+                state,
+                tool,
+                spec.connection_id(),
+                spec.database(),
+                "deny",
+                None,
+                Some(request_id.to_string()),
+                Some("invalid arguments".into()),
+            )
+            .await;
+            return BridgeToolDecision::Deny { reason };
+        }
+    };
+
+    let dialect = match &spec {
+        BridgeSpec::Plugin(plugin) => plugin_sql_dialect(state, &plugin.tool.connection).await,
+        BridgeSpec::Workflow(_) => SqlTemplateDialect::default(),
+    };
+    // A template that cannot be rendered safely is rejected before the user
+    // sees an approval prompt. This also keeps read-only calls from reaching
+    // execution with an ambiguous placeholder context.
+    if let BridgeSpec::Plugin(plugin) = &spec {
+        if let Err(error) =
+            render_input_template_with_dialect(&plugin.tool.input, &parsed_arguments, dialect)
+        {
+            let reason = format!("invalid plugin SQL template: {error}");
+            audit_bridge_decision(
+                state,
+                tool,
+                Some(plugin.tool.connection.clone()),
+                plugin.tool.database.clone(),
+                "deny",
+                None,
+                Some(request_id.to_string()),
+                Some("invalid template".into()),
+            )
+            .await;
+            return BridgeToolDecision::Deny { reason };
+        }
     }
     if spec_is_read_only(&spec) {
         return BridgeToolDecision::Allow;
     }
 
-    let preview_args = serde_json::from_str::<Value>(arguments)
-        .ok()
-        .and_then(|value| value.as_object().cloned());
+    let preview_args = parsed_arguments.as_object().cloned();
+    // The approval SQL is a rendering of the template, so it must be rendered
+    // from the same redacted arguments the approval payload exposes. Rendering
+    // from the raw map would put a password back into `sql` even though
+    // `arguments` is already `[REDACTED]`.
     let sql = preview_args
         .as_ref()
+        .map(redacted_approval_arguments)
         .and_then(|args| {
-            render_input_template(&spec_input_template(&spec), &Value::Object(args.clone())).ok()
+            render_input_template_with_dialect(&spec_input_template(&spec), &args, dialect).ok()
         })
         .and_then(|input| input.get("sql").and_then(Value::as_str).map(str::to_owned));
     let created_at = chrono::Utc::now();
@@ -405,23 +455,25 @@ pub(crate) async fn execute_plugin_tool(
             return format!("Error: plugin tool arguments rejected: {error}");
         }
     };
-    let mut input = match render_input_template(&spec.tool.input, &arguments) {
-        Ok(input) => input,
-        Err(error) => {
-            audit_bridge_decision(
-                state,
-                &call.name,
-                Some(spec.tool.connection.clone()),
-                spec.tool.database.clone(),
-                "deny",
-                None,
-                Some(request_id.to_string()),
-                Some("invalid arguments".into()),
-            )
-            .await;
-            return format!("Error: plugin tool template rejected: {error}");
-        }
-    };
+    let sql_dialect = plugin_sql_dialect(state, &spec.tool.connection).await;
+    let mut input =
+        match render_input_template_with_dialect(&spec.tool.input, &arguments, sql_dialect) {
+            Ok(input) => input,
+            Err(error) => {
+                audit_bridge_decision(
+                    state,
+                    &call.name,
+                    Some(spec.tool.connection.clone()),
+                    spec.tool.database.clone(),
+                    "deny",
+                    None,
+                    Some(request_id.to_string()),
+                    Some("invalid arguments".into()),
+                )
+                .await;
+                return format!("Error: plugin tool template rejected: {error}");
+            }
+        };
     if let Some(database) = spec.tool.database.as_deref() {
         if let Some(object) = input.as_object_mut() {
             // The manifest owns the target database; a model-supplied extra

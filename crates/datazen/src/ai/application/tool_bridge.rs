@@ -8,6 +8,7 @@
 
 use crate::ai::domain::types::ToolDefinition;
 use crate::workflow::domain::model::{ErrorHandlingConfig, WorkflowDefinition, WorkflowStep};
+use datazen_driver_api::SqlLiteralDialect;
 use serde_json::{Map, Value};
 use std::time::Duration;
 
@@ -405,67 +406,525 @@ pub fn count_result_rows(value: &Value) -> Option<i64> {
     }
 }
 
+/// How a SQL template treats backslashes inside single-quoted strings.
+///
+/// The host chooses this from the target connection's driver. The shared
+/// renderer defaults to the SQL standard, where a backslash is an ordinary
+/// character; MySQL-family engines use backslash escapes instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SqlTemplateDialect {
+    #[default]
+    Standard,
+    BackslashEscapes,
+}
+
+impl From<SqlLiteralDialect> for SqlTemplateDialect {
+    fn from(dialect: SqlLiteralDialect) -> Self {
+        match dialect {
+            SqlLiteralDialect::MySql | SqlLiteralDialect::ClickHouse => Self::BackslashEscapes,
+            SqlLiteralDialect::DuckDb
+            | SqlLiteralDialect::Postgres
+            | SqlLiteralDialect::SqlServer
+            | SqlLiteralDialect::Sqlite => Self::Standard,
+        }
+    }
+}
+
 /// Render one plugin input template with validated model arguments.
 ///
-/// A string that is exactly `{{name}}` keeps the argument's JSON type; any
-/// other string substitutes its display form. Unknown placeholders fail the
-/// call rather than leaking an unresolved template into SQL.
+/// SQL-shaped fields (a `sql`/`*_sql` key, or a bare string template) use the
+/// SQL-aware renderer. Other fields retain the legacy typed placeholder
+/// behavior so a template such as `{"limit":"{{limit}}"}` still yields a
+/// number rather than a string.
 pub fn render_input_template(template: &Value, arguments: &Value) -> Result<Value, String> {
+    render_input_template_with_dialect(template, arguments, SqlTemplateDialect::Standard)
+}
+
+/// SQL-aware variant used by hosts that know the target driver.
+pub fn render_input_template_with_dialect(
+    template: &Value,
+    arguments: &Value,
+    dialect: SqlTemplateDialect,
+) -> Result<Value, String> {
     let arguments = arguments
         .as_object()
         .ok_or_else(|| "arguments must be an object".to_string())?;
-    render_value(template, arguments, 0)
+    let root_is_sql = template.is_string();
+    render_template_value(template, arguments, 0, dialect, root_is_sql)
 }
 
-fn render_value(
+fn render_template_value(
     value: &Value,
     arguments: &Map<String, Value>,
     depth: usize,
+    dialect: SqlTemplateDialect,
+    is_sql: bool,
 ) -> Result<Value, String> {
     if depth > MAX_ARG_DEPTH {
         return Err("input template is nested too deeply".into());
     }
     match value {
         Value::String(text) => {
+            if is_sql {
+                return Ok(Value::String(render_sql_template(
+                    text, arguments, dialect,
+                )?));
+            }
             if let Some(name) = exact_placeholder(text) {
                 return arguments
                     .get(name)
                     .cloned()
                     .ok_or_else(|| format!("missing template argument '{name}'"));
             }
-            let mut rendered = String::with_capacity(text.len());
-            let mut rest = text.as_str();
-            while let Some(start) = rest.find("{{") {
-                let before = &rest[..start];
-                let after_start = &rest[start + 2..];
-                let Some(end) = after_start.find("}}") else {
-                    return Err("unterminated template placeholder".into());
-                };
-                let name = &after_start[..end];
-                let Some(argument) = arguments.get(name) else {
-                    return Err(format!("missing template argument '{name}'"));
-                };
-                rendered.push_str(before);
-                rendered.push_str(&display_argument(argument));
-                rest = &after_start[end + 2..];
-            }
-            rendered.push_str(rest);
-            Ok(Value::String(rendered))
+            Ok(Value::String(render_plain_template(text, arguments)?))
         }
-        Value::Array(items) => Ok(Value::Array(
-            items
-                .iter()
-                .map(|item| render_value(item, arguments, depth + 1))
-                .collect::<Result<_, _>>()?,
-        )),
+        Value::Array(items) => {
+            if is_sql {
+                return Err("a SQL template must be a string".into());
+            }
+            Ok(Value::Array(
+                items
+                    .iter()
+                    .map(|item| render_template_value(item, arguments, depth + 1, dialect, false))
+                    .collect::<Result<_, _>>()?,
+            ))
+        }
         Value::Object(map) => {
+            if is_sql {
+                return Err("a SQL template must be a string".into());
+            }
             let mut out = Map::new();
             for (key, item) in map {
-                out.insert(key.clone(), render_value(item, arguments, depth + 1)?);
+                let child_is_sql = is_sql_template_key(key);
+                out.insert(
+                    key.clone(),
+                    render_template_value(item, arguments, depth + 1, dialect, child_is_sql)?,
+                );
             }
             Ok(Value::Object(out))
         }
         other => Ok(other.clone()),
+    }
+}
+
+fn is_sql_template_key(key: &str) -> bool {
+    let lower = key.to_ascii_lowercase();
+    lower == "sql" || lower.ends_with("_sql")
+}
+
+fn render_plain_template(text: &str, arguments: &Map<String, Value>) -> Result<String, String> {
+    let mut rendered = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find("{{") {
+        let before = &rest[..start];
+        let after_start = &rest[start + 2..];
+        let Some(end) = after_start.find("}}") else {
+            return Err("unterminated template placeholder".into());
+        };
+        let name = &after_start[..end];
+        let Some(argument) = arguments.get(name) else {
+            return Err(format!("missing template argument '{name}'"));
+        };
+        rendered.push_str(before);
+        rendered.push_str(&display_argument(argument));
+        rest = &after_start[end + 2..];
+    }
+    rendered.push_str(rest);
+    Ok(rendered)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum SqlLexState {
+    Normal,
+    Single { escape_backslash: bool },
+    Double,
+    Backtick,
+    Bracket,
+    LineComment,
+    BlockComment { depth: usize },
+    DollarQuote { delimiter: String },
+}
+
+/// Render a SQL template without ever concatenating an arbitrary value into
+/// an identifier or expression.
+///
+/// The scanner is deliberately small but strict:
+/// - placeholders inside single-quoted literals become escaped string content;
+/// - placeholders outside a string must be a number/bool/NULL and token
+///   delimited, otherwise the call is rejected;
+/// - placeholders in double-quoted identifiers, dollar quotes and comments are
+///   rejected (fail closed) rather than guessed;
+/// - unterminated quotes/comments/dollar quotes and unterminated placeholders
+///   are errors.
+pub fn render_sql_template(
+    template: &str,
+    arguments: &Map<String, Value>,
+    dialect: SqlTemplateDialect,
+) -> Result<String, String> {
+    let mut output = String::with_capacity(template.len());
+    let mut state = SqlLexState::Normal;
+    let mut index = 0;
+
+    while index < template.len() {
+        let rest = &template[index..];
+        if let Some(rest) = rest.strip_prefix("{{") {
+            let Some(end) = rest.find("}}") else {
+                return Err("unterminated template placeholder".into());
+            };
+            let name = &rest[..end];
+            if name.is_empty() || name.contains("{{") || name.contains("}}") {
+                return Err("template placeholder name is invalid".into());
+            }
+            let argument = arguments
+                .get(name)
+                .ok_or_else(|| format!("missing template argument '{name}'"))?;
+            match &state {
+                SqlLexState::Normal => {
+                    let literal = safe_sql_literal(argument)?;
+                    if !template_boundary_before(template, index)
+                        || !template_boundary_after(template, index + 2 + end + 2)
+                    {
+                        return Err(format!(
+                            "template argument '{name}' cannot be concatenated into a SQL token"
+                        ));
+                    }
+                    output.push_str(&literal);
+                }
+                SqlLexState::Single { escape_backslash } => {
+                    output.push_str(&sql_string_content(argument, *escape_backslash)?);
+                }
+                SqlLexState::Double => {
+                    return Err(format!(
+                        "template argument '{name}' inside a double-quoted identifier is not allowed"
+                    ));
+                }
+                SqlLexState::DollarQuote { .. } => {
+                    return Err(format!(
+                        "template argument '{name}' inside a dollar-quoted string is not allowed"
+                    ));
+                }
+                SqlLexState::LineComment | SqlLexState::BlockComment { .. } => {
+                    return Err(format!(
+                        "template argument '{name}' inside a SQL comment is not allowed"
+                    ));
+                }
+                SqlLexState::Backtick | SqlLexState::Bracket => {
+                    return Err(format!(
+                        "template argument '{name}' inside a quoted identifier is not allowed"
+                    ));
+                }
+            }
+            index += 2 + end + 2;
+            continue;
+        }
+
+        let Some(ch) = rest.chars().next() else {
+            break;
+        };
+        let next = match &state {
+            SqlLexState::Normal => {
+                if rest.starts_with("--") {
+                    output.push_str("--");
+                    index += 2;
+                    SqlLexState::LineComment
+                } else if rest.starts_with("/*") {
+                    output.push_str("/*");
+                    index += 2;
+                    SqlLexState::BlockComment { depth: 1 }
+                } else if ch == '#' && dialect == SqlTemplateDialect::BackslashEscapes {
+                    output.push('#');
+                    index += 1;
+                    SqlLexState::LineComment
+                } else if let Some((delimiter, len)) = dollar_quote_open(rest) {
+                    output.push_str(delimiter);
+                    index += len;
+                    SqlLexState::DollarQuote {
+                        delimiter: delimiter.to_string(),
+                    }
+                } else {
+                    output.push(ch);
+                    index += ch.len_utf8();
+                    match ch {
+                        '\'' => SqlLexState::Single {
+                            escape_backslash: dialect == SqlTemplateDialect::BackslashEscapes
+                                || has_postgres_escape_prefix(template, index - ch.len_utf8()),
+                        },
+                        '"' => SqlLexState::Double,
+                        '`' => SqlLexState::Backtick,
+                        '[' => SqlLexState::Bracket,
+                        _ => SqlLexState::Normal,
+                    }
+                }
+            }
+            SqlLexState::Single { escape_backslash } => {
+                if ch == '\'' {
+                    if rest[1..].starts_with('\'') {
+                        output.push_str("''");
+                        index += 2;
+                        SqlLexState::Single {
+                            escape_backslash: *escape_backslash,
+                        }
+                    } else {
+                        output.push('\'');
+                        index += 1;
+                        SqlLexState::Normal
+                    }
+                } else if ch == '\\' && *escape_backslash {
+                    let mut chars = rest.chars();
+                    chars.next();
+                    let Some(escaped) = chars.next() else {
+                        return Err("unterminated escape at end of SQL template".into());
+                    };
+                    // MySQL can run with NO_BACKSLASH_ESCAPES, where `\'`
+                    // closes the string instead of escaping the quote. The
+                    // same template would then have a different string
+                    // context, so reject that ambiguous spelling rather than
+                    // render a value under the wrong assumption.
+                    if dialect == SqlTemplateDialect::BackslashEscapes && escaped == '\'' {
+                        return Err(
+                            "a backslash-escaped quote is ambiguous in a backslash-escape SQL dialect"
+                                .into(),
+                        );
+                    }
+                    // In a backslash-escape string `\{{` would consume the
+                    // opening brace of a placeholder as an escaped character.
+                    // Reject instead of silently leaving a half-rendered
+                    // template in the SQL text.
+                    if escaped == '{' && rest[1..].starts_with("{{") {
+                        return Err("template placeholder cannot follow a backslash escape".into());
+                    }
+                    output.push('\\');
+                    output.push(escaped);
+                    index += 1 + escaped.len_utf8();
+                    SqlLexState::Single {
+                        escape_backslash: true,
+                    }
+                } else {
+                    output.push(ch);
+                    index += ch.len_utf8();
+                    SqlLexState::Single {
+                        escape_backslash: *escape_backslash,
+                    }
+                }
+            }
+            SqlLexState::Double => {
+                if ch == '"' {
+                    if rest[1..].starts_with('"') {
+                        output.push_str("\"\"");
+                        index += 2;
+                        SqlLexState::Double
+                    } else {
+                        output.push('"');
+                        index += 1;
+                        SqlLexState::Normal
+                    }
+                } else if ch == '\\' && dialect == SqlTemplateDialect::BackslashEscapes {
+                    let mut chars = rest.chars();
+                    chars.next();
+                    let Some(escaped) = chars.next() else {
+                        return Err("unterminated escape at end of SQL template".into());
+                    };
+                    output.push('\\');
+                    output.push(escaped);
+                    index += 1 + escaped.len_utf8();
+                    SqlLexState::Double
+                } else {
+                    output.push(ch);
+                    index += ch.len_utf8();
+                    SqlLexState::Double
+                }
+            }
+            SqlLexState::Backtick => {
+                if ch == '`' {
+                    if rest[1..].starts_with('`') {
+                        output.push_str("``");
+                        index += 2;
+                        SqlLexState::Backtick
+                    } else {
+                        output.push('`');
+                        index += 1;
+                        SqlLexState::Normal
+                    }
+                } else if ch == '\\' && dialect == SqlTemplateDialect::BackslashEscapes {
+                    let mut chars = rest.chars();
+                    chars.next();
+                    let Some(escaped) = chars.next() else {
+                        return Err("unterminated escape at end of SQL template".into());
+                    };
+                    output.push('\\');
+                    output.push(escaped);
+                    index += 1 + escaped.len_utf8();
+                    SqlLexState::Backtick
+                } else {
+                    output.push(ch);
+                    index += ch.len_utf8();
+                    SqlLexState::Backtick
+                }
+            }
+            SqlLexState::Bracket => {
+                if ch == ']' {
+                    if rest[1..].starts_with(']') {
+                        output.push_str("]]");
+                        index += 2;
+                        SqlLexState::Bracket
+                    } else {
+                        output.push(']');
+                        index += 1;
+                        SqlLexState::Normal
+                    }
+                } else {
+                    output.push(ch);
+                    index += ch.len_utf8();
+                    SqlLexState::Bracket
+                }
+            }
+            SqlLexState::LineComment => {
+                output.push(ch);
+                index += ch.len_utf8();
+                if ch == '\n' {
+                    SqlLexState::Normal
+                } else {
+                    SqlLexState::LineComment
+                }
+            }
+            SqlLexState::BlockComment { depth } => {
+                if rest.starts_with("/*") {
+                    output.push_str("/*");
+                    index += 2;
+                    SqlLexState::BlockComment { depth: depth + 1 }
+                } else if rest.starts_with("*/") {
+                    output.push_str("*/");
+                    index += 2;
+                    if *depth <= 1 {
+                        SqlLexState::Normal
+                    } else {
+                        SqlLexState::BlockComment { depth: depth - 1 }
+                    }
+                } else {
+                    output.push(ch);
+                    index += ch.len_utf8();
+                    SqlLexState::BlockComment { depth: *depth }
+                }
+            }
+            SqlLexState::DollarQuote { delimiter } => {
+                if rest.starts_with(delimiter.as_str()) {
+                    output.push_str(delimiter);
+                    index += delimiter.len();
+                    SqlLexState::Normal
+                } else {
+                    output.push(ch);
+                    index += ch.len_utf8();
+                    SqlLexState::DollarQuote {
+                        delimiter: delimiter.clone(),
+                    }
+                }
+            }
+        };
+        state = next;
+    }
+
+    match state {
+        SqlLexState::Normal | SqlLexState::LineComment => Ok(output),
+        SqlLexState::Single { .. } => Err("unterminated single-quoted SQL string".into()),
+        SqlLexState::Double => Err("unterminated double-quoted SQL identifier".into()),
+        SqlLexState::Backtick => Err("unterminated backtick-quoted SQL identifier".into()),
+        SqlLexState::Bracket => Err("unterminated bracketed SQL identifier".into()),
+        SqlLexState::BlockComment { .. } => Err("unterminated SQL block comment".into()),
+        SqlLexState::DollarQuote { .. } => Err("unterminated SQL dollar quote".into()),
+    }
+}
+
+fn safe_sql_literal(value: &Value) -> Result<String, String> {
+    match value {
+        Value::Number(number) => Ok(number.to_string()),
+        Value::Bool(flag) => Ok(if *flag { "TRUE" } else { "FALSE" }.to_string()),
+        Value::Null => Ok("NULL".to_string()),
+        Value::String(_) => Err(
+            "string template arguments are only allowed inside a single-quoted SQL literal".into(),
+        ),
+        Value::Array(_) | Value::Object(_) => {
+            Err("array/object template arguments are not valid SQL literals".into())
+        }
+    }
+}
+
+fn sql_string_content(value: &Value, escape_backslash: bool) -> Result<String, String> {
+    let rendered = match value {
+        Value::String(text) => text.clone(),
+        Value::Number(number) => number.to_string(),
+        Value::Bool(flag) => {
+            if *flag {
+                "TRUE".to_string()
+            } else {
+                "FALSE".to_string()
+            }
+        }
+        Value::Null => "NULL".to_string(),
+        Value::Array(_) | Value::Object(_) => {
+            return Err("array/object template arguments cannot be placed in a SQL string".into());
+        }
+    };
+    Ok(escape_sql_string_content(&rendered, escape_backslash))
+}
+
+fn escape_sql_string_content(value: &str, escape_backslash: bool) -> String {
+    let mut escaped = String::with_capacity(value.len());
+    for ch in value.chars() {
+        match ch {
+            '\'' => escaped.push_str("''"),
+            '\\' if escape_backslash => escaped.push_str("\\\\"),
+            _ => escaped.push(ch),
+        }
+    }
+    escaped
+}
+
+fn template_boundary_before(template: &str, index: usize) -> bool {
+    let previous = template[..index].chars().next_back();
+    !previous.is_some_and(is_sql_identifier_char) && previous != Some('.')
+}
+
+fn template_boundary_after(template: &str, index: usize) -> bool {
+    let next = template[index..].chars().next();
+    !next.is_some_and(is_sql_identifier_char) && next != Some('.')
+}
+
+fn is_sql_identifier_char(ch: char) -> bool {
+    ch.is_alphanumeric() || ch == '_' || ch == '$' || ch == '@'
+}
+
+fn has_postgres_escape_prefix(template: &str, quote_index: usize) -> bool {
+    let before = &template[..quote_index];
+    let mut chars = before.chars().rev();
+    let Some(prefix) = chars.next() else {
+        return false;
+    };
+    if !matches!(prefix, 'e' | 'E') {
+        return false;
+    }
+    !chars.next().is_some_and(is_sql_identifier_char)
+}
+
+/// Recognise `$$` and `$tag$` dollar-quote openers at the start of `rest`.
+fn dollar_quote_open(rest: &str) -> Option<(&str, usize)> {
+    if !rest.starts_with('$') {
+        return None;
+    }
+    if rest.starts_with("$$") {
+        return Some((&rest[..2], 2));
+    }
+    let bytes = rest.as_bytes();
+    if bytes.len() < 3 || !(bytes[1].is_ascii_alphabetic() || bytes[1] == b'_') {
+        return None;
+    }
+    let mut end = 2;
+    while end < bytes.len() && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_') {
+        end += 1;
+    }
+    if bytes.get(end) == Some(&b'$') {
+        Some((&rest[..=end], end + 1))
+    } else {
+        None
     }
 }
 
@@ -555,6 +1014,173 @@ mod tests {
         );
         assert_eq!(rendered["limit"], 20);
         assert!(render_input_template(&template, &serde_json::json!({ "id": 7 })).is_err());
+    }
+
+    #[test]
+    fn sql_template_escapes_string_literals_and_safe_literals() {
+        let template = serde_json::json!({
+            "sql": "SELECT * FROM users WHERE name = '{{name}}' AND note = '{{note}}' AND id = {{id}} AND active = {{active}} AND deleted_at = {{deleted}}"
+        });
+        let arguments = serde_json::json!({
+            "name": "O'Brien",
+            "note": "x' OR '1'='1",
+            "id": 7,
+            "active": true,
+            "deleted": null
+        });
+        let rendered = render_input_template(&template, &arguments).expect("safe template renders");
+        assert_eq!(
+            rendered["sql"],
+            "SELECT * FROM users WHERE name = 'O''Brien' AND note = 'x'' OR ''1''=''1' AND id = 7 AND active = TRUE AND deleted_at = NULL"
+        );
+        assert!(render_sql_template(
+            "SELECT {{id}}",
+            &serde_json::json!({ "id": 7 }).as_object().cloned().unwrap(),
+            SqlTemplateDialect::Standard,
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn sql_template_rejects_placeholder_after_a_pending_backslash_escape() {
+        let template = serde_json::json!({ "sql": "SELECT 'a\\{{name}}'" });
+        let arguments = serde_json::json!({ "name": "x' OR '1'='1" });
+        assert!(
+            render_input_template_with_dialect(
+                &template,
+                &arguments,
+                SqlTemplateDialect::BackslashEscapes,
+            )
+            .is_err(),
+            "a pending backslash would reinterpret the escaped quote"
+        );
+
+        // A backslash before the closing quote is ambiguous under MySQL's
+        // NO_BACKSLASH_ESCAPES mode and must not be guessed.
+        let ambiguous_quote = serde_json::json!({ "sql": "SELECT 'a\\'{{name}}'" });
+        assert!(
+            render_input_template_with_dialect(
+                &ambiguous_quote,
+                &arguments,
+                SqlTemplateDialect::BackslashEscapes,
+            )
+            .is_err(),
+            "NO_BACKSLASH_ESCAPES would move the placeholder outside the string"
+        );
+
+        // An even run is a complete escaped backslash, so the value begins in
+        // a normal string state and renders safely.
+        let escaped = serde_json::json!({ "sql": "SELECT 'a\\\\{{name}}'" });
+        let rendered = render_input_template_with_dialect(
+            &escaped,
+            &arguments,
+            SqlTemplateDialect::BackslashEscapes,
+        )
+        .expect("a completed escaped backslash renders");
+        assert_eq!(rendered["sql"], "SELECT 'a\\\\x'' OR ''1''=''1'");
+
+        // Standard SQL treats the backslash as literal, so no escape is
+        // pending and the value is still escaped.
+        let standard =
+            render_input_template_with_dialect(&template, &arguments, SqlTemplateDialect::Standard)
+                .expect("standard SQL renders a literal backslash");
+        assert_eq!(standard["sql"], "SELECT 'a\\x'' OR ''1''=''1'");
+    }
+
+    #[test]
+    fn sql_template_rejects_unsafe_outside_literals_and_token_splicing() {
+        for value in [
+            serde_json::json!("Ada"),
+            serde_json::json!(["Ada"]),
+            serde_json::json!({ "name": "Ada" }),
+        ] {
+            let template = serde_json::json!({ "sql": "SELECT * FROM t WHERE name = {{value}}" });
+            let arguments = serde_json::json!({ "value": value });
+            assert!(
+                render_input_template(&template, &arguments).is_err(),
+                "arbitrary value must not become an expression"
+            );
+        }
+        for sql in [
+            "SELECT x{{id}} FROM t",
+            "SELECT {{id}}x FROM t",
+            "SELECT t.{{id}} FROM t",
+        ] {
+            let template = serde_json::json!({ "sql": sql });
+            let arguments = serde_json::json!({ "id": 7 });
+            assert!(
+                render_input_template(&template, &arguments).is_err(),
+                "placeholder must not splice into an identifier: {sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn sql_template_fails_closed_in_identifiers_dollar_quotes_and_comments() {
+        for sql in [
+            "SELECT \"{{name}}\" FROM t",
+            "SELECT `{{name}}` FROM t",
+            "SELECT [{{name}}] FROM t",
+            "SELECT $$ {{name}} $$ FROM t",
+            "SELECT $tag$ {{name}} $tag$ FROM t",
+            "SELECT 1 -- {{name}}\nFROM t",
+            "SELECT /* {{name}} */ 1",
+        ] {
+            let template = serde_json::json!({ "sql": sql });
+            let arguments = serde_json::json!({ "name": "Ada" });
+            assert!(
+                render_input_template(&template, &arguments).is_err(),
+                "placeholder context must fail closed: {sql}"
+            );
+        }
+        for sql in [
+            "SELECT '{{name}}",
+            "SELECT 'unterminated",
+            "SELECT $$ unterminated",
+            "SELECT /* unterminated",
+        ] {
+            let template = serde_json::json!({ "sql": sql });
+            let arguments = serde_json::json!({ "name": "Ada" });
+            assert!(
+                render_input_template(&template, &arguments).is_err(),
+                "unterminated SQL must fail closed: {sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn sql_template_dialect_controls_backslash_escaping() {
+        let template = serde_json::json!({
+            "sql": "SELECT * FROM t WHERE p = '{{value}}' AND e = E'{{value}}'"
+        });
+        let arguments = serde_json::json!({ "value": "a\\b'c" });
+
+        let standard =
+            render_input_template_with_dialect(&template, &arguments, SqlTemplateDialect::Standard)
+                .unwrap();
+        assert_eq!(
+            standard["sql"],
+            "SELECT * FROM t WHERE p = 'a\\b''c' AND e = E'a\\\\b''c'"
+        );
+
+        let mysql = render_input_template_with_dialect(
+            &template,
+            &arguments,
+            SqlTemplateDialect::BackslashEscapes,
+        )
+        .unwrap();
+        assert_eq!(
+            mysql["sql"],
+            "SELECT * FROM t WHERE p = 'a\\\\b''c' AND e = E'a\\\\b''c'"
+        );
+        assert_eq!(
+            SqlTemplateDialect::from(SqlLiteralDialect::MySql),
+            SqlTemplateDialect::BackslashEscapes
+        );
+        assert_eq!(
+            SqlTemplateDialect::from(SqlLiteralDialect::Postgres),
+            SqlTemplateDialect::Standard
+        );
     }
 
     #[test]

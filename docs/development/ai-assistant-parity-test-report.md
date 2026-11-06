@@ -171,3 +171,35 @@ JSONL，审计 append 失败不影响主调用。`8fa40665a` 的 7 个代码文�
 > 未映射的 `@datazen/*` 仍解析到主检出旧包，`mcpAllowedDatabases/Namespaces` 与
 > `LegacyCommandName` 报错属于并行 worktree 环境；映射到当前 worktree 后 tsc 通过，
 > 未发现 T22 新增类型错误。
+
+
+## T22 BUG-020 修复（本地待独立复测）
+
+本地 `fix: escape plugin SQL templates and redact previews` 已修复
+[BUG-020](ai-assistant-parity-bugs/BUG-020.md) 的两个根因：
+
+- SQL 模板改为上下文感知渲染；单引号内转义 `'`/方言反斜杠，字符串外只允许
+  number/bool/NULL 且要求 token 边界；dollar quote、双引号/反引号/方括号标识符、
+  SQL 注释中的 placeholder 以及未闭合结构一律 fail-closed。
+- 非只读审批前先校验模板；审批 SQL 先经 `redacted_approval_arguments` 把敏感
+  key 替换为 `[REDACTED]`，再从脱敏参数渲染，避免 `SELECT '{{password}}'`
+  把 `hunter2` 带进 `McpApprovalRequest.sql`。
+
+本地复测结果：
+
+| 范围 | 结果 |
+|---|---|
+| `cargo test -p datazen --lib --features ai,workflow,wapps` | 1715 passed / 0 failed |
+| `cargo test -p datazen_desktop --lib` | 1391 passed / 0 failed / 10 ignored |
+| T22 core renderer bridge tests | 10 passed |
+| T22 host bridge tests | 8 passed |
+| 定向前端（SettingsContent + AiSettingsSection + settingsClient + locales） | 69 passed |
+| 全量前端 `vitest` | 8233 passed / 8 failed（既有 Pro/tauri/driver 环境用例） |
+| `cargo fmt --all -- --check` / `git diff --check` | 通过 / 通过 |
+| `pnpm typecheck:tsc` | 仍为既有 `LegacyCommandName` / `mcpAllowed*` 错误，无 T22 新增错误 |
+
+覆盖用例：`O'Brien`、`x' OR '1'='1`、字符串内外 placeholder、数字/布尔/NULL、
+非法字符串/数组/对象、token 拼接、dollar quote、双引号/反引号/方括号、行/块注释、
+未闭合字符串/注释/dollar quote、MySQL 反斜杠方言、反斜杠转义吞掉 placeholder 起始
+花括号、NO_BACKSLASH_ESCAPES 下的反斜杠引号歧义、只读直跑输入转义、非只读审批
+SQL 无 `hunter2` 且非敏感参数正确转义。

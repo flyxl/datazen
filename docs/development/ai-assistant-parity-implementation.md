@@ -542,7 +542,7 @@
 
 **测试**：工具桥单测；确认/超时/取消集成测试。
 
-**实现**：Wapp manifest 新增可选 `ai.tools`（`name`/`description`/`readOnly`/`command`/`connection`/`inputSchema`/`input` 模板），安装时要求 `command:invoke` 且只读工具只能声明 `query`；设置文件保存 `aiPluginToolIds` / `aiWorkflowToolIds`，每轮按当前设置和启停状态重新解析，因此关闭开关或禁用插件后工具立即消失。工具名固定为 `plugin_<id>__<tool>` / `workflow_<id>`；参数按声明的 JSON Schema 结构校验，模板占位符 `{{arg}}` 只接受已校验参数。只读插件命令走强制只读执行路径，Workflow 仅当所有可达步骤（含错误回退）都可静态判定为只读时直跑；其余调用复用 T19 的 `McpApprovalPort`（5 分钟、Allow once/Deny、停止取消）和 `mcp-audit.jsonl`，审计记录 who/connection/tool/decision/rowCount。结果统一经过 gate 脱敏和 64 KiB 桥接上限，再进入工具循环原有的限额。
+**实现**：Wapp manifest 新增可选 `ai.tools`（`name`/`description`/`readOnly`/`command`/`connection`/`inputSchema`/`input` 模板），安装时要求 `command:invoke` 且只读工具只能声明 `query`；设置文件保存 `aiPluginToolIds` / `aiWorkflowToolIds`，每轮按当前设置和启停状态重新解析，因此关闭开关或禁用插件后工具立即消失。工具名固定为 `plugin_<id>__<tool>` / `workflow_<id>`；参数按声明的 JSON Schema 结构校验；SQL 模板占位符按上下文安全渲染（单引号内转义字面量并按方言处理反斜杠，字符串外只允许数字/布尔/NULL，注释/标识符/dollar quote 中 fail-closed），审批预览先从脱敏参数渲染。只读插件命令走强制只读执行路径，Workflow 仅当所有可达步骤（含错误回退）都可静态判定为只读时直跑；其余调用复用 T19 的 `McpApprovalPort`（5 分钟、Allow once/Deny、停止取消）和 `mcp-audit.jsonl`，审计记录 who/connection/tool/decision/rowCount。结果统一经过 gate 脱敏和 64 KiB 桥接上限，再进入工具循环原有的限额。
 
 ---
 

@@ -94,6 +94,96 @@ fn write_plugin_fixture(root: &Path) -> String {
                         "additionalProperties": false
                     },
                     "input": { "sql": "DELETE FROM users WHERE id = {{id}}" }
+                },
+                {
+                    "name": "delete_by_password",
+                    "description": "Delete by password and name",
+                    "readOnly": false,
+                    "command": "execute",
+                    "connection": CONNECTION_ID,
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "password": { "type": "string" },
+                            "name": { "type": "string" },
+                            "id": { "type": "integer", "minimum": 1 }
+                        },
+                        "required": ["password", "name", "id"],
+                        "additionalProperties": false
+                    },
+                    "input": {
+                        "sql": "SELECT '{{password}}', '{{name}}' FROM users WHERE id = {{id}}"
+                    }
+                },
+                {
+                    "name": "select_password",
+                    "description": "Render a password literal",
+                    "readOnly": false,
+                    "command": "execute",
+                    "connection": CONNECTION_ID,
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "password": { "type": "string" }
+                        },
+                        "required": ["password"],
+                        "additionalProperties": false
+                    },
+                    "input": { "sql": "SELECT '{{password}}'" }
+                },
+                {
+                    "name": "find_user",
+                    "description": "Find one user by name",
+                    "readOnly": true,
+                    "command": "query",
+                    "connection": CONNECTION_ID,
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "name": { "type": "string" }
+                        },
+                        "required": ["name"],
+                        "additionalProperties": false
+                    },
+                    "input": {
+                        "sql": "SELECT * FROM users WHERE name = '{{name}}'"
+                    }
+                },
+                {
+                    "name": "unsafe_read",
+                    "description": "Unsafe read template",
+                    "readOnly": true,
+                    "command": "query",
+                    "connection": CONNECTION_ID,
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "name": { "type": "string" }
+                        },
+                        "required": ["name"],
+                        "additionalProperties": false
+                    },
+                    "input": {
+                        "sql": "SELECT * FROM users WHERE name = {{name}}"
+                    }
+                },
+                {
+                    "name": "unsafe_write",
+                    "description": "Unsafe write template",
+                    "readOnly": false,
+                    "command": "execute",
+                    "connection": CONNECTION_ID,
+                    "inputSchema": {
+                        "type": "object",
+                        "properties": {
+                            "name": { "type": "string" }
+                        },
+                        "required": ["name"],
+                        "additionalProperties": false
+                    },
+                    "input": {
+                        "sql": "DELETE FROM users WHERE name = {{name}}"
+                    }
                 }
             ]
         }
@@ -201,7 +291,7 @@ async fn definitions_are_absent_until_opted_in_and_disappear_immediately() {
 
     opt_in(&test.state, &[PLUGIN_ID], &[]).await;
     let definitions = bridge_tool_definitions(&test.state).await;
-    assert_eq!(definitions.len(), 2);
+    assert_eq!(definitions.len(), 7);
     assert!(definitions
         .iter()
         .any(|definition| definition.name == "plugin_acme.bridge__list_users"));
@@ -331,6 +421,119 @@ async fn non_readonly_plugin_requires_allow_once_and_never_runs_otherwise() {
     .await;
     assert!(!output.contains("Error"), "{output}");
     assert!(test.mock.execute_calls() > before);
+}
+
+#[tokio::test]
+async fn approval_sql_is_redacted_and_escaped_for_both_execution_paths() {
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    let fixtures = tempfile::tempdir().unwrap();
+    install_fixture(&test.state, fixtures.path()).await;
+    opt_in(&test.state, &[PLUGIN_ID], &[]).await;
+
+    // Read-only: no prompt, but the same SQL-aware template renderer is used
+    // on execution; O'Brien must not escape the WHERE literal.
+    let read_port = ScriptedApproval::new(McpApprovalDecision::Deny);
+    let read = authorize_bridge_tool_with_port(
+        &test.state,
+        &read_port,
+        "req-read-injection",
+        "plugin_acme.bridge__find_user",
+        r#"{"name":"O'Brien"}"#,
+        None,
+    )
+    .await;
+    assert_eq!(read, BridgeToolDecision::Allow);
+    assert_eq!(read_port.request_count(), 0);
+    let before_queries = test.mock.query_calls();
+    let output = execute_plugin_tool(
+        &test.state,
+        "req-read-injection",
+        &ctx(),
+        &call("plugin_acme.bridge__find_user", r#"{"name":"O'Brien"}"#),
+    )
+    .await;
+    assert!(!output.contains("Error"), "{output}");
+    assert!(test.mock.query_calls() > before_queries);
+
+    // Non-read-only: approval SQL is rendered from redacted arguments with
+    // the same literal escaping, so neither the password nor an injected
+    // quote reaches the approval payload.
+    let write_port = ScriptedApproval::new(McpApprovalDecision::AllowOnce);
+    let write = authorize_bridge_tool_with_port(
+        &test.state,
+        &write_port,
+        "req-write-preview",
+        "plugin_acme.bridge__delete_by_password",
+        r#"{"password":"hunter2","name":"O'Brien","id":7}"#,
+        None,
+    )
+    .await;
+    assert_eq!(write, BridgeToolDecision::Allow);
+    let requests = write_port.requests.lock().unwrap();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].arguments["password"], "[REDACTED]");
+    assert_eq!(requests[0].arguments["name"], "O'Brien");
+    let sql = requests[0].sql.as_deref().expect("SQL preview");
+    assert!(!sql.contains("hunter2"), "{sql}");
+    assert!(sql.contains("'[REDACTED]'"), "{sql}");
+    assert!(sql.contains("'O''Brien'"), "{sql}");
+    assert!(!sql.contains("O'Brien"), "{sql}");
+
+    let exact_port = ScriptedApproval::new(McpApprovalDecision::AllowOnce);
+    let exact = authorize_bridge_tool_with_port(
+        &test.state,
+        &exact_port,
+        "req-exact-password",
+        "plugin_acme.bridge__select_password",
+        r#"{"password":"hunter2"}"#,
+        None,
+    )
+    .await;
+    assert_eq!(exact, BridgeToolDecision::Allow);
+    let exact_requests = exact_port.requests.lock().unwrap();
+    assert_eq!(exact_requests.len(), 1);
+    assert_eq!(
+        exact_requests[0].sql.as_deref(),
+        Some("SELECT '[REDACTED]'")
+    );
+    assert!(!exact_requests[0]
+        .sql
+        .as_deref()
+        .unwrap_or_default()
+        .contains("hunter2"));
+}
+
+#[tokio::test]
+async fn unsafe_sql_templates_are_rejected_before_prompt_or_execution() {
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    let fixtures = tempfile::tempdir().unwrap();
+    install_fixture(&test.state, fixtures.path()).await;
+    opt_in(&test.state, &[PLUGIN_ID], &[]).await;
+
+    for tool in [
+        "plugin_acme.bridge__unsafe_read",
+        "plugin_acme.bridge__unsafe_write",
+    ] {
+        let port = ScriptedApproval::new(McpApprovalDecision::AllowOnce);
+        let before_query = test.mock.query_calls();
+        let before_execute = test.mock.execute_calls();
+        let decision = authorize_bridge_tool_with_port(
+            &test.state,
+            &port,
+            "req-unsafe",
+            tool,
+            r#"{"name":"O'Brien"}"#,
+            None,
+        )
+        .await;
+        assert!(
+            matches!(decision, BridgeToolDecision::Deny { .. }),
+            "{tool}: {decision:?}"
+        );
+        assert_eq!(port.request_count(), 0, "{tool} must not prompt");
+        assert_eq!(test.mock.query_calls(), before_query, "{tool} executed");
+        assert_eq!(test.mock.execute_calls(), before_execute, "{tool} executed");
+    }
 }
 
 #[tokio::test]
