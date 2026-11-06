@@ -22,7 +22,7 @@
 | BUG-018 | T20 | Redis key_pattern 可被多 key EXISTS 绕过；拒绝的 Redis 命令审计记为 allow；batch 无逐语句审计且审计 rowCount 为空 | 已验证 |
 | BUG-019 | T21 | HTTP token 输入框使用未定义的 Tailwind 颜色类 `bg-bg`，`tailwind-colour-classes` 门禁失败 | 已验证 |
 | BUG-020 | T22 | 插件模板参数未转义：审批 SQL 泄漏凭据，SQL 字面量可被参数改变 | 已验证 |
-| BUG-021 | T22 | Workflow 工具参数未转义：模型可改写只读 Workflow 的 SQL | 待修复（复测未通过） |
+| BUG-021 | T22 | Workflow 工具参数未转义：模型可改写只读 Workflow 的 SQL | 已验证 |
 
 
 ## T19 MCP scope / 逐次审批 / 审计验收记录（已验证）
@@ -358,3 +358,28 @@ authorize => Allow（期望 deny）
 | T22 host bridge | 21 passed |
 | 全量前端（未改前端） | 8233 passed / 8 既有环境失败 |
 | fmt / diff | 0 / 0 |
+
+## T22 `4242cbee0` 最终复测：BUG-021 已验证
+
+`fix: reject malformed loop template paths` 通过独立复测。
+
+| 验收项 | 结果 |
+|---|---|
+| loop `item..id`、`item.`、`.id`、`item...id`、`item.id..`、`item.rows..name` | authorize + execute deny，`workflowTemplateInvalid`，零查询 |
+| step `steps.q1..name`、`steps.q1.id..` | authorize + execute deny，零查询 |
+| 合法 `item.id`、`item.rows[0].name`、`steps.q1.rows[0].name` | authorize/execute 通过，`O'Brien` -> `O''Brien` |
+| 前两轮 execute 重校验、TOCTOU、未定义 steps | 不回归 |
+| 插件 BUG-020、T19–T21 | 不回归 |
+
+| 范围 | 结果 |
+|---|---|
+| `datazen --features ai,workflow,wapps` | 1721 passed |
+| `datazen --features mcp` | 1725 passed |
+| `datazen_desktop` | 1404 passed / 10 ignored |
+| `datazen-server --features mcp` | 361 passed |
+| T22 host bridge | 21 passed |
+| 全量前端 | 8233 passed / 8 既有环境失败 |
+| 映射 worktree typecheck | OK |
+| fmt / diff | 0 / 0 |
+
+独立临时测试已删除；`4242cbee0` 5 个文件均为本修复相关。**BUG-021：已验证。**
