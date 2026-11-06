@@ -11,6 +11,7 @@
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
 use crate::mcp;
+use datazen::mcp::approval::McpApprovalDecision;
 use serde::Serialize;
 use std::sync::Arc;
 use tauri::State;
@@ -100,6 +101,9 @@ pub async fn start_embedded_mcp(state: &AppState) -> Result<(), CommandError> {
 
 /// Stop embedded MCP if running.
 pub async fn stop_embedded_mcp() -> Result<(), CommandError> {
+    // Stopping the embedded server must also release any MCP call paused for
+    // approval. The call then audits `cancel` and never executes its tool body.
+    mcp::approval_broker().cancel_all();
     let mut guard = MCP_HANDLE.lock().await;
     if let Some(mut h) = guard.take() {
         h.cancel.cancel();
@@ -160,6 +164,54 @@ pub async fn mcp_list_all_tools() -> Result<Vec<String>, CommandError> {
         .iter()
         .map(|s| s.to_string())
         .collect())
+}
+
+/// Answer one pending MCP approval. `allow_once` is the only value that lets
+/// the paused call proceed; every other value is terminal for that call.
+#[tauri::command]
+pub async fn mcp_respond_approval(
+    request_id: String,
+    decision: String,
+) -> Result<bool, CommandError> {
+    let decision = match decision.as_str() {
+        "allow_once" | "allow" => McpApprovalDecision::AllowOnce,
+        "deny" => McpApprovalDecision::Deny,
+        "timeout" => McpApprovalDecision::Timeout,
+        "cancel" => McpApprovalDecision::Cancel,
+        other => {
+            return Err(CommandError::Validation(format!(
+                "unknown MCP approval decision: {other}"
+            )))
+        }
+    };
+    Ok(mcp::approval_broker().respond(&request_id, decision))
+}
+
+/// Cancel a pending MCP approval (the dialog's Stop button).
+#[tauri::command]
+pub async fn mcp_cancel_approval(request_id: String) -> Result<bool, CommandError> {
+    Ok(mcp::approval_broker().cancel(&request_id))
+}
+
+#[tauri::command]
+pub async fn mcp_cancel_all_approvals() -> Result<usize, CommandError> {
+    Ok(mcp::approval_broker().cancel_all())
+}
+
+/// Newest-first audit rows for the MCP settings panel. No SQL or arguments are
+/// stored, so this response cannot leak credentials.
+#[tauri::command]
+pub async fn mcp_list_audit_log(
+    state: State<'_, AppState>,
+    limit: Option<usize>,
+) -> Result<Vec<crate::store::McpAuditRecord>, CommandError> {
+    let rows = state
+        .store
+        .mcp_audit_log()
+        .list(limit.unwrap_or(100))
+        .await
+        .map_err(|_| CommandError::Internal("Failed to read MCP audit log".into()))?;
+    Ok(rows)
 }
 
 // ─── MCP Client commands ───

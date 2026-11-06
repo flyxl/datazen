@@ -3,7 +3,6 @@
 use super::server::{DataZenMcpServer, MCP_ALL_TOOLS};
 #[cfg(test)]
 use super::types::*;
-#[cfg(test)]
 use crate::mcp::tool_help;
 use datazen::ai::budget;
 use datazen::mcp::allowlist;
@@ -105,6 +104,13 @@ impl DataZenMcpServer {
             let db = parts.get(1).copied().unwrap_or("");
 
             self.ensure_allowed("schema_resource", connection_id)?;
+            // Schema resources are data access too: an active database scope
+            // must reject a resource URI naming a database outside it before
+            // the schema reader runs. A namespace scope has no verifiable
+            // namespace in this URI shape and therefore fails closed.
+            self.tool_policy()
+                .ensure_schema_resource_scope(db)
+                .map_err(|error| tool_help::tool_error("schema_resource", &error))?;
             let schema_ddl = datazen::ai::schema_context::connection_schema_context(
                 self.resource_host.as_ref(),
                 connection_id,
@@ -131,107 +137,122 @@ impl DataZenMcpServer {
         name: &str,
         arguments: Option<serde_json::Value>,
     ) -> Result<CallToolResult, McpError> {
+        if !self.tool_is_registered(name) {
+            return Err(tool_help::unknown_tool_error(name));
+        }
         let arg_map = arguments.as_ref().and_then(|v| v.as_object());
-        permission::check_tool_call(name, self.permission_mode, &self.disabled_tools, arg_map)
-            .map_err(|e| tool_help::tool_error(name, &e))?;
+        let prepared = self.prepare_tool_call(name, arg_map).await?;
 
-        let text = match name {
-            "list_connections" => self.list_connections().await?,
-            "list_databases" => {
-                let connection_id = arguments
-                    .as_ref()
-                    .and_then(|a| a.get("connection_id"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                self.list_databases(Parameters(ListDatabasesInput {
-                    connection_id: connection_id.into(),
-                }))
-                .await?
-            }
-            "list_tables" => {
-                let connection_id = arguments
-                    .as_ref()
-                    .and_then(|a| a.get("connection_id"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                let database = arguments
-                    .as_ref()
-                    .and_then(|a| a.get("database"))
-                    .and_then(|v| v.as_str())
-                    .map(String::from);
-                let schema = arguments
-                    .as_ref()
-                    .and_then(|a| a.get("schema"))
-                    .and_then(|v| v.as_str())
-                    .map(String::from);
-                self.list_tables(Parameters(ListTablesInput {
-                    connection_id: connection_id.into(),
-                    database,
-                    schema,
-                }))
-                .await?
-            }
-            "search_tables" => {
-                let connection_id = arguments
-                    .as_ref()
-                    .and_then(|a| a.get("connection_id"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                let database = arguments
-                    .as_ref()
-                    .and_then(|a| a.get("database"))
-                    .and_then(|v| v.as_str())
-                    .map(String::from);
-                let pattern = arguments
-                    .as_ref()
-                    .and_then(|a| a.get("pattern"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                let limit = arguments
-                    .as_ref()
-                    .and_then(|a| a.get("limit"))
-                    .and_then(|v| v.as_u64());
-                let schema = arguments
-                    .as_ref()
-                    .and_then(|a| a.get("schema"))
-                    .and_then(|v| v.as_str())
-                    .map(String::from);
-                self.search_tables(Parameters(SearchTablesInput {
-                    connection_id: connection_id.into(),
-                    database,
-                    schema,
-                    pattern: pattern.into(),
-                    limit,
-                }))
-                .await?
-            }
-            "query" => {
-                let connection_id = arguments
-                    .as_ref()
-                    .and_then(|a| a.get("connection_id"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                let sql = arguments
-                    .as_ref()
-                    .and_then(|a| a.get("sql"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("");
-                let limit = arguments
-                    .as_ref()
-                    .and_then(|a| a.get("limit"))
-                    .and_then(|v| v.as_u64())
-                    .map(|n| n as u32);
-                self.query(Parameters(QueryInput {
-                    connection_id: connection_id.into(),
-                    sql: sql.into(),
-                    limit,
-                }))
-                .await?
-            }
-            other => return Err(tool_help::unknown_tool_error(other)),
-        };
+        let outcome: Result<String, McpError> = async {
+            let text = match name {
+                "list_connections" => self.list_connections().await?,
+                "list_databases" => {
+                    let connection_id = arguments
+                        .as_ref()
+                        .and_then(|a| a.get("connection_id"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    self.list_databases(Parameters(ListDatabasesInput {
+                        connection_id: connection_id.into(),
+                    }))
+                    .await?
+                }
+                "list_tables" => {
+                    let connection_id = arguments
+                        .as_ref()
+                        .and_then(|a| a.get("connection_id"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let database = arguments
+                        .as_ref()
+                        .and_then(|a| a.get("database"))
+                        .and_then(|v| v.as_str())
+                        .map(String::from);
+                    let schema = arguments
+                        .as_ref()
+                        .and_then(|a| a.get("schema"))
+                        .and_then(|v| v.as_str())
+                        .map(String::from);
+                    self.list_tables(Parameters(ListTablesInput {
+                        connection_id: connection_id.into(),
+                        database,
+                        schema,
+                    }))
+                    .await?
+                }
+                "search_tables" => {
+                    let connection_id = arguments
+                        .as_ref()
+                        .and_then(|a| a.get("connection_id"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let database = arguments
+                        .as_ref()
+                        .and_then(|a| a.get("database"))
+                        .and_then(|v| v.as_str())
+                        .map(String::from);
+                    let pattern = arguments
+                        .as_ref()
+                        .and_then(|a| a.get("pattern"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let limit = arguments
+                        .as_ref()
+                        .and_then(|a| a.get("limit"))
+                        .and_then(|v| v.as_u64());
+                    let schema = arguments
+                        .as_ref()
+                        .and_then(|a| a.get("schema"))
+                        .and_then(|v| v.as_str())
+                        .map(String::from);
+                    self.search_tables(Parameters(SearchTablesInput {
+                        connection_id: connection_id.into(),
+                        database,
+                        schema,
+                        pattern: pattern.into(),
+                        limit,
+                    }))
+                    .await?
+                }
+                "query" => {
+                    let connection_id = arguments
+                        .as_ref()
+                        .and_then(|a| a.get("connection_id"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let sql = arguments
+                        .as_ref()
+                        .and_then(|a| a.get("sql"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
+                    let limit = arguments
+                        .as_ref()
+                        .and_then(|a| a.get("limit"))
+                        .and_then(|v| v.as_u64())
+                        .map(|n| n as u32);
+                    self.query(Parameters(QueryInput {
+                        connection_id: connection_id.into(),
+                        sql: sql.into(),
+                        limit,
+                    }))
+                    .await?
+                }
+                other => return Err(tool_help::unknown_tool_error(other)),
+            };
+            Ok(text)
+        }
+        .await;
 
-        Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
+        match outcome {
+            Ok(text) => {
+                self.audit_allowed_call(name, &prepared, &text).await;
+                Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
+            }
+            Err(error) => {
+                self.audit_allowed_call(name, &prepared, "").await;
+                Err(error)
+            }
+        }
     }
 
     pub(crate) fn list_tools_inner(&self) -> Vec<Tool> {

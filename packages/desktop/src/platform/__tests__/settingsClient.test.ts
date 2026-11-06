@@ -37,6 +37,8 @@ const HOST_BLOB: AppSettings = {
   mcpDisabledTools: [],
   mcpPermissionMode: 'safe_write',
   mcpAllowedConnectionIds: [],
+  mcpAllowedDatabases: [],
+  mcpAllowedNamespaces: [],
   contextDir: '/home/user/ai-context',
   favoritesRoot: undefined,
   checkForUpdatesOnStartup: true,

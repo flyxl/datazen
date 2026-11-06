@@ -22,6 +22,8 @@ describe('settingsExport', () => {
     mcpDisabledTools: [],
     mcpPermissionMode: 'safe_write',
     mcpAllowedConnectionIds: [],
+    mcpAllowedDatabases: [],
+    mcpAllowedNamespaces: [],
     contextDir: '',
     checkForUpdatesOnStartup: false,
     autoChartOnQuery: false,

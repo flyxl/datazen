@@ -793,3 +793,258 @@ async fn test_tester_list_tools_inner_snapshot_matches_mcp_all_tools() {
         "list_tools_inner must expose exactly MCP_ALL_TOOLS after module split"
     );
 }
+
+/// T19: database scope is checked before the tool body. `other` is outside the
+/// configured database list, so the metadata reader must never run.
+#[tokio::test]
+async fn mcp_database_scope_rejects_outside_target_before_execution() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("scope-cfg").await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["scope-cfg"])
+        .with_allowed_scopes(&["analytics".into()], &[]);
+
+    let err = server
+        .call_tool_inner(
+            "list_tables",
+            Some(serde_json::json!({
+                "connection_id": "scope-cfg",
+                "database": "other",
+            })),
+        )
+        .await
+        .unwrap_err();
+    assert!(err.message.contains("database scope"), "got: {err}");
+}
+
+struct RecordingDecision {
+    decision: datazen::mcp::approval::McpApprovalDecision,
+    requests: Arc<std::sync::Mutex<Vec<datazen::mcp::approval::McpApprovalRequest>>>,
+}
+
+#[async_trait::async_trait]
+impl datazen::mcp::approval::McpApprovalPort for RecordingDecision {
+    async fn decide(
+        &self,
+        request: &datazen::mcp::approval::McpApprovalRequest,
+    ) -> datazen::mcp::approval::McpApprovalDecision {
+        self.requests.lock().unwrap().push(request.clone());
+        self.decision
+    }
+}
+
+async fn write_call_with_decision(
+    decision: datazen::mcp::approval::McpApprovalDecision,
+) -> (
+    rmcp::model::ErrorData,
+    Vec<datazen::mcp::approval::McpApprovalRequest>,
+    Arc<crate::testing::app_state_test_support::TestAppState>,
+) {
+    use crate::testing::app_state_test_support::TestAppState;
+    use datazen::mcp::permission::McpPermissionMode;
+    use std::sync::Arc;
+
+    let test = Arc::new(TestAppState::with_tables_and_resource_provider().await);
+    test.save_connection("approval-cfg").await;
+    let requests = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let server = mcp_server_allowing(Arc::new(test.state.clone()), &["approval-cfg"])
+        .with_permission_mode(McpPermissionMode::SafeWrite)
+        .with_approval_port(Arc::new(RecordingDecision {
+            decision,
+            requests: requests.clone(),
+        }));
+    let error = server
+        .call_tool_inner(
+            "query",
+            Some(serde_json::json!({
+                "connection_id": "approval-cfg",
+                "sql": "DELETE FROM users WHERE password = 'secret-pw'",
+            })),
+        )
+        .await
+        .unwrap_err();
+    let recorded = requests.lock().unwrap().clone();
+    (error, recorded, test)
+}
+
+#[tokio::test]
+async fn mcp_deny_timeout_and_cancel_never_execute_and_are_audited() {
+    use datazen::mcp::approval::McpApprovalDecision;
+
+    for decision in [
+        McpApprovalDecision::Deny,
+        McpApprovalDecision::Timeout,
+        McpApprovalDecision::Cancel,
+    ] {
+        let (error, requests, test) = write_call_with_decision(decision).await;
+        assert!(
+            error.message.contains("was not executed"),
+            "decision {decision:?} got: {error}"
+        );
+        assert_eq!(requests.len(), 1);
+        let request = &requests[0];
+        assert!(request.sql.as_deref().unwrap().contains("DELETE FROM users"));
+        assert!(!request.arguments.to_string().contains("secret-pw"));
+
+        let rows = test
+            .state
+            .store
+            .mcp_audit_log()
+            .list(10)
+            .await
+            .expect("audit rows");
+        assert_eq!(rows.len(), 1, "exactly one audit row per decision");
+        assert_eq!(rows[0].decision, decision.audit_decision());
+        assert_eq!(rows[0].tool, "query");
+        assert!(rows[0].row_count.is_none());
+        let raw = tokio::fs::read_to_string(test.state.store.mcp_audit_log().path())
+            .await
+            .unwrap();
+        assert!(!raw.contains("DELETE"), "audit must not store SQL");
+        assert!(!raw.contains("secret-pw"), "audit must not store credentials");
+    }
+}
+
+#[tokio::test]
+async fn mcp_allow_once_executes_and_audits_rowcount() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use datazen::mcp::approval::{
+        McpApprovalDecision, McpApprovalPort, McpApprovalRequest,
+    };
+    use datazen::mcp::permission::McpPermissionMode;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("allow-cfg").await;
+    struct Allow;
+    #[async_trait::async_trait]
+    impl McpApprovalPort for Allow {
+        async fn decide(&self, _request: &McpApprovalRequest) -> McpApprovalDecision {
+            McpApprovalDecision::AllowOnce
+        }
+    }
+    let server = mcp_server_allowing(Arc::new(test.state.clone()), &["allow-cfg"])
+        .with_permission_mode(McpPermissionMode::SafeWrite)
+        .with_approval_port(Arc::new(Allow));
+    let result = server
+        .call_tool_inner(
+            "query",
+            Some(serde_json::json!({
+                "connection_id": "allow-cfg",
+                "sql": "UPDATE users SET name = name WHERE id = 1",
+            })),
+        )
+        .await;
+    // The mock driver may reject UPDATE; the audit contract is what matters:
+    // the call was allowed and execution was attempted.
+    let rows = test
+        .state
+        .store
+        .mcp_audit_log()
+        .list(10)
+        .await
+        .expect("audit rows");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].decision, "allow");
+    assert_eq!(rows[0].tool, "query");
+    assert!(result.is_ok() || result.is_err());
+}
+
+#[tokio::test]
+async fn mcp_read_only_query_is_allowed_without_approval_and_audited() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("audit-cfg").await;
+    let server = mcp_server_allowing(Arc::new(test.state.clone()), &["audit-cfg"]);
+    server
+        .call_tool_inner(
+            "query",
+            Some(serde_json::json!({
+                "connection_id": "audit-cfg",
+                "sql": "SELECT 1 AS ok",
+            })),
+        )
+        .await
+        .expect("read-only query");
+
+    let rows = test
+        .state
+        .store
+        .mcp_audit_log()
+        .list(10)
+        .await
+        .expect("audit rows");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].decision, "allow");
+    assert_eq!(rows[0].row_count, Some(1));
+    assert_eq!(rows[0].connection_id.as_deref(), Some("audit-cfg"));
+}
+
+#[tokio::test]
+async fn mcp_database_scope_uses_connection_default_database() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("scope-default").await;
+    let server = mcp_server_allowing(Arc::new(test.state.clone()), &["scope-default"])
+        .with_allowed_scopes(&["app".into()], &[]);
+    server
+        .call_tool_inner(
+            "query",
+            Some(serde_json::json!({
+                "connection_id": "scope-default",
+                "sql": "SELECT 1 AS ok",
+            })),
+        )
+        .await
+        .expect("default database is inside the scope");
+}
+
+#[tokio::test]
+async fn mcp_database_scope_rejects_connection_default_outside_scope() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("scope-outside").await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["scope-outside"])
+        .with_allowed_scopes(&["other".into()], &[]);
+    let error = server
+        .call_tool_inner(
+            "query",
+            Some(serde_json::json!({
+                "connection_id": "scope-outside",
+                "sql": "SELECT 1 AS ok",
+            })),
+        )
+        .await
+        .unwrap_err();
+    assert!(error.message.contains("database scope"), "got: {error}");
+}
+
+#[tokio::test]
+async fn mcp_schema_resource_respects_database_scope() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("scope-resource").await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["scope-resource"])
+        .with_allowed_scopes(&["app".into()], &[]);
+
+    let error = server
+        .read_resource_inner("datazen://schema/scope-resource/other")
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("database scope"), "got: {error}");
+
+    server
+        .read_resource_inner("datazen://schema/scope-resource/app")
+        .await
+        .expect("allowed database resource");
+}

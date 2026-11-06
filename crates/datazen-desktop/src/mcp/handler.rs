@@ -2,7 +2,6 @@
 
 use super::server::DataZenMcpServer;
 use crate::mcp::tool_help;
-use datazen::mcp::permission;
 use rmcp::model::*;
 use rmcp::service::RequestContext;
 use rmcp::{prompt_handler, tool_handler, ErrorData as McpError, RoleServer, ServerHandler};
@@ -33,25 +32,21 @@ impl ServerHandler for DataZenMcpServer {
             return Err(tool_help::unknown_tool_error(&tool_name));
         }
 
-        permission::check_tool_call(
-            &tool_name,
-            self.permission_mode,
-            &self.disabled_tools,
-            request.arguments.as_ref(),
-        )
-        .map_err(|e| tool_help::tool_error(&tool_name, &e))?;
-
-        if let Some(args) = request.arguments.as_ref() {
-            if let Some(connection_id) = args.get("connection_id").and_then(|v| v.as_str()) {
-                self.ensure_allowed(&tool_name, connection_id)?;
-            }
-        }
+        let prepared = self
+            .prepare_tool_call(&tool_name, request.arguments.as_ref())
+            .await?;
 
         let tcc = rmcp::handler::server::tool::ToolCallContext::new(self, request, context);
-        Self::tool_router()
-            .call(tcc)
-            .await
-            .map_err(|e| tool_help::enrich_tool_error(&tool_name, e))
+        let outcome = Self::tool_router().call(tcc).await;
+        let text = outcome
+            .as_ref()
+            .ok()
+            .and_then(|result| result.content.first())
+            .and_then(|content| content.as_text())
+            .map(|text| text.text.as_str())
+            .unwrap_or("");
+        self.audit_allowed_call(&tool_name, &prepared, text).await;
+        outcome.map_err(|e| tool_help::enrich_tool_error(&tool_name, e))
     }
 
     fn get_info(&self) -> ServerInfo {

@@ -27,4 +27,6 @@ pub use application::session;
 pub use application::session_tools;
 pub use application::tools;
 pub use domain::allowlist;
+pub use domain::approval;
 pub use domain::permission;
+pub use domain::policy;

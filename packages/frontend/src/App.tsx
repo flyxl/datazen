@@ -3,6 +3,7 @@ import { getWindowKind } from './lib/windowKind';
 import { mark } from './lib/startupTimer';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { WebContextMenuHost } from './components/ui/WebContextMenu';
+import { McpApprovalHost } from './components/McpApprovalHost';
 import { WindowChromeFallback } from './components/WindowChromeFallback';
 import { hideSplash } from './lib/splash';
 import {
@@ -98,6 +99,7 @@ export default function App() {
         <WindowContent />
       </Suspense>
       <WebContextMenuHost />
+      <McpApprovalHost />
     </ErrorBoundary>
   );
 }

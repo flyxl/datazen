@@ -468,6 +468,22 @@
 
 **测试**：策略矩阵单测；审批端口集成测试；审计查询测试。
 
+**实现（T19）**：
+
+- 纯策略 `datazen::mcp::domain::policy::McpToolPolicy`：连接 allowlist 先于
+  database/namespace scope；scope 为空不增加限制；工具缺少可验证目标时失败关闭。
+  `query`/元数据工具在 scope 开启时用连接自身的默认 database/schema 补齐目标。
+- 审批端口 `datazen::mcp::domain::approval::{McpApprovalPort, McpApprovalRequest}`：
+  桌面 broker 通过 `mcp:approval-requested` 事件暂停非只读/高风险调用；
+  Allow once/Deny/5 分钟超时/Stop 全部在工具 body 之前落定。审批 payload 复用
+  `ai::domain::safety` 的凭据脱敏，展示精确 SQL/参数、连接、database、namespace。
+- 审计：App data 下追加式 `mcp-audit.jsonl`（who/when/connection/tool/rowcount/
+  decision/requestId），不写 SQL/参数/凭据；查询命令 `mcp_list_audit_log`。
+  写入失败只 `tracing::warn` 并广播 `mcp:audit-error`，不阻断调用。
+- 前端：MCP 设置新增 database/namespace scope 与审计表；全局
+  `McpApprovalHost` 显示倒计时、Allow once/Deny/Stop，并消费真实 Tauri 事件流。
+- 设置新增 `mcpAllowedDatabases`/`mcpAllowedNamespaces`（shared settings 白名单内）。
+
 ---
 
 ### T20 MCP batch 与 Redis 只读工具

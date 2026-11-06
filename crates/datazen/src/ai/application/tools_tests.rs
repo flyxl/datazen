@@ -64,6 +64,8 @@ fn execution_settings() -> ExecutionSettings {
         mcp_disabled_tools: Vec::new(),
         mcp_permission_mode: "read_only".into(),
         mcp_allowed_connection_ids: Vec::new(),
+        mcp_allowed_databases: Vec::new(),
+        mcp_allowed_namespaces: Vec::new(),
         driver_settings: serde_json::Map::new(),
         ai_strict_egress: false,
     }

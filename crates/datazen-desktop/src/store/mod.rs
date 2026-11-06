@@ -11,6 +11,7 @@ pub(crate) mod history_db;
 pub(crate) mod key_backend;
 mod key_codec;
 mod key_store;
+mod mcp_audit;
 mod migration_profile_reader;
 mod models;
 mod named_views;
@@ -38,6 +39,7 @@ pub use history_db::{
     HistoryDb, HistoryOrder, HistoryScope, MigrationProfileRef, MigrationRunFilter,
     MigrationRunPage, MigrationRunRecord, QueryHistoryFilter, QueryHistoryPage,
 };
+pub use mcp_audit::{new_audit_record, McpAuditLog, McpAuditRecord, MCP_AUDIT_FILE};
 pub use models::{FavoriteQuery, QueryHistoryEntry, SyncTask};
 // The named-view DTO itself is the shared layer's
 // (`datazen::named_views`); the store only contributes

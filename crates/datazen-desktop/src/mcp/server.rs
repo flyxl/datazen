@@ -6,7 +6,9 @@ use crate::mcp::tool_help;
 use crate::platform::identity::{new_request_id, DesktopIdentity};
 use datazen::application::identity_policy::IdentityPolicy;
 use datazen::mcp::allowlist;
+use datazen::mcp::approval::{approval_preview, McpApprovalDecision, McpApprovalPort};
 use datazen::mcp::permission::McpPermissionMode;
+use datazen::mcp::policy::{McpCallPlan, McpToolPolicy};
 use datazen::mcp::session_tools::{StatefulCall, StatefulSessionHost};
 use datazen::shared::context::{OwnerRef, RequestContext};
 use datazen::shared::id::ClientInstanceId;
@@ -14,6 +16,7 @@ use datazen::workflow::resource_execution::ResourceExecutionHost;
 use rmcp::ErrorData as McpError;
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Duration;
 
 pub use super::types::*;
 
@@ -28,6 +31,15 @@ pub struct DataZenMcpServer {
     pub(crate) permission_mode: McpPermissionMode,
     /// Non-empty allowlist required — empty means deny-all (secure default).
     pub(crate) allowed_connection_ids: Vec<String>,
+    /// Additional database scope, intersected with the connection allowlist.
+    /// Empty means no additional scope (backward-compatible secure default).
+    pub(crate) allowed_databases: Vec<String>,
+    /// Additional namespace/schema scope, intersected with the allowlist.
+    /// Empty means no additional scope.
+    pub(crate) allowed_namespaces: Vec<String>,
+    /// Approval presenter; production is the Tauri event broker, tests inject
+    /// a deterministic port. Missing presenter fails closed.
+    pub(crate) approvals: Arc<dyn McpApprovalPort>,
     /// Stateful tool mappings (memory only). Shared across clones: the tool router
     /// keeps its own clone, and a mapping opened through it must stay visible to
     /// the server that owns the transport.
@@ -60,12 +72,16 @@ pub const MCP_ALL_TOOLS: &[&str] = &[
 
 impl DataZenMcpServer {
     pub fn new(app_state: Arc<AppState>) -> Self {
+        let approvals = default_approval_port(&app_state);
         Self {
             resource_host: crate::services::runtime_command_source::resource_host(&app_state),
             app_state,
             disabled_tools: HashSet::new(),
             permission_mode: McpPermissionMode::default(),
             allowed_connection_ids: Vec::new(),
+            allowed_databases: Vec::new(),
+            allowed_namespaces: Vec::new(),
+            approvals,
             sessions: Arc::new(McpSessionRegistry::new()),
             client_instance_id: crate::platform::identity::new_client_instance_id().to_string(),
         }
@@ -122,6 +138,215 @@ impl DataZenMcpServer {
         self
     }
 
+    pub fn with_allowed_scopes(mut self, databases: &[String], namespaces: &[String]) -> Self {
+        self.allowed_databases = databases.to_vec();
+        self.allowed_namespaces = namespaces.to_vec();
+        self
+    }
+
+    pub fn with_approval_port(mut self, approvals: Arc<dyn McpApprovalPort>) -> Self {
+        self.approvals = approvals;
+        self
+    }
+
+    pub(crate) fn tool_policy(&self) -> McpToolPolicy {
+        McpToolPolicy {
+            permission_mode: self.permission_mode,
+            disabled_tools: self.disabled_tools.clone(),
+            allowed_connection_ids: self.allowed_connection_ids.clone(),
+            allowed_databases: self.allowed_databases.clone(),
+            allowed_namespaces: self.allowed_namespaces.clone(),
+        }
+    }
+
+    /// Pre-dispatch gate. A plan can only come back after permission, scope,
+    /// and (for writes) an explicit Allow once. Denied calls are audited here
+    /// and never reach a tool body.
+    pub(crate) async fn prepare_tool_call(
+        &self,
+        tool_name: &str,
+        arguments: Option<&serde_json::Map<String, serde_json::Value>>,
+    ) -> Result<PreparedToolCall, McpError> {
+        let scoped_arguments = self.with_scope_defaults(arguments).await;
+        let target_arguments = scoped_arguments.as_ref().or(arguments);
+        let plan = match self.tool_policy().evaluate(tool_name, target_arguments) {
+            Ok(plan) => plan,
+            Err(error) => {
+                let (connection_id, database, namespace) = audit_target(target_arguments);
+                self.audit_tool_call(
+                    tool_name,
+                    connection_id,
+                    database,
+                    namespace,
+                    "deny",
+                    None,
+                    None,
+                )
+                .await;
+                return Err(tool_help::tool_error(tool_name, &error));
+            }
+        };
+
+        let mut approval_request_id = None;
+        if plan.requires_approval {
+            let request_id = new_request_id().to_string();
+            let timeout = Duration::from_secs(5 * 60);
+            let now = chrono::Utc::now();
+            let request = approval_preview(
+                &request_id,
+                tool_name,
+                plan.connection_id.as_deref(),
+                plan.database.as_deref(),
+                plan.namespace.as_deref(),
+                plan.sql.as_deref(),
+                arguments,
+                &now.to_rfc3339(),
+                &(now + chrono::Duration::from_std(timeout).unwrap_or_default()).to_rfc3339(),
+                timeout.as_millis() as u64,
+            );
+            let decision = self.approvals.decide(&request).await;
+            if !decision.is_allowed() {
+                self.audit_tool_call(
+                    tool_name,
+                    plan.connection_id.clone(),
+                    plan.database.clone(),
+                    plan.namespace.clone(),
+                    decision.audit_decision(),
+                    None,
+                    Some(request_id),
+                )
+                .await;
+                let reason = match decision {
+                    McpApprovalDecision::Deny => "denied by the user",
+                    McpApprovalDecision::Timeout => "approval timed out (5 minutes)",
+                    McpApprovalDecision::Cancel => "cancelled by the user",
+                    McpApprovalDecision::AllowOnce => unreachable!(),
+                };
+                return Err(tool_help::tool_error(
+                    tool_name,
+                    &format!("MCP call was not executed: {reason}"),
+                ));
+            }
+            approval_request_id = Some(request_id);
+        }
+
+        Ok(PreparedToolCall {
+            plan,
+            approval_request_id,
+        })
+    }
+
+    /// Fill the connection's own default database/schema before scope
+    /// evaluation. MCP `query` and metadata tools do not take a database
+    /// argument, so without this a restricted database scope would reject the
+    /// connection's normal default target even when that target is allowed.
+    async fn with_scope_defaults(
+        &self,
+        arguments: Option<&serde_json::Map<String, serde_json::Value>>,
+    ) -> Option<serde_json::Map<String, serde_json::Value>> {
+        if self.allowed_databases.is_empty() && self.allowed_namespaces.is_empty() {
+            return arguments.cloned();
+        }
+        let connection_id = arguments
+            .and_then(|args| args.get("connection_id"))
+            .and_then(|value| value.as_str())?;
+        let connection = self.app_state.store.get_connection(connection_id).await?;
+        let mut scoped = arguments.cloned().unwrap_or_default();
+        if !self.allowed_databases.is_empty() && !scoped.contains_key("database") {
+            if let Some(database) = connection.database {
+                scoped.insert("database".into(), serde_json::Value::String(database));
+            }
+        }
+        if !self.allowed_namespaces.is_empty() && !scoped.contains_key("schema") {
+            if let Some(schema) = connection.schema {
+                scoped.insert("schema".into(), serde_json::Value::String(schema));
+            }
+        }
+        Some(scoped)
+    }
+
+    /// Persist the final allow/deny outcome. Audit failures are logged and
+    /// emitted as a visible event, never propagated into the tool result.
+    pub(crate) async fn audit_tool_call(
+        &self,
+        tool_name: &str,
+        connection_id: Option<String>,
+        database: Option<String>,
+        namespace: Option<String>,
+        decision: &str,
+        row_count: Option<i64>,
+        request_id: Option<String>,
+    ) {
+        let (organization_id, principal_id) = self.audit_identity();
+        let record = crate::store::new_audit_record(
+            organization_id,
+            principal_id,
+            connection_id,
+            database,
+            namespace,
+            tool_name,
+            decision,
+            row_count,
+            request_id,
+        );
+        if self
+            .app_state
+            .store
+            .mcp_audit_log()
+            .append(&record)
+            .await
+            .is_err()
+        {
+            // Do not put the storage path or backend error text in a log,
+            // error, or event visible to the user.
+            tracing::warn!(tool = tool_name, "MCP audit append failed");
+            self.emit_audit_error("MCP audit write failed");
+        }
+    }
+
+    pub(crate) async fn audit_allowed_call(
+        &self,
+        tool_name: &str,
+        prepared: &PreparedToolCall,
+        result_text: &str,
+    ) {
+        self.audit_tool_call(
+            tool_name,
+            prepared.plan.connection_id.clone(),
+            prepared.plan.database.clone(),
+            prepared.plan.namespace.clone(),
+            "allow",
+            matches!(tool_name, "query" | "use_session" | "run_workflow")
+                .then(|| row_count_from_output(result_text))
+                .flatten(),
+            prepared.approval_request_id.clone(),
+        )
+        .await;
+    }
+
+    fn audit_identity(&self) -> (String, String) {
+        if let Ok(adapter) = self.app_state.platform_require() {
+            return (
+                adapter.identity().organization_id().to_string(),
+                adapter.identity().principal_id().to_string(),
+            );
+        }
+        (
+            self.app_state
+                .organization_scope
+                .organization_id()
+                .to_string(),
+            "unknown".to_string(),
+        )
+    }
+
+    fn emit_audit_error(&self, message: &str) {
+        if let Some(handle) = self.app_state.app_handle.get().cloned() {
+            use tauri::Emitter;
+            let _ = handle.emit(crate::mcp::MCP_AUDIT_ERROR_EVENT, message);
+        }
+    }
+
     pub(crate) fn map_err(e: String) -> McpError {
         McpError::internal_error(e, None)
     }
@@ -138,6 +363,63 @@ impl DataZenMcpServer {
     pub(crate) fn tool_is_registered(&self, name: &str) -> bool {
         Self::tool_router().get(name).is_some()
     }
+}
+
+fn default_approval_port(app_state: &Arc<AppState>) -> Arc<dyn McpApprovalPort> {
+    let broker = crate::mcp::approval_broker();
+    if let Some(handle) = app_state.app_handle.get().cloned() {
+        broker.attach_app_handle(handle);
+    }
+    broker
+}
+
+/// The policy result retained across execution so the allow audit can record
+/// the exact target and rowcount.
+pub(crate) struct PreparedToolCall {
+    pub(crate) plan: McpCallPlan,
+    pub(crate) approval_request_id: Option<String>,
+}
+
+fn audit_target(
+    arguments: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> (Option<String>, Option<String>, Option<String>) {
+    let value = |key: &str| {
+        arguments
+            .and_then(|args| args.get(key))
+            .and_then(|value| value.as_str())
+            .map(str::to_owned)
+    };
+    (
+        value("connection_id"),
+        value("database"),
+        value("schema").or_else(|| value("namespace")),
+    )
+}
+
+pub(crate) fn row_count_from_output(text: &str) -> Option<i64> {
+    let value: serde_json::Value = serde_json::from_str(text).ok()?;
+    find_row_count(&value)
+}
+
+fn find_row_count(value: &serde_json::Value) -> Option<i64> {
+    if let Some(values) = value.as_array() {
+        return values.iter().find_map(find_row_count);
+    }
+    let object = value.as_object()?;
+    for key in ["rowCount", "row_count", "rowsAffected", "rows_affected"] {
+        if let Some(count) = object.get(key).and_then(|v| v.as_i64()) {
+            return Some(count.max(0));
+        }
+    }
+    if let Some(rows) = object.get("rows").and_then(|v| v.as_array()) {
+        return Some(rows.len() as i64);
+    }
+    for nested in object.values() {
+        if let Some(count) = find_row_count(nested) {
+            return Some(count);
+        }
+    }
+    None
 }
 
 /// M2 主体归位后本机是共享有状态会话端口的形态实现：runtime 租约解析、

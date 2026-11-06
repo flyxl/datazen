@@ -544,6 +544,8 @@ fn global_strict_policy_tightens_an_unconfigured_profile_gate() {
         mcp_disabled_tools: vec![],
         mcp_permission_mode: "safe_write".into(),
         mcp_allowed_connection_ids: vec![],
+        mcp_allowed_databases: vec![],
+        mcp_allowed_namespaces: vec![],
         driver_settings: serde_json::Map::new(),
         ai_strict_egress: true,
     };
@@ -632,6 +634,8 @@ fn non_strict_execution_policy() -> crate::settings::ExecutionSettings {
         mcp_disabled_tools: vec![],
         mcp_permission_mode: "safe_write".into(),
         mcp_allowed_connection_ids: vec![],
+        mcp_allowed_databases: vec![],
+        mcp_allowed_namespaces: vec![],
         driver_settings: serde_json::Map::new(),
         ai_strict_egress: false,
     }

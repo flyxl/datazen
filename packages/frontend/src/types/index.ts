@@ -141,7 +141,6 @@ export type {
 } from '@datazen/driver-sdk';
 import type { ColumnSchema, TableOptionsSnapshot } from '@datazen/driver-sdk';
 
-
 export interface ExplainPlanDetail {
   key: string;
   value: string;
@@ -654,4 +653,35 @@ export interface McpToolInfo {
   qualifiedName: string;
   description?: string;
   inputSchema: Record<string, unknown>;
+}
+
+// ── MCP server approval + audit (T19) ──
+
+export interface McpApprovalRequest {
+  requestId: string;
+  tool: string;
+  connectionId?: string | null;
+  database?: string | null;
+  namespace?: string | null;
+  sql?: string | null;
+  arguments: Record<string, unknown>;
+  createdAt: string;
+  expiresAt: string;
+  timeoutMs: number;
+}
+
+export type McpApprovalDecision = 'allow_once' | 'deny' | 'cancel' | 'timeout';
+
+export interface McpAuditRecord {
+  id: string;
+  organizationId: string;
+  principalId: string;
+  connectionId?: string | null;
+  databaseName?: string | null;
+  namespace?: string | null;
+  tool: string;
+  decision: 'allow' | 'deny' | 'timeout' | 'cancel';
+  rowCount?: number | null;
+  requestId?: string | null;
+  createdAt: string;
 }

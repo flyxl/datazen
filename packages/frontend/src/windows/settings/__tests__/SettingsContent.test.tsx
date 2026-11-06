@@ -26,6 +26,7 @@ const {
   promptSetOverrideMock,
   promptRemoveOverrideMock,
   mcpListAllToolsMock,
+  mcpListAuditLogMock,
   mcpGetStatusMock,
   mcpStartStdioMock,
   mcpStopMock,
@@ -56,6 +57,8 @@ const {
     wappSettings: {},
     mcpClientServers: [],
     mcpAllowedConnectionIds: [],
+    mcpAllowedDatabases: [],
+    mcpAllowedNamespaces: [],
     confirmDangerousExecution: false,
     autoChartOnQuery: false,
     aiStrictEgress: true,
@@ -195,6 +198,7 @@ const {
     promptSetOverrideMock: vi.fn().mockResolvedValue(undefined),
     promptRemoveOverrideMock: vi.fn().mockResolvedValue(undefined),
     mcpListAllToolsMock: vi.fn().mockResolvedValue(['query_db', 'list_tables']),
+    mcpListAuditLogMock: vi.fn().mockResolvedValue([]),
     mcpGetStatusMock: vi.fn().mockResolvedValue({ running: false, transport: 'stdio' }),
     mcpStartStdioMock: vi.fn().mockResolvedValue(undefined),
     mcpStopMock: vi.fn().mockResolvedValue(undefined),
@@ -277,6 +281,7 @@ vi.mock('../../../commands/ai', () => ({
     promptSetOverride: (...a: unknown[]) => promptSetOverrideMock(...a),
     promptRemoveOverride: (...a: unknown[]) => promptRemoveOverrideMock(...a),
     mcpListAllTools: (...a: unknown[]) => mcpListAllToolsMock(...a),
+    mcpListAuditLog: (...a: unknown[]) => mcpListAuditLogMock(...a),
     mcpGetStatus: (...a: unknown[]) => mcpGetStatusMock(...a),
     mcpStartStdio: (...a: unknown[]) => mcpStartStdioMock(...a),
     mcpStop: (...a: unknown[]) => mcpStopMock(...a),
@@ -394,6 +399,7 @@ beforeEach(() => {
   getContextDirMock.mockResolvedValue('/default/context');
   promptListMock.mockResolvedValue(samplePrompts);
   mcpListAllToolsMock.mockResolvedValue(['query_db', 'list_tables']);
+  mcpListAuditLogMock.mockResolvedValue([]);
   mcpGetStatusMock.mockResolvedValue({ running: false, transport: 'stdio' });
   mcpStartStdioMock.mockResolvedValue(undefined);
   mcpStopMock.mockResolvedValue(undefined);
@@ -422,6 +428,8 @@ beforeEach(() => {
     wappSettings: {},
     mcpClientServers: [],
     mcpAllowedConnectionIds: [],
+    mcpAllowedDatabases: [],
+    mcpAllowedNamespaces: [],
     confirmDangerousExecution: false,
     autoChartOnQuery: false,
     aiStrictEgress: true,
@@ -756,6 +764,46 @@ describe('SettingsContent', () => {
     fireEvent.click(screen.getByText('mcp.tools.enableAll'));
     fireEvent.click(enabledSwitch);
     await waitFor(() => expect(mcpStopMock).toHaveBeenCalled());
+  });
+
+  it('saves database/namespace scope and renders audit decisions', async () => {
+    mcpListAuditLogMock.mockResolvedValue([
+      {
+        id: 'audit-1',
+        organizationId: 'org',
+        principalId: 'alice',
+        connectionId: 'conn-1',
+        databaseName: 'analytics',
+        namespace: null,
+        tool: 'query',
+        decision: 'deny',
+        rowCount: 7,
+        requestId: 'req-1',
+        createdAt: '2026-01-01T00:00:00Z',
+      },
+    ]);
+
+    render(<SettingsContent />);
+    await waitForSettingsLoad();
+    goToSection('settings.mcp.title');
+    await waitFor(() => expect(mcpListAuditLogMock).toHaveBeenCalled());
+
+    await waitFor(() => expect(screen.getByText('alice')).toBeInTheDocument());
+    expect(screen.getByText('deny')).toBeInTheDocument();
+    expect(screen.getByText('7')).toBeInTheDocument();
+
+    const textareas = document.querySelectorAll('textarea');
+    fireEvent.change(textareas[0], { target: { value: 'analytics, reporting' } });
+    fireEvent.change(textareas[1], { target: { value: 'public' } });
+    fireEvent.click(screen.getByText('mcp.scope.save'));
+    await waitFor(() =>
+      expect(updateSettingsMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mcpAllowedDatabases: ['analytics', 'reporting'],
+          mcpAllowedNamespaces: ['public'],
+        }),
+      ),
+    );
   });
 
   it('reverts MCP server enable when start fails', async () => {

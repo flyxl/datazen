@@ -80,9 +80,15 @@ pub struct AppSettings {
     /// MCP tool permission tier for external AI clients (default: safe_write).
     #[serde(default)]
     pub mcp_permission_mode: McpPermissionMode,
-    /// Persistent connection config IDs exposed to MCP. Empty = all connections.
+    /// Persistent connection config IDs exposed to MCP. Empty = deny-all.
     #[serde(default)]
     pub mcp_allowed_connection_ids: Vec<String>,
+    /// Additional database scope. Empty = no additional restriction.
+    #[serde(default)]
+    pub mcp_allowed_databases: Vec<String>,
+    /// Additional schema/namespace scope. Empty = no additional restriction.
+    #[serde(default)]
+    pub mcp_allowed_namespaces: Vec<String>,
     #[serde(default)]
     pub context_dir: String,
     /// Directory holding the user's favorites, one `.sql` file each.
@@ -242,6 +248,8 @@ impl Default for AppSettings {
             mcp_disabled_tools: Vec::new(),
             mcp_permission_mode: McpPermissionMode::default(),
             mcp_allowed_connection_ids: Vec::new(),
+            mcp_allowed_databases: Vec::new(),
+            mcp_allowed_namespaces: Vec::new(),
             context_dir: String::new(),
             favorites_root: None,
             check_for_updates_on_startup: false,
@@ -311,6 +319,8 @@ impl AppSettings {
                 }
                 .into(),
                 mcp_allowed_connection_ids: self.mcp_allowed_connection_ids.clone(),
+                mcp_allowed_databases: self.mcp_allowed_databases.clone(),
+                mcp_allowed_namespaces: self.mcp_allowed_namespaces.clone(),
                 driver_settings: self.driver_settings.clone(),
                 ai_strict_egress: self.ai_strict_egress.clone(),
             },
@@ -358,6 +368,8 @@ impl AppSettings {
         self.mcp_disabled_tools = execution.mcp_disabled_tools;
         self.mcp_permission_mode = mode;
         self.mcp_allowed_connection_ids = execution.mcp_allowed_connection_ids;
+        self.mcp_allowed_databases = execution.mcp_allowed_databases;
+        self.mcp_allowed_namespaces = execution.mcp_allowed_namespaces;
         self.driver_settings = execution.driver_settings;
         self.ai_strict_egress = execution.ai_strict_egress;
         // Form-split F4: the three behavior fields round-trip through the

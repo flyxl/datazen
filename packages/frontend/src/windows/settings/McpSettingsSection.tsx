@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { useCopyFeedback } from '../../components/ui/useCopyFeedback';
 import { LocaleDomainLoading } from '../../components/LocaleDomainLoading';
@@ -13,7 +13,7 @@ import {
   useAppExecutablePath,
   type McpAgentTarget,
 } from '../../lib/mcpAgentConfig';
-import type { AppSettings, McpPermissionMode } from '../../types';
+import type { AppSettings, McpAuditRecord, McpPermissionMode } from '../../types';
 import type { TranslationKey } from '../../locales';
 import { SectionTitle, SettingRow, ToggleRow } from './settingsUi';
 import { SettingHint } from './SettingHint';
@@ -62,6 +62,12 @@ export function McpSettingsSection({
   const [allTools, setAllTools] = useState<string[]>([]);
   const [disabledTools, setDisabledTools] = useState<string[]>([]);
   const [allowedIds, setAllowedIds] = useState<string[]>([]);
+  const [databaseScope, setDatabaseScope] = useState('');
+  const [namespaceScope, setNamespaceScope] = useState('');
+  const [scopeSaved, setScopeSaved] = useState(false);
+  const [auditRows, setAuditRows] = useState<McpAuditRecord[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [running, setRunning] = useState(false);
   const [toggling, setToggling] = useState(false);
@@ -92,6 +98,30 @@ export function McpSettingsSection({
   useEffect(() => {
     setAllowedIds(settings.mcpAllowedConnectionIds ?? []);
   }, [settings.mcpAllowedConnectionIds]);
+
+  useEffect(() => {
+    setDatabaseScope((settings.mcpAllowedDatabases ?? []).join(', '));
+  }, [settings.mcpAllowedDatabases]);
+
+  useEffect(() => {
+    setNamespaceScope((settings.mcpAllowedNamespaces ?? []).join(', '));
+  }, [settings.mcpAllowedNamespaces]);
+
+  const loadAudit = useCallback(async () => {
+    setAuditLoading(true);
+    setAuditError(null);
+    try {
+      setAuditRows(await aiCommands.mcpListAuditLog(50));
+    } catch (e) {
+      setAuditError(e instanceof Error ? e.message : t('mcp.audit.error'));
+    } finally {
+      setAuditLoading(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    void loadAudit();
+  }, [loadAudit]);
 
   const refreshStatus = async () => {
     try {
@@ -170,6 +200,36 @@ export function McpSettingsSection({
     }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const parseScope = (text: string): string[] =>
+    Array.from(
+      new Set(
+        text
+          .split(/[\n,]+/)
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0),
+      ),
+    );
+
+  const scopeDirty =
+    JSON.stringify(parseScope(databaseScope).sort()) !==
+      JSON.stringify([...(settings.mcpAllowedDatabases ?? [])].sort()) ||
+    JSON.stringify(parseScope(namespaceScope).sort()) !==
+      JSON.stringify([...(settings.mcpAllowedNamespaces ?? [])].sort());
+
+  const handleSaveScope = async () => {
+    updateAppSettings({
+      mcpAllowedDatabases: parseScope(databaseScope),
+      mcpAllowedNamespaces: parseScope(namespaceScope),
+    });
+    try {
+      await reloadMcpIfRunning();
+    } catch (e) {
+      setToggleError(e instanceof Error ? e.message : t('mcp.toggleError'));
+    }
+    setScopeSaved(true);
+    setTimeout(() => setScopeSaved(false), 2000);
   };
 
   const handleEnableAll = () => {
@@ -286,6 +346,46 @@ export function McpSettingsSection({
               })}
             </div>
           )}
+        </div>
+      </SettingRow>
+
+      <SettingRow
+        label={t('mcp.scope.title')}
+        hint={`${t('mcp.scope.description')} ${t('mcp.scope.hint')}`}
+      >
+        <div className="space-y-3 pt-1">
+          <label className="block space-y-1">
+            <span className="text-xs text-fg-muted">{t('mcp.scope.databases')}</span>
+            <textarea
+              value={databaseScope}
+              onChange={(event) => setDatabaseScope(event.target.value)}
+              placeholder={t('mcp.scope.placeholder')}
+              rows={2}
+              className="w-full rounded-md border border-edge bg-surface px-3 py-2 font-mono text-xs text-fg placeholder:text-fg-muted focus:border-accent focus:outline-none"
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-xs text-fg-muted">{t('mcp.scope.namespaces')}</span>
+            <textarea
+              value={namespaceScope}
+              onChange={(event) => setNamespaceScope(event.target.value)}
+              placeholder={t('mcp.scope.placeholder')}
+              rows={2}
+              className="w-full rounded-md border border-edge bg-surface px-3 py-2 font-mono text-xs text-fg placeholder:text-fg-muted focus:border-accent focus:outline-none"
+            />
+          </label>
+          <div className="flex items-center gap-3">
+            {scopeSaved && <span className="text-xs text-green-500">{t('mcp.scope.saved')}</span>}
+            {!onSettingsChange && (
+              <Button
+                variant="primary"
+                disabled={!scopeDirty}
+                onClick={() => void handleSaveScope()}
+              >
+                {t('mcp.scope.save')}
+              </Button>
+            )}
+          </div>
         </div>
       </SettingRow>
 
@@ -413,6 +513,60 @@ export function McpSettingsSection({
           )}
         </div>
       )}
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-medium text-fg">{t('mcp.audit.title')}</h3>
+            <p className="text-xs text-fg-muted">{t('mcp.audit.description')}</p>
+          </div>
+          <button
+            type="button"
+            className="shrink-0 text-xs text-accent hover:underline disabled:opacity-50"
+            disabled={auditLoading}
+            onClick={() => void loadAudit()}
+          >
+            {t('mcp.audit.refresh')}
+          </button>
+        </div>
+        {auditError && <p className="select-text text-xs text-red-500">{auditError}</p>}
+        {!auditError && auditRows.length === 0 && !auditLoading && (
+          <p className="text-xs text-fg-muted">{t('mcp.audit.empty')}</p>
+        )}
+        {auditRows.length > 0 && (
+          <div className="overflow-x-auto rounded-md border border-edge">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-surface-raised text-fg-muted">
+                <tr>
+                  <th className="px-2 py-1.5 font-medium">{t('mcp.audit.when')}</th>
+                  <th className="px-2 py-1.5 font-medium">{t('mcp.audit.who')}</th>
+                  <th className="px-2 py-1.5 font-medium">{t('mcp.audit.connection')}</th>
+                  <th className="px-2 py-1.5 font-medium">{t('mcp.audit.tool')}</th>
+                  <th className="px-2 py-1.5 font-medium">{t('mcp.audit.decision')}</th>
+                  <th className="px-2 py-1.5 font-medium">{t('mcp.audit.rows')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {auditRows.map((row) => (
+                  <tr key={row.id} className="border-t border-edge">
+                    <td className="whitespace-nowrap px-2 py-1.5 font-mono text-fg-muted">
+                      {row.createdAt}
+                    </td>
+                    <td className="px-2 py-1.5 font-mono text-fg">{row.principalId}</td>
+                    <td className="px-2 py-1.5 font-mono text-fg">
+                      {row.connectionId ?? '—'}
+                      {row.databaseName ? `/${row.databaseName}` : ''}
+                    </td>
+                    <td className="px-2 py-1.5 font-mono text-fg">{row.tool}</td>
+                    <td className="px-2 py-1.5 text-fg">{row.decision}</td>
+                    <td className="px-2 py-1.5 text-fg">{row.rowCount ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </>
   );
 }

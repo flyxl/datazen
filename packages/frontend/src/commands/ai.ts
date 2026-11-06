@@ -28,6 +28,8 @@ import type {
   FilterCondition,
   HistoryEntry,
   HistoryListItem,
+  McpAuditRecord,
+  McpApprovalDecision,
   McpClientStatus,
   McpServerConfig,
   McpToolInfo,
@@ -243,6 +245,12 @@ export const aiCommands = {
   mcpStop: () => invoke<void>('mcp_stop'),
   mcpReload: () => invoke<void>('mcp_reload'),
   mcpListAllTools: () => invoke<string[]>('mcp_list_all_tools'),
+  mcpRespondApproval: (requestId: string, decision: McpApprovalDecision) =>
+    invoke<boolean>('mcp_respond_approval', { requestId, decision }),
+  mcpCancelApproval: (requestId: string) => invoke<boolean>('mcp_cancel_approval', { requestId }),
+  mcpCancelAllApprovals: () => invoke<number>('mcp_cancel_all_approvals'),
+  mcpListAuditLog: (limit?: number) =>
+    invoke<McpAuditRecord[]>('mcp_list_audit_log', { limit: limit ?? null }),
 
   workflowList: () => invoke<WorkflowListItem[]>('workflow_list'),
   workflowExecute: (params: {

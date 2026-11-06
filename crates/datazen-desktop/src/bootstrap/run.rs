@@ -428,8 +428,12 @@ pub fn run() {
             crate::commands::mcp_client_list,
             crate::commands::mcp_client_tools,
             crate::commands::mcp_get_status,
+            crate::commands::mcp_cancel_all_approvals,
+            crate::commands::mcp_cancel_approval,
             crate::commands::mcp_list_all_tools,
+            crate::commands::mcp_list_audit_log,
             crate::commands::mcp_reload,
+            crate::commands::mcp_respond_approval,
             crate::commands::mcp_start_stdio,
             crate::commands::mcp_stop,
             // ── AI：对话 ──

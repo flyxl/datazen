@@ -18,3 +18,25 @@
 | BUG-014 | T16 | 新兼容预设 validate_config 只依赖 `/models`，未回退 probe，仅实现 chat/messages 的兼容端点验证误报 | 已验证 |
 | BUG-015 | T17 | autoUse 为死设置且 listing 无显式选择门控；同名技能未并列；缺 2-skill 正文预算 | 已验证 |
 | BUG-016 | T18 | `#` 方言、CLI ack、onboarding、macOS bundle argv、SQL Server 非法 LIMIT 已修复 | 已验证 |
+
+## T19 MCP scope / 逐次审批 / 审计验收记录
+
+| 范围 | 命令 | 结果 |
+|---|---|---|
+| 策略矩阵 + 审批预览 | `cargo test -p datazen --features mcp --lib mcp::domain` | 16 passed |
+| MCP 集成（scope/deny/timeout/cancel/audit） | `cargo test -p datazen_desktop --lib mcp::server::tests` | 57 passed（含既有 server 测试） |
+| 前端审批事件流 | `pnpm vitest run packages/frontend/src/components/__tests__/McpApprovalHost.test.tsx` | 5 passed |
+| MCP 设置 scope/审计 | `pnpm vitest run packages/frontend/src/windows/settings/__tests__/SettingsContent.test.tsx` | 32 passed |
+| 全量前端 | `pnpm vitest run` | 8314 passed；3 个 Pro 构建脚本用例因 worktree 缺 `@tauri-apps/api` 解析失败（非 T19） |
+| 全量桌面 lib | `cargo test -p datazen_desktop --lib` | 1353 passed / 9 ignored |
+| 全量 datazen MCP lib | `cargo test -p datazen --features mcp --lib` | 1672 passed |
+| 类型检查 | `pnpm typecheck:tsc` | 通过（worktree 包映射；见下） |
+
+审计采用追加式 JSONL（`mcp-audit.jsonl`）而不是新 AppDb 迁移：满足可持久化/可查询，
+且审计写失败不会改变主调用结果。未覆盖：跨 database 的 SQL 限定名无法仅凭 scope
+静态证明；当前以连接默认 database + 数据库自身权限作为边界。
+
+> Worktree 的 `node_modules` 软链到主检出，默认会让 `@datazen/*` 解析到主检出的旧
+> shared settings 类型。本次 `pnpm typecheck:tsc` 在把 `@datazen/*` 临时指向当前
+> worktree 包的映射下执行，检查完成后已删除映射；这是并行 worktree 的环境动作，
+> 不进入提交。
