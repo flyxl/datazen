@@ -267,7 +267,10 @@ fn foreign_key(
         name: name.to_owned(),
         columns: columns.iter().map(|name| name.to_string()).collect(),
         referenced_table: referenced_table.to_owned(),
-        referenced_columns: referenced_columns.iter().map(|name| name.to_string()).collect(),
+        referenced_columns: referenced_columns
+            .iter()
+            .map(|name| name.to_string())
+            .collect(),
         on_update: "NO ACTION".to_owned(),
         on_delete: "NO ACTION".to_owned(),
         deferrability: ForeignKeyDeferrability::Unknown,
@@ -278,14 +281,12 @@ fn foreign_key(
 fn users_schema() -> TableSchema {
     table_schema(
         "users",
-        vec![column("id", "integer", true), column("role_id", "integer", false)],
+        vec![
+            column("id", "integer", true),
+            column("role_id", "integer", false),
+        ],
         vec!["id".to_owned()],
-        vec![foreign_key(
-            "fk_users_role",
-            &["role_id"],
-            "roles",
-            &["id"],
-        )],
+        vec![foreign_key("fk_users_role", &["role_id"], "roles", &["id"])],
     )
 }
 
@@ -293,7 +294,10 @@ fn users_schema() -> TableSchema {
 fn roles_schema() -> TableSchema {
     table_schema(
         "roles",
-        vec![column("id", "integer", true), column("label", "varchar", false)],
+        vec![
+            column("id", "integer", true),
+            column("label", "varchar", false),
+        ],
         vec!["id".to_owned()],
         Vec::new(),
     )
@@ -327,7 +331,8 @@ fn fk_opts(query_rows: Vec<Vec<Option<DriverValue>>>) -> MockDriverOptions {
     let mut app_tables = HashMap::new();
     app_tables.insert("users".to_owned(), users_schema());
     app_tables.insert("roles".to_owned(), roles_schema());
-    opts.table_schemas_by_database.insert("app".to_owned(), app_tables);
+    opts.table_schemas_by_database
+        .insert("app".to_owned(), app_tables);
     opts
 }
 
@@ -361,7 +366,8 @@ fn inbound_opts(extra_tables: Vec<String>) -> MockDriverOptions {
     let mut app_tables = HashMap::new();
     app_tables.insert("users".to_owned(), users_schema());
     app_tables.insert("orders".to_owned(), orders_schema());
-    opts.table_schemas_by_database.insert("app".to_owned(), app_tables);
+    opts.table_schemas_by_database
+        .insert("app".to_owned(), app_tables);
     opts
 }
 
@@ -395,8 +401,20 @@ async fn live_fixture(opts: MockDriverOptions) -> LiveFixture {
     let store = Arc::new(AdminStore::open(&dir.join("admin.sqlite")).expect("file store"));
     store.migrate().expect("migrations apply v1..=v9");
 
-    let primary = register_login(&store, "org-1", "user-1", "sess-w8-live-primary", Role::OrgMember);
-    let other_org = register_login(&store, "org-2", "user-2", "sess-w8-live-org2", Role::OrgMember);
+    let primary = register_login(
+        &store,
+        "org-1",
+        "user-1",
+        "sess-w8-live-primary",
+        Role::OrgMember,
+    );
+    let other_org = register_login(
+        &store,
+        "org-2",
+        "user-2",
+        "sess-w8-live-org2",
+        Role::OrgMember,
+    );
 
     let ctx = RequestContext::new(
         OrganizationId::new("org-1"),
@@ -512,8 +530,7 @@ async fn live_fixture(opts: MockDriverOptions) -> LiveFixture {
     // 拿当前单元——会话开立 / 借出读同一实例（CM-63 cell 语义）。
     let live_source = Arc::new(ServerLiveConnectionSource::new(
         backend.clone(),
-        connections.clone()
-            as Arc<dyn datazen::connection::domain::catalog::ConnectionRepository>,
+        connections.clone() as Arc<dyn datazen::connection::domain::catalog::ConnectionRepository>,
         registry.clone(),
         scope,
     ));
@@ -621,7 +638,12 @@ impl LiveFixture {
 #[tokio::test]
 async fn t1_the_four_live_read_endpoints_sit_inside_the_auth_chain() {
     let fx = live_fixture(MockDriverOptions::default()).await;
-    for uri in [FK_TARGETS_URI, INBOUND_FKS_URI, VALUE_SEARCHES_URI, RESULT_ORIGINS_URI] {
+    for uri in [
+        FK_TARGETS_URI,
+        INBOUND_FKS_URI,
+        VALUE_SEARCHES_URI,
+        RESULT_ORIGINS_URI,
+    ] {
         let (status, _) = call(&fx.app, "POST", uri, "", None, Some(json!({}))).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED, "unauthenticated {uri}");
     }
@@ -663,7 +685,8 @@ async fn t2_an_fk_jump_resolves_the_target_and_probes_it_over_a_live_borrow() {
     assert_eq!(body["target"]["dataTypes"], json!(["integer"]), "{body}");
     assert_eq!(body["target"]["primaryKeys"], json!(["id"]), "{body}");
     assert_eq!(
-        body["target"]["unique"], json!(true),
+        body["target"]["unique"],
+        json!(true),
         "the referenced column is the target's primary key: {body}"
     );
     assert_eq!(body["target"]["candidateLimit"], json!(50), "{body}");
@@ -698,7 +721,8 @@ async fn t3_a_missing_referenced_row_answers_exists_false_as_a_success() {
     assert_eq!(body["candidates"], json!([]), "{body}");
     assert_eq!(body["truncated"], json!(false), "{body}");
     assert_eq!(
-        body["target"]["table"], json!("roles"),
+        body["target"]["table"],
+        json!("roles"),
         "the target is still resolved and named: {body}"
     );
 }
@@ -763,9 +787,17 @@ async fn t5_the_inbound_catalog_scans_the_schema_and_reports_truncation_honestly
     assert_eq!(body["table"], json!("users"), "{body}");
     assert_eq!(body["database"], json!("app"), "{body}");
     let references = body["references"].as_array().expect("references");
-    assert_eq!(references.len(), 1, "orders→users is the only entry: {body}");
+    assert_eq!(
+        references.len(),
+        1,
+        "orders→users is the only entry: {body}"
+    );
     assert_eq!(references[0]["table"], json!("orders"), "{body}");
-    assert_eq!(references[0]["constraintName"], json!("fk_orders_user"), "{body}");
+    assert_eq!(
+        references[0]["constraintName"],
+        json!("fk_orders_user"),
+        "{body}"
+    );
     assert_eq!(references[0]["columns"], json!(["user_id"]), "{body}");
     assert_eq!(references[0]["referencedColumns"], json!(["id"]), "{body}");
     assert_eq!(body["scannedTables"], json!(1), "{body}");
@@ -789,7 +821,11 @@ async fn t5_the_inbound_catalog_scans_the_schema_and_reports_truncation_honestly
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    assert_eq!(body["scannedTables"], json!(200), "the cap is honest: {body}");
+    assert_eq!(
+        body["scannedTables"],
+        json!(200),
+        "the cap is honest: {body}"
+    );
     assert_eq!(body["truncated"], json!(true), "{body}");
     let references = body["references"].as_array().expect("references");
     assert_eq!(
@@ -829,7 +865,11 @@ async fn t6_a_value_search_counts_matches_through_the_driver_count_branch() {
     assert_eq!(status, StatusCode::OK, "{body}");
     assert_eq!(body["table"], json!("users"), "{body}");
     assert_eq!(body["searchedColumns"], json!(["email", "name"]), "{body}");
-    assert_eq!(body["matches"], json!(42), "the count rides the wire: {body}");
+    assert_eq!(
+        body["matches"],
+        json!(42),
+        "the count rides the wire: {body}"
+    );
 
     let log = fx.driver.query_log();
     assert_eq!(
@@ -837,7 +877,11 @@ async fn t6_a_value_search_counts_matches_through_the_driver_count_branch() {
         1,
         "exactly one statement reaches the driver: {log:?}"
     );
-    assert!(log[0].contains("COUNT(*)"), "the count statement: {:?}", log[0]);
+    assert!(
+        log[0].contains("COUNT(*)"),
+        "the count statement: {:?}",
+        log[0]
+    );
     assert!(log[0].to_uppercase().contains("USERS"), "{:?}", log[0]);
 }
 
@@ -879,7 +923,10 @@ async fn t7_a_blank_search_value_is_refused_with_a_400() {
 #[tokio::test]
 async fn t8_an_undeterminable_origin_answers_a_read_only_verdict_from_the_schema_cache() {
     let mut opts = MockDriverOptions::default();
-    opts.columns = vec![column("id", "integer", true), column("email", "varchar", false)];
+    opts.columns = vec![
+        column("id", "integer", true),
+        column("email", "varchar", false),
+    ];
     opts.primary_keys = vec!["id".to_owned()];
     let fx = live_fixture(opts).await;
     let db_session_id = fx.open_session().await;
@@ -898,7 +945,11 @@ async fn t8_an_undeterminable_origin_answers_a_read_only_verdict_from_the_schema
         })),
     )
     .await;
-    assert_eq!(status, StatusCode::OK, "a read-only verdict is still 200: {body}");
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "a read-only verdict is still 200: {body}"
+    );
     assert_eq!(body["writable"], json!(false), "{body}");
     assert_eq!(body["reason"], json!("unknownOrigin"), "{body}");
     assert_eq!(body["table"], Value::Null, "no relation is claimed: {body}");
