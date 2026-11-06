@@ -24,7 +24,9 @@
 | BUG-020 | T22 | 插件模板参数未转义：审批 SQL 泄漏凭据，SQL 字面量可被参数改变 | 已验证 |
 | BUG-021 | T22 | Workflow 工具参数未转义：模型可改写只读 Workflow 的 SQL | 已验证 |
 | BUG-022 | T23 | 本地 CLI 子进程退出后子孙持有 stdout 时 timeout/cancel 挂起并留下孤儿 | 已验证 |
-| BUG-023 | T24 | apply_write 允许只读 SQL 执行；applied 回执/审计缺少 rowCount | 待修复 |
+| BUG-023 | T24 | apply_write 允许只读 SQL 执行；applied 回执/审计缺少 rowCount | 已验证 |
+| BUG-024 | T24 | 数据修改 CTE 影响预览/Safe Mode 失效；函数式写 PRAGMA 被拒 | 待修复 |
+| BUG-025 | T24 | AiWriteProposalHost 测试 rowCount mock 类型导致 tsc 失败 | 待修复 |
 
 
 ## T19 MCP scope / 逐次审批 / 审计验收记录（已验证）
@@ -526,3 +528,38 @@ rowCount 验收；UI 回执把 null 显示为 0。
 
 独立临时测试已删除；`d79466e2` 36 个文件均为 T24 相关，无 generated/凭据/无关。
 **T24：未通过（BUG-023）。**
+
+## T24 `b9272596c` 复测：BUG-023 已验证；T24 仍未通过（BUG-024、BUG-025）
+
+BUG-023 已修复：只读 SQL 全列表拒绝、apply 在 token 查找前拒绝、execute_calls=0；
+rowCount 支持 `results[].rowsAffected`（0 => Some(0)，0+3 => 3，任一无数值 =>
+null），UI 显示 appliedUnknown；鉴权/UI/审计主路径不回归。
+
+**BUG-024（阻塞）**：数据修改 CTE
+`WITH d AS (DELETE FROM users RETURNING *) SELECT * FROM d` 的 proposal
+`impact.writes_data=false`、目标表为空、摘要为 SELECT；同 SQL 以
+`safe_mode=true` apply 返回 Ok，Safe Mode 的 DELETE WHERE 约束被绕过。函数式写
+PRAGMA `PRAGMA journal_mode(WAL)` 也被误拒为 not_write_sql。
+
+**BUG-025（阻塞 typecheck）**：`AiWriteProposalHost.test.tsx:130` 的
+`rowCount: null` mock 与推断的 `number` 不兼容：
+
+```text
+error TS2322: Type 'null' is not assignable to type 'number'.
+[typecheck] FAILED in tsc (root)
+```
+
+| 范围 | 结果 |
+|---|---|
+| `datazen --features ai` | 1694 passed |
+| `datazen --features ai,workflow,wapps` | 1760 passed |
+| `datazen --features mcp` | 1764 passed |
+| `datazen_desktop` | 1413 passed / 10 ignored |
+| `datazen-server --features mcp` | 361 passed |
+| T24 UI 定向 | 6 passed |
+| 全量前端 | 8240 passed / 8 既有环境失败 |
+| 映射 worktree typecheck | **FAILED**（BUG-025） |
+| fmt / diff | 0 / 0 |
+
+独立临时测试已删除；b9272596c 17 个文件均属 T24，无 generated/凭据/无关。
+**T24：未通过（BUG-024、BUG-025）。**
