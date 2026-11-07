@@ -866,7 +866,7 @@ fn migrate_is_idempotent_over_a_history_bearing_library() {
     let (path, _) = v6_form_library("v6-idempotent");
     let store = AdminStore::open(&path).expect("open");
     let first = store.migrate().expect("first migrate");
-    assert_eq!(first.len(), 4, "v6 → 当前目标（v7+v8+v9+v10 四步）");
+    assert_eq!(first.len(), 5, "v6 → 当前目标（v7+v8+v9+v10+v11 五步）");
     let snapshot_after_first = schema_snapshot(&probe(&path));
 
     let second = store.migrate().expect("second migrate");
