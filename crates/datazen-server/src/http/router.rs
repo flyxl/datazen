@@ -362,6 +362,9 @@ async fn handler_issue_token(
     let operation = match operation {
         "startJob" => IdempotentOperation::StartJob,
         "createProfile" => IdempotentOperation::CreateProfile,
+        // W8 域收敛的用户资产写面（queryAssets / schemaDiff 的配置类操作；
+        // 不绑会话——与 createProfile 同一签发面）。
+        "saveUserAsset" => IdempotentOperation::SaveUserAsset,
         "openSession" => IdempotentOperation::OpenSession,
         "executeInSession" => IdempotentOperation::ExecuteInSession,
         "executeAtTarget" => IdempotentOperation::ExecuteAtTarget,
@@ -403,7 +406,9 @@ async fn handler_issue_token(
     }
     let issued = if matches!(
         operation,
-        IdempotentOperation::StartJob | IdempotentOperation::CreateProfile
+        IdempotentOperation::StartJob
+            | IdempotentOperation::CreateProfile
+            | IdempotentOperation::SaveUserAsset
     ) {
         state
             .issuer

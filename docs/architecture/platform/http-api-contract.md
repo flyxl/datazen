@@ -53,8 +53,8 @@
 | events | 2 | 2 | 0 | SSE（v1.1：订阅建立 + 流） |
 | tableData | 14 | 14 | 0 | |
 | driverGateway（过渡） | 5 | 4 | 1 | `open_base64_with_dialog` 排除（§6.9） |
-| queryAssets | 7 | 7 | 0 | §6.12（W8 刀3a 服务端半边；web 半边随域客户端收口） |
-| schemaDiff | 11 | 11 | 0 | §6.13（W8 刀3b；`get_migration_run`/`list_migration_runs` 读面留 sync 域） |
+| queryAssets | 7 | 7 | 0 | §6.12（W8 刀3a；web 半边随本版收口：域客户端 + 名单收缩） |
+| schemaDiff | 11 | 11 | 0 | §6.13（W8 刀3b；web 半边随本版收口；`get_migration_run`/`list_migration_runs` 读面留 sync 域） |
 | **合计** | **61** | **60** | **1** | |
 
 路由总数 59 条服务 60 个方法（PATCH 双服务），另有服务自举路由 5 条（§5）与已立项待补方法的 1 条（§6.5）。
@@ -336,3 +336,4 @@ WR-D 落地时的机器核对（WR-C3 接管）：同用例双传输测试逐方
 - 2026-11-07：v1.4（W8 刀3a，查询资产域服务端半边）。**§6.12 收藏与查询历史**七路由（收藏 list/create/delete + 历史 page/delete/clear/purge）——legacy IPC 命令轨（`add_favorite_query`/`get_query_history_page` 等 7 命令）收敛进 MethodMap 的第一域；v10 双表 expand-only 迁移（per (org, principal) 隔离，收藏文件形/历史本机库形的服务端对偶）；历史落账 = execution 域受理后钩子（best-effort，桌面同语义）；`get_favorites_root`/`refresh_favorites` 文件系统语义不进 HTTP 面（桌面专属）。web 半边（域客户端 + RouteSpec + 不支持名单收缩）随下刀收口。
 - 2026-11-07：v1.5（W8 刀3b，Schema Diff 域）。**§6.13 对比、计划与部署**十一路由（profiles 三 + compare + 计划准备二 + 部署受理 + job 读回/取消/恢复核验四）——legacy IPC 命令轨的第二域；v12 expand-only 迁移（job 运行时三伴表 + `migration_run_history` + `schema_diff_profiles`，桌面加密 JSON 文件形的服务端对偶）；`ServerJobs` 实现 `JobRuntimeRepository`（桌面 runtime_ops 家族的服务端投影，幂等回执走受理行 `idem_scope_key` 不开表）；受理 = 先持久化后取资源（202 回执先于任何 DDL）；plans/unified-plans/deploys 三受理面入限流严格档。§4 总账 43→61 方法 / 41→59 路由（queryAssets 7 + schemaDiff 11 入账）。web 半边（域客户端 + 不支持名单收缩）随下刀收口。
 - 2026-11-07：v1.4.1（W8 刀1对账——PR #204 关闭后的增量移植）。§6.10 补三行裁决：`GET /api/v1/executions/{id}` 的 L6 两段登记（`ResourceType::Execution` + `Read`，rbac 基线矩阵裁决）、令牌两轨不混用的 409 wire（`idempotencyExpired`）、限流严格档补行（`POST …/executions` 与 `POST /api/v1/ai-host/execute-target`）。aiHost.executeTarget 的 claim 纪律补齐（claim 必填：`independent` 真执行、`editorGrant` 501 fail-closed、缺失/未知 400——与 web 端 `AiHostExecuteTargetRequest` 冻结形状对齐）；`PrincipalScopedHost` 上移为共享装饰器（aiHost 与 MCP 七工具同一真主体注入路径）。
+- 2026-11-07：v1.5.1（W8 刀3a/刀3b web 半边收口——域客户端落地）。**queryAssets / schemaDiff 两域客户端**进 `@datazen/backend-client`（`QueryAssetsMethodMap` 7 方法 + `SchemaDiffMethodMap` 11 方法，`MethodMap` 组合挂接、门面 spread 平铺）；web `HTTP_ROUTES` 分发表 42→60 条（queryAssets 7 + schemaDiff 11 的 RouteSpec：写面体折令牌、`{deleted}`/`{purged}`/`{cancelled}` 包装由 decoder 拆封到桌面域形状、save 的 `{profile}` 包装在 body 构造器展开）；**tagged-enum 归一化上移**（plan requirements 的 `{backfill|unsupported}` 折叠进域客户端，桌面 IPC 与 HTTP 两轨同形，归一化函数 `normalizeSchemaDiffJobDetailsWire` 出面供宿主复用）；`webUnsupportedMethods` 名单收缩 18 条（legacy 命令轨第三、四域消亡；`get_favorites_root`/`refresh_favorites` 桌面文件语义与 `get_migration_run`/`list_migration_runs`（留 sync 域）保持登记）；桌面 transport 三处命令别名（`listQueryFavorites→get_favorite_queries` 等）+ 收敛域令牌剥除（IPC 轨无幂等回执）；**`IdempotentOperation` 增 `SaveUserAsset`**（用户资产写面共用配置类操作，不绑会话；签发面白名单 + `saveUserAsset` wire 词入账——服务器消费闸维持在场性核对，HMAC 细分随未来接线退役拆开）。前端 `queryCommands`/`schemaDiffCommands`/`historyCommands.purgeHistory` 全量换域门面方法（`getFavoritesRoot`/`refreshFavorites` 等桌面专属留 legacy 轨）。

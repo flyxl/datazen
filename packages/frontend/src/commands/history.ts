@@ -1,6 +1,8 @@
-import { legacyInvoke as invoke } from '@datazen/backend-client';
+import { legacyInvoke as invoke, useBackendClient } from '@datazen/backend-client';
+import type { HistoryPurgeScope } from '@datazen/backend-client';
 
-export type HistoryPurgeScope = 'query' | 'workflow' | 'all';
+/** W8 收口后类型单一来源在 backend-client（域词汇），此处仅转出。 */
+export type { HistoryPurgeScope };
 
 export type MigrationOperation = 'schemaDiff' | 'dataSync' | 'dataTransfer';
 export type MigrationRunStatus = 'running' | 'completed' | 'failed' | 'cancelled' | 'interrupted';
@@ -41,10 +43,17 @@ export interface MigrationRunFilter {
 }
 
 export const historyCommands = {
-  purgeHistory: (args: { scope: HistoryPurgeScope; retainDays: number | null }) =>
-    invoke<number>('purge_history', args),
+  /** W8 刀3a web 收口：purge 走 queryAssets 域客户端（配置类令牌）。 */
+  purgeHistory: async (args: { scope: HistoryPurgeScope; retainDays: number | null }) =>
+    useBackendClient().purgeHistory(
+      {
+        scope: args.scope,
+        ...(args.retainDays != null ? { retainDays: args.retainDays } : {}),
+      },
+      await useBackendClient().issueSubmissionToken('saveUserAsset', null),
+    ),
+  /** 迁移历史读面随 sync 域收敛（契约 §6.13 备注），此前留 legacy 轨。 */
   listMigrationRuns: (filter: MigrationRunFilter, offset = 0, limit = 25) =>
     invoke<MigrationRunPage>('list_migration_runs', { filter, offset, limit }),
-  getMigrationRun: (runId: string) =>
-    invoke<MigrationRunRecord>('get_migration_run', { runId }),
+  getMigrationRun: (runId: string) => invoke<MigrationRunRecord>('get_migration_run', { runId }),
 };

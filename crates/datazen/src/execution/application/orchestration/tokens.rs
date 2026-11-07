@@ -11,6 +11,9 @@ pub(super) struct IssuedToken {
 fn operation(value: IdempotentOperation) -> SubmissionOperation {
     match value {
         IdempotentOperation::CreateProfile => SubmissionOperation::OpenSession,
+        // 用户资产写面（W8 域收敛）：配置类操作，与 CreateProfile 同族——
+        // 实际签发走 HMAC 面（server `issuer.issue`），本映射只兜底。
+        IdempotentOperation::SaveUserAsset => SubmissionOperation::OpenSession,
         IdempotentOperation::OpenSession => SubmissionOperation::OpenSession,
         IdempotentOperation::ExecuteInSession => SubmissionOperation::ExecuteInSession,
         IdempotentOperation::CancelExecution => SubmissionOperation::CancelExecution,

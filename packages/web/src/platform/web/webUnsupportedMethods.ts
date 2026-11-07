@@ -14,6 +14,19 @@
  *    `MethodMap` 的内核域，收敛一个域、本文件减一域；域客户端不在此列的
  *    （driverGateway 四方法已上 HTTP）不受影响。
  *
+ * **已收敛域账**（每域收敛时从本表删除，两侧「域客户端方法 + HTTP 路由」
+ * 同时点亮）：
+ * - 查询资产域（W8 刀3a web 收口）：`add_favorite_query` /
+ *   `delete_favorite_query` / `get_favorite_queries` /
+ *   `get_query_history_page` / `delete_query_history` /
+ *   `clear_query_history` / `purge_history` → `queryAssets` 域客户端
+ *   （契约 §6.12）。桌面文件系统语义两命令**留表**：`get_favorites_root` /
+ *   `refresh_favorites`（服务端收藏是库行，无根目录可扫）。
+ * - Schema Diff 域（W8 刀3b web 收口）：profiles 读写删、compare、plans
+ *   二、deploy、jobs 读回/取消/恢复核验十一命令 → `schemaDiff` 域客户端
+ *   （契约 §6.13）。迁移历史读面 `get_migration_run` / `list_migration_runs`
+ *   **留表**（契约裁决：随 sync 域收敛）。
+ *
  * 运行时清单由 `LegacyCommandName` 类型钉住：写错名字过不了
  * `readonly LegacyCommandName[]` 注解，漏名字过不了文末的编译期穷尽断言
  * （`Exclude` 结果必须为 `never`）。守不住时两种失败都会指向这里。
@@ -38,7 +51,6 @@ const CAPABILITY_EXCLUDED: readonly (keyof MethodMap)[] = ['open_base64_with_dia
  */
 const LEGACY_HTTP_OFF: readonly LegacyCommandName[] = [
   'abort_save',
-  'add_favorite_query',
   'ai_analyze_explain',
   'ai_analyze_queries',
   'ai_apply_write',
@@ -78,14 +90,11 @@ const LEGACY_HTTP_OFF: readonly LegacyCommandName[] = [
   'cancel_data_sync',
   'cancel_data_transfer',
   'cancel_query',
-  'cancel_schema_diff_deploy',
   'check_sync_conflicts',
   'classify_data_sync_pair',
   'classify_transfer_pair',
-  'clear_query_history',
   'close_database',
   'commit_session_transaction',
-  'compare_table_schemas',
   'connect',
   'connect_dedicated',
   'context_get_dir',
@@ -95,9 +104,6 @@ const LEGACY_HTTP_OFF: readonly LegacyCommandName[] = [
   'create_widget_from_workflow',
   'delete_connection',
   'delete_dashboard',
-  'delete_favorite_query',
-  'delete_query_history',
-  'delete_schema_diff_profile',
   'delete_sync_profile',
   'delete_sync_task',
   'delete_transfer_profile',
@@ -107,7 +113,6 @@ const LEGACY_HTTP_OFF: readonly LegacyCommandName[] = [
   'duplicate_connection',
   'execute_data_sync',
   'execute_data_transfer',
-  'execute_schema_diff_deploy',
   'execute_wapp_driver_command',
   'export_app_data',
   'export_artifact',
@@ -125,7 +130,6 @@ const LEGACY_HTTP_OFF: readonly LegacyCommandName[] = [
   'get_data_sync_job',
   'get_data_sync_job_details',
   'get_data_sync_job_preview',
-  'get_favorite_queries',
   'get_favorites_root',
   'get_groups',
   'get_job',
@@ -133,9 +137,6 @@ const LEGACY_HTTP_OFF: readonly LegacyCommandName[] = [
   'get_monitor_widget_schedule_grant',
   'get_open_databases',
   'get_privileges',
-  'get_query_history_page',
-  'get_schema_diff_job_details',
-  'get_schema_diff_profiles',
   'get_sync_profiles',
   'get_sync_tasks',
   'get_transfer_job_details',
@@ -161,7 +162,6 @@ const LEGACY_HTTP_OFF: readonly LegacyCommandName[] = [
   'list_data_sync_jobs',
   'list_jobs',
   'list_migration_runs',
-  'list_schema_diff_jobs',
   'list_wapps',
   'list_widget_runs',
   'mcp_client_call_tool',
@@ -180,14 +180,11 @@ const LEGACY_HTTP_OFF: readonly LegacyCommandName[] = [
   'pick_import_file',
   'ping_connection',
   'prepare_data_transfer_job',
-  'prepare_schema_diff_plan',
-  'prepare_schema_unified_plan',
   'preview_data_transfer',
   'prompt_list',
   'prompt_remove_override',
   'prompt_set_override',
   'propose_write',
-  'purge_history',
   'read_wapp_file',
   'refresh_favorites',
   'release_connection',
@@ -202,7 +199,6 @@ const LEGACY_HTTP_OFF: readonly LegacyCommandName[] = [
   'save_dashboard',
   'save_encryption_key_with_dialog',
   'save_groups',
-  'save_schema_diff_profile',
   'save_sql_file',
   'save_sync_profile',
   'save_transfer_profile',
@@ -217,7 +213,6 @@ const LEGACY_HTTP_OFF: readonly LegacyCommandName[] = [
   'test_tunnel',
   'update_hidden_widget_sql',
   'verify_data_sync_recovery',
-  'verify_schema_diff_job_recovery',
   'wapp_audit_log',
   'wapp_session',
   'wapp_storage_get',

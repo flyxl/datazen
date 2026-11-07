@@ -214,6 +214,285 @@ runContractTable('DriverGateway', [
   },
 ]);
 
+const userAssetToken = {
+  idempotencyKey: 'idem-qa-1',
+  expiresAt: mustNarrow(toTimestamp(1_700_000_000_000)),
+};
+
+runContractTable('QueryAssets', [
+  {
+    call: (c) => c.listQueryFavorites({ connectionId: 'conn-1' }),
+    method: 'listQueryFavorites',
+    payload: { connectionId: 'conn-1' },
+    response: [{ id: 'fav-1', connectionId: 'conn-1', title: 'T', sql: 'SELECT 1' }],
+  },
+  {
+    call: (c) =>
+      c.createQueryFavorite(
+        { connectionId: 'conn-1', title: 'T', sql: 'SELECT 1' },
+        userAssetToken,
+      ),
+    method: 'createQueryFavorite',
+    payload: {
+      connectionId: 'conn-1',
+      title: 'T',
+      sql: 'SELECT 1',
+      submissionToken: userAssetToken,
+    },
+    response: { id: 'fav-2', connectionId: 'conn-1', title: 'T', sql: 'SELECT 1' },
+  },
+  {
+    call: (c) => c.deleteQueryFavorite({ id: 'fav-1' }, userAssetToken),
+    method: 'deleteQueryFavorite',
+    payload: { id: 'fav-1', submissionToken: userAssetToken },
+    response: undefined,
+  },
+  {
+    call: (c) => c.getQueryHistoryPage({ limit: 50, order: 'recent' }),
+    method: 'getQueryHistoryPage',
+    payload: { limit: 50, order: 'recent' },
+    response: { entries: [], total: 0 },
+  },
+  {
+    call: (c) => c.deleteQueryHistory({ id: 'h-1' }, userAssetToken),
+    method: 'deleteQueryHistory',
+    payload: { id: 'h-1', submissionToken: userAssetToken },
+    response: 2,
+  },
+  {
+    call: (c) => c.clearQueryHistory(userAssetToken),
+    method: 'clearQueryHistory',
+    payload: { submissionToken: userAssetToken },
+    response: undefined,
+  },
+  {
+    call: (c) => c.purgeHistory({ scope: 'query', retainDays: 30 }, userAssetToken),
+    method: 'purgeHistory',
+    payload: { scope: 'query', retainDays: 30, submissionToken: userAssetToken },
+    response: 7,
+  },
+]);
+
+runContractTable('SchemaDiff', [
+  {
+    call: (c) => c.listSchemaDiffProfiles(),
+    method: 'listSchemaDiffProfiles',
+    payload: {},
+    response: [],
+  },
+  {
+    call: (c) =>
+      c.saveSchemaDiffProfile(
+        { profile: { version: 1, id: 'sd-1', name: 'Pair' } as never },
+        userAssetToken,
+      ),
+    method: 'saveSchemaDiffProfile',
+    payload: {
+      profile: { version: 1, id: 'sd-1', name: 'Pair' },
+      submissionToken: userAssetToken,
+    },
+    response: undefined,
+  },
+  {
+    call: (c) => c.deleteSchemaDiffProfile({ profileId: 'sd-1' }, userAssetToken),
+    method: 'deleteSchemaDiffProfile',
+    payload: { profileId: 'sd-1', submissionToken: userAssetToken },
+    response: undefined,
+  },
+  {
+    call: (c) =>
+      c.compareTableSchemas({
+        sourceDbSessionId: 'sess-1',
+        targetDbSessionId: 'sess-2',
+        sourceTableName: 't',
+        targetTableName: 't',
+      }),
+    method: 'compareTableSchemas',
+    payload: {
+      sourceDbSessionId: 'sess-1',
+      targetDbSessionId: 'sess-2',
+      sourceTableName: 't',
+      targetTableName: 't',
+    },
+    response: { table: 't', added: [], removed: [], changed: [] },
+  },
+  {
+    call: (c) =>
+      c.prepareSchemaDiffPlan(
+        {
+          sourceDbSessionId: 'sess-1',
+          targetDbSessionId: 'sess-2',
+          tableNames: ['t'],
+          allowDestructive: false,
+        },
+        userAssetToken,
+      ),
+    method: 'prepareSchemaDiffPlan',
+    payload: {
+      sourceDbSessionId: 'sess-1',
+      targetDbSessionId: 'sess-2',
+      tableNames: ['t'],
+      allowDestructive: false,
+      submissionToken: userAssetToken,
+    },
+    response: { jobId: 'j-1', kind: 'schemaDiffPrepare', state: 'queued' },
+  },
+  {
+    call: (c) =>
+      c.prepareSchemaUnifiedPlan(
+        {
+          sourceDbSessionId: 'sess-1',
+          targetDbSessionId: 'sess-2',
+          tableNames: ['t'],
+          allowDestructive: false,
+          sourceObjects: [],
+          targetObjects: [],
+        } as never,
+        userAssetToken,
+      ),
+    method: 'prepareSchemaUnifiedPlan',
+    payload: {
+      sourceDbSessionId: 'sess-1',
+      targetDbSessionId: 'sess-2',
+      tableNames: ['t'],
+      allowDestructive: false,
+      sourceObjects: [],
+      targetObjects: [],
+      submissionToken: userAssetToken,
+    },
+    response: { jobId: 'j-2', kind: 'schemaDiffPrepare', state: 'queued' },
+  },
+  {
+    call: (c) =>
+      c.executeSchemaDiffDeploy(
+        { targetDbSessionId: 'sess-2', planId: 'plan-1', selectionRevision: 3 },
+        userAssetToken,
+      ),
+    method: 'executeSchemaDiffDeploy',
+    payload: {
+      targetDbSessionId: 'sess-2',
+      planId: 'plan-1',
+      selectionRevision: 3,
+      submissionToken: userAssetToken,
+    },
+    response: { jobId: 'j-3', kind: 'schemaDiffApply', state: 'queued' },
+  },
+  {
+    call: (c) => c.listSchemaDiffJobs({ states: ['queued'], limit: 100 }),
+    method: 'listSchemaDiffJobs',
+    payload: { states: ['queued'], limit: 100 },
+    response: [],
+  },
+  {
+    call: (c) => c.getSchemaDiffJobDetails({ jobId: 'j-1' }),
+    method: 'getSchemaDiffJobDetails',
+    payload: { jobId: 'j-1' },
+    response: {
+      details: { job: { jobId: 'j-1' } },
+      prepared: null,
+      planUnavailableAfterRestart: false,
+      deployResult: null,
+    },
+  },
+  {
+    call: (c) => c.cancelSchemaDiffDeploy({ jobId: 'j-1' }, userAssetToken),
+    method: 'cancelSchemaDiffDeploy',
+    payload: { jobId: 'j-1', submissionToken: userAssetToken },
+    response: true,
+  },
+  {
+    call: (c) =>
+      c.verifySchemaDiffJobRecovery({ jobId: 'j-1', targetDbSessionId: 'sess-2' }, userAssetToken),
+    method: 'verifySchemaDiffJobRecovery',
+    payload: { jobId: 'j-1', targetDbSessionId: 'sess-2', submissionToken: userAssetToken },
+    response: {
+      details: { job: { jobId: 'j-1' } },
+      prepared: null,
+      planUnavailableAfterRestart: false,
+      deployResult: null,
+    },
+  },
+]);
+
+describe('SchemaDiff tagged-enum folding (wire ↔ normalized)', () => {
+  const taggedDetails = {
+    details: { job: { jobId: 'j-1' } },
+    prepared: {
+      plan: {
+        planId: 'plan-1',
+        table: 't',
+        tables: ['t'],
+        sourceDialect: 'postgresql',
+        targetDialect: 'sqlite',
+        sameDialect: false,
+        statements: [],
+        warnings: [],
+        requirements: [
+          { backfill: { table: 't', column: 'c', reason: 'needs backfill' } },
+          { unsupported: { operation: 't.c2', reason: 'unsupported kind' } },
+        ],
+        rollbackCompleteness: { complete: true, missing: [] },
+      },
+      planId: 'plan-1',
+      selectionRevision: 1,
+      planVersion: 1,
+      handlerVersion: 1,
+      checkpointVersion: 1,
+      expiresAt: '2026-01-01T00:00:00Z',
+      recoveryPolicy: 'verify',
+    },
+    planUnavailableAfterRestart: false,
+    deployResult: null,
+  };
+
+  it('getSchemaDiffJobDetails folds tagged requirements into the discriminated union', async () => {
+    const fake = createFakeTransport();
+    fake.responses.set('getSchemaDiffJobDetails', taggedDetails);
+    const client = createBackendClient('desktop', fake.transport);
+
+    const details = await client.getSchemaDiffJobDetails({ jobId: 'j-1' });
+    expect(details.prepared?.plan.requirements).toEqual([
+      { kind: 'Backfill', table: 't', column: 'c', reason: 'needs backfill' },
+      { kind: 'Unsupported', table: 't', column: 'c2', reason: 'unsupported kind' },
+    ]);
+  });
+
+  it('executeSchemaDiffDeploy unfolds a normalized plan back into the tagged wire shape', async () => {
+    const fake = createFakeTransport();
+    fake.responses.set('executeSchemaDiffDeploy', {
+      jobId: 'j-9',
+      kind: 'schemaDiffApply',
+      state: 'queued',
+    });
+    const client = createBackendClient('desktop', fake.transport);
+
+    await client.executeSchemaDiffDeploy(
+      {
+        targetDbSessionId: 'sess-2',
+        plan: {
+          planId: 'plan-1',
+          table: 't',
+          tables: ['t'],
+          sourceDialect: 'postgresql',
+          targetDialect: 'sqlite',
+          sameDialect: false,
+          statements: [],
+          warnings: [],
+          requirements: [{ kind: 'Backfill', table: 't', column: 'c', reason: 'needs backfill' }],
+          rollbackCompleteness: { complete: true, missing: [] },
+        },
+      },
+      userAssetToken,
+    );
+
+    expect(fake.calls).toHaveLength(1);
+    const plan = (fake.calls[0]!.payload as { plan: { requirements: unknown[] } }).plan;
+    expect(plan.requirements).toEqual([
+      { backfill: { table: 't', column: 'c', reason: 'needs backfill' } },
+    ]);
+  });
+});
+
 describe('per-domain guard contract (unbound → explicit error, bound → behavior)', () => {
   it('a declared capability gap fails on use with the §13 code, not a bare error', async () => {
     const transport: BackendTransport = {

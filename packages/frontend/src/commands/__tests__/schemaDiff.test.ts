@@ -2,11 +2,24 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const invokeMock = vi.hoisted(() => vi.fn());
 
-import { setBackendClient } from '@datazen/backend-client';
-// form-split R6: the invoke wrappers ride the bound backend transport now
-// (same binding pattern as file.test.ts — the mock keeps its invoke shape).
+import {
+  createBackendGuard,
+  createSchemaDiffMethods,
+  setBackendClient,
+} from '@datazen/backend-client';
+// W8 刀3b 收口：wrappers 走域门面方法。假门面用**真域客户端**（schemaDiff
+// 域）架在假 transport 上——令牌折叠/tagged-enum 归一化全是被测产品代码，
+// 测试只钉 wire 面：invokeMock(method, payload) 的键与形状。令牌铸造返回
+// 固定形状且**不进 invokeMock 队列**——mockAcceptedPrepare 的逐次
+// mockResolvedValueOnce 队列只被业务调用消耗。
+const TEST_TOKEN = { idempotencyKey: 'test-key', expiresAt: '2999-01-01T00:00:00Z' };
+const fakeTransport = {
+  call: (c: string, p?: unknown) => (p === undefined ? invokeMock(c) : invokeMock(c, p)),
+};
 setBackendClient('test', {
-  transport: { call: (c: string, p?: unknown) => (p === undefined ? invokeMock(c) : invokeMock(c, p)) },
+  transport: fakeTransport,
+  issueSubmissionToken: async () => TEST_TOKEN,
+  ...createSchemaDiffMethods(fakeTransport, createBackendGuard('test', {})),
 } as never);
 import {
   dialectSupportsTransactionalDdl,
@@ -218,7 +231,7 @@ describe('schemaDiffCommands wrappers', () => {
         'target',
       ),
     ).resolves.toBe(diff);
-    expect(invokeMock).toHaveBeenCalledWith('compare_table_schemas', {
+    expect(invokeMock).toHaveBeenCalledWith('compareTableSchemas', {
       sourceDbSessionId: 'src-1',
       targetDbSessionId: 'tgt-1',
       sourceTableName: 'source.users',
@@ -250,10 +263,14 @@ describe('schemaDiffCommands wrappers', () => {
     await schemaDiffCommands.getProfiles();
     await schemaDiffCommands.saveProfile(profile);
     await schemaDiffCommands.deleteProfile(profile.id);
-    expect(invokeMock).toHaveBeenNthCalledWith(1, 'get_schema_diff_profiles');
-    expect(invokeMock).toHaveBeenNthCalledWith(2, 'save_schema_diff_profile', { profile });
-    expect(invokeMock).toHaveBeenNthCalledWith(3, 'delete_schema_diff_profile', {
+    expect(invokeMock).toHaveBeenNthCalledWith(1, 'listSchemaDiffProfiles', {});
+    expect(invokeMock).toHaveBeenNthCalledWith(2, 'saveSchemaDiffProfile', {
+      profile,
+      submissionToken: TEST_TOKEN,
+    });
+    expect(invokeMock).toHaveBeenNthCalledWith(3, 'deleteSchemaDiffProfile', {
       profileId: profile.id,
+      submissionToken: TEST_TOKEN,
     });
   });
 
@@ -316,12 +333,13 @@ describe('schemaDiffCommands wrappers', () => {
         includeIndexes: true,
       }),
     ).resolves.toMatchObject({ plan: { table: 'users' } });
-    expect(invokeMock).toHaveBeenCalledWith('prepare_schema_diff_plan', {
+    expect(invokeMock).toHaveBeenCalledWith('prepareSchemaDiffPlan', {
       sourceDbSessionId: 'src-2',
       targetDbSessionId: 'tgt-2',
       tableNames: ['a', 'b'],
       allowDestructive: true,
       includeIndexes: true,
+      submissionToken: TEST_TOKEN,
     });
   });
 
@@ -349,13 +367,14 @@ describe('schemaDiffCommands wrappers', () => {
       typeOverrides: overrides,
     });
     expect(res.plan.typeSuggestions).toHaveLength(1);
-    expect(invokeMock).toHaveBeenCalledWith('prepare_schema_diff_plan', {
+    expect(invokeMock).toHaveBeenCalledWith('prepareSchemaDiffPlan', {
       sourceDbSessionId: 'src-1',
       targetDbSessionId: 'tgt-1',
       tableNames: ['demo_customers'],
       allowDestructive: false,
       includeIndexes: undefined,
       typeOverrides: overrides,
+      submissionToken: TEST_TOKEN,
     });
   });
 
@@ -401,7 +420,7 @@ describe('schemaDiffCommands wrappers', () => {
       }),
     ).resolves.toMatchObject({ planId: 'unified-review-1' });
 
-    expect(invokeMock).toHaveBeenCalledWith('prepare_schema_unified_plan', {
+    expect(invokeMock).toHaveBeenCalledWith('prepareSchemaUnifiedPlan', {
       sourceDbSessionId: 'source-session',
       targetDbSessionId: 'target-session',
       tableNames: ['public.orders'],
@@ -440,6 +459,7 @@ describe('schemaDiffCommands wrappers', () => {
           targetName: null,
         },
       ],
+      submissionToken: TEST_TOKEN,
     });
   });
 
@@ -453,7 +473,7 @@ describe('schemaDiffCommands wrappers', () => {
       allowDestructive: false,
     });
 
-    expect(invokeMock).toHaveBeenCalledWith('prepare_schema_diff_plan', {
+    expect(invokeMock).toHaveBeenCalledWith('prepareSchemaDiffPlan', {
       sourceDbSessionId: 'src-target-picker',
       targetDbSessionId: 'tgt-target-picker',
       tableNames: ['users'],
@@ -461,6 +481,7 @@ describe('schemaDiffCommands wrappers', () => {
       includeIndexes: undefined,
       typeOverrides: undefined,
       targetOnlyTableNames: ['archive'],
+      submissionToken: TEST_TOKEN,
     });
   });
 
@@ -476,7 +497,7 @@ describe('schemaDiffCommands wrappers', () => {
         confirmDestructive: 'DEPLOY',
       }),
     ).resolves.toMatchObject({ status: 'committed' });
-    expect(invokeMock).toHaveBeenCalledWith('execute_schema_diff_deploy', {
+    expect(invokeMock).toHaveBeenCalledWith('executeSchemaDiffDeploy', {
       targetDbSessionId: 'tgt-3',
       plan,
       useTransaction: true,
@@ -484,6 +505,7 @@ describe('schemaDiffCommands wrappers', () => {
       jobId: undefined,
       targetDatabase: undefined,
       targetSchema: undefined,
+      submissionToken: TEST_TOKEN,
     });
   });
 
@@ -499,7 +521,7 @@ describe('schemaDiffCommands wrappers', () => {
     // Without these the backend cannot route a cross-database deploy on
     // PostgreSQL, which cannot reference another database in one statement.
     expect(invokeMock).toHaveBeenCalledWith(
-      'execute_schema_diff_deploy',
+      'executeSchemaDiffDeploy',
       expect.objectContaining({
         targetDatabase: 'analytics',
         targetSchema: 'reporting',
@@ -511,7 +533,7 @@ describe('schemaDiffCommands wrappers', () => {
     const plan = samplePlan();
     mockAcceptedApply();
     await schemaDiffCommands.executeDeploy({ targetDbSessionId: 'tgt-4', plan });
-    expect(invokeMock).toHaveBeenCalledWith('execute_schema_diff_deploy', {
+    expect(invokeMock).toHaveBeenCalledWith('executeSchemaDiffDeploy', {
       targetDbSessionId: 'tgt-4',
       plan,
       useTransaction: undefined,
@@ -519,6 +541,7 @@ describe('schemaDiffCommands wrappers', () => {
       jobId: undefined,
       targetDatabase: undefined,
       targetSchema: undefined,
+      submissionToken: TEST_TOKEN,
     });
   });
 });
@@ -539,7 +562,7 @@ it('keeps the immutable plan identity and forwards required rollback to the back
     useTransaction: true,
   });
   expect(invokeMock).toHaveBeenCalledWith(
-    'execute_schema_diff_deploy',
+    'executeSchemaDiffDeploy',
     expect.objectContaining({
       plan: expect.objectContaining({ planId: 'reviewed-plan-42' }),
       requireRollback: true,
@@ -569,7 +592,7 @@ it('round-trips all requirement tags without losing table or column identity', a
   mockAcceptedApply();
   await schemaDiffCommands.executeDeploy({ targetDbSessionId: 'tgt', plan: prepared.plan });
   expect(invokeMock).toHaveBeenCalledWith(
-    'execute_schema_diff_deploy',
+    'executeSchemaDiffDeploy',
     expect.objectContaining({ plan: expect.objectContaining({ requirements }) }),
   );
 });
@@ -578,6 +601,9 @@ it('cancels only the requested job and propagates cancellation failures', async 
   invokeMock.mockReset();
   invokeMock.mockResolvedValueOnce(true).mockRejectedValueOnce(new Error('job not found'));
   await expect(schemaDiffCommands.cancelDeploy('job-42')).resolves.toBe(true);
-  expect(invokeMock).toHaveBeenCalledWith('cancel_schema_diff_deploy', { jobId: 'job-42' });
+  expect(invokeMock).toHaveBeenCalledWith('cancelSchemaDiffDeploy', {
+    jobId: 'job-42',
+    submissionToken: TEST_TOKEN,
+  });
   await expect(schemaDiffCommands.cancelDeploy('missing')).rejects.toThrow('job not found');
 });

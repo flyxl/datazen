@@ -50,12 +50,67 @@ export const DESKTOP_BACKEND_ID = 'desktop';
  * track and the host command names are 1:1. Every rename the table used to
  * carry (`get_shared_settings`, `platform_list_profiles`,
  * `read_artifact_chunk`, `get_table_data_at_target`, ...) was resolved on the
- * Rust side, so `toCommandName` is pure convention now.
+ * Rust side. W8 domain convergence kept that property for all but three
+ * query-assets verbs whose host commands predate the contract's vocabulary
+ * (`get_/add_/delete_favorite_queries`): those ride `COMMAND_ALIASES` below,
+ * and it stays this small on purpose — a fourth entry means a domain was
+ * converged without aligning names.
  */
+/**
+ * W8 域收敛后方法名与既有 IPC 命令名不一致的少数几条（其余收敛方法的
+ * camelCase → snake_case 纯约定转换恰好等于既有命令名——桌面命令先在，
+ * 域方法名随契约冻结，此处登记的是仅剩的三处词序差）。
+ */
+const COMMAND_ALIASES: Partial<Record<keyof MethodMap, string>> = {
+  listQueryFavorites: 'get_favorite_queries',
+  createQueryFavorite: 'add_favorite_query',
+  deleteQueryFavorite: 'delete_favorite_query',
+};
+
 function toCommandName(method: keyof MethodMap): string {
-  return method.includes('_')
-    ? method
-    : method.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+  if (method.includes('_')) return method;
+  return (
+    COMMAND_ALIASES[method] ?? method.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
+  );
+}
+
+/**
+ * W8 刀3a/刀3b 收口域（queryAssets + schemaDiff）：payload 是业务字段 +
+ * `submissionToken` 的平铺袋，IPC 轨不需要幂等回执（进程内信任），剥掉
+ * 令牌后按命名参数袋转发——与 FLAT_ARGUMENT_METHODS 同一 flat 语义，
+ * 单独成集是因为它们还多一道剥令牌。
+ */
+const CONVERGED_DOMAIN_FLAT_METHODS: ReadonlySet<keyof MethodMap> = new Set<keyof MethodMap>([
+  'listQueryFavorites',
+  'createQueryFavorite',
+  'deleteQueryFavorite',
+  'getQueryHistoryPage',
+  'deleteQueryHistory',
+  'clearQueryHistory',
+  'purgeHistory',
+  'listSchemaDiffProfiles',
+  'saveSchemaDiffProfile',
+  'deleteSchemaDiffProfile',
+  'compareTableSchemas',
+  'prepareSchemaDiffPlan',
+  'prepareSchemaUnifiedPlan',
+  'executeSchemaDiffDeploy',
+  'listSchemaDiffJobs',
+  'getSchemaDiffJobDetails',
+  'cancelSchemaDiffDeploy',
+  'verifySchemaDiffJobRecovery',
+]);
+
+/**
+ * 剥掉 HTTP 写面的幂等令牌：令牌是传输层词汇（HTTP 面 CSRF/幂等回执的
+ * 载体），不该泄进宿主参数袋——多余字段对命令无害，但令牌不是业务事实。
+ */
+function stripSubmissionToken(payload: unknown): unknown {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+    return payload;
+  }
+  const { submissionToken: _ipcRailNeedsNoReceipt, ...rest } = payload as Record<string, unknown>;
+  return rest;
 }
 
 /**
@@ -140,12 +195,14 @@ export function createDesktopBackendTransport(): BackendTransport {
       const args =
         method === 'getPlatformIdentity'
           ? {}
-          : isLegacyHostCommand(method) ||
-              method === 'getJob' ||
-              method === 'listJobs' ||
-              FLAT_ARGUMENT_METHODS.has(method)
-            ? payload
-            : { request: payload ?? {} };
+          : CONVERGED_DOMAIN_FLAT_METHODS.has(method)
+            ? stripSubmissionToken(payload)
+            : isLegacyHostCommand(method) ||
+                method === 'getJob' ||
+                method === 'listJobs' ||
+                FLAT_ARGUMENT_METHODS.has(method)
+              ? payload
+              : { request: payload ?? {} };
       // The request's own fields are the command's named arguments, so this
       // cast is a widening to Tauri's argument bag, not a shape change: the
       // object handed to `invoke` is the same object `call` received.
