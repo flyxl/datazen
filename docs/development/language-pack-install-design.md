@@ -31,7 +31,7 @@ datazen-locale-ja.zip
 | 层 | 文件 | 职责 |
 |---|---|---|
 | 共享内核 | `crates/datazen/src/language_packs/{mod,manifest,install,manager,summary}.rs`（feature `language_packs`，desktop 显式开） | 校验规则单家、ZIP 两遍安检解包、staging 原子安装、扫描/列表/读译文/卸载；存储根参数化（镜像 wapps「内核不读 ambient 路径」） |
-| 桌面宿主 | `crates/datazen-desktop/src/commands/language_packs.rs` + `bootstrap/app_state.rs`（AppState 字段 + 扫描）+ `bootstrap/run.rs`（命令注册） | 薄壳：文件对话框、pick 会话（≤8）、webdriver-only override 门、`spawn_blocking`、事件广播 |
+| 桌面宿主 | `crates/datazen-desktop/src/commands/language_packs.rs` + `bootstrap/app_state.rs`（启动扫描日志）+ `bootstrap/run.rs`（命令注册） | 薄壳：文件对话框、pick 会话（≤8）、webdriver-only override 门、`spawn_blocking`、事件广播 |
 | 前端 | `commands/languagePacks.ts` / `stores/languagePackStore.ts` / `lib/languagePackRuntime.ts` / `windows/settings/{LanguagePacksCard,InstallLanguagePackDialog}.tsx` | 两步确认流；`registerLocale` 通道注册；语言下拉合并已装包 |
 | 基础库 | `packages/ui/src/i18n.ts` 增 `unregisterTranslations`（约 10 行） | 修两个既有缺口：卸载幽灵字典、同 code 重装新旧键合并污染 |
 | 伴生工具 | `scripts/export-locale-pack.mjs` | 把仓库 8 个源码态语言（de/es/fr/ja/ko/pt-BR/ru/zh-TW）导出为可装包（内嵌极简 store-zip writer，无依赖） |
@@ -70,6 +70,10 @@ datazen-locale-ja.zip
 - `startLocaleSync`（唯一 `setLocale` 驱动点，不变式保持）：**内置语言同步切换（历史契约——settingsStore.language 变更后的同步读取/渲染依赖它，`retest-round1-fixes.tester` 钉住）**；包语言先 ensure 再 setLocale（异步微任务）。乱序防护 = 目标 locale 记账、最后者胜（守卫两侧都做 `?? 'en'` 归一化）。启动 seed 同理（持久化语言为外装包时首帧短暂 en，与主题包异步生效同等待遇）。
 - 卸载在用包：前端先 `updateSettings({ language: 'en' })`（settingsStore → localeSync → setLocale 切走）→ 再调 remove 命令 → `unregisterTranslations` + `unregisterLocale`。
 - 语言下拉选项 = 内置 + 已装包（store 元数据，label 不需要字典）+ 其余扩展 locale（去重）。
+
+## 7.5 实施期裁决：注册表无状态（AppState 形状守卫）
+
+`app_state_shape_tests` 钉住 AppState `pub` 字段数 ≤ 23（「宿主只许瘦身」方向守卫）。本刀因此**不新增 AppState 字段**：`LanguagePackManager` 去掉内存注册表，改为**无状态**——命令每次从 `state.store.data_dir()` 现构实例（只持一个路径），磁盘目录是唯一事实源。收益：跨窗口零状态漂移、无 register/unregister 缓存维护；代价：`list()` 每次全量解析（毫秒级，设置页打开频率可承受）。启动扫描保留为一次性日志计数（`bootstrap/app_state.rs`，无字段）。
 
 ## 8. 边界与已知限制（如实交付面）
 

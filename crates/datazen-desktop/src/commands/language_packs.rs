@@ -7,6 +7,10 @@
 //! webdriver-only 的 override 逃生门、`language-packs:changed` 事件与
 //! `spawn_blocking` 包裹的文件 IO（形状与 `commands/wapps` 一致）。
 //!
+//! 注册表**无状态**（AppState 形状守卫裁决：不加字段）：命令每次从
+//! `state.store.data_dir()` 现构 `LanguagePackManager`——它只持一个路径，
+//! 磁盘目录是唯一事实源，跨窗口零状态漂移。
+//!
 //! IPC 契约：命令名、参数（serde camelCase）、事件与错误文案。
 
 use std::collections::HashMap;
@@ -88,9 +92,14 @@ async fn resolve_language_pack_path(
     }
 }
 
+/// 现构无状态注册表（磁盘即事实源；构造只持一个路径）。
+fn manager_of(state: &AppState) -> datazen::language_packs::LanguagePackManager {
+    datazen::language_packs::LanguagePackManager::new(state.store.data_dir().join("language-packs"))
+}
+
 /// 跨域共享入口：生产调用方 `list_language_packs` 命令；测试驱动同款。
 pub(crate) fn list_language_packs_impl(state: &AppState) -> Vec<LanguagePackSummary> {
-    state.language_packs.list()
+    manager_of(state).list()
 }
 
 /// 跨域共享入口：生产调用方 `read_language_pack_messages` 命令；测试同款。
@@ -98,8 +107,7 @@ pub(crate) fn read_language_pack_messages_impl(
     state: &AppState,
     code: &str,
 ) -> Result<LanguagePackMessages, CommandError> {
-    state
-        .language_packs
+    manager_of(state)
         .read_messages(code)
         .map_err(|e| map_pack_error(&e))
 }
@@ -118,16 +126,13 @@ pub(crate) async fn install_language_pack_from_path_impl(
         )));
     }
 
-    let packs_dir = state.language_packs.packs_dir().to_path_buf();
+    let packs_dir = state.store.data_dir().join("language-packs");
     let inspection = tokio::task::spawn_blocking(move || install_from_zip(&source, &packs_dir))
         .await
         .map_err(|e| CommandError::Internal(format!("install_language_pack task: {e}")))?
         .map_err(|e| map_pack_error(&e))?;
 
     let message_count: usize = inspection.domains.iter().map(|d| d.message_count).sum();
-    state
-        .language_packs
-        .register(inspection.manifest.clone(), message_count);
     tracing::info!(
         code = %inspection.manifest.code,
         version = %inspection.manifest.version,
@@ -150,8 +155,7 @@ pub(crate) async fn remove_language_pack_impl(
     state: &AppState,
     code: String,
 ) -> Result<(), CommandError> {
-    state
-        .language_packs
+    manager_of(state)
         .remove(&code)
         .map_err(|e| map_pack_error(&e))?;
     tracing::info!(%code, "remove_language_pack OK");
@@ -291,8 +295,8 @@ mod tests {
         let test = TestAppState::new().await;
         let state = &test.state;
 
-        // AppState 组装：语言包注册表指向 {appData}/language-packs。
-        assert!(state.language_packs.packs_dir().ends_with("language-packs"));
+        // 无状态注册表从 store.data_dir() 取根目录。
+        assert!(manager_of(state).packs_dir().ends_with("language-packs"));
 
         let zip_path = test._temp.path().join("ja.zip");
         write_pack_zip(&zip_path, "ja", "日本語");

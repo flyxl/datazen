@@ -218,9 +218,6 @@ pub struct AppState {
     pub query_executions: Arc<QueryExecutionRegistry>,
     pub workflow_scheduler: Arc<WorkflowScheduler>,
     pub wapps: Arc<WappManager>,
-    /// 已装语言包注册表（共享层 `datazen::language_packs`；存储根
-    /// `{appData}/language-packs`，组装期扫描一次）。
-    pub language_packs: Arc<datazen::language_packs::LanguagePackManager>,
     pub cancel_registry: datazen::ai::cancel::CancellationRegistry,
     /// Owner-bound editor-session grants for AI tool execution (P6 §14.4).
     pub ai_grants: Arc<crate::commands::ai::AiGrantService>,

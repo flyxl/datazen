@@ -1,39 +1,32 @@
-//! 已装语言包注册表：启动扫描、列表、读译文、卸载。
+//! 已装语言包注册表：列表、读译文、卸载、启动扫描计数。
 //!
-//! 与 `wapps::manager` 同构的共享注册表：磁盘目录 `{packs_dir}/{code}/`
-//! 是事实源，内存表是投影（启动扫描 + 安装后 `register` 维护）。所有方法
-//! 线程安全；读译文每次都从磁盘现读（活动包注册以磁盘为准），列表走
-//! 内存投影（设置页打开/跨窗口事件刷新用，避免每次全量解析）。
+//! **无状态设计**（`app_state_shape_tests` 的 AppState 字段上限守卫裁决）：
+//! 磁盘目录 `{packs_dir}/{code}/` 是唯一事实源，每个方法现读现扫——
+//! 没有 `AppState` 字段、没有进程级缓存，也就没有跨窗口状态漂移。宿主命令
+//! 每次从 `state.store.data_dir()` 现构实例（构造只是持一个路径，零成本）。
+//!
+//! 代价是 `list()` 每次全量解析（每包约 1MB JSON、毫秒级，设置页打开频率
+//! 完全可承受）；换来的是 `register`/`unregister` 类缓存维护的整类缺失。
 
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::RwLock;
 
 use super::install::validate_pack_dir;
 use super::manifest::{validate_locale_code, LanguagePackManifest, LANGUAGE_PACK_DOMAINS};
 use super::summary::{LanguagePackMessages, LanguagePackSummary};
 
-/// 单个已装包的内存投影。
-#[derive(Debug, Clone)]
-struct LoadedPack {
-    manifest: LanguagePackManifest,
-    message_count: usize,
-}
-
-/// 共享语言包注册表。目录由宿主注入（桌面：`{appData}/language-packs`）。
+/// 语言包注册表（目录由宿主注入；桌面：`{appData}/language-packs`）。
+///
+/// 实例可以按命令调用现构现弃（无内部可变状态）。
 #[derive(Debug)]
 pub struct LanguagePackManager {
     packs_dir: PathBuf,
-    packs: RwLock<BTreeMap<String, LoadedPack>>,
 }
 
 impl LanguagePackManager {
     pub fn new(packs_dir: PathBuf) -> Self {
-        Self {
-            packs_dir,
-            packs: RwLock::new(BTreeMap::new()),
-        }
+        Self { packs_dir }
     }
 
     /// 存储根目录（一个已装包一个子目录）。
@@ -41,30 +34,20 @@ impl LanguagePackManager {
         &self.packs_dir
     }
 
-    /// 安装成功后由宿主调用：登记（或覆盖）一个包的内存投影。
-    pub fn register(&self, manifest: LanguagePackManifest, message_count: usize) {
-        let code = manifest.code.clone();
-        let mut packs = self.write_lock();
-        packs.insert(
-            code,
-            LoadedPack {
-                manifest,
-                message_count,
-            },
-        );
+    /// 扫描 `{packs_dir}`，返回合法包数（供启动日志）。坏包跳过并 warn
+    /// （一个坏包不能炸 boot，与 wapp 扫描同语义）；staging/备份（点前缀）
+    /// 忽略。同 `list()` 的校验规则。
+    pub fn load_from_disk(&self) -> usize {
+        self.list().len()
     }
 
-    /// 扫描 `{packs_dir}` 并登记每个合法包；坏包跳过并 warn（一个坏包
-    /// 不能炸 boot，与 wapp 扫描同语义）。staging/备份（点前缀）忽略。
-    /// 返回登记数（供启动日志）。
-    pub fn load_from_disk(&self) -> usize {
-        let mut packs = self.write_lock();
-        packs.clear();
-
+    /// 已装包列表：扫描目录并全量校验，坏包跳过 + warn；按 code 排序的
+    /// 稳定投影。
+    pub fn list(&self) -> Vec<LanguagePackSummary> {
         let Ok(entries) = fs::read_dir(&self.packs_dir) else {
-            return 0;
+            return Vec::new();
         };
-        let mut loaded = 0usize;
+        let mut summaries: Vec<LanguagePackSummary> = Vec::new();
         for entry in entries.filter_map(|e| e.ok()) {
             let name = entry.file_name().to_string_lossy().into_owned();
             if name.starts_with('.') {
@@ -76,8 +59,6 @@ impl LanguagePackManager {
             }
             match validate_pack_dir(&path) {
                 Ok(inspection) => {
-                    let message_count: usize =
-                        inspection.domains.iter().map(|d| d.message_count).sum();
                     // 目录名必须与 manifest.code 一致（安装时的不变式；
                     // 手工搬动目录属完整性破坏，跳过并告警）。
                     if inspection.manifest.code != name {
@@ -88,53 +69,43 @@ impl LanguagePackManager {
                         );
                         continue;
                     }
-                    packs.insert(
-                        inspection.manifest.code.clone(),
-                        LoadedPack {
-                            manifest: inspection.manifest,
-                            message_count,
-                        },
-                    );
-                    loaded += 1;
+                    let message_count: usize =
+                        inspection.domains.iter().map(|d| d.message_count).sum();
+                    summaries.push(LanguagePackSummary {
+                        code: inspection.manifest.code,
+                        label: inspection.manifest.label,
+                        version: inspection.manifest.version,
+                        author: inspection.manifest.author,
+                        description: inspection.manifest.description,
+                        message_count,
+                        file_name: name,
+                    });
                 }
                 Err(error) => {
                     tracing::warn!(dir = %name, error = %error, "invalid language pack; skipping");
                 }
             }
         }
-        loaded
+        summaries.sort_by(|a, b| a.code.cmp(&b.code));
+        summaries
     }
 
-    /// 已装包列表（按 code 排序的稳定投影）。
-    pub fn list(&self) -> Vec<LanguagePackSummary> {
-        let packs = self.read_lock();
-        packs
-            .values()
-            .map(|loaded| LanguagePackSummary {
-                code: loaded.manifest.code.clone(),
-                label: loaded.manifest.label.clone(),
-                version: loaded.manifest.version.clone(),
-                author: loaded.manifest.author.clone(),
-                description: loaded.manifest.description.clone(),
-                message_count: loaded.message_count,
-                file_name: loaded.manifest.code.clone(),
-            })
-            .collect()
-    }
-
-    /// 读取一个已装包的全部译文（磁盘现读，合并全部域文件）。
+    /// 读取一个已装包的全部译文（manifest 现读取 label；域文件按字母序
+    /// 合并、后者胜——与内置全量合并同语义，跨域重复键合法）。
     ///
     /// 应答带 `label`：前端注册进共享翻译引擎需要「code + label + messages」
-    /// 三件，一次 IPC 拿全。未知/未登记的 code 返回 NotFound 文案。
+    /// 三件，一次 IPC 拿全。未知/格式非法的 code 返回 NotFound 文案。
     pub fn read_messages(&self, code: &str) -> Result<LanguagePackMessages, String> {
         validate_locale_code(code).map_err(|_| format!("language pack not found: {code}"))?;
-        let (label, dir) = {
-            let packs = self.read_lock();
-            let loaded = packs
-                .get(code)
-                .ok_or_else(|| format!("language pack not found: {code}"))?;
-            (loaded.manifest.label.clone(), self.packs_dir.join(code))
-        };
+        let dir = self.packs_dir.join(code);
+        let manifest_path = dir.join(super::manifest::MANIFEST_FILE);
+        if !dir.is_dir() || !manifest_path.is_file() {
+            return Err(format!("language pack not found: {code}"));
+        }
+        let manifest: LanguagePackManifest = serde_json::from_str(
+            &fs::read_to_string(&manifest_path).map_err(|e| format!("read manifest.json: {e}"))?,
+        )
+        .map_err(|e| format!("invalid language pack manifest: {e}"))?;
 
         // 域文件按字母序合并、后者胜——与内置全量合并（locales/<code>/
         // index.ts 的字母序 import 展开）对同一份源数据产出同一个生效值；
@@ -158,45 +129,25 @@ impl LanguagePackManager {
         }
         Ok(LanguagePackMessages {
             code: code.to_string(),
-            label,
+            label: manifest.label,
             messages,
         })
     }
 
-    /// 卸载：删除 `{code}/` 目录（连同遗留备份），并从内存表移除。
-    /// 未知 code 返回 NotFound 文案；前端负责先切换活动语言（回退 en）。
+    /// 卸载：删除 `{code}/` 目录（连同遗留备份）。未知 code 返回 NotFound
+    /// 文案；前端负责先切换活动语言（回退 en）。
     pub fn remove(&self, code: &str) -> Result<(), String> {
         validate_locale_code(code).map_err(|_| format!("language pack not found: {code}"))?;
-        {
-            let packs = self.read_lock();
-            if !packs.contains_key(code) {
-                return Err(format!("language pack not found: {code}"));
-            }
-        }
         let dir = self.packs_dir.join(code);
         let backup = self.packs_dir.join(format!("{code}.old.bak"));
-        if dir.exists() {
-            fs::remove_dir_all(&dir).map_err(|e| format!("remove language pack: {e}"))?;
+        if !dir.exists() {
+            return Err(format!("language pack not found: {code}"));
         }
+        fs::remove_dir_all(&dir).map_err(|e| format!("remove language pack: {e}"))?;
         if backup.exists() {
             let _ = fs::remove_dir_all(&backup);
         }
-        self.write_lock().remove(code);
         Ok(())
-    }
-
-    fn read_lock(&self) -> std::sync::RwLockReadGuard<'_, BTreeMap<String, LoadedPack>> {
-        self.packs.read().unwrap_or_else(|e| {
-            tracing::warn!(error = %e, "language pack registry read lock poisoned; recovering");
-            e.into_inner()
-        })
-    }
-
-    fn write_lock(&self) -> std::sync::RwLockWriteGuard<'_, BTreeMap<String, LoadedPack>> {
-        self.packs.write().unwrap_or_else(|e| {
-            tracing::warn!(error = %e, "language pack registry write lock poisoned; recovering");
-            e.into_inner()
-        })
     }
 }
 
@@ -243,15 +194,12 @@ mod tests {
         let zip_path = tmp.path().join("pack.zip");
         let packs_dir = tmp.path().join("language-packs");
         write_pack_zip(&zip_path, code, label);
-        let inspection = install_from_zip(&zip_path, &packs_dir).unwrap();
-        let manager = LanguagePackManager::new(packs_dir);
-        let count: usize = inspection.domains.iter().map(|d| d.message_count).sum();
-        manager.register(inspection.manifest, count);
-        manager
+        install_from_zip(&zip_path, &packs_dir).unwrap();
+        LanguagePackManager::new(packs_dir)
     }
 
     #[test]
-    fn list_reflects_registered_pack_sorted_by_code() {
+    fn list_scans_disk_sorted_by_code() {
         let tmp = TempDir::new().unwrap();
         let manager = installed_manager(&tmp, "ja", "日本語");
         let list = manager.list();
@@ -263,7 +211,7 @@ mod tests {
         // 序列化形状钉子：camelCase 线契约。
         let json = serde_json::to_value(&list[0]).unwrap();
         assert!(json.get("messageCount").is_some());
-        assert!(json.get("packVersion").is_none());
+        assert!(json.get("pack_version").is_none());
     }
 
     #[test]
@@ -297,7 +245,7 @@ mod tests {
     }
 
     #[test]
-    fn remove_deletes_directory_and_registry_entry() {
+    fn remove_deletes_directory() {
         let tmp = TempDir::new().unwrap();
         let manager = installed_manager(&tmp, "ja", "日本語");
         let dir = manager.packs_dir().join("ja");
@@ -313,7 +261,7 @@ mod tests {
     }
 
     #[test]
-    fn load_from_disk_scans_valid_packs_and_skips_bad_ones() {
+    fn list_skips_bad_packs_and_mismatched_dir_names() {
         let tmp = TempDir::new().unwrap();
         let packs_dir = tmp.path().join("language-packs");
 
@@ -343,61 +291,28 @@ mod tests {
         // staging 残留（点前缀，忽略）。
         fs::create_dir_all(packs_dir.join(".staging-xyz")).unwrap();
 
-        let manager = LanguagePackManager::new(packs_dir.clone());
+        let manager = LanguagePackManager::new(packs_dir);
         assert_eq!(manager.load_from_disk(), 1);
         let list = manager.list();
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].code, "ja");
-        // 扫描后 read_messages 也可用（内存表已登记）。
         assert!(manager.read_messages("ja").is_ok());
     }
 
     #[test]
-    fn load_from_disk_with_missing_dir_returns_zero() {
+    fn list_with_missing_dir_is_empty() {
         let manager = LanguagePackManager::new(PathBuf::from("/nonexistent/language-packs"));
         assert_eq!(manager.load_from_disk(), 0);
         assert!(manager.list().is_empty());
     }
 
     #[test]
-    fn register_overrides_existing_projection() {
-        let tmp = TempDir::new().unwrap();
-        let manager = installed_manager(&tmp, "ja", "日本語");
-
-        let manifest = LanguagePackManifest {
-            pack_version: PACK_VERSION,
-            code: "ja".into(),
-            label: "日本語 v2".into(),
-            version: "2.0.0".into(),
-            author: None,
-            description: None,
-        };
-        manager.register(manifest, 42);
-
-        let list = manager.list();
-        assert_eq!(list[0].version, "2.0.0");
-        assert_eq!(list[0].message_count, 42);
-        // 磁盘是事实源：read_messages 仍读旧文件的译文。
-        let pack = manager.read_messages("ja").unwrap();
-        assert_eq!(pack.label, "日本語 v2");
-        assert_eq!(pack.messages.len(), 3);
-    }
-
-    #[test]
     fn summary_shape_is_camel_case_wire() {
-        let manifest = LanguagePackManifest {
-            pack_version: PACK_VERSION,
+        let summary = LanguagePackSummary {
             code: "ja".into(),
             label: "日本語".into(),
             version: "1.2.3".into(),
             author: Some("DataZen".into()),
-            description: None,
-        };
-        let summary = LanguagePackSummary {
-            code: manifest.code.clone(),
-            label: manifest.label.clone(),
-            version: manifest.version.clone(),
-            author: manifest.author.clone(),
             description: None,
             message_count: 3,
             file_name: "ja".into(),
@@ -433,5 +348,36 @@ mod tests {
         };
         let json = serde_json::to_value(&wire).unwrap();
         assert_eq!(json["messages"]["common.ok"], "了解");
+    }
+
+    #[test]
+    fn cross_domain_duplicate_key_last_alphabetical_domain_wins() {
+        // manager 读取侧的同款裁决（install 侧另有安装用例）：ai 与 core
+        // 两域同键，字母序靠后的 core 胜。
+        let tmp = TempDir::new().unwrap();
+        let packs_dir = tmp.path().join("language-packs");
+        let dir = packs_dir.join("ja");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join(MANIFEST_FILE),
+            r#"{"packVersion":1,"code":"ja","label":"X","version":"1.0.0"}"#,
+        )
+        .unwrap();
+        fs::write(
+            dir.join("ai.json"),
+            r#"{"common.aiNotConfigured": "from-ai"}"#,
+        )
+        .unwrap();
+        fs::write(
+            dir.join("core.json"),
+            r#"{"common.aiNotConfigured": "from-core"}"#,
+        )
+        .unwrap();
+        let manager = LanguagePackManager::new(packs_dir);
+        let pack = manager.read_messages("ja").unwrap();
+        assert_eq!(
+            pack.messages.get("common.aiNotConfigured"),
+            Some(&"from-core".to_string())
+        );
     }
 }
