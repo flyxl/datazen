@@ -50,7 +50,7 @@ use datazen_server::storage::AdminStore;
 
 fn memory_store() -> Arc<AdminStore> {
     let store = AdminStore::open_in_memory().expect("in-memory store");
-    store.migrate().expect("migrations apply v1..=v10");
+    store.migrate().expect("migrations apply v1..=v12");
     Arc::new(store)
 }
 

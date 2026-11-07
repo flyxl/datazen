@@ -594,22 +594,24 @@ fn schema_snapshot(conn: &Connection) -> BTreeMap<(String, String), String> {
 fn migrating_a_v6_library_expands_and_preserves_every_history_row() {
     let (path, before) = v6_form_library("v6-expand");
     let store = AdminStore::open(&path).expect("open v6 library");
-    let applied = store.migrate().expect("migrate v6 → 当前目标（v11）");
+    let applied = store.migrate().expect("migrate v6 → 当前目标（v12）");
     // v8（server_settings）、v9（named_views）、v10（org_memories /
-    // org_memory_audit，T25）与 v11（query_favorites / query_history，
-    // W8 刀3a；编号让位于 T25）加入后，v6 旧库一次应用 v7..=v11 五步——
+    // org_memory_audit，T25）、v11（query_favorites / query_history，
+    // W8 刀3a；编号让位于 T25）与 v12（job 运行时三伴表 + 迁移历史 +
+    // schema_diff_profiles，W8 刀3b）加入后，v6 旧库一次应用 v7..=v12 六步——
     // expand-only 纪律对每一步分别成立。
     assert_eq!(
         applied.len(),
-        5,
-        "v6 → 当前目标应用 v7、v8、v9、v10、v11 五步"
+        6,
+        "v6 → 当前目标应用 v7、v8、v9、v10、v11、v12 六步"
     );
     assert_eq!(applied[0].version, 7);
     assert_eq!(applied[1].version, 8);
     assert_eq!(applied[2].version, 9);
     assert_eq!(applied[3].version, 10);
     assert_eq!(applied[4].version, 11);
-    assert_eq!(store.schema_version().expect("schema version"), 11);
+    assert_eq!(applied[5].version, 12);
+    assert_eq!(store.schema_version().expect("schema version"), 12);
 
     let conn = probe(&path);
     // v7 新表在（执行接线的四组对象）。
@@ -624,6 +626,11 @@ fn migrating_a_v6_library_expands_and_preserves_every_history_row() {
         "org_memory_audit",
         "query_favorites",
         "query_history",
+        "job_result_details",
+        "job_domain_results",
+        "job_artifact_refs",
+        "migration_run_history",
+        "schema_diff_profiles",
     ] {
         let exists: bool = conn
             .query_row(
@@ -655,6 +662,10 @@ fn migrating_a_v6_library_expands_and_preserves_every_history_row() {
         vec![
             ("index", "idx_connection_catalog_order"),
             ("index", "idx_connection_catalog_tunnel"),
+            // v12（W8 刀3b schema diff 运行时 + 迁移历史 + profile）。
+            ("index", "idx_job_artifact_expiry"),
+            ("index", "idx_migration_run_profile"),
+            ("index", "idx_migration_run_started"),
             ("index", "idx_named_views_scope"),
             // v10（T25 组织记忆与审批审计）。
             ("index", "idx_org_memories_active"),
@@ -668,6 +679,11 @@ fn migrating_a_v6_library_expands_and_preserves_every_history_row() {
             ("table", "connection_catalog"),
             ("table", "connection_catalog_group"),
             ("table", "execution_service_identity"),
+            // v12（W8 刀3b）。
+            ("table", "job_artifact_refs"),
+            ("table", "job_domain_results"),
+            ("table", "job_result_details"),
+            ("table", "migration_run_history"),
             ("table", "named_views"),
             // v10（T25 组织记忆与审批审计）。
             ("table", "org_memories"),
@@ -675,6 +691,7 @@ fn migrating_a_v6_library_expands_and_preserves_every_history_row() {
             // v11（query assets，W8 刀3a）。
             ("table", "query_favorites"),
             ("table", "query_history"),
+            ("table", "schema_diff_profiles"),
             ("table", "server_settings"),
             ("table", "stored_secret"),
             ("table", "stored_secret_version"),
@@ -683,7 +700,7 @@ fn migrating_a_v6_library_expands_and_preserves_every_history_row() {
         .into_iter()
         .map(|(t, n)| (t.to_string(), n.to_string()))
         .collect::<Vec<_>>(),
-        "新增对象恰为 v7..=v11 的登记清单（expand-only：每一步只加不改）"
+        "新增对象恰为 v7..=v12 的登记清单（expand-only：每一步只加不改）"
     );
 
     // 历史行逐字段原样（登记表/审计行不被迁移破坏）。
@@ -866,7 +883,7 @@ fn migrate_is_idempotent_over_a_history_bearing_library() {
     let (path, _) = v6_form_library("v6-idempotent");
     let store = AdminStore::open(&path).expect("open");
     let first = store.migrate().expect("first migrate");
-    assert_eq!(first.len(), 5, "v6 → 当前目标（v7+v8+v9+v10+v11 五步）");
+    assert_eq!(first.len(), 6, "v6 → 当前目标（v7..=v12 六步）");
     let snapshot_after_first = schema_snapshot(&probe(&path));
 
     let second = store.migrate().expect("second migrate");

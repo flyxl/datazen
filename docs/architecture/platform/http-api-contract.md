@@ -39,7 +39,7 @@
 
 ## 4. 契约面总账
 
-十个域、43 个域客户端方法：
+十二个域、61 个域客户端方法（§6.12 查询资产七方法 + §6.13 Schema Diff 十一方法随 W8 刀3a/刀3b 入账）：
 
 | 域 | 方法数 | HTTP 服务 | 排除 | 备注 |
 | --- | --- | --- | --- | --- |
@@ -53,9 +53,11 @@
 | events | 2 | 2 | 0 | SSE（v1.1：订阅建立 + 流） |
 | tableData | 14 | 14 | 0 | |
 | driverGateway（过渡） | 5 | 4 | 1 | `open_base64_with_dialog` 排除（§6.9） |
-| **合计** | **43** | **42** | **1** | |
+| queryAssets | 7 | 7 | 0 | §6.12（W8 刀3a 服务端半边；web 半边随域客户端收口） |
+| schemaDiff | 11 | 11 | 0 | §6.13（W8 刀3b；`get_migration_run`/`list_migration_runs` 读面留 sync 域） |
+| **合计** | **61** | **60** | **1** | |
 
-路由总数 41 条服务 42 个方法（PATCH 双服务），另有服务自举路由 5 条（§5）与已立项待补方法的 1 条（§6.5）。
+路由总数 59 条服务 60 个方法（PATCH 双服务），另有服务自举路由 5 条（§5）与已立项待补方法的 1 条（§6.5）。
 
 ## 5. 服务自举路由（非域面）
 
@@ -250,6 +252,48 @@ legacy IPC 命令轨（`add_favorite_query` 等）收敛进 MethodMap 的第一�
   读取天然落空、删除无操作（CM-05）；请求体没有归属字段（INV-01）。
 - **写面令牌走 HMAC 轨**（配置类操作，不绑 runtime 会话；§6.2 的两轨分派）。
 
+### 6.13 Schema Diff：对比、计划与部署（W8 刀3b，2026-11-07）
+
+legacy IPC 命令轨的第二域（`compare_table_schemas` / `prepare_schema_diff_plan` 等
+11 命令）。词汇（`SchemaDiffProfile` / `SchemaDiffPlan` / `SchemaDiffJobAccepted` /
+`SchemaDiffJobDetails`）一条——共享层 `datazen::migration::schema_diff`，camelCase；
+存储两形态：桌面 = 加密 JSON 文件（profile）+ 本机 job 库；web = 服务端 v12
+（`schema_diff_profiles` / job 运行时三伴表 / `migration_run_history`）。SQL 计划
+正文是进程内评审产物（`PlanRepository` 内存 + `job_result_details` 冻结元数据），
+不落盘不回显——重启后 `planUnavailableAfterRestart` 如实回答。
+
+| 方法 | 路由 | 令牌 | 成功 | 请求 → 响应 |
+| --- | --- | --- | --- | --- |
+| `listSchemaDiffProfiles` | `GET /api/v1/schema-diff/profiles` | — | 200 | — → `SchemaDiffProfile[]` |
+| `saveSchemaDiffProfile` | `PUT /api/v1/schema-diff/profiles` | ✓ | 204 | `SchemaDiffProfile & SubmitRequest` → —（upsert；`createdAt` 缺席保留/铸造，`updatedAt` 恒服务端时刻） |
+| `deleteSchemaDiffProfile` | `DELETE /api/v1/schema-diff/profiles/{id}` | ✓ | 204 | 未知 id = 幂等 no-op |
+| `compareTableSchemas` | `POST /api/v1/schema-diff/comparisons` | — | 200 | 对比文档体（`sourceDbSessionId`/`targetDbSessionId`/表名/可选 schema）→ `TableSchemaComparison`（POST 读，§6.7 同款裁决） |
+| `prepareSchemaDiffPlan` | `POST /api/v1/schema-diff/plans` | ✓ | 202 | 准备文档体 → `SchemaDiffJobAccepted` |
+| `prepareSchemaUnifiedPlan` | `POST /api/v1/schema-diff/unified-plans` | ✓ | 202 | 统一准备文档体（+`sourceObjects`/`targetObjects`）→ `SchemaDiffJobAccepted` |
+| `executeSchemaDiffDeploy` | `POST /api/v1/schema-diff/deploys` | ✓ | 202 | `{ targetDbSessionId, planId+selectionRevision }` 或 `{ plan }`（兼容路径：先注册再受理）→ `SchemaDiffJobAccepted` |
+| `listSchemaDiffJobs` | `GET /api/v1/schema-diff/jobs?states=&limit=` | — | 200 | 状态过滤平铺 → `JobView[]` |
+| `getSchemaDiffJobDetails` | `GET /api/v1/schema-diff/jobs/{id}` | — | 200 | — → `SchemaDiffJobDetails`（details + prepared 信封 + deployResult） |
+| `cancelSchemaDiffDeploy` | `POST /api/v1/schema-diff/jobs/{id}/cancel` | ✓ | 200 | — → `{ cancelled }`（未知/他类/终态 no-op 语义） |
+| `verifySchemaDiffJobRecovery` | `POST /api/v1/schema-diff/jobs/{id}/recovery-verification` | ✓ | 200 | `{ targetDbSessionId }` → `SchemaDiffJobDetails`（只读核验 → RequireManualReview 结论族） |
+
+- **受理 = 先持久化后取资源**：prepare/deploy 的 202 回执先于任何目录读与 DDL
+  执行（job 受理行落库后才派发）；执行面归因 = 受理主体的真实身份（P3 授权语，
+  不落合成服务主体）。
+- **门与桌面 IPC 同权**：目标只读连接拒绝、`requireRollback` 需事务型 DDL + 完整
+  回滚计划、`Unsupported` 计划要求阻断而 `Backfill` 只告警、破坏性计划需
+  `confirm_destructive = "DEPLOY"`、复核消费（reviewed plan 一次性 take）与源侧
+  快照复核、部署前目标指纹比对（漂移 = `PlanStale`）。
+- **端点物理身份 fail-closed**：`ensure_distinct_schema_scope` 沿用共享层裁决——
+  驱动无法证明源/目标是不同库作用域时拒绝（拼写不构成迁移许可）。
+- **归属**：profile 与 job 按 organization 隔离（桌面单租户全体共享的服务端收
+  敛）；会话可见性走目录闸（越组织/未知 → 404 固定文案，防枚举）；请求体没有
+  归属字段（INV-01）。
+- **写面令牌走 HMAC 轨**（配置类操作）；plans/unified-plans/deploys 三受理面入
+  限流严格档（每受理一条 job，派发占活连接与 DDL 执行资源）。
+- **迁移历史落账**：部署编排 start/finish 两段进 v12 `migration_run_history`
+  （best-effort，桌面 history.sqlite 的服务端对偶）；`get_migration_run` /
+  `list_migration_runs` 的读面在 sync 域收口（后续刀）。
+
 ## 7. 能力差异：`WEB_CAPABILITIES` 与 `unsupportedMethods`
 
 - **桌面专属能力不出现在 HTTP 面**：updater、window、native dialog、本机 OS 集成。它们的形态差异由 `packages/frontend/src/platform/capabilities.ts` 的静态表声明（`WEB_CAPABILITIES.updater: false`、`settingsSections` 收窄），前端**编译期分支**，不做运行时形态探测。
@@ -290,4 +334,5 @@ WR-D 落地时的机器核对（WR-C3 接管）：同用例双传输测试逐方
 - 2026-11-03：v1.2（WR-F1 扩展面登记）。**mcp 客户端面**（`mcp.initialize/listTools/callTool/closeSession`）走服务端 `/mcp` streamable HTTP（WR-F2 传输，§6.6 之外的服务面；JSON-RPC 2.0 信封 + `Mcp-Session-Id` 头，L2 cookie 即身份——INV-S1），wire-direct 不入 `MethodMap` 主表（`transport.ts` 类型冻结，逐域登记于 web 侧 `WR_F1_HTTP_ROUTES`）；web broker 的 `serverId` 固定 `"datazen"`（v1 语义：工具面 = datazen 自有 13 工具，与桌面多外部服务器 broker 的差异如实登记）。**security 域**（`security.resolveSecret` → `POST /api/v1/secrets/resolve`、`security.putSecret` → `PUT /api/v1/secrets/{domain}/{key}`）与 **aiHost 域**（`aiHost.getSessionConfig` → `POST /api/v1/ai-host/session-config`、`aiHost.executeTarget` → `POST /api/v1/ai-host/execute-target`）客户端面已定形（web 侧真实现 + 契约测试），**服务端路由未点亮**（部署未挂 = 501/404 显式形态）——服务端半边随执行域路由切片落地，点亮前 web 端如实报 `CapabilityUnsupported` 的替身面保持。
 - 2026-11-06：v1.3（execution 域路由收口刀）。§6.10 execution 四端点点亮（`POST /api/v1/sessions/{id}/executions`、`POST /api/v1/executions`、`GET /api/v1/executions/{id}`、`POST /api/v1/executions/{id}/cancel`）——§4 总账的 execution 4/4 由「计账」变「实服务」；§6.11 job 表补登（四端点此前已服务但无逐域路由表）；§6.2 `issueSubmissionToken` 的会话绑定操作改为经执行用例面签发（修复 openSession/cancelExecution 在 HTTP 面必然 `TokenInvalid` 的端到端断点）；aiHost.executeTarget（§6.2 表）501 → 200 `CommandResult`。
 - 2026-11-07：v1.4（W8 刀3a，查询资产域服务端半边）。**§6.12 收藏与查询历史**七路由（收藏 list/create/delete + 历史 page/delete/clear/purge）——legacy IPC 命令轨（`add_favorite_query`/`get_query_history_page` 等 7 命令）收敛进 MethodMap 的第一域；v10 双表 expand-only 迁移（per (org, principal) 隔离，收藏文件形/历史本机库形的服务端对偶）；历史落账 = execution 域受理后钩子（best-effort，桌面同语义）；`get_favorites_root`/`refresh_favorites` 文件系统语义不进 HTTP 面（桌面专属）。web 半边（域客户端 + RouteSpec + 不支持名单收缩）随下刀收口。
+- 2026-11-07：v1.5（W8 刀3b，Schema Diff 域）。**§6.13 对比、计划与部署**十一路由（profiles 三 + compare + 计划准备二 + 部署受理 + job 读回/取消/恢复核验四）——legacy IPC 命令轨的第二域；v12 expand-only 迁移（job 运行时三伴表 + `migration_run_history` + `schema_diff_profiles`，桌面加密 JSON 文件形的服务端对偶）；`ServerJobs` 实现 `JobRuntimeRepository`（桌面 runtime_ops 家族的服务端投影，幂等回执走受理行 `idem_scope_key` 不开表）；受理 = 先持久化后取资源（202 回执先于任何 DDL）；plans/unified-plans/deploys 三受理面入限流严格档。§4 总账 43→61 方法 / 41→59 路由（queryAssets 7 + schemaDiff 11 入账）。web 半边（域客户端 + 不支持名单收缩）随下刀收口。
 - 2026-11-07：v1.4.1（W8 刀1对账——PR #204 关闭后的增量移植）。§6.10 补三行裁决：`GET /api/v1/executions/{id}` 的 L6 两段登记（`ResourceType::Execution` + `Read`，rbac 基线矩阵裁决）、令牌两轨不混用的 409 wire（`idempotencyExpired`）、限流严格档补行（`POST …/executions` 与 `POST /api/v1/ai-host/execute-target`）。aiHost.executeTarget 的 claim 纪律补齐（claim 必填：`independent` 真执行、`editorGrant` 501 fail-closed、缺失/未知 400——与 web 端 `AiHostExecuteTargetRequest` 冻结形状对齐）；`PrincipalScopedHost` 上移为共享装饰器（aiHost 与 MCP 七工具同一真主体注入路径）。
