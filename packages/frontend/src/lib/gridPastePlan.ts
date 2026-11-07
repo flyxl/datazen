@@ -93,6 +93,54 @@ export function clearClipboardSource(): void {
   lastCopySource = null;
 }
 
+// ── Row copy payload (DBR-02: copy existing rows → paste as new rows) ────────────────
+
+/**
+ * What a **row-mode** copy actually copied: the values, not just the names.
+ *
+ * TSV text cannot round-trip a row faithfully — `null` and `''` both serialize to
+ * an empty cell — so "paste as new rows" needs the matrix itself. Like
+ * {@link ClipboardSource}, this payload is only a claim about the past until it
+ * is verified against the clipboard text at paste time.
+ */
+export interface RowCopyPayload {
+  /** Table identity, from {@link tableChangeKey}. */
+  tableKey: string;
+  /** Source column names, in matrix column order. */
+  columnNames: readonly string[];
+  /** One entry per copied row, aligned with `columnNames`; `null` = SQL NULL. */
+  rows: readonly (unknown | null)[][];
+}
+
+let lastRowCopy: RowCopyPayload | null = null;
+let lastRowCopyText: string | null = null;
+
+/** Record a row copy together with the clipboard text that proves it. */
+export function recordRowCopy(payload: RowCopyPayload, text: string): void {
+  lastRowCopy = payload;
+  lastRowCopyText = normalizeClipboardText(text);
+}
+
+/** Read-only probe; tests may also use it. */
+export function peekRowCopy(): RowCopyPayload | null {
+  return lastRowCopy;
+}
+
+/**
+ * The recorded row payload **if and only if** the clipboard still holds exactly
+ * what the row copy put there. An Excel copy in between leaves a payload that
+ * describes data the clipboard no longer carries — the paste must not trust it.
+ */
+export function rowCopyForClipboardText(text: string): RowCopyPayload | null {
+  if (lastRowCopy === null || lastRowCopyText === null) return null;
+  return normalizeClipboardText(text) === lastRowCopyText ? lastRowCopy : null;
+}
+
+export function clearRowCopy(): void {
+  lastRowCopy = null;
+  lastRowCopyText = null;
+}
+
 /**
  * Stable identity of "the table" for cross-table detection.
  *

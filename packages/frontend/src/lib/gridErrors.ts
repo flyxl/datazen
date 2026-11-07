@@ -54,7 +54,10 @@ export type GridErrorCode =
   | 'grid.paste.crossTable'
   | 'grid.paste.columnMismatch'
   | 'grid.clipboard.writeFailed'
-  | 'grid.clipboard.readFailed';
+  | 'grid.clipboard.readFailed'
+  // ── DBR-02 (row copy → paste as new rows). Append only. ──
+  | 'grid.pasteRows.notRowData'
+  | 'grid.pasteRows.noWritableColumn';
 
 /**
  * Prefix registry. Entries are full message prefixes (`grid.<domain>.<reason>`); the

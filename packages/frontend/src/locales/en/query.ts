@@ -425,6 +425,15 @@ const pack = {
   'dataTable.copySelectedCellsAsMarkdown': 'Copy as Markdown Table',
   'dataTable.pasteSelectedCells': 'Paste to Selected Cells',
   'dataTable.pasteRows': 'Paste Rows',
+  // Row copy → paste as new draft rows (DBR-02).
+  'dataTable.copyRowsAsNewRows': 'Copy as New Rows',
+  'dataTable.pasteRowsNotRowData':
+    'The clipboard does not hold DataZen-copied rows. Copy rows inside DataZen first, or paste into selected cells for external data.',
+  'dataTable.pasteRowsNoWritableColumn':
+    'None of the copied columns can be written to this table (primary key and auto-increment columns are never copied).',
+  'dataTable.pasteRowsCrossTableTitle': 'Paste rows into another table?',
+  'dataTable.pasteRowsCrossTableBody':
+    'Rows copied from {source} will be added to {target} as new rows. {matched} of {total} columns match by name and will be written.',
   'dataTable.copyFailed': 'Could not copy; the clipboard is unavailable.',
   'dataTable.pasteReadFailed':
     'Could not read the clipboard. Press {shortcut} again, or grant clipboard access.',

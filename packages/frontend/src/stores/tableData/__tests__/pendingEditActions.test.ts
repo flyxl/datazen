@@ -51,6 +51,7 @@ const NO_PK_PANEL = 'panel-no-pk';
 /** Every action the store exposes. The split must not add or drop one. */
 const STORE_ACTIONS = [
   'addDraftRow',
+  'addDraftRowsFromCopy',
   'addFilter',
   // DB-11: add (or re-aim) one column of the multi-column sort.
   'addSort',

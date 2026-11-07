@@ -8,7 +8,7 @@ import type {
   RowChangePlan,
   TableChangeContext,
 } from '../../lib/tableChanges';
-import type { FilterCondition, SortCondition } from '../../types';
+import type { FilterCondition, SortCondition, Value } from '../../types';
 import type { DefaultOrderOverride } from '../../lib/defaultSort';
 import type { CellPasteWrite } from '../../lib/tableChanges';
 import type { StagePasteWritesResult } from '../../stores/tableData/pendingEditActions';
@@ -60,6 +60,8 @@ export interface TableActions {
   stageCellChange: (row: number, col: string, value: unknown) => void;
   /** Stage a whole pasted block in one state write (DB-03). */
   stagePasteWrites: (writes: readonly CellPasteWrite[]) => StagePasteWritesResult;
+  /** Append prefilled draft rows from a row copy (DBR-02 paste-rows). */
+  addDraftRowsFromCopy: (rows: readonly Record<string, Value | null>[]) => string[];
   cancelEdit: () => void;
   selectRow: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
   toggleSelectAll: () => void;
@@ -209,6 +211,7 @@ export function useTableActions({
       stageCellChange: (row: number, col: string, value: unknown) =>
         store().stageCellChange(panelId, row, col, value),
       stagePasteWrites: (writes) => store().stagePasteWrites(panelId, writes),
+      addDraftRowsFromCopy: (rows) => store().addDraftRowsFromCopy(panelId, rows),
       cancelEdit: () => store().cancelEdit(panelId),
       // Row gutter (DB-01 §4.2): row-level selection must also switch the mode to 'row',
       // otherwise `selectedRows` paints a highlight the selection model cannot explain.

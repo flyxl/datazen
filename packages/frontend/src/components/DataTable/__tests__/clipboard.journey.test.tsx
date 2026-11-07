@@ -99,6 +99,8 @@ function StoreGrid({ editable = true }: { editable?: boolean }) {
     actions: {
       stagePasteWrites: (writes) =>
         useTableDataStore.getState().stagePasteWrites(PANEL, writes),
+      addDraftRowsFromCopy: (rows) =>
+        useTableDataStore.getState().addDraftRowsFromCopy(PANEL, rows),
     },
     isEditable: editable,
     columnOrder: columns.map((column) => column.name),

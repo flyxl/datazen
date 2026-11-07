@@ -11,7 +11,7 @@ import { tableManualHandle } from '../../lib/session/tableSession';
 import { databaseCommands } from '../../commands/database';
 import { FilterSqlPreviewDialog } from '../../components/filter/FilterSqlPreviewDialog';
 import type { TableReadPreviewSql } from '@datazen/backend-client';
-import { EMPTY_GRID_SELECTION } from '../../stores/tableData/gridSelection';
+import { normalizeSelectionRange, EMPTY_GRID_SELECTION } from '../../stores/tableData/gridSelection';
 import { hasPendingWork } from '../../stores/tableData/pendingChanges';
 import { selectDirtyRow } from '../../stores/tableData/dirtyIndex';
 import { displayedColumnNames } from '../../stores/tableData/selectionActions';
@@ -771,6 +771,22 @@ export function TableView({
     t,
   ]);
 
+  /**
+   * Right-click "Paste to Selected Cells": read the system clipboard and land
+   * it at the top-left of the current cell selection — the same anchor the
+   * `paste` DOM gesture uses, arrived at from the menu instead.
+   */
+  const handleMenuPasteSelectedCells = useCallback(() => {
+    const gridSelection = ts?.gridSelection;
+    if (!gridSelection || gridSelection.mode !== 'cell') return;
+    const anchor = normalizeSelectionRange(gridSelection, displayedColumns.map((c) => c.name));
+    if (!anchor) return;
+    clipboard.handlers.onPasteFromClipboard?.({
+      rowIndex: anchor.start.rowIndex,
+      columnName: anchor.start.columnName,
+    });
+  }, [clipboard.handlers, displayedColumns, ts?.gridSelection]);
+
   const handleTableKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
       // The foreign-key navigation (DB-07) comes first: it is the only
@@ -797,11 +813,25 @@ export function TableView({
       if (mod && (event.key === 'd' || event.key === 'D')) {
         if (!isEditable || pendingBusy) return;
         if (isEditableTarget(event.target)) return;
-        // The focus is on a real row: duplicating a row is not this track's
-        // business (02 owns that), so the key is left alone.
-        if (!drafts.activeDraftId) return;
+        // With an active draft, ⌘D keeps its pre-DBR-02 meaning: duplicate
+        // that draft. Without one — but with real rows selected — it copies
+        // the selected existing rows as new drafts (DBR-02, PRD 5.2: the
+        // gesture fires only on a real row selection, never in an editor).
+        if (drafts.activeDraftId) {
+          event.preventDefault();
+          drafts.duplicateDraftRow(drafts.activeDraftId);
+          return;
+        }
+        const gridSelection = ts?.gridSelection;
+        const hasRealRowSelection =
+          gridSelection != null &&
+          (gridSelection.mode === 'row'
+            ? selectedRows.size > 0
+            : normalizeSelectionRange(gridSelection, displayedColumns.map((c) => c.name)) !=
+              null);
+        if (!hasRealRowSelection) return;
         event.preventDefault();
-        drafts.duplicateDraftRow(drafts.activeDraftId);
+        clipboard.copyRowsAsDrafts();
         return;
       }
       if (event.key === 'Escape') {
@@ -928,6 +958,22 @@ export function TableView({
       />
       <DataTable
         {...clipboard.dataTableProps}
+        // The right-click clipboard entries (DB-03 wiring + DBR-02): the DOM
+        // gestures stay on the bridge, the menu actions are explicit props.
+        onCopySelectedCells={() => {
+          void clipboard.copySelectedCellsAs('tsv');
+        }}
+        onCopySelectedCellsAs={(format, options) => {
+          void clipboard.copySelectedCellsAs(format, options);
+        }}
+        onPasteSelectedCells={handleMenuPasteSelectedCells}
+        onCopyRowsAsNewRows={() => {
+          void clipboard.copyRowsAsNewRows();
+        }}
+        onPasteRows={() => {
+          void clipboard.pasteRowsAsDrafts();
+        }}
+        canPasteRows={clipboard.canUseRowCopy}
         columns={columnDefs}
         rows={rowArrays}
         totalRows={totalRows}

@@ -27,6 +27,7 @@ import {
   type GridSelection,
 } from '../../stores/tableData/gridSelection';
 import type { GridClipboardHandlers } from './gridClipboardBridge';
+import type { SerializeCellsOptions } from '../../lib/gridClipboard';
 import { useDataTableClipboardDom } from './useDataTableClipboardDom';
 import { ROW_MODE_GRID_SELECTION } from '../../stores/tableData/selectionActions';
 import type { DirtyRowEntry } from '../../stores/tableData/dirtyIndex';
@@ -195,6 +196,24 @@ export interface DataTableProps {
    * today's behaviour; every consumer that does not opt in keeps byte-identical behaviour.
    */
   clipboard?: GridClipboardHandlers;
+  /* ── Clipboard menu entries (DB-03 wiring + DBR-02). The DOM gestures stay
+     on `clipboard`; these are the right-click entries, supplied by owners so
+     grids without them keep their exact pre-DBR-02 menu. ── */
+  /** "Copy Selected Cells" (no-as): the plain TSV copy of the selection. */
+  onCopySelectedCells?: () => void;
+  /** "Copy Selected Cells As …": the format submenu actions. */
+  onCopySelectedCellsAs?: (
+    format: SerializeCellsOptions['format'],
+    options?: { includeHeader?: boolean },
+  ) => void;
+  /** "Paste to Selected Cells": paste the system clipboard at the selection. */
+  onPasteSelectedCells?: () => void;
+  /** "Copy as new rows" (DBR-02): copy the covered rows as row data. */
+  onCopyRowsAsNewRows?: () => void;
+  /** "Paste rows" (DBR-02): turn a DataZen row copy into new drafts. */
+  onPasteRows?: () => void;
+  /** Whether "Paste rows" may act; the entry stays visible when `false`. */
+  canPasteRows?: boolean;
   /**
    * Cells the owner wants marked as rejected, keyed `${rowIndex}:${columnName}`.
    *
@@ -384,6 +403,12 @@ export function DataTable({
   onSort,
   onAddSort,
   onRemoveSort,
+  onCopySelectedCells,
+  onCopySelectedCellsAs,
+  onPasteSelectedCells,
+  onCopyRowsAsNewRows,
+  onPasteRows,
+  canPasteRows = true,
   onClearSorts,
   onReorderColumns,
   frozenColumns = 0,
@@ -667,6 +692,17 @@ export function DataTable({
     onFreezeThrough,
     onUnfreezeColumns,
     onColumnStats,
+    // DB-03 wiring + DBR-02: the selected-cell entries and the row-level
+    // copy/paste pair of the right-click menu.
+    hasCellRange: hasCellSelection,
+    canCopySelection: clipboard?.canCopy ?? false,
+    canPasteSelection: clipboard?.canPaste ?? false,
+    onCopySelectedCells,
+    onCopySelectedCellsAs,
+    onPasteSelectedCells,
+    onCopyRowsAsNewRows,
+    onPasteRows,
+    canPasteRows,
     t,
   });
 

@@ -72,6 +72,8 @@ export type DataTableContextMenuLabels = {
   pasteSelectedCells?: string;
   /** "Paste Rows" — the row-level entry DB-04 fills in; DB-03 only reserves the slot. */
   pasteRows?: string;
+  /** "Copy as new rows" (DBR-02). */
+  copyRowsAsNewRows?: string;
   /* ── Multi-column sort (DB-11). All optional: a caller that does not offer
      the header sort block keeps its exact previous menu. ── */
   /** "Sort (multi-column)" — the submenu title of the header sort block. */
@@ -128,6 +130,8 @@ export type DataTableContextMenuHandlers = {
   onPasteSelectedCells?: () => void;
   /** Paste whole rows (DB-04 owns the handler). */
   onPasteRows?: () => void;
+  /** "Copy as new rows" (DBR-02): copy the covered rows as row data. */
+  onCopyRowsAsNewRows?: () => void;
   /* ── Multi-column sort (DB-11). ── */
   /** Add the right-clicked column to the sort list, ascending. */
   onSortAscending?: (column: string) => void;
@@ -222,6 +226,8 @@ export type BuildDataTableContextMenuArgs = {
   canCopySelection?: boolean;
   /** Pasting into the selection is possible (default `false` ⇒ the entry renders disabled). */
   canPasteSelection?: boolean;
+  /** Row-level paste may act (editable + draft-capable, DBR-02). */
+  canPasteRows?: boolean;
   /** Extra non-contiguous regions the rectangular copy deliberately ignores (DB-03 §3.7). */
   selectionIgnoredRanges?: number;
 };
@@ -512,6 +518,7 @@ export function buildDataTableContextMenuItems(
     hasCellRange = false,
     canCopySelection = false,
     canPasteSelection = false,
+    canPasteRows = true,
     selectionIgnoredRanges = 0,
   } = args;
 
@@ -738,8 +745,13 @@ export function buildDataTableContextMenuItems(
   // "copy" is the whole selection.
   const frequent = push(
     item('copy-selected-rows', labels.copySelectedRows, handlers.onCopySelectedRows),
-    // The row-level paste slot. DB-03 reserves it; DB-04 (INSERT) fills the handler in.
-    item('paste-rows', labels.pasteRows ?? '', handlers.onPasteRows),
+    // "Copy as new rows" (DBR-02): the selection goes on the clipboard as row
+    // data — the explicit entry for the gesture ⌘C already performs in row
+    // mode, so the payload is recorded either way.
+    item('copy-rows-as-new-rows', labels.copyRowsAsNewRows ?? '', handlers.onCopyRowsAsNewRows),
+    // The row-level paste slot: DB-03 reserved it, DBR-02 fills the handler
+    // in. Visible-but-disabled when the panel cannot take new rows.
+    enabledItem('paste-rows', labels.pasteRows ?? '', handlers.onPasteRows, canPasteRows),
     canFilterByValue
       ? item('filter-by-value', labels.filterByValue, handlers.onFilterByValue)
       : null,

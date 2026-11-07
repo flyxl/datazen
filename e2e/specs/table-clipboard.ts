@@ -153,6 +153,127 @@ async function clickCell(rowIndex: number, columnName: string) {
 }
 
 describe('表数据剪贴板复制与粘贴 (DB-03)', () => {
+  // ── 行复制 → 新增草稿行（DBR-02）────────────────────────────
+
+  /** Dispatch a keydown the React panel handler will see (the WebDriver that
+   *  backs this spec cannot type; the product keeps its native handlers). */
+  async function dispatchGridKey(key: string, withMeta = false): Promise<void> {
+    await browser.execute(
+      (k: string, meta: boolean) => {
+        document
+          .querySelector('[data-dt-surface]')
+          ?.dispatchEvent(
+            new KeyboardEvent('keydown', {
+              key: k,
+              code: k.length === 1 ? `Key${k.toUpperCase()}` : k,
+              metaKey: meta,
+              ctrlKey: meta,
+              bubbles: true,
+              cancelable: true,
+            }),
+          );
+      },
+      key,
+      withMeta,
+    );
+    await browser.pause(300);
+  }
+
+  /** Select every row through the grid's own Cmd/Ctrl+A, which is row mode. */
+  async function selectAllRows(): Promise<void> {
+    await dispatchGridKey('a', true);
+  }
+
+  /** Drop every draft of the open panel through the dev store probe. */
+  async function rollbackDrafts(): Promise<void> {
+    await browser.execute(() => {
+      type Slice = { draftInserts: Map<string, unknown> };
+      const store = (
+        window as unknown as {
+          __tableDataStore?: {
+            getState: () => {
+              byPanel: Map<string, Slice>;
+              rollbackPendingChanges: (panelId: string) => void;
+            };
+          };
+        }
+      ).__tableDataStore;
+      if (!store) return;
+      const state = store.getState();
+      for (const [panelId, slice] of state.byPanel.entries()) {
+        if (slice.draftInserts.size > 0) state.rollbackPendingChanges(panelId);
+      }
+    });
+    await browser.pause(400);
+  }
+
+  it('行模式复制写出整行 TSV（DBR-02）', async () => {
+    await selectAllRows();
+    const outcome = await dispatchClipboard('copy', '');
+    expect(outcome.prevented).toBe(true);
+    // Full rows, every displayed column, in render order — the clipboard
+    // stays a faithful TSV for every external consumer.
+    expect(outcome.text).toBe('1\tAlice\t100\n2\tBob\t200');
+  });
+
+  it('Cmd/Ctrl+D 将选中的已有行复制为新增草稿，主键不随行 (DBR-02)', async () => {
+    await rollbackDrafts();
+    await selectAllRows();
+    await dispatchGridKey('d', true);
+
+    const snapshot = await browser.execute(() => {
+      type Slice = {
+        draftInserts: Map<string, { draftId: string; values: Record<string, unknown> }>;
+      };
+      const store = (
+        window as unknown as {
+          __tableDataStore?: { getState: () => { byPanel: Map<string, Slice> } };
+        }
+      ).__tableDataStore;
+      if (!store) return null;
+      const slice = [...store.getState().byPanel.values()].find(
+        (candidate) => candidate.draftInserts.size > 0,
+      );
+      if (!slice) return null;
+      return [...slice.draftInserts.values()].map((draft) => draft.values);
+    });
+    expect(snapshot).toEqual([
+      // The serial primary key never travels with a copied row; the ordinary
+      // columns keep their real values.
+      { name: 'Alice', score: 100 },
+      { name: 'Bob', score: 200 },
+    ]);
+
+    await rollbackDrafts();
+  });
+
+  it('有活动草稿时 Cmd/Ctrl+D 仍是复制该草稿，不被行复制抢占 (DBR-02)', async () => {
+    await rollbackDrafts();
+    // Add a draft row (Cmd/Ctrl+I) and duplicate it: the legacy meaning must
+    // survive the new one.
+    await dispatchGridKey('i', true);
+    await dispatchGridKey('d', true);
+    const drafts = await browser.execute(() => {
+      type Slice = {
+        draftInserts: Map<string, unknown>;
+        draftInsertOrder: string[];
+      };
+      const store = (
+        window as unknown as {
+          __tableDataStore?: { getState: () => { byPanel: Map<string, Slice> } };
+        }
+      ).__tableDataStore;
+      if (!store) return null;
+      const slice = [...store.getState().byPanel.values()].find(
+        (candidate) => candidate.draftInserts.size > 0,
+      );
+      return slice ? slice.draftInserts.size : 0;
+    });
+    expect(drafts).toBe(2);
+
+    await rollbackDrafts();
+  });
+
   let mainWindow: string;
 
   before(async () => {

@@ -395,6 +395,15 @@ const pack = {
   'dataTable.copySelectedCellsAsMarkdown': '复制为 Markdown 表',
   'dataTable.pasteSelectedCells': '粘贴到选中的单元格',
   'dataTable.pasteRows': '粘贴行',
+  // 行复制 → 粘贴为新增草稿行（DBR-02）。
+  'dataTable.copyRowsAsNewRows': '复制为新增行',
+  'dataTable.pasteRowsNotRowData':
+    '剪贴板中没有 DataZen 复制的行数据。请先在 DataZen 中复制行；外部数据请使用“粘贴到选中的单元格”。',
+  'dataTable.pasteRowsNoWritableColumn':
+    '复制的列中没有可写入本表的列（主键与自增列不会被复制）。',
+  'dataTable.pasteRowsCrossTableTitle': '将行粘贴到另一张表？',
+  'dataTable.pasteRowsCrossTableBody':
+    '从 {source} 复制的行将作为新增行加入 {target}。{total} 列中有 {matched} 列按名称匹配并写入。',
   'dataTable.copyFailed': '无法复制：剪贴板不可用。',
   'dataTable.pasteReadFailed': '无法读取剪贴板。请再次按 {shortcut}，或允许访问剪贴板。',
   'dataTable.pasteEmpty': '剪贴板是空的，没有可粘贴的内容。',
