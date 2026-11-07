@@ -1,14 +1,16 @@
 import { legacyInvoke as invoke } from '@datazen/backend-client';
 import { useBackendClient } from '@datazen/backend-client';
 import type { ResolveResultOriginRequest, ResultCellChangeRequest } from '@datazen/backend-client';
-import type {
-  FavoriteQuery,
-  HistorySort,
-  MultiQueryResult,
-  QueryHistoryPage,
-  QueryStreamEvent,
-} from '../types';
+import type { FavoriteQuery, HistorySort, MultiQueryResult, QueryStreamEvent } from '../types';
 import { driverCommands } from './driver';
+
+/**
+ * 用户资产写面的提交令牌（契约 §6.12/§6.13：配置类操作，不绑会话）。
+ * 桌面轨在 transport 层剥掉令牌（IPC 不需要回执），web 轨随体上行。
+ */
+async function userAssetToken(): Promise<import('@datazen/backend-client').SubmissionToken> {
+  return useBackendClient().issueSubmissionToken('saveUserAsset', null);
+}
 
 export const queryCommands = {
   executeQuery: async (
@@ -65,7 +67,9 @@ export const queryCommands = {
   cancelQuery: (dbSessionId: string, executionId: string) =>
     invoke<void>('cancel_query', { dbSessionId, executionId }),
 
-  clearQueryHistory: () => invoke<void>('clear_query_history'),
+  clearQueryHistory: async () => {
+    await useBackendClient().clearQueryHistory(await userAssetToken());
+  },
 
   /**
    * Paged history with an honest count.
@@ -84,7 +88,7 @@ export const queryCommands = {
     since?: string | null;
     order?: HistorySort;
   }) =>
-    invoke<QueryHistoryPage>('get_query_history_page', {
+    useBackendClient().getQueryHistoryPage({
       limit: opts.limit,
       connectionId: opts.connectionId ?? null,
       database: opts.database ?? null,
@@ -95,19 +99,21 @@ export const queryCommands = {
     }),
 
   /** Removes one row. Resolves to 0 when the id was already gone. */
-  deleteQueryHistoryEntry: (id: string) => invoke<number>('delete_query_history', { id }),
+  deleteQueryHistoryEntry: async (id: string) =>
+    useBackendClient().deleteQueryHistory({ id }, await userAssetToken()),
 
   /** Ask for a save path, then write `content` to it. Resolves false if cancelled. */
   saveSqlFile: (defaultFileName: string, content: string) =>
     invoke<boolean>('save_sql_file', { defaultFileName, content }),
 
   getFavoriteQueries: (connectionId?: string) =>
-    invoke<FavoriteQuery[]>('get_favorite_queries', { connectionId }),
+    useBackendClient().listQueryFavorites({ connectionId: connectionId ?? null }),
 
-  addFavoriteQuery: (connectionId: string, title: string, sql: string) =>
-    invoke<FavoriteQuery>('add_favorite_query', { connectionId, title, sql }),
+  addFavoriteQuery: async (connectionId: string, title: string, sql: string) =>
+    useBackendClient().createQueryFavorite({ connectionId, title, sql }, await userAssetToken()),
 
-  deleteFavoriteQuery: (id: string) => invoke<void>('delete_favorite_query', { id }),
+  deleteFavoriteQuery: async (id: string) =>
+    useBackendClient().deleteQueryFavorite({ id }, await userAssetToken()),
 
   /**
    * Resolved favorites directory, default or configured. The panel shows this

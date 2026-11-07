@@ -135,7 +135,11 @@ importers:
         specifier: ^5.0.3
         version: 5.0.12(@types/react@18.3.28)(immer@11.1.15)(react@18.3.1)(use-sync-external-store@1.6.0(react@18.3.1))
 
-  packages/backend-client: {}
+  packages/backend-client:
+    dependencies:
+      '@datazen/driver-sdk':
+        specifier: workspace:*
+        version: link:../driver-sdk
 
   packages/desktop:
     dependencies:
@@ -165,10 +169,10 @@ importers:
         version: 6.43.11
       '@datazen/backend-client':
         specifier: workspace:*
-        version: link:../../packages/backend-client
+        version: link:../backend-client
       '@datazen/frontend':
         specifier: workspace:*
-        version: link:../../packages/frontend
+        version: link:../frontend
       '@tauri-apps/api':
         specifier: ^2.11.1
         version: 2.11.1
@@ -399,10 +403,10 @@ importers:
         version: 6.43.11
       '@datazen/backend-client':
         specifier: workspace:*
-        version: link:../../packages/backend-client
+        version: link:../backend-client
       '@datazen/frontend':
         specifier: workspace:*
-        version: link:../../packages/frontend
+        version: link:../frontend
       react:
         specifier: 18.3.1
         version: 18.3.1

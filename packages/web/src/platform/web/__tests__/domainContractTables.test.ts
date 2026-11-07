@@ -123,7 +123,16 @@ interface Row {
   body?: unknown;
   noBody?: boolean;
   response?: unknown;
+  /**
+   * fetch 的 2xx 响应体；缺省 = response（无 decoder 的路由两值同源）。
+   * 带 decoder 的路由（{deleted}/{purged}/{cancelled} 拆封）两值不同：
+   * wireResponse 是 HTTP 体，response 是解码后的 call() 结果。
+   */
+  wireResponse?: unknown;
 }
+
+/** 写面 fixture 的提交令牌（形状即可——服务器侧由 fixture 直接回 2xx）。 */
+const TOKEN = { idempotencyKey: 'idem-1', expiresAt: '2026-01-01T00:00:00Z' };
 
 const ROWS: Record<string, Row> = {
   // ── settings（§6.1）───────────────────────────────────────────────
@@ -352,6 +361,147 @@ const ROWS: Record<string, Row> = {
     body: { command: 'stream', applyResultLimit: 10 },
     response: { streamId: 'stream-1' },
   },
+
+  // ── queryAssets（§6.12；W8 刀3a web 收口）─────────────────────────
+  listQueryFavorites: {
+    payload: { connectionId: 'conn-1' },
+    path: '/query-favorites',
+    query: '?connectionId=conn-1',
+    noBody: true,
+    response: [{ id: 'fav-1', connectionId: 'conn-1', title: 'T', sql: 'SELECT 1' }],
+  },
+  createQueryFavorite: {
+    payload: {
+      connectionId: 'conn-1',
+      title: 'T',
+      sql: 'SELECT 1',
+      submissionToken: TOKEN,
+    },
+    path: '/query-favorites',
+    response: { id: 'fav-2', connectionId: 'conn-1', title: 'T', sql: 'SELECT 1' },
+  },
+  deleteQueryFavorite: {
+    payload: { id: 'fav-1', submissionToken: TOKEN },
+    path: '/query-favorites/fav-1',
+    body: { submissionToken: TOKEN },
+  },
+  getQueryHistoryPage: {
+    payload: { limit: 50, connectionId: 'conn-1', order: 'recent' },
+    path: '/query-history',
+    query: '?limit=50&connectionId=conn-1&order=recent',
+    noBody: true,
+    response: { entries: [], total: 0 },
+  },
+  deleteQueryHistory: {
+    payload: { id: 'h-1', submissionToken: TOKEN },
+    path: '/query-history/h-1',
+    body: { submissionToken: TOKEN },
+    wireResponse: { deleted: 2 },
+    response: 2,
+  },
+  clearQueryHistory: {
+    payload: { submissionToken: TOKEN },
+    path: '/query-history',
+    body: { submissionToken: TOKEN },
+    wireResponse: { purged: 5 },
+  },
+  purgeHistory: {
+    payload: { scope: 'query', retainDays: 30, submissionToken: TOKEN },
+    path: '/query-history/purge',
+    wireResponse: { purged: 7 },
+    response: 7,
+  },
+
+  // ── schemaDiff（§6.13；W8 刀3b web 收口）─────────────────────────
+  listSchemaDiffProfiles: {
+    payload: {},
+    path: '/schema-diff/profiles',
+    noBody: true,
+    response: [],
+  },
+  saveSchemaDiffProfile: {
+    payload: {
+      profile: { version: 1, id: 'sd-1', name: 'Pair' },
+      submissionToken: TOKEN,
+    },
+    path: '/schema-diff/profiles',
+    body: { version: 1, id: 'sd-1', name: 'Pair', submissionToken: TOKEN },
+  },
+  deleteSchemaDiffProfile: {
+    payload: { profileId: 'sd-1', submissionToken: TOKEN },
+    path: '/schema-diff/profiles/sd-1',
+    body: { submissionToken: TOKEN },
+  },
+  compareTableSchemas: {
+    payload: {
+      sourceDbSessionId: 'sess-1',
+      targetDbSessionId: 'sess-2',
+      sourceTableName: 't',
+      targetTableName: 't',
+    },
+    path: '/schema-diff/comparisons',
+    response: { table: 't', added: [], removed: [], changed: [] },
+  },
+  prepareSchemaDiffPlan: {
+    payload: {
+      sourceDbSessionId: 'sess-1',
+      targetDbSessionId: 'sess-2',
+      tableNames: ['t'],
+      allowDestructive: false,
+      submissionToken: TOKEN,
+    },
+    path: '/schema-diff/plans',
+    response: { jobId: 'j-1', kind: 'schemaDiffPrepare', state: 'queued' },
+  },
+  prepareSchemaUnifiedPlan: {
+    payload: {
+      sourceDbSessionId: 'sess-1',
+      targetDbSessionId: 'sess-2',
+      tableNames: ['t'],
+      allowDestructive: false,
+      sourceObjects: [],
+      targetObjects: [],
+      submissionToken: TOKEN,
+    },
+    path: '/schema-diff/unified-plans',
+    response: { jobId: 'j-2', kind: 'schemaDiffPrepare', state: 'queued' },
+  },
+  executeSchemaDiffDeploy: {
+    payload: {
+      targetDbSessionId: 'sess-2',
+      planId: 'plan-1',
+      selectionRevision: 3,
+      submissionToken: TOKEN,
+    },
+    path: '/schema-diff/deploys',
+    response: { jobId: 'j-3', kind: 'schemaDiffApply', state: 'queued' },
+  },
+  listSchemaDiffJobs: {
+    payload: { states: ['queued', 'failed'], limit: 100 },
+    path: '/schema-diff/jobs',
+    query: '?states=queued%2Cfailed&limit=100',
+    noBody: true,
+    response: [],
+  },
+  getSchemaDiffJobDetails: {
+    payload: { jobId: 'j-1' },
+    path: '/schema-diff/jobs/j-1',
+    noBody: true,
+    response: { details: { job: { jobId: 'j-1' } }, prepared: null },
+  },
+  cancelSchemaDiffDeploy: {
+    payload: { jobId: 'j-1', submissionToken: TOKEN },
+    path: '/schema-diff/jobs/j-1/cancel',
+    body: { submissionToken: TOKEN },
+    wireResponse: { cancelled: true },
+    response: true,
+  },
+  verifySchemaDiffJobRecovery: {
+    payload: { jobId: 'j-1', targetDbSessionId: 'sess-2', submissionToken: TOKEN },
+    path: '/schema-diff/jobs/j-1/recovery-verification',
+    body: { targetDbSessionId: 'sess-2', submissionToken: TOKEN },
+    response: { details: { job: { jobId: 'j-1' } }, prepared: null },
+  },
 };
 
 /* ------------------------------------------------------------------ */
@@ -359,12 +509,12 @@ const ROWS: Record<string, Row> = {
 /* ------------------------------------------------------------------ */
 
 describe('HTTP_ROUTES 分发表账目（契约 §4 总账）', () => {
-  it('42 条分发条目（WR-F6 补 uploads 在账端点键）；PATCH 双服务 + driver-gateway 双查询共用 → 40 个唯一 (method, pathTemplate)', () => {
+  it('60 条分发条目（W8 刀3a/刀3b web 收口 +18：queryAssets 7 + schemaDiff 11）；PATCH 双服务 + driver-gateway 双查询共用 → 58 个唯一 (method, pathTemplate)', () => {
     const entries = Object.entries(HTTP_ROUTES) as [string, RouteSpec][];
-    expect(entries).toHaveLength(42);
+    expect(entries).toHaveLength(60);
     const shapes = entries.map(([, route]) => `${route.httpMethod} ${route.pathTemplate}`);
     const unique = new Set(shapes);
-    expect(unique.size).toBe(40);
+    expect(unique.size).toBe(58);
     // 两条共用路由都有契约出处：PATCH /connections/{id}（§6.3 一路由双服务，
     // 体判别）与 GET /driver-gateway/commands（§6.9，driverType/dbSessionId 查询判别）。
     for (const shared of ['PATCH /connections/{id}', 'GET /driver-gateway/commands']) {
@@ -390,10 +540,10 @@ describe('HTTP_ROUTES 分发表账目（契约 §4 总账）', () => {
     });
   });
 
-  it('open_base64_with_dialog 不上表（§6.9/§8 排除行）；表 + 它 = 43 个域方法（WR-F6 补 createArtifactUpload 后）', () => {
+  it('open_base64_with_dialog 不上表（§6.9/§8 排除行）；表 + 它 = 61 个域方法（W8 收口后：43 + queryAssets 7 + schemaDiff 11）', () => {
     expect(HTTP_ROUTES['open_base64_with_dialog']).toBeUndefined();
     const keys = new Set([...Object.keys(HTTP_ROUTES), 'open_base64_with_dialog']);
-    expect(keys.size).toBe(43);
+    expect(keys.size).toBe(61);
   });
 });
 
@@ -409,7 +559,7 @@ describe('分发表逐条契约（§6.1–§6.9 + §3/§5 HTTP 约定）', () =>
   for (const [method, route] of Object.entries(HTTP_ROUTES) as [string, RouteSpec][]) {
     const row = ROWS[method]!;
     it(`${method} → ${route.httpMethod} /api/v1${row.path}${row.query ?? ''}`, async () => {
-      stubFetchWith(() => jsonResponse(row.response));
+      stubFetchWith(() => jsonResponse(row.wireResponse ?? row.response));
       const transport = newTransport();
       const result = await callOf(transport)(method, row.payload);
 

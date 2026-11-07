@@ -26,6 +26,8 @@ import type { JobMethodMap } from './jobClient';
 import type { ArtifactMethodMap } from './artifactClient';
 import type { TableDataMethodMap } from './tableDataClient';
 import type { DriverGatewayMethodMap } from './driverGatewayClient';
+import type { QueryAssetsMethodMap } from './queryAssetsClient';
+import type { SchemaDiffMethodMap } from './schemaDiffClient';
 import type { LegacyHostMethodMap } from './legacyHostCommands';
 import type { ConnectionEvent, EventEnvelope, SubscribeEventsRequest } from './types';
 
@@ -65,6 +67,8 @@ export type MethodMap = SettingsMethodMap &
   ArtifactMethodMap &
   TableDataMethodMap &
   DriverGatewayMethodMap &
+  QueryAssetsMethodMap &
+  SchemaDiffMethodMap &
   LegacyHostMethodMap;
 
 /**
