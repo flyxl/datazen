@@ -250,7 +250,9 @@ mod connection_config_tests {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+// `PartialEq` 是 W8-b 事件桥的加法派生（`QueryStreamEvent` 随 `ConnectionEvent`
+// 需要 PartialEq；`Float`/`Json` 排除 `Eq`）。wire 形态不变。
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Value {
     #[default]
@@ -283,7 +285,7 @@ pub struct BoundSqlStatement {
     pub parameters: Vec<Value>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ColumnInfo {
     pub name: String,

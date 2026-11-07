@@ -490,9 +490,19 @@ async fn execute_bound(
                     {
                         rows.extend(incoming.iter().cloned());
                     }
-                } else if output["kind"] == "statementMetadata" {
+                } else if output["kind"] == "statementMetadata"
+                    || output["kind"] == "statementColumns"
+                {
+                    // 两个 kind 都携带列元数据：`statementMetadata` 是桌面
+                    // session_backend 的产出形状（含 rowsAffected），
+                    // `statementColumns` 是共享 `LegacyResourceAdapter` 的
+                    // 迁移形状（resource_adapter.rs 的流式契约；desktop
+                    // export 与 sql_dump 两个既有消费者都双认）。装配器此前
+                    // 只认前者，适配器产出的列元数据被静默丢弃——列恒空。
                     statement["columns"] = output["columns"].clone();
-                    statement["truncated"] = output["truncated"].clone();
+                    if output["truncated"].is_boolean() {
+                        statement["truncated"] = output["truncated"].clone();
+                    }
                 }
                 if !output["rowsAffected"].is_null() {
                     statement["rowsAffected"] = output["rowsAffected"].clone();

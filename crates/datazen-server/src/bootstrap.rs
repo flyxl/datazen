@@ -247,7 +247,7 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         std::sync::Arc::new(crate::operations::revocation::EventSinkBridge::new(
             memory_sink.clone(),
             datazen::shared::id::StreamId::new("control-plane"),
-            datazen::shared::id::RuntimeEpoch::new("server-v1"),
+            datazen::shared::id::RuntimeEpoch::new(crate::http::sse::SERVER_RUNTIME_EPOCH),
         )),
         audit.clone() as std::sync::Arc<dyn datazen::shared::audit::AuditSink>,
     ));
@@ -284,13 +284,9 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         audit.clone(),
         clock.clone(),
     ));
-    let domains = http::router::DomainState {
-        issuer: issuer.clone(),
-        submission,
-        uploads,
-        downloads,
-        tasks: task_center,
-    };
+    // DomainState 装配后移到 session_directory 定义之后（execution 域路由
+    // 刀：令牌签发的会话绑定操作需要目录核对归属，见 router.rs 的
+    // `handler_issue_token`）。
 
     // WR-F7 执行栈（无 feature 门控）：真租约源三件套全部就位——policy
     // 适配器（policy_adapter.rs，本波解除阻塞项）+ `storage::ServerProfiles`
@@ -349,6 +345,20 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         budget_bridge,
         Some(egress),
     ));
+    // W8 刀2：活连接出向端口适配器——backend 尚未被租约源移动，clone 一份
+    // 给它（`by_session` 反向索引随 backend.open 同帧写入，两份 Arc 必须
+    // 指向**同一** backend 实例；连接目录与 registry 同实例既有纪律）。
+    let live_source = std::sync::Arc::new(
+        crate::execution::live_source::ServerLiveConnectionSource::new(
+            backend.clone(),
+            connections_repo.clone(),
+            driver_registry.clone(),
+            datazen::connection::domain::ConnectionScope::new(config.organization_id.clone()),
+        ),
+    );
+    // W8 刀2：SchemaCache 全局一个实例（缓存键第一维 connection_id，天然按
+    // 连接分桶；TTL 300s 与桌面同口径；失效接线随写半边的后续刀定）。
+    let schema_cache = std::sync::Arc::new(datazen::schema::cache::SchemaCache::new());
     // 结果发布钩子与租约源共享同一 RuntimeResultSink（publisher.rs 的装配
     // 纪律）。
     let result_sink = datazen::execution::application::orchestration::RuntimeResultSink::default();
@@ -373,7 +383,34 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
             std::sync::Arc::new(
                 datazen::execution::runtime::directory::InMemorySessionDirectory::new(),
             ),
+        )
+        // W8 刀2：活连接端口随实例装配——慢路构造的每个新 runtime 实例
+        // 构造后立即接线；吊销→重建自动重接（lease.rs 模块头「活连接端口
+        // 随实例装配」）。
+        .with_live_source(live_source)
+        // 空闲回收策略随实例装配（IdleReclaimer 武装刀）：config 两键 →
+        // `IdlePolicy` 的唯一映射在 `config::idle_policy_from_config`；
+        // 慢路每个新实例 `with_idle_policy` 接线，吊销→重建天然跟随。
+        .with_idle_policy(crate::config::idle_policy_from_config(
+            config.runtime_idle_ttl_secs,
+            config.runtime_idle_scan_secs,
+        )),
+    );
+    // 空闲回收驱动器起跑（设计档 §4.2 装配点）：租约源与全部消费者装配
+    // **之后** spawn（无反序窗口）；每 tick 现取当前实例（吊销跟随）。
+    // `axum::serve` 的 graceful drain 完成后 stop（Drop 为兑底）。
+    let idle_reclaimer = crate::execution::idle_reclaimer::ServerIdleReclaimer::spawn(
+        lease_source.clone(),
+        crate::config::idle_policy_from_config(
+            config.runtime_idle_ttl_secs,
+            config.runtime_idle_scan_secs,
         ),
+    );
+    tracing::info!(
+        idle_reclaim_enabled = config.runtime_idle_ttl_secs != 0,
+        idle_ttl_secs = config.runtime_idle_ttl_secs,
+        idle_scan_secs = config.runtime_idle_scan_secs,
+        "runtime wiring: idle reclaimer configured"
     );
     // 执行域路由的用例面：租约委托适配器（每调用现取，与 MCP 同一租约源）。
     let lease_cases: std::sync::Arc<
@@ -385,6 +422,18 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
     // 用例的 open/get 都登记/查询它——域文件模块头的接线登记落地）。
     let session_directory: std::sync::Arc<dyn datazen::execution::SessionDirectory> =
         lease_source.session_directory();
+
+    // WR-D6/D7 域路由态（jobs / submission-tokens / artifacts）+ 执行域路由
+    // 刀新增的用例面（issue-token 的会话绑定操作经它签发，与运行时令牌表
+    // 同一实例闭环）。
+    let domains = http::router::DomainState {
+        issuer: issuer.clone(),
+        submission,
+        uploads,
+        downloads,
+        tasks: task_center,
+        sessions: lease_cases.clone(),
+    };
 
     // 服务端设置存储：ai-host 域、（mcp 构建下的）目标机器与 driverGateway
     // 过渡域共享同一实例。
@@ -418,6 +467,35 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
             lease_source.clone(),
         ));
 
+    // SSE（WR-D5，W8-b 起提前到域路由装配之前）：origin 白名单取
+    // public_origin（§8.1）；事件后备是 MemoryEventSink（单实例 v1 形态）；
+    // 周期复核走标准实现。`Option` = publicOrigin 缺席时不挂事件端点；
+    // driverGateway 流投递桥与挂载端点共享同一实例（registry/sink 同源）。
+    let sse = config.public_origin.as_ref().map(|origin| {
+        let sse_config = crate::http::sse::SseConfig {
+            allowed_origins: vec![origin.clone()],
+            keepalive_interval: std::time::Duration::from_secs(config.sse_keepalive_secs),
+            max_backlog_frames: config.sse_max_backlog_frames,
+            ..crate::http::sse::SseConfig::default()
+        };
+        crate::http::sse::SseState {
+            registry: std::sync::Arc::new(crate::http::sse::EventStreamRegistry::new(&sse_config)),
+            sink: memory_sink.clone(),
+            recheck: std::sync::Arc::new(crate::http::sse::StandardRecheck::new(
+                crate::storage::LoginSessions::new(store.clone()),
+                policy.clone(),
+                clock.clone(),
+            )),
+            config: std::sync::Arc::new(sse_config),
+            now_unix: std::sync::Arc::new(|| {
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|elapsed| elapsed.as_secs())
+                    .unwrap_or(0)
+            }),
+        }
+    });
+
     // WR-C2 §6.1–§6.4 读侧域路由（薄绑定；挂载归 router）。
     let domain_routers = vec![
         crate::http::domains::settings::settings_router(
@@ -440,6 +518,15 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
                 directory: session_directory.clone(),
             },
         ),
+        // execution 域路由（契约 §6.10；执行域路由收口刀）：会话内执行 /
+        // 目标执行 / 执行视图 / 取消登记——用例面与 sessions 域同一实例
+        // （租约委托适配器），目录与 sessions 域同一实例（同一可见性事实）。
+        crate::http::domains::execution::execution_router(
+            crate::http::domains::execution::ExecutionState {
+                sessions: lease_cases.clone(),
+                directory: session_directory.clone(),
+            },
+        ),
         // WR-F1 服务端半边（三缺口合拢）：secrets 域（ServerSecretVault 的
         // 受控解析/存储 + 审计）与 ai-host 域（执行设置读 + 目标执行
         // fail-closed 登记）。挂载走 domain_routers 统一通道，认证链
@@ -453,6 +540,9 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         crate::http::domains::ai_host::ai_host_router(crate::http::domains::ai_host::AiHostState {
             settings: settings_store.clone(),
             organization_id: config.organization_id.clone(),
+            // 执行域路由收口刀：目标执行宿主与 MCP 目标机器 / driverGateway
+            // 同一实例（共享驱动注册表 / 设置存储 / 租约源）。
+            host: resource_host.clone(),
         }),
         // T25：组织记忆由服务端组织角色治理。桌面本地没有 OrgAdmin，
         // 因此不把管理员语义伪造到本地 store；成员只读/审计走此域。
@@ -466,7 +556,11 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         // （v9 `named_views` 表）。W8-a 接线刀：读三端点（reads /
         // read-sql-previews / row-count-estimates）501 → 真用例接线——
         // profiles/connections 按请求组织读取（SessionIdentity.ctx 真主体
-        // 语义），directory/sessions 与 sessions 域同一实例；其余八端点
+        // 语义），directory/sessions 与 sessions 域同一实例；W8 刀3：
+        // 变更二端点（change-plan-previews / change-commits）点亮，`lease`
+        // 是 commit 写半边单次 resolve 的源（与 MCP / sessions 域同一
+        // 实例）；W8 刀2：FK 二 + 值搜索 + origin 四读端点点亮（`lease`
+        // 兼活句柄借出源 + `schema_cache` 目录缓存读通路径）；其余二端点
         // fail-closed（501，逐端口收窄原因）。认证链 L2–L6 与 CSRF 由
         // merge 循环保证。
         crate::http::domains::table_data::table_data_router(
@@ -478,10 +572,14 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
                 connections: connections_repo.clone(),
                 directory: session_directory.clone(),
                 sessions: lease_cases.clone(),
+                lease: lease_source.clone(),
+                schema_cache: schema_cache.clone(),
             },
         ),
         // WR-C2 §6.9 driverGateway 过渡域（四方法；闸序与目标机器同一
-        // resource_host 实例；目录 = sessions 域同一实例）。
+        // resource_host 实例；目录 = sessions 域同一实例）。W8-b：统一事件
+        // 面（SSE 同一 registry/sink）、审计端口与 ephemeral 会话注册表
+        // 同源装配。
         crate::http::domains::driver_gateway::driver_gateway_router(
             crate::http::domains::driver_gateway::DriverGatewayState {
                 registry: driver_registry.clone(),
@@ -492,6 +590,18 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
                     .await
                     .map(|shared| shared.execution)
                     .unwrap_or_else(|_| crate::storage::default_shared_settings().execution),
+                sse: sse.clone(),
+                audit: audit.clone() as std::sync::Arc<dyn datazen::shared::audit::AuditSink>,
+                clock: clock.clone(),
+                ephemeral: std::sync::Arc::new(
+                    crate::execution::ephemeral::EphemeralSessions::new(),
+                ),
+                now_unix: std::sync::Arc::new(|| {
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|elapsed| elapsed.as_secs())
+                        .unwrap_or(0)
+                }),
             },
         ),
     ];
@@ -557,33 +667,6 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
             limiter: std::sync::Arc::new(limiter),
         })
     };
-
-    // SSE（WR-D5）：origin 白名单取 public_origin（§8.1）；事件后备是
-    // MemoryEventSink（单实例 v1 形态）；周期复核走标准实现。
-    let sse = config.public_origin.as_ref().map(|origin| {
-        let sse_config = crate::http::sse::SseConfig {
-            allowed_origins: vec![origin.clone()],
-            keepalive_interval: std::time::Duration::from_secs(config.sse_keepalive_secs),
-            max_backlog_frames: config.sse_max_backlog_frames,
-            ..crate::http::sse::SseConfig::default()
-        };
-        crate::http::sse::SseState {
-            registry: std::sync::Arc::new(crate::http::sse::EventStreamRegistry::new(&sse_config)),
-            sink: memory_sink.clone(),
-            recheck: std::sync::Arc::new(crate::http::sse::StandardRecheck::new(
-                crate::storage::LoginSessions::new(store.clone()),
-                policy.clone(),
-                clock.clone(),
-            )),
-            config: std::sync::Arc::new(sse_config),
-            now_unix: std::sync::Arc::new(|| {
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|elapsed| elapsed.as_secs())
-                    .unwrap_or(0)
-            }),
-        }
-    });
 
     // OIDC 登录面（§4）：三件套齐备才挂载；缺省 = 未启用（/api/v1/auth/*
     // 落到 fallback 501，部署形态显式）。
@@ -674,6 +757,9 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         .with_graceful_shutdown(shutdown_signal())
         .await
         .map_err(|error| ServerError::Serve(error.to_string()))?;
+    // serve 返回（drain 完成）后停车：空闲回收驱动器在下一轮循环边界退出
+    // （幂等）；`idle_reclaimer` 离开作用域时 Drop 兜底（stop + abort）。
+    idle_reclaimer.stop();
     Ok(())
 }
 

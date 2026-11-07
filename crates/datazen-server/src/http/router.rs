@@ -32,6 +32,7 @@ use tower_http::limit::RequestBodyLimitLayer;
 use datazen::execution::application::submission::{SubmissionPresentation, SubmissionTokenIssuer};
 use datazen::execution::application::{IdempotentOperation, SubmissionToken};
 use datazen::execution::domain::artifact_repository::ArtifactSpec;
+use datazen::execution::SessionHandle;
 use datazen::jobs::domain::job::{JobDefinition, JobState};
 use datazen::shared::context::RequestContext;
 use datazen::shared::error::{ApiError, ApiErrorCode};
@@ -109,6 +110,12 @@ pub struct DomainState {
     pub downloads: std::sync::Arc<crate::transfer::DownloadService>,
     /// 任务中心查询面（list/detail/取消登记）。
     pub tasks: std::sync::Arc<crate::operations::TaskCenter<crate::storage::ServerJobs>>,
+    /// 执行用例面（execution 域路由刀新增）：`issueSubmissionToken` 的会话
+    /// 绑定操作（openSession/executeInSession/executeAtTarget/
+    /// setSessionContext/cancelExecution）经它签发——令牌注册进运行时令牌
+    /// 表，与 execute/cancel 路径的 `validate_token` 同一实例闭环。
+    pub sessions:
+        std::sync::Arc<dyn datazen::execution::application::use_cases::ConnectionUseCases>,
 }
 
 /// 组装带认证链的 Router：`build_router` 的全部面 + L2→L3→L4→(L5)→L6，
@@ -329,11 +336,21 @@ pub(crate) fn api_error_response(error: ApiError) -> Response {
 
 /// `issueSubmissionToken`（§6.3：POST /api/v1/submission-tokens）。
 ///
-/// 请求 `{ operation, handle?, connectionId?, owner? }`；v1 只签发不绑定
-/// 运行时会话的操作（startJob / createProfile / cancelExecution）——会话
-/// 绑定操作需要 `SessionHandle`，随执行域路由点亮接入。201 →
-/// `SubmissionToken`（`idempotencyKey` 是 `payload.tag` 形态的不透明串，
-/// 客户端原样回传）。
+/// 请求 `{ operation, handle?, connectionId?, owner? }`。签发面**按操作分派**
+/// （execution 域路由刀的裁决，对齐各消费方的核验器）：
+///
+/// - `startJob` / `createProfile`：HMAC 签发器（`state.issuer`）——消费方
+///   `SubmissionService` 用同一签发器的 `verify` 核验（无状态 HMAC）。
+/// - `openSession` / `executeInSession` / `executeAtTarget` /
+///   `setSessionContext` / `cancelExecution`：**执行用例面**
+///   （`state.sessions.issue_submission_token`）——令牌注册进运行时令牌表
+///   并被 execute/cancel 路径的 `validate_token` 按表核验；句柄要求、组织
+///   归属、epoch 绑定全部由用例层闭环（本层不复制一套判定）。
+///
+/// 201 → `SubmissionToken`（`idempotencyKey` 是不透明串，客户端原样回传）。
+/// 本刀顺带修复：此前会话绑定操作在 HTTP 面被硬拒（400）而
+/// `openSession`/`cancelExecution` 走 HMAC 签发器时因绑 epoch 而必然失败
+/// ——web 形态的开会话/取消执行在此前主上是端到端不通的（详见 PR 说明）。
 async fn handler_issue_token(
     State(state): State<DomainState>,
     identity: SessionIdentity,
@@ -345,16 +362,56 @@ async fn handler_issue_token(
     let operation = match operation {
         "startJob" => IdempotentOperation::StartJob,
         "createProfile" => IdempotentOperation::CreateProfile,
+        "openSession" => IdempotentOperation::OpenSession,
+        "executeInSession" => IdempotentOperation::ExecuteInSession,
+        "executeAtTarget" => IdempotentOperation::ExecuteAtTarget,
+        "setSessionContext" => IdempotentOperation::SetSessionContext,
         "cancelExecution" => IdempotentOperation::CancelExecution,
-        "openSession" | "executeInSession" | "executeAtTarget" | "setSessionContext" => {
-            return invalid_argument(
-                "session-bound operations require a runtime session handle; \
-                 they arrive with the execution domain routes.",
-            );
-        }
         other => return invalid_argument(format!("unknown operation '{other}'.")),
     };
-    match state.issuer.issue(&identity.ctx, operation, None).await {
+    // 会话绑定操作：体里的 `handle`（camelCase `SessionHandle`）原样透传给
+    // 用例面（在场性/归属/epoch 由 `RuntimeConnectionUseCases::issue` 闭环
+    // ——`openSession` 无会话可绑，体 handle 为空也放行，运行时按 epoch 0 签）。
+    let handle = if operation.binds_runtime_epoch() {
+        match body.get("handle") {
+            Some(Value::Null) | None => None,
+            Some(value) => match serde_json::from_value::<SessionHandle>(value.clone()) {
+                Ok(handle) => Some(handle),
+                Err(source) => return invalid_argument(format!("handle: {source}")),
+            },
+        }
+    } else {
+        None
+    };
+    if operation.binds_runtime_epoch()
+        && !matches!(operation, IdempotentOperation::OpenSession)
+        && handle.is_none()
+    {
+        return invalid_argument(
+            "session-bound operations require the runtime session handle they bind to.",
+        );
+    }
+    let issued = if matches!(
+        operation,
+        IdempotentOperation::StartJob | IdempotentOperation::CreateProfile
+    ) {
+        state
+            .issuer
+            .issue(&identity.ctx, operation, None)
+            .await
+            .map_err(|source| {
+                ApiError::new(
+                    ApiErrorCode::ServiceUnavailable,
+                    format!("token issue failed: {source}"),
+                )
+            })
+    } else {
+        state
+            .sessions
+            .issue_submission_token(&identity.ctx, operation, handle.as_ref())
+            .await
+    };
+    match issued {
         Ok(token) => (
             StatusCode::CREATED,
             Json(json!({
@@ -363,10 +420,7 @@ async fn handler_issue_token(
             })),
         )
             .into_response(),
-        Err(source) => api_error_response(ApiError::new(
-            ApiErrorCode::ServiceUnavailable,
-            format!("token issue failed: {source}"),
-        )),
+        Err(error) => api_error_response(error),
     }
 }
 

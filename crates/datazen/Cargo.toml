@@ -51,6 +51,11 @@ connection_import = [
 # 下沉到各域 error.rs 尾部（feature_error 门控）；裸 feature_error 闭包 =
 # shared（常驻）+ datazen-driver-api + serde_json，零域符号。
 feature_error = ["dep:datazen-driver-api", "dep:serde_json"]
+# W8 刀2 刻痕修复：`services` 不再硬编码 `ai`——ai 系三条 re-export
+# （services::command_policy / db_tools / schema_context，`services/mod.rs`）
+# 与 ai 端口 re-export（`services/ports.rs`）挂回 `#[cfg(feature = "ai")]`
+# 自己的门；backup 端口 re-export 同理挂 `#[cfg(feature = "backup")]`。
+# 开门消费者（server）按需携带 ai/backup，不被动拖入 reqwest/flate2。
 services = [
     "dep:async-trait",
     "dep:datazen-driver-api",
@@ -58,7 +63,6 @@ services = [
     "dep:sha2",
     "dep:sqlparser",
     "dep:tokio",
-    "ai",
     "feature_error",
     "schema",
     "table-browsing",

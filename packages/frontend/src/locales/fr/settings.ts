@@ -66,6 +66,20 @@ const pack = {
   'settings.defaultTableSort.none': 'Ne pas trier',
   'settings.defaultTableSort.hint':
     '"Ne pas trier" rend la pagination plus rapide sur les grandes tables, mais les lignes peuvent se répéter ou être omises d\'une page à l\'autre.',
+  'settings.gridDensity': 'Densité du réseau',
+  'settings.gridDensity.hint':
+    'Hauteur de ligne des grilles de données. Compact s\'adapte à plus de lignes à l\'écran ; détendu est plus facile à lire.',
+  'settings.gridDensity.compact': 'Compact',
+  'settings.gridDensity.standard': 'Standard',
+  'settings.gridDensity.relaxed': 'Détendu',
+  'settings.gridAlternatingRows': 'Arrière-plans de lignes alternés',
+  'settings.gridAlternatingRows.hint': 'Teintez une ligne sur deux des grilles de données.',
+  'settings.gridRowNumbers': 'Numéros de ligne',
+  'settings.gridRowNumbers.hint':
+    'La # gouttière des grilles de données. Le désactiver supprime également son bouton de sélection ; la sélection de lignes fonctionne toujours en cliquant sur les lignes.',
+  'settings.gridAutoHideScrollbar': 'Masquer automatiquement les barres de défilement de la grille',
+  'settings.gridAutoHideScrollbar.hint':
+    'Les barres de défilement apparaissent uniquement lorsqu\'une grille est survolée ou ciblée.',
   'settings.connectionPoolSize': 'Taille du pool de connexions',
   'settings.connectionPoolSizeHint':
     'Nombre maximal de connexions conservées par connexion à la base de données.',

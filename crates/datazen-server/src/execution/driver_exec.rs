@@ -81,8 +81,11 @@ pub type EgressGate =
     Arc<dyn Fn(&datazen_driver_api::ConnectionConfig) -> Result<(), String> + Send + Sync>;
 
 /// 一条已打开的物理资源。字段都是**宿主自己的账**：驱动状态一律从
-/// provider 回读（observe_session），这里不镜像驱动事实。
-struct Resource {
+/// provider 回读（observe_session），这里不镜像驱动事实。`pub(crate)`：
+/// 活连接出向端口（`live_source.rs`）经 [`ServerDriverExecBackend::
+/// live_resource_for_session`] 拿到它并借出句柄；字段仍归本文件私有，
+/// 驱动事实只能从 provider 回读。
+pub(crate) struct Resource {
     provider: Arc<dyn dr::ResourceProvider>,
     handle: dr::ResourceHandle,
     connection_id: String,
@@ -91,6 +94,19 @@ struct Resource {
     last_context: tokio::sync::Mutex<rc::SessionContext>,
     cancels: tokio::sync::Mutex<HashMap<String, String>>,
     protocol_drained: std::sync::atomic::AtomicBool,
+}
+
+impl Resource {
+    /// 借出 provider 实际持有的驱动路由句柄（W8 刀2：活连接出向端口的
+    /// 第四步）。仅是路由元数据的值拷贝——资源的关闭所有权仍在 provider，
+    /// 借用者不得用它 connect/close/建池。镜像桌面 `session_backend.rs`
+    /// 的 `Resource::driver_handle`（`ResourceProvider::connection_handle`
+    /// 契约：provider 验证资源仍存活并交还它实际持有的句柄）。
+    pub(crate) fn driver_handle(
+        &self,
+    ) -> Result<datazen_driver_api::ConnectionHandle, dr::ResourceError> {
+        self.provider.connection_handle(&self.handle)
+    }
 }
 
 /// server 形态的驱动执行后端。无池 v1：`open` 每次新开物理连接、`close`
@@ -160,7 +176,8 @@ impl ServerDriverExecBackend {
 
     /// 出向端口的查找入口（与桌面 `live_resource_for_session` 同契约）：
     /// 句柄不认识 / 资源已关 / epoch 不匹配都拒绝，**绝不新建连接**。
-    pub async fn live_resource_for_session(
+    /// `pub(crate)`：唯一消费者是活连接出向端口（`live_source.rs`）。
+    pub(crate) async fn live_resource_for_session(
         &self,
         db_session_id: &str,
         runtime_epoch: u64,

@@ -59,6 +59,20 @@ const pack = {
   'settings.defaultTableSort.none': 'Nicht sortieren',
   'settings.defaultTableSort.hint':
     '"Nicht sortieren" macht das Blättern bei großen Tabellen schneller, aber Zeilen können über Seiten hinweg wiederholt oder übersprungen werden.',
+  'settings.gridDensity': 'Gitterdichte',
+  'settings.gridDensity.hint':
+    'Zeilenhöhe der Datenraster. Kompakt passt mehr Zeilen auf den Bildschirm; entspannt ist leichter zu lesen.',
+  'settings.gridDensity.compact': 'Kompakt',
+  'settings.gridDensity.standard': 'Standard',
+  'settings.gridDensity.relaxed': 'Entspannt',
+  'settings.gridAlternatingRows': 'Abwechselnde Zeilenhintergründe',
+  'settings.gridAlternatingRows.hint': 'Färben Sie jede zweite Zeile des Datenrasters.',
+  'settings.gridRowNumbers': 'Zeilennummern',
+  'settings.gridRowNumbers.hint':
+    'Der #-Rinne der Datenraster. Wenn Sie es deaktivieren, wird auch die Click-to-Select-Schaltfläche entfernt. Die Zeilenauswahl funktioniert weiterhin durch Klicken auf Zeilen.',
+  'settings.gridAutoHideScrollbar': 'Raster-Bildlaufleisten automatisch ausblenden',
+  'settings.gridAutoHideScrollbar.hint':
+    'Bildlaufleisten werden nur angezeigt, wenn der Mauszeiger über ein Raster bewegt wird oder der Fokus darauf liegt.',
   'settings.connectionPoolSize': 'Verbindungspool-Größe',
   'settings.connectionPoolSizeHint':
     'Maximale Anzahl gehaltener Verbindungen pro Datenbankverbindung.',

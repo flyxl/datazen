@@ -64,6 +64,20 @@ const pack = {
   'settings.defaultTableSort.none': 'Não ordenar',
   'settings.defaultTableSort.hint':
     '"Não ordenar" torna a paginação mais rápida em tabelas grandes, mas as linhas podem se repetir ou ser omitidas entre as páginas.',
+  'settings.gridDensity': 'Densidade da grade',
+  'settings.gridDensity.hint':
+    'Altura da linha das grades de dados. Compacto cabe em mais linhas na tela; relaxado é mais fácil de ler.',
+  'settings.gridDensity.compact': 'Compactar',
+  'settings.gridDensity.standard': 'Padrão',
+  'settings.gridDensity.relaxed': 'Descontraído',
+  'settings.gridAlternatingRows': 'Planos de fundo de linhas alternadas',
+  'settings.gridAlternatingRows.hint': 'Pinte todas as outras linhas das grades de dados.',
+  'settings.gridRowNumbers': 'Números de linha',
+  'settings.gridRowNumbers.hint':
+    'A # medianiz das grades de dados. Desligá-lo também remove o botão clique para selecionar; a seleção de linhas ainda funciona clicando nas linhas.',
+  'settings.gridAutoHideScrollbar': 'Ocultar automaticamente as barras de rolagem da grade',
+  'settings.gridAutoHideScrollbar.hint':
+    'As barras de rolagem aparecem apenas enquanto uma grade está pairando ou em foco.',
   'settings.connectionPoolSize': 'Tamanho do pool de conexões',
   'settings.connectionPoolSizeHint':
     'Número máximo de conexões mantidas por conexão de banco de dados.',

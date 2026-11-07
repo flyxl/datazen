@@ -146,8 +146,9 @@ export async function applyThemeLocally(mode: ThemeMode) {
  */
 export async function applySettingsLocally(incoming: AppSettings) {
   const theme = normalizeThemePreference(incoming.theme);
+  const language = resolveUiLanguage(incoming.language);
   const prev = useSettingsStore.getState().settings;
-  useSettingsStore.setState({ settings: { ...incoming, theme } });
+  useSettingsStore.setState({ settings: { ...incoming, language, theme } });
   const themeChanged = prev.theme.mode !== theme.mode || prev.theme.packId !== theme.packId;
   if (!themeChanged) return;
   try {
@@ -174,6 +175,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       let settings = {
         ...DEFAULT_SETTINGS,
         ...raw,
+        language: resolveUiLanguage(raw.language ?? DEFAULT_SETTINGS.language),
         theme,
         connectionPoolSize: raw.connectionPoolSize ?? 10,
         monitor: { ...DEFAULT_MONITOR_SETTINGS, ...raw.monitor },
@@ -202,20 +204,28 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   updateSettings: async (partial) => {
     const merged = { ...get().settings, ...partial };
     const theme = partial.theme ? normalizeThemePreference(partial.theme) : merged.theme;
-    const next: AppSettings = { ...merged, theme };
+    const next: AppSettings = {
+      ...merged,
+      language: resolveUiLanguage(merged.language),
+      theme,
+    };
     if (partial.theme) {
       await applyTheme(theme.mode, theme.packId);
       watchSystemTheme(theme.mode);
     }
     const saved = await settingsCommands.saveSettings(next);
-    const persisted = { ...next, ...(saved ?? {}) };
+    const persistedValues = { ...next, ...(saved ?? {}) };
+    const persisted: AppSettings = {
+      ...persistedValues,
+      language: resolveUiLanguage(persistedValues.language),
+    };
     set({ settings: persisted });
 
     if (partial.theme) {
       void emitCrossWindow('datazen:theme-changed', theme.mode);
     }
     if (partial.language) {
-      void settingsCommands.syncLanguageMenu?.(partial.language).catch(() => {});
+      void settingsCommands.syncLanguageMenu?.(persisted.language).catch(() => {});
     }
     void emitCrossWindow('datazen:settings-changed', persisted);
   },

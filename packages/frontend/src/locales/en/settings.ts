@@ -35,6 +35,8 @@ const pack = {
     'Reserved for future options such as density, font size, and more.',
   'settings.updater.title': 'Updates',
   'settings.updater.description': 'Check GitHub Releases for signed updates of this build.',
+  'settings.updater.sidebarAvailable': 'Update {version}',
+  'settings.updater.sidebarInstalling': 'Updating…',
   'settings.updater.check': 'Check for updates',
   'settings.updater.downloadInstall': 'Download and install',
   'settings.updater.checkOnStartup': 'Check for updates on startup',

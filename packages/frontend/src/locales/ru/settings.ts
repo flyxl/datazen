@@ -64,6 +64,20 @@ const pack = {
   'settings.defaultTableSort.none': 'Не сортировать',
   'settings.defaultTableSort.hint':
     '"Не сортировать" ускоряет разбиение на страницы в больших таблицах, но строки могут повторяться или пропускаться при переходе между страницами.',
+  'settings.gridDensity': 'Плотность сетки',
+  'settings.gridDensity.hint':
+    'Высота строки сетки данных. Компактный формат позволяет разместить больше строк на экране; расслабленное легче читать.',
+  'settings.gridDensity.compact': 'Компактный',
+  'settings.gridDensity.standard': 'Стандартный',
+  'settings.gridDensity.relaxed': 'Расслабленный',
+  'settings.gridAlternatingRows': 'Чередование фона строк',
+  'settings.gridAlternatingRows.hint': 'Оттените каждую вторую строку сетки данных.',
+  'settings.gridRowNumbers': 'Номера строк',
+  'settings.gridRowNumbers.hint':
+    '# Желоб сетки данных. При его отключении также удаляется кнопка выбора щелчком мыши; выбор строк по-прежнему работает путем щелчка по строкам.',
+  'settings.gridAutoHideScrollbar': 'Автоматически скрывать полосы прокрутки сетки',
+  'settings.gridAutoHideScrollbar.hint':
+    'Полосы прокрутки появляются только тогда, когда сетка наведена или находится в фокусе.',
   'settings.connectionPoolSize': 'Размер пула соединений',
   'settings.connectionPoolSizeHint':
     'Максимальное число соединений, удерживаемых для каждого подключения к БД.',

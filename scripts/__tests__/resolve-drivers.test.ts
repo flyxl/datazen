@@ -16,6 +16,7 @@ import {
   parseVariant,
   resolveDrivers,
   resolveDriverIconImport,
+  crateDepPath,
   wantsCodegenOnly,
   writeIfChanged,
   collectDriverKvSlotEntries,
@@ -155,6 +156,17 @@ describe('buildRootCargoPatchLines', () => {
         postgres: { source: 'path', path: 'crates/drivers/postgres' },
       }),
     ).toEqual([]);
+  });
+});
+
+describe('crateDepPath', () => {
+  it('resolves injected git-driver dependencies from the desktop crate directory', () => {
+    const repoRoot = resolve(tmpdir(), 'datazen-driver-path-test');
+    const desktopManifestDir = resolve(repoRoot, 'crates/datazen-desktop');
+
+    expect(resolve(desktopManifestDir, crateDepPath('kiwi'))).toBe(
+      resolve(repoRoot, 'crates/drivers/kiwi'),
+    );
   });
 });
 

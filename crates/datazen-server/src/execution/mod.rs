@@ -22,13 +22,25 @@
 //! - [`target_runner`]：W8-a P2 —— `table_browsing::api::TargetCommandRunner`
 //!   端口的 server 实现（tableData 读半边的执行面：目标解析、提交、轮询、
 //!   产物分块收集；消费者：tableData 域路由）。
+//! - [`ephemeral`]：W8-b ② —— driverType 直取（无连接执行）的内存
+//!   ephemeral 会话注册表（CSPRNG 句柄 + 归属盖章 + TTL；消费者：
+//!   driverGateway 域的 driverType 直取分支）。
+//! - [`table_columns`]：W8 刀1 —— `table_editing::TableColumnSource` 端口的
+//!   server 实现（变更二端点的命令面列源备料件：`get_table_schema` 经
+//!   runner target 分支现查；组件按请求构造，不进全局装配图）。
+//! - [`live_source`]：W8 刀2 —— `LiveConnectionSource` 出向端口的 server
+//!   实现（四读端点的活句柄面：反查物理资源 → 权威 driver type → 同实例
+//!   驱动 Arc → 借出句柄；经租约源 `with_live_source` 随实例装配）。
 
 pub mod budget;
 pub mod budget_bridge;
 pub mod driver_exec;
+pub mod ephemeral;
 pub mod identity;
+pub mod idle_reclaimer;
 pub mod lease;
 pub mod lease_use_cases;
+pub mod live_source;
 pub mod network_provider;
 pub mod policy_adapter;
 pub mod publisher;
@@ -36,6 +48,7 @@ pub mod resource_host;
 pub mod secret_provider;
 pub mod session_directory;
 pub mod submission_token;
+pub mod table_columns;
 pub mod target_runner;
 
 #[cfg(test)]

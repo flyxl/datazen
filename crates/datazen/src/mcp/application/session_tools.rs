@@ -404,9 +404,6 @@ async fn read_rows(
             .read_artifact_chunk(&call.context, artifact.clone(), Counter::ZERO)
             .await
             .map_err(|error| internal(error.to_string()))?;
-        if columns.is_null() {
-            columns = first.columns.clone();
-        }
         for index in 0..first.published_chunk_count.get() {
             let chunk = if index == 0 {
                 first.clone()
@@ -416,12 +413,50 @@ async fn read_rows(
                     .await
                     .map_err(|error| internal(error.to_string()))?
             };
-            for row in chunk.rows {
-                if rows.len() >= MCP_SESSION_ROW_LIMIT {
-                    truncated = true;
-                    return Ok((columns, rows, truncated));
+            // 块载荷走 `output` JSON 词汇表（kind: rows / statementColumns）——
+            // 与 resource_execution 装配器同源；宿主发布器（desktop
+            // platform/adapter.rs 与 server publisher.rs 同构）把全部语句
+            // 载荷放进 output 通道，`chunk.rows`/`chunk.columns` 结构体字段
+            // 是 typed 发布通道（`publish_rows`），双通道都认。
+            let typed_rows = chunk.rows.clone();
+            let typed_columns = chunk.columns.clone();
+            let payload = chunk.output.unwrap_or_else(|| serde_json::json!({}));
+            match payload.get("kind").and_then(serde_json::Value::as_str) {
+                Some("rows") => {
+                    if columns.is_null() && payload["columns"].is_array() {
+                        columns = payload["columns"].clone();
+                    }
+                    if let Some(incoming) = payload["rows"].as_array() {
+                        for row in incoming {
+                            if rows.len() >= MCP_SESSION_ROW_LIMIT {
+                                truncated = true;
+                                return Ok((columns, rows, truncated));
+                            }
+                            rows.push(row.clone());
+                        }
+                    }
                 }
-                rows.push(row);
+                Some("statementColumns") | Some("statementMetadata") => {
+                    if columns.is_null() {
+                        columns = payload["columns"].clone();
+                    }
+                    if payload["truncated"].as_bool() == Some(true) {
+                        truncated = true;
+                    }
+                }
+                _ => {
+                    // 无 output 词汇的块：typed 通道回退（publish_rows 形状）。
+                    if columns.is_null() && typed_columns.is_array() {
+                        columns = typed_columns;
+                    }
+                    for row in typed_rows {
+                        if rows.len() >= MCP_SESSION_ROW_LIMIT {
+                            truncated = true;
+                            return Ok((columns, rows, truncated));
+                        }
+                        rows.push(row);
+                    }
+                }
             }
         }
     }

@@ -88,6 +88,11 @@ pub struct ServerConfig {
     /// WR-E5 静态资源根（web 构建产物目录；None = 不挂同源静态面——
     /// 显式部署形态：独立 origin/CDN 承载时使用）。
     pub web_root: Option<PathBuf>,
+    /// IdleReclaimer 武装刀：业务空闲期限（秒）；0 = 本部署不做空闲回收
+    /// （`IdlePolicy::disabled()`，配置事实而非运行时事实）。
+    pub runtime_idle_ttl_secs: u64,
+    /// 空闲扫描间隔（秒）；下限 60（防全表扫描反噬，设计档 R4）。
+    pub runtime_idle_scan_secs: u64,
 }
 
 /// 环境变量名。`DATAZEN_` 前缀与仓库既有约定对齐。
@@ -113,6 +118,8 @@ pub const ENV_ARTIFACT_ROOT: &str = "DATAZEN_SERVER_ARTIFACT_ROOT";
 pub const ENV_ARTIFACT_TTL_SWEEP_SECS: &str = "DATAZEN_SERVER_ARTIFACT_TTL_SWEEP_SECS";
 pub const ENV_BUDGET_NODE_LIMIT: &str = "DATAZEN_SERVER_BUDGET_NODE_LIMIT";
 pub const ENV_BUDGET_ORGANIZATION_LIMIT: &str = "DATAZEN_SERVER_BUDGET_ORGANIZATION_LIMIT";
+pub const ENV_RUNTIME_IDLE_TTL_SECS: &str = "DATAZEN_SERVER_RUNTIME_IDLE_TTL_SECS";
+pub const ENV_RUNTIME_IDLE_SCAN_SECS: &str = "DATAZEN_SERVER_RUNTIME_IDLE_SCAN_SECS";
 /// WR-F7 出站白名单（逗号分隔 host；空/未设 = 全拒）。
 pub const ENV_EGRESS_ALLOWED_HOSTS: &str = "DATAZEN_SERVER_EGRESS_ALLOWED_HOSTS";
 /// WR-E5 静态资源根（web 构建产物；未设 = 不挂同源静态面）。
@@ -145,6 +152,11 @@ pub const DEFAULT_ARTIFACT_TTL_SWEEP_SECS: u64 = 300;
 /// WR-D4/D6 预算协调器的首版额度起点（部署可调；非协议常量）。
 pub const DEFAULT_BUDGET_NODE_LIMIT: u64 = 64;
 pub const DEFAULT_BUDGET_ORGANIZATION_LIMIT: u64 = 32;
+/// IdleReclaimer 武装刀：业务空闲期限默认 30 分钟（§9.2 同族，内核
+/// `IdlePolicy::default()` 本源）；扫描间隔默认 60 秒（最坏 overshoot
+/// 1 分钟；下限 60s，防全表扫描反噬）。
+pub const DEFAULT_RUNTIME_IDLE_TTL_SECS: u64 = 1800;
+pub const DEFAULT_RUNTIME_IDLE_SCAN_SECS: u64 = 60;
 
 impl ServerConfig {
     /// 从环境变量加载并校验。任一键非法即 [`ServerError::ConfigInvalid`]。
@@ -269,6 +281,25 @@ impl ServerConfig {
             Some(raw) if !raw.trim().is_empty() => Some(PathBuf::from(raw.trim().to_string())),
             _ => None,
         };
+        // IdleReclaimer 武装刀：两键。TTL 未设 = 1800；显式 0 = disabled（
+        // 「不做空闲回收」是配置事实）——用允许 0 的变体解析（parse_seconds
+        // 的 60s 下限会拒绝 disabled 语义）。扫描间隔下限 60s（设计档 R4：
+        // 全表扫描是 O(会话数) 的 actor 往返，过勤反噬）；未设 = 60。
+        let runtime_idle_ttl_secs = parse_seconds_allow_zero(
+            ENV_RUNTIME_IDLE_TTL_SECS,
+            std::env::var(ENV_RUNTIME_IDLE_TTL_SECS).ok(),
+            DEFAULT_RUNTIME_IDLE_TTL_SECS,
+        )?;
+        let runtime_idle_scan_secs = parse_seconds(
+            ENV_RUNTIME_IDLE_SCAN_SECS,
+            std::env::var(ENV_RUNTIME_IDLE_SCAN_SECS).ok(),
+            DEFAULT_RUNTIME_IDLE_SCAN_SECS,
+        )?;
+        if runtime_idle_scan_secs < 60 {
+            return Err(ServerError::ConfigInvalid(format!(
+                "{ENV_RUNTIME_IDLE_SCAN_SECS} must be >= 60 (scan interval lower bound)"
+            )));
+        }
         Ok(Self {
             listen_addr,
             log_filter,
@@ -294,6 +325,8 @@ impl ServerConfig {
             budget_organization_limit,
             egress_allowed_hosts,
             web_root,
+            runtime_idle_ttl_secs,
+            runtime_idle_scan_secs,
         })
     }
 }
@@ -438,6 +471,44 @@ fn parse_seconds(key: &str, raw: Option<String>, default: u64) -> Result<u64, Se
             }
             Ok(parsed)
         }
+    }
+}
+
+/// 同 [`parse_seconds`] 但允许 `0`（IdleReclaimer 武装刀的 TTL 键专用：
+/// `0` = `IdlePolicy::disabled()`，是配置事实而非非法值）。
+fn parse_seconds_allow_zero(
+    key: &str,
+    raw: Option<String>,
+    default: u64,
+) -> Result<u64, ServerError> {
+    match raw {
+        None => Ok(default),
+        Some(value) => {
+            let parsed: u64 = value.trim().parse().map_err(|_| {
+                ServerError::ConfigInvalid(format!(
+                    "{key} must be a non-negative integer of seconds"
+                ))
+            })?;
+            Ok(parsed)
+        }
+    }
+}
+
+/// IdleReclaimer 武装刀：config 两键 → 内核 `IdlePolicy` 的唯一映射（
+/// 设计档 §6.1）。`(0, _) → disabled`；其余 → `with_deadline(ttl, scan)`。
+/// bootstrap 与测试同源调用——映射规则单家，不复制。
+pub fn idle_policy_from_config(
+    ttl_secs: u64,
+    scan_secs: u64,
+) -> datazen::execution::application::orchestration::IdlePolicy {
+    use datazen::execution::application::orchestration::IdlePolicy;
+    if ttl_secs == 0 {
+        IdlePolicy::disabled()
+    } else {
+        IdlePolicy::with_deadline(
+            std::time::Duration::from_secs(ttl_secs),
+            std::time::Duration::from_secs(scan_secs.max(1)),
+        )
     }
 }
 

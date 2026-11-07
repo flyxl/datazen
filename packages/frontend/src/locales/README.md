@@ -1,6 +1,6 @@
 # Locales
 
-All 10 locales (`de` `en` `es` `fr` `ja` `ko` `pt-BR` `ru` `zh-CN` `zh-TW`) are split by **domain** so PRs stay small and low-frequency features can be code-split. `en` is the single translation source of truth.
+All 10 locale dictionaries (`de` `en` `es` `fr` `ja` `ko` `pt-BR` `ru` `zh-CN` `zh-TW`) are split by **domain** so PRs stay small. The desktop app bundles only `en` and `zh-CN`; the remaining locale files are source-only. `en` is the single translation source of truth.
 
 ## Layout
 
@@ -10,7 +10,7 @@ locales/
   lazyPacks.ts         # dynamic import registry + ensureLocaleDomains() + isDomainLoaded()
   builtinLocales.ts    # ⚠️ GENERATED — do not hand-edit or commit
   fullLocales.ts       # full dict (tests / tooling only)
-  <locale>/            # ALL 10 locales: per-domain packs + index.ts (full merge) + eager.ts
+  <locale>/            # 10 source locales: per-domain packs + index.ts (full merge) + eager.ts
   <locale>.ts          # 2-line re-export shim of the full merge (back-compat)
   index.ts             # dictionary registration + public API (lookup delegates to @datazen/ui t)
 ```
@@ -74,7 +74,7 @@ if (!localesReady) {
    you do not touch the other locales (see the i18n rules in the root `AGENTS.md`).
 2. Keep key prefixes stable (`sync.*`, `connWin.*`, …); locate the pack via the table above.
 3. Run unit tests (`locales.test.ts` checks en/zh-CN parity on the full dict).
-4. Before release: `node scripts/i18n-sync-check.mjs` reports the missing keys for the
-   remaining 8 locales; fill them in via the `i18n-sync` skill.
+4. Before release: `node scripts/i18n-sync-check.mjs` checks only bundled `zh-CN` host and
+   driver strings. Other locale dictionaries remain source-only and do not enter the app bundle.
 
 <!-- ci-trigger: 2026-09-03 -->

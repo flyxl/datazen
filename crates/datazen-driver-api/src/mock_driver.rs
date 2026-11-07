@@ -16,7 +16,7 @@ use crate::{
 use crate::{
     ColumnInfo, ColumnSchema, ConnectionConfig, ConnectionHandle, CountStrategy, DatabaseDriver,
     DatabaseType, DriverCategory, DriverError, ExplainResult, MultiQueryResult, QueryResult,
-    ServerInfo, StructureChangePlan, StructureChangeRequest, TableInfo, TableSchema,
+    ServerInfo, SqlTarget, StructureChangePlan, StructureChangeRequest, TableInfo, TableSchema,
     TransactionHandle, Value,
 };
 
@@ -559,6 +559,30 @@ impl crate::schema_object_sql::SchemaObjectSql for MockSchemaObjectSql {
 impl DatabaseDriver for MockDriver {
     fn schema_object_sql(&self) -> Option<Arc<dyn crate::schema_object_sql::SchemaObjectSql>> {
         Some(Arc::new(MockSchemaObjectSql))
+    }
+
+    async fn describe_result_origin(
+        &self,
+        handle: &ConnectionHandle,
+        target: SqlTarget<'_>,
+        result_columns: &[String],
+        sql: &str,
+    ) -> Result<crate::result_origin::ResultOrigin, DriverError> {
+        // The mock stands in for a real SQL driver, and a real SQL driver that
+        // honours the result-origin contract answers through the shared helper
+        // (the shared statement reader + the driver's own catalog — here the
+        // mock's `opts.tables`). Without this override the mock inherits the
+        // trait's "I cannot tell" default, and every mock-backed origin
+        // verdict — with it every result-cell write path in tests — would be
+        // structurally read-only no matter what the fixture records.
+        crate::result_origin::describe_result_origin_with_catalog(
+            self,
+            handle,
+            target,
+            result_columns,
+            sql,
+        )
+        .await
     }
 
     fn sql_literal_dialect(&self) -> Option<SqlLiteralDialect> {

@@ -15,9 +15,12 @@
 //!   不可见（CM-05，含跨组织 DELETE 不产生副作用）、跨主体不可见、
 //!   application 错误码 wire（`grid.view.nameExists` → 409 /
 //!   `grid.view.invalid` → 400，与 WR-C3 契约腿逐字一致）。
-//! - **⛔ fail-closed 登记**：driver 依赖的 tableData 路由（§6.7/§6.8）
-//!   恒 501 `capabilityUnsupported`，文案显式声明「没有执行任何语句、
-//!   没有构建任何计划、没有写任何东西」。
+//! - **✅ tableData 域 14 方法全部点亮，探针退役（W8 刀4）**：本文件曾是
+//!   fail-closed 探针的落点——501 集合逐刀收窄（读三端点 → W8-a 接线刀、
+//!   变更二 → 刀3、FK 二/值搜索/origin → 刀2、result-cell 二 → 刀4），
+//!   刀4 后域内已无 fail-closed 路由，探针测试随之移除（绿腿见
+//!   `mutation_pair_routes.rs` / `result_cell_routes.rs` / `table_data_live`
+//!   面的共享借出路径）。
 //! - **MockDriver 读路径：接不上，不硬凑（登记）**——真路由 handler 是
 //!   fail-closed 501；W8-a P2 起 `TableDataState` 已注入 server 运行器
 //!   （`TableDataState.runner`）与驱动注册表（`.registry`），但十一端点
@@ -185,7 +188,7 @@ async fn fixture() -> (Arc<AdminStore>, axum::Router, Account, Account, Account)
         RuntimeResultSink::default(),
         Arc::new(InMemorySessionDirectory::new()),
     ));
-    let lease_cases = Arc::new(LeaseConnectionUseCases::new(lease_source));
+    let lease_cases = Arc::new(LeaseConnectionUseCases::new(lease_source.clone()));
 
     let router = build_router_with_auth(AuthDeps {
         store: store.clone(),
@@ -207,6 +210,8 @@ async fn fixture() -> (Arc<AdminStore>, axum::Router, Account, Account, Account)
             connections,
             directory: Arc::new(InMemorySessionDirectory::new()),
             sessions: lease_cases,
+            lease: lease_source,
+            schema_cache: Arc::new(datazen::schema::cache::SchemaCache::new()),
         })]),
     })
     .expect("router");
@@ -750,41 +755,15 @@ async fn an_invalid_draft_is_refused_with_the_application_code() {
     assert_eq!(body["code"], "grid.view.invalid");
 }
 
-// ── ⛔ fail-closed 登记（§6.7/§6.8 剩余八端点）──────────────────────────────
-
-/// 变更与 FK/值搜索路由恒 501 `capabilityUnsupported`，文案显式声明无副作用
-/// 且携带逐端口收窄原因（读三端点已真实现，见下方绿路径腿）。
-#[tokio::test]
-async fn driver_bound_table_data_routes_fail_closed_as_not_implemented() {
-    let (_store, app, primary, _same_org, _other_org) = fixture().await;
-    for (uri, method_name) in [
-        ("/api/v1/table-data/value-searches", "searchTableValues"),
-        (
-            "/api/v1/table-data/foreign-key-targets",
-            "resolveForeignKeyTargets",
-        ),
-        ("/api/v1/table-data/change-commits", "commitPendingChanges"),
-        ("/api/v1/table-data/result-origins", "resolveResultOrigin"),
-    ] {
-        let (status, body) = call(
-            &app,
-            "POST",
-            uri,
-            &primary.cookie,
-            Some(&primary.csrf),
-            Some(serde_json::json!({ "connectionId": "conn-1" })),
-        )
-        .await;
-        assert_eq!(status, StatusCode::NOT_IMPLEMENTED, "{uri}: {body}");
-        assert_eq!(body["code"], "capabilityUnsupported", "{uri}");
-        let message = body["message"].as_str().expect("message");
-        assert!(message.contains(method_name), "{uri}: {message}");
-        assert!(
-            message.contains("No statement ran"),
-            "the copy must rule out silent side effects: {message}"
-        );
-    }
-}
+// ── ✅ fail-closed 探针退役（W8 刀4）──────────────────────────────────
+//
+// 本文件曾是 tableData 域 fail-closed 面的探针落点：501 集合逐刀收窄——
+// 读三端点（W8-a 接线刀）、变更二（W8 刀3 → `mutation_pair_routes.rs`）、
+// FK 二/值搜索/origin（W8 刀2 → `table_data_live` 面的共享借出路径）、
+// result-cell 二（W8 刀4 → `result_cell_routes.rs`）。刀4 后域内 14 方法
+// 全部真实现，探针测试（`driver_bound_table_data_routes_fail_closed_as_
+// not_implemented`，最后两条 URI 断言）随之移除：空探针不是证明，退役才是
+// 诚实收口。
 
 /// 命名视图面在认证链内：无 cookie 的请求在 L2 被 401 拒绝，不泄露目录。
 #[tokio::test]
@@ -1061,7 +1040,7 @@ async fn wired_fixture(opts: MockDriverOptions) -> WireFixture {
         profiles.clone(),
         registry.clone(),
         Arc::new(ServerSettingsStore::scoped("org-1", store.clone())),
-        real_lease,
+        real_lease.clone(),
         "org-1",
     ));
     // runner 的 manual 分支吃固定租约源（会话连续性），target 分支经 host
@@ -1093,6 +1072,10 @@ async fn wired_fixture(opts: MockDriverOptions) -> WireFixture {
             connections,
             directory,
             sessions: runtime.clone(),
+            // W8 刀3：commit 写半边的租约源——真租约源贴近生产（单次 resolve
+            // 的实例贯穿提交序列，CM-63 cell 语义）。
+            lease: real_lease,
+            schema_cache: Arc::new(datazen::schema::cache::SchemaCache::new()),
         })]),
     })
     .expect("router");

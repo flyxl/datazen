@@ -11,7 +11,7 @@ import {
   type UpdateProgress,
 } from '../../lib/updater';
 
-import { SectionTitle, ToggleRow } from './settingsUi';
+import { SectionTitle } from './settingsUi';
 
 /** GitHub Releases hosts every SKU's installer, including the ones with no updater channel. */
 const RELEASES_URL = 'https://github.com/flyxl/datazen/releases';
@@ -45,7 +45,7 @@ function progressLabel(
  * every non-Basic SKU, which is exactly the confusion that let the "variant
  * silently replaced by Basic" bug go unnoticed: the user saw no update UI and
  * then, if they enabled startup checks on a build that *did* have one, got a
- * different SKU installed. Naming the build and pointing at the matching
+ * different SKU installed after a check. Naming the build and pointing at the matching
  * installer keeps the expectation honest.
  */
 function ManualUpdateSection() {
@@ -71,13 +71,7 @@ function ManualUpdateSection() {
   );
 }
 
-export function UpdateSection({
-  checkOnStartup,
-  onCheckOnStartupChange,
-}: {
-  checkOnStartup: boolean;
-  onCheckOnStartupChange: (v: boolean) => void;
-}) {
+export function UpdateSection() {
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -130,10 +124,6 @@ export function UpdateSection({
     setBusy(false);
   }, [t]);
 
-  const handleStartupToggle = (enabled: boolean) => {
-    onCheckOnStartupChange(enabled);
-  };
-
   if (updateChannel === 'none') {
     return null;
   }
@@ -147,12 +137,6 @@ export function UpdateSection({
       <SectionTitle hint={t('settings.updater.description')}>
         {t('settings.updater.title')}
       </SectionTitle>
-
-      <ToggleRow
-        label={t('settings.updater.checkOnStartup')}
-        checked={checkOnStartup}
-        onChange={(v) => void handleStartupToggle(v)}
-      />
 
       <div className="flex flex-wrap items-center gap-3">
         <Button variant="secondary" disabled={busy} onClick={() => void handleCheck()}>

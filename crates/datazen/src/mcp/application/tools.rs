@@ -68,6 +68,33 @@ pub async fn list_databases(
         .map_err(|error| internal(error.to_string()))
 }
 
+/// database 参数的默认库回退（契约语义「defaults to connection default」）。
+///
+/// schema catalog 命令（list_tables/get_table_schema）硬性要求 database
+/// 字符串；调用方缺席时读连接档案的默认库，档案也没有 → 参数类错误
+/// （调用方可补 database 重试），绝不猜一个库。
+async fn default_database(
+    host: &dyn ResourceExecutionHost,
+    connection_id: &str,
+    database: Option<String>,
+) -> Result<String, ToolError> {
+    match database {
+        Some(database) => Ok(database),
+        None => {
+            let (config, _, enabled) = host
+                .profile(connection_id)
+                .await
+                .map_err(|error| internal(error.to_string()))?;
+            if !enabled {
+                return Err(internal("Connection profile is disabled".into()));
+            }
+            config.database.ok_or_else(|| {
+                internal("the connection has no default database; pass database explicitly".into())
+            })
+        }
+    }
+}
+
 /// `list_tables`：列出数据库的表（名称、类型与行数）。
 pub async fn list_tables(
     host: &dyn ResourceExecutionHost,
@@ -75,6 +102,10 @@ pub async fn list_tables(
     database: Option<String>,
     schema: Option<String>,
 ) -> Result<String, ToolError> {
+    // 契约语义「database 缺席 → 连接默认库」（contract.rs 的 seed 注入
+    // 同源）：schema catalog 命令硬性要求 database 字符串，宿主在此
+    // 落默认库回退，两种形态（desktop/server）同一份规则。
+    let database = Some(default_database(host, connection_id, database).await?);
     let output = runtime_reads::read_target_command(
         host,
         connection_id,
@@ -100,6 +131,8 @@ pub async fn search_tables(
     limit: Option<u64>,
 ) -> Result<String, ToolError> {
     let limit = limit.unwrap_or(20) as usize;
+    // 默认库回退同 list_tables（契约语义「defaults to connection default」）。
+    let database = Some(default_database(host, connection_id, database).await?);
     let output = runtime_reads::read_target_command(
         host,
         connection_id,
@@ -170,6 +203,8 @@ pub async fn get_schema(
     schema: Option<String>,
     table: &str,
 ) -> Result<String, ToolError> {
+    // 默认库回退同 list_tables（get_table_schema 命令硬性要求 database）。
+    let database = Some(default_database(host, connection_id, database).await?);
     let output = runtime_reads::read_target_command(
         host,
         connection_id,
@@ -215,6 +250,8 @@ pub async fn describe_table(
     schema: Option<String>,
     table: &str,
 ) -> Result<String, ToolError> {
+    // 默认库回退同 list_tables（get_table_schema 命令硬性要求 database）。
+    let database = Some(default_database(host, connection_id, database).await?);
     let output = runtime_reads::read_target_command(
         host,
         connection_id,

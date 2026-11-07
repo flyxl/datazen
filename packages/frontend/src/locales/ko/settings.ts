@@ -60,6 +60,18 @@ const pack = {
   'settings.defaultTableSort.none': '정렬 안 함',
   'settings.defaultTableSort.hint':
     '"정렬 안 함"으로 설정하면 큰 테이블에서 페이지 매김이 빨라지지만, 페이지가 바뀌면 행이 중복되거나 건너뛸 수 있습니다.',
+  'settings.gridDensity': '그리드 밀도',
+  'settings.gridDensity.hint': '데이터 그리드의 행 높이입니다. Compact는 화면에 더 많은 행을 표시합니다. 편안한 것은 읽기가 더 쉽습니다.',
+  'settings.gridDensity.compact': '콤팩트',
+  'settings.gridDensity.standard': '기준',
+  'settings.gridDensity.relaxed': '편안한',
+  'settings.gridAlternatingRows': '교대 행 배경',
+  'settings.gridAlternatingRows.hint': '데이터 그리드의 다른 모든 행에 색조를 적용합니다.',
+  'settings.gridRowNumbers': '행 번호',
+  'settings.gridRowNumbers.hint':
+    '# 데이터 그리드의 거터. 이 기능을 끄면 클릭하여 선택 버튼도 제거됩니다. 행을 클릭하면 행 선택이 계속 작동합니다.',
+  'settings.gridAutoHideScrollbar': '그리드 스크롤바 자동 숨기기',
+  'settings.gridAutoHideScrollbar.hint': '스크롤 막대는 그리드에 마우스를 올리거나 초점이 맞춰져 있는 동안에만 나타납니다.',
   'settings.connectionPoolSize': '연결 풀 크기',
   'settings.connectionPoolSizeHint': '데이터베이스 연결마다 유지할 최대 커넥션 수입니다.',
   'settings.limitSelect': 'SELECT 결과 제한',

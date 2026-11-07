@@ -73,7 +73,7 @@ pnpm test:boundaries || fail "test:boundaries"
 # --------------------------------------------------------------------------
 step "3.4/11 Guard: i18n sync (warning only)"
 if node scripts/i18n-sync-check.mjs; then
-  step "3.4/11 i18n sync: all locales in sync ✔"
+  step "3.4/11 i18n sync: shipped locales in sync ✔"
 else
   printf '\033[1;33m[ci-local] i18n-sync-check: warnings above (missing/stale translations) — not blocking CI\033[0m\n'
 fi

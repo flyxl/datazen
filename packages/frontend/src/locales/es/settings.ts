@@ -65,6 +65,21 @@ const pack = {
   'settings.defaultTableSort.none': 'No ordenar',
   'settings.defaultTableSort.hint':
     '"No ordenar" hace que la paginación sea más rápida en tablas grandes, pero las filas pueden repetirse u omitirse entre páginas.',
+  'settings.gridDensity': 'Densidad de la red',
+  'settings.gridDensity.hint':
+    'Altura de fila de las cuadrículas de datos. Compacto se adapta a más filas en la pantalla; relajado es más fácil de leer.',
+  'settings.gridDensity.compact': 'Compacto',
+  'settings.gridDensity.standard': 'Estándar',
+  'settings.gridDensity.relaxed': 'Relajado',
+  'settings.gridAlternatingRows': 'Fondos de filas alternas',
+  'settings.gridAlternatingRows.hint': 'Tiñe cada dos filas de las cuadrículas de datos.',
+  'settings.gridRowNumbers': 'Números de fila',
+  'settings.gridRowNumbers.hint':
+    'El canal # de las cuadrículas de datos. Al desactivarlo también se elimina el botón de hacer clic para seleccionar; La selección de filas todavía funciona haciendo clic en las filas.',
+  'settings.gridAutoHideScrollbar':
+    'Ocultar automáticamente las barras de desplazamiento de la cuadrícula',
+  'settings.gridAutoHideScrollbar.hint':
+    'Las barras de desplazamiento aparecen solo mientras se mantiene el cursor sobre una cuadrícula o se está enfocando.',
   'settings.connectionPoolSize': 'Tamaño del pool de conexiones',
   'settings.connectionPoolSizeHint':
     'Número máximo de conexiones conservadas por conexión de base de datos.',

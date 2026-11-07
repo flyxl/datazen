@@ -20,7 +20,7 @@ pub use change_set::{
     RowChangeTableContext, RowCommitStatementResult,
 };
 pub use insert_plan::bound_insert_statement_for_plan;
-pub use write_exec::execute_plan;
+pub use write_exec::{commit_result_cell_changes, execute_plan};
 
 pub mod error;
 pub mod ports;
@@ -95,24 +95,17 @@ pub fn validate_connection_facts(
     Ok(())
 }
 
-/// Validate a confirmed plan against current facts and execute it.
-///
-/// The client-provided SQL/summary fields are display-only; the plan is rebuilt
-/// from its immutable change metadata before anything runs, so a tampered plan
-/// cannot reach the database.
-#[allow(clippy::too_many_arguments)]
-pub async fn commit_changes(
-    driver: &dyn DatabaseDriver,
-    request: CommitPendingChangesRequest,
+/// The four facts gates a **commit** re-checks before any statement is built:
+/// the plan's config CAS, the read-only refusal and the database/schema
+/// namespace drift. Both commit halves (`commit_changes` for the ChangeSet,
+/// `commit_result_cell_changes` for a result cell) run the same checks in the
+/// same order with the same messages — the shared layer is the single place
+/// that knows what a stale commit looks like, so a second transport cannot
+/// forget one of the gates.
+fn validate_commit_facts(
+    request: &CommitPendingChangesRequest,
     facts: &ConnectionFacts,
-    columns: &dyn TableColumnSource,
-    manual_handle: Option<SessionHandle>,
-    runtime: Arc<dyn ConnectionUseCases>,
-    artifacts: Arc<dyn crate::table_editing::ports::ArtifactChunkReader>,
-    context: crate::shared::context::RequestContext,
-) -> Result<CommitPendingChangesResponse, FeatureError> {
-    validate_table_context(&request.plan.table)?;
-    validate_connection_facts(facts, &request.plan.table)?;
+) -> Result<(), FeatureError> {
     if request.plan.config_revision != Some(Counter::new(facts.config_revision)) {
         return Err(FeatureError::Validation(
             "grid.commit.stalePlan: Connection configuration changed; preview the changes again"
@@ -144,6 +137,28 @@ pub async fn commit_changes(
             "grid.commit.stalePlan: Schema context changed; preview the changes again".into(),
         ));
     }
+    Ok(())
+}
+
+/// Validate a confirmed plan against current facts and execute it.
+///
+/// The client-provided SQL/summary fields are display-only; the plan is rebuilt
+/// from its immutable change metadata before anything runs, so a tampered plan
+/// cannot reach the database.
+#[allow(clippy::too_many_arguments)]
+pub async fn commit_changes(
+    driver: &dyn DatabaseDriver,
+    request: CommitPendingChangesRequest,
+    facts: &ConnectionFacts,
+    columns: &dyn TableColumnSource,
+    manual_handle: Option<SessionHandle>,
+    runtime: Arc<dyn ConnectionUseCases>,
+    artifacts: Arc<dyn crate::table_editing::ports::ArtifactChunkReader>,
+    context: crate::shared::context::RequestContext,
+) -> Result<CommitPendingChangesResponse, FeatureError> {
+    validate_table_context(&request.plan.table)?;
+    validate_connection_facts(facts, &request.plan.table)?;
+    validate_commit_facts(&request, facts)?;
     let loaded = columns.table_columns(&request.plan.table).await?;
     let plan = change_set::validate_immutable_plan(
         driver,
