@@ -185,7 +185,10 @@ mod tests {
             Some((ResourceType::Execution, "exe-1".into()))
         );
         // 取消子动作（三段）与集合级不入本层。
-        assert_eq!(resource_ref_from_path("/api/v1/executions/exe-1/cancel"), None);
+        assert_eq!(
+            resource_ref_from_path("/api/v1/executions/exe-1/cancel"),
+            None
+        );
         assert_eq!(resource_ref_from_path("/api/v1/executions"), None);
     }
 

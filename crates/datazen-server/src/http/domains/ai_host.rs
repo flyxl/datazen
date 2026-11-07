@@ -166,7 +166,11 @@ async fn handler_execute_target(
     let input = body.get("input").cloned().unwrap_or(Value::Null);
     // 归因声明分臂（W8 刀1对账）：claim 必填且 kind 受限——不认识的
     // 输入拒绝而非放行（fail-closed）。
-    match body.get("claim").and_then(|claim| claim.get("kind")).and_then(Value::as_str) {
+    match body
+        .get("claim")
+        .and_then(|claim| claim.get("kind"))
+        .and_then(Value::as_str)
+    {
         Some("independent") => {}
         Some("editorGrant") => {
             // 501（not-implemented 类）：`CapabilityUnsupported` 默认 405，
@@ -184,9 +188,7 @@ async fn handler_execute_target(
                 .into_response();
         }
         _ => {
-            return invalid_argument(
-                "claim.kind must be \"independent\" or \"editorGrant\".",
-            );
+            return invalid_argument("claim.kind must be \"independent\" or \"editorGrant\".");
         }
     }
     // 与桌面同一步名（"tool"）与共享执行函数；每调用包
