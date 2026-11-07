@@ -31,6 +31,7 @@ pub mod known_hosts;
 pub mod login_sessions;
 pub mod migrations;
 pub mod named_views;
+pub mod org_memory;
 pub mod profiles;
 pub mod query_assets;
 pub mod settings;
@@ -42,6 +43,7 @@ pub use connections::ServerConnections;
 pub use jobs::ServerJobs;
 pub use known_hosts::ServerKnownHosts;
 pub use login_sessions::{LoginSessions, ValidateFailure};
+pub use org_memory::ServerOrgMemories;
 pub use profiles::ServerProfiles;
 pub use settings::{default_shared_settings, ServerSettingsStore};
 pub use tunnels::ServerTunnels;
@@ -56,6 +58,8 @@ mod jobs_tests;
 mod known_hosts_tests;
 #[cfg(test)]
 mod login_sessions_tests;
+#[cfg(test)]
+mod org_memory_tests;
 #[cfg(test)]
 mod profiles_tests;
 #[cfg(test)]

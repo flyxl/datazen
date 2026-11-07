@@ -86,6 +86,7 @@ export function ModelProfileForm({
               value={d.draft.providerType}
               options={d.providerOptions}
               onChange={d.handleProviderChange}
+              data-testid="ai-provider-select"
             />
           </SettingRow>
 
@@ -102,77 +103,111 @@ export function ModelProfileForm({
             </SettingRow>
           )}
 
-          <SettingRow label={t('settings.ai.apiKey')}>
-            <input
-              type="password"
-              value={d.draft.apiKey ?? ''}
-              onChange={(e) => d.updateDraft({ apiKey: e.target.value })}
-              placeholder={t('settings.ai.apiKeyPlaceholder')}
-              className={inputClass}
-            />
-          </SettingRow>
-
-          <SettingRow label={t('settings.ai.endpoint')}>
-            <input
-              type="text"
-              value={d.draft.endpoint ?? ''}
-              onChange={(e) => d.updateDraft({ endpoint: e.target.value })}
-              placeholder={t('settings.ai.endpointPlaceholder')}
-              className={inputClass}
-            />
-          </SettingRow>
-
-          <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => void d.handleFetchModels()}
-              disabled={d.fetchingRemoteModels}
-            >
-              {d.fetchingRemoteModels
-                ? t('settings.ai.fetchingModels')
-                : t('settings.ai.fetchModels')}
-            </Button>
-            {d.modelOptions.length > 0 && (
-              <label className="flex items-center gap-1.5 text-xs text-fg-muted">
+          {d.isLocalCli && (
+            <>
+              <p className="rounded-md border border-edge bg-surface/60 px-3 py-2 text-xs text-fg-muted">
+                {t('settings.ai.localCliHint')}
+              </p>
+              <SettingRow label={t('settings.ai.localCliPath')}>
                 <input
-                  type="checkbox"
-                  checked={d.manualModelInput}
-                  onChange={(e) => d.setManualModelInput(e.target.checked)}
-                  className="rounded"
+                  type="text"
+                  value={d.localCliPath}
+                  onChange={(e) => d.handleLocalCliPathChange('executablePath', e.target.value)}
+                  placeholder={t('settings.ai.localCliPathPlaceholder')}
+                  className={inputClass}
+                  data-testid="ai-local-cli-path"
                 />
-                {t('settings.ai.modelManual')}
-              </label>
-            )}
-          </div>
+              </SettingRow>
+              <SettingRow label={t('settings.ai.localCliWorkspace')}>
+                <input
+                  type="text"
+                  value={d.localCliWorkspace}
+                  onChange={(e) => d.handleLocalCliPathChange('workspaceDir', e.target.value)}
+                  placeholder={t('settings.ai.localCliWorkspacePlaceholder')}
+                  className={inputClass}
+                  data-testid="ai-local-cli-workspace"
+                />
+              </SettingRow>
+            </>
+          )}
 
-          <SettingRow label={t('settings.ai.model')}>
-            {d.manualModelInput || d.modelOptions.length === 0 ? (
-              <input
-                type="text"
-                value={d.draft.model}
-                onChange={(e) => d.updateDraft({ model: e.target.value })}
-                placeholder="e.g. gpt-4o, claude-3-7-sonnet, qwen2.5-coder"
-                className={inputClass}
-              />
-            ) : (
-              <Select
-                value={d.draft.model}
-                options={d.modelOptions}
-                onChange={(v) => d.updateDraft({ model: v })}
-              />
-            )}
-          </SettingRow>
+          {!d.isLocalCli && (
+            <>
+              <SettingRow label={t('settings.ai.apiKey')}>
+                <input
+                  type="password"
+                  value={d.draft.apiKey ?? ''}
+                  onChange={(e) => d.updateDraft({ apiKey: e.target.value })}
+                  placeholder={t('settings.ai.apiKeyPlaceholder')}
+                  className={inputClass}
+                />
+              </SettingRow>
 
-          <SettingRow label={t('settings.ai.maxTokens')}>
-            <input
-              type="number"
-              value={d.draft.maxTokens ?? 200000}
-              onChange={(e) => d.updateDraft({ maxTokens: parseInt(e.target.value, 10) || 200000 })}
-              min={1000}
-              className={inputClass}
-            />
-          </SettingRow>
+              <SettingRow label={t('settings.ai.endpoint')}>
+                <input
+                  type="text"
+                  value={d.draft.endpoint ?? ''}
+                  onChange={(e) => d.updateDraft({ endpoint: e.target.value })}
+                  placeholder={t('settings.ai.endpointPlaceholder')}
+                  className={inputClass}
+                />
+              </SettingRow>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void d.handleFetchModels()}
+                  disabled={d.fetchingRemoteModels}
+                >
+                  {d.fetchingRemoteModels
+                    ? t('settings.ai.fetchingModels')
+                    : t('settings.ai.fetchModels')}
+                </Button>
+                {d.modelOptions.length > 0 && (
+                  <label className="flex items-center gap-1.5 text-xs text-fg-muted">
+                    <input
+                      type="checkbox"
+                      checked={d.manualModelInput}
+                      onChange={(e) => d.setManualModelInput(e.target.checked)}
+                      className="rounded"
+                    />
+                    {t('settings.ai.modelManual')}
+                  </label>
+                )}
+              </div>
+
+              <SettingRow label={t('settings.ai.model')}>
+                {d.manualModelInput || d.modelOptions.length === 0 ? (
+                  <input
+                    type="text"
+                    value={d.draft.model}
+                    onChange={(e) => d.updateDraft({ model: e.target.value })}
+                    placeholder="e.g. gpt-4o, claude-3-7-sonnet, qwen2.5-coder"
+                    className={inputClass}
+                  />
+                ) : (
+                  <Select
+                    value={d.draft.model}
+                    options={d.modelOptions}
+                    onChange={(v) => d.updateDraft({ model: v })}
+                  />
+                )}
+              </SettingRow>
+
+              <SettingRow label={t('settings.ai.maxTokens')}>
+                <input
+                  type="number"
+                  value={d.draft.maxTokens ?? 200000}
+                  onChange={(e) =>
+                    d.updateDraft({ maxTokens: parseInt(e.target.value, 10) || 200000 })
+                  }
+                  min={1000}
+                  className={inputClass}
+                />
+              </SettingRow>
+            </>
+          )}
 
           <ToggleRow
             label={t('settings.ai.setDefault')}
@@ -265,6 +300,95 @@ export function ModelProfileForm({
             </SettingRow>
           )}
 
+          <SettingRow label={`${t('settings.ai.maxToolRounds')} (1-50)`}>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={1}
+                max={50}
+                value={d.draft.safetyGate.maxToolRounds}
+                onChange={(e) => d.updateGate('maxToolRounds', parseInt(e.target.value, 10) || 30)}
+                className="flex-1"
+              />
+              <span className="w-8 text-center font-mono text-xs text-fg">
+                {d.draft.safetyGate.maxToolRounds}
+              </span>
+            </div>
+          </SettingRow>
+
+          <SettingRow label={`${t('settings.ai.apiRetries')} (0-10)`}>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={0}
+                max={10}
+                value={d.draft.safetyGate.apiRetries}
+                onChange={(e) => d.updateGate('apiRetries', parseInt(e.target.value, 10) || 0)}
+                className="flex-1"
+              />
+              <span className="w-6 text-center font-mono text-xs text-fg">
+                {d.draft.safetyGate.apiRetries}
+              </span>
+            </div>
+          </SettingRow>
+
+          <SettingRow label={`${t('settings.ai.maxToolTokens')} (1000-200000)`}>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={1000}
+                max={200000}
+                step={1000}
+                value={d.draft.safetyGate.maxToolTokens}
+                onChange={(e) =>
+                  d.updateGate('maxToolTokens', parseInt(e.target.value, 10) || 48000)
+                }
+                className="flex-1"
+              />
+              <span className="w-16 text-center font-mono text-xs text-fg">
+                {d.draft.safetyGate.maxToolTokens}
+              </span>
+            </div>
+          </SettingRow>
+
+          <SettingRow label={`${t('settings.ai.maxToolResultBytes')} (256-65536)`}>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={256}
+                max={65536}
+                step={256}
+                value={d.draft.safetyGate.maxToolResultBytes}
+                onChange={(e) =>
+                  d.updateGate('maxToolResultBytes', parseInt(e.target.value, 10) || 8192)
+                }
+                className="flex-1"
+              />
+              <span className="w-16 text-center font-mono text-xs text-fg">
+                {d.draft.safetyGate.maxToolResultBytes}
+              </span>
+            </div>
+          </SettingRow>
+
+          <SettingRow label={`${t('settings.ai.maxToolDurationSecs')} (10-1800)`}>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={10}
+                max={1800}
+                step={10}
+                value={d.draft.safetyGate.maxToolDurationSecs}
+                onChange={(e) =>
+                  d.updateGate('maxToolDurationSecs', parseInt(e.target.value, 10) || 300)
+                }
+                className="flex-1"
+              />
+              <span className="w-10 text-center font-mono text-xs text-fg">
+                {d.draft.safetyGate.maxToolDurationSecs}
+              </span>
+            </div>
+          </SettingRow>
+
           <SettingRow label={t('settings.ai.dbToolPolicy')}>
             <Select
               value={d.draft.safetyGate.dbToolPolicy}
@@ -321,6 +445,8 @@ export function ModelProfileForm({
               <CheckCircle2 className="h-3.5 w-3.5" />
               {t('settings.ai.validated')}
             </span>
+          ) : d.isLocalCli ? (
+            t('settings.ai.localCliDetect')
           ) : (
             t('settings.ai.validate')
           )}

@@ -11,6 +11,14 @@ pub struct QueryInput {
     pub sql: String,
     /// Maximum rows to return (default: 100, max: 50000)
     pub limit: Option<u32>,
+    /// Resolved target injected by the host; clients normally omit it.
+    #[serde(default)]
+    #[schemars(skip)]
+    pub database: Option<String>,
+    /// Resolved namespace injected by the host; clients normally omit it.
+    #[serde(default)]
+    #[schemars(skip)]
+    pub schema: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -55,6 +63,14 @@ pub struct ExplainQueryInput {
     pub connection_id: String,
     /// SQL query to analyze
     pub sql: String,
+    /// Resolved target injected by the host; clients normally omit it.
+    #[serde(default)]
+    #[schemars(skip)]
+    pub database: Option<String>,
+    /// Resolved namespace injected by the host; clients normally omit it.
+    #[serde(default)]
+    #[schemars(skip)]
+    pub schema: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -154,4 +170,54 @@ pub struct ExplainPlanArgs {
     pub connection_id: String,
     /// The SQL query to explain
     pub sql: String,
+}
+
+/// Execute a bounded SQL batch. Read-only unless the caller explicitly opts
+/// into writes; an explicit transaction is opt-in as well.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct ExecuteBatchInput {
+    /// Persistent connection id (from list_connections)
+    pub connection_id: String,
+    /// SQL script; statements are split with the shared SQL scanner
+    pub sql: String,
+    /// Run every statement inside one explicit transaction and commit at the end.
+    #[serde(default)]
+    pub transaction: bool,
+    /// Defaults to false: any write statement rejects the whole batch before
+    /// execution. Setting this true still requires policy/approval permission.
+    #[serde(default)]
+    pub allow_writes: bool,
+    /// Maximum rows per statement (default 100, max 5000)
+    pub limit: Option<u32>,
+    /// Whole-batch timeout in milliseconds (default 30000, max 60000)
+    pub timeout_ms: Option<u32>,
+    /// Resolved target injected by the host; clients normally omit it.
+    #[serde(default)]
+    #[schemars(skip)]
+    pub database: Option<String>,
+    /// Resolved namespace injected by the host; clients normally omit it.
+    #[serde(default)]
+    #[schemars(skip)]
+    pub schema: Option<String>,
+}
+
+/// One read-only Redis command. The command name is separate from its
+/// arguments so the host can classify it before any driver call.
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct RedisCommandInput {
+    /// Persistent connection id (from list_connections)
+    pub connection_id: String,
+    /// Redis command name (for example GET, MGET, SCAN)
+    pub command: String,
+    /// Command arguments; SCAN accepts the standard cursor/MATCH/COUNT/TYPE form
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Optional glob restricting readable keys (default "*"; SCAN MATCH must stay inside it)
+    pub key_pattern: Option<String>,
+    /// Maximum keys/rows and output budget (default 100, max 1000)
+    pub limit: Option<u32>,
+    /// Command timeout in milliseconds (default 5000, max 30000)
+    pub timeout_ms: Option<u32>,
+    /// Optional Redis logical database index; defaults to the connection database
+    pub database: Option<String>,
 }

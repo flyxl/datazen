@@ -14,7 +14,7 @@ import { StreamRegistry } from '../../ai/streamRegistry';
 import { SessionCanceller } from '../../ai/sessionCancel';
 import { attributionOf, type AiTargetClaim, type CancelReceipt } from '../../ai/targetClaim';
 import { aiCommands } from '../../commands/ai';
-import { loadSessions, saveSessions, touchSession } from './sessions';
+import { persistChatSession } from './sessions';
 import type { AiStore } from './types';
 
 type GetState = () => AiStore;
@@ -84,15 +84,13 @@ export async function cancelChat(
  * 8s fallback: the backend never delivered its terminal chunk. Finalise the
  * visible session locally as cancelled so the stop button cannot spin forever.
  */
-export function handleCancelTimeout(
-  get: GetState,
-  set: SetState,
-  requestId: string,
-): void {
+export function handleCancelTimeout(get: GetState, set: SetState, requestId: string): void {
   const { chatSession, workflowChat } = get();
   if (chatSession?.requestId === requestId) {
-    set({ chatSession: finalizeCancelledSession(chatSession) });
+    const next = finalizeCancelledSession(chatSession);
+    set({ chatSession: next });
     unregisterRequestId(requestId);
+    persistStreamSession(get, set, next);
     return;
   }
   if (workflowChat?.requestId === requestId) {
@@ -112,6 +110,8 @@ function finalizeCancelledSession<T extends NonNullable<AiStore['chatSession']>>
     streamReasoning: '',
     streamMcpToolName: null,
     requestId: null,
+    streamMemoryUsed: null,
+    memoryUsed: session.streamMemoryUsed ?? null,
     messages: [
       ...session.messages,
       {
@@ -120,18 +120,30 @@ function finalizeCancelledSession<T extends NonNullable<AiStore['chatSession']>>
         content: session.streamContent || '',
         reasoning: session.streamReasoning || undefined,
         cancelled: true,
+        status: 'cancelled' as const,
+        createdAt: new Date().toISOString(),
+        memoryUsed: session.streamMemoryUsed ?? undefined,
       },
     ],
   };
   return next;
 }
 
-/** Apply a stream chunk, dropping late/duplicate chunks through the registry. */
-export function handleStreamChunk(
+function persistStreamSession(
   get: GetState,
   set: SetState,
-  payload: StreamChunkPayload,
+  session: NonNullable<AiStore['chatSession']>,
 ): void {
+  if (get().chatSession?.id !== session.id) return;
+  void persistChatSession(session).then((result) => {
+    if (!result.ok) {
+      set({ sessionMigrationError: result.error ?? 'AI session backend write failed' });
+    }
+  });
+}
+
+/** Apply a stream chunk, dropping late/duplicate chunks through the registry. */
+export function handleStreamChunk(get: GetState, set: SetState, payload: StreamChunkPayload): void {
   const { nl2sql, chatSession, workflowChat } = get();
 
   // ── NL2SQL routing (not part of the chat lifecycle registry) ──
@@ -140,12 +152,15 @@ export function handleStreamChunk(
       ? nl2sql.streamingSql + payload.content
       : nl2sql.streamingSql;
     const streamingPreview = extractSqlStreaming(accumulated);
+    const memoryUsed =
+      payload.memoryUsed && payload.memoryUsed.length > 0 ? payload.memoryUsed : nl2sql.memoryUsed;
     set({
       nl2sql: {
         ...nl2sql,
         streamingSql: accumulated,
         streamingPreview,
         generatedSql: payload.done ? extractSqlFromResponse(accumulated) : nl2sql.generatedSql,
+        memoryUsed,
         isGenerating: payload.done ? false : nl2sql.isGenerating,
       },
     });
@@ -175,6 +190,13 @@ export function handleStreamChunk(
   }
 
   const session = (targetSession === 'chatSession' ? chatSession : workflowChat)!;
+  // The host sends the scope on the first chunk; later chunks must not replace
+  // it within the same run.
+  const egressSummary = session.egressSummary || payload.egressSummary?.trim() || null;
+  const memoryUsed =
+    payload.memoryUsed && payload.memoryUsed.length > 0
+      ? payload.memoryUsed
+      : (session.streamMemoryUsed ?? null);
   const newContent = (session.streamContent || '') + (payload.content || '');
   const newReasoning = (session.streamReasoning || '') + (payload.reasoning || '');
   const mcpToolName = findMcpToolName(payload.toolCalls) ?? session.streamMcpToolName ?? null;
@@ -191,12 +213,16 @@ export function handleStreamChunk(
     }
 
     const assistantMessage: AiChatMessage = {
+      id: crypto.randomUUID(),
       role: 'assistant',
       content: cleanContent,
       reasoning: newReasoning || undefined,
       questions,
       toolCalls,
       cancelled: payload.cancelled === true,
+      status: payload.cancelled === true ? 'cancelled' : 'complete',
+      createdAt: new Date().toISOString(),
+      memoryUsed: memoryUsed ?? undefined,
     };
     const nextSession = {
       ...session,
@@ -205,28 +231,15 @@ export function handleStreamChunk(
       streamContent: '',
       streamReasoning: '',
       streamMcpToolName: null,
+      egressSummary,
+      streamMemoryUsed: null,
+      memoryUsed: memoryUsed ?? null,
       requestId: null,
     };
     set({ [targetSession]: nextSession });
 
-    // Persist chat history to localStorage
     if (targetSession === 'chatSession') {
-      const key = nextSession.sessionKey;
-      const sessions = loadSessions();
-      const updated = touchSession(sessions, key);
-      updated[key] = {
-        ...updated[key],
-        messages: nextSession.messages.map((m) => ({
-          role: m.role as 'user' | 'assistant' | 'tool' | 'system',
-          content: m.content,
-          reasoning: m.reasoning,
-          toolCalls: m.toolCalls,
-          toolCallId: m.toolCallId,
-          cancelled: m.cancelled,
-        })),
-        lastAccess: Date.now(),
-      };
-      saveSessions(updated);
+      persistStreamSession(get, set, nextSession);
     }
   } else {
     set({
@@ -235,17 +248,16 @@ export function handleStreamChunk(
         streamContent: newContent,
         streamReasoning: newReasoning,
         streamMcpToolName: mcpToolName,
+        egressSummary,
+        streamMemoryUsed: memoryUsed,
+        memoryUsed: memoryUsed ?? null,
       },
     });
   }
 }
 
 /** Out-of-band stream error: terminal once, idempotent on repeats. */
-export function handleStreamError(
-  get: GetState,
-  set: SetState,
-  payload: StreamErrorPayload,
-): void {
+export function handleStreamError(get: GetState, set: SetState, payload: StreamErrorPayload): void {
   const { nl2sql, chatSession, workflowChat } = get();
   if (payload.requestId === nl2sql.requestId) {
     unregisterRequestId(payload.requestId);
@@ -270,15 +282,28 @@ export function handleStreamError(
 
   unregisterRequestId(payload.requestId);
   const session = (errTarget === 'chatSession' ? chatSession : workflowChat)!;
-  set({
-    [errTarget]: {
-      ...session,
-      isStreaming: false,
-      streamContent: '',
-      streamReasoning: '',
-      streamMcpToolName: null,
-      requestId: null,
-      messages: [...session.messages, { role: 'assistant', content: `Error: ${payload.error}` }],
-    },
-  });
+  const next = {
+    ...session,
+    isStreaming: false,
+    streamContent: '',
+    streamReasoning: '',
+    streamMcpToolName: null,
+    streamMemoryUsed: null,
+    memoryUsed: null,
+    requestId: null,
+    messages: [
+      ...session.messages,
+      {
+        id: crypto.randomUUID(),
+        role: 'assistant' as const,
+        content: `Error: ${payload.error}`,
+        status: 'failed' as const,
+        createdAt: new Date().toISOString(),
+      },
+    ],
+  };
+  set({ [errTarget]: next });
+  if (errTarget === 'chatSession') {
+    persistStreamSession(get, set, next);
+  }
 }

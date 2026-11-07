@@ -4,74 +4,88 @@
 //! 身份装配与唤醒 select。退避策略、清扫判定与登记撤销的语义在
 //! `datazen::mcp::session`（`CleanupScheduler` / `sweep_pending`）。
 use super::server::DataZenMcpServer;
+use crate::commands::AppState;
+use crate::mcp::session::McpSessionRegistry;
 use datazen::execution::application::ConnectionUseCases;
 use datazen::mcp::session::{sweep_pending, CleanupScheduler};
 use datazen::shared::context::RequestContext;
+use std::sync::Arc;
 use std::{sync::atomic::Ordering, time::Instant};
 
 impl DataZenMcpServer {
     pub(crate) fn start_session_cleanup(&self) {
-        if self
-            .sessions
-            .worker
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {
-            return;
-        }
-        let sessions = self.sessions.clone();
-        let state = self.app_state.clone();
-        let client = self.client_instance_id.clone();
-        tokio::spawn(async move {
-            let mut scheduler = CleanupScheduler::begin(Instant::now());
-            loop {
-                sessions.purge_expired(Instant::now());
-                let pending = sessions.pending_cleanup();
-                if !pending.is_empty() && scheduler.ready(Instant::now()) {
-                    if let Ok(adapter) = state.platform_require() {
-                        if let Ok(runtime) = adapter.runtime() {
-                            // Reconstruct only the backend-owned client identity. Never accept an
-                            // owner or handle from the caller, or scan by connectionId.
-                            let context = RequestContext::new(
-                                adapter.identity().organization_id().clone(),
-                                adapter.identity().principal_id().clone(),
-                                None,
-                                datazen::shared::id::ClientInstanceId::new(client.clone()),
-                                crate::platform::identity::new_request_id(),
-                                None,
-                            );
-                            sweep_pending(&runtime, &context, &sessions, &client, pending).await;
-                        }
+        start_session_cleanup_worker(
+            self.app_state.clone(),
+            self.sessions.clone(),
+            self.client_instance_id.clone(),
+        );
+    }
+}
+
+/// Start the owner-bound cleanup worker for one MCP client. Transport layers
+/// that can be dropped asynchronously (the HTTP session guard) call this
+/// directly instead of holding a whole server just to run cleanup.
+pub(crate) fn start_session_cleanup_worker(
+    state: Arc<AppState>,
+    sessions: Arc<McpSessionRegistry>,
+    client: String,
+) {
+    if sessions
+        .worker
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        return;
+    }
+    tokio::spawn(async move {
+        let mut scheduler = CleanupScheduler::begin(Instant::now());
+        loop {
+            sessions.purge_expired(Instant::now());
+            let pending = sessions.pending_cleanup();
+            if !pending.is_empty() && scheduler.ready(Instant::now()) {
+                if let Ok(adapter) = state.platform_require() {
+                    if let Ok(runtime) = adapter.runtime() {
+                        // Reconstruct only the backend-owned client identity. Never accept an
+                        // owner or handle from the caller, or scan by connectionId.
+                        let context = RequestContext::new(
+                            adapter.identity().organization_id().clone(),
+                            adapter.identity().principal_id().clone(),
+                            None,
+                            datazen::shared::id::ClientInstanceId::new(client.clone()),
+                            crate::platform::identity::new_request_id(),
+                            None,
+                        );
+                        sweep_pending(&runtime, &context, &sessions, &client, pending).await;
                     }
-                }
-                let pending = !sessions.pending_cleanup().is_empty();
-                let now = Instant::now();
-                if pending && scheduler.ready(now) {
-                    scheduler.penalize(now);
-                }
-                let expiry = sessions.next_expiry();
-                if !pending && expiry.is_none() {
-                    sessions.worker.store(false, Ordering::Release);
-                    // Pair the stop with admission's CAS: an open racing the stop either
-                    // starts another worker or is picked up here, never two workers.
-                    if (sessions.next_expiry().is_some() || !sessions.pending_cleanup().is_empty())
-                        && sessions
-                            .worker
-                            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-                            .is_ok()
-                    {
-                        continue;
-                    }
-                    return;
-                }
-                let delay = scheduler.next_delay(now, pending, expiry);
-                tokio::select! {
-                    _ = tokio::time::sleep(delay) => {},
-                    _ = sessions.wake.notified() => {},
                 }
             }
-        });
-    }
+            let pending = !sessions.pending_cleanup().is_empty();
+            let now = Instant::now();
+            if pending && scheduler.ready(now) {
+                scheduler.penalize(now);
+            }
+            let expiry = sessions.next_expiry();
+            if !pending && expiry.is_none() {
+                sessions.worker.store(false, Ordering::Release);
+                // Pair the stop with admission's CAS: an open racing the stop either
+                // starts another worker or is picked up here, never two workers.
+                if (sessions.next_expiry().is_some() || !sessions.pending_cleanup().is_empty())
+                    && sessions
+                        .worker
+                        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                        .is_ok()
+                {
+                    continue;
+                }
+                return;
+            }
+            let delay = scheduler.next_delay(now, pending, expiry);
+            tokio::select! {
+                _ = tokio::time::sleep(delay) => {},
+                _ = sessions.wake.notified() => {},
+            }
+        }
+    });
 }
 
 #[cfg(test)]

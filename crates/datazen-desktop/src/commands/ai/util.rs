@@ -38,6 +38,12 @@ pub(crate) async fn resolve_safety_gate(state: &AppState) -> AiSafetyGateConfig 
     datazen::ai::api::effective_safety_gate(state.store.as_ref()).await
 }
 
+/// Memory settings live in the encrypted AI settings config. Host handlers
+/// enforce the opt-in switch even when a caller passes `auto` directly.
+pub(crate) async fn resolve_memory_settings(state: &AppState) -> datazen::ai::AiMemorySettings {
+    state.store.get_ai_settings_config().await.memory
+}
+
 pub(crate) async fn resolve_ai(
     state: &AppState,
 ) -> Result<(Arc<dyn AiProvider>, AiProviderConfig), CommandError> {
@@ -62,6 +68,31 @@ pub(crate) async fn build_connections_context(state: &AppState, lang: &str) -> S
     };
     let catalog = crate::platform::connections::DesktopConnectionStore::new(state.store.clone());
     datazen::ai::response::build_connections_context(&catalog, &scope, lang).await
+}
+
+/// Load one connection's user-authored AI note for prompt injection. Scope is
+/// organization + current desktop principal, exactly like the notes IPC.
+pub(crate) fn load_connection_note(state: &AppState, connection_id: &str) -> Option<String> {
+    let organization_id = state
+        .organization_scope()
+        .ok()?
+        .organization_id()
+        .as_str()
+        .to_string();
+    let principal_id = crate::platform::local_principal()
+        .map(|principal| principal.as_str().to_string())
+        .unwrap_or_else(|| "datazen-local-user".to_string());
+    match state.store.app_db().get_ai_connection_note(
+        &organization_id,
+        &principal_id,
+        connection_id,
+    ) {
+        Ok(note) => note.map(|note| note.content),
+        Err(error) => {
+            tracing::warn!(connection_id, error = %error, "failed to load AI connection note");
+            None
+        }
+    }
 }
 
 /// Resolve an AI command's runtime session and borrow its already-open driver
@@ -152,6 +183,9 @@ pub(crate) fn emit_stream_chunk_or_error<R: tauri::Runtime>(
             }
             if let Some(tool_calls) = &chunk.tool_calls {
                 payload["toolCalls"] = serde_json::to_value(tool_calls).unwrap_or_default();
+            }
+            if let Some(memory_used) = &chunk.memory_used {
+                payload["memoryUsed"] = serde_json::to_value(memory_used).unwrap_or_default();
             }
             let _ = emitter.emit("ai:stream-chunk", payload);
         }

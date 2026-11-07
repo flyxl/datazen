@@ -212,10 +212,55 @@ pub const MIGRATIONS: &[Migration] = &[
     V7_EXECUTION_WIRING,
     V8_SERVER_SETTINGS,
     V9_NAMED_VIEWS,
-    V10_QUERY_ASSETS,
+    V10_ORG_MEMORIES,
+    V11_QUERY_ASSETS,
 ];
 
-/// v10：查询资产双表（W8 刀3a——收藏与查询历史的服务端存储；契约
+/// v10：组织记忆与审批审计（T25）。版本化行 `(organization_id, id,
+/// version)`；`status='revoked'` 后读取面与检索面必须立即排除。审计表
+/// 只记录 who/org/memory/version/decision，不记录内容（与 `audit_events`
+/// 的 payload 白名单纪律一致）。
+const V10_ORG_MEMORIES: Migration = Migration {
+    version: 10,
+    name: "organization memory approvals and audit",
+    expand: r#"
+CREATE TABLE org_memories (
+  organization_id TEXT NOT NULL,
+  id TEXT NOT NULL,
+  version INTEGER NOT NULL CHECK (version >= 1),
+  kind TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  content TEXT NOT NULL,
+  confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+  sensitivity TEXT NOT NULL CHECK (sensitivity IN ('normal','internal')),
+  status TEXT NOT NULL CHECK (status IN ('active','revoked')),
+  created_by TEXT NOT NULL,
+  approved_by TEXT NOT NULL,
+  published_at TEXT NOT NULL,
+  revoked_at TEXT,
+  revoked_by TEXT,
+  PRIMARY KEY (organization_id, id, version)
+);
+CREATE INDEX idx_org_memories_active
+  ON org_memories (organization_id, status, id, version);
+CREATE TABLE org_memory_audit (
+  id TEXT PRIMARY KEY NOT NULL,
+  organization_id TEXT NOT NULL,
+  memory_id TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  action TEXT NOT NULL CHECK (action IN ('publish','revoke','inject')),
+  actor_principal_id TEXT NOT NULL,
+  decision TEXT NOT NULL CHECK (decision IN ('approved','revoked','injected','suppressed')),
+  detail_json TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX idx_org_memory_audit_org
+  ON org_memory_audit (organization_id, created_at DESC);
+"#,
+};
+
+/// v11 编号裁决：v10 已被 T25 组织记忆（#205）先行占用——本迁移重编号让位，DDL 与词汇零变化。
+/// v11：查询资产双表（W8 刀3a——收藏与查询历史的服务端存储；契约
 /// §6.12 的存储形态裁决——web 形态把「桌面收藏 = 用户目录一个 .sql 文件」
 /// 与「桌面历史 = 本机 history.sqlite」都改存服务端库，词汇一条（共享层
 /// `datazen::history::{FavoriteQuery, QueryHistoryEntry}`）存储两形态。
@@ -236,8 +281,8 @@ pub const MIGRATIONS: &[Migration] = &[
 ///   执行，DELETE 多于 1000 的旧行——与桌面 history_db 同一条业务规则）。
 /// - **TIMESTAMPTZ → TEXT**（定宽 RFC3339 UTC 毫秒，v5 起口径；
 ///   `executed_at` 由服务端铸造时刻，`rows_affected` 可空）。
-const V10_QUERY_ASSETS: Migration = Migration {
-    version: 10,
+const V11_QUERY_ASSETS: Migration = Migration {
+    version: 11,
     name: "query assets baseline (per-principal favorites + query history)",
     expand: r#"
 CREATE TABLE query_favorites (

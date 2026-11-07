@@ -587,24 +587,29 @@ fn schema_snapshot(conn: &Connection) -> BTreeMap<(String, String), String> {
 
 /// 冻结项 2（平台计划 §11「schema 支持范围允许旧镜像运行于下一版 expand
 /// schema」/ storage/mod.rs 的 expand 纪律）：v6 形态旧库（真实 SQLite 文件、
-/// 带历史行）跑 `migrate()` → 只落 v7..=v9 的追加步；**每一个**既有对象（表/索引）的
+/// 带历史行）跑 `migrate()` → 只落 v7..=v11 的追加步；**每一个**既有对象（表/索引）的
 /// sqlite_master DDL 文本逐字节不变（expand-only：旧列未删未改类型），全部
 /// 历史行原样，v7 六表就位，版本登记到 7。
 #[test]
 fn migrating_a_v6_library_expands_and_preserves_every_history_row() {
     let (path, before) = v6_form_library("v6-expand");
     let store = AdminStore::open(&path).expect("open v6 library");
-    let applied = store.migrate().expect("migrate v6 → 当前目标（v9）");
-    // v8（server_settings，WR-C2 §6.1 settings 域）与 v9（named_views，
-    // WR-C3 §6.9 命名视图的服务端存储）加入后，v6 旧库一次应用 v7、v8、
-    // v9 三步——expand-only 纪律对每一步分别成立（v9 随 Wave6 第三刀
-    // tableData 域落库，验收面随版本演进更新，断言形状不变）。
-    assert_eq!(applied.len(), 4, "v6 → 当前目标应用 v7、v8、v9、v10 四步");
+    let applied = store.migrate().expect("migrate v6 → 当前目标（v11）");
+    // v8（server_settings）、v9（named_views）、v10（org_memories /
+    // org_memory_audit，T25）与 v11（query_favorites / query_history，
+    // W8 刀3a；编号让位于 T25）加入后，v6 旧库一次应用 v7..=v11 五步——
+    // expand-only 纪律对每一步分别成立。
+    assert_eq!(
+        applied.len(),
+        5,
+        "v6 → 当前目标应用 v7、v8、v9、v10、v11 五步"
+    );
     assert_eq!(applied[0].version, 7);
     assert_eq!(applied[1].version, 8);
     assert_eq!(applied[2].version, 9);
     assert_eq!(applied[3].version, 10);
-    assert_eq!(store.schema_version().expect("schema version"), 10);
+    assert_eq!(applied[4].version, 11);
+    assert_eq!(store.schema_version().expect("schema version"), 11);
 
     let conn = probe(&path);
     // v7 新表在（执行接线的四组对象）。
@@ -615,6 +620,10 @@ fn migrating_a_v6_library_expands_and_preserves_every_history_row() {
         "connection_catalog_group",
         "tunnel_definition",
         "execution_service_identity",
+        "org_memories",
+        "org_memory_audit",
+        "query_favorites",
+        "query_history",
     ] {
         let exists: bool = conn
             .query_row(
@@ -635,7 +644,7 @@ fn migrating_a_v6_library_expands_and_preserves_every_history_row() {
             "既有对象 {key:?} 的 DDL 被 v7 改写（违反 expand-only）"
         );
     }
-    // 新增对象 = v7 的 9 个 + v8/v9/v10 的逐刀追加（自动索引不入快照）。
+    // 新增对象 = v7 的 9 个 + v8/v9/v10/v11 的逐刀追加（自动索引不入快照）。
     let added: Vec<_> = after
         .keys()
         .filter(|key| !before.contains_key(key))
@@ -647,7 +656,10 @@ fn migrating_a_v6_library_expands_and_preserves_every_history_row() {
             ("index", "idx_connection_catalog_order"),
             ("index", "idx_connection_catalog_tunnel"),
             ("index", "idx_named_views_scope"),
-            // v10（query assets，W8 刀3a 收藏 + 查询历史的服务端存储）。
+            // v10（T25 组织记忆与审批审计）。
+            ("index", "idx_org_memories_active"),
+            ("index", "idx_org_memory_audit_org"),
+            // v11（query assets，W8 刀3a 收藏 + 查询历史的服务端存储）。
             ("index", "idx_query_favorites_owner"),
             ("index", "idx_query_history_owner"),
             // v8（server_settings，WR-C2 §6.1 settings 域的服务端存储）。
@@ -657,7 +669,10 @@ fn migrating_a_v6_library_expands_and_preserves_every_history_row() {
             ("table", "connection_catalog_group"),
             ("table", "execution_service_identity"),
             ("table", "named_views"),
-            // v10（query assets，W8 刀3a）。
+            // v10（T25 组织记忆与审批审计）。
+            ("table", "org_memories"),
+            ("table", "org_memory_audit"),
+            // v11（query assets，W8 刀3a）。
             ("table", "query_favorites"),
             ("table", "query_history"),
             ("table", "server_settings"),
@@ -668,7 +683,7 @@ fn migrating_a_v6_library_expands_and_preserves_every_history_row() {
         .into_iter()
         .map(|(t, n)| (t.to_string(), n.to_string()))
         .collect::<Vec<_>>(),
-        "新增对象恰为 v7+v8+v9 的登记清单（expand-only：每一步只加不改）"
+        "新增对象恰为 v7..=v11 的登记清单（expand-only：每一步只加不改）"
     );
 
     // 历史行逐字段原样（登记表/审计行不被迁移破坏）。

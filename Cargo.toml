@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/datazen-desktop",
+    "crates/datazen-cli",
     "crates/datazen-driver-api",
     "crates/datazen-driver-support",
     "crates/datazen-infra",

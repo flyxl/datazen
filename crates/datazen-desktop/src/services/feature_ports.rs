@@ -22,6 +22,18 @@ impl DatabaseToolHost for crate::commands::AppState {
     async fn execution_settings(&self) -> datazen::settings::ExecutionSettings {
         self.store.execution_settings().await
     }
+    fn write_proposal_store(
+        &self,
+    ) -> Option<std::sync::Arc<datazen::ai::application::write_proposal::WriteProposalStore>> {
+        Some(crate::commands::ai::write_proposals())
+    }
+    async fn write_proposal_created(
+        &self,
+        proposal: &datazen::ai::application::write_proposal::WriteProposal,
+    ) -> Result<(), String> {
+        crate::commands::ai::publish_proposal(self, proposal).await;
+        Ok(())
+    }
     async fn profile_config(&self, id: &str) -> Result<ConnectionConfig, String> {
         self.store
             .platform_profile(id)

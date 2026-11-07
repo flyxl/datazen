@@ -33,6 +33,8 @@ import { useKvSlotActions } from './useKvSlotActions';
 import { pruneKvSlotStates } from '../../lib/kvSlotState';
 import { ContentViewDialogs } from './ContentViewDialogs';
 import { ContentViewDrawers } from './ContentViewDrawers';
+import { requestQueryRun } from '../../stores/queryRunRequestStore';
+import { isSqlCodeBlock } from '../../lib/aiMessageBlocks';
 import { ConnectionWorkspaceHome } from './ConnectionWorkspaceHome';
 import { openHistoryQuery } from './openHistoryQuery';
 import { openNewConnectionDialog } from '../../lib/windowManager';
@@ -264,6 +266,59 @@ export function ContentView({
     schemaViews,
     resolveTableSchema,
   });
+
+  // Chat code actions create/run SQL in the active query tab. The database and
+  // schema come from the active panel (falls back to the session selection), so
+  // a query opened from a table keeps that table's namespace.
+  const chatQueryTarget = useMemo(() => {
+    const panel = activePanel as {
+      database?: string | null;
+      schema?: string | null;
+      tableSchema?: string | null;
+      viewSchema?: string | null;
+    } | null;
+    const schema =
+      activePanel?.type === 'query'
+        ? activePanel.schema
+        : activePanel?.type === 'table'
+          ? activePanel.tableSchema
+          : activePanel?.type === 'view'
+            ? activePanel.viewSchema
+            : lastTableSchema;
+    return {
+      database: panel?.database ?? currentDatabase ?? '',
+      schema: schema ?? null,
+    };
+  }, [activePanel, currentDatabase, lastTableSchema]);
+
+  const handleNewQueryFromChat = useCallback(
+    (code: string) => {
+      handlers.handleNewQuery(code, chatQueryTarget);
+    },
+    [handlers, chatQueryTarget],
+  );
+
+  const handleRunCodeFromChat = useCallback(
+    (code: string, language: string) => {
+      if (!isSqlCodeBlock(language, code)) return;
+      const state = usePanelStore.getState();
+      const current = state.panels.find((panel) => panel.id === state.activePanelId);
+      if (current?.type === 'query') {
+        state.updateSql(current.id, code);
+        requestQueryRun(current.id, code);
+        return;
+      }
+
+      // No query tab on screen: create one with the code and queue the run.
+      const before = new Set(state.panels.map((panel) => panel.id));
+      if (!handlers.handleNewQuery(code, chatQueryTarget)) return;
+      const created = usePanelStore
+        .getState()
+        .panels.find((panel) => panel.type === 'query' && !before.has(panel.id));
+      if (created) requestQueryRun(created.id, code);
+    },
+    [handlers, chatQueryTarget],
+  );
 
   // The single KV action dispatcher sits on this side of the boundary: a context
   // bar asks, the host decides (and ignores what it cannot do). See useKvSlotActions.
@@ -621,6 +676,8 @@ export function ContentView({
           keyPropsSidebarSlot={kvSlots.keyPropsSidebar}
           pendingDraftRequest={pendingDraftRequest}
           onDraftConsumed={handleDraftConsumed}
+          onRunCode={handleRunCodeFromChat}
+          onNewQuery={handleNewQueryFromChat}
         />
       </div>
 

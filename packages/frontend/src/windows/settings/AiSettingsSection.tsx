@@ -11,6 +11,10 @@ import { SectionTitle, ToggleRow } from './settingsUi';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { ModelProfileListItem } from './ai/ModelProfileListItem';
 import { ModelProfileDialog } from './ai/ModelProfileDialog';
+import { AiContextSettings } from './ai/AiContextSettings';
+import { MemorySection } from './MemorySection';
+import { SkillsSection } from './SkillsSection';
+import { AiToolBridgeSection } from './AiToolBridgeSection';
 import { tid } from '../../lib/tid';
 import { pickPath } from '../../lib/pathPicker';
 
@@ -128,6 +132,11 @@ export function AiSettingsSection() {
     <div className="space-y-6">
       <SectionTitle>{t('context.openDir')}</SectionTitle>
       <ContextDirSetting />
+
+      {settingsConfig && <AiContextSettings config={settingsConfig} />}
+      {settingsConfig && <SkillsSection config={settingsConfig} />}
+      {settingsConfig && <MemorySection config={settingsConfig} />}
+      <AiToolBridgeSection />
 
       <div className="flex items-center justify-between border-b border-edge/60 pb-3">
         <div>

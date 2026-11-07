@@ -7,12 +7,30 @@ import {
   isLocalEndpoint,
   type AiSafetyPresetType,
 } from '../../../lib/aiSafetyPresets';
+import {
+  isLocalCliProvider,
+  normalizeAiProviders,
+  PROVIDER_PRESETS,
+} from '../../../lib/aiProviders';
 import type {
   AiModelProfile,
   AiProviderType,
   AiSafetyGateConfig,
   ProviderListItem,
 } from '../../../types';
+
+/** Accept the pre-T16 custom protocol value while saving canonical values. */
+export function normalizeCustomProtocol(value: unknown): string {
+  if (value === 'anthropic') return 'anthropic_compatible';
+  if (
+    value === 'open_ai_compatible' ||
+    value === 'open_ai_responses' ||
+    value === 'anthropic_compatible'
+  ) {
+    return value;
+  }
+  return 'open_ai_compatible';
+}
 
 /** A brand-new profile, seeded from the provider metadata when available. */
 export function createEmptyProfile(providers: ProviderListItem[] = []): AiModelProfile {
@@ -23,7 +41,7 @@ export function createEmptyProfile(providers: ProviderListItem[] = []): AiModelP
     providerType: 'open_ai',
     apiKey: '',
     endpoint: defaultProvider?.defaultEndpoint ?? '',
-    model: '',
+    model: defaultProvider?.defaultModel ?? '',
     maxTokens: 200000,
     safetyGate: getDefaultSafetyGate('cloud_strict'),
     isDefault: false,
@@ -82,12 +100,12 @@ export function useModelProfileDraft({
   const [showHighRiskModal, setShowHighRiskModal] = useState(false);
   const [savingState, setSavingState] = useState(false);
 
-  const providerDefaults = providers.length > 0 ? providers : [];
+  const providerDefaults = useMemo(() => normalizeAiProviders(providers), [providers]);
   useEffect(() => {
     if (profile) {
       setDraft(profile);
       if (profile.providerType === 'custom' && profile.extra?.protocol) {
-        setCustomProtocol(profile.extra.protocol as string);
+        setCustomProtocol(normalizeCustomProtocol(profile.extra.protocol));
       }
     } else {
       setDraft(createEmptyProfile(providerDefaults));
@@ -101,20 +119,29 @@ export function useModelProfileDraft({
 
   const isCustom = draft.providerType === 'custom';
   const isOllama = draft.providerType === 'ollama';
-  const selectedProvider = providers.find((p) => p.providerType === draft.providerType);
+  const isLocalCli = isLocalCliProvider(draft.providerType);
+  const localCliPath =
+    typeof draft.extra?.executablePath === 'string' ? draft.extra.executablePath : '';
+  const localCliWorkspace =
+    typeof draft.extra?.workspaceDir === 'string' ? draft.extra.workspaceDir : '';
+  const selectedProvider = providerDefaults.find((p) => p.providerType === draft.providerType);
 
   // Provider metadata loads asynchronously: fill the default endpoint once it
   // arrives so the field is never left blank when the user starts typing a key.
   useEffect(() => {
-    const provider = providers.find((p) => p.providerType === draft.providerType);
-    if (!provider?.defaultEndpoint) return;
-    setDraft((d) => (d.endpoint?.trim() ? d : { ...d, endpoint: provider.defaultEndpoint }));
-  }, [draft.providerType, providers]);
+    const provider = providerDefaults.find((p) => p.providerType === draft.providerType);
+    if (!provider) return;
+    setDraft((d) => ({
+      ...d,
+      endpoint: d.endpoint?.trim() ? d.endpoint : (provider.defaultEndpoint ?? ''),
+      model: d.model?.trim() ? d.model : (provider.defaultModel ?? ''),
+    }));
+  }, [draft.providerType, providerDefaults]);
 
   /** Provider metadata for the picker (falls back to the draft's own type). */
   const providerOptions = useMemo(
-    () => providers.map((p) => ({ value: p.providerType, label: p.displayName })),
-    [providers],
+    () => providerDefaults.map((p) => ({ value: p.providerType, label: p.displayName })),
+    [providerDefaults],
   );
 
   /** Custom-protocol choices; labels stay in the view layer (i18n keys). */
@@ -123,7 +150,7 @@ export function useModelProfileDraft({
       [
         { value: 'open_ai_compatible', labelKey: 'settings.ai.protocolOpenAiChat' },
         { value: 'open_ai_responses', labelKey: 'settings.ai.protocolOpenAiResponses' },
-        { value: 'anthropic', labelKey: 'settings.ai.protocolAnthropic' },
+        { value: 'anthropic_compatible', labelKey: 'settings.ai.protocolAnthropic' },
       ] as const,
     [],
   );
@@ -140,24 +167,32 @@ export function useModelProfileDraft({
   const handleProviderChange = useCallback(
     (val: string) => {
       const providerType = val as AiProviderType;
-      const provider = providers.find((p) => p.providerType === providerType);
-      const isLocal = providerType === 'ollama';
+      const provider =
+        providerDefaults.find((p) => p.providerType === providerType) ??
+        PROVIDER_PRESETS[providerType];
+      const isOllama = providerType === 'ollama';
+      const isCli = isLocalCliProvider(providerType);
+      const protocol = normalizeCustomProtocol(provider?.defaultProtocol);
       setDraft((d) => ({
         ...d,
         providerType,
-        apiKey: isLocal ? 'ollama' : '',
-        endpoint: provider?.defaultEndpoint ?? '',
-        model: '',
-        safetyGate: getDefaultSafetyGate(isLocal ? 'local_trust' : 'cloud_strict'),
-        extra: providerType === 'custom' ? { protocol: customProtocol } : undefined,
+        apiKey: isOllama ? 'ollama' : '',
+        endpoint: isCli ? '' : (provider?.defaultEndpoint ?? ''),
+        model: provider?.defaultModel ?? '',
+        // A local CLI is a client of a vendor model, not a trusted local
+        // endpoint; keep the same strict egress default as cloud API presets.
+        safetyGate: getDefaultSafetyGate(isOllama ? 'local_trust' : 'cloud_strict'),
+        extra: isCli
+          ? { executablePath: '', workspaceDir: '' }
+          : providerType === 'custom'
+            ? { protocol }
+            : undefined,
       }));
-      if (provider) {
-        setCustomProtocol(provider.defaultProtocol || 'open_ai_compatible');
-      }
+      setCustomProtocol(protocol);
       setManualModelInput(false);
       setValidateOk(false);
     },
-    [customProtocol, providers],
+    [customProtocol, providerDefaults],
   );
 
   const handleProtocolChange = useCallback((value: string) => {
@@ -165,13 +200,24 @@ export function useModelProfileDraft({
     setDraft((d) => ({ ...d, extra: { protocol: value } }));
   }, []);
 
+  const handleLocalCliPathChange = useCallback(
+    (key: 'executablePath' | 'workspaceDir', value: string) => {
+      setDraft((d) => ({
+        ...d,
+        extra: { ...(d.extra ?? {}), [key]: value },
+      }));
+      setValidateOk(false);
+    },
+    [],
+  );
+
   const handleFetchModels = useCallback(async () => {
     const endpoint = draft.endpoint?.trim();
     const apiKey = draft.apiKey?.trim() || (isOllama ? 'ollama' : '');
     if (!endpoint || (!apiKey && !isOllama)) return;
     const protocol = isCustom
       ? customProtocol
-      : (selectedProvider?.defaultProtocol ?? 'open_ai_compatible');
+      : normalizeCustomProtocol(selectedProvider?.defaultProtocol);
     await fetchRemoteModels(protocol, endpoint, apiKey || 'ollama');
   }, [
     customProtocol,
@@ -214,14 +260,14 @@ export function useModelProfileDraft({
     setSavingState(true);
     const profileToSave: AiModelProfile = {
       ...draft,
-      name: draft.name.trim() || draft.model || draft.providerType,
+      name: draft.name.trim() || draft.model || selectedProvider?.displayName || draft.providerType,
       extra: isCustom ? { protocol: customProtocol } : draft.extra,
     };
     const success = await onSave(profileToSave);
     setSavingState(false);
     if (success) onSaved?.(profileToSave);
     return success;
-  }, [customProtocol, draft, isCustom, onSave, onSaved]);
+  }, [customProtocol, draft, isCustom, onSave, onSaved, selectedProvider]);
 
   /**
    * Save entry point: unrestricted egress on a remote endpoint asks for an
@@ -245,7 +291,7 @@ export function useModelProfileDraft({
   const currentPreset = detectSafetyPreset(draft.safetyGate);
 
   /** Enough input to talk to a provider (Ollama needs no key). */
-  const hasCredentials = isOllama || Boolean(draft.apiKey?.trim());
+  const hasCredentials = isOllama || isLocalCli || Boolean(draft.apiKey?.trim());
 
   return {
     // state
@@ -271,12 +317,16 @@ export function useModelProfileDraft({
     // derived
     isCustom,
     isOllama,
+    isLocalCli,
+    localCliPath,
+    localCliWorkspace,
     selectedProvider,
     currentPreset,
     hasCredentials,
     // actions
     handleProviderChange,
     handleProtocolChange,
+    handleLocalCliPathChange,
     handleFetchModels,
     handleValidate,
     applyPreset,

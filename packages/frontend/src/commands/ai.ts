@@ -3,8 +3,27 @@ import { requirePlatform } from '../platform/contracts';
 
 type UnlistenFn = () => void;
 import type {
+  AiAgentMode,
+  AiChatContextSnapshot,
   AiChatMessage,
+  AiMemoryCorrectionInput,
+  AiMemoryCreateInput,
+  AiMemoryEntry,
+  AiMemoryExtractionInput,
+  AiMemoryListParams,
+  AiMemoryPage,
+  AiMemoryStaleInput,
+  AiMemoryStats,
+  AiMemoryStatus,
+  AiMemoryUpdateInput,
   AiProviderConfig,
+  AiSessionDetail,
+  AiSkillSummary,
+  AiSessionSummary,
+  AiSessionUpsertInput,
+  AiWriteApplyReceipt,
+  AiWriteAuditRecord,
+  AiWriteProposal,
   AiSettingsConfig,
   ConnectionDiagnosis,
   DiagnosisResult,
@@ -12,7 +31,10 @@ import type {
   FilterCondition,
   HistoryEntry,
   HistoryListItem,
+  McpAuditRecord,
+  McpApprovalDecision,
   McpClientStatus,
+  McpHttpStatus,
   McpServerConfig,
   McpToolInfo,
   ModelInfo,
@@ -99,11 +121,58 @@ export const aiCommands = {
   validateConfig: (config: AiProviderConfig) => invoke<void>('ai_validate_config', { config }),
   saveConfig: (config: AiProviderConfig) => invoke<void>('ai_save_config', { config }),
   getConfig: () => invoke<AiProviderConfig | null>('ai_get_config'),
+  listSkills: () => invoke<AiSkillSummary[]>('ai_list_skills'),
   deleteConfig: () => invoke<void>('ai_delete_config'),
   getSettingsConfig: () => invoke<AiSettingsConfig>('ai_get_settings_config'),
   saveSettingsConfig: (config: AiSettingsConfig) =>
     invoke<void>('ai_save_settings_config', { config }),
   setActiveProfile: (profileId: string) => invoke<void>('ai_set_active_profile', { profileId }),
+
+  memoryList: (params: AiMemoryListParams = {}) =>
+    invoke<AiMemoryPage>('ai_memory_list', { ...params }),
+  orgMemoryList: (params: AiMemoryListParams = {}) =>
+    invoke<AiMemoryPage>('ai_org_memory_list', { ...params }),
+  memorySearch: (params: AiMemoryListParams & { query: string }) =>
+    invoke<AiMemoryPage>('ai_memory_search', { ...params }),
+  memoryStats: () => invoke<AiMemoryStats>('ai_memory_stats'),
+  memoryCreate: (input: AiMemoryCreateInput) =>
+    invoke<AiMemoryEntry>('ai_memory_create', { input }),
+  memoryCorrectionCandidate: (input: AiMemoryCorrectionInput) =>
+    invoke<AiMemoryEntry | null>('ai_memory_correction_candidate', { input }),
+  memoryExtractCandidates: (input: AiMemoryExtractionInput) =>
+    invoke<AiMemoryEntry[]>('ai_memory_extract_candidates', { input }),
+  memoryMarkStale: (input: AiMemoryStaleInput) =>
+    invoke<AiMemoryEntry[]>('ai_memory_mark_stale', { input }),
+  sessionsList: (
+    params: {
+      connectionId?: string | null;
+      database?: string | null;
+      sessionKey?: string | null;
+    } = {},
+  ) =>
+    invoke<AiSessionSummary[]>('ai_sessions_list', {
+      connectionId: params.connectionId ?? null,
+      database: params.database ?? null,
+      sessionKey: params.sessionKey ?? null,
+    }),
+  sessionsGet: (id: string) => invoke<AiSessionDetail>('ai_sessions_get', { id }),
+  sessionsUpsert: (input: AiSessionUpsertInput) =>
+    invoke<AiSessionDetail>('ai_sessions_upsert', { input }),
+  sessionsDelete: (id: string) => invoke<boolean>('ai_sessions_delete', { id }),
+  sessionsExport: (id: string, format: 'json' | 'markdown') =>
+    invoke<string>('ai_sessions_export', { id, format }),
+  memoryUpdate: (id: string, patch: AiMemoryUpdateInput) =>
+    invoke<AiMemoryEntry>('ai_memory_update', { id, patch }),
+  memoryConfirm: (id: string) => invoke<AiMemoryEntry>('ai_memory_confirm', { id }),
+  memoryReject: (id: string) => invoke<AiMemoryEntry>('ai_memory_reject', { id }),
+  memoryDelete: (id: string) => invoke<boolean>('ai_memory_delete', { id }),
+  memoryClear: (params: { scopeType?: string; scopeId?: string; status?: AiMemoryStatus } = {}) =>
+    invoke<number>('ai_memory_clear', params),
+  memoryExport: (params: {
+    format: 'json' | 'markdown';
+    scopeType?: string;
+    status?: AiMemoryStatus;
+  }) => invoke<string>('ai_memory_export', params),
 
   generateSql: (params: {
     dbSessionId: string;
@@ -114,6 +183,16 @@ export const aiCommands = {
     recentQueries?: string[];
     contextFiles?: string[];
     contextTables?: string[];
+    connectionId?: string;
+    memoryMode?: 'off' | 'ask' | 'auto';
+    memoryScope?:
+      | 'organization'
+      | 'user'
+      | 'connection'
+      | 'database'
+      | 'schema'
+      | 'table'
+      | 'column';
   }) => e2eStubInvoke('ai_generate_sql', params, () => invoke<string>('ai_generate_sql', params)),
   diagnoseError: (params: {
     dbSessionId: string;
@@ -125,15 +204,41 @@ export const aiCommands = {
     invoke<ExplainAnalysis>('ai_analyze_explain', params),
   chat: (params: {
     dbSessionId?: string;
+    connectionId?: string;
     database?: string;
     messages: AiChatMessage[];
     requestId: string;
     includeSchema?: boolean;
     scenario?: PromptScenario;
+    agentMode?: AiAgentMode;
+    loadedSkillIds?: string[];
     contextFiles?: string[];
     contextTables?: string[];
     targetClaim?: AiTargetClaim;
+    editorSql?: string;
+    selection?: string;
+    lastError?: string;
+    resultPreview?: AiChatContextSnapshot['resultPreview'];
+    templateId?: string;
+    databaseType?: string;
+    memoryMode?: 'off' | 'ask' | 'auto';
+    memoryScope?:
+      | 'organization'
+      | 'user'
+      | 'connection'
+      | 'database'
+      | 'schema'
+      | 'table'
+      | 'column';
   }) => e2eStubInvoke('ai_chat', params, () => invoke<string>('ai_chat', params)),
+  connectionNotesGet: (connectionId: string) =>
+    invoke<string | null>('ai_connection_notes_get', { connectionId }),
+  connectionNotesSet: (connectionId: string, content: string) =>
+    invoke<void>('ai_connection_notes_set', { connectionId, content }),
+  connectionContextCounts: (connectionId: string) =>
+    invoke<{ noteCount: number; memoryCount: number }>('ai_connection_context_counts', {
+      connectionId,
+    }),
   parseFilter: (params: {
     dbSessionId: string;
     database: string;
@@ -142,10 +247,38 @@ export const aiCommands = {
   }) => invoke<FilterCondition[]>('ai_parse_filter', params),
 
   mcpGetStatus: () => invoke<{ running: boolean; transport: string }>('mcp_get_status'),
+  mcpHttpStatus: () => invoke<McpHttpStatus>('mcp_http_status'),
+  mcpHttpEnable: (port?: number) =>
+    invoke<McpHttpStatus>('mcp_http_enable', port === undefined ? {} : { port }),
+  mcpHttpDisable: () => invoke<McpHttpStatus>('mcp_http_disable'),
+  mcpHttpRegenerateToken: () => invoke<McpHttpStatus>('mcp_http_regenerate_token'),
+  mcpHttpReload: () => invoke<McpHttpStatus>('mcp_http_reload'),
   mcpStartStdio: () => invoke<void>('mcp_start_stdio'),
   mcpStop: () => invoke<void>('mcp_stop'),
   mcpReload: () => invoke<void>('mcp_reload'),
   mcpListAllTools: () => invoke<string[]>('mcp_list_all_tools'),
+  aiProposeWrite: (params: {
+    connectionId: string;
+    database?: string;
+    sql: string;
+    previousSql?: string;
+  }) => invoke<AiWriteProposal>('ai_propose_write', params),
+  aiApplyWrite: (params: {
+    proposalId: string;
+    connectionId: string;
+    database: string;
+    sql: string;
+  }) => invoke<AiWriteApplyReceipt>('ai_apply_write', params),
+  aiDenyWrite: (proposalId: string) => invoke<boolean>('ai_deny_write', { proposalId }),
+  aiListWriteAudit: (limit?: number) =>
+    invoke<AiWriteAuditRecord[]>('ai_list_write_audit', { limit: limit ?? null }),
+
+  mcpRespondApproval: (requestId: string, decision: McpApprovalDecision) =>
+    invoke<boolean>('mcp_respond_approval', { requestId, decision }),
+  mcpCancelApproval: (requestId: string) => invoke<boolean>('mcp_cancel_approval', { requestId }),
+  mcpCancelAllApprovals: () => invoke<number>('mcp_cancel_all_approvals'),
+  mcpListAuditLog: (limit?: number) =>
+    invoke<McpAuditRecord[]>('mcp_list_audit_log', { limit: limit ?? null }),
 
   workflowList: () => invoke<WorkflowListItem[]>('workflow_list'),
   workflowExecute: (params: {

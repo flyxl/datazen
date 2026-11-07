@@ -49,7 +49,7 @@ vi.mock('../../../commands/ai', () => ({
 
 const aiState = vi.hoisted(() => ({
   isConfigured: true,
-  nl2sql: { input: '', isGenerating: false, generatedSql: '' },
+  nl2sql: { input: '', isGenerating: false, generatedSql: '', memoryUsed: [] },
   nl2sqlError: null as string | null,
   setNl2SqlInput: vi.fn(),
   generateSql: vi.fn().mockResolvedValue(undefined),
@@ -84,7 +84,7 @@ beforeEach(() => {
   // jsdom has no layout engine; the panel scrolls the transcript into view on
   // every message change. Same stub as WorkflowChatPanel.test.tsx.
   Element.prototype.scrollIntoView = vi.fn();
-  aiState.nl2sql = { input: '', isGenerating: false, generatedSql: '' };
+  aiState.nl2sql = { input: '', isGenerating: false, generatedSql: '', memoryUsed: [] };
   aiState.workflowChat = {
     messages: [],
     isStreaming: false,
@@ -196,7 +196,7 @@ describe('AiCodeBlock copy feedback', () => {
 
 describe('Nl2SqlPanel copy feedback', () => {
   function renderPanel() {
-    aiState.nl2sql = { input: '', isGenerating: false, generatedSql: 'SELECT 1' };
+    aiState.nl2sql = { input: '', isGenerating: false, generatedSql: 'SELECT 1', memoryUsed: [] };
     return render(<Nl2SqlPanel dbSessionId="s1" database="db" onSqlChange={vi.fn()} />);
   }
 

@@ -229,6 +229,18 @@ impl PolicyService {
         read_role_conn(&conn, organization_id, principal_id)
     }
 
+    /// True only for the built-in organization administrator role. Used by
+    /// organization-level mutations (for example T25 memory publish/revoke)
+    /// that are not addressed by the connection/session resource table.
+    /// A missing membership is "not admin", not an error.
+    pub fn is_org_admin(
+        &self,
+        organization_id: &str,
+        principal_id: &str,
+    ) -> Result<bool, StorageError> {
+        Ok(self.read_role(organization_id, principal_id)? == Some(Role::OrgAdmin))
+    }
+
     /// 当前权限版本（无行 = 初始 1）。会话建立时的快照来源之一。
     pub fn permission_version(&self, organization_id: &str) -> Result<i64, StorageError> {
         let mut conn = self.store.lock_for_adapter()?;

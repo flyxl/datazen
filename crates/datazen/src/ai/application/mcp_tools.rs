@@ -12,7 +12,8 @@
 //! MCP client 测试都不感知本迁移。
 
 use super::ports::McpToolBroker;
-use crate::ai::domain::types::ToolDefinition;
+use super::tools::mcp_needs_confirm;
+use crate::ai::domain::types::{AiToolPermissionPolicy, ToolDefinition};
 
 /// Qualified tool name for AI routing: `mcp/{serverId}/{toolName}`.
 ///
@@ -21,6 +22,44 @@ use crate::ai::domain::types::ToolDefinition;
 /// client manager.
 pub fn qualified_tool_name(server_id: &str, tool_name: &str) -> String {
     format!("mcp/{server_id}/{tool_name}")
+}
+
+/// Filter the MCP tool face according to the model profile policy.
+///
+/// `ReadOnly` uses the shared write heuristic (`x-write` or a write verb in
+/// the qualified name) so a write-capable MCP tool is not even advertised.
+/// `RequireConfirm` keeps the full face and relies on the tool loop's
+/// confirmation port per call. `Disabled` removes the whole face.
+pub fn filter_mcp_tool_definitions(
+    tools: Vec<ToolDefinition>,
+    policy: AiToolPermissionPolicy,
+) -> Vec<ToolDefinition> {
+    match policy {
+        AiToolPermissionPolicy::Disabled => Vec::new(),
+        AiToolPermissionPolicy::ReadOnly => tools
+            .into_iter()
+            .filter(|tool| {
+                // The write heuristic belongs to the tool name, not the
+                // server id embedded in the qualified routing name.
+                !mcp_needs_confirm(bare_tool_name(&tool.name), &tool.parameters)
+            })
+            .collect(),
+        AiToolPermissionPolicy::RequireConfirm | AiToolPermissionPolicy::Unrestricted => tools,
+    }
+}
+
+fn bare_tool_name(qualified: &str) -> &str {
+    qualified
+        .strip_prefix("mcp/")
+        .and_then(|rest| rest.split_once('/'))
+        .map(|(_, tool)| tool)
+        .unwrap_or(qualified)
+}
+
+/// Every MCP tool call is confirmed when the policy says so; the tool loop
+/// passes the qualified name and arguments to the host port.
+pub fn mcp_tool_requires_confirmation(policy: AiToolPermissionPolicy) -> bool {
+    policy == AiToolPermissionPolicy::RequireConfirm
 }
 
 /// The brokered tools of every AI-available server, as provider tool
@@ -165,4 +204,61 @@ mod tests {
         // The broker was never called with the broken payload.
         assert!(fake.seen_arguments.lock().unwrap().is_empty());
     }
+}
+
+// ── mcp_tool_policy tool-face filtering ──
+
+fn tool_definition(name: &str, parameters: serde_json::Value) -> ToolDefinition {
+    ToolDefinition {
+        name: name.into(),
+        description: name.into(),
+        parameters,
+    }
+}
+
+#[test]
+fn policy_filtering_uses_schema_write_marker_even_for_a_benign_name() {
+    let tools = vec![
+        tool_definition("mcp/demo/files_read", serde_json::json!({})),
+        tool_definition(
+            "mcp/demo/files_store",
+            serde_json::json!({"type": "object", "x-write": true}),
+        ),
+    ];
+    let names = filter_mcp_tool_definitions(tools, AiToolPermissionPolicy::ReadOnly)
+        .into_iter()
+        .map(|tool| tool.name)
+        .collect::<Vec<_>>();
+    assert_eq!(names, vec!["mcp/demo/files_read"]);
+}
+
+#[test]
+fn policy_filtering_ignores_write_words_in_the_server_id() {
+    let tools = vec![
+        tool_definition("mcp/create/list_files", serde_json::json!({})),
+        tool_definition("mcp/create/drop_table", serde_json::json!({})),
+    ];
+    let names = filter_mcp_tool_definitions(tools, AiToolPermissionPolicy::ReadOnly)
+        .into_iter()
+        .map(|tool| tool.name)
+        .collect::<Vec<_>>();
+    assert_eq!(names, vec!["mcp/create/list_files"]);
+}
+
+#[test]
+fn policy_filtering_disabled_and_unrestricted_are_exhaustive() {
+    let tools = vec![
+        tool_definition("mcp/demo/files_read", serde_json::json!({})),
+        tool_definition(
+            "mcp/demo/files_store",
+            serde_json::json!({"type": "object", "x-write": true}),
+        ),
+    ];
+    assert!(
+        filter_mcp_tool_definitions(tools.clone(), AiToolPermissionPolicy::Disabled).is_empty()
+    );
+    assert_eq!(
+        filter_mcp_tool_definitions(tools, AiToolPermissionPolicy::Unrestricted).len(),
+        2
+    );
 }

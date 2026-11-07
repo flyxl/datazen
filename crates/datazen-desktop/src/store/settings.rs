@@ -75,14 +75,35 @@ pub struct AppSettings {
     /// Default false — MCP for external clients should use `datazen --mcp`.
     #[serde(default)]
     pub mcp_server_enabled: bool,
+    /// When true, GUI starts the opt-in MCP Streamable HTTP listener on launch.
+    /// Default false: the HTTP transport is a separate surface from stdio MCP.
+    #[serde(default)]
+    pub mcp_http_enabled: bool,
+    /// Configured Streamable HTTP port. `0` asks the OS for a random port; the
+    /// actual port is reported by `mcp_http_status` / the enable command.
+    #[serde(default)]
+    pub mcp_http_port: u16,
     #[serde(default)]
     pub mcp_disabled_tools: Vec<String>,
     /// MCP tool permission tier for external AI clients (default: safe_write).
     #[serde(default)]
     pub mcp_permission_mode: McpPermissionMode,
-    /// Persistent connection config IDs exposed to MCP. Empty = all connections.
+    /// Persistent connection config IDs exposed to MCP. Empty = deny-all.
     #[serde(default)]
     pub mcp_allowed_connection_ids: Vec<String>,
+    /// Additional database scope. Empty = no additional restriction.
+    #[serde(default)]
+    pub mcp_allowed_databases: Vec<String>,
+    /// Additional schema/namespace scope. Empty = no additional restriction.
+    #[serde(default)]
+    pub mcp_allowed_namespaces: Vec<String>,
+    /// Plugin ids whose manifest-declared AI tools the user enabled.
+    /// Empty is the default: declarations alone never expose tools.
+    #[serde(default)]
+    pub ai_plugin_tool_ids: Vec<String>,
+    /// Workflow ids exposed as `workflow_<id>` AI tools. Empty is the default.
+    #[serde(default)]
+    pub ai_workflow_tool_ids: Vec<String>,
     #[serde(default)]
     pub context_dir: String,
     /// Directory holding the user's favorites, one `.sql` file each.
@@ -239,9 +260,15 @@ impl Default for AppSettings {
             log_level: default_log_level(),
             log_path: String::new(),
             mcp_server_enabled: false,
+            mcp_http_enabled: false,
+            mcp_http_port: 0,
             mcp_disabled_tools: Vec::new(),
             mcp_permission_mode: McpPermissionMode::default(),
             mcp_allowed_connection_ids: Vec::new(),
+            mcp_allowed_databases: Vec::new(),
+            mcp_allowed_namespaces: Vec::new(),
+            ai_plugin_tool_ids: Vec::new(),
+            ai_workflow_tool_ids: Vec::new(),
             context_dir: String::new(),
             favorites_root: None,
             check_for_updates_on_startup: false,
@@ -311,6 +338,8 @@ impl AppSettings {
                 }
                 .into(),
                 mcp_allowed_connection_ids: self.mcp_allowed_connection_ids.clone(),
+                mcp_allowed_databases: self.mcp_allowed_databases.clone(),
+                mcp_allowed_namespaces: self.mcp_allowed_namespaces.clone(),
                 driver_settings: self.driver_settings.clone(),
                 ai_strict_egress: self.ai_strict_egress.clone(),
             },
@@ -358,6 +387,8 @@ impl AppSettings {
         self.mcp_disabled_tools = execution.mcp_disabled_tools;
         self.mcp_permission_mode = mode;
         self.mcp_allowed_connection_ids = execution.mcp_allowed_connection_ids;
+        self.mcp_allowed_databases = execution.mcp_allowed_databases;
+        self.mcp_allowed_namespaces = execution.mcp_allowed_namespaces;
         self.driver_settings = execution.driver_settings;
         self.ai_strict_egress = execution.ai_strict_egress;
         // Form-split F4: the three behavior fields round-trip through the

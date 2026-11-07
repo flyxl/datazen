@@ -4,8 +4,22 @@ import { getBackendClient } from '@datazen/backend-client';
 import { getPlatformOrNull } from '../platform/contracts';
 import { redactSensitiveText } from '../lib/aiQueryActions';
 import { normalizeAiProviders } from '../lib/aiProviders';
-import type { AiChatMessage } from '../types';
-import { computeSessionKey, loadSessions } from './ai/sessions';
+import { normalizeAiSettingsConfig } from '../lib/aiMemorySettings';
+import { defaultAiMemorySettings, type AiChatMessage, type AiLoadedSkill } from '../types';
+import { normalizeLoadedSkills } from '../lib/aiSkills';
+import {
+  chatSessionFromDetail,
+  computeSessionKey,
+  deleteChatSession as deletePersistedChatSession,
+  downloadSessionExport,
+  exportChatSession as exportPersistedChatSession,
+  listChatSessions,
+  loadChatSession,
+  localChatSessionForScope,
+  newChatSession as createChatSession,
+  persistChatSession,
+  restoreChatSession,
+} from './ai/sessions';
 import { initialNl2Sql, type AiStore } from './ai/types';
 import {
   attributionFor,
@@ -21,6 +35,21 @@ import { useSettingsStore } from './settingsStore';
 
 export type { AiStore } from './ai/types';
 export { initialNl2Sql } from './ai/types';
+
+let chatInitToken = 0;
+
+function persistLiveChatSession(
+  get: () => AiStore,
+  set: (partial: Partial<AiStore>) => void,
+): void {
+  const session = get().chatSession;
+  if (!session) return;
+  void persistChatSession(session).then((result) => {
+    if (!result.ok) {
+      set({ sessionMigrationError: result.error ?? 'AI session backend write failed' });
+    }
+  });
+}
 
 export const useAiStore = create<AiStore>((set, get) => ({
   config: null,
@@ -42,6 +71,12 @@ export const useAiStore = create<AiStore>((set, get) => ({
   explainError: null,
 
   chatSession: null,
+  chatSessions: [],
+  sessionHistoryLoading: false,
+  sessionHistoryError: null,
+  sessionMigrationError: null,
+  sessionMigrationSuccess: 0,
+  memoryCandidateNotice: null,
 
   nlFilterInput: '',
   parsedFilters: null,
@@ -67,11 +102,13 @@ export const useAiStore = create<AiStore>((set, get) => ({
           ? aiCommands.getSettingsConfig().catch(() => null)
           : Promise.resolve(null),
       ]);
+      const normalizedSettings = settingsConfig ? normalizeAiSettingsConfig(settingsConfig) : null;
       set({
         config,
-        settingsConfig,
+        settingsConfig: normalizedSettings,
         isConfigured:
-          config !== null || (settingsConfig !== null && settingsConfig.profiles.length > 0),
+          config !== null ||
+          (normalizedSettings !== null && normalizedSettings.profiles.length > 0),
         configLoading: false,
       });
     } catch (e) {
@@ -87,10 +124,12 @@ export const useAiStore = create<AiStore>((set, get) => ({
     try {
       const settingsConfig = await aiCommands.getSettingsConfig();
       const config = await aiCommands.getConfig();
+      const normalizedSettings = normalizeAiSettingsConfig(settingsConfig);
       set({
-        settingsConfig,
+        settingsConfig: normalizedSettings,
         config,
-        isConfigured: config !== null || (settingsConfig && settingsConfig.profiles.length > 0),
+        isConfigured:
+          config !== null || (normalizedSettings && normalizedSettings.profiles.length > 0),
       });
     } catch (e) {
       set({
@@ -135,6 +174,9 @@ export const useAiStore = create<AiStore>((set, get) => ({
     const current = get().settingsConfig || {
       activeProfileId: profile.id,
       profiles: [],
+      globalInstructions: '',
+      promptTemplates: [],
+      memory: defaultAiMemorySettings,
     };
     const exists = current.profiles.some((p) => p.id === profile.id);
     let updatedProfiles = exists
@@ -149,6 +191,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
     }
 
     const nextConfig = {
+      ...current,
       activeProfileId: profile.isDefault ? profile.id : current.activeProfileId || profile.id,
       profiles: updatedProfiles,
     };
@@ -164,6 +207,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
       nextActiveId = remaining[0]?.id || '';
     }
     const nextConfig = {
+      ...current,
       activeProfileId: nextActiveId,
       profiles: remaining,
     };
@@ -270,6 +314,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
         streamingSql: '',
         streamingPreview: '',
         generatedSql: '',
+        memoryUsed: [],
         isGenerating: true,
         requestId,
       },
@@ -394,40 +439,164 @@ export const useAiStore = create<AiStore>((set, get) => ({
 
   // ── Chat ──
 
-  initChatSession: (dbSessionId?: string, database?: string) => {
-    const key = computeSessionKey(undefined, dbSessionId, database);
-    const sessions = loadSessions();
-    const stored = sessions[key];
+  initChatSession: (dbSessionId?: string, database?: string, connectionId?: string) => {
+    const key = computeSessionKey(connectionId, dbSessionId, database);
+    const token = ++chatInitToken;
+    const scope = { connectionId, dbSessionId, database };
+    const initial = localChatSessionForScope(key, scope) ?? createChatSession(scope, key);
+    set({
+      chatSession: initial,
+      chatSessions: [],
+      sessionMigrationError: null,
+      sessionMigrationSuccess: 0,
+      sessionHistoryError: null,
+      sessionHistoryLoading: true,
+      memoryCandidateNotice: null,
+    });
+    return restoreChatSession(key, scope).then((restored) => {
+      if (token !== chatInitToken) return;
+      const current = get().chatSession;
+      // Do not clobber a run/message the user started while AppDb was loading.
+      // A backend session may legitimately have a different id than the local
+      // cache, so id equality is not the guard; user actions bump the token or
+      // change the visible message count.
+      if (!current || current.isStreaming || current.messages.length !== initial.messages.length) {
+        return;
+      }
+      set({
+        chatSession: restored.session,
+        chatSessions: restored.summaries,
+        sessionMigrationError: restored.migrationError,
+        sessionMigrationSuccess: restored.migrationSuccess,
+        sessionHistoryLoading: false,
+      });
+    });
+  },
 
-    const session = {
-      id: crypto.randomUUID(),
-      sessionKey: key,
-      messages: (stored?.messages ?? []) as AiChatMessage[],
-      isStreaming: false,
-      streamContent: '',
-      streamReasoning: '',
-      streamMcpToolName: null,
-      requestId: null,
-      attribution: null,
-    };
+  refreshChatSessions: async () => {
+    const current = get().chatSession;
+    if (!current) return;
+    set({ sessionHistoryLoading: true, sessionHistoryError: null });
+    try {
+      const summaries = await listChatSessions(
+        {
+          connectionId: current.connectionId ?? undefined,
+          database: current.database ?? undefined,
+        },
+        current.sessionKey,
+      );
+      set({ chatSessions: summaries, sessionHistoryLoading: false });
+    } catch (e) {
+      set({
+        sessionHistoryLoading: false,
+        sessionHistoryError: e instanceof Error ? e.message : String(e),
+      });
+    }
+  },
 
-    set({ chatSession: session });
+  selectChatSession: async (id: string) => {
+    const current = get().chatSession;
+    if (!current || current.isStreaming) return;
+    chatInitToken += 1;
+    set({ sessionHistoryLoading: true, sessionHistoryError: null });
+    try {
+      const detail = await loadChatSession(id);
+      const next = chatSessionFromDetail(detail);
+      set({ chatSession: next, sessionHistoryLoading: false });
+      // Selecting an older conversation makes it the newest for the next
+      // restart while keeping the same explicit replace semantics.
+      void persistChatSession(next).then((result) => {
+        if (!result.ok) {
+          set({ sessionMigrationError: result.error ?? 'AI session backend write failed' });
+        }
+      });
+    } catch (e) {
+      set({
+        sessionHistoryLoading: false,
+        sessionHistoryError: e instanceof Error ? e.message : String(e),
+      });
+    }
+  },
+
+  newChatSession: () => {
+    const current = get().chatSession;
+    if (!current || current.isStreaming) return;
+    chatInitToken += 1;
+    const session = createChatSession(
+      {
+        connectionId: current.connectionId ?? undefined,
+        database: current.database ?? undefined,
+      },
+      current.sessionKey,
+    );
+    set({ chatSession: session, memoryCandidateNotice: null });
+  },
+
+  deleteChatSession: async (id: string) => {
+    const current = get().chatSession;
+    if (!current) return;
+    if (current.isStreaming) {
+      set({ sessionHistoryError: 'Cannot delete a conversation while it is streaming.' });
+      return;
+    }
+    set({ sessionHistoryLoading: true, sessionHistoryError: null });
+    const result = await deletePersistedChatSession(id, current.sessionKey);
+    const remaining = get().chatSessions.filter((session) => session.id !== id);
+    if (id === current.id) {
+      set({
+        chatSession: createChatSession(
+          {
+            connectionId: current.connectionId ?? undefined,
+            database: current.database ?? undefined,
+          },
+          current.sessionKey,
+        ),
+        chatSessions: remaining,
+        sessionHistoryLoading: false,
+        sessionHistoryError: result.ok ? null : (result.error ?? null),
+      });
+      return;
+    }
+    set({
+      chatSessions: remaining,
+      sessionHistoryLoading: false,
+      sessionHistoryError: result.ok ? null : (result.error ?? null),
+    });
+  },
+
+  exportChatSession: async (format: 'json' | 'markdown') => {
+    const current = get().chatSession;
+    if (!current) return;
+    try {
+      const exported = await exportPersistedChatSession(current, format);
+      downloadSessionExport(exported);
+    } catch (e) {
+      set({ sessionHistoryError: e instanceof Error ? e.message : String(e) });
+    }
   },
 
   sendChatMessage: async ({
     dbSessionId,
+    connectionId,
     database,
     content,
     includeSchema = true,
+    agentMode = 'ask',
     contextFiles,
     contextTables,
+    autoContext,
+    templateId,
+    databaseType,
     targetClaim,
+    memoryMode,
+    memoryScope,
   }) => {
     const { chatSession } = get();
     if (!chatSession) return;
 
     console.debug('[AI] sendChatMessage:', {
       dbSessionId,
+      connectionId,
       database,
       contentLen: content.length,
       includeSchema,
@@ -444,16 +613,30 @@ export const useAiStore = create<AiStore>((set, get) => ({
           role: 'tool',
           content,
           toolCallId: askCall.id,
+          createdAt: new Date().toISOString(),
         });
       } else {
-        newMessages.push({ id: crypto.randomUUID(), role: 'user', content });
+        newMessages.push({
+          id: crypto.randomUUID(),
+          role: 'user',
+          content,
+          createdAt: new Date().toISOString(),
+        });
       }
     } else {
-      newMessages.push({ id: crypto.randomUUID(), role: 'user', content });
+      newMessages.push({
+        id: crypto.randomUUID(),
+        role: 'user',
+        content,
+        createdAt: new Date().toISOString(),
+      });
     }
 
+    const loadedSkillIds = (chatSession.loadedSkills ?? []).flatMap((skill) =>
+      skill.id || skill.name ? [skill.id || skill.name] : [],
+    );
     const requestId = crypto.randomUUID();
-    const key = computeSessionKey(undefined, dbSessionId, database);
+    const key = computeSessionKey(connectionId, dbSessionId, database);
     registerRequestId(requestId, key);
     getStreamRegistry().begin(key, requestId);
 
@@ -465,21 +648,45 @@ export const useAiStore = create<AiStore>((set, get) => ({
         streamContent: '',
         streamReasoning: '',
         streamMcpToolName: null,
+        egressSummary: null,
+        streamMemoryUsed: null,
+        memoryUsed: null,
+        injection: null,
         requestId,
         attribution: attributionFor(targetClaim),
+        metadata: {
+          ...(chatSession.metadata ?? {}),
+          ...(templateId ? { templateId } : {}),
+          ...(agentMode ? { agentMode } : {}),
+          ...(memoryMode ? { memoryMode } : {}),
+          ...(memoryScope ? { memoryScope } : {}),
+        },
       },
+      memoryCandidateNotice: null,
     });
+    persistLiveChatSession(get, set);
 
     try {
       await aiCommands.chat({
         dbSessionId,
+        connectionId,
         database,
         messages: [...chatSession.messages, ...newMessages],
         requestId,
         includeSchema,
+        agentMode,
+        loadedSkillIds,
         contextFiles,
         contextTables,
         targetClaim,
+        editorSql: autoContext?.editorSql,
+        selection: autoContext?.selection,
+        lastError: autoContext?.lastError,
+        resultPreview: autoContext?.resultPreview,
+        templateId,
+        databaseType,
+        memoryMode,
+        memoryScope,
       });
     } catch (e) {
       getStreamRegistry().settle(requestId, 'error');
@@ -493,6 +700,8 @@ export const useAiStore = create<AiStore>((set, get) => ({
             streamContent: '',
             streamReasoning: '',
             streamMcpToolName: null,
+            streamMemoryUsed: null,
+            memoryUsed: null,
             requestId: null,
             messages: [
               ...session.messages,
@@ -500,10 +709,13 @@ export const useAiStore = create<AiStore>((set, get) => ({
                 id: crypto.randomUUID(),
                 role: 'assistant',
                 content: `Error: ${e instanceof Error ? e.message : String(e)}`,
+                status: 'failed' as const,
+                createdAt: new Date().toISOString(),
               },
             ],
           },
         });
+        persistLiveChatSession(get, set);
       }
     }
   },
@@ -519,12 +731,21 @@ export const useAiStore = create<AiStore>((set, get) => ({
           streamContent: '',
           streamReasoning: '',
           streamMcpToolName: null,
+          egressSummary: null,
+          streamMemoryUsed: null,
+          memoryUsed: null,
+          loadedSkills: [],
           requestId: null,
           attribution: null,
+          metadata: { ...chatSession.metadata, loadedSkills: [] },
         },
+        memoryCandidateNotice: null,
       });
+      persistLiveChatSession(get, set);
     }
   },
+
+  dismissMemoryCandidateNotice: () => set({ memoryCandidateNotice: null }),
 
   // ── Workflow Chat ──
 
@@ -540,6 +761,8 @@ export const useAiStore = create<AiStore>((set, get) => ({
         streamContent: '',
         streamReasoning: '',
         streamMcpToolName: null,
+        egressSummary: null,
+        streamMemoryUsed: null,
         requestId: null,
       },
     });
@@ -580,6 +803,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
         streamContent: '',
         streamReasoning: '',
         streamMcpToolName: null,
+        egressSummary: null,
         requestId,
         attribution: { kind: 'independent' },
       },
@@ -593,6 +817,7 @@ export const useAiStore = create<AiStore>((set, get) => ({
         requestId,
         includeSchema,
         scenario: 'workflow_generate',
+        agentMode: 'agent',
         contextFiles,
         contextTables,
       });
@@ -632,9 +857,13 @@ export const useAiStore = create<AiStore>((set, get) => ({
           streamContent: '',
           streamReasoning: '',
           streamMcpToolName: null,
+          egressSummary: null,
+          streamMemoryUsed: null,
+          memoryUsed: null,
           requestId: null,
           attribution: null,
         },
+        memoryCandidateNotice: null,
       });
     }
   },
@@ -662,9 +891,54 @@ export const useAiStore = create<AiStore>((set, get) => ({
     const unError = await events.listenCrossWindow('ai:stream-error', (payload) => {
       applyStreamError(get, set, payload as import('../types').StreamErrorPayload);
     });
+    const unInjection = await events.listenCrossWindow('ai:chat-injection', (payload) => {
+      const event = payload as import('../types').AiChatInjectionEvent;
+      const session = get().chatSession;
+      if (!session || !event || session.requestId !== event.requestId) return;
+      set({ chatSession: { ...session, injection: event.snapshot } });
+    });
+    const unMemoryCandidates = await events.listenCrossWindow('ai:memory-candidates', (payload) => {
+      const event = payload as import('../types').AiMemoryCandidatesEvent;
+      const session = get().chatSession;
+      if (!session || !event || session.requestId !== event.requestId) return;
+      const count = Array.isArray(event.candidates) ? event.candidates.length : 0;
+      if (count > 0) set({ memoryCandidateNotice: { requestId: event.requestId, count } });
+    });
+    const unSkillUsed = await events.listenCrossWindow('ai:skill-used', (payload) => {
+      const event = payload as {
+        requestId?: string;
+        id?: string;
+        name?: string;
+        source?: string;
+      };
+      const session = get().chatSession;
+      if (!session || !event?.name || session.requestId !== event.requestId) return;
+      const identity = event.id || event.name;
+      const loaded: AiLoadedSkill[] = [
+        ...normalizeLoadedSkills(session.loadedSkills).filter(
+          (skill) => (skill.id || skill.name) !== identity,
+        ),
+        {
+          id: event.id,
+          name: event.name,
+          source: event.source || undefined,
+          loadedAt: new Date().toISOString(),
+        },
+      ];
+      const next = {
+        ...session,
+        loadedSkills: loaded,
+        metadata: { ...session.metadata, loadedSkills: loaded },
+      };
+      set({ chatSession: next });
+      persistLiveChatSession(get, set);
+    });
     return () => {
       unChunk();
       unError();
+      unInjection();
+      unMemoryCandidates();
+      unSkillUsed();
     };
   },
 

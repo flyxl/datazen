@@ -2,7 +2,7 @@
 //!
 //! 词汇（[`FavoriteQuery`] / [`QueryHistoryEntry`]）唯一定义在共享层
 //! `datazen::history`（桌面文件形与本表形共用一条 wire 词汇）；本件只
-//! 负责 v10 双表的行存取与隔离边界：
+//! 负责 v11 双表的行存取与隔离边界：
 //!
 //! - **per (organization_id, principal_id) 隔离**（v9 named_views 同款
 //!   口径）：[`ServerQueryFavoritesStore::scoped`] /
@@ -53,7 +53,7 @@ fn timestamp(at: DateTime<Utc>) -> String {
 
 // ── 收藏 ────────────────────────────────────────────────────────────────────
 
-/// 收藏的 scoped 存取（v10 `query_favorites` 表；per (org, principal)）。
+/// 收藏的 scoped 存取（v11 `query_favorites` 表；per (org, principal)）。
 #[derive(Clone)]
 pub struct ServerQueryFavoritesStore {
     store: Arc<AdminStore>,
@@ -225,7 +225,7 @@ fn add_sync(
 
 // ── 查询历史 ────────────────────────────────────────────────────────────────
 
-/// 查询历史的 scoped 存取（v10 `query_history` 表；per (org, principal)）。
+/// 查询历史的 scoped 存取（v11 `query_history` 表；per (org, principal)）。
 #[derive(Clone)]
 pub struct ServerQueryHistoryStore {
     store: Arc<AdminStore>,

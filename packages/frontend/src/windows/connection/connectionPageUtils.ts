@@ -31,6 +31,54 @@ export function makeTabFromPayload(data: Record<string, string>): ConnectionTab 
   };
 }
 
+export interface ConnectionLookup {
+  id: string;
+  name: string;
+  databaseType: string;
+  database?: string | null;
+}
+
+/** Merge a host startup event that only knows the connection id with the store
+ * record, so the existing tab/query UI receives a complete payload. */
+export function enrichOpenConnectionPayload(
+  data: Record<string, string>,
+  connections: readonly ConnectionLookup[],
+): Record<string, string> {
+  const connection = connections.find((item) => item.id === data.connectionId);
+  if (!connection) return data;
+  const enriched: Record<string, string> = {
+    ...data,
+    connectionName: data.connectionName || connection.name,
+    databaseType: data.databaseType || connection.databaseType,
+  };
+  if (!enriched.database && connection.database) {
+    enriched.database = connection.database;
+  }
+  return enriched;
+}
+
+export interface PendingOpenQuery {
+  connectionId: string;
+  sql: string;
+  requestId?: string;
+}
+
+/** SQL that a pending host open request should preload, or null when the
+ * connection is not ready or a query panel already exists. */
+export function pendingOpenQuerySql(
+  pending: PendingOpenQuery | null,
+  tabs: readonly Pick<ConnectionTab, 'connectionId' | 'status'>[],
+  panels: readonly Pick<{ connectionId: string }, 'connectionId'>[],
+): string | null {
+  if (!pending) return null;
+  const connected = tabs.some(
+    (tab) => tab.connectionId === pending.connectionId && tab.status === 'connected',
+  );
+  if (!connected) return null;
+  if (panels.some((panel) => panel.connectionId === pending.connectionId)) return null;
+  return pending.sql;
+}
+
 export function consumePendingConnection(): { tab: ConnectionTab; action?: string } | null {
   try {
     const raw = localStorage.getItem(PENDING_CONNECTION_KEY);

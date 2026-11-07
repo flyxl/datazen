@@ -15,6 +15,7 @@ import { formatGroupLabel } from '../../lib/connectionGroups';
 import { filterDbTypesByQuery } from '../../lib/filterDbTypes';
 import { connectionCommands } from '../../commands/connection';
 import { ConnectionFormBody } from './ConnectionFormBody';
+import { ConnectionAiNotes } from './ConnectionAiNotes';
 import { useConnectionForm } from './useConnectionForm';
 import { useConnectionClipboardFill } from './useConnectionClipboardFill';
 import type { DatabaseType } from '../../types';
@@ -192,6 +193,7 @@ export function NewConnectionDialog({
                 {t('newConn.connectionConfig')}
               </div>
               <ConnectionFormBody form={form} groupOptions={groupOptions} variant="window" />
+              {editId && <ConnectionAiNotes connectionId={editId} />}
             </div>
 
             <footer className="flex shrink-0 items-center justify-end gap-3 border-t border-edge bg-surface-alt px-6 py-3">

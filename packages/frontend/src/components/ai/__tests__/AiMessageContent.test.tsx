@@ -104,6 +104,21 @@ describe('AiMessageContent', () => {
     expect(container.textContent).toContain('Safe text');
   });
 
+  it('links only known memory citations', () => {
+    const { container } = render(
+      <AiMessageContent content="Answer [M1], ignore [M9]." memoryReferences={['M1']} />,
+    );
+    const link = container.querySelector('a[href="#memory-M1"]');
+    expect(link).toBeTruthy();
+    expect(link?.textContent).toBe('[M1]');
+    expect(container.querySelector('a[href="#memory-M9"]')).toBeNull();
+  });
+
+  it('leaves citations as text when no memory references are supplied', () => {
+    const { container } = render(<AiMessageContent content="Answer [M1]." />);
+    expect(container.querySelector('a[href="#memory-M1"]')).toBeNull();
+  });
+
   it('[tester] passes onRunCode and onNewQuery through to AiCodeBlock', () => {
     const onRunCode = vi.fn();
     const onNewQuery = vi.fn();

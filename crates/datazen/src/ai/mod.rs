@@ -13,6 +13,8 @@
 //!   deepseek / ollama / custom), the shared wire [`providers::protocol`],
 //!   the shared [`providers::http`] client, and the
 //!   [`providers::registry::AiProviderRegistry`];
+//! - [`memory`]: storage-neutral memory vocabulary, retrieval/scoring, and
+//!   safe `<memory>` prompt injection (T11);
 //! - [`application`]: the provider-neutral business — prompt resolution and
 //!   response text handling (slice 3, 2026-10-26); chat orchestration
 //!   (chat_request / sql_generation / single_turn / filter / schema_doc /
@@ -27,13 +29,16 @@
 pub mod api;
 pub mod application;
 pub mod domain;
+pub mod memory;
 pub mod providers;
+pub mod skills;
 
 // Compatibility-shaped flat exports for hosts that previously consumed the
 // modules facade. The definitions remain owned by their DDD layer above.
 pub use application::{
-    cancel, chat_request, chat_session, context, db_tools, filter, mcp_tools, ownership,
-    schema_context, schema_doc, schema_pipeline, single_turn, sql_generation, tool_loop, tools,
+    cancel, chat_injection, chat_request, chat_session, context, db_tools, filter, mcp_tools,
+    ownership, retry, schema_context, schema_doc, schema_pipeline, single_turn, sql_generation,
+    tool_bridge, tool_loop, tools, write_proposal,
 };
 pub use domain::{budget, ctx_yaml, safety};
 
@@ -45,6 +50,10 @@ pub use domain::types::*;
 
 pub use providers::custom;
 pub use providers::http;
+pub use providers::local_cli::{
+    detect_local_cli, local_cli_presets, preset_for_type, LocalCliAvailability, LocalCliPreset,
+    LocalCliProvider, SAFE_ENV_VARS,
+};
 pub use providers::metadata::provider_defaults;
 pub use providers::protocol;
 pub use providers::registry::{init_ai_providers, register_ai_providers, AiProviderRegistry};

@@ -19,6 +19,11 @@ vi.mock('../../../hooks/useAutoScroll', () => ({
   }),
 }));
 
+const aiCommandsMock = vi.hoisted(() => ({
+  memoryCreate: vi.fn().mockResolvedValue({ id: 'candidate-1' }),
+}));
+vi.mock('../../../commands/ai', () => ({ aiCommands: aiCommandsMock }));
+
 const openSettingsWindow = vi.fn();
 const openDocsWindow = vi.fn();
 vi.mock('../../../lib/windowManager', () => ({
@@ -66,10 +71,19 @@ vi.mock('../AiInput', () => ({
 const aiState = vi.hoisted(() => ({
   isConfigured: true,
   chatSession: {
+    sessionKey: 'c1::',
     messages: [] as {
       role: 'user' | 'assistant' | 'tool';
       content: string;
       reasoning?: string;
+      memoryUsed?: {
+        reference: string;
+        id: string;
+        subject: string;
+        kind: string;
+        scope: string;
+        score: number;
+      }[];
       questions?: {
         id: string;
         prompt: string;
@@ -81,10 +95,19 @@ const aiState = vi.hoisted(() => ({
     streamContent: '',
     streamReasoning: '',
     streamMcpToolName: null as string | null,
+    egressSummary: null as string | null,
+    loadedSkills: [] as { name: string; source?: string; loadedAt: string }[],
+    injection: null as null | {
+      templateName?: string | null;
+      hasConnectionNotes: boolean;
+      hasGlobalInstructions: boolean;
+    },
   },
   initChatSession: vi.fn(),
   sendChatMessage: vi.fn().mockResolvedValue(undefined),
   clearChat: vi.fn(),
+  memoryCandidateNotice: null as { requestId: string; count: number } | null,
+  dismissMemoryCandidateNotice: vi.fn(),
   cancelChat: vi.fn().mockResolvedValue(null),
   settingsConfig: null as {
     activeProfileId: string;
@@ -95,6 +118,12 @@ const aiState = vi.hoisted(() => ({
       isDefault?: boolean;
       safetyGate?: string;
     }[];
+    memory?: {
+      enabled: boolean;
+      autoLearn: boolean;
+      cloudPolicy: 'normal_only' | 'allow_internal' | 'disable_cloud';
+      privacyAcknowledged: boolean;
+    };
   } | null,
   setActiveProfile: vi.fn().mockResolvedValue(undefined),
   loadConfig: vi.fn(),
@@ -111,13 +140,18 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
   aiState.isConfigured = true;
   aiState.chatSession = {
+    sessionKey: 'c1::',
     messages: [],
     isStreaming: false,
     streamContent: '',
     streamReasoning: '',
     streamMcpToolName: null,
+    egressSummary: null,
+    loadedSkills: [],
+    injection: null,
   };
   aiState.settingsConfig = null;
+  aiState.memoryCandidateNotice = null;
   Object.defineProperty(navigator, 'clipboard', {
     configurable: true,
     value: { writeText: vi.fn().mockResolvedValue(undefined) },
@@ -132,19 +166,130 @@ describe('AiChatPanel', () => {
     expect(openSettingsWindow).toHaveBeenCalledWith('ai');
   });
 
-  it('initializes chat session and shows welcome', () => {
+  it('initializes chat session with the stable connection id and shows welcome', () => {
     aiState.chatSession = null as unknown as typeof aiState.chatSession;
-    const { getByText, rerender } = render(<AiChatPanel dbSessionId="c1" />);
-    expect(aiState.initChatSession).toHaveBeenCalled();
+    const { getByText, rerender } = render(
+      <AiChatPanel dbSessionId="c1" database="db" connectionId="conn-1" />,
+    );
+    expect(aiState.initChatSession).toHaveBeenCalledWith('c1', 'db', 'conn-1');
     aiState.chatSession = {
+      sessionKey: 'conn-1::db',
       messages: [],
       isStreaming: false,
       streamContent: '',
       streamReasoning: '',
       streamMcpToolName: null,
+      egressSummary: null,
+      loadedSkills: [],
+      injection: null,
     };
-    rerender(<AiChatPanel dbSessionId="c1" />);
+    rerender(<AiChatPanel dbSessionId="c1" database="db" connectionId="conn-1" />);
     expect(getByText('chat.welcome')).toBeInTheDocument();
+  });
+
+  it('renders an expandable memory chip and wires citation clicks', () => {
+    aiState.chatSession = {
+      sessionKey: 'c1::',
+      messages: [
+        {
+          role: 'assistant',
+          content: 'Use UTC [M1].',
+          memoryUsed: [
+            {
+              reference: 'M1',
+              id: 'mem-1',
+              subject: 'Timezone preference',
+              kind: 'preference',
+              scope: 'user:me',
+              score: 0.9,
+            },
+          ],
+        },
+      ],
+      isStreaming: false,
+      streamContent: '',
+      streamReasoning: '',
+      streamMcpToolName: null,
+      egressSummary: null,
+      loadedSkills: [],
+      injection: null,
+    };
+    const { getByTestId, getByText, queryByTestId } = render(
+      <AiChatPanel dbSessionId="c1" database="db" />,
+    );
+    expect(getByTestId('ai-memory-chip')).toBeInTheDocument();
+    expect(getByText('chat.memory.used')).toBeInTheDocument();
+    expect(queryByTestId('ai-memory-expanded')).toBeNull();
+
+    fireEvent.click(getByTestId('ai-memory-chip'));
+    expect(getByTestId('ai-memory-expanded')).toBeInTheDocument();
+    expect(getByText('Timezone preference')).toBeInTheDocument();
+
+    fireEvent.click(getByTestId('ai-memory-chip'));
+    expect(queryByTestId('ai-memory-expanded')).toBeNull();
+    fireEvent.click(getByText('[M1]'));
+    expect(getByTestId('ai-memory-expanded')).toBeInTheDocument();
+  });
+
+  it('hides the memory chip when no memories were used', () => {
+    aiState.chatSession = {
+      sessionKey: 'c1::',
+      messages: [{ role: 'assistant', content: 'No memory here.' }],
+      isStreaming: false,
+      streamContent: '',
+      streamReasoning: '',
+      streamMcpToolName: null,
+      egressSummary: null,
+      loadedSkills: [],
+      injection: null,
+    };
+    const { queryByTestId } = render(<AiChatPanel dbSessionId="c1" database="db" />);
+    expect(queryByTestId('ai-memory-chip')).toBeNull();
+  });
+
+  it('renders template and notes chips from the injection snapshot', () => {
+    aiState.chatSession = {
+      sessionKey: 'c1::',
+      messages: [],
+      isStreaming: false,
+      streamContent: '',
+      streamReasoning: '',
+      streamMcpToolName: null,
+      egressSummary: null,
+      loadedSkills: [],
+      injection: {
+        templateName: 'Postgres style',
+        hasConnectionNotes: true,
+        hasGlobalInstructions: true,
+      },
+    };
+    const { getByTestId } = render(<AiChatPanel dbSessionId="c1" database="db" />);
+
+    expect(getByTestId('ai-injection-template').textContent).toContain('chat.injection.template');
+    expect(getByTestId('ai-injection-notes')).toBeDefined();
+    expect(getByTestId('ai-injection-priority')).toBeDefined();
+  });
+
+  it('keeps the conversation when dbSessionId changes on the same connection', () => {
+    aiState.chatSession.sessionKey = 'conn-1::db';
+    const { rerender } = render(
+      <AiChatPanel dbSessionId="db-a" database="db" connectionId="conn-1" />,
+    );
+    expect(aiState.initChatSession).not.toHaveBeenCalled();
+
+    rerender(<AiChatPanel dbSessionId="db-b" database="db" connectionId="conn-1" />);
+    expect(aiState.initChatSession).not.toHaveBeenCalled();
+  });
+
+  it('reinitializes when the connection id changes', () => {
+    aiState.chatSession.sessionKey = 'conn-1::db';
+    const { rerender } = render(
+      <AiChatPanel dbSessionId="db-sess" database="db" connectionId="conn-1" />,
+    );
+    expect(aiState.initChatSession).not.toHaveBeenCalled();
+
+    rerender(<AiChatPanel dbSessionId="db-sess" database="db" connectionId="conn-2" />);
+    expect(aiState.initChatSession).toHaveBeenCalledWith('db-sess', 'db', 'conn-2');
   });
 
   it('sends message from input', () => {
@@ -153,13 +298,139 @@ describe('AiChatPanel', () => {
     fireEvent.click(getByTestId('chat-send'));
     expect(aiState.sendChatMessage).toHaveBeenCalledWith({
       dbSessionId: 'c1',
+      connectionId: undefined,
       database: 'db',
+      agentMode: 'ask',
       content: 'hello',
       contextFiles: undefined,
       contextTables: undefined,
+      memoryMode: 'off',
+      memoryScope: 'user',
       // P6 §14.4: default target is independent unless the user shares a pane.
       targetClaim: { kind: 'independent' },
     });
+  });
+
+  it('creates a candidate for the latest assistant message via Remember this', async () => {
+    aiState.chatSession.messages = [
+      { role: 'user', content: 'Which timezone?' },
+      { role: 'assistant', content: 'Reports should always use UTC.\nKeep it consistent.' },
+    ];
+    aiState.settingsConfig = {
+      activeProfileId: '',
+      profiles: [],
+      memory: {
+        enabled: true,
+        autoLearn: false,
+        cloudPolicy: 'normal_only',
+        privacyAcknowledged: true,
+      },
+    };
+    const { getByTestId } = render(<AiChatPanel dbSessionId="c1" database="db" />);
+    fireEvent.click(getByTestId('ai-memory-remember'));
+    await waitFor(() =>
+      expect(aiCommandsMock.memoryCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'candidate',
+          source: 'explicit',
+          kind: 'preference',
+          content: 'Reports should always use UTC.\nKeep it consistent.',
+        }),
+      ),
+    );
+    expect(getByTestId('ai-memory-remember-toast')).toBeInTheDocument();
+  });
+
+  it('does not create a candidate from Remember this while memory is off', async () => {
+    aiState.chatSession.messages = [{ role: 'assistant', content: 'Default LIMIT is 100.' }];
+    const { getByTestId } = render(<AiChatPanel dbSessionId="c1" database="db" />);
+    fireEvent.click(getByTestId('ai-memory-remember'));
+    await waitFor(() =>
+      expect(getByTestId('ai-memory-remember-toast')).toHaveTextContent('chat.memoryDisabled'),
+    );
+    expect(aiCommandsMock.memoryCreate).not.toHaveBeenCalled();
+  });
+
+  it('shows the Ask-mode candidate toast without making candidates active', () => {
+    aiState.memoryCandidateNotice = { requestId: 'r1', count: 2 };
+    const { getByTestId } = render(<AiChatPanel dbSessionId="c1" database="db" />);
+    expect(getByTestId('ai-memory-candidate-toast')).toBeInTheDocument();
+  });
+
+  it('sends memory auto when the setting is enabled', () => {
+    aiState.settingsConfig = {
+      activeProfileId: '',
+      profiles: [],
+      memory: {
+        enabled: true,
+        autoLearn: false,
+        cloudPolicy: 'normal_only',
+        privacyAcknowledged: true,
+      },
+    };
+    const { getByTestId } = render(<AiChatPanel dbSessionId="c1" database="db" />);
+    fireEvent.change(getByTestId('chat-input'), { target: { value: 'hello' } });
+    fireEvent.click(getByTestId('chat-send'));
+    expect(aiState.sendChatMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ memoryMode: 'auto', memoryScope: 'user' }),
+    );
+  });
+
+  it('defaults to Ask mode and shows the mode switch', () => {
+    const { getByTestId } = render(<AiChatPanel dbSessionId="c1" database="db" />);
+    expect(getByTestId('ai-agent-mode-ask')).toHaveAttribute('aria-pressed', 'true');
+    expect(getByTestId('ai-agent-mode-agent')).toHaveAttribute('aria-pressed', 'false');
+    expect(getByTestId('ai-agent-mode-hint')).toHaveTextContent('chat.mode.askHint');
+  });
+
+  it('sends the toggled Agent mode', () => {
+    const { getByTestId } = render(<AiChatPanel dbSessionId="c1" database="db" />);
+    fireEvent.click(getByTestId('ai-agent-mode-agent'));
+    expect(getByTestId('ai-agent-mode-hint')).toHaveTextContent('chat.mode.agentHint');
+    fireEvent.change(getByTestId('chat-input'), { target: { value: 'check live data' } });
+    fireEvent.click(getByTestId('chat-send'));
+    expect(aiState.sendChatMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ agentMode: 'agent', content: 'check live data' }),
+    );
+  });
+
+  it('flips both mode buttons when switching Ask and Agent', () => {
+    const { getByTestId } = render(<AiChatPanel dbSessionId="c1" database="db" />);
+    fireEvent.click(getByTestId('ai-agent-mode-agent'));
+    expect(getByTestId('ai-agent-mode-agent')).toHaveAttribute('aria-pressed', 'true');
+    expect(getByTestId('ai-agent-mode-ask')).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(getByTestId('ai-agent-mode-ask'));
+    expect(getByTestId('ai-agent-mode-ask')).toHaveAttribute('aria-pressed', 'true');
+    expect(getByTestId('ai-agent-mode-agent')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('shows the host egress summary and bound database once the first chunk arrives', () => {
+    aiState.chatSession.egressSummary = '3 connections (postgresql, mysql) accessible via tools.';
+    const { getByTestId } = render(<AiChatPanel dbSessionId="c1" database="appdb" />);
+
+    expect(getByTestId('ai-egress-summary')).toHaveTextContent(
+      '3 connections (postgresql, mysql) accessible via tools.',
+    );
+    expect(getByTestId('ai-egress-database')).toHaveTextContent('chat.egressDatabase');
+  });
+
+  it('shows skills whose bodies were loaded in this session', () => {
+    aiState.chatSession.loadedSkills = [
+      { name: 'sql-review', source: 'user', loadedAt: '2026-01-01T00:00:00Z' },
+    ];
+    const { getByTestId } = render(<AiChatPanel dbSessionId="c1" />);
+    expect(getByTestId('ai-loaded-skills')).toHaveTextContent('chat.skillsLoaded');
+    expect(getByTestId('ai-loaded-skills')).toHaveTextContent('sql-review');
+  });
+
+  it('keeps tool output collapsed until the user expands it', () => {
+    aiState.chatSession.messages = [{ role: 'tool', content: 'rows: 2' }];
+    const { getByTestId, queryByText } = render(<AiChatPanel dbSessionId="c1" />);
+
+    expect(queryByText('rows: 2')).toBeNull();
+    fireEvent.click(getByTestId('tool-role-toggle'));
+    expect(queryByText('rows: 2')).toBeInTheDocument();
   });
 
   it('renders messages with inline code blocks and insert SQL', () => {
@@ -517,10 +788,14 @@ describe('AiChatPanel — KV panel context', () => {
     fireEvent.click(getByTestId('chat-send'));
     expect(aiState.sendChatMessage).toHaveBeenCalledWith({
       dbSessionId: 'sess-1',
+      connectionId: undefined,
       database: undefined,
+      agentMode: 'ask',
       content: 'hello',
       contextFiles: undefined,
       contextTables: undefined,
+      memoryMode: 'off',
+      memoryScope: 'user',
       targetClaim: { kind: 'independent' },
     });
   });
@@ -553,5 +828,119 @@ describe('AiChatPanel — KV panel context', () => {
     expect(aiState.sendChatMessage).toHaveBeenCalledTimes(2);
     expect(first?.content as string).toContain('selected_key=user:42');
     expect(second?.content as string).toContain('selected_key=orders:99');
+  });
+});
+
+describe('AiChatPanel automatic context snapshot', () => {
+  const SNAPSHOT = {
+    editorSql: 'SELECT * FROM orders',
+    lastError: 'relation orders does not exist',
+    resultPreview: {
+      columns: ['id'],
+      rows: [[1] as (string | number | boolean | null)[]],
+      rowCount: 1,
+      elapsedMs: 4,
+    },
+  };
+
+  it('shows chips for the host snapshot and lets each be removed', () => {
+    const { getByTestId, queryByTestId } = render(
+      <AiChatPanel dbSessionId="c1" database="db" autoContext={SNAPSHOT} />,
+    );
+
+    expect(getByTestId('ai-auto-context-sql')).toHaveTextContent('chat.autoContext.sql');
+    expect(getByTestId('ai-auto-context-error')).toHaveTextContent('chat.autoContext.error');
+    expect(getByTestId('ai-auto-context-result')).toHaveTextContent('chat.autoContext.result');
+
+    fireEvent.click(getByTestId('ai-auto-context-sql-remove'));
+    expect(queryByTestId('ai-auto-context-sql')).toBeNull();
+    expect(getByTestId('ai-auto-context-error')).toBeInTheDocument();
+  });
+
+  it('sends only the remaining chips and freezes them into the request', () => {
+    const { getByTestId } = render(
+      <AiChatPanel dbSessionId="c1" database="db" autoContext={SNAPSHOT} />,
+    );
+    fireEvent.click(getByTestId('ai-auto-context-sql-remove'));
+    fireEvent.change(getByTestId('chat-input'), { target: { value: 'why did this fail?' } });
+    fireEvent.click(getByTestId('chat-send'));
+
+    expect(aiState.sendChatMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        autoContext: {
+          lastError: SNAPSHOT.lastError,
+          resultPreview: SNAPSHOT.resultPreview,
+        },
+      }),
+    );
+    // The chips are consumed by the send; the next turn starts from fresh host facts.
+    expect(document.querySelector('[data-testid="ai-auto-context-chips"]')).toBeNull();
+  });
+
+  it('shows, removes, and sends the selection chip', () => {
+    const { getByTestId, queryByTestId, rerender } = render(
+      <AiChatPanel dbSessionId="c1" database="db" autoContext={{ selection: 'WHERE id=1' }} />,
+    );
+    expect(getByTestId('ai-auto-context-selection')).toHaveTextContent(
+      'chat.autoContext.selection',
+    );
+
+    fireEvent.change(getByTestId('chat-input'), { target: { value: 'explain' } });
+    fireEvent.click(getByTestId('chat-send'));
+    expect(aiState.sendChatMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({ autoContext: { selection: 'WHERE id=1' } }),
+    );
+
+    // A changed host selection re-arms the chip; removing it then sends plain.
+    rerender(
+      <AiChatPanel dbSessionId="c1" database="db" autoContext={{ selection: 'WHERE id=2' }} />,
+    );
+    fireEvent.click(getByTestId('ai-auto-context-selection-remove'));
+    expect(queryByTestId('ai-auto-context-selection')).toBeNull();
+    fireEvent.change(getByTestId('chat-input'), { target: { value: 'plain' } });
+    fireEvent.click(getByTestId('chat-send'));
+    expect(aiState.sendChatMessage).toHaveBeenLastCalledWith(
+      expect.not.objectContaining({ autoContext: expect.anything() }),
+    );
+  });
+
+  it('does not resurrect a removed chip on an ordinary rerender', () => {
+    const { getByTestId, queryByTestId, rerender } = render(
+      <AiChatPanel dbSessionId="c1" database="db" autoContext={SNAPSHOT} />,
+    );
+    fireEvent.click(getByTestId('ai-auto-context-sql-remove'));
+    expect(queryByTestId('ai-auto-context-sql')).toBeNull();
+
+    rerender(
+      <AiChatPanel
+        dbSessionId="c1"
+        database="db"
+        autoContext={{ ...SNAPSHOT, resultPreview: { ...SNAPSHOT.resultPreview } }}
+      />,
+    );
+    expect(queryByTestId('ai-auto-context-sql')).toBeNull();
+  });
+
+  it('keeps the sent snapshot frozen when the host changes afterwards', () => {
+    const { getByTestId, rerender } = render(
+      <AiChatPanel dbSessionId="c1" database="db" autoContext={{ editorSql: 'SELECT 1' }} />,
+    );
+    fireEvent.change(getByTestId('chat-input'), { target: { value: 'first' } });
+    fireEvent.click(getByTestId('chat-send'));
+    const sent = aiState.sendChatMessage.mock.calls[0]?.[0];
+
+    rerender(
+      <AiChatPanel dbSessionId="c1" database="db" autoContext={{ editorSql: 'SELECT 2' }} />,
+    );
+    expect(sent?.autoContext).toEqual({ editorSql: 'SELECT 1' });
+  });
+
+  it('does not attach an empty snapshot', () => {
+    const { getByTestId } = render(<AiChatPanel dbSessionId="c1" database="db" />);
+    fireEvent.change(getByTestId('chat-input'), { target: { value: 'hello' } });
+    fireEvent.click(getByTestId('chat-send'));
+    expect(aiState.sendChatMessage).toHaveBeenCalledWith(
+      expect.not.objectContaining({ autoContext: expect.anything() }),
+    );
   });
 });

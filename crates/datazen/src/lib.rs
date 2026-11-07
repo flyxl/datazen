@@ -80,6 +80,11 @@ pub mod migration;
 #[cfg(feature = "history")]
 pub mod history;
 
+/// 插件与 Workflow 共用的 SQL-aware 模板渲染（BUG-020/BUG-021）。
+/// Both feature closures already carry `serde_json` and `datazen-driver-api`.
+#[cfg(any(feature = "ai", feature = "workflow"))]
+pub mod sql_template;
+
 /// D6 item 3 第一切片 a：workflow 模型词汇（step/block/输出/错误策略/执行结果）。
 #[cfg(feature = "workflow")]
 pub mod workflow;

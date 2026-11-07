@@ -246,6 +246,9 @@ const pack = {
   'query.editor.executionConfirm.findingTruncate': 'TRUNCATE 语句',
   'query.editor.executionConfirm.findingUpdateNoWhere': '无 WHERE 的 UPDATE',
   'query.editor.executionConfirm.findingDeleteNoWhere': '无 WHERE 的 DELETE',
+  'query.editor.executionConfirm.chatWriteTitle': '执行 AI 生成的写入 SQL？',
+  'query.editor.executionConfirm.chatWriteMessage':
+    '该语句由 AI 生成，可能会修改数据。请确认后再对当前数据库执行。',
   'query.editor.executionConfirm.findingUnknown': '未分类的写语句',
   'query.editor.executionConfirm.statementLabel': '语句 {index}',
   'query.editor.executionConfirm.reasonsHeading': '检测到的问题',
@@ -478,7 +481,8 @@ const pack = {
   'valueSearch.start': '搜索',
   'valueSearch.pause': '暂停',
   'valueSearch.resume': '恢复',
-  'valueSearch.costNote': '对此数据库的每个 {count} 表运行一个查询，这可能需要一段时间并增加服务器的负载。',
+  'valueSearch.costNote':
+    '对此数据库的每个 {count} 表运行一个查询，这可能需要一段时间并增加服务器的负载。',
   'valueSearch.scanning': '正在搜索 {table}...',
   'valueSearch.status.running': '正在寻找...',
   'valueSearch.status.paused': '已暂停 — 恢复继续',

@@ -66,6 +66,29 @@ export interface WappManifest {
   permissions: WappPermission[];
   /** Reserved for P2 backend extensions; must be null/absent in v1. */
   backend?: unknown | null;
+  /** Opt-in AI tools declared by the plugin manifest. */
+  ai?: WappAiContribution | null;
+}
+
+export interface WappAiTool {
+  name: string;
+  description?: string;
+  readOnly: boolean;
+  command: 'query' | 'execute';
+  connection: string;
+  database?: string | null;
+  inputSchema: Record<string, unknown>;
+  input?: Record<string, unknown>;
+}
+
+export interface WappAiContribution {
+  tools: WappAiTool[];
+}
+
+export interface WappAiToolSummary {
+  name: string;
+  description?: string;
+  readOnly: boolean;
 }
 
 /** Page entry inside a `WappSummary` payload. */
@@ -96,4 +119,6 @@ export interface WappSummary {
   permissions: WappPermission[];
   pages: WappPageSummary[];
   themes: WappThemeSummary[];
+  /** Present only when the manifest declares AI tools. */
+  aiTools?: WappAiToolSummary[];
 }

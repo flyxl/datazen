@@ -68,6 +68,7 @@ vi.mock('../AiInput', () => ({
 const aiState = vi.hoisted(() => ({
   isConfigured: true,
   chatSession: {
+    sessionKey: 'conn-1::db',
     messages: [] as { role: 'user' | 'assistant'; content: string }[],
     isStreaming: false,
     streamContent: '',
@@ -136,6 +137,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   aiState.isConfigured = true;
   aiState.chatSession = {
+    sessionKey: 'conn-1::db',
     messages: [],
     isStreaming: false,
     streamContent: '',
@@ -213,9 +215,7 @@ describe('AiChatPanel — shared editor session (P6 §14.4)', () => {
     fireEvent.click(toggle);
 
     await waitFor(() =>
-      expect(getByTestId('ai-share-editor-error').textContent).toContain(
-        'claim rejected by host',
-      ),
+      expect(getByTestId('ai-share-editor-error').textContent).toContain('claim rejected by host'),
     );
     expect(toggle.checked).toBe(false);
     expect(queryByTestId('ai-share-editor-error')).not.toBeNull();

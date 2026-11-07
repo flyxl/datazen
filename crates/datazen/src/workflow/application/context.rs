@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 pub struct WorkflowContext {
     pub variables: HashMap<String, String>,
+    variable_values: HashMap<String, serde_json::Value>,
     step_results: HashMap<String, serde_json::Value>,
     loop_vars: HashMap<String, serde_json::Value>,
     last_step_id: Option<String>,
@@ -12,6 +13,7 @@ pub struct WorkflowContext {
 impl WorkflowContext {
     pub fn new(input: &serde_json::Value) -> Self {
         let mut variables = HashMap::new();
+        let mut variable_values = HashMap::new();
         if let Some(obj) = input.as_object() {
             for (k, v) in obj {
                 variables.insert(
@@ -21,26 +23,46 @@ impl WorkflowContext {
                         other => other.to_string(),
                     },
                 );
+                variable_values.insert(k.clone(), v.clone());
             }
         }
         Self {
             variables,
+            variable_values,
             step_results: HashMap::new(),
             loop_vars: HashMap::new(),
             last_step_id: None,
         }
     }
 
+    /// Set a variable while retaining its JSON type for SQL template rendering.
+    pub fn set_variable(&mut self, name: &str, value: serde_json::Value) {
+        let text = match &value {
+            serde_json::Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+        self.variables.insert(name.into(), text);
+        self.variable_values.insert(name.into(), value);
+    }
+
     pub fn set_builtin_variables(&mut self) {
         let now = chrono::Local::now();
-        self.variables
-            .insert("current_month".into(), now.format("%Y-%m").to_string());
-        self.variables
-            .insert("current_date".into(), now.format("%Y-%m-%d").to_string());
-        self.variables
-            .insert("current_year".into(), now.format("%Y").to_string());
-        self.variables
-            .insert("current_time".into(), now.format("%H:%M:%S").to_string());
+        self.set_variable(
+            "current_month",
+            serde_json::Value::String(now.format("%Y-%m").to_string()),
+        );
+        self.set_variable(
+            "current_date",
+            serde_json::Value::String(now.format("%Y-%m-%d").to_string()),
+        );
+        self.set_variable(
+            "current_year",
+            serde_json::Value::String(now.format("%Y").to_string()),
+        );
+        self.set_variable(
+            "current_time",
+            serde_json::Value::String(now.format("%H:%M:%S").to_string()),
+        );
     }
 
     pub fn set_step_result(&mut self, step_id: &str, result: serde_json::Value) {
@@ -79,6 +101,45 @@ impl WorkflowContext {
         Ok(result.to_string())
     }
 
+    /// Resolve an expression to its typed JSON value for SQL rendering.
+    ///
+    /// Missing values are errors: a SQL template must never silently become an
+    /// empty literal. `steps.*` and loop variables keep their JSON type so a
+    /// number can be rendered outside a string while a string is escaped.
+    pub fn resolve_expression_value(&self, expr: &str) -> Result<serde_json::Value, String> {
+        if let Some(rest) = expr.strip_prefix("steps.") {
+            let Some(dot_pos) = rest.find('.') else {
+                return Err(format!("missing workflow template value '{expr}'"));
+            };
+            let step_id = &rest[..dot_pos];
+            let path = normalize_template_path(&rest[dot_pos + 1..], expr, false)?;
+            let step_value = self
+                .step_results
+                .get(step_id)
+                .ok_or_else(|| format!("missing workflow template value '{expr}'"))?;
+            return Ok(self.resolve_json_path_value(step_value, path));
+        }
+
+        if let Some(separator) = expr.find(|ch| ch == '.' || ch == '[') {
+            let var_name = &expr[..separator];
+            if let Some(loop_val) = self.loop_vars.get(var_name) {
+                let path = normalize_template_path(&expr[separator..], expr, true)?;
+                return Ok(self.resolve_json_path_value(loop_val, path));
+            }
+        }
+
+        if let Some(loop_val) = self.loop_vars.get(expr) {
+            return Ok(loop_val.clone());
+        }
+        if let Some(value) = self.variable_values.get(expr) {
+            return Ok(value.clone());
+        }
+        if let Some(value) = self.variables.get(expr) {
+            return Ok(serde_json::Value::String(value.clone()));
+        }
+        Err(format!("missing workflow template value '{expr}'"))
+    }
+
     pub fn resolve_expression(&self, expr: &str) -> String {
         if let Some(rest) = expr.strip_prefix("steps.") {
             if let Some(dot_pos) = rest.find('.') {
@@ -107,8 +168,12 @@ impl WorkflowContext {
     }
 
     fn resolve_json_path(&self, value: &serde_json::Value, path: &str) -> String {
+        json_value_to_string(&self.resolve_json_path_value(value, path))
+    }
+
+    fn resolve_json_path_value(&self, value: &serde_json::Value, path: &str) -> serde_json::Value {
         if path.contains(".*") {
-            return self.resolve_wildcard_path(value, path);
+            return serde_json::Value::String(self.resolve_wildcard_path(value, path));
         }
 
         let mut current = value.clone();
@@ -155,7 +220,7 @@ impl WorkflowContext {
             }
         }
 
-        json_value_to_string(&current)
+        current
     }
 
     fn resolve_wildcard_path(&self, value: &serde_json::Value, path: &str) -> String {
@@ -244,6 +309,22 @@ pub fn json_value_to_string(val: &serde_json::Value) -> String {
     }
 }
 
+fn normalize_template_path<'a>(
+    rest: &'a str,
+    expression: &str,
+    includes_separator: bool,
+) -> Result<&'a str, String> {
+    let path = if includes_separator {
+        rest.strip_prefix('.').unwrap_or(rest)
+    } else {
+        rest
+    };
+    if path.is_empty() || path.starts_with('.') || path.ends_with('.') || path.contains("..") {
+        return Err(format!("invalid workflow template path '{expression}'"));
+    }
+    Ok(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,6 +344,54 @@ mod tests {
         assert_eq!(year.len(), 4, "YYYY");
         assert!(date.chars().nth(4) == Some('-') && date.chars().nth(7) == Some('-'));
         assert!(time.chars().nth(2) == Some(':') && time.chars().nth(5) == Some(':'));
+    }
+
+    #[test]
+    fn typed_values_survive_variables_steps_and_loop_paths() {
+        let mut ctx = WorkflowContext::new(&serde_json::json!({
+            "limit": 7,
+            "name": "O'Brien"
+        }));
+        assert_eq!(
+            ctx.resolve_expression_value("limit").unwrap(),
+            serde_json::json!(7)
+        );
+        assert_eq!(
+            ctx.resolve_expression_value("name").unwrap(),
+            serde_json::json!("O'Brien")
+        );
+
+        ctx.set_step_result("q1", serde_json::json!({ "rows_count": 3 }));
+        assert_eq!(
+            ctx.resolve_expression_value("steps.q1.rows_count").unwrap(),
+            serde_json::json!(3)
+        );
+
+        ctx.set_loop_var("item", serde_json::json!({ "id": 9, "name": "Ada" }));
+        assert_eq!(
+            ctx.resolve_expression_value("item.id").unwrap(),
+            serde_json::json!(9)
+        );
+        assert_eq!(
+            ctx.resolve_expression_value("item.name").unwrap(),
+            serde_json::json!("Ada")
+        );
+
+        ctx.set_loop_var("row", serde_json::json!([{ "id": 11 }]));
+        assert_eq!(
+            ctx.resolve_expression_value("row[0].id").unwrap(),
+            serde_json::json!(11)
+        );
+        assert!(ctx.resolve_expression_value("missing").is_err());
+        assert!(ctx.resolve_expression_value("item..id").is_err());
+        assert!(ctx.resolve_expression_value("item.").is_err());
+        assert!(ctx.resolve_expression_value("row...id").is_err());
+        assert!(ctx
+            .resolve_expression_value("steps.q1..rows_count")
+            .is_err());
+        assert!(ctx
+            .resolve_expression_value("steps.q1.rows_count.")
+            .is_err());
     }
 
     #[test]

@@ -34,9 +34,15 @@ const DEFAULT_SETTINGS: AppSettings = {
   logLevel: 'info',
   logPath: '',
   mcpServerEnabled: false,
+  mcpHttpEnabled: false,
+  mcpHttpPort: 0,
   mcpDisabledTools: [],
   mcpPermissionMode: 'safe_write',
   mcpAllowedConnectionIds: [],
+  mcpAllowedDatabases: [],
+  mcpAllowedNamespaces: [],
+  aiPluginToolIds: [],
+  aiWorkflowToolIds: [],
   contextDir: '',
   // Undefined = the app-data default. The favorites panel shows the resolved
   // path from `getFavoritesRoot`, so the default needs no stored value.

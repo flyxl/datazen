@@ -17,6 +17,7 @@ import {
   useConnectionColumnMaps,
 } from '../../stores/schemaStore';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { useAiStore } from '../../stores/aiStore';
 import { useI18n } from '../../hooks/useI18n';
 import { useResizable } from '../../hooks/useResizable';
 import { useCompactToolbar } from '../../hooks/useCompactToolbar';
@@ -28,6 +29,11 @@ import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { resolveSqlParameterPolicy } from '../../lib/sqlDialects/sqlParameterPolicy';
 import { resolveExportScope } from '../../lib/exportCapability';
 import { toQueryExecutionViewModel } from '../../lib/queryExecutionViewModel';
+import {
+  markStaleForSchemaDrops,
+  submitMemoryCorrectionIfNeeded,
+} from '../../lib/aiMemoryCorrection';
+import { extractMemoryPatternsIfNeeded } from '../../lib/aiMemoryPatterns';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import { ResultMessageDialog } from '../../components/ui/ResultMessageDialog';
 import {
@@ -39,6 +45,8 @@ import { metadataCache } from '../../components/sql-editor/metadata/metadataCach
 import type { QueryPanelProps } from './query/contracts';
 import { QuerySidebarSection, useQueryContextPath } from './query/QuerySidebarSection';
 import { QueryEditorSection } from './query/QueryEditorSection';
+import { clearEditorSelection, setEditorSelection } from '../../stores/editorSelectionStore';
+import { registerQueryRunner } from '../../stores/queryRunRequestStore';
 import { useQueryBuilderContribution } from './query/useQueryBuilderContribution';
 import {
   QueryTransactionModals,
@@ -122,8 +130,28 @@ export function QueryPanel({
   const setChartConfig = usePanelStore((s) => s.setChartConfig);
   const setResultViewModeStore = usePanelStore((s) => s.setResultViewMode);
   const togglePinResult = usePanelStore((s) => s.togglePinResult);
+  const memoryAutoLearn = useAiStore((s) => {
+    const memory = s.settingsConfig?.memory;
+    return memory?.enabled === true && memory.autoLearn === true;
+  });
 
   const editorRef = useRef<SqlEditorHandle>(null);
+  // The SQL last written by NL2SQL / a chat code block, per pane. A successful
+  // execution of a *modified* version of it is the T14 correction signal.
+  const aiGeneratedSqlRef = useRef(new Map<string, string>());
+  const applyAiSql = useCallback(
+    (sql: string, targetPane?: string) => {
+      aiGeneratedSqlRef.current.set(paneKey(panelId, targetPane), sql);
+      if (targetPane === undefined) updateSql(panelId, sql);
+      else updateSql(panelId, sql, ...paneArgs(targetPane));
+    },
+    [panelId, updateSql],
+  );
+  const handleEditorSelectionChange = useCallback(
+    (selection: string) => setEditorSelection(panelId, selection),
+    [panelId],
+  );
+  useEffect(() => () => clearEditorSelection(panelId), [panelId]);
   const enhanced = useExtension(sqlEditorEnhancedEP);
   const bindParameterPolicy = useMemo(
     () => resolveSqlParameterPolicy(databaseType),
@@ -472,8 +500,50 @@ export function QueryPanel({
     onExecutionComplete: () => {
       bindState.markSubmitted(bindState.values);
       setExecutionSeq((seq) => seq + 1);
+      const key = paneKey(panelId, paneId);
+      const completed = usePanelStore.getState().queryExec.get(key);
+      if (completed?.terminalState !== 'succeeded') return;
+      const originalSql = aiGeneratedSqlRef.current.get(key);
+      if (originalSql && completed.sql.trim() !== originalSql.trim()) {
+        // Keep the baseline while the AI SQL runs unchanged; the user may
+        // still edit it and execute the correction on a later run.
+        aiGeneratedSqlRef.current.delete(key);
+        void submitMemoryCorrectionIfNeeded({
+          originalSql,
+          currentSql: completed.sql,
+          connectionId,
+          database: selectedDatabase ?? database,
+        });
+      }
+      void markStaleForSchemaDrops({
+        sql: completed.sql,
+        connectionId,
+        database: selectedDatabase ?? database,
+      });
+      void extractMemoryPatternsIfNeeded({
+        sql: completed.sql,
+        connectionId,
+        database: selectedDatabase ?? database,
+        autoLearn: memoryAutoLearn,
+      });
     },
   });
+
+  // Chat code blocks ask this panel to run a statement through the same
+  // execution gate as the toolbar/editor. Passing `confirmWrites` makes an
+  // AI-generated non-read statement ask for confirmation even when the normal
+  // risk rules would allow it silently.
+  const runChatSql = useCallback(
+    (sql: string) => {
+      // Put the generated SQL in the editor first; the gate's stale-snapshot
+      // check then compares the same statement the user is about to run. The
+      // baseline is what lets a later user edit become a T14 correction.
+      applyAiSql(sql, paneId);
+      void executionGate.requestExecute('selection', sql, { confirmWrites: true });
+    },
+    [applyAiSql, paneId, executionGate.requestExecute],
+  );
+  useEffect(() => registerQueryRunner(panelId, runChatSql), [panelId, runChatSql]);
 
   const workflows = useQueryPanelWorkflows({
     panelId,
@@ -743,6 +813,7 @@ export function QueryPanel({
             dbSessionId={dbSessionId}
             databaseType={databaseType}
             editorRef={editorRef}
+            onSelectionChange={handleEditorSelectionChange}
             toolbarRef={toolbarRef}
             compactToolbar={compactToolbar}
             sql={exec.sql}
@@ -795,7 +866,7 @@ export function QueryPanel({
             onBeginTx={tx.handleBeginTx}
             onCommitTx={tx.handleCommitTx}
             onRollbackTx={tx.handleRollbackTx}
-            onApplyAiSql={(v) => updateSql(panelId, v)}
+            onApplyAiSql={(v) => applyAiSql(v, paneId)}
             onOpenAddFavoriteDialog={workflows.openAddFavoriteDialog}
             onQualifiedPath={contextPathState.handleQualifiedPath}
             onSelectContextLevel={contextPathState.handleSelectContextLevel}
@@ -855,7 +926,7 @@ export function QueryPanel({
                 onExplainError={workflows.handleExplainError}
                 retryActionEnabled={workflows.retryAction.enabled}
                 addToDashboardOpen={workflows.addToDashboardOpen}
-                onApplyAiSql={(v) => updateSql(panelId, v, ...paneArgs(paneId))}
+                onApplyAiSql={(v) => applyAiSql(v, paneId)}
                 onApplyFixSql={workflows.handleApplyFixSql}
                 onRetry={workflows.handleRetry}
                 onSetActiveResult={(idx) => setActiveResult(panelId, idx, ...paneArgs(paneId))}

@@ -21,6 +21,7 @@ pub async fn build_sql_generation_request(
     schema_seed: &PromptSeed,
     natural_language: String,
     recent_queries: &[String],
+    memory_block: Option<&str>,
     safety_gate: &AiSafetyGateConfig,
 ) -> CompletionRequest {
     let schema_suffix = compose_schema_system_suffix(schema_seed);
@@ -49,7 +50,11 @@ pub async fn build_sql_generation_request(
     let template = prompt_resolver
         .resolve(PromptScenario::Nl2Sql, Some(driver), lang)
         .await;
-    let system_content = super::prompt_resolver::render_template(&template, &vars);
+    let mut system_content = super::prompt_resolver::render_template(&template, &vars);
+    if let Some(memory_block) = memory_block.filter(|text| !text.trim().is_empty()) {
+        system_content.push_str("\n\n");
+        system_content.push_str(memory_block);
+    }
     let mut request = CompletionRequest {
         request_id: request_id.to_string(),
         model: model.to_string(),

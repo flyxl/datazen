@@ -24,6 +24,18 @@ describe('computeSessionKey', () => {
     const k2 = computeSessionKey('a', 'b', 'c');
     expect(k1).toBe(k2);
   });
+
+  it('keeps the key across dbSessionId changes for the same connection', () => {
+    expect(computeSessionKey('conn-1', 'sess-a', 'db')).toBe(
+      computeSessionKey('conn-1', 'sess-b', 'db'),
+    );
+  });
+
+  it('separates different connections', () => {
+    expect(computeSessionKey('conn-1', 'sess-1', 'db')).not.toBe(
+      computeSessionKey('conn-2', 'sess-1', 'db'),
+    );
+  });
 });
 
 describe('loadSessions / saveSessions', () => {

@@ -51,4 +51,4 @@ export {
   readManifestVariant,
   type UpdateChannel,
 } from './lib/updater';
-export type { AppSettings } from './types/index';
+export type { AppSettings, McpHttpStatus } from './types/index';

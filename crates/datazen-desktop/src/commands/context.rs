@@ -633,6 +633,7 @@ mod tests {
             ),
             platform,
             organization_scope: crate::platform::local_organization_scope(),
+            app_handle: Arc::new(std::sync::OnceLock::new()),
         };
 
         let ctx_dir = resolve_context_dir_from_state(&state).await.unwrap();
@@ -720,6 +721,7 @@ mod tests {
             ),
             platform,
             organization_scope: crate::platform::local_organization_scope(),
+            app_handle: Arc::new(std::sync::OnceLock::new()),
         };
 
         let ctx_dir = resolve_context_dir_from_state(&state).await.unwrap();

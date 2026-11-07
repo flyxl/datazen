@@ -41,6 +41,7 @@ impl DesktopRepository {
                     let s = AiSettingsConfig {
                         active_profile_id: "default".into(),
                         profiles: vec![prof],
+                        ..Default::default()
                     };
                     (Some(s), legacy_data)
                 } else {
@@ -78,6 +79,9 @@ impl DesktopRepository {
         &self,
         config: &AiSettingsConfig,
     ) -> Result<(), DesktopRepositoryError> {
+        config
+            .validate_prompt_limits()
+            .map_err(DesktopRepositoryError::WriteError)?;
         let active_cfg = config.selected_profile().map(AiProviderConfig::from);
 
         {

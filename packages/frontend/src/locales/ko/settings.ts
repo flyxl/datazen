@@ -61,7 +61,8 @@ const pack = {
   'settings.defaultTableSort.hint':
     '"정렬 안 함"으로 설정하면 큰 테이블에서 페이지 매김이 빨라지지만, 페이지가 바뀌면 행이 중복되거나 건너뛸 수 있습니다.',
   'settings.gridDensity': '그리드 밀도',
-  'settings.gridDensity.hint': '데이터 그리드의 행 높이입니다. Compact는 화면에 더 많은 행을 표시합니다. 편안한 것은 읽기가 더 쉽습니다.',
+  'settings.gridDensity.hint':
+    '데이터 그리드의 행 높이입니다. Compact는 화면에 더 많은 행을 표시합니다. 편안한 것은 읽기가 더 쉽습니다.',
   'settings.gridDensity.compact': '콤팩트',
   'settings.gridDensity.standard': '기준',
   'settings.gridDensity.relaxed': '편안한',
@@ -71,7 +72,8 @@ const pack = {
   'settings.gridRowNumbers.hint':
     '# 데이터 그리드의 거터. 이 기능을 끄면 클릭하여 선택 버튼도 제거됩니다. 행을 클릭하면 행 선택이 계속 작동합니다.',
   'settings.gridAutoHideScrollbar': '그리드 스크롤바 자동 숨기기',
-  'settings.gridAutoHideScrollbar.hint': '스크롤 막대는 그리드에 마우스를 올리거나 초점이 맞춰져 있는 동안에만 나타납니다.',
+  'settings.gridAutoHideScrollbar.hint':
+    '스크롤 막대는 그리드에 마우스를 올리거나 초점이 맞춰져 있는 동안에만 나타납니다.',
   'settings.connectionPoolSize': '연결 풀 크기',
   'settings.connectionPoolSizeHint': '데이터베이스 연결마다 유지할 최대 커넥션 수입니다.',
   'settings.limitSelect': 'SELECT 결과 제한',
@@ -228,9 +230,42 @@ const pack = {
   'settings.ai.strictEgress': '엄격한 AI 데이터 전송 보호 (권장)',
   'settings.ai.strictEgressHint':
     '활성화하면 쿼리 결과 행과 페이로드가 제거된 상태로 AI 제공자에게 전송됩니다. 인증 정보는 항상 마스킹됩니다.',
+  'settings.ai.toolsTitle': '플러그인 및 Workflow 도구',
+  'settings.ai.toolsHint':
+    '여기서 활성화한 플러그인과 Workflow의 도구만 Agent에 제공됩니다. 읽기 전용이 아닌 호출은 승인을 요청하며 Stop으로 대기 중인 호출을 취소할 수 있습니다.',
+  'settings.ai.toolsPlugins': '플러그인',
+  'settings.ai.toolsWorkflows': 'Workflow',
+  'settings.ai.toolsNoPlugins': 'AI 도구를 선언한 설치된 플러그인이 없습니다.',
+  'settings.ai.toolsNoWorkflows': '저장된 Workflow가 없습니다.',
+  'settings.ai.toolsPluginDisabled': '먼저 이 플러그인을 활성화하세요.',
   'settings.ai.strictEgressDisableTitle': '더 많은 데이터가 장치를 벗어나는 것을 허용하시겠습니까?',
   'settings.ai.strictEgressDisableMessage':
     '엄격한 전송 보호를 해제하면 쿼리 결과 행, 파일 내용, 도구 출력이 구성된 AI 제공자에게 전송될 수 있습니다. 데이터 유출 가능성을 수용하는 경우에만 해제하세요.',
+  'settings.ai.instructionsTitle': 'Global Instructions',
+  'settings.ai.instructionsHint':
+    'Included near the top of every AI chat system prompt. Hard limit 4 KB; over-limit saves are rejected, never silently truncated.',
+  'settings.ai.instructionsPlaceholder':
+    'e.g. Prefer explicit JOINs, use UTC timestamps, and answer in concise Chinese.',
+  'settings.ai.templatesTitle': 'Prompt Templates',
+  'settings.ai.templatesHint':
+    'Reusable system prompts. A template is picked by database type and default flag, or explicitly in chat. Each template is limited to 8 KB and all templates to 16 KB.',
+  'settings.ai.templatesEmpty': 'No prompt templates yet.',
+  'settings.ai.addTemplate': 'Add template',
+  'settings.ai.templateNameRequired': 'Template name is required.',
+  'settings.ai.templateContentRequired': 'Template content is required.',
+  'settings.ai.templateTooLarge': 'Template exceeds {max} bytes.',
+  'settings.ai.overLimitHint': 'Over the limit — shorten the text before saving.',
+  'settings.ai.allDatabaseTypes': 'All database types',
+  'settings.ai.templateNamePlaceholder': 'Template name',
+  'settings.ai.templateDatabaseTypesPlaceholder': 'Database types, comma separated (empty = all)',
+  'settings.ai.templateContentPlaceholder': 'System prompt content',
+  'connection.notes.title': 'Connection notes (AI)',
+  'connection.notes.hint':
+    'Stored locally and injected into AI chats for this connection. Limit 4 KB; save an empty note to delete it.',
+  'connection.notes.placeholder':
+    'e.g. This database is a read-only replica; orders.status codes mean…',
+  'connection.notes.overLimit': 'Over the limit — shorten before saving.',
+  'settings.ai.saveContext': 'Save instructions & templates',
   'settings.ai.modelsTitle': '구성된 모델',
   'settings.ai.addModel': '모델 추가',
   'settings.ai.editModel': '모델 편집',
@@ -252,6 +287,11 @@ const pack = {
   'settings.ai.egressSampleMasked': '샘플 마스킹 (소량의 마스킹된 샘플 행 허용)',
   'settings.ai.egressUnrestricted': '완전 허용 (전체 결과 허용, 로컬/내부망 전용)',
   'settings.ai.maxSampleRows': '최대 샘플 행 수',
+  'settings.ai.maxToolRounds': '최대 도구 라운드',
+  'settings.ai.apiRetries': 'API 재시도 횟수',
+  'settings.ai.maxToolTokens': '최대 도구 토큰',
+  'settings.ai.maxToolResultBytes': '도구 결과 최대 바이트',
+  'settings.ai.maxToolDurationSecs': '도구 최대 시간(초)',
   'settings.ai.dbToolPolicy': '데이터베이스 도구 호출 정책',
   'settings.ai.mcpToolPolicy': 'MCP 도구 호출 정책',
   'settings.ai.policyDisabled': '사용 안 함',

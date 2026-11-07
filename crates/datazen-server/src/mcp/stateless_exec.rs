@@ -1,6 +1,6 @@
 //! WR-F2/WR-F7：MCP 无状态工具的 server 分发件。
 //!
-//! 工具定义与协议面（13 工具）在 modules（golden parity 测试钉住）；本模块
+//! 工具定义与协议面（15 工具）在 modules（golden parity 测试钉住）；本模块
 //! 只做 server 形态的**端口装配**：把 `storage/` 仓储适配成 modules
 //! `tools.rs` 的目录端口（`RedactedConnectionSource` / `WorkflowCatalog`）
 //! 并逐工具分发。
@@ -23,6 +23,8 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 use datazen::connection::domain::{ConnectionRepository, ConnectionScope};
+use datazen::mcp::application::batch::{self, BatchRequest};
+use datazen::mcp::application::redis::{self, RedisReadExecutor};
 use datazen::mcp::application::tools::{
     self, RedactedConnection, RedactedConnectionSource, WorkflowCatalog,
 };
@@ -234,7 +236,7 @@ impl StatelessToolExec {
                 .await
             }
             "query" | "list_databases" | "list_tables" | "search_tables" | "get_schema"
-            | "explain_query" | "describe_table" => {
+            | "explain_query" | "describe_table" | "execute_batch" | "redis_command" => {
                 let Some(machine) = &self.target else {
                     return Err(ToolCallError::WithHelp {
                         tool: tool.to_owned(),
@@ -264,6 +266,8 @@ impl StatelessToolExec {
                         tools::query(
                             &host,
                             connection_id,
+                            database,
+                            schema,
                             sql,
                             limit,
                             datazen::execution::domain::permission::McpPermissionMode::SafeWrite,
@@ -287,13 +291,75 @@ impl StatelessToolExec {
                     }
                     "explain_query" => {
                         let sql = required_str(tool, arguments, "sql")?;
-                        tools::explain_query(&host, connection_id, sql).await
+                        tools::explain_query(&host, connection_id, database, schema, sql).await
                     }
                     "describe_table" => {
                         let table = required_str(tool, arguments, "table")?;
                         tools::describe_table(&host, connection_id, database, schema, table).await
                     }
-                    _ => unreachable!("outer arm lists exactly these seven tool names"),
+                    "execute_batch" => {
+                        let sql = required_str(tool, arguments, "sql")?;
+                        let request = BatchRequest {
+                            connection_id,
+                            database,
+                            schema,
+                            sql,
+                            transaction: arguments
+                                .get("transaction")
+                                .and_then(Value::as_bool)
+                                .unwrap_or(false),
+                            allow_writes: arguments
+                                .get("allow_writes")
+                                .and_then(Value::as_bool)
+                                .unwrap_or(false),
+                            limit: arguments
+                                .get("limit")
+                                .and_then(Value::as_u64)
+                                .map(|value| value as u32),
+                            timeout_ms: arguments
+                                .get("timeout_ms")
+                                .and_then(Value::as_u64)
+                                .map(|value| value.min(u64::from(u32::MAX)) as u32),
+                            mode:
+                                datazen::execution::domain::permission::McpPermissionMode::SafeWrite,
+                        };
+                        batch::execute_batch(&host, request).await
+                    }
+                    "redis_command" => {
+                        let command = required_str(tool, arguments, "command")?;
+                        let args: Vec<String> = arguments
+                            .get("args")
+                            .and_then(Value::as_array)
+                            .map(|values| {
+                                values
+                                    .iter()
+                                    .filter_map(Value::as_str)
+                                    .map(str::to_owned)
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        let executor = ServerRedisExecutor {
+                            host: machine.host.clone(),
+                        };
+                        redis::execute_redis_read(
+                            &executor,
+                            connection_id,
+                            database.as_deref(),
+                            command,
+                            &args,
+                            arguments.get("key_pattern").and_then(Value::as_str),
+                            arguments
+                                .get("limit")
+                                .and_then(Value::as_u64)
+                                .map(|value| value as u32),
+                            arguments
+                                .get("timeout_ms")
+                                .and_then(Value::as_u64)
+                                .map(|value| value.min(u64::from(u32::MAX)) as u32),
+                        )
+                        .await
+                    }
+                    _ => unreachable!("outer arm lists exactly these nine tool names"),
                 }
             }
             other => {
@@ -482,5 +548,85 @@ mod principal_seed_tests {
             "server-mcp-tool",
             "the synthetic service principal never reaches the execution face"
         );
+    }
+}
+
+/// server 形态的 Redis 只读执行器：复用目标机器宿主解析 profile/driver，
+/// 只调用既有 Redis driver 的 `exec` 命令。命令分类与 key pattern/limit
+/// 校验在共享 `datazen::mcp::application::redis` 中先行完成。
+struct ServerRedisExecutor {
+    host: Arc<dyn ResourceExecutionHost>,
+}
+
+#[async_trait::async_trait]
+impl RedisReadExecutor for ServerRedisExecutor {
+    async fn execute_redis(
+        &self,
+        connection_id: &str,
+        database: Option<&str>,
+        command: &str,
+        args: &[String],
+        _timeout_ms: u64,
+    ) -> Result<Value, String> {
+        let (config, _, enabled) = self
+            .host
+            .profile(connection_id)
+            .await
+            .map_err(|error| error.to_string())?;
+        if !enabled {
+            return Err("Connection profile is disabled".into());
+        }
+        if !config.database_type.eq_ignore_ascii_case("redis") {
+            return Err("redis_command requires a Redis connection".into());
+        }
+        let db_index = redis_db_index(database.or(config.database.as_deref()))?;
+        let mut config = config;
+        config.database = Some(db_index.to_string());
+        let driver = self
+            .host
+            .driver(&config)
+            .await
+            .map_err(|error| error.to_string())?;
+        let handle = driver
+            .connect(&config)
+            .await
+            .map_err(|error| error.to_string())?;
+        let line = std::iter::once(command)
+            .chain(args.iter().map(String::as_str))
+            .map(quote_redis_arg)
+            .collect::<Vec<_>>()
+            .join(" ");
+        let result = driver
+            .execute_command(
+                &handle,
+                "exec",
+                serde_json::json!({ "commands": line, "dbIndex": db_index }),
+            )
+            .await;
+        let _ = driver.disconnect(handle).await;
+        result
+            .map(|value| value.data)
+            .map_err(|error| error.to_string())
+    }
+}
+
+fn redis_db_index(value: Option<&str>) -> Result<u32, String> {
+    let value = value.unwrap_or("0").trim();
+    let value = value.strip_prefix("db").unwrap_or(value);
+    value
+        .parse::<u32>()
+        .map_err(|_| "Redis database must be a non-negative integer index".to_string())
+}
+
+fn quote_redis_arg(arg: &str) -> String {
+    if arg.is_empty()
+        || arg
+            .chars()
+            .any(|ch| ch.is_whitespace() || ch == '"' || ch == '\\')
+    {
+        let escaped = arg.replace('\\', "\\\\").replace('"', "\\\"");
+        format!("\"{escaped}\"")
+    } else {
+        arg.to_owned()
     }
 }

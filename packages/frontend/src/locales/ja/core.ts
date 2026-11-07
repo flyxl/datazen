@@ -4,6 +4,7 @@ const pack = {
   'common.cancel': 'キャンセル',
   'common.skip': 'スキップ',
   'common.back': '戻る',
+  'common.edit': 'Edit',
   'common.save': '保存',
   'common.close': '近い',
   'common.delete': '消去',
@@ -114,6 +115,8 @@ const pack = {
   'main.ctx.server': 'サーバー',
   'main.ctx.organize': '接続を管理',
   'main.ctx.createNew': '新規作成',
+  'main.ctx.confirmDeleteConnectionWithAi':
+    'Delete connection "{name}"? This also removes {noteCount} connection note(s) and {memoryCount} related AI memories. This cannot be undone.',
   'main.ctx.confirmDeleteConnection':
     '接続「{name}」を削除してもよろしいですか?これを元に戻すことはできません。',
   'main.groupNamePlaceholder': 'グループ名を入力してください',

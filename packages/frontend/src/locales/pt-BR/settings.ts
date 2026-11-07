@@ -239,9 +239,42 @@ const pack = {
   'settings.ai.strictEgress': 'Proteção estrita de dados para IA (recomendado)',
   'settings.ai.strictEgressHint':
     'Quando ativado, linhas de resultado e payloads são removidos antes do envio ao provedor de IA. Credenciais são sempre mascaradas.',
+  'settings.ai.toolsTitle': 'Ferramentas de plugins e workflows',
+  'settings.ai.toolsHint':
+    'Somente ferramentas dos plugins e workflows habilitados aqui são oferecidas ao Agent. Chamadas que não são somente leitura pedem aprovação; Stop cancela uma chamada pendente.',
+  'settings.ai.toolsPlugins': 'Plugins',
+  'settings.ai.toolsWorkflows': 'Workflows',
+  'settings.ai.toolsNoPlugins': 'Nenhum plugin instalado declara ferramentas de IA.',
+  'settings.ai.toolsNoWorkflows': 'Nenhum workflow salvo.',
+  'settings.ai.toolsPluginDisabled': 'Habilite este plugin primeiro.',
   'settings.ai.strictEgressDisableTitle': 'Permitir que mais dados saiam deste dispositivo?',
   'settings.ai.strictEgressDisableMessage':
     'Desativar a proteção estrita pode enviar linhas de resultado, conteúdos de arquivos e saídas de ferramentas para o provedor de IA configurado. Só desative se você aceita que dados saiam da sua máquina.',
+  'settings.ai.instructionsTitle': 'Global Instructions',
+  'settings.ai.instructionsHint':
+    'Included near the top of every AI chat system prompt. Hard limit 4 KB; over-limit saves are rejected, never silently truncated.',
+  'settings.ai.instructionsPlaceholder':
+    'e.g. Prefer explicit JOINs, use UTC timestamps, and answer in concise Chinese.',
+  'settings.ai.templatesTitle': 'Prompt Templates',
+  'settings.ai.templatesHint':
+    'Reusable system prompts. A template is picked by database type and default flag, or explicitly in chat. Each template is limited to 8 KB and all templates to 16 KB.',
+  'settings.ai.templatesEmpty': 'No prompt templates yet.',
+  'settings.ai.addTemplate': 'Add template',
+  'settings.ai.templateNameRequired': 'Template name is required.',
+  'settings.ai.templateContentRequired': 'Template content is required.',
+  'settings.ai.templateTooLarge': 'Template exceeds {max} bytes.',
+  'settings.ai.overLimitHint': 'Over the limit — shorten the text before saving.',
+  'settings.ai.allDatabaseTypes': 'All database types',
+  'settings.ai.templateNamePlaceholder': 'Template name',
+  'settings.ai.templateDatabaseTypesPlaceholder': 'Database types, comma separated (empty = all)',
+  'settings.ai.templateContentPlaceholder': 'System prompt content',
+  'connection.notes.title': 'Connection notes (AI)',
+  'connection.notes.hint':
+    'Stored locally and injected into AI chats for this connection. Limit 4 KB; save an empty note to delete it.',
+  'connection.notes.placeholder':
+    'e.g. This database is a read-only replica; orders.status codes mean…',
+  'connection.notes.overLimit': 'Over the limit — shorten before saving.',
+  'settings.ai.saveContext': 'Save instructions & templates',
   'settings.ai.modelsTitle': 'Modelos configurados',
   'settings.ai.addModel': 'Adicionar modelo',
   'settings.ai.editModel': 'Editar modelo',
@@ -264,6 +297,11 @@ const pack = {
   'settings.ai.egressUnrestricted':
     'Sem restrições (Permitir resultados completos, apenas local/intranet)',
   'settings.ai.maxSampleRows': 'Máximo de linhas de amostra',
+  'settings.ai.maxToolRounds': 'Máximo de rodadas de ferramenta',
+  'settings.ai.apiRetries': 'Tentativas de API',
+  'settings.ai.maxToolTokens': 'Tokens máximos de ferramenta',
+  'settings.ai.maxToolResultBytes': 'Bytes máximos do resultado',
+  'settings.ai.maxToolDurationSecs': 'Duração máxima da ferramenta (segundos)',
   'settings.ai.dbToolPolicy': 'Permissões de ferramentas de BD',
   'settings.ai.mcpToolPolicy': 'Permissões de ferramentas MCP',
   'settings.ai.policyDisabled': 'Desativado',

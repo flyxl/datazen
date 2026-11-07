@@ -43,6 +43,12 @@ static SEMVER_RE: LazyLock<Regex> = LazyLock::new(|| {
 static PAGE_ID_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[a-z0-9-_]{1,64}$").expect("valid page id regex"));
 
+static AI_TOOL_NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
+    // Provider tool names are portable identifiers; `__` is reserved for the
+    // plugin routing prefix.
+    Regex::new(r"^[a-z0-9][a-z0-9_-]{0,63}$").expect("valid ai tool name regex")
+});
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WappManifest {
@@ -66,6 +72,46 @@ pub struct WappManifest {
     /// Reserved for P2 backend wapps; must be null/absent in v1.
     #[serde(default)]
     pub backend: Option<serde_json::Value>,
+    /// Opt-in AI tools the host may expose while this wapp is enabled and the
+    /// user has enabled this plugin in Settings → AI.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ai: Option<WappAiContribution>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WappAiContribution {
+    #[serde(default)]
+    pub tools: Vec<WappAiTool>,
+}
+
+/// One declarative tool exposed to the AI Agent.
+///
+/// The host injects the connection profile and executes the declared driver
+/// command. The model supplies only `inputSchema`-validated arguments, which
+/// are rendered into `input`; no credential or connection secret is ever part
+/// of a tool definition or a model message.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WappAiTool {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    /// Host routing hint. Read-only tools are forced through the read-only
+    /// target execution path; a declaration of `true` cannot make a write run
+    /// unattended.
+    pub read_only: bool,
+    /// `query` or `execute`.
+    pub command: String,
+    /// Persistent connection id resolved by the host; never passed to the model.
+    pub connection: String,
+    #[serde(default)]
+    pub database: Option<String>,
+    /// JSON Schema for the model-supplied arguments (must describe an object).
+    pub input_schema: serde_json::Value,
+    /// Driver command input template. String leaves may contain `{{arg}}`.
+    #[serde(default)]
+    pub input: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -320,8 +366,85 @@ pub fn validate_manifest(manifest: &WappManifest, wapp_dir: &Path) -> Result<(),
     // Rule 6: package-wide whitelist / quota scan.
     scan_package_files(wapp_dir, PackageLimits::default())?;
 
-    // Rule 7: no mandatory permission combination — pure-theme plugins may
+    // Rule 7: AI tools are opt-in declarations. They need `command:invoke`,
+    // a portable name, and a command shape the host can route safely.
+    validate_ai_tools(manifest)?;
+
+    // Rule 8: no mandatory permission combination — pure-theme plugins may
     // declare none; undeclared runtime calls are rejected at the bridge.
+    Ok(())
+}
+
+fn validate_ai_tools(manifest: &WappManifest) -> Result<(), String> {
+    let Some(ai) = &manifest.ai else {
+        return Ok(());
+    };
+    if ai.tools.is_empty() {
+        return Err("ai.tools must not be empty when ai is declared".into());
+    }
+    if ai.tools.len() > 16 {
+        return Err("ai.tools supports at most 16 tools".into());
+    }
+    if !manifest.permissions.contains(&Permission::CommandInvoke) {
+        return Err("ai.tools requires the command:invoke permission".into());
+    }
+    let mut names = std::collections::HashSet::new();
+    for tool in &ai.tools {
+        if !AI_TOOL_NAME_RE.is_match(&tool.name) {
+            return Err(format!("invalid ai tool name: {}", tool.name));
+        }
+        if tool.name.contains("__") {
+            return Err(format!(
+                "ai tool name `{}` must not contain the reserved `__` separator",
+                tool.name
+            ));
+        }
+        if !names.insert(tool.name.clone()) {
+            return Err(format!("duplicate ai tool name: {}", tool.name));
+        }
+        if !matches!(tool.command.as_str(), "query" | "execute") {
+            return Err(format!(
+                "ai tool `{}` must use command `query` or `execute`",
+                tool.name
+            ));
+        }
+        if tool.read_only && tool.command != "query" {
+            return Err(format!(
+                "read-only ai tool `{}` must use command `query`",
+                tool.name
+            ));
+        }
+        if tool.connection.trim().is_empty() {
+            return Err(format!("ai tool `{}` has an empty connection", tool.name));
+        }
+        if tool
+            .database
+            .as_deref()
+            .is_some_and(|database| database.trim().is_empty())
+        {
+            return Err(format!("ai tool `{}` has an empty database", tool.name));
+        }
+        if !tool.input_schema.is_object() {
+            return Err(format!(
+                "ai tool `{}` inputSchema must be an object",
+                tool.name
+            ));
+        }
+        if tool
+            .input_schema
+            .get("type")
+            .and_then(serde_json::Value::as_str)
+            != Some("object")
+        {
+            return Err(format!(
+                "ai tool `{}` inputSchema must declare type `object`",
+                tool.name
+            ));
+        }
+        if !tool.input.is_object() {
+            return Err(format!("ai tool `{}` input must be an object", tool.name));
+        }
+    }
     Ok(())
 }
 

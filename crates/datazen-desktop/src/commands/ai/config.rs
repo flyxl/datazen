@@ -98,6 +98,9 @@ pub async fn ai_save_settings_config<R: tauri::Runtime>(
     state: State<'_, AppState>,
     config: AiSettingsConfig,
 ) -> Result<(), CommandError> {
+    config
+        .validate_prompt_limits()
+        .map_err(CommandError::Validation)?;
     state.ensure_ai_ready().await;
     ai_api::save_settings_config(&state.ai_registry, state.store.as_ref(), config)
         .await

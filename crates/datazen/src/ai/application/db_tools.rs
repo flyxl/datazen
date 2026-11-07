@@ -139,6 +139,89 @@ pub fn resolve_query_limit(limit: Option<u32>) -> Option<u32> {
             .min(MCP_QUERY_MAX_LIMIT),
     )
 }
+/// Read a bounded sample from one table using the driver's identifier quoting.
+///
+/// `_database` is accepted for tool-shape parity with the catalog metadata
+/// tools; the actual target database is still the connection profile's
+/// database, exactly as with [`query`].
+pub async fn sample_rows(
+    host: &dyn DatabaseToolHost,
+    id: &str,
+    _database: Option<&str>,
+    schema: Option<&str>,
+    table: &str,
+    limit: u32,
+) -> Result<String, String> {
+    let table = table.trim();
+    if table.is_empty() {
+        return Err("sample_rows: table is required".into());
+    }
+    let driver = host.driver_for_connection(id).await?;
+    let table = driver.quote_ident(table);
+    let relation = match schema.map(str::trim).filter(|name| !name.is_empty()) {
+        Some(schema) => format!("{}.{}", driver.quote_ident(schema), table),
+        None => table,
+    };
+    let limit = limit.clamp(1, 100);
+    let sql = format!("SELECT * FROM {relation} LIMIT {limit}");
+    query_readonly(host, id, &sql, Some(limit)).await
+}
+
+/// Create an exact-text write proposal for the bound connection.
+///
+/// The proposal is review metadata, not execution: no target command is sent
+/// here. A successful apply must go through `WriteProposalStore::apply` and
+/// then the host's single `execute_target` entry.
+pub async fn propose_write(
+    host: &dyn DatabaseToolHost,
+    id: &str,
+    database: Option<&str>,
+    sql: &str,
+    previous_sql: Option<&str>,
+) -> Result<String, String> {
+    let config = host.profile_config(id).await?;
+    let policy = host.execution_settings().await;
+    let store = host
+        .write_proposal_store()
+        .ok_or_else(|| "write proposals are not supported by this host".to_string())?;
+    let database = database
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .or_else(|| config.database.clone())
+        .unwrap_or_default();
+    let request = crate::ai::application::write_proposal::WriteProposalRequest {
+        connection_id: id.trim().to_string(),
+        database,
+        sql: sql.to_string(),
+        previous_sql: previous_sql.map(str::to_string),
+    };
+    let proposal = store
+        .propose(&request, &config, policy.safe_mode, chrono::Utc::now())
+        .map_err(|error| error.to_string())?;
+    if let Err(error) = host.write_proposal_created(&proposal).await {
+        tracing::warn!(%error, "write proposal created but host notification failed");
+    }
+    serde_json::to_string_pretty(&proposal).map_err(|error| error.to_string())
+}
+
+/// Read-only SQL for AI tools.
+///
+/// [`McpPermissionMode::ReadOnly`] is a deny-all-SQL mode for the MCP surface
+/// (that surface does not expose a query tool at all). AI read-only tools need
+/// the other meaning: SELECT-class statements run, writes are refused. Keep
+/// that policy here, independently of the connection's own read-only flag.
+pub async fn query_readonly(
+    host: &dyn DatabaseToolHost,
+    id: &str,
+    sql: &str,
+    limit: Option<u32>,
+) -> Result<String, String> {
+    let policy = host.execution_settings().await;
+    crate::execution::domain::sql_guard::check_sql(sql, true, policy.safe_mode)?;
+    query(host, id, sql, limit, None).await
+}
+
 pub async fn query(
     host: &dyn DatabaseToolHost,
     id: &str,

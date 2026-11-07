@@ -92,7 +92,7 @@ DataZen 当前强在**安全、数据最小化、MCP 状态会话治理、场景
 | Skills | **没有** | — |
 | 插件工具 | **没有** | — |
 | CLI | **没有** | — |
-| MCP Server | 13 个工具；状态会话 TTL/归属/清理强；白名单空 = **deny-all**；无 HTTP、无数据库 scope、无逐次确认 | `crates/datazen-desktop/src/mcp/server.rs`、`crates/datazen/src/mcp/domain/allowlist.rs` |
+| MCP Server | 15 个工具（含 T20 batch/Redis 只读）；状态会话 TTL/归属/清理强；白名单空 = **deny-all**；无 HTTP、无数据库 scope、无逐次确认 | `crates/datazen-desktop/src/mcp/server.rs`、`crates/datazen/src/mcp/domain/allowlist.rs` |
 | MCP Client | 有；外部工具并入聊天 | `crates/datazen-desktop/src/commands/ai/chat.rs`、`crates/datazen-desktop/src/mcp/client.rs` |
 | 安全门 | 出境等级/脱敏/私网拦截/密钥加密/取消有；但 `db_tool_policy`、`mcp_tool_policy`、`require_sql_confirm`、`redact_credentials`（前端 `dbToolPolicy` 等）未找到后端消费者；`egress_summary` 后端已发、前端未消费 | `crates/datazen/src/ai/domain/types.rs`、`safety.rs`、`packages/frontend/src/types/ai.ts` |
 | 侧栏代码块 | 只接线 `onInsertSql`；`onRunCode` / `onNewQuery` 组件已支持但未传入 | `packages/frontend/src/windows/connection/ContentViewDrawers.tsx` |
@@ -798,7 +798,7 @@ ToolCall(query_readonly)
 
 **当前事实**：
 
-- DataZen MCP Server 13 个工具：`list_connections`、`list_databases`、`list_tables`、`search_tables`、`query`、`get_schema`、`explain_query`、`describe_table`、`list_workflows`、`run_workflow`、`open_session`、`use_session`、`close_session`。
+- DataZen MCP Server 15 个工具：`list_connections`、`list_databases`、`list_tables`、`search_tables`、`query`、`get_schema`、`explain_query`、`describe_table`、`list_workflows`、`run_workflow`、`open_session`、`use_session`、`close_session`、`execute_batch`、`redis_command`。
 - 只有 stdio；连接 allowlist 空 = deny-all；三档权限模式 + `mcpDisabledTools`；没有 database/namespace scope，没有逐次确认，没有 audit，没有 HTTP。
 - 有状态会话治理是强项：opaque reference、clientInstanceId 后端生成、TTL 默认 300s/上限 3600s、contextRevision、断连/过期清理、active transaction 回滚。不要为了追竞品破坏这套语义。
 

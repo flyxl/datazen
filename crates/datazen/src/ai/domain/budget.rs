@@ -49,12 +49,19 @@ pub fn split_budget(total: usize) -> (usize, usize) {
 
 /// Token estimation for a string.
 ///
-/// Uses a CJK-aware heuristic: CJK characters count as ~1.6 tokens each,
-/// ASCII characters count as ~0.3 tokens each (approximately 3.3 chars per
-/// token for English text).
+/// Conservative tiered heuristic:
+/// - ASCII: ~0.3 tokens/char (≈3.3 chars per token for English);
+/// - CJK: ~1.6 tokens/char;
+/// - every other non-ASCII character (Cyrillic, Arabic, emoji, symbols):
+///   at least 2 tokens/char. These scripts/emoji are much denser than the
+///   ASCII heuristic suggests, so treating them as 0.3 caused budget overflow.
+///
+/// Fractional tiers are rounded **up** so estimates never under-count a
+/// partially-filled token. Budget consumers must use this conservative value.
 pub fn estimate_tokens(text: &str) -> usize {
     let mut cjk_count = 0usize;
     let mut ascii_count = 0usize;
+    let mut other_count = 0usize;
 
     for ch in text.chars() {
         if ch.is_ascii() {
@@ -62,14 +69,16 @@ pub fn estimate_tokens(text: &str) -> usize {
         } else if is_cjk(ch) {
             cjk_count += 1;
         } else {
-            // Other unicode: treat as ~1 token per character
-            ascii_count += 1;
+            other_count += 1;
         }
     }
 
-    let cjk_tokens = (cjk_count as f64 * 1.6) as usize;
-    let ascii_tokens = (ascii_count as f64 * 0.3) as usize;
-    cjk_tokens + ascii_tokens
+    let cjk_tokens = (cjk_count as f64 * 1.6).ceil() as usize;
+    let ascii_tokens = (ascii_count as f64 * 0.3).ceil() as usize;
+    let other_tokens = other_count.saturating_mul(2);
+    cjk_tokens
+        .saturating_add(ascii_tokens)
+        .saturating_add(other_tokens)
 }
 
 /// Check if a character is CJK (Chinese, Japanese, Korean).
@@ -128,6 +137,14 @@ mod tests {
         // "你好世界" = 4 CJK → 4 * 1.6 = 6.4 → 6
         let tokens = estimate_tokens("你好世界");
         assert!(tokens >= 6 && tokens <= 7, "got {tokens}");
+    }
+
+    #[test]
+    fn estimate_tokens_non_cjk_unicode_is_conservative() {
+        assert_eq!(estimate_tokens("🙂"), 2);
+        assert_eq!(estimate_tokens("Привет"), 12);
+        assert_eq!(estimate_tokens("مرحبا"), 10);
+        assert_eq!(estimate_tokens("🙂🙂🙂"), 6);
     }
 
     #[test]

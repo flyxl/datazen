@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
 import {
   ArrowDown,
   BookOpen,
   ChevronDown,
   ChevronRight,
+  History,
   MessageSquare,
   Settings,
   Sparkles,
@@ -12,6 +13,7 @@ import {
   Wand2,
   Send,
   Wrench,
+  X,
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { AiInput } from './AiInput';
@@ -20,22 +22,33 @@ import { useI18n } from '../../hooks/useI18n';
 import { useAutoScroll } from '../../hooks/useAutoScroll';
 import { useAiEditorGrant } from '../../hooks/useAiEditorGrant';
 import { useAiStore } from '../../stores/aiStore';
+import { aiCommands } from '../../commands/ai';
+import { computeSessionKey } from '../../stores/ai/sessions';
 import { cn } from '../../lib/cn';
 import { openDocsWindow, openSettingsWindow } from '../../lib/windowManager';
 import { WorkflowPanel } from './WorkflowPanel';
 import { splitContextItems } from '../../lib/contextItems';
 import { AiEgressNotice } from './AiEgressNotice';
 import { detectSafetyPreset } from '../../lib/aiSafetyPresets';
+import { memoryModeFor } from '../../lib/aiMemorySettings';
 import { Select } from '../ui/Select';
 import { composeKvAiMessage } from '../../lib/kvAiContext';
 import type { KvAiContext } from '../../lib/kvAiContext';
-import type { AiChatMessage, AiQuestion, ContextItem } from '../../types';
+import type {
+  AiAgentMode,
+  AiChatContextSnapshot,
+  AiChatMessage,
+  AiQuestion,
+  ContextItem,
+} from '../../types';
 import type { AiChatDraftRequest } from '../../windows/connection/query/aiDraftBridge';
 import { Spinner } from '../ui/Spinner';
+import { AiSessionHistory } from './AiSessionHistory';
 
 interface AiChatPanelProps {
   dbSessionId: string;
   database?: string;
+  databaseType?: string;
   sqlDialect?: string;
   onInsertSql?: (sql: string) => void;
   onRunCode?: (code: string, language: string) => void;
@@ -54,10 +67,22 @@ interface AiChatPanelProps {
   /** Persisted connection id of the active workspace, for editor-session grants. */
   connectionId?: string;
   /**
+   * Memory policy override. Until T13 ships a settings switch the panel sends
+   * an explicit `auto` + `user` default rather than relying on the backend's
+   * backward-compatible `off` default.
+   */
+  memoryMode?: 'off' | 'ask' | 'auto';
+  memoryScope?: 'organization' | 'user' | 'connection' | 'database' | 'schema' | 'table' | 'column';
+  /**
    * Stable owner id (pane key) of the editor session this panel may share.
    * `undefined` when the active tab has no query editor.
    */
   editorSessionId?: string;
+  /**
+   * Host-owned editor/result snapshot for the active query panel. The panel
+   * freezes it on send and lets the user drop individual chips.
+   */
+  autoContext?: AiChatContextSnapshot | null;
 }
 
 function formatMcpToolDisplayName(qualifiedName: string): string {
@@ -68,6 +93,7 @@ function formatMcpToolDisplayName(qualifiedName: string): string {
 export function AiChatPanel({
   dbSessionId,
   database,
+  databaseType,
   sqlDialect,
   onInsertSql,
   onRunCode,
@@ -76,18 +102,68 @@ export function AiChatPanel({
   draftRequest,
   onDraftConsumed,
   connectionId,
+  memoryMode,
+  memoryScope = 'user',
   editorSessionId,
+  autoContext,
 }: AiChatPanelProps) {
   const { t } = useI18n();
   const chatSession = useAiStore((s) => s.chatSession);
+  const memoryCandidateNotice = useAiStore((s) => s.memoryCandidateNotice);
+  const dismissMemoryCandidateNotice = useAiStore((s) => s.dismissMemoryCandidateNotice);
+  const sessionMigrationError = useAiStore((s) => s.sessionMigrationError);
+  const sessionMigrationSuccess = useAiStore((s) => s.sessionMigrationSuccess);
   const isConfigured = useAiStore((s) => s.isConfigured);
   const initChat = useAiStore((s) => s.initChatSession);
   const sendMessage = useAiStore((s) => s.sendChatMessage);
   const clearChat = useAiStore((s) => s.clearChat);
   const cancelChat = useAiStore((s) => s.cancelChat);
   const settingsConfig = useAiStore((s) => s.settingsConfig);
+  const effectiveMemoryMode = memoryMode ?? memoryModeFor(settingsConfig?.memory);
   const setActiveProfile = useAiStore((s) => s.setActiveProfile);
   const loadConfig = useAiStore((s) => s.loadConfig);
+  const templates = settingsConfig?.promptTemplates ?? [];
+
+  // Keep the chips in sync with the host snapshot, but never resurrect a field
+  // the user explicitly removed unless its value changes.
+  useEffect(() => {
+    const previous = previousAutoContextRef.current;
+    previousAutoContextRef.current = autoContext ?? null;
+    setSnapshot((current) => {
+      const next: AiChatContextSnapshot = { ...(current ?? {}) };
+      let changed = false;
+      if (autoContext?.editorSql !== previous?.editorSql) {
+        changed = true;
+        if (autoContext?.editorSql) next.editorSql = autoContext.editorSql;
+        else delete next.editorSql;
+      }
+      if (autoContext?.selection !== previous?.selection) {
+        changed = true;
+        if (autoContext?.selection) next.selection = autoContext.selection;
+        else delete next.selection;
+      }
+      if (autoContext?.lastError !== previous?.lastError) {
+        changed = true;
+        if (autoContext?.lastError) next.lastError = autoContext.lastError;
+        else delete next.lastError;
+      }
+      if (autoContext?.resultPreview !== previous?.resultPreview) {
+        changed = true;
+        if (autoContext?.resultPreview) next.resultPreview = autoContext.resultPreview;
+        else delete next.resultPreview;
+      }
+      return changed ? (hasSnapshotContent(next) ? next : null) : current;
+    });
+  }, [autoContext]);
+
+  const removeSnapshotField = useCallback((field: keyof AiChatContextSnapshot) => {
+    setSnapshot((current) => {
+      if (!current) return null;
+      const next = { ...current };
+      delete next[field];
+      return hasSnapshotContent(next) ? next : null;
+    });
+  }, []);
 
   useEffect(() => {
     void loadConfig?.();
@@ -109,14 +185,31 @@ export function AiChatPanel({
         : 'text-blue-400';
 
   const [input, setInput] = useState('');
+  const [snapshot, setSnapshot] = useState<AiChatContextSnapshot | null>(null);
+  const previousAutoContextRef = useRef<AiChatContextSnapshot | null>(null);
   const [tab, setTab] = useState<'chat' | 'workflows'>('chat');
+  const [sessionHistoryOpen, setSessionHistoryOpen] = useState(false);
+  const [agentMode, setAgentMode] = useState<AiAgentMode>('ask');
+  const [templateId, setTemplateId] = useState('');
+  const [rememberNotice, setRememberNotice] = useState<string | null>(null);
+  // A template choice is scoped to one connection/database type; switching
+  // returns to automatic default selection instead of carrying a stale pick.
+  useEffect(() => {
+    setTemplateId('');
+  }, [connectionId, databaseType]);
   const [contextItems, setContextItems] = useState<ContextItem[]>([]);
   const { atBottom, unreadCount, jumpToBottom, onScroll, containerRef } = useAutoScroll();
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // P6 §14.4: sharing the current editor session is opt-in. Default stays
   // `independent`; a denied grant shows an error and stays independent.
-  const { canShare, sharing, error: shareError, setSharing, claimForSend } = useAiEditorGrant({
+  const {
+    canShare,
+    sharing,
+    error: shareError,
+    setSharing,
+    claimForSend,
+  } = useAiEditorGrant({
     connectionId,
     database,
     editorSessionId,
@@ -128,11 +221,14 @@ export function AiChatPanel({
   // Conflict resolution: pending draft waiting for user decision.
   const [pendingConflictDraft, setPendingConflictDraft] = useState<AiChatDraftRequest | null>(null);
 
+  // The persisted connection id is the stable session identity. A reconnect
+  // changes `dbSessionId` but must not switch the conversation; a real
+  // connection change must re-key it even though a chat session already exists.
+  const desiredSessionKey = computeSessionKey(connectionId, dbSessionId, database);
   useEffect(() => {
-    if (!chatSession) {
-      initChat(dbSessionId, database);
-    }
-  }, [chatSession, initChat, dbSessionId, database]);
+    if (chatSession?.sessionKey === desiredSessionKey) return;
+    initChat(dbSessionId, database, connectionId);
+  }, [desiredSessionKey, chatSession?.sessionKey, initChat, dbSessionId, database, connectionId]);
 
   // Auto-scroll to bottom when new messages arrive while already at bottom
   useEffect(() => {
@@ -196,22 +292,78 @@ export function AiChatPanel({
     setPendingConflictDraft(null);
   }, []);
 
+  const handleRemember = useCallback(
+    async (message: AiChatMessage) => {
+      const content = message.content.trim();
+      if (!content) return;
+      if (!settingsConfig?.memory?.enabled) {
+        setRememberNotice(t('chat.memoryDisabled'));
+        window.setTimeout(() => setRememberNotice(null), 4000);
+        return;
+      }
+      const firstLine = content.split('\n').find((line) => line.trim()) ?? content;
+      try {
+        await aiCommands.memoryCreate({
+          scopeType: connectionId ? 'connection' : 'user',
+          connectionId: connectionId || undefined,
+          kind: 'preference',
+          subject: firstLine.trim().slice(0, 80),
+          content,
+          source: 'explicit',
+          sourceRef: chatSession?.sessionKey,
+          status: 'candidate',
+          sensitivity: 'normal',
+          confidence: 0.6,
+        });
+        setRememberNotice(t('chat.remembered'));
+        window.setTimeout(() => setRememberNotice(null), 4000);
+      } catch {
+        setRememberNotice(t('chat.rememberFailed'));
+      }
+    },
+    [connectionId, chatSession?.sessionKey, settingsConfig?.memory?.enabled, t],
+  );
+
   const handleSend = useCallback(() => {
     if (!input.trim() || chatSession?.isStreaming) return;
     const { contextFiles, contextTables } = splitContextItems(contextItems);
     void sendMessage({
       dbSessionId,
+      connectionId,
       database,
+      agentMode,
+      templateId: templateId || undefined,
+      databaseType,
       // KV panels ride their host-owned facts along with the question;
       // `composeKvAiMessage` is the identity function when there is no context.
       content: composeKvAiMessage(input.trim(), kvContext ?? null),
       contextFiles: contextFiles.length > 0 ? contextFiles : undefined,
       contextTables: contextTables.length > 0 ? contextTables : undefined,
+      memoryMode: effectiveMemoryMode,
+      memoryScope,
+      ...(hasSnapshotContent(snapshot) ? { autoContext: snapshot } : {}),
       targetClaim: claimForSend(),
     });
     setInput('');
     setContextItems([]);
-  }, [input, chatSession, sendMessage, dbSessionId, database, contextItems, kvContext, claimForSend]);
+    setSnapshot(null);
+  }, [
+    input,
+    chatSession,
+    sendMessage,
+    dbSessionId,
+    connectionId,
+    effectiveMemoryMode,
+    memoryScope,
+    database,
+    databaseType,
+    agentMode,
+    templateId,
+    contextItems,
+    kvContext,
+    snapshot,
+    claimForSend,
+  ]);
 
   // BUG-01: Provide onStop so users can cancel streaming replies. The store
   // owns the receipt handling (marked / alreadyFinished / forbidden).
@@ -290,6 +442,17 @@ export function AiChatPanel({
               <Button
                 variant="ghost"
                 className="h-6 px-1.5 text-[11px]"
+                title={t('chat.sessions.open')}
+                aria-label={t('chat.sessions.open')}
+                data-testid="ai-session-history-toggle"
+                aria-expanded={sessionHistoryOpen}
+                onClick={() => setSessionHistoryOpen((open) => !open)}
+              >
+                <History className="h-3 w-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                className="h-6 px-1.5 text-[11px]"
                 title={t('docs.openAiHelp')}
                 onClick={() => openDocsWindow('context')}
               >
@@ -317,6 +480,95 @@ export function AiChatPanel({
           )}
         </div>
       </div>
+
+      {tab === 'chat' && (
+        <AiSessionHistory open={sessionHistoryOpen} onClose={() => setSessionHistoryOpen(false)} />
+      )}
+
+      {tab === 'chat' && sessionMigrationError && (
+        <div
+          className="shrink-0 border-b border-danger/30 bg-danger/5 px-3 py-1 text-[10px] text-danger"
+          data-testid="ai-session-migration-banner"
+        >
+          {sessionMigrationError}
+        </div>
+      )}
+      {tab === 'chat' && sessionMigrationSuccess > 0 && !sessionMigrationError && (
+        <div
+          className="shrink-0 border-b border-success/30 bg-success/5 px-3 py-1 text-[10px] text-success"
+          data-testid="ai-session-migration-success-banner"
+        >
+          {t('chat.sessions.migrationSuccess', { count: sessionMigrationSuccess })}
+        </div>
+      )}
+
+      {tab === 'chat' && (
+        <div
+          className="flex shrink-0 items-center gap-2 border-b border-edge/60 px-3 py-1"
+          data-testid="ai-agent-mode-row"
+        >
+          <div
+            role="group"
+            aria-label={`${t('chat.mode.ask')} / ${t('chat.mode.agent')}`}
+            className="inline-flex overflow-hidden rounded border border-edge"
+          >
+            <button
+              type="button"
+              data-testid="ai-agent-mode-ask"
+              aria-pressed={agentMode === 'ask'}
+              title={t('chat.mode.askHint')}
+              className={cn(
+                'px-2 py-0.5 text-[10px] transition-colors',
+                agentMode === 'ask'
+                  ? 'bg-accent/15 font-medium text-accent'
+                  : 'text-fg-muted hover:bg-surface-alt hover:text-fg',
+              )}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setAgentMode('ask')}
+            >
+              {t('chat.mode.ask')}
+            </button>
+            <button
+              type="button"
+              data-testid="ai-agent-mode-agent"
+              aria-pressed={agentMode === 'agent'}
+              title={t('chat.mode.agentHint')}
+              className={cn(
+                'border-l border-edge px-2 py-0.5 text-[10px] transition-colors',
+                agentMode === 'agent'
+                  ? 'bg-accent/15 font-medium text-accent'
+                  : 'text-fg-muted hover:bg-surface-alt hover:text-fg',
+              )}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setAgentMode('agent')}
+            >
+              {t('chat.mode.agent')}
+            </button>
+          </div>
+          <span
+            className="min-w-0 truncate text-[10px] text-fg-muted"
+            data-testid="ai-agent-mode-hint"
+          >
+            {t(agentMode === 'ask' ? 'chat.mode.askHint' : 'chat.mode.agentHint')}
+          </span>
+          {templates.length > 0 && (
+            <div className="ml-auto w-36 shrink-0" data-testid="ai-template-select">
+              <Select
+                value={templateId}
+                options={[
+                  { value: '', label: t('chat.template.auto') },
+                  ...templates.map((template) => ({
+                    value: template.id,
+                    label: template.name || template.id,
+                  })),
+                ]}
+                onChange={setTemplateId}
+                aria-label={t('chat.template.label')}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {tab === 'chat' && settingsConfig && settingsConfig.profiles.length > 0 && (
         <div className="flex shrink-0 items-center justify-between border-b border-edge/60 bg-surface-alt/40 px-3 py-1 text-xs">
@@ -387,6 +639,46 @@ export function AiChatPanel({
         </div>
       ) : (
         <>
+          {(memoryCandidateNotice || rememberNotice) && (
+            <div className="shrink-0 space-y-1 px-3 pt-2">
+              {memoryCandidateNotice && (
+                <div
+                  className="flex items-center gap-2 rounded border border-accent/30 bg-accent/5 px-2 py-1.5 text-[11px] text-fg-secondary"
+                  data-testid="ai-memory-candidate-toast"
+                >
+                  <BookOpen className="h-3 w-3 text-accent" />
+                  <span className="min-w-0 flex-1">
+                    {t('chat.memoryCandidates', { count: memoryCandidateNotice.count })}
+                  </span>
+                  <button
+                    type="button"
+                    className="text-fg-muted hover:text-fg"
+                    onClick={dismissMemoryCandidateNotice}
+                    aria-label={t('chat.dismiss')}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
+              {rememberNotice && (
+                <div
+                  className="flex items-center gap-2 rounded border border-edge bg-surface-alt px-2 py-1.5 text-[11px] text-fg-secondary"
+                  data-testid="ai-memory-remember-toast"
+                >
+                  <BookOpen className="h-3 w-3 text-accent" />
+                  <span className="min-w-0 flex-1">{rememberNotice}</span>
+                  <button
+                    type="button"
+                    className="text-fg-muted hover:text-fg"
+                    onClick={() => setRememberNotice(null)}
+                    aria-label={t('chat.dismiss')}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           {/* Messages */}
           <div
             ref={containerRef}
@@ -400,13 +692,29 @@ export function AiChatPanel({
             {chatSession?.messages.map((msg, i) => (
               <ChatBubble
                 key={msg.id ?? i}
-                message={msg}
+                message={
+                  msg.memoryUsed ||
+                  msg.role !== 'assistant' ||
+                  i !== chatSession.messages.length - 1 ||
+                  !chatSession.memoryUsed
+                    ? msg
+                    : { ...msg, memoryUsed: chatSession.memoryUsed }
+                }
                 sqlDialect={sqlDialect}
                 onInsertSql={onInsertSql}
                 onRunCode={onRunCode}
                 onNewQuery={onNewQuery}
+                onRemember={handleRemember}
                 onAnswerQuestions={(answers) => {
-                  void sendMessage({ dbSessionId, database, content: answers });
+                  void sendMessage({
+                    dbSessionId,
+                    connectionId,
+                    database,
+                    agentMode,
+                    content: answers,
+                    memoryMode: effectiveMemoryMode,
+                    memoryScope,
+                  });
                 }}
                 isLastAssistant={
                   msg.role === 'assistant' &&
@@ -423,6 +731,7 @@ export function AiChatPanel({
                     role: 'assistant',
                     content: chatSession.streamContent,
                     reasoning: chatSession.streamReasoning || undefined,
+                    memoryUsed: chatSession.streamMemoryUsed ?? chatSession.memoryUsed ?? undefined,
                   }}
                   sqlDialect={sqlDialect}
                   isStreaming
@@ -465,8 +774,110 @@ export function AiChatPanel({
           {/* Input */}
           <div className="shrink-0 border-t border-edge p-2">
             <div className="mb-2">
-              <AiEgressNotice contextItems={contextItems} />
+              <AiEgressNotice
+                contextItems={contextItems}
+                egressSummary={chatSession?.egressSummary}
+                database={database}
+              />
+              {(chatSession?.loadedSkills?.length ?? 0) > 0 && (
+                <div
+                  className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-fg-muted"
+                  data-testid="ai-loaded-skills"
+                >
+                  <BookOpen className="h-3 w-3" />
+                  <span>
+                    {t('chat.skillsLoaded', {
+                      count: String(chatSession?.loadedSkills?.length ?? 0),
+                    })}
+                  </span>
+                  {chatSession?.loadedSkills?.map((skill) => (
+                    <span
+                      key={skill.id ?? skill.name}
+                      className="rounded border border-edge bg-surface-alt px-1.5 py-0.5 font-mono text-[10px] text-fg-secondary"
+                    >
+                      {skill.name}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
+            {hasSnapshotContent(snapshot) && (
+              <div
+                className="mb-2 flex flex-wrap items-center gap-1.5"
+                data-testid="ai-auto-context-chips"
+              >
+                {snapshot?.editorSql && (
+                  <AutoContextChip
+                    label={t('chat.autoContext.sql')}
+                    testId="ai-auto-context-sql"
+                    onRemove={() => removeSnapshotField('editorSql')}
+                  />
+                )}
+                {snapshot?.selection && (
+                  <AutoContextChip
+                    label={t('chat.autoContext.selection')}
+                    testId="ai-auto-context-selection"
+                    onRemove={() => removeSnapshotField('selection')}
+                  />
+                )}
+                {snapshot?.lastError && (
+                  <AutoContextChip
+                    label={t('chat.autoContext.error')}
+                    testId="ai-auto-context-error"
+                    onRemove={() => removeSnapshotField('lastError')}
+                  />
+                )}
+                {snapshot?.resultPreview &&
+                  (snapshot.resultPreview.columns.length > 0 ||
+                    snapshot.resultPreview.rows.length > 0) && (
+                    <AutoContextChip
+                      label={t('chat.autoContext.result')}
+                      testId="ai-auto-context-result"
+                      onRemove={() => removeSnapshotField('resultPreview')}
+                    />
+                  )}
+              </div>
+            )}
+            {chatSession?.injection &&
+              (chatSession.injection.templateName ||
+                chatSession.injection.hasConnectionNotes ||
+                chatSession.injection.hasGlobalInstructions) && (
+                <div
+                  className="mb-2 flex flex-wrap items-center gap-1.5 text-[10px] text-fg-muted"
+                  data-testid="ai-injection-chips"
+                >
+                  {chatSession.injection.templateName && (
+                    <span
+                      className="rounded-full border border-edge bg-surface-alt px-2 py-0.5"
+                      data-testid="ai-injection-template"
+                      title={t('chat.injection.readOnlyHint')}
+                    >
+                      {t('chat.injection.template', {
+                        name: chatSession.injection.templateName,
+                      })}
+                    </span>
+                  )}
+                  {chatSession.injection.hasConnectionNotes && (
+                    <span
+                      className="rounded-full border border-edge bg-surface-alt px-2 py-0.5"
+                      data-testid="ai-injection-notes"
+                      title={t('chat.injection.readOnlyHint')}
+                    >
+                      {t('chat.injection.notes')}
+                    </span>
+                  )}
+                  {chatSession.injection.hasGlobalInstructions &&
+                    chatSession.injection.templateName && (
+                      <span
+                        className="rounded-full border border-edge bg-surface-alt px-2 py-0.5"
+                        data-testid="ai-injection-priority"
+                        title={t('chat.injection.priorityHint')}
+                      >
+                        {t('chat.injection.priority')}
+                      </span>
+                    )}
+                </div>
+              )}
             {/*
               The KV facts leave with every message while a key is in scope, so the
               chip says so before the user sends — and names the key it is about.
@@ -537,6 +948,47 @@ export function AiChatPanel({
   );
 }
 
+function hasSnapshotContent(
+  snapshot: AiChatContextSnapshot | null | undefined,
+): snapshot is AiChatContextSnapshot {
+  if (!snapshot) return false;
+  return Boolean(
+    snapshot.editorSql?.trim() ||
+      snapshot.selection?.trim() ||
+      snapshot.lastError?.trim() ||
+      (snapshot.resultPreview &&
+        (snapshot.resultPreview.columns.length > 0 || snapshot.resultPreview.rows.length > 0)),
+  );
+}
+
+function AutoContextChip({
+  label,
+  testId,
+  onRemove,
+}: {
+  label: string;
+  testId: string;
+  onRemove: () => void;
+}) {
+  return (
+    <span
+      className="inline-flex max-w-full items-center gap-1 rounded border border-edge bg-surface-alt px-1.5 py-0.5 text-[10px] text-fg-muted"
+      data-testid={testId}
+    >
+      <span className="truncate">{label}</span>
+      <button
+        type="button"
+        className="shrink-0 rounded p-0.5 text-fg-muted hover:bg-surface hover:text-fg"
+        onClick={onRemove}
+        aria-label={`remove ${label}`}
+        data-testid={`${testId}-remove`}
+      >
+        <X className="h-2.5 w-2.5" />
+      </button>
+    </span>
+  );
+}
+
 function ChatBubble({
   message,
   isStreaming,
@@ -545,6 +997,7 @@ function ChatBubble({
   onRunCode,
   onNewQuery,
   onAnswerQuestions,
+  onRemember,
   isLastAssistant,
 }: {
   message: AiChatMessage;
@@ -554,6 +1007,7 @@ function ChatBubble({
   onRunCode?: (code: string, language: string) => void;
   onNewQuery?: (code: string) => void;
   onAnswerQuestions?: (formatted: string) => void;
+  onRemember?: (message: AiChatMessage) => void;
   isLastAssistant?: boolean;
 }) {
   const { t } = useI18n();
@@ -561,6 +1015,25 @@ function ChatBubble({
   const isTool = message.role === 'tool';
   const [reasoningOpen, setReasoningOpen] = useState(false);
   const [toolCollapsed, setToolCollapsed] = useState(true);
+  const [memoryOpen, setMemoryOpen] = useState(false);
+  const memoryListRef = useRef<HTMLDivElement>(null);
+  const memoryUsed = message.memoryUsed ?? [];
+
+  const handleMemoryCitationClick = (event: MouseEvent<HTMLDivElement>) => {
+    const target = (event.target as HTMLElement).closest<HTMLAnchorElement>('a[href^="#memory-"]');
+    if (!target) return;
+    event.preventDefault();
+    const reference = target.getAttribute('href')?.slice('#memory-'.length);
+    if (!reference) return;
+    setMemoryOpen(true);
+    window.setTimeout(() => {
+      const item = memoryListRef.current?.querySelector<HTMLElement>(
+        `[data-memory-reference="${reference}"]`,
+      );
+      item?.scrollIntoView({ block: 'nearest' });
+      item?.focus();
+    }, 0);
+  };
 
   const hasQuestions = !isUser && !isStreaming && message.questions && message.questions.length > 0;
 
@@ -632,15 +1105,73 @@ function ChatBubble({
           (isUser ? (
             <pre className="whitespace-pre-wrap font-sans">{message.content}</pre>
           ) : (
-            <AiMessageContent
-              content={message.content}
-              sqlDialect={sqlDialect}
-              onInsertSql={onInsertSql}
-              onRunCode={onRunCode}
-              onNewQuery={onNewQuery}
-              isStreaming={isStreaming}
-            />
+            <div onClick={handleMemoryCitationClick}>
+              <AiMessageContent
+                content={message.content}
+                sqlDialect={sqlDialect}
+                onInsertSql={onInsertSql}
+                onRunCode={onRunCode}
+                onNewQuery={onNewQuery}
+                isStreaming={isStreaming}
+                memoryReferences={memoryUsed.map((memory) => memory.reference)}
+              />
+            </div>
           ))}
+
+        {!isUser && memoryUsed.length > 0 && (
+          <div className="mt-2 border-t border-edge/50 pt-1.5">
+            <button
+              type="button"
+              className="flex items-center gap-1 rounded px-1 py-0.5 text-[10px] text-fg-muted transition-colors hover:bg-surface hover:text-fg"
+              onClick={() => setMemoryOpen((open) => !open)}
+              aria-expanded={memoryOpen}
+              data-testid="ai-memory-chip"
+            >
+              <BookOpen className="h-2.5 w-2.5" />
+              {t('chat.memory.used', { count: memoryUsed.length })}
+              {memoryOpen ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+            </button>
+            {memoryOpen && (
+              <div
+                ref={memoryListRef}
+                className="mt-1 space-y-0.5"
+                data-testid="ai-memory-expanded"
+              >
+                {memoryUsed.map((memory) => (
+                  <div
+                    key={`${memory.id}-${memory.reference}`}
+                    tabIndex={-1}
+                    data-memory-reference={memory.reference}
+                    data-testid={`ai-memory-item-${memory.reference}`}
+                    className="rounded px-1.5 py-1 text-[10px] text-fg-muted focus:bg-surface focus:outline-none"
+                  >
+                    <span className="mr-1 font-mono text-fg-secondary">[{memory.reference}]</span>
+                    {memory.subject}
+                    <span className="ml-1 text-fg-muted/70">
+                      {memory.kind} · {memory.scope}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {!isUser && isLastAssistant && !isStreaming && message.content && onRemember && (
+          <button
+            type="button"
+            className="mt-1 flex items-center gap-1 rounded px-1 py-0.5 text-[10px] text-fg-muted transition-colors hover:bg-surface hover:text-fg"
+            onClick={() => onRemember(message)}
+            data-testid="ai-memory-remember"
+          >
+            <BookOpen className="h-2.5 w-2.5" />
+            {t('chat.rememberThis')}
+          </button>
+        )}
 
         {!message.content && isStreaming && message.reasoning && (
           <div className="flex items-center gap-1 text-[10px] text-fg-muted mt-1">

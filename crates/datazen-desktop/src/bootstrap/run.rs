@@ -70,6 +70,21 @@ pub fn run_mcp_stdio() {
 
 /// Entry point invoked by `main.rs`.
 pub fn run() {
+    let (open_request, open_error) = match super::open_request::parse_open_connection_args(
+        &std::env::args().collect::<Vec<_>>(),
+    ) {
+        Ok(request) => (request, None),
+        Err(error) => (None, Some(error)),
+    };
+    if let Some(data_dir) = open_request
+        .as_ref()
+        .and_then(|request| request.data_dir.as_deref())
+    {
+        // This must happen before logging/store initialization: the desktop
+        // store and log directory both resolve DATAZEN_DATA_DIR at startup.
+        std::env::set_var("DATAZEN_DATA_DIR", data_dir);
+    }
+
     let (log_level, log_dir) = resolve_log_settings();
 
     let _ = std::fs::create_dir_all(&log_dir);
@@ -86,6 +101,10 @@ pub fn run() {
         .with(fmt::layer())
         .with(fmt::layer().with_writer(non_blocking).with_ansi(false))
         .init();
+
+    if let Some(error) = open_error {
+        tracing::warn!(error = %error, "ignoring malformed --datazen-open-* arguments");
+    }
 
     // 静默 E2E：必须早于事件循环。tao 在 `applicationDidFinishLaunching`
     // （`AppState::launched`）里就会 `activateIgnoringOtherApps`，那一次发生在
@@ -156,7 +175,9 @@ pub fn run() {
                 );
             });
 
+            app_state.set_app_handle(handle.clone());
             app.manage(app_state);
+            app.manage(super::open_dispatch::PendingOpenRequest::default());
 
             {
                 let state = handle.state::<AppState>();
@@ -176,6 +197,9 @@ pub fn run() {
 
                 if needs_onboarding {
                     tracing::info!("onboarding not completed — creating wizard window");
+                    if let Some(request) = open_request.clone() {
+                        super::open_dispatch::queue_pending_open_request(&handle, request);
+                    }
                     if let Err(e) = crate::commands::window::create_onboarding_window(&handle) {
                         tracing::error!(error = %e, "failed to create onboarding window");
                     }
@@ -188,6 +212,9 @@ pub fn run() {
                                 std::thread::sleep(std::time::Duration::from_millis(500));
                                 crate::commands::window::prepare_main_window(&main_for_deferred);
                             });
+                            if let Some(request) = open_request.clone() {
+                                super::open_dispatch::dispatch(request, main.clone());
+                            }
                         }
                         Err(e) => {
                             tracing::error!(error = %e, "failed to create main window");
@@ -206,6 +233,15 @@ pub fn run() {
                         crate::commands::start_embedded_mcp(state.inner()),
                     ) {
                         tracing::warn!(error = %e, "Failed to auto-start embedded MCP Server");
+                    }
+                }
+                let http_enabled =
+                    tauri::async_runtime::block_on(state.store.get_settings()).mcp_http_enabled;
+                if http_enabled {
+                    if let Err(e) = tauri::async_runtime::block_on(crate::commands::start_http_mcp(
+                        state.inner(),
+                    )) {
+                        tracing::warn!(error = %e, "Failed to auto-start MCP HTTP listener");
                     }
                 }
 
@@ -401,8 +437,17 @@ pub fn run() {
             crate::commands::mcp_client_list,
             crate::commands::mcp_client_tools,
             crate::commands::mcp_get_status,
+            crate::commands::mcp_http_disable,
+            crate::commands::mcp_http_enable,
+            crate::commands::mcp_http_regenerate_token,
+            crate::commands::mcp_http_reload,
+            crate::commands::mcp_http_status,
+            crate::commands::mcp_cancel_all_approvals,
+            crate::commands::mcp_cancel_approval,
             crate::commands::mcp_list_all_tools,
+            crate::commands::mcp_list_audit_log,
             crate::commands::mcp_reload,
+            crate::commands::mcp_respond_approval,
             crate::commands::mcp_start_stdio,
             crate::commands::mcp_stop,
             // ── AI：对话 ──
@@ -425,8 +470,41 @@ pub fn run() {
             crate::commands::ai_save_settings_config,
             crate::commands::ai_set_active_profile,
             crate::commands::ai_validate_config,
+            // ── AI：记忆 ──
+            crate::commands::ai_memory_clear,
+            crate::commands::ai_memory_confirm,
+            crate::commands::ai_memory_correction_candidate,
+            crate::commands::ai_memory_create,
+            crate::commands::ai_memory_delete,
+            crate::commands::ai_memory_export,
+            crate::commands::ai_memory_extract_candidates,
+            crate::commands::ai_memory_list,
+            crate::commands::ai_org_memory_list,
+            crate::commands::ai_memory_mark_stale,
+            crate::commands::ai_memory_reject,
+            crate::commands::ai_memory_search,
+            crate::commands::ai_memory_stats,
+            crate::commands::ai_memory_update,
+            // ── AI：Skills ──
+            crate::commands::ai_list_skills,
+            // ── AI：会话 ──
+            crate::commands::ai_sessions_delete,
+            crate::commands::ai_sessions_export,
+            crate::commands::ai_sessions_get,
+            crate::commands::ai_sessions_list,
+            crate::commands::ai_sessions_upsert,
+            // ── AI：连接笔记 ──
+            crate::commands::ai_connection_context_counts,
+            crate::commands::ai_connection_notes_get,
+            crate::commands::ai_connection_notes_set,
             // ── AI：取消 ──
             crate::commands::ai_cancel,
+            crate::commands::ai_propose_write,
+            crate::commands::ai_apply_write,
+            crate::commands::propose_write,
+            crate::commands::apply_write,
+            crate::commands::ai_deny_write,
+            crate::commands::ai_list_write_audit,
             crate::commands::ai_grant_editor_session,
             crate::commands::ai_revoke_editor_grant,
             crate::commands::ai_touch_editor_grant,

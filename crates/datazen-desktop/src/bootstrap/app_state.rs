@@ -257,6 +257,7 @@ pub(crate) fn finish_app_state(
         // 请求期的调用方一律走 `AppState::organization_scope()`，不得再直读常量。
         // 别的形态（多租户服务端）把这一行换成「按请求解析组织」即可，其余调用点不用动。
         organization_scope: crate::platform::local_organization_scope(),
+        app_handle: Arc::new(std::sync::OnceLock::new()),
         schema_diff_reviewed_plans,
         // Data Sync 的存储端口实例在组装期创建一次：宿主决定「实例从哪来」，
         // 规则与落盘实现留在共享包里。

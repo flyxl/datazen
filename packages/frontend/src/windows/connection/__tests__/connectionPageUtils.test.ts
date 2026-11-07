@@ -1,7 +1,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import {
   consumePendingConnection,
+  enrichOpenConnectionPayload,
   makeTabFromPayload,
+  pendingOpenQuerySql,
   removeConnectionFromStores,
   syncStoresActiveConnection,
 } from '../connectionPageUtils';
@@ -43,6 +45,48 @@ describe('[tester] connectionPageUtils', () => {
         databaseType: 'postgresql',
       })?.status,
     ).toBe('connected');
+  });
+
+  it('enrichOpenConnectionPayload fills name/type/database from the store record', () => {
+    expect(
+      enrichOpenConnectionPayload({ connectionId: 'cfg-1', requestId: 'cli:cfg-1:0' }, [
+        {
+          id: 'cfg-1',
+          name: 'Local PG',
+          databaseType: 'postgresql',
+          database: 'app',
+        },
+      ]),
+    ).toMatchObject({
+      connectionId: 'cfg-1',
+      connectionName: 'Local PG',
+      databaseType: 'postgresql',
+      database: 'app',
+    });
+    expect(enrichOpenConnectionPayload({ connectionId: 'missing' }, [])).toEqual({
+      connectionId: 'missing',
+    });
+  });
+
+  it('pendingOpenQuerySql routes once even when tab/panels are unchanged', () => {
+    const pending = {
+      connectionId: 'cfg-1',
+      sql: 'SELECT 1',
+      requestId: 'cli:cfg-1:8',
+    };
+    expect(pendingOpenQuerySql(pending, [{ connectionId: 'cfg-1', status: 'connected' }], [])).toBe(
+      'SELECT 1',
+    );
+    expect(
+      pendingOpenQuerySql(
+        pending,
+        [{ connectionId: 'cfg-1', status: 'connected' }],
+        [{ connectionId: 'cfg-1' }],
+      ),
+    ).toBeNull();
+    expect(
+      pendingOpenQuerySql(pending, [{ connectionId: 'cfg-1', status: 'connecting' }], []),
+    ).toBeNull();
   });
 
   it('consumePendingConnection reads and clears localStorage payload', () => {

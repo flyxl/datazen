@@ -142,6 +142,9 @@ impl WorkflowHost for ScheduledWorkflowHost<'_> {
     async fn complete_ai(&self, _: String) -> Result<String, WorkflowError> {
         Err(WorkflowError::Validation("scheduled AI unsupported".into()))
     }
+    async fn sql_dialect(&self, connection_id: &str) -> datazen::sql_template::SqlTemplateDialect {
+        self.state.connection_sql_dialect(connection_id).await
+    }
 }
 struct ScheduledWidgetHost<'a> {
     state: &'a AppState,

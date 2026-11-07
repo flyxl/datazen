@@ -24,6 +24,8 @@ const source = {
   mcpDisabledTools: [],
   mcpPermissionMode: 'safe_write' as const,
   mcpAllowedConnectionIds: [],
+  mcpAllowedDatabases: [],
+  mcpAllowedNamespaces: [],
   driverSettings: {},
   aiStrictEgress: true,
   logPath: '/native/private',
