@@ -115,9 +115,15 @@ async fn connection_exists_probes_the_org_scoped_catalog() {
         )
         .unwrap();
     }
-    assert!(connection_exists(&store, &scope("org-a"), "conn-source").await.unwrap());
-    assert!(!connection_exists(&store, &scope("org-a"), "conn-missing").await.unwrap());
-    assert!(!connection_exists(&store, &scope("org-b"), "conn-source").await.unwrap());
+    assert!(connection_exists(&store, &scope("org-a"), "conn-source")
+        .await
+        .unwrap());
+    assert!(!connection_exists(&store, &scope("org-a"), "conn-missing")
+        .await
+        .unwrap());
+    assert!(!connection_exists(&store, &scope("org-b"), "conn-source")
+        .await
+        .unwrap());
 }
 
 fn run(id: &str, operation: &str, status: &str) -> MigrationRunRecord {
@@ -125,7 +131,11 @@ fn run(id: &str, operation: &str, status: &str) -> MigrationRunRecord {
         id: id.into(),
         operation: operation.into(),
         status: status.into(),
-        outcome: if status == "completed" { "success".into() } else { "pending".into() },
+        outcome: if status == "completed" {
+            "success".into()
+        } else {
+            "pending".into()
+        },
         phase: "execute".into(),
         profile_id: Some("p1".into()),
         profile_revision: Some("3".into()),
@@ -160,9 +170,14 @@ async fn migration_runs_upsert_start_then_finish_and_isolate_by_org() {
     runs.save("org-a", record).await.unwrap();
 
     // 组织隔离。
-    runs.save("org-b", run("r2", "schemaDiff", "running")).await.unwrap();
+    runs.save("org-b", run("r2", "schemaDiff", "running"))
+        .await
+        .unwrap();
 
-    let page = runs.list("org-a", MigrationRunFilter::default(), 0, 50).await.unwrap();
+    let page = runs
+        .list("org-a", MigrationRunFilter::default(), 0, 50)
+        .await
+        .unwrap();
     assert_eq!(page.total, 1);
     assert_eq!(page.items.len(), 1);
     assert_eq!(page.items[0].id, "r1");
@@ -171,12 +186,28 @@ async fn migration_runs_upsert_start_then_finish_and_isolate_by_org() {
 
     // 过滤与分页。
     let filtered = runs
-        .list("org-a", MigrationRunFilter { operation: Some("dataSync".into()), ..Default::default() }, 0, 50)
+        .list(
+            "org-a",
+            MigrationRunFilter {
+                operation: Some("dataSync".into()),
+                ..Default::default()
+            },
+            0,
+            50,
+        )
         .await
         .unwrap();
     assert_eq!(filtered.total, 0);
     let by_connection = runs
-        .list("org-b", MigrationRunFilter { connection_id: Some("c2".into()), ..Default::default() }, 0, 50)
+        .list(
+            "org-b",
+            MigrationRunFilter {
+                connection_id: Some("c2".into()),
+                ..Default::default()
+            },
+            0,
+            50,
+        )
         .await
         .unwrap();
     assert_eq!(by_connection.total, 1);
@@ -191,7 +222,10 @@ async fn migration_runs_truncate_beyond_the_retention_cap() {
         record.started_at = format!("2026-11-07T{:02}:{:02}:00Z", index / 60, index % 60);
         runs.save("org-a", record).await.unwrap();
     }
-    let page = runs.list("org-a", MigrationRunFilter::default(), 0, 1000).await.unwrap();
+    let page = runs
+        .list("org-a", MigrationRunFilter::default(), 0, 1000)
+        .await
+        .unwrap();
     assert_eq!(
         page.total as usize,
         super::migration_runs::MAX_MIGRATION_RUN_HISTORY,

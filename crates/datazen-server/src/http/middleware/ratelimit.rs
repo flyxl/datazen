@@ -175,6 +175,11 @@ impl RateLimiter {
             ("POST", path) if path.ends_with("/executions") => RouteClass::Strict,
             // aiHost 目标执行（WR-F1#3 点亮后的提交面）。
             ("POST", "/api/v1/ai-host/execute-target") => RouteClass::Strict,
+            // Schema Diff 的 job 受理面（契约 §6.13：计划准备/统一准备/
+            // 部署受理——每受理一条 job，派发后占活连接与 DDL 执行资源）。
+            ("POST", "/api/v1/schema-diff/plans")
+            | ("POST", "/api/v1/schema-diff/unified-plans")
+            | ("POST", "/api/v1/schema-diff/deploys") => RouteClass::Strict,
             // 取消族（§5.2 注记的 `POST /cancel` 语义：执行/Job 的取消端点
             // 以 /cancel 结尾）。
             ("POST", path) if path.ends_with("/cancel") => RouteClass::Strict,

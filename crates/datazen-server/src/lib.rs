@@ -45,5 +45,6 @@ pub mod logging;
 pub mod mcp;
 pub mod operations;
 pub mod policy;
+pub mod schema_diff;
 pub mod storage;
 pub mod transfer;

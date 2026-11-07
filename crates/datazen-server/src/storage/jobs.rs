@@ -105,11 +105,14 @@ impl ServerJobs {
         conn: &rusqlite::Connection,
         organization_id: &str,
         job_id: &str,
+        now: &str,
     ) -> Result<Option<JobRecord>, PortError> {
         match Self::sync_get_db_row(conn, organization_id, job_id)? {
             None => Ok(None),
             Some(mut row) => {
                 row.record.stages = row.core.stages(conn)?;
+                row.record.view.artifact_ids =
+                    read_artifact_refs(conn, organization_id, job_id, now)?;
                 Ok(Some(row.record))
             }
         }
@@ -175,8 +178,14 @@ impl ServerJobs {
             .map_err(backend)?;
         if let Some((existing_job_id, existing_fingerprint)) = replayed {
             if existing_fingerprint.as_deref() == Some(fingerprint.as_str()) {
-                return Self::sync_get(&tx, &organization_id, &existing_job_id)?
-                    .ok_or_else(|| PortError::NotFound(existing_job_id));
+                let replay_now = self.clock.now();
+                return Self::sync_get(
+                    &tx,
+                    &organization_id,
+                    &existing_job_id,
+                    replay_now.as_str(),
+                )?
+                .ok_or_else(|| PortError::NotFound(existing_job_id));
             }
             return Err(PortError::IdempotencyConflict);
         }
@@ -246,7 +255,8 @@ impl ServerJobs {
         .map_err(backend)?;
         tx.commit().map_err(backend)?;
 
-        Self::sync_get(&conn, &organization_id, &job_id)?.ok_or_else(|| PortError::NotFound(job_id))
+        Self::sync_get(&conn, &organization_id, &job_id, now.as_str())?
+            .ok_or_else(|| PortError::NotFound(job_id))
     }
 
     fn sync_list(
@@ -511,7 +521,7 @@ impl ServerJobs {
         .map_err(backend)?;
         tx.commit().map_err(backend)?;
 
-        Self::sync_get(&conn, &organization_id, claim.job_id.as_str())?
+        Self::sync_get(&conn, &organization_id, claim.job_id.as_str(), now.as_str())?
             .ok_or_else(|| PortError::NotFound(claim.job_id.as_str().to_string()))
     }
 
@@ -944,8 +954,14 @@ impl JobRepository for ServerJobs {
         let ctx = ctx.clone();
         tokio::task::spawn_blocking(move || {
             let conn = lock(&this.store)?;
-            Self::sync_get(&conn, ctx.organization_id.as_str(), job_id.as_str())?
-                .ok_or_else(|| PortError::NotFound(job_id.as_str().to_string()))
+            let now = this.clock.now();
+            Self::sync_get(
+                &conn,
+                ctx.organization_id.as_str(),
+                job_id.as_str(),
+                now.as_str(),
+            )?
+            .ok_or_else(|| PortError::NotFound(job_id.as_str().to_string()))
         })
         .await
         .map_err(backend)?
@@ -1137,7 +1153,9 @@ fn enum_text<T: serde::Serialize>(value: &T) -> Result<String, PortError> {
 fn verdict_text(verdict: datazen::jobs::domain::job::JobRecoveryVerdict) -> &'static str {
     match verdict {
         datazen::jobs::domain::job::JobRecoveryVerdict::NotExecuted => "notExecuted",
-        datazen::jobs::domain::job::JobRecoveryVerdict::PendingVerification => "pendingVerification",
+        datazen::jobs::domain::job::JobRecoveryVerdict::PendingVerification => {
+            "pendingVerification"
+        }
         datazen::jobs::domain::job::JobRecoveryVerdict::ResumeAfterVerify => "resumeAfterVerify",
         datazen::jobs::domain::job::JobRecoveryVerdict::Reject => "reject",
         datazen::jobs::domain::job::JobRecoveryVerdict::RequireManualReview => {
@@ -1170,10 +1188,40 @@ fn validate_boundary(boundary: &CommitBoundary) -> Result<(), PortError> {
     Ok(())
 }
 
+/// 未过期的产物引用（桌面 codec `read_artifacts` 同款：refs 表按
+/// created_at/artifact_id 有序；W8 刀3b 起合并进 `JobView.artifact_ids`——
+/// 运行期登记的产物（如 `artifact:plan:{id}`）在读取面可见）。`now` 来自
+/// 仓储时钟（与过期清理同一时刻口径）。
+fn read_artifact_refs(
+    conn: &rusqlite::Connection,
+    organization_id: &str,
+    job_id: &str,
+    now: &str,
+) -> Result<Vec<ArtifactId>, PortError> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT artifact_id FROM job_artifact_refs \
+             WHERE organization_id = ?1 AND job_id = ?2 AND expires_at > ?3 \
+             ORDER BY created_at, artifact_id",
+        )
+        .map_err(backend)?;
+    let rows = stmt
+        .query_map(params![organization_id, job_id, now], |row| {
+            row.get::<_, String>(0)
+        })
+        .map_err(backend)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(backend)?;
+    Ok(rows.into_iter().map(ArtifactId::new).collect())
+}
+
 fn prune_expired_artifacts(conn: &rusqlite::Connection, now: &str) -> Result<(), PortError> {
-    conn.execute("DELETE FROM job_artifact_refs WHERE expires_at <= ?1", params![now])
-        .map(|_| ())
-        .map_err(backend)
+    conn.execute(
+        "DELETE FROM job_artifact_refs WHERE expires_at <= ?1",
+        params![now],
+    )
+    .map(|_| ())
+    .map_err(backend)
 }
 
 fn read_boundaries(
@@ -1247,7 +1295,11 @@ impl ServerJobs {
         )
     }
 
-    fn sync_request_cancel(&self, ctx: &RequestContext, job_id: &JobId) -> Result<JobRecord, PortError> {
+    fn sync_request_cancel(
+        &self,
+        ctx: &RequestContext,
+        job_id: &JobId,
+    ) -> Result<JobRecord, PortError> {
         let now = self.clock.now();
         let organization_id = ctx.organization_id.as_str().to_string();
         let conn = lock(&self.store)?;
@@ -1276,7 +1328,7 @@ impl ServerJobs {
                 id: job_id.as_str().into(),
             });
         }
-        let record = Self::sync_get(&tx, &organization_id, job_id.as_str())?
+        let record = Self::sync_get(&tx, &organization_id, job_id.as_str(), now.as_str())?
             .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
         tx.commit().map_err(backend)?;
         Ok(record)
@@ -1306,7 +1358,7 @@ impl ServerJobs {
         if changed != 1 {
             return Err(not_found_or_conflict(&tx, &organization_id, job_id)?);
         }
-        let record = Self::sync_get(&tx, &organization_id, job_id.as_str())?
+        let record = Self::sync_get(&tx, &organization_id, job_id.as_str(), now.as_str())?
             .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
         tx.commit().map_err(backend)?;
         Ok(record)
@@ -1352,7 +1404,7 @@ impl ServerJobs {
             ],
         )
         .map_err(backend)?;
-        let record = Self::sync_get(&tx, &organization_id, job_id.as_str())?
+        let record = Self::sync_get(&tx, &organization_id, job_id.as_str(), now.as_str())?
             .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
         tx.commit().map_err(backend)?;
         Ok(record)
@@ -1385,10 +1437,7 @@ impl ServerJobs {
             .optional()
             .map_err(backend)?
             .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
-        let was_terminal = matches!(
-            old_state.0.as_str(),
-            "succeeded" | "failed" | "cancelled"
-        );
+        let was_terminal = matches!(old_state.0.as_str(), "succeeded" | "failed" | "cancelled");
         let outcome = if was_terminal {
             old_state.2.unwrap_or_else(|| "unknown".into())
         } else if old_state.1.is_some() || old_state.0 == "running" {
@@ -1435,7 +1484,7 @@ impl ServerJobs {
             ],
         )
         .map_err(backend)?;
-        let record = Self::sync_get(&tx, &organization_id, job_id.as_str())?
+        let record = Self::sync_get(&tx, &organization_id, job_id.as_str(), now.as_str())?
             .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
         tx.commit().map_err(backend)?;
         Ok(record)
@@ -1457,7 +1506,12 @@ impl ServerJobs {
         tx.execute(
             "UPDATE jobs SET progress_json = ?1, updated_at = ?2 \
              WHERE organization_id = ?3 AND job_id = ?4",
-            params![progress_json, now.as_str(), organization_id, claim.job_id.as_str()],
+            params![
+                progress_json,
+                now.as_str(),
+                organization_id,
+                claim.job_id.as_str()
+            ],
         )
         .map_err(backend)?;
         tx.commit().map_err(backend)?;
@@ -1507,8 +1561,8 @@ impl ServerJobs {
     ) -> Result<(), PortError> {
         validate_artifacts(artifacts)?;
         let now = self.clock.now();
-        let expires = after_seconds(&now, Self::JOB_ARTIFACT_REFERENCE_TTL_SECS)
-            .map_err(PortError::from)?;
+        let expires =
+            after_seconds(&now, Self::JOB_ARTIFACT_REFERENCE_TTL_SECS).map_err(PortError::from)?;
         let organization_id = ctx.organization_id.as_str().to_string();
         let conn = lock(&self.store)?;
         let tx = conn.unchecked_transaction().map_err(backend)?;
@@ -1534,8 +1588,8 @@ impl ServerJobs {
     ) -> Result<(), PortError> {
         validate_artifacts(artifacts)?;
         let now = self.clock.now();
-        let expires = after_seconds(&now, Self::JOB_ARTIFACT_REFERENCE_TTL_SECS)
-            .map_err(PortError::from)?;
+        let expires =
+            after_seconds(&now, Self::JOB_ARTIFACT_REFERENCE_TTL_SECS).map_err(PortError::from)?;
         let organization_id = ctx.organization_id.as_str().to_string();
         let conn = lock(&self.store)?;
         let tx = conn.unchecked_transaction().map_err(backend)?;
@@ -1695,7 +1749,7 @@ impl ServerJobs {
             )
             .map_err(backend)?;
         }
-        let record = Self::sync_get(&tx, &organization_id, claim.job_id.as_str())?
+        let record = Self::sync_get(&tx, &organization_id, claim.job_id.as_str(), now.as_str())?
             .ok_or_else(|| PortError::NotFound(claim.job_id.as_str().into()))?;
         tx.commit().map_err(backend)?;
         Ok(record)
@@ -1712,8 +1766,8 @@ impl ServerJobs {
         }
         let now = self.clock.now();
         let organization_id = ctx.organization_id.as_str().to_string();
-        let recovery_json = serde_json::to_string(&recovery)
-            .map_err(|_| backend("recovery encode failed"))?;
+        let recovery_json =
+            serde_json::to_string(&recovery).map_err(|_| backend("recovery encode failed"))?;
         let conn = lock(&self.store)?;
         let tx = conn.unchecked_transaction().map_err(backend)?;
         let boundaries: i64 = tx
@@ -1775,9 +1829,7 @@ impl ServerJobs {
                 .result
                 .reason_code
                 .as_deref()
-                .is_some_and(|code| {
-                    datazen::jobs::runtime_repository::safe_result_marker(code)
-                });
+                .is_some_and(|code| datazen::jobs::runtime_repository::safe_result_marker(code));
         if !verification_valid {
             return Err(PortError::BackendUnavailable(
                 "recovery verification is outside the safe format".into(),
@@ -1890,8 +1942,8 @@ impl ServerJobs {
             sequence = sequence.checked_add(1).ok_or_else(|| {
                 PortError::BackendUnavailable("commit boundary sequence overflow".into())
             })?;
-            let boundary_json = serde_json::to_string(boundary)
-                .map_err(|_| backend("boundary encode failed"))?;
+            let boundary_json =
+                serde_json::to_string(boundary).map_err(|_| backend("boundary encode failed"))?;
             tx.execute(
                 "INSERT INTO job_commit_boundaries \
                  (organization_id, job_id, boundary_index, boundary_json) \
@@ -1916,8 +1968,8 @@ impl ServerJobs {
             params![organization_id, job_id.as_str(), recovery_json],
         )
         .map_err(backend)?;
-        let is_resumable =
-            verification.result.verdict == datazen::jobs::domain::job::JobRecoveryVerdict::ResumeAfterVerify;
+        let is_resumable = verification.result.verdict
+            == datazen::jobs::domain::job::JobRecoveryVerdict::ResumeAfterVerify;
         let pending_reason = if is_resumable {
             None
         } else {
@@ -1988,8 +2040,14 @@ impl ServerJobs {
         job_id: &JobId,
     ) -> Result<Vec<CommitBoundary>, PortError> {
         let conn = lock(&self.store)?;
-        Self::sync_get(&conn, ctx.organization_id.as_str(), job_id.as_str())?
-            .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
+        let now = self.clock.now();
+        Self::sync_get(
+            &conn,
+            ctx.organization_id.as_str(),
+            job_id.as_str(),
+            now.as_str(),
+        )?
+        .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
         read_boundaries(&conn, ctx.organization_id.as_str(), job_id)
     }
 
@@ -1999,8 +2057,14 @@ impl ServerJobs {
         job_id: &JobId,
     ) -> Result<Option<Checkpoint>, PortError> {
         let conn = lock(&self.store)?;
-        Self::sync_get(&conn, ctx.organization_id.as_str(), job_id.as_str())?
-            .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
+        let now = self.clock.now();
+        Self::sync_get(
+            &conn,
+            ctx.organization_id.as_str(),
+            job_id.as_str(),
+            now.as_str(),
+        )?
+        .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
         let row = conn
             .query_row(
                 "SELECT checkpoint_version, stable_target_fingerprint, committed_json, \
@@ -2046,7 +2110,7 @@ impl ServerJobs {
         let organization_id = ctx.organization_id.as_str().to_string();
         let conn = lock(&self.store)?;
         prune_expired_artifacts(&conn, now.as_str())?;
-        let record = Self::sync_get(&conn, &organization_id, job_id.as_str())?
+        let record = Self::sync_get(&conn, &organization_id, job_id.as_str(), now.as_str())?
             .ok_or_else(|| PortError::NotFound(job_id.as_str().into()))?;
         let result_row = conn
             .query_row(
@@ -2115,8 +2179,7 @@ impl ServerJobs {
             .transpose()?;
         let selection_revision = match selection_revision {
             Some(revision) => Some(
-                u64::try_from(revision)
-                    .map_err(|_| backend("stored plan revision is invalid"))?,
+                u64::try_from(revision).map_err(|_| backend("stored plan revision is invalid"))?,
             ),
             None => payload_revision,
         };
@@ -2202,11 +2265,9 @@ impl datazen::jobs::runtime_repository::JobRuntimeRepository for ServerJobs {
         let ctx = ctx.clone();
         let claim = claim.clone();
         let stage = stage.clone();
-        tokio::task::spawn_blocking(move || {
-            this.sync_validate_stage_owner(&ctx, &claim, &stage)
-        })
-        .await
-        .map_err(backend)?
+        tokio::task::spawn_blocking(move || this.sync_validate_stage_owner(&ctx, &claim, &stage))
+            .await
+            .map_err(backend)?
     }
 
     async fn cancel_poll(
@@ -2244,11 +2305,9 @@ impl datazen::jobs::runtime_repository::JobRuntimeRepository for ServerJobs {
         let this = self.clone();
         let ctx = ctx.clone();
         let job_id = job_id.clone();
-        tokio::task::spawn_blocking(move || {
-            this.sync_confirm_cancelled(&ctx, &job_id, outcome)
-        })
-        .await
-        .map_err(backend)?
+        tokio::task::spawn_blocking(move || this.sync_confirm_cancelled(&ctx, &job_id, outcome))
+            .await
+            .map_err(backend)?
     }
 
     async fn mark_failed_unstarted(
@@ -2309,11 +2368,9 @@ impl datazen::jobs::runtime_repository::JobRuntimeRepository for ServerJobs {
         let ctx = ctx.clone();
         let claim = claim.clone();
         let artifacts = artifacts.to_vec();
-        tokio::task::spawn_blocking(move || {
-            this.sync_record_artifacts(&ctx, &claim, &artifacts)
-        })
-        .await
-        .map_err(backend)?
+        tokio::task::spawn_blocking(move || this.sync_record_artifacts(&ctx, &claim, &artifacts))
+            .await
+            .map_err(backend)?
     }
 
     async fn record_domain_result(

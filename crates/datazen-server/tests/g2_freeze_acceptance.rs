@@ -600,7 +600,11 @@ fn migrating_a_v6_library_expands_and_preserves_every_history_row() {
     // W8 刀3a；编号让位于 T25）与 v12（job 运行时三伴表 + 迁移历史 +
     // schema_diff_profiles，W8 刀3b）加入后，v6 旧库一次应用 v7..=v12 六步——
     // expand-only 纪律对每一步分别成立。
-    assert_eq!(applied.len(), 6, "v6 → 当前目标应用 v7、v8、v9、v10、v11、v12 六步");
+    assert_eq!(
+        applied.len(),
+        6,
+        "v6 → 当前目标应用 v7、v8、v9、v10、v11、v12 六步"
+    );
     assert_eq!(applied[0].version, 7);
     assert_eq!(applied[1].version, 8);
     assert_eq!(applied[2].version, 9);

@@ -423,6 +423,57 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let session_directory: std::sync::Arc<dyn datazen::execution::SessionDirectory> =
         lease_source.session_directory();
 
+    // ── W8 刀3b：Schema Diff 域装配（存储 v12 + JobHost + 端点解析）。
+    // job 仓储与 jobs 域/TaskCenter 同一 ServerJobs 实例（ServerJobs 已
+    // 实现 JobRuntimeRepository）；预算账本与执行面各自独立（桌面同构）。
+    let schema_diff_profiles =
+        std::sync::Arc::new(crate::storage::ServerSchemaDiffProfiles::new(store.clone()));
+    let schema_diff_runs =
+        std::sync::Arc::new(crate::storage::ServerMigrationRuns::new(store.clone()));
+    let schema_diff_history = crate::schema_diff::history::MigrationHistory::new(
+        schema_diff_runs.clone(),
+        schema_diff_profiles.clone(),
+    );
+    let schema_diff_endpoints = crate::schema_diff::endpoints::SessionEndpoints {
+        directory: session_directory.clone(),
+        lease: lease_source.clone(),
+        connections: connections_repo.clone(),
+    };
+    // 评审计划仓储：进程内存 + 组织键隔离（共享层 InMemory；SQL 正文不落
+    // 盘——重启后 `plan_unavailable_after_restart` 如实回答，桌面同语义）。
+    let schema_diff_reviewed: std::sync::Arc<
+        dyn datazen::migration::schema_diff::reviewed::ReviewedPlanRepository,
+    > = std::sync::Arc::new(
+        datazen::migration::schema_diff::reviewed::InMemoryReviewedPlanRepository::new(),
+    );
+    let schema_diff_adapters = std::sync::Arc::new(crate::schema_diff::ServerSchemaDiffAdapters {
+        registry: std::sync::Arc::new(
+            datazen::migration::data_transfer::transfer::adapter_registry::SyncAdapterRegistry::new(
+            ),
+        ),
+    });
+    let schema_diff_backend_deps = crate::schema_diff::backend::ServerSchemaDiffBackendDeps {
+        endpoints: schema_diff_endpoints.clone(),
+        history: schema_diff_history,
+        reviewed: schema_diff_reviewed,
+        adapters: schema_diff_adapters.registry.clone(),
+    };
+    let schema_diff_jobs = crate::schema_diff::jobs::SchemaDiffJobs::new(
+        std::sync::Arc::new(datazen::jobs::JobHost::new(
+            jobs.clone(),
+            std::sync::Arc::new(std::sync::Mutex::new(
+                datazen::execution::runtime::budget::BudgetLedger::new(
+                    datazen::execution::runtime::budget::BudgetConfig::team_default(),
+                ),
+            )),
+            std::sync::Arc::new(datazen::jobs::domain::time::PortJobClock::new(
+                datazen::shared::clock::SystemClock,
+            )),
+        )),
+        std::sync::Arc::new(datazen::migration::schema_diff::job::PlanRepository::new()),
+        schema_diff_backend_deps,
+    );
+
     // WR-D6/D7 域路由态（jobs / submission-tokens / artifacts）+ 执行域路由
     // 刀新增的用例面（issue-token 的会话绑定操作经它签发，与运行时令牌表
     // 同一实例闭环）。
@@ -615,6 +666,21 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
                         .map(|elapsed| elapsed.as_secs())
                         .unwrap_or(0)
                 }),
+            },
+        ),
+        // W8 刀3b：Schema Diff 域（契约 §6.13 十一路由——profiles 三 +
+        // compare + job 受理三 + job 读回/取消/恢复核验四）。存储 = v12；
+        // job 仓储与 jobs 域同源；端点解析与 tableData 活句柄面同实例。
+        crate::http::domains::schema_diff::schema_diff_router(
+            crate::http::domains::schema_diff::SchemaDiffState {
+                store: store.clone(),
+                profiles: schema_diff_profiles.clone(),
+                jobs: schema_diff_jobs.clone(),
+                endpoints: schema_diff_endpoints.clone(),
+                comparison_preview: std::sync::Arc::new(
+                    crate::schema_diff::ServerComparisonPreviewHost,
+                ),
+                adapters: schema_diff_adapters.clone(),
             },
         ),
     ];
