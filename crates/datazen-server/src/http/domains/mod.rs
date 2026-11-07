@@ -23,3 +23,5 @@ pub mod table_data;
 /// tableData 域的活句柄面（W8 刀2）：FK 二/值搜索/origin 四读端点的
 /// handler 与借出助手；路由仍由 `table_data.rs` 挂载，本文件只承载实现。
 pub mod table_data_live;
+/// Workflow 域（W8 刀3c）：定义管理、同步执行与运行历史（契约 §6.14）。
+pub mod workflow;

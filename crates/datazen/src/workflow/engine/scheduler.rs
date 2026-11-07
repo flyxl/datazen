@@ -153,6 +153,22 @@ impl WorkflowScheduler {
         });
     }
 
+    /// 请求停车（幂等）：取消令牌触发后循环在**下一个 tick 边界**退出——
+    /// 正在派发的执行不被中断（`select!` 的取消腿只在 `tick().await`
+    /// 挂起点生效），在途派发由宿主的执行面自行收尾。
+    ///
+    /// 桌面形态随进程生命周期退出（无需显式停车）；server 形态在
+    /// graceful drain 后调用（W8 刀3c 接线）。
+    pub fn stop(&self) {
+        self.cancel_token.cancel();
+    }
+
+    /// 循环是否已退出（不阻塞、不 join；`JoinHandle` 归 `start` 的
+    /// spawn 所有，本方法只回答取消令牌视角的「不再派发」）。
+    pub fn is_stopped(&self) -> bool {
+        self.cancel_token.is_cancelled()
+    }
+
     /// 仅绑定宿主与授权单端口（不启动循环）：需要手动驱动 tick 的场景使用。
     fn bind(
         &self,
