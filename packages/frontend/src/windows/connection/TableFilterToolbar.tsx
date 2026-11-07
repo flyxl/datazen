@@ -77,6 +77,14 @@ export interface TableFilterToolbarProps {
    * store, so the entry is **hidden** rather than offered and refused later.
    */
   namedView?: NamedViewMenuConfig | null;
+  /**
+   * Controls rendered at the right end of the row, after the quick filter
+   * (DBR-SORT: the panel's default-order select moved here from the pager).
+   *
+   * Omitted ⇒ the row renders exactly as it did before the slot existed —
+   * the golden markup test pins that byte for byte.
+   */
+  trailingControls?: ReactNode;
 }
 
 export function TableFilterToolbar({
@@ -96,6 +104,7 @@ export function TableFilterToolbar({
   onSetFilters,
   onClearFilters,
   namedView,
+  trailingControls,
 }: TableFilterToolbarProps) {
   const { t } = useI18n();
   const [quickFilter, setQuickFilter] = useState('');
@@ -211,6 +220,7 @@ export function TableFilterToolbar({
             data-testid="table-quick-filter"
           />
         </div>
+        {trailingControls}
       </div>
       {quickFilterError && (
         <ErrorBanner variant="strip" className="border-danger/30 py-1">

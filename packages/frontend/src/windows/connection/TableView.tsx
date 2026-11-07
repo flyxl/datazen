@@ -486,12 +486,17 @@ export function TableView({
     columns.every((column) => !column.isPrimaryKey) &&
     effectiveOrder !== 'none';
 
+  /** The primary-key column names, in schema order (the toolbar and the grid both ask). */
+  const primaryKeyColumnNames = columns
+    .filter((column) => column.isPrimaryKey)
+    .map((column) => column.name);
+
   /**
    * A table whose grid cannot address rows, on an otherwise editable
    * connection (DB-16). This outranks the order hint above: "you cannot edit
    * this here, but here is the way out" is actionable, "ordered by the first
-   * column" is a footnote — and the footnote stays reachable from the pager's
-   * sort dropdown.
+   * column" is a footnote — and the footnote stays reachable from the
+   * toolbar's default-order select.
    */
   const noPkEditBlocked =
     onEditInSql != null &&
@@ -888,6 +893,9 @@ export function TableView({
         onSetFilters={actions.setFilters}
         onClearFilters={actions.clearFilters}
         onAddDraftRow={() => drafts.addDraftRow()}
+        defaultOrderOverride={defaultOrderOverride}
+        onDefaultOrderOverrideChange={actions.setDefaultOrderOverride}
+        primaryKeyCount={primaryKeyColumnNames.length}
         namedView={namedView}
       />
       {readOnlyTipReason ? <TableReadOnlyTip reason={readOnlyTipReason} /> : null}
@@ -929,8 +937,6 @@ export function TableView({
         unstablePaging={unstablePaging}
         estimateUnavailable={estimateUnavailable}
         pagingHint={pagingHint}
-        defaultOrderOverride={defaultOrderOverride}
-        onDefaultOrderOverrideChange={actions.setDefaultOrderOverride}
         page={page}
         pageSize={pageSize}
         sorts={sorts}
@@ -1009,7 +1015,7 @@ export function TableView({
         databaseType={databaseType}
         dbSessionId={dbSessionId}
         dataExportCapability={dataExportCapability}
-        primaryKeyColumns={columns.filter((c) => c.isPrimaryKey).map((c) => c.name)}
+        primaryKeyColumns={primaryKeyColumnNames}
         onDeleteRows={cellWritesEnabled ? handleDeleteRows : undefined}
         onPreviewSql={handleFilterPreviewSql}
         onExportFiltered={handleFilterExportFiltered}

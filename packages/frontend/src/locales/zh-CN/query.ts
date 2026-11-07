@@ -345,6 +345,11 @@ const pack = {
   'dataTable.sortDescending': '降序',
   'dataTable.removeSortColumn': '从排序中删除',
   'dataTable.clearSorts': '清除所有排序',
+  // 表头自身的排序菜单与下拉按钮（DBR-SORT，对齐 Navicat 的单列排序）。
+  'dataTable.sortColumnAscending': '升序排序',
+  'dataTable.sortColumnDescending': '降序排序',
+  'dataTable.removeSort': '移除排序',
+  'dataTable.sortMenuLabel': '排序选项',
   'dataTable.freezeThrough': '冻结本专栏',
   'dataTable.unfreezeColumns': '解冻列',
   'dataTable.columnStats': '列统计',

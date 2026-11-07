@@ -34,8 +34,6 @@ import type { FkGroupAffordance } from '../../lib/fkNavigation';
 import { FilterBar } from '../FilterBar';
 import { FilterEditor } from '../FilterEditor';
 import { Pagination, type PagingHint } from './Pagination';
-import { DefaultOrderSelect } from './DefaultOrderSelect';
-import type { DefaultOrderOverride } from '../../lib/defaultSort';
 import { TableHeader, type ColumnDef } from './TableHeader';
 import { VirtualBody, type DraftRowViewModel } from './VirtualBody';
 import { GridKeyboardHints } from './GridKeyboardHints';
@@ -86,10 +84,6 @@ export interface DataTableProps {
    * says why. The grid renders the reason the back end gave.
    */
   pagingHint?: PagingHint;
-  /** The panel's temporary override of the global default order. */
-  defaultOrderOverride?: DefaultOrderOverride;
-  /** Change the panel's temporary override of the global default order. */
-  onDefaultOrderOverrideChange?: (value: DefaultOrderOverride) => void;
 
   sorts?: SortCondition[];
   onSort?: (sort: SortCondition) => void;
@@ -415,8 +409,6 @@ export function DataTable({
   unstablePaging,
   estimateUnavailable,
   pagingHint,
-  defaultOrderOverride,
-  onDefaultOrderOverrideChange,
   onCellDoubleClick,
   onCellEdit,
   onCellEditCancel,
@@ -798,6 +790,7 @@ export function DataTable({
               columns={columns}
               sorts={sorts}
               onSort={onSort ?? NOOP}
+              onRemoveSort={onRemoveSort}
               columnWidths={columnWidths}
               onResizeStart={onResizeStart}
               sortable={onSort != null}
@@ -895,15 +888,6 @@ export function DataTable({
           unstablePaging={unstablePaging}
           estimateUnavailable={estimateUnavailable}
           pagingHint={pagingHint}
-          footerExtras={
-            onDefaultOrderOverrideChange ? (
-              <DefaultOrderSelect
-                value={defaultOrderOverride ?? 'inherit'}
-                onChange={onDefaultOrderOverrideChange}
-                primaryKeyCount={primaryKeyColumns?.length ?? 0}
-              />
-            ) : undefined
-          }
         />
       )}
 
