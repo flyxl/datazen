@@ -277,7 +277,9 @@ export function AiContextSettings({ config }: { config: AiSettingsConfig }) {
               ? t('common.success')
               : t('settings.ai.saveContext')}
         </Button>
-        {overLimit && <span className="text-[11px] text-danger">{t('settings.ai.overLimitHint')}</span>}
+        {overLimit && (
+          <span className="text-[11px] text-danger">{t('settings.ai.overLimitHint')}</span>
+        )}
       </div>
     </div>
   );

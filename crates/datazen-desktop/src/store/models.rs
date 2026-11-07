@@ -10,34 +10,20 @@ use super::settings::AppSettings;
 // （domain::query），本模块只再导出，序列化形状（camelCase）钉在模块单测。
 pub use datazen::history::QueryHistoryEntry;
 
+// W8 刀3a：查询收藏的唯一定义同样归位 `datazen::history`
+// （domain::favorite；桌面文件形与服务端表形共用一条词汇），本模块只再
+// 导出——serde camelCase 形状钉在共享模块单测，桌面消费点零改动。
+pub use datazen::history::FavoriteQuery;
+
+/* FavoriteQuery 的定义本体已上移共享层；下方注释保留原文档要点：
+///
 /// A saved SQL favorite, backed by one `.sql` file under the favorites root.
 ///
 /// The `id` is the file's stem — a ULID the app mints, never a title-derived
-/// name, so renaming a favorite never rewrites a file (see plan §2.6.2).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FavoriteQuery {
-    pub id: String,
-    /// Owning persisted connection id (config).
-    pub connection_id: String,
-    pub title: String,
-    pub sql: String,
-    pub created_at: DateTime<Utc>,
-    /// `None` for favorites migrated from SQLite, which had no such column.
-    #[serde(default)]
-    pub updated_at: Option<DateTime<Utc>>,
-    /// Optional completion keyword from the front-matter (`-- keyword:`).
-    /// Read and round-tripped today; binding it to completion is a later track.
-    #[serde(default)]
-    pub keyword: Option<String>,
-    /// Logical database the statement targets, when the file records one.
-    #[serde(default)]
-    pub database: Option<String>,
-    /// Directory of this favorite relative to the favorites root, `/`-separated.
-    /// `None` = the root itself.
-    #[serde(default)]
-    pub folder: Option<String>,
-}
+/// name, so renaming a favorite never rewrites a file (see plan §2.6.2). */
+
+// （FavoriteQuery 定义本体已上移共享层 `datazen::history::domain::favorite`，
+// 见文件头再导出；桌面文件形与服务端表形共用一条词汇。）
 
 /// Persisted state for a data-sync task (checkpoint / resume).
 #[derive(Debug, Clone, Serialize, Deserialize)]

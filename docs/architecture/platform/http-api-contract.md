@@ -222,6 +222,34 @@ driverGateway（**过渡域**，snake_case 名保留——它们是现存 IPC �
 | `getJob` | `GET /api/v1/jobs/{id}` | — | 200 | — → `JobRecord`（跨组织按不存在答 `404`） |
 | `cancelJob` | `POST /api/v1/jobs/{id}/cancel` | ✓ | 202 | — → `{ outcome: registered \| alreadyRequested \| alreadyTerminal }`（幂等登记；已终态如实回答） |
 
+### 6.12 查询资产：收藏与查询历史（W8 刀3a 服务端半边，2026-11-07）
+
+legacy IPC 命令轨（`add_favorite_query` 等）收敛进 MethodMap 的第一域。词汇一条
+（共享层 `datazen::history::{FavoriteQuery, QueryHistoryEntry}`，camelCase）、存储两
+形态：桌面 = 收藏 `.sql` 文件 + 本机 history.sqlite；web = 服务端 v10 双表（per
+`(organization, principal)` 隔离，named_views v9 同款口径；id 服务端铸造）。
+
+| 方法 | 路由 | 令牌 | 成功 | 请求 → 响应 |
+| --- | --- | --- | --- | --- |
+| `listQueryFavorites` | `GET /api/v1/query-favorites?connectionId=` | — | 200 | — → `FavoriteQuery[]` |
+| `createQueryFavorite` | `POST /api/v1/query-favorites` | ✓ | 201 | `FavoriteDraft & SubmitRequest` → `FavoriteQuery` |
+| `deleteQueryFavorite` | `DELETE /api/v1/query-favorites/{id}` | ✓ | 204 | 未知 id = 幂等 no-op 同码（防枚举不区分） |
+| `getQueryHistoryPage` | `GET /api/v1/query-history` | — | 200 | `?limit=&connectionId=&database=&schema=&search=&since=&until=&order=`（过滤平铺，search 在 limit 前）→ `QueryHistoryPage` |
+| `deleteQueryHistory` | `DELETE /api/v1/query-history/{id}` | ✓ | 200 | — → `{ deleted }`（行数让调用方拒绝 no-op，桌面同语义） |
+| `clearQueryHistory` | `DELETE /api/v1/query-history` | ✓ | 200 | — → `{ purged }`（经 purge 的 query 作用域） |
+| `purgeHistory` | `POST /api/v1/query-history/purge` | ✓ | 200 | `{ scope, retainDays? }` → `{ purged }`（`workflow` 作用域按 0 行如实回答） |
+
+- **桌面专属两命令不进 HTTP 面**：`get_favorites_root`（收藏目录路径，对接同步
+  服务）与 `refresh_favorites`（重扫目录接收同步文件）是文件系统语义——服务端收
+  藏是库行，没有根目录也没有需要重扫的目录；`WEB_CAPABILITIES` 声明缺位。
+- **查询历史的写面不在本域**：落账点是 execution 域路由的受理后钩子
+  （`execution::history_recorder`）——SQL 命令（`query`/`execute`/`explain`）终态后
+  best-effort 追加（桌面 `record_sql_command_outcome` 的 transport 对偶），执行应
+  答不被落账失败阻断；`rows_affected` 视图无此字段，v1 记 null（登记差异）。
+- **归属**：per principal——同组织两个主体各自持有自己的收藏/历史集合，跨主体
+  读取天然落空、删除无操作（CM-05）；请求体没有归属字段（INV-01）。
+- **写面令牌走 HMAC 轨**（配置类操作，不绑 runtime 会话；§6.2 的两轨分派）。
+
 ## 7. 能力差异：`WEB_CAPABILITIES` 与 `unsupportedMethods`
 
 - **桌面专属能力不出现在 HTTP 面**：updater、window、native dialog、本机 OS 集成。它们的形态差异由 `packages/frontend/src/platform/capabilities.ts` 的静态表声明（`WEB_CAPABILITIES.updater: false`、`settingsSections` 收窄），前端**编译期分支**，不做运行时形态探测。
@@ -261,4 +289,5 @@ WR-D 落地时的机器核对（WR-C3 接管）：同用例双传输测试逐方
 - 2026-11-02：v1.1。events 域登记订阅建立路由 `POST /api/v1/events/subscriptions`（WR-D5 落地，§6.6 表）；域方法数 42 → 43。
 - 2026-11-03：v1.2（WR-F1 扩展面登记）。**mcp 客户端面**（`mcp.initialize/listTools/callTool/closeSession`）走服务端 `/mcp` streamable HTTP（WR-F2 传输，§6.6 之外的服务面；JSON-RPC 2.0 信封 + `Mcp-Session-Id` 头，L2 cookie 即身份——INV-S1），wire-direct 不入 `MethodMap` 主表（`transport.ts` 类型冻结，逐域登记于 web 侧 `WR_F1_HTTP_ROUTES`）；web broker 的 `serverId` 固定 `"datazen"`（v1 语义：工具面 = datazen 自有 13 工具，与桌面多外部服务器 broker 的差异如实登记）。**security 域**（`security.resolveSecret` → `POST /api/v1/secrets/resolve`、`security.putSecret` → `PUT /api/v1/secrets/{domain}/{key}`）与 **aiHost 域**（`aiHost.getSessionConfig` → `POST /api/v1/ai-host/session-config`、`aiHost.executeTarget` → `POST /api/v1/ai-host/execute-target`）客户端面已定形（web 侧真实现 + 契约测试），**服务端路由未点亮**（部署未挂 = 501/404 显式形态）——服务端半边随执行域路由切片落地，点亮前 web 端如实报 `CapabilityUnsupported` 的替身面保持。
 - 2026-11-06：v1.3（execution 域路由收口刀）。§6.10 execution 四端点点亮（`POST /api/v1/sessions/{id}/executions`、`POST /api/v1/executions`、`GET /api/v1/executions/{id}`、`POST /api/v1/executions/{id}/cancel`）——§4 总账的 execution 4/4 由「计账」变「实服务」；§6.11 job 表补登（四端点此前已服务但无逐域路由表）；§6.2 `issueSubmissionToken` 的会话绑定操作改为经执行用例面签发（修复 openSession/cancelExecution 在 HTTP 面必然 `TokenInvalid` 的端到端断点）；aiHost.executeTarget（§6.2 表）501 → 200 `CommandResult`。
-- 2026-11-08：v1.3.1（W8 刀1对账——PR #204 关闭后的增量移植）。§6.10 补三行裁决：`GET /api/v1/executions/{id}` 的 L6 两段登记（`ResourceType::Execution` + `Read`，rbac 基线矩阵裁决）、令牌两轨不混用的 409 wire（`idempotencyExpired`）、限流严格档补行（`POST …/executions` 与 `POST /api/v1/ai-host/execute-target`）。aiHost.executeTarget 的 claim 纪律补齐（claim 必填：`independent` 真执行、`editorGrant` 501 fail-closed、缺失/未知 400——与 web 端 `AiHostExecuteTargetRequest` 冻结形状对齐）；`PrincipalScopedHost` 上移为共享装饰器（aiHost 与 MCP 七工具同一真主体注入路径）。
+- 2026-11-07：v1.4（W8 刀3a，查询资产域服务端半边）。**§6.12 收藏与查询历史**七路由（收藏 list/create/delete + 历史 page/delete/clear/purge）——legacy IPC 命令轨（`add_favorite_query`/`get_query_history_page` 等 7 命令）收敛进 MethodMap 的第一域；v10 双表 expand-only 迁移（per (org, principal) 隔离，收藏文件形/历史本机库形的服务端对偶）；历史落账 = execution 域受理后钩子（best-effort，桌面同语义）；`get_favorites_root`/`refresh_favorites` 文件系统语义不进 HTTP 面（桌面专属）。web 半边（域客户端 + RouteSpec + 不支持名单收缩）随下刀收口。
+- 2026-11-08：v1.4.1（W8 刀1对账——PR #204 关闭后的增量移植）。§6.10 补三行裁决：`GET /api/v1/executions/{id}` 的 L6 两段登记（`ResourceType::Execution` + `Read`，rbac 基线矩阵裁决）、令牌两轨不混用的 409 wire（`idempotencyExpired`）、限流严格档补行（`POST …/executions` 与 `POST /api/v1/ai-host/execute-target`）。aiHost.executeTarget 的 claim 纪律补齐（claim 必填：`independent` 真执行、`editorGrant` 501 fail-closed、缺失/未知 400——与 web 端 `AiHostExecuteTargetRequest` 冻结形状对齐）；`PrincipalScopedHost` 上移为共享装饰器（aiHost 与 MCP 七工具同一真主体注入路径）。

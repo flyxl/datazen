@@ -179,6 +179,8 @@ async fn session_execution_round_trip_answers_receipt_view_and_cancel() {
     let mut app = execution_app(ExecutionState {
         sessions: cases.clone(),
         directory,
+        // 落账器默认关闭（本套件钉路由语义；历史落账在 query_assets_routes 套件端到端验证）。
+        history: None,
     });
     let ctx = contract_http_context();
     let session = session_of(CONTRACT_ORGANIZATION, "user-contract");
@@ -269,6 +271,8 @@ async fn execute_in_session_requires_a_submission_token() {
     let mut app = execution_app(ExecutionState {
         sessions: cases.clone(),
         directory,
+        // 落账器默认关闭（本套件钉路由语义；历史落账在 query_assets_routes 套件端到端验证）。
+        history: None,
     });
     let ctx = contract_http_context();
     let session = session_of(CONTRACT_ORGANIZATION, "user-contract");
@@ -298,6 +302,8 @@ async fn execute_in_session_rejects_handle_path_mismatch() {
     let mut app = execution_app(ExecutionState {
         sessions: cases.clone(),
         directory,
+        // 落账器默认关闭（本套件钉路由语义；历史落账在 query_assets_routes 套件端到端验证）。
+        history: None,
     });
     let ctx = contract_http_context();
     let session = session_of(CONTRACT_ORGANIZATION, "user-contract");
@@ -336,6 +342,8 @@ async fn cross_org_session_is_not_visible_to_executions() {
     let mut app = execution_app(ExecutionState {
         sessions: cases.clone(),
         directory,
+        // 落账器默认关闭（本套件钉路由语义；历史落账在 query_assets_routes 套件端到端验证）。
+        history: None,
     });
     let ctx = contract_http_context();
     let stranger = session_of("org-stranger", "user-stranger");
@@ -366,6 +374,8 @@ async fn unknown_execution_reads_as_not_found() {
     let mut app = execution_app(ExecutionState {
         sessions: cases.clone(),
         directory,
+        // 落账器默认关闭（本套件钉路由语义；历史落账在 query_assets_routes 套件端到端验证）。
+        history: None,
     });
     let session = session_of(CONTRACT_ORGANIZATION, "user-contract");
 
@@ -401,6 +411,8 @@ async fn execute_at_target_requires_a_submission_token() {
     let mut app = execution_app(ExecutionState {
         sessions: cases.clone(),
         directory,
+        // 落账器默认关闭（本套件钉路由语义；历史落账在 query_assets_routes 套件端到端验证）。
+        history: None,
     });
     let session = session_of(CONTRACT_ORGANIZATION, "user-contract");
 

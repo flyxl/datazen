@@ -219,7 +219,8 @@ const pack = {
   'settings.ai.strictEgressHint':
     '开启后，发往 AI 提供商的内容会移除查询结果行与 payload；凭据始终会被脱敏。',
   'settings.ai.toolsTitle': '插件与 Workflow 工具',
-  'settings.ai.toolsHint': '只有在此启用的插件与 Workflow 才会提供给 Agent。非只读调用会请求确认；Stop 可取消待处理调用。',
+  'settings.ai.toolsHint':
+    '只有在此启用的插件与 Workflow 才会提供给 Agent。非只读调用会请求确认；Stop 可取消待处理调用。',
   'settings.ai.toolsPlugins': '插件',
   'settings.ai.toolsWorkflows': 'Workflow',
   'settings.ai.toolsNoPlugins': '没有已安装插件声明 AI 工具。',
@@ -229,10 +230,13 @@ const pack = {
   'settings.ai.strictEgressDisableMessage':
     '关闭严格出域后，查询结果行、上下文文件与工具输出可能会发送到你配置的 AI 提供商。仅在您接受数据可能离开本机时再关闭。',
   'settings.ai.instructionsTitle': '全局指令',
-  'settings.ai.instructionsHint': '会注入到每次 AI 对话系统提示词靠前位置。硬上限 4 KB，超限保存会被拒绝，不会静默截断。',
-  'settings.ai.instructionsPlaceholder': '例如：优先使用显式 JOIN，时间统一使用 UTC，用简洁中文回答。',
+  'settings.ai.instructionsHint':
+    '会注入到每次 AI 对话系统提示词靠前位置。硬上限 4 KB，超限保存会被拒绝，不会静默截断。',
+  'settings.ai.instructionsPlaceholder':
+    '例如：优先使用显式 JOIN，时间统一使用 UTC，用简洁中文回答。',
   'settings.ai.templatesTitle': 'Prompt 模板',
-  'settings.ai.templatesHint': '可复用的系统提示词。按数据库类型和默认标记选择，也可在对话中显式选择。单个模板上限 8 KB，全部模板合计上限 16 KB。',
+  'settings.ai.templatesHint':
+    '可复用的系统提示词。按数据库类型和默认标记选择，也可在对话中显式选择。单个模板上限 8 KB，全部模板合计上限 16 KB。',
   'settings.ai.templatesEmpty': '还没有 Prompt 模板。',
   'settings.ai.addTemplate': '新增模板',
   'settings.ai.templateNameRequired': '请填写模板名称。',
@@ -244,7 +248,8 @@ const pack = {
   'settings.ai.templateDatabaseTypesPlaceholder': '数据库类型，逗号分隔（留空表示全部）',
   'settings.ai.templateContentPlaceholder': '系统提示词内容',
   'connection.notes.title': '连接备注（AI）',
-  'connection.notes.hint': '仅保存在本地，并注入到该连接的 AI 对话中。上限 4 KB，清空后保存即删除。',
+  'connection.notes.hint':
+    '仅保存在本地，并注入到该连接的 AI 对话中。上限 4 KB，清空后保存即删除。',
   'connection.notes.placeholder': '例如：该库为只读副本；orders.status 的编码含义……',
   'connection.notes.overLimit': '已超出上限，请缩短后再保存。',
   'settings.ai.saveContext': '保存指令与模板',

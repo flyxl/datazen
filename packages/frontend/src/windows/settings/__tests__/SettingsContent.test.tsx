@@ -309,9 +309,11 @@ vi.mock('../../../commands/ai', () => ({
     mcpStartStdio: (...a: unknown[]) => mcpStartStdioMock(...a),
     mcpStop: (...a: unknown[]) => mcpStopMock(...a),
     mcpReload: (...a: unknown[]) => mcpReloadMock(...a),
-    workflowList: vi.fn().mockResolvedValue([
-      { id: 'wf-1', name: 'Weekly report', description: 'Read only', variables: [] },
-    ]),
+    workflowList: vi
+      .fn()
+      .mockResolvedValue([
+        { id: 'wf-1', name: 'Weekly report', description: 'Read only', variables: [] },
+      ]),
   },
 }));
 

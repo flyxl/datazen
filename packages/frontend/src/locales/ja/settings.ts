@@ -64,7 +64,8 @@ const pack = {
   'settings.defaultTableSort.hint':
     '"並べ替えない" を選ぶと大きなテーブルでページングが速くなりますが、行がページをまたいで重複または欠落する可能性があります。',
   'settings.gridDensity': 'グリッド密度',
-  'settings.gridDensity.hint': 'データグリッドの行の高さ。コンパクトでは、画面上により多くの行が収まります。リラックスした方が読みやすいです。',
+  'settings.gridDensity.hint':
+    'データグリッドの行の高さ。コンパクトでは、画面上により多くの行が収まります。リラックスした方が読みやすいです。',
   'settings.gridDensity.compact': 'コンパクト',
   'settings.gridDensity.standard': '標準',
   'settings.gridDensity.relaxed': 'リラックスした',
@@ -74,7 +75,8 @@ const pack = {
   'settings.gridRowNumbers.hint':
     'データグリッドの # ガター。これをオフにすると、クリックして選択ボタンも削除されます。行をクリックすると、行の選択が引き続き機能します。',
   'settings.gridAutoHideScrollbar': 'グリッドスクロールバーを自動的に非表示にする',
-  'settings.gridAutoHideScrollbar.hint': 'スクロールバーは、グリッドがホバーまたはフォーカスされているときにのみ表示されます。',
+  'settings.gridAutoHideScrollbar.hint':
+    'スクロールバーは、グリッドがホバーまたはフォーカスされているときにのみ表示されます。',
   'settings.connectionPoolSize': 'コネクションプールサイズ',
   'settings.connectionPoolSizeHint': 'データベース接続ごとに保持する最大コネクション数。',
   'settings.limitSelect': 'SELECT 結果を制限する',
@@ -222,7 +224,8 @@ const pack = {
   'settings.ai.strictEgressHint':
     '有効にすると、クエリ結果の行データやペイロードが削除された状態でAIプロバイダーに送信されます。認証情報は常にマスクされます。',
   'settings.ai.toolsTitle': 'プラグインと Workflow ツール',
-  'settings.ai.toolsHint': 'ここで有効にしたプラグインと Workflow のツールだけが Agent に提供されます。読み取り専用でない呼び出しは承認を求め、Stop で保留中の呼び出しをキャンセルできます。',
+  'settings.ai.toolsHint':
+    'ここで有効にしたプラグインと Workflow のツールだけが Agent に提供されます。読み取り専用でない呼び出しは承認を求め、Stop で保留中の呼び出しをキャンセルできます。',
   'settings.ai.toolsPlugins': 'プラグイン',
   'settings.ai.toolsWorkflows': 'Workflow',
   'settings.ai.toolsNoPlugins': 'AI ツールを宣言したインストール済みプラグインはありません。',
@@ -232,10 +235,13 @@ const pack = {
   'settings.ai.strictEgressDisableMessage':
     '厳格な保護を無効にすると、クエリ結果の行、ファイル内容、ツールの出力が設定したAIプロバイダーに送信される可能性があります。端末外への送信を許可する場合にのみ無効にしてください。',
   'settings.ai.instructionsTitle': 'Global Instructions',
-  'settings.ai.instructionsHint': 'Included near the top of every AI chat system prompt. Hard limit 4 KB; over-limit saves are rejected, never silently truncated.',
-  'settings.ai.instructionsPlaceholder': 'e.g. Prefer explicit JOINs, use UTC timestamps, and answer in concise Chinese.',
+  'settings.ai.instructionsHint':
+    'Included near the top of every AI chat system prompt. Hard limit 4 KB; over-limit saves are rejected, never silently truncated.',
+  'settings.ai.instructionsPlaceholder':
+    'e.g. Prefer explicit JOINs, use UTC timestamps, and answer in concise Chinese.',
   'settings.ai.templatesTitle': 'Prompt Templates',
-  'settings.ai.templatesHint': 'Reusable system prompts. A template is picked by database type and default flag, or explicitly in chat. Each template is limited to 8 KB and all templates to 16 KB.',
+  'settings.ai.templatesHint':
+    'Reusable system prompts. A template is picked by database type and default flag, or explicitly in chat. Each template is limited to 8 KB and all templates to 16 KB.',
   'settings.ai.templatesEmpty': 'No prompt templates yet.',
   'settings.ai.addTemplate': 'Add template',
   'settings.ai.templateNameRequired': 'Template name is required.',
@@ -247,8 +253,10 @@ const pack = {
   'settings.ai.templateDatabaseTypesPlaceholder': 'Database types, comma separated (empty = all)',
   'settings.ai.templateContentPlaceholder': 'System prompt content',
   'connection.notes.title': 'Connection notes (AI)',
-  'connection.notes.hint': 'Stored locally and injected into AI chats for this connection. Limit 4 KB; save an empty note to delete it.',
-  'connection.notes.placeholder': 'e.g. This database is a read-only replica; orders.status codes mean…',
+  'connection.notes.hint':
+    'Stored locally and injected into AI chats for this connection. Limit 4 KB; save an empty note to delete it.',
+  'connection.notes.placeholder':
+    'e.g. This database is a read-only replica; orders.status codes mean…',
   'connection.notes.overLimit': 'Over the limit — shorten before saving.',
   'settings.ai.saveContext': 'Save instructions & templates',
   'settings.ai.modelsTitle': '設定済みモデル',

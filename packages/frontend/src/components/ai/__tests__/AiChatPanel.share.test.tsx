@@ -215,9 +215,7 @@ describe('AiChatPanel — shared editor session (P6 §14.4)', () => {
     fireEvent.click(toggle);
 
     await waitFor(() =>
-      expect(getByTestId('ai-share-editor-error').textContent).toContain(
-        'claim rejected by host',
-      ),
+      expect(getByTestId('ai-share-editor-error').textContent).toContain('claim rejected by host'),
     );
     expect(toggle.checked).toBe(false);
     expect(queryByTestId('ai-share-editor-error')).not.toBeNull();

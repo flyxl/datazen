@@ -68,7 +68,7 @@ const pack = {
     '"Ne pas trier" rend la pagination plus rapide sur les grandes tables, mais les lignes peuvent se répéter ou être omises d\'une page à l\'autre.',
   'settings.gridDensity': 'Densité du réseau',
   'settings.gridDensity.hint':
-    'Hauteur de ligne des grilles de données. Compact s\'adapte à plus de lignes à l\'écran ; détendu est plus facile à lire.',
+    "Hauteur de ligne des grilles de données. Compact s'adapte à plus de lignes à l'écran ; détendu est plus facile à lire.",
   'settings.gridDensity.compact': 'Compact',
   'settings.gridDensity.standard': 'Standard',
   'settings.gridDensity.relaxed': 'Détendu',
@@ -79,7 +79,7 @@ const pack = {
     'La # gouttière des grilles de données. Le désactiver supprime également son bouton de sélection ; la sélection de lignes fonctionne toujours en cliquant sur les lignes.',
   'settings.gridAutoHideScrollbar': 'Masquer automatiquement les barres de défilement de la grille',
   'settings.gridAutoHideScrollbar.hint':
-    'Les barres de défilement apparaissent uniquement lorsqu\'une grille est survolée ou ciblée.',
+    "Les barres de défilement apparaissent uniquement lorsqu'une grille est survolée ou ciblée.",
   'settings.connectionPoolSize': 'Taille du pool de connexions',
   'settings.connectionPoolSizeHint':
     'Nombre maximal de connexions conservées par connexion à la base de données.',
@@ -247,7 +247,8 @@ const pack = {
   'settings.ai.strictEgressHint':
     'Lorsqu’elle est activée, les lignes de résultats et les charges utiles sont supprimées avant l’envoi au fournisseur d’IA. Les identifiants sont toujours masqués.',
   'settings.ai.toolsTitle': 'Outils de plugins et workflows',
-  'settings.ai.toolsHint': 'Seuls les outils des plugins et workflows activés ici sont proposés à l’Agent. Les appels non en lecture seule demandent une approbation ; Stop annule un appel en attente.',
+  'settings.ai.toolsHint':
+    'Seuls les outils des plugins et workflows activés ici sont proposés à l’Agent. Les appels non en lecture seule demandent une approbation ; Stop annule un appel en attente.',
   'settings.ai.toolsPlugins': 'Plugins',
   'settings.ai.toolsWorkflows': 'Workflows',
   'settings.ai.toolsNoPlugins': 'Aucun plugin installé ne déclare d’outils IA.',
@@ -257,10 +258,13 @@ const pack = {
   'settings.ai.strictEgressDisableMessage':
     'Désactiver la protection stricte peut envoyer les lignes de résultats, contenus de fichiers et sorties d’outils à votre fournisseur d’IA configuré. Ne désactivez cette option que si vous acceptez que des données quittent votre machine.',
   'settings.ai.instructionsTitle': 'Global Instructions',
-  'settings.ai.instructionsHint': 'Included near the top of every AI chat system prompt. Hard limit 4 KB; over-limit saves are rejected, never silently truncated.',
-  'settings.ai.instructionsPlaceholder': 'e.g. Prefer explicit JOINs, use UTC timestamps, and answer in concise Chinese.',
+  'settings.ai.instructionsHint':
+    'Included near the top of every AI chat system prompt. Hard limit 4 KB; over-limit saves are rejected, never silently truncated.',
+  'settings.ai.instructionsPlaceholder':
+    'e.g. Prefer explicit JOINs, use UTC timestamps, and answer in concise Chinese.',
   'settings.ai.templatesTitle': 'Prompt Templates',
-  'settings.ai.templatesHint': 'Reusable system prompts. A template is picked by database type and default flag, or explicitly in chat. Each template is limited to 8 KB and all templates to 16 KB.',
+  'settings.ai.templatesHint':
+    'Reusable system prompts. A template is picked by database type and default flag, or explicitly in chat. Each template is limited to 8 KB and all templates to 16 KB.',
   'settings.ai.templatesEmpty': 'No prompt templates yet.',
   'settings.ai.addTemplate': 'Add template',
   'settings.ai.templateNameRequired': 'Template name is required.',
@@ -272,8 +276,10 @@ const pack = {
   'settings.ai.templateDatabaseTypesPlaceholder': 'Database types, comma separated (empty = all)',
   'settings.ai.templateContentPlaceholder': 'System prompt content',
   'connection.notes.title': 'Connection notes (AI)',
-  'connection.notes.hint': 'Stored locally and injected into AI chats for this connection. Limit 4 KB; save an empty note to delete it.',
-  'connection.notes.placeholder': 'e.g. This database is a read-only replica; orders.status codes mean…',
+  'connection.notes.hint':
+    'Stored locally and injected into AI chats for this connection. Limit 4 KB; save an empty note to delete it.',
+  'connection.notes.placeholder':
+    'e.g. This database is a read-only replica; orders.status codes mean…',
   'connection.notes.overLimit': 'Over the limit — shorten before saving.',
   'settings.ai.saveContext': 'Save instructions & templates',
   'settings.ai.modelsTitle': 'Modèles configurés',

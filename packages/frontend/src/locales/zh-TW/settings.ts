@@ -68,7 +68,8 @@ const pack = {
   'settings.gridAlternatingRows': '交替行背景',
   'settings.gridAlternatingRows.hint': '將資料網格的每隔一行著色。',
   'settings.gridRowNumbers': '行數',
-  'settings.gridRowNumbers.hint': '資料網格的 # 裝訂線。關閉它也會刪除它的點擊選擇按鈕；行選擇仍然可以透過點擊行進行。',
+  'settings.gridRowNumbers.hint':
+    '資料網格的 # 裝訂線。關閉它也會刪除它的點擊選擇按鈕；行選擇仍然可以透過點擊行進行。',
   'settings.gridAutoHideScrollbar': '自動隱藏網格捲軸',
   'settings.gridAutoHideScrollbar.hint': '僅當網格懸停或對焦時才會出現捲軸。',
   'settings.connectionPoolSize': '連線池大小',
@@ -219,7 +220,8 @@ const pack = {
   'settings.ai.strictEgressHint':
     '開啟後，傳往 AI 服務商的內容會移除查詢結果資料列與 payload；認證憑證一律都會被脫敏。',
   'settings.ai.toolsTitle': '外掛與 Workflow 工具',
-  'settings.ai.toolsHint': '只有在此啟用的外掛與 Workflow 才會提供給 Agent。非唯讀呼叫會請求確認；Stop 可取消待處理呼叫。',
+  'settings.ai.toolsHint':
+    '只有在此啟用的外掛與 Workflow 才會提供給 Agent。非唯讀呼叫會請求確認；Stop 可取消待處理呼叫。',
   'settings.ai.toolsPlugins': '外掛',
   'settings.ai.toolsWorkflows': 'Workflow',
   'settings.ai.toolsNoPlugins': '沒有已安裝外掛宣告 AI 工具。',
@@ -229,10 +231,13 @@ const pack = {
   'settings.ai.strictEgressDisableMessage':
     '關閉嚴格出站後，查詢結果資料列、上下文檔案與工具輸出可能會傳送到您設定的 AI 服務商。僅在您接受資料可能離開本機時才關閉。',
   'settings.ai.instructionsTitle': 'Global Instructions',
-  'settings.ai.instructionsHint': 'Included near the top of every AI chat system prompt. Hard limit 4 KB; over-limit saves are rejected, never silently truncated.',
-  'settings.ai.instructionsPlaceholder': 'e.g. Prefer explicit JOINs, use UTC timestamps, and answer in concise Chinese.',
+  'settings.ai.instructionsHint':
+    'Included near the top of every AI chat system prompt. Hard limit 4 KB; over-limit saves are rejected, never silently truncated.',
+  'settings.ai.instructionsPlaceholder':
+    'e.g. Prefer explicit JOINs, use UTC timestamps, and answer in concise Chinese.',
   'settings.ai.templatesTitle': 'Prompt Templates',
-  'settings.ai.templatesHint': 'Reusable system prompts. A template is picked by database type and default flag, or explicitly in chat. Each template is limited to 8 KB and all templates to 16 KB.',
+  'settings.ai.templatesHint':
+    'Reusable system prompts. A template is picked by database type and default flag, or explicitly in chat. Each template is limited to 8 KB and all templates to 16 KB.',
   'settings.ai.templatesEmpty': 'No prompt templates yet.',
   'settings.ai.addTemplate': 'Add template',
   'settings.ai.templateNameRequired': 'Template name is required.',
@@ -244,8 +249,10 @@ const pack = {
   'settings.ai.templateDatabaseTypesPlaceholder': 'Database types, comma separated (empty = all)',
   'settings.ai.templateContentPlaceholder': 'System prompt content',
   'connection.notes.title': 'Connection notes (AI)',
-  'connection.notes.hint': 'Stored locally and injected into AI chats for this connection. Limit 4 KB; save an empty note to delete it.',
-  'connection.notes.placeholder': 'e.g. This database is a read-only replica; orders.status codes mean…',
+  'connection.notes.hint':
+    'Stored locally and injected into AI chats for this connection. Limit 4 KB; save an empty note to delete it.',
+  'connection.notes.placeholder':
+    'e.g. This database is a read-only replica; orders.status codes mean…',
   'connection.notes.overLimit': 'Over the limit — shorten before saving.',
   'settings.ai.saveContext': 'Save instructions & templates',
   'settings.ai.modelsTitle': '已設定的模型',
