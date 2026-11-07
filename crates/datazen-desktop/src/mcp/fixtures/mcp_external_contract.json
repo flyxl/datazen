@@ -1,32 +1,46 @@
 {
   "contractVersion": 1,
+  "naming": {
+    "resourceJsonFields": "camelCase",
+    "toolInputKeys": "snake_case"
+  },
+  "removedToolInputFields": [
+    "config_id"
+  ],
+  "resourceUriTemplates": [
+    "datazen://schema/{connectionId}/{database}"
+  ],
+  "resourceUris": [
+    "datazen://connections",
+    "datazen://query-history",
+    "datazen://workflows"
+  ],
   "serverName": "datazen",
   "tools": [
     {
-      "name": "close_session",
       "inputProperties": [
         "client_session_ref",
         "mode"
       ],
+      "name": "close_session",
       "requiredInputProperties": [
         "client_session_ref"
       ]
     },
     {
-      "name": "describe_table",
       "inputProperties": [
         "connection_id",
         "database",
         "schema",
         "table"
       ],
+      "name": "describe_table",
       "requiredInputProperties": [
         "connection_id",
         "table"
       ]
     },
     {
-      "name": "execute_batch",
       "inputProperties": [
         "allow_writes",
         "connection_id",
@@ -35,30 +49,31 @@
         "timeout_ms",
         "transaction"
       ],
+      "name": "execute_batch",
       "requiredInputProperties": [
         "connection_id",
         "sql"
       ]
     },
     {
-      "name": "explain_query",
       "inputProperties": [
         "connection_id",
         "sql"
       ],
+      "name": "explain_query",
       "requiredInputProperties": [
         "connection_id",
         "sql"
       ]
     },
     {
-      "name": "get_schema",
       "inputProperties": [
         "connection_id",
         "database",
         "schema",
         "table"
       ],
+      "name": "get_schema",
       "requiredInputProperties": [
         "connection_id",
         "table"
@@ -68,21 +83,21 @@
       "name": "list_connections"
     },
     {
-      "name": "list_databases",
       "inputProperties": [
         "connection_id"
       ],
+      "name": "list_databases",
       "requiredInputProperties": [
         "connection_id"
       ]
     },
     {
-      "name": "list_tables",
       "inputProperties": [
         "connection_id",
         "database",
         "schema"
       ],
+      "name": "list_tables",
       "requiredInputProperties": [
         "connection_id"
       ]
@@ -91,32 +106,31 @@
       "name": "list_workflows"
     },
     {
-      "name": "open_session",
       "inputProperties": [
         "connection_id",
         "database",
         "schema",
         "ttl_ms"
       ],
+      "name": "open_session",
       "requiredInputProperties": [
         "connection_id",
         "database"
       ]
     },
     {
-      "name": "query",
       "inputProperties": [
         "connection_id",
         "limit",
         "sql"
       ],
+      "name": "query",
       "requiredInputProperties": [
         "connection_id",
         "sql"
       ]
     },
     {
-      "name": "redis_command",
       "inputProperties": [
         "args",
         "command",
@@ -126,24 +140,24 @@
         "limit",
         "timeout_ms"
       ],
+      "name": "redis_command",
       "requiredInputProperties": [
         "command",
         "connection_id"
       ]
     },
     {
-      "name": "run_workflow",
       "inputProperties": [
         "connection_id",
         "variables",
         "workflow_id"
       ],
+      "name": "run_workflow",
       "requiredInputProperties": [
         "workflow_id"
       ]
     },
     {
-      "name": "search_tables",
       "inputProperties": [
         "connection_id",
         "database",
@@ -151,38 +165,24 @@
         "pattern",
         "schema"
       ],
+      "name": "search_tables",
       "requiredInputProperties": [
         "connection_id",
         "pattern"
       ]
     },
     {
-      "name": "use_session",
       "inputProperties": [
         "client_session_ref",
         "command",
         "input",
         "timeout_ms"
       ],
+      "name": "use_session",
       "requiredInputProperties": [
         "client_session_ref",
         "command"
       ]
     }
-  ],
-  "resourceUris": [
-    "datazen://connections",
-    "datazen://query-history",
-    "datazen://workflows"
-  ],
-  "resourceUriTemplates": [
-    "datazen://schema/{connectionId}/{database}"
-  ],
-  "removedToolInputFields": [
-    "config_id"
-  ],
-  "naming": {
-    "toolInputKeys": "snake_case",
-    "resourceJsonFields": "camelCase"
-  }
+  ]
 }
