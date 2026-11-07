@@ -652,8 +652,8 @@ async fn renew_extends_the_lease_without_bumping_the_generation() {
 // 服务端口径（组织级，CM-05）；claim 栅栏 = worker + generation + 租约。
 
 use datazen::jobs::domain::job::{
-    JobDomainResult, JobProgress, JobRecoveryResult, JobRecoveryVerdict,
-    JobRecoveryVerification, JobResultCounter, JobResultItem,
+    JobDomainResult, JobProgress, JobRecoveryResult, JobRecoveryVerdict, JobRecoveryVerification,
+    JobResultCounter, JobResultItem,
 };
 use datazen::jobs::runtime_repository::JobRuntimeRepository;
 
@@ -705,12 +705,18 @@ async fn cancel_poll_reports_intent_then_terminal_after_confirmation() {
     let before = jobs.cancel_poll(&org, &JobId::new("job-1")).await.unwrap();
     assert!(!before.cancel_requested && !before.terminal);
 
-    jobs.request_cancel(&org, &JobId::new("job-1")).await.unwrap();
+    jobs.request_cancel(&org, &JobId::new("job-1"))
+        .await
+        .unwrap();
     let after = jobs.cancel_poll(&org, &JobId::new("job-1")).await.unwrap();
     assert!(after.cancel_requested && !after.terminal);
 
     let record = jobs
-        .confirm_cancelled_not_started(&org, &JobId::new("job-1"), datazen::execution::domain::EffectOutcome::NotStarted)
+        .confirm_cancelled_not_started(
+            &org,
+            &JobId::new("job-1"),
+            datazen::execution::domain::EffectOutcome::NotStarted,
+        )
         .await
         .unwrap();
     assert_eq!(record.view.state, JobState::Cancelled);
@@ -769,7 +775,6 @@ async fn mark_pending_verification_moves_running_jobs_to_failed() {
         record.view.pending_verification_reason.as_deref(),
         Some("dispatchNeedsVerification")
     );
-    
 
     let details = jobs.get_details(&org, JobId::new("job-1")).await.unwrap();
     assert_eq!(
@@ -788,7 +793,9 @@ async fn finish_is_claim_fenced_and_version_cas() {
         .await
         .unwrap();
 
-    jobs.record_progress(&org, &claim, progress(3)).await.unwrap();
+    jobs.record_progress(&org, &claim, progress(3))
+        .await
+        .unwrap();
     // 陌生 worker 拿同代 claim 写 → StaleClaim。
     let forged = JobClaim {
         worker_id: WorkerId::new("w-2"),
@@ -891,12 +898,20 @@ async fn artifact_references_are_claim_fenced_and_ttl_pruned() {
         .await
         .unwrap();
 
-    jobs.record_artifacts(&org, &claim, &[datazen::shared::id::ArtifactId::new("artifact:plan:p1")])
-        .await
-        .unwrap();
+    jobs.record_artifacts(
+        &org,
+        &claim,
+        &[datazen::shared::id::ArtifactId::new("artifact:plan:p1")],
+    )
+    .await
+    .unwrap();
     // 外部产物只进终态行。
     let outcome = jobs
-        .append_external_artifacts(&org, &JobId::new("job-1"), &[datazen::shared::id::ArtifactId::new("artifact:ext")])
+        .append_external_artifacts(
+            &org,
+            &JobId::new("job-1"),
+            &[datazen::shared::id::ArtifactId::new("artifact:ext")],
+        )
         .await;
     assert!(matches!(outcome, Err(PortError::CasConflict { .. })));
 
@@ -925,7 +940,10 @@ async fn receipt_for_resolves_the_accepting_job_within_the_same_identity() {
         .receipt_for(&org, &IdempotencyKey::new("idem-job-1"))
         .await
         .unwrap();
-    assert_eq!(receipt.map(|id| id.as_str().to_string()), Some("job-1".into()));
+    assert_eq!(
+        receipt.map(|id| id.as_str().to_string()),
+        Some("job-1".into())
+    );
 
     // 陌生键 / 越组织 → None（不可区分口径）。
     assert!(jobs
@@ -1133,7 +1151,10 @@ async fn get_details_falls_back_to_payload_plan_facts() {
     assert_eq!(details.selection_revision, Some(4));
     assert_eq!(details.recovery_targets.len(), 1);
     assert_eq!(details.recovery_targets[0].connection_id, "c1");
-    assert_eq!(details.target_before_fingerprint.as_deref(), Some("sha256:bb"));
+    assert_eq!(
+        details.target_before_fingerprint.as_deref(),
+        Some("sha256:bb")
+    );
     assert_eq!(details.recovery_policy.as_deref(), Some("readOnlyVerify"));
 
     let other = ctx("org-b", "user-1");

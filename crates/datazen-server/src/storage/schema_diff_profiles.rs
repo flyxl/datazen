@@ -142,9 +142,7 @@ impl ServerSchemaDiffProfiles {
     }
 }
 
-fn profile_from_row(
-    row: &rusqlite::Row<'_>,
-) -> rusqlite::Result<SchemaDiffProfile> {
+fn profile_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SchemaDiffProfile> {
     let id: String = row.get(0)?;
     let version: i64 = row.get(1)?;
     let name: String = row.get(2)?;
@@ -179,8 +177,8 @@ fn profile_from_row(
         if json.trim().is_empty() {
             return Ok("[]".to_string());
         }
-        let _ = serde_json::from_str::<serde_json::Value>(json)
-            .map_err(|_| invalid(column, what))?;
+        let _ =
+            serde_json::from_str::<serde_json::Value>(json).map_err(|_| invalid(column, what))?;
         Ok(json.to_string())
     };
     let created_at = DateTime::parse_from_rfc3339(&created_at)
@@ -199,19 +197,35 @@ fn profile_from_row(
         target_database,
         source_schema,
         target_schema,
-        target_only_tables: serde_json::from_str(&decode_collection(9, "profile target_only_tables", &target_only_tables_json)?)
-            .map_err(|_| invalid(9, "profile target_only_tables"))?,
+        target_only_tables: serde_json::from_str(&decode_collection(
+            9,
+            "profile target_only_tables",
+            &target_only_tables_json,
+        )?)
+        .map_err(|_| invalid(9, "profile target_only_tables"))?,
         tables: serde_json::from_str(&decode_collection(10, "profile tables", &tables_json)?)
             .map_err(|_| invalid(10, "profile tables"))?,
-        source_objects: serde_json::from_str(&decode_collection(11, "profile source_objects", &source_objects_json)?)
-            .map_err(|_| invalid(11, "profile source_objects"))?,
-        target_objects: serde_json::from_str(&decode_collection(12, "profile target_objects", &target_objects_json)?)
-            .map_err(|_| invalid(12, "profile target_objects"))?,
+        source_objects: serde_json::from_str(&decode_collection(
+            11,
+            "profile source_objects",
+            &source_objects_json,
+        )?)
+        .map_err(|_| invalid(11, "profile source_objects"))?,
+        target_objects: serde_json::from_str(&decode_collection(
+            12,
+            "profile target_objects",
+            &target_objects_json,
+        )?)
+        .map_err(|_| invalid(12, "profile target_objects"))?,
         allow_destructive: allow_destructive != 0,
         include_indexes: include_indexes != 0,
         require_rollback: require_rollback != 0,
-        type_overrides: serde_json::from_str(&decode_collection(16, "profile type_overrides", &type_overrides_json)?)
-            .map_err(|_| invalid(16, "profile type_overrides"))?,
+        type_overrides: serde_json::from_str(&decode_collection(
+            16,
+            "profile type_overrides",
+            &type_overrides_json,
+        )?)
+        .map_err(|_| invalid(16, "profile type_overrides"))?,
         created_at,
         updated_at,
     })
@@ -291,4 +305,3 @@ pub async fn connection_exists(
     .await
     .map_err(|error| unavailable(format!("profile connection probe task: {error}")))?
 }
-
