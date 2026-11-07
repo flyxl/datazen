@@ -791,6 +791,9 @@ async fn fullstack_fixture() -> FullstackFixture {
             execution_router(ExecutionState {
                 sessions: cases.clone(),
                 directory: directory_face.clone(),
+                // 落账器默认关闭（本套件钉路由语义；历史落账在 query_assets_routes
+                // 套件端到端验证）。
+                history: None,
             }),
             ai_host_router(AiHostState {
                 settings: Arc::new(ServerSettingsStore::scoped("org-1", store.clone())),
