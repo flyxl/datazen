@@ -212,7 +212,68 @@ pub const MIGRATIONS: &[Migration] = &[
     V7_EXECUTION_WIRING,
     V8_SERVER_SETTINGS,
     V9_NAMED_VIEWS,
+    V10_QUERY_ASSETS,
 ];
+
+/// v10：查询资产双表（W8 刀3a——收藏与查询历史的服务端存储；契约
+/// §6.12 的存储形态裁决——web 形态把「桌面收藏 = 用户目录一个 .sql 文件」
+/// 与「桌面历史 = 本机 history.sqlite」都改存服务端库，词汇一条（共享层
+/// `datazen::history::{FavoriteQuery, QueryHistoryEntry}`）存储两形态。
+///
+/// DDL 口径（v5 起的登记纪律 + v9 先例）：
+///
+/// - **per (organization_id, principal_id) 隔离**：列在行上，路由的
+///   scoped store 按认证链事实装配（INV-01：组织与主体不来自请求体）；
+///   同组织两个主体各自持有自己的收藏/历史集合，越界读取天然落空
+///   （CM-05：读越界空）。
+/// - **id 服务端铸造**（uuid v4，CSPRNG，全局唯一）单列主键——收藏创建
+///   与历史落账都由服务端铸 id，客户端不提供。
+/// - **投影列显式命名**：`sql_text`（`sql` 不是保留字，但与共享词汇
+///   `sql` 字段对应的列名避开歧义面）；`database_name` / `schema_name`
+///   沿 named_views 命名口径。
+/// - **历史保留策略**：追加后按 (org, principal) 截断到
+///   `MAX_QUERY_HISTORY`（1000 行，共享层 scope.rs 常量；由存储实现
+///   执行，DELETE 多于 1000 的旧行——与桌面 history_db 同一条业务规则）。
+/// - **TIMESTAMPTZ → TEXT**（定宽 RFC3339 UTC 毫秒，v5 起口径；
+///   `executed_at` 由服务端铸造时刻，`rows_affected` 可空）。
+const V10_QUERY_ASSETS: Migration = Migration {
+    version: 10,
+    name: "query assets baseline (per-principal favorites + query history)",
+    expand: r#"
+CREATE TABLE query_favorites (
+  id TEXT NOT NULL PRIMARY KEY,
+  organization_id TEXT NOT NULL,
+  principal_id TEXT NOT NULL,
+  connection_id TEXT NOT NULL CHECK (connection_id <> ''),
+  title TEXT NOT NULL CHECK (title <> ''),
+  sql_text TEXT NOT NULL,
+  database_name TEXT CHECK (database_name IS NULL OR database_name <> ''),
+  keyword TEXT CHECK (keyword IS NULL OR keyword <> ''),
+  folder TEXT CHECK (folder IS NULL OR folder <> ''),
+  created_at TEXT NOT NULL,
+  updated_at TEXT CHECK (updated_at IS NULL OR updated_at <> '')
+);
+CREATE INDEX idx_query_favorites_owner
+  ON query_favorites (organization_id, principal_id, connection_id);
+
+CREATE TABLE query_history (
+  id TEXT NOT NULL PRIMARY KEY,
+  organization_id TEXT NOT NULL,
+  principal_id TEXT NOT NULL,
+  connection_id TEXT NOT NULL CHECK (connection_id <> ''),
+  database_name TEXT NOT NULL,
+  schema_name TEXT CHECK (schema_name IS NULL),
+  sql_text TEXT NOT NULL,
+  executed_at TEXT NOT NULL,
+  execution_time_ms INTEGER NOT NULL CHECK (execution_time_ms >= 0),
+  rows_affected INTEGER CHECK (rows_affected IS NULL OR rows_affected >= 0),
+  success INTEGER NOT NULL CHECK (success IN (0, 1)),
+  error_message TEXT
+);
+CREATE INDEX idx_query_history_owner
+  ON query_history (organization_id, principal_id, executed_at);
+"#,
+};
 
 /// v8：服务端设置存储（`SettingsRepository` 的服务端落地；契约 §6.1 的
 /// settings 读侧面）。

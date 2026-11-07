@@ -36,6 +36,7 @@ pub mod budget;
 pub mod budget_bridge;
 pub mod driver_exec;
 pub mod ephemeral;
+pub mod history_recorder;
 pub mod identity;
 pub mod idle_reclaimer;
 pub mod lease;

@@ -32,6 +32,7 @@ pub mod login_sessions;
 pub mod migrations;
 pub mod named_views;
 pub mod profiles;
+pub mod query_assets;
 pub mod settings;
 pub mod tunnels;
 
