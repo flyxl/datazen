@@ -214,6 +214,7 @@ pub const MIGRATIONS: &[Migration] = &[
     V9_NAMED_VIEWS,
     V10_ORG_MEMORIES,
     V11_QUERY_ASSETS,
+    V12_SCHEMA_DIFF_RUNTIME,
 ];
 
 /// v10：组织记忆与审批审计（T25）。版本化行 `(organization_id, id,
@@ -519,6 +520,116 @@ CREATE TABLE job_commit_boundaries (
   boundary_index INTEGER NOT NULL CHECK (boundary_index >= 0),
   boundary_json TEXT NOT NULL,
   PRIMARY KEY (organization_id, job_id, boundary_index)
+);
+"#,
+};
+
+/// v12：Schema Diff 运行时三伴表 + 迁移历史 + Schema Diff profile（W8
+/// 刀3b——schema_diff 域服务端化的存储底座）。
+///
+/// 桌面对照（`datazen-desktop/src/store/app_db.rs` 的 `JOB_SCHEMA_V2`）
+/// 与逐表口径：
+///
+/// - **job 运行时三伴表**：桌面 `job_result_details` / `job_domain_results`
+///   / `job_artifact_refs` 的服务端投影——主键全部升为
+///   `(organization_id, …)` 复合键（组织隔离在存储层就是硬边界，CM-05；
+///   v3 jobs 家族同款）。桌面 `job_idempotency_receipts` **不移植**：
+///   服务端受理行自持幂等（v3 jobs 表的 `idem_scope_key` 部分唯一索引
+///   `uq_jobs_idem`），`receipt_for` 直接查受理行，不再开表。
+/// - **migration_run_history**：桌面 `history_db/schema.rs` 同名表的服务端
+///   投影（PK 升 `(organization_id, id)`）——共享词汇
+///   `datazen::history::domain::migration_run::MigrationRunRecord` 的 18 列
+///   一一对应；`started_at DESC` 与 `profile_id` 两索引随行。
+/// - **schema_diff_profiles**：桌面是加密 JSON 文件
+///   （`schema_diff_profiles.enc`，单租户），web 形态改存服务端库行
+///   （查询资产 v11 同款裁决：文件形的服务端对偶）——共享词汇
+///   `datazen::migration::schema_diff::profile::SchemaDiffProfile`；
+///   per organization 隔离（profile 是「连接对」级别的组织资产，桌面
+///   单租户全体共享，服务端按组织收敛）；集合列落 JSON 投影
+///   （`tables_json` 等，v1 connection_profile 同款投影列口径）。
+/// - **TIMESTAMPTZ → TEXT**（定宽 RFC3339 UTC，v5 起口径）。
+const V12_SCHEMA_DIFF_RUNTIME: Migration = Migration {
+    version: 12,
+    name: "schema diff runtime (job details/results/artifacts + migration run history + profiles)",
+    expand: r#"
+CREATE TABLE job_result_details (
+  organization_id TEXT NOT NULL,
+  job_id TEXT NOT NULL,
+  plan_id TEXT,
+  plan_digest TEXT,
+  selection_revision INTEGER,
+  recovery_json TEXT,
+  PRIMARY KEY (organization_id, job_id)
+);
+
+CREATE TABLE job_domain_results (
+  organization_id TEXT NOT NULL,
+  job_id TEXT NOT NULL,
+  stage_id TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  PRIMARY KEY (organization_id, job_id, stage_id)
+);
+
+CREATE TABLE job_artifact_refs (
+  organization_id TEXT NOT NULL,
+  job_id TEXT NOT NULL,
+  artifact_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  PRIMARY KEY (organization_id, job_id, artifact_id)
+);
+CREATE INDEX idx_job_artifact_expiry
+  ON job_artifact_refs (organization_id, expires_at);
+
+CREATE TABLE migration_run_history (
+  organization_id TEXT NOT NULL,
+  id TEXT NOT NULL,
+  operation TEXT NOT NULL CHECK (operation <> ''),
+  status TEXT NOT NULL CHECK (status <> ''),
+  outcome TEXT NOT NULL CHECK (outcome <> ''),
+  phase TEXT NOT NULL CHECK (phase <> ''),
+  profile_id TEXT,
+  profile_revision TEXT,
+  source_connection_id TEXT,
+  target_connection_id TEXT,
+  started_at TEXT NOT NULL,
+  finished_at TEXT,
+  selected_count INTEGER NOT NULL DEFAULT 0 CHECK (selected_count >= 0),
+  committed_count INTEGER NOT NULL DEFAULT 0 CHECK (committed_count >= 0),
+  failed_count INTEGER NOT NULL DEFAULT 0 CHECK (failed_count >= 0),
+  conflict_count INTEGER NOT NULL DEFAULT 0 CHECK (conflict_count >= 0),
+  cancelled INTEGER NOT NULL DEFAULT 0 CHECK (cancelled IN (0, 1)),
+  rollback_outcome TEXT NOT NULL DEFAULT 'notRequired',
+  error_summary TEXT,
+  PRIMARY KEY (organization_id, id)
+);
+CREATE INDEX idx_migration_run_started
+  ON migration_run_history (organization_id, started_at);
+CREATE INDEX idx_migration_run_profile
+  ON migration_run_history (organization_id, profile_id);
+
+CREATE TABLE schema_diff_profiles (
+  organization_id TEXT NOT NULL,
+  id TEXT NOT NULL,
+  version INTEGER NOT NULL CHECK (version >= 1),
+  name TEXT NOT NULL CHECK (name <> ''),
+  source_connection_id TEXT NOT NULL CHECK (source_connection_id <> ''),
+  target_connection_id TEXT NOT NULL CHECK (target_connection_id <> ''),
+  source_database TEXT NOT NULL CHECK (source_database <> ''),
+  target_database TEXT NOT NULL CHECK (target_database <> ''),
+  source_schema TEXT,
+  target_schema TEXT,
+  target_only_tables_json TEXT NOT NULL DEFAULT '[]',
+  tables_json TEXT NOT NULL DEFAULT '[]',
+  source_objects_json TEXT NOT NULL DEFAULT '[]',
+  target_objects_json TEXT NOT NULL DEFAULT '[]',
+  allow_destructive INTEGER NOT NULL DEFAULT 0 CHECK (allow_destructive IN (0, 1)),
+  include_indexes INTEGER NOT NULL DEFAULT 1 CHECK (include_indexes IN (0, 1)),
+  require_rollback INTEGER NOT NULL DEFAULT 0 CHECK (require_rollback IN (0, 1)),
+  type_overrides_json TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (organization_id, id)
 );
 "#,
 };

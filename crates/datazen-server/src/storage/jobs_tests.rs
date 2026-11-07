@@ -645,3 +645,498 @@ async fn renew_extends_the_lease_without_bumping_the_generation() {
     let outcome = fixture.jobs.renew(&intruder).await;
     assert!(matches!(outcome, Err(PortError::StaleClaim)));
 }
+
+// ── W8 刀3b：JobRuntimeRepository（schema_diff 域的 job 运行时面）────────
+//
+// 桌面 runtime_ops/results/access 同一用例语义的服务端腿。组织作用域按
+// 服务端口径（组织级，CM-05）；claim 栅栏 = worker + generation + 租约。
+
+use datazen::jobs::domain::job::{
+    JobDomainResult, JobProgress, JobRecoveryResult, JobRecoveryVerdict,
+    JobRecoveryVerification, JobResultCounter, JobResultItem,
+};
+use datazen::jobs::runtime_repository::JobRuntimeRepository;
+
+fn runtime_fixture() -> (ServerJobs, SharedClock, Arc<AdminStore>) {
+    let store = migrated_store();
+    let clock = SharedClock::at("2026-01-01T00:00:00Z");
+    let jobs = ServerJobs::new(
+        store.clone(),
+        Arc::new(clock.clone()) as Arc<dyn JobClock>,
+        CLAIM_TTL_SECS,
+    );
+    (jobs, clock, store)
+}
+
+fn progress(converted: u64) -> JobProgress {
+    JobProgress {
+        read: Counter::new(converted),
+        converted: Counter::new(converted),
+        attempted: Counter::new(converted),
+        committed: Counter::new(0),
+        unknown: Counter::new(0),
+    }
+}
+
+fn domain_result(stage: &str) -> JobDomainResult {
+    JobDomainResult {
+        stage_id: StageId::new(stage),
+        result_code: "schemaDiff".into(),
+        outcome_code: "prepared".into(),
+        counters: vec![JobResultCounter {
+            code: "tables".into(),
+            value: Counter::new(1),
+        }],
+        items: vec![JobResultItem {
+            item_id: "users".into(),
+            outcome_code: "prepared".into(),
+            reason_code: None,
+        }],
+        artifact_ids: vec![],
+    }
+}
+
+#[tokio::test]
+async fn cancel_poll_reports_intent_then_terminal_after_confirmation() {
+    let (jobs, _clock, _store) = runtime_fixture();
+    let org = ctx("org-a", "user-1");
+    accepted(&jobs, &org, "job-1").await;
+
+    let before = jobs.cancel_poll(&org, &JobId::new("job-1")).await.unwrap();
+    assert!(!before.cancel_requested && !before.terminal);
+
+    jobs.request_cancel(&org, &JobId::new("job-1")).await.unwrap();
+    let after = jobs.cancel_poll(&org, &JobId::new("job-1")).await.unwrap();
+    assert!(after.cancel_requested && !after.terminal);
+
+    let record = jobs
+        .confirm_cancelled_not_started(&org, &JobId::new("job-1"), datazen::execution::domain::EffectOutcome::NotStarted)
+        .await
+        .unwrap();
+    assert_eq!(record.view.state, JobState::Cancelled);
+    let terminal = jobs.cancel_poll(&org, &JobId::new("job-1")).await.unwrap();
+    assert!(terminal.terminal, "终态后 poll 报 terminal");
+
+    // 终态再请求取消 → CasConflict（不是 NotFound：行还在）。
+    let outcome = jobs.request_cancel(&org, &JobId::new("job-1")).await;
+    assert!(matches!(outcome, Err(PortError::CasConflict { .. })));
+    // 越组织 → NotFound（CM-05）。
+    let other = ctx("org-b", "user-1");
+    let outcome = jobs.request_cancel(&other, &JobId::new("job-1")).await;
+    assert!(matches!(outcome, Err(PortError::NotFound(_))));
+}
+
+#[tokio::test]
+async fn mark_failed_unstarted_persists_not_executed_recovery() {
+    let (jobs, _clock, _store) = runtime_fixture();
+    let org = ctx("org-a", "user-1");
+    accepted(&jobs, &org, "job-1").await;
+
+    let record = jobs
+        .mark_failed_unstarted(&org, &JobId::new("job-1"), "budgetDenied")
+        .await
+        .unwrap();
+    assert_eq!(record.view.state, JobState::Failed);
+    assert_eq!(record.view.error.as_deref(), Some("budgetDenied"));
+
+    let details = jobs.get_details(&org, JobId::new("job-1")).await.unwrap();
+    assert_eq!(
+        details.recovery.as_ref().unwrap().verdict,
+        JobRecoveryVerdict::NotExecuted
+    );
+    assert_eq!(
+        details.recovery.as_ref().unwrap().reason_code.as_deref(),
+        Some("budgetDenied")
+    );
+    assert_eq!(details.job.error.as_deref(), Some("budgetDenied"));
+}
+
+#[tokio::test]
+async fn mark_pending_verification_moves_running_jobs_to_failed() {
+    let (jobs, _clock, _store) = runtime_fixture();
+    let org = ctx("org-a", "user-1");
+    accepted(&jobs, &org, "job-1").await;
+    let _claim = jobs
+        .claim(&org, JobId::new("job-1"), WorkerId::new("w-1"))
+        .await
+        .unwrap();
+    let record = jobs
+        .mark_pending_verification(&org, &JobId::new("job-1"), "dispatchNeedsVerification")
+        .await
+        .unwrap();
+    assert_eq!(record.view.state, JobState::Failed);
+    assert_eq!(
+        record.view.pending_verification_reason.as_deref(),
+        Some("dispatchNeedsVerification")
+    );
+    
+
+    let details = jobs.get_details(&org, JobId::new("job-1")).await.unwrap();
+    assert_eq!(
+        details.recovery.as_ref().unwrap().verdict,
+        JobRecoveryVerdict::PendingVerification
+    );
+}
+
+#[tokio::test]
+async fn finish_is_claim_fenced_and_version_cas() {
+    let (jobs, _clock, _store) = runtime_fixture();
+    let org = ctx("org-a", "user-1");
+    accepted(&jobs, &org, "job-1").await;
+    let claim = jobs
+        .claim(&org, JobId::new("job-1"), WorkerId::new("w-1"))
+        .await
+        .unwrap();
+
+    jobs.record_progress(&org, &claim, progress(3)).await.unwrap();
+    // 陌生 worker 拿同代 claim 写 → StaleClaim。
+    let forged = JobClaim {
+        worker_id: WorkerId::new("w-2"),
+        ..claim.clone()
+    };
+    let outcome = jobs
+        .finish(
+            &org,
+            &forged,
+            JobStateVersion::new(2),
+            JobState::Succeeded,
+            datazen::execution::domain::EffectOutcome::Completed,
+            progress(3),
+            None,
+            None,
+        )
+        .await;
+    assert!(matches!(outcome, Err(PortError::StaleClaim)));
+
+    let record = jobs
+        .finish(
+            &org,
+            &claim,
+            JobStateVersion::new(2),
+            JobState::Succeeded,
+            datazen::execution::domain::EffectOutcome::Completed,
+            progress(3),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(record.view.state, JobState::Succeeded);
+    assert_eq!(record.view.progress.attempted, Counter::new(3));
+
+    // 版本 CAS：终态后 claim 已清，同 claim 再 finish → StaleClaim（终态清
+    // claim + SQL 的版本谓词双保险）。
+    let outcome = jobs
+        .finish(
+            &org,
+            &claim,
+            JobStateVersion::new(2),
+            JobState::Failed,
+            datazen::execution::domain::EffectOutcome::Unknown,
+            progress(3),
+            None,
+            None,
+        )
+        .await;
+    assert!(matches!(outcome, Err(PortError::StaleClaim)));
+}
+
+#[tokio::test]
+async fn domain_results_require_active_stage_and_survive_get_details() {
+    let (jobs, _clock, _store) = runtime_fixture();
+    let org = ctx("org-a", "user-1");
+    accepted(&jobs, &org, "job-1").await;
+    let claim = jobs
+        .claim(&org, JobId::new("job-1"), WorkerId::new("w-1"))
+        .await
+        .unwrap();
+    jobs.record_stage(
+        &org,
+        &claim,
+        StageRecord {
+            job_id: JobId::new("job-1"),
+            stage_id: StageId::new("prepare"),
+            kind: "compare".into(),
+            claimed_by: Some(WorkerId::new("w-1")),
+            execution_ids: vec![],
+            started_at: Some(Timestamp::new("2026-01-01T00:00:10Z")),
+            finished_at: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    // 阶段不匹配 → StaleClaim。
+    let outcome = jobs
+        .record_domain_result(&org, &claim, domain_result("apply"))
+        .await;
+    assert!(matches!(outcome, Err(PortError::StaleClaim)));
+
+    jobs.record_domain_result(&org, &claim, domain_result("prepare"))
+        .await
+        .unwrap();
+    let details = jobs.get_details(&org, JobId::new("job-1")).await.unwrap();
+    assert_eq!(details.domain_results.len(), 1);
+    assert_eq!(details.domain_results[0].stage_id.as_str(), "prepare");
+    assert_eq!(details.domain_results[0].counters[0].code, "tables");
+}
+
+#[tokio::test]
+async fn artifact_references_are_claim_fenced_and_ttl_pruned() {
+    let (jobs, clock, store) = runtime_fixture();
+    let org = ctx("org-a", "user-1");
+    accepted(&jobs, &org, "job-1").await;
+    let claim = jobs
+        .claim(&org, JobId::new("job-1"), WorkerId::new("w-1"))
+        .await
+        .unwrap();
+
+    jobs.record_artifacts(&org, &claim, &[datazen::shared::id::ArtifactId::new("artifact:plan:p1")])
+        .await
+        .unwrap();
+    // 外部产物只进终态行。
+    let outcome = jobs
+        .append_external_artifacts(&org, &JobId::new("job-1"), &[datazen::shared::id::ArtifactId::new("artifact:ext")])
+        .await;
+    assert!(matches!(outcome, Err(PortError::CasConflict { .. })));
+
+    // TTL 30 天：推进时钟后 get_details 顺手清过期引用。
+    clock.set("2026-02-15T00:00:00Z");
+    let _ = jobs.get_details(&org, JobId::new("job-1")).await;
+    let remaining: i64 = {
+        let conn = store.lock_for_adapter().unwrap();
+        conn.query_row(
+            "SELECT COUNT(*) FROM job_artifact_refs WHERE organization_id = 'org-a' AND job_id = 'job-1'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap()
+    };
+    assert_eq!(remaining, 0, "过期产物引用被清");
+}
+
+#[tokio::test]
+async fn receipt_for_resolves_the_accepting_job_within_the_same_identity() {
+    let (jobs, _clock, _store) = runtime_fixture();
+    let org = ctx("org-a", "user-1");
+    accepted(&jobs, &org, "job-1").await;
+
+    let receipt = jobs
+        .receipt_for(&org, &IdempotencyKey::new("idem-job-1"))
+        .await
+        .unwrap();
+    assert_eq!(receipt.map(|id| id.as_str().to_string()), Some("job-1".into()));
+
+    // 陌生键 / 越组织 → None（不可区分口径）。
+    assert!(jobs
+        .receipt_for(&org, &IdempotencyKey::new("idem-other"))
+        .await
+        .unwrap()
+        .is_none());
+    let other = ctx("org-b", "user-1");
+    assert!(jobs
+        .receipt_for(&other, &IdempotencyKey::new("idem-job-1"))
+        .await
+        .unwrap()
+        .is_none());
+}
+
+#[tokio::test]
+async fn recovery_persist_and_verification_roundtrip() {
+    let (jobs, _clock, _store) = runtime_fixture();
+    let org = ctx("org-a", "user-1");
+    accepted(&jobs, &org, "job-1").await;
+    let claim = jobs
+        .claim(&org, JobId::new("job-1"), WorkerId::new("w-1"))
+        .await
+        .unwrap();
+    let record = jobs
+        .finish(
+            &org,
+            &claim,
+            JobStateVersion::new(2),
+            JobState::Failed,
+            datazen::execution::domain::EffectOutcome::PartiallyApplied,
+            progress(2),
+            Some("dispatchFailed".into()),
+            Some("dispatchNeedsVerification".into()),
+        )
+        .await
+        .unwrap();
+    let version = record.state_version.get();
+
+    // resume_through 越界 → 拒绝。
+    let outcome = jobs
+        .persist_recovery(
+            &org,
+            &JobId::new("job-1"),
+            JobRecoveryResult {
+                verdict: JobRecoveryVerdict::RequireManualReview,
+                resume_through: Some(9),
+                reason_code: Some("manual".into()),
+            },
+        )
+        .await;
+    assert!(matches!(outcome, Err(PortError::BackendUnavailable(_))));
+
+    jobs.persist_recovery(
+        &org,
+        &JobId::new("job-1"),
+        JobRecoveryResult {
+            verdict: JobRecoveryVerdict::RequireManualReview,
+            resume_through: None,
+            reason_code: Some("targetStateChanged".into()),
+        },
+    )
+    .await
+    .unwrap();
+
+    // 非 pendingVerification 的已核验态再核验 → CasConflict。
+    let outcome = jobs
+        .persist_recovery_verification(
+            &org,
+            &JobId::new("job-1"),
+            JobStateVersion::new(version),
+            JobRecoveryVerification {
+                result: JobRecoveryResult {
+                    verdict: JobRecoveryVerdict::RequireManualReview,
+                    resume_through: None,
+                    reason_code: Some("targetStateUnchangedReprepareRequired".into()),
+                },
+                confirmed_boundaries: vec![],
+                domain_results: vec![domain_result("apply")],
+            },
+        )
+        .await;
+    assert!(matches!(outcome, Err(PortError::CasConflict { .. })));
+}
+
+#[tokio::test]
+async fn boundaries_and_checkpoints_roundtrip_through_the_runtime_face() {
+    let (jobs, _clock, _store) = runtime_fixture();
+    let org = ctx("org-a", "user-1");
+    accepted(&jobs, &org, "job-1").await;
+    let claim = jobs
+        .claim(&org, JobId::new("job-1"), WorkerId::new("w-1"))
+        .await
+        .unwrap();
+    let boundary = CommitBoundary {
+        stage_id: StageId::new("apply"),
+        stable_target_fingerprint: "sha256:abc".into(),
+        committed_at: Timestamp::new("2026-01-01T00:00:20Z"),
+        operation_id: Some("op-1".into()),
+        batch_id: None,
+        payload_digest: Some("sha256:def".into()),
+        evidence: vec!["targetBatch:1".into()],
+        verified_at: None,
+    };
+    jobs.record_commit_boundary(&org, &claim, boundary.clone())
+        .await
+        .unwrap();
+    jobs.record_commit_boundary(&org, &claim, boundary.clone())
+        .await
+        .unwrap();
+
+    let boundaries = jobs
+        .committed_boundaries(&org, &JobId::new("job-1"))
+        .await
+        .unwrap();
+    assert_eq!(boundaries.len(), 2, "两条边界按序可读");
+
+    let checkpoint = Checkpoint {
+        job_id: JobId::new("job-1"),
+        state_version: JobStateVersion::new(3),
+        stable_target_fingerprint: "sha256:stable".into(),
+        committed: vec![boundary],
+        verification_evidence: vec!["primaryKey:ok".into()],
+        recovery_policy: "readOnlyVerify".into(),
+    };
+    jobs.save_checkpoint(&org, &claim, checkpoint.clone())
+        .await
+        .unwrap();
+    let latest = jobs
+        .latest_checkpoint(&org, &JobId::new("job-1"))
+        .await
+        .unwrap()
+        .expect("checkpoint exists");
+    assert_eq!(latest.state_version, checkpoint.state_version);
+    assert_eq!(latest.committed, checkpoint.committed);
+    assert_eq!(latest.recovery_policy, "readOnlyVerify");
+}
+
+#[tokio::test]
+async fn validate_stage_owner_admits_only_the_claimed_running_stage() {
+    let (jobs, _clock, _store) = runtime_fixture();
+    let org = ctx("org-a", "user-1");
+    accepted(&jobs, &org, "job-1").await;
+    let claim = jobs
+        .claim(&org, JobId::new("job-1"), WorkerId::new("w-1"))
+        .await
+        .unwrap();
+    jobs.record_stage(
+        &org,
+        &claim,
+        StageRecord {
+            job_id: JobId::new("job-1"),
+            stage_id: StageId::new("apply"),
+            kind: "deploy".into(),
+            claimed_by: Some(WorkerId::new("w-1")),
+            execution_ids: vec![],
+            started_at: Some(Timestamp::new("2026-01-01T00:00:10Z")),
+            finished_at: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    jobs.validate_stage_owner(&org, &claim, &StageId::new("apply"))
+        .await
+        .unwrap();
+    let outcome = jobs
+        .validate_stage_owner(&org, &claim, &StageId::new("prepare"))
+        .await;
+    assert!(matches!(outcome, Err(PortError::StaleClaim)));
+    let other = ctx("org-b", "user-1");
+    let outcome = jobs
+        .validate_stage_owner(&other, &claim, &StageId::new("apply"))
+        .await;
+    assert!(matches!(outcome, Err(PortError::StaleClaim)));
+}
+
+#[tokio::test]
+async fn get_details_falls_back_to_payload_plan_facts() {
+    let (jobs, _clock, _store) = runtime_fixture();
+    let org = ctx("org-a", "user-1");
+    let payload = json!({
+        "planVersion": 1,
+        "handlerVersion": 1,
+        "checkpointVersion": 1,
+        "consumedPlanId": "plan-opaque-1",
+        "planDigest": "sha256:aa",
+        "selectionRevision": 4,
+        "recoveryTargets": [{ "connectionId": "c1", "objectIds": ["obj-t:users"] }],
+        "targetBeforeFingerprint": "sha256:bb",
+        "recoveryPolicy": "readOnlyVerify",
+    });
+    // apply 类 kind（APPLY_KINDS）才允许携带 consumedPlanId。
+    let apply_definition = JobDefinition {
+        kind: "schemaDiffApply".into(),
+        ..definition("job-1", payload)
+    };
+    jobs.accept(&org, apply_definition, &IdempotencyKey::new("idem-job-1"))
+        .await
+        .unwrap();
+
+    let details = jobs.get_details(&org, JobId::new("job-1")).await.unwrap();
+    assert_eq!(details.plan_id.as_deref(), Some("plan-opaque-1"));
+    assert_eq!(details.plan_digest.as_deref(), Some("sha256:aa"));
+    assert_eq!(details.selection_revision, Some(4));
+    assert_eq!(details.recovery_targets.len(), 1);
+    assert_eq!(details.recovery_targets[0].connection_id, "c1");
+    assert_eq!(details.target_before_fingerprint.as_deref(), Some("sha256:bb"));
+    assert_eq!(details.recovery_policy.as_deref(), Some("readOnlyVerify"));
+
+    let other = ctx("org-b", "user-1");
+    let outcome = jobs.get_details(&other, JobId::new("job-1")).await;
+    assert!(matches!(outcome, Err(PortError::NotFound(_))));
+}
