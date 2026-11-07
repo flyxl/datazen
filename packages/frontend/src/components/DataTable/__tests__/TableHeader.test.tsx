@@ -1,7 +1,23 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, fireEvent } from '@testing-library/react';
 import { TableHeader } from '../TableHeader';
+import { showNativeContextMenu } from '../../../lib/nativeContextMenu';
+import type { NativeMenuItemDef } from '../../../lib/nativeContextMenu';
 import type { SortCondition } from '../../../types';
+
+vi.mock('../../../lib/nativeContextMenu', () => ({
+  showNativeContextMenu: vi.fn(),
+}));
+
+/** The `kind: 'item'` variant of a menu entry — the one that carries an action. */
+type MenuItem = Extract<NativeMenuItemDef, { kind: 'item' }>;
+
+/** The items of the last opened menu, asserted entry by entry. */
+function lastMenuItems(): MenuItem[] {
+  const calls = vi.mocked(showNativeContextMenu).mock.calls;
+  expect(calls.length).toBeGreaterThan(0);
+  return calls[calls.length - 1][0] as MenuItem[];
+}
 
 const COLS = [
   { id: 'id', name: 'id', type: 'bigint' },
@@ -9,45 +25,181 @@ const COLS = [
   { id: 'price', name: 'price', type: 'numeric' },
 ];
 
-describe('TableHeader sort icon visibility', () => {
-  it('hides sort icon for unsorted columns', () => {
+describe('TableHeader sort interaction (DBR-SORT, Navicat-aligned)', () => {
+  it('hides the direction indicator for unsorted columns but keeps the menu chevron', () => {
     const { container } = render(
       <TableHeader columns={COLS} sorts={[]} onSort={() => {}} sortable />,
     );
-    const sortIcons = container.querySelectorAll('svg');
-    // No sort icons should be visible when nothing is sorted
-    expect(sortIcons.length).toBe(0);
+    // No column is sorted: no direction indicator anywhere…
+    expect(container.querySelectorAll('[data-sort-indicator]').length).toBe(0);
+    // …but every sortable column carries the chevron that opens its menu.
+    expect(container.querySelectorAll('[data-sort-menu]').length).toBe(COLS.length);
   });
 
-  it('shows sort icon only for the actively sorted column', () => {
+  it('shows the direction indicator only for the actively sorted column', () => {
     const sorts: SortCondition[] = [{ column: 'name', descending: false }];
     const { container } = render(
       <TableHeader columns={COLS} sorts={sorts} onSort={() => {}} sortable />,
     );
-    const sortIcons = container.querySelectorAll('svg');
-    // Only one sort icon (ArrowUp for asc)
-    expect(sortIcons.length).toBe(1);
+    const indicators = container.querySelectorAll('[data-sort-indicator]');
+    expect(indicators.length).toBe(1);
+    expect(indicators[0].querySelector('.lucide-arrow-up')).toBeTruthy();
   });
 
-  it('triggers onSort when column header is double-clicked', () => {
+  it('a single click sorts an unsorted column ascending', () => {
     const onSort = vi.fn();
     const { container } = render(
       <TableHeader columns={COLS} sorts={[]} onSort={onSort} sortable />,
     );
-    // Double-click the "name" column header area
     const headers = container.querySelectorAll('[data-col-header]');
-    fireEvent.doubleClick(headers[1]); // "name" column
+    fireEvent.click(headers[1]); // "name" column
     expect(onSort).toHaveBeenCalledWith({ column: 'name', descending: false });
   });
 
-  it('does not trigger sort on single click', () => {
+  it('a second click turns the ascending sort descending', () => {
     const onSort = vi.fn();
+    const sorts: SortCondition[] = [{ column: 'name', descending: false }];
     const { container } = render(
-      <TableHeader columns={COLS} sorts={[]} onSort={onSort} sortable />,
+      <TableHeader columns={COLS} sorts={sorts} onSort={onSort} sortable />,
     );
     const headers = container.querySelectorAll('[data-col-header]');
     fireEvent.click(headers[1]);
+    expect(onSort).toHaveBeenCalledWith({ column: 'name', descending: true });
+  });
+
+  it('the third click removes the column from the sort', () => {
+    const onSort = vi.fn();
+    const onRemoveSort = vi.fn();
+    const sorts: SortCondition[] = [{ column: 'name', descending: true }];
+    const { container } = render(
+      <TableHeader
+        columns={COLS}
+        sorts={sorts}
+        onSort={onSort}
+        onRemoveSort={onRemoveSort}
+        sortable
+      />,
+    );
+    const headers = container.querySelectorAll('[data-col-header]');
+    fireEvent.click(headers[1]);
+    expect(onRemoveSort).toHaveBeenCalledWith('name');
+    // The removal is the remove channel's business: the click never *sets*
+    // another sort on its way out.
     expect(onSort).not.toHaveBeenCalled();
+  });
+
+  it('without a remove channel the third click wraps back to ascending', () => {
+    const onSort = vi.fn();
+    const sorts: SortCondition[] = [{ column: 'name', descending: true }];
+    const { container } = render(
+      <TableHeader columns={COLS} sorts={sorts} onSort={onSort} sortable />,
+    );
+    const headers = container.querySelectorAll('[data-col-header]');
+    fireEvent.click(headers[1]);
+    expect(onSort).toHaveBeenCalledWith({ column: 'name', descending: false });
+  });
+
+  it('single-clicking an unsorted column replaces the multi-sort with it', () => {
+    const onSort = vi.fn();
+    const sorts: SortCondition[] = [
+      { column: 'name', descending: false },
+      { column: 'price', descending: true },
+    ];
+    const { container } = render(
+      <TableHeader columns={COLS} sorts={sorts} onSort={onSort} sortable />,
+    );
+    const headers = container.querySelectorAll('[data-col-header]');
+    fireEvent.click(headers[0]); // "id" — unsorted until now
+    expect(onSort).toHaveBeenCalledWith({ column: 'id', descending: false });
+  });
+
+  it('the chevron opens the three single-column entries without sorting', () => {
+    const onSort = vi.fn();
+    vi.mocked(showNativeContextMenu).mockClear();
+    const { container } = render(
+      <TableHeader columns={COLS} sorts={[]} onSort={onSort} sortable />,
+    );
+    const menus = container.querySelectorAll('[data-sort-menu]');
+    fireEvent.click(menus[1]); // "name" column's chevron
+
+    // Opening the menu sorts nothing on its own.
+    expect(onSort).not.toHaveBeenCalled();
+    const items = lastMenuItems();
+    expect(items.map((item) => item.id)).toEqual([
+      'sort-ascending',
+      'sort-descending',
+      'remove-sort',
+    ]);
+    // An unsorted column has nothing to remove, so the entry is greyed.
+    expect(items[2].enabled).toBe(false);
+  });
+
+  it('the menu actions set the single sort and remove the column', () => {
+    const onSort = vi.fn();
+    const onRemoveSort = vi.fn();
+    const sorts: SortCondition[] = [{ column: 'name', descending: false }];
+    vi.mocked(showNativeContextMenu).mockClear();
+    const { container } = render(
+      <TableHeader
+        columns={COLS}
+        sorts={sorts}
+        onSort={onSort}
+        onRemoveSort={onRemoveSort}
+        sortable
+      />,
+    );
+    const headers = container.querySelectorAll('[data-col-header]');
+    const nameHeader = [...headers].find(
+      (header) => header.getAttribute('data-col-header') === 'name',
+    )!;
+    fireEvent.click(nameHeader.querySelector('[data-sort-menu]')!);
+
+    const items = lastMenuItems();
+    // The sorted column can be removed from the menu.
+    expect(items[2].enabled).toBe(true);
+    items[0].action();
+    expect(onSort).toHaveBeenCalledWith({ column: 'name', descending: false });
+    items[1].action();
+    expect(onSort).toHaveBeenCalledWith({ column: 'name', descending: true });
+    items[2].action();
+    expect(onRemoveSort).toHaveBeenCalledWith('name');
+  });
+
+  it('a click on the resize strip does not sort the column', () => {
+    const onSort = vi.fn();
+    const { container } = render(
+      <TableHeader
+        columns={COLS}
+        sorts={[]}
+        onSort={onSort}
+        sortable
+        columnWidths={[100, 120, 140]}
+        onResizeStart={() => {}}
+      />,
+    );
+    const headers = container.querySelectorAll('[data-col-header]');
+    // The resize strip is the last child of the header cell.
+    const strip = headers[1].lastElementChild!;
+    fireEvent.click(strip);
+    expect(onSort).not.toHaveBeenCalled();
+  });
+
+  it('carries aria-sort for the ARIA grid semantics', () => {
+    const sorts: SortCondition[] = [{ column: 'name', descending: false }];
+    const { container } = render(
+      <TableHeader
+        columns={COLS}
+        sorts={sorts}
+        onSort={() => {}}
+        sortable
+        gridSemantics
+      />,
+    );
+    const headers = [...container.querySelectorAll('[data-col-header]')];
+    expect(headers.find((h) => h.getAttribute('data-col-header') === 'id')!.getAttribute('aria-sort')).toBeNull();
+    expect(
+      headers.find((h) => h.getAttribute('data-col-header') === 'name')!.getAttribute('aria-sort'),
+    ).toBe('ascending');
   });
 
   it('text container fills available space when sort icon is hidden', () => {
@@ -67,28 +219,6 @@ describe('TableHeader sort icon visibility', () => {
     const headers = container.querySelectorAll('[data-col-header]');
     const textContainer = headers[0].querySelector('[data-col-label]')!;
     expect(textContainer.className).toContain('flex-1');
-  });
-
-  it('single-clicking the sort icon toggles sort direction', () => {
-    const onSort = vi.fn();
-    const sorts: SortCondition[] = [{ column: 'name', descending: false }];
-    const { container } = render(
-      <TableHeader columns={COLS} sorts={sorts} onSort={onSort} sortable />,
-    );
-    const icon = container.querySelector('[data-sort-icon]')!;
-    fireEvent.click(icon);
-    expect(onSort).toHaveBeenCalledWith({ column: 'name', descending: true });
-  });
-
-  it('single-clicking desc sort icon toggles back to asc', () => {
-    const onSort = vi.fn();
-    const sorts: SortCondition[] = [{ column: 'price', descending: true }];
-    const { container } = render(
-      <TableHeader columns={COLS} sorts={sorts} onSort={onSort} sortable />,
-    );
-    const icon = container.querySelector('[data-sort-icon]')!;
-    fireEvent.click(icon);
-    expect(onSort).toHaveBeenCalledWith({ column: 'price', descending: false });
   });
 });
 
@@ -119,9 +249,9 @@ describe('TableHeader multi-column sort badges (DB-11)', () => {
     // order is the ORDER BY order.
     expect(badges[0].textContent).toBe('2'); // name, second in the list
     expect(badges[1].textContent).toBe('1'); // price, first in the list
-    // Both sorted columns show their arrow, in their own direction.
-    const icons = container.querySelectorAll('[data-sort-icon]');
-    expect(icons.length).toBe(2);
+    // Both sorted columns show their indicator, in their own direction.
+    const indicators = container.querySelectorAll('[data-sort-indicator]');
+    expect(indicators.length).toBe(2);
   });
 
   it('shows the direction of the second sorted column, not only the first', () => {
@@ -138,23 +268,23 @@ describe('TableHeader multi-column sort badges (DB-11)', () => {
     const priceHeader = [...headers].find(
       (header) => header.getAttribute('data-col-header') === 'price',
     )!;
-    const priceIcon = priceHeader.querySelector('[data-sort-icon]')!;
-    expect(priceIcon.querySelector('.lucide-arrow-down')).toBeTruthy();
-    expect(priceIcon.querySelector('.lucide-arrow-up')).toBeNull();
+    const priceIndicator = priceHeader.querySelector('[data-sort-indicator]')!;
+    expect(priceIndicator.querySelector('.lucide-arrow-down')).toBeTruthy();
+    expect(priceIndicator.querySelector('.lucide-arrow-up')).toBeNull();
   });
 
-  it('double-clicking an unsorted column still offers the single-sort replacement', () => {
-    const onSort = vi.fn();
+  it('offers every sorted column the multi-column menu entry set', () => {
+    // The badges and arrows of the multi-sort stay as they were — the menu
+    // chevron adds itself without replacing anything (see the interaction
+    // describe above for the menu's own behaviour).
     const sorts: SortCondition[] = [
-      { column: 'name', descending: false },
       { column: 'price', descending: true },
+      { column: 'name', descending: false },
     ];
     const { container } = render(
-      <TableHeader columns={COLS} sorts={sorts} onSort={onSort} sortable />,
+      <TableHeader columns={COLS} sorts={sorts} onSort={() => {}} sortable />,
     );
-    const headers = container.querySelectorAll('[data-col-header]');
-    fireEvent.doubleClick(headers[0]); // "id" — unsorted
-    expect(onSort).toHaveBeenCalledWith({ column: 'id', descending: false });
+    expect(container.querySelectorAll('[data-sort-indicator]').length).toBe(2);
   });
 });
 

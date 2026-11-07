@@ -368,6 +368,11 @@ const pack = {
   'dataTable.sortDescending': 'Descending',
   'dataTable.removeSortColumn': 'Remove from Sort',
   'dataTable.clearSorts': 'Clear All Sorting',
+  // The header's own sort menu and chevron (DBR-SORT, Navicat-aligned single-column sort).
+  'dataTable.sortColumnAscending': 'Sort Ascending',
+  'dataTable.sortColumnDescending': 'Sort Descending',
+  'dataTable.removeSort': 'Remove Sort',
+  'dataTable.sortMenuLabel': 'Sort options',
   // Column tools (DB-12). New keys land in en only; the other nine
   // locales resolve them through the en fallback until the next release.
   'dataTable.freezeThrough': 'Freeze through This Column',

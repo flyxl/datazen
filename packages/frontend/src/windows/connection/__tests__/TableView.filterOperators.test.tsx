@@ -14,7 +14,7 @@
  * dropdown. A unit test of the helper could not catch the panel bypassing it.
  */
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
-import { render, cleanup, screen } from '@testing-library/react';
+import { render, cleanup, screen, within } from '@testing-library/react';
 import { TableView } from '../TableView';
 import { emptyTableState } from '../../../stores/tableData/connectionState';
 import type { TableState } from '../../../stores/tableData/types';
@@ -202,9 +202,10 @@ function renderTable() {
 
 /** The operator dropdown of the expanded condition. */
 function operatorOptions(): string[] {
-  const selects = screen.getAllByRole('combobox');
-  // The condition editor renders the column select first, the operator
-  // select second.
+  // Scoped to the filter editor: the toolbar carries its own combobox (the
+  // default-order select, DBR-SORT), so a global index would count it too.
+  // Inside the editor the column select renders first, the operator second.
+  const selects = within(screen.getByTestId('filter-editor')).getAllByRole('combobox');
   const operatorSelect = selects[1] as HTMLSelectElement;
   return Array.from(operatorSelect.options).map((option) => option.value);
 }

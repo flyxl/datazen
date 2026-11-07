@@ -149,42 +149,50 @@ describe('表数据视图 (TD-001~TD-008)', () => {
     expect(hasPage1).toBe(true);
   });
 
-  // ── 排序 ───────────────────────────────────────────────────────
+  // ── 排序（Navicat 对齐的三态循环：升 → 降 → 移除） ────────────────
 
-  it('点击列头应触发排序 (TD-003)', async () => {
-    const headerBtns = await $$(`button[title="${t('dataTable.sort')}"]`);
-    const count = await headerBtns.length;
-    if (count > 0) {
-      await headerBtns[0].click();
-      await browser.pause(1500);
+  it('点击列头应按该列升序排序 (TD-003)', async () => {
+    // A single click on the header cell itself starts the cycle (DBR-SORT);
+    // the old spec looked for `button[title=…]` sort buttons that no longer
+    // exist, so it silently skipped.
+    const header = await $('[data-col-header="name"]');
+    await header.click();
+    await browser.pause(1500);
 
-      const body = await $('body').getText();
-      expect(body).toContain('user_');
-    }
+    // The indicator the header carries while sorted: an up arrow for the
+    // ascending leg of the click cycle.
+    const ascArrow = await header.$('[data-sort-indicator] .lucide-arrow-up');
+    await expect(ascArrow).toBeExisting();
+
+    const body = await $('body').getText();
+    expect(body).toContain('user_');
   });
 
-  it('再次点击列头应切换排序方向 (TD-003)', async () => {
-    const headerBtns = await $$(`button[title="${t('dataTable.sort')}"]`);
-    const count = await headerBtns.length;
-    if (count > 0) {
-      await headerBtns[0].click();
-      await browser.pause(1500);
+  it('再次点击列头应切换为降序 (TD-003)', async () => {
+    const header = await $('[data-col-header="name"]');
+    await header.click();
+    await browser.pause(1500);
 
-      const body = await $('body').getText();
-      expect(body).toContain('user_');
-    }
+    const descArrow = await header.$('[data-sort-indicator] .lucide-arrow-down');
+    await expect(descArrow).toBeExisting();
+
+    const body = await $('body').getText();
+    expect(body).toContain('user_');
   });
 
-  it('第三次点击列头应取消排序 (TD-003)', async () => {
-    const headerBtns = await $$(`button[title="${t('dataTable.sort')}"]`);
-    const count = await headerBtns.length;
-    if (count > 0) {
-      await headerBtns[0].click();
-      await browser.pause(1500);
+  it('第三次点击列头应移除排序 (TD-003)', async () => {
+    const header = await $('[data-col-header="name"]');
+    await header.click();
+    await browser.pause(1500);
 
-      const body = await $('body').getText();
-      expect(body).toContain('user_');
-    }
+    // The third leg of the cycle removes the column from the sort: the
+    // header carries no direction indicator and the grid falls back to the
+    // default order.
+    const indicator = await header.$('[data-sort-indicator]');
+    await expect(indicator).not.toBeExisting();
+
+    const body = await $('body').getText();
+    expect(body).toContain('user_');
   });
 
   // ── 列宽调整 ───────────────────────────────────────────────────

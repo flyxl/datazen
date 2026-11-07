@@ -1,6 +1,8 @@
 import { Plus, RefreshCw } from 'lucide-react';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
+import { DefaultOrderSelect } from '../../components/DataTable/DefaultOrderSelect';
+import type { DefaultOrderOverride } from '../../lib/defaultSort';
 import {
   TableFilterToolbar,
   type NamedViewMenuConfig,
@@ -39,6 +41,15 @@ export interface TableToolbarProps {
   /** Append a new-row draft. */
   onAddDraftRow: () => void;
   /**
+   * The panel's temporary override of the global default order. Rendered at
+   * the right end of the row (DBR-SORT) — the pager no longer carries it.
+   */
+  defaultOrderOverride?: DefaultOrderOverride;
+  /** Change the panel's temporary default order override. */
+  onDefaultOrderOverrideChange?: (value: DefaultOrderOverride) => void;
+  /** How many primary-key columns the table has (the composite-key rules). */
+  primaryKeyCount?: number;
+  /**
    * The saved views of this table.
    *
    * Absent when this backend cannot serve them — a browser build has no host
@@ -48,11 +59,13 @@ export interface TableToolbarProps {
 }
 
 /**
- * The panel toolbar: refresh, insert row and the filter half.
+ * The panel toolbar: refresh, insert row, the filter half and the default-order
+ * select.
  *
  * The filter half — the manual filter entry, the saved views and the
  * quick-filter box — lives in `TableFilterToolbar`; this component keeps the
- * two buttons that are about the table rather than about its filters.
+ * two buttons that are about the table rather than about its filters, and
+ * threads the default-order select into the trailing slot.
  *
  * Every `data-testid` here is consumed by the E2E specs, so it must not
  * change.
@@ -75,6 +88,9 @@ export function TableToolbar({
   onSetFilters,
   onClearFilters,
   onAddDraftRow,
+  defaultOrderOverride,
+  onDefaultOrderOverrideChange,
+  primaryKeyCount,
   namedView,
 }: TableToolbarProps) {
   const { t } = useI18n();
@@ -96,6 +112,15 @@ export function TableToolbar({
       onSetFilters={onSetFilters}
       onClearFilters={onClearFilters}
       namedView={namedView}
+      trailingControls={
+        onDefaultOrderOverrideChange ? (
+          <DefaultOrderSelect
+            value={defaultOrderOverride ?? 'inherit'}
+            onChange={onDefaultOrderOverrideChange}
+            primaryKeyCount={primaryKeyCount ?? 0}
+          />
+        ) : undefined
+      }
     >
       <button
         type="button"

@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef } from 'react';
 import { useI18n } from '../../hooks/useI18n';
 import { Button } from '../ui/Button';
 import { Select } from '../ui/Select';
@@ -152,8 +152,6 @@ export interface PaginationProps {
    * to give, and the read fell back to counting.
    */
   estimateUnavailable?: boolean;
-  /** Extra controls rendered next to the pager (the panel's order override). */
-  footerExtras?: ReactNode;
   /** What the back end said about the paging of this page. */
   pagingHint?: PagingHint;
 }
@@ -174,7 +172,6 @@ export function Pagination({
   counting = false,
   unstablePaging = false,
   estimateUnavailable = false,
-  footerExtras,
   pagingHint,
 }: PaginationProps) {
   const { t } = useI18n();
@@ -345,7 +342,6 @@ export function Pagination({
             {t('pagination.hint.drift')}
           </span>
         )}
-        {footerExtras}
         {view.kind === 'estimated' && onCountExact && (
           <Button
             variant="secondary"
