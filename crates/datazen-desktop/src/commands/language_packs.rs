@@ -377,6 +377,9 @@ mod tests {
             package_label(Path::new("/tmp/datazen-locale-ja.zip")),
             "datazen-locale-ja.zip"
         );
-        assert_eq!(package_label(Path::new("/tmp/")), "package");
+        // 目录尾斜杠在 Linux 上仍解析出末段名（"/tmp/" → "tmp"）；只有
+        // 真正没有末段的路径（根）才走 "package" 兜底。
+        assert_eq!(package_label(Path::new("/tmp/")), "tmp");
+        assert_eq!(package_label(Path::new("/")), "package");
     }
 }
