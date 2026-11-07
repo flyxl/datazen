@@ -158,14 +158,23 @@ impl RateLimiter {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
-    /// 路由类判定（§9.1 严格档清单；execution/job 提交路径随契约 §6 补行
-    /// 后进入本表——当前契约 §6 尚无这两域的路由行，见模块报告）。
+    /// 路由类判定（§9.1 严格档清单；W8 刀1：契约 §6.4a 补行后执行域
+    /// 提交路径入本表——`POST …/executions`（executeAtTarget /
+    /// executeInSession）与 aiHost 目标执行；aiHost.getSessionConfig /
+    /// session-config 属读面走缺省档）。
     pub fn classify(method: &Method, path: &str) -> RouteClass {
         match (method.as_str(), path) {
             // 幂等令牌签发（契约 §6.2）与开会话（契约 §6.4）。
             ("POST", "/api/v1/submission-tokens") | ("POST", "/api/v1/sessions") => {
                 RouteClass::Strict
             }
+            // 提交执行（契约 §6.4a：/api/v1/executions、
+            // /api/v1/sessions/{id}/executions；过渡域 driver-gateway 同词
+            // 尾同语义）。stream-executions 不是本词尾（`-` 前缀不匹配），
+            // 维持 W8-b 的缺省档。
+            ("POST", path) if path.ends_with("/executions") => RouteClass::Strict,
+            // aiHost 目标执行（契约 v1.2 的 aiHost 域行）：同样是提交执行。
+            ("POST", "/api/v1/ai-host/execute-target") => RouteClass::Strict,
             // 取消族（§5.2 注记的 `POST /cancel` 语义：执行/Job 的取消端点
             // 以 /cancel 结尾）。
             ("POST", path) if path.ends_with("/cancel") => RouteClass::Strict,
@@ -640,6 +649,24 @@ mod tests {
         assert_eq!(
             RateLimiter::classify(&Method::POST, "/api/v1/executions/ex-1/cancel"),
             RouteClass::Strict
+        );
+        // W8 刀1：执行域提交路径（契约 §6.4a 补行）。
+        assert_eq!(
+            RateLimiter::classify(&Method::POST, "/api/v1/executions"),
+            RouteClass::Strict
+        );
+        assert_eq!(
+            RateLimiter::classify(&Method::POST, "/api/v1/sessions/sess-1/executions"),
+            RouteClass::Strict
+        );
+        assert_eq!(
+            RateLimiter::classify(&Method::POST, "/api/v1/ai-host/execute-target"),
+            RouteClass::Strict
+        );
+        // 流式命令不是提交执行词尾（`-` 前缀不匹配 `/executions`）。
+        assert_eq!(
+            RateLimiter::classify(&Method::POST, "/api/v1/driver-gateway/stream-executions"),
+            RouteClass::Default
         );
         // 读、集合类与其他方法 → 默认档。
         assert_eq!(

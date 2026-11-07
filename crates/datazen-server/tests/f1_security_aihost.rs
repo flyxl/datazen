@@ -7,7 +7,8 @@
 //!   覆盖、组织隔离、登录要求、审计行落库（坐标在账、明文永不进审计）。
 //! - aiHost（WR-F1#3 的服务端半边）：session-config 回答
 //!   `ExecutionSettings` 形状（缺省文档 + 存储切片回读）、executeTarget
-//!   501 `capabilityUnsupported` fail-closed、组织边界、登录要求。
+//!   W8 刀1 点亮后的分臂语义（editorGrant 501 fail-closed / 闸序 503 /
+//!   缺字段 400）、组织边界、登录要求。
 //!
 //! L2 在真实装配里注入 `AuthenticatedSession`；本文件以请求扩展直接注入
 //! （同一扩展类型，先例照 `tests/sse_events.rs`；装配语义由主线集成腿复核）。
@@ -83,7 +84,67 @@ fn ai_host_app(store: Arc<AdminStore>, organization_id: &str) -> Router {
     ai_host_router(AiHostState {
         settings: Arc::new(ServerSettingsStore::scoped(organization_id, store)),
         organization_id: organization_id.to_string(),
+        host: Arc::new(GatelessStubHost),
     })
+}
+
+/// `ResourceExecutionHost` 的测试桩：profile 闸恒拒（`ConnectionFailed`
+/// ——未知连接的真实闸序错误形状）。本文件只验 executeTarget 的
+/// 分臂/边界/字段语义，不达执行面；全栈绿路径在 execution_routes.rs。
+struct GatelessStubHost;
+
+#[async_trait::async_trait]
+impl datazen::workflow::application::resource_execution::ResourceExecutionHost
+    for GatelessStubHost
+{
+    async fn profile(
+        &self,
+        id: &str,
+    ) -> Result<
+        (datazen_driver_api::ConnectionConfig, u64, bool),
+        datazen::workflow::domain::error::WorkflowError,
+    > {
+        Err(
+            datazen::workflow::domain::error::WorkflowError::ConnectionFailed {
+                connection_id: id.to_owned(),
+                message: "profile unavailable".into(),
+            },
+        )
+    }
+
+    async fn driver(
+        &self,
+        _config: &datazen_driver_api::ConnectionConfig,
+    ) -> Result<
+        std::sync::Arc<dyn datazen_driver_api::DatabaseDriver>,
+        datazen::workflow::domain::error::WorkflowError,
+    > {
+        Err(datazen::workflow::domain::error::WorkflowError::Driver(
+            "Driver unavailable".into(),
+        ))
+    }
+
+    async fn safe_mode(&self) -> bool {
+        true
+    }
+
+    async fn prepare(
+        &self,
+        id: &str,
+        _revision: u64,
+        _command: &str,
+        _target: datazen::execution::ExecutionTarget,
+    ) -> Result<
+        datazen::workflow::application::resource_execution::PreparedExecution,
+        datazen::workflow::domain::error::WorkflowError,
+    > {
+        Err(
+            datazen::workflow::domain::error::WorkflowError::ConnectionFailed {
+                connection_id: id.to_owned(),
+                message: "profile unavailable".into(),
+            },
+        )
+    }
 }
 
 // ── oneshot 助手 ────────────────────────────────────────────────────────────
@@ -414,18 +475,19 @@ async fn session_config_reflects_the_stored_execution_section() {
     assert_eq!(body["queryResultLimit"], 1234);
 }
 
-// ── aiHost：executeTarget fail-closed ───────────────────────────────────────
+// ── aiHost：executeTarget 点亮后的分臂语义（W8 刀1）─────────────────────────
 
 #[tokio::test]
-async fn execute_target_is_fail_closed_501_capability_unsupported() {
+async fn execute_target_editor_grant_stays_fail_closed_501() {
     let mut app = ai_host_app(memory_store(), "org-a");
     let session = session_of("org-a", "user-1");
 
-    // 体 = payload 原样（AiTargetClaim 进体，TS 半边 aiPorts.ts 的形状）。
+    // 编辑器授权声明：server 无授权登记处，501 fail-closed（登记不立
+    // 语义；文案显式声明「没有开始任何执行」）。
     let response = post_json(
         &mut app,
         "/api/v1/ai-host/execute-target",
-        r#"{"id":"conn-1","command":"listTables","input":{"database":"main"},"claim":{"kind":"independent"}}"#,
+        r#"{"id":"conn-1","command":"listTables","input":{"database":"main"},"claim":{"kind":"editorGrant","grantId":"g-1","claimedClientInstanceId":"c-1","editorSessionId":"s-1"}}"#,
         Some(&session),
     )
     .await;
@@ -434,13 +496,57 @@ async fn execute_target_is_fail_closed_501_capability_unsupported() {
     assert_eq!(wire["code"], "capabilityUnsupported");
     let message = wire["message"].as_str().expect("message");
     assert!(
-        message.contains("target execution machine"),
-        "precise copy names the missing capability: {message}"
+        message.contains("editorGrant"),
+        "precise copy names the unserved claim kind: {message}"
     );
     assert!(
         message.contains("No execution was started"),
         "must never read as acceptance: {message}"
     );
+}
+
+#[tokio::test]
+async fn execute_target_independent_hits_the_real_gate() {
+    let mut app = ai_host_app(memory_store(), "org-a");
+    let session = session_of("org-a", "user-1");
+
+    // independent 分臂进真闸序：未知连接的 profile 闸拒（ConnectionFailed
+    // → 503）——点亮后不再是无差别的 501。
+    let response = post_json(
+        &mut app,
+        "/api/v1/ai-host/execute-target",
+        r#"{"id":"conn-1","command":"listTables","input":{"database":"main"},"claim":{"kind":"independent"}}"#,
+        Some(&session),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let wire = json_of(response).await;
+    assert_eq!(wire["code"], "serviceUnavailable");
+}
+
+#[tokio::test]
+async fn execute_target_rejects_missing_or_unknown_claim() {
+    let mut app = ai_host_app(memory_store(), "org-a");
+    let session = session_of("org-a", "user-1");
+
+    let missing = post_json(
+        &mut app,
+        "/api/v1/ai-host/execute-target",
+        r#"{"id":"conn-1","command":"listTables","input":{}}"#,
+        Some(&session),
+    )
+    .await;
+    assert_eq!(missing.status(), StatusCode::BAD_REQUEST);
+
+    let unknown_kind = post_json(
+        &mut app,
+        "/api/v1/ai-host/execute-target",
+        r#"{"id":"conn-1","command":"listTables","input":{},"claim":{"kind":"teleport"}}"#,
+        Some(&session),
+    )
+    .await;
+    assert_eq!(unknown_kind.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(json_of(unknown_kind).await["code"], "invalidArgument");
 }
 
 #[tokio::test]

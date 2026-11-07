@@ -403,3 +403,47 @@ fn layer_requirement(requirement: TargetLevelRequirement) -> LayerRequirement {
         TargetLevelRequirement::Forbidden => LayerRequirement::Forbidden,
     }
 }
+
+/// 每调用身份包装（P3 授权种子的宿主侧装饰器，W8 刀1 从
+/// `mcp::stateless_exec` 上移至此共享——aiHost 目标执行与无状态 MCP
+/// 七工具共用同一条真主体注入路径）。
+///
+/// 执行面（token / execute / poll）的 `RequestContext` 由 `prepared.context`
+/// 决定（`resource_execution::execute_bound` 全程取 `prepared.context`）；
+/// 共享宿主的 `prepare` 产出的是合成服务主体（登记第 2 条），本包装在
+/// `prepare` 返回后覆写为请求真主体——闸序读半边（profile / driver /
+/// safe_mode）委托 inner，主体合成残留照登记，不因包装而扩散。
+pub struct PrincipalScopedHost {
+    pub inner: Arc<dyn ResourceExecutionHost>,
+    pub context: RequestContext,
+}
+
+#[async_trait]
+impl ResourceExecutionHost for PrincipalScopedHost {
+    async fn profile(&self, id: &str) -> Result<(ConnectionConfig, u64, bool), WorkflowError> {
+        self.inner.profile(id).await
+    }
+
+    async fn driver(
+        &self,
+        config: &ConnectionConfig,
+    ) -> Result<Arc<dyn DatabaseDriver>, WorkflowError> {
+        self.inner.driver(config).await
+    }
+
+    async fn safe_mode(&self) -> bool {
+        self.inner.safe_mode().await
+    }
+
+    async fn prepare(
+        &self,
+        id: &str,
+        revision: u64,
+        command: &str,
+        target: datazen::execution::ExecutionTarget,
+    ) -> Result<PreparedExecution, WorkflowError> {
+        let mut prepared = self.inner.prepare(id, revision, command, target).await?;
+        prepared.context = self.context.clone();
+        Ok(prepared)
+    }
+}

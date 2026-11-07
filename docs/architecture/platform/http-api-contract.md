@@ -111,6 +111,32 @@ Web 形态只服务 `WEB_SETTINGS_SECTIONS`（general / appearance / dataBrowsin
 | `detachSession` | `POST /api/v1/sessions/{id}/detach` | — | 200 | `AttachmentRequest` → `SessionView` |
 | `closeSession` | `POST /api/v1/sessions/{id}/close` | — | 200 | `CloseSessionRequest` → `CloseReceipt`（幂等关闭） |
 
+### 6.4a execution（W8 刀1 点亮，2026-11-07）
+
+| 方法 | 路由 | 令牌 | 成功 | 请求 → 响应 |
+| --- | --- | --- | --- | --- |
+| `executeInSession` | `POST /api/v1/sessions/{id}/executions` | ✓ | 202 | `ExecuteInSessionRequest & SubmitRequest` → `ExecutionReceipt` |
+| `executeAtTarget` | `POST /api/v1/executions` | ✓ | 202 | `ExecuteAtTargetRequest & SubmitRequest` → `ExecutionReceipt` |
+| `getExecution` | `GET /api/v1/executions/{id}` | — | 200 | — → `ExecutionView` |
+| `cancelExecution` | `POST /api/v1/executions/{id}/cancel` | ✓ | 200 | `SubmitRequest` → `CancelReceipt` |
+
+- **202 受理语义**（概要 §6.3：异步接受 + 稳定 id）：`ExecutionReceipt`（`executionId` / `streamId` / `state`）表示执行记录已建立——「已接受 ≠ SQL 成功」；终态经 `getExecution` 轮询或事件流（§6.6）读取。提交闸序（profile → 驱动 → 命令策略 → SQL 守卫）在受理之前，闸不过不受理。
+- **可见性**：`executeInSession` 的 `{id}` 先过会话目录闸（404 固定文案，§6.4 同款）；`getExecution`/`cancelExecution` 的归属由用例层 `visible_to` 五元组过滤，未命中统一 404「execution unavailable」（无存在性预言机）；`GET /api/v1/executions/{id}` 在 L6 登记 `ResourceType::Execution` + `Read`（rbac 基线矩阵裁决），`/cancel` 子动作与集合级提交在用例层求值。
+- **令牌**：提交与取消的体都带 `SubmitRequest`；handler 核在场性与 `idempotencyKey` 绑定，签名/过期/operation 绑定在用例层 `validate_token`（签发面 = §6.2 `issueSubmissionToken`，同一 runtime）。cancel 的用例签名（§7.6）不带令牌参数，在场性仍是前置闸。
+- **跨进程取消（v1 登记）**：取消登记是 runtime 进程内语义，不跨进程传播；多进程部署形态随部署切片演进。
+
+### 6.4b job（路由 WR-D6/D7 已点亮；形状随 workflow 刀收口登记）
+
+| 方法 | 路由 | 令牌 | 成功 | 请求 → 响应 |
+| --- | --- | --- | --- | --- |
+| `startJob` | `POST /api/v1/jobs` | ✓ | 201 | `JobDefinition & SubmitRequest` → `JobView` |
+| `listJobs` | `GET /api/v1/jobs` | — | 200 | 过滤平铺查询参数（`state` / `limit` 等）→ `JobView[]` |
+| `getJob` | `GET /api/v1/jobs/{id}` | — | 200 | — → `JobView` |
+| `cancelJob` | `POST /api/v1/jobs/{id}/cancel` | ✓ | 200 | `SubmitRequest` → `CancelReceipt` |
+
+- 任务系统的宿主是共享层 `jobs::JobHost`（accept/get/list/details/cancel）；web 形态 v1 的任务种类随 workflow/调度刀（server 侧定时任务）入账——路由与域客户端（`jobClient.ts`）已冻结，`JobView` / `JobProgress` / `CancelReceipt` 形状以 `backend-client/src/jobClient.ts` 为准。
+- `cancelExecution` 与 `cancelJob` 共用 `CancelReceipt` 形状（executionClient 复用 jobClient 的解码器——「回执是回执，无论寻址哪个资源」的既有裁决）。
+
 ### 6.5 artifact
 
 | 方法 | 路由 | 令牌 | 成功 | 请求 → 响应 |
@@ -217,3 +243,4 @@ WR-D 落地时的机器核对（WR-C3 接管）：同用例双传输测试逐方
 - 2026-10-31：首版。收编概要 §6.3 骨架，补齐 settings / identity / tableData（14 方法）/ driverGateway（4+1 排除）；裁决命名视图上 HTTP（服务端存储）、`DELETE` 唯一例外（命名视图）、流式驱动命令走 SSE、`open_base64_with_dialog` 永不上 HTTP。
 - 2026-11-02：v1.1。events 域登记订阅建立路由 `POST /api/v1/events/subscriptions`（WR-D5 落地，§6.6 表）；域方法数 42 → 43。
 - 2026-11-03：v1.2（WR-F1 扩展面登记）。**mcp 客户端面**（`mcp.initialize/listTools/callTool/closeSession`）走服务端 `/mcp` streamable HTTP（WR-F2 传输，§6.6 之外的服务面；JSON-RPC 2.0 信封 + `Mcp-Session-Id` 头，L2 cookie 即身份——INV-S1），wire-direct 不入 `MethodMap` 主表（`transport.ts` 类型冻结，逐域登记于 web 侧 `WR_F1_HTTP_ROUTES`）；web broker 的 `serverId` 固定 `"datazen"`（v1 语义：工具面 = datazen 自有 13 工具，与桌面多外部服务器 broker 的差异如实登记）。**security 域**（`security.resolveSecret` → `POST /api/v1/secrets/resolve`、`security.putSecret` → `PUT /api/v1/secrets/{domain}/{key}`）与 **aiHost 域**（`aiHost.getSessionConfig` → `POST /api/v1/ai-host/session-config`、`aiHost.executeTarget` → `POST /api/v1/ai-host/execute-target`）客户端面已定形（web 侧真实现 + 契约测试），**服务端路由未点亮**（部署未挂 = 501/404 显式形态）——服务端半边随执行域路由切片落地，点亮前 web 端如实报 `CapabilityUnsupported` 的替身面保持。
+- 2026-11-07：v1.3（W8 刀1，execution 域点亮）。**§6.4a execution** 四方法真实现（`executeInSession`/`executeAtTarget` → 202 + `ExecutionReceipt`；`getExecution` → 200 `ExecutionView`；`cancelExecution` → 200 `CancelReceipt`）——路由/域客户端/共享 DTO 三腿同形，概要 §6.3 骨架就此收编；可见性三层（会话目录闸 / L6 `ResourceType::Execution`+Read / 用例层 `visible_to` 五元组统一 404）；跨进程取消 v1 单进程语义登记。**§6.4b job** 补节（四路由 WR-D6/D7 已点亮，任务种类随 workflow/调度刀入账）。**aiHost.executeTarget 点亮**：`independent` 声明走桌面同源共享函数 `resource_execution::execute`（执行面真主体，`PrincipalScopedHost` 装饰器共享化）；`editorGrant` 声明 501 fail-closed（server 无编辑器授权登记处）。限流严格档补提交执行词尾（`POST …/executions`）与 `/api/v1/ai-host/execute-target`。

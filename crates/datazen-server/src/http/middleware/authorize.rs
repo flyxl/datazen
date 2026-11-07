@@ -113,6 +113,11 @@ fn resource_ref_from_path(path: &str) -> Option<(ResourceType, String)> {
     }
     let resource_type = match collection {
         "connections" => ResourceType::Connection,
+        // W8 刀1：execution 域两段形状（`GET /api/v1/executions/{id}` →
+        // Read；rbac 基线矩阵裁决——OrgMember/JobOperator/owner 系可读，
+        // ConnectionViewer/auditor 语义见矩阵）。取消子动作与集合级提交
+        // 不入两层段表（action 语义在用例层）。
+        "executions" => ResourceType::Execution,
         // 其余域路由随各自 handler 切片登记（不发明语义）。
         _ => return None,
     };

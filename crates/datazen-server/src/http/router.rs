@@ -32,6 +32,7 @@ use tower_http::limit::RequestBodyLimitLayer;
 use datazen::execution::application::submission::{SubmissionPresentation, SubmissionTokenIssuer};
 use datazen::execution::application::{IdempotentOperation, SubmissionToken};
 use datazen::execution::domain::artifact_repository::ArtifactSpec;
+use datazen::execution::SessionHandle;
 use datazen::jobs::domain::job::{JobDefinition, JobState};
 use datazen::shared::context::RequestContext;
 use datazen::shared::error::{ApiError, ApiErrorCode};
@@ -101,6 +102,15 @@ pub struct AuthDeps {
 pub struct DomainState {
     /// `issueSubmissionToken` 的签发面（服务端密钥持有者，§6.3 88 行）。
     pub issuer: std::sync::Arc<dyn SubmissionTokenIssuer>,
+    /// 运行时会话操作的令牌签发面（W8 刀1：执行域路由点亮后放开）——
+    /// `openSession` / `executeInSession` / `executeAtTarget` /
+    /// `setSessionContext` / `cancelExecution` 的令牌由 runtime 的
+    /// `issue_submission_token` 铸造（runtime 注册表按 digest 核验，
+    /// `validate_token` 的五元组 + operation + handle 绑定），与 HMAC
+    /// 签发面（createProfile / startJob）分轨。装配 = 租约委托用例面
+    /// （与 sessions/execution 域同一实例）。
+    pub execution_tokens:
+        std::sync::Arc<dyn datazen::execution::application::use_cases::ConnectionUseCases>,
     /// 幂等提交（含 `PreSubmitGate` 闸门，WR-D6 QuotaGate 适配点）。
     pub submission: std::sync::Arc<crate::transfer::SubmissionService>,
     /// 受控上传（begin/append/finalize 语义，wire envelope 见 handler 文档）。
@@ -327,11 +337,23 @@ pub(crate) fn api_error_response(error: ApiError) -> Response {
     ApiErrorResponse::new(error).into_response()
 }
 
-/// `issueSubmissionToken`（§6.3：POST /api/v1/submission-tokens）。
+/// `issueSubmissionToken`（§6.2：POST /api/v1/submission-tokens）。
 ///
-/// 请求 `{ operation, handle?, connectionId?, owner? }`；v1 只签发不绑定
-/// 运行时会话的操作（startJob / createProfile / cancelExecution）——会话
-/// 绑定操作需要 `SessionHandle`，随执行域路由点亮接入。201 →
+/// 请求 `{ operation, handle?, connectionId?, owner? }`。两轨分派（W8 刀1
+/// 收口原「随执行域路由点亮接入」的登记）：
+///
+/// - **HMAC 轨**（`createProfile` / `startJob`）：不绑定会话，
+///   `ServerSubmissionTokenIssuer` 签名（jobs/transfer 的
+///   `SubmissionService` 自行验签）。
+/// - **runtime 轨**（`openSession` / `executeInSession` / `executeAtTarget` /
+///   `setSessionContext` / `cancelExecution`）：令牌由 runtime 的
+///   `issue_submission_token` 铸造——执行域路由的 `validate_token` 按
+///   runtime 注册表 digest 核验（五元组 + operation + handle 绑定），
+///   HMAC 令牌过不了 runtime 核验，两轨不得混用。`handle`
+///   （`{dbSessionId, runtimeEpoch}`）由持有会话的调用方传入（前端
+///   `issueSubmissionToken(operation, handle, scope)` 的既有形状）；
+///   executeInSession / setSessionContext / cancelExecution 缺 handle 在
+///   用例层显式拒。201 →
 /// `SubmissionToken`（`idempotencyKey` 是 `payload.tag` 形态的不透明串，
 /// 客户端原样回传）。
 async fn handler_issue_token(
@@ -345,12 +367,42 @@ async fn handler_issue_token(
     let operation = match operation {
         "startJob" => IdempotentOperation::StartJob,
         "createProfile" => IdempotentOperation::CreateProfile,
-        "cancelExecution" => IdempotentOperation::CancelExecution,
-        "openSession" | "executeInSession" | "executeAtTarget" | "setSessionContext" => {
-            return invalid_argument(
-                "session-bound operations require a runtime session handle; \
-                 they arrive with the execution domain routes.",
-            );
+        // W8 刀1：会话绑定操作放开（原登记文案「随执行域路由到来」的
+        // 收口）。令牌由 runtime 的 `issue_submission_token` 铸造——
+        // runtime 注册表按 digest 核验（`validate_token`：五元组 +
+        // operation + handle 绑定），HMAC 签发面的令牌过不了 runtime 核验，
+        // 两轨不得混用。`handle`（`{dbSessionId, runtimeEpoch}`）由
+        // 持有会话的调用方传入（前端 `issueSubmissionToken(operation,
+        // handle, scope)` 的既有形状）；executeInSession /
+        // setSessionContext / cancelExecution 缺 handle 在用例层显式拒。
+        "openSession" | "executeInSession" | "executeAtTarget" | "setSessionContext"
+        | "cancelExecution" => {
+            let operation = match operation {
+                "openSession" => IdempotentOperation::OpenSession,
+                "executeInSession" => IdempotentOperation::ExecuteInSession,
+                "executeAtTarget" => IdempotentOperation::ExecuteAtTarget,
+                "setSessionContext" => IdempotentOperation::SetSessionContext,
+                _ => IdempotentOperation::CancelExecution,
+            };
+            let handle = match parse_session_handle(body.get("handle")) {
+                Ok(handle) => handle,
+                Err(response) => return response,
+            };
+            return match state
+                .execution_tokens
+                .issue_submission_token(&identity.ctx, operation, handle.as_ref())
+                .await
+            {
+                Ok(token) => (
+                    StatusCode::CREATED,
+                    Json(json!({
+                        "idempotencyKey": token.idempotency_key.as_str(),
+                        "expiresAt": token.expires_at.as_str(),
+                    })),
+                )
+                    .into_response(),
+                Err(error) => api_error_response(error),
+            };
         }
         other => return invalid_argument(format!("unknown operation '{other}'.")),
     };
@@ -367,6 +419,22 @@ async fn handler_issue_token(
             ApiErrorCode::ServiceUnavailable,
             format!("token issue failed: {source}"),
         )),
+    }
+}
+
+/// `issueSubmissionToken` 体里的 `handle`（`{dbSessionId, runtimeEpoch}`；
+/// camelCase 即 `SessionHandle` 的 serde 形状）。缺省 = None（openSession
+/// 首开与 executeAtTarget 不带会话）；在场但形状不对 → 400。
+fn parse_session_handle(value: Option<&Value>) -> Result<Option<SessionHandle>, Response> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    if value.is_null() {
+        return Ok(None);
+    }
+    match serde_json::from_value::<SessionHandle>(value.clone()) {
+        Ok(handle) => Ok(Some(handle)),
+        Err(source) => Err(invalid_argument(format!("handle: {source}"))),
     }
 }
 

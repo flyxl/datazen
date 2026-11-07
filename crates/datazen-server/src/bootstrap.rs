@@ -284,13 +284,9 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         audit.clone(),
         clock.clone(),
     ));
-    let domains = http::router::DomainState {
-        issuer: issuer.clone(),
-        submission,
-        uploads,
-        downloads,
-        tasks: task_center,
-    };
+    // W8 刀1：DomainState 的 execution_tokens 引用租约委托用例面，其构造
+    // 在 WR-F7 执行栈之后（下方）——`domains` 挪到 build_router_with_auth
+    // 前一次成型（submission / uploads / downloads / task_center 就地消费）。
 
     // WR-F7 执行栈（无 feature 门控）：真租约源三件套全部就位——policy
     // 适配器（policy_adapter.rs，本波解除阻塞项）+ `storage::ServerProfiles`
@@ -465,6 +461,17 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         }
     });
 
+    // W8 刀1：DomainState 在执行栈成型后装配（execution_tokens =
+    // 租约委托用例面，与 sessions/execution 域同一实例）。
+    let domains = http::router::DomainState {
+        issuer: issuer.clone(),
+        execution_tokens: lease_cases.clone(),
+        submission,
+        uploads,
+        downloads,
+        tasks: task_center,
+    };
+
     // WR-C2 §6.1–§6.4 读侧域路由（薄绑定；挂载归 router）。
     let domain_routers = vec![
         crate::http::domains::settings::settings_router(
@@ -487,10 +494,21 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
                 directory: session_directory.clone(),
             },
         ),
+        // W8 刀1：execution 域四路由（契约 §6.4a）。用例面与 sessions 域
+        // 同一租约委托实例（每调用现取）；目录 = 租约源内部同一实例
+        // （executeInSession 的可见性闸与用例实现同源，sessions 域接线
+        // 登记同款纪律）。
+        crate::http::domains::execution::execution_router(
+            crate::http::domains::execution::ExecutionState {
+                sessions: lease_cases.clone(),
+                directory: session_directory.clone(),
+            },
+        ),
         // WR-F1 服务端半边（三缺口合拢）：secrets 域（ServerSecretVault 的
-        // 受控解析/存储 + 审计）与 ai-host 域（执行设置读 + 目标执行
-        // fail-closed 登记）。挂载走 domain_routers 统一通道，认证链
-        // L2–L6 与 CSRF 覆盖由 router 的 merge 循环保证。
+        // 受控解析/存储 + 审计）与 ai-host 域（执行设置读 + 目标执行——
+        // W8 刀1 点亮，resource_host 与 driverGateway/tableData/MCP 同一
+        // 实例）。挂载走 domain_routers 统一通道，认证链 L2–L6 与 CSRF
+        // 覆盖由 router 的 merge 循环保证。
         crate::http::domains::security::security_router(
             crate::http::domains::security::SecurityState {
                 vault: vault.clone(),
@@ -500,6 +518,7 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         crate::http::domains::ai_host::ai_host_router(crate::http::domains::ai_host::AiHostState {
             settings: settings_store.clone(),
             organization_id: config.organization_id.clone(),
+            host: resource_host.clone(),
         }),
         // WR-C3 §6.7–6.9 tableData 域（W3 刀）：命名视图三端点真实现
         // （v9 `named_views` 表）。W8-a 接线刀：读三端点（reads /
