@@ -12,6 +12,8 @@ interface AiMessageContentProps {
   onRunCode?: (code: string, language: string) => void;
   onNewQuery?: (code: string) => void;
   isStreaming?: boolean;
+  /** Memory citation references that may be linked inside this message. */
+  memoryReferences?: string[];
 }
 
 // Configure marked for GFM subset (no HTML passthrough)
@@ -55,6 +57,17 @@ function escapeHtmlAttr(text: string): string {
   return text.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+/** Link only citation references that belong to this turn's injected memories. */
+function linkMemoryCitations(html: string, references: string[] | undefined): string {
+  if (!references || references.length === 0) return html;
+  const allowed = new Set(references);
+  return html.replace(/\[(M\d+)\]/g, (match, reference: string) =>
+    allowed.has(reference)
+      ? `<a href="#memory-${reference}" data-memory-ref="${reference}" class="text-accent underline decoration-dotted underline-offset-2">[${reference}]</a>`
+      : match,
+  );
+}
+
 /**
  * Renders AI message content with GFM Markdown support.
  *
@@ -69,6 +82,7 @@ export function AiMessageContent({
   onRunCode,
   onNewQuery,
   isStreaming,
+  memoryReferences,
 }: AiMessageContentProps) {
   const segments = parseMessageSegments(content);
 
@@ -87,11 +101,11 @@ export function AiMessageContent({
       const renderer = createCustomRenderer(isStreaming);
 
       const rawHtml = marked.parse(text, { renderer, async: false }) as string;
-      const safeHtml = sanitizeHtml(rawHtml);
+      const safeHtml = linkMemoryCitations(sanitizeHtml(rawHtml), memoryReferences);
 
       return { ...segment, rendered: safeHtml };
     });
-  }, [segments, isStreaming]);
+  }, [segments, isStreaming, memoryReferences]);
 
   if (renderedSegments.length === 0) return null;
 

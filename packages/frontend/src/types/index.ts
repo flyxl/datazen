@@ -141,7 +141,6 @@ export type {
 } from '@datazen/driver-sdk';
 import type { ColumnSchema, TableOptionsSnapshot } from '@datazen/driver-sdk';
 
-
 export interface ExplainPlanDetail {
   key: string;
   value: string;
@@ -252,6 +251,10 @@ export interface AppSettings extends UserPreferences, ExecutionSettings {
   logPath: string;
   /** When true, GUI may start embedded MCP on launch. Default false. */
   mcpServerEnabled: boolean;
+  /** When true, the opt-in MCP Streamable HTTP listener starts on launch. */
+  mcpHttpEnabled?: boolean;
+  /** Configured HTTP port; 0 asks the OS for a random port. */
+  mcpHttpPort?: number;
   contextDir: string;
   /**
    * Directory holding the favorites, one ULID-named `.sql` file each. Absent or
@@ -265,6 +268,10 @@ export interface AppSettings extends UserPreferences, ExecutionSettings {
   monitor: MonitorSettings;
   /** Saved external MCP Client server configs. Runtime connections are separate. */
   mcpClientServers?: McpServerConfig[];
+  /** Plugin ids whose manifest-declared AI tools are exposed to the Agent. */
+  aiPluginToolIds?: string[];
+  /** Workflow ids exposed as `workflow_<id>` Agent tools. */
+  aiWorkflowToolIds?: string[];
   /** Onboarding wizard state. `undefined` or `version < 1` → show wizard. */
   onboarding?: { completed: boolean; version: number };
   /**
@@ -647,6 +654,21 @@ export interface McpClientStatus {
   toolsCount: number;
 }
 
+/// Desktop opt-in MCP Streamable HTTP listener. `token` is present only in the
+/// enable/regenerate response that generated it.
+export interface McpHttpStatus {
+  running: boolean;
+  enabled: boolean;
+  transport: 'http' | 'none';
+  url?: string | null;
+  /** Actual bound port (random when configuredPort is 0). */
+  port?: number | null;
+  configuredPort: number;
+  tokenLast4?: string | null;
+  tokenConfigured: boolean;
+  token?: string;
+}
+
 export interface McpToolInfo {
   serverId: string;
   serverName: string;
@@ -654,4 +676,37 @@ export interface McpToolInfo {
   qualifiedName: string;
   description?: string;
   inputSchema: Record<string, unknown>;
+}
+
+// ── MCP server approval + audit (T19) ──
+
+export interface McpApprovalRequest {
+  requestId: string;
+  tool: string;
+  connectionId?: string | null;
+  database?: string | null;
+  namespace?: string | null;
+  sql?: string | null;
+  arguments: Record<string, unknown>;
+  createdAt: string;
+  expiresAt: string;
+  timeoutMs: number;
+}
+
+export type McpApprovalDecision = 'allow_once' | 'deny' | 'cancel' | 'timeout';
+
+export interface McpAuditRecord {
+  id: string;
+  organizationId: string;
+  principalId: string;
+  connectionId?: string | null;
+  databaseName?: string | null;
+  namespace?: string | null;
+  tool: string;
+  decision: 'allow' | 'deny' | 'timeout' | 'cancel' | 'read';
+  rowCount?: number | null;
+  reason?: string | null;
+  index?: number | null;
+  requestId?: string | null;
+  createdAt: string;
 }

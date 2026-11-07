@@ -11,7 +11,7 @@ pub use datazen::ai::ownership::AiGrantService;
 use datazen::ai::ownership::{
     verify_session_ownership, AiGrantIssue, AiGrantReceipt, AiGrantRejection, AiTargetClaim,
 };
-use datazen::ai::tool_loop::AiToolLoopHost;
+use datazen::ai::tool_loop::{AiToolContext, AiToolLoopHost};
 use datazen::application::sessions::ConnectionUseCases;
 use datazen::execution::SessionHandle;
 use datazen::services::ports::DatabaseToolHost;
@@ -19,7 +19,7 @@ use datazen::shared::id::{ClientInstanceId, EditorSessionId};
 use datazen::workflow::command::WorkflowCommandStep;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::State;
+use tauri::{Emitter, State};
 
 pub(crate) fn now_ms() -> i64 {
     SystemTime::now()
@@ -145,6 +145,8 @@ pub async fn ai_touch_editor_grant(
 pub(crate) struct AiRequestHost<'a> {
     pub state: &'a AppState,
     pub claim: AiTargetClaim,
+    /// One catalog per request so the two-body budget spans all tool calls.
+    pub skills: Option<datazen::ai::skills::SkillCatalog>,
 }
 
 impl AiRequestHost<'_> {
@@ -230,6 +232,19 @@ impl DatabaseToolHost for AiRequestHost<'_> {
         DatabaseToolHost::driver_for_connection(self.state, id).await
     }
 
+    fn write_proposal_store(
+        &self,
+    ) -> Option<Arc<datazen::ai::application::write_proposal::WriteProposalStore>> {
+        DatabaseToolHost::write_proposal_store(self.state)
+    }
+
+    async fn write_proposal_created(
+        &self,
+        proposal: &datazen::ai::application::write_proposal::WriteProposal,
+    ) -> Result<(), String> {
+        DatabaseToolHost::write_proposal_created(self.state, proposal).await
+    }
+
     async fn execute_target(
         &self,
         id: &str,
@@ -253,13 +268,13 @@ impl AiToolLoopHost for AiRequestHost<'_> {
         AiToolLoopHost::egress_summary(self.state).await
     }
 
-    async fn execute_db_tool(&self, call: &datazen::ai::ToolCall) -> String {
+    async fn execute_db_tool(&self, ctx: &AiToolContext, call: &datazen::ai::ToolCall) -> String {
         let raw = match self.state.connection_scope() {
             Ok(scope) => {
                 let catalog = crate::platform::connections::DesktopConnectionStore::new(
                     self.state.store.clone(),
                 );
-                datazen::ai::tools::execute_db_tool(self, &catalog, &scope, call).await
+                datazen::ai::tools::execute_db_tool(self, ctx, &catalog, &scope, call).await
             }
             Err(_) => "Error: connection scope unavailable".into(),
         };
@@ -268,5 +283,60 @@ impl AiToolLoopHost for AiRequestHost<'_> {
 
     async fn execute_mcp_tool(&self, server: &str, tool: &str, arguments: &str) -> String {
         AiToolLoopHost::execute_mcp_tool(self.state, server, tool, arguments).await
+    }
+
+    async fn execute_skill_tool(&self, call: &datazen::ai::ToolCall) -> String {
+        let Some(catalog) = self.skills.as_ref() else {
+            return "Error: skills are not available in this host".into();
+        };
+        datazen::ai::skills::tools::execute_skill_tool(catalog, call)
+    }
+
+    async fn on_skill_used(&self, request_id: &str, id: &str, name: &str, source: &str) {
+        let Some(app) = self.state.app_handle.get() else {
+            return;
+        };
+        let _ = app.emit(
+            "ai:skill-used",
+            serde_json::json!({
+                "requestId": request_id,
+                "id": id,
+                "name": name,
+                "source": source,
+            }),
+        );
+    }
+
+    async fn confirm_tool_call(&self, tool: &str, arguments: &str) -> bool {
+        AiToolLoopHost::confirm_tool_call(self.state, tool, arguments).await
+    }
+
+    async fn authorize_bridge_tool(
+        &self,
+        request_id: &str,
+        tool: &str,
+        arguments: &str,
+        cancel_token: Option<&tokio_util::sync::CancellationToken>,
+    ) -> datazen::ai::application::tool_bridge::BridgeToolDecision {
+        AiToolLoopHost::authorize_bridge_tool(self.state, request_id, tool, arguments, cancel_token)
+            .await
+    }
+
+    async fn execute_plugin_tool(
+        &self,
+        request_id: &str,
+        ctx: &datazen::ai::tool_loop::AiToolContext,
+        call: &datazen::ai::ToolCall,
+    ) -> String {
+        AiToolLoopHost::execute_plugin_tool(self.state, request_id, ctx, call).await
+    }
+
+    async fn execute_workflow_tool(
+        &self,
+        request_id: &str,
+        ctx: &datazen::ai::tool_loop::AiToolContext,
+        call: &datazen::ai::ToolCall,
+    ) -> String {
+        AiToolLoopHost::execute_workflow_tool(self.state, request_id, ctx, call).await
     }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, cleanup, screen } from '@testing-library/react';
+import { render, cleanup, fireEvent, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import type { ConnectionSchemaState } from '../../../stores/schemaStoreState';
 import { seedConnectionSchema } from '../../../test/mocks/schemaStore';
@@ -54,6 +54,8 @@ const showNativeContextMenuMock = vi.hoisted(() =>
   }),
 );
 const executeQueryMock = vi.hoisted(() => vi.fn().mockResolvedValue({}));
+const requestQueryRunMock = vi.hoisted(() => vi.fn());
+const chatRunMock = vi.hoisted(() => ({ code: 'SELECT 42', language: 'sql' }));
 
 vi.mock('../../../hooks/useConfirmDialog', () => ({
   useConfirmDialog: () => [confirmMock, null],
@@ -163,6 +165,10 @@ vi.mock('../../../lib/sqlDialects', () => ({
   }),
 }));
 
+vi.mock('../../../stores/queryRunRequestStore', () => ({
+  requestQueryRun: requestQueryRunMock,
+}));
+
 vi.mock('../../../commands/query', () => ({
   queryCommands: {
     executeQuery: (...args: unknown[]) => executeQueryMock(...args),
@@ -229,7 +235,26 @@ vi.mock('../../../components/DataTable/DetailPanelToggle', () => ({
   DetailPanelToggle: mockDiv('mock-detail-panel-toggle'),
 }));
 vi.mock('../../../components/ai/AiChatPanel', () => ({
-  AiChatPanel: mockDiv('mock-ai-chat-panel'),
+  AiChatPanel: ({
+    onRunCode,
+    onNewQuery,
+  }: {
+    onRunCode?: (code: string, language: string) => void;
+    onNewQuery?: (code: string) => void;
+  }) => (
+    <div data-testid="mock-ai-chat-panel">
+      <button
+        type="button"
+        data-testid="mock-chat-run"
+        onClick={() => onRunCode?.(chatRunMock.code, chatRunMock.language)}
+      >
+        run
+      </button>
+      <button type="button" data-testid="mock-chat-new" onClick={() => onNewQuery?.('SELECT 43')}>
+        new
+      </button>
+    </div>
+  ),
 }));
 
 describe('ContentView', () => {
@@ -238,6 +263,8 @@ describe('ContentView', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    chatRunMock.code = 'SELECT 42';
+    chatRunMock.language = 'sql';
     getConnectionViewMock.mockImplementation(() => MockRedisView);
     tableDataState.byPanel = new Map();
     schemaState.activeDbSessionId = null;
@@ -474,5 +501,140 @@ describe('ContentView', () => {
     await vi.waitFor(() => {
       expect(panelStore.usePanelStore.getState().panels).toHaveLength(0);
     });
+  });
+  it('runs chat SQL in the active query panel and forwards the generated statement', () => {
+    const panel = {
+      connectionId: 'cfg-1',
+      dbSessionId: 'conn-1',
+      connectionName: 'TestDB',
+      databaseType: 'postgresql' as const,
+      type: 'query' as const,
+      id: 'panel-chat-query',
+      title: 'Query',
+      database: 'appdb',
+      schema: 'public',
+    };
+    panelStore.usePanelStore.setState({ panels: [panel], activePanelId: panel.id });
+
+    render(<ContentView />);
+    fireEvent.click(screen.getByTestId('conn-toolbar-ai'));
+    fireEvent.click(screen.getByTestId('mock-chat-run'));
+
+    expect(panelStore.usePanelStore.getState().queryExec.get(panel.id)?.sql).toBe('SELECT 42');
+    expect(requestQueryRunMock).toHaveBeenCalledWith(panel.id, 'SELECT 42');
+  });
+
+  it.each([
+    ['postgresql', 'postgresql'],
+    ['mysql', 'mysql'],
+    ['sqlite', 'sqlite'],
+    ['mariadb', 'mariadb'],
+    ['uppercase SQL', 'SQL'],
+    ['no language marker', ''],
+    ['text marker with SQL-looking code', 'text'],
+  ])('runs a SQL-looking code block tagged %s', (_label, language) => {
+    const panel = {
+      connectionId: 'cfg-1',
+      dbSessionId: 'conn-1',
+      connectionName: 'TestDB',
+      databaseType: 'postgresql' as const,
+      type: 'query' as const,
+      id: 'panel-chat-dialect',
+      title: 'Query',
+      database: 'appdb',
+      schema: 'public',
+    };
+    panelStore.usePanelStore.setState({ panels: [panel], activePanelId: panel.id });
+    chatRunMock.language = language;
+
+    render(<ContentView />);
+    fireEvent.click(screen.getByTestId('conn-toolbar-ai'));
+    fireEvent.click(screen.getByTestId('mock-chat-run'));
+
+    expect(panelStore.usePanelStore.getState().queryExec.get(panel.id)?.sql).toBe('SELECT 42');
+    expect(requestQueryRunMock).toHaveBeenCalledWith(panel.id, 'SELECT 42');
+  });
+
+  it('does not create or run anything for a non-SQL code block', () => {
+    const panel = {
+      connectionId: 'cfg-1',
+      dbSessionId: 'conn-1',
+      connectionName: 'TestDB',
+      databaseType: 'postgresql' as const,
+      type: 'table' as const,
+      id: 'panel-chat-non-sql',
+      tableName: 'users',
+      database: 'appdb',
+      tableSchema: 'public',
+      subTab: 'data' as const,
+    };
+    panelStore.usePanelStore.setState({ panels: [panel], activePanelId: panel.id });
+    chatRunMock.code = "print('hi')";
+    chatRunMock.language = 'python';
+
+    render(<ContentView />);
+    fireEvent.click(screen.getByTestId('conn-toolbar-ai'));
+    fireEvent.click(screen.getByTestId('mock-chat-run'));
+
+    expect(
+      panelStore.usePanelStore.getState().panels.filter((entry) => entry.type === 'query'),
+    ).toHaveLength(0);
+    expect(requestQueryRunMock).not.toHaveBeenCalled();
+  });
+
+  it('creates a prefilled query tab for chat New Query', () => {
+    const panel = {
+      connectionId: 'cfg-1',
+      dbSessionId: 'conn-1',
+      connectionName: 'TestDB',
+      databaseType: 'postgresql' as const,
+      type: 'table' as const,
+      id: 'panel-chat-table',
+      tableName: 'users',
+      database: 'appdb',
+      tableSchema: 'public',
+      subTab: 'data' as const,
+    };
+    panelStore.usePanelStore.setState({ panels: [panel], activePanelId: panel.id });
+
+    render(<ContentView />);
+    fireEvent.click(screen.getByTestId('conn-toolbar-ai'));
+    fireEvent.click(screen.getByTestId('mock-chat-new'));
+
+    const created = panelStore.usePanelStore
+      .getState()
+      .panels.find((entry) => entry.type === 'query');
+    expect(created).toBeDefined();
+    expect(created).toMatchObject({ type: 'query', database: 'appdb', schema: 'public' });
+    expect(panelStore.usePanelStore.getState().queryExec.get(created!.id)?.sql).toBe('SELECT 43');
+    expect(requestQueryRunMock).not.toHaveBeenCalled();
+  });
+
+  it('creates a query tab and queues execution when chat Run has no query panel', () => {
+    const panel = {
+      connectionId: 'cfg-1',
+      dbSessionId: 'conn-1',
+      connectionName: 'TestDB',
+      databaseType: 'postgresql' as const,
+      type: 'table' as const,
+      id: 'panel-chat-run-table',
+      tableName: 'users',
+      database: 'appdb',
+      tableSchema: 'public',
+      subTab: 'data' as const,
+    };
+    panelStore.usePanelStore.setState({ panels: [panel], activePanelId: panel.id });
+
+    render(<ContentView />);
+    fireEvent.click(screen.getByTestId('conn-toolbar-ai'));
+    fireEvent.click(screen.getByTestId('mock-chat-run'));
+
+    const created = panelStore.usePanelStore
+      .getState()
+      .panels.find((entry) => entry.type === 'query');
+    expect(created).toBeDefined();
+    expect(created).toMatchObject({ type: 'query', database: 'appdb', schema: 'public' });
+    expect(panelStore.usePanelStore.getState().queryExec.get(created!.id)?.sql).toBe('SELECT 42');
+    expect(requestQueryRunMock).toHaveBeenCalledWith(created!.id, 'SELECT 42');
   });
 });

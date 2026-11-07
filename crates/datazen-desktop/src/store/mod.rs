@@ -1,6 +1,9 @@
 //! Local encrypted persistence for connections, settings, and history.
 
 mod ai_config;
+pub(crate) mod ai_memory;
+pub(crate) mod ai_sessions;
+mod ai_write_audit;
 pub(crate) mod app_db;
 mod connections;
 pub(crate) mod favorites;
@@ -9,6 +12,7 @@ pub(crate) mod history_db;
 pub(crate) mod key_backend;
 mod key_codec;
 mod key_store;
+mod mcp_audit;
 mod migration_profile_reader;
 mod models;
 mod named_views;
@@ -26,6 +30,10 @@ mod tunnels;
 /// backend is a startup-time fact, never a per-call env lookup.
 pub(crate) use key_backend::KeyBackend;
 
+pub use ai_write_audit::{
+    new_ai_write_audit_record, AiWriteAuditLog, AiWriteAuditRecord, NewAiWriteAuditRecord,
+    AI_WRITE_AUDIT_FILE,
+};
 #[allow(unused_imports)] // public re-exports for IPC / other modules
 pub use app_db::{
     AppDb, AppDbError, DashboardRecord, WidgetRecord, WidgetRunRecord, WorkflowRecord,
@@ -36,6 +44,7 @@ pub use history_db::{
     HistoryDb, HistoryOrder, HistoryScope, MigrationProfileRef, MigrationRunFilter,
     MigrationRunPage, MigrationRunRecord, QueryHistoryFilter, QueryHistoryPage,
 };
+pub use mcp_audit::{new_audit_record, McpAuditLog, McpAuditRecord, MCP_AUDIT_FILE};
 pub use models::{FavoriteQuery, QueryHistoryEntry, SyncTask};
 // The named-view DTO itself is the shared layer's
 // (`datazen::named_views`); the store only contributes

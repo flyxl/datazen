@@ -11,9 +11,12 @@ from typing import Any
 from scripts.ci_scope import (
     changed_paths,
     classify_changed_paths,
+    classify_half_windows,
+    find_latest_green_job_sha,
     find_previous_successful_run,
     is_docs_only_paths,
     resolve_docs_only,
+    resolve_half_baselines,
     select_ci_baseline,
 )
 
@@ -216,6 +219,253 @@ class CiScopeTests(unittest.TestCase):
             "conclusion": conclusion,
             "pull_requests": [{"number": pr_number}],
         }
+
+
+class HalfBaselineTests(unittest.TestCase):
+    """半边基线：整轮 run 失败但单边 job 绿时，绿的那半边用 direct 增量窗口。
+
+    场景原型（PR #205）：frontend job 绿、rust job 红 → 修复 rust 后推送，
+    旧逻辑退 merge-base 全量让 frontend 陪跑；新逻辑 frontend 半边取绿
+    run 的 sha 做 direct 基线，窗口内无前端文件即跳过。
+    """
+
+    PR_NUMBER = "76"
+
+    def _prior_run(self, run_id: int, created_at: str, sha: str,
+                   status: str, conclusion: str) -> dict[str, Any]:
+        return CiScopeTests._run(run_id, created_at, sha, 76, status, conclusion)
+
+    @staticmethod
+    def _job(name: str, status: str, conclusion: str | None) -> dict[str, Any]:
+        return {"name": name, "status": status, "conclusion": conclusion}
+
+    def _find_green(
+        self,
+        runs: list[dict[str, Any]],
+        *,
+        jobs_fetcher: Any,
+        job_name: str = "frontend",
+        current_run_id: str,
+        current_sha: str = "sha-current",
+    ) -> str | None:
+        return find_latest_green_job_sha(
+            runs,
+            job_name=job_name,
+            current_run_id=current_run_id,
+            current_sha=current_sha,
+            event_name="pull_request",
+            pr_number=self.PR_NUMBER,
+            head_branch="feature",
+            jobs_fetcher=jobs_fetcher,
+        )
+
+    def test_green_half_job_yields_direct_baseline(self) -> None:
+        """rust 红 + frontend 绿：frontend 半边取该 run 的 sha，rust 沿用公共基线。"""
+        runs = [
+            self._prior_run(30, "2026-11-07T12:00:00Z", "sha-current", "in_progress", None),
+            self._prior_run(29, "2026-11-07T11:00:00Z", "sha-failed", "completed", "failure"),
+        ]
+        jobs = {
+            29: [
+                self._job("detect-changes", "completed", "success"),
+                self._job("frontend", "completed", "success"),
+                self._job("rust", "completed", "failure"),
+            ],
+        }
+        bases = resolve_half_baselines(
+            common_base=("base-sha", "merge-base"),
+            runs=runs,
+            current_run_id="30",
+            current_sha="sha-current",
+            event_name="pull_request",
+            pr_number=self.PR_NUMBER,
+            head_branch="feature",
+            jobs_fetcher=lambda run_id: jobs[run_id],
+        )
+        self.assertEqual(bases["frontend"], ("sha-failed", "direct"))
+        self.assertEqual(bases["rust"], ("base-sha", "merge-base"))
+
+    def test_green_sha_covers_later_red_runs_changes(self) -> None:
+        """中间有 frontend 红 run：窗口起点取「最近的」绿，红 run 的变更不漏。"""
+        runs = [
+            self._prior_run(31, "2026-11-07T13:00:00Z", "sha-current", "in_progress", None),
+            # 更近的 run：frontend 也红（如依赖安装故障），不能当基线。
+            self._prior_run(30, "2026-11-07T12:00:00Z", "sha-frontend-red", "completed", "failure"),
+            # 再往前：frontend 绿（rust 红）——最近的正面证据。
+            self._prior_run(29, "2026-11-07T11:00:00Z", "sha-frontend-green", "completed", "failure"),
+        ]
+        jobs = {
+            30: [self._job("frontend", "completed", "failure")],
+            29: [self._job("frontend", "completed", "success")],
+        }
+        sha = self._find_green(
+            runs, current_run_id="31", jobs_fetcher=lambda run_id: jobs[run_id]
+        )
+        # 取 sha-frontend-green 而非更近的 sha-frontend-red：direct 窗口
+        # sha-frontend-green..sha-current 覆盖 sha-frontend-red 的前端变更。
+        self.assertEqual(sha, "sha-frontend-green")
+
+    def test_same_sha_re_run_trusts_latest_record_only(self) -> None:
+        """同 sha 的 re-run 红了：不采信更早同 sha 的旧绿（最新证据优先）。"""
+        runs = [
+            self._prior_run(31, "2026-11-07T13:00:00Z", "sha-current", "in_progress", None),
+            # 同 sha-re 的两条记录：最新的 re-run frontend 红，较早的原 run 绿。
+            self._prior_run(30, "2026-11-07T12:00:00Z", "sha-re", "completed", "failure"),
+            self._prior_run(29, "2026-11-07T11:00:00Z", "sha-re", "completed", "failure"),
+            # 更早的正常绿 run。
+            self._prior_run(28, "2026-11-07T10:00:00Z", "sha-old-green", "completed", "failure"),
+        ]
+        jobs = {
+            30: [self._job("frontend", "completed", "failure")],  # re-run 后的红
+            29: [self._job("frontend", "completed", "success")],  # 旧绿，已过时
+            28: [self._job("frontend", "completed", "success")],
+        }
+        sha = self._find_green(
+            runs, current_run_id="31", jobs_fetcher=lambda run_id: jobs[run_id]
+        )
+        self.assertEqual(sha, "sha-old-green")
+
+    def test_in_progress_run_provides_no_evidence(self) -> None:
+        """in_progress 的 run（含其 sha 上的旧绿记录）不作为基线。"""
+        runs = [
+            self._prior_run(31, "2026-11-07T13:00:00Z", "sha-current", "in_progress", None),
+            # re-run 进行中：该 sha 暂无新鲜结论。
+            self._prior_run(30, "2026-11-07T12:00:00Z", "sha-rerunning", "in_progress", None),
+            self._prior_run(29, "2026-11-07T11:00:00Z", "sha-rerunning", "completed", "failure"),
+            self._prior_run(28, "2026-11-07T10:00:00Z", "sha-old-green", "completed", "failure"),
+        ]
+        jobs = {
+            29: [self._job("frontend", "completed", "success")],  # 旧绿，不作数
+            28: [self._job("frontend", "completed", "success")],
+        }
+        sha = self._find_green(
+            runs, current_run_id="31", jobs_fetcher=lambda run_id: jobs[run_id]
+        )
+        self.assertEqual(sha, "sha-old-green")
+
+    def test_green_sha_equal_to_current_is_ignored(self) -> None:
+        """re-run 当前提交：绿证据与当前同 sha 时跳过，窗口不能为空。"""
+        runs = [
+            self._prior_run(31, "2026-11-07T13:00:00Z", "sha-current", "in_progress", None),
+            # 与当前同 sha 的绿 run（re-run 的前身）——不可用作基线。
+            self._prior_run(30, "2026-11-07T12:00:00Z", "sha-current", "completed", "success"),
+            self._prior_run(29, "2026-11-07T11:00:00Z", "sha-older", "completed", "failure"),
+        ]
+        jobs = {
+            30: [self._job("frontend", "completed", "success")],
+            29: [self._job("frontend", "completed", "failure")],
+        }
+        sha = self._find_green(
+            runs, current_run_id="31", jobs_fetcher=lambda run_id: jobs[run_id]
+        )
+        self.assertIsNone(sha)
+
+    def test_non_success_job_conclusions_are_not_green(self) -> None:
+        """skipped / cancelled / in_progress / 缺名的 job 都不是正面证据。"""
+        runs = [
+            self._prior_run(31, "2026-11-07T13:00:00Z", "sha-current", "in_progress", None),
+            self._prior_run(30, "2026-11-07T12:00:00Z", "sha-skipped", "completed", "failure"),
+            self._prior_run(29, "2026-11-07T11:00:00Z", "sha-cancelled", "completed", "cancelled"),
+            self._prior_run(28, "2026-11-07T10:00:00Z", "sha-running", "completed", "failure"),
+            self._prior_run(27, "2026-11-07T09:00:00Z", "sha-none", "completed", "failure"),
+        ]
+        jobs = {
+            30: [self._job("frontend", "completed", "skipped")],
+            29: [self._job("frontend", "completed", "cancelled")],
+            28: [self._job("frontend", "in_progress", None)],
+            27: [self._job("frontend", "completed", None)],
+        }
+        sha = self._find_green(
+            runs, current_run_id="31", jobs_fetcher=lambda run_id: jobs[run_id]
+        )
+        self.assertIsNone(sha)
+
+    def test_jobs_api_failure_fails_closed_to_common_base(self) -> None:
+        """jobs API 异常：半边回退公共基线（never narrower）。"""
+        runs = [
+            self._prior_run(31, "2026-11-07T13:00:00Z", "sha-current", "in_progress", None),
+            self._prior_run(30, "2026-11-07T12:00:00Z", "sha-failed", "completed", "failure"),
+        ]
+
+        def fetch(_run_id: int) -> list[dict[str, Any]]:
+            raise ValueError("api boom")
+
+        bases = resolve_half_baselines(
+            common_base=("base-sha", "merge-base"),
+            runs=runs,
+            current_run_id="31",
+            current_sha="sha-current",
+            event_name="pull_request",
+            pr_number=self.PR_NUMBER,
+            head_branch="feature",
+            jobs_fetcher=fetch,
+        )
+        self.assertEqual(bases["frontend"], ("base-sha", "merge-base"))
+        self.assertEqual(bases["rust"], ("base-sha", "merge-base"))
+
+    def test_probe_limit_bounds_jobs_api_calls(self) -> None:
+        """连续不绿超过回探上限即放弃，jobs API 调用有界。"""
+        runs = [
+            self._prior_run(40, "2026-11-07T15:00:00Z", "sha-current", "in_progress", None),
+        ] + [
+            self._prior_run(
+                39 - i, f"2026-11-07T{14 - i:02d}:00:00Z", f"sha-red-{i}", "completed", "failure"
+            )
+            for i in range(7)
+        ]
+        calls: list[int] = []
+
+        def fetch(run_id: int) -> list[dict[str, Any]]:
+            calls.append(run_id)
+            return [self._job("frontend", "completed", "failure")]
+
+        sha = self._find_green(runs, current_run_id="40", jobs_fetcher=fetch)
+        self.assertIsNone(sha)
+        self.assertEqual(len(calls), 5)
+
+    def test_no_fetcher_keeps_common_base_for_both_halves(self) -> None:
+        """无 jobs_fetcher（整轮成功 / API 不可用）：两半边沿用公共基线。"""
+        bases = resolve_half_baselines(
+            common_base=("sha-success", "direct"),
+            runs=[],
+            current_run_id="30",
+            current_sha="sha-current",
+            event_name="pull_request",
+            pr_number=self.PR_NUMBER,
+            head_branch="feature",
+            jobs_fetcher=None,
+        )
+        self.assertEqual(bases["frontend"], ("sha-success", "direct"))
+        self.assertEqual(bases["rust"], ("sha-success", "direct"))
+
+    def test_classify_half_windows_takes_own_component_only(self) -> None:
+        """半边独立：rust 全量窗口里的前端 / shared 文件不点亮 frontend。
+
+        那些文件已被更早的 frontend 绿 run 验证过（frontend 半边窗口才是
+        frontend job 的未验证变更集）——这是省掉陪跑的关键语义。
+        """
+        frontend_window: list[str] = []  # 绿基线之后无前端变更
+        rust_window = [
+            "crates/datazen-server/tests/mcp_green_path.rs",
+            "packages/frontend/src/App.tsx",   # PR 早期前端变更，已验证
+            "scripts/ci_scope.py",            # shared，同样已验证
+        ]
+        self.assertEqual(classify_half_windows(frontend_window, rust_window), (False, True))
+
+    def test_classify_half_windows_equivalent_when_windows_match(self) -> None:
+        """公共基线（两窗口相同）时与旧版单窗口判定完全一致。"""
+        window = ["packages/frontend/src/App.tsx", "crates/datazen/src/lib.rs"]
+        self.assertEqual(
+            classify_half_windows(window, window),
+            classify_changed_paths(window),
+        )
+        self.assertEqual(classify_half_windows([], []), (False, False))
+
+    def test_frontend_half_window_still_runs_frontend(self) -> None:
+        """对称保护：frontend 半边窗口里的前端文件照样点亮 frontend。"""
+        frontend_window = ["packages/frontend/src/stores/ai/sessions.ts"]
+        rust_window: list[str] = []
+        self.assertEqual(classify_half_windows(frontend_window, rust_window), (True, False))
 
 
 def _repo_with_merged_main(repository: Path) -> tuple[str, str, str]:

@@ -1,9 +1,13 @@
 import type { AiTargetClaim, CancelReceipt } from '../../ai/targetClaim';
 import type {
+  AiAgentMode,
+  AiChatContextSnapshot,
   AiChatMessage,
   AiChatSession,
+  AiMemoryReference,
   AiModelProfile,
   AiProviderConfig,
+  AiSessionSummary,
   AiSettingsConfig,
   ConnectionDiagnosis,
   DiagnosisResult,
@@ -28,6 +32,8 @@ export interface Nl2SqlState {
   streamingPreview: string;
   /** Final cleaned SQL after generation completes. */
   generatedSql: string;
+  /** Memories the host injected for the latest generation. */
+  memoryUsed: AiMemoryReference[];
   isGenerating: boolean;
   requestId: string | null;
 }
@@ -37,6 +43,7 @@ export const initialNl2Sql: Nl2SqlState = {
   streamingSql: '',
   streamingPreview: '',
   generatedSql: '',
+  memoryUsed: [],
   isGenerating: false,
   requestId: null,
 };
@@ -61,6 +68,16 @@ export interface AiStore {
   explainError: string | null;
 
   chatSession: AiChatSession | null;
+  /** Sessions for the current connection/database, newest first. */
+  chatSessions: AiSessionSummary[];
+  sessionHistoryLoading: boolean;
+  sessionHistoryError: string | null;
+  /** Visible failure of legacy localStorage -> AppDb migration/fallback. */
+  sessionMigrationError: string | null;
+  /** Count of legacy conversations migrated successfully on this load. */
+  sessionMigrationSuccess: number;
+  /** Non-blocking Ask-mode candidate notice; cleared by the user or a new run. */
+  memoryCandidateNotice: { requestId: string; count: number } | null;
 
   nlFilterInput: string;
   parsedFilters: FilterCondition[] | null;
@@ -91,6 +108,16 @@ export interface AiStore {
     recentQueries?: string[];
     contextFiles?: string[];
     contextTables?: string[];
+    connectionId?: string;
+    memoryMode?: 'off' | 'ask' | 'auto';
+    memoryScope?:
+      | 'organization'
+      | 'user'
+      | 'connection'
+      | 'database'
+      | 'schema'
+      | 'table'
+      | 'column';
   }) => Promise<void>;
   clearNl2Sql: () => void;
 
@@ -117,18 +144,45 @@ export interface AiStore {
   }) => Promise<FilterCondition[] | null>;
   clearNlFilter: () => void;
 
-  initChatSession: (dbSessionId?: string, database?: string) => void;
+  initChatSession: (
+    dbSessionId?: string,
+    database?: string,
+    connectionId?: string,
+  ) => Promise<void>;
+  refreshChatSessions: () => Promise<void>;
+  selectChatSession: (id: string) => Promise<void>;
+  newChatSession: () => void;
+  deleteChatSession: (id: string) => Promise<void>;
+  exportChatSession: (format: 'json' | 'markdown') => Promise<void>;
   sendChatMessage: (params: {
     dbSessionId?: string;
+    connectionId?: string;
     database?: string;
     content: string;
     includeSchema?: boolean;
+    agentMode?: AiAgentMode;
     contextFiles?: string[];
     contextTables?: string[];
+    /** Frozen editor/error/result snapshot for this turn. */
+    autoContext?: AiChatContextSnapshot;
+    /** Explicit Prompt template selection; omitted = database default. */
+    templateId?: string;
+    /** Database type used to pick a default Prompt template. */
+    databaseType?: string;
     /** Target this run claims; omitted = independent. */
     targetClaim?: AiTargetClaim;
+    memoryMode?: 'off' | 'ask' | 'auto';
+    memoryScope?:
+      | 'organization'
+      | 'user'
+      | 'connection'
+      | 'database'
+      | 'schema'
+      | 'table'
+      | 'column';
   }) => Promise<void>;
   clearChat: () => void;
+  dismissMemoryCandidateNotice: () => void;
   /** Cancel the in-flight chat run; resolves with the host receipt. */
   cancelChat: (requestId?: string) => Promise<CancelReceipt | null>;
   /** Called by the session canceller's 8s fallback. */

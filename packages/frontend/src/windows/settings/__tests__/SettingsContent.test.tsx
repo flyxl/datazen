@@ -26,7 +26,13 @@ const {
   promptSetOverrideMock,
   promptRemoveOverrideMock,
   mcpListAllToolsMock,
+  mcpListAuditLogMock,
   mcpGetStatusMock,
+  mcpHttpStatusMock,
+  mcpHttpEnableMock,
+  mcpHttpDisableMock,
+  mcpHttpRegenerateTokenMock,
+  mcpHttpReloadMock,
   mcpStartStdioMock,
   mcpStopMock,
   mcpReloadMock,
@@ -49,6 +55,8 @@ const {
     logLevel: 'info',
     logPath: '',
     mcpServerEnabled: false,
+    mcpHttpEnabled: false,
+    mcpHttpPort: 0,
     mcpDisabledTools: [],
     mcpPermissionMode: 'read_only',
     contextDir: '/tmp/context',
@@ -56,6 +64,8 @@ const {
     wappSettings: {},
     mcpClientServers: [],
     mcpAllowedConnectionIds: [],
+    mcpAllowedDatabases: [],
+    mcpAllowedNamespaces: [],
     confirmDangerousExecution: false,
     autoChartOnQuery: false,
     aiStrictEgress: true,
@@ -108,6 +118,7 @@ const {
     saveProfile: vi.fn().mockResolvedValue(true),
     deleteProfile: vi.fn().mockResolvedValue(true),
     setActiveProfile: vi.fn().mockResolvedValue(true),
+    saveSettingsConfig: vi.fn().mockResolvedValue(true),
     settingsConfig: {
       activeProfileId: 'profile-1',
       profiles: [
@@ -127,10 +138,17 @@ const {
             mcpToolPolicy: 'disabled' as const,
             requireSqlConfirm: true,
             maxContextBytes: 32000,
+            maxToolRounds: 30,
+            maxToolTokens: 48000,
+            maxToolResultBytes: 8192,
+            maxToolDurationSecs: 300,
+            apiRetries: 2,
           },
           isDefault: true,
         },
       ],
+      globalInstructions: '',
+      promptTemplates: [],
     },
     fetchRemoteModels: vi.fn().mockResolvedValue([]),
     clearError: vi.fn(),
@@ -187,7 +205,19 @@ const {
     promptSetOverrideMock: vi.fn().mockResolvedValue(undefined),
     promptRemoveOverrideMock: vi.fn().mockResolvedValue(undefined),
     mcpListAllToolsMock: vi.fn().mockResolvedValue(['query_db', 'list_tables']),
+    mcpListAuditLogMock: vi.fn().mockResolvedValue([]),
     mcpGetStatusMock: vi.fn().mockResolvedValue({ running: false, transport: 'stdio' }),
+    mcpHttpStatusMock: vi.fn().mockResolvedValue({
+      running: false,
+      enabled: false,
+      transport: 'none',
+      configuredPort: 0,
+      tokenConfigured: false,
+    }),
+    mcpHttpEnableMock: vi.fn(),
+    mcpHttpDisableMock: vi.fn(),
+    mcpHttpRegenerateTokenMock: vi.fn(),
+    mcpHttpReloadMock: vi.fn(),
     mcpStartStdioMock: vi.fn().mockResolvedValue(undefined),
     mcpStopMock: vi.fn().mockResolvedValue(undefined),
     mcpReloadMock: vi.fn().mockResolvedValue(undefined),
@@ -269,11 +299,45 @@ vi.mock('../../../commands/ai', () => ({
     promptSetOverride: (...a: unknown[]) => promptSetOverrideMock(...a),
     promptRemoveOverride: (...a: unknown[]) => promptRemoveOverrideMock(...a),
     mcpListAllTools: (...a: unknown[]) => mcpListAllToolsMock(...a),
+    mcpListAuditLog: (...a: unknown[]) => mcpListAuditLogMock(...a),
     mcpGetStatus: (...a: unknown[]) => mcpGetStatusMock(...a),
+    mcpHttpStatus: (...a: unknown[]) => mcpHttpStatusMock(...a),
+    mcpHttpEnable: (...a: unknown[]) => mcpHttpEnableMock(...a),
+    mcpHttpDisable: (...a: unknown[]) => mcpHttpDisableMock(...a),
+    mcpHttpRegenerateToken: (...a: unknown[]) => mcpHttpRegenerateTokenMock(...a),
+    mcpHttpReload: (...a: unknown[]) => mcpHttpReloadMock(...a),
     mcpStartStdio: (...a: unknown[]) => mcpStartStdioMock(...a),
     mcpStop: (...a: unknown[]) => mcpStopMock(...a),
     mcpReload: (...a: unknown[]) => mcpReloadMock(...a),
+    workflowList: vi.fn().mockResolvedValue([
+      { id: 'wf-1', name: 'Weekly report', description: 'Read only', variables: [] },
+    ]),
   },
+}));
+
+vi.mock('../../../stores/wappStore', () => ({
+  useWappStore: (
+    sel: (s: {
+      wapps: {
+        id: string;
+        name: string;
+        enabled: boolean;
+        aiTools: { name: string; readOnly: boolean }[];
+      }[];
+      fetch: () => Promise<void>;
+    }) => unknown,
+  ) =>
+    sel({
+      wapps: [
+        {
+          id: 'acme.demo',
+          name: 'Demo Plugin',
+          enabled: true,
+          aiTools: [{ name: 'list_users', readOnly: true }],
+        },
+      ],
+      fetch: async () => {},
+    }),
 }));
 
 vi.mock('@datazen/ui', async (importOriginal) => {
@@ -285,14 +349,16 @@ vi.mock('@datazen/ui', async (importOriginal) => {
       onChange,
       placeholder,
       className,
+      inputTestId,
     }: {
       value: string;
       onChange: (v: string) => void;
       placeholder?: string;
       className?: string;
+      inputTestId?: string;
     }) => (
       <input
-        data-testid="path-input"
+        data-testid={inputTestId === 'ai-skills-dir' ? inputTestId : 'path-input'}
         type="text"
         value={value}
         placeholder={placeholder}
@@ -328,8 +394,12 @@ function goToSection(label: string) {
 }
 
 /** Open a Select combobox and pick an option by visible label. */
-function pickSelectOption(comboboxIndex: number, optionLabel: string) {
-  const triggers = screen
+function pickSelectOption(
+  comboboxIndex: number,
+  optionLabel: string,
+  scope: HTMLElement = document.body,
+) {
+  const triggers = within(scope)
     .getAllByRole('button', { hidden: false })
     .filter((b) => b.getAttribute('aria-haspopup') === 'listbox');
   fireEvent.click(triggers[comboboxIndex]);
@@ -365,7 +435,19 @@ beforeEach(() => {
   getContextDirMock.mockResolvedValue('/default/context');
   promptListMock.mockResolvedValue(samplePrompts);
   mcpListAllToolsMock.mockResolvedValue(['query_db', 'list_tables']);
+  mcpListAuditLogMock.mockResolvedValue([]);
   mcpGetStatusMock.mockResolvedValue({ running: false, transport: 'stdio' });
+  mcpHttpStatusMock.mockResolvedValue({
+    running: false,
+    enabled: false,
+    transport: 'none',
+    configuredPort: 0,
+    tokenConfigured: false,
+  });
+  mcpHttpEnableMock.mockReset();
+  mcpHttpDisableMock.mockReset();
+  mcpHttpRegenerateTokenMock.mockReset();
+  mcpHttpReloadMock.mockReset();
   mcpStartStdioMock.mockResolvedValue(undefined);
   mcpStopMock.mockResolvedValue(undefined);
   mcpReloadMock.mockResolvedValue(undefined);
@@ -393,6 +475,8 @@ beforeEach(() => {
     wappSettings: {},
     mcpClientServers: [],
     mcpAllowedConnectionIds: [],
+    mcpAllowedDatabases: [],
+    mcpAllowedNamespaces: [],
     confirmDangerousExecution: false,
     autoChartOnQuery: false,
     aiStrictEgress: true,
@@ -460,6 +544,21 @@ describe('SettingsContent', () => {
     fireEvent.mouseEnter(screen.getByRole('button', { name: 'settings.ai.modelsTitle' }));
     expect(screen.getByRole('tooltip')).toHaveTextContent('settings.ai.description');
     expect(loadProvidersMock).toHaveBeenCalled();
+  });
+
+  it('opts a plugin and workflow into the AI tool bridge', async () => {
+    render(<SettingsContent initialSection="ai" />);
+    await waitForSettingsLoad();
+
+    fireEvent.click(await screen.findByTestId('ai-plugin-tool-acme.demo'));
+    expect(updateSettingsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ aiPluginToolIds: ['acme.demo'] }),
+    );
+
+    fireEvent.click(await screen.findByTestId('ai-workflow-tool-wf-1'));
+    expect(updateSettingsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ aiWorkflowToolIds: ['wf-1'] }),
+    );
   });
 
   it('edits general settings and saves immediately', async () => {
@@ -628,8 +727,9 @@ describe('SettingsContent', () => {
 
     fireEvent.click(screen.getByText('settings.ai.addModel'));
 
-    pickSelectOption(0, 'Custom');
-    pickSelectOption(1, 'settings.ai.protocolAnthropic');
+    const dialog = screen.getByRole('dialog');
+    pickSelectOption(0, 'Custom', dialog);
+    pickSelectOption(1, 'settings.ai.protocolAnthropic', dialog);
 
     const apiKey = document.querySelector('input[type="password"]') as HTMLInputElement;
     fireEvent.change(apiKey, { target: { value: 'key' } });
@@ -723,6 +823,91 @@ describe('SettingsContent', () => {
     fireEvent.click(screen.getByText('mcp.tools.enableAll'));
     fireEvent.click(enabledSwitch);
     await waitFor(() => expect(mcpStopMock).toHaveBeenCalled());
+  });
+
+  it('enables Streamable HTTP, reveals the token once, and rotates it', async () => {
+    mcpHttpEnableMock.mockResolvedValue({
+      running: true,
+      enabled: true,
+      transport: 'http',
+      url: 'http://127.0.0.1:4321/mcp',
+      port: 4321,
+      configuredPort: 0,
+      tokenLast4: 'wxyz',
+      tokenConfigured: true,
+      token: 'first-only-token',
+    });
+    mcpHttpRegenerateTokenMock.mockResolvedValue({
+      running: true,
+      enabled: true,
+      transport: 'http',
+      url: 'http://127.0.0.1:4321/mcp',
+      port: 4321,
+      configuredPort: 0,
+      tokenLast4: '2345',
+      tokenConfigured: true,
+      token: 'rotated-only-token',
+    });
+
+    render(<SettingsContent />);
+    await waitForSettingsLoad();
+    goToSection('settings.mcp.title');
+    await waitFor(() => expect(mcpHttpStatusMock).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByTestId('mcp-http-toggle'));
+    await waitFor(() => expect(mcpHttpEnableMock).toHaveBeenCalledWith(0));
+    await waitFor(() =>
+      expect(screen.getByTestId('mcp-http-token')).toHaveValue('first-only-token'),
+    );
+    expect(screen.getByText('http://127.0.0.1:4321/mcp')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('mcp-http-regenerate'));
+    await waitFor(() => expect(mcpHttpRegenerateTokenMock).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(screen.getByTestId('mcp-http-token')).toHaveValue('rotated-only-token'),
+    );
+  });
+
+  it('saves database/namespace scope and renders audit decisions', async () => {
+    mcpListAuditLogMock.mockResolvedValue([
+      {
+        id: 'audit-1',
+        organizationId: 'org',
+        principalId: 'alice',
+        connectionId: 'conn-1',
+        databaseName: 'analytics',
+        namespace: null,
+        tool: 'query',
+        decision: 'deny',
+        rowCount: 7,
+        requestId: 'req-1',
+        createdAt: '2026-01-01T00:00:00Z',
+      },
+    ]);
+
+    render(<SettingsContent />);
+    await waitForSettingsLoad();
+    goToSection('settings.mcp.title');
+    await waitFor(() => expect(mcpListAuditLogMock).toHaveBeenCalled());
+
+    await waitFor(() => expect(screen.getByText('alice')).toBeInTheDocument());
+    expect(screen.getByText('deny')).toBeInTheDocument();
+    expect(screen.getByText('req-1')).toBeInTheDocument();
+    expect(screen.getByText('mcp.audit.requestId')).toBeInTheDocument();
+    expect(screen.getByText('7')).toBeInTheDocument();
+
+    const textareas = document.querySelectorAll('textarea');
+    fireEvent.change(textareas[0], { target: { value: 'analytics, reporting' } });
+    fireEvent.change(textareas[1], { target: { value: 'public' } });
+    fireEvent.click(screen.getByText('mcp.scope.save'));
+    await waitFor(() =>
+      expect(updateSettingsMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mcpAllowedDatabases: ['analytics', 'reporting'],
+          mcpAllowedNamespaces: ['public'],
+        }),
+      ),
+    );
   });
 
   it('reverts MCP server enable when start fails', async () => {

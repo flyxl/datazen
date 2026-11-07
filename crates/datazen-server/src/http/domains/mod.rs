@@ -13,6 +13,7 @@ pub mod connections;
 pub mod driver_gateway;
 pub mod execution;
 pub mod identity;
+pub mod org_memory;
 pub mod security;
 pub mod sessions;
 pub mod settings;

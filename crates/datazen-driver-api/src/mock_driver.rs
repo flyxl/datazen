@@ -115,6 +115,10 @@ pub struct MockDriverOptions {
     pub extra_commands: Vec<DriverCommandDefinition>,
     pub command_results: HashMap<String, serde_json::Value>,
     pub query_error: Option<String>,
+    /// Fail only the selected 1-based `query` call. Lets batch tests model a
+    /// failure after earlier statements already succeeded. `None` keeps the
+    /// historical all-or-nothing `query_error` behavior.
+    pub query_error_on_call: Option<u32>,
     /// When set, precise execution-handle cancellation returns a driver-level
     /// error for command tests. The legacy session-wide method remains a
     /// separate counter and is never used by the Host cancel path.
@@ -173,6 +177,12 @@ pub struct MockDriverOptions {
     /// Forwarded to `default_schema` (only meaningful with
     /// [`Self::has_schema_level`]).
     pub default_schema: Option<&'static str>,
+    /// What an MCP default-target probe reports for `current_database()` /
+    /// MySQL `DATABASE()`. `None` models a probe that returns NULL.
+    pub current_database: Option<&'static str>,
+    /// What an MCP default-target probe reports for `current_schema()` /
+    /// SQL Server `SCHEMA_NAME()`. `None` models a probe that returns NULL.
+    pub current_schema: Option<&'static str>,
     /// Databases reported as holding an open resource by `open_databases`.
     /// Empty models a driver with no per-database resource.
     pub open_databases: Vec<String>,
@@ -256,6 +266,7 @@ impl Default for MockDriverOptions {
             command_results: HashMap::new(),
             query_rows_affected: None,
             query_error: None,
+            query_error_on_call: None,
             cancel_error: None,
             execute_rows_affected: 0,
             parameterized_writes: false,
@@ -274,6 +285,8 @@ impl Default for MockDriverOptions {
             columns_by_database: HashMap::new(),
             has_schema_level: false,
             default_schema: None,
+            current_database: None,
+            current_schema: None,
             open_databases: Vec::new(),
             filter_rows_by_key_equality: false,
             skip_count_query: false,
@@ -848,12 +861,17 @@ impl DatabaseDriver for MockDriver {
         _handle: &ConnectionHandle,
         sql: &str,
     ) -> Result<QueryResult, DriverError> {
-        self.query_calls.fetch_add(1, Ordering::Relaxed);
+        let call = self.query_calls.fetch_add(1, Ordering::Relaxed) + 1;
         if let Ok(mut log) = self.query_log.lock() {
             log.push(sql.to_string());
         }
         if let Some(msg) = &self.opts.query_error {
             return Err(DriverError::QueryFailed(msg.clone()));
+        }
+        if self.opts.query_error_on_call == Some(call) {
+            return Err(DriverError::QueryFailed(format!(
+                "synthetic query failure on call {call}"
+            )));
         }
         // A mutation sent down the `query` channel reports an affected-row
         // count, not the configured read rows. Opt-in, so the historical mock
@@ -875,6 +893,33 @@ impl DatabaseDriver for MockDriver {
         // The estimate statement is answered on its own, so a test can tell it
         // apart from the count and from the data statement — and can make it
         // fail without taking the data statement down with it.
+        if sql.contains("/* datazen:mcp-defaults */") {
+            let value = |configured: Option<&'static str>| {
+                configured
+                    .map(|value| Value::String(value.to_string()))
+                    .unwrap_or(Value::Null)
+            };
+            return Ok(QueryResult {
+                columns: vec![
+                    ColumnInfo {
+                        name: "database_name".into(),
+                        data_type: "text".into(),
+                        nullable: true,
+                    },
+                    ColumnInfo {
+                        name: "schema_name".into(),
+                        data_type: "text".into(),
+                        nullable: true,
+                    },
+                ],
+                rows: vec![vec![
+                    Some(value(self.opts.current_database)),
+                    Some(value(self.opts.current_schema)),
+                ]],
+                rows_affected: None,
+                execution_time_ms: 0,
+            });
+        }
         if sql.contains(ESTIMATE_COLUMN) {
             if let Some(msg) = &self.opts.count_estimate_error {
                 return Err(DriverError::QueryFailed(msg.clone()));

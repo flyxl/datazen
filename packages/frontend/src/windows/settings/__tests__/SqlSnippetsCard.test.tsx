@@ -38,6 +38,8 @@ const mockSettings: AppSettings = {
   wappSettings: {},
   mcpClientServers: [],
   mcpAllowedConnectionIds: [],
+    mcpAllowedDatabases: [],
+    mcpAllowedNamespaces: [],
   confirmDangerousExecution: false,
   autoChartOnQuery: false,
   aiStrictEgress: true,

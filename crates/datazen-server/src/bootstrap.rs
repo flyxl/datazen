@@ -544,6 +544,14 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
             // 同一实例（共享驱动注册表 / 设置存储 / 租约源）。
             host: resource_host.clone(),
         }),
+        // T25：组织记忆由服务端组织角色治理。桌面本地没有 OrgAdmin，
+        // 因此不把管理员语义伪造到本地 store；成员只读/审计走此域。
+        crate::http::domains::org_memory::org_memory_router(
+            crate::http::domains::org_memory::OrgMemoryState {
+                store: store.clone(),
+                policy: policy.clone(),
+            },
+        ),
         // WR-C3 §6.7–6.9 tableData 域（W3 刀）：命名视图三端点真实现
         // （v9 `named_views` 表）。W8-a 接线刀：读三端点（reads /
         // read-sql-previews / row-count-estimates）501 → 真用例接线——

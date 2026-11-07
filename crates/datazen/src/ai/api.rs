@@ -26,7 +26,7 @@ use super::domain::types::{
 };
 use super::providers::custom::{self, CustomProtocol};
 use super::providers::http::HttpClient;
-use super::providers::metadata::provider_defaults;
+use super::providers::metadata::{provider_default_model, provider_defaults};
 use super::providers::registry::AiProviderRegistry;
 use serde::Serialize;
 
@@ -40,6 +40,7 @@ pub struct ProviderListItem {
     pub supports_tools: bool,
     pub default_endpoint: String,
     pub default_protocol: String,
+    pub default_model: String,
 }
 
 /// AI 栈的懒启动：注册供应商 → 首次注册时恢复持久化配置 → 按界面语言
@@ -76,6 +77,7 @@ pub async fn list_providers(registry: &AiProviderRegistry) -> Vec<ProviderListIt
                 supports_tools: p.supports_tools(),
                 default_endpoint: ep.into(),
                 default_protocol: proto.into(),
+                default_model: provider_default_model(p.provider_type()).into(),
             }
         })
         .collect()
@@ -147,6 +149,9 @@ pub async fn save_settings_config(
     store: &dyn AiConfigStore,
     config: AiSettingsConfig,
 ) -> Result<(), AiUseCaseError> {
+    config
+        .validate_prompt_limits()
+        .map_err(AiUseCaseError::Validation)?;
     if let Some(profile) = config.selected_profile() {
         let provider_config = AiProviderConfig::from(profile);
         if let Some(provider) = registry.get(&provider_config.provider_type).await {
@@ -223,7 +228,7 @@ pub async fn fetch_remote_models(
     let proto = match protocol {
         "open_ai_compatible" => CustomProtocol::OpenAiCompatible,
         "open_ai_responses" => CustomProtocol::OpenAiResponses,
-        "anthropic_compatible" => CustomProtocol::AnthropicCompatible,
+        "anthropic_compatible" | "anthropic" => CustomProtocol::AnthropicCompatible,
         other => {
             return Err(AiUseCaseError::Validation(format!(
                 "Unknown protocol: {other}"
@@ -249,6 +254,8 @@ mod tests {
             mcp_disabled_tools: Vec::new(),
             mcp_permission_mode: "safe_write".into(),
             mcp_allowed_connection_ids: Vec::new(),
+            mcp_allowed_databases: Vec::new(),
+            mcp_allowed_namespaces: Vec::new(),
             driver_settings: serde_json::Map::new(),
             ai_strict_egress: true,
         }
@@ -329,7 +336,7 @@ mod tests {
         let registry = super::super::providers::registry::init_ai_providers().await;
         let list = list_providers(&registry).await;
 
-        assert!(list.len() >= 5, "built-ins must all be listed");
+        assert!(list.len() >= 10, "all provider presets must be listed");
         let openai = list
             .iter()
             .find(|item| item.provider_type == AiProviderType::OpenAi)
@@ -343,6 +350,24 @@ mod tests {
             .expect("Anthropic listed");
         assert_eq!(anthropic.default_endpoint, "https://api.anthropic.com");
         assert_eq!(anthropic.default_protocol, "anthropic_compatible");
+        let gemini = list
+            .iter()
+            .find(|item| item.provider_type == AiProviderType::Gemini)
+            .expect("Gemini listed");
+        assert_eq!(
+            gemini.default_endpoint,
+            "https://generativelanguage.googleapis.com/v1beta/openai/"
+        );
+        assert_eq!(gemini.default_protocol, "open_ai_compatible");
+        assert_eq!(gemini.default_model, "gemini-2.5-pro");
+        let anthropic_compatible = list
+            .iter()
+            .find(|item| item.provider_type == AiProviderType::AnthropicCompatible)
+            .expect("Anthropic-compatible listed");
+        assert_eq!(
+            anthropic_compatible.default_protocol,
+            "anthropic_compatible"
+        );
 
         // 序列化形状钉死（原宿主 `test_provider_list_item_serialization`
         // 的等价断言）：camelCase 键 + snake_case 枚举值，前端 TS 接口依赖。
@@ -353,6 +378,7 @@ mod tests {
         assert!(json.contains("\"supportsTools\":"));
         assert!(json.contains("\"defaultEndpoint\":\"https://api.openai.com/v1\""));
         assert!(json.contains("\"defaultProtocol\":\"open_ai_compatible\""));
+        assert!(json.contains("\"defaultModel\":\"gpt-4o\""));
     }
 
     #[tokio::test]
@@ -490,6 +516,7 @@ mod tests {
             supports_tools: true,
             default_endpoint: "https://api.openai.com/v1".into(),
             default_protocol: "open_ai_compatible".into(),
+            default_model: "gpt-4o".into(),
         };
 
         let json = serde_json::to_string(&item).unwrap();

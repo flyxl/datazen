@@ -78,6 +78,12 @@ CSP 以对象形式写在 `src-tauri/tauri.conf.json` 的 `security.csp`，当�
 | 传输安全 | 所有 API 请求通过 HTTPS |
 | 日志脱敏 | tracing 日志只保留元数据、长度、计数、状态和脱敏标记，不记录 API Key、prompt、SQL/error 正文、响应正文或 tool 参数 |
 | Workflows 安全 | 路径遍历防护（ID 校验）、查询结果行数限制（1000） |
+| 记忆隔离 | 私人记忆按组织/主体/连接分层，只在用户启用后检索；`cloudPolicy` 可完全禁止云端；记忆正文不写审计/日志。组织记忆只从认证会话取组织，成员只读，发布/撤销需真实 OrgAdmin；不自动上传本地私人记忆 |
+| 写入确认 | Agent 只能生成写入提案；提案绑定连接/库/精确 SQL/SHA-256/300 秒 TTL，生产与只读连接不可应用；apply 一次性消费 token，重新跑只读/生产检查，审计不含完整 SQL/参数 |
+| 本地 CLI Agent | 子进程环境变量 allow-list，不继承 API key/token；prompt 只走 stdin；取消/超时杀进程组；stderr 脱敏后只作 reasoning |
+| MCP 审批 | 非只读工具在 body 前 Allow once/Deny/5 分钟超时/Stop；审计只含 who/connection/tool/rowCount/decision/requestId |
+
+AI 笔记、记忆、会话消息保存在 `{appData}/datazen.sqlite`，当前为**明文**（见[持久化模型 §4.1](platform/persistence-model.md#41-桌面本地持久化现状已实现)）；备份/同步 app data 目录必须视同敏感数据。`ai_config.enc` 只保护 Provider 配置，不覆盖这些内容。
 
 ### 4.1 端到端数据边界
 
@@ -91,7 +97,8 @@ AI 请求经过两个边界：
 - 数据库类型，以及有限的 database/schema/table/column/类型/约束元数据；
 - 经清理、截断后的 SQL 和错误信息，用于诊断或 SQL 生成；
 - 用户明确输入的自然语言和主动选择的本地上下文文件（文件路径本身也应避免包含机密）；
-- AI Chat 中已连接 MCP Server 暴露的工具定义，以及工具调用后经过同一安全边界处理的结果。
+- AI Chat 中已连接 MCP Server 暴露的工具定义，以及工具调用后经过同一安全边界处理的结果；
+- 已启用且当前可见、未被 `cloudPolicy` 排除的记忆条目，以及用户确认引用的组织记忆。
 
 以下内容禁止作为原始值进入 AI prompt：连接密码、AI API Key、Bearer/token、URI 中的用户名密码、连接 ID/会话 ID、完整查询结果/数据行、原始 MCP tool payload，以及被敏感字段标记的参数值。
 

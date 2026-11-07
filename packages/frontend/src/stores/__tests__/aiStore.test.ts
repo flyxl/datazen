@@ -58,6 +58,7 @@ vi.mock('../settingsStore', () => ({
 const mockUnlisten = vi.fn();
 const streamChunkHandler = vi.fn();
 const streamErrorHandler = vi.fn();
+const skillUsedHandler = vi.fn();
 
 vi.mock('../../commands/ai', () => ({
   aiCommands: mockAiCommands,
@@ -85,6 +86,7 @@ describe('aiStore', () => {
         listenCrossWindow: vi.fn().mockImplementation((evt: string, cb: (p?: unknown) => void) => {
           if (evt === 'ai:stream-chunk') streamChunkHandler.mockImplementation(cb);
           if (evt === 'ai:stream-error') streamErrorHandler.mockImplementation(cb);
+          if (evt === 'ai:skill-used') skillUsedHandler.mockImplementation(cb);
           return Promise.resolve(mockUnlisten);
         }),
       },
@@ -102,6 +104,7 @@ describe('aiStore', () => {
         streamingSql: '',
         streamingPreview: '',
         generatedSql: '',
+        memoryUsed: [],
         isGenerating: false,
         requestId: null,
       },
@@ -188,6 +191,24 @@ describe('aiStore', () => {
     it('generateSql skips empty input', async () => {
       await useAiStore.getState().generateSql({ dbSessionId: 'c', database: 'db' });
       expect(mockAiCommands.generateSql).not.toHaveBeenCalled();
+    });
+
+    it('forwards connection and memory policy to the command', async () => {
+      useAiStore.getState().setNl2SqlInput('show users');
+      await useAiStore.getState().generateSql({
+        dbSessionId: 'c',
+        database: 'db',
+        connectionId: 'conn-1',
+        memoryMode: 'auto',
+        memoryScope: 'user',
+      });
+      expect(mockAiCommands.generateSql).toHaveBeenCalledWith(
+        expect.objectContaining({
+          connectionId: 'conn-1',
+          memoryMode: 'auto',
+          memoryScope: 'user',
+        }),
+      );
     });
 
     it('generateSql sets generating and handles error', async () => {
@@ -348,6 +369,112 @@ describe('aiStore', () => {
   });
 
   describe('chat', () => {
+    it('initChatSession prefers connectionId and keeps the two-arg key compatible', () => {
+      localStorage.clear();
+      useAiStore.getState().initChatSession('db-sess', 'db', 'conn-1');
+      expect(useAiStore.getState().chatSession!.sessionKey).toBe('conn-1::db');
+
+      localStorage.setItem(
+        'datazen.aiSessions.v1',
+        JSON.stringify({
+          'db-sess::db': {
+            messages: [{ role: 'user', content: 'old history' }],
+            lastAccess: 1,
+          },
+        }),
+      );
+      useAiStore.getState().initChatSession('db-sess', 'db');
+      const session = useAiStore.getState().chatSession!;
+      expect(session.sessionKey).toBe('db-sess::db');
+      expect(session.messages[0]?.content).toBe('old history');
+    });
+
+    it('sendChatMessage forwards connectionId and keys the run by it', async () => {
+      localStorage.clear();
+      useAiStore.getState().initChatSession('db-sess', 'db', 'conn-1');
+      mockAiCommands.chat.mockResolvedValueOnce(undefined);
+
+      await useAiStore.getState().sendChatMessage({
+        dbSessionId: 'db-sess',
+        connectionId: 'conn-1',
+        database: 'db',
+        content: 'hello',
+      });
+
+      expect(mockAiCommands.chat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dbSessionId: 'db-sess',
+          connectionId: 'conn-1',
+          database: 'db',
+          agentMode: 'ask',
+        }),
+      );
+    });
+
+    it('sendChatMessage forwards the frozen auto-context snapshot', async () => {
+      localStorage.clear();
+      useAiStore.getState().initChatSession();
+      mockAiCommands.chat.mockResolvedValueOnce(undefined);
+      const resultPreview = {
+        columns: ['id'],
+        rows: [[1] as (string | number | boolean | null)[]],
+        rowCount: 1,
+        elapsedMs: 3,
+      };
+
+      await useAiStore.getState().sendChatMessage({
+        content: 'why?',
+        autoContext: {
+          editorSql: 'SELECT 1',
+          lastError: 'boom',
+          resultPreview,
+        },
+      });
+
+      expect(mockAiCommands.chat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          editorSql: 'SELECT 1',
+          selection: undefined,
+          lastError: 'boom',
+          resultPreview,
+        }),
+      );
+    });
+
+    it('sendChatMessage forwards the selected Agent mode', async () => {
+      localStorage.clear();
+      useAiStore.getState().initChatSession();
+      mockAiCommands.chat.mockResolvedValueOnce(undefined);
+
+      await useAiStore.getState().sendChatMessage({ content: 'check data', agentMode: 'agent' });
+
+      expect(mockAiCommands.chat).toHaveBeenCalledWith(
+        expect.objectContaining({ agentMode: 'agent' }),
+      );
+    });
+
+    it('sendChatMessage forwards the session loaded skill ids across turns', async () => {
+      localStorage.clear();
+      useAiStore.getState().initChatSession();
+      const session = useAiStore.getState().chatSession!;
+      useAiStore.setState({
+        chatSession: {
+          ...session,
+          loadedSkills: [
+            { id: 'user:one', name: 'one', loadedAt: new Date().toISOString() },
+            { name: 'legacy-two', loadedAt: new Date().toISOString() },
+          ],
+        },
+      });
+      mockAiCommands.chat.mockResolvedValueOnce(undefined);
+
+      await useAiStore.getState().sendChatMessage({ content: 'continue' });
+
+      expect(mockAiCommands.chat).toHaveBeenCalledWith(
+        expect.objectContaining({ loadedSkillIds: ['user:one', 'legacy-two'] }),
+      );
+    });
+
     it('sendChatMessage no-ops without session', async () => {
       await useAiStore.getState().sendChatMessage({ content: 'hi' });
       expect(mockAiCommands.chat).not.toHaveBeenCalled();
@@ -401,7 +528,7 @@ describe('aiStore', () => {
       mockAiCommands.chat.mockResolvedValueOnce(undefined);
       await useAiStore.getState().sendWorkflowChatMessage({ content: 'gen workflow' });
       expect(mockAiCommands.chat).toHaveBeenCalledWith(
-        expect.objectContaining({ scenario: 'workflow_generate' }),
+        expect.objectContaining({ scenario: 'workflow_generate', agentMode: 'agent' }),
       );
       useAiStore.getState().clearWorkflowChat();
       expect(useAiStore.getState().workflowChat!.messages).toEqual([]);
@@ -417,6 +544,7 @@ describe('aiStore', () => {
           streamingSql: '',
           streamingPreview: '',
           generatedSql: '',
+          memoryUsed: [],
           isGenerating: true,
           requestId,
         },
@@ -428,6 +556,40 @@ describe('aiStore', () => {
 
       useAiStore.getState().handleStreamChunk({ requestId, content: '', done: true });
       expect(useAiStore.getState().nl2sql.isGenerating).toBe(false);
+    });
+
+    it('handleStreamChunk saves memoryUsed on the NL2SQL state', () => {
+      const requestId = 'req-nl2sql-memory';
+      useAiStore.setState({
+        nl2sql: {
+          input: 'q',
+          streamingSql: '',
+          streamingPreview: '',
+          generatedSql: '',
+          memoryUsed: [],
+          isGenerating: true,
+          requestId,
+        },
+      });
+      const memoryUsed = [
+        {
+          reference: 'M1',
+          id: 'mem-1',
+          subject: 'Timezone preference',
+          kind: 'preference',
+          scope: 'user',
+          score: 0.9,
+        },
+      ];
+      useAiStore.getState().handleStreamChunk({
+        requestId,
+        content: 'SELECT 1',
+        done: false,
+        memoryUsed,
+      });
+      expect(useAiStore.getState().nl2sql.memoryUsed).toEqual(memoryUsed);
+      useAiStore.getState().handleStreamChunk({ requestId, content: '', done: true });
+      expect(useAiStore.getState().nl2sql.memoryUsed).toEqual(memoryUsed);
     });
 
     it('handleStreamChunk completes chat session', () => {
@@ -452,6 +614,53 @@ describe('aiStore', () => {
       expect(msgs[msgs.length - 1].role).toBe('assistant');
     });
 
+    it('stores memory references, attaches them to the assistant turn and resets', async () => {
+      useAiStore.getState().initChatSession();
+      const requestId = 'req-memory';
+      useAiStore.setState({
+        chatSession: {
+          ...useAiStore.getState().chatSession!,
+          requestId,
+          isStreaming: true,
+        },
+      });
+      const memoryUsed = [
+        {
+          reference: 'M1',
+          id: 'mem-1',
+          subject: 'Timezone preference',
+          kind: 'preference',
+          scope: 'user:me',
+          score: 0.9,
+        },
+      ];
+      useAiStore.getState().handleStreamChunk({
+        requestId,
+        content: '',
+        done: false,
+        memoryUsed,
+      });
+      expect(useAiStore.getState().chatSession!.streamMemoryUsed).toEqual(memoryUsed);
+      expect(useAiStore.getState().chatSession!.memoryUsed).toEqual(memoryUsed);
+
+      useAiStore.getState().handleStreamChunk({ requestId, content: 'UTC', done: true });
+      const messages = useAiStore.getState().chatSession!.messages;
+      expect(messages[messages.length - 1].memoryUsed).toEqual(memoryUsed);
+      expect(useAiStore.getState().chatSession!.streamMemoryUsed).toBeNull();
+      expect(useAiStore.getState().chatSession!.memoryUsed).toEqual(memoryUsed);
+
+      mockAiCommands.chat.mockResolvedValueOnce(undefined);
+      await useAiStore.getState().sendChatMessage({
+        content: 'next',
+        memoryMode: 'auto',
+        memoryScope: 'user',
+      });
+      expect(mockAiCommands.chat).toHaveBeenLastCalledWith(
+        expect.objectContaining({ memoryMode: 'auto', memoryScope: 'user' }),
+      );
+      expect(useAiStore.getState().chatSession!.streamMemoryUsed).toBeNull();
+    });
+
     it('handleStreamChunk tracks MCP tool name during stream', () => {
       useAiStore.getState().initChatSession();
       const requestId = useAiStore.getState().chatSession!.requestId ?? 'req-mcp';
@@ -465,6 +674,53 @@ describe('aiStore', () => {
         toolCalls: [{ id: 'tc-1', name: 'mcp/files/read_file', arguments: '{}' }],
       });
       expect(useAiStore.getState().chatSession!.streamMcpToolName).toBe('mcp/files/read_file');
+    });
+
+    it('stores the first-chunk egress summary and resets it on send/clear', async () => {
+      useAiStore.getState().initChatSession();
+      const requestId = 'req-egress';
+      useAiStore.setState({
+        chatSession: {
+          ...useAiStore.getState().chatSession!,
+          requestId,
+          isStreaming: true,
+        },
+      });
+
+      useAiStore.getState().handleStreamChunk({
+        requestId,
+        content: '',
+        done: false,
+        egressSummary: '2 connections (postgresql) accessible via tools.',
+      });
+      expect(useAiStore.getState().chatSession!.egressSummary).toBe(
+        '2 connections (postgresql) accessible via tools.',
+      );
+
+      // A later chunk keeps the first chunk's scope, even if it carries another.
+      useAiStore.getState().handleStreamChunk({ requestId, content: 'hi', done: false });
+      useAiStore
+        .getState()
+        .handleStreamChunk({ requestId, content: '', done: false, egressSummary: 'other' });
+      expect(useAiStore.getState().chatSession!.egressSummary).toContain('2 connections');
+
+      mockAiCommands.chat.mockResolvedValueOnce(undefined);
+      const pending = useAiStore.getState().sendChatMessage({ content: 'next' });
+      expect(useAiStore.getState().chatSession!.egressSummary).toBeNull();
+      await pending;
+
+      useAiStore.setState((state) => ({
+        chatSession: { ...state.chatSession!, egressSummary: 'old scope' },
+      }));
+      useAiStore.getState().clearChat();
+      expect(useAiStore.getState().chatSession!.egressSummary).toBeNull();
+
+      // Session (re)initialisation starts a fresh egress state as well.
+      useAiStore.setState((state) => ({
+        chatSession: { ...state.chatSession!, egressSummary: 'stale scope' },
+      }));
+      useAiStore.getState().initChatSession();
+      expect(useAiStore.getState().chatSession!.egressSummary).toBeNull();
     });
 
     it('records run attribution and forwards the target claim', async () => {
@@ -584,6 +840,32 @@ describe('aiStore', () => {
       expect(useAiStore.getState().chatSession!.requestId).toBe(requestId);
     });
 
+    it('records used skills on the active chat session only', async () => {
+      const cleanup = await useAiStore.getState().setupEventListeners();
+      useAiStore.getState().initChatSession('skill-db', 'db');
+      const session = useAiStore.getState().chatSession!;
+      useAiStore.setState({ chatSession: { ...session, requestId: 'skill-req' } });
+
+      skillUsedHandler({ requestId: 'other', name: 'ignored', source: 'user' });
+      expect(useAiStore.getState().chatSession!.loadedSkills).toEqual([]);
+
+      skillUsedHandler({
+        requestId: 'skill-req',
+        id: 'user:sql-review',
+        name: 'sql-review',
+        source: 'user',
+      });
+      expect(useAiStore.getState().chatSession!.loadedSkills).toEqual([
+        expect.objectContaining({ id: 'user:sql-review', name: 'sql-review', source: 'user' }),
+      ]);
+      expect(useAiStore.getState().chatSession!.metadata).toEqual(
+        expect.objectContaining({
+          loadedSkills: [expect.objectContaining({ name: 'sql-review' })],
+        }),
+      );
+      cleanup();
+    });
+
     it('setupEventListeners wires chunk and error handlers', async () => {
       const cleanup = await useAiStore.getState().setupEventListeners();
       expect(typeof cleanup).toBe('function');
@@ -595,6 +877,7 @@ describe('aiStore', () => {
           streamingSql: '',
           streamingPreview: '',
           generatedSql: '',
+          memoryUsed: [],
           isGenerating: true,
           requestId: 'err-req',
         },

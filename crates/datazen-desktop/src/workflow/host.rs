@@ -38,6 +38,9 @@ impl WorkflowHost for AppState {
         )
         .await
     }
+    async fn sql_dialect(&self, connection_id: &str) -> datazen::sql_template::SqlTemplateDialect {
+        self.connection_sql_dialect(connection_id).await
+    }
     async fn complete_ai(&self, prompt: String) -> Result<String, WorkflowError> {
         // 解析激活供应商与安全门的编排与命令层共用同一用例面
         // （host-boundary §3 AI 配置刀）；本端口实现只保留 WorkflowError

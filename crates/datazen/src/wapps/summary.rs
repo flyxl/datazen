@@ -29,6 +29,15 @@ pub struct WappThemeSummary {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct WappAiToolSummary {
+    pub name: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub description: String,
+    pub read_only: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WappSummary {
     pub id: String,
     pub name: String,
@@ -44,6 +53,10 @@ pub struct WappSummary {
     pub permissions: Vec<String>,
     pub pages: Vec<WappPageSummary>,
     pub themes: Vec<WappThemeSummary>,
+    /// AI tools declared by the manifest, for the host's opt-in settings UI.
+    /// The tools are still unavailable until the plugin id is enabled there.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub ai_tools: Vec<WappAiToolSummary>,
 }
 
 impl From<&LoadedWapp> for WappSummary {
@@ -83,6 +96,20 @@ impl From<&LoadedWapp> for WappSummary {
                     modes: theme.modes.clone(),
                 })
                 .collect(),
+            ai_tools: manifest
+                .ai
+                .as_ref()
+                .map(|ai| {
+                    ai.tools
+                        .iter()
+                        .map(|tool| WappAiToolSummary {
+                            name: tool.name.clone(),
+                            description: tool.description.clone(),
+                            read_only: tool.read_only,
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
         }
     }
 }

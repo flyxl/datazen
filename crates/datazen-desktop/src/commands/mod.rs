@@ -254,9 +254,31 @@ pub struct AppState {
     ///
     /// 作用域只在这里确定一次，请求体里的任何字段都覆盖不了它（INV-01）。
     pub organization_scope: OrganizationScope,
+    /// The Tauri handle used by the AI tool-confirmation dialog. Injected by
+    /// `bootstrap::run` after assembly and before `app.manage`; headless or
+    /// test states leave it empty, where confirmation fails closed.
+    pub(crate) app_handle: Arc<std::sync::OnceLock<tauri::AppHandle>>,
 }
 
 impl AppState {
+    /// Resolve the target connection's SQL literal dialect for shared SQL-safe
+    /// template rendering. Unknown connections fail safe to the standard.
+    pub(crate) async fn connection_sql_dialect(
+        &self,
+        connection_id: &str,
+    ) -> datazen::sql_template::SqlTemplateDialect {
+        let Some(config) = self.store.get_connection(connection_id).await else {
+            return datazen::sql_template::SqlTemplateDialect::default();
+        };
+        let Some(driver) = self.driver_registry.get(&config.database_type).await else {
+            return datazen::sql_template::SqlTemplateDialect::default();
+        };
+        driver
+            .sql_literal_dialect()
+            .map(datazen::sql_template::SqlTemplateDialect::from)
+            .unwrap_or_default()
+    }
+
     /// 取 platform adapter；组装失败 ⇒ 返回原始 `ApiError`，不做任何回落。
     ///
     /// 命令侧的统一入口：新接线的能力一律从这里进，避免每个命令各写一遍
@@ -278,6 +300,12 @@ impl AppState {
     /// 按请求解析组织，那一步是可以失败的。桌面形态不会失败。
     pub fn organization_scope(&self) -> Result<OrganizationScope, CommandError> {
         Ok(self.organization_scope.clone())
+    }
+
+    /// Attach the production Tauri handle after assembly. Calling this more
+    /// than once keeps the first handle; tests never need it.
+    pub(crate) fn set_app_handle(&self, handle: tauri::AppHandle) {
+        let _ = self.app_handle.set(handle);
     }
 
     /// 模块连接目录的作用域（D2）：连接用例归

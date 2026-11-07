@@ -6,6 +6,15 @@
 merge-base diff，刻意与 select_ci_baseline 的 run 间窗口无关——merge 过 main
 的分支会把产品变更（版本号 bump、清单同步等）带进 run 间窗口（PR #182 教训），
 那不是 PR 自身的变更，不能作为豁免依据。push / workflow_dispatch 事件不豁免。
+
+半边基线（per-half baseline）：整轮 run 成功才构成 direct 基线；只有单边 job
+绿、另一边红时（典型：rust 红 → 修复推送 → 重跑），旧逻辑退回 merge-base
+全量，让绿的那半边陪跑。本脚本在此基础上为每个 job 独立找「最近一次该 job
+completed+success」的 run：该 sha 到当前的 direct 窗口 = 该半边全部未验证
+变更（中间红 run 的提交都在窗口内，不会漏）。窗口内没有本半边文件即可跳过。
+仅当无整轮成功基线且历史 API 可用时启用；jobs API 故障按半边回退公共基线
+（never narrower 不变）。同 sha 多次 run 只信最新一条记录；head_sha 等于当前
+sha 的证据跳过（re-run 当前提交时窗口不能为空）。
 """
 
 from __future__ import annotations
@@ -18,7 +27,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Any, Callable
 
 
 # ── docs-only 白名单：PR merge-base diff 全部落入其中才豁免 ───────────────
@@ -50,6 +59,13 @@ SHARED_ROOTS = ("scripts/", ".github/workflows/", ".github/actions/")
 CI_SCOPE_ONLY_FILES = frozenset({"scripts/ci_scope.py", "scripts/test_ci_scope.py"})
 FRONTEND_SUFFIXES = {".ts", ".tsx", ".js", ".jsx", ".css"}
 ALL_ZERO_SHA = "0" * 40
+
+# CI 的两个重型 job 名（ci.yml 的 job id）。半边基线按 job 名取「最近一次
+# 该 job completed+success」的 run；名字与 ci.yml 保持同步。
+HALF_JOB_NAMES = ("frontend", "rust")
+# 半边基线最多回探的 run 数：连续这么多 run 该 job 都不绿就回退公共基线，
+# 避免对久远历史的 jobs API 深挖（每次探查一个 run 的 jobs 是一次 API 调用）。
+GREEN_JOB_PROBE_LIMIT = 5
 
 
 def classify_changed_paths(paths: list[str]) -> tuple[bool, bool]:
@@ -152,19 +168,23 @@ def _is_before(run: dict[str, Any], current: dict[str, Any]) -> bool:
     return int(run["id"]) < int(current["id"])
 
 
-def find_previous_successful_run(
+def _prior_runs(
     runs: list[dict[str, Any]],
     *,
     current_run_id: str,
-    current_sha: str,
     event_name: str,
     pr_number: str,
     head_branch: str,
-) -> tuple[dict[str, Any] | None, bool, bool]:
-    """Return (last success, has_prior_run, current_run_was_found)."""
+) -> list[dict[str, Any]] | None:
+    """当前 run 之前的同事件 / 同 PR / 同分支 run，按创建时间倒序。
+
+    返回 None 表示 runs 列表里找不到当前 run（API 数据不一致，调用方
+    fail-closed）。整轮成功基线与半边绿基线共用这套过滤，保证两者比较的
+    是同一批历史 run。
+    """
     current = next((run for run in runs if str(run.get("id")) == current_run_id), None)
     if current is None:
-        return None, False, False
+        return None
 
     prior: list[dict[str, Any]] = []
     for run in runs:
@@ -184,6 +204,29 @@ def find_previous_successful_run(
         key=lambda run: (_parse_time(run["created_at"]), int(run["id"])),
         reverse=True,
     )
+    return prior
+
+
+def find_previous_successful_run(
+    runs: list[dict[str, Any]],
+    *,
+    current_run_id: str,
+    current_sha: str,
+    event_name: str,
+    pr_number: str,
+    head_branch: str,
+) -> tuple[dict[str, Any] | None, bool, bool]:
+    """Return (last success, has_prior_run, current_run_was_found)."""
+    prior = _prior_runs(
+        runs,
+        current_run_id=current_run_id,
+        event_name=event_name,
+        pr_number=pr_number,
+        head_branch=head_branch,
+    )
+    if prior is None:
+        return None, False, False
+
     previous_success = next((
         run for run in prior
         if run.get("status") == "completed"
@@ -192,6 +235,105 @@ def find_previous_successful_run(
         and run.get("head_sha")
     ), None)
     return previous_success, bool(prior), True
+
+
+def find_latest_green_job_sha(
+    runs: list[dict[str, Any]],
+    *,
+    job_name: str,
+    current_run_id: str,
+    current_sha: str,
+    event_name: str,
+    pr_number: str,
+    head_branch: str,
+    jobs_fetcher: "Callable[[int], list[dict[str, Any]]]",
+    probe_limit: int = GREEN_JOB_PROBE_LIMIT,
+) -> str | None:
+    """最近一次「该 job completed+success」的 run 的 head_sha。
+
+    半边基线的证据采集：按时间倒序回探 prior run，逐个查 jobs。正确性要点：
+    - 取「最近的」绿 run：中间红 run 引入的变更全部落进 direct 窗口，不漏；
+    - 同 sha 多次 run 只信最新一条记录（re-run 红了就不能再用旧的绿证据）；
+    - head_sha 等于当前 sha 的跳过——re-run 当前提交时窗口不能为空，否则
+      重跑失去意义（与 find_previous_successful_run 的同名约束同源）；
+    - job 结论必须是 completed+success：skipped / cancelled / in_progress
+      都不构成「该半边被真实验证过」的正面证据；
+    - jobs API 异常 → None（fail-closed，该半边回退公共基线）。
+    """
+    prior = _prior_runs(
+        runs,
+        current_run_id=current_run_id,
+        event_name=event_name,
+        pr_number=pr_number,
+        head_branch=head_branch,
+    )
+    if prior is None:
+        return None
+
+    seen_shas: set[str] = set()
+    probed = 0
+    for run in prior:
+        sha = run.get("head_sha") or ""
+        if not sha or sha == current_sha or sha in seen_shas:
+            continue
+        seen_shas.add(sha)
+        if run.get("status") != "completed":
+            # 同 sha 去重后仍非 completed（in_progress 的 re-run）：该提交
+            # 暂无新鲜结论，不采信更早的旧绿，跳过。
+            continue
+        if probed >= probe_limit:
+            break
+        probed += 1
+        try:
+            jobs = jobs_fetcher(int(run["id"]))
+        except (OSError, urllib.error.URLError, urllib.error.HTTPError, ValueError, KeyError):
+            return None
+        for job in jobs:
+            if (
+                str(job.get("name", "")) == job_name
+                and job.get("status") == "completed"
+                and job.get("conclusion") == "success"
+            ):
+                return sha
+    return None
+
+
+def resolve_half_baselines(
+    *,
+    common_base: tuple[str, str],
+    runs: list[dict[str, Any]] | None,
+    current_run_id: str,
+    current_sha: str,
+    event_name: str,
+    pr_number: str,
+    head_branch: str,
+    jobs_fetcher: "Callable[[int], list[dict[str, Any]]] | None",
+    probe_limit: int = GREEN_JOB_PROBE_LIMIT,
+) -> dict[str, tuple[str, str]]:
+    """每个半边的 (base SHA, mode)；无新鲜绿证据的半边沿用公共基线。
+
+    jobs_fetcher=None（整轮成功 / API 不可用 / 无历史 run）时两半边
+    都是 common_base——与旧版单基线行为完全一致。半边 direct 窗口的完备性
+    论证见 find_latest_green_job_sha：窗口覆盖该半边全部未验证变更。
+    """
+    bases = {half: common_base for half in HALF_JOB_NAMES}
+    if runs is None or jobs_fetcher is None:
+        return bases
+    for job_name in HALF_JOB_NAMES:
+        green_sha = find_latest_green_job_sha(
+            runs,
+            job_name=job_name,
+            current_run_id=current_run_id,
+            current_sha=current_sha,
+            event_name=event_name,
+            pr_number=pr_number,
+            head_branch=head_branch,
+            jobs_fetcher=jobs_fetcher,
+            probe_limit=probe_limit,
+        )
+        if green_sha:
+            bases[job_name] = (green_sha, "direct")
+    return bases
 
 
 def select_ci_baseline(
@@ -252,11 +394,35 @@ def _list_workflow_runs(
     return runs
 
 
-def _resolve_baseline(env: dict[str, str]) -> tuple[str, str]:
-    """Return (base SHA, mode); mode is direct, merge-base, or all."""
+def _fetch_run_jobs(*, repository: str, token: str, run_id: int) -> list[dict[str, Any]]:
+    """单个 run 的 jobs 列表（ci.yml 只有 4 个 job，一页足够）。"""
+    request = urllib.request.Request(
+        f"https://api.github.com/repos/{repository}/actions/runs/{run_id}/jobs?per_page=100",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": "2026-03-10",
+        },
+    )
+    with urllib.request.urlopen(request, timeout=15) as response:
+        data = json.load(response)
+    jobs = data.get("jobs")
+    if not isinstance(jobs, list):
+        raise ValueError("unexpected jobs payload")
+    return jobs
+
+
+def _resolve_baseline(env: dict[str, str]) -> dict[str, tuple[str, str]]:
+    """Return per-half baselines: {"frontend": (sha, mode), "rust": (sha, mode)}。
+
+    mode 为 direct / merge-base / all。公共基线仍是 select_ci_baseline 的
+    全套判定（整轮成功 → direct，PR 无成功基线 → merge-base，push 未知
+    历史 → all）；半边细化只在没有整轮成功时尝试——整轮成功的 direct
+    窗口已是最小完整窗口，再拆半边不会更窄。
+    """
     event_name = env["EVENT_NAME"]
     if event_name == "workflow_dispatch":
-        return "", "all"
+        return {half: ("", "all") for half in HALF_JOB_NAMES}
 
     current_sha = env["CURRENT_SHA"]
     head_branch = env["HEAD_BRANCH"]
@@ -266,6 +432,7 @@ def _resolve_baseline(env: dict[str, str]) -> tuple[str, str]:
     previous_success = None
     had_prior_run = False
     current_run_found = False
+    runs: list[dict[str, Any]] | None = None
 
     if event_name in {"pull_request", "push"} and token:
         try:
@@ -287,14 +454,32 @@ def _resolve_baseline(env: dict[str, str]) -> tuple[str, str]:
         except (OSError, urllib.error.URLError, urllib.error.HTTPError, ValueError, KeyError):
             # The fallback below is deliberately broader, never narrower.
             api_ok = False
+            runs = None
 
-    return select_ci_baseline(
+    common_base = select_ci_baseline(
         event_name=event_name,
         previous_success=previous_success,
         had_prior_run=had_prior_run,
         api_ok=api_ok,
         pr_base_sha=env.get("PR_BASE_SHA", ""),
         event_before=env.get("EVENT_BEFORE", ""),
+    )
+
+    if previous_success is None and had_prior_run and api_ok and runs is not None and token:
+        def fetch_jobs(run_id: int) -> list[dict[str, Any]]:
+            return _fetch_run_jobs(repository=repository, token=token, run_id=run_id)
+    else:
+        fetch_jobs = None
+
+    return resolve_half_baselines(
+        common_base=common_base,
+        runs=runs,
+        current_run_id=env["CURRENT_RUN_ID"],
+        current_sha=current_sha,
+        event_name=event_name,
+        pr_number=env.get("PR_NUMBER", ""),
+        head_branch=head_branch,
+        jobs_fetcher=fetch_jobs,
     )
 
 
@@ -329,17 +514,43 @@ def changed_paths(
     return result.stdout.splitlines() if result.returncode == 0 else None
 
 
+def classify_half_windows(
+    frontend_window: list[str], rust_window: list[str]
+) -> tuple[bool, bool]:
+    """每个半边只取自己窗口的对应分量。
+
+    半边窗口的语义是「该 job 尚未被绿 run 覆盖的变更」：rust 半边窗口（常见
+    为 merge-base 全量）里的前端 / shared 文件已被更早的 frontend 绿 run 验证
+    过，不再点亮 frontend——这是半边基线省掉陪跑的关键。两窗口相同（公共
+    基线）时结果与 classify_changed_paths 单窗口完全一致。
+    """
+    frontend, _ = classify_changed_paths(frontend_window)
+    _, rust = classify_changed_paths(rust_window)
+    return frontend, rust
+
+
 def main() -> None:
     env = dict(os.environ)
-    base_sha, mode = _resolve_baseline(env)
-    changed = changed_paths(base_sha, env["CURRENT_SHA"], mode)
-    if changed is None:
+    bases = _resolve_baseline(env)
+    frontend_window = changed_paths(
+        bases["frontend"][0], env["CURRENT_SHA"], bases["frontend"][1]
+    )
+    rust_window = changed_paths(
+        bases["rust"][0], env["CURRENT_SHA"], bases["rust"][1]
+    )
+
+    if frontend_window is None or rust_window is None:
+        # 任一半边基线不可解析（sha 缺失 / git 失败）：fail-closed 全量。
         frontend = rust = True
-        changed_count = 0
-        mode = "all"
+        baseline_desc = "all"
+        frontend_count = rust_count = 0
     else:
-        frontend, rust = classify_changed_paths(changed)
-        changed_count = len(changed)
+        frontend, rust = classify_half_windows(frontend_window, rust_window)
+        baseline_desc = "/".join(
+            f"{half}:{bases[half][1]}" for half in HALF_JOB_NAMES
+        )
+        frontend_count = len(frontend_window)
+        rust_count = len(rust_window)
 
     docs_only = resolve_docs_only(
         event_name=env["EVENT_NAME"],
@@ -355,7 +566,8 @@ def main() -> None:
     print(
         f"::notice::CI scope: frontend={str(frontend).lower()}, "
         f"rust={str(rust).lower()}, docs_only={str(docs_only).lower()}, "
-        f"baseline={mode}, changed_paths={changed_count}"
+        f"baseline={baseline_desc}, "
+        f"changed_paths=frontend:{frontend_count}/rust:{rust_count}"
     )
 
 

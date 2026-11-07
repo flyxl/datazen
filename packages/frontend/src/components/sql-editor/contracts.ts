@@ -42,6 +42,11 @@ export interface SqlEditorProps {
   onChange: (value: string) => void;
   onExecute?: () => void;
   onExecuteSelection?: (sql: string) => void;
+  /**
+   * Reports the current editor selection whenever the document or selection
+   * changes. Empty string means the cursor has no selected text.
+   */
+  onSelectionChange?: (selection: string) => void;
   /** Execute all statements in the query (Cmd/Ctrl + Shift + Enter). */
   onExecuteAll?: () => void;
   /** Save query (Cmd/Ctrl + S). */

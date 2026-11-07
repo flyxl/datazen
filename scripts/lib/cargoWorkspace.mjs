@@ -65,6 +65,10 @@ const METADATA_MAX_BUFFER = 128 * 1024 * 1024;
  */
 export const LAYERS = Object.freeze([
   { id: 'host', path: 'crates/datazen-desktop', kind: 'rust' },
+  // The CLI is a second assembly root: it wires the same shared connection and
+  // execution ports without Tauri, so it belongs to the host layer rather than
+  // inventing a layer that no boundary rule covers.
+  { id: 'host', path: 'crates/datazen-cli', kind: 'rust' },
   { id: 'modules', path: 'crates/datazen', kind: 'rust' },
   { id: 'infra', path: 'crates/datazen-infra', kind: 'rust' },
   { id: 'server', path: 'crates/datazen-server', kind: 'rust' },

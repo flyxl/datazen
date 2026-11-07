@@ -37,6 +37,177 @@ async fn ai_session_commands_reject_unknown_runtime_ids() {
 }
 
 #[tokio::test]
+async fn save_settings_config_rejects_prompt_over_limit_before_ai_readiness() {
+    let test = TestAppState::new().await;
+    let app = host_command_app(test);
+    let config = datazen::ai::AiSettingsConfig {
+        global_instructions: "a".repeat(datazen::ai::MAX_GLOBAL_INSTRUCTIONS_BYTES + 1),
+        ..Default::default()
+    };
+    let error = ai_save_settings_config(app.handle(), app.state(), config)
+        .await
+        .expect_err("over-limit global instructions are rejected");
+    assert!(matches!(
+        error,
+        crate::commands::error::CommandError::Validation(_)
+    ));
+}
+
+#[tokio::test]
+async fn connection_notes_ipc_round_trips_and_counts_are_scoped() {
+    let test = TestAppState::new().await;
+    let app = host_command_app(test);
+
+    assert_eq!(
+        ai_connection_notes_get("c-notes".into(), app.state())
+            .await
+            .unwrap(),
+        None
+    );
+    ai_connection_notes_set("c-notes".into(), "use UTC".into(), app.state())
+        .await
+        .unwrap();
+    assert_eq!(
+        ai_connection_notes_get("c-notes".into(), app.state())
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("use UTC")
+    );
+
+    let counts = ai_connection_context_counts("c-notes".into(), app.state())
+        .await
+        .unwrap();
+    assert_eq!(counts.note_count, 1);
+    assert_eq!(counts.memory_count, 0);
+
+    let too_long = "a".repeat(datazen::ai::MAX_CONNECTION_NOTES_BYTES + 1);
+    let error = ai_connection_notes_set("c-notes".into(), too_long, app.state())
+        .await
+        .expect_err("over-limit notes are rejected");
+    assert!(matches!(
+        error,
+        crate::commands::error::CommandError::Validation(_)
+    ));
+    assert_eq!(
+        ai_connection_notes_get("c-notes".into(), app.state())
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("use UTC")
+    );
+
+    // Empty content deletes instead of persisting a blank note.
+    ai_connection_notes_set("c-notes".into(), "  \n".into(), app.state())
+        .await
+        .unwrap();
+    assert_eq!(
+        ai_connection_notes_get("c-notes".into(), app.state())
+            .await
+            .unwrap(),
+        None
+    );
+}
+
+#[tokio::test]
+async fn ai_chat_emits_injection_snapshot_without_prompt_bodies() {
+    use datazen::ai::PromptTemplate;
+    use std::sync::Mutex;
+    use tauri::Listener;
+
+    let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
+    test.save_connection("inject-cfg").await;
+    mock.mount_chat_stream_text("ok").await;
+
+    let mut settings = test.store.get_ai_settings_config().await;
+    settings.global_instructions = "Use UTC.".into();
+    settings.prompt_templates = vec![PromptTemplate {
+        id: "pg-template".into(),
+        name: "Postgres style".into(),
+        content: "PRIVATE_TEMPLATE_BODY prefer explicit joins".into(),
+        database_types: vec!["postgresql".into()],
+        is_default: true,
+    }];
+    test.store.save_ai_settings_config(&settings).await.unwrap();
+
+    let organization_id = test
+        .state
+        .organization_scope()
+        .unwrap()
+        .organization_id()
+        .as_str()
+        .to_string();
+    let owner = crate::platform::local_principal()
+        .map(|principal| principal.as_str().to_string())
+        .unwrap_or_else(|| "datazen-local-user".to_string());
+    test.store
+        .app_db()
+        .set_ai_connection_note(
+            &organization_id,
+            &owner,
+            "inject-cfg",
+            "PRIVATE_NOTE_BODY customer means account",
+        )
+        .unwrap();
+
+    let app = host_command_app(test);
+    let payloads: Arc<Mutex<Vec<serde_json::Value>>> = Arc::new(Mutex::new(Vec::new()));
+    let captured = payloads.clone();
+    app.window().listen("ai:chat-injection", move |event| {
+        if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
+            captured.lock().unwrap().push(payload);
+        }
+    });
+
+    ai_chat(
+        app.state(),
+        app.window(),
+        None,
+        None,
+        vec![ChatMessage {
+            role: MessageRole::User,
+            content: "question".into(),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }],
+        "req-injection".into(),
+        false,
+        None,
+        None,
+        None,
+        None,
+        Some("inject-cfg".into()),
+        Some(datazen::ai::AiAgentMode::Ask),
+        None,
+        None,
+        None,
+        None,
+        Some("pg-template".into()),
+        Some("postgresql".into()),
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    let payloads = payloads.lock().unwrap();
+    let payload = payloads
+        .iter()
+        .find(|payload| payload["requestId"] == "req-injection")
+        .expect("injection event");
+    assert_eq!(payload["snapshot"]["templateId"], "pg-template");
+    assert_eq!(payload["snapshot"]["templateName"], "Postgres style");
+    assert!(payload["snapshot"]["templateHash"].as_str().is_some());
+    assert_eq!(payload["snapshot"]["hasConnectionNotes"], true);
+    assert_eq!(payload["snapshot"]["hasGlobalInstructions"], true);
+    let serialized = payload.to_string();
+    assert!(!serialized.contains("PRIVATE_TEMPLATE_BODY"));
+    assert!(!serialized.contains("PRIVATE_NOTE_BODY"));
+}
+
+#[tokio::test]
 async fn ai_validate_config_hits_wiremock() {
     let (test, mock) = TestAppState::with_wiremock_ai().await;
     let cfg = crate::testing::ai_wiremock_test_support::openai_wiremock_config(&mock);
@@ -214,7 +385,12 @@ async fn execute_db_tool_list_connections() {
         name: "list_connections".into(),
         arguments: "{}".into(),
     };
-    let out = execute_db_tool(&test.state, &tool).await;
+    let out = execute_db_tool(
+        &test.state,
+        &datazen::ai::tool_loop::AiToolContext::default(),
+        &tool,
+    )
+    .await;
     assert!(out.contains("tool-cfg"));
 }
 
@@ -228,8 +404,54 @@ async fn execute_db_tool_list_tables() {
         name: "list_tables".into(),
         arguments: r#"{"connection_id":"tables-cfg","database":"app"}"#.into(),
     };
-    let out = execute_db_tool(&test.state, &tool).await;
+    let out = execute_db_tool(
+        &test.state,
+        &datazen::ai::tool_loop::AiToolContext::default(),
+        &tool,
+    )
+    .await;
     assert!(out.contains("users"));
+}
+
+#[tokio::test]
+async fn execute_db_tool_query_readonly_reads_rows_on_current_connection() {
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("query-tool").await;
+
+    let ctx = datazen::ai::tool_loop::AiToolContext {
+        allowed_connection_id: Some("query-tool".into()),
+        max_sample_rows: 3,
+        cancel_token: None,
+    };
+    let tool = ToolCall {
+        id: "q1".into(),
+        name: "query_readonly".into(),
+        arguments: r#"{"connection_id":"query-tool","sql":"SELECT * FROM users","limit":10}"#
+            .into(),
+    };
+    let out = execute_db_tool(&test.state, &ctx, &tool).await;
+    assert!(!out.contains("Error"), "{out}");
+    assert!(out.contains("alice"), "{out}");
+}
+
+#[tokio::test]
+async fn execute_db_tool_sample_rows_quotes_and_limits() {
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("sample-tool").await;
+
+    let ctx = datazen::ai::tool_loop::AiToolContext {
+        allowed_connection_id: Some("sample-tool".into()),
+        max_sample_rows: 3,
+        cancel_token: None,
+    };
+    let tool = ToolCall {
+        id: "s1".into(),
+        name: "sample_rows".into(),
+        arguments: r#"{"connection_id":"sample-tool","schema":"public","table":"users"}"#.into(),
+    };
+    let out = execute_db_tool(&test.state, &ctx, &tool).await;
+    assert!(!out.contains("Error"), "{out}");
+    assert!(out.contains("alice"), "{out}");
 }
 
 #[tokio::test]
@@ -261,6 +483,9 @@ async fn ai_generate_sql_stream_without_tools() {
         None,
         None,
         None,
+        None,
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -279,7 +504,7 @@ async fn ai_chat_with_schema_and_stream() {
     let rid = ai_chat(
         app.state(),
         app.window(),
-        Some(conn_id),
+        Some(conn_id.clone()),
         Some("app".into()),
         vec![ChatMessage {
             role: MessageRole::User,
@@ -290,6 +515,17 @@ async fn ai_chat_with_schema_and_stream() {
         }],
         "req-chat".into(),
         true,
+        None,
+        None,
+        None,
+        None,
+        Some(conn_id),
+        Some(datazen::ai::AiAgentMode::Agent),
+        None,
+        None,
+        None,
+        None,
+        None,
         None,
         None,
         None,
@@ -323,6 +559,17 @@ async fn ai_chat_workflow_scenario_builds_system_prompt() {
         "req-wf".into(),
         false,
         Some("workflow_generate".into()),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
         None,
         None,
         None,
@@ -510,6 +757,9 @@ data: [DONE]
         None,
         None,
         None,
+        None,
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -578,6 +828,9 @@ async fn ai_generate_sql_injects_context_file() {
         Some(vec!["notes.md".into()]),
         None,
         None,
+        None,
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -599,7 +852,12 @@ async fn execute_db_tool_unknown_returns_error_string() {
         name: "nope".into(),
         arguments: "{}".into(),
     };
-    let out = execute_db_tool(&test.state, &tool).await;
+    let out = execute_db_tool(
+        &test.state,
+        &datazen::ai::tool_loop::AiToolContext::default(),
+        &tool,
+    )
+    .await;
     assert!(out.contains("Unknown tool"));
 }
 
@@ -613,7 +871,12 @@ async fn execute_db_tool_get_table_schema() {
         name: "get_table_schema".into(),
         arguments: r#"{"connection_id":"schema-tool","tables":["users"]}"#.into(),
     };
-    let out = execute_db_tool(&test.state, &tool).await;
+    let out = execute_db_tool(
+        &test.state,
+        &datazen::ai::tool_loop::AiToolContext::default(),
+        &tool,
+    )
+    .await;
     assert!(out.contains("users"));
 }
 
@@ -655,6 +918,17 @@ async fn ai_chat_injects_context_files_into_user_message() {
         Some(vec!["ctx.md".into()]),
         None,
         None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -680,6 +954,17 @@ async fn ai_chat_schema_resolve_failure_still_streams() {
         }],
         "req-fail-schema".into(),
         true,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
         None,
         None,
         None,
@@ -721,7 +1006,12 @@ async fn execute_db_tool_list_databases() {
         name: "list_databases".into(),
         arguments: r#"{"connection_id":"db-tool"}"#.into(),
     };
-    let out = execute_db_tool(&test.state, &tool).await;
+    let out = execute_db_tool(
+        &test.state,
+        &datazen::ai::tool_loop::AiToolContext::default(),
+        &tool,
+    )
+    .await;
     assert!(out.contains("app"));
 }
 
@@ -774,6 +1064,9 @@ async fn ai_generate_sql_pins_current_table() {
         None,
         None,
         Some(vec!["orders".into()]),
+        None,
+        None,
+        None,
         None,
     )
     .await
@@ -833,6 +1126,17 @@ async fn ai_chat_stream_http_error_propagates() {
         }],
         "req-err".into(),
         false,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
         None,
         None,
         None,
@@ -906,6 +1210,17 @@ data: [DONE]
         }],
         "req-ask".into(),
         false,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
         None,
         None,
         None,
@@ -988,6 +1303,9 @@ async fn ai_generate_sql_recent_queries_chinese_label() {
         None,
         None,
         None,
+        None,
+        None,
+        None,
     )
     .await
     .unwrap();
@@ -1049,6 +1367,17 @@ async fn ai_chat_connected_english_schema_message() {
         }],
         "req-en".into(),
         true,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
         None,
         None,
         None,
@@ -1245,6 +1574,7 @@ async fn ai_chat_mcp_tool_roundtrip() {
         }]),
         response_id: None,
         egress_summary: None,
+        memory_used: None,
     }]);
     mock.push_stream_text("done");
 
@@ -1263,6 +1593,17 @@ async fn ai_chat_mcp_tool_roundtrip() {
         }],
         "req-mcp-roundtrip".into(),
         false,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(datazen::ai::AiAgentMode::Agent),
+        None,
+        None,
+        None,
+        None,
+        None,
         None,
         None,
         None,
@@ -1325,6 +1666,7 @@ async fn ai_chat_mcp_and_db_same_round() {
         ]),
         response_id: None,
         egress_summary: None,
+        memory_used: None,
     }]);
     mock.push_stream_text("all done");
 
@@ -1343,6 +1685,17 @@ async fn ai_chat_mcp_and_db_same_round() {
         }],
         "req-mcp-db-same".into(),
         false,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(datazen::ai::AiAgentMode::Agent),
+        None,
+        None,
+        None,
+        None,
+        None,
         None,
         None,
         None,
@@ -1429,6 +1782,7 @@ async fn ai_chat_ask_questions_with_executable_runs_tools_then_stops() {
         ]),
         response_id: None,
         egress_summary: None,
+        memory_used: None,
     }]);
 
     ai_chat(
@@ -1449,10 +1803,171 @@ async fn ai_chat_ask_questions_with_executable_runs_tools_then_stops() {
         None,
         None,
         None,
+        None,
+        Some(datazen::ai::AiAgentMode::Agent),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
     )
     .await
     .unwrap();
 
     assert_eq!(mcp_calls.load(Ordering::SeqCst), 1);
     assert_eq!(mock.call_count(), 1, "should stop after mixed round");
+}
+
+#[tokio::test]
+async fn confirmed_write_executes_only_after_exact_apply_and_audits_lifecycle() {
+    let test = TestAppState::new().await;
+    test.save_connection("write-cfg").await;
+    let sql = "UPDATE users SET role = 'admin' WHERE id = 42";
+
+    let proposal = propose_write_for_state(&test.state, "write-cfg", Some("app"), sql, None)
+        .await
+        .expect("proposal");
+    assert_eq!(proposal.connection_id, "write-cfg");
+    assert_eq!(proposal.database, "app");
+    assert_eq!(proposal.sql, sql);
+    assert!(proposal.apply_allowed);
+    assert_eq!(
+        test.mock.execute_calls(),
+        0,
+        "proposal must not execute the write"
+    );
+
+    let receipt = apply_write_for_state(&test.state, &proposal.token, "write-cfg", "app", sql)
+        .await
+        .expect("exact apply");
+    assert_eq!(receipt.proposal_id, proposal.proposal_id);
+    assert_eq!(receipt.sql_hash, proposal.sql_hash);
+    assert_eq!(
+        receipt.row_count,
+        Some(0),
+        "MultiQueryResult rowsAffected must survive"
+    );
+    assert_eq!(test.mock.execute_calls(), 1, "apply executes exactly once");
+
+    let reuse = apply_write_for_state(&test.state, &proposal.token, "write-cfg", "app", sql)
+        .await
+        .expect_err("one-time token");
+    assert!(reuse.to_string().contains("already used"), "{reuse}");
+    assert_eq!(test.mock.execute_calls(), 1, "reuse never executes");
+
+    let rows = test
+        .state
+        .store
+        .ai_write_audit_log()
+        .list(20)
+        .await
+        .expect("audit");
+    assert!(rows.iter().any(|row| row.decision == "proposal"));
+    let applied = rows
+        .iter()
+        .find(|row| row.decision == "applied")
+        .expect("applied audit");
+    assert_eq!(applied.row_count, Some(0));
+    assert!(rows.iter().any(|row| row.decision == "denied"));
+    assert!(rows.iter().all(|row| row.sql_hash.len() == 64));
+    let raw = tokio::fs::read_to_string(test.state.store.ai_write_audit_log().path())
+        .await
+        .unwrap();
+    assert!(!raw.contains("UPDATE users"));
+}
+
+#[tokio::test]
+async fn tampered_or_production_apply_never_reaches_the_driver() {
+    let test = TestAppState::new().await;
+    let mut production = test.save_connection("prod-write").await;
+    production.group = Some("preset:production".into());
+    test.store.save_connection(production).await.unwrap();
+    let sql = "DELETE FROM users WHERE id = 7";
+
+    let proposal = propose_write_for_state(&test.state, "prod-write", Some("app"), sql, None)
+        .await
+        .expect("proposal still shows the blocked target");
+    assert!(proposal.production_protected);
+    assert!(!proposal.apply_allowed);
+    assert_eq!(test.mock.execute_calls(), 0);
+
+    let error = apply_write_for_state(&test.state, &proposal.token, "prod-write", "app", sql)
+        .await
+        .expect_err("production writes are never executed");
+    assert!(error.to_string().contains("production"), "{error}");
+    assert_eq!(test.mock.execute_calls(), 0);
+
+    test.save_connection("write-tamper").await;
+    let proposal = propose_write_for_state(
+        &test.state,
+        "write-tamper",
+        Some("app"),
+        "UPDATE users SET role = 'admin' WHERE id = 1",
+        None,
+    )
+    .await
+    .expect("proposal");
+    let error = apply_write_for_state(
+        &test.state,
+        &proposal.token,
+        "write-tamper",
+        "app",
+        "UPDATE users SET role = 'admin' WHERE id = 2",
+    )
+    .await
+    .expect_err("exact SQL is required");
+    assert!(error.to_string().contains("SQL"), "{error}");
+    assert_eq!(test.mock.execute_calls(), 0);
+}
+
+#[tokio::test]
+async fn read_only_sql_never_creates_a_proposal_or_executes() {
+    let test = TestAppState::new().await;
+    test.save_connection("write-readonly-sql").await;
+
+    for sql in [
+        "SELECT * FROM users",
+        "WITH c AS (SELECT 1) SELECT * FROM c",
+        "EXPLAIN SELECT * FROM users",
+        "EXPLAIN ANALYZE UPDATE users SET role = 'admin' WHERE id = 1",
+        "SHOW TABLES",
+        "PRAGMA table_info(users)",
+    ] {
+        let error =
+            propose_write_for_state(&test.state, "write-readonly-sql", Some("app"), sql, None)
+                .await
+                .expect_err(sql);
+        assert!(error.to_string().contains("not a write"), "{sql}: {error}");
+        assert_eq!(test.mock.execute_calls(), 0, "{sql} must not execute");
+    }
+
+    let error = apply_write_for_state(
+        &test.state,
+        "unused-token",
+        "write-readonly-sql",
+        "app",
+        "SELECT * FROM users",
+    )
+    .await
+    .expect_err("apply must reject a read even if a caller invents a token");
+    assert!(error.to_string().contains("not a write"), "{error}");
+    assert_eq!(
+        test.mock.execute_calls(),
+        0,
+        "apply never reaches the driver"
+    );
+    let rows = test
+        .state
+        .store
+        .ai_write_audit_log()
+        .list(20)
+        .await
+        .unwrap();
+    assert!(rows
+        .iter()
+        .any(|row| row.decision == "denied" && row.reason.as_deref() == Some("not_write_sql")));
 }

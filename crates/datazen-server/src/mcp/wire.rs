@@ -193,10 +193,10 @@ mod tests {
     }
 
     #[test]
-    fn list_tools_result_lists_all_thirteen_tools() {
+    fn list_tools_result_lists_all_fifteen_tools() {
         let result = list_tools_result();
         let tools = result["tools"].as_array().unwrap();
-        assert_eq!(tools.len(), 13);
+        assert_eq!(tools.len(), 15);
         assert!(result["nextCursor"].is_null());
         for tool in tools {
             assert!(tool["name"].is_string());

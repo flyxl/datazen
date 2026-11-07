@@ -12,20 +12,25 @@
 //! （桌面侧行为钉子 `ai_chat_*` / `ai_generate_sql_*` 继续钉住入口）。
 
 use super::cancel::CancellationRegistry;
+use super::chat_injection::ChatInjection;
 use super::chat_request::{build_chat_request, ChatRequestInput, ChatScenario, ChatSchemaPrompt};
 use super::context::format_context_block;
 use super::error::AiUseCaseError;
 use super::prompt_resolver::PromptResolver;
 use super::schema_pipeline::{compose_schema_system_suffix, PromptSeed, SchemaContextPipeline};
 use super::sql_generation::build_sql_generation_request;
-use super::tool_loop::{run_streaming_tool_loop, AiToolLoopHost, StreamCallback};
-use super::tools::db_tool_definitions;
+use super::tool_loop::{run_streaming_tool_loop, AiToolContext, AiToolLoopHost, StreamCallback};
+use super::tools::{db_tool_definitions, ToolLoopLimits};
 use crate::ai::ctx_yaml::extract_ctx_yaml_tables;
 use crate::ai::domain::budget;
 use crate::ai::domain::safety::redact_for_gate;
 use crate::ai::domain::traits::AiProvider;
-use crate::ai::domain::types::{AiSafetyGateConfig, ChatMessage, ToolDefinition};
+use crate::ai::domain::types::{
+    AiAgentMode, AiSafetyGateConfig, ChatMessage, StreamChunk, ToolDefinition,
+};
+use crate::ai::memory::{MemoryInjection, MemoryReference};
 use datazen_driver_api::DatabaseDriver;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
@@ -41,8 +46,21 @@ pub struct ChatSessionEnv {
     pub lang: String,
     /// workflow 场景的连接清单块（非 workflow 场景传空串）。
     pub connections_context: String,
+    /// Resolved global instructions / template / connection notes for this
+    /// turn. Host resolves storage and scope; insertion stays in this layer.
+    pub injection: ChatInjection,
+    /// Host-resolved, already budgeted memory block for this turn (`Auto`).
+    pub memory_injection: Option<MemoryInjection>,
+    /// Memories carried into the first stream chunk for citation chips.
+    pub memory_used: Vec<MemoryReference>,
     /// MCP 工具面（宿主按 `provider.supports_tools()` 决定是否取空）。
     pub mcp_tools: Vec<ToolDefinition>,
+    /// Skill tools, only when the host enabled skills and the provider accepts
+    /// tools. Empty keeps CLI/local-agent providers and Ask sessions unchanged.
+    pub skill_tools: Vec<ToolDefinition>,
+    /// Opt-in plugin/workflow tools resolved by the host for this turn. Empty
+    /// when no plugin/workflow is enabled or the provider cannot use tools.
+    pub bridge_tools: Vec<ToolDefinition>,
     /// 上下文文件条目（宿主 FS IO 读出，未脱敏；空 = 无上下文）。
     pub context_entries: Vec<(String, String)>,
     /// chat：schema 管线用的 live 驱动。`None` = 会话未知/未请求 schema
@@ -59,11 +77,37 @@ pub struct ChatSessionEnv {
 pub struct ChatSessionInput {
     pub request_id: String,
     pub db_session_id: Option<String>,
+    /// Persisted connection id: the stable identity for the chat session.
+    /// `db_session_id` remains the runtime handle for schema borrowing only.
+    pub connection_id: Option<String>,
     pub database: Option<String>,
     pub messages: Vec<ChatMessage>,
     pub include_schema: bool,
     pub scenario: ChatScenario,
     pub context_tables: Option<Vec<String>>,
+    pub agent_mode: AiAgentMode,
+    /// Session-level skill ids whose bodies were already loaded. Hosts seed the
+    /// catalog with them so the two-body budget survives across turns.
+    pub loaded_skill_ids: Option<Vec<String>>,
+    /// Auto-context snapshot frozen by the frontend on send.
+    pub editor_sql: Option<String>,
+    pub selection: Option<String>,
+    pub last_error: Option<String>,
+    pub result_preview: Option<ChatResultPreview>,
+}
+
+/// Structured query-result excerpt attached to a chat turn automatically.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatResultPreview {
+    #[serde(default)]
+    pub columns: Vec<String>,
+    #[serde(default)]
+    pub rows: Vec<Vec<serde_json::Value>>,
+    #[serde(default)]
+    pub row_count: Option<u64>,
+    #[serde(default)]
+    pub elapsed_ms: Option<u64>,
 }
 
 /// `ai_chat` 编排本体：schema 管线裁决 + 请求组装 + 取消登记 + 工具循环。
@@ -76,10 +120,12 @@ pub async fn run_chat_session(
     tracing::info!(
         request_id = %input.request_id,
         db_session_id = ?input.db_session_id,
+        connection_id = ?input.connection_id,
         database = ?input.database,
         messages_count = input.messages.len(),
         include_schema = input.include_schema,
         scenario = ?input.scenario,
+        agent_mode = ?input.agent_mode,
         context_tables_count = input.context_tables.as_ref().map(|t| t.len()).unwrap_or(0),
         last_user_msg_len = input.messages.last().map(|m| m.content.len()).unwrap_or(0),
         "ai_chat: start"
@@ -127,8 +173,26 @@ pub async fn run_chat_session(
         }
     }
 
-    // 上下文块（chat 政策：逐文件脱敏后拼装）。
-    let context_block = chat_context_block(&env.context_entries, &env.gate);
+    // 上下文块：自动快照在前，手选 @ 文件在后；逐段脱敏、整体按 gate 截断。
+    let auto_context = build_auto_context_block(&input, &env.gate, &env.context_entries);
+    let picked_context = chat_context_block(&env.context_entries, &env.gate);
+    let context_block = merge_context_blocks(auto_context, picked_context, &env.gate);
+
+    // Ask never sees DB or MCP tools. A schema seed that says
+    // `attach_db_tools = false` still wins for Agent, and a failed schema
+    // resolve still stays tool-less under the existing contract.
+    let agent_tools_allowed = input.agent_mode == AiAgentMode::Agent;
+    attach_db_tools = agent_tools_allowed && attach_db_tools;
+
+    let has_bound_connection = input
+        .connection_id
+        .as_deref()
+        .is_some_and(|id| !id.trim().is_empty());
+    let mut tool_context = AiToolContext {
+        allowed_connection_id: input.connection_id.clone(),
+        max_sample_rows: env.gate.max_sample_rows,
+        cancel_token: None,
+    };
 
     let schema = schema_prompt
         .as_ref()
@@ -147,27 +211,55 @@ pub async fn run_chat_session(
             connections_context: &env.connections_context,
             messages: input.messages,
             context_block: context_block.as_deref(),
+            injection: env.injection,
+            memory: env.memory_injection,
             safety_gate: &env.gate,
             attach_db_tools,
-            mcp_tools: env.mcp_tools,
+            attach_agent_db_tools: agent_tools_allowed,
+            attach_agent_query_tools: agent_tools_allowed && has_bound_connection,
+            mcp_tools: if agent_tools_allowed {
+                env.mcp_tools
+            } else {
+                Vec::new()
+            },
         },
     )
     .await;
+
+    if agent_tools_allowed && !env.skill_tools.is_empty() {
+        let tools = request.tools.get_or_insert_with(Vec::new);
+        for tool in env.skill_tools {
+            if !tools.iter().any(|existing| existing.name == tool.name) {
+                tools.push(tool);
+            }
+        }
+    }
+    if agent_tools_allowed && !env.bridge_tools.is_empty() {
+        let tools = request.tools.get_or_insert_with(Vec::new);
+        for tool in env.bridge_tools {
+            if !tools.iter().any(|existing| existing.name == tool.name) {
+                tools.push(tool);
+            }
+        }
+    }
 
     // Register cancel token so `ai_cancel` IPC can interrupt this stream.
     let cancel_token = env
         .cancel_registry
         .register(&input.request_id, &env.cancel_owner)
         .await;
-    request.cancel_token = Some(cancel_token);
+    request.cancel_token = Some(cancel_token.clone());
+    tool_context.cancel_token = Some(cancel_token);
 
+    emit_memory_used(&on_chunk, &input.request_id, &env.memory_used);
     let result = run_streaming_tool_loop(
         env.provider.clone(),
         tool_loop_host,
+        &tool_context,
         on_chunk,
         &input.request_id,
         request,
-        10,
+        ToolLoopLimits::from_gate(&env.gate),
         "ai_chat",
         &env.gate,
     )
@@ -178,6 +270,186 @@ pub async fn run_chat_session(
         .unregister(&input.request_id, &env.cancel_owner)
         .await;
     result
+}
+
+fn emit_memory_used(on_chunk: &StreamCallback, request_id: &str, memory_used: &[MemoryReference]) {
+    if memory_used.is_empty() {
+        return;
+    }
+    on_chunk(
+        request_id,
+        Ok(StreamChunk {
+            content: String::new(),
+            reasoning: None,
+            done: false,
+            cancelled: false,
+            usage: None,
+            tool_calls: None,
+            response_id: None,
+            egress_summary: None,
+            memory_used: Some(memory_used.to_vec()),
+        }),
+    );
+}
+
+const AUTO_PREVIEW_MAX_ROWS: usize = 5;
+const AUTO_PREVIEW_MAX_COLUMNS: usize = 20;
+const AUTO_PREVIEW_MAX_CELL_CHARS: usize = 200;
+
+/// Build the automatic context block from the frozen editor/error/result
+/// snapshot. Empty fields contribute no heading or blank block. The hand-picked
+/// `@` entries and the last user message are used to avoid repeating the same
+/// SQL/selection/error in two places.
+fn build_auto_context_block(
+    input: &ChatSessionInput,
+    gate: &AiSafetyGateConfig,
+    picked_entries: &[(String, String)],
+) -> Option<String> {
+    let last_user = input
+        .messages
+        .iter()
+        .rev()
+        .find(|message| message.role == crate::ai::domain::types::MessageRole::User)
+        .map(|message| message.content.as_str())
+        .unwrap_or("");
+    let already_present = |text: &str| {
+        !text.is_empty()
+            && (last_user.contains(text)
+                || picked_entries
+                    .iter()
+                    .any(|(_, content)| content.contains(text)))
+    };
+
+    let mut sections = Vec::new();
+    if let Some(sql) = input.editor_sql.as_deref().map(str::trim) {
+        if !sql.is_empty() && !already_present(sql) {
+            sections.push(format!("[Current SQL]\n{sql}"));
+        }
+    }
+    if let Some(selection) = input.selection.as_deref().map(str::trim) {
+        if !selection.is_empty()
+            && input.editor_sql.as_deref().map(str::trim) != Some(selection)
+            && !already_present(selection)
+        {
+            sections.push(format!("[Editor selection]\n{selection}"));
+        }
+    }
+    if let Some(error) = input.last_error.as_deref().map(str::trim) {
+        if !error.is_empty() && !already_present(error) {
+            sections.push(format!("[Recent query error]\n{error}"));
+        }
+    }
+    if let Some(preview) = input.result_preview.as_ref() {
+        if let Some(rendered) = render_result_preview(preview) {
+            if !already_present(&rendered) {
+                sections.push(rendered);
+            }
+        }
+    }
+
+    if sections.is_empty() {
+        return None;
+    }
+    let block = redact_for_gate(&sections.join("\n\n"), gate);
+    let block = truncate_bytes(&block, gate.max_context_bytes.max(1));
+    if block.trim().is_empty() {
+        None
+    } else {
+        Some(block)
+    }
+}
+
+fn render_result_preview(preview: &ChatResultPreview) -> Option<String> {
+    let columns: Vec<&str> = preview
+        .columns
+        .iter()
+        .take(AUTO_PREVIEW_MAX_COLUMNS)
+        .map(String::as_str)
+        .collect();
+    let rows: Vec<&Vec<serde_json::Value>> =
+        preview.rows.iter().take(AUTO_PREVIEW_MAX_ROWS).collect();
+    if columns.is_empty() && rows.is_empty() {
+        return None;
+    }
+
+    let total = preview.row_count.unwrap_or(preview.rows.len() as u64);
+    let elapsed = preview
+        .elapsed_ms
+        .map(|ms| format!(", {ms}ms"))
+        .unwrap_or_default();
+    let mut lines = vec![format!(
+        "[Recent result preview: showing {} of {} rows{}]",
+        rows.len(),
+        total,
+        elapsed
+    )];
+    if !columns.is_empty() {
+        lines.push(columns.join(" | "));
+    }
+    for row in rows {
+        let cells: Vec<String> = row
+            .iter()
+            .take(AUTO_PREVIEW_MAX_COLUMNS)
+            .map(format_preview_cell)
+            .collect();
+        lines.push(cells.join(" | "));
+    }
+    if preview.rows.len() > AUTO_PREVIEW_MAX_ROWS {
+        lines.push(format!(
+            "… {} more preview rows omitted",
+            preview.rows.len() - AUTO_PREVIEW_MAX_ROWS
+        ));
+    }
+    Some(lines.join("\n"))
+}
+
+fn format_preview_cell(value: &serde_json::Value) -> String {
+    let raw = match value {
+        serde_json::Value::Null => "NULL".to_string(),
+        serde_json::Value::String(text) => text.clone(),
+        other => other.to_string(),
+    };
+    let single_line = raw.replace(['\n', '\r'], " ").replace('|', "\\|");
+    truncate_chars(&single_line, AUTO_PREVIEW_MAX_CELL_CHARS)
+}
+
+fn truncate_chars(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    let mut out: String = text.chars().take(max_chars).collect();
+    out.push('…');
+    out
+}
+
+fn truncate_bytes(text: &str, max_bytes: usize) -> String {
+    if text.len() <= max_bytes {
+        return text.to_string();
+    }
+    let mut end = max_bytes;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text[..end].to_string()
+}
+
+fn merge_context_blocks(
+    auto: Option<String>,
+    picked: Option<String>,
+    gate: &AiSafetyGateConfig,
+) -> Option<String> {
+    let combined = match (auto, picked) {
+        (Some(auto), Some(picked)) => format!("{auto}\n\n{picked}"),
+        (Some(auto), None) => auto,
+        (None, Some(picked)) => picked,
+        (None, None) => return None,
+    };
+    let truncated = truncate_bytes(&combined, gate.max_context_bytes.max(1));
+    if truncated.trim().is_empty() {
+        None
+    } else {
+        Some(truncated)
+    }
 }
 
 /// chat 的上下文块政策：逐文件内容脱敏，再走共享拼装格式。
@@ -290,6 +562,10 @@ pub async fn run_sql_generation_session(
         &seed,
         natural_language,
         &input.recent_queries,
+        env.memory_injection
+            .as_ref()
+            .filter(|memory| !memory.is_empty())
+            .and_then(|memory| memory.text.as_deref()),
         &env.gate,
     )
     .await;
@@ -300,6 +576,7 @@ pub async fn run_sql_generation_session(
         .register(&input.request_id, &env.cancel_owner)
         .await;
     request.cancel_token = Some(cancel_token);
+    emit_memory_used(&on_chunk, &input.request_id, &env.memory_used);
 
     tracing::debug!(
         request_id = %input.request_id,
@@ -310,15 +587,17 @@ pub async fn run_sql_generation_session(
         "ai_generate_sql: sending to provider (stream)"
     );
 
+    let tool_context = AiToolContext::default();
     let result = if seed.attach_db_tools {
         request.tools = Some(db_tool_definitions());
         run_streaming_tool_loop(
             env.provider.clone(),
             tool_loop_host,
+            &tool_context,
             on_chunk,
             &input.request_id,
             request,
-            10,
+            ToolLoopLimits::default(),
             "ai_generate_sql",
             &env.gate,
         )

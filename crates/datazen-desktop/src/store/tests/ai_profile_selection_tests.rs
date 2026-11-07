@@ -35,6 +35,7 @@ async fn save_and_reload_use_shared_selection_and_preserve_normalization_rules()
                 profile("default", has_default),
                 profile("active", false),
             ],
+            ..Default::default()
         };
         assert_eq!(config.selected_profile().unwrap().id, expected);
         store.save_ai_settings_config(&config).await.unwrap();
@@ -67,6 +68,7 @@ async fn empty_profiles_have_no_provider_before_or_after_reload() {
     let config = AiSettingsConfig {
         active_profile_id: "missing".into(),
         profiles: vec![],
+        ..Default::default()
     };
     assert!(config.selected_profile().is_none());
     store.save_ai_settings_config(&config).await.unwrap();

@@ -29,6 +29,16 @@ describe('ModelProfileDialog', () => {
           supportsTools: false,
           defaultEndpoint: 'http://localhost:11434',
           defaultProtocol: 'open_ai_compatible',
+          defaultModel: 'llama3.2',
+        },
+        {
+          providerType: 'gemini',
+          displayName: 'Google Gemini',
+          supportsStreaming: true,
+          supportsTools: true,
+          defaultEndpoint: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+          defaultProtocol: 'open_ai_compatible',
+          defaultModel: 'gemini-2.5-pro',
         },
       ],
       remoteModels: [],
@@ -58,6 +68,48 @@ describe('ModelProfileDialog', () => {
     expect(screen.getByText('settings.ai.safetyPreset')).toBeDefined();
     expect(screen.getByText('settings.ai.presetCloudStrict')).toBeDefined();
     expect(screen.getByText('settings.ai.presetLocalTrust')).toBeDefined();
+  });
+
+  it('switching to the Gemini preset fills its endpoint and model defaults', async () => {
+    render(
+      <ModelProfileDialog
+        open={true}
+        onClose={vi.fn()}
+        profile={null}
+        onSave={vi.fn().mockResolvedValue(true)}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('ai-provider-select'));
+    fireEvent.mouseDown(screen.getByText('Google Gemini'));
+
+    expect(
+      screen.getByDisplayValue('https://generativelanguage.googleapis.com/v1beta/openai/'),
+    ).toBeDefined();
+    expect(screen.getByDisplayValue('gemini-2.5-pro')).toBeDefined();
+  });
+
+  it('offers all ten provider presets in the selector', () => {
+    render(
+      <ModelProfileDialog
+        open={true}
+        onClose={vi.fn()}
+        profile={null}
+        onSave={vi.fn().mockResolvedValue(true)}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('ai-provider-select'));
+    for (const label of [
+      'Anthropic (Claude)',
+      'Google Gemini',
+      'Qwen',
+      'MiniMax',
+      'OpenAI Compatible',
+      'Anthropic Compatible',
+    ]) {
+      expect(screen.getByText(label)).toBeDefined();
+    }
   });
 
   it('saves basic profile with onSave callback', async () => {

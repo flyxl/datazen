@@ -122,6 +122,8 @@ mod tests {
             mcp_disabled_tools: vec![],
             mcp_permission_mode: "safe_write".into(),
             mcp_allowed_connection_ids: vec![],
+            mcp_allowed_databases: vec![],
+            mcp_allowed_namespaces: vec![],
             driver_settings: serde_json::Map::new(),
             ai_strict_egress: true,
         }

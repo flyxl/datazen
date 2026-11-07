@@ -9,9 +9,9 @@ use chrono::Utc;
 use rusqlite::{params, Connection};
 use thiserror::Error;
 pub const APP_DB_FILE: &str = "datazen.sqlite";
-/// v6 = F1 NativeTool 删除的防御性 purge（nativeToolProbe 行清理）。
-/// 常量此前停在 5（v6 落地时未同步），恢复 CI 可达后由版本环断言抓出。
-pub const SCHEMA_VERSION: i32 = 6;
+/// v7 = AI 笔记/记忆/FTS/审计（T09，PRD §6.9）。
+/// v8 = AI 聊天会话与消息（T15）。
+pub const SCHEMA_VERSION: i32 = 8;
 pub const MAX_RUN_ROWS: usize = datazen::dashboard::execute::MAX_RUN_ROWS;
 
 /// 历史遗留的桌面本地组织 id（**不是**规范值）。
@@ -23,6 +23,119 @@ pub const MAX_RUN_ROWS: usize = datazen::dashboard::execute::MAX_RUN_ROWS;
 ///
 /// v5 迁移把旧行并回规范值；本常量只用于**识别旧行**，不得用于写入。
 const LEGACY_LOCAL_ORGANIZATION_ID: &str = "datazen-local";
+
+const AI_MEMORY_SCHEMA_V7: &str = r#"
+CREATE TABLE ai_connection_notes (
+  connection_id TEXT PRIMARY KEY NOT NULL,
+  organization_id TEXT NOT NULL,
+  owner_principal_id TEXT NOT NULL,
+  content TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE ai_memories (
+  id TEXT PRIMARY KEY NOT NULL,
+  organization_id TEXT NOT NULL,
+  owner_principal_id TEXT NOT NULL,
+  scope_type TEXT NOT NULL CHECK (scope_type IN ('user','connection','database','schema','table','column','org')),
+  scope_id TEXT NOT NULL,
+  connection_id TEXT,
+  database_name TEXT,
+  schema_name TEXT,
+  table_name TEXT,
+  column_name TEXT,
+  kind TEXT NOT NULL CHECK (kind IN ('preference','glossary','relationship','pattern','correction','environment','negative','schema_note')),
+  subject TEXT NOT NULL,
+  content TEXT NOT NULL,
+  structured_json TEXT,
+  source TEXT NOT NULL CHECK (source IN ('explicit','correction','usage','feedback','schema_note','import','org')),
+  source_ref TEXT,
+  confidence REAL NOT NULL DEFAULT 0.5 CHECK (confidence >= 0 AND confidence <= 1),
+  sensitivity TEXT NOT NULL DEFAULT 'normal' CHECK (sensitivity IN ('normal','internal','secret')),
+  status TEXT NOT NULL DEFAULT 'candidate' CHECK (status IN ('candidate','active','rejected','archived','stale')),
+  pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0,1)),
+  use_count INTEGER NOT NULL DEFAULT 0,
+  last_used_at TEXT,
+  expires_at TEXT,
+  content_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_ai_memories_scope
+  ON ai_memories (organization_id, owner_principal_id, scope_type, scope_id, status);
+CREATE INDEX idx_ai_memories_kind
+  ON ai_memories (organization_id, kind, status);
+CREATE INDEX idx_ai_memories_last_used
+  ON ai_memories (last_used_at);
+
+CREATE VIRTUAL TABLE ai_memories_fts USING fts5(
+  subject, content, kind, scope_id,
+  content='ai_memories', content_rowid='rowid'
+);
+
+CREATE TABLE ai_memory_audit (
+  id TEXT PRIMARY KEY NOT NULL,
+  memory_id TEXT NOT NULL,
+  action TEXT NOT NULL CHECK (action IN ('create','update','confirm','reject','archive','delete','inject','feedback')),
+  actor_principal_id TEXT NOT NULL,
+  before_hash TEXT,
+  after_hash TEXT,
+  detail_json TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TRIGGER ai_memories_ai AFTER INSERT ON ai_memories BEGIN
+  INSERT INTO ai_memories_fts(rowid, subject, content, kind, scope_id)
+  VALUES (new.rowid, new.subject, new.content, new.kind, new.scope_id);
+END;
+CREATE TRIGGER ai_memories_ad AFTER DELETE ON ai_memories BEGIN
+  INSERT INTO ai_memories_fts(ai_memories_fts, rowid, subject, content, kind, scope_id)
+  VALUES ('delete', old.rowid, old.subject, old.content, old.kind, old.scope_id);
+END;
+CREATE TRIGGER ai_memories_au AFTER UPDATE ON ai_memories BEGIN
+  INSERT INTO ai_memories_fts(ai_memories_fts, rowid, subject, content, kind, scope_id)
+  VALUES ('delete', old.rowid, old.subject, old.content, old.kind, old.scope_id);
+  INSERT INTO ai_memories_fts(rowid, subject, content, kind, scope_id)
+  VALUES (new.rowid, new.subject, new.content, new.kind, new.scope_id);
+END;
+"#;
+
+const AI_SESSION_SCHEMA_V8: &str = r#"
+CREATE TABLE ai_sessions (
+  id TEXT PRIMARY KEY NOT NULL,
+  organization_id TEXT NOT NULL,
+  owner_principal_id TEXT NOT NULL,
+  session_key TEXT NOT NULL,
+  connection_id TEXT,
+  database_name TEXT,
+  title TEXT NOT NULL DEFAULT '',
+  metadata_json TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  last_access_at TEXT NOT NULL
+);
+
+CREATE INDEX idx_ai_sessions_scope
+  ON ai_sessions (organization_id, owner_principal_id, connection_id, database_name, last_access_at DESC);
+CREATE INDEX idx_ai_sessions_key
+  ON ai_sessions (organization_id, owner_principal_id, session_key, last_access_at DESC);
+
+CREATE TABLE ai_session_messages (
+  id TEXT PRIMARY KEY NOT NULL,
+  session_id TEXT NOT NULL REFERENCES ai_sessions(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL CHECK (position >= 0),
+  role TEXT NOT NULL CHECK (role IN ('user','assistant','tool','system')),
+  content TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'complete' CHECK (status IN ('complete','cancelled','failed')),
+  metadata_json TEXT,
+  created_at TEXT NOT NULL,
+  UNIQUE (session_id, position)
+);
+
+CREATE INDEX idx_ai_session_messages_session
+  ON ai_session_messages (session_id, position);
+"#;
 
 const JOB_SCHEMA_V2: &str = r#"
 CREATE TABLE jobs (
@@ -175,7 +288,7 @@ impl AppDb {
         &self.db_path
     }
 
-    fn with_conn<T, F>(&self, f: F) -> Result<T, AppDbError>
+    pub(super) fn with_conn<T, F>(&self, f: F) -> Result<T, AppDbError>
     where
         F: FnOnce(&Connection) -> Result<T, AppDbError>,
     {
@@ -367,6 +480,18 @@ impl AppDb {
                 // result_details / domain_results / artifact_refs）全部 ON DELETE CASCADE。
                 tx.execute("DELETE FROM jobs WHERE kind = 'nativeToolProbe'", [])?;
                 tx.execute("INSERT INTO schema_migrations(version,applied_at) VALUES (6,?1)", params![Utc::now().to_rfc3339()])?;
+            }
+            if current < 7 {
+                // v7：AI 笔记 / 记忆 / FTS / 审计（PRD §6.9）。整批 DDL 与版本
+                // 登记同属一个 Immediate 事务：任何一条失败都回滚到 v6。
+                tx.execute_batch(AI_MEMORY_SCHEMA_V7)?;
+                tx.execute("INSERT INTO schema_migrations(version,applied_at) VALUES (7,?1)", params![Utc::now().to_rfc3339()])?;
+            }
+            if current < 8 {
+                // v8：AI 会话与消息（T15）。整批 DDL 与版本登记同事务，失败
+                // 回滚到 v7；消息表通过外键级联删除。
+                tx.execute_batch(AI_SESSION_SCHEMA_V8)?;
+                tx.execute("INSERT INTO schema_migrations(version,applied_at) VALUES (8,?1)", params![Utc::now().to_rfc3339()])?;
             }
             tx.commit()?;
             Ok(())

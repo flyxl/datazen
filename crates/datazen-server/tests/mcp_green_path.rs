@@ -436,6 +436,8 @@ async fn mcp_fixture(opts: MockDriverOptions) -> McpFixture {
             mcp_disabled_tools: Vec::new(),
             mcp_permission_mode: "safe_write".into(),
             mcp_allowed_connection_ids: Vec::new(),
+            mcp_allowed_databases: Vec::new(),
+            mcp_allowed_namespaces: Vec::new(),
             driver_settings: serde_json::Map::new(),
             ai_strict_egress: true,
         },
@@ -906,6 +908,26 @@ async fn every_contract_example_seed_takes_its_honest_green_path() {
                     }
                 }
             }
+            // T20 的 Redis 只读工具：example 参数本身过契约（GET 属读类、
+            // key_pattern 合法），但 fixture 是 SQL mock 连接——非 Redis
+            // 连接得到诚实拒绝（fail-closed），不进入 Redis wire。
+            "redis_command" => {
+                let error = call_tool_err(fx.backend.as_ref(), &who, tool, seeded).await;
+                match error {
+                    ToolCallError::Internal(reason) => {
+                        assert!(
+                            reason.contains("requires a Redis connection"),
+                            "a non-Redis connection answers the honest refusal, got: {reason}"
+                        );
+                    }
+                    other => {
+                        panic!(
+                            "redis_command's example must map to internal_error, got: {}",
+                            render(&other)
+                        )
+                    }
+                }
+            }
             // 其余 12 个 example 全绿（可达结果形状的断到形状）。
             _ => {
                 let result = call_tool_ok(fx.backend.as_ref(), &who, tool, seeded).await;
@@ -960,6 +982,22 @@ async fn every_contract_example_seed_takes_its_honest_green_path() {
                     }
                     "explain_query" => {
                         assert_eq!(result["planText"], json!("Seq Scan on users"));
+                    }
+                    // T20 的批量工具：两条只读 SELECT 在 MockDriver 上各回
+                    // 默认行 [[42]]，报告逐语句 ok、无停止位、无回滚。
+                    "execute_batch" => {
+                        assert_eq!(result["ok"], json!(true), "{result}");
+                        assert_eq!(result["stoppedAt"], json!(null), "{result}");
+                        assert_eq!(result["rolledBack"], json!(false), "{result}");
+                        let statements = result["statements"]
+                            .as_array()
+                            .expect("one outcome per batch statement");
+                        assert_eq!(statements.len(), 2, "{result}");
+                        for (index, statement) in statements.iter().enumerate() {
+                            assert_eq!(statement["index"], json!(index), "{result}");
+                            assert_eq!(statement["ok"], json!(true), "{result}");
+                            assert_eq!(statement["rows"][0][0], json!(42), "{result}");
+                        }
                     }
                     "describe_table" => unreachable!("asserted separately (text answer)"),
                     other => panic!("unhandled contract tool {other}"),

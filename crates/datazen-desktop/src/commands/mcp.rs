@@ -11,6 +11,7 @@
 use crate::commands::error::{CmdExt, CommandError};
 use crate::commands::AppState;
 use crate::mcp;
+use datazen::mcp::approval::McpApprovalDecision;
 use serde::Serialize;
 use std::sync::Arc;
 use tauri::State;
@@ -59,6 +60,7 @@ fn clone_app_state(state: &AppState) -> Arc<AppState> {
         transfer_plans: state.transfer_plans.clone(),
         platform: state.platform.clone(),
         organization_scope: state.organization_scope.clone(),
+        app_handle: state.app_handle.clone(),
     })
 }
 
@@ -99,6 +101,9 @@ pub async fn start_embedded_mcp(state: &AppState) -> Result<(), CommandError> {
 
 /// Stop embedded MCP if running.
 pub async fn stop_embedded_mcp() -> Result<(), CommandError> {
+    // Stopping the embedded server must also release any MCP call paused for
+    // approval. The call then audits `cancel` and never executes its tool body.
+    mcp::approval_broker().cancel_all();
     let mut guard = MCP_HANDLE.lock().await;
     if let Some(mut h) = guard.take() {
         h.cancel.cancel();
@@ -118,9 +123,20 @@ pub async fn stop_embedded_mcp() -> Result<(), CommandError> {
 /// Stop and restart embedded MCP so settings (permission, tools, allowlist) take effect immediately.
 pub async fn reload_embedded_mcp(state: &AppState) -> Result<(), CommandError> {
     let was_running = mcp_is_running().await;
+    let http_was_running = mcp::http::status(state)
+        .await
+        .map(|status| status.running)
+        .unwrap_or(false);
     stop_embedded_mcp().await?;
     if was_running {
         start_embedded_mcp(state).await?;
+    }
+    if http_was_running {
+        let port = state.store.get_settings().await.mcp_http_port;
+        mcp::http::stop().await;
+        mcp::http::start_existing(clone_app_state(state), port)
+            .await
+            .map_err(CommandError::Internal)?;
     }
     Ok(())
 }
@@ -153,12 +169,164 @@ pub async fn mcp_reload(state: State<'_, AppState>) -> Result<(), CommandError> 
     reload_embedded_mcp(&state).await
 }
 
+/// Start the opt-in Streamable HTTP listener. Returns the one-time plaintext
+/// token only when this call created it; later status calls show last4 only.
+#[tauri::command]
+pub async fn mcp_http_enable(
+    state: State<'_, AppState>,
+    port: Option<u16>,
+) -> Result<mcp::http::McpHttpStatus, CommandError> {
+    let mut settings = state.store.get_settings().await;
+    let previous = settings.clone();
+    let configured_port = port.unwrap_or(settings.mcp_http_port);
+    settings.mcp_http_enabled = true;
+    settings.mcp_http_port = configured_port;
+    state
+        .store
+        .save_settings(settings)
+        .await
+        .map_err(|error| CommandError::Internal(error.to_string()))?;
+    match mcp::http::start(clone_app_state(&state), configured_port).await {
+        Ok(status) => Ok(status),
+        Err(error) => {
+            // A failed bind must not leave the persisted switch claiming the
+            // listener is enabled. If it was running before, try to bring the
+            // old port back rather than stranding the user with no listener.
+            let was_enabled = previous.mcp_http_enabled;
+            let previous_port = previous.mcp_http_port;
+            let _ = state.store.save_settings(previous).await;
+            if was_enabled {
+                let _ = mcp::http::start_existing(clone_app_state(&state), previous_port).await;
+            }
+            Err(CommandError::Internal(error))
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn mcp_http_disable(
+    state: State<'_, AppState>,
+) -> Result<mcp::http::McpHttpStatus, CommandError> {
+    mcp::http::stop().await;
+    let mut settings = state.store.get_settings().await;
+    settings.mcp_http_enabled = false;
+    state
+        .store
+        .save_settings(settings)
+        .await
+        .map_err(|error| CommandError::Internal(error.to_string()))?;
+    mcp::http::status(&state)
+        .await
+        .map_err(CommandError::Internal)
+}
+
+#[tauri::command]
+pub async fn mcp_http_status(
+    state: State<'_, AppState>,
+) -> Result<mcp::http::McpHttpStatus, CommandError> {
+    mcp::http::status(&state)
+        .await
+        .map_err(CommandError::Internal)
+}
+
+/// Rotate the bearer token. A running listener switches its verifier in place,
+/// so the old token is rejected on the next request.
+#[tauri::command]
+pub async fn mcp_http_regenerate_token(
+    state: State<'_, AppState>,
+) -> Result<mcp::http::McpHttpStatus, CommandError> {
+    mcp::http::regenerate_token(&state)
+        .await
+        .map_err(CommandError::Internal)
+}
+
+/// Restart a running HTTP listener so changed scope/permission settings apply
+/// to newly created MCP sessions. Leaves a stopped listener stopped.
+#[tauri::command]
+pub async fn mcp_http_reload(
+    state: State<'_, AppState>,
+) -> Result<mcp::http::McpHttpStatus, CommandError> {
+    let was_running = mcp::http::status(&state)
+        .await
+        .map(|status| status.running)
+        .unwrap_or(false);
+    if was_running {
+        let settings = state.store.get_settings().await;
+        mcp::http::stop().await;
+        mcp::http::start_existing(clone_app_state(&state), settings.mcp_http_port)
+            .await
+            .map_err(CommandError::Internal)?;
+    }
+    mcp::http::status(&state)
+        .await
+        .map_err(CommandError::Internal)
+}
+
+/// Start HTTP MCP from bootstrap only when it was already enabled and a token
+/// exists. It never prints or creates a token behind the user's back.
+pub async fn start_http_mcp(state: &AppState) -> Result<(), CommandError> {
+    let settings = state.store.get_settings().await;
+    mcp::http::start_existing(clone_app_state(state), settings.mcp_http_port)
+        .await
+        .map(|_| ())
+        .map_err(CommandError::Internal)
+}
+
 #[tauri::command]
 pub async fn mcp_list_all_tools() -> Result<Vec<String>, CommandError> {
     Ok(crate::mcp::MCP_ALL_TOOLS
         .iter()
         .map(|s| s.to_string())
         .collect())
+}
+
+/// Answer one pending MCP approval. `allow_once` is the only value that lets
+/// the paused call proceed; every other value is terminal for that call.
+#[tauri::command]
+pub async fn mcp_respond_approval(
+    request_id: String,
+    decision: String,
+) -> Result<bool, CommandError> {
+    let decision = match decision.as_str() {
+        "allow_once" | "allow" => McpApprovalDecision::AllowOnce,
+        "deny" => McpApprovalDecision::Deny,
+        "timeout" => McpApprovalDecision::Timeout,
+        "cancel" => McpApprovalDecision::Cancel,
+        other => {
+            return Err(CommandError::Validation(format!(
+                "unknown MCP approval decision: {other}"
+            )))
+        }
+    };
+    Ok(mcp::approval_broker().respond(&request_id, decision))
+}
+
+/// Cancel a pending MCP approval (the dialog's Stop button).
+#[tauri::command]
+pub async fn mcp_cancel_approval(request_id: String) -> Result<bool, CommandError> {
+    Ok(mcp::approval_broker().cancel(&request_id))
+}
+
+#[tauri::command]
+pub async fn mcp_cancel_all_approvals() -> Result<usize, CommandError> {
+    Ok(mcp::approval_broker().cancel_all())
+}
+
+/// Newest-first audit rows for the MCP settings panel. No SQL or credentials
+/// are stored; a denied Redis call records only its command and keys in the
+/// reason field for auditability.
+#[tauri::command]
+pub async fn mcp_list_audit_log(
+    state: State<'_, AppState>,
+    limit: Option<usize>,
+) -> Result<Vec<crate::store::McpAuditRecord>, CommandError> {
+    let rows = state
+        .store
+        .mcp_audit_log()
+        .list(limit.unwrap_or(100))
+        .await
+        .map_err(|_| CommandError::Internal("Failed to read MCP audit log".into()))?;
+    Ok(rows)
 }
 
 // ─── MCP Client commands ───
@@ -332,6 +500,7 @@ mod tests {
     #[tokio::test]
     async fn reload_embedded_mcp_restarts_when_running() {
         let _guard = MCP_LIFECYCLE_LOCK.lock().await;
+        let _http_guard = crate::mcp::http::TEST_LOCK.lock().await;
         reset_mcp_handle().await;
         let test = TestAppState::new().await;
         start_embedded_mcp(&test.state).await.unwrap();
@@ -354,10 +523,111 @@ mod tests {
     #[tokio::test]
     async fn reload_embedded_mcp_noop_when_stopped() {
         let _guard = MCP_LIFECYCLE_LOCK.lock().await;
+        let _http_guard = crate::mcp::http::TEST_LOCK.lock().await;
         reset_mcp_handle().await;
         let test = TestAppState::new().await;
         reload_embedded_mcp(&test.state).await.unwrap();
         assert!(!mcp_is_running().await);
+    }
+
+    #[tokio::test]
+    async fn http_commands_enable_report_rotate_and_disable() {
+        let _guard = MCP_LIFECYCLE_LOCK.lock().await;
+        let _http_guard = crate::mcp::http::TEST_LOCK.lock().await;
+        crate::mcp::http::stop().await;
+        let test = TestAppState::new().await;
+        let (state, _keep) = test.into_state();
+        let app = tauri::test::mock_app();
+        app.manage(state);
+
+        let initial = mcp_http_status(app.state()).await.expect("initial status");
+        assert!(!initial.running);
+        assert!(!initial.enabled);
+        assert_eq!(initial.configured_port, 0);
+
+        let enabled = mcp_http_enable(app.state(), Some(0))
+            .await
+            .expect("enable HTTP");
+        assert!(enabled.running);
+        assert!(enabled.enabled);
+        let token = enabled.token.expect("first enable returns token");
+        let url = enabled.url.expect("url");
+        assert!(url.starts_with("http://127.0.0.1:"));
+
+        let status = mcp_http_status(app.state()).await.expect("status");
+        assert!(status.running);
+        assert!(status.token.is_none());
+        assert_eq!(
+            status.token_last4.as_deref(),
+            Some(&token[token.len() - 4..])
+        );
+
+        let rotated = mcp_http_regenerate_token(app.state())
+            .await
+            .expect("rotate");
+        let new_token = rotated.token.expect("rotation returns new token");
+        assert_ne!(token, new_token);
+        assert_eq!(
+            rotated.token_last4.as_deref(),
+            Some(&new_token[new_token.len() - 4..])
+        );
+
+        let disabled = mcp_http_disable(app.state()).await.expect("disable");
+        assert!(!disabled.running);
+        assert!(!disabled.enabled);
+        let settings = app.state::<AppState>().store.get_settings().await;
+        assert!(!settings.mcp_http_enabled);
+    }
+
+    #[tokio::test]
+    async fn http_enable_port_conflict_leaves_the_switch_off() {
+        let _guard = MCP_LIFECYCLE_LOCK.lock().await;
+        let _http_guard = crate::mcp::http::TEST_LOCK.lock().await;
+        crate::mcp::http::stop().await;
+        let held = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
+            .await
+            .expect("hold port");
+        let port = held.local_addr().expect("port").port();
+        let test = TestAppState::new().await;
+        let (state, _keep) = test.into_state();
+        let app = tauri::test::mock_app();
+        app.manage(state);
+
+        let error = mcp_http_enable(app.state(), Some(port))
+            .await
+            .expect_err("port conflict");
+        assert!(error.to_string().contains("bind"), "{error}");
+        let settings = app.state::<AppState>().store.get_settings().await;
+        assert!(!settings.mcp_http_enabled);
+        assert!(!mcp_http_status(app.state()).await.unwrap().running);
+        drop(held);
+        crate::mcp::http::stop().await;
+    }
+
+    #[tokio::test]
+    async fn reload_embedded_mcp_restarts_a_running_http_listener() {
+        let _guard = MCP_LIFECYCLE_LOCK.lock().await;
+        let _http_guard = crate::mcp::http::TEST_LOCK.lock().await;
+        crate::mcp::http::stop().await;
+        let test = TestAppState::new().await;
+        let (state, _keep) = test.into_state();
+        let app = tauri::test::mock_app();
+        app.manage(state);
+
+        let enabled = mcp_http_enable(app.state(), Some(0))
+            .await
+            .expect("enable HTTP");
+        assert!(enabled.running);
+
+        reload_embedded_mcp(app.state::<AppState>().inner())
+            .await
+            .expect("reload");
+        let status = mcp_http_status(app.state()).await.expect("status");
+        assert!(status.running);
+        assert!(status.token.is_none());
+
+        mcp_http_disable(app.state()).await.expect("disable");
+        crate::mcp::http::stop().await;
     }
 
     #[tokio::test]

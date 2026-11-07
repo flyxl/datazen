@@ -3,6 +3,7 @@ import { render, fireEvent, cleanup, screen, act, waitFor } from '@testing-libra
 import { QueryPanel } from '../QueryPanel';
 import { usePanelStore, type QueryPanel as QueryPanelState } from '../../../stores/panelStore';
 import { EMPTY_QUERY_EXEC } from '../../../stores/queryExecActions';
+import { requestQueryRun } from '../../../stores/queryRunRequestStore';
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
@@ -76,6 +77,7 @@ const settingsState = vi.hoisted(() => ({
 }));
 
 const executeQuery = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const executeSelection = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
 vi.mock('../../../stores/settingsStore', () => {
   const state = () => ({ settings: { safeMode: settingsState.safeMode, autoCommit: true } });
@@ -220,6 +222,7 @@ describe('[tester] QueryPanel dangerous SQL confirmation', () => {
       loadFavorites: vi.fn().mockResolvedValue(undefined),
       cancelQuery: vi.fn(),
       executeQuery,
+      executeSelection,
     } as Partial<ReturnType<typeof usePanelStore.getState>>);
   });
 
@@ -336,5 +339,43 @@ describe('[tester] QueryPanel dangerous SQL confirmation', () => {
 
     await waitFor(() => expect(dangerousCalls()).toHaveLength(1));
     expect(executeQuery).not.toHaveBeenCalled();
+  });
+  it('runs chat SQL through the panel and executes a SELECT without confirmation', async () => {
+    renderPanel();
+    act(() => {
+      requestQueryRun(PANEL_ID, 'SELECT 7 AS n');
+    });
+
+    await waitFor(() => expect(executeSelection).toHaveBeenCalledTimes(1));
+    expect(dangerousCalls()).toHaveLength(0);
+  });
+
+  it('confirms an AI-generated write and does not execute when rejected', async () => {
+    confirmMocks.nextResolve = false;
+    renderPanel();
+    act(() => {
+      requestQueryRun(PANEL_ID, 'INSERT INTO t (id) VALUES (1)');
+    });
+
+    await waitFor(() =>
+      expect(dangerousCalls()[0]).toEqual(
+        expect.objectContaining({
+          title: 'query.editor.executionConfirm.chatWriteTitle',
+          message: 'query.editor.executionConfirm.chatWriteMessage',
+        }),
+      ),
+    );
+    await waitFor(() => expect(executeQuery).not.toHaveBeenCalled());
+  });
+
+  it('executes an AI-generated write after confirmation', async () => {
+    confirmMocks.nextResolve = true;
+    renderPanel();
+    act(() => {
+      requestQueryRun(PANEL_ID, 'UPDATE t SET x = 1 WHERE id = 1');
+    });
+
+    await waitFor(() => expect(dangerousCalls()).toHaveLength(1));
+    await waitFor(() => expect(executeSelection).toHaveBeenCalledTimes(1));
   });
 });

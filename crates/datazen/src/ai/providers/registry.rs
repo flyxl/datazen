@@ -7,8 +7,10 @@ use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
 use super::anthropic::AnthropicProvider;
+use super::compatible::CompatibleProvider;
 use super::custom::CustomProvider;
 use super::deepseek::DeepSeekProvider;
+use super::local_cli::LocalCliProvider;
 use super::ollama::OllamaProvider;
 use super::openai::OpenAiProvider;
 
@@ -196,8 +198,32 @@ mod tests {
         // Built-ins are keyed by provider type, so a repeated registration would be
         // invisible in the map — the flag is the only observable difference.
         let types = registry.available_providers().await;
-        assert!(types.len() >= 5);
-        assert!(types.contains(&AiProviderType::Ollama));
+        assert_eq!(types.len(), 18);
+        for provider_type in [
+            AiProviderType::OpenAi,
+            AiProviderType::Anthropic,
+            AiProviderType::DeepSeek,
+            AiProviderType::Ollama,
+            AiProviderType::Custom,
+            AiProviderType::Gemini,
+            AiProviderType::Qwen,
+            AiProviderType::MiniMax,
+            AiProviderType::OpenAiCompatible,
+            AiProviderType::AnthropicCompatible,
+            AiProviderType::ClaudeCode,
+            AiProviderType::Codex,
+            AiProviderType::Cursor,
+            AiProviderType::OpenCode,
+            AiProviderType::Grok,
+            AiProviderType::Qoder,
+            AiProviderType::CodeBuddy,
+            AiProviderType::Pi,
+        ] {
+            assert!(
+                types.contains(&provider_type),
+                "{provider_type:?} registered"
+            );
+        }
     }
 
     #[tokio::test]
@@ -312,6 +338,24 @@ pub async fn register_ai_providers(registry: &AiProviderRegistry) {
             registry.http_client.clone(),
         )))
         .await;
+    for provider_type in [
+        AiProviderType::Gemini,
+        AiProviderType::Qwen,
+        AiProviderType::MiniMax,
+        AiProviderType::OpenAiCompatible,
+        AiProviderType::AnthropicCompatible,
+    ] {
+        if let Some(provider) =
+            CompatibleProvider::with_http_client(provider_type, registry.http_client.clone())
+        {
+            registry.register(Arc::new(provider)).await;
+        }
+    }
+    for preset in super::local_cli::local_cli_presets() {
+        registry
+            .register(Arc::new(LocalCliProvider::new(preset)))
+            .await;
+    }
 
     for factory in iter_ai_provider_factories() {
         let pv = factory.protocol_version();

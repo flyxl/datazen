@@ -1,11 +1,14 @@
 //! MCP Server module — exposes DataZen's database capabilities via MCP protocol.
 
+pub mod approval;
 pub mod auth;
 pub mod client;
 #[cfg(test)]
 mod contract_tests;
 mod handler;
+pub mod http;
 mod prompts;
+mod redis_executor;
 mod resources;
 mod server;
 pub mod session;
@@ -15,6 +18,7 @@ pub mod tool_help;
 mod tools;
 mod types;
 
+pub use approval::{approval_broker, McpApprovalBroker, MCP_APPROVAL_EVENT, MCP_AUDIT_ERROR_EVENT};
 pub use client::{
     format_call_tool_result, is_valid_mcp_server_id, validate_mcp_server_id, McpClientManager,
     McpServerConfig, McpToolInfo,
@@ -52,7 +56,11 @@ pub async fn start_mcp_transport<R, W>(
     let server = DataZenMcpServer::new(app_state)
         .with_disabled_tools(&settings.mcp_disabled_tools)
         .with_permission_mode(settings.mcp_permission_mode)
-        .with_allowed_connections(&settings.mcp_allowed_connection_ids);
+        .with_allowed_connections(&settings.mcp_allowed_connection_ids)
+        .with_allowed_scopes(
+            &settings.mcp_allowed_databases,
+            &settings.mcp_allowed_namespaces,
+        );
     // `serve` consumes the server, so keep a handle for the disconnect cleanup below.
     // The clone shares the session registry (an `Arc`), so closing through it closes
     // exactly the mappings the served instance opened.

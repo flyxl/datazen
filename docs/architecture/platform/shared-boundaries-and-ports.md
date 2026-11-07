@@ -211,6 +211,13 @@ flowchart TD
 违规、直到有人显式放宽。本段是分类决定的登记处，不新增 F 行：该 crate 零依赖，没有需要
 F-xx 断言的依赖面。
 
+**`crates/datazen-cli` 归入 host 层（2026-11-06，T18）。** CLI 是第二个组装根：
+它通过 `datazen::connection` 的仓储端口读取桌面连接档案，通过
+`datazen-driver-api::DatabaseDriver` 执行查询，但不启动 Tauri、不持有第二份状态。
+把它登记为 `host` 让 F-01 的允许层自动禁止驱动反向依赖 CLI，同时不为 CLI 新开一条
+没有规则覆盖的层。CLI 的只读/写入 flag、生产库拒绝和稳定错误码是命令层策略，
+不是驱动契约。
+
 ### 2.5 workspace 成员与前端接线（已实现）
 
 根 `Cargo.toml` 的 `members` 以 `modules` 作为唯一业务模块 crate；platform_api 的契约职责由 `modules` 内的 `shared` 命名空间承担（见 §2.2 现状注记），
@@ -220,6 +227,7 @@ F-xx 断言的依赖面。
 [workspace]
 members = [
     "crates/datazen-desktop",
+    "crates/datazen-cli",
     "crates/datazen-driver-api",
     "crates/datazen-driver-support",
     "crates/datazen-infra",
@@ -232,7 +240,8 @@ members = [
 datazen = { path = "crates/datazen", default-features = false }
 ```
 
-其中 `crates/datazen-driver-support` 是 F3 下沉的零依赖文本工具 crate（`sql_split` +
+其中 `crates/datazen-cli` 是无 Tauri 的第二组装根（host 层，见 §2.4 末段），
+`crates/datazen-driver-support` 是 F3 下沉的零依赖文本工具 crate（`sql_split` +
 `sql_identifiers`），单一消费者 `crates/datazen-driver-api`；层归属与边界登记见 §2.4 末段。
 
 与本文早期草案的差异：`crates/datazen-server/` **没有**加进 `members`——`crates/datazen-server/` 在仓库中不存在，该 crate 属更晚阶段；

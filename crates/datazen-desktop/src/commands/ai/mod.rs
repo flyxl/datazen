@@ -1,18 +1,30 @@
 //! AI-related Tauri IPC commands.
 
+mod bridge;
 mod chat;
 mod config;
 mod generate;
 mod grant;
+mod memory;
+mod notes;
 mod prompts;
+mod sessions;
+mod skills;
 mod util;
+mod write;
 
+pub use bridge::*;
 pub use chat::*;
 pub use config::*;
 pub use generate::*;
 pub use grant::*;
+pub use memory::*;
+pub use notes::*;
 pub use prompts::*;
+pub use sessions::*;
+pub use skills::*;
 pub(crate) use util::language_hint;
+pub use write::*;
 
 use crate::commands::error::CommandError;
 use crate::commands::AppState;
@@ -48,6 +60,9 @@ pub async fn ai_cancel(
 pub(crate) use util::*;
 
 #[cfg(test)]
+mod bridge_tests;
+
+#[cfg(test)]
 mod command_test_host;
 
 #[cfg(test)]
@@ -58,6 +73,9 @@ mod integration_tests;
 
 #[cfg(test)]
 mod ipc_contract_guards_tests;
+
+#[cfg(test)]
+mod sessions_tests;
 
 #[cfg(test)]
 mod mock_provider_tests;

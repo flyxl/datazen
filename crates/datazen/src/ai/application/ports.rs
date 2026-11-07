@@ -36,6 +36,22 @@ pub trait DatabaseToolHost: Send + Sync {
         Err("DatabaseToolHost does not support target execution".into())
     }
     async fn execution_settings(&self) -> ExecutionSettings;
+
+    /// Host-owned short-lived write proposal registry. `None` disables the
+    /// proposal tool for forms that do not support confirmed writes.
+    fn write_proposal_store(&self) -> Option<Arc<super::write_proposal::WriteProposalStore>> {
+        None
+    }
+
+    /// Called after a proposal is created so the host can surface it to the UI
+    /// and append audit metadata. The proposal is returned to the model either
+    /// way; failures here must not turn into a write.
+    async fn write_proposal_created(
+        &self,
+        _proposal: &super::write_proposal::WriteProposal,
+    ) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 #[async_trait::async_trait]
@@ -59,6 +75,15 @@ impl<T: DatabaseToolHost + ?Sized> DatabaseToolHost for Arc<T> {
     }
     async fn execution_settings(&self) -> ExecutionSettings {
         (**self).execution_settings().await
+    }
+    fn write_proposal_store(&self) -> Option<Arc<super::write_proposal::WriteProposalStore>> {
+        (**self).write_proposal_store()
+    }
+    async fn write_proposal_created(
+        &self,
+        proposal: &super::write_proposal::WriteProposal,
+    ) -> Result<(), String> {
+        (**self).write_proposal_created(proposal).await
     }
 }
 

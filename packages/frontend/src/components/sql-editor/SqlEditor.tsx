@@ -67,6 +67,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
     onChange,
     onExecute,
     onExecuteSelection,
+    onSelectionChange,
     onExecuteAll,
     onSaveQuery,
     onContextMenu: onCtxMenu,
@@ -102,6 +103,8 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
   const onChangeRef = useRef(onChange);
   const onExecuteRef = useRef(onExecute);
   const onExecuteSelectionRef = useRef(onExecuteSelection);
+  const onSelectionChangeRef = useRef(onSelectionChange);
+  onSelectionChangeRef.current = onSelectionChange;
   const onExecuteAllRef = useRef(onExecuteAll);
   const onSaveQueryRef = useRef(onSaveQuery);
   const onCtxMenuRef = useRef(onCtxMenu);
@@ -506,6 +509,7 @@ export const SqlEditor = forwardRef<SqlEditorHandle, SqlEditorProps>(function Sq
           onChange: onChangeRef,
           onQualifiedPath: onQualifiedPathRef,
           lastParents: lastParentsRef,
+          onSelectionChange: onSelectionChangeRef,
         }),
         // §S6-D: semantic model builder (populates modelRef for completion/hover)
         createModelBuilderExtension(modelRef, databaseType),

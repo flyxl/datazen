@@ -35,7 +35,11 @@ export interface DesktopSettings extends SharedSettings {
   logLevel: AppSettings['logLevel'];
   logPath: string;
   mcpServerEnabled: boolean;
+  mcpHttpEnabled?: boolean;
+  mcpHttpPort?: number;
   mcpClientServers?: AppSettings['mcpClientServers'];
+  aiPluginToolIds?: string[];
+  aiWorkflowToolIds?: string[];
   contextDir: string;
   favoritesRoot?: string;
   checkForUpdatesOnStartup: boolean;
@@ -52,7 +56,11 @@ const HOST_EXTRAS_KEYS = [
   'logLevel',
   'logPath',
   'mcpServerEnabled',
+  'mcpHttpEnabled',
+  'mcpHttpPort',
   'mcpClientServers',
+  'aiPluginToolIds',
+  'aiWorkflowToolIds',
   'contextDir',
   'favoritesRoot',
   'checkForUpdatesOnStartup',
@@ -95,8 +103,9 @@ export function toDesktopSettings(
 /** The host-only slice of a flat settings blob. */
 export function pickHostExtras(host: Partial<AppSettings>): Partial<AppSettings> {
   const out: Partial<AppSettings> = {};
+  const source = host as Record<string, unknown>;
   for (const key of HOST_EXTRAS_KEYS) {
-    const value = host[key];
+    const value = source[key];
     if (value !== undefined) {
       (out as Record<string, unknown>)[key] = value;
     }

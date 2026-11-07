@@ -27,6 +27,8 @@ const {
   openNewConnectionDialogMock,
   menuOpenSettingsHandler,
   openErDiagramMock,
+  newQueryMock,
+  openConnectionHandler,
 } = vi.hoisted(() => ({
   connectMock: vi.fn(),
   releaseConnectionMock: vi.fn(),
@@ -40,6 +42,9 @@ const {
     const handler = args[1] as (payload?: unknown) => void;
     if (event === 'menu:open-settings') {
       menuOpenSettingsHandler.current = handler;
+    }
+    if (event === 'datazen:open-connection') {
+      openConnectionHandler.current = handler;
     }
     return Promise.resolve(() => {});
   }),
@@ -60,6 +65,8 @@ const {
   openSchemaDiffWindowMock: vi.fn(),
   openNewConnectionDialogMock: vi.fn(),
   openErDiagramMock: vi.fn(),
+  newQueryMock: vi.fn(),
+  openConnectionHandler: { current: null as ((payload?: unknown) => void) | null },
   menuOpenSettingsHandler: { current: null as ((payload?: unknown) => void) | null },
 }));
 
@@ -91,14 +98,28 @@ vi.mock('../../../stores/aiStore', () => ({
 }));
 
 vi.mock('../../../stores/connectionStore', () => ({
-  useConnectionStore: (sel: (s: Record<string, unknown>) => unknown) =>
-    sel({
-      connections: [],
-      groups: [],
-      fetchConnections: fetchConnectionsMock,
-      fetchGroups: fetchGroupsMock,
-      deleteConnection: vi.fn(),
-    }),
+  useConnectionStore: Object.assign(
+    (sel: (s: Record<string, unknown>) => unknown) =>
+      sel({
+        connections: [],
+        groups: [],
+        fetchConnections: fetchConnectionsMock,
+        fetchGroups: fetchGroupsMock,
+        deleteConnection: vi.fn(),
+      }),
+    {
+      getState: () => ({
+        connections: [
+          {
+            id: 'cfg-1',
+            name: 'PG',
+            databaseType: 'postgresql',
+            database: 'app',
+          },
+        ],
+      }),
+    },
+  ),
   groupConnections: () => [],
 }));
 
@@ -214,6 +235,10 @@ vi.mock('../ContentView', async () => {
           actionsRef.current = {
             openErDiagram: (focusTable?: string, database?: string) =>
               openErDiagramMock(focusTable, database),
+            newQuery: (sql?: string) => {
+              newQueryMock(sql);
+              return true;
+            },
           };
         }
         return () => {
@@ -715,5 +740,26 @@ describe('ConnectionPage', () => {
     const asideAfter = screen.getByTestId('connection-navigator-aside');
     expect(asideAfter).toBeInTheDocument();
     expect(asideAfter).toHaveStyle({ width: '280px' });
+  });
+  it('opens a pending CLI query when the connection tab is already connected', async () => {
+    localStorage.setItem(
+      'datazen:pending-connection',
+      JSON.stringify({
+        connectionId: 'cfg-1',
+        dbSessionId: 'sess-1',
+        connectionName: 'PG',
+        databaseType: 'postgresql',
+      }),
+    );
+    render(<ConnectionPage />);
+    await waitFor(() => expect(openConnectionHandler.current).not.toBeNull());
+    openConnectionHandler.current?.({
+      connectionId: 'cfg-1',
+      connectionName: 'PG',
+      databaseType: 'postgresql',
+      sql: 'SELECT 1',
+      requestId: 'cli:cfg-1:8',
+    });
+    await waitFor(() => expect(newQueryMock).toHaveBeenCalledWith('SELECT 1'));
   });
 });

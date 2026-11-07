@@ -29,6 +29,34 @@ fn read_only_blocks_data_modifying_ctes() {
 }
 
 #[test]
+fn safe_mode_guards_data_modifying_ctes_at_any_depth() {
+    for sql in [
+        "WITH d AS (DELETE FROM t RETURNING *) SELECT * FROM d",
+        "WITH d AS (UPDATE t SET x = 1 RETURNING *) SELECT * FROM d",
+        "WITH outer AS (WITH inner AS (DELETE FROM t RETURNING *) SELECT * FROM inner) SELECT * FROM outer",
+        "WITH d AS (DELETE FROM t WHERE id = 1 RETURNING *), u AS (UPDATE t SET x = 1 RETURNING *) SELECT * FROM d, u",
+    ] {
+        let error = check_sql(sql, false, true).unwrap_err();
+        assert!(
+            error.contains("WHERE") || error.contains("Safe Mode"),
+            "expected Safe Mode block for {sql}: {error}"
+        );
+    }
+    assert!(check_sql(
+        "WITH d AS (DELETE FROM t WHERE id = 1 RETURNING *) SELECT * FROM d",
+        false,
+        true
+    )
+    .is_ok());
+    assert!(check_sql(
+        "WITH outer AS (WITH inner AS (UPDATE t SET x = 1 WHERE id = 1 RETURNING *) SELECT * FROM inner) SELECT * FROM outer",
+        false,
+        true
+    )
+    .is_ok());
+}
+
+#[test]
 fn read_only_blocks_select_into_but_allows_read_only_explain() {
     assert!(check_sql("SELECT a INTO b FROM c", true, false).is_err());
     assert!(check_sql("EXPLAIN ANALYZE SELECT a INTO b FROM c", true, false).is_err());

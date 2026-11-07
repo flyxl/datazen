@@ -35,6 +35,7 @@ export function ToggleRow({
   checked,
   onChange,
   testId,
+  disabled = false,
 }: {
   label: string;
   hint?: string;
@@ -42,6 +43,8 @@ export function ToggleRow({
   onChange: (v: boolean) => void;
   /** Stable hook for tests; the accessible name is translated, so it cannot be one. */
   testId?: string;
+  /** A row can be unavailable while still displaying its current value. */
+  disabled?: boolean;
 }) {
   return (
     <div className="flex items-center justify-between gap-4">
@@ -54,11 +57,15 @@ export function ToggleRow({
         role="switch"
         aria-label={label}
         aria-checked={checked}
+        aria-disabled={disabled}
+        disabled={disabled}
         data-testid={testId}
-        onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors ${
-          checked ? 'bg-accent' : 'bg-edge'
-        }`}
+        onClick={() => {
+          if (!disabled) onChange(!checked);
+        }}
+        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+          disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+        } ${checked ? 'bg-accent' : 'bg-edge'}`}
       >
         <span
           className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${

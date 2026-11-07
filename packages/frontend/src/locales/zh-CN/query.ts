@@ -246,6 +246,9 @@ const pack = {
   'query.editor.executionConfirm.findingTruncate': 'TRUNCATE 语句',
   'query.editor.executionConfirm.findingUpdateNoWhere': '无 WHERE 的 UPDATE',
   'query.editor.executionConfirm.findingDeleteNoWhere': '无 WHERE 的 DELETE',
+  'query.editor.executionConfirm.chatWriteTitle': '执行 AI 生成的写入 SQL？',
+  'query.editor.executionConfirm.chatWriteMessage':
+    '该语句由 AI 生成，可能会修改数据。请确认后再对当前数据库执行。',
   'query.editor.executionConfirm.findingUnknown': '未分类的写语句',
   'query.editor.executionConfirm.statementLabel': '语句 {index}',
   'query.editor.executionConfirm.reasonsHeading': '检测到的问题',

@@ -534,3 +534,55 @@ fn safe_declared_path_rejects_absolute_and_escape() {
     assert!(safe_declared_path(dir.path(), "").is_err());
     assert!(safe_declared_path(dir.path(), "assets/icon.svg").is_ok());
 }
+
+const AI_MANIFEST: &str = r#"{
+  "id": "acme.bridge",
+  "name": "Bridge Fixture",
+  "version": "1.0.0",
+  "apiVersion": 2,
+  "contributes": {},
+  "permissions": ["command:invoke"],
+  "ai": {
+    "tools": [{
+      "name": "list_users",
+      "description": "List users",
+      "readOnly": true,
+      "command": "query",
+      "connection": "conn-1",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "limit": { "type": "integer" } },
+        "additionalProperties": false
+      },
+      "input": { "sql": "SELECT * FROM users LIMIT {{limit}}" }
+    }]
+  }
+}"#;
+
+#[test]
+fn validates_ai_tool_declarations_and_projects_summary() {
+    let dir = TempDir::new().unwrap();
+    let manifest = parsed(AI_MANIFEST);
+    validate_manifest(&manifest, dir.path()).unwrap();
+    let summary = crate::wapps::summary::WappSummary::from(&crate::wapps::manager::LoadedWapp {
+        manifest,
+        enabled: true,
+    });
+    assert_eq!(summary.ai_tools.len(), 1);
+    assert_eq!(summary.ai_tools[0].name, "list_users");
+    assert!(summary.ai_tools[0].read_only);
+}
+
+#[test]
+fn rejects_read_only_tool_that_is_not_a_query_or_missing_permission() {
+    let dir = TempDir::new().unwrap();
+    let mut manifest = parsed(AI_MANIFEST);
+    manifest.ai.as_mut().unwrap().tools[0].command = "execute".into();
+    let err = validate_manifest(&manifest, dir.path()).unwrap_err();
+    assert!(err.contains("read-only ai tool"), "unexpected: {err}");
+
+    let mut manifest = parsed(AI_MANIFEST);
+    manifest.permissions.clear();
+    let err = validate_manifest(&manifest, dir.path()).unwrap_err();
+    assert!(err.contains("command:invoke"), "unexpected: {err}");
+}

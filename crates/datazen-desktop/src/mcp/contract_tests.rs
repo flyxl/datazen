@@ -123,8 +123,8 @@ mod tests {
     fn test_tester_golden_fixture_covers_all_tools_and_input_keys() {
         assert_eq!(
             MCP_ALL_TOOLS.len(),
-            13,
-            "contract tests assume exactly 13 MCP tools"
+            15,
+            "contract tests assume exactly 15 MCP tools"
         );
 
         let snapshot = build_mcp_contract_snapshot();

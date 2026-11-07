@@ -42,6 +42,21 @@
     },
     {
       "inputProperties": [
+        "allow_writes",
+        "connection_id",
+        "limit",
+        "sql",
+        "timeout_ms",
+        "transaction"
+      ],
+      "name": "execute_batch",
+      "requiredInputProperties": [
+        "connection_id",
+        "sql"
+      ]
+    },
+    {
+      "inputProperties": [
         "connection_id",
         "sql"
       ],
@@ -113,6 +128,22 @@
       "requiredInputProperties": [
         "connection_id",
         "sql"
+      ]
+    },
+    {
+      "inputProperties": [
+        "args",
+        "command",
+        "connection_id",
+        "database",
+        "key_pattern",
+        "limit",
+        "timeout_ms"
+      ],
+      "name": "redis_command",
+      "requiredInputProperties": [
+        "command",
+        "connection_id"
       ]
     },
     {

@@ -12,7 +12,7 @@ use crate::workflow::application::conditions::evaluate_condition;
 use crate::workflow::application::context::WorkflowContext;
 use crate::workflow::application::data_step::{run_merge, run_transform};
 use crate::workflow::application::results::{
-    merge_template_resolve, normalize_query_result, resolve_json_templates,
+    merge_template_resolve, normalize_query_result, resolve_command_input_templates,
 };
 use crate::workflow::domain::command::WorkflowCommandStep;
 use crate::workflow::domain::model::{
@@ -95,13 +95,7 @@ impl WorkflowExecutor {
         for var in &workflow.variables {
             if !context.variables.contains_key(&var.name) {
                 if let Some(default) = &var.default {
-                    context.variables.insert(
-                        var.name.clone(),
-                        match default {
-                            serde_json::Value::String(s) => s.clone(),
-                            other => other.to_string(),
-                        },
-                    );
+                    context.set_variable(&var.name, default.clone());
                 }
             }
             if var.required.unwrap_or(false)
@@ -493,9 +487,17 @@ impl WorkflowExecutor {
                     .as_deref()
                     .map(|s| context.resolve_template(s))
                     .transpose()?;
+                let dialect = match resolved_step_connection.as_deref().or(workflow_connection) {
+                    Some(connection_id) => app_state.sql_dialect(connection_id).await,
+                    None => crate::sql_template::SqlTemplateDialect::default(),
+                };
+                let rendered_sql =
+                    crate::sql_template::render_sql_template_with_resolver(sql, dialect, |expr| {
+                        context.resolve_expression_value(expr)
+                    })?;
                 let command = WorkflowCommandStep::from_legacy_query(
                     id.clone(),
-                    context.resolve_template(sql)?,
+                    rendered_sql.clone(),
                     resolved_step_connection,
                     resolved_database,
                     *timeout_secs,
@@ -507,7 +509,7 @@ impl WorkflowExecutor {
                     workflow_connection,
                     context,
                     options,
-                    Some(sql),
+                    Some(&rendered_sql),
                     workflow_deadline,
                 )
                 .await
@@ -520,11 +522,15 @@ impl WorkflowExecutor {
                 timeout_secs,
                 on_error,
             } => {
-                let mut resolved_input = resolve_json_templates(input, context)?;
                 let resolved_connection = connection
                     .as_deref()
                     .map(|s| context.resolve_template(s))
                     .transpose()?;
+                let dialect = match resolved_connection.as_deref().or(workflow_connection) {
+                    Some(connection_id) => app_state.sql_dialect(connection_id).await,
+                    None => crate::sql_template::SqlTemplateDialect::default(),
+                };
+                let mut resolved_input = resolve_command_input_templates(input, context, dialect)?;
                 // Command steps carry their target in `input.database`, so the
                 // workflow default must be injected explicitly — a query step
                 // gets it for free through `resolved_database` above.

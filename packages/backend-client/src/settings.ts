@@ -47,6 +47,8 @@ export interface ExecutionSettings {
   mcpDisabledTools: string[];
   mcpPermissionMode: SettingsMcpPermissionMode;
   mcpAllowedConnectionIds: string[];
+  mcpAllowedDatabases: string[];
+  mcpAllowedNamespaces: string[];
   driverSettings: Record<string, unknown>;
   aiStrictEgress: boolean;
 }
@@ -162,6 +164,8 @@ export function toSharedSettings(
     mcpDisabledTools,
     mcpPermissionMode,
     mcpAllowedConnectionIds,
+    mcpAllowedDatabases,
+    mcpAllowedNamespaces,
     driverSettings,
     aiStrictEgress,
   } = settings;
@@ -173,6 +177,8 @@ export function toSharedSettings(
     mcpDisabledTools,
     mcpPermissionMode,
     mcpAllowedConnectionIds,
+    mcpAllowedDatabases,
+    mcpAllowedNamespaces,
     driverSettings,
     aiStrictEgress,
   };

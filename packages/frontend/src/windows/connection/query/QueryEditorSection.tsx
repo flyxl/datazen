@@ -53,6 +53,8 @@ export interface QueryEditorSectionProps {
   dbSessionId: string;
   databaseType?: string;
   editorRef: MutableRefObject<SqlEditorHandle | null>;
+  /** Reports editor selection changes for chat auto-context. */
+  onSelectionChange?: (selection: string) => void;
   toolbarRef: Ref<HTMLDivElement>;
   compactToolbar: boolean;
   sql: string;
@@ -157,6 +159,7 @@ export function QueryEditorSection({
   dbSessionId,
   databaseType,
   editorRef,
+  onSelectionChange,
   toolbarRef,
   compactToolbar,
   sql,
@@ -603,6 +606,7 @@ export function QueryEditorSection({
         {nl2sqlVisible && (
           <Nl2SqlPanel
             dbSessionId={dbSessionId}
+            connectionId={connectionId}
             database={selectedDatabase ?? ''}
             onSqlChange={onApplyAiSql}
           />
@@ -655,6 +659,7 @@ export function QueryEditorSection({
             onChange={onUpdateSql}
             onExecute={onExecute}
             onExecuteSelection={onExecuteSelection}
+            onSelectionChange={onSelectionChange}
             onExecuteAll={onExecute}
             onSaveQuery={() => onOpenAddFavoriteDialog(sql)}
             onContextMenu={handleEditorContextMenu}

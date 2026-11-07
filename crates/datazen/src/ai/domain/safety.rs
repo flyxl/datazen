@@ -15,7 +15,9 @@ use regex::Regex;
 use serde_json::{Map, Value};
 use std::sync::OnceLock;
 
-use crate::ai::domain::types::{AiDataEgressLevel, AiSafetyGateConfig, AiSettingsConfig};
+use crate::ai::domain::types::{
+    AiDataEgressLevel, AiProviderType, AiSafetyGateConfig, AiSettingsConfig,
+};
 use crate::settings::ExecutionSettings;
 
 const MAX_AI_TEXT_BYTES: usize = 4_000;
@@ -269,7 +271,11 @@ fn sanitize_json_with_gate(value: Value, depth: usize, gate: &AiSafetyGateConfig
     }
 
     match value {
-        Value::String(s) => Value::String(redact_plain_text(&s)),
+        Value::String(s) => Value::String(if gate.redact_credentials {
+            redact_plain_text(&s)
+        } else {
+            s
+        }),
         Value::Array(values) => {
             let max_items = match gate.data_egress_level {
                 AiDataEgressLevel::Strict => 0,
@@ -289,7 +295,7 @@ fn sanitize_json_with_gate(value: Value, depth: usize, gate: &AiSafetyGateConfig
         Value::Object(map) => {
             let mut sanitized = Map::new();
             for (key, value) in map.into_iter().take(MAX_JSON_OBJECT_KEYS) {
-                if is_sensitive_key(&key) {
+                if gate.redact_credentials && is_sensitive_key(&key) {
                     continue;
                 }
                 if gate.data_egress_level == AiDataEgressLevel::Strict && is_result_key(&key) {
@@ -330,26 +336,85 @@ fn truncate_to_bytes(value: String, limit: usize) -> String {
 
 /// Sanitize caller-provided text before it becomes AI prompt content.
 ///
-/// This is the **single public entry point**.  Credentials are always redacted.
-/// Result/payload row stripping and array limits are governed by the gate
-/// configuration from the active model profile.
+/// This is the **single public entry point**. Credential redaction follows
+/// [`AiSafetyGateConfig::redact_credentials`] (default `true`); disabling it
+/// never disables result/payload stripping, array limits or the
+/// `max_context_bytes` truncation below.
 pub fn redact_for_gate(value: &str, gate: &AiSafetyGateConfig) -> String {
     let limit = if gate.max_context_bytes > 0 {
         gate.max_context_bytes
     } else {
         MAX_AI_TEXT_BYTES
     };
-    let text = redact_json_text_with_gate(value, gate).unwrap_or_else(|| redact_plain_text(value));
+    let text = redact_json_text_with_gate(value, gate).unwrap_or_else(|| {
+        if gate.redact_credentials {
+            redact_plain_text(value)
+        } else {
+            value.to_string()
+        }
+    });
     truncate_to_bytes(text, limit)
 }
 
+/// Whether a provider is local enough to permit `redact_credentials=false`.
+///
+/// Cloud providers never get the opt-out. Ollama is local by definition;
+/// a Custom provider qualifies only when its endpoint host is loopback.
+pub fn provider_allows_unredacted_credentials(
+    provider_type: AiProviderType,
+    endpoint: Option<&str>,
+) -> bool {
+    match provider_type {
+        AiProviderType::Ollama => true,
+        AiProviderType::Custom => endpoint.and_then(loopback_host).is_some(),
+        AiProviderType::OpenAi
+        | AiProviderType::Anthropic
+        | AiProviderType::DeepSeek
+        | AiProviderType::Gemini
+        | AiProviderType::Qwen
+        | AiProviderType::MiniMax
+        | AiProviderType::OpenAiCompatible
+        | AiProviderType::AnthropicCompatible
+        // A local CLI is still a client of a vendor model; execution location
+        // does not make its upstream egress local.
+        | AiProviderType::ClaudeCode
+        | AiProviderType::Codex
+        | AiProviderType::Cursor
+        | AiProviderType::OpenCode
+        | AiProviderType::Grok
+        | AiProviderType::Qoder
+        | AiProviderType::CodeBuddy
+        | AiProviderType::Pi => false,
+    }
+}
+
+fn loopback_host(endpoint: &str) -> Option<&str> {
+    let rest = endpoint
+        .trim()
+        .split_once("://")
+        .map(|(_, rest)| rest)
+        .unwrap_or_else(|| endpoint.trim());
+    let authority = rest.split(['/', '?', '#']).next()?;
+    let host_port = authority.rsplit('@').next()?;
+    let host = if let Some(without_open) = host_port.strip_prefix('[') {
+        without_open.split(']').next()?
+    } else {
+        host_port.split(':').next()?
+    };
+    matches!(host, "localhost" | "127.0.0.1" | "::1").then_some(host)
+}
+
 /// Global execution policy can tighten a model profile's egress level.
+///
+/// Credential redaction can only be disabled for a local provider. Cloud
+/// profiles are forced back to `redact_credentials=true`, regardless of what
+/// was persisted in the gate config.
 pub fn effective_safety_gate(
     settings: &AiSettingsConfig,
     policy: &ExecutionSettings,
 ) -> AiSafetyGateConfig {
-    let mut gate = settings
-        .selected_profile()
+    let selected = settings.selected_profile();
+    let mut gate = selected
         .map(|profile| profile.safety_gate.clone())
         .unwrap_or_else(|| AiSafetyGateConfig {
             data_egress_level: AiDataEgressLevel::Unrestricted,
@@ -357,6 +422,11 @@ pub fn effective_safety_gate(
         });
     if policy.ai_strict_egress {
         gate.data_egress_level = AiDataEgressLevel::Strict;
+    }
+    if !selected.is_some_and(|profile| {
+        provider_allows_unredacted_credentials(profile.provider_type, profile.endpoint.as_deref())
+    }) {
+        gate.redact_credentials = true;
     }
     gate
 }

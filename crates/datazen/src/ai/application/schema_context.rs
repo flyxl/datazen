@@ -129,13 +129,14 @@ pub async fn connection_schema_context(
     host: &dyn ResourceExecutionHost,
     connection_id: &str,
     database: &str,
+    namespace: Option<&str>,
     max_tokens: usize,
 ) -> Result<String, String> {
     let table_output = runtime_reads::read_target_command(
         host,
         connection_id,
         "list_tables",
-        serde_json::json!({ "database": database, "schema": null }),
+        serde_json::json!({ "database": database, "schema": namespace }),
     )
     .await?;
     let tables = datazen_driver_api::parse_tables_from_command(&table_output);
@@ -148,7 +149,7 @@ pub async fn connection_schema_context(
             "get_table_schema",
             serde_json::json!({
                 "database": database,
-                "schema": null,
+                "schema": namespace,
                 "table": table.name,
             }),
         )

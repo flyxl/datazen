@@ -37,6 +37,8 @@ const HOST_BLOB: AppSettings = {
   mcpDisabledTools: [],
   mcpPermissionMode: 'safe_write',
   mcpAllowedConnectionIds: [],
+  mcpAllowedDatabases: [],
+  mcpAllowedNamespaces: [],
   contextDir: '/home/user/ai-context',
   favoritesRoot: undefined,
   checkForUpdatesOnStartup: true,
@@ -68,6 +70,8 @@ const HOST_BLOB: AppSettings = {
   gridRowNumbers: true,
   gridAutoHideScrollbar: false,
   onboarding: { completed: true, version: 1 },
+  aiPluginToolIds: ['acme.demo'],
+  aiWorkflowToolIds: ['daily-report'],
 };
 
 describe('toSettings — the F4 projection', () => {
@@ -98,6 +102,8 @@ describe('toSettings — the F4 projection', () => {
     expect(asShared.preferences.theme.mode).toBe('dark');
     expect(desktop.logPath).toBe('/var/log/datazen');
     expect(desktop.gridDensity).toBe('compact');
+    expect(desktop.aiPluginToolIds).toEqual(['acme.demo']);
+    expect(desktop.aiWorkflowToolIds).toEqual(['daily-report']);
   });
 });
 
@@ -118,6 +124,8 @@ describe('pickHostExtras', () => {
         'gridAlternatingRows',
         'gridRowNumbers',
         'gridAutoHideScrollbar',
+        'aiPluginToolIds',
+        'aiWorkflowToolIds',
       ].sort(),
     );
     // The migrated behavior fields are NOT host extras anymore.

@@ -11,6 +11,7 @@ import { useSettingsStore } from '../../stores/settingsStore';
 import { useAiStore } from '../../stores/aiStore';
 import { useConnectionStore } from '../../stores/connectionStore';
 import { connectionCommands } from '../../commands/connection';
+import { aiCommands } from '../../commands/ai';
 import { backupCommands } from '../../commands/backup';
 import { emitCrossWindow, listenCrossWindow } from '../../lib/crossWindowBus';
 import { getPlatformOrNull } from '../../platform/contracts';
@@ -28,7 +29,9 @@ import {
 import { useConfirmDialog } from '../../hooks/useConfirmDialog';
 import type { ConnectionViewActions } from '../../lib/connectionViews/types';
 import {
+  enrichOpenConnectionPayload,
   makeTabFromPayload,
+  pendingOpenQuerySql,
   removeConnectionFromStores,
   syncStoresActiveConnection,
   type ConnectionTab,
@@ -106,6 +109,14 @@ export function ConnectionPage() {
   // ── Post-onboarding: auto-open sample connection + preset query ──
   const postOnboardingRef = useRef<PostOnboardingSample | null>(null);
   const postOnboardingConsumedRef = useRef(false);
+  const openRequestRef = useRef<string | null>(null);
+  const pendingOpenQueryRef = useRef<{
+    connectionId: string;
+    sql: string;
+    requestId?: string;
+  } | null>(null);
+  const [openQueryTick, setOpenQueryTick] = useState(0);
+  const openQueryAttemptsRef = useRef(0);
   const workspaceSidebarMode = useUiStore((s) => s.workspaceSidebarMode);
   const toggleWorkspaceSidebarMode = useUiStore((s) => s.toggleWorkspaceSidebarMode);
   const sidebarExpanded = workspaceSidebarMode === 'expanded';
@@ -205,8 +216,25 @@ export function ConnectionPage() {
   useEffect(() => {
     let cleanup: (() => void) | undefined;
     void listenCrossWindow('datazen:open-connection', (payload) => {
-      const data = payload as Record<string, string> | undefined;
-      if (!data?.connectionId) return;
+      const raw = payload as Record<string, string> | undefined;
+      if (!raw?.connectionId) return;
+      if (raw.requestId) {
+        if (openRequestRef.current === raw.requestId) return;
+        openRequestRef.current = raw.requestId;
+      }
+      const data = enrichOpenConnectionPayload(raw, useConnectionStore.getState().connections);
+      if (data.sql) {
+        pendingOpenQueryRef.current = {
+          connectionId: data.connectionId,
+          sql: data.sql,
+          requestId: data.requestId,
+        };
+        openQueryAttemptsRef.current = 0;
+        // The tab/panel arrays may already be in their final state (for
+        // example, clicking an already-connected connection). Tick state
+        // guarantees the pending-query effect runs at least once.
+        setOpenQueryTick((tick) => tick + 1);
+      }
       setWorkspaceMode('connections');
 
       try {
@@ -426,18 +454,30 @@ export function ConnectionPage() {
   );
 
   const handleDeleteConnection = useCallback(
-    (connectionId: string) => {
+    async (connectionId: string) => {
       const conn = connections.find((c) => c.id === connectionId);
       if (!conn) return;
-      void confirmDelete({
+      let message = t('main.ctx.confirmDeleteConnection', { name: conn.name });
+      try {
+        const counts = await aiCommands.connectionContextCounts(connectionId);
+        if (counts.noteCount > 0 || counts.memoryCount > 0) {
+          message = t('main.ctx.confirmDeleteConnectionWithAi', {
+            name: conn.name,
+            noteCount: counts.noteCount,
+            memoryCount: counts.memoryCount,
+          });
+        }
+      } catch {
+        // Counts are advisory: delete still works if the AI store is unavailable.
+      }
+      const ok = await confirmDelete({
         title: t('common.deleteConnection'),
-        message: t('main.ctx.confirmDeleteConnection', { name: conn.name }),
+        message,
         kind: 'warning',
-      }).then((ok) => {
-        if (!ok) return;
-        void handleCloseTab(connectionId);
-        void deleteConnection(connectionId);
       });
+      if (!ok) return;
+      void handleCloseTab(connectionId);
+      void deleteConnection(connectionId);
     },
     [connections, confirmDelete, handleCloseTab, deleteConnection, t],
   );
@@ -535,6 +575,28 @@ export function ConnectionPage() {
     postOnboardingRef.current = null;
     actionsRef.current?.newQuery?.(directive.sql);
   }, [tabs, connections, allPanels]);
+
+  // A CLI/startup open request may carry a preset SQL statement. Wait until
+  // the tab is connected, then create the query panel exactly once.
+  useEffect(() => {
+    const pending = pendingOpenQueryRef.current;
+    if (!pending) return;
+    const sql = pendingOpenQuerySql(pending, tabs, allPanels);
+    if (!sql) {
+      if (allPanels.some((p) => p.connectionId === pending.connectionId)) {
+        pendingOpenQueryRef.current = null;
+      }
+      return;
+    }
+    if (!actionsRef.current?.newQuery) {
+      if (openQueryAttemptsRef.current >= 40) return;
+      openQueryAttemptsRef.current += 1;
+      const timer = window.setTimeout(() => setOpenQueryTick((tick) => tick + 1), 50);
+      return () => window.clearTimeout(timer);
+    }
+    pendingOpenQueryRef.current = null;
+    actionsRef.current.newQuery(sql);
+  }, [tabs, allPanels, openQueryTick]);
 
   const handleExportConfig = useCallback(async () => {
     let saved: boolean;

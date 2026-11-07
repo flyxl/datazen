@@ -4,6 +4,7 @@ const pack = {
   'common.cancel': 'Cancelar',
   'common.skip': 'Pular',
   'common.back': 'Voltar',
+  'common.edit': 'Edit',
   'common.save': 'Salvar',
   'common.close': 'Fechar',
   'common.delete': 'Excluir',
@@ -114,6 +115,7 @@ const pack = {
   'main.ctx.server': 'Servidor',
   'main.ctx.organize': 'Gerenciar conexão',
   'main.ctx.createNew': 'Novo',
+  'main.ctx.confirmDeleteConnectionWithAi': 'Delete connection "{name}"? This also removes {noteCount} connection note(s) and {memoryCount} related AI memories. This cannot be undone.',
   'main.ctx.confirmDeleteConnection':
     'Tem certeza de que deseja excluir a conexão "{name}"? Isto não pode ser desfeito.',
   'main.groupNamePlaceholder': 'Insira o nome do grupo',

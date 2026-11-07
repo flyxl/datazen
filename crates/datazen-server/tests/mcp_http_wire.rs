@@ -117,7 +117,7 @@ async fn requests_without_session_header_are_rejected() {
 }
 
 #[tokio::test]
-async fn tools_list_with_valid_session_returns_all_thirteen_tools() {
+async fn tools_list_with_valid_session_returns_all_fifteen_tools() {
     let st = state();
     let init = http::handle_post(
         &st,
@@ -138,7 +138,7 @@ async fn tools_list_with_valid_session_returns_all_thirteen_tools() {
     assert_eq!(response.status, StatusCode::OK);
     let body = response.body.unwrap();
     let tools = body["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 13);
+    assert_eq!(tools.len(), 15);
     assert_eq!(tools[0]["name"], json!("close_session"));
     assert!(tools[0]["inputSchema"]["type"] == json!("object"));
 }
@@ -403,7 +403,7 @@ async fn router_fragment_serves_the_full_streamable_http_flow() {
     .unwrap();
     assert_eq!(body["result"]["serverInfo"]["name"], json!("datazen"));
 
-    // tools/list（带会话头）→ 13 工具。
+    // tools/list（带会话头）→ 15 工具。
     let response = app
         .oneshot(
             Request::builder()
@@ -425,5 +425,5 @@ async fn router_fragment_serves_the_full_streamable_http_flow() {
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(body["result"]["tools"].as_array().unwrap().len(), 13);
+    assert_eq!(body["result"]["tools"].as_array().unwrap().len(), 15);
 }

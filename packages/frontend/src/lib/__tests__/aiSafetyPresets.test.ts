@@ -14,6 +14,11 @@ describe('aiSafetyPresets', () => {
     expect(cloudStrict.dbToolPolicy).toBe('read_only');
     expect(cloudStrict.mcpToolPolicy).toBe('disabled');
     expect(cloudStrict.requireSqlConfirm).toBe(true);
+    expect(cloudStrict.maxToolRounds).toBe(30);
+    expect(cloudStrict.maxToolTokens).toBe(48000);
+    expect(cloudStrict.maxToolResultBytes).toBe(8192);
+    expect(cloudStrict.maxToolDurationSecs).toBe(300);
+    expect(cloudStrict.apiRetries).toBe(2);
 
     const enterprise = getDefaultSafetyGate('enterprise_balanced');
     expect(enterprise.dataEgressLevel).toBe('sample_masked');
