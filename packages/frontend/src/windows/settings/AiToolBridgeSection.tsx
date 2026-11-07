@@ -51,9 +51,7 @@ export function AiToolBridgeSection() {
 
   return (
     <div className="space-y-4" {...tid('ai-tool-bridge-section')}>
-      <SectionTitle hint={t('settings.ai.toolsHint')}>
-        {t('settings.ai.toolsTitle')}
-      </SectionTitle>
+      <SectionTitle hint={t('settings.ai.toolsHint')}>{t('settings.ai.toolsTitle')}</SectionTitle>
 
       <div className="space-y-3 rounded-xl border border-edge bg-surface p-4">
         <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-fg-muted">

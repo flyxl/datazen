@@ -27,7 +27,7 @@ description = "DataZen team web server host (P7 / web-ready WR-D): the HTTP form
 # 本就要求共用该机制 feature）与 jobs（JobRepository 端口 + 落盘词汇，
 # WR-D2 第三切片）。不整包开启——与桌面的全 feature 列表形成对照：宿主按需
 # 消费内核。后续切片按域点亮。
-datazen = { workspace = true, features = ["connection", "execution", "tunnel", "jobs", "settings", "named_views", "workflow", "table-editing", "table-browsing", "application", "ai", "services"] }
+datazen = { workspace = true, features = ["connection", "execution", "tunnel", "jobs", "settings", "named_views", "history", "workflow", "table-editing", "table-browsing", "application", "ai", "services"] }
 
 # WR-D2 收尾：连接目录/隧道定义的端口形状（`ConnectionConfig` /
 # `SavedTunnel`）直接来自 driver-api——模块不二次投影，server 也不得

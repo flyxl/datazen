@@ -113,7 +113,8 @@ const pack = {
   'main.ctx.server': '服务器',
   'main.ctx.organize': '管理连接',
   'main.ctx.createNew': '新建',
-  'main.ctx.confirmDeleteConnectionWithAi': '确定要删除连接「{name}」吗？同时将删除 {noteCount} 份连接备注和 {memoryCount} 条相关 AI 记忆。此操作不可撤销。',
+  'main.ctx.confirmDeleteConnectionWithAi':
+    '确定要删除连接「{name}」吗？同时将删除 {noteCount} 份连接备注和 {memoryCount} 条相关 AI 记忆。此操作不可撤销。',
   'main.ctx.confirmDeleteConnection': '确定要删除连接「{name}」吗？此操作不可撤消。',
   'main.groupNamePlaceholder': '请输入分组名称',
   'main.confirmDeleteGroup': '确定要删除分组 "{name}" 吗？该分组中的连接将移至未分组。',

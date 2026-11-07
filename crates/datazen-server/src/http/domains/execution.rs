@@ -58,6 +58,10 @@ pub struct ExecutionState {
     /// 会话目录（会话内执行的可见性判定；bootstrap 与 `SessionsState`
     /// 递同一实例）。
     pub directory: Arc<dyn SessionDirectory>,
+    /// 查询历史落账器（W8 刀3a；`None` = 关闭——测试/特殊部署显式关）。
+    /// SQL 命令受理后 spawn 终态轮询并 best-effort 落账，详见
+    /// `execution::history_recorder`。
+    pub history: Option<Arc<crate::execution::history_recorder::HistoryRecorder>>,
 }
 
 /// execution 域 Router 片段。主线把它 merge 进 `build_router_with_auth`
@@ -101,12 +105,42 @@ async fn handler_execute_in_session(
     if let Err(error) = request.validate() {
         return api_error_response(error);
     }
+    // SQL 命令受理后落账钩子的入参先捕获（request 即将被消费；桌面
+    // record_sql_command_outcome 的 transport 对偶，失败不阻断应答，
+    // 见 history_recorder 模块头）。
+    let history_capture = state.history.as_ref().map(|recorder| {
+        (
+            recorder.clone(),
+            request.call.command.clone(),
+            request
+                .call
+                .input
+                .get("sql")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            request.handle.db_session_id.clone(),
+        )
+    });
     match state
         .sessions
         .execute_in_session(&identity.ctx, request)
         .await
     {
-        Ok(receipt) => (StatusCode::ACCEPTED, Json(receipt)).into_response(),
+        Ok(receipt) => {
+            if let Some((recorder, command, sql, db_session)) = history_capture {
+                recorder.record_on_acceptance(
+                    state.sessions.clone(),
+                    state.directory.clone(),
+                    identity.ctx.clone(),
+                    command,
+                    sql,
+                    None,
+                    Some(db_session),
+                    receipt.execution_id.clone(),
+                );
+            }
+            (StatusCode::ACCEPTED, Json(receipt)).into_response()
+        }
         Err(error) => api_error_response(error),
     }
 }
@@ -129,12 +163,40 @@ async fn handler_execute_at_target(
     if let Err(error) = request.validate() {
         return api_error_response(error);
     }
+    // SQL 命令受理后落账钩子：连接 id 从 target 直取（无会话可查）。
+    let history_capture = state.history.as_ref().map(|recorder| {
+        (
+            recorder.clone(),
+            request.call.command.clone(),
+            request
+                .call
+                .input
+                .get("sql")
+                .and_then(Value::as_str)
+                .map(str::to_owned),
+            request.target.connection_id.as_str().to_owned(),
+        )
+    });
     match state
         .sessions
         .execute_at_target(&identity.ctx, request)
         .await
     {
-        Ok(receipt) => (StatusCode::ACCEPTED, Json(receipt)).into_response(),
+        Ok(receipt) => {
+            if let Some((recorder, command, sql, connection)) = history_capture {
+                recorder.record_on_acceptance(
+                    state.sessions.clone(),
+                    state.directory.clone(),
+                    identity.ctx.clone(),
+                    command,
+                    sql,
+                    Some(connection),
+                    None,
+                    receipt.execution_id.clone(),
+                );
+            }
+            (StatusCode::ACCEPTED, Json(receipt)).into_response()
+        }
         Err(error) => api_error_response(error),
     }
 }

@@ -2,8 +2,8 @@
 //! 读/预览/变更路由的真路由 oneshot 契约测试。
 //!
 //! 装配沿 `g1_cm68_replacement_full.rs` 先例：`build_router_with_auth` +
-//! `domain_routers` 槽挂真 `table_data_router` + 真 SQLite 文件库（v1..=v9
-//! 迁移，`schema_version` 断言钉住 v9）+ 真 membership/login 会话行 + 真
+//! `domain_routers` 槽挂真 `table_data_router` + 真 SQLite 文件库（v1..=v11
+//! 迁移，`schema_version` 断言钉住 v11）+ 真 membership/login 会话行 + 真
 //! cookie/CSRF 头（L2–L4 全链）+ 真实时钟戳（硬编码日期会随真实时间腐烂
 //! 成 401，g1 冻结项先例）。
 //!
@@ -313,14 +313,14 @@ async fn named_views_list_an_empty_directory() {
 }
 
 /// save 铸 id：空 id → 201，铸造非空 id、时间戳齐备，记录真实落库
-/// （v10 迁移随之断言），list 原样回读。
+/// （v11 迁移随之断言——版本钉随迁移链尾部对齐，勿回改），list 原样回读。
 #[tokio::test]
 async fn a_view_saved_without_an_id_is_minted_with_one() {
     let (store, app, primary, _same_org, _other_org) = fixture().await;
     assert_eq!(
         store.schema_version().expect("schema version"),
-        10,
-        "v10 org-memory migration applied"
+        11,
+        "v11 chain applied (org-memory + query assets)"
     );
 
     let draft = view_draft(

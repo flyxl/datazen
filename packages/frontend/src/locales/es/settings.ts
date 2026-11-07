@@ -244,7 +244,8 @@ const pack = {
   'settings.ai.strictEgressHint':
     'Al activarse, las filas de resultados y las cargas útiles se eliminan antes de enviar el contenido al proveedor de IA. Las credenciales siempre se anonimizan.',
   'settings.ai.toolsTitle': 'Herramientas de plugins y workflows',
-  'settings.ai.toolsHint': 'Solo las herramientas de los plugins y workflows habilitados aquí se ofrecen al Agent. Las llamadas no de solo lectura piden aprobación; Stop cancela una llamada pendiente.',
+  'settings.ai.toolsHint':
+    'Solo las herramientas de los plugins y workflows habilitados aquí se ofrecen al Agent. Las llamadas no de solo lectura piden aprobación; Stop cancela una llamada pendiente.',
   'settings.ai.toolsPlugins': 'Plugins',
   'settings.ai.toolsWorkflows': 'Workflows',
   'settings.ai.toolsNoPlugins': 'Ningún plugin instalado declara herramientas de IA.',
@@ -254,10 +255,13 @@ const pack = {
   'settings.ai.strictEgressDisableMessage':
     'Desactivar la protección estricta puede enviar filas de resultados, contenidos de archivos y salidas de herramientas a su proveedor de IA configurado. Desactívelo solo si acepta que los datos salgan de su máquina.',
   'settings.ai.instructionsTitle': 'Global Instructions',
-  'settings.ai.instructionsHint': 'Included near the top of every AI chat system prompt. Hard limit 4 KB; over-limit saves are rejected, never silently truncated.',
-  'settings.ai.instructionsPlaceholder': 'e.g. Prefer explicit JOINs, use UTC timestamps, and answer in concise Chinese.',
+  'settings.ai.instructionsHint':
+    'Included near the top of every AI chat system prompt. Hard limit 4 KB; over-limit saves are rejected, never silently truncated.',
+  'settings.ai.instructionsPlaceholder':
+    'e.g. Prefer explicit JOINs, use UTC timestamps, and answer in concise Chinese.',
   'settings.ai.templatesTitle': 'Prompt Templates',
-  'settings.ai.templatesHint': 'Reusable system prompts. A template is picked by database type and default flag, or explicitly in chat. Each template is limited to 8 KB and all templates to 16 KB.',
+  'settings.ai.templatesHint':
+    'Reusable system prompts. A template is picked by database type and default flag, or explicitly in chat. Each template is limited to 8 KB and all templates to 16 KB.',
   'settings.ai.templatesEmpty': 'No prompt templates yet.',
   'settings.ai.addTemplate': 'Add template',
   'settings.ai.templateNameRequired': 'Template name is required.',
@@ -269,8 +273,10 @@ const pack = {
   'settings.ai.templateDatabaseTypesPlaceholder': 'Database types, comma separated (empty = all)',
   'settings.ai.templateContentPlaceholder': 'System prompt content',
   'connection.notes.title': 'Connection notes (AI)',
-  'connection.notes.hint': 'Stored locally and injected into AI chats for this connection. Limit 4 KB; save an empty note to delete it.',
-  'connection.notes.placeholder': 'e.g. This database is a read-only replica; orders.status codes mean…',
+  'connection.notes.hint':
+    'Stored locally and injected into AI chats for this connection. Limit 4 KB; save an empty note to delete it.',
+  'connection.notes.placeholder':
+    'e.g. This database is a read-only replica; orders.status codes mean…',
   'connection.notes.overLimit': 'Over the limit — shorten before saving.',
   'settings.ai.saveContext': 'Save instructions & templates',
   'settings.ai.modelsTitle': 'Modelos configurados',

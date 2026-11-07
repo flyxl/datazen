@@ -521,10 +521,23 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         // execution 域路由（契约 §6.10；执行域路由收口刀）：会话内执行 /
         // 目标执行 / 执行视图 / 取消登记——用例面与 sessions 域同一实例
         // （租约委托适配器），目录与 sessions 域同一实例（同一可见性事实）。
+        // W8 刀3a：查询历史落账器随路由装配（SQL 命令终态 best-effort
+        // 落账，桌面 record_sql_command_outcome 的 transport 对偶）。
         crate::http::domains::execution::execution_router(
             crate::http::domains::execution::ExecutionState {
                 sessions: lease_cases.clone(),
                 directory: session_directory.clone(),
+                history: Some(std::sync::Arc::new(
+                    crate::execution::history_recorder::HistoryRecorder::new(store.clone()),
+                )),
+            },
+        ),
+        // W8 刀3a：查询资产域路由（契约 §6.12）——收藏与查询历史从
+        // legacy IPC 命令轨收敛进 MethodMap（v10 双表，per (org, principal)
+        // 隔离；scoped store 在 handler 内按认证链事实装配）。
+        crate::http::domains::query_assets::query_assets_router(
+            crate::http::domains::query_assets::QueryAssetsState {
+                store: store.clone(),
             },
         ),
         // WR-F1 服务端半边（三缺口合拢）：secrets 域（ServerSecretVault 的

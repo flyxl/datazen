@@ -481,7 +481,8 @@ const pack = {
   'valueSearch.start': '搜索',
   'valueSearch.pause': '暂停',
   'valueSearch.resume': '恢复',
-  'valueSearch.costNote': '对此数据库的每个 {count} 表运行一个查询，这可能需要一段时间并增加服务器的负载。',
+  'valueSearch.costNote':
+    '对此数据库的每个 {count} 表运行一个查询，这可能需要一段时间并增加服务器的负载。',
   'valueSearch.scanning': '正在搜索 {table}...',
   'valueSearch.status.running': '正在寻找...',
   'valueSearch.status.paused': '已暂停 — 恢复继续',

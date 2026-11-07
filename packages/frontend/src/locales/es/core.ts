@@ -115,7 +115,8 @@ const pack = {
   'main.ctx.server': 'Servidor',
   'main.ctx.organize': 'Administrar conexión',
   'main.ctx.createNew': 'Nuevo',
-  'main.ctx.confirmDeleteConnectionWithAi': 'Delete connection "{name}"? This also removes {noteCount} connection note(s) and {memoryCount} related AI memories. This cannot be undone.',
+  'main.ctx.confirmDeleteConnectionWithAi':
+    'Delete connection "{name}"? This also removes {noteCount} connection note(s) and {memoryCount} related AI memories. This cannot be undone.',
   'main.ctx.confirmDeleteConnection':
     '¿Está seguro de que desea eliminar la conexión "{name}"? Esto no se puede deshacer.',
   'main.groupNamePlaceholder': 'Introduzca el nombre del grupo',

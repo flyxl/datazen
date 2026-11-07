@@ -19,6 +19,7 @@ pub mod application;
 pub mod domain;
 
 pub use application::service::HistoryService;
+pub use domain::favorite::{FavoriteDraft, FavoriteQuery};
 pub use domain::migration_run;
 pub use domain::migration_run::{
     MigrationProfileRef, MigrationRunFilter, MigrationRunPage, MigrationRunRecord,
