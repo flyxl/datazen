@@ -60,6 +60,26 @@ export function registerTranslations(resources: Record<string, Record<string, st
 }
 
 /**
+ * Remove a locale's dictionary entirely (external language pack uninstall).
+ *
+ * Callers must switch the active locale away from `locale` first (the host
+ * flow falls back to `en` before removing the pack). If the locale is still
+ * active when this runs, it defensively falls back to 'en' and notifies —
+ * the en dictionary is always present, so `t()` never renders raw keys.
+ */
+export function unregisterTranslations(locale: string): void {
+  if (!Object.prototype.hasOwnProperty.call(registry, locale)) return;
+  // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+  delete registry[locale];
+  if (currentLocale === locale) {
+    currentLocale = DEFAULT_LOCALE;
+    for (const listener of [...listeners]) {
+      listener();
+    }
+  }
+}
+
+/**
  * Read-only snapshot of the dictionary currently registered for `locale`
  * (host eager + lazy packs already loaded + every driver/extension pack that
  * registered itself). Returns a shallow copy: callers must never write back

@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button';
 import { PathInput } from '@datazen/ui';
 import { Select } from '../../components/ui/Select';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { useLanguagePackStore } from '../../stores/languagePackStore';
 import { useSettings } from '../../hooks/useSettings';
 import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
@@ -31,6 +32,7 @@ import { SectionTitle, SettingRow, ToggleRow } from './settingsUi';
 import { SettingHint } from './SettingHint';
 import { Slider } from '../../components/ui/Slider';
 import { DataCleanupSection } from './DataCleanupSection';
+import { LanguagePacksCard } from './LanguagePacksCard';
 import { AppearanceSection } from './AppearanceSection';
 import { TableDataSettingsSection } from './TableDataSettingsSection';
 import { SqlSnippetsCard } from './SqlSnippetsCard';
@@ -115,16 +117,28 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
       .catch(() => {});
   }, [capabilities?.versionSource]);
 
-  const languageOptions = useMemo(
-    () => [
-      ...BUILTIN_LOCALES.map((code) => ({
-        value: code,
-        label: BUILTIN_LOCALE_LABELS[code],
-      })),
-      ...getExtensionLocales(),
-    ],
-    [],
-  );
+  // Installed external language packs add their (label) to the language
+  // dropdown; extension-contributed locales (wapp registerLocale channel)
+  // follow, both deduped against the built-ins and each other.
+  const installedPacks = useLanguagePackStore((s) => s.packs);
+  const languageOptions = useMemo(() => {
+    const seen = new Set<string>(BUILTIN_LOCALES);
+    const options: Array<{ value: string; label: string }> = BUILTIN_LOCALES.map((code) => ({
+      value: code,
+      label: BUILTIN_LOCALE_LABELS[code],
+    }));
+    for (const pack of installedPacks) {
+      if (seen.has(pack.code)) continue;
+      seen.add(pack.code);
+      options.push({ value: pack.code, label: pack.label });
+    }
+    for (const extensionLocale of getExtensionLocales()) {
+      if (seen.has(extensionLocale.value)) continue;
+      seen.add(extensionLocale.value);
+      options.push(extensionLocale);
+    }
+    return options;
+  }, [installedPacks]);
 
   const [activeSection, setActiveSection] = useState<SettingsSection>(() =>
     availableSections.some((section) => section.id === initialSection)
@@ -406,8 +420,11 @@ export function SettingsContent({ initialSection, onBack }: Readonly<SettingsCon
                   value={settings.language}
                   options={languageOptions}
                   onChange={(v) => updateField('language', v)}
+                  triggerDataAttrs={{ 'data-testid': 'settings-language-select' }}
                 />
               </SettingRow>
+
+              <LanguagePacksCard />
 
               {(capabilities?.updater ?? true) && <UpdateSection />}
 

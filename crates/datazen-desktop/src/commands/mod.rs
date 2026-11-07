@@ -20,6 +20,7 @@ mod file;
 pub(crate) mod file_jobs;
 mod fk_navigation;
 mod history;
+mod language_packs;
 pub mod mcp;
 mod named_views;
 mod port_call;
@@ -51,6 +52,7 @@ pub use dashboard::*;
 pub use data::*;
 pub use data_transfer::*;
 pub use encryption_key::*;
+pub use language_packs::*;
 // The dialog gateway hosts product commands (F4c picker merge) alongside the
 // webdriver-only dialog injection commands. The glob must be UNCONDITIONAL:
 // `generate_handler!` resolves the macro-generated `__cmd__` companions

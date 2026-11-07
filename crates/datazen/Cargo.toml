@@ -93,6 +93,18 @@ wapps = [
     "dep:tracing",
     "dep:datazen-infra",
 ]
+# 设置页「安装外部语言包」：单语言 ZIP（manifest + 13 域 JSON 字典）的
+# 校验规则单家、两遍安检解包、原子安装、注册表扫描与卸载（设计档：
+# docs/development/language-pack-install-design.md）。zip-slip 与压缩比
+# 防护沿用 infra::path_safety；uuid 铸 staging 实例 id；tracing 记扫描
+# 告警。serde 常驻非可选。
+language_packs = [
+    "dep:serde_json",
+    "dep:zip",
+    "dep:uuid",
+    "dep:tracing",
+    "dep:datazen-infra",
+]
 # D6 item 5 切片 a：表导出与文件产物作业（FileArtifactJob）自 modules
 # 归位。zip 承载多文件归档；SQL 只读校验沿用 execution::domain::sql_guard，
 # job 词汇来自 jobs；uuid 铸产物执行 id，chrono 已常驻。
