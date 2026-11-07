@@ -369,6 +369,62 @@ async fn cross_org_session_is_not_visible_to_executions() {
 }
 
 #[tokio::test]
+async fn cross_org_execution_read_is_uniform_404() {
+    let (cases, directory, store) = execution_service();
+    store.seed(vec![contract_profile_record()]).await;
+    let mut app = execution_app(ExecutionState {
+        sessions: cases.clone(),
+        directory,
+        // 落账器默认关闭（本套件钉路由语义；历史落账在 query_assets_routes
+        // 套件端到端验证）。
+        history: None,
+    });
+    let ctx = contract_http_context();
+    let session = session_of(CONTRACT_ORGANIZATION, "user-contract");
+    let stranger = session_of("org-stranger", "user-stranger");
+
+    // 本主体提交一笔会话内执行（受理即可，不追终态）。
+    let handle = open_contract_session(&cases, &ctx).await;
+    let db_session_id = handle.db_session_id.as_str().to_owned();
+    let token = cases
+        .issue_submission_token(&ctx, IdempotentOperation::ExecuteInSession, Some(&handle))
+        .await
+        .expect("execute submission token");
+    let idempotency_key = token.idempotency_key.as_str().to_owned();
+    let (status, receipt) = call_json(
+        &mut app,
+        "POST",
+        &format!("/api/v1/sessions/{db_session_id}/executions"),
+        Some(&session),
+        Some(serde_json::json!({
+            "handle": handle,
+            "call": { "command": "contract-execute", "input": {} },
+            "idempotencyKey": idempotency_key,
+            "submissionToken": { "idempotencyKey": idempotency_key },
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::ACCEPTED, "{receipt}");
+    let execution_id = receipt["executionId"]
+        .as_str()
+        .expect("executionId")
+        .to_owned();
+
+    // 越组织读取：404 合并口径（与提交/取消同一条 notFound 文案；用例层
+    // visible_to 归因——防枚举纪律的跨组织腿，与同组织第二主体钉互补）。
+    let (status, wire) = call_json(
+        &mut app,
+        "GET",
+        &format!("/api/v1/executions/{execution_id}"),
+        Some(&stranger),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "cross-org read: {wire}");
+    assert_eq!(wire["code"], "notFound");
+}
+
+#[tokio::test]
 async fn unknown_execution_reads_as_not_found() {
     let (cases, directory, _store) = execution_service();
     let mut app = execution_app(ExecutionState {
@@ -775,9 +831,7 @@ async fn fullstack_fixture() -> FullstackFixture {
                 clock.clone(),
             )),
             downloads: Arc::new(datazen_server::transfer::DownloadService::new(
-                artifacts,
-                audit,
-                clock,
+                artifacts, audit, clock,
             )),
             tasks: Arc::new(datazen_server::operations::TaskCenter::new(jobs, 50)),
             sessions: cases.clone(),
