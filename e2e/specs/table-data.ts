@@ -16,6 +16,8 @@ import {
 
 /**
  * Table data view tests: pagination, sorting, column resize.
+ * The value-search journey (TD-VS, DBR-03) lives here too — it is the
+ * same data-browsing domain: "which table holds this value?".
  * Requires a PostgreSQL connection (seeded by wdio.conf.ts before hook).
  */
 
@@ -294,5 +296,225 @@ describe('表数据视图 (TD-001~TD-008)', () => {
     expect(ok).toBe(true);
     await openQueryTab();
     await executeSQL(`DROP TABLE IF EXISTS ${emptyTable}`);
+  });
+});
+
+// ── 全库值搜索 (DBR-03 / TD-VS) ─────────────────────────────────
+// The value-search dialog's own journey: the five match modes, the
+// schema-qualified scope picker, the zero-hit/failed split, and the
+// "open and locate" hand-over that seeds the scan's own conditions.
+
+const VS_SCHEMA_A = 'e2e_vs_a';
+const VS_SCHEMA_B = 'e2e_vs_b';
+
+describe('全库值搜索 (TD-VS)', () => {
+  let mainWindow: string;
+
+  before(async () => {
+    mainWindow = await browser.getWindowHandle();
+    await connectSeededPgInWorkspace();
+    await waitForNewQueryButton(20000);
+    await browser.pause(1500);
+
+    // Two same-named tables in two schemas (the cross-schema trap), one of
+    // which holds the needle; plus a clean table that never does.
+    await openQueryTab();
+    await executeSQLChecked(`DROP SCHEMA IF EXISTS ${VS_SCHEMA_A} CASCADE`);
+    await executeSQLChecked(`DROP SCHEMA IF EXISTS ${VS_SCHEMA_B} CASCADE`);
+    await executeSQLChecked(`CREATE SCHEMA ${VS_SCHEMA_A}`);
+    await executeSQLChecked(`CREATE SCHEMA ${VS_SCHEMA_B}`);
+    await executeSQLChecked(`
+      CREATE TABLE ${VS_SCHEMA_A}.dup_name (
+        id SERIAL PRIMARY KEY,
+        label TEXT NOT NULL
+      )
+    `);
+    await executeSQLChecked(`
+      CREATE TABLE ${VS_SCHEMA_B}.dup_name (
+        id SERIAL PRIMARY KEY,
+        label TEXT NOT NULL
+      )
+    `);
+    await executeSQLChecked(`
+      CREATE TABLE public._e2e_vs_zero (
+        id SERIAL PRIMARY KEY,
+        label TEXT NOT NULL
+      )
+    `);
+    await executeSQLChecked(
+      `INSERT INTO ${VS_SCHEMA_A}.dup_name (label) VALUES ('needle'), ('other')`,
+    );
+    await executeSQLChecked(`INSERT INTO ${VS_SCHEMA_B}.dup_name (label) VALUES ('nothing')`);
+    await executeSQLChecked(`INSERT INTO public._e2e_vs_zero (label) VALUES ('blank')`);
+
+    await clickNavigatorRefresh();
+    await waitForTableInSidebar('dup_name');
+  });
+
+  after(async () => {
+    try {
+      await browser.switchToWindow(mainWindow);
+      await openQueryTab();
+      await executeSQL(`DROP SCHEMA IF EXISTS ${VS_SCHEMA_A} CASCADE`);
+      await executeSQL(`DROP SCHEMA IF EXISTS ${VS_SCHEMA_B} CASCADE`);
+      await executeSQL(`DROP TABLE IF EXISTS public._e2e_vs_zero`);
+    } catch {
+      // best-effort cleanup
+    }
+    await closeExtraWindows(mainWindow);
+    await closeWorkspacePanels(browser);
+  });
+
+  async function openValueSearch(): Promise<void> {
+    const entry = await $('[data-testid="navigator-search-values"]');
+    await entry.waitForDisplayed({ timeout: 10000 });
+    await entry.click();
+    const dialog = await $('[data-testid="database-value-search-dialog"]');
+    await dialog.waitForDisplayed({ timeout: 5000 });
+  }
+
+  async function closeValueSearch(): Promise<void> {
+    const dialog = await $('[data-testid="database-value-search-dialog"]');
+    if (await dialog.isDisplayed()) {
+      await browser.keys('Escape');
+      await browser.pause(300);
+    }
+  }
+
+  /** Pick the n-th entry of the Select carrying the test id (0-based). */
+  async function pickSelectOption(testId: string, index: number): Promise<void> {
+    await $(`[data-testid="${testId}"]`).click();
+    const option = await $(`[data-testid="select-option"][data-option-idx="${index}"]`);
+    await option.waitForDisplayed({ timeout: 5000 });
+    await option.click();
+    await browser.pause(200);
+  }
+
+  it('工具栏入口打开对话框，匹配模式含"不包含" (TD-VS-001)', async () => {
+    await openValueSearch();
+
+    await pickSelectOption('value-search-mode', 1);
+    // The trigger now shows the not-contains label.
+    const trigger = await $('[data-testid="value-search-mode"]');
+    const label = await trigger.getText();
+    expect(label).toContain(t('valueSearch.mode.notContains'));
+
+    await closeValueSearch();
+  });
+
+  it('范围选择器按 Schema 区分同名表，计划随之收窄 (TD-VS-002)', async () => {
+    await openValueSearch();
+
+    // 已选表 (index 1 of the scope select)
+    await pickSelectOption('value-search-scope', 1);
+    const picker = await $('[data-testid="value-search-table-picker"]');
+    await picker.waitForDisplayed({ timeout: 5000 });
+
+    // Both same-named tables appear, each under its own schema.
+    const a = await $('[data-testid="value-search-table-option-e2e_vs_a.dup_name"]');
+    const b = await $('[data-testid="value-search-table-option-e2e_vs_b.dup_name"]');
+    await expect(a).toBeDisplayed();
+    await expect(b).toBeDisplayed();
+
+    // Picking one narrows the plan's cost note to exactly that table.
+    await a.click();
+    await browser.pause(200);
+    const note = await $('[data-testid="value-search-cost-note"]');
+    const noteText = await note.getText();
+    expect(noteText).toContain('1');
+
+    // The scan answers with the picked table only — searching for 'other'
+    // (a value e2e_vs_a.dup_name holds) answers with that table, and the
+    // other schema's same-named table is never part of the answer.
+    const input = await $('[data-testid="value-search-input"]');
+    await input.setValue('other');
+    await $('[data-testid="value-search-start"]').click();
+    const results = await $('[data-testid="value-search-results"]');
+    await results.waitForDisplayed({ timeout: 20000 });
+    await browser.waitUntil(
+      async () => (await $('body').getText()).includes(t('valueSearch.status.done')),
+      { timeout: 20000, timeoutMsg: 'Timed out waiting for the scan to finish' },
+    );
+    // The answer names the schema-qualified table that was picked — the
+    // other schema's same-named table has no answer row at all.
+    const rowText = await results.getText();
+    expect(rowText).toContain('dup_name');
+
+    await closeValueSearch();
+  });
+
+  it('全部范围扫描把零命中表与命中表分列 (TD-VS-003)', async () => {
+    await openValueSearch();
+
+    const input = await $('[data-testid="value-search-input"]');
+    await input.setValue('needle');
+    await $('[data-testid="value-search-start"]').click();
+
+    const results = await $('[data-testid="value-search-results"]');
+    await results.waitForDisplayed({ timeout: 20000 });
+    await browser.waitUntil(
+      async () => (await $('body').getText()).includes(t('valueSearch.status.done')),
+      { timeout: 20000, timeoutMsg: 'Timed out waiting for the scan to finish' },
+    );
+
+    // The hit list names the schema-qualified answer; the clean tables sit
+    // in their own zero-hit summary, not among the hits.
+    expect(await results.getText()).toContain('dup_name');
+    const zeroSummary = await $('[data-testid="value-search-zero-hits-summary"]');
+    await expect(zeroSummary).toBeDisplayed();
+
+    await closeValueSearch();
+  });
+
+  it('不包含模式回答"哪些行确实没有该值" (TD-VS-004)', async () => {
+    await openValueSearch();
+
+    // 只扫 e2e_vs_a.dup_name：needle 在一行，other 在另一行 — not-contains
+    // 的答案是 1（否定分布到每一列，AND 起来，而不是把命中行算进去）。
+    await pickSelectOption('value-search-scope', 1);
+    const option = await $('[data-testid="value-search-table-option-e2e_vs_a.dup_name"]');
+    await option.click();
+    await browser.pause(200);
+
+    await pickSelectOption('value-search-mode', 1);
+    const input = await $('[data-testid="value-search-input"]');
+    await input.setValue('needle');
+    await $('[data-testid="value-search-start"]').click();
+
+    const results = await $('[data-testid="value-search-results"]');
+    await results.waitForDisplayed({ timeout: 20000 });
+    const row = await $('[data-testid="value-search-result-e2e_vs_a.dup_name"]');
+    await expect(row).toBeDisplayed();
+    const rowText = await row.getText();
+    expect(rowText).toContain('1');
+
+    await closeValueSearch();
+  });
+
+  it('打开并定位：新表页带着扫描自己的条件打开 (TD-VS-005)', async () => {
+    await openValueSearch();
+
+    const input = await $('[data-testid="value-search-input"]');
+    await input.setValue('needle');
+    await $('[data-testid="value-search-start"]').click();
+
+    const results = await $('[data-testid="value-search-results"]');
+    await results.waitForDisplayed({ timeout: 20000 });
+    await browser.waitUntil(
+      async () => (await $('body').getText()).includes(t('valueSearch.status.done')),
+      { timeout: 20000 },
+    );
+
+    await $('[data-testid="value-search-locate-e2e_vs_a.dup_name"]').click();
+
+    // The dialog hands over, the table tab opens, and the filter panel
+    // arrives already carrying the scan's own question: a contains
+    // condition on the searched column with the needle as its value.
+    await browser.pause(1500);
+    const editor = await $('[data-testid="filter-editor"]');
+    await editor.waitForDisplayed({ timeout: 10000 });
+    const body = await $('body').getText();
+    expect(body).toContain('needle');
+    expect(body).toContain('label');
   });
 });

@@ -479,3 +479,66 @@ describe('usePanelHandlers.handleOpenTableAction accepts a full spec (DB-16 esca
     expect(usePanelStore.getState().panels.find((p) => p.type === 'query')).toBeUndefined();
   });
 });
+
+describe('usePanelHandlers.handleSelectTable keys a tab by schema too (DBR-03)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    usePanelStore.getState().reset();
+    useActiveConnectionStore.getState().reset();
+  });
+
+  it('opens a second tab for a same-named table in another schema', async () => {
+    const { result } = renderHandler('postgresql', 'db_a');
+
+    await act(async () => {
+      result.current.handleSelectTable('orders', 'sales', 'db_a');
+    });
+    await act(async () => {
+      result.current.handleSelectTable('orders', 'archive', 'db_a');
+    });
+
+    const tables = usePanelStore
+      .getState()
+      .panels.filter((p) => p.type === 'table' && p.tableName === 'orders');
+    // Two schemas, two tabs — the bare-name match used to land the second
+    // click on the first tab, silently showing the wrong table.
+    expect(tables).toHaveLength(2);
+    expect(tables.map((p) => (p as { tableSchema: string | null }).tableSchema).sort()).toEqual(
+      ['archive', 'sales'],
+    );
+  });
+
+  it('reuses the tab of the very schema the caller named', async () => {
+    const { result } = renderHandler('postgresql', 'db_a');
+
+    let firstId: string;
+    await act(async () => {
+      result.current.handleSelectTable('orders', 'sales', 'db_a');
+    });
+    firstId = usePanelStore.getState().activePanelId!;
+    await act(async () => {
+      result.current.handleSelectTable('orders', 'sales', 'db_a');
+    });
+
+    expect(usePanelStore.getState().activePanelId).toBe(firstId);
+    expect(usePanelStore.getState().panels.filter((p) => p.type === 'table')).toHaveLength(1);
+  });
+
+  it('keeps the legacy name+database match for a caller without schema knowledge', async () => {
+    const { result } = renderHandler('postgresql', 'db_a');
+
+    let firstId: string;
+    await act(async () => {
+      result.current.handleSelectTable('orders', 'sales', 'db_a');
+    });
+    firstId = usePanelStore.getState().activePanelId!;
+    // A null schema means "the caller does not know", not "no schema": the
+    // pre-DBR-03 behaviour (match by name+database) must survive.
+    await act(async () => {
+      result.current.handleSelectTable('orders', null, 'db_a');
+    });
+
+    expect(usePanelStore.getState().activePanelId).toBe(firstId);
+    expect(usePanelStore.getState().panels.filter((p) => p.type === 'table')).toHaveLength(1);
+  });
+});

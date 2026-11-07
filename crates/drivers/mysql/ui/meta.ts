@@ -82,6 +82,19 @@ function mysqlEscapeSqlValue(value: unknown): string {
   return `'${str.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll("'", "''")}'`;
 }
 
+/**
+ * DBR-03: MySQL/MariaDB `LIKE` accepts non-text operands by casting them to
+ * their text rendering (numbers and dates alike — `12345 LIKE '12%'` is 1,
+ * a DATE column renders `YYYY-MM-DD`), so the full-database value search may
+ * offer numbers and date/times as text-representation matches. Doris,
+ * StarRocks, Manticore and OceanBase share the wire protocol but not
+ * necessarily the cast rule, so they stay on the safe text set until each
+ * dialect is verified on its own.
+ */
+const mysqlValueSearchTypes = {
+  dataGrid: { valueSearchExtraTypes: ['number', 'datetime'] },
+} as const;
+
 export const mysqlMeta = {
   label: 'MySQL',
   shortLabel: 'My',
@@ -111,6 +124,7 @@ export const mysqlMeta = {
   supportedObjectKinds: ['function', 'procedure', 'trigger'],
   ...mysqlStructureEditorSpread,
   ...mysqlCellTypesSpread,
+  ...mysqlValueSearchTypes,
   ...mysqlDialectSpread,
   supportsCreateDatabase: true,
   supportsCreateUser: true,
@@ -146,6 +160,7 @@ export const mariadbMeta = {
   supportedObjectKinds: ['function', 'procedure', 'trigger'],
   ...mysqlStructureEditorSpread,
   ...mysqlCellTypesSpread,
+  ...mysqlValueSearchTypes,
   ...mysqlDialectSpread,
   supportsCreateDatabase: true,
   supportsCreateUser: true,

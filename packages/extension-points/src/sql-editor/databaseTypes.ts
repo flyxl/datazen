@@ -256,6 +256,21 @@ export interface DataGridCapabilities {
    * this one.
    */
   countStrategy?: CountStrategy;
+  /**
+   * Cell-type groups the full-database value search may include beyond the
+   * safe text set (text / enum / unknown), as **text-representation
+   * matches** (DBR-03).
+   *
+   * `'number'` adds numeric columns, `'datetime'` adds date/time/datetime
+   * columns — both matched by the driver's own `LIKE` cast of the value to
+   * its text rendering (`42` matches `42`, `2023-01-02` matches `2023-`),
+   * never as typed comparisons. Declare a group only when the dialect's
+   * `LIKE` really accepts a non-text operand — MySQL/MariaDB/SQLite cast
+   * implicitly, PostgreSQL rejects the statement outright, so it declares
+   * nothing and the type options stay hidden there. Undeclared means the
+   * safe text set only, which is what every driver had before DBR-03.
+   */
+  valueSearchExtraTypes?: readonly ('number' | 'datetime')[];
 }
 
 export interface DatabaseTypeMeta {
@@ -496,6 +511,21 @@ export interface DataGridCapabilities {
    * this one.
    */
   countStrategy?: CountStrategy;
+  /**
+   * Cell-type groups the full-database value search may include beyond the
+   * safe text set (text / enum / unknown), as **text-representation
+   * matches** (DBR-03).
+   *
+   * `'number'` adds numeric columns, `'datetime'` adds date/time/datetime
+   * columns — both matched by the driver's own `LIKE` cast of the value to
+   * its text rendering (`42` matches `42`, `2023-01-02` matches `2023-`),
+   * never as typed comparisons. Declare a group only when the dialect's
+   * `LIKE` really accepts a non-text operand — MySQL/MariaDB/SQLite cast
+   * implicitly, PostgreSQL rejects the statement outright, so it declares
+   * nothing and the type options stay hidden there. Undeclared means the
+   * safe text set only, which is what every driver had before DBR-03.
+   */
+  valueSearchExtraTypes?: readonly ('number' | 'datetime')[];
 }
 
 export interface DatabaseTypeMeta {

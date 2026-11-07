@@ -137,6 +137,14 @@ fn the_modes_shape_the_pattern() {
         .expect("expressible");
     let suffix = build_search_statement(&dialect, "t", &columns(&["a"]), "ac", SearchMode::Suffix)
         .expect("expressible");
+    let not_contains = build_search_statement(
+        &dialect,
+        "t",
+        &columns(&["a"]),
+        "ac",
+        SearchMode::NotContains,
+    )
+    .expect("expressible");
 
     match contains {
         SearchStatement::Bound { params, .. } => {
@@ -164,6 +172,109 @@ fn the_modes_shape_the_pattern() {
             );
         }
         _ => panic!("expected the bound shape"),
+    }
+    // `notContains` searches for the same needle as `contains` — the
+    // negation lives in the keyword, never in a twisted pattern.
+    match not_contains {
+        SearchStatement::Bound { params, .. } => {
+            assert_eq!(
+                serde_json::to_value(&params[0]).unwrap(),
+                serde_json::json!("%ac%")
+            );
+        }
+        _ => panic!("expected the bound shape"),
+    }
+}
+
+/// The PRD's match definitions, written down as statement facts (DBR-03):
+/// the negation of a disjunction is a conjunction of negations.
+#[test]
+fn not_contains_negates_each_like_and_ands_the_columns() {
+    let driver = MockDriver::new(
+        "postgres",
+        MockDriverOptions {
+            parameterized_writes: true,
+            ..Default::default()
+        },
+    );
+    let dialect = LegacySqlDialect::new(driver.as_ref());
+    let statement = build_search_statement(
+        &dialect,
+        "t",
+        &columns(&["a", "b"]),
+        "ac",
+        SearchMode::NotContains,
+    )
+    .expect("expressible");
+
+    let sql = statement.sql().to_string();
+    assert_eq!(
+        sql,
+        // NOT (a LIKE p OR b LIKE p) ≡ a NOT LIKE p AND b NOT LIKE p — an OR
+        // of negations would count a row whose `a` holds the value because its
+        // `b` does not, which answers a question nobody asked.
+        "SELECT COUNT(*) FROM \"t\" WHERE \"a\" NOT LIKE ?1 AND \"b\" NOT LIKE ?1",
+        "the negation distributes: {sql}"
+    );
+}
+
+/// The `NOT LIKE` keeps riding with the `ESCAPE` clause: a wildcard in the
+/// value must stay literal whichever polarity the search has.
+#[test]
+fn not_contains_keeps_the_escape_clause() {
+    let statement = build_search_statement(
+        &EscapingDialect,
+        "t",
+        &columns(&["a"]),
+        "50%",
+        SearchMode::NotContains,
+    )
+    .expect("expressible");
+
+    match statement {
+        SearchStatement::Bound { sql, params } => {
+            assert_eq!(
+                serde_json::to_value(&params[0]).unwrap(),
+                serde_json::json!("%50\\%%")
+            );
+            assert_eq!(
+                sql,
+                "SELECT COUNT(*) FROM \"t\" WHERE \"a\" NOT LIKE ?1 ESCAPE '\\\\'"
+            );
+        }
+        _ => panic!("expected the bound shape"),
+    }
+}
+
+/// The case definition: the statement carries no case override — `LIKE`
+/// answers under the driver's own collation (CI under MySQL's default,
+/// CS under PostgreSQL), and a `COLLATE` would second-guess the column's own.
+#[test]
+fn the_statement_never_overrides_case_or_null_semantics() {
+    let driver = MockDriver::new(
+        "postgres",
+        MockDriverOptions {
+            parameterized_writes: true,
+            ..Default::default()
+        },
+    );
+    let dialect = LegacySqlDialect::new(driver.as_ref());
+    for mode in [
+        SearchMode::Contains,
+        SearchMode::Exact,
+        SearchMode::Prefix,
+        SearchMode::Suffix,
+        SearchMode::NotContains,
+    ] {
+        let sql = build_search_statement(&dialect, "t", &columns(&["a"]), "Ac", mode)
+            .expect("expressible")
+            .sql()
+            .to_string();
+        assert!(!sql.to_uppercase().contains("COLLATE"), "{sql}");
+        // NULL stays three-valued: no COALESCE/IS NULL patch-up — a NULL cell
+        // matches neither polarity, by SQL's own rules.
+        assert!(!sql.to_uppercase().contains("COALESCE"), "{sql}");
+        assert!(!sql.contains("IS NULL"), "{sql}");
     }
 }
 
@@ -237,6 +348,39 @@ async fn an_empty_request_is_refused() {
     let error = search_table_values(driver.as_ref(), &handle, "app", None, &request)
         .await
         .expect_err("no column is no search");
+
+    assert!(
+        error
+            .to_string()
+            .starts_with("grid.valueSearch.shapeMismatch"),
+        "classified: {error}"
+    );
+}
+
+/// The empty-value definition: refused before any statement is built. An
+/// empty pattern would mean "matches everything", which is a question nobody
+/// asked — and `NOT LIKE '%%'` would answer "every non-NULL row", which is
+/// not what a user means by searching for nothing.
+#[tokio::test]
+async fn an_empty_value_is_refused() {
+    let driver = MockDriver::new("postgres", Default::default());
+    let handle = datazen_driver_api::ConnectionHandle {
+        id: "h".into(),
+        pool_id: "p".into(),
+    };
+    let request = SearchTableValuesRequest {
+        db_session_id: "session-1".into(),
+        table: "customers".into(),
+        columns: columns(&["name"]),
+        value: "   ".into(),
+        mode: SearchMode::Contains,
+        database: None,
+        schema: None,
+    };
+
+    let error = search_table_values(driver.as_ref(), &handle, "app", None, &request)
+        .await
+        .expect_err("an empty value is no search");
 
     assert!(
         error

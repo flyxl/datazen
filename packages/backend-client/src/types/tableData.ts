@@ -488,8 +488,14 @@ export interface ResolveForeignKeyTargetsRequest {
   browse?: boolean;
 }
 
-/** How the search value must match a column's value (DB-19). */
-export type ValueSearchMode = 'contains' | 'exact' | 'prefix' | 'suffix';
+/**
+ * How the search value must match a column's value (DB-19, DBR-03).
+ *
+ * The modes are the statement's own five; `notContains` counts the rows where
+ * **every** searched column verifiably lacks the value (`NOT LIKE`, joined by
+ * `AND` — the negation distributes over the positive modes' `OR`).
+ */
+export type ValueSearchMode = 'contains' | 'exact' | 'prefix' | 'suffix' | 'notContains';
 
 /** The request of one table's value search (DB-19). */
 export interface SearchTableValuesRequest {

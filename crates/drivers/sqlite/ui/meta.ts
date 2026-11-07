@@ -50,4 +50,10 @@ export const sqliteMeta = {
   },
   sqlDialectStrategy: sqliteDialect,
   sqlDialectProfile: sqliteDialectProfile,
+  /**
+   * DBR-03: SQLite `LIKE` converts a non-text operand to its text rendering
+   * before matching (`12345 LIKE '12%'` is 1), so the full-database value
+   * search may offer numbers and date/times as text-representation matches.
+   */
+  dataGrid: { valueSearchExtraTypes: ['number', 'datetime'] },
 } satisfies DatabaseTypeMeta;
