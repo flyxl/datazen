@@ -23,7 +23,15 @@ describe('ci-tauri-build args', () => {
       target: 'x86_64-pc-windows-msvc',
       updaterConfigPath: configPath,
     });
-    expect(args).toEqual(['build', '--target', 'x86_64-pc-windows-msvc', '--config', configPath]);
+    expect(args).toEqual([
+      'build',
+      '--target',
+      'x86_64-pc-windows-msvc',
+      '--config',
+      configPath,
+      '--',
+      '--no-default-features',
+    ]);
     expect(args[args.indexOf('--config') + 1].startsWith('{')).toBe(false);
   });
 
@@ -34,7 +42,28 @@ describe('ci-tauri-build args', () => {
   });
 
   it('omits --config unless updater is requested', () => {
-    expect(buildTauriArgs({ features: ['driver-redis'] })).toEqual(['build', '-f', 'driver-redis']);
+    expect(buildTauriArgs({ features: ['driver-redis'] })).toEqual([
+      'build',
+      '-f',
+      'driver-redis',
+      '--',
+      '--no-default-features',
+    ]);
+  });
+
+  it('passes --no-default-features to Cargo so SKU sets never gain default drivers', () => {
+    // W7-B turned `default = ["drivers"]` on the desktop crate. Every scripted
+    // build passes an explicit `-f` list from .driver-features.json; without
+    // --no-default-features each SKU would silently gain all 15 path drivers
+    // and basic/all/webdriver would stop being byte-identical to their
+    // default=[] feature sets.
+    for (const args of [
+      buildTauriArgs({ features: ['driver-redis'] }),
+      buildTauriArgs({ features: [] }),
+      buildTauriArgs({}),
+    ]) {
+      expect(args.slice(-2)).toEqual(['--', '--no-default-features']);
+    }
   });
 
   it('resolves the JS CLI entry instead of pnpm.cmd', () => {
@@ -48,7 +77,15 @@ describe('ci-tauri-build args', () => {
       features: ['driver-redis'],
       updaterConfigPath: join(dir, 'test-pro.json'),
     });
-    expect(args).toEqual(['build', '--config', join(dir, 'test-pro.json'), '-f', 'driver-redis']);
+    expect(args).toEqual([
+      'build',
+      '--config',
+      join(dir, 'test-pro.json'),
+      '-f',
+      'driver-redis',
+      '--',
+      '--no-default-features',
+    ]);
   });
 
   it('never passes --profile, which tauri-cli 2.10.1 rejects', () => {
@@ -68,6 +105,8 @@ describe('ci-tauri-build args', () => {
       'aarch64-apple-darwin',
       '--config',
       '/tmp/updater.json',
+      '--',
+      '--no-default-features',
     ]);
   });
 
@@ -153,12 +192,15 @@ describe('ci-tauri-build updater endpoint per SKU', () => {
     expect(args).toContain('--config');
     const config = JSON.parse(readFileSync(args[args.indexOf('--config') + 1], 'utf-8'));
     expect(config.plugins.updater.endpoints[0]).toContain('latest-all.json');
+    expect(args.slice(-2)).toEqual(['--', '--no-default-features']);
 
     // Basic still relies on the base config when nothing else needs an overlay.
     expect(buildTauriArgs({ features: ['driver-redis'], variant: 'basic' })).toEqual([
       'build',
       '-f',
       'driver-redis',
+      '--',
+      '--no-default-features',
     ]);
   });
 
@@ -192,7 +234,13 @@ describe('ci-tauri-build pro staging preflight', () => {
 
   it('reports an empty missing list when the staged tree is complete', () => {
     const root = mkdtempSync(join(tmpdir(), 'datazen-pro-ready-'));
-    const staging = join(root, 'src-tauri', 'resources', 'builtin-ep', 'sql-editor-pro');
+    const staging = join(
+      root,
+      'crates/datazen-desktop',
+      'resources',
+      'builtin-ep',
+      'sql-editor-pro',
+    );
     mkdirSync(join(staging, 'dist'), { recursive: true });
     writeFileSync(join(staging, 'manifest.json'), '{}');
     writeFileSync(join(staging, 'dist/index.esm.js'), '// bundle');

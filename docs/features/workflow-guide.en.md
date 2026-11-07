@@ -900,7 +900,8 @@ output:
 |------|----------|
 | `modules/src/workflow/` | Model, execute, templates, conditions |
 | `scripts/test-cross-db-workflow.yaml` | Cross-DB sample |
-| `src-tauri/tests/workflow_tests.rs` | Integration tests |
+| `modules/src/workflow/domain/model_tests.rs` | Model YAML/serialization tests (in-crate, split home since 2026-11-02) |
+| `src-tauri/tests/workflow_db_tests.rs` | Cross-DB real-DB integration tests (need PG + MySQL; CI runs them in the weekly workflow-db-tests job) |
 | `modules/resources/prompts/workflow_generate.md` | AI generation rules |
 | `e2e/specs/workflow*.ts` | UI E2E |
 

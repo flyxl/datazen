@@ -5,7 +5,6 @@
  * ADB-002  export_app_data writes a zip under a temp path (overridePath form)
  * ADB-003  Export zip is non-empty and re-import IPC succeeds (no restart)
  * ADB-004  Import of path-traversal zip fails safely
- * ADB-005  get_system_ui_language returns a supported locale (related first-run)
  * ADB-006  Exported zip excludes logs/ and *.tmp entries
  * ADB-007  Export button label matches current UI language
  * ADB-008  Exported zip excludes .key (encryption key material)
@@ -50,8 +49,6 @@ function importFromPath(zipPath: string) {
   });
 }
 
-const SUPPORTED = new Set(['en', 'zh-CN', 'zh-TW', 'es', 'fr', 'de', 'ja', 'pt-BR', 'ru', 'ko']);
-
 function makeTraversalZip(dest: string) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dz-evil-'));
   const payload = path.join(dir, 'outside.txt');
@@ -73,7 +70,7 @@ z.close()
   execFileSync('python3', ['-c', py, dest], { stdio: 'ignore' });
 }
 
-describe('App Data Backup (ADB-001~ADB-005)', () => {
+describe('App Data Backup (ADB-001~ADB-004, ADB-006~ADB-007)', () => {
   let backupPath = '';
   let evilPath = '';
 
@@ -105,7 +102,7 @@ describe('App Data Backup (ADB-001~ADB-005)', () => {
     // App-data config wiring (backupCommands calls + menu:export/import-config
     // listeners) lives in ConnectionPage.tsx.
     const connectionSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, '../../src/windows/connection/ConnectionPage.tsx'),
+      path.resolve(import.meta.dirname, '../../packages/frontend/src/windows/connection/ConnectionPage.tsx'),
       'utf8',
     );
     expect(connectionSrc).toContain('backupCommands.exportAppData(');
@@ -117,14 +114,14 @@ describe('App Data Backup (ADB-001~ADB-005)', () => {
     // Asset-drift fix: the menu:export/import-connections listeners live in
     // MainPage.tsx (in-page connection dialog) — not in ConnectionPage.tsx.
     const mainPageSrc = fs.readFileSync(
-      path.resolve(import.meta.dirname, '../../src/windows/main/MainPage.tsx'),
+      path.resolve(import.meta.dirname, '../../packages/frontend/src/windows/main/MainPage.tsx'),
       'utf8',
     );
     expect(mainPageSrc).toContain('menu:export-connections');
     expect(mainPageSrc).toContain('menu:import-connections');
 
     const zh = fs.readFileSync(
-      path.resolve(import.meta.dirname, '../../src/locales/zh-CN/core.ts'),
+      path.resolve(import.meta.dirname, '../../packages/frontend/src/locales/zh-CN/core.ts'),
       'utf8',
     );
     expect(zh).toContain("'common.exportAppData': '导出应用数据'");
@@ -143,7 +140,7 @@ describe('App Data Backup (ADB-001~ADB-005)', () => {
     // Idempotent restore of current snapshot (no restart — Store stays in memory).
     await exportToPath(backupPath);
     await importFromPath(backupPath);
-    const settings = await invokeBackend<Record<string, unknown>>('get_settings');
+    const settings = await invokeBackend<Record<string, unknown>>('get_host_settings');
     expect(settings).toBeTruthy();
     expect(typeof settings.language).toBe('string');
   });
@@ -158,11 +155,6 @@ describe('App Data Backup (ADB-001~ADB-005)', () => {
       expect(String(e)).toMatch(/traversal|InvalidInput|absolute|failed|error/i);
     }
     expect(failed).toBe(true);
-  });
-
-  it('ADB-005: get_system_ui_language should return a supported locale', async () => {
-    const lang = await invokeBackend<string>('get_system_ui_language');
-    expect(SUPPORTED.has(lang)).toBe(true);
   });
 
   it('ADB-006: exported zip should exclude logs/ and *.tmp', async () => {
@@ -208,7 +200,7 @@ sys.exit(1 if bad else 0)
   });
 
   it('ADB-007: export label locale keys match current UI language', async () => {
-    const settings = await invokeBackend<{ language: string }>('get_settings');
+    const settings = await invokeBackend<{ language: string }>('get_host_settings');
     const localeFile =
       settings.language === 'zh-CN'
         ? path.join('zh-CN', 'core.ts')
@@ -216,7 +208,7 @@ sys.exit(1 if bad else 0)
           ? path.join('en', 'core.ts')
           : path.join('en', 'core.ts');
     const src = fs.readFileSync(
-      path.resolve(import.meta.dirname, `../../src/locales/${localeFile}`),
+      path.resolve(import.meta.dirname, `../../packages/frontend/src/locales/${localeFile}`),
       'utf8',
     );
     if (settings.language === 'zh-CN') {

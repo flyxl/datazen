@@ -3,7 +3,7 @@
  *
  * Zero-build vanilla JS mirroring the @datazen/extension-sdk bridge semantics:
  * `wapp.ready` -> `host.ready` handshake, then reqId-correlated RPC against
- * the host postMessage router (src/lib/extensionBridge.ts). Kept dependency-free
+ * the host postMessage router (src/lib/wappBridge.ts). Kept dependency-free
  * on purpose so the fixture is a plain static directory.
  */
 (function () {
@@ -19,7 +19,7 @@
 
   // BUG-F9-02 workaround: safaridriver cannot automate elements inside the
   // opaque-origin wapp iframe, so probe outcomes are persisted through the
-  // bridge storage.set RPC and asserted from disk by wapps.spec.ts.
+  // bridge storage.set RPC and asserted from disk by wapps.ts.
   var PROBE_PREFIX = 'probe.';
 
   var parentWindow = window.parent;

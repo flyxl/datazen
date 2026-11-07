@@ -30,7 +30,7 @@
     "skipLibCheck": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "types": ["dompurify", "node", "react", "react-dom", "vite/client"]
+    "types": ["node", "react", "react-dom", "vite/client"]
   },
   "include": ["src", "__tests__"]
 }

@@ -107,15 +107,15 @@ describe('createDriverFileStash', () => {
 
   it('leaves gitignored codegen files in place on restore', () => {
     stash.stashManagedFiles();
-    mkdirSync(join(root, 'src/extensions'), { recursive: true });
+    mkdirSync(join(root, 'packages/frontend/src/extensions'), { recursive: true });
     writeFileSync(
-      stash.workPath('src/extensions/generated.ts'),
-      INJECTED_CONTENTS['src/extensions/generated.ts'],
+      stash.workPath('packages/frontend/src/extensions/generated.ts'),
+      INJECTED_CONTENTS['packages/frontend/src/extensions/generated.ts'],
     );
     writeManagedFiles(root, INJECTED_CONTENTS);
     stash.restoreManagedFiles();
-    expect(readManaged(root, 'src/extensions/generated.ts')).toBe(
-      INJECTED_CONTENTS['src/extensions/generated.ts'],
+    expect(readManaged(root, 'packages/frontend/src/extensions/generated.ts')).toBe(
+      INJECTED_CONTENTS['packages/frontend/src/extensions/generated.ts'],
     );
     expect(readManaged(root, 'Cargo.toml')).toBe(CLEAN_CONTENTS['Cargo.toml']);
   });

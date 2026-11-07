@@ -1,0 +1,16 @@
+[package]
+name = "datazen-driver-support"
+version = "0.0.1"
+edition = "2021"
+description = "Dependency-free SQL text helpers shared by driver-api, drivers and hosts (host-boundary F3 first slice)"
+license-file = "LICENSE-MIT"
+repository = "https://github.com/flyxl/datazen"
+keywords = ["datazen", "database", "driver", "sql"]
+categories = ["database"]
+
+# F3 第一刀：sql_split 与 sql_identifiers 从 driver-api 下沉至此。两个模块
+# 零 crate 依赖、零外部依赖（纯字符串/字节扫描），刻意保持本 crate 无
+# dependencies——下游（驱动插件作者）可以只拿文本工具而不拖进 serde/tokio。
+# driver-api re-export 两个模块，既有 `datazen_driver_api::sql_split` 路径
+# 不变；PROTOCOL_VERSION 不动。
+[dependencies]

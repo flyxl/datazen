@@ -34,7 +34,7 @@ import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
  * rule says so). Three consequences:
  *
  *  1. a crate dropped under `packages/platform-api/`, `packages/application/` or
- *     `server/` is covered with no edit here and no edit to ci.yml;
+ *     `crates/datazen-server/` is covered with no edit here and no edit to ci.yml;
  *  2. editing §2.4 to add a family (say `yew` to F-05) arms it here;
  *  3. a workspace member matching no layer is an **error** — the one thing that
  *     must never happen is a green gate over a crate the gate does not know.
@@ -113,7 +113,7 @@ export const RULES = Object.freeze([
   {
     id: 'F-01',
     subjects: ['driver'],
-    // §2.4's F-01 row names `packages/drivers/*` — the same path the guard
+    // §2.4's F-01 row names `crates/drivers/*` — the same path the guard
     // resolves its subject from — so the subject set is compared **both ways**
     // against the row: a doc edit that adds or drops a subject path turns the
     // gate red until the guard and the spec are reconciled.
@@ -138,7 +138,7 @@ export const RULES = Object.freeze([
     // Both halves of the row are pinned: the subject path and the forbidden
     // family. Drop either from §2.4 and the guard says so instead of quietly
     // enforcing a rule the document no longer states.
-    specTokens: ['packages/drivers/*', 'tauri'],
+    specTokens: ['crates/drivers/*', 'tauri'],
     // F-01's scope covers **both** sides — the resolved closure and the
     // manifest's declaration edges. See the note under §2.4's table: the
     // resolve graph is feature-resolved, so an optional edge behind a feature
@@ -223,7 +223,7 @@ export const RULES = Object.freeze([
     // deny-list would silently permit every layer added from now on.
     allowedLayers: ['infra'],
     forbiddenCrates: 'spec',
-    specTokens: ['packages/infra'],
+    specTokens: ['crates/datazen-infra'],
     specCrates: ['tauri', 'axum', 'actix-web', 'warp', 'tonic', 'react'],
     note: 'the infrastructure kernel depends on no other layer and no platform transport',
   },
@@ -253,10 +253,11 @@ export const RULES = Object.freeze([
  * default no longer has anything to protect it. It could not be armed sooner —
  * until `resolveSubject` learned to answer a `ts` layer from the workspace
  * directory, this entry would have made every PR red by calling a present, clean
- * package a missing layer. `server` stays unarmed on purpose: `datazen-server`
- * has not landed, and F-06 remains honestly vacuous until it does.
+ * package a missing layer. `server` is armed since WR-D1 landed `datazen-server`
+ * (2026-10-31): F-06 now has a real subject, and this entry is what makes the
+ * server crate's disappearance an error rather than a silently vacuous rule.
  */
-export const DEFAULT_REQUIRED_LAYERS = ['backend-client', 'modules'];
+export const DEFAULT_REQUIRED_LAYERS = ['backend-client', 'modules', 'server'];
 
 function specLayerId(pathToken) {
   const normalised = pathToken.replace(/\/\*$/, '/*');
@@ -264,7 +265,13 @@ function specLayerId(pathToken) {
     (l) => l.path === normalised || (normalised.endsWith('/*') && l.path === normalised),
   );
   if (layer) return layer.id;
-  // `src-tauri` never appears as a F-row subject, but keep the miss loud rather
+  // W7-A layout rename: §2.4's F-rows name the `modules` / `server` layers by
+  // id (they were also literal directory names before the crates/ migration).
+  // Accept a bare layer id as a subject token so the spec rows keep reading
+  // layer-first while LAYERS carries the post-rename paths.
+  const byId = LAYERS.find((l) => l.id === pathToken);
+  if (byId) return byId.id;
+  // `crates/datazen-desktop` never appears as a F-row subject, but keep the miss loud rather
   // than silently mapping it onto something plausible.
   return { unclassified: `spec names \`${pathToken}\`, which matches no LAYERS entry` };
 }
@@ -282,7 +289,7 @@ export function parseSpecRow(row) {
   for (const match of row.matchAll(/`([^`]+)`/g)) {
     const token = match[1].trim();
     if (token === '') continue;
-    if (/^(packages\/|src-tauri$|server$|modules$)/.test(token)) paths.push(token);
+    if (/^(packages\/|apps\/|crates\/|src-tauri$|server$|modules$)/.test(token)) paths.push(token);
     else if (token.includes('@') || token.includes('(') || token.includes('.'))
       frontend.push(token);
     else crates.push(token);
@@ -691,10 +698,10 @@ export function checkPlatformCrateBoundaries(options) {
   // feature no member enables) — and only the first was in the graph.
   //
   // **The subject scope is the rule's, not the workspace's.** F-01's subjects
-  // are the `driver` layer (`packages/drivers/*`), so:
+  // are the `driver` layer (`crates/drivers/*`), so:
   //
   //   * a dormant `tauri*` edge in a **driver** is a violation;
-  //   * the same edge in the **host** is not. `src-tauri/Cargo.toml` declares
+  //   * the same edge in the **host** is not. `crates/datazen-desktop/Cargo.toml` declares
   //     `tauri-plugin-webdriver` for the macOS silent-E2E feature, and the host
   //     is *supposed* to depend on Tauri — F-01 does not cover it, so it is
   //     reported (an advisory) but never adjudicated. Reading the host's own
@@ -753,7 +760,7 @@ export function checkPlatformCrateBoundaries(options) {
       advisories.push(
         `F-01?  ${member.name} (${member.relDir}/Cargo.toml) declares ${where}, which the ` +
           `resolved graph does not contain. Not blocking: F-01's subjects are ` +
-          `\`packages/drivers/*\`, and \`${member.name}\` is not one of them.`,
+          `\`crates/drivers/*\`, and \`${member.name}\` is not one of them.`,
       );
       continue;
     }

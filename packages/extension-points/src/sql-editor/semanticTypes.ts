@@ -155,16 +155,11 @@ export type SqlSemanticModel = {
   diagnostics: readonly SqlSemanticDiagnostic[];
 };
 
-export type SqlDialectQuoteStyle = 'double' | 'backtick' | 'bracket' | 'none';
-
-export type SqlProjectionAliasVisibility = 'select-only' | 'order-group' | 'broad';
-
-export type SqlParameterPolicy = {
-  atNamed: boolean;
-  question: boolean;
-  dollarPositional: boolean;
-  template: boolean;
-};
+import type {
+  ResolvedSqlParameterPolicy,
+  SqlDialectQuoteStyle,
+  SqlProjectionAliasVisibility,
+} from './sqlDialectTypes';
 
 export type SqlDialectAdapter = {
   dialectId: string;
@@ -176,7 +171,7 @@ export type SqlDialectAdapter = {
   parseQualifiedName(text: string): QualifiedRelationId | null;
   compareIdentifiers(a: string, b: string): boolean;
   projectionAliasVisibility: SqlProjectionAliasVisibility;
-  parameterPolicy: SqlParameterPolicy;
+  parameterPolicy: ResolvedSqlParameterPolicy;
 };
 
 export type RelationResolveStatus = 'unique' | 'ambiguous' | 'unresolved';

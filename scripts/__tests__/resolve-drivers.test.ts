@@ -16,6 +16,7 @@ import {
   parseVariant,
   resolveDrivers,
   resolveDriverIconImport,
+  crateDepPath,
   wantsCodegenOnly,
   writeIfChanged,
   collectDriverKvSlotEntries,
@@ -130,7 +131,7 @@ describe('buildRootCargoPatchLines', () => {
   it('patches git driver crates and unifies datazen-driver-api onto the Host path', async () => {
     const { buildRootCargoPatchLines } = await import('../resolve-drivers.mjs');
     const lines = buildRootCargoPatchLines(['postgres', 'kiwi', 'superset'], {
-      postgres: { source: 'path', path: 'packages/drivers/postgres' },
+      postgres: { source: 'path', path: 'crates/drivers/postgres' },
       kiwi: {
         source: 'git',
         git: 'https://github.com/flyxl/datazen-driver-kiwi.git',
@@ -142,19 +143,30 @@ describe('buildRootCargoPatchLines', () => {
     });
     const text = lines.join('\n');
     expect(text).toContain('[patch."https://github.com/flyxl/datazen-driver-kiwi.git"]');
-    expect(text).toContain('datazen-plugin-kiwi = { path = "packages/drivers/kiwi" }');
+    expect(text).toContain('datazen-plugin-kiwi = { path = "crates/drivers/kiwi" }');
     expect(text).toContain('[patch."https://github.com/flyxl/datazen-driver-superset.git"]');
     expect(text).toContain('[patch.crates-io]');
-    expect(text).toContain('datazen-driver-api = { path = "packages/driver-api" }');
+    expect(text).toContain('datazen-driver-api = { path = "crates/datazen-driver-api" }');
   });
 
   it('emits no patches when only path drivers are selected', async () => {
     const { buildRootCargoPatchLines } = await import('../resolve-drivers.mjs');
     expect(
       buildRootCargoPatchLines(['postgres'], {
-        postgres: { source: 'path', path: 'packages/drivers/postgres' },
+        postgres: { source: 'path', path: 'crates/drivers/postgres' },
       }),
     ).toEqual([]);
+  });
+});
+
+describe('crateDepPath', () => {
+  it('resolves injected git-driver dependencies from the desktop crate directory', () => {
+    const repoRoot = resolve(tmpdir(), 'datazen-driver-path-test');
+    const desktopManifestDir = resolve(repoRoot, 'crates/datazen-desktop');
+
+    expect(resolve(desktopManifestDir, crateDepPath('kiwi'))).toBe(
+      resolve(repoRoot, 'crates/drivers/kiwi'),
+    );
   });
 });
 
@@ -228,7 +240,7 @@ describe('drivers-registry.json snapshot', () => {
 describe('resolveDriverIconImport', () => {
   it('resolves badges next to the meta file', () => {
     const resolved = resolveDriverIconImport(
-      '../../packages/drivers/postgres/ui/meta',
+      '../../../../crates/drivers/postgres/ui/meta',
       'postgresql',
     );
     expect(resolved?.importPath).toContain('drivers/postgres/ui/icons/postgresql.svg?url');
@@ -236,7 +248,7 @@ describe('resolveDriverIconImport', () => {
 
   it('falls back to the driver ui/ dir when meta sits in a nested feature dir', () => {
     const resolved = resolveDriverIconImport(
-      '../../packages/drivers/redis/ui/shared/meta',
+      '../../../../crates/drivers/redis/ui/shared/meta',
       'redis',
     );
     expect(resolved?.importPath).toContain('drivers/redis/ui/icons/redis.svg?url');
@@ -244,17 +256,14 @@ describe('resolveDriverIconImport', () => {
 
   it('returns null for dbTypes without a badge SVG', () => {
     expect(
-      resolveDriverIconImport('../../packages/drivers/redis/ui/shared/meta', 'no-such-db-type'),
+      resolveDriverIconImport('../../../../crates/drivers/redis/ui/shared/meta', 'no-such-db-type'),
     ).toBeNull();
   });
 });
 
 describe('collectDriverKvSlotEntries', () => {
   it('keeps the generator slot list in sync with the frozen KvSlotName contract', () => {
-    const src = readFileSync(
-      resolve(ROOT, 'packages/driver-sdk/src/types/kv-slots.ts'),
-      'utf8',
-    );
+    const src = readFileSync(resolve(ROOT, 'packages/driver-sdk/src/types/kv-slots.ts'), 'utf8');
     const match = /export type KvSlotName = ([^;]+);/.exec(src);
     expect(match).not.toBeNull();
     const sdkSlots = match![1]

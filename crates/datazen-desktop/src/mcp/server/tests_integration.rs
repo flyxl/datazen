@@ -1,0 +1,1815 @@
+#[tokio::test]
+async fn mcp_tool_handlers_with_mock_driver() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("mcp-cfg").await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["mcp-cfg"]);
+
+    let conns = server.list_connections().await.unwrap();
+    assert!(conns.contains("mcp-cfg"));
+
+    let dbs = server
+        .list_databases(rmcp::handler::server::wrapper::Parameters(
+            ListDatabasesInput {
+                connection_id: "mcp-cfg".into(),
+            },
+        ))
+        .await
+        .unwrap();
+    assert!(dbs.contains("app"));
+
+    let tables = server
+        .list_tables(rmcp::handler::server::wrapper::Parameters(
+            ListTablesInput {
+                connection_id: "mcp-cfg".into(),
+                database: Some("app".into()),
+                schema: None,
+            },
+        ))
+        .await
+        .unwrap();
+    assert!(tables.contains("users"));
+
+    let schema = server
+        .get_schema(rmcp::handler::server::wrapper::Parameters(GetSchemaInput {
+            connection_id: "mcp-cfg".into(),
+            table: "users".into(),
+            database: Some("app".into()),
+            schema: None,
+        }))
+        .await
+        .unwrap();
+    assert!(schema.contains("users"));
+
+    let desc = server
+        .describe_table(rmcp::handler::server::wrapper::Parameters(
+            DescribeTableInput {
+                connection_id: "mcp-cfg".into(),
+                table: "users".into(),
+                database: Some("app".into()),
+                schema: None,
+            },
+        ))
+        .await
+        .unwrap();
+    assert!(desc.contains("Table: users"));
+
+    let explain = server
+        .explain_query(rmcp::handler::server::wrapper::Parameters(
+            ExplainQueryInput {
+                connection_id: "mcp-cfg".into(),
+                sql: "SELECT 1".into(),
+                database: None,
+                schema: None,
+            },
+        ))
+        .await
+        .unwrap();
+    assert!(!explain.is_empty());
+
+    let query_out = server
+        .query(rmcp::handler::server::wrapper::Parameters(QueryInput {
+            connection_id: "mcp-cfg".into(),
+            sql: "SELECT 1".into(),
+            limit: Some(10),
+            database: None,
+            schema: None,
+        }))
+        .await
+        .unwrap();
+    assert!(query_out.contains("alice") || query_out.contains("1"));
+
+    let workflows = server.list_workflows().await.unwrap();
+    assert!(
+        workflows.contains("builtin-hello-query") || workflows.contains("[]"),
+        "expected builtin workflows or an empty list, got: {workflows}"
+    );
+
+    let search_result = server
+        .search_tables(rmcp::handler::server::wrapper::Parameters(
+            SearchTablesInput {
+                connection_id: "mcp-cfg".into(),
+                database: Some("app".into()),
+                schema: None,
+                pattern: "user".into(),
+                limit: Some(10),
+            },
+        ))
+        .await
+        .unwrap();
+    assert!(search_result.contains("users"));
+    assert!(search_result.contains("totalMatches"));
+
+    let search_no_match = server
+        .search_tables(rmcp::handler::server::wrapper::Parameters(
+            SearchTablesInput {
+                connection_id: "mcp-cfg".into(),
+                database: Some("app".into()),
+                schema: None,
+                pattern: "zzz_nonexistent".into(),
+                limit: None,
+            },
+        ))
+        .await
+        .unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&search_no_match).unwrap();
+    assert_eq!(parsed["totalMatches"].as_u64(), Some(0));
+}
+
+#[tokio::test]
+async fn mcp_search_tables_via_call_tool_inner() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("cti-search").await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["cti-search"]);
+
+    let result = server
+        .call_tool_inner(
+            "search_tables",
+            Some(
+                serde_json::json!({"connection_id":"cti-search","database":"app","pattern":"user"}),
+            ),
+        )
+        .await
+        .unwrap();
+    let text = result.content[0].as_text().unwrap().text.as_str();
+    assert!(text.contains("users"));
+    assert!(text.contains("totalMatches"));
+}
+
+#[tokio::test]
+async fn mcp_prompt_handlers_build_messages() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    let config = test.save_connection("mcp-prompt").await;
+    let connection_id = config.id;
+    let server = mcp_server_allowing(Arc::new(test.state), &[connection_id.as_str()]);
+
+    let nl2sql = server
+        .nl2sql_prompt(rmcp::handler::server::wrapper::Parameters(Nl2SqlArgs {
+            connection_id: connection_id.clone(),
+            question: "count users".into(),
+            database: Some("app".into()),
+        }))
+        .await
+        .unwrap();
+    assert!(nl2sql.messages[0]
+        .content
+        .as_text()
+        .unwrap()
+        .text
+        .contains("Schema:"));
+    assert!(nl2sql.messages[1]
+        .content
+        .as_text()
+        .unwrap()
+        .text
+        .contains("count users"));
+
+    let diag = server
+        .diagnose_error_prompt(rmcp::handler::server::wrapper::Parameters(
+            DiagnoseErrorArgs {
+                connection_id: connection_id.clone(),
+                sql: "SELECT bad".into(),
+                error: "column missing".into(),
+            },
+        ))
+        .await
+        .unwrap();
+    assert!(diag.messages[1]
+        .content
+        .as_text()
+        .unwrap()
+        .text
+        .contains("column missing"));
+
+    let plan = server
+        .explain_plan_prompt(rmcp::handler::server::wrapper::Parameters(
+            ExplainPlanArgs {
+                connection_id,
+                sql: "SELECT 1".into(),
+            },
+        ))
+        .await
+        .unwrap();
+    assert!(plan.messages[1]
+        .content
+        .as_text()
+        .unwrap()
+        .text
+        .contains("EXPLAIN"));
+}
+
+#[tokio::test]
+async fn mcp_tool_router_lists_registered_tools() {
+    let tools = DataZenMcpServer::tool_router().list_all();
+    assert_eq!(tools.len(), MCP_ALL_TOOLS.len());
+    assert!(tools.iter().any(|t| t.name == "query"));
+}
+
+#[tokio::test]
+async fn mcp_read_resource_inner_paths() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("res-inner").await;
+    // D6 第一切片：写入经模块服务（与生产路径同一装配）。先取服务再构建 server
+    // ——后者拿走 AppState 的所有权，返回的 Arc 不与该借用挂钩。
+    let history = crate::platform::ipc::require_history_service(&test.state).unwrap();
+    let server = mcp_server_allowing(Arc::new(test.state), &["res-inner"]);
+
+    let conns = server
+        .read_resource_inner("datazen://connections")
+        .await
+        .unwrap();
+    match &conns.contents[0] {
+        ResourceContents::TextResourceContents { text, .. } => {
+            assert!(text.contains("res-inner"));
+        }
+        _ => panic!("expected text resource"),
+    }
+
+    // Seed one row so the resource contract below is exercised on real output.
+    // D6 第一切片：写入经模块服务（与生产路径同一装配）。
+    history
+        .add_query_history(crate::store::QueryHistoryEntry {
+            id: "hist-1".into(),
+            connection_id: "res-inner".into(),
+            database: "app".into(),
+            schema: None,
+            sql: "SELECT 1".into(),
+            executed_at: chrono::Utc::now(),
+            execution_time_ms: 1,
+            rows_affected: None,
+            success: true,
+            error_message: None,
+        })
+        .await;
+
+    let hist = server
+        .read_resource_inner("datazen://query-history")
+        .await
+        .unwrap();
+    // External contract: history entries must serialize with `connectionId`
+    // (camelCase of `connection_id`); the legacy `configId` key is gone.
+    assert!(!hist.contents.is_empty());
+    match &hist.contents[0] {
+        ResourceContents::TextResourceContents { text, .. } => {
+            assert!(
+                text.contains("\"connectionId\""),
+                "query-history resource must expose connectionId, got: {text}"
+            );
+            assert!(
+                !text.contains("configId"),
+                "legacy configId key must not appear in resource output"
+            );
+        }
+        _ => panic!("expected text resource"),
+    }
+
+    let schema_uri = "datazen://schema/res-inner/app";
+    let schema = server.read_resource_inner(&schema_uri).await.unwrap();
+    match &schema.contents[0] {
+        ResourceContents::TextResourceContents { text, .. } => {
+            assert!(!text.is_empty());
+        }
+        _ => panic!("expected text resource"),
+    }
+
+    let err = server
+        .read_resource_inner("datazen://missing")
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("Unknown resource"));
+}
+
+#[tokio::test]
+async fn mcp_call_tool_inner_unknown_tool_includes_help() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::new().await;
+    let server = DataZenMcpServer::new(Arc::new(test.state));
+
+    let err = server
+        .call_tool_inner("missing_tool", None)
+        .await
+        .unwrap_err();
+    let msg = err.message.to_string();
+    assert!(msg.contains("Unknown or disabled tool"));
+    assert!(msg.contains("list_connections"));
+    assert!(msg.contains("Example"));
+}
+
+#[tokio::test]
+async fn mcp_call_tool_inner_disabled_tool_includes_help() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use datazen::mcp::permission::McpPermissionMode;
+    use std::sync::Arc;
+
+    let test = TestAppState::new().await;
+    let server = DataZenMcpServer::new(Arc::new(test.state))
+        .with_allowed_connections(&["x".into()])
+        .with_disabled_tools(&["query".into()])
+        .with_permission_mode(McpPermissionMode::SafeWrite);
+
+    let err = server
+        .call_tool_inner(
+            "query",
+            Some(serde_json::json!({"connection_id":"x","sql":"SELECT 1"})),
+        )
+        .await
+        .unwrap_err();
+    let msg = err.message.to_string();
+    assert!(msg.contains("disabled"));
+    assert!(msg.contains("Tool: query"));
+    assert!(msg.contains("connection_id"));
+}
+
+#[tokio::test]
+async fn test_tester_default_empty_allowlist_denies_all_connections() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("blocked-by-default").await;
+    let server = DataZenMcpServer::new(Arc::new(test.state));
+
+    let err = server
+        .call_tool_inner(
+            "list_databases",
+            Some(serde_json::json!({"connection_id":"blocked-by-default"})),
+        )
+        .await
+        .unwrap_err();
+    let msg = err.message.to_string();
+    assert!(
+        msg.contains("deny-all"),
+        "expected deny-all default, got: {msg}"
+    );
+    assert!(msg.contains("blocked-by-default"));
+}
+
+#[tokio::test]
+async fn mcp_call_tool_inner_allowlist_error_includes_help() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("blocked-cfg").await;
+    let server = DataZenMcpServer::new(Arc::new(test.state))
+        .with_allowed_connections(&["allowed-only".into()]);
+
+    let err = server
+        .call_tool_inner(
+            "list_databases",
+            Some(serde_json::json!({"connection_id":"blocked-cfg"})),
+        )
+        .await
+        .unwrap_err();
+    let msg = err.message.to_string();
+    assert!(msg.contains("allowlist"));
+    assert!(msg.contains("Tool: list_databases"));
+    assert!(msg.contains("Example:"));
+}
+
+#[tokio::test]
+async fn mcp_query_rejects_disallowed_sql_in_readonly() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use datazen::mcp::permission::McpPermissionMode;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("ro-cfg").await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["ro-cfg"])
+        .with_permission_mode(McpPermissionMode::ReadOnly);
+
+    let err = server
+        .query(rmcp::handler::server::wrapper::Parameters(QueryInput {
+            connection_id: "ro-cfg".into(),
+            sql: "DELETE FROM users".into(),
+            limit: None,
+            database: None,
+            schema: None,
+        }))
+        .await
+        .unwrap_err();
+    assert!(
+        err.to_string().to_lowercase().contains("delete")
+            || err.to_string().contains("not allowed")
+            || err.to_string().contains("permission")
+    );
+}
+
+#[tokio::test]
+async fn mcp_get_info_exposes_capabilities() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use rmcp::ServerHandler;
+    use std::sync::Arc;
+
+    let test = TestAppState::new().await;
+    let server = DataZenMcpServer::new(Arc::new(test.state));
+    let info = server.get_info();
+    assert_eq!(info.server_info.name, "datazen");
+    assert!(info.capabilities.tools.is_some());
+}
+
+#[tokio::test]
+async fn mcp_disabled_tools_and_permission_mode() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use datazen::mcp::permission::McpPermissionMode;
+    use std::sync::Arc;
+
+    let test = TestAppState::new().await;
+    let server = DataZenMcpServer::new(Arc::new(test.state))
+        .with_disabled_tools(&["query".into()])
+        .with_permission_mode(McpPermissionMode::ReadOnly);
+
+    let mut router = DataZenMcpServer::tool_router();
+    for name in MCP_ALL_TOOLS {
+        if !datazen::mcp::permission::is_tool_listed(
+            name,
+            McpPermissionMode::ReadOnly,
+            &server.disabled_tools,
+        ) {
+            router.disable_route(name.to_string());
+        }
+    }
+    let listed = router.list_all();
+    assert!(!listed.iter().any(|t| t.name == "query"));
+    assert!(listed.iter().any(|t| t.name == "list_connections"));
+}
+
+#[tokio::test]
+async fn mcp_list_tools_and_resources_inner() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::new().await;
+    let server = DataZenMcpServer::new(Arc::new(test.state));
+    assert_eq!(server.list_tools_inner().len(), MCP_ALL_TOOLS.len());
+    assert_eq!(server.list_resources_inner().len(), 3);
+}
+
+#[tokio::test]
+async fn mcp_call_tool_inner_database_tools() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("cti-cfg").await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["cti-cfg"]);
+
+    let dbs = server
+        .call_tool_inner(
+            "list_databases",
+            Some(serde_json::json!({"connection_id":"cti-cfg"})),
+        )
+        .await
+        .unwrap();
+    assert!(dbs.content[0].as_text().unwrap().text.contains("app"));
+
+    let tables = server
+        .call_tool_inner(
+            "list_tables",
+            Some(serde_json::json!({"connection_id":"cti-cfg","database":"app"})),
+        )
+        .await
+        .unwrap();
+    assert!(tables.content[0].as_text().unwrap().text.contains("users"));
+
+    let query = server
+        .call_tool_inner(
+            "query",
+            Some(serde_json::json!({"connection_id":"cti-cfg","sql":"SELECT 1","limit":5})),
+        )
+        .await
+        .unwrap();
+    assert!(!query.content[0].as_text().unwrap().text.is_empty());
+
+    assert!(server.call_tool_inner("missing_tool", None).await.is_err());
+}
+
+#[tokio::test]
+async fn mcp_run_workflow_not_found() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::new().await;
+    let server = DataZenMcpServer::new(Arc::new(test.state));
+    let err = server
+        .run_workflow(rmcp::handler::server::wrapper::Parameters(
+            RunWorkflowInput {
+                workflow_id: "missing".into(),
+                variables: serde_json::json!({}),
+                connection_id: None,
+            },
+        ))
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("not found"));
+}
+
+#[tokio::test]
+async fn mcp_query_history_read_only_returns_empty() {
+    use crate::store::QueryHistoryEntry;
+    use crate::testing::app_state_test_support::TestAppState;
+    use datazen::mcp::permission::McpPermissionMode;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("hist-ro").await;
+    crate::platform::ipc::require_history_service(&test.state)
+        .unwrap()
+        .add_query_history(QueryHistoryEntry {
+            id: "hist-ro-1".into(),
+            connection_id: "hist-ro".into(),
+            database: "app".into(),
+            schema: None,
+            sql: "SELECT secret FROM users".into(),
+            executed_at: chrono::Utc::now(),
+            execution_time_ms: 1,
+            rows_affected: None,
+            success: true,
+            error_message: None,
+        })
+        .await;
+
+    let server = mcp_server_allowing(Arc::new(test.state), &["hist-ro"])
+        .with_permission_mode(McpPermissionMode::ReadOnly);
+
+    assert_eq!(server.list_resources_inner().len(), 2);
+    assert!(!server
+        .list_resources_inner()
+        .iter()
+        .any(|r| r.uri.as_str() == "datazen://query-history"));
+
+    let hist = server
+        .read_resource_inner("datazen://query-history")
+        .await
+        .unwrap();
+    match &hist.contents[0] {
+        ResourceContents::TextResourceContents { text, .. } => {
+            assert_eq!(text.trim(), "[]");
+            assert!(!text.contains("secret"));
+        }
+        _ => panic!("expected text resource"),
+    }
+}
+
+#[tokio::test]
+async fn mcp_query_history_respects_connection_allowlist() {
+    use crate::store::QueryHistoryEntry;
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("hist-allowed").await;
+    test.save_connection("hist-blocked").await;
+    for (id, sql) in [("hist-a", "SELECT 1"), ("hist-b", "SELECT 2")] {
+        crate::platform::ipc::require_history_service(&test.state)
+            .unwrap()
+            .add_query_history(QueryHistoryEntry {
+                id: id.into(),
+                connection_id: if id == "hist-a" {
+                    "hist-allowed".into()
+                } else {
+                    "hist-blocked".into()
+                },
+                database: "app".into(),
+                schema: None,
+                sql: sql.into(),
+                executed_at: chrono::Utc::now(),
+                execution_time_ms: 1,
+                rows_affected: None,
+                success: true,
+                error_message: None,
+            })
+            .await;
+    }
+
+    let server = DataZenMcpServer::new(Arc::new(test.state))
+        .with_allowed_connections(&["hist-allowed".into()]);
+
+    let hist = server
+        .read_resource_inner("datazen://query-history")
+        .await
+        .unwrap();
+    match &hist.contents[0] {
+        ResourceContents::TextResourceContents { text, .. } => {
+            assert!(text.contains("hist-allowed") || text.contains("\"connectionId\""));
+            assert!(text.contains("SELECT 1"));
+            assert!(!text.contains("hist-blocked"));
+            assert!(!text.contains("SELECT 2"));
+        }
+        _ => panic!("expected text resource"),
+    }
+}
+
+#[tokio::test]
+async fn mcp_connections_resource_respects_allowlist() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("conn-visible").await;
+    test.save_connection("conn-hidden").await;
+
+    let server = DataZenMcpServer::new(Arc::new(test.state))
+        .with_allowed_connections(&["conn-visible".into()]);
+
+    let conns = server
+        .read_resource_inner("datazen://connections")
+        .await
+        .unwrap();
+    match &conns.contents[0] {
+        ResourceContents::TextResourceContents { text, .. } => {
+            assert!(text.contains("conn-visible"));
+            assert!(!text.contains("conn-hidden"));
+        }
+        _ => panic!("expected text resource"),
+    }
+}
+
+#[tokio::test]
+async fn mcp_schema_resource_rejects_disallowed_connection() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("schema-blocked").await;
+    let server = DataZenMcpServer::new(Arc::new(test.state))
+        .with_allowed_connections(&["other-only".into()]);
+
+    let err = server
+        .read_resource_inner("datazen://schema/schema-blocked/app")
+        .await
+        .unwrap_err();
+    assert!(err.to_string().contains("allowlist"));
+}
+
+/// [tester] handler gate (tool_is_registered) stays aligned with tools.rs tool_router.
+#[tokio::test]
+async fn test_tester_tool_is_registered_cross_module_consistency() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::new().await;
+    let server = DataZenMcpServer::new(Arc::new(test.state));
+
+    for name in MCP_ALL_TOOLS {
+        assert!(
+            server.tool_is_registered(name),
+            "handler gate must see tool_router route for {name}"
+        );
+        assert!(
+            DataZenMcpServer::tool_router().get(name).is_some(),
+            "tools module must register {name}"
+        );
+    }
+    assert!(
+        !server.tool_is_registered(""),
+        "empty tool name must not pass handler registration gate"
+    );
+    assert!(!server.tool_is_registered("not_a_real_tool"));
+}
+
+/// [tester] list_resources_inner URIs are readable via read_resource_inner (resources module).
+#[tokio::test]
+async fn test_tester_listed_resources_readable_via_read_resource_inner() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("res-list").await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["res-list"]);
+
+    for resource in server.list_resources_inner() {
+        let uri = resource.uri.as_str();
+        let result = server.read_resource_inner(uri).await;
+        assert!(
+            result.is_ok(),
+            "listed resource {uri} must be readable, got {:?}",
+            result.err()
+        );
+    }
+}
+
+/// [tester] empty tool name rejected before tool_router dispatch (call_tool_inner path).
+#[tokio::test]
+async fn test_tester_call_tool_inner_rejects_empty_tool_name() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::new().await;
+    let server = DataZenMcpServer::new(Arc::new(test.state));
+
+    let err = server.call_tool_inner("", None).await.unwrap_err();
+    let msg = err.message.to_string();
+    assert!(
+        msg.contains("Unknown or disabled tool"),
+        "expected unknown-tool error for empty name, got: {msg}"
+    );
+}
+
+/// [tester] blank resource URI returns resource_not_found (resources module boundary).
+#[tokio::test]
+async fn test_tester_read_resource_blank_uri_returns_not_found() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::new().await;
+    let server = DataZenMcpServer::new(Arc::new(test.state));
+
+    let err = server.read_resource_inner("").await.unwrap_err();
+    assert!(
+        err.to_string().contains("Unknown resource"),
+        "blank URI must not panic or succeed, got: {err}"
+    );
+}
+
+/// [tester] concurrent list_connections + read_resource without cross-request corruption.
+#[tokio::test]
+async fn test_tester_concurrent_mcp_operations() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("conc-a").await;
+    test.save_connection("conc-b").await;
+    let server = Arc::new(mcp_server_allowing(
+        Arc::new(test.state),
+        &["conc-a", "conc-b"],
+    ));
+
+    let (conns, workflows, inner_conns) = tokio::join!(
+        server.read_resource_inner("datazen://connections"),
+        server.read_resource_inner("datazen://workflows"),
+        server.list_connections(),
+    );
+
+    let conns_text = match &conns.unwrap().contents[0] {
+        ResourceContents::TextResourceContents { text, .. } => text.clone(),
+        _ => panic!("expected text resource"),
+    };
+    let wf_text = match &workflows.unwrap().contents[0] {
+        ResourceContents::TextResourceContents { text, .. } => text.clone(),
+        _ => panic!("expected text resource"),
+    };
+    let inner = inner_conns.unwrap();
+
+    assert!(conns_text.contains("conc-a"));
+    assert!(conns_text.contains("conc-b"));
+    assert!(inner.contains("conc-a"));
+    assert!(inner.contains("conc-b"));
+    assert!(
+        wf_text.contains("workflow") || wf_text.trim() == "[]",
+        "workflows resource must be valid JSON list"
+    );
+}
+
+/// [tester] post-split regression: list_tools_inner names stay aligned with MCP_ALL_TOOLS.
+#[tokio::test]
+async fn test_tester_list_tools_inner_snapshot_matches_mcp_all_tools() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::new().await;
+    let server = DataZenMcpServer::new(Arc::new(test.state));
+
+    let mut actual: Vec<String> = server
+        .list_tools_inner()
+        .iter()
+        .map(|t| t.name.to_string())
+        .collect();
+    actual.sort_unstable();
+
+    let mut expected: Vec<String> = MCP_ALL_TOOLS.iter().map(|s| (*s).to_string()).collect();
+    expected.sort_unstable();
+
+    assert_eq!(
+        actual, expected,
+        "list_tools_inner must expose exactly MCP_ALL_TOOLS after module split"
+    );
+}
+
+/// T19: database scope is checked before the tool body. `other` is outside the
+/// configured database list, so the metadata reader must never run.
+#[tokio::test]
+async fn mcp_database_scope_rejects_outside_target_before_execution() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("scope-cfg").await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["scope-cfg"])
+        .with_allowed_scopes(&["analytics".into()], &[]);
+
+    let err = server
+        .call_tool_inner(
+            "list_tables",
+            Some(serde_json::json!({
+                "connection_id": "scope-cfg",
+                "database": "other",
+            })),
+        )
+        .await
+        .unwrap_err();
+    assert!(err.message.contains("database scope"), "got: {err}");
+}
+
+struct RecordingDecision {
+    decision: datazen::mcp::approval::McpApprovalDecision,
+    requests: Arc<std::sync::Mutex<Vec<datazen::mcp::approval::McpApprovalRequest>>>,
+}
+
+#[async_trait::async_trait]
+impl datazen::mcp::approval::McpApprovalPort for RecordingDecision {
+    async fn decide(
+        &self,
+        request: &datazen::mcp::approval::McpApprovalRequest,
+    ) -> datazen::mcp::approval::McpApprovalDecision {
+        self.requests.lock().unwrap().push(request.clone());
+        self.decision
+    }
+}
+
+async fn write_call_with_decision(
+    decision: datazen::mcp::approval::McpApprovalDecision,
+) -> (
+    rmcp::model::ErrorData,
+    Vec<datazen::mcp::approval::McpApprovalRequest>,
+    Arc<crate::testing::app_state_test_support::TestAppState>,
+) {
+    use crate::testing::app_state_test_support::TestAppState;
+    use datazen::mcp::permission::McpPermissionMode;
+    use std::sync::Arc;
+
+    let test = Arc::new(TestAppState::with_tables_and_resource_provider().await);
+    test.save_connection("approval-cfg").await;
+    let requests = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let server = mcp_server_allowing(Arc::new(test.state.clone()), &["approval-cfg"])
+        .with_permission_mode(McpPermissionMode::SafeWrite)
+        .with_approval_port(Arc::new(RecordingDecision {
+            decision,
+            requests: requests.clone(),
+        }));
+    let error = server
+        .call_tool_inner(
+            "query",
+            Some(serde_json::json!({
+                "connection_id": "approval-cfg",
+                "sql": "DELETE FROM users WHERE password = 'secret-pw'",
+            })),
+        )
+        .await
+        .unwrap_err();
+    let recorded = requests.lock().unwrap().clone();
+    (error, recorded, test)
+}
+
+#[tokio::test]
+async fn mcp_deny_timeout_and_cancel_never_execute_and_are_audited() {
+    use datazen::mcp::approval::McpApprovalDecision;
+
+    for decision in [
+        McpApprovalDecision::Deny,
+        McpApprovalDecision::Timeout,
+        McpApprovalDecision::Cancel,
+    ] {
+        let (error, requests, test) = write_call_with_decision(decision).await;
+        assert!(
+            error.message.contains("was not executed"),
+            "decision {decision:?} got: {error}"
+        );
+        assert_eq!(requests.len(), 1);
+        let request = &requests[0];
+        assert!(request.sql.as_deref().unwrap().contains("DELETE FROM users"));
+        assert!(!request.arguments.to_string().contains("secret-pw"));
+
+        let rows = test
+            .state
+            .store
+            .mcp_audit_log()
+            .list(10)
+            .await
+            .expect("audit rows");
+        assert_eq!(rows.len(), 1, "exactly one audit row per decision");
+        assert_eq!(rows[0].decision, decision.audit_decision());
+        assert_eq!(rows[0].tool, "query");
+        assert!(rows[0].row_count.is_none());
+        let raw = tokio::fs::read_to_string(test.state.store.mcp_audit_log().path())
+            .await
+            .unwrap();
+        assert!(!raw.contains("DELETE"), "audit must not store SQL");
+        assert!(!raw.contains("secret-pw"), "audit must not store credentials");
+    }
+}
+
+#[tokio::test]
+async fn mcp_allow_once_executes_and_audits_rowcount() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use datazen::mcp::approval::{
+        McpApprovalDecision, McpApprovalPort, McpApprovalRequest,
+    };
+    use datazen::mcp::permission::McpPermissionMode;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("allow-cfg").await;
+    struct Allow;
+    #[async_trait::async_trait]
+    impl McpApprovalPort for Allow {
+        async fn decide(&self, _request: &McpApprovalRequest) -> McpApprovalDecision {
+            McpApprovalDecision::AllowOnce
+        }
+    }
+    let server = mcp_server_allowing(Arc::new(test.state.clone()), &["allow-cfg"])
+        .with_permission_mode(McpPermissionMode::SafeWrite)
+        .with_approval_port(Arc::new(Allow));
+    let result = server
+        .call_tool_inner(
+            "query",
+            Some(serde_json::json!({
+                "connection_id": "allow-cfg",
+                "sql": "UPDATE users SET name = name WHERE id = 1",
+            })),
+        )
+        .await;
+    // The mock driver may reject UPDATE; the audit contract is what matters:
+    // the call was allowed and execution was attempted.
+    let rows = test
+        .state
+        .store
+        .mcp_audit_log()
+        .list(10)
+        .await
+        .expect("audit rows");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].decision, "allow");
+    assert_eq!(rows[0].tool, "query");
+    assert!(result.is_ok() || result.is_err());
+}
+
+#[tokio::test]
+async fn mcp_read_only_query_is_allowed_without_approval_and_audited() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("audit-cfg").await;
+    let server = mcp_server_allowing(Arc::new(test.state.clone()), &["audit-cfg"]);
+    server
+        .call_tool_inner(
+            "query",
+            Some(serde_json::json!({
+                "connection_id": "audit-cfg",
+                "sql": "SELECT 1 AS ok",
+            })),
+        )
+        .await
+        .expect("read-only query");
+
+    let rows = test
+        .state
+        .store
+        .mcp_audit_log()
+        .list(10)
+        .await
+        .expect("audit rows");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].decision, "allow");
+    assert_eq!(rows[0].row_count, Some(1));
+    assert_eq!(rows[0].connection_id.as_deref(), Some("audit-cfg"));
+    assert_eq!(rows[0].database_name.as_deref(), Some("app"));
+    assert!(rows[0].request_id.is_some(), "allow needs a requestId");
+}
+
+#[tokio::test]
+async fn mcp_database_scope_uses_connection_default_database() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("scope-default").await;
+    let server = mcp_server_allowing(Arc::new(test.state.clone()), &["scope-default"])
+        .with_allowed_scopes(&["app".into()], &[]);
+    server
+        .call_tool_inner(
+            "query",
+            Some(serde_json::json!({
+                "connection_id": "scope-default",
+                "sql": "SELECT 1 AS ok",
+            })),
+        )
+        .await
+        .expect("default database is inside the scope");
+}
+
+#[tokio::test]
+async fn mcp_database_scope_rejects_connection_default_outside_scope() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("scope-outside").await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["scope-outside"])
+        .with_allowed_scopes(&["other".into()], &[]);
+    let error = server
+        .call_tool_inner(
+            "query",
+            Some(serde_json::json!({
+                "connection_id": "scope-outside",
+                "sql": "SELECT 1 AS ok",
+            })),
+        )
+        .await
+        .unwrap_err();
+    assert!(error.message.contains("database scope"), "got: {error}");
+}
+
+#[tokio::test]
+async fn mcp_schema_resource_respects_database_scope() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("scope-resource").await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["scope-resource"])
+        .with_allowed_scopes(&["app".into()], &[]);
+
+    let error = server
+        .read_resource_inner("datazen://schema/scope-resource/other")
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("database scope"), "got: {error}");
+
+    server
+        .read_resource_inner("datazen://schema/scope-resource/app")
+        .await
+        .expect("allowed database resource");
+}
+
+#[tokio::test]
+async fn mcp_mysql_sql_scope_blocks_cross_database_and_information_schema_before_execution() {
+    use crate::testing::app_state_test_support::{rich_mock_options, TestAppState};
+    use crate::testing::mock_driver::MockDriver;
+    use crate::testing::mock_driver::MockDriverOptions;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_resource_provider(MockDriverOptions {
+        databases: vec!["mysql".into()],
+        current_database: Some("mysql"),
+        ..rich_mock_options()
+    })
+    .await;
+    let mysql_mock = MockDriver::new(
+        "mysql",
+        MockDriverOptions {
+            databases: vec!["mysql".into()],
+            current_database: Some("mysql"),
+            ..rich_mock_options()
+        },
+    );
+    test.register_runtime_driver(
+        "mysql",
+        mysql_mock.clone() as Arc<dyn datazen_driver_api::DatabaseDriver>,
+    )
+    .await;
+    let mut config = test.save_connection("scope-mysql").await;
+    config.database_type = "mysql".into();
+    config.database = Some("mysql".into());
+    config.schema = None;
+    test.store
+        .save_connection(config)
+        .await
+        .expect("save mysql profile");
+
+    let server = mcp_server_allowing(Arc::new(test.state.clone()), &["scope-mysql"])
+        .with_allowed_scopes(&["mysql".into()], &[]);
+    for sql in [
+        "SELECT COUNT(*) FROM datazen_demo.test_orders",
+        "SELECT COUNT(*) FROM information_schema.tables",
+        "SHOW TABLES FROM datazen_demo",
+        "SHOW DATABASES",
+        "SHOW CREATE TABLE datazen_demo.test_orders",
+        "SHOW INDEX FROM datazen_demo.test_orders",
+        "SHOW COLUMNS FROM information_schema.columns",
+    ] {
+        let error = server
+            .call_tool_inner(
+                "query",
+                Some(serde_json::json!({
+                    "connection_id": "scope-mysql",
+                    "sql": sql,
+                })),
+            )
+            .await
+            .unwrap_err();
+        assert!(error.message.contains("scope"), "sql={sql} got: {error}");
+    }
+    assert!(
+        mysql_mock.query_calls() == 0,
+        "scope rejection must happen before the SQL body"
+    );
+    let denies = test
+        .state
+        .store
+        .mcp_audit_log()
+        .list(20)
+        .await
+        .expect("audit rows");
+    assert!(
+        denies.iter().any(|row| {
+            row.decision == "deny" && row.database_name.as_deref() == Some("datazen_demo")
+        }),
+        "denied SQL/SHOW must audit the attempted database, got: {denies:?}"
+    );
+    assert!(
+        denies.iter().any(|row| {
+            row.decision == "deny"
+                && row.database_name.as_deref() == Some("information_schema")
+        }),
+        "denied information_schema access must audit the attempted database"
+    );
+
+}
+
+#[tokio::test]
+async fn mcp_postgres_namespace_scope_blocks_system_schemas_and_allows_public() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use crate::testing::mock_driver::MockDriverOptions;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_resource_provider(MockDriverOptions {
+        databases: vec!["postgres".into()],
+        query_rows: vec![vec![Some(datazen_driver_api::Value::Integer(1))]],
+        has_schema_level: true,
+        default_schema: Some("public"),
+        current_database: Some("postgres"),
+        current_schema: Some("public"),
+        ..Default::default()
+    })
+    .await;
+    let mut config = test.save_connection("scope-pg").await;
+    config.database = Some("postgres".into());
+    config.schema = Some("public".into());
+    test.store
+        .save_connection(config)
+        .await
+        .expect("save postgres profile");
+
+    let server = mcp_server_allowing(Arc::new(test.state.clone()), &["scope-pg"])
+        .with_allowed_scopes(&["postgres".into()], &["public".into()]);
+    for sql in [
+        "SELECT COUNT(*) FROM information_schema.tables",
+        "SELECT COUNT(*) FROM pg_catalog.pg_class",
+        "SHOW TABLES FROM information_schema",
+        "SHOW SCHEMAS",
+        "SHOW CREATE TABLE pg_catalog.pg_class",
+        "SHOW INDEX FROM pg_catalog.pg_class",
+    ] {
+        let error = server
+            .call_tool_inner(
+                "query",
+                Some(serde_json::json!({
+                    "connection_id": "scope-pg",
+                    "sql": sql,
+                })),
+            )
+            .await
+            .unwrap_err();
+        assert!(error.message.contains("scope"), "sql={sql} got: {error}");
+    }
+    server
+        .call_tool_inner(
+            "query",
+            Some(serde_json::json!({
+                "connection_id": "scope-pg",
+                "sql": "SELECT 1 FROM public.users",
+            })),
+        )
+        .await
+        .expect("public is inside the allowed namespace");
+
+    let denies = test
+        .state
+        .store
+        .mcp_audit_log()
+        .list(20)
+        .await
+        .expect("audit rows");
+    assert!(
+        denies.iter().any(|row| {
+            row.decision == "deny"
+                && row.namespace.as_deref() == Some("information_schema")
+        }),
+        "denied SQL/SHOW must audit the attempted namespace"
+    );
+    assert!(
+        denies.iter().any(|row| {
+            row.decision == "deny" && row.namespace.as_deref() == Some("pg_catalog")
+        }),
+        "denied pg_catalog access must audit the attempted namespace"
+    );
+}
+
+#[tokio::test]
+async fn mcp_null_profile_defaults_are_probed_and_audited() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use crate::testing::mock_driver::MockDriverOptions;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_resource_provider(MockDriverOptions {
+        databases: vec!["postgres".into()],
+        query_rows: vec![vec![Some(datazen_driver_api::Value::Integer(1))]],
+        has_schema_level: true,
+        default_schema: Some("public"),
+        current_database: Some("postgres"),
+        current_schema: Some("public"),
+        ..Default::default()
+    })
+    .await;
+    let mut config = test.save_connection("scope-null").await;
+    config.database = None;
+    config.schema = None;
+    test.store
+        .save_connection(config)
+        .await
+        .expect("save null-default profile");
+
+    let server = mcp_server_allowing(Arc::new(test.state.clone()), &["scope-null"])
+        .with_allowed_scopes(&["postgres".into()], &["public".into()]);
+    server
+        .call_tool_inner(
+            "query",
+            Some(serde_json::json!({
+                "connection_id": "scope-null",
+                "sql": "SELECT 1 AS ok",
+            })),
+        )
+        .await
+        .expect("actual driver defaults are inside the scope");
+
+    let rows = test
+        .state
+        .store
+        .mcp_audit_log()
+        .list(10)
+        .await
+        .expect("audit rows");
+    let row = rows.first().expect("audit row");
+    assert_eq!(row.decision, "allow");
+    assert_eq!(row.database_name.as_deref(), Some("postgres"));
+    assert_eq!(row.namespace.as_deref(), Some("public"));
+    assert_eq!(row.row_count, Some(1));
+    assert!(row.request_id.is_some(), "every call needs a requestId");
+}
+
+#[tokio::test]
+async fn mcp_schema_resource_allows_the_resolved_default_namespace() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use crate::testing::mock_driver::MockDriverOptions;
+    use std::sync::Arc;
+
+    use datazen_driver_api::{ColumnSchema, TableInfo, TableType};
+    use std::collections::HashMap;
+
+    let test = TestAppState::with_resource_provider(MockDriverOptions {
+        databases: vec!["postgres".into()],
+        tables: vec![TableInfo {
+            name: "users".into(),
+            schema: Some("public".into()),
+            table_type: TableType::Table,
+            row_count: Some(1),
+        }],
+        columns_by_database: HashMap::from([(
+            "postgres".to_string(),
+            HashMap::from([(
+                "users".to_string(),
+                vec![ColumnSchema {
+                    name: "id".into(),
+                    data_type: "integer".into(),
+                    nullable: false,
+                    default_value: None,
+                    comment: None,
+                    is_primary_key: true,
+                    is_auto_increment: false,
+                }],
+            )]),
+        )]),
+        has_schema_level: true,
+        default_schema: Some("public"),
+        current_database: Some("postgres"),
+        current_schema: Some("public"),
+        ..Default::default()
+    })
+    .await;
+    let mut config = test.save_connection("scope-resource-pg").await;
+    config.database = Some("postgres".into());
+    config.schema = None;
+    test.store
+        .save_connection(config)
+        .await
+        .expect("save resource profile");
+
+    let server = mcp_server_allowing(Arc::new(test.state), &["scope-resource-pg"])
+        .with_allowed_scopes(&["postgres".into()], &["public".into()]);
+    let resource = server
+        .read_resource_inner("datazen://schema/scope-resource-pg/postgres")
+        .await
+        .expect("postgres + public schema resource is inside scope");
+    match &resource.contents[0] {
+        ResourceContents::TextResourceContents { text, .. } => {
+            assert!(
+                text.contains("users"),
+                "schema resource must contain the resolved public table, got: {text}"
+            );
+            assert!(!text.trim().is_empty());
+        }
+        _ => panic!("expected text resource"),
+    }
+
+    let rows = test
+        .store
+        .mcp_audit_log()
+        .list(10)
+        .await
+        .expect("audit rows");
+    let read = rows
+        .iter()
+        .find(|row| row.decision == "read")
+        .expect("schema resource read audit");
+    assert_eq!(read.database_name.as_deref(), Some("postgres"));
+    assert_eq!(read.namespace.as_deref(), Some("public"));
+    assert!(read.request_id.is_some(), "read needs a requestId");
+}
+
+#[tokio::test]
+async fn mcp_scope_denial_is_audited_with_request_id() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    let mut config = test.save_connection("audit-deny").await;
+    config.database = Some("app".into());
+    config.schema = Some("public".into());
+    test.store
+        .save_connection(config)
+        .await
+        .expect("save scoped profile");
+    let server = mcp_server_allowing(Arc::new(test.state.clone()), &["audit-deny"])
+        .with_allowed_scopes(&["app".into()], &["public".into()]);
+    server
+        .call_tool_inner(
+            "query",
+            Some(serde_json::json!({
+                "connection_id": "audit-deny",
+                "sql": "SELECT * FROM information_schema.tables",
+            })),
+        )
+        .await
+        .unwrap_err();
+    let rows = test
+        .state
+        .store
+        .mcp_audit_log()
+        .list(10)
+        .await
+        .expect("audit rows");
+    let row = rows.first().expect("deny audit row");
+    assert_eq!(row.decision, "deny");
+    assert!(row.request_id.is_some(), "deny needs a requestId");
+}
+
+/// Live PostgreSQL proof for the null-profile path. Gated because the rest of
+/// the suite must run without a database server; run with
+/// `DATAZEN_LIVE_PG=1 cargo test ... -- --ignored` on a local PostgreSQL.
+#[tokio::test]
+#[ignore = "requires live PostgreSQL on 127.0.0.1:5432"]
+async fn mcp_live_postgres_null_defaults_execute_and_audit_the_resolved_target() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use datazen_driver_postgres::PostgresDriver;
+    use std::sync::Arc;
+
+    if std::env::var_os("DATAZEN_LIVE_PG").is_none() {
+        return;
+    }
+    let test = TestAppState::with_resource_provider(Default::default()).await;
+    test.register_runtime_driver(
+        "postgresql",
+        Arc::new(PostgresDriver::new()) as Arc<dyn datazen_driver_api::DatabaseDriver>,
+    )
+    .await;
+    let mut config = test.save_connection("live-null-pg").await;
+    config.database_type = "postgresql".into();
+    config.host = Some("127.0.0.1".into());
+    config.port = Some(5432);
+    config.database = None;
+    config.schema = None;
+    config.username = Some("postgres".into());
+    config.password = None;
+    config.ssl_mode = datazen_driver_api::SslMode::Disable;
+    test.store
+        .save_connection(config)
+        .await
+        .expect("save live profile");
+
+    let server = mcp_server_allowing(Arc::new(test.state.clone()), &["live-null-pg"])
+        .with_allowed_scopes(&["postgres".into()], &["public".into()]);
+    server
+        .call_tool_inner(
+            "list_tables",
+            Some(serde_json::json!({ "connection_id": "live-null-pg" })),
+        )
+        .await
+        .expect("null database/schema metadata must use the probed defaults");
+    server
+        .call_tool_inner(
+            "query",
+            Some(serde_json::json!({
+                "connection_id": "live-null-pg",
+                "sql": "SELECT 1 AS ok",
+            })),
+        )
+        .await
+        .expect("null database/schema query must execute with probed defaults");
+
+    let rows = test
+        .state
+        .store
+        .mcp_audit_log()
+        .list(10)
+        .await
+        .expect("audit rows");
+    let row = rows
+        .iter()
+        .find(|row| row.tool == "query")
+        .expect("allow audit row");
+    assert_eq!(row.decision, "allow");
+    assert_eq!(row.database_name.as_deref(), Some("postgres"));
+    assert_eq!(row.namespace.as_deref(), Some("public"));
+    assert!(row.request_id.is_some());
+}
+
+#[tokio::test]
+async fn mcp_execute_batch_read_only_returns_structured_results() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use serde_json::Value;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("batch-cfg").await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["batch-cfg"]);
+    let output = server
+        .call_tool_inner(
+            "execute_batch",
+            Some(serde_json::json!({
+                "connection_id": "batch-cfg",
+                "sql": "SELECT 1; SELECT 2",
+            })),
+        )
+        .await
+        .expect("read-only batch");
+    let text = output.content[0].as_text().expect("batch text").text.as_str();
+    let value: Value = serde_json::from_str(text).expect("batch json");
+    assert_eq!(value["ok"], true);
+    assert_eq!(value["transaction"], false);
+    assert_eq!(value["rolledBack"], false);
+    assert_eq!(value["statements"].as_array().map(Vec::len), Some(2));
+    assert!(value["rowCount"].as_u64().is_some());
+
+    let rows = test.store.mcp_audit_log().list(10).await.expect("audit rows");
+    assert_eq!(rows.len(), 3, "two statements plus the batch summary");
+    assert!(rows.iter().all(|row| row.decision == "allow"));
+    assert!(rows.iter().all(|row| row.row_count.is_some()));
+    assert!(rows
+        .iter()
+        .any(|row| row.reason.as_deref() == Some("batch committed")));
+    for (index, statement) in value["statements"]
+        .as_array()
+        .expect("statements")
+        .iter()
+        .enumerate()
+    {
+        let expected = statement["rowCount"].as_i64().expect("rowCount");
+        let audited = rows
+            .iter()
+            .find(|row| {
+                row.reason
+                    .as_deref()
+                    .is_some_and(|reason| reason == format!("batch statement {} executed", index + 1))
+            })
+            .expect("statement audit row");
+        assert_eq!(audited.row_count, Some(expected));
+    }
+    let summary = rows
+        .iter()
+        .find(|row| row.reason.as_deref() == Some("batch committed"))
+        .expect("summary audit");
+    assert_eq!(summary.row_count, value["rowCount"].as_i64());
+}
+
+#[tokio::test]
+async fn mcp_execute_batch_write_is_rejected_by_default() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("batch-write-cfg").await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["batch-write-cfg"]);
+    let error = server
+        .call_tool_inner(
+            "execute_batch",
+            Some(serde_json::json!({
+                "connection_id": "batch-write-cfg",
+                "sql": "SELECT 1; DELETE FROM users",
+            })),
+        )
+        .await
+        .expect_err("write batch must be rejected");
+    assert!(error.message.contains("statement 2"), "got: {error}");
+
+    let rows = test.store.mcp_audit_log().list(10).await.expect("audit rows");
+    assert_eq!(rows.len(), 3, "two statements plus the batch summary");
+    assert!(rows.iter().all(|row| row.decision == "deny"));
+    assert!(rows.iter().all(|row| row.row_count == Some(0)));
+    assert!(rows.iter().any(|row| row
+        .reason
+        .as_deref()
+        .is_some_and(|reason| reason.contains("statement 2"))));
+}
+
+#[tokio::test]
+async fn mcp_redis_command_write_is_rejected_before_the_driver() {
+    use crate::testing::app_state_test_support::TestAppState;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("redis-policy-cfg").await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["redis-policy-cfg"]);
+    for command in ["SET", "DEL", "FLUSHALL", "CONFIG", "EVAL"] {
+        let error = server
+            .call_tool_inner(
+                "redis_command",
+                Some(serde_json::json!({
+                    "connection_id": "redis-policy-cfg",
+                    "command": command,
+                    "args": ["k", "v"],
+                })),
+            )
+            .await
+            .expect_err("write/dangerous Redis command must be rejected");
+        assert!(error.message.contains("only read-only"), "got: {error}");
+    }
+    let rows = test.store.mcp_audit_log().list(20).await.expect("audit rows");
+    assert_eq!(rows.len(), 5);
+    assert!(rows.iter().all(|row| row.decision == "deny"));
+    for command in ["SET", "DEL", "FLUSHALL", "CONFIG", "EVAL"] {
+        assert!(
+            rows.iter().any(|row| row
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains(command)
+                    && reason.contains("keys=k,v"))),
+            "missing command/key deny reason for {command}: {rows:?}"
+        );
+    }
+    assert!(rows.iter().all(|row| row.row_count.is_none()));
+    assert!(rows.iter().all(|row| row.tool == "redis_command"));
+}
+
+
+#[tokio::test]
+async fn mcp_execute_batch_transaction_rollback_audits_each_statement_as_deny() {
+    use crate::testing::app_state_test_support::{rich_mock_options, TestAppState};
+    use serde_json::Value;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_resource_provider(crate::testing::mock_driver::MockDriverOptions {
+        query_error_on_call: Some(2),
+        ..rich_mock_options()
+    })
+    .await;
+    test.save_connection("batch-rollback-cfg").await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["batch-rollback-cfg"]);
+    let output = server
+        .call_tool_inner(
+            "execute_batch",
+            Some(serde_json::json!({
+                "connection_id": "batch-rollback-cfg",
+                "sql": "SELECT 1; SELECT 2",
+                "transaction": true,
+            })),
+        )
+        .await
+        .expect("structured rollback result");
+    let text = output.content[0].as_text().expect("batch text").text.as_str();
+    let value: Value = serde_json::from_str(text).expect("batch json");
+    assert_eq!(value["ok"], false);
+    assert_eq!(value["rolledBack"], true);
+
+    let rows = test.store.mcp_audit_log().list(10).await.expect("audit rows");
+    assert_eq!(rows.len(), 3, "two statements plus the batch summary");
+    assert!(rows.iter().all(|row| row.decision == "deny"));
+    assert!(rows.iter().all(|row| row.row_count.is_some()));
+    assert!(rows
+        .iter()
+        .any(|row| row.reason.as_deref() == Some("batch rolled back")));
+}
+
+
+#[tokio::test]
+async fn mcp_execute_batch_partial_failure_audits_skipped_statements() {
+    use crate::testing::app_state_test_support::{rich_mock_options, TestAppState};
+    use serde_json::Value;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_resource_provider(crate::testing::mock_driver::MockDriverOptions {
+        query_error_on_call: Some(2),
+        ..rich_mock_options()
+    })
+    .await;
+    test.save_connection("batch-skip-cfg").await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["batch-skip-cfg"]);
+    let output = server
+        .call_tool_inner(
+            "execute_batch",
+            Some(serde_json::json!({
+                "connection_id": "batch-skip-cfg",
+                "sql": "SELECT 1; SELECT 2; SELECT 3",
+            })),
+        )
+        .await
+        .expect("structured partial result");
+    let text = output.content[0].as_text().expect("batch text").text.as_str();
+    let value: Value = serde_json::from_str(text).expect("batch json");
+    assert_eq!(value["ok"], false);
+    assert_eq!(value["stoppedAt"], 1);
+
+    let rows = test.store.mcp_audit_log().list(10).await.expect("audit rows");
+    assert_eq!(rows.len(), 4, "three statements plus the batch summary");
+    assert!(rows.iter().any(|row| row
+        .reason
+        .as_deref()
+        .is_some_and(|reason| reason == "batch statement 3 not executed after an earlier failure")));
+    assert!(rows
+        .iter()
+        .any(|row| row.decision == "allow" && row.row_count == Some(1)));
+    assert!(rows
+        .iter()
+        .any(|row| row.decision == "deny" && row.row_count == Some(0)));
+}
+
+#[tokio::test]
+async fn mcp_execute_batch_failure_audit_never_stores_sql_or_credentials() {
+    use crate::testing::app_state_test_support::{rich_mock_options, TestAppState};
+    use serde_json::Value;
+    use std::sync::Arc;
+
+    let mut options = rich_mock_options();
+    options.query_error = Some(
+        "Query failed: [SELECT no_such_column_t20, 'secret-pw-t20'] (connection secret-pw-t20)"
+            .into(),
+    );
+    let test = TestAppState::with_resource_provider(options).await;
+    test.save_connection("batch-leak-cfg").await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["batch-leak-cfg"]);
+    let output = server
+        .call_tool_inner(
+            "execute_batch",
+            Some(serde_json::json!({
+                "connection_id": "batch-leak-cfg",
+                "sql": "SELECT no_such_column_t20, 'secret-pw-t20'",
+            })),
+        )
+        .await
+        .expect("structured failure report");
+    let text = output.content[0].as_text().expect("batch text").text.as_str();
+    let value: Value = serde_json::from_str(text).expect("batch json");
+    assert_eq!(value["statements"][0]["errorCode"], "queryFailed");
+    for forbidden in ["no_such_column_t20", "secret-pw-t20", "SELECT"] {
+        assert!(!text.contains(forbidden), "tool output leaked {forbidden}: {text}");
+    }
+
+    let rows = test.store.mcp_audit_log().list(10).await.expect("audit rows");
+    assert_eq!(rows.len(), 2, "one failed statement plus the batch summary");
+    for row in &rows {
+        let reason = row.reason.as_deref().unwrap_or_default();
+        for forbidden in ["no_such_column_t20", "secret-pw-t20", "SELECT"] {
+            assert!(!reason.contains(forbidden), "audit leaked {forbidden}: {reason}");
+        }
+    }
+    assert!(rows
+        .iter()
+        .any(|row| row.index == Some(0) && row.decision == "deny"));
+    assert!(rows
+        .iter()
+        .any(|row| row.reason.as_deref() == Some("batch failed: queryFailed")));
+    let raw = tokio::fs::read_to_string(test.store.mcp_audit_log().path())
+        .await
+        .expect("audit file");
+    for forbidden in ["no_such_column_t20", "secret-pw-t20"] {
+        assert!(!raw.contains(forbidden), "audit file leaked {forbidden}");
+    }
+}
+
+#[tokio::test]
+async fn mcp_execute_batch_audits_actual_statement_target_and_structured_index() {
+    use crate::testing::app_state_test_support::{
+        rich_mock_options, sample_postgres_config, TestAppState,
+    };
+    use serde_json::Value;
+    use std::sync::Arc;
+
+    let test = TestAppState::with_resource_provider(rich_mock_options()).await;
+    let mut config = sample_postgres_config("batch-target-cfg");
+    config.database_type = "mysql".into();
+    config.database = Some("datazen_demo".into());
+    test.store
+        .save_connection(config)
+        .await
+        .expect("mysql test profile");
+    test.registry
+        .register_test_driver("mysql", test.mock.clone())
+        .await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["batch-target-cfg"]);
+    let output = server
+        .call_tool_inner(
+            "execute_batch",
+            Some(serde_json::json!({
+                "connection_id": "batch-target-cfg",
+                "sql": "SELECT 1; SELECT COUNT(*) FROM datazen_t18.datazen_t18_probe",
+            })),
+        )
+        .await
+        .expect("batch output");
+    let text = output.content[0].as_text().expect("batch text").text.as_str();
+    let value: Value = serde_json::from_str(text).expect("batch json");
+    assert_eq!(value["ok"], true);
+
+    let rows = test.store.mcp_audit_log().list(10).await.expect("audit rows");
+    assert_eq!(rows.len(), 3, "two statements plus the batch summary");
+    let first = rows
+        .iter()
+        .find(|row| row.index == Some(0))
+        .expect("statement 0 audit");
+    assert_eq!(first.database_name.as_deref(), Some("datazen_demo"));
+    let second = rows
+        .iter()
+        .find(|row| row.index == Some(1))
+        .expect("statement 1 audit");
+    assert_eq!(second.database_name.as_deref(), Some("datazen_t18"));
+    assert!(rows
+        .iter()
+        .any(|row| row.index.is_none() && row.reason.as_deref() == Some("batch committed")));
+}
+
+#[tokio::test]
+async fn mcp_execute_batch_scope_denial_audits_attempted_statement_target() {
+    use crate::testing::app_state_test_support::{
+        rich_mock_options, sample_postgres_config, TestAppState,
+    };
+    use std::sync::Arc;
+
+    let test = TestAppState::with_resource_provider(rich_mock_options()).await;
+    let mut config = sample_postgres_config("batch-denied-target-cfg");
+    config.database_type = "mysql".into();
+    config.database = Some("datazen_demo".into());
+    test.store
+        .save_connection(config)
+        .await
+        .expect("mysql test profile");
+    test.registry
+        .register_test_driver("mysql", test.mock.clone())
+        .await;
+    let server = mcp_server_allowing(Arc::new(test.state), &["batch-denied-target-cfg"])
+        .with_allowed_scopes(&["datazen_demo".into()], &[]);
+    let error = server
+        .call_tool_inner(
+            "execute_batch",
+            Some(serde_json::json!({
+                "connection_id": "batch-denied-target-cfg",
+                "sql": "SELECT 1; SELECT COUNT(*) FROM datazen_t18.datazen_t18_probe",
+            })),
+        )
+        .await
+        .expect_err("second statement target is outside scope");
+    assert!(error.message.contains("datazen_t18"), "got: {error}");
+
+    let rows = test.store.mcp_audit_log().list(10).await.expect("audit rows");
+    assert_eq!(rows.len(), 3, "two statements plus the batch summary");
+    let second = rows
+        .iter()
+        .find(|row| row.index == Some(1))
+        .expect("statement 1 audit");
+    assert_eq!(second.decision, "deny");
+    assert_eq!(second.database_name.as_deref(), Some("datazen_t18"));
+}

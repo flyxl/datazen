@@ -17,7 +17,7 @@
 <video src="site/assets/video/demo-recording.mp4" controls width="100%" poster="site/assets/video/demo-poster.png"></video>
 
 <p align="center">
-  <b>18 个数据库驱动</b> · <b>10 种界面语言</b> · <b>MCP Server 与 Client</b> · <b>无需账号、不依赖云端</b> · <b>macOS · Windows · Linux</b>
+  <b>17 个数据库驱动</b> · <b>10 种界面语言</b> · <b>MCP Server 与 Client</b> · <b>无需账号、不依赖云端</b> · <b>macOS · Windows · Linux</b>
 </p>
 
 ## 数据库要你做的所有事，一个应用装下
@@ -227,7 +227,7 @@ workspace/
 
 - **[独立驱动开发指南 — 中文](docs/development/independent-driver-development.zh-CN.md)**
 - **[Independent Driver Development — English](docs/development/independent-driver-development.en.md)**
-- **[Driver API crate README](packages/driver-api/README.md)**
+- **[Driver API crate README](crates/datazen-driver-api/README.md)**
 - **[Driver API 依赖边界](docs/development/driver-api-dependency-boundary.md)**
 - **[crates.io 上的 datazen-driver-api](https://crates.io/crates/datazen-driver-api)**
 
@@ -296,7 +296,7 @@ pnpm tauri:build:community --drivers=postgres,mongodb
 - [功能指南](docs/features/) · [架构文档](docs/architecture/README.md) · [开发与发布文档](docs/development/)
 - [Workflow 指南](docs/features/workflow-guide.zh-CN.md) · [可视化查询构建器](docs/features/query-builder.md) · [Ops Dashboard](docs/features/ops-dashboard-guide.zh-CN.md) · [结构比对部署](docs/features/schema-diff-deploy.md) · [隧道指南](docs/features/tunnel-guide.zh-CN.md)
 - [独立驱动开发（中文）](docs/development/independent-driver-development.zh-CN.md) · [English](docs/development/independent-driver-development.en.md)
-- [Driver API crate](packages/driver-api/README.md) · [依赖边界](docs/development/driver-api-dependency-boundary.md) · [crates.io](https://crates.io/crates/datazen-driver-api)
+- [Driver API crate](crates/datazen-driver-api/README.md) · [依赖边界](docs/development/driver-api-dependency-boundary.md) · [crates.io](https://crates.io/crates/datazen-driver-api)
 - [贡献指南](CONTRIBUTING.md)
 
 ## 参与贡献
@@ -305,7 +305,7 @@ DataZen 欢迎 bug 反馈、功能建议、数据库驱动、文档改进与代�
 
 ## 许可
 
-DataZen 主体基于 **GNU General Public License v3.0 或更高版本** 许可，并附带 [插件、驱动与扩展链接例外条款](LICENSE)：仅依赖公开 SDK 构建的独立驱动、主题、扩展点与 Workspace App，可按其作者自己的条款发布。`packages/driver-api` 下的 `datazen-driver-api` crate 单独采用 **MIT 许可**。详见 [LICENSE](LICENSE) 与 [packages/driver-api/LICENSE-MIT](packages/driver-api/LICENSE-MIT)。
+DataZen 主体基于 **GNU General Public License v3.0 或更高版本** 许可，并附带 [插件、驱动与扩展链接例外条款](LICENSE)：仅依赖公开 SDK 构建的独立驱动、主题、扩展点与 Workspace App，可按其作者自己的条款发布。`crates/datazen-driver-api` 下的 `datazen-driver-api` crate 单独采用 **MIT 许可**。详见 [LICENSE](LICENSE) 与 [crates/datazen-driver-api/LICENSE-MIT](crates/datazen-driver-api/LICENSE-MIT)。
 
 <div align="center">
 

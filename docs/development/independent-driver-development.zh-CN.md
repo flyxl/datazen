@@ -193,11 +193,11 @@ import { cn, useI18n } from '@datazen/ui';
 
 Driver UI 需要宿主侧能力时，按以下模式取用（决策表与 bridge 全清单见契约文档 2.2 / 2.3）：
 
-- **纯函数 / IPC 封装**：实现**移动**下沉 `@datazen/driver-sdk`（全仓单实现，禁止复制）。下沉后宿主原路径**有存量消费方时**只保留**薄再导出**（re-export 指向 SDK 单实现，不允许出现第二份实现），**无消费方时整体移走、不留空壳**，消费点一并改为直接 import SDK（三分规则见契约文档 2.2 / 2.5）。留薄再导出壳的先例：`src/lib/cn.ts`（整文件一行 `export { cn } from '@datazen/ui';`）→ `@datazen/ui`、`src/lib/nativeContextMenu.ts:7-15` → SDK `nativeContextMenu`、`src/commands/driver.ts:6-11` → SDK `ipc/driverCommands`、`src/commands/file.ts` → 与 SDK `ipc/fileCommands` **合并再导出**（宿主另留 host-only 命令）。整体移走不留壳的先例：`driverSettings`、`resolveEditorFontFamily`——SDK 侧唯一实现分别是 `packages/driver-sdk/src/driverSettings.ts` 与 `packages/driver-sdk/src/resolveEditorFontFamily.ts`，宿主旧路径 `src/lib/driverSettings.ts` / `src/lib/resolveEditorFontFamily.ts` 已随 `92a039383` 整体移走而不复存在，宿主消费点 `src/windows/settings/DriverSettingsSection.tsx:3` 与 `src/components/sql-editor/editorExtensions.ts:36-38` 直连 `@datazen/driver-sdk`。
+- **纯函数 / IPC 封装**：实现**移动**下沉 `@datazen/driver-sdk`（全仓单实现，禁止复制）。下沉后宿主原路径**有存量消费方时**只保留**薄再导出**（re-export 指向 SDK 单实现，不允许出现第二份实现），**无消费方时整体移走、不留空壳**，消费点一并改为直接 import SDK（三分规则见契约文档 2.2 / 2.5）。留薄再导出壳的先例：`src/lib/cn.ts`（整文件一行 `export { cn } from '@datazen/ui';`）→ `@datazen/ui`、`src/lib/nativeContextMenu.ts:7-15` → SDK `nativeContextMenu`、`src/commands/driver.ts:6-11` → SDK `ipc/driverCommands`、`src/commands/file.ts` → 与 SDK `ipc/fileCommands` **合并再导出**（宿主另留 host-only 命令）。整体移走不留壳的先例：`driverSettings`、`resolveEditorFontFamily`——SDK 侧唯一实现分别是 `packages/driver-sdk/src/driverSettings.ts` 与 `packages/driver-sdk/src/resolveEditorFontFamily.ts`，宿主旧路径 `packages/driver-sdk/src/driverSettings.ts` / `packages/driver-sdk/src/resolveEditorFontFamily.ts` 已随 `92a039383` 整体移走而不复存在，宿主消费点 `src/windows/settings/DriverSettingsSection.tsx:3` 与 `src/components/sql-editor/editorExtensions.ts:36-38` 直连 `@datazen/driver-sdk`。
 - **依赖宿主 store / React hook 的运行时状态**：走「能力注入桥」——Driver 侧使用 `@datazen/driver-sdk` 的 `useBoundX()` 访问器，宿主在自己的 store/hook 定义处模块加载时调用 `bindX()` 注入真实实现。现有桥：`useBoundSettingsStore`、`useBoundConnectionStore`、`useBoundConfirmDialog`、`useBoundSchemaStore`、`showNativeContextMenu`（经 `bindContextMenuBridge`）。Driver 侧**从不调用** `bindX`；未绑定即消费会在开发期直接抛错（`'<X> has not been bound to driver-sdk yet.'`）。
 
 ```tsx
-// Driver UI 示例（形态与 packages/drivers/redis/ui 现网代码一致）
+// Driver UI 示例（形态与 crates/drivers/redis/ui 现网代码一致）
 import { useBoundSettingsStore, useBoundConfirmDialog } from '@datazen/driver-sdk';
 
 const safeMode = useBoundSettingsStore((s) => s.settings.safeMode); // 组件内订阅
@@ -236,7 +236,7 @@ Rust 变更时，Cargo 重新编译受影响的 Driver 代码。前端变更时�
 
 ## 8. 独立测试 Driver
 
-Driver 仓库应保留自己的测试和 CI。尽可能在不依赖 DataZen 应用的情况下独立测试 Driver。**禁止将 Driver 专属测试添加到 Host**（`src-tauri/`、`src/`、`e2e/specs/`）。本仓库的 Path Driver 遵循相同规则：测试位于 `packages/drivers/<id>/`（`#[cfg(test)]`、`tests/`、`ui/__tests__/`、`e2e/`）。详见 [AGENTS.md](../../AGENTS.md)「驱动测试落点」。
+Driver 仓库应保留自己的测试和 CI。尽可能在不依赖 DataZen 应用的情况下独立测试 Driver。**禁止将 Driver 专属测试添加到 Host**（`src-tauri/`、`src/`、`e2e/specs/`）。本仓库的 Path Driver 遵循相同规则：测试位于 `crates/drivers/<id>/`（`#[cfg(test)]`、`tests/`、`ui/__tests__/`、`e2e/`）。详见 [AGENTS.md](../../AGENTS.md)「驱动测试落点」。
 
 ```bash
 cd ~/workspace/datazen-driver-mydb

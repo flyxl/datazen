@@ -1,0 +1,26 @@
+[package]
+name = "datazen-driver-postgres"
+version = "0.0.10"
+edition = "2021"
+description = "DataZen postgres database driver"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+datazen-driver-api = { workspace = true }
+async-trait = { workspace = true }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "net", "io-util", "macros"] }
+sqlx = { version = "=0.8.6", features = ["runtime-tokio", "tls-rustls", "postgres", "chrono", "json", "rust_decimal", "uuid"] }
+rust_decimal = "1"
+serde_json = { workspace = true }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { workspace = true }
+tracing = { workspace = true }
+# F7: AST-level dialect-aware SQL target qualification (dialect binding lives in src/sql_target.rs)
+sqlparser = { workspace = true }
+futures-util = { workspace = true }
+
+[dev-dependencies]
+flate2 = "1"
+datazen = { workspace = true, features = ["application", "schema_diff", "backup", "services", "workflow"] }
+sha2 = "0.10"
+tempfile = "3"

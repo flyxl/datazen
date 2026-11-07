@@ -45,13 +45,21 @@ describe('injection detectors', () => {
   });
 
   it('detects driver_init injection but not comment-only extern crate', () => {
-    expect(hasInjectedDriverInit(CLEAN_CONTENTS['src-tauri/src/driver_init.rs'])).toBe(false);
-    expect(hasInjectedDriverInit(INJECTED_CONTENTS['src-tauri/src/driver_init.rs'])).toBe(true);
+    expect(hasInjectedDriverInit(CLEAN_CONTENTS['crates/datazen-desktop/src/driver_init.rs'])).toBe(
+      false,
+    );
+    expect(
+      hasInjectedDriverInit(INJECTED_CONTENTS['crates/datazen-desktop/src/driver_init.rs']),
+    ).toBe(true);
   });
 
   it('detects generated.ts DriverDatabaseType != never', () => {
-    expect(hasInjectedGeneratedTs(CLEAN_CONTENTS['src/extensions/generated.ts'])).toBe(false);
-    expect(hasInjectedGeneratedTs(INJECTED_CONTENTS['src/extensions/generated.ts'])).toBe(true);
+    expect(
+      hasInjectedGeneratedTs(CLEAN_CONTENTS['packages/frontend/src/extensions/generated.ts']),
+    ).toBe(false);
+    expect(
+      hasInjectedGeneratedTs(INJECTED_CONTENTS['packages/frontend/src/extensions/generated.ts']),
+    ).toBe(true);
   });
 
   it('detects capabilities plugin ACL entries for the given driver ids', () => {
@@ -86,14 +94,14 @@ describe('injection detectors', () => {
     expect(fileHasInjection('Cargo.toml', INJECTED_CONTENTS['Cargo.toml'])).toBe(true);
     expect(
       fileHasInjection(
-        'src/extensions/generated.ts',
-        INJECTED_CONTENTS['src/extensions/generated.ts'],
+        'packages/frontend/src/extensions/generated.ts',
+        INJECTED_CONTENTS['packages/frontend/src/extensions/generated.ts'],
       ),
     ).toBe(true);
     expect(
       fileHasInjection(
-        'src-tauri/src/driver_init.rs',
-        INJECTED_CONTENTS['src-tauri/src/driver_init.rs'],
+        'crates/datazen-desktop/src/driver_init.rs',
+        INJECTED_CONTENTS['crates/datazen-desktop/src/driver_init.rs'],
       ),
     ).toBe(true);
     expect(fileHasInjection('README.md', 'hello')).toBe(false);
@@ -102,7 +110,9 @@ describe('injection detectors', () => {
   it('treats empty or stub codegen as not injected', () => {
     expect(hasInjectedGeneratedTs('')).toBe(false);
     expect(hasInjectedGeneratedTs('export const x = 1;\n')).toBe(false);
-    expect(hasInjectedGeneratedTs(CLEAN_CONTENTS['src/extensions/generated.ts'])).toBe(false);
+    expect(
+      hasInjectedGeneratedTs(CLEAN_CONTENTS['packages/frontend/src/extensions/generated.ts']),
+    ).toBe(false);
     expect(hasInjectedDriverInit('')).toBe(false);
     expect(hasInjectedCapabilities('')).toBe(false);
   });
@@ -236,13 +246,15 @@ describe('runDriverStashPrecommit', () => {
       const stash = createDriverFileStash(root, { quiet: true });
       stash.stashManagedFiles();
       writeManagedFiles(root, INJECTED_CONTENTS);
-      unlinkSync(stash.stashPath('src-tauri/Cargo.toml'));
+      unlinkSync(stash.stashPath('crates/datazen-desktop/Cargo.toml'));
 
       const result = runDriverStashPrecommit(opts);
       expect(result.status).toBe(0);
       expect(result.restored).toBe(true);
       expect(hasInjectedCargoContent(readManaged(root, 'Cargo.toml'))).toBe(false);
-      expect(hasInjectedCargoContent(readManaged(root, 'src-tauri/Cargo.toml'))).toBe(false);
+      expect(hasInjectedCargoContent(readManaged(root, 'crates/datazen-desktop/Cargo.toml'))).toBe(
+        false,
+      );
     } finally {
       cleanup();
     }

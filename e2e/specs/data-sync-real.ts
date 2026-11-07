@@ -3,7 +3,7 @@
  *
  * Covers: `inspect_data_sync`, `compare_data_sync`, `generate_data_sync_sql`,
  * `execute_data_sync`, `apply_data_sync`, `revalidate_data_sync`. Uses live PostgreSQL / MySQL fixtures;
- * asserts Host-level IPC only — driver dialect tests belong in `packages/drivers/<id>/`.
+ * asserts Host-level IPC only — driver dialect tests belong in `crates/drivers/<id>/`.
  *
  * Prerequisites: run `e2e/setup-sync-dbs.sh` for `datazen_sync_src` / `datazen_sync_tgt`
  * and the restricted `datazen_readonly` user. Apply/recompare tests require writable PG target.

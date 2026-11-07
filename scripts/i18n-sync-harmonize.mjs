@@ -111,14 +111,16 @@ function parseArgs(argv) {
  * @param {{ dryRun?: boolean }} options
  */
 export function harmonizeLocale(root, locale, rules, { dryRun = false } = {}) {
-  const localeDir = resolve(root, 'src/locales', locale);
+  const localeDir = resolve(root, 'packages/frontend/src/locales', locale);
   const changed = [];
   const problems = [];
   const noop = [];
   if (!existsSync(localeDir)) return { changed, problems, noop };
 
   // Which pack holds which key.
-  const files = readdirSync(localeDir).filter((f) => f.endsWith('.ts')).sort();
+  const files = readdirSync(localeDir)
+    .filter((f) => f.endsWith('.ts'))
+    .sort();
   /** key → { file, value } */
   const located = new Map();
   for (const f of files) {
@@ -159,9 +161,7 @@ export function harmonizeLocale(root, locale, rules, { dryRun = false } = {}) {
       const lines = readFileSync(path, 'utf-8').split('\n');
       // Rewrite from the bottom up so the earlier line numbers stay valid.
       const byKey = new Map(parseEntries(readFileSync(path, 'utf-8')).map((e) => [e.key, e]));
-      const ordered = [...edits].sort(
-        (a, b) => byKey.get(b.key).line - byKey.get(a.key).line,
-      );
+      const ordered = [...edits].sort((a, b) => byKey.get(b.key).line - byKey.get(a.key).line);
       for (const edit of ordered) {
         const entry = byKey.get(edit.key);
         const rendered = `  '${edit.key}': '${escapeTsValue(edit.value)}',`;

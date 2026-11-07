@@ -1,0 +1,1973 @@
+//! WireMock-backed integration tests for AI command handlers.
+
+use std::sync::{Arc, Mutex};
+
+use datazen::ai::{ChatMessage, MessageRole, ToolCall};
+use datazen_driver_api::PromptScenario;
+
+use super::chat::execute_db_tool;
+use super::*;
+use crate::commands::{workflow_execute, workflow_list};
+use crate::testing::ai_wiremock_test_support::WiremockAi;
+use crate::testing::app_state_test_support::TestAppState;
+use datazen::ai::prompt_resolver::PromptOverrideEntry;
+
+#[tokio::test]
+async fn resolve_ai_requires_saved_config() {
+    let test = TestAppState::new().await;
+    test.state.ensure_ai_ready().await;
+    assert!(resolve_ai(&test.state).await.is_err());
+}
+
+#[tokio::test]
+async fn ai_session_commands_reject_unknown_runtime_ids() {
+    let (test, _mock) = TestAppState::with_wiremock_ai().await;
+    test.save_connection("runtime-only").await;
+
+    let app = host_command_app(test);
+    let error = ai_analyze_explain(
+        app.state(),
+        "unopened-runtime-session".into(),
+        "Seq Scan on users".into(),
+        "SELECT * FROM users".into(),
+    )
+    .await
+    .expect_err("AI must reject a dbSessionId that Runtime has not opened");
+    assert!(error.to_string().contains("session unavailable"));
+}
+
+#[tokio::test]
+async fn save_settings_config_rejects_prompt_over_limit_before_ai_readiness() {
+    let test = TestAppState::new().await;
+    let app = host_command_app(test);
+    let config = datazen::ai::AiSettingsConfig {
+        global_instructions: "a".repeat(datazen::ai::MAX_GLOBAL_INSTRUCTIONS_BYTES + 1),
+        ..Default::default()
+    };
+    let error = ai_save_settings_config(app.handle(), app.state(), config)
+        .await
+        .expect_err("over-limit global instructions are rejected");
+    assert!(matches!(
+        error,
+        crate::commands::error::CommandError::Validation(_)
+    ));
+}
+
+#[tokio::test]
+async fn connection_notes_ipc_round_trips_and_counts_are_scoped() {
+    let test = TestAppState::new().await;
+    let app = host_command_app(test);
+
+    assert_eq!(
+        ai_connection_notes_get("c-notes".into(), app.state())
+            .await
+            .unwrap(),
+        None
+    );
+    ai_connection_notes_set("c-notes".into(), "use UTC".into(), app.state())
+        .await
+        .unwrap();
+    assert_eq!(
+        ai_connection_notes_get("c-notes".into(), app.state())
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("use UTC")
+    );
+
+    let counts = ai_connection_context_counts("c-notes".into(), app.state())
+        .await
+        .unwrap();
+    assert_eq!(counts.note_count, 1);
+    assert_eq!(counts.memory_count, 0);
+
+    let too_long = "a".repeat(datazen::ai::MAX_CONNECTION_NOTES_BYTES + 1);
+    let error = ai_connection_notes_set("c-notes".into(), too_long, app.state())
+        .await
+        .expect_err("over-limit notes are rejected");
+    assert!(matches!(
+        error,
+        crate::commands::error::CommandError::Validation(_)
+    ));
+    assert_eq!(
+        ai_connection_notes_get("c-notes".into(), app.state())
+            .await
+            .unwrap()
+            .as_deref(),
+        Some("use UTC")
+    );
+
+    // Empty content deletes instead of persisting a blank note.
+    ai_connection_notes_set("c-notes".into(), "  \n".into(), app.state())
+        .await
+        .unwrap();
+    assert_eq!(
+        ai_connection_notes_get("c-notes".into(), app.state())
+            .await
+            .unwrap(),
+        None
+    );
+}
+
+#[tokio::test]
+async fn ai_chat_emits_injection_snapshot_without_prompt_bodies() {
+    use datazen::ai::PromptTemplate;
+    use std::sync::Mutex;
+    use tauri::Listener;
+
+    let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
+    test.save_connection("inject-cfg").await;
+    mock.mount_chat_stream_text("ok").await;
+
+    let mut settings = test.store.get_ai_settings_config().await;
+    settings.global_instructions = "Use UTC.".into();
+    settings.prompt_templates = vec![PromptTemplate {
+        id: "pg-template".into(),
+        name: "Postgres style".into(),
+        content: "PRIVATE_TEMPLATE_BODY prefer explicit joins".into(),
+        database_types: vec!["postgresql".into()],
+        is_default: true,
+    }];
+    test.store.save_ai_settings_config(&settings).await.unwrap();
+
+    let organization_id = test
+        .state
+        .organization_scope()
+        .unwrap()
+        .organization_id()
+        .as_str()
+        .to_string();
+    let owner = crate::platform::local_principal()
+        .map(|principal| principal.as_str().to_string())
+        .unwrap_or_else(|| "datazen-local-user".to_string());
+    test.store
+        .app_db()
+        .set_ai_connection_note(
+            &organization_id,
+            &owner,
+            "inject-cfg",
+            "PRIVATE_NOTE_BODY customer means account",
+        )
+        .unwrap();
+
+    let app = host_command_app(test);
+    let payloads: Arc<Mutex<Vec<serde_json::Value>>> = Arc::new(Mutex::new(Vec::new()));
+    let captured = payloads.clone();
+    app.window().listen("ai:chat-injection", move |event| {
+        if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
+            captured.lock().unwrap().push(payload);
+        }
+    });
+
+    ai_chat(
+        app.state(),
+        app.window(),
+        None,
+        None,
+        vec![ChatMessage {
+            role: MessageRole::User,
+            content: "question".into(),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }],
+        "req-injection".into(),
+        false,
+        None,
+        None,
+        None,
+        None,
+        Some("inject-cfg".into()),
+        Some(datazen::ai::AiAgentMode::Ask),
+        None,
+        None,
+        None,
+        None,
+        Some("pg-template".into()),
+        Some("postgresql".into()),
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    let payloads = payloads.lock().unwrap();
+    let payload = payloads
+        .iter()
+        .find(|payload| payload["requestId"] == "req-injection")
+        .expect("injection event");
+    assert_eq!(payload["snapshot"]["templateId"], "pg-template");
+    assert_eq!(payload["snapshot"]["templateName"], "Postgres style");
+    assert!(payload["snapshot"]["templateHash"].as_str().is_some());
+    assert_eq!(payload["snapshot"]["hasConnectionNotes"], true);
+    assert_eq!(payload["snapshot"]["hasGlobalInstructions"], true);
+    let serialized = payload.to_string();
+    assert!(!serialized.contains("PRIVATE_TEMPLATE_BODY"));
+    assert!(!serialized.contains("PRIVATE_NOTE_BODY"));
+}
+
+#[tokio::test]
+async fn ai_validate_config_hits_wiremock() {
+    let (test, mock) = TestAppState::with_wiremock_ai().await;
+    let cfg = crate::testing::ai_wiremock_test_support::openai_wiremock_config(&mock);
+    let app = host_command_app(test);
+    ai_validate_config(app.state(), cfg).await.unwrap();
+}
+
+#[tokio::test]
+async fn ai_diagnose_error_returns_parsed_json() {
+    let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
+    let (_, conn_id) = test.save_and_connect("diag-cfg").await;
+
+    mock.mount_chat_completion_text(
+        r#"{"explanation":"missing column","suggestedSql":"SELECT id FROM users","changes":[]}"#,
+    )
+    .await;
+
+    let app = host_command_app(test);
+    let result = ai_diagnose_error(
+        app.state(),
+        conn_id,
+        "app".into(),
+        "SELECT bad FROM users".into(),
+        "column bad does not exist".into(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.explanation, "missing column");
+    assert_eq!(
+        result.suggested_sql.as_deref(),
+        Some("SELECT id FROM users")
+    );
+}
+
+#[tokio::test]
+async fn ai_analyze_explain_parses_response() {
+    let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
+    let (_, conn_id) = test.save_and_connect("explain-cfg").await;
+
+    mock.mount_chat_completion_text(
+        r#"{"summary":"Seq scan","bottlenecks":[{"node":"Seq Scan","description":"full scan","severity":"high"}],"suggestions":[{"description":"Add index","sql":"CREATE INDEX ON users(id)","impact":"high"}]}"#,
+    )
+    .await;
+
+    let app = host_command_app(test);
+    let result = ai_analyze_explain(
+        app.state(),
+        conn_id,
+        "Seq Scan on users".into(),
+        "SELECT * FROM users".into(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.summary, "Seq scan");
+    assert_eq!(result.bottlenecks.len(), 1);
+    assert_eq!(result.suggestions.len(), 1);
+}
+
+#[tokio::test]
+async fn ai_parse_filter_normalizes_null_operators() {
+    let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
+    let (_, conn_id) = test.save_and_connect("filter-cfg").await;
+
+    mock.mount_chat_completion_text(
+        r#"[{"column":"name","operator":"eq","value":null},{"column":"id","operator":"gt","value":1}]"#,
+    )
+    .await;
+
+    let app = host_command_app(test);
+    let filters = ai_parse_filter(
+        app.state(),
+        conn_id,
+        "app".into(),
+        "users".into(),
+        "id greater than 1 and name is null".into(),
+    )
+    .await
+    .unwrap();
+
+    use datazen::services::query_executor::FilterOperator;
+    assert_eq!(filters.len(), 2);
+    assert!(matches!(filters[0].operator, FilterOperator::IsNull));
+    assert!(matches!(filters[1].operator, FilterOperator::Gt));
+}
+
+#[tokio::test]
+async fn ai_generate_schema_doc_returns_markdown() {
+    let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
+    let (_, conn_id) = test.save_and_connect("schema-doc-cfg").await;
+
+    mock.mount_chat_completion_text("# Users\n\nTable of users.")
+        .await;
+
+    let app = host_command_app(test);
+    let doc = ai_generate_schema_doc(app.state(), conn_id, "app".into())
+        .await
+        .unwrap();
+    assert!(doc.contains("Users"));
+}
+
+#[tokio::test]
+async fn ai_diagnose_connection_parses_json() {
+    let (test, mock) = TestAppState::with_wiremock_ai().await;
+    test.save_connection("conn-diag").await;
+
+    mock.mount_chat_completion_text(
+        r#"{"diagnosis":"Auth failed","possibleCauses":["bad password"],"solutions":[{"description":"Reset password","command":null}],"category":"auth"}"#,
+    )
+    .await;
+
+    let app = host_command_app(test);
+    let result = ai_diagnose_connection(
+        app.state(),
+        "conn-diag".into(),
+        "password authentication failed".into(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.diagnosis, "Auth failed");
+    assert_eq!(result.category, "auth");
+}
+
+#[tokio::test]
+async fn ai_analyze_queries_requires_history() {
+    let (test, _mock) = TestAppState::with_wiremock_ai().await;
+    let app = host_command_app(test);
+    let err = ai_analyze_queries(app.state(), None).await.unwrap_err();
+    assert!(err.to_string().contains("No query history"));
+}
+
+#[tokio::test]
+async fn ai_analyze_queries_with_history() {
+    let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
+    let (_, conn_id) = test.save_and_connect("hist-cfg").await;
+
+    // D6 第一切片：写入经模块服务（与生产路径同一装配）。
+    crate::platform::ipc::require_history_service(&test.state)
+        .unwrap()
+        .add_query_history(crate::store::QueryHistoryEntry {
+            id: uuid::Uuid::new_v4().to_string(),
+            connection_id: "hist-cfg".into(),
+            database: "app".into(),
+            schema: None,
+            sql: "SELECT 1".into(),
+            executed_at: chrono::Utc::now(),
+            execution_time_ms: 1,
+            rows_affected: Some(1),
+            success: true,
+            error_message: None,
+        })
+        .await;
+
+    mock.mount_chat_completion_text(
+        r#"{"summary":"Light reads","categories":[{"name":"SELECT","count":1,"examples":["SELECT 1"]}],"insights":["simple"],"frequentTables":["users"],"recommendations":[]}"#,
+    )
+    .await;
+
+    let app = host_command_app(test);
+    let analysis = ai_analyze_queries(app.state(), Some(conn_id))
+        .await
+        .unwrap();
+    assert_eq!(analysis.summary, "Light reads");
+}
+
+#[tokio::test]
+async fn execute_db_tool_list_connections() {
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("tool-cfg").await;
+
+    let tool = ToolCall {
+        id: "t1".into(),
+        name: "list_connections".into(),
+        arguments: "{}".into(),
+    };
+    let out = execute_db_tool(
+        &test.state,
+        &datazen::ai::tool_loop::AiToolContext::default(),
+        &tool,
+    )
+    .await;
+    assert!(out.contains("tool-cfg"));
+}
+
+#[tokio::test]
+async fn execute_db_tool_list_tables() {
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("tables-cfg").await;
+
+    let tool = ToolCall {
+        id: "t2".into(),
+        name: "list_tables".into(),
+        arguments: r#"{"connection_id":"tables-cfg","database":"app"}"#.into(),
+    };
+    let out = execute_db_tool(
+        &test.state,
+        &datazen::ai::tool_loop::AiToolContext::default(),
+        &tool,
+    )
+    .await;
+    assert!(out.contains("users"));
+}
+
+#[tokio::test]
+async fn execute_db_tool_query_readonly_reads_rows_on_current_connection() {
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("query-tool").await;
+
+    let ctx = datazen::ai::tool_loop::AiToolContext {
+        allowed_connection_id: Some("query-tool".into()),
+        max_sample_rows: 3,
+        cancel_token: None,
+    };
+    let tool = ToolCall {
+        id: "q1".into(),
+        name: "query_readonly".into(),
+        arguments: r#"{"connection_id":"query-tool","sql":"SELECT * FROM users","limit":10}"#
+            .into(),
+    };
+    let out = execute_db_tool(&test.state, &ctx, &tool).await;
+    assert!(!out.contains("Error"), "{out}");
+    assert!(out.contains("alice"), "{out}");
+}
+
+#[tokio::test]
+async fn execute_db_tool_sample_rows_quotes_and_limits() {
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("sample-tool").await;
+
+    let ctx = datazen::ai::tool_loop::AiToolContext {
+        allowed_connection_id: Some("sample-tool".into()),
+        max_sample_rows: 3,
+        cancel_token: None,
+    };
+    let tool = ToolCall {
+        id: "s1".into(),
+        name: "sample_rows".into(),
+        arguments: r#"{"connection_id":"sample-tool","schema":"public","table":"users"}"#.into(),
+    };
+    let out = execute_db_tool(&test.state, &ctx, &tool).await;
+    assert!(!out.contains("Error"), "{out}");
+    assert!(out.contains("alice"), "{out}");
+}
+
+#[tokio::test]
+async fn build_connections_context_lists_saved_configs() {
+    let test = TestAppState::new().await;
+    test.save_connection("ctx-cfg").await;
+    let ctx = build_connections_context(&test.state, "en").await;
+    assert!(ctx.contains("ctx-cfg"));
+    assert!(ctx.contains("available"));
+}
+
+#[tokio::test]
+async fn ai_generate_sql_stream_without_tools() {
+    let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
+    let (_, conn_id) = test.save_and_connect("nl2sql-cfg").await;
+    mock.mount_chat_stream_text("SELECT 1").await;
+
+    let app = host_command_app(test);
+    let log = app.stream_log();
+    let rid = ai_generate_sql(
+        app.state(),
+        app.window(),
+        conn_id,
+        "app".into(),
+        "count users".into(),
+        "req-nl2sql".into(),
+        Some("users".into()),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(rid, "req-nl2sql");
+    assert!(!log.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn ai_chat_with_schema_and_stream() {
+    let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
+    let (_, conn_id) = test.save_and_connect("chat-cfg").await;
+    mock.mount_chat_stream_text("Hello from AI").await;
+
+    let app = host_command_app(test);
+    let rid = ai_chat(
+        app.state(),
+        app.window(),
+        Some(conn_id.clone()),
+        Some("app".into()),
+        vec![ChatMessage {
+            role: MessageRole::User,
+            content: "Hi".into(),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }],
+        "req-chat".into(),
+        true,
+        None,
+        None,
+        None,
+        None,
+        Some(conn_id),
+        Some(datazen::ai::AiAgentMode::Agent),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(rid, "req-chat");
+}
+
+#[tokio::test]
+async fn ai_chat_workflow_scenario_builds_system_prompt() {
+    let (test, mock) = TestAppState::with_wiremock_ai().await;
+    test.save_connection("wf-ctx").await;
+    mock.mount_chat_stream_text("workflow yaml").await;
+
+    let app = host_command_app(test);
+    ai_chat(
+        app.state(),
+        app.window(),
+        None,
+        None,
+        vec![ChatMessage {
+            role: MessageRole::User,
+            content: "Build a workflow".into(),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }],
+        "req-wf".into(),
+        false,
+        Some("workflow_generate".into()),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn prompt_override_round_trip() {
+    use datazen::ai::prompt_resolver::PromptSource;
+
+    let test = TestAppState::new().await;
+    let entry = PromptOverrideEntry {
+        driver_type: "postgres".into(),
+        scenario: PromptScenario::Chat,
+        system: "Custom chat prompt".into(),
+    };
+    test.state
+        .prompt_resolver
+        .set_override(entry.clone())
+        .await
+        .unwrap();
+
+    let app = host_command_app(test);
+    let prompts = prompt_list(app.state(), Some("postgres".into()))
+        .await
+        .unwrap();
+    assert!(prompts.iter().any(|p| p.source == PromptSource::User));
+
+    app.state()
+        .prompt_resolver
+        .remove_override("postgres", PromptScenario::Chat)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn workflow_save_list_get_delete() {
+    use datazen::workflow::model::{WorkflowDefinition, WorkflowStep};
+
+    let test = TestAppState::new().await;
+    test.state
+        .workflow_registry
+        .load_all(&test.state.organization_scope().unwrap())
+        .await
+        .unwrap();
+    let wf = WorkflowDefinition {
+        database: None,
+        id: "test-wf".into(),
+        name: "Test Workflow".into(),
+        description: "desc".into(),
+        version: Some("1".into()),
+        blocks: Vec::new(),
+        author: None,
+        variables: vec![],
+        connection: None,
+        steps: vec![WorkflowStep::Ai {
+            id: "s1".into(),
+            prompt: "Say hi".into(),
+            timeout_secs: None,
+            on_error: None,
+        }],
+        output: None,
+        timeout_secs: None,
+        error_handling: None,
+        schedule: None,
+        visibility: Default::default(),
+    };
+
+    test.state
+        .workflow_registry
+        .save_workflow(&test.state.organization_scope().unwrap(), &wf)
+        .await
+        .unwrap();
+
+    // B3：workflow_list_impl 转发已回收，测试走真实命令入口。
+    let app = host_command_app(test);
+    let list = workflow_list(app.state()).await.unwrap();
+    assert!(list.iter().any(|w| w.id == "test-wf"));
+
+    let loaded = app
+        .state()
+        .workflow_registry
+        .get(&app.state().organization_scope().unwrap(), "test-wf")
+        .await
+        .expect("workflow");
+    assert_eq!(loaded.name, "Test Workflow");
+
+    app.state()
+        .workflow_registry
+        .delete_workflow(&app.state().organization_scope().unwrap(), "test-wf")
+        .await
+        .unwrap();
+    let remaining = workflow_list(app.state()).await.unwrap();
+    assert!(
+        !remaining.iter().any(|w| w.id == "test-wf"),
+        "deleted workflow should be gone, got: {remaining:?}"
+    );
+}
+
+fn many_tables_mock_options() -> crate::testing::mock_driver::MockDriverOptions {
+    use datazen_driver_api::{TableInfo, TableType};
+    let mut opts = crate::testing::app_state_test_support::rich_mock_options();
+    opts.tables = (0..35)
+        .map(|i| TableInfo {
+            name: format!("table_{i}"),
+            schema: None,
+            table_type: TableType::Table,
+            row_count: Some(0),
+        })
+        .collect();
+    opts
+}
+
+#[tokio::test]
+async fn ai_generate_schema_doc_selects_tables_when_many() {
+    let (test, mock) = TestAppState::with_wiremock_ai_options(many_tables_mock_options()).await;
+    let (_, conn_id) = test.save_and_connect("many-tables").await;
+
+    mock.mount_chat_completion_text_once(r#"["table_0","table_1"]"#)
+        .await;
+    mock.mount_chat_completion_text_once("# Schema doc").await;
+
+    let app = host_command_app(test);
+    let doc = ai_generate_schema_doc(app.state(), conn_id, "app".into())
+        .await
+        .unwrap();
+    assert!(doc.contains("# Schema doc"));
+}
+
+#[tokio::test]
+async fn ai_generate_sql_tool_loop_executes_list_connections() {
+    let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
+    let (_, conn_id) = test.save_and_connect("tool-loop").await;
+
+    let tool_sse = r#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"list_connections","arguments":"{}"}}]}}]}
+
+data: {"choices":[{"finish_reason":"tool_calls"}]}
+
+data: [DONE]
+
+"#;
+    let final_sse = r#"data: {"choices":[{"delta":{"content":"SELECT 1"}}]}
+
+data: {"choices":[{"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":2,"total_tokens":3}}
+
+data: [DONE]
+
+"#;
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, ResponseTemplate};
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(header("Authorization", "Bearer test-api-key"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(tool_sse),
+        )
+        .up_to_n_times(1)
+        .mount(&mock.server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(header("Authorization", "Bearer test-api-key"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(final_sse),
+        )
+        .mount(&mock.server)
+        .await;
+
+    let app = host_command_app(test);
+    ai_generate_sql(
+        app.state(),
+        app.window(),
+        conn_id,
+        "app".into(),
+        "how many users".into(),
+        "req-tools".into(),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn ai_fetch_remote_models_openai_wiremock() {
+    let mock = WiremockAi::start().await;
+    mock.mount_models_list().await;
+    let models = ai_fetch_remote_models(
+        "open_ai_compatible".into(),
+        mock.endpoint_v1(),
+        "test-api-key".into(),
+    )
+    .await
+    .unwrap();
+    assert!(models.iter().any(|m| m.id == "gpt-test"));
+}
+
+#[tokio::test]
+async fn ai_parse_filter_drops_unknown_columns() {
+    let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
+    let (_, conn_id) = test.save_and_connect("filter-drop").await;
+
+    mock.mount_chat_completion_text(
+        r#"[{"column":"ghost","operator":"eq","value":"x"},{"column":"name","operator":"like","value":"a"}]"#,
+    )
+    .await;
+
+    let app = host_command_app(test);
+    let filters = ai_parse_filter(
+        app.state(),
+        conn_id,
+        "app".into(),
+        "users".into(),
+        "name like a".into(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(filters.len(), 1);
+    assert_eq!(filters[0].column, "name");
+}
+
+#[tokio::test]
+async fn ai_generate_sql_injects_context_file() {
+    use crate::commands::context::resolve_context_dir_from_state;
+
+    let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
+    let (_, conn_id) = test.save_and_connect("ctx-sql").await;
+    let ctx_dir = resolve_context_dir_from_state(&test.state).await.unwrap();
+    std::fs::create_dir_all(&ctx_dir).unwrap();
+    std::fs::write(ctx_dir.join("notes.md"), "Context hint").unwrap();
+
+    mock.mount_chat_stream_text("SELECT 1").await;
+
+    let app = host_command_app(test);
+    ai_generate_sql(
+        app.state(),
+        app.window(),
+        conn_id,
+        "app".into(),
+        "run query".into(),
+        "req-ctx".into(),
+        None,
+        None,
+        Some(vec!["notes.md".into()]),
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn resolve_ai_succeeds_with_wiremock_config() {
+    let (test, _mock) = TestAppState::with_wiremock_ai().await;
+    let (provider, cfg) = resolve_ai(&test.state).await.unwrap();
+    assert_eq!(cfg.model, "gpt-test");
+    assert!(provider.supports_streaming());
+}
+
+#[tokio::test]
+async fn execute_db_tool_unknown_returns_error_string() {
+    let test = TestAppState::new().await;
+    let tool = ToolCall {
+        id: "bad".into(),
+        name: "nope".into(),
+        arguments: "{}".into(),
+    };
+    let out = execute_db_tool(
+        &test.state,
+        &datazen::ai::tool_loop::AiToolContext::default(),
+        &tool,
+    )
+    .await;
+    assert!(out.contains("Unknown tool"));
+}
+
+#[tokio::test]
+async fn execute_db_tool_get_table_schema() {
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("schema-tool").await;
+
+    let tool = ToolCall {
+        id: "t3".into(),
+        name: "get_table_schema".into(),
+        arguments: r#"{"connection_id":"schema-tool","tables":["users"]}"#.into(),
+    };
+    let out = execute_db_tool(
+        &test.state,
+        &datazen::ai::tool_loop::AiToolContext::default(),
+        &tool,
+    )
+    .await;
+    assert!(out.contains("users"));
+}
+
+#[tokio::test]
+async fn ai_delete_config_resets_providers() {
+    let (test, _mock) = TestAppState::with_wiremock_ai().await;
+    let app = host_command_app(test);
+    assert!(ai_get_config(app.state()).await.unwrap().is_some());
+    ai_delete_config(app.handle(), app.state()).await.unwrap();
+    assert!(ai_get_config(app.state()).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn ai_chat_injects_context_files_into_user_message() {
+    use crate::commands::context::resolve_context_dir_from_state;
+
+    let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
+    let ctx_dir = resolve_context_dir_from_state(&test.state).await.unwrap();
+    std::fs::create_dir_all(&ctx_dir).unwrap();
+    std::fs::write(ctx_dir.join("ctx.md"), "File context").unwrap();
+    mock.mount_chat_stream_text("ok").await;
+
+    let app = host_command_app(test);
+    ai_chat(
+        app.state(),
+        app.window(),
+        None,
+        None,
+        vec![ChatMessage {
+            role: MessageRole::User,
+            content: "Question".into(),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }],
+        "req-ctx-chat".into(),
+        false,
+        None,
+        Some(vec!["ctx.md".into()]),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn ai_chat_schema_resolve_failure_still_streams() {
+    let (test, mock) = TestAppState::with_wiremock_ai().await;
+    mock.mount_chat_stream_text("fallback").await;
+
+    let app = host_command_app(test);
+    ai_chat(
+        app.state(),
+        app.window(),
+        Some("not-connected".into()),
+        Some("app".into()),
+        vec![ChatMessage {
+            role: MessageRole::User,
+            content: "Hi".into(),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }],
+        "req-fail-schema".into(),
+        true,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn ai_generate_schema_doc_falls_back_when_selection_invalid() {
+    let (test, mock) = TestAppState::with_wiremock_ai_options(many_tables_mock_options()).await;
+    let (_, conn_id) = test.save_and_connect("schema-fallback").await;
+
+    mock.mount_chat_completion_text_once("not-valid-json").await;
+    mock.mount_chat_completion_text_once("# Fallback doc").await;
+
+    let app = host_command_app(test);
+    let doc = ai_generate_schema_doc(app.state(), conn_id, "app".into())
+        .await
+        .unwrap();
+    assert!(doc.contains("Fallback doc"));
+}
+
+#[tokio::test]
+async fn build_connections_context_chinese_header() {
+    let test = TestAppState::new().await;
+    test.save_connection("zh-cfg").await;
+    let ctx = build_connections_context(&test.state, "zh-CN").await;
+    assert!(ctx.contains("可用的数据库连接"));
+}
+
+#[tokio::test]
+async fn execute_db_tool_list_databases() {
+    let test = TestAppState::with_tables_and_resource_provider().await;
+    test.save_connection("db-tool").await;
+    let tool = ToolCall {
+        id: "ld".into(),
+        name: "list_databases".into(),
+        arguments: r#"{"connection_id":"db-tool"}"#.into(),
+    };
+    let out = execute_db_tool(
+        &test.state,
+        &datazen::ai::tool_loop::AiToolContext::default(),
+        &tool,
+    )
+    .await;
+    assert!(out.contains("app"));
+}
+
+#[tokio::test]
+async fn ai_analyze_queries_all_history() {
+    let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
+    let (_, _conn_id) = test.save_and_connect("all-hist").await;
+    // D6 第一切片：写入经模块服务（与生产路径同一装配）。
+    crate::platform::ipc::require_history_service(&test.state)
+        .unwrap()
+        .add_query_history(crate::store::QueryHistoryEntry {
+            id: uuid::Uuid::new_v4().to_string(),
+            connection_id: "all-hist".into(),
+            database: "app".into(),
+            schema: None,
+            sql: "SELECT 2".into(),
+            executed_at: chrono::Utc::now(),
+            execution_time_ms: 2,
+            rows_affected: Some(1),
+            success: true,
+            error_message: None,
+        })
+        .await;
+
+    mock.mount_chat_completion_text(
+        r#"{"summary":"ok","categories":[],"insights":[],"frequentTables":[],"recommendations":[]}"#,
+    )
+    .await;
+
+    let app = host_command_app(test);
+    let analysis = ai_analyze_queries(app.state(), None).await.unwrap();
+    assert_eq!(analysis.summary, "ok");
+}
+
+#[tokio::test]
+async fn ai_generate_sql_pins_current_table() {
+    let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
+    let (_, conn_id) = test.save_and_connect("pin-table").await;
+    mock.mount_chat_stream_text("SELECT * FROM users").await;
+
+    let app = host_command_app(test);
+    ai_generate_sql(
+        app.state(),
+        app.window(),
+        conn_id,
+        "app".into(),
+        "show users".into(),
+        "req-pin".into(),
+        Some("users".into()),
+        None,
+        None,
+        Some(vec!["orders".into()]),
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn ai_save_config_persists_wiremock_provider() {
+    let (test, mock) = TestAppState::with_wiremock_ai().await;
+    let cfg = crate::testing::ai_wiremock_test_support::openai_wiremock_config(&mock);
+    let app = host_command_app(test);
+    ai_save_config(app.handle(), app.state(), cfg)
+        .await
+        .unwrap();
+    assert!(ai_get_config(app.state()).await.unwrap().is_some());
+}
+
+#[tokio::test]
+async fn ai_generate_schema_doc_strips_markdown_fence() {
+    let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
+    let (_, conn_id) = test.save_and_connect("md-doc").await;
+    mock.mount_chat_completion_text("```markdown\n# Title\n```")
+        .await;
+
+    let app = host_command_app(test);
+    let doc = ai_generate_schema_doc(app.state(), conn_id, "app".into())
+        .await
+        .unwrap();
+    assert!(doc.contains("# Title"));
+}
+
+#[tokio::test]
+async fn ai_chat_stream_http_error_propagates() {
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, ResponseTemplate};
+
+    let (test, mock) = TestAppState::with_wiremock_ai().await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(header("Authorization", "Bearer test-api-key"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&mock.server)
+        .await;
+
+    let app = host_command_app(test);
+    assert!(ai_chat(
+        app.state(),
+        app.window(),
+        None,
+        None,
+        vec![ChatMessage {
+            role: MessageRole::User,
+            content: "Hi".into(),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }],
+        "req-err".into(),
+        false,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .is_err());
+}
+
+#[tokio::test]
+async fn execute_mcp_tool_not_connected_returns_qualified_error() {
+    let test = TestAppState::new().await;
+    let out = execute_mcp_tool(&test.state, "ext-server", "ping", r#"{"message":"hi"}"#).await;
+    assert!(out.starts_with("MCP tool error (mcp/ext-server/ping):"));
+}
+
+#[tokio::test]
+async fn ai_chat_non_db_tool_returns_pending_message() {
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, ResponseTemplate};
+
+    let (test, mock) = TestAppState::with_wiremock_ai().await;
+    let ask_sse = r#"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_q","function":{"name":"ask_questions","arguments":"{}"}}]}}]}
+
+data: {"choices":[{"finish_reason":"tool_calls"}]}
+
+data: [DONE]
+
+"#;
+    let answer_sse = r#"data: {"choices":[{"delta":{"content":"done"}}]}
+
+data: {"choices":[{"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}
+
+data: [DONE]
+
+"#;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(header("Authorization", "Bearer test-api-key"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(ask_sse),
+        )
+        .up_to_n_times(1)
+        .mount(&mock.server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/v1/chat/completions"))
+        .and(header("Authorization", "Bearer test-api-key"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(answer_sse),
+        )
+        .mount(&mock.server)
+        .await;
+
+    let app = host_command_app(test);
+    ai_chat(
+        app.state(),
+        app.window(),
+        None,
+        None,
+        vec![ChatMessage {
+            role: MessageRole::User,
+            content: "Pick one".into(),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }],
+        "req-ask".into(),
+        false,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn workflow_execute_ai_step_with_wiremock() {
+    use datazen::workflow::model::{WorkflowDefinition, WorkflowStep};
+
+    let (test, mock) = TestAppState::with_wiremock_ai().await;
+    test.state
+        .workflow_registry
+        .load_all(&test.state.organization_scope().unwrap())
+        .await
+        .unwrap();
+    mock.mount_chat_completion_text("workflow output").await;
+
+    let wf = WorkflowDefinition {
+        database: None,
+        id: "exec-wf".into(),
+        name: "Exec".into(),
+        description: String::new(),
+        version: None,
+        blocks: Vec::new(),
+        author: None,
+        variables: vec![],
+        connection: None,
+        steps: vec![WorkflowStep::Ai {
+            id: "ai1".into(),
+            prompt: "Say hello".into(),
+            timeout_secs: None,
+            on_error: None,
+        }],
+        output: None,
+        timeout_secs: None,
+        error_handling: None,
+        schedule: None,
+        visibility: Default::default(),
+    };
+    test.state
+        .workflow_registry
+        .save_workflow(&test.state.organization_scope().unwrap(), &wf)
+        .await
+        .unwrap();
+
+    // B3：测试转真实命令入口（生产调用方 scheduler 仍走共享入口）。
+    let app = host_command_app(test);
+    let result = workflow_execute(app.state(), "exec-wf".into(), serde_json::json!({}), None)
+        .await
+        .unwrap();
+    assert!(result.final_output.contains("workflow output"));
+
+    let history = app.state().workflow_history.list(Some("exec-wf")).await;
+    assert_eq!(history.len(), 1);
+}
+
+#[tokio::test]
+async fn ai_generate_sql_recent_queries_chinese_label() {
+    let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
+    let (_, conn_id) = test.save_and_connect("zh-sql").await;
+    let mut settings = test.state.store.get_settings().await;
+    settings.language = "zh-CN".into();
+    test.state.store.save_settings(settings).await.unwrap();
+    mock.mount_chat_stream_text("SELECT 1").await;
+
+    let app = host_command_app(test);
+    ai_generate_sql(
+        app.state(),
+        app.window(),
+        conn_id,
+        "app".into(),
+        "查询".into(),
+        "req-zh".into(),
+        None,
+        Some(vec!["SELECT 1".into()]),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn ai_generate_schema_doc_small_schema_single_step() {
+    let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
+    let (_, conn_id) = test.save_and_connect("small-doc").await;
+    mock.mount_chat_completion_text("# Small schema doc").await;
+
+    let app = host_command_app(test);
+    let doc = ai_generate_schema_doc(app.state(), conn_id, "app".into())
+        .await
+        .unwrap();
+    assert!(doc.contains("Small schema"));
+}
+
+#[tokio::test]
+async fn ai_diagnose_connection_missing_config_errors() {
+    let (test, _mock) = TestAppState::with_wiremock_ai().await;
+    let app = host_command_app(test);
+    assert!(
+        ai_diagnose_connection(app.state(), "missing".into(), "connection refused".into(),)
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn workflow_execute_missing_id_errors() {
+    let test = TestAppState::new().await;
+    let app = host_command_app(test);
+    assert!(
+        workflow_execute(app.state(), "nope".into(), serde_json::json!({}), None,)
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn ai_chat_connected_english_schema_message() {
+    let (test, mock) = TestAppState::with_wiremock_ai_tables().await;
+    let (_, conn_id) = test.save_and_connect("en-chat").await;
+    mock.mount_chat_stream_text("Hello").await;
+
+    let app = host_command_app(test);
+    ai_chat(
+        app.state(),
+        app.window(),
+        Some(conn_id),
+        Some("app".into()),
+        vec![ChatMessage {
+            role: MessageRole::User,
+            content: "Hi".into(),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }],
+        "req-en".into(),
+        true,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn workflow_history_clear_after_execute() {
+    use datazen::workflow::model::{WorkflowDefinition, WorkflowStep};
+
+    let (test, mock) = TestAppState::with_wiremock_ai().await;
+    test.state
+        .workflow_registry
+        .load_all(&test.state.organization_scope().unwrap())
+        .await
+        .unwrap();
+    mock.mount_chat_completion_text("done").await;
+
+    let wf = WorkflowDefinition {
+        database: None,
+        id: "hist-wf".into(),
+        name: "Hist".into(),
+        description: String::new(),
+        version: None,
+        blocks: Vec::new(),
+        author: None,
+        variables: vec![],
+        connection: None,
+        steps: vec![WorkflowStep::Ai {
+            id: "a".into(),
+            prompt: "x".into(),
+            timeout_secs: None,
+            on_error: None,
+        }],
+        output: None,
+        timeout_secs: None,
+        error_handling: None,
+        schedule: None,
+        visibility: Default::default(),
+    };
+    test.state
+        .workflow_registry
+        .save_workflow(&test.state.organization_scope().unwrap(), &wf)
+        .await
+        .unwrap();
+    let app = host_command_app(test);
+    workflow_execute(app.state(), "hist-wf".into(), serde_json::json!({}), None)
+        .await
+        .unwrap();
+    let cleared = app
+        .state()
+        .workflow_history
+        .clear(Some("hist-wf"))
+        .await
+        .unwrap();
+    assert_eq!(cleared, 1);
+}
+
+#[tokio::test]
+async fn dashboard_hidden_workflow_execute_skips_history() {
+    use datazen::workflow::model::{WorkflowDefinition, WorkflowStep, WorkflowVisibility};
+
+    let (test, mock) = TestAppState::with_wiremock_ai().await;
+    test.state
+        .workflow_registry
+        .load_all(&test.state.organization_scope().unwrap())
+        .await
+        .unwrap();
+    mock.mount_chat_completion_text("done").await;
+
+    let wf = WorkflowDefinition {
+        database: None,
+        id: "hidden-hist".into(),
+        name: "Hidden Hist".into(),
+        description: String::new(),
+        version: None,
+        blocks: Vec::new(),
+        author: None,
+        variables: vec![],
+        connection: None,
+        steps: vec![WorkflowStep::Ai {
+            id: "a".into(),
+            prompt: "x".into(),
+            timeout_secs: None,
+            on_error: None,
+        }],
+        output: None,
+        timeout_secs: None,
+        error_handling: None,
+        schedule: None,
+        visibility: WorkflowVisibility::DashboardHidden,
+    };
+    test.state
+        .workflow_registry
+        .save_workflow(&test.state.organization_scope().unwrap(), &wf)
+        .await
+        .unwrap();
+    let app = host_command_app(test);
+    workflow_execute(
+        app.state(),
+        "hidden-hist".into(),
+        serde_json::json!({}),
+        None,
+    )
+    .await
+    .unwrap();
+
+    let history = app.state().workflow_history.list(Some("hidden-hist")).await;
+    assert!(
+        history.is_empty(),
+        "dashboardHidden workflows must not write workflow_history"
+    );
+}
+
+async fn register_echo_test_mcp(
+    state: &crate::commands::AppState,
+) -> Arc<std::sync::atomic::AtomicUsize> {
+    use crate::mcp::McpServerConfig;
+    use rmcp::model::{CallToolResult, ContentBlock, Tool};
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let calls_c = calls.clone();
+    let input_schema = serde_json::json!({
+        "type": "object",
+        "properties": { "message": { "type": "string" } }
+    });
+    let echo_tool = Tool::new(
+        "echo",
+        "Echo a message",
+        input_schema.as_object().unwrap().clone(),
+    );
+
+    state
+        .mcp_client_manager
+        .register_test_server(
+            "test_srv",
+            "Test MCP",
+            vec![echo_tool],
+            Arc::new(move |tool_name, args| {
+                calls_c.fetch_add(1, Ordering::SeqCst);
+                if tool_name != "echo" {
+                    return Err(format!("unknown tool {tool_name}"));
+                }
+                let message = args
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default();
+                Ok(CallToolResult::success(vec![ContentBlock::text(format!(
+                    "echo:{message}"
+                ))]))
+            }),
+        )
+        .await;
+
+    let mut settings = state.store.get_settings().await;
+    settings.mcp_client_servers = vec![McpServerConfig {
+        id: "test_srv".into(),
+        name: "Test MCP".into(),
+        transport: "stdio".into(),
+        command: None,
+        args: vec![],
+        env: HashMap::new(),
+        enabled: true,
+        enabled_for_ai: true,
+    }];
+    state.store.save_settings(settings).await.unwrap();
+
+    calls
+}
+
+#[tokio::test]
+async fn ai_chat_mcp_tool_roundtrip() {
+    use datazen::ai::{MessageRole, StreamChunk, ToolCall};
+
+    let (test, mock) = TestAppState::with_mock_ai().await;
+    let _mcp_calls = register_echo_test_mcp(&test.state).await;
+
+    mock.push_stream_chunks(vec![StreamChunk {
+        content: String::new(),
+        reasoning: None,
+        done: true,
+        cancelled: false,
+        usage: None,
+        tool_calls: Some(vec![ToolCall {
+            id: "call_mcp".into(),
+            name: "mcp/test_srv/echo".into(),
+            arguments: r#"{"message":"hello"}"#.into(),
+        }]),
+        response_id: None,
+        egress_summary: None,
+        memory_used: None,
+    }]);
+    mock.push_stream_text("done");
+
+    let app = host_command_app(test);
+    ai_chat(
+        app.state(),
+        app.window(),
+        None,
+        None,
+        vec![ChatMessage {
+            role: MessageRole::User,
+            content: "Echo please".into(),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }],
+        "req-mcp-roundtrip".into(),
+        false,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(datazen::ai::AiAgentMode::Agent),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(mock.call_count(), 2, "tool round + final text round");
+    let follow_up = mock.last_request().expect("follow-up request");
+    let tool_msg = follow_up
+        .messages
+        .iter()
+        .find(|m| m.role == MessageRole::Tool)
+        .expect("tool result message");
+    assert!(tool_msg.content.contains("echo:hello"));
+    assert!(!tool_msg.content.contains("Pending"));
+}
+
+#[tokio::test]
+async fn ai_chat_mcp_and_db_same_round() {
+    use datazen::ai::{MessageRole, StreamChunk, ToolCall};
+    use std::sync::atomic::Ordering;
+
+    let (test, mock) = TestAppState::with_mock_ai_tables().await;
+    // This scenario intentionally exercises unrestricted tool results. The
+    // global execution policy must permit them as well as the model profile.
+    let mut settings = test.state.store.get_settings().await;
+    settings.ai_strict_egress = false;
+    test.state.store.save_settings(settings).await.unwrap();
+    let mut ai_settings = test.state.store.get_ai_settings_config().await;
+    for profile in &mut ai_settings.profiles {
+        profile.safety_gate.data_egress_level = datazen::ai::AiDataEgressLevel::Unrestricted;
+    }
+    test.state
+        .store
+        .save_ai_settings_config(&ai_settings)
+        .await
+        .unwrap();
+    test.save_connection("same-round-cfg").await;
+    let mcp_calls = register_echo_test_mcp(&test.state).await;
+
+    mock.push_stream_chunks(vec![StreamChunk {
+        content: String::new(),
+        reasoning: None,
+        done: true,
+        cancelled: false,
+        usage: None,
+        tool_calls: Some(vec![
+            ToolCall {
+                id: "call_db".into(),
+                name: "list_connections".into(),
+                arguments: "{}".into(),
+            },
+            ToolCall {
+                id: "call_mcp".into(),
+                name: "mcp/test_srv/echo".into(),
+                arguments: r#"{"message":"hi"}"#.into(),
+            },
+        ]),
+        response_id: None,
+        egress_summary: None,
+        memory_used: None,
+    }]);
+    mock.push_stream_text("all done");
+
+    let app = host_command_app(test);
+    ai_chat(
+        app.state(),
+        app.window(),
+        None,
+        None,
+        vec![ChatMessage {
+            role: MessageRole::User,
+            content: "List and echo".into(),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }],
+        "req-mcp-db-same".into(),
+        false,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(datazen::ai::AiAgentMode::Agent),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(mcp_calls.load(Ordering::SeqCst), 1);
+    let follow_up = mock.last_request().expect("follow-up request");
+    let tool_msgs: Vec<_> = follow_up
+        .messages
+        .iter()
+        .filter(|m| m.role == MessageRole::Tool)
+        .collect();
+    assert_eq!(tool_msgs.len(), 2, "both DB and MCP tool results expected");
+    assert!(
+        tool_msgs
+            .iter()
+            .any(|m| m.content.contains("same-round-cfg")),
+        "DB tool should list saved connection"
+    );
+    assert!(
+        tool_msgs.iter().any(|m| m.content.contains("echo:hi")),
+        "MCP tool should return echo output"
+    );
+    assert!(
+        !tool_msgs.iter().any(|m| m.content.contains("Pending")),
+        "executable tools must not leave Pending placeholders"
+    );
+}
+
+#[tokio::test]
+async fn ai_chat_ask_questions_with_executable_runs_tools_then_stops() {
+    use datazen::ai::{MessageRole, StreamChunk, ToolCall};
+    use std::sync::atomic::Ordering;
+    use tauri::Listener;
+
+    let (test, mock) = TestAppState::with_mock_ai_tables().await;
+    test.save_connection("mixed-round-cfg").await;
+    let mcp_calls = register_echo_test_mcp(&test.state).await;
+
+    let app = host_command_app(test);
+    // Done chunks only, recording whether the chunk carried tool calls —
+    // the emitted `toolCalls` field is present exactly when the model asked
+    // for tools.
+    let done_chunks: Arc<Mutex<Vec<(String, bool)>>> = Arc::new(Mutex::new(Vec::new()));
+    let done_log = done_chunks.clone();
+    app.window().listen("ai:stream-chunk", move |event| {
+        if let Ok(payload) = serde_json::from_str::<serde_json::Value>(event.payload()) {
+            if payload["done"].as_bool().unwrap_or(false) {
+                let request_id = payload["requestId"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string();
+                let has_tool_calls = payload.get("toolCalls").is_some();
+                done_log.lock().unwrap().push((request_id, has_tool_calls));
+            }
+        }
+    });
+
+    mock.push_stream_chunks(vec![StreamChunk {
+        content: String::new(),
+        reasoning: None,
+        done: true,
+        cancelled: false,
+        usage: None,
+        tool_calls: Some(vec![
+            ToolCall {
+                id: "call_db".into(),
+                name: "list_connections".into(),
+                arguments: "{}".into(),
+            },
+            ToolCall {
+                id: "call_mcp".into(),
+                name: "mcp/test_srv/echo".into(),
+                arguments: r#"{"message":"q"}"#.into(),
+            },
+            ToolCall {
+                id: "call_ask".into(),
+                name: "ask_questions".into(),
+                arguments: r#"{"questions":[{"id":"q1","prompt":"Pick?"}]}"#.into(),
+            },
+        ]),
+        response_id: None,
+        egress_summary: None,
+        memory_used: None,
+    }]);
+
+    ai_chat(
+        app.state(),
+        app.window(),
+        None,
+        None,
+        vec![ChatMessage {
+            role: MessageRole::User,
+            content: "Mixed tools".into(),
+            reasoning: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }],
+        "req-mixed".into(),
+        false,
+        None,
+        None,
+        None,
+        None,
+        None,
+        Some(datazen::ai::AiAgentMode::Agent),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(mcp_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(mock.call_count(), 1, "should stop after mixed round");
+}
+
+#[tokio::test]
+async fn confirmed_write_executes_only_after_exact_apply_and_audits_lifecycle() {
+    let test = TestAppState::new().await;
+    test.save_connection("write-cfg").await;
+    let sql = "UPDATE users SET role = 'admin' WHERE id = 42";
+
+    let proposal = propose_write_for_state(&test.state, "write-cfg", Some("app"), sql, None)
+        .await
+        .expect("proposal");
+    assert_eq!(proposal.connection_id, "write-cfg");
+    assert_eq!(proposal.database, "app");
+    assert_eq!(proposal.sql, sql);
+    assert!(proposal.apply_allowed);
+    assert_eq!(
+        test.mock.execute_calls(),
+        0,
+        "proposal must not execute the write"
+    );
+
+    let receipt = apply_write_for_state(&test.state, &proposal.token, "write-cfg", "app", sql)
+        .await
+        .expect("exact apply");
+    assert_eq!(receipt.proposal_id, proposal.proposal_id);
+    assert_eq!(receipt.sql_hash, proposal.sql_hash);
+    assert_eq!(
+        receipt.row_count,
+        Some(0),
+        "MultiQueryResult rowsAffected must survive"
+    );
+    assert_eq!(test.mock.execute_calls(), 1, "apply executes exactly once");
+
+    let reuse = apply_write_for_state(&test.state, &proposal.token, "write-cfg", "app", sql)
+        .await
+        .expect_err("one-time token");
+    assert!(reuse.to_string().contains("already used"), "{reuse}");
+    assert_eq!(test.mock.execute_calls(), 1, "reuse never executes");
+
+    let rows = test
+        .state
+        .store
+        .ai_write_audit_log()
+        .list(20)
+        .await
+        .expect("audit");
+    assert!(rows.iter().any(|row| row.decision == "proposal"));
+    let applied = rows
+        .iter()
+        .find(|row| row.decision == "applied")
+        .expect("applied audit");
+    assert_eq!(applied.row_count, Some(0));
+    assert!(rows.iter().any(|row| row.decision == "denied"));
+    assert!(rows.iter().all(|row| row.sql_hash.len() == 64));
+    let raw = tokio::fs::read_to_string(test.state.store.ai_write_audit_log().path())
+        .await
+        .unwrap();
+    assert!(!raw.contains("UPDATE users"));
+}
+
+#[tokio::test]
+async fn tampered_or_production_apply_never_reaches_the_driver() {
+    let test = TestAppState::new().await;
+    let mut production = test.save_connection("prod-write").await;
+    production.group = Some("preset:production".into());
+    test.store.save_connection(production).await.unwrap();
+    let sql = "DELETE FROM users WHERE id = 7";
+
+    let proposal = propose_write_for_state(&test.state, "prod-write", Some("app"), sql, None)
+        .await
+        .expect("proposal still shows the blocked target");
+    assert!(proposal.production_protected);
+    assert!(!proposal.apply_allowed);
+    assert_eq!(test.mock.execute_calls(), 0);
+
+    let error = apply_write_for_state(&test.state, &proposal.token, "prod-write", "app", sql)
+        .await
+        .expect_err("production writes are never executed");
+    assert!(error.to_string().contains("production"), "{error}");
+    assert_eq!(test.mock.execute_calls(), 0);
+
+    test.save_connection("write-tamper").await;
+    let proposal = propose_write_for_state(
+        &test.state,
+        "write-tamper",
+        Some("app"),
+        "UPDATE users SET role = 'admin' WHERE id = 1",
+        None,
+    )
+    .await
+    .expect("proposal");
+    let error = apply_write_for_state(
+        &test.state,
+        &proposal.token,
+        "write-tamper",
+        "app",
+        "UPDATE users SET role = 'admin' WHERE id = 2",
+    )
+    .await
+    .expect_err("exact SQL is required");
+    assert!(error.to_string().contains("SQL"), "{error}");
+    assert_eq!(test.mock.execute_calls(), 0);
+}
+
+#[tokio::test]
+async fn read_only_sql_never_creates_a_proposal_or_executes() {
+    let test = TestAppState::new().await;
+    test.save_connection("write-readonly-sql").await;
+
+    for sql in [
+        "SELECT * FROM users",
+        "WITH c AS (SELECT 1) SELECT * FROM c",
+        "EXPLAIN SELECT * FROM users",
+        "EXPLAIN ANALYZE UPDATE users SET role = 'admin' WHERE id = 1",
+        "SHOW TABLES",
+        "PRAGMA table_info(users)",
+    ] {
+        let error =
+            propose_write_for_state(&test.state, "write-readonly-sql", Some("app"), sql, None)
+                .await
+                .expect_err(sql);
+        assert!(error.to_string().contains("not a write"), "{sql}: {error}");
+        assert_eq!(test.mock.execute_calls(), 0, "{sql} must not execute");
+    }
+
+    let error = apply_write_for_state(
+        &test.state,
+        "unused-token",
+        "write-readonly-sql",
+        "app",
+        "SELECT * FROM users",
+    )
+    .await
+    .expect_err("apply must reject a read even if a caller invents a token");
+    assert!(error.to_string().contains("not a write"), "{error}");
+    assert_eq!(
+        test.mock.execute_calls(),
+        0,
+        "apply never reaches the driver"
+    );
+    let rows = test
+        .state
+        .store
+        .ai_write_audit_log()
+        .list(20)
+        .await
+        .unwrap();
+    assert!(rows
+        .iter()
+        .any(|row| row.decision == "denied" && row.reason.as_deref() == Some("not_write_sql")));
+}

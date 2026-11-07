@@ -137,8 +137,10 @@ async function setUpAndExecuteUnknown(databaseType: DatabaseType, fault: Fault) 
     });
     sourceSession = await connectConfig(sourceId);
     targetSession = await connectConfig(targetId);
-    originalSettings = await invokeBackend<Record<string, unknown>>('get_settings');
-    await invokeBackend('save_settings', { settings: { ...originalSettings, safeMode: false } });
+    originalSettings = await invokeBackend<Record<string, unknown>>('get_host_settings');
+    await invokeBackend('save_host_settings', {
+      settings: { ...originalSettings, safeMode: false },
+    });
 
     await executeQuery(sourceSession, `DROP TABLE IF EXISTS ${table}`, names.source);
     await executeQuery(targetSession, `DROP TABLE IF EXISTS ${table}`, names.target);
@@ -278,7 +280,9 @@ async function setUpAndExecuteUnknown(databaseType: DatabaseType, fault: Fault) 
       () => undefined,
     );
     if (originalSettings) {
-      await invokeBackend('save_settings', { settings: originalSettings }).catch(() => undefined);
+      await invokeBackend('save_host_settings', { settings: originalSettings }).catch(
+        () => undefined,
+      );
     }
     if (profileSaved)
       await invokeBackend('delete_sync_profile', { profileId }).catch(() => undefined);
@@ -415,7 +419,7 @@ describe('Data Sync unknown outcome history recovery', () => {
             () => undefined,
           );
           if (fixture.originalSettings) {
-            await invokeBackend('save_settings', { settings: fixture.originalSettings }).catch(
+            await invokeBackend('save_host_settings', { settings: fixture.originalSettings }).catch(
               () => undefined,
             );
           }

@@ -1,0 +1,181 @@
+[package]
+name = "datazen_desktop"
+version = "0.3.0"
+description = "DataZen desktop database client (Tauri backend)"
+authors = ["DataZen"]
+edition = "2021"
+rust-version = "1.85"
+license = "GPL-3.0-or-later"
+
+[lib]
+name = "datazen_desktop"
+path = "src/lib.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+datazen-driver-api = { workspace = true }
+# Platform adapter (P1, 开发计划 :77)。方向是 host → platform-api / application，
+# 与 F-02 禁止的 application → host 相反，因此不受 crate 边界门禁限制。
+# 两个包都不依赖 Tauri / HTTP，desktop adapter 只在 host 侧引用它们。
+# 桌面二进制启用全部已落地业务 feature（host-boundary-followups F0：common/jobs/workflow/mcp
+# 此前由 data_sync/schema_diff/mcp 等传递打开，读清单的人会以为 MCP 没编进桌面）。
+# 未列出的 feature 不得被桌面意外打开；`cargo tree -p datazen_desktop -e normal,build,features -i datazen`
+# 的启用集合应与本清单一致（dev 行另加 test-harness）。
+datazen = { workspace = true, features = ["application", "settings", "ai", "connection", "connection_import", "feature_error", "services", "named_views", "history", "execution", "schema", "schema_diff", "data_sync", "data_transfer", "table-browsing", "table-editing", "dashboard", "monitor", "export", "backup", "wapps", "tunnel", "common", "jobs", "workflow", "mcp"] }
+# P5 JobRuntime 内核（§2/§5）：prepare/apply 经 runtime 受理，desktop 只做适配。
+# 形态中立的跨形态基础设施原语（脱敏 / 路径安全），零 datazen-* 依赖（F-11 反向 allow-list 兜底）。
+datazen-infra = { workspace = true }
+# 迁移三件套各自以 Job 受理 prepare/apply，host 只做 adapter。
+# Wave-2 B1：Workspace App 形态中立内核（manifest 规则 / 安装 / 存储）已并入
+# datazen（modules::workspace_apps 模块），此处不再单独依赖。
+inventory = { workspace = true }
+tauri = { version = "2", features = ["protocol-asset", "macos-private-api", "tray-icon", "devtools"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util", "net", "process"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+aes-gcm = { workspace = true }
+base64 = { workspace = true }
+rand = { workspace = true }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+open = "5"
+sysinfo = "0.30"
+async-trait = { workspace = true }
+urlencoding = "2"
+tauri-plugin-webdriver = { version = "0.2", optional = true }
+tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-os = "2.3.2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+sys-locale = "0.3.2"
+russh = { workspace = true }
+tokio-tungstenite = { workspace = true }
+tokio-rustls = { workspace = true }
+url = { workspace = true }
+reqwest = { workspace = true }
+futures-util = { workspace = true }
+
+# Driver crates — WR-A3 P2 构建期主手术面（W3-c）：15 个 path 驱动改为**静态声明**
+# （optional = true + 各自 `driver-*` feature + `drivers` 聚合 feature），
+# `resolve-drivers.mjs` 不再为本组驱动改写本文件（默认 basic / all 全是 path 驱动，
+# 构建期零注入；无驱动部署 `cargo build` 即得，全量经 `--features drivers`）。
+# 标记块只留给 **git 驱动**（kiwi/superset，构建期克隆、路径不存在，无法静态化）：
+# <<driver-dependencies>>
+# <</driver-dependencies>>
+# 静态驱动依赖（与 drivers-registry.json 的 path 条目一一对应；
+# check-managed-stubs.mjs --check-static-drivers 会核对这份清单）。
+datazen-driver-postgres = { path = "../drivers/postgres", optional = true }
+datazen-driver-mysql = { path = "../drivers/mysql", optional = true }
+datazen-driver-sqlite = { path = "../drivers/sqlite", optional = true }
+datazen-driver-redis = { path = "../drivers/redis", optional = true }
+datazen-driver-mongodb = { path = "../drivers/mongodb", optional = true }
+datazen-driver-sqlserver = { path = "../drivers/sqlserver", optional = true }
+datazen-driver-clickhouse = { path = "../drivers/clickhouse", optional = true }
+datazen-driver-duckdb = { path = "../drivers/duckdb", optional = true }
+datazen-driver-elasticsearch = { path = "../drivers/elasticsearch", optional = true }
+datazen-driver-rqlite = { path = "../drivers/rqlite", optional = true }
+datazen-driver-turso = { path = "../drivers/turso", optional = true }
+datazen-driver-influxdb = { path = "../drivers/influxdb", optional = true }
+datazen-driver-victoriametrics = { path = "../drivers/victoriametrics", optional = true }
+datazen-driver-hbase = { path = "../drivers/hbase", optional = true }
+datazen-driver-vector = { path = "../drivers/vector", optional = true }
+axum = "0.8"
+rmcp = { version = "2.2.0", features = ["server", "client", "transport-io", "transport-child-process", "transport-streamable-http-server", "macros", "schemars"] }
+schemars = "1.2.2"
+tokio-util = { version = "0.7.19", features = ["rt", "compat"] }
+dirs = { workspace = true }
+rusqlite = { workspace = true }
+keyring = { version = "4", features = ["v1"] }
+serde_yaml = { workspace = true }
+regex = { workspace = true }
+zip = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+subtle = { version = "2.6", default-features = false }
+
+tempfile = "3.27.0"
+libc = { workspace = true }
+
+# macOS 静默 E2E：让 webdriver 构建在 `DATAZEN_E2E_QUIET` 下拒绝进程激活，
+# 避免本地跑测试时抢走开发者焦点（见 `src/e2e_quiet.rs`）。两个 crate 都由
+# `webdriver` feature 引入，正式构建既不编译也不链接它们。
+#
+# 必须放在 `<<driver-dependencies>>` 标记**之后**：`resolve-drivers.mjs` 只替换两个
+# 标签之间的内容，若在本表头之前插入 `[dependencies]` 的后半段（含标记）会被一并
+# 划进这张表，导致注入的驱动依赖变成 macOS 专属、Linux/Windows 构建失败。
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { version = "0.6.4", optional = true }
+objc2-app-kit = { version = "0.3.2", optional = true }
+
+[features]
+# W7-B：`drivers`（全部 15 个 path 驱动聚合）提入 default。裸 `cargo check/test/build
+# -p datazen_desktop` 自此自带驱动；git 驱动（kiwi/superset）仍由 resolve-drivers
+# 构建期注入，不入 default。
+# 脚本化构建（ci-tauri-build / e2e-tauri-build / tauri-dev）一律先传
+# `--no-default-features` 再显式传 `-f <.driver-features.json 的 features>`，
+# 因此 basic/all/webdriver SKU 的特征集与 default=[] 时代逐项相同、零变化。
+default = ["drivers"]
+webdriver = ["tauri-plugin-webdriver", "dep:objc2", "dep:objc2-app-kit", "datazen/webdriver"]
+# Enables `datazen::test_harness` for src-tauri/tests/ IPC migration integration tests.
+# `tauri/test` lights up `tauri::test::mock_app` for the harness's HostedApp —
+# the command entries need a `State<'_, AppState>` that only a Manager can
+# provide (B2 之后命令层没有 `_impl` 转发层)。
+test-harness = ["datazen/test-harness", "tauri/test"]
+# Path-driver features（静态；与上面依赖一一对应）+ `drivers` 聚合 feature。
+# <<driver-features>>
+# <</driver-features>>
+driver-postgres = ["dep:datazen-driver-postgres"]
+driver-mysql = ["dep:datazen-driver-mysql"]
+driver-sqlite = ["dep:datazen-driver-sqlite"]
+driver-redis = ["dep:datazen-driver-redis"]
+driver-mongodb = ["dep:datazen-driver-mongodb"]
+driver-sqlserver = ["dep:datazen-driver-sqlserver"]
+driver-clickhouse = ["dep:datazen-driver-clickhouse"]
+driver-duckdb = ["dep:datazen-driver-duckdb"]
+driver-elasticsearch = ["dep:datazen-driver-elasticsearch"]
+driver-rqlite = ["dep:datazen-driver-rqlite"]
+driver-turso = ["dep:datazen-driver-turso"]
+driver-influxdb = ["dep:datazen-driver-influxdb"]
+driver-victoriametrics = ["dep:datazen-driver-victoriametrics"]
+driver-hbase = ["dep:datazen-driver-hbase"]
+driver-vector = ["dep:datazen-driver-vector"]
+# 全量 path 驱动聚合：`cargo build -p datazen_desktop --features drivers`。
+drivers = ["driver-postgres", "driver-mysql", "driver-sqlite", "driver-redis", "driver-mongodb", "driver-sqlserver", "driver-clickhouse", "driver-duckdb", "driver-elasticsearch", "driver-rqlite", "driver-turso", "driver-influxdb", "driver-victoriametrics", "driver-hbase", "driver-vector"]
+
+
+[dev-dependencies]
+wiremock = "0.6"
+sqlx = { version = "=0.8.6", features = ["runtime-tokio", "tls-rustls", "postgres", "mysql"] }
+# `tauri::test`（mock_app / MockRuntime）：`#[tauri::command]` 处理函数现在直接
+# 持有业务逻辑，命令集成测试经真实命令入口驱动（State/WebviewWindow 只能来自
+# Manager），需要 mock 运行时宿主。test feature 仅测试构建启用。
+tauri = { version = "2", features = ["test"] }
+datazen-driver-postgres = { workspace = true }
+datazen-driver-mysql = { workspace = true }
+datazen-driver-sqlite = { workspace = true }
+datazen = { workspace = true, features = ["test-harness"] }
+# Host tests drive `DriverRegistry::register_test_driver*` / `register_test_factory*`, which the
+# Dev-only: `resolver = "2"` keeps this feature out of normal `cargo build` of the host.
+
+[[test]]
+name = "driver_command_ipc"
+required-features = ["test-harness"]
+
+[lints.rust]
+# Driver features：path 驱动为静态声明（见 [features]），git 驱动（kiwi/superset）
+# 仍由 resolve-drivers.mjs 在构建期注入；特征集取决于构建选择了哪些驱动，
+# 因此这里声明 **drivers-registry.json 能产出的每一个** driver feature ——
+# 单独 `cargo check` 不会把它们当 unexpected cfg。
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("driver-postgres", "driver-mysql", "driver-sqlite", "driver-redis", "driver-mongodb", "driver-sqlserver", "driver-clickhouse", "driver-duckdb", "driver-elasticsearch", "driver-rqlite", "driver-turso", "driver-influxdb", "driver-victoriametrics", "driver-hbase", "driver-vector", "driver-kiwi", "driver-superset"))'] }
+# 标识符只许 ASCII：中文测试名（存量已于 2026-10-27 全量改英文）会触发
+# non_snake_case 告警刷屏 CI 日志；deny 让新增非 ASCII 标识符直接红编译。
+# 注释与字符串字面量里的中文不受影响。
+non_ascii_idents = "deny"

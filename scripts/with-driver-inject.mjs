@@ -114,8 +114,7 @@ export function runWithDriverInject(options = {}) {
   const resolveArgs = driversArgs.join(' ');
 
   const proFlag =
-    ahead.some((a) => a === '--pro' || a === '--edition=pro') ||
-    baseEnv.DATAZEN_EDITION === 'pro';
+    ahead.some((a) => a === '--pro' || a === '--edition=pro') || baseEnv.DATAZEN_EDITION === 'pro';
   const proPathArg = ahead.find((a) => a.startsWith('--pro-path='));
   const proGitArg = ahead.find((a) => a.startsWith('--pro-git='));
   const proPrebuiltArg = ahead.find((a) => a.startsWith('--pro-prebuilt-url='));
@@ -200,13 +199,9 @@ export function runWithDriverInject(options = {}) {
   };
 
   if (nested) {
-    log(
-      `[with-driver-inject] ${INJECT_ACTIVE_ENV}=1; skipping resolve/restore (nested)`,
-    );
+    log(`[with-driver-inject] ${INJECT_ACTIVE_ENV}=1; skipping resolve/restore (nested)`);
   } else if (orphanStash) {
-    log(
-      '[with-driver-inject] orphan .driver-file-stash/ detected; restoring before resolve',
-    );
+    log('[with-driver-inject] orphan .driver-file-stash/ detected; restoring before resolve');
     doRestore();
   }
 

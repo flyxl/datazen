@@ -87,8 +87,8 @@ describe('零连接工作区空状态 (ZERO-001 ~ ZERO-005)', () => {
     // Bypass the onboarding wizard gate (a wiped data dir is a fresh install
     // whose wizard window replaces the main window); this suite asserts the
     // post-onboarding zero-connection workspace itself.
-    const settings = await invokeBackend<Record<string, unknown>>('get_settings');
-    await invokeBackend('save_settings', {
+    const settings = await invokeBackend<Record<string, unknown>>('get_host_settings');
+    await invokeBackend('save_host_settings', {
       settings: { ...settings, onboarding: { completed: true, version: 1 } },
     });
     await browser.execute(() => location.reload());
@@ -112,8 +112,8 @@ describe('零连接工作区空状态 (ZERO-001 ~ ZERO-005)', () => {
     // Keep the onboarding gate closed for the following suites: the first-run
     // journey owns its own spec (`journeys/onboarding-journey.ts`) and would
     // otherwise replace MainPage for everything that runs after this file.
-    const settings = await invokeBackend<Record<string, unknown>>('get_settings');
-    await invokeBackend('save_settings', {
+    const settings = await invokeBackend<Record<string, unknown>>('get_host_settings');
+    await invokeBackend('save_host_settings', {
       settings: { ...settings, onboarding: { completed: true, version: 1 } },
     });
     await browser.execute(() => location.reload());

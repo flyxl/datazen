@@ -908,7 +908,8 @@ output:
 |------|------|
 | `modules/src/workflow/` | 模型、执行、模板、条件 |
 | `scripts/test-cross-db-workflow.yaml` | 跨库示例 |
-| `src-tauri/tests/workflow_tests.rs` | 集成测试 |
+| `modules/src/workflow/domain/model_tests.rs` | 模型 YAML / 序列化测试（2026-11-02 拆分归位） |
+| `src-tauri/tests/workflow_db_tests.rs` | 跨库真 DB 集成测试（需 PG + MySQL；CI 由每周的 workflow-db-tests 任务真跑） |
 | `modules/resources/prompts/workflow_generate.md` | AI 生成规范 |
 | `e2e/specs/workflow*.ts` | UI E2E |
 

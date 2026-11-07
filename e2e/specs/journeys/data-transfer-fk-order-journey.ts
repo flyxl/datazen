@@ -17,7 +17,7 @@ import type {
   TransferExecutionResult,
   TransferJob,
   TransferPreview,
-} from '../../../src/commands/transfer';
+} from '../../../packages/frontend/src/commands/transfer';
 
 function pgConfig(id: string, name: string, database: string) {
   return {

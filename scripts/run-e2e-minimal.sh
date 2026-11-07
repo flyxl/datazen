@@ -306,11 +306,28 @@ build_webdriver_app() {
     return 0
   fi
 
-  # 打包器失败：校验 E2E 所需二进制（macOS 优先 .app，与 e2e/run.mjs 选择一致）
-  local bin="target/debug/datazen"
-  if [[ "$(uname -s)" == "Darwin" && -f "target/debug/bundle/macos/DataZen.app/Contents/MacOS/datazen" ]]; then
-    bin="target/debug/bundle/macos/DataZen.app/Contents/MacOS/datazen"
+  # 打包器失败：校验 E2E 所需二进制（macOS 优先 .app，与 e2e/run.mjs 选择一致）。
+  # 可执行文件名跟随 `src-tauri/Cargo.toml` 的 binary target，DDD 重构后是
+  # `datazen_desktop`；旧名字 `datazen` 保留兼容。
+  local bin=""
+  local name
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    for name in datazen_desktop datazen; do
+      if [[ -f "target/debug/bundle/macos/DataZen.app/Contents/MacOS/$name" ]]; then
+        bin="target/debug/bundle/macos/DataZen.app/Contents/MacOS/$name"
+        break
+      fi
+    done
   fi
+  if [[ -z "$bin" ]]; then
+    for name in datazen_desktop datazen; do
+      if [[ -f "target/debug/$name" ]]; then
+        bin="target/debug/$name"
+        break
+      fi
+    done
+  fi
+  [[ -z "$bin" ]] && bin="target/debug/datazen_desktop"
   if [[ -f "$bin" ]]; then
     local bin_mtime="0"
     bin_mtime="$(stat -f %m "$bin" 2>/dev/null || echo 0)"

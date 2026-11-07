@@ -5,15 +5,15 @@ set -euo pipefail
 # ./scripts/sync-repos.sh [--commit-message "msg"]
 #
 # Syncs local changes to external driver GitHub repositories:
-#   - packages/drivers/kiwi     → github.com/flyxl/datazen-driver-kiwi
-#   - packages/drivers/superset → github.com/flyxl/datazen-driver-superset
+#   - crates/drivers/kiwi     → github.com/flyxl/datazen-driver-kiwi
+#   - crates/drivers/superset → github.com/flyxl/datazen-driver-superset
 #
-# Driver API source of truth: packages/driver-api in this monorepo, published
+# Driver API source of truth: crates/datazen-driver-api in this monorepo, published
 # to crates.io as datazen-driver-api (no separate git mirror to sync).
 # ─────────────────────────────────────────────────────────────────────
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DRIVERS_DIR="$ROOT/packages/drivers"
+DRIVERS_DIR="$ROOT/crates/drivers"
 
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'

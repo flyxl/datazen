@@ -41,7 +41,7 @@ function restoreAll() {
 
 function cargoTomlHasFeatures(features) {
   if (features.length === 0) return true;
-  const cargoToml = readFileSync(resolve(ROOT, 'src-tauri/Cargo.toml'), 'utf-8');
+  const cargoToml = readFileSync(resolve(ROOT, 'crates/datazen-desktop/Cargo.toml'), 'utf-8');
   return features.every((f) => cargoToml.includes(`${f} =`));
 }
 
@@ -72,8 +72,13 @@ function resolveDriversWithInjectCheck(driversStr) {
 }
 
 const args = process.argv.slice(2);
-if (args.some((a) => a === '--plugins' || a.startsWith('--plugins=')) || process.env.DATAZEN_PLUGINS) {
-  console.error('[tauri:dev] --plugins / DATAZEN_PLUGINS are no longer supported. Use --drivers=... or DATAZEN_DRIVERS.');
+if (
+  args.some((a) => a === '--plugins' || a.startsWith('--plugins=')) ||
+  process.env.DATAZEN_PLUGINS
+) {
+  console.error(
+    '[tauri:dev] --plugins / DATAZEN_PLUGINS are no longer supported. Use --drivers=... or DATAZEN_DRIVERS.',
+  );
   process.exit(1);
 }
 
@@ -120,9 +125,18 @@ console.log(`[tauri:dev] resolving pro extension (edition="${edition}")...`);
 resolvePro({ edition, proPath, proGit });
 
 const tauriArgs = ['tauri', 'dev'];
+// 桌面 crate 自 W7-B 起 `default = ["drivers"]`：与 ci-tauri-build 一致，脚本化
+// 路径先关 default，再显式传 resolve-drivers 算出的特征集，保证
+// `tauri:dev --drivers=basic` 等的驱动集与 default=[] 时代相同。
+// CLI 2.10.1 起 build/dev 都不再把 `--no-default-features` 当自己的开关，
+// 要走 `--` 交给 cargo（与 ci-tauri-build / e2e-tauri-build 一致）。
+if (features.length === 0) {
+  tauriArgs.push('--', '--no-default-features');
+}
 
 if (features.length > 0) {
   tauriArgs.push('-f', features.join(','));
+  tauriArgs.push('--', '--no-default-features');
 }
 
 tauriArgs.push(...otherArgs);
@@ -132,7 +146,9 @@ console.log(`[tauri:dev] running: npx ${tauriArgs.join(' ')}`);
 if (process.env.DATAZEN_KEYRING) {
   console.log(`[tauri:dev] DATAZEN_KEYRING=${process.env.DATAZEN_KEYRING}`);
 } else {
-  console.log('[tauri:dev] DATAZEN_KEYRING unset → Rust will use .key on adhoc/unsigned macOS builds');
+  console.log(
+    '[tauri:dev] DATAZEN_KEYRING unset → Rust will use .key on adhoc/unsigned macOS builds',
+  );
 }
 
 const tauri = spawn('npx', tauriArgs, {
@@ -143,9 +159,7 @@ const tauri = spawn('npx', tauriArgs, {
     ...process.env,
     DATAZEN_EDITION: edition,
     DATAZEN_DRIVERS:
-      process.env.DATAZEN_DRIVERS ||
-      driversArgs.map((a) => a.split('=')[1]).join(',') ||
-      'basic',
+      process.env.DATAZEN_DRIVERS || driversArgs.map((a) => a.split('=')[1]).join(',') || 'basic',
   },
 });
 

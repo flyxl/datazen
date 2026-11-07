@@ -73,10 +73,16 @@ pnpm test:boundaries || fail "test:boundaries"
 # --------------------------------------------------------------------------
 step "3.4/11 Guard: i18n sync (warning only)"
 if node scripts/i18n-sync-check.mjs; then
-  step "3.4/11 i18n sync: all locales in sync ✔"
+  step "3.4/11 i18n sync: shipped locales in sync ✔"
 else
   printf '\033[1;33m[ci-local] i18n-sync-check: warnings above (missing/stale translations) — not blocking CI\033[0m\n'
 fi
+
+# --------------------------------------------------------------------------
+# 3.5：Rust 测试模块命名守卫（与 ci.yml「All strict guards」步的
+# check-test-module-naming 对应；纯文本扫描，无需 cargo）。
+step "3.5/11 Guard: Rust test-module naming (tests.rs / *_tests.rs convention)"
+node scripts/check-test-module-naming.mjs || fail "check-test-module-naming"
 
 # --------------------------------------------------------------------------
 step "4/11 Frontend unit tests (pnpm test:unit; pretest/posttest 自动 codegen+restore)"

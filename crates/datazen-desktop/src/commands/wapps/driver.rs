@@ -1,0 +1,81 @@
+use super::{AppState, CommandError, State};
+use datazen::workspace_apps::Permission;
+use serde::Deserialize;
+
+const WAPP_COMMAND_DENYLIST: &[&str] = &[
+    "execute",
+    "create_database",
+    "drop_database",
+    "create_schema",
+    "drop_schema",
+    "create_user",
+    "drop_user",
+    "grant_privileges",
+    "revoke_privileges",
+];
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WappDriverCommandRequest {
+    pub wapp_id: String,
+    pub connection_id: String,
+    pub command: String,
+    #[serde(default)]
+    pub args: serde_json::Value,
+}
+
+/// 接线（B2 域刀自 `execute_wapp_driver_command_impl` 内联，逐字保留）：
+/// Wapp 准入（存在 / 启用 / command:invoke 权限 / 命令黑名单 / args 形状）
+/// 全部在触碰运行时之前完成；读取走 modules 的共享用例——桌面宿主只是
+/// 它运行所在的 `ResourceExecutionHost` 实现。
+#[tauri::command]
+pub async fn execute_wapp_driver_command(
+    state: State<'_, AppState>,
+    request: WappDriverCommandRequest,
+) -> Result<serde_json::Value, CommandError> {
+    let wapp = state
+        .wapps
+        .get(&request.wapp_id)
+        .ok_or_else(|| CommandError::NotFound("Wapp is unavailable".into()))?;
+    if !wapp.enabled {
+        return Err(CommandError::Validation("Wapp is disabled".into()));
+    }
+    if !wapp
+        .manifest
+        .permissions
+        .contains(&Permission::CommandInvoke)
+    {
+        return Err(CommandError::Validation(
+            "Wapp is missing command:invoke permission".into(),
+        ));
+    }
+    if WAPP_COMMAND_DENYLIST.contains(&request.command.as_str()) {
+        return Err(CommandError::Validation(
+            "Command is not permitted for Wapps".into(),
+        ));
+    }
+    if !request.args.is_object() {
+        return Err(CommandError::Validation(
+            "Wapp command args must be an object".into(),
+        ));
+    }
+
+    tracing::info!(
+        wapp_id = %request.wapp_id,
+        command = %request.command,
+        connection_id = %request.connection_id,
+        "Wapp runtime command invoked"
+    );
+    // M4: the read path is the shared use case; the desktop host is only the
+    // `ResourceExecutionHost` implementation it runs on.
+    let source =
+        crate::services::runtime_command_source::RuntimeCommandSource::from_app_state(&state);
+    datazen::workflow::runtime_reads::read_target_command(
+        &source,
+        &request.connection_id,
+        &request.command,
+        request.args,
+    )
+    .await
+    .map_err(CommandError::Validation)
+}

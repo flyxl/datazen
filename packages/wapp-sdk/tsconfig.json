@@ -29,7 +29,7 @@
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["dompurify", "node", "react", "react-dom", "vite/client"]
+    "types": ["node", "react", "react-dom", "vite/client"]
   },
   "include": ["src", "__tests__"]
 }

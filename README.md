@@ -17,7 +17,7 @@
 <video src="site/assets/video/demo-recording.mp4" controls width="100%" poster="site/assets/video/demo-poster.png"></video>
 
 <p align="center">
-  <b>18 database drivers</b> · <b>10 interface languages</b> · <b>MCP server &amp; client</b> · <b>No account, no cloud</b> · <b>macOS · Windows · Linux</b>
+  <b>17 database drivers</b> · <b>10 interface languages</b> · <b>MCP server &amp; client</b> · <b>No account, no cloud</b> · <b>macOS · Windows · Linux</b>
 </p>
 
 ## Everything a database asks of you, in one app
@@ -227,7 +227,7 @@ Most independent drivers consume the published MIT-licensed `datazen-driver-api`
 
 - **[Independent Driver Development — English](docs/development/independent-driver-development.en.md)**
 - **[独立驱动开发指南 — 中文](docs/development/independent-driver-development.zh-CN.md)**
-- **[Driver API crate README](packages/driver-api/README.md)**
+- **[Driver API crate README](crates/datazen-driver-api/README.md)**
 - **[Driver API dependency boundary](docs/development/driver-api-dependency-boundary.md)**
 - **[datazen-driver-api on crates.io](https://crates.io/crates/datazen-driver-api)**
 
@@ -296,7 +296,7 @@ A source build compiles DataZen's open-source editor; the published installers s
 - [Feature guides](docs/features/) · [Architecture docs](docs/architecture/README.md) · [Development & release docs](docs/development/)
 - [Workflow guide](docs/features/workflow-guide.en.md) · [Visual query builder](docs/features/query-builder.md) · [Ops Dashboards](docs/features/ops-dashboard-guide.en.md) · [Schema Diff deploy](docs/features/schema-diff-deploy.md) · [Tunnel guide](docs/features/tunnel-guide.zh-CN.md)
 - [Independent Driver Development](docs/development/independent-driver-development.en.md) · [中文](docs/development/independent-driver-development.zh-CN.md)
-- [Driver API crate](packages/driver-api/README.md) · [dependency boundary](docs/development/driver-api-dependency-boundary.md) · [crates.io](https://crates.io/crates/datazen-driver-api)
+- [Driver API crate](crates/datazen-driver-api/README.md) · [dependency boundary](docs/development/driver-api-dependency-boundary.md) · [crates.io](https://crates.io/crates/datazen-driver-api)
 - [Contributing](CONTRIBUTING.md)
 
 ## Contributing
@@ -305,7 +305,7 @@ DataZen welcomes bug reports, feature requests, database drivers, documentation 
 
 ## License
 
-DataZen core is licensed under the **GNU General Public License v3.0 or later**, with a [Plugin, Driver & Extension Linking Exception](LICENSE) that lets independent Drivers, Themes, Extension Points, and Workspace Apps built only against the public SDKs ship under their authors' own terms. The `datazen-driver-api` crate under `packages/driver-api` is separately licensed under the **MIT License**. See [LICENSE](LICENSE) and [packages/driver-api/LICENSE-MIT](packages/driver-api/LICENSE-MIT).
+DataZen core is licensed under the **GNU General Public License v3.0 or later**, with a [Plugin, Driver & Extension Linking Exception](LICENSE) that lets independent Drivers, Themes, Extension Points, and Workspace Apps built only against the public SDKs ship under their authors' own terms. The `datazen-driver-api` crate under `crates/datazen-driver-api` is separately licensed under the **MIT License**. See [LICENSE](LICENSE) and [crates/datazen-driver-api/LICENSE-MIT](crates/datazen-driver-api/LICENSE-MIT).
 
 <div align="center">
 

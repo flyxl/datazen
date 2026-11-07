@@ -72,8 +72,8 @@ async function invoke<T = unknown>(cmd: string, args: Record<string, unknown> = 
 
 /** Switch UI language and reload the main window so i18n strings update. */
 async function setAppLanguage(mainWin: string, language: 'en' | 'zh-CN') {
-  const settings = await invoke<Record<string, unknown>>('get_settings');
-  await invoke('save_settings', { settings: { ...settings, language } });
+  const settings = await invoke<Record<string, unknown>>('get_host_settings');
+  await invoke('save_host_settings', { settings: { ...settings, language } });
   await browser.switchToWindow(mainWin);
   await browser.execute(() => location.reload());
   await browser.pause(2000);

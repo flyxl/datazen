@@ -9,18 +9,18 @@ import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
  * `pnpm test:unit` and `pnpm test:unit:driver-set` both collect the same files
  * (the `include` globs of vitest.config.ts); the second run exists to judge
  * the suite under a driver set other than `basic`. The only artifact that
- * differs between the two runs is `src/extensions/generated.ts` (gitignored
+ * differs between the two runs is `packages/frontend/src/extensions/generated.ts` (gitignored
  * codegen): `builtinLocales.ts` is also regenerated, but its bytes do not
  * depend on `--drivers`, and nothing else on the test path reads the set.
  *
  * A test can therefore only behave differently under another driver set if its
- * module graph **executes** `src/extensions/generated.ts`. That is a narrower
+ * module graph **executes** `packages/frontend/src/extensions/generated.ts`. That is a narrower
  * predicate than "appears in the same suite" and a wider one than "imports it
  * directly": both are wrong in opposite directions.
  *
  * ## The criterion, stated exactly
  *
- * A test file is selected iff `src/extensions/generated.ts` is reachable from
+ * A test file is selected iff `packages/frontend/src/extensions/generated.ts` is reachable from
  * it through **value imports**: import forms that make the bundler load and
  * execute the target module. Type-only forms are excluded because esbuild
  * (and therefore vitest) erases them before execution:
@@ -40,7 +40,7 @@ import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
  * Dynamic `import('…')`, side-effect `import '…'` and namespace
  * `import * as … from '…'` all execute the target and count as value edges.
  *
- * `src/locales/builtinLocales.ts` is deliberately NOT a target: it is
+ * `packages/frontend/src/locales/builtinLocales.ts` is deliberately NOT a target: it is
  * regenerated identically for every driver set, so no test can behave
  * differently because of it.
  *
@@ -75,10 +75,16 @@ export const PREFIX = '[codegen-sensitive]';
  * which the Host suite can import. `driver_init.rs` is Rust-only and never
  * imported from the suite, so it is not listed.
  */
-export const CODEGEN_TARGETS = Object.freeze(['src/extensions/generated.ts']);
+export const CODEGEN_TARGETS = Object.freeze(['packages/frontend/src/extensions/generated.ts']);
 
 /** Directories that can neither be collected by `include` nor imported. */
-const SKIP_DIRS = new Set(['node_modules', 'dist', 'pro-extensions', '.git', 'target']);
+const SKIP_DIRS = new Set([
+  'node_modules',
+  'packages/desktop/dist',
+  'pro-extensions',
+  '.git',
+  'target',
+]);
 
 /**
  * Regex over import/export statements. The clause group is everything between
@@ -104,7 +110,10 @@ export function isValueImportClause(clause) {
   const beforeBrace = brace ? m.slice(0, brace.index).trim().replace(/,$/, '') : m;
   if (beforeBrace) return true; // default or bare binding: value
   if (!brace) return true; // unrecognized shape: assume value (over-select)
-  const bindings = brace[1].split(',').map((s) => s.trim()).filter(Boolean);
+  const bindings = brace[1]
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   if (bindings.length === 0) return true; // `import {} from` still executes it
   return !bindings.every((b) => /^type[\s]/.test(b)); // all-marked-type: erased
 }
@@ -136,13 +145,15 @@ export function parseVitestTestConfig(configText) {
   const aliases = {};
   const aliasBlock = /alias:\s*\{([\s\S]*?)\n\s*\}/.exec(configText);
   if (aliasBlock) {
-    for (const m of aliasBlock[1].matchAll(/'([^']+)':\s*resolve\(__dirname,\s*'([^']+)'\)/g)) {
+    for (const m of aliasBlock[1].matchAll(/'([^']+)':\s*resolve\(\s*__dirname,\s*'([^']+)'[\s,]*\)/g)) {
       aliases[m[1]] = m[2];
     }
     if (Object.keys(aliases).length === 0) {
       // The block exists but no entry parsed: the extraction pattern is stale,
       // and a silent empty map would quietly stop resolving alias imports.
-      throw new Error('resolve.alias block found but no entry parsed — extraction pattern is stale');
+      throw new Error(
+        'resolve.alias block found but no entry parsed — extraction pattern is stale',
+      );
     }
   }
   // No `alias:` key at all is a legitimate config shape: nothing to resolve
@@ -185,7 +196,10 @@ export function collectSourceFiles(root) {
       else if (/\.(ts|tsx|mjs)$/.test(rel)) out.add(rel.split('\\').join('/'));
     }
   };
-  walk('src');
+  // F6/W7-A layout: shared sources live under packages/frontend/src, the desktop
+  // app under packages/desktop/src (Rust crates under crates/ carry no TS test
+  // roots). Walking 'packages' and 'scripts' covers every root a test file can
+  // import from.
   walk('packages');
   walk('scripts');
   return out;
@@ -208,7 +222,13 @@ export function globToRegExp(pattern) {
     } else if (ch === '{') {
       const end = pattern.indexOf('}', i);
       if (end === -1) throw new Error(`unbalanced brace in include pattern: ${pattern}`);
-      re += '(?:' + pattern.slice(i + 1, end).split(',').join('|') + ')';
+      re +=
+        '(?:' +
+        pattern
+          .slice(i + 1, end)
+          .split(',')
+          .join('|') +
+        ')';
       i = end + 1;
     } else if ('\\.^$|()[]+?'.includes(ch)) {
       re += '\\' + ch;
@@ -293,7 +313,8 @@ export function selectCodegenSensitiveTests(options = {}) {
   const { include, aliases, setupFiles } = parseVitestTestConfig(readFileSync(configPath, 'utf-8'));
 
   const sources = collectSourceFiles(root);
-  if (sources.size === 0) throw new Error('no candidate source files found under src/packages/scripts');
+  if (sources.size === 0)
+    throw new Error('no candidate source files found under packages/apps/scripts');
 
   // Forward edges once per file, then reverse them: the dependents of
   // generated.ts are a much smaller subgraph than the whole suite, and one
@@ -357,7 +378,9 @@ export function selectCodegenSensitiveTests(options = {}) {
         'genuinely stopped importing them; both need a human, not an empty green run',
     );
   }
-  log(`${PREFIX} ${files.length} of ${testFiles.size} collected test file(s) are driver-set sensitive`);
+  log(
+    `${PREFIX} ${files.length} of ${testFiles.size} collected test file(s) are driver-set sensitive`,
+  );
   return { files, testFileCount: testFiles.size, sensitiveModuleCount: dependents.size };
 }
 

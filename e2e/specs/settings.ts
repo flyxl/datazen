@@ -27,7 +27,7 @@ async function invokeBackend<T>(cmd: string, args: Record<string, unknown> = {})
 
 describe('Settings (SS-001~SS-006)', () => {
   before(async () => {
-    await invokeBackend('save_settings', {
+    await invokeBackend('save_host_settings', {
       settings: {
         theme: { mode: 'dark', packId: null },
         language: 'zh-CN',
@@ -102,7 +102,7 @@ describe('Settings (SS-001~SS-006)', () => {
   // ── Settings persistence (SS-003~SS-006) ──
 
   it('SS-003: settings should persist theme changes', async () => {
-    await invokeBackend('save_settings', {
+    await invokeBackend('save_host_settings', {
       settings: {
         theme: { mode: 'light', packId: null },
         language: 'zh-CN',
@@ -117,12 +117,12 @@ describe('Settings (SS-001~SS-006)', () => {
       },
     });
 
-    const loaded = await invokeBackend<any>('get_settings');
+    const loaded = await invokeBackend<any>('get_host_settings');
     expect(loaded.theme.mode).toBe('light');
   });
 
   it('SS-004: settings should persist page size', async () => {
-    await invokeBackend('save_settings', {
+    await invokeBackend('save_host_settings', {
       settings: {
         theme: { mode: 'dark', packId: null },
         language: 'zh-CN',
@@ -137,12 +137,12 @@ describe('Settings (SS-001~SS-006)', () => {
       },
     });
 
-    const loaded = await invokeBackend<any>('get_settings');
+    const loaded = await invokeBackend<any>('get_host_settings');
     expect(loaded.defaultPageSize).toBe(100);
   });
 
   it('SS-005: settings should persist query result limit', async () => {
-    await invokeBackend('save_settings', {
+    await invokeBackend('save_host_settings', {
       settings: {
         theme: { mode: 'dark', packId: null },
         language: 'zh-CN',
@@ -157,12 +157,12 @@ describe('Settings (SS-001~SS-006)', () => {
       },
     });
 
-    const loaded = await invokeBackend<any>('get_settings');
+    const loaded = await invokeBackend<any>('get_host_settings');
     expect(loaded.queryResultLimit).toBe(10000);
   });
 
   it('SS-006: settings should persist editor preferences', async () => {
-    await invokeBackend('save_settings', {
+    await invokeBackend('save_host_settings', {
       settings: {
         theme: { mode: 'dark', packId: null },
         language: 'zh-CN',
@@ -177,7 +177,7 @@ describe('Settings (SS-001~SS-006)', () => {
       },
     });
 
-    const loaded = await invokeBackend<any>('get_settings');
+    const loaded = await invokeBackend<any>('get_host_settings');
     expect(loaded.editorFontSize).toBe(16);
     expect(loaded.editorFontFamily).toBe('Fira Code');
     expect(loaded.confirmOnDelete).toBe(false);
@@ -291,7 +291,7 @@ describe('Settings (SS-001~SS-006)', () => {
   });
 
   it('SS-MCP-CLIENT-001: MCP Client 分区应支持保存带 env 的配置', async () => {
-    await invokeBackend('save_settings', {
+    await invokeBackend('save_host_settings', {
       settings: {
         theme: { mode: 'dark', packId: null },
         language: 'zh-CN',
@@ -348,7 +348,7 @@ describe('Settings (SS-001~SS-006)', () => {
     const bodyAfter = await $('body').getText();
     expect(bodyAfter).toContain('e2e-mcp-test');
 
-    const loaded = await invokeBackend<any>('get_settings');
+    const loaded = await invokeBackend<any>('get_host_settings');
     expect(Array.isArray(loaded.mcpClientServers)).toBe(true);
     const saved = loaded.mcpClientServers.find((c: { id: string }) => c.id === 'e2e-mcp-test');
     expect(saved).toBeDefined();
@@ -359,11 +359,11 @@ describe('Settings (SS-001~SS-006)', () => {
   // ── Persistence: language / font-size / confirm-delete (from settings-persistence.ts) ──
 
   it('TC-SET-008: 语言切换应更新 UI 文本', async () => {
-    const settings = await invokeBackend<Record<string, unknown>>('get_settings');
+    const settings = await invokeBackend<Record<string, unknown>>('get_host_settings');
     const originalLang = settings.language;
 
     const newLang = originalLang === 'zh-CN' ? 'en' : 'zh-CN';
-    await invokeBackend('save_settings', { settings: { ...settings, language: newLang } });
+    await invokeBackend('save_host_settings', { settings: { ...settings, language: newLang } });
     await browser.refresh();
     await browser.pause(2000);
 
@@ -385,46 +385,48 @@ describe('Settings (SS-001~SS-006)', () => {
     }
 
     // Restore
-    await invokeBackend('save_settings', { settings: { ...settings, language: originalLang } });
+    await invokeBackend('save_host_settings', {
+      settings: { ...settings, language: originalLang },
+    });
     await browser.refresh();
     await browser.pause(1500);
   });
 
   it('TC-SET-009: 编辑器字体大小设置应持久化', async () => {
-    const settings = await invokeBackend<Record<string, unknown>>('get_settings');
+    const settings = await invokeBackend<Record<string, unknown>>('get_host_settings');
     const originalFontSize = settings.editorFontSize;
 
     const newFontSize = originalFontSize === 14 ? 16 : 14;
-    await invokeBackend('save_settings', {
+    await invokeBackend('save_host_settings', {
       settings: { ...settings, editorFontSize: newFontSize },
     });
     await browser.refresh();
     await browser.pause(1500);
 
-    const persisted = await invokeBackend<Record<string, unknown>>('get_settings');
+    const persisted = await invokeBackend<Record<string, unknown>>('get_host_settings');
     expect(persisted.editorFontSize).toBe(newFontSize);
 
     // Restore
-    await invokeBackend('save_settings', {
+    await invokeBackend('save_host_settings', {
       settings: { ...settings, editorFontSize: originalFontSize },
     });
   });
 
   it('TC-SET-010: 确认删除开关应持久化', async () => {
-    const settings = await invokeBackend<Record<string, unknown>>('get_settings');
+    const settings = await invokeBackend<Record<string, unknown>>('get_host_settings');
     const originalConfirm = settings.confirmOnDelete;
 
-    await invokeBackend('save_settings', {
+    await invokeBackend('save_host_settings', {
       settings: { ...settings, confirmOnDelete: !originalConfirm },
     });
     await browser.refresh();
     await browser.pause(1500);
 
-    const persisted = await invokeBackend<Record<string, unknown>>('get_settings');
+    const persisted = await invokeBackend<Record<string, unknown>>('get_host_settings');
     expect(persisted.confirmOnDelete).toBe(!originalConfirm);
 
     // Restore
-    await invokeBackend('save_settings', {
+    await invokeBackend('save_host_settings', {
       settings: { ...settings, confirmOnDelete: originalConfirm },
     });
   });
@@ -432,7 +434,7 @@ describe('Settings (SS-001~SS-006)', () => {
   // ── Restore defaults ──
 
   after(async () => {
-    await invokeBackend('save_settings', {
+    await invokeBackend('save_host_settings', {
       settings: {
         theme: { mode: 'dark', packId: null },
         language: 'zh-CN',

@@ -3,7 +3,7 @@
  *
  * Zero-build vanilla JS mirroring the @datazen/extension-sdk semantics:
  * `wapp.ready` -> `host.ready` handshake, then reqId-correlated RPC against
- * the host postMessage router (src/lib/extensionBridge.ts). Every v1 API is
+ * the host postMessage router (src/lib/wappBridge.ts). Every v1 API is
  * exercised from the page so manual/E2E testing covers the whole surface:
  * context.getConnections, context.getActiveConnection, command.invoke,
  * storage.get/set/remove, ui.notify and live theme.apply snapshots.

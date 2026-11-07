@@ -479,7 +479,7 @@ SELECT * FROM orders WHERE d = CURRENT_DATE;
 - **符号链接不跟随**（`symlink_metadata`），避免根目录外的内容被扫进来。
 - **扫描有内存缓存**，只有 App 自身的写操作会更新它。同步客户端在运行期间投递的文件要等 UI 显式重扫才会出现——面板在**打开时**和**窗口重新获得焦点时**调用 `refresh_favorites`，并提供手动重扫按钮。这是"缓存 + 显式失效"，不是文件监听器：监听一个用户随时可能指向 iCloud 的目录并不可靠，而重扫一个纯文本目录很便宜。
 - **无归属的收藏不会被隐藏或删除**：`connectionId` 缺失时 `connection_id` 为空串，按连接过滤时只在"全部"视图出现。
-- **文件本身始终是可执行 SQL**：`tests/executability.rs` 把带 front-matter 的文件原样交给 `rusqlite` 执行，断言结果与只执行语句正文完全一致（正文含 `--` 行注释、`/* */` 块注释，以及字符串字面量里的 `--` 与 `*/`）。
+- **文件本身始终是可执行 SQL**：`src-tauri/src/store/favorites/tests/executability.rs` 把带 front-matter 的文件原样交给 `rusqlite` 执行，断言结果与只执行语句正文完全一致（正文含 `--` 行注释、`/* */` 块注释，以及字符串字面量里的 `--` 与 `*/`）。
 
 #### 1.4.1 从 `favorite_queries` 表迁移
 

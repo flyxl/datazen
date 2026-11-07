@@ -11,7 +11,7 @@
 - 机制测试：fake clock、barrier、失败注入验证并发、租约、幂等和资源清理。
 - 宿主契约测试：同一 Repository 契约分别跑桌面临时存储与 Web 测试管理库，验证 scope、CAS、失败与恢复。不能只有两个 fake。
 - transport 测试：真实经过 DTO/上下文/错误映射，不能 mock 掉需要验证的服务接缝。
-- 用户旅程：Host 通用 UI 在 e2e；Driver 方言、专属 Command 和 live 契约留在 `packages/drivers/<id>/`。不把方言测试搬进 modules。
+- 用户旅程：Host 通用 UI 在 e2e；Driver 方言、专属 Command 和 live 契约留在 `crates/drivers/<id>/`。不把方言测试搬进 modules。
 
 ## 12.2 边界与装配：B01–B06
 

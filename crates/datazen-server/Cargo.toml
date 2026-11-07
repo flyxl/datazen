@@ -1,0 +1,180 @@
+[package]
+name = "datazen-server"
+version = "0.1.0"
+edition = "2021"
+description = "DataZen team web server host (P7 / web-ready WR-D): the HTTP form of the product. One binary, three subcommands (serve | migrate | check-schema), assembling the shared modules kernel behind the /api/v1 contract (docs/architecture/platform/http-api-contract.md)."
+
+# 依赖纪律（team-server-and-auth §2.2；WR-D1 立规、WR-D2 起按域放宽）：
+#
+# - `datazen`（modules 内核）：WR-D1 只消费跨边界错误词汇
+#   `shared::error::{ApiError, ApiErrorCode}` 与 `shared::id::RequestId`（IPC 与
+#   HTTP 两种绑定共用的 wire 类型，server 不得另立一份）。WR-D2 第一切片起
+#   消费 connection 域的仓储端口与 DTO——同一 domain trait、另一个适配器。
+# - 管理库：SQLite 首版（rusqlite，与桌面 AppDb 同款；PostgreSQL 适配器是
+#   后续生产化切片，见 src/storage/mod.rs 的差异登记）。
+# - HTTP 框架 axum + tower-http：中间件链的载体。
+# - 禁止闭包（CI 的 scripts/check-server-deps.mjs 强制）：任何 `tauri*` crate
+#   （含 tauri-plugin-*）、`wry` / `tao`、桌面宿主 crate `datazen_desktop`、任何
+#   前端 UI runtime。
+#
+# `datazen-infra`（redaction）暂不声明：D1 骨架没有会携带秘密的日志路径；
+# 它随 WR-D2 的真实 handler 一起进来，届时 logging.rs 的脱敏契约开始有消费者。
+
+[dependencies]
+# 按域点亮：WR-D2 只消费 connection（ProfileRepository/DTO + shared）、
+# execution（connection DTO 引用其回执，CI FEATURE_TESTS 钉的最小有效组合）、
+# tunnel（KnownHostsRepository 端口在 tunnel::domain；WR-F5 的服务端隧道
+# 本就要求共用该机制 feature）与 jobs（JobRepository 端口 + 落盘词汇，
+# WR-D2 第三切片）。不整包开启——与桌面的全 feature 列表形成对照：宿主按需
+# 消费内核。后续切片按域点亮。
+datazen = { workspace = true, features = ["connection", "execution", "tunnel", "jobs", "settings", "named_views", "history", "workflow", "table-editing", "table-browsing", "application", "ai", "services"] }
+
+# WR-D2 收尾：连接目录/隧道定义的端口形状（`ConnectionConfig` /
+# `SavedTunnel`）直接来自 driver-api——模块不二次投影，server 也不得
+# 另立一份（`storage/connections.rs`、`storage/tunnels.rs`）。
+datazen-driver-api = { workspace = true }
+
+# W8-a P1：驱动工厂点亮——驱动 crate 按需链接（`driver-*` per-driver feature +
+# `deploy-drivers` 聚合；缺省不链接任何驱动，注册表保持空表）。链接机制见
+# `src/driver_link.rs`：extern crate 闭包 + 驱动 crate 内
+# `datazen_driver_api::inventory::submit!`（inventory）入表，与桌面宿主的
+# codegen 产物同一机制。path 依赖统一走根 [workspace.dependencies]（W7-A
+# 纪律）；git 驱动（kiwi/superset）不在此列，其目录是构建期注入的，静态
+# 声明会炸干净检出的 `cargo metadata`。
+datazen-driver-clickhouse = { workspace = true, optional = true }
+datazen-driver-duckdb = { workspace = true, optional = true }
+datazen-driver-elasticsearch = { workspace = true, optional = true }
+datazen-driver-hbase = { workspace = true, optional = true }
+datazen-driver-influxdb = { workspace = true, optional = true }
+datazen-driver-mongodb = { workspace = true, optional = true }
+datazen-driver-mysql = { workspace = true, optional = true }
+datazen-driver-postgres = { workspace = true, optional = true }
+datazen-driver-redis = { workspace = true, optional = true }
+datazen-driver-rqlite = { workspace = true, optional = true }
+datazen-driver-sqlite = { workspace = true, optional = true }
+datazen-driver-sqlserver = { workspace = true, optional = true }
+datazen-driver-turso = { workspace = true, optional = true }
+datazen-driver-vector = { workspace = true, optional = true }
+datazen-driver-victoriametrics = { workspace = true, optional = true }
+
+# 适配器的 `#[async_trait]`（trait 实现处直接使用，需是本 crate 的直接依赖；
+# datazen 侧的同名依赖不传递可见性）。
+async-trait = { workspace = true }
+
+axum = "0.8"
+tower-http = { version = "0.6", features = ["catch-panic", "limit", "fs"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "net"] }
+
+# WR-D2 管理库（SQLite 首版；与桌面 AppDb 同款选型，PostgreSQL 适配器是
+# 后续生产化切片——见 src/storage/mod.rs 的差异登记）。chrono 与桌面同款
+# 直接声明（workspace 未集中管理此依赖；Cargo.lock 已含，无锁变更）。
+rusqlite = { workspace = true }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+# WR-D3 认证授权核心的密码学原语（全部沿用 workspace 根表既有规格，无锁外版本）：
+# - sha2 + hmac：policyIsolationKey（team-server §6.2）与 CSRF 会话绑定签名（§5.1）
+#   的 HMAC-SHA256；server_secret 只经 config 注入，不落库、不进日志。
+# - base64：双提交令牌与隔离键的 base64url（URL_SAFE_NO_PAD）编码。
+# - rand：CSRF random 分量与后续登录会话 id 铸造的 CSPRNG 字节。
+# - subtle：令牌比较的常量时间原语（§5.1 校验项 1 的「常量时间相等」）——
+#   手写 XOR 折叠不进安全面，用经审计的 crate。
+sha2 = { workspace = true }
+hmac = { workspace = true }
+base64 = { workspace = true }
+rand = { workspace = true }
+subtle = { version = "2.6", default-features = false }
+# 产物受控目录的 0o600/O_NOFOLLOW 文件纪律（与内核实现同款；仅 Unix 语义，
+# 非 Unix 平台降级为默认权限——见 storage/artifacts.rs 的 cfg 分支）。
+libc = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { workspace = true }
+
+# WR-D3 余项（OIDC 依赖方流程）：发现文档 / token 端点 / JWKS 拉取的 HTTP 客户端。
+# workspace 规格已含 rustls + json 特性（无 native-tls）。
+reqwest = { workspace = true }
+# id_token（RS256 等）JWKS 校验与测试期签名；ring 已在依赖图内（reqwest rustls），
+# 增量为零外新链。
+jsonwebtoken = "9"
+# WR-D5 SSE：mpsc 接收端 → TryStream 的包装（axum `Sse::new` 的输入形态）。
+tokio-stream = "0.1"
+
+[features]
+# W8-a P1：per-driver 链接 feature——与桌面宿主同名同语义，drivers-registry.json
+# 的 feature 字段是唯一权威（check-managed-stubs --check-static-drivers 断言
+# 本清单与注册表逐条一致）。缺省不开：注册表空表，fail-closed 闸序不变。
+driver-postgres = ["dep:datazen-driver-postgres"]
+driver-mysql = ["dep:datazen-driver-mysql"]
+driver-sqlite = ["dep:datazen-driver-sqlite"]
+driver-redis = ["dep:datazen-driver-redis"]
+driver-mongodb = ["dep:datazen-driver-mongodb"]
+driver-sqlserver = ["dep:datazen-driver-sqlserver"]
+driver-clickhouse = ["dep:datazen-driver-clickhouse"]
+driver-duckdb = ["dep:datazen-driver-duckdb"]
+driver-elasticsearch = ["dep:datazen-driver-elasticsearch"]
+driver-rqlite = ["dep:datazen-driver-rqlite"]
+driver-turso = ["dep:datazen-driver-turso"]
+driver-influxdb = ["dep:datazen-driver-influxdb"]
+driver-victoriametrics = ["dep:datazen-driver-victoriametrics"]
+driver-hbase = ["dep:datazen-driver-hbase"]
+driver-vector = ["dep:datazen-driver-vector"]
+# 部署构建聚合：`cargo build -p datazen-server --features deploy-drivers`。
+# 成员清单与桌面 `drivers` 聚合逐项一致（registry 顺序）。
+deploy-drivers = ["driver-postgres", "driver-mysql", "driver-sqlite", "driver-redis", "driver-mongodb", "driver-sqlserver", "driver-clickhouse", "driver-duckdb", "driver-elasticsearch", "driver-rqlite", "driver-turso", "driver-influxdb", "driver-victoriametrics", "driver-hbase", "driver-vector"]
+# WR-C3 同用例双传输测试（server 腿）：共享规格模块挂在 datazen 的
+# test-harness + named_views + settings feature 门后，本 crate feature 把
+# 各腿依赖一起点亮；测试目标按 required-features 门控（普通 cargo test 不编译它）。
+use-case-contracts = ["datazen/test-harness", "datazen/named_views", "datazen/settings"]
+# WR-F2：MCP Server 的 streamable HTTP 形态（`src/mcp/`）。runtime 租约
+# 面在 feature 内；IdentityPolicy 在 application 编排层（feature 链带上）；
+# 无执行后端前 runtime 依赖工具 fail-closed（F7 登记）。
+mcp = ["datazen/mcp", "datazen/application"]
+
+[[test]]
+name = "use_case_contracts"
+required-features = ["use-case-contracts"]
+
+# WR-F2：MCP 契约与传输测试经 lib 公开面（`datazen_server::mcp`），按 feature
+# 门控——与此前 `#[path]` 整树 include 的「未点亮即跳过」语义一致。
+[[test]]
+name = "mcp_contract_parity"
+required-features = ["mcp"]
+
+[[test]]
+name = "mcp_http_wire"
+required-features = ["mcp"]
+
+# 绿路径刀：mcp seed-example + 七工具的 server 绿路径（MockDriver fake-driver
+# 常态 CI 腿）。runtime/stateless_exec 装配面在 mcp feature 内。
+[[test]]
+name = "mcp_green_path"
+required-features = ["mcp"]
+
+# 绿路径刀的真方言腿：postgres 同款绿路径，测试恒 #[ignore]，连接事实从
+# DATAZEN_LIVE_PG_* 环境变量取（缺省早退）。run-live：
+#   cargo test -p datazen-server --features mcp,driver-postgres \
+#     --test mcp_live_postgres -- --ignored
+# 常态 CI（全 feature 腿）即使编译也不执行。
+[[test]]
+name = "mcp_live_postgres"
+required-features = ["mcp", "driver-postgres"]
+
+[dev-dependencies]
+# oneshot 驱动 Router 的集成测试需要 ServiceExt。
+tower = { version = "0.5", features = ["util"] }
+# WR-D5 SSE 集成测试：tokio 运行时 + 假体装配 + 流读取。
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync"] }
+serde_json = { workspace = true }
+futures-util = { workspace = true }
+async-trait = { workspace = true }
+# W8-a 接线刀：table_data_routes 的绿路径夹具把 MockDriver 工厂注册进
+# `DriverRegistry::register_test_factory`（`datazen` 的 test-harness 门后
+# 面）。dev-deps 的 feature 叠加只影响测试编译单元，生产构建闭包不变
+# （server-deps 门禁不受影响）。
+datazen = { workspace = true, features = ["test-harness"] }
+
+[lints]
+workspace = true

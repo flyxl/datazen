@@ -1,0 +1,60 @@
+# datazen-server 单实例部署（P7 目标形态：反代单源 HTTPS + server + 管理库卷）。
+#
+# 形状对齐 team-service-operations §2；本 compose 是「单实例 v1（SQLite 管理库）」，
+# 独立 PostgreSQL 管理库是 P7 目标形态的另一档位，接入时只换 datazen-server
+# 的管理库依赖与备份脚本，不换服务面。
+#
+# 停止语义（重要）：当前 server 只接 SIGINT（SIGTERM 处理属 src 改动，已登记
+# 未实现，见 docs/development/deploy-operations.md §8）。因此这里显式
+# 优雅停机：server 接 SIGTERM（SIGINT 并存），宽限期交给在途请求 drain。
+name: datazen
+
+services:
+  datazen-server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: datazen-server:${DATAZEN_IMAGE_TAG:-local}
+    # 单实例（WR-G1/CM-60 W1 的前提）：v1 不做多副本，扩缩容随 P9 WN。
+    deploy:
+      replicas: 1
+    init: true
+    user: "10001:10001"
+    # WR-G3：server 已接 SIGTERM（bootstrap shutdown_signal，SIGINT 并存），
+    # docker stop 的默认 SIGTERM 即优雅停机路径；宽限期仍是部署承诺值。
+    stop_grace_period: 30s
+    restart: unless-stopped
+    ports:
+      # 只暴露给本机反代；TLS 在反代终止（单源），不直暴容器。
+      - "127.0.0.1:8080:8080"
+    env_file:
+      - ./config/.env            # 由 env.example 复制并 chmod 600；不入库
+    environment:
+      # 双保险：秘密必须显式给出（缺失即 compose 失败，fail-closed）。
+      DATAZEN_SERVER_SECRET: ${DATAZEN_SERVER_SECRET:?set a 32+ char secret in your shell or deploy/config/.env}
+      DATAZEN_SERVER_PUBLIC_ORIGIN: ${DATAZEN_SERVER_PUBLIC_ORIGIN:-}
+    volumes:
+      # 管理库（SQLite 主文件 + WAL/SHM 同卷，保证 VACUUM INTO 与恢复原子可见）。
+      - admin-db:/var/lib/datazen
+      # 产物字节（WR-D7 受控上传/下载；备份脚本按 manifest 复制该卷）。
+      - artifacts:/var/lib/datazen/artifacts
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/datazen-server", "check-schema"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+    # 资源额度（运维手册 §7）：示例档，按部署方容量规划调整并实测。
+    # 预算类额度（budget_*）是应用层账，cgroups 是容器账——两层都要设。
+    mem_limit: 2g
+    cpus: 2.0
+    pids_limit: 512
+    read_only: false             # 管理库/产物需写；如需只读 rootfs 请改用 tmpfs 挂 /tmp
+    tmpfs:
+      - /tmp:size=64m
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  admin-db:
+  artifacts:

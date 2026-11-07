@@ -1,0 +1,53 @@
+import type { SqlDialectStrategy } from '@datazen/extension-points';
+import { BaseTableSqlGenerator } from '@datazen/driver-sdk';
+
+const MYSQL_OPTIONS = [
+  { id: 'no-data', label: '--no-data' },
+  { id: 'add-drop-table', label: '--add-drop-table' },
+  { id: 'single-transaction', label: '--single-transaction' },
+  { id: 'routines', label: '--routines' },
+  { id: 'triggers', label: '--triggers' },
+  { id: 'no-create-info', label: '--no-create-info' },
+];
+
+export const mysqlDialect: SqlDialectStrategy = {
+  family: 'mysql',
+  ddl: {
+    getTableDdlQuery(tableName: string) {
+      return {
+        sql: `SHOW CREATE TABLE \`${tableName}\``,
+        extractColumnIndex: 1,
+      };
+    },
+    getViewDdlQuery(viewName: string) {
+      return {
+        sql: `SHOW CREATE VIEW \`${viewName}\``,
+        extractColumnIndex: 1,
+      };
+    },
+  },
+  index: {
+    supportedIndexMethods: ['btree', 'hash'],
+    getDropIndexSql(indexName, tableName, quoteChar) {
+      return `DROP INDEX ${quoteChar}${indexName}${quoteChar} ON ${quoteChar}${tableName}${quoteChar}`;
+    },
+    getCreateIndexSql(opts) {
+      const uniqueKw = opts.unique ? 'UNIQUE ' : '';
+      const usingKw = opts.method === 'hash' ? ' USING hash' : '';
+      const formatCol = (col: string) => {
+        const trimmed = col.trim();
+        const pIdx = trimmed.indexOf('(');
+        if (pIdx > 0 && trimmed.endsWith(')')) {
+          const name = trimmed.slice(0, pIdx).trim().replace(/^`|`$/g, '');
+          const len = trimmed.slice(pIdx);
+          return `${opts.quoteChar}${name}${opts.quoteChar}${len}`;
+        }
+        return `${opts.quoteChar}${trimmed}${opts.quoteChar}`;
+      };
+      const quotedCols = opts.columns.map(formatCol).join(', ');
+      return `CREATE ${uniqueKw}INDEX ${opts.quoteChar}${opts.indexName}${opts.quoteChar} ON ${opts.quoteChar}${opts.tableName}${opts.quoteChar}${usingKw} (${quotedCols})`;
+    },
+  },
+  backupOptions: MYSQL_OPTIONS,
+  tableSql: new BaseTableSqlGenerator('`'),
+};

@@ -6,10 +6,10 @@
 
 ## 模块结构
 
-Workflow 的执行语义与宿主绑定分开：共享执行器位于 `modules/src/workflow/`，宿主目录只保留 YAML 仓储、桌面历史、scheduler runtime entry 和 Runtime 接线。
+Workflow 的执行语义与宿主绑定分开：共享执行器位于 `crates/datazen/src/workflow/`，宿主目录只保留 YAML 仓储、桌面历史、scheduler runtime entry 和 Runtime 接线。
 
 ```text
-modules/src/workflow/
+crates/datazen/src/workflow/
 ├── mod.rs               # 共享模块出口
 ├── model.rs             # WorkflowDefinition / WorkflowStep 等数据模型
 ├── executor.rs          # WorkflowExecutor：步骤编排、错误策略、超时
@@ -33,12 +33,12 @@ src-tauri/src/workflow/
 ├── history.rs           # 执行历史持久化
 ├── host.rs              # 共享端口的桌面实现（WorkflowHost / ResourceExecutionHost）
 ├── doc_reference_tests.rs # 长期文档的行号引用新鲜度守卫
-└── live_acceptance.rs   # 真实 PostgreSQL/MySQL 跨库验收（ignored）
+└── live_acceptance_tests.rs   # 真实 PostgreSQL/MySQL 跨库验收（ignored）
 ```
 
 宿主不再保留任何 workflow 的 re-export 门面文件：共享类型的调用点直接引用 `datazen::workflow::…`。
 
-宿主侧的 Command 桥只做「同一条链的桌面绑定」：显式 `database`/`schema` 校验、connection 继承解析、命令派发这三条规则都在 `modules/src/workflow/command_runtime.rs`，宿主那三个函数只把 `AppState` 传进去。
+宿主侧的 Command 桥只做「同一条链的桌面绑定」：显式 `database`/`schema` 校验、connection 继承解析、命令派发这三条规则都在 `crates/datazen/src/workflow/application/command_runtime.rs`，宿主那三个函数只把 `AppState` 传进去。
 
 ## 执行模型
 
@@ -228,8 +228,8 @@ Workflow 曾支持一种 `migration` step：在 workflow 里以 step 的形式�
 **三件套本身不受影响**：Schema Diff / Data Sync / Data Transfer 作为独立功能（命令、
 存储、端口、UI）全部保留，只是不再能以 workflow step 的形式调用。
 
-已删除的实现：`modules/src/workflow/migration.rs`、
-`modules/src/workflow/migration_outcome.rs`、
+已删除的实现：`crates/datazen/src/workflow/migration.rs`、
+`crates/datazen/src/workflow/migration_outcome.rs`、
 `src-tauri/src/workflow/migration.rs`，以及 `WorkflowStep::Migration` 变体、
 `WorkflowMigrationOperation` / `UnattendedDestructivePolicy` 枚举、
 `WorkflowHost::execute_profile_step` 端口，与前端对应的 step 类型、表单与文案。
@@ -261,7 +261,7 @@ Command 的输入使用 JSON，Driver 通过 manifest / definition 声明 schema
 - IPC：`src-tauri/src/commands/workflow.rs` 的 `workflow_*` / `workflow_history_*`；以及 Driver Command IPC
 - GUI：`WorkflowPanel` / `WorkflowPage`
 - MCP：`list_workflows` / `run_workflow`、`datazen://workflows`（工具清单在 `mcp/server.rs`，执行在 `mcp/tools.rs`）
-- Driver API：`packages/driver-api/src/command.rs`、`traits.rs`
+- Driver API：`crates/datazen-driver-api/src/command.rs`、`traits.rs`
 
 **用户手册（YAML 语法与用法）：** [Workflow 使用手册](../../features/workflow-guide.zh-CN.md)
 
@@ -272,9 +272,9 @@ Workflow 保持既有 v1 协议、模型、跨数据库逐步执行及前步 out
 
 #### Workflow v1 真实驱动验收
 
-Host 通用旅程 `src-tauri/src/workflow/live_acceptance.rs` 使用真实 PostgreSQL/MySQL inventory factory、桌面 AppState/WorkflowHost 和 Runtime，不以 sqlx 手工串接模拟执行器。两个方向分别执行继承 workflow connection 的 legacy Query，再以 step connection override 执行 Command；前步数值经 `{{steps.seed.rows[0].value}}` 进入后步 SQL，验证最终计算结果。夹具在两个独立测试库建立同名表并写入不同数值，后步同时读取目标库的数值并加上前步结果，以证明目标覆盖实际到达另一个物理数据库；结束时删除夹具表。只使用两库共有的建表/插入/SELECT/删除表语句，不增加驱动方言能力或事务语义。
+Host 通用旅程 `src-tauri/src/workflow/live_acceptance_tests.rs` 使用真实 PostgreSQL/MySQL inventory factory、桌面 AppState/WorkflowHost 和 Runtime，不以 sqlx 手工串接模拟执行器。两个方向分别执行继承 workflow connection 的 legacy Query，再以 step connection override 执行 Command；前步数值经 `{{steps.seed.rows[0].value}}` 进入后步 SQL，验证最终计算结果。夹具在两个独立测试库建立同名表并写入不同数值，后步同时读取目标库的数值并加上前步结果，以证明目标覆盖实际到达另一个物理数据库；结束时删除夹具表。只使用两库共有的建表/插入/SELECT/删除表语句，不增加驱动方言能力或事务语义。
 
-运行：`scripts/run-live-contract.sh --crate datazen --lib-test workflow::live_acceptance`。测试默认 ignored，安全 runner 显式执行，并要求两族独立 `dz_fixture_*` 数据库；缺配置、不可连接或执行失败都会失败，不以跳过计作通过。原 `src-tauri/tests/workflow_tests.rs` 的 TC13 直接调用 sqlx，仅验证手工数据流，不作为 Workflow/Runtime 接线证据。
+运行：`scripts/run-live-contract.sh --crate datazen --lib-test workflow::live_acceptance_tests`。测试默认 ignored，安全 runner 显式执行，并要求两族独立 `dz_fixture_*` 数据库；缺配置、不可连接或执行失败都会失败，不以跳过计作通过。原 `src-tauri/tests/workflow_db_tests.rs` 的 TC13（拆分前 workflow_tests.rs）直接调用 sqlx，仅验证手工数据流，不作为 Workflow/Runtime 接线证据。
 
 #### 桌面 Monitor 定时授权（已实现，2026-10-17）
 

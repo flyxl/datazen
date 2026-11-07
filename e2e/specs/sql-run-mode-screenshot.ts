@@ -323,8 +323,8 @@ describe('SQL Run Mode Screenshot', () => {
     // The strategy lives in settings, read once at app start, so it only takes
     // effect after a reload. Safe Mode is turned off because the script is
     // read-only SELECTs and the dialog should be the only thing on screen.
-    originalSettings = await invoke<Record<string, unknown>>('get_settings');
-    await invoke('save_settings', {
+    originalSettings = await invoke<Record<string, unknown>>('get_host_settings');
+    await invoke('save_host_settings', {
       settings: {
         ...originalSettings,
         language: 'zh-CN',
@@ -342,8 +342,8 @@ describe('SQL Run Mode Screenshot', () => {
     // whole deliberately runs the UI in zh-CN with Safe Mode off, which the
     // other screenshot specs depend on.
     try {
-      const current = await invoke<Record<string, unknown>>('get_settings');
-      await invoke('save_settings', {
+      const current = await invoke<Record<string, unknown>>('get_host_settings');
+      await invoke('save_host_settings', {
         settings: {
           ...current,
           sqlExecutionStrategy: originalSettings?.sqlExecutionStrategy ?? 'current_statement',

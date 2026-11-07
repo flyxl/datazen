@@ -52,7 +52,7 @@ src/windows/connection/
 
 ### 1.4 添加新 DB 类型检查清单
 
-新 DB 类型一律以**驱动包**（`packages/drivers/<id>/` 或独立 git 仓库）形式添加，不再手改宿主注册表：
+新 DB 类型一律以**驱动包**（`crates/drivers/<id>/` 或独立 git 仓库）形式添加，不再手改宿主注册表：
 
 1. `drivers-registry.json`（或 gitignored 的 `.drivers-dev.json`）— 注册驱动（`source: "path"` / `"git"`）
 2. 驱动 Rust crate — `datazen-driver-api` trait 实现 + `inventory` 注册
@@ -68,11 +68,11 @@ src/windows/connection/
 
 |      | 数据库驱动                                                            | 主题包                                                                                      |
 | ---- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| 路径 | `packages/drivers/<id>/`（path 已提交；git 构建时 clone，gitignored） | Wapp 包内 `contributes.themes[]` 声明（运行时安装到 `{appData}/wapps/{publisher}.{name}/`） |
+| 路径 | `crates/drivers/<id>/`（path 已提交；git 构建时 clone，gitignored） | Wapp 包内 `contributes.themes[]` 声明（运行时安装到 `{appData}/wapps/{publisher}.{name}/`） |
 | 注册 | `drivers-registry.json` + `DB_REGISTRY`                               | 文件系统 + `manifest.json`                                                                  |
 | 扩展 | Rust crate + 前端 meta                                                | CSS / JSON / SVG\|PNG\|WebP / 字体（无 JS）                                                 |
 
-驱动在无主题包（`packId: null`）下正常工作；主题包可覆盖 `db.<type>` 图标与 `--dt-*`（含 `--dt-binary`）DataTable 单元格色，但不改变驱动协议。Redis 深度 UI 位于 `packages/drivers/redis/ui/`（非 Host `src/windows/connection/`）。
+驱动在无主题包（`packId: null`）下正常工作；主题包可覆盖 `db.<type>` 图标与 `--dt-*`（含 `--dt-binary`）DataTable 单元格色，但不改变驱动协议。Redis 深度 UI 位于 `crates/drivers/redis/ui/`（非 Host `src/windows/connection/`）。
 
 ### 1.6 SQL 编辑器特权扩展点（Host ↔ Pro）
 

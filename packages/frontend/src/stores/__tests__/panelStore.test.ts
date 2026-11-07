@@ -1,0 +1,1409 @@
+import { afterEach, describe, expect, it, beforeEach, vi } from 'vitest';
+import type { DatabaseType } from '../../types';
+
+vi.mock('../../locales/t', () => ({
+  t: (key: string) => key,
+}));
+
+const mockGetQueryHistoryPage = vi.fn().mockResolvedValue({ entries: [], total: 0 });
+const mockGetFavoriteQueries = vi.fn().mockResolvedValue([]);
+const mockAddFavoriteQuery = vi.fn().mockResolvedValue(undefined);
+const mockDeleteFavoriteQuery = vi.fn().mockResolvedValue(undefined);
+const mockExecuteQueryStream = vi.fn().mockResolvedValue(undefined);
+const mockCancelQuery = vi.fn().mockResolvedValue(undefined);
+const mockSessionCancel = vi.fn().mockResolvedValue(undefined);
+const mockRegistryPeek = vi.fn();
+/** Pane keys the fake session registry reports for a panel (editor mounted, maybe never executed). */
+const mockRegistryKeysOfPanel = vi.fn((_panelId: string) => [] as string[]);
+const mockRegistryRemove = vi.fn().mockResolvedValue(undefined);
+
+const activeConnectionState: {
+  connections: Record<
+    string,
+    {
+      capabilities?: {
+        supportsCancelQuery: boolean;
+        supportsQueryExecutionCancel: boolean;
+        supportsExplain: boolean;
+        supportsStreamingResults: boolean;
+      };
+    }
+  >;
+} = {
+  connections: {
+    'cfg-1': {
+      capabilities: {
+        supportsCancelQuery: true,
+        supportsQueryExecutionCancel: true,
+        supportsExplain: true,
+        supportsStreamingResults: true,
+      },
+    },
+  },
+};
+
+vi.mock('../../commands/query', () => ({
+  queryCommands: {
+    getQueryHistoryPage: (...args: unknown[]) => mockGetQueryHistoryPage(...args),
+    getFavoriteQueries: (...args: unknown[]) => mockGetFavoriteQueries(...args),
+    addFavoriteQuery: (...args: unknown[]) => mockAddFavoriteQuery(...args),
+    deleteFavoriteQuery: (...args: unknown[]) => mockDeleteFavoriteQuery(...args),
+    executeQueryStream: (...args: unknown[]) => mockExecuteQueryStream(...args),
+    cancelQuery: (...args: unknown[]) => mockCancelQuery(...args),
+    executeQuery: vi.fn().mockResolvedValue({ results: [], totalTimeMs: 10 }),
+  },
+}));
+
+vi.mock('../../lib/session/queryPanelSessionRoot', () => ({
+  getQueryPanelSessionRegistry: () => ({
+    peek: (...args: unknown[]) => mockRegistryPeek(...args),
+    remove: (key: string) => mockRegistryRemove(key),
+    // Pane teardown enumerates the *session registry*, not only the exec table:
+    // a pane that mounted its editor holds a session with no exec row.
+    keysOfPanel: (panelId: string) => mockRegistryKeysOfPanel(panelId),
+  }),
+}));
+
+vi.mock('../../lib/session/runEditorQuery', () => ({
+  runEditorQuery: (
+    _paneKey: string,
+    connectionId: string,
+    sql: string,
+    database: string | null | undefined,
+    schema: string | null | undefined,
+    params: Record<string, string | number | boolean | null> | undefined,
+    onEvent: (event: unknown) => void,
+  ) =>
+    mockExecuteQueryStream(connectionId, sql, onEvent, {
+      database: database ?? null,
+      schema: schema ?? null,
+      ...(params ? { params } : {}),
+    }),
+}));
+
+vi.mock('../../stores/activeConnectionStore', () => ({
+  useActiveConnectionStore: {
+    getState: () => activeConnectionState,
+  },
+}));
+
+describe('panelStore', () => {
+  let usePanelStore: typeof import('../panelStore').usePanelStore;
+  let nextPanelId: typeof import('../panelStore').nextPanelId;
+  let useSchemaStore: typeof import('../schemaStore').useSchemaStore;
+  let setRunningExecutionGate: typeof import('../runningExecutionClose').setRunningExecutionGate;
+  let setRunningCloseTimeoutMs: typeof import('../runningExecutionClose').setRunningCloseTimeoutMs;
+  let runningCloseTimeoutMs: number;
+  type Panel = import('../panelStore').Panel;
+  type TablePanel = import('../panelStore').TablePanel;
+
+  /**
+   * `DatabaseType` is generated from the *selected* driver set
+   * (`scripts/resolve-drivers.mjs`), so an optional driver id such as
+   * `superset` is only in the union when that driver was compiled in. The
+   * path-hierarchy cases below self-skip when `DB_REGISTRY` has no such entry,
+   * so the id is widened deliberately rather than pretending the union is wider.
+   */
+  function optionalDriverType(id: string): DatabaseType {
+    return id as DatabaseType;
+  }
+
+  const base = {
+    connectionId: 'cfg-1',
+    dbSessionId: 'sess-1',
+    connectionName: 'TestDB',
+    databaseType: 'postgresql' as const,
+  };
+
+  /**
+   * `database: ''` / `tableSchema: null` mean "this panel is not bound to a
+   * specific namespace": `panelTargetDatabase` / `panelTargetSchema` fall back
+   * to the session-wide schemaStore values on a blank panel value, which is
+   * exactly the behaviour the cases below assert.
+   */
+  function makeTable(name: string): TablePanel {
+    return {
+      ...base,
+      type: 'table',
+      id: nextPanelId('tbl'),
+      tableName: name,
+      database: '',
+      tableSchema: null,
+      subTab: 'data',
+    };
+  }
+
+  beforeEach(async () => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    activeConnectionState.connections['cfg-1'].capabilities = {
+      supportsCancelQuery: true,
+      supportsQueryExecutionCancel: true,
+      supportsExplain: true,
+      supportsStreamingResults: true,
+    };
+    mockRegistryPeek.mockReset().mockReturnValue(undefined);
+    mockRegistryKeysOfPanel.mockReset().mockReturnValue([]);
+    mockRegistryRemove.mockReset().mockResolvedValue(undefined);
+    mockSessionCancel.mockReset().mockResolvedValue(undefined);
+    const mod = await import('../panelStore');
+    usePanelStore = mod.usePanelStore;
+    nextPanelId = mod.nextPanelId;
+    const schemaMod = await import('../schemaStore');
+    useSchemaStore = schemaMod.useSchemaStore;
+    const closeMod = await import('../runningExecutionClose');
+    setRunningExecutionGate = closeMod.setRunningExecutionGate;
+    setRunningCloseTimeoutMs = closeMod.setRunningCloseTimeoutMs;
+    runningCloseTimeoutMs = closeMod.RUNNING_CLOSE_TIMEOUT_MS;
+    setRunningExecutionGate(null);
+    setRunningCloseTimeoutMs(runningCloseTimeoutMs);
+    usePanelStore.setState({ panels: [], activePanelId: null, queryExec: new Map() });
+  });
+
+  afterEach(() => {
+    setRunningExecutionGate(null);
+    setRunningCloseTimeoutMs(runningCloseTimeoutMs);
+  });
+
+  /** Seed schemaStore with a currentDatabase for a runtime session id. */
+  function seedCurrentDatabase(
+    dbSessionId: string | null,
+    database: string | null,
+    schema: string | null = null,
+  ) {
+    const schemas = new Map();
+    if (dbSessionId && database) {
+      schemas.set(dbSessionId, { currentDatabase: database, currentSchema: schema });
+    }
+    useSchemaStore.setState({ activeDbSessionId: dbSessionId, schemas });
+  }
+
+  // ── Query execution carries the panel's database ──
+
+  it('executeQuery forwards schemaStore currentDatabase of the panel session', async () => {
+    seedCurrentDatabase('sess-1', 'db_b');
+    const panel: Panel = {
+      ...base,
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Q1',
+      database: '',
+      schema: null,
+    };
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore.getState().updateSql(panel.id, 'SELECT DATABASE()');
+
+    await usePanelStore.getState().executeQuery(panel.id);
+
+    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
+      'cfg-1',
+      'SELECT DATABASE()',
+      expect.any(Function),
+      { database: 'db_b', schema: null },
+    );
+  });
+
+  it('executeQuery uses the panel-bound database even when the store currentDatabase reverted to the first db', async () => {
+    // Settings round-trip scenario: the session-wide store currentDatabase was
+    // reset back to the first database (channeling_dock_db), but this query tab
+    // is bound to tradingdb. Execution must honor the tab binding.
+    seedCurrentDatabase('sess-1', 'channeling_dock_db');
+    const panel: Panel = {
+      ...base,
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Q1',
+      database: 'tradingdb',
+      schema: null,
+    };
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore.getState().updateSql(panel.id, 'SELECT * FROM t_afi_installment_payment');
+
+    await usePanelStore.getState().executeQuery(panel.id);
+
+    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
+      'cfg-1',
+      'SELECT * FROM t_afi_installment_payment',
+      expect.any(Function),
+      { database: 'tradingdb', schema: null },
+    );
+  });
+
+  it('executeQuery falls back to null when no schema entry exists', async () => {
+    seedCurrentDatabase(null, null);
+    const panel: Panel = {
+      ...base,
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Q1',
+      database: '',
+      schema: null,
+    };
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore.getState().updateSql(panel.id, 'SELECT 1');
+
+    await usePanelStore.getState().executeQuery(panel.id);
+
+    expect(mockExecuteQueryStream).toHaveBeenCalledWith('cfg-1', 'SELECT 1', expect.any(Function), {
+      database: null,
+      schema: null,
+    });
+  });
+
+  it('executeQuery forwards the currentSchema of the panel session (PG)', async () => {
+    seedCurrentDatabase('sess-1', 'db_b', 'sales');
+    const panel: Panel = {
+      ...base,
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Q1',
+      database: '',
+      schema: null,
+    };
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore.getState().updateSql(panel.id, 'SELECT * FROM users');
+
+    await usePanelStore.getState().executeQuery(panel.id);
+
+    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
+      'cfg-1',
+      'SELECT * FROM users',
+      expect.any(Function),
+      { database: 'db_b', schema: 'sales' },
+    );
+  });
+
+  it('executeQuery forwards path-hierarchy catalog/schema pin for Superset', async () => {
+    const { DB_REGISTRY } = await import('../../lib/databaseTypes');
+    if (!Object.prototype.hasOwnProperty.call(DB_REGISTRY, 'superset')) return;
+
+    seedCurrentDatabase('sess-1', '558:presto_afi_data');
+    useSchemaStore.setState((state) => {
+      const schemas = new Map(state.schemas);
+      const entry = schemas.get('sess-1');
+      if (!entry) return state;
+      schemas.set('sess-1', {
+        ...entry,
+        namespaceTree: { hive: { snap: { orders: [] } } },
+        pathAliases: { hive: '558' },
+        databases: ['558:presto_afi_data'],
+      });
+      return { schemas };
+    });
+    const panel: Panel = {
+      ...base,
+      databaseType: optionalDriverType('superset'),
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Q1',
+      database: '',
+      schema: null,
+      namespacePath: ['hive', 'snap'],
+    };
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore
+      .getState()
+      .updateSql(panel.id, 'SELECT * FROM afi_id_loan_t_afi_installment_order');
+
+    await usePanelStore.getState().executeQuery(panel.id);
+
+    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
+      'cfg-1',
+      'SELECT * FROM afi_id_loan_t_afi_installment_order',
+      expect.any(Function),
+      { database: '558:presto_afi_data/hive/snap', schema: null },
+    );
+  });
+
+  it('executeQuery infers path-hierarchy pin from qualified SQL', async () => {
+    const { DB_REGISTRY } = await import('../../lib/databaseTypes');
+    if (!Object.prototype.hasOwnProperty.call(DB_REGISTRY, 'superset')) return;
+
+    seedCurrentDatabase('sess-1', '558:presto_afi_data');
+    useSchemaStore.setState((state) => {
+      const schemas = new Map(state.schemas);
+      const entry = schemas.get('sess-1');
+      if (!entry) return state;
+      schemas.set('sess-1', {
+        ...entry,
+        namespaceTree: { hive: { snap: {} } },
+        pathAliases: { hive: '558' },
+        databases: ['558:presto_afi_data'],
+      });
+      return { schemas };
+    });
+    const panel: Panel = {
+      ...base,
+      databaseType: optionalDriverType('superset'),
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Q1',
+      database: '',
+      schema: null,
+      namespacePath: ['hive'],
+    };
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore
+      .getState()
+      .updateSql(panel.id, 'SELECT * FROM hive.snap.afi_id_loan_t_afi_installment_order');
+
+    await usePanelStore.getState().executeQuery(panel.id);
+
+    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
+      'cfg-1',
+      'SELECT * FROM hive.snap.afi_id_loan_t_afi_installment_order',
+      expect.any(Function),
+      { database: '558:presto_afi_data/hive/snap', schema: null },
+    );
+  });
+
+  it('executeQuery avoids duplicating catalog in path-hierarchy pin when currentDatabase is catalog', async () => {
+    const { DB_REGISTRY } = await import('../../lib/databaseTypes');
+    if (!Object.prototype.hasOwnProperty.call(DB_REGISTRY, 'superset')) return;
+
+    seedCurrentDatabase('sess-1', 'hive');
+    useSchemaStore.setState((state) => {
+      const schemas = new Map(state.schemas);
+      const entry = schemas.get('sess-1');
+      if (!entry) return state;
+      schemas.set('sess-1', {
+        ...entry,
+        namespaceTree: { hive: { snap: { orders: [] } } },
+        pathAliases: { hive: '558' },
+        databases: ['558:presto_afi_data'],
+      });
+      return { schemas };
+    });
+    const panel: Panel = {
+      ...base,
+      databaseType: optionalDriverType('superset'),
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Q1',
+      database: '',
+      schema: null,
+      namespacePath: ['hive', 'snap'],
+    };
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore
+      .getState()
+      .updateSql(panel.id, 'SELECT * FROM afi_id_loan_t_afi_installment_order');
+
+    await usePanelStore.getState().executeQuery(panel.id);
+
+    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
+      'cfg-1',
+      'SELECT * FROM afi_id_loan_t_afi_installment_order',
+      expect.any(Function),
+      { database: '558:presto_afi_data/hive/snap', schema: null },
+    );
+  });
+
+  it('executeQuery resolves a catalog-shaped Superset database entry through its alias', async () => {
+    const { DB_REGISTRY } = await import('../../lib/databaseTypes');
+    if (!Object.prototype.hasOwnProperty.call(DB_REGISTRY, 'superset')) return;
+
+    seedCurrentDatabase('sess-1', 'hive');
+    useSchemaStore.setState((state) => {
+      const schemas = new Map(state.schemas);
+      const entry = schemas.get('sess-1');
+      if (!entry) return state;
+      schemas.set('sess-1', {
+        ...entry,
+        namespaceTree: { hive: { hive: { snap: { orders: [] } } } },
+        pathAliases: { hive: '558' },
+        databases: ['hive'],
+      });
+      return { schemas };
+    });
+    const panel: Panel = {
+      ...base,
+      databaseType: optionalDriverType('superset'),
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Q1',
+      database: '',
+      schema: null,
+      namespacePath: ['hive', 'hive', 'snap'],
+    };
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore
+      .getState()
+      .updateSql(panel.id, 'SELECT * FROM hive.snap.afi_id_loan_t_afi_installment_order');
+
+    await usePanelStore.getState().executeQuery(panel.id);
+
+    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
+      'cfg-1',
+      'SELECT * FROM hive.snap.afi_id_loan_t_afi_installment_order',
+      expect.any(Function),
+      { database: '558/hive/snap', schema: null },
+    );
+  });
+
+  it('executeQuery removes the Superset database display name from the namespace pin', async () => {
+    const { DB_REGISTRY } = await import('../../lib/databaseTypes');
+    if (!Object.prototype.hasOwnProperty.call(DB_REGISTRY, 'superset')) return;
+
+    seedCurrentDatabase('sess-1', 'presto_afi_data');
+    useSchemaStore.setState((state) => {
+      const schemas = new Map(state.schemas);
+      const entry = schemas.get('sess-1');
+      if (!entry) return state;
+      schemas.set('sess-1', {
+        ...entry,
+        namespaceTree: {
+          presto_afi_data: { hive: { snap: { orders: [] } } },
+        },
+        pathAliases: { presto_afi_data: '558' },
+        databases: ['presto_afi_data'],
+      });
+      return { schemas };
+    });
+    const panel: Panel = {
+      ...base,
+      databaseType: optionalDriverType('superset'),
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Q1',
+      database: '',
+      schema: null,
+      namespacePath: ['presto_afi_data', 'hive', 'snap'],
+    };
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore
+      .getState()
+      .updateSql(panel.id, 'SELECT * FROM afi_id_loan_t_afi_installment_order');
+
+    await usePanelStore.getState().executeQuery(panel.id);
+
+    expect(mockExecuteQueryStream).toHaveBeenCalledWith(
+      'cfg-1',
+      'SELECT * FROM afi_id_loan_t_afi_installment_order',
+      expect.any(Function),
+      { database: '558/hive/snap', schema: null },
+    );
+  });
+
+  // ── addPanel ─────────────────────────────────────────────────
+
+  it('addPanel appends panel and activates it by default', () => {
+    const panel = makeTable('users');
+    usePanelStore.getState().addPanel(panel);
+
+    const state = usePanelStore.getState();
+    expect(state.panels).toHaveLength(1);
+    expect(state.panels[0].id).toBe(panel.id);
+    expect(state.activePanelId).toBe(panel.id);
+  });
+
+  it('addPanel with activate=false does not change activePanelId', () => {
+    const p1 = makeTable('users');
+    const p2 = makeTable('orders');
+    usePanelStore.getState().addPanel(p1);
+    usePanelStore.getState().addPanel(p2, false);
+
+    const state = usePanelStore.getState();
+    expect(state.panels).toHaveLength(2);
+    expect(state.activePanelId).toBe(p1.id);
+  });
+
+  // ── removePanel ──────────────────────────────────────────────
+
+  it('removePanel removes panel and adjusts active', () => {
+    const p1 = makeTable('users');
+    const p2 = makeTable('orders');
+    usePanelStore.getState().addPanel(p1);
+    usePanelStore.getState().addPanel(p2);
+
+    usePanelStore.getState().removePanel(p2.id);
+
+    const state = usePanelStore.getState();
+    expect(state.panels).toHaveLength(1);
+    expect(state.activePanelId).toBe(p1.id);
+  });
+
+  it('removePanel selects next panel when removing active', () => {
+    const p1 = makeTable('users');
+    const p2 = makeTable('orders');
+    const p3 = makeTable('products');
+    usePanelStore.getState().addPanel(p1);
+    usePanelStore.getState().addPanel(p2, false);
+    usePanelStore.getState().addPanel(p3, false);
+    usePanelStore.getState().setActivePanel(p2.id);
+
+    usePanelStore.getState().removePanel(p2.id);
+
+    const state = usePanelStore.getState();
+    expect(state.panels).toHaveLength(2);
+    expect(state.activePanelId).toBe(p3.id);
+  });
+
+  it('removePanel selects previous panel when removing last', () => {
+    const p1 = makeTable('users');
+    const p2 = makeTable('orders');
+    usePanelStore.getState().addPanel(p1);
+    usePanelStore.getState().addPanel(p2);
+
+    usePanelStore.getState().removePanel(p2.id);
+
+    expect(usePanelStore.getState().activePanelId).toBe(p1.id);
+  });
+
+  it('removePanel sets active to null when last panel removed', () => {
+    const p1 = makeTable('users');
+    usePanelStore.getState().addPanel(p1);
+    usePanelStore.getState().removePanel(p1.id);
+
+    const state = usePanelStore.getState();
+    expect(state.panels).toHaveLength(0);
+    expect(state.activePanelId).toBeNull();
+  });
+
+  // ── setActivePanel ───────────────────────────────────────────
+
+  it('setActivePanel updates activePanelId', () => {
+    const p1 = makeTable('users');
+    const p2 = makeTable('orders');
+    usePanelStore.getState().addPanel(p1);
+    usePanelStore.getState().addPanel(p2, false);
+
+    usePanelStore.getState().setActivePanel(p2.id);
+    expect(usePanelStore.getState().activePanelId).toBe(p2.id);
+  });
+
+  // ── updatePanel ──────────────────────────────────────────────
+
+  it('updatePanel merges partial data into panel', () => {
+    const p1 = makeTable('users');
+    usePanelStore.getState().addPanel(p1);
+
+    usePanelStore.getState().updatePanel(p1.id, { subTab: 'structure' });
+
+    const updated = usePanelStore.getState().panels[0] as TablePanel;
+    expect(updated.subTab).toBe('structure');
+    expect(updated.tableName).toBe('users');
+  });
+
+  it('updatePanel with structureEditing', () => {
+    const p1 = makeTable('users');
+    usePanelStore.getState().addPanel(p1);
+
+    usePanelStore.getState().updatePanel(p1.id, {
+      subTab: 'structure',
+      structureEditing: true,
+    } as Partial<Panel>);
+
+    const updated = usePanelStore.getState().panels[0] as TablePanel;
+    expect(updated.structureEditing).toBe(true);
+  });
+
+  // ── removeAllForConnection ───────────────────────────────────
+
+  it('removeAllForConnection removes all panels for a connectionId', () => {
+    const p1 = makeTable('users');
+    const p2: Panel = {
+      ...base,
+      connectionId: 'cfg-2',
+      dbSessionId: 'sess-2',
+      type: 'table',
+      id: nextPanelId('tbl'),
+      tableName: 'other',
+      database: '',
+      tableSchema: null,
+      subTab: 'data',
+    };
+    usePanelStore.getState().addPanel(p1);
+    usePanelStore.getState().addPanel(p2, false);
+
+    usePanelStore.getState().removeAllForConnection('cfg-1');
+
+    const state = usePanelStore.getState();
+    expect(state.panels).toHaveLength(1);
+    expect(state.panels[0].connectionId).toBe('cfg-2');
+    expect(state.activePanelId).toBe(p2.id);
+  });
+
+  it('removeAllForConnection sets active to last remaining', () => {
+    const p1 = makeTable('users');
+    const p2 = makeTable('orders');
+    usePanelStore.getState().addPanel(p1);
+    usePanelStore.getState().addPanel(p2);
+
+    usePanelStore.getState().removeAllForConnection('cfg-1');
+
+    const state = usePanelStore.getState();
+    expect(state.panels).toHaveLength(0);
+    expect(state.activePanelId).toBeNull();
+  });
+
+  // ── removePanelsForRelation ────────────────────────────────
+
+  it('removePanelsForRelation closes table and view panels on the dropped relation', () => {
+    const tablePanel = makeTable('users');
+    const viewPanel: Panel = {
+      ...base,
+      type: 'view',
+      id: nextPanelId('view'),
+      viewName: 'users',
+      database: '',
+      viewSchema: null,
+      subTab: 'data',
+    };
+    const otherPanel = makeTable('orders');
+    usePanelStore.getState().addPanel(tablePanel);
+    usePanelStore.getState().addPanel(viewPanel, false);
+    usePanelStore.getState().addPanel(otherPanel, false);
+
+    usePanelStore.getState().removePanelsForRelation('cfg-1', 'users');
+
+    const state = usePanelStore.getState();
+    expect(state.panels.map((p) => p.id)).toEqual([otherPanel.id]);
+    expect(state.activePanelId).toBe(otherPanel.id);
+  });
+
+  it('removePanelsForRelation respects pinned database mismatches', () => {
+    const pinnedOther: TablePanel = {
+      ...makeTable('users'),
+      id: nextPanelId('tbl'),
+      database: 'db_b',
+    };
+    const pinnedSame: TablePanel = {
+      ...makeTable('users'),
+      id: nextPanelId('tbl'),
+      database: 'db_a',
+    };
+    const foreignConn: TablePanel = {
+      ...makeTable('users'),
+      id: nextPanelId('tbl'),
+      connectionId: 'cfg-2',
+      dbSessionId: 'sess-2',
+      database: 'db_a',
+    };
+    usePanelStore.getState().addPanel(pinnedOther);
+    usePanelStore.getState().addPanel(pinnedSame, false);
+    usePanelStore.getState().addPanel(foreignConn, false);
+
+    usePanelStore.getState().removePanelsForRelation('cfg-1', 'users', 'db_a');
+
+    const state = usePanelStore.getState();
+    expect(state.panels.map((p) => p.id)).toEqual([pinnedOther.id, foreignConn.id]);
+  });
+
+  // ── removePanelsForDatabase ────────────────────────────────
+
+  it('removePanelsForDatabase closes pinned table/query panels on the dropped database', () => {
+    const tablePanel: TablePanel = {
+      ...makeTable('users'),
+      id: nextPanelId('tbl'),
+      database: 'db_a',
+    };
+    const queryPanel: Panel = {
+      ...base,
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Q1',
+      database: '',
+      schema: null,
+    };
+    const otherDbPanel: TablePanel = {
+      ...makeTable('orders'),
+      id: nextPanelId('tbl'),
+      database: 'db_b',
+    };
+    usePanelStore.getState().addPanel(tablePanel);
+    usePanelStore.getState().addPanel(queryPanel, false);
+    usePanelStore.getState().addPanel(otherDbPanel, false);
+
+    usePanelStore.getState().removePanelsForDatabase('cfg-1', 'db_a');
+
+    const state = usePanelStore.getState();
+    expect(state.panels.map((p) => p.id)).toEqual([queryPanel.id, otherDbPanel.id]);
+    expect(state.queryExec.has(queryPanel.id)).toBe(true);
+  });
+
+  it('removePanelsForDatabase closes query panels pinned to the dropped database and cleans exec', () => {
+    const pinnedQuery: Panel = {
+      ...base,
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Q1',
+      database: 'db_a',
+      schema: null,
+    };
+    const floatingQuery: Panel = {
+      ...base,
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Q2',
+      database: '',
+      schema: null,
+    };
+    usePanelStore.getState().addPanel(pinnedQuery);
+    usePanelStore.getState().addPanel(floatingQuery, false);
+
+    usePanelStore.getState().removePanelsForDatabase('cfg-1', 'db_a', 'db_b');
+
+    const state = usePanelStore.getState();
+    expect(state.panels.map((p) => p.id)).toEqual([floatingQuery.id]);
+    expect(state.queryExec.has(pinnedQuery.id)).toBe(false);
+    expect(state.queryExec.has(floatingQuery.id)).toBe(true);
+  });
+
+  it('removePanelsForDatabase closes unpinned table panels rendered on the session database', () => {
+    const floatingTable = makeTable('users');
+    usePanelStore.getState().addPanel(floatingTable);
+
+    usePanelStore.getState().removePanelsForDatabase('cfg-1', 'db_a', 'db_a');
+
+    expect(usePanelStore.getState().panels).toHaveLength(0);
+    expect(usePanelStore.getState().activePanelId).toBeNull();
+  });
+
+  it('removePanelsForDatabase keeps panels of other databases and connections', () => {
+    const pinnedOther: TablePanel = {
+      ...makeTable('users'),
+      id: nextPanelId('tbl'),
+      database: 'db_b',
+    };
+    const foreignConn: TablePanel = {
+      ...makeTable('users'),
+      id: nextPanelId('tbl'),
+      connectionId: 'cfg-2',
+      dbSessionId: 'sess-2',
+      database: 'db_a',
+    };
+    usePanelStore.getState().addPanel(pinnedOther);
+    usePanelStore.getState().addPanel(foreignConn, false);
+
+    usePanelStore.getState().removePanelsForDatabase('cfg-1', 'db_a', 'db_a');
+
+    expect(usePanelStore.getState().panels).toHaveLength(2);
+  });
+
+  // ── closeOtherPanels ─────────────────────────────────────────
+
+  it('closeOtherPanels keeps only the specified panel', () => {
+    const p1 = makeTable('users');
+    const p2 = makeTable('orders');
+    const p3 = makeTable('products');
+    usePanelStore.getState().addPanel(p1);
+    usePanelStore.getState().addPanel(p2, false);
+    usePanelStore.getState().addPanel(p3, false);
+
+    usePanelStore.getState().closeOtherPanels(p2.id);
+
+    const state = usePanelStore.getState();
+    expect(state.panels).toHaveLength(1);
+    expect(state.panels[0].id).toBe(p2.id);
+    expect(state.activePanelId).toBe(p2.id);
+  });
+
+  // ── closeAllPanels ───────────────────────────────────────────
+
+  it('closeAllPanels removes all panels', () => {
+    usePanelStore.getState().addPanel(makeTable('users'));
+    usePanelStore.getState().addPanel(makeTable('orders'), false);
+
+    usePanelStore.getState().closeAllPanels();
+
+    const state = usePanelStore.getState();
+    expect(state.panels).toHaveLength(0);
+    expect(state.activePanelId).toBeNull();
+  });
+
+  // ── closePanelsToTheRight ────────────────────────────────────
+
+  it('closePanelsToTheRight removes panels after the specified one', () => {
+    const p1 = makeTable('users');
+    const p2 = makeTable('orders');
+    const p3 = makeTable('products');
+    usePanelStore.getState().addPanel(p1);
+    usePanelStore.getState().addPanel(p2, false);
+    usePanelStore.getState().addPanel(p3, false);
+
+    usePanelStore.getState().closePanelsToTheRight(p1.id);
+
+    const state = usePanelStore.getState();
+    expect(state.panels).toHaveLength(1);
+    expect(state.panels[0].id).toBe(p1.id);
+  });
+
+  it('closePanelsToTheRight adjusts active when active is removed', () => {
+    const p1 = makeTable('users');
+    const p2 = makeTable('orders');
+    const p3 = makeTable('products');
+    usePanelStore.getState().addPanel(p1);
+    usePanelStore.getState().addPanel(p2, false);
+    usePanelStore.getState().addPanel(p3);
+
+    usePanelStore.getState().closePanelsToTheRight(p1.id);
+
+    expect(usePanelStore.getState().activePanelId).toBe(p1.id);
+  });
+
+  // ── closePanelsToTheLeft ─────────────────────────────────────
+
+  it('closePanelsToTheLeft removes panels before the specified one', () => {
+    const p1 = makeTable('users');
+    const p2 = makeTable('orders');
+    const p3 = makeTable('products');
+    usePanelStore.getState().addPanel(p1);
+    usePanelStore.getState().addPanel(p2, false);
+    usePanelStore.getState().addPanel(p3, false);
+
+    usePanelStore.getState().closePanelsToTheLeft(p3.id);
+
+    const state = usePanelStore.getState();
+    expect(state.panels).toHaveLength(1);
+    expect(state.panels[0].id).toBe(p3.id);
+  });
+
+  it('closePanelsToTheLeft adjusts active when active is removed', () => {
+    const p1 = makeTable('users');
+    const p2 = makeTable('orders');
+    const p3 = makeTable('products');
+    usePanelStore.getState().addPanel(p1);
+    usePanelStore.getState().addPanel(p2, false);
+    usePanelStore.getState().addPanel(p3, false);
+
+    usePanelStore.getState().closePanelsToTheLeft(p3.id);
+
+    expect(usePanelStore.getState().activePanelId).toBe(p3.id);
+  });
+
+  // ── nextPanelId ──────────────────────────────────────────────
+
+  it('nextPanelId generates unique IDs with prefix', () => {
+    const id1 = nextPanelId('tbl');
+    const id2 = nextPanelId('tbl');
+    const id3 = nextPanelId('query');
+
+    expect(id1).toMatch(/^panel-tbl-/);
+    expect(id2).toMatch(/^panel-tbl-/);
+    expect(id3).toMatch(/^panel-query-/);
+    expect(id1).not.toBe(id2);
+  });
+
+  // ── Cross-connection scenarios ───────────────────────────────
+
+  it('panels from different connections coexist', () => {
+    const p1 = makeTable('users');
+    const p2: Panel = {
+      connectionId: 'cfg-2',
+      dbSessionId: 'sess-2',
+      connectionName: 'OtherDB',
+      databaseType: 'mysql',
+      type: 'table',
+      id: nextPanelId('tbl'),
+      tableName: 'other',
+      database: '',
+      tableSchema: null,
+      subTab: 'data',
+    };
+    usePanelStore.getState().addPanel(p1);
+    usePanelStore.getState().addPanel(p2);
+
+    const state = usePanelStore.getState();
+    expect(state.panels).toHaveLength(2);
+    expect(state.panels[0].connectionId).toBe('cfg-1');
+    expect(state.panels[1].connectionId).toBe('cfg-2');
+    expect(state.activePanelId).toBe(p2.id);
+  });
+
+  it('removeAllForConnection preserves other connections panels', () => {
+    const p1 = makeTable('users');
+    const p2: Panel = {
+      connectionId: 'cfg-2',
+      dbSessionId: 'sess-2',
+      connectionName: 'OtherDB',
+      databaseType: 'mysql',
+      type: 'table',
+      id: nextPanelId('tbl'),
+      tableName: 'other',
+      database: '',
+      tableSchema: null,
+      subTab: 'data',
+    };
+    usePanelStore.getState().addPanel(p1);
+    usePanelStore.getState().addPanel(p2, false);
+
+    usePanelStore.getState().removeAllForConnection('cfg-1');
+
+    const state = usePanelStore.getState();
+    expect(state.panels).toHaveLength(1);
+    expect(state.panels[0].connectionId).toBe('cfg-2');
+  });
+
+  // ── queryExec lifecycle ────────────────────────────────────────
+
+  it('addPanel creates queryExec entry for query panels', () => {
+    const panel: Panel = {
+      ...base,
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Query 1',
+      database: '',
+      schema: null,
+    };
+    usePanelStore.getState().addPanel(panel);
+    const exec = usePanelStore.getState().queryExec.get(panel.id);
+    expect(exec).toBeDefined();
+    expect(exec!.sql).toBe('');
+    expect(exec!.running).toBe(false);
+  });
+
+  it('addPanel does not create queryExec entry for table panels', () => {
+    const panel = makeTable('users');
+    usePanelStore.getState().addPanel(panel);
+    expect(usePanelStore.getState().queryExec.has(panel.id)).toBe(false);
+  });
+
+  it('removePanel cleans up queryExec entry', () => {
+    const panel: Panel = {
+      ...base,
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Query 1',
+      database: '',
+      schema: null,
+    };
+    usePanelStore.getState().addPanel(panel);
+    expect(usePanelStore.getState().queryExec.has(panel.id)).toBe(true);
+
+    usePanelStore.getState().removePanel(panel.id);
+    expect(usePanelStore.getState().queryExec.has(panel.id)).toBe(false);
+  });
+
+  it('removePanel releases a pane session the exec table never heard of', async () => {
+    // 会话在编辑器挂载时就开好，exec 行要等真正执行才有。销毁面板时按 exec 表枚举
+    // 会把这个 pane 整条漏掉：控制器留在注册表里，运行时会话与宿主额度一直被计费。
+    const panel: Panel = {
+      ...base,
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Query 1',
+      database: '',
+      schema: null,
+    };
+    usePanelStore.getState().addPanel(panel);
+    const lazyPane = `${panel.id}:lazy`;
+    mockRegistryKeysOfPanel.mockReturnValue([lazyPane]);
+    mockRegistryPeek.mockReturnValue({ close: vi.fn() });
+
+    await usePanelStore.getState().removePanel(panel.id);
+
+    // 预检（先确认能干净关闭）与随后的清理各枚举一次注册表口径；生产实现里第一次
+    // remove 成功后控制器即从注册表摘除，第二次是空操作，不会多发一次 IPC。
+    const closed = new Set(mockRegistryRemove.mock.calls.map(([key]) => key));
+    expect([...closed].sort()).toEqual([panel.id, lazyPane].sort());
+  });
+
+  it('closeAllPanels cleans up all queryExec entries', () => {
+    const q1: Panel = {
+      ...base,
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Q1',
+      database: '',
+      schema: null,
+    };
+    const q2: Panel = {
+      ...base,
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Q2',
+      database: '',
+      schema: null,
+    };
+    usePanelStore.getState().addPanel(q1);
+    usePanelStore.getState().addPanel(q2, false);
+
+    usePanelStore.getState().closeAllPanels();
+    expect(usePanelStore.getState().queryExec.size).toBe(0);
+  });
+
+  it('updateSql updates queryExec sql field', () => {
+    const panel: Panel = {
+      ...base,
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Q1',
+      database: '',
+      schema: null,
+    };
+    usePanelStore.getState().addPanel(panel);
+
+    usePanelStore.getState().updateSql(panel.id, 'SELECT 1');
+    expect(usePanelStore.getState().queryExec.get(panel.id)!.sql).toBe('SELECT 1');
+  });
+
+  it('removeAllForConnection cleans up queryExec for that connection', () => {
+    const q1: Panel = {
+      ...base,
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Q1',
+      database: '',
+      schema: null,
+    };
+    const q2: Panel = {
+      ...base,
+      connectionId: 'cfg-2',
+      dbSessionId: 'sess-2',
+      type: 'query',
+      id: nextPanelId('qry'),
+      title: 'Q2',
+      database: '',
+      schema: null,
+    };
+    usePanelStore.getState().addPanel(q1);
+    usePanelStore.getState().addPanel(q2, false);
+
+    usePanelStore.getState().removeAllForConnection('cfg-1');
+    expect(usePanelStore.getState().queryExec.has(q1.id)).toBe(false);
+    expect(usePanelStore.getState().queryExec.has(q2.id)).toBe(true);
+  });
+
+  // ── Redis panel ──────────────────────────────────────────────
+
+  it('supports redis-db panel type', () => {
+    const redisPanel: Panel = {
+      connectionId: 'cfg-redis',
+      dbSessionId: 'sess-redis',
+      connectionName: 'Redis',
+      databaseType: 'redis',
+      type: 'redis-db',
+      id: nextPanelId('redis'),
+      dbName: 'db0',
+    };
+    usePanelStore.getState().addPanel(redisPanel);
+
+    const state = usePanelStore.getState();
+    expect(state.panels).toHaveLength(1);
+    expect(state.panels[0].type).toBe('redis-db');
+    expect(state.activePanelId).toBe(redisPanel.id);
+  });
+
+  // ── History / Favorites async actions ─────────────────────────
+
+  function makeQueryPanel(title: string): Panel {
+    return {
+      ...base,
+      type: 'query',
+      id: nextPanelId('qry'),
+      title,
+      database: '',
+      schema: null,
+    };
+  }
+
+  /** Seed the pane's exec entry as a statement that is still in flight. */
+  function seedRunning(panelId: string) {
+    usePanelStore.setState((s) => ({
+      queryExec: new Map(s.queryExec).set(panelId, {
+        ...s.queryExec.get(panelId)!,
+        running: true,
+        executionId: 'exec-test',
+      }),
+    }));
+  }
+
+  /** What the execution stream does once the statement is over. */
+  function finishRunning(panelId: string) {
+    usePanelStore.setState((s) => {
+      const current = s.queryExec.get(panelId);
+      if (!current) return s;
+      return { queryExec: new Map(s.queryExec).set(panelId, { ...current, running: false }) };
+    });
+  }
+
+  it('loadHistory calls IPC and sets queryHistory', async () => {
+    const history = [
+      {
+        id: 'h1',
+        connectionId: 'cfg-1',
+        database: 'db',
+        sql: 'SELECT 1',
+        executedAt: '',
+        executionTimeMs: 10,
+        success: true,
+      },
+    ];
+    mockGetQueryHistoryPage.mockResolvedValueOnce({ entries: history, total: history.length });
+
+    await usePanelStore.getState().loadHistory('cfg-1');
+
+    expect(mockGetQueryHistoryPage).toHaveBeenCalledWith({ limit: 1000, connectionId: 'cfg-1' });
+    expect(usePanelStore.getState().queryHistory).toEqual(history);
+  });
+
+  it('loadFavorites calls IPC and sets queryFavorites', async () => {
+    const favorites = [
+      { id: 'f1', connectionId: 'cfg-1', title: 'Fav', sql: 'SELECT 1', createdAt: '' },
+    ];
+    mockGetFavoriteQueries.mockResolvedValueOnce(favorites);
+
+    await usePanelStore.getState().loadFavorites('cfg-1');
+
+    expect(mockGetFavoriteQueries).toHaveBeenCalledWith('cfg-1');
+    expect(usePanelStore.getState().queryFavorites).toEqual(favorites);
+  });
+
+  it('addFavorite calls IPC then reloads favorites', async () => {
+    const favorites = [
+      { id: 'f1', connectionId: 'cfg-1', title: 'My Fav', sql: 'SELECT 1', createdAt: '' },
+    ];
+    mockGetFavoriteQueries.mockResolvedValueOnce(favorites);
+
+    await usePanelStore.getState().addFavorite('My Fav', 'SELECT 1', 'cfg-1');
+
+    expect(mockAddFavoriteQuery).toHaveBeenCalledWith('cfg-1', 'My Fav', 'SELECT 1');
+    expect(mockGetFavoriteQueries).toHaveBeenCalledWith('cfg-1');
+    expect(usePanelStore.getState().queryFavorites).toEqual(favorites);
+  });
+
+  it('deleteFavorite calls IPC then reloads favorites', async () => {
+    const panel = makeQueryPanel('Q1');
+    usePanelStore.getState().addPanel(panel);
+    mockGetFavoriteQueries.mockResolvedValueOnce([]);
+
+    await usePanelStore.getState().deleteFavorite('f1');
+
+    expect(mockDeleteFavoriteQuery).toHaveBeenCalledWith('f1');
+    expect(mockGetFavoriteQueries).toHaveBeenCalledWith('cfg-1');
+  });
+
+  it('toggleHistory flips historyVisible', () => {
+    expect(usePanelStore.getState().historyVisible).toBe(false);
+    usePanelStore.getState().toggleHistory();
+    expect(usePanelStore.getState().historyVisible).toBe(true);
+    usePanelStore.getState().toggleHistory();
+    expect(usePanelStore.getState().historyVisible).toBe(false);
+  });
+
+  it('openQueryHistory shows drawer, hides favorites, and loads filtered history', async () => {
+    const history = [{ id: 'h1', sql: 'SELECT 1' }];
+    mockGetQueryHistoryPage.mockResolvedValueOnce({ entries: history, total: history.length });
+    usePanelStore.setState({ favoritesVisible: true, historyVisible: false });
+
+    await usePanelStore.getState().openQueryHistory('cfg-1');
+
+    expect(mockGetQueryHistoryPage).toHaveBeenCalledWith({ limit: 1000, connectionId: 'cfg-1' });
+    const state = usePanelStore.getState();
+    expect(state.historyVisible).toBe(true);
+    expect(state.favoritesVisible).toBe(false);
+    expect(state.queryHistory).toEqual(history);
+  });
+
+  it('toggleFavorites flips favoritesVisible', () => {
+    expect(usePanelStore.getState().favoritesVisible).toBe(false);
+    usePanelStore.getState().toggleFavorites();
+    expect(usePanelStore.getState().favoritesVisible).toBe(true);
+    usePanelStore.getState().toggleFavorites();
+    expect(usePanelStore.getState().favoritesVisible).toBe(false);
+  });
+
+  // ── cancelQuery ────────────────────────────────────────────────
+
+  it('requests cancellation without claiming the query already stopped', async () => {
+    mockRegistryPeek.mockReturnValue({ cancel: mockSessionCancel });
+    const panel = makeQueryPanel('Q1');
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore.setState((s) => ({
+      queryExec: new Map(s.queryExec).set(panel.id, {
+        ...s.queryExec.get(panel.id)!,
+        running: true,
+        executionId: 'exec-test',
+      }),
+    }));
+
+    await usePanelStore.getState().cancelQuery(panel.id);
+
+    expect(mockRegistryPeek).toHaveBeenCalledWith(panel.id);
+    expect(mockSessionCancel).toHaveBeenCalledOnce();
+    const exec = usePanelStore.getState().queryExec.get(panel.id)!;
+    expect(exec.running).toBe(true);
+    expect(exec.cancelState).toBe('requested');
+    expect(exec.cancelError).toBeNull();
+  });
+
+  it('does not call cancel for a driver that does not support it', async () => {
+    const capabilities = activeConnectionState.connections['cfg-1']!.capabilities!;
+    capabilities.supportsCancelQuery = false;
+    const panel = makeQueryPanel('Q1');
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore.setState((s) => ({
+      queryExec: new Map(s.queryExec).set(panel.id, {
+        ...s.queryExec.get(panel.id)!,
+        running: true,
+        executionId: 'exec-test',
+      }),
+    }));
+
+    await usePanelStore.getState().cancelQuery(panel.id);
+
+    expect(mockCancelQuery).not.toHaveBeenCalled();
+    expect(usePanelStore.getState().queryExec.get(panel.id)!.running).toBe(true);
+  });
+
+  it('keeps a running query when the cancel command fails', async () => {
+    mockRegistryPeek.mockReturnValue({ cancel: mockSessionCancel });
+    mockSessionCancel.mockRejectedValueOnce(new Error('permission denied'));
+    const panel = makeQueryPanel('Q1');
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore.setState((s) => ({
+      queryExec: new Map(s.queryExec).set(panel.id, {
+        ...s.queryExec.get(panel.id)!,
+        running: true,
+        executionId: 'exec-test',
+      }),
+    }));
+
+    await usePanelStore.getState().cancelQuery(panel.id);
+
+    expect(mockRegistryPeek).toHaveBeenCalledWith(panel.id);
+    expect(mockSessionCancel).toHaveBeenCalledOnce();
+    expect(usePanelStore.getState().queryExec.get(panel.id)).toMatchObject({
+      running: true,
+      cancelState: 'failed',
+      terminalState: null,
+      cancelError: 'query.cancelFailed',
+    });
+  });
+
+  it('stops a running query and waits for it before closing the tab', async () => {
+    mockRegistryPeek.mockReturnValue({ cancel: mockSessionCancel });
+    const panel = makeQueryPanel('Q1');
+    usePanelStore.getState().addPanel(panel);
+    seedRunning(panel.id);
+
+    const closing = usePanelStore.getState().removePanel(panel.id);
+
+    // The tab is still there: nothing is dropped before the statement is over.
+    expect(usePanelStore.getState().panels.some((p) => p.id === panel.id)).toBe(true);
+    // The cancel is the runtime one (the session's own cancel), not the legacy
+    // per-session command that used to fire after the session was already gone.
+    // It is requested a microtask later: the gate is asked before anything moves.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mockSessionCancel).toHaveBeenCalledOnce();
+    expect(mockCancelQuery).not.toHaveBeenCalled();
+
+    // The execution stream reports the terminal state.
+    finishRunning(panel.id);
+    await closing;
+
+    expect(usePanelStore.getState().panels.some((p) => p.id === panel.id)).toBe(false);
+    expect(usePanelStore.getState().queryExec.has(panel.id)).toBe(false);
+  });
+
+  it('leaves a running tab completely untouched when the user declines to close it', async () => {
+    mockRegistryPeek.mockReturnValue({ cancel: mockSessionCancel });
+    setRunningExecutionGate(async () => false);
+    const panel = makeQueryPanel('Q1');
+    usePanelStore.getState().addPanel(panel);
+    seedRunning(panel.id);
+    const before = usePanelStore.getState().queryExec.get(panel.id);
+
+    await usePanelStore.getState().removePanel(panel.id);
+
+    expect(usePanelStore.getState().panels.some((p) => p.id === panel.id)).toBe(true);
+    expect(usePanelStore.getState().queryExec.get(panel.id)).toEqual(before);
+    expect(mockSessionCancel).not.toHaveBeenCalled();
+  });
+
+  it('keeps the tab and says why when a requested cancel is never confirmed', async () => {
+    mockRegistryPeek.mockReturnValue({ cancel: mockSessionCancel });
+    setRunningCloseTimeoutMs(20);
+    const panel = makeQueryPanel('Q1');
+    usePanelStore.getState().addPanel(panel);
+    seedRunning(panel.id);
+
+    await usePanelStore.getState().removePanel(panel.id);
+
+    expect(mockSessionCancel).toHaveBeenCalledOnce();
+    expect(usePanelStore.getState().panels.some((p) => p.id === panel.id)).toBe(true);
+    expect(usePanelStore.getState().queryExec.get(panel.id)).toMatchObject({
+      running: true,
+      error: 'query.session.closeBlocked',
+    });
+  });
+
+  it('does not attempt cancellation when closing with unknown capability', () => {
+    activeConnectionState.connections['cfg-1'].capabilities = undefined;
+    const panel = makeQueryPanel('Q1');
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore.setState((s) => ({
+      queryExec: new Map(s.queryExec).set(panel.id, {
+        ...s.queryExec.get(panel.id)!,
+        running: true,
+        executionId: 'exec-test',
+      }),
+    }));
+
+    usePanelStore.getState().removePanel(panel.id);
+
+    expect(mockCancelQuery).not.toHaveBeenCalled();
+  });
+
+  // ── setActiveResult / setResultDetailRow / setChartConfig / setResultViewMode ──
+
+  it('setActiveResult updates activeResultIdx', () => {
+    const panel = makeQueryPanel('Q1');
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore.getState().setActiveResult(panel.id, 2);
+    expect(usePanelStore.getState().queryExec.get(panel.id)!.activeResultIdx).toBe(2);
+  });
+
+  it('setResultDetailRow updates resultDetailRowIndex', () => {
+    const panel = makeQueryPanel('Q1');
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore.getState().setResultDetailRow(panel.id, 5);
+    expect(usePanelStore.getState().queryExec.get(panel.id)!.resultDetailRowIndex).toBe(5);
+  });
+
+  it('setResultViewMode updates resultViewMode', () => {
+    const panel = makeQueryPanel('Q1');
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore.getState().setResultViewMode(panel.id, 'chart');
+    expect(usePanelStore.getState().queryExec.get(panel.id)!.resultViewMode).toBe('chart');
+  });
+
+  // ── reset ──────────────────────────────────────────────────────
+
+  it('reset clears all state', () => {
+    const panel = makeQueryPanel('Q1');
+    usePanelStore.getState().addPanel(panel);
+    usePanelStore.setState({ queryHistory: [{ id: 'h1' }] as any, historyVisible: true });
+
+    usePanelStore.getState().reset();
+
+    const state = usePanelStore.getState();
+    expect(state.panels).toHaveLength(0);
+    expect(state.activePanelId).toBeNull();
+    expect(state.queryExec.size).toBe(0);
+    expect(state.queryHistory).toHaveLength(0);
+    expect(state.queryFavorites).toHaveLength(0);
+    expect(state.historyVisible).toBe(false);
+    expect(state.favoritesVisible).toBe(false);
+    expect(state.pendingQueryHistoryConnectionId).toBeNull();
+  });
+
+  // ── pendingQueryHistoryConnectionId ────────────────────────────
+
+  it('setPendingQueryHistory stores and clears connection id', () => {
+    expect(usePanelStore.getState().pendingQueryHistoryConnectionId).toBeNull();
+
+    usePanelStore.getState().setPendingQueryHistory('cfg-pg');
+    expect(usePanelStore.getState().pendingQueryHistoryConnectionId).toBe('cfg-pg');
+
+    usePanelStore.getState().setPendingQueryHistory(null);
+    expect(usePanelStore.getState().pendingQueryHistoryConnectionId).toBeNull();
+  });
+
+  it('reset clears pendingQueryHistoryConnectionId', () => {
+    usePanelStore.getState().setPendingQueryHistory('cfg-pg');
+    usePanelStore.getState().reset();
+    expect(usePanelStore.getState().pendingQueryHistoryConnectionId).toBeNull();
+  });
+});

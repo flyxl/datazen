@@ -10,5 +10,13 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "sideEffects": false
+  "sideEffects": false,
+  "peerDependencies": {
+    "@tauri-apps/api": "^2.11.1",
+    "react": "^17.0.0 || ^18.0.0 || ^19.0.0",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.2"
+  }
 }

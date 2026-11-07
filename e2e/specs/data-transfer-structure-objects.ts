@@ -2,7 +2,7 @@
  * Data Transfer structure-object emission: secondary indexes and foreign keys.
  *
  * Covers the Host-generic UI path only (dialect-specific behaviour belongs to
- * `packages/drivers/<id>/e2e/`):
+ * `crates/drivers/<id>/e2e/`):
  *   - the DDL preview renders one block per secondary index and per foreign key,
  *   - every table block is emitted before every index block, and every index block
  *     before every foreign-key block,

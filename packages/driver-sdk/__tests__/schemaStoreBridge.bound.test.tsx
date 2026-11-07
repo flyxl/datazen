@@ -12,7 +12,7 @@
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { create } from 'zustand';
-import type { TableInfo } from '../../../src/types';
+import type { TableInfo } from '../src/types/schemaMetadata';
 import type { BoundSchemaStore, SchemaStoreState } from '../src/schemaStoreBridge';
 
 type SchemaStoreBridgeModule = typeof import('../src/schemaStoreBridge');

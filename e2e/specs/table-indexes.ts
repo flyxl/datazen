@@ -163,8 +163,29 @@ describe('表索引创建与删除 (IDX-001~IDX-006)', () => {
       { timeout: 15000 },
     );
 
+    // 「在结构中编辑」只在面板拿到数据库元信息、且会话可写时才渲染
+    // （`panelShowStructureEditor = canOpenStructureEditor(panelDbMeta) && !panelIsReadOnly`）。
+    // 刚建完索引时元信息可能还没回来，8s 的固定等待会把「还没准备好」判成失败——
+    // 整包里它就红过一次，单跑两次都稳过。
     const editBtn = await $("[data-testid='idx-edit-in-structure']");
-    await editBtn.waitForDisplayed({ timeout: 8000 });
+    try {
+      await editBtn.waitForDisplayed({ timeout: 20000 });
+    } catch (error) {
+      const state = await browser.execute(() => {
+        const visible = (selector: string) =>
+          document.querySelector(selector) ? 'present' : 'absent';
+        const count = Array.from(document.querySelectorAll('[data-testid="index-row"]')).length;
+        return [
+          `header=${visible("[data-testid='idx-edit-in-structure']")}`,
+          `empty=${visible("[data-testid='idx-edit-in-structure-empty']")}`,
+          `rows=${count}`,
+          `text=${(document.body.innerText ?? '').replace(/\s+/g, ' ').slice(0, 400)}`,
+        ].join(' || ');
+      });
+      throw new Error(
+        `IDX-006: 索引已建但「在结构中编辑」没出现 :: ${state} :: ${(error as Error).message}`,
+      );
+    }
     await editBtn.click();
     await browser.pause(800);
     await expect($("[data-testid='struct-edit-structure']")).toExist();

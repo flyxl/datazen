@@ -1,0 +1,32 @@
+{
+  "name": "datazen-desktop",
+  "version": "0.2.3",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "description": "DataZen desktop application (Tauri shell): the entry module, platform/desktop adapters, shell/desktop chrome and the src-tauri host crate. The shared frontend tree lives in @datazen/frontend.",
+  "type": "module",
+  "dependencies": {
+    "@datazen/backend-client": "workspace:*",
+    "@datazen/frontend": "workspace:*",
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-dialog": "^2.7.0",
+    "@tauri-apps/plugin-os": "^2.3.2",
+    "@tauri-apps/plugin-process": "^2.3.1",
+    "@tauri-apps/plugin-updater": "^2.10.1",
+    "react": "18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.3",
+    "@codemirror/autocomplete": "6.20.1",
+    "@codemirror/commands": "6.10.3",
+    "@codemirror/lang-sql": "6.10.0",
+    "@codemirror/language": "6.12.3",
+    "@codemirror/lint": "6.9.7",
+    "@codemirror/search": "6.6.0",
+    "@codemirror/state": "6.7.4",
+    "@codemirror/view": "6.43.11"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2"
+  }
+}

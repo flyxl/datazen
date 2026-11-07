@@ -55,7 +55,7 @@ export const FAST_FRONTEND_BUILD_COMMAND = 'pnpm build:bundle';
 export const REQUIRED_PRO_STAGED_PATHS = ['manifest.json', 'dist/index.esm.js', 'signature.sig'];
 
 export function builtinEpStagingDir(root = ROOT) {
-  return join(root, 'src-tauri', 'resources', 'builtin-ep', 'sql-editor-pro');
+  return join(root, 'crates/datazen-desktop', 'resources', 'builtin-ep', 'sql-editor-pro');
 }
 
 /**
@@ -213,6 +213,14 @@ export function buildTauriArgs({
   extraArgs = [],
 } = {}) {
   const args = ['build'];
+  // 桌面 crate 自 W7-B 起 `default = ["drivers"]`：脚本化 SKU 构建必须先关
+  // default，再靠下方显式 `-f <.driver-features.json>` 精确复现特征集，
+  // 保证 basic/all/webdriver 的驱动集与 default=[] 时代逐项相同。
+  //
+  // `--no-default-features` 必须走尾部的 `--` 交给 runner（cargo），不能当 Tauri
+  // CLI 自己的开关：CLI 2.10.1 起 build/dev 都不再接受它（`error: unexpected
+  // argument '--no-default-features'`），直接把 `pnpm tauri:build:webdriver`
+  // 和 release 的 SKU 构建打死。
   if (target) {
     args.push('--target', target);
   }
@@ -234,6 +242,8 @@ export function buildTauriArgs({
   if (Array.isArray(extraArgs) && extraArgs.length > 0) {
     args.push(...extraArgs);
   }
+  // runner 参数放在最后，`--` 之后的一切都原样交给 cargo。
+  args.push('--', '--no-default-features');
   return args;
 }
 

@@ -1,12 +1,12 @@
 # 数据库驱动层
 
-> Source of truth: `packages/driver-api/` 与 `packages/drivers/*`。
+> Source of truth: `crates/datazen-driver-api/` 与 `crates/drivers/*`。
 
 DataZen 的 Driver 是**编译期集成**的数据库实现，不通过运行时 Rust 动态库 ABI 加载。
 
 ## 1. Driver API
 
-`packages/driver-api/src/` 提供 Host 与 Driver 之间的公共契约。
+`crates/datazen-driver-api/src/` 提供 Host 与 Driver 之间的公共契约。
 
 核心接口：
 
@@ -74,7 +74,7 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 
 - 默认实现输出 `LIMIT {n} OFFSET {m}`；驱动声明 `supports_offset() == false`（`superset`）时自动退化为 `LIMIT {n}`。
 - `requires_order_by == true` 时，Host 仅在**调用方没有排序**时补 `order_by_fallback`；用户显式排序优先，不叠加兜底排序。
-- 调用点：`modules/src/services/query_executor.rs::build_select_sql`、`modules/src/migration/data_transfer/execute.rs`、`modules/src/migration/data_sync/keyset.rs`、`src-tauri/src/commands/sync/keyset_source.rs`。`data_transfer` 仍以 `supports_offset()` 作为翻页循环的终止条件（不能 OFFSET 的引擎不继续翻页），不参与 SQL 拼接。
+- 调用点：`crates/datazen/src/services/query_executor.rs::build_select_sql`、`crates/datazen/src/migration/data_transfer/execute.rs`、`crates/datazen/src/migration/data_sync/keyset.rs`、`src-tauri/src/commands/sync/keyset_source.rs`。`data_transfer` 仍以 `supports_offset()` 作为翻页循环的终止条件（不能 OFFSET 的引擎不继续翻页），不参与 SQL 拼接。
 - 设置项 `limitSelectResults` 不生成 SQL：它把 `limit` 传给驱动命令，由驱动截断结果集（SQL Server 的做法见 §2.3）。
 
 ### 2.3 方言要点：SQL Server
@@ -99,10 +99,10 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 
 | 契约 | 位置 | 现状 |
 | --- | --- | --- |
-| `SqlDialect` | `packages/driver-api/src/dialect.rs` | 已提取：`quote_ident`、`pagination_syntax`、`try_format_sql_literal`、`parameter_placeholder`、`max_bound_parameters` |
+| `SqlDialect` | `crates/datazen-driver-api/src/dialect.rs` | 已提取：`quote_ident`、`pagination_syntax`、`try_format_sql_literal`、`parameter_placeholder`、`max_bound_parameters` |
 | `LegacySqlDialect<'a, D>` | 同上 | 借用适配器：方法逐项转发给 `DatabaseDriver`，是**单向**迁移缝 |
-| 共享 SQL builder | `packages/driver-api/src/sql_builder.rs` | `build_update_sql` / `build_delete_sql` / `build_update_statement` / `build_delete_statement` 只接收 `&dyn SqlDialect` 与调用方显式给出的绑定上限 |
-| `CatalogReader` | `packages/driver-api/src/catalog.rs` | 已提取：`get_databases`、`get_schemas`、`get_tables`、`get_table_schema`、`get_columns`、`get_all_columns`，每次关系读取都带显式 `database` / 可选 `schema` |
+| 共享 SQL builder | `crates/datazen-driver-api/src/sql_builder.rs` | `build_update_sql` / `build_delete_sql` / `build_update_statement` / `build_delete_statement` 只接收 `&dyn SqlDialect` 与调用方显式给出的绑定上限 |
+| `CatalogReader` | `crates/datazen-driver-api/src/catalog.rs` | 已提取：`get_databases`、`get_schemas`、`get_tables`、`get_table_schema`、`get_columns`、`get_all_columns`，每次关系读取都带显式 `database` / 可选 `schema` |
 | `LegacyCatalogReader<'a, D>` | 同上 | 借用适配器，同一单向迁移规则 |
 
 规则：
@@ -119,7 +119,7 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 方言规则（`SqlDialect`）——`quote_ident` / `pagination_syntax` / `try_format_sql_literal` / `parameter_placeholder` / `max_bound_parameters` 全部经 `LegacySqlDialect`：
 
 - `QueryExecutor::build_select_sql` / `build_count_sql`（宿主读表）接收 `&dyn SqlDialect` 与 `limit`/`offset`；`commands/table_target.rs` 在边界处用 `LegacySqlDialect` 包装驱动。
-- 数据迁移写入路径：`data-transfer` 的绑参上限 / 占位符 / 分页子句 / 字面量（`writer.rs`、`dispatcher.rs`、`resume.rs`、`resume/fingerprint.rs`、`job/pipeline.rs`、`job/handler.rs`、`sql_file.rs`），宿主 `modules/src/migration/data_transfer/preview.rs`、`src-tauri/src/commands/data_transfer/exec/execution.rs`，modules `export/format.rs`（`emit_insert_batch` 形参即是 `&dyn SqlDialect`）；`bound_insert*` 因同时需要驱动专属的显式自增子句而保留驱动形参。
+- 数据迁移写入路径：`data-transfer` 的绑参上限 / 占位符 / 分页子句 / 字面量（`writer.rs`、`dispatcher.rs`、`resume.rs`、`resume/fingerprint.rs`、`job/pipeline.rs`、`job/handler.rs`、`sql_file.rs`），宿主 `crates/datazen/src/migration/data_transfer/preview.rs`、`src-tauri/src/commands/data_transfer/exec/execution.rs`，modules `export/format.rs`（`emit_insert_batch` 形参即是 `&dyn SqlDialect`）；`bound_insert*` 因同时需要驱动专属的显式自增子句而保留驱动形参。
 - 结果编辑校验与同步批读：`commands/result_write.rs` 的 UPDATE 前置 SELECT、`sync/keyset_source.rs`、`sync/host/select.rs`（形参已收窄为 `&dyn SqlDialect`）、`sync/host/statements.rs`、`sync/apply.rs`、`sync/filter_validation.rs`。
 - 驱动专属的规则（`quote_char` / `transfer_explicit_identity_insert_clause` / `supports_offset` / `driver_type`）不在此契约内，仍在驱动上显式调用。
 - 同步 IR 适配器的 `SyncTargetAdapter::quote_ident` 是另一个契约（SQL Server 用 `[x]`、ClickHouse 用反引号，与驱动方言的有意分歧），不得并入。
@@ -135,20 +135,20 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 
 ### 2.5 协议版本闸门
 
-`packages/driver-api/src/lib.rs` 定义两个常量：`PROTOCOL_VERSION = 6` 与 `MIN_PROTOCOL_VERSION = 1`。同处的文档注释写明契约语义：**版本低于 `MIN` 的驱动被拒绝加载**；**`MIN <= version < PROTOCOL_VERSION`** 的驱动以**降级模式**运行，缺失的能力按 `false` 处理。
+`crates/datazen-driver-api/src/lib.rs` 定义两个常量：`PROTOCOL_VERSION = 6` 与 `MIN_PROTOCOL_VERSION = 1`。同处的文档注释写明契约语义：**版本低于 `MIN` 的驱动被拒绝加载**；**`MIN <= version < PROTOCOL_VERSION`** 的驱动以**降级模式**运行，缺失的能力按 `false` 处理。
 
 宿主侧有两处闸门，结构相同，但**只拒绝对老版本，不拒绝更新版本**：
 
 | 闸门 | 位置 | `pv < MIN` | `pv > PROTOCOL_VERSION` | `MIN <= pv < PROTOCOL_VERSION` |
 | --- | --- | --- | --- | --- |
-| 驱动 | `packages/kernel/src/driver_registry/registry.rs` 的 `register_from_inventory` | `return Err`，硬拒绝、不创建驱动 | 只 `tracing::warn!`，照常加载 | `warn!` 提示降级后照常加载 |
-| AI Provider | `packages/ai-providers/src/registry.rs` 的 factory 遍历（`AI_PROTOCOL_VERSION` / `MIN_AI_PROTOCOL_VERSION` 是 `packages/ai-api` 的另一套常量） | `tracing::error!` 后 `continue`，跳过注册 | 只 `warn!`，照常注册 | `warn!` 降级提示 |
+| 驱动 | `crates/datazen/src/execution/runtime/driver_registry/registry.rs` 的 `register_from_inventory` | `return Err`，硬拒绝、不创建驱动 | 只 `tracing::warn!`，照常加载 | `warn!` 提示降级后照常加载 |
+| AI Provider | `crates/datazen/src/ai/providers/registry.rs` 的 factory 遍历（`AI_PROTOCOL_VERSION` / `MIN_AI_PROTOCOL_VERSION` 定义在 `crates/datazen/src/ai/mod.rs`） | `tracing::error!` 后 `continue`，跳过注册 | 只 `warn!`，照常注册 | `warn!` 降级提示 |
 
 **降级模式并不真的把能力改写成 `false`**：两处降级分支只打一条日志，消息里回显的是 factory **自己声明**的能力值（驱动侧 `supports_cancel_query` / `supports_explain` / `supports_streaming_results`，Provider 侧 `supports_streaming` / `supports_tools`），驱动随后照常 `create()` 并按自己声明的能力运行。这是 `driver-api` 侧写下的契约承诺与宿主当前实现之间的已知差距。
 
 **版本怎么声明**：`DatabaseDriverFactory::protocol_version() -> u32` 的默认体返回 `crate::PROTOCOL_VERSION`，**本仓内没有一个 path 驱动覆盖它**——仓库内驱动永远自动跟随 `driver-api` 的协议号，协议号对它们是纯记录项，不是需要各自维护的状态。git 驱动是否覆盖取决于其自身仓库。
 
-**plan 级复核**：数据迁移另有独立校验。plan 携带 `source_driver_protocol` / `target_driver_protocol`，执行时再次核对（Data Transfer 的 `src-tauri/src/commands/data_transfer/exec.rs` 与 `job_api/assembly.rs`，Data Sync 的 `src-tauri/src/commands/sync/exec.rs`），取值统一走 `datazen_driver_api::driver_protocol_version`（`packages/driver-api/src/factory.rs`）——Data Sync 与 Data Transfer 共用同一实现；驱动未链接进本次构建时回落到编译期的 `PROTOCOL_VERSION`。
+**plan 级复核**：数据迁移另有独立校验。plan 携带 `source_driver_protocol` / `target_driver_protocol`，执行时再次核对（Data Transfer 的 `src-tauri/src/commands/data_transfer/exec.rs` 与 `job_api/assembly.rs`，Data Sync 的 `src-tauri/src/commands/sync/exec.rs`），取值统一走 `datazen_driver_api::driver_protocol_version`（`crates/datazen-driver-api/src/factory.rs`）——Data Sync 与 Data Transfer 共用同一实现；驱动未链接进本次构建时回落到编译期的 `PROTOCOL_VERSION`。
 
 **治理决定（2026-10-21）**：仓库当前没有第三方驱动生态（path 驱动全部在本仓内，git 驱动由 registry 的 `git` 字段按需克隆，`ref` / `commit` 可选钉选——当前 kiwi / superset 条目未钉 ref），协议版本随之**冻结在 6**，`MIN` 停在 1。此前维护的逐符号四档协议兼容机检（`scripts/check-driver-protocol-compat.mjs`、`scripts/check-driver-protocol-release.mjs`、其规则表与测试，以及 `package.json` 的 `test:driver-protocol` / `test:driver-protocol-release` 与 CI 对应步骤）**整体退役删除**——在「零外部驱动 + 版本冻结」的前提下，逐符号机检的维护成本高于其收益（门禁历史仍可从 git 历史找回）。
 
@@ -174,15 +174,15 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 
 | 面 | 位置 | 作用 |
 | --- | --- | --- |
-| UI 入口是否可达 | 驱动 UI 元数据 `supportsBackup`（`packages/drivers/<id>/ui/meta.ts`） | 前端连接导航菜单据此决定要不要给出「备份 / 恢复」入口 |
-| 声明式能力 | `CapabilitySet.backup`（`BackupSupport`：`ArtifactAndRestore` / `ArtifactOnly` / `RestoreOnly` / `Unsupported` / `Unknown`，`packages/driver-api/src/capability_domains.rs`） | 逐驱动声明备份域的档位 |
-| 通用 dump 的运行前提 | `DatabaseDriver::dump_database_with_progress` 的默认实现（`packages/driver-api/src/traits.rs`）→ `sql_dump::dump_sql_database_with_progress`（`packages/driver-api/src/sql_dump/dump.rs`） | 通用 SQL dump 对驱动只有两项要求：`get_tables` 与 `get_table_schema` 必须是**真实现** |
+| UI 入口是否可达 | 驱动 UI 元数据 `supportsBackup`（`crates/drivers/<id>/ui/meta.ts`） | 前端连接导航菜单据此决定要不要给出「备份 / 恢复」入口 |
+| 声明式能力 | `CapabilitySet.backup`（`BackupSupport`：`ArtifactAndRestore` / `ArtifactOnly` / `RestoreOnly` / `Unsupported` / `Unknown`，`crates/datazen-driver-api/src/capability_domains.rs`） | 逐驱动声明备份域的档位 |
+| 通用 dump 的运行前提 | `DatabaseDriver::dump_database_with_progress` 的默认实现（`crates/datazen-driver-api/src/traits.rs`）→ `sql_dump::dump_sql_database_with_progress`（`crates/datazen-driver-api/src/sql_dump/dump.rs`） | 通用 SQL dump 对驱动只有两项要求：`get_tables` 与 `get_table_schema` 必须是**真实现** |
 
 **判据不是「有没有覆写 dump」，而是「通用实现能不能真的跑起来」。** 默认实现把工作交给 `sql_dump::dump_sql_database_with_progress`，它对驱动只有两项要求：`get_tables` 枚举可 dump 的对象清单，`get_table_schema` 渲染 DDL 并生成 `INSERT INTO` 的列清单。其余环节都不是门槛：`dump_routines` / `dump_triggers` 的缺省是空串；`dump_view_ddl` 的缺省确实返回 `NotSupported`，但通用实现把它接住并写成一行注释跳过。
 
 **判定顺序：先看有没有覆写并显式拒绝，再看 `get_tables` / `get_table_schema`。** 覆写 `dump_database_with_progress` 并显式拒绝的驱动根本不会执行通用实现，顺序反过来就会把「显式拒绝」误判成「缺实现」。
 
-`CapabilitySet.backup` 的两个入口 `require_backup_artifact()` / `require_restore_from_artifact()`（`packages/driver-api/src/capabilities.rs`）目前**只有测试调用**，尚未接进备份执行路径——执行路径是 `modules/src/backup.rs` 直接调驱动的 `dump_database_with_progress`。声明与执行之间还没有自动咬合，接线前不要把「已声明」读成「已生效」。
+`CapabilitySet.backup` 的两个入口 `require_backup_artifact()` / `require_restore_from_artifact()`（`crates/datazen-driver-api/src/capabilities.rs`）目前**只有测试调用**，尚未接进备份执行路径——执行路径是 `crates/datazen/src/execution/application/orchestration/backup.rs` 直接调驱动的 `dump_database_with_progress`。声明与执行之间还没有自动咬合，接线前不要把「已声明」读成「已生效」。
 
 ### 2.7 复用包装器：`ReuseDriver` 必须显式决定每个方法
 
@@ -208,29 +208,29 @@ Host **不拼任何方言分页子句**：每次读取都向驱动要 `paginatio
 - `test_connection`：回写别名的 `server_type`。
 - 精确取消协议：由构造参数门控，并且仍要求内层声明支持。
 
-机械守卫：`packages/driver-api/src/reuse_forwarding_tests.rs` 读取 `traits.rs` 与 `reuse.rs` 的源码，断言 trait 的每个方法都出现在包装器实现中，并带正/反控制用例。`DatabaseDriver` 以后新增方法而包装器不更新，`cargo test -p datazen-driver-api` 直接失败；这条不变量不再依赖评审。
+机械守卫：`crates/datazen-driver-api/src/reuse/forwarding_tests.rs` 读取 `traits.rs` 与 `reuse.rs` 的源码，断言 trait 的每个方法都出现在包装器实现中，并带正/反控制用例。`DatabaseDriver` 以后新增方法而包装器不更新，`cargo test -p datazen-driver-api` 直接失败；这条不变量不再依赖评审。
 
 ### 2.8 命令描述契约：`CommandCatalog`
 
-Driver Command 的"声明"与"执行"分成两个契约。`CommandCatalog`（`packages/driver-api/src/command_catalog.rs`）只包含描述：`command_definitions()`（该驱动暴露哪些命令）与 `target_requirements(command)`（每条命令需要什么目标；未知命令返回 `None`，平台据此在获取资源之前拒绝）。它刻意不包含执行路径——一个只会列出命令的宿主面（目标元数据、workflow 校验、Runtime 只读命令源）依赖 `CommandCatalog`，而不是整个 `DatabaseDriver`；执行继续走 `execute_command` 这一既有的资源生命周期入口。
+Driver Command 的"声明"与"执行"分成两个契约。`CommandCatalog`（`crates/datazen-driver-api/src/command_catalog.rs`）只包含描述：`command_definitions()`（该驱动暴露哪些命令）与 `target_requirements(command)`（每条命令需要什么目标；未知命令返回 `None`，平台据此在获取资源之前拒绝）。它刻意不包含执行路径——一个只会列出命令的宿主面（目标元数据、workflow 校验、Runtime 只读命令源）依赖 `CommandCatalog`，而不是整个 `DatabaseDriver`；执行继续走 `execute_command` 这一既有的资源生命周期入口。
 
 `LegacyCommandCatalog` 是自 `DatabaseDriver` 到 `CommandCatalog` 的单向适配器，两个方法全部转发，驱动保留且仅保留一份实现。已迁移的调用点：workflow 步骤校验（`resource_execution.rs`）、Runtime 命令源（`runtime_command_source.rs`）、流式查询网关（`streaming.rs`）、平台 `explain` 能力判定（`adapter.rs`、`session_backend/execution.rs`）。
 
 ### 2.9 结构迁移契约：`SchemaMigration`
 
-Schema Diff 领域消费的结构迁移决策统一收敛到 `SchemaMigration`（`packages/driver-api/src/schema_migration.rs`）：`migration_renderer()` / `migration_capabilities()` / `type_normalizer()` / `ddl_atomicity()`，加上两个部署期校验（`validate_schema_migration_plan`、`validate_schema_migration`）。领域侧（`schema-diff` 的 plan/objects/deploy/transaction、`data-sync` 同族类型等价门、宿主 schema_diff 命令）只读这份窄契约，执行渲染出的 DDL 仍走各自的资源生命周期；`MigrationRenderer` / `MigrationCapabilities` / `TypeNormalizer` 保持驱动专属实现。
+Schema Diff 领域消费的结构迁移决策统一收敛到 `SchemaMigration`（`crates/datazen-driver-api/src/schema_migration.rs`）：`migration_renderer()` / `migration_capabilities()` / `type_normalizer()` / `ddl_atomicity()`，加上两个部署期校验（`validate_schema_migration_plan`、`validate_schema_migration`）。领域侧（`schema-diff` 的 plan/objects/deploy/transaction、`data-sync` 同族类型等价门、宿主 schema_diff 命令）只读这份窄契约，执行渲染出的 DDL 仍走各自的资源生命周期；`MigrationRenderer` / `MigrationCapabilities` / `TypeNormalizer` 保持驱动专属实现。
 
 `LegacySchemaMigration` 是自 `DatabaseDriver` 到 `SchemaMigration` 的单向适配器，六个方法全部转发。已迁移的调用点通过它读取规则：同族/跨方言结构 plan（`plan.rs`）、对象 plan（`objects.rs`、`object_plan_commands.rs`、`unified_plan.rs`）、部署原子性与校验（`deploy.rs`、`transaction.rs`、`deploy_commands.rs`）、同步类型等价（`types_eq.rs`、`compare_commands.rs`）。
 
 ### 2.10 备份文件规则契约：`BackupDialect`
 
-备份域中真正"纯规则"的部分收敛到 `BackupDialect`（`packages/driver-api/src/backup_dialect.rs`）：`uses_sql_restore_pipeline()`（共享 SQL 恢复管线的路由）、`new_sql_scanner()`（语句扫描器，选择/关闭 `DELIMITER` 处理）、`split_restore_sql()`（整段 SQL 缓冲的切分）。带 `ConnectionHandle` 的执行入口（`dump_database*`、`restore_sql*`、`recover_restore_statement`）不在此契约内，保留在驱动上，待运行时路径收敛（§5 计划）统一处理；共享流程本身继续复用 `sql_dump` 模块。
+备份域中真正"纯规则"的部分收敛到 `BackupDialect`（`crates/datazen-driver-api/src/backup_dialect.rs`）：`uses_sql_restore_pipeline()`（共享 SQL 恢复管线的路由）、`new_sql_scanner()`（语句扫描器，选择/关闭 `DELIMITER` 处理）、`split_restore_sql()`（整段 SQL 缓冲的切分）。带 `ConnectionHandle` 的执行入口（`dump_database*`、`restore_sql*`、`recover_restore_statement`）不在此契约内，保留在驱动上，待运行时路径收敛（§5 计划）统一处理；共享流程本身继续复用 `sql_dump` 模块。
 
 `LegacyBackupDialect` 是自 `DatabaseDriver` 到 `BackupDialect` 的单向适配器。已迁移的调用点：modules 备份流程（`backup.rs` 的管线路由与 `RestoreSession` 扫描器；执行侧恢复循环继续持有驱动）、retained-restore 预检 `restore_sql::prepare`（scanner 取自 `BackupDialect`，modules `restore_gateway.rs` 与 postgres/mysql 驱动的 `restore_sql` 集成测试在边界包适配器）。
 
 ### 2.11 事件出口契约：`DriverEventOutlet` / `DriverEventSink`
 
-有些驱动会产生「给人看的事件」——Redis 驱动的 Pub/Sub 消息是现成例子。事件怎么送达用户**不是驱动能决定的事**：桌面形态用 Tauri 事件发给前端，server 形态会用它自己的传输通道。契约因此拆成两半，与 driver factory 同一形态（`packages/driver-api/src/event_sink.rs`）：
+有些驱动会产生「给人看的事件」——Redis 驱动的 Pub/Sub 消息是现成例子。事件怎么送达用户**不是驱动能决定的事**：桌面形态用 Tauri 事件发给前端，server 形态会用它自己的传输通道。契约因此拆成两半，与 driver factory 同一形态（`crates/datazen-driver-api/src/event_sink.rs`）：
 
 | 契约 | 归属 | 作用 |
 | --- | --- | --- |
@@ -257,7 +257,7 @@ Host / Workflow 只依赖 Command Definition 和 JSON input/output，不按 data
 
 标准 SQL Driver 默认提供 query / execute，以及 schema catalog commands；Driver 可以扩展管理、KV、NoSQL 等 Command。
 
-**Command 的 `permissions` 字段不是 Tauri ACL 权限。** `DriverCommandDefinition::permissions`（`packages/driver-api/src/command.rs`）里的标识符是 **DataZen 自己的权限词表**，用途只有风险分类：`required_access_level()` 与 `check_command_access()` 按它把命令分成读 / 写 / 高危三档。`redis:allow-info`、`redis:allow-set-string` 这类名字**长得像** Tauri ACL 权限，但两者不是一回事：
+**Command 的 `permissions` 字段不是 Tauri ACL 权限。** `DriverCommandDefinition::permissions`（`crates/datazen-driver-api/src/command.rs`）里的标识符是 **DataZen 自己的权限词表**，用途只有风险分类：`required_access_level()` 与 `check_command_access()` 按它把命令分成读 / 写 / 高危三档。`redis:allow-info`、`redis:allow-set-string` 这类名字**长得像** Tauri ACL 权限，但两者不是一回事：
 
 | | Driver Command 权限词表 | Tauri ACL 权限 |
 | --- | --- | --- |
@@ -270,7 +270,7 @@ redis 驱动已随「Pub/Sub 事件出口改走形态中立 inventory 注册」�
 
 除「Host 调 Driver」外，驱动还可以**向 Host 推送事件**（Tauri event）。推送事件的载荷里如果带身份字段，那个字段必须是 **Host 认得的 id**，而不是驱动内部的句柄——否则前端按它过滤时永远匹配不上，事件会被静默丢弃。
 
-Redis Pub/Sub 是当前唯一的这类事件：事件名 `redis-pubsub-message`，载荷由 `packages/drivers/redis/src/ops/pubsub.rs` 的 `RedisPubSubMessageEvent` 序列化（camelCase）：
+Redis Pub/Sub 是当前唯一的这类事件：事件名 `redis-pubsub-message`，载荷由 `crates/drivers/redis/src/ops/pubsub.rs` 的 `RedisPubSubMessageEvent` 序列化（camelCase）：
 
 ```text
 { connectionId, subscriptionId, channel, payload, ts }
@@ -326,7 +326,7 @@ Data Sync 的同族结构门闸和 Data Transfer 的 IR pairing 不应混为一�
 
 ## 6. Driver Registry
 
-Driver Registry 实现在 `packages/kernel/src/driver_registry/`（`datazen_kernel::driver_registry`；`datazen_runtime::driver_registry` 是同一份的再导出），与 SchemaCache 同处共享机制内核 `datazen-kernel`。宿主原 `src-tauri/src/db/` 门面已删除，连接层统一直接引用 `datazen_runtime::driver_registry`（或 `datazen_kernel::driver_registry`）与 `datazen_driver_api`。
+Driver Registry 实现在 `crates/datazen/src/execution/runtime/driver_registry/`（`datazen::execution::runtime::driver_registry`；原 `datazen-kernel` 机制内核 D8 已归 `modules`，与 SchemaCache（`crates/datazen/src/schema/application/`）同 crate）。宿主原 `src-tauri/src/db/` 门面已删除，连接层统一直接引用 `datazen::execution::runtime::driver_registry` 与 `datazen_driver_api`。
 
 Driver 通过 inventory 在编译期注册。构建时由 registry / build tooling 决定哪些 Driver 被编译进 DataZen。
 

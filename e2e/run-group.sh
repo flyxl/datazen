@@ -46,15 +46,35 @@ if [[ -f "$ROOT/e2e/.env" ]]; then
   done < "$ROOT/e2e/.env"
 fi
 
-BIN="$ROOT/target/debug/bundle/macos/DataZen.app/Contents/MacOS/datazen"
-PRO_BIN="$ROOT/target/debug/bundle/macos/DataZen Pro.app/Contents/MacOS/datazen"
+# 可执行文件名跟随 `src-tauri/Cargo.toml` 的 binary target：DDD 重构后是
+# `datazen_desktop`，旧名字 `datazen` 保留兼容。
+pick_bin() {
+  local bundle="$1"
+  local name
+  for name in datazen_desktop datazen; do
+    if [[ -x "$ROOT/target/debug/bundle/macos/$bundle/Contents/MacOS/$name" ]]; then
+      echo "$ROOT/target/debug/bundle/macos/$bundle/Contents/MacOS/$name"
+      return 0
+    fi
+  done
+  return 1
+}
+
+BIN="$(pick_bin DataZen.app || true)"
+PRO_BIN="$(pick_bin "DataZen Pro.app" || true)"
 # Prefer the Pro bundle when editor-pro is enabled (DATAZEN_EDITION=pro) or the
 # Pro app artifact already exists.
 if [[ "${DATAZEN_EDITION:-}" == "pro" ]] && [[ -x "$PRO_BIN" ]]; then
   BIN="$PRO_BIN"
 fi
 if [[ "$(uname)" != "Darwin" || ! -x "$BIN" ]]; then
-  BIN="$ROOT/target/debug/datazen"
+  BIN=""
+  for name in datazen_desktop datazen; do
+    if [[ -x "$ROOT/target/debug/$name" ]]; then
+      BIN="$ROOT/target/debug/$name"
+      break
+    fi
+  done
 fi
 if [[ ! -x "$BIN" ]]; then
   echo "[$GROUP] app binary not found: $BIN (先做一次 webdriver 构建)" >&2

@@ -37,41 +37,92 @@ export function isTableContext(tail: string): boolean {
 }
 
 /**
- * Extract qualifier segments preceding a dot at the cursor.
+ * Extract qualifier parts from text before cursor when the user is typing
+ * a dot-qualified name (e.g. `alias.` or `schema.table.`).
+ *
+ * Returns an array of segment names (unquoted), or an empty array if no
+ * qualifier is present.
+ *
+ * Strictness: the dot must directly precede the identifier being typed at
+ * the cursor (modulo whitespace). A dot elsewhere in the statement — e.g.
+ * `SELECT a.b FROM t WHERE x` with the cursor on `x` — is NOT a qualifier
+ * context and yields `[]`. This check is what keeps `relation` intents from
+ * being misread as `qualified_column` during completion.
  */
 export function extractQualifierParts(textBeforeCursor: string): string[] {
-  const dotIndex = textBeforeCursor.lastIndexOf('.');
-  if (dotIndex === -1) return [];
+  const text = textBeforeCursor;
+  if (!text) return [];
 
-  const segments: string[] = [];
-  let i = dotIndex;
+  let i = text.length - 1;
 
-  while (i >= 0 && textBeforeCursor[i] === '.') {
+  // 1. Skip the identifier currently being typed at the cursor (if any)
+  if (i >= 0 && (text[i] === '"' || text[i] === '`' || text[i] === ']')) {
+    const closeQuote = text[i]!;
+    const openQuote = closeQuote === ']' ? '[' : closeQuote;
     i -= 1;
-    while (i >= 0 && (textBeforeCursor[i] === ' ' || textBeforeCursor[i] === '\t')) i -= 1;
+    while (i >= 0 && text[i] !== openQuote) i -= 1;
+    if (i >= 0) i -= 1; // skip the open quote
+  } else {
+    while (i >= 0 && /[A-Za-z0-9_$]/.test(text[i]!)) i -= 1;
+  }
+
+  // 2. Skip any whitespace between the dot and the identifier being typed
+  while (i >= 0 && (text[i] === ' ' || text[i] === '\t')) i -= 1;
+
+  // 3. The separator MUST be a '.' directly preceding the current identifier
+  if (i < 0 || text[i] !== '.') {
+    return [];
+  }
+
+  // 4. We confirmed this is a dot context. Now collect all qualifier segments before this dot.
+  const segments: string[] = [];
+
+  while (i >= 0 && text[i] === '.') {
+    i -= 1; // skip the '.'
+    // skip whitespace before dot
+    while (i >= 0 && (text[i] === ' ' || text[i] === '\t')) i -= 1;
     if (i < 0) break;
 
-    const closeQuote = textBeforeCursor[i]!;
-    if (closeQuote === '"' || closeQuote === '`' || closeQuote === ']') {
-      const openQuote = closeQuote === ']' ? '[' : closeQuote;
-      const startQuote = textBeforeCursor.lastIndexOf(openQuote, i - 1);
-      if (startQuote !== -1) {
-        segments.unshift(textBeforeCursor.slice(startQuote + 1, i));
-        i = startQuote - 1;
+    if (text[i] === '"') {
+      const end = i;
+      i -= 1;
+      while (i >= 0 && text[i] !== '"') i -= 1;
+      if (i >= 0) {
+        segments.unshift(text.slice(i + 1, end).replace(/""/g, '"'));
+        i -= 1;
       } else {
         break;
       }
+    } else if (text[i] === '`') {
+      const end = i;
+      i -= 1;
+      while (i >= 0 && text[i] !== '`') i -= 1;
+      if (i >= 0) {
+        segments.unshift(text.slice(i + 1, end));
+        i -= 1;
+      } else {
+        break;
+      }
+    } else if (text[i] === ']') {
+      const end = i;
+      i -= 1;
+      while (i >= 0 && text[i] !== '[') i -= 1;
+      if (i >= 0) {
+        segments.unshift(text.slice(i + 1, end).replace(/]]/g, ']'));
+        i -= 1;
+      } else {
+        break;
+      }
+    } else if (/[A-Za-z0-9_$]/.test(text[i]!)) {
+      const end = i + 1;
+      while (i >= 0 && /[A-Za-z0-9_$]/.test(text[i]!)) i -= 1;
+      segments.unshift(text.slice(i + 1, end));
     } else {
-      const match = /[A-Za-z0-9_$]+$/.exec(textBeforeCursor.slice(0, i + 1));
-      if (match) {
-        segments.unshift(match[0]);
-        i -= match[0].length;
-      } else {
-        break;
-      }
+      break;
     }
 
-    while (i >= 0 && (textBeforeCursor[i] === ' ' || textBeforeCursor[i] === '\t')) i -= 1;
+    // Skip whitespace before this segment to check if there is an outer dot
+    while (i >= 0 && (text[i] === ' ' || text[i] === '\t')) i -= 1;
   }
 
   return segments;

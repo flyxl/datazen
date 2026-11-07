@@ -23,11 +23,11 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const WAPPS_DIR = resolve(ROOT, 'packages/wapps');
-const OUT_DIR = join(WAPPS_DIR, 'dist');
+const OUT_DIR = join(WAPPS_DIR, 'packages/desktop/dist');
 
 function listPackageDirs() {
   return readdirSync(WAPPS_DIR, { withFileTypes: true })
-    .filter((e) => e.isDirectory() && e.name !== 'dist')
+    .filter((e) => e.isDirectory() && e.name !== 'packages/desktop/dist')
     .map((e) => e.name)
     .sort();
 }
@@ -52,7 +52,10 @@ function pack(pkgDir, id) {
   try {
     // Zip the package directory contents (manifest.json at the zip root),
     // excluding macOS metadata files.
-    execFileSync('zip', ['-r', '-q', out, '.', '-x', '.DS_Store'], { cwd: source, stdio: 'inherit' });
+    execFileSync('zip', ['-r', '-q', out, '.', '-x', '.DS_Store'], {
+      cwd: source,
+      stdio: 'inherit',
+    });
   } catch {
     console.error(`  !! failed to create ${out}; ensure the \`zip\` CLI is installed`);
     return false;
@@ -104,5 +107,9 @@ for (const pkgDir of targets) {
   if (pack(pkgDir, id)) ok++;
 }
 
-console.log(ok === targets.length ? `Done. ${ok} package(s) written.` : `${ok}/${targets.length} packaged; see errors above.`);
+console.log(
+  ok === targets.length
+    ? `Done. ${ok} package(s) written.`
+    : `${ok}/${targets.length} packaged; see errors above.`,
+);
 if (ok !== targets.length) process.exit(1);

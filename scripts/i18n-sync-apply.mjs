@@ -9,7 +9,7 @@
  * ## What it does
  *
  * Given a batch of `{ "<domain>.ts": { "<key>": "<value>" } }`, it inserts
- * every key into `src/locales/<locale>/<domain>.ts`, positioned the way the
+ * every key into `packages/frontend/src/locales/<locale>/<domain>.ts`, positioned the way the
  * English side orders it: a new key lands **right after the closest English
  * predecessor that already exists in the target file**, so each key sits next
  * to its family instead of piling up at the end of the file.
@@ -226,8 +226,8 @@ export function planInsertion(enSource, localeSource, entries, force) {
  * @param {{ dryRun?: boolean, force?: boolean }} options
  */
 export function applyBatch(root, locale, batch, { dryRun = false, force = false } = {}) {
-  const localeDir = resolve(root, 'src/locales', locale);
-  const enDir = resolve(root, 'src/locales/en');
+  const localeDir = resolve(root, 'packages/frontend/src/locales', locale);
+  const enDir = resolve(root, 'packages/frontend/src/locales/en');
   const result = { inserted: [], skipped: [], overwritten: [], conflicts: [], written: [] };
 
   for (const [domainFile, entries] of Object.entries(batch)) {

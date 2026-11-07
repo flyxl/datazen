@@ -609,7 +609,7 @@ interface DataTableProps {
 | 收藏 / 历史侧栏      | `src/lib/querySidebarContextMenu.ts`                           | `QueryPanel`     |
 | Workflow 列表 / 历史 | `src/lib/workflowListContextMenu.ts`                           | `WorkflowPage`   |
 | ER 节点              | `src/lib/erNodeContextMenu.ts`                                 | `ErDiagramView`  |
-| Redis Key            | `packages/drivers/redis/ui/key-browser/redisKeyContextMenu.ts` | `RedisWorkbench` |
+| Redis Key            | `crates/drivers/redis/ui/key-browser/redisKeyContextMenu.ts` | `RedisWorkbench` |
 | 主窗口连接/分组      | `src/lib/mainWindowContextMenu.ts`                             | `ConnectionPage` |
 
 Connection Window 菜单项对齐 TablePlus：Schema（Open Structure / New Query / Copy DDL / Truncate / Drop / New Table / Import）、SQL 编辑器（Run / Run Selection / Format / Comment）、Tab（Close to the Right/Left）、DDL 视图右键 Copy。
@@ -863,9 +863,9 @@ export function openConnectionWindow(opts, connectionName, database?, databaseTy
 | 层级         | 工具                           | 覆盖范围                                                                                      |
 | ------------ | ------------------------------ | --------------------------------------------------------------------------------------------- |
 | 组件单测     | Vitest + React Testing Library | DataTable, CellRenderer, FilterBar（Host `src/`）                                             |
-| 驱动 UI 单测 | Vitest                         | `packages/drivers/<id>/ui/__tests__/`（`pnpm test:unit:drivers`，不进 Host `pnpm test:unit`） |
+| 驱动 UI 单测 | Vitest                         | `crates/drivers/<id>/ui/__tests__/`（`pnpm test:unit:drivers`，不进 Host `pnpm test:unit`） |
 | Store 单测   | Vitest                         | 每个 Store 的 action/state 变化                                                               |
-| 集成测试     | WebdriverIO                    | 窗口创建/关闭, 连接流程, 查询执行；驱动深度 E2E 在 `packages/drivers/<id>/e2e/`               |
+| 集成测试     | WebdriverIO                    | 窗口创建/关闭, 连接流程, 查询执行；驱动深度 E2E 在 `crates/drivers/<id>/e2e/`               |
 | 性能测试     | WebdriverIO + Chrome DevTools  | 10 万行滚动帧率, 内存占用                                                                     |
 | 快照测试     | Storybook                      | 关键 UI 组件视觉回归                                                                          |
 
@@ -902,7 +902,9 @@ ContentView
 
 ### 8.3 数据流
 
-1. 后端 `get_er_data(db_session_id, database)` 批量获取所有表的 `TableSchema`（含外键）
+1. `ErDiagramView` 经 driver 网关拼装 ER 数据：`list_catalog` 列出关系，再逐表
+   `get_table_schema`（每条读自带显式 `(database, schema)` 目标，不借用会话）
+   得到 `TableSchema[]`（含外键）
 2. `buildErGraph(schemas, focusTable?, predicted?, collapsedTables?)` 生成 nodes 和 edges；
    节点只带**显式尺寸**，坐标由下一步决定
 3. `focusTable` 控制焦点模式：仅显示目标表及其直接关联表
@@ -1005,7 +1007,7 @@ S 形绕行。同一套形态实测：**反向边 7/10 → 0/10，跨越 18 → 
 
 连接表单里的路径字段通过 `ConnectionFormState.pickPath` 传递，驱动（如 Redis 的
 TLS 证书）因此也能拿到宿主选择器。驱动包自身不 import 宿主的 `src/**`、宿主
-Store 或兄弟 DataZen 包；`packages/drivers/**` 中唯一一处直接 import 宿主运行时的
+Store 或兄弟 DataZen 包；`crates/drivers/**` 中唯一一处直接 import 宿主运行时的
 是 `redis/ui/observe/PubSubPanel.tsx`（`@tauri-apps/api/event` —— 驱动本就运行在
 宿主 webview 内，用它监听 Redis 事件），该点不在 §9.2 的守卫范围内。
 
@@ -1106,7 +1108,7 @@ gitignored 文件里的 blocking 判定降级为 advisory（未跟踪的 codegen
 不是本仓库的代码），`check-module-layers.mjs` 没有这层判断，会照报。当前
 `packages/ui/` 与 `src/lib/relationMetadata/` 下没有任何 gitignored 文件
 （`git ls-files --others --ignored --exclude-standard` 为空），差异是休眠的；没有
-补齐，是因为它服务的 git 驱动/Pro EP 树都在 `packages/drivers/` 下而不在
+补齐，是因为它服务的 git 驱动/Pro EP 树都在 `crates/drivers/` 下而不在
 `packages/ui/`，而补齐会让 layer 守卫开始依赖 `git` 在 PATH 上，换来零当前覆盖。
 
 ### 9.3 测试 fixture 的子集断言收窄了什么

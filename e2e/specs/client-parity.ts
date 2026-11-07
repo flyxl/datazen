@@ -98,7 +98,7 @@ describe('Client parity P0–P2', () => {
   });
 
   it('Safe Mode blocks UPDATE without WHERE', async () => {
-    const settings = await invokeBackend<{ safeMode: boolean }>('get_settings');
+    const settings = await invokeBackend<{ safeMode: boolean }>('get_host_settings');
     expect(settings.safeMode).toBe(true);
     const err = await invokeBackendCatch('execute_driver_command', {
       request: {
@@ -153,10 +153,13 @@ describe('Client parity P0–P2', () => {
 
   it('lists routines and privileges on PostgreSQL', async () => {
     for (const kind of ['function', 'procedure', 'trigger'] as const) {
-      const rows = await invokeBackend<{ name: string }[]>('get_database_objects', {
-        dbSessionId: pgSessionId,
-        kind,
-      });
+      const result = await invokeBackend<{ data: { objects: { name: string }[] } }>(
+        'execute_driver_command',
+        {
+          request: { dbSessionId: pgSessionId, command: 'list_objects', input: { kind } },
+        },
+      );
+      const rows = result.data.objects;
       expect(Array.isArray(rows)).toBe(true);
       for (const row of rows) {
         expect(typeof row.name).toBe('string');

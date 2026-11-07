@@ -890,11 +890,11 @@ export function sqlBlockedBySafeMode(sql: string): boolean {
 
 /** Temporarily disable Safe Mode for fixture DDL (DROP/TRUNCATE). Restores previous flag. */
 export async function withSafeModeOff<T>(fn: () => Promise<T>): Promise<T> {
-  const settings = await invokeSettings<SettingsLike>('get_settings');
+  const settings = await invokeSettings<SettingsLike>('get_host_settings');
   const wasSafeMode = settings.safeMode !== false;
   const disabled = { ...settings, safeMode: false };
   if (wasSafeMode) {
-    await invokeSettings('save_settings', { settings: disabled });
+    await invokeSettings('save_host_settings', { settings: disabled });
   }
   // The mounted ConnectionPage reads Safe Mode from Zustand. Persisting the
   // fixture setting alone is insufficient for actions whose buttons are
@@ -903,19 +903,19 @@ export async function withSafeModeOff<T>(fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
   } finally {
-    const current = await invokeSettings<SettingsLike>('get_settings');
+    const current = await invokeSettings<SettingsLike>('get_host_settings');
     const restored = { ...current, safeMode: wasSafeMode };
-    await invokeSettings('save_settings', { settings: restored });
+    await invokeSettings('save_host_settings', { settings: restored });
     await emitCrossWindowEvent('datazen:settings-changed', restored);
   }
 }
 
 /** Persist Safe Mode on/off (e.g. keep off for a whole describe block). */
 export async function setSafeMode(enabled: boolean): Promise<void> {
-  const settings = await invokeSettings<SettingsLike>('get_settings');
+  const settings = await invokeSettings<SettingsLike>('get_host_settings');
   const next = { ...settings, safeMode: enabled };
   if (settings.safeMode !== enabled) {
-    await invokeSettings('save_settings', { settings: next });
+    await invokeSettings('save_host_settings', { settings: next });
   }
   // Keep the mounted frontend store in sync with the fixture setting. Merely
   // writing the backend JSON leaves destructive UI actions hidden until the
@@ -926,10 +926,10 @@ export async function setSafeMode(enabled: boolean): Promise<void> {
 
 /** Turn the "confirm dangerous SQL when Safe Mode is off" setting on/off (default on). */
 export async function setConfirmDangerousExecution(enabled: boolean): Promise<void> {
-  const settings = await invokeSettings<SettingsLike>('get_settings');
+  const settings = await invokeSettings<SettingsLike>('get_host_settings');
   const next = { ...settings, confirmDangerousExecution: enabled };
   if (settings.confirmDangerousExecution !== enabled) {
-    await invokeSettings('save_settings', { settings: next });
+    await invokeSettings('save_host_settings', { settings: next });
   }
   await emitCrossWindowEvent('datazen:settings-changed', next);
   await browser.pause(300);
@@ -2609,8 +2609,11 @@ export async function openErDiagramFromUi() {
 }
 
 /** Emit a cross-window menu event on the main Tauri window. */
-export async function emitCrossWindowEvent(event: string, payload?: Record<string, unknown>) {
-  await browser.executeAsync(
+export async function emitCrossWindowEvent(
+  event: string,
+  payload?: Record<string, unknown>,
+): Promise<boolean> {
+  const delivered = await browser.executeAsync(
     (evt: string, pl: Record<string, unknown> | null, done: (result: boolean) => void) => {
       const internals = (
         window as unknown as {
@@ -2632,6 +2635,9 @@ export async function emitCrossWindowEvent(event: string, payload?: Record<strin
     payload ?? null,
   );
   await browser.pause(300);
+  // 调用方需要知道事件到底发出去没有：页面刚重载时 `__TAURI_INTERNALS__` 可能还没就位，
+  // 静默失败会让后面等页面的人白等一整个超时。
+  return delivered !== false;
 }
 
 /** Open SettingsPage inside the main window (replaces legacy settings sub-window URL). */
@@ -2644,9 +2650,30 @@ export async function openSettingsInMainWindow(section?: string) {
     },
     { timeout: 20000, timeoutMsg: 'Main window workspace nav not ready' },
   );
-  await emitCrossWindowEvent('menu:open-settings', section ? { section } : undefined);
   const settingsPage = await $('[data-testid="settings-page"]');
-  await settingsPage.waitForDisplayed({ timeout: 15000 });
+  // 设置页是「事件驱动」打开的：主窗口刚 `browser.url()` 重载完，设置页的监听器
+  // 可能还没挂上，这时候发出去的事件就算送到了也没人接——整包里它就这么红过一次
+  // （单跑稳定绿，说明不是产品打不开页面）。重发不会放宽断言：页面最终还是必须出现，
+  // 只是把「事件丢了」和「页面真打不开」区分开。
+  const attempts = 3;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const delivered = await emitCrossWindowEvent(
+      'menu:open-settings',
+      section ? { section } : undefined,
+    );
+    try {
+      await settingsPage.waitForDisplayed({ timeout: 8000 });
+      return;
+    } catch (error) {
+      if (attempt === attempts) {
+        throw new Error(
+          `设置页没有打开（已重发 menu:open-settings ${attempts} 次，最后一次 emit 送达=${delivered}）：${
+            (error as Error).message
+          }`,
+        );
+      }
+    }
+  }
 }
 
 /** Click SettingsPage back control and wait for workspace shell. */

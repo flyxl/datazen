@@ -37,23 +37,23 @@ describe('Internationalization (I18N-001~I18N-010)', () => {
 
   before(async () => {
     await browser.pause(2000);
-    originalSettings = await invokeBackend<AppSettings>('get_settings');
+    originalSettings = await invokeBackend<AppSettings>('get_host_settings');
   });
 
   after(async () => {
-    await invokeBackend('save_settings', { settings: originalSettings });
+    await invokeBackend('save_host_settings', { settings: originalSettings });
     await browser.pause(500);
   });
 
   // ── Default language should be zh-CN ──
 
   it('I18N-001: default language should be zh-CN', async () => {
-    const settings = await invokeBackend<AppSettings>('get_settings');
+    const settings = await invokeBackend<AppSettings>('get_host_settings');
     expect(settings.language).toBe('zh-CN');
   });
 
   it('I18N-002: main window should display Chinese UI with zh-CN', async () => {
-    await invokeBackend('save_settings', {
+    await invokeBackend('save_host_settings', {
       settings: { ...originalSettings, language: 'zh-CN' },
     });
     await browser.pause(500);
@@ -68,7 +68,7 @@ describe('Internationalization (I18N-001~I18N-010)', () => {
   // ── Switch to English ──
 
   it('I18N-003: switching language to English updates UI text', async () => {
-    await invokeBackend('save_settings', {
+    await invokeBackend('save_host_settings', {
       settings: { ...originalSettings, language: 'en' },
     });
     await browser.pause(500);
@@ -109,7 +109,7 @@ describe('Internationalization (I18N-001~I18N-010)', () => {
   // ── Switch back to Chinese ──
 
   it('I18N-005: switching back to zh-CN restores Chinese UI', async () => {
-    await invokeBackend('save_settings', {
+    await invokeBackend('save_host_settings', {
       settings: { ...originalSettings, language: 'zh-CN' },
     });
     await browser.pause(500);
@@ -155,18 +155,18 @@ describe('Internationalization (I18N-001~I18N-010)', () => {
   // ── Settings persistence ──
 
   it('I18N-009: language setting should persist across save/load', async () => {
-    await invokeBackend('save_settings', {
+    await invokeBackend('save_host_settings', {
       settings: { ...originalSettings, language: 'en' },
     });
 
-    const loaded = await invokeBackend<AppSettings>('get_settings');
+    const loaded = await invokeBackend<AppSettings>('get_host_settings');
     expect(loaded.language).toBe('en');
 
-    await invokeBackend('save_settings', {
+    await invokeBackend('save_host_settings', {
       settings: { ...originalSettings, language: 'zh-CN' },
     });
 
-    const loaded2 = await invokeBackend<AppSettings>('get_settings');
+    const loaded2 = await invokeBackend<AppSettings>('get_host_settings');
     expect(loaded2.language).toBe('zh-CN');
   });
 
@@ -192,7 +192,7 @@ describe('Internationalization (I18N-001~I18N-010)', () => {
 
 describe('System Menu (MENU-001~MENU-005)', () => {
   before(async () => {
-    await invokeBackend('save_settings', {
+    await invokeBackend('save_host_settings', {
       settings: {
         theme: 'dark',
         language: 'zh-CN',

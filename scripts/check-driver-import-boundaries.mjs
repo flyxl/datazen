@@ -9,8 +9,8 @@
  *
  * Rules (see §2.1.2 / §2.4.2 / §2.2 of the contract):
  *
- *   R1  Driver packages must not reference host `src/**`.
- *       Scans **every string-literal specifier** in `packages/drivers/**`
+ *   R1  Driver packages must not reference host `packages/frontend/src/**`.
+ *       Scans **every string-literal specifier** in `crates/drivers/**`
  *       (`.ts/.tsx/.js/.jsx/.mjs/.cjs`) — plain `import`, `export … from`,
  *       dynamic `import()`, `vi.mock()` / `vi.doMock()`, `require()` and any
  *       helper that takes a module path all end up as string literals, so
@@ -20,7 +20,7 @@
  *       (that is exactly how 8 `vi.mock('<rel>/src/hooks/useI18n')` violations
  *       stayed invisible during Wave 2). A literal is a violation when it is
  *       relative and — once resolved against the importing file — lands inside
- *       the host `src/` directory. Bare package specifiers are the sanctioned
+ *       the host `packages/frontend/src/` directory. Bare package specifiers are the sanctioned
  *       surface and are left to the bundler/TypeScript.
  *
  *   R2  Only the host may call `setLocale()` (§2.4.2).
@@ -31,16 +31,16 @@
  *       are not calls and never count.
  *
  *   R3  Host code must not reach into driver internals (symmetry, §2.2 row 4).
- *       Scans `src/**` for relative specifiers resolving into
- *       `packages/drivers/**`, skipping the gitignored codegen registries
- *       `src/extensions/generated*.ts` — importing drivers there is the
+ *       Scans `packages/frontend/src/**` for relative specifiers resolving into
+ *       `crates/drivers/**`, skipping the gitignored codegen registries
+ *       `packages/frontend/src/extensions/generated*.ts` — importing drivers there is the
  *       sanctioned mechanism.
  *       **Advisory (non-blocking), coordinator ruling recorded**: the four
  *       host test-harness findings were ruled legitimate and moved to
  *       `ALLOWLIST` (vitest setupFile + the runtime registration path those
  *       suites assert). One finding remains and is DELIBERATELY not exempted:
- *       `src/windows/connection/DocumentConnectionView.tsx` imports six symbols
- *       from `packages/drivers/mongodb/ui/mongodbFind`, a real host→driver
+ *       `packages/frontend/src/windows/connection/DocumentConnectionView.tsx` imports six symbols
+ *       from `crates/drivers/mongodb/ui/mongodbFind`, a real host→driver
  *       internals break. `blocking` stays `false` because fixing it is a
  *       feature-sized refactor (route the document view through the driver SDK /
  *       generated registry), and flipping it now would hand the team a gate that
@@ -50,13 +50,27 @@
  *   R4  The shared design system must stay host-free and runtime-free.
  *       Scans **every string literal** in `packages/ui/**`: no
  *       `@tauri-apps/*` plugin, no `zustand`, and no relative climb into the
- *       host `src/**`, a driver package or a sibling DataZen package.
+ *       host `packages/frontend/src/**`, a driver package or a sibling DataZen package.
  *       `@datazen/ui` is bundled by the host, by every driver and by every
  *       extension, several of which run without a Tauri webview — a host
  *       runtime imported from a primitive breaks all of them at once, and the
- *       existing rules could not see it: R1 only covers `packages/drivers/**`,
- *       R2 only looks for `setLocale()`, R3 only looks at `src/**`. This rule
+ *       existing rules could not see it: R1 only covers `crates/drivers/**`,
+ *       R2 only looks for `setLocale()`, R3 only looks at `packages/frontend/src/**`. This rule
  *       is what the `PathInput` → `@tauri-apps/plugin-dialog` import tripped.
+ *
+ *   R5  The shared frontend package is consumable only by apps (ruling D1,
+ *       plan §6.2). `packages/**` — except `packages/frontend/` itself — must
+ *       not import `@datazen/frontend` (bare or deep) and must not resolve a
+ *       relative specifier into `packages/frontend/`. Scan surface copies the
+ *       R1 lesson: **every string literal** (plain import / `export … from` /
+ *       dynamic `import()` / `vi.mock()` / `vi.doMock()` / `require()`), the
+ *       exact shape 8 `vi.mock` violations used to slip past a `from`-only
+ *       baseline during Wave 2. Blocking from day one: the baseline is zero
+ *       (the redis key web context menu integration fixture moved to
+ *       `packages/frontend/__tests__/integration/` in F6-c3, retiring the two
+ *       R1 ALLOWLIST exemptions it carried — the coordinator notes there said
+ *       *remove together with the WebContextMenuHost exemption*, and that is
+ *       exactly what the move did).
  *
  * Exemptions live in `ALLOWLIST` below: exact `(rule, file, specifier)` triples
  * with a reason and the milestone that owns them — no directory or glob
@@ -65,8 +79,8 @@
  *
  * Blocking scope (BUG-008 ruling): a rule with `blocking: true` only fails the
  * gate for **source this repository tracks**. A local full checkout may carry
- * gitignored external trees — git-driver clones under `packages/drivers/<id>/`
- * (`.gitignore` `/packages/drivers/*` + per-builtin un-ignores) and Pro EPs
+ * gitignored external trees — git-driver clones under `crates/drivers/<id>/`
+ * (`.gitignore` `/crates/drivers/*` + per-builtin un-ignores) and Pro EPs
  * under `packages/pro-extensions/` (each its own git repo). Those are not this
  * repo's code, so findings there are downgraded to **advisory** (still listed
  * file:line, counted, but exit code stays 0) and flagged as external drift to
@@ -94,18 +108,22 @@ import {
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
- * Gitignored codegen. `src/extensions/generated*.ts` is the *sanctioned* place
+ * Gitignored codegen. `packages/frontend/src/extensions/generated*.ts` is the *sanctioned* place
  * where host code imports driver entry modules (contract §2.2 row 4), so it is
  * out of R3's scope — it is regenerated by `scripts/resolve-drivers.mjs`.
  */
 export const SKIPPED_CODEGEN_FILES = new Set([
-  'src/extensions/generated.ts',
-  'src/extensions/generated-locales.ts',
-  'src/extensions/generated-pro.ts',
+  'packages/frontend/src/extensions/generated.ts',
+  'packages/frontend/src/extensions/generated-locales.ts',
+  'packages/frontend/src/extensions/generated-pro.ts',
 ]);
 
-export const HOST_SRC_DIR = 'src';
-export const DRIVER_DIR = 'packages/drivers';
+// form-split F6-c1: the host frontend tree moved to packages/frontend/src.
+// The desktop app assembly layer (packages/desktop/src) is host territory too —
+// drivers may not climb into either.
+export const HOST_SRC_DIR = 'packages/frontend/src';
+export const APP_SRC_DIR = 'packages/desktop/src';
+export const DRIVER_DIR = 'crates/drivers';
 /**
  * Shared design system. Every driver, extension and the host itself bundle
  * `@datazen/ui`, so a host-only runtime that leaks in here breaks *all*
@@ -151,6 +169,28 @@ export const R2_FILE_CARVEOUTS = new Set([
 ]);
 
 /**
+ * R6 transition ledger (form-split F2 → burned by the R6 ledger-burn series).
+ * Every production `packages/frontend/src/` file now rides a port, the domain-client facade or
+ * the legacy invoke rail — the last ledger entries went with the form-split
+ * R6 core-invoke burn, so the set is EMPTY and the rule is fully blocking:
+ * any NEW `@tauri-apps/*` import outside the desktop zones fails the gate.
+ * (F6's `packages/frontend` must stay host-runtime-free; this is that
+ * guarantee's tripwire.)
+ */
+export const R6_LEGACY_TAURI_FILES = new Set([]);
+
+/**
+ * R7 sanctioned bridges (form-split F2 → burned by the F6-prep shim
+ * conversion): the six thin re-export shims are gone — windowManager,
+ * crossWindowBus, pathPicker, updater and usePlatform are shared modules that
+ * ride the platform ports (the accessor form), and the tauriBackendTransport
+ * fallback shim is deleted (queryPanelSessionRoot fails loudly through
+ * `requireBackendClient`). What remains sanctioned: the app entry (main.tsx),
+ * which becomes `packages/desktop/src/` with the directory move.
+ */
+export const R7_SANCTIONED_BRIDGES = new Set(['packages/desktop/src/main.tsx']);
+
+/**
  * Rule metadata. `blocking: false` keeps a rule visible in the report without
  * failing CI (only R3 qualifies today, see header note).
  */
@@ -179,71 +219,85 @@ export const RULES = {
     blocking: true,
     doc: 'docs/architecture/frontend/components.md §9',
   },
+  R5: {
+    id: 'R5',
+    name: 'the shared frontend package is consumable only by apps',
+    blocking: true,
+    doc: 'docs/development/frontend-form-split-plan.md §6.2 R5 / ruling D1',
+  },
+  R6: {
+    id: 'R6',
+    name: 'src outside the desktop zones must not import @tauri-apps/*',
+    blocking: true,
+    doc: 'docs/development/frontend-form-split-plan.md §6.1 rule 1',
+  },
+  R7: {
+    id: 'R7',
+    name: 'src may import platform/desktop entities only via sanctioned bridges',
+    blocking: true,
+    doc: 'docs/development/frontend-form-split-plan.md §6.1 rule 2',
+  },
+  R8: {
+    id: 'R8',
+    name: 'driver packages must not import @tauri-apps/* (events ride the backend-client rail)',
+    blocking: false,
+    doc: 'docs/development/frontend-form-split-plan.md §6.2 (R4 scope extension, drivers face)',
+  },
 };
 
 /**
- * Allow-list: the two coordinator-ruled host-integration fixtures in the redis
- * driver UI test. Matched on exact (rule, file, specifier); an entry that stops
+ * Allow-list. Matched on exact (rule, file, specifier); an entry that stops
  * matching is reported as an expired exemption.
+ *
+ * F6-c3: the two R1 entries for the redis key web context menu integration
+ * fixture were RETIRED by moving that test to
+ * `packages/frontend/__tests__/integration/redisKeyWebContextMenu.test.tsx`
+ * (plan §5.6 item 9) — the host↔driver fixture lives with the host now, and
+ * R5 takes over the boundary it used to breach. What remains is the R3
+ * test-harness ruling below.
  */
 export const ALLOWLIST = [
-  {
-    rule: 'R1',
-    file: 'packages/drivers/redis/ui/__tests__/redisKeyWebContextMenu.test.tsx',
-    specifier: '../../../../../src/components/ui/WebContextMenu',
-    reason:
-      'driver↔host integration fixture: renders the real host WebContextMenuHost to prove showNativeContextMenu() lands in the host web menu',
-    milestone:
-      'Wave 4 import-guard (coordinator ruling); remove when the host menu mount is contributed via an SDK bridge',
-  },
-  {
-    rule: 'R1',
-    file: 'packages/drivers/redis/ui/__tests__/redisKeyWebContextMenu.test.tsx',
-    specifier: '../../../../../src/stores/contextMenuStore',
-    reason:
-      'same fixture asserts against the host contextMenuStore (importing it is what triggers bindContextMenuBridge)',
-    milestone:
-      'Wave 4 import-guard (coordinator ruling); remove together with the WebContextMenuHost exemption above',
-  },
   // ── R3 test-harness ruling ────────────────────────────────────────────────
   // The four R3 findings that are NOT DocumentConnectionView.tsx are test
-  // scaffolding, not host product code. `src/test/driverUiSetup.ts` is the
+  // scaffolding, not host product code. `packages/frontend/src/test/driverUiSetup.ts` is the
   // setupFile of `vitest.drivers.config.ts` (line 24) — it must import driver
   // entry modules for driver UI suites to get real strings, which the file's
   // own header states. `locales.test.ts` imports a driver locale entry to
-  // MIRROR what `src/extensions/generated.ts` does at runtime; the host never
+  // MIRROR what `packages/frontend/src/extensions/generated.ts` does at runtime; the host never
   // aggregates driver keys itself. Test-only access to a driver entry is the
   // same sanctioned mechanism R3 already exempts in `SKIPPED_CODEGEN_FILES`.
   // Baseline after this ruling: 1 finding, DocumentConnectionView.tsx (real
   // production break, deliberately NOT exempted — see RULES.R3 doc comment).
   {
     rule: 'R3',
-    file: 'src/locales/locales.test.ts',
-    specifier: '../../packages/drivers/redis/locales',
+    file: 'packages/frontend/src/locales/locales.test.ts',
+    specifier: '../../../../crates/drivers/redis/locales',
     reason:
       'test mirrors the runtime registration path: imports the driver locale entry the way generated.ts loads driver UI meta, to assert the shared registry sees driver packs',
-    milestone: 'Wave 4 import-guard (coordinator ruling); remove when the registry contract can be asserted without the driver entry import',
+    milestone:
+      'Wave 4 import-guard (coordinator ruling); remove when the registry contract can be asserted without the driver entry import',
   },
   {
     rule: 'R3',
-    file: 'src/locales/locales.test.ts',
-    specifier: '../../packages/drivers/mongodb/locales',
+    file: 'packages/frontend/src/locales/locales.test.ts',
+    specifier: '../../../../crates/drivers/mongodb/locales',
     reason: 'same registry-contract assertion as the redis pack above',
     milestone:
       'Wave 4 import-guard (coordinator ruling); remove together with the redis locale-pack exemption',
   },
   {
     rule: 'R3',
-    file: 'src/test/driverUiSetup.ts',
-    specifier: '../../packages/drivers/redis/ui/shared/meta',
+    file: 'packages/frontend/src/test/driverUiSetup.ts',
+    specifier: '../../../../crates/drivers/redis/ui/shared/meta',
     reason:
       'vitest.drivers.config.ts setupFile (line 24); driver UI suites need the driver entry registered to render with real strings',
-    milestone: 'Wave 4 import-guard (coordinator ruling); remove only if the drivers vitest config can register driver entries without host-side imports',
+    milestone:
+      'Wave 4 import-guard (coordinator ruling); remove only if the drivers vitest config can register driver entries without host-side imports',
   },
   {
     rule: 'R3',
-    file: 'src/test/driverUiSetup.ts',
-    specifier: '../../packages/drivers/mongodb/ui/meta',
+    file: 'packages/frontend/src/test/driverUiSetup.ts',
+    specifier: '../../../../crates/drivers/mongodb/ui/meta',
     reason: 'same vitest.drivers.config.ts setupFile contract as the redis entry above',
     milestone:
       'Wave 4 import-guard (coordinator ruling); remove together with the redis driver-ui entry exemption',
@@ -272,17 +326,61 @@ export function rulesForFile(rel) {
   if (SKIPPED_CODEGEN_FILES.has(rel)) return [];
   const rules = [];
   if (rel.startsWith(`${DRIVER_DIR}/`)) rules.push(RULES.R1);
-  if (rel.startsWith('packages/') && !R2_FILE_CARVEOUTS.has(rel)) rules.push(RULES.R2);
-  if (rel.startsWith(`${HOST_SRC_DIR}/`)) rules.push(RULES.R3);
+  // form-split F6-c3 (ruling D1): @datazen/frontend's legal consumers are the
+  // two application shells (packages/desktop, packages/web since the W7-A
+  // crates/packages migration; they lived under apps/* before it) — every
+  // other package reaching for it (bare or relative) inverts the dependency
+  // direction the whole split exists to establish.
+  const isAppShell = rel.startsWith('packages/desktop/') || rel.startsWith('packages/web/');
+  // W7-A: driver UI trees moved to crates/drivers/*/ui, so the "not the host,
+  // not an app shell" scope is now the correct R2/R5 predicate — restricting
+  // to packages/* would silently drop the driver UI files from both rules.
+  if (!rel.startsWith('packages/frontend/') && !isAppShell) rules.push(RULES.R5);
+  // form-split F6-c1: the host frontend tree now lives under packages/frontend/,
+  // so R2 (non-host files must not call setLocale) must skip the host tree
+  // and the two application shells — those are the sanctioned callers.
+  if (!rel.startsWith('packages/frontend/') && !isAppShell && !R2_FILE_CARVEOUTS.has(rel))
+    rules.push(RULES.R2);
+  if (rel.startsWith(`${HOST_SRC_DIR}/`) || rel.startsWith(`${APP_SRC_DIR}/`)) rules.push(RULES.R3);
   if (rel.startsWith(`${UI_DIR}/`)) rules.push(RULES.R4);
+  // ── Form-split F2 zone rules (plan §6.1) ────────────────────────────────
+  // Tests may probe/mock the zones freely (the vitest alias for
+  // `@tauri-apps/api/window` is a test asset); production code may not.
+  if (isHostProductionFile(rel)) {
+    const inPlatformZone = rel.startsWith('packages/frontend/src/platform/desktop/');
+    const inShellZone = rel.startsWith('packages/frontend/src/shell/desktop/');
+    if (!inPlatformZone && !inShellZone) {
+      // R6 applies everywhere (ledgered files get their findings downgraded to
+      // advisory in classification — visibility without a red CI).
+      rules.push(RULES.R6);
+      if (!R7_SANCTIONED_BRIDGES.has(rel)) rules.push(RULES.R7);
+    }
+  }
+  // Drivers are a shared two-form layer (plan §6.1 rule 3): host runtime
+  // imports are forbidden. Advisory until the F4 PubSubPanel fix lands, then
+  // flip `RULES.R8.blocking` in the same commit.
+  if (rel.startsWith(`${DRIVER_DIR}/`) && !isDriverTestFile(rel)) rules.push(RULES.R8);
   return rules;
+}
+
+/** Host production file = under `packages/frontend/src/` and not a test scaffold. */
+function isHostProductionFile(rel) {
+  if (!rel.startsWith('packages/frontend/src/')) return false;
+  if (rel.includes('/__tests__/')) return false;
+  if (rel.startsWith('packages/frontend/src/test/')) return false;
+  return true;
+}
+
+/** Driver e2e/webdriver bridges are test scaffolding, not driver UI. */
+function isDriverTestFile(rel) {
+  return rel.includes('/e2e/') || rel.includes('/__tests__/');
 }
 
 /**
  * Does this specifier reach outside the design system?
  *
  *  - a bare prefix from {@link R4_FORBIDDEN_PACKAGES} (Tauri plugins, zustand);
- *  - or a relative climb out of `packages/ui/` — into the host `src/`, into a
+ *  - or a relative climb out of `packages/ui/` — into the host `packages/frontend/src/`, into a
  *    driver package, or into a sibling DataZen package. Sibling climbs are
  *    included on purpose: the design system is the shared *leaf*, so even a
  *    "harmless" `@datazen/driver-sdk` type import would invert the layering
@@ -297,7 +395,12 @@ export function uiPurityBreach(rel, specifier) {
   if (bare) return `imports the host-only runtime package '${bare}…'`;
   const target = resolveSpecifier(rel, specifier);
   if (!target) return null;
-  if (target === HOST_SRC_DIR || target.startsWith(`${HOST_SRC_DIR}/`)) {
+  if (
+    target === HOST_SRC_DIR ||
+    target.startsWith(`${HOST_SRC_DIR}/`) ||
+    target === APP_SRC_DIR ||
+    target.startsWith(`${APP_SRC_DIR}/`)
+  ) {
     return `reaches into the host ${target}`;
   }
   if (target.startsWith('packages/') && !target.startsWith(`${UI_DIR}/`)) {
@@ -331,11 +434,16 @@ export function inspectSource(rel, source) {
       for (const { value, line } of literals) {
         // Only *relative* specifiers can climb into the host: bare package
         // names are the sanctioned surface (§2.1.1) and are resolved by the
-        // bundler, and a data string such as 'src/assets/x.svg' is not an
+        // bundler, and a data string such as 'packages/frontend/src/assets/x.svg' is not an
         // import (there is no tsconfig `baseUrl` that would make it one).
         const target = resolveSpecifier(rel, value);
         if (!target) continue;
-        if (!(target === HOST_SRC_DIR || target.startsWith(`${HOST_SRC_DIR}/`))) continue;
+        const isHostTarget =
+          target === HOST_SRC_DIR ||
+          target.startsWith(`${HOST_SRC_DIR}/`) ||
+          target === APP_SRC_DIR ||
+          target.startsWith(`${APP_SRC_DIR}/`);
+        if (!isHostTarget) continue;
         findings.push({
           rule,
           file: rel,
@@ -357,7 +465,8 @@ export function inspectSource(rel, source) {
           line: idx + 1,
           text: at(idx + 1),
           specifier: null,
-          detail: 'setLocale() may only be called from host src/** (src/lib/localeSync.ts)',
+          detail:
+            'setLocale() may only be called from the host (packages/frontend/src/lib/localeSync.ts)',
         });
       });
     }
@@ -391,6 +500,81 @@ export function inspectSource(rel, source) {
           text: at(line),
           specifier: value,
           detail,
+        });
+      }
+    }
+
+    if (rule === RULES.R5) {
+      for (const { value, line } of literals) {
+        // Bare @datazen/frontend (any subpath) is a package-protocol import;
+        // a relative specifier counts when it resolves into the frontend
+        // package dir. Both shapes scanned on the full literal surface.
+        const bare = value === '@datazen/frontend' || value.startsWith('@datazen/frontend/');
+        const target = bare ? null : resolveSpecifier(rel, value);
+        const climbsIn =
+          target !== null &&
+          (target === 'packages/frontend' || target.startsWith('packages/frontend/'));
+        if (!bare && !climbsIn) continue;
+        findings.push({
+          rule,
+          file: rel,
+          line,
+          text: at(line),
+          specifier: value,
+          detail: bare
+            ? `imports the shared frontend package '${value}' — only apps/* may consume @datazen/frontend (ruling D1)`
+            : `resolves into the shared frontend package (${target}) — only apps/* may consume it (ruling D1)`,
+        });
+      }
+    }
+
+    if (rule === RULES.R6) {
+      for (const { value, line } of literals) {
+        if (!value.startsWith('@tauri-apps/')) continue;
+        findings.push({
+          rule,
+          file: rel,
+          line,
+          text: at(line),
+          specifier: value,
+          detail: `imports the host runtime '${value}' outside the desktop zones (ruling D2/plan §6.1 rule 1)`,
+        });
+      }
+    }
+
+    if (rule === RULES.R7) {
+      for (const { value, line } of literals) {
+        const target = resolveSpecifier(rel, value);
+        if (!target) continue;
+        if (
+          !(
+            target === 'packages/frontend/src/platform/desktop' ||
+            target.startsWith('packages/frontend/src/platform/desktop/')
+          )
+        ) {
+          continue;
+        }
+        findings.push({
+          rule,
+          file: rel,
+          line,
+          text: at(line),
+          specifier: value,
+          detail: `imports the desktop zone entity ${target} — shared code may only see platform/contracts.ts ports (ruling #7)`,
+        });
+      }
+    }
+
+    if (rule === RULES.R8) {
+      for (const { value, line } of literals) {
+        if (!value.startsWith('@tauri-apps/')) continue;
+        findings.push({
+          rule,
+          file: rel,
+          line,
+          text: at(line),
+          specifier: value,
+          detail: `driver layer imports the host runtime '${value}' — events ride the backend-client rail (ruling D2/plan §6.1 rule 3)`,
         });
       }
     }
@@ -453,7 +637,7 @@ function createFsAdapter(root) {
   return {
     listSources() {
       const out = [];
-      for (const dir of new Set([HOST_SRC_DIR, 'packages'])) walk(resolve(root, dir), root, out);
+      for (const dir of new Set(['packages', APP_SRC_DIR])) walk(resolve(root, dir), root, out);
       return out.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
     },
     has(rel) {
@@ -536,7 +720,7 @@ export function checkDriverImportBoundaries(opts = {}) {
   const sources = adapter.listSources();
   if (sources.length === 0) {
     error(
-      `[check-driver-import-boundaries] no source files scanned below ${HOST_SRC_DIR}/ or packages/ — refusing to report success (root=${root})`,
+      `[check-driver-import-boundaries] no source files scanned below packages/ or ${APP_SRC_DIR}/ — refusing to report success (root=${root})`,
     );
     return 2;
   }
@@ -544,6 +728,7 @@ export function checkDriverImportBoundaries(opts = {}) {
   const blocked = [];
   const advisory = [];
   const usedEntries = new Set();
+  const ledgeredSeen = new Set();
   let allowed = 0;
 
   for (const { rel, content } of sources) {
@@ -557,6 +742,12 @@ export function checkDriverImportBoundaries(opts = {}) {
       if (exempt >= 0) {
         usedEntries.add(exempt);
         allowed += 1;
+        continue;
+      }
+      // R6 transition ledger: F4-owned files stay visible but advisory.
+      if (finding.rule.id === 'R6' && R6_LEGACY_TAURI_FILES.has(finding.file)) {
+        ledgeredSeen.add(finding.file);
+        advisory.push({ ...finding, ledgered: true });
         continue;
       }
       // BUG-008: findings in files this repo does not track (gitignored
@@ -588,10 +779,22 @@ export function checkDriverImportBoundaries(opts = {}) {
     error(`    ${finding.text}`);
   }
   for (const finding of advisory) {
-    const note = finding.external ? ` · ${EXTERNAL_ADVISORY_NOTE}` : '';
+    const note = finding.external
+      ? ` · ${EXTERNAL_ADVISORY_NOTE}`
+      : finding.ledgered
+        ? ' · R6 transition ledger (F4 facade migration burns it down)'
+        : '';
     log(
       `${tag} ${finding.rule.id} (advisory) ${finding.file}:${finding.line}: ${finding.detail}${note}`,
     );
+  }
+  // Stale ledger hygiene: an entry whose file no longer produces findings is
+  // dead weight — surface it so the set cannot silently rot (same property the
+  // ALLOWLIST expiry check buys).
+  for (const ledgerFile of R6_LEGACY_TAURI_FILES) {
+    if (ledgeredSeen.has(ledgerFile)) continue;
+    if (!adapter.has(ledgerFile)) continue; // deleted file: cleanup hint below
+    log(`${tag} R6 (ledger) ${ledgerFile}: no @tauri-apps findings left — remove the entry`);
   }
   for (const { entry, fileMissing } of expired) {
     const why = fileMissing
@@ -606,7 +809,7 @@ export function checkDriverImportBoundaries(opts = {}) {
     error(
       `${tag} FAILED: ${blocked.length} violation(s)${expired.length ? ` + ${expired.length} expired exemption(s)` : ''} (${scanned}${advisoryNote})`,
     );
-    for (const ruleId of ['R1', 'R2', 'R4']) {
+    for (const ruleId of ['R1', 'R2', 'R4', 'R6', 'R7']) {
       if (blocked.some((f) => f.rule.id === ruleId)) error(`    see ${RULES[ruleId].doc}`);
     }
     return 1;

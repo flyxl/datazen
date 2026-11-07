@@ -45,15 +45,11 @@ import { signEpPackage } from './sign-ep.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ROOT = resolve(__dirname, '..');
 export const DEFAULT_PRO_DEST = resolve(ROOT, 'packages/pro-extensions/sql-editor-pro');
-export const DEFAULT_BUILTIN_EP_ROOT = resolve(ROOT, 'src-tauri/resources/builtin-ep');
+export const DEFAULT_BUILTIN_EP_ROOT = resolve(ROOT, 'crates/datazen-desktop/resources/builtin-ep');
 export const DEFAULT_DZX_OUT_DIR = resolve(ROOT, 'artifacts');
 
 /** Relative paths that must exist in a staged / packed extension tree. */
-export const REQUIRED_PACKAGE_PATHS = [
-  'manifest.json',
-  'dist/index.esm.js',
-  'signature.sig',
-];
+export const REQUIRED_PACKAGE_PATHS = ['manifest.json', 'dist/index.esm.js', 'signature.sig'];
 
 /** Optional locale sources copied into locales/ when present. */
 export const LOCALE_SOURCE_DIR = 'src/locales';
@@ -76,7 +72,7 @@ export const LOCALE_SOURCE_DIR = 'src/locales';
 /**
  * Options for `assertHostGlobalKeysAllowed` and the tree/archive wrappers that
  * forward to it. `hostTable` defaults to the keys parsed out of
- * `src/main.tsx`; `label` only decorates the failure message.
+ * `packages/frontend/src/bootstrap/startSharedApp.tsx`; `label` only decorates the failure message.
  *
  * @typedef {{
  *   modules?: string[],
@@ -177,14 +173,14 @@ export function stagedTreeComplete(stageDir) {
   return !existsSync(stagingMarkerPath(stageDir));
 }
 
-
 /**
  * Host shared-singleton table consumed by staged EP bundles at runtime
  * (track B: `builtin-ep` loaded from a blob: URL with no module resolution).
  *
  * Keys must cover the extension build's `external` list plus any bare
- * specifier used in dynamic `import()` inside the bundle. The host entry
- * (`src/main.tsx`) populates `globalThis.__DATAZEN_HOST__` with THE SAME keys —
+ * specifier used in dynamic `import()` inside the bundle. The shared app
+ * bootstrap (`packages/frontend/src/bootstrap/startSharedApp.tsx`, called by
+ * the desktop entry) populates `globalThis.__DATAZEN_HOST__` with THE SAME keys —
  * keep both lists in sync or the blob-loaded bundle crashes on a missing key.
  * A pack-time throw on unmapped bare imports is intentional: fail here, not
  * in a user's WebView.
@@ -198,7 +194,8 @@ export const HOST_GLOBAL_NAME = '__DATAZEN_HOST__';
  * host singleton. Never replace an entry with that regex — a regexp here would
  * silently admit a module the host table does not provide, shipping a second
  * copy into the bundle (cross-realm identity split, no error at load).
- * Keep in sync with the `__DATAZEN_HOST__` table in `src/main.tsx`;
+ * Keep in sync with the `__DATAZEN_HOST__` table in
+ * `packages/frontend/src/bootstrap/startSharedApp.tsx`;
  * `scripts/__tests__/pack-ep.test.ts` fails when the two drift apart.
  */
 export const HOST_SHARED_MODULES = [
@@ -254,7 +251,7 @@ function isBareSpecifier(spec) {
 function unmappedError(kind, spec) {
   return new Error(
     `[pack-ep] unmapped bare ${kind} "${spec}" — add it to HOST_SHARED_MODULES ` +
-      `and the host ${HOST_GLOBAL_NAME} table in src/main.tsx`,
+      `and the host ${HOST_GLOBAL_NAME} table in the shared app bootstrap`,
   );
 }
 
@@ -296,9 +293,7 @@ function parseNamedItems(braced) {
  * @returns {string} a destructuring pattern body
  */
 function destructureNamed(named) {
-  return named
-    .map((n) => (n.alias === n.orig ? n.orig : `${n.orig}: ${n.alias}`))
-    .join(', ');
+  return named.map((n) => (n.alias === n.orig ? n.orig : `${n.orig}: ${n.alias}`)).join(', ');
 }
 
 /**
@@ -446,15 +441,12 @@ export function rewriteEpImportsToHostGlobals(
     },
   );
   // side-effect import "bare" — host already holds the singleton; elide.
-  code = code.replace(
-    /^[ \t]*import\s*["']([^"']+)["'][ \t]*;?[ \t]*$/gm,
-    (full, spec) => {
-      if (!isBareSpecifier(spec)) return full;
-      if (!allowed.has(spec)) throw unmappedError('side-effect import', spec);
-      rewritten.add(spec);
-      return `/* [pack-ep] side-effect import "${spec}" elided — host provides the shared singleton */\nvoid 0;`;
-    },
-  );
+  code = code.replace(/^[ \t]*import\s*["']([^"']+)["'][ \t]*;?[ \t]*$/gm, (full, spec) => {
+    if (!isBareSpecifier(spec)) return full;
+    if (!allowed.has(spec)) throw unmappedError('side-effect import', spec);
+    rewritten.add(spec);
+    return `/* [pack-ep] side-effect import "${spec}" elided — host provides the shared singleton */\nvoid 0;`;
+  });
   // dynamic import("bare") — e.g. lazily invoked Tauri/core bridges.
   code = code.replace(/import\(\s*["']([^"']+)["']\s*\)/g, (full, spec) => {
     if (!isBareSpecifier(spec)) return full;
@@ -484,7 +476,10 @@ export function rewriteEpBundleFile(bundlePath, opts = {}) {
   return { bundlePath, rewritten };
 }
 
-export const HOST_TABLE_SOURCE = resolve(ROOT, 'src/main.tsx');
+export const HOST_TABLE_SOURCE = resolve(
+  ROOT,
+  'packages/frontend/src/bootstrap/startSharedApp.tsx',
+);
 
 /**
  * @param {string} text literal text to embed in a RegExp source
@@ -646,7 +641,7 @@ function hostKeyError(violations, { globalName, label }) {
   for (const spec of violations.unmapped) {
     lines.push(
       `[pack-ep]   - unmapped host table key "${spec}" (absent from HOST_SHARED_MODULES ` +
-        `and from the ${globalName} table in src/main.tsx)`,
+        `and from the ${globalName} table in the shared app bootstrap)`,
     );
   }
   for (const spec of violations.allowListedOnly) {
@@ -681,7 +676,7 @@ function hostKeyError(violations, { globalName, label }) {
  * hide a key from it.
  *
  * Measured against two lists, because they answer different questions:
- * `HOST_SHARED_MODULES` is the declared intent, and the `src/main.tsx` table is
+ * `HOST_SHARED_MODULES` is the declared intent, and the `packages/desktop/src/main.tsx` table is
  * what actually exists at runtime. Membership is **exact** — never a prefix
  * rule, which would let `react-anything` through and turn the allow-list into
  * decoration while the enumerated `react/jsx-runtime` sub-path keeps working.
@@ -782,9 +777,11 @@ export function parsePackArgs(argv = process.argv.slice(2)) {
   }
 
   const resolvedExtensionDir =
-    extensionDir ?? (extension === 'sql-editor-pro' ? DEFAULT_PRO_DEST : join(ROOT, 'packages/pro-extensions', extension));
-  const resolvedStageDir =
-    stageDir ?? join(DEFAULT_BUILTIN_EP_ROOT, extension);
+    extensionDir ??
+    (extension === 'sql-editor-pro'
+      ? DEFAULT_PRO_DEST
+      : join(ROOT, 'packages/pro-extensions', extension));
+  const resolvedStageDir = stageDir ?? join(DEFAULT_BUILTIN_EP_ROOT, extension);
 
   return {
     extension,
@@ -879,14 +876,18 @@ export function syncLocales(extensionDir, targetRoot, { log = console.log } = {}
  * @returns {void}
  * @throws {Error} from the host-key gate, `signEpPackage`, or a missing source file
  */
-export function stagePackageTree(sourceDir, targetDir, { log = console.log, rewriteImports = true } = {}) {
+export function stagePackageTree(
+  sourceDir,
+  targetDir,
+  { log = console.log, rewriteImports = true } = {},
+) {
   if (existsSync(targetDir)) {
     rmSync(targetDir, { recursive: true, force: true });
   }
   mkdirSync(targetDir, { recursive: true });
 
   cpSync(join(sourceDir, 'manifest.json'), join(targetDir, 'manifest.json'));
-  mkdirSync(join(targetDir, 'dist'), { recursive: true });
+  mkdirSync(join(targetDir, 'packages/desktop/dist'), { recursive: true });
   cpSync(join(sourceDir, 'dist/index.esm.js'), join(targetDir, 'dist/index.esm.js'));
   if (rewriteImports) {
     // Track B: blob-loaded bundles cannot resolve bare imports — rewrite to
@@ -921,7 +922,9 @@ export function stagePackageTree(sourceDir, targetDir, { log = console.log, rewr
 export function assertPackageLayout(packageDir) {
   const missing = REQUIRED_PACKAGE_PATHS.filter((rel) => !existsSync(join(packageDir, rel)));
   if (missing.length > 0) {
-    throw new Error(`[pack-ep] incomplete package at ${packageDir}; missing: ${missing.join(', ')}`);
+    throw new Error(
+      `[pack-ep] incomplete package at ${packageDir}; missing: ${missing.join(', ')}`,
+    );
   }
 }
 
@@ -1006,7 +1009,10 @@ export function packEp(opts = {}) {
   // exactly as usable as it found it.
   const stagesTree = mode === 'stage' || mode === 'both';
   if (stagesTree) {
-    markStagingIncomplete(stageDir, `pack-ep started at ${new Date().toISOString()} (${extension})`);
+    markStagingIncomplete(
+      stageDir,
+      `pack-ep started at ${new Date().toISOString()} (${extension})`,
+    );
   }
 
   try {
@@ -1075,11 +1081,22 @@ export function packEp(opts = {}) {
  * }} ctx every field already resolved and defaulted by `packEp`
  * @returns {PackEpResult}
  */
-function packEpInner({ extension, extensionDir, mode, outDir, stageDir, skipBuild, log, stagesTree }) {
+function packEpInner({
+  extension,
+  extensionDir,
+  mode,
+  outDir,
+  stageDir,
+  skipBuild,
+  log,
+  stagesTree,
+}) {
   let effectiveExtensionDir = extensionDir;
   if (!existsSync(effectiveExtensionDir)) {
     if (extension === 'sql-editor-pro' && existsSync(DEFAULT_PRO_DEST)) {
-      log(`[pack-ep] specified dir not found: ${effectiveExtensionDir}, falling back to ${DEFAULT_PRO_DEST}`);
+      log(
+        `[pack-ep] specified dir not found: ${effectiveExtensionDir}, falling back to ${DEFAULT_PRO_DEST}`,
+      );
       effectiveExtensionDir = DEFAULT_PRO_DEST;
     } else {
       throw new Error(`[pack-ep] extension directory not found: ${effectiveExtensionDir}`);

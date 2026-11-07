@@ -111,7 +111,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pro-extension
-          path: src-tauri/resources/builtin-ep/sql-editor-pro
+          path: crates/datazen-desktop/resources/builtin-ep/sql-editor-pro
           if-no-files-found: error
           retention-days: 1
 
@@ -200,21 +200,18 @@ jobs:
       - name: Structure editor guardrails
         run: node scripts/check-structure-editor-guardrails.mjs
 
-      # i18n 翻译完整性 = 发布硬阻断。裁定：发布出去的版本不能只有英文，
-      # 8 个宿主语言必须与 en.ts 的 key 集合完全一致，缺一个都不许发。
+      # i18n 翻译完整性 = 发布硬阻断。应用只打包英文与简体中文，
+      # zh-CN 必须与 en 的 key 集合完全一致，缺一个都不许发。
       #
-      # 它原先挂在 ci.yml 里却是 continue-on-error: true，于是常年是黄的、没人看，
-      # 债累积到 8 个宿主语言缺 832 个 key——一个"看得见但没人当回事"的门禁，
-      # 等于没有门禁。现在它不再 advisory：债务会在发布这一刻挡住构建，
-      # 这正是它该待的位置。补齐翻译走 i18n-sync skill（只补，不改 en.ts）。
+      # 其他语言翻译文件可留在源码中，但不会打包；发布门禁只检查实际随应用分发的语言。
+      # 补齐翻译走 i18n-sync skill（只补，不改 en.ts）。
       #
-      # 预期后果：版本已 bump 但翻译未补齐时，发布直接失败。bump-version skill
-      # 触发重建时必须一并跑 i18n-sync-check。
+      # 预期后果：版本已 bump 但简体中文未补齐时，发布直接失败。
       - name: i18n translation completeness (release blocker)
         run: node scripts/i18n-sync-check.mjs
 
   build:
-    # Secrets (Deploy Keys, Windows signing) live in Environment "release"
+    # Secrets (Deploy Keys, Windows signing, Apple signing/notarization) live in Environment "release"
     # — see docs/development/ci-private-drivers.md
     needs: [prepare-pro-extension, union-typecheck, pre-release-guards]
     environment: release
@@ -475,6 +472,61 @@ jobs:
           Remove-Item -Path certificate/certificate.pfx
         shell: pwsh
 
+      - name: Import Apple Developer ID signing certificate
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          : "${APPLE_CERTIFICATE:?Add APPLE_CERTIFICATE to the release environment secrets}"
+          : "${APPLE_CERTIFICATE_PASSWORD:?Add APPLE_CERTIFICATE_PASSWORD to the release environment secrets}"
+
+          CERTIFICATE_PATH="$RUNNER_TEMP/apple-developer-id.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/apple-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 32)"
+          printf '%s' "$APPLE_CERTIFICATE" | openssl base64 -d -A -out "$CERTIFICATE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -k "$KEYCHAIN_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s \
+            "$KEYCHAIN_PATH" "$HOME/Library/Keychains/login.keychain-db" /Library/Keychains/System.keychain
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
+
+          APPLE_SIGNING_IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+            | awk -F '"' '/Developer ID Application:/{print $2; exit}')"
+          if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
+            echo "::error::No valid Developer ID Application identity found in APPLE_CERTIFICATE"
+            exit 1
+          fi
+          echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY" >> "$GITHUB_ENV"
+          rm -f "$CERTIFICATE_PATH"
+          echo "Imported Apple signing identity: $APPLE_SIGNING_IDENTITY"
+
+      - name: Configure Apple notarization credentials
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$APPLE_ID" && -n "$APPLE_PASSWORD" && -n "$APPLE_TEAM_ID" ]]; then
+            printf 'APPLE_ID=%s\n' "$APPLE_ID" >> "$GITHUB_ENV"
+            printf 'APPLE_PASSWORD=%s\n' "$APPLE_PASSWORD" >> "$GITHUB_ENV"
+            printf 'APPLE_TEAM_ID=%s\n' "$APPLE_TEAM_ID" >> "$GITHUB_ENV"
+            echo "Apple notarization credentials configured."
+          else
+            echo "::notice::Apple notarization credentials are incomplete; notarization will be skipped while code signing remains enabled."
+          fi
+
       - name: Install frontend dependencies
         run: pnpm install
 
@@ -505,7 +557,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: pro-extension
-          path: src-tauri/resources/builtin-ep/sql-editor-pro
+          path: crates/datazen-desktop/resources/builtin-ep/sql-editor-pro
 
       - name: Resolve drivers and build Tauri app
         shell: bash
@@ -532,12 +584,27 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
+      - name: Verify macOS code signature
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          BUNDLE_DIR: target/${{ matrix.target }}/release/bundle
+        run: |
+          set -euo pipefail
+          APP_DIR="$(find "$BUNDLE_DIR/macos" -name '*.app' -type d -print -quit)"
+          if [ -z "$APP_DIR" ]; then
+            echo "::error::macOS .app bundle not found in $BUNDLE_DIR/macos"
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$APP_DIR"
+          codesign -dv --verbose=4 "$APP_DIR" 2>&1 | grep -F "Authority=$APPLE_SIGNING_IDENTITY"
+
       - name: Verify Pro extension is bundled in app
         if: matrix.needs_pro
         shell: bash
         run: |
           # Note: with-driver-inject.mjs restores staging dirs after the child command,
-          # so src-tauri/resources/builtin-ep/ may already be cleared here.
+          # so crates/datazen-desktop/resources/builtin-ep/ may already be cleared here.
           # We verify the actual bundled output instead.
           BUNDLE_DIR="target/${{ matrix.target }}/release/bundle"
           FAIL=0
@@ -563,7 +630,7 @@ jobs:
           # ── Linux: check deb + AppImage ──
           if [ "${{ runner.os }}" = "Linux" ]; then
             echo "::notice::[pro-verify] staging state before check:"
-            ls -la src-tauri/resources/builtin-ep/sql-editor-pro/dist/ 2>/dev/null || echo "::notice::[pro-verify] staging dir already restored (expected)"
+            ls -la crates/datazen-desktop/resources/builtin-ep/sql-editor-pro/dist/ 2>/dev/null || echo "::notice::[pro-verify] staging dir already restored (expected)"
 
             DEB=$(find "$BUNDLE_DIR/deb" -name "*.deb" 2>/dev/null | head -1)
             if [ -z "$DEB" ]; then
@@ -655,13 +722,13 @@ jobs:
         shell: pwsh
         run: |
           $releaseDir = Join-Path "target/${{ matrix.target }}" "release"
-          $executable = Join-Path $releaseDir "datazen.exe"
-          if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
-            $executable = Join-Path $releaseDir "DataZen.exe"
-          }
+          $executable = @("datazen.exe", "DataZen.exe", "datazen_desktop.exe") |
+            ForEach-Object { Join-Path $releaseDir $_ } |
+            Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+            Select-Object -First 1
           $prompts = Join-Path $releaseDir "prompts"
-          if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
-            throw "Portable executable not found: $executable"
+          if (-not $executable -or -not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+            throw "Portable executable not found in $releaseDir (checked datazen.exe, DataZen.exe, datazen_desktop.exe)"
           }
           if (-not (Test-Path -LiteralPath $prompts -PathType Container)) {
             throw "Portable resources not found: $prompts"

@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * Regression guard: the generated `src-tauri/src/driver_init.rs` must be
+ * Regression guard: the generated `crates/datazen-desktop/src/driver_init.rs` must be
  * byte-identical to what `rustfmt` would emit, for ANY driver set.
  *
  * HISTORY OF THE DEFECT THIS PINS
@@ -34,7 +34,7 @@
  * Every assertion targets the *real artifact file* that the *real CLI* wrote:
  * `resolve-drivers.mjs --codegen-only` is spawned as a subprocess against a
  * throwaway copy of the repository, and the test reads back
- * `<staged>/src-tauri/src/driver_init.rs` from disk. The goldens under
+ * `<staged>/crates/datazen-desktop/src/driver_init.rs` from disk. The goldens under
  * `fixtures/` are frozen recorded artifacts, checked in independently of the
  * template; the three rustfmt-free property tests re-derive the rule from
  * rustfmt's documented behaviour rather than from this repo's code, and the
@@ -51,15 +51,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawnSync } from 'child_process';
-import {
-  cpSync,
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  unlinkSync,
-} from 'fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { basename, dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
@@ -70,7 +62,7 @@ import { withProbeLock } from './boundaryMutation';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '../..');
 const FIXTURE_DIR = join(HERE, 'fixtures');
-const ARTIFACT_REL = 'src-tauri/src/driver_init.rs';
+const ARTIFACT_REL = 'crates/datazen-desktop/src/driver_init.rs';
 
 /**
  * Driver-set arguments under test.
@@ -133,7 +125,7 @@ function readGolden(name) {
       `missing golden fixture ${path}\n` +
         `Regenerate it by running, for a set S:\n` +
         `  node scripts/resolve-drivers.mjs --codegen-only --drivers=<S>\n` +
-        `and copying src-tauri/src/driver_init.rs over the fixture.`,
+        `and copying crates/datazen-desktop/src/driver_init.rs over the fixture.`,
     );
   }
   return readFileSync(path, 'utf8');
@@ -273,12 +265,9 @@ describe('generated driver_init.rs is rustfmt-canonical', () => {
   // 8 tests had passed. A false negative on an otherwise green suite is the
   // same failure class as a false green — it teaches reviewers to re-run rather
   // than read.
-  afterAll(
-    () => {
-      if (stage) rmSync(stage, { recursive: true, force: true });
-    },
-    120_000,
-  );
+  afterAll(() => {
+    if (stage) rmSync(stage, { recursive: true, force: true });
+  }, 120_000);
 
   /* --- primary: byte-for-byte against frozen, independently held goldens --- */
 
@@ -328,8 +317,8 @@ describe('generated driver_init.rs is rustfmt-canonical', () => {
       diff,
       diff
         ? `reversing --drivers changed the artifact; first difference at line ${diff.line}\n` +
-          `  forward: ${JSON.stringify(diff.expected)}\n` +
-          `  reversed: ${JSON.stringify(diff.actual)}`
+            `  forward: ${JSON.stringify(diff.expected)}\n` +
+            `  reversed: ${JSON.stringify(diff.actual)}`
         : 'order independence could not be evaluated',
     ).toBeNull();
   });
@@ -350,17 +339,12 @@ describe('generated driver_init.rs is rustfmt-canonical', () => {
 
     // Defect 2: a doubled blank line before `builder`.
     const builderAt = unsorted.findIndex((l) => l === '    builder');
-    const doubled = [
-      ...unsorted.slice(0, builderAt),
-      '',
-      ...unsorted.slice(builderAt),
-    ];
+    const doubled = [...unsorted.slice(0, builderAt), '', ...unsorted.slice(builderAt)];
 
     const broken = doubled.join('\n');
-    expect(
-      broken,
-      'the teeth-check fixture must not equal the golden to begin with',
-    ).not.toBe(generated.all);
+    expect(broken, 'the teeth-check fixture must not equal the golden to begin with').not.toBe(
+      generated.all,
+    );
 
     const diff = firstDifference(broken, generated.all);
     expect(
@@ -395,7 +379,10 @@ describe('generated driver_init.rs is rustfmt-canonical', () => {
 
   it('passes rustfmt --check on the golden fixtures themselves', () => {
     if (!rustfmt) {
-      expect(rustfmt, 'rustfmt absence must be reported, not silently treated as a pass').toBeNull();
+      expect(
+        rustfmt,
+        'rustfmt absence must be reported, not silently treated as a pass',
+      ).toBeNull();
       return;
     }
     for (const setName of ['all', 'basic']) {

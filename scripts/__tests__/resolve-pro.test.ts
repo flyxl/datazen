@@ -218,9 +218,9 @@ describe('[tester] resolve-pro staging and edition flows', () => {
     expect(isAbsolute(GENERATED_PRO_TS)).toBe(true);
     expect(GENERATED_PRO_TS.endsWith(join('src', 'extensions', 'generated-pro.ts'))).toBe(true);
     expect(isAbsolute(DEFAULT_BUILTIN_EP_ROOT)).toBe(true);
-    expect(DEFAULT_BUILTIN_EP_ROOT.endsWith(join('src-tauri', 'resources', 'builtin-ep'))).toBe(
-      true,
-    );
+    expect(
+      DEFAULT_BUILTIN_EP_ROOT.endsWith(join('datazen-desktop', 'resources', 'builtin-ep')),
+    ).toBe(true);
   });
 
   it('test_tester_resolvePro_community_writes_codegen_and_clears_staging', () => {

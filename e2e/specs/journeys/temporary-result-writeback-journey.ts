@@ -23,7 +23,7 @@ import {
  * when the execution's `context_before.confidence == Confirmed`
  * (`src-tauri/src/platform/session_backend/execution.rs`), and confirmation
  * requires a driver declaring `ContextObservation::Full`
- * (`packages/driver-api/src/capabilities.rs`). **No bundled driver declares it**:
+ * (`crates/datazen-driver-api/src/capabilities.rs`). **No bundled driver declares it**:
  * PostgreSQL, MySQL, SQLite and Redis all say `Partial`, the rest `Unsupported`.
  * A query result is therefore read-only on every shipped driver, and the
  * "edit requires refresh" notice — reserved for a result whose mapping *was*

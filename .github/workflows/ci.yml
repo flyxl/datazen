@@ -27,11 +27,16 @@ env:
 jobs:
   # Run only the CI half changed since the last successful run for this PR or
   # branch. A first run checks the whole PR/push range; manual runs stay full.
+  # docs-only PR（merge-base diff 全部落入 scripts/ci_scope.py 的 DOCS_ONLY
+  # 白名单）豁免 rust/frontend/ci：判定只看 PR 自身的 merge-base diff，与
+  # run 间窗口无关——merge 过 main 的分支会把产品变更（版本号 bump 等）带进
+  # 窗口（PR #182 教训），那不是 PR 的变更。push / 手动事件不受影响。
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
       frontend: ${{ steps.scope.outputs.frontend }}
       rust: ${{ steps.scope.outputs.rust }}
+      docs_only: ${{ steps.scope.outputs.docs_only }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -59,7 +64,8 @@ jobs:
   # 前端段不消费 cargo 产物），墙钟时间 = max(前端, Rust) 而非两者之和。
   frontend:
     needs: [detect-changes]
-    if: needs.detect-changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
+    # docs-only PR 跳过重型 job；括号不能省（&& 优先级高于 ||）。
+    if: needs.detect-changes.outputs.docs_only != 'true' && (needs.detect-changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
 
     steps:
@@ -91,6 +97,21 @@ jobs:
       - name: TypeScript typecheck
         run: pnpm typecheck
 
+      # WR-E1/WR-C4：web 宿主的独立类型面（packages/web 自带 tsconfig——
+      # 编译期同形的 web 半边，typecheck.mjs 的三个 program 不覆盖它）
+      # 与 vite 生产构建。构建走与 desktop 相同的共享前端树
+      # （@datazen/frontend），是 `packages/web` 存在后的第一位 CI 消费者。
+      - name: Web host typecheck
+        run: pnpm --filter datazen-web typecheck
+
+      - name: Web host build (vite)
+        run: pnpm --filter datazen-web build
+
+      # WR-E2 验收的 CI 载体：域契约表（41 路由 + SSE）对 web HTTP transport
+      # 的传输级断言。零网络（fetch/EventSource 全注入假体），纯 vitest。
+      - name: Web domain contract tables (vitest)
+        run: pnpm --filter datazen-web test
+
       # 5 个严格守卫合并为一步：任何失败立即停止（fail-fast），
       # 输出清晰标注哪条命令失败。省掉 5 次 shell launch 开销。
       #
@@ -106,13 +127,18 @@ jobs:
       # 重新启动 pnpm 并执行 DATAZEN_VERIFY_DEPS_BEFORE_RUN=install 的前置
       # 依赖校验——4 次别名调用就是 4 次重复校验，与本步合并的理由自我矛盾。
       # 守卫脚本本体不变，只是调用方式与 check-managed-stubs 对齐。
-      - name: All strict guards (stubs, IDs, layers, boundaries, i18n keys)
+      - name: All strict guards (stubs, IDs, layers, boundaries, i18n keys, frontend entries, test-module naming)
         run: |
-          node scripts/check-managed-stubs.mjs
+          # --check-static-drivers（W3-c）：核对桌面 Cargo.toml 的静态 path 驱动
+          # 声明与 drivers-registry.json 一致（新增 path 驱动忘加 optional 依赖/
+          # feature/`drivers` 聚合位时在这里红）。
+          node scripts/check-managed-stubs.mjs --check-static-drivers
           node scripts/check-id-terminology.mjs
           node scripts/check-module-layers.mjs
           node scripts/check-driver-import-boundaries.mjs
+          node scripts/check-frontend-public-entry.mjs
           node scripts/i18n-key-collision-check.mjs
+          node scripts/check-test-module-naming.mjs
 
       - name: Frontend unit tests
         # No Pro here, and no Pro opt-out. `packages/pro-extensions/**` is a
@@ -124,7 +150,7 @@ jobs:
         run: pnpm test:unit
 
       # Path 驱动 UI 单测（AGENTS.md「驱动测试落点」表）。宿主单测不碰
-      # packages/drivers，所以 `pnpm test:unit` 从不收集这些用例；不单独跑一步
+      # crates/drivers，所以 `pnpm test:unit` 从不收集这些用例；不单独跑一步
       # 就没有任何合并门禁执行它们。放在 codegen（`pretest:unit` 产生的
       # generated.ts）之后、site 检查之前，避开 rust job 里 resolve-drivers 那段。
       - name: Driver UI unit tests
@@ -136,7 +162,7 @@ jobs:
       # This step judges the suite under `all` (all registered PATH drivers:
       # no git driver, so no deploy key and no network needed), **narrowed at
       # run time** to the test files whose module graphs execute the
-      # driver-set codegen (`src/extensions/generated.ts`) — everything else
+      # driver-set codegen (`packages/frontend/src/extensions/generated.ts`) — everything else
       # runs byte-identical code under `all` and is already judged by the
       # `basic` step above. The selection lives in
       # select-codegen-sensitive-tests.mjs (criterion + fail-closed list) and
@@ -206,13 +232,38 @@ jobs:
   # ── Rust 段：工具链 → 系统依赖 → rust-cache → 驱动注入 → cargo 测试 ──
   rust:
     needs: [detect-changes]
-    if: needs.detect-changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch'
+    # docs-only PR 跳过重型 job；括号不能省（&& 优先级高于 ||）。
+    if: needs.detect-changes.outputs.docs_only != 'true' && (needs.detect-changes.outputs.rust == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
+
+    # 本地冷构建纪律（磁盘易满）搬到 CI（2026-11-04 run 1376 教训）：
+    # debuginfo 是 target 目录的头号膨胀源（dev/test 默认 debug=2 全量符号，
+    # 本 job 一轮要编 4 驱动 tests + datazen 全量 lib（~20.9 万行）+ desktop
+    # 宿主），关掉后产物体积大幅缩水；增量编译产物对一次性 CI 无收益，纯占盘。
+    # 代价：panic 回溯无符号，排障时用本地 debug 构建补齐。
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      CARGO_INCREMENTAL: "0"
 
     steps:
       # 浅克隆即可：basic 预设全是 path 驱动，resolve-drivers 不做 git fetch；
       # 需要全量历史的 site diff 只在 frontend job。
       - uses: actions/checkout@v5
+
+      # run 1376（main a3febe1d）实测：rust job 在链接 datazen-driver-mysql
+      # 测试二进制时 `ld terminated with signal 7 (Bus error)`——SIGBUS 是磁盘
+      # 写穿的症状，job 日志尾部明确「Free space left: 16 MB」「No space left
+      # on device」。同一提交在 w7-b 分支腿（run 1375）全绿，纯 runner 容量
+      # 问题，不是代码回归。ubuntu-latest 预装了本 job 用不到的大块工具链，
+      # 清掉回收 10GB+ 量级，与上面 env 的 DEBUG=0 双保险。放最前：后面的
+      # pnpm install / apt / rust-cache 写入全部受益。
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL \
+            /usr/local/lib/android /usr/share/swift /usr/local/.ghcup
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          df -h /
 
       # resolve-drivers.mjs → resolve-pro.mjs → pack-ep.mjs 顶层 import 了
       # fflate（ESM 静态解析），所以驱动注入同样需要 node_modules。
@@ -233,18 +284,6 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
-        with:
-          # dtolnay/rust-toolchain 固定跑
-          #   rustup toolchain install stable --profile minimal
-          # 而 `minimal` 只含 rustc / rust-std / cargo。rustfmt 属于 `default`
-          # profile（default = minimal + rust-docs + rustfmt + clippy），不在
-          # minimal 里，所以不写这一行时 rustfmt 不由本 workflow 保证存在。
-          # 现状之所以还能用，是 ubuntu-latest 镜像恰好预装了 rustfmt 1.9.0，
-          # 而 rustup 不会卸载已装 toolchain 上 profile 之外的 component ——
-          # 那是镜像的事实，不是本文件的契约（`ubuntu-latest` 已公告将切到
-          # Ubuntu 26.04）。显式声明的代价是「已存在时一次 no-op」，收益是下面
-          # 的 fmt 硬门禁从「碰巧能跑」变成「保证能跑」。
-          components: rustfmt
 
       # 为什么缓存 + 超时（2026-10-23 实测三数据点）：同一份代码，run
       # 39977765626 的本步在 15:23 挂起 >21 分钟、无报错无进展（runner 到
@@ -300,30 +339,6 @@ jobs:
       - name: Resolve drivers (basic)
         run: node scripts/resolve-drivers.mjs --drivers=basic
 
-      # HARD GATE — Rust 格式。此前 CI 从不检查。
-      #
-      # `.husky/pre-commit` 里有 `cargo fmt --all`，但它是「改写」而不是「失败」，
-      # 且 `git commit --no-verify` 可绕过。所以在加这一步之前，rustfmt 规则在 CI
-      # 上没有任何约束力：任何未格式化的 .rs 都能过一个全绿的 CI。rust job 原有
-      # 16 个 step，全是 test / 守卫 / codegen，没有一个跑 fmt。
-      #
-      # 位置是被迫的，不是排版偏好。`cargo fmt --all` 要加载 Cargo workspace，
-      # 而 src-tauri/src/lib.rs 声明了 `mod driver_init`，其文件是 gitignored 的
-      # codegen，只有 resolve-drivers.mjs 会生成。放在那一步之前，本门禁连加载
-      # 都做不到（实测，非推断）：
-      #   Error writing files: failed to resolve mod `driver_init`:
-      #   src-tauri/src/driver_init.rs does not exist          → EXIT=1
-      # 所以本步必须排在 Resolve drivers 之后。
-      #
-      # 基线实测（对 `git archive HEAD` 展开的 dcc1d9da2 纯净树，`--drivers=basic`，
-      # 与 CI 同一注入序列）：`cargo fmt --all -- --check` EXIT=0，覆盖 801 个
-      # .rs（800 个受版本控制的 + 生成的 driver_init.rs）。即本门禁在当前 main
-      # 上是绿的，不会让首次运行变红。
-      #
-      # 不加 continue-on-error / allowlist / `|| true`：脏树必须 fail。
-      - name: Rust formatting
-        run: cargo fmt --all -- --check
-
       # driver-api 不依赖 --features / 注入产物，无 target 选择器 = lib 单测 +
       # tests/ 下 4 个集成文件（26 个测试）+ doc test 一次覆盖，与
       # publish-driver-api.yml 的 `cargo test -p datazen-driver-api` 同形。
@@ -332,7 +347,7 @@ jobs:
       # 已过时：tests/ 现有 connector_wire_tester / driver_env_injection_discipline
       # / resource_contract / row_write_sql 四个文件，此前只在
       # publish-driver-api.yml（tag / 手动触发）才执行。其中
-      # driver_env_injection_discipline 是守卫型测试（扫描 packages/drivers/
+      # driver_env_injection_discipline 是守卫型测试（扫描 crates/drivers/
       # 全树、断言任何驱动源码不得读取 .env 文件），性质上属于 PR 门禁：
       # 此前这类违规最早要到发布流水线才会被看到。补齐后 PR 阶段即可拦截。
       #
@@ -394,9 +409,61 @@ jobs:
           FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
           cargo test -p datazen_desktop --lib --features "$FEATURES,datazen/test-harness"
 
-      - name: Restore managed files
-        if: always()
-        run: node scripts/driver-file-stash.mjs restore
+      # ── 宿主集成测试（crates/datazen-desktop/tests/）──
+      #
+      # 上面的 `--lib` 步按 cargo 目标选择语义只编译宿主 lib 的单元测试，
+      # src-tauri/tests/ 下的集成 target 一个都不编译——该目录因此在 CI 里
+      # 长期处于「零编译、零执行」状态。后果不是假设：mcp_stdio_auth.rs 的
+      # `env!("CARGO_BIN_EXE_datazen")` 在 F6 目录拆分后指向了不存在的 bin
+      # （宿主包的 bin 名是 datazen_desktop），该文件从那时起就无法编译，
+      # 却直到本步加入才被发现——没有任何 CI 消费者会碰它。
+      #
+      # 逐 target 选择而非 `--tests`：
+      #   - driver_command_ipc：required-features = ["test-harness"]，真实
+      #     `#[tauri::command]` 入口 + Mock Driver（无浏览器/无外部服务），
+      #     是 E2E driver-commands.ts 的 IPC 平替，价值最高；
+      #   - data_sync_public_api：公共 API 面回归（纯导入+反序列化）；
+      #   - mcp_stdio_auth：spawn 宿主二进制的 stdio 认证端到端（tempdir
+      #     隔离 DATAZEN_DATA_DIR，10s deadline 后 kill，全程封闭）；
+      #   - workflow_db_tests：跨库真 DB 用例（原 workflow_tests 的
+      #     tc02/04/05/06/07/13），全部 `#[ignore]`——本步只编译防烂
+      #     （libtest 记成显式 ignored），真跑在 workflow-db-tests.yml
+      #     的定时任务（PG/MySQL service 容器）或本地 --include-ignored。
+      #     纯逻辑用例已归位 crates/datazen/src/workflow/domain/model_tests.rs
+      #     （随 platform-crates 腿编译执行），历史持久化用例删除
+      #     （宿主 workflow/history.rs 内联测试已逐例覆盖）。
+      #   - ai_e2e 已移回 crates/datazen/tests/（被测本体是 datazen 的 AI 能力，
+      #     文件零宿主依赖）：由 platform-crates 无选择器腿自动编译执行，
+      #     不再占用宿主步名额。无 .env.test 时按设计自跳过——其
+      #     「passed」行不是 AI 冒烟跑过的证据，读日志时以本注释为准。
+      # 不用 `--tests` 一次性收编：目录里若再进一个需要外部服务的文件，
+      # fail-fast 的整步红掉会掩盖已可用 target 的信号；显式名单让「新
+      # tests/*.rs 进 CI」是一次有意识的编辑（与 runner 拒绝维护第二份
+      # target 名单的理由相反：那边 cargo 自带名单，这边名单就是门禁）。
+      #
+      # features 与上面 `--lib` 步同集（$FEATURES）再换成宿主自己的
+      # test-harness（= datazen/test-harness + tauri/test，是限定语法的
+      # 严格超集）：datazen 的 feature 闭包与 `--lib` 步完全一致，依赖
+      # 编译继续共享；宿主 lib 本身因多出 pub use commands::test_harness
+      # 重编译一次（该模块在 cfg(test) 下本就编译，增量极小）。driver
+      # feature 集取自同一份 .driver-features.json，与 `--lib` 步断言同一份
+      # codegen 态。（W3-c：本 job 只跑 --drivers=basic，全是静态声明的 path
+      # 驱动，不再注入/恢复 tracked 文件。）
+      - name: Rust integration tests (datazen desktop host, src-tauri/tests/)
+        run: |
+          FEATURES=$(node -e "console.log(JSON.parse(require('fs').readFileSync('.driver-features.json','utf8')).features.join(','))")
+          cargo test -p datazen_desktop \
+            --test driver_command_ipc \
+            --test data_sync_public_api \
+            --test mcp_stdio_auth \
+            --test workflow_db_tests \
+            --test connections_sessions_use_case_contract_ipc \
+            --features "$FEATURES,test-harness"
+
+      # （原 "Restore managed files" 步骤已随 W3-c 删除：本 job 只跑
+      # `--drivers=basic`，全部是静态声明的 path 驱动，resolve-drivers 对
+      # tracked 文件零写入；git 驱动注入的 restore 仍由 release/dev 流程内的
+      # with-driver-inject / dev.mjs / husky pre-commit 负责。）
 
       # 此处曾有一步（datazen-ai-api 于 D1.5 退役后的换代步骤）：
       #   cargo test -p datazen --lib --features settings,ai,connection,named_views
@@ -408,7 +475,7 @@ jobs:
       #    （modules/Cargo.toml），workflow → execution, schema, table-editing；
       #    加上 named_views 自身。即 F1 = {settings, ai, connection,
       #    named_views, mcp, workflow, execution, schema, table-editing}。
-      # 2. modules/src 全仓无任何 cfg(all(feature = …)) 组合门控（rg 验证），
+      # 2. crates/datazen/src 全仓无任何 cfg(all(feature = …)) 组合门控（rg 验证），
       #    feature 组合是纯并集：F1 编译出的每个测试函数都已在 `ai` 腿或
       #    `named_views` 腿中编译并执行（~1,317 个测试函数每轮重复跑一遍）。
       # 3. 组合层面的依赖统一冲突由 runner 的无选择器腿覆盖（2026-10-27 起
@@ -421,14 +488,24 @@ jobs:
       #
       # 必须落在这里，不能并进 frontend 的「All strict guards」：那条门禁所在 job
       # 没有 Rust 工具链（工具链在下面 rust job 的 dtolnay/rust-toolchain@stable），
-      # 而本门禁要读 `cargo metadata` 的 feature-resolved 图。放在 restore 之后，
-      # 断言的是提交态的 workspace 清单，与本地开发者看到的一致。
+      # 而本门禁要读 `cargo metadata` 的 feature-resolved 图。本 job 不再注入
+      # tracked 文件（W3-c），断言的 always 是提交态的 workspace 清单，与本地
+      # 开发者看到的一致。
       #
       # 门禁本身不带 crate 名单：清单来自 workspace membership + §2.4 的路径，
        # 新 crate 落到 modules / server 下就自动入网，
       # 不需要在这里改任何一处列表。列不出来的 member 是 error 不是 pass。
       - name: Platform crate dependency boundaries
         run: pnpm test:platform-arch
+
+      # server 宿主的依赖闭包门禁（team-server §2.2，WR-D1 随 server crate 一并
+      # 新增，与上面两条门禁并列）。断的是：datazen-server 的闭包里不得出现任何
+      # tauri* / wry / tao / datazen_desktop / 前端 UI runtime——「HTTP 宿主依赖共享
+      # 内核、永不依赖桌面宿主或 UI 层」是 server crate 的存在前提。先跑脚本自测
+      # （判定逻辑的内置样本回归），再跑真实 cargo tree 闭包；两段都在
+      # `pnpm test:server-deps` 里。
+      - name: Server dependency closure (host/UI-free)
+        run: pnpm test:server-deps
 
       # DDD 分层门禁（P0 断环的前向不变量）。同样要读 `cargo metadata`，所以只能落在
       # rust job；放在边界门禁之后，理由是两者的失败语义不同：边界门禁断"层与层之间
@@ -439,12 +516,12 @@ jobs:
 
       # 新增共享基础设施 crate 的 panic 门禁。同样落在这里，理由和上面那条一样：
       # 它要先解析 `cargo metadata` 才能把显式目标目录认成 workspace member，而
-      # frontend job 没有 Rust 工具链；放在 restore 之后，断言的是提交态的清单。
+      # frontend job 没有 Rust 工具链；断言的是提交态的清单（本 job 无注入，W3-c）。
       #
       # 与上面那条边界门禁的分工：边界门禁的结论行已被 R 阶段全量回归记录在案，
       # 因此本轮策略是「只约束新增 crate」（决策 c 方案 3），不追溯既有代码，也不
       # 改动那条门禁。所以本门禁的范围由脚本里的显式 TARGET_CRATES 列表决定
-      # （当前仅 packages/infra），而不是由 workspace 路径推导。
+      # （当前仅 crates/datazen-infra），而不是由 workspace 路径推导。
       #
       # 只禁裸 unwrap()：expect("…") 一律放行（AGENTS.md 禁的是「裸」）。#[cfg(test)]
       # item 与 #[test] / #[tokio::test] 函数按语法整段剔除，不按文件名。目标 crate
@@ -485,15 +562,17 @@ jobs:
       # 门禁自身的变异证明，放最后一步：它会临时改写 Cargo.toml 再还原，
       # 因此后面不得再有依赖该工作树的步骤。最后运行把「被强杀导致残留变异」
       # 的影响面降到 0（此时整个 job 已经没有后续步骤了）。
-      # 10 个变异约 5s，失败即说明门禁已经失去鉴别力——比门禁变红更早报警。
-      - name: Platform arch guard self-proof (10 mutations)
+      # 9 个变异约 5s，失败即说明门禁已经失去鉴别力——比门禁变红更早报警。
+      - name: Platform arch guard self-proof (9 mutations)
         run: pnpm test:platform-arch:mutations
 
   # ── 聚合 job：所有被选中的检查全绿才算 CI 通过。
   # 分支保护的 required status check 盯 `ci` 一个即可，拆分 job 不影响它。
   ci:
     needs: [detect-changes, frontend, rust]
-    if: always()
+    # docs-only PR：本 job 也跳过（skipped check 视为满足分支保护要求）；
+    # detect-changes 失败时 docs_only 为空 ≠ 'true'，本 job 照常跑并红。
+    if: needs.detect-changes.outputs.docs_only != 'true' && always()
     runs-on: ubuntu-latest
     steps:
       - name: Verify selected checks passed

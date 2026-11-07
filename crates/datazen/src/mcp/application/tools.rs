@@ -1,0 +1,518 @@
+//! MCP 工具的业务用例（M1：无状态工具——元数据、查询、连接目录与工作流）。
+//!
+//! 工具在协议上说什么、怎么说——参数组装、共享读取、结果解析/过滤与
+//! JSON 格式化——归本模块，桌面与未来的 web Server 形态共用同一份。
+//! `#[tool]` 宏、Input 的 `JsonSchema`、rmcp `McpError` 映射与连接白名单
+//! 检查（`ensure_allowed`）留宿主绑定层：它们是传输形状与装配参数。
+//!
+//! 依赖方向（M1 前置刀解环后成立）：mcp → workflow（`runtime_reads` 读取
+//! 用例、`ResourceExecutionHost` 与 `WorkflowHost` 端口、注册表读取）、
+//! mcp → ai（`resolve_query_limit`）、mcp → settings（`ExecutionSettings`
+//! 的结果上限）。工具文本逐字保留宿主历史行为。
+//!
+//! 错误通道用中立的 [`ToolError`] 两分：参数/校验类（宿主映射
+//! `invalid_params` + help 块）与内部失败（宿主映射 `internal_error`）。
+//! 该两分原本就存在于宿主错误映射里，共享化后由本层显式承载。
+
+use crate::ai::application::db_tools::resolve_query_limit;
+use crate::execution::domain::permission::{self, McpPermissionMode};
+use crate::mcp::application::describe::format_table_description;
+use crate::mcp::domain::allowlist;
+use crate::settings::ExecutionSettings;
+use crate::workflow::application::host::WorkflowHost;
+use crate::workflow::application::resource_execution::ResourceExecutionHost;
+use crate::workflow::application::runtime_reads;
+use crate::workflow::domain::model::{WorkflowDefinition, WorkflowListItem};
+use datazen_driver_api::{DatabaseType, TableSchema};
+
+/// 工具错误的两分通道。
+///
+/// - [`ToolError::InvalidParams`]：调用方的参数或权限问题（SQL 被档位
+///   拒绝、workflow 不存在）。宿主映射 `invalid_params` 并附工具帮助块。
+/// - [`ToolError::Internal`]：读取或执行失败（连接不可用、命令失败、
+///   序列化失败）。宿主映射 `internal_error`。
+#[derive(Debug)]
+pub enum ToolError {
+    InvalidParams(String),
+    Internal(String),
+}
+
+impl ToolError {
+    /// The message, regardless of channel — for hosts that map both
+    /// channels to the same protocol error shape.
+    pub fn into_message(self) -> String {
+        match self {
+            ToolError::InvalidParams(message) | ToolError::Internal(message) => message,
+        }
+    }
+}
+
+fn internal(error: String) -> ToolError {
+    ToolError::Internal(error)
+}
+
+/// `list_databases`：列出连接服务器上的全部数据库。
+pub async fn list_databases(
+    host: &dyn ResourceExecutionHost,
+    connection_id: &str,
+) -> Result<String, ToolError> {
+    let output = runtime_reads::read_target_command(
+        host,
+        connection_id,
+        "list_databases",
+        serde_json::json!({}),
+    )
+    .await
+    .map_err(internal)?;
+    serde_json::to_string_pretty(&datazen_driver_api::parse_databases_from_command(&output))
+        .map_err(|error| internal(error.to_string()))
+}
+
+/// database 参数的默认库回退（契约语义「defaults to connection default」）。
+///
+/// schema catalog 命令（list_tables/get_table_schema）硬性要求 database
+/// 字符串；调用方缺席时读连接档案的默认库，档案也没有 → 参数类错误
+/// （调用方可补 database 重试），绝不猜一个库。
+async fn default_database(
+    host: &dyn ResourceExecutionHost,
+    connection_id: &str,
+    database: Option<String>,
+) -> Result<String, ToolError> {
+    match database {
+        Some(database) => Ok(database),
+        None => {
+            let (config, _, enabled) = host
+                .profile(connection_id)
+                .await
+                .map_err(|error| internal(error.to_string()))?;
+            if !enabled {
+                return Err(internal("Connection profile is disabled".into()));
+            }
+            config.database.ok_or_else(|| {
+                internal("the connection has no default database; pass database explicitly".into())
+            })
+        }
+    }
+}
+
+/// `list_tables`：列出数据库的表（名称、类型与行数）。
+pub async fn list_tables(
+    host: &dyn ResourceExecutionHost,
+    connection_id: &str,
+    database: Option<String>,
+    schema: Option<String>,
+) -> Result<String, ToolError> {
+    // 契约语义「database 缺席 → 连接默认库」（contract.rs 的 seed 注入
+    // 同源）：schema catalog 命令硬性要求 database 字符串，宿主在此
+    // 落默认库回退，两种形态（desktop/server）同一份规则。
+    let database = Some(default_database(host, connection_id, database).await?);
+    let output = runtime_reads::read_target_command(
+        host,
+        connection_id,
+        "list_tables",
+        serde_json::json!({ "database": database, "schema": schema }),
+    )
+    .await
+    .map_err(internal)?;
+    serde_json::to_string_pretty(&datazen_driver_api::parse_tables_from_command(&output))
+        .map_err(|error| internal(error.to_string()))
+}
+
+/// `search_tables`：按名称模式（大小写不敏感子串）搜表，带结果上限。
+///
+/// 返回 matched / totalMatches / totalTables 三元组——总数在截断前统计，
+/// 模型能据此判断还有多少没看到。
+pub async fn search_tables(
+    host: &dyn ResourceExecutionHost,
+    connection_id: &str,
+    database: Option<String>,
+    schema: Option<String>,
+    pattern: &str,
+    limit: Option<u64>,
+) -> Result<String, ToolError> {
+    let limit = limit.unwrap_or(20) as usize;
+    // 默认库回退同 list_tables（契约语义「defaults to connection default」）。
+    let database = Some(default_database(host, connection_id, database).await?);
+    let output = runtime_reads::read_target_command(
+        host,
+        connection_id,
+        "list_tables",
+        serde_json::json!({ "database": database, "schema": schema }),
+    )
+    .await
+    .map_err(internal)?;
+    let tables = datazen_driver_api::parse_tables_from_command(&output);
+    let pattern_lower = pattern.to_lowercase();
+    let matched: Vec<_> = tables
+        .iter()
+        .filter(|table| table.name.to_lowercase().contains(&pattern_lower))
+        .take(limit)
+        .collect();
+    let total_matches = tables
+        .iter()
+        .filter(|table| table.name.to_lowercase().contains(&pattern_lower))
+        .count();
+    serde_json::to_string_pretty(&serde_json::json!({
+        "matched": matched,
+        "totalMatches": total_matches,
+        "totalTables": tables.len(),
+        "pattern": pattern,
+    }))
+    .map_err(|error| internal(error.to_string()))
+}
+
+/// `query`：执行 SQL 并返回 JSON 结果。
+///
+/// 行数上限取 `resolve_query_limit`（默认 100，上限 50000）与执行设置的
+/// `apply_result_limit` 的交；SQL 先过权限档位分级（stdio 模式与 GUI 同
+/// 一条守卫，不是旁路）。档位拒绝是参数类错误（调用方可换语句重试），
+/// 执行失败是内部错误。
+pub async fn query(
+    host: &dyn ResourceExecutionHost,
+    connection_id: &str,
+    database: Option<String>,
+    schema: Option<String>,
+    sql: &str,
+    limit: Option<u32>,
+    mode: McpPermissionMode,
+    settings: &ExecutionSettings,
+) -> Result<String, ToolError> {
+    permission::check_sql_allowed(sql, mode).map_err(ToolError::InvalidParams)?;
+    let mut command_input = serde_json::json!({
+        "sql": sql,
+        "limit": resolve_query_limit(limit),
+    });
+    if let Some(database) = database {
+        command_input["database"] = serde_json::Value::String(database);
+    }
+    if let Some(schema) = schema {
+        command_input["schema"] = serde_json::Value::String(schema);
+    }
+    settings.apply_result_limit(&mut command_input);
+    let output = runtime_reads::read_target_command(host, connection_id, "query", command_input)
+        .await
+        .map_err(internal)?;
+    serde_json::to_string_pretty(&output).map_err(|error| internal(error.to_string()))
+}
+
+/// `get_schema`：表的完整结构（列、类型、主键、外键与索引），包一层数组。
+pub async fn get_schema(
+    host: &dyn ResourceExecutionHost,
+    connection_id: &str,
+    database: Option<String>,
+    schema: Option<String>,
+    table: &str,
+) -> Result<String, ToolError> {
+    // 默认库回退同 list_tables（get_table_schema 命令硬性要求 database）。
+    let database = Some(default_database(host, connection_id, database).await?);
+    let output = runtime_reads::read_target_command(
+        host,
+        connection_id,
+        "get_table_schema",
+        serde_json::json!({
+            "database": database,
+            "schema": schema,
+            "table": table,
+        }),
+    )
+    .await
+    .map_err(internal)?;
+    serde_json::to_string_pretty(&vec![output["schema"].clone()])
+        .map_err(|error| internal(error.to_string()))
+}
+
+/// `explain_query`：取 SQL 的执行计划（EXPLAIN）。
+pub async fn explain_query(
+    host: &dyn ResourceExecutionHost,
+    connection_id: &str,
+    database: Option<String>,
+    schema: Option<String>,
+    sql: &str,
+) -> Result<String, ToolError> {
+    let mut command_input = serde_json::json!({ "sql": sql });
+    if let Some(database) = database {
+        command_input["database"] = serde_json::Value::String(database);
+    }
+    if let Some(schema) = schema {
+        command_input["schema"] = serde_json::Value::String(schema);
+    }
+    let output = runtime_reads::read_target_command(host, connection_id, "explain", command_input)
+        .await
+        .map_err(internal)?;
+    serde_json::to_string_pretty(&output).map_err(|error| internal(error.to_string()))
+}
+
+/// `describe_table`：表的人类可读描述（`format_table_description`）。
+pub async fn describe_table(
+    host: &dyn ResourceExecutionHost,
+    connection_id: &str,
+    database: Option<String>,
+    schema: Option<String>,
+    table: &str,
+) -> Result<String, ToolError> {
+    // 默认库回退同 list_tables（get_table_schema 命令硬性要求 database）。
+    let database = Some(default_database(host, connection_id, database).await?);
+    let output = runtime_reads::read_target_command(
+        host,
+        connection_id,
+        "get_table_schema",
+        serde_json::json!({
+            "database": database,
+            "schema": schema,
+            "table": table,
+        }),
+    )
+    .await
+    .map_err(internal)?;
+    let schema = serde_json::from_value::<TableSchema>(output["schema"].clone())
+        .map_err(|error| internal(error.to_string()))?;
+    Ok(format_table_description(table, &schema))
+}
+
+/// `list_connections` 的脱敏目录条目（宿主装配，字段已脱敏）。
+pub struct RedactedConnection {
+    pub id: String,
+    pub name: String,
+    pub database_type: DatabaseType,
+    pub host: Option<String>,
+    pub database: Option<String>,
+}
+
+/// `list_connections` 的目录端口：连接的脱敏视图由持有目录的形态提供。
+///
+/// 桌面实现经 `require_connection_service` 读本地目录；web 形态读服务端
+/// 组织目录。白名单过滤不在此端口——它是 MCP server 实例的装配参数。
+#[async_trait::async_trait]
+pub trait RedactedConnectionSource: Send + Sync {
+    async fn list_redacted(&self) -> Result<Vec<RedactedConnection>, String>;
+}
+
+/// `list_connections`：配置的数据库连接（id、名称、类型与主机），
+/// 过连接白名单。
+pub async fn list_connections(
+    source: &dyn RedactedConnectionSource,
+    allowed_connection_ids: &[String],
+) -> Result<String, ToolError> {
+    let connections = source.list_redacted().await.map_err(internal)?;
+    let result: Vec<serde_json::Value> = connections
+        .into_iter()
+        .filter(|connection| {
+            allowlist::is_connection_allowed(&connection.id, allowed_connection_ids)
+        })
+        .map(|connection| {
+            serde_json::json!({
+                "id": connection.id,
+                "name": connection.name,
+                "databaseType": format!("{:?}", connection.database_type),
+                "host": connection.host,
+                "database": connection.database,
+            })
+        })
+        .collect();
+    serde_json::to_string_pretty(&result).map_err(|error| internal(format!("Error: {error}")))
+}
+
+/// `list_workflows` / `run_workflow` 的注册表端口。
+///
+/// 桌面实现是 `WorkflowRegistry` + 组织作用域；web 形态是服务端注册表。
+/// 作用域由实现持有——MCP 工具没有自己的请求上下文，宿主状态就是唯一
+/// 的组织身份来源。
+#[async_trait::async_trait]
+pub trait WorkflowCatalog: Send + Sync {
+    /// 用户可见的工作流清单（列表条目形态）。
+    async fn list(&self) -> Result<Vec<WorkflowListItem>, String>;
+    /// 按 id 取一个工作流定义；不存在时返回 `None`。
+    async fn get(&self, workflow_id: &str) -> Result<Option<WorkflowDefinition>, String>;
+}
+
+/// `list_workflows`：列出用户定义的工作流。
+pub async fn list_workflows(catalog: &dyn WorkflowCatalog) -> Result<String, ToolError> {
+    let workflows = catalog.list().await.map_err(internal)?;
+    serde_json::to_string_pretty(&workflows).map_err(|error| internal(error.to_string()))
+}
+
+/// `run_workflow`：按 id 执行一个工作流。
+///
+/// 不存在是参数类错误（调用方换 id 重试）；执行失败是内部错误。行数上限
+/// 沿用工作流查询的共享常量。
+pub async fn run_workflow(
+    catalog: &dyn WorkflowCatalog,
+    host: &dyn WorkflowHost,
+    workflow_id: &str,
+    connection_id: Option<&str>,
+    variables: &serde_json::Value,
+    mode: McpPermissionMode,
+) -> Result<String, ToolError> {
+    let workflow = catalog
+        .get(workflow_id)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ToolError::InvalidParams(format!("Workflow '{workflow_id}' not found")))?;
+    let result = crate::workflow::engine::executor::WorkflowExecutor::execute_with_options(
+        &workflow,
+        host,
+        connection_id,
+        variables,
+        crate::workflow::engine::executor::WorkflowExecuteOptions {
+            permission_mode: Some(mode),
+            query_row_limit: Some(crate::workflow::engine::executor::WORKFLOW_QUERY_ROW_LIMIT),
+        },
+    )
+    .await
+    .map_err(internal)?;
+    Ok(result.final_output)
+}
+
+#[cfg(test)]
+mod tests {
+    //! 行为钉子集中在 `workflow::application::runtime_reads_tests`（端口伪造
+    //! 与文案）；本层的增量是纯装配（JSON 组装与格式化），由宿主侧
+    //! golden 契约（`mcp_external_contract.json`）与既有集成旅程覆盖。
+}
+
+#[cfg(test)]
+mod real_multi_database_tests {
+    use super::*;
+    use crate::execution::domain::target::ExecutionTarget;
+    use crate::settings::ExecutionSettings;
+    use crate::workflow::application::resource_execution::PreparedExecution;
+    use crate::workflow::application::runtime_reads;
+    use crate::workflow::domain::error::WorkflowError;
+    use datazen_driver_api::{ConnectionConfig, DatabaseDriver};
+    use datazen_driver_postgres::PostgresDriver;
+    use std::sync::{Arc, Mutex};
+
+    struct PostgresProbeHost {
+        config: ConnectionConfig,
+        target: Mutex<Option<ExecutionTarget>>,
+    }
+
+    #[async_trait::async_trait]
+    impl ResourceExecutionHost for PostgresProbeHost {
+        async fn profile(&self, _id: &str) -> Result<(ConnectionConfig, u64, bool), WorkflowError> {
+            Ok((self.config.clone(), 1, true))
+        }
+
+        async fn driver(
+            &self,
+            _config: &ConnectionConfig,
+        ) -> Result<Arc<dyn DatabaseDriver>, WorkflowError> {
+            Ok(Arc::new(PostgresDriver::new()) as Arc<dyn DatabaseDriver>)
+        }
+
+        async fn safe_mode(&self) -> bool {
+            false
+        }
+
+        async fn prepare(
+            &self,
+            _connection_id: &str,
+            _revision: u64,
+            _command: &str,
+            target: ExecutionTarget,
+        ) -> Result<PreparedExecution, WorkflowError> {
+            *self.target.lock().expect("target lock") = Some(target);
+            Err(WorkflowError::Validation("prepare reached".into()))
+        }
+    }
+
+    fn host() -> PostgresProbeHost {
+        PostgresProbeHost {
+            config: ConnectionConfig {
+                id: "real-pg".into(),
+                name: "real-pg".into(),
+                database_type: "postgresql".into(),
+                host: None,
+                port: None,
+                database: None,
+                schema: None,
+                username: None,
+                password: None,
+                ssl_mode: Default::default(),
+                connection_timeout: 30,
+                max_pool_size: 10,
+                ssh_tunnel: None,
+                tunnel_kind: None,
+                tunnel_id: None,
+                http_proxy_tunnel: None,
+                websocket_tunnel: None,
+                color_tag: None,
+                group: None,
+                last_connected_at: None,
+                server_version: None,
+                options: None,
+                read_only: false,
+                pinned: false,
+            },
+            target: Mutex::new(None),
+        }
+    }
+
+    fn settings() -> ExecutionSettings {
+        ExecutionSettings {
+            limit_select_results: false,
+            query_result_limit: 100,
+            safe_mode: false,
+            connection_pool_size: 10,
+            mcp_disabled_tools: Vec::new(),
+            mcp_permission_mode: "safe_write".into(),
+            mcp_allowed_connection_ids: Vec::new(),
+            mcp_allowed_databases: Vec::new(),
+            mcp_allowed_namespaces: Vec::new(),
+            driver_settings: serde_json::Map::new(),
+            ai_strict_egress: false,
+        }
+    }
+
+    /// The real PostgreSQL driver has a multi-database shape. Without a
+    /// database, the shared runtime refuses the command before any network
+    /// access; this is the exact path the MCP null-default query used to hit.
+    #[tokio::test]
+    async fn real_postgres_rejects_a_query_without_a_database() {
+        let host = host();
+        let error = runtime_reads::read_target_command(
+            &host,
+            "real-pg",
+            "query",
+            serde_json::json!({ "sql": "SELECT 1" }),
+        )
+        .await
+        .expect_err("the real multi-database driver must reject a missing database");
+        assert!(
+            error.contains("has no database"),
+            "unexpected error: {error}"
+        );
+        assert!(host.target.lock().expect("target lock").is_none());
+    }
+
+    /// The MCP `query` use case injects the host-resolved default before the
+    /// real driver's missing-database guard. `prepare` is reached, so the
+    /// command is no longer refused for an absent database.
+    #[tokio::test]
+    async fn query_injects_resolved_defaults_before_the_real_driver_guard() {
+        let host = host();
+        let error = query(
+            &host,
+            "real-pg",
+            Some("postgres".into()),
+            Some("public".into()),
+            "SELECT 1",
+            None,
+            McpPermissionMode::SafeWrite,
+            &settings(),
+        )
+        .await
+        .expect_err("the probe host stops at prepare");
+        let message = error.into_message();
+        assert!(message.contains("prepare reached"), "{message}");
+
+        let target = host
+            .target
+            .lock()
+            .expect("target lock")
+            .clone()
+            .expect("prepare target");
+        assert_eq!(target.namespace.database.as_deref(), Some("postgres"));
+        assert_eq!(target.namespace.schema.as_deref(), Some("public"));
+    }
+}

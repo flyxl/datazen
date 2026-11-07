@@ -111,11 +111,7 @@ import { isDirectInvocation } from './lib/isDirectInvocation.mjs';
 
 import { spawnSync } from 'child_process';
 
-import {
-  buildWorkspaceIndex,
-  layerById,
-  runCargoMetadata,
-} from './lib/cargoWorkspace.mjs';
+import { buildWorkspaceIndex, layerById, runCargoMetadata } from './lib/cargoWorkspace.mjs';
 
 export const PREFIX = '[platform-crate-tests]';
 
@@ -123,11 +119,7 @@ export const PREFIX = '[platform-crate-tests]';
  * Layers whose crates must be unit-tested in CI. A crate appears here by
  * virtue of the directory it lives in, not by its name.
  */
-export const TESTED_LAYERS = Object.freeze([
-  'modules',
-  'infra',
-  'server',
-]);
+export const TESTED_LAYERS = Object.freeze(['modules', 'infra', 'server']);
 
 /**
  * Cargo target selectors that must also be tested, per crate, in a profile the
@@ -183,7 +175,7 @@ export const EXTRA_TARGETS = Object.freeze({});
 export const EXCLUDED_TEST_FEATURES = Object.freeze({
   webdriver:
     'E2E-only fault-injection seam (D5, modules/Cargo.toml: `webdriver = []`). ' +
-    'Its gates in modules/src are `cfg(any(test, all(debug_assertions, feature = "webdriver")))`, ' +
+    'Its gates in crates/datazen/src are `cfg(any(test, all(debug_assertions, feature = "webdriver")))`, ' +
     'so every cargo-test build compiles the seam in via cfg(test) with the feature off; ' +
     'the feature itself is only needed by the WDIO E2E binaries ' +
     '(pnpm tauri:build:webdriver), which CI never builds (maintainer decision ' +
@@ -193,12 +185,18 @@ export const EXCLUDED_TEST_FEATURES = Object.freeze({
 });
 
 /**
- * Feature profiles that must be exercised in addition to each crate's default
- * unit-test invocation. D1's settings slice is optional by design, so a default
- * test alone would compile only the empty module root and miss the real service.
+ * Feature profiles that must be **compiled** in addition to each crate's
+ * default unit-test invocation. D1's settings slice is optional by design, so
+ * a default test alone would compile only the empty module root and miss the
+ * real service.
+ *
+ * These legs are compile-isolation checks, not test runs: they carry
+ * `--no-run` (see {@link buildCargoArgv}), because under crates/datazen/src's pure
+ * feature-union gating every test function a leg would execute is already
+ * executed — identically — by the no-selector invocation.
  */
 export const FEATURE_TESTS = Object.freeze({
-  'datazen': Object.freeze([
+  datazen: Object.freeze([
     'settings',
     'ai',
     // `connection` exposes DTOs that use execution receipts, while execution
@@ -311,6 +309,37 @@ function assertFeatureAssumptions(crates) {
  * and let EXTRA_TARGETS stay empty until a target that refuses the debug
  * profile earns its way back in.
  *
+ * ## Why the feature-profile legs carry `--no-run` (changed from bare runs)
+ *
+ * crates/datazen/src gates features as a **pure union**: zero `cfg(not(feature = …))`
+ * and zero multi-feature `cfg(all(feature = …, feature = …))` combinations
+ * exist anywhere in that tree (rg-verified at this change; the same fact was
+ * rg-verified for the 2026-10-27 removal of the settings,ai,connection,
+ * named_views leg, see the tombstone in ci.yml). Under pure-union gating a
+ * test module enabled by feature X compiles to the same code whether or not
+ * any *other* feature is on, so every test function these legs executed was
+ * re-executed verbatim by the no-selector invocation — a strict execution
+ * subset, paying 7 lib-test runs per CI for zero additional signal.
+ *
+ * What the legs uniquely verify is **compilation under feature isolation**
+ * (a feature's code — including its `#[cfg(test)]` modules — referencing
+ * another feature's API compiles in the full run and only fails here). That
+ * signal is preserved byte-for-byte: `--no-run` builds exactly the same
+ * `--lib` test target cargo built before; only the execution is skipped.
+ *
+ * The rejected alternatives, recorded because each looks like an upgrade:
+ *   * **`cargo check --no-default-features --features X --tests`** looks
+ *     cheaper, but `--tests` also compiles every `tests/*.rs` integration
+ *     target — and 54 of datazen's 56 integration files carry no crate-level
+ *     feature gate (rg `^#!\[cfg` in crates/datazen/tests/), so e.g. a `settings`-only
+ *     leg would try to compile `workflow_block_refusal.rs` against an mcp-less
+ *     datazen and go red for a reason that is not a regression. `cargo check
+ *     --lib` without a test profile would also silently stop checking the
+ *     `#[cfg(test)]` modules — a weaker compile check than what runs today.
+ *   * **Deleting the legs outright** would lose the isolation signal above;
+ *     the whole point of this table is that the empty-module-root failure mode
+ *     is real (it is how D1 was caught).
+ *
  * @param {ReadonlyArray<{ name: string, features?: object }>} crates
  * @returns {string[][]}
  */
@@ -336,6 +365,10 @@ export function buildCargoArgv(crates) {
     for (const features of FEATURE_TESTS[name] ?? []) {
       featureInvocations.push([
         'test',
+        // Compile-only: same `--lib` target the leg always built, without the
+        // duplicated execution (see the doc comment above for the evidence
+        // that the execution added zero signal under pure-union gating).
+        '--no-run',
         '--no-default-features',
         '--features',
         features,
@@ -366,13 +399,7 @@ export function buildCargoArgv(crates) {
     ],
     ...featureInvocations,
     ...(releaseEntries.length > 0
-      ? [
-          [
-            'test',
-            '--release',
-            ...releaseEntries.flatMap(([name, args]) => ['-p', name, ...args]),
-          ],
-        ]
+      ? [['test', '--release', ...releaseEntries.flatMap(([name, args]) => ['-p', name, ...args])]]
       : []),
   ];
 }
@@ -416,7 +443,13 @@ function parseArgs(argv) {
     else throw new Error(`unknown argument: ${arg}`);
   }
   const fromEnv = process.env.ARCH_GUARD_REQUIRED_LAYERS;
-  if (fromEnv) args.requireLayers.push(...fromEnv.split(',').map((s) => s.trim()).filter(Boolean));
+  if (fromEnv)
+    args.requireLayers.push(
+      ...fromEnv
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    );
   return args;
 }
 
@@ -459,9 +492,7 @@ export function runCli({ argv = process.argv.slice(2), env = process.env } = {})
     return 1;
   }
 
-  const missing = args.requireLayers.filter(
-    (layerId) => !crates.some((c) => c.layer === layerId),
-  );
+  const missing = args.requireLayers.filter((layerId) => !crates.some((c) => c.layer === layerId));
   if (missing.length > 0) {
     err(
       `${PREFIX} ERROR required layer(s) have no crate: ${missing.join(', ')}. ` +

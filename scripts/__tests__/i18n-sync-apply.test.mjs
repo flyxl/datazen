@@ -68,10 +68,10 @@ let root;
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'datazen-i18n-sync-'));
-  mkdirSync(join(root, 'src/locales/en'), { recursive: true });
-  mkdirSync(join(root, 'src/locales/de'), { recursive: true });
-  writeFileSync(join(root, 'src/locales/en/query.ts'), EN_PACK);
-  writeFileSync(join(root, 'src/locales/de/query.ts'), LOCALE_PACK);
+  mkdirSync(join(root, 'packages/frontend/src/locales/en'), { recursive: true });
+  mkdirSync(join(root, 'packages/frontend/src/locales/de'), { recursive: true });
+  writeFileSync(join(root, 'packages/frontend/src/locales/en/query.ts'), EN_PACK);
+  writeFileSync(join(root, 'packages/frontend/src/locales/de/query.ts'), LOCALE_PACK);
 });
 
 afterEach(() => {
@@ -79,7 +79,8 @@ afterEach(() => {
 });
 
 /** Read the target pack back. */
-const readLocale = () => readFileSync(join(root, 'src/locales/de/query.ts'), 'utf-8');
+const readLocale = () =>
+  readFileSync(join(root, 'packages/frontend/src/locales/de/query.ts'), 'utf-8');
 
 /** The keys a source string declares, in order. */
 const keysOf = (source) => parseEntries(source).map((e) => e.key);
@@ -90,12 +91,7 @@ describe('i18n sync toolchain — the wrapped-value bug', () => {
     // declaration line would splice the new key between
     //   'pagination.estimateTooltip':
     // and its value, which is exactly what broke the file last round.
-    const plan = planInsertion(
-      EN_PACK,
-      LOCALE_PACK,
-      { [NEW_KEY]: NEW_VALUE },
-      false,
-    );
+    const plan = planInsertion(EN_PACK, LOCALE_PACK, { [NEW_KEY]: NEW_VALUE }, false);
     const source = plan.lines.join('\n');
     const entries = parseEntries(source);
     const tooltip = entries.find((e) => e.key === 'pagination.estimateTooltip');
@@ -111,12 +107,7 @@ describe('i18n sync toolchain — the wrapped-value bug', () => {
   });
 
   it('keeps the file syntactically valid after an insertion', () => {
-    const result = applyBatch(
-      root,
-      'de',
-      { 'query.ts': { [NEW_KEY]: NEW_VALUE } },
-      {},
-    );
+    const result = applyBatch(root, 'de', { 'query.ts': { [NEW_KEY]: NEW_VALUE } }, {});
     expect(result.conflicts).toEqual([]);
     expect(result.inserted).toEqual([NEW_KEY]);
     // The pack still declares every key exactly once, and the wrapped
@@ -127,7 +118,9 @@ describe('i18n sync toolchain — the wrapped-value bug', () => {
       'pagination.estimateTooltip',
       'filter.clear',
     ]);
-    expect(entries.find((e) => e.key === 'pagination.estimateTooltip').value).toContain('Geschätzte');
+    expect(entries.find((e) => e.key === 'pagination.estimateTooltip').value).toContain(
+      'Geschätzte',
+    );
     expect(entries.find((e) => e.key === NEW_KEY).value).toBe(NEW_VALUE);
   });
 
@@ -160,15 +153,16 @@ describe('i18n sync toolchain — idempotence', () => {
     expect(conflict.conflicts).toHaveLength(1);
     expect(conflict.conflicts[0]).toContain('already present with a different value');
     // The conflicting run wrote nothing.
-    expect(
-      parseEntries(readLocale()).find((e) => e.key === NEW_KEY).value,
-    ).toBe(NEW_VALUE);
+    expect(parseEntries(readLocale()).find((e) => e.key === NEW_KEY).value).toBe(NEW_VALUE);
 
-    const forced = applyBatch(root, 'de', { 'query.ts': { [NEW_KEY]: 'Verwerfen' } }, { force: true });
+    const forced = applyBatch(
+      root,
+      'de',
+      { 'query.ts': { [NEW_KEY]: 'Verwerfen' } },
+      { force: true },
+    );
     expect(forced.conflicts).toEqual([]);
-    expect(
-      parseEntries(readLocale()).find((e) => e.key === NEW_KEY).value,
-    ).toBe('Verwerfen');
+    expect(parseEntries(readLocale()).find((e) => e.key === NEW_KEY).value).toBe('Verwerfen');
   });
 
   it('rejects a key the English side does not have', () => {
@@ -181,7 +175,7 @@ describe('i18n sync toolchain — idempotence', () => {
 describe('i18n sync toolchain — the gate rules the tools encode', () => {
   it('treats stale as a byte comparison against English', () => {
     writeFileSync(
-      join(root, 'src/locales/de/query.ts'),
+      join(root, 'packages/frontend/src/locales/de/query.ts'),
       `/** Auto-split domain: query (de) */
 const pack = {
   'filter.filter': 'Filter',

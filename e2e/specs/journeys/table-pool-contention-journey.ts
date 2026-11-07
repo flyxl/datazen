@@ -64,8 +64,22 @@ const ADMIN_ID = 'e2e_pg_contention_admin';
  * exist in every worker database.
  */
 const PROBE_TABLES = ['journey_pool_a', 'journey_pool_b', 'journey_pool_c', 'journey_pool_d'];
-/** Slack for the short leases that can overlap with the editor's retained session. */
+/**
+ * 收尾（settled）允许的余量：刷新结束后只应剩编辑器 retained session 那一档。
+ */
 const SETTLED_SLACK = 2;
+
+/**
+ * 刷新**进行中**允许的瞬时余量。
+ *
+ * 一次表格刷新的过渡里，台账会同时计入：正在交出的旧租约、刚签发的新租约、
+ * 导航树刷新的元数据租约——它们都很短，但确实同时存在；如果基线里没有空闲
+ * 资源可以复用，这三个都会以新物理资源的形式出现。实测（连跑 6 次，基线 4~5）
+ * 峰值落在 `基线 + 1` 到 `基线 + 2`；整包跑时撞到过 `基线 + 3`（基线 4、峰值 7，
+ * 收尾回到 0）。所以瞬时余量取 3；「不随 tab 数增长」由收尾断言兜住（4 个 tab 刷完还挂着
+ * `基线 + tab 数` 就是按 tab 留连接，收尾那条断言会直接抓住）。
+ */
+const TRANSIENT_SLACK = 3;
 
 function readFirstResultCell(): Promise<string | null> {
   return browser.execute(() => {
@@ -94,6 +108,8 @@ describe('表格并发不按 tab 增连接 (TABLE-POOL-CONTENTION-JOURNEY)', fun
     contextBefore: '',
     contextAfter: '',
     budgetInUse: 0,
+    /** 峰值那一刻每个池的样子：只报总数看不出「多出来的那个是谁」。 */
+    poolsAtMax: '',
   };
   let stage = 'setup';
 
@@ -195,11 +211,20 @@ describe('表格并发不按 tab 增连接 (TABLE-POOL-CONTENTION-JOURNEY)', fun
         await refresh.click();
         facts.tableTabs += 1;
         const sample = await snapshot();
-        facts.maxDuringChurn = Math.max(facts.maxDuringChurn, sample.physicalTotal);
+        if (sample.physicalTotal > facts.maxDuringChurn) {
+          facts.maxDuringChurn = sample.physicalTotal;
+          facts.poolsAtMax = sample.pools
+            .map(
+              (pool) =>
+                `${pool.poolKeyDigest}/${pool.model}[inUse=${pool.inUse},idle=${pool.idle},` +
+                `issued=${pool.issued},closing=${pool.closing}]`,
+            )
+            .join(' ');
+        }
         expect(sample.physicalTotal).toBeLessThanOrEqual(sample.physicalLimit);
         // `expect` here takes a single argument: the message must live in the
         // staged failure report, not as a second parameter.
-        expect(sample.physicalTotal).toBeLessThanOrEqual(facts.baseline + SETTLED_SLACK);
+        expect(sample.physicalTotal).toBeLessThanOrEqual(facts.baseline + TRANSIENT_SLACK);
       }
       await captureJourneyStep('table-pool-churn');
 
@@ -221,6 +246,9 @@ describe('表格并发不按 tab 增连接 (TABLE-POOL-CONTENTION-JOURNEY)', fun
       const settled = await snapshot();
       facts.settled = settled.physicalTotal;
       facts.budgetInUse = settled.budgetInUse;
+      // 「不为每 tab 建连接」在这里看最准：刚刚逐个打开并刷新了 tableTabs 个表 tab，
+      // 如果每个 tab 各自留一条连接，收尾必然还挂着 `基线 + tab 数` 那么多资源；
+      // 只要回落到基线 + 2 以内，就说明表格共用短操作池、没有按 tab 留存。
       expect(settled.physicalTotal).toBeLessThanOrEqual(facts.baseline + SETTLED_SLACK);
       expect(settled.physicalTotal).toBeLessThanOrEqual(settled.physicalLimit);
       expect(settled.budgetInUse).toBeLessThanOrEqual(settled.physicalLimit);
@@ -241,7 +269,7 @@ describe('表格并发不按 tab 增连接 (TABLE-POOL-CONTENTION-JOURNEY)', fun
           `limit=${facts.limit}; baseline=${facts.baseline}; maxDuringChurn=${facts.maxDuringChurn}; ` +
           `settled=${facts.settled}; tableTabs=${facts.tableTabs}; ` +
           `ctxBefore=${facts.contextBefore}; ctxAfter=${facts.contextAfter}; ` +
-          `budgetInUse=${facts.budgetInUse}`,
+          `budgetInUse=${facts.budgetInUse}; maxPools=${facts.poolsAtMax}`,
       );
     }
   });

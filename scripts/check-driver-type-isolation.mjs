@@ -22,7 +22,7 @@
  *   - `check-platform-crate-boundaries.mjs` F-01 (`:96-110`) sets
  *     `allowedLayers: ['driver','driver-api']`. `LAYERS` in
  *     `scripts/lib/cargoWorkspace.mjs:66-76` has exactly ONE `driver` layer
- *     covering `packages/drivers/*`, so **every crate under that directory —
+ *     covering `crates/drivers/*`, so **every crate under that directory —
  *     every driver and the shared `http-support` implementation library alike —
  *     is the same layer, and F-01 explicitly permits driver → driver edges**.
  *     Counting the crates here is stated by population rather than by a fixed
@@ -32,7 +32,7 @@
  *     under "S1 ∩ S2" below.
  *
  * The consequence was a gap with no guard behind it: nothing stopped
- * `packages/drivers/postgres` from taking `use datazen_driver_redis::…`, or from
+ * `crates/drivers/postgres` from taking `use datazen_driver_redis::…`, or from
  * `#[path]`-including Redis's source outright.
  *
  * ---------------------------------------------------------------------------
@@ -41,7 +41,7 @@
  *
  * Driver selection in this repo is compile-time (`scripts/resolve-drivers.mjs`
  * injects one `driver-<id>` Cargo feature per registered driver and rewrites
- * `src-tauri/Cargo.toml`'s `<<driver-features>>` block), and each driver is its
+ * `crates/datazen-desktop/Cargo.toml`'s `<<driver-features>>` block), and each driver is its
  * own crate with its own version. That design only holds if a driver's shipped
  * code is a function of that driver alone. A cross-driver type edge breaks
  * three things at once:
@@ -75,7 +75,7 @@
  *     Cargo computes this; the guard only reads it.
  *   - **S2 · each crate's own Rust source** — whether the crate carries the
  *     driver contract marker `impl … DatabaseDriver for …`
- *     (`packages/driver-api/src/traits.rs:24`). This is what separates a
+ *     (`crates/datazen-driver-api/src/traits.rs:24`). This is what separates a
  *     *driver* from a shared support library, and it is read out of the files.
  *   - **S3 · `drivers-registry.json`** — the git-tracked build-time selection
  *     registry that `resolve-drivers.mjs` consumes, maintained by a completely
@@ -90,7 +90,7 @@
  * silent pass.
  *
  * The `S1 ∩ S2` split is not a convenience. Measured on this tree,
- * `packages/drivers/http-support` is a Cargo member under `packages/drivers/*`,
+ * `crates/drivers/http-support` is a Cargo member under `crates/drivers/*`,
  * has no `impl … DatabaseDriver for`, and is depended on by 10 drivers. It is
  * a *shared implementation library*, not a driver — the requirement is about
  * drivers not sharing types with each other, and a support library is exactly
@@ -116,7 +116,7 @@
  *     spelled in a `macro_rules!` body, in a `cfg_if!`, or behind a name that
  *     is not currently a dependency.
  *   - **T-03 · `#[path]` / `include!` resolution.** The repo's own idiom is to
- *     `#[path]`-include a shared template — `packages/drivers/postgres/tests/
+ *     `#[path]`-include a shared template — `crates/drivers/postgres/tests/
  *     real_driver_contract.rs:16` pulls in
  *     `../../http-support/tests/support/real_driver_contract.rs`. That shape
  *     produces **no Cargo edge at all**, so it is invisible to T-01 by
@@ -155,7 +155,7 @@ export const REGISTRY_PATH = 'drivers-registry.json';
 /**
  * The driver contract marker, and the only thing that makes a crate a driver.
  *
- * `packages/driver-api/src/traits.rs:24` declares `trait DatabaseDriver`, and
+ * `crates/datazen-driver-api/src/traits.rs:24` declares `trait DatabaseDriver`, and
  * every driver implements it for its own type: `postgres/src/postgres.rs:59`,
  * `clickhouse/src/clickhouse.rs:188`, `duckdb/src/duckdb.rs:125`,
  * `sqlite/src/sqlite.rs:181`. A shared helper library implements nothing, so
@@ -292,7 +292,11 @@ export function scanRust(source) {
         }
         i += 1;
       }
-      strings.push({ value: source.slice(open + 1, Math.max(open + 1, i - 1)), line: startLine, raw: false });
+      strings.push({
+        value: source.slice(open + 1, Math.max(open + 1, i - 1)),
+        line: startLine,
+        raw: false,
+      });
       countLines(start, i);
       blank(start, i);
       continue;
@@ -426,7 +430,7 @@ export function rustIdentOf(packageName) {
  *
  * Git drivers are deliberately not part of this. `kiwi` and `superset`
  * have no `path` and no Cargo manifest in a clean tree — they are cloned into
- * `packages/drivers/<id>/` at build time and are not workspace members, so
+ * `crates/drivers/<id>/` at build time and are not workspace members, so
  * there is nothing for cargo to report and nothing for this guard to compare.
  * They are named in the header as a known blind spot rather than silently
  * skipped, because a guard that quietly drops part of its subject set is the
@@ -483,7 +487,7 @@ export function checkDriverTypeIsolation(options) {
     );
   }
 
-  // --- S1 + S2: which crates under packages/drivers/* are drivers? ---------
+  // --- S1 + S2: which crates under crates/drivers/* are drivers? ---------
   const memberByRelDir = new Map();
   for (const member of index.members.values()) memberByRelDir.set(member.relDir, member);
 
@@ -496,12 +500,22 @@ export function checkDriverTypeIsolation(options) {
 
   for (const member of driverMembers) {
     if (!existsSync(resolve(root, member.relDir))) {
-      vacuous.push({ rule: 'T-01..T-03', driver: member.name, relDir: member.relDir, reason: 'absent' });
+      vacuous.push({
+        rule: 'T-01..T-03',
+        driver: member.name,
+        relDir: member.relDir,
+        reason: 'absent',
+      });
       continue;
     }
     const files = listRustFiles(root, member.relDir);
     if (files.length === 0) {
-      vacuous.push({ rule: 'T-01..T-03', driver: member.name, relDir: member.relDir, reason: 'empty' });
+      vacuous.push({
+        rule: 'T-01..T-03',
+        driver: member.name,
+        relDir: member.relDir,
+        reason: 'empty',
+      });
       continue;
     }
     const read = files.map((rel) => {
@@ -631,7 +645,8 @@ export function checkDriverTypeIsolation(options) {
     for (const [target, how] of reach) {
       if (target === driver.name) continue;
       if (!driverNameSet.has(target)) continue;
-      const kind = how.depth === 0 ? `${how.kind} dependency` : `transitive reach (depth ${how.depth})`;
+      const kind =
+        how.depth === 0 ? `${how.kind} dependency` : `transitive reach (depth ${how.depth})`;
       violations.push(
         `T-01: \`${driver.name}\` (${driver.relDir}) reaches driver \`${target}\` by ${kind}. ` +
           `不同 driver 不共享实现库类型 — a driver must own its own implementation types. ` +
@@ -806,7 +821,9 @@ export function runCli({ argv = process.argv.slice(2), env = process.env } = {})
   if (result.violations.length === 0 && result.errors.length === 0) {
     out(`${PREFIX} ok ${result.summary}`);
     for (const e of result.evaluated) {
-      out(`${PREFIX} ok ${e.rule} \`${e.driver}\`: ${e.files} .rs file(s), compared with ${e.comparedWith} peer(s)`);
+      out(
+        `${PREFIX} ok ${e.rule} \`${e.driver}\`: ${e.files} .rs file(s), compared with ${e.comparedWith} peer(s)`,
+      );
     }
   }
   return exitCodeFor(result);

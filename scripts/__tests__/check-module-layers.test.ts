@@ -102,10 +102,15 @@ describe('checkModuleLayers', () => {
   });
 
   it('guards the shared relation-metadata layer against importing its consumers', () => {
-    const rule = LAYER_RULES.find((r) => r.from === 'src/lib/relationMetadata');
+    const rule = LAYER_RULES.find((r) => r.from === 'packages/frontend/src/lib/relationMetadata');
     expect(rule).toBeDefined();
     expect(rule!.forbidden).toEqual(
-      expect.arrayContaining(['src/components', 'src/stores', 'src/windows', 'src/hooks']),
+      expect.arrayContaining([
+        'packages/frontend/src/components',
+        'packages/frontend/src/stores',
+        'packages/frontend/src/windows',
+        'packages/frontend/src/hooks',
+      ]),
     );
   });
 
@@ -114,14 +119,14 @@ describe('checkModuleLayers', () => {
     // trusting the rule table. Query editor modules import Host library helpers.
     const probe = {
       name: 'probe',
-      from: 'src/windows/connection/query',
-      forbidden: ['src/lib'],
+      from: 'packages/frontend/src/windows/connection/query',
+      forbidden: ['packages/frontend/src/lib'],
     };
     LAYER_RULES.push(probe);
     try {
       const { code, output } = runLocked();
       expect(code).toBe(1);
-      expect(output).toContain('src/lib');
+      expect(output).toContain('packages/frontend/src/lib');
       expect(output).toContain('probe');
     } finally {
       LAYER_RULES.pop();
@@ -134,8 +139,9 @@ describe('checkModuleLayers · @datazen/ui must stay a host-free leaf', () => {
     const rule = designSystemRule();
     expect(rule.forbidden).toEqual(
       expect.arrayContaining([
-        'src',
-        'packages/drivers',
+        'packages/frontend/src',
+        'packages/desktop/src',
+        'crates/drivers',
         'packages/driver-sdk',
         'packages/wapp-sdk',
         'packages/extension-points',
@@ -187,14 +193,14 @@ describe('checkModuleLayers · @datazen/ui must stay a host-free leaf', () => {
       expectedTarget: 'zustand…',
     },
     {
-      what: 'a relative climb back into the host src tree',
-      body: "import { useSettingsStore } from '../../../src/stores/settingsStore';\nexport const s = useSettingsStore;\n",
-      expectedTarget: 'src/stores/settingsStore',
+      what: 'a relative climb back into the host shared tree',
+      body: "import { useSettingsStore } from '../../../packages/frontend/src/stores/settingsStore';\nexport const s = useSettingsStore;\n",
+      expectedTarget: 'packages/frontend/src/stores/settingsStore',
     },
     {
       what: 'a relative climb into a driver package',
-      body: "import { redisMeta } from '../../drivers/redis/ui/shared/meta';\nexport default redisMeta;\n",
-      expectedTarget: 'packages/drivers/redis/ui/shared/meta',
+      body: "import { redisMeta } from '../../../crates/drivers/redis/ui/shared/meta';\nexport default redisMeta;\n",
+      expectedTarget: 'crates/drivers/redis/ui/shared/meta',
     },
   ];
 

@@ -103,7 +103,7 @@ class TreeSnapshot {
    * revert silently deleted 41 tracked files and reported `REVERT FAILED`
    * *after* the damage.
    *
-   * The test is "tracked", not "exists": `packages/drivers/*` is gitignored
+   * The test is "tracked", not "exists": `crates/drivers/*` is gitignored
    * because Git drivers are cloned there, so a probe directory under it is
    * legitimately created and removed on every run — and an abandoned one
    * survives an interrupted run without that making the next run unsafe.
@@ -155,7 +155,10 @@ function withLock(fn) {
     }
   }
   try {
-    writeFileSync(join(LOCK_DIR, 'owner.json'), JSON.stringify({ pid: process.pid, at: Date.now() }));
+    writeFileSync(
+      join(LOCK_DIR, 'owner.json'),
+      JSON.stringify({ pid: process.pid, at: Date.now() }),
+    );
     return fn();
   } finally {
     rmSync(LOCK_DIR, { recursive: true, force: true });
@@ -215,7 +218,7 @@ function addMemberDir(snapshot, rel, name, manifestBody) {
  *
  * `packages/runtime/Cargo.toml` is the edit target over any driver manifest on
  * purpose: `scripts/resolve-drivers.mjs` owns the placeholder sections under
- * `packages/drivers/*` and rewrites them during every build, so a probe that
+ * `crates/drivers/*` and rewrites them during every build, so a probe that
  * edited one would be racing a generator rather than testing the guard.
  *
  * @param table e.g. `dependencies` — never `dev-dependencies`; see above.
@@ -248,15 +251,13 @@ export function declaredInTable(text, name, table) {
   if (at === -1) return false;
   const body = text.slice(at).split('\n').slice(1);
   const end = body.findIndex((l) => l.startsWith('['));
-  return body
-    .slice(0, end === -1 ? body.length : end)
-    .some((l) => l.startsWith(`${name} = `));
+  return body.slice(0, end === -1 ? body.length : end).some((l) => l.startsWith(`${name} = `));
 }
 
 /**
  * Temporarily add a workspace member path.
  *
- * Required for anything outside `packages/drivers/*`, which is the only member
+ * Required for anything outside `crates/drivers/*`, which is the only member
  * entry written as a glob. Without this the crate is simply not a member,
  * `cargo metadata` never sees it, and the guard correctly reports the layer as
  * vacuous — which would look like a silent pass.
@@ -301,9 +302,7 @@ export function violationMentions(stdout, rule, crateName) {
   // The guard prefixes every line with `[check-platform-arch]` and separates the
   // rule id from the message with two spaces, so the match anchors on the
   // `VIOLATION <F-id> ` token rather than the start of the line.
-  return stdout
-    .split('\n')
-    .some((l) => l.includes(`VIOLATION ${rule} `) && l.includes(crateName));
+  return stdout.split('\n').some((l) => l.includes(`VIOLATION ${rule} `) && l.includes(crateName));
 }
 
 // ---------------------------------------------------------------------------
@@ -330,15 +329,15 @@ export const MUTATIONS = [
     title: 'a driver crate takes a dependency on datazen',
     crate: 'datazen-driver-arch-probe',
     apply(snapshot) {
-      // `packages/drivers/*` is a glob, so a new directory is a member with no
+      // `crates/drivers/*` is a glob, so a new directory is a member with no
       // edit to the root manifest at all.
       addMemberDir(
         snapshot,
-        'packages/drivers/zz-arch-probe',
+        'crates/drivers/zz-arch-probe',
         'datazen-driver-arch-probe',
-         `[dependencies]\ndatazen = { path = "${join(REPO_ROOT, 'modules')}" }\n`,
+        `[dependencies]\ndatazen = { path = "${join(REPO_ROOT, 'crates/datazen')}" }\n`,
       );
-       return () => readOrEmpty('packages/drivers/zz-arch-probe/Cargo.toml').includes('datazen');
+      return () => readOrEmpty('crates/drivers/zz-arch-probe/Cargo.toml').includes('datazen');
     },
   },
   {
@@ -349,11 +348,12 @@ export const MUTATIONS = [
     apply(snapshot, scratch) {
       addDependencyTo(
         snapshot,
-         'modules/Cargo.toml',
+        'crates/datazen/Cargo.toml',
         'dependencies',
         `tauri = { path = "${stubCrate('tauri', scratch)}" }`,
       );
-       return () => declaredInTable(readOrEmpty('modules/Cargo.toml'), 'tauri', 'dependencies');
+      return () =>
+        declaredInTable(readOrEmpty('crates/datazen/Cargo.toml'), 'tauri', 'dependencies');
     },
   },
   {
@@ -364,11 +364,12 @@ export const MUTATIONS = [
     apply(snapshot, scratch) {
       addDependencyTo(
         snapshot,
-         'modules/Cargo.toml',
+        'crates/datazen/Cargo.toml',
         'dependencies',
         `axum = { path = "${stubCrate('axum', scratch)}" }`,
       );
-       return () => declaredInTable(readOrEmpty('modules/Cargo.toml'), 'axum', 'dependencies');
+      return () =>
+        declaredInTable(readOrEmpty('crates/datazen/Cargo.toml'), 'axum', 'dependencies');
     },
   },
   {
@@ -379,11 +380,12 @@ export const MUTATIONS = [
     apply(snapshot, scratch) {
       addDependencyTo(
         snapshot,
-         'modules/Cargo.toml',
+        'crates/datazen/Cargo.toml',
         'dependencies',
         `react = { path = "${stubCrate('react', scratch)}" }`,
       );
-       return () => declaredInTable(readOrEmpty('modules/Cargo.toml'), 'react', 'dependencies');
+      return () =>
+        declaredInTable(readOrEmpty('crates/datazen/Cargo.toml'), 'react', 'dependencies');
     },
   },
   {
@@ -392,15 +394,24 @@ export const MUTATIONS = [
     title: 'the server workspace takes a dependency on a tauri* crate',
     crate: 'datazen-server',
     apply(snapshot, scratch) {
-      addMembers(snapshot, ['server']);
-      addMemberDir(
-        snapshot,
-        'server',
-        'datazen-server',
-        `[dependencies]\ntauri = { path = "${stubCrate('tauri', scratch)}" }\n`,
+      // `crates/datazen-server/` is a real package since WR-D1. Overwrite its manifest and
+      // lib root and back both up (the M7 pattern); do NOT register the
+      // package directory for removal and do NOT re-add it to members — it is
+      // already a workspace member, and a second `"server",` line would make
+      // the gate fail on a parse artifact instead of the tauri edge. The
+      // untouched `crates/datazen-server/src/http/…` tree compiles to nothing: the stub
+      // lib.rs declares no modules.
+      snapshot.backup('crates/datazen-server/Cargo.toml');
+      snapshot.backup('crates/datazen-server/src/lib.rs');
+      writeFileSync(
+        join(REPO_ROOT, 'crates/datazen-server/Cargo.toml'),
+        `[package]\nname = "datazen-server"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\ntauri = { path = "${stubCrate('tauri', scratch)}" }\n`,
       );
-      return () =>
-        readOrEmpty('Cargo.toml').includes('"server",') && readOrEmpty('server/Cargo.toml').includes('tauri =');
+      writeFileSync(
+        join(REPO_ROOT, 'crates/datazen-server/src/lib.rs'),
+        '// arch-guard probe\npub fn probe() {}\n',
+      );
+      return () => readOrEmpty('crates/datazen-server/Cargo.toml').includes('tauri =');
     },
   },
   {
@@ -447,20 +458,20 @@ export const MUTATIONS = [
       // *family* and a differently-named stub would let a family-matching bug
       // hide (same reasoning as the other stub crates here).
       //
-      // The probe is a **new member under `packages/drivers/*`** rather than an
+      // The probe is a **new member under `crates/drivers/*`** rather than an
       // edit to a real driver manifest: `scripts/resolve-drivers.mjs` owns the
-      // placeholder sections under `packages/drivers/*` and rewrites them
+      // placeholder sections under `crates/drivers/*` and rewrites them
       // during every build, so a probe that edited a real driver would be
       // racing a generator rather than testing the guard.
       addMemberDir(
         snapshot,
-        'packages/drivers/zz-arch-tauri-probe',
+        'crates/drivers/zz-arch-tauri-probe',
         'datazen-driver-arch-tauri-probe',
         `[dependencies]\ntauri = { path = "${stubCrate('tauri', scratch)}" }\n`,
       );
       return () =>
         declaredInTable(
-          readOrEmpty('packages/drivers/zz-arch-tauri-probe/Cargo.toml'),
+          readOrEmpty('crates/drivers/zz-arch-tauri-probe/Cargo.toml'),
           'tauri',
           'dependencies',
         );
@@ -483,13 +494,13 @@ export const MUTATIONS = [
       // exercises the manifest scan. A rule with two halves needs two proofs.
       addMemberDir(
         snapshot,
-        'packages/drivers/zz-arch-dormant-probe',
+        'crates/drivers/zz-arch-dormant-probe',
         'datazen-driver-arch-dormant-probe',
         `[dependencies]\ntauri = { path = "${stubCrate('tauri', scratch)}", optional = true }\n`,
       );
       return () =>
         declaredInTable(
-          readOrEmpty('packages/drivers/zz-arch-dormant-probe/Cargo.toml'),
+          readOrEmpty('crates/drivers/zz-arch-dormant-probe/Cargo.toml'),
           'tauri',
           'dependencies',
         );
@@ -598,7 +609,9 @@ function main() {
     baselineSnapshot.revert();
   }
   if (baseline.code !== 0) {
-    out('BASELINE FAILED — the guard is already red on the clean tree, so a red mutation proves nothing.');
+    out(
+      'BASELINE FAILED — the guard is already red on the clean tree, so a red mutation proves nothing.',
+    );
     process.stdout.write(`${baseline.stdout.split('\n').slice(-20).join('\n')}\n`);
     return 1;
   }

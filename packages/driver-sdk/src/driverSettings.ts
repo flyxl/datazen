@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import type { AppSettings } from '../../../src/types';
+import type { ExecutionSettings } from '@datazen/backend-client';
 
 export type DriverSettingsContribution = {
   driverId: string;
@@ -9,10 +9,10 @@ export type DriverSettingsContribution = {
 };
 
 export function mergeDriverSettings(
-  all: AppSettings['driverSettings'],
+  all: ExecutionSettings['driverSettings'],
   driverId: string,
   next: unknown,
-): AppSettings['driverSettings'] {
+): ExecutionSettings['driverSettings'] {
   return { ...all, [driverId]: next };
 }
 

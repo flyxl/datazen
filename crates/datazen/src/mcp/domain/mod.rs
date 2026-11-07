@@ -1,0 +1,26 @@
+//! MCP 领域层：连接白名单规则与权限词汇垫片。
+//!
+//! 规则全部是纯函数（判据只依赖入参与 `execution::domain::sql_guard`
+//! 的机制内核）——宿主（桌面 MCP server）与未来其他形态的 MCP 宿主
+//! 用同一份判据，不会出现「桌面拦了、别的形态放行」的分叉。
+//!
+//! 权限模式词汇（M1 前置刀）已归位 `execution::domain::permission`：
+//! 它是 workflow / ai / table_browsing / MCP 共同消费的执行分级
+//! 词汇，留在 mcp 域会形成 feature 环（mcp 不能依赖 workflow）。
+//! 此处保持旧路径再导出，宿主既有 import 零改动。
+
+pub mod allowlist;
+pub mod approval;
+pub mod batch;
+pub mod policy;
+pub mod sql_scope;
+
+pub use crate::execution::domain::permission;
+pub use allowlist::{ensure_connection_allowed, is_connection_allowed};
+pub use approval::{McpApprovalDecision, McpApprovalPort, McpApprovalRequest};
+pub use permission::{
+    check_sql_allowed, check_tool_call, is_resource_listed, is_tool_listed,
+    query_history_content_allowed, McpPermissionMode,
+};
+pub use policy::{McpCallPlan, McpToolPolicy};
+pub use sql_scope::{validate_sql_scope, SqlScopeDialect, SqlScopeTargets};

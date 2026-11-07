@@ -65,14 +65,14 @@ describe('i18n-key-collision-check', () => {
    * @returns {string} the directory written
    */
   const writeHostLocale = (locale, entries) => {
-    const dir = join(root, 'src/locales', locale);
+    const dir = join(root, 'packages/frontend/src/locales', locale);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'connection.ts'), dictSource(entries));
     return dir;
   };
 
   /**
-   * Write one driver locale pack under `packages/drivers/<id>/locales/`.
+   * Write one driver locale pack under `crates/drivers/<id>/locales/`.
    *
    * @param {string} driver
    * @param {Dict} enEntries
@@ -80,7 +80,7 @@ describe('i18n-key-collision-check', () => {
    * @returns {string} the locales directory written
    */
   const writeDriverPack = (driver, enEntries, extraLocales = {}) => {
-    const dir = join(root, 'packages/drivers', driver, 'locales');
+    const dir = join(root, 'crates/drivers', driver, 'locales');
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'en.ts'), dictSource(enEntries));
     for (const [code, entries] of Object.entries(extraLocales)) {
@@ -93,8 +93,8 @@ describe('i18n-key-collision-check', () => {
   /** @returns {ReturnType<typeof findKeyCollisions>} */
   const scan = () =>
     findKeyCollisions({
-      localesDir: join(root, 'src/locales'),
-      driversDir: join(root, 'packages/drivers'),
+      localesDir: join(root, 'packages/frontend/src/locales'),
+      driversDir: join(root, 'crates/drivers'),
     });
 
   /**
@@ -119,18 +119,26 @@ describe('i18n-key-collision-check', () => {
 
   describe('detects a duplicated key and names it', () => {
     it('reports the exact key when host and driver share one', () => {
-      writeHostLocale('en', { 'docView.insert': 'Insert document', 'mongo.insert': 'Insert document' });
+      writeHostLocale('en', {
+        'docView.insert': 'Insert document',
+        'mongo.insert': 'Insert document',
+      });
       writeDriverPack('mongodb', { 'mongo.insert': 'Insert' });
 
       const { collisions } = scan();
       expect(collisions.map((c) => c.key)).toEqual(['mongo.insert']);
       expect(collisions[0].driver).toBe('mongodb');
-      expect(collisions[0].hostFile).toContain(join('src', 'locales', 'en', 'connection.ts'));
+      expect(collisions[0].hostFile).toContain(
+        join('packages/frontend/src/locales', 'en', 'connection.ts'),
+      );
       expect(collisions[0].driverFile).toContain(join('mongodb', 'locales', 'en.ts'));
     });
 
     it('fails the gate with exit 1 and prints the offending key', () => {
-      writeHostLocale('en', { 'docView.insert': 'Insert document', 'mongo.insert': 'Insert document' });
+      writeHostLocale('en', {
+        'docView.insert': 'Insert document',
+        'mongo.insert': 'Insert document',
+      });
       writeDriverPack('mongodb', { 'mongo.insert': 'Insert' });
 
       const { code, err } = runGuard();
@@ -196,7 +204,9 @@ describe('i18n-key-collision-check', () => {
 
       const { code, err } = runGuard();
       expect(code).toBe(1);
-      expect(err).toContain("'shared.toolbar.save' is defined by BOTH the alpha and the beta driver");
+      expect(err).toContain(
+        "'shared.toolbar.save' is defined by BOTH the alpha and the beta driver",
+      );
       expect(err).toContain('more than one driver pack');
     });
 
@@ -269,7 +279,7 @@ describe('i18n-key-collision-check', () => {
   describe('positive control — an empty scan is never reported as clean', () => {
     it('exits 2 when there are no driver locale packs at all', () => {
       writeHostLocale('en', { 'mongo.insert': 'Insert document' });
-      mkdirSync(join(root, 'packages/drivers'), { recursive: true });
+      mkdirSync(join(root, 'crates/drivers'), { recursive: true });
 
       const { code, err } = runGuard();
       expect(code).toBe(2);
@@ -277,7 +287,7 @@ describe('i18n-key-collision-check', () => {
     });
 
     it('exits 2 when there are no host dictionaries at all', () => {
-      mkdirSync(join(root, 'src/locales'), { recursive: true });
+      mkdirSync(join(root, 'packages/frontend/src/locales'), { recursive: true });
       writeDriverPack('mongodb', { 'mongo.insert': 'Insert' });
 
       const { code, err } = runGuard();
@@ -340,7 +350,7 @@ describe('i18n-key-collision-check', () => {
     it('skips non-dictionary files at the src/locales root', () => {
       // builtinLocales.ts is generated and holds BUILTIN_LOCALE_LABELS, not
       // translations — reading it would invent keys nobody renders.
-      const dir = join(root, 'src/locales');
+      const dir = join(root, 'packages/frontend/src/locales');
       mkdirSync(dir, { recursive: true });
       writeFileSync(
         join(dir, 'builtinLocales.ts'),
@@ -372,8 +382,8 @@ describe('i18n-key-collision-check', () => {
   describe('the real repository', () => {
     it('has no key owned by both the host and a driver pack', () => {
       const result = findKeyCollisions({
-        localesDir: join(REPO_ROOT, 'src/locales'),
-        driversDir: join(REPO_ROOT, 'packages/drivers'),
+        localesDir: join(REPO_ROOT, 'packages/frontend/src/locales'),
+        driversDir: join(REPO_ROOT, 'crates/drivers'),
       });
 
       expect(

@@ -1,0 +1,342 @@
+//! Unified local-port tunnels for database connections.
+//!
+//! Drivers always connect to `127.0.0.1:<local_port>` when a tunnel is active.
+//! See `docs/architecture/backend/tunnel.md`.
+//!
+//! # 隧道定义走**端口**
+//!
+//! 「用隧道定义」（解引用 `tunnelId`）经 [`TunnelRepository`] 端口：隧道定义是独立
+//! 聚合，连接侧只存 id，解引用发生在**建连时**而不是打开表单时
+//! （[隧道 §4.1](../../docs/architecture/backend/tunnel.md#41-引用而非拷贝)）。
+//! 桌面实现是宿主 `DesktopRepository`（加密落盘 `{appData}/tunnels.json`）；web 形态由服务端
+//! host 实现。
+
+mod network_provider;
+
+pub use datazen::tunnel::{HttpProxyTunnel, WebSocketTunnel};
+
+pub use network_provider::{desktop_network_provider, DesktopTunnelHost, DesktopTunnelSource};
+
+/// Upstream-leg probes used by the standalone tunnel connectivity check: the
+/// HTTP-proxy / WebSocket `start` functions are lazy, so these perform the
+/// handshake that actually proves the endpoint is reachable.
+pub(crate) use datazen::tunnel::verify_http_proxy_upstream;
+pub(crate) use datazen::tunnel::verify_websocket_upstream;
+
+use datazen::execution::runtime::driver_registry::registry::DriverRegistry;
+use datazen::shared::scope::OrganizationScope;
+use datazen::tunnel::KnownHostsRepository;
+use datazen::tunnel::SshTunnel;
+use datazen::tunnel::TunnelRepository;
+use datazen_driver_api::{
+    ConnectionConfig, DriverError, HttpProxyTunnelConfig, TunnelKind, WebSocketTunnelConfig,
+};
+use std::sync::Arc;
+
+/// Runtime-owned tunnel associated with a live connection resource.
+pub enum Tunnel {
+    Ssh(SshTunnel),
+    HttpProxy(HttpProxyTunnel),
+    WebSocket(WebSocketTunnel),
+}
+
+impl Tunnel {
+    pub fn local_port(&self) -> u16 {
+        match self {
+            Self::Ssh(t) => t.local_port(),
+            Self::HttpProxy(t) => t.local_port(),
+            Self::WebSocket(t) => t.local_port(),
+        }
+    }
+}
+
+/// Resolve effective tunnel kind with backward compatibility for pre-tunnel_kind configs.
+pub fn resolve_tunnel_kind(config: &ConnectionConfig) -> TunnelKind {
+    if let Some(kind) = config.tunnel_kind {
+        return kind;
+    }
+    if config
+        .ssh_tunnel
+        .as_ref()
+        .map(|s| s.enabled)
+        .unwrap_or(false)
+    {
+        return TunnelKind::Ssh;
+    }
+    if config
+        .http_proxy_tunnel
+        .as_ref()
+        .map(|s| s.enabled)
+        .unwrap_or(false)
+    {
+        return TunnelKind::HttpProxy;
+    }
+    if config
+        .websocket_tunnel
+        .as_ref()
+        .map(|s| s.enabled)
+        .unwrap_or(false)
+    {
+        return TunnelKind::WebSocket;
+    }
+    TunnelKind::None
+}
+
+/// Start the tunnel required by `config`, if any.
+///
+/// On success with a tunnel, the returned [`ConnectionConfig`] has `host`/`port`
+/// rewritten to the local listener and tunnel config cleared so drivers dial loopback.
+///
+/// `known_hosts` 是宿主注入的**存储端口**实例：已知主机存在哪儿由实现方决定
+/// （桌面：`{appData}/ssh_known_hosts.json`）。
+pub async fn start_for_connection(
+    config: ConnectionConfig,
+    known_hosts: Arc<dyn KnownHostsRepository>,
+) -> Result<(ConnectionConfig, Option<Tunnel>), DriverError> {
+    let kind = resolve_tunnel_kind(&config);
+    match kind {
+        TunnelKind::None => Ok((config, None)),
+        TunnelKind::Ssh => start_ssh(config, known_hosts).await,
+        TunnelKind::HttpProxy => start_http_proxy(config).await,
+        TunnelKind::WebSocket => start_websocket(config).await,
+    }
+}
+
+/// Resolve a persisted tunnel reference without creating a runtime session.
+///
+/// 隧道定义经 [`TunnelRepository`] 端口取用：端口**不接受 connection id**——
+/// 解引用发生在建连时，调用方只拿 `tunnelId` 来。
+pub async fn resolve_saved_tunnel(
+    tunnels: &dyn TunnelRepository,
+    scope: &OrganizationScope,
+    mut config: ConnectionConfig,
+) -> Result<ConnectionConfig, DriverError> {
+    let Some(tunnel_id) = config.tunnel_id.as_ref().filter(|id| !id.is_empty()) else {
+        return Ok(config);
+    };
+    let saved = match tunnels.get(scope, tunnel_id).await {
+        Ok(saved) => saved,
+        Err(error) => {
+            return Err(DriverError::InvalidConfig(format!(
+                "tunnel id '{tunnel_id}' unavailable: {error}"
+            )));
+        }
+    };
+    let Some(saved) = saved else {
+        return Err(DriverError::InvalidConfig(format!(
+            "tunnel id '{tunnel_id}' not found"
+        )));
+    };
+    config.tunnel_kind = Some(saved.kind);
+    config.ssh_tunnel = saved.ssh;
+    config.http_proxy_tunnel = saved.http_proxy;
+    config.websocket_tunnel = saved.websocket;
+    Ok(config)
+}
+
+/// Test a connection directly through the tunnel repository / DriverRegistry, with no db session.
+pub async fn test_connection(
+    tunnels: &dyn TunnelRepository,
+    scope: &OrganizationScope,
+    known_hosts: &Arc<dyn KnownHostsRepository>,
+    registry: &DriverRegistry,
+    config: ConnectionConfig,
+) -> Result<datazen_driver_api::ServerInfo, DriverError> {
+    let (effective_config, _tunnel) = start_for_connection(
+        resolve_saved_tunnel(tunnels, scope, config).await?,
+        known_hosts.clone(),
+    )
+    .await?;
+    let driver = registry
+        .get(&effective_config.database_type)
+        .await
+        .ok_or_else(|| DriverError::DriverNotFound(effective_config.database_type.clone()))?;
+    driver.test_connection(&effective_config).await
+}
+
+async fn start_websocket(
+    config: ConnectionConfig,
+) -> Result<(ConnectionConfig, Option<Tunnel>), DriverError> {
+    let ws_cfg: WebSocketTunnelConfig = config
+        .websocket_tunnel
+        .clone()
+        .filter(|s| s.enabled)
+        .ok_or_else(|| {
+            DriverError::InvalidConfig(
+                "tunnelKind=websocket but websocketTunnel is missing or disabled".into(),
+            )
+        })?;
+
+    let remote_host = config.host.as_deref().ok_or_else(|| {
+        DriverError::InvalidConfig("WebSocket tunnel requires a database host".into())
+    })?;
+    let remote_port = config.port.ok_or_else(|| {
+        DriverError::InvalidConfig("WebSocket tunnel requires a database port".into())
+    })?;
+
+    tracing::info!(
+        url = %ws_cfg.url,
+        remote = %format!("{remote_host}:{remote_port}"),
+        mode = %ws_cfg.mode,
+        "Starting WebSocket tunnel"
+    );
+
+    let tunnel = WebSocketTunnel::start(&ws_cfg, remote_host, remote_port).await?;
+    Ok((
+        rewrite_to_local(config, tunnel.local_port()),
+        Some(Tunnel::WebSocket(tunnel)),
+    ))
+}
+
+async fn start_ssh(
+    config: ConnectionConfig,
+    known_hosts: Arc<dyn KnownHostsRepository>,
+) -> Result<(ConnectionConfig, Option<Tunnel>), DriverError> {
+    let ssh = config
+        .ssh_tunnel
+        .as_ref()
+        .filter(|s| s.enabled)
+        .ok_or_else(|| {
+            DriverError::InvalidConfig("tunnelKind=ssh but sshTunnel is missing or disabled".into())
+        })?;
+
+    let remote_host = config
+        .host
+        .as_deref()
+        .ok_or_else(|| DriverError::InvalidConfig("SSH tunnel requires a database host".into()))?;
+    let remote_port = config
+        .port
+        .ok_or_else(|| DriverError::InvalidConfig("SSH tunnel requires a database port".into()))?;
+
+    tracing::info!(
+        ssh_host = %ssh.host,
+        ssh_port = ssh.port,
+        remote = %format!("{remote_host}:{remote_port}"),
+        "Starting SSH tunnel"
+    );
+
+    let tunnel = SshTunnel::start(ssh, remote_host, remote_port, known_hosts).await?;
+    Ok((
+        rewrite_to_local(config, tunnel.local_port()),
+        Some(Tunnel::Ssh(tunnel)),
+    ))
+}
+
+async fn start_http_proxy(
+    config: ConnectionConfig,
+) -> Result<(ConnectionConfig, Option<Tunnel>), DriverError> {
+    let proxy: HttpProxyTunnelConfig = config
+        .http_proxy_tunnel
+        .clone()
+        .filter(|s| s.enabled)
+        .ok_or_else(|| {
+            DriverError::InvalidConfig(
+                "tunnelKind=httpProxy but httpProxyTunnel is missing or disabled".into(),
+            )
+        })?;
+
+    let remote_host = config.host.as_deref().ok_or_else(|| {
+        DriverError::InvalidConfig("HTTP proxy tunnel requires a database host".into())
+    })?;
+    let remote_port = config.port.ok_or_else(|| {
+        DriverError::InvalidConfig("HTTP proxy tunnel requires a database port".into())
+    })?;
+
+    tracing::info!(
+        proxy = %format!("{}://{}:{}", proxy.scheme, proxy.host, proxy.port),
+        remote = %format!("{remote_host}:{remote_port}"),
+        "Starting HTTP CONNECT tunnel"
+    );
+
+    let tunnel = HttpProxyTunnel::start(&proxy, remote_host, remote_port).await?;
+    Ok((
+        rewrite_to_local(config, tunnel.local_port()),
+        Some(Tunnel::HttpProxy(tunnel)),
+    ))
+}
+
+fn rewrite_to_local(mut config: ConnectionConfig, local_port: u16) -> ConnectionConfig {
+    config.host = Some("127.0.0.1".to_string());
+    config.port = Some(local_port);
+    // Prevent drivers / nested logic from trying to start another tunnel.
+    config.tunnel_kind = Some(TunnelKind::None);
+    config.ssh_tunnel = None;
+    config.http_proxy_tunnel = None;
+    config.websocket_tunnel = None;
+    config
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use datazen_driver_api::SshTunnelConfig;
+
+    fn base_config() -> ConnectionConfig {
+        ConnectionConfig {
+            id: "id".into(),
+            name: "n".into(),
+            database_type: "postgresql".into(),
+            host: Some("db.internal".into()),
+            port: Some(5432),
+            database: None,
+            schema: None,
+            username: None,
+            password: None,
+            ssl_mode: Default::default(),
+            connection_timeout: 30,
+            max_pool_size: 10,
+            ssh_tunnel: None,
+            tunnel_id: None,
+            http_proxy_tunnel: None,
+            websocket_tunnel: None,
+            tunnel_kind: None,
+            color_tag: None,
+            group: None,
+            last_connected_at: None,
+            server_version: None,
+            options: None,
+            read_only: false,
+            pinned: false,
+        }
+    }
+
+    #[test]
+    fn resolve_kind_prefers_explicit_tunnel_kind() {
+        let mut c = base_config();
+        c.tunnel_kind = Some(TunnelKind::HttpProxy);
+        c.ssh_tunnel = Some(SshTunnelConfig {
+            enabled: true,
+            host: "jump".into(),
+            port: 22,
+            username: "u".into(),
+            auth_method: "password".into(),
+            password: None,
+            private_key_path: None,
+            passphrase: None,
+            jump: None,
+        });
+        assert_eq!(resolve_tunnel_kind(&c), TunnelKind::HttpProxy);
+    }
+
+    #[test]
+    fn resolve_kind_falls_back_to_enabled_ssh() {
+        let mut c = base_config();
+        c.ssh_tunnel = Some(SshTunnelConfig {
+            enabled: true,
+            host: "jump".into(),
+            port: 22,
+            username: "u".into(),
+            auth_method: "password".into(),
+            password: None,
+            private_key_path: None,
+            passphrase: None,
+            jump: None,
+        });
+        assert_eq!(resolve_tunnel_kind(&c), TunnelKind::Ssh);
+    }
+
+    #[test]
+    fn resolve_kind_none_when_empty() {
+        assert_eq!(resolve_tunnel_kind(&base_config()), TunnelKind::None);
+    }
+}

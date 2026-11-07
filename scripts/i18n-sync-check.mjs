@@ -2,17 +2,17 @@
 /**
  * i18n-sync-check.mjs
  *
- * Compares English locale (en.ts) against all other locale files.
+ * Compares English locale (en.ts) against the non-English locales shipped in the app.
  * Reports missing keys and stale translations (unchanged since last tag).
  *
  * Two scopes, same contract (`en.ts` is the single source of truth):
  *   1. Host dictionaries — src/locales domain packs
- *   2. Driver-owned locale packs — packages/drivers/<id>/locales
+ *   2. Driver-owned locale packs — crates/drivers/<id>/locales
  *      (driver packs self-register into the shared @datazen/ui registry, so
  *      nothing else validates their completeness)
  *
  * Usage:
- *   node scripts/i18n-sync-check.mjs              # check all locales
+ *   node scripts/i18n-sync-check.mjs              # check shipped locales
  *   node scripts/i18n-sync-check.mjs --from v1.0   # diff from tag v1.0
  *   node scripts/i18n-sync-check.mjs --verbose      # show changed en values
  *
@@ -31,10 +31,11 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
-const localesDir = resolve(root, 'src/locales');
-const driversDir = resolve(root, 'packages/drivers');
+const localesDir = resolve(root, 'packages/frontend/src/locales');
+const driversDir = resolve(root, 'crates/drivers');
 
-const LOCALE_FILES = ['de', 'es', 'fr', 'ja', 'ko', 'pt-BR', 'ru', 'zh-TW', 'zh-CN'];
+const LOCALE_FILES = ['zh-CN'];
+const SHIPPED_DRIVER_LOCALE_FILES = ['en.ts', 'zh-CN.ts'];
 
 function extractKeys(filePath) {
   return extractHostKeysFromSources([readFileSync(filePath, 'utf-8')]);
@@ -96,9 +97,9 @@ function readPackKeys(filePath) {
 }
 
 /**
- * Every `packages/drivers/<id>/locales/` directory shipping an en.ts source.
+ * Every `crates/drivers/<id>/locales/` directory shipping an en.ts source.
  *
- * @param {string} dir absolute path of `packages/drivers`
+ * @param {string} dir absolute path of `crates/drivers`
  * @returns {Array<{ driver: string, dir: string }>} sorted by driver id
  */
 export function findDriverLocalePacks(dir) {
@@ -113,9 +114,9 @@ export function findDriverLocalePacks(dir) {
 }
 
 /**
- * Validate one driver locale pack: structural convention (an `index.ts`
- * side-effect module importing every language file, because that module *is*
- * the self-registration entry point) plus key completeness against `en.ts`.
+ * Validate the driver locale shipped in the app: `zh-CN` must be imported by
+ * the `index.ts` self-registration entry point and match `en.ts`. Other source
+ * locale files are retained but are not release targets.
  *
  * Pure reporting function — it returns the lines the CLI prints instead of
  * printing them, so both branches are unit-testable.
@@ -129,13 +130,22 @@ export function inspectDriverLocalePack(pack) {
   let structural = 0;
   let missing = 0;
 
+  const missingShippedFiles = SHIPPED_DRIVER_LOCALE_FILES.filter(
+    (name) => !existsSync(join(dir, name)),
+  );
+  if (missingShippedFiles.length > 0) {
+    lines.push(
+      `[driver.${driver}] shipped locale file(s) missing: ${missingShippedFiles.join(', ')}`,
+    );
+    structural += missingShippedFiles.length;
+  }
+
   const siblings = readdirSync(dir)
-    .filter((name) => name.endsWith('.ts') && name !== 'en.ts' && name !== 'index.ts')
+    .filter((name) => name === 'zh-CN.ts')
     .sort();
 
-  // Structural convention: an index.ts side-effect module must import every
-  // language file in the pack, otherwise the translations never reach the
-  // shared registry at runtime.
+  // The bundled locale must be imported by the driver's self-registration
+  // entry point. Source-only locales are intentionally ignored here.
   const indexPath = join(dir, 'index.ts');
   if (!existsSync(indexPath)) {
     lines.push(
@@ -187,7 +197,7 @@ export function inspectDriverLocalePack(pack) {
 /**
  * Scan every driver locale pack below `driversDir`.
  *
- * @param {string} driversDir absolute path of `packages/drivers`
+ * @param {string} driversDir absolute path of `crates/drivers`
  */
 export function checkDriverLocalePacks(driversDir) {
   const packs = findDriverLocalePacks(driversDir);
@@ -216,7 +226,7 @@ export function buildSyncReport({
   hostLocaleCount = LOCALE_FILES.length,
 }) {
   if (totalMissing === 0 && totalStale === 0 && totalStructural === 0) {
-    return { lines: ['All locale files are in sync with en.ts.'], exitCode: 0 };
+    return { lines: ['All shipped locale files are in sync with en.ts.'], exitCode: 0 };
   }
   return {
     lines: [
@@ -304,7 +314,7 @@ function getEnKeysAtRef(ref) {
   try {
     const paths = execFileSync(
       'git',
-      ['ls-tree', '-r', '--name-only', ref, '--', 'src/locales/en'],
+      ['ls-tree', '-r', '--name-only', ref, '--', 'packages/frontend/src/locales/en'],
       {
         cwd: root,
         encoding: 'utf-8',
@@ -313,7 +323,7 @@ function getEnKeysAtRef(ref) {
     )
       .split('\n')
       .filter((path) => path.endsWith('.ts'));
-    const sourcePaths = paths.length > 0 ? paths : ['src/locales/en.ts'];
+    const sourcePaths = paths.length > 0 ? paths : ['packages/frontend/src/locales/en.ts'];
     const sources = sourcePaths.map((path) =>
       execFileSync('git', ['show', `${ref}:${path}`], {
         cwd: root,
@@ -420,7 +430,7 @@ function runCli() {
     }
   }
 
-  // Driver-owned locale packs (packages/drivers/<id>/locales/) — see
+  // Driver-owned locale packs (crates/drivers/<id>/locales/) — see
   // checkDriverLocalePacks(): the host aggregates nothing anymore, so this
   // guard is the only automated completeness check on a driver pack.
   const driverScan = checkDriverLocalePacks(driversDir);

@@ -1,3 +1,13 @@
+# pnpm workspace。`packages/*` 含 desktop（桌面壳 datazen-desktop 前端，Rust 宿主
+# 在 crates/datazen-desktop）、web、frontend、ui、backend-client、driver-sdk、
+# extension-points、wapp-sdk；Rust crate 全部在 `crates/`（pnpm 会跳过）。
+# `crates/drivers/*` 当前是 Cargo crate，多数没有 package.json，pnpm 跳过；
+# 列在这里是为了驱动以后补上 package.json 时自动纳入。
+# 跨包解析走 package exports（form-split F6-c2 已退役 vite/tsconfig/vitest alias）。
+packages:
+  - packages/*
+  - crates/drivers/*
+
 allowBuilds:
   better-sqlite3: true
   esbuild: true

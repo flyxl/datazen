@@ -5,6 +5,14 @@
 export type { ExtensionPoint, CreateExtensionPointOptions } from './extensionPoints';
 export { createExtensionPoint, ExtensionRegistry, extensionRegistry } from './extensionPoints';
 export { useExtension, useIsExtensionEnhanced } from './useExtension';
+export {
+  registerWindowChrome,
+  useWindowChrome,
+  WindowChromeSlot,
+  windowChromeEP,
+  type WindowChromeComponent,
+  type WindowChromeProps,
+} from './windowChrome';
 export type {
   Disposable,
   ExtensionSubscription,

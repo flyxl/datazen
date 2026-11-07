@@ -7,15 +7,14 @@
  */
 import type { Dispatch, KeyboardEvent, RefObject, SetStateAction } from 'react';
 import type { PathPicker } from '@datazen/ui';
+import type { DatabaseType, SslMode } from '@datazen/extension-points';
 import type {
-  DatabaseType,
   SavedTunnel,
   SavedTunnelSummary,
   SshAuthMethod,
-  SslMode,
   TunnelKind,
   TunnelSource,
-} from '../../../../src/types';
+} from './tunnel';
 
 export interface ConnectionFormState {
   /** Edit state controls the credential-preservation hint in the host form. */

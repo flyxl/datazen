@@ -145,9 +145,9 @@ describe('Demo Recording', () => {
       const inv = (window as any).__TAURI_INTERNALS__.invoke.bind(
         (window as any).__TAURI_INTERNALS__,
       );
-      inv('get_settings')
+      inv('get_host_settings')
         .then((settings: Record<string, unknown>) =>
-          inv('save_settings', {
+          inv('save_host_settings', {
             settings: {
               ...settings,
               language: 'zh-CN',

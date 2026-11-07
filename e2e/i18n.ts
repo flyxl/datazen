@@ -4,7 +4,7 @@
  * Imports the zh-CN locale and provides a `t()` function so spec files
  * can reference UI text by key instead of hardcoding Chinese strings.
  */
-import zhCN from '../src/locales/zh-CN.js';
+import zhCN from '../packages/frontend/src/locales/zh-CN.js';
 
 type TranslationKey = keyof typeof zhCN;
 

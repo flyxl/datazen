@@ -38,8 +38,8 @@ function parseFrontmatter(raw) {
 }
 
 // ── Read all articles ──────────────────────────────────────────────
-const zhFiles = readdirSync(SEO_DIR).filter(f => f.endsWith('.zh-CN.md'));
-const enFiles = readdirSync(SEO_DIR).filter(f => f.endsWith('.en.md'));
+const zhFiles = readdirSync(SEO_DIR).filter((f) => f.endsWith('.zh-CN.md'));
+const enFiles = readdirSync(SEO_DIR).filter((f) => f.endsWith('.en.md'));
 const enMap = new Map();
 for (const f of enFiles) {
   const raw = readFileSync(join(SEO_DIR, f), 'utf-8');
@@ -57,7 +57,8 @@ for (const file of zhFiles.sort()) {
   const slug = meta.slug || basename(file, '.zh-CN.md');
 
   // Check for English translation
-  let enMeta = meta, enBody = body;
+  let enMeta = meta,
+    enBody = body;
   if (enMap.has(slug)) {
     const enRaw = enMap.get(slug);
     const parsed = parseFrontmatter(enRaw);
@@ -144,7 +145,7 @@ function buildZhPage(article) {
     <section class="page-head">
       <div class="wrap">
         <p class="breadcrumb">
-          <a href="index.html">首页</a> /
+          <a href="packages/desktop/index.html">首页</a> /
           <a href="blog.html">博客</a>
         </p>
         <h1>${escapeXml(title)}</h1>
@@ -218,7 +219,7 @@ function buildEnPage(article) {
     <section class="page-head">
       <div class="wrap">
         <p class="breadcrumb">
-          <a href="index.html">Home</a> /
+          <a href="packages/desktop/index.html">Home</a> /
           <a href="blog.html">Blog</a>
         </p>
         <h1>${escapeXml(title)}</h1>
@@ -247,7 +248,7 @@ ${htmlBody}
 function buildZhBlogList() {
   const items = articles
     .sort((a, b) => (b.meta.date || '').localeCompare(a.meta.date || ''))
-    .map(a => {
+    .map((a) => {
       const slug = a.meta.slug || basename(a.file, '.zh-CN.md');
       const title = a.meta.title || slug;
       const desc = a.meta.description || '';
@@ -288,7 +289,7 @@ function buildZhBlogList() {
     <section class="page-head">
       <div class="wrap">
         <p class="breadcrumb">
-          <a href="index.html">首页</a> / 博客
+          <a href="packages/desktop/index.html">首页</a> / 博客
         </p>
         <h1>博客</h1>
         <p>DataZen 官方博客：新功能发布、技术深度解析和使用指南。</p>
@@ -310,7 +311,7 @@ ${items}
 function buildEnBlogList() {
   const items = articles
     .sort((a, b) => (b.meta.date || '').localeCompare(a.meta.date || ''))
-    .map(a => {
+    .map((a) => {
       const slug = a.slug;
       const title = a.enMeta.title || a.meta.title || slug;
       const desc = a.enMeta.description || a.meta.description || '';
@@ -351,7 +352,7 @@ function buildEnBlogList() {
     <section class="page-head">
       <div class="wrap">
         <p class="breadcrumb">
-          <a href="index.html">Home</a> / Blog
+          <a href="packages/desktop/index.html">Home</a> / Blog
         </p>
         <h1>Blog</h1>
         <p>DataZen official blog: new features, deep dives, and usage guides.</p>
@@ -386,7 +387,20 @@ function formatDateZh(d) {
 
 function formatDateEn(d) {
   if (!d) return '';
-  const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const months = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
   const [y, m, day] = d.split('-');
   return `${months[parseInt(m) - 1]} ${parseInt(day)}, ${y}`;
 }

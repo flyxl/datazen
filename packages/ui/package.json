@@ -11,8 +11,17 @@
     ".": "./src/index.ts"
   },
   "sideEffects": false,
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^2.6.0",
+    "@tanstack/react-virtual": "^3.13.6",
+    "lucide-react": "^0.487.0"
+  },
   "peerDependencies": {
     "react": "^17.0.0 || ^18.0.0 || ^19.0.0",
     "react-dom": "^17.0.0 || ^18.0.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.2"
   }
 }

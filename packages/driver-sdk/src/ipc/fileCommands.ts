@@ -1,4 +1,4 @@
-import { transitionalPlatformServices, transitionalTransport } from './desktopBinding';
+import { requirePlatformServices, useBackendClient } from '@datazen/backend-client';
 
 export interface OpenedBinaryFile {
   fileName: string;
@@ -28,7 +28,7 @@ export const fileCommands = {
     filterName: string,
     extensions: string[],
   ) =>
-    transitionalPlatformServices().saveTextWithDialog({
+    requirePlatformServices().saveTextWithDialog({
       contents,
       defaultFileName,
       filterName,
@@ -42,7 +42,7 @@ export const fileCommands = {
     filterName: string,
     extensions: string[],
   ) =>
-    transitionalPlatformServices().saveBinaryWithDialog({
+    requirePlatformServices().saveBinaryWithDialog({
       dataBase64,
       defaultFileName,
       filterName,
@@ -51,7 +51,7 @@ export const fileCommands = {
 
   /** Open a binary file via native dialog; returns basename + base64 (no path). */
   openBase64WithDialog: (filterName: string, extensions: string[]) =>
-    transitionalTransport().call('open_base64_with_dialog', {
+    useBackendClient().transport.call('open_base64_with_dialog', {
       filterName,
       extensions,
     }) as Promise<OpenedBinaryFile | null>,

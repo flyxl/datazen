@@ -28,10 +28,7 @@ function parseLocaleTs(source) {
   const re = /'((?:\\'|[^'])*)':\s*'((?:\\'|[^'])*)'/g;
   let m;
   while ((m = re.exec(source)) !== null) {
-    entries.push([
-      m[1].replace(/\\'/g, "'"),
-      m[2].replace(/\\'/g, "'").replace(/\\n/g, '\n'),
-    ]);
+    entries.push([m[1].replace(/\\'/g, "'"), m[2].replace(/\\'/g, "'").replace(/\\n/g, '\n')]);
   }
   return entries;
 }
@@ -75,7 +72,9 @@ if (!locale || !lang) {
 }
 
 mkdirSync(OUT_DIR, { recursive: true });
-const enEntries = parseLocaleTs(readFileSync(resolve(ROOT, 'src/locales/en.ts'), 'utf-8'));
+const enEntries = parseLocaleTs(
+  readFileSync(resolve(ROOT, 'packages/frontend/src/locales/en.ts'), 'utf-8'),
+);
 const out = {};
 const BATCH = 20;
 let done = 0;
@@ -85,7 +84,11 @@ for (let i = 0; i < enEntries.length; i += BATCH) {
   await Promise.all(
     batch.map(async ([key, value]) => {
       // Keep brand names / OK / DataZen untranslated where identical is OK
-      if (value === 'OK' || value === 'DataZen' || /^[A-Z0-9\s\-_.:()⌘⌥&]+$/.test(value) && value.length < 4) {
+      if (
+        value === 'OK' ||
+        value === 'DataZen' ||
+        (/^[A-Z0-9\s\-_.:()⌘⌥&]+$/.test(value) && value.length < 4)
+      ) {
         out[key] = value;
         return;
       }

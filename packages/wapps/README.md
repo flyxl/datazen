@@ -95,8 +95,8 @@ packages/wapps/<publisher>.<name>/
 
 ## 守护测试
 
-- Rust：`cargo test -p datazen --lib plugins::fixture_tests` —— 所有包过 manifest 规则全集（规则 1–7）
-- Vitest：`src/lib/__tests__/extensionThemes.test.ts` —— 结构、token 契约、README 缺口说明防漂移
+- Rust：`cargo test -p datazen --lib wapps::fixture_tests` —— 所有包过 manifest 规则全集（规则 1–7）
+- Vitest：`src/lib/__tests__/wappThemes.test.ts` —— 结构、token 契约、README 缺口说明防漂移
 
 ## SDK
 

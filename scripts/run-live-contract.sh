@@ -9,7 +9,7 @@
 #
 #   scripts/run-live-contract.sh                 # postgres + mysql, strict
 #   scripts/run-live-contract.sh --dry-run       # resolve + report only
-#   scripts/run-live-contract.sh --crate datazen --lib-test workflow::live_acceptance
+#   scripts/run-live-contract.sh --crate datazen --lib-test workflow::live_acceptance_tests
 #   scripts/run-live-contract.sh --no-provision  # assume fixture DBs exist
 #   scripts/run-live-contract.sh --crate datazen-driver-postgres
 #   scripts/run-live-contract.sh --crate datazen-driver-postgres --test restore_apply_job
@@ -98,7 +98,7 @@ load_dotenv() {
 }
 
 FOUND_ANY_FILE=0
-for f in "$ROOT/.env" "$ROOT/.env.test" "$ROOT/packages/drivers/.env"; do
+for f in "$ROOT/.env" "$ROOT/.env.test" "$ROOT/crates/drivers/.env"; do
   if [ -f "$f" ]; then
     FOUND_ANY_FILE=1
     load_dotenv "$f"
@@ -106,7 +106,7 @@ for f in "$ROOT/.env" "$ROOT/.env.test" "$ROOT/packages/drivers/.env"; do
   fi
 done
 [ "$FOUND_ANY_FILE" = 1 ] || {
-  echo "no env file found; looked for .env, .env.test, packages/drivers/.env" >&2
+  echo "no env file found; looked for .env, .env.test, crates/drivers/.env" >&2
   exit 1
 }
 

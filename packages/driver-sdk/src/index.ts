@@ -5,7 +5,7 @@
  */
 
 // === Base SQL Generators & Dialect Profiles ===
-export { BaseTableSqlGenerator } from '../../../src/lib/sqlDialects/baseTableSql';
+export { BaseTableSqlGenerator } from './sqlDialects/baseTableSql';
 export type {
   SqlDialectStrategy,
   SqlDialectProfile,
@@ -15,26 +15,30 @@ export type {
   SqlParameterPolicy,
   SqlParameterOccurrence,
   SqlParameterStrategy,
-} from '../../../src/lib/sqlDialects/types';
+} from '@datazen/extension-points';
 
 // === Database metadata ===
 export type {
   DatabaseTypeMeta,
   ConnectionMode,
   KvWorkspaceCapabilities,
-} from '../../../src/lib/databaseMeta';
-export type { DatabaseObjectKind } from '../../../src/types';
+  DataGridCapabilities,
+} from '@datazen/extension-points';
+export type { DatabaseObjectKind } from '@datazen/extension-points';
+export * from './types/tunnel';
 export * from './types/schemaMetadata';
+export type { TableContextInput, TableSqlActionKind } from './types/connection-view';
 export { schemaClient } from './ipc/schemaClient';
 
 // === SQL function catalog types ===
-export type { FunctionEntry, FunctionParam } from '../../../src/lib/sqlFunctionTypes';
+export type { FunctionEntry, FunctionParam } from '@datazen/extension-points';
 
 // === Connection clipboard & form models ===
 export type {
   ConnectionClipboardFill,
   ConnectionClipboardParser,
-} from '../../../src/lib/connectionClipboardTypes';
+  MatchedConnectionClipboard,
+} from './types/connectionClipboard';
 export type { ConnectionFormState } from './types/connection-form';
 
 // === Key-Value (Redis) data contracts ===
@@ -90,6 +94,16 @@ export type {
 
 // === Native-dialog file IO (shared with driver UI) ===
 export { fileCommands } from './ipc/fileCommands';
+// Host event rail bridge (form-split F4): driver UI listens to host broadcasts
+// through the app's EventChannel port, never the host runtime directly.
+export {
+  bindHostEventListener,
+  listenHostEvent,
+  unbindHostEventListener,
+  type HostEventHandler,
+  type HostEventListener,
+  type HostEventPayload,
+} from './ipc/hostEventBridge';
 export type { OpenedBinaryFile } from './ipc/fileCommands';
 
 // === Driver settings helpers (pure) ===

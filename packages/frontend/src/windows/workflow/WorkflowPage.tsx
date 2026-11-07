@@ -1,0 +1,1391 @@
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from 'react';
+import {
+  AlertTriangle,
+  ArrowDownUp,
+  BarChart3,
+  BookOpen,
+  Clock,
+  FolderOpen,
+  History,
+  Pencil,
+  Play,
+  Plus,
+  RefreshCw,
+  Sparkles,
+  TableProperties,
+  Trash2,
+  Wand2,
+  X,
+} from 'lucide-react';
+import { WindowChromeSlot } from '@datazen/extension-points';
+import { StatusBar } from '../../components/StatusBar';
+import { DataTable } from '../../components/DataTable/DataTable';
+import type { ColumnDef } from '../../components/DataTable/TableHeader';
+import { ChartView } from '../../components/chart/ChartView';
+import { WorkflowChatPanel } from '../../components/ai/WorkflowChatPanel';
+import { isChartableResult } from '../../lib/chart/fieldInference';
+import { Button } from '../../components/ui/Button';
+import { ErrorBanner } from '../../components/ui/ErrorBanner';
+import { Select } from '../../components/ui/Select';
+import { LocaleDomainLoading } from '../../components/LocaleDomainLoading';
+import { useResizable } from '../../hooks/useResizable';
+import { useSettings } from '../../hooks/useSettings';
+import { useI18n } from '../../hooks/useI18n';
+import { useLocaleDomains } from '../../hooks/useLocaleDomains';
+import { useAiStore } from '../../stores/aiStore';
+import { useSettingsStore } from '../../stores/settingsStore';
+import { useWorkspacePanelStateStore } from '../../stores/workspacePanelStateStore';
+import { aiCommands } from '../../commands/ai';
+import { dashboardCommands } from '../../commands/dashboard';
+import { connectionCommands } from '../../commands/connection';
+import { listenCrossWindow } from '../../lib/crossWindowBus';
+import { openDashboardWindow } from '../../lib/windowManager';
+import { cn } from '../../lib/cn';
+import { showNativeContextMenu } from '../../lib/nativeContextMenu';
+import { buildWorkflowListContextMenuItems } from '../../lib/workflowListContextMenu';
+import { openDocsWindow } from '../../lib/windowManager';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { createEmptyDashboard } from '../dashboard/DashboardPanel';
+import { AddToDashboardDialog } from '../dashboard/AddToDashboardDialog';
+import { WorkflowForm, emptyDraft, connectionAllowsMultiDb } from './WorkflowForm';
+import type { WorkflowDraft } from './WorkflowForm';
+import { WorkflowYamlEditor } from './WorkflowYamlEditor';
+import { WorkflowEditorActionBar } from './WorkflowEditorActionBar';
+import { WorkflowHistoryList } from './WorkflowHistorySection';
+import {
+  StepStatusIcon,
+  extractStepColumnNames,
+  stepToStatementResult,
+} from './workflowStepResultUtils';
+import { workflowDefinitionToDraft, workflowDraftToDefinition } from './workflowDraftConvert';
+import { parseWorkflowYaml, validateWorkflowFields } from '../../lib/workflowYaml';
+import { draftToYamlObject, yamlObjectToDraft } from '../../lib/workflowDraftYaml';
+import YAML from 'yaml';
+import type {
+  HistoryListItem,
+  StepExecutionResult,
+  WorkflowDefinition,
+  WorkflowExecutionResult,
+  WorkflowListItem,
+} from '../../types';
+import type { ChartConfig } from '../../types/chart';
+import { Spinner } from '../../components/ui/Spinner';
+
+interface WorkflowPageProps {
+  embedded?: boolean;
+  onOpenDashboardInShell?: (dashboardId?: string, dashboardName?: string) => void;
+}
+
+import {
+  isEditPanel,
+  isHistoryDetailPanel,
+  isWorkflowRunPanel,
+  panelExecutionResult,
+  panelTabLabel,
+  type AiCreatePanel,
+  type EditPanel,
+  type HistoryDetailPanel,
+  type WorkflowPanel as Panel,
+  type WorkflowRunPanel,
+} from './workflowPanelGuards';
+
+let panelCounter = 0;
+function nextPanelId(prefix: string) {
+  panelCounter += 1;
+  return `${prefix}-${panelCounter}`;
+}
+
+/** Index of the step that lands in the first result tab for the given order. */
+function firstShownIndex(count: number, order: 'asc' | 'desc'): number {
+  return order === 'desc' ? Math.max(0, count - 1) : 0;
+}
+
+/**
+ * True when any query/command step's effective database (its own, or the
+ * inherited workflow default) is still missing for a multi-db connection.
+ */
+function stepNeedsDatabase(
+  steps: { type: string; connection?: string; database?: string }[],
+  draftConnection: string | undefined,
+  draftDatabase: string | undefined,
+  connections: { id: string; databaseType: string; database?: string }[],
+): boolean {
+  return steps.some((s) => {
+    if (s.type !== 'query' && s.type !== 'command') return false;
+    const connId = s.connection || draftConnection;
+    const conn = connId ? connections.find((c) => c.id === connId) : undefined;
+    if (!connectionAllowsMultiDb(conn)) return false;
+    const effectiveDatabase = s.database || draftDatabase;
+    return !effectiveDatabase;
+  });
+}
+
+// (WorkflowDraft types and emptyDraft moved to ./WorkflowForm.tsx)
+
+// ── Main Component ──────────────────────────────────────────────────
+
+export function WorkflowPage({
+  embedded = false,
+  onOpenDashboardInShell,
+}: Readonly<WorkflowPageProps>) {
+  const localesReady = useLocaleDomains(['workflows']);
+  useSettings();
+  const { t } = useI18n();
+  const [confirmWf, confirmWfDialog] = useConfirmDialog();
+
+  const workflows = useAiStore((s) => s.workflows);
+  const workflowsLoading = useAiStore((s) => s.workflowsLoading);
+  const loadWorkflows = useAiStore((s) => s.loadWorkflows);
+  const loadConfig = useAiStore((s) => s.loadConfig);
+  const executeWorkflow = useAiStore((s) => s.executeWorkflow);
+  const workflowError = useAiStore((s) => s.workflowError);
+  const clearWorkflowResult = useAiStore((s) => s.clearWorkflowResult);
+  const setupAiListeners = useAiStore((s) => s.setupEventListeners);
+  const loadSettings = useSettingsStore((s) => s.loadSettings);
+  const appSettings = useSettingsStore((s) => s.settings);
+  const updateSettings = useSettingsStore((s) => s.updateSettings);
+
+  // ── Workflow step result ordering (declared early: callbacks reference it) ──
+  const stepResultOrder: 'asc' | 'desc' = appSettings.workflowStepResultOrder ?? 'desc';
+  const toggleStepOrder = useCallback(() => {
+    void updateSettings({
+      workflowStepResultOrder: stepResultOrder === 'desc' ? 'asc' : 'desc',
+    });
+  }, [stepResultOrder, updateSettings]);
+
+  const savedSnapshot = useWorkspacePanelStateStore((s) => s.workflow);
+
+  const [panels, setPanels] = useState<Panel[]>(() => savedSnapshot?.panels ?? []);
+  const [activePanelId, setActivePanelId] = useState<string | null>(
+    () => savedSnapshot?.activePanelId ?? null,
+  );
+  const [activeStepIndex, setActiveStepIndex] = useState<number | null>(
+    () => savedSnapshot?.activeStepIndex ?? null,
+  );
+  const [operationError, setOperationError] = useState<string | null>(null);
+
+  const [workflowsDir, setWorkflowsDir] = useState('');
+  const [feedback, setFeedback] = useState('');
+  const [savedConnections, setSavedConnections] = useState<
+    { id: string; name: string; databaseType: string; database?: string }[]
+  >([]);
+  // Same multi-db rule the visual form uses, handed to `validateWorkflowFields`
+  // so YAML-mode saves are held to the identical standard.
+  const validationConnections = useMemo(
+    () =>
+      savedConnections.map((c) => ({
+        id: c.id,
+        requiresExplicitDatabase: connectionAllowsMultiDb(c),
+      })),
+    [savedConnections],
+  );
+  const [sideTab, setSideTab] = useState<'workflows' | 'history'>(
+    () => savedSnapshot?.sideTab ?? 'workflows',
+  );
+  const [historyItems, setHistoryItems] = useState<HistoryListItem[]>([]);
+  const [addToDashboardOpen, setAddToDashboardOpen] = useState(false);
+  const [variables, setVariables] = useState<Record<string, string>>(
+    () => savedSnapshot?.variables ?? {},
+  );
+
+  // Conditional render: the mode's DOM tree unmounts when switching away.
+  // Persist the recreatable view state (open panels/drafts, active tab, input
+  // values) so switching back restores it instead of starting over.
+  const viewStateRef = useRef({ panels, activePanelId, activeStepIndex, sideTab, variables });
+  viewStateRef.current = { panels, activePanelId, activeStepIndex, sideTab, variables };
+  useEffect(() => {
+    return () => {
+      useWorkspacePanelStateStore.getState().saveWorkflowSnapshot(viewStateRef.current);
+    };
+    // Mount-only cleanup: snapshot on unmount, not on every state change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const { size: sidebarWidth, handleRef: sidebarHandleRef } = useResizable({
+    direction: 'horizontal',
+    initialSize: 256,
+    minSize: 180,
+    maxSize: 420,
+    storageKey: 'workflow.sidebar',
+  });
+
+  const reloadConnections = useCallback(() => {
+    void connectionCommands.getConnections().then((conns) =>
+      setSavedConnections(
+        conns.map((c) => ({
+          id: c.id,
+          name: c.name,
+          databaseType: c.databaseType,
+          database: c.database,
+        })),
+      ),
+    );
+  }, []);
+
+  useEffect(() => {
+    void loadSettings();
+    void loadConfig();
+    void loadWorkflows();
+    void aiCommands.workflowGetDir().then(setWorkflowsDir);
+    reloadConnections();
+    const cleanup = setupAiListeners();
+    return () => {
+      void cleanup.then((fn) => fn());
+    };
+  }, [loadSettings, loadConfig, loadWorkflows, setupAiListeners, reloadConnections]);
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    listenCrossWindow('datazen:connections-changed', reloadConnections).then((fn) => {
+      cleanup = fn;
+    });
+    return () => cleanup?.();
+  }, [reloadConnections]);
+
+  const loadHistory = useCallback(async () => {
+    const items = await aiCommands.workflowHistoryList();
+    setHistoryItems(items);
+  }, []);
+
+  useEffect(() => {
+    if (sideTab === 'history') void loadHistory();
+  }, [sideTab, loadHistory]);
+
+  const activePanel = panels.find((p) => p.id === activePanelId) ?? null;
+
+  // ── Panel operations ──────────────────────────────────────────────
+
+  const openRunPanel = useCallback(
+    (workflow: WorkflowListItem) => {
+      const existing = panels.find((p) => p.type === 'run' && p.workflowId === workflow.id);
+      if (existing) {
+        setActivePanelId(existing.id);
+        return;
+      }
+      const panel: WorkflowRunPanel = {
+        type: 'run',
+        id: nextPanelId('wf'),
+        workflowId: workflow.id,
+        workflowName: workflow.name,
+        startedAt: new Date().toISOString(),
+        result: null,
+        isExecuting: false,
+      };
+      setPanels((prev) => [...prev, panel]);
+      setActivePanelId(panel.id);
+      setActiveStepIndex(null);
+      clearWorkflowResult();
+    },
+    [panels, clearWorkflowResult],
+  );
+
+  const openHistoryPanel = useCallback(
+    async (historyId: string, workflowName: string) => {
+      const existing = panels.find((p) => isHistoryDetailPanel(p) && p.historyId === historyId);
+      if (existing) {
+        setActivePanelId(existing.id);
+        setActiveStepIndex(
+          isHistoryDetailPanel(existing) && existing.result.steps.length > 0
+            ? firstShownIndex(existing.result.steps.length, stepResultOrder)
+            : null,
+        );
+        return;
+      }
+      try {
+        const entry = await aiCommands.workflowHistoryGet(historyId);
+        const panel: HistoryDetailPanel = {
+          type: 'history',
+          id: nextPanelId('hist'),
+          historyId,
+          workflowName,
+          createdAt: entry.createdAt,
+          result: entry.result,
+        };
+        setPanels((prev) => [...prev, panel]);
+        setActivePanelId(panel.id);
+        setActiveStepIndex(
+          entry.result.steps.length > 0
+            ? firstShownIndex(entry.result.steps.length, stepResultOrder)
+            : null,
+        );
+      } catch (e) {
+        setFeedback(String(e));
+      }
+    },
+    [panels, stepResultOrder],
+  );
+
+  const closePanel = useCallback((panelId: string) => {
+    setPanels((prev) => {
+      const idx = prev.findIndex((p) => p.id === panelId);
+      const next = prev.filter((p) => p.id !== panelId);
+      setActivePanelId((current) => {
+        if (current !== panelId) return current;
+        if (next.length === 0) return null;
+        return next[Math.min(idx, next.length - 1)].id;
+      });
+      return next;
+    });
+  }, []);
+
+  const updateEditDraft = useCallback((panelId: string, draft: WorkflowDraft) => {
+    setPanels((prev) =>
+      prev.map((p): Panel => {
+        if (p.id !== panelId || p.type !== 'edit') return p;
+        return { ...p, draft };
+      }),
+    );
+  }, []);
+
+  const updateEditYaml = useCallback((panelId: string, yamlText: string) => {
+    setPanels((prev) =>
+      prev.map((p): Panel => {
+        if (p.id !== panelId || p.type !== 'edit') return p;
+        return { ...p, yamlText };
+      }),
+    );
+  }, []);
+
+  const setEditMode = useCallback(
+    (panelId: string, editorMode: 'visual' | 'yaml') => {
+      setPanels((prev) =>
+        prev.map((p): Panel => {
+          if (p.id !== panelId || p.type !== 'edit') return p;
+          if (p.editorMode === editorMode) return p;
+
+          if (editorMode === 'yaml') {
+            return {
+              ...p,
+              editorMode,
+              yamlText: YAML.stringify(draftToYamlObject(p.draft)),
+            };
+          }
+
+          try {
+            const parsed = parseWorkflowYaml(p.yamlText);
+            const missing = validateWorkflowFields(parsed, validationConnections);
+            if (missing) {
+              setOperationError(t('workflows.editor.invalidYamlField', { field: missing }));
+              return p;
+            }
+            return {
+              ...p,
+              editorMode,
+              draft: yamlObjectToDraft(parsed),
+            };
+          } catch (e) {
+            setOperationError(t('workflows.editor.parseError', { error: String(e) }));
+            return p;
+          }
+        }),
+      );
+    },
+    [t],
+  );
+
+  // ── Workflow CRUD ─────────────────────────────────────────────────
+
+  const handleSelectWorkflow = useCallback(
+    (workflow: WorkflowListItem) => {
+      openRunPanel(workflow);
+      const defaults: Record<string, string> = {};
+      for (const v of workflow.variables) {
+        defaults[v.name] = v.default != null ? String(v.default) : '';
+      }
+      setVariables(defaults);
+    },
+    [openRunPanel],
+  );
+
+  const runWorkflowInPanel = useCallback(
+    async (panelId: string, workflowId: string, vars: Record<string, string>) => {
+      setPanels((prev) =>
+        prev.map((p): Panel => {
+          if (p.id !== panelId || p.type !== 'run') return p;
+          return { ...p, isExecuting: true };
+        }),
+      );
+      setActiveStepIndex(null);
+
+      try {
+        await executeWorkflow({ workflowId, variables: vars });
+        const result = useAiStore.getState().workflowExecutionResult;
+        setPanels((prev) =>
+          prev.map((p): Panel => {
+            if (p.id !== panelId || p.type !== 'run') return p;
+            return { ...p, result, isExecuting: false };
+          }),
+        );
+        if (result && result.steps.length > 0) {
+          setActiveStepIndex(firstShownIndex(result.steps.length, stepResultOrder));
+        }
+      } catch {
+        setPanels((prev) =>
+          prev.map((p): Panel => {
+            if (p.id !== panelId || p.type !== 'run') return p;
+            return { ...p, isExecuting: false };
+          }),
+        );
+      }
+      void loadHistory();
+    },
+    [executeWorkflow, loadHistory, stepResultOrder],
+  );
+
+  const handleExecute = useCallback(async () => {
+    if (!activePanel || !isWorkflowRunPanel(activePanel)) return;
+    await runWorkflowInPanel(activePanel.id, activePanel.workflowId, variables);
+  }, [activePanel, variables, runWorkflowInPanel]);
+
+  const handleDelete = async (workflowId: string) => {
+    const confirmed = await confirmWf({
+      title: t('workflows.delete'),
+      message: t('workflows.deleteConfirm'),
+      kind: 'warning',
+    });
+    if (!confirmed) return;
+    try {
+      await aiCommands.workflowDelete(workflowId);
+      setPanels((prev) => prev.filter((p) => !(p.type === 'run' && p.workflowId === workflowId)));
+      void loadWorkflows();
+    } catch (e) {
+      setOperationError(t('workflows.operationFailed', { error: String(e) }));
+    }
+  };
+
+  const handleReload = useCallback(async () => {
+    await aiCommands.workflowReload();
+    void loadWorkflows();
+  }, [loadWorkflows]);
+
+  const handleOpenDir = useCallback(async () => {
+    try {
+      const { settingsCommands } = await import('../../commands/settings');
+      await settingsCommands.openWorkflowsDir();
+    } catch {
+      /* browser mode */
+    }
+  }, []);
+
+  const openEditPanel = useCallback(
+    async (editingId: string | null, draft: WorkflowDraft) => {
+      const existing = panels.find((p) => isEditPanel(p) && p.editingId === editingId);
+      if (existing) {
+        setActivePanelId(existing.id);
+        return;
+      }
+      let yamlText = '';
+      try {
+        if (editingId) {
+          yamlText = await aiCommands.workflowGetYaml(editingId);
+        } else {
+          yamlText = YAML.stringify({
+            id: draft.id,
+            name: draft.name,
+            description: draft.description,
+            variables: [],
+            steps: [{ type: 'query', id: 'step-1', sql: 'SELECT 1' }],
+          });
+        }
+      } catch {
+        yamlText = YAML.stringify({
+          id: draft.id || 'new-workflow',
+          name: draft.name || 'New Workflow',
+          description: draft.description,
+          steps: [{ type: 'query', id: 'step-1', sql: 'SELECT 1' }],
+        });
+      }
+      const panel: EditPanel = {
+        type: 'edit',
+        id: nextPanelId('edit'),
+        editingId,
+        draft,
+        editorMode: 'visual',
+        yamlText,
+      };
+      setPanels((prev) => [...prev, panel]);
+      setActivePanelId(panel.id);
+    },
+    [panels],
+  );
+
+  const handleEdit = async (workflowId: string) => {
+    try {
+      const workflow: WorkflowDefinition = await aiCommands.workflowGet(workflowId);
+      await openEditPanel(workflowId, workflowDefinitionToDraft(workflow));
+    } catch (e) {
+      setFeedback(String(e));
+    }
+  };
+
+  const handleCreate = () => {
+    void openEditPanel(null, emptyDraft());
+  };
+
+  const handleAiCreate = useCallback(() => {
+    const existing = panels.find((p) => p.type === 'ai-create');
+    if (existing) {
+      setActivePanelId(existing.id);
+      return;
+    }
+    const panel: AiCreatePanel = { type: 'ai-create', id: nextPanelId('ai') };
+    setPanels((prev) => [...prev, panel]);
+    setActivePanelId(panel.id);
+  }, [panels]);
+
+  const handleSave = useCallback(
+    async (panelId: string, d: WorkflowDraft) => {
+      try {
+        await aiCommands.workflowSave(workflowDraftToDefinition(d));
+        closePanel(panelId);
+        setFeedback(t('workflows.saved'));
+        setTimeout(() => setFeedback(''), 2000);
+        void loadWorkflows();
+      } catch (e) {
+        setFeedback(String(e));
+      }
+    },
+    [closePanel, t, loadWorkflows, validationConnections],
+  );
+
+  const handleSaveYaml = useCallback(
+    async (panelId: string, yamlText: string) => {
+      try {
+        const parsed = parseWorkflowYaml(yamlText);
+        const missing = validateWorkflowFields(parsed, validationConnections);
+        if (missing) {
+          setFeedback(t('workflows.yaml.missingField', { field: missing }));
+          return;
+        }
+        await aiCommands.workflowSaveYaml(yamlText);
+        closePanel(panelId);
+        setFeedback(t('workflows.saved'));
+        setTimeout(() => setFeedback(''), 2000);
+        void loadWorkflows();
+      } catch (e) {
+        setFeedback(String(e));
+      }
+    },
+    [closePanel, t, loadWorkflows, validationConnections],
+  );
+
+  const handleClearHistory = async () => {
+    const ok = await confirmWf({
+      title: t('workflows.history.clear'),
+      message: t('workflows.history.clearConfirm'),
+      kind: 'warning',
+    });
+    if (!ok) return;
+    await aiCommands.workflowHistoryClear();
+    setHistoryItems([]);
+  };
+
+  // ── Current panel result ──────────────────────────────────────────
+
+  const currentResult: WorkflowExecutionResult | null = useMemo(() => {
+    if (!activePanel) return null;
+    if (activePanel.type === 'history') return activePanel.result;
+    if (activePanel.type === 'run') return activePanel.result;
+    return null;
+  }, [activePanel]);
+
+  const currentStep =
+    currentResult && activeStepIndex != null ? currentResult.steps[activeStepIndex] : null;
+  const currentWorkflow = useMemo(() => {
+    if (!activePanel || !isWorkflowRunPanel(activePanel)) return null;
+    return workflows.find((w) => w.id === activePanel.workflowId) ?? null;
+  }, [activePanel, workflows]);
+  const isExecuting =
+    activePanel && isWorkflowRunPanel(activePanel) ? activePanel.isExecuting : false;
+
+  const stepIndices = useMemo(() => {
+    const steps = currentResult?.steps;
+    if (!steps || steps.length === 0) return [] as number[];
+    const idx = Array.from({ length: steps.length }, (_, i) => i);
+    if (stepResultOrder === 'desc') idx.reverse(); // last step first
+    return idx;
+  }, [currentResult, stepResultOrder]);
+
+  const handleAddToDashboardConfirm = useCallback(
+    async (dashboardId: string | 'new', newName?: string) => {
+      if (!activePanel || !isWorkflowRunPanel(activePanel)) return;
+      setAddToDashboardOpen(false);
+      try {
+        let targetId = dashboardId;
+        if (dashboardId === 'new') {
+          const board = createEmptyDashboard(
+            newName?.trim() || t('workflows.dashboard.defaultName'),
+          );
+          await dashboardCommands.saveDashboard(board);
+          targetId = board.id;
+        }
+        const created = await dashboardCommands.createWidgetFromWorkflow({
+          dashboardId: targetId,
+          workflowId: activePanel.workflowId,
+          title: activePanel.workflowName,
+          viewMode: 'table',
+        });
+        if (embedded && onOpenDashboardInShell) {
+          onOpenDashboardInShell(created.dashboard.id, created.dashboard.name);
+        } else {
+          openDashboardWindow(created.dashboard.id, created.dashboard.name);
+        }
+      } catch (e) {
+        setOperationError(t('workflows.operationFailed', { error: String(e) }));
+      }
+    },
+    [activePanel, embedded, onOpenDashboardInShell, t],
+  );
+
+  // All hooks above. Gate the body on the `workflows` locale pack so the UI
+  // never renders raw/un-translated `t('workflows.*')` keys before it loads.
+  if (!localesReady) {
+    return <LocaleDomainLoading testId="workflow-locale-loading" />;
+  }
+
+  // ── Render ────────────────────────────────────────────────────────
+
+  // Built AFTER the `localesReady` gate on purpose: the `t('workflows.*')`
+  // calls below run while this constant is *constructed*, and the guard only
+  // stops the element from being *rendered*. Constructing it earlier made
+  // every page load emit four bogus dev-only "[i18n] Missing translation"
+  // lines for keys that are perfectly well registered in the lazy `workflows`
+  // pack. Keep it below the gate.
+  const workflowToolbar = (
+    <div
+      className={`flex items-center gap-1 ${embedded ? 'border-b border-edge px-3 py-2' : 'ml-2'}`}
+    >
+      <Button
+        variant="secondary"
+        className="h-6 w-6 !px-0"
+        title={t('workflows.reload')}
+        onClick={() => void handleReload()}
+      >
+        <RefreshCw className="h-3 w-3" />
+      </Button>
+      <Button
+        variant="secondary"
+        className="h-6 w-6 !px-0"
+        title={t('workflows.create')}
+        onClick={handleCreate}
+      >
+        <Plus className="h-3 w-3" />
+      </Button>
+      <Button
+        variant="secondary"
+        className="h-6 w-6 !px-0"
+        title={t('workflows.aiCreate.title')}
+        data-testid="workflow-ai-create-button"
+        onClick={handleAiCreate}
+      >
+        <Sparkles className="h-3 w-3" />
+      </Button>
+      {workflowsDir && (
+        <Button
+          variant="secondary"
+          className="h-6 w-6 !px-0"
+          title={t('workflows.openDir')}
+          onClick={() => void handleOpenDir()}
+        >
+          <FolderOpen className="h-3 w-3" />
+        </Button>
+      )}
+      <Button
+        variant="secondary"
+        className="h-6 w-6 !px-0"
+        title={t('docs.openWorkflowHelp')}
+        onClick={() => openDocsWindow('workflows')}
+      >
+        <BookOpen className="h-3 w-3" />
+      </Button>
+    </div>
+  );
+
+  return (
+    <div
+      className={`flex ${embedded ? 'h-full min-h-0' : 'h-screen'} flex-col bg-surface text-fg`}
+      data-testid={embedded ? 'workflow-workspace' : 'workflow-window'}
+    >
+      {embedded ? (
+        workflowToolbar
+      ) : (
+        <WindowChromeSlot title={t('win.workflow')} leftContent={workflowToolbar} />
+      )}
+
+      <div className="flex min-h-0 flex-1">
+        {/* Left sidebar: workflow list / history */}
+        <div
+          style={{ width: sidebarWidth }}
+          className="flex shrink-0 flex-col border-r border-edge bg-surface-alt"
+        >
+          <div className="flex items-center border-b border-edge">
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setSideTab('workflows')}
+              className={cn(
+                'flex-1 px-3 py-2 text-xs transition-colors relative',
+                sideTab === 'workflows' ? 'text-fg font-medium' : 'text-fg-muted hover:text-fg',
+              )}
+            >
+              Workflows
+              <span
+                className={cn(
+                  'absolute inset-x-0 bottom-0 h-0.5 bg-accent transition-opacity duration-300',
+                  sideTab === 'workflows' ? 'opacity-100' : 'opacity-0',
+                )}
+              />
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setSideTab('history')}
+              className={cn(
+                'flex-1 px-3 py-2 text-xs transition-colors relative flex items-center justify-center gap-1',
+                sideTab === 'history' ? 'text-fg font-medium' : 'text-fg-muted hover:text-fg',
+              )}
+            >
+              <History className="h-3 w-3" />
+              {t('workflows.history.title')}
+              <span
+                className={cn(
+                  'absolute inset-x-0 bottom-0 h-0.5 bg-accent transition-opacity duration-300',
+                  sideTab === 'history' ? 'opacity-100' : 'opacity-0',
+                )}
+              />
+            </button>
+          </div>
+
+          {feedback && (
+            <p
+              className={cn(
+                'px-3 py-1 text-xs',
+                feedback.startsWith('Error') ? 'text-red-400' : 'text-green-500',
+              )}
+            >
+              {feedback}
+            </p>
+          )}
+          {operationError && (
+            <ErrorBanner
+              variant="strip"
+              // Was `text-red-300` in the pre-ErrorBanner inline bar. `red-300`
+              // is one step *brighter* than the old `red-400` default; brightness
+              // and alpha are different axes and `danger` is a single flat value,
+              // so there is no clean equivalent — this is an accepted visible
+              // change, not a bug.
+              className="py-2 text-danger"
+              icon={<AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+              onDismiss={() => setOperationError(null)}
+              dismissLabel={t('common.close')}
+            >
+              {operationError}
+            </ErrorBanner>
+          )}
+
+          <div className="flex-1 overflow-y-auto">
+            {sideTab === 'history' ? (
+              <WorkflowHistoryList
+                items={historyItems}
+                onView={(id, name) => void openHistoryPanel(id, name)}
+                onClear={() => void handleClearHistory()}
+                t={t}
+              />
+            ) : (
+              <WorkflowSidebarList
+                workflows={workflows}
+                loading={workflowsLoading}
+                activePanelWorkflowId={
+                  activePanel && isWorkflowRunPanel(activePanel)
+                    ? activePanel.workflowId
+                    : undefined
+                }
+                onSelect={handleSelectWorkflow}
+                onEdit={(id) => void handleEdit(id)}
+                onDelete={(id) => void handleDelete(id)}
+                t={t}
+              />
+            )}
+          </div>
+        </div>
+
+        <div
+          ref={sidebarHandleRef}
+          className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-accent/30"
+        />
+
+        {/* Main content: tab bar + result */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {/* Tab bar */}
+          {panels.length > 0 && (
+            <div className="flex shrink-0 items-center border-b border-edge bg-surface-alt">
+              <div className="flex min-w-0 flex-1 overflow-x-auto">
+                {panels.map((panel) => {
+                  const isActive = panel.id === activePanelId;
+                  const icon =
+                    panel.type === 'ai-create' ? (
+                      <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent" />
+                    ) : panel.type === 'edit' ? (
+                      <Pencil className="h-3.5 w-3.5 shrink-0" />
+                    ) : panel.type === 'run' ? (
+                      <Wand2 className="h-3.5 w-3.5 shrink-0" />
+                    ) : (
+                      <History className="h-3.5 w-3.5 shrink-0" />
+                    );
+                  const label = panelTabLabel(panel, {
+                    aiCreate: t('workflows.aiCreate.title'),
+                    edit: t('workflows.edit'),
+                    create: t('workflows.create'),
+                  });
+                  const resultStatus = panelExecutionResult(panel);
+
+                  return (
+                    <div
+                      key={panel.id}
+                      className={cn(
+                        'group relative flex items-center gap-1.5 border-r border-edge px-3 py-2 text-xs',
+                        isActive
+                          ? 'bg-surface text-fg'
+                          : 'text-fg-secondary hover:bg-surface-raised hover:text-fg',
+                      )}
+                    >
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        className="flex items-center gap-1.5"
+                        onClick={() => {
+                          setActivePanelId(panel.id);
+                          const panelResult = panelExecutionResult(panel);
+                          setActiveStepIndex(
+                            panelResult && panelResult.steps.length > 0
+                              ? firstShownIndex(panelResult.steps.length, stepResultOrder)
+                              : null,
+                          );
+                        }}
+                      >
+                        {icon}
+                        <span className="max-w-[140px] truncate">{label}</span>
+                        {resultStatus && (
+                          <span
+                            className={cn(
+                              'text-[10px]',
+                              resultStatus.success ? 'text-green-500' : 'text-red-400',
+                            )}
+                          >
+                            {resultStatus.success ? '✓' : '✗'}
+                          </span>
+                        )}
+                        {isWorkflowRunPanel(panel) && panel.isExecuting && (
+                          <Spinner size="sm" tone="accent" />
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        className="rounded p-0.5 text-fg-muted opacity-0 hover:bg-surface-raised hover:text-fg group-hover:opacity-100"
+                        onClick={() => closePanel(panel.id)}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                      <span
+                        className={cn(
+                          'absolute inset-x-0 bottom-0 h-0.5 bg-accent transition-opacity duration-300',
+                          isActive ? 'opacity-100' : 'opacity-0',
+                        )}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Variables input + execute button (when run panel active) */}
+          {currentWorkflow && (
+            <div className="shrink-0 border-b border-edge bg-surface px-4 py-3">
+              {currentWorkflow.variables.length > 0 && (
+                <div className="flex flex-wrap items-end gap-3 mb-3">
+                  {currentWorkflow.variables.map((v) => (
+                    <div key={v.name} className="min-w-[160px] max-w-[260px] flex-1">
+                      <label className="text-[11px] text-fg-muted block mb-0.5">
+                        {v.name}
+                        {v.required && <span className="text-red-400">*</span>}
+                        {v.description && (
+                          <span className="ml-1 text-fg-muted/60">({v.description})</span>
+                        )}
+                      </label>
+                      {v.type === 'connection' ? (
+                        <Select
+                          value={variables[v.name] ?? ''}
+                          options={savedConnections.map((c) => ({ value: c.id, label: c.name }))}
+                          onChange={(val) => setVariables({ ...variables, [v.name]: val })}
+                          className="!h-7 !text-xs"
+                        />
+                      ) : (
+                        <input
+                          type="text"
+                          className="w-full h-7 rounded border border-edge bg-surface-alt px-2 text-xs text-fg outline-none focus:border-accent"
+                          value={variables[v.name] ?? ''}
+                          onChange={(e) => setVariables({ ...variables, [v.name]: e.target.value })}
+                          placeholder={v.description}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <Button
+                variant="run"
+                className="h-8 text-xs"
+                data-testid="workflow-execute-button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => void handleExecute()}
+                disabled={isExecuting}
+              >
+                {isExecuting ? <Spinner size="md" /> : <Play className="h-3.5 w-3.5" />}
+                {isExecuting ? t('workflows.executing') : t('workflows.execute')}
+              </Button>
+              {currentResult?.success && activePanel?.type === 'run' && (
+                <Button
+                  variant="ghost"
+                  className="ml-2 h-8 text-xs"
+                  data-testid="workflow-add-to-dashboard"
+                  onClick={() => setAddToDashboardOpen(true)}
+                >
+                  {t('workflows.addToDashboard')}
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* Execution status / time + step-result order toggle */}
+          {currentResult && (
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-edge bg-surface-alt px-3 py-1">
+              <span
+                data-testid="workflow-run-status"
+                data-success={currentResult.success ? 'true' : 'false'}
+                className={cn(
+                  'text-xs font-medium whitespace-nowrap',
+                  currentResult.success ? 'text-green-500' : 'text-red-400',
+                )}
+              >
+                {currentResult.success ? '✓' : '✗'} {currentResult.totalTimeMs}ms
+              </span>
+              <button
+                type="button"
+                data-testid="workflow-step-order-toggle"
+                title={t('workflows.stepOrder.toggle')}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={toggleStepOrder}
+                className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-fg-muted hover:text-fg hover:bg-surface-raised/50 whitespace-nowrap"
+              >
+                <ArrowDownUp className="h-3 w-3" />
+                {stepResultOrder === 'desc'
+                  ? t('workflows.stepOrder.desc')
+                  : t('workflows.stepOrder.asc')}
+              </button>
+            </div>
+          )}
+
+          {/* Steps sub-tab bar (when result exists) */}
+          {currentResult && (
+            <div className="flex shrink-0 items-center gap-1 border-b border-edge bg-surface-alt px-3 py-1 overflow-x-auto">
+              {stepIndices.map((i) => {
+                const step = currentResult.steps[i];
+                return (
+                  <button
+                    key={step.stepId}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => setActiveStepIndex(i)}
+                    className={cn(
+                      'relative flex items-center gap-1 rounded px-2 py-1 text-[11px] transition-colors whitespace-nowrap',
+                      activeStepIndex === i
+                        ? 'bg-accent/10 text-accent'
+                        : 'text-fg-muted hover:text-fg hover:bg-surface-raised/50',
+                    )}
+                  >
+                    <StepStatusIcon status={step.status} />
+                    {step.stepId}
+                    <span className="text-fg-muted">[{step.stepType}]</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Panel content */}
+          {activePanel?.type === 'ai-create' ? (
+            <div className="relative flex-1 min-h-0" data-testid="workflow-ai-create-panel">
+              <div className="absolute inset-0">
+                <WorkflowChatPanel
+                  connections={savedConnections}
+                  onSaved={() => void loadWorkflows()}
+                  onBack={() => closePanel(activePanel.id)}
+                />
+              </div>
+            </div>
+          ) : activePanel && isEditPanel(activePanel) ? (
+            <div className="flex flex-1 min-h-0 flex-col overflow-hidden">
+              <div
+                className="flex items-center gap-1 border-b border-edge px-3 py-1.5"
+                data-testid="workflow-editor-mode-tabs"
+              >
+                <button
+                  type="button"
+                  data-testid="workflow-mode-visual"
+                  className={cn(
+                    'rounded px-2 py-1 text-xs',
+                    activePanel.editorMode === 'visual'
+                      ? 'bg-accent/15 text-accent'
+                      : 'text-fg-muted hover:text-fg',
+                  )}
+                  onClick={() => setEditMode(activePanel.id, 'visual')}
+                >
+                  {t('workflows.editor.visual')}
+                </button>
+                <button
+                  type="button"
+                  data-testid="workflow-mode-yaml"
+                  className={cn(
+                    'rounded px-2 py-1 text-xs',
+                    activePanel.editorMode === 'yaml'
+                      ? 'bg-accent/15 text-accent'
+                      : 'text-fg-muted hover:text-fg',
+                  )}
+                  onClick={() => setEditMode(activePanel.id, 'yaml')}
+                >
+                  {t('workflows.editor.yaml')}
+                </button>
+              </div>
+              {activePanel.editorMode === 'visual' ? (
+                <div className="flex-1 min-h-0 overflow-y-auto">
+                  <WorkflowForm
+                    draft={activePanel.draft}
+                    editingId={activePanel.editingId}
+                    connections={savedConnections}
+                    onDraftChange={(d) => updateEditDraft(activePanel.id, d)}
+                    onSave={() => void handleSave(activePanel.id, activePanel.draft)}
+                    onCancel={() => closePanel(activePanel.id)}
+                    showActionBar={false}
+                  />
+                </div>
+              ) : (
+                <div className="min-h-0 flex-1 p-3">
+                  <WorkflowYamlEditor
+                    value={activePanel.yamlText}
+                    onChange={(yaml) => updateEditYaml(activePanel.id, yaml)}
+                  />
+                </div>
+              )}
+              {/* Shared bottom action bar (sibling of the tab content) */}
+              <WorkflowEditorActionBar
+                onSave={() => {
+                  if (activePanel.editorMode === 'visual') {
+                    void handleSave(activePanel.id, activePanel.draft);
+                  } else {
+                    void handleSaveYaml(activePanel.id, activePanel.yamlText);
+                  }
+                }}
+                onCancel={() => closePanel(activePanel.id)}
+                saveTestId="workflow-yaml-save"
+                saveDisabled={
+                  activePanel.editorMode === 'visual' &&
+                  (!activePanel.draft.id.trim() ||
+                    !activePanel.draft.name.trim() ||
+                    activePanel.draft.steps.length === 0 ||
+                    stepNeedsDatabase(
+                      activePanel.draft.steps,
+                      activePanel.draft.connection,
+                      activePanel.draft.database,
+                      savedConnections,
+                    ))
+                }
+              />
+            </div>
+          ) : currentStep ? (
+            <StepDetailView step={currentStep} t={t} />
+          ) : currentResult ? (
+            <div className="flex flex-1 items-center justify-center text-xs text-fg-muted">
+              {t('workflows.selectStep')}
+            </div>
+          ) : workflowError ? (
+            <div className="flex flex-1 items-center justify-center p-4">
+              <p className="select-text text-xs text-red-400">{workflowError}</p>
+            </div>
+          ) : !currentWorkflow && !activePanel ? (
+            <div className="flex flex-1 items-center justify-center text-sm text-fg-muted">
+              <div className="text-center">
+                <Wand2 className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                <p>{t('workflows.emptyHint')}</p>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <AddToDashboardDialog
+        open={addToDashboardOpen}
+        onClose={() => setAddToDashboardOpen(false)}
+        onConfirm={(id, name) => void handleAddToDashboardConfirm(id, name)}
+      />
+
+      {confirmWfDialog}
+
+      {!embedded ? <StatusBar /> : null}
+    </div>
+  );
+}
+
+// ── Sub-components ──────────────────────────────────────────────────
+
+function StepDetailView({
+  step,
+  t,
+}: {
+  step: StepExecutionResult;
+  t: ReturnType<typeof useI18n>['t'];
+}) {
+  const [viewMode, setViewMode] = useState<'table' | 'chart'>('table');
+  const [chartConfig, setChartConfig] = useState<ChartConfig | undefined>();
+
+  const colInfos = useMemo(() => extractStepColumnNames(step.result), [step.result]);
+
+  const columns: ColumnDef[] = useMemo(() => {
+    if (colInfos.length === 0) return [];
+    return colInfos.map((c) => ({ id: c.name, name: c.name, type: c.dataType || 'text' }));
+  }, [colInfos]);
+
+  const statementResult = useMemo(() => stepToStatementResult(step), [step]);
+  const tableRows = statementResult?.rows;
+  const rowsCount =
+    typeof step.result?.rows_count === 'number' ? step.result.rows_count : (tableRows?.length ?? 0);
+  const chartable = useMemo(
+    () => statementResult != null && isChartableResult(statementResult),
+    [statementResult],
+  );
+  const hasData = columns.length > 0 && tableRows && tableRows.length > 0;
+
+  return (
+    <div className="flex flex-1 flex-col min-h-0">
+      <div className="flex items-center gap-3 border-b border-edge bg-surface-alt px-3 py-1.5 text-xs text-fg-secondary">
+        <span className="font-medium text-fg">{step.stepId}</span>
+        <span className="text-fg-muted">[{step.stepType}]</span>
+        <StepStatusIcon status={step.status} />
+        {step.connectionName ? <span className="text-accent">{step.connectionName}</span> : null}
+        <span className="text-fg-muted">{step.executionTimeMs}ms</span>
+        {rowsCount > 0 && (
+          <span>
+            {rowsCount} {t('common.rows')}
+          </span>
+        )}
+
+        {hasData && chartable && (
+          <div className="ml-auto flex items-center gap-0.5 rounded-md bg-surface p-0.5">
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              className={cn(
+                'flex items-center gap-1 rounded px-2 py-0.5 text-xs transition-colors',
+                viewMode === 'table'
+                  ? 'bg-accent/20 text-accent font-medium'
+                  : 'text-fg-muted hover:text-fg-secondary',
+              )}
+              onClick={() => setViewMode('table')}
+            >
+              <TableProperties className="h-3 w-3" />
+              {t('workflows.viewTable')}
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              className={cn(
+                'flex items-center gap-1 rounded px-2 py-0.5 text-xs transition-colors',
+                viewMode === 'chart'
+                  ? 'bg-accent/20 text-accent font-medium'
+                  : 'text-fg-muted hover:text-fg-secondary',
+              )}
+              onClick={() => setViewMode('chart')}
+            >
+              <BarChart3 className="h-3 w-3" />
+              {t('workflows.viewChart')}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {step.sqlExecuted ? (
+        <div className={cn('bg-surface px-3 py-2', !hasData && 'border-b border-edge')}>
+          <pre className="text-[11px] font-mono text-fg-secondary whitespace-pre-wrap break-words max-h-20 overflow-auto">
+            {step.sqlExecuted}
+          </pre>
+        </div>
+      ) : null}
+
+      {step.error ? (
+        <div className="select-text border-b border-edge bg-red-500/5 px-3 py-2 text-xs text-red-400">
+          {step.error}
+        </div>
+      ) : null}
+
+      {step.stepType === 'ai' && step.result?.result != null ? (
+        <div className="border-b border-edge px-3 py-2">
+          <pre className="text-xs text-fg-secondary whitespace-pre-wrap break-words max-h-60 overflow-auto">
+            {String(step.result.result)}
+          </pre>
+        </div>
+      ) : null}
+
+      {viewMode === 'chart' && statementResult ? (
+        <>
+          {statementResult.rows.length > 1000 && (
+            <div className="flex items-center gap-1 border-b border-edge bg-surface-alt px-3 py-1 text-[11px] text-yellow-400">
+              <AlertTriangle className="h-3 w-3" />
+              {t('workflows.sampledWarning', { limit: '1000' })}
+            </div>
+          )}
+          <div className="flex flex-1 min-h-0">
+            <ChartView
+              result={statementResult}
+              savedConfig={chartConfig}
+              onConfigChange={setChartConfig}
+              onDataPointClick={() => setViewMode('table')}
+            />
+          </div>
+        </>
+      ) : hasData ? (
+        <div className="flex flex-1 min-h-0 pr-1">
+          <DataTable
+            columns={columns}
+            rows={tableRows}
+            rowHeight={32}
+            exportTableName="workflow_result"
+          />
+        </div>
+      ) : step.stepType === 'query' && !step.error ? (
+        <div className="flex flex-1 items-center justify-center text-xs text-fg-muted">
+          {t('workflows.noQueryResult')}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function WorkflowSidebarList({
+  workflows,
+  loading,
+  activePanelWorkflowId,
+  onSelect,
+  onEdit,
+  onDelete,
+  t,
+}: {
+  workflows: WorkflowListItem[];
+  loading: boolean;
+  activePanelWorkflowId?: string;
+  onSelect: (w: WorkflowListItem) => void;
+  onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
+  t: ReturnType<typeof useI18n>['t'];
+}) {
+  const handleContextMenu = (e: ReactMouseEvent, w: WorkflowListItem) => {
+    e.preventDefault();
+    e.stopPropagation();
+    void showNativeContextMenu(
+      buildWorkflowListContextMenuItems({
+        labels: {
+          open: t('workflows.open'),
+          delete: t('workflows.delete'),
+          copyName: t('common.copyName'),
+        },
+        handlers: {
+          onOpen: () => onSelect(w),
+          onDelete: () => onDelete(w.id),
+          onCopyName: () => {
+            void navigator.clipboard.writeText(w.name);
+          },
+        },
+      }),
+      { x: e.clientX, y: e.clientY },
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-8 text-fg-muted text-xs">
+        <Spinner size="lg" className="mr-1" />
+        {t('workflows.loading')}
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-1.5 space-y-0.5">
+      {workflows.map((w) => (
+        <div
+          key={w.id}
+          className={cn(
+            'group flex items-center gap-2 rounded-md px-3 py-2 cursor-pointer transition-colors',
+            activePanelWorkflowId === w.id
+              ? 'bg-accent/10 text-accent'
+              : 'text-fg-secondary hover:bg-surface-raised/50 hover:text-fg',
+          )}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => onSelect(w)}
+          onContextMenu={(e) => handleContextMenu(e, w)}
+        >
+          <Wand2 className="h-3.5 w-3.5 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1 text-xs font-medium truncate">
+              <span className="truncate">{w.name}</span>
+              {w.scheduled && (
+                <span title={t('workflows.schedule.enabled')}>
+                  <Clock className="h-3 w-3 shrink-0 text-accent" />
+                </span>
+              )}
+            </div>
+            {w.description && (
+              <div className="text-[10px] text-fg-muted truncate">{w.description}</div>
+            )}
+          </div>
+          <div className="hidden group-hover:flex items-center gap-0.5">
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit(w.id);
+              }}
+              className="p-0.5 rounded hover:bg-surface-alt"
+              title={t('workflows.edit')}
+              data-testid="workflow-item-edit"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(w.id);
+              }}
+              className="p-0.5 rounded hover:bg-surface-alt text-red-400"
+              title={t('workflows.delete')}
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </div>
+        </div>
+      ))}
+      {workflows.length === 0 && (
+        <div className="py-6 text-center text-xs text-fg-muted">{t('workflows.noWorkflows')}</div>
+      )}
+    </div>
+  );
+}

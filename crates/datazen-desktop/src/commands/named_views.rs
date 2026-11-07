@@ -1,0 +1,134 @@
+//! The three named-view commands (08 §3.8).
+//!
+//! The shell does three things and nothing else: it takes the aggregate's
+//! named-view port (P3: the host store no longer appears in this file), it
+//! hands the shared layer that port and an id minter, it maps the shared error
+//! onto [`CommandError`], and it hands the answer back. Every rule — the name uniqueness inside a scope,
+//! the one-default-per-scope rule, the ordering, the idempotent delete — lives
+//! in `datazen::named_views`.
+//!
+//! The commands are **desktop-only for now**: the storage is the desktop
+//! store's `{appData}/named_views.json`, and a browser build has no such
+//! place. Its transport declares the gap as a capability gap, so the caller
+//! gets an explicit "not supported" instead of an empty list that reads like
+//! "you have no saved views".
+
+use datazen::named_views::{NamedView, NamedViewScope};
+use tauri::State;
+
+use super::error::CommandError;
+use super::AppState;
+use crate::platform::ipc::require_named_views_service;
+
+/// The views of one scope, or of every scope when `scope` is omitted.
+///
+/// The order is the one the menu shows: the default view first, then the rest
+/// by name.
+#[tauri::command]
+pub async fn list_named_views(
+    state: State<'_, AppState>,
+    scope: Option<NamedViewScope>,
+) -> Result<Vec<NamedView>, CommandError> {
+    let service = require_named_views_service(&state)?;
+    Ok(service.list(scope.as_ref()).await?)
+}
+
+/// Save a view and return the record as it was stored.
+///
+/// The answer carries the minted id and the timestamps, so the frontend can
+/// replace its local copy instead of guessing them.
+#[tauri::command]
+pub async fn save_named_view(
+    state: State<'_, AppState>,
+    view: NamedView,
+) -> Result<NamedView, CommandError> {
+    let service = require_named_views_service(&state)?;
+    Ok(service.save(view).await?)
+}
+
+/// Delete a view and return the remaining ones.
+///
+/// Deleting an id nobody carries is not an error.
+#[tauri::command]
+pub async fn delete_named_view(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<NamedView>, CommandError> {
+    let service = require_named_views_service(&state)?;
+    Ok(service.delete(&id).await?)
+}
+
+#[cfg(test)]
+mod tests {
+    /// The host's handler list.
+    ///
+    /// A Tauri command that is not registered is never called and produces no
+    /// compile error, so the registration has to be pinned by a test — the
+    /// same discipline `ipc_surface_tests.rs` applies to the merged IPC.
+    const BOOTSTRAP_RS: &str = include_str!("../bootstrap/run.rs");
+
+    #[test]
+    fn the_three_commands_are_registered() {
+        assert!(
+            BOOTSTRAP_RS.contains("commands::list_named_views,"),
+            "list_named_views must be registered"
+        );
+        assert!(
+            BOOTSTRAP_RS.contains("commands::save_named_view,"),
+            "save_named_view must be registered"
+        );
+        assert!(
+            BOOTSTRAP_RS.contains("commands::delete_named_view,"),
+            "delete_named_view must be registered"
+        );
+    }
+
+    /// 生产半边不再出现宿主 store（P3 第一条命令族；D6 item 1 后命令改经
+    /// `require_named_views_service` 取模块服务，守卫随迁；B2 批次 4 刀把
+    /// `_impl` 内联进命令处理函数后，取服务的三处调用仍在命令体内）。
+    ///
+    /// 计数而不是「有没有」：端口宿主 store 的直读曾经是三条命令各一处，
+    /// 只要有人把 `.as_ref()` 换回 `state.store.as_ref()`，这里会先红。
+    #[test]
+    fn the_command_shell_reads_the_aggregate_not_the_host_store() {
+        let source = include_str!("named_views.rs");
+        let production = source.split("#[cfg(test)]").next().unwrap_or(source);
+        assert_eq!(
+            production.matches("state.store").count(),
+            0,
+            "named views 命令必须走模块服务，不得直读宿主 store"
+        );
+        assert_eq!(
+            production
+                .matches("require_named_views_service(&state)")
+                .count(),
+            3,
+            "三条命令各取一次模块服务"
+        );
+    }
+
+    #[test]
+    fn the_command_shell_holds_no_rule() {
+        // The rules live in the shared layer. A rule that crept into the
+        // command shell would exist twice — once for the desktop and once
+        // for whatever form factor comes next — and the two would drift.
+        //
+        // The needles are assembled at run time so this test's own source
+        // never contains a contract code (the front-end registration guard
+        // scans the Rust sources for them).
+        let grid = "grid";
+        let view = "view";
+        let name_exists = "nameExists";
+        let invalid = "invalid";
+        let source = include_str!("named_views.rs");
+        for forbidden in [
+            format!("{grid}.{view}.{name_exists}"),
+            format!("{grid}.{view}.{invalid}"),
+        ] {
+            assert!(
+                !source.contains(&forbidden),
+                "the command shell must not raise {forbidden} itself"
+            );
+        }
+    }
+}

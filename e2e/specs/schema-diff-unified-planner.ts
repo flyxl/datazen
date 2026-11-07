@@ -167,15 +167,19 @@ async function runMysqlCatalogSmokeJourney(fixture: MysqlCatalogFixture) {
     for (const [kind, name] of expected) {
       const session = await invokeBackend<string>('connect', { connectionId: fixture.sourceId });
       try {
-        const objects = await invokeBackend<
-          Array<{
-            schema: string | null;
-            name: string;
-            targetSchema?: string | null;
-            targetName?: string | null;
-          }>
-        >('get_database_objects', { dbSessionId: session, kind });
-        const matches = objects.filter((object) => object.name === name);
+        const objects = await invokeBackend<{
+          data: {
+            objects: Array<{
+              schema: string | null;
+              name: string;
+              targetSchema?: string | null;
+              targetName?: string | null;
+            }>;
+          };
+        }>('execute_driver_command', {
+          request: { dbSessionId: session, command: 'list_objects', input: { kind } },
+        });
+        const matches = objects.data.objects.filter((object) => object.name === name);
         expect(matches).toHaveLength(1);
         // MySQL has no schema layer inside a database: `information_schema.*_SCHEMA`
         // columns name databases, and the driver lists only the current database
@@ -449,21 +453,36 @@ async function assertSourceViewCatalog(fixture: Fixture) {
   let viewDefinitionLength: number | null = null;
   let viewDefinitionError = '';
   try {
-    const objects = await invokeBackend<Array<{ name: string }>>('get_database_objects', {
-      dbSessionId: session,
-      kind: 'view',
-    });
-    driverMatches = objects.filter((object) => object.name === fixture.view).length;
+    const objects = await invokeBackend<{ data: { objects: Array<{ name: string }> } }>(
+      'execute_driver_command',
+      {
+        request: {
+          dbSessionId: session,
+          command: 'list_objects',
+          input: { kind: 'view' },
+        },
+      },
+    );
+    driverMatches = objects.data.objects.filter((object) => object.name === fixture.view).length;
   } catch (error) {
     catalogError = error instanceof Error ? error.message : String(error);
   } finally {
     try {
-      const ddl = await invokeBackend<string>('get_object_ddl', {
-        dbSessionId: session,
-        kind: 'view',
-        name: fixture.view,
-        schema: fixture.dialect === 'postgresql' ? 'public' : null,
-      });
+      const ddlResult = await invokeBackend<{ data: { ddl: string } }>(
+        'execute_driver_command',
+        {
+          request: {
+            dbSessionId: session,
+            command: 'get_object_ddl',
+            input: {
+              kind: 'view',
+              name: fixture.view,
+              schema: fixture.dialect === 'postgresql' ? 'public' : null,
+            },
+          },
+        },
+      );
+      const ddl = ddlResult.data.ddl;
       ddlLength = ddl.trim().length;
       ddlContainsSemicolon = ddl.includes(';');
     } catch (error) {

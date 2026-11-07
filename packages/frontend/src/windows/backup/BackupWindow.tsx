@@ -1,0 +1,564 @@
+import { legacyInvoke as invoke } from '@datazen/backend-client';
+import { schemaClient } from '@datazen/driver-sdk';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, ChevronRight, Database, HardDrive } from 'lucide-react';
+import { WindowChromeSlot } from '@datazen/extension-points';
+import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
+import { useSettings } from '../../hooks/useSettings';
+import { useI18n } from '../../hooks/useI18n';
+import { requirePlatform } from '../../platform/contracts';
+import { useConfirmDialog } from '../../hooks/useConfirmDialog';
+import { useSettingsStore } from '../../stores/settingsStore';
+import { groupConnections } from '../../stores/connectionStore';
+import { formatGroupLabel } from '../../lib/connectionGroups';
+import {
+  backupProgressRatio,
+  createProgressLogPump,
+  formatBackupProgress,
+  type BackupProgressPayload,
+} from '../../lib/backupProgress';
+import { runSqlFileExecution } from '../../lib/sqlFileExecution';
+import { ProgressLog } from './ProgressLog';
+import { cn } from '../../lib/cn';
+import { emitCrossWindow, listenCrossWindow } from '../../lib/crossWindowBus';
+import { DbTypeBadge } from '../../components/DbTypeBadge';
+import { getDbLabel, DB_REGISTRY } from '../../lib/databaseTypes';
+import { getSqlDialect } from '../../lib/sqlDialects';
+import { getUrlParam } from '../../lib/windowKind';
+import type { ConnectionConfig } from '../../types';
+
+interface DatabaseInfo {
+  name: string;
+}
+
+export function BackupWindow() {
+  useSettings();
+  const { t } = useI18n();
+  const [confirmRestore, confirmRestoreDialog] = useConfirmDialog();
+  const loadSettings = useSettingsStore((s) => s.loadSettings);
+  const isRestore = getUrlParam('mode') === 'restore';
+
+  const [connections, setConnections] = useState<ConnectionConfig[]>([]);
+  const [groups, setGroups] = useState<string[]>([]);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+
+  const [selectedConnId, setSelectedConnId] = useState<string | null>(null);
+  const [dbSessionId, setDbSessionId] = useState<string | null>(null);
+  const [serverVersion, setServerVersion] = useState('');
+  const [databases, setDatabases] = useState<DatabaseInfo[]>([]);
+  const [selectedDb, setSelectedDb] = useState<string | null>(null);
+
+  const [enabledOptions, setEnabledOptions] = useState<Set<string>>(new Set());
+  const [compressGzip, setCompressGzip] = useState(false);
+  const [fileName, setFileName] = useState('untitled');
+  const [optionDropdownOpen, setOptionDropdownOpen] = useState(false);
+
+  const [backing, setBacking] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
+  const [progress, setProgress] = useState<BackupProgressPayload | null>(null);
+  const [progressLog, setProgressLog] = useState<string[]>([]);
+  const logPumpRef = useRef(createProgressLogPump(setProgressLog));
+  const [searchConn, setSearchConn] = useState('');
+  const [searchDb, setSearchDb] = useState('');
+
+  const selectedConn = useMemo(
+    () => connections.find((c) => c.id === selectedConnId) ?? null,
+    [connections, selectedConnId],
+  );
+
+  const backupOptions = useMemo(() => {
+    if (!selectedConn) return [];
+    const meta = DB_REGISTRY[selectedConn.databaseType];
+    if (!meta?.supportsBackup) return [];
+    return getSqlDialect(selectedConn.databaseType)?.backupOptions ?? [];
+  }, [selectedConn]);
+
+  useEffect(() => {
+    void loadSettings();
+  }, [loadSettings]);
+
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    listenCrossWindow('datazen:connection-closed', (payload) => {
+      const { dbSessionId } = (payload ?? {}) as { dbSessionId?: string };
+      if (!dbSessionId) return;
+      setDbSessionId((prev) => (prev === dbSessionId ? null : prev));
+    }).then((fn) => {
+      cleanup = fn;
+    });
+    return () => cleanup?.();
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      const conns = await invoke<ConnectionConfig[]>('get_connections');
+      const grps = await invoke<string[]>('get_groups');
+      setConnections(conns);
+      setGroups(grps);
+      const keys = new Set<string>([...grps, '']);
+      for (const c of conns) keys.add(c.group || '');
+      setExpandedGroups(keys);
+    })();
+  }, []);
+
+  const grouped = useMemo(
+    () => groupConnections(connections, groups, searchConn),
+    [connections, groups, searchConn],
+  );
+
+  const handleSelectConnection = useCallback(
+    async (conn: ConnectionConfig, preferredDatabase?: string) => {
+      setSelectedConnId(conn.id);
+      setSelectedDb(null);
+      setDatabases([]);
+      setServerVersion('');
+      setEnabledOptions(new Set());
+      setStatusMessage('');
+      setProgress(null);
+
+      if (!DB_REGISTRY[conn.databaseType]?.supportsBackup) {
+        setDbSessionId(null);
+        setStatusMessage(t('backup.unsupportedType'));
+        return;
+      }
+
+      try {
+        const session = await invoke<{ dbSessionId: string }>('connect', {
+          connectionId: conn.id,
+        });
+        const sessionId = session.dbSessionId;
+        setDbSessionId(sessionId);
+
+        try {
+          const info = await invoke<{ serverVersion?: string }>('get_connection_info', {
+            dbSessionId: sessionId,
+          });
+          if (info.serverVersion) setServerVersion(info.serverVersion);
+        } catch {
+          /* server version is optional */
+        }
+
+        const { databases: dbs } = await schemaClient.listDatabases(sessionId);
+        setDatabases(dbs.map((name) => ({ name })));
+
+        const dbPick = preferredDatabase ?? conn.database;
+        if (dbPick && dbs.includes(dbPick)) {
+          setSelectedDb(dbPick);
+        }
+
+        const defaults = new Set<string>();
+        for (const opt of getSqlDialect(conn.databaseType)?.backupOptions ?? []) {
+          if (opt.id === 'routines' || opt.id === 'triggers') {
+            defaults.add(opt.id);
+          }
+        }
+        setEnabledOptions(defaults);
+      } catch (e) {
+        setStatusMessage(e instanceof Error ? e.message : String(e));
+      }
+    },
+    [t],
+  );
+
+  const prefillAppliedRef = useRef(false);
+  useEffect(() => {
+    if (prefillAppliedRef.current || connections.length === 0) return;
+    // URL param `connectionId` = persistent config connection id.
+    const prefillConnectionId = getUrlParam('connectionId');
+    if (!prefillConnectionId) return;
+    const conn = connections.find((c) => c.id === prefillConnectionId);
+    if (!conn) return;
+    prefillAppliedRef.current = true;
+    void handleSelectConnection(conn, getUrlParam('database') ?? undefined);
+  }, [connections, handleSelectConnection]);
+
+  const toggleGroup = useCallback((group: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group);
+      else next.add(group);
+      return next;
+    });
+  }, []);
+
+  const toggleOption = useCallback((optionId: string) => {
+    setEnabledOptions((prev) => {
+      const next = new Set(prev);
+      if (next.has(optionId)) next.delete(optionId);
+      else next.add(optionId);
+      return next;
+    });
+  }, []);
+
+  const handleRestore = useCallback(async () => {
+    if (!dbSessionId || !selectedDb) return;
+    try {
+      setBacking(true);
+      setProgress(null);
+      logPumpRef.current.reset([t('backup.restoring')]);
+      setStatusMessage(t('backup.restoring'));
+
+      const executed = await runSqlFileExecution({
+        dbSessionId,
+        database: selectedDb,
+        t,
+        logPump: logPumpRef.current,
+        confirmOverwrite: async (count) =>
+          confirmRestore({
+            title: t('common.restoreDatabase'),
+            message: t('backup.restoreOverwriteConfirm', {
+              database: selectedDb,
+              count,
+            }),
+            kind: 'warning',
+          }),
+        onProgress: (payload, line) => {
+          if (payload) setProgress(payload);
+          setStatusMessage(line);
+        },
+      });
+      if (executed) {
+        await emitCrossWindow('datazen:refresh-connection', {
+          dbSessionId,
+        });
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      setStatusMessage(message);
+      setProgress(null);
+      logPumpRef.current.push(message);
+      logPumpRef.current.flush();
+    } finally {
+      setBacking(false);
+    }
+  }, [dbSessionId, selectedDb, confirmRestore, t]);
+
+  const handleBackup = useCallback(async () => {
+    if (!dbSessionId || !selectedDb) return;
+
+    try {
+      const ext = compressGzip ? 'gz' : enabledOptions.has('format-custom') ? 'dump' : 'sql';
+      const defaultName = `${fileName}.${compressGzip ? 'sql.gz' : ext}`;
+
+      setBacking(true);
+      setProgress(null);
+      logPumpRef.current.reset([t('backup.progressPreparing')]);
+      setStatusMessage(t('backup.progressPreparing'));
+
+      // Form-split F6 prep (R6 burn): host broadcasts ride the EventChannel port.
+      const unlisten = await requirePlatform().events.listenCrossWindow(
+        'backup-progress',
+        (raw) => {
+          const payload = raw as BackupProgressPayload;
+          const line = formatBackupProgress(payload, t);
+          setProgress(payload);
+          setStatusMessage(line);
+          logPumpRef.current.push(line);
+        },
+      );
+
+      try {
+        const saved = await invoke<boolean>('backup_database', {
+          dbSessionId,
+          database: selectedDb,
+          defaultFileName: defaultName,
+          filterExtension: ext,
+          options: Array.from(enabledOptions),
+          compress: compressGzip,
+        });
+        if (!saved) {
+          setStatusMessage('');
+          setProgress(null);
+          logPumpRef.current.reset([]);
+          return;
+        }
+
+        setStatusMessage(t('backup.success'));
+        setProgress({ current: 0, total: 0, objectName: '', phase: 'done' });
+        logPumpRef.current.push(t('backup.success'));
+        logPumpRef.current.flush();
+      } finally {
+        unlisten();
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      setStatusMessage(message);
+      setProgress(null);
+      logPumpRef.current.push(message);
+      logPumpRef.current.flush();
+    } finally {
+      setBacking(false);
+    }
+  }, [dbSessionId, selectedDb, fileName, enabledOptions, compressGzip, t]);
+
+  const filteredDbs = useMemo(() => {
+    const q = searchDb.trim().toLowerCase();
+    if (!q) return databases;
+    return databases.filter((d) => d.name.toLowerCase().includes(q));
+  }, [databases, searchDb]);
+
+  const dbTypeDisplayLabel = selectedConn
+    ? `${getDbLabel(selectedConn.databaseType)}${serverVersion ? ` ${serverVersion}` : ''}`
+    : '';
+
+  return (
+    <div className="flex h-screen min-h-0 flex-col bg-surface text-fg">
+      <WindowChromeSlot
+        title={isRestore ? t('common.restoreDatabase') : t('common.backupDatabase')}
+      />
+
+      {!isRestore && (
+        <div className="flex items-center gap-3 border-b border-edge px-4 py-2">
+          <span className="text-xs font-medium text-fg-secondary">{t('backup.fileName')}:</span>
+          <Input
+            value={fileName}
+            onChange={(e) => setFileName(e.target.value)}
+            className="h-7 w-48 text-xs"
+          />
+          <span className="text-[11px] text-fg-muted">{t('backup.fileNameHint')}</span>
+        </div>
+      )}
+
+      {/* Main content: 3 columns */}
+      <div className="flex min-h-0 flex-1">
+        {/* Column 1: Connection list */}
+        <div className="flex w-[200px] shrink-0 flex-col border-r border-edge">
+          <div className="p-2">
+            <Input
+              placeholder={t('backup.searchConnection')}
+              value={searchConn}
+              onChange={(e) => setSearchConn(e.target.value)}
+              className="h-7 text-xs"
+            />
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {grouped.map(({ group: groupName, connections: groupConns }) => {
+              const expanded = expandedGroups.has(groupName);
+              const displayName = groupName ? formatGroupLabel(groupName, t) : t('main.ungrouped');
+              return (
+                <div key={groupName || '__ungrouped'}>
+                  <div
+                    className="flex cursor-pointer select-none items-center gap-1 px-2 py-1.5 hover:bg-surface-raised/50"
+                    onClick={() => toggleGroup(groupName)}
+                    data-testid="backup-group-header"
+                    data-group={groupName}
+                  >
+                    {expanded ? (
+                      <ChevronDown className="h-3 w-3 shrink-0 text-fg-muted" />
+                    ) : (
+                      <ChevronRight className="h-3 w-3 shrink-0 text-fg-muted" />
+                    )}
+                    <HardDrive className="h-3.5 w-3.5 shrink-0 text-orange-400" />
+                    <span className="truncate text-xs font-medium">{displayName}</span>
+                  </div>
+                  {expanded &&
+                    groupConns.map((conn) => {
+                      const canBackup = Boolean(DB_REGISTRY[conn.databaseType]?.supportsBackup);
+                      return (
+                        <div
+                          key={conn.id}
+                          className={cn(
+                            'flex cursor-pointer items-center gap-2 py-1.5 pl-7 pr-2 transition-colors',
+                            'hover:bg-surface-raised',
+                            selectedConnId === conn.id && 'bg-accent/20 text-accent',
+                            !canBackup && 'opacity-50',
+                          )}
+                          onClick={() => void handleSelectConnection(conn)}
+                          data-testid="backup-connection-row"
+                        >
+                          <DbTypeBadge databaseType={conn.databaseType} size={20} />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-xs font-medium">
+                              {conn.name}
+                              {conn.database && (
+                                <span className="text-fg-muted"> ({conn.database})</span>
+                              )}
+                            </div>
+                            <div className="truncate text-[10px] text-fg-muted">
+                              {conn.host ?? 'localhost'} : {conn.database ?? ''}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Column 2: Database list */}
+        <div className="flex w-[200px] shrink-0 flex-col border-r border-edge">
+          <div className="p-2">
+            <Input
+              placeholder={t('backup.searchDatabase')}
+              value={searchDb}
+              onChange={(e) => setSearchDb(e.target.value)}
+              className="h-7 text-xs"
+            />
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {filteredDbs.map((db) => (
+              <div
+                key={db.name}
+                className={cn(
+                  'flex cursor-pointer items-center gap-2 px-3 py-1.5 transition-colors',
+                  'hover:bg-surface-raised',
+                  selectedDb === db.name && 'bg-accent/20 text-accent',
+                )}
+                onClick={() => setSelectedDb(db.name)}
+              >
+                <Database className="h-3.5 w-3.5 shrink-0 text-fg-muted" />
+                <span className="truncate text-xs">{db.name}</span>
+              </div>
+            ))}
+            {databases.length === 0 && selectedConnId && (
+              <div className="p-3 text-center text-xs text-fg-muted">
+                {statusMessage || t('backup.selectConnectionFirst')}
+              </div>
+            )}
+            {!selectedConnId && (
+              <div className="p-3 text-center text-xs text-fg-muted">
+                {t('backup.selectConnectionFirst')}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Column 3: Options */}
+        <div className="flex min-w-0 flex-1 flex-col p-3">
+          {selectedConn && (
+            <>
+              {/* DB type & version */}
+              <div className="mb-3 rounded border border-edge bg-surface-alt px-3 py-2 text-xs text-fg-secondary">
+                {dbTypeDisplayLabel}
+              </div>
+
+              {!isRestore && (
+                <>
+                  <div className="relative mb-3">
+                    <button
+                      type="button"
+                      className="flex h-8 w-full items-center justify-between rounded border border-edge bg-surface-alt px-3 text-xs"
+                      onClick={() => setOptionDropdownOpen(!optionDropdownOpen)}
+                    >
+                      <span>{t('backup.addOption')}</span>
+                      <ChevronDown className="h-3 w-3" />
+                    </button>
+                    {optionDropdownOpen && (
+                      <div className="absolute top-full z-20 mt-1 w-full rounded border border-edge bg-surface shadow-lg">
+                        {backupOptions.map((opt) => (
+                          <label
+                            key={opt.id}
+                            className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-xs hover:bg-surface-raised"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={enabledOptions.has(opt.id)}
+                              onChange={() => toggleOption(opt.id)}
+                              className="h-3 w-3 rounded"
+                            />
+                            {opt.label}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Selected options display */}
+                  {enabledOptions.size > 0 && (
+                    <div className="mb-3 flex flex-wrap gap-1">
+                      {Array.from(enabledOptions).map((id) => {
+                        const opt = backupOptions.find((o) => o.id === id);
+                        return opt ? (
+                          <span
+                            key={id}
+                            className="inline-flex items-center gap-1 rounded bg-accent/20 px-2 py-0.5 text-[11px] text-accent"
+                          >
+                            {opt.label}
+                            <button
+                              type="button"
+                              className="ml-0.5 text-accent/60 hover:text-accent"
+                              onClick={() => toggleOption(id)}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ) : null;
+                      })}
+                    </div>
+                  )}
+
+                  {/* Compress */}
+                  <label className="mb-4 flex items-center gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={compressGzip}
+                      onChange={(e) => setCompressGzip(e.target.checked)}
+                      className="h-3 w-3 rounded"
+                    />
+                    {t('backup.compressGzip')}
+                  </label>
+                </>
+              )}
+            </>
+          )}
+
+          {/* Status message — fixed-height single line so the progress bar never jumps */}
+          {statusMessage && (
+            <div
+              className="mb-3 rounded border border-edge bg-surface-alt px-3 py-2 text-xs text-fg-secondary"
+              data-testid="backup-status"
+            >
+              <div className="copyable h-5 truncate leading-5" title={statusMessage}>
+                {statusMessage}
+              </div>
+              {(backing || progress) && (
+                <div className="mt-2 h-1.5 overflow-hidden rounded bg-edge">
+                  <div
+                    className={cn(
+                      'h-full rounded bg-accent transition-all',
+                      backing && !progress && 'w-1/3 animate-pulse',
+                    )}
+                    style={
+                      progress
+                        ? { width: `${Math.round(backupProgressRatio(progress) * 100)}%` }
+                        : undefined
+                    }
+                    data-testid="backup-progress-bar"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {progressLog.length > 0 ? (
+            <ProgressLog lines={progressLog} />
+          ) : (
+            <div className="flex-1" />
+          )}
+
+          {/* Start backup button */}
+          <div className="flex justify-end">
+            <Button
+              variant="primary"
+              disabled={!dbSessionId || !selectedDb || backing}
+              onClick={() => void (isRestore ? handleRestore() : handleBackup())}
+              data-testid={isRestore ? 'backup-start-restore' : 'backup-start-backup'}
+            >
+              {backing
+                ? isRestore
+                  ? t('backup.restoring')
+                  : t('backup.inProgress')
+                : isRestore
+                  ? t('backup.startRestore')
+                  : t('backup.startBackup')}
+            </Button>
+          </div>
+        </div>
+      </div>
+      {confirmRestoreDialog}
+    </div>
+  );
+}

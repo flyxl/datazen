@@ -26,7 +26,15 @@
  */
 
 import { spawnSync } from 'child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'fs';
 import { tmpdir } from 'os';
 import { delimiter, dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
@@ -87,9 +95,7 @@ describe('maskRustSource', () => {
     // The trap: reading `&'static` as an opening quote would blank code until
     // the next apostrophe, and a missed violation is the one direction this gate
     // must never fail in.
-    const src = [
-      "fn f(x: &'static str) -> char { let q = '\"'; value.unwrap() }",
-    ].join('\n');
+    const src = ["fn f(x: &'static str) -> char { let q = '\"'; value.unwrap() }"].join('\n');
     const masked = maskRustSource(src);
 
     expect(findBareUnwraps(masked).map((h) => h.line)).toEqual([1]);
@@ -203,7 +209,7 @@ describe('analyzeRustSource', () => {
       '    Ok(v + n)',
       '}',
     ].join('\n');
-    const result = analyzeRustSource(src, 'packages/infra/src/clean.rs');
+    const result = analyzeRustSource(src, 'crates/datazen-infra/src/clean.rs');
 
     expect(result.violations).toEqual([]);
     expect(result.exemptCalls).toBe(0);
@@ -211,10 +217,10 @@ describe('analyzeRustSource', () => {
 
   it('reports a bare unwrap() on a production path with rule id and line', () => {
     const src = ['pub fn probe(v: Option<u32>) -> u32 {', '    v.unwrap()', '}'].join('\n');
-    const result = analyzeRustSource(src, 'packages/infra/src/dirty.rs');
+    const result = analyzeRustSource(src, 'crates/datazen-infra/src/dirty.rs');
 
     expect(result.violations).toEqual([
-      { rule: RULE_ID, file: 'packages/infra/src/dirty.rs', line: 2 },
+      { rule: RULE_ID, file: 'crates/datazen-infra/src/dirty.rs', line: 2 },
     ]);
   });
 
@@ -232,7 +238,7 @@ describe('analyzeRustSource', () => {
       '    }',
       '}',
     ].join('\n');
-    const result = analyzeRustSource(src, 'packages/infra/src/tested.rs');
+    const result = analyzeRustSource(src, 'crates/datazen-infra/src/tested.rs');
 
     expect(result.violations).toEqual([]);
     // Not vacuous: the file really does contain a bare unwrap(), and the gate
@@ -357,7 +363,12 @@ afterAll(() => {
 });
 
 /** Write one real crate: directory, `Cargo.toml`, and every source file given. */
-function writeCrate(root: string, relDir: string, name: string, sources: Record<string, string>): void {
+function writeCrate(
+  root: string,
+  relDir: string,
+  name: string,
+  sources: Record<string, string>,
+): void {
   const dir = join(root, relDir);
   mkdirSync(join(dir, 'src'), { recursive: true });
   writeFileSync(
@@ -465,7 +476,7 @@ describe('runCli exit codes', () => {
 
     expect(run.code).toBe(0);
     expect(run.stdout).toContain('PASS');
-    expect(run.stdout).toContain('ok datazen-infra: packages/infra (1 file(s))');
+    expect(run.stdout).toContain('ok datazen-infra: crates/datazen-infra (1 file(s))');
     expect(run.stdout).toContain('1 crate(s) scanned, 1 file(s)');
     expect(run.stderr).toBe('');
   });

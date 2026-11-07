@@ -35,7 +35,7 @@
  * green:
  *
  *   * an out-of-line test module (`#[cfg(test)] mod tests;` with the body in
- *     `src/tests.rs`) is a *separate file*; the declaration is skipped here and
+ *     `packages/frontend/src/tests.rs`) is a *separate file*; the declaration is skipped here and
  *     the other file is scanned, so its `unwrap()`s are reported;
  *   * `#[cfg(any(test, …))]` is not recognised as a test attribute;
  *   * a qualified path that only *names* an item called `unwrap` reads the same
@@ -80,7 +80,7 @@ export const RULE_ID = 'PN-01';
  * workspace — or present on disk but unclassifiable — is an **error**, so the
  * list can never silently degrade into a green scan over nothing.
  */
-export const TARGET_CRATES = Object.freeze(['packages/infra']);
+export const TARGET_CRATES = Object.freeze(['crates/datazen-infra']);
 
 /**
  * Attributes whose annotated item is test-only code.
@@ -122,7 +122,7 @@ const TEST_ATTR_RE =
 const BARE_UNWRAP_RE = /(?:\.\s*(?:r#)?unwrap\s*\(\s*\)|::\s*(?:r#)?unwrap(?![A-Za-z0-9_]))/g;
 
 /** Build output is not authored source. */
-const RUST_SKIP_DIR_NAMES = new Set(['target', 'node_modules', '.git', 'dist']);
+const RUST_SKIP_DIR_NAMES = new Set(['target', 'node_modules', '.git', 'packages/desktop/dist']);
 
 const isIdentChar = (c) => c !== undefined && /[A-Za-z0-9_]/.test(c);
 
@@ -379,7 +379,7 @@ export function analyzeRustSource(text, file) {
 /**
  * Walk one crate's `src` tree and audit every Rust file in it.
  *
- * A crate whose `src/` directory does not exist is an **error**, not a clean
+ * A crate whose `packages/frontend/src/` directory does not exist is an **error**, not a clean
  * scan: "nothing was read" and "nothing was wrong" must never print the same
  * line.
  *
@@ -438,7 +438,8 @@ export function checkSharedCratePanicPolicy(options) {
   const errors = [];
   const scanned = [];
 
-  const metadata = options.metadata ?? runCargoMetadata({ cwd: root, env: options.env, log, error });
+  const metadata =
+    options.metadata ?? runCargoMetadata({ cwd: root, env: options.env, log, error });
   const index = buildWorkspaceIndex(metadata);
   const byDir = new Map();
   for (const member of index.members.values()) byDir.set(member.relDir, member);
@@ -452,7 +453,9 @@ export function checkSharedCratePanicPolicy(options) {
     if (!member) {
       const why = index.unclassified.find((u) => u.relDir === crateDir);
       errors.push(
-        'target crate ' + crateDir + ' is not a classified workspace member' +
+        'target crate ' +
+          crateDir +
+          ' is not a classified workspace member' +
           (why ? ' — ' + why.reason : '') +
           '. TARGET_CRATES and the workspace have diverged; fix one before trusting this gate.',
       );
@@ -479,16 +482,28 @@ export function checkSharedCratePanicPolicy(options) {
     );
   } else if (files === 0) {
     errors.push(
-      '0 Rust file(s) read across ' + scanned.length + ' of ' + crateDirs.length +
+      '0 Rust file(s) read across ' +
+        scanned.length +
+        ' of ' +
+        crateDirs.length +
         ' target crate(s) — refusing to report a clean scan. "Nothing was read" and ' +
         '"nothing was wrong" must never print the same line.',
     );
   }
 
   const summary =
-    scanned.length + ' crate(s) scanned, ' + files + ' file(s), ' + testItems +
-    ' test item(s) excluded, ' + exemptCalls + ' test-exempt unwrap() call(s), ' +
-    violations.length + ' violation(s), ' + errors.length + ' error(s)';
+    scanned.length +
+    ' crate(s) scanned, ' +
+    files +
+    ' file(s), ' +
+    testItems +
+    ' test item(s) excluded, ' +
+    exemptCalls +
+    ' test-exempt unwrap() call(s), ' +
+    violations.length +
+    ' violation(s), ' +
+    errors.length +
+    ' error(s)';
   return { violations, errors, scanned, files, exemptCalls, testItems, summary };
 }
 
@@ -507,7 +522,11 @@ function parseArgs(argv) {
  * already exposes, forwarded so the suite can drive the *empty subject list*
  * through the real exit code instead of asserting on an internal object.
  */
-export function runCli({ argv = process.argv.slice(2), env = process.env, crateDirs = TARGET_CRATES } = {}) {
+export function runCli({
+  argv = process.argv.slice(2),
+  env = process.env,
+  crateDirs = TARGET_CRATES,
+} = {}) {
   const out = (s) => process.stdout.write(s + '\n');
   const err = (s) => process.stderr.write(s + '\n');
 
@@ -534,7 +553,13 @@ export function runCli({ argv = process.argv.slice(2), env = process.env, crateD
 
   for (const v of result.violations) {
     err(
-      PREFIX + ' VIOLATION  ' + v.rule + '  ' + v.file + ':' + v.line +
+      PREFIX +
+        ' VIOLATION  ' +
+        v.rule +
+        '  ' +
+        v.file +
+        ':' +
+        v.line +
         '  bare `unwrap()` on a production path — return the error with `?` / `map_err`, or use' +
         ' `expect("…")` with a comment saying why panicking is acceptable (docs/development/panic-policy.md).',
     );

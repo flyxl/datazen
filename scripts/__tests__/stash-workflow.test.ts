@@ -105,15 +105,15 @@ describe('stash inject restore workflow', () => {
   it('restore leaves extra codegen files untouched', () => {
     stash.stashManagedFiles();
     writeManagedFiles(root, INJECTED_CONTENTS);
-    mkdirSync(join(root, 'src/extensions'), { recursive: true });
+    mkdirSync(join(root, 'packages/frontend/src/extensions'), { recursive: true });
     writeFileSync(
-      stash.workPath('src/extensions/generated.ts'),
-      INJECTED_CONTENTS['src/extensions/generated.ts'],
+      stash.workPath('packages/frontend/src/extensions/generated.ts'),
+      INJECTED_CONTENTS['packages/frontend/src/extensions/generated.ts'],
     );
 
     stash.restoreManagedFiles();
-    expect(readManaged(root, 'src/extensions/generated.ts')).toBe(
-      INJECTED_CONTENTS['src/extensions/generated.ts'],
+    expect(readManaged(root, 'packages/frontend/src/extensions/generated.ts')).toBe(
+      INJECTED_CONTENTS['packages/frontend/src/extensions/generated.ts'],
     );
     expect(readManaged(root, 'Cargo.toml')).toBe(CLEAN_CONTENTS['Cargo.toml']);
   });

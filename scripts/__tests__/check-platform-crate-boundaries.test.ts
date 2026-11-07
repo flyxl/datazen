@@ -93,10 +93,11 @@ function fixture(
 }
 
 const CORE = [
-  { name: 'datazen_desktop', dir: 'src-tauri' },
-  { name: 'datazen-driver-api', dir: 'packages/driver-api' },
-  { name: 'datazen', dir: 'modules' },
-  { name: 'datazen-driver-redis', dir: 'packages/drivers/redis' },
+  { name: 'datazen_desktop', dir: 'crates/datazen-desktop' },
+  { name: 'datazen-driver-api', dir: 'crates/datazen-driver-api' },
+  { name: 'datazen', dir: 'crates/datazen' },
+  { name: 'datazen-server', dir: 'crates/datazen-server' },
+  { name: 'datazen-driver-redis', dir: 'crates/drivers/redis' },
 ];
 
 // `classifyMemberDir` returns a discriminated union; `.id` only exists on the
@@ -148,25 +149,25 @@ function run(metadata: object, specText = SPEC, options: { requireLayers?: strin
 describe('classifyMemberDir', () => {
   it('maps every path §2.4 names to a layer', () => {
     for (const dir of [
-      'src-tauri',
-      'server',
-      'modules',
-      'packages/infra',
-      'packages/driver-api',
-      'packages/drivers/redis',
+      'crates/datazen-desktop',
+      'crates/datazen-server',
+      'crates/datazen',
+      'crates/datazen-infra',
+      'crates/datazen-driver-api',
+      'crates/drivers/redis',
       'packages/backend-client',
     ]) {
       expect(classifyMemberDir(dir).unclassified).toBeUndefined();
     }
-    expect(layerIdOf('modules')).toBe('modules');
-    expect(layerIdOf('packages/drivers/redis')).toBe('driver');
+    expect(layerIdOf('crates/datazen')).toBe('modules');
+    expect(layerIdOf('crates/drivers/redis')).toBe('driver');
   });
 
   it('respects segment boundaries so a sibling directory is not a layer', () => {
-    // `packages/drivers-archive` shares a string prefix with `packages/drivers`
+    // `crates/drivers-archive` shares a string prefix with `crates/drivers`
     // but is a different directory; matching naively would classify an
     // unrelated crate as a driver and hand it F-01's rules.
-    expect(classifyMemberDir('packages/drivers-archive/foo')).toHaveProperty('unclassified');
+    expect(classifyMemberDir('crates/drivers-archive/foo')).toHaveProperty('unclassified');
   });
 
   it('reports an unknown member as an error rather than a silent pass', () => {
@@ -230,7 +231,7 @@ describe('ruleVerdict', () => {
   it('says fail for a rule one of whose violations is attributed to it', () => {
     // Both producer shapes: the closure walk and the F-07 scan open with
     // `<id>  `, the spec cross-check with `<id>: `.
-    expect(ruleVerdict('F-11', ['F-11  datazen-infra (packages/infra/Cargo.toml) → x'])).toBe(
+    expect(ruleVerdict('F-11', ['F-11  datazen-infra (crates/datazen-infra/Cargo.toml) → x'])).toBe(
       'fail',
     );
     expect(ruleVerdict('F-11', ['F-11: subjects disagree with §2.4'])).toBe('fail');
@@ -366,7 +367,7 @@ describe('checkPlatformCrateBoundaries', () => {
     // only faked the graph could not exercise this half at all.
     const root = mkdtempSync(join(tmpdir(), 'datazen-f01-declared-'));
     try {
-      const dir = join(root, 'packages/drivers/probe');
+      const dir = join(root, 'crates/drivers/probe');
       mkdirSync(dir, { recursive: true });
       writeFileSync(
         join(dir, 'Cargo.toml'),
@@ -374,13 +375,7 @@ describe('checkPlatformCrateBoundaries', () => {
           '[dependencies]\ntauri = { version = "2", optional = true }\n',
       );
       const result = run(
-        fixture(
-          [{ name: 'datazen-driver-probe', dir: 'packages/drivers/probe' }],
-          {},
-          [],
-          {},
-          root,
-        ),
+        fixture([{ name: 'datazen-driver-probe', dir: 'crates/drivers/probe' }], {}, [], {}, root),
       );
       expect(result.violations.join('\n')).toMatch(
         /F-01.*datazen-driver-probe.*declares tauri in \[dependencies\]/,
@@ -391,18 +386,18 @@ describe('checkPlatformCrateBoundaries', () => {
   });
 
   it("F-01: the host's own dormant tauri declaration is not adjudicated by F-01", () => {
-    // The trap this rule must not fall into. `src-tauri/Cargo.toml` declares
+    // The trap this rule must not fall into. `crates/datazen-desktop/Cargo.toml` declares
     // `tauri-plugin-webdriver` for the macOS silent-E2E feature, and the host
     // is *supposed* to depend on Tauri — F-01's subjects are the `driver`
     // layer, so that edge is outside the rule. Reading it as a violation would
     // be the gate punishing the one member that is allowed to have it.
     //
-    // The real `src-tauri/Cargo.toml` is read here, so this case is about the
+    // The real `crates/datazen-desktop/Cargo.toml` is read here, so this case is about the
     // real tree's host manifest, not a synthetic one.
     const result = run(fixture(CORE, { ...clean }));
     expect(result.violations.filter((v) => v.startsWith('F-01'))).toEqual([]);
     expect(result.advisories.join('\n')).toMatch(
-      /datazen_desktop \(src-tauri\/Cargo\.toml\) declares .*tauri-plugin-webdriver/,
+      /datazen_desktop \(crates\/datazen-desktop\/Cargo\.toml\) declares .*tauri-plugin-webdriver/,
     );
     expect(result.advisories.join('\n')).toMatch(/Not blocking: F-01's subjects are/);
   });
@@ -435,10 +430,7 @@ describe('checkPlatformCrateBoundaries', () => {
     // The check is over the *closure*, not the declared edge: a core crate
     // that never names Tauri but pulls it in through a helper is exactly the
     // case F-02 exists for.
-    const members = [
-      ...CORE,
-      { name: 'datazen-driver-postgres', dir: 'packages/drivers/postgres' },
-    ];
+    const members = [...CORE, { name: 'datazen-driver-postgres', dir: 'crates/drivers/postgres' }];
     const result = run(
       fixture(
         members,
@@ -461,13 +453,7 @@ describe('checkPlatformCrateBoundaries', () => {
     const root = mkdtempSync(join(tmpdir(), 'datazen-f01-unreadable-'));
     try {
       const result = run(
-        fixture(
-          [{ name: 'datazen-driver-ghost', dir: 'packages/drivers/ghost' }],
-          {},
-          [],
-          {},
-          root,
-        ),
+        fixture([{ name: 'datazen-driver-ghost', dir: 'crates/drivers/ghost' }], {}, [], {}, root),
       );
       expect(result.errors.join('\n')).toMatch(/read\?.*datazen-driver-ghost/);
     } finally {
@@ -495,22 +481,37 @@ describe('checkPlatformCrateBoundaries', () => {
   });
 
   it('F-06: a tauri crate in the server closure is a violation', () => {
-    const members = [...CORE, { name: 'datazen-server', dir: 'server' }];
     const result = run(
-      fixture(members, { ...clean, 'datazen-server': ['tauri'] }, [{ name: 'tauri' }]),
+      fixture(CORE, { ...clean, 'datazen-server': ['tauri'] }, [{ name: 'tauri' }]),
     );
     expect(result.violations.join('\n')).toMatch(/F-06.*datazen-server.*→ tauri/);
   });
 
+  it('F-06 is armed since server landed — its absence is an error, not a vacuous report', () => {
+    // WR-D1 put datazen-server on disk and in DEFAULT_REQUIRED_LAYERS, so
+    // the rule that spent the pre-server era honestly vacuous is now armed:
+    // removing the crate from the metadata must fail the gate. (ts subjects
+    // like backend-client resolve against the real disk; rust subjects like
+    // server resolve against this fixture, which is why the filter works.)
+    const noServer = CORE.filter((m) => m.dir !== 'crates/datazen-server');
+    const result = run(fixture(noServer, clean));
+    expect(result.errors.join('\n')).toContain('server');
+    expect(result.vacuous.map((v) => v.rule)).not.toContain('F-06');
+  });
+
   it('reports a not-yet-created layer as vacuous rather than failing', () => {
+    // F-06 held this seat while server/ was hypothetical; since WR-D1 the
+    // honest vacuous example is F-11 (infra absent from this fixture).
     const result = run(fixture(CORE, clean));
-    expect(result.vacuous.map((v) => v.rule)).toContain('F-06');
+    expect(result.vacuous.map((v) => v.rule)).toContain('F-11');
     expect(result.violations).toEqual([]);
   });
 
   it('--require-layers turns a vacuous rule into an error', () => {
-    const result = run(fixture(CORE, clean), SPEC, { requireLayers: ['server'] });
-    expect(result.errors.join('\n')).toContain('server');
+    // `infra` is absent from this fixture, so F-11 is vacuous by default;
+    // requiring the layer converts the report into an error.
+    const result = run(fixture(CORE, clean), SPEC, { requireLayers: ['infra'] });
+    expect(result.errors.join('\n')).toContain('infra');
   });
 });
 
@@ -797,8 +798,8 @@ describe('F-07 transport tokens respect identifier boundaries', () => {
         root,
         metadata: fixture(
           [
-            { name: 'datazen_desktop', dir: 'src-tauri' },
-            { name: 'datazen', dir: 'modules' },
+            { name: 'datazen_desktop', dir: 'crates/datazen-desktop' },
+            { name: 'datazen', dir: 'crates/datazen' },
           ],
           {},
         ),
@@ -861,7 +862,7 @@ describe('declaredDependencies — the manifest-side scan', () => {
     // `[target.'cfg(windows)'.dependencies]` is common in cross-platform drivers
     // and was the open question: a scanner that only matches a literal
     // `[dependencies]` header misses it, and a door that misses the side door is
-    // not a door. The real occurrence is `src-tauri/Cargo.toml:90`.
+    // not a door. The real occurrence is `crates/datazen-desktop/Cargo.toml`.
     expect(
       declaredDependencies(`[target.'cfg(target_os = "macos")'.dependencies]\nobjc2 = "0.6.4"\n`),
     ).toEqual([

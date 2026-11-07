@@ -3,7 +3,7 @@
  *
  * Two independent trees paint `role="tree"` rows — the host's connection
  * navigator (`src/windows/connection/navigator/`) and the Redis key browser
- * (`packages/drivers/redis/ui/key-browser/`) — and each used to derive a row's
+ * (`crates/drivers/redis/ui/key-browser/`) — and each used to derive a row's
  * hierarchy, indent and announced level from private arithmetic that had
  * already drifted from the other's. These types are the one place that
  * arithmetic is written down: `geometry.ts` turns them into numbers,

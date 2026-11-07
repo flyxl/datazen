@@ -1,0 +1,390 @@
+use super::error::{CmdExt, CommandError};
+use super::AppState;
+use crate::store::history_db::DEFAULT_HISTORY_PAGE_SIZE;
+use crate::store::{HistoryOrder, QueryHistoryFilter, QueryHistoryPage};
+use datazen_driver_api::MultiQueryResult;
+use datazen_driver_api::QueryExecutionId;
+use tauri::State;
+
+#[tauri::command]
+pub async fn execute_query(
+    state: State<'_, AppState>,
+    db_session_id: String,
+    sql: String,
+    database: Option<String>,
+) -> Result<MultiQueryResult, CommandError> {
+    tracing::info!(%db_session_id, sql_len = sql.len(), "execute_query");
+    tracing::debug!(
+        %db_session_id,
+        sql_preview = %datazen_infra::redaction::sql_preview_for_log(&sql),
+        "execute_query sql"
+    );
+    let result = super::driver_command::execute_driver_command_impl(
+        &state,
+        super::driver_command::ExecuteDriverCommandRequest {
+            db_session_id: Some(db_session_id),
+            driver_type: None,
+            command: "query".into(),
+            // F7: the target rides the command envelope so rewrite-capable
+            // drivers qualify unqualified relations inline (`db`.`t`). There is
+            // deliberately no session switch: a `USE` on a pooled connection can
+            // go stale (a recycled connection still sits on the default
+            // database), which is how a query bound to a non-first database
+            // ended up running against the first one after navigating away and
+            // back. `schema` stays `None` so a hand-written query keeps resolving
+            // through the connection's own default (PostgreSQL `search_path`).
+            database,
+            schema: None,
+            input: serde_json::json!({ "sql": sql }),
+        },
+    )
+    .await?;
+    serde_json::from_value(result.data).map_err(CommandError::Json)
+}
+
+#[tauri::command]
+pub async fn cancel_query(
+    state: State<'_, AppState>,
+    db_session_id: String,
+    execution_id: String,
+) -> Result<(), CommandError> {
+    let execution_id = QueryExecutionId::new(execution_id);
+    tracing::info!(
+        %db_session_id,
+        execution_id = %execution_id.as_str(),
+        "cancel_query"
+    );
+    state
+        .query_executions
+        .validate_owner(&execution_id, &db_session_id)
+        .await
+        .map_err(CommandError::Validation)?;
+    let resolved =
+        super::driver_command::resolve_command_driver(&state, Some(&db_session_id), None).await?;
+    let connection_id = resolved
+        .session
+        .as_ref()
+        .map(|session| session.connection_id.as_str().to_owned())
+        .ok_or_else(|| CommandError::NotFound("connection profile is unavailable".into()))?;
+    let config = state
+        .store
+        .get_connection(&connection_id)
+        .await
+        .ok_or_else(|| CommandError::NotFound("connection profile is unavailable".into()))?;
+    match state
+        .driver_registry
+        .get_capabilities(&config.database_type)
+        .await
+    {
+        Some(capabilities) if capabilities.supports_query_execution_cancel => {}
+        Some(_) => {
+            return Err(CommandError::Validation(
+                "UNSUPPORTED_OPERATION:cancel_query:query cancellation is not supported by this driver"
+                    .into(),
+            ));
+        }
+        None => {
+            return Err(CommandError::Validation(
+                "UNSUPPORTED_OPERATION:cancel_query:query cancellation capability is unknown"
+                    .into(),
+            ));
+        }
+    }
+    resolved
+        .driver
+        .cancel_query_with_execution(&resolved.handle, &execution_id)
+        .await
+        .cmd_err("cancel_query")
+}
+
+#[tauri::command]
+pub async fn clear_query_history(state: State<'_, AppState>) -> Result<(), CommandError> {
+    tracing::info!("clear_query_history");
+    crate::platform::ipc::require_history_service(&state)?
+        .clear_query_history()
+        .await
+        .map(|_| ())
+        .cmd_err("clear_query_history")
+}
+
+/// The raw shape of a paged history read, as it arrives over IPC.
+///
+/// Tauri's command macro requires one parameter per IPC argument, so the
+/// `#[tauri::command]` below unavoidably has a long positional list. Everything
+/// past that boundary works on this struct instead, so the filter's fields
+/// cannot be silently reordered at a call site.
+///
+/// Mirrors the frontend's `HistoryQueryState` in
+/// `src/components/history/historyQuery.ts`. The two are not identical by
+/// design: the frontend uses `'all'` sentinels because it binds to selects,
+/// while an absent value is a real `Option` over the wire.
+#[derive(Debug, Clone)]
+pub struct HistoryPageRequest {
+    pub limit: usize,
+    pub connection_id: Option<String>,
+    pub database: Option<String>,
+    pub schema: Option<String>,
+    pub search: Option<String>,
+    pub since: Option<String>,
+    pub until: Option<String>,
+    pub order: Option<String>,
+}
+
+impl Default for HistoryPageRequest {
+    /// Hand-written for the same reason `QueryHistoryFilter`'s is: a derived
+    /// `Default` would give `limit: 0`, and `LIMIT 0` returns an empty page
+    /// that reads as "no history" rather than "no rows requested".
+    fn default() -> Self {
+        Self {
+            limit: DEFAULT_HISTORY_PAGE_SIZE,
+            connection_id: None,
+            database: None,
+            schema: None,
+            search: None,
+            since: None,
+            until: None,
+            order: None,
+        }
+    }
+}
+
+impl HistoryPageRequest {
+    /// Validate the order and project onto the store's filter.
+    ///
+    /// An unknown order is rejected rather than silently defaulting: a UI that
+    /// asks for "slowest first" and gets "most recent" is a worse outcome than
+    /// an error, because nothing on screen reveals the substitution.
+    ///
+    /// Borrows rather than consumes, because `QueryHistoryFilter` borrows its
+    /// strings. The caller owns the request for as long as it needs the filter.
+    fn to_filter(&self) -> Result<QueryHistoryFilter<'_>, CommandError> {
+        let order = match self.order.as_deref() {
+            None | Some("") => HistoryOrder::Recent,
+            Some(other) => HistoryOrder::parse(other)
+                .ok_or_else(|| CommandError::Validation(format!("unknown order: {other}")))?,
+        };
+        Ok(QueryHistoryFilter {
+            limit: self.limit,
+            connection_id: self.connection_id.as_deref(),
+            database: self.database.as_deref(),
+            schema: self.schema.as_deref(),
+            search: self.search.as_deref(),
+            since: self.since.as_deref(),
+            until: self.until.as_deref(),
+            order,
+        })
+    }
+}
+
+/// Paged history read. `total` is the full match count, so a UI can state
+/// "showing N of M" instead of implying the page is everything.
+///
+/// Tauri requires one parameter per IPC argument, so this signature cannot
+/// shrink. The struct above is how the rest of the code sees it.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn get_query_history_page(
+    state: State<'_, AppState>,
+    limit: usize,
+    connection_id: Option<String>,
+    database: Option<String>,
+    schema: Option<String>,
+    search: Option<String>,
+    since: Option<String>,
+    until: Option<String>,
+    order: Option<String>,
+) -> Result<QueryHistoryPage, CommandError> {
+    let request = HistoryPageRequest {
+        limit,
+        connection_id,
+        database,
+        schema,
+        search,
+        since,
+        until,
+        order,
+    };
+    let filter = request.to_filter()?;
+    crate::platform::ipc::require_history_service(&state)?
+        .query_history_page(&filter)
+        .await
+        .cmd_err("get_query_history_page")
+}
+
+/// Remove exactly one history row. Returns how many rows went away so a caller
+/// can reject a no-op instead of showing a success it did not earn.
+#[tauri::command]
+pub async fn delete_query_history(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<u64, CommandError> {
+    crate::platform::ipc::require_history_service(&state)?
+        .delete_query_history(&id)
+        .await
+        .cmd_err("delete_query_history")
+}
+
+/// Write `content` to a user-chosen path. Resolves `false` when the save
+/// dialog is dismissed, so the caller can stay silent instead of claiming a
+/// file it never wrote.
+#[tauri::command]
+pub async fn save_sql_file(
+    app: tauri::AppHandle,
+    default_file_name: String,
+    content: String,
+) -> Result<bool, CommandError> {
+    // The dialog filters to `.sql`; the extension is appended when the user
+    // types a bare stem, so a Windows user who types "queries" still gets a
+    // file the editor and any `.sql` tooling will open.
+    let path = super::dialog::save_file(
+        &app,
+        ("SQL".into(), vec!["sql".to_string()]),
+        default_file_name,
+    )
+    .await?;
+
+    let Some(path) = path else {
+        return Ok(false);
+    };
+    let path = if path.extension().is_some() {
+        path
+    } else {
+        path.with_extension("sql")
+    };
+
+    std::fs::write(&path, content).map_err(|e| {
+        CommandError::Io(std::io::Error::new(
+            e.kind(),
+            format!("write {}: {e}", path.display()),
+        ))
+    })?;
+    Ok(true)
+}
+
+/// Shared bridge for the three transaction controls: every one of them is
+/// "resolve the platform runtime, open a call scope, hand the operation to
+/// `RuntimeConnectionUseCases::session_transaction`" — the transaction state
+/// machine itself lives in modules.
+async fn runtime_transaction(
+    state: &AppState,
+    session_id: &str,
+    operation: datazen::execution::application::SessionTransactionOperation,
+) -> Result<(), CommandError> {
+    let platform = state
+        .platform_require()
+        .map_err(crate::platform::into_command_error)?;
+    let call = platform.begin_call();
+    platform
+        .runtime()
+        .map_err(crate::platform::into_command_error)?
+        .session_transaction(call.context(), session_id, operation)
+        .await
+        .map_err(crate::platform::into_command_error)
+}
+
+#[tauri::command]
+pub async fn begin_session_transaction(
+    state: State<'_, AppState>,
+    db_session_id: String,
+) -> Result<(), CommandError> {
+    runtime_transaction(
+        &state,
+        &db_session_id,
+        datazen::execution::application::SessionTransactionOperation::Begin,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn commit_session_transaction(
+    state: State<'_, AppState>,
+    db_session_id: String,
+) -> Result<(), CommandError> {
+    runtime_transaction(
+        &state,
+        &db_session_id,
+        datazen::execution::application::SessionTransactionOperation::Commit,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn rollback_session_transaction(
+    state: State<'_, AppState>,
+    db_session_id: String,
+) -> Result<(), CommandError> {
+    runtime_transaction(
+        &state,
+        &db_session_id,
+        datazen::execution::application::SessionTransactionOperation::Rollback,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn session_transaction_status(
+    state: State<'_, AppState>,
+    db_session_id: String,
+) -> Result<bool, CommandError> {
+    let platform = state
+        .platform_require()
+        .map_err(crate::platform::into_command_error)?;
+    let call = platform.begin_call();
+    platform
+        .runtime()
+        .map_err(crate::platform::into_command_error)?
+        .session_transaction_status(call.context(), &db_session_id)
+        .await
+        .map_err(crate::platform::into_command_error)
+}
+
+#[cfg(test)]
+mod log_hygiene_tests {
+    #[test]
+    fn execute_query_source_does_not_info_log_sql_preview() {
+        let src = include_str!("query.rs");
+        let start = src.find("pub async fn execute_query(").expect("fn");
+        let chunk = &src[start..start + 800];
+        assert!(
+            !chunk.contains("tracing::info!") || !chunk.contains("%sql_preview"),
+            "execute_query must not info!-log sql_preview"
+        );
+        assert!(
+            chunk.contains("sql_len") || chunk.contains("tracing::debug!"),
+            "expected sql_len and/or debug preview"
+        );
+        assert!(
+            chunk.contains("sql_preview_for_log"),
+            "execute_query debug preview must use log_redact"
+        );
+    }
+
+    #[test]
+    fn execute_driver_command_stream_source_does_not_info_log_sql_preview() {
+        let src = include_str!("driver_command/streaming.rs");
+        let start = src
+            .find("pub(crate) async fn execute_driver_command_stream_impl")
+            .expect("fn");
+        let end = src[start..]
+            .find("let read_only =")
+            .map(|i| start + i)
+            .unwrap_or(start + 8000);
+        let chunk = &src[start..end];
+        assert!(
+            !chunk.contains("tracing::info!") || !chunk.contains("%sql_preview"),
+            "execute_driver_command_stream must not info!-log sql_preview"
+        );
+        assert!(
+            chunk.contains("sql_preview_for_log"),
+            "execute_driver_command_stream debug preview must use log_redact"
+        );
+    }
+}
+
+#[cfg(test)]
+#[path = "query_command_test_host.rs"]
+mod query_command_test_host;
+
+#[cfg(test)]
+#[path = "query_tests.rs"]
+mod tests;

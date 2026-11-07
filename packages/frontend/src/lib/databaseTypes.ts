@@ -1,0 +1,158 @@
+/**
+ * Unified database type registry.
+ *
+ * Driver metadata is injected at build/dev time into src/extensions/generated.ts
+ * (path + git drivers selected via --drivers / DATAZEN_DRIVERS).
+ */
+
+import type { DatabaseType } from '../types';
+import {
+  DRIVER_DB_ENTRIES,
+  DRIVER_ICON_ENTRIES,
+  DRIVER_ICON_PARENTS,
+} from '../extensions/generated';
+import type { IconSourceMap } from './iconResolver';
+
+export type { ConnectionMode, DatabaseTypeMeta } from '@datazen/extension-points';
+import type { DatabaseTypeMeta } from '@datazen/extension-points';
+import { registerDriverMetas } from '@datazen/extension-points';
+
+export const DB_REGISTRY: Record<DatabaseType, DatabaseTypeMeta> = {
+  ...DRIVER_DB_ENTRIES,
+} as Record<DatabaseType, DatabaseTypeMeta>;
+
+registerDriverMetas(DB_REGISTRY as any);
+
+/**
+ * New-connection sidebar order: most commonly used types first (not wire-protocol family).
+ * Includes drivers that may be absent from the basic SKU build; missing registry entries
+ * simply do not appear in the picker. Types absent from this list sort after, by id.
+ */
+export const DB_TYPE_POPULARITY_ORDER: readonly string[] = [
+  'mysql',
+  'postgresql',
+  'mariadb',
+  'sqlite',
+  'redis',
+  'mongodb',
+  'sqlserver',
+  'clickhouse',
+  'doris',
+  'starrocks',
+  'ob_oracle',
+  'elasticsearch',
+  'duckdb',
+  'questdb',
+  'cloudberry',
+  'turso',
+  'rqlite',
+  'influxdb',
+  'victoriametrics',
+  'hbase',
+  'manticore',
+  'vector',
+  'kiwi',
+  'presto',
+  'trino',
+  'superset',
+];
+
+const dbTypePopularityRank = new Map(DB_TYPE_POPULARITY_ORDER.map((id, index) => [id, index]));
+
+/** Sort db type picker entries by {@link DB_TYPE_POPULARITY_ORDER}. */
+export function sortDbTypesByPopularity<T extends { value: string }>(items: T[]): T[] {
+  return [...items].sort((a, b) => {
+    const ra = dbTypePopularityRank.get(a.value) ?? Number.MAX_SAFE_INTEGER;
+    const rb = dbTypePopularityRank.get(b.value) ?? Number.MAX_SAFE_INTEGER;
+    if (ra !== rb) return ra - rb;
+    return a.value.localeCompare(b.value);
+  });
+}
+
+/** Get the identifier quoting function for a given database type. */
+export function escapeIdent(name: string, dbType?: DatabaseType): string {
+  const q = dbType ? (DB_REGISTRY[dbType]?.quoteChar ?? '"') : '"';
+  if (q === '`') return `\`${name.replaceAll('`', '``')}\``;
+  if (q === '"') return `"${name.replaceAll('"', '""')}"`;
+  if (q === '[') return `[${name.replaceAll(']', ']]')}]`;
+  return name; // no quoting (e.g. Redis)
+}
+
+/**
+ * Default SQL literal value escaper (PostgreSQL-style).
+ * - NULL / undefined → `NULL`
+ * - number → bare literal
+ * - boolean → `TRUE` / `FALSE`
+ * - object → `JSON.stringify` then single-quote with `'` → `''` escaping
+ * - string → single-quote with `'` → `''` escaping
+ */
+export function defaultEscapeSqlValue(value: unknown): string {
+  if (value === null || value === undefined) return 'NULL';
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
+  const str = typeof value === 'object' ? JSON.stringify(value) : String(value);
+  return `'${str.replaceAll("'", "''")}'`;
+}
+
+/**
+ * Get the SQL literal value escaper for a given database type.
+ * Returns the driver's custom escaper if registered, otherwise the
+ * host default (PostgreSQL-style single-quote doubling).
+ */
+export function getEscapeSqlValue(dbType?: string): (value: unknown) => string {
+  if (dbType) {
+    const meta = (DB_REGISTRY as Record<string, DatabaseTypeMeta | undefined>)[dbType];
+    if (meta?.escapeSqlValue) return meta.escapeSqlValue;
+  }
+  return defaultEscapeSqlValue;
+}
+
+/** Get the display label for a database type. */
+export function getDbLabel(dbType: DatabaseType): string {
+  return DB_REGISTRY[dbType]?.label ?? dbType;
+}
+
+/** Built-in driver SVG URLs keyed by semantic icon id (`db.<type>`). */
+export function getDriverIconMap(): IconSourceMap {
+  return { ...DRIVER_ICON_ENTRIES };
+}
+
+/** Parent dbType for protocol-reuse badges that lack their own SVG. */
+export function getDriverIconParents(): Record<string, string> {
+  return { ...DRIVER_ICON_PARENTS };
+}
+
+/** Get the icon info (short label + bg class) for a database type. */
+export function getDbIcon(dbType: DatabaseType): { label: string; bg: string } {
+  const meta = DB_REGISTRY[dbType];
+  return meta ? { label: meta.shortLabel, bg: meta.iconBg } : { label: 'DB', bg: 'bg-gray-500' };
+}
+
+/** Clamp numeric DB index fields (Redis etc.); invalid input becomes `"0"`. */
+export function normalizeIndexDatabaseField(s: string, maxIndex = 15): string {
+  const u = s.trim();
+  if (u === '' || !/^\d+$/.test(u)) return '0';
+  return String(Math.min(maxIndex, Math.max(0, parseInt(u, 10))));
+}
+
+/** Build a display address string for a connection. */
+export function formatConnectionAddr(conn: {
+  databaseType: DatabaseType;
+  host?: string;
+  port?: number;
+  database?: string;
+  sshTunnel?: { enabled: boolean; host: string };
+}): string {
+  const meta = DB_REGISTRY[conn.databaseType];
+  if (meta?.connectionMode === 'file') {
+    return conn.database ?? meta.label;
+  }
+  if (meta?.connectionMode === 'url') {
+    return conn.host ?? meta.label;
+  }
+  const hasSSH = conn.sshTunnel?.enabled === true;
+  if (hasSSH) {
+    return `${conn.sshTunnel!.host} → ${conn.host ?? ''} : ${conn.database ?? ''}`;
+  }
+  return `${conn.host ?? ''} : ${conn.database ?? ''}`;
+}

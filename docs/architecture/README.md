@@ -65,10 +65,12 @@ P1（共享边界）、P3（Runtime 会话/资源/网关）、P4（桌面会话�
 DataZen 当前是一个基于 Tauri v2 的桌面数据库客户端，同时支持 GUI 模式和 headless MCP stdio 模式。前端通过 Tauri IPC（或 `@datazen/backend-client` 端口）进入宿主组装层，业务内核位于共享 Rust workspace。
 
 ```text
-React / TypeScript (src/)
+React / TypeScript
+  packages/desktop/          桌面壳（入口、platform/desktop、shell）
+  packages/frontend/     共享 UI `@datazen/frontend`（stores、组件、hooks、i18n、平台端口）
   │  Tauri IPC / @datazen/backend-client
   ▼
-src-tauri (desktop host)
+crates/datazen-desktop (desktop host, crate `datazen_desktop`)
   ├─ commands/       IPC 边界与参数/错误处理
   ├─ platform/       Tauri 组装根：PlatformAdapter、DesktopSessionBackend、身份/策略/仓储适配
   ├─ services/       薄宿主服务：Schema metadata、JobRegistry、Runtime command source
@@ -79,31 +81,37 @@ src-tauri (desktop host)
   ├─ store/          桌面持久化（SQLite + 加密文件）
   ├─ tunnel/ + ssh_tunnel.rs   隧道装配
   ├─ wapps/          datazen:// 协议桥、WappManager
-  └─ ai/             宿主 metadata source（规则与 provider 契约在共享包）
+  └─ commands/ai/    AI IPC（契约与协议在 crates/datazen/src/ai）
   │
   ▼
 packages/
-  ├─ platform-api/      跨形态、无传输依赖的契约（ID、RequestContext、target、ports）
-  ├─ platform-infra/    形态中立基础设施原语（脱敏、路径安全）
-  ├─ application/       应用层用例（target、identity policy、sessions、settings、DTO）
-  ├─ runtime/           运行时内核：session/resource/lease/budget/gateway/job/sql_guard/schema_cache/tunnel
-  ├─ modules/      共享 feature 逻辑：Workflow/AI/MCP/Dashboard/导出/备份恢复/Wapp 内核
-  ├─ schema-diff/       方言中立 Schema Diff 引擎
-  ├─ data-sync/         同族 Data Sync 引擎
-  ├─ data-transfer/     异构 Data Transfer 引擎
-  ├─ migration-common/  迁移引擎共享的 pair/recordset 边界
-  ├─ driver-api/        Driver trait 与 Command/迁移/资源契约
-  ├─ ai-api/, ai-providers/   AI Provider 契约与协议实现
-  └─ backend-client/, driver-sdk/, wapp-sdk/, extension-points/, ui/   JS/TS 契约与 UI 包
+  ├─ driver-api/        Driver trait 与 Command/迁移/资源契约（Rust crate `datazen-driver-api`）
+  ├─ infra/             形态中立基础设施原语（脱敏、路径安全；crate `datazen-infra`）
+  └─ backend-client/, driver-sdk/, wapp-sdk/, extension-points/, ui/   TS 契约与 UI 包
+crates/drivers/*      全部数据库驱动（Cargo crate；多数尚无 package.json，pnpm 会跳过）
+
+modules/（单一业务 crate `datazen`，DDD 迁移后按功能分层）
+  ├─ src/shared/        跨形态、无传输依赖的契约（ID、RequestContext、PortError、Clock；原 platform-api 契约层）
+  ├─ src/application/   应用层用例（target、identity policy、sessions、DTO）
+  ├─ src/execution/     运行时内核：session/resource/lease/budget/gateway/driver_registry
+  ├─ src/jobs/          Job 运行时（原 kernel 的 Job 部分；NativeTool 子模块已随前端形态拆分方案 F1 删除）
+  ├─ src/migration/     schema-diff / data-sync / data-transfer 三引擎与 common
+  ├─ src/workflow/ src/ai/ src/mcp/ src/dashboard/   共享 feature 逻辑（domain/application/engine 分层）
+
+server/（crate `datazen-server`）
+  HTTP 组装根：`/healthz`、`/readyz` 与已点亮的 `/api/v1` 域。与桌面宿主互不依赖，只依赖 `modules`。
+
+packages/web/
+  浏览器壳。共享 UI 在 `packages/frontend`；本目录不含 `@tauri-apps`。
 ```
 
-依赖方向是单向的：`platform-api` 不依赖上层；`application` 依赖 `platform-api`；`runtime` 依赖 `application` 与 `platform-api`；`modules` 依赖 `runtime`、`application`、领域引擎与契约；`src-tauri` 是唯一把 Tauri、存储、网络和这些内核接起来的组装根。`scripts/check-platform-crate-boundaries.mjs` 对 Tauri/HTTP/UI 依赖做硬门禁。
+依赖方向是单向的：`modules` 内 `shared` 契约层不依赖上层；各领域包的 `application` 依赖 `shared` 与 `driver-api`。`crates/datazen-desktop` 与 `crates/datazen-server/` 是两个组装根，彼此不依赖。`scripts/check-platform-crate-boundaries.mjs` 与 `scripts/check-server-deps.mjs` 对 Tauri/HTTP/UI 依赖做硬门禁。
 
-当前代码没有独立的 Web Server / Domain Service 层；桌面应用直接通过 Tauri IPC 进入 Rust backend。团队 Web 形态仍属于目标设计，不应在当前架构文档中描述为已实现能力。
+桌面 GUI 仍通过 Tauri IPC 进入 Rust。团队 Web 的 HTTP 宿主和浏览器壳已经在仓库里，但不是桌面功能的替代品；未点亮的 `/api/v1` 域仍以 [HTTP API 契约](platform/http-api-contract.md) 为准，不要把未挂载的路由写成已可用产品能力。
 
 ## 2. Driver 架构
 
-`packages/driver-api` 是 Host 与独立 Driver 的稳定编译期契约。Driver 通过 `inventory` 注册到 Host，**不是**运行时加载动态 Rust library。
+`crates/datazen-driver-api` 是 Host 与独立 Driver 的稳定编译期契约。Driver 通过 `inventory` 注册到 Host，**不是**运行时加载动态 Rust library。
 
 核心接口包括：
 
@@ -166,7 +174,7 @@ Review
 Deploy on target
 ```
 
-Schema Diff 领域代码位于 `modules/src/migration/schema_diff/`：
+Schema Diff 领域代码位于 `crates/datazen/src/migration/schema_diff/`：
 
 - `compare.rs`：列、PK、索引差异。
 - `ir.rs`：Snapshot → dialect-neutral `MigrationOperation`。
@@ -188,9 +196,9 @@ Source 是 desired state，Target 是 apply site。例如 source 为 `VARCHAR(25
 
 | 能力 | 目的 | 当前实现 |
 |---|---|---|
-| Schema Diff | 修改目标结构 | `modules/src/migration/schema_diff/` |
-| Data Sync | 同族数据库按行比较并同步 | `modules/src/migration/data_sync/` |
-| Data Transfer | 异构数据库/映射/结构+数据迁移 | `modules/src/migration/data_transfer/` + `modules/src/migration/common/` |
+| Schema Diff | 修改目标结构 | `crates/datazen/src/migration/schema_diff/` |
+| Data Sync | 同族数据库按行比较并同步 | `crates/datazen/src/migration/data_sync/` |
+| Data Transfer | 异构数据库/映射/结构+数据迁移 | `crates/datazen/src/migration/data_transfer/` + `crates/datazen/src/migration/common/` |
 
 Data Sync 使用 Compare → Review → Preview → Execute，生产 compare 路径支持 keyset pagination 和 job cancellation，执行阶段使用参数化 SQL、事务和失败/取消 rollback。
 
@@ -198,19 +206,19 @@ Data Transfer 使用 Endpoints → Setup → Objects → Mapping → Preview →
 
 ## 7. Workflow / AI / MCP / Dashboard
 
-- **Workflow**：共享模型、条件、模板、执行器和调度逻辑位于 `modules/src/workflow/`；`src-tauri/src/workflow/` 提供 YAML registry、Command runtime 绑定、history、桌面 runtime entry 与真实驱动验收。Workflow v1 的连接管理经 `modules command_runtime → modules resource_execution → Runtime`。
-- **AI**：Provider 契约与协议实现位于 `packages/ai-api/` 与 `packages/ai-providers/`；Prompt、Schema 上下文、NL2SQL/诊断/分析等共享逻辑位于 `modules/src/ai/`；AI 用的数据库元数据源位于 `modules/src/services/schema_context/`（宿主只注入 `ResourceExecutionHost` 与 Runtime 门面）。调用点直接引用共享包。
-- **MCP**：`modules/src/mcp/` 持有共享工具/资源逻辑，`src-tauri/src/mcp/` 提供 MCP Server 和 Client 的宿主传输、会话与权限接线，并支持 headless stdio。
-- **Dashboard**：`modules/src/dashboard/` 负责 Widget 创建/归档/调度策略，`src-tauri/src/dashboard/` 负责桌面存储与执行适配；`src-tauri/src/monitor/` 负责 MonitorEngine、定时授权与 occurrence。
+- **Workflow**：共享模型、条件、模板、执行器和调度逻辑位于 `crates/datazen/src/workflow/`；`src-tauri/src/workflow/` 提供 YAML registry、Command runtime 绑定、history、桌面 runtime entry 与真实驱动验收。Workflow v1 的连接管理经 `modules command_runtime → modules resource_execution → Runtime`。
+- **AI**：契约、厂商协议和用例都在 `crates/datazen/src/ai/`（`domain/`、`providers/`、`application/`，`AI_PROTOCOL_VERSION = 1`）。Schema 元数据源在 `crates/datazen/src/ai/application/schema_context.rs`；桌面在 `crates/datazen-desktop/src/services/schema_context_source.rs` 注入宿主门面。独立 crate `packages/ai-api` 与 `packages/ai-providers` 已删除。
+- **MCP**：`crates/datazen/src/mcp/` 持有共享工具/资源逻辑，`src-tauri/src/mcp/` 提供 MCP Server 和 Client 的宿主传输、会话与权限接线，并支持 headless stdio。
+- **Dashboard**：`crates/datazen/src/dashboard/` 负责 Widget 创建/归档/调度策略，`src-tauri/src/dashboard/` 负责桌面存储与执行适配；`src-tauri/src/monitor/` 负责 MonitorEngine、定时授权与 occurrence。
 
 ## 8. 四维扩展架构
 
 DataZen 采用四维扩展体系：
 
-- **数据库驱动（Driver）**：编译时注入，基于 `@datazen/driver-sdk` 与 `packages/driver-api`，通过 inventory 注册。承载数据库连接、SQL 方言、DDL 和 Driver Command。
+- **数据库驱动（Driver）**：编译时注入，基于 `@datazen/driver-sdk` 与 `crates/datazen-driver-api`，通过 inventory 注册。承载数据库连接、SQL 方言、DDL 和 Driver Command。
 - **沙箱工作区应用（Wapp）**：基于 `@datazen/wapp-sdk`、`manifest.json`、`datazen://` 协议与沙箱 `<iframe>`，运行目录 `{appData}/wapps/{publisher}.{name}/`，向用户暴露独立工作区页面与外观主题，通过受控 postMessage 桥通信；取数一律走 `execute_driver_command`；形态无关的规则/安装/存储在 `modules` 的 `workspace_apps` 模块。详见 [wapps.md](backend/wapps.md)。
 - **特权扩展点（Host Extension Points）**：基于 `@datazen/extension-points` 的 `ExtensionPoint<T>` 契约与 CodeMirror Compartment，宿主进程内（In-Process）接入，专用于 SQLEditor 增强等高性能、深交互核心模块。受根目录 **DataZen Plugin, Driver & Extension Linking Exception** 保护，支持独立许可与分发。
-- **外观主题（Theme）**：由 Wapp 以 `contributes.themes[]` 贡献的纯静态资源包（`tokens.css` / `editor.json` / `charts.json` / `icons/`），零代码执行。旧 v1 ThemePack（`packages/themes/`）已存档，`{appData}/themes/` 运行时入口已移除。详见 [wapps.md](backend/wapps.md)「主题应用」与「首屏背景缓存」。
+- **外观主题（Theme）**：由 Wapp 以 `contributes.themes[]` 贡献的纯静态资源包（`tokens.css` / `editor.json` / `charts.json` / `icons/`），零代码执行。旧 v1 `packages/themes/` 目录已从仓库删除，`{appData}/themes/` 运行时入口已移除。详见 [wapps.md](backend/wapps.md)「主题应用」与「首屏背景缓存」。
 
 此外，`@datazen/ui`（`packages/ui/`）是与宿主 Store/IPC 解耦的纯 React 基础视图组件库，供宿主、驱动 UI、Wapp 与扩展共享；它不构成第五维扩展。
 
@@ -236,6 +244,6 @@ React 前端使用 Zustand。主要 Store 位于 `src/stores/`：
 
 ## 11. 测试
 
-测试分布在 Driver、Host Rust、共享 crate、Frontend Vitest 和 E2E 五层。Driver-specific 行为放在 `packages/drivers/<id>/`；Host 不复制 Driver 方言测试。E2E 主要覆盖真实窗口流程和 IPC contract。
+测试分布在 Driver、Host Rust、共享 crate、Frontend Vitest 和 E2E 五层。Driver-specific 行为放在 `crates/drivers/<id>/`；Host 不复制 Driver 方言测试。E2E 主要覆盖真实窗口流程和 IPC contract。
 
 详细测试策略见 [testing.md](testing.md)。

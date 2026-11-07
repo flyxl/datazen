@@ -1,0 +1,107 @@
+import { lazy, Suspense, useEffect } from 'react';
+import { getWindowKind } from './lib/windowKind';
+import { mark } from './lib/startupTimer';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { WebContextMenuHost } from './components/ui/WebContextMenu';
+import { McpApprovalHost } from './components/McpApprovalHost';
+import { AiWriteProposalHost } from './components/AiWriteProposalHost';
+import { WindowChromeFallback } from './components/WindowChromeFallback';
+import { hideSplash } from './lib/splash';
+import {
+  installDragSelectionGuard,
+  installGlobalTextSelectionPolicy,
+  installNativeContextMenuSuppressor,
+  installRightDragSelectionSuppressor,
+} from './lib/globalTextSelection';
+
+const MainPage = lazy(() =>
+  import('./windows/main/MainPage').then((m) => {
+    mark('MainPage chunk loaded');
+    return { default: m.MainPage };
+  }),
+);
+const DataSyncWindow = lazy(() =>
+  import('./windows/data-sync/DataSyncWindow').then((m) => {
+    mark('DataSyncWindow chunk loaded');
+    return { default: m.DataSyncWindow };
+  }),
+);
+const DataTransferWindow = lazy(() =>
+  import('./windows/data-transfer/DataTransferWindow').then((m) => {
+    mark('DataTransferWindow chunk loaded');
+    return { default: m.DataTransferWindow };
+  }),
+);
+const SchemaDiffWindow = lazy(() =>
+  import('./windows/schema-diff/SchemaDiffWindow').then((m) => {
+    mark('SchemaDiffWindow chunk loaded');
+    return { default: m.SchemaDiffWindow };
+  }),
+);
+const BackupWindow = lazy(() =>
+  import('./windows/backup/BackupWindow').then((m) => {
+    mark('BackupWindow chunk loaded');
+    return { default: m.BackupWindow };
+  }),
+);
+const OnboardingWindow = lazy(() =>
+  import('./windows/onboarding/OnboardingWindow').then((m) => {
+    mark('OnboardingWindow chunk loaded');
+    return { default: m.OnboardingWindow };
+  }),
+);
+
+const windowKind = getWindowKind();
+mark(`windowKind resolved: "${windowKind}"`);
+
+function WindowContent() {
+  useEffect(() => {
+    mark('window component mounted');
+    // Main window hides splash after connections load (see MainPage).
+    if (windowKind !== 'main') {
+      hideSplash(document.getElementById('splash'));
+    }
+  }, []);
+
+  switch (windowKind) {
+    case 'onboarding':
+      return <OnboardingWindow />;
+    case 'data-sync':
+      return <DataSyncWindow />;
+    case 'data-transfer':
+      return <DataTransferWindow />;
+    case 'schema-diff':
+      return <SchemaDiffWindow />;
+    case 'backup':
+      return <BackupWindow />;
+    case 'main':
+    default:
+      return <MainPage />;
+  }
+}
+
+export default function App() {
+  useEffect(() => {
+    const stopSelectAll = installGlobalTextSelectionPolicy();
+    const stopRightDrag = installRightDragSelectionSuppressor();
+    const stopDragGuard = installDragSelectionGuard();
+    const stopNativeCtxMenu = installNativeContextMenuSuppressor();
+    return () => {
+      stopSelectAll();
+      stopRightDrag();
+      stopDragGuard();
+      stopNativeCtxMenu();
+    };
+  }, []);
+
+  return (
+    <ErrorBoundary>
+      <Suspense fallback={<WindowChromeFallback />}>
+        <WindowContent />
+      </Suspense>
+      <WebContextMenuHost />
+      <McpApprovalHost />
+      <AiWriteProposalHost />
+    </ErrorBoundary>
+  );
+}

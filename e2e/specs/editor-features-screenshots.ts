@@ -316,8 +316,8 @@ describe('SQL Editor Latest Features Screenshots', () => {
     }
 
     // Set UI language to zh-CN, disable safeMode, and set strategy to current_statement
-    const settings = await invoke<Record<string, unknown>>('get_settings');
-    await invoke('save_settings', {
+    const settings = await invoke<Record<string, unknown>>('get_host_settings');
+    await invoke('save_host_settings', {
       settings: {
         ...settings,
         language: 'zh-CN',

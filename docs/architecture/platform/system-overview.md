@@ -29,14 +29,14 @@
 | 当前入口 | 已确认事实 | 目标改造 |
 | --- | --- | --- |
 | [AppState](../../../src-tauri/src/commands/mod.rs) | 聚合连接、事务、任务、AI、Workflow 等服务 | 组装留在 host，应用服务只接收必要依赖 |
-| [Runtime session registry](../../../modules/src/execution/runtime/registry/registry.rs) + [desktop session backend](../../../src-tauri/src/platform/session_backend.rs) | 管理 dbSessionId、owner、生命周期与物理资源；过期会话明确失效，不以同一 ID 透明重连 | 统一预算、资源释放与会话状态；到期关闭前回滚事务，关闭不确定时保留隔离状态 |
-| [Driver API](../../../packages/driver-api/src/traits.rs) | 提供 DatabaseDriver、Command、迁移等能力 | 增加固定执行资源契约、可选能力接口 |
-| [Factory](../../../packages/driver-api/src/factory.rs) | inventory 编译期注册 | 桌面与 server 使用同一注册入口 |
+| [Runtime session registry](../../../crates/datazen/src/execution/runtime/registry/registry.rs) + [desktop session backend](../../../src-tauri/src/platform/session_backend.rs) | 管理 dbSessionId、owner、生命周期与物理资源；过期会话明确失效，不以同一 ID 透明重连 | 统一预算、资源释放与会话状态；到期关闭前回滚事务，关闭不确定时保留隔离状态 |
+| [Driver API](../../../crates/datazen-driver-api/src/traits.rs) | 提供 DatabaseDriver、Command、迁移等能力 | 增加固定执行资源契约、可选能力接口 |
+| [Factory](../../../crates/datazen-driver-api/src/factory.rs) | inventory 编译期注册 | 桌面与 server 使用同一注册入口 |
 | [前端 Command SDK](../../../packages/driver-sdk/src/ipc/driverCommands.ts) | 直接导入 Tauri invoke/Channel | 注入传输无关 BackendClient |
-| [Workflow Command runtime](../../../modules/src/workflow/command_runtime.rs) | 解析 connectionId，传递目标 database/schema | 明确 step/session/transaction 三种资源范围 |
+| [Workflow Command runtime](../../../crates/datazen/src/workflow/application/command_runtime.rs) | 解析 connectionId，传递目标 database/schema | 明确 step/session/transaction 三种资源范围 |
 | [dedicatedDbSession](../../../src/lib/dedicatedDbSession.ts) | 三件套准备会话由前端创建、释放 | 执行资源由后端 Job 持有 |
 
-Driver 公共类型继续遵守[驱动依赖边界](../../development/driver-api-dependency-boundary.md)。基线 `packages/driver-api/src/lib.rs` 的 `PROTOCOL_VERSION` 为 6、最低版本为 1；实现时重新核对，不能从旧架构说明复制版本数字。
+Driver 公共类型继续遵守[驱动依赖边界](../../development/driver-api-dependency-boundary.md)。基线 `crates/datazen-driver-api/src/lib.rs` 的 `PROTOCOL_VERSION` 为 6、最低版本为 1；实现时重新核对，不能从旧架构说明复制版本数字。
 
 ## 3. 系统架构
 
@@ -91,35 +91,35 @@ flowchart TD
 
 ### 4.1 目标代码组织
 
-> 状态说明（2026-10-21 复核）：桌面形态的 Rust 共享包**已创建并加入 workspace**（`Cargo.toml` members 实测），本节的 crate 拆分不再是「尚未创建」目标；真正未落地的只剩 `server/` HTTP host 与 `packages/themes/` 的目标主题资源。下面按当前事实标注。
+> 状态说明（2026-11-03 复核，对照 `main`）：桌面 `modules`、`crates/datazen-infra`、`crates/datazen-server/`（crate `datazen-server`）和 `packages/web/` 都已在 workspace 中。`packages/ai-api`、`packages/ai-providers` 已并入 `crates/datazen/src/ai/`。`packages/themes/` 已删除，主题由 Wapp 静态资源提供。下面目录按这个事实标注；多 worker（RuntimeRouter、drain）仍未作为桌面运行时落地。
 
 ```text
 modules/        Rust domain/application、DTO、错误、授权编排、执行运行时与 Jobs【已落地，workspace member】
-modules/src/platform_api/       迁入的传输无关 ports 与契约命名空间【已落地】
-packages/infra/              形态中立基础设施原语（脱敏、路径安全）      【已落地】
-modules/src/migration/schema_diff/        共享 Schema Diff 领域引擎                  【已落地】
-modules/src/migration/data_sync/          共享 Data Sync 领域引擎                    【已落地】
-modules/src/migration/data_transfer/      共享 Data Transfer 领域引擎                【已落地】
-modules/src/migration/common/   迁移引擎共享的 pair/recordset 边界          【已落地】
+crates/datazen/src/shared/          传输无关 ports 与契约（原 platform-api 已并入，目录 crates/datazen/src/platform_api 不存在）
+crates/datazen-infra/              形态中立基础设施原语（脱敏、路径安全）      【已落地】
+crates/datazen/src/migration/schema_diff/        共享 Schema Diff 领域引擎                  【已落地】
+crates/datazen/src/migration/data_sync/          共享 Data Sync 领域引擎                    【已落地】
+crates/datazen/src/migration/data_transfer/      共享 Data Transfer 领域引擎                【已落地】
+crates/datazen/src/migration/common/   迁移引擎共享的 pair/recordset 边界          【已落地】
 modules/       共享 feature（Workflow/AI/MCP/Dashboard/导出/备份恢复/Wapp 内核）【已落地】
-packages/driver-api/         现有 Driver API 与可选能力
+crates/datazen-driver-api/         现有 Driver API 与可选能力
 packages/driver-sdk/         现有驱动前端元数据/方言/Command SDK
-packages/ai-api/             现有 AI Provider trait、工厂与调用协议
-packages/ai-providers/       现有 AI Provider 适配与 wire protocol 实现
-packages/drivers/            现有驱动 crate 与驱动 UI 源码（随驱动选型注入）
+crates/datazen/src/ai/              AI Provider trait、厂商协议与用例（原 packages/ai-api 与 packages/ai-providers）
+crates/drivers/            现有驱动 crate 与驱动 UI 源码（随驱动选型注入）
 packages/backend-client/     TypeScript DTO/client/transport 契约
 packages/wapp-sdk/           现有 Wapp 受控桥 SDK
 packages/extension-points/   现有桌面特权 EP 契约
 packages/ui/                 现有 @datazen/ui 基础视图组件
-packages/themes/             目标静态主题资源与 schema                  【未落地：当前目录仍是旧 v1 ThemePack 存档】
-server/                      Rust HTTP host 与服务端 composition root   【未落地：目标设计】
-src-tauri/                   桌面 host、IPC/文件/窗口 adapter 与遗留命令
-src/                         共享 React 产品与平台桥
+packages/wapps/              内置工作区应用与静态主题（替代已删除的 packages/themes）
+server/                      Rust HTTP host（datazen-server）：/healthz /readyz 与已点亮的 /api/v1
+crates/datazen-desktop/      桌面 host、IPC/文件/窗口 adapter
+packages/web/                    浏览器壳（无 @tauri-apps）
+packages/frontend/           共享 React UI
 ```
 
-`server/` 与 `packages/themes/` 在实施阶段才加入 workspace/build 配置；`packages/themes` 当前目录仍是旧 v1 ThemePack 存档，目标主题资源与其并存，迁移前不改旧目录。桌面 multi-worker 的编排目标（worker 隔离、drain、RuntimeRouter 投入使用）也未落地：当前桌面是单进程组装，依赖方向与下面段落一致。
+`packages/themes/` 不在树里。桌面 multi-worker 的编排目标（worker 隔离、drain、RuntimeRouter 投入使用）仍未落地：当前桌面是单进程组装。
 
-依赖方向：host → application/runtime/领域包；application/runtime → platform-api/driver-api；driver → driver-api。`SessionDirectory` 与 `BudgetCoordinator` 的接口归 `platform-api`，SessionRegistry/ResourceManager 只依赖这些 port；桌面/单进程先用内存适配，多 worker 再替换目录和全局预算适配。领域引擎归 `modules/src/migration/schema_diff`、`modules/src/migration/data_sync`、`modules/src/migration/data_transfer`；Tauri 命令、窗口与文件选择留在 `src-tauri` adapter。领域包不得反向 import host。JobRuntime 通过注册的 JobHandler 调用领域引擎，避免 runtime 与领域 crate 循环依赖。
+依赖方向：host（`crates/datazen-desktop` 或 `crates/datazen-server/`）→ modules 内各领域包；领域包 → `shared` 契约层与 `driver-api`；driver → driver-api。`SessionDirectory` 与 `BudgetCoordinator` 的接口归 `modules` 内契约层（`shared` / 领域包端口），SessionRegistry/ResourceManager 只依赖这些 port；桌面/单进程先用内存适配，多 worker 再替换目录和全局预算适配。领域引擎归 `crates/datazen/src/migration/schema_diff`、`crates/datazen/src/migration/data_sync`、`crates/datazen/src/migration/data_transfer`；Tauri 命令、窗口与文件选择留在 `crates/datazen-desktop` adapter。领域包不得反向 import host。JobRuntime 通过注册的 JobHandler 调用领域引擎，避免 runtime 与领域 crate 循环依赖。
 
 ## 5. 统一领域对象
 
@@ -217,7 +217,7 @@ interface ArtifactChunk {
 
 ### 6.3 首版 HTTP 映射
 
-以下为待实现路由，不能当作当前可调用 API。
+以下为待实现路由，不能当作当前可调用 API。本表是 v1 映射的**骨架**；补全并冻结的完整契约面（含 settings / identity / tableData 全部方法 / driverGateway 过渡域）以 [http-api-contract](http-api-contract.md)（web ready WR-C2）为唯一权威，两表不一致时以契约文档为准。
 
 | 路由 | 用例 |
 | --- | --- |
