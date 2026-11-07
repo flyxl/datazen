@@ -184,6 +184,8 @@ export function ContentView({
   const [importOpen, setImportOpen] = useState(false);
   const [exportTableName, setExportTableName] = useState<string | null>(null);
   const [importTableName, setImportTableName] = useState<string | null>(null);
+  const [importSchema, setImportSchema] = useState<string | null>(null);
+  const [importDatabase, setImportDatabase] = useState<string | null>(null);
   const [batchExportOpen, setBatchExportOpen] = useState(false);
   const [batchExportInitialSelected, setBatchExportInitialSelected] = useState<string[]>([]);
   const [lastTableSchema, setLastTableSchema] = useState<string | null>(null);
@@ -440,11 +442,36 @@ export function ContentView({
   );
 
   const requestImport = useCallback(
-    (isTable: boolean, name: string) => {
+    (isTable: boolean, name: string, schema: string | null, database: string) => {
       setImportTableName(isTable ? name : null);
+      setImportSchema(isTable ? schema : null);
+      setImportDatabase(database || null);
       setImportOpen(true);
     },
     [setImportTableName, setImportOpen],
+  );
+
+  /**
+   * After an import finishes (DBR-01): refresh the schema tree AND reload the
+   * data of any open table panel showing the target table, so the new rows are
+   * visible without a manual reload. The dialog awaits this and reports
+   * "import finished, refresh failed" when it rejects.
+   */
+  const handleImportCompleted = useCallback(
+    async (target: { table: string; schema?: string | null; database?: string | null }) => {
+      await handlers.handleRefresh();
+      const panels = usePanelStore.getState().panels.filter(
+        (panel) =>
+          panel.type === 'table' &&
+          panel.tableName === target.table &&
+          (target.database == null || panel.database === target.database) &&
+          (target.schema == null || panel.tableSchema === target.schema),
+      );
+      for (const panel of panels) {
+        useTableDataStore.getState().reloadPanel(panel.id);
+      }
+    },
+    [handlers],
   );
 
   const { handleNodeContextMenu, confirmActionDialog } = useConnectionContextMenu({
@@ -712,8 +739,10 @@ export function ContentView({
         exportableTableNames={exportableTableNames}
         importOpen={importOpen}
         importTableName={importTableName}
+        importSchema={importSchema}
+        importDatabase={importDatabase}
         onCloseImport={closeImport}
-        onImported={handlers.handleRefresh}
+        onImported={handleImportCompleted}
         sqlFileDialogOpen={sqlFileDialogOpen}
         onCloseSqlFile={closeSqlFile}
         onExecuted={handlers.handleRefresh}

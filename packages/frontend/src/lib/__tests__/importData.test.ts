@@ -49,7 +49,9 @@ describe('parseImportData', () => {
   });
 
   it('returns empty for blank csv', () => {
-    expect(parseImportData('  \n  ', 'csv')).toEqual({ columns: [], rows: [] });
+    const blank = parseImportData('  \n  ', 'csv');
+    expect(blank.columns).toEqual([]);
+    expect(blank.rows).toEqual([]);
   });
 });
 

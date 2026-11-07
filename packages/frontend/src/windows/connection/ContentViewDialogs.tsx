@@ -36,8 +36,16 @@ export interface ContentViewDialogsProps {
 
   importOpen: boolean;
   importTableName: string | null;
+  /** Node context of the import request (DBR-01): schema and database. */
+  importSchema: string | null;
+  importDatabase: string | null;
   onCloseImport: () => void;
-  onImported: () => void;
+  /** Awaitable: a rejection surfaces as "import finished, refresh failed". */
+  onImported: (target: {
+    table: string;
+    schema?: string | null;
+    database?: string | null;
+  }) => void | Promise<void>;
 
   sqlFileDialogOpen: boolean;
   onCloseSqlFile: () => void;
@@ -82,6 +90,8 @@ export function ContentViewDialogs({
 
   importOpen,
   importTableName,
+  importSchema,
+  importDatabase,
   onCloseImport,
   onImported,
 
@@ -182,6 +192,9 @@ export function ContentViewDialogs({
           onClose={onCloseImport}
           dbSessionId={connCtx.dbSessionId}
           tableName={importTableName}
+          schema={importSchema}
+          database={importDatabase}
+          connectionId={connCtx.connectionId}
           onImported={onImported}
           databaseType={connCtx.databaseType}
         />
