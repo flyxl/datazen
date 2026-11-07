@@ -40,9 +40,10 @@ use datazen::shared::error::PortError;
 use datazen::shared::id::{ClientInstanceId, ConnectionId, OrganizationId, PrincipalId, RequestId};
 use datazen::workflow::application::grant_reader::WorkflowScheduleGrantReader;
 use datazen::workflow::domain::grant::{
-    definition_revision, service_principal, WorkflowScheduleGrant, WorkflowScheduleScope,
+    collect_schedule_targets, definition_revision, service_principal, WorkflowScheduleGrant,
+    WorkflowScheduleScope,
 };
-use datazen::workflow::domain::model::{WorkflowDefinition, WorkflowStep};
+use datazen::workflow::domain::model::WorkflowDefinition;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use tauri::Manager;
@@ -125,19 +126,19 @@ impl<R: tauri::Runtime> WorkflowScheduleGrantReader for DesktopScheduleGrantRead
         };
 
         // 3) 作用域派生：递归收集数据步骤目标；AI 步骤 / 目标无法固定 ⇒ 事实。
-        let mut targets = Vec::new();
-        if !collect_targets(
+        //    （收集规则在共享层 `workflow::domain::grant::collect_schedule_targets`
+        //    ——W8 刀3c 下沉，两形态同一条规则。）
+        let Some(targets) = collect_schedule_targets(
             definition.connection.as_deref(),
             definition.database.as_deref(),
             &definition.steps,
-            &mut targets,
-        ) {
+        ) else {
             tracing::warn!(
                 workflow_id,
                 "workflow schedule grant: AI step or unfreezable target"
             );
             return Ok(None);
-        }
+        };
         if targets.is_empty() {
             tracing::warn!(
                 workflow_id,
@@ -200,88 +201,6 @@ impl<R: tauri::Runtime> WorkflowScheduleGrantReader for DesktopScheduleGrantRead
             revoked: false,
         }))
     }
-}
-
-/// 一条待冻结目标：连接 + 继承后的数据库 + 命令。
-struct ScheduleTarget {
-    connection: String,
-    database: Option<String>,
-    command: String,
-}
-
-/// 递归收集数据步骤目标。返回 `false` = 遇到 AI 步骤或目标无法固定的步骤
-/// （整单拒绝调度，失败关闭）。
-fn collect_targets(
-    workflow_connection: Option<&str>,
-    workflow_database: Option<&str>,
-    steps: &[WorkflowStep],
-    out: &mut Vec<ScheduleTarget>,
-) -> bool {
-    for step in steps {
-        match step {
-            WorkflowStep::Ai { .. } => return false,
-            WorkflowStep::Query {
-                connection,
-                database,
-                ..
-            } => {
-                let Some(connection) = connection.as_deref().or(workflow_connection) else {
-                    return false;
-                };
-                out.push(ScheduleTarget {
-                    connection: connection.to_string(),
-                    database: database
-                        .clone()
-                        .or_else(|| workflow_database.map(str::to_string)),
-                    command: "query".to_string(),
-                });
-            }
-            WorkflowStep::Command {
-                command,
-                connection,
-                input,
-                ..
-            } => {
-                let Some(connection) = connection.as_deref().or(workflow_connection) else {
-                    return false;
-                };
-                // Command 步骤的数据库可在 input.database（继承规则见
-                // `inject_inherited_database`：缺省/空串才继承）或 workflow 级默认。
-                let input_database = input
-                    .get("database")
-                    .and_then(serde_json::Value::as_str)
-                    .filter(|database| !database.trim().is_empty())
-                    .map(str::to_string);
-                out.push(ScheduleTarget {
-                    connection: connection.to_string(),
-                    database: input_database.or_else(|| workflow_database.map(str::to_string)),
-                    command: command.clone(),
-                });
-            }
-            WorkflowStep::Condition {
-                then_steps,
-                else_steps,
-                ..
-            } => {
-                if !collect_targets(workflow_connection, workflow_database, then_steps, out) {
-                    return false;
-                }
-                if let Some(else_steps) = else_steps {
-                    if !collect_targets(workflow_connection, workflow_database, else_steps, out) {
-                        return false;
-                    }
-                }
-            }
-            WorkflowStep::ForEach { steps, .. } => {
-                if !collect_targets(workflow_connection, workflow_database, steps, out) {
-                    return false;
-                }
-            }
-            // Merge / Transform 等纯数据组装步骤没有独立连接目标。
-            _ => {}
-        }
-    }
-    true
 }
 
 #[cfg(test)]
