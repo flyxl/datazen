@@ -241,6 +241,7 @@ fn features() -> String {
         "settings",
         "backup",
         "wapps",
+        "language_packs",
         "export",
         "history",
         "workflow",
