@@ -30,12 +30,9 @@ use datazen::mcp::application::tools::{
 };
 use datazen::settings::ExecutionSettings;
 use datazen::shared::context::RequestContext;
-use datazen::workflow::application::resource_execution::{
-    PreparedExecution, ResourceExecutionHost,
-};
+use datazen::workflow::application::resource_execution::ResourceExecutionHost;
 use datazen::workflow::domain::error::WorkflowError;
 use datazen::workflow::domain::model::{WorkflowDefinition, WorkflowListItem};
-use datazen_driver_api::ConnectionConfig;
 
 use crate::mcp::wire::ToolCallError;
 use crate::storage::ServerConnections;
@@ -118,40 +115,12 @@ pub struct TargetMachine {
 /// 口径正确（org 来自装配配置），主体合成残留登记见
 /// `resource_host.rs` 模块头第 2 条——端口签名手术（四方法全带 ctx）
 /// 为后续刀，不在种子范围内。
-struct PrincipalScopedHost {
-    inner: Arc<dyn ResourceExecutionHost>,
-    context: RequestContext,
-}
-
-#[async_trait]
-impl ResourceExecutionHost for PrincipalScopedHost {
-    async fn profile(&self, id: &str) -> Result<(ConnectionConfig, u64, bool), WorkflowError> {
-        self.inner.profile(id).await
-    }
-
-    async fn driver(
-        &self,
-        config: &ConnectionConfig,
-    ) -> Result<Arc<dyn datazen_driver_api::DatabaseDriver>, WorkflowError> {
-        self.inner.driver(config).await
-    }
-
-    async fn safe_mode(&self) -> bool {
-        self.inner.safe_mode().await
-    }
-
-    async fn prepare(
-        &self,
-        id: &str,
-        revision: u64,
-        command: &str,
-        target: datazen::execution::ExecutionTarget,
-    ) -> Result<PreparedExecution, WorkflowError> {
-        let mut prepared = self.inner.prepare(id, revision, command, target).await?;
-        prepared.context = self.context.clone();
-        Ok(prepared)
-    }
-}
+///
+/// W8 刀1对账（PR #204 增量）：定义上移到
+/// [`crate::execution::resource_host`]（非门控区），aiHost 目标执行与
+/// 七工具共用同一装饰器；此处 `use` 再导出保持既有调用点与测试路径
+/// 不变。
+use crate::execution::resource_host::PrincipalScopedHost;
 
 /// 无状态工具分发件。构造即持有全部端口；`call` 与宿主分发的 `other`
 /// 分支对接（见 [`crate::mcp::runtime::ModulesBackend`]）。

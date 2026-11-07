@@ -371,7 +371,11 @@ async fn handler_issue_token(
     };
     // 会话绑定操作：体里的 `handle`（camelCase `SessionHandle`）原样透传给
     // 用例面（在场性/归属/epoch 由 `RuntimeConnectionUseCases::issue` 闭环
-    // ——`openSession` 无会话可绑，体 handle 为空也放行，运行时按 epoch 0 签）。
+    // ——`openSession` 无会话可绑，体 handle 为空也放行，运行时按 epoch 0 签；
+    // `executeAtTarget` 是无会话一次性执行，同样不带句柄——W8 刀1对账
+    // 修正：此前的在场性闸把 executeAtTarget 也算进必须带句柄的集合，而
+    // 用例层的 execute 核验（`validate_token` 的 handle=None）不接受绑了
+    // 句柄的令牌，端到端必然 permissionDenied）。
     let handle = if operation.binds_runtime_epoch() {
         match body.get("handle") {
             Some(Value::Null) | None => None,
@@ -383,9 +387,15 @@ async fn handler_issue_token(
     } else {
         None
     };
-    if operation.binds_runtime_epoch()
-        && !matches!(operation, IdempotentOperation::OpenSession)
-        && handle.is_none()
+    // 句柄在场性的 fail-fast 半边（与用例层 `issue` 的要求集合同一集合：
+    // executeInSession / setSessionContext / cancelExecution；openSession 与
+    // executeAtTarget 无会话可绑，用例层按 epoch 0 签发）。
+    if matches!(
+        operation,
+        IdempotentOperation::ExecuteInSession
+            | IdempotentOperation::SetSessionContext
+            | IdempotentOperation::CancelExecution
+    ) && handle.is_none()
     {
         return invalid_argument(
             "session-bound operations require the runtime session handle they bind to.",

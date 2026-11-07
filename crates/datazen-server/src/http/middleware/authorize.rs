@@ -23,6 +23,10 @@
 //!
 //! - `/api/v1/connections/{id}`：`ResourceType::Connection`，
 //!   `GET/HEAD → Read`、`PATCH → Write`、`DELETE → Write`。
+//! - `/api/v1/executions/{id}`：`ResourceType::Execution`，
+//!   `GET/HEAD → Read`（rbac 基线矩阵裁决——OrgMember/JobOperator/owner
+//!   系可读，ConnectionViewer/auditor 语义见矩阵）。三段 `/cancel` 子动作
+//!   与集合级提交不入两层段表（action 语义在用例层）。
 //!
 //! 集合类路由（无 id）不在此求值（§3.3：集合类只返回可见集合，组织级
 //! 动作权限不足才 403——集合可见性过滤是 handler 的职责）。
@@ -113,6 +117,11 @@ fn resource_ref_from_path(path: &str) -> Option<(ResourceType, String)> {
     }
     let resource_type = match collection {
         "connections" => ResourceType::Connection,
+        // W8 刀1对账（PR #204 增量）：execution 域两段形状
+        // （`GET /api/v1/executions/{id}` → Read；rbac 基线矩阵裁决）。
+        // 取消子动作（三段）与集合级提交不入两层段表（action 语义在
+        // 用例层）。
+        "executions" => ResourceType::Execution,
         // 其余域路由随各自 handler 切片登记（不发明语义）。
         _ => return None,
     };
@@ -167,9 +176,17 @@ mod tests {
         assert_eq!(resource_ref_from_path("/api/v1/connections/"), None);
         // 集合类路由不在此求值。
         assert_eq!(resource_ref_from_path("/api/v1/connections"), None);
-        // 未登记的集合（session/execution/job/… 随各自切片）。
+        // 未登记的集合（session/job/… 随各自切片）。
         assert_eq!(resource_ref_from_path("/api/v1/sessions/s-1"), None);
         assert_eq!(resource_ref_from_path("/api/v1/events/stream-1"), None);
+        // execution 两段形状已登记（W8 刀1对账）：Read 走 L6 求值。
+        assert_eq!(
+            resource_ref_from_path("/api/v1/executions/exe-1"),
+            Some((ResourceType::Execution, "exe-1".into()))
+        );
+        // 取消子动作（三段）与集合级不入本层。
+        assert_eq!(resource_ref_from_path("/api/v1/executions/exe-1/cancel"), None);
+        assert_eq!(resource_ref_from_path("/api/v1/executions"), None);
     }
 
     /// 方法映射：读/写二值；POST 子动作留给域切片。
