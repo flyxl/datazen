@@ -20,6 +20,7 @@ mod file;
 pub(crate) mod file_jobs;
 mod fk_navigation;
 mod history;
+mod language_packs;
 pub mod mcp;
 mod named_views;
 mod port_call;
@@ -51,6 +52,7 @@ pub use dashboard::*;
 pub use data::*;
 pub use data_transfer::*;
 pub use encryption_key::*;
+pub use language_packs::*;
 // The dialog gateway hosts product commands (F4c picker merge) alongside the
 // webdriver-only dialog injection commands. The glob must be UNCONDITIONAL:
 // `generate_handler!` resolves the macro-generated `__cmd__` companions
@@ -216,6 +218,9 @@ pub struct AppState {
     pub query_executions: Arc<QueryExecutionRegistry>,
     pub workflow_scheduler: Arc<WorkflowScheduler>,
     pub wapps: Arc<WappManager>,
+    /// 已装语言包注册表（共享层 `datazen::language_packs`；存储根
+    /// `{appData}/language-packs`，组装期扫描一次）。
+    pub language_packs: Arc<datazen::language_packs::LanguagePackManager>,
     pub cancel_registry: datazen::ai::cancel::CancellationRegistry,
     /// Owner-bound editor-session grants for AI tool execution (P6 §14.4).
     pub ai_grants: Arc<crate::commands::ai::AiGrantService>,

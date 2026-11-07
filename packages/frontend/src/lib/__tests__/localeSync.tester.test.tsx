@@ -8,6 +8,7 @@
  *   - clearing language at runtime falls back to 'en' through the subscription
  */
 import { describe, expect, it, afterEach } from 'vitest';
+import { waitFor } from '@testing-library/react';
 import { getLocale, setLocale } from '@datazen/ui';
 import { startLocaleSync } from '../localeSync';
 import { useSettingsStore } from '../../stores/settingsStore';
@@ -60,11 +61,13 @@ describe('[tester] localeSync defensive branches', () => {
     expect(getLocale()).toBe('en');
   });
 
-  it('test_tester_runtime_language_reset_falls_back_to_en', () => {
+  it('test_tester_runtime_language_reset_falls_back_to_en', async () => {
     setLanguage('zh-CN');
     stop = startLocaleSync();
-    expect(getLocale()).toBe('zh-CN');
+    // The seed is async (language packs are registered before switching),
+    // so builtin locales land a microtask later.
+    await waitFor(() => expect(getLocale()).toBe('zh-CN'));
     setLanguage(undefined);
-    expect(getLocale()).toBe('en');
+    await waitFor(() => expect(getLocale()).toBe('en'));
   });
 });

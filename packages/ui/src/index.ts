@@ -129,6 +129,7 @@ export {
   setLocale,
   getLocale,
   registerTranslations,
+  unregisterTranslations,
   getRegisteredTranslations,
   t,
   useI18n,

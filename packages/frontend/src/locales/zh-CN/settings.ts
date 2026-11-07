@@ -375,5 +375,30 @@ const pack = {
   'settings.tunnels.test.scope.websocket':
     'WebSocket 探测用于检测中继：raw_binary 模式仅能证明中继可达，而 datazen_v1 会打开通往目标的通道。',
   'settings.tunnels.test.scope.general': '探测通过并不保证你的数据库可经该隧道访问。',
+  'settings.languagePacks.title': '语言包',
+  'settings.languagePacks.subtitle':
+    '以 ZIP 包安装外部语言包（清单 + 按功能域拆分的 JSON 词典）；安装完成后语言下拉框即可选择。',
+  'settings.languagePacks.installed': '已安装语言包',
+  'settings.languagePacks.emptyHint': '尚未安装任何外部语言包。',
+  'settings.languagePacks.inUse': '使用中',
+  'settings.languagePacks.messageCount': '{count} 条译文',
+  'settings.languagePacks.remove': '移除',
+  'settings.languagePacks.removing': '正在移除…',
+  'settings.languagePacks.removeTitle': '移除语言包',
+  'settings.languagePacks.removeDescription': '从本机移除「{label}」语言包？',
+  'settings.languagePacks.removeActiveDescription':
+    '「{label}」语言包正在使用。界面语言将先切回 English，然后移除该语言包。',
+  'settings.languagePacks.removeHint': '缺失的译文始终回退显示英文；语言包可随时重新安装。',
+  'settings.languagePacks.install.button': '安装语言包',
+  'settings.languagePacks.install.title': '安装语言包',
+  'settings.languagePacks.install.description': '选择语言包（.zip），落盘前先审查包内容。',
+  'settings.languagePacks.install.pick': '选择语言包（.zip）',
+  'settings.languagePacks.install.inspecting': '正在校验语言包…',
+  'settings.languagePacks.install.back': '返回',
+  'settings.languagePacks.install.confirm': '安装',
+  'settings.languagePacks.install.installing': '正在安装…',
+  'settings.languagePacks.install.messages': '{count} 条译文',
+  'settings.languagePacks.install.author': '作者：{author}',
+  'settings.languagePacks.install.domains': '覆盖的功能域',
 } as const;
 export default pack;

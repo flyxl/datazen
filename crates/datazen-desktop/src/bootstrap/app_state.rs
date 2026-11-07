@@ -169,6 +169,14 @@ pub(crate) fn finish_app_state(
     let wapp_count = wapp_manager.load_from_disk();
     tracing::info!("[startup]   ui wapps loaded: {wapp_count}");
 
+    // External language packs: scan {appData}/language-packs/ for installed
+    // packs (invalid ones are skipped with a warning, same as wapps).
+    let language_packs = Arc::new(datazen::language_packs::LanguagePackManager::new(
+        data_dir.join("language-packs"),
+    ));
+    let language_pack_count = language_packs.load_from_disk();
+    tracing::info!("[startup]   language packs loaded: {language_pack_count}");
+
     // AI / prompts / workflows / history / MCP client: empty shells.
     // Nothing here touches disk or network — window can show immediately.
     let platform = crate::platform::PlatformEntry::launch();
@@ -245,6 +253,7 @@ pub(crate) fn finish_app_state(
         query_executions: Arc::new(crate::commands::QueryExecutionRegistry::new()),
         workflow_scheduler: workflow::scheduler::WorkflowScheduler::new(),
         wapps: wapp_manager,
+        language_packs,
         cancel_registry: datazen::ai::cancel::CancellationRegistry::default(),
         ai_grants: Arc::new(crate::commands::ai::AiGrantService::new()),
         schema_diff_jobs: Arc::new(crate::commands::schema_diff::job::SchemaDiffJobInfra::new()),

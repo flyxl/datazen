@@ -77,4 +77,19 @@ if (!localesReady) {
 4. Before release: `node scripts/i18n-sync-check.mjs` checks only bundled `zh-CN` host and
    driver strings. Other locale dictionaries remain source-only and do not enter the app bundle.
 
+## External language packs
+
+Locales beyond the bundled pair ship as **installable packs** (Settings → General →
+Language packs). A pack is a ZIP holding `manifest.json` (`packVersion` 1, `code`,
+`label`, `version`) plus flat `key → message` JSON files named after the domains
+above (`core.json`, `query.json`, …). Domain files may be partial — missing keys
+fall back to `en` through the shared lookup chain. Pack format, validation rules
+and the precedence for cross-domain duplicate keys are specified in
+`docs/development/language-pack-install-design.md`. Turn a source-only locale
+in this directory into a distributable pack with:
+
+```bash
+node scripts/export-locale-pack.mjs ja
+```
+
 <!-- ci-trigger: 2026-09-03 -->

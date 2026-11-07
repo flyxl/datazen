@@ -26,6 +26,11 @@ pub mod wapps;
 #[cfg(feature = "wapps")]
 pub use wapps as workspace_apps;
 
+/// 设置页「安装外部语言包」共享内核（设计档：
+/// `docs/development/language-pack-install-design.md`）。
+#[cfg(feature = "language_packs")]
+pub mod language_packs;
+
 /// D6 item 5：隧道领域端口、known-hosts 规则与形态中立网络机制。
 #[cfg(feature = "tunnel")]
 pub mod tunnel;

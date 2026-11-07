@@ -563,6 +563,12 @@ pub fn run() {
             crate::commands::wapp_storage_get,
             crate::commands::wapp_storage_remove,
             crate::commands::wapp_storage_set,
+            // ── 语言包 ──
+            crate::commands::list_language_packs,
+            crate::commands::read_language_pack_messages,
+            crate::commands::inspect_language_pack_file_with_dialog,
+            crate::commands::install_language_pack,
+            crate::commands::remove_language_pack,
             // ── 数据同步 ──
             crate::commands::apply_data_sync,
             crate::commands::cancel_data_sync,

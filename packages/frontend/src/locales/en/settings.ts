@@ -401,5 +401,33 @@ const pack = {
     'A WebSocket probe checks the relay: in raw_binary mode it only proves that the relay is reachable, while datazen_v1 opens a channel to the target.',
   'settings.tunnels.test.scope.general':
     'A passing probe never guarantees that your database is reachable through this tunnel.',
+  'settings.languagePacks.title': 'Language packs',
+  'settings.languagePacks.subtitle':
+    'Install external language packs as ZIP files (a manifest plus per-domain JSON dictionaries); installed languages appear in the language selector.',
+  'settings.languagePacks.installed': 'Installed packs',
+  'settings.languagePacks.emptyHint': 'No external language packs installed yet.',
+  'settings.languagePacks.inUse': 'In use',
+  'settings.languagePacks.messageCount': '{count} messages',
+  'settings.languagePacks.remove': 'Remove',
+  'settings.languagePacks.removing': 'Removing…',
+  'settings.languagePacks.removeTitle': 'Remove language pack',
+  'settings.languagePacks.removeDescription':
+    'Remove the "{label}" language pack from this device?',
+  'settings.languagePacks.removeActiveDescription':
+    'The "{label}" language pack is in use. The interface language switches back to English, then the pack is removed.',
+  'settings.languagePacks.removeHint':
+    'Missing translations always fall back to English. You can reinstall the pack at any time.',
+  'settings.languagePacks.install.button': 'Install language pack',
+  'settings.languagePacks.install.title': 'Install language pack',
+  'settings.languagePacks.install.description':
+    'Pick a language pack (.zip) to review what it contains before anything is written.',
+  'settings.languagePacks.install.pick': 'Select package (.zip)',
+  'settings.languagePacks.install.inspecting': 'Checking package…',
+  'settings.languagePacks.install.back': 'Back',
+  'settings.languagePacks.install.confirm': 'Install',
+  'settings.languagePacks.install.installing': 'Installing…',
+  'settings.languagePacks.install.messages': '{count} messages',
+  'settings.languagePacks.install.author': 'by {author}',
+  'settings.languagePacks.install.domains': 'Translated domains',
 } as const;
 export default pack;
