@@ -8,6 +8,11 @@ import { registerLocale, unregisterLocale } from '../locales';
  */
 const BUILTIN_LOCALES: ReadonlySet<string> = new Set(['en', 'zh-CN']);
 
+/** Whether a locale code ships in the app bundle (sync-switchable). */
+export function isBuiltinLocale(locale: string): boolean {
+  return BUILTIN_LOCALES.has(locale);
+}
+
 /** Locales whose pack messages have been registered in this module instance. */
 const registered = new Set<string>();
 

@@ -67,7 +67,7 @@ datazen-locale-ja.zip
 ## 7. 前端注册与切换时序
 
 - `ensureLanguagePackMessages(locale)`：内置 locale 直通；外装 code → `read_language_pack_messages` → `registerLocale(code, label, messages)`。未安装（NotFound）→ 引擎兜底链接管。
-- `startLocaleSync`（唯一 `setLocale` 驱动点，不变式保持）：语言变化 → **先 ensure 再 setLocale**（否则首帧英文闪烁）；乱序防护 = 目标 locale 记账、最后者胜（守卫两侧都做 `?? 'en'` 归一化）。启动 seed 同理（持久化语言为外装包时首帧短暂 en，与主题包异步生效同等待遇）。
+- `startLocaleSync`（唯一 `setLocale` 驱动点，不变式保持）：**内置语言同步切换（历史契约——settingsStore.language 变更后的同步读取/渲染依赖它，`retest-round1-fixes.tester` 钉住）**；包语言先 ensure 再 setLocale（异步微任务）。乱序防护 = 目标 locale 记账、最后者胜（守卫两侧都做 `?? 'en'` 归一化）。启动 seed 同理（持久化语言为外装包时首帧短暂 en，与主题包异步生效同等待遇）。
 - 卸载在用包：前端先 `updateSettings({ language: 'en' })`（settingsStore → localeSync → setLocale 切走）→ 再调 remove 命令 → `unregisterTranslations` + `unregisterLocale`。
 - 语言下拉选项 = 内置 + 已装包（store 元数据，label 不需要字典）+ 其余扩展 locale（去重）。
 
