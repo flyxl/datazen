@@ -197,13 +197,21 @@ driverGateway（**过渡域**，snake_case 名保留——它们是现存 IPC �
   `404` 合并）→ 体解析 → `handle.dbSessionId` 与路由 `{id}` 一致性（`400`）→ DTO 校验 → 用例。
   体 handle 原样传递、不以目录条目改写——epoch 核对归用例层。
 - **组织闸**：`executeAtTarget` 的 `target.connectionId` 归属与 `getExecution` /
-  `cancelExecution` 的可见性由用例层闭环（sink `visible_to` 的 `404` 合并口径），HTTP 层不做
-  第二套组织判定。`cancelExecution` 体只留幂等凭据（`submissionTokenBody` 半边），
+  `cancelExecution` 的可见性由用例层闭环（sink `visible_to` 的 `404` 合并口径，未命中统一
+  404「execution unavailable」，无存在性预言机），HTTP 层不做第二套组织判定。
+  `GET /api/v1/executions/{id}` 在 L6 登记 `ResourceType::Execution` + `Read`（rbac 基线
+  矩阵裁决——W8 刀1对账补行；`/cancel` 子动作与集合级提交不入两层段表，action 语义
+  在用例层）。`cancelExecution` 体只留幂等凭据（`submissionTokenBody` 半边），
   `disposition: unsupported` / `alreadyFinished` 是正常取值。
 - **令牌签发的会话绑定操作**：`issueSubmissionToken`（§6.2）对 `openSession` /
   `executeInSession` / `executeAtTarget` / `setSessionContext` / `cancelExecution` 经**执行用例
   面**签发（令牌注册进运行时令牌表，与 execute/cancel 路径的核验同一实例闭环）；
-  `startJob` / `createProfile` 维持 HMAC 签发器（`SubmissionService` 的 `verify` 是同一签发器）。
+  `startJob` / `createProfile` 维持 HMAC 签发器（`SubmissionService` 的 `verify` 是同一签发器）；
+  两轨不得混用（HMAC 轨令牌过不了 runtime 核验，`409 idempotencyExpired`）。
+- **限流严格档（§9.1，W8 刀1对账补行）**：`POST …/executions`（executeAtTarget /
+  executeInSession；过渡域 driver-gateway 的同词尾同语义）与
+  `POST /api/v1/ai-host/execute-target` 入严格档；`stream-executions` 不是 `/executions`
+  词尾，维持缺省档。
 
 ### 6.11 job
 
@@ -282,3 +290,4 @@ WR-D 落地时的机器核对（WR-C3 接管）：同用例双传输测试逐方
 - 2026-11-03：v1.2（WR-F1 扩展面登记）。**mcp 客户端面**（`mcp.initialize/listTools/callTool/closeSession`）走服务端 `/mcp` streamable HTTP（WR-F2 传输，§6.6 之外的服务面；JSON-RPC 2.0 信封 + `Mcp-Session-Id` 头，L2 cookie 即身份——INV-S1），wire-direct 不入 `MethodMap` 主表（`transport.ts` 类型冻结，逐域登记于 web 侧 `WR_F1_HTTP_ROUTES`）；web broker 的 `serverId` 固定 `"datazen"`（v1 语义：工具面 = datazen 自有 13 工具，与桌面多外部服务器 broker 的差异如实登记）。**security 域**（`security.resolveSecret` → `POST /api/v1/secrets/resolve`、`security.putSecret` → `PUT /api/v1/secrets/{domain}/{key}`）与 **aiHost 域**（`aiHost.getSessionConfig` → `POST /api/v1/ai-host/session-config`、`aiHost.executeTarget` → `POST /api/v1/ai-host/execute-target`）客户端面已定形（web 侧真实现 + 契约测试），**服务端路由未点亮**（部署未挂 = 501/404 显式形态）——服务端半边随执行域路由切片落地，点亮前 web 端如实报 `CapabilityUnsupported` 的替身面保持。
 - 2026-11-06：v1.3（execution 域路由收口刀）。§6.10 execution 四端点点亮（`POST /api/v1/sessions/{id}/executions`、`POST /api/v1/executions`、`GET /api/v1/executions/{id}`、`POST /api/v1/executions/{id}/cancel`）——§4 总账的 execution 4/4 由「计账」变「实服务」；§6.11 job 表补登（四端点此前已服务但无逐域路由表）；§6.2 `issueSubmissionToken` 的会话绑定操作改为经执行用例面签发（修复 openSession/cancelExecution 在 HTTP 面必然 `TokenInvalid` 的端到端断点）；aiHost.executeTarget（§6.2 表）501 → 200 `CommandResult`。
 - 2026-11-07：v1.4（W8 刀3a，查询资产域服务端半边）。**§6.12 收藏与查询历史**七路由（收藏 list/create/delete + 历史 page/delete/clear/purge）——legacy IPC 命令轨（`add_favorite_query`/`get_query_history_page` 等 7 命令）收敛进 MethodMap 的第一域；v10 双表 expand-only 迁移（per (org, principal) 隔离，收藏文件形/历史本机库形的服务端对偶）；历史落账 = execution 域受理后钩子（best-effort，桌面同语义）；`get_favorites_root`/`refresh_favorites` 文件系统语义不进 HTTP 面（桌面专属）。web 半边（域客户端 + RouteSpec + 不支持名单收缩）随下刀收口。
+- 2026-11-08：v1.4.1（W8 刀1对账——PR #204 关闭后的增量移植）。§6.10 补三行裁决：`GET /api/v1/executions/{id}` 的 L6 两段登记（`ResourceType::Execution` + `Read`，rbac 基线矩阵裁决）、令牌两轨不混用的 409 wire（`idempotencyExpired`）、限流严格档补行（`POST …/executions` 与 `POST /api/v1/ai-host/execute-target`）。aiHost.executeTarget 的 claim 纪律补齐（claim 必填：`independent` 真执行、`editorGrant` 501 fail-closed、缺失/未知 400——与 web 端 `AiHostExecuteTargetRequest` 冻结形状对齐）；`PrincipalScopedHost` 上移为共享装饰器（aiHost 与 MCP 七工具同一真主体注入路径）。

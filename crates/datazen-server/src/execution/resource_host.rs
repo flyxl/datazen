@@ -19,10 +19,12 @@
 //!    `RequestContext` 仍用合成服务主体 `server-mcp-tool`——**闸序读半边**
 //!    （`profile` / `driver` / `safe_mode` / `prepare` 的 profile 读取）
 //!    组织口径正确（org 来自装配配置），主体合成仅残留于审计行。
-//!    **执行面已收口**：七工具经 `stateless_exec::PrincipalScopedHost`
-//!    （P3 种子，`PerCallHost` 无状态镜像）在 `prepare` 返回后把
-//!    `PreparedExecution.context` 覆写为请求真主体（`CallIdentity` 传播）；
-//!    tableData 读半边（`target_runner.rs`）执行面直接用 `run()` 的真主体。
+//!    **执行面已收口**：七工具与 aiHost 目标执行均经
+//!    [`PrincipalScopedHost`]（P3 种子，`PerCallHost` 的无状态镜像；W8
+//!    刀1对账起定义在本模块，`stateless_exec` 再导出）在 `prepare`
+//!    返回后把 `PreparedExecution.context` 覆写为请求真主体
+//!    （`CallIdentity` 传播）；tableData 读半边（`target_runner.rs`）
+//!    执行面直接用 `run()` 的真主体。
 //!    端口签名手术（四方法全带 ctx，读半边同步真主体化）为后续刀。
 //!    driverGateway 过渡域的 execute 路径同残留，随其接线刀收口。
 //!    （`stateless_exec` 模块头同款登记。）
@@ -401,5 +403,50 @@ fn layer_requirement(requirement: TargetLevelRequirement) -> LayerRequirement {
         TargetLevelRequirement::Required => LayerRequirement::Required,
         TargetLevelRequirement::Optional => LayerRequirement::Optional,
         TargetLevelRequirement::Forbidden => LayerRequirement::Forbidden,
+    }
+}
+
+/// 每调用身份包装（P3 授权种子的宿主侧装饰器；W8 刀1对账——PR #204 的
+/// 上移增量：定义从 `mcp::stateless_exec` 移到本非门控区，aiHost 目标
+/// 执行与无状态 MCP 七工具共用同一条真主体注入路径）。
+///
+/// 执行面（token / execute / poll）的 `RequestContext` 由
+/// `prepared.context` 决定（`resource_execution::execute_bound` 全程取
+/// `prepared.context`）；共享宿主的 `prepare` 产出的是合成服务主体
+/// （模块头登记第 2 条），本包装在 `prepare` 返回后覆写为请求真主体——
+/// 闸序读半边（profile / driver / safe_mode）委托 inner，主体合成残留
+/// 照登记，不因包装而扩散。
+pub struct PrincipalScopedHost {
+    pub inner: Arc<dyn ResourceExecutionHost>,
+    pub context: RequestContext,
+}
+
+#[async_trait]
+impl ResourceExecutionHost for PrincipalScopedHost {
+    async fn profile(&self, id: &str) -> Result<(ConnectionConfig, u64, bool), WorkflowError> {
+        self.inner.profile(id).await
+    }
+
+    async fn driver(
+        &self,
+        config: &ConnectionConfig,
+    ) -> Result<Arc<dyn DatabaseDriver>, WorkflowError> {
+        self.inner.driver(config).await
+    }
+
+    async fn safe_mode(&self) -> bool {
+        self.inner.safe_mode().await
+    }
+
+    async fn prepare(
+        &self,
+        id: &str,
+        revision: u64,
+        command: &str,
+        target: datazen::execution::ExecutionTarget,
+    ) -> Result<PreparedExecution, WorkflowError> {
+        let mut prepared = self.inner.prepare(id, revision, command, target).await?;
+        prepared.context = self.context.clone();
+        Ok(prepared)
     }
 }

@@ -8,7 +8,9 @@
 //! - aiHost（WR-F1#3 的服务端半边）：session-config 回答
 //!   `ExecutionSettings` 形状（缺省文档 + 存储切片回读）、executeTarget
 //!   目标命令执行（执行域路由收口刀点亮：payload 校验 400 / 未知连接
-//!   503，空驱动注册表下「驱动不可用」显式应答）、组织边界、登录要求。
+//!   503，空驱动注册表下「驱动不可用」显式应答；W8 刀1对账补回 claim
+//!   纪律：editorGrant 501 fail-closed / 缺失或未知 claim 400）、组织
+//!   边界、登录要求。
 //!
 //! L2 在真实装配里注入 `AuthenticatedSession`；本文件以请求扩展直接注入
 //! （同一扩展类型，先例照 `tests/sse_events.rs`；装配语义由主线集成腿复核）。
@@ -489,11 +491,11 @@ async fn execute_target_rejects_incomplete_payload() {
     let mut app = ai_host_app(memory_store(), "org-a");
     let session = session_of("org-a", "user-1");
 
-    // 缺 command → 400 明拒（绝不假装成功）。
+    // 缺 command → 400 明拒（绝不假装成功；claim 齐备，钉的是字段校验）。
     let no_command = post_json(
         &mut app,
         "/api/v1/ai-host/execute-target",
-        r#"{"id":"conn-1","input":{"database":"main"}}"#,
+        r#"{"id":"conn-1","input":{"database":"main"},"claim":{"kind":"independent"}}"#,
         Some(&session),
     )
     .await;
@@ -504,7 +506,7 @@ async fn execute_target_rejects_incomplete_payload() {
     let no_id = post_json(
         &mut app,
         "/api/v1/ai-host/execute-target",
-        r#"{"command":"listTables"}"#,
+        r#"{"command":"listTables","claim":{"kind":"independent"}}"#,
         Some(&session),
     )
     .await;
@@ -543,6 +545,63 @@ async fn execute_target_unknown_connection_maps_to_503() {
         message.contains("conn-1"),
         "error names the failed connection: {message}"
     );
+}
+
+/// W8 刀1对账补回（PR #204 增量）：editorGrant 声明在 server 形态上
+/// fail-closed 501——编辑器授权登记处是桌面部件，server 无编辑器会话
+/// 可借；文案显式声明「没有开始任何执行」，绝不返回看似成功。
+#[tokio::test]
+async fn execute_target_editor_grant_stays_fail_closed_501() {
+    let mut app = ai_host_app(memory_store(), "org-a");
+    let session = session_of("org-a", "user-1");
+
+    let response = post_json(
+        &mut app,
+        "/api/v1/ai-host/execute-target",
+        r#"{"id":"conn-1","command":"listTables","input":{"database":"main"},"claim":{"kind":"editorGrant","grantId":"g-1","claimedClientInstanceId":"c-1","editorSessionId":"s-1"}}"#,
+        Some(&session),
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+    let wire = json_of(response).await;
+    assert_eq!(wire["code"], "capabilityUnsupported");
+    let message = wire["message"].as_str().expect("message");
+    assert!(
+        message.contains("editorGrant"),
+        "precise copy names the unserved claim kind: {message}"
+    );
+    assert!(
+        message.contains("No execution was started"),
+        "must never read as acceptance: {message}"
+    );
+}
+
+/// W8 刀1对账补回（PR #204 增量）：claim 必填且 kind 受限——缺失/未知
+/// kind 400 明拒（fail-closed：不认识的输入拒绝而非放行）。
+#[tokio::test]
+async fn execute_target_rejects_missing_or_unknown_claim() {
+    let mut app = ai_host_app(memory_store(), "org-a");
+    let session = session_of("org-a", "user-1");
+
+    let missing = post_json(
+        &mut app,
+        "/api/v1/ai-host/execute-target",
+        r#"{"id":"conn-1","command":"listTables","input":{}}"#,
+        Some(&session),
+    )
+    .await;
+    assert_eq!(missing.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(json_of(missing).await["code"], "invalidArgument");
+
+    let unknown_kind = post_json(
+        &mut app,
+        "/api/v1/ai-host/execute-target",
+        r#"{"id":"conn-1","command":"listTables","input":{},"claim":{"kind":"teleport"}}"#,
+        Some(&session),
+    )
+    .await;
+    assert_eq!(unknown_kind.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(json_of(unknown_kind).await["code"], "invalidArgument");
 }
 
 #[tokio::test]

@@ -5,7 +5,7 @@
 //! | 方法 | 路由 | 令牌 | 成功 | 请求 → 响应 |
 //! | --- | --- | --- | --- | --- |
 //! | `aiHost.getSessionConfig` | `POST /api/v1/ai-host/session-config` | — | 200 | payload 原样 → `ExecutionSettings` JSON |
-//! | `aiHost.executeTarget` | `POST /api/v1/ai-host/execute-target` | — | 200 | `{id, command, input, claim?}` → `CommandResult`（`WorkflowError` → driver_gateway 同表错误映射） |
+//! | `aiHost.executeTarget` | `POST /api/v1/ai-host/execute-target` | — | 200 | `{id, command, input, claim}` → `CommandResult`（`WorkflowError` → driver_gateway 同表错误映射；`editorGrant` → 501 fail-closed） |
 //!
 //! 域裁决：
 //!
@@ -15,17 +15,27 @@
 //!   ——v1 的会话配置是服务端事实，不由请求塑形；体缺失/非 JSON 也按
 //!   `None` 接受（payload 原样透传的宽容读面）。缺行按节补缺省
 //!   （fresh install 语义，`storage::settings` 的装配口径）。
-//! - **executeTarget = 目标命令执行（执行域路由收口刀点亮）**：体
-//!   `{id, command, input, claim?}`——`id` 是连接 id，`command` 是驱动命令
-//!   目录名，`input` 是命令输入（claim 原样接受不解读：授予态是客户端
-//!   事实，桌面 `execute_target` 同款不消费它）。执行经共享
+//! - **executeTarget = 目标命令执行 + claim 纪律（W8 刀1对账补回）**：体
+//!   四字段（`id` 连接 id / `command` 驱动命令目录名 / `input` 命令输入 /
+//!   `claim` 归因声明——与 web 端 `aiPorts.ts::AiHostExecuteTargetRequest`
+//!   的冻结形状逐字一致，`claim` 必填）。裁决分臂：
+//!   - **`claim: independent`**：真执行。`WorkflowCommandStep`
+//!   （kind="tool"，connection=id，与桌面 `execute_target` 同值）经共享
 //!   `workflow::resource_execution::execute`（宿主 = bootstrap 装配的
 //!   `ServerResourceExecutionHost`，与 MCP 目标机器 / driverGateway 同一
-//!   实例）；目标闸序（驱动可用性、safe_mode、目标要求）全部复用该层。
-//!   成功 200 → `CommandResult`；`WorkflowError` →
-//!   driver_gateway 同一张错误映射表（503 连接/驱动不可用等）。同步
-//!   应答：本端点不签发稳定执行 id、不入异步执行记录（与桌面 IPC 同一
-//!   形态——异步语义属 execution 域的 `executeAtTarget`，见契约
+//!   实例）；每调用包 [`PrincipalScopedHost`]（W8 刀1对账上移的共享
+//!   装饰器）——执行面（token/execute/poll）携带请求真主体，闸序读半
+//!   边照 `resource_host.rs` 登记第 2 条。闸序（驱动可用性、safe_mode、
+//!   目标要求）全部复用该层；成功 200 → `CommandResult`；`WorkflowError`
+//!   → driver_gateway 同一张错误映射表（503 连接/驱动不可用等）。
+//!   - **`claim: editorGrant`** → 501 `capabilityUnsupported` 精确文案：
+//!   编辑器授权登记处（`AiGrantRegistry` 的签发/续期/过期机器）是桌面
+//!   形态部件，server 无编辑器会话可借——登记不立语义，绝不返回看似
+//!   成功（fail-closed）。
+//!   - `claim` 缺失或未知 kind → 400 `invalidArgument`（不认识的输入
+//!   拒绝而非放行）。
+//!   同步应答：本端点不签发稳定执行 id、不入异步执行记录（与桌面 IPC
+//!   同一形态——异步语义属 execution 域的 `executeAtTarget`，见契约
 //!   §6.10）。payload 在缺 `id`/`command` 时 400 明拒，绝不假装成功。
 //! - **组织边界（INV-01）**：[`AiHostState`] 由 composition root 绑定部署
 //!   组织（`config.organization_id`，预装配 scoped store——settings.rs 的
@@ -46,8 +56,11 @@ use serde_json::Value;
 
 use datazen::settings::SettingsRepository;
 use datazen::shared::error::{ApiError, ApiErrorCode};
+use datazen::workflow::application::resource_execution::ResourceExecutionHost;
 
+use crate::execution::resource_host::PrincipalScopedHost;
 use crate::http::middleware::authorize::NOT_VISIBLE_MESSAGE;
+use crate::http::response::ApiErrorResponse;
 use crate::http::router::{api_error_response, invalid_argument, SessionIdentity};
 use crate::storage::ServerSettingsStore;
 
@@ -59,10 +72,11 @@ pub struct AiHostState {
     pub settings: Arc<ServerSettingsStore>,
     /// 本 state 绑定的组织（INV-01：与会话组织不一致的请求一律 404）。
     pub organization_id: String,
-    /// 目标执行宿主（执行域路由收口刀新增）：bootstrap 装配的
-    /// `ServerResourceExecutionHost`，与 MCP 目标机器 / driverGateway 同一
-    /// 实例（共享驱动注册表 / 设置存储 / 租约源）。
-    pub host: Arc<crate::execution::resource_host::ServerResourceExecutionHost>,
+    /// 目标执行宿主（执行域路由收口刀新增；W8 刀1对账改 trait 面）：
+    /// bootstrap 装配的 `ServerResourceExecutionHost`，与 MCP 目标机器 /
+    /// driverGateway 同一实例（共享驱动注册表 / 设置存储 / 租约源）；
+    /// 每调用包 [`PrincipalScopedHost`] 注入请求真主体。
+    pub host: Arc<dyn ResourceExecutionHost>,
 }
 
 /// ai-host 域 Router 片段：`POST /api/v1/ai-host/{session-config,execute-target}`。
@@ -124,14 +138,14 @@ async fn handler_get_session_config(
 }
 
 /// `aiHost.executeTarget`（POST /api/v1/ai-host/execute-target，体 =
-/// `{id, command, input, claim?}`）→ 200 `CommandResult`。
+/// `{id, command, input, claim}`，web 端 `AiHostExecuteTargetRequest` 的
+/// 冻结形状）→ 200 `CommandResult`。
 ///
-/// 目标命令执行（执行域路由收口刀点亮，桌面 `execute_target` 同一执行
-/// 路径）：`WorkflowCommandStep`（kind="tool"，connection=id）经共享
-/// `workflow::resource_execution::execute` 跑在 bootstrap 装配的
-/// `ServerResourceExecutionHost` 上。`claim` 原样接受不解读（授予态是
-/// 客户端事实，桌面同款）；缺 `id` / `command`（或类型不符）→ 400，
-/// 绝不假装成功；`WorkflowError` → driver_gateway 同一张错误映射表。
+/// 目标命令执行（桌面 `execute_target` 同一执行路径）+ 归因声明分臂
+/// （见模块头）：`independent` 真执行（每调用包 `PrincipalScopedHost`）；
+/// `editorGrant` 501 fail-closed（server 无编辑器授权登记处）；缺失/未知
+/// claim → 400。缺 `id` / `command`（或类型不符）→ 400，绝不假装成功；
+/// `WorkflowError` → driver_gateway 同一张错误映射表。
 async fn handler_execute_target(
     State(state): State<AiHostState>,
     identity: SessionIdentity,
@@ -150,16 +164,46 @@ async fn handler_execute_target(
         return invalid_argument("command (driver command name) is required.");
     };
     let input = body.get("input").cloned().unwrap_or(Value::Null);
-    // claim 原样接受不解读（见模块头）；体其余字段不阻断（payload 原样
-    // 透传的宽容读面）。
+    // 归因声明分臂（W8 刀1对账）：claim 必填且 kind 受限——不认识的
+    // 输入拒绝而非放行（fail-closed）。
+    match body.get("claim").and_then(|claim| claim.get("kind")).and_then(Value::as_str) {
+        Some("independent") => {}
+        Some("editorGrant") => {
+            // 501（not-implemented 类）：`CapabilityUnsupported` 默认 405，
+            // 501 类由调用点 `with_status` 显式覆盖（http::response 状态
+            // 码表的同款先例）。文案显式声明「没有开始任何执行」——
+            // 调用方不能把本响应解读成受理。
+            let error = ApiError::new(
+                ApiErrorCode::CapabilityUnsupported,
+                "aiHost.executeTarget does not serve editorGrant claims on this host: \
+                 the editor grant registry is a desktop-form component and there is no \
+                 editor session to borrow. No execution was started.",
+            );
+            return ApiErrorResponse::new(error)
+                .with_status(StatusCode::NOT_IMPLEMENTED)
+                .into_response();
+        }
+        _ => {
+            return invalid_argument(
+                "claim.kind must be \"independent\" or \"editorGrant\".",
+            );
+        }
+    }
+    // 与桌面同一步名（"tool"）与共享执行函数；每调用包
+    // PrincipalScopedHost——执行面携带请求真主体（审计归因不再落到
+    // 合成服务主体上）。
     let step = datazen::workflow::domain::command::WorkflowCommandStep::new(
         "tool",
         command,
         Some(connection_id.to_owned()),
         input,
     );
+    let host = PrincipalScopedHost {
+        inner: state.host.clone(),
+        context: identity.ctx.clone(),
+    };
     match datazen::workflow::resource_execution::execute(
-        state.host.as_ref(),
+        &host,
         &step,
         connection_id,
         None,
