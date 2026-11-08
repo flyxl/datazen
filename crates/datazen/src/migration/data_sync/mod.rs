@@ -33,6 +33,7 @@ pub mod session;
 pub mod sql;
 pub mod state;
 pub mod sync_pairing;
+pub mod task_checkpoint;
 pub mod types_eq;
 
 pub use apply_loop::{apply_changeset_to_rows, remaining_mutating_changes};
@@ -77,6 +78,7 @@ pub use sql::{
     SqlStatement,
 };
 pub use state::SyncPhase;
+pub use task_checkpoint::StoredSyncTask;
 
 // D5 起驱动注册的 force-link：集成测试（cm43…cm46）在旧 crate 垫片的
 // tests/ 下经其 dev-deps 持有驱动；而本模块的内联单元测试（家族归一化

@@ -38,6 +38,7 @@ pub mod profiles;
 pub mod query_assets;
 pub mod schema_diff_profiles;
 pub mod settings;
+pub mod sync_assets;
 pub mod tunnels;
 pub mod workflows;
 
@@ -53,6 +54,7 @@ pub use org_memory::ServerOrgMemories;
 pub use profiles::ServerProfiles;
 pub use schema_diff_profiles::ServerSchemaDiffProfiles;
 pub use settings::{default_shared_settings, ServerSettingsStore};
+pub use sync_assets::{ServerSyncProfiles, ServerSyncTasks};
 pub use tunnels::ServerTunnels;
 pub use workflows::{ServerWorkflowHistoryStore, ServerWorkflowStore};
 
@@ -74,6 +76,8 @@ mod org_memory_tests;
 mod profiles_tests;
 #[cfg(test)]
 mod schema_diff_storage_tests;
+#[cfg(test)]
+mod sync_assets_tests;
 #[cfg(test)]
 mod tunnels_tests;
 #[cfg(test)]
