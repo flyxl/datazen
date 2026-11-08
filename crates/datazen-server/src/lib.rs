@@ -48,5 +48,6 @@ pub mod operations;
 pub mod policy;
 pub mod schema_diff;
 pub mod storage;
+pub mod sync;
 pub mod transfer;
 pub mod workflow;
