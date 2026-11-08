@@ -258,11 +258,46 @@ jobs:
       # 问题，不是代码回归。ubuntu-latest 预装了本 job 用不到的大块工具链，
       # 清掉回收 10GB+ 量级，与上面 env 的 DEBUG=0 双保险。放最前：后面的
       # pnpm install / apt / rust-cache 写入全部受益。
-      - name: Free runner disk space
+      - name: Free runner disk space (only when needed)
         run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL \
-            /usr/local/lib/android /usr/share/swift /usr/local/.ghcup
-          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          set -euo pipefail
+
+          # Keep enough headroom for the restored Cargo dependency cache,
+          # pnpm/apt setup, and the complete test matrix. Delete preinstalled
+          # toolchains only until this threshold is reached; do not blindly
+          # remove every SDK and Docker image on every run.
+          min_free_kb=$((80 * 1024 * 1024))
+          available_kb() {
+            df -Pk / | awk 'NR == 2 { print $4 }'
+          }
+
+          available="$(available_kb)"
+          echo "Available before cleanup: $((available / 1024 / 1024)) GiB"
+
+          for path in \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /opt/hostedtoolcache/CodeQL \
+            /usr/local/lib/android \
+            /usr/share/swift \
+            /usr/local/.ghcup; do
+            available="$(available_kb)"
+            if (( available >= min_free_kb )); then
+              break
+            fi
+            if [[ -e "$path" ]]; then
+              echo "Removing $path (available: $((available / 1024 / 1024)) GiB)"
+              sudo rm -rf "$path"
+            fi
+          done
+
+          available="$(available_kb)"
+          if (( available < min_free_kb )); then
+            echo "Still below 80 GiB; pruning Docker images as the final fallback."
+            sudo docker image prune --all --force >/dev/null 2>&1 || true
+          fi
+
+          echo "Available after cleanup: $(( $(available_kb) / 1024 / 1024 )) GiB"
           df -h /
 
       # resolve-drivers.mjs → resolve-pro.mjs → pack-ep.mjs 顶层 import 了
@@ -335,6 +370,10 @@ jobs:
         with:
           workspaces: . -> target
           cache-on-failure: true
+          # PRs restore the base-branch cache but do not create branch-scoped
+          # copies. Keep cache writes on main so the 10 GB GitHub cache quota
+          # is not consumed by short-lived PRs.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Resolve drivers (basic)
         run: node scripts/resolve-drivers.mjs --drivers=basic
