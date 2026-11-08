@@ -1,0 +1,41 @@
+# deploy/dev/Dockerfile.dev 专属 ignore（BuildKit 的 per-Dockerfile ignore：
+# 文件名 = <Dockerfile 名>.dockerignore，须与 Dockerfile 同目录；构建上下文
+# 仍是仓库根）。目标：把 GB 级的非构建输入挡在上下文外，只送
+# crates/ + packages/ + scripts/ + 根清单进 daemon。
+#
+# 注意：不要把 crates/、packages/、scripts/、根 tsconfig*.json、锁文件、
+# drivers-registry.json、pro-extension.lock.json 加进来——它们都是构建输入
+# （Rust workspace 装载需要全部成员的 Cargo.toml；驱动前端 codegen 读
+# crates/drivers/*/ui 与 drivers-registry.json；resolve-pro 读
+# pro-extension.lock.json）。
+
+# 版本库与 IDE
+.git
+.github
+.vscode
+.idea
+.husky
+
+# 依赖与产物（宿主侧的 node_modules 与构建产物绝不进上下文；
+# web/dist 在容器内重新构建生成）
+**/node_modules
+**/dist
+**/target
+
+# 大体积非构建目录
+site
+docs
+deploy
+e2e
+packaging
+fixtures
+public
+resources
+scripts/e2e-screenshots
+
+# 杂项
+*.log
+*.tmp
+.DS_Store
+worktrees
+.worktrees
