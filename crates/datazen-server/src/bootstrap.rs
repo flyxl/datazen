@@ -526,10 +526,10 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let sync_adapters = std::sync::Arc::new(
         datazen::migration::data_transfer::transfer::adapter_registry::SyncAdapterRegistry::new(),
     );
-    // 刀3e-4b 的路由接线在此续建（域路由 state 挂同一实例）；本刀先完成
-    // composition root 登记——依赖齐备性在装配期即被编译与构造双重钉住，
-    // 直驱集成测试（tests/sync_execution.rs）消费同一构造面。
-    let _sync_execution = crate::sync::SyncExecution::new(
+    // 执行面服务（刀3e-4b：域路由 state 挂同一实例——读面/执行面共享
+    // JobHost/计划注册表/运行态；直驱集成测试 tests/sync_execution.rs
+    // 消费同一构造面）。
+    let sync_execution = crate::sync::SyncExecution::new(
         sync_job_host,
         sync_plans.clone(),
         sync_runtime.clone(),
@@ -822,16 +822,17 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
                 adapters: schema_diff_adapters.clone(),
             },
         ),
-        // W8 刀3e-3：Data Sync 域（契约 §6.16 资产与读面十三路由——任务二
-        // + 档案三 + 配对分类一 + 迁移运行历史二 + sync job 读回/取消五）。
-        // 存储 = v15/v12；job 仓储与 jobs 域同源；执行面（受理/派发）随
-        // 刀3e-4 续建。
+        // W8 刀3e-3 + 刀3e-4b：Data Sync 域（契约 §6.16 二十二路由——资产
+        // 与读面十三 + 执行面九[inspect/revalidate/compare/prepare/apply/
+        // execute/SQL 预览/冲突检查/恢复核验]）。存储 = v15/v12；job 仓储
+        // 与 jobs 域同源；执行面服务层见刀3e-4a。
         crate::http::domains::sync::sync_router(crate::http::domains::sync::SyncState {
             store: store.clone(),
             tasks: sync_tasks_store.clone(),
             profiles: sync_profiles_store.clone(),
             migration_runs: sync_migration_runs.clone(),
             jobs: sync_jobs.clone(),
+            execution: sync_execution.clone(),
         }),
         // W8 刀3c：Workflow 域（契约 §6.14 十一路由——定义管理五 + 执行一
         // + reload 一 + 运行历史四）。registry/历史/执行宿主与调度器同一

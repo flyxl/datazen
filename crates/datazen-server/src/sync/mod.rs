@@ -42,6 +42,7 @@ pub mod sessions;
 
 pub use execution::{
     SyncExecution, SyncExecutionError, SyncInspectRequest, SyncPrepareRequest, SyncRecoveryRequest,
+    SyncRevalidateRequest,
 };
 pub use jobs::SyncJobs;
 pub use runtime_state::SyncRuntimeState;

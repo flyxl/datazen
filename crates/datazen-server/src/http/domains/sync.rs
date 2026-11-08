@@ -1,6 +1,8 @@
-//! Data Sync 域路由（W8 刀3e-3；契约 §6.16 的 HTTP 薄绑定）——任务/
-//! 档案资产、配对分类、迁移运行历史读面与 sync job 读回/取消从 legacy
-//! IPC 命令轨收敛进 MethodMap。
+//! Data Sync 域路由（W8 刀3e-3 + 刀3e-4b；契约 §6.16 的 HTTP 薄绑定）——
+//! 任务/档案资产、配对分类、迁移运行历史读面、sync job 读回/取消，与
+//! 执行面九方法（inspect / revalidate / compare / prepare / apply /
+//! execute / SQL 预览 / 冲突检查 / 恢复核验）从 legacy IPC 命令轨收敛进
+//! MethodMap。
 //!
 //! | 方法 | 路由 | 令牌 | 成功 | 请求 → 响应 |
 //! | --- | --- | --- | --- | --- |
@@ -17,6 +19,15 @@
 //! | `getDataSyncJobDetails` | `GET /api/v1/sync/jobs/{id}/details` | — | 200 | — → `JobDetails` |
 //! | `getDataSyncJobPreview` | `GET /api/v1/sync/jobs/{id}/preview` | — | 200 | — → `SyncComparisonPreview` |
 //! | `cancelDataSync` | `POST /api/v1/sync/jobs/{id}/cancel` | ✓ | 200 | `SubmitRequest` → `{ cancelled }` |
+//! | `inspectDataSync` | `POST /api/v1/sync/inspections` | — | 200 | 检视请求 → `TableResult[]` |
+//! | `revalidateDataSync` | `POST /api/v1/sync/revalidations` | — | 200 | 复核请求 → `{ staleTables }` |
+//! | `compareDataSync` | `POST /api/v1/sync/comparisons` | — | 200 | 比较请求 → `SyncComparisonPreview` |
+//! | `startDataSyncPrepareJob` | `POST /api/v1/sync/jobs/prepare` | — | 202 | 比较请求 → `JobView` |
+//! | `startDataSyncApplyJob` | `POST /api/v1/sync/jobs/apply` | — | 202 | `{ sourceDbSessionId, targetDbSessionId, request }` → `JobView` |
+//! | `executeDataSync` | `POST /api/v1/sync/executions` | — | 200 | `{ request, profile? }` → `DataSyncExecutionResponse` |
+//! | `generateDataSyncSql` | `POST /api/v1/sync/sql-preview` | — | 200 | `{ planId, selection?, options }` → `SqlStatement[]` |
+//! | `checkSyncConflicts` | `POST /api/v1/sync/tasks/{id}/conflicts` | — | 200 | — → `{ hasConflicts, conflicts }` |
+//! | `verifyDataSyncRecovery` | `POST /api/v1/sync/jobs/{id}/recovery-verification` | — | 200 | 重授权请求 → `JobDetails` |
 //!
 //! 域裁决（契约 §6.16）：
 //!
@@ -62,6 +73,10 @@ use crate::storage::migration_runs::ServerMigrationRuns;
 use crate::storage::sync_assets::{ServerSyncProfiles, ServerSyncTasks};
 use crate::storage::AdminStore;
 use crate::sync::assets::{save_sync_profile, SyncAssetError};
+use crate::sync::execution::{
+    SyncExecution, SyncExecutionError, SyncInspectRequest, SyncPrepareRequest, SyncRecoveryRequest,
+    SyncRevalidateRequest,
+};
 use crate::sync::jobs::{SyncJobError, SyncJobs};
 
 /// Data Sync 域的装配状态（composition root 注入；无隐式单例）。
@@ -77,6 +92,8 @@ pub struct SyncState {
     pub migration_runs: Arc<ServerMigrationRuns>,
     /// job 服务（JobHost + 计划注册表 + 运行态）。
     pub jobs: SyncJobs,
+    /// 执行面服务（刀3e-4b：与 `jobs` 共享同一 JobHost/计划注册表/运行态）。
+    pub execution: SyncExecution,
 }
 
 /// Data Sync 域 Router 片段（merge 进 `build_router_with_auth` 的
@@ -97,10 +114,25 @@ pub fn sync_router(state: SyncState) -> Router {
             get(handler_get_migration_run),
         )
         .route("/api/v1/sync/jobs", get(handler_list_jobs))
+        .route("/api/v1/sync/jobs/prepare", post(handler_prepare_job))
+        .route("/api/v1/sync/jobs/apply", post(handler_apply_job))
         .route("/api/v1/sync/jobs/{id}", get(handler_get_job))
         .route("/api/v1/sync/jobs/{id}/details", get(handler_job_details))
         .route("/api/v1/sync/jobs/{id}/preview", get(handler_job_preview))
         .route("/api/v1/sync/jobs/{id}/cancel", post(handler_cancel_job))
+        .route(
+            "/api/v1/sync/jobs/{id}/recovery-verification",
+            post(handler_verify_recovery),
+        )
+        .route("/api/v1/sync/inspections", post(handler_inspect))
+        .route("/api/v1/sync/revalidations", post(handler_revalidate))
+        .route("/api/v1/sync/comparisons", post(handler_compare))
+        .route("/api/v1/sync/executions", post(handler_execute))
+        .route("/api/v1/sync/sql-preview", post(handler_generate_sql))
+        .route(
+            "/api/v1/sync/tasks/{id}/conflicts",
+            post(handler_check_conflicts),
+        )
         .with_state(state)
 }
 
@@ -421,5 +453,277 @@ async fn handler_cancel_job(
         )
             .into_response(),
         Err(error) => job_error(error),
+    }
+}
+
+// ── 执行面（W8 刀3e-4b；服务层见 sync/execution.rs）────────────────────────
+
+/// 执行面错误映射（服务层桶 → wire 码：NotFound→404 / Validation→400 /
+/// Storage→503）。
+fn execution_error(error: SyncExecutionError) -> Response {
+    match error {
+        SyncExecutionError::NotFound(id) => {
+            not_found(format!("Data Sync resource '{id}' was not found"))
+        }
+        SyncExecutionError::Validation(message) => {
+            api_error_response(ApiError::new(ApiErrorCode::InvalidArgument, message))
+        }
+        SyncExecutionError::Storage(detail) => api_error_response(ApiError::new(
+            ApiErrorCode::ServiceUnavailable,
+            format!("Data Sync execution is unavailable: {detail}"),
+        )),
+    }
+}
+
+/// `Json<Value>` → 强类型（手动解析对齐 400 口径——axum Json 拒收是 422，
+/// 域错误 wire 统一 invalidArgument；pairings 先例）。
+fn parse_body<T: serde::de::DeserializeOwned>(body: Value, method: &str) -> Result<T, Response> {
+    serde_json::from_value(body).map_err(|source| invalid_argument(format!("{method}: {source}")))
+}
+
+/// `inspectDataSync`（POST /api/v1/sync/inspections）→ 200 `TableResult[]`
+/// （POST 读裁决：类型化入参走文档体，§6.7 同款；无副作用）。
+async fn handler_inspect(
+    State(state): State<SyncState>,
+    identity: SessionIdentity,
+    Json(body): Json<Value>,
+) -> Response {
+    let body: SyncInspectRequest = match parse_body(body, "inspectDataSync") {
+        Ok(body) => body,
+        Err(response) => return response,
+    };
+    match state.execution.inspect(&identity.ctx, &body).await {
+        Ok(results) => (StatusCode::OK, Json(results)).into_response(),
+        Err(error) => execution_error(error),
+    }
+}
+
+/// `revalidateDataSync`（POST /api/v1/sync/revalidations）→ 200
+/// `{ staleTables }`（重跑 inspect 门闸的结构/主键漂移投影）。
+async fn handler_revalidate(
+    State(state): State<SyncState>,
+    identity: SessionIdentity,
+    Json(body): Json<Value>,
+) -> Response {
+    let body: SyncRevalidateRequest = match parse_body(body, "revalidateDataSync") {
+        Ok(body) => body,
+        Err(response) => return response,
+    };
+    match state.execution.revalidate(&identity.ctx, &body).await {
+        Ok(report) => (StatusCode::OK, Json(report)).into_response(),
+        Err(error) => execution_error(error),
+    }
+}
+
+/// `compareDataSync`（POST /api/v1/sync/comparisons）→ 200
+/// `SyncComparisonPreview`（同步语义：durable prepare Job 冻结 ChangeSet 后
+/// 读复核投影——桌面 `compare_data_sync` 同链）。
+async fn handler_compare(
+    State(state): State<SyncState>,
+    identity: SessionIdentity,
+    Json(body): Json<Value>,
+) -> Response {
+    let body: SyncPrepareRequest = match parse_body(body, "compareDataSync") {
+        Ok(body) => body,
+        Err(response) => return response,
+    };
+    match state.execution.compare(&identity.ctx, &body).await {
+        Ok(preview) => (StatusCode::OK, Json(preview)).into_response(),
+        Err(error) => execution_error(error),
+    }
+}
+
+/// `startDataSyncPrepareJob`（POST /api/v1/sync/jobs/prepare）→ 202
+/// `JobView`（受理回执先于任何读取返回；重放同幂等键返回既有 Job）。
+async fn handler_prepare_job(
+    State(state): State<SyncState>,
+    identity: SessionIdentity,
+    Json(body): Json<Value>,
+) -> Response {
+    let body: SyncPrepareRequest = match parse_body(body, "startDataSyncPrepareJob") {
+        Ok(body) => body,
+        Err(response) => return response,
+    };
+    let job_id = body
+        .job_id
+        .clone()
+        .filter(|id| !id.trim().is_empty())
+        .unwrap_or_else(|| format!("data-sync-{}", uuid::Uuid::new_v4()));
+    match state
+        .execution
+        .start_prepare(&identity.ctx, &body, job_id)
+        .await
+    {
+        Ok(view) => (StatusCode::ACCEPTED, Json(view)).into_response(),
+        Err(error) => execution_error(error),
+    }
+}
+
+/// `startDataSyncApplyJob` 的请求体（桌面 IPC 命令参数同构）。
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApplyJobBody {
+    source_db_session_id: String,
+    target_db_session_id: String,
+    request: datazen::migration::data_sync::plan_store::SyncRunRequest,
+}
+
+/// `startDataSyncApplyJob`（POST /api/v1/sync/jobs/apply）→ 202 `JobView`
+/// （对确切的已复核 ChangeSet 受理；先持久化后取资源）。
+async fn handler_apply_job(
+    State(state): State<SyncState>,
+    identity: SessionIdentity,
+    Json(body): Json<Value>,
+) -> Response {
+    let body: ApplyJobBody = match parse_body(body, "startDataSyncApplyJob") {
+        Ok(body) => body,
+        Err(response) => return response,
+    };
+    match state
+        .execution
+        .start_apply(
+            &identity.ctx,
+            &body.source_db_session_id,
+            &body.target_db_session_id,
+            body.request,
+        )
+        .await
+    {
+        Ok(view) => (StatusCode::ACCEPTED, Json(view)).into_response(),
+        Err(error) => execution_error(error),
+    }
+}
+
+/// `executeDataSync` 的请求体（`profile` 是可选的运行历史引用——桌面
+/// `execute_data_sync` 命令的 `profile?` 参数同形）。
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExecuteBody {
+    request: datazen::migration::data_sync::plan_store::SyncRunRequest,
+    #[serde(default)]
+    profile: Option<datazen::history::MigrationProfileRef>,
+}
+
+/// `executeDataSync`（POST /api/v1/sync/executions）→ 200
+/// `DataSyncExecutionResponse`（apply 的同步投影 + v12 运行历史两段落账；
+/// partially-applied / unknown 是带证据的成功应答，不是 4xx）。
+async fn handler_execute(
+    State(state): State<SyncState>,
+    identity: SessionIdentity,
+    Json(body): Json<Value>,
+) -> Response {
+    let body: ExecuteBody = match parse_body(body, "executeDataSync") {
+        Ok(body) => body,
+        Err(response) => return response,
+    };
+    match state
+        .execution
+        .execute(&identity.ctx, body.request, body.profile.as_ref())
+        .await
+    {
+        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
+        Err(error) => execution_error(error),
+    }
+}
+
+/// `generateDataSyncSql` 的请求体（选区缺省 = 全量评审选区的缺省形状）。
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SqlPreviewBody {
+    plan_id: String,
+    #[serde(default)]
+    selection: Option<datazen::migration::data_sync::plan_store::SyncRunSelection>,
+    options: datazen::migration::data_sync::SyncOptions,
+}
+
+/// `generateDataSyncSql`（POST /api/v1/sync/sql-preview）→ 200
+/// `SqlStatement[]`（行级分页源 + IPC 上限；执行路径用同一分页源，从不
+/// 累积这个预览向量）。
+async fn handler_generate_sql(
+    State(state): State<SyncState>,
+    identity: SessionIdentity,
+    Json(body): Json<Value>,
+) -> Response {
+    let body: SqlPreviewBody = match parse_body(body, "generateDataSyncSql") {
+        Ok(body) => body,
+        Err(response) => return response,
+    };
+    match state
+        .execution
+        .generate_sql(
+            &identity.ctx,
+            &body.plan_id,
+            body.selection.unwrap_or_default(),
+            body.options,
+        )
+        .await
+    {
+        Ok(statements) => (StatusCode::OK, Json(statements)).into_response(),
+        Err(error) => execution_error(error),
+    }
+}
+
+/// `checkSyncConflicts`（POST /api/v1/sync/tasks/{id}/conflicts）→ 200
+/// `{ hasConflicts, conflicts }`（持久化任务按 connectionId 重开专用会话，
+/// 源侧行数与冻结计数比对；未知任务 → 404）。
+async fn handler_check_conflicts(
+    State(state): State<SyncState>,
+    identity: SessionIdentity,
+    Path(task_id): Path<String>,
+) -> Response {
+    match state
+        .execution
+        .check_conflicts(&identity.ctx, &task_id)
+        .await
+    {
+        Ok(conflicts) => (StatusCode::OK, Json(conflicts)).into_response(),
+        Err(error) => execution_error(error),
+    }
+}
+
+/// `verifyDataSyncRecovery` 的请求体（`jobId` 在路径上——与 cancel 同款
+/// 资源寻址）。
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RecoveryBody {
+    source_db_session_id: String,
+    target_db_session_id: String,
+    source_database: String,
+    target_database: String,
+    #[serde(default)]
+    source_schema: Option<String>,
+    #[serde(default)]
+    target_schema: Option<String>,
+}
+
+/// `verifyDataSyncRecovery`（POST /api/v1/sync/jobs/{id}/recovery-verification）
+/// → 200 `JobDetails`（显式只读核验：端点重新授权 + 证据记录，永不续写；
+/// schemaDiff 恢复核验同款裁决）。
+async fn handler_verify_recovery(
+    State(state): State<SyncState>,
+    identity: SessionIdentity,
+    Path(job_id): Path<String>,
+    Json(body): Json<Value>,
+) -> Response {
+    let body: RecoveryBody = match parse_body(body, "verifyDataSyncRecovery") {
+        Ok(body) => body,
+        Err(response) => return response,
+    };
+    let request = SyncRecoveryRequest {
+        job_id,
+        source_db_session_id: body.source_db_session_id,
+        target_db_session_id: body.target_db_session_id,
+        source_database: body.source_database,
+        target_database: body.target_database,
+        source_schema: body.source_schema,
+        target_schema: body.target_schema,
+    };
+    match state
+        .execution
+        .verify_recovery(&identity.ctx, &request)
+        .await
+    {
+        Ok(details) => (StatusCode::OK, Json(details)).into_response(),
+        Err(error) => execution_error(error),
     }
 }
