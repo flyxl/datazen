@@ -164,17 +164,15 @@ import { setBackendClient } from '@datazen/backend-client';
 import { ContentView } from '../ContentView';
 import type { ConnectionViewActions } from '../../../lib/connectionViews/types';
 
-// Form-split R6/F6-prep: the query commands ride the legacy invoke rail, which
-// resolves the bound backend facade — `ConnectionWorkspaceHome`'s history
-// effect fires on mount. Bind the test transport (empty history page) so the
-// mount reaches the assertions instead of an unbound-client throw.
+// Form-split R6/F6-prep → W8 刀3a 收口：queryCommands 走域门面方法
+// (`getQueryHistoryPage`)，`ConnectionWorkspaceHome` 的 history effect 在
+// mount 时触发。绑定测试门面（空历史页）让 mount 走到断言而不是
+// unbound-client throw。
 setBackendClient('test', {
   transport: {
-    call: async (method: string) => {
-      if (method === 'get_query_history_page') return { entries: [], total: 0 };
-      return undefined;
-    },
+    call: async () => undefined,
   },
+  getQueryHistoryPage: async () => ({ entries: [], total: 0 }),
 } as never);
 
 beforeEach(() => {

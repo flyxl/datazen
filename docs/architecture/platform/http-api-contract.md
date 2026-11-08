@@ -39,7 +39,7 @@
 
 ## 4. 契约面总账
 
-十二个域、61 个域客户端方法（§6.12 查询资产七方法 + §6.13 Schema Diff 十一方法随 W8 刀3a/刀3b 入账）：
+十三个域、73 个域客户端方法（§6.14 workflow 十二方法随 W8 刀3c 入账）：
 
 | 域 | 方法数 | HTTP 服务 | 排除 | 备注 |
 | --- | --- | --- | --- | --- |
@@ -53,11 +53,12 @@
 | events | 2 | 2 | 0 | SSE（v1.1：订阅建立 + 流） |
 | tableData | 14 | 14 | 0 | |
 | driverGateway（过渡） | 5 | 4 | 1 | `open_base64_with_dialog` 排除（§6.9） |
-| queryAssets | 7 | 7 | 0 | §6.12（W8 刀3a 服务端半边；web 半边随域客户端收口） |
-| schemaDiff | 11 | 11 | 0 | §6.13（W8 刀3b；`get_migration_run`/`list_migration_runs` 读面留 sync 域） |
-| **合计** | **61** | **60** | **1** | |
+| queryAssets | 7 | 7 | 0 | §6.12（W8 刀3a；web 半边随本版收口：域客户端 + 名单收缩） |
+| schemaDiff | 11 | 11 | 0 | §6.13（W8 刀3b；web 半边随本版收口；`get_migration_run`/`list_migration_runs` 读面留 sync 域） |
+| workflow | 12 | 11 | 1 | §6.14（W8 刀3c；`getWorkflowDir` 桌面文件语义排除） |
+| **合计** | **73** | **71** | **2** | |
 
-路由总数 59 条服务 60 个方法（PATCH 双服务），另有服务自举路由 5 条（§5）与已立项待补方法的 1 条（§6.5）。
+路由总数 70 条服务 71 个方法（PATCH 双服务），另有服务自举路由 5 条（§5）与已立项待补方法的 1 条（§6.5）。
 
 ## 5. 服务自举路由（非域面）
 
@@ -294,6 +295,54 @@ legacy IPC 命令轨的第二域（`compare_table_schemas` / `prepare_schema_dif
   （best-effort，桌面 history.sqlite 的服务端对偶）；`get_migration_run` /
   `list_migration_runs` 的读面在 sync 域收口（后续刀）。
 
+### 6.14 workflow：定义管理、同步执行与运行历史（W8 刀3c，2026-11-07）
+
+| 方法 | 路由 | 令牌 | 成功 | 请求 → 响应 |
+| --- | --- | --- | --- | --- |
+| `listWorkflows` | `GET /api/v1/workflows` | — | 200 | — → `WorkflowListItem[]` |
+| `saveWorkflow` | `PUT /api/v1/workflows/{id}` | ✓ | 204 | `WorkflowDefinition & SubmitRequest` → — |
+| `saveWorkflowYaml` | `POST /api/v1/workflows/from-yaml` | ✓ | 200 | `{ yaml } & SubmitRequest` → `WorkflowDefinition` |
+| `getWorkflow` | `GET /api/v1/workflows/{id}` | — | 200 | — → `WorkflowDefinition` |
+| `getWorkflowYaml` | `GET /api/v1/workflows/{id}/yaml` | — | 200 | — → `{ yaml }`（标量包装口径与 `{ deleted }` 家族一致） |
+| `deleteWorkflow` | `DELETE /api/v1/workflows/{id}` | — | 204 | —（未知 id = 幂等 no-op） |
+| `executeWorkflow` | `POST /api/v1/workflows/{id}/execute` | ✓ | 200 | `{ variables, connectionId? } & SubmitRequest` → `WorkflowExecutionResult` |
+| `reloadWorkflows` | `POST /api/v1/workflows/reload` | — | 204 | —（库后端 no-op，桌面同语义） |
+| `listWorkflowRuns` | `GET /api/v1/workflow-runs?workflowId=` | — | 200 | — → `WorkflowRunListItem[]` |
+| `getWorkflowRun` | `GET /api/v1/workflow-runs/{id}` | — | 200 | — → `WorkflowRunRecord` |
+| `clearWorkflowRuns` | `DELETE /api/v1/workflow-runs?workflowId=` | — | 200 | — → `{ cleared }` |
+
+域裁决：
+
+- **存储**：v13 双表（`workflows` / `workflow_run_history`，组织复合主键）；
+  登记规则单家在共享层 `workflow::registry`（visibility 过滤、YAML 编码、
+  列表投影、时间戳服务端权威——create 铸造 / update 保留 createdAt）。
+  服务端**不播内置样例**（桌面三个 builtin 是单机 onboarding 供给，
+  团队服务器的组织自建）。
+- **归属 = 组织级**（CM-05）：v1 单组织部署，域状态持有宿主配置组织的
+  scoped 件，每 handler 先过归属闸（请求组织 ≠ 宿主组织 ⇒ 404 合并
+  口径；aiHost 同款）。多组织扩容时改 per-request 装配。
+- **执行是同步应答**（桌面 IPC 同语义；aiHost.executeTarget 同款先例）：
+  `WorkflowExecutor::execute` await 到底返回整份结果。长跑工作流超过
+  传输超时是调用方的重试策略问题，不在本域发明 202/job 语义（执行域的
+  job 面是另一个用例）。限流严格档（受理面，与 deploys 同族）。
+- **AI 步骤 fail-closed**：server 形态本刀无 AI 供应商注册表。含 AI 步骤
+  的交互执行按执行器默认错误策略应答（200 + `success:false` + 步骤
+  `error` 携带明确拒绝文案——桌面同语义，步骤失败不是命令错误）；调度
+  面被授权单派生更早拒绝（服务身份不放行 AI 步骤）。**定时调度器**：
+  共享层核心调度器（arm-not-fire、上膛冻结 → 触发比对、授权闸门失败
+  关闭）server 接线（spawn 于装配尾、graceful drain 后停车）——「双端
+  调度」补齐：server 形态的定时工作流按授权单派生派发，服务身份
+  （`workflow-schedule:{id}:{revision}`）执行、审计归因不落请求主体。
+- **桌面专属一命令不进 HTTP 面**：`getWorkflowDir` 是文件系统语义
+  （工作流目录路径对接本机文件管理）——服务端定义是库行，无目录可给；
+  `WEB_CAPABILITIES` 声明缺位，web 端如实报 `CapabilityUnsupported`。
+- **令牌**：带体写面（save / save-yaml / execute）核 `SubmitRequest`
+  在场性与 `idempotencyKey` 绑定（HMAC 轨签发，`saveUserAsset` 操作族）。
+  DELETE 面（delete / clear）不带体，与 queryAssets / schemaDiff 的
+  DELETE 现行口径一致。
+- **错误 wire**：存储故障 → 503 `serviceUnavailable`；定义校验失败 →
+  400 `invalidArgument`；未知/越组织 id → 404 固定文案（防枚举）。
+
 ## 7. 能力差异：`WEB_CAPABILITIES` 与 `unsupportedMethods`
 
 - **桌面专属能力不出现在 HTTP 面**：updater、window、native dialog、本机 OS 集成。它们的形态差异由 `packages/frontend/src/platform/capabilities.ts` 的静态表声明（`WEB_CAPABILITIES.updater: false`、`settingsSections` 收窄），前端**编译期分支**，不做运行时形态探测。
@@ -336,3 +385,5 @@ WR-D 落地时的机器核对（WR-C3 接管）：同用例双传输测试逐方
 - 2026-11-07：v1.4（W8 刀3a，查询资产域服务端半边）。**§6.12 收藏与查询历史**七路由（收藏 list/create/delete + 历史 page/delete/clear/purge）——legacy IPC 命令轨（`add_favorite_query`/`get_query_history_page` 等 7 命令）收敛进 MethodMap 的第一域；v10 双表 expand-only 迁移（per (org, principal) 隔离，收藏文件形/历史本机库形的服务端对偶）；历史落账 = execution 域受理后钩子（best-effort，桌面同语义）；`get_favorites_root`/`refresh_favorites` 文件系统语义不进 HTTP 面（桌面专属）。web 半边（域客户端 + RouteSpec + 不支持名单收缩）随下刀收口。
 - 2026-11-07：v1.5（W8 刀3b，Schema Diff 域）。**§6.13 对比、计划与部署**十一路由（profiles 三 + compare + 计划准备二 + 部署受理 + job 读回/取消/恢复核验四）——legacy IPC 命令轨的第二域；v12 expand-only 迁移（job 运行时三伴表 + `migration_run_history` + `schema_diff_profiles`，桌面加密 JSON 文件形的服务端对偶）；`ServerJobs` 实现 `JobRuntimeRepository`（桌面 runtime_ops 家族的服务端投影，幂等回执走受理行 `idem_scope_key` 不开表）；受理 = 先持久化后取资源（202 回执先于任何 DDL）；plans/unified-plans/deploys 三受理面入限流严格档。§4 总账 43→61 方法 / 41→59 路由（queryAssets 7 + schemaDiff 11 入账）。web 半边（域客户端 + 不支持名单收缩）随下刀收口。
 - 2026-11-07：v1.4.1（W8 刀1对账——PR #204 关闭后的增量移植）。§6.10 补三行裁决：`GET /api/v1/executions/{id}` 的 L6 两段登记（`ResourceType::Execution` + `Read`，rbac 基线矩阵裁决）、令牌两轨不混用的 409 wire（`idempotencyExpired`）、限流严格档补行（`POST …/executions` 与 `POST /api/v1/ai-host/execute-target`）。aiHost.executeTarget 的 claim 纪律补齐（claim 必填：`independent` 真执行、`editorGrant` 501 fail-closed、缺失/未知 400——与 web 端 `AiHostExecuteTargetRequest` 冻结形状对齐）；`PrincipalScopedHost` 上移为共享装饰器（aiHost 与 MCP 七工具同一真主体注入路径）。
+- 2026-11-07：v1.5.1（W8 刀3a/刀3b web 半边收口——域客户端落地）。**queryAssets / schemaDiff 两域客户端**进 `@datazen/backend-client`（`QueryAssetsMethodMap` 7 方法 + `SchemaDiffMethodMap` 11 方法，`MethodMap` 组合挂接、门面 spread 平铺）；web `HTTP_ROUTES` 分发表 42→60 条（queryAssets 7 + schemaDiff 11 的 RouteSpec：写面体折令牌、`{deleted}`/`{purged}`/`{cancelled}` 包装由 decoder 拆封到桌面域形状、save 的 `{profile}` 包装在 body 构造器展开）；**tagged-enum 归一化上移**（plan requirements 的 `{backfill|unsupported}` 折叠进域客户端，桌面 IPC 与 HTTP 两轨同形，归一化函数 `normalizeSchemaDiffJobDetailsWire` 出面供宿主复用）；`webUnsupportedMethods` 名单收缩 18 条（legacy 命令轨第三、四域消亡；`get_favorites_root`/`refresh_favorites` 桌面文件语义与 `get_migration_run`/`list_migration_runs`（留 sync 域）保持登记）；桌面 transport 三处命令别名（`listQueryFavorites→get_favorite_queries` 等）+ 收敛域令牌剥除（IPC 轨无幂等回执）；**`IdempotentOperation` 增 `SaveUserAsset`**（用户资产写面共用配置类操作，不绑会话；签发面白名单 + `saveUserAsset` wire 词入账——服务器消费闸维持在场性核对，HMAC 细分随未来接线退役拆开）。前端 `queryCommands`/`schemaDiffCommands`/`historyCommands.purgeHistory` 全量换域门面方法（`getFavoritesRoot`/`refreshFavorites` 等桌面专属留 legacy 轨）。
+- 2026-11-07：v1.6（W8 刀3c，workflow 域 + 双端定时调度）。**§6.14 定义管理、同步执行与运行历史**十一路由（定义 CRUD 五 + from-yaml + execute + reload + 运行历史三）——legacy IPC 命令轨的第五域（12 命令收敛，`getWorkflowDir` 桌面文件语义排除）；v13 expand-only 迁移（`workflows` + `workflow_run_history` 双表，桌面 AppDb/HistoryDb 同名表的组织键投影；服务端不播内置样例——单机 onboarding 供给的形态差异）；执行 = 同步 200 全量结果（桌面 IPC 同语义，aiHost.executeTarget 同款先例；受理面入限流严格档）；**AI 步骤 fail-closed**（server 形态本刀无 AI 供应商注册表：交互面按执行器默认错误策略 200 + `success:false` + 步骤 error 明确拒绝文案，调度面被授权单派生更早拒绝）；**定时调度器 server 接线**（「双端调度」补齐）：共享层核心调度器（arm-not-fire、上膛冻结→触发比对、授权闸门失败关闭）+ `ServerScheduleGrantReader`（定义 YAML + profile 版本的确定性派生，收集规则自桌面下沉共享层）+ `ServerScheduleHost`（owner 归属核对 + 服务身份执行上下文 + 审计日志），spawn 于装配尾、graceful drain 后停车；共享层 `WorkflowScheduler` 增公开 `stop`/`is_stopped`（两形态受益）。§4 总账 61→73 方法 / 59→70 路由（workflow 12 入账，11 服务 1 排除）。web 半边（域客户端 + 不支持名单收缩）随下刀收口。

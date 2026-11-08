@@ -38,6 +38,7 @@ pub mod query_assets;
 pub mod schema_diff_profiles;
 pub mod settings;
 pub mod tunnels;
+pub mod workflows;
 
 pub use artifacts::ServerArtifacts;
 pub use audit::ServerAudit;
@@ -51,6 +52,7 @@ pub use profiles::ServerProfiles;
 pub use schema_diff_profiles::ServerSchemaDiffProfiles;
 pub use settings::{default_shared_settings, ServerSettingsStore};
 pub use tunnels::ServerTunnels;
+pub use workflows::{ServerWorkflowHistoryStore, ServerWorkflowStore};
 
 #[cfg(test)]
 mod artifacts_tests;
@@ -70,6 +72,8 @@ mod profiles_tests;
 mod schema_diff_storage_tests;
 #[cfg(test)]
 mod tunnels_tests;
+#[cfg(test)]
+mod workflows_tests;
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;

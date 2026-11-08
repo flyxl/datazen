@@ -19,6 +19,13 @@ use crate::shared::id::{IdempotencyKey, Timestamp};
 pub enum IdempotentOperation {
     /// 配置写入：不绑定会话与 runtimeEpoch。
     CreateProfile,
+    /// 用户资产写面（W8 域收敛：查询收藏/查询历史管理/Schema Diff profile
+    /// 与 job 受理等配置类资产操作）：不绑定会话与 runtimeEpoch。
+    ///
+    /// 这些写面的服务器消费闸（域路由的在场性核对）不验签——令牌的
+    /// operation 在此只作为「这是哪一族写面」的诚实自述，供签发面收录
+    /// 与后续 HMAC 接线时按操作细分（细分时本变体退役拆开）。
+    SaveUserAsset,
     OpenSession,
     ExecuteInSession,
     CancelExecution,
@@ -30,7 +37,10 @@ pub enum IdempotentOperation {
 impl IdempotentOperation {
     /// 是否绑定运行时会话纪元。
     pub fn binds_runtime_epoch(self) -> bool {
-        !matches!(self, Self::CreateProfile | Self::StartJob)
+        !matches!(
+            self,
+            Self::CreateProfile | Self::SaveUserAsset | Self::StartJob
+        )
     }
 }
 

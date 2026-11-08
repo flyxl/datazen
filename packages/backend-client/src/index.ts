@@ -93,18 +93,27 @@ export type {
   ArtifactUploadFinalizeOptions,
   ArtifactUploadWriter,
 } from './artifactClient';
-export {
-  createArtifactMethods,
-  sha256Hex,
-  toBase64,
-  UPLOAD_CHUNK_BYTES,
-} from './artifactClient';
+export { createArtifactMethods, sha256Hex, toBase64, UPLOAD_CHUNK_BYTES } from './artifactClient';
 
 export type { TableDataMethodMap, TableDataClient } from './tableDataClient';
 export { createTableDataMethods } from './tableDataClient';
 
 export type { DriverGatewayMethodMap, DriverGatewayClient } from './driverGatewayClient';
 export { createDriverGatewayMethods } from './driverGatewayClient';
+
+export type { QueryAssetsMethodMap, QueryAssetsClient } from './queryAssetsClient';
+export { createQueryAssetsMethods } from './queryAssetsClient';
+
+export type {
+  SchemaDiffMethodMap,
+  SchemaDiffClient,
+  SchemaDiffJobDetailsWire,
+} from './schemaDiffClient';
+export {
+  createSchemaDiffMethods,
+  normalizeSchemaDiffJobDetailsWire,
+  rollbackCompletenessCounts,
+} from './schemaDiffClient';
 
 export type { LegacyCommandName, LegacyHostMethodMap } from './legacyHostCommands';
 export { legacyInvoke } from './legacyHostCommands';

@@ -169,6 +169,14 @@ pub(crate) fn finish_app_state(
     let wapp_count = wapp_manager.load_from_disk();
     tracing::info!("[startup]   ui wapps loaded: {wapp_count}");
 
+    // External language packs: boot-time scan for the startup log only — the
+    // registry is stateless (AppState shape guard: no new field); commands
+    // construct a throwaway manager from `store.data_dir()` per call.
+    let language_pack_count =
+        datazen::language_packs::LanguagePackManager::new(data_dir.join("language-packs"))
+            .load_from_disk();
+    tracing::info!("[startup]   language packs loaded: {language_pack_count}");
+
     // AI / prompts / workflows / history / MCP client: empty shells.
     // Nothing here touches disk or network — window can show immediately.
     let platform = crate::platform::PlatformEntry::launch();

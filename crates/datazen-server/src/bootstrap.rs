@@ -518,6 +518,46 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
             lease_source.clone(),
         ));
 
+    // W8 刀3c：workflow 域装配。共享层 registry（登记规则单家：visibility
+    // 过滤/YAML 编码/列表投影/时间戳权威）架在 v13 scoped store 上（宿主
+    // 配置组织，v1 单组织口径）；**不播内置样例**（桌面的三个 builtin 是
+    // 单机 onboarding 供给，团队服务器的组织自建——形态差异在存储模块头
+    // 登记）。运行历史与调度授权单派生器同组织同源。
+    let workflow_store =
+        crate::storage::ServerWorkflowStore::scoped(store.clone(), &config.organization_id);
+    let workflow_registry =
+        std::sync::Arc::new(datazen::workflow::registry::WorkflowRegistry::new(
+            std::sync::Arc::new(workflow_store.clone()),
+            Vec::new(),
+        ));
+    let workflow_history =
+        crate::storage::ServerWorkflowHistoryStore::scoped(store.clone(), &config.organization_id);
+    // 定时调度器接线（刀3c「双端调度」的 server 半边）：宿主 = 共享
+    // registry + 运行历史 + resource_host（派发时包服务身份的
+    // PrincipalScopedHost）；授权单派生器 = 定义 YAML + profile 版本的
+    // 确定性派生。spawn 在全部消费者装配之后；graceful drain 完成后
+    // stop（tick 边界退出，在途派发自行收尾）。
+    let workflow_scheduler = crate::workflow::scheduler::ServerWorkflowScheduler::spawn(
+        std::sync::Arc::new(crate::workflow::scheduler::ServerScheduleHost::new(
+            workflow_registry.clone(),
+            workflow_history.clone(),
+            resource_host.clone(),
+            profiles_repo.clone(),
+            &config.organization_id,
+        )),
+        std::sync::Arc::new(
+            crate::workflow::schedule_grant::ServerScheduleGrantReader::new(
+                workflow_store.clone(),
+                profiles_repo.clone(),
+                &config.organization_id,
+            ),
+        ),
+    );
+    tracing::info!(
+        organization_id = %config.organization_id,
+        "workflow wiring: scheduler armed (arm-not-fire on start; grant gate fail-closed)"
+    );
+
     // SSE（WR-D5，W8-b 起提前到域路由装配之前）：origin 白名单取
     // public_origin（§8.1）；事件后备是 MemoryEventSink（单实例 v1 形态）；
     // 周期复核走标准实现。`Option` = publicOrigin 缺席时不挂事件端点；
@@ -683,6 +723,18 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
                 adapters: schema_diff_adapters.clone(),
             },
         ),
+        // W8 刀3c：Workflow 域（契约 §6.14 十一路由——定义管理五 + 执行一
+        // + reload 一 + 运行历史四）。registry/历史/执行宿主与调度器同一
+        // 实例族（上方装配）；归属闸 = 宿主配置组织（v1 单组织）。
+        crate::http::domains::workflow::workflow_router(
+            crate::http::domains::workflow::WorkflowState {
+                registry: workflow_registry.clone(),
+                history: workflow_history.clone(),
+                execution: resource_host.clone(),
+                profiles: profiles_repo.clone(),
+                organization_id: config.organization_id.clone(),
+            },
+        ),
     ];
 
     // WR-F2：MCP streamable HTTP（feature 门控；执行栈已在上方装配）。
@@ -839,6 +891,9 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
     // serve 返回（drain 完成）后停车：空闲回收驱动器在下一轮循环边界退出
     // （幂等）；`idle_reclaimer` 离开作用域时 Drop 兜底（stop + abort）。
     idle_reclaimer.stop();
+    // workflow 调度器同款：tick 边界退出，在途派发自行收尾（取消令牌
+    // 幂等；循环只读不持有资源，无 Drop 兜底需求）。
+    workflow_scheduler.stop();
     Ok(())
 }
 

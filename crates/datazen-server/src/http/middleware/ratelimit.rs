@@ -180,6 +180,13 @@ impl RateLimiter {
             ("POST", "/api/v1/schema-diff/plans")
             | ("POST", "/api/v1/schema-diff/unified-plans")
             | ("POST", "/api/v1/schema-diff/deploys") => RouteClass::Strict,
+            // Workflow 的执行受理面（契约 §6.14：一次受理可能派发多条
+            // 驱动命令、占活连接与执行资源——与 deploys 同族）。
+            ("POST", path)
+                if path.starts_with("/api/v1/workflows/") && path.ends_with("/execute") =>
+            {
+                RouteClass::Strict
+            }
             // 取消族（§5.2 注记的 `POST /cancel` 语义：执行/Job 的取消端点
             // 以 /cancel 结尾）。
             ("POST", path) if path.ends_with("/cancel") => RouteClass::Strict,

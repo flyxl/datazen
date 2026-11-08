@@ -215,6 +215,7 @@ pub const MIGRATIONS: &[Migration] = &[
     V10_ORG_MEMORIES,
     V11_QUERY_ASSETS,
     V12_SCHEMA_DIFF_RUNTIME,
+    V13_WORKFLOW_RUNTIME,
 ];
 
 /// v10：组织记忆与审批审计（T25）。版本化行 `(organization_id, id,
@@ -815,6 +816,60 @@ CREATE TABLE execution_service_identity (
 CREATE UNIQUE INDEX uq_execution_service_identity_principal
   ON execution_service_identity (organization_id, service_principal)
   WHERE revoked = 0;
+"#,
+};
+
+/// v13：Workflow 运行时双表（W8 刀3c-1 存储底座）。
+///
+/// 桌面 `AppDb.workflows` / `HistoryDb.workflow_history` 同名表的组织键投影
+/// （桌面是单租户本地库，本表把 `organization_id` 提进复合主键——v9 起
+/// 的既定口径）：
+///
+/// - **`workflows`**：定义整档以 YAML 文本落库（与桌面同形——「保存的
+///   工作流就是用户在编辑器里写的那份文档」；解析/校验/列表投影的规则
+///   在共享层 `workflow::registry`，本表只存行）。`visibility` 双态：
+///   `user`（用户可见）与 `dashboardHidden`（仪表板私有的隐藏工作流，
+///   列表不出现）。服务端**不播内置样例**（桌面的三个 builtin 是单机
+///   onboarding 供给；团队服务器的组织自建，形态差异在台账登记）。
+/// - **`workflow_run_history`**：运行记录整档 JSON（结果不投影成列——
+///   步骤产物形状随执行器生长，投影就要跟着迁移；桌面同款裁决）。
+///   `result_json` 反序列化失败按行损坏处理（读取面跳过并 warn，不炸
+///   整个列表）。保留策略：追加后按组织截断到 `MAX_WORKFLOW_HISTORY`
+///   （100，共享层常量；同一条业务规则的存储侧执行）。
+/// - **删除语义**：`workflows` 行删除**不受** dashboard 引用闸约束——
+///   服务端 dashboard 域（刀3d）落库时补 `workflow_id` 引用核对（桌面
+///   `WorkflowInUse` 的对偶）；当前服务端无 dashboard 存储，无引用可核。
+const V13_WORKFLOW_RUNTIME: Migration = Migration {
+    version: 13,
+    name: "workflow runtime (definitions + run history)",
+    expand: r#"
+CREATE TABLE workflows (
+  organization_id TEXT NOT NULL,
+  id TEXT NOT NULL CHECK (id <> ''),
+  name TEXT NOT NULL CHECK (name <> ''),
+  description TEXT NOT NULL DEFAULT '',
+  visibility TEXT NOT NULL DEFAULT 'user'
+    CHECK (visibility IN ('user', 'dashboardHidden')),
+  definition_yaml TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (organization_id, id)
+);
+CREATE INDEX idx_workflows_visibility
+  ON workflows (organization_id, visibility);
+
+CREATE TABLE workflow_run_history (
+  organization_id TEXT NOT NULL,
+  id TEXT NOT NULL CHECK (id <> ''),
+  workflow_id TEXT NOT NULL CHECK (workflow_id <> ''),
+  workflow_name TEXT NOT NULL,
+  variables_json TEXT NOT NULL,
+  result_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (organization_id, id)
+);
+CREATE INDEX idx_workflow_run_history_flow
+  ON workflow_run_history (organization_id, workflow_id, created_at DESC);
 "#,
 };
 

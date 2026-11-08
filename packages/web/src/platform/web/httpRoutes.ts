@@ -130,6 +130,16 @@ const pathArtifactId = (payload: unknown): string =>
 const pathNamedViewId = (payload: unknown): string =>
   encodeURIComponent(String(requireField(payload, 'id')));
 
+/** queryAssets：收藏与历史条目的 {id}。 */
+const pathFavoriteId = pathNamedViewId;
+const pathHistoryEntryId = pathNamedViewId;
+
+/** schemaDiff：profile 与 job 的路径参数。 */
+const pathSchemaDiffProfileId = (payload: unknown): string =>
+  encodeURIComponent(String(requireField(payload, 'profileId')));
+const pathSchemaDiffJobId = (payload: unknown): string =>
+  encodeURIComponent(String(requireField(payload, 'jobId')));
+
 /* ------------------------------------------------------------------ */
 /* 请求体构造（契约逐行要求的特殊形状；其余方法体 = payload 原样）。      */
 /* ------------------------------------------------------------------ */
@@ -152,6 +162,57 @@ const disableConnectionBody = (payload: unknown): unknown => ({
 
 /** 取消路由：executionId/jobId 进路径，体只留幂等凭据（SubmitRequest 半边）。 */
 const submissionTokenBody = (payload: unknown): unknown => ({
+  submissionToken: field(payload, 'submissionToken'),
+});
+
+/**
+ * saveSchemaDiffProfile：桌面域形状是 `{ profile, submissionToken }`，HTTP
+ * 体是 profile 平铺 + 令牌（契约 §6.13：`SchemaDiffProfile & SubmitRequest`）。
+ */
+const saveSchemaDiffProfileBody = (payload: unknown): unknown => ({
+  ...((field(payload, 'profile') as Record<string, unknown> | undefined) ?? {}),
+  submissionToken: field(payload, 'submissionToken'),
+});
+
+/**
+ * 写面响应的数字包装拆封：HTTP 回 `{ deleted }` / `{ purged }`，桌面域形状
+ * 是裸 number（契约以 backend-client 为准，本表把两形归一）。
+ */
+const numberFieldOf =
+  (key: string): RouteDecoder =>
+  (_payload, _response, raw): unknown => {
+    const text = new TextDecoder().decode(raw).trim();
+    if (text.length === 0) return 0;
+    try {
+      const parsed = JSON.parse(text) as Record<string, unknown>;
+      const value = parsed[key];
+      return typeof value === 'number' ? value : 0;
+    } catch {
+      return 0;
+    }
+  };
+
+/** cancelSchemaDiffDeploy：HTTP 回 `{ cancelled }`，域形状是裸 boolean。 */
+const cancelledFieldDecode: RouteDecoder = (_payload, _response, raw): unknown => {
+  const text = new TextDecoder().decode(raw).trim();
+  if (text.length === 0) return false;
+  try {
+    const parsed = JSON.parse(text) as Record<string, unknown>;
+    return parsed['cancelled'] === true;
+  } catch {
+    return false;
+  }
+};
+
+/** clearQueryHistory：HTTP 回 `{ purged }`，域形状是 void（丢弃包装）。 */
+const voidDecode: RouteDecoder = (): unknown => undefined;
+
+/**
+ * verifySchemaDiffJobRecovery：jobId 进路径，体只留目标会话 + 令牌
+ * （契约 §6.13：`{ targetDbSessionId } & SubmitRequest`）。
+ */
+const recoveryVerificationBody = (payload: unknown): unknown => ({
+  targetDbSessionId: field(payload, 'targetDbSessionId'),
   submissionToken: field(payload, 'submissionToken'),
 });
 
@@ -187,6 +248,39 @@ const listNamedViewsQuery = (payload: unknown): string => {
 
 const driverCommandsQuery = (payload: unknown): string =>
   scalarQuery([['driverType', field(payload, 'driverType')]]);
+
+/** listQueryFavorites：可选 connectionId 过滤（契约 §6.12）。 */
+const queryFavoritesQuery = (payload: unknown): string =>
+  scalarQuery([['connectionId', field(payload, 'connectionId')]]);
+
+/** getQueryHistoryPage：过滤平铺为查询参数（契约 §6.12；listJobs 同款）。 */
+const QUERY_HISTORY_KEYS = [
+  'limit',
+  'connectionId',
+  'database',
+  'schema',
+  'search',
+  'since',
+  'until',
+  'order',
+] as const;
+
+const queryHistoryPageQuery = (payload: unknown): string => {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return '';
+  return scalarQuery(QUERY_HISTORY_KEYS.map((key) => [key, field(payload, key)] as const));
+};
+
+/** listSchemaDiffJobs：states 数组逗号串接（服务端 `states=a,b` 口径）+ limit。 */
+const schemaDiffJobsQuery = (payload: unknown): string => {
+  const states = field(payload, 'states');
+  const limit = field(payload, 'limit');
+  const entries: Array<readonly [string, unknown]> = [];
+  if (Array.isArray(states) && states.length > 0) {
+    entries.push(['states', states.join(',')]);
+  }
+  if (typeof limit === 'number') entries.push(['limit', limit]);
+  return scalarQuery(entries);
+};
 
 const connectionCommandsQuery = (payload: unknown): string =>
   scalarQuery([['dbSessionId', field(payload, 'dbSessionId')]]);
@@ -443,6 +537,111 @@ export const HTTP_ROUTES: Partial<Record<keyof MethodMap, RouteSpec>> = {
     httpMethod: 'POST',
     pathTemplate: '/driver-gateway/stream-executions',
     body: dropOnEventBody,
+  },
+
+  // ── queryAssets（§6.12；W8 刀3a web 收口）────────────────────────────
+  // 归属 = per (organization, principal)：请求无归属字段（INV-01），服务端
+  // 从认证链取。写面体 = 业务字段 + submissionToken（payload 原样）；响应
+  // 差异（{deleted}/{purged} 包装）由 decoder 归一到桌面域形状。
+  listQueryFavorites: {
+    httpMethod: 'GET',
+    pathTemplate: '/query-favorites',
+    query: queryFavoritesQuery,
+    body: noBody,
+  },
+  createQueryFavorite: { httpMethod: 'POST', pathTemplate: '/query-favorites' },
+  deleteQueryFavorite: {
+    httpMethod: 'DELETE',
+    pathTemplate: '/query-favorites/{id}',
+    pathId: pathFavoriteId,
+    body: submissionTokenBody,
+  },
+  getQueryHistoryPage: {
+    httpMethod: 'GET',
+    pathTemplate: '/query-history',
+    query: queryHistoryPageQuery,
+    body: noBody,
+  },
+  deleteQueryHistory: {
+    httpMethod: 'DELETE',
+    pathTemplate: '/query-history/{id}',
+    pathId: pathHistoryEntryId,
+    body: submissionTokenBody,
+    decode: numberFieldOf('deleted'),
+  },
+  clearQueryHistory: {
+    httpMethod: 'DELETE',
+    pathTemplate: '/query-history',
+    body: submissionTokenBody,
+    decode: voidDecode,
+  },
+  purgeHistory: {
+    httpMethod: 'POST',
+    pathTemplate: '/query-history/purge',
+    decode: numberFieldOf('purged'),
+  },
+
+  // ── schemaDiff（§6.13；W8 刀3b web 收口）────────────────────────────
+  // profiles 是组织级资产（归属 = organization）；save 的桌面域形状
+  // `{ profile, submissionToken }` 在 body 构造器里展开成 HTTP 平铺体。
+  // cancel 的 {cancelled} 包装由 decoder 拆封。prepare/execute 的体 =
+  // payload 原样（令牌已折在域客户端 payload 里）。
+  listSchemaDiffProfiles: {
+    httpMethod: 'GET',
+    pathTemplate: '/schema-diff/profiles',
+    body: noBody,
+  },
+  saveSchemaDiffProfile: {
+    httpMethod: 'PUT',
+    pathTemplate: '/schema-diff/profiles',
+    body: saveSchemaDiffProfileBody,
+  },
+  deleteSchemaDiffProfile: {
+    httpMethod: 'DELETE',
+    pathTemplate: '/schema-diff/profiles/{id}',
+    pathId: pathSchemaDiffProfileId,
+    body: submissionTokenBody,
+  },
+  compareTableSchemas: {
+    httpMethod: 'POST',
+    pathTemplate: '/schema-diff/comparisons',
+  },
+  prepareSchemaDiffPlan: {
+    httpMethod: 'POST',
+    pathTemplate: '/schema-diff/plans',
+  },
+  prepareSchemaUnifiedPlan: {
+    httpMethod: 'POST',
+    pathTemplate: '/schema-diff/unified-plans',
+  },
+  executeSchemaDiffDeploy: {
+    httpMethod: 'POST',
+    pathTemplate: '/schema-diff/deploys',
+  },
+  listSchemaDiffJobs: {
+    httpMethod: 'GET',
+    pathTemplate: '/schema-diff/jobs',
+    query: schemaDiffJobsQuery,
+    body: noBody,
+  },
+  getSchemaDiffJobDetails: {
+    httpMethod: 'GET',
+    pathTemplate: '/schema-diff/jobs/{id}',
+    pathId: pathSchemaDiffJobId,
+    body: noBody,
+  },
+  cancelSchemaDiffDeploy: {
+    httpMethod: 'POST',
+    pathTemplate: '/schema-diff/jobs/{id}/cancel',
+    pathId: pathSchemaDiffJobId,
+    body: submissionTokenBody,
+    decode: cancelledFieldDecode,
+  },
+  verifySchemaDiffJobRecovery: {
+    httpMethod: 'POST',
+    pathTemplate: '/schema-diff/jobs/{id}/recovery-verification',
+    pathId: pathSchemaDiffJobId,
+    body: recoveryVerificationBody,
   },
 };
 

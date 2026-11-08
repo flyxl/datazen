@@ -148,6 +148,118 @@ impl WorkflowScheduleGrant {
     }
 }
 
+/// 一条待冻结目标：连接 + 继承后的数据库 + 命令。
+///
+/// 派生单的作用域收集规则（原桌面 `schedule_grant.rs` 私有件，W8 刀3c
+/// 下沉共享层——两形态同一条规则，server 形态的派生器不再复制）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScheduleTarget {
+    pub connection: String,
+    pub database: Option<String>,
+    pub command: String,
+}
+
+/// 递归收集数据步骤的冻结目标。
+///
+/// 返回 `None` = 遇到 AI 步骤（服务身份不放行）或目标无法固定的步骤
+/// （无连接可继承）——整单拒绝调度，失败关闭。纯数据组装步骤
+/// （Merge / Transform）没有独立连接目标，不产生条目。
+///
+/// 继承规则与执行侧逐字对齐：查询步骤的 `database` 缺省继承 workflow 级
+/// 默认；命令步骤的数据库在 `input.database`（继承语义见
+/// `application::command_runtime::inject_inherited_database`：缺省/空串才
+/// 继承）或 workflow 级默认。
+pub fn collect_schedule_targets(
+    workflow_connection: Option<&str>,
+    workflow_database: Option<&str>,
+    steps: &[crate::workflow::domain::model::WorkflowStep],
+) -> Option<Vec<ScheduleTarget>> {
+    let mut out = Vec::new();
+    if !collect_targets_inner(workflow_connection, workflow_database, steps, &mut out) {
+        return None;
+    }
+    Some(out)
+}
+
+fn collect_targets_inner(
+    workflow_connection: Option<&str>,
+    workflow_database: Option<&str>,
+    steps: &[crate::workflow::domain::model::WorkflowStep],
+    out: &mut Vec<ScheduleTarget>,
+) -> bool {
+    use crate::workflow::domain::model::WorkflowStep;
+    for step in steps {
+        match step {
+            WorkflowStep::Ai { .. } => return false,
+            WorkflowStep::Query {
+                connection,
+                database,
+                ..
+            } => {
+                let Some(connection) = connection.as_deref().or(workflow_connection) else {
+                    return false;
+                };
+                out.push(ScheduleTarget {
+                    connection: connection.to_string(),
+                    database: database
+                        .clone()
+                        .or_else(|| workflow_database.map(str::to_string)),
+                    command: "query".to_string(),
+                });
+            }
+            WorkflowStep::Command {
+                command,
+                connection,
+                input,
+                ..
+            } => {
+                let Some(connection) = connection.as_deref().or(workflow_connection) else {
+                    return false;
+                };
+                // Command 步骤的数据库可在 input.database（继承规则见
+                // `inject_inherited_database`：缺省/空串才继承）或 workflow 级默认。
+                let input_database = input
+                    .get("database")
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|database| !database.trim().is_empty())
+                    .map(str::to_string);
+                out.push(ScheduleTarget {
+                    connection: connection.to_string(),
+                    database: input_database.or_else(|| workflow_database.map(str::to_string)),
+                    command: command.clone(),
+                });
+            }
+            WorkflowStep::Condition {
+                then_steps,
+                else_steps,
+                ..
+            } => {
+                if !collect_targets_inner(workflow_connection, workflow_database, then_steps, out) {
+                    return false;
+                }
+                if let Some(else_steps) = else_steps {
+                    if !collect_targets_inner(
+                        workflow_connection,
+                        workflow_database,
+                        else_steps,
+                        out,
+                    ) {
+                        return false;
+                    }
+                }
+            }
+            WorkflowStep::ForEach { steps, .. } => {
+                if !collect_targets_inner(workflow_connection, workflow_database, steps, out) {
+                    return false;
+                }
+            }
+            // Merge / Transform 等纯数据组装步骤没有独立连接目标。
+            _ => {}
+        }
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -273,5 +385,110 @@ mod tests {
         assert_eq!(scope.target.namespace.schema.as_deref(), Some("public"));
         assert_eq!(scope.config_revision, 7);
         assert_eq!(scope.command, "execute");
+    }
+
+    /// 行为钉子（W8 刀3c 下沉）：查询步骤未带 database 时继承 workflow 级
+    /// 默认；命令步骤的显式 `input.database` 胜过 workflow 级默认。
+    #[test]
+    fn schedule_targets_inherit_the_workflow_level_defaults() {
+        use crate::workflow::domain::model::WorkflowStep;
+        let steps = vec![
+            WorkflowStep::Query {
+                id: "q1".into(),
+                sql: "SELECT 1".into(),
+                connection: None,
+                database: None,
+                timeout_secs: None,
+                on_error: None,
+            },
+            WorkflowStep::Command {
+                id: "c1".into(),
+                command: "query".into(),
+                connection: None,
+                input: serde_json::json!({ "sql": "SELECT 2", "database": "explicit" }),
+                timeout_secs: None,
+                on_error: None,
+            },
+        ];
+        let targets =
+            collect_schedule_targets(Some("conn-1"), Some("app"), &steps).expect("可冻结");
+        assert_eq!(targets.len(), 2);
+        assert_eq!(targets[0].connection, "conn-1");
+        assert_eq!(targets[0].database.as_deref(), Some("app"));
+        assert_eq!(targets[0].command, "query");
+        assert_eq!(targets[1].database.as_deref(), Some("explicit"));
+    }
+
+    /// 行为钉子（W8 刀3c 下沉）：AI 步骤 ⇒ `None`（服务身份不放行，失败关闭）。
+    #[test]
+    fn an_ai_step_refuses_target_collection() {
+        use crate::workflow::domain::model::WorkflowStep;
+        let steps = vec![WorkflowStep::Ai {
+            id: "a1".into(),
+            prompt: "p".into(),
+            timeout_secs: None,
+            on_error: None,
+        }];
+        assert!(collect_schedule_targets(Some("conn-1"), None, &steps).is_none());
+    }
+
+    /// 行为钉子（W8 刀3c 下沉）：无连接可继承的数据步骤 ⇒ `None`（目标无法
+    /// 固定）；空步骤表 ⇒ `Some(vec![])`（无目标可冻结，派生单缺失的事实
+    /// 由调用方按「作用域为空」处理）。
+    #[test]
+    fn an_uninheritable_connection_refuses_and_empty_steps_collect_nothing() {
+        use crate::workflow::domain::model::WorkflowStep;
+        let orphan = vec![WorkflowStep::Query {
+            id: "q1".into(),
+            sql: "SELECT 1".into(),
+            connection: None,
+            database: None,
+            timeout_secs: None,
+            on_error: None,
+        }];
+        assert!(collect_schedule_targets(None, None, &orphan).is_none());
+        assert_eq!(
+            collect_schedule_targets(Some("conn-1"), None, &[]).expect("空表可收集"),
+            Vec::<ScheduleTarget>::new()
+        );
+    }
+
+    /// 行为钉子（W8 刀3c 下沉）：嵌套块（Condition/ForEach）递归收集。
+    #[test]
+    fn nested_blocks_collect_recursively() {
+        use crate::workflow::domain::model::WorkflowStep;
+        let steps = vec![WorkflowStep::Condition {
+            id: "cond".into(),
+            expr: "steps.q1.success".into(),
+            then_steps: vec![WorkflowStep::Query {
+                id: "q2".into(),
+                sql: "SELECT 2".into(),
+                connection: Some("conn-2".into()),
+                database: None,
+                timeout_secs: None,
+                on_error: None,
+            }],
+            else_steps: Some(vec![WorkflowStep::ForEach {
+                id: "each".into(),
+                items: "steps.q1.rows".into(),
+                as_var: "row".into(),
+                steps: vec![WorkflowStep::Command {
+                    id: "c1".into(),
+                    command: "execute".into(),
+                    connection: None,
+                    input: serde_json::json!({ "sql": "UPDATE t SET x = 1" }),
+                    timeout_secs: None,
+                    on_error: None,
+                }],
+                max_iterations: None,
+            }]),
+        }];
+        let targets = collect_schedule_targets(Some("conn-1"), None, &steps).expect("可冻结");
+        assert_eq!(targets.len(), 2);
+        assert_eq!(targets[0].connection, "conn-2");
+        assert_eq!(targets[0].command, "query");
+        assert_eq!(targets[1].connection, "conn-1");
+        assert_eq!(targets[1].command, "execute");
+        assert_eq!(targets[1].database, None);
     }
 }

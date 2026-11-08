@@ -31,6 +31,8 @@ import { createJobMethods, type JobClient } from './jobClient';
 import { createArtifactMethods, type ArtifactClient } from './artifactClient';
 import { createTableDataMethods, type TableDataClient } from './tableDataClient';
 import { createDriverGatewayMethods, type DriverGatewayClient } from './driverGatewayClient';
+import { createQueryAssetsMethods, type QueryAssetsClient } from './queryAssetsClient';
+import { createSchemaDiffMethods, type SchemaDiffClient } from './schemaDiffClient';
 import { createEventMethods, type EventClient } from './streams';
 import type { McpDomainClient } from './mcpClient';
 import type { SecurityClient } from './securityClient';
@@ -55,6 +57,17 @@ export interface DomainClients {
    * domain is deleted once the kernel implements those methods.
    */
   driverGateway: DriverGatewayClient;
+  /**
+   * 查询资产域（W8 刀3a 服务端半边的 web 收口）：收藏与查询历史
+   * （契约 §6.12）。桌面专属的文件系统语义（favorites root / refresh）
+   * 不在其中——它们留在 legacy 轨。
+   */
+  queryAssets: QueryAssetsClient;
+  /**
+   * Schema Diff 域（W8 刀3b 服务端半边的 web 收口；契约 §6.13）。迁移
+   * 历史读面（get/list migration runs）留在 sync 域待收敛。
+   */
+  schemaDiff: SchemaDiffClient;
   /**
    * WR-F1#2：安全域（服务端密钥管理）。**wire-direct 域**（不进 `MethodMap`，
    * 见 `./securityClient` 头注的登记）：调用方持有 HTTP wire 时经 `extras`
@@ -91,6 +104,8 @@ export function createClients(
     artifact: createArtifactMethods(transport, guard),
     tableData: createTableDataMethods(transport, guard),
     driverGateway: createDriverGatewayMethods(transport, guard),
+    queryAssets: createQueryAssetsMethods(transport, guard),
+    schemaDiff: createSchemaDiffMethods(transport, guard),
     // wire-direct 两域只在调用方注入时出现（无 wire 时缺席，绝不铸造
     // 一个「会在使用时才发现没有 fetch 实现」的假成员）。
     ...(extras.security !== undefined ? { security: extras.security } : {}),
