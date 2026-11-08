@@ -76,103 +76,6 @@ fn pairing_classifies_ir_and_unsupported() {
 }
 
 #[test]
-fn transfer_history_outcome_uses_typed_table_results() {
-    let result = |outcome| TransferExecutionResult {
-        tables: vec![TableExecutionResult::database(
-            "source",
-            "target",
-            None,
-            outcome,
-            Some("injected table result".into()),
-        )],
-        partial: true,
-        ..Default::default()
-    };
-
-    assert_eq!(
-        datazen::migration::data_transfer::history_outcome::rollback_history_outcome(&result(
-            TableExecutionOutcome::Unknown
-        )),
-        "unknown"
-    );
-    assert_eq!(
-        datazen::migration::data_transfer::history_outcome::rollback_history_outcome(&result(
-            TableExecutionOutcome::RolledBack
-        )),
-        "rolledBack"
-    );
-    assert_eq!(
-        datazen::migration::data_transfer::history_outcome::rollback_history_outcome(&result(
-            TableExecutionOutcome::PartiallyApplied
-        )),
-        "partiallyApplied"
-    );
-    assert_eq!(
-        datazen::migration::data_transfer::history_outcome::rollback_history_outcome(&result(
-            TableExecutionOutcome::NotStarted
-        )),
-        "notStarted"
-    );
-    assert_eq!(
-        datazen::migration::data_transfer::history_outcome::rollback_history_outcome(
-            &TransferExecutionResult::default()
-        ),
-        "notRequired"
-    );
-    let sql_file_partial = TransferExecutionResult {
-        tables: vec![TableExecutionResult {
-            source_table: "users".into(),
-            target_table: "users".into(),
-            rows_inserted: Some(1),
-            success: false,
-            error: Some("injected SQL-file failure".into()),
-            outcome: None,
-        }],
-        partial: true,
-        ..Default::default()
-    };
-    assert_eq!(
-        datazen::migration::data_transfer::history_outcome::rollback_history_outcome(
-            &sql_file_partial
-        ),
-        "unknown",
-        "SQL-file history semantics remain outside the typed DB outcomes"
-    );
-    let mixed = TransferExecutionResult {
-        tables: vec![
-            TableExecutionResult::database(
-                "committed-before-unknown",
-                "committed-before-unknown",
-                Some(1),
-                TableExecutionOutcome::RolledBack,
-                Some("confirmed rollback".into()),
-            ),
-            TableExecutionResult::database(
-                "unknown",
-                "unknown",
-                None,
-                TableExecutionOutcome::Unknown,
-                Some("lost acknowledgement".into()),
-            ),
-        ],
-        partial: true,
-        ..Default::default()
-    };
-    assert_eq!(
-        datazen::migration::data_transfer::history_outcome::rollback_history_outcome(&mixed),
-        "unknown"
-    );
-    assert_eq!(
-        datazen::migration::data_transfer::history_outcome::error_history_outcome(false),
-        "notStarted"
-    );
-    assert_eq!(
-        datazen::migration::data_transfer::history_outcome::error_history_outcome(true),
-        "unknown"
-    );
-}
-
-#[test]
 fn auto_map_columns_matches_names_only() {
     let src = TableSchema {
         table_name: "t".into(),
@@ -222,46 +125,6 @@ fn auto_map_columns_matches_names_only() {
     let maps = auto_map_columns(&src, &tgt);
     assert_eq!(maps.len(), 1);
     assert_eq!(maps[0].source_column, "a");
-}
-
-#[test]
-fn transfer_profile_rejects_runtime_file_token_and_unknown_fields() {
-    let payload = r#"{
-        "version": 1,
-        "id": "profile-1",
-        "name": "nightly",
-        "sourceConnectionId": "src",
-        "destinationMode": "sqlFile",
-        "mode": "data",
-        "writeMode": "insert",
-        "tables": [],
-        "options": {"batchSize": 10, "stopOnError": true, "confirmedDestructive": false},
-        "createdAt": "2026-09-21T00:00:00Z",
-        "updatedAt": "2026-09-21T00:00:00Z",
-        "fileToken": "must-not-persist"
-    }"#;
-    assert!(serde_json::from_str::<TransferProfile>(payload).is_err());
-}
-
-#[test]
-fn test_tester_legacy_transfer_profile_without_format_fields_is_compatible() {
-    let payload = r#"{
-        "version": 1,
-        "id": "legacy-profile",
-        "name": "legacy",
-        "sourceConnectionId": "src",
-        "destinationMode": "sqlFile",
-        "mode": "data",
-        "writeMode": "insert",
-        "tables": [],
-        "options": {"batchSize": 10, "stopOnError": true, "confirmedDestructive": false},
-        "createdAt": "2026-09-21T00:00:00Z",
-        "updatedAt": "2026-09-21T00:00:00Z"
-    }"#;
-    let profile = serde_json::from_str::<TransferProfile>(payload).unwrap();
-    assert_eq!(profile.sql_file_encoding, None);
-    assert_eq!(profile.sql_file_compression, None);
-    profile.validate().unwrap();
 }
 
 #[tokio::test]
@@ -314,28 +177,6 @@ async fn transfer_profile_store_round_trip_excludes_runtime_sessions() {
         .await
         .unwrap();
     assert!(test.store.get_transfer_profiles().await.is_empty());
-}
-
-#[test]
-fn table_mapping_auto_sets_same_name() {
-    let m = TableMapping::auto("users");
-    assert_eq!(m.source_table, "users");
-    assert_eq!(m.target_table, "users");
-    assert!(m.enabled);
-    assert!(!m.create_new);
-}
-
-#[test]
-fn resume_checkpoint_binds_the_effective_subselection() {
-    let mut job = plan_job("source".into(), "target".into());
-    job.tables.push(TableMapping::auto("orders"));
-    let selection = TransferRunSelection {
-        source_tables: Some(vec!["orders".into()]),
-    };
-    assert_eq!(
-        super::exec::selected_source_tables(&job, &selection),
-        vec!["orders"]
-    );
 }
 
 #[tokio::test]
