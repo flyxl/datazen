@@ -2,11 +2,23 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const invokeMock = vi.hoisted(() => vi.fn());
 
-import { setBackendClient } from '@datazen/backend-client';
-// form-split R6: the invoke wrappers ride the bound backend transport now
-// (same binding pattern as file.test.ts — the mock keeps its invoke shape).
+import {
+  createBackendGuard,
+  createDashboardMethods,
+  setBackendClient,
+} from '@datazen/backend-client';
+// W8 刀3d 收口：wrappers 走域门面方法。假门面用**真域客户端**（dashboard
+// 域）架在假 transport 上——令牌折叠是被测产品代码，测试只钉 wire 面：
+// invokeMock(method, payload) 的键与形状。令牌铸造返回固定形状且**不进
+// invokeMock 队列**（schemaDiff.test.ts 同款绑定）。
+const TEST_TOKEN = { idempotencyKey: 'test-key', expiresAt: '2999-01-01T00:00:00Z' };
+const fakeTransport = {
+  call: (c: string, p?: unknown) => (p === undefined ? invokeMock(c) : invokeMock(c, p)),
+};
 setBackendClient('test', {
-  transport: { call: (c: string, p?: unknown) => (p === undefined ? invokeMock(c) : invokeMock(c, p)) },
+  transport: fakeTransport,
+  issueSubmissionToken: async () => TEST_TOKEN,
+  ...createDashboardMethods(fakeTransport, createBackendGuard('test', {})),
 } as never);
 import { dashboardCommands } from '../dashboard';
 import type { Dashboard } from '../../types/dashboard';
@@ -28,63 +40,78 @@ describe('dashboardCommands wrappers', () => {
     invokeMock.mockResolvedValue(undefined);
   });
 
-  it('schedule approval sends identifiers and duration only, and revoke sends no identity', async () => {
+  it('schedule approval sends identifiers, duration and the user-asset token; revoke sends no identity', async () => {
     await dashboardCommands.authorizeMonitorSchedule('d', 'w');
-    expect(invokeMock).toHaveBeenCalledWith('authorize_monitor_widget_schedule', {
+    expect(invokeMock).toHaveBeenCalledWith('authorizeMonitorSchedule', {
       dashboardId: 'd',
       widgetId: 'w',
       ttlSecs: 3600,
+      submissionToken: TEST_TOKEN,
     });
     await dashboardCommands.revokeMonitorSchedule('d', 'w');
-    expect(invokeMock).toHaveBeenCalledWith('revoke_monitor_widget_schedule', {
+    expect(invokeMock).toHaveBeenCalledWith('revokeMonitorSchedule', {
       dashboardId: 'd',
       widgetId: 'w',
     });
   });
 
-  it('listDashboards invokes list_dashboards without args', async () => {
+  it('getMonitorScheduleGrant reads the grant without a token', async () => {
+    const grant = { id: 'grant-1', revoked: false };
+    invokeMock.mockResolvedValueOnce(grant);
+    await expect(dashboardCommands.getMonitorScheduleGrant('d0', 'w0')).resolves.toBe(grant);
+    expect(invokeMock).toHaveBeenCalledWith('getMonitorScheduleGrant', {
+      dashboardId: 'd0',
+      widgetId: 'w0',
+    });
+  });
+
+  it('listDashboards calls the domain list with an empty envelope', async () => {
     const dashboards = [sampleDashboard('d1')];
     invokeMock.mockResolvedValueOnce(dashboards);
     await expect(dashboardCommands.listDashboards()).resolves.toEqual(dashboards);
-    expect(invokeMock).toHaveBeenCalledWith('list_dashboards');
+    expect(invokeMock).toHaveBeenCalledWith('listDashboards', {});
   });
 
   it('getDashboard forwards the dashboard id', async () => {
     invokeMock.mockResolvedValueOnce(sampleDashboard('d2'));
     await expect(dashboardCommands.getDashboard('d2')).resolves.toMatchObject({ id: 'd2' });
-    expect(invokeMock).toHaveBeenCalledWith('get_dashboard', { id: 'd2' });
+    expect(invokeMock).toHaveBeenCalledWith('getDashboard', { id: 'd2' });
   });
 
-  it('saveDashboard forwards the dashboard payload', async () => {
+  it('saveDashboard forwards the dashboard payload with the token folded in', async () => {
     const dashboard = sampleDashboard('d3');
     invokeMock.mockResolvedValueOnce(dashboard);
     await expect(dashboardCommands.saveDashboard(dashboard)).resolves.toBe(dashboard);
-    expect(invokeMock).toHaveBeenCalledWith('save_dashboard', { dashboard });
+    expect(invokeMock).toHaveBeenCalledWith('saveDashboard', {
+      dashboard,
+      submissionToken: TEST_TOKEN,
+    });
   });
 
-  it('deleteDashboard forwards the dashboard id', async () => {
+  it('deleteDashboard forwards the dashboard id without a token', async () => {
     await dashboardCommands.deleteDashboard('d4');
-    expect(invokeMock).toHaveBeenCalledWith('delete_dashboard', { id: 'd4' });
+    expect(invokeMock).toHaveBeenCalledWith('deleteDashboard', { id: 'd4' });
   });
 
-  it('setDashboardRefreshPaused forwards id and paused flag', async () => {
+  it('setDashboardRefreshPaused forwards id and paused flag with the token', async () => {
     await dashboardCommands.setDashboardRefreshPaused('d5', true);
-    expect(invokeMock).toHaveBeenCalledWith('set_dashboard_refresh_paused', {
+    expect(invokeMock).toHaveBeenCalledWith('setDashboardRefreshPaused', {
       id: 'd5',
       paused: true,
+      submissionToken: TEST_TOKEN,
     });
   });
 
   it('findDashboardWorkflowRefs forwards the workflow id', async () => {
     invokeMock.mockResolvedValueOnce([]);
     await expect(dashboardCommands.findDashboardWorkflowRefs('wf-1')).resolves.toEqual([]);
-    expect(invokeMock).toHaveBeenCalledWith('find_dashboard_workflow_refs', { workflowId: 'wf-1' });
+    expect(invokeMock).toHaveBeenCalledWith('findDashboardWorkflowRefs', { workflowId: 'wf-1' });
   });
 
   it('listWidgetRuns forwards dashboard/widget ids and limit', async () => {
     invokeMock.mockResolvedValueOnce([]);
     await expect(dashboardCommands.listWidgetRuns('d6', 'w1', 25)).resolves.toEqual([]);
-    expect(invokeMock).toHaveBeenCalledWith('list_widget_runs', {
+    expect(invokeMock).toHaveBeenCalledWith('listWidgetRuns', {
       dashboardId: 'd6',
       widgetId: 'w1',
       limit: 25,
@@ -92,29 +119,30 @@ describe('dashboardCommands wrappers', () => {
   });
 
   it('getWidgetRun forwards run id', async () => {
-    // The backend identifies a widget run by an opaque string id (`get_widget_run`
-    // takes `run_id: String`), not by a numeric sequence.
+    // The backend identifies a widget run by an opaque string id (`getWidgetRun`
+    // takes `runId`), not by a numeric sequence.
     const run = { id: 'run-3' };
     invokeMock.mockResolvedValueOnce(run);
     await expect(dashboardCommands.getWidgetRun('d7', 'w2', 'run-3')).resolves.toBe(run);
-    expect(invokeMock).toHaveBeenCalledWith('get_widget_run', {
+    expect(invokeMock).toHaveBeenCalledWith('getWidgetRun', {
       dashboardId: 'd7',
       widgetId: 'w2',
       runId: 'run-3',
     });
   });
 
-  it('runDashboardWidget forwards dashboard and widget ids', async () => {
+  it('runDashboardWidget forwards dashboard and widget ids with the token', async () => {
     await dashboardCommands.runDashboardWidget('d8', 'w3');
-    expect(invokeMock).toHaveBeenCalledWith('run_dashboard_widget', {
+    expect(invokeMock).toHaveBeenCalledWith('runDashboardWidget', {
       dashboardId: 'd8',
       widgetId: 'w3',
+      submissionToken: TEST_TOKEN,
     });
   });
 
-  it('createWidgetFromSql forwards the params envelope verbatim', async () => {
+  it('createWidgetFromSql forwards the params envelope verbatim with a top-level dashboardId', async () => {
     const dashboard = sampleDashboard('d9');
-    invokeMock.mockResolvedValueOnce({ widgetId: 'w4', dashboardId: 'd9', dashboard });
+    invokeMock.mockResolvedValueOnce({ dashboard, widget: { id: 'w4' } });
     const params = {
       dashboardId: 'd9',
       connectionId: 'c1',
@@ -123,14 +151,18 @@ describe('dashboardCommands wrappers', () => {
       viewMode: 'chart' as const,
     };
     await expect(dashboardCommands.createWidgetFromSql(params)).resolves.toMatchObject({
-      widgetId: 'w4',
+      widget: { id: 'w4' },
     });
-    expect(invokeMock).toHaveBeenCalledWith('create_widget_from_sql', { params });
+    expect(invokeMock).toHaveBeenCalledWith('createWidgetFromSql', {
+      dashboardId: 'd9',
+      params,
+      submissionToken: TEST_TOKEN,
+    });
   });
 
-  it('createWidgetFromWorkflow forwards the params envelope verbatim', async () => {
+  it('createWidgetFromWorkflow forwards the params envelope verbatim with a top-level dashboardId', async () => {
     const dashboard = sampleDashboard('d10');
-    invokeMock.mockResolvedValueOnce({ widgetId: 'w5', dashboardId: 'd10', dashboard });
+    invokeMock.mockResolvedValueOnce({ dashboard, widget: { id: 'w5' } });
     const params = {
       dashboardId: 'd10',
       workflowId: 'wf-2',
@@ -138,23 +170,28 @@ describe('dashboardCommands wrappers', () => {
       viewMode: 'chart' as const,
     };
     await expect(dashboardCommands.createWidgetFromWorkflow(params)).resolves.toMatchObject({
-      widgetId: 'w5',
+      widget: { id: 'w5' },
     });
-    expect(invokeMock).toHaveBeenCalledWith('create_widget_from_workflow', { params });
+    expect(invokeMock).toHaveBeenCalledWith('createWidgetFromWorkflow', {
+      dashboardId: 'd10',
+      params,
+      submissionToken: TEST_TOKEN,
+    });
   });
 
-  it('updateHiddenWidgetSql forwards workflow/connection/sql triple', async () => {
+  it('updateHiddenWidgetSql forwards the workflow/connection/sql triple nested under params', async () => {
     await dashboardCommands.updateHiddenWidgetSql({
       workflowId: 'wf-3',
       connectionId: 'c2',
       sql: 'SELECT 2',
     });
-    expect(invokeMock).toHaveBeenCalledWith('update_hidden_widget_sql', {
+    expect(invokeMock).toHaveBeenCalledWith('updateHiddenWidgetSql', {
       params: { workflowId: 'wf-3', connectionId: 'c2', sql: 'SELECT 2' },
+      submissionToken: TEST_TOKEN,
     });
   });
 
-  it('exportWithDialog returns dialog outcome', async () => {
+  it('exportWithDialog returns dialog outcome (desktop-only legacy rail)', async () => {
     invokeMock.mockResolvedValueOnce(true);
     await expect(dashboardCommands.exportWithDialog('d11', 'dash.json')).resolves.toBe(true);
     expect(invokeMock).toHaveBeenCalledWith('export_dashboard_with_dialog', {
@@ -163,7 +200,7 @@ describe('dashboardCommands wrappers', () => {
     });
   });
 
-  it('importWithDialog returns imported dashboard or null when cancelled', async () => {
+  it('importWithDialog returns imported dashboard or null when cancelled (desktop-only legacy rail)', async () => {
     const imported = sampleDashboard('d12');
     invokeMock.mockResolvedValueOnce(imported);
     await expect(dashboardCommands.importWithDialog()).resolves.toBe(imported);

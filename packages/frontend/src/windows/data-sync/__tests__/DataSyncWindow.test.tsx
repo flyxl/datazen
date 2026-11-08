@@ -50,11 +50,15 @@ const {
   };
 });
 
-import { setBackendClient } from '@datazen/backend-client';
+import { createBackendClient, setBackendClient } from '@datazen/backend-client';
 // form-split R6: the invoke wrappers ride the bound backend transport now.
-setBackendClient('test', {
-  transport: { call: (c: string, p?: unknown) => (p === undefined ? invokeMock(c) : invokeMock(c, p)) },
-} as never);
+// W8 刀3e web 收口：命令层改走 dataSync 域门面方法——假门面用**真门面**
+// （createBackendClient）架在假 transport 上，域方法全部存在且经
+// guard → transport.call，测试只钉 invokeMock 的 wire 面。
+const fakeTransport = {
+  call: (c: string, p?: unknown) => (p === undefined ? invokeMock(c) : invokeMock(c, p)),
+};
+setBackendClient('test', createBackendClient('test', fakeTransport as never) as never);
 vi.mock('../../../hooks/useThemeListener', () => ({
   useThemeListener: vi.fn(),
 }));
@@ -420,7 +424,8 @@ describe('DataSyncWindow wizard', () => {
         },
       ) => {
         if (cmd === 'get_connections') return [pgSrc, pgTgt, mysqlTgt];
-        if (cmd === 'list_migration_runs') {
+        // W8 刀3e web 收口：historyCommands.listMigrationRuns 走 sync 域客户端。
+        if (cmd === 'listMigrationRuns') {
           return { items: [unknownHistoryRun], total: 1, offset: 0, limit: 25 };
         }
         if (cmd === 'connect_dedicated') {

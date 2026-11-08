@@ -1,235 +1,78 @@
-import { legacyInvoke as invoke } from '@datazen/backend-client';
-import type { JobDetails } from '@datazen/backend-client';
-import type { FilterCondition, Value } from '../types';
+import { legacyInvoke as invoke, useBackendClient } from '@datazen/backend-client';
+import type {
+  DataSyncExecutionResponse,
+  DataSyncRecoveryRequest,
+  DataSyncRowChange,
+  DataSyncRunRequest,
+  DataSyncSelectedRow,
+  DataSyncSelection,
+  DataSyncSourceFilter,
+  DataSyncTableMapping,
+  DataSyncTableSelection,
+  JobDetails,
+  JobView,
+  SqlStatement,
+  SyncComparisonPreview,
+  SyncOptions,
+  SyncProfile,
+  TableResult,
+  Value,
+} from '@datazen/backend-client';
 
-export interface SyncTask {
-  id: string;
-  /**
-   * Legacy runtime ids may be absent. They are transient and are never used
-   * to reopen a saved task; resolve fresh sessions from the connection ids.
-   */
-  sourceDbSessionId?: string;
-  targetDbSessionId?: string;
-  /** Persisted owning connection ids (config) for display / resume lookup. */
-  sourceConnectionId: string;
-  targetConnectionId: string;
-  sourceDatabase?: string | null;
-  targetDatabase?: string | null;
-  sourceSchema?: string | null;
-  targetSchema?: string | null;
-  tables: string[];
-  completedTables: string[];
-  currentTable: string | null;
-  currentTableOffset: number;
-  sourceRowCounts: Record<string, number>;
-  strategy: string;
-  status: string;
-  errorMessage: string | null;
-  createdAt: string;
-  updatedAt: string;
-  /** Saved checkpoints are explicitly unknown and require a fresh compare. */
-  resumeState: 'unknown' | string;
-}
+/**
+ * Data Sync commands（W8 刀3e web 收口，契约 §6.16）。
+ *
+ * 类型与 22 路域方法已上移 `@datazen/backend-client` 的 `dataSync` 域客户端
+ * ——两个 transport（桌面 IPC / 服务端 HTTP）的 wire 同源（共享层 Rust 词汇
+ * camelCase），本文件只保留 UI 侧的编排：受理回执后的轮询、比较计划的
+ * 模块级暂存、选区的客户端折叠。
+ *
+ * 两条 legacy 命令有意保留（域裁决见各自注释）：`apply_data_sync`（桌面
+ * 永久拒绝的旧形 apply，域方法 `startDataSyncApplyJob` / `executeDataSync`
+ * 才是收录面）与 `get_data_sync_comparison_page`（plan_store 行级分页读，
+ * §6.16 二十二路由无对应方法）。
+ */
 
-export type DataSyncOperation = 'INSERT' | 'UPDATE' | 'DELETE' | 'UNCHANGED';
+// ── 域词汇转出（单一来源在 backend-client；UI 既有 import 路径不变）───────
+export type {
+  DataSyncOperation,
+  DataSyncMappingStatus,
+  DataSyncRowChange,
+  DataSyncSourceFilter,
+  DataSyncRecordset,
+  DataSyncRecordsetBound,
+  DataSyncRecordsetTupleRange,
+  DataSyncRecordsetTupleBound,
+  SyncOptions,
+  SyncTask,
+  SyncProfile,
+  DataSyncTableMapping,
+  DataSyncPairingView,
+  DataSyncConflict,
+  DataSyncSelectedRow,
+  DataSyncSelectionExclusion,
+  DataSyncSelectionMode,
+  DataSyncTableSelection,
+  DataSyncSelection,
+  DataSyncRecoveryRequest,
+} from '@datazen/backend-client';
+export type { TableResult as DataSyncTableResult } from '@datazen/backend-client';
+export type { SqlStatement as DataSyncSqlStatement } from '@datazen/backend-client';
+export type { SyncComparisonPreview as DataSyncComparisonPreview } from '@datazen/backend-client';
+export type { DataSyncExecutionResponse as DataSyncExecutionResult } from '@datazen/backend-client';
+export type { JobView as DataSyncJobView } from '@datazen/backend-client';
 
-export type DataSyncMappingStatus =
-  | 'MATCHED'
-  | 'UNMAPPED_SOURCE'
-  | 'UNMAPPED_TARGET'
-  | 'DISABLED'
-  | 'INCOMPATIBLE';
-
-export interface DataSyncRowChange {
-  operation: DataSyncOperation;
-  key: Value[];
-  sourceRow: (Value | null)[] | null;
-  targetRow: (Value | null)[] | null;
-  changedColumns: string[];
-  selected: boolean;
-}
-
-export interface DataSyncTableResult {
-  sourceTable: string;
-  targetTable: string;
-  status: DataSyncMappingStatus;
-  incompatibleReason?: string | null;
-  warnings?: string[];
-  columns?: string[];
-  columnTypes?: string[];
-  primaryKeys?: string[];
-  unchangedCount?: number;
-  insertCount?: number;
-  updateCount?: number;
-  deleteCount?: number;
-  rowCount?: number;
-  pageSize?: number;
-  firstCursor?: string | null;
-  hasMore?: boolean;
-  rows?: DataSyncRowChange[];
-  sourceFilter?: DataSyncSourceFilter;
-}
-
-/** Structured, parameterized predicate applied symmetrically to one table pair. */
-export interface DataSyncSourceFilter {
-  filters: FilterCondition[];
-  logic?: 'and' | 'or';
-  /** Stable source recordset range. Bounds are text to preserve integer/decimal precision. */
-  recordset?: DataSyncRecordset;
-}
-
-export interface DataSyncRecordsetBound {
-  value: string;
-  inclusive?: boolean;
-}
-
-export interface DataSyncRecordset {
-  /** Omitted only for a single effective primary key. */
-  orderBy?: string;
-  start?: DataSyncRecordsetBound;
-  end?: DataSyncRecordsetBound;
-  /** Complete ordered composite primary-key range; cannot mix scalar fields. */
-  tupleRange?: DataSyncRecordsetTupleRange;
-  limit?: number;
-}
-
-export interface DataSyncRecordsetTupleRange {
-  columns: string[];
-  start?: DataSyncRecordsetTupleBound;
-  end?: DataSyncRecordsetTupleBound;
-}
-
-export interface DataSyncRecordsetTupleBound {
-  /** One lossless text value per key column, in `columns` order. */
-  values: string[];
-  inclusive?: boolean;
-}
-
-export interface SyncOptions {
-  insert: boolean;
-  update: boolean;
-  delete: boolean;
-  matchingStrategy?: 'primaryKey';
-  batchSize?: number;
-  largeValueMode?: 'full' | 'hash';
-  conflictPolicy?: 'abort' | 'skip' | 'force';
-}
-
-export interface SyncProfile {
-  version: number;
-  id: string;
-  name: string;
-  sourceConnectionId: string;
-  targetConnectionId: string;
-  sourceDatabase?: string | null;
-  targetDatabase?: string | null;
-  sourceSchema?: string | null;
-  targetSchema?: string | null;
-  tables: DataSyncTableMapping[];
-  options: SyncOptions;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface DataSyncTableMapping {
-  sourceTable: string;
-  targetTable: string;
-  enabled: boolean;
-  matchingColumns?: Array<{ sourceColumn: string; targetColumn: string }>;
-  sourceFilter?: DataSyncSourceFilter;
-}
-
-export interface DataSyncSqlStatement {
-  table: string;
-  operation: DataSyncOperation;
-  sql: string;
-  previewSql: string;
-  parameters: Value[];
-  rowKey: Value[];
-}
-
-export interface DataSyncExecutionResult {
-  applied: number;
-  rolledBack: boolean;
-  /** Evidence-based transaction outcome; optional for pre-v1 IPC responses. */
-  outcome?: 'not_started' | 'committed' | 'partially_applied' | 'rolled_back' | 'unknown';
-  /** Present when execution could not proceed or its outcome is unknown. */
-  error?: string;
-  rollbackReason?: string;
-  /** Total database-reported affected rows; optional for older responses. */
-  affectedRows?: number;
-  skipped?: number;
-  conflicts?: DataSyncConflict[];
-}
-
-export interface DataSyncJobView {
-  jobId: string;
-  kind: string;
-  state: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
-  cancelRequested: boolean;
-  effectOutcome: string | null;
-  error: string | null;
-  progress: { committed: number | string; unknown: number | string };
-}
-
+/** 既有 UI 依赖的宽松 details 投影（单一来源 `JobDetails` 在 backend-client）。 */
 export type DataSyncJobDetails = Pick<
   JobDetails,
   'job' | 'recoveryTargets' | 'domainResults' | 'recovery'
 >;
 
-export interface DataSyncRecoveryRequest {
-  jobId: string;
-  sourceDbSessionId: string;
-  targetDbSessionId: string;
-  sourceDatabase: string;
-  targetDatabase: string;
-  sourceSchema?: string;
-  targetSchema?: string;
-}
-
-export interface DataSyncConflict {
-  table: string;
-  operation: DataSyncOperation;
-  rowKey: Value[];
-  message: string;
-}
-
-export interface DataSyncSelectedRow {
-  sourceTable: string;
-  targetTable: string;
-  operation: DataSyncOperation;
-  key: Value[];
-}
-
-export interface DataSyncSelectionExclusion {
-  operation: Exclude<DataSyncOperation, 'UNCHANGED'>;
-  key: Value[];
-}
-
-export type DataSyncSelectionMode = 'all' | 'defaults';
-
-export interface DataSyncTableSelection {
-  sourceTable: string;
-  targetTable: string;
-  selectionMode: DataSyncSelectionMode;
-  operations: Array<Exclude<DataSyncOperation, 'UNCHANGED'>>;
-  excludedRows: DataSyncSelectionExclusion[];
-}
-
-export interface DataSyncSelection {
-  revision: number;
-  rows: DataSyncSelectedRow[];
-  scopes?: DataSyncTableSelection[];
-}
-
-export interface DataSyncComparisonPreview {
-  contractVersion?: number;
-  planId: string;
-  selectionRevision: number;
-  pageSize?: number;
-  tables: DataSyncTableResult[];
-}
-
+/**
+ * 桌面 legacy 轨的行级分页读应答（`get_data_sync_comparison_page`）。契约
+ * §6.16 的二十二路由没有它的域方法（plan_store 分页投影暂为桌面专属），
+ * 类型留在本文件随 legacy 命令一起消亡。
+ */
 export interface DataSyncComparisonPage {
   contractVersion: number;
   planId: string;
@@ -242,13 +85,6 @@ export interface DataSyncComparisonPage {
   rows: DataSyncRowChange[];
 }
 
-export interface DataSyncPairingView {
-  path: string;
-  supported: boolean;
-  family?: string | null;
-  reason?: string | null;
-}
-
 export const DEFAULT_SYNC_OPTIONS: SyncOptions = {
   insert: true,
   update: true,
@@ -259,7 +95,12 @@ export const DEFAULT_SYNC_OPTIONS: SyncOptions = {
   conflictPolicy: 'abort',
 };
 
-let activeComparisonPlan: DataSyncComparisonPreview | null = null;
+/** 用户资产写面令牌（契约 §6.16：save profile / cancel 两处带体写面）。 */
+async function userAssetToken() {
+  return useBackendClient().issueSubmissionToken('saveUserAsset', null);
+}
+
+let activeComparisonPlan: SyncComparisonPreview | null = null;
 let activeExecutionOptions: SyncOptions = DEFAULT_SYNC_OPTIONS;
 
 function valueToken(value: Value[]): string {
@@ -271,8 +112,8 @@ function valueToken(value: Value[]): string {
 }
 
 function selectionFromTables(
-  plan: DataSyncComparisonPreview,
-  tables: DataSyncTableResult[],
+  plan: SyncComparisonPreview,
+  tables: TableResult[],
   options: SyncOptions,
   selectedRows?: DataSyncSelectedRow[],
   tableSelections?: DataSyncTableSelection[],
@@ -328,8 +169,8 @@ function selectionFromTables(
 }
 
 function selectionFromStatements(
-  plan: DataSyncComparisonPreview,
-  statements: DataSyncSqlStatement[],
+  plan: SyncComparisonPreview,
+  statements: SqlStatement[],
 ): DataSyncSelection {
   const rows: DataSyncSelectedRow[] = [];
   for (const statement of statements) {
@@ -368,9 +209,9 @@ function selectionFromStatements(
 const delay = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
-async function waitForDataSyncJob(jobId: string): Promise<DataSyncJobView> {
+async function waitForDataSyncJob(jobId: string): Promise<JobView> {
   for (;;) {
-    const job = await invoke<DataSyncJobView>('get_data_sync_job', { jobId });
+    const job = await useBackendClient().getDataSyncJob({ jobId });
     if (job.state === 'succeeded' || job.state === 'failed' || job.state === 'cancelled') {
       return job;
     }
@@ -378,7 +219,7 @@ async function waitForDataSyncJob(jobId: string): Promise<DataSyncJobView> {
   }
 }
 
-function durableFailure(job: DataSyncJobView, phase: 'prepare' | 'apply'): Error {
+function durableFailure(job: JobView, phase: 'prepare' | 'apply'): Error {
   if (job.state === 'cancelled') return new Error(`Data Sync ${phase} job was cancelled.`);
   if (job.error === 'notDispatchedAfterRestart') {
     return new Error('Data Sync job was not executed after restart; start a fresh comparison.');
@@ -391,11 +232,11 @@ function durableFailure(job: DataSyncJobView, phase: 'prepare' | 'apply'): Error
   return new Error(`Data Sync ${phase} job failed; compare again before continuing.`);
 }
 
-async function readPreparePreview(jobId: string): Promise<DataSyncComparisonPreview> {
-  return invoke<DataSyncComparisonPreview>('get_data_sync_job_preview', { jobId });
+async function readPreparePreview(jobId: string): Promise<SyncComparisonPreview> {
+  return useBackendClient().getDataSyncJobPreview({ jobId });
 }
 
-function executionFromJob(details: DataSyncJobDetails): DataSyncExecutionResult {
+function executionFromJob(details: DataSyncJobDetails): DataSyncExecutionResponse {
   const job = details.job;
   const result = details.domainResults.find((entry) => entry.stageId === 'apply');
   const counter = (code: string): number =>
@@ -434,30 +275,25 @@ function executionFromJob(details: DataSyncJobDetails): DataSyncExecutionResult 
 
 export const syncCommands = {
   classifyDataSyncPair: (sourceDatabaseType: string, targetDatabaseType: string) =>
-    invoke<DataSyncPairingView>('classify_data_sync_pair', {
-      sourceDatabaseType,
-      targetDatabaseType,
-    }),
+    useBackendClient().classifyDataSyncPair({ sourceDatabaseType, targetDatabaseType }),
 
-  getSyncTasks: () => invoke<SyncTask[]>('get_sync_tasks'),
+  getSyncTasks: () => useBackendClient().getSyncTasks(),
 
-  getSyncProfiles: () => invoke<SyncProfile[]>('get_sync_profiles'),
+  getSyncProfiles: () => useBackendClient().getSyncProfiles(),
 
-  saveSyncProfile: (profile: SyncProfile) => invoke<void>('save_sync_profile', { profile }),
+  saveSyncProfile: async (profile: SyncProfile) => {
+    await useBackendClient().saveSyncProfile({ profile }, await userAssetToken());
+  },
 
-  deleteSyncProfile: (profileId: string) => invoke<void>('delete_sync_profile', { profileId }),
+  deleteSyncProfile: (profileId: string) => useBackendClient().deleteSyncProfile({ profileId }),
 
-  deleteSyncTask: (taskId: string) => invoke<void>('delete_sync_task', { taskId }),
+  deleteSyncTask: (taskId: string) => useBackendClient().deleteSyncTask({ taskId }),
 
-  checkSyncConflicts: (taskId: string) =>
-    invoke<{
-      hasConflicts: boolean;
-      conflicts: { table: string; originalRows: number; currentRows: number }[];
-    }>('check_sync_conflicts', { taskId }),
+  checkSyncConflicts: (taskId: string) => useBackendClient().checkSyncConflicts({ taskId }),
 
   executeDataSync: (
     targetDbSessionId: string,
-    statements: DataSyncSqlStatement[],
+    statements: SqlStatement[],
     jobId?: string,
     targetDatabase?: string,
     selectedRows?: DataSyncSelectedRow[],
@@ -479,20 +315,26 @@ export const syncCommands = {
             tableSelections,
           )
         : selectionFromStatements(activeComparisonPlan, statements);
-    const request = {
+    const request: DataSyncRunRequest = {
       planId: activeComparisonPlan.planId,
       selection,
       options: activeExecutionOptions,
       jobId: jobId ?? null,
     };
-    return invoke<DataSyncExecutionResult>('execute_data_sync', {
+    return useBackendClient().executeDataSync({
       request,
       ...(profile ? { profile } : {}),
     });
   },
 
-  cancelDataSync: (jobId: string) => invoke<boolean>('cancel_data_sync', { jobId }),
+  cancelDataSync: async (jobId: string) =>
+    useBackendClient().cancelDataSync({ jobId }, await userAssetToken()),
 
+  /**
+   * plan_store 的行级分页读。契约 §6.16 的 dataSync 域二十二路由**没有**
+   * 对应方法（`getDataSyncJobPreview` 只回汇总投影），命令留在桌面 legacy
+   * 轨——web 形态继续由 `unsupportedMethods` 声明为 capability 缺口。
+   */
   getDataSyncComparisonPage: (
     cursor: string | null,
     sourceTable: string,
@@ -513,6 +355,11 @@ export const syncCommands = {
     });
   },
 
+  /**
+   * 受理—轮询—读复核投影的比较链（契约 §6.16：长比较占住请求的
+   * `compareDataSync` 同步语义供纯调用方使用；UI 要进度与取消，走
+   * `startDataSyncPrepareJob` 202 + 轮询读回）。
+   */
   compareDataSync: async (
     sourceDbSessionId: string,
     targetDbSessionId: string,
@@ -527,7 +374,7 @@ export const syncCommands = {
   ) => {
     activeComparisonPlan = null;
     const requestedJobId = jobId ?? `data-sync-${crypto.randomUUID()}`;
-    const accepted = await invoke<DataSyncJobView>('start_data_sync_prepare_job', {
+    const accepted = await useBackendClient().startDataSyncPrepareJob({
       sourceDbSessionId,
       targetDbSessionId,
       tables: tables ?? null,
@@ -566,7 +413,7 @@ export const syncCommands = {
       selectedRows,
       tableSelections,
     );
-    const accepted = await invoke<DataSyncJobView>('start_data_sync_apply_job', {
+    const accepted = await useBackendClient().startDataSyncApplyJob({
       sourceDbSessionId,
       targetDbSessionId,
       request: {
@@ -577,17 +424,25 @@ export const syncCommands = {
       },
     });
     await waitForDataSyncJob(accepted.jobId);
-    const details = await invoke<DataSyncJobDetails>('get_data_sync_job_details', {
+    const details = await useBackendClient().getDataSyncJobDetails({
       jobId: accepted.jobId,
     });
     return executionFromJob(details);
   },
 
-  listDataSyncJobs: () => invoke<DataSyncJobDetails[]>('list_data_sync_jobs'),
+  listDataSyncJobs: () => useBackendClient().listDataSyncJobs(),
 
   verifyDataSyncRecovery: (request: DataSyncRecoveryRequest) =>
-    invoke<DataSyncJobDetails>('verify_data_sync_recovery', { request }),
+    useBackendClient().verifyDataSyncRecovery(request),
 
+  /**
+   * 桌面 legacy 旧形 apply（无已复核计划）。桌面命令本体是**永久拒绝**的
+   * 引路桩（"legacy apply has no reviewed plan; compare and submit the
+   * reviewed selection as a durable Data Sync job"，desktop `commands/sync/
+   * mod.rs`）；契约 §6.16 未给它立域方法——收录面是
+   * `startDataSyncApplyJob`（durable）与 `executeDataSync`（同步投影）。
+   * 命令留在 legacy 轨仅为签名兼容，调用必然得到上述拒绝。
+   */
   applyDataSync: (
     sourceDbSessionId: string,
     targetDbSessionId: string,
@@ -599,7 +454,7 @@ export const syncCommands = {
     targetSchema?: string,
     options?: SyncOptions,
   ) =>
-    invoke<DataSyncExecutionResult>('apply_data_sync', {
+    invoke<DataSyncExecutionResponse>('apply_data_sync', {
       sourceDbSessionId,
       targetDbSessionId,
       tables,
@@ -620,7 +475,7 @@ export const syncCommands = {
     targetSchema?: string,
     mappings?: DataSyncTableMapping[],
   ) =>
-    invoke<DataSyncTableResult[]>('inspect_data_sync', {
+    useBackendClient().inspectDataSync({
       sourceDbSessionId,
       targetDbSessionId,
       sourceDatabase: sourceDatabase ?? null,
@@ -634,7 +489,7 @@ export const syncCommands = {
   generateDataSyncSql: (
     sourceDbSessionId: string,
     targetDbSessionId: string,
-    tables: DataSyncTableResult[],
+    tables: TableResult[],
     options: SyncOptions,
     sourceDatabase?: string,
     targetDatabase?: string,
@@ -653,7 +508,7 @@ export const syncCommands = {
       return Promise.reject(new Error('data sync comparison plan is missing; compare again'));
     }
     activeExecutionOptions = options;
-    return invoke<DataSyncSqlStatement[]>('generate_data_sync_sql', {
+    return useBackendClient().generateDataSyncSql({
       planId: activeComparisonPlan.planId,
       selection: selectionFromTables(
         activeComparisonPlan,

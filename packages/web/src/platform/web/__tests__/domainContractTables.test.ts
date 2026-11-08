@@ -502,6 +502,293 @@ const ROWS: Record<string, Row> = {
     body: { targetDbSessionId: 'sess-2', submissionToken: TOKEN },
     response: { details: { job: { jobId: 'j-1' } }, prepared: null },
   },
+
+  // ── workflow（§6.14；W8 刀3c web 收口）────────────────────────────
+  listWorkflows: { payload: {}, path: '/workflows', noBody: true, response: [] },
+  saveWorkflow: {
+    payload: {
+      workflow: { id: 'wf-1', name: 'Nightly checksum', variables: [], steps: [] },
+      submissionToken: TOKEN,
+    },
+    path: '/workflows/wf-1',
+    body: {
+      id: 'wf-1',
+      name: 'Nightly checksum',
+      variables: [],
+      steps: [],
+      submissionToken: TOKEN,
+    },
+  },
+  saveWorkflowYaml: {
+    payload: { yaml: 'id: wf-2\nname: Imported\n', submissionToken: TOKEN },
+    path: '/workflows/from-yaml',
+    response: { id: 'wf-2', name: 'Imported', variables: [], steps: [] },
+  },
+  getWorkflow: {
+    payload: { workflowId: 'wf-1' },
+    path: '/workflows/wf-1',
+    noBody: true,
+    response: { id: 'wf-1', name: 'Nightly checksum', variables: [], steps: [] },
+  },
+  getWorkflowYaml: {
+    payload: { workflowId: 'wf-1' },
+    path: '/workflows/wf-1/yaml',
+    noBody: true,
+    wireResponse: { yaml: 'id: wf-1\nname: Nightly checksum\n' },
+    response: 'id: wf-1\nname: Nightly checksum\n',
+  },
+  deleteWorkflow: { payload: { workflowId: 'wf-1' }, path: '/workflows/wf-1', noBody: true },
+  executeWorkflow: {
+    payload: { workflowId: 'wf-1', variables: { batch: 7 }, submissionToken: TOKEN },
+    path: '/workflows/wf-1/execute',
+    body: { variables: { batch: 7 }, submissionToken: TOKEN },
+    response: { success: true, steps: [] },
+  },
+  reloadWorkflows: { payload: {}, path: '/workflows/reload', noBody: true },
+  listWorkflowRuns: {
+    payload: { workflowId: 'wf-1' },
+    path: '/workflow-runs',
+    query: '?workflowId=wf-1',
+    noBody: true,
+    response: [],
+  },
+  getWorkflowRun: {
+    payload: { historyId: 'run-1' },
+    path: '/workflow-runs/run-1',
+    noBody: true,
+    response: { id: 'run-1', workflowId: 'wf-1', status: 'success' },
+  },
+  clearWorkflowRuns: {
+    payload: { workflowId: 'wf-1' },
+    path: '/workflow-runs',
+    query: '?workflowId=wf-1',
+    noBody: true,
+    wireResponse: { cleared: 3 },
+    response: 3,
+  },
+
+  // ── dashboard（§6.15；W8 刀3d web 收口）──────────────────────────
+  listDashboards: { payload: {}, path: '/dashboards', noBody: true, response: [] },
+  getDashboard: {
+    payload: { id: 'd-1' },
+    path: '/dashboards/d-1',
+    noBody: true,
+    response: { id: 'd-1', name: 'Ops', widgets: [] },
+  },
+  saveDashboard: {
+    payload: {
+      dashboard: { id: 'd-1', name: 'Ops', widgets: [] },
+      submissionToken: TOKEN,
+    },
+    path: '/dashboards/d-1',
+    body: { id: 'd-1', name: 'Ops', widgets: [], submissionToken: TOKEN },
+    response: { id: 'd-1', name: 'Ops', widgets: [] },
+  },
+  deleteDashboard: { payload: { id: 'd-1' }, path: '/dashboards/d-1', noBody: true },
+  setDashboardRefreshPaused: {
+    payload: { id: 'd-1', paused: true, submissionToken: TOKEN },
+    path: '/dashboards/d-1/refresh-paused',
+    body: { paused: true, submissionToken: TOKEN },
+  },
+  findDashboardWorkflowRefs: {
+    payload: { workflowId: 'wf-1' },
+    path: '/dashboards/workflow-refs',
+    query: '?workflowId=wf-1',
+    noBody: true,
+    response: [],
+  },
+  createWidgetFromSql: {
+    payload: {
+      dashboardId: 'd-1',
+      params: { dashboardId: 'd-1', connectionId: 'conn-1', sql: 'SELECT 1' },
+      submissionToken: TOKEN,
+    },
+    path: '/dashboards/d-1/widgets/from-sql',
+    body: { dashboardId: 'd-1', connectionId: 'conn-1', sql: 'SELECT 1', submissionToken: TOKEN },
+    response: { dashboardId: 'd-1', widgetId: 'w-9' },
+  },
+  createWidgetFromWorkflow: {
+    payload: {
+      dashboardId: 'd-1',
+      params: { dashboardId: 'd-1', workflowId: 'wf-1' },
+      submissionToken: TOKEN,
+    },
+    path: '/dashboards/d-1/widgets/from-workflow',
+    body: { dashboardId: 'd-1', workflowId: 'wf-1', submissionToken: TOKEN },
+    response: { dashboardId: 'd-1', widgetId: 'w-9' },
+  },
+  updateHiddenWidgetSql: {
+    payload: {
+      params: { dashboardId: 'd-1', widgetId: 'w-1', sql: 'SELECT 2' },
+      submissionToken: TOKEN,
+    },
+    path: '/dashboards/hidden-widget-sql',
+    body: { dashboardId: 'd-1', widgetId: 'w-1', sql: 'SELECT 2', submissionToken: TOKEN },
+  },
+  runDashboardWidget: {
+    payload: { dashboardId: 'd-1', widgetId: 'w-1', submissionToken: TOKEN },
+    path: '/dashboards/d-1/widgets/w-1/run',
+    body: { submissionToken: TOKEN },
+    response: { id: 'r-1', status: 'ok' },
+  },
+  listWidgetRuns: {
+    payload: { dashboardId: 'd-1', widgetId: 'w-1', limit: 5 },
+    path: '/dashboards/d-1/widgets/w-1/runs',
+    query: '?limit=5',
+    noBody: true,
+    response: [],
+  },
+  getWidgetRun: {
+    payload: { dashboardId: 'd-1', widgetId: 'w-1', runId: 'r-1' },
+    path: '/dashboards/d-1/widgets/w-1/runs/r-1',
+    noBody: true,
+    response: { id: 'r-1', status: 'ok' },
+  },
+  getMonitorScheduleGrant: {
+    payload: { dashboardId: 'd-1', widgetId: 'w-1' },
+    path: '/dashboards/d-1/widgets/w-1/schedule-grant',
+    noBody: true,
+    response: null,
+  },
+  authorizeMonitorSchedule: {
+    payload: { dashboardId: 'd-1', widgetId: 'w-1', ttlSecs: 3600, submissionToken: TOKEN },
+    path: '/dashboards/d-1/widgets/w-1/schedule-grant',
+    body: { ttlSecs: 3600, submissionToken: TOKEN },
+    response: { id: 'grant-1', revoked: false },
+  },
+  revokeMonitorSchedule: {
+    payload: { dashboardId: 'd-1', widgetId: 'w-1' },
+    path: '/dashboards/d-1/widgets/w-1/schedule-grant',
+    noBody: true,
+  },
+
+  // ── dataSync（§6.16，v1.9；W8 刀3e web 收口）─────────────────────
+  getSyncTasks: { payload: {}, path: '/sync/tasks', noBody: true, response: [] },
+  deleteSyncTask: { payload: { taskId: 't-1' }, path: '/sync/tasks/t-1', noBody: true },
+  getSyncProfiles: { payload: {}, path: '/sync/profiles', noBody: true, response: [] },
+  saveSyncProfile: {
+    payload: {
+      profile: { id: 'p-1', name: 'Nightly', sourceConnectionId: 'c-1', targetConnectionId: 'c-2' },
+      submissionToken: TOKEN,
+    },
+    path: '/sync/profiles',
+    body: {
+      id: 'p-1',
+      name: 'Nightly',
+      sourceConnectionId: 'c-1',
+      targetConnectionId: 'c-2',
+      submissionToken: TOKEN,
+    },
+  },
+  deleteSyncProfile: { payload: { profileId: 'p-1' }, path: '/sync/profiles/p-1', noBody: true },
+  classifyDataSyncPair: {
+    payload: { sourceDatabaseType: 'postgres', targetDatabaseType: 'mysql' },
+    path: '/sync/pairings',
+    response: { supported: true, strategy: 'row-based' },
+  },
+  listMigrationRuns: {
+    payload: { filter: { operation: 'dataSync', status: 'failed' }, offset: 25, limit: 25 },
+    path: '/migration-runs',
+    query: '?operation=dataSync&status=failed&offset=25&limit=25',
+    noBody: true,
+    response: { items: [], total: 0, offset: 25, limit: 25 },
+  },
+  getMigrationRun: {
+    payload: { runId: 'run-1' },
+    path: '/migration-runs/run-1',
+    noBody: true,
+    response: { id: 'run-1', status: 'completed' },
+  },
+  listDataSyncJobs: { payload: {}, path: '/sync/jobs', noBody: true, response: [] },
+  getDataSyncJob: {
+    payload: { jobId: 'j-1' },
+    path: '/sync/jobs/j-1',
+    noBody: true,
+    response: { jobId: 'j-1', kind: 'dataSyncPrepare', state: 'queued' },
+  },
+  getDataSyncJobDetails: {
+    payload: { jobId: 'j-1' },
+    path: '/sync/jobs/j-1/details',
+    noBody: true,
+    response: { job: { jobId: 'j-1' } },
+  },
+  getDataSyncJobPreview: {
+    payload: { jobId: 'j-1' },
+    path: '/sync/jobs/j-1/preview',
+    noBody: true,
+    response: { tables: [] },
+  },
+  cancelDataSync: {
+    payload: { jobId: 'j-1', submissionToken: TOKEN },
+    path: '/sync/jobs/j-1/cancel',
+    body: { submissionToken: TOKEN },
+    wireResponse: { cancelled: true },
+    response: true,
+  },
+  inspectDataSync: {
+    payload: { sourceDbSessionId: 's-1', targetDbSessionId: 's-2' },
+    path: '/sync/inspections',
+    response: [],
+  },
+  revalidateDataSync: {
+    payload: { sourceDbSessionId: 's-1', targetDbSessionId: 's-2', tables: ['t'] },
+    path: '/sync/revalidations',
+    response: { ok: true, staleTables: [] },
+  },
+  compareDataSync: {
+    payload: { sourceDbSessionId: 's-1', targetDbSessionId: 's-2', tables: ['a'] },
+    path: '/sync/comparisons',
+    response: { tables: [] },
+  },
+  startDataSyncPrepareJob: {
+    payload: { sourceDbSessionId: 's-1', targetDbSessionId: 's-2', tables: ['a'], jobId: 'j-2' },
+    path: '/sync/jobs/prepare',
+    response: { jobId: 'j-2', kind: 'dataSyncPrepare', state: 'queued' },
+  },
+  startDataSyncApplyJob: {
+    payload: {
+      sourceDbSessionId: 's-1',
+      targetDbSessionId: 's-2',
+      request: { planId: 'plan-1', selection: {}, options: {} },
+    },
+    path: '/sync/jobs/apply',
+    response: { jobId: 'j-3', kind: 'dataSyncApply', state: 'queued' },
+  },
+  executeDataSync: {
+    payload: { request: { planId: 'plan-1', selection: {}, options: {} } },
+    path: '/sync/executions',
+    response: { outcome: 'committed', applied: 3 },
+  },
+  generateDataSyncSql: {
+    payload: { planId: 'plan-1', options: {} },
+    path: '/sync/sql-preview',
+    response: [],
+  },
+  checkSyncConflicts: {
+    payload: { taskId: 't-1' },
+    path: '/sync/tasks/t-1/conflicts',
+    noBody: true,
+    response: { hasConflicts: false, conflicts: [] },
+  },
+  verifyDataSyncRecovery: {
+    payload: {
+      request: {
+        jobId: 'j-1',
+        sourceDbSessionId: 's-1',
+        targetDbSessionId: 's-2',
+        sourceDatabase: 'db',
+        targetDatabase: 'db',
+      },
+    },
+    path: '/sync/jobs/j-1/recovery-verification',
+    body: {
+      sourceDbSessionId: 's-1',
+      targetDbSessionId: 's-2',
+      sourceDatabase: 'db',
+      targetDatabase: 'db',
+    },
+    response: { job: { jobId: 'j-1' } },
+  },
 };
 
 /* ------------------------------------------------------------------ */
@@ -509,12 +796,12 @@ const ROWS: Record<string, Row> = {
 /* ------------------------------------------------------------------ */
 
 describe('HTTP_ROUTES 分发表账目（契约 §4 总账）', () => {
-  it('60 条分发条目（W8 刀3a/刀3b web 收口 +18：queryAssets 7 + schemaDiff 11）；PATCH 双服务 + driver-gateway 双查询共用 → 58 个唯一 (method, pathTemplate)', () => {
+  it('108 条分发条目（W8 web 半边收口 +48：workflow 11 + dashboard 15 + dataSync 22）；PATCH 双服务 + driver-gateway 双查询共用 → 106 个唯一 (method, pathTemplate)', () => {
     const entries = Object.entries(HTTP_ROUTES) as [string, RouteSpec][];
-    expect(entries).toHaveLength(60);
+    expect(entries).toHaveLength(108);
     const shapes = entries.map(([, route]) => `${route.httpMethod} ${route.pathTemplate}`);
     const unique = new Set(shapes);
-    expect(unique.size).toBe(58);
+    expect(unique.size).toBe(106);
     // 两条共用路由都有契约出处：PATCH /connections/{id}（§6.3 一路由双服务，
     // 体判别）与 GET /driver-gateway/commands（§6.9，driverType/dbSessionId 查询判别）。
     for (const shared of ['PATCH /connections/{id}', 'GET /driver-gateway/commands']) {
@@ -540,10 +827,10 @@ describe('HTTP_ROUTES 分发表账目（契约 §4 总账）', () => {
     });
   });
 
-  it('open_base64_with_dialog 不上表（§6.9/§8 排除行）；表 + 它 = 61 个域方法（W8 收口后：43 + queryAssets 7 + schemaDiff 11）', () => {
+  it('open_base64_with_dialog 不上表（§6.9/§8 排除行）；表 + 它 = 109 个域方法（W8 web 半边收口后：61 + workflow 11 + dashboard 15 + dataSync 22）', () => {
     expect(HTTP_ROUTES['open_base64_with_dialog']).toBeUndefined();
     const keys = new Set([...Object.keys(HTTP_ROUTES), 'open_base64_with_dialog']);
-    expect(keys.size).toBe(61);
+    expect(keys.size).toBe(109);
   });
 });
 

@@ -50,21 +50,35 @@ export const DESKTOP_BACKEND_ID = 'desktop';
  * track and the host command names are 1:1. Every rename the table used to
  * carry (`get_shared_settings`, `platform_list_profiles`,
  * `read_artifact_chunk`, `get_table_data_at_target`, ...) was resolved on the
- * Rust side. W8 domain convergence kept that property for all but three
- * query-assets verbs whose host commands predate the contract's vocabulary
- * (`get_/add_/delete_favorite_queries`): those ride `COMMAND_ALIASES` below,
- * and it stays this small on purpose — a fourth entry means a domain was
- * converged without aligning names.
+ * Rust side. W8 domain convergence kept that property for all but the
+ * query-assets verbs and the workflow family, whose host commands predate
+ * the contract's vocabulary — see `COMMAND_ALIASES` below.
  */
 /**
  * W8 域收敛后方法名与既有 IPC 命令名不一致的少数几条（其余收敛方法的
  * camelCase → snake_case 纯约定转换恰好等于既有命令名——桌面命令先在，
- * 域方法名随契约冻结，此处登记的是仅剩的三处词序差）。
+ * 域方法名随契约冻结，此处登记的是仅剩的词序差）。
+ *
+ * workflow 域的十一条全部在此：桌面命令名是 `workflow_*` 前缀形
+ * （`workflow_list`），契约方法名是动词前置形（`listWorkflows`）——
+ * 词序差是历史命名（前缀聚类）与契约命名（动词先行）两代约定的分界，
+ * 不是收敛时的疏忽。
  */
 const COMMAND_ALIASES: Partial<Record<keyof MethodMap, string>> = {
   listQueryFavorites: 'get_favorite_queries',
   createQueryFavorite: 'add_favorite_query',
   deleteQueryFavorite: 'delete_favorite_query',
+  listWorkflows: 'workflow_list',
+  getWorkflow: 'workflow_get',
+  getWorkflowYaml: 'workflow_get_yaml',
+  saveWorkflow: 'workflow_save',
+  saveWorkflowYaml: 'workflow_save_yaml',
+  deleteWorkflow: 'workflow_delete',
+  executeWorkflow: 'workflow_execute',
+  reloadWorkflows: 'workflow_reload',
+  listWorkflowRuns: 'workflow_history_list',
+  getWorkflowRun: 'workflow_history_get',
+  clearWorkflowRuns: 'workflow_history_clear',
 };
 
 function toCommandName(method: keyof MethodMap): string {
@@ -99,6 +113,58 @@ const CONVERGED_DOMAIN_FLAT_METHODS: ReadonlySet<keyof MethodMap> = new Set<keyo
   'getSchemaDiffJobDetails',
   'cancelSchemaDiffDeploy',
   'verifySchemaDiffJobRecovery',
+  // W8 刀3c/3d/3e web 收口（workflow / dashboard / dataSync）。saveWorkflow /
+  // saveDashboard / saveSyncProfile 的 `{ workflow }` / `{ dashboard }` /
+  // `{ profile }` 袋剥令牌后与 IPC 命名参数同形；createWidgetFrom*
+  // 顶层 dashboardId 是 web 路径插值的副本，Tauri 只取声明的 params 键。
+  'listWorkflows',
+  'getWorkflow',
+  'getWorkflowYaml',
+  'saveWorkflow',
+  'saveWorkflowYaml',
+  'deleteWorkflow',
+  'executeWorkflow',
+  'reloadWorkflows',
+  'listWorkflowRuns',
+  'getWorkflowRun',
+  'clearWorkflowRuns',
+  'listDashboards',
+  'getDashboard',
+  'saveDashboard',
+  'deleteDashboard',
+  'setDashboardRefreshPaused',
+  'findDashboardWorkflowRefs',
+  'createWidgetFromSql',
+  'createWidgetFromWorkflow',
+  'updateHiddenWidgetSql',
+  'runDashboardWidget',
+  'listWidgetRuns',
+  'getWidgetRun',
+  'getMonitorScheduleGrant',
+  'authorizeMonitorSchedule',
+  'revokeMonitorSchedule',
+  'getSyncTasks',
+  'deleteSyncTask',
+  'getSyncProfiles',
+  'saveSyncProfile',
+  'deleteSyncProfile',
+  'classifyDataSyncPair',
+  'listMigrationRuns',
+  'getMigrationRun',
+  'listDataSyncJobs',
+  'getDataSyncJob',
+  'getDataSyncJobDetails',
+  'getDataSyncJobPreview',
+  'cancelDataSync',
+  'inspectDataSync',
+  'revalidateDataSync',
+  'compareDataSync',
+  'startDataSyncPrepareJob',
+  'startDataSyncApplyJob',
+  'executeDataSync',
+  'generateDataSyncSql',
+  'checkSyncConflicts',
+  'verifyDataSyncRecovery',
 ]);
 
 /**

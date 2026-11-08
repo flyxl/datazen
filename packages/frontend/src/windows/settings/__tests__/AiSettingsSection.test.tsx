@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
-import { setBackendClient } from '@datazen/backend-client';
+import { createBackendClient, setBackendClient } from '@datazen/backend-client';
 import { AiSettingsSection } from '../AiSettingsSection';
 import { useAiStore } from '../../../stores/aiStore';
 import { getDefaultSafetyGate } from '../../../lib/aiSafetyPresets';
@@ -10,14 +10,19 @@ import { LOCAL_CLI_PROVIDER_TYPES, PROVIDER_PRESETS } from '../../../lib/aiProvi
 // which resolves the bound backend facade — the section's dir effect fires on
 // mount. Bind the test transport so the mount does not leave an unhandled
 // unbound-client rejection behind (vitest exits 1 on those).
-setBackendClient('test', {
-  transport: {
+// W8 刀3c web 收口：AiToolBridgeSection 的 mount 效应新增 workflowList 域
+// 方法调用——真门面架在假 transport 上，context_get_dir（legacy 轨）与
+// listWorkflows（域轨）都在同一 call 里应答。
+setBackendClient(
+  'test',
+  createBackendClient('test', {
     call: async (method: string) => {
       if (method === 'context_get_dir') return '/tmp/datazen-context';
+      if (method === 'listWorkflows') return [];
       return undefined;
     },
-  },
-} as never);
+  } as never) as never,
+);
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({

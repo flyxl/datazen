@@ -1,4 +1,15 @@
-import { legacyInvoke as invoke, type LegacyCommandName } from '@datazen/backend-client';
+import {
+  legacyInvoke as invoke,
+  useBackendClient,
+  type LegacyCommandName,
+} from '@datazen/backend-client';
+import type {
+  WorkflowDefinition,
+  WorkflowExecutionResult,
+  WorkflowListItem,
+  WorkflowRunListItem,
+  WorkflowRunRecord,
+} from '@datazen/backend-client';
 import { requirePlatform } from '../platform/contracts';
 
 type UnlistenFn = () => void;
@@ -29,8 +40,6 @@ import type {
   DiagnosisResult,
   ExplainAnalysis,
   FilterCondition,
-  HistoryEntry,
-  HistoryListItem,
   McpAuditRecord,
   McpApprovalDecision,
   McpClientStatus,
@@ -39,9 +48,6 @@ import type {
   McpToolInfo,
   ModelInfo,
   QueryAnalysis,
-  WorkflowDefinition,
-  WorkflowExecutionResult,
-  WorkflowListItem,
   ProviderListItem,
   StreamChunkPayload,
   StreamErrorPayload,
@@ -112,6 +118,15 @@ export interface PromptOverrideEntry {
   driverType: string;
   scenario: PromptScenario;
   system: string;
+}
+
+/**
+ * Workflow 写面令牌（契约 §6.14）：save / save-yaml / execute 三个带体写面
+ * 走 `saveUserAsset` 操作族（用户资产，不绑会话）——与 schemaDiff 命令层
+ * 同款。DELETE 面（delete / clear）不带体，无需令牌。
+ */
+async function userAssetToken() {
+  return useBackendClient().issueSubmissionToken('saveUserAsset', null);
 }
 
 export const aiCommands = {
@@ -280,27 +295,38 @@ export const aiCommands = {
   mcpListAuditLog: (limit?: number) =>
     invoke<McpAuditRecord[]>('mcp_list_audit_log', { limit: limit ?? null }),
 
-  workflowList: () => invoke<WorkflowListItem[]>('workflow_list'),
-  workflowExecute: (params: {
+  workflowList: (): Promise<WorkflowListItem[]> => useBackendClient().listWorkflows(),
+  workflowExecute: async (params: {
     workflowId: string;
     variables: Record<string, unknown>;
     connectionId?: string;
-  }) => invoke<WorkflowExecutionResult>('workflow_execute', params),
-  workflowSave: (workflow: WorkflowDefinition) =>
-    invoke<void>('workflow_save', { workflow: mergeDraftCommandFields(workflow) }),
-  workflowSaveYaml: (yaml: string) => invoke<WorkflowDefinition>('workflow_save_yaml', { yaml }),
-  workflowGetYaml: (workflowId: string) => invoke<string>('workflow_get_yaml', { workflowId }),
-  workflowDelete: (workflowId: string) => invoke<void>('workflow_delete', { workflowId }),
-  workflowReload: () => invoke<void>('workflow_reload'),
+  }): Promise<WorkflowExecutionResult> =>
+    useBackendClient().executeWorkflow(params, await userAssetToken()),
+  // mergeDraftCommandFields 是 UI 侧编排（草稿桥补字段），留在换轨后的
+  // 命令面前；域客户端拿到的就是完整的 WorkflowDefinition。
+  workflowSave: async (workflow: WorkflowDefinition): Promise<void> =>
+    useBackendClient().saveWorkflow(
+      { workflow: mergeDraftCommandFields(workflow) },
+      await userAssetToken(),
+    ),
+  workflowSaveYaml: async (yaml: string): Promise<WorkflowDefinition> =>
+    useBackendClient().saveWorkflowYaml({ yaml }, await userAssetToken()),
+  workflowGetYaml: (workflowId: string): Promise<string> =>
+    useBackendClient().getWorkflowYaml({ workflowId }),
+  workflowDelete: (workflowId: string): Promise<void> =>
+    useBackendClient().deleteWorkflow({ workflowId }),
+  workflowReload: (): Promise<void> => useBackendClient().reloadWorkflows(),
+  // 桌面专属（文件系统语义）：契约 §6.14 裁决不进 HTTP 面，保持 legacy 轨。
   workflowGetDir: () => invoke<string>('workflow_get_dir'),
-  workflowGet: (workflowId: string) => invoke<WorkflowDefinition>('workflow_get', { workflowId }),
+  workflowGet: (workflowId: string): Promise<WorkflowDefinition> =>
+    useBackendClient().getWorkflow({ workflowId }),
 
-  workflowHistoryList: (workflowId?: string) =>
-    invoke<HistoryListItem[]>('workflow_history_list', { workflowId: workflowId ?? null }),
-  workflowHistoryGet: (historyId: string) =>
-    invoke<HistoryEntry>('workflow_history_get', { historyId }),
-  workflowHistoryClear: (workflowId?: string) =>
-    invoke<number>('workflow_history_clear', { workflowId: workflowId ?? null }),
+  workflowHistoryList: (workflowId?: string): Promise<WorkflowRunListItem[]> =>
+    useBackendClient().listWorkflowRuns(workflowId == null ? {} : { workflowId }),
+  workflowHistoryGet: (historyId: string): Promise<WorkflowRunRecord> =>
+    useBackendClient().getWorkflowRun({ historyId }),
+  workflowHistoryClear: (workflowId?: string): Promise<number> =>
+    useBackendClient().clearWorkflowRuns(workflowId == null ? {} : { workflowId }),
 
   generateSchemaDoc: (params: { dbSessionId: string; database: string }) =>
     invoke<string>('ai_generate_schema_doc', params),
