@@ -217,6 +217,7 @@ pub const MIGRATIONS: &[Migration] = &[
     V12_SCHEMA_DIFF_RUNTIME,
     V13_WORKFLOW_RUNTIME,
     V14_DASHBOARD_RUNTIME,
+    V15_SYNC_ASSETS,
 ];
 
 /// v10：组织记忆与审批审计（T25）。版本化行 `(organization_id, id,
@@ -967,6 +968,70 @@ CREATE TABLE monitor_schedule_grants (
 );
 CREATE INDEX idx_monitor_grant_widget
   ON monitor_schedule_grants (organization_id, dashboard_id, widget_id);
+"#,
+};
+
+/// v15：Data Sync 双表（W8 刀3e-2——同步任务断点与复用档案的服务端
+/// 存储；契约 §6.16 的存储底座）。桌面形是两个 JSON 文件
+/// （`sync_tasks.json` / `sync_profiles.json`，单租户全体共享），web 形态
+/// 改存服务端库行（v11 查询资产「文件形的服务端对偶」同款裁决）。
+///
+/// DDL 口径（v5 起登记纪律 + v11/v12 先例）：
+///
+/// - **per (organization_id, id) 复合主键**：任务与档案都是组织级资产
+///   （桌面单租户不区分归属；服务端按组织收敛，CM-05：越界读空、写只落
+///   本边界）。隔离键由调用方按认证链事实装配（INV-01）。
+/// - **词汇单家**：`sync_profiles` 行 = 共享层 `SyncProfile`
+///   （`migration::data_sync::profile`）；`sync_tasks` 行 = 共享层
+///   `StoredSyncTask`（`migration::data_sync::task_checkpoint`，W8 刀3e-2
+///   从桌面 `store/models.rs` 上移——桌面文件形与服务端表形共用一条
+///   词汇，FavoriteQuery/QueryHistoryEntry 同款先例）。
+/// - **深度结构 JSON 投影**：`tables_json` / `options_json`（档案的表
+///   映射含结构化源过滤器/记录集，展开列不现实）；`payload_json`
+///   （任务整档——断点字段是文档形状态，展开列无查询收益）。坏行按
+///   存储故障上抛（v12 `schema_diff_profiles` 同款 fail-closed）。
+/// - **任务投影列不加 CHECK**：`status` / `strategy` 在共享词汇里是
+///   自由串（serde 缺省 + `normalize_legacy_state` 重写），存储层不得比
+///   单家词汇更严——否则桌面接受的档案在服务端被拒，违反双形态一致性。
+///   投影列只为续航查找（连接对）与观测（状态/时间）服务。
+/// - **TIMESTAMPTZ → TEXT**（定宽 RFC3339 UTC，v5 起口径）。
+const V15_SYNC_ASSETS: Migration = Migration {
+    version: 15,
+    name: "data sync assets (task checkpoints + reusable profiles)",
+    expand: r#"
+CREATE TABLE sync_profiles (
+  organization_id TEXT NOT NULL,
+  id TEXT NOT NULL CHECK (id <> ''),
+  version INTEGER NOT NULL CHECK (version > 0),
+  name TEXT NOT NULL CHECK (name <> ''),
+  source_connection_id TEXT NOT NULL CHECK (source_connection_id <> ''),
+  target_connection_id TEXT NOT NULL CHECK (target_connection_id <> ''),
+  source_database TEXT CHECK (source_database IS NULL OR source_database <> ''),
+  target_database TEXT CHECK (target_database IS NULL OR target_database <> ''),
+  source_schema TEXT CHECK (source_schema IS NULL OR source_schema <> ''),
+  target_schema TEXT CHECK (target_schema IS NULL OR target_schema <> ''),
+  tables_json TEXT NOT NULL,
+  options_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (organization_id, id)
+);
+CREATE INDEX idx_sync_profiles_connections
+  ON sync_profiles (organization_id, source_connection_id, target_connection_id);
+
+CREATE TABLE sync_tasks (
+  organization_id TEXT NOT NULL,
+  id TEXT NOT NULL CHECK (id <> ''),
+  source_connection_id TEXT NOT NULL CHECK (source_connection_id <> ''),
+  target_connection_id TEXT NOT NULL CHECK (target_connection_id <> ''),
+  status TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (organization_id, id)
+);
+CREATE INDEX idx_sync_tasks_status
+  ON sync_tasks (organization_id, status);
 "#,
 };
 
