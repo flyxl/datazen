@@ -39,7 +39,7 @@
 
 ## 4. 契约面总账
 
-十三个域、73 个域客户端方法（§6.14 workflow 十二方法随 W8 刀3c 入账）：
+十四个域、90 个域客户端方法（§6.15 dashboard 十七方法随 W8 刀3d 入账）：
 
 | 域 | 方法数 | HTTP 服务 | 排除 | 备注 |
 | --- | --- | --- | --- | --- |
@@ -56,9 +56,10 @@
 | queryAssets | 7 | 7 | 0 | §6.12（W8 刀3a；web 半边随本版收口：域客户端 + 名单收缩） |
 | schemaDiff | 11 | 11 | 0 | §6.13（W8 刀3b；web 半边随本版收口；`get_migration_run`/`list_migration_runs` 读面留 sync 域） |
 | workflow | 12 | 11 | 1 | §6.14（W8 刀3c；`getWorkflowDir` 桌面文件语义排除） |
-| **合计** | **73** | **71** | **2** | |
+| dashboard | 17 | 15 | 2 | §6.15（W8 刀3d；`export/import_dashboard_with_dialog` 桌面文件对话框语义排除；`webdriver_monitor_evidence` 测试专用投影不入客户端面） |
+| **合计** | **90** | **86** | **4** | |
 
-路由总数 70 条服务 71 个方法（PATCH 双服务），另有服务自举路由 5 条（§5）与已立项待补方法的 1 条（§6.5）。
+路由总数 85 条服务 86 个方法（PATCH 双服务），另有服务自举路由 5 条（§5）与已立项待补方法的 1 条（§6.5）。
 
 ## 5. 服务自举路由（非域面）
 
@@ -343,6 +344,75 @@ legacy IPC 命令轨的第二域（`compare_table_schemas` / `prepare_schema_dif
 - **错误 wire**：存储故障 → 503 `serviceUnavailable`；定义校验失败 →
   400 `invalidArgument`；未知/越组织 id → 404 固定文案（防枚举）。
 
+### 6.15 dashboard：仪表板、组件、运行历史与 monitor 授权（W8 刀3d，2026-11-08）
+
+| 方法 | 路由 | 令牌 | 成功 | 请求 → 响应 |
+| --- | --- | --- | --- | --- |
+| `listDashboards` | `GET /api/v1/dashboards` | — | 200 | — → `Dashboard[]` |
+| `getDashboard` | `GET /api/v1/dashboards/{id}` | — | 200 | — → `Dashboard` |
+| `saveDashboard` | `PUT /api/v1/dashboards/{id}` | ✓ | 200 | `Dashboard & SubmitRequest` → `Dashboard`（存储后回读） |
+| `deleteDashboard` | `DELETE /api/v1/dashboards/{id}` | — | 204 | —（未知 id → 404，桌面 `NotFound` 语义） |
+| `setDashboardRefreshPaused` | `PATCH /api/v1/dashboards/{id}/refresh-paused` | ✓ | 204 | `{ paused } & SubmitRequest` → — |
+| `findDashboardWorkflowRefs` | `GET /api/v1/dashboards/workflow-refs?workflowId=` | — | 200 | — → `DashboardWorkflowRef[]` |
+| `createWidgetFromSql` | `POST /api/v1/dashboards/{id}/widgets/from-sql` | ✓ | 200 | `CreateWidgetFromSqlParams & SubmitRequest` → `CreateWidgetResult` |
+| `createWidgetFromWorkflow` | `POST /api/v1/dashboards/{id}/widgets/from-workflow` | ✓ | 200 | `CreateWidgetFromWorkflowParams & SubmitRequest` → `CreateWidgetResult` |
+| `updateHiddenWidgetSql` | `POST /api/v1/dashboards/hidden-widget-sql` | ✓ | 204 | `UpdateHiddenWidgetSqlParams & SubmitRequest` → — |
+| `runDashboardWidget` | `POST /api/v1/dashboards/{id}/widgets/{widgetId}/run` | ✓ | 200 | `SubmitRequest`（体可缺席） → `WidgetRun` |
+| `listWidgetRuns` | `GET /api/v1/dashboards/{id}/widgets/{widgetId}/runs?limit=` | — | 200 | — → `RunIndexEntry[]` |
+| `getWidgetRun` | `GET /api/v1/dashboards/{id}/widgets/{widgetId}/runs/{runId}` | — | 200 | — → `WidgetRun` |
+| `getMonitorScheduleGrant` | `GET /api/v1/dashboards/{id}/widgets/{widgetId}/schedule-grant` | — | 200 | — → `MonitorGrant \| null` |
+| `authorizeMonitorSchedule` | `POST /api/v1/dashboards/{id}/widgets/{widgetId}/schedule-grant` | ✓ | 200 | `{ ttlSecs } & SubmitRequest` → `MonitorGrant` |
+| `revokeMonitorSchedule` | `DELETE /api/v1/dashboards/{id}/widgets/{widgetId}/schedule-grant` | — | 204 | —（无授权单 = 幂等 no-op） |
+
+域裁决：
+
+- **存储**：v14 五表（`dashboards` / `widgets` / `widget_runs` +
+  `widget_latest_run` 伴表 / `monitor_schedule_grants`，组织复合主键）
+  ——桌面 `AppDb` 五表的组织键投影；行词汇与登记规则（保存归一化、
+  消失组件清理、`created_at` 保留、保留策略 count/days/latest 防误删）
+  单家在共享层 `dashboard::repository` / `dashboard::runs`，服务端存储
+  只提供行。**行级校验下沉**（view_mode 词表 / refresh 配对）随本刀
+  归共享层单家（桌面存储改消费共享版）。
+- **save 回读**：应答是存储后的形态（归一化/时间戳权威后的回读，不是
+  调用方发送的回声——桌面 `save_dashboard` IPC 同语义）。保存/删除/
+  暂停后 best-effort 重载调度表（引擎 `reload`；桌面
+  `reload_from_store` 的 server 投影，无 tray 半边）。组件创建不重载
+  （桌面同款：新组件默认 manual 刷新）。
+- **手工执行是同步应答**（`runDashboardWidget`；桌面 IPC 同语义）：
+  走共享调度引擎的 `tick_widget`（并发信号量 + 工作流锁）；请求真主体
+  经**域级互斥下的身份槽**注入（调度路径不走身份槽——授权单服务
+  身份）。受理面入限流严格档（workflow execute 同族）。
+- **monitor 授权面**：`authorize` 是桌面同链校验（ttl 60..86400 →
+  仪表板/组件状态 → 工作流形状[无变量/无 blocks/固定只读查询] →
+  SQL 模板拒绝 → 只读 SQL AST 校验 → profile 启用 + PostgreSQL/MySQL
+  → 目标规范化[授权单冻结规范化身份，与执行闸比对口径一致] → 冻结
+  事实复验）；`revoke` 仅批准人、无单 = 幂等 no-op；`get` 仅批准人
+  可读（`grant owner required` 400——桌面 `Validation` 同语义，调用方
+  就是编辑者，「有单但不是你的」是显式拒绝而非存在性隐藏）。
+- **定时刷新引擎 server 接线**（「双端调度」的 dashboard 半边）：
+  共享 `MonitorEngine`（到期判定/在途守卫/信号量/arm-not-fire）+
+  `ServerMonitorHost`（授权闸门失败关闭 + `GrantScopedHost` 授权单
+  作用域执行[规范目标三重比对 + 服务身份上下文] + 运行落账）；
+  spawn 于装配尾、graceful drain 后停车（共享层 `MonitorEngine` 增
+  公开 `stop`/`is_stopped`，两形态受益）。**桌面 job-occurrence 幂等
+  receipts 不在 server 面**（与 workflow 调度器同形的直接执行——
+  登记缺口，随 job 面立项）；通知投递（webhook/email）与 SSE 事件桥
+  随 WR-G 切片。
+- **workflow 删除引用闸**（§6.14 的登记欠账随本刀销账）：被仪表板
+  组件引用的定义拒绝删除（`Workflow in use by dashboards: …`，桌面
+  `WorkflowInUse` 同文案）。
+- **桌面专属不进 HTTP 面**：`export_dashboard_with_dialog` /
+  `import_dashboard_with_dialog` 是文件对话框语义（浏览器侧导出/导入
+  走产物上传[§6.5 在账端点]与下载）；`webdriver_monitor_evidence` 是
+  测试专用投影，不入域客户端面。
+- **令牌**：带体写面（save / refresh-paused / 创建三 / authorize）核
+  `SubmitRequest` 在场性与 `idempotencyKey` 绑定（HMAC 轨签发，
+  `saveUserAsset` 操作族）。`runDashboardWidget` 体可缺席（无参数面），
+  在场时核绑定。DELETE 面（delete / revoke）不带体（现行口径一致）。
+- **错误 wire**：存储故障 → 503 `serviceUnavailable`；校验失败 →
+  400 `invalidArgument`（文案与桌面 IPC `Validation` 同源）；未知/越
+  组织 id → 404 固定文案（防枚举）。
+
 ## 7. 能力差异：`WEB_CAPABILITIES` 与 `unsupportedMethods`
 
 - **桌面专属能力不出现在 HTTP 面**：updater、window、native dialog、本机 OS 集成。它们的形态差异由 `packages/frontend/src/platform/capabilities.ts` 的静态表声明（`WEB_CAPABILITIES.updater: false`、`settingsSections` 收窄），前端**编译期分支**，不做运行时形态探测。
@@ -387,3 +457,4 @@ WR-D 落地时的机器核对（WR-C3 接管）：同用例双传输测试逐方
 - 2026-11-07：v1.4.1（W8 刀1对账——PR #204 关闭后的增量移植）。§6.10 补三行裁决：`GET /api/v1/executions/{id}` 的 L6 两段登记（`ResourceType::Execution` + `Read`，rbac 基线矩阵裁决）、令牌两轨不混用的 409 wire（`idempotencyExpired`）、限流严格档补行（`POST …/executions` 与 `POST /api/v1/ai-host/execute-target`）。aiHost.executeTarget 的 claim 纪律补齐（claim 必填：`independent` 真执行、`editorGrant` 501 fail-closed、缺失/未知 400——与 web 端 `AiHostExecuteTargetRequest` 冻结形状对齐）；`PrincipalScopedHost` 上移为共享装饰器（aiHost 与 MCP 七工具同一真主体注入路径）。
 - 2026-11-07：v1.5.1（W8 刀3a/刀3b web 半边收口——域客户端落地）。**queryAssets / schemaDiff 两域客户端**进 `@datazen/backend-client`（`QueryAssetsMethodMap` 7 方法 + `SchemaDiffMethodMap` 11 方法，`MethodMap` 组合挂接、门面 spread 平铺）；web `HTTP_ROUTES` 分发表 42→60 条（queryAssets 7 + schemaDiff 11 的 RouteSpec：写面体折令牌、`{deleted}`/`{purged}`/`{cancelled}` 包装由 decoder 拆封到桌面域形状、save 的 `{profile}` 包装在 body 构造器展开）；**tagged-enum 归一化上移**（plan requirements 的 `{backfill|unsupported}` 折叠进域客户端，桌面 IPC 与 HTTP 两轨同形，归一化函数 `normalizeSchemaDiffJobDetailsWire` 出面供宿主复用）；`webUnsupportedMethods` 名单收缩 18 条（legacy 命令轨第三、四域消亡；`get_favorites_root`/`refresh_favorites` 桌面文件语义与 `get_migration_run`/`list_migration_runs`（留 sync 域）保持登记）；桌面 transport 三处命令别名（`listQueryFavorites→get_favorite_queries` 等）+ 收敛域令牌剥除（IPC 轨无幂等回执）；**`IdempotentOperation` 增 `SaveUserAsset`**（用户资产写面共用配置类操作，不绑会话；签发面白名单 + `saveUserAsset` wire 词入账——服务器消费闸维持在场性核对，HMAC 细分随未来接线退役拆开）。前端 `queryCommands`/`schemaDiffCommands`/`historyCommands.purgeHistory` 全量换域门面方法（`getFavoritesRoot`/`refreshFavorites` 等桌面专属留 legacy 轨）。
 - 2026-11-07：v1.6（W8 刀3c，workflow 域 + 双端定时调度）。**§6.14 定义管理、同步执行与运行历史**十一路由（定义 CRUD 五 + from-yaml + execute + reload + 运行历史三）——legacy IPC 命令轨的第五域（12 命令收敛，`getWorkflowDir` 桌面文件语义排除）；v13 expand-only 迁移（`workflows` + `workflow_run_history` 双表，桌面 AppDb/HistoryDb 同名表的组织键投影；服务端不播内置样例——单机 onboarding 供给的形态差异）；执行 = 同步 200 全量结果（桌面 IPC 同语义，aiHost.executeTarget 同款先例；受理面入限流严格档）；**AI 步骤 fail-closed**（server 形态本刀无 AI 供应商注册表：交互面按执行器默认错误策略 200 + `success:false` + 步骤 error 明确拒绝文案，调度面被授权单派生更早拒绝）；**定时调度器 server 接线**（「双端调度」补齐）：共享层核心调度器（arm-not-fire、上膛冻结→触发比对、授权闸门失败关闭）+ `ServerScheduleGrantReader`（定义 YAML + profile 版本的确定性派生，收集规则自桌面下沉共享层）+ `ServerScheduleHost`（owner 归属核对 + 服务身份执行上下文 + 审计日志），spawn 于装配尾、graceful drain 后停车；共享层 `WorkflowScheduler` 增公开 `stop`/`is_stopped`（两形态受益）。§4 总账 61→73 方法 / 59→70 路由（workflow 12 入账，11 服务 1 排除）。web 半边（域客户端 + 不支持名单收缩）随下刀收口。
+- 2026-11-08：v1.7（W8 刀3d，dashboard 域 + 双端刷新监控）。**§6.15 仪表板、组件、运行历史与 monitor 授权**十五路由（CRUD 六 + 组件创建三 + 运行历史二 + 手工执行一 + monitor 授权三）——legacy IPC 命令轨的第六域（17 客户端方法，15 服务 2 排除：`export/import_dashboard_with_dialog` 桌面文件对话框语义；`webdriver_monitor_evidence` 测试专用投影不入客户端面）；v14 expand-only 迁移（五表：`dashboards`/`widgets`/`widget_runs`+`widget_latest_run` 伴表/`monitor_schedule_grants`，桌面 AppDb 五表的组织键投影；行级校验 view_mode 词表/refresh 配对下沉共享层单家）；save = 存储后回读（桌面 IPC 同语义）；手工执行 = 共享调度引擎 `tick_widget`（信号量+工作流锁；请求真主体经域级互斥身份槽注入；受理面入限流严格档）；**monitor 授权面**（authorize 桌面同链校验[状态/形状/只读 SQL/PG-MySQL/目标规范化/冻结复验]、revoke 仅批准人幂等、get 仅批准人）；**定时刷新引擎 server 接线**（「双端调度」dashboard 半边：共享 `MonitorEngine` arm-not-fire + `ServerMonitorHost` 授权闸门失败关闭 + `GrantScopedHost` 授权单作用域执行[规范目标三重比对+服务身份]+运行落账；共享层 `MonitorEngine` 增公开 `stop`/`is_stopped`；桌面 job-occurrence 幂等 receipts 与通知投递/SSE 事件桥登记为后续切片）；**workflow 删除引用闸**（§6.14 登记欠账销账：`Workflow in use by dashboards` 同文案）。§4 总账 73→90 方法 / 70→85 路由（dashboard 17 入账，15 服务 2 排除）。web 半边（域客户端 + 不支持名单收缩）随下刀收口。

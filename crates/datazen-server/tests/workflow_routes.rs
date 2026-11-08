@@ -407,6 +407,12 @@ async fn wired_fixture() -> WireFixture {
                     history: history.clone(),
                     execution: resource_host,
                     profiles,
+                    // 删除闸的引用核对（刀3d 起在账）：同一管理库上的
+                    // scoped 仪表板存储。
+                    dashboard_refs: datazen_server::storage::ServerDashboardStore::scoped(
+                        store.clone(),
+                        "org-1",
+                    ),
                     organization_id: "org-1".to_owned(),
                 },
             ),

@@ -27,7 +27,7 @@ description = "DataZen team web server host (P7 / web-ready WR-D): the HTTP form
 # 本就要求共用该机制 feature）与 jobs（JobRepository 端口 + 落盘词汇，
 # WR-D2 第三切片）。不整包开启——与桌面的全 feature 列表形成对照：宿主按需
 # 消费内核。后续切片按域点亮。
-datazen = { workspace = true, features = ["connection", "execution", "tunnel", "jobs", "settings", "named_views", "history", "workflow", "table-editing", "table-browsing", "application", "ai", "services", "schema_diff", "data_transfer"] }
+datazen = { workspace = true, features = ["connection", "execution", "tunnel", "jobs", "settings", "named_views", "history", "workflow", "table-editing", "table-browsing", "application", "ai", "services", "schema_diff", "data_transfer", "dashboard"] }
 
 # WR-D2 收尾：连接目录/隧道定义的端口形状（`ConnectionConfig` /
 # `SavedTunnel`）直接来自 driver-api——模块不二次投影，server 也不得
@@ -73,6 +73,9 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 
 serde = { workspace = true }
 serde_json = { workspace = true }
+# W8 刀3d：dashboard 域的 monitor 授权流程解析定义 YAML（工作流形状闸）。
+# workspace 同一版本（datazen/workflow feature 同源包），锁只添本包依赖边。
+serde_yaml = { workspace = true }
 thiserror = { workspace = true }
 # WR-D3 认证授权核心的密码学原语（全部沿用 workspace 根表既有规格，无锁外版本）：
 # - sha2 + hmac：policyIsolationKey（team-server §6.2）与 CSRF 会话绑定签名（§5.1）

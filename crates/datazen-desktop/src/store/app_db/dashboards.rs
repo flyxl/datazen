@@ -200,31 +200,27 @@ impl AppDb {
     // ── Widget runs ───────────────────────────────────────────────────────
 }
 
+// 行级校验（view_mode 词表 / refresh 配对）已下沉共享层
+// `datazen::dashboard::repository`（W8 刀3d 单家化：服务端存储同表形，
+// 校验规则不得两家各持一份）。本地薄包装只做错误形状适配——共享层的
+// `Parse` 文案原样透传（IPC 契约逐字不变）。
 fn validate_view_mode(mode: &str) -> Result<(), AppDbError> {
-    match mode {
-        "chart" | "table" => Ok(()),
-        _ => Err(AppDbError::Validation(format!("invalid view_mode: {mode}"))),
-    }
+    datazen::dashboard::repository::validate_view_mode(mode).map_err(parse_to_validation)
 }
 
 fn validate_refresh_pair(mode: Option<&str>, refresh_sec: Option<u32>) -> Result<(), AppDbError> {
-    let Some(mode) = mode else {
-        return Ok(());
-    };
-    match mode {
-        "manual" | "onOpen" => Ok(()),
-        "interval" => {
-            let sec = refresh_sec.unwrap_or(0);
-            if sec < 30 {
-                return Err(AppDbError::Validation(
-                    "interval refresh_sec must be >= 30".into(),
-                ));
-            }
-            Ok(())
+    datazen::dashboard::repository::validate_refresh_pair(mode, refresh_sec)
+        .map_err(parse_to_validation)
+}
+
+fn parse_to_validation(
+    error: datazen::dashboard::repository::DashboardRepositoryError,
+) -> AppDbError {
+    match error {
+        datazen::dashboard::repository::DashboardRepositoryError::Parse(message) => {
+            AppDbError::Validation(message)
         }
-        _ => Err(AppDbError::Validation(format!(
-            "invalid refresh_mode: {mode}"
-        ))),
+        other => AppDbError::Validation(other.to_string()),
     }
 }
 

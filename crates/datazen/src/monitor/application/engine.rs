@@ -139,6 +139,18 @@ impl MonitorEngine {
             }
         });
     }
+    /// 请求停车（W8 刀3d：server 形态的 graceful drain 半边——与
+    /// `WorkflowScheduler::stop` 同款语义）。取消令牌即刻置位；工作循环
+    /// 在**下一个 tick 边界**退出，在途派发自行跑完（`tick_widget` /
+    /// `tick_scheduled_widget` 不检查取消令牌——已经开始的执行不被
+    /// 半途掐断）。幂等：重复调用无额外效果。
+    pub fn stop(&self) {
+        self.cancel.cancel();
+    }
+    /// 停车是否已请求（取消令牌视图；工作循环可能仍在收尾）。
+    pub fn is_stopped(&self) -> bool {
+        self.cancel.is_cancelled()
+    }
     pub fn is_monitoring_active(&self) -> bool {
         self.active.load(Ordering::Relaxed) > 0
     }
