@@ -40,9 +40,7 @@ use crate::data_sync::{Endpoint, SyncSourceFilter};
 
 use super::super::error::CommandError;
 use super::super::AppState;
-use super::host::recording::RecordingHost;
 use super::host::state;
-use super::host::HostDataSync;
 
 /// One worker identity for the whole desktop app: the Data Sync window owns the
 /// Job and the Job never spawns another worker.
@@ -592,8 +590,9 @@ fn open_job(kind: &'static str, window_job_id: Option<&str>) -> (JobId, RequestC
     (job_id, ctx)
 }
 
-/// The desktop host wrapped in the failure recorder. `RecordingHost` is the
-/// only production writer of `state::FAILURES`, which is what makes the IPC
+/// The desktop host wrapped in the failure recorder. The recording decorator
+/// (shared `RecordingDataSyncHost` + desktop failure sink) is the only
+/// production writer of `state::FAILURES`, which is what makes the IPC
 /// message evidence-based instead of a reconstruction.
 ///
 /// The host is constructed without any cancel handle:
@@ -611,7 +610,7 @@ pub(crate) fn recording_host(
         .platform_require()
         .map_err(crate::platform::into_command_error)?;
     let call = adapter.begin_call();
-    let host = HostDataSync::new(
+    Ok(super::host::desktop_execution_host(
         adapter
             .runtime()
             .map_err(crate::platform::into_command_error)?,
@@ -621,8 +620,8 @@ pub(crate) fn recording_host(
         source,
         target,
         filters,
-    );
-    Ok(Arc::new(RecordingHost::new(Arc::new(host), job_id)))
+        job_id,
+    ))
 }
 
 #[cfg(test)]

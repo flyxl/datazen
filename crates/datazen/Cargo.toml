@@ -255,6 +255,12 @@ data_sync = [
     "jobs",
     "schema",
     "execution",
+    # W8 刀3e-4a：执行宿主下沉（job::runtime_host）带来两个真实依赖——
+    # services 的 metadata_schema 梯子与 data_transfer 的 SyncAdapterRegistry
+    # （注册表历史上由宿主侧装配，宿主 crate 全 feature 时两者恒在；下沉后
+    # 成为 data_sync 自身的编译闭包。两者都不反向依赖 data_sync，无环）。
+    "services",
+    "data_transfer",
 ]
 # D5：Data Transfer 引擎（原 data-transfer crate 整体归位；三件套之三）。
 # flate2 随 sql_file 的 gzip 读写进入（形态中立）；inventory 随 transfer

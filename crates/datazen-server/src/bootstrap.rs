@@ -474,13 +474,16 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         schema_diff_backend_deps,
     );
 
-    // ── W8 刀3e：Data Sync 域装配（存储 v15 + JobHost + 计划注册表）。
+    // ── W8 刀3e：Data Sync 域装配（存储 v15 + JobHost + 计划注册表 +
+    // 刀3e-4a 执行面服务层）。
     // job 仓储与 jobs 域/TaskCenter 同一 ServerJobs 实例（预算账本与执行面
-    // 各自独立——schema_diff 同构；受理/派发随刀3e-4 接线）。计划注册表 =
-    // 共享层 InMemory（组织键隔离端口——行级复核投影与冻结 ChangeSet 的
-    // 进程内仓储，SQL 正文不落盘，重启后「计划不可用」如实回答，桌面同
-    // 语义）；运行态（复核挂起集合 + 宿主侧失败消息）装配态实例（3e-4
-    // 的执行宿主是唯一生产者）。
+    // 各自独立——schema_diff 同构）；读面（SyncJobs）与执行面
+    // （SyncExecution）共享同一 JobHost/计划注册表/运行态。计划注册表 =
+    // 共享层 InMemory（组织键隔离端口——行级复核投影、冻结 ChangeSet 与
+    // 已确认选区的进程内仓储，SQL 正文不落盘，重启后「计划不可用」如实
+    // 回答，桌面同语义）；比较存储根 = 管理库同目录下的
+    // `sync-comparisons/`（本组织单租 v1——LocalComparisonStorageRoot 的
+    // 组织绑定）；适配器注册表独立于 schema_diff（同构造、各自登记）。
     let sync_tasks_store = std::sync::Arc::new(crate::storage::ServerSyncTasks::new(store.clone()));
     let sync_profiles_store =
         std::sync::Arc::new(crate::storage::ServerSyncProfiles::new(store.clone()));
@@ -492,20 +495,51 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         datazen::migration::data_sync::plan_store::InMemorySyncPlanRepository::new(),
     );
     let sync_runtime = crate::sync::SyncRuntimeState::new();
-    let sync_jobs = crate::sync::SyncJobs::new(
-        std::sync::Arc::new(datazen::jobs::JobHost::new(
-            jobs.clone(),
-            std::sync::Arc::new(std::sync::Mutex::new(
-                datazen::execution::runtime::budget::BudgetLedger::new(
-                    datazen::execution::runtime::budget::BudgetConfig::team_default(),
-                ),
-            )),
-            std::sync::Arc::new(datazen::jobs::domain::time::PortJobClock::new(
-                datazen::shared::clock::SystemClock,
-            )),
+    let sync_job_host = std::sync::Arc::new(datazen::jobs::JobHost::new(
+        jobs.clone(),
+        std::sync::Arc::new(std::sync::Mutex::new(
+            datazen::execution::runtime::budget::BudgetLedger::new(
+                datazen::execution::runtime::budget::BudgetConfig::team_default(),
+            ),
         )),
+        std::sync::Arc::new(datazen::jobs::domain::time::PortJobClock::new(
+            datazen::shared::clock::SystemClock,
+        )),
+    ));
+    let sync_jobs = crate::sync::SyncJobs::new(
+        sync_job_host.clone(),
         sync_plans.clone(),
         sync_runtime.clone(),
+    );
+    let sync_comparison_root: std::sync::Arc<
+        dyn datazen::migration::data_sync::comparison_store::ComparisonStorageRoot,
+    > = std::sync::Arc::new(
+        datazen::migration::data_sync::comparison_store::LocalComparisonStorageRoot::new(
+            config
+                .db_path
+                .parent()
+                .map(|dir| dir.join("sync-comparisons"))
+                .unwrap_or_else(|| std::path::PathBuf::from("sync-comparisons")),
+            datazen::shared::id::OrganizationId::new(config.organization_id.clone()),
+        ),
+    );
+    let sync_adapters = std::sync::Arc::new(
+        datazen::migration::data_transfer::transfer::adapter_registry::SyncAdapterRegistry::new(),
+    );
+    // 刀3e-4b 的路由接线在此续建（域路由 state 挂同一实例）；本刀先完成
+    // composition root 登记——依赖齐备性在装配期即被编译与构造双重钉住，
+    // 直驱集成测试（tests/sync_execution.rs）消费同一构造面。
+    let _sync_execution = crate::sync::SyncExecution::new(
+        sync_job_host,
+        sync_plans.clone(),
+        sync_runtime.clone(),
+        schema_diff_endpoints.clone(),
+        connections_repo.clone(),
+        sync_adapters,
+        sync_comparison_root,
+        sync_migration_runs.clone(),
+        sync_profiles_store.clone(),
+        sync_tasks_store.clone(),
     );
 
     // WR-D6/D7 域路由态（jobs / submission-tokens / artifacts）+ 执行域路由
