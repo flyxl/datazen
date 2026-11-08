@@ -23,12 +23,12 @@
  * events 域的 2 条路由（POST /events/subscriptions + GET /events/{streamId}，
  * §6.6 v1.1）不在本表：它们由 `backendTransport.ts` 的 `subscribe()` 两步
  * 流水线一体实现，服务 `subscribeEvents`。两表相加 = 契约 HTTP 面服务的
- * **42/42** 个域方法（§4 总账行；`createEventSubscription` 无 `MethodMap`
+ * **108/112** 个域方法（§4 总账行 v1.9；`createEventSubscription` 无 `MethodMap`
  * 键，是流水线的登记步而非独立可调方法）。
  *
  * WR-F1 扩展账：mcp / security / aiHost 三域（三缺口合拢）的八条契约路由
  * 登记在文件尾的 `WR_F1_HTTP_ROUTES`（点分契约键，**不在本表**——本表键型
- * 被 `keyof MethodMap` 锁定，而 42 条的账目断言由冻结的
+ * 被 `keyof MethodMap` 锁定，而 108 条的账目断言由冻结的
  * `domainContractTables.test.ts` 钉住；wire-direct 域不经 `transport.call`，
  * 逐域登记理由见 `packages/backend-client/src/{mcpClient,securityClient}.ts`
  * 头注）。
@@ -57,6 +57,13 @@ export interface RouteSpec {
   pathTemplate: string;
   /** `{id}` 的取值函数；模板无 `{id}` 时缺省。 */
   pathId?: (payload: unknown) => string;
+  /**
+   * 复合路径构造（多段资源 id 的逃生舱，W8 刀3d 引入）：在场时优先于
+   * pathTemplate/pathId，直接返回完整相对路径。dashboard 组件族
+   * （`/dashboards/{id}/widgets/{widgetId}/...`）三段 id 超出单 `{id}`
+   * 插值面的表达力；pathTemplate 保留作路由形状的文档面与测试账目键。
+   */
+  buildPath?: (payload: unknown) => string;
   /** 查询串构造（返回含 `?` 的已编码串或空串）；缺省 = 无查询参数。 */
   query?: (payload: unknown) => string;
   /**
@@ -282,6 +289,127 @@ const schemaDiffJobsQuery = (payload: unknown): string => {
   return scalarQuery(entries);
 };
 
+/* ------------------------------------------------------------------ */
+/* W8 刀3c/3d/3e web 收口（workflow / dashboard / dataSync）。             */
+/* ------------------------------------------------------------------ */
+
+/** workflow：定义与运行历史的 {id}（payload 字段名 = IPC 参数名 workflowId）。 */
+const pathWorkflowId = (payload: unknown): string =>
+  encodeURIComponent(String(requireField(payload, 'workflowId')));
+
+/** dashboard：{id} 取 payload 的 dashboardId（createWidgetFrom* 的路径副本）。 */
+const pathDashboardId = (payload: unknown): string =>
+  encodeURIComponent(String(requireField(payload, 'dashboardId')));
+
+/** workflow 运行历史：`?workflowId=`（缺席 = 全量，§6.14）。 */
+const workflowRunsQuery = (payload: unknown): string =>
+  scalarQuery([['workflowId', field(payload, 'workflowId')]]);
+
+/** saveWorkflow：`{ workflow, submissionToken }` → 契约平铺体（saveSchemaDiffProfile 同款）。 */
+const saveWorkflowBody = (payload: unknown): unknown => ({
+  ...((field(payload, 'workflow') as Record<string, unknown> | undefined) ?? {}),
+  submissionToken: field(payload, 'submissionToken'),
+});
+
+/** executeWorkflow：workflowId 进路径，体 = 其余字段 + 令牌。 */
+const executeWorkflowBody = (payload: unknown): unknown => {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return payload;
+  const { workflowId: _inPath, ...rest } = payload as Record<string, unknown>;
+  return rest;
+};
+
+/** getWorkflowYaml：HTTP 回 `{ yaml }` 标量包装，域形状 = 裸 string。 */
+const yamlFieldDecode: RouteDecoder = (_payload, _response, raw): unknown => {
+  const text = new TextDecoder().decode(raw).trim();
+  try {
+    const parsed = JSON.parse(text) as Record<string, unknown>;
+    return typeof parsed['yaml'] === 'string' ? parsed['yaml'] : '';
+  } catch {
+    return '';
+  }
+};
+
+/** dashboard：save 的 `{ dashboard, submissionToken }` → 契约平铺体。 */
+const saveDashboardBody = (payload: unknown): unknown => ({
+  ...((field(payload, 'dashboard') as Record<string, unknown> | undefined) ?? {}),
+  submissionToken: field(payload, 'submissionToken'),
+});
+
+/** setDashboardRefreshPaused：id 进路径，体 = `{ paused }` + 令牌（§6.15）。 */
+const refreshPausedBody = (payload: unknown): unknown => ({
+  paused: field(payload, 'paused'),
+  submissionToken: field(payload, 'submissionToken'),
+});
+
+/**
+ * createWidgetFrom* / updateHiddenWidgetSql：`{ params, submissionToken }` →
+ * params 平铺 + 令牌（契约 `CreateWidgetFromSqlParams & SubmitRequest` 同形）。
+ * createWidgetFrom* 的顶层 dashboardId 是 web 路径插值副本，不进体。
+ */
+const widgetParamsBody = (payload: unknown): unknown => ({
+  ...((field(payload, 'params') as Record<string, unknown> | undefined) ?? {}),
+  submissionToken: field(payload, 'submissionToken'),
+});
+
+/** authorizeMonitorSchedule：ids 进路径，体 = `{ ttlSecs }` + 令牌。 */
+const authorizeMonitorScheduleBody = (payload: unknown): unknown => ({
+  ttlSecs: field(payload, 'ttlSecs'),
+  submissionToken: field(payload, 'submissionToken'),
+});
+
+/** dashboard 组件族的复合路径前缀：`/dashboards/{id}/widgets/{widgetId}`。 */
+const dashboardWidgetPrefix = (payload: unknown): string =>
+  `/dashboards/${encodeURIComponent(String(requireField(payload, 'dashboardId')))}` +
+  `/widgets/${encodeURIComponent(String(requireField(payload, 'widgetId')))}`;
+
+/** listWidgetRuns：`?limit=`（服务端缺省 20，§6.15）。 */
+const widgetRunsQuery = (payload: unknown): string =>
+  scalarQuery([['limit', field(payload, 'limit')]]);
+
+/** dataSync：任务/档案的 {id}（payload 字段名 = IPC 参数名）。 */
+const pathSyncTaskId = (payload: unknown): string =>
+  encodeURIComponent(String(requireField(payload, 'taskId')));
+const pathSyncProfileId = (payload: unknown): string =>
+  encodeURIComponent(String(requireField(payload, 'profileId')));
+const pathMigrationRunId = (payload: unknown): string =>
+  encodeURIComponent(String(requireField(payload, 'runId')));
+
+/** saveSyncProfile：`{ profile, submissionToken }` → 契约平铺体。 */
+const saveSyncProfileBody = (payload: unknown): unknown => ({
+  ...((field(payload, 'profile') as Record<string, unknown> | undefined) ?? {}),
+  submissionToken: field(payload, 'submissionToken'),
+});
+
+/** listMigrationRuns：过滤平铺 + 分页（§6.16：GET /api/v1/migration-runs）。 */
+const MIGRATION_RUN_FILTER_KEYS = ['operation', 'status', 'profileId', 'connectionId'] as const;
+
+const migrationRunsQuery = (payload: unknown): string => {
+  const entries: Array<readonly [string, unknown]> = [];
+  const filter = field(payload, 'filter');
+  if (typeof filter === 'object' && filter !== null && !Array.isArray(filter)) {
+    for (const key of MIGRATION_RUN_FILTER_KEYS) {
+      const value = field(filter, key);
+      if (value !== undefined && value !== null) entries.push([key, value]);
+    }
+  }
+  const offset = field(payload, 'offset');
+  const limit = field(payload, 'limit');
+  if (typeof offset === 'number') entries.push(['offset', offset]);
+  if (typeof limit === 'number') entries.push(['limit', limit]);
+  return scalarQuery(entries);
+};
+
+/**
+ * verifyDataSyncRecovery：jobId 进路径，体 = 复核请求本体（会话对 +
+ * 库/schema；路径上的 jobId 不重复进体，§6.16）。
+ */
+const syncRecoveryBody = (payload: unknown): unknown => {
+  const request = field(payload, 'request');
+  if (typeof request !== 'object' || request === null || Array.isArray(request)) return {};
+  const { jobId: _inPath, ...rest } = request as Record<string, unknown>;
+  return rest;
+};
+
 const connectionCommandsQuery = (payload: unknown): string =>
   scalarQuery([['dbSessionId', field(payload, 'dbSessionId')]]);
 
@@ -366,7 +494,7 @@ const readArtifactDecode: RouteDecoder = (payload, response, raw) => {
 };
 
 /* ------------------------------------------------------------------ */
-/* 分发表本体：42 条分发条目覆盖 43 个 call 方法中的 42 个           */
+/* 分发表本体：108 条分发条目覆盖 112 个 call 方法中的 108 个           */
 /* （open_base64_with_dialog 排除；PATCH 一条路由双服务）。            */
 /* 键受 keyof MethodMap 约束（Partial），错名/多写编译期即失败。          */
 /* ------------------------------------------------------------------ */
@@ -642,6 +770,294 @@ export const HTTP_ROUTES: Partial<Record<keyof MethodMap, RouteSpec>> = {
     pathTemplate: '/schema-diff/jobs/{id}/recovery-verification',
     pathId: pathSchemaDiffJobId,
     body: recoveryVerificationBody,
+  },
+
+  // ── workflow（§6.14；W8 刀3c web 收口）────────────────────────────
+  // 定义管理 + 同步执行 + 运行历史。getWorkflowYaml 的 `{ yaml }` 与
+  // clearWorkflowRuns 的 `{ cleared }` 由 decoder 拆封；DELETE 面
+  // （delete / clear-runs）无体无令牌（§6.14 裁决）；save/save-yaml/
+  // execute 的令牌已折在域客户端 payload 里。
+  listWorkflows: {
+    httpMethod: 'GET',
+    pathTemplate: '/workflows',
+    body: noBody,
+  },
+  saveWorkflow: {
+    httpMethod: 'PUT',
+    pathTemplate: '/workflows/{id}',
+    pathId: (payload) =>
+      encodeURIComponent(String(requireField(requireField(payload, 'workflow'), 'id'))),
+    body: saveWorkflowBody,
+  },
+  saveWorkflowYaml: {
+    httpMethod: 'POST',
+    pathTemplate: '/workflows/from-yaml',
+  },
+  getWorkflow: {
+    httpMethod: 'GET',
+    pathTemplate: '/workflows/{id}',
+    pathId: pathWorkflowId,
+    body: noBody,
+  },
+  getWorkflowYaml: {
+    httpMethod: 'GET',
+    pathTemplate: '/workflows/{id}/yaml',
+    pathId: pathWorkflowId,
+    body: noBody,
+    decode: yamlFieldDecode,
+  },
+  deleteWorkflow: {
+    httpMethod: 'DELETE',
+    pathTemplate: '/workflows/{id}',
+    pathId: pathWorkflowId,
+    body: noBody,
+  },
+  executeWorkflow: {
+    httpMethod: 'POST',
+    pathTemplate: '/workflows/{id}/execute',
+    pathId: pathWorkflowId,
+    body: executeWorkflowBody,
+  },
+  reloadWorkflows: {
+    httpMethod: 'POST',
+    pathTemplate: '/workflows/reload',
+    body: noBody,
+  },
+  listWorkflowRuns: {
+    httpMethod: 'GET',
+    pathTemplate: '/workflow-runs',
+    query: workflowRunsQuery,
+    body: noBody,
+  },
+  getWorkflowRun: {
+    httpMethod: 'GET',
+    pathTemplate: '/workflow-runs/{id}',
+    pathId: (payload) => encodeURIComponent(String(requireField(payload, 'historyId'))),
+    body: noBody,
+  },
+  clearWorkflowRuns: {
+    httpMethod: 'DELETE',
+    pathTemplate: '/workflow-runs',
+    query: workflowRunsQuery,
+    body: noBody,
+    decode: numberFieldOf('cleared'),
+  },
+
+  // ── dashboard（§6.15；W8 刀3d web 收口）─────────────────────────
+  // save 的 `{ dashboard }` 袋在 body 构造器展开；组件族三段 id 走
+  // buildPath；PATCH 面（refresh-paused）是本表第二个 PATCH。
+  listDashboards: {
+    httpMethod: 'GET',
+    pathTemplate: '/dashboards',
+    body: noBody,
+  },
+  getDashboard: {
+    httpMethod: 'GET',
+    pathTemplate: '/dashboards/{id}',
+    pathId: pathNamedViewId,
+    body: noBody,
+  },
+  saveDashboard: {
+    httpMethod: 'PUT',
+    pathTemplate: '/dashboards/{id}',
+    pathId: (payload) =>
+      encodeURIComponent(String(requireField(requireField(payload, 'dashboard'), 'id'))),
+    body: saveDashboardBody,
+  },
+  deleteDashboard: {
+    httpMethod: 'DELETE',
+    pathTemplate: '/dashboards/{id}',
+    pathId: pathNamedViewId,
+    body: noBody,
+  },
+  setDashboardRefreshPaused: {
+    httpMethod: 'PATCH',
+    pathTemplate: '/dashboards/{id}/refresh-paused',
+    pathId: pathNamedViewId,
+    body: refreshPausedBody,
+  },
+  findDashboardWorkflowRefs: {
+    httpMethod: 'GET',
+    pathTemplate: '/dashboards/workflow-refs',
+    query: workflowRunsQuery,
+    body: noBody,
+  },
+  createWidgetFromSql: {
+    httpMethod: 'POST',
+    pathTemplate: '/dashboards/{id}/widgets/from-sql',
+    pathId: pathDashboardId,
+    body: widgetParamsBody,
+  },
+  createWidgetFromWorkflow: {
+    httpMethod: 'POST',
+    pathTemplate: '/dashboards/{id}/widgets/from-workflow',
+    pathId: pathDashboardId,
+    body: widgetParamsBody,
+  },
+  updateHiddenWidgetSql: {
+    httpMethod: 'POST',
+    pathTemplate: '/dashboards/hidden-widget-sql',
+    body: widgetParamsBody,
+  },
+  runDashboardWidget: {
+    httpMethod: 'POST',
+    pathTemplate: '/dashboards/{id}/widgets/{widgetId}/run',
+    buildPath: (payload) => `${dashboardWidgetPrefix(payload)}/run`,
+    body: submissionTokenBody,
+  },
+  listWidgetRuns: {
+    httpMethod: 'GET',
+    pathTemplate: '/dashboards/{id}/widgets/{widgetId}/runs',
+    buildPath: (payload) => `${dashboardWidgetPrefix(payload)}/runs`,
+    query: widgetRunsQuery,
+    body: noBody,
+  },
+  getWidgetRun: {
+    httpMethod: 'GET',
+    pathTemplate: '/dashboards/{id}/widgets/{widgetId}/runs/{runId}',
+    buildPath: (payload) =>
+      `${dashboardWidgetPrefix(payload)}/runs/${encodeURIComponent(
+        String(requireField(payload, 'runId')),
+      )}`,
+    body: noBody,
+  },
+  getMonitorScheduleGrant: {
+    httpMethod: 'GET',
+    pathTemplate: '/dashboards/{id}/widgets/{widgetId}/schedule-grant',
+    buildPath: (payload) => `${dashboardWidgetPrefix(payload)}/schedule-grant`,
+    body: noBody,
+  },
+  authorizeMonitorSchedule: {
+    httpMethod: 'POST',
+    pathTemplate: '/dashboards/{id}/widgets/{widgetId}/schedule-grant',
+    buildPath: (payload) => `${dashboardWidgetPrefix(payload)}/schedule-grant`,
+    body: authorizeMonitorScheduleBody,
+  },
+  revokeMonitorSchedule: {
+    httpMethod: 'DELETE',
+    pathTemplate: '/dashboards/{id}/widgets/{widgetId}/schedule-grant',
+    buildPath: (payload) => `${dashboardWidgetPrefix(payload)}/schedule-grant`,
+    body: noBody,
+  },
+
+  // ── dataSync（§6.16，v1.9；W8 刀3e web 收口）────────────────────
+  // saveSyncProfile 的 `{ profile }` 袋展开；cancel 的 `{ cancelled }` 由
+  // decoder 拆封；迁移历史是顶层资源 /migration-runs；执行面九方法体 =
+  // payload 原样（令牌缺席是有意裁决——幂等由受理键/纯读承担）。
+  getSyncTasks: {
+    httpMethod: 'GET',
+    pathTemplate: '/sync/tasks',
+    body: noBody,
+  },
+  deleteSyncTask: {
+    httpMethod: 'DELETE',
+    pathTemplate: '/sync/tasks/{id}',
+    pathId: pathSyncTaskId,
+    body: noBody,
+  },
+  getSyncProfiles: {
+    httpMethod: 'GET',
+    pathTemplate: '/sync/profiles',
+    body: noBody,
+  },
+  saveSyncProfile: {
+    httpMethod: 'PUT',
+    pathTemplate: '/sync/profiles',
+    body: saveSyncProfileBody,
+  },
+  deleteSyncProfile: {
+    httpMethod: 'DELETE',
+    pathTemplate: '/sync/profiles/{id}',
+    pathId: pathSyncProfileId,
+    body: noBody,
+  },
+  classifyDataSyncPair: {
+    httpMethod: 'POST',
+    pathTemplate: '/sync/pairings',
+  },
+  listMigrationRuns: {
+    httpMethod: 'GET',
+    pathTemplate: '/migration-runs',
+    query: migrationRunsQuery,
+    body: noBody,
+  },
+  getMigrationRun: {
+    httpMethod: 'GET',
+    pathTemplate: '/migration-runs/{id}',
+    pathId: pathMigrationRunId,
+    body: noBody,
+  },
+  listDataSyncJobs: {
+    httpMethod: 'GET',
+    pathTemplate: '/sync/jobs',
+    body: noBody,
+  },
+  getDataSyncJob: {
+    httpMethod: 'GET',
+    pathTemplate: '/sync/jobs/{id}',
+    pathId: pathJobId,
+    body: noBody,
+  },
+  getDataSyncJobDetails: {
+    httpMethod: 'GET',
+    pathTemplate: '/sync/jobs/{id}/details',
+    pathId: pathJobId,
+    body: noBody,
+  },
+  getDataSyncJobPreview: {
+    httpMethod: 'GET',
+    pathTemplate: '/sync/jobs/{id}/preview',
+    pathId: pathJobId,
+    body: noBody,
+  },
+  cancelDataSync: {
+    httpMethod: 'POST',
+    pathTemplate: '/sync/jobs/{id}/cancel',
+    pathId: pathJobId,
+    body: submissionTokenBody,
+    decode: cancelledFieldDecode,
+  },
+  inspectDataSync: {
+    httpMethod: 'POST',
+    pathTemplate: '/sync/inspections',
+  },
+  revalidateDataSync: {
+    httpMethod: 'POST',
+    pathTemplate: '/sync/revalidations',
+  },
+  compareDataSync: {
+    httpMethod: 'POST',
+    pathTemplate: '/sync/comparisons',
+  },
+  startDataSyncPrepareJob: {
+    httpMethod: 'POST',
+    pathTemplate: '/sync/jobs/prepare',
+  },
+  startDataSyncApplyJob: {
+    httpMethod: 'POST',
+    pathTemplate: '/sync/jobs/apply',
+  },
+  executeDataSync: {
+    httpMethod: 'POST',
+    pathTemplate: '/sync/executions',
+  },
+  generateDataSyncSql: {
+    httpMethod: 'POST',
+    pathTemplate: '/sync/sql-preview',
+  },
+  checkSyncConflicts: {
+    httpMethod: 'POST',
+    pathTemplate: '/sync/tasks/{id}/conflicts',
+    pathId: pathSyncTaskId,
+    body: noBody,
+  },
+  verifyDataSyncRecovery: {
+    httpMethod: 'POST',
+    pathTemplate: '/sync/jobs/{id}/recovery-verification',
+    // jobId 在 `{ request }` 袋里（桌面 IPC 参数形），路径插值穿透一层。
+    pathId: (payload) =>
+      encodeURIComponent(String(requireField(requireField(payload, 'request'), 'jobId'))),
+    body: syncRecoveryBody,
   },
 };
 

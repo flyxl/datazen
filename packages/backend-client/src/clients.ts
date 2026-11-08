@@ -33,6 +33,9 @@ import { createTableDataMethods, type TableDataClient } from './tableDataClient'
 import { createDriverGatewayMethods, type DriverGatewayClient } from './driverGatewayClient';
 import { createQueryAssetsMethods, type QueryAssetsClient } from './queryAssetsClient';
 import { createSchemaDiffMethods, type SchemaDiffClient } from './schemaDiffClient';
+import { createWorkflowMethods, type WorkflowClient } from './workflowClient';
+import { createDashboardMethods, type DashboardClient } from './dashboardClient';
+import { createDataSyncMethods, type DataSyncClient } from './dataSyncClient';
 import { createEventMethods, type EventClient } from './streams';
 import type { McpDomainClient } from './mcpClient';
 import type { SecurityClient } from './securityClient';
@@ -65,9 +68,27 @@ export interface DomainClients {
   queryAssets: QueryAssetsClient;
   /**
    * Schema Diff 域（W8 刀3b 服务端半边的 web 收口；契约 §6.13）。迁移
-   * 历史读面（get/list migration runs）留在 sync 域待收敛。
+   * 历史读面（get/list migration runs）随 dataSync 域（§6.16）收口。
    */
   schemaDiff: SchemaDiffClient;
+  /**
+   * workflow 域（W8 刀3c 服务端半边的 web 收口；契约 §6.14）：定义管理、
+   * 同步执行与运行历史。`getWorkflowDir` 桌面文件语义留在 legacy 轨。
+   */
+  workflow: WorkflowClient;
+  /**
+   * dashboard 域（W8 刀3d 服务端半边的 web 收口；契约 §6.15）：仪表板、
+   * 组件、运行历史与 monitor 授权。两个 `*_with_dialog` 桌面对话框语义
+   * 留在 legacy 轨。
+   */
+  dashboard: DashboardClient;
+  /**
+   * dataSync 域（W8 刀3e 服务端半边的 web 收口；契约 §6.16，v1.9）：任务/
+   * 档案资产、配对分类、迁移历史、job 读回与执行面全域二十二方法。
+   * `apply_data_sync` / `get_data_sync_comparison_page` 不在契约面，留在
+   * legacy 轨（桌面专属）。
+   */
+  dataSync: DataSyncClient;
   /**
    * WR-F1#2：安全域（服务端密钥管理）。**wire-direct 域**（不进 `MethodMap`，
    * 见 `./securityClient` 头注的登记）：调用方持有 HTTP wire 时经 `extras`
@@ -106,6 +127,9 @@ export function createClients(
     driverGateway: createDriverGatewayMethods(transport, guard),
     queryAssets: createQueryAssetsMethods(transport, guard),
     schemaDiff: createSchemaDiffMethods(transport, guard),
+    workflow: createWorkflowMethods(transport, guard),
+    dashboard: createDashboardMethods(transport, guard),
+    dataSync: createDataSyncMethods(transport, guard),
     // wire-direct 两域只在调用方注入时出现（无 wire 时缺席，绝不铸造
     // 一个「会在使用时才发现没有 fetch 实现」的假成员）。
     ...(extras.security !== undefined ? { security: extras.security } : {}),

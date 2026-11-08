@@ -221,8 +221,14 @@ export function createWebBackendTransport(options: WebTransportOptions = {}): Ba
       }
 
       const pathId = route.pathId?.(payload);
+      // buildPath（多段资源 id 的复合路径）优先于单 {id} 插值；两者都缺席
+      // 时模板即字面路径（无参读面）。
       const path =
-        pathId === undefined ? route.pathTemplate : route.pathTemplate.replace('{id}', pathId);
+        route.buildPath !== undefined
+          ? route.buildPath(payload)
+          : pathId === undefined
+            ? route.pathTemplate
+            : route.pathTemplate.replace('{id}', pathId);
       const query = route.query?.(payload) ?? '';
       const body = route.body === undefined ? payload : route.body(payload);
       const response = await send(

@@ -28,6 +28,9 @@ import type { TableDataMethodMap } from './tableDataClient';
 import type { DriverGatewayMethodMap } from './driverGatewayClient';
 import type { QueryAssetsMethodMap } from './queryAssetsClient';
 import type { SchemaDiffMethodMap } from './schemaDiffClient';
+import type { WorkflowMethodMap } from './workflowClient';
+import type { DashboardMethodMap } from './dashboardClient';
+import type { DataSyncMethodMap } from './dataSyncClient';
 import type { LegacyHostMethodMap } from './legacyHostCommands';
 import type { ConnectionEvent, EventEnvelope, SubscribeEventsRequest } from './types';
 
@@ -69,6 +72,9 @@ export type MethodMap = SettingsMethodMap &
   DriverGatewayMethodMap &
   QueryAssetsMethodMap &
   SchemaDiffMethodMap &
+  WorkflowMethodMap &
+  DashboardMethodMap &
+  DataSyncMethodMap &
   LegacyHostMethodMap;
 
 /**

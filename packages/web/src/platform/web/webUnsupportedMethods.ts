@@ -8,7 +8,7 @@
  * 1. **driverGateway 的 `open_base64_with_dialog`**（契约 §6.9/§8）：对话框
  *    语义属于平台宿主而非后端，web 形态用浏览器 API（或功能缺位）承接，
  *    **永不上 HTTP**；
- * 2. **`LegacyHostMethodMap` 全部键**（约 200 个 snake_case 桌面宿主命令，
+ * 2. **`LegacyHostMethodMap` 全部键**（134 个 snake_case 桌面宿主命令，
  *    `packages/backend-client/src/legacyHostCommands.ts`）：契约 §8 明文
  *    「legacy IPC 命令轨不镜像」——它们随 WR-A2 command 薄壳化逐域收敛进
  *    `MethodMap` 的内核域，收敛一个域、本文件减一域；域客户端不在此列的
@@ -25,7 +25,20 @@
  * - Schema Diff 域（W8 刀3b web 收口）：profiles 读写删、compare、plans
  *   二、deploy、jobs 读回/取消/恢复核验十一命令 → `schemaDiff` 域客户端
  *   （契约 §6.13）。迁移历史读面 `get_migration_run` / `list_migration_runs`
- *   **留表**（契约裁决：随 sync 域收敛）。
+ *   随 dataSync 域收敛（见下）。
+ * - workflow 域（W8 刀3c web 收口）：定义管理、同步执行与运行历史十一命令
+ *   → `workflow` 域客户端（契约 §6.14）。桌面文件系统语义一命令**留表**：
+ *   `workflow_get_dir`（服务端定义是库行，无目录可给）。
+ * - dashboard 域（W8 刀3d web 收口）：仪表板、组件、运行历史与 monitor 授权
+ *   十五命令 → `dashboard` 域客户端（契约 §6.15）。桌面文件对话框语义两命令
+ *   **留表**：`export_dashboard_with_dialog` / `import_dashboard_with_dialog`
+ *   （浏览器侧导出/导入走产物上传 §6.5 与下载）。
+ * - dataSync 域（W8 刀3e web 收口）：任务/档案资产、配对分类、迁移历史
+ *   （含 schemaDiff 留账的两读面）、job 读回与执行面二十命令 → `dataSync`
+ *   域客户端（契约 §6.16，v1.9）。桌面专属同步面两命令**留表**：
+ *   `apply_data_sync` / `get_data_sync_comparison_page`（不在契约二十二
+ *   方法内——受理键语义由 `startDataSyncApplyJob` 承担、分页比较读无服务端
+ *   对应面；后续如需上 HTTP 面随契约增长另立）。
  *
  * 运行时清单由 `LegacyCommandName` 类型钉住：写错名字过不了
  * `readonly LegacyCommandName[]` 注解，漏名字过不了文末的编译期穷尽断言
@@ -83,15 +96,11 @@ const LEGACY_HTTP_OFF: readonly LegacyCommandName[] = [
   'apply_write',
   'apply_data_sync',
   'apply_data_transfer_job',
-  'authorize_monitor_widget_schedule',
   'backup_database',
   'begin_save_with_dialog',
   'begin_session_transaction',
-  'cancel_data_sync',
   'cancel_data_transfer',
   'cancel_query',
-  'check_sync_conflicts',
-  'classify_data_sync_pair',
   'classify_transfer_pair',
   'close_database',
   'commit_session_transaction',
@@ -100,18 +109,12 @@ const LEGACY_HTTP_OFF: readonly LegacyCommandName[] = [
   'context_get_dir',
   'context_list_files',
   'context_read_files',
-  'create_widget_from_sql',
-  'create_widget_from_workflow',
   'delete_connection',
-  'delete_dashboard',
-  'delete_sync_profile',
-  'delete_sync_task',
   'delete_transfer_profile',
   'delete_tunnel',
   'detect_connection_import_path',
   'disconnect',
   'duplicate_connection',
-  'execute_data_sync',
   'execute_data_transfer',
   'execute_wapp_driver_command',
   'export_app_data',
@@ -119,26 +122,16 @@ const LEGACY_HTTP_OFF: readonly LegacyCommandName[] = [
   'export_connections',
   'export_dashboard_with_dialog',
   'export_tables_stream',
-  'find_dashboard_workflow_refs',
   'finish_save',
-  'generate_data_sync_sql',
   'get_available_drivers',
   'get_connection_info',
   'get_connections',
-  'get_dashboard',
   'get_data_sync_comparison_page',
-  'get_data_sync_job',
-  'get_data_sync_job_details',
-  'get_data_sync_job_preview',
   'get_favorites_root',
   'get_groups',
   'get_job',
-  'get_migration_run',
-  'get_monitor_widget_schedule_grant',
   'get_open_databases',
   'get_privileges',
-  'get_sync_profiles',
-  'get_sync_tasks',
   'get_transfer_job_details',
   'get_transfer_profiles',
   'get_tunnel',
@@ -146,24 +139,18 @@ const LEGACY_HTTP_OFF: readonly LegacyCommandName[] = [
   'get_tunnel_usage',
   'get_tunnels',
   'get_wapp_manifest',
-  'get_widget_run',
   'import_app_data',
   'import_connections_at_path',
   'import_connections_from_app',
   'import_connections_preview',
   'import_connections_with_dialog',
   'import_dashboard_with_dialog',
-  'inspect_data_sync',
   'inspect_data_transfer',
   'inspect_sql_file_transfer',
   'inspect_wapp_package_with_dialog',
   'install_wapp',
-  'list_dashboards',
-  'list_data_sync_jobs',
   'list_jobs',
-  'list_migration_runs',
   'list_wapps',
-  'list_widget_runs',
   'mcp_client_call_tool',
   'mcp_client_connect',
   'mcp_client_disconnect',
@@ -192,44 +179,24 @@ const LEGACY_HTTP_OFF: readonly LegacyCommandName[] = [
   'reorder_connections',
   'restart_app',
   'restore_sql_file',
-  'revoke_monitor_widget_schedule',
   'rollback_session_transaction',
-  'run_dashboard_widget',
   'save_connection',
-  'save_dashboard',
   'save_encryption_key_with_dialog',
   'save_groups',
   'save_sql_file',
-  'save_sync_profile',
   'save_transfer_profile',
   'save_tunnel',
   'seed_sample_db',
   'session_transaction_status',
-  'set_dashboard_refresh_paused',
   'set_wapp_enabled',
-  'start_data_sync_apply_job',
-  'start_data_sync_prepare_job',
   'test_connection',
   'test_tunnel',
-  'update_hidden_widget_sql',
-  'verify_data_sync_recovery',
   'wapp_audit_log',
   'wapp_session',
   'wapp_storage_get',
   'wapp_storage_remove',
   'wapp_storage_set',
-  'workflow_delete',
-  'workflow_execute',
-  'workflow_get',
   'workflow_get_dir',
-  'workflow_get_yaml',
-  'workflow_history_clear',
-  'workflow_history_get',
-  'workflow_history_list',
-  'workflow_list',
-  'workflow_reload',
-  'workflow_save',
-  'workflow_save_yaml',
 ];
 
 /** `AssertNever<X>` 仅在 `X` 为 `never` 时可实例化——漏名即在此处编译失败。 */

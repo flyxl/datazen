@@ -29,6 +29,9 @@ import type { ArtifactClient } from './artifactClient';
 import type { TableDataClient } from './tableDataClient';
 import type { QueryAssetsClient } from './queryAssetsClient';
 import type { SchemaDiffClient } from './schemaDiffClient';
+import type { WorkflowClient } from './workflowClient';
+import type { DashboardClient } from './dashboardClient';
+import type { DataSyncClient } from './dataSyncClient';
 import type { EventClient } from './streams';
 
 export type { JobWatchHandle, JobWatchOptions, SubmitJobOptions };
@@ -53,7 +56,10 @@ export interface BackendClient
     ArtifactClient,
     TableDataClient,
     QueryAssetsClient,
-    SchemaDiffClient {
+    SchemaDiffClient,
+    WorkflowClient,
+    DashboardClient,
+    DataSyncClient {
   /** Which backend this facade is bound to. Never a business-method argument. */
   readonly backendId: string;
 
@@ -92,6 +98,9 @@ export function createBackendClient(backendId: string, transport: BackendTranspo
     ...domains.tableData,
     ...domains.queryAssets,
     ...domains.schemaDiff,
+    ...domains.workflow,
+    ...domains.dashboard,
+    ...domains.dataSync,
   };
 }
 
