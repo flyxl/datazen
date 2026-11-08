@@ -587,24 +587,25 @@ fn schema_snapshot(conn: &Connection) -> BTreeMap<(String, String), String> {
 
 /// 冻结项 2（平台计划 §11「schema 支持范围允许旧镜像运行于下一版 expand
 /// schema」/ storage/mod.rs 的 expand 纪律）：v6 形态旧库（真实 SQLite 文件、
-/// 带历史行）跑 `migrate()` → 只落 v7..=v14 的追加步；**每一个**既有对象（表/索引）的
+/// 带历史行）跑 `migrate()` → 只落 v7..=v15 的追加步；**每一个**既有对象（表/索引）的
 /// sqlite_master DDL 文本逐字节不变（expand-only：旧列未删未改类型），全部
-/// 历史行原样，v7 六表就位，版本登记到 14。
+/// 历史行原样，v7 六表就位，版本登记到 15。
 #[test]
 fn migrating_a_v6_library_expands_and_preserves_every_history_row() {
     let (path, before) = v6_form_library("v6-expand");
     let store = AdminStore::open(&path).expect("open v6 library");
-    let applied = store.migrate().expect("migrate v6 → 当前目标（v14）");
+    let applied = store.migrate().expect("migrate v6 → 当前目标（v15）");
     // v8（server_settings）、v9（named_views）、v10（org_memories /
     // org_memory_audit，T25）、v11（query_favorites / query_history，
     // W8 刀3a；编号让位于 T25）、v12（job 运行时三伴表 + 迁移历史 +
     // schema_diff_profiles，W8 刀3b）、v13（workflows + 运行历史，
-    // W8 刀3c）与 v14（dashboard 五表，W8 刀3d）加入后，v6 旧库一次
-    // 应用 v7..=v14 八步——expand-only 纪律对每一步分别成立。
+    // W8 刀3c）、v14（dashboard 五表，W8 刀3d）与 v15（sync 双表，
+    // W8 刀3e-2）加入后，v6 旧库一次应用 v7..=v15 九步——expand-only
+    // 纪律对每一步分别成立。
     assert_eq!(
         applied.len(),
-        8,
-        "v6 → 当前目标应用 v7、v8、v9、v10、v11、v12、v13、v14 八步"
+        9,
+        "v6 → 当前目标应用 v7、v8、v9、v10、v11、v12、v13、v14、v15 九步"
     );
     assert_eq!(applied[0].version, 7);
     assert_eq!(applied[1].version, 8);
@@ -614,7 +615,8 @@ fn migrating_a_v6_library_expands_and_preserves_every_history_row() {
     assert_eq!(applied[5].version, 12);
     assert_eq!(applied[6].version, 13);
     assert_eq!(applied[7].version, 14);
-    assert_eq!(store.schema_version().expect("schema version"), 14);
+    assert_eq!(applied[8].version, 15);
+    assert_eq!(store.schema_version().expect("schema version"), 15);
 
     let conn = probe(&path);
     // v7 新表在（执行接线的四组对象）。
@@ -641,6 +643,9 @@ fn migrating_a_v6_library_expands_and_preserves_every_history_row() {
         "widget_runs",
         "widget_latest_run",
         "monitor_schedule_grants",
+        // v15（W8 刀3e-2 data sync：任务断点 + 复用档案）。
+        "sync_profiles",
+        "sync_tasks",
     ] {
         let exists: bool = conn
             .query_row(
@@ -661,7 +666,7 @@ fn migrating_a_v6_library_expands_and_preserves_every_history_row() {
             "既有对象 {key:?} 的 DDL 被 v7 改写（违反 expand-only）"
         );
     }
-    // 新增对象 = v7 的 9 个 + v8/v9/v10/v11 的逐刀追加（自动索引不入快照）。
+    // 新增对象 = v7 的 9 个 + v8..=v15 的逐刀追加（自动索引不入快照）。
     let added: Vec<_> = after
         .keys()
         .filter(|key| !before.contains_key(key))
@@ -687,6 +692,9 @@ fn migrating_a_v6_library_expands_and_preserves_every_history_row() {
             ("index", "idx_query_history_owner"),
             // v8（server_settings，WR-C2 §6.1 settings 域的服务端存储）。
             ("index", "idx_server_settings_org"),
+            // v15（W8 刀3e-2 data sync：档案连接对 + 任务状态观测）。
+            ("index", "idx_sync_profiles_connections"),
+            ("index", "idx_sync_tasks_status"),
             // v14（W8 刀3d）。
             ("index", "idx_widget_runs_widget_started"),
             ("index", "idx_widgets_dashboard"),
@@ -718,6 +726,9 @@ fn migrating_a_v6_library_expands_and_preserves_every_history_row() {
             ("table", "server_settings"),
             ("table", "stored_secret"),
             ("table", "stored_secret_version"),
+            // v15（W8 刀3e-2 data sync）。
+            ("table", "sync_profiles"),
+            ("table", "sync_tasks"),
             ("table", "tunnel_definition"),
             // v14（W8 刀3d）。
             ("table", "widget_latest_run"),
@@ -730,7 +741,7 @@ fn migrating_a_v6_library_expands_and_preserves_every_history_row() {
         .into_iter()
         .map(|(t, n): (&str, &str)| (t.to_string(), n.to_string()))
         .collect::<Vec<_>>(),
-        "新增对象恰为 v7..=v14 的登记清单（expand-only：每一步只加不改）"
+        "新增对象恰为 v7..=v15 的登记清单（expand-only：每一步只加不改）"
     );
 
     // 历史行逐字段原样（登记表/审计行不被迁移破坏）。
@@ -913,7 +924,7 @@ fn migrate_is_idempotent_over_a_history_bearing_library() {
     let (path, _) = v6_form_library("v6-idempotent");
     let store = AdminStore::open(&path).expect("open");
     let first = store.migrate().expect("first migrate");
-    assert_eq!(first.len(), 8, "v6 → 当前目标（v7..=v14 八步）");
+    assert_eq!(first.len(), 9, "v6 → 当前目标（v7..=v15 九步）");
     let snapshot_after_first = schema_snapshot(&probe(&path));
 
     let second = store.migrate().expect("second migrate");
