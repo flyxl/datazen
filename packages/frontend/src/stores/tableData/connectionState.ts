@@ -53,6 +53,12 @@ export function emptyTableState(context: TableChangeContext | null = null): Tabl
     draftFilters: [],
     draftFilterLogic: 'and',
     filterPanelOpen: false,
+    // DBR-04: the panel starts in the structured editor, with both new-mode
+    // drafts empty and the raw channel idle.
+    filterMode: 'structured',
+    anyColumnDraft: '',
+    rawWhereDraft: '',
+    rawWhere: null,
     sorts: [],
     columnOrder: null,
     frozenColumnCount: 0,

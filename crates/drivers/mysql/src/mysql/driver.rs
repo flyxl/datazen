@@ -22,6 +22,13 @@ impl DatabaseDriver for MysqlDriver {
         true
     }
 
+    /// The raw `WHERE` filter (DBR-04): a validated boolean fragment spliced
+    /// into the `WHERE` of the host-built read. MySQL's expression grammar
+    /// covers everything the validator lets through, so the channel is open.
+    fn supports_raw_where_filter(&self) -> bool {
+        true
+    }
+
     /// MySQL has no `DEFAULT VALUES`; an all-default row is spelled with an
     /// empty column/value list. Non-empty inserts keep the shared
     /// parameterized rendering (backtick identifiers, positional `?`).

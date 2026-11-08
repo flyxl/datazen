@@ -51,6 +51,8 @@ import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { useColumnStats } from '../../hooks/useColumnStats';
 import { ColumnStatsDialog } from '../../components/DataTable/ColumnStatsDialog';
 import { likeCaseInsensitiveForMeta, supportedOperatorsForMeta } from '../../lib/filterOperators';
+import { expandAnyColumnFilter } from '../../lib/anyColumnFilter';
+import { valueSearchTypeGroupsFor } from '../../lib/valueSearch';
 import type { ColumnSchema, DatabaseType } from '../../types';
 import { resolveDefaultTableSort } from '../../lib/defaultSort';
 import {
@@ -140,6 +142,19 @@ export function TableView({
       ),
     [databaseType],
   );
+  /**
+   * Whether the Raw SQL pane is offered at all (DBR-04): the driver's own
+   * declaration. A driver that says nothing keeps the two-pane panel it had,
+   * and the back end would refuse a raw fragment anyway — the flag hides an
+   * entry the database would reject, it never widens what may run.
+   */
+  const rawWhereSupported =
+    databaseType != null &&
+    (
+      DB_REGISTRY[databaseType as DatabaseType] as
+        | { dataGrid?: { rawWhereFilter?: boolean } }
+        | undefined
+    )?.dataGrid?.rawWhereFilter === true;
   const isConnectionReadOnly = Boolean(
     readOnlyProp ?? (savedConnection?.readOnly || driverReadOnly),
   );
@@ -361,6 +376,10 @@ export function TableView({
         filters: ts.filters,
         sorts: order.sorts,
         filterLogic: ts.filterLogic,
+        // The applied raw predicate (DBR-04): the preview assembles through
+        // the same builder the read executes, so the statements it shows are
+        // byte for byte the ones the read sends — raw predicate included.
+        rawWhere: ts.rawWhere,
         countStrategy: resolvePanelCountStrategy(context),
         defaultOrderColumns: order.defaultOrderColumns,
         afterKey: keyset.afterKey,
@@ -432,6 +451,32 @@ export function TableView({
   const draftFilters = ts?.draftFilters ?? [];
   const draftFilterLogic = ts?.draftFilterLogic ?? 'and';
   const filterPanelOpen = ts?.filterPanelOpen ?? false;
+  /* ── The DBR-04 filter modes: pane, drafts, and the applied raw channel. ── */
+  const filterMode = ts?.filterMode ?? 'structured';
+  const anyColumnDraft = ts?.anyColumnDraft ?? '';
+  const rawWhereDraft = ts?.rawWhereDraft ?? '';
+  const rawWhere = ts?.rawWhere ?? null;
+  /**
+   * The Any Column search scope (DBR-04): the same driver-declared searchable
+   * types the full-database value search uses (DBR-03), resolved against this
+   * table's columns. The report says what would be searched and what is
+   * skipped — a skipped column is named, never silently matched with a cast
+   * the database may reject.
+   */
+  const anyColumnReport = useMemo(() => {
+    // The driver's own column-type rules — the same declaration the cell
+    // editor and the structured filter read (`tableEditing` resolves the
+    // same field), so the Any Column scope can never disagree with them.
+    const hints = databaseType
+      ? (DB_REGISTRY[databaseType as DatabaseType] as
+          | { cellTypes?: import('../../lib/cellTypes').CellTypeHints }
+          | undefined)?.cellTypes
+      : undefined;
+    return expandAnyColumnFilter(columns, anyColumnDraft, {
+      groups: valueSearchTypeGroupsFor(databaseType ?? null),
+      hints,
+    });
+  }, [anyColumnDraft, columns, databaseType]);
   const visibleColumns = ts?.visibleColumns ?? null;
   /**
    * How much the row count may be trusted. The grid renders this state and
@@ -525,6 +570,10 @@ export function TableView({
     tableName,
     filters,
     filterLogic,
+    // The applied raw predicate (DBR-04): a view saved while the Raw SQL
+    // filter is in effect carries the predicate, so replaying it asks the
+    // same question.
+    rawWhere,
     sorts,
     draftFilters,
     draftFilterLogic,
@@ -992,6 +1041,36 @@ export function TableView({
         draftFilterLogic={draftFilterLogic}
         filterPanelOpen={filterPanelOpen}
         onFilterPanelOpenChange={actions.setFilterPanelOpen}
+        // The DBR-04 filter modes: pane switching is render-only; applying is
+        // an explicit act that resets the page and reloads (see the actions).
+        filterMode={filterMode}
+        onFilterModeChange={actions.setFilterMode}
+        filterRawWhereSupported={rawWhereSupported}
+        anyColumnValue={anyColumnDraft}
+        onAnyColumnValueChange={actions.setAnyColumnDraft}
+        onApplyAnyColumn={(value) => {
+          const hints = databaseType
+            ? (DB_REGISTRY[databaseType as DatabaseType] as
+                | { cellTypes?: import('../../lib/cellTypes').CellTypeHints }
+                | undefined)?.cellTypes
+            : undefined;
+          const expansion = expandAnyColumnFilter(columns, value, {
+            groups: valueSearchTypeGroupsFor(databaseType ?? null),
+            hints,
+          });
+          actions.applyAnyColumn(expansion);
+        }}
+        anyColumnSkippedCount={anyColumnReport.skippedColumns.length}
+        anyColumnSearchableCount={anyColumnReport.searchableColumns.length}
+        rawWhereValue={rawWhereDraft}
+        onRawWhereValueChange={actions.setRawWhereDraft}
+        onApplyRawWhere={actions.applyRawWhere}
+        appliedRawWhere={rawWhere}
+        // Where the predicate runs (DBR-04): the panel's own database and
+        // schema, so the user can see the target the statement will read.
+        filterRawWhereContext={
+          rawWhereSupported ? [database || null, schema ?? null].filter(Boolean).join(' · ') || null : null
+        }
         filterOperators={filterOperators}
         filterLikeCaseInsensitive={filterLikeCaseInsensitive}
         onAddFilter={actions.addFilter}

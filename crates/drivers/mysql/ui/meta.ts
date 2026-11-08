@@ -92,7 +92,7 @@ function mysqlEscapeSqlValue(value: unknown): string {
  * dialect is verified on its own.
  */
 const mysqlValueSearchTypes = {
-  dataGrid: { valueSearchExtraTypes: ['number', 'datetime'] },
+  dataGrid: { valueSearchExtraTypes: ['number', 'datetime'], rawWhereFilter: true },
 } as const;
 
 export const mysqlMeta = {

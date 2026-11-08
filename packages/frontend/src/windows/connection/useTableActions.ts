@@ -52,6 +52,17 @@ export interface TableActions {
   updateFilter: (index: number, filter: FilterCondition) => void;
   setFilterLogic: (logic: 'and' | 'or') => void;
   applyFilters: () => void;
+  /* ── The DBR-04 filter modes. ── */
+  /** Switch the filter panel's editor pane; render-only, no navigation guard. */
+  setFilterMode: (mode: 'structured' | 'anyColumn' | 'rawSql') => void;
+  /** Edit the Any Column draft. */
+  setAnyColumnDraft: (value: string) => void;
+  /** Edit the Raw SQL draft. */
+  setRawWhereDraft: (value: string) => void;
+  /** Apply the Any Column expansion (conditions precomputed by the caller). */
+  applyAnyColumn: (expansion: { conditions: FilterCondition[] }) => void;
+  /** Apply the Raw SQL predicate; empty clears the filter. */
+  applyRawWhere: (predicate: string) => void;
   setFilterPanelOpen: (open: boolean) => void;
   setVisibleColumns: (columns: string[] | null) => void;
   setPage: (page: number) => void;
@@ -194,6 +205,19 @@ export function useTableActions({
         if (!mayNavigate()) return;
         invalidateNotice();
         store().applyFilters(panelId);
+      },
+      setFilterMode: (mode) => store().setFilterMode(panelId, mode),
+      setAnyColumnDraft: (value) => store().setAnyColumnDraft(panelId, value),
+      setRawWhereDraft: (value) => store().setRawWhereDraft(panelId, value),
+      applyAnyColumn: (expansion) => {
+        if (!mayNavigate()) return;
+        invalidateNotice();
+        store().applyAnyColumn(panelId, expansion);
+      },
+      applyRawWhere: (predicate) => {
+        if (!mayNavigate()) return;
+        invalidateNotice();
+        store().applyRawWhere(panelId, predicate);
       },
       setFilterPanelOpen: (open: boolean) => store().setFilterPanelOpen(panelId, open),
       setVisibleColumns: (columns: string[] | null) => store().setVisibleColumns(panelId, columns),

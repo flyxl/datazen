@@ -237,7 +237,7 @@ describe('DatabaseValueSearchDialog type scope (DBR-03)', () => {
     ]);
   });
 
-  it('offers the declared groups to a driver that can text-match them', () => {
+  it('offers the declared groups to a driver that can match them as text', () => {
     renderDialog({ driverType: 'mysql' });
 
     const types = screen.getByTestId('value-search-types') as HTMLSelectElement;

@@ -43,6 +43,7 @@ use crate::table_editing::TableEditingError;
 
 use super::browsing;
 use super::executor::filter_sql::{validate_filters, FilterRejection};
+use super::executor::raw_where::validate_raw_where;
 use super::executor::table_read_sql::{build_paged_select_sql, build_unbounded_select_sql};
 use super::executor::{
     keyset_refusal, paging_info, resolve_paging, FilterCondition, PagingPlan, QueryExecutor,
@@ -66,6 +67,15 @@ pub struct TableReadRequest {
     pub sorts: Option<Vec<SortCondition>>,
     pub skip_count: Option<bool>,
     pub filter_logic: Option<String>,
+    /// The raw `WHERE` predicate of the raw filter mode (DBR-04): a single
+    /// boolean expression, validated by the host before anything is built.
+    ///
+    /// An empty or whitespace-only fragment means "no raw filter", exactly
+    /// as an absent `filters` list means "no structured filter". `None` and
+    /// `Some("")` are therefore the same request, which is what a caller
+    /// that clears its raw draft without touching the structured list needs
+    /// to be able to say.
+    pub raw_where: Option<String>,
     /// The row-count strategy the caller asks for. `None` leaves the choice
     /// to the driver.
     pub count_strategy: Option<CountStrategy>,
@@ -106,6 +116,10 @@ pub struct TableReadPreviewRequest {
     pub filters: Option<Vec<FilterCondition>>,
     pub sorts: Option<Vec<SortCondition>>,
     pub filter_logic: Option<String>,
+    /// The raw `WHERE` predicate of the raw filter mode (DBR-04). The same
+    /// field, the same validation and the same refusal a read applies — a
+    /// preview of a statement the read would refuse is a lie, not a preview.
+    pub raw_where: Option<String>,
     pub count_strategy: Option<CountStrategy>,
     pub default_order_columns: Option<Vec<String>>,
     pub after_key: Option<Vec<CursorValue>>,
@@ -230,6 +244,10 @@ struct ReadQueryShape<'a> {
     filters: Option<&'a [FilterCondition]>,
     sorts: Option<&'a [SortCondition]>,
     filter_logic: Option<&'a str>,
+    /// The validated raw predicate (DBR-04), or `None`. Empty by the time it
+    /// reaches here: the request handlers map an empty fragment to `None`
+    /// before the shape is built.
+    raw_where: Option<&'a str>,
     count_strategy: Option<CountStrategy>,
     default_order_columns: Option<&'a [String]>,
     after_key: Option<&'a [CursorValue]>,
@@ -331,6 +349,7 @@ fn assemble_statements(
         u64::from(shape.page_size),
         u64::from(shape.page).saturating_mul(u64::from(shape.page_size)),
         shape.filter_logic,
+        shape.raw_where,
     )?
     .sql;
 
@@ -341,7 +360,9 @@ fn assemble_statements(
             driver,
             shape.count_strategy,
             false,
-            browsing::has_effective_filters(shape.filters),
+            // A raw predicate filters as surely as a structured list does:
+            // the count strategy decides with both in view (DBR-04).
+            browsing::has_effective_filters(shape.filters) || shape.raw_where.is_some(),
             database,
             schema_name,
             table,
@@ -361,6 +382,7 @@ fn assemble_statements(
         &shape.filters.map(<[FilterCondition]>::to_vec),
         dialect,
         shape.filter_logic,
+        shape.raw_where,
     )?;
     let count_statement = match count_plan {
         CountPlan::Exact => Some(exact_count_statement.clone()),
@@ -498,6 +520,40 @@ fn target_binding(
     }
 }
 
+/// The raw predicate of a request after the two gates every channel has to
+/// pass (DBR-04).
+///
+/// * The driver has to declare [`DatabaseDriver::supports_raw_where_filter`]
+///   — a driver that cannot vouch for the fragment never sees one, and a
+///   caller that sends one anyway is refused with a readable error instead
+///   of a silent drop.
+/// * The fragment has to be a single boolean expression
+///   ([`validate_raw_where`]): no statement verbs, no `;`, no comments, no
+///   paging or ordering clauses, balanced parentheses, closed literals.
+///
+/// An empty or whitespace-only fragment maps to `None`: "no raw filter" is
+/// the same request whether the caller spelled it with an absent key or an
+/// empty string, which is what a caller that clears its raw draft needs to
+/// be able to say without touching the structured list.
+fn validated_raw_where<'a>(
+    driver: &dyn DatabaseDriver,
+    raw_where: Option<&'a str>,
+) -> Result<Option<&'a str>, TableReadError> {
+    let Some(fragment) = raw_where.map(str::trim).filter(|text| !text.is_empty()) else {
+        return Ok(None);
+    };
+    if !driver.supports_raw_where_filter() {
+        return Err(TableReadError::Validation(
+            "grid.filter.rawWhereUnsupported: this database does not support the raw WHERE filter"
+                .into(),
+        ));
+    }
+    if let Err(rejection) = validate_raw_where(fragment) {
+        return Err(TableReadError::Validation(rejection.contract_message()));
+    }
+    Ok(Some(fragment))
+}
+
 /// Read one page of a table through an explicit target execution.
 ///
 /// The count and the rows travel in one statement batch; a failed estimate
@@ -523,6 +579,10 @@ pub async fn read_table_page(
         driver.supported_filter_operators(),
         request.filters.as_deref().unwrap_or_default(),
     )?;
+    // The raw predicate passes the same two gates before anything is built
+    // (DBR-04): the driver has to declare the channel, and the fragment has
+    // to be a single boolean expression.
+    let raw_where = validated_raw_where(driver, request.raw_where.as_deref())?;
     let binding = target_binding(&request.context, request.manual_handle.clone(), revision);
     let database = request
         .context
@@ -557,6 +617,7 @@ pub async fn read_table_page(
             filters: request.filters.as_deref(),
             sorts: request.sorts.as_deref(),
             filter_logic: request.filter_logic.as_deref(),
+            raw_where,
             count_strategy: request.count_strategy,
             default_order_columns: request.default_order_columns.as_deref(),
             after_key: request.after_key.as_deref(),
@@ -752,6 +813,9 @@ pub async fn preview_table_read(
         driver.supported_filter_operators(),
         request.filters.as_deref().unwrap_or_default(),
     )?;
+    // And the same two gates for the raw predicate (DBR-04): the preview and
+    // the read must agree on what may run, statement for statement.
+    let raw_where = validated_raw_where(driver, request.raw_where.as_deref())?;
     let binding = target_binding(&request.context, request.manual_handle.clone(), revision);
     let database = request
         .context
@@ -774,6 +838,7 @@ pub async fn preview_table_read(
         filters: request.filters.as_deref(),
         sorts: request.sorts.as_deref(),
         filter_logic: request.filter_logic.as_deref(),
+        raw_where,
         count_strategy: request.count_strategy,
         default_order_columns: request.default_order_columns.as_deref(),
         after_key: request.after_key.as_deref(),
@@ -800,6 +865,7 @@ pub async fn preview_table_read(
             &assembled.plan.order,
             &dialect,
             request.filter_logic.as_deref(),
+            raw_where,
         )?
     } else {
         assembled.select
@@ -921,6 +987,7 @@ mod tests {
             filters: None,
             sorts: None,
             filter_logic: None,
+            raw_where: None,
             count_strategy: None,
             default_order_columns: None,
             after_key: None,
@@ -1100,6 +1167,7 @@ mod tests {
             sorts: None,
             skip_count: None,
             filter_logic: None,
+            raw_where: None,
             count_strategy: None,
             default_order_columns: None,
             after_key: None,
@@ -1196,6 +1264,7 @@ mod tests {
         };
         let driver = driver();
         let request = TableReadPreviewRequest {
+            raw_where: None,
             manual_handle: None,
             context: table_context(),
             page: 0,
@@ -1219,6 +1288,192 @@ mod tests {
         assert!(preview.count_sql.is_some());
         assert!(!preview.exact_count_sql.is_empty());
         assert_eq!(preview.count_kind, CountStrategy::Exact);
+    }
+
+    /// A runner that captures the `query` input, so a test can read the
+    /// statement a read really sent.
+    struct CapturingRunner {
+        outputs: Vec<Json>,
+        queries: std::sync::Mutex<Vec<Json>>,
+    }
+
+    #[async_trait::async_trait]
+    impl TargetCommandRunner for CapturingRunner {
+        async fn run(
+            &self,
+            _context: &RequestContext,
+            _binding: &TargetBinding,
+            command: &str,
+            input: Json,
+        ) -> Result<Vec<Json>, ApiError> {
+            if command == "query" {
+                self.queries.lock().expect("lock").push(input);
+            }
+            Ok(self.outputs.clone())
+        }
+    }
+
+    fn raw_where_driver() -> Arc<MockDriver> {
+        MockDriver::new(
+            "postgres",
+            MockDriverOptions {
+                supports_raw_where_filter: true,
+                ..MockDriverOptions::default()
+            },
+        )
+    }
+
+    fn preview_request(raw_where: Option<&str>) -> TableReadPreviewRequest {
+        TableReadPreviewRequest {
+            raw_where: raw_where.map(str::to_string),
+            manual_handle: None,
+            context: table_context(),
+            page: 0,
+            page_size: 10,
+            filters: None,
+            sorts: None,
+            filter_logic: None,
+            count_strategy: None,
+            default_order_columns: None,
+            after_key: None,
+            require_keyset: None,
+            cursor_depth: None,
+            unbounded: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_raw_predicate_is_spliced_into_the_read_and_the_count_alike() {
+        let runner = ScriptedRunner { outputs: vec![schema_output()] };
+        let driver = raw_where_driver();
+        let preview = preview_table_read(
+            driver.as_ref(),
+            preview_request(Some("total > 100 AND status = 'paid'")),
+            Counter::ZERO,
+            context(),
+            &runner,
+        )
+        .await
+        .expect("preview");
+        // The predicate appears in parentheses, as the first condition of the
+        // WHERE, in both statements the read would run (DBR-04).
+        assert!(
+            preview.data_sql.contains("WHERE (total > 100 AND status = 'paid')"),
+            "the data statement must carry the raw predicate, got: {}",
+            preview.data_sql
+        );
+        assert!(
+            preview.exact_count_sql.contains("WHERE (total > 100 AND status = 'paid')"),
+            "the count must ask the same question, got: {}",
+            preview.exact_count_sql
+        );
+    }
+
+    #[tokio::test]
+    async fn the_read_sends_the_statement_the_preview_showed() {
+        // Byte identity is the whole contract of the preview (DB-15): the
+        // raw predicate may not drift between the two, in either direction.
+        let capture = CapturingRunner {
+            outputs: vec![schema_output(), batched_query_output()],
+            queries: std::sync::Mutex::new(Vec::new()),
+        };
+        let driver = raw_where_driver();
+        let mut read = read_request();
+        read.raw_where = Some("total > 100".into());
+        let result = read_table_page(
+            driver.as_ref(),
+            read,
+            Counter::ZERO,
+            context(),
+            &capture,
+        )
+        .await
+        .expect("read");
+        assert_eq!(result.rows.len(), 1);
+
+        let preview = preview_table_read(
+            driver.as_ref(),
+            preview_request(Some("total > 100")),
+            Counter::ZERO,
+            context(),
+            &ScriptedRunner { outputs: vec![schema_output()] },
+        )
+        .await
+        .expect("preview");
+
+        let queries = capture.queries.lock().expect("lock");
+        let batch = queries
+            .first()
+            .and_then(|input| input["sql"].as_str())
+            .expect("the read sent a query batch")
+            .to_string();
+        // The batch is `count;\nselect`; the select must be byte for byte
+        // the statement the preview showed.
+        let select = batch.rsplit_once(";\n").map(|(_, tail)| tail).unwrap_or(&batch);
+        assert_eq!(select, preview.data_sql);
+    }
+
+    #[tokio::test]
+    async fn a_driver_that_does_not_declare_the_channel_is_refused() {
+        // The plain mock declares nothing, so the default answer is `false`.
+        let runner = ScriptedRunner { outputs: vec![] };
+        let driver = driver();
+        let mut request = read_request();
+        request.raw_where = Some("total > 100".into());
+        let error = read_table_page(driver.as_ref(), request, Counter::ZERO, context(), &runner)
+            .await
+            .expect_err("undeclared channel");
+        assert!(matches!(error, TableReadError::Validation(_)));
+        assert!(error.to_string().contains("grid.filter.rawWhereUnsupported"));
+    }
+
+    #[tokio::test]
+    async fn a_fragment_that_fails_validation_is_refused_with_its_contract_message() {
+        let runner = ScriptedRunner { outputs: vec![] };
+        let driver = raw_where_driver();
+        for (fragment, expected) in [
+            ("total > 1; DELETE FROM orders", "rawWhereMultiStatement"),
+            ("total > 1 -- done", "rawWhereComment"),
+            ("(total > 1", "rawWhereUnbalancedParenthesis"),
+            ("total > 1 ORDER BY id", "rawWhereForbiddenKeyword"),
+            ("total > $$1$$", "rawWhereDollarSign"),
+        ] {
+            let mut request = read_request();
+            request.raw_where = Some(fragment.into());
+            let error =
+                read_table_page(driver.as_ref(), request, Counter::ZERO, context(), &runner)
+                    .await
+                    .expect_err("rejected fragment");
+            assert!(matches!(error, TableReadError::Validation(_)));
+            assert!(
+                error.to_string().contains(expected),
+                "the fragment `{fragment}` must name {expected}, got: {error}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn an_empty_raw_fragment_is_no_raw_filter_at_all() {
+        // `Some("")` and `Some("   ")` mean "no raw filter": the request is the
+        // one every read always served, not an error.
+        let runner = ScriptedRunner {
+            outputs: vec![schema_output(), batched_query_output()],
+        };
+        let driver = raw_where_driver();
+        for empty in ["", "   \t "] {
+            let mut request = read_request();
+            request.raw_where = Some(empty.into());
+            let result = read_table_page(
+                driver.as_ref(),
+                request,
+                Counter::ZERO,
+                context(),
+                &runner,
+            )
+            .await
+            .expect("read without a raw filter");
+            assert_eq!(result.rows.len(), 1);
+        }
     }
 
     #[tokio::test]

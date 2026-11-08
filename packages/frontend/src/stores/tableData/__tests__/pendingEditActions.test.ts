@@ -55,8 +55,10 @@ const STORE_ACTIONS = [
   'addFilter',
   // DB-11: add (or re-aim) one column of the multi-column sort.
   'addSort',
+  'applyAnyColumn',
   'applyColumnToRows',
   'applyFilters',
+  'applyRawWhere',
   'beginCellSelection',
   'cancelEdit',
   'clearEnumCandidates',
@@ -83,6 +85,8 @@ const STORE_ACTIONS = [
   // DB-07: the first-frame seed of a tab that was opened by a foreign-key jump.
   'seedPanel',
   'selectRow',
+  // DBR-04: the Any Column draft — sorted with the rest of the surface.
+  'setAnyColumnDraft',
   // DB-12: the column tools — render-only, no re-read.
   'setColumnOrder',
   'setDefaultOrderOverride',
@@ -90,6 +94,7 @@ const STORE_ACTIONS = [
   'setDraftValue',
   'setEnumCandidates',
   'setFilterLogic',
+  'setFilterMode',
   'setFilterPanelOpen',
   'setFilters',
   // DB-12: the freeze half of the column tools.
@@ -97,6 +102,8 @@ const STORE_ACTIONS = [
   'setGridSelection',
   'setPage',
   'setPageSize',
+  // DBR-04: the Raw SQL draft.
+  'setRawWhereDraft',
   'setRowModeSelection',
   'setSort',
   'setVisibleColumns',

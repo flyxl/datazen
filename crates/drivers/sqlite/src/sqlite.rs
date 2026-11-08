@@ -201,6 +201,13 @@ impl DatabaseDriver for SqliteDriver {
         true
     }
 
+    /// The raw `WHERE` filter (DBR-04): a validated boolean fragment spliced
+    /// into the `WHERE` of the host-built read. SQLite's expression grammar
+    /// covers everything the validator lets through, so the channel is open.
+    fn supports_raw_where_filter(&self) -> bool {
+        true
+    }
+
     fn sql_literal_dialect(&self) -> Option<SqlLiteralDialect> {
         Some(SqlLiteralDialect::Sqlite)
     }

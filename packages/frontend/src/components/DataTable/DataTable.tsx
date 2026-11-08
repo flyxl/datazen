@@ -156,6 +156,25 @@ export interface DataTableProps {
   onUpdateFilter?: (index: number, filter: FilterCondition) => void;
   onFilterLogicChange?: (logic: 'and' | 'or') => void;
   onApplyFilters?: () => void;
+  /* ── The DBR-04 filter modes. All optional pass-throughs: a caller that
+      passes none keeps the panel it always had. ── */
+  /** The pane the filter panel shows; absent keeps the structured editor. */
+  filterMode?: 'structured' | 'anyColumn' | 'rawSql';
+  onFilterModeChange?: (mode: 'structured' | 'anyColumn' | 'rawSql') => void;
+  /** Whether the Raw SQL pane is offered (the driver's declaration). */
+  filterRawWhereSupported?: boolean;
+  anyColumnValue?: string;
+  onAnyColumnValueChange?: (value: string) => void;
+  onApplyAnyColumn?: (value: string) => void;
+  anyColumnSkippedCount?: number;
+  anyColumnSearchableCount?: number;
+  rawWhereValue?: string;
+  onRawWhereValueChange?: (value: string) => void;
+  onApplyRawWhere?: (value: string) => void;
+  /** The applied raw predicate; it lights the panel up like applied filters. */
+  appliedRawWhere?: string | null;
+  /** Where the raw predicate runs (`database · schema`); shown in the pane. */
+  filterRawWhereContext?: string | null;
 
   editingCell?: { row: number; col: string } | null;
   onCellDoubleClick?: (row: number, col: string) => void;
@@ -426,6 +445,19 @@ export function DataTable({
   onUpdateFilter,
   onFilterLogicChange,
   onApplyFilters,
+  filterMode,
+  onFilterModeChange,
+  filterRawWhereSupported,
+  anyColumnValue,
+  onAnyColumnValueChange,
+  onApplyAnyColumn,
+  anyColumnSkippedCount,
+  anyColumnSearchableCount,
+  rawWhereValue,
+  onRawWhereValueChange,
+  onApplyRawWhere,
+  appliedRawWhere,
+  filterRawWhereContext,
   onPageChange,
   onPageSizeChange,
   totalRowsKind,
@@ -762,6 +794,19 @@ export function DataTable({
           loading={loading}
           onPreviewSql={onPreviewSql}
           onExportFiltered={onExportFiltered}
+          mode={filterMode}
+          onModeChange={onFilterModeChange}
+          rawWhereSupported={filterRawWhereSupported}
+          anyColumnValue={anyColumnValue}
+          onAnyColumnValueChange={onAnyColumnValueChange}
+          onApplyAnyColumn={onApplyAnyColumn}
+          anyColumnSkippedCount={anyColumnSkippedCount}
+          anyColumnSearchableCount={anyColumnSearchableCount}
+          rawWhereValue={rawWhereValue}
+          onRawWhereValueChange={onRawWhereValueChange}
+          onApplyRawWhere={onApplyRawWhere}
+          appliedRawWhere={appliedRawWhere}
+          rawWhereContext={filterRawWhereContext}
         />
       ) : hasFilters ? (
         <FilterBar

@@ -205,6 +205,7 @@ mod tests {
             },
             filters: Vec::new(),
             filter_logic: "and".into(),
+            raw_where: None,
             sorts: Vec::new(),
             visible_columns: None,
             column_order: None,

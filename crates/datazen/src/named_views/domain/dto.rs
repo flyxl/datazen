@@ -57,6 +57,15 @@ pub struct NamedView {
     /// older build still loads; `validate` refuses anything else.
     #[serde(default = "default_filter_logic")]
     pub filter_logic: String,
+    /// The applied raw `WHERE` predicate, when the view was saved with the
+    /// Raw SQL filter in effect (DBR-04).
+    ///
+    /// `None` — the common case, and the only case a record written before
+    /// the field existed can carry — is a view of structured filters. The
+    /// read path validates the predicate again on every replay; the stored
+    /// value is what the panel ran, not a promise that it still may run.
+    #[serde(default)]
+    pub raw_where: Option<String>,
     /// The sorts that were in effect.
     #[serde(default)]
     pub sorts: Vec<SortCondition>,

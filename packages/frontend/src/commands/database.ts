@@ -177,6 +177,13 @@ export const databaseCommands = {
     sorts?: SortCondition[];
     skipCount?: boolean;
     filterLogic?: 'and' | 'or';
+    /**
+     * The applied raw `WHERE` predicate of the Raw SQL filter mode (DBR-04).
+     * `null` sends nothing — the request every read always served. The host
+     * validates the fragment and refuses a driver that has not declared the
+     * channel, so a rejection is always visible, never a silent drop.
+     */
+    rawWhere?: string | null;
     /** Explicit target database; the host reads it without switching the session. */
     database?: string | null;
     /** Explicit target schema for schema-aware engines. */
@@ -212,6 +219,7 @@ export const databaseCommands = {
       sorts: params.sorts,
       skipCount: params.skipCount,
       filterLogic: params.filterLogic,
+      rawWhere: params.rawWhere ?? null,
       countStrategy: params.countStrategy,
       defaultOrderColumns: params.defaultOrderColumns,
       afterKey: params.afterKey,
@@ -236,6 +244,13 @@ export const databaseCommands = {
     filters?: FilterCondition[];
     sorts?: SortCondition[];
     filterLogic?: 'and' | 'or';
+    /**
+     * The raw `WHERE` predicate of the Raw SQL filter mode (DBR-04). The
+     * preview must carry it: it assembles through the same builder the read
+     * executes, so the statements it shows are byte for byte the ones the
+     * read sends — raw predicate included.
+     */
+    rawWhere?: string | null;
     /** Explicit target database; the host reads it without switching the session. */
     database?: string | null;
     /** Explicit target schema for schema-aware engines. */
@@ -255,6 +270,7 @@ export const databaseCommands = {
       filters: params.filters,
       sorts: params.sorts,
       filterLogic: params.filterLogic,
+      rawWhere: params.rawWhere ?? null,
       countStrategy: params.countStrategy,
       defaultOrderColumns: params.defaultOrderColumns,
       afterKey: params.afterKey,

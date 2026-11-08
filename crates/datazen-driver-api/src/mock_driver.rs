@@ -228,6 +228,11 @@ pub struct MockDriverOptions {
     /// (the default) models a driver that has not opted in, so the host reads
     /// every page with an `OFFSET`.
     pub supports_keyset_pagination: bool,
+    /// Whether the mock declares the raw `WHERE` filter channel (DBR-04),
+    /// reported by `DatabaseDriver::supports_raw_where_filter`. `false` (the
+    /// default) keeps the trait's default, so a mock standing in for a driver
+    /// that has not declared the channel refuses it like the real one would.
+    pub supports_raw_where_filter: bool,
     /// Whether the mock refuses to render a seek condition even though it
     /// claims the capability. `false` (the default) renders the portable
     /// lexicographic condition; `true` models a dialect that cannot express
@@ -298,6 +303,7 @@ impl Default for MockDriverOptions {
             default_order_columns: None,
             allow_first_column_fallback_order: None,
             supports_keyset_pagination: false,
+            supports_raw_where_filter: false,
             keyset_predicate_returns_none: false,
         }
     }
@@ -673,6 +679,10 @@ impl DatabaseDriver for MockDriver {
 
     fn supports_keyset_pagination(&self) -> bool {
         self.opts.supports_keyset_pagination
+    }
+
+    fn supports_raw_where_filter(&self) -> bool {
+        self.opts.supports_raw_where_filter
     }
 
     fn keyset_predicate_sql(

@@ -184,6 +184,20 @@ pub trait DatabaseDriver: Send + Sync {
         filter_contract::supported_filter_operators()
     }
 
+    /// Whether this driver accepts a raw `WHERE` predicate in a table read
+    /// (DBR-04).
+    ///
+    /// The default is `false` — a driver that has not declared the capability
+    /// never sees a user fragment, and a caller that sends one anyway is
+    /// refused with a readable error instead of a silent drop. The host
+    /// validates the fragment itself (one boolean expression, no statement
+    /// verbs, no `;`, no comments); a driver declares this only when it also
+    /// vouches that splicing a validated fragment into the `WHERE` of the
+    /// statement the host builds is sound for its grammar.
+    fn supports_raw_where_filter(&self) -> bool {
+        false
+    }
+
     /// Render a dialect-specific filter operator.
     ///
     /// Default: `None`, so the host rejects the operator instead of dropping

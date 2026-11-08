@@ -271,6 +271,18 @@ export interface DataGridCapabilities {
    * safe text set only, which is what every driver had before DBR-03.
    */
   valueSearchExtraTypes?: readonly ('number' | 'datetime')[];
+  /**
+   * The raw `WHERE` filter channel (DBR-04): the panel's Raw SQL mode,
+   * where the user types one boolean predicate and the backend validates
+   * and splices it into the read.
+   *
+   * Unset means `false` — the mode stays hidden for that driver, exactly
+   * as it did before the channel existed. The back end refuses a raw
+   * fragment from a driver that has not declared the channel
+   * (`grid.filter.rawWhere.unsupported`), so this flag hides an entry the
+   * database would refuse; it never widens what may run.
+   */
+  rawWhereFilter?: boolean;
 }
 
 export interface DatabaseTypeMeta {
@@ -526,6 +538,18 @@ export interface DataGridCapabilities {
    * safe text set only, which is what every driver had before DBR-03.
    */
   valueSearchExtraTypes?: readonly ('number' | 'datetime')[];
+  /**
+   * The raw `WHERE` filter channel (DBR-04): the panel's Raw SQL mode,
+   * where the user types one boolean predicate and the backend validates
+   * and splices it into the read.
+   *
+   * Unset means `false` — the mode stays hidden for that driver, exactly
+   * as it did before the channel existed. The back end refuses a raw
+   * fragment from a driver that has not declared the channel
+   * (`grid.filter.rawWhere.unsupported`), so this flag hides an entry the
+   * database would refuse; it never widens what may run.
+   */
+  rawWhereFilter?: boolean;
 }
 
 export interface DatabaseTypeMeta {

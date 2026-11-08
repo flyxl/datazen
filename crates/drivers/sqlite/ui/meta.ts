@@ -55,5 +55,5 @@ export const sqliteMeta = {
    * before matching (`12345 LIKE '12%'` is 1), so the full-database value
    * search may offer numbers and date/times as text-representation matches.
    */
-  dataGrid: { valueSearchExtraTypes: ['number', 'datetime'] },
+  dataGrid: { valueSearchExtraTypes: ['number', 'datetime'], rawWhereFilter: true },
 } satisfies DatabaseTypeMeta;

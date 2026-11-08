@@ -153,6 +153,12 @@ export interface TableStateForView {
   draftFilters?: FilterCondition[];
   /** The applied logic. */
   filterLogic: 'and' | 'or';
+  /**
+   * The applied raw `WHERE` predicate, when the view was saved with the Raw
+   * SQL filter in effect (DBR-04). Omitted — the common case — is a view of
+   * structured filters, including every view saved before the field existed.
+   */
+  rawWhere?: string | null;
   /** The sorts in effect. */
   sorts?: SortCondition[];
   /** The visible columns; `null` means every column is visible. */
@@ -178,6 +184,9 @@ export function viewFromTableState(
     scope: state.scope,
     filters: state.filters,
     filterLogic: state.filterLogic,
+    // The applied raw predicate (DBR-04): saved only when it is what the
+    // panel really runs, so replaying the view asks the same question.
+    rawWhere: state.rawWhere ?? null,
     sorts: state.sorts ?? [],
     visibleColumns: state.visibleColumns ?? null,
     columnOrder: state.columnOrder ?? null,
@@ -315,6 +324,10 @@ function readExportedView(entry: unknown): NamedView | null {
     },
     filters: entry.filters as NamedView['filters'],
     filterLogic: entry.filterLogic,
+    // DBR-04: the raw predicate travels in the file like every other applied
+    // fact; a file without it is a view of structured filters, exactly as
+    // before the field existed.
+    rawWhere: typeof entry.rawWhere === 'string' ? entry.rawWhere : null,
     sorts: entry.sorts as NamedView['sorts'],
     visibleColumns: Array.isArray(entry.visibleColumns)
       ? (entry.visibleColumns as string[])

@@ -140,7 +140,7 @@ describe('valueSearchTypeGroupsFor (DBR-03)', () => {
     expect(valueSearchTypeGroupsFor(null)).toEqual([]);
   });
 
-  it('returns the groups a driver declares its LIKE can text-match', () => {
+  it('returns the groups a driver declares its LIKE can match as text', () => {
     expect(valueSearchTypeGroupsFor('mysql')).toEqual(['number', 'datetime']);
     expect(valueSearchTypeGroupsFor('sqlite')).toEqual(['number', 'datetime']);
   });
