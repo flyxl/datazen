@@ -36,6 +36,7 @@ use crate::shared::scope::OrganizationScope;
 use datazen_driver_api::DatabaseDriver;
 
 use super::{StoredSyncPlan, SyncComparisonPreview, SyncOptions, SYNC_PLAN_TTL};
+use crate::migration::data_sync::job::artifact::ChangeSetArtifact;
 
 /// 计划注册表的键：**组织 + 计划 id**。
 ///
@@ -45,6 +46,22 @@ type PlanKey = (OrganizationId, String);
 /// 取某个作用域下某个计划 id 的键。
 fn plan_key(scope: &OrganizationScope, id: &str) -> PlanKey {
     (scope.organization_id().clone(), id.to_string())
+}
+
+/// ChangeSet 工件的受理回执 id（apply 的 StageOutcome.artifact_ids 同款，
+/// 回执与存储两侧必须同源）。
+pub fn change_set_artifact_id(plan_id: &str) -> String {
+    format!("changeset-{plan_id}")
+}
+
+/// 已确认的选区（apply 受理后安装；读取即消费）。
+///
+/// 桌面宿主的历史名字是 `StoredSelection`（`commands/sync/host/state.rs`）；
+/// 服务端把它随 plan 仓储一起组织键隔离（W8 刀3e-4a），词汇上移共享层。
+#[derive(Clone)]
+pub struct StoredSyncSelection {
+    pub selection: super::SyncRunSelection,
+    pub options: SyncOptions,
 }
 
 /// 一次「签发计划」的请求。
@@ -109,6 +126,32 @@ pub trait SyncPlanRepository: Send + Sync {
 
     /// 认领计划：把它从注册表里摘走，供一次写入独占使用。
     fn claim(&self, scope: &OrganizationScope, id: &str) -> Result<StoredSyncPlan, String>;
+
+    /// 冻结 prepare 产出的不可变 ChangeSet 工件（组织键隔离；W8 刀3e-4a）。
+    ///
+    /// 工件是进程内状态：SQL 正文与行值不落盘，重启后按「计划不可用」
+    /// 如实回答（桌面静态表同语义，只是键多了组织维度）。
+    fn store_artifact(&self, scope: &OrganizationScope, artifact: ChangeSetArtifact);
+
+    /// 读取（不消费）ChangeSet 工件；miss / 越组织 → `None`。
+    fn load_artifact(&self, scope: &OrganizationScope, plan_id: &str) -> Option<ChangeSetArtifact>;
+
+    /// 安装已确认的选区（apply 受理后、派发前；重复安装覆盖旧值——
+    /// 同一 plan 只有一次成功的 apply 受理，覆盖而不会发生）。
+    fn install_selection(
+        &self,
+        scope: &OrganizationScope,
+        plan_id: &str,
+        selection: StoredSyncSelection,
+    );
+
+    /// 消费已确认的选区（**读取即消费**，§2.1 / CM-41：同一 planId 的
+    /// 第二次认领一无所获）。
+    fn take_selection(
+        &self,
+        scope: &OrganizationScope,
+        plan_id: &str,
+    ) -> Option<StoredSyncSelection>;
 }
 
 /// 进程内实现：Mutex + HashMap，带有效期。
@@ -116,12 +159,16 @@ pub trait SyncPlanRepository: Send + Sync {
 /// 键是 **(组织, 计划 id)**，见模块头的「组织维度进键」。
 pub struct InMemorySyncPlanRepository {
     plans: Mutex<HashMap<PlanKey, StoredSyncPlan>>,
+    artifacts: Mutex<HashMap<PlanKey, ChangeSetArtifact>>,
+    selections: Mutex<HashMap<PlanKey, StoredSyncSelection>>,
 }
 
 impl InMemorySyncPlanRepository {
     pub fn new() -> Self {
         Self {
             plans: Mutex::new(HashMap::new()),
+            artifacts: Mutex::new(HashMap::new()),
+            selections: Mutex::new(HashMap::new()),
         }
     }
 
@@ -264,6 +311,45 @@ impl SyncPlanRepository for InMemorySyncPlanRepository {
             return Err("sync plan has expired; return to comparison".into());
         }
         Ok(plan)
+    }
+
+    fn store_artifact(&self, scope: &OrganizationScope, artifact: ChangeSetArtifact) {
+        let key = plan_key(scope, &artifact.plan_id);
+        if let Ok(mut artifacts) = self.artifacts.lock() {
+            artifacts.insert(key, artifact);
+        }
+    }
+
+    fn load_artifact(&self, scope: &OrganizationScope, plan_id: &str) -> Option<ChangeSetArtifact> {
+        let key = plan_key(scope, plan_id);
+        self.artifacts
+            .lock()
+            .ok()
+            .and_then(|artifacts| artifacts.get(&key).cloned())
+    }
+
+    fn install_selection(
+        &self,
+        scope: &OrganizationScope,
+        plan_id: &str,
+        selection: StoredSyncSelection,
+    ) {
+        let key = plan_key(scope, plan_id);
+        if let Ok(mut selections) = self.selections.lock() {
+            selections.insert(key, selection);
+        }
+    }
+
+    fn take_selection(
+        &self,
+        scope: &OrganizationScope,
+        plan_id: &str,
+    ) -> Option<StoredSyncSelection> {
+        let key = plan_key(scope, plan_id);
+        self.selections
+            .lock()
+            .ok()
+            .and_then(|mut selections| selections.remove(&key))
     }
 }
 

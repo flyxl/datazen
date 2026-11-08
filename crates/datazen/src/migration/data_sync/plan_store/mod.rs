@@ -31,7 +31,10 @@ use crate::migration::data_sync::{
 };
 
 mod repository;
-pub use repository::{InMemorySyncPlanRepository, SyncPlanIssue, SyncPlanRepository};
+pub use repository::{
+    change_set_artifact_id, InMemorySyncPlanRepository, StoredSyncSelection, SyncPlanIssue,
+    SyncPlanRepository,
+};
 
 pub const SYNC_PLAN_TTL: Duration = Duration::from_secs(15 * 60);
 /// Bounds one page sent over the review IPC. The server still owns the full

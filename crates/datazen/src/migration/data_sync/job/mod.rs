@@ -13,8 +13,13 @@ pub mod artifact;
 pub mod body;
 pub mod handler;
 pub mod host;
+pub mod runtime_host;
 
 pub use artifact::{ChangeBlock, ChangeSetArtifact, ColumnMeta, RelationIdentity, TableMeta};
 pub use body::{apply_payload, prepare_payload, ApplySpec, PrepareSpec};
 pub use handler::DataSyncHandler;
 pub use host::{DataSyncHost, EndpointSession, KeysetPageSource, TargetExecutor, TransactionScope};
+pub use runtime_host::{
+    CommitFaultHook, DriverKeysetPageSource, DriverTargetExecutor, FailureSink,
+    HostConnectionConfigs, RecordingDataSyncHost, RuntimeDataSyncHost, SyncArtifactStore,
+};

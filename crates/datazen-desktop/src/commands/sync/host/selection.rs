@@ -9,8 +9,12 @@ use crate::data_sync::job::artifact::{ChangeBlock, ChangeSetArtifact};
 use crate::data_sync::job::host::ArtifactRepositoryGuard;
 use crate::data_sync::DataSyncError;
 
-use super::{invalid, state};
+use super::state;
 use crate::data_sync::plan_store as plans;
+
+fn invalid(message: impl Into<String>) -> DataSyncError {
+    DataSyncError::validation(message.into())
+}
 
 /// Freeze the artifact under the id the handler reports in its receipt.
 pub(super) fn store_artifact(
