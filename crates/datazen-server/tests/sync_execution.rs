@@ -654,7 +654,18 @@ async fn revalidate_and_check_conflicts_project_task_state() {
     // 结构未漂移 → 无过期表。
     let report = fixture
         .execution
-        .revalidate(&fixture.ctx, &inspect_request(&source, &target))
+        .revalidate(
+            &fixture.ctx,
+            &datazen_server::sync::execution::SyncRevalidateRequest {
+                source_db_session_id: source.clone(),
+                target_db_session_id: target.clone(),
+                tables: Some(vec!["users".to_owned()]),
+                source_database: Some("app".to_owned()),
+                target_database: Some("app".to_owned()),
+                source_schema: None,
+                target_schema: None,
+            },
+        )
         .await
         .expect("revalidate re-runs the inspect gates");
     assert_eq!(

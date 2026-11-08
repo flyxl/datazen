@@ -121,6 +121,25 @@ pub struct SyncInspectRequest {
     pub tables: Option<Vec<TableMapping>>,
 }
 
+/// `revalidateDataSync` 的请求形状（桌面 IPC 的 `tables` 是**表名**列表，
+/// 与 inspect 的映射覆盖不同物）。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncRevalidateRequest {
+    pub source_db_session_id: String,
+    pub target_db_session_id: String,
+    #[serde(default)]
+    pub tables: Option<Vec<String>>,
+    #[serde(default)]
+    pub source_database: Option<String>,
+    #[serde(default)]
+    pub target_database: Option<String>,
+    #[serde(default)]
+    pub source_schema: Option<String>,
+    #[serde(default)]
+    pub target_schema: Option<String>,
+}
+
 /// `startDataSyncPrepareJob` / `compareDataSync` 的请求形状。
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -240,18 +259,8 @@ impl SyncExecution {
     pub async fn revalidate(
         &self,
         ctx: &RequestContext,
-        request: &SyncInspectRequest,
+        request: &SyncRevalidateRequest,
     ) -> Result<serde_json::Value, SyncExecutionError> {
-        let tables = request
-            .tables
-            .as_ref()
-            .map(|mappings| {
-                mappings
-                    .iter()
-                    .map(|mapping| mapping.source_table.clone())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
         let inspected = self
             .inspect_sessions(
                 ctx,
@@ -264,7 +273,10 @@ impl SyncExecution {
                 &[],
             )
             .await?;
-        Ok(api::revalidation_report(tables, inspected))
+        Ok(api::revalidation_report(
+            request.tables.clone().unwrap_or_default(),
+            inspected,
+        ))
     }
 
     #[allow(clippy::too_many_arguments)]
