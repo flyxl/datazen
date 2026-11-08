@@ -4,6 +4,10 @@
 #[path = "tests.rs"]
 mod tests;
 
+#[cfg(test)]
+#[path = "result_origin_tests.rs"]
+mod result_origin_tests;
+
 use async_trait::async_trait;
 use datazen_driver_api::*;
 use sqlx::pool::PoolConnection;
@@ -326,6 +330,31 @@ impl DatabaseDriver for PostgresDriver {
         schema: Option<&str>,
     ) -> Result<Vec<TableInfo>, DriverError> {
         Self::get_tables_impl(self, handle, database, schema).await
+    }
+
+    /// W8 刀3e-1 (driver origin write-back contract): this driver opts into
+    /// the result-origin contract. The shared reader parses the statement
+    /// (GenericDialect also accepts the quoted-identifier spellings this
+    /// dialect allows) and this driver's own catalog — `get_tables` over
+    /// `pg_class` — confirms whether the named relation is a base table, a
+    /// view or a materialized view. A catalog that cannot be read leaves the
+    /// kind unknown, which the host treats as read-only; the verdict never
+    /// guesses.
+    async fn describe_result_origin(
+        &self,
+        handle: &ConnectionHandle,
+        target: SqlTarget<'_>,
+        result_columns: &[String],
+        sql: &str,
+    ) -> Result<ResultOrigin, DriverError> {
+        datazen_driver_api::result_origin::describe_result_origin_with_catalog(
+            self,
+            handle,
+            target,
+            result_columns,
+            sql,
+        )
+        .await
     }
 
     async fn get_schemas(
