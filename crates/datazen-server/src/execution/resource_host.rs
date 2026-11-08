@@ -128,6 +128,44 @@ impl ServerResourceExecutionHost {
         }
     }
 
+    /// 提交目标 → 规范化目标（只读半边；W8 刀3d：dashboard 域的 monitor
+    /// 授权流程用——授权单冻结的是规范化后的目标身份，与 `prepare` 的
+    /// 规范化同一台机器、但不消费租约/不产出执行凭据）。
+    ///
+    /// 驱动与命名空间形状按 `database_type` 现取（登记第 1 条：无缓存，
+    /// 与 `prepare` 同纪律）；未知驱动/形状缺失 → `Validation` 拒绝
+    /// （fail-closed，桌面 `resolve_execution_target` 同语义）。
+    pub(crate) async fn canonical_target(
+        &self,
+        command: &str,
+        connection_id: &ConnectionId,
+        target: &ExecutionTarget,
+        database_type: &str,
+    ) -> Result<ExecutionTarget, WorkflowError> {
+        let database_type = database_type.to_owned();
+        let driver = self
+            .registry
+            .get(&database_type)
+            .await
+            .ok_or_else(|| WorkflowError::Validation("driver unavailable".into()))?;
+        let provider = self
+            .registry
+            .resource_provider(&database_type)
+            .await
+            .map_err(|lookup| WorkflowError::Validation(lookup.to_string()))?;
+        let resolver = self.resolver(driver.as_ref(), provider.namespace_shape());
+        let canonical = resolver
+            .compute(
+                command,
+                connection_id,
+                &target.namespace,
+                target.object.as_ref(),
+                &TargetSource::Request,
+            )
+            .map_err(|error| WorkflowError::Validation(error.message))?;
+        Ok(into_execution_target(canonical))
+    }
+
     /// 从驱动与命名空间元数据提供者现建目标解析器（登记第 1 条：无缓存）。
     fn resolver(&self, driver: &dyn DatabaseDriver, shape: &NamespaceShape) -> TargetResolver {
         let shape = namespace_shape(shape);

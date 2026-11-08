@@ -216,6 +216,7 @@ pub const MIGRATIONS: &[Migration] = &[
     V11_QUERY_ASSETS,
     V12_SCHEMA_DIFF_RUNTIME,
     V13_WORKFLOW_RUNTIME,
+    V14_DASHBOARD_RUNTIME,
 ];
 
 /// v10：组织记忆与审批审计（T25）。版本化行 `(organization_id, id,
@@ -870,6 +871,102 @@ CREATE TABLE workflow_run_history (
 );
 CREATE INDEX idx_workflow_run_history_flow
   ON workflow_run_history (organization_id, workflow_id, created_at DESC);
+"#,
+};
+
+/// v14：Dashboard 运行时（W8 刀3d-1）。桌面 `AppDb` 五表的组织键投影
+/// （桌面单租户无组织列，服务端把 `organization_id` 提进复合主键——
+/// v11 查询资产/v13 workflow 同款裁决）：
+/// - `dashboards` / `widgets`：行词汇 = 共享层 `dashboard::records`
+///   （`DashboardRecord` / `WidgetRecord`）；
+/// - `widget_runs` + `widget_latest_run`：运行历史与保留策略的伴表
+///   （latest 让 days 清理不误删最新一条——桌面同款）；
+/// - `monitor_schedule_grants`：monitor 授权单元数据（整档 JSON，桌面
+///   v3 同形）。
+const V14_DASHBOARD_RUNTIME: Migration = Migration {
+    version: 14,
+    name: "dashboard runtime (dashboards, widgets, widget runs, monitor grants)",
+    expand: r#"
+CREATE TABLE dashboards (
+  organization_id TEXT NOT NULL,
+  id TEXT NOT NULL CHECK (id <> ''),
+  name TEXT NOT NULL CHECK (name <> ''),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  layout_cols INTEGER NOT NULL DEFAULT 12,
+  layout_row_height INTEGER NOT NULL DEFAULT 80,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  refresh_paused INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (organization_id, id)
+);
+
+CREATE TABLE widgets (
+  organization_id TEXT NOT NULL,
+  id TEXT NOT NULL CHECK (id <> ''),
+  dashboard_id TEXT NOT NULL CHECK (dashboard_id <> ''),
+  title TEXT NOT NULL,
+  workflow_id TEXT NOT NULL CHECK (workflow_id <> ''),
+  view_mode TEXT NOT NULL CHECK (view_mode IN ('chart', 'table')),
+  chart_config_json TEXT,
+  layout_x INTEGER NOT NULL,
+  layout_y INTEGER NOT NULL,
+  layout_w INTEGER NOT NULL,
+  layout_h INTEGER NOT NULL,
+  refresh_mode TEXT NOT NULL
+    CHECK (refresh_mode IN ('manual', 'onOpen', 'interval')),
+  refresh_sec INTEGER,
+  alert_json TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (organization_id, id)
+);
+CREATE INDEX idx_widgets_dashboard
+  ON widgets (organization_id, dashboard_id, sort_order);
+CREATE INDEX idx_widgets_workflow
+  ON widgets (organization_id, workflow_id);
+
+CREATE TABLE widget_runs (
+  organization_id TEXT NOT NULL,
+  id TEXT NOT NULL CHECK (id <> ''),
+  dashboard_id TEXT NOT NULL,
+  widget_id TEXT NOT NULL,
+  workflow_id TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  finished_at TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('ok', 'error', 'timeout')),
+  error TEXT,
+  row_count INTEGER NOT NULL DEFAULT 0,
+  columns_json TEXT NOT NULL,
+  rows_json TEXT NOT NULL,
+  variables_json TEXT,
+  alert_fired INTEGER,
+  alert_value REAL,
+  PRIMARY KEY (organization_id, id)
+);
+CREATE INDEX idx_widget_runs_widget_started
+  ON widget_runs (organization_id, widget_id, started_at DESC);
+
+CREATE TABLE widget_latest_run (
+  organization_id TEXT NOT NULL,
+  widget_id TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  started_at TEXT NOT NULL,
+  status TEXT NOT NULL,
+  PRIMARY KEY (organization_id, widget_id)
+);
+
+CREATE TABLE monitor_schedule_grants (
+  organization_id TEXT NOT NULL,
+  id TEXT NOT NULL CHECK (id <> ''),
+  dashboard_id TEXT NOT NULL,
+  widget_id TEXT NOT NULL,
+  metadata_json TEXT NOT NULL,
+  PRIMARY KEY (organization_id, id)
+);
+CREATE INDEX idx_monitor_grant_widget
+  ON monitor_schedule_grants (organization_id, dashboard_id, widget_id);
 "#,
 };
 

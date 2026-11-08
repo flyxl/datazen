@@ -26,6 +26,7 @@
 pub mod artifacts;
 pub mod audit;
 pub mod connections;
+pub mod dashboards;
 pub mod jobs;
 pub mod known_hosts;
 pub mod login_sessions;
@@ -43,6 +44,7 @@ pub mod workflows;
 pub use artifacts::ServerArtifacts;
 pub use audit::ServerAudit;
 pub use connections::ServerConnections;
+pub use dashboards::{ServerDashboardRuns, ServerDashboardStore, ServerMonitorGrants};
 pub use jobs::ServerJobs;
 pub use known_hosts::ServerKnownHosts;
 pub use login_sessions::{LoginSessions, ValidateFailure};
@@ -58,6 +60,8 @@ pub use workflows::{ServerWorkflowHistoryStore, ServerWorkflowStore};
 mod artifacts_tests;
 #[cfg(test)]
 mod connections_tests;
+#[cfg(test)]
+mod dashboards_tests;
 #[cfg(test)]
 mod jobs_tests;
 #[cfg(test)]

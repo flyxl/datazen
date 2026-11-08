@@ -123,6 +123,43 @@ fn refresh_mode_of(refresh: &RefreshPolicy) -> String {
     refresh_mode_str(refresh.mode).into()
 }
 
+/// 行级校验：`view_mode` 词表（W8 刀3d 从桌面存储下沉——两形态同一张表
+/// 形，校验必须单家）。
+pub fn validate_view_mode(mode: &str) -> Result<(), DashboardRepositoryError> {
+    match mode {
+        "chart" | "table" => Ok(()),
+        other => Err(DashboardRepositoryError::Parse(format!(
+            "invalid view_mode: {other}"
+        ))),
+    }
+}
+
+/// 行级校验：`refresh_mode`/`refresh_sec` 配对（interval 必须 ≥ 30 秒；
+/// W8 刀3d 从桌面存储下沉——两形态同一张表形，校验必须单家）。
+pub fn validate_refresh_pair(
+    mode: Option<&str>,
+    refresh_sec: Option<u32>,
+) -> Result<(), DashboardRepositoryError> {
+    let Some(mode) = mode else {
+        return Ok(());
+    };
+    match mode {
+        "manual" | "onOpen" => Ok(()),
+        "interval" => {
+            let sec = refresh_sec.unwrap_or(0);
+            if sec < 30 {
+                return Err(DashboardRepositoryError::Parse(
+                    "interval refresh_sec must be >= 30".into(),
+                ));
+            }
+            Ok(())
+        }
+        other => Err(DashboardRepositoryError::Parse(format!(
+            "invalid refresh_mode: {other}"
+        ))),
+    }
+}
+
 /// Turn a stored widget row back into a widget.
 pub fn widget_from_record(
     record: &WidgetRecord,

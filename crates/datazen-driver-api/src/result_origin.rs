@@ -21,6 +21,10 @@
 //! The default answer is [`ResultOrigin::Undeterminable`]: a driver that
 //! implements nothing keeps its result grids read-only, exactly as before this
 //! contract existed.
+//!
+//! Opted in (W8 刀3e-1): the postgres, mysql and sqlite drivers answer through
+//! [`describe_result_origin_with_catalog`]. Every other driver keeps the
+//! default read-only verdict.
 
 use serde::{Deserialize, Serialize};
 

@@ -558,6 +558,37 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         "workflow wiring: scheduler armed (arm-not-fire on start; grant gate fail-closed)"
     );
 
+    // W8 刀3d：dashboard 域装配。存储 = v14 五表（仪表板/组件/运行/
+    // monitor 授权单，组织键 scoped）；共享刷新监控引擎架在服务端宿主上
+    // （「双端调度」的 dashboard 半边：arm-not-fire、授权闸门失败关闭）。
+    // 手工 tick 的身份槽与调度执行共用同一 resource_host / registry
+    // 实例族（上方装配）。spawn 在全部消费者装配之后；graceful drain
+    // 完成后 stop（tick 边界退出，在途派发自行收尾）。
+    let dashboard_store =
+        crate::storage::ServerDashboardStore::scoped(store.clone(), &config.organization_id);
+    let dashboard_runs =
+        crate::storage::ServerDashboardRuns::scoped(store.clone(), &config.organization_id);
+    let monitor_grants =
+        crate::storage::ServerMonitorGrants::scoped(store.clone(), &config.organization_id);
+    let monitor_scheduler =
+        std::sync::Arc::new(crate::dashboard::scheduler::ServerMonitorScheduler::spawn(
+            std::sync::Arc::new(crate::dashboard::scheduler::ServerMonitorHost::new(
+                dashboard_store.clone(),
+                dashboard_runs.clone(),
+                monitor_grants.clone(),
+                workflow_store.clone(),
+                workflow_registry.clone(),
+                settings_store.clone(),
+                profiles_repo.clone(),
+                resource_host.clone(),
+                &config.organization_id,
+            )),
+        ));
+    tracing::info!(
+        organization_id = %config.organization_id,
+        "dashboard wiring: monitor engine armed (arm-not-fire on start; grant gate fail-closed)"
+    );
+
     // SSE（WR-D5，W8-b 起提前到域路由装配之前）：origin 白名单取
     // public_origin（§8.1）；事件后备是 MemoryEventSink（单实例 v1 形态）；
     // 周期复核走标准实现。`Option` = publicOrigin 缺席时不挂事件端点；
@@ -732,6 +763,26 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
                 history: workflow_history.clone(),
                 execution: resource_host.clone(),
                 profiles: profiles_repo.clone(),
+                dashboard_refs: dashboard_store.clone(),
+                organization_id: config.organization_id.clone(),
+            },
+        ),
+        // W8 刀3d：Dashboard 域（契约 §6.15 十五路由——CRUD 六 + 组件
+        // 创建三 + 运行历史二 + 手工执行一 + monitor 授权三）。存储/引擎
+        // 与上方装配同一实例族；手工 tick 的域级互斥在此挂载。
+        crate::http::domains::dashboard::dashboard_router(
+            crate::http::domains::dashboard::DashboardState {
+                dashboards: dashboard_store.clone(),
+                runs: dashboard_runs.clone(),
+                grants: monitor_grants.clone(),
+                workflows: workflow_store.clone(),
+                registry: workflow_registry.clone(),
+                profiles: profiles_repo.clone(),
+                connections: connections_repo.clone(),
+                resource_host: resource_host.clone(),
+                settings: settings_store.clone(),
+                monitor: monitor_scheduler.clone(),
+                manual_gate: std::sync::Arc::new(tokio::sync::Mutex::new(())),
                 organization_id: config.organization_id.clone(),
             },
         ),
@@ -894,6 +945,9 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
     // workflow 调度器同款：tick 边界退出，在途派发自行收尾（取消令牌
     // 幂等；循环只读不持有资源，无 Drop 兜底需求）。
     workflow_scheduler.stop();
+    // dashboard 监控引擎同款（W8 刀3d）：tick 边界退出，在途派发（手工
+    // tick 与调度执行）自行跑完。
+    monitor_scheduler.stop();
     Ok(())
 }
 
