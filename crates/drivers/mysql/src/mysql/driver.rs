@@ -243,6 +243,31 @@ impl DatabaseDriver for MysqlDriver {
         self.get_tables_inner(handle, database, schema).await
     }
 
+    /// W8 刀3e-1 (driver origin write-back contract): this driver opts into
+    /// the result-origin contract. The shared reader parses the statement
+    /// (GenericDialect also accepts the backtick-quoted spellings this
+    /// dialect allows) and this driver's own catalog — `get_tables` over
+    /// `information_schema` — confirms whether the named relation is a base
+    /// table or a view. A catalog that cannot be read leaves the kind
+    /// unknown, which the host treats as read-only; the verdict never
+    /// guesses.
+    async fn describe_result_origin(
+        &self,
+        handle: &ConnectionHandle,
+        target: SqlTarget<'_>,
+        result_columns: &[String],
+        sql: &str,
+    ) -> Result<ResultOrigin, DriverError> {
+        datazen_driver_api::result_origin::describe_result_origin_with_catalog(
+            self,
+            handle,
+            target,
+            result_columns,
+            sql,
+        )
+        .await
+    }
+
     async fn get_columns(
         &self,
         handle: &ConnectionHandle,

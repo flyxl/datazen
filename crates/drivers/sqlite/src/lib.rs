@@ -86,6 +86,9 @@ datazen_driver_api::register_driver!(&SqliteFactory);
 mod keyset_paging_tests;
 
 #[cfg(test)]
+mod result_origin_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
