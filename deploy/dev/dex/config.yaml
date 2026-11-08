@@ -1,0 +1,60 @@
+# 开发栈 OIDC IdP（dex）静态配置 —— 仅限本地开发，绝不可用于生产。
+#
+# 形状对齐 server 侧真实要求（crates/datazen-server/src/auth/oidc.rs +
+# crates/datazen-server/src/bootstrap.rs 的 OIDC 装配）：
+#
+#   - issuer 必须与 server 的 DATAZEN_SERVER_OIDC_ISSUER 逐字等值
+#     （发现文档 issuer 精确匹配，oidc.rs discovery()）。
+#   - 该 URL 有两个消费方：浏览器（授权端点跳转）与 datazen-server 容器
+#     （发现 / token / JWKS）。浏览器侧经宿主机 127.0.0.1:5556（compose
+#     ports），server 容器侧经 compose 网络别名 id.localhost（见
+#     docker-compose.dev.yml 的 dex.networks.default.aliases）。
+#   - staticClients.redirectURIs 必须覆盖 server 构造的 redirect_uri =
+#     DATAZEN_SERVER_PUBLIC_ORIGIN + /api/v1/auth/callback
+#     （bootstrap.rs 硬编码 callback_path；oidc.rs redirect_uri()）。
+#   - public: true = 纯 PKCE 公开客户端（无 client_secret）。server 只发
+#     code_challenge_method=S256（oidc.rs authorization_url()），dex 对
+#     public client 强制要求 PKCE —— 两侧约束正好互锁。
+#   - dex 的 id_token 以 RS256 签名并带 kid，满足 server 的 JWKS 按 kid
+#     缓存校验（oidc.rs validate_id_token / decoding_key）。
+#   - staticPasswords 的 userID 即 id_token 的 sub；server 用 sub 匹配管理库
+#     memberships.external_subject（claims.rs resolve_membership，未命中
+#     403 不隐式开户）——对应种子见 ../seed/seed-dev.sql。
+
+issuer: http://id.localhost:5556
+
+storage:
+  type: sqlite3
+  config:
+    # /tmp 下的容器本地库：有意不挂卷。dex 重启会重新生成签名钥（新 kid），
+    # server 侧「未知 kid 触发一次 JWKS 刷新」的路径（oidc.rs decoding_key）
+    # 正好兜住这一场景——不损失登录能力，只多一次刷新。这也回避了 dex 镜像
+    # 非 root 用户写命名卷的权限面（沙箱无 docker，未验证，不赌）。
+    file: /tmp/dex.db
+
+web:
+  http: 0.0.0.0:5556
+
+# 静态口令库（enablePasswordDB）：明文口令 password，仅开发。
+# hash 是 bcrypt(cost 10)。如需更换口令（或登录失败怀疑 hash 不对），
+# 用 httpd 镜像重新生成后替换下面这一行：
+#   docker run --rm httpd:alpine htpasswd -bnBC 10 "" '新口令' | tr -d ':\n'
+enablePasswordDB: true
+staticPasswords:
+  - email: dev@datazen.local
+    # bcrypt("password") —— 仅开发。生产 secret/hash 一律走受控渠道。
+    hash: "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
+    username: dev
+    # 该值即 id_token 的 sub；seed-dev.sql 的 external_subject 与它逐字对齐。
+    userID: devadmin
+
+staticClients:
+  - id: datazen-web
+    name: "DataZen web (dev)"
+    public: true
+    redirectURIs:
+      - http://localhost:8080/api/v1/auth/callback
+
+oauth2:
+  # 跳过同意页：开发栈里登录两步直达（口令 → 回调）。
+  skipApprovalScreen: true

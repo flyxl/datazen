@@ -1,0 +1,124 @@
+# syntax=docker/dockerfile:1
+# datazen-server 开发栈镜像（deploy/dev/docker-compose.dev.yml 的 build 目标）。
+#
+# 与 deploy/Dockerfile（生产三阶段「形状定义」）的区别：
+#   - 构建上下文按仓库**真实布局**（crates/ + packages/ + scripts/ + 根清单），
+#     生产 Dockerfile 的 `COPY server ./server` / `COPY modules ./modules` 是
+#     目标形态路径（deploy-operations §9 已登记「未构建未演练」）；本文件
+#     按当前 checkout 实际可构建的树来写。
+#   - 前端不是占位（生产阶段 1 目前只 `mkdir /webapp/dist`），而是真跑
+#     `pnpm --filter datazen-web build`（自带 ensure-generated-drivers /
+#     generate-builtin-locales 前置 codegen，见 packages/web/package.json）。
+#   - 默认「快速 release」档：repo 根 [profile.release] 是 lto=true +
+#     codegen-units=1 + opt-level=z（发布冻结语义），全量 LTO 在开发机上
+#     一次 30 分钟起；这里默认用 env 覆盖放宽（opt-level=1、无 LTO、16
+#     CGU），`--build-arg RELEASE_PARITY=1` 恢复仓库发布档。
+#   - runtime 形状尽量与生产对齐：非 root（uid 10001）、VOLUME、HEALTHCHECK
+#     用只读 check-schema、ENTRYPOINT datazen-server + CMD serve。
+#
+# 未在本沙箱构建验证（无 docker）；首次上机验证步骤见
+# docs/development/dev-environment.md 的「未验证事项」节。
+
+# ── 1/4 前端静态资产（WR-E1/E5 的 web 形态构建）────────────────────────
+FROM node:22-bookworm-slim AS webbuild
+# corepack 随 Node 22 附带；版本与 CI 钉子对齐（.github/workflows/ci.yml
+# 的 pnpm/action-setup version: 11）——lockfileVersion 9.0 在 9/11/12 都
+# 可冻结安装，但「开发镜像与 CI 同版本」消除一类只在镜像里复现的差异。
+RUN corepack enable && corepack prepare pnpm@11 --activate
+WORKDIR /repo
+
+# 先拷清单层（锁文件不动则 pnpm store 缓存命中，install 秒级）。
+# pnpm install 需要全部 workspace importer 的 package.json 在位，所以
+# packages/ 整树在 install 之前拷入（源码变更会重装，但依赖都在
+# cache mount 里，代价是硬链接级）。
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml pro-extension.lock.json drivers-registry.json tsconfig*.json ./
+COPY packages ./packages
+
+# --ignore-scripts：跳过根包 prepare（husky 需要 .git；codegen 由 build
+# 脚本自带）与原生构建脚本（better-sqlite3/edgedriver 等只在测试与 e2e
+# 用到，web 构建闭包不需要）。--filter datazen-web... 只装 web 及其
+# workspace 依赖闭包，root devDeps（wdio 全家桶）不进镜像。
+ARG NPM_REGISTRY=""
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    if [ -n "$NPM_REGISTRY" ]; then REG="--registry=$NPM_REGISTRY"; else REG=""; fi; \
+    pnpm install --frozen-lockfile --ignore-scripts --filter datazen-web... $REG
+
+# codegen（resolve-drivers / resolve-pro / builtin-locales）需要 scripts/
+# 与 crates/（驱动 ui 源码在 crates/drivers/*/ui）；随后 vite build 产物
+# 落在 packages/web/dist。
+COPY scripts ./scripts
+COPY crates ./crates
+RUN pnpm --filter datazen-web build
+
+# ── 2/4 server 二进制（cargo --locked，发布包冻结语义与生产一致）──────
+FROM rust:1-slim-bookworm AS serverbuild
+# rusqlite(bundled) 编 SQLite C 源、ring 需要工具链；slim 镜像不带。
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends build-essential pkg-config \
+ && rm -rf /var/lib/apt/lists/*
+
+# 可选 crates.io 镜像（国内网络；例如
+#sparse+https://mirrors.tuna.tsinghua.edu.cn/crates.io-index/）。写入
+# CARGO_HOME/config.toml（不在 cache mount 路径内）。
+ARG CARGO_MIRROR=""
+RUN if [ -n "$CARGO_MIRROR" ]; then \
+      printf '[source.crates-io]\nreplace-with = "mirror"\n\n[source.mirror]\nregistry = "%s"\n' \
+        "$CARGO_MIRROR" > /usr/local/cargo/config.toml; \
+    fi
+
+WORKDIR /repo
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+
+# 默认快速 release 档（见文件头）。RELEASE_PARITY=1 时清掉覆盖，用仓库
+# [profile.release] 原样（lto=z / CGU=1 / opt=z）。
+ARG RELEASE_PARITY=""
+ENV CARGO_PROFILE_RELEASE_LTO=false \
+    CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16 \
+    CARGO_PROFILE_RELEASE_OPT_LEVEL=1 \
+    CARGO_PROFILE_RELEASE_DEBUG=0
+# 说明：两种档位都写 target/release，切换档位会互相覆盖缓存产物——
+# 频繁切换的开发者自行 `docker builder prune` 或接受一次全量重建。
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/repo/target \
+    if [ "$RELEASE_PARITY" = "1" ]; then \
+      unset CARGO_PROFILE_RELEASE_LTO CARGO_PROFILE_RELEASE_CODEGEN_UNITS \
+            CARGO_PROFILE_RELEASE_OPT_LEVEL CARGO_PROFILE_RELEASE_DEBUG; \
+    fi; \
+    cargo build --locked --release -p datazen-server \
+ && cp /repo/target/release/datazen-server /out-datazen-server
+# 只构建 datazen-server（不是 --workspace）：桌面宿主不在依赖闭包内，
+# 且干净 checkout 没有 codegen 出的 crates/datazen-desktop/src/driver_init.rs
+# （该文件由 pnpm 侧脚本生成，server 构建不需要）。
+
+# ── 3/4 运行时 ──────────────────────────────────────────────────────────
+FROM debian:bookworm-slim AS runtime
+# ca-certificates：OIDC/HTTPS 出网；sqlite3：管理库只读探查与开发栈种子
+# 服务（deploy/dev/seed）。
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates sqlite3 \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --system --uid 10001 --home /var/lib/datazen --shell /usr/sbin/nologin dz \
+ && mkdir -p /var/lib/datazen/artifacts /webapp \
+ && chown -R dz:dz /var/lib/datazen /webapp
+COPY --from=serverbuild /out-datazen-server /usr/local/bin/datazen-server
+COPY --from=webbuild /repo/packages/web/dist /webapp/dist
+
+# 目录形态默认值（与 deploy/Dockerfile 同款纪律：只落目录形状，不落秘密）。
+# WEB_ROOT 指向镜像内前端产物；compose 侧 environment 会显式重申同值。
+ENV DATAZEN_SERVER_DB=/var/lib/datazen/datazen-admin.sqlite \
+    DATAZEN_SERVER_ARTIFACT_ROOT=/var/lib/datazen/artifacts \
+    DATAZEN_SERVER_LISTEN=0.0.0.0:8080 \
+    DATAZEN_SERVER_WEB_ROOT=/webapp/dist
+# TLS 不在容器内终止（生产形态：反代单源；开发栈：公网身份是
+# http://localhost:8080，见 docs/development/dev-environment.md 的网络拓扑）。
+EXPOSE 8080
+USER 10001:10001
+VOLUME ["/var/lib/datazen"]
+WORKDIR /var/lib/datazen
+ENTRYPOINT ["/usr/local/bin/datazen-server"]
+CMD ["serve"]
+# 探针：live=/healthz、ready=/readyz（http/router.rs）；HEALTHCHECK 用只读
+# check-schema（落后退出 3 / 超前 4，fail-closed），与生产同款。
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+  CMD ["/usr/local/bin/datazen-server", "check-schema"]
