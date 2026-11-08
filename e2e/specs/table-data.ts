@@ -153,11 +153,33 @@ describe('表数据视图 (TD-001~TD-008)', () => {
 
   // ── 排序（Navicat 对齐的三态循环：升 → 降 → 移除） ────────────────
 
+  /**
+   * The first `count` visible values of `column`, in visual (DOM) order.
+   * `offsetParent` excludes grids of hidden panels — a leftover query-result
+   * grid from the `before` hook renders no `score` cells today, but the filter
+   * keeps the reading scoped even if that ever changes.
+   */
+  const readColumnValues = async (column: string, count: number) => {
+    const values = await browser.execute(
+      (col: string, n: number) => {
+        const cells = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            `[data-testid="data-table-cell"][data-dt-col="${col}"]`,
+          ),
+        ).filter((el) => el.offsetParent !== null);
+        return cells.slice(0, n).map((el) => (el.textContent ?? '').trim());
+      },
+      column,
+      count,
+    );
+    return values as string[];
+  };
+
   it('点击列头应按该列升序排序 (TD-003)', async () => {
     // A single click on the header cell itself starts the cycle (DBR-SORT);
     // the old spec looked for `button[title=…]` sort buttons that no longer
     // exist, so it silently skipped.
-    const header = await $('[data-col-header="name"]');
+    const header = await $('[data-col-header="score"]');
     await header.click();
     await browser.pause(1500);
 
@@ -166,24 +188,26 @@ describe('表数据视图 (TD-001~TD-008)', () => {
     const ascArrow = await header.$('[data-sort-indicator] .lucide-arrow-up');
     await expect(ascArrow).toBeExisting();
 
-    const body = await $('body').getText();
-    expect(body).toContain('user_');
+    // The first two visible rows are really in ascending score order — the
+    // arrow alone does not prove the rows moved.
+    const [first, second] = (await readColumnValues('score', 2)).map(Number);
+    expect(first).toBeLessThanOrEqual(second);
   });
 
   it('再次点击列头应切换为降序 (TD-003)', async () => {
-    const header = await $('[data-col-header="name"]');
+    const header = await $('[data-col-header="score"]');
     await header.click();
     await browser.pause(1500);
 
     const descArrow = await header.$('[data-sort-indicator] .lucide-arrow-down');
     await expect(descArrow).toBeExisting();
 
-    const body = await $('body').getText();
-    expect(body).toContain('user_');
+    const [first, second] = (await readColumnValues('score', 2)).map(Number);
+    expect(first).toBeGreaterThanOrEqual(second);
   });
 
   it('第三次点击列头应移除排序 (TD-003)', async () => {
-    const header = await $('[data-col-header="name"]');
+    const header = await $('[data-col-header="score"]');
     await header.click();
     await browser.pause(1500);
 
@@ -193,8 +217,9 @@ describe('表数据视图 (TD-001~TD-008)', () => {
     const indicator = await header.$('[data-sort-indicator]');
     await expect(indicator).not.toBeExisting();
 
-    const body = await $('body').getText();
-    expect(body).toContain('user_');
+    // id 1 leads again under the default order.
+    const [firstName] = await readColumnValues('name', 1);
+    expect(firstName).toBe('user_1');
   });
 
   // ── 列宽调整 ───────────────────────────────────────────────────
