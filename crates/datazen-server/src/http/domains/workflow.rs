@@ -60,6 +60,7 @@ use datazen::workflow::registry::WorkflowRegistry;
 
 use crate::execution::resource_host::PrincipalScopedHost;
 use crate::http::router::{api_error_response, invalid_argument, SessionIdentity};
+use crate::storage::ServerDashboardStore;
 use crate::storage::ServerProfiles;
 use crate::storage::ServerWorkflowHistoryStore;
 use crate::workflow::host::ServerWorkflowHost;
@@ -78,6 +79,8 @@ pub struct WorkflowState {
     pub execution: Arc<dyn datazen::workflow::resource_execution::ResourceExecutionHost>,
     /// profile 读取面（连接名/方言解析）。
     pub profiles: Arc<ServerProfiles>,
+    /// 仪表板存储（删除闸的引用核对——刀3d 落库时补上的欠账）。
+    pub dashboard_refs: ServerDashboardStore,
     /// 宿主配置的组织（v1 单组织；归属闸的比对值）。
     pub organization_id: String,
 }
@@ -303,8 +306,10 @@ async fn handler_get_workflow_yaml(
 }
 
 /// `deleteWorkflow`（DELETE /api/v1/workflows/{id}）→ 204。未知 id =
-/// 幂等 no-op（端口契约注释的不可区分口径）；服务端 dashboard 引用闸
-/// 随刀3d 落库时补（模块头登记）。
+/// 幂等 no-op（端口契约注释的不可区分口径）；被仪表板组件引用的
+/// 定义拒绝删除（桌面 `AppDb.delete_workflow` 的 `WorkflowInUse` 同
+/// 语义同文案——引用闸随刀3d dashboard 存储落库时补上，模块头旧
+/// 登记随本刀销账）。
 async fn handler_delete_workflow(
     State(state): State<WorkflowState>,
     identity: SessionIdentity,
@@ -316,6 +321,24 @@ async fn handler_delete_workflow(
     let scope = datazen::shared::scope::OrganizationScope::new(
         datazen::shared::id::OrganizationId::new(state.organization_id.clone()),
     );
+    // 引用闸：仪表板组件还在用的定义不可删（断组件的查询供给是
+    // 数据面破坏，不是清理）。
+    match datazen::dashboard::repository::find_workflow_refs(
+        &scope,
+        &state.dashboard_refs,
+        &workflow_id,
+    ) {
+        Ok(refs) if !refs.is_empty() => {
+            let summary = refs
+                .iter()
+                .map(|r| format!("{} / {}", r.dashboard_name, r.widget_title))
+                .collect::<Vec<_>>()
+                .join("; ");
+            return invalid_argument(format!("Workflow in use by dashboards: {summary}"));
+        }
+        Ok(_) => {}
+        Err(error) => return store_unavailable(error),
+    }
     match state.registry.delete(&scope, &workflow_id).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         // id 词表错误 → 400（与未知 id 的 no-op 分家）。

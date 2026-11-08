@@ -319,8 +319,8 @@ async fn a_view_saved_without_an_id_is_minted_with_one() {
     let (store, app, primary, _same_org, _other_org) = fixture().await;
     assert_eq!(
         store.schema_version().expect("schema version"),
-        13,
-        "v13 chain applied (org-memory + query assets + schema diff + workflow runtime)"
+        14,
+        "v14 chain applied (org-memory + query assets + schema diff + workflow + dashboard runtime)"
     );
 
     let draft = view_draft(

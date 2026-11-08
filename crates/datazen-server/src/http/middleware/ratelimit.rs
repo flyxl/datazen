@@ -187,6 +187,11 @@ impl RateLimiter {
             {
                 RouteClass::Strict
             }
+            // Dashboard 的 widget 手工执行受理面（契约 §6.15：一次受理
+            // 占活连接与执行资源——workflow execute 同族）。
+            ("POST", path) if path.starts_with("/api/v1/dashboards/") && path.ends_with("/run") => {
+                RouteClass::Strict
+            }
             // 取消族（§5.2 注记的 `POST /cancel` 语义：执行/Job 的取消端点
             // 以 /cancel 结尾）。
             ("POST", path) if path.ends_with("/cancel") => RouteClass::Strict,
@@ -685,6 +690,11 @@ mod tests {
             RateLimiter::classify(&Method::POST, "/api/v1/driver-gateway/stream-executions"),
             RouteClass::Default
         );
+        // W8 刀3d：dashboard widget 手工执行受理面（契约 §6.15）。
+        assert_eq!(
+            RateLimiter::classify(&Method::POST, "/api/v1/dashboards/dash-1/widgets/w-1/run"),
+            RouteClass::Strict
+        );
         // 读、集合类与其他方法 → 默认档。
         assert_eq!(
             RateLimiter::classify(&Method::GET, "/api/v1/submission-tokens"),
@@ -696,6 +706,18 @@ mod tests {
         );
         assert_eq!(
             RateLimiter::classify(&Method::POST, "/api/v1/auth/login"),
+            RouteClass::Default
+        );
+        // 组件创建/授权面不是执行受理（默认档——保存类操作）。
+        assert_eq!(
+            RateLimiter::classify(&Method::POST, "/api/v1/dashboards/dash-1/widgets/from-sql"),
+            RouteClass::Default
+        );
+        assert_eq!(
+            RateLimiter::classify(
+                &Method::POST,
+                "/api/v1/dashboards/dash-1/widgets/w-1/schedule-grant"
+            ),
             RouteClass::Default
         );
     }
