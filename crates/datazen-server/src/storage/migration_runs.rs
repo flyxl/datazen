@@ -23,7 +23,7 @@
 
 use std::sync::Arc;
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use datazen::history::{MigrationRunFilter, MigrationRunPage, MigrationRunRecord};
 
@@ -69,6 +69,35 @@ impl ServerMigrationRuns {
         })
         .await
         .map_err(|error| backend(format!("migration run task: {error}")))?
+    }
+
+    /// 单行读取（W8 刀3e-3 `get_migration_run` 的存储半边）：本组织 +
+    /// run id；miss / 越组织 → `Ok(None)`（调用方按 404 收口——统一 404
+    /// 纪律，不区分「不存在」与「不可见」）。
+    pub async fn get(
+        &self,
+        organization_id: &str,
+        run_id: &str,
+    ) -> Result<Option<MigrationRunRecord>, MigrationRunStoreError> {
+        let store = self.store.clone();
+        let organization_id = organization_id.to_owned();
+        let run_id = run_id.to_owned();
+        tokio::task::spawn_blocking(move || {
+            let conn = store.lock_for_adapter().map_err(backend)?;
+            conn.query_row(
+                "SELECT id, operation, status, outcome, phase, profile_id, profile_revision, \
+                 source_connection_id, target_connection_id, started_at, finished_at, \
+                 selected_count, committed_count, failed_count, conflict_count, \
+                 cancelled, rollback_outcome, error_summary \
+                 FROM migration_run_history WHERE organization_id = ?1 AND id = ?2",
+                params![organization_id, run_id],
+                run_from_row,
+            )
+            .optional()
+            .map_err(backend)
+        })
+        .await
+        .map_err(|error| backend(format!("migration run get task: {error}")))?
     }
 
     fn save_sync(
