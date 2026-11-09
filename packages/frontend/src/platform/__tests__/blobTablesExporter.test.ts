@@ -154,6 +154,53 @@ describe('createBlobTablesExporter', () => {
   });
 });
 
+describe('csvCell alignment with escapeCsvField (item 4)', () => {
+  const exportRows = async (rows: unknown[][]): Promise<string> => {
+    const readPage = vi
+      .fn<(table: string, cursor: unknown) => Promise<import('../blobTablesExporter').TablePage>>()
+      .mockResolvedValue({ columns: ['v'], rows, nextCursor: null });
+    const delivered: string[] = [];
+    const exporter = createBlobTablesExporter(readPage, {
+      deliver: (contents) => delivered.push(contents),
+    });
+    await exporter.exportTables(REQUEST());
+    return delivered[0] ?? '';
+  };
+
+  it('keeps the formula-injection guard for every prefix the old rule quoted', async () => {
+    const contents = await exportRows([['=SUM(A1)'], ['+2+2'], ['-x'], ['@user']]);
+    expect(contents).toContain('"=SUM(A1)"');
+    expect(contents).toContain('"+2+2"');
+    expect(contents).toContain('"-x"');
+    expect(contents).toContain('"@user"');
+  });
+
+  it('does not wrap a formula value the standard rule already quoted', async () => {
+    const contents = await exportRows([['=a,b']]);
+    expect(contents).toContain('"=a,b"');
+    expect(contents).not.toContain('""=a,b""');
+  });
+
+  it('keeps quoting negative numbers, as the old rule did', async () => {
+    const contents = await exportRows([[-5], [0], [42]]);
+    expect(contents).toContain('"-5"');
+    expect(contents).toContain('\n0\n');
+    expect(contents).toContain('\n42\n');
+  });
+
+  it('uses the standard escaping for quotes, newlines and objects', async () => {
+    const contents = await exportRows([['say "hi"'], ['a\nb'], [{ a: 1 }]]);
+    expect(contents).toContain('"say ""hi"""');
+    expect(contents).toContain('"a\nb"');
+    expect(contents).toContain('"{""a"":1}"');
+  });
+
+  it('writes null/undefined as empty and no longer crashes on bigint', async () => {
+    const contents = await exportRows([[null], [undefined], [BigInt(10)]]);
+    expect(contents).toContain('v\n\n\n10\n');
+  });
+});
+
 describe('downloadBlob', () => {
   it('triggers an anchor download for the blob URL', () => {
     const clicks: unknown[] = [];
