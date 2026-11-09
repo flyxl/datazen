@@ -204,8 +204,14 @@ pub struct ExportTablesRequest {
     pub tables: Vec<TableExportInput>,
 }
 
+/// Wire shape is the TS mirror (`{ Saved: number } | { Cancelled: null }
+/// | { Aborted: { partialDeleted: boolean } }` in
+/// `packages/frontend/src/commands/file.ts`): variant names serialize
+/// as-is, so do NOT re-add `rename_all = "camelCase"` here — it would
+/// lowercase the variant names (`{"saved": …}`) and the frontend's
+/// `'Saved' in result` checks would never match (a successful export
+/// would report as cancelled).
 #[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
 pub enum ExportTablesResult {
     Saved(u64),
     Cancelled,
@@ -213,6 +219,7 @@ pub enum ExportTablesResult {
     /// the in-progress output was removed (an abort that could not delete
     /// it is reported instead of assumed).
     Aborted {
+        #[serde(rename = "partialDeleted")]
         partial_deleted: bool,
     },
 }
