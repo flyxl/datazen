@@ -351,6 +351,12 @@ const pack = {
   'dataTable.sortColumnDescending': '降序排序',
   'dataTable.removeSort': '移除排序',
   'dataTable.sortMenuLabel': '排序选项',
+  // “设为值”子菜单的两个对话框入口（DBR-05）：普通日期/时间列的选择器，与二进制的“从文件加载”。
+  'dataTable.pickDate': '选择日期…',
+  'dataTable.loadBinaryFromFile': '从文件加载…',
+  'dataTable.binaryFileFilterName': '可作为二进制的文件',
+  'dataTable.binaryLoadConfirm': '将该文件加载到列“{column}”？',
+
   'dataTable.freezeThrough': '冻结本专栏',
   'dataTable.unfreezeColumns': '解冻列',
   'dataTable.columnStats': '列统计',

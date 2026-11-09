@@ -17,6 +17,10 @@ static SAVE_SESSIONS: LazyLock<tokio::sync::Mutex<HashMap<String, SaveSession>>>
 const ALLOWED_EXTENSIONS: &[&str] = &[
     "csv", "tsv", "json", "sql", "md", "txt", "xml", "yaml", "yml", "png", "svg", "zip", "gz",
     "dump", "xlsx",
+    // DBR-05: the binary "load from file" of a BLOB column offers the common
+    // binary payload types; every one of them is also a *pickable* file, so
+    // the dialog filter and the extension check stay in one list.
+    "jpg", "jpeg", "gif", "bmp", "webp", "ico", "pdf", "bin", "dat",
 ];
 
 pub(crate) fn validate_extension(path: &Path, allowed: &[&str]) -> Result<(), CommandError> {

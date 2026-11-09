@@ -23,8 +23,23 @@
  *   database's own default);
  * - `revertCell` — the same "do not write", but named for an existing row,
  *   where it undoes a staged change.
+ *
+ * Plus the two entries that open a dialog instead of writing (DBR-05):
+ *
+ * - `pickDate` — the date/datetime picker of a plain (zoned-free) column;
+ * - `loadBinaryFromFile` — the binary "load from file", the one write path a
+ *   binary column has (the in-place editor refuses it).
+ *
+ * They stage their result through the same `stageCellValue` path — the
+ * dialog is only how the value is *chosen*, never a second write channel.
  */
-export type SetValueActionId = 'setNull' | 'setEmpty' | 'setDefault' | 'revertCell';
+export type SetValueActionId =
+  | 'setNull'
+  | 'setEmpty'
+  | 'setDefault'
+  | 'revertCell'
+  | 'pickDate'
+  | 'loadBinaryFromFile';
 
 export interface SetValueState {
   /** The column accepts SQL `NULL`. */
@@ -37,6 +52,18 @@ export interface SetValueState {
   readonly hasPending: boolean;
   /** The column is an enumeration whose candidates are not known yet. */
   readonly canLoadCandidates?: boolean;
+  /**
+   * The column is a plain (zoned-free) date or datetime and writable: the
+   * picker entry (DBR-05). A zoned column keeps its text editor — the picker
+   * cannot hold an offset, and dropping it would move the instant (05 §7 #8).
+   */
+  readonly canPickDate?: boolean;
+  /**
+   * The column is binary and writable: the "load from file" entry (DBR-05) —
+   * the one write path a binary column has, since the in-place editor
+   * refuses it (`binaryColumn`).
+   */
+  readonly canLoadBinary?: boolean;
 }
 
 export interface SetValueAction {
@@ -51,6 +78,8 @@ const ACTION_LABEL_KEYS: Record<SetValueActionId, string> = {
   setEmpty: 'cellEditor.setEmpty',
   setDefault: 'cellEditor.setDefault',
   revertCell: 'cellEditor.revertCell',
+  pickDate: 'dataTable.pickDate',
+  loadBinaryFromFile: 'dataTable.loadBinaryFromFile',
 };
 
 /** The label key of the "load candidate values" entry. */
@@ -80,6 +109,14 @@ export function resolveSetValueActions(state: SetValueState): readonly SetValueA
   }
   if (state.rowKind === 'update' && state.hasPending) {
     actions.push({ id: 'revertCell', labelKey: ACTION_LABEL_KEYS.revertCell });
+  }
+  // The dialog entries (DBR-05) sit after the value intents: they *choose* a
+  // value rather than naming one, so they read as tools, not as answers.
+  if (state.canPickDate === true) {
+    actions.push({ id: 'pickDate', labelKey: ACTION_LABEL_KEYS.pickDate });
+  }
+  if (state.canLoadBinary === true) {
+    actions.push({ id: 'loadBinaryFromFile', labelKey: ACTION_LABEL_KEYS.loadBinaryFromFile });
   }
   return actions;
 }

@@ -5,6 +5,7 @@ import { BinaryViewer, JsonViewer } from '@datazen/ui';
 import type { ColumnDef } from './TableHeader';
 import { toEditString } from './EditableCell';
 import { fileCommands } from '../../commands/file';
+import { bytesToBase64 } from '../../lib/base64';
 import { useI18n } from '../../hooks/useI18n';
 
 /**
@@ -43,15 +44,6 @@ export function binaryValueBytes(value: unknown): Uint8Array | null {
     return new Uint8Array(value);
   }
   return null;
-}
-
-export function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  }
-  return btoa(binary);
 }
 
 export function isJsonValue(v: unknown): boolean {

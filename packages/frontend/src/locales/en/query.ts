@@ -374,6 +374,13 @@ const pack = {
   'dataTable.sortColumnDescending': 'Sort Descending',
   'dataTable.removeSort': 'Remove Sort',
   'dataTable.sortMenuLabel': 'Sort options',
+  // The two dialog entries of the "Set Value" submenu (DBR-05): the picker of
+  // a plain date/datetime column, and the binary "load from file".
+  'dataTable.pickDate': 'Pick a Date…',
+  'dataTable.loadBinaryFromFile': 'Load from File…',
+  'dataTable.binaryFileFilterName': 'Binary-capable files',
+  'dataTable.binaryLoadConfirm': 'Load this file into the column "{column}"?',
+
   // Column tools (DB-12). New keys land in en only; the other nine
   // locales resolve them through the en fallback until the next release.
   'dataTable.freezeThrough': 'Freeze through This Column',

@@ -54,6 +54,9 @@ import { isComposingEvent, isEditableTarget } from '../../lib/gridEventGuards';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { useColumnStats } from '../../hooks/useColumnStats';
 import { ColumnStatsDialog } from '../../components/DataTable/ColumnStatsDialog';
+import { SetValueDateDialog } from './SetValueDateDialog';
+import { fileCommands } from '../../commands/file';
+import { base64ToBytes } from '../../lib/base64';
 import { likeCaseInsensitiveForMeta, supportedOperatorsForMeta } from '../../lib/filterOperators';
 import { expandAnyColumnFilter } from '../../lib/anyColumnFilter';
 import { valueSearchTypeGroupsFor } from '../../lib/valueSearch';
@@ -72,6 +75,32 @@ import { Spinner } from '../../components/ui/Spinner';
 /** Stable empty fallbacks: a fresh array per render would defeat the memos below. */
 const EMPTY_ROWS: Record<string, unknown>[] = [];
 const EMPTY_COLUMNS: ColumnSchema[] = [];
+/**
+ * The extensions the binary loader offers in the native pick dialog (DBR-05).
+ * The host keeps its own allow-list (`commands/file.rs`); this list stays
+ * inside it — anything else gets the host's explainable "extension not
+ * allowed" error, which is the failure path the acceptance asks to see.
+ */
+const BINARY_FILE_EXTENSIONS = [
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'bmp',
+  'webp',
+  'svg',
+  'ico',
+  'pdf',
+  'bin',
+  'dat',
+  'txt',
+  'json',
+  'xml',
+  'md',
+  'sql',
+  'zip',
+  'gz',
+];
 
 interface TableViewProps {
   /** Table/view panel this grid belongs to; its data slice is keyed by this id. */
@@ -234,12 +263,20 @@ export function TableView({
   const gridRowHeight = rowHeightForDensity(DATA_TABLE_ROW_HEIGHT, gridDensity);
   const [confirmDelete, confirmDeleteDialog] = useConfirmDialog();
   const [confirmCommit, confirmCommitDialog] = useConfirmDialog();
+  /** The binary "load from file" confirm (DBR-05): its own dialog, because its
+   * message is built from the picked file, not from a fixed string. */
+  const [confirmBinaryLoad, confirmBinaryLoadDialog] = useConfirmDialog();
   const [previewOpen, setPreviewOpen] = useState(false);
   /**
    * The cell the grid's Quick Look entries (DBR-05) opened — the middle-click
    * on a cell and the `Cmd/Ctrl+Shift+L` shortcut. `null` = closed.
    */
   const [quickLookCell, setQuickLookCell] = useState<{
+    rowIndex: number;
+    columnName: string;
+  } | null>(null);
+  /** The date/datetime picker of the "Set Value" menu (DBR-05). `null` = closed. */
+  const [datePick, setDatePick] = useState<{
     rowIndex: number;
     columnName: string;
   } | null>(null);
@@ -347,6 +384,52 @@ export function TableView({
   });
   const fkSources = useMemo(() => indexFkCandidateSources(fkMeta.index.entries()), [fkMeta.index]);
   /**
+   * The dialog entries of the "Set Value" menu (DBR-05): the date/datetime
+   * picker and the binary "load from file".
+   *
+   * The binary flow lives here in one place — pick the file, show what would
+   * be written (name, size, target column), stage only on confirm (PRD §8).
+   * A cancelled native dialog or a rejected confirm is a cancelled write: the
+   * original value is untouched, and a failed pick leaves no partial state.
+   */
+  const handleSetValueDialog = useCallback(
+    (kind: 'pickDate' | 'loadBinaryFromFile', rowIndex: number, columnName: string) => {
+      if (kind === 'pickDate') {
+        setDatePick({ rowIndex, columnName });
+        return;
+      }
+      const column = columns.find((c) => c.name === columnName);
+      if (!column) return;
+      void fileCommands
+        .openBase64WithDialog(t('dataTable.binaryFileFilterName'), BINARY_FILE_EXTENSIONS)
+        .then(async (file) => {
+          // A cancelled native dialog is a cancelled write: no confirm, no
+          // staging, the cell keeps its value.
+          if (!file) return;
+          const bytes = base64ToBytes(file.dataBase64);
+          const confirmed = await confirmBinaryLoad({
+            title: t('dataTable.loadBinaryFromFile'),
+            message: `${file.fileName} · ${bytes.length} ${t('detail.bytes')}`,
+            description: t('dataTable.binaryLoadConfirm', { column: column.name }),
+            kind: 'info',
+          });
+          if (!confirmed) return;
+          // The staged payload is the same untagged byte array the wire has
+          // always carried for binary; the preview/commit path is the shared
+          // one, so the write is guarded like every other staged change.
+          useTableDataStore
+            .getState()
+            .stageCellValue(panelId, rowIndex, columnName, Array.from(bytes));
+        })
+        .catch(() => {
+          // The pick itself failed (a rejected extension, an unreadable
+          // file): the value stays untouched — no silent partial state.
+        });
+    },
+    [columns, confirmBinaryLoad, panelId, t],
+  );
+
+  /**
    * The editing wiring of the panel (DB-05): the editor facts of every
    * column, the write path and the "Set Value" entries.
    */
@@ -361,6 +444,9 @@ export function TableView({
     connectionReadOnly: isConnectionReadOnly,
     mountReason: readOnlyReasonProp,
     fkSources,
+    // The two dialog entries of the "Set Value" menu (DBR-05): this panel
+    // is their host.
+    onSetValueDialog: handleSetValueDialog,
   });
 
   /**
@@ -1235,11 +1321,48 @@ export function TableView({
       />
       {confirmDeleteDialog}
       {confirmCommitDialog}
+      {confirmBinaryLoadDialog}
       <PendingPlanDialog
         plan={previewPlan}
         open={previewOpen && previewPlan != null}
         onClose={() => setPreviewOpen(false)}
       />
+      {datePick &&
+        datePick.rowIndex < rows.length &&
+        (() => {
+          // The picker of the "Set Value" menu (DBR-05): the same canonical
+          // strings the in-place editor writes, staged through the same path.
+          // A zoned column never reaches here (resolveSetValueState keeps it
+          // on the text path); the kind comes from the column's own cell type.
+          const column = columns.find((c) => c.name === datePick.columnName);
+          if (!column) return null;
+          const info = editing.cellEditing?.columnEditorInfo.get(datePick.columnName);
+          const kind: 'date' | 'datetime' = info?.cellType === 'datetime' ? 'datetime' : 'date';
+          const raw = rows[datePick.rowIndex][datePick.columnName];
+          return (
+            <SetValueDateDialog
+              open
+              columnName={column.name}
+              columnType={column.dataType}
+              kind={kind}
+              value={typeof raw === 'string' ? raw : ''}
+              onApply={(next) => {
+                // A cleared picker applies a SQL NULL — the same intent as an
+                // editor emptied by hand, never an empty string in a date
+                // column.
+                useTableDataStore
+                  .getState()
+                  .stageCellValue(
+                    panelId,
+                    datePick.rowIndex,
+                    datePick.columnName,
+                    next === '' ? null : next,
+                  );
+              }}
+              onClose={() => setDatePick(null)}
+            />
+          );
+        })()}
       {quickLookCell &&
         quickLookCell.rowIndex < rows.length &&
         (() => {

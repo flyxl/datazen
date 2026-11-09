@@ -304,6 +304,9 @@ export function useDataTableContextMenu(
             setEmpty: t('cellEditor.setEmpty'),
             setDefault: t('cellEditor.setDefault'),
             revertCell: t('cellEditor.revertCell'),
+            // The dialog entries of the submenu (DBR-05).
+            pickDate: t('dataTable.pickDate'),
+            loadBinaryFromFile: t('dataTable.loadBinaryFromFile'),
             loadCandidates: t('cellEditor.loadCandidates'),
             copySelectedCells: t('dataTable.copySelectedCells'),
             copySelectedCellsAs: t('dataTable.copySelectedCellsAs'),

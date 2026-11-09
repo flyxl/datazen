@@ -46,6 +46,10 @@ export type DataTableContextMenuLabels = {
   setDefault?: string;
   /** "Revert this cell" — an existing row with a staged change. */
   revertCell?: string;
+  /** "Pick a date" — the picker entry of a date/datetime column (DBR-05). */
+  pickDate?: string;
+  /** "Load from file…" — the binary write entry (DBR-05). */
+  loadBinaryFromFile?: string;
   /** "Load candidate values". */
   loadCandidates?: string;
   /* ── Selected-cell clipboard (DB-03). All optional: a caller that does not offer the
@@ -463,6 +467,10 @@ function setValueActionLabel(id: SetValueActionId, labels: DataTableContextMenuL
       return labels.setDefault ?? '';
     case 'revertCell':
       return labels.revertCell ?? '';
+    case 'pickDate':
+      return labels.pickDate ?? '';
+    case 'loadBinaryFromFile':
+      return labels.loadBinaryFromFile ?? '';
   }
 }
 

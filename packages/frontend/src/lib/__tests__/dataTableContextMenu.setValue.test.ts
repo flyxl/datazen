@@ -152,4 +152,58 @@ describe('the Set Value submenu', () => {
     entry.action?.();
     expect(onSetValue).toHaveBeenCalledWith('setEmpty');
   });
+
+  // The two dialog entries (DBR-05): the picker of a plain date/datetime
+  // column and the binary "load from file". The menu only turns the resolved
+  // plan into items — the entries appear when their gates allow, and route
+  // through the same onSetValue channel as the value intents.
+  it('offers the dialog entries when their gates allow (DBR-05)', () => {
+    const onSetValue = vi.fn();
+    const items = buildDataTableContextMenuItems({
+      labels,
+      handlers: { onSetValue },
+      hasCellContext: true,
+      setValue: {
+        canNull: true,
+        canEmpty: true,
+        rowKind: 'update',
+        hasPending: true,
+        canPickDate: true,
+        canLoadBinary: true,
+      },
+    });
+
+    const ids = submenuItems(items, 'set-value');
+    expect(ids).toEqual([
+      'set-value-setNull',
+      'set-value-setEmpty',
+      'set-value-revertCell',
+      'set-value-pickDate',
+      'set-value-loadBinaryFromFile',
+    ]);
+  });
+
+  it('routes the dialog entries through onSetValue like every other entry', () => {
+    const onSetValue = vi.fn();
+    const items = buildDataTableContextMenuItems({
+      labels,
+      handlers: { onSetValue },
+      hasCellContext: true,
+      setValue: {
+        canNull: false,
+        canEmpty: false,
+        rowKind: 'update',
+        hasPending: false,
+        canLoadBinary: true,
+      },
+    });
+    const submenu = items.find((item) => item.kind === 'submenu' && item.id === 'set-value');
+    if (!submenu || submenu.kind !== 'submenu') throw new Error('no submenu');
+    const entry = submenu.items.find(
+      (item) => item.kind === 'item' && item.id === 'set-value-loadBinaryFromFile',
+    );
+    if (!entry || entry.kind !== 'item') throw new Error('no entry');
+    entry.action?.();
+    expect(onSetValue).toHaveBeenCalledWith('loadBinaryFromFile');
+  });
 });
