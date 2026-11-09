@@ -1,10 +1,10 @@
 # DataZen 桌面与团队 Web 系统概要设计
 
-> 状态：桌面 P3–P5 已落地，P6 进行中，P7–P10 仍为目标设计。基线：2026-09-30，代码提交 `8592b0fe1`。桌面侧 Runtime 会话/资源、PlatformAdapter、迁移三件套 Job 已实现；P6 的共享 feature 抽取已完成但真实驱动旅程仍在验收；团队 Web 服务、多实例协调与跨实例调度尚未实现。
+> 状态：桌面 P3–P6 已落地（P6 消费者迁移/命令薄壳化于 2026-11-04 核实收口）；**P7 单实例团队 Web 服务已随 W8（2026-11-09）交付**：`crates/datazen-server/` axum 宿主十五域全亮（112 域客户端方法 / 108 路由，契约 v1.10.1）+ `packages/web/` 浏览器壳 + `deploy/dev` 一键开发栈；管理库首版按 WR-D2 裁决落 SQLite（PostgreSQL 为后续生产化切片）。P8 桌面团队认证、P9 多实例协调与跨实例调度、P10 全驱动发布验收仍为目标设计。基线复核：2026-11-09，main `9945929`。
 > 本文按用户明确要求保存设计文档，不把规划表述为当前功能。实现后逐节改写为事实，删除已失效的过渡约定。基线复核：§2 引用文件的连接/调用语义变化、`PROTOCOL_VERSION` 变化、任一阶段开始落地时，必须重新核对相关事实与跨文档契约。
-> 配套：[连接管理详细设计](connection-management.md)、[分阶段开发计划](../../development/platform-development-plan.md)。
+> 配套：[连接管理详细设计](connection-management.md)、[分阶段开发计划（已归档）](../../archive/development/platform-development-plan.md)。
 
-> **2026-10-24 目标代码组织更新**：以 [DDD 模块化指南](../../development/ddd-refactor-plan.md) 替代本文旧的横向 crate 拆分目标：共享业务收敛到单一 modules crate，功能内含 application/domain，执行机制位于 execution/runtime，桌面与 `web/` 宿主分别实现基础设施并按需装配。三种产品形态、协议与安全目标不变；以下旧包图不能作为新布局已落地的证明。
+> **2026-10-24 目标代码组织更新（已落地）**：按 [DDD 模块化指南（已归档）](../../archive/development/ddd-refactor-plan.md) 收敛：共享业务在单一内核 crate `crates/datazen/`（功能内含 application/domain，执行机制位于 execution/runtime），桌面宿主 `crates/datazen-desktop/`、服务端宿主 `crates/datazen-server/`（原计划名 `web/`，落地时回归 server 命名）与浏览器壳 `packages/web/` 分别实现基础设施并按需装配。D0–D8 已全部完成；三种产品形态、协议与安全目标不变。
 
 ## 1. 目标与范围
 
@@ -28,13 +28,13 @@
 
 | 当前入口 | 已确认事实 | 目标改造 |
 | --- | --- | --- |
-| [AppState](../../../src-tauri/src/commands/mod.rs) | 聚合连接、事务、任务、AI、Workflow 等服务 | 组装留在 host，应用服务只接收必要依赖 |
-| [Runtime session registry](../../../crates/datazen/src/execution/runtime/registry/registry.rs) + [desktop session backend](../../../src-tauri/src/platform/session_backend.rs) | 管理 dbSessionId、owner、生命周期与物理资源；过期会话明确失效，不以同一 ID 透明重连 | 统一预算、资源释放与会话状态；到期关闭前回滚事务，关闭不确定时保留隔离状态 |
+| [AppState](../../../crates/datazen-desktop/src/commands/mod.rs) | 聚合连接、事务、任务、AI、Workflow 等服务 | 组装留在 host，应用服务只接收必要依赖 |
+| [Runtime session registry](../../../crates/datazen/src/execution/runtime/registry/registry.rs) + [desktop session backend](../../../crates/datazen-desktop/src/platform/session_backend.rs) | 管理 dbSessionId、owner、生命周期与物理资源；过期会话明确失效，不以同一 ID 透明重连 | 统一预算、资源释放与会话状态；到期关闭前回滚事务，关闭不确定时保留隔离状态 |
 | [Driver API](../../../crates/datazen-driver-api/src/traits.rs) | 提供 DatabaseDriver、Command、迁移等能力 | 增加固定执行资源契约、可选能力接口 |
 | [Factory](../../../crates/datazen-driver-api/src/factory.rs) | inventory 编译期注册 | 桌面与 server 使用同一注册入口 |
 | [前端 Command SDK](../../../packages/driver-sdk/src/ipc/driverCommands.ts) | 直接导入 Tauri invoke/Channel | 注入传输无关 BackendClient |
 | [Workflow Command runtime](../../../crates/datazen/src/workflow/application/command_runtime.rs) | 解析 connectionId，传递目标 database/schema | 明确 step/session/transaction 三种资源范围 |
-| [dedicatedDbSession](../../../src/lib/dedicatedDbSession.ts) | 三件套准备会话由前端创建、释放 | 执行资源由后端 Job 持有 |
+| [dedicatedDbSession](../../../packages/frontend/src/lib/dedicatedDbSession.ts) | 三件套准备会话由前端创建、释放 | 执行资源由后端 Job 持有 |
 
 Driver 公共类型继续遵守[驱动依赖边界](../../development/driver-api-dependency-boundary.md)。基线 `crates/datazen-driver-api/src/lib.rs` 的 `PROTOCOL_VERSION` 为 6、最低版本为 1；实现时重新核对，不能从旧架构说明复制版本数字。
 
@@ -263,7 +263,7 @@ interface ArtifactChunk {
 
 本表不含 `ConnectionCatalog`（D2 起已归 `datazen::connection::domain::ConnectionRepository` 拥有，宿主 desktop/web 各自实现同一 domain trait；词汇表复用 `ConnectionConfig`，端口为明文语义），也不含 `IdentityResolver`（它已在 §4 模块职责表中引入）：执行身份解析（`executionIdentityKey` 的生产者）由 `IdentityResolver` 承担，`SecretProvider` 只负责版本化秘密材料的读取与轮换；边界见共享边界详细设计。
 
-`IdentityResolver` 的桌面实现**已落地**（`src-tauri/src/platform/execution_identity.rs` 的 `DesktopIdentityResolver`，装配于 `PlatformAdapter::inject`）：身份键由 `(organizationId, connectionId, policyIsolationKey)` 加一把服务端固定盐（宿主主密钥经 HMAC 域分离派生的子钥）确定性派生，因此同一三元组恒得同一键、凭据轮换只推进 `credentialRevision`；委托走独立入口 `resolve_delegation`，域标签与输入集都与本人路径不同，校验不过失败关闭、不降级为调用者权限（CM-06）；**`resolve` 在委托上下文上一律拒绝**——委托身份只能由 `resolve_delegation` 产出。客户端传入的用户名、角色与 `principal` 不参与派生（CM §4.1）。
+`IdentityResolver` 的桌面实现**已落地**（`crates/datazen-desktop/src/platform/execution_identity.rs` 的 `DesktopIdentityResolver`，装配于 `PlatformAdapter::inject`）：身份键由 `(organizationId, connectionId, policyIsolationKey)` 加一把服务端固定盐（宿主主密钥经 HMAC 域分离派生的子钥）确定性派生，因此同一三元组恒得同一键、凭据轮换只推进 `credentialRevision`；委托走独立入口 `resolve_delegation`，域标签与输入集都与本人路径不同，校验不过失败关闭、不降级为调用者权限（CM-06）；**`resolve` 在委托上下文上一律拒绝**——委托身份只能由 `resolve_delegation` 产出。客户端传入的用户名、角色与 `principal` 不参与派生（CM §4.1）。
 
 Desktop adapters 使用现有 Store/keychain/file 管理能力逐步适配；Server adapters 使用服务端元数据数据库、SecretProvider 与 ArtifactRepository。第一版推荐 PostgreSQL 管理组织、配置版本、任务、审计和额度，不与用户业务数据库混用。SSE 用于单向状态通知，取消走 HTTP；有双向交互需要时再引入 WebSocket。
 
@@ -371,7 +371,7 @@ Web 认证首版采用 OIDC 登录及服务端登录会话，浏览器使用 Sec
 - Driver 提供 namespaceShape 与操作级 targetRequirements；网关用同一 CanonicalTarget 做授权、缓存和执行，详见[§4.3](connection-management.md#43-命名空间规范化契约)及[§9.6](connection-management.md#96-poolkey版本与缓存的生产者)。
 - SessionDirectory/预算、会话失效、worker 路由和候选替换归属见[§12](connection-management.md#12-web多实例权限与结果)；丢失物理资源后返回 SessionLost，禁止透明重建。
 - Attachment、TTL、结果放弃消费与清理分别见[§6.4](connection-management.md#64-attachment-与超期处理)、[§7.7](connection-management.md#77-结果订阅与放弃消费)和[§9.4–9.5](connection-management.md#94-归池前检查)；事务/游标等会话级句柄必须在终态前登记到 session actor 才允许归池，见[§6.5](connection-management.md#65-会话级资源句柄登记)。
-- 取消回执、错误与签名幂等期限以[§13](connection-management.md#13-错误重试和事件)为权威；完整验收用例 CM-01～74 和开发阶段映射见详细设计、[开发计划](../../development/platform-development-plan.md)。
+- 取消回执、错误与签名幂等期限以[§13](connection-management.md#13-错误重试和事件)为权威；完整验收用例 CM-01～74 和开发阶段映射见详细设计、[开发计划](../../archive/development/platform-development-plan.md)。
 
 ## 13. 参考与维护
 

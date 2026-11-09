@@ -13,7 +13,7 @@
 └──────────────────────────┬──────────────────────────────┼──────────────────┘│
                            │ Tauri IPC                    │ datazen://{id}/…  │
 ┌──────────────────────────▼──────────────────────────────▼──────────────┐    │
-│ src-tauri: commands/wapps.rs → wapps/{mod, protocol}                   │    │
+│ crates/datazen-desktop: commands/wapps.rs → wapps/{mod, protocol}                   │    │
 │ 内核 modules = modules::workspace_apps            │    │
 │ register_uri_scheme_protocol("datazen") 资产服务 + open 深链             │    │
 │ execute_driver_command（复用，零改动）                                    │    │
@@ -28,15 +28,15 @@
 | 层 | 位置 | 内容 |
 |---|---|---|
 | 内核（形态中立） | `modules` 的 `workspace_apps` 模块 | `manifest`（schema + 规则 1–7）、`install`（ZIP / 目录安装）、`storage`（按 wapp 隔离的键值存储）、`manager`（已安装包注册表）、`protocol`（URI 语法与路由判定）。zip 条目路径守卫不在本层，见 `crates/datazen-infra` 的 `path_safety`，本层 `install` 改为调用它 |
-| 宿主（形态相关） | `src-tauri/src/wapps/` | `protocol`（`datazen://` 协议桥 + IPC 适配器）、`mod.rs`（模块根） |
-| 宿主集成测试 | `src-tauri/src/wapps/integration_tests.rs` | 每个用例都驱动宿主命令层（`commands::wapps::*_impl` + `TestAppState` + `WappManager`），故留在宿主 |
+| 宿主（形态相关） | `crates/datazen-desktop/src/wapps/` | `protocol`（`datazen://` 协议桥 + IPC 适配器）、`mod.rs`（模块根） |
+| 宿主集成测试 | `crates/datazen-desktop/src/wapps/integration_tests.rs` | 每个用例都驱动宿主命令层（`commands::wapps::*_impl` + `TestAppState` + `WappManager`），故留在宿主 |
 
 关键约定：
 
 - **存储根参数化**：内核不读取任何 ambient 路径、不持有连接、不发网络请求。桌面端传 `{appData}/wapps`，将来的服务端适配器传自己的存储根，**内核公开函数签名保持不变**（`install_from_zip(zip_path, wapps_dir)` / `install_from_dir(src_dir, wapps_dir)` / `storage_*(wapps_dir, wapp_id, key[, value])`）。
 - **零 HTTP 服务端框架、零桌面壳依赖**：由 `scripts/check-platform-crate-boundaries.mjs` 的 F-14 强制（modules 闭包断言：禁宿主 crate、`tauri` / `axum` / `actix-web` / `warp` / `tonic` / `react`）。AI 出站 HTTP 客户端在 `crates/datazen/src/ai/providers/http.rs`，不属于 workspace app 内核。
-- 宿主调用点直接引用 `datazen::workspace_apps::…`；`src-tauri/src/wapps/mod.rs` 只保留**宿主自有**的 `protocol` 模块与 `handle_datazen_request` / `parse_datazen_uri` / `WAPPS_OPEN_PAGE_EVENT` 三个转发名，**不再**转发共享包名字。
-- 随 wapp installer 下沉而失去唯一调用方的 `src-tauri/src/util/theme_zip.rs` 已按死代码纪律删除；其追加的三条守卫（空名 / NUL / ` -> `）改由 crate 内 `empty_nul_and_symlink_names_are_rejected` 钉住。宿主 `app_data_archive::validate_zip_entry_path` 保留（备份 / 还原归档仍用）。
+- 宿主调用点直接引用 `datazen::workspace_apps::…`；`crates/datazen-desktop/src/wapps/mod.rs` 只保留**宿主自有**的 `protocol` 模块与 `handle_datazen_request` / `parse_datazen_uri` / `WAPPS_OPEN_PAGE_EVENT` 三个转发名，**不再**转发共享包名字。
+- 随 wapp installer 下沉而失去唯一调用方的 `crates/datazen-desktop/src/util/theme_zip.rs` 已按死代码纪律删除；其追加的三条守卫（空名 / NUL / ` -> `）改由 crate 内 `empty_nul_and_symlink_names_are_rejected` 钉住。宿主 `app_data_archive::validate_zip_entry_path` 保留（备份 / 还原归档仍用）。
 
 ## 目录与安装
 
@@ -65,7 +65,7 @@
 
 ## Web 形态（同源 `/wapps/` 静态面，W8 刀4）
 
-web 形态把资产服务换成**同源静态路径约定**（WR-F4 冻结；设计档 [w8-knife4](../../development/w8-knife4-wapp-static-design.md)）：datazen-server 在
+web 形态把资产服务换成**同源静态路径约定**（WR-F4 冻结；设计档 [w8-knife4](../../archive/development/w8-knife4-wapp-static-design.md)）：datazen-server 在
 
 ```
 {origin}/wapps/{wapp id}/{package-relative path}?{query}
@@ -102,8 +102,8 @@ Wapp 主题在 IPC 之后才注入 CSS，首屏无法读取 pack token。`syncWe
 
 | 模块 | 路径 | 职责 |
 |------|------|------|
-| 缓存 | `src-tauri/src/theme/surface_bg.rs` | 读写 `{appData}/surface-bg.json` |
-| IPC | `src-tauri/src/commands/theme.rs` | `set_surface_background` |
+| 缓存 | `crates/datazen-desktop/src/theme/surface_bg.rs` | 读写 `{appData}/surface-bg.json` |
+| IPC | `crates/datazen-desktop/src/commands/theme.rs` | `set_surface_background` |
 | 前端 | `src/lib/surfaceBgCache.ts` | 解析 `--c-surface` 并 invoke IPC |
 
 详见 [持久化存储](store.md)。

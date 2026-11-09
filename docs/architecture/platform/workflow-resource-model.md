@@ -1,7 +1,7 @@
 # DataZen Workflow 资源模型详细设计（step / session block / transaction block）
 
 > 状态：**目标设计，尚未实现**。基线：2026-09-30，`8592b0fe1`。
-> P6 当前范围：保持既有 v1 协议与执行语义，仅替换底层连接管理。本文 session/transaction block、Workflow Job 及相关目标设计不属于本轮交付；当前事实见文末「P6 Workflow v1 范围」。
+> P6 已于 2026-11-04 核实收口：本轮保持既有 v1 协议与执行语义，仅替换底层连接管理。本文 session/transaction block、Workflow Job 及相关目标设计仍属目标设计；当前事实见文末「P6 Workflow v1 范围」。另注：服务端 workflow 域（契约 §6.14）已随 W8 在 `crates/datazen-server/src/workflow/` 落地（host / schedule_grant / scheduler），走共享 command runtime，本模型的目标设计不受影响。
 > **本文是破坏性模型变更，旧 Workflow 定义的行为会变化，迁移路径见第 10.6 节。**
 > 配套文档：[系统概要](system-overview.md#4-模块职责与边界)（§4 Workflow Runtime、§6.4 repositories、§7.3）、[连接管理详细设计](connection-management.md#91-默认资源政策)（§9.1 资源政策、§9.5 资源类别、§11 Workflow 语义、§16.5 验收用例）。
 > 已实现部分见 [Workflow 架构](../backend/workflow.md) 与 [Workflow 使用指南](../../features/workflow-guide.zh-CN.md)。
@@ -43,7 +43,7 @@
 
 ### 2.1 模块结构
 
-`src-tauri/src/workflow/` 当前有 8 个源文件。共享执行语义（`conditions.rs`、`data_step.rs`、`model.rs`、`executor.rs`、`registry.rs`、`history.rs` 等）已随 D6 workflow 切片归位 `crates/datazen/src/workflow/`（domain/application/engine 三分）；宿主 `mod.rs` 只声明真正环境相关的部分——`command_runtime`（Driver Command 运行时桥的桌面绑定）、`history`（本地历史库绑定）、`registry`（`AppDb` 绑定）、`scheduler`（桌面调度适配）、`host`（共享端口的桌面实现：`WorkflowHost` 与 `ResourceExecutionHost`）。规则本身——显式 `database`/`schema` 校验、connection 继承解析、命令派发——都在 `crates/datazen/src/workflow/application/command_runtime.rs`，宿主那三个函数只把 `AppState` 传进去。`crates/datazen/src/workflow/` 只剩纯再导出迁移垫片（唯一定义在 `datazen::workflow`，旧路径 `datazen::workflow::*` 暂时保持可用，modules 退役时随垫片一并删除）。`[已实现的 Workflow 架构](../backend/workflow.md)` 已按此分层更新。
+`crates/datazen-desktop/src/workflow/` 当前有 8 个源文件。共享执行语义（`conditions.rs`、`data_step.rs`、`model.rs`、`executor.rs`、`registry.rs`、`history.rs` 等）已随 D6 workflow 切片归位 `crates/datazen/src/workflow/`（domain/application/engine 三分）；宿主 `mod.rs` 只声明真正环境相关的部分——`command_runtime`（Driver Command 运行时桥的桌面绑定）、`history`（本地历史库绑定）、`registry`（`AppDb` 绑定）、`scheduler`（桌面调度适配）、`host`（共享端口的桌面实现：`WorkflowHost` 与 `ResourceExecutionHost`）。规则本身——显式 `database`/`schema` 校验、connection 继承解析、命令派发——都在 `crates/datazen/src/workflow/application/command_runtime.rs`，宿主那三个函数只把 `AppState` 传进去。`crates/datazen/src/workflow/` 只剩纯再导出迁移垫片（唯一定义在 `datazen::workflow`，旧路径 `datazen::workflow::*` 暂时保持可用，modules 退役时随垫片一并删除）。`[已实现的 Workflow 架构](../backend/workflow.md)` 已按此分层更新。
 
 `crates/datazen/src/workflow/application/data_step.rs` **不涉及任何数据库资源**，内容是 `merge` / `transform` 的行集合并与表达式求值（`run_merge`、`run_transform`、`evaluate_expression`）。同目录的 `context.rs` 负责变量与模板上下文，`conditions.rs` 负责条件比较。
 
@@ -57,7 +57,7 @@
 | `command` step **没有**顶层 `database` 字段 | `WorkflowStep::Command { id, command, connection, input, timeout_secs, on_error }`，库名只能写在 `input.database` |
 | `ai` step **没有** `connection` / `database` 字段 | AI 步骤当前不接触目标资源 |
 | `version: Option<String>` 存在 | `WorkflowDefinition.version` |
-| 三个内建 YAML 均未写 `version` | [`src-tauri/resources/builtin-workflows/`](../../../crates/datazen-desktop/resources/builtin-workflows) 下的 `hello-query.yaml`、`cross-db-sample.yaml`、`ai-summarize.yaml` |
+| 三个内建 YAML 均未写 `version` | [`crates/datazen-desktop/resources/builtin-workflows/`](../../../crates/datazen-desktop/resources/builtin-workflows) 下的 `hello-query.yaml`、`cross-db-sample.yaml`、`ai-summarize.yaml` |
 | workflow 不再以 step 形式调用数据迁移三件套 | `WorkflowStep` 没有 `migration` 变体；`WorkflowHost` 没有迁移端口；该能力从未真正发布，按直接移除处理，详见 [backend/workflow.md §迁移 step（已移除）](../backend/workflow.md#迁移-step已移除) |
 
 ### 2.3 版本字段的现状（重要）
@@ -66,7 +66,7 @@
 
 - 版本解析在 `crates/datazen/src/workflow/domain/executable.rs` 的 `WorkflowVersion::parse`：**未声明**按 `V1` 处理；**空串**、**非 `^\d+$`**（严格 ASCII 数字，`u32::from_str` 还会接受 `"+2"`，那不是声明的格式）、以及**超过 `HIGHEST_SUPPORTED_VERSION = 2`**（`executable.rs` 的同名常量）的版本**一律拒绝**，报 `WorkflowError::UnsupportedDefinitionVersion`。
 - 按版本分派在 `executable.rs` 的 `match`（`Ok(1) => V1`、`Ok(2) => V2`）。
-- 校验发生在**生产路径**上：`src-tauri/src/monitor/grants.rs` 在把 workflow 变成可执行对象时调用 `into_executable()`（定义在 `executable.rs`），未知或越界版本在这里被拒（"workflow version invalid"）。因此**版本号不是"写了没人看"的装饰字段**。
+- 校验发生在**生产路径**上：`crates/datazen-desktop/src/monitor/grants.rs` 在把 workflow 变成可执行对象时调用 `into_executable()`（定义在 `executable.rs`），未知或越界版本在这里被拒（"workflow version invalid"）。因此**版本号不是"写了没人看"的装饰字段**。
 - 写入点：`crates/datazen/src/dashboard/application/create.rs` 的 `version: None` 字面量（未声明 ⇒ 按 V1 执行），其余在测试代码内（宿主侧 `workflow/host.rs` 三处、`workflow/registry.rs`、`commands/dashboard.rs`、`commands/ai/integration_tests.rs` 四处；共享包侧 `crates/datazen/src/workflow/application/registry.rs`、`crates/datazen/src/workflow/engine/scheduler.rs`、`crates/datazen/src/dashboard/application/archive.rs`），其中仅 `integration_tests.rs` 的其中一处写 `Some("1")`。三个内建 YAML 均未设置该字段，按 V1 执行。
 
 对比：仓库中其他"定义版本"同样有校验——`crates/datazen/src/migration/schema_diff/profile.rs` 的 `CURRENT_VERSION` 并在遇到未知版本时报 "unsupported ... version"；`data_sync::SyncProfile`、`data_transfer::profile.rs` 同样有 `CURRENT_VERSION`；`store/favorites/migrate.rs` 有 `MIGRATION_VERSION`。**Workflow 现在也在其中**：它的版本由 `WorkflowVersion::parse` 校验，未知/空白/非整数/越界版本**拒绝执行**。另需注意 `store/settings.rs` 的 `OnboardingState.version` 同样只写不读（生产路径只读 `completed`）——那**是**一个尚未校验的版本字段。
@@ -295,7 +295,7 @@ step 显式目标  >  block target  >  workflow 默认目标  >  profile 初始�
 | L3 workflow 默认目标 | 顶层 `connection` / `database` | 全部 step | 保留旧定义的既有字段 |
 | L4 profile 初始目标 | `ConnectionProfile` 绑定的初始 database | 全部 step | 不可被调用方参数覆盖 |
 
-**调用方参数不在链内。** GUI 当前连接、MCP `connection_id`、Dashboard 当前库都不再参与解析，这是 P6 的核心目的（[开发计划 §10](../../development/platform-development-plan.md#10-p6workflowaimcpwapp-与辅助任务) "消除 GUI 外入口的隐式目标和共享状态"）。旧链中 `workflow.connection.or(caller_connection_id)` 的回退分支在 v2 中删除；需要"跟随当前连接"的语义改为在 block 或 step 上**显式**写一个绑定当前编辑器 session 的引用（[第 9 节](#9-ai--mcp--wapp-与后台入口的边界)）。
+**调用方参数不在链内。** GUI 当前连接、MCP `connection_id`、Dashboard 当前库都不再参与解析，这是 P6 的核心目的（[开发计划 §10](../../archive/development/platform-development-plan.md#10-p6workflowaimcpwapp-与辅助任务) "消除 GUI 外入口的隐式目标和共享状态"）。旧链中 `workflow.connection.or(caller_connection_id)` 的回退分支在 v2 中删除；需要"跟随当前连接"的语义改为在 block 或 step 上**显式**写一个绑定当前编辑器 session 的引用（[第 9 节](#9-ai--mcp--wapp-与后台入口的边界)）。
 
 ### 4.2 解析算法
 
@@ -642,7 +642,7 @@ Wapp session 归**实例或 Job**。Wapp 通过受限的 `execute_driver_command
 
 - 调度器使用**服务身份 + 委托权限**执行，目标是 Workflow 定义里显式声明的连接（或 profile 初始目标），**不依赖 GUI 当前库，也不依赖用户登录态**。
 - Dashboard 组件同样不传隐式连接；`DashboardHidden` 工作流当前不写历史（[§2.5](#25-调度历史与-job)），目标模型下改为写入执行记录、由可见性决定 UI 投影，而不是决定是否落盘。
-- 所有辅助任务（导出、备份、恢复）共享同一预算，不污染编辑器资源（[开发计划 §10](../../development/platform-development-plan.md#10-p6workflowaimcpwapp-与辅助任务)）。
+- 所有辅助任务（导出、备份、恢复）共享同一预算，不污染编辑器资源（[开发计划 §10](../../archive/development/platform-development-plan.md#10-p6workflowaimcpwapp-与辅助任务)）。
 
 ---
 
@@ -708,7 +708,7 @@ v1 定义的映射规则是机械的、无歧义的：
 | `error_handling` / `on_error` 策略 | 语义不变（[使用指南 §10](../../features/workflow-guide.zh-CN.md#10-超时与错误处理)） |
 | `schedule` | 语义不变，只是改由服务身份执行 |
 
-因此"旧定义按版本解析，默认独立 step 语义"是[开发计划 §10](../../development/platform-development-plan.md#10-p6workflowaimcpwapp-与辅助任务) 回退方案与本文的共同前提。
+因此"旧定义按版本解析，默认独立 step 语义"是[开发计划 §10](../../archive/development/platform-development-plan.md#10-p6workflowaimcpwapp-与辅助任务) 回退方案与本文的共同前提。
 
 ### 10.5 用户可感知差异与提示
 
@@ -742,13 +742,13 @@ v1 定义的映射规则是机械的、无歧义的：
 | [CM-52 Workflow transaction block](connection-management.md#165-三件套与-workflow) | 不支持计划执行前被拒、合法失败完整回滚、重试整个块、未知提交不自动重试 | [§7](#7-transaction-block-计划预校验)、[§6.2](#62-重试范围)、[§5.4](#54-失败与清理) |
 | [CM-53 AI/MCP/Wapp 归属](connection-management.md#165-三件套与-workflow) | 授权后同队列可见、未授权拒绝、断开只清理自己资源 | [§9](#9-ai--mcp--wapp-与后台入口的边界) |
 | [CM-73 空闲淘汰与活动事务句柄连续旅程 / CM-74 会话级句柄登记与释放顺序（§16.7）](connection-management.md#167-补充契约与边界用例) | 活动事务不得被静默淘汰后同 ID 重建 | [§5.4](#54-失败与清理)、[§3.4](#34-transaction-block) |
-| [CM-65 类别保留与无饥饿（§16.7）](connection-management.md#167-补充契约与边界用例) | 类保留不被侵占、控制可用、持续队列按 4:2:1 获派发、用户轮转无饥饿、队列取消无许可泄漏；层 H，H 断言属 P3、任务断言属 P5/P6（[开发计划 §17](../../development/platform-development-plan.md#17-补充契约的阶段归属)） | [§6.1](#61-分支资源划分)、[§5.3](#53-资源获取与释放) |
-| [CM-67 PoolKey 版本和多 database（§16.7）](connection-management.md#167-补充契约与边界用例) | 按 database/policy 分 key、总 socket 不越预算、旧 idle 停发并关闭、旧缓存不能回填；层 H/D，D 断言属 P2、H 断言属 P3、任务断言属 P5/P6（[开发计划 §17](../../development/platform-development-plan.md#17-补充契约的阶段归属)） | [§4.2](#42-解析算法)、[§5.3](#53-资源获取与释放) |
+| [CM-65 类别保留与无饥饿（§16.7）](connection-management.md#167-补充契约与边界用例) | 类保留不被侵占、控制可用、持续队列按 4:2:1 获派发、用户轮转无饥饿、队列取消无许可泄漏；层 H，H 断言属 P3、任务断言属 P5/P6（[开发计划 §17](../../archive/development/platform-development-plan.md#17-补充契约的阶段归属)） | [§6.1](#61-分支资源划分)、[§5.3](#53-资源获取与释放) |
+| [CM-67 PoolKey 版本和多 database（§16.7）](connection-management.md#167-补充契约与边界用例) | 按 database/policy 分 key、总 socket 不越预算、旧 idle 停发并关闭、旧缓存不能回填；层 H/D，D 断言属 P2、H 断言属 P3、任务断言属 P5/P6（[开发计划 §17](../../archive/development/platform-development-plan.md#17-补充契约的阶段归属)） | [§4.2](#42-解析算法)、[§5.3](#53-资源获取与释放) |
 | [CM-40 任务关闭窗口继续](connection-management.md#165-三件套与-workflow) | 窗口关闭不 release 资源（前置是**迁移 Job**，属 P5） | [§5.1](#51-workflow-执行是否包裹-job)（P6 目标） |
 
 ### 11.2 默认目标契约回归
 
-[开发计划 §10](../../development/platform-development-plan.md#10-p6workflowaimcpwapp-与辅助任务) 要求"原 Workflow 的 query / command 默认目标契约仍通过"。对应回归集：
+[开发计划 §10](../../archive/development/platform-development-plan.md#10-p6workflowaimcpwapp-与辅助任务) 要求"原 Workflow 的 query / command 默认目标契约仍通过"。对应回归集：
 
 | 回归项 | 断言 | 对应本文 |
 | --- | --- | --- |
@@ -802,7 +802,7 @@ v1 定义的映射规则是机械的、无歧义的：
 | [连接管理 §3 不变量](connection-management.md#3-不可破坏的不变量) | INV-02/03/04/05/12 是三种执行单元的硬约束来源 |
 | [连接管理 §9 资源政策](connection-management.md#9-连接池预算与清理) | Workflow 行"step/block 声明范围"由本文兑现；预算与队列数值不在本文重复定义 |
 | [连接管理 §16.5 / §16.7 用例](connection-management.md#165-三件套与-workflow) | CM-40/50～53（§16.5）与 CM-73/74（§16.7）是本文的验收出口，本文不修改其断言 |
-| [开发计划 §10 P6](../../development/platform-development-plan.md#10-p6workflowaimcpwapp-与辅助任务) | 交付项与退出门槛逐条对应本文；回退方案在[第 10.6 节](#106-迁移路径) |
+| [开发计划 §10 P6](../../archive/development/platform-development-plan.md#10-p6workflowaimcpwapp-与辅助任务) | 交付项与退出门槛逐条对应本文；回退方案在[第 10.6 节](#106-迁移路径) |
 | [backend/workflow.md](../backend/workflow.md) | 已实现架构，描述现状；本文落地后应把 block/Job 相关结论改写为"已实现"并入该文档，并修正其文件清单缺 `data_step.rs` / `executor.rs` 的问题 |
 | [features/workflow-guide.zh-CN.md](../../features/workflow-guide.zh-CN.md) | 用户可见基线；[§11.2](#112-默认目标契约回归) 的回归集以其中的样例为准 |
 
@@ -822,6 +822,6 @@ v1 定义的映射规则是机械的、无歧义的：
 
 ### P6 Workflow v1 范围
 
-Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `modules command_runtime → modules resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。
+Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为内核 crate 的 `command_runtime` → `resource_execution` → Runtime。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。
 
-Workflow scheduler 保留桌面 runtime-entry 修复；Monitor 的固定只读目标授权与独立 occurrence Job、Wapp 实例会话、MCP owner/TTL、Restore/Backup/Export 的通用 Job fencing 不受此范围收缩影响（NativeTool 通用 Job fencing 已随前端形态拆分方案 F1 删除）。跨驱动 v1 旅程须独立验收，未运行的测试不算通过。 Host 通用真实驱动旅程位于 `src-tauri/src/workflow/live_acceptance_tests.rs`，通过安全 live runner 显式运行两个方向的 Query → Command 与前步结果 SQL 模板串联；不把直接 sqlx 查询或 ignored 测试计为 Runtime 接线验收。
+Workflow scheduler 保留桌面 runtime-entry 修复；Monitor 的固定只读目标授权与独立 occurrence Job、Wapp 实例会话、MCP owner/TTL、Restore/Backup/Export 的通用 Job fencing 不受此范围收缩影响（NativeTool 通用 Job fencing 已随前端形态拆分方案 F1 删除）。跨驱动 v1 旅程须独立验收，未运行的测试不算通过。 Host 通用真实驱动旅程位于 `crates/datazen-desktop/src/workflow/live_acceptance_tests.rs`，通过安全 live runner 显式运行两个方向的 Query → Command 与前步结果 SQL 模板串联；不把直接 sqlx 查询或 ignored 测试计为 Runtime 接线验收。

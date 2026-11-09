@@ -39,7 +39,7 @@
 
 ## 4. 契约面总账
 
-十五个域、112 个域客户端方法（§6.16 dataSync 执行面九方法随 W8 刀3e-4b 入账；web 半边[域客户端 + 不支持名单收缩]随下刀收口）：
+十五个域、112 个域客户端方法（§6.16 dataSync 执行面九方法随 W8 刀3e-4b 入账；三域 web 半边已随 #223 于 2026-11-08 收口）：
 
 | 域 | 方法数 | HTTP 服务 | 排除 | 备注 |
 | --- | --- | --- | --- | --- |
@@ -49,8 +49,8 @@
 | session | 6 | 6 | 0 | |
 | execution | 4 | 4 | 0 | |
 | job | 4 | 4 | 0 | |
-| artifact | 1 | 1 | 0 | uploads 端点另列（§6.5） |
-| events | 2 | 2 | 0 | SSE（v1.1：订阅建立 + 流） |
+| artifact | 2 | 2 | 0 | `createArtifactUpload` 即 §6.5 在账 uploads 端点的方法面（Wave3 `d5d04a95` 落地，「先有端点后有方法」唯一在账项已合拢） |
+| events | 0 | 0 | 0 | SSE 两路由为传输级受理面（§6.6 表在账：订阅建立 + 流），不产生域客户端方法——`MethodMap` 无 events 切片，订阅走 `transport.subscribe` 而非 `call`（§2 镜像裁决） |
 | tableData | 14 | 14 | 0 | |
 | driverGateway（过渡） | 5 | 4 | 1 | `open_base64_with_dialog` 排除（§6.9） |
 | queryAssets | 7 | 7 | 0 | §6.12（W8 刀3a；web 半边随本版收口：域客户端 + 名单收缩） |
@@ -71,7 +71,7 @@
 | `GET /api/v1/auth/login`、`GET /api/v1/auth/callback`、`POST /api/v1/auth/logout` | OIDC 登录三步 | team-server §4 |
 | `POST /api/v1/auth/desktop/start`、`POST /api/v1/auth/desktop/exchange` | 桌面团队认证（P8） | 同上 §4.6 |
 | `GET /healthz`、`GET /readyz` | 存活/就绪探针 | 同上 §2.4 |
-| `GET /wapps/{wapp id}/{package-relative path}` | wapp 资产 origin 静态面（WR-F4 web 形态的 server 半边；浏览器原生 iframe/img/script 直取，不经 MethodMap——无方法背书要求，`/mcp` 同款非域面先例） | [w8-knife4 设计档](../../development/w8-knife4-wapp-static-design.md) + [wapps.md](../backend/wapps.md) |
+| `GET /wapps/{wapp id}/{package-relative path}` | wapp 资产 origin 静态面（WR-F4 web 形态的 server 半边；浏览器原生 iframe/img/script 直取，不经 MethodMap——无方法背书要求，`/mcp` 同款非域面先例） | [w8-knife4 设计档](../../archive/development/w8-knife4-wapp-static-design.md) + [wapps.md](../backend/wapps.md) |
 
 ## 6. 逐域路由表
 
@@ -125,7 +125,7 @@ Web 形态只服务 `WEB_SETTINGS_SECTIONS`（general / appearance / dataBrowsin
 
 - 三种取法映射查询参数（team-server §11 的既有裁决）；响应体是原始字节（`ArtifactChunk.bytes`），元数据模式返回 JSON。
 - 产物过期在端口层是 `ArtifactExpired`，HTTP 层有意统一为 404（team-server §11）。
-- **在账端点 `POST /api/v1/artifacts/uploads`（分块受控上传）**：概要 §6.3 与 team-server §11 已立项，消费方是 web 形态的导出/保存流（浏览器不能像桌面那样落盘，导出内容上传产物库后下载）与产物写入器协议。**当前 `ArtifactMethodMap` 尚无对应方法**——这是全表唯一「先有端点后有方法」的在账项，收口动作：web 导出流立项时在 `artifactClient` 补上传方法（如 `createUploadWriter` / `appendUploadChunk` / `finalizeUpload`），或在 WR-D 实现时把写入器协议定形为方法；两头合拢前该端点不进 CI 契约断言。
+- **在账端点 `POST /api/v1/artifacts/uploads`（分块受控上传）**：概要 §6.3 与 team-server §11 已立项，消费方是 web 形态的导出/保存流（浏览器不能像桌面那样落盘，导出内容上传产物库后下载）与产物写入器协议。**方法面已合拢（2026-11-03 Wave3 `d5d04a95`，WR-F6 导出流）**：`ArtifactMethodMap.createArtifactUpload`（单请求信封 begin+append+finalize 三段合一）在账，web 半边 `HTTP_ROUTES` 同键挂载——原「先有端点后有方法」的唯一在账项至此收口；写入器协议若后续定形为多方法面（`createUploadWriter` / `appendUploadChunk` / `finalizeUpload`），按 §2 增长规则先行客户端、后补此处登记。
 
 ### 6.6 events
 
@@ -526,7 +526,7 @@ WR-D 落地时的机器核对（WR-C3 接管）：同用例双传输测试逐方
 | [team-server-and-auth](team-server-and-auth.md) §3–§9、§11 | 中间件、认证、CSRF、SSE、错误映射、产物实现的权威；本文不重述，只引用 |
 | [connection-management](connection-management.md) §4.1、§13.1 | 连接域 DTO 与幂等令牌期限的权威 |
 | [shared-boundaries-and-ports](shared-boundaries-and-ports.md) | `MethodMap` 与域客户端的边界设计（F3） |
-| web-ready-plan WR-C2 | 本文的立项来源与验收口径 |
+| [web-ready-plan WR-C2（已归档）](../../archive/development/web-ready-plan.md) | 本文的立项来源与验收口径 |
 
 ## 11. 变更记录
 
@@ -543,3 +543,4 @@ WR-D 落地时的机器核对（WR-C3 接管）：同用例双传输测试逐方
 - 2026-11-08：v1.8（W8 刀3e-3，data sync 域资产与读面）。**§6.16 任务/档案资产、配对分类、迁移历史与 job 读回**十三路由（任务二 + 档案三 + 配对分类一 + 迁移运行历史二 + sync job 读回/取消五）——legacy IPC 命令轨第七域的前半（22 客户端方法中的 13 个；执行面九方法[inspect/compare/prepare/apply/execute/SQL 预览/复核/冲突检查/恢复核验]随刀3e-4）；存储 = v15 双表（3e-2）+ v12 `migration_run_history`（三类运行共用，schemaDiff 写面 §6.13 落账、**读面按该节登记随本域收口**——顶层资源 `/api/v1/migration-runs`）；迁移历史读面存储补 `get` 单行方法（统一 404：miss 与越组织不可区分）；job 读面 = JobHost kind 过滤（`dataSyncPrepare`/`dataSyncApply`）+ Failed 态宿主侧消息覆写（durable 记录只落安全原因码）+ `preview` 等 plan_store 行级复核投影（60s 窗口）；`cancelDataSync` 服务端语义差登记：无预受理取消记忆（服务端 id 受理时铸造），未知/他类 → `{ cancelled: false }` 幂等 no-op；进程级运行态（复核挂起集合 + 宿主侧失败消息表）装配态实例立仓储（3e-4 执行宿主是唯一生产者）。§4 总账 90→103 方法 / 86→99 路由（dataSync 13 入账全服务）。web 半边（域客户端 + 不支持名单收缩）随执行面刀收口。
 - 2026-11-08：v1.9（W8 刀3e-4b，data sync 域执行面九路由）。**§6.16 补齐执行面**——inspect（`POST /sync/inspections`，POST 读）+ revalidate（`POST /sync/revalidations`，表名列表非映射）+ compare（`POST /sync/comparisons`，同步语义：durable prepare Job 冻结 ChangeSet 后等终态读复核投影——桌面 `run_comparison` 同链，长比较占住请求；只要回执的调用方用 `startDataSyncPrepareJob`）+ prepare/apply（`POST /sync/jobs/prepare|apply`，202 + `JobView`——幂等由**受理键**承担：`data-sync-prepare:{jobId}` / `data-sync-apply:{planId}`，重放同键返回既有 Job 不派发第二 worker）+ execute（`POST /sync/executions`，`DataSyncExecutionResponse`——**partially-applied / unknown 是带证据的成功应答而非 4xx**，桌面 IPC 契约形状逐字对齐；v12 运行历史两段落账）+ SQL 预览（`POST /sync/sql-preview`，行级分页源 + IPC 上限）+ 冲突检查（`POST /sync/tasks/{id}/conflicts`，任务资源寻址——冻结计数 vs 当前行数）+ 恢复核验（`POST /sync/jobs/{id}/recovery-verification`，只读证据记录 RequireManualReview 族，永不续写——schemaDiff 同款裁决）；**执行面令牌缺席是有意裁决**（job 受理幂等自立，schemaDiff plans/deploys 先例）；服务层三件（`sync/host|sessions|execution`——刀3e-4a 下沉的共享 `RuntimeDataSyncHost` 三端口 + 专用会话身份闸 + 九方法管线）；compare_data_sync/revalidate_data_sync 以域方法收录，`compare_data_sync` 的 IPC 命令与 HTTP 路由同名同义。§4 总账 103→112 方法 / 99→108 路由（dataSync 22 入账全服务，第十四域→十五域全满）。web 半边（域客户端 + 不支持名单收缩）随下刀收口。
 - 2026-11-09：v1.10（W8 刀4，wapp 资产 origin 静态面）。**§5 非域面加一行** `GET /wapps/{wapp id}/{package-relative path}`——WR-F4 冻结约定（`{origin}/wapps/{id}/{path}?{query}`，入口携 `?v=` 版本破坏符）的服务端半边。路径文法 / 拒绝语义 / 宽松 percent-decode / MIME 白名单 / 启用闸全部复用内核 `workspace_apps::protocol`（新增 origin 形入口 `parse_wapp_origin_path` + 单源常量 `ORIGIN_ASSET_CSP`；`route_datazen_request` 单家不变，server 面零第二份路径规则）。每条应答注入单源 CSP（`ORIGIN_ASSET_CSP`，值等于前端冻结字面量 `WAPP_ASSET_CSP`；与桌面 `ASSET_CSP` 同指令集去 `datazen:` 源）+ `X-Content-Type-Options: nosniff` + `Cache-Control: no-cache`，错误应答空体；`open` 深链受理为 204（web 形态无宿主事件通道，深链消费方是前端 `parseWappAssetTarget`）。会话裁决：**面公开**（桌面 `datazen://` 零认证同语义；`sandbox="allow-scripts"` 的 opaque-origin 子资源请求按 site-for-cookies 语义拿不到 SameSite=Lax cookie，会话门会拦断子资源——依据与加固路线见设计档 §6，首选 v1.1 HTML 入口会话门）。L5 限流扩至 `/wapps/` 前缀（IP 桶）+ 装配点补 `into_make_service_with_connect_info`。存储根 `DATAZEN_SERVER_WAPPS_DIR`（默认 `data/wapps`；本刀无 HTTP 安装面，包由运维落盘、重启扫描生效）。§4 注记：自举路由按 §5 表内逐条对账修正为 8 条（旧口径「5 条」漏计桌面认证 start/exchange 两条；本刀 +1 wapp 静态面），方法账 112/108 不动（本面不产生域方法）。wapps 域客户端面（list/manifest 读 + web 半边 unsupportedMethods 收缩）与安装/管理写面（§6.5 uploads envelope 关系）另立项。
+- 2026-11-09：v1.10.1（W8 台账总核销——纯对账修正，零路由/零方法/零代码变更）。§4 两行口径归位使行合计与合计行一致（此前 113/109 ≠ 112/108）：artifact 1/1→2/2——`createArtifactUpload` 自 Wave3 `d5d04a95`（2026-11-03，WR-F6 导出流）起在 `ArtifactMethodMap` 与 web `HTTP_ROUTES` 双侧在账，行内漏计；events 2/2→0/0——`MethodMap` 无 events 切片，§6.6 两 SSE 路由是传输级受理面（订阅走 `transport.subscribe` 而非 `call`），按 §2「镜像域客户端面」裁决不计域方法。修正后五方一致：§4 行合计 = §4 合计行 = changelog 链终值 = **112 方法 / 108 路由 / 4 排除**；112 = `MethodMap` 109 内核键 + 3 legacy 留表键（`getWorkflowDir` + 两 `*_with_dialog`），108 = 109 − 1（`open_base64_with_dialog` 排除）= §6 逐域表去重路由数（109 表行 − connection PATCH 双服务 1）= TS `HTTP_ROUTES` 分发键数。同步收口两处陈旧注记：§6.5 uploads「尚无对应方法」改记合拢事实；§4 表头 dataSync「随下刀收口」改记 #223 已收口。历史链注记：v1.8 起点路由数 85→86 的静默 +1 为 events 订阅建立路由入表的对账修正，特此看顾在案。

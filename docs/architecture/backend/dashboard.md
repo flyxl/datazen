@@ -56,3 +56,18 @@ pnpm e2e:dashboard   # dashboard suite（e2e/specs/data-dashboard*.ts；与其�
 ```
 
 详见 [PRD](../../features/ops-dashboard-guide.zh-CN.md) 与 [实施方案](../../features/ops-dashboard-guide.en.md)。
+
+## 服务端形态（W8）
+
+W8 刀3d 点亮 dashboard 域：`crates/datazen-server/src/dashboard/` 四件 + `http/domains/dashboard.rs` 十五路由，与桌面宿主共用共享层的执行、登记与校验规则。存储走服务端管理库 **V14 三存储件**（`dashboards` / `widgets` / run history，组织复合主键）——行词汇与登记规则（保存归一化、消失组件清理、保留策略）单家在共享层，服务端存储只提供行。
+
+| 文件 | 职责 |
+|---|---|
+| `creation.rs` | 共享组件创建用例的宿主（from-sql / from-workflow / 隐藏组件 SQL 更新）；dashboardHidden 私有面不进用户列表 |
+| `execution.rs` | `ServerWidgetExecutionHost`（交互执行）+ `GrantScopedHost`（授权单作用域装饰器：规范目标比对 + 服务身份上下文） |
+| `grants.rs` | monitor 授权面：authorize / revoke / read，桌面同链校验（ttl 词表、状态闸、工作流形状、只读 SQL AST、目标规范化、冻结事实复验） |
+| `scheduler.rs` | `ServerMonitorHost` + `ServerMonitorScheduler`：定时刷新监控引擎的 server 接线 |
+
+- **契约**（[HTTP API 契约](../platform/http-api-contract.md) §6.15，十五路由）：CRUD 六 + 组件创建三 + 运行历史二 + 手工执行一 + monitor 授权三。
+- **刷新监控引擎双端共享**：共享 `MonitorEngine`（到期判定 / 在途守卫 / arm-not-fire）+ server 接线（授权闸门失败关闭、授权单作用域执行、运行落账）——桌面 `MonitorEngine` 同款语义，两形态各自装配宿主件。
+- **两个 `*_with_dialog` 不进 HTTP**：`export_dashboard_with_dialog` / `import_dashboard_with_dialog` 是桌面对话框语义；浏览器侧导出/导入走产物上传（契约 §6.5 在账端点）与下载。

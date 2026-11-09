@@ -1,6 +1,6 @@
 # AI、MCP、Wapp 与辅助任务接入详细设计
 
-> 状态：P6 目标设计；核对基线：2026-10-02，`d329539b9`。本文定义消费者接入规则，不表示团队后端已实现。基础接口、错误码与验收编号以 [连接管理](connection-management.md) 为准；Workflow 块语义以 [Workflow 资源模型](workflow-resource-model.md) 为准。
+> 状态：P6 目标设计；核对基线：2026-10-02，`d329539b9`。本文定义消费者接入规则。桌面侧 P6 已于 2026-11-04 核实收口；服务端绑定已随 W8（2026-11-06 至 11-09）在 `crates/datazen-server/src/` 落地（mcp / dashboard / workflow 等域路由），但 server 形态的 AI 供应商注册表缺位是既定 fail-closed 裁决，不等于 AI 全功能。基础接口、错误码与验收编号以 [连接管理](connection-management.md) 为准；Workflow 块语义以 [Workflow 资源模型](workflow-resource-model.md) 为准。
 
 ## 1. 消费者边界
 
@@ -125,7 +125,7 @@ PostgreSQL 与 MySQL 的 driver 专属 `crates/drivers/{postgres,mysql}/tests/mo
 
 ### NativeTool 环境端口（已删除，2026-10-28）
 
-> **历史记录**：本节原描述 NativeTool 环境端口（部署锚定的 `pg_dump` / `mysqldump --version` 探针）的目标协议、kernel 实现、桌面部署登记与产品 IPC。随前端形态拆分方案 **F1**（裁决 #3）整体删除：产品零使用、无 UI、探针登记表默认空即拒绝一切，契约先行预留却从未被消费。删除面：`crates/datazen/src/jobs/{domain,application}/native_tool*`、`src-tauri/src/{commands,platform}/native_tool*`、`src-tauri/resources/native-tool-probes.json`、`owner.rs` 的 `verify_native_selection`、codec 的 `nativeToolProbe` 校验分支与 IPC 五命令。旧库遗留的 `nativeToolProbe` 作业行由宿主 schema migration v6 在启动时一次性 purge（子表全部 ON DELETE CASCADE）。若未来需要数据库原生 CLI 能力，须重新立项；本节保留删除事实与回滚边界（revert 无数据迁移逆向，purge 不恢复旧记录——记录本身无产品价值）。
+> **历史记录**：本节原描述 NativeTool 环境端口（部署锚定的 `pg_dump` / `mysqldump --version` 探针）的目标协议、kernel 实现、桌面部署登记与产品 IPC。随前端形态拆分方案 **F1**（裁决 #3）整体删除：产品零使用、无 UI、探针登记表默认空即拒绝一切，契约先行预留却从未被消费。删除面：`crates/datazen/src/jobs/{domain,application}/native_tool*`、`crates/datazen-desktop/src/{commands,platform}/native_tool*`、`crates/datazen-desktop/resources/native-tool-probes.json`、`owner.rs` 的 `verify_native_selection`、codec 的 `nativeToolProbe` 校验分支与 IPC 五命令。旧库遗留的 `nativeToolProbe` 作业行由宿主 schema migration v6 在启动时一次性 purge（子表全部 ON DELETE CASCADE）。若未来需要数据库原生 CLI 能力，须重新立项；本节保留删除事实与回滚边界（revert 无数据迁移逆向，purge 不恢复旧记录——记录本身无产品价值）。
 
 ## 8. 接口落地与旧路径删除
 
@@ -137,9 +137,9 @@ P6 目标 adapter 为 AI tool adapter、MCP request/session adapter、Wapp bridg
 
 ### 8.1 当前共享实现与保留边界（2026-10-17）
 
-Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `modules command_runtime → modules resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。（NativeTool 原依赖的不可序列化通用 `StageOwnerPermit` Job fencing 保留在 Job 内核中服务其余 Handler；NativeTool 本体已删除。）
+Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为内核 crate 的 `command_runtime` → `resource_execution` → Runtime。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。（NativeTool 原依赖的不可序列化通用 `StageOwnerPermit` Job fencing 保留在 Job 内核中服务其余 Handler；NativeTool 本体已删除。）
 
-共享领域实现集中在 `modules`，Wapp 内核（协议/路由策略）作为 `modules::workspace_apps` 模块同在其中，宿主只保留 `datazen://` 协议适配器。本轮补迁 command policy、迁移端点身份算法、Dashboard 创建/归档规则、export 容器规划与迁移结果历史映射；原路径保留薄绑定和兼容导出。逐项源码边界见 [modules 残余审计](modules.md#final-residual-audit-2026-10-17)。
+共享领域实现集中在内核 crate（`crates/datazen/`，W7-A 前的 `modules`），Wapp 内核（协议/路由策略）作为 `datazen::workspace_apps` 模块同在其中，宿主只保留 `datazen://` 协议适配器。本轮补迁 command policy、迁移端点身份算法、Dashboard 创建/归档规则、export 容器规划与迁移结果历史映射；原路径保留薄绑定和兼容导出。逐项源码边界见 [modules 残余审计](modules.md#final-residual-audit-2026-10-17)。
 
 `execute_driver_command` 仍服务桌面 editor/session IPC；Runtime 的 `SessionRegistry` 与 `DesktopSessionBackend` 承载本地 session identity、物理资源、预算与隧道生命周期。AI/MCP/Workflow 默认 DB 工具已走共享 Runtime `ResourceExecutionHost`。Monitor 的定时调度与手动 widget 执行保持共享 MonitorHost/Workflow/Runtime 路径。
 
@@ -149,7 +149,7 @@ Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管
 
 | 旅程 | 必须观察到的结果 | 关联用例 |
 | --- | --- | --- |
-| AI 默认查询 → 授权共享 → 临时对象查询 → 撤销 → 下一次工具 | 共享时同队列可见；撤销后拒绝且编辑器资源仍存活 | CM-53、73、74（**H 层已交付**：`crates/datazen/src/ai/application/ownership.rs` 的 grant 生命周期 + `src-tauri/src/commands/ai/grant.rs` 的 `ai_grant_editor_session`/`ai_revoke_editor_grant`/`ai_touch_editor_grant`；F 层真实 UI 旅程待补） |
+| AI 默认查询 → 授权共享 → 临时对象查询 → 撤销 → 下一次工具 | 共享时同队列可见；撤销后拒绝且编辑器资源仍存活 | CM-53、73、74（**H 层已交付**：`crates/datazen/src/ai/application/ownership.rs` 的 grant 生命周期 + `crates/datazen-desktop/src/commands/ai/grant.rs` 的 `ai_grant_editor_session`/`ai_revoke_editor_grant`/`ai_touch_editor_grant`；F 层真实 UI 旅程待补） |
 | MCP A/B 同连接 → A 开事务 → A 断开 → B 继续 | 资源隔离、A 清理完成、B 不被取消 | CM-53、54 |
 | Wapp 请求 → 重载 → 旧响应/取消到达 | 旧 nonce 被拒绝，新实例状态不受影响 | CM-53、55 |
 | schedule 入队 → ACL 撤销 → 派发 | 不取得资源、不写数据库，记录拒绝原因 | CM-59、65、67 |
@@ -162,4 +162,4 @@ Host fake 验证归属与清理；真实 driver 验证共享状态、精确取�
 
 ### P6 Workflow v1 范围
 
-Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为 `modules command_runtime → modules resource_execution → Runtime`。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。
+Workflow 在 P6 保持既有 v1 协议与执行语义，只替换底层连接管理；保留跨数据库逐步目标、step output 和模板串联。生产路径为内核 crate 的 `command_runtime` → `resource_execution` → Runtime。不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof；模型/YAML/既有 IPC 形状不变。

@@ -52,17 +52,17 @@
 - [AI/MCP/Wapp 与辅助任务接入](platform/consumer-adapters.md)
 - [团队服务与认证](platform/team-server-and-auth.md)
 - [多 worker 协调](platform/multi-worker-coordination.md)
-- [分阶段开发计划](../development/platform-development-plan.md)
 - [团队服务部署、升级与恢复](../development/team-service-operations.md)
+- [分阶段开发计划（已归档）](../archive/development/platform-development-plan.md)
 
-P1（共享边界）、P3（Runtime 会话/资源/网关）、P4（桌面会话迁移）与 P5（JobRuntime 与迁移三件套）已经落地；P6（Workflow / AI / MCP / Wapp 等消费者迁移）仍在进行；P7–P10（团队 Web、多实例协调、全驱动发布验收）仍属目标设计。已完成部分应继续按实现事实维护，未完成部分继续服从目标设计。
+P1（共享边界）、P3（Runtime 会话/资源/网关）、P4（桌面会话迁移）、P5（JobRuntime 与迁移三件套）与 P6（消费者迁移/命令薄壳化，2026-11-04 核实收口）已经落地；**P7 单实例团队 Web 服务已随 W8（2026-11-09）交付**：`crates/datazen-server/` 十五域全亮（112 域客户端方法 / 108 路由，[契约](platform/http-api-contract.md) v1.10.1）+ `packages/web/` 浏览器壳 + `deploy/dev` 一键开发栈；P8 桌面团队认证、P9 多实例协调与 P10 全驱动发布验收仍属目标设计。已完成部分应继续按实现事实维护，未完成部分继续服从目标设计。
 
 > 除上述明确请求的设计外，本目录只描述 **已落地** 的实现。方案草稿、RFC 与实施计划不长期留在 `architecture/`：
 > 结论落地后改写为本目录的事实条目，未落地的提案不入库。演进方向的公开叙述见 [blogs/](../blogs/README.md)。
 
 ## 1. 总体结构
 
-DataZen 当前是一个基于 Tauri v2 的桌面数据库客户端，同时支持 GUI 模式和 headless MCP stdio 模式。前端通过 Tauri IPC（或 `@datazen/backend-client` 端口）进入宿主组装层，业务内核位于共享 Rust workspace。
+DataZen 当前提供三种运行形态：Tauri v2 桌面客户端（GUI 模式和 headless MCP stdio 模式）、团队 Web 服务（`crates/datazen-server/`，axum HTTP 宿主）与浏览器壳（`packages/web/`）。前端通过 Tauri IPC（或 `@datazen/backend-client` 端口）进入宿主组装层，业务内核位于共享 Rust workspace。
 
 ```text
 React / TypeScript
@@ -90,24 +90,25 @@ packages/
   └─ backend-client/, driver-sdk/, wapp-sdk/, extension-points/, ui/   TS 契约与 UI 包
 crates/drivers/*      全部数据库驱动（Cargo crate；多数尚无 package.json，pnpm 会跳过）
 
-modules/（单一业务 crate `datazen`，DDD 迁移后按功能分层）
-  ├─ src/shared/        跨形态、无传输依赖的契约（ID、RequestContext、PortError、Clock；原 platform-api 契约层）
+modules → crates/datazen/（单一业务 crate `datazen`，DDD 迁移后按功能分层）
+  ├─ src/shared/        跨形态、无传输依赖的契约（ID、RequestContext、PortError、Clock）
   ├─ src/application/   应用层用例（target、identity policy、sessions、DTO）
   ├─ src/execution/     运行时内核：session/resource/lease/budget/gateway/driver_registry
   ├─ src/jobs/          Job 运行时（原 kernel 的 Job 部分；NativeTool 子模块已随前端形态拆分方案 F1 删除）
   ├─ src/migration/     schema-diff / data-sync / data-transfer 三引擎与 common
   ├─ src/workflow/ src/ai/ src/mcp/ src/dashboard/   共享 feature 逻辑（domain/application/engine 分层）
+  └─ （同构域：backup / export / history / monitor / named_views / table_browsing / table_editing / tunnel / wapps / connection / settings …）
 
-server/（crate `datazen-server`）
-  HTTP 组装根：`/healthz`、`/readyz` 与已点亮的 `/api/v1` 域。与桌面宿主互不依赖，只依赖 `modules`。
+crates/datazen-server/（crate `datazen-server`）
+  HTTP 组装根：`/healthz`、`/readyz`、`/api/v1` 十五域全亮与 wapp 静态面（契约 v1.10.1）；auth（OIDC）/policy（ACL/RBAC）/storage（SQLite 管理库首版）/operations/transfer 各层。与桌面宿主互不依赖，只依赖内核。
 
 packages/web/
-  浏览器壳。共享 UI 在 `packages/frontend`；本目录不含 `@tauri-apps`。
+  浏览器壳（`src/platform/web/`：HTTP transport、SSE 事件流、108 键路由分发、legacy 不支持名单）。共享 UI 在 `packages/frontend`；本目录不含 `@tauri-apps`。
 ```
 
-依赖方向是单向的：`modules` 内 `shared` 契约层不依赖上层；各领域包的 `application` 依赖 `shared` 与 `driver-api`。`crates/datazen-desktop` 与 `crates/datazen-server/` 是两个组装根，彼此不依赖。`scripts/check-platform-crate-boundaries.mjs` 与 `scripts/check-server-deps.mjs` 对 Tauri/HTTP/UI 依赖做硬门禁。
+依赖方向是单向的：内核 crate（`crates/datazen/`）内 `shared` 契约层不依赖上层；各领域包的 `application` 依赖 `shared` 与 `driver-api`。`crates/datazen-desktop` 与 `crates/datazen-server/` 是两个组装根，彼此不依赖。`scripts/check-platform-crate-boundaries.mjs` 与 `scripts/check-server-deps.mjs` 对 Tauri/HTTP/UI 依赖做硬门禁。
 
-桌面 GUI 仍通过 Tauri IPC 进入 Rust。团队 Web 的 HTTP 宿主和浏览器壳已经在仓库里，但不是桌面功能的替代品；未点亮的 `/api/v1` 域仍以 [HTTP API 契约](platform/http-api-contract.md) 为准，不要把未挂载的路由写成已可用产品能力。
+桌面 GUI 仍通过 Tauri IPC 进入 Rust。团队 Web 的 HTTP 宿主和浏览器壳已在仓库里，`/api/v1` 十五域已全亮（112 域客户端方法 / 108 路由），HTTP 面以 [HTTP API 契约](platform/http-api-contract.md)（v1.10.1）为唯一权威；契约「排除」行的桌面专属能力（文件对话框、文件系统语义等）不得写成 web 形态可用。
 
 ## 2. Driver 架构
 
@@ -186,7 +187,7 @@ Schema Diff 领域代码位于 `crates/datazen/src/migration/schema_diff/`：
 - `job/`：桌面 JobRuntime 的 prepare/apply 适配。
 - `unified*.rs`：统一计划与跨对象依赖复核。
 
-Host 侧只剩 `src-tauri/src/commands/schema_diff.rs` 门面及其子模块，负责 IPC、job 适配与桌面目标解析。**方言 SQL 属于 Driver API / Driver 层。** Host 不按 PostgreSQL/MySQL 等数据库类型复制 SQL。Driver 提供 `SchemaMigration` 背后的 `MigrationRenderer`、`MigrationCapabilities` 和 `TypeNormalizer`。
+Host 侧只剩 `crates/datazen-desktop/src/commands/schema_diff.rs` 门面及其子模块，负责 IPC、job 适配与桌面目标解析。**方言 SQL 属于 Driver API / Driver 层。** Host 不按 PostgreSQL/MySQL 等数据库类型复制 SQL。Driver 提供 `SchemaMigration` 背后的 `MigrationRenderer`、`MigrationCapabilities` 和 `TypeNormalizer`。
 
 Source 是 desired state，Target 是 apply site。例如 source 为 `VARCHAR(255)`、target 为 `VARCHAR(100)` 时，计划方向是把 target 修改为 `VARCHAR(255)`。
 
@@ -206,10 +207,10 @@ Data Transfer 使用 Endpoints → Setup → Objects → Mapping → Preview →
 
 ## 7. Workflow / AI / MCP / Dashboard
 
-- **Workflow**：共享模型、条件、模板、执行器和调度逻辑位于 `crates/datazen/src/workflow/`；`src-tauri/src/workflow/` 提供 YAML registry、Command runtime 绑定、history、桌面 runtime entry 与真实驱动验收。Workflow v1 的连接管理经 `modules command_runtime → modules resource_execution → Runtime`。
+- **Workflow**：共享模型、条件、模板、执行器和调度逻辑位于 `crates/datazen/src/workflow/`；`crates/datazen-desktop/src/workflow/` 提供 YAML registry、Command runtime 绑定、history、桌面 runtime entry 与真实驱动验收。Workflow v1 的连接管理经 `modules command_runtime → modules resource_execution → Runtime`。
 - **AI**：契约、厂商协议和用例都在 `crates/datazen/src/ai/`（`domain/`、`providers/`、`application/`，`AI_PROTOCOL_VERSION = 1`）。Schema 元数据源在 `crates/datazen/src/ai/application/schema_context.rs`；桌面在 `crates/datazen-desktop/src/services/schema_context_source.rs` 注入宿主门面。独立 crate `packages/ai-api` 与 `packages/ai-providers` 已删除。
-- **MCP**：`crates/datazen/src/mcp/` 持有共享工具/资源逻辑，`src-tauri/src/mcp/` 提供 MCP Server 和 Client 的宿主传输、会话与权限接线，并支持 headless stdio。
-- **Dashboard**：`crates/datazen/src/dashboard/` 负责 Widget 创建/归档/调度策略，`src-tauri/src/dashboard/` 负责桌面存储与执行适配；`src-tauri/src/monitor/` 负责 MonitorEngine、定时授权与 occurrence。
+- **MCP**：`crates/datazen/src/mcp/` 持有共享工具/资源逻辑，`crates/datazen-desktop/src/mcp/` 提供 MCP Server 和 Client 的宿主传输、会话与权限接线，并支持 headless stdio。
+- **Dashboard**：`crates/datazen/src/dashboard/` 负责 Widget 创建/归档/调度策略，`crates/datazen-desktop/src/dashboard/` 负责桌面存储与执行适配；`crates/datazen-desktop/src/monitor/` 负责 MonitorEngine、定时授权与 occurrence。
 
 ## 8. 四维扩展架构
 
@@ -224,7 +225,7 @@ DataZen 采用四维扩展体系：
 
 ## 9. 持久化与安全
 
-Desktop 持久化由 `src-tauri/src/store/` 管理，包含连接配置、设置、AI 配置、同步任务和历史等。敏感配置使用 AES-256-GCM，主密钥由 `key_store` 管理，可使用 OS keychain 或开发/CI 文件后端。
+Desktop 持久化由 `crates/datazen-desktop/src/store/` 管理，包含连接配置、设置、AI 配置、同步任务和历史等。敏感配置使用 AES-256-GCM，主密钥由 `key_store` 管理，可使用 OS keychain 或开发/CI 文件后端。
 
 查询历史目前位于 `history.sqlite`，SQL 文本和错误信息并非整体加密；因此应用数据目录应按敏感数据处理。
 

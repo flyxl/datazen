@@ -1,8 +1,8 @@
 # 迁移三件套与 JobRuntime 平台化详细设计
 
-> 状态：P5 桌面 JobRuntime 与数据迁移三件套已完成（2026-10-09）。Schema Diff、Data Sync、Data Transfer 的 prepare/apply 均接入共享持久化 Job host；三件套独立测试与冒烟测试通过。本文区分当前桌面实现与后续目标设计，不代表 P7 server、完整服务端 ArtifactRepository 或跨进程自动续跑已实现。
-> **当前桌面实现**：`packages/kernel/src/job/` 提供 `JobHost` 与 JobRuntime 仓储；`src-tauri/src/store/app_db.rs` 在既有 `{appData}/datazen.sqlite` 上执行事务化 v2 迁移，保留 workflows 并建立 job、receipt、stage、boundary、checkpoint、result、artifact reference 表。`AppState` 经 bootstrap 注入该 host。三套领域 handler 经 durable accept 与幂等回执后由后台 dispatch 执行。应用重启后，旧 Running 转为待核验，未派发 Queued 标为 `notExecuted`；不会重放旧 worker 或 handler。
-> 本文按用户要求补齐平台演进设计。连接、错误与 CM 用例以 [连接管理](connection-management.md) 为权威，阶段门槛以 [开发计划](../../development/platform-development-plan.md) 为权威；持久化字段以 [持久化模型](persistence-model.md) 为权威。
+> 状态：P5 桌面 JobRuntime 与数据迁移三件套已完成（2026-10-09）。Schema Diff、Data Sync、Data Transfer 的 prepare/apply 均接入共享持久化 Job host；三件套独立测试与冒烟测试通过。本文区分当前桌面实现与后续目标设计，不代表完整服务端 ArtifactRepository 或跨进程自动续跑已实现。服务端侧：P7 团队服务已随 W8 交付，jobs 仓储落在 `crates/datazen-server/src/storage/jobs.rs`（SQLite，迁移链 V12；首版按 WR-D2 裁决落 SQLite 而非 PostgreSQL），schema_diff 的 migration runs 在 `crates/datazen-server/src/storage/migration_runs.rs`。
+> **当前桌面实现**：`crates/datazen/src/jobs/` 提供 `JobHost` 与 JobRuntime 仓储；`crates/datazen-desktop/src/store/app_db.rs` 在既有 `{appData}/datazen.sqlite` 上执行事务化 v2 迁移，保留 workflows 并建立 job、receipt、stage、boundary、checkpoint、result、artifact reference 表。`AppState` 经 bootstrap 注入该 host。三套领域 handler 经 durable accept 与幂等回执后由后台 dispatch 执行。应用重启后，旧 Running 转为待核验，未派发 Queued 标为 `notExecuted`；不会重放旧 worker 或 handler。
+> 本文按用户要求补齐平台演进设计。连接、错误与 CM 用例以 [连接管理](connection-management.md) 为权威，阶段门槛以 [开发计划（已归档）](../../archive/development/platform-development-plan.md) 为权威；持久化字段以 [持久化模型](persistence-model.md) 为权威。
 
 ## 1. 范围与代码迁移边界
 
@@ -10,13 +10,13 @@
 
 | 引擎 | 当前领域包 | 桌面 host adapter | host 保留职责 |
 | --- | --- | --- | --- |
-| Schema Diff | `crates/datazen/src/migration/schema_diff/` | `src-tauri/src/commands/schema_diff/` | IPC、窗口与用户确认 |
-| Data Sync | `crates/datazen/src/migration/data_sync/` | `src-tauri/src/commands/sync/` | IPC、任务记录与窗口 |
-| Data Transfer | `crates/datazen/src/migration/data_transfer/` | `src-tauri/src/commands/data_transfer/` | IPC、文件选择、原生工具环境 |
+| Schema Diff | `crates/datazen/src/migration/schema_diff/` | `crates/datazen-desktop/src/commands/schema_diff/` | IPC、窗口与用户确认 |
+| Data Sync | `crates/datazen/src/migration/data_sync/` | `crates/datazen-desktop/src/commands/sync/` | IPC、任务记录与窗口 |
+| Data Transfer | `crates/datazen/src/migration/data_transfer/` | `crates/datazen-desktop/src/commands/data_transfer/` | IPC、文件选择、原生工具环境 |
 
-三个领域包和对应桌面 Job adapter 已由 P5 落地。`src-tauri/src/lib.rs` 将领域包导出给 Host；Driver 方言、DDL renderer、类型适配和专属测试留在 driver 包。领域引擎不引用 Tauri、HTTP、窗口 Store 或 driver 实现库类型。
+三个领域包和对应桌面 Job adapter 已由 P5 落地。`crates/datazen-desktop/src/lib.rs` 将领域包导出给 Host；Driver 方言、DDL renderer、类型适配和专属测试留在 driver 包。领域引擎不引用 Tauri、HTTP、窗口 Store 或 driver 实现库类型。
 
-公共代码的实际归属：三套引擎共享 `modules::jobs::engine` 的 JobHandler/JobRuntime 和 `modules` 内契约层（`application::dto` 等）的任务 DTO；SQL 标识符引用与旧 family-based 表名限定工具位于 `driver-api::sql_identifiers`。`crates/datazen/src/migration/common` 只提供记录集边界值规范化/比较和端点 category/family 配对规则，不依赖领域引擎、runtime 或平台传输。Data Sync 与 Data Transfer 直接依赖它，Data Transfer 不再依赖 Data Sync。Data Sync 的 `recordset_bounds`、`sync_pairing` 和 `sql` 工具旧路径保留为转导出，只有一份实现。
+公共代码的实际归属：三套引擎共享 `datazen::jobs::engine` 的 JobHandler/JobRuntime 和内核 crate 内契约层（`application::dto` 等）的任务 DTO；SQL 标识符引用与旧 family-based 表名限定工具位于 `driver-api::sql_identifiers`。`crates/datazen/src/migration/common` 只提供记录集边界值规范化/比较和端点 category/family 配对规则，不依赖领域引擎、runtime 或平台传输。Data Sync 与 Data Transfer 直接依赖它，Data Transfer 不再依赖 Data Sync。Data Sync 的 `recordset_bounds`、`sync_pairing` 和 `sql` 工具旧路径保留为转导出，只有一份实现。
 
 领域语义仍分别拥有：Schema Diff 的结构差异与操作依赖图、Data Sync 的同族门闸与 ChangeSet、Data Transfer 的异构 IR 转换与续传策略。共享配对规则只分类端点；各领域继续执行自己的能力限制（例如 Transfer 拒绝缺少适配器的 Redis 配对）。`qualify_relation_sql` 保留既有 family-based 兼容语义；驱动自有 SQL 重写继续使用 `DatabaseDriver::qualified_sql`，本次不改变驱动 trait、协议版本或执行行为。
 
@@ -137,7 +137,7 @@ Schema Diff / Data Sync / Data Transfer 的 prepare/apply 是**后台任务**：
 
 每次成功的非事务语句记录真实执行 ID、目标/载荷摘要和提交边界；单事务只在确认 COMMIT 后记录一个边界。失败立即停止；已提交边界保留，传输/提交/回滚不确定为 Unknown。取消独立于效果，回滚使用独立清理令牌，只有成功的自有 ROLLBACK 才报告 RolledBack。旧 path helper 只在 Host 测试编译，不是生产回退。
 
-PostgreSQL 的 `crates/drivers/postgres/tests/restore_apply_job.rs` 通过安全 live launcher 的 `--test restore_apply_job` 运行。该旅程使用真实 disposable migration fixture、私有 ArtifactRepository、JobRuntime 的 TargetWriter 预算与单次 plan 消费，复用桌面委托的 `modules::restore_gateway::RuntimeRestoreGateway`，由 Runtime Session / ExecutionGateway 调用真正 PostgreSQL ResourceProvider；断言 COMMIT 执行 ID/摘要边界及独立连接读回两行，并验证 COPY、客户端指令、输入摘要/目标替换和配置 revision 失效在写入前失败；事务内建表后写不存在 relation 的 SQL 失败证明自有 ROLLBACK、无残表和 provider close 完成。测试宿主的 Profile/Policy/SessionBackend 是驱动测试接缝；不覆盖桌面 picker、Store、DesktopSessionBackend 的接线，MySQL 的独立旅程见下文。共享 orchestrator 的授权端口在桌面仍重查 Store 的 enabled/revision/readOnly/safeMode 与目标授权。
+PostgreSQL 的 `crates/drivers/postgres/tests/restore_apply_job.rs` 通过安全 live launcher 的 `--test restore_apply_job` 运行。该旅程使用真实 disposable migration fixture、私有 ArtifactRepository、JobRuntime 的 TargetWriter 预算与单次 plan 消费，复用桌面委托的 `datazen::restore_gateway::RuntimeRestoreGateway`，由 Runtime Session / ExecutionGateway 调用真正 PostgreSQL ResourceProvider；断言 COMMIT 执行 ID/摘要边界及独立连接读回两行，并验证 COPY、客户端指令、输入摘要/目标替换和配置 revision 失效在写入前失败；事务内建表后写不存在 relation 的 SQL 失败证明自有 ROLLBACK、无残表和 provider close 完成。测试宿主的 Profile/Policy/SessionBackend 是驱动测试接缝；不覆盖桌面 picker、Store、DesktopSessionBackend 的接线，MySQL 的独立旅程见下文。共享 orchestrator 的授权端口在桌面仍重查 Store 的 enabled/revision/readOnly/safeMode 与目标授权。
 
 MySQL 的 `crates/drivers/mysql/tests/restore_apply_job.rs` 使用同一安全 launcher、disposable migration gate、私有 ArtifactRepository、JobRuntime 与生产 `RuntimeRestoreGateway`，通过 Runtime Session / ExecutionGateway 调用 factory 注册的真实 MysqlResourceProvider。`IMPLICIT_COMMIT` 配合 `single_transaction=false`：成功 CREATE/INSERT 逐句记录执行 ID、目标和语句摘要边界，独立连接读回两行；LOAD DATA、SOURCE、输入摘要不符、冻结目标替换及配置 revision 失效均在资源获取/写入前拒绝，NotStarted、attempted=0，且无表、无执行 ID；各拒绝路径均断言 Runtime resource open 计数不变。另一脚本先建表，再向不存在的表 INSERT，失败立即停止；独立连接证明 DDL 表仍存在、后续 CREATE 未运行，再清理残表。驱动 SQL 错误当前不提供本语句的确定效果证据，因此总体效果保守为 Unknown，同时保留已确认的 CREATE 提交边界及 committed=1，不能宣称跨 DDL/DML 原子性、RolledBack 或确定的 PartiallyApplied。测试宿主替代 Profile/Policy/SessionBackend 接线，不覆盖桌面 picker、Store 与 DesktopSessionBackend。
 
@@ -302,6 +302,6 @@ H 层验证编排与会计，D 层验证真实数据库副作用和方言，F �
 
 Core 持久化测试覆盖 AppDb v1→v2 时旧 workflow 保留与 DDL 失败回滚、accept/receipt/plan consumption 原子性与幂等、两个 SQLite repository 竞争同一 plan、Queued 重启转 NotExecuted 且不 dispatch、AppState 重建时 Running 转 PendingVerification、SQLite reopen 后 boundary/checkpoint/progress/artifact/domain result/recovery 读取、显式 async verifier 与不重放 handler、cancel/CAS/stale claim，以及落盘 JSON 不含合成 session token / idempotency key。
 
-三件套宿主准入统一使用 `src-tauri/src/services/migration_endpoint.rs` 的物理位置摘要：实际会话配置中的方言、database、schema、端口、隧道和路由选项参与身份，host/port/schema 缺省由实际驱动声明补齐。Sync 先按执行路径解析所选 database/schema。持久化 connectionId 仅用于预算归属；同一 profile 跨库合法，不同 profile 指向同一物理对象仍拒绝重叠。缺失会话配置或 owner 明确拒绝；SQL 文件输出只建立源数据库身份。摘要不包含配置明文，DNS 别名与本地文件路径别名仍需真实连接层证明。
+三件套宿主准入统一使用 `crates/datazen-desktop/src/services/migration_endpoint.rs` 的物理位置摘要：实际会话配置中的方言、database、schema、端口、隧道和路由选项参与身份，host/port/schema 缺省由实际驱动声明补齐。Sync 先按执行路径解析所选 database/schema。持久化 connectionId 仅用于预算归属；同一 profile 跨库合法，不同 profile 指向同一物理对象仍拒绝重叠。缺失会话配置或 owner 明确拒绝；SQL 文件输出只建立源数据库身份。摘要不包含配置明文，DNS 别名与本地文件路径别名仍需真实连接层证明。
 
 恢复失败的效果与任务状态独立传递，Failed/Cancelled 不代表无写入；Unknown/PartiallyApplied 原样保留。仅 domain result 为 `restoreUnsupported` 且效果为 NotStarted 时标识 unsupported。所有失败都禁止自动重试，需先查看持久化 Job、核验当前数据库状态并重新规划；不存在自动重放。前端将结构化错误的 message 显示给用户。历史 `restore_database` / `restore_database_with_dialog` 未注册，现有宿主前端统一使用 `restore_sql_file`，旧外部调用者需迁移到该入口，不新增未经授权的 path IPC 兼容别名。

@@ -1,6 +1,6 @@
 # DataZen 文档索引
 
-DataZen 文档只保留三类长期有效内容：**功能使用**（`features/`）、**代码架构**（`architecture/`）和**开发流程**（`development/`）。`blogs/` 是面向公开发布的架构文章；开发过程中的 PRD、进度、UI Review、临时 Backlog 和未核实缺陷不作为仓库文档长期维护。
+DataZen 文档只保留四类长期有效内容：**功能使用**（`features/`）、**代码架构**（`architecture/`）、**开发流程**（`development/`）与**过程归档**（`archive/`）。`blogs/` 是面向公开发布的架构文章；开发过程中的 PRD、进度、UI Review、临时 Backlog 和未核实缺陷不作为活跃文档维护——已交付的过程文档移入 `archive/`，未入库的不补录。
 
 ## 文档结构
 
@@ -11,6 +11,7 @@ DataZen 文档只保留三类长期有效内容：**功能使用**（`features/`
 | [development/](development/) | 开发、测试、发布、驱动开发流程 | 贡献者 |
 | [blogs/](blogs/) | 面向公开发布的架构文章 | 开发者 / 用户 |
 | [bugs/](bugs/) | **已核实复现、且明确不在当轮修复**的缺陷：现象、影响面、链路实测、修复前置条件 | 贡献者 / AI 助手 |
+| [archive/](archive/) | 已交付过程文档的归档（PRD、设计稿、台账、worklog、评审——只读历史，不随代码演进维护） | 需要追溯决策过程时 |
 
 不在仓库内的目录：
 
@@ -74,17 +75,17 @@ DataZen 文档只保留三类长期有效内容：**功能使用**（`features/`
 
 ### 桌面 / Web 平台演进设计（部分已实现，未落地部分为目标设计）
 
-以下文档按用户明确要求保存，是本次设计交付的范围例外。它们标明基线和目标状态；P1（共享边界）、P3（Runtime 会话/资源/网关）、P4（桌面会话迁移）、P5（JobRuntime 与迁移三件套）已落地，P6（Workflow / AI / MCP / Wapp 等消费者迁移）进行中，P7–P10（团队 Web / 多实例协调 / 全驱动发布验收）仍为目标设计。已落地部分以各架构文档与代码为准。
+以下文档按用户明确要求保存，是本次设计交付的范围例外。它们标明基线和目标状态；P1（共享边界）、P3（Runtime 会话/资源/网关）、P4（桌面会话迁移）、P5（JobRuntime 与迁移三件套）、P6（消费者迁移/命令薄壳化，2026-11-04 核实收口）与 **P7（单实例团队 Web 服务，W8 于 2026-11-09 交付：`crates/datazen-server/` 十五域 + `packages/web/` 浏览器壳，契约 v1.10.1）**已落地；P8 桌面团队认证（契约 §5 在账目标）、P9 多实例协调与 P10 全驱动发布验收仍为目标设计。已落地部分以各架构文档与代码为准。
 
-概要、契约与计划：
+概要、契约与归档计划：
 
 - [系统概要设计](architecture/platform/system-overview.md)：三种运行方式、模块职责、交互与接口。
 - [连接管理详细设计](architecture/platform/connection-management.md)：数据契约、状态机、算法、验收标准与 74 个测试用例，是接口契约、错误码与验收的唯一权威。
-- [分阶段开发计划](development/platform-development-plan.md)：连接重构、多应用形态、团队服务和多 worker 的依赖与交付门槛，是阶段→补充契约归属的唯一权威。
-- [DDD 模块化重构：目标架构与实施指南](development/ddd-refactor-plan.md)：2026-10-24 已确认的目标——单一 modules crate 按功能内分 application/domain，Repository 由领域定义、宿主实现，执行机制归 execution/runtime，Desktop/Web 按需装配；含旧包退役、D0–D8 迁移、测试与发布门槛。2026-10-26 起拆分为总纲 + `development/ddd-refactor/` 细节文件（保留原 § 编号）。目标尚未完成实现。
-- [前端形态拆分：目标架构与实施计划](development/frontend-form-split-plan.md)：2026-10-28 已确认的目标——`packages/frontend`（共享 lib，真实 pnpm workspace 协议消费）+ `packages/desktop`（唯一 `@tauri-apps` 领地）的拓扑，与后端 modules ↔ src-tauri 镜像；平台能力经三个窄端口（PlatformServices 扩展 / WindowRouter / EventChannel）bootstrap 注入，宿主叠加（DesktopHostServices）不进共享槽位类型；含 F1–F6 分阶段实施（先清场后分家）、eslint 与 import-boundary 闸门（R4 扩展 + R5）、实测基线与 IPC 命令轨迹（272 → ~215）。目标尚未完成实现。
+- [分阶段开发计划（已归档）](archive/development/platform-development-plan.md)：连接重构、多应用形态、团队服务和多 worker 的依赖与交付门槛——P 系列阶段→补充契约归属的原始权威，已随 P7 交付归档。
+- [DDD 模块化重构（已归档）](archive/development/ddd-refactor-plan.md)：单一内核 crate 按功能内分 application/domain，Repository 由领域定义、宿主实现，执行机制归 execution/runtime。D0–D8 已全部完成（旧 kernel crate 已退役），方案归档留档。
+- [前端形态拆分（已归档）](archive/development/frontend-form-split-plan.md)：`packages/frontend`（共享 lib）+ `packages/desktop`（唯一 `@tauri-apps` 领地）的拓扑与 F1–F6 实施计划。已全部落地，方案归档留档。
 
-**目标代码组织以这版 DDD 指南为准**：它替代旧文中独立 application、集中 platform-api、独立 runtime/kernel 作为长期布局的安排，Web 后端目标目录统一为 `web/`。下面各文的既有协议、安全、资源与恢复契约继续有效；已实现位置仍以代码为准，不能把新目录写成已经存在。
+**目标代码组织已按归档 DDD 指南落地**：单一内核 crate（`crates/datazen/`）按功能内分 application/domain，桌面（`crates/datazen-desktop/`）与服务端（`crates/datazen-server/`）宿主按需装配，浏览器壳在 `packages/web/`。下面各文的既有协议、安全、资源与恢复契约继续有效；已实现位置以代码为准。
 
 补充详细设计（P0–P2）：
 
@@ -100,14 +101,13 @@ DataZen 文档只保留三类长期有效内容：**功能使用**（`features/`
 - [团队服务部署、升级与恢复流程](development/team-service-operations.md)：配置与健康检查、发布兼容、备份一致性、恢复隔离与演练。
 - [Workflow 资源模型详细设计](architecture/platform/workflow-resource-model.md)：step / session block / transaction block 三种执行单元、目标继承链、Session/Lease/Budget 集成与版本兼容边界。
 - [团队 Web 服务与认证详细设计](architecture/platform/team-server-and-auth.md)：server crate 形态、中间件链、OIDC/CSRF/RBAC、SSE 回放与错误到 HTTP 的映射。
-- [共享 feature 服务边界](architecture/platform/modules.md)：`modules` 中 Workflow / AI / MCP / Dashboard / 导出 / 备份恢复的共享实现与宿主绑定。
+- [共享 feature 服务边界](architecture/platform/modules.md)：内核 crate 中 Workflow / AI / MCP / Dashboard / 导出 / 备份恢复的共享实现与宿主绑定（含 W8 服务端第三类绑定）。
 
 ## 开发与发布
 
 - [E2E Testing](development/e2e-testing.md)
 - [E2E Coverage](development/e2e-coverage.md)
 - [驱动测试覆盖矩阵](development/driver-test-coverage.md)
-- [E2E IPC Migration](development/e2e-ipc-migration-guide.md)
 - [CI Test Matrix](development/ci-test-matrix.md)
 - [CI Private Drivers](development/ci-private-drivers.md)
 - [Independent Driver Development](development/independent-driver-development.en.md) / [中文](development/independent-driver-development.zh-CN.md)
@@ -132,9 +132,9 @@ DataZen 文档只保留三类长期有效内容：**功能使用**（`features/`
 
 1. 文档中的文件路径、命令、IPC 名称和能力矩阵必须以 main 分支代码为准。
 2. 已实现功能写入 features；架构事实写入 architecture；开发流程写入 development。
-3. 临时实施计划、PRD、设计稿、原型图、进度、Bug List 和评审记录不提交到长期文档索引。
+3. 临时实施计划、PRD、设计稿、原型图、进度、Bug List 和评审记录不提交到活跃文档；已交付的过程文档移入 `archive/`（见 [archive/README](archive/README.md)），结论以活跃文档为准。
 4. 设计提案不长期留在 `architecture/`：要么在 `architecture/` 落为「已实现」的事实文档，要么不入库。
 5. 对外发布文案写入本地 `posts/`，不提交。
 6. 删除或重构代码时，同步删除失效文档引用。
-7. **不新增带行号的代码引用。** 禁止写「`文件名` + `:行号`」这种形式的引用；定位一律写成「**文件 + 符号名 / 小节名**」，例如 `scripts/check-driver-type-isolation.mjs` 的 F-01 规则 `forbiddenCrates`、`docs/development/platform-development-plan.md` §6「P2：Driver 固定资源与可选能力契约」。行号是一次性坐标，代码增删一行即失效，而**没有任何门禁校验它**——实测把 `docs/architecture/platform/shared-boundaries-and-ports.md` 里指向 `.mjs` 第 99 行的引用全部改成不存在的第 14001 行，5 个门禁依旧全部 EXIT=0。**错的行号比没有行号更糟**：读者会信任这个精确坐标，跳过去发现对不上，然后连累整篇文档一起被降权；没有行号时读者反而会自己找符号。
+7. **不新增带行号的代码引用。** 禁止写「`文件名` + `:行号`」这种形式的引用；定位一律写成「**文件 + 符号名 / 小节名**」，例如 `scripts/check-driver-type-isolation.mjs` 的 F-01 规则 `forbiddenCrates`、`docs/archive/development/platform-development-plan.md` §6「P2：Driver 固定资源与可选能力契约」。行号是一次性坐标，代码增删一行即失效，而**没有任何门禁校验它**——实测把 `docs/architecture/platform/shared-boundaries-and-ports.md` 里指向 `.mjs` 第 99 行的引用全部改成不存在的第 14001 行，5 个门禁依旧全部 EXIT=0。**错的行号比没有行号更糟**：读者会信任这个精确坐标，跳过去发现对不上，然后连累整篇文档一起被降权；没有行号时读者反而会自己找符号。
 8. **复核既有引用前，先确认被引用对象是谁。** 判断一条行号是否失效，第一步不是打开那个行号看内容，而是先确认这条引用说的究竟哪个文件——它的路径、所在 revision、总行数落在哪个量级。**两个方向都要走这一步**：判定「已失效」之前要确认对象，否则会把本来正确的引用改坏；判定「仍然正确」之前同样要确认，否则会漏掉真的漂移了的那一条。**候选对象之间文件名相近、行数接近时，逐个都量，不要挑一个就开始找证据**——E2E 预置脚本里 `e2e/setup-e2e-env.sh` 与 `e2e/setup-sync-dbs.sh` 同在一条调用链上、职责也都是建库，复核时分别只有 125 行和 117 行；一次真实的误判就发生在把它们当成同一个文件数行数的场合，而那批引用最终被证明**七处全部准确、无一失效**——这个结论只有在数对文件之后才成立。**确认对象是这类判断的前置条件，不是可选的核查步骤。** 复核确认引用确已失效时，**不要把它重新锚回它「曾经所在的那一行」**：那一行现在装的是别的内容，补一个新行号只是让它接着腐烂；只能锚回它原本想指的那个东西，即脚本 + 段落 + 语句，与第 7 条同形。

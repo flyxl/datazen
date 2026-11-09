@@ -2,7 +2,7 @@
 
 > 状态：**夹具已落地**，实现位于 `datazen`（`crates/datazen/`）的 `src/connection/testing/`：§1–§9 的 fake resource provider、§4 的 F1–F12 逐阶段故障注入、§5 CommandJournal、§6 Barrier/DrainBarrier、§7 FakeClock、§8 FakeIds（含强制碰撞）与 §9 的会话级句柄命令均已实现并有单测，CM-71/CM-73/CM-74 的竞态与碰撞用例也已落地。**§11 CM-60 基准 harness 的两半都已落地**：压力半是集成测试 `crates/datazen/tests/cm60_pressure_drain.rs`（`2bef5bee1`），延迟半是独立 bin `crates/datazen/src/bin/cm60-bench/`（`37526e084`，CI 门禁见 `05ca8c3a9`）。**§10 真实驱动契约夹具仍是目标设计**，尚未实现。基线：2026-09-30，`8592b0fe1`。本文不代表连接管理重构已完成。
 > 读者：负责 [连接管理详细设计](connection-management.md) §14 开发步骤第 2 项（`testing/fake_resource`）、§6.5 句柄登记与 §15.3 基准 harness 的实现者。
-> 配套：[连接管理详细设计](connection-management.md)、[平台开发计划](../../development/platform-development-plan.md)、[系统概要](system-overview.md)、[测试架构](../testing.md)、[E2E 测试指南](../../development/e2e-testing.md)。
+> 配套：[连接管理详细设计](connection-management.md)、[平台开发计划](../../archive/development/platform-development-plan.md)、[系统概要](system-overview.md)、[测试架构](../testing.md)、[E2E 测试指南](../../development/e2e-testing.md)。
 
 ## 1. 范围与前置约定
 
@@ -52,7 +52,7 @@
 | 多进程/多 worker | 否 | 可配 `workerId`，可表达 epoch 碰撞 |
 | 现状 | 已可运行 | 不存在 |
 
-两者不合并、不互相替代：既有 Host 测试继续用 `MockDriver`；连接运行时的新测试一律用本文 fake。**禁止**把新 runtime 测试写进 `src-tauri/src/testing/`。
+两者不合并、不互相替代：既有 Host 测试继续用 `MockDriver`；连接运行时的新测试一律用本文 fake。**禁止**把新 runtime 测试写进 `crates/datazen-desktop/src/testing/`。
 
 ## 2. 落点与模块划分
 
@@ -70,7 +70,7 @@
 | `.../testing/commands.rs` | 会话级句柄 fake 命令定义 | `session_handle_command_definitions()` |
 | `crates/datazen/src/bin/cm60-bench/` | CM-60 基准入口（§11） | **已实现**：独立的 bin target，不在 `testing/` 下（§11.6 要求基准不得与功能测试共用入口） |
 
-`cfg` 门控与 `src-tauri/src/testing/mod.rs` 现有写法保持一致（`app_state_test_support` 用 `#[cfg(any(test, feature = "test-harness"))]`，feature 名 `test-harness` 已在 `src-tauri/Cargo.toml` 定义；`crates/datazen/Cargo.toml` 也定义了同名 feature，夹具模块由 `lib.rs` 与 `connection/mod.rs` 两处 `#[cfg(any(test, feature = "test-harness"))]` 双重门控）。
+`cfg` 门控与 `crates/datazen-desktop/src/testing/mod.rs` 现有写法保持一致（`app_state_test_support` 用 `#[cfg(any(test, feature = "test-harness"))]`，feature 名 `test-harness` 已在 `crates/datazen-desktop/Cargo.toml` 定义；`crates/datazen/Cargo.toml` 也定义了同名 feature，夹具模块由 `lib.rs` 与 `connection/mod.rs` 两处 `#[cfg(any(test, feature = "test-harness"))]` 双重门控）。
 
 ```mermaid
 flowchart TD
@@ -93,7 +93,7 @@ flowchart TD
 
 隔离规则：
 
-- 夹具代码不得被生产路径引用；`src-tauri` 的 `datazen` crate 不依赖 runtime 夹具。
+- 夹具代码不得被生产路径引用；`crates/datazen-desktop` 与内核 crate 不依赖 runtime 夹具。
 - runtime crate 现有门禁 `pnpm test:layers`（`scripts/check-module-layers.mjs`）只扫描 JS/TS 源码，不覆盖 Rust；runtime crate 已创建，把层/边界检查接入 CI 门禁仍是待办，命令同步写入 CI 与开发计划 §15.1 的命令表，不把未创建命令列为现有脚本。
 - 夹具内禁止出现 `.env` / `.env.test` 的任何读取路径（见 §13）。
 
@@ -626,11 +626,11 @@ cargo run --release -p datazen --bin cm60-bench     # CM-60 延迟半基准（§
 
 | 预期命令 | 前置条件 |
 | --- | --- |
-| `cargo test -p datazen --test contract` | 跨 crate 契约测试目录创建，且 `src-tauri/Cargo.toml` 注入依赖 |
+| `cargo test -p datazen --test contract` | 跨 crate 契约测试目录创建，且 `crates/datazen-desktop/Cargo.toml` 注入依赖 |
 
 创建后必须同步更新平台开发计划 §15.1 的命令表与 CI 门禁，不把未创建命令列为现有脚本。
 
-`src-tauri/Cargo.toml` 已有 `test-harness` feature（用于 `datazen::test_harness` 与 `src-tauri/tests/` 的 IPC 迁移集成测试），runtime 夹具如需跨 crate 暴露，命名沿用该 feature，避免同一概念两个名字。
+`crates/datazen-desktop/Cargo.toml` 已有 `test-harness` feature（用于 `datazen::test_harness` 与 `crates/datazen-desktop/tests/` 的 IPC 迁移集成测试），runtime 夹具如需跨 crate 暴露，命名沿用该 feature，避免同一概念两个名字。
 
 ## 13. 安全纪律
 
@@ -668,8 +668,8 @@ P0 退出门槛要求的三项能力——CM-01/04/07 基线、可复现的 CM-7
 ## 15. 与既有设计的关系
 
 - [连接管理详细设计](connection-management.md) 是本文的上位契约：§5.1 提供九个资源操作与其强制语义，§5.2 提供十项能力，§6.5 定义会话级句柄登记，§9.2/§9.3/§9.4 定义期限、预算与归池前置，§14 把 `testing/fake_resource` 定为开发顺序第 2 步，§15.1~§15.3 给出 fake 与真实夹具的分工、测试层次与基准参数，§16 给出 CM-01~CM-74 用例。本文只把这些条款落成可实现的夹具接口、断言与产物，不新增也不修改上位契约。
-- [平台开发计划](../../development/platform-development-plan.md) §4 的 P0 交付项（transport-neutral fake resource、真实固定会话/事务/目标/清理契约测试、测试环境注入方式与启动器检查）在本文分别对应 §2~§9、§10、§13；§15.1 的已存在命令表与 §15.2 的 CI 门禁对应 §12。
-- [测试架构](../testing.md) 的分层与运行命令对应 §10.1 的落点纪律与 §12 的命令分区：运行时单测/集成属于新 runtime crate，Host 集成留在 `src-tauri`，驱动 Rust 集成严格留在 `crates/drivers/<id>/tests/`。
+- [平台开发计划](../../archive/development/platform-development-plan.md) §4 的 P0 交付项（transport-neutral fake resource、真实固定会话/事务/目标/清理契约测试、测试环境注入方式与启动器检查）在本文分别对应 §2~§9、§10、§13；§15.1 的已存在命令表与 §15.2 的 CI 门禁对应 §12。
+- [测试架构](../testing.md) 的分层与运行命令对应 §10.1 的落点纪律与 §12 的命令分区：运行时单测/集成属于新 runtime crate，Host 集成留在 `crates/datazen-desktop`，驱动 Rust 集成严格留在 `crates/drivers/<id>/tests/`。
 - [系统概要](system-overview.md) 描述平台整体形态，本文不重复其内容。
 - [E2E 测试指南](../../development/e2e-testing.md) 的构建纪律对应 §13；本文不设计 WDIO 场景。
 

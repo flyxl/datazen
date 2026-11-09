@@ -6,8 +6,8 @@
 
 | 层级 | 工具 | 范围 |
 |------|------|------|
-| Host Rust 单元测试 | `cargo test -p datazen` | `src-tauri` 各模块 `#[cfg(test)]` |
-| Host Rust 集成测试 | `cargo test -p datazen` | `src-tauri/tests/`（宿主编排，如 AI / Workflow / IPC） |
+| Host Rust 单元测试 | `cargo test -p datazen` | `crates/datazen-desktop` 各模块 `#[cfg(test)]` |
+| Host Rust 集成测试 | `cargo test -p datazen` | `crates/datazen-desktop/tests/`（宿主编排，如 AI / Workflow / IPC） |
 | 共享 crate 测试 | `cargo test -p datazen-<crate>` | `packages/` 下的 runtime / application / modules / 领域引擎 |
 | 驱动 Rust 测试 | `cargo test -p datazen-driver-<id>` | `crates/drivers/<id>/` 的 `#[cfg(test)]` 与 `tests/` |
 | Host 前端单元测试 | Vitest | `src/**/__tests__/`（`pnpm test:unit`） |
@@ -30,7 +30,7 @@ Path 驱动（`crates/drivers/<id>/`，crate `datazen-driver-<id>`）：
 
 Git 驱动（Kiwi 等）：测试在**驱动仓库**维护，不要提交到 Host。
 
-Host（`src-tauri/`、`src/`、`e2e/specs/`）只测宿主：IPC、Workflow 引擎、MCP、通用窗口/表数据。可以用真实 PG/MySQL 当**夹具**，但不要把跨库目录 SQL、structure DDL、Redis Command 等驱动语义写进 Host 测试。
+Host（`crates/datazen-desktop/`、`src/`、`e2e/specs/`）只测宿主：IPC、Workflow 引擎、MCP、通用窗口/表数据。可以用真实 PG/MySQL 当**夹具**，但不要把跨库目录 SQL、structure DDL、Redis Command 等驱动语义写进 Host 测试。
 
 错误示例：`cargo test -p datazen_desktop --test postgres_cross_database`（应 `-p datazen-driver-postgres`）。Agent 约定见 [AGENTS.md](../../AGENTS.md)「驱动测试落点」。
 
@@ -73,17 +73,17 @@ Host 各模块内 `#[cfg(test)]`。驱动实现的单测在 `crates/drivers/<id>
 | `crates/datazen/src/ai/domain/safety_tests.rs` | AI 出境脱敏与安全门 |
 | `crates/datazen/tests/monitor_authorization.rs` | Monitor 定时授权的共享策略 |
 | `crates/datazen/tests/workflow_block_refusal.rs` | Workflow 资源块的失败关闭 |
-| `src-tauri/src/mcp/server.rs` | MCP Server tools |
+| `crates/datazen-desktop/src/mcp/server.rs` | MCP Server tools |
 | `crates/datazen/src/workflow/` | Workflows 系统 |
-| `src-tauri/src/mcp/client.rs` | MCP Client |
-| `src-tauri/src/commands/context.rs` | AI 上下文文件（路径遍历防护、扩展名白名单、大小限制） |
+| `crates/datazen-desktop/src/mcp/client.rs` | MCP Client |
+| `crates/datazen-desktop/src/commands/context.rs` | AI 上下文文件（路径遍历防护、扩展名白名单、大小限制） |
 
 ### 3.2 集成测试
 
 | 文件 | 内容 |
 |------|------|
 | `crates/datazen/tests/ai_e2e.rs` | AI 功能端到端测试（NL2SQL、诊断、EXPLAIN、Chat 等），2026-11-02 归位（被测本体是 datazen 的 AI 能力，随平台 crate 腿自动编译）。需真实 LLM API Key，配置 `.env.test` |
-| `src-tauri/tests/workflow_db_tests.rs` | 跨数据库 Workflow 真 DB 测试（原 workflow_tests.rs 拆分后的真 DB 半边；纯逻辑用例归位 `crates/datazen/src/workflow/domain/model_tests.rs`）。需 PostgreSQL + MySQL（配置 `.env`；CI 由 workflow-db-tests.yml 定时任务以 service 容器真跑） |
+| `crates/datazen-desktop/tests/workflow_db_tests.rs` | 跨数据库 Workflow 真 DB 测试（原 workflow_tests.rs 拆分后的真 DB 半边；纯逻辑用例归位 `crates/datazen/src/workflow/domain/model_tests.rs`）。需 PostgreSQL + MySQL（配置 `.env`；CI 由 workflow-db-tests.yml 定时任务以 service 容器真跑） |
 
 ## 4. 前端测试覆盖
 

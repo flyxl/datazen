@@ -1,8 +1,8 @@
 # Data Sync 架构
 
-> P5 桌面 JobRuntime 接入已完成；迁移三件套独立测试与冒烟测试通过。Source of truth: `crates/datazen/src/migration/data_sync/`、`src-tauri/src/commands/sync/` 和 `src/windows/data-sync/`。
+> P5 桌面 JobRuntime 接入已完成；迁移三件套独立测试与冒烟测试通过。Source of truth: `crates/datazen/src/migration/data_sync/`、`crates/datazen-desktop/src/commands/sync/` 和 `src/windows/data-sync/`。
 
-共享边界值规范化、比较与端点配对算法位于 `crates/datazen/src/migration/common/`；SQL 名称处理工具位于 `crates/datazen-driver-api/src/sql_identifiers.rs`。Data Sync 与 Data Transfer 直接依赖这些公共实现，Data Transfer 不依赖 Data Sync 领域包。Job 生命周期继续复用 `packages/kernel/src/job/`。
+共享边界值规范化、比较与端点配对算法位于 `crates/datazen/src/migration/common/`；SQL 名称处理工具位于 `crates/datazen-driver-api/src/sql_identifiers.rs`。Data Sync 与 Data Transfer 直接依赖这些公共实现，Data Transfer 不依赖 Data Sync 领域包。Job 生命周期继续复用 `crates/datazen/src/jobs/`。
 
 Data Sync 用于**同族数据库的行级差异同步**。它与 Schema Diff、Data Transfer 是三个独立执行模型。
 
@@ -46,7 +46,7 @@ INSERT / UPDATE / DELETE / UNCHANGED
 相关代码：
 
 - `crates/datazen/src/migration/data_sync/keyset.rs`
-- `src-tauri/src/commands/sync/keyset_source.rs`
+- `crates/datazen-desktop/src/commands/sync/keyset_source.rs`
 - `crates/datazen/src/migration/data_sync/compare.rs`
 
 `jobId` 对应 AppDb 中的 Job 记录与取消意图，可取消长时间 compare。窗口关闭不会取消已接受的 Job；完整比较计划保存在**宿主注入的进程内实例**里，行级审阅投影在比较存储中——未超过 8 MiB 的比较留在内存内联存储，超过的落盘到**注入根下的私有目录**。
@@ -75,7 +75,7 @@ Data Sync 的两处存储都是**端口**：规则与实现留在共享包内，
 
 比较结果的落盘实现（私有目录、帧式行文件、索引校验、崩溃回收）留在 `crates/datazen/src/migration/data_sync/comparison_store/`：本地文件系统是形态中立的，搬进宿主只会让第二个形态再抄一遍；宿主注入的只有**存储根从哪来**。桌面形态的默认根是 `{temp}/datazen-sync-comparisons/`（`comparison_store::default_comparison_storage_root()`），每个比较独占其下的一个私有目录（0700），目录里有一份 owner 标记与一份 SQLite 独占租约；进程退出后租约由 SQLite 释放，下一个进程据此证明 owner 已死并回收这些陈旧目录。
 
-计划注册表过去是包内的 `static STORE`（进程级全局可变状态），现由 `AppState.sync_stores` 持有的实例承担。端口方法都带 `datazen::platform_api::ports::scope::OrganizationScope`：越组织访问按「**不存在**」处理（CM-05），端口返回与「计划不存在」完全一样的措辞，不返回「无权限」。注册表的键是 **(组织, 计划 id)**——组织维度进键，「按组织分区」是结构而不是约定。桌面是单租户——组织维度是进程常量 `LOCAL_ORGANIZATION_ID`。
+计划注册表过去是包内的 `static STORE`（进程级全局可变状态），现由 `AppState.sync_stores` 持有的实例承担。端口方法都带 `datazen::shared::scope::OrganizationScope（`crates/datazen/src/shared/scope.rs`）`：越组织访问按「**不存在**」处理（CM-05），端口返回与「计划不存在」完全一样的措辞，不返回「无权限」。注册表的键是 **(组织, 计划 id)**——组织维度进键，「按组织分区」是结构而不是约定。桌面是单租户——组织维度是进程常量 `LOCAL_ORGANIZATION_ID`。
 
 ## 4. Execute
 
@@ -95,7 +95,7 @@ Execute 前支持 `revalidate_data_sync`，发现结构/PK 漂移时阻止执行
 
 ## 5. IPC
 
-`src-tauri/src/commands/sync/` 当前主要提供：
+`crates/datazen-desktop/src/commands/sync/` 当前主要提供：
 
 - `inspect_data_sync`
 - `compare_data_sync`
@@ -128,8 +128,19 @@ Endpoints → Setup → Objects → Compare → Preview → Result
 
 ## 8. Tests
 
-- Rust：`crates/datazen/src/migration/data_sync/**`、`src-tauri/src/commands/sync/tests.rs`
+- Rust：`crates/datazen/src/migration/data_sync/**`、`crates/datazen-desktop/src/commands/sync/tests.rs`
 - Frontend：`src/windows/data-sync/__tests__/`
 - E2E：`e2e/specs/data-sync-*.ts`
 
 Driver 方言/类型规则属于对应 Driver，不在 Host 重复实现。
+
+## 服务端形态（W8）
+
+W8 刀3e 把本域全域点亮：`crates/datazen-server/src/sync/` 七件（assets / execution / host / sobs / sessions / runtime_state / jobs）+ `http/domains/` 的域路由，契约 §6.16 **二十二路由 = 资产与读面十三 + 执行面九**（inspect / revalidate / compare / prepare / apply / execute / SQL 预览 / 冲突检查 / 恢复核验；[HTTP API 契约](../platform/http-api-contract.md)）。
+
+- **任务/档案资产 + 配对分类 + 迁移历史**：任务与档案是组织级资产（服务端管理库 V15 双表）；迁移历史复用 V12 `migration_run_history`（Data Sync / Schema Diff / Data Transfer 三类运行共用，`operation` 区分）——schemaDiff 留账的 `getMigrationRun` / `listMigrationRuns` 两读面按契约登记**归入本域**收口（顶层资源 `/api/v1/migration-runs`，跨域历史的共享读面）。
+- **compare 的 durable 语义**：`compareDataSync` 由 durable prepare Job 冻结 ChangeSet 后**等终态读复核投影**（桌面 `run_comparison` 同链）；长比较占住请求，只要受理回执的调用方应改用 `startDataSyncPrepareJob`（202 + 轮询读回）。
+- **受理幂等键**：prepare / apply 的幂等由自己的受理键承担——`data-sync-prepare:{jobId}` / `data-sync-apply:{planId}`，重放同键返回既有 Job，不派发第二个 worker（不叠 `SubmitRequest`）。
+- **partially-applied / unknown 是带证据的成功应答**：`executeDataSync` 的响应体携带分类证据而非 4xx（已提交的行无法由调用方回卷 / 提交结果未知是栅栏），桌面 IPC 契约形状逐字对齐。
+- **恢复核验只读**：证据记录 RequireManualReview 族，永不续写（schemaDiff 同款裁决）。
+- **两个桌面专属命令留表**：`apply_data_sync` / `get_data_sync_comparison_page` 不上 HTTP（不在契约 §6.16 二十二方法内的桌面专属同步面）；apply 的受理幂等语义由 `startDataSyncApplyJob` 承担。

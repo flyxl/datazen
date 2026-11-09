@@ -23,7 +23,7 @@
 ### 1.2 Schema 缓存架构
 
 ```rust
-// packages/kernel/src/schema_cache/schema_cache.rs（原先在 src-tauri/src/cache/）
+// crates/datazen/src/schema/cache.rs（原先在 crates/datazen-desktop/src/cache/；kernel crate 退役后归内核）
 
 use crate::driver_registry::DriverRegistry;
 use std::collections::HashMap;
@@ -427,7 +427,7 @@ pub struct TableDataResult {
 - Host 不执行额外系统表查询来补列；空结果集是否带列由 Driver 在结果/事件中表达。
 - 表结构批量读取属于 Driver 目录契约：`CatalogReader` 的 `get_columns` / `get_all_columns` 由 Driver 实现，宿主经 `list_catalog` / `read_relation_columns` 等 Driver Command 访问，并由 `SchemaCache` 按关系身份缓存。
 
-相关入口：`crates/datazen-driver-api/src/query_stream.rs` 的事件模型、`crates/datazen-driver-api/src/catalog.rs` 的 `CatalogReader`、`src-tauri/src/services/schema_metadata.rs` 的批量列读取与缓存刷新。
+相关入口：`crates/datazen-driver-api/src/query_stream.rs` 的事件模型、`crates/datazen-driver-api/src/catalog.rs` 的 `CatalogReader`、`crates/datazen-desktop/src/services/schema_metadata.rs` 的批量列读取与缓存刷新。
 
 ### 1.5 缓存失效策略
 

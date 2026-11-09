@@ -2,12 +2,12 @@
 
 > [返回架构总览](../README.md)
 
-> 下文部分 Rust 片段为**架构示意**；实现以 `src-tauri/src/store/` 为准（主密钥见 `key_store.rs`）。
+> 下文部分 Rust 片段为**架构示意**；实现以 `crates/datazen-desktop/src/store/` 为准（主密钥见 `key_store.rs`）。
 
 ### 1.1 存储架构
 
 ```rust
-// src-tauri/src/store/mod.rs
+// crates/datazen-desktop/src/store/mod.rs
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -394,7 +394,7 @@ pub type ConfigRepository = DesktopRepository;
 
 ## 主加密密钥（`key_store`）
 
-连接密码、SSH 凭据、`ai_config.enc` 等均用 **AES-256-GCM**；磁盘上存密文。主密钥（32 字节）由 `src-tauri/src/store/key_store.rs` 管理，**不是**写死只用钥匙串或只用文件，而是三后端：
+连接密码、SSH 凭据、`ai_config.enc` 等均用 **AES-256-GCM**；磁盘上存密文。主密钥（32 字节）由 `crates/datazen-desktop/src/store/key_store.rs` 管理，**不是**写死只用钥匙串或只用文件，而是三后端：
 
 | 后端 | 位置 | 何时使用 |
 |------|------|----------|
@@ -444,7 +444,7 @@ crate 与 `security` CLI 都走它们）在钥匙串搜索列表异常时都会�
 
 ### 1.4 收藏（文件优先）
 
-收藏不再进 SQLite。每条收藏是收藏根目录下的**一个 `.sql` 文件**，文件名是去扩展名的 ULID，因此 `ls` 的时间序就是创建序，`diff` / `merge` / 备份都能交给 iCloud、Dropbox、Git 直接做。实现见 `src-tauri/src/store/favorites/`。
+收藏不再进 SQLite。每条收藏是收藏根目录下的**一个 `.sql` 文件**，文件名是去扩展名的 ULID，因此 `ls` 的时间序就是创建序，`diff` / `merge` / 备份都能交给 iCloud、Dropbox、Git 直接做。实现见 `crates/datazen-desktop/src/store/favorites/`。
 
 根目录取 `AppSettings.favoritesRoot`，缺省或空串时是 `{appData}/favorites`。**目前没有设置界面**：改动只存在于 `settings.json`，`DesktopRepository::init_with_path` 在启动时应用一次（解析失败则 `tracing::warn!` 并回落到缺省值），运行中改设置不会改指当前 store，界面上只以 `query.favoritesRoot`（"Saved in"）显示当前解析结果。面板会重扫，不会替用户搬文件。
 
@@ -479,7 +479,7 @@ SELECT * FROM orders WHERE d = CURRENT_DATE;
 - **符号链接不跟随**（`symlink_metadata`），避免根目录外的内容被扫进来。
 - **扫描有内存缓存**，只有 App 自身的写操作会更新它。同步客户端在运行期间投递的文件要等 UI 显式重扫才会出现——面板在**打开时**和**窗口重新获得焦点时**调用 `refresh_favorites`，并提供手动重扫按钮。这是"缓存 + 显式失效"，不是文件监听器：监听一个用户随时可能指向 iCloud 的目录并不可靠，而重扫一个纯文本目录很便宜。
 - **无归属的收藏不会被隐藏或删除**：`connectionId` 缺失时 `connection_id` 为空串，按连接过滤时只在"全部"视图出现。
-- **文件本身始终是可执行 SQL**：`src-tauri/src/store/favorites/tests/executability.rs` 把带 front-matter 的文件原样交给 `rusqlite` 执行，断言结果与只执行语句正文完全一致（正文含 `--` 行注释、`/* */` 块注释，以及字符串字面量里的 `--` 与 `*/`）。
+- **文件本身始终是可执行 SQL**：`crates/datazen-desktop/src/store/favorites/tests/executability.rs` 把带 front-matter 的文件原样交给 `rusqlite` 执行，断言结果与只执行语句正文完全一致（正文含 `--` 行注释、`/* */` 块注释，以及字符串字面量里的 `--` 与 `*/`）。
 
 #### 1.4.1 从 `favorite_queries` 表迁移
 
@@ -498,7 +498,7 @@ SELECT * FROM orders WHERE d = CURRENT_DATE;
 - **原数据可回滚。** 表是重命名而非 `DROP`，`favorite_queries_legacy_v1` 里三行俱全。
 - **排序不变。** 旧面板是 `ORDER BY created_at DESC`，导出后按 `created_at` 倒序（同毫秒以 id 兜底），一致。
 
-覆盖以上各点的测试在 `src-tauri/src/store/favorites/tests/migration.rs`（`tests.rs` 里的 `mod migration`），全部使用真实 `tempfile` 临时目录；文件可执行性在同目录的 `executability.rs`。把 `ALTER TABLE … RENAME` 换成空操作会让其中 4 个测试转红。
+覆盖以上各点的测试在 `crates/datazen-desktop/src/store/favorites/tests/migration.rs`（`tests.rs` 里的 `mod migration`），全部使用真实 `tempfile` 临时目录；文件可执行性在同目录的 `executability.rs`。把 `ALTER TABLE … RENAME` 换成空操作会让其中 4 个测试转红。
 
 ### 1.5 DTO 与持久化格式兼容范围
 
@@ -537,4 +537,8 @@ Data Sync 任务文件是唯一曾经写入过运行时 `dbSessionId` 的地方�
 | 查询流执行注册表 | `AppState.query_executions` | 按 `QueryExecutionId` 归属校验；未知或已结束的 ID 一律拒绝 |
 | 会话事务句柄 | Runtime `SessionRegistry` actor 句柄账本 | 不落盘；到期/close 统一清理，Host 不再另存 handle map |
 
-兼容性的验证落在 `src-tauri/src/store/tests/migration_tests.rs`：一个测试写入带 `sourceDbSessionId` / `targetDbSessionId` 与行偏移的任务，断言保存后磁盘 JSON 中**不含**这两个键、重新加载后两者为空且断点被中和；另一个测试直接喂一段手写的旧 JSON 数组，断言同样被中和、而连接 id 存活。
+兼容性的验证落在 `crates/datazen-desktop/src/store/tests/migration_tests.rs`：一个测试写入带 `sourceDbSessionId` / `targetDbSessionId` 与行偏移的任务，断言保存后磁盘 JSON 中**不含**这两个键、重新加载后两者为空且断点被中和；另一个测试直接喂一段手写的旧 JSON 数组，断言同样被中和、而连接 id 存活。
+
+## 服务端管理库（W8）
+
+团队 Web 服务的存储底座在 `crates/datazen-server/src/storage/`：**SQLite 管理库首版**（WR-D2 裁决——单机文件库先满足 W8 十五域，**PostgreSQL 是后续生产化切片**，多 worker 协调同样不在本版范围）。并发模型与桌面 AppDb 同款：**单 `Mutex<Connection>` + `spawn_blocking`**，串行化全部库访问，不引入连接池。迁移链 **expand-only**（只加表与列，不改写旧结构），W8 域点亮期间接续到 V15——V12 jobs / V13 workflows + workflow_run_history / V14 dashboards / V15 sync 双表。凭据**行内只存 `SecretRef` 引用**，不复用宿主的 AES 落盘加密；组织隔离按 **CM-05**（越组织读一律「不存在」口径，不区分「无权」与「没有」）；审计表 **append-only**（只增不改，撤销与变更都靠新行表达）。
