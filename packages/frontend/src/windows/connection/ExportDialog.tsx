@@ -166,13 +166,11 @@ export function ExportDialog({
         return;
       }
 
-      // Task 3: current-page / selected rows are exported by
+      // Task 4: current-page / selected rows are exported by
       // `ProvidedDataFetcher` (pure frontend: formatted in memory, saved
       // via the save dialog / Blob download — no Rust `provided` source
-      // any more). The session guard above stays: dropping it is task 4.
-      if (!dbSessionId) {
-        throw new Error('Missing connection');
-      }
+      // any more). No session is needed on this path, so the guard that
+      // used to sit here is gone; entire-table above still requires one.
       const pkName = loadedColumns.find((c) => c.isPrimaryKey)?.name;
       const scopedRows =
         scope === 'selected' && selectedRows.size > 0
