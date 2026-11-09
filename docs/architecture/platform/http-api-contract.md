@@ -39,7 +39,7 @@
 
 ## 4. 契约面总账
 
-十四个域、90 个域客户端方法（§6.15 dashboard 十七方法随 W8 刀3d 入账）：
+十五个域、112 个域客户端方法（§6.16 dataSync 执行面九方法随 W8 刀3e-4b 入账；web 半边[域客户端 + 不支持名单收缩]随下刀收口）：
 
 | 域 | 方法数 | HTTP 服务 | 排除 | 备注 |
 | --- | --- | --- | --- | --- |
@@ -57,10 +57,10 @@
 | schemaDiff | 11 | 11 | 0 | §6.13（W8 刀3b；web 半边随本版收口；`get_migration_run`/`list_migration_runs` 读面已随 §6.16 sync 域收口） |
 | workflow | 12 | 11 | 1 | §6.14（W8 刀3c；`getWorkflowDir` 桌面文件语义排除） |
 | dashboard | 17 | 15 | 2 | §6.15（W8 刀3d；`export/import_dashboard_with_dialog` 桌面文件对话框语义排除；`webdriver_monitor_evidence` 测试专用投影不入客户端面） |
-| dataSync（本刀半域） | 13 | 13 | 0 | §6.16（W8 刀3e-3；任务/档案/配对/迁移历史/job 读回十三路由；执行面九方法随刀3e-4） |
-| **合计** | **103** | **99** | **4** | |
+| dataSync | 22 | 22 | 0 | §6.16（W8 刀3e-3 + 刀3e-4b 全域收口：资产与读面十三 + 执行面九） |
+| **合计** | **112** | **108** | **4** | |
 
-路由总数 98 条服务 99 个方法（PATCH 双服务），另有服务自举路由 5 条（§5）与已立项待补方法的 1 条（§6.5）。
+路由总数 107 条服务 108 个方法（PATCH 双服务），另有服务自举路由 8 条（§5：OIDC 登录三 + 桌面认证二 + 探针二 + wapp 静态面一；本行计数按 §5 表内路由逐条对账，W8 刀4 修正了旧「5 条」漏计桌面认证两条的口径）与已立项待补方法的 1 条（§6.5）。
 
 ## 5. 服务自举路由（非域面）
 
@@ -71,6 +71,7 @@
 | `GET /api/v1/auth/login`、`GET /api/v1/auth/callback`、`POST /api/v1/auth/logout` | OIDC 登录三步 | team-server §4 |
 | `POST /api/v1/auth/desktop/start`、`POST /api/v1/auth/desktop/exchange` | 桌面团队认证（P8） | 同上 §4.6 |
 | `GET /healthz`、`GET /readyz` | 存活/就绪探针 | 同上 §2.4 |
+| `GET /wapps/{wapp id}/{package-relative path}` | wapp 资产 origin 静态面（WR-F4 web 形态的 server 半边；浏览器原生 iframe/img/script 直取，不经 MethodMap——无方法背书要求，`/mcp` 同款非域面先例） | [w8-knife4 设计档](../../development/w8-knife4-wapp-static-design.md) + [wapps.md](../backend/wapps.md) |
 
 ## 6. 逐域路由表
 
@@ -414,11 +415,11 @@ legacy IPC 命令轨的第二域（`compare_table_schemas` / `prepare_schema_dif
   400 `invalidArgument`（文案与桌面 IPC `Validation` 同源）；未知/越
   组织 id → 404 固定文案（防枚举）。
 
-### 6.16 data sync：任务/档案资产、配对分类、迁移历史与 job 读回（W8 刀3e-3，2026-11-08）
+### 6.16 data sync：任务/档案资产、配对分类、迁移历史、job 读回与执行面（W8 刀3e-3 + 刀3e-4b，2026-11-08）
 
-legacy IPC 命令轨的第七域收敛。**本刀先点亮资产与读面**（十三路由）；
-执行面（inspect / compare / prepare / apply / execute / SQL 预览 /
-复核 / 冲突检查 / 恢复核验，九方法）随刀3e-4 续建——届时本表补齐。
+legacy IPC 命令轨的第七域收敛，**全域二十二路由**（资产与读面十三随
+刀3e-3；执行面九随刀3e-4b：inspect / revalidate / compare / prepare /
+apply / execute / SQL 预览 / 冲突检查 / 恢复核验）。
 
 | 方法 | 路由 | 令牌 | 成功 | 请求 → 响应 |
 | --- | --- | --- | --- | --- |
@@ -435,6 +436,15 @@ legacy IPC 命令轨的第七域收敛。**本刀先点亮资产与读面**（�
 | `getDataSyncJobDetails` | `GET /api/v1/sync/jobs/{id}/details` | — | 200 | — → `JobDetails` |
 | `getDataSyncJobPreview` | `GET /api/v1/sync/jobs/{id}/preview` | — | 200 | — → `SyncComparisonPreview` |
 | `cancelDataSync` | `POST /api/v1/sync/jobs/{id}/cancel` | ✓ | 200 | `SubmitRequest` → `{ cancelled }` |
+| `inspectDataSync` | `POST /api/v1/sync/inspections` | — | 200 | 检视请求（会话对 + 库/schema 覆盖 + 可选映射覆盖） → `TableResult[]` |
+| `revalidateDataSync` | `POST /api/v1/sync/revalidations` | — | 200 | 复核请求（会话对 + 可选表名列表） → `{ staleTables }` |
+| `compareDataSync` | `POST /api/v1/sync/comparisons` | — | 200 | 比较请求（含表集/选项/结构化过滤/可选映射） → `SyncComparisonPreview` |
+| `startDataSyncPrepareJob` | `POST /api/v1/sync/jobs/prepare` | — | 202 | 比较请求（含可选 `jobId`） → `JobView` |
+| `startDataSyncApplyJob` | `POST /api/v1/sync/jobs/apply` | — | 202 | `{ sourceDbSessionId, targetDbSessionId, request }` → `JobView` |
+| `executeDataSync` | `POST /api/v1/sync/executions` | — | 200 | `{ request, profile? }` → `DataSyncExecutionResponse` |
+| `generateDataSyncSql` | `POST /api/v1/sync/sql-preview` | — | 200 | `{ planId, selection?, options }` → `SqlStatement[]` |
+| `checkSyncConflicts` | `POST /api/v1/sync/tasks/{id}/conflicts` | — | 200 | — → `{ hasConflicts, conflicts }` |
+| `verifyDataSyncRecovery` | `POST /api/v1/sync/jobs/{id}/recovery-verification` | — | 200 | 重授权请求（会话对 + 库/schema） → `JobDetails` |
 
 域裁决：
 
@@ -455,19 +465,35 @@ legacy IPC 命令轨的第七域收敛。**本刀先点亮资产与读面**（�
   行由执行面自维护——断点/续传落账），web 客户端面与 legacy 命令轨
   收录一致（`get_sync_tasks` / `delete_sync_task`）。
 - **job 读面对空而真实的状态工作**：受理面（`dataSyncPrepare` /
-  `dataSyncApply` 两类 durable Job）随刀3e-4 落地；本刀读回空集 / 404
-  是诚实应答（真读面，不是 fail-closed 占位）。`list` 折
+  `dataSyncApply` 两类 durable Job）随刀3e-4b 落地；`list` 折
   `JobDetails[]`（桌面 `list_data_sync_jobs` 同款——UI 要进度与阶段，
   不只 `JobView`）；Failed 态的 `error` 由宿主侧消息表覆写（durable
   记录只落安全原因码）。`preview` 等 plan_store 的行级复核投影（60s
   窗口内等待物化，桌面同款）。
+- **执行面的令牌缺席是有意裁决**：job 受理（prepare/apply）与 execute 的
+  幂等由**自己的受理键**承担（`data-sync-prepare:{jobId}` /
+  `data-sync-apply:{planId}`——重放同键返回既有 Job，不派发第二个
+  worker），不再叠 `SubmitRequest`（schemaDiff 的 plans/deploys 同款先
+  例）；inspect/revalidate/compare/SQL 预览/冲突检查是 POST 读或纯投影
+  （§6.7 裁决）；恢复核验是只读证据记录（schemaDiff 同款）。带体写面
+  仍只有 save profile 与 cancel（刀3e-3 裁决不变）。
+- **execute 的响应体携带证据而非 4xx**：`DataSyncExecutionResponse` 的
+  `outcome` 枚举里 partially-applied / unknown 是**带分类的成功应答**
+  （已提交的行无法由调用方回卷 / 提交结果未知是栅栏）——桌面
+  `execute_data_sync` 命令的 IPC 契约形状逐字对齐。
+- **`compareDataSync` 的同步语义**：durable prepare Job 冻结 ChangeSet 后
+  等终态再读复核投影（桌面 `run_comparison` 同链）——长比较会占住请求
+  直到终态或失败；只要受理回执的调用方应改用
+  `startDataSyncPrepareJob`（202 + 轮询读回）。
 - **`cancelDataSync` 的服务端语义差**：桌面有「预受理取消记忆」（客户端
   铸 job id，受理前可先取消）；服务端 job id 受理时铸造，无该窗口——
   未知/他类 → `{ cancelled: false }` 幂等 no-op。
 - **桌面专属不进 HTTP 面**：`save_sync_task_direct`（上）与
   `set_data_sync_test_commit_fault`（测试故障注入，webdriver 专属）
   不在 web 客户端 MethodMap；`compare_data_sync` / `revalidate_data_sync`
-  是执行面词汇，随 3e-4 以域方法收录。
+  已随刀3e-4b 以域方法收录（本表）。
+- **web 半边随下刀收口**：sync 域客户端（22 方法）+
+  `unsupportedMethods` 名单收缩随执行面 web 刀落地。
 
 ## 7. 能力差异：`WEB_CAPABILITIES` 与 `unsupportedMethods`
 
@@ -515,3 +541,5 @@ WR-D 落地时的机器核对（WR-C3 接管）：同用例双传输测试逐方
 - 2026-11-07：v1.6（W8 刀3c，workflow 域 + 双端定时调度）。**§6.14 定义管理、同步执行与运行历史**十一路由（定义 CRUD 五 + from-yaml + execute + reload + 运行历史三）——legacy IPC 命令轨的第五域（12 命令收敛，`getWorkflowDir` 桌面文件语义排除）；v13 expand-only 迁移（`workflows` + `workflow_run_history` 双表，桌面 AppDb/HistoryDb 同名表的组织键投影；服务端不播内置样例——单机 onboarding 供给的形态差异）；执行 = 同步 200 全量结果（桌面 IPC 同语义，aiHost.executeTarget 同款先例；受理面入限流严格档）；**AI 步骤 fail-closed**（server 形态本刀无 AI 供应商注册表：交互面按执行器默认错误策略 200 + `success:false` + 步骤 error 明确拒绝文案，调度面被授权单派生更早拒绝）；**定时调度器 server 接线**（「双端调度」补齐）：共享层核心调度器（arm-not-fire、上膛冻结→触发比对、授权闸门失败关闭）+ `ServerScheduleGrantReader`（定义 YAML + profile 版本的确定性派生，收集规则自桌面下沉共享层）+ `ServerScheduleHost`（owner 归属核对 + 服务身份执行上下文 + 审计日志），spawn 于装配尾、graceful drain 后停车；共享层 `WorkflowScheduler` 增公开 `stop`/`is_stopped`（两形态受益）。§4 总账 61→73 方法 / 59→70 路由（workflow 12 入账，11 服务 1 排除）。web 半边（域客户端 + 不支持名单收缩）随下刀收口。
 - 2026-11-08：v1.7（W8 刀3d，dashboard 域 + 双端刷新监控）。**§6.15 仪表板、组件、运行历史与 monitor 授权**十五路由（CRUD 六 + 组件创建三 + 运行历史二 + 手工执行一 + monitor 授权三）——legacy IPC 命令轨的第六域（17 客户端方法，15 服务 2 排除：`export/import_dashboard_with_dialog` 桌面文件对话框语义；`webdriver_monitor_evidence` 测试专用投影不入客户端面）；v14 expand-only 迁移（五表：`dashboards`/`widgets`/`widget_runs`+`widget_latest_run` 伴表/`monitor_schedule_grants`，桌面 AppDb 五表的组织键投影；行级校验 view_mode 词表/refresh 配对下沉共享层单家）；save = 存储后回读（桌面 IPC 同语义）；手工执行 = 共享调度引擎 `tick_widget`（信号量+工作流锁；请求真主体经域级互斥身份槽注入；受理面入限流严格档）；**monitor 授权面**（authorize 桌面同链校验[状态/形状/只读 SQL/PG-MySQL/目标规范化/冻结复验]、revoke 仅批准人幂等、get 仅批准人）；**定时刷新引擎 server 接线**（「双端调度」dashboard 半边：共享 `MonitorEngine` arm-not-fire + `ServerMonitorHost` 授权闸门失败关闭 + `GrantScopedHost` 授权单作用域执行[规范目标三重比对+服务身份]+运行落账；共享层 `MonitorEngine` 增公开 `stop`/`is_stopped`；桌面 job-occurrence 幂等 receipts 与通知投递/SSE 事件桥登记为后续切片）；**workflow 删除引用闸**（§6.14 登记欠账销账：`Workflow in use by dashboards` 同文案）。§4 总账 73→90 方法 / 70→85 路由（dashboard 17 入账，15 服务 2 排除）。web 半边（域客户端 + 不支持名单收缩）随下刀收口。
 - 2026-11-08：v1.8（W8 刀3e-3，data sync 域资产与读面）。**§6.16 任务/档案资产、配对分类、迁移历史与 job 读回**十三路由（任务二 + 档案三 + 配对分类一 + 迁移运行历史二 + sync job 读回/取消五）——legacy IPC 命令轨第七域的前半（22 客户端方法中的 13 个；执行面九方法[inspect/compare/prepare/apply/execute/SQL 预览/复核/冲突检查/恢复核验]随刀3e-4）；存储 = v15 双表（3e-2）+ v12 `migration_run_history`（三类运行共用，schemaDiff 写面 §6.13 落账、**读面按该节登记随本域收口**——顶层资源 `/api/v1/migration-runs`）；迁移历史读面存储补 `get` 单行方法（统一 404：miss 与越组织不可区分）；job 读面 = JobHost kind 过滤（`dataSyncPrepare`/`dataSyncApply`）+ Failed 态宿主侧消息覆写（durable 记录只落安全原因码）+ `preview` 等 plan_store 行级复核投影（60s 窗口）；`cancelDataSync` 服务端语义差登记：无预受理取消记忆（服务端 id 受理时铸造），未知/他类 → `{ cancelled: false }` 幂等 no-op；进程级运行态（复核挂起集合 + 宿主侧失败消息表）装配态实例立仓储（3e-4 执行宿主是唯一生产者）。§4 总账 90→103 方法 / 86→99 路由（dataSync 13 入账全服务）。web 半边（域客户端 + 不支持名单收缩）随执行面刀收口。
+- 2026-11-08：v1.9（W8 刀3e-4b，data sync 域执行面九路由）。**§6.16 补齐执行面**——inspect（`POST /sync/inspections`，POST 读）+ revalidate（`POST /sync/revalidations`，表名列表非映射）+ compare（`POST /sync/comparisons`，同步语义：durable prepare Job 冻结 ChangeSet 后等终态读复核投影——桌面 `run_comparison` 同链，长比较占住请求；只要回执的调用方用 `startDataSyncPrepareJob`）+ prepare/apply（`POST /sync/jobs/prepare|apply`，202 + `JobView`——幂等由**受理键**承担：`data-sync-prepare:{jobId}` / `data-sync-apply:{planId}`，重放同键返回既有 Job 不派发第二 worker）+ execute（`POST /sync/executions`，`DataSyncExecutionResponse`——**partially-applied / unknown 是带证据的成功应答而非 4xx**，桌面 IPC 契约形状逐字对齐；v12 运行历史两段落账）+ SQL 预览（`POST /sync/sql-preview`，行级分页源 + IPC 上限）+ 冲突检查（`POST /sync/tasks/{id}/conflicts`，任务资源寻址——冻结计数 vs 当前行数）+ 恢复核验（`POST /sync/jobs/{id}/recovery-verification`，只读证据记录 RequireManualReview 族，永不续写——schemaDiff 同款裁决）；**执行面令牌缺席是有意裁决**（job 受理幂等自立，schemaDiff plans/deploys 先例）；服务层三件（`sync/host|sessions|execution`——刀3e-4a 下沉的共享 `RuntimeDataSyncHost` 三端口 + 专用会话身份闸 + 九方法管线）；compare_data_sync/revalidate_data_sync 以域方法收录，`compare_data_sync` 的 IPC 命令与 HTTP 路由同名同义。§4 总账 103→112 方法 / 99→108 路由（dataSync 22 入账全服务，第十四域→十五域全满）。web 半边（域客户端 + 不支持名单收缩）随下刀收口。
+- 2026-11-09：v1.10（W8 刀4，wapp 资产 origin 静态面）。**§5 非域面加一行** `GET /wapps/{wapp id}/{package-relative path}`——WR-F4 冻结约定（`{origin}/wapps/{id}/{path}?{query}`，入口携 `?v=` 版本破坏符）的服务端半边。路径文法 / 拒绝语义 / 宽松 percent-decode / MIME 白名单 / 启用闸全部复用内核 `workspace_apps::protocol`（新增 origin 形入口 `parse_wapp_origin_path` + 单源常量 `ORIGIN_ASSET_CSP`；`route_datazen_request` 单家不变，server 面零第二份路径规则）。每条应答注入单源 CSP（`ORIGIN_ASSET_CSP`，值等于前端冻结字面量 `WAPP_ASSET_CSP`；与桌面 `ASSET_CSP` 同指令集去 `datazen:` 源）+ `X-Content-Type-Options: nosniff` + `Cache-Control: no-cache`，错误应答空体；`open` 深链受理为 204（web 形态无宿主事件通道，深链消费方是前端 `parseWappAssetTarget`）。会话裁决：**面公开**（桌面 `datazen://` 零认证同语义；`sandbox="allow-scripts"` 的 opaque-origin 子资源请求按 site-for-cookies 语义拿不到 SameSite=Lax cookie，会话门会拦断子资源——依据与加固路线见设计档 §6，首选 v1.1 HTML 入口会话门）。L5 限流扩至 `/wapps/` 前缀（IP 桶）+ 装配点补 `into_make_service_with_connect_info`。存储根 `DATAZEN_SERVER_WAPPS_DIR`（默认 `data/wapps`；本刀无 HTTP 安装面，包由运维落盘、重启扫描生效）。§4 注记：自举路由按 §5 表内逐条对账修正为 8 条（旧口径「5 条」漏计桌面认证 start/exchange 两条；本刀 +1 wapp 静态面），方法账 112/108 不动（本面不产生域方法）。wapps 域客户端面（list/manifest 读 + web 半边 unsupportedMethods 收缩）与安装/管理写面（§6.5 uploads envelope 关系）另立项。

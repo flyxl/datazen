@@ -741,6 +741,7 @@ async fn http_fixture(count_estimate_rows: i64) -> HttpFixture {
         oidc: None,
         domains: None,
         mcp: None,
+        wapp_assets: None,
         domain_routers: Some(vec![
             sessions_router(SessionsState {
                 sessions: cases.clone(),

@@ -1044,6 +1044,7 @@ async fn an_id_addressed_denial_is_404_not_found_while_a_dead_session_is_401() {
         oidc: None,
         domains: None,
         mcp: None,
+        wapp_assets: None,
         domain_routers: None,
     })
     .expect("router");

@@ -12,3 +12,4 @@ pub mod middleware;
 pub mod response;
 pub mod router;
 pub mod sse;
+pub mod wapps_static;

@@ -261,7 +261,16 @@ pub(crate) async fn guard(
     let path = req.uri().path();
     // §3.3：/healthz、/readyz 只到 L0——探针不限流（它们是限流退避时
     // 存活判定的来源，被 429 会本末倒置）。
-    if !under_api(path) {
+    //
+    // W8 刀4（设计档 §6.3）：wapp 资产静态面加入 L5——公开面 = 未认证
+    // 高频读面，不限流即 DoS 敞口（/healthz 豁免是因为它不读盘）。只扩
+    // L5 自己的门，不动共享谓词 `under_api`：动后者会把本面拉进
+    // L2/L4/L6，违反「静态资源面只到 L0」的层语义。IP 键依赖
+    // ConnectInfo，装配点接线 `into_make_service_with_connect_info`
+    // 由 W8 刀4 在 bootstrap.rs 完成；接线前无 ConnectInfo 的请求归并
+    // "unattributed" 桶（显式可预期行为，见 `rate_key`）。分类维持
+    // 默认档（静态面不是令牌签发类严格档语义，`classify` 现表不动）。
+    if !under_api(path) && !path.starts_with("/wapps/") {
         return next.run(req).await;
     }
 
@@ -363,6 +372,9 @@ mod tests {
             .route("/api/v1/submission-tokens", post(|| async { "ok" }))
             .route("/api/v1/sessions", post(|| async { "ok" }))
             .route("/api/v1/executions/{id}/cancel", post(|| async { "ok" }))
+            // W8 刀4（t15）：wapp 资产静态面前缀——本套件只钉 L5 判定，
+            // 不装真静态面（那是 tests/wapps_static_routes.rs 的职责）。
+            .route("/wapps/{*rest}", get(|| async { "ok" }))
             .layer(axum::middleware::from_fn_with_state(state, guard))
     }
 
@@ -598,6 +610,48 @@ mod tests {
         let app = app_with(state);
         // §3.3：/healthz 只到 L0——探针不限流。
         assert_eq!(send(&app, "/healthz").await.status(), 200);
+        assert_eq!(send(&app, "/healthz").await.status(), 200);
+        assert_eq!(send(&app, "/healthz").await.status(), 200);
+    }
+
+    /// W8 刀4（t15，设计档 §6.3/§9.2）：`/wapps/` 前缀进 L5 默认档；
+    /// `/healthz` 依旧只到 L0；无 ConnectInfo 扩展的请求归并
+    /// "unattributed" 桶（显式可预期行为，不 panic——装配点接线
+    /// `into_make_service_with_connect_info` 后按 IP 分桶）。
+    #[tokio::test]
+    async fn wapps_static_paths_consume_the_default_bucket() {
+        let clock = FakeClock::default();
+        // 默认档容量 1、严格档容量 2：断言第二发 429 即钉死 `/wapps/`
+        // 消耗的是**默认档**桶（若误入严格档，第二发仍 200）。
+        let state = RateLimitState {
+            limiter: Arc::new(limiter(clock.clone(), params(1, 0.001), params(2, 0.001))),
+        };
+        let app = app_with(state);
+        // `/wapps/` 前缀消耗默认档桶：第一发放行，第二发超限。
+        assert_eq!(
+            send_with_ip(&app, "/wapps/acme.bill-audit/index.html", "203.0.113.7")
+                .await
+                .status(),
+            200
+        );
+        assert_eq!(
+            send_with_ip(&app, "/wapps/acme.bill-audit/main.js", "203.0.113.7")
+                .await
+                .status(),
+            429,
+            "同 IP 的第二发吃满默认档桶（容量 1）"
+        );
+        // 无 ConnectInfo 的驱动归并 "unattributed" 桶：与 IP 桶分立。
+        assert_eq!(
+            send(&app, "/wapps/acme.bill-audit/app.css").await.status(),
+            200
+        );
+        assert_eq!(
+            send(&app, "/wapps/acme.bill-audit/icon.svg").await.status(),
+            429,
+            "归并桶共享：第二发同样吃满"
+        );
+        // `/healthz` 依旧只到 L0——探针不消耗任何桶。
         assert_eq!(send(&app, "/healthz").await.status(), 200);
         assert_eq!(send(&app, "/healthz").await.status(), 200);
     }

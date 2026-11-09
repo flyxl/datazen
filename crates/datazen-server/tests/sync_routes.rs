@@ -80,33 +80,113 @@ fn sync_state(store: &Arc<AdminStore>) -> datazen_server::http::domains::sync::S
     let plans: Arc<dyn datazen::migration::data_sync::plan_store::SyncPlanRepository> =
         Arc::new(datazen::migration::data_sync::plan_store::InMemorySyncPlanRepository::new());
     let runtime = SyncRuntimeState::new();
-    let jobs = SyncJobs::new(
-        Arc::new(datazen::jobs::JobHost::new(
-            Arc::new(ServerJobs::new(
-                store.clone(),
-                Arc::new(datazen::jobs::domain::time::PortJobClock::new(
-                    datazen::shared::clock::SystemClock,
-                )),
-                900,
-            )),
-            Arc::new(std::sync::Mutex::new(
-                datazen::execution::runtime::budget::BudgetLedger::new(
-                    datazen::execution::runtime::budget::BudgetConfig::team_default(),
-                ),
-            )),
+    let job_host = Arc::new(datazen::jobs::JobHost::new(
+        Arc::new(ServerJobs::new(
+            store.clone(),
             Arc::new(datazen::jobs::domain::time::PortJobClock::new(
                 datazen::shared::clock::SystemClock,
             )),
+            900,
         )),
-        plans,
-        runtime,
-    );
+        Arc::new(std::sync::Mutex::new(
+            datazen::execution::runtime::budget::BudgetLedger::new(
+                datazen::execution::runtime::budget::BudgetConfig::team_default(),
+            ),
+        )),
+        Arc::new(datazen::jobs::domain::time::PortJobClock::new(
+            datazen::shared::clock::SystemClock,
+        )),
+    ));
+    let jobs = SyncJobs::new(job_host.clone(), plans.clone(), runtime.clone());
+    // 执行面（router-only 腿：空驱动注册表——会话解析 fail-closed，钉的是
+    // HTTP 绑定面[解析/错误映射/认证链]，绿路径在 tests/sync_execution.rs
+    // 的 wired 夹具直驱服务层）。
+    let execution = {
+        use datazen_server::execution::budget_bridge::BudgetPortBridge;
+        use datazen_server::execution::driver_exec::ServerDriverExecBackend;
+        use datazen_server::execution::lease::ServerRuntimeLeaseSource;
+        use datazen_server::execution::policy_adapter::ServerExecutionPolicy;
+        use datazen_server::execution::secret_provider::ServerSecretVault;
+        use datazen_server::schema_diff::endpoints::SessionEndpoints;
+
+        let vault = Arc::new(
+            ServerSecretVault::new(store.clone(), SERVER_SECRET.to_vec()).expect("secret vault"),
+        );
+        let connections = Arc::new(ServerConnections::new(store.clone(), vault));
+        let repo_profiles = Arc::new(datazen_server::storage::ServerProfiles::new(store.clone()));
+        let scope = datazen::connection::domain::ConnectionScope::new("org-1");
+        let registry =
+            Arc::new(datazen::execution::runtime::driver_registry::DriverRegistry::new());
+        let bridge = Arc::new(BudgetPortBridge::new(
+            Arc::new(
+                datazen_server::execution::budget::ServerBudgetCoordinator::new(
+                    8,
+                    10_000,
+                    datazen::shared::id::OrganizationId::new("org-1"),
+                ),
+            ),
+            datazen::shared::id::OrganizationId::new("org-1"),
+        ));
+        let backend = Arc::new(ServerDriverExecBackend::new(
+            registry,
+            connections.clone(),
+            repo_profiles.clone(),
+            scope,
+            bridge,
+            None,
+        ));
+        let policy = Arc::new(ServerExecutionPolicy::new(
+            Arc::new(
+                datazen_server::policy::PolicyService::new(store.clone(), SERVER_SECRET.to_vec())
+                    .expect("policy engine"),
+            ),
+            store.clone(),
+            Arc::new(datazen::shared::clock::SystemClock),
+        ));
+        let directory =
+            Arc::new(datazen::execution::runtime::directory::InMemorySessionDirectory::new());
+        let lease_source = Arc::new(ServerRuntimeLeaseSource::new_with_shared_parts(
+            repo_profiles,
+            policy,
+            backend,
+            datazen::execution::application::orchestration::RuntimeResultSink::default(),
+            directory.clone(),
+        ));
+        let endpoints = SessionEndpoints {
+            directory,
+            lease: lease_source,
+            connections: connections.clone(),
+        };
+        let comparison_root: Arc<
+            dyn datazen::migration::data_sync::comparison_store::ComparisonStorageRoot,
+        > = Arc::new(
+            datazen::migration::data_sync::comparison_store::LocalComparisonStorageRoot::new(
+                std::env::temp_dir().join(format!("dz-sync-routes-{}", uuid::Uuid::new_v4())),
+                datazen::shared::id::OrganizationId::new("org-1"),
+            ),
+        );
+        datazen_server::sync::SyncExecution::new(
+            job_host,
+            plans,
+            runtime,
+            endpoints,
+            connections,
+            Arc::new(
+                datazen::migration::data_transfer::transfer::adapter_registry::SyncAdapterRegistry::new(),
+            ),
+            comparison_root,
+            migration_runs.clone(),
+            profiles.clone(),
+            tasks.clone(),
+        )
+    };
     datazen_server::http::domains::sync::SyncState {
         store: store.clone(),
         tasks,
         profiles,
         migration_runs,
         jobs,
+        execution,
     }
 }
 
@@ -654,6 +734,7 @@ async fn unauthenticated_requests_are_rejected() {
         oidc: None,
         domains: None,
         mcp: None,
+        wapp_assets: None,
         domain_routers: Some(vec![datazen_server::http::domains::sync::sync_router(
             sync_state(&store),
         )]),
@@ -670,6 +751,207 @@ async fn unauthenticated_requests_are_rejected() {
             .method("GET")
             .uri(uri)
             .body(Body::empty())
+            .expect("request");
+        let response = app.clone().oneshot(request).await.expect("oneshot");
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "无会话 {uri}");
+    }
+}
+
+// ── t7：执行面九路由的 HTTP 绑定面（刀3e-4b）──────────────────────────────
+
+/// 执行面的解析/错误映射/资源寻址（绿路径在 tests/sync_execution.rs 的
+/// wired 夹具直驱服务层——这里的 router-only 腿钉 HTTP 薄绑定的契约形状）。
+#[tokio::test]
+async fn execution_faces_parse_and_map_errors() {
+    let store = memory_store();
+    let app = sync_app(store.clone(), "org-1", "user-1").await;
+
+    // inspect：未知会话 → 400（防枚举统一文案，经 HTTP 薄绑定透传）。
+    let (status, body) = call(
+        &app,
+        "POST",
+        "/api/v1/sync/inspections",
+        "c=1",
+        None,
+        Some(serde_json::json!({
+            "sourceDbSessionId": "no-such-session",
+            "targetDbSessionId": "also-none"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+    assert!(
+        body["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("does not exist or is not visible"),
+        "{body}"
+    );
+
+    // inspect：坏体（缺必填）→ 400 invalidArgument（手动解析对齐 400 口径，
+    // 不是 axum 的 422）。
+    let (status, _) = call(
+        &app,
+        "POST",
+        "/api/v1/sync/inspections",
+        "c=1",
+        None,
+        Some(serde_json::json!({ "sourceDbSessionId": "s" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // revalidate：坏体 → 400。
+    let (status, _) = call(
+        &app,
+        "POST",
+        "/api/v1/sync/revalidations",
+        "c=1",
+        None,
+        Some(serde_json::json!({})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // compare：坏体 → 400。
+    let (status, _) = call(
+        &app,
+        "POST",
+        "/api/v1/sync/comparisons",
+        "c=1",
+        None,
+        Some(serde_json::json!({ "tables": "not-a-list" })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // prepare：坏体 → 400（受理前拒绝，无 Job 落库）。
+    let (status, _) = call(
+        &app,
+        "POST",
+        "/api/v1/sync/jobs/prepare",
+        "c=1",
+        None,
+        Some(serde_json::json!({})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // apply：坏体 → 400。
+    let (status, _) = call(
+        &app,
+        "POST",
+        "/api/v1/sync/jobs/apply",
+        "c=1",
+        None,
+        Some(serde_json::json!({ "request": {} })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // execute：坏体 → 400。
+    let (status, _) = call(
+        &app,
+        "POST",
+        "/api/v1/sync/executions",
+        "c=1",
+        None,
+        Some(serde_json::json!({ "request": { "planId": "" } })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // SQL 预览：未知计划 → 400（「不存在」与「过期」同文案，跨组织同应答）。
+    let (status, body) = call(
+        &app,
+        "POST",
+        "/api/v1/sync/sql-preview",
+        "c=1",
+        None,
+        Some(serde_json::json!({
+            "planId": "never-issued",
+            "options": {
+                "insert": true,
+                "update": true,
+                "delete": false,
+                "matchingStrategy": "primaryKey",
+                "batchSize": 1000,
+                "largeValueMode": "full"
+            }
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+
+    // 冲突检查：未知任务 → 404。
+    let (status, _) = call(
+        &app,
+        "POST",
+        "/api/v1/sync/tasks/no-such-task/conflicts",
+        "c=1",
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // 恢复核验：未知 job → 404（kind 过滤先行）。
+    let (status, _) = call(
+        &app,
+        "POST",
+        "/api/v1/sync/jobs/never/recovery-verification",
+        "c=1",
+        None,
+        Some(serde_json::json!({
+            "sourceDbSessionId": "s",
+            "targetDbSessionId": "t",
+            "sourceDatabase": "app",
+            "targetDatabase": "app"
+        })),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+/// 执行面九路由在认证链之内（L2 未认证 → 401，先于任何域逻辑）。
+#[tokio::test]
+async fn execution_routes_require_authentication() {
+    let store = memory_store();
+    let app = build_router_with_auth(AuthDeps {
+        store: store.clone(),
+        policy: Arc::new(
+            PolicyService::new(store.clone(), SERVER_SECRET.to_vec()).expect("policy"),
+        ),
+        server_secret: SERVER_SECRET.to_vec(),
+        idle_ttl_seconds: 3600,
+        rate_limit: None,
+        sse: None,
+        oidc: None,
+        domains: None,
+        mcp: None,
+        wapp_assets: None,
+        domain_routers: Some(vec![datazen_server::http::domains::sync::sync_router(
+            sync_state(&store),
+        )]),
+    })
+    .expect("router");
+
+    for uri in [
+        "/api/v1/sync/inspections",
+        "/api/v1/sync/revalidations",
+        "/api/v1/sync/comparisons",
+        "/api/v1/sync/jobs/prepare",
+        "/api/v1/sync/jobs/apply",
+        "/api/v1/sync/executions",
+        "/api/v1/sync/sql-preview",
+        "/api/v1/sync/tasks/t-1/conflicts",
+        "/api/v1/sync/jobs/j-1/recovery-verification",
+    ] {
+        let request = Request::builder()
+            .method("POST")
+            .uri(uri)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from("{}"))
             .expect("request");
         let response = app.clone().oneshot(request).await.expect("oneshot");
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "无会话 {uri}");

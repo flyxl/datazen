@@ -27,7 +27,11 @@ description = "DataZen team web server host (P7 / web-ready WR-D): the HTTP form
 # 本就要求共用该机制 feature）与 jobs（JobRepository 端口 + 落盘词汇，
 # WR-D2 第三切片）。不整包开启——与桌面的全 feature 列表形成对照：宿主按需
 # 消费内核。后续切片按域点亮。
-datazen = { workspace = true, features = ["connection", "execution", "tunnel", "jobs", "settings", "named_views", "history", "workflow", "table-editing", "table-browsing", "application", "ai", "services", "schema_diff", "data_transfer", "data_sync", "dashboard"] }
+# W8 刀4：+wapps——`workspace_apps`（WappManager 注册表 + 协议路由）是
+# datazen 的 feature 门控模块，不点亮则 `datazen::workspace_apps` 在本
+# 编译闭包不存在（设计档 §8 清单的漏列补项；bootstrap 装配 +
+# http::wapps_static 路由消费）。
+datazen = { workspace = true, features = ["connection", "execution", "tunnel", "jobs", "settings", "named_views", "history", "workflow", "table-editing", "table-browsing", "application", "ai", "services", "schema_diff", "data_transfer", "data_sync", "dashboard", "wapps"] }
 
 # WR-D2 收尾：连接目录/隧道定义的端口形状（`ConnectionConfig` /
 # `SavedTunnel`）直接来自 driver-api——模块不二次投影，server 也不得
@@ -95,6 +99,9 @@ libc = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { workspace = true }
+# W8 刀3e-4a：Data Sync 执行面的派发收尾要 catch_unwind（桌面同源；
+# futures-util 仅此一处进生产闭包，dev-deps 原有条目不动）。
+futures-util = { workspace = true }
 
 # WR-D3 余项（OIDC 依赖方流程）：发现文档 / token 端点 / JWKS 拉取的 HTTP 客户端。
 # workspace 规格已含 rustls + json 特性（无 native-tls）。
@@ -178,6 +185,10 @@ async-trait = { workspace = true }
 # 面）。dev-deps 的 feature 叠加只影响测试编译单元，生产构建闭包不变
 # （server-deps 门禁不受影响）。
 datazen = { workspace = true, features = ["test-harness"] }
+# W8 刀3e-4a：sync_execution 夹具的适配器注册表按 inventory 链接期工厂扫描
+# （datazen 的 dev-deps 同款理由：测试二进制必须链接 driver crate 才有工厂
+# 可查，否则 postgres/postgresql 等同族拼写全部「No sync adapter」）。
+datazen-driver-postgres = { workspace = true }
 
 [lints]
 workspace = true

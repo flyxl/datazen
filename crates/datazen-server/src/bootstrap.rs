@@ -474,13 +474,16 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         schema_diff_backend_deps,
     );
 
-    // ── W8 刀3e：Data Sync 域装配（存储 v15 + JobHost + 计划注册表）。
+    // ── W8 刀3e：Data Sync 域装配（存储 v15 + JobHost + 计划注册表 +
+    // 刀3e-4a 执行面服务层）。
     // job 仓储与 jobs 域/TaskCenter 同一 ServerJobs 实例（预算账本与执行面
-    // 各自独立——schema_diff 同构；受理/派发随刀3e-4 接线）。计划注册表 =
-    // 共享层 InMemory（组织键隔离端口——行级复核投影与冻结 ChangeSet 的
-    // 进程内仓储，SQL 正文不落盘，重启后「计划不可用」如实回答，桌面同
-    // 语义）；运行态（复核挂起集合 + 宿主侧失败消息）装配态实例（3e-4
-    // 的执行宿主是唯一生产者）。
+    // 各自独立——schema_diff 同构）；读面（SyncJobs）与执行面
+    // （SyncExecution）共享同一 JobHost/计划注册表/运行态。计划注册表 =
+    // 共享层 InMemory（组织键隔离端口——行级复核投影、冻结 ChangeSet 与
+    // 已确认选区的进程内仓储，SQL 正文不落盘，重启后「计划不可用」如实
+    // 回答，桌面同语义）；比较存储根 = 管理库同目录下的
+    // `sync-comparisons/`（本组织单租 v1——LocalComparisonStorageRoot 的
+    // 组织绑定）；适配器注册表独立于 schema_diff（同构造、各自登记）。
     let sync_tasks_store = std::sync::Arc::new(crate::storage::ServerSyncTasks::new(store.clone()));
     let sync_profiles_store =
         std::sync::Arc::new(crate::storage::ServerSyncProfiles::new(store.clone()));
@@ -492,20 +495,51 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         datazen::migration::data_sync::plan_store::InMemorySyncPlanRepository::new(),
     );
     let sync_runtime = crate::sync::SyncRuntimeState::new();
-    let sync_jobs = crate::sync::SyncJobs::new(
-        std::sync::Arc::new(datazen::jobs::JobHost::new(
-            jobs.clone(),
-            std::sync::Arc::new(std::sync::Mutex::new(
-                datazen::execution::runtime::budget::BudgetLedger::new(
-                    datazen::execution::runtime::budget::BudgetConfig::team_default(),
-                ),
-            )),
-            std::sync::Arc::new(datazen::jobs::domain::time::PortJobClock::new(
-                datazen::shared::clock::SystemClock,
-            )),
+    let sync_job_host = std::sync::Arc::new(datazen::jobs::JobHost::new(
+        jobs.clone(),
+        std::sync::Arc::new(std::sync::Mutex::new(
+            datazen::execution::runtime::budget::BudgetLedger::new(
+                datazen::execution::runtime::budget::BudgetConfig::team_default(),
+            ),
         )),
+        std::sync::Arc::new(datazen::jobs::domain::time::PortJobClock::new(
+            datazen::shared::clock::SystemClock,
+        )),
+    ));
+    let sync_jobs = crate::sync::SyncJobs::new(
+        sync_job_host.clone(),
         sync_plans.clone(),
         sync_runtime.clone(),
+    );
+    let sync_comparison_root: std::sync::Arc<
+        dyn datazen::migration::data_sync::comparison_store::ComparisonStorageRoot,
+    > = std::sync::Arc::new(
+        datazen::migration::data_sync::comparison_store::LocalComparisonStorageRoot::new(
+            config
+                .db_path
+                .parent()
+                .map(|dir| dir.join("sync-comparisons"))
+                .unwrap_or_else(|| std::path::PathBuf::from("sync-comparisons")),
+            datazen::shared::id::OrganizationId::new(config.organization_id.clone()),
+        ),
+    );
+    let sync_adapters = std::sync::Arc::new(
+        datazen::migration::data_transfer::transfer::adapter_registry::SyncAdapterRegistry::new(),
+    );
+    // 执行面服务（刀3e-4b：域路由 state 挂同一实例——读面/执行面共享
+    // JobHost/计划注册表/运行态；直驱集成测试 tests/sync_execution.rs
+    // 消费同一构造面）。
+    let sync_execution = crate::sync::SyncExecution::new(
+        sync_job_host,
+        sync_plans.clone(),
+        sync_runtime.clone(),
+        schema_diff_endpoints.clone(),
+        connections_repo.clone(),
+        sync_adapters,
+        sync_comparison_root,
+        sync_migration_runs.clone(),
+        sync_profiles_store.clone(),
+        sync_tasks_store.clone(),
     );
 
     // WR-D6/D7 域路由态（jobs / submission-tokens / artifacts）+ 执行域路由
@@ -788,16 +822,17 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
                 adapters: schema_diff_adapters.clone(),
             },
         ),
-        // W8 刀3e-3：Data Sync 域（契约 §6.16 资产与读面十三路由——任务二
-        // + 档案三 + 配对分类一 + 迁移运行历史二 + sync job 读回/取消五）。
-        // 存储 = v15/v12；job 仓储与 jobs 域同源；执行面（受理/派发）随
-        // 刀3e-4 续建。
+        // W8 刀3e-3 + 刀3e-4b：Data Sync 域（契约 §6.16 二十二路由——资产
+        // 与读面十三 + 执行面九[inspect/revalidate/compare/prepare/apply/
+        // execute/SQL 预览/冲突检查/恢复核验]）。存储 = v15/v12；job 仓储
+        // 与 jobs 域同源；执行面服务层见刀3e-4a。
         crate::http::domains::sync::sync_router(crate::http::domains::sync::SyncState {
             store: store.clone(),
             tasks: sync_tasks_store.clone(),
             profiles: sync_profiles_store.clone(),
             migration_runs: sync_migration_runs.clone(),
             jobs: sync_jobs.clone(),
+            execution: sync_execution.clone(),
         }),
         // W8 刀3c：Workflow 域（契约 §6.14 十一路由——定义管理五 + 执行一
         // + reload 一 + 运行历史四）。registry/历史/执行宿主与调度器同一
@@ -936,6 +971,20 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         _ => None,
     };
 
+    // W8 刀4：wapp 资产静态面。目录缺失则建（空面全 404）；非法包 warn
+    // 跳过不阻断启动（桌面 app_state.rs:163-170 同语义）。
+    std::fs::create_dir_all(&config.wapps_dir).map_err(|source| {
+        ServerError::Serve(format!(
+            "wapp asset root '{}': {source}",
+            config.wapps_dir.display()
+        ))
+    })?;
+    let wapp_manager = std::sync::Arc::new(datazen::workspace_apps::manager::WappManager::new(
+        config.wapps_dir.clone(),
+    ));
+    let wapp_count = wapp_manager.load_from_disk();
+    tracing::info!(wapps = wapp_count, "wapp asset face armed");
+
     let app = http::router::build_router_with_auth(http::router::AuthDeps {
         store: store.clone(),
         policy,
@@ -946,6 +995,9 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         oidc,
         domains: Some(domains),
         mcp: mcp_state,
+        wapp_assets: Some(crate::http::wapps_static::WappStaticState {
+            manager: wapp_manager,
+        }),
         domain_routers: Some(domain_routers),
     })?;
 
@@ -980,10 +1032,18 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
 
     tracing::info!(addr = %config.listen_addr, "datazen-server listening (healthz/readyz live; /api/v1 domains arrive with WR-D2/D4+)");
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .map_err(|error| ServerError::Serve(error.to_string()))?;
+    // W8 刀4 §6.3：L5 限流的未认证回退键是客户端 IP（`ConnectInfo<SocketAddr>`
+    // 扩展）——装配点必须经 into_make_service_with_connect_info 提供该扩展，
+    // 否则无会话扩展的请求全落 "unattributed" 归并桶：公开的 /wapps/* 静态
+    // 面会共享一个桶（等于全局互斥），OIDC 豁免面（/api/v1/auth/*）的未认证
+    // 请求同样如此（ratelimit.rs 模块头自注的装配欠账，本刀顺带修复）。
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await
+    .map_err(|error| ServerError::Serve(error.to_string()))?;
     // serve 返回（drain 完成）后停车：空闲回收驱动器在下一轮循环边界退出
     // （幂等）；`idle_reclaimer` 离开作用域时 Drop 兜底（stop + abort）。
     idle_reclaimer.stop();

@@ -202,6 +202,7 @@ async fn fixture() -> (Arc<AdminStore>, axum::Router, Account, Account, Account)
         oidc: None,
         domains: None,
         mcp: None,
+        wapp_assets: None,
         domain_routers: Some(vec![table_data_router(TableDataState {
             store: store.clone(),
             registry,
@@ -1064,6 +1065,7 @@ async fn wired_fixture(opts: MockDriverOptions) -> WireFixture {
         oidc: None,
         domains: None,
         mcp: None,
+        wapp_assets: None,
         domain_routers: Some(vec![table_data_router(TableDataState {
             store: store.clone(),
             registry,

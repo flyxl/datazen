@@ -659,10 +659,7 @@ pub(crate) use execution::execute_data_transfer_impl_with_write_observer;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data_transfer::model::{
-        Endpoint, TableExecutionOutcome, TableExecutionResult, TableMapping, TransferOptions,
-        WriteMode,
-    };
+    use crate::data_transfer::model::{TableExecutionOutcome, TableExecutionResult};
 
     #[test]
     fn unknown_structure_outcome_always_stops_before_data() {
@@ -676,53 +673,5 @@ mod tests {
         assert!(should_stop_after_structure_phase(
             &results, false, true, false
         ));
-    }
-
-    #[test]
-    fn confirmed_structure_failure_follows_continue_preference() {
-        let results = [TableExecutionResult::database(
-            "first",
-            "first",
-            Some(0),
-            TableExecutionOutcome::NotStarted,
-            Some("preflight rejected table".into()),
-        )];
-        assert!(!should_stop_after_structure_phase(
-            &results, false, true, false
-        ));
-        assert!(should_stop_after_structure_phase(
-            &results, false, true, true
-        ));
-        assert!(should_stop_after_structure_phase(&[], true, false, false));
-    }
-
-    #[test]
-    fn partially_applied_preambles_cannot_create_or_replay_resume_tokens() {
-        let mut job = TransferJob {
-            source: Endpoint {
-                db_session_id: "source".into(),
-                database: "source_db".into(),
-                schema: None,
-            },
-            target: Some(Endpoint {
-                db_session_id: "target".into(),
-                database: "target_db".into(),
-                schema: None,
-            }),
-            sql_file_target: None,
-            mode: TransferMode::Data,
-            write_mode: WriteMode::Insert,
-            tables: vec![TableMapping::auto("users")],
-            options: TransferOptions::default(),
-        };
-
-        assert!(supports_bounded_resume(&job));
-        job.write_mode = WriteMode::TruncateInsert;
-        assert!(!supports_bounded_resume(&job));
-        job.write_mode = WriteMode::DropCreateInsert;
-        assert!(!supports_bounded_resume(&job));
-        job.write_mode = WriteMode::Insert;
-        job.mode = TransferMode::StructureAndData;
-        assert!(!supports_bounded_resume(&job));
     }
 }

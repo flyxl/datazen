@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeAll, beforeEach, afterEach, type Mock } from 'vitest';
 import { useState } from 'react';
 import { render, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
-import { setBackendClient } from '@datazen/backend-client';
+import { createBackendClient, setBackendClient } from '@datazen/backend-client';
 import { WorkflowForm, emptyDraft } from '../WorkflowForm';
 import type { WorkflowDraft } from '../WorkflowForm';
 import { listDatabasesDedicated } from '../../../lib/dedicatedDbSession';
@@ -134,7 +134,9 @@ function renderForm(
 
 /** §7.2/§7.3：driverCommands 只走已绑定的 BackendClient（生产由宿主启动时绑定）。 */
 beforeAll(() => {
-  setBackendClient('test', { transport: { call: async () => [] } } as never);
+  // W8 刀3c web 收口：workflow 命令走域门面——真门面架在假 transport 上，
+  // mount 期的 workflowGet 等域方法全部存在（应答 [] 与旧 invoke 行为一致）。
+  setBackendClient('test', createBackendClient('test', { call: async () => [] } as never) as never);
 });
 
 beforeEach(() => {

@@ -747,12 +747,15 @@ Web 场景下 Wapp iframe 使用**独立受限 origin**（与主应用不同源�
 | `targetOrigin` | SDK 侧使用 `'*'`（不透明 origin 无法具名，见 `packages/wapp-sdk/src/bridge.ts` 的注释） | **必须使用精确 origin，禁止 `'*'`** |
 | 权限 | manifest 声明，deny-by-default | 同左，另加服务端组织 ACL 复核 |
 
+> **WR-F4 调和注记（2026-11-09，W8 刀4）**：上表「Web（独立受限 origin）」列是独立 origin 案的历史裁决。WR-F4 已把 web 形态的 wapp 资产服务改为**同源路径形**——`{origin}/wapps/{wapp id}/{path}`（`/wapps/` 前缀，datazen-server 静态面）；iframe 沙箱随之收紧为 `sandbox="allow-scripts"`（**禁 `allow-same-origin`**）。本表首行的 `allow-same-origin` 处方只在独立 origin 形下无害——若误用于同源形，等于把宿主 SPA 的 DOM 与 `document.cookie`（含 CSRF cookie）暴露给第三方 wapp 代码，是漏洞级错误。现行行为以 [wapps.md「Web 形态」](../backend/wapps.md)小节为准（W8 刀4 设计档 §10 O4 的调和裁决）。
+
 桥接的硬性约束（跨桌面与 Web 一致）：
 
 - 只暴露 manifest 声明过的 Command 与 Artifact 操作，缺声明先 `E_PERMISSION`；
 - **绝不传递** `dbSessionId`、`attachmentToken`、取消句柄或数据库凭据；
 - 所有操作经当前 backend 的 `BackendClient`，父应用与服务端各自重新鉴权，Wapp 不能直连 driver 或 HTTP API；
 - Web Wapp 与主应用不同源且登录 cookie 为主应用 host-only；SameSite 不能代替不同源校验。Wapp 域名不得代理登录/API，不能被部署配置成主应用同源；Wapp 不能自行调用任意服务端 URL；
+- **WR-F4 调和注记（2026-11-09，W8 刀4）**：上一条的「不同源 / host-only cookie / 域名不得同源」是独立 origin 案的历史上下文。WR-F4 已改为**同源路径形**（`/wapps/` 前缀静态面，契约 §5）：wapp 资产 URL 与主应用同源，v1 该面**公开**（无会话门——`sandbox="allow-scripts"` 缺席 `allow-same-origin` 时，wapp 文档的 opaque-origin 子资源请求拿不到 SameSite=Lax cookie，会话门会「入口 200、子资源全 401」）。「不同源校验」的隔离职责由 `/wapps/` 前缀边界 + sandbox 禁令接棒；「Wapp 不能自行调用任意服务端 URL」仍然成立（`connect-src 'none'` + opaque origin）。现行为以 [wapps.md「Web 形态」](../backend/wapps.md)小节为准；
 - Wapp 卸载或撤权即刻关闭桥接订阅。Web 桥接验收必须在真实 iframe 中完成加载、nonce 握手与双向消息，并验证错误 origin/source、重放 nonce、重新导航与卸载后的消息被拒绝；不能仅用合成 message 对象证明浏览器可用。
 
 ### 15.2 EP 与 Theme

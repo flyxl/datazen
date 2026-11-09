@@ -12,9 +12,19 @@ vi.mock('../../../commands/dashboard', () => ({
 }));
 const grant = {
   id: 'backend-issued',
-  expiresAt: '2099-01-01T00:00:00Z',
-  revoked: false,
+  dashboardId: 'd',
+  widgetId: 'w',
+  workflowId: 'wf',
   workflowRevision: 'frozen',
+  organizationId: 'org',
+  servicePrincipal: 'sp',
+  approvedBy: 'editor',
+  scopes: [],
+  actions: [],
+  readOnly: true,
+  expiresAt: '2099-01-01T00:00:00Z',
+  revocationVersion: 0,
+  revoked: false,
 };
 beforeEach(() => {
   vi.clearAllMocks();

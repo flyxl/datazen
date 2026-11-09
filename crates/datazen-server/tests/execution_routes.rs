@@ -837,6 +837,7 @@ async fn fullstack_fixture() -> FullstackFixture {
             sessions: cases.clone(),
         }),
         mcp: None,
+        wapp_assets: None,
         domain_routers: Some(vec![
             sessions_router(SessionsState {
                 sessions: cases.clone(),

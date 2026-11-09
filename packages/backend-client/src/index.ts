@@ -115,6 +115,15 @@ export {
   rollbackCompletenessCounts,
 } from './schemaDiffClient';
 
+export type { WorkflowMethodMap, WorkflowClient } from './workflowClient';
+export { createWorkflowMethods } from './workflowClient';
+
+export type { DashboardMethodMap, DashboardClient } from './dashboardClient';
+export { createDashboardMethods } from './dashboardClient';
+
+export type { DataSyncMethodMap, DataSyncClient } from './dataSyncClient';
+export { createDataSyncMethods } from './dataSyncClient';
+
 export type { LegacyCommandName, LegacyHostMethodMap } from './legacyHostCommands';
 export { legacyInvoke } from './legacyHostCommands';
 

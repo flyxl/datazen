@@ -373,174 +373,40 @@ export interface TableDataResult {
 // caller keeps importing the AI types from the aggregate.
 export * from './ai';
 
-// ── Workflow types ──
+// ── Workflow types（W8 刀3c web 收口：单一来源上移 `@datazen/backend-client`
+// 的 `types/workflow.ts`；此处保留既有 import 路径与两个旧名别名）──────────
 
-export interface WorkflowVariable {
-  name: string;
-  type: string; // 'string' | 'number' | 'connection'
-  description: string;
-  required?: boolean;
-  default?: unknown;
-}
+export type {
+  ErrorHandlingConfig,
+  MergeSource,
+  StepExecutionResult,
+  StepStatus,
+  TransformColumn,
+  WorkflowBlock,
+  WorkflowBlockRetry,
+  WorkflowBlockType,
+  WorkflowDefinition,
+  WorkflowExecuteRequest,
+  WorkflowExecutionResult,
+  WorkflowIdRequest,
+  WorkflowListItem,
+  WorkflowOutput,
+  WorkflowRunGetRequest,
+  WorkflowRunListItem,
+  WorkflowRunRecord,
+  WorkflowRunsListRequest,
+  WorkflowSaveRequest,
+  WorkflowSchedule,
+  WorkflowStep,
+  WorkflowStepType,
+  WorkflowVariable,
+  WorkflowYamlSaveRequest,
+} from '@datazen/backend-client';
 
-export type WorkflowStepType =
-  | 'query'
-  | 'command'
-  | 'ai'
-  | 'condition'
-  | 'foreach'
-  | 'merge'
-  | 'transform';
-
-export interface ErrorHandlingConfig {
-  strategy: 'abort' | 'skip' | 'fallback';
-  fallbackSteps?: WorkflowStep[];
-}
-
-export interface WorkflowStep {
-  type: WorkflowStepType;
-  id: string;
-  sql?: string;
-  connection?: string;
-  database?: string;
-  command?: string;
-  input?: Record<string, unknown>;
-  prompt?: string;
-  timeoutSecs?: number;
-  onError?: ErrorHandlingConfig;
-  if?: string;
-  thenSteps?: WorkflowStep[];
-  elseSteps?: WorkflowStep[];
-  items?: string;
-  asVar?: string;
-  steps?: WorkflowStep[];
-  maxIterations?: number;
-  // merge step
-  sources?: MergeSource[];
-  columns?: string[];
-  // transform step
-  from?: string;
-  addColumns?: TransformColumn[];
-  filter?: string;
-  sortBy?: string;
-  offset?: number;
-  limit?: number;
-}
-
-export interface MergeSource {
-  source: string;
-  columns?: Record<string, string>;
-  add?: Record<string, unknown>;
-}
-
-export interface TransformColumn {
-  name: string;
-  expr: string;
-}
-
-export interface WorkflowOutput {
-  format: string;
-  template?: string;
-}
-
-export type WorkflowBlockType = 'sessionBlock' | 'transactionBlock';
-
-/**
- * Block-level retry. The unit is always the whole block — a block never
- * resumes from the middle — so there is deliberately no per-step count.
- */
-export interface WorkflowBlockRetry {
-  block: number;
-}
-
-export interface WorkflowBlock {
-  id: string;
-  type: WorkflowBlockType;
-  /** Block target, level 2 of the step > block > workflow > profile chain. */
-  connection?: string;
-  /** Block target (multi-db connections). */
-  database?: string;
-  /** Run this block concurrently with *other* blocks, never with itself. */
-  parallel?: boolean;
-  steps: WorkflowStep[];
-  /** transactionBlock only. */
-  retry?: WorkflowBlockRetry;
-}
-
-export interface WorkflowDefinition {
-  id: string;
-  name: string;
-  description: string;
-  version?: string;
-  author?: string;
-  variables: WorkflowVariable[];
-  /** Default connection inherited by data-operation steps. */
-  connection?: string;
-  /** Default database inherited by data-operation steps (multi-db connections). */
-  database?: string;
-  steps: WorkflowStep[];
-  /** v2 resource blocks; each block holds its own steps and target. */
-  blocks?: WorkflowBlock[];
-  output?: WorkflowOutput;
-  timeoutSecs?: number;
-  errorHandling?: ErrorHandlingConfig;
-  schedule?: WorkflowSchedule;
-  /** `user` | `dashboardHidden` — hidden workflows are dashboard-owned SQL bindings. */
-  visibility?: 'user' | 'dashboardHidden';
-}
-
-export interface WorkflowSchedule {
-  enabled: boolean;
-  interval_secs?: number;
-  intervalSecs?: number;
-}
-
-export interface WorkflowListItem {
-  id: string;
-  name: string;
-  description: string;
-  variables: WorkflowVariable[];
-  scheduled?: boolean;
-}
-
-export type StepStatus = 'success' | 'failed' | 'skipped' | 'timed_out';
-
-export interface StepExecutionResult {
-  stepId: string;
-  stepType: string;
-  status: StepStatus;
-  result?: Record<string, unknown>;
-  executionTimeMs: number;
-  error?: string;
-  connectionName?: string;
-  sqlExecuted?: string;
-}
-
-export interface WorkflowExecutionResult {
-  success: boolean;
-  finalOutput: string;
-  steps: StepExecutionResult[];
-  totalTimeMs: number;
-  error?: string;
-}
-
-export interface HistoryListItem {
-  id: string;
-  workflowId: string;
-  workflowName: string;
-  success: boolean;
-  totalTimeMs: number;
-  createdAt: string;
-}
-
-export interface HistoryEntry {
-  id: string;
-  workflowId: string;
-  workflowName: string;
-  variables: Record<string, unknown>;
-  result: WorkflowExecutionResult;
-  createdAt: string;
-}
+/** 旧名兼容（运行历史词汇的历史命名；语义 = WorkflowRunListItem）。 */
+export type HistoryListItem = import('@datazen/backend-client').WorkflowRunListItem;
+/** 旧名兼容（语义 = WorkflowRunRecord）。 */
+export type HistoryEntry = import('@datazen/backend-client').WorkflowRunRecord;
 
 // ── Phase 8: Schema docs + Connection diagnosis + Query analysis ──
 

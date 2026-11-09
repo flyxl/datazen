@@ -2,15 +2,23 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SyncProfile } from '../sync';
 
 const invoke = vi.hoisted(() => vi.fn());
-import { setBackendClient } from '@datazen/backend-client';
+import { createBackendClient, setBackendClient } from '@datazen/backend-client';
 // form-split R6: the invoke wrappers ride the bound backend transport now
 // (same binding pattern as file.test.ts — the mock keeps its invoke shape).
-setBackendClient('test', {
-  transport: { call: (c: string, p?: unknown) => (p === undefined ? invoke(c) : invoke(c, p)) },
-} as never);
+// W8 刀3e web 收口：命令层改走 dataSync 域门面方法——假门面用**真门面**
+// （createBackendClient）架在假 transport 上，域方法全部存在且经
+// guard → transport.call；令牌铸造走 identity 域的 issueSubmissionToken，
+// 同样落在 invokeMock 队列里（期望序列里的 'issueSubmissionToken' 行）。
+const fakeTransport = {
+  call: (c: string, p?: unknown) => (p === undefined ? invoke(c) : invoke(c, p)),
+};
+setBackendClient('test', createBackendClient('test', fakeTransport as never) as never);
 import { syncCommands } from '../sync';
 
 let jobSequence = 0;
+
+/** saveSyncProfile / cancelDataSync 的用户资产令牌（域写面在传输层折叠）。 */
+const submissionToken = { idempotencyKey: 'idem-save-profile', expiresAt: 1_700_000_000_000 };
 
 function queueDurableCompare(preview: unknown): void {
   const jobId = `sync-prepare-${++jobSequence}`;
@@ -57,12 +65,21 @@ describe('Data Sync immutable plan IPC', () => {
       createdAt: '2026-09-21T00:00:00.000Z',
       updatedAt: '2026-09-21T00:00:00.000Z',
     } satisfies SyncProfile;
+    invoke.mockResolvedValueOnce([]); // getSyncProfiles
+    invoke.mockResolvedValueOnce(submissionToken); // issueSubmissionToken (saveUserAsset)
     await syncCommands.getSyncProfiles();
     await syncCommands.saveSyncProfile(profile);
     await syncCommands.deleteSyncProfile(profile.id);
-    expect(invoke).toHaveBeenNthCalledWith(1, 'get_sync_profiles');
-    expect(invoke).toHaveBeenNthCalledWith(2, 'save_sync_profile', { profile });
-    expect(invoke).toHaveBeenNthCalledWith(3, 'delete_sync_profile', {
+    expect(invoke).toHaveBeenNthCalledWith(1, 'getSyncProfiles', {});
+    expect(invoke).toHaveBeenNthCalledWith(2, 'issueSubmissionToken', {
+      operation: 'saveUserAsset',
+      handle: null,
+    });
+    expect(invoke).toHaveBeenNthCalledWith(3, 'saveSyncProfile', {
+      profile,
+      submissionToken,
+    });
+    expect(invoke).toHaveBeenNthCalledWith(4, 'deleteSyncProfile', {
       profileId: profile.id,
     });
   });
@@ -89,7 +106,7 @@ describe('Data Sync immutable plan IPC', () => {
       'public',
       mappings,
     );
-    expect(invoke).toHaveBeenCalledWith('inspect_data_sync', {
+    expect(invoke).toHaveBeenCalledWith('inspectDataSync', {
       sourceDbSessionId: 'source-session',
       targetDbSessionId: 'target-session',
       sourceDatabase: 'app',
@@ -147,7 +164,7 @@ describe('Data Sync immutable plan IPC', () => {
       ],
       { insert: true, update: true, delete: false },
     );
-    expect(invoke).toHaveBeenLastCalledWith('generate_data_sync_sql', {
+    expect(invoke).toHaveBeenLastCalledWith('generateDataSyncSql', {
       planId: 'opaque-plan',
       selection: {
         revision: 1,
@@ -172,7 +189,7 @@ describe('Data Sync immutable plan IPC', () => {
       'job-1',
       'app',
     );
-    expect(invoke).toHaveBeenLastCalledWith('execute_data_sync', {
+    expect(invoke).toHaveBeenLastCalledWith('executeDataSync', {
       request: {
         planId: 'opaque-plan',
         selection: {
@@ -207,7 +224,7 @@ describe('Data Sync immutable plan IPC', () => {
       },
     );
     expect(invoke).toHaveBeenCalledWith(
-      'start_data_sync_prepare_job',
+      'startDataSyncPrepareJob',
       expect.objectContaining({
         filters: {
           users: {
@@ -245,7 +262,7 @@ describe('Data Sync immutable plan IPC', () => {
       },
     );
     expect(invoke).toHaveBeenCalledWith(
-      'start_data_sync_prepare_job',
+      'startDataSyncPrepareJob',
       expect.objectContaining({
         filters: {
           users: {
@@ -286,7 +303,7 @@ describe('Data Sync immutable plan IPC', () => {
       },
     );
     expect(invoke).toHaveBeenCalledWith(
-      'start_data_sync_prepare_job',
+      'startDataSyncPrepareJob',
       expect.objectContaining({
         filters: {
           events: {
@@ -375,7 +392,7 @@ describe('Data Sync immutable plan IPC', () => {
       [{ sourceTable: 'users', targetTable: 'users', operation: 'INSERT', key: [7] }],
     );
     expect(invoke).toHaveBeenLastCalledWith(
-      'generate_data_sync_sql',
+      'generateDataSyncSql',
       expect.objectContaining({
         selection: {
           revision: 1,
@@ -438,7 +455,7 @@ describe('Data Sync immutable plan IPC', () => {
         },
       ],
     );
-    expect(invoke).toHaveBeenLastCalledWith('generate_data_sync_sql', {
+    expect(invoke).toHaveBeenLastCalledWith('generateDataSyncSql', {
       planId: 'scoped-plan',
       selection: {
         revision: 7,
@@ -508,7 +525,7 @@ describe('Data Sync immutable plan IPC', () => {
       expect(result.outcome).toBe(expected);
       expect(result.rolledBack).toBe(false);
       expect(Boolean(result.error)).toBe(state !== 'succeeded');
-      expect(invoke).toHaveBeenCalledWith('start_data_sync_apply_job', {
+      expect(invoke).toHaveBeenCalledWith('startDataSyncApplyJob', {
         sourceDbSessionId: 'source-session',
         targetDbSessionId: 'target-session',
         request: {
@@ -521,7 +538,106 @@ describe('Data Sync immutable plan IPC', () => {
           jobId: 'apply-job',
         },
       });
-      expect(invoke).not.toHaveBeenCalledWith('generate_data_sync_sql', expect.anything());
+      expect(invoke).not.toHaveBeenCalledWith('generateDataSyncSql', expect.anything());
     },
   );
+});
+
+describe('Data Sync command-layer desktop-kept surfaces', () => {
+  beforeEach(() => invoke.mockReset());
+
+  it('generateDataSyncSql without an active comparison plan rejects with the guidance error', async () => {
+    // 模块级比较计划被前序用例污染——resetModules 取全新模块钉「无计划」分支。
+    vi.resetModules();
+    const { syncCommands: fresh } = await import('../sync');
+    await expect(
+      fresh.generateDataSyncSql('source-session', 'target-session', [], {
+        insert: true,
+        update: false,
+        delete: false,
+      }),
+    ).rejects.toThrow('data sync comparison plan is missing; compare again');
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('applyDataSync stays on the legacy rail with the desktop parameter bag', async () => {
+    invoke.mockResolvedValueOnce({
+      outcome: 'unknown',
+      applied: 0,
+      rolledBack: false,
+      error: null,
+    });
+    await syncCommands.applyDataSync(
+      'source-session',
+      'target-session',
+      ['users'],
+      'apply-job',
+      'src-db',
+      'tgt-db',
+      'public',
+      'public',
+      { insert: true, update: true, delete: false },
+    );
+    expect(invoke).toHaveBeenCalledWith('apply_data_sync', {
+      sourceDbSessionId: 'source-session',
+      targetDbSessionId: 'target-session',
+      tables: ['users'],
+      jobId: 'apply-job',
+      sourceDatabase: 'src-db',
+      targetDatabase: 'tgt-db',
+      sourceSchema: 'public',
+      targetSchema: 'public',
+      options: { insert: true, update: true, delete: false },
+    });
+  });
+
+  it('cancelDataSync folds a saveUserAsset token over the job id', async () => {
+    invoke.mockResolvedValueOnce({ idempotencyKey: 'k', expiresAt: '2026-01-01T00:00:00Z' });
+    invoke.mockResolvedValueOnce(true);
+
+    await expect(syncCommands.cancelDataSync('job-9')).resolves.toBe(true);
+
+    expect(invoke).toHaveBeenNthCalledWith(1, 'issueSubmissionToken', {
+      operation: 'saveUserAsset',
+      handle: null,
+    });
+    expect(invoke).toHaveBeenNthCalledWith(2, 'cancelDataSync', {
+      jobId: 'job-9',
+      submissionToken: { idempotencyKey: 'k', expiresAt: '2026-01-01T00:00:00Z' },
+    });
+  });
+
+  it('listDataSyncJobs and verifyDataSyncRecovery ride the domain read faces verbatim', async () => {
+    invoke.mockResolvedValueOnce([{ job: { jobId: 'j-1' } }]);
+    await expect(syncCommands.listDataSyncJobs()).resolves.toEqual([{ job: { jobId: 'j-1' } }]);
+    expect(invoke).toHaveBeenLastCalledWith('listDataSyncJobs', {});
+
+    const recovery = {
+      jobId: 'j-1',
+      sourceDbSessionId: 's-1',
+      targetDbSessionId: 's-2',
+      sourceDatabase: 'db',
+      targetDatabase: 'db',
+    };
+    invoke.mockResolvedValueOnce({ job: { jobId: 'j-1' } });
+    await syncCommands.verifyDataSyncRecovery(recovery);
+    expect(invoke).toHaveBeenLastCalledWith('verifyDataSyncRecovery', { request: recovery });
+  });
+
+  it('compareDataSync and the comparison page reject without an active plan (fresh module)', async () => {
+    vi.resetModules();
+    // resetModules 连 backend-client 的绑定注册表一起重置——先重绑再取新模块。
+    const bc = await import('@datazen/backend-client');
+    bc.setBackendClient(
+      'test',
+      bc.createBackendClient('test', {
+        call: (c: string, p?: unknown) => (p === undefined ? invoke(c) : invoke(c, p)),
+      } as never) as never,
+    );
+    const { syncCommands: fresh } = await import('../sync');
+    // compareDataSync 先比较后存计划（无前置守卫）；分页读才有 no-plan 拒绝。
+    await expect(fresh.getDataSyncComparisonPage(null, 'users', 'users')).rejects.toThrow(
+      'data sync comparison plan is missing; compare again',
+    );
+  });
 });

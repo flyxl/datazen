@@ -1,0 +1,173 @@
+# datazen 开发侧件栈：server（同源 web 静态面 + /api/v1）+ dex（OIDC IdP）
+# + 管理库/产物卷 + 首次引导（migrate → membership 种子）。仅本机开发用。
+#
+# 生产栈看 ../docker-compose.yml（反代单源 HTTPS + 管理库卷，无 IdP 侧件——
+# 生产 IdP 由部署方自备，三件套经 deploy/config/.env 注入）。两栈差异表见
+# docs/development/dev-environment.md §7。
+#
+# ── env 键 → server 代码位置对照（唯一权威：crates/datazen-server/src/config.rs）──
+# 下表每个键都在 config.rs 的 from_env() 里真实读取；拼写以常量名为准，
+# 不新增任何 server 不认识的键：
+#
+#   DATAZEN_SERVER_LISTEN                config.rs ENV_LISTEN（read_addr；SocketAddr）
+#   DATAZEN_SERVER_LOG                   config.rs ENV_LOG（tracing EnvFilter 表达式）
+#   DATAZEN_SERVER_DB                    config.rs ENV_DB（SQLite 管理库文件路径）
+#   DATAZEN_SERVER_SECRET                config.rs ENV_SERVER_SECRET（≥32 字符，
+#                                        CSRF/policyIsolationKey HMAC 主钥）
+#   DATAZEN_SERVER_SESSION_IDLE_SECS     config.rs ENV_SESSION_IDLE_SECS
+#   DATAZEN_SERVER_SESSION_ABSOLUTE_SECS config.rs ENV_SESSION_ABSOLUTE_SECS
+#   DATAZEN_SERVER_ORGANIZATION_ID       config.rs ENV_ORGANIZATION_ID
+#                                        （须与 seed/seed-dev.sql 的组织逐字一致）
+#   DATAZEN_SERVER_PUBLIC_ORIGIN         config.rs ENV_PUBLIC_ORIGIN（裸 origin；
+#                                        OIDC redirect_uri 构造 + SSE Origin 等值）
+#   DATAZEN_SERVER_OIDC_ISSUER           config.rs ENV_OIDC_ISSUER（与 dex 的
+#                                        issuer 逐字等值；发现文档精确匹配）
+#   DATAZEN_SERVER_OIDC_CLIENT_ID        config.rs ENV_OIDC_CLIENT_ID（与 dex
+#                                        staticClients[].id 一致）
+#   —— 有意不设 DATAZEN_SERVER_OIDC_CLIENT_SECRET：dex 侧是 public 客户端
+#      （纯 PKCE），server 侧 None 即公开客户端形态（bootstrap.rs 装配）。
+#   DATAZEN_SERVER_WEB_ROOT              config.rs ENV_WEB_ROOT（WR-E5 同源静态面；
+#                                        指向镜像内 /webapp/dist，非目录拒启）
+#   DATAZEN_SERVER_ARTIFACT_ROOT         config.rs ENV_ARTIFACT_ROOT
+#
+# 未设的键走 config.rs 缺省（速率五键 / SSE 两键 / 预算两键 / TTL 清扫 /
+# IdleReclaimer 两键 / EGRESS_ALLOWED_HOSTS 空表 = 驱动出站全拒，fail-closed）。
+#
+# ── 网络拓扑（为什么 issuer 是 http://id.localhost:5556）──────────────────
+# issuer URL 有两个消费方，同一名字在两侧解析到不同目标：
+#   浏览器（授权端点跳转）：id.localhost → 127.0.0.1:5556（Chrome/Chromium
+#     原生解析 *.localhost；多数 Linux 的 systemd-resolved 也解析；其余环境
+#     需在 hosts 加 `127.0.0.1 id.localhost`，up.sh 会自动检测并提示）
+#   datazen-server 容器（发现/token/JWKS）：compose 网络别名 id.localhost
+#     → dex 容器（见下方 dex.networks.default.aliases，容器间直连，不经宿主）
+# public_origin 必须是字面 localhost：会话三 cookie 都是 __Host- 前缀 + Secure
+# （oidc.rs cookie_value / auth.rs SESSION_COOKIE / csrf.rs CSRF_COOKIE，硬编码），
+# 浏览器只在可信 origin（https 或 localhost）接受这类 cookie。
+#
+# ── 探针与登录面（http/router.rs）─────────────────────────────────────────
+#   /healthz /readyz        router.rs（L0，免认证免限流）
+#   /api/v1/auth/login      router.rs（L2 豁免；302 → dex 授权端点）
+#   /api/v1/auth/callback   router.rs（L2 豁免；state 校验 + token 交换）
+#   回调路径与 scope 是 bootstrap.rs 装配期硬编码（/api/v1/auth/callback、
+#   "openid profile"），不走环境键。
+
+name: datazen-dev
+
+# 三个用 server 镜像的服务共享同一 env 块（migrate / seed 也读 config.rs，
+# 至少 LISTEN/DB/SECRET 需要在位才能过 from_env 校验）。
+x-datazen-env: &datazen-env
+  DATAZEN_SERVER_LISTEN: "0.0.0.0:8080"
+  DATAZEN_SERVER_LOG: ${DATAZEN_SERVER_LOG:-info}
+  DATAZEN_SERVER_DB: /var/lib/datazen/datazen-admin.sqlite
+  # 开发专用默认密钥（50 字符，≥32 门槛）；有洁癖可 export 覆盖。
+  # 生产栈是 ${DATAZEN_SERVER_SECRET:?} fail-closed，这里刻意放宽。
+  DATAZEN_SERVER_SECRET: ${DATAZEN_SERVER_SECRET:-dev-only-secret-for-local-datazen-stack-0123456789}
+  DATAZEN_SERVER_SESSION_IDLE_SECS: "28800"
+  DATAZEN_SERVER_SESSION_ABSOLUTE_SECS: "86400"
+  DATAZEN_SERVER_ORGANIZATION_ID: datazen-local-org
+  DATAZEN_SERVER_PUBLIC_ORIGIN: http://localhost:8080
+  DATAZEN_SERVER_OIDC_ISSUER: http://id.localhost:5556
+  DATAZEN_SERVER_OIDC_CLIENT_ID: datazen-web
+  DATAZEN_SERVER_WEB_ROOT: /webapp/dist
+  DATAZEN_SERVER_ARTIFACT_ROOT: /var/lib/datazen/artifacts
+
+x-datazen-build: &datazen-build
+  context: ../..
+  dockerfile: deploy/dev/Dockerfile.dev
+
+services:
+  # ── OIDC IdP 侧件（零编译，拉镜像即起；配置见 ./dex/config.yaml）─────
+  dex:
+    image: dexidp/dex:v2.37.0
+    command: ["serve", "/etc/dex/config.yaml"]
+    volumes:
+      - ./dex/config.yaml:/etc/dex/config.yaml:ro
+    ports:
+      # 只绑宿主回环：浏览器经此访问登录页；server 容器不走这个口。
+      - "127.0.0.1:5556:5556"
+    networks:
+      default:
+        aliases:
+          # server 容器按 issuer 主机名直连 dex（容器间 DNS，不经宿主端口）。
+          # 该别名只在本 compose 网络内生效，不影响宿主。
+          - id.localhost
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+  # ── 首次引导 1/2：expand 迁移（serve 拒绝在 schema 落后时启动，
+  #    bootstrap.rs run() 的 fail-closed 检查；幂等，重复 up 是 no-op）──
+  datazen-migrate:
+    image: datazen-server:dev
+    build: *datazen-build
+    command: ["migrate"]
+    environment: *datazen-env
+    volumes:
+      - admin-db:/var/lib/datazen
+    restart: "no"
+
+  # ── 首次引导 2/2：OIDC 登录种子（membership upsert；server 没有「建
+  #    membership」的子命令，登录映射又 fail-closed，见 seed-dev.sql 头注）──
+  datazen-seed:
+    image: datazen-server:dev
+    build: *datazen-build
+    # 运行时镜像带 sqlite3（运维探查口径与生产一致）；入口覆写为 sqlite3，
+    # 以镜像同一 uid（10001）在 server 启动前完成种子。
+    entrypoint: ["sqlite3"]
+    command: ["/var/lib/datazen/datazen-admin.sqlite", ".read /seed/seed-dev.sql"]
+    volumes:
+      - admin-db:/var/lib/datazen
+      - ./seed:/seed:ro
+    depends_on:
+      datazen-migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  # ── server（同源静态面 + /api/v1 + SSE + MCP 面）───────────────────────
+  datazen-server:
+    image: datazen-server:dev
+    build: *datazen-build
+    # 单实例（与生产同款前提）；镜像 ENTRYPOINT 是二进制本身。
+    deploy:
+      replicas: 1
+    init: true
+    user: "10001:10001"
+    # WR-G3：server 接 SIGTERM（SIGINT 并存），docker stop 默认信号即优雅停机。
+    stop_grace_period: 30s
+    restart: unless-stopped
+    ports:
+      # 只暴露宿主回环（生产同款纪律：默认拒绝直暴）。浏览器访问一律用
+      # http://localhost:8080 —— 别用 127.0.0.1（SSE Origin 与 public_origin
+      # 是字符串等值比较，127.0.0.1 会被拒）。
+      - "127.0.0.1:8080:8080"
+    environment: *datazen-env
+    volumes:
+      # 管理库（SQLite 主文件 + WAL/SHM 同卷；VACUUM INTO 与恢复的原子可见前提）。
+      - admin-db:/var/lib/datazen
+      # 产物字节（WR-D7 受控上传/下载）。
+      - artifacts:/var/lib/datazen/artifacts
+      # 如需用宿主侧构建的前端替换镜像内静态面（改完 `pnpm --filter
+      # datazen-web build` 后 up -d 重挂），解开下一行并注释掉上面的说明：
+      # - ../../packages/web/dist:/webapp/dist:ro
+    depends_on:
+      datazen-seed:
+        condition: service_completed_successfully
+      dex:
+        condition: service_started
+    healthcheck:
+      # 与生产同款：只读 check-schema（落后 3 / 超前 4）。放行流量以编排层
+      # 探 /readyz 为准（up.sh 的探针循环）。
+      test: ["CMD", "/usr/local/bin/datazen-server", "check-schema"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+    # 开发栈不设 mem/cpus/pids 限额（生产 compose 有；差异表见文档 §7）。
+    tmpfs:
+      - /tmp:size=64m
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  admin-db:
+  artifacts:
