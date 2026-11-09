@@ -541,6 +541,17 @@ const pack = {
   'export.export': 'Exporter',
   'export.success': 'Exportation terminée avec succès',
   'export.disabledByDriver': "Ce pilote n'autorise pas l'exportation de données.",
+  'export.resetColumns': 'Rétablir par défaut',
+  'export.formatDisabledStream':
+    'XLSX nécessite toutes les lignes en mémoire ; il est indisponible pour les exports en flux (table entière / résultats filtrés).',
+  'export.formatDisabledNoKey':
+    "SQL UPDATE a besoin d'une colonne clé primaire pour sa clause WHERE.",
+  'export.progressRows': '{rows} lignes écrites…',
+  'export.cancelExport': "Annuler l'export",
+  'export.cancelling': 'Annulation…',
+  'export.cancelledPartialDeleted': 'Export annulé — le fichier partiel a été supprimé.',
+  'export.cancelledPartialKept':
+    "Export annulé — le fichier partiel n'a pas pu être supprimé ; supprimez-le manuellement si inutile.",
   'batchExport.title': 'Exporter',
   'batchExport.selectTables': 'Sélectionner les tables',
   'batchExport.clearAll': 'Tout effacer',

@@ -534,6 +534,16 @@ const pack = {
   'export.export': 'Экспорт',
   'export.success': 'Экспорт успешно завершён',
   'export.disabledByDriver': 'Этот драйвер не разрешает экспорт данных.',
+  'export.resetColumns': 'Сбросить к стандартным',
+  'export.formatDisabledStream':
+    'Для XLSX нужны все строки в памяти, поэтому он недоступен для потокового экспорта (вся таблица / результаты фильтра).',
+  'export.formatDisabledNoKey': 'SQL UPDATE нужен столбец первичного ключа для предложения WHERE.',
+  'export.progressRows': 'Записано строк: {rows}…',
+  'export.cancelExport': 'Отменить экспорт',
+  'export.cancelling': 'Отмена…',
+  'export.cancelledPartialDeleted': 'Экспорт отменён — незавершённый файл удалён.',
+  'export.cancelledPartialKept':
+    'Экспорт отменён — незавершённый файл не удалось удалить; удалите его вручную, если он не нужен.',
   'batchExport.title': 'Экспорт',
   'batchExport.selectTables': 'Выбрать таблицы',
   'batchExport.clearAll': 'Очистить все',

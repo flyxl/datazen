@@ -512,4 +512,111 @@ describe('导出和导入 (EI-001~EI-006)', () => {
       await dropImportTargetTable().catch(() => undefined);
     }
   });
+
+  // ── 导出列选择、格式门槛与取消入口（DBR-06）──────────────
+
+  /**
+   * Open the export dialog's Nth combobox (0 = format, 1 = range) and pick the
+   * option whose label contains `optionText`. The real combobox is a custom
+   * listbox, so both steps go through DOM dispatch.
+   */
+  async function pickExportCombobox(index: number, optionText: string) {
+    await browser.execute((i: number) => {
+      const dlg = document.querySelector('[data-testid="data-export-dialog"]');
+      if (!dlg) return;
+      const triggers = dlg.querySelectorAll('button[aria-haspopup="listbox"]');
+      (triggers[i] as HTMLElement | undefined)?.click();
+    }, index);
+    await browser.pause(300);
+    await browser.execute((text: string) => {
+      const listbox = document.querySelector('[id^="dz-select-listbox-"]');
+      if (!listbox) return;
+      const opts = listbox.querySelectorAll('div[tabindex]');
+      for (const opt of opts) {
+        if (opt.textContent?.includes(text)) {
+          opt.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+          break;
+        }
+      }
+    }, optionText);
+    await browser.pause(300);
+  }
+
+  /** Whether the dialog's primary export button is disabled. */
+  async function exportButtonDisabled(): Promise<boolean> {
+    return browser.execute((label: string) => {
+      const dlg = document.querySelector('[data-testid="data-export-dialog"]');
+      const btn = Array.from(dlg?.querySelectorAll('button') ?? []).find(
+        (b) => b.textContent?.trim() === label,
+      );
+      return btn?.hasAttribute('disabled') ?? false;
+    }, t('export.export'));
+  }
+
+  it('EI-DBR06-001: 清空全部列应禁用导出，恢复默认应恢复 (DBR-06)', async () => {
+    await openTableExportDialog();
+    await browser.execute(() => {
+      (document.querySelector('[data-testid="export-columns-clear-all"]') as HTMLElement)?.click();
+    });
+    await browser.pause(300);
+    expect(await exportButtonDisabled()).toBe(true);
+
+    await browser.execute(() => {
+      (
+        document.querySelector('[data-testid="export-columns-reset-default"]') as HTMLElement
+      )?.click();
+    });
+    await browser.pause(300);
+    expect(await exportButtonDisabled()).toBe(false);
+    await closeDataExportDialogIfOpen();
+  });
+
+  it('EI-DBR06-002: 网格导出只写勾选列且遵循显示顺序 (DBR-06)', async () => {
+    await openTableExportDialog();
+    // Keep only `name` and `status`; the export must drop `id` from the file.
+    await browser.execute(() => {
+      (document.querySelector('[data-testid="export-column-id"]') as HTMLElement)?.click();
+    });
+    await browser.pause(300);
+
+    await resetDialogQueue();
+    const outPath = path.join(os.tmpdir(), `datazen-export-cols-${Date.now()}.csv`);
+    try {
+      await injectDialogPath(outPath);
+      const dlg = await $('[data-testid="data-export-dialog"]');
+      const exportConfirm = await dlg.$(`button*=${t('export.export')}`);
+      await exportConfirm.waitForClickable({ timeout: 5000 });
+      await exportConfirm.click();
+      await browser.waitUntil(() => fs.existsSync(outPath), {
+        timeout: 20000,
+        timeoutMsg: 'Timed out waiting for column-subset export file',
+      });
+      const content = fs.readFileSync(outPath, 'utf-8');
+      expect(content.trim().split('\n')[0]).toBe('name,status');
+      expect(content).toContain('Widget,active');
+      expect(content).not.toMatch(/^id,/m);
+      await captureJourneyStep('export-csv-column-subset', 0, true);
+    } finally {
+      try {
+        fs.unlinkSync(outPath);
+      } catch {
+        /* ok */
+      }
+      await closeDataExportDialogIfOpen();
+    }
+  });
+
+  it('EI-DBR06-003: 整表范围禁用 XLSX 并解释原因 (DBR-06)', async () => {
+    await openTableExportDialog();
+    // Switch the range to the streaming "entire table" scope.
+    await pickExportCombobox(1, t('export.entireTable'));
+    const body = await $('body').getText();
+    // The reason stays on screen while the range makes XLSX unavailable.
+    expect(body).toContain(t('export.formatDisabledStream'));
+    // 禁用而非隐藏：the greyed-out format is still listed.
+    expect(body).toContain('Excel (XLSX)');
+    // A streaming scope exposes the run-cancel entry (disabled until a run).
+    expect(body).toContain(t('export.cancelExport'));
+    await closeDataExportDialogIfOpen();
+  });
 });

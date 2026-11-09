@@ -526,6 +526,17 @@ const pack = {
   'export.export': '輸出',
   'export.success': 'エクスポートが正常に完了しました',
   'export.disabledByDriver': 'このドライバーではデータのエクスポートが許可されていません。',
+  'export.resetColumns': 'デフォルトに戻す',
+  'export.formatDisabledStream':
+    'XLSX は全行をメモリに読み込む必要があるため、ストリーミングエクスポート（全テーブル／フィルター結果）では利用できません。',
+  'export.formatDisabledNoKey': 'SQL UPDATE には WHERE 句を構成する主キー列が必要です。',
+  'export.progressRows': '{rows} 行を書き込みました…',
+  'export.cancelExport': 'エクスポートをキャンセル',
+  'export.cancelling': 'キャンセル中…',
+  'export.cancelledPartialDeleted':
+    'エクスポートをキャンセルしました。未完成のファイルは削除済みです。',
+  'export.cancelledPartialKept':
+    'エクスポートをキャンセルしました。未完成のファイルを削除できませんでした。不要な場合は手動で削除してください。',
   'batchExport.title': 'エクスポート',
   'batchExport.selectTables': 'テーブルを選択',
   'batchExport.clearAll': 'すべてクリア',

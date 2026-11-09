@@ -622,6 +622,17 @@ const pack = {
   'export.export': 'Exportieren',
   'export.success': 'Export erfolgreich abgeschlossen',
   'export.disabledByDriver': 'Dieser Treiber erlaubt keinen Datenexport.',
+  'export.resetColumns': 'Auf Standard zurücksetzen',
+  'export.formatDisabledStream':
+    'XLSX benötigt alle Zeilen im Speicher und ist für Streaming-Exporte (gesamte Tabelle / Filterergebnisse) nicht verfügbar.',
+  'export.formatDisabledNoKey':
+    'SQL UPDATE benötigt eine Primärschllüsselspalte für die WHERE-Klausel.',
+  'export.progressRows': '{rows} Zeilen geschrieben…',
+  'export.cancelExport': 'Export abbrechen',
+  'export.cancelling': 'Wird abgebrochen…',
+  'export.cancelledPartialDeleted': 'Export abgebrochen — die unvollständige Datei wurde gelöscht.',
+  'export.cancelledPartialKept':
+    'Export abgebrochen — die unvollständige Datei konnte nicht gelöscht werden; entfernen Sie sie bei Bedarf manuell.',
   'batchExport.title': 'Exportieren',
   'batchExport.selectTables': 'Tabellen auswählen',
   'batchExport.clearAll': 'Alle löschen',

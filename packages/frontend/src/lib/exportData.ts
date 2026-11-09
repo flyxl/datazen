@@ -44,6 +44,18 @@ export function escapeMarkdownCell(value: unknown): string {
   return escapeMarkdownField(value);
 }
 
+/**
+ * The one TSV field escaper (DBR-06: 网格与表级、内存与流式同一规则).
+ * NULL/undefined becomes an empty field; objects are JSON-serialized; a
+ * tab, line break or CR inside a value would corrupt the column layout, so
+ * each is neutralized the way TablePlus does — whitespace, not escape codes.
+ */
+export function escapeTSVField(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  const s = typeof value === 'object' ? JSON.stringify(value) : String(value);
+  return s.replaceAll('\t', ' ').replaceAll('\n', ' ').replaceAll('\r', '');
+}
+
 export function escapeSQLValue(value: unknown, dbType?: string): string {
   return getEscapeSqlValue(dbType)(value);
 }
@@ -132,13 +144,8 @@ export function generateExport(options: ExportOptions): ExportResult {
     }
 
     case 'tsv': {
-      const escapeTSV = (v: unknown) => {
-        if (v === null || v === undefined) return '';
-        const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
-        return s.replaceAll('\t', ' ').replaceAll('\n', ' ').replaceAll('\r', '');
-      };
-      const header = cols.map(escapeTSV).join('\t');
-      const body = dataRows.map((row) => cols.map((col) => escapeTSV(row[col])).join('\t'));
+      const header = cols.map(escapeTSVField).join('\t');
+      const body = dataRows.map((row) => cols.map((col) => escapeTSVField(row[col])).join('\t'));
       return {
         kind: 'text',
         content: [header, ...body].join('\n'),
@@ -245,12 +252,19 @@ export function getDefaultFilename(tableName: string, format: ExportFormat): str
 /**
  * Generate export from array-based data (used by DataTable).
  * Converts column names + 2D row arrays into record format and delegates to generateExport.
+ *
+ * `selectedColumns` (DBR-06) is the subset of `columnNames` to export, in the
+ * caller's display order — defaults to every column. `primaryKeyColumns`
+ * marks those names as primary keys on the fabricated schema so SQL UPDATE
+ * builds its WHERE from the real key instead of silently taking column 0.
  */
 export function generateExportFromArrays(options: {
   columnNames: string[];
   rows: unknown[][];
   selectedRows?: Set<number>;
   scope?: ExportScope;
+  selectedColumns?: string[];
+  primaryKeyColumns?: string[];
   format: ExportFormat;
   tableName?: string;
   databaseType?: string;
@@ -260,6 +274,8 @@ export function generateExportFromArrays(options: {
     rows,
     selectedRows = new Set<number>(),
     scope = 'current_page',
+    selectedColumns = columnNames,
+    primaryKeyColumns = [],
     format,
     tableName = 'data',
     databaseType,
@@ -277,7 +293,7 @@ export function generateExportFromArrays(options: {
     name,
     dataType: 'text',
     nullable: true,
-    isPrimaryKey: false,
+    isPrimaryKey: primaryKeyColumns.includes(name),
     isAutoIncrement: false,
     defaultValue: undefined,
     comment: undefined,
@@ -289,7 +305,7 @@ export function generateExportFromArrays(options: {
     rows: recordRows,
     selectedRows,
     scope,
-    selectedColumns: columnNames,
+    selectedColumns,
     format,
     databaseType,
   });

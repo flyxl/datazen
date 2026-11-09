@@ -2,30 +2,55 @@ import { fileCommands } from '../commands/file';
 import type { ExportFormat, ExportResult, ExportScope } from './exportData';
 import { getDefaultFilename } from './exportData';
 
-/** Formats shared by both connection ExportDialog and DataTable DataExportDialog. */
-export const SHARED_EXPORT_FORMAT_OPTIONS: { value: ExportFormat; label: string }[] = [
-  { value: 'csv', label: 'CSV' },
-  { value: 'json', label: 'JSON' },
-  { value: 'markdown', label: 'Markdown' },
-  { value: 'xlsx', label: 'Excel (XLSX)' },
-  { value: 'sql_insert', label: 'SQL INSERT' },
-];
-
-/** Connection table export (object rows) — includes SQL UPDATE. */
-export const OBJECT_EXPORT_FORMAT_OPTIONS: { value: ExportFormat; label: string }[] = [
-  ...SHARED_EXPORT_FORMAT_OPTIONS,
-  { value: 'sql_update', label: 'SQL UPDATE' },
-];
-
-/** DataTable export (array rows) — includes TSV, no SQL UPDATE. */
-export const ARRAY_EXPORT_FORMAT_OPTIONS: { value: ExportFormat; label: string }[] = [
+/**
+ * The one format list both export dialogs render (DBR-06: 网格与表级导出的
+ * 格式显示统一——此前网格缺 SQL UPDATE、表级缺 TSV，同一张表从两个入口
+ * 导出能选的格式却不同)。 Order matters: it is the display order of both
+ * dialogs' format comboboxes.
+ */
+export const EXPORT_FORMAT_OPTIONS: { value: ExportFormat; label: string }[] = [
   { value: 'csv', label: 'CSV' },
   { value: 'tsv', label: 'TSV' },
   { value: 'json', label: 'JSON' },
   { value: 'markdown', label: 'Markdown' },
   { value: 'xlsx', label: 'Excel (XLSX)' },
   { value: 'sql_insert', label: 'SQL INSERT' },
+  { value: 'sql_update', label: 'SQL UPDATE' },
 ];
+
+export interface ExportFormatOption {
+  value: ExportFormat;
+  label: string;
+  /** Offered but greyed out — the format stays visible with its reason. */
+  disabled?: boolean;
+  /** i18n key of the explanation shown while this format is disabled. */
+  disabledReasonKey?: string;
+}
+
+/**
+ * Format options for the current export range (DBR-06: 格式不支持当前范围时
+ * 禁用并解释原因——不隐藏，被问“为什么没有 XLSX”时才有答案可给)。
+ *
+ * - XLSX needs every row in memory, so the streaming scopes (entire table,
+ *   filter results) keep it disabled with that reason — an explicit, honest
+ *   limitation rather than a fake streaming writer.
+ * - SQL UPDATE needs a key column for its WHERE; without one it is disabled
+ *   rather than silently writing `WHERE <first column> = …`.
+ */
+export function buildExportFormatOptions(opts: {
+  streamingScope: boolean;
+  hasKeyColumn: boolean;
+}): ExportFormatOption[] {
+  return EXPORT_FORMAT_OPTIONS.map((option) => {
+    if (option.value === 'xlsx' && opts.streamingScope) {
+      return { ...option, disabled: true, disabledReasonKey: 'export.formatDisabledStream' };
+    }
+    if (option.value === 'sql_update' && !opts.hasKeyColumn) {
+      return { ...option, disabled: true, disabledReasonKey: 'export.formatDisabledNoKey' };
+    }
+    return { ...option };
+  });
+}
 
 export function buildExportScopeOptions(
   t: (

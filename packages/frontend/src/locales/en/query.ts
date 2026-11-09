@@ -726,6 +726,16 @@ const pack = {
   'export.export': 'Export',
   'export.success': 'Export completed successfully',
   'export.disabledByDriver': 'This driver does not allow exporting data.',
+  'export.resetColumns': 'Reset to Default',
+  'export.formatDisabledStream':
+    'XLSX needs every row in memory, so it is unavailable for streamed exports (entire table / filter results).',
+  'export.formatDisabledNoKey': 'SQL UPDATE needs a primary key column to build its WHERE clause.',
+  'export.progressRows': '{rows} rows written…',
+  'export.cancelExport': 'Cancel Export',
+  'export.cancelling': 'Cancelling…',
+  'export.cancelledPartialDeleted': 'Export cancelled — the partial file was deleted.',
+  'export.cancelledPartialKept':
+    'Export cancelled — the partial file could not be deleted; remove it manually if you do not need it.',
   'batchExport.title': 'Export',
   'batchExport.selectTables': 'Select Tables',
   'batchExport.clearAll': 'Clear All',

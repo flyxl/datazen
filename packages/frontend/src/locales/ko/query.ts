@@ -521,6 +521,16 @@ const pack = {
   'export.export': '내보내다',
   'export.success': '내보내기가 성공적으로 완료되었습니다',
   'export.disabledByDriver': '이 드라이버에서는 데이터 내보내기가 허용되지 않습니다.',
+  'export.resetColumns': '기본값으로 되돌리기',
+  'export.formatDisabledStream':
+    'XLSX는 모든 행을 메모리에 로드해야 하므로 스트리밍 내보내기(전체 테이블/필터 결과)에서는 사용할 수 없습니다.',
+  'export.formatDisabledNoKey': 'SQL UPDATE는 WHERE 절을 만들 기본 키 열이 필요합니다.',
+  'export.progressRows': '{rows}행 기록됨…',
+  'export.cancelExport': '내보내기 취소',
+  'export.cancelling': '취소 중…',
+  'export.cancelledPartialDeleted': '내보내기가 취소되었습니다. 미완료 파일이 삭제되었습니다.',
+  'export.cancelledPartialKept':
+    '내보내기가 취소되었습니다. 미완료 파일을 삭제하지 못했으니 필요 없으면 직접 삭제하세요.',
   'batchExport.title': '내보내기',
   'batchExport.selectTables': '테이블 선택',
   'batchExport.clearAll': '모두 지우기',
