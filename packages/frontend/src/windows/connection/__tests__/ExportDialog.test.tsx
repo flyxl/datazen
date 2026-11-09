@@ -533,3 +533,68 @@ describe('ExportDialog shared column picker (item 1a)', () => {
     expect(exportTablesStream).not.toHaveBeenCalled();
   });
 });
+
+describe('ExportDialog format availability (item 1c)', () => {
+  const COLS_NO_KEY: ColumnSchema[] = [
+    { name: 'id', dataType: 'int', nullable: false, isPrimaryKey: false, isAutoIncrement: false },
+    { name: 'name', dataType: 'text', nullable: true, isPrimaryKey: false, isAutoIncrement: false },
+  ];
+
+  /** Format is the first combobox, scope the last (mock renders both). */
+  function formatSelect(): HTMLSelectElement {
+    return screen.getAllByRole('combobox')[0] as HTMLSelectElement;
+  }
+  function formatOption(value: string): HTMLOptionElement {
+    return Array.from(formatSelect().options).find((o) => o.value === value)!;
+  }
+
+  it('disables SQL UPDATE with its reason when no key column exists', () => {
+    renderDialog({ columns: COLS_NO_KEY });
+    expect(formatOption('sql_update').disabled).toBe(true);
+    expect(formatOption('csv').disabled).toBe(false);
+    expect(formatOption('xlsx').disabled).toBe(false);
+    expect(screen.getByTestId('export-format-disabled-reason')).toHaveTextContent(
+      'export.formatDisabledNoKey',
+    );
+  });
+
+  it('enables SQL UPDATE and shows no reason when a key column exists', () => {
+    renderDialog();
+    expect(formatOption('sql_update').disabled).toBe(false);
+    expect(screen.queryByTestId('export-format-disabled-reason')).not.toBeInTheDocument();
+  });
+
+  it('ignores selecting a disabled format', () => {
+    renderDialog({ columns: COLS_NO_KEY });
+    fireEvent.change(formatSelect(), { target: { value: 'sql_update' } });
+    expect(formatSelect()).toHaveValue('csv');
+  });
+
+  it('falls back to CSV when the key column disappears', () => {
+    const { rerender } = renderDialog();
+    fireEvent.change(formatSelect(), { target: { value: 'sql_update' } });
+    expect(formatSelect()).toHaveValue('sql_update');
+    rerender(
+      <ExportDialog
+        open
+        onClose={vi.fn()}
+        tableName="users"
+        columns={COLS_NO_KEY}
+        rows={[{ id: 1 }, { id: 2 }]}
+        selectedRows={new Set()}
+        dbSessionId="c1"
+      />,
+    );
+    expect(formatSelect()).toHaveValue('csv');
+    expect(screen.getByTestId('export-format-disabled-reason')).toHaveTextContent(
+      'export.formatDisabledNoKey',
+    );
+  });
+
+  it('never disables XLSX for the entire-table scope on desktop', () => {
+    envState.desktop = true;
+    renderDialog({ defaultScope: 'entire_table' });
+    expect(formatOption('xlsx').disabled).toBe(false);
+    expect(screen.queryByTestId('export-format-disabled-reason')).not.toBeInTheDocument();
+  });
+});

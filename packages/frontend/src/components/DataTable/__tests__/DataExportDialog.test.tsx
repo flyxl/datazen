@@ -906,3 +906,80 @@ describe('DataExportDialog column selection (item 1a)', () => {
     expect(screen.getByTestId('export-column-name')).toBeChecked();
   });
 });
+
+describe('DataExportDialog format availability (item 1c)', () => {
+  /** Format is the first `<select>`, scope the second (mock renders both). */
+  function formatSelect(): HTMLSelectElement {
+    return document.querySelectorAll('select')[0] as HTMLSelectElement;
+  }
+  function formatOption(value: string): HTMLOptionElement {
+    return Array.from(formatSelect().options).find((o) => o.value === value)!;
+  }
+
+  function renderDialog(extra: Partial<Parameters<typeof DataExportDialog>[0]> = {}) {
+    return render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dbSessionId="c1"
+        {...extra}
+      />,
+    );
+  }
+
+  it('disables SQL UPDATE with its reason when no key column exists', () => {
+    renderDialog();
+    expect(formatOption('sql_update').disabled).toBe(true);
+    expect(formatOption('csv').disabled).toBe(false);
+    expect(formatOption('xlsx').disabled).toBe(false);
+    expect(screen.getByTestId('export-format-disabled-reason')).toHaveTextContent(
+      'export.formatDisabledNoKey',
+    );
+  });
+
+  it('enables SQL UPDATE and shows no reason when a key column exists', () => {
+    renderDialog({ primaryKeyColumns: ['id'] });
+    expect(formatOption('sql_update').disabled).toBe(false);
+    expect(screen.queryByTestId('export-format-disabled-reason')).not.toBeInTheDocument();
+  });
+
+  it('ignores selecting a disabled format', () => {
+    renderDialog();
+    fireEvent.change(formatSelect(), { target: { value: 'sql_update' } });
+    expect(formatSelect()).toHaveValue('csv');
+  });
+
+  it('falls back to CSV when the key column disappears', () => {
+    const { rerender } = renderDialog({ primaryKeyColumns: ['id'] });
+    fireEvent.change(formatSelect(), { target: { value: 'sql_update' } });
+    expect(formatSelect()).toHaveValue('sql_update');
+    rerender(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dbSessionId="c1"
+      />,
+    );
+    expect(formatSelect()).toHaveValue('csv');
+    expect(screen.getByTestId('export-format-disabled-reason')).toHaveTextContent(
+      'export.formatDisabledNoKey',
+    );
+  });
+
+  it('never disables XLSX for a streaming scope on desktop', () => {
+    envState.desktop = true;
+    renderDialog({
+      primaryKeyColumns: ['id'],
+      totalRows: 100,
+      initialScope: 'entire_table',
+    });
+    expect(formatOption('xlsx').disabled).toBe(false);
+    expect(screen.queryByTestId('export-format-disabled-reason')).not.toBeInTheDocument();
+  });
+});
