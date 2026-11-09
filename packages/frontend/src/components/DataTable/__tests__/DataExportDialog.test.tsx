@@ -36,6 +36,17 @@ vi.mock('../../../platform/blobTablesExporter', async (importOriginal) => {
   return { ...actual, downloadBlob: (...args: unknown[]) => downloadBlobMock(...args) };
 });
 
+// Task 6: `IS_DESKTOP_BUILD` flips through the getter mock (the pattern in
+// `lib/__tests__/dataFetcher.test.ts`). Web is the default here — the
+// provided-scope tests pin the Blob download — and the desktop test below
+// flips it to true for the one Rust-routed entire-table case.
+const envState = vi.hoisted(() => ({ desktop: false }));
+vi.mock('../../../platform/env', () => ({
+  get IS_DESKTOP_BUILD() {
+    return envState.desktop;
+  },
+}));
+
 import { configurePlatform, clearPlatform } from '../../../platform/contracts';
 
 function bindFakeExporter(): void {
@@ -64,6 +75,7 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  envState.desktop = false;
   bindFakeExporter();
   exportTablesStream.mockResolvedValue({ Saved: 2 });
 });
@@ -520,7 +532,8 @@ describe('DataExportDialog without a session (task 4)', () => {
 });
 
 describe('DataExportDialog entire-table scope (item 3b)', () => {
-  it('offers xlsx for entire tables and routes them to Rust as a table source', async () => {
+  it('offers xlsx for entire tables on desktop and routes them to Rust as a table source', async () => {
+    envState.desktop = true;
     const { getByText } = render(
       <DataExportDialog
         open
@@ -573,5 +586,89 @@ describe('DataExportDialog entire-table scope (item 3b)', () => {
     fireEvent.click(getByText('export.export'));
     await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
     expect(queryByText('export.success')).not.toBeInTheDocument();
+  });
+});
+
+describe('DataExportDialog web format supply (task 6, plan §2.8)', () => {
+  /** Format is the first `<select>`, scope the second (mock renders both). */
+  function formatSelect(): HTMLSelectElement {
+    return document.querySelectorAll('select')[0] as HTMLSelectElement;
+  }
+  function scopeSelect(): HTMLSelectElement {
+    return document.querySelectorAll('select')[1] as HTMLSelectElement;
+  }
+  function formatValues(): string[] {
+    return Array.from(formatSelect().options).map((o) => o.value);
+  }
+
+  function renderWebDialog(extra: Partial<Parameters<typeof DataExportDialog>[0]> = {}) {
+    return render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dbSessionId="c1"
+        totalRows={100}
+        {...extra}
+      />,
+    );
+  }
+
+  it('offers every format for the provided current-page scope on web', () => {
+    renderWebDialog();
+    expect(formatValues()).toEqual([
+      'csv',
+      'tsv',
+      'json',
+      'markdown',
+      'xlsx',
+      'sql_insert',
+      'sql_update',
+    ]);
+  });
+
+  it('offers CSV only for the entire-table scope on web', () => {
+    renderWebDialog({ initialScope: 'entire_table' });
+    expect(scopeSelect()).toHaveValue('entire_table');
+    expect(formatValues()).toEqual(['csv']);
+  });
+
+  it('offers CSV only for the filtered scope on web', () => {
+    renderWebDialog({
+      initialScope: 'filtered_table',
+      onBuildFilteredExportSql: vi.fn().mockResolvedValue('SELECT id, name FROM users;'),
+    });
+    expect(scopeSelect()).toHaveValue('filtered_table');
+    expect(formatValues()).toEqual(['csv']);
+  });
+
+  it('resets a non-CSV format to CSV when switching to an entire-table scope on web', () => {
+    renderWebDialog();
+    fireEvent.change(formatSelect(), { target: { value: 'xlsx' } });
+    expect(formatSelect()).toHaveValue('xlsx');
+    fireEvent.change(scopeSelect(), { target: { value: 'entire_table' } });
+    expect(scopeSelect()).toHaveValue('entire_table');
+    expect(formatSelect()).toHaveValue('csv');
+    expect(formatValues()).toEqual(['csv']);
+  });
+
+  it('exports the current page as JSON on web via the frontend formatter', async () => {
+    const { getByText } = renderWebDialog();
+    fireEvent.change(formatSelect(), { target: { value: 'json' } });
+    fireEvent.click(getByText('export.export'));
+
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1));
+    const [contents, fileName, mimeType] = downloadBlobMock.mock.calls[0] as [
+      string,
+      string,
+      string,
+    ];
+    expect(JSON.parse(contents)).toEqual([{ id: 1, name: 'a' }]);
+    expect(fileName).toBe('users.json');
+    expect(mimeType).toBe('application/json');
+    expect(exportTablesStream).not.toHaveBeenCalled();
+    await waitFor(() => expect(getByText('export.success')).toBeInTheDocument());
   });
 });

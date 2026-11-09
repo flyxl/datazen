@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ExportTablesRequest } from '../../commands/file';
+import { buildProvidedExportFilename } from '../../lib/exportFormat';
+import type { ExportDataFormat } from '../../commands/file';
 import {
   buildFilePlans,
   ddlForStructure,
@@ -120,6 +122,29 @@ describe('resolveDdl / ddlForStructure', () => {
   });
 });
 
+describe('buildProvidedExportFilename parity with build_file_plans (task 6)', () => {
+  it.each([
+    'csv',
+    'tsv',
+    'json',
+    'markdown',
+    'sql_insert',
+    'sql_update',
+    'xlsx',
+  ] as const)(
+    'names a provided %s export exactly like the Rust data-only plan ({table}.{ext})',
+    (dataFormat: ExportDataFormat) => {
+      const plans = buildFilePlans(
+        REQUEST({ dataFormat, tables: [{ tableName: 'users', columns: [] }] }),
+      );
+      expect(plans).toHaveLength(1);
+      expect(plans[0]).toMatchObject({ kind: 'data' });
+      expect(plans[0]!.filename).toBe(buildProvidedExportFilename('users', dataFormat));
+      expect(plans[0]!.filename).toBe(`users.${formatExtension(dataFormat)}`);
+    },
+  );
+});
+
 describe('validateTableSource', () => {
   it('accepts table sources and empty sql-free requests', () => {
     expect(() => validateTableSource({ tableName: 'users', columns: [] })).not.toThrow();
@@ -138,8 +163,7 @@ describe('validateTableSource', () => {
     ).toThrow("SQL data source 'users' must not be empty");
   });
 
-  it('rejects provided data without columns, with duplicate columns, or with a short row', () => {
-    expect(() =>
+  it('rejects provided data without columns, with duplicate columns, or with a short row', () => {    expect(() =>
       validateTableSource({
         tableName: 'users',
         columns: [],
@@ -174,6 +198,31 @@ describe('validateTableSource', () => {
         },
       }),
     ).toThrow("provided data source 'users' row 0 has 1 values but the schema has 2 columns");
+  });
+
+  it('is the only provided check: planning funnels malformed provided data through it (task 6)', () => {
+    // The Rust `validate_provided_data` is gone (task 5); `buildFilePlans`
+    // must reject here, with this message, not somewhere downstream.
+    expect(() =>
+      buildFilePlans(
+        REQUEST({
+          tables: [
+            {
+              tableName: 'users',
+              columns: [],
+              source: {
+                type: 'provided',
+                columns: [
+                  { name: 'id', dataType: 'int', nullable: false },
+                  { name: 'id', dataType: 'int', nullable: false },
+                ],
+                rows: [],
+              },
+            },
+          ],
+        }),
+      ),
+    ).toThrow("provided data source 'users' has a duplicate column name 'id'");
   });
 });
 
