@@ -1,6 +1,9 @@
-import { fileCommands } from '../commands/file';
 import { getCachedDDL } from './schemaCache';
 import { getSqlDialect } from './sqlDialects';
+import {
+  exportSingleTableStructureViaRust,
+  type SingleTableStructureExportOptions,
+} from './batchExportJob';
 import type { DatabaseType } from '../types';
 
 export type ExportTableStructureResult = 'saved' | 'cancelled' | 'unsupported';
@@ -10,6 +13,8 @@ export interface ExportTableStructureOptions {
   tableName: string;
   database: string;
   databaseType: DatabaseType;
+  /** Fallback schema for the table (PostgreSQL family). */
+  schema?: string | null;
   /** Injectable for tests */
   getDdl?: (
     dbSessionId: string,
@@ -18,17 +23,21 @@ export interface ExportTableStructureOptions {
     extract: (rows: unknown[][]) => string,
     database: string,
   ) => Promise<string>;
-  saveText?: (
-    contents: string,
-    defaultFileName: string,
-    filterName: string,
-    extensions: string[],
-  ) => Promise<boolean>;
+  /** Injectable for tests; defaults to the Rust batch exporter. */
+  exportStructure?: (
+    options: SingleTableStructureExportOptions,
+  ) => Promise<'saved' | 'cancelled'>;
 }
 
 /**
- * Fetch table DDL and save via native dialog as `{table}.sql`.
- * Returns `unsupported` when the driver has no DDL dialect.
+ * Thin shell over the Rust batch exporter (item 6): fetch the table DDL
+ * with the driver's dialect query, then hand the text to
+ * `exportSingleTableStructureViaRust` (`export_tables_stream`,
+ * `structure_only`), which opens the native save dialog and writes the
+ * file. Returns `unsupported` when the driver has no DDL dialect. The
+ * backend never invents DDL: a blank fetch reaches it as a missing `ddl`
+ * and comes back as the `-- DDL unavailable for {table}` placeholder,
+ * the same content the old direct save wrote.
  */
 export async function exportTableStructureToFile(
   options: ExportTableStructureOptions,
@@ -38,8 +47,9 @@ export async function exportTableStructureToFile(
     tableName,
     database,
     databaseType,
+    schema,
     getDdl = getCachedDDL,
-    saveText = fileCommands.saveTextWithDialog,
+    exportStructure = exportSingleTableStructureViaRust,
   } = options;
 
   const dialect = getSqlDialect(databaseType);
@@ -60,8 +70,12 @@ export async function exportTableStructureToFile(
     database,
   );
 
-  const content = ddl.trim() ? ddl : `-- DDL unavailable for ${tableName}`;
-  const safeName = tableName.replace(/[^\w.-]+/g, '_') || 'table';
-  const saved = await saveText(content, `${safeName}.sql`, 'SQL', ['sql']);
-  return saved ? 'saved' : 'cancelled';
+  return exportStructure({
+    dbSessionId,
+    databaseType,
+    database,
+    schema: schema ?? undefined,
+    tableName,
+    ddl,
+  });
 }

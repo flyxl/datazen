@@ -142,6 +142,77 @@ export async function exportSingleTableViaRust(
 }
 
 /**
+ * Export one table's DDL only through the Rust batch exporter
+ * (`export_tables_stream`, `structure_only` single-table request). This is
+ * the converged path for the old structure-editor DDL export (item 6): the
+ * caller fetches the DDL text first (the backend never invents DDL — a
+ * missing/blank `ddl` falls back to the backend's `-- DDL unavailable …`
+ * placeholder, exactly as the old direct save did), and the backend opens
+ * the native save dialog and writes the file.
+ */
+export interface SingleTableStructureExportOptions {
+  dbSessionId: string;
+  databaseType?: string;
+  /** Database to read from; the session's own database is only a fallback. */
+  database?: string | null;
+  /** Fallback schema for the table (PostgreSQL family). */
+  schema?: string | null;
+  tableName: string;
+  /** DDL text the caller already fetched; blank/missing => backend placeholder. */
+  ddl?: string | null;
+  /**
+   * Injectable for tests; defaults to the bound form's exporter (the same
+   * `export_tables_stream` the batch job uses).
+   */
+  exportTables?: (
+    request: ExportTablesRequest,
+  ) => Promise<{ Saved: number } | { Cancelled: null } | null>;
+}
+
+export async function exportSingleTableStructureViaRust(
+  options: SingleTableStructureExportOptions,
+): Promise<'saved' | 'cancelled'> {
+  const {
+    dbSessionId,
+    databaseType,
+    database,
+    schema,
+    tableName,
+    ddl,
+    exportTables = (request: ExportTablesRequest) =>
+      requireTablesExporter().exportTables(request),
+  } = options;
+
+  if (!dbSessionId) {
+    throw new Error('Missing connection');
+  }
+
+  const request: ExportTablesRequest = {
+    dbSessionId,
+    databaseType: databaseType ?? undefined,
+    database: database ?? undefined,
+    schema: schema ?? undefined,
+    mode: 'structure_only',
+    // The planner never consults the format for `structure_only`; sql_insert
+    // is chosen so the native save dialog offers a `.sql` extension and
+    // default name (the old G save wrote `{table}.sql`).
+    dataFormat: 'sql_insert',
+    outputMode: 'single',
+    tables: [
+      {
+        tableName,
+        schema: schema ?? undefined,
+        columns: [],
+        ddl: ddl ?? undefined,
+      },
+    ],
+  };
+
+  const result = await exportTables(request);
+  return result && 'Saved' in result ? 'saved' : 'cancelled';
+}
+
+/**
  * Map one loaded grid value onto the wire `Value` shape the Rust
  * `Provided` source deserializes (untagged `Value`): null/boolean/number/
  * string pass through (an integer-looking JSON number becomes `Integer`,
