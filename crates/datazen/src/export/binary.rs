@@ -443,6 +443,29 @@ mod tests {
     }
 
     #[test]
+    fn xlsx_i64_min_becomes_string_without_panic_or_precision_loss() {
+        // i64::MIN used to panic in write_cell via n.abs(); it must now
+        // degrade to a string cell, keeping every digit.
+        let dest = temp_xlsx("i64min.xlsx");
+        let mut fmt = XlsxFormatter::new("t", dest.clone());
+        fmt.begin(&[col("n", "int8")]).unwrap();
+        fmt.rows(&[vec![Some(Value::Integer(i64::MIN))]]).unwrap();
+        fmt.rows(&[vec![Some(Value::Integer(-999_999_999_999_999))]])
+            .unwrap();
+        fmt.finish().unwrap();
+        let text = xlsx_cell_text(&dest);
+        assert!(
+            text.contains("-9223372036854775808")
+                && !text.contains("<v>-9223372036854775808</v>"),
+            "i64::MIN stored as string, not a number: {text}"
+        );
+        assert!(
+            text.contains("<v>-999999999999999</v>"),
+            "at-limit negative integer stays numeric: {text}"
+        );
+    }
+
+    #[test]
     fn xlsx_rejects_second_header_and_rows_before_header() {
         let dest = temp_xlsx("order.xlsx");
         let mut fmt = XlsxFormatter::new("t", dest.clone());
