@@ -1,4 +1,4 @@
-//! L4：CSRF 校验（team-server §5 的中间件半边；纯逻辑在 [`crate::csrf`]）。
+//! L4：CSRF 校验（web-server-host §5 的中间件半边；纯逻辑在 [`crate::csrf`]）。
 //!
 //! 适用范围（§5.2）：**cookie 认证的** `POST` / `PUT` / `PATCH` / `DELETE`。
 //! 豁免：
@@ -37,7 +37,7 @@ use crate::http::middleware::{
 };
 use crate::http::response::ApiErrorResponse;
 
-/// 审计动作字面量（team-server §5.3 逐字：`csrf_rejected`）。
+/// 审计动作字面量（web-server-host §5.3 逐字：`csrf_rejected`）。
 pub const AUDIT_ACTION: &str = "csrf_rejected";
 
 /// L4 中间件本体。挂载点：`build_router_with_auth`，L3 之内、L6 之外。

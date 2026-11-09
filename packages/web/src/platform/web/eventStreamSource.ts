@@ -2,7 +2,7 @@
  * Web SSE 事件源（WR-E2）——契约 §6.6 v1.1 的两步订阅流水线：
  *
  * 1. `POST /api/v1/events/subscriptions`（普通 fetch：认证链内 + CSRF 头，
- *    team-server §5.2/§8.1）→ `{ streamId }`——streamId 由服务端 CSPRNG 铸造、
+ *    web-server-host §5.2/§8.1）→ `{ streamId }`——streamId 由服务端 CSPRNG 铸造、
  *    注册表 TTL 内一次性消费，**重连先 POST 再 GET，旧 id 不重放**；
  * 2. `GET /api/v1/events/{streamId}?afterSequence=N`（浏览器原生 `EventSource`）：
  *    同源 cookie 自动携带；自动重连时浏览器自理 `Last-Event-ID` 头（§8.2

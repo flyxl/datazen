@@ -68,6 +68,6 @@ W8 刀3d 点亮 dashboard 域：`crates/datazen-server/src/dashboard/` 四件 + 
 | `grants.rs` | monitor 授权面：authorize / revoke / read，桌面同链校验（ttl 词表、状态闸、工作流形状、只读 SQL AST、目标规范化、冻结事实复验） |
 | `scheduler.rs` | `ServerMonitorHost` + `ServerMonitorScheduler`：定时刷新监控引擎的 server 接线 |
 
-- **契约**（[HTTP API 契约](../platform/http-api-contract.md) §6.15，十五路由）：CRUD 六 + 组件创建三 + 运行历史二 + 手工执行一 + monitor 授权三。
+- **契约**（[HTTP API 契约](../platform/web-http-api.md) §6.15，十五路由）：CRUD 六 + 组件创建三 + 运行历史二 + 手工执行一 + monitor 授权三。
 - **刷新监控引擎双端共享**：共享 `MonitorEngine`（到期判定 / 在途守卫 / arm-not-fire）+ server 接线（授权闸门失败关闭、授权单作用域执行、运行落账）——桌面 `MonitorEngine` 同款语义，两形态各自装配宿主件。
 - **两个 `*_with_dialog` 不进 HTTP**：`export_dashboard_with_dialog` / `import_dashboard_with_dialog` 是桌面对话框语义；浏览器侧导出/导入走产物上传（契约 §6.5 在账端点）与下载。

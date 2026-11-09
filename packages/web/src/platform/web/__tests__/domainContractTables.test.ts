@@ -1,6 +1,6 @@
 /**
  * WR-E2 HTTP 契约表测试（P2b/E2）——表驱动遍历 `httpRoutes.ts` 的整张
- * 分发表（41 条），逐条对照 `docs/architecture/platform/http-api-contract.md`
+ * 分发表（41 条），逐条对照 `docs/architecture/platform/web-http-api.md`
  * §6.1–§6.9 各域表与 §4 总账断言 `createWebBackendTransport().call()` 的
  * wire 行为：
  *

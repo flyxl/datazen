@@ -1,7 +1,7 @@
 //! 受控下载（WR-D7 第四刀）：`readArtifact` 三取法 + 逐请求 ACL + 流式
 //! 分块输出形状。
 //!
-//! 契约位置：http-api-contract §6.5
+//! 契约位置：web-http-api §6.5
 //! `GET /api/v1/artifacts/{id}?metadata=1 | ?chunkIndex= | ?offset=&limit=`
 //! ——三种取法**互斥**（与前端
 //! `packages/web/src/platform/web/httpRoutes.ts::readArtifactQuery` 逐字对齐；
@@ -17,7 +17,7 @@
 //!    越组织读取答「不存在」（CM-05，防 ID 枚举）；主体级授权由 L6 授权
 //!    中间件按策略判定（`policy::PolicyService`），本层不重复实现。
 //! 3. **生命周期可读性**：`revoked` / `expired` 不可读——统一答
-//!    `NotFound`（team-server §11 的有意 404：不存在 / 无权 / 过期三者
+//!    `NotFound`（web-server-host §11 的有意 404：不存在 / 无权 / 过期三者
 //!    不可区分）。handler 直接经 `ApiErrorResponse` 落 404，无特殊分支。
 //! 4. **取法解析**：[`ArtifactReadMode::from_query`] 强制三取法互斥——
 //!    `metadata=1`、`chunkIndex`、`offset+limit` 同时出现即 `InvalidArgument`
@@ -215,7 +215,7 @@ impl DownloadService {
         let metadata = match self.artifacts.describe(ctx, artifact_id.clone()).await {
             Ok(metadata) => metadata,
             Err(PortError::ArtifactExpired) | Err(PortError::NotFound(_)) => {
-                // 有意统一 404（team-server §11）：不存在 / 无权 / 过期不可区分。
+                // 有意统一 404（web-server-host §11）：不存在 / 无权 / 过期不可区分。
                 self.audit_denied(ctx, "artifact_download_rejected", "notFound");
                 return Err(ApiError::new(
                     ApiErrorCode::NotFound,

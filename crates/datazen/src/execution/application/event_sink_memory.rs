@@ -7,7 +7,7 @@
 //!
 //! ## 与 WR-D5 SSE 适配的对接点
 //!
-//! 本模块只做「事件事实的中继」；[team-server-and-auth §8] 的 SSE 语义里，
+//! 本模块只做「事件事实的中继」；[web-server-host §8] 的 SSE 语义里，
 //! 以下职责**全部留在 SSE 适配层**，不在端口内：
 //!
 //! * **Origin 校验 / CSRF 替代 / 登录与 L6 授权**（§8.1）：端口不认识身份，
@@ -23,7 +23,7 @@
 //! * **慢消费者处置**（§8.2「先发 streamResetRequired，再关闭连接」）：迭代器
 //!   终止（返回 `None`）即适配层断流的触发点，见下文。
 //!
-//! [team-server-and-auth §8]: ../../../../docs/architecture/platform/team-server-and-auth.md
+//! [web-server-host §8]: ../../../../docs/architecture/platform/web-server-host.md
 //!
 //! ## 容量与淘汰
 //!

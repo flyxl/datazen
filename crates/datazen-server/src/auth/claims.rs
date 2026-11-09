@@ -1,4 +1,4 @@
-//! id_token claims 校验的**手工收尾段**与 claims → 身份映射（team-server §4.2）。
+//! id_token claims 校验的**手工收尾段**与 claims → 身份映射（web-server-host §4.2）。
 //!
 //! §4.2 校验表由两层闭合：签名 / `iss` / `aud` / `exp` / 时钟偏移交给
 //! `jsonwebtoken` crate（[`super::oidc`] 里构造 `Validation`）；本模块补

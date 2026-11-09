@@ -33,7 +33,7 @@
 //!
 //! 1. 用例本体与服务门面已在 modules（`NamedViewService`），端口（仓储 +
 //!    id minter）可注入，无 runtime/网络依赖；
-//! 2. HTTP 路由形态已由 WR-C2 冻结（http-api-contract §6.9），HTTP 腿不必
+//! 2. HTTP 路由形态已由 WR-C2 冻结（web-http-api §6.9），HTTP 腿不必
 //!    发明端点；桌面侧三条命令是零事件、零窗口参数的最薄壳；
 //! 3. 错误词汇同时覆盖两族——带契约码的规则拒绝（`grid.view.*`）与无码的
 //!    存储失败——跨传输断言两族行为（含 D1：宿主消息不携带用户输入）。

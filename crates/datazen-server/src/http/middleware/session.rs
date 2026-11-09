@@ -1,4 +1,4 @@
-//! L3：会话参数提取（team-server §3.2 的 L3 行）。
+//! L3：会话参数提取（web-server-host §3.2 的 L3 行）。
 //!
 //! 职责（§3.2 原文）：「仅提取句柄与 epoch，**不查询存在性**」。本层不
 //! 访问会话目录、不回答「句柄是否还活着」——存活与 `runtimeEpoch` 校验
@@ -9,7 +9,7 @@
 //! 推迟项，本刀把形状非法的头登记进 [`SessionParams::malformed`]，消费方
 //! （handler）据此拒绝。提取是纯头操作，不消费请求体。
 //!
-//! wire 名是**实现注册名**：team-server §3 只定义了「句柄 + epoch 两个
+//! wire 名是**实现注册名**：web-server-host §3 只定义了「句柄 + epoch 两个
 //! 参数」的职责，未冻结 header 字面名；冻结随 WR-D4 的 handler 契约切片
 //! 一起落（与 CSRF 头的注册方式同款，见 `crate::csrf::CSRF_HEADER`）。
 

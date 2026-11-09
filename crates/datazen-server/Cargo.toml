@@ -2,9 +2,9 @@
 name = "datazen-server"
 version = "0.1.0"
 edition = "2021"
-description = "DataZen team web server host (P7 / web-ready WR-D): the HTTP form of the product. One binary, three subcommands (serve | migrate | check-schema), assembling the shared modules kernel behind the /api/v1 contract (docs/architecture/platform/http-api-contract.md)."
+description = "DataZen team web server host (P7 / web-ready WR-D): the HTTP form of the product. One binary, three subcommands (serve | migrate | check-schema), assembling the shared modules kernel behind the /api/v1 contract (docs/architecture/platform/web-http-api.md)."
 
-# 依赖纪律（team-server-and-auth §2.2；WR-D1 立规、WR-D2 起按域放宽）：
+# 依赖纪律（web-server-host §2.2；WR-D1 立规、WR-D2 起按域放宽）：
 #
 # - `datazen`（modules 内核）：WR-D1 只消费跨边界错误词汇
 #   `shared::error::{ApiError, ApiErrorCode}` 与 `shared::id::RequestId`（IPC 与
@@ -82,7 +82,7 @@ serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 thiserror = { workspace = true }
 # WR-D3 认证授权核心的密码学原语（全部沿用 workspace 根表既有规格，无锁外版本）：
-# - sha2 + hmac：policyIsolationKey（team-server §6.2）与 CSRF 会话绑定签名（§5.1）
+# - sha2 + hmac：policyIsolationKey（web-server-host §6.2）与 CSRF 会话绑定签名（§5.1）
 #   的 HMAC-SHA256；server_secret 只经 config 注入，不落库、不进日志。
 # - base64：双提交令牌与隔离键的 base64url（URL_SAFE_NO_PAD）编码。
 # - rand：CSRF random 分量与后续登录会话 id 铸造的 CSPRNG 字节。

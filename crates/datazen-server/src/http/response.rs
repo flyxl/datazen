@@ -7,7 +7,7 @@
 //!
 //! # 状态码表
 //!
-//! [`status_for`] 落地 team-server §9.2 的映射 + http-api-contract §7 的
+//! [`status_for`] 落地 web-server-host §9.2 的映射 + web-http-api §7 的
 //! 两处裁决：
 //!
 //! - `CapabilityUnsupported` → **405**（`capability` 类：此形态不服务）或
@@ -46,7 +46,7 @@ impl ApiErrorResponse {
     }
 
     /// 显式覆盖状态码。用于 `CapabilityUnsupported` 的 501 类（见模块文档）
-    /// 与 host 层有意降级的场景（如 `ArtifactExpired` → 404，team-server §11）。
+    /// 与 host 层有意降级的场景（如 `ArtifactExpired` → 404，web-server-host §11）。
     pub fn with_status(mut self, status: StatusCode) -> Self {
         self.status_override = Some(status);
         self
@@ -68,7 +68,7 @@ impl IntoResponse for ApiErrorResponse {
     }
 }
 
-/// `ApiErrorCode` → HTTP 状态码（team-server §9.2 + http-api-contract §7）。
+/// `ApiErrorCode` → HTTP 状态码（web-server-host §9.2 + web-http-api §7）。
 pub fn status_for(code: ApiErrorCode) -> StatusCode {
     use ApiErrorCode as C;
     use StatusCode as S;
@@ -102,7 +102,7 @@ pub fn status_for(code: ApiErrorCode) -> StatusCode {
         | C::SessionQuotaExceeded => S::TOO_MANY_REQUESTS,
         // 503 暂不可用（退避重发复用同一 idempotencyKey）
         C::ServiceUnavailable => S::SERVICE_UNAVAILABLE,
-        // 405/501（http-api-contract §7）：默认 405；501 类由调用点 with_status
+        // 405/501（web-http-api §7）：默认 405；501 类由调用点 with_status
         // 显式覆盖——wire 体不携带 kind，状态码是唯一的传输层区分。
         C::CapabilityUnsupported => S::METHOD_NOT_ALLOWED,
         // §9.2 未列行的 code：D1 临时按 409 状态冲突类，WR-D4 逐行确认。

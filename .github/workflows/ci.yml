@@ -537,7 +537,7 @@ jobs:
       - name: Platform crate dependency boundaries
         run: pnpm test:platform-arch
 
-      # server 宿主的依赖闭包门禁（team-server §2.2，WR-D1 随 server crate 一并
+      # server 宿主的依赖闭包门禁（web-server-host §2.2，WR-D1 随 server crate 一并
       # 新增，与上面两条门禁并列）。断的是：datazen-server 的闭包里不得出现任何
       # tauri* / wry / tao / datazen_desktop / 前端 UI runtime——「HTTP 宿主依赖共享
       # 内核、永不依赖桌面宿主或 UI 层」是 server crate 的存在前提。先跑脚本自测

@@ -1,4 +1,4 @@
-//! `tracing` 初始化（team-server §2.3 的 B 步：logging + 脱敏挂载）。
+//! `tracing` 初始化（web-server-host §2.3 的 B 步：logging + 脱敏挂载）。
 //!
 //! # 脱敏契约（D1 记录，WR-D2 开始有消费者）
 //!

@@ -2,7 +2,7 @@
 
 > 状态：P7 团队服务已随 W8（2026-11-06 至 11-09）交付，但服务端管理库首版按 WR-D2 用户裁决落 **SQLite**（`crates/datazen-server/src/storage/`，同一 domain trait、另一适配器；单 `Mutex<Connection>` + `spawn_blocking`，expand-only 迁移链至 V15：V12 jobs、V13 workflows 双表、V14 dashboards、V15 sync 双表）。本文 §3/§5 的 **PostgreSQL** 管理库 DDL 仍是后续生产化切片的目标设计，表结构语义按域 trait 对齐，不代表已实现；§4.1 描述桌面文件与 SQLite 的当前事实，其中 `{appData}/datazen.sqlite` Job 表已在 P5 Core 升为 schema v2，桌面 Monitor grant 元数据在 P6 升为 schema v3。本文其他服务端 PostgreSQL schema/迁移内容不代表已经实现。
 > 读者：负责《分阶段开发计划》P1（抽取共享应用边界与持久化白名单）和 P7（服务端 ProfileRepository / JobRepository / Audit / ArtifactRepository 与 schema migration）的实现者。本文定义**存什么、存在哪、谁来写、怎么迁**；DTO 形状、会话状态机、错误码取值以[连接管理详细设计](connection-management.md)为权威。
-> 配套：[系统概要](system-overview.md)、[连接管理详细设计](connection-management.md)、[共享应用边界与端口详细设计](shared-boundaries-and-ports.md)、[团队 Web 服务详细设计](team-server-and-auth.md)、[分阶段开发计划（已归档）](../../archive/development/platform-development-plan.md)。
+> 配套：[系统概要](system-overview.md)、[连接管理详细设计](connection-management.md)、[共享应用边界与端口详细设计](shared-boundaries-and-ports.md)、[团队 Web 服务详细设计](web-server-host.md)、[分阶段开发计划（已归档）](../../archive/development/platform-development-plan.md)。
 > 现状盘点来源：[持久化存储（现状）](../backend/store.md)、[`crates/datazen-desktop/src/store/`](../../../crates/datazen-desktop/src/store/mod.rs)。这些是**已实现事实**；服务端管理库的现状（W8 SQLite 首版）见头注，本文其余章节中的 PostgreSQL DDL 为目标设计。
 
 ## 1. 文档定位与状态
@@ -12,9 +12,9 @@
 | 可落盘白名单与禁持久化清单 | [连接 §4.4 可落盘来源与运行时绑定](connection-management.md#44-可落盘来源与运行时绑定) 给出原则，本文给出可执行的字段级清单与落库断言 |
 | `DurableExecutionRecord` 的字段集合 | [连接 §4 DTO](connection-management.md#4-dto-与字段定义) 的 `ResultProvenance` / `StatementResultSource` / `ExecutionView` 形状，本文只定义其持久化投影 |
 | 仓储 port 签名 | [共享边界 §4.3 持久化与授权端口](shared-boundaries-and-ports.md#43-持久化与授权端口) |
-| 服务端进程形态、中间件、认证与 CSRF | [团队服务 §3–§9](team-server-and-auth.md#3-请求中间件链) |
-| 登录会话行与授权数据的**表结构** | 字段语义见 [团队服务 §4.3](team-server-and-auth.md#43-服务端登录会话)、[§6.1](team-server-and-auth.md#61-角色与资源-acl)；本文 §3.10 给 DDL / CHECK / 索引 / 保留策略 |
-| 迁移的**运行方式**（何时执行、失败是否启动） | [团队服务 §13 Schema migration 运行方式](team-server-and-auth.md#13-schema-migration-运行方式)；本文定义**版本策略、文件格式、expand/contract 判据与回滚边界** |
+| 服务端进程形态、中间件、认证与 CSRF | [团队服务 §3–§9](web-server-host.md#3-请求中间件链) |
+| 登录会话行与授权数据的**表结构** | 字段语义见 [团队服务 §4.3](web-server-host.md#43-服务端登录会话)、[§6.1](web-server-host.md#61-角色与资源-acl)；本文 §3.10 给 DDL / CHECK / 索引 / 保留策略 |
+| 迁移的**运行方式**（何时执行、失败是否启动） | [团队服务 §13 Schema migration 运行方式](web-server-host.md#13-schema-migration-运行方式)；本文定义**版本策略、文件格式、expand/contract 判据与回滚边界** |
 | 会话、lease、预算的行为契约 | [连接 §6 状态机与并发](connection-management.md#6-状态机与并发)、[§9 连接池、预算与清理](connection-management.md#9-连接池预算与清理) |
 | 阶段交付顺序与门槛 | [开发计划 §5 P1（已归档）](../../archive/development/platform-development-plan.md#5-p1抽取共享应用边界和前端传输契约)、[§11 P7（已归档）](../../archive/development/platform-development-plan.md#11-p7单实例团队-web-服务) |
 
@@ -43,8 +43,8 @@
 | W11 | 结果完整性 | `durable_executions.result_completeness` / `truncation_reason` | `pending` \| `complete` \| `truncated`、截断原因 | [连接 §7.7](connection-management.md#77-结果订阅与放弃消费) |
 | W12 | 额度计数 | `quota_counters` | scope、已用、已预留、限额、窗口 | [概要 §6.4](system-overview.md#64-repositories-与环境-ports) `BudgetCoordinator` |
 | W13 | 审计事件的白名单投影 | `audit_events` | 见 §3.7 | [连接 §16.7 CM-72](connection-management.md#167-补充契约与边界用例) 审计含非敏感能力版本，不含 live handle 与凭据 |
-| W14 | 服务端登录会话行（服务端行，**不是**自包含令牌） | `login_sessions` | `session_id`、`organization_id`/`principal_id`、`auth_time`、`issued_at`/`absolute_expires_at`/`idle_expires_at`、`reauth_required`、`permission_version`、`client_binding`、`token_epoch`、`revoked_at`/`revoke_reason` | 字段语义见 [团队服务 §4.3](team-server-and-auth.md#43-服务端登录会话)；DDL 见 §3.10；**不保存** IdP 令牌副本（F14） |
-| W15 | 授权数据：成员关系 / 固定角色 / 资源 ACL / 组织权限版本 | `memberships` / `acl_entries` / `permission_versions` | `principalId → roleId` 基线、6 个固定角色（以 CHECK 表达，不建表）、逐资源逐 action 的 grant/deny、单调 `permission_version`、IdP `sub` 映射 | [团队服务 §6.1](team-server-and-auth.md#61-角色与资源-acl)、[§6.2](team-server-and-auth.md#62-权限版本与-policyisolationkey)；DDL 见 §3.10 |
+| W14 | 服务端登录会话行（服务端行，**不是**自包含令牌） | `login_sessions` | `session_id`、`organization_id`/`principal_id`、`auth_time`、`issued_at`/`absolute_expires_at`/`idle_expires_at`、`reauth_required`、`permission_version`、`client_binding`、`token_epoch`、`revoked_at`/`revoke_reason` | 字段语义见 [团队服务 §4.3](web-server-host.md#43-服务端登录会话)；DDL 见 §3.10；**不保存** IdP 令牌副本（F14） |
+| W15 | 授权数据：成员关系 / 固定角色 / 资源 ACL / 组织权限版本 | `memberships` / `acl_entries` / `permission_versions` | `principalId → roleId` 基线、6 个固定角色（以 CHECK 表达，不建表）、逐资源逐 action 的 grant/deny、单调 `permission_version`、IdP `sub` 映射 | [团队服务 §6.1](web-server-host.md#61-角色与资源-acl)、[§6.2](web-server-host.md#62-权限版本与-policyisolationkey)；DDL 见 §3.10 |
 
 ### 2.2 禁持久化清单
 
@@ -63,7 +63,7 @@
 | F11 | 用户绝对路径 | 文件选择、备份工具路径 | 改为 artifact/配置引用（[概要 §10](system-overview.md#10-安全和环境差异)） |
 | F12 | `runtimeEpoch` | `SessionView`、内部记录 | **见下方说明** |
 | F13 | schema 缓存内容（表/DDL 查询结果） | [`lib/schemaCache.ts`](../../../packages/frontend/src/lib/schemaCache.ts) 的 `SchemaResourceCache` | 纯内存 TTL 缓存，不落盘 |
-| F14 | IdP `access_token` / `refresh_token` / 原始 `id_token` 及其可重放副本 | 登录会话行 | 只落服务端生成的会话行与 IdP `sub` 映射（§3.10）；需要调用 IdP 后端接口时按需重新交换（[团队服务 §4.3](team-server-and-auth.md#43-服务端登录会话)） |
+| F14 | IdP `access_token` / `refresh_token` / 原始 `id_token` 及其可重放副本 | 登录会话行 | 只落服务端生成的会话行与 IdP `sub` 映射（§3.10）；需要调用 IdP 后端接口时按需重新交换（[团队服务 §4.3](web-server-host.md#43-服务端登录会话)） |
 
 关于 F12：`runtimeEpoch` 是"某次 worker 启动的代号"，既不含秘密也确实是数字，但落盘后极易被误读为"可以接续原绑定"的证明。[连接管理 §4.4](connection-management.md#44-可落盘来源与运行时绑定)（不是本文 §4.4「主密钥与团队秘密」）已明确 `configRevision` / `contextRevision` 不能证明物理资源连续性，`runtimeEpoch` 同理。它只用于 owner 校验（[连接 §13.1](connection-management.md#131-幂等键期限与响应分类)），因此不进入任何表列。
 
@@ -123,7 +123,7 @@ CM-61（[连接 §16.7](connection-management.md#167-补充契约与边界用例
 - 所有表都带 `organization_id`，且**复合主键一律以 `organization_id` 打头**：越组织访问在存储层就是查不到，而不是靠应用层记得加过滤。
 - 时间列统一 `TIMESTAMPTZ`（UTC）。所有 TTL 的**起点**用服务端单调时钟保存（[连接 §6.4](connection-management.md#64-attachment-与超期处理)），`expires_at` 只是最早适用期限的 UTC 投影。
 - v1 **不建** `organizations` / `principals` 主数据表：`organization_id` / `principal_id` 由认证适配器按 `RequestContext` 提供，`memberships` 是主体（principal）在管理库中的唯一登记点；组织开通走部署配置导入，不在运行期自助创建。因此 §3 的 `organization_id` 列没有可指向的组织表外键，越组织隔离由「主键以 `organization_id` 打头」保证，而非外键。
-- 本节只定义**表结构**。`ApiError.code` 的取值全集**不在本文**：[连接 §13](connection-management.md#13-错误重试和事件) 是权威表；[团队服务 §9.2](team-server-and-auth.md#92-apierror--http-映射表) 列出的 `Unauthenticated` / `NotFound` / `PayloadTooLarge` / `QuotaExceeded` / `RateLimited` / `ServiceUnavailable` / `ConfigRevisionMismatch` 这 7 个 code **已由 §13 正式登记**，团队服务 §9.2 只是它们在 HTTP 层的落地映射，不新增也不改写 code 的语义。
+- 本节只定义**表结构**。`ApiError.code` 的取值全集**不在本文**：[连接 §13](connection-management.md#13-错误重试和事件) 是权威表；[团队服务 §9.2](web-server-host.md#92-apierror--http-映射表) 列出的 `Unauthenticated` / `NotFound` / `PayloadTooLarge` / `QuotaExceeded` / `RateLimited` / `ServiceUnavailable` / `ConfigRevisionMismatch` 这 7 个 code **已由 §13 正式登记**，团队服务 §9.2 只是它们在 HTTP 层的落地映射，不新增也不改写 code 的语义。
 
 ### 3.2 表清单
 
@@ -154,7 +154,7 @@ CM-61（[连接 §16.7](connection-management.md#167-补充契约与边界用例
 | `session_tombstone` | `closeSession` 的 tombstone 只在内存保留默认 24 小时（[连接 §13.1](connection-management.md#131-幂等键期限与响应分类)） |
 | `attachment_tokens` | attachment 令牌及其哈希只在 owner 内存；服务端不保存可重放的会话凭据 |
 | `idp_tokens` / `refresh_tokens` | 登录会话行不是 IdP 令牌副本（F14）；需要后端调用时按需重新交换 |
-| `resource_leases` / `pool_state` / `budget_runtime` | 物理占用与运行时额度随进程终止；进程重启后额度从零重新开始是单实例形态下的自洽前提（[团队服务 §10.3](team-server-and-auth.md#103-sessiondirectory-与-budgetcoordinator单实例)） |
+| `resource_leases` / `pool_state` / `budget_runtime` | 物理占用与运行时额度随进程终止；进程重启后额度从零重新开始是单实例形态下的自洽前提（[团队服务 §10.3](web-server-host.md#103-sessiondirectory-与-budgetcoordinator单实例)） |
 | `cursors` / `transactions` | 会话级句柄只存在于内存 actor |
 | `credentials` | 只存 `secret_ref`；`SecretProvider` 在执行节点解析 |
 | `schema_cache` | 元数据缓存是进程内缓存，且旧缓存不得回填（CM-67） |
@@ -195,7 +195,7 @@ CREATE INDEX idx_connections_list
 | `driver_options` | 按 driver schema 分离敏感字段；**敏感部分不落本表**，只写 `secret_ref` |
 | `initial_namespace` | 已按 `CanonicalTarget` 归一化 |
 | `name` | **不建唯一约束**：同组织允许同名 profile，列表按 `(updated_at DESC, connection_id)` 稳定排序，UI 靠 id 区分 |
-| 缺失列 | 服务端另有 `policy_ref`、`policy_ref_revision`、`network_route_ref`、`network_route_revision`（见 §4.3；`policy_ref_revision` 是 [团队服务 §6.2](team-server-and-auth.md#62-权限版本与-policyisolationkey) 的 `policyIsolationKey` 输入之一），P7 首个迁移版本加入 |
+| 缺失列 | 服务端另有 `policy_ref`、`policy_ref_revision`、`network_route_ref`、`network_route_revision`（见 §4.3；`policy_ref_revision` 是 [团队服务 §6.2](web-server-host.md#62-权限版本与-policyisolationkey) 的 `policyIsolationKey` 输入之一），P7 首个迁移版本加入 |
 
 ### 3.4 `durable_executions`
 
@@ -396,7 +396,7 @@ CREATE INDEX idx_audit_time  ON audit_events (organization_id, occurred_at DESC)
 CREATE INDEX idx_audit_target ON audit_events (organization_id, connection_id, occurred_at DESC);
 ```
 
-- **append-only 由权限保证**：应用角色只授予 `INSERT` 与 `SELECT`，不授予 `UPDATE` / `DELETE`（[团队服务 §10.1](team-server-and-auth.md#101-实现矩阵)）。保留期到期后由运维按时间分区整段卸载，不做逐行删除。
+- **append-only 由权限保证**：应用角色只授予 `INSERT` 与 `SELECT`，不授予 `UPDATE` / `DELETE`（[团队服务 §10.1](web-server-host.md#101-实现矩阵)）。保留期到期后由运维按时间分区整段卸载，不做逐行删除。
 - `event_id` 是 `GENERATED ALWAYS AS IDENTITY` 的全局单调序列，仅用于排序与分页；**它不是** `EventEnvelope.sequence`。每条执行事件的 `streamId + sequence` 由 runtime 维护并在 SSE 重放时使用，两者不互相替代。`payload` 只接受 §2.4 列出的白名单键。
 
 ### 3.8 `artifact_metadata` 与 `quota_counters`
@@ -484,7 +484,7 @@ CREATE TABLE schema_migration_history (
 
 ### 3.10 认证与授权表
 
-`login_sessions` / `memberships` / `acl_entries` / `permission_versions` 是 [团队服务 §4.3](team-server-and-auth.md#43-服务端登录会话) 与 [§6.1](team-server-and-auth.md#61-角色与资源-acl) 的落库登记；**本节是它们表结构的权威**（字段语义仍以团队服务为准），DDL、CHECK、索引与保留策略一次给全。四张表都带 `organization_id` 且以它打头（§3.1）。本节 DDL 按**可执行顺序**给出：`memberships` 必须先于 `login_sessions` 建立，因为 `login_sessions` 的复合外键引用 `memberships (organization_id, principal_id)`；PostgreSQL 在建表时即解析外键目标，同一迁移事务内**后建的表不能作为先建表的外键目标**，前置引用会直接报 `relation "memberships" does not exist`，而 §5.5 是 fail-closed，服务因此起不来。§3.3–§3.9 的字面顺序同样已核验：`acl_entries` 与 `permission_versions` 不声明任何外键，其余外键的目标表都出现在引用它的表之前。因此首个迁移文件按 §3.3→§3.10 的文件内顺序自上而下执行即可满足全部外键依赖（§5.1）。
+`login_sessions` / `memberships` / `acl_entries` / `permission_versions` 是 [团队服务 §4.3](web-server-host.md#43-服务端登录会话) 与 [§6.1](web-server-host.md#61-角色与资源-acl) 的落库登记；**本节是它们表结构的权威**（字段语义仍以团队服务为准），DDL、CHECK、索引与保留策略一次给全。四张表都带 `organization_id` 且以它打头（§3.1）。本节 DDL 按**可执行顺序**给出：`memberships` 必须先于 `login_sessions` 建立，因为 `login_sessions` 的复合外键引用 `memberships (organization_id, principal_id)`；PostgreSQL 在建表时即解析外键目标，同一迁移事务内**后建的表不能作为先建表的外键目标**，前置引用会直接报 `relation "memberships" does not exist`，而 §5.5 是 fail-closed，服务因此起不来。§3.3–§3.9 的字面顺序同样已核验：`acl_entries` 与 `permission_versions` 不声明任何外键，其余外键的目标表都出现在引用它的表之前。因此首个迁移文件按 §3.3→§3.10 的文件内顺序自上而下执行即可满足全部外键依赖（§5.1）。
 
 ```sql
 CREATE TABLE memberships (
@@ -535,14 +535,14 @@ CREATE TABLE permission_versions (
 );
 ```
 
-规则与保留策略（`roles` 的处理见下条；字段语义与默认时长一律以[团队服务 §4.3](team-server-and-auth.md#43-服务端登录会话) 为准）：
+规则与保留策略（`roles` 的处理见下条；字段语义与默认时长一律以[团队服务 §4.3](web-server-host.md#43-服务端登录会话) 为准）：
 
-- **没有 `roles` 表**：首版角色是固定集合（[团队服务 §6.1](team-server-and-auth.md#61-角色与资源-acl) 明确不可由管理员自定义），因此用 `ck_membership_role` 的 CHECK 表达；P9 引入自定义角色时再补 `roles` 表与外键。
-- P8 以 expand 迁移增加 `auth_mode/native_secret_hash`；cookie 会话的 hash 为 NULL，native 会话仅存随机 secret 的 HMAC 摘要，不存原值或 IdP token。`native_secret_hash` 编码包含 HMAC keyVersion 与摘要；HMAC 密钥由 SecretProvider 管理，轮换保留至相关会话到期。一次性交接事务和 code 只存短期内存，重启即失效；流程序列见 [团队服务 §4.6](team-server-and-auth.md#46-p8-桌面团队认证与传输目标设计)。
-- `session_id` 是服务端生成的不透明随机值，不是 `dbSessionId`（§2.1 W14）；`login_sessions` 里**没有**任何 IdP 令牌列（F14），需要调用 IdP 后端接口时按需重新交换。`revoke_reason` 四个取值与 [团队服务 §4.5](team-server-and-auth.md#45-登出与会话撤销) 逐字一致；`token_epoch` 只增，用于令已签发的短期令牌立即失效。
-- `absolute_expires_at` / `idle_expires_at` 的默认时长取团队服务（**首版建议值，来自部署配置**），本文不写死；`idle_expires_at` 只由**入站请求**顺延，登录心跳与 SSE `: keepalive` 都不刷新它（[共享边界 §4.5](shared-boundaries-and-ports.md#45-会话目录预算与令牌端口)、[团队服务 §8.3](team-server-and-auth.md#83-心跳与超时)）。
-- `memberships.external_subject` 是 IdP `sub` 在管理库中的**唯一**落库处，只用于登录映射，不进任何 API 响应；成员关系只置 `enabled = FALSE`，不物理删除（撤销要可追溯）。`acl_entries.resource_id` 用空串 `''` 表示**组织级**条目（主键列不能为 NULL），`session` / `execution` / `stream` 的条目只在需要显式 deny 时登记，默认按 owner 继承（[团队服务 §6.1](team-server-and-auth.md#61-角色与资源-acl)）。
-- 撤销必须先移除 grant、写入 deny 或禁用 membership，并在**同一事务**内递增 `permission_versions.permission_version`；版本变化只负责使缓存分区键与 PoolKey 失效，不能代替实际授权变更（[团队服务 §6.3](team-server-and-auth.md#63-撤销传播)）。`permission_versions` 每组织一行、只增不减、**永不删除**；`login_sessions` 的撤销与过期行保留至 `absolute_expires_at` 之后按审计保留期清理，因为删除会话行等价于强制重新登录，**删除永远是安全方向**。
+- **没有 `roles` 表**：首版角色是固定集合（[团队服务 §6.1](web-server-host.md#61-角色与资源-acl) 明确不可由管理员自定义），因此用 `ck_membership_role` 的 CHECK 表达；P9 引入自定义角色时再补 `roles` 表与外键。
+- P8 以 expand 迁移增加 `auth_mode/native_secret_hash`；cookie 会话的 hash 为 NULL，native 会话仅存随机 secret 的 HMAC 摘要，不存原值或 IdP token。`native_secret_hash` 编码包含 HMAC keyVersion 与摘要；HMAC 密钥由 SecretProvider 管理，轮换保留至相关会话到期。一次性交接事务和 code 只存短期内存，重启即失效；流程序列见 [团队服务 §4.6](web-server-host.md#46-p8-桌面团队认证与传输目标设计)。
+- `session_id` 是服务端生成的不透明随机值，不是 `dbSessionId`（§2.1 W14）；`login_sessions` 里**没有**任何 IdP 令牌列（F14），需要调用 IdP 后端接口时按需重新交换。`revoke_reason` 四个取值与 [团队服务 §4.5](web-server-host.md#45-登出与会话撤销) 逐字一致；`token_epoch` 只增，用于令已签发的短期令牌立即失效。
+- `absolute_expires_at` / `idle_expires_at` 的默认时长取团队服务（**首版建议值，来自部署配置**），本文不写死；`idle_expires_at` 只由**入站请求**顺延，登录心跳与 SSE `: keepalive` 都不刷新它（[共享边界 §4.5](shared-boundaries-and-ports.md#45-会话目录预算与令牌端口)、[团队服务 §8.3](web-server-host.md#83-心跳与超时)）。
+- `memberships.external_subject` 是 IdP `sub` 在管理库中的**唯一**落库处，只用于登录映射，不进任何 API 响应；成员关系只置 `enabled = FALSE`，不物理删除（撤销要可追溯）。`acl_entries.resource_id` 用空串 `''` 表示**组织级**条目（主键列不能为 NULL），`session` / `execution` / `stream` 的条目只在需要显式 deny 时登记，默认按 owner 继承（[团队服务 §6.1](web-server-host.md#61-角色与资源-acl)）。
+- 撤销必须先移除 grant、写入 deny 或禁用 membership，并在**同一事务**内递增 `permission_versions.permission_version`；版本变化只负责使缓存分区键与 PoolKey 失效，不能代替实际授权变更（[团队服务 §6.3](web-server-host.md#63-撤销传播)）。`permission_versions` 每组织一行、只增不减、**永不删除**；`login_sessions` 的撤销与过期行保留至 `absolute_expires_at` 之后按审计保留期清理，因为删除会话行等价于强制重新登录，**删除永远是安全方向**。
 
 ### 3.11 `budget_allocations`（P9 目标增量）
 
@@ -684,7 +684,7 @@ v6 删除旧 `nativeToolProbe` job 行（F1 删除 NativeTool 后的防御性 pu
 
 ### 5.2 迁移文件
 
-- 位置：`crates/datazen-server/migrations/`，随二进制内嵌（路径与加载方式见[团队服务 §13](team-server-and-auth.md#13-schema-migration-运行方式)）。
+- 位置：`crates/datazen-server/migrations/`，随二进制内嵌（路径与加载方式见[团队服务 §13](web-server-host.md#13-schema-migration-运行方式)）。
 - 命名：`NNNN_snake_case_name.sql`，四位零填充序号 + 单下划线 + 语义名。序号即执行顺序，`VARCHAR` 字典序与数值序一致（例如 `0001_create_connections.sql`、`0002_add_job_claim_columns.sql`）。
 - 不可变性：**已合入的迁移文件永不修改**。写错了（例如先删字段后发现有问题）就发新版本向前修，不回头改旧文件——否则 `checksum` 校验会拒绝启动。
 - `checksum` = 规范化后文件内容的 SHA-256（统一 LF、去掉 BOM、去掉行尾空白）。`name` 列必须与文件名去掉扩展名后一致，由加载器断言。
@@ -707,7 +707,7 @@ v6 删除旧 `nativeToolProbe` job 行（F1 删除 NativeTool 后的防御性 pu
 
 ### 5.4 触发方式
 
-- `serve` 启动前自动执行（[团队服务 §13](team-server-and-auth.md#13-schema-migration-运行方式)），迁移完成前不接流量，因此不存在"运行中代码遇到缺失列"的中间态。
+- `serve` 启动前自动执行（[团队服务 §13](web-server-host.md#13-schema-migration-运行方式)），迁移完成前不接流量，因此不存在"运行中代码遇到缺失列"的中间态。
 - 另提供显式 `migrate`（执行）与只读 `check-schema`（只比较版本与校验和，不写库），供运维在部署流水线里先跑一次。
 - 桌面本地 SQLite 侧维持现状：`init_schema()` 用 `CREATE TABLE IF NOT EXISTS` 建表（[`store/app_db.rs`](../../../crates/datazen-desktop/src/store/app_db.rs)），`run_migrations()` 按 `has_column` 探测逐版本升级（[`store/history_db/schema.rs`](../../../crates/datazen-desktop/src/store/history_db/schema.rs)）。**本地不需要 expand/contract**，因为本地库与应用同版本发布、且可以整体替换；本文的 expand/contract 规则只约束服务端管理库。
 - 多实例并发启动时用 PostgreSQL advisory lock 串行化迁移；拿不到锁就等待，不并行执行。
@@ -792,8 +792,8 @@ P5/P9 claim 存储：`claim_generation` 在首次认领/接管时原子自增，
 | 所有数据库会话 | 全部失效，客户端重连得到 `SessionLost`，**不是**新句柄 | 物理连接随进程终止；目录不落盘 |
 | 未终结 Job | 转为待核验，按 `job_checkpoints` 核验已提交边界，**不自动重放副作用阶段** | 提交未知不自动重试（[概要 §11 验收 9](system-overview.md#11-系统级验收)） |
 | 未终结幂等记录 | 保持记录，状态转 `outcomeUnknown`；同指纹同摘要仍返回同 receipt | CM-70 |
-| attachment 令牌 | 全部失效；同 principal 无令牌重附着拒绝（[连接 §16.7 CM-63](connection-management.md#167-补充契约与边界用例)） | 仅 `openSession` / 上下文替换的完整指纹与 `attachmentToken` 绑定 owner `runtimeEpoch`：owner 丢失时即使令牌未过期也返回 `SessionLost`，**不在新 owner 当作首次请求重建**（[团队服务 §10.4](team-server-and-auth.md#104-幂等回执存储)）。其余 attachment 路径的 TTL、detach 与竞态按 [连接 §6.4](connection-management.md#64-attachment-与超期处理) 判定，不受本行的 `runtimeEpoch` 绑定要求约束 |
-| 会话目录、pool 元数据、运行时预算 | 从零开始 | 单实例自洽前提（[团队服务 §10.3](team-server-and-auth.md#103-sessiondirectory-与-budgetcoordinator单实例)） |
+| attachment 令牌 | 全部失效；同 principal 无令牌重附着拒绝（[连接 §16.7 CM-63](connection-management.md#167-补充契约与边界用例)） | 仅 `openSession` / 上下文替换的完整指纹与 `attachmentToken` 绑定 owner `runtimeEpoch`：owner 丢失时即使令牌未过期也返回 `SessionLost`，**不在新 owner 当作首次请求重建**（[团队服务 §10.4](web-server-host.md#104-幂等回执存储)）。其余 attachment 路径的 TTL、detach 与竞态按 [连接 §6.4](connection-management.md#64-attachment-与超期处理) 判定，不受本行的 `runtimeEpoch` 绑定要求约束 |
+| 会话目录、pool 元数据、运行时预算 | 从零开始 | 单实例自洽前提（[团队服务 §10.3](web-server-host.md#103-sessiondirectory-与-budgetcoordinator单实例)） |
 | `close` tombstone | 丢失；恢复后对已关闭会话返回 `SessionLost` 而非重建 | tombstone 只在内存保留 |
 
 恢复后必须跑一次**对账**：把 `artifact_metadata` 的 `content_digest` 与对象存储/受控目录中的实际字节比对。校验不通过的产物标记为不可用，**不返回半份数据**；`deleted_at` 已置但字节仍在的，只做标记不删除（删除由 §8.2 的清理任务负责）。
@@ -802,7 +802,7 @@ P5/P9 claim 存储：`claim_generation` 在首次认领/接管时原子自增，
 
 不能声称"恢复备份后活动数据库会话可恢复"——开发计划的发布门槛原文即"管理员能恢复服务元数据，活动数据库会话不声称可恢复"（[开发计划 §11 P7](../../archive/development/platform-development-plan.md#11-p7单实例团队-web-服务)）；不能声称 schema 回退能撤销已经发生的外部数据库写入（回退只回退服务端镜像）；不能声称恢复过程会"继续"任何未完成任务（恢复后进入核验态）；不能声称查询历史是隐私安全的——`history.sqlite` 明文存 SQL 与错误信息是既定事实（[持久化存储 §1.3](../backend/store.md#13-查询历史明文)），备份必须按敏感审计日志对待。
 
-本文也不规定 RPO / RTO 数值，这属于部署文档（[团队服务 §14](team-server-and-auth.md#14-部署形态)）与组织自身策略。
+本文也不规定 RPO / RTO 数值，这属于部署文档（[团队服务 §14](web-server-host.md#14-部署形态)）与组织自身策略。
 
 ## 8. 事件与产物保留策略
 
@@ -811,7 +811,7 @@ P5/P9 claim 存储：`claim_generation` 在首次认领/接管时原子自增，
 | 机制 | 规则 |
 | --- | --- |
 | 事件序号 | 每条事件带 `streamId` + `sequence`；`sequence` 是 `BIGINT`，序列化为十进制字符串，**不得**经 JS `Number`（[连接 §13](connection-management.md#13-错误重试和事件)） |
-| 重放 | 断线重连带 `Last-Event-ID` 从**内存环形缓冲**重放（[团队服务 §8.2](team-server-and-auth.md#82-last-event-id-回放)）；缓冲过期则客户端取快照 |
+| 重放 | 断线重连带 `Last-Event-ID` 从**内存环形缓冲**重放（[团队服务 §8.2](web-server-host.md#82-last-event-id-回放)）；缓冲过期则客户端取快照 |
 | 缺口与重复 | 缺口触发重读，重复事件忽略；`streamResetRequired` 后不再积压 |
 | 队列上限 | 每订阅 256 条 / 1 MiB，先触及任一上限即停止订阅并发 `streamResetRequired`（[连接 §7.7](connection-management.md#77-结果订阅与放弃消费)） |
 | 归档 | 事件**不整体落库**。只按 §2.4 把白名单投影写入 `audit_events`；SSE 终态可从 repository 重建 |
@@ -861,20 +861,20 @@ P5 Job 引用的计划/输入 Artifact 另有保留锁：接受 Job 与建立引
 
 ## 9. 验收映射
 
-用例编号与标题逐字取自 [连接 §16.7](connection-management.md#167-补充契约与边界用例)（含括号里的层标记，**不改写标题**）；「首次落地阶段」取自[开发计划 §17：补充契约的阶段归属](../../archive/development/platform-development-plan.md#17-补充契约的阶段归属)，该表未单列的用例按计划中首次列出它的阶段门槛标注。本表只列**本文负责的那一层**：标 P7/P8 的行是本文为 W1 断言提供的落点，标更早阶段的行是本文为那些阶段提供的 schema / 列语义落点；两者都不得据此把整条用例计入 P7/P8 门槛——P7/P8 承接的补充契约以[开发计划 §17](../../archive/development/platform-development-plan.md#17-补充契约的阶段归属) 的 P7/P8 行为准（当前为 CM-59、CM-63、CM-68、CM-70、CM-72 的 W1 断言），P7 的其余门槛见[开发计划 §11 P7](../../archive/development/platform-development-plan.md#11-p7单实例团队-web-服务)，服务端侧的逐条落点在[团队服务 §16](team-server-and-auth.md#16-验收映射)。
+用例编号与标题逐字取自 [连接 §16.7](connection-management.md#167-补充契约与边界用例)（含括号里的层标记，**不改写标题**）；「首次落地阶段」取自[开发计划 §17：补充契约的阶段归属](../../archive/development/platform-development-plan.md#17-补充契约的阶段归属)，该表未单列的用例按计划中首次列出它的阶段门槛标注。本表只列**本文负责的那一层**：标 P7/P8 的行是本文为 W1 断言提供的落点，标更早阶段的行是本文为那些阶段提供的 schema / 列语义落点；两者都不得据此把整条用例计入 P7/P8 门槛——P7/P8 承接的补充契约以[开发计划 §17](../../archive/development/platform-development-plan.md#17-补充契约的阶段归属) 的 P7/P8 行为准（当前为 CM-59、CM-63、CM-68、CM-70、CM-72 的 W1 断言），P7 的其余门槛见[开发计划 §11 P7](../../archive/development/platform-development-plan.md#11-p7单实例团队-web-服务)，服务端侧的逐条落点在[团队服务 §16](web-server-host.md#16-验收映射)。
 
 | ①用例（[连接 §16.7](connection-management.md#167-补充契约与边界用例) 原标题） | ②首次落地阶段 | ③本文负责的层与断言落点 |
 | --- | --- | --- |
 | CM-05 跨用户/组织资源访问（H/W） | P1（[开发计划 §5 P1](../../archive/development/platform-development-plan.md#5-p1抽取共享应用边界和前端传输契约) 门槛含 CM-01、03～07）；本文的 schema 断言随 P7 首批迁移落地 | **schema 层**：§3.1、§3.2 —— 全部主键以 `organization_id` 打头；跨组织查询在存储层查不到 |
 | CM-06 前端伪造 owner（H/W） | P1（同上）；schema 断言随 P7 | **schema 层**：§3.3、§3.4、§4.3 —— `owner_principal_id` / `client_instance_id` 由服务端按 `RequestContext` 填充，不接受客户端自报；`organizationId` 不是连接配置属性 |
 | CM-07 目标缺失与冲突（H/D） | P0（[开发计划 §4 P0](../../archive/development/platform-development-plan.md#4-p0现状基线与契约测试夹具) 门槛含 CM-01、04、07）与 P1 | **schema 层**：§2.3 规则三、§3.3、§4.2 —— `requested_target` / `initial_namespace` 落库前归一化；不存在层级非 null、required null 在执行前拒绝 |
-| CM-59 登出/权限撤销/CSRF（W） | P7/P8（§17：CM-59 的 W1 断言；[开发计划 §11 P7](../../archive/development/platform-development-plan.md#11-p7单实例团队-web-服务) 门槛中的组织隔离与单实例认证部分） | **schema 层**：§2.1 W14/W15、§3.10、§4.3 —— 登录会话行、成员关系、固定角色与 ACL 可落库（字段语义见 [团队服务 §4.3](team-server-and-auth.md#43-服务端登录会话)、[§6.1](team-server-and-auth.md#61-角色与资源-acl)、[§6.3](team-server-and-auth.md#63-撤销传播)，`external_subject` 是 IdP `sub` 唯一落库处）；IdP 令牌副本与 attachment 令牌不落库；撤权将实际授权变更与 `permission_version` 递增同事务提交，提交后使缓存与池键失效；删除会话行等价于强制重新登录。CSRF 拒绝与订阅/排队的时机本身不在本文 |
+| CM-59 登出/权限撤销/CSRF（W） | P7/P8（§17：CM-59 的 W1 断言；[开发计划 §11 P7](../../archive/development/platform-development-plan.md#11-p7单实例团队-web-服务) 门槛中的组织隔离与单实例认证部分） | **schema 层**：§2.1 W14/W15、§3.10、§4.3 —— 登录会话行、成员关系、固定角色与 ACL 可落库（字段语义见 [团队服务 §4.3](web-server-host.md#43-服务端登录会话)、[§6.1](web-server-host.md#61-角色与资源-acl)、[§6.3](web-server-host.md#63-撤销传播)，`external_subject` 是 IdP `sub` 唯一落库处）；IdP 令牌副本与 attachment 令牌不落库；撤权将实际授权变更与 `permission_version` 递增同事务提交，提交后使缓存与池键失效；删除会话行等价于强制重新登录。CSRF 拒绝与订阅/排队的时机本身不在本文 |
 | CM-61 持久化白名单与临时结果恢复（H/F） | P0/P1（§17：类型与 schema 断言）；P3 的 H、P4 的 F 不在本文 | **schema / 落库断言层**：§2.1、§2.2、§2.5、§3.4、§6.1、§6.2、§8.3 —— 落盘结构无 `dbSessionId`/`SessionHandle`/`resourceBindingId`/lease/cancel 句柄（§2.5 三条断言）；普通表可重新授权后写、临时结果只读、同配置新 session 不能接替原绑定 |
 | CM-62 命名空间规范化矩阵（H/D） | P0/P1（§17：类型与 schema 断言）；P2 的 D 断言不在本文 | **schema 层**：§2.3 规则三、§3.3、§4.2 —— 缓存、权限、driver 与落库使用同一 `CanonicalTarget`；无文件路径误用 |
-| CM-63 Attachment、TTL 与竞态（H/F/W1） | P3（§17：CM-61～74 的 H 断言）；**P7/P8（§17：W1 断言）** | **W1 层**：§2.2 F8、§3.2「不存在的表」、§3.5 不落盘行、§7.2 attachment 行 —— `attachmentToken` 与哈希不落盘；恢复后全部失效、同 principal 无令牌重附着拒绝；仅 `openSession` / 上下文替换的指纹与令牌绑定 owner `runtimeEpoch`（[团队服务 §10.4](team-server-and-auth.md#104-幂等回执存储)），TTL 与竞态取值以 [连接 §6.4](connection-management.md#64-attachment-与超期处理) 为准 |
+| CM-63 Attachment、TTL 与竞态（H/F/W1） | P3（§17：CM-61～74 的 H 断言）；**P7/P8（§17：W1 断言）** | **W1 层**：§2.2 F8、§3.2「不存在的表」、§3.5 不落盘行、§7.2 attachment 行 —— `attachmentToken` 与哈希不落盘；恢复后全部失效、同 principal 无令牌重附着拒绝；仅 `openSession` / 上下文替换的指纹与令牌绑定 owner `runtimeEpoch`（[团队服务 §10.4](web-server-host.md#104-幂等回执存储)），TTL 与竞态取值以 [连接 §6.4](connection-management.md#64-attachment-与超期处理) 为准 |
 | CM-64 无消费者、截断与有界 drain（H/D/F） | P2（§17：D 断言）；P3 的 H、P4 的 F 不在本文 | **schema 层**：§8.2、§8.3 —— 缓冲与产物有界、截断可见且原因落库 |
 | CM-67 PoolKey 版本和多 database（H/D） | P2（§17：D 断言）；P3 的 H、P5/P6 的任务断言不在本文 | **schema 层**：§2.2 F13、§4.3、§7.2、§8.1 —— 旧缓存不回填、撤权即时生效（缓存与 `policyIsolationKey` 不落盘）；恢复后会话显式失效 |
-| CM-68 候选替换发布与响应丢失（H/W1/WN） | P3（§17：CM-61～74 的 H 断言）；**P7/P8（§17：W1 断言）**；P9 的 WN 断言不在本文 | **W1 层（持久化投影侧）**：§3.5 落库时点与 `uq_idempotency_live_subject`、§6.3 profile CAS、§7.2 未终结幂等记录行 —— 接受记录在 SQL / Job 派发前提交；同 key 同摘要返回同 receipt；一次执行至多被一个未终结记录引用。候选 `prepared` 不可路由与提交原子性属 [团队服务 §10.3](team-server-and-auth.md#103-sessiondirectory-与-budgetcoordinator单实例)，不在本文 |
+| CM-68 候选替换发布与响应丢失（H/W1/WN） | P3（§17：CM-61～74 的 H 断言）；**P7/P8（§17：W1 断言）**；P9 的 WN 断言不在本文 | **W1 层（持久化投影侧）**：§3.5 落库时点与 `uq_idempotency_live_subject`、§6.3 profile CAS、§7.2 未终结幂等记录行 —— 接受记录在 SQL / Job 派发前提交；同 key 同摘要返回同 receipt；一次执行至多被一个未终结记录引用。候选 `prepared` 不可路由与提交原子性属 [团队服务 §10.3](web-server-host.md#103-sessiondirectory-与-budgetcoordinator单实例)，不在本文 |
 | CM-70 过期幂等键与记录删除（H/W1） | P3（§17：H 断言）；**P7/P8（§17：W1 断言）** | **W1 层**：§3.5、§6.2、§6.3、§7.2 —— 过期和删除后均不再执行；同 receipt、不同输入冲突；owner 重启后旧令牌 `SessionLost`；运行时 receipt / token 不落盘 |
 | CM-72 错误、控制回执与能力审计（H/F/W1） | P0/P1（§17：类型与 schema 断言）；P4 的 F 不在本文；**P7/P8（§17：W1 断言）** | **schema / W1 层**：§2.4、§3.4、§3.7 —— 审计包含非敏感能力版本（W4），不含 live handle 与凭据（F2/F10）；`effect_outcome` 与 `state` / `result_completeness` 是各自独立的列，不被"请求成功"覆盖 |
 
@@ -882,10 +882,10 @@ P5 Job 引用的计划/输入 Artifact 另有保留锁：接受 Job 与建立引
 
 - **不重复定义 DTO 与错误码取值**。`DurableExecutionRecord` 的语义来自 [连接 §4](connection-management.md#4-dto-与字段定义) 与 [§4.4](connection-management.md#44-可落盘来源与运行时绑定)，错误码取值全集见 [连接 §4](connection-management.md#4-dto-与字段定义) 与 [§13](connection-management.md#13-错误重试和事件)；本文只定义持久化投影、列映射与表结构。
 - **不重复定义端口**。`ProfileRepository` / `JobRepository` / `SecretProvider` / `ArtifactRepository` / `BudgetCoordinator` 的方法签名以 [共享边界 §4.3](shared-boundaries-and-ports.md#43-持久化与授权端口) 与 [§4.6](shared-boundaries-and-ports.md#46-结果与事件端口) 为准，本文只给服务端实现落到哪张表。
-- **不重复定义迁移运行方式**。何时执行、失败是否启动、是否与回退镜像配合由 [团队服务 §13](team-server-and-auth.md#13-schema-migration-运行方式) 定义；本文给版本策略、文件格式、expand/contract 判据与回滚边界，二者必须一致读。
+- **不重复定义迁移运行方式**。何时执行、失败是否启动、是否与回退镜像配合由 [团队服务 §13](web-server-host.md#13-schema-migration-运行方式) 定义；本文给版本策略、文件格式、expand/contract 判据与回滚边界，二者必须一致读。
 - **沿用仓库已有先例**：`schema_migrations` / `schema_version` 版本表、`has_column` 探测式升级、legacy JSON 的 rename-aside 导入、`SyncTask` 的 `skip_serializing` 会话 id、收藏迁移的归档表护栏、`migration_run_history` 的禁列名断言。本文是把这些做法推广到服务端管理库，不是发明新机制。
 - **扩展 [持久化存储（现状）](../backend/store.md)**：那份文档描述已实现的桌面本地存储，本地加密文件格式与主密钥后端细节也在那里与 [`store/key_store.rs`](../../../crates/datazen-desktop/src/store/key_store.rs)；本文描述目标的服务端管理库与两者的映射，两者对同一主题的不同层次不构成冲突。
 - **扩写 [概要 §5 统一领域对象](system-overview.md#5-统一领域对象)** 的"持久化：是/否"列：本文把"是"展开成具体表与列，把"否"展开成禁持久化清单与断言；并补齐 [开发计划](../../archive/development/platform-development-plan.md) P1 与 P7 的交付项——P1 的"所有持久化路径排除运行时句柄"由 §2.2 + §2.5 落地，P7 的"ProfileRepository / JobRepository / Audit / ArtifactRepository 的服务端实现和 schema migration"由 §3、§5、§6 落地。
-- **本文不覆盖**：会话、lease、预算的**行为算法**（[连接 §6](connection-management.md#6-状态机与并发) 与 [§9](connection-management.md#9-连接池预算与清理)）；服务端进程形态、中间件链、OIDC、CSRF、404 不可见策略与 SSE 实现细节（[团队服务 §3–§9](team-server-and-auth.md#3-请求中间件链)）；Artifact 字节存储与出站网络策略的具体实现（[团队服务 §11](team-server-and-auth.md#11-artifactrepository-服务端实现)、[§12](team-server-and-auth.md#12-出站网络策略)）；包边界、依赖护栏与 CI 门禁（[共享边界 §2](shared-boundaries-and-ports.md#2-包边界与依赖矩阵)、[§8](shared-boundaries-and-ports.md#8-依赖护栏与-ci-门禁)）；fake resource、故障注入与基准 harness（[P0 夹具详细设计](fake-runtime-fixtures.md)）。
+- **本文不覆盖**：会话、lease、预算的**行为算法**（[连接 §6](connection-management.md#6-状态机与并发) 与 [§9](connection-management.md#9-连接池预算与清理)）；服务端进程形态、中间件链、OIDC、CSRF、404 不可见策略与 SSE 实现细节（[团队服务 §3–§9](web-server-host.md#3-请求中间件链)）；Artifact 字节存储与出站网络策略的具体实现（[团队服务 §11](web-server-host.md#11-artifactrepository-服务端实现)、[§12](web-server-host.md#12-出站网络策略)）；包边界、依赖护栏与 CI 门禁（[共享边界 §2](shared-boundaries-and-ports.md#2-包边界与依赖矩阵)、[§8](shared-boundaries-and-ports.md#8-依赖护栏与-ci-门禁)）；fake resource、故障注入与基准 harness（[P0 夹具详细设计](fake-runtime-fixtures.md)）。
 - **产物 TTL 的具体时长**、RPO / RTO 数值、组织级留存策略：权威文档未给出默认值，本文显式不写死常量，交由部署配置与运维策略决定。
 - 任何把 `dbSessionId` 恢复到磁盘、或让恢复出来的记录继续代表物理资源的方案。本文对此的立场是不可协商：落盘的是事实与来源，不是继续执行的资格。

@@ -31,7 +31,7 @@
 | `packages/backend-client` | **已实现**，TS 包，**不是** Cargo 成员，接线三处已补齐（§2.5） |
 | `crates/datazen`（ID / DTO 统一口径） | ID / DTO 类型已统一到内核 crate 内（`shared` / `application::dto`）；runtime 侧同名旧类型仍在去重中（见 §2.6「待办：runtime 去重」） |
 | `packages/kernel` | ~~已退役（D8，2026-10-26）~~：Job、预算、SQL 安全门、Schema 缓存、驱动登记表已归内核 crate（`crates/datazen/`；SQL 门在 `crates/datazen/src/execution/domain/sql_guard/`）；旧 kernel crate 与 workspace 成员已删除 |
-| `crates/datazen-server/` | **已落地（W8，2026-11）**：axum HTTP 宿主，`/healthz` `/readyz` + `/api/v1` 十五域全亮（112 域客户端方法 / 108 路由，契约 v1.10.1）；详见[团队服务与认证](team-server-and-auth.md)与 [HTTP API 契约](http-api-contract.md) |
+| `crates/datazen-server/` | **已落地（W8，2026-11）**：axum HTTP 宿主，`/healthz` `/readyz` + `/api/v1` 十五域全亮（112 域客户端方法 / 108 路由，契约 v1.10.1）；详见[团队服务与认证](web-server-host.md)与 [HTTP API 契约](web-http-api.md) |
 
 闭包约束以单一 `datazen`（`crates/datazen/`）为主体实测：normal + build 依赖闭包不含 `tauri*`、不含宿主 crate `datazen-desktop`、不含 `axum`/`actix-web`/`warp`/`tonic`（`cargo metadata --format-version 1` 解析 `resolve.nodes` 闭包，见 F-02 / F-03；实测输出 `ok F-02: datazen`、`ok F-03: datazen`，见 §8.3）。
 
@@ -529,7 +529,7 @@ pub trait ProfileRepository: Send + Sync + 'static {
         -> Result<Option<ProfileRecord>, PortError>;
     async fn create(&self, ctx: &RequestContext, draft: ProfileDraft, idem: &IdempotencyKey)
         -> Result<ProfileRecord, PortError>;
-    /// 按 expectedRevision 保存：版本不匹配返回 CasConflict，端口只承诺这一取值；它落到哪个 ApiError.code 由 server host 决定：[连接 §13](connection-management.md#13-错误重试和事件) code 表里的 TargetConflict 指命名空间**目标**冲突，与 CAS 失败无关；configRevision CAS 失败由 server host（[团队服务 §9.2](team-server-and-auth.md#92-apierror--http-映射表)）映射 409 ConfigRevisionMismatch，该 code 已由 §13 正式登记（触发列即本方法的 expectedRevision CAS 失败）。
+    /// 按 expectedRevision 保存：版本不匹配返回 CasConflict，端口只承诺这一取值；它落到哪个 ApiError.code 由 server host 决定：[连接 §13](connection-management.md#13-错误重试和事件) code 表里的 TargetConflict 指命名空间**目标**冲突，与 CAS 失败无关；configRevision CAS 失败由 server host（[团队服务 §9.2](web-server-host.md#92-apierror--http-映射表)）映射 409 ConfigRevisionMismatch，该 code 已由 §13 正式登记（触发列即本方法的 expectedRevision CAS 失败）。
     async fn compare_and_set(&self, ctx: &RequestContext, connection_id: ConnectionId,
         expected: ConfigRevision, patch: ProfilePatch) -> Result<ProfileRecord, PortError>;
     /// 禁用后不再出现在默认列表；物理会话按[连接 §7.5](connection-management.md#75-closesession)关闭，不由本端口触发。
@@ -747,7 +747,7 @@ pub trait NetworkProvider: Send + Sync + 'static {
 `datazen_ai_providers::http::HttpClient` 和可注入 `EgressPolicy`，详见 [AI HTTP 出站边界](../backend/ai.md#ai-http-出站边界)。
 默认仅允许公网，桌面宿主显式选择支持私网与环境代理的策略；服务端形态已随 W8 落地，但其 AI 供应商注册表按既定 fail-closed 裁决缺位，服务端侧的出网策略适配仍是后续切片。
 
-`SecretProvider` 只认 `SecretRef`，不认 `connectionId`；`connectionId` → `SecretRef` 的映射由 `ProfileRecord` 持有（[连接 §4.1](connection-management.md#41-服务接口与补充响应) 的内部 `ConnectionProfile` 同列 `connectionId` 与 `secretRef`）。因此[团队服务 §10.2 `SecretProvider`](team-server-and-auth.md#102-secretprovider) 的「按 `connectionId` + `credentialRevision` 解析执行身份」在端口层拆成三步：`ProfileRepository::get` 由 `connectionId` 取 `secretRef` 与 `configRevision`，`SecretProvider::resolve(ctx, secret_ref, purpose)` 配 `revision(secret_ref)` 取材料与 `CredentialRevision`，执行身份本身由 `IdentityResolver::resolve` 产出（§4.3）。
+`SecretProvider` 只认 `SecretRef`，不认 `connectionId`；`connectionId` → `SecretRef` 的映射由 `ProfileRecord` 持有（[连接 §4.1](connection-management.md#41-服务接口与补充响应) 的内部 `ConnectionProfile` 同列 `connectionId` 与 `secretRef`）。因此[团队服务 §10.2 `SecretProvider`](web-server-host.md#102-secretprovider) 的「按 `connectionId` + `credentialRevision` 解析执行身份」在端口层拆成三步：`ProfileRepository::get` 由 `connectionId` 取 `secretRef` 与 `configRevision`，`SecretProvider::resolve(ctx, secret_ref, purpose)` 配 `revision(secret_ref)` 取材料与 `CredentialRevision`，执行身份本身由 `IdentityResolver::resolve` 产出（§4.3）。
 
 **本节的窄端口**（签名见 §4.10）：`MasterKeyProvider`（**主密钥保管**——主密钥是密钥保管职责而非数据存储职责，因此**不属** `DesktopRepository`；端口只暴露「取主密钥 / 派生子密钥」，材料不可序列化）与 `ExecutionSettingsReader`（**执行期设置项的只读投影**——只给 `safe_mode` 与结果集上限两项，不给 MCP / AI / 驱动私有设置与用户偏好）。后者与 `SettingsRepository`、以及内核 crate 层的 `DatabaseToolHost::execution_settings()` 是**同一份事实的多种取用宽度**，不是多份重复实现；收敛方向是让后两者改为经本端口取。
 
@@ -854,7 +854,7 @@ P3 目标修订：Artifact 生命周期为 `writing → complete | truncated`，
 
 finalize 固化块数、完整性和截断原因；正常完成记 complete，取消/失败/消费超限走显式 abort/截断终结并清理未发布字节。受控导出仅允许 complete，truncated 需用户明确确认并保留截断标记。进程异常退出的 writer 由恢复扫描标记 truncated，不宣称完整；无人引用且未发布的上传按 TTL 清理。目标端口补 describe/abort，现有实现签名在 P3 同步修订。ArtifactMetadata 含 artifactId、lifecycle、publishedChunkCount、publishedByteSize、totalChunks、resultCompleteness、truncationReason；Counter 使用十进制字符串，writing 时 totalChunks 为 null。BackendClient 增加 getArtifactMetadata，HTTP 使用 GET artifacts/{id}?metadata=1，与 chunkIndex/offset 参数互斥；每次查询先授权。上传重传是单独协议：相同 index 只允许相同摘要，不同字节拒绝，不能覆盖已发布查询结果。
 
-`PortError::ArtifactExpired` 是端口层取值，**HTTP 状态码映射由 server host 决定**，不构成端口契约：team-server 出于防 ID 枚举把 `ArtifactExpired` 与 `NotFound` 统一映射为 404（不返回 410，见[团队服务 §9.2](team-server-and-auth.md#92-apierror--http-映射表)）。
+`PortError::ArtifactExpired` 是端口层取值，**HTTP 状态码映射由 server host 决定**，不构成端口契约：web-server-host 出于防 ID 枚举把 `ArtifactExpired` 与 `NotFound` 统一映射为 404（不返回 410，见[团队服务 §9.2](web-server-host.md#92-apierror--http-映射表)）。
 
 `abort` 的原因类型命名为 `AbortReason` 而**不是** `TruncationReason`：`connection::TruncationReason` 是**执行事件流**的截断原因（drain 期限、单订阅/单执行上限、生产者写失败），`AbortReason` 是**产物落盘**的中止原因（writer 丢失、执行失败、执行取消、消费超限）。二者语义层次不同——前者是「流被切短的额度原因」，后者是「产物为何没能走到 complete 的直接原因」，取值存在交集但不可互换；用同一名称会让调用方误以为可以直接互传。
 

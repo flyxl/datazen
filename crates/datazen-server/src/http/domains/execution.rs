@@ -9,7 +9,7 @@
 //!
 //! 域裁决：
 //!
-//! - **异步接受语义（契约 §3 规则 3，team-server §9.3）**：两条 execute 路由
+//! - **异步接受语义（契约 §3 规则 3，web-server-host §9.3）**：两条 execute 路由
 //!   回 **202** + 稳定 `executionId`（`ExecutionReceipt`）；已接受 ≠ SQL
 //!   成功——终态经 `getExecution` / 事件流取。查询与取消回 200。
 //! - **会话内执行的闸序（setSessionContext 同款）**：令牌在场 → 可见性

@@ -81,6 +81,7 @@ DataZen 文档只保留四类长期有效内容：**功能使用**（`features/`
 
 - [系统概要设计](architecture/platform/system-overview.md)：三种运行方式、模块职责、交互与接口。
 - [连接管理详细设计](architecture/platform/connection-management.md)：数据契约、状态机、算法、验收标准与 74 个测试用例，是接口契约、错误码与验收的唯一权威。
+- [Web HTTP API 契约](architecture/platform/web-http-api.md)：团队 Web 服务 HTTP 面的唯一权威契约——路由总账（112 域客户端方法 / 108 路由 / 4 排除）、逐域路由表与 web 能力差异（`WEB_CAPABILITIES` / `unsupportedMethods`），现行为 v1.10.1。
 - [分阶段开发计划（已归档）](archive/development/platform-development-plan.md)：连接重构、多应用形态、团队服务和多 worker 的依赖与交付门槛——P 系列阶段→补充契约归属的原始权威，已随 P7 交付归档。
 - [DDD 模块化重构（已归档）](archive/development/ddd-refactor-plan.md)：单一内核 crate 按功能内分 application/domain，Repository 由领域定义、宿主实现，执行机制归 execution/runtime。D0–D8 已全部完成（旧 kernel crate 已退役），方案归档留档。
 - [前端形态拆分（已归档）](archive/development/frontend-form-split-plan.md)：`packages/frontend`（共享 lib）+ `packages/desktop`（唯一 `@tauri-apps` 领地）的拓扑与 F1–F6 实施计划。已全部落地，方案归档留档。
@@ -100,7 +101,7 @@ DataZen 文档只保留四类长期有效内容：**功能使用**（`features/`
 - [多 worker 协调详细设计](architecture/platform/multi-worker-coordination.md)：目录 CAS/路由、claim fencing、节点预算账、分区核销与 drain。
 - [团队服务部署、升级与恢复流程](development/team-service-operations.md)：配置与健康检查、发布兼容、备份一致性、恢复隔离与演练。
 - [Workflow 资源模型详细设计](architecture/platform/workflow-resource-model.md)：step / session block / transaction block 三种执行单元、目标继承链、Session/Lease/Budget 集成与版本兼容边界。
-- [团队 Web 服务与认证详细设计](architecture/platform/team-server-and-auth.md)：server crate 形态、中间件链、OIDC/CSRF/RBAC、SSE 回放与错误到 HTTP 的映射。
+- [团队 Web 服务与认证详细设计](architecture/platform/web-server-host.md)：server crate 形态、中间件链、OIDC/CSRF/RBAC、SSE 回放与错误到 HTTP 的映射。
 - [共享 feature 服务边界](architecture/platform/modules.md)：内核 crate 中 Workflow / AI / MCP / Dashboard / 导出 / 备份恢复的共享实现与宿主绑定（含 W8 服务端第三类绑定）。
 
 ## 开发与发布
@@ -138,3 +139,4 @@ DataZen 文档只保留四类长期有效内容：**功能使用**（`features/`
 6. 删除或重构代码时，同步删除失效文档引用。
 7. **不新增带行号的代码引用。** 禁止写「`文件名` + `:行号`」这种形式的引用；定位一律写成「**文件 + 符号名 / 小节名**」，例如 `scripts/check-driver-type-isolation.mjs` 的 F-01 规则 `forbiddenCrates`、`docs/archive/development/platform-development-plan.md` §6「P2：Driver 固定资源与可选能力契约」。行号是一次性坐标，代码增删一行即失效，而**没有任何门禁校验它**——实测把 `docs/architecture/platform/shared-boundaries-and-ports.md` 里指向 `.mjs` 第 99 行的引用全部改成不存在的第 14001 行，5 个门禁依旧全部 EXIT=0。**错的行号比没有行号更糟**：读者会信任这个精确坐标，跳过去发现对不上，然后连累整篇文档一起被降权；没有行号时读者反而会自己找符号。
 8. **复核既有引用前，先确认被引用对象是谁。** 判断一条行号是否失效，第一步不是打开那个行号看内容，而是先确认这条引用说的究竟哪个文件——它的路径、所在 revision、总行数落在哪个量级。**两个方向都要走这一步**：判定「已失效」之前要确认对象，否则会把本来正确的引用改坏；判定「仍然正确」之前同样要确认，否则会漏掉真的漂移了的那一条。**候选对象之间文件名相近、行数接近时，逐个都量，不要挑一个就开始找证据**——E2E 预置脚本里 `e2e/setup-e2e-env.sh` 与 `e2e/setup-sync-dbs.sh` 同在一条调用链上、职责也都是建库，复核时分别只有 125 行和 117 行；一次真实的误判就发生在把它们当成同一个文件数行数的场合，而那批引用最终被证明**七处全部准确、无一失效**——这个结论只有在数对文件之后才成立。**确认对象是这类判断的前置条件，不是可选的核查步骤。** 复核确认引用确已失效时，**不要把它重新锚回它「曾经所在的那一行」**：那一行现在装的是别的内容，补一个新行号只是让它接着腐烂；只能锚回它原本想指的那个东西，即脚本 + 段落 + 语句，与第 7 条同形。
+

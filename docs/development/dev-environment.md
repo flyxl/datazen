@@ -148,5 +148,5 @@ logs datazen-server`（server 侧）与 `logs dex`（登录侧）。
 ## 9. 相关文档
 
 - 部署运维（生产）：[deploy-operations.md](./deploy-operations.md)
-- 契约：[http-api-contract.md](../architecture/platform/http-api-contract.md)
-- 团队认证：[team-server-and-auth.md](../architecture/platform/team-server-and-auth.md)
+- 契约：[web-http-api.md](../architecture/platform/web-http-api.md)
+- 团队认证：[web-server-host.md](../architecture/platform/web-server-host.md)

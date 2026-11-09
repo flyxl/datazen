@@ -3,7 +3,7 @@
 //!
 //! ## 事务性是验收核心
 //!
-//! [team-server §6.3](../../../../docs/architecture/platform/team-server-and-auth.md)
+//! [web-server-host §6.3](../../../../docs/architecture/platform/web-server-host.md)
 //! 的可执行形式：「实际授权变更与 `permission_version` 递增**同事务**提交」。
 //! 本模块的组合器 [`RevocationService::propagate`] 把这个约束做成唯一入口：
 //!

@@ -172,7 +172,7 @@ Driver-specific 方言测试放在 `crates/drivers/<id>/`，不要在 Host 复�
 
 ## 服务端形态（W8）
 
-W8 刀3b 点亮 schema diff 域：`crates/datazen-server/src/schema_diff/` 五件 + `http/domains/schema_diff.rs` 十一路由（[HTTP API 契约](../platform/http-api-contract.md) §6.13：profiles 读写删三 + compare（POST 读）+ 计划准备二 + 部署受理一 + job 读回/取消/恢复核验四）。profiles 存储是服务端库行（桌面加密 JSON 文件形的服务端对偶）；门与桌面 IPC 同权（只读目标拒绝、`requireRollback`、破坏性 token、复核一次性消费、目标指纹比对）。
+W8 刀3b 点亮 schema diff 域：`crates/datazen-server/src/schema_diff/` 五件 + `http/domains/schema_diff.rs` 十一路由（[HTTP API 契约](../platform/web-http-api.md) §6.13：profiles 读写删三 + compare（POST 读）+ 计划准备二 + 部署受理一 + job 读回/取消/恢复核验四）。profiles 存储是服务端库行（桌面加密 JSON 文件形的服务端对偶）；门与桌面 IPC 同权（只读目标拒绝、`requireRollback`、破坏性 token、复核一次性消费、目标指纹比对）。
 
 | 文件 | 职责 |
 |---|---|

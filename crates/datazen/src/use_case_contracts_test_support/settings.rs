@@ -7,7 +7,7 @@
 //!
 //! - 基线（本文件 `baseline`，`cfg(test)`）：直调 `SettingsService`——
 //!   宿主整体换掉后规格仍原样过，是 commands-layer-review §1 判据的本体；
-//! - HTTP 腿：`crates/datazen-server/tests/use_case_contracts.rs`（http-api-contract §6.1
+//! - HTTP 腿：`crates/datazen-server/tests/use_case_contracts.rs`（web-http-api §6.1
 //!   端点形态）；
 //! - IPC 腿：桌面 `commands/settings_use_case_contract_tests.rs`
 //!   （真实 `#[tauri::command]` 入口）。

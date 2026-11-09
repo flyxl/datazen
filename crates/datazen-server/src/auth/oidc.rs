@@ -1,5 +1,5 @@
 //! OIDC RP（依赖方）登录流：发现 → 授权码 + PKCE(S256) → 回调 → 会话行 +
-//! 会话 cookie（team-server §4.1 时序、§4.2 校验表、§4.4 cookie 属性）。
+//! 会话 cookie（web-server-host §4.1 时序、§4.2 校验表、§4.4 cookie 属性）。
 //!
 //! # 组成
 //!

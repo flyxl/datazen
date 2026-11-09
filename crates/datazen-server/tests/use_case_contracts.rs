@@ -2,7 +2,7 @@
 //! （同用例、axum 绑定）。
 //!
 //! 测试内**自建最小 axum Router**——不改 `crates/datazen-server/src/**`：只绑定 WR-C2
-//! 冻结契约（http-api-contract §6.9 的 named-views 三端点、§6.1 的
+//! 冻结契约（web-http-api §6.9 的 named-views 三端点、§6.1 的
 //! settings 两端点）的端点形态，handler 调**同一个** modules 用例
 //! （`datazen::named_views::NamedViewService` / `datazen::settings::
 //! SettingsService`，装配层注入规格共享的夹具仓储），用
@@ -519,7 +519,7 @@ async fn a_partial_scope_query_does_not_filter_the_wire_answer() {
     );
 }
 
-// ── settings 域装配层：服务注入 + 端点形态（http-api-contract §6.1）────────
+// ── settings 域装配层：服务注入 + 端点形态（web-http-api §6.1）────────
 
 /// 设置服务从**共享规格夹具**装配：与 IPC 腿同一份 setup 词汇，不同存储
 /// 实现（这里是内存假体——服务端的仓储适配器随 WR-D2 落地）。

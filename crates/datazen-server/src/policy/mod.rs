@@ -1,4 +1,4 @@
-//! `PolicyService`：授权引擎（team-server §6）——角色基线 + 资源 ACL +
+//! `PolicyService`：授权引擎（web-server-host §6）——角色基线 + 资源 ACL +
 //! 权限版本 + `policyIsolationKey` 派生。
 //!
 //! 组成（§2.1 目标目录的 `policy/` 三件，delegation 随 §6.4 切片后补）：

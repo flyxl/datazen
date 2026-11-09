@@ -1,6 +1,6 @@
 //! 跨形态审计端口：事件 envelope + [`AuditSink`] 端口。
 //!
-//! 审计是**安全资产**（team-server §10.1：桌面只写本地日志，服务端审计落
+//! 审计是**安全资产**（web-server-host §10.1：桌面只写本地日志，服务端审计落
 //! 管理库且应用角色无 UPDATE/DELETE 授权），因此它的**词汇**必须跨形态
 //! 唯一：桌面 IPC 宿主与团队 Web 宿主写同一种 envelope，落同一种表投影
 //! （[persistence-model §3.7](../../../../../docs/architecture/platform/persistence-model.md)
@@ -13,7 +13,7 @@
 //! （见模块内钉子测试）。`payload` 是 §2.4 白名单的**结构化**投影：
 //! [`AuditPayload`] 只有四个字段——新增键必须改类型 + 改键集合断言测试，
 //! 「对象序列化顺带落库」的通道在类型层面不存在（§2.4 的要求）。第四个
-//! 键 `request`（控制面请求上下文：路由 + 来源 Origin）来自 team-server
+//! 键 `request`（控制面请求上下文：路由 + 来源 Origin）来自 web-server-host
 //! §5.3 对 `csrf_rejected` 审计的显式要求（"审计记录 csrf_rejected 并带
 //! 上 requestId、来源 Origin 与路由"）；§2.4 的映射表只覆盖事件归档
 //! （EventEnvelope → 审计），控制面事件的这个键在本模块登记为白名单。
@@ -29,7 +29,7 @@
 //!    feature 矩阵腿（CI 的单 feature 构建都要付出代价），而审计追加写
 //!    是单条 INSERT，不值得。
 //! 2. **调用点形状**：审计在错误映射/中间件里触发（如 CSRF 拒绝记
-//!    `csrf_rejected`，team-server §5.3），这些调用点本身是同步上下文
+//!    `csrf_rejected`，web-server-host §5.3），这些调用点本身是同步上下文
 //!    友好的；宿主若在异步线程消费，由**宿主的适配器**决定是否
 //!    `spawn_blocking`（差异只允许出现在适配器层——与 `storage/mod.rs`
 //!    的异步边界纪律同一口径）。
@@ -55,7 +55,7 @@ use crate::shared::id::{
 pub enum AuditPrincipalKind {
     /// 应用用户（登录会话映射出的 principal）。
     User,
-    /// 服务身份（调度以 memberships 登记的 service principal，team-server §6.4）。
+    /// 服务身份（调度以 memberships 登记的 service principal，web-server-host §6.4）。
     Service,
     /// 委托身份（`delegationId` 链路上的实际执行者）。
     Delegation,
@@ -146,7 +146,7 @@ pub struct AuditTargetProjection {
 pub struct AuditRequestContext {
     /// 请求路由（path 形式，如 `/api/v1/connections`）。
     pub route: String,
-    /// 请求的 `Origin` 头；缺失时缺席（同源 GET 不保证带此头，team-server §8.1）。
+    /// 请求的 `Origin` 头；缺失时缺席（同源 GET 不保证带此头，web-server-host §8.1）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<String>,
 }
@@ -185,7 +185,7 @@ impl AuditPayload {
 /// 存储侧生成的 `event_id`）。
 ///
 /// `action` 是开放词表（字符串）：本层只固定两个既有字面量先例——
-/// `csrf_rejected`（team-server §5.3）与 `identity_field_ignored`（§6.5）；
+/// `csrf_rejected`（web-server-host §5.3）与 `identity_field_ignored`（§6.5）；
 /// 其余动作随切片登记，envelope 形状不变。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

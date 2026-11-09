@@ -1,8 +1,8 @@
-//! 授权词汇：动作与资源类型（team-server §6.1 的词表）。
+//! 授权词汇：动作与资源类型（web-server-host §6.1 的词表）。
 //!
 //! 权限是**逐 action** 判定，不做「全权限」通配（§6.1）；资源类型词表
 //! 与 v5 迁移 `ck_acl_resource` 的 CHECK 逐字对齐——唯一登记差异是
-//! `wapp`：team-server §6.1 把它列在资源类型里，persistence-model §3.10
+//! `wapp`：web-server-host §6.1 把它列在资源类型里，persistence-model §3.10
 //! 的 CHECK 没有（ACL 行不可落 wapp），因此 wapp 只出现在角色基线
 //! （代码常量）与未来的安装闸上，ACL 表不承载它（v5 迁移文档同款登记）。
 
@@ -133,7 +133,7 @@ impl Role {
     /// 取值是对角色名的保守读取，裁决依据：
     ///
     /// - `orgAdmin`：组织内全权（含 `admin` 与 wapp 安装闸的 `write`，
-    ///   team-server §15.3）。
+    ///   web-server-host §15.3）。
     /// - `orgMember`：日常使用基线——可读、可执行/订阅/下载/取消，**不可
     ///   写、不可管理**（写与组织级变更属于 owner/admin 语义）。
     /// - `connectionOwner` / `connectionViewer`：连接的建立者与只读协作者

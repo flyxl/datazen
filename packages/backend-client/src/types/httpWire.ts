@@ -65,13 +65,13 @@ export interface HttpWireOptions {
   readonly fetchImpl?: typeof fetch;
   /**
    * CSRF token source for non-GET requests. Defaults to reading the public
-   * cookie half (`__Host-dz_csrf`, team-server §4.4) when a `document` is
+   * cookie half (`__Host-dz_csrf`, web-server-host §4.4) when a `document` is
    * present; node test environments inject a provider instead.
    */
   readonly csrfTokenProvider?: () => string | null;
 }
 
-/** CSRF 令牌的公开半边 cookie（team-server §4.4；server `CSRF_COOKIE` 同名）。 */
+/** CSRF 令牌的公开半边 cookie（web-server-host §4.4；server `CSRF_COOKIE` 同名）。 */
 const CSRF_COOKIE_NAME = '__Host-dz_csrf';
 
 /** CSRF 请求头（server `crates/datazen-server/src/csrf.rs` 的 `CSRF_HEADER`；双提交 header 半边）。 */
