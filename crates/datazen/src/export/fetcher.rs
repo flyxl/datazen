@@ -856,6 +856,104 @@ mod tests {
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
+    // --- CSV formula-injection guard parity (issue 2) ----------------------
+    //
+    // Shared fixture with the JS parity tests
+    // (`packages/frontend/src/lib/__tests__/exportFormat.test.ts` and
+    // `packages/frontend/src/platform/__tests__/blobTablesExporter.test.ts`):
+    // the same rows must produce byte-identical CSV in all three paths
+    // (modulo the in-memory formatter's missing trailing newline — see
+    // the JS test). Desktop CSV bytes change on purpose here: cells
+    // starting with `=`, `+`, `-` or `@` are now quoted (security fix,
+    // not a regression).
+
+    fn formula_guard_cols() -> Vec<ColumnInfo> {
+        vec![col("v", "text")]
+    }
+
+    fn formula_guard_rows() -> Vec<Vec<Option<Value>>> {
+        vec![
+            vec![Some(Value::String("=SUM(A1:B2)".into()))],
+            vec![Some(Value::String("+2+2".into()))],
+            vec![Some(Value::String("-x".into()))],
+            vec![Some(Value::String("@user".into()))],
+            vec![Some(Value::Integer(-5))],
+            vec![Some(Value::String("=a,b".into()))],
+            vec![Some(Value::String("say \"hi\"".into()))],
+            vec![Some(Value::String("line1\nline2".into()))],
+            vec![Some(Value::String("plain".into()))],
+            vec![Some(Value::Integer(5))],
+        ]
+    }
+
+    const FORMULA_GUARD_CSV: &str = "v\n\"=SUM(A1:B2)\"\n\"+2+2\"\n\"-x\"\n\"@user\"\n\"-5\"\n\"=a,b\"\n\"say \"\"hi\"\"\"\n\"line1\nline2\"\nplain\n5\n";
+
+    #[test]
+    fn apply_csv_formula_guard_quotes_formula_prefixes_only() {
+        let guard = crate::export::apply_csv_formula_guard;
+        assert_eq!(guard("=SUM(A1)"), "\"=SUM(A1)\"");
+        assert_eq!(guard("+2+2"), "\"+2+2\"");
+        assert_eq!(guard("-x"), "\"-x\"");
+        assert_eq!(guard("@user"), "\"@user\"");
+        // Negative numbers keep the quoting the rule gives them
+        // (deliberate, matching the web exporter byte for byte).
+        assert_eq!(guard("-5"), "\"-5\"");
+        // Already-quoted values (delimiter / quote / line break inside)
+        // start with `"` and are left alone — no double wrap.
+        assert_eq!(guard("\"=a,b\""), "\"=a,b\"");
+        assert_eq!(guard("\"say \"\"hi\"\"\""), "\"say \"\"hi\"\"\"");
+        assert_eq!(guard("\"line1\nline2\""), "\"line1\nline2\"");
+        // Plain text, plain numbers and empty cells are untouched.
+        assert_eq!(guard("plain"), "plain");
+        assert_eq!(guard("5"), "5");
+        assert_eq!(guard(""), "");
+    }
+
+    #[test]
+    fn stream_formatter_csv_applies_formula_guard() {
+        let mut formatter =
+            crate::export::StreamFormatter::new(DataFormat::Csv, "t".into(), None, test_driver());
+        let columns = vec!["v".to_string()];
+        let mut out = formatter.header(&columns);
+        out.push_str(&formatter.rows(&formula_guard_rows(), &columns).unwrap());
+        assert_eq!(out, FORMULA_GUARD_CSV);
+        // The header branch guards too: a column name starting with `=`
+        // is quoted instead of reaching the spreadsheet as a formula.
+        let mut formatter =
+            crate::export::StreamFormatter::new(DataFormat::Csv, "t".into(), None, test_driver());
+        assert_eq!(formatter.header(&["=note".to_string()]), "\"=note\"\n");
+    }
+
+    #[tokio::test]
+    async fn write_data_file_sql_source_applies_csv_formula_guard() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Csv,
+            vec![table_item(
+                "filtered",
+                TableDataSource::Sql {
+                    sql: "SELECT v FROM t".into(),
+                },
+            )],
+        );
+        let source = StubSource::new(false, false, formula_guard_cols(), formula_guard_rows());
+        let dest = temp_file("out.csv");
+        let n = write_data_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Csv,
+            None,
+            &dest,
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 10);
+        assert_eq!(std::fs::read_to_string(&dest).unwrap(), FORMULA_GUARD_CSV);
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
     #[tokio::test]
     async fn write_data_file_sql_source_writes_json() {
         // The JSON write path used to be covered by a provided-source

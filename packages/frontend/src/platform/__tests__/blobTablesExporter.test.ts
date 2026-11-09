@@ -396,10 +396,10 @@ describe('web/desktop alignment (item 5)', () => {
 });
 
 describe('csvCell alignment with escapeCsvField (item 4)', () => {
-  const exportRows = async (rows: unknown[][]): Promise<string> => {
+  const exportRows = async (rows: unknown[][], columns = ['v']): Promise<string> => {
     const readPage = vi
       .fn<(table: string, cursor: unknown) => Promise<import('../blobTablesExporter').TablePage>>()
-      .mockResolvedValue({ columns: ['v'], rows, nextCursor: null });
+      .mockResolvedValue({ columns, rows, nextCursor: null });
     const delivered: string[] = [];
     const exporter = createBlobTablesExporter(readPage, {
       deliver: (contents) => delivered.push(contents as string),
@@ -439,6 +439,38 @@ describe('csvCell alignment with escapeCsvField (item 4)', () => {
   it('writes null/undefined as empty and no longer crashes on bigint', async () => {
     const contents = await exportRows([[null], [undefined], [BigInt(10)]]);
     expect(contents).toContain('v\n\n\n10\n');
+  });
+
+  it('emits the shared formula-guard fixture byte-identical to the Rust and formatRowsAsText paths (issue 2)', async () => {
+    // Shared fixture with the Rust test
+    // (`crates/datazen/src/export/fetcher.rs`,
+    // `write_data_file_sql_source_applies_csv_formula_guard`) and the
+    // `formatRowsAsText` test
+    // (`packages/frontend/src/lib/__tests__/exportFormat.test.ts`):
+    // the same rows must produce byte-identical CSV in all three
+    // paths. Desktop CSV bytes change on purpose here: cells starting
+    // with `=`, `+`, `-` or `@` are now quoted (security fix, not a
+    // regression).
+    const contents = await exportRows([
+      ['=SUM(A1:B2)'],
+      ['+2+2'],
+      ['-x'],
+      ['@user'],
+      [-5],
+      ['=a,b'],
+      ['say "hi"'],
+      ['line1\nline2'],
+      ['plain'],
+      [5],
+    ]);
+    expect(contents).toBe(
+      'v\n"=SUM(A1:B2)"\n"+2+2"\n"-x"\n"@user"\n"-5"\n"=a,b"\n"say ""hi"""\n"line1\nline2"\nplain\n5\n',
+    );
+  });
+
+  it('guards a column name starting with `=` in the header', async () => {
+    const contents = await exportRows([['plain']], ['=note']);
+    expect(contents).toBe('"=note"\nplain\n');
   });
 });
 
