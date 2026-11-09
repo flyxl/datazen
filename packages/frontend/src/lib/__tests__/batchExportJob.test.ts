@@ -1,7 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { runBatchExportJob, type RunBatchExportJobOptions } from '../batchExportJob';
+import {
+  runBatchExportJob,
+  type BatchExportTableInput,
+  type RunBatchExportJobOptions,
+} from '../batchExportJob';
 import type { ExportTablesRequest } from '../../commands/file';
-import type { BatchExportTableInput } from '../batchExport';
 
 const users: BatchExportTableInput = {
   tableName: 'users',

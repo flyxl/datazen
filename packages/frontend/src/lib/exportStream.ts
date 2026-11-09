@@ -250,37 +250,6 @@ function inferColumnNames(rows: (unknown | null)[][]): string[] {
   return Array.from({ length: width }, (_, i) => `col_${i}`);
 }
 
-/** Stream a table export into a single in-memory string (one table at a time). */
-export async function streamTableExportText(opts: {
-  dbSessionId: string;
-  tableName: string;
-  columns: string[];
-  format: StreamableExportFormat;
-  databaseType?: string;
-  pkName?: string;
-  streamQuery?: StreamQueryFn;
-}): Promise<string> {
-  const streamer = createTableExportStreamer({
-    format: opts.format,
-    tableName: opts.tableName,
-    columns: opts.columns,
-    databaseType: opts.databaseType,
-    pkName: opts.pkName,
-  });
-  let content = '';
-  await streamQueryIntoExporter({
-    dbSessionId: opts.dbSessionId,
-    sql: buildTableSelectSql(opts.tableName, opts.columns, opts.databaseType),
-    streamer,
-    write: (chunk) => {
-      content += chunk;
-    },
-    streamQuery: opts.streamQuery,
-    columns: opts.columns,
-  });
-  return content;
-}
-
 export interface SaveSessionApi {
   begin: (
     defaultFileName: string,

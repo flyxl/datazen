@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 import { render, fireEvent, waitFor, cleanup, screen } from '@testing-library/react';
 import { BatchExportDialog } from '../BatchExportDialog';
-import type { BatchExportTableInput } from '../../../lib/batchExport';
+import type { BatchExportTableInput } from '../../../lib/batchExportJob';
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),

@@ -4,12 +4,13 @@ import { CopyableError } from '../../components/ui/CopyableError';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { useI18n } from '../../hooks/useI18n';
-import type {
-  BatchExportDataFormat,
-  BatchExportMode,
-  BatchExportTableInput,
-} from '../../lib/batchExport';
-import { runBatchExportJob, type BatchExportOutputMode } from '../../lib/batchExportJob';
+import {
+  runBatchExportJob,
+  type BatchExportDataFormat,
+  type BatchExportMode,
+  type BatchExportOutputMode,
+  type BatchExportTableInput,
+} from '../../lib/batchExportJob';
 import { requireTablesExporter } from '../../platform/contracts';
 import { supportsFullTableExport, type DataExportCapability } from '../../lib/exportCapability';
 import { Spinner } from '../../components/ui/Spinner';

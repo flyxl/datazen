@@ -3,6 +3,21 @@ import { requireTablesExporter } from '../platform/contracts';
 
 export type BatchExportOutputMode = 'single' | 'zip';
 
+export type BatchExportMode = 'data_only' | 'structure_only' | 'data_and_structure';
+export type BatchExportDataFormat = 'csv' | 'json' | 'sql_insert';
+
+export interface BatchExportTableInput {
+  tableName: string;
+  /** Schema the table lives in (PostgreSQL family). */
+  schema?: string | null;
+  /** DDL text; required when mode includes structure */
+  ddl?: string | null;
+  columns: { name: string }[];
+  rows: Record<string, unknown>[];
+  /** Pre-formatted data file body from a streaming export (skips generateExport). */
+  streamedData?: string;
+}
+
 export interface BatchExportProgress {
   current: number;
   total: number;
@@ -11,8 +26,8 @@ export interface BatchExportProgress {
 
 export interface RunBatchExportJobOptions {
   tableNames: string[];
-  mode: 'structure_only' | 'data_only' | 'data_and_structure';
-  dataFormat: 'csv' | 'json' | 'sql_insert';
+  mode: BatchExportMode;
+  dataFormat: BatchExportDataFormat;
   outputMode: BatchExportOutputMode;
   databaseType?: string;
   dbSessionId?: string;
