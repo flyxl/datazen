@@ -234,6 +234,25 @@ mod tests {
         }
     }
 
+    struct CountingEvents {
+        events: Arc<std::sync::Mutex<Vec<ExportProgressEvent>>>,
+    }
+
+    impl CountingEvents {
+        fn new() -> Self {
+            Self {
+                events: Arc::new(std::sync::Mutex::new(Vec::new())),
+            }
+        }
+    }
+
+    impl ExportEvents for CountingEvents {
+        fn progress_callback(&self) -> Arc<dyn Fn(ExportProgressEvent) + Send + Sync> {
+            let events = Arc::clone(&self.events);
+            Arc::new(move |event| events.lock().unwrap().push(event))
+        }
+    }
+
     fn request(
         mode: ExportMode,
         format: DataFormat,
@@ -422,6 +441,183 @@ mod tests {
             req.tables[0].source,
             TableDataSource::Sql { ref sql } if sql == "SELECT 1"
         ));
+    }
+
+    #[test]
+    fn provided_source_fails_to_deserialize() {
+        // Rust no longer accepts a provided source at all: a request
+        // carrying one fails in the deserialization layer, before any
+        // planning or file work. The frontend formats provided rows
+        // itself and never sends them here.
+        let json = serde_json::json!({
+            "dbSessionId": "s",
+            "mode": "data_only",
+            "dataFormat": "json",
+            "outputMode": "single",
+            "tables": [{
+                "tableName": "provided",
+                "source": {
+                    "type": "provided",
+                    "columns": [{ "name": "id", "dataType": "int4", "nullable": false }],
+                    "rows": [[1], [2]],
+                },
+            }],
+        });
+        let err = serde_json::from_value::<ExportTablesRequest>(json).unwrap_err();
+        assert!(
+            err.to_string().contains("unknown variant"),
+            "unexpected error: {err}"
+        );
+        let source_json = serde_json::json!({
+            "type": "provided",
+            "columns": [],
+            "rows": [],
+        });
+        assert!(serde_json::from_value::<TableDataSource>(source_json).is_err());
+    }
+
+    #[tokio::test]
+    async fn resolve_sql_source_carries_database_and_schema_target() {
+        // Cross-database routing: the request database and the winning
+        // schema reach stream_query as the statement's SqlTarget, so a
+        // second database never exports the session database's rows.
+        let mut req = request(
+            ExportMode::DataOnly,
+            DataFormat::Csv,
+            vec![TableExportInput {
+                table_name: "users".into(),
+                schema: Some("s2".into()),
+                columns: vec![],
+                ddl: None,
+                source: TableDataSource::Table,
+                primary_key: None,
+            }],
+        );
+        req.database = Some("db2".into());
+        req.schema = Some("public".into());
+        let (sql, database, schema) = resolve_sql_source(&req, &req.tables[0]).unwrap();
+        assert_eq!(database.as_deref(), Some("db2"));
+        // Per-table schema wins over the request default.
+        assert_eq!(schema.as_deref(), Some("s2"));
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let (callback, _) = collect_events();
+        stream_sql_source(
+            &source,
+            "s",
+            &sql,
+            database.as_deref(),
+            schema.as_deref(),
+            &callback,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            *source.streamed_targets.lock().unwrap(),
+            vec![(Some("db2".to_string()), Some("s2".to_string()))]
+        );
+
+        // SQL source with no per-table schema falls back to the request
+        // schema, with the request database still carried.
+        let req2 = request(
+            ExportMode::DataOnly,
+            DataFormat::Csv,
+            vec![table_item(
+                "q",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        let mut req2 = req2;
+        req2.database = Some("db2".into());
+        req2.schema = Some("public".into());
+        let (sql2, database2, schema2) = resolve_sql_source(&req2, &req2.tables[0]).unwrap();
+        assert_eq!(sql2, "SELECT 1");
+        assert_eq!(database2.as_deref(), Some("db2"));
+        assert_eq!(schema2.as_deref(), Some("public"));
+        let source2 = StubSource::new(false, false, two_cols(), two_rows());
+        let (callback2, _) = collect_events();
+        stream_sql_source(
+            &source2,
+            "s",
+            &sql2,
+            database2.as_deref(),
+            schema2.as_deref(),
+            &callback2,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            *source2.streamed_targets.lock().unwrap(),
+            vec![(Some("db2".to_string()), Some("public".to_string()))]
+        );
+    }
+
+    #[tokio::test]
+    async fn write_data_file_emits_progress_events() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Csv,
+            vec![table_item(
+                "filtered",
+                TableDataSource::Sql {
+                    sql: "SELECT id, name FROM users WHERE id > 1".into(),
+                },
+            )],
+        );
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let events = CountingEvents::new();
+        let dest = temp_file("out.csv");
+        let n = write_data_file(
+            &events,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Csv,
+            None,
+            &dest,
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 2);
+        let seen = events.events.lock().unwrap();
+        assert!(!seen.is_empty(), "progress must fire while streaming");
+        assert!(seen.iter().all(|e| e.table == "filtered"));
+        assert_eq!(seen.last().unwrap().rows_written, 2);
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn write_binary_file_emits_progress_events() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Xlsx,
+            vec![table_item(
+                "t",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let events = CountingEvents::new();
+        let dest = temp_file("out.xlsx");
+        let n = crate::export::write_binary_file(
+            &events,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Xlsx,
+            &dest,
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 2);
+        let seen = events.events.lock().unwrap();
+        assert!(!seen.is_empty(), "progress must fire while streaming");
+        assert!(seen.iter().all(|e| e.table == "t"));
+        assert_eq!(seen.last().unwrap().rows_written, 2);
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
     // --- File planning: DDL semantics --------------------------------------
