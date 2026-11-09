@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import {
   exportProvidedRowsViaRust,
+  exportSingleTableStructureViaRust,
   exportSingleTableViaRust,
   runBatchExportJob,
   toExportWireValue,
@@ -8,6 +9,7 @@ import {
   type ProvidedRowsExportOptions,
   type RunBatchExportJobOptions,
   type SingleTableExportOptions,
+  type SingleTableStructureExportOptions,
 } from '../batchExportJob';
 import type { ExportTablesRequest } from '../../commands/file';
 
@@ -265,6 +267,77 @@ describe('exportProvidedRowsViaRust (item 3c)', () => {
     await expect(exportProvidedRowsViaRust(base({ dbSessionId: '' }))).rejects.toThrow(
       'Missing connection',
     );
+  });
+});
+
+describe('exportSingleTableStructureViaRust (item 6: G merged into C)', () => {
+  const exportTables = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    exportTables.mockResolvedValue({ Saved: 0 });
+  });
+
+  function base(
+    extra: Partial<SingleTableStructureExportOptions> = {},
+  ): SingleTableStructureExportOptions {
+    return {
+      dbSessionId: 'c1',
+      databaseType: 'mysql',
+      database: 'app',
+      tableName: 'users',
+      ddl: 'CREATE TABLE users (id INT);',
+      exportTables,
+      ...extra,
+    };
+  }
+
+  it('sends a structure_only single-table request carrying the caller DDL', async () => {
+    const result = await exportSingleTableStructureViaRust(base());
+    expect(result).toBe('saved');
+    expect(exportTables).toHaveBeenCalledTimes(1);
+    const request = exportTables.mock.calls[0]![0] as ExportTablesRequest;
+    expect(request.mode).toBe('structure_only');
+    expect(request.outputMode).toBe('single');
+    // sql_insert is only the `.sql` dialog-extension carrier; the planner
+    // never consults the format for structure_only.
+    expect(request.dataFormat).toBe('sql_insert');
+    expect(request.tables).toEqual([
+      {
+        tableName: 'users',
+        schema: undefined,
+        columns: [],
+        ddl: 'CREATE TABLE users (id INT);',
+      },
+    ]);
+  });
+
+  it('passes a missing DDL through so the backend emits its placeholder', async () => {
+    await exportSingleTableStructureViaRust(base({ ddl: null }));
+    const request = exportTables.mock.calls[0]![0] as ExportTablesRequest;
+    expect(request.tables[0]!.ddl).toBeUndefined();
+  });
+
+  it('reports cancelled when the Rust command returns Cancelled or null', async () => {
+    exportTables.mockResolvedValue({ Cancelled: null });
+    await expect(exportSingleTableStructureViaRust(base())).resolves.toBe('cancelled');
+    exportTables.mockResolvedValue(null);
+    await expect(exportSingleTableStructureViaRust(base())).resolves.toBe('cancelled');
+  });
+
+  it('throws when dbSessionId is missing', async () => {
+    await expect(exportSingleTableStructureViaRust(base({ dbSessionId: '' }))).rejects.toThrow(
+      'Missing connection',
+    );
+    expect(exportTables).not.toHaveBeenCalled();
+  });
+
+  it('forwards database and schema hints', async () => {
+    await exportSingleTableStructureViaRust(base({ database: 'appdb', schema: 'public' }));
+    const request = exportTables.mock.calls[0]![0] as ExportTablesRequest;
+    expect(request.database).toBe('appdb');
+    expect(request.schema).toBe('public');
+    expect(request.tables[0]!.schema).toBe('public');
   });
 });
 
