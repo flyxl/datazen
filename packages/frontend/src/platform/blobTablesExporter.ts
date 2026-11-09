@@ -4,18 +4,49 @@
  * The other half of the demonstration: the same `exportTables(request)`
  * signature, answered without a host. Table pages come from the (transport-
  * agnostic) table reader the caller injects — on a web build that is the
- * backend-client `getTableData` domain client — and the assembled CSV is
- * delivered with a Blob download, which is the browser's own path-free
- * equivalent of the save-dialog token writer.
+ * backend-client `getTableData` domain client, bound by the `packages/web`
+ * assembly (`assembleWebPlatform`) over the HTTP transport — and the
+ * assembled CSV is delivered with a Blob download, which is the browser's
+ * own path-free equivalent of the save-dialog token writer.
  *
  * Kept in shared code on purpose: it uses only browser APIs (Blob / URL /
  * anchor click), never the host runtime — R6-clean by construction. The web
  * assembly binds this; the desktop assembly binds the Rust-streaming one;
  * `batchExportJob` and the export UI cannot tell them apart.
+ *
+ * Alignment with the desktop exporter (export cleanup item 5): file
+ * planning rides the shared planner in `./exportPlan` — the TypeScript
+ * mirror of the Rust planner (`crates/datazen/src/export/mod.rs`), so
+ * extensions, file layout, the DDL-missing placeholder and the default
+ * output name follow the same rules on both forms instead of each writing
+ * its own. The single downloaded file is the desktop single-file merge:
+ * one plan is written directly, several `.sql` plans are concatenated
+ * with the same `-- ===== {filename} =====` separators the Rust
+ * `run_single_export` merge uses.
+ *
+ * What the web form cannot do fails loudly instead of silently
+ * degrading — the capabilities the browser build has no writer for:
+ * - any data format other than CSV (the web exporter assembles CSV text
+ *   only; TSV / JSON / Markdown / SQL / XLSX need the desktop exporter);
+ *   `structure_only` is exempt — it plans no data file, so the format is
+ *   irrelevant there, exactly as on the desktop;
+ * - `zip` output, and any export whose plan needs a zip (several files
+ *   that are not all `.sql`, e.g. multi-table data export or
+ *   data-and-structure in CSV): the browser build has no zip writer, so
+ *   it refuses rather than renaming a merged CSV to `.zip` or `.csv`;
+ * - a `sql` source (a filtered export cannot run here; exporting the
+ *   unfiltered table would be wrong rows, not just a wrong format);
+ * - structure modes for a SQL / provided-data source without an explicit
+ *   `ddl`: there is no table DDL to include, so planning fails instead of
+ *   emitting a placeholder that pretends to be a table definition.
+ * DDL itself comes from the request's `table.ddl` first (what the batch
+ * job already carries), then the injected `loadDdl`, then the shared
+ * `-- DDL unavailable for {table}` placeholder for real tables.
  */
 
 import { escapeCsvField } from '../lib/gridClipboard';
 import type { TablesExporterPort, TablesExportRequest } from './contracts';
+import { defaultExportName, prepareExport, type ExportFilePlan } from './exportPlan';
 
 /** One page of a table, as the injected reader answers it. */
 export interface TablePage {
@@ -90,9 +121,10 @@ export function downloadBlob(contents: BlobPart, fileName: string, mimeType = 't
 /**
  * Build the exporter over an injected page reader.
  *
- * `data_only` and `data_and_structure` both stream the table's rows as CSV
- * (structure exports carry the DDL as a leading comment per table);
- * `structure_only` emits only the DDL comments.
+ * `data_only` streams the table's rows as CSV; `structure_only` emits only
+ * the DDL plans; `data_and_structure` in CSV is a multi-file plan on the
+ * desktop (DDL file + data file) and therefore needs a zip — which the web
+ * exporter refuses (see the header) instead of merging the two files.
  */
 export function createBlobTablesExporter(
   readPage: TablePageReader,
@@ -101,74 +133,146 @@ export function createBlobTablesExporter(
     loadDdl?: (tableName: string) => Promise<string | null>;
     /** Override for tests; the default performs the real Blob download. */
     deliver?: (contents: string, fileName: string) => void;
+    /** Clock for the default output name; tests pin it, production uses now. */
+    now?: () => Date;
   },
 ): TablesExporterPort {
   const deliver = options?.deliver ?? downloadBlob;
+  const now = options?.now ?? (() => new Date());
   return {
     async exportTables(
       request: TablesExportRequest,
     ): Promise<{ Saved: number } | { Cancelled: null }> {
-      const chunks: string[] = [];
+      // Capability gates first: fail before any page is read or any file is
+      // delivered, so a refused export never leaves a half-written download
+      // behind.
+      if (request.tables.length === 0) {
+        throw new Error('no tables selected');
+      }
+      // The web exporter assembles CSV text only. A structure-only export
+      // plans no data file, so the format is irrelevant there — exactly as
+      // on the desktop, where `build_file_plans` never consults the format
+      // for `structure_only`.
+      if (request.mode !== 'structure_only' && request.dataFormat !== 'csv') {
+        throw new Error(`'${request.dataFormat}' format is not supported by the web exporter`);
+      }
+      if (request.outputMode === 'zip') {
+        throw new Error('zip output is not supported by the web exporter');
+      }
+      for (const table of request.tables) {
+        // Item 3c: a `sql` source cannot run here at all — refuse honestly
+        // rather than export the unfiltered table. The desktop Rust
+        // exporter handles it properly.
+        if (table.source?.type === 'sql') {
+          throw new Error('filtered export is not supported by the web exporter');
+        }
+      }
+
+      // Resolve DDL for structure modes before planning: the request's own
+      // `table.ddl` first (what the batch job carries — the desktop planner
+      // reads the same field), then the injected loader, then nothing and
+      // the planner falls back to the shared placeholder for real tables
+      // (`ddl_for_structure` still refuses structure modes for SQL /
+      // provided-data sources without an explicit `ddl`).
+      const tables = await Promise.all(
+        request.tables.map(async (table) => {
+          if (request.mode === 'data_only') {
+            return table;
+          }
+          const own = table.ddl;
+          if (typeof own === 'string' && own.trim().length > 0) {
+            return table;
+          }
+          const loaded = await options?.loadDdl?.(table.tableName);
+          if (typeof loaded === 'string' && loaded.trim().length > 0) {
+            return { ...table, ddl: loaded };
+          }
+          return table;
+        }),
+      );
+      const effective: TablesExportRequest = { ...request, tables };
+      // Shared planning (same rules as the Rust side): validates sources,
+      // plans the files, and decides zip-vs-single. The web build has no
+      // zip writer, so a plan that needs a zip is refused here — never a
+      // merged CSV masquerading as the requested multi-file export.
+      const { plans, useZip } = prepareExport(effective);
+      if (useZip) {
+        throw new Error(
+          'this export produces multiple files and needs a zip archive, ' +
+            'which is not supported by the web exporter; export one table at a time ' +
+            'in data-only mode, or use the desktop app',
+        );
+      }
+
       const requestContext: TablePageRequestContext = {
         dbSessionId: request.dbSessionId,
         database: request.database ?? null,
         schema: request.schema ?? null,
         driverType: request.databaseType ?? null,
       };
-      for (const table of request.tables) {
-        const name = table.schema ? `${table.schema}.${table.tableName}` : table.tableName;
-        if (request.mode !== 'data_only') {
-          const ddl =
-            (await options?.loadDdl?.(table.tableName)) ?? `-- structure for ${name} unavailable`;
-          chunks.push(`-- ${name}\n${ddl}\n`);
+
+      // Emit one planned file. A `provided` source carries the caller's own
+      // rows — emit them as CSV instead of re-reading the table (on web
+      // there is no Rust side to hand them to, and silently exporting the
+      // whole table for a current-page/selected-rows request would be wrong
+      // rows, not just a wrong format).
+      const emitDataPlan = async (
+        plan: Extract<ExportFilePlan, { kind: 'data' }>,
+      ): Promise<string> => {
+        const table = plan.table;
+        const chunks: string[] = [];
+        if (plan.ddlPrefix !== undefined) {
+          chunks.push(`${plan.ddlPrefix}\n\n`);
         }
-        if (request.mode !== 'structure_only') {
-          // Item 3c: a `provided` source carries the caller's own rows —
-          // emit them as CSV instead of re-reading the table (on web there
-          // is no Rust side to hand them to, and silently exporting the
-          // whole table for a current-page/selected-rows request would be
-          // wrong rows, not just a wrong format). A `sql` source cannot run
-          // here at all: refuse honestly rather than export the unfiltered
-          // table. The desktop Rust exporter handles both sources properly.
-          if (table.source?.type === 'provided') {
-            chunks.push(
-              table.source.columns.map((c) => csvCell(c.name)).join(',') + '\n',
-            );
-            for (const row of table.source.rows) {
-              chunks.push(row.map((cell) => csvCell(cell)).join(',') + '\n');
-            }
-            continue;
+        if (table.source?.type === 'provided') {
+          chunks.push(table.source.columns.map((c) => csvCell(c.name)).join(',') + '\n');
+          for (const row of table.source.rows) {
+            chunks.push(row.map((cell) => csvCell(cell)).join(',') + '\n');
           }
-          if (table.source?.type === 'sql') {
-            throw new Error('filtered export is not supported by the web exporter');
+          return chunks.join('');
+        }
+        let cursor: unknown = null;
+        let first = true;
+        // Page until the reader says the table is exhausted; each page is
+        // appended so peak memory is one page, mirroring the streaming form.
+        for (;;) {
+          const page = await readPage(table.tableName, cursor, {
+            ...requestContext,
+            schema: table.schema ?? requestContext.schema,
+          });
+          if (first) {
+            chunks.push(page.columns.map(csvCell).join(',') + '\n');
+            first = false;
           }
-          chunks.push(`-- data for ${name}\n`);
-          let cursor: unknown = null;
-          let first = true;
-          // Page until the reader says the table is exhausted; each page is
-          // appended so peak memory is one page, mirroring the streaming form.
-          for (;;) {
-            const page = await readPage(table.tableName, cursor, {
-              ...requestContext,
-              schema: table.schema ?? requestContext.schema,
-            });
-            if (first) {
-              chunks.push(page.columns.map(csvCell).join(',') + '\n');
-              first = false;
-            }
-            for (const row of page.rows) {
-              chunks.push(row.map(csvCell).join(',') + '\n');
-            }
-            cursor = page.nextCursor;
-            if (cursor === null || cursor === undefined) break;
+          for (const row of page.rows) {
+            chunks.push(row.map((cell) => csvCell(cell)).join(',') + '\n');
           }
+          cursor = page.nextCursor;
+          if (cursor === null || cursor === undefined) break;
+        }
+        return chunks.join('');
+      };
+
+      const chunks: string[] = [];
+      // The desktop single-file merge: one plan is written directly, several
+      // plans are concatenated with `-- ===== {filename} =====` separators.
+      // (Several plans only reach here when they are all `.sql` — anything
+      // else needed a zip and was refused above.)
+      const multi = plans.length > 1;
+      for (const plan of plans) {
+        if (multi) {
+          chunks.push(`-- ===== ${plan.filename} =====\n\n`);
+        }
+        if (plan.kind === 'ddl') {
+          chunks.push(plan.text);
+        } else {
+          chunks.push(await emitDataPlan(plan));
+        }
+        if (multi) {
+          chunks.push('\n\n');
         }
       }
-      const fileName =
-        request.outputMode === 'zip'
-          ? `${request.tables[0]?.tableName ?? 'export'}-tables.csv`
-          : `${request.tables[0]?.tableName ?? 'export'}.csv`;
-      deliver(chunks.join(''), fileName);
+      deliver(chunks.join(''), defaultExportName(effective, false, now()));
       return { Saved: request.tables.length };
     },
   };
