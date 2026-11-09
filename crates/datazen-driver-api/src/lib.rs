@@ -42,6 +42,10 @@ pub mod schema_objects;
 pub mod schema_scope_mapping;
 pub mod session;
 pub mod sql_builder;
+/// Re-exported at the root because `DatabaseDriver`'s expression-aware write
+/// methods (DBR-05) take it in their public signatures — a type the trait API
+/// exposes must be reachable without spelling the module path.
+pub use sql_builder::SetColumnValue;
 pub mod sql_dump;
 pub mod sql_target;
 pub mod sqlite_structure;

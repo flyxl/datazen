@@ -38,7 +38,7 @@ use crate::execution::domain::ExecutionTarget;
 use crate::execution::requests::*;
 use crate::execution::{IdempotentOperation, SessionHandle};
 use crate::shared::context::{OwnerRef, RequestContext};
-use crate::shared::id::{ConnectionId, Counter};
+use crate::shared::id::ConnectionId;
 use crate::table_editing::error::TableEditingError as FeatureError;
 use crate::table_editing::ports::ArtifactChunkReader;
 use datazen_driver_api::{BoundSqlStatement, DatabaseDriver};

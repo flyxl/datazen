@@ -330,10 +330,10 @@ pub fn build_row_change_plan(
         let set_columns: Vec<(&str, SetColumnValue<'static>)> = change
             .changed_columns
             .iter()
-            .map(|column| {
-                let expression = change.expression_values.get(column);
-                let value =
-                    match expression {
+            .map(
+                |column| -> Result<(&str, SetColumnValue<'static>), FeatureError> {
+                    let expression = change.expression_values.get(column);
+                    let value = match expression {
                         Some(expression) => SetColumnValue::Expression(
                             native_write_expression_sql(driver, column, *expression)?,
                         ),
@@ -341,19 +341,27 @@ pub fn build_row_change_plan(
                             change.current_values.get(column).cloned().unwrap_or(None),
                         ),
                     };
-                (column.as_str(), value)
-            })
-            .collect();
+                    Ok((column.as_str(), value))
+                },
+            )
+            .collect::<Result<_, FeatureError>>()?;
         let parameter_summary = change
             .changed_columns
             .iter()
             .filter_map(|column| {
                 if change.expression_values.contains_key(column) {
-                    let expression_sql = native_write_expression_sql(
+                    // The set-columns build above has already refused an
+                    // expression the driver never declared, so this branch
+                    // only names the refusal honestly if it is somehow
+                    // reached instead of dropping the column from the preview.
+                    let expression_sql = match native_write_expression_sql(
                         driver,
                         column,
                         change.expression_values[column],
-                    )?;
+                    ) {
+                        Ok(sql) => sql,
+                        Err(_) => "<unsupported expression>",
+                    };
                     return Some(format!("SET {column}=<expression: {expression_sql}>"));
                 }
                 change
@@ -530,24 +538,25 @@ pub fn bound_statement_for_plan(
     let set_columns: Vec<(&str, SetColumnValue<'static>)> = planned
         .changed_columns
         .iter()
-        .map(|column| {
-            let value = match planned.expression_values.get(column) {
-                Some(expression) => SetColumnValue::Expression(native_write_expression_sql(
-                    driver,
-                    column,
-                    *expression,
-                )?),
-                None => SetColumnValue::Literal(
-                    planned.current_values.get(column).cloned().ok_or_else(|| {
-                        FeatureError::Validation(format!(
-                            "Missing current value for changed column '{column}'"
-                        ))
-                    })?,
-                ),
-            };
-            Ok((column.as_str(), value))
-        })
-        .collect::<Result<_, _>>()?;
+        .map(
+            |column| -> Result<(&str, SetColumnValue<'static>), FeatureError> {
+                let value =
+                    match planned.expression_values.get(column) {
+                        Some(expression) => SetColumnValue::Expression(
+                            native_write_expression_sql(driver, column, *expression)?,
+                        ),
+                        None => SetColumnValue::Literal(
+                            planned.current_values.get(column).cloned().ok_or_else(|| {
+                                FeatureError::Validation(format!(
+                                    "Missing current value for changed column '{column}'"
+                                ))
+                            })?,
+                        ),
+                    };
+                Ok((column.as_str(), value))
+            },
+        )
+        .collect::<Result<_, FeatureError>>()?;
     driver
         .build_update_statement_with_expressions(table, &set_columns, &pk_columns)
         .map_err(FeatureError::Driver)

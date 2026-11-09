@@ -196,7 +196,9 @@ fn test_tester_canonicalize_sorts_by_identity_key() {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct BaselinePendingRowChange {
-    expression_values: Default::default(),
+    // No `expressionValues` here on purpose: the baseline is the pre-DBR-05
+    // payload, and the live struct skips the field when empty, so an
+    // expression-free fingerprint stays byte-identical to this shape.
     row_identity: BTreeMap<String, Option<Value>>,
     original_values: BTreeMap<String, Option<Value>>,
     current_values: BTreeMap<String, Option<Value>>,
@@ -214,7 +216,6 @@ fn baseline_fingerprint(table: &RowChangeTableContext, changes: &[PendingRowChan
     let changes: Vec<BaselinePendingRowChange> = changes
         .iter()
         .map(|change| BaselinePendingRowChange {
-            expression_values: Default::default(),
             row_identity: change.row_identity.clone(),
             original_values: change.original_values.clone(),
             current_values: change.current_values.clone(),
