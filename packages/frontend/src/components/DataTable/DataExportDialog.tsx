@@ -4,6 +4,7 @@ import { Button } from '../ui/Button';
 import { Select } from '../ui/Select';
 import { CopyableError } from '../ui/CopyableError';
 import { ExportSuccessPanel } from '../export/ExportSuccessPanel';
+import { ExportColumnPicker } from '../export/ExportColumnPicker';
 import type { ExportFormat, ExportScope } from '../../lib/exportData';
 import {
   ARRAY_EXPORT_FORMAT_OPTIONS,
@@ -77,6 +78,10 @@ export function DataExportDialog({
   const allowFiltered = !exportLocked && Boolean(dbSessionId) && onBuildFilteredExportSql != null;
   const [format, setFormat] = useState<ExportFormat>('csv');
   const [scope, setScope] = useState<ExportScope>('current_page');
+  /** Columns the export writes, in display order (DBR-06, restored). */
+  const [selectedCols, setSelectedCols] = useState<Set<string>>(
+    () => new Set(columns.map((c) => c.name)),
+  );
   const [status, setStatus] = useState<'form' | 'exporting' | 'success' | 'aborted'>('form');
   const [exporting, setExporting] = useState(false);
   /** The cancel was asked for; the run is winding down (DBR-06, restored). */
@@ -99,6 +104,8 @@ export function DataExportDialog({
     // The caller's preferred scope (DB-15) — reset on every open, so a
     // manual export after a filter-panel export starts from the same default.
     setScope(initialScope ?? 'current_page');
+    // The column default is "every column" on every open (DBR-06).
+    setSelectedCols(new Set(columns.map((c) => c.name)));
     // The preferred scope may not be served by this driver; the effect that
     // renders the options drops an impossible value on its own below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -111,6 +118,25 @@ export function DataExportDialog({
     if (scope === 'entire_table' && !allowEntire) setScope('current_page');
     if (scope === 'filtered_table' && !allowFiltered) setScope('current_page');
   }, [allowEntire, allowFiltered, scope]);
+
+  /** The picked columns, in display order — the order the export writes. */
+  const selectedColumnNames = useMemo(
+    () => columns.filter((c) => selectedCols.has(c.name)).map((c) => c.name),
+    [columns, selectedCols],
+  );
+
+  const toggleColumn = useCallback((col: string) => {
+    setSelectedCols((prev) => {
+      const next = new Set(prev);
+      if (next.has(col)) next.delete(col);
+      else next.add(col);
+      return next;
+    });
+  }, []);
+
+  const resetColumnsToDefault = useCallback(() => {
+    setSelectedCols(new Set(columns.map((c) => c.name)));
+  }, [columns]);
 
   const rowCount = useMemo(() => {
     if (scope === 'entire_table' || scope === 'filtered_table') return totalRows ?? rows.length;
@@ -172,7 +198,6 @@ export function DataExportDialog({
     setPartialDeleted(false);
     cancelExportRef.current = null;
     try {
-      const columnNames = columns.map((c) => c.name);
       if (scope === 'entire_table' || scope === 'filtered_table') {
         if (!dbSessionId) throw new Error('Missing connection');
         const sql =
@@ -190,7 +215,8 @@ export function DataExportDialog({
         const result = await exportSingleTableViaRust({
           dbSessionId,
           tableName,
-          columns: columnNames,
+          // DBR-06: only the picked columns, in display order.
+          columns: selectedColumnNames,
           dataFormat: format,
           databaseType,
           primaryKey: primaryKeyColumns?.[0],
@@ -223,15 +249,23 @@ export function DataExportDialog({
         scope === 'selected' && selectedRows.size > 0
           ? rows.filter((_, i) => selectedRows.has(i))
           : rows;
+      // DBR-06: the provided rows are projected onto the picked columns, in
+      // display order — a column subset must not shift the remaining values
+      // into the wrong positions.
+      const selectedIndexes = selectedColumnNames.map((name) =>
+        columns.findIndex((c) => c.name === name),
+      );
       const result = await resolveDataFetcher({
         tableName,
         scope,
-        columns: columns.map((c) => ({
-          name: c.name,
-          dataType: c.type ?? 'text',
-          nullable: c.nullable ?? true,
-        })),
-        rows: scopedRows,
+        columns: columns
+          .filter((c) => selectedCols.has(c.name))
+          .map((c) => ({
+            name: c.name,
+            dataType: c.type ?? 'text',
+            nullable: c.nullable ?? true,
+          })),
+        rows: scopedRows.map((row) => selectedIndexes.map((i) => row[i])),
         dataFormat: format,
         databaseType,
         primaryKey: primaryKeyColumns?.[0],
@@ -252,6 +286,8 @@ export function DataExportDialog({
     columns,
     rows,
     selectedRows,
+    selectedColumnNames,
+    selectedCols,
     scope,
     format,
     tableName,
@@ -297,7 +333,10 @@ export function DataExportDialog({
                 exporting ||
                 exportLocked ||
                 (scope !== 'entire_table' && scope !== 'filtered_table' && rows.length === 0) ||
-                (scope === 'selected' && selectedRows.size === 0)
+                (scope === 'selected' && selectedRows.size === 0) ||
+                // An empty column selection exports nothing; the button says
+                // so instead of writing a header-only file (DBR-06).
+                selectedColumnNames.length === 0
               }
             >
               {exporting ? t('export.exporting') : t('export.export')}
@@ -344,8 +383,21 @@ export function DataExportDialog({
             <Select value={scope} options={scopeOptions} onChange={handleScopeChange} />
           </div>
 
+          <ExportColumnPicker
+            columns={columns.map((c) => ({
+              name: c.name,
+              type: c.type,
+              isPrimaryKey: primaryKeyColumns?.includes(c.name) ?? false,
+            }))}
+            selected={selectedCols}
+            onToggle={toggleColumn}
+            onSelectAll={() => setSelectedCols(new Set(columns.map((c) => c.name)))}
+            onClearAll={() => setSelectedCols(new Set())}
+            onResetDefault={resetColumnsToDefault}
+          />
+
           <div className="rounded-md border border-edge bg-surface px-3 py-2 text-xs text-fg-muted">
-            {t('export.willExport', { rows: rowCount, cols: columns.length })},{' '}
+            {t('export.willExport', { rows: rowCount, cols: selectedColumnNames.length })},{' '}
             {t('export.formatAs')}{' '}
             <span className="font-medium text-fg-secondary">
               {ARRAY_EXPORT_FORMAT_OPTIONS.find((o) => o.value === format)?.label}

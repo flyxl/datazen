@@ -4,6 +4,7 @@ import { CopyableError } from '../../components/ui/CopyableError';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { ExportSuccessPanel } from '../../components/export/ExportSuccessPanel';
+import { ExportColumnPicker } from '../../components/export/ExportColumnPicker';
 import type { ExportFormat, ExportScope } from '../../lib/exportData';
 import {
   OBJECT_EXPORT_FORMAT_OPTIONS,
@@ -16,9 +17,7 @@ import { resolveDataFetcher } from '../../lib/dataFetcher';
 import { supportsFullTableExport, type DataExportCapability } from '../../lib/exportCapability';
 import type { ColumnSchema } from '../../types';
 import { useI18n } from '../../hooks/useI18n';
-import { cn } from '../../lib/cn';
 import { getCachedTableSchema } from '../../lib/schemaCache';
-import { dataTypeTextClass } from '../../lib/dataTypeColors';
 import { useSchemaStore } from '../../stores/schemaStore';
 
 interface ExportDialogProps {
@@ -114,11 +113,8 @@ export function ExportDialog({
     });
   }, []);
 
-  const toggleAll = useCallback(() => {
-    setSelectedCols((prev) => {
-      if (prev.size === loadedColumns.length) return new Set();
-      return new Set(loadedColumns.map((c) => c.name));
-    });
+  const resetColumnsToDefault = useCallback(() => {
+    setSelectedCols(new Set(loadedColumns.map((c) => c.name)));
   }, [loadedColumns]);
 
   const rowCount = useMemo(() => {
@@ -334,41 +330,18 @@ export function ExportDialog({
             <Select value={scope} options={scopeOptions} onChange={handleScopeChange} />
           </div>
 
-          <div>
-            <div className="mb-1 flex items-center justify-between">
-              <label className="text-xs font-medium text-fg-secondary">
-                {t('export.selectColumns')}
-              </label>
-              <button
-                type="button"
-                className="text-xs text-accent hover:underline"
-                onClick={toggleAll}
-              >
-                {selectedCols.size === loadedColumns.length
-                  ? t('common.deselectAll')
-                  : t('common.selectAll')}
-              </button>
-            </div>
-            <div className="max-h-40 overflow-y-auto rounded-md border border-edge bg-surface p-2">
-              {loadedColumns.map((col) => (
-                <label
-                  key={col.name}
-                  className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-surface-raised"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedCols.has(col.name)}
-                    onChange={() => toggleColumn(col.name)}
-                    className="accent-accent"
-                  />
-                  <span className="text-xs text-fg-secondary">{col.name}</span>
-                  <span className={cn('text-[10px]', dataTypeTextClass(col.dataType))}>
-                    {col.dataType}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
+          <ExportColumnPicker
+            columns={loadedColumns.map((c) => ({
+              name: c.name,
+              type: c.dataType,
+              isPrimaryKey: c.isPrimaryKey,
+            }))}
+            selected={selectedCols}
+            onToggle={toggleColumn}
+            onSelectAll={() => setSelectedCols(new Set(loadedColumns.map((c) => c.name)))}
+            onClearAll={() => setSelectedCols(new Set())}
+            onResetDefault={resetColumnsToDefault}
+          />
 
           <div className="rounded-md border border-edge bg-surface px-3 py-2 text-xs text-fg-muted">
             {t('export.willExport', { rows: rowCount, cols: selectedCols.size })},{' '}
