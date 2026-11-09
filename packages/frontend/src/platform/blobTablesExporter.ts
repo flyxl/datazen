@@ -111,6 +111,25 @@ export function createBlobTablesExporter(
           chunks.push(`-- ${name}\n${ddl}\n`);
         }
         if (request.mode !== 'structure_only') {
+          // Item 3c: a `provided` source carries the caller's own rows —
+          // emit them as CSV instead of re-reading the table (on web there
+          // is no Rust side to hand them to, and silently exporting the
+          // whole table for a current-page/selected-rows request would be
+          // wrong rows, not just a wrong format). A `sql` source cannot run
+          // here at all: refuse honestly rather than export the unfiltered
+          // table. The desktop Rust exporter handles both sources properly.
+          if (table.source?.type === 'provided') {
+            chunks.push(
+              table.source.columns.map((c) => csvCell(c.name)).join(',') + '\n',
+            );
+            for (const row of table.source.rows) {
+              chunks.push(row.map((cell) => csvCell(cell)).join(',') + '\n');
+            }
+            continue;
+          }
+          if (table.source?.type === 'sql') {
+            throw new Error('filtered export is not supported by the web exporter');
+          }
           chunks.push(`-- data for ${name}\n`);
           let cursor: unknown = null;
           let first = true;

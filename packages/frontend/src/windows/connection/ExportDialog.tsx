@@ -4,14 +4,15 @@ import { CopyableError } from '../../components/ui/CopyableError';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { ExportSuccessPanel } from '../../components/export/ExportSuccessPanel';
-import { generateExport } from '../../lib/exportData';
 import type { ExportFormat, ExportScope } from '../../lib/exportData';
 import {
   OBJECT_EXPORT_FORMAT_OPTIONS,
   buildExportScopeOptions,
-  saveExportResultWithDialog,
 } from '../../lib/exportDialogShared';
-import { exportSingleTableViaRust } from '../../lib/batchExportJob';
+import {
+  exportProvidedRowsViaRust,
+  exportSingleTableViaRust,
+} from '../../lib/batchExportJob';
 import { supportsFullTableExport, type DataExportCapability } from '../../lib/exportCapability';
 import type { ColumnSchema } from '../../types';
 import { useI18n } from '../../hooks/useI18n';
@@ -167,19 +168,31 @@ export function ExportDialog({
         return;
       }
 
-      const result = generateExport({
-        tableName,
-        columns: loadedColumns,
-        rows,
-        selectedRows,
-        scope,
-        selectedColumns: colNames,
-        format,
+      // Item 3c: current-page / selected rows travel to the Rust batch
+      // exporter as a `provided` source (rows + schema the caller already
+      // holds) — the backend never re-queries, and selected rows are never
+      // translated back into SQL.
+      if (!dbSessionId) {
+        throw new Error('Missing connection');
+      }
+      const pkName = loadedColumns.find((c) => c.isPrimaryKey)?.name;
+      const scopedRows =
+        scope === 'selected' && selectedRows.size > 0
+          ? rows.filter((_, i) => selectedRows.has(i))
+          : rows;
+      const result = await exportProvidedRowsViaRust({
+        dbSessionId,
         databaseType,
+        database,
+        tableName,
+        columns: loadedColumns
+          .filter((c) => selectedCols.has(c.name))
+          .map((c) => ({ name: c.name, dataType: c.dataType, nullable: c.nullable })),
+        rows: scopedRows.map((row) => colNames.map((col) => row[col])),
+        dataFormat: format,
+        primaryKey: pkName,
       });
-
-      const saved = await saveExportResultWithDialog(result, tableName, format);
-      if (!saved) {
+      if (result === 'cancelled') {
         setStatus('form');
         setExporting(false);
         return;

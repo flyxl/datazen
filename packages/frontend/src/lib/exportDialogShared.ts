@@ -1,6 +1,4 @@
-import { fileCommands } from '../commands/file';
-import type { ExportFormat, ExportResult, ExportScope } from './exportData';
-import { getDefaultFilename } from './exportData';
+import type { ExportFormat, ExportScope } from './exportData';
 
 /** Formats shared by both connection ExportDialog and DataTable DataExportDialog. */
 export const SHARED_EXPORT_FORMAT_OPTIONS: { value: ExportFormat; label: string }[] = [
@@ -75,27 +73,4 @@ export function buildExportScopeOptions(
     });
   }
   return options;
-}
-
-/** Save an export result via the native file dialog. Returns false if the user cancelled. */
-export async function saveExportResultWithDialog(
-  result: ExportResult,
-  tableName: string,
-  format: ExportFormat,
-): Promise<boolean> {
-  const defaultName = getDefaultFilename(tableName, format);
-  if (result.kind === 'binary') {
-    return fileCommands.saveBase64WithDialog(
-      result.dataBase64,
-      defaultName,
-      result.extension.toUpperCase(),
-      [result.extension],
-    );
-  }
-  return fileCommands.saveTextWithDialog(
-    result.content,
-    defaultName,
-    result.extension.toUpperCase(),
-    [result.extension],
-  );
 }

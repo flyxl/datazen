@@ -4,14 +4,15 @@ import { Button } from '../ui/Button';
 import { Select } from '../ui/Select';
 import { CopyableError } from '../ui/CopyableError';
 import { ExportSuccessPanel } from '../export/ExportSuccessPanel';
-import { generateExportFromArrays } from '../../lib/exportData';
 import type { ExportFormat, ExportScope } from '../../lib/exportData';
 import {
   ARRAY_EXPORT_FORMAT_OPTIONS,
   buildExportScopeOptions,
-  saveExportResultWithDialog,
 } from '../../lib/exportDialogShared';
-import { exportSingleTableViaRust } from '../../lib/batchExportJob';
+import {
+  exportProvidedRowsViaRust,
+  exportSingleTableViaRust,
+} from '../../lib/batchExportJob';
 import { supportsFullTableExport, type DataExportCapability } from '../../lib/exportCapability';
 import { useI18n } from '../../hooks/useI18n';
 import type { ColumnDef } from './TableHeader';
@@ -164,18 +165,29 @@ export function DataExportDialog({
         return;
       }
 
-      const result = generateExportFromArrays({
-        columnNames,
-        rows,
-        selectedRows,
-        scope,
-        format,
+      // Item 3c: current-page / selected rows travel to the Rust batch
+      // exporter as a `provided` source (rows + schema the caller already
+      // holds) — the backend never re-queries, and selected rows are never
+      // translated back into SQL.
+      if (!dbSessionId) throw new Error('Missing connection');
+      const scopedRows =
+        scope === 'selected' && selectedRows.size > 0
+          ? rows.filter((_, i) => selectedRows.has(i))
+          : rows;
+      const result = await exportProvidedRowsViaRust({
+        dbSessionId,
         tableName,
+        columns: columns.map((c) => ({
+          name: c.name,
+          dataType: c.type ?? 'text',
+          nullable: c.nullable ?? true,
+        })),
+        rows: scopedRows,
+        dataFormat: format,
         databaseType,
+        primaryKey: primaryKeyColumns?.[0],
       });
-
-      const saved = await saveExportResultWithDialog(result, tableName, format);
-      if (!saved) {
+      if (result === 'cancelled') {
         setStatus('form');
         setExporting(false);
         return;
