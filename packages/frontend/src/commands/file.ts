@@ -1,6 +1,7 @@
 import { legacyInvoke as invoke } from '@datazen/backend-client';
 import { fileCommands as dialogFileCommands } from '@datazen/driver-sdk';
 import { requirePlatform } from '../platform/contracts';
+import type { ColumnInfo, Value } from '../types';
 
 export interface OpenedTextFile {
   fileName: string;
@@ -52,8 +53,31 @@ export const fileCommands = {
 };
 
 export type ExportMode = 'structure_only' | 'data_only' | 'data_and_structure';
-export type ExportDataFormat = 'csv' | 'json' | 'sql_insert';
+export type ExportDataFormat =
+  | 'csv'
+  | 'tsv'
+  | 'json'
+  | 'markdown'
+  | 'sql_insert'
+  | 'sql_update'
+  | 'xlsx';
 export type ExportOutputMode = 'single' | 'zip';
+
+/**
+ * Where one export item's rows come from (Rust `TableDataSource`, serde
+ * `{"type": …}` tag). Absent means `table`: the named table as a SELECT.
+ *
+ * - `sql`: one statement the backend streams (filtered export).
+ * - `provided`: rows the caller already holds, with their schema — never
+ *   touches the backend. Values are the wire `Value` shape: null/boolean/
+ *   number/string, a JSON object for `Json`, and a number array for `Bytes`
+ *   (a JSON array value is indistinguishable from bytes on this wire shape,
+ *   the same ambiguity query results already carry).
+ */
+export type ExportTableSource =
+  | { type: 'table' }
+  | { type: 'sql'; sql: string }
+  | { type: 'provided'; columns: ColumnInfo[]; rows: (Value | null)[][] };
 
 export interface ExportTableInput {
   tableName: string;
@@ -61,6 +85,10 @@ export interface ExportTableInput {
   schema?: string | null;
   columns: string[];
   ddl?: string | null;
+  /** Row source; defaults to the named table when omitted. */
+  source?: ExportTableSource;
+  /** Key column for `sql_update` output; first column when omitted. */
+  primaryKey?: string | null;
 }
 
 export interface ExportTablesRequest {

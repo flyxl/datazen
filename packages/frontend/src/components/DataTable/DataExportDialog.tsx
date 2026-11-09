@@ -11,7 +11,7 @@ import {
   buildExportScopeOptions,
   saveExportResultWithDialog,
 } from '../../lib/exportDialogShared';
-import { isStreamableExportFormat, streamTableExportToSaveDialog } from '../../lib/exportStream';
+import { exportSingleTableViaRust } from '../../lib/batchExportJob';
 import { supportsFullTableExport, type DataExportCapability } from '../../lib/exportCapability';
 import { useI18n } from '../../hooks/useI18n';
 import type { ColumnDef } from './TableHeader';
@@ -118,24 +118,14 @@ export function DataExportDialog({
     [t, rows.length, selectedRows.size, allowEntire, allowFiltered, totalRows],
   );
 
-  const formatOptions = useMemo(() => {
-    if (scope !== 'entire_table' && scope !== 'filtered_table') return ARRAY_EXPORT_FORMAT_OPTIONS;
-    return ARRAY_EXPORT_FORMAT_OPTIONS.filter((o) => o.value !== 'xlsx');
-  }, [scope]);
+  // Every format — XLSX included — now routes through the Rust batch
+  // exporter for entire/filtered scopes (item 3b), so nothing is filtered
+  // out of the format list any more.
+  const formatOptions = ARRAY_EXPORT_FORMAT_OPTIONS;
 
-  const handleScopeChange = useCallback(
-    (v: string) => {
-      const next = v as ExportScope;
-      setScope(next);
-      if (
-        (next === 'entire_table' || next === 'filtered_table') &&
-        !isStreamableExportFormat(format)
-      ) {
-        setFormat('csv');
-      }
-    },
-    [format],
-  );
+  const handleScopeChange = useCallback((v: string) => {
+    setScope(v as ExportScope);
+  }, []);
 
   const handleExport = useCallback(async () => {
     if (exportLocked) return;
@@ -146,7 +136,6 @@ export function DataExportDialog({
       const columnNames = columns.map((c) => c.name);
       if (scope === 'entire_table' || scope === 'filtered_table') {
         if (!dbSessionId) throw new Error('Missing connection');
-        if (!isStreamableExportFormat(format)) throw new Error('xlsx');
         const sql =
           scope === 'filtered_table'
             ? await onBuildFilteredExportSql?.().then((statement) => statement)
@@ -154,13 +143,16 @@ export function DataExportDialog({
         if (scope === 'filtered_table' && !sql) {
           throw new Error(t('export.filteredScopeUnavailable'));
         }
-        const result = await streamTableExportToSaveDialog({
+        // Item 3b: entire/filtered rows stream through the Rust batch
+        // exporter (single-table request; filtered passes the backend's
+        // own statement as a SQL source) — no frontend streaming path.
+        const result = await exportSingleTableViaRust({
           dbSessionId,
           tableName,
           columns: columnNames,
-          format,
+          dataFormat: format,
           databaseType,
-          pkName: primaryKeyColumns?.[0],
+          primaryKey: primaryKeyColumns?.[0],
           ...(sql ? { sql } : {}),
         });
         if (result === 'cancelled') {

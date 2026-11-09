@@ -11,7 +11,7 @@ import {
   buildExportScopeOptions,
   saveExportResultWithDialog,
 } from '../../lib/exportDialogShared';
-import { isStreamableExportFormat, streamTableExportToSaveDialog } from '../../lib/exportStream';
+import { exportSingleTableViaRust } from '../../lib/batchExportJob';
 import { supportsFullTableExport, type DataExportCapability } from '../../lib/exportCapability';
 import type { ColumnSchema } from '../../types';
 import { useI18n } from '../../hooks/useI18n';
@@ -128,21 +128,13 @@ export function ExportDialog({
     [t, rows.length, selectedRows.size, allowEntire, totalRows],
   );
 
-  const formatOptions = useMemo(() => {
-    if (scope !== 'entire_table') return OBJECT_EXPORT_FORMAT_OPTIONS;
-    return OBJECT_EXPORT_FORMAT_OPTIONS.filter((o) => o.value !== 'xlsx');
-  }, [scope]);
+  // Every format — XLSX included — now routes through the Rust batch
+  // exporter for the entire-table scope (item 3b).
+  const formatOptions = OBJECT_EXPORT_FORMAT_OPTIONS;
 
-  const handleScopeChange = useCallback(
-    (v: string) => {
-      const next = v as ExportScope;
-      setScope(next);
-      if (next === 'entire_table' && !isStreamableExportFormat(format)) {
-        setFormat('csv');
-      }
-    },
-    [format],
-  );
+  const handleScopeChange = useCallback((v: string) => {
+    setScope(v as ExportScope);
+  }, []);
 
   const handleExport = useCallback(async () => {
     setError(null);
@@ -154,17 +146,17 @@ export function ExportDialog({
         if (!dbSessionId) {
           throw new Error('Missing connection');
         }
-        if (!isStreamableExportFormat(format)) {
-          throw new Error('xlsx');
-        }
         const pkName = loadedColumns.find((c) => c.isPrimaryKey)?.name;
-        const result = await streamTableExportToSaveDialog({
+        // Item 3b: entire-table rows stream through the Rust batch
+        // exporter (single-table request) — no frontend streaming path.
+        const result = await exportSingleTableViaRust({
           dbSessionId,
+          databaseType,
+          database,
           tableName,
           columns: colNames,
-          format,
-          databaseType,
-          pkName,
+          dataFormat: format,
+          primaryKey: pkName,
         });
         if (result === 'cancelled') {
           setStatus('form');
