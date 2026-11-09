@@ -335,6 +335,42 @@ describe('formatRowsAsText: SQL INSERT', () => {
   });
 });
 
+describe('SQL dialect table pins to the driver registry', () => {
+  it('quotes identifiers and escapes literals per DB_REGISTRY for every driver', async () => {
+    // The formatter keeps a static per-dialect table instead of importing
+    // `databaseTypes` (it must stay a leaf — see `exportFormat.ts`). This
+    // test pins that table against the registry itself, so a driver meta
+    // that moves a quote char or escaper fails here instead of drifting.
+    // `databaseTypes` is imported only by this test file, never by the
+    // formatter, so setup still cannot reach the generated registry.
+    const { DB_REGISTRY, defaultEscapeSqlValue } = await import('../databaseTypes');
+    // Distinguishes the default escaper from the MySQL-family one: the
+    // default leaves backslashes and double quotes alone, MySQL doubles
+    // backslashes and backslash-escapes double quotes; both double
+    // single quotes.
+    const probe = 'a\\b"c\'d';
+    for (const [dbType, meta] of Object.entries(DB_REGISTRY)) {
+      const result = formatRowsAsText(
+        textOptions({
+          rows: [[1, probe]],
+          format: 'sql_insert',
+          databaseType: dbType,
+        }),
+      );
+      const q = meta.quoteChar ?? '"';
+      const quoted = (name: string): string =>
+        q === '' ? name : q === '[' ? `[${name}]` : `${q}${name}${q}`;
+      expect(result.content).toContain(
+        `INSERT INTO ${quoted('users')} (${quoted('id')}, ${quoted('name')})`,
+      );
+      const expectedLiteral = meta.escapeSqlValue
+        ? meta.escapeSqlValue(probe)
+        : defaultEscapeSqlValue(probe);
+      expect(result.content).toContain(`(1, ${expectedLiteral})`);
+    }
+  });
+});
+
 describe('formatRowsAsText: SQL UPDATE', () => {
   it('uses the isPrimaryKey column (parity with write_data_file_sql_update_uses_primary_key)', () => {
     const result = formatRowsAsText(
