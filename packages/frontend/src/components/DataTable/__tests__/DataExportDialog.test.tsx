@@ -26,11 +26,6 @@ vi.mock('../../ui/Select', () => ({
   ),
 }));
 
-const saveTextWithDialog = vi.fn();
-const saveBase64WithDialog = vi.fn();
-// Item 3b: entire/filtered scopes ride the tables-exporter port
-// (export_tables_stream); the old streaming save session and query stream
-// are gone, so their mocks go with them.
 const exportTablesStream = vi.fn();
 
 import { configurePlatform, clearPlatform } from '../../../platform/contracts';
@@ -49,13 +44,6 @@ function bindFakeExporter(): void {
   });
 }
 
-vi.mock('../../../commands/file', () => ({
-  fileCommands: {
-    saveTextWithDialog: (...args: unknown[]) => saveTextWithDialog(...args),
-    saveBase64WithDialog: (...args: unknown[]) => saveBase64WithDialog(...args),
-  },
-}));
-
 const COLS = [
   { id: 'id', name: 'id', type: 'integer' },
   { id: 'name', name: 'name', type: 'varchar' },
@@ -69,8 +57,6 @@ afterEach(() => {
 beforeEach(() => {
   vi.clearAllMocks();
   bindFakeExporter();
-  saveTextWithDialog.mockResolvedValue(true);
-  saveBase64WithDialog.mockResolvedValue(true);
   exportTablesStream.mockResolvedValue({ Saved: 2 });
 });
 
@@ -119,11 +105,12 @@ describe('DataExportDialog', () => {
         columns={COLS}
         rows={[[1, 'a']]}
         tableName="users"
+        dbSessionId="c1"
       />,
     );
     fireEvent.click(getByText('export.export'));
     await waitFor(() => {
-      expect(saveTextWithDialog).toHaveBeenCalled();
+      expect(exportTablesStream).toHaveBeenCalled();
       expect(getByText('export.success')).toBeInTheDocument();
     });
     expect(onClose).not.toHaveBeenCalled();
@@ -131,7 +118,74 @@ describe('DataExportDialog', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('exports xlsx as binary', async () => {
+  it('exports current page as a provided source (item 3c)', async () => {
+    const { getByText } = render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[
+          [1, 'a'],
+          [2, 'b'],
+        ]}
+        tableName="users"
+        dbSessionId="c1"
+      />,
+    );
+    fireEvent.click(getByText('export.export'));
+    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
+    const request = exportTablesStream.mock.calls[0]![0] as {
+      dataFormat: string;
+      tables: { tableName: string; columns: string[]; source: unknown }[];
+    };
+    expect(request.dataFormat).toBe('csv');
+    expect(request.tables).toEqual([
+      {
+        tableName: 'users',
+        columns: ['id', 'name'],
+        source: {
+          type: 'provided',
+          columns: [
+            { name: 'id', dataType: 'integer', nullable: true },
+            { name: 'name', dataType: 'varchar', nullable: true },
+          ],
+          rows: [
+            [1, 'a'],
+            [2, 'b'],
+          ],
+        },
+      },
+    ]);
+    await waitFor(() => expect(getByText('export.success')).toBeInTheDocument());
+  });
+
+  it('exports selected rows only, as a provided source (item 3c)', async () => {
+    const { getByText } = render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[
+          [1, 'a'],
+          [2, 'b'],
+          [3, 'c'],
+        ]}
+        selectedRows={new Set([2])}
+        tableName="users"
+        dbSessionId="c1"
+        initialScope="selected"
+      />,
+    );
+    fireEvent.click(getByText('export.export'));
+    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
+    const request = exportTablesStream.mock.calls[0]![0] as {
+      tables: { source: { type: string; rows: unknown[][] } }[];
+    };
+    expect(request.tables[0]!.source.type).toBe('provided');
+    expect(request.tables[0]!.source.rows).toEqual([[3, 'c']]);
+  });
+
+  it('exports xlsx through the Rust exporter, not the old binary path', async () => {
     const { getByText } = render(
       <DataExportDialog
         open
@@ -139,20 +193,33 @@ describe('DataExportDialog', () => {
         columns={COLS}
         rows={[[1, 'a']]}
         tableName="users"
+        dbSessionId="c1"
       />,
     );
     const selects = document.querySelectorAll('select');
     fireEvent.change(selects[0], { target: { value: 'xlsx' } });
     fireEvent.click(getByText('export.export'));
     await waitFor(() => {
-      expect(saveBase64WithDialog).toHaveBeenCalled();
+      expect(exportTablesStream).toHaveBeenCalledTimes(1);
     });
+    const request = exportTablesStream.mock.calls[0]![0] as {
+      dataFormat: string;
+      tables: { source: { type: string } }[];
+    };
+    expect(request.dataFormat).toBe('xlsx');
+    expect(request.tables[0]!.source.type).toBe('provided');
   });
 
   it('shows error when export fails', async () => {
-    saveTextWithDialog.mockRejectedValue(new Error('disk full'));
+    exportTablesStream.mockRejectedValue(new Error('disk full'));
     const { getByText } = render(
-      <DataExportDialog open onClose={vi.fn()} columns={COLS} rows={[[1, 'a']]} />,
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        dbSessionId="c1"
+      />,
     );
     fireEvent.click(getByText('export.export'));
     await waitFor(() => {
@@ -161,13 +228,13 @@ describe('DataExportDialog', () => {
   });
 
   it('does not close when user cancels save dialog', async () => {
-    saveTextWithDialog.mockResolvedValue(false);
+    exportTablesStream.mockResolvedValue({ Cancelled: null });
     const onClose = vi.fn();
     const { getByText } = render(
-      <DataExportDialog open onClose={onClose} columns={COLS} rows={[[1, 'a']]} />,
+      <DataExportDialog open onClose={onClose} columns={COLS} rows={[[1, 'a']]} dbSessionId="c1" />,
     );
     fireEvent.click(getByText('export.export'));
-    await waitFor(() => expect(saveTextWithDialog).toHaveBeenCalled());
+    await waitFor(() => expect(exportTablesStream).toHaveBeenCalled());
     expect(onClose).not.toHaveBeenCalled();
   });
 
@@ -251,7 +318,7 @@ describe('DataExportDialog export capability', () => {
     // Button is disabled, so firing click is a no-op for the handler guard.
     const btn = document.querySelectorAll('button')[1] as HTMLButtonElement;
     fireEvent.click(btn);
-    expect(saveTextWithDialog).not.toHaveBeenCalled();
+    expect(exportTablesStream).not.toHaveBeenCalled();
   });
 });
 

@@ -77,6 +77,65 @@ describe('createBlobTablesExporter', () => {
     expect(delivered[0]).toContain('plain');
   });
 
+  it('emits a provided source as CSV without re-reading the table (item 3c)', async () => {
+    const readPage =
+      vi.fn<(table: string, cursor: unknown) => Promise<import('../blobTablesExporter').TablePage>>();
+    const delivered: string[] = [];
+    const exporter = createBlobTablesExporter(readPage, {
+      deliver: (contents) => delivered.push(contents),
+    });
+
+    await expect(
+      exporter.exportTables(
+        REQUEST({
+          tables: [
+            {
+              tableName: 'users',
+              columns: ['id', 'name'],
+              source: {
+                type: 'provided',
+                columns: [
+                  { name: 'id', dataType: 'int', nullable: false },
+                  { name: 'name', dataType: 'text', nullable: true },
+                ],
+                rows: [
+                  [1, 'a,b'],
+                  [2, null],
+                ],
+              },
+            },
+          ],
+        }),
+      ),
+    ).resolves.toEqual({ Saved: 1 });
+
+    expect(readPage).not.toHaveBeenCalled();
+    expect(delivered[0]).toContain('id,name');
+    expect(delivered[0]).toContain('1,"a,b"');
+    expect(delivered[0]).toContain('2,');
+  });
+
+  it('refuses a sql source instead of silently exporting the whole table (item 3c)', async () => {
+    const readPage =
+      vi.fn<(table: string, cursor: unknown) => Promise<import('../blobTablesExporter').TablePage>>();
+    const exporter = createBlobTablesExporter(readPage);
+
+    await expect(
+      exporter.exportTables(
+        REQUEST({
+          tables: [
+            {
+              tableName: 'users',
+              columns: ['id'],
+              source: { type: 'sql', sql: 'SELECT id FROM users WHERE id = 1' },
+            },
+          ],
+        }),
+      ),
+    ).rejects.toThrow('filtered export is not supported by the web exporter');
+    expect(readPage).not.toHaveBeenCalled();
+  });
+
   it('structure modes emit the DDL as a leading comment', async () => {
     const readPage =
       vi.fn<

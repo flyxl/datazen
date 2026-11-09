@@ -1,8 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import {
+  exportProvidedRowsViaRust,
   exportSingleTableViaRust,
   runBatchExportJob,
+  toExportWireValue,
   type BatchExportTableInput,
+  type ProvidedRowsExportOptions,
   type RunBatchExportJobOptions,
   type SingleTableExportOptions,
 } from '../batchExportJob';
@@ -175,6 +178,111 @@ describe('exportSingleTableViaRust (item 3b)', () => {
     const request = exportTables.mock.calls[0]![0] as ExportTablesRequest;
     expect(request.database).toBe('appdb');
     expect(request.schema).toBe('public');
+  });
+});
+
+describe('exportProvidedRowsViaRust (item 3c)', () => {
+  const exportTables = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    exportTables.mockResolvedValue({ Saved: 2 });
+  });
+
+  function base(extra: Partial<ProvidedRowsExportOptions> = {}): ProvidedRowsExportOptions {
+    return {
+      dbSessionId: 'c1',
+      databaseType: 'postgres',
+      tableName: 'users',
+      columns: [
+        { name: 'id', dataType: 'int', nullable: false },
+        { name: 'name', dataType: 'text', nullable: true },
+      ],
+      rows: [
+        [1, 'a'],
+        [2, null],
+      ],
+      dataFormat: 'csv',
+      exportTables,
+      ...extra,
+    };
+  }
+
+  it('sends rows + schema as a provided source, never a SQL translation', async () => {
+    const result = await exportProvidedRowsViaRust(base({ dataFormat: 'xlsx' }));
+    expect(result).toBe('saved');
+    expect(exportTables).toHaveBeenCalledTimes(1);
+    const request = exportTables.mock.calls[0]![0] as ExportTablesRequest;
+    expect(request.mode).toBe('data_only');
+    expect(request.dataFormat).toBe('xlsx');
+    expect(request.outputMode).toBe('single');
+    expect(request.tables).toEqual([
+      {
+        tableName: 'users',
+        columns: ['id', 'name'],
+        source: {
+          type: 'provided',
+          columns: [
+            { name: 'id', dataType: 'int', nullable: false },
+            { name: 'name', dataType: 'text', nullable: true },
+          ],
+          rows: [
+            [1, 'a'],
+            [2, null],
+          ],
+        },
+        primaryKey: undefined,
+      },
+    ]);
+  });
+
+  it('maps values onto the wire Value shape', async () => {
+    await exportProvidedRowsViaRust(
+      base({
+        columns: [
+          { name: 'b', dataType: 'bytea', nullable: true },
+          { name: 'n', dataType: 'float8', nullable: true },
+          { name: 'j', dataType: 'jsonb', nullable: true },
+          { name: 'u', dataType: 'text', nullable: true },
+        ],
+        rows: [[new Uint8Array([0, 255]), Number.NaN, { k: 1 }, undefined]],
+        primaryKey: 'b',
+      }),
+    );
+    const request = exportTables.mock.calls[0]![0] as ExportTablesRequest;
+    const source = request.tables[0]!.source as {
+      type: string;
+      rows: unknown[][];
+    };
+    expect(source.type).toBe('provided');
+    expect(source.rows).toEqual([[[0, 255], null, { k: 1 }, null]]);
+    expect(request.tables[0]!.primaryKey).toBe('b');
+  });
+
+  it('reports cancelled and throws without a session', async () => {
+    exportTables.mockResolvedValue({ Cancelled: null });
+    await expect(exportProvidedRowsViaRust(base())).resolves.toBe('cancelled');
+    await expect(exportProvidedRowsViaRust(base({ dbSessionId: '' }))).rejects.toThrow(
+      'Missing connection',
+    );
+  });
+});
+
+describe('toExportWireValue', () => {
+  it('passes scalars through and maps edge cases', () => {
+    expect(toExportWireValue(null)).toBeNull();
+    expect(toExportWireValue(undefined)).toBeNull();
+    expect(toExportWireValue(true)).toBe(true);
+    expect(toExportWireValue('x')).toBe('x');
+    expect(toExportWireValue(1)).toBe(1);
+    expect(toExportWireValue(1.5)).toBe(1.5);
+    expect(toExportWireValue(Number.NaN)).toBeNull();
+    expect(toExportWireValue(Number.POSITIVE_INFINITY)).toBeNull();
+    expect(toExportWireValue(10n)).toBe(10);
+    expect(toExportWireValue(2n ** 100n)).toBe((2n ** 100n).toString());
+    expect(toExportWireValue(new Uint8Array([1, 2]))).toEqual([1, 2]);
+    expect(toExportWireValue([1, 2])).toEqual([1, 2]);
+    expect(toExportWireValue({ a: 1 })).toEqual({ a: 1 });
   });
 });
 

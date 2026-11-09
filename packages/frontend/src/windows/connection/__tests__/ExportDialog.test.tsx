@@ -117,6 +117,74 @@ describe('ExportDialog export capability', () => {
   });
 });
 
+describe('ExportDialog loaded scope (item 3c)', () => {
+  const COLS2: ColumnSchema[] = [
+    { name: 'id', dataType: 'int', nullable: false, isPrimaryKey: true, isAutoIncrement: false },
+    { name: 'name', dataType: 'text', nullable: true, isPrimaryKey: false, isAutoIncrement: false },
+  ];
+
+  function request() {
+    return exportTablesStream.mock.calls[0]![0] as {
+      dataFormat: string;
+      tables: {
+        tableName: string;
+        columns: string[];
+        source: { type: string; columns: unknown; rows: unknown[][] };
+        primaryKey: unknown;
+      }[];
+    };
+  }
+
+  it('exports the current page as a provided source with positional rows', async () => {
+    renderDialog({
+      columns: COLS2,
+      rows: [
+        { id: 1, name: 'a' },
+        { id: 2, name: 'b' },
+      ],
+      defaultScope: 'current_page',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'export.export' }));
+
+    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
+    const req = request();
+    expect(req.dataFormat).toBe('csv');
+    expect(req.tables[0]!.tableName).toBe('users');
+    expect(req.tables[0]!.columns).toEqual(['id', 'name']);
+    expect(req.tables[0]!.source.type).toBe('provided');
+    expect(req.tables[0]!.source.columns).toEqual([
+      { name: 'id', dataType: 'int', nullable: false },
+      { name: 'name', dataType: 'text', nullable: true },
+    ]);
+    expect(req.tables[0]!.source.rows).toEqual([
+      [1, 'a'],
+      [2, 'b'],
+    ]);
+    expect(req.tables[0]!.primaryKey).toBe('id');
+    await waitFor(() => expect(screen.getByText('export.success')).toBeInTheDocument());
+  });
+
+  it('exports only the selected rows, never a SQL translation', async () => {
+    renderDialog({
+      columns: COLS2,
+      rows: [
+        { id: 1, name: 'a' },
+        { id: 2, name: 'b' },
+        { id: 3, name: 'c' },
+      ],
+      selectedRows: new Set([2]),
+      defaultScope: 'selected',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'export.export' }));
+
+    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
+    const req = request();
+    expect(req.tables[0]!.source.type).toBe('provided');
+    expect(req.tables[0]!.source.rows).toEqual([[3, 'c']]);
+    await waitFor(() => expect(screen.getByText('export.success')).toBeInTheDocument());
+  });
+});
+
 describe('ExportDialog entire-table scope (item 3b)', () => {
   it('offers xlsx for entire tables and routes them to Rust as a table source', async () => {
     renderDialog({ defaultScope: 'entire_table' });
