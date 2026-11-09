@@ -89,8 +89,12 @@ export interface UseDataTableContextMenuOptions {
     options?: { includeHeader?: boolean },
   ) => void;
   onPasteSelectedCells?: () => void;
-  /** Row-level paste — DB-04 fills this in. */
+  /** Row-level paste (DBR-02): turn a DataZen row copy into new drafts. */
   onPasteRows?: () => void;
+  /** Whether row-level paste may act; the entry stays visible when `false`. */
+  canPasteRows?: boolean;
+  /** "Copy as new rows" (DBR-02): copy the covered rows as row data. */
+  onCopyRowsAsNewRows?: () => void;
   /** A clipboard write failed (the menu copy has no synchronous gesture to rely on). */
   onCopyProblem?: (problem: PasteProblem) => void;
   /* ── Multi-column sort (DB-11). Omitted ⇒ the header menu keeps its
@@ -156,6 +160,8 @@ export function useDataTableContextMenu(
     onCopySelectedCellsAs,
     onPasteSelectedCells,
     onPasteRows,
+    canPasteRows = true,
+    onCopyRowsAsNewRows,
     onCopyProblem,
     sorts,
     onAddSort,
@@ -298,6 +304,10 @@ export function useDataTableContextMenu(
             setEmpty: t('cellEditor.setEmpty'),
             setDefault: t('cellEditor.setDefault'),
             revertCell: t('cellEditor.revertCell'),
+            // The dialog entries of the submenu (DBR-05).
+            pickDate: t('dataTable.pickDate'),
+            loadBinaryFromFile: t('dataTable.loadBinaryFromFile'),
+            setCurrentDatetime: t('dataTable.setCurrentDatetime'),
             loadCandidates: t('cellEditor.loadCandidates'),
             copySelectedCells: t('dataTable.copySelectedCells'),
             copySelectedCellsAs: t('dataTable.copySelectedCellsAs'),
@@ -311,6 +321,7 @@ export function useDataTableContextMenu(
             copySelectedCellsAsMarkdown: t('dataTable.copySelectedCellsAsMarkdown'),
             pasteSelectedCells: t('dataTable.pasteSelectedCells'),
             pasteRows: t('dataTable.pasteRows'),
+            copyRowsAsNewRows: t('dataTable.copyRowsAsNewRows'),
             sortMulti: t('dataTable.sortMulti'),
             sortAscending: t('dataTable.sortAscending'),
             sortDescending: t('dataTable.sortDescending'),
@@ -464,6 +475,37 @@ export function useDataTableContextMenu(
                     onLoadCandidates(hit.rowIndex, hit.columnName);
                   }
                 : undefined,
+            // The selected-cell clipboard entries (DB-03): the options
+            // existed but were never forwarded, so the entries never
+            // rendered — wired now alongside the row-level pair (DBR-02).
+            onCopySelectedCells: canCopySelection
+              ? () => {
+                  onCopySelectedCells?.();
+                }
+              : undefined,
+            onCopySelectedCellsAs: canCopySelection
+              ? (
+                  format: SerializeCellsOptions['format'],
+                  options?: { includeHeader?: boolean },
+                ) => {
+                  onCopySelectedCellsAs?.(format, options);
+                }
+              : undefined,
+            onPasteSelectedCells: canPasteSelection
+              ? () => {
+                  onPasteSelectedCells?.();
+                }
+              : undefined,
+            onPasteRows: onPasteRows
+              ? () => {
+                  onPasteRows();
+                }
+              : undefined,
+            onCopyRowsAsNewRows: onCopyRowsAsNewRows
+              ? () => {
+                  onCopyRowsAsNewRows();
+                }
+              : undefined,
             onSortAscending: onAddSort
               ? (column: string) => {
                   onAddSort({ column, descending: false });
@@ -497,6 +539,7 @@ export function useDataTableContextMenu(
           canCopySelection,
           canPasteSelection,
           selectionIgnoredRanges,
+          canPasteRows,
         }),
         { x: e.clientX, y: e.clientY },
       );
@@ -529,6 +572,8 @@ export function useDataTableContextMenu(
       onCopySelectedCellsAs,
       onPasteSelectedCells,
       onPasteRows,
+      canPasteRows,
+      onCopyRowsAsNewRows,
       onCopyProblem,
       sorts,
       onAddSort,

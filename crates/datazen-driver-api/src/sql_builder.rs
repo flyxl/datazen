@@ -115,6 +115,38 @@ pub fn build_update_statement(
     set_columns: &[(&str, Option<Value>)],
     pk_columns: &[(&str, Option<Value>)],
 ) -> Result<BoundSqlStatement, DriverError> {
+    let resolved = set_columns
+        .iter()
+        .map(|(column, value)| (*column, SetColumnValue::Literal(value.clone())))
+        .collect::<Vec<_>>();
+    build_update_statement_resolved(dialect, max_parameters, table, &resolved, pk_columns)
+}
+
+/// One column of a `SET` clause / INSERT write list (DBR-05).
+///
+/// - `Literal` keeps the value out of the SQL text as a bound parameter;
+/// - `Expression` inlines the driver's own native SQL verbatim. The driver
+///   vouched for the fragment when it declared the expression — the same
+///   trust line as the raw-where filter, and the only way an expression can
+///   reach the statement: binding `'CURRENT_TIMESTAMP'` as a parameter would
+///   write its *text*, not the database's time.
+pub enum SetColumnValue<'a> {
+    Literal(Option<Value>),
+    /// The driver-rendered native SQL of the column's write expression.
+    Expression(&'a str),
+}
+
+/// The expression-aware generalization of [`build_update_statement`]: each
+/// written column is either a bound literal or the driver's own inlined
+/// expression SQL (DBR-05). Column order is the caller's order, preserved
+/// exactly, so the preview and the execution render the same statement.
+pub fn build_update_statement_resolved(
+    dialect: &dyn SqlDialect,
+    max_parameters: usize,
+    table: &str,
+    set_columns: &[(&str, SetColumnValue<'_>)],
+    pk_columns: &[(&str, Option<Value>)],
+) -> Result<BoundSqlStatement, DriverError> {
     let mut parameters = Vec::new();
     let mut bind = |value: &Option<Value>| -> Result<String, DriverError> {
         bind_parameter(dialect, max_parameters, &mut parameters, value)
@@ -122,11 +154,12 @@ pub fn build_update_statement(
 
     let mut set_clauses = Vec::with_capacity(set_columns.len());
     for (column, value) in set_columns {
-        set_clauses.push(format!(
-            "{} = {}",
-            dialect.quote_ident(column),
-            bind(value)?
-        ));
+        let rendered = match value {
+            SetColumnValue::Literal(value) => bind(value)?,
+            // Never a bound parameter — the driver declared this fragment.
+            SetColumnValue::Expression(sql) => sql.to_string(),
+        };
+        set_clauses.push(format!("{} = {}", dialect.quote_ident(column), rendered));
     }
     let mut where_clauses = Vec::with_capacity(pk_columns.len());
     for (column, value) in pk_columns {
@@ -203,17 +236,34 @@ pub fn build_insert_statement(
     table: &str,
     columns: &[(&str, Option<Value>)],
 ) -> Result<BoundSqlStatement, DriverError> {
+    let resolved = columns
+        .iter()
+        .map(|(column, value)| (*column, SetColumnValue::Literal(value.clone())))
+        .collect::<Vec<_>>();
+    build_insert_statement_resolved(dialect, max_parameters, table, &resolved)
+}
+
+/// The expression-aware generalization of [`build_insert_statement`] (DBR-05):
+/// a new row may stage a typed write expression exactly like an UPDATE can.
+pub fn build_insert_statement_resolved(
+    dialect: &dyn SqlDialect,
+    max_parameters: usize,
+    table: &str,
+    columns: &[(&str, SetColumnValue<'_>)],
+) -> Result<BoundSqlStatement, DriverError> {
     let mut parameters = Vec::new();
     let mut names = Vec::with_capacity(columns.len());
     let mut values = Vec::with_capacity(columns.len());
     for (column, value) in columns {
         names.push(dialect.quote_ident(column));
-        values.push(bind_parameter(
-            dialect,
-            max_parameters,
-            &mut parameters,
-            value,
-        )?);
+        let rendered = match value {
+            SetColumnValue::Literal(value) => {
+                bind_parameter(dialect, max_parameters, &mut parameters, value)?
+            }
+            // Never a bound parameter — the driver declared this fragment.
+            SetColumnValue::Expression(sql) => sql.to_string(),
+        };
+        values.push(rendered);
     }
     let sql = if names.is_empty() {
         format!("INSERT INTO {} DEFAULT VALUES", dialect.quote_ident(table))

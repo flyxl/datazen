@@ -8,7 +8,7 @@ import type {
   RowChangePlan,
   TableChangeContext,
 } from '../../lib/tableChanges';
-import type { FilterCondition, SortCondition } from '../../types';
+import type { FilterCondition, SortCondition, Value } from '../../types';
 import type { DefaultOrderOverride } from '../../lib/defaultSort';
 import type { CellPasteWrite } from '../../lib/tableChanges';
 import type { StagePasteWritesResult } from '../../stores/tableData/pendingEditActions';
@@ -52,6 +52,17 @@ export interface TableActions {
   updateFilter: (index: number, filter: FilterCondition) => void;
   setFilterLogic: (logic: 'and' | 'or') => void;
   applyFilters: () => void;
+  /* ── The DBR-04 filter modes. ── */
+  /** Switch the filter panel's editor pane; render-only, no navigation guard. */
+  setFilterMode: (mode: 'structured' | 'anyColumn' | 'rawSql') => void;
+  /** Edit the Any Column draft. */
+  setAnyColumnDraft: (value: string) => void;
+  /** Edit the Raw SQL draft. */
+  setRawWhereDraft: (value: string) => void;
+  /** Apply the Any Column expansion (conditions precomputed by the caller). */
+  applyAnyColumn: (expansion: { conditions: FilterCondition[] }) => void;
+  /** Apply the Raw SQL predicate; empty clears the filter. */
+  applyRawWhere: (predicate: string) => void;
   setFilterPanelOpen: (open: boolean) => void;
   setVisibleColumns: (columns: string[] | null) => void;
   setPage: (page: number) => void;
@@ -60,6 +71,8 @@ export interface TableActions {
   stageCellChange: (row: number, col: string, value: unknown) => void;
   /** Stage a whole pasted block in one state write (DB-03). */
   stagePasteWrites: (writes: readonly CellPasteWrite[]) => StagePasteWritesResult;
+  /** Append prefilled draft rows from a row copy (DBR-02 paste-rows). */
+  addDraftRowsFromCopy: (rows: readonly Record<string, Value | null>[]) => string[];
   cancelEdit: () => void;
   selectRow: (index: number, opts?: { multi?: boolean; range?: boolean }) => void;
   toggleSelectAll: () => void;
@@ -193,6 +206,19 @@ export function useTableActions({
         invalidateNotice();
         store().applyFilters(panelId);
       },
+      setFilterMode: (mode) => store().setFilterMode(panelId, mode),
+      setAnyColumnDraft: (value) => store().setAnyColumnDraft(panelId, value),
+      setRawWhereDraft: (value) => store().setRawWhereDraft(panelId, value),
+      applyAnyColumn: (expansion) => {
+        if (!mayNavigate()) return;
+        invalidateNotice();
+        store().applyAnyColumn(panelId, expansion);
+      },
+      applyRawWhere: (predicate) => {
+        if (!mayNavigate()) return;
+        invalidateNotice();
+        store().applyRawWhere(panelId, predicate);
+      },
       setFilterPanelOpen: (open: boolean) => store().setFilterPanelOpen(panelId, open),
       setVisibleColumns: (columns: string[] | null) => store().setVisibleColumns(panelId, columns),
       setPage: (page: number) => {
@@ -209,6 +235,7 @@ export function useTableActions({
       stageCellChange: (row: number, col: string, value: unknown) =>
         store().stageCellChange(panelId, row, col, value),
       stagePasteWrites: (writes) => store().stagePasteWrites(panelId, writes),
+      addDraftRowsFromCopy: (rows) => store().addDraftRowsFromCopy(panelId, rows),
       cancelEdit: () => store().cancelEdit(panelId),
       // Row gutter (DB-01 §4.2): row-level selection must also switch the mode to 'row',
       // otherwise `selectedRows` paints a highlight the selection model cannot explain.

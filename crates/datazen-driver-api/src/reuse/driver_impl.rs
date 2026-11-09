@@ -14,6 +14,7 @@
 
 use super::*;
 use crate::filters::FilterOperator;
+use crate::sql_builder::SetColumnValue;
 use async_trait::async_trait;
 use std::collections::HashMap;
 
@@ -299,6 +300,37 @@ impl DatabaseDriver for ReuseDriver {
         values: &[(&str, Option<Value>)],
     ) -> Result<BoundSqlStatement, DriverError> {
         self.inner.build_insert_statement(table, values)
+    }
+
+    /// The raw-where capability (DBR-04) and the write-expression family
+    /// (DBR-05) must reach the wrapped driver: a reuse alias of a driver
+    /// that supports them would otherwise silently lose them to the trait
+    /// default, and the host would refuse fragments the engine can serve.
+    fn supports_raw_where_filter(&self) -> bool {
+        self.inner.supports_raw_where_filter()
+    }
+
+    fn native_write_expression_sql(&self, expression: WriteExpression) -> Option<&'static str> {
+        self.inner.native_write_expression_sql(expression)
+    }
+
+    fn build_update_statement_with_expressions(
+        &self,
+        table: &str,
+        set_columns: &[(&str, SetColumnValue<'_>)],
+        pk_columns: &[(&str, Option<Value>)],
+    ) -> Result<BoundSqlStatement, DriverError> {
+        self.inner
+            .build_update_statement_with_expressions(table, set_columns, pk_columns)
+    }
+
+    fn build_insert_statement_with_expressions(
+        &self,
+        table: &str,
+        values: &[(&str, SetColumnValue<'_>)],
+    ) -> Result<BoundSqlStatement, DriverError> {
+        self.inner
+            .build_insert_statement_with_expressions(table, values)
     }
 
     fn insert_returning_clause(&self, columns: &[&str]) -> Option<String> {

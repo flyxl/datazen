@@ -25,6 +25,8 @@ export interface UseNamedViewMenuOptions {
   filters: FilterCondition[];
   /** The applied logic. */
   filterLogic: 'and' | 'or';
+  /** The applied raw `WHERE` predicate, when the Raw SQL filter is in effect (DBR-04). */
+  rawWhere: string | null;
   /** The sorts in effect. */
   sorts: SortCondition[];
   /** The draft filters. */
@@ -53,6 +55,7 @@ export function useNamedViewMenu(options: UseNamedViewMenuOptions): NamedViewMen
     tableName,
     filters,
     filterLogic,
+    rawWhere,
     sorts,
     draftFilters,
     draftFilterLogic,
@@ -81,12 +84,21 @@ export function useNamedViewMenu(options: UseNamedViewMenuOptions): NamedViewMen
     [connectionId, database, schema, tableName],
   );
 
-  /** Apply a saved view: the filters, the first sort and the column layout. */
+  /**
+   * Apply a saved view: the filters (or the raw predicate it was saved with,
+   * DBR-04), the first sort and the column layout. A view with a raw
+   * predicate applies it through the raw channel — `setFilters` would drop
+   * it, and a saved question must be replayed as it was asked.
+   */
   const onApply = useCallback(
     (view: NamedView) => {
-      const readout = readViewFilters(view.filters);
-      if (readout.unknownOperators.length > 0) return;
-      actions.setFilters(readout.filters, view.filterLogic);
+      if (view.rawWhere != null && view.rawWhere !== '') {
+        actions.applyRawWhere(view.rawWhere);
+      } else {
+        const readout = readViewFilters(view.filters);
+        if (readout.unknownOperators.length > 0) return;
+        actions.setFilters(readout.filters, view.filterLogic);
+      }
       const sort = view.sorts[0];
       if (sort) actions.setSort(sort);
       if (view.visibleColumns) actions.setVisibleColumns(view.visibleColumns);
@@ -103,6 +115,7 @@ export function useNamedViewMenu(options: UseNamedViewMenuOptions): NamedViewMen
         scope,
         filters,
         filterLogic,
+        rawWhere,
         sorts,
         visibleColumns,
         columnOrder: null,
@@ -121,6 +134,7 @@ export function useNamedViewMenu(options: UseNamedViewMenuOptions): NamedViewMen
     filterLogic,
     filters,
     onApply,
+    rawWhere,
     scope,
     sorts,
     visibleColumns,

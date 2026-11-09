@@ -360,6 +360,26 @@ const pack = {
   'valueSearch.noHits': 'Ninguna tabla contiene este valor.',
   'valueSearch.errors': 'No se pudieron buscar las tablas {count}',
   'valueSearch.noTables': 'Esta base de datos no muestra tablas para buscar.',
+  'valueSearch.mode.notContains': 'No contiene',
+  'valueSearch.scopeLabel': 'Alcance',
+  'valueSearch.scope.all': 'Todas las tablas ({count})',
+  'valueSearch.scope.selected': 'Tablas seleccionadas ({count})',
+  'valueSearch.pickerPlaceholder': 'Filtrar tablas…',
+  'valueSearch.pickerEmpty': 'Ninguna tabla coincide con el filtro.',
+  'valueSearch.pickerCount': '{selected} de {total} seleccionadas',
+  'valueSearch.typesLabel': 'Tipos de columna',
+  'valueSearch.types.text': 'Texto y enumeración',
+  'valueSearch.types.textNumber': 'Texto, enumeración y números (coincidencia de texto)',
+  'valueSearch.types.textDatetime': 'Texto, enumeración y fechas (coincidencia de texto)',
+  'valueSearch.types.textNumberDatetime':
+    'Texto, enumeración, números y fechas (coincidencia de texto)',
+  'valueSearch.types.note':
+    'Las columnas numéricas y de fecha/hora se comparan por su representación de texto (42, 2023-01-02), no de forma tipada.',
+  'valueSearch.zeroHits': '{count} tabla(s) sin coincidencias',
+  'valueSearch.locate': 'Abrir y localizar',
+  'valueSearch.locateNoColumns': 'Esta tabla no tiene columnas en las que buscar',
+  'valueSearch.doneNote':
+    '{count} tabla(s) escaneada(s) en {seconds}s — al menos una consulta por tabla.',
   'resultFind.open': 'Buscar en resultados',
   'resultFind.openLabel': 'Encontrar',
   'resultFind.placeholder': 'Buscar en filas cargadas...',
@@ -408,6 +428,21 @@ const pack = {
   'filter.activeCount': '{count} activos',
   'filter.noActive': 'Sin filtros',
   'filter.unapplied': 'Sin aplicar',
+  // DBR-04: the filter panel's mode row — Any Column and Raw SQL.
+  'filter.modeRowLabel': 'Modo de filtro',
+  'filter.modeStructured': 'Estructurado',
+  'filter.modeAnyColumn': 'Cualquier columna',
+  'filter.modeRawSql': 'Raw SQL',
+  'filter.anyColumnPlaceholder': 'Buscar en todas las columnas buscables…',
+  'filter.anyColumnScope':
+    'Busca en {searchable} columna(s); {skipped} omitida(s) (no buscables como texto)',
+  'filter.rawPlaceholder': "Predicado WHERE, p. ej. total > 100 AND status = 'paid'",
+  'filter.rawHint':
+    'Avanzado: una sola expresión booleana WHERE. La valida y ensambla el servidor; sin DML/DDL, sin múltiples sentencias, sin ORDER BY/LIMIT.',
+  'filter.rawBadge': 'SQL',
+  'filter.rawQueryContext':
+    'Se ejecuta en {context}. Avanzado: una sola expresión booleana WHERE, validada y ensamblada por el servidor; sin DML/DDL, sin múltiples sentencias, sin ORDER BY/LIMIT.',
+  'filter.rawAppliedSummary': 'SQL: {predicate}',
   'filter.editCondition': 'Editar filtro',
   'filter.eq': '=',
   'filter.ne': '≠',
@@ -501,6 +536,17 @@ const pack = {
   'export.export': 'Exportar',
   'export.success': 'Exportación completada correctamente',
   'export.disabledByDriver': 'Este controlador no permite exportar datos.',
+  'export.resetColumns': 'Restablecer valores predeterminados',
+  'export.formatDisabledStream':
+    'XLSX necesita todas las filas en memoria, por lo que no está disponible para exportaciones en flujo (tabla completa / resultados filtrados).',
+  'export.formatDisabledNoKey':
+    'SQL UPDATE necesita una columna de clave primaria para construir su cláusula WHERE.',
+  'export.progressRows': '{rows} filas escritas…',
+  'export.cancelExport': 'Cancelar exportación',
+  'export.cancelling': 'Cancelando…',
+  'export.cancelledPartialDeleted': 'Exportación cancelada: el archivo parcial fue eliminado.',
+  'export.cancelledPartialKept':
+    'Exportación cancelada: el archivo parcial no se pudo eliminar; elimínalo manualmente si no lo necesitas.',
   'batchExport.title': 'Exportar',
   'batchExport.selectTables': 'Seleccionar tablas',
   'batchExport.clearAll': 'Borrar todo',

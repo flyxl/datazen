@@ -3,6 +3,11 @@ import { sqlserverDialect, sqlserverDialectProfile } from './dialect';
 import { sqlserverSqlParameterStrategy } from './sqlParameters';
 
 export const sqlserverMeta = {
+  /**
+   * DBR-05: the driver renders the current-datetime write expression natively
+   * (`SYSDATETIME()` — the datetime2-precision clock of T-SQL).
+   */
+  dataGrid: { currentDatetimeWrite: true },
   label: 'SQL Server',
   shortLabel: 'Ss',
   iconBg: 'bg-danger',

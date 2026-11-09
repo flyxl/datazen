@@ -501,6 +501,109 @@ describe('表数据筛选 (TF-001~TF-010)', () => {
     expect(body).toContain(t('filter.unapplied'));
   });
 
+  // ── DBR-04: Any Column / Raw SQL（写而不跑：与既有序列同仓维护） ──
+
+  it('任意列筛选一个值应命中所有含该值的行 (TF-RAW-001)', async () => {
+    await openFilterPanel();
+    const anyTab = await $('[data-testid="filter-mode-anyColumn"]');
+    await anyTab.waitForDisplayed({ timeout: 10000 });
+    await anyTab.click();
+    await browser.pause(300);
+    const input = await $('[data-testid="any-column-input"]');
+    await input.setValue('a');
+    await $('[data-testid="any-column-apply"]').click();
+    await browser.pause(1200);
+    const body = await $('body').getText();
+    // 'a' 出现在 alpha/beta/gamma 每一行的 name 里——任意列包含匹配应命中全部。
+    expect(body).toContain('alpha');
+    expect(body).toContain('beta');
+    expect(body).toContain('gamma');
+  });
+
+  it('任意列筛选不存在的值应清空所有行 (TF-RAW-002)', async () => {
+    const input = await $('[data-testid="any-column-input"]');
+    if (!(await input.isDisplayed().catch(() => false))) {
+      await openFilterPanel();
+      await (await $('[data-testid="filter-mode-anyColumn"]')).click();
+      await browser.pause(300);
+    }
+    await input.setValue('zz-no-such-value');
+    await $('[data-testid="any-column-apply"]').click();
+    await browser.pause(1200);
+    const body = await $('body').getText();
+    expect(body).not.toContain('alpha');
+    expect(body).not.toContain('gamma');
+  });
+
+  it('Raw SQL 应用谓词应过滤并预览同一语句 (TF-RAW-003)', async () => {
+    await openFilterPanel();
+    const rawTab = await $('[data-testid="filter-mode-rawSql"]');
+    // PostgreSQL 声明了 rawWhereFilter；未声明的驱动不渲染该页签。
+    await rawTab.waitForDisplayed({ timeout: 10000 });
+    await rawTab.click();
+    await browser.pause(300);
+    const input = await $('[data-testid="raw-where-input"]');
+    await input.setValue('score > 15');
+    await $('[data-testid="raw-where-apply"]').click();
+    await browser.pause(1200);
+    const body = await $('body').getText();
+    expect(body).toContain('beta');
+    expect(body).toContain('gamma');
+    expect(body).not.toContain('alpha');
+
+    // 预览与执行同链：SQL 预览应原样携带用户谓词。
+    await $('[data-testid="filter-preview-sql"]').click();
+    await browser.pause(800);
+    const previewText = await $('body').getText();
+    expect(previewText).toContain('score > 15');
+  });
+
+  it('Raw SQL 多语句注入应被可读拒绝 (TF-RAW-004)', async () => {
+    const input = await $('[data-testid="raw-where-input"]');
+    if (!(await input.isDisplayed().catch(() => false))) {
+      await openFilterPanel();
+      await (await $('[data-testid="filter-mode-rawSql"]')).click();
+      await browser.pause(300);
+    }
+    await input.setValue('score > 1; DROP TABLE _e2e_filter_test');
+    await $('[data-testid="raw-where-apply"]').click();
+    await browser.pause(1200);
+    const body = await $('body').getText();
+    // 拒绝必须是可读错误，不得静默回落到无筛选读取，也不得丢表。
+    expect(body).toContain('grid.filter.rawWhere');
+    // 三段式契约码（grid.filter.rawWhere*）——任一前缀命中即可。
+    // 清理：恢复无筛选状态。
+    const clearBtn = await $('[data-testid="filter-clear"]');
+    if (await clearBtn.isDisplayed().catch(() => false)) {
+      await clearBtn.click();
+      await browser.pause(800);
+    }
+  });
+
+  it('模式切换保留各自草稿 (TF-RAW-005)', async () => {
+    await openFilterPanel();
+    await (await $('[data-testid="filter-mode-anyColumn"]')).click();
+    await browser.pause(200);
+    await (await $('[data-testid="any-column-input"]')).setValue('keep-me');
+    await (await $('[data-testid="filter-mode-rawSql"]')).click();
+    await browser.pause(200);
+    await (await $('[data-testid="raw-where-input"]')).setValue('score < 99');
+    await (await $('[data-testid="filter-mode-anyColumn"]')).click();
+    await browser.pause(200);
+    const anyValue = await (await $('[data-testid="any-column-input"]')).getValue();
+    expect(anyValue).toBe('keep-me');
+    await (await $('[data-testid="filter-mode-rawSql"]')).click();
+    await browser.pause(200);
+    const rawValue = await (await $('[data-testid="raw-where-input"]')).getValue();
+    expect(rawValue).toBe('score < 99');
+    // 收尾：清空全部筛选，让后续序列从干净状态开始。
+    const clearBtn = await $('[data-testid="filter-clear"]');
+    if (await clearBtn.isDisplayed().catch(() => false)) {
+      await clearBtn.click();
+      await browser.pause(800);
+    }
+  });
+
   it('智能筛选未配置时应显示配置提示 (TF-AI-001)', async () => {
     const smartFilter = await $("[data-testid='smart-filter-toggle']");
     if (await smartFilter.isExisting()) {

@@ -285,7 +285,10 @@ async fn finish_save_dialog(
         Some(path) => {
             super::super::file::validate_extension(&path, &ext_list)?;
             let byte_count = bytes.len();
-            tokio::fs::write(&path, bytes)
+            // Same write policy as every other save path (DBR-06): write to the
+            // `.datazen-part` sibling and rename into place, so a failure keeps
+            // a pre-existing file intact.
+            super::super::file::write_all_via_part(&path, &bytes)
                 .await
                 .cmd_err("execute_driver_command")?;
             tracing::info!(

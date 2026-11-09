@@ -28,6 +28,7 @@ pub(super) fn table_context(connection_id: &str, db_session_id: &str) -> RowChan
 
 pub(super) fn update_change(id: i64, original: &str, current: &str) -> PendingRowChange {
     PendingRowChange {
+        expression_values: Default::default(),
         row_identity: BTreeMap::from([("id".into(), Some(Value::Integer(id)))]),
         original_values: BTreeMap::from([("name".into(), Some(Value::String(original.into())))]),
         current_values: BTreeMap::from([("name".into(), Some(Value::String(current.into())))]),
@@ -39,6 +40,7 @@ pub(super) fn update_change(id: i64, original: &str, current: &str) -> PendingRo
 
 pub(super) fn delete_change(id: i64) -> PendingRowChange {
     PendingRowChange {
+        expression_values: Default::default(),
         row_identity: BTreeMap::from([("id".into(), Some(Value::Integer(id)))]),
         original_values: BTreeMap::new(),
         current_values: BTreeMap::new(),
@@ -58,6 +60,7 @@ pub(super) fn assert_legacy_write_disabled(error: crate::commands::error::Comman
 
 pub(super) fn insert_change(values: &[(&str, Option<Value>)]) -> PendingRowChange {
     PendingRowChange {
+        expression_values: Default::default(),
         row_identity: BTreeMap::new(),
         original_values: BTreeMap::new(),
         current_values: values

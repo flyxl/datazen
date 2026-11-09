@@ -22,6 +22,20 @@ impl DatabaseDriver for MysqlDriver {
         true
     }
 
+    /// The raw `WHERE` filter (DBR-04): a validated boolean fragment spliced
+    /// into the `WHERE` of the host-built read. MySQL's expression grammar
+    /// covers everything the validator lets through, so the channel is open.
+    fn supports_raw_where_filter(&self) -> bool {
+        true
+    }
+
+    /// The staged write expressions this driver renders natively (DBR-05).
+    /// MySQL spells the current instant `CURRENT_TIMESTAMP` (its `NOW()` is
+    /// the same clock under a second name).
+    fn native_write_expression_sql(&self, _expression: WriteExpression) -> Option<&'static str> {
+        Some("CURRENT_TIMESTAMP")
+    }
+
     /// MySQL has no `DEFAULT VALUES`; an all-default row is spelled with an
     /// empty column/value list. Non-empty inserts keep the shared
     /// parameterized rendering (backtick identifiers, positional `?`).

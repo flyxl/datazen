@@ -25,7 +25,7 @@ use super::domain::{
  * break that neither side can see alone.
  */
 const NAMED_VIEW_KEYS: &str =
-    "columnOrder,createdAt,filterLogic,filters,id,isDefault,name,scope,sorts,updatedAt,visibleColumns";
+    "columnOrder,createdAt,filterLogic,filters,id,isDefault,name,rawWhere,scope,sorts,updatedAt,visibleColumns";
 const SCOPE_KEYS: &str = "connectionId,database,schema,table";
 const FILTER_KEYS_WITH_CONNECTOR: &str = "column,connector,operator,value";
 const FILTER_KEYS_WITHOUT_CONNECTOR: &str = "column,operator,value";
@@ -98,6 +98,7 @@ fn view(table: &str, name: &str) -> NamedView {
         scope: scope(table),
         filters: vec![condition("id", None)],
         filter_logic: "and".into(),
+        raw_where: None,
         sorts: Vec::new(),
         visible_columns: None,
         column_order: None,

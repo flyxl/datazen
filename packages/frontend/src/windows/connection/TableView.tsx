@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Columns3 } from 'lucide-react';
 import { DataTable } from '../../components/DataTable/DataTable';
+import { QuickLookDialog, isQuickLookableValue } from '../../components/DataTable/QuickLookDialog';
 import { DATA_TABLE_ROW_HEIGHT, rowHeightForDensity } from '../../components/DataTable/rowHeight';
 import type { ColumnDef } from '../../components/DataTable/TableHeader';
 import { TableColumnFilter } from './TableColumnFilter';
@@ -11,7 +12,10 @@ import { tableManualHandle } from '../../lib/session/tableSession';
 import { databaseCommands } from '../../commands/database';
 import { FilterSqlPreviewDialog } from '../../components/filter/FilterSqlPreviewDialog';
 import type { TableReadPreviewSql } from '@datazen/backend-client';
-import { EMPTY_GRID_SELECTION } from '../../stores/tableData/gridSelection';
+import {
+  normalizeSelectionRange,
+  EMPTY_GRID_SELECTION,
+} from '../../stores/tableData/gridSelection';
 import { hasPendingWork } from '../../stores/tableData/pendingChanges';
 import { selectDirtyRow } from '../../stores/tableData/dirtyIndex';
 import { displayedColumnNames } from '../../stores/tableData/selectionActions';
@@ -50,8 +54,13 @@ import { isComposingEvent, isEditableTarget } from '../../lib/gridEventGuards';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import { useColumnStats } from '../../hooks/useColumnStats';
 import { ColumnStatsDialog } from '../../components/DataTable/ColumnStatsDialog';
+import { SetValueDateDialog } from './SetValueDateDialog';
+import { fileCommands } from '../../commands/file';
+import { base64ToBytes } from '../../lib/base64';
 import { likeCaseInsensitiveForMeta, supportedOperatorsForMeta } from '../../lib/filterOperators';
-import type { ColumnSchema, DatabaseType } from '../../types';
+import { expandAnyColumnFilter } from '../../lib/anyColumnFilter';
+import { valueSearchTypeGroupsFor } from '../../lib/valueSearch';
+import type { ColumnSchema, DatabaseType, Value } from '../../types';
 import { resolveDefaultTableSort } from '../../lib/defaultSort';
 import {
   DEFAULT_GRID_ALTERNATING_ROWS,
@@ -66,6 +75,32 @@ import { Spinner } from '../../components/ui/Spinner';
 /** Stable empty fallbacks: a fresh array per render would defeat the memos below. */
 const EMPTY_ROWS: Record<string, unknown>[] = [];
 const EMPTY_COLUMNS: ColumnSchema[] = [];
+/**
+ * The extensions the binary loader offers in the native pick dialog (DBR-05).
+ * The host keeps its own allow-list (`commands/file.rs`); this list stays
+ * inside it — anything else gets the host's explainable "extension not
+ * allowed" error, which is the failure path the acceptance asks to see.
+ */
+const BINARY_FILE_EXTENSIONS = [
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'bmp',
+  'webp',
+  'svg',
+  'ico',
+  'pdf',
+  'bin',
+  'dat',
+  'txt',
+  'json',
+  'xml',
+  'md',
+  'sql',
+  'zip',
+  'gz',
+];
 
 interface TableViewProps {
   /** Table/view panel this grid belongs to; its data slice is keyed by this id. */
@@ -140,6 +175,19 @@ export function TableView({
       ),
     [databaseType],
   );
+  /**
+   * Whether the Raw SQL pane is offered at all (DBR-04): the driver's own
+   * declaration. A driver that says nothing keeps the two-pane panel it had,
+   * and the back end would refuse a raw fragment anyway — the flag hides an
+   * entry the database would reject, it never widens what may run.
+   */
+  const rawWhereSupported =
+    databaseType != null &&
+    (
+      DB_REGISTRY[databaseType as DatabaseType] as
+        | { dataGrid?: { rawWhereFilter?: boolean } }
+        | undefined
+    )?.dataGrid?.rawWhereFilter === true;
   const isConnectionReadOnly = Boolean(
     readOnlyProp ?? (savedConnection?.readOnly || driverReadOnly),
   );
@@ -215,7 +263,23 @@ export function TableView({
   const gridRowHeight = rowHeightForDensity(DATA_TABLE_ROW_HEIGHT, gridDensity);
   const [confirmDelete, confirmDeleteDialog] = useConfirmDialog();
   const [confirmCommit, confirmCommitDialog] = useConfirmDialog();
+  /** The binary "load from file" confirm (DBR-05): its own dialog, because its
+   * message is built from the picked file, not from a fixed string. */
+  const [confirmBinaryLoad, confirmBinaryLoadDialog] = useConfirmDialog();
   const [previewOpen, setPreviewOpen] = useState(false);
+  /**
+   * The cell the grid's Quick Look entries (DBR-05) opened — the middle-click
+   * on a cell and the `Cmd/Ctrl+Shift+L` shortcut. `null` = closed.
+   */
+  const [quickLookCell, setQuickLookCell] = useState<{
+    rowIndex: number;
+    columnName: string;
+  } | null>(null);
+  /** The date/datetime picker of the "Set Value" menu (DBR-05). `null` = closed. */
+  const [datePick, setDatePick] = useState<{
+    rowIndex: number;
+    columnName: string;
+  } | null>(null);
   /**
    * The SQL preview dialog of the filter panel (DB-15): the statements the
    * next read of this panel would send, straight from the backend's own
@@ -320,6 +384,52 @@ export function TableView({
   });
   const fkSources = useMemo(() => indexFkCandidateSources(fkMeta.index.entries()), [fkMeta.index]);
   /**
+   * The dialog entries of the "Set Value" menu (DBR-05): the date/datetime
+   * picker and the binary "load from file".
+   *
+   * The binary flow lives here in one place — pick the file, show what would
+   * be written (name, size, target column), stage only on confirm (PRD §8).
+   * A cancelled native dialog or a rejected confirm is a cancelled write: the
+   * original value is untouched, and a failed pick leaves no partial state.
+   */
+  const handleSetValueDialog = useCallback(
+    (kind: 'pickDate' | 'loadBinaryFromFile', rowIndex: number, columnName: string) => {
+      if (kind === 'pickDate') {
+        setDatePick({ rowIndex, columnName });
+        return;
+      }
+      const column = columns.find((c) => c.name === columnName);
+      if (!column) return;
+      void fileCommands
+        .openBase64WithDialog(t('dataTable.binaryFileFilterName'), BINARY_FILE_EXTENSIONS)
+        .then(async (file) => {
+          // A cancelled native dialog is a cancelled write: no confirm, no
+          // staging, the cell keeps its value.
+          if (!file) return;
+          const bytes = base64ToBytes(file.dataBase64);
+          const confirmed = await confirmBinaryLoad({
+            title: t('dataTable.loadBinaryFromFile'),
+            message: `${file.fileName} · ${bytes.length} ${t('detail.bytes')}`,
+            description: t('dataTable.binaryLoadConfirm', { column: column.name }),
+            kind: 'info',
+          });
+          if (!confirmed) return;
+          // The staged payload is the same untagged byte array the wire has
+          // always carried for binary; the preview/commit path is the shared
+          // one, so the write is guarded like every other staged change.
+          useTableDataStore
+            .getState()
+            .stageCellValue(panelId, rowIndex, columnName, Array.from(bytes));
+        })
+        .catch(() => {
+          // The pick itself failed (a rejected extension, an unreadable
+          // file): the value stays untouched — no silent partial state.
+        });
+    },
+    [columns, confirmBinaryLoad, panelId, t],
+  );
+
+  /**
    * The editing wiring of the panel (DB-05): the editor facts of every
    * column, the write path and the "Set Value" entries.
    */
@@ -334,6 +444,9 @@ export function TableView({
     connectionReadOnly: isConnectionReadOnly,
     mountReason: readOnlyReasonProp,
     fkSources,
+    // The two dialog entries of the "Set Value" menu (DBR-05): this panel
+    // is their host.
+    onSetValueDialog: handleSetValueDialog,
   });
 
   /**
@@ -361,6 +474,10 @@ export function TableView({
         filters: ts.filters,
         sorts: order.sorts,
         filterLogic: ts.filterLogic,
+        // The applied raw predicate (DBR-04): the preview assembles through
+        // the same builder the read executes, so the statements it shows are
+        // byte for byte the ones the read sends — raw predicate included.
+        rawWhere: ts.rawWhere,
         countStrategy: resolvePanelCountStrategy(context),
         defaultOrderColumns: order.defaultOrderColumns,
         afterKey: keyset.afterKey,
@@ -432,6 +549,34 @@ export function TableView({
   const draftFilters = ts?.draftFilters ?? [];
   const draftFilterLogic = ts?.draftFilterLogic ?? 'and';
   const filterPanelOpen = ts?.filterPanelOpen ?? false;
+  /* ── The DBR-04 filter modes: pane, drafts, and the applied raw channel. ── */
+  const filterMode = ts?.filterMode ?? 'structured';
+  const anyColumnDraft = ts?.anyColumnDraft ?? '';
+  const rawWhereDraft = ts?.rawWhereDraft ?? '';
+  const rawWhere = ts?.rawWhere ?? null;
+  /**
+   * The Any Column search scope (DBR-04): the same driver-declared searchable
+   * types the full-database value search uses (DBR-03), resolved against this
+   * table's columns. The report says what would be searched and what is
+   * skipped — a skipped column is named, never silently matched with a cast
+   * the database may reject.
+   */
+  const anyColumnReport = useMemo(() => {
+    // The driver's own column-type rules — the same declaration the cell
+    // editor and the structured filter read (`tableEditing` resolves the
+    // same field), so the Any Column scope can never disagree with them.
+    const hints = databaseType
+      ? (
+          DB_REGISTRY[databaseType as DatabaseType] as
+            | { cellTypes?: import('../../lib/cellTypes').CellTypeHints }
+            | undefined
+        )?.cellTypes
+      : undefined;
+    return expandAnyColumnFilter(columns, anyColumnDraft, {
+      groups: valueSearchTypeGroupsFor(databaseType ?? null),
+      hints,
+    });
+  }, [anyColumnDraft, columns, databaseType]);
   const visibleColumns = ts?.visibleColumns ?? null;
   /**
    * How much the row count may be trusted. The grid renders this state and
@@ -486,12 +631,17 @@ export function TableView({
     columns.every((column) => !column.isPrimaryKey) &&
     effectiveOrder !== 'none';
 
+  /** The primary-key column names, in schema order (the toolbar and the grid both ask). */
+  const primaryKeyColumnNames = columns
+    .filter((column) => column.isPrimaryKey)
+    .map((column) => column.name);
+
   /**
    * A table whose grid cannot address rows, on an otherwise editable
    * connection (DB-16). This outranks the order hint above: "you cannot edit
    * this here, but here is the way out" is actionable, "ordered by the first
-   * column" is a footnote — and the footnote stays reachable from the pager's
-   * sort dropdown.
+   * column" is a footnote — and the footnote stays reachable from the
+   * toolbar's default-order select.
    */
   const noPkEditBlocked =
     onEditInSql != null &&
@@ -520,6 +670,10 @@ export function TableView({
     tableName,
     filters,
     filterLogic,
+    // The applied raw predicate (DBR-04): a view saved while the Raw SQL
+    // filter is in effect carries the predicate, so replaying it asks the
+    // same question.
+    rawWhere,
     sorts,
     draftFilters,
     draftFilterLogic,
@@ -568,6 +722,27 @@ export function TableView({
   const rowArrays: unknown[][] = useMemo(
     () => rows.map((record) => displayedColumns.map((col) => record[col.name] ?? null)),
     [rows, displayedColumns],
+  );
+
+  /**
+   * Quick Look of a grid cell (DBR-05): the viewer the middle-click and the
+   * `Cmd/Ctrl+Shift+L` shortcut open. A read gesture first — read-only panels
+   * keep it, only the dialog's save exit needs the write path.
+   *
+   * The entry opens for content that is worth a viewer — binary, structured
+   * JSON, or a long text — the same verdict the detail drawer's per-field
+   * button is built on. An empty cell keeps the browser's middle-click.
+   */
+  const openCellQuickLook = useCallback(
+    (rowIndex: number, columnName: string) => {
+      if (rowIndex < 0 || rowIndex >= rows.length) return;
+      const column = columns.find((c) => c.name === columnName);
+      if (!column) return;
+      const value = rows[rowIndex][columnName];
+      if (!isQuickLookableValue(value, column.dataType)) return;
+      setQuickLookCell({ rowIndex, columnName });
+    },
+    [rows, columns],
   );
 
   /* ── Column tools (DB-12): reorder, freeze, width persistence. ── */
@@ -766,6 +941,25 @@ export function TableView({
     t,
   ]);
 
+  /**
+   * Right-click "Paste to Selected Cells": read the system clipboard and land
+   * it at the top-left of the current cell selection — the same anchor the
+   * `paste` DOM gesture uses, arrived at from the menu instead.
+   */
+  const handleMenuPasteSelectedCells = useCallback(() => {
+    const gridSelection = ts?.gridSelection;
+    if (!gridSelection || gridSelection.mode !== 'cell') return;
+    const anchor = normalizeSelectionRange(
+      gridSelection,
+      displayedColumns.map((c) => c.name),
+    );
+    if (!anchor) return;
+    clipboard.handlers.onPasteFromClipboard?.({
+      rowIndex: anchor.start.rowIndex,
+      columnName: anchor.start.columnName,
+    });
+  }, [clipboard.handlers, displayedColumns, ts?.gridSelection]);
+
   const handleTableKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
       // The foreign-key navigation (DB-07) comes first: it is the only
@@ -792,11 +986,39 @@ export function TableView({
       if (mod && (event.key === 'd' || event.key === 'D')) {
         if (!isEditable || pendingBusy) return;
         if (isEditableTarget(event.target)) return;
-        // The focus is on a real row: duplicating a row is not this track's
-        // business (02 owns that), so the key is left alone.
-        if (!drafts.activeDraftId) return;
+        // With an active draft, ⌘D keeps its pre-DBR-02 meaning: duplicate
+        // that draft. Without one — but with real rows selected — it copies
+        // the selected existing rows as new drafts (DBR-02, PRD 5.2: the
+        // gesture fires only on a real row selection, never in an editor).
+        if (drafts.activeDraftId) {
+          event.preventDefault();
+          drafts.duplicateDraftRow(drafts.activeDraftId);
+          return;
+        }
+        const gridSelection = ts?.gridSelection;
+        const hasRealRowSelection =
+          gridSelection != null &&
+          (gridSelection.mode === 'row'
+            ? selectedRows.size > 0
+            : normalizeSelectionRange(
+                gridSelection,
+                displayedColumns.map((c) => c.name),
+              ) != null);
+        if (!hasRealRowSelection) return;
         event.preventDefault();
-        drafts.duplicateDraftRow(drafts.activeDraftId);
+        clipboard.copyRowsAsDrafts();
+        return;
+      }
+      if (mod && event.shiftKey && (event.key === 'l' || event.key === 'L')) {
+        // Quick Look of the focused cell (DBR-05). It is a read gesture — a
+        // read-only panel keeps it; the dialog's save exit is what needs the
+        // write path. A cell must be focused: the shortcut describes *this*
+        // cell, and without a focus there is nothing to look at.
+        if (isEditableTarget(event.target)) return;
+        const focus = ts?.gridSelection?.focus;
+        if (!focus) return;
+        event.preventDefault();
+        openCellQuickLook(focus.rowIndex, focus.columnName);
         return;
       }
       if (event.key === 'Escape') {
@@ -827,8 +1049,10 @@ export function TableView({
       fkNavigation,
       handleCommitPendingChanges,
       isEditable,
+      openCellQuickLook,
       pendingBusy,
       hasWork,
+      ts,
     ],
   );
 
@@ -888,6 +1112,9 @@ export function TableView({
         onSetFilters={actions.setFilters}
         onClearFilters={actions.clearFilters}
         onAddDraftRow={() => drafts.addDraftRow()}
+        defaultOrderOverride={defaultOrderOverride}
+        onDefaultOrderOverrideChange={actions.setDefaultOrderOverride}
+        primaryKeyCount={primaryKeyColumnNames.length}
         namedView={namedView}
       />
       {readOnlyTipReason ? <TableReadOnlyTip reason={readOnlyTipReason} /> : null}
@@ -920,6 +1147,22 @@ export function TableView({
       />
       <DataTable
         {...clipboard.dataTableProps}
+        // The right-click clipboard entries (DB-03 wiring + DBR-02): the DOM
+        // gestures stay on the bridge, the menu actions are explicit props.
+        onCopySelectedCells={() => {
+          void clipboard.copySelectedCellsAs('tsv');
+        }}
+        onCopySelectedCellsAs={(format, options) => {
+          void clipboard.copySelectedCellsAs(format, options);
+        }}
+        onPasteSelectedCells={handleMenuPasteSelectedCells}
+        onCopyRowsAsNewRows={() => {
+          void clipboard.copyRowsAsNewRows();
+        }}
+        onPasteRows={() => {
+          void clipboard.pasteRowsAsDrafts();
+        }}
+        canPasteRows={clipboard.canUseRowCopy}
         columns={columnDefs}
         rows={rowArrays}
         totalRows={totalRows}
@@ -929,8 +1172,6 @@ export function TableView({
         unstablePaging={unstablePaging}
         estimateUnavailable={estimateUnavailable}
         pagingHint={pagingHint}
-        defaultOrderOverride={defaultOrderOverride}
-        onDefaultOrderOverrideChange={actions.setDefaultOrderOverride}
         page={page}
         pageSize={pageSize}
         sorts={sorts}
@@ -940,6 +1181,40 @@ export function TableView({
         draftFilterLogic={draftFilterLogic}
         filterPanelOpen={filterPanelOpen}
         onFilterPanelOpenChange={actions.setFilterPanelOpen}
+        // The DBR-04 filter modes: pane switching is render-only; applying is
+        // an explicit act that resets the page and reloads (see the actions).
+        filterMode={filterMode}
+        onFilterModeChange={actions.setFilterMode}
+        filterRawWhereSupported={rawWhereSupported}
+        anyColumnValue={anyColumnDraft}
+        onAnyColumnValueChange={actions.setAnyColumnDraft}
+        onApplyAnyColumn={(value) => {
+          const hints = databaseType
+            ? (
+                DB_REGISTRY[databaseType as DatabaseType] as
+                  | { cellTypes?: import('../../lib/cellTypes').CellTypeHints }
+                  | undefined
+              )?.cellTypes
+            : undefined;
+          const expansion = expandAnyColumnFilter(columns, value, {
+            groups: valueSearchTypeGroupsFor(databaseType ?? null),
+            hints,
+          });
+          actions.applyAnyColumn(expansion);
+        }}
+        anyColumnSkippedCount={anyColumnReport.skippedColumns.length}
+        anyColumnSearchableCount={anyColumnReport.searchableColumns.length}
+        rawWhereValue={rawWhereDraft}
+        onRawWhereValueChange={actions.setRawWhereDraft}
+        onApplyRawWhere={actions.applyRawWhere}
+        appliedRawWhere={rawWhere}
+        // Where the predicate runs (DBR-04): the panel's own database and
+        // schema, so the user can see the target the statement will read.
+        filterRawWhereContext={
+          rawWhereSupported
+            ? [database || null, schema ?? null].filter(Boolean).join(' · ') || null
+            : null
+        }
         filterOperators={filterOperators}
         filterLikeCaseInsensitive={filterLikeCaseInsensitive}
         onAddFilter={actions.addFilter}
@@ -974,6 +1249,7 @@ export function TableView({
         onCellDoubleClick={handleCellDoubleClick}
         onCellEdit={cellWritesEnabled ? handleCellEdit : undefined}
         onCellEditCancel={actions.cancelEdit}
+        onCellQuickLook={openCellQuickLook}
         cellEditing={editing.cellEditing}
         cellTypeHints={editing.cellTypeHints}
         enableSetNull={cellWritesEnabled}
@@ -1009,7 +1285,7 @@ export function TableView({
         databaseType={databaseType}
         dbSessionId={dbSessionId}
         dataExportCapability={dataExportCapability}
-        primaryKeyColumns={columns.filter((c) => c.isPrimaryKey).map((c) => c.name)}
+        primaryKeyColumns={primaryKeyColumnNames}
         onDeleteRows={cellWritesEnabled ? handleDeleteRows : undefined}
         onPreviewSql={handleFilterPreviewSql}
         onExportFiltered={handleFilterExportFiltered}
@@ -1045,11 +1321,91 @@ export function TableView({
       />
       {confirmDeleteDialog}
       {confirmCommitDialog}
+      {confirmBinaryLoadDialog}
       <PendingPlanDialog
         plan={previewPlan}
         open={previewOpen && previewPlan != null}
         onClose={() => setPreviewOpen(false)}
       />
+      {datePick &&
+        datePick.rowIndex < rows.length &&
+        (() => {
+          // The picker of the "Set Value" menu (DBR-05): the same canonical
+          // strings the in-place editor writes, staged through the same path.
+          // A zoned column never reaches here (resolveSetValueState keeps it
+          // on the text path); the kind comes from the column's own cell type.
+          const column = columns.find((c) => c.name === datePick.columnName);
+          if (!column) return null;
+          const info = editing.cellEditing?.columnEditorInfo.get(datePick.columnName);
+          const kind: 'date' | 'datetime' = info?.cellType === 'datetime' ? 'datetime' : 'date';
+          const raw = rows[datePick.rowIndex][datePick.columnName];
+          return (
+            <SetValueDateDialog
+              open
+              columnName={column.name}
+              columnType={column.dataType}
+              kind={kind}
+              value={typeof raw === 'string' ? raw : ''}
+              onApply={(next) => {
+                // A cleared picker applies a SQL NULL — the same intent as an
+                // editor emptied by hand, never an empty string in a date
+                // column.
+                useTableDataStore
+                  .getState()
+                  .stageCellValue(
+                    panelId,
+                    datePick.rowIndex,
+                    datePick.columnName,
+                    next === '' ? null : next,
+                  );
+              }}
+              onClose={() => setDatePick(null)}
+            />
+          );
+        })()}
+      {quickLookCell &&
+        quickLookCell.rowIndex < rows.length &&
+        (() => {
+          // The Quick Look of a grid cell (DBR-05): the column definition and the
+          // value come from the same records the grid renders, so the dialog and
+          // the cell cannot tell two different stories about one value.
+          const column = columns.find((c) => c.name === quickLookCell.columnName);
+          if (!column) return null;
+          const value = rows[quickLookCell.rowIndex][quickLookCell.columnName];
+          // The save exit needs the write path of the very cell: the panel's
+          // editability and the column's own reason a cell cannot be edited.
+          // Binary stays view-only here — its write entry is the file loader.
+          const columnReadOnlyReason =
+            editing.cellEditing?.columnEditorInfo.get(quickLookCell.columnName)?.readOnlyReason ??
+            null;
+          const canCommit = cellWritesEnabled && columnReadOnlyReason === null;
+          return (
+            <QuickLookDialog
+              open
+              column={{
+                id: column.name,
+                name: column.name,
+                type: column.dataType,
+                nullable: column.nullable,
+              }}
+              value={value}
+              editable={canCommit}
+              onCommit={
+                canCommit
+                  ? (next) => {
+                      editing.cellEditing?.onCellValue?.(
+                        quickLookCell.rowIndex,
+                        quickLookCell.columnName,
+                        next as Value | null | undefined,
+                      );
+                      setQuickLookCell(null);
+                    }
+                  : undefined
+              }
+              onClose={() => setQuickLookCell(null)}
+            />
+          );
+        })()}
       <FilterSqlPreviewDialog
         open={sqlPreview.open}
         onClose={() => setSqlPreview((state) => ({ ...state, open: false }))}

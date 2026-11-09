@@ -15,8 +15,8 @@
 //! # 阶段归属（不因本登记而变更）
 //!
 //! CM-53 的 **W1 断言**按
-//! `docs/development/platform-development-plan.md` §17/§11 仍归 P7/P8
-//! 退出门槛（「CM-05～07、38～40、53～56、59、60 单实例部分…的 W1 断言」）；
+//! `docs/archive/development/platform-development-plan.md`（#227 归档，内容冻结）
+//! §17/§11 仍归 P7/P8 退出门槛（「CM-05～07、38～40、53～56、59、60 单实例部分…的 W1 断言」）；
 //! 本登记只回写 **F 层旅程**的自动化落点，不把 W1 计入本切片门槛。H 层已
 //! 交付（`crates/datazen/src/ai/application/ownership.rs` +
 //! `src-tauri/src/commands/ai/grant.rs`），见
@@ -103,7 +103,8 @@ fn the_compliance_matrix_anchors_for_cm53_are_intact() {
             && consumer_adapters.contains("ai_grant_editor_session"),
         "consumer-adapters 旅程表必须把 AI 授权旅程归属到 CM-53"
     );
-    let plan = read("docs/development/platform-development-plan.md");
+    // #227 已将该计划归档至 docs/archive/（内容冻结，「53～56」锚点仍在）。
+    let plan = read("docs/archive/development/platform-development-plan.md");
     assert!(
         plan.contains("53～56"),
         "P7 退出门槛必须仍包含 CM-53 的 W1 断言（53～56）；提前收口时同步改写本登记"

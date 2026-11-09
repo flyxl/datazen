@@ -112,10 +112,7 @@ function containsName(taken: ReadonlySet<string>, name: string): boolean {
 }
 
 /** The views of one scope. */
-export function viewsForScope(
-  views: readonly NamedView[],
-  scope: NamedViewScope,
-): NamedView[] {
+export function viewsForScope(views: readonly NamedView[], scope: NamedViewScope): NamedView[] {
   const key = namedViewScopeKey(scope);
   return views.filter((view) => namedViewScopeKey(view.scope) === key);
 }
@@ -153,6 +150,12 @@ export interface TableStateForView {
   draftFilters?: FilterCondition[];
   /** The applied logic. */
   filterLogic: 'and' | 'or';
+  /**
+   * The applied raw `WHERE` predicate, when the view was saved with the Raw
+   * SQL filter in effect (DBR-04). Omitted — the common case — is a view of
+   * structured filters, including every view saved before the field existed.
+   */
+  rawWhere?: string | null;
   /** The sorts in effect. */
   sorts?: SortCondition[];
   /** The visible columns; `null` means every column is visible. */
@@ -178,6 +181,9 @@ export function viewFromTableState(
     scope: state.scope,
     filters: state.filters,
     filterLogic: state.filterLogic,
+    // The applied raw predicate (DBR-04): saved only when it is what the
+    // panel really runs, so replaying the view asks the same question.
+    rawWhere: state.rawWhere ?? null,
     sorts: state.sorts ?? [],
     visibleColumns: state.visibleColumns ?? null,
     columnOrder: state.columnOrder ?? null,
@@ -215,9 +221,7 @@ export interface ViewFilterReadout {
  * **refusal**, not a silent drop: the view cannot be applied, and the menu
  * says so instead of running a different query than the user saved.
  */
-export function readViewFilters(
-  conditions: readonly PortFilterCondition[],
-): ViewFilterReadout {
+export function readViewFilters(conditions: readonly PortFilterCondition[]): ViewFilterReadout {
   const unknownOperators: string[] = [];
   const filters: FilterCondition[] = [];
   for (const condition of conditions) {
@@ -273,7 +277,9 @@ export function parseNamedViewExport(text: string): NamedViewExportFile {
     throw new Error('The file does not hold a saved-view export.');
   }
   if (payload.version !== NAMED_VIEW_EXPORT_VERSION) {
-    throw new Error(`The file has version ${String(payload.version)}, expected ${NAMED_VIEW_EXPORT_VERSION}.`);
+    throw new Error(
+      `The file has version ${String(payload.version)}, expected ${NAMED_VIEW_EXPORT_VERSION}.`,
+    );
   }
   if (!Array.isArray(payload.views)) {
     throw new Error('The file does not hold a list of views.');
@@ -288,7 +294,8 @@ export function parseNamedViewExport(text: string): NamedViewExportFile {
   }
   return {
     version: NAMED_VIEW_EXPORT_VERSION,
-    exportedAt: typeof payload.exportedAt === 'string' ? payload.exportedAt : new Date().toISOString(),
+    exportedAt:
+      typeof payload.exportedAt === 'string' ? payload.exportedAt : new Date().toISOString(),
     views,
   };
 }
@@ -315,10 +322,12 @@ function readExportedView(entry: unknown): NamedView | null {
     },
     filters: entry.filters as NamedView['filters'],
     filterLogic: entry.filterLogic,
+    // DBR-04: the raw predicate travels in the file like every other applied
+    // fact; a file without it is a view of structured filters, exactly as
+    // before the field existed.
+    rawWhere: typeof entry.rawWhere === 'string' ? entry.rawWhere : null,
     sorts: entry.sorts as NamedView['sorts'],
-    visibleColumns: Array.isArray(entry.visibleColumns)
-      ? (entry.visibleColumns as string[])
-      : null,
+    visibleColumns: Array.isArray(entry.visibleColumns) ? (entry.visibleColumns as string[]) : null,
     columnOrder: Array.isArray(entry.columnOrder) ? (entry.columnOrder as string[]) : null,
     isDefault: entry.isDefault === true,
     createdAt: typeof entry.createdAt === 'string' ? entry.createdAt : new Date().toISOString(),

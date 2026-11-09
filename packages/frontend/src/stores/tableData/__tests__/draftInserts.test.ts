@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { emptyTableState } from '../connectionState';
-import { draftInsertCount, orderedDrafts, withNewDraft } from '../draftInserts';
+import {
+  draftInsertCount,
+  orderedDrafts,
+  withDraftRowsFromCopy,
+  withNewDraft,
+} from '../draftInserts';
 import {
   draftsForWire,
   hasPendingWork,
@@ -19,7 +24,9 @@ const CONTEXT: TableChangeContext = {
   table: 'users',
 };
 
-function stateWith(...drafts: { draftId: string; values: Record<string, string | number | null> }[]) {
+function stateWith(
+  ...drafts: { draftId: string; values: Record<string, string | number | null> }[]
+) {
   const base: TableState = emptyTableState(CONTEXT);
   const draftInserts = new Map(base.draftInserts);
   for (const draft of drafts) {
@@ -128,5 +135,31 @@ describe('draft rows (store layer)', () => {
 
     expect(next.draftInsertOrder).toEqual(['draft-1', 'draft-2']);
     expect(next.draftInserts.get('draft-2')?.values).toEqual({});
+  });
+});
+
+describe('draft rows from a row copy (DBR-02)', () => {
+  it('appends prefilled drafts in copy order, preserving NULL vs absent keys', () => {
+    const ts = stateWith({ draftId: 'existing', values: { name: 'already' } });
+    const next = withDraftRowsFromCopy(ts, [
+      { draftId: 'copy-1', values: { name: 'first', note: null } },
+      { draftId: 'copy-2', values: {} },
+    ]);
+
+    expect(next.draftInsertOrder).toEqual(['existing', 'copy-1', 'copy-2']);
+    expect(next.draftInserts?.get('copy-1')).toEqual({
+      draftId: 'copy-1',
+      values: { name: 'first', note: null },
+    });
+    // An empty record is a valid draft: every column keeps its default.
+    expect(next.draftInserts?.get('copy-2')).toEqual({ draftId: 'copy-2', values: {} });
+    // The copied drafts are pending work and invalidate any previewed plan.
+    expect(next.previewPlan).toBeNull();
+    expect(hasPendingWork({ ...ts, ...next } as TableState)).toBe(true);
+  });
+
+  it('an empty copy is a no-op patch', () => {
+    const ts = stateWith();
+    expect(withDraftRowsFromCopy(ts, [])).toEqual({});
   });
 });

@@ -34,7 +34,7 @@ import {
   type CellValueErrorReason,
   type ColumnEditorInfo,
 } from '../../lib/cellEditorKind';
-import { isReadOnlyCellType, type CellTypeHints } from '../../lib/cellTypes';
+import { isReadOnlyCellType, isZonedCellType, type CellTypeHints } from '../../lib/cellTypes';
 import type { SetValueActionId, SetValueState } from '../../lib/setValueActions';
 import { DB_REGISTRY } from '../../lib/databaseTypes';
 import type { ColumnSchema, DatabaseType, TableType, Value } from '../../types';
@@ -58,6 +58,13 @@ export interface TableEditingContext {
   readonly relationKind: TableType;
   /** `DatabaseTypeMeta.dataGrid?.editable`; absent means editable. */
   readonly capabilityEditable?: boolean;
+  /**
+   * `DatabaseTypeMeta.dataGrid?.currentDatetimeWrite` (DBR-05): the driver
+   * renders a current-datetime write expression natively. Absent means the
+   * "Set to current time" entry is not offered at all — the back end would
+   * refuse the staged expression, so the menu must not suggest it.
+   */
+  readonly currentDatetimeWrite?: boolean;
   /** The table has a primary key. */
   readonly hasPrimaryKey: boolean;
   /** The table has columns at all (an unloaded panel has none). */
@@ -317,6 +324,11 @@ export function resolvePanelCellReadOnlyReason(
  *
  * The answer is asked for at the moment of the click: it depends on the
  * column (nullable?) and on the row (is there a staged change to revert?).
+ *
+ * The two dialog entries (DBR-05) are gated here too — on the **panel's**
+ * writability, not the column's in-place editor: a binary column's
+ * `binaryColumn` reason is exactly what the file loader is the answer to,
+ * so it is the one reason that must not hide its own write entry.
  */
 export function resolveSetValueState(
   panelId: string,
@@ -333,12 +345,41 @@ export function resolveSetValueState(
   const change = key ? ts?.pendingChanges.get(key) : undefined;
   const hasPending = change ? change.changedColumns.includes(columnName) : false;
   const candidates = ts?.enumCandidates.get(columnName);
+  // The write gate the dialog entries share: the panel's own reason a cell
+  // cannot be edited (read-only, view, no primary key, driver capability).
+  // Only the dialog host decides below whether the entries are offered at
+  // all — a panel without a host must not offer what it cannot finish.
+  const panelWritable = resolvePanelReadOnlyReason(context) === null;
+  const columnReason = info?.readOnlyReason ?? null;
   return {
     canNull: column.nullable,
     canEmpty: true,
     rowKind: 'update',
     hasPending,
     canLoadCandidates: info?.cellType === 'enum' && !candidates,
+    // The typed current-datetime expression (DBR-05): only a driver that
+    // declares it, only a datetime column, only a writable panel. The
+    // zoned-datetime exclusion does not apply — the database renders the
+    // expression in its own zone, which is exactly what the column wants.
+    canSetCurrentDatetime:
+      context.currentDatetimeWrite === true && info?.cellType === 'datetime' && panelWritable,
+    // The picker (DBR-05): a plain date/datetime column. A zoned column keeps
+    // its text editor — the picker cannot hold an offset (05 §7 #8).
+    canPickDate:
+      panelWritable &&
+      (info?.cellType === 'date' || info?.cellType === 'datetime') &&
+      !isZonedCellType(column.dataType, context.hints),
+    // The binary file loader (DBR-05): the one write path a binary column
+    // has. `binaryColumn` is the in-place editor's refusal — the reason the
+    // loader exists — so it does not count against the column; every other
+    // reason (a driver-declared unwritable type, …) does. An auto-increment
+    // column of an existing row is refused outright (PRD: no dangerous
+    // entry on columns the database fills itself).
+    canLoadBinary:
+      panelWritable &&
+      info?.cellType === 'bytes' &&
+      (columnReason === null || columnReason === 'binaryColumn') &&
+      !column.isAutoIncrement,
   };
 }
 
@@ -367,6 +408,11 @@ export function applySetValueAction(
     case 'revertCell':
       store.stageCellValue(panelId, rowIndex, columnName, undefined);
       return;
+    case 'setCurrentDatetime':
+      // The typed write expression (DBR-05): staged as an intent, rendered as
+      // the driver's own native SQL at commit — never a literal string.
+      store.stageCellExpression(panelId, rowIndex, columnName);
+      return;
   }
 }
 
@@ -394,6 +440,19 @@ export interface UseTableEditingOptions {
    * (DB-20). `undefined` keeps every column on the enum candidate path.
    */
   readonly fkSources?: ReadonlyMap<string, FkCandidateSource>;
+  /**
+   * The host of the two dialog entries of the "Set Value" menu (DBR-05):
+   * the date/datetime picker and the binary "load from file". The callback
+   * receives the entry kind and the cell the menu was opened on.
+   *
+   * Omitted ⇒ the entries are not offered — a panel without a host must not
+   * offer what it cannot finish.
+   */
+  readonly onSetValueDialog?: (
+    kind: 'pickDate' | 'loadBinaryFromFile',
+    rowIndex: number,
+    columnName: string,
+  ) => void;
 }
 
 export interface TableEditing {
@@ -435,11 +494,13 @@ export function useTableEditing(options: UseTableEditingOptions): TableEditing {
     mountReason,
     columns,
     fkSources,
+    onSetValueDialog,
   } = options;
 
   const driverMeta = databaseType ? DB_REGISTRY[databaseType as DatabaseType] : undefined;
   const hints: CellTypeHints | undefined = driverMeta?.cellTypes;
   const capabilityEditable = driverMeta?.dataGrid?.editable;
+  const currentDatetimeWrite: boolean | undefined = driverMeta?.dataGrid?.currentDatetimeWrite;
 
   const context = useMemo<TableEditingContext>(
     () => ({
@@ -448,12 +509,21 @@ export function useTableEditing(options: UseTableEditingOptions): TableEditing {
       mountReason,
       relationKind: 'table',
       capabilityEditable,
+      currentDatetimeWrite: driverMeta?.dataGrid?.currentDatetimeWrite,
       hasPrimaryKey: columns.some((column) => column.isPrimaryKey),
       hasColumns: columns.length > 0,
       columns,
       hints,
     }),
-    [capabilityEditable, columns, connectionReadOnly, hints, mountReason, panelId],
+    [
+      capabilityEditable,
+      columns,
+      connectionReadOnly,
+      currentDatetimeWrite,
+      hints,
+      mountReason,
+      panelId,
+    ],
   );
 
   // The context is registered so that the entry points (`requestEdit`, the
@@ -493,15 +563,31 @@ export function useTableEditing(options: UseTableEditingOptions): TableEditing {
   );
 
   const setValueState = useCallback(
-    (_row: number, col: string) => resolveSetValueState(panelId, _row, col),
-    [panelId],
+    (_row: number, col: string) => {
+      const state = resolveSetValueState(panelId, _row, col);
+      if (!state) return null;
+      // The dialog entries need their host (DBR-05): without one the menu
+      // must not offer what no one can finish.
+      if (!onSetValueDialog) {
+        return { ...state, canPickDate: false, canLoadBinary: false };
+      }
+      return state;
+    },
+    [onSetValueDialog, panelId],
   );
 
   const onSetValue = useCallback(
     (row: number, col: string, action: SetValueActionId) => {
+      // The dialog entries (DBR-05) are handed to their host — the panel
+      // opens the picker / the file loader; the staging stays in the host's
+      // hands so every write keeps the one preview→fingerprint→commit path.
+      if ((action === 'pickDate' || action === 'loadBinaryFromFile') && onSetValueDialog) {
+        onSetValueDialog(action, row, col);
+        return;
+      }
       applySetValueAction(panelId, row, col, action);
     },
-    [panelId],
+    [onSetValueDialog, panelId],
   );
 
   const onLoadCandidates = useCallback(

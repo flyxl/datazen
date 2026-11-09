@@ -9,6 +9,7 @@ const pack = {
   'tableView.shortcut.moveByPage': 'PageUp/PageDown move one screen',
   'tableView.shortcut.moveToEdge': 'Home/End go to row edge, Cmd+Home/End to grid edge',
   'tableView.shortcut.selectAllRows': 'Cmd/Ctrl+A selects all rows',
+  'tableView.shortcut.quickLook': 'Cmd/Ctrl+Shift+L opens Quick Look of the focused cell',
   'tableView.shortcut.tabLeavesGrid': 'Tab leaves the grid',
   'query.execute': 'Execute',
   'query.run': 'Run',
@@ -304,6 +305,8 @@ const pack = {
   'tableData.pendingOffPage': '{count} more cells changed on other pages',
   'tableData.dirtyCellAria': 'Changed cell: {original} → {next}',
   'tableData.dirtyValueNull': 'NULL',
+  // The staged write expression a dirty tooltip renders in words (DBR-05).
+  'tableData.dirtyValueExpression': 'the database current time (expression)',
   'tableData.dirtyValueEmpty': '(empty string)',
   'tableData.dirtyDeletedRow': 'Marked for deletion',
   'tableData.restoreRow': 'Restore This Row',
@@ -368,6 +371,21 @@ const pack = {
   'dataTable.sortDescending': 'Descending',
   'dataTable.removeSortColumn': 'Remove from Sort',
   'dataTable.clearSorts': 'Clear All Sorting',
+  // The header's own sort menu and chevron (DBR-SORT, Navicat-aligned single-column sort).
+  'dataTable.sortColumnAscending': 'Sort Ascending',
+  'dataTable.sortColumnDescending': 'Sort Descending',
+  'dataTable.removeSort': 'Remove Sort',
+  'dataTable.sortMenuLabel': 'Sort options',
+  // The two dialog entries of the "Set Value" submenu (DBR-05): the picker of
+  // a plain date/datetime column, and the binary "load from file".
+  'dataTable.pickDate': 'Pick a Date…',
+  'dataTable.loadBinaryFromFile': 'Load from File…',
+  // The typed current-datetime expression entry (DBR-05): the value comes
+  // from the database itself, never a typed literal.
+  'dataTable.setCurrentDatetime': 'Set to Current Time',
+  'dataTable.binaryFileFilterName': 'Binary-capable files',
+  'dataTable.binaryLoadConfirm': 'Load this file into the column "{column}"?',
+
   // Column tools (DB-12). New keys land in en only; the other nine
   // locales resolve them through the en fallback until the next release.
   'dataTable.freezeThrough': 'Freeze through This Column',
@@ -420,6 +438,15 @@ const pack = {
   'dataTable.copySelectedCellsAsMarkdown': 'Copy as Markdown Table',
   'dataTable.pasteSelectedCells': 'Paste to Selected Cells',
   'dataTable.pasteRows': 'Paste Rows',
+  // Row copy → paste as new draft rows (DBR-02).
+  'dataTable.copyRowsAsNewRows': 'Copy as New Rows',
+  'dataTable.pasteRowsNotRowData':
+    'The clipboard does not hold DataZen-copied rows. Copy rows inside DataZen first, or paste into selected cells for external data.',
+  'dataTable.pasteRowsNoWritableColumn':
+    'None of the copied columns can be written to this table (primary key and auto-increment columns are never copied).',
+  'dataTable.pasteRowsCrossTableTitle': 'Paste rows into another table?',
+  'dataTable.pasteRowsCrossTableBody':
+    'Rows copied from {source} will be added to {target} as new rows. {matched} of {total} columns match by name and will be written.',
   'dataTable.copyFailed': 'Could not copy; the clipboard is unavailable.',
   'dataTable.pasteReadFailed':
     'Could not read the clipboard. Press {shortcut} again, or grant clipboard access.',
@@ -531,6 +558,21 @@ const pack = {
   'filter.activeCount': '{count} active',
   'filter.noActive': 'No filters',
   'filter.unapplied': 'Unapplied',
+  // DBR-04: the filter panel's mode row — Any Column and Raw SQL.
+  'filter.modeRowLabel': 'Filter mode',
+  'filter.modeStructured': 'Structured',
+  'filter.modeAnyColumn': 'Any Column',
+  'filter.modeRawSql': 'Raw SQL',
+  'filter.anyColumnPlaceholder': 'Search every searchable column…',
+  'filter.anyColumnScope':
+    'Searches {searchable} column(s); {skipped} skipped (cannot be searched as text)',
+  'filter.rawPlaceholder': "WHERE predicate, e.g. total > 100 AND status = 'paid'",
+  'filter.rawHint':
+    'Advanced: one boolean WHERE expression. Validated and assembled by the server; no DML/DDL, no multi-statement, no ORDER BY/LIMIT.',
+  'filter.rawBadge': 'SQL',
+  'filter.rawQueryContext':
+    'Runs against {context}. Advanced: one boolean WHERE expression, validated and assembled by the server; no DML/DDL, no multi-statement, no ORDER BY/LIMIT.',
+  'filter.rawAppliedSummary': 'SQL: {predicate}',
   'filter.editCondition': 'Edit filter',
   'filter.eq': '=',
   'filter.ne': '≠',
@@ -596,7 +638,7 @@ const pack = {
   'filter.view.importFailed': 'Import failed: {error}',
   'filter.view.missingColumn': 'Column "{column}" no longer exists on this table',
   'filter.view.errorNameExists': 'A saved view with this name already exists',
-  'import.description': 'Import data from CSV or JSON file',
+  'import.description': 'Import data from a CSV, JSON or XLSX file',
   'import.selectFile': 'Select File',
   'import.targetTable': 'Target Table',
   'import.tableNamePlaceholder': 'Enter table name',
@@ -609,6 +651,64 @@ const pack = {
   'import.import': 'Import',
   'import.noData': 'No data to import',
   'import.success': 'Imported {count} rows to {table}',
+  // The DBR-01 import wizard: format options, column mapping, preview and
+  // the batch execution report.
+  'import.replaceFile': 'Change file',
+  'import.encoding': 'Encoding',
+  'import.delimiter': 'Delimiter',
+  'import.delimiter.auto': 'Auto-detect',
+  'import.delimiter.comma': 'Comma (,)',
+  'import.delimiter.semicolon': 'Semicolon (;)',
+  'import.delimiter.tab': 'Tab',
+  'import.quoteChar': 'Quote character',
+  'import.firstRowIsHeader': 'First row is the header',
+  'import.emptyUnquotedAs': 'Empty unquoted fields',
+  'import.emptyUnquotedAs.null': 'Import as NULL',
+  'import.emptyUnquotedAs.empty': 'Import as empty string',
+  'import.sheet': 'Worksheet',
+  'import.matchMode': 'Column matching',
+  'import.matchMode.auto': 'By name, then by order',
+  'import.matchMode.name': 'By name only',
+  'import.matchMode.position': 'By order only',
+  'import.sourceColumn': 'Source column',
+  'import.targetColumn': 'Target column',
+  'import.sampleValue': 'Sample',
+  'import.sourceLine': 'Source line',
+  'import.dontImport': "Don't import",
+  'import.previewFirstRows': 'Preview: first {count} of {total} rows',
+  'import.summary':
+    '{sources} source columns · {mapped} mapped · {skipped} not imported · {unwritten} target columns keep their defaults',
+  'import.conflictWarning':
+    '{count} target columns would receive data from more than one source column. Resolve the conflict before importing.',
+  'import.duplicateColumnWarning': 'The file has duplicate column names: {columns}.',
+  'import.raggedRowWarning':
+    '{count} rows have a different field count than the header (first at line {line}). Extra fields are dropped; missing fields follow the empty-field policy.',
+  'import.unmappedColumns': 'Not imported: {columns}',
+  'import.loadingTargets': 'Loading target columns…',
+  'import.loadTargetsFailed': 'Could not read the target table columns: {message}',
+  'import.conflictStrategy': 'On error',
+  'import.conflictStrategy.stop': 'Stop the import',
+  'import.conflictStrategy.skip': 'Skip the failing rows and continue',
+  'import.commitMode': 'Commit',
+  'import.commitMode.transaction': 'One transaction (rolls back on failure)',
+  'import.commitMode.autocommit': 'Batch by batch',
+  'import.transactionNote':
+    'Every batch travels inside one transaction: a failure rolls the whole import back.',
+  'import.autocommitNote':
+    'Each batch commits on its own; a failure keeps earlier batches committed and the report says exactly how many rows landed.',
+  'import.start': 'Import {count} rows',
+  'import.cancelImport': 'Cancel import',
+  'import.progress': '{processed} processed · {committed} committed · {failed} failed',
+  'import.result.completed': 'Import completed: {committed} rows imported.',
+  'import.result.stopped':
+    'Import stopped by an error after {committed} committed rows. First failing row (source line {line}): {message}',
+  'import.result.cancelled': 'Import cancelled after {committed} committed rows.',
+  'import.result.failedRows': 'Failed rows ({count})',
+  'import.refreshFailed':
+    'The import finished, but refreshing the table data failed. Reload the table to see the new rows.',
+  'import.parseFailed': 'The file could not be parsed: {message}',
+  'import.needsMapping': 'Map at least one column before importing.',
+  'import.importAnother': 'Import another file',
   'export.description': 'Export data from table {table}',
   'export.format': 'Export Format',
   'export.range': 'Export Range',
@@ -626,6 +726,16 @@ const pack = {
   'export.export': 'Export',
   'export.success': 'Export completed successfully',
   'export.disabledByDriver': 'This driver does not allow exporting data.',
+  'export.resetColumns': 'Reset to Default',
+  'export.formatDisabledStream':
+    'XLSX needs every row in memory, so it is unavailable for streamed exports (entire table / filter results).',
+  'export.formatDisabledNoKey': 'SQL UPDATE needs a primary key column to build its WHERE clause.',
+  'export.progressRows': '{rows} rows written…',
+  'export.cancelExport': 'Cancel Export',
+  'export.cancelling': 'Cancelling…',
+  'export.cancelledPartialDeleted': 'Export cancelled — the partial file was deleted.',
+  'export.cancelledPartialKept':
+    'Export cancelled — the partial file could not be deleted; remove it manually if you do not need it.',
   'batchExport.title': 'Export',
   'batchExport.selectTables': 'Select Tables',
   'batchExport.clearAll': 'Clear All',
@@ -791,6 +901,24 @@ const pack = {
   'valueSearch.noHits': 'No table holds this value.',
   'valueSearch.errors': '{count} table(s) could not be searched',
   'valueSearch.noTables': 'This database shows no tables to search.',
+  'valueSearch.mode.notContains': 'Does not contain',
+  'valueSearch.scopeLabel': 'Scope',
+  'valueSearch.scope.all': 'All tables ({count})',
+  'valueSearch.scope.selected': 'Selected tables ({count})',
+  'valueSearch.pickerPlaceholder': 'Filter tables…',
+  'valueSearch.pickerEmpty': 'No table matches the filter.',
+  'valueSearch.pickerCount': '{selected} of {total} selected',
+  'valueSearch.typesLabel': 'Column types',
+  'valueSearch.types.text': 'Text & enum',
+  'valueSearch.types.textNumber': 'Text, enum & numbers (text match)',
+  'valueSearch.types.textDatetime': 'Text, enum & dates (text match)',
+  'valueSearch.types.textNumberDatetime': 'Text, enum, numbers & dates (text match)',
+  'valueSearch.types.note':
+    'Numbers and date/time columns are matched by their text rendering (42, 2023-01-02), not as typed values.',
+  'valueSearch.zeroHits': '{count} table(s) without a hit',
+  'valueSearch.locate': 'Open and locate',
+  'valueSearch.locateNoColumns': 'No searchable column in this table',
+  'valueSearch.doneNote': 'Scanned {count} table(s) in {seconds}s — at least one query per table.',
   // The in-result find and replace (DB-14): the bar's own vocabulary.
   'resultFind.open': 'Find in results',
   'resultFind.openLabel': 'Find',

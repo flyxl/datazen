@@ -25,7 +25,7 @@ export interface UseTableViewClipboardOptions {
   panelId: string;
   /** The panel slice; `undefined` before the first load. */
   ts: TableState | undefined;
-  actions: Pick<TableActions, 'stagePasteWrites'>;
+  actions: Pick<TableActions, 'stagePasteWrites' | 'addDraftRowsFromCopy'>;
   isEditable: boolean;
   /** Displayed column names in render order — the same order the grid renders. */
   columnOrder: readonly string[];
@@ -45,6 +45,14 @@ export interface TableClipboardBridge {
   lastPaste: PasteSummary | null;
   clear: () => void;
   copySelectedCellsAs: ReturnType<typeof useGridClipboard>['copySelectedCellsAs'];
+  /** "Copy as new rows" (DBR-02). */
+  copyRowsAsNewRows: () => Promise<boolean>;
+  /** Clipboard-free copy of the covered rows straight into drafts (⌘D, DBR-02). */
+  copyRowsAsDrafts: () => boolean;
+  /** "Paste rows" as new drafts (DBR-02). */
+  pasteRowsAsDrafts: () => Promise<boolean>;
+  /** Whether the row-level copy/paste entries may act (DBR-02). */
+  canUseRowCopy: boolean;
   copyFeedback: { copied: boolean };
   confirmElement: React.ReactNode;
 }
@@ -72,6 +80,10 @@ export function useTableViewClipboard({
     tableLabel,
     stagePasteWrites: actions.stagePasteWrites,
     showReadOnlyTip: onReadOnlyPaste,
+    // DBR-02: paste-rows turns a verified row copy into prefilled drafts.
+    // The action table is already panel-bound; `panelId` is in the closure
+    // only for the hook's own identity.
+    addDraftRows: (rows) => actions.addDraftRowsFromCopy(rows),
   });
 
   return useMemo(
@@ -83,6 +95,10 @@ export function useTableViewClipboard({
       lastPaste: result.lastPaste,
       clear: result.clearPasteResult,
       copySelectedCellsAs: result.copySelectedCellsAs,
+      copyRowsAsNewRows: result.copyRowsAsNewRows,
+      copyRowsAsDrafts: result.copyRowsAsDrafts,
+      pasteRowsAsDrafts: result.pasteRowsAsDrafts,
+      canUseRowCopy: result.canUseRowCopy,
       copyFeedback: result.copyFeedback,
       confirmElement: result.confirmElement,
     }),
@@ -93,6 +109,10 @@ export function useTableViewClipboard({
       result.lastPaste,
       result.clearPasteResult,
       result.copySelectedCellsAs,
+      result.copyRowsAsNewRows,
+      result.copyRowsAsDrafts,
+      result.pasteRowsAsDrafts,
+      result.canUseRowCopy,
       result.copyFeedback,
       result.confirmElement,
     ],

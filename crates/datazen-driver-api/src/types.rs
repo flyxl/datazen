@@ -285,6 +285,22 @@ pub struct BoundSqlStatement {
     pub parameters: Vec<Value>,
 }
 
+/// The typed write expressions a grid may stage (DBR-05).
+///
+/// The set is closed on purpose. `NOW()` and `CURRENT_TIMESTAMP` are
+/// *expressions*, not values: binding the string `'CURRENT_TIMESTAMP'` as a
+/// parameter writes its **text** into the column. A driver declares which of
+/// these it can render natively ([`crate::DatabaseDriver::native_write_expression_sql`]);
+/// the plan builder refuses the rest with a readable error instead of silently
+/// flattening the expression into a literal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum WriteExpression {
+    /// The dialect's own current-datetime expression — whatever it spells:
+    /// `CURRENT_TIMESTAMP`, `NOW()`, `SYSDATETIME()`.
+    CurrentTimestamp,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ColumnInfo {

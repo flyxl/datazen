@@ -618,6 +618,7 @@ pub fn build_result_cell_change_plan(
     let mut current_values = BTreeMap::new();
     current_values.insert(request.source_column.clone(), request.value.clone());
     let change = PendingRowChange {
+        expression_values: Default::default(),
         row_identity: request.row_identity.clone(),
         original_values,
         current_values,

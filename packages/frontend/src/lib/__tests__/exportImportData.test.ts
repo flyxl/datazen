@@ -37,3 +37,47 @@ describe('xlsx roundtrip via parseXLSX', () => {
     expect(parsed.rows[2]!.active).toBe(true);
   });
 });
+
+describe('generateExportFromArrays column selection (DBR-06)', () => {
+  it("exports only the selected columns, in the caller's display order", () => {
+    const result = generateExportFromArrays({
+      columnNames: ['id', 'name', 'status'],
+      rows: [
+        [1, 'Alice', 'active'],
+        [2, 'Bob', 'pending'],
+      ],
+      selectedColumns: ['status', 'name'],
+      format: 'csv',
+      tableName: 'users',
+    });
+    expect(result.kind).toBe('text');
+    if (result.kind !== 'text') return;
+    expect(result.content.trim()).toBe('status,name\nactive,Alice\npending,Bob');
+  });
+
+  it('defaults to every column when no subset is given', () => {
+    const result = generateExportFromArrays({
+      columnNames: ['a', 'b'],
+      rows: [[1, 2]],
+      format: 'csv',
+    });
+    expect(result.kind).toBe('text');
+    if (result.kind !== 'text') return;
+    expect(result.content.trim()).toBe('a,b\n1,2');
+  });
+
+  it('builds SQL UPDATE from the declared primary key, not column 0', () => {
+    const result = generateExportFromArrays({
+      columnNames: ['name', 'id'],
+      rows: [['Alice', 7]],
+      primaryKeyColumns: ['id'],
+      format: 'sql_update',
+      tableName: 'users',
+    });
+    expect(result.kind).toBe('text');
+    if (result.kind !== 'text') return;
+    // The WHERE must target the id column even though it is the second one.
+    expect(result.content).toContain('WHERE "id" = 7');
+    expect(result.content).toContain('SET "name" = \'Alice\'');
+  });
+});

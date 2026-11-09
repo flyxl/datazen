@@ -91,6 +91,14 @@ impl DatabaseDriver for SqlServerDriver {
         true
     }
 
+    /// The staged write expressions this driver renders natively (DBR-05).
+    /// T-SQL's clock of record for the modern datetime types is
+    /// `SYSDATETIME()`; `CURRENT_TIMESTAMP` also parses in T-SQL, but
+    /// `SYSDATETIME()` is the one with the datetime2 precision.
+    fn native_write_expression_sql(&self, _expression: WriteExpression) -> Option<&'static str> {
+        Some("SYSDATETIME()")
+    }
+
     fn supports_keyset_pagination(&self) -> bool {
         true
     }

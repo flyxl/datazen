@@ -60,6 +60,19 @@ export interface TableState {
   draftFilters: FilterCondition[];
   draftFilterLogic: 'and' | 'or';
   filterPanelOpen: boolean;
+  /**
+   * Which editor pane the filter panel shows (DBR-04). The modes keep
+   * their own drafts, so switching between them never discards unapplied
+   * work; the applied filter itself is always at most one channel at a
+   * time — `filters` for structured/Any Column, `rawWhere` for Raw SQL.
+   */
+  filterMode: 'structured' | 'anyColumn' | 'rawSql';
+  /** The Any Column draft: the single value, kept across mode switches. */
+  anyColumnDraft: string;
+  /** The Raw SQL draft: the unapplied predicate, kept across mode switches. */
+  rawWhereDraft: string;
+  /** The applied raw `WHERE` predicate, or `null` when the channel is idle. */
+  rawWhere: string | null;
   sorts: SortCondition[];
   /**
    * The panel's explicit column **render order** (DB-12): `null` follows

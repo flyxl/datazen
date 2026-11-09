@@ -95,6 +95,14 @@ export interface TableChangeContext {
  * omitted when it is unset, which keeps the fingerprint of an insert-free plan
  * byte-identical to the payload that predates the flag.
  */
+/** The typed write expressions a grid may stage (DBR-05), mirrored from Rust.
+ *
+ * The closed set the back end renders natively (`currentTimestamp` is the
+ * dialect's own current-datetime expression). Never a literal: binding the
+ * string 'CURRENT_TIMESTAMP' as a parameter would write its text.
+ */
+export type WriteExpressionId = 'currentTimestamp';
+
 export interface PendingRowChange {
   /** UI-only hint for keeping a PK edit associated with its original row. */
   rowIndex?: number;
@@ -112,6 +120,13 @@ export interface PendingRowChange {
    * fingerprints of insert-free plans byte-identical.
    */
   insertMarked?: boolean;
+  /**
+   * The changed columns staged as a typed write expression (DBR-05): the
+   * back end renders the driver's own native SQL for them instead of a bound
+   * parameter. Never serialized when empty, so fingerprints of expression-free
+   * plans stay byte-identical to the payload that predates the field.
+   */
+  expressionValues?: Record<string, WriteExpressionId>;
 }
 
 /** One statement of a change plan, with its driver-rendered preview. */
@@ -120,6 +135,8 @@ export interface PlannedStatement {
   originalValues: Record<string, TableValue | null>;
   currentValues: Record<string, TableValue | null>;
   changedColumns: string[];
+  /** The changed columns staged as a typed write expression (DBR-05). */
+  expressionValues?: Record<string, WriteExpressionId>;
   /** Driver-rendered SQL preview. This is not a wire-level SQL audit record. */
   sqlTemplate: string;
   /** Human-readable summaries of the values used by the statement. */
@@ -401,6 +418,16 @@ export interface TableDataRequest {
   skipCount?: boolean;
   filterLogic?: 'and' | 'or';
   /**
+   * The applied raw `WHERE` predicate of the Raw SQL filter mode (DBR-04).
+   *
+   * Omitted (or `null`) means "no raw filter" — the request every read
+   * always served. The backend validates the fragment (one boolean
+   * expression; no statement verbs, no `;`, no comments, no paging clauses)
+   * and refuses a driver that has not declared the channel, so the caller
+   * only ever sees a readable error, never a silent drop.
+   */
+  rawWhere?: string | null;
+  /**
    * The row-count strategy to use. Omitted means "the driver decides"; the
    * backend never counts against the driver's own declaration.
    */
@@ -488,8 +515,14 @@ export interface ResolveForeignKeyTargetsRequest {
   browse?: boolean;
 }
 
-/** How the search value must match a column's value (DB-19). */
-export type ValueSearchMode = 'contains' | 'exact' | 'prefix' | 'suffix';
+/**
+ * How the search value must match a column's value (DB-19, DBR-03).
+ *
+ * The modes are the statement's own five; `notContains` counts the rows where
+ * **every** searched column verifiably lacks the value (`NOT LIKE`, joined by
+ * `AND` — the negation distributes over the positive modes' `OR`).
+ */
+export type ValueSearchMode = 'contains' | 'exact' | 'prefix' | 'suffix' | 'notContains';
 
 /** The request of one table's value search (DB-19). */
 export interface SearchTableValuesRequest {
@@ -577,6 +610,13 @@ export interface NamedView {
   /** The **applied** filters, not the draft. */
   filters: FilterCondition[];
   filterLogic: 'and' | 'or';
+  /**
+   * The applied raw `WHERE` predicate, when the view was saved with the Raw
+   * SQL filter in effect (DBR-04). `null`/omitted — the common case — is a
+   * view of structured filters, including every view saved before the field
+   * existed.
+   */
+  rawWhere?: string | null;
   sorts: SortCondition[];
   /** `null` means every column is visible. */
   visibleColumns: string[] | null;
@@ -645,6 +685,13 @@ export interface TableReadPreviewRequest {
   filters?: FilterCondition[];
   sorts?: SortCondition[];
   filterLogic?: 'and' | 'or';
+  /**
+   * The raw `WHERE` predicate of the Raw SQL filter mode (DBR-04): the same
+   * field, the same validation and the same refusal a read applies — the
+   * preview and the execution share one build chain, so what the preview
+   * shows is byte for byte what the read sends.
+   */
+  rawWhere?: string | null;
   countStrategy?: CountStrategy;
   defaultOrderColumns?: string[];
   afterKey?: CursorValue[];

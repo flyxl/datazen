@@ -24,6 +24,16 @@ import {
 import { useActiveConnectionStore } from '../../stores/activeConnectionStore';
 import { useSchemaStore } from '../../stores/schemaStore';
 import { useSettingsStore } from '../../stores/settingsStore';
+import { usePanelStore } from '../../stores/panelStore';
+import { useTableDataStore } from '../../stores/tableDataStore';
+import { nextPanelId, type TablePanel } from '../../stores/panelTypes';
+import { operatorsForDriver } from '../../lib/filterOperators';
+import {
+  locateConditions,
+  locateFilterLogic,
+  type ValueSearchLocateIntent,
+} from '../../lib/valueSearch';
+import type { TableChangeContext } from '../../lib/tableChanges';
 import { shouldUseMultiDatabaseTree, getUnifiedRowKey } from './navigator/utils';
 import { isNavigatorBranch, navigatorRowAria } from './navigator/treeRowAria';
 import { renderStatusDot as renderStatusDotFor } from './navigator/treeStatusDot';
@@ -647,9 +657,82 @@ export const ConnectionNavigatorTree = forwardRef<
       dbSessionId: entry.dbSessionId,
       connectionId: connection.id,
       database,
+      driverType: connection.databaseType,
       tables: schema?.tables ?? [],
     };
   }, [activeConnections, activeConnectionId, connections]);
+
+  /**
+   * "Open and locate" of a value-search answer (DBR-03): a **new** tab
+   * seeded with the scan's own conditions — the value, the mode and the very
+   * columns the statement searched — exactly like a foreign-key jump seeds
+   * its conditions (DB-07). A tab that is already open is only switched to:
+   * its filters are the user's, and re-seeding them is the one thing a
+   * repeated FK jump never does either.
+   */
+  const handleValueSearchLocate = useCallback(
+    (intent: ValueSearchLocateIntent) => {
+      const entry = activeConnectionId ? activeConnections[activeConnectionId] : undefined;
+      const connection = connections.find((item) => item.id === activeConnectionId);
+      if (!entry?.dbSessionId || !connection) return;
+
+      const panelStore = usePanelStore.getState();
+      const existing = panelStore.panels.find(
+        (p) =>
+          p.connectionId === connection.id &&
+          p.type === 'table' &&
+          p.tableName === intent.table &&
+          p.database === intent.database &&
+          // The schema-aware key the tab itself uses (DBR-03): an explicit
+          // schema must never land on another schema's tab.
+          (intent.schema == null || p.tableSchema === intent.schema),
+      );
+      if (existing) {
+        panelStore.setActivePanel(existing.id);
+        return;
+      }
+
+      const panelId = nextPanelId('tbl');
+      const panel: TablePanel = {
+        id: panelId,
+        type: 'table',
+        tableName: intent.table,
+        database: intent.database,
+        tableSchema: intent.schema,
+        subTab: 'data',
+        connectionId: connection.id,
+        dbSessionId: entry.dbSessionId,
+        connectionName: connection.name,
+        databaseType: connection.databaseType,
+      };
+      panelStore.addPanel(panel);
+
+      // Seed only what this driver's filter-operator list can serve — a
+      // narrowed list would render the seeded condition as an error banner
+      // instead of a filter (the meta is a hint; the back end still refuses).
+      const declared =
+        DB_REGISTRY[connection.databaseType as keyof typeof DB_REGISTRY]?.dataGrid?.filterOperators;
+      const conditions = locateConditions(intent).filter((condition) =>
+        operatorsForDriver(declared).includes(condition.operator),
+      );
+      if (conditions.length > 0) {
+        const context: TableChangeContext = {
+          connectionId: panel.connectionId,
+          dbSessionId: panel.dbSessionId,
+          driverType: panel.databaseType,
+          database: intent.database,
+          schema: intent.schema,
+          table: intent.table,
+        };
+        useTableDataStore.getState().seedPanel(panelId, context, {
+          filters: conditions,
+          filterLogic: locateFilterLogic(intent.mode),
+        });
+      }
+      panelStore.setActivePanel(panelId);
+    },
+    [activeConnectionId, activeConnections, connections],
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col bg-surface select-none">
@@ -794,10 +877,9 @@ export const ConnectionNavigatorTree = forwardRef<
           dbSessionId={valueSearchSession.dbSessionId}
           connectionId={valueSearchSession.connectionId}
           database={valueSearchSession.database}
+          driverType={valueSearchSession.driverType}
           tables={valueSearchSession.tables}
-          onOpenTable={(tableName, schema) =>
-            onSelectTable(tableName, schema, valueSearchSession.database)
-          }
+          onLocate={handleValueSearchLocate}
         />
       )}
     </div>

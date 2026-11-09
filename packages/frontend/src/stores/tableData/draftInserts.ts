@@ -143,6 +143,36 @@ export function withoutDraft(ts: TableState, draftId: string): Partial<TableStat
   };
 }
 
+/**
+ * Append several prefilled drafts at once (DBR-02: paste rows as new rows).
+ *
+ * Each row's `values` follow the draft invariants verbatim: a `null` value is
+ * an explicit SQL NULL, an absent key is "don't write this column" — so the
+ * caller (which stripped primary-key / auto-increment columns) decides what
+ * is written, and the model stays the single truth. Order is preserved: the
+ * draft order decides auto-increment assignment, and copies land in the same
+ * order they were copied in.
+ */
+export function withDraftRowsFromCopy(
+  ts: TableState,
+  rows: readonly { draftId: string; values: Record<string, Value | null> }[],
+): Partial<TableState> {
+  if (rows.length === 0) return {};
+  const draftInserts = new Map(ts.draftInserts);
+  const draftInsertOrder = [...ts.draftInsertOrder];
+  for (const row of rows) {
+    draftInserts.set(row.draftId, { draftId: row.draftId, values: { ...row.values } });
+    draftInsertOrder.push(row.draftId);
+  }
+  return {
+    draftInserts,
+    draftInsertOrder,
+    previewPlan: null,
+    pendingStatus: 'idle',
+    error: null,
+  };
+}
+
 /** Copy a draft into a new one; the copy is appended at the end of the order. */
 export function withDuplicatedDraft(
   ts: TableState,
@@ -180,6 +210,15 @@ export interface DraftStoreSlice {
   removeDraftRow: (panelId: string, draftId: string) => void;
   /** Copy a draft row into a new one; returns the new draft id. */
   duplicateDraftRow: (panelId: string, draftId: string) => string | null;
+  /**
+   * Append several prefilled drafts at once (DBR-02 paste-rows); returns the
+   * created draft ids in order. `null` values are explicit NULLs, absent
+   * keys are "don't write".
+   */
+  addDraftRowsFromCopy: (
+    panelId: string,
+    rows: readonly Record<string, Value | null>[],
+  ) => string[];
 }
 
 export function createDraftSlice(
@@ -201,6 +240,17 @@ export function createDraftSlice(
       const newDraftId = createDraftId();
       patch(panelId, (ts) => withDuplicatedDraft(ts, draftId, newDraftId));
       return newDraftId;
+    },
+    addDraftRowsFromCopy: (panelId, rows) => {
+      if (!read(panelId) || rows.length === 0) return [];
+      const draftIds = rows.map(() => createDraftId());
+      patch(panelId, (ts) =>
+        withDraftRowsFromCopy(
+          ts,
+          rows.map((values, index) => ({ draftId: draftIds[index], values })),
+        ),
+      );
+      return draftIds;
     },
   };
 }

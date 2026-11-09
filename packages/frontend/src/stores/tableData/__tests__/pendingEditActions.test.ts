@@ -51,11 +51,14 @@ const NO_PK_PANEL = 'panel-no-pk';
 /** Every action the store exposes. The split must not add or drop one. */
 const STORE_ACTIONS = [
   'addDraftRow',
+  'addDraftRowsFromCopy',
   'addFilter',
   // DB-11: add (or re-aim) one column of the multi-column sort.
   'addSort',
+  'applyAnyColumn',
   'applyColumnToRows',
   'applyFilters',
+  'applyRawWhere',
   'beginCellSelection',
   'cancelEdit',
   'clearEnumCandidates',
@@ -82,6 +85,8 @@ const STORE_ACTIONS = [
   // DB-07: the first-frame seed of a tab that was opened by a foreign-key jump.
   'seedPanel',
   'selectRow',
+  // DBR-04: the Any Column draft — sorted with the rest of the surface.
+  'setAnyColumnDraft',
   // DB-12: the column tools — render-only, no re-read.
   'setColumnOrder',
   'setDefaultOrderOverride',
@@ -89,6 +94,7 @@ const STORE_ACTIONS = [
   'setDraftValue',
   'setEnumCandidates',
   'setFilterLogic',
+  'setFilterMode',
   'setFilterPanelOpen',
   'setFilters',
   // DB-12: the freeze half of the column tools.
@@ -96,10 +102,13 @@ const STORE_ACTIONS = [
   'setGridSelection',
   'setPage',
   'setPageSize',
+  // DBR-04: the Raw SQL draft.
+  'setRawWhereDraft',
   'setRowModeSelection',
   'setSort',
   'setVisibleColumns',
   'stageCellChange',
+  'stageCellExpression',
   // DB-05: the three-state write (undefined = do not write the column).
   'stageCellValue',
   // DB-03: the batch write of a paste (one `set()` for the whole block).

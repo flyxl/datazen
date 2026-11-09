@@ -123,6 +123,7 @@ pub fn stored_fixture(id: &str, name: &str, scope: &NamedViewScope, is_default: 
         scope: scope.clone(),
         filters: Vec::new(),
         filter_logic: "and".into(),
+        raw_where: None,
         sorts: Vec::new(),
         visible_columns: None,
         column_order: None,

@@ -7,16 +7,54 @@ use tauri::AppHandle;
 use tokio::io::AsyncWriteExt;
 
 struct SaveSession {
-    path: PathBuf,
+    final_path: PathBuf,
+    part_path: PathBuf,
     file: tokio::fs::File,
 }
 
 static SAVE_SESSIONS: LazyLock<tokio::sync::Mutex<HashMap<String, SaveSession>>> =
     LazyLock::new(|| tokio::sync::Mutex::new(HashMap::new()));
 
+/// Suffix of the in-progress sibling every save path writes to first
+/// (DBR-06: 文件命名、覆盖确认、导出失败时原文件保留策略需统一).
+/// A file picked in the save dialog is never truncated in place: `finish`
+/// renames the sibling into it, so a failed or cancelled export leaves a
+/// previously saved file untouched and only the sibling is cleaned up.
+const PART_SUFFIX: &str = ".datazen-part";
+
+fn part_sibling(path: &Path) -> PathBuf {
+    let mut name = path
+        .file_name()
+        .map(std::ffi::OsString::from)
+        .unwrap_or_default();
+    name.push(PART_SUFFIX);
+    path.with_file_name(name)
+}
+
+/// Write `bytes` beside `path` first, then rename it into place.
+///
+/// The rename is the only step that touches the picked path, so a failure
+/// mid-write (disk full, cancelled stream, crash) keeps any pre-existing file
+/// intact instead of leaving a truncated half of it behind.
+pub(crate) async fn write_all_via_part(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let part = part_sibling(path);
+    tokio::fs::write(&part, bytes).await?;
+    // `rename` replaces the target atomically on Unix but fails when the
+    // target exists on Windows, so remove a pre-existing file first. The OS
+    // save dialog has already asked for overwrite confirmation at this point.
+    if tokio::fs::try_exists(path).await.unwrap_or(false) {
+        tokio::fs::remove_file(path).await?;
+    }
+    tokio::fs::rename(&part, path).await
+}
+
 const ALLOWED_EXTENSIONS: &[&str] = &[
     "csv", "tsv", "json", "sql", "md", "txt", "xml", "yaml", "yml", "png", "svg", "zip", "gz",
     "dump", "xlsx",
+    // DBR-05: the binary "load from file" of a BLOB column offers the common
+    // binary payload types; every one of them is also a *pickable* file, so
+    // the dialog filter and the extension check stay in one list.
+    "jpg", "jpeg", "gif", "bmp", "webp", "ico", "pdf", "bin", "dat",
 ];
 
 pub(crate) fn validate_extension(path: &Path, allowed: &[&str]) -> Result<(), CommandError> {
@@ -85,7 +123,7 @@ pub async fn save_text_with_dialog(
         return Ok(false);
     };
     validate_extension(&path, &ext_list)?;
-    tokio::fs::write(&path, contents.as_bytes())
+    write_all_via_part(&path, contents.as_bytes())
         .await
         .cmd_err("save_text_with_dialog")?;
     Ok(true)
@@ -118,7 +156,7 @@ pub async fn save_base64_with_dialog(
         return Ok(false);
     };
     validate_extension(&path, &ext_list)?;
-    tokio::fs::write(&path, bytes)
+    write_all_via_part(&path, &bytes)
         .await
         .cmd_err("save_base64_with_dialog")?;
     Ok(true)
@@ -200,7 +238,11 @@ pub async fn open_text_with_dialog(
 }
 
 async fn insert_save_session(path: PathBuf) -> Result<String, CommandError> {
-    let file = tokio::fs::File::create(&path)
+    // The session writes to the `.datazen-part` sibling; `finish_save` renames
+    // it onto the picked path, so a pre-existing file survives every failure
+    // mode (DBR-06: 导出失败时原文件保留).
+    let part_path = part_sibling(&path);
+    let file = tokio::fs::File::create(&part_path)
         .await
         .cmd_err("begin_save_with_dialog")?;
     let token = uuid::Uuid::new_v4().to_string();
@@ -210,7 +252,14 @@ async fn insert_save_session(path: PathBuf) -> Result<String, CommandError> {
             "Too many concurrent save sessions".into(),
         ));
     }
-    sessions.insert(token.clone(), SaveSession { path, file });
+    sessions.insert(
+        token.clone(),
+        SaveSession {
+            final_path: path,
+            part_path,
+            file,
+        },
+    );
     Ok(token)
 }
 
@@ -254,25 +303,57 @@ pub async fn append_save_text(token: String, chunk: String) -> Result<(), Comman
     Ok(())
 }
 
+/// Close the session and move the finished sibling onto the picked path.
 #[tauri::command]
 pub async fn finish_save(token: String) -> Result<(), CommandError> {
     let mut sessions = SAVE_SESSIONS.lock().await;
-    let mut session = sessions
+    let session = sessions
         .remove(&token)
         .ok_or_else(|| CommandError::NotFound("Save session not found".into()))?;
-    session.file.flush().await.cmd_err("finish_save")?;
+    let SaveSession {
+        final_path,
+        part_path,
+        mut file,
+    } = session;
+    let flush_result = file.flush().await;
+    // The handle must be closed before the rename (Windows keeps an open file
+    // from being replaced), so drop it even when the flush failed and report
+    // the flush error afterwards.
+    drop(file);
+    if flush_result.is_err() {
+        // The session is already off the map, so no `abort_save` will clean
+        // this sibling up — remove it here rather than orphaning it.
+        let _ = tokio::fs::remove_file(&part_path).await;
+    }
+    flush_result.cmd_err("finish_save")?;
+    // Windows cannot rename onto an existing file; the save dialog already
+    // collected the overwrite confirmation, so remove the old one first.
+    if tokio::fs::try_exists(&final_path).await.unwrap_or(false) {
+        tokio::fs::remove_file(&final_path)
+            .await
+            .cmd_err("finish_save")?;
+    }
+    tokio::fs::rename(&part_path, &final_path)
+        .await
+        .cmd_err("finish_save")?;
     Ok(())
 }
 
+/// Abort the session and delete its in-progress sibling.
+///
+/// Returns whether the sibling was actually removed, so the UI can report
+/// "partial file deleted" vs "partial file kept" honestly (DBR-06: 取消
+/// 后报告部分文件是否已删除或保留). The picked path itself is never touched
+/// by an abort — a pre-existing file survives intact.
 #[tauri::command]
-pub async fn abort_save(token: String) -> Result<(), CommandError> {
+pub async fn abort_save(token: String) -> Result<bool, CommandError> {
     let mut sessions = SAVE_SESSIONS.lock().await;
     let session = sessions
         .remove(&token)
         .ok_or_else(|| CommandError::NotFound("Save session not found".into()))?;
     drop(session.file);
-    let _ = tokio::fs::remove_file(&session.path).await;
-    Ok(())
+    let deleted = tokio::fs::remove_file(&session.part_path).await.is_ok();
+    Ok(deleted)
 }
 
 #[cfg(test)]
@@ -302,6 +383,24 @@ mod tests {
         assert!(err.to_string().contains("not allowed"));
     }
 
+    #[test]
+    fn part_sibling_appends_suffix_to_file_name() {
+        let part = part_sibling(Path::new("/tmp/dir/out.csv"));
+        assert_eq!(part, Path::new("/tmp/dir/out.csv.datazen-part"));
+    }
+
+    #[tokio::test]
+    async fn write_all_via_part_replaces_file_and_leaves_no_sibling() {
+        let dir = std::env::temp_dir().join(format!("dz-part-{}", uuid::Uuid::new_v4()));
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let path = dir.join("out.txt");
+        tokio::fs::write(&path, "OLD").await.unwrap();
+        write_all_via_part(&path, b"NEW").await.unwrap();
+        assert_eq!(tokio::fs::read_to_string(&path).await.unwrap(), "NEW");
+        assert!(!part_sibling(&path).exists());
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
     #[tokio::test]
     async fn save_session_appends_then_finish() {
         let dir = std::env::temp_dir().join(format!("dz-save-{}", uuid::Uuid::new_v4()));
@@ -327,8 +426,56 @@ mod tests {
         let path = dir.join("out.json");
         let token = insert_save_session(path.clone()).await.unwrap();
         append_save_text(token.clone(), "[".into()).await.unwrap();
-        abort_save(token).await.unwrap();
+        let deleted = abort_save(token).await.unwrap();
+        assert!(deleted);
         assert!(!path.exists());
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    /// DBR-06: a pre-existing file must survive a cancelled export — the
+    /// session never writes onto the picked path, only onto its sibling.
+    #[tokio::test]
+    async fn save_session_abort_preserves_pre_existing_file() {
+        let dir = std::env::temp_dir().join(format!("dz-abort-old-{}", uuid::Uuid::new_v4()));
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let path = dir.join("out.csv");
+        tokio::fs::write(&path, "OLD").await.unwrap();
+        let token = insert_save_session(path.clone()).await.unwrap();
+        append_save_text(token.clone(), "NEW".into()).await.unwrap();
+        let deleted = abort_save(token).await.unwrap();
+        assert!(deleted);
+        assert_eq!(tokio::fs::read_to_string(&path).await.unwrap(), "OLD");
+        assert!(!part_sibling(&path).exists());
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    /// DBR-06: `finish` replaces a pre-existing file only at the rename, and
+    /// the in-progress sibling is gone afterwards.
+    #[tokio::test]
+    async fn save_session_finish_replaces_pre_existing_file() {
+        let dir = std::env::temp_dir().join(format!("dz-finish-old-{}", uuid::Uuid::new_v4()));
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let path = dir.join("out.csv");
+        tokio::fs::write(&path, "OLD").await.unwrap();
+        let token = insert_save_session(path.clone()).await.unwrap();
+        append_save_text(token.clone(), "NEW".into()).await.unwrap();
+        finish_save(token).await.unwrap();
+        assert_eq!(tokio::fs::read_to_string(&path).await.unwrap(), "NEW");
+        assert!(!part_sibling(&path).exists());
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+    }
+
+    /// The abort outcome must be honest: if the sibling is already gone, the
+    /// command says so instead of claiming a deletion.
+    #[tokio::test]
+    async fn save_session_abort_reports_false_when_sibling_already_gone() {
+        let dir = std::env::temp_dir().join(format!("dz-abort-gone-{}", uuid::Uuid::new_v4()));
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let path = dir.join("out.md");
+        let token = insert_save_session(path.clone()).await.unwrap();
+        tokio::fs::remove_file(part_sibling(&path)).await.unwrap();
+        let deleted = abort_save(token).await.unwrap();
+        assert!(!deleted);
         let _ = tokio::fs::remove_dir_all(&dir).await;
     }
 

@@ -85,6 +85,7 @@ fn update_with(
     changed: &[&str],
 ) -> PendingRowChange {
     PendingRowChange {
+        expression_values: Default::default(),
         row_identity,
         original_values: BTreeMap::new(),
         current_values: current,
@@ -96,6 +97,7 @@ fn update_with(
 
 fn delete_with(row_identity: BTreeMap<String, Option<Value>>) -> PendingRowChange {
     PendingRowChange {
+        expression_values: Default::default(),
         row_identity,
         original_values: BTreeMap::new(),
         current_values: BTreeMap::new(),

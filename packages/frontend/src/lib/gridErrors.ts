@@ -39,6 +39,9 @@ export type GridErrorCode =
   | 'grid.result.rowNotAddressable'
   | 'grid.result.multiRowNotAllowed'
   | 'grid.result.writeDenied'
+  // ── DBR-05 (typed write expressions). Append only: the driver refusing a
+  // staged database-native expression (e.g. NOW()) it does not support. ──
+  | 'grid.write.expressionUnsupported'
   | 'grid.paging.keysetUnavailable'
   | 'grid.paging.cursorInvalidated'
   | 'grid.paging.cursorTooDeep'
@@ -54,7 +57,22 @@ export type GridErrorCode =
   | 'grid.paste.crossTable'
   | 'grid.paste.columnMismatch'
   | 'grid.clipboard.writeFailed'
-  | 'grid.clipboard.readFailed';
+  | 'grid.clipboard.readFailed'
+  // ── DBR-02 (row copy → paste as new rows). Append only. ──
+  | 'grid.pasteRows.notRowData'
+  | 'grid.pasteRows.noWritableColumn'
+  // ── DBR-04 (raw WHERE filter). Append only: the family the backend's
+  // validator raises for a refused raw predicate. ──
+  | 'grid.filter.rawWhereEmpty'
+  | 'grid.filter.rawWhereTooLong'
+  | 'grid.filter.rawWhereUnterminatedString'
+  | 'grid.filter.rawWhereUnterminatedIdentifier'
+  | 'grid.filter.rawWhereComment'
+  | 'grid.filter.rawWhereMultiStatement'
+  | 'grid.filter.rawWhereUnbalancedParenthesis'
+  | 'grid.filter.rawWhereForbiddenKeyword'
+  | 'grid.filter.rawWhereDollarSign'
+  | 'grid.filter.rawWhereUnsupported';
 
 /**
  * Prefix registry. Entries are full message prefixes (`grid.<domain>.<reason>`); the
@@ -113,9 +131,24 @@ export const GRID_ERROR_CODES: readonly GridErrorCode[] = [
   'grid.result.rowNotAddressable',
   'grid.result.multiRowNotAllowed',
   'grid.result.writeDenied',
+  // DBR-05: the typed write expression (Set Value → 数据库原生时间表达式) is
+  // refused by drivers that declare no support for it — produced by
+  // `table_editing::change_set` on the Rust side.
+  'grid.write.expressionUnsupported',
   'grid.paging.keysetUnavailable',
   'grid.paging.cursorInvalidated',
   'grid.paging.cursorTooDeep',
+  // DBR-04: the raw WHERE filter's refusal family.
+  'grid.filter.rawWhereEmpty',
+  'grid.filter.rawWhereTooLong',
+  'grid.filter.rawWhereUnterminatedString',
+  'grid.filter.rawWhereUnterminatedIdentifier',
+  'grid.filter.rawWhereComment',
+  'grid.filter.rawWhereMultiStatement',
+  'grid.filter.rawWhereUnbalancedParenthesis',
+  'grid.filter.rawWhereForbiddenKeyword',
+  'grid.filter.rawWhereDollarSign',
+  'grid.filter.rawWhereUnsupported',
   // DB-03: clipboard. Every one of these is a **front-end** rejection: the paste matrix is
   // parsed and planned in the browser and a refused cell never reaches the host, so there is
   // no Rust producer to wait for (see `PRODUCER_PENDING` in the registration test). They are

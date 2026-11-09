@@ -55,7 +55,10 @@ const APPLIED_FILTERS = [{ column: 'id', operator: 'eq' as const, value: 1 }];
 const DRAFT_FILTERS = [{ column: 'id', operator: 'eq' as const, value: 2 }];
 
 /** The four actions the hook uses; the rest of the table is irrelevant here. */
-type UsedActions = Pick<TableActions, 'setFilters' | 'setSort' | 'setVisibleColumns' | 'applyFilters'>;
+type UsedActions = Pick<
+  TableActions,
+  'setFilters' | 'setSort' | 'setVisibleColumns' | 'applyFilters'
+>;
 
 function fakeActions(): UsedActions & { calls: string[] } {
   const calls: string[] = [];
@@ -147,6 +150,7 @@ describe('§7 · the apply path goes through the existing actions', () => {
         tableName: 'orders',
         filters: APPLIED_FILTERS,
         filterLogic: 'and',
+        rawWhere: null,
         sorts: [],
         draftFilters: APPLIED_FILTERS,
         draftFilterLogic: 'and',
@@ -184,6 +188,7 @@ describe('§7 · the apply path goes through the existing actions', () => {
         tableName: 'orders',
         filters: APPLIED_FILTERS,
         filterLogic: 'and',
+        rawWhere: null,
         sorts: [],
         draftFilters: APPLIED_FILTERS,
         draftFilterLogic: 'and',
@@ -208,6 +213,7 @@ describe('§7 · the apply path goes through the existing actions', () => {
         tableName: 'orders',
         filters: APPLIED_FILTERS,
         filterLogic: 'and',
+        rawWhere: null,
         sorts: [],
         draftFilters: APPLIED_FILTERS,
         draftFilterLogic: 'and',

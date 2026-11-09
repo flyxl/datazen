@@ -201,6 +201,20 @@ impl DatabaseDriver for SqliteDriver {
         true
     }
 
+    /// The raw `WHERE` filter (DBR-04): a validated boolean fragment spliced
+    /// into the `WHERE` of the host-built read. SQLite's expression grammar
+    /// covers everything the validator lets through, so the channel is open.
+    fn supports_raw_where_filter(&self) -> bool {
+        true
+    }
+
+    /// The staged write expressions this driver renders natively (DBR-05).
+    /// SQLite's `CURRENT_TIMESTAMP` is the UTC wall clock — the one time
+    /// source the dialect itself provides.
+    fn native_write_expression_sql(&self, _expression: WriteExpression) -> Option<&'static str> {
+        Some("CURRENT_TIMESTAMP")
+    }
+
     fn sql_literal_dialect(&self) -> Option<SqlLiteralDialect> {
         Some(SqlLiteralDialect::Sqlite)
     }
