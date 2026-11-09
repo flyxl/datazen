@@ -28,6 +28,29 @@ export const ARRAY_EXPORT_FORMAT_OPTIONS: { value: ExportFormat; label: string }
   { value: 'sql_update', label: 'SQL UPDATE' },
 ];
 
+/**
+ * Formats a scope may offer on this form (plan §2.8, task 6).
+ *
+ * Desktop offers every format for every scope — the Rust exporter handles
+ * the SQL scopes and `ProvidedDataFetcher` the loaded ones. Web has no SQL
+ * path: `entire_table` / `filtered_table` go through the web exporter,
+ * which only assembles CSV (and has no zip writer), so those scopes offer
+ * CSV only; `current_page` / `selected` format in JS
+ * (`exportFormat.ts`), so every format is available on both forms.
+ * `isDesktop` is the caller's `IS_DESKTOP_BUILD`, passed in so tests can
+ * flip it (it is a compile-time constant in production).
+ */
+export function formatOptionsForScope(
+  allOptions: { value: ExportFormat; label: string }[],
+  scope: ExportScope,
+  isDesktop: boolean,
+): { value: ExportFormat; label: string }[] {
+  if (isDesktop || scope === 'current_page' || scope === 'selected') {
+    return allOptions;
+  }
+  return allOptions.filter((option) => option.value === 'csv');
+}
+
 export function buildExportScopeOptions(
   t: (
     key:

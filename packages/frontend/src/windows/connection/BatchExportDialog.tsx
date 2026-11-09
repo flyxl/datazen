@@ -12,6 +12,7 @@ import {
   type BatchExportTableInput,
 } from '../../lib/batchExportJob';
 import { requireTablesExporter } from '../../platform/contracts';
+import { IS_DESKTOP_BUILD } from '../../platform/env';
 import { supportsFullTableExport, type DataExportCapability } from '../../lib/exportCapability';
 import { Spinner } from '../../components/ui/Spinner';
 
@@ -75,7 +76,12 @@ export function BatchExportDialog({
   const [selected, setSelected] = useState<Set<string>>(() => new Set(initialSelected ?? []));
   const [mode, setMode] = useState<BatchExportMode>('data_and_structure');
   const [dataFormat, setDataFormat] = useState<BatchExportDataFormat>('csv');
-  const [outputMode, setOutputMode] = useState<BatchExportOutputMode>('zip');
+  // Task 6 (plan §2.8): batch export is always a SQL-scope export, so on
+  // web it stays under the web exporter's limits — CSV only, no zip (the
+  // browser build has no zip writer). Desktop keeps every format and zip.
+  const [outputMode, setOutputMode] = useState<BatchExportOutputMode>(
+    IS_DESKTOP_BUILD ? 'zip' : 'single',
+  );
   const [status, setStatus] = useState<'form' | 'exporting' | 'success'>('form');
   const [progress, setProgress] = useState<{
     current: number;
@@ -92,7 +98,7 @@ export function BatchExportDialog({
     setSelected(new Set(initialSelected ?? []));
     setMode('data_and_structure');
     setDataFormat('csv');
-    setOutputMode('zip');
+    setOutputMode(IS_DESKTOP_BUILD ? 'zip' : 'single');
     setStatus('form');
     setProgress(null);
     setError(null);
@@ -127,6 +133,12 @@ export function BatchExportDialog({
   );
 
   const formatDisabled = mode === 'structure_only';
+
+  // Task 6 (plan §2.8): batch export is always a SQL-scope export, so on
+  // web only CSV is offered — the web exporter cannot serve the rest.
+  const formatOptions = IS_DESKTOP_BUILD
+    ? DATA_FORMAT_OPTIONS
+    : DATA_FORMAT_OPTIONS.filter((option) => option.value === 'csv');
 
   const handleExport = useCallback(async () => {
     if (batchExportLocked) return;
@@ -363,7 +375,7 @@ export function BatchExportDialog({
               </label>
               <Select
                 value={dataFormat}
-                options={DATA_FORMAT_OPTIONS}
+                options={formatOptions}
                 onChange={(v) => setDataFormat(v as BatchExportDataFormat)}
               />
             </div>
@@ -392,6 +404,7 @@ export function BatchExportDialog({
                 value="zip"
                 checked={outputMode === 'zip'}
                 onChange={() => setOutputMode('zip')}
+                disabled={!IS_DESKTOP_BUILD}
                 className="accent-accent"
               />
               <span className="text-xs text-fg-secondary">{t('batchExport.outputZip')}</span>

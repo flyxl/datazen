@@ -8,7 +8,9 @@ import type { ExportFormat, ExportScope } from '../../lib/exportData';
 import {
   ARRAY_EXPORT_FORMAT_OPTIONS,
   buildExportScopeOptions,
+  formatOptionsForScope,
 } from '../../lib/exportDialogShared';
+import { IS_DESKTOP_BUILD } from '../../platform/env';
 import { exportSingleTableViaRust } from '../../lib/batchExportJob';
 import { resolveDataFetcher } from '../../lib/dataFetcher';
 import { supportsFullTableExport, type DataExportCapability } from '../../lib/exportCapability';
@@ -117,10 +119,28 @@ export function DataExportDialog({
     [t, rows.length, selectedRows.size, allowEntire, allowFiltered, totalRows],
   );
 
-  // Every format — XLSX included — now routes through the Rust batch
-  // exporter for entire/filtered scopes (item 3b), so nothing is filtered
-  // out of the format list any more.
-  const formatOptions = ARRAY_EXPORT_FORMAT_OPTIONS;
+  // Task 6 (plan §2.8): on web, entire/filtered scopes can only be CSV —
+  // they go through the web exporter, which has no SQL path — while the
+  // provided scopes format in JS, so every format stays available there.
+  // Desktop offers every format for every scope.
+  const formatOptions = formatOptionsForScope(
+    ARRAY_EXPORT_FORMAT_OPTIONS,
+    scope,
+    IS_DESKTOP_BUILD,
+  );
+
+  // A format picked for a provided scope must not survive a switch to a
+  // web SQL scope, where it could not be served (the Select would point
+  // at a missing option). Desktop never resets: every format is served.
+  useEffect(() => {
+    if (
+      !IS_DESKTOP_BUILD &&
+      (scope === 'entire_table' || scope === 'filtered_table') &&
+      format !== 'csv'
+    ) {
+      setFormat('csv');
+    }
+  }, [scope, format]);
 
   const handleScopeChange = useCallback((v: string) => {
     setScope(v as ExportScope);

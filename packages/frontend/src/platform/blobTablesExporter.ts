@@ -26,10 +26,15 @@
  *
  * What the web form cannot do fails loudly instead of silently
  * degrading — the capabilities the browser build has no writer for:
- * - any data format other than CSV (the web exporter assembles CSV text
- *   only; TSV / JSON / Markdown / SQL / XLSX need the desktop exporter);
- *   `structure_only` is exempt — it plans no data file, so the format is
- *   irrelevant there, exactly as on the desktop;
+ * - any data format other than CSV for a source that is not already
+ *   loaded (`table` / `sql`): the web exporter reads pages and assembles
+ *   CSV text only; TSV / JSON / Markdown / SQL / XLSX for those sources
+ *   need the desktop exporter. A `provided` source is exempt — its rows
+ *   are already in the frontend, so it formats through the shared
+ *   `exportFormat.ts` (`formatRowsAsText` / `formatRowsAsXlsx`, plan
+ *   §2.8) and every format is available. `structure_only` is exempt
+ *   too — it plans no data file, so the format is irrelevant there,
+ *   exactly as on the desktop;
  * - `zip` output, and any export whose plan needs a zip (several files
  *   that are not all `.sql`, e.g. multi-table data export or
  *   data-and-structure in CSV): the browser build has no zip writer, so
@@ -45,6 +50,7 @@
  */
 
 import { escapeCsvField } from '../lib/gridClipboard';
+import { formatRowsAsText, formatRowsAsXlsx } from '../lib/exportFormat';
 import type { TablesExporterPort, TablesExportRequest } from './contracts';
 import { defaultExportName, prepareExport, type ExportFilePlan } from './exportPlan';
 
@@ -119,25 +125,47 @@ export function downloadBlob(contents: BlobPart, fileName: string, mimeType = 't
 }
 
 /**
+ * Base64 → bytes for an XLSX Blob download (the same decode
+ * `ProvidedDataFetcher` does; kept local — importing it from
+ * `dataFetcher.ts` would cycle back through this module's `downloadBlob`).
+ */
+function base64ToBytes(dataBase64: string): Uint8Array<ArrayBuffer> {
+  const binary = atob(dataBase64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/**
  * Build the exporter over an injected page reader.
  *
  * `data_only` streams the table's rows as CSV; `structure_only` emits only
  * the DDL plans; `data_and_structure` in CSV is a multi-file plan on the
  * desktop (DDL file + data file) and therefore needs a zip — which the web
  * exporter refuses (see the header) instead of merging the two files.
+ * A `provided` source is the exception to the CSV-only rule: its rows are
+ * already loaded, so every format goes through the shared frontend
+ * formatter (`exportFormat.ts`) and downloads as a Blob (plan §2.8).
  */
 export function createBlobTablesExporter(
   readPage: TablePageReader,
   options?: {
     /** Loads one table's DDL (structure modes). Absent ⇒ structure modes emit a placeholder comment. */
     loadDdl?: (tableName: string) => Promise<string | null>;
-    /** Override for tests; the default performs the real Blob download. */
-    deliver?: (contents: string, fileName: string) => void;
+    /**
+     * Override for tests; the default performs the real Blob download.
+     * `contents` is a `BlobPart` — text for every format except XLSX,
+     * which delivers decoded workbook bytes.
+     */
+    deliver?: (contents: BlobPart, fileName: string, mimeType?: string) => void;
     /** Clock for the default output name; tests pin it, production uses now. */
     now?: () => Date;
   },
 ): TablesExporterPort {
-  const deliver = options?.deliver ?? downloadBlob;
+  const deliver =
+    options?.deliver ?? ((contents, fileName, mimeType) => downloadBlob(contents, fileName, mimeType));
   const now = options?.now ?? (() => new Date());
   return {
     async exportTables(
@@ -149,11 +177,22 @@ export function createBlobTablesExporter(
       if (request.tables.length === 0) {
         throw new Error('no tables selected');
       }
-      // The web exporter assembles CSV text only. A structure-only export
+      // The web exporter assembles CSV text only — except for a `provided`
+      // source, whose rows are already loaded and format in JS through
+      // `exportFormat.ts` (plan §2.8, task 6). A structure-only export
       // plans no data file, so the format is irrelevant there — exactly as
       // on the desktop, where `build_file_plans` never consults the format
-      // for `structure_only`.
-      if (request.mode !== 'structure_only' && request.dataFormat !== 'csv') {
+      // for `structure_only`. A mixed request (a provided table next to a
+      // table that still has to be read) stays CSV-only: the unread table
+      // has no JS formatter to ride.
+      const allDataFromProvided = request.tables.every(
+        (table) => table.source?.type === 'provided',
+      );
+      if (
+        request.mode !== 'structure_only' &&
+        request.dataFormat !== 'csv' &&
+        !allDataFromProvided
+      ) {
         throw new Error(`'${request.dataFormat}' format is not supported by the web exporter`);
       }
       if (request.outputMode === 'zip') {
@@ -214,24 +253,66 @@ export function createBlobTablesExporter(
       };
 
       // Emit one planned file. A `provided` source carries the caller's own
-      // rows — emit them as CSV instead of re-reading the table (on web
+      // rows — format them in JS instead of re-reading the table (on web
       // there is no Rust side to hand them to, and silently exporting the
       // whole table for a current-page/selected-rows request would be wrong
-      // rows, not just a wrong format).
+      // rows, not just a wrong format). Every format is available here
+      // (plan §2.8), with one exception kept local: CSV still goes through
+      // the `csvCell` emission below instead of `formatRowsAsText`, because
+      // only this exporter applies the formula-injection guard — the shared
+      // formatter does not quote `=SUM(...)` cells, and routing provided
+      // CSV through it would silently turn exported data into executable
+      // spreadsheet formulas.
       const emitDataPlan = async (
         plan: Extract<ExportFilePlan, { kind: 'data' }>,
-      ): Promise<string> => {
+      ): Promise<{ content: BlobPart; mimeType: string }> => {
         const table = plan.table;
+        if (table.source?.type === 'provided') {
+          const columns = table.source.columns;
+          const rows = table.source.rows;
+          if (request.dataFormat === 'csv') {
+            const chunks: string[] = [];
+            if (plan.ddlPrefix !== undefined) {
+              chunks.push(`${plan.ddlPrefix}\n\n`);
+            }
+            chunks.push(columns.map((c) => csvCell(c.name)).join(',') + '\n');
+            for (const row of rows) {
+              chunks.push(row.map((cell) => csvCell(cell)).join(',') + '\n');
+            }
+            return { content: chunks.join(''), mimeType: 'text/csv' };
+          }
+          if (request.dataFormat === 'xlsx') {
+            // A DDL prefix cannot ride a workbook; it only ever accompanies
+            // a SQL data format, and a SQL data plan is text — reaching
+            // here with one would be a planner bug, not a user error.
+            if (plan.ddlPrefix !== undefined) {
+              throw new Error('DDL cannot be prefixed to an XLSX export');
+            }
+            const { dataBase64, mimeType } = formatRowsAsXlsx({
+              tableName: table.tableName,
+              columns,
+              rows,
+              format: 'xlsx',
+            });
+            return { content: base64ToBytes(dataBase64), mimeType };
+          }
+          const { content, mimeType } = formatRowsAsText({
+            tableName: table.tableName,
+            columns,
+            rows,
+            format: request.dataFormat,
+            databaseType: request.databaseType ?? undefined,
+            primaryKey: table.primaryKey ?? undefined,
+          });
+          return {
+            content:
+              plan.ddlPrefix !== undefined ? `${plan.ddlPrefix}\n\n${content}` : content,
+            mimeType,
+          };
+        }
         const chunks: string[] = [];
         if (plan.ddlPrefix !== undefined) {
           chunks.push(`${plan.ddlPrefix}\n\n`);
-        }
-        if (table.source?.type === 'provided') {
-          chunks.push(table.source.columns.map((c) => csvCell(c.name)).join(',') + '\n');
-          for (const row of table.source.rows) {
-            chunks.push(row.map((cell) => csvCell(cell)).join(',') + '\n');
-          }
-          return chunks.join('');
         }
         let cursor: unknown = null;
         let first = true;
@@ -252,9 +333,19 @@ export function createBlobTablesExporter(
           cursor = page.nextCursor;
           if (cursor === null || cursor === undefined) break;
         }
-        return chunks.join('');
+        return { content: chunks.join(''), mimeType: 'text/csv' };
       };
 
+      const fileName = defaultExportName(effective, false, now());
+      // A single data plan delivers as-is (binary for XLSX, text for the
+      // rest) with its own MIME type. Several plans only reach here when
+      // they are all `.sql` — anything else needed a zip and was refused
+      // above — so the merge below is text-only by construction.
+      if (plans.length === 1 && plans[0]?.kind === 'data') {
+        const emitted = await emitDataPlan(plans[0]);
+        deliver(emitted.content, fileName, emitted.mimeType);
+        return { Saved: request.tables.length };
+      }
       const chunks: string[] = [];
       // The desktop single-file merge: one plan is written directly, several
       // plans are concatenated with `-- ===== {filename} =====` separators.
@@ -268,13 +359,19 @@ export function createBlobTablesExporter(
         if (plan.kind === 'ddl') {
           chunks.push(plan.text);
         } else {
-          chunks.push(await emitDataPlan(plan));
+          const emitted = await emitDataPlan(plan);
+          if (typeof emitted.content !== 'string') {
+            throw new Error(
+              'this export produces a binary file that cannot be merged into a single download',
+            );
+          }
+          chunks.push(emitted.content);
         }
         if (multi) {
           chunks.push('\n\n');
         }
       }
-      deliver(chunks.join(''), defaultExportName(effective, false, now()));
+      deliver(chunks.join(''), fileName);
       return { Saved: request.tables.length };
     },
   };
