@@ -857,6 +857,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn write_data_file_sql_source_writes_json() {
+        // The JSON write path used to be covered by a provided-source
+        // test; the same rows now come from the stub backend over SQL.
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Json,
+            vec![table_item(
+                "filtered",
+                TableDataSource::Sql {
+                    sql: "SELECT id, name FROM users WHERE id > 1".into(),
+                },
+            )],
+        );
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.json");
+        let n = write_data_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Json,
+            None,
+            &dest,
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 2);
+        assert_eq!(
+            *source.streamed_sql.lock().unwrap(),
+            vec!["SELECT id, name FROM users WHERE id > 1".to_string()]
+        );
+        let parsed: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&dest).unwrap()).unwrap();
+        assert_eq!(
+            parsed,
+            serde_json::json!([{ "id": 1, "name": "a" }, { "id": 2, "name": null }])
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
     async fn write_data_file_table_source_regression() {
         let req = request(
             ExportMode::DataOnly,
