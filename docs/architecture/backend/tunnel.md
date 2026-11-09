@@ -1,7 +1,7 @@
 # Tunnel
 
-> Source of truth: `crates/datazen/src/tunnel/`（形态中立的隧道机制内核）、`src-tauri/src/tunnel/`（宿主装配层）、
-> `src-tauri/src/platform/session_backend/`、`src-tauri/src/store/tunnels.rs`、
+> Source of truth: `crates/datazen/src/tunnel/`（形态中立的隧道机制内核）、`crates/datazen-desktop/src/tunnel/`（宿主装配层）、
+> `crates/datazen-desktop/src/platform/session_backend/`、`crates/datazen-desktop/src/store/tunnels.rs`、
 > `crates/datazen/src/tunnel/domain/tunnel_repository.rs`（隧道定义仓储端口）、
 > `crates/datazen-driver-api/src/tunnel_types.rs`。
 
@@ -11,17 +11,17 @@
 
 **代码分布**：隧道机制本身（HTTP `CONNECT` 代理、WebSocket 中继、SSH 转发、SSH known-hosts 规则、进程级
 rustls provider 选择）住在形态中立的 `datazen::tunnel`（边界由共享模块 F-14 断言）；宿主侧
-`src-tauri/src/tunnel/` 只留装配与形态相关接线（`resolve_tunnel_kind` /
+`crates/datazen-desktop/src/tunnel/` 只留装配与形态相关接线（`resolve_tunnel_kind` /
 `start_for_connection` / `test_tunnel`、`DesktopTunnelHost`）。进程级 rustls provider 的**实现体**在
-`crates/datazen/src/tunnel/crypto.rs`，宿主 `src-tauri/src/tls.rs` 只保留接线守卫与 `pub use` 再导出——理由见
+`crates/datazen/src/tunnel/crypto.rs`，宿主 `crates/datazen-desktop/src/tls.rs` 只保留接线守卫与 `pub use` 再导出——理由见
 [security.md §](../security.md)。
 
 **两处存储走端口**（本轨的结构改造）：
 
 | 存什么 | 端口 | 住在哪 | 桌面实现 | web 形态 |
 |---|---|---|---|---|
-| 隧道定义 | `TunnelRepository` | `crates/datazen/src/tunnel/domain/tunnel_repository.rs`（跨形态端口家族） | `src-tauri/src/store/tunnels.rs` 的 `impl TunnelRepository for DesktopRepository`（加密落盘 `{appData}/tunnels.json`） | 服务端库上的组织级存储（同一端口、另一适配器） |
-| SSH known-hosts | `KnownHostsRepository` | `crates/datazen/src/tunnel/domain/known_hosts.rs`（跨形态端口；**同步**，`load` 读不到即空集合） | `src-tauri/src/platform/known_hosts.rs` 的 `DesktopKnownHostsRepository`（读 `{appData}/ssh_known_hosts.json`） | 服务端存储目录 / 组织级存储 |
+| 隧道定义 | `TunnelRepository` | `crates/datazen/src/tunnel/domain/tunnel_repository.rs`（跨形态端口家族） | `crates/datazen-desktop/src/store/tunnels.rs` 的 `impl TunnelRepository for DesktopRepository`（加密落盘 `{appData}/tunnels.json`） | 服务端库上的组织级存储（同一端口、另一适配器） |
+| SSH known-hosts | `KnownHostsRepository` | `crates/datazen/src/tunnel/domain/known_hosts.rs`（跨形态端口；**同步**，`load` 读不到即空集合） | `crates/datazen-desktop/src/platform/known_hosts.rs` 的 `DesktopKnownHostsRepository`（读 `{appData}/ssh_known_hosts.json`） | 服务端存储目录 / 组织级存储 |
 
 两者的**规则**都在共享包里（`SavedTunnel` 的形状、TOFU 判定、指纹与错误文案），**文件 I/O 与落盘加密**
 在宿主：**共享包不再读本机文件**。两个端口实例都由宿主在组装期创建一次，交给
@@ -119,7 +119,7 @@ config.websocket_tunnel = None;
 
 `SavedTunnel`（`tunnel_types.rs:80`）独立存放于 `tunnels.json`，连接侧只保留 `ConnectionConfig.tunnel_id`。保存连接时若设了 `tunnelId`，前端只写 `tunnelId` 与一个 `tunnelKind` 提示位，三个内联配置字段被主动省略（`src/lib/connectionFormModel.ts:117-136`）。
 
-`resolve_saved_tunnel`（`src-tauri/src/tunnel/mod.rs`）在**每次建连时**把 `tunnel_id` 解引用回内联配置：
+`resolve_saved_tunnel`（`crates/datazen-desktop/src/tunnel/mod.rs`）在**每次建连时**把 `tunnel_id` 解引用回内联配置：
 
 ```text
 ConnectionConfig { tunnel_id: "prod-bastion", ... }
@@ -151,7 +151,7 @@ ConnectionConfig { host: 127.0.0.1, port: <ephemeral>, tunnel_kind: None, ... }
   不属于隧道定义本身；删除前的引用检查走它（见 §8「引用完整性只在前端」）。
 
 **落盘加密留宿主**：端口是**内存内明文**语义，主钥匙串在宿主手里。桌面的实现体是
-`src-tauri/src/store/tunnels.rs` 的 `impl TunnelRepository for DesktopRepository`——加密字段集合
+`crates/datazen-desktop/src/store/tunnels.rs` 的 `impl TunnelRepository for DesktopRepository`——加密字段集合
 （6 个）、落盘文件名、原子写与降级策略全部逐字不变（见 §4.2）。**端口方法不接受
 connection id**：隧道定义是独立聚合，连接侧只存 `tunnelId`。
 
@@ -163,7 +163,7 @@ connection id**：隧道定义是独立聚合，连接侧只存 `tunnelId`。
 
 读取后由 `load_tunnels_from_disk`（`tunnels.rs:12`）在应用启动时（`store/mod.rs:205`）一次性加载并解密进内存缓存。**解密失败降级为 `None` 并 `warn!`**，不让单条坏记录阻断整份加载。
 
-已知主机校验文件为 `{appData}/ssh_known_hosts.json`（桌面实现：`src-tauri/src/platform/known_hosts.rs`
+已知主机校验文件为 `{appData}/ssh_known_hosts.json`（桌面实现：`crates/datazen-desktop/src/platform/known_hosts.rs`
 的 `DesktopKnownHostsRepository`），采用 TOFU 策略：首次接受并记录指纹，不匹配则拒绝并回传精确错误（`ssh_tunnel.rs:37-95`）。
 **文件 I/O 是端口**（`KnownHostsRepository`，见[共享边界与端口 §4.3](../platform/shared-boundaries-and-ports.md#43-持久化与授权端口)），
 **规则**（`KnownHostEntry` / `HostKeyDecision` / `verify_host_key` / `mismatch_error_message`）留在
@@ -175,7 +175,7 @@ connection id**：隧道定义是独立聚合，连接侧只存 `tunnelId`。
 
 ## 5. 建连路径中的隧道
 
-隧道在**物理 resource 打开之前**启动（`src-tauri/src/platform/session_backend/opening.rs`）：Driver 从未见过真实 `host:port`。建 session 和独立测试连接共用 `start_for_connection`：
+隧道在**物理 resource 打开之前**启动（`crates/datazen-desktop/src/platform/session_backend/opening.rs`）：Driver 从未见过真实 `host:port`。建 session 和独立测试连接共用 `start_for_connection`：
 
 | 入口 | 场景 | 隧道句柄归宿 |
 |---|---|---|
@@ -185,7 +185,7 @@ connection id**：隧道定义是独立聚合，连接侧只存 `tunnelId`。
 
 ## 6. IPC 与探测
 
-`src-tauri/src/commands/tunnel.rs` 暴露 7 个命令：
+`crates/datazen-desktop/src/commands/tunnel.rs` 暴露 7 个命令：
 
 | 命令 | 作用 | 生产调用方 |
 |---|---|---|
@@ -201,7 +201,7 @@ connection id**：隧道定义是独立聚合，连接侧只存 `tunnelId`。
 
 ### `test_tunnel` 为什么必须存在
 
-`tunnel::test_tunnel`（`src-tauri/src/tunnel/mod.rs`）用一份 `id = __tunnel_test__{id}` 的合成配置走完整链路；它不创建 Runtime session，也不解析数据库 driver——只有隧道字段和转发目标会进入隧道运行时。探测后立即 drop Tunnel，靠 `Drop` 清理转发器、监听端口、任务与 SSH 会话。
+`tunnel::test_tunnel`（`crates/datazen-desktop/src/tunnel/mod.rs`）用一份 `id = __tunnel_test__{id}` 的合成配置走完整链路；它不创建 Runtime session，也不解析数据库 driver——只有隧道字段和转发目标会进入隧道运行时。探测后立即 drop Tunnel，靠 `Drop` 清理转发器、监听端口、任务与 SSH 会话。
 
 返回的是**实测耗时**（`Duration`），不只是布尔值，因为「可用」和「够快」是两个不同的问题。
 
@@ -216,7 +216,7 @@ connection id**：隧道定义是独立聚合，连接侧只存 `tunnelId`。
 
 ## 7. 隧道与 session 生命周期
 
-`Tunnel`（`src-tauri/src/tunnel/mod.rs`）枚举持有三种运行时句柄，统一暴露 `local_port()`。它保存在 `DesktopSessionBackend::Resource._tunnel`，不作为可执行句柄暴露给 consumer。没有独立的 `close_tunnel()` 路径：
+`Tunnel`（`crates/datazen-desktop/src/tunnel/mod.rs`）枚举持有三种运行时句柄，统一暴露 `local_port()`。它保存在 `DesktopSessionBackend::Resource._tunnel`，不作为可执行句柄暴露给 consumer。没有独立的 `close_tunnel()` 路径：
 
 - Runtime 确认物理 resource 关闭后移除 `Resource` → Tunnel 随值 drop；资源进入 quarantine 或复用状态时 Tunnel 继续存活。
 - Runtime idle reclamation 默认在 30 分钟 session deadline 后关闭 resource；桌面每 15 秒扫描。过期会话失效，调用方显式建新 session，不保留 owner map 做同 ID 自动重连。

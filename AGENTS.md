@@ -7,30 +7,31 @@
 DataZen 是 Tauri v2 + React 18 + TypeScript + Rust 的跨平台数据库管理工具，使用 pnpm 与 Cargo workspace。
 
 ```text
-packages/desktop/            桌面壳：入口、platform/desktop 适配、shell、以及 src-tauri 宿主
-crates/datazen-desktop/  Desktop bootstrap、commands、platform、store、宿主适配（crate `datazen_desktop`）
+packages/desktop/            桌面壳：入口、platform/desktop 适配、shell
+packages/web/            浏览器壳（`src/platform/web/`：HTTP transport、SSE、路由分发、不支持名单）
+crates/datazen-desktop/  Desktop bootstrap、commands、platform、store、宿主适配（crate `datazen_desktop`，tauri.conf.json 在此）
 packages/frontend/       共享 React UI（`@datazen/frontend`）：stores、组件、hooks、i18n、平台端口
 packages/                driver-api、infra、UI/SDK（backend-client、driver-sdk、wapp-sdk、extension-points、ui）、wapps、drivers/*
-modules/                 单一业务 crate `datazen`（feature 门控的领域与用例）
-server/                  团队 Web 服务宿主（crate `datazen-server`，web-ready WR-D1 起骨架：HTTP 中间件链 + /healthz /readyz；域路由随 WR-D2+ 逐域点亮）
+crates/datazen/          单一业务内核 crate `datazen`（feature 门控的领域与用例；shared/application/execution/jobs/migration/各域）
+crates/datazen-server/   团队 Web 服务宿主（crate `datazen-server`）：axum 中间件链 + `/healthz` `/readyz` + `/api/v1` 十五域全亮（112 域客户端方法 / 108 路由，契约 v1.10.1）+ wapp 静态面；管理库首版 SQLite（WR-D2 裁决）
 e2e/                     Host WebdriverIO journeys
-docs/                    features、architecture、development、blogs、已核实且明确不修的 bugs
+docs/                    features、architecture、development、blogs、bugs（已核实不修）、archive（过程文档归档）
+deploy/                  服务端部署：Dockerfile / docker-compose 与 dev/ 一键开发栈（dex OIDC + seed）
 ```
 
 数据库驱动实现与专属测试必须在 `crates/drivers/<id>/`；Host 不得硬编码驱动方言。`packages/ui` 是纯 React 基础组件库，不能依赖宿主 Store 或 IPC。
 
-## DDD 重构目标
+## DDD 内核结构（重构已落地）
 
-权威方案：[DDD 模块化重构](docs/development/ddd-refactor-plan.md)（总纲；实施细节按主题在同目录 `ddd-refactor/` 下，细节文件保留原 §2–§14 编号）。该方案区分当前事实与目标设计，不能把目标目录写成已实现。
+重构方案已归档：[DDD 模块化重构](docs/archive/development/ddd-refactor-plan.md)（总纲 + 同目录 `ddd-refactor/` 细节）。D0–D8 已全部完成（旧 `packages/kernel` crate 已于 D8 退役删除；命令层薄壳化于 2026-11-04 核实收口：`_impl` 115 → 21，全部为文档化共享入口/测试夹具，无 1:1 转发残留）。当前不变量：
 
-- 最终以一个 `crates/datazen/` crate 按功能组织 `application` / `domain`；目标 package 为 `datazen`（已落地：`crates/datazen/` 即 `datazen` crate）。
-- `crates/datazen-desktop` 是 Desktop 宿主（crate `datazen_desktop`）；`crates/datazen-server/` 是团队 Web 服务宿主（crate `datazen-server`，WR-D1 骨架已落地）；目标浏览器宿主 `packages/web/`（尚未落地，不要写成已实现；Web 形态已移出 DDD 重构范围，D8 在桌面单宿主内收尾）。两个已落地宿主互不依赖，都只依赖 `modules` 内核；server 的依赖闭包由 CI 门禁 `pnpm test:server-deps` 强制无 tauri/UI。
-- Repository trait 由所属 domain 定义，Desktop/Web infrastructure 实现；不建立全局仓储全集。
-- Controller 只做上下文、DTO、应用服务调用和错误映射，不直接访问 Store、AppDb、Driver、Runtime internals。
+- `crates/datazen/` 是唯一业务内核 crate（package `datazen`），按功能组织 `application` / `domain`；共享契约在 `src/shared/`。
+- `crates/datazen-desktop` 是 Desktop 宿主（crate `datazen_desktop`）；`crates/datazen-server/` 是团队 Web 服务宿主（crate `datazen-server`，W8 已交付十五域）；`packages/web/` 是浏览器壳（已落地，`src/platform/web/` 只做 HTTP/SSE 传输适配）。两个宿主互不依赖，都只依赖内核；server 的依赖闭包由 CI 门禁 `pnpm test:server-deps` 强制无 tauri/UI。
+- Repository trait 由所属 domain 定义，Desktop/Server infrastructure 实现；不建立全局仓储全集。
+- 宿主边界（command 与 HTTP handler）只做请求接线、DTO 与错误映射，不直接访问 Store、AppDb、Driver、Runtime internals；同一用例在 Tauri command 与 HTTP handler 是两个薄绑定，契约唯一来源是 `packages/backend-client` 的域客户端（`docs/architecture/platform/http-api-contract.md`）。
 - `execution::runtime` 承载 actor、lease、队列、等待、资源回收；`execution::application` 编排用例；Job 归 `jobs`。
 - 保持 `connectionId`、`dbSessionId`、`executionId` 语义不混用，以及 owner、scope、epoch、revision、事务、取消、幂等、artifact、恢复语义。
-- 每个迁移 PR 必须有真实消费者、行为测试和依赖门禁；不提交空壳 Service、`todo!()`、DummyRepository 或重复状态。
-- 当前阶段按 D0→D8 推进；临时兼容导出必须写明消费者和删除阶段，D8 清零。
+- 不提交空壳 Service、`todo!()`、DummyRepository 或重复状态；新增临时兼容导出必须写明消费者和删除阶段。
 
 ## 架构与安全不变量
 
@@ -60,11 +61,14 @@ docs/                    features、architecture、development、blogs、已核�
 pnpm build
 pnpm typecheck                       # 默认单引擎门禁，包含测试文件
 pnpm typecheck:tsc                   # 权威 TypeScript 编译器
-npx vitest run                       # Host 前端单测
+npx vitest run                       # Host 前端单测（含 backend-client）
+pnpm --filter datazen-web test       # web 形态内核（platform/web）单测
 cargo fmt --all -- --check
 cargo test -p datazen_desktop --lib
+cargo test -p datazen-server --lib   # 服务端宿主单测
 node scripts/check-ddd-layers.mjs
 node scripts/check-platform-crate-boundaries.mjs
+pnpm test:server-deps                # server 闭包无 tauri/UI 门禁
 pnpm e2e                             # 构建并运行 Host E2E
 pnpm e2e:contract:matrix
 ```
@@ -83,7 +87,7 @@ E2E 必须使用 `pnpm tauri:build:webdriver` 或 `pnpm e2e` 的构建流程，�
 
 ## 文档与实现纪律
 
-- 长期文档只维护 `docs/features/`、`docs/architecture/`、`docs/development/`，以及公开 `docs/blogs/` 和明确不修的 `docs/bugs/`。
+- 长期文档只维护 `docs/features/`、`docs/architecture/`、`docs/development/`，以及公开 `docs/blogs/` 和明确不修的 `docs/bugs/`；过程文档（PRD、设计稿、台账、worklog、评审）交付后移入 `docs/archive/`，不留在活跃目录。
 - 不新增 PRD、方案评审、Bug List、进度报告类长期文件；已实现结论改写进对应架构文档。
 - 修改路径、IPC、命令、驱动数量或测试事实前先核对代码；文档链接必须人工检查可达。
 - CodeGraph 存在时优先 `codegraph explore`；否则使用专用搜索/读取工具，编辑前先读当前文件。

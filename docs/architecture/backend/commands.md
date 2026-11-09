@@ -1,12 +1,12 @@
 # Tauri IPC 命令层
 
-> Source of truth: `src-tauri/src/commands/`。
+> Source of truth: `crates/datazen-desktop/src/commands/`。
 
 Commands 是 React 前端进入 Rust backend 的 IPC 边界。Command 层负责参数边界、错误转换、状态访问和把请求交给相应 domain/service/module。
 
 ## 1. 当前模块
 
-`src-tauri/src/commands/mod.rs` 下包含：
+`crates/datazen-desktop/src/commands/mod.rs` 下包含：
 
 - connection / connection_import / config / context
 - query / data / data_session / schema / sample
@@ -20,7 +20,7 @@ Commands 是 React 前端进入 Rust backend 的 IPC 边界。Command 层负责�
 - history / export / backup / restore_job / file_jobs / app_archive
 - wapps / theme / window / dialog / tunnel / clipboard
 
-具体目录结构以 `src-tauri/src/commands/` 为准。
+具体目录结构以 `crates/datazen-desktop/src/commands/` 为准。
 
 ## 2. 通用调用链
 
@@ -31,7 +31,7 @@ src/commands/*.ts
         ↓
 Tauri invoke
         ↓
-src-tauri/src/commands/*
+crates/datazen-desktop/src/commands/*
         ↓
 service / domain module
         ↓
@@ -40,7 +40,9 @@ Driver / Store / runtime
 
 前端 IPC wrapper 与 Rust command 名称保持显式映射，不在组件中直接拼接后端协议。
 
-进入 `service / domain module` 之前，SQL 会先过安全门网：注释剥离、主关键字分类、只读 / Safe Mode 校验与参数绑定。该门网实现在共享层 `packages/kernel/src/sql_guard/`，宿主 command 以 `datazen_runtime::sql_guard::…` 调用，未来的服务端入口复用同一份实现。
+进入 `service / domain module` 之前，SQL 会先过安全门网：注释剥离、主关键字分类、只读 / Safe Mode 校验与参数绑定。该门网实现在共享层 `crates/datazen/src/execution/domain/sql_guard/`，宿主 command 以 `datazen::execution::…` 方式调用，服务端 HTTP 入口已复用同一份实现（`crates/datazen-server/`）。
+
+命令层已完成**薄壳化**（W8 前 WR-A2 核实收口：`_impl` 115 → 21，剩余为文档化共享入口 / 测试夹具，无 1:1 转发残留）：command 只做请求接线与转发，编排归 `crates/datazen` 各域 application。同一用例因此有两个薄绑定——桌面 Tauri command 与 server HTTP handler；`packages/backend-client` 的域客户端是契约唯一来源，HTTP 面逐方法镜像见 [HTTP API 契约](../platform/http-api-contract.md)。
 
 ## 3. 连接 ID 参数约定
 
@@ -81,7 +83,7 @@ Backend 使用结构化错误并在 IPC 边界转换成前端可消费的错误�
 
 IPC contract 和 command 行为的测试位于：
 
-- `src-tauri/src/commands/**`
-- `src-tauri/tests/`
+- `crates/datazen-desktop/src/commands/**`
+- `crates/datazen-desktop/tests/`
 - 对应 frontend `__tests__`
 - E2E contract / journey tests

@@ -1,6 +1,6 @@
 # Schema Diff 架构
 
-> P5 桌面 JobRuntime 接入已完成；迁移三件套独立测试与冒烟测试通过。Source of truth: `crates/datazen/src/migration/schema_diff/`, `src-tauri/src/commands/schema_diff/`, `src-tauri/src/commands/schema_diff.rs`, `crates/datazen-driver-api/src/schema_migration.rs`。
+> P5 桌面 JobRuntime 接入已完成；迁移三件套独立测试与冒烟测试通过。Source of truth: `crates/datazen/src/migration/schema_diff/`, `crates/datazen-desktop/src/commands/schema_diff/`, `crates/datazen-desktop/src/commands/schema_diff.rs`, `crates/datazen-driver-api/src/schema_migration.rs`。
 
 Schema Diff 的职责是把源库结构视为 **desired state**，比较目标结构，生成可审阅的迁移计划，并在目标库执行。
 
@@ -42,24 +42,24 @@ Host 不直接拼接 PostgreSQL/MySQL/SQLite 的 DDL。方言实现位于 Driver
 | `crates/datazen/src/migration/schema_diff/types.rs` | Snapshot、Diff、Plan DTO |
 | `crates/datazen/src/migration/schema_diff/profile_repository.rs` | 持久化 Schema Diff profile 的领域存储端口 |
 | `crates/datazen/src/migration/schema_diff/reviewed.rs` | 评审计划的**规则**（身份指纹、目标快照复核、依赖目录比对）与存储端口 `ReviewedPlanRepository` |
-| `src-tauri/src/commands/schema_diff/` | Tauri IPC 与桌面 Job adapter |
+| `crates/datazen-desktop/src/commands/schema_diff/` | Tauri IPC 与桌面 Job adapter |
 
-Host 侧 `src-tauri/src/commands/schema_diff.rs` 只是模块门面（模块声明 + re-export），
+Host 侧 `crates/datazen-desktop/src/commands/schema_diff.rs` 只是模块门面（模块声明 + re-export），
 命令按职责拆到同目录下的子模块：
 
 | 文件 | 职责 |
 |---|---|
-| `src-tauri/src/commands/schema_diff.rs` | 门面：模块声明、命令 re-export、共享 helper 导入 |
-| `src-tauri/src/commands/schema_diff/object_scope.rs` | schema scope 门闸与 schema 对象选择 |
-| `src-tauri/src/commands/schema_diff/profile_commands.rs` | Schema Diff profile 的增删查；经 `ApplicationServices` 访问领域 profile 端口与连接目录 |
-| `src-tauri/src/commands/schema_diff/dependency_catalog.rs` | 目标库外键依赖目录读取与复核 |
-| `src-tauri/src/commands/schema_diff/plan_commands.rs` | 表级迁移计划生成 |
-| `src-tauri/src/commands/schema_diff/object_plan_commands.rs` | 视图 / 存储过程 / 序列 / 类型计划生成 |
-| `src-tauri/src/commands/schema_diff/deploy_commands.rs` | 迁移计划执行与取消 |
-| `src-tauri/src/commands/schema_diff/compare_commands.rs` | 单表列级差异比较 |
-| `src-tauri/src/commands/schema_diff/reviewed_repository.rs` | 评审计划存储端口的桌面实现（单租户、进程内存）与组织作用域取用 |
+| `crates/datazen-desktop/src/commands/schema_diff.rs` | 门面：模块声明、命令 re-export、共享 helper 导入 |
+| `crates/datazen-desktop/src/commands/schema_diff/object_scope.rs` | schema scope 门闸与 schema 对象选择 |
+| `crates/datazen-desktop/src/commands/schema_diff/profile_commands.rs` | Schema Diff profile 的增删查；经 `ApplicationServices` 访问领域 profile 端口与连接目录 |
+| `crates/datazen-desktop/src/commands/schema_diff/dependency_catalog.rs` | 目标库外键依赖目录读取与复核 |
+| `crates/datazen-desktop/src/commands/schema_diff/plan_commands.rs` | 表级迁移计划生成 |
+| `crates/datazen-desktop/src/commands/schema_diff/object_plan_commands.rs` | 视图 / 存储过程 / 序列 / 类型计划生成 |
+| `crates/datazen-desktop/src/commands/schema_diff/deploy_commands.rs` | 迁移计划执行与取消 |
+| `crates/datazen-desktop/src/commands/schema_diff/compare_commands.rs` | 单表列级差异比较 |
+| `crates/datazen-desktop/src/commands/schema_diff/reviewed_repository.rs` | 评审计划存储端口的桌面实现（单租户、进程内存）与组织作用域取用 |
 
-`src-tauri/src/commands/schema_diff/job.rs` 与 `unified_plan.rs` 保持各自的子树
+`crates/datazen-desktop/src/commands/schema_diff/job.rs` 与 `unified_plan.rs` 保持各自的子树
 （桌面 Job adapter、统一计划与依赖目录复核）。
 
 Driver API 中的 `MigrationRenderer` 负责把操作转换为 `MigrationStatement`；`MigrationCapabilities` 描述是否支持某操作、是否需要 rebuild、DDL 是否事务化；`TypeNormalizer` 用于跨 Driver 类型别名比较。
@@ -151,10 +151,10 @@ Schema Diff 的 prepare/apply 请求以 `sourceDbSessionId` / `targetDbSessionId
 | 位置 | 职责 |
 |---|---|
 | `crates/datazen/src/migration/schema_diff/reviewed.rs` | **规则**：配置身份指纹、目标快照复核、依赖目录比对、计划有效期；并定义存储端口 `ReviewedPlanRepository` 与随端口提供的进程内实现 `InMemoryReviewedPlanRepository`（按组织分桶） |
-| `src-tauri/src/commands/schema_diff/reviewed_repository.rs` | **存储实现**：桌面形态的实例，在包内进程内实现之上叠加**单租户**收窄 |
+| `crates/datazen-desktop/src/commands/schema_diff/reviewed_repository.rs` | **存储实现**：桌面形态的实例，在包内进程内实现之上叠加**单租户**收窄 |
 
 - **包内没有进程级全局可变状态**。计划寄居在宿主注入的实例里（`AppState.schema_diff_reviewed_plans`），不再寄居在包里的 `static` 上：多租户宿主可以按组织分桶，A 组织的计划不会被 B 组织读到、顶掉或提前消费掉。
-- **端口方法一律带 `scope: &OrganizationScope`**（`datazen::platform_api::ports::scope`）。**越组织访问按「不存在」处理**——取不到、删不掉，也**不**返回「无权限」错误，那会泄漏「存在但无权」（CM-05）。
+- **端口方法一律带 `scope: &OrganizationScope`**（`datazen::shared::scope`）。**越组织访问按「不存在」处理**——取不到、删不掉，也**不**返回「无权限」错误，那会泄漏「存在但无权」（CM-05）。
 - **端口的行类型是领域词汇 `ReviewedPlan`**，不另造一份计划结构；存储实现不得把规则的判定（有效期、身份比对）搬走。
 - **桌面是单租户**：只承认自己那一个组织（`DesktopIdentity::organization_id()`），别的组织一律按「不存在」处理（越组织**写入直接丢弃**）。桌面身份不可用时该存储**不承认任何组织**，不编造组织身份。
 - 计划的**有效期**（30 分钟）与**容量上限**由包给出常量（`REVIEWED_PLAN_TTL` / `REVIEWED_PLAN_MAX_ENTRIES`），存储实现据此裁剪；桌面沿用**进程内存**。
@@ -169,3 +169,18 @@ Schema Diff 的 prepare/apply 请求以 `sourceDbSessionId` / `targetDbSessionId
 - E2E：`e2e/specs/schema-diff-*.ts` 与 journey tests
 
 Driver-specific 方言测试放在 `crates/drivers/<id>/`，不要在 Host 复制方言实现。
+
+## 服务端形态（W8）
+
+W8 刀3b 点亮 schema diff 域：`crates/datazen-server/src/schema_diff/` 五件 + `http/domains/schema_diff.rs` 十一路由（[HTTP API 契约](../platform/http-api-contract.md) §6.13：profiles 读写删三 + compare（POST 读）+ 计划准备二 + 部署受理一 + job 读回/取消/恢复核验四）。profiles 存储是服务端库行（桌面加密 JSON 文件形的服务端对偶）；门与桌面 IPC 同权（只读目标拒绝、`requireRollback`、破坏性 token、复核一次性消费、目标指纹比对）。
+
+| 文件 | 职责 |
+|---|---|
+| `backend.rs` | `SchemaDiffJobBackend`：prepare 编排、冻结计划铸造、能力快照核验、目标指纹复验、部署全门链与终态记账 |
+| `endpoints.rs` | 会话→端点解析：目录可见性闸、活句柄借出、档案 config 回读；端点物理身份 fail-closed |
+| `history.rs` | 迁移历史两段落账 + profile 引用校验（best-effort，不阻断执行应答） |
+| `jobs.rs` | JobRuntime 接线：受理→派发→读回/取消/恢复核验（受理 = 先持久化后取资源，202 回执先于任何 DDL） |
+| `recovery.rs` | 恢复目标派生 + 目录指纹（纯投影，复用共享层恢复目标规则） |
+
+- **恢复核验只读裁决**：核验是只读证据记录，结论属 RequireManualReview 族，**永不续写**——不重放旧 handler、不续跑部署。
+- **迁移历史读面归 dataSync 域（留账说明）**：部署编排的迁移历史写面在本域落账（V12 `migration_run_history` start/finish 两段，best-effort）；`get_migration_run` / `list_migration_runs` 两读面按契约登记随 dataSync 域收口（顶层资源 `/api/v1/migration-runs`），不在本域开路由。

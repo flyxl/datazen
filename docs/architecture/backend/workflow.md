@@ -25,10 +25,10 @@ crates/datazen/src/workflow/
 ├── registry.rs          # 保存的 workflow 规则；宿主以 Arc<dyn WorkflowDefinitionRepository> 注入存储
 └── host.rs              # 宿主端口
 
-src-tauri/src/workflow/
+crates/datazen-desktop/src/workflow/
 ├── mod.rs               # 模块出口
 ├── registry.rs          # YAML workflow 注册、加载、保存、删除（AppDb 绑定）
-├── command_runtime.rs   # 桌面 AppState 绑定的 Command 桥（规则在 modules）
+├── command_runtime.rs   # 桌面 AppState 绑定的 Command 桥（规则在共享层）
 ├── scheduler.rs         # 桌面 scheduler 适配
 ├── history.rs           # 执行历史持久化
 ├── host.rs              # 共享端口的桌面实现（WorkflowHost / ResourceExecutionHost）
@@ -86,7 +86,7 @@ Step 没有指定 `connection` 时继承 Workflow 默认 connection；Step 显�
 
 ### 连接与会话
 
-Workflow IPC 和 YAML 使用持久化 `connectionId`，不会保存或接收 GUI 的 `dbSessionId`。Workflow v1 的每条 step 经 `modules command_runtime → modules resource_execution` 进入共享 Runtime；Runtime 按该 step 的 connection profile 建立或借用自己的 session/resource，并在该次执行完成后按 Runtime 生命周期清理。它不复用编辑器会话，也不通过 Host `ConnectionManager` 管理连接。
+Workflow IPC 和 YAML 使用持久化 `connectionId`，不会保存或接收 GUI 的 `dbSessionId`。Workflow v1 的每条 step 经共享层 `command_runtime → resource_execution` 进入共享 Runtime；Runtime 按该 step 的 connection profile 建立或借用自己的 session/resource，并在该次执行完成后按 Runtime 生命周期清理。它不复用编辑器会话，也不通过 Host `ConnectionManager` 管理连接。
 
 当前实现保留以下 v1 行为：
 
@@ -192,7 +192,7 @@ Workflow Command Runtime 同时被 Tauri IPC 使用，主要能力包括：
 - Workflow 的创建、读取、更新、删除与执行
 - Workflow execution history
 
-前端 `src/commands/` 与 Rust `src-tauri/src/commands/` 保持领域对齐。
+前端 `src/commands/` 与 Rust `crates/datazen-desktop/src/commands/` 保持领域对齐。
 
 ## 能力概要
 
@@ -218,7 +218,8 @@ Workflow 曾支持一种 `migration` step：在 workflow 里以 step 的形式�
 理由与事实：
 
 - 迁移 step 走的是**宿主专属**的服务：宿主存储里的迁移 profile、宿主开的会话、宿主的
-  迁移执行路径。web 形态要支持它，就得把这一整套也做成形态中立的。
+  迁移执行路径。web 形态要支持它，就得把这一整套也做成形态中立的。W8 服务端形态
+  已按此口径落地：迁移 step 维持移除，未随 server 复活。
 - 与其留一个「只有桌面能用」的半截能力，不如先删掉；将来按 **web 与桌面同时可用**的
   形态重做。
 - 该能力**从未真正发布**（其代码虽随被撤回的 v0.2.3 一起构建过，但该版本已撤回），
@@ -230,7 +231,7 @@ Workflow 曾支持一种 `migration` step：在 workflow 里以 step 的形式�
 
 已删除的实现：`crates/datazen/src/workflow/migration.rs`、
 `crates/datazen/src/workflow/migration_outcome.rs`、
-`src-tauri/src/workflow/migration.rs`，以及 `WorkflowStep::Migration` 变体、
+`crates/datazen-desktop/src/workflow/migration.rs`，以及 `WorkflowStep::Migration` 变体、
 `WorkflowMigrationOperation` / `UnattendedDestructivePolicy` 枚举、
 `WorkflowHost::execute_profile_step` 端口，与前端对应的 step 类型、表单与文案。
 
@@ -258,7 +259,7 @@ Command 的输入使用 JSON，Driver 通过 manifest / definition 声明 schema
 
 ## 入口
 
-- IPC：`src-tauri/src/commands/workflow.rs` 的 `workflow_*` / `workflow_history_*`；以及 Driver Command IPC
+- IPC：`crates/datazen-desktop/src/commands/workflow.rs` 的 `workflow_*` / `workflow_history_*`；以及 Driver Command IPC
 - GUI：`WorkflowPanel` / `WorkflowPage`
 - MCP：`list_workflows` / `run_workflow`、`datazen://workflows`（工具清单在 `mcp/server.rs`，执行在 `mcp/tools.rs`）
 - Driver API：`crates/datazen-driver-api/src/command.rs`、`traits.rs`
@@ -268,13 +269,13 @@ Command 的输入使用 JSON，Driver 通过 manifest / definition 声明 schema
 
 ### P6 Workflow v1 范围
 
-Workflow 保持既有 v1 协议、模型、跨数据库逐步执行及前步 output 供后步模板串联的语义；仅将底层连接管理走 `modules command_runtime → modules resource_execution → Runtime`。本轮不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof。YAML、version model 与既有 IPC 形状不变。scheduler 保留桌面 runtime-entry 修复，Monitor 固定只读授权/独立 occurrence 和其他消费者的 Runtime 接线继续保留。
+Workflow 保持既有 v1 协议、模型、跨数据库逐步执行及前步 output 供后步模板串联的语义；仅将底层连接管理走共享层 `command_runtime → resource_execution → Runtime`。本轮不接入 v2 session/transaction block、专用 Workflow Job owner/dispatch、Workflow Job IPC 或 PostgreSQL/MySQL transaction proof。YAML、version model 与既有 IPC 形状不变。scheduler 保留桌面 runtime-entry 修复，Monitor 固定只读授权/独立 occurrence 和其他消费者的 Runtime 接线继续保留。
 
 #### Workflow v1 真实驱动验收
 
-Host 通用旅程 `src-tauri/src/workflow/live_acceptance_tests.rs` 使用真实 PostgreSQL/MySQL inventory factory、桌面 AppState/WorkflowHost 和 Runtime，不以 sqlx 手工串接模拟执行器。两个方向分别执行继承 workflow connection 的 legacy Query，再以 step connection override 执行 Command；前步数值经 `{{steps.seed.rows[0].value}}` 进入后步 SQL，验证最终计算结果。夹具在两个独立测试库建立同名表并写入不同数值，后步同时读取目标库的数值并加上前步结果，以证明目标覆盖实际到达另一个物理数据库；结束时删除夹具表。只使用两库共有的建表/插入/SELECT/删除表语句，不增加驱动方言能力或事务语义。
+Host 通用旅程 `crates/datazen-desktop/src/workflow/live_acceptance_tests.rs` 使用真实 PostgreSQL/MySQL inventory factory、桌面 AppState/WorkflowHost 和 Runtime，不以 sqlx 手工串接模拟执行器。两个方向分别执行继承 workflow connection 的 legacy Query，再以 step connection override 执行 Command；前步数值经 `{{steps.seed.rows[0].value}}` 进入后步 SQL，验证最终计算结果。夹具在两个独立测试库建立同名表并写入不同数值，后步同时读取目标库的数值并加上前步结果，以证明目标覆盖实际到达另一个物理数据库；结束时删除夹具表。只使用两库共有的建表/插入/SELECT/删除表语句，不增加驱动方言能力或事务语义。
 
-运行：`scripts/run-live-contract.sh --crate datazen --lib-test workflow::live_acceptance_tests`。测试默认 ignored，安全 runner 显式执行，并要求两族独立 `dz_fixture_*` 数据库；缺配置、不可连接或执行失败都会失败，不以跳过计作通过。原 `src-tauri/tests/workflow_db_tests.rs` 的 TC13（拆分前 workflow_tests.rs）直接调用 sqlx，仅验证手工数据流，不作为 Workflow/Runtime 接线证据。
+运行：`scripts/run-live-contract.sh --crate datazen --lib-test workflow::live_acceptance_tests`。测试默认 ignored，安全 runner 显式执行，并要求两族独立 `dz_fixture_*` 数据库；缺配置、不可连接或执行失败都会失败，不以跳过计作通过。原 `crates/datazen-desktop/tests/workflow_db_tests.rs` 的 TC13（拆分前 workflow_tests.rs）直接调用 sqlx，仅验证手工数据流，不作为 Workflow/Runtime 接线证据。
 
 #### 桌面 Monitor 定时授权（已实现，2026-10-17）
 
@@ -287,3 +288,20 @@ Monitor 周期轮询与手动刷新现已使用不同入口。手动刷新沿用
 共享 MonitorEngine 在入队前及 semaphore / workflow lock 之后重载 dashboard/widget enabled、pause 与 grant，冻结并比较 workflow revision 和目标范围。桌面 scheduled adapter 使用同一冻结定义与 service RequestContext；Runtime 从 PolicyService 后端解析完整 grant、核对主体/客户端/有效期/动作，在 admission 与物理 dispatch 前重新核对 grant、schedule、workflow hash、目标、配置版本、enabled 和只读 SQL。delegation 不能降级为本地用户；撤销后仍允许 owner 关闭其自有资源，不能因撤权遗留短会话。原同 widget in-flight 合并保持。
 
 撤销/禁用阻止后续派发，不伪造已在途执行的取消或回滚。每个 grant 版本、dashboard/widget、workflow revision 与 refresh slot 对应一个带稳定幂等键的 `monitorOccurrence` Job；Job 受理后才派发原 scheduled workflow，WidgetRun 与有界 JobDomainResult 记录实际结果。启动恢复按持久化 service principal 扫描 occurrence：未派发 Job 标为未启动，运行中 Job 转为待核验，恢复流程不重放查询。撤权后无法继续读取 receipt 时保留 SqlUnconfirmed/Unknown；真实 PG/MySQL 驱动旅程仍须独立验收，P6 未整体关闭。
+
+## 服务端形态（W8）
+
+W8 刀3c 把本域点亮到团队 Web 服务（P7 服务端半边）：`crates/datazen-server/src/workflow/` 三件 + `http/domains/workflow.rs` 十一路由，与桌面宿主共用 `crates/datazen/src/workflow/` 的执行器与登记规则。
+
+| 文件 | 职责 |
+|---|---|
+| `host.rs` | `ServerWorkflowHost`：共享命令 runtime 与 `ResourceExecutionHost` 之上的 `WorkflowHost` 服务端实现 |
+| `schedule_grant.rs` | `ServerScheduleGrantReader`：从定义 YAML 与 profile `config_revision` **确定性派生授权单**；拒绝事实一律 `Ok(None)`，不虚构授权 |
+| `scheduler.rs` | `ServerScheduleHost` + `ServerWorkflowScheduler`：owner 组织核对（fail-closed）+ 审计日志 + 服务身份执行上下文 |
+
+- **契约**（[HTTP API 契约](../platform/http-api-contract.md) §6.14，十一路由）：定义 CRUD 五 + from-yaml + 同步 `execute`（**200 全量结果**，桌面 IPC 同语义——长跑工作流是调用方的重试策略问题，不在本域发明 202/job 语义）+ `reload`（**库后端 no-op**，桌面同语义）+ 运行历史三。存储是服务端管理库 V13 双表（`workflows` / `workflow_run_history`，组织复合主键）。
+- **组织归属闸**：请求组织 ≠ 宿主组织 ⇒ 404 合并口径（CM-05，防枚举）；带体写面（save / save-yaml / execute）核 `saveUserAsset` 令牌在场性与 `idempotencyKey` 绑定。
+- **`getWorkflowDir` 不进 HTTP**：工作流目录路径是文件系统语义，桌面专属——服务端定义是库行，无目录可给。
+- **AI 步骤 fail-closed**：server 形态没有 AI 供应商注册表。交互执行按执行器默认错误策略应答（200 + `success:false` + 步骤拒绝文案，步骤失败不是命令错误）；调度面被授权单派生更早拒绝。
+- **双端调度器**：到期判定与 in-flight 生命周期单家在共享层 `WorkflowScheduler`（arm-not-fire），桌面与 server 各自装配——server 侧由 `ServerScheduleGrantReader` 派生授权单、`ServerScheduleHost` 以服务身份执行并审计。
+- **服务端不播内置样例 workflow**：桌面内置样例是单机 onboarding 供给，团队服务器的组织自建。

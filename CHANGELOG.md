@@ -16,6 +16,16 @@
 
 ### 🚀 新功能（Added）
 
+**团队 Web 服务（P7，W8 交付）**：`crates/datazen-server/` axum HTTP 宿主 `/api/v1` 十五域全亮——settings、identity、connection、session、execution、job、artifact、events（SSE）、tableData、driverGateway（过渡）、queryAssets、schemaDiff、workflow、dashboard、dataSync，合计 **112 个域客户端方法 / 108 条路由**，契约见 [HTTP API 契约](docs/architecture/platform/http-api-contract.md)（v1.10.1）。要点：
+
+- `packages/backend-client` 域客户端是 HTTP 面的唯一契约来源；桌面 Tauri command 与 server HTTP handler 是同一用例的两个薄绑定，桌面 IPC wire 逐字节不变。
+- `packages/web/` 浏览器壳落地（HTTP transport、SSE 事件流、108 键路由分发）；web 不支持名单收敛至 134 个 legacy 桌面命令（`webUnsupportedMethods.ts`，文件系统/对话框等桌面专属语义留表）。
+- 服务端管理库首版为 **SQLite**（expand-only 迁移链 V12–V15：jobs、workflows、dashboards、sync）；PostgreSQL 适配器为后续生产化切片。凭据行内只存 `SecretRef`，不复用宿主 AES 落盘。
+- Workflow / Dashboard / Data Sync / Schema Diff / 查询资产五域的服务端半边：双端定时调度器（授权单确定性派生）、双端刷新监控引擎、sync 执行面（compare 冻结投影 + 受理幂等键）、恢复核验只读裁决。
+- Wapp 资产 origin 静态面 `GET /wapps/{id}/{path}`：CSP/MIME/拒绝语义复用共享内核单源，web 形态沙箱 iframe 的 server 半边。
+- `deploy/dev/` 一键开发栈：dex OIDC + 引导链 + seed + `up.sh` / `down.sh`。
+- 未随本版：桌面团队认证（P8）、多 worker 协调（P9）、server 形态 AI 供应商注册表（交互面按执行器默认错误策略 fail-closed）。
+
 **五个驱动领域契约**（`datazen-driver-api` 0.0.13 → 0.0.19）：`SqlDialect`（方言文本规则 + 共享 SQL builder）、`CatalogReader`（目录读取）、`CommandCatalog`（命令描述）、`SchemaMigration`（结构迁移规则）、`BackupDialect`（备份文件规则）。每个契约都配一个**借用适配器**（`LegacySqlDialect` / `LegacyCatalogReader` / `LegacyCommandCatalog` / `LegacySchemaMigration` / `LegacyBackupDialect`），适配器单向委托给旧 trait 方法——新增契约是 additive，外部驱动无需重新编译即可继续工作。宿主侧的 schema cache 与 SQL builder 已不再依赖驱动的目录/方言实现，运行时执行路径收敛到 `ResourceProvider`，per-database 池维护收敛到 runtime 会话层用例（宿主不再直接调用驱动）。
 
 `PROTOCOL_VERSION` 保持 **6**（2026-10-21 起冻结；兼容门禁族一并退役），详见 [驱动层 §2.5](docs/architecture/backend/drivers.md#25-协议版本闸门)。

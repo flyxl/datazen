@@ -1,9 +1,9 @@
 # DataZen 持久化模型、可落盘白名单与 Schema 迁移详细设计
 
-> 状态：本文 §3/§5 面向 P7 团队服务 PostgreSQL 管理库，仍属目标设计；§4.1 描述桌面文件与 SQLite 的当前事实，其中 `{appData}/datazen.sqlite` Job 表已在 P5 Core 升为 schema v2，桌面 Monitor grant 元数据在 P6 升为 schema v3。本文其他服务端 schema/迁移内容不代表已经实现。
+> 状态：P7 团队服务已随 W8（2026-11-06 至 11-09）交付，但服务端管理库首版按 WR-D2 用户裁决落 **SQLite**（`crates/datazen-server/src/storage/`，同一 domain trait、另一适配器；单 `Mutex<Connection>` + `spawn_blocking`，expand-only 迁移链至 V15：V12 jobs、V13 workflows 双表、V14 dashboards、V15 sync 双表）。本文 §3/§5 的 **PostgreSQL** 管理库 DDL 仍是后续生产化切片的目标设计，表结构语义按域 trait 对齐，不代表已实现；§4.1 描述桌面文件与 SQLite 的当前事实，其中 `{appData}/datazen.sqlite` Job 表已在 P5 Core 升为 schema v2，桌面 Monitor grant 元数据在 P6 升为 schema v3。本文其他服务端 PostgreSQL schema/迁移内容不代表已经实现。
 > 读者：负责《分阶段开发计划》P1（抽取共享应用边界与持久化白名单）和 P7（服务端 ProfileRepository / JobRepository / Audit / ArtifactRepository 与 schema migration）的实现者。本文定义**存什么、存在哪、谁来写、怎么迁**；DTO 形状、会话状态机、错误码取值以[连接管理详细设计](connection-management.md)为权威。
-> 配套：[系统概要](system-overview.md)、[连接管理详细设计](connection-management.md)、[共享应用边界与端口详细设计](shared-boundaries-and-ports.md)、[团队 Web 服务详细设计](team-server-and-auth.md)、[分阶段开发计划](../../development/platform-development-plan.md)。
-> 现状盘点来源：[持久化存储（现状）](../backend/store.md)、[`crates/datazen-desktop/src/store/`](../../../crates/datazen-desktop/src/store/mod.rs)。这些是**已实现事实**；本文其余章节为目标设计。
+> 配套：[系统概要](system-overview.md)、[连接管理详细设计](connection-management.md)、[共享应用边界与端口详细设计](shared-boundaries-and-ports.md)、[团队 Web 服务详细设计](team-server-and-auth.md)、[分阶段开发计划（已归档）](../../archive/development/platform-development-plan.md)。
+> 现状盘点来源：[持久化存储（现状）](../backend/store.md)、[`crates/datazen-desktop/src/store/`](../../../crates/datazen-desktop/src/store/mod.rs)。这些是**已实现事实**；服务端管理库的现状（W8 SQLite 首版）见头注，本文其余章节中的 PostgreSQL DDL 为目标设计。
 
 ## 1. 文档定位与状态
 
@@ -16,7 +16,7 @@
 | 登录会话行与授权数据的**表结构** | 字段语义见 [团队服务 §4.3](team-server-and-auth.md#43-服务端登录会话)、[§6.1](team-server-and-auth.md#61-角色与资源-acl)；本文 §3.10 给 DDL / CHECK / 索引 / 保留策略 |
 | 迁移的**运行方式**（何时执行、失败是否启动） | [团队服务 §13 Schema migration 运行方式](team-server-and-auth.md#13-schema-migration-运行方式)；本文定义**版本策略、文件格式、expand/contract 判据与回滚边界** |
 | 会话、lease、预算的行为契约 | [连接 §6 状态机与并发](connection-management.md#6-状态机与并发)、[§9 连接池、预算与清理](connection-management.md#9-连接池预算与清理) |
-| 阶段交付顺序与门槛 | [开发计划 §5 P1](../../development/platform-development-plan.md#5-p1抽取共享应用边界和前端传输契约)、[§11 P7](../../development/platform-development-plan.md#11-p7单实例团队-web-服务) |
+| 阶段交付顺序与门槛 | [开发计划 §5 P1（已归档）](../../archive/development/platform-development-plan.md#5-p1抽取共享应用边界和前端传输契约)、[§11 P7（已归档）](../../archive/development/platform-development-plan.md#11-p7单实例团队-web-服务) |
 
 三条本文反复使用的前提：
 
@@ -118,7 +118,7 @@ CM-61（[连接 §16.7](connection-management.md#167-补充契约与边界用例
 
 ### 3.1 选型与边界
 
-- 服务端管理库使用 **PostgreSQL**（[概要 §6.4](system-overview.md#64-repositories-与环境-ports) 推荐"第一版用 PostgreSQL 管理组织、配置版本、任务、审计和额度"），**不与用户业务数据库混用**，迁移脚本也绝不触碰用户业务库。
+- 服务端管理库的目标选型是 **PostgreSQL**（[概要 §6.4](system-overview.md#64-repositories-与环境-ports) 推荐"第一版用 PostgreSQL 管理组织、配置版本、任务、审计和额度"；后续 WR-D2 裁决把首版改为 SQLite，PostgreSQL 成为生产化切片，见头注），**不与用户业务数据库混用**，迁移脚本也绝不触碰用户业务库。
 - 桌面本地持久化**不是**这套 schema 的另一个实例。本地仍是文件 + SQLite（§4.1），两者的字段同构关系见 §4.2，但存储引擎、加密方式和一致性语义不同。
 - 所有表都带 `organization_id`，且**复合主键一律以 `organization_id` 打头**：越组织访问在存储层就是查不到，而不是靠应用层记得加过滤。
 - 时间列统一 `TIMESTAMPTZ`（UTC）。所有 TTL 的**起点**用服务端单调时钟保存（[连接 §6.4](connection-management.md#64-attachment-与超期处理)），`expires_at` 只是最早适用期限的 UTC 投影。
@@ -127,7 +127,7 @@ CM-61（[连接 §16.7](connection-management.md#167-补充契约与边界用例
 
 ### 3.2 表清单
 
-目标表分两批：P7 的 13 张管理表（§3.3–§3.10），以及 P9 增加的 `budget_allocations`（§3.11）。顺序遵循外键依赖；它们是目标 schema，不表示当前已建表。
+目标表分两批：P7 规划的 13 张管理表（§3.3–§3.10），以及 P9 增加的 `budget_allocations`（§3.11）。顺序遵循外键依赖；它们是 PostgreSQL 目标 schema，不因 W8 交付而自动建表——W8 首版管理库按 WR-D2 裁决落 SQLite（头注），表结构语义按域 trait 对齐，PostgreSQL 化时以本节为准。
 
 | 表 | 对应 port / 用途 | 主键 |
 | --- | --- | --- |
@@ -295,7 +295,7 @@ CREATE UNIQUE INDEX uq_idempotency_live_subject
 
 ### 3.6 `jobs` 与 `job_checkpoints`
 
-以下 PostgreSQL DDL 仍是服务端管理库目标 schema。桌面公共 Job Core 使用既有 `{appData}/datazen.sqlite`，其 SQLite v2 表与约束由 [`store/app_db.rs`](../../../crates/datazen-desktop/src/store/app_db.rs) 定义，不直接复用本节 PostgreSQL DDL。
+以下 PostgreSQL DDL 仍是服务端管理库目标 schema（生产化切片）。桌面公共 Job Core 使用既有 `{appData}/datazen.sqlite`，其 SQLite v2 表与约束由 [`store/app_db.rs`](../../../crates/datazen-desktop/src/store/app_db.rs) 定义，不直接复用本节 PostgreSQL DDL；W8 服务端 jobs 仓储则落在 `crates/datazen-server/src/storage/jobs.rs`（SQLite，迁移链 V12），同样不直接复用本节 DDL。
 
 ```sql
 CREATE TABLE jobs (
@@ -699,7 +699,7 @@ v6 删除旧 `nativeToolProbe` job 行（F1 删除 NativeTool 后的防御性 pu
 
 规则：
 
-1. **禁止在同一个版本里对同一列做加与删**。开发计划的发布门槛原文是"数据库 schema 采用 expand/contract，不先删字段"（[开发计划 §11 P7](../../development/platform-development-plan.md#11-p7单实例团队-web-服务)）。同一版本 add + drop 会让"跑旧镜像"和"跑新镜像"两种状态在同一个部署里同时不存在或同时存在，回退时无路可走。
+1. **禁止在同一个版本里对同一列做加与删**。开发计划的发布门槛原文是"数据库 schema 采用 expand/contract，不先删字段"（[开发计划 §11 P7](../../archive/development/platform-development-plan.md#11-p7单实例团队-web-服务)）。同一版本 add + drop 会让"跑旧镜像"和"跑新镜像"两种状态在同一个部署里同时不存在或同时存在，回退时无路可走。
 2. contract 分两次发布：N 版 expand（双写：新旧列都写），N+1 或更晚的 N+k 版 contract。间隔至少跨过一次完整发布周期，且期间旧镜像已下线。
 3. 删列前必须先把该列的数据**搬到新列**（expand 阶段完成），contract 阶段只做删除。
 4. 索引创建使用 PostgreSQL 的 `CREATE INDEX CONCURRENTLY` 时必须**单独**成一个迁移文件，且不能包在事务里；这类迁移在文件名后缀标记（如 `0007_add_exec_idx_concurrently.sql`），运行器按后缀切换"事务外执行"模式。
@@ -719,7 +719,7 @@ v6 删除旧 `nativeToolProbe` job 行（F1 删除 NativeTool 后的防御性 pu
 | 单文件事务性 | 普通迁移的 DDL 与历史登记在**同一个事务**内执行；失败整体回滚；§5.3 的 concurrently 文件走事务外恢复协议 |
 | 失败策略 | **fail-closed**：不进入"部分应用"状态，服务拒绝启动；错误写入服务日志与健康检查输出 |
 | 成功记录 | 普通迁移在 DDL 同一事务内插入 `schema_migration_history`，提交后一起可见；不存在 DDL 已提交但历史未登记的窗口 |
-| 回滚方式 | **不写反向 SQL 文件**。回退靠"回退镜像 + 向后兼容 schema"（[开发计划 §11 P7](../../development/platform-development-plan.md#11-p7单实例团队-web-服务)）；已经发生的外部数据库写入**不能**通过回退镜像撤销 |
+| 回滚方式 | **不写反向 SQL 文件**。回退靠"回退镜像 + 向后兼容 schema"（[开发计划 §11 P7](../../archive/development/platform-development-plan.md#11-p7单实例团队-web-服务)）；已经发生的外部数据库写入**不能**通过回退镜像撤销 |
 | 数据损坏处理 | 由运维用备份恢复管理库；恢复后按 §7 重新核验 |
 
 事务外索引迁移持有同一 advisory lock：启动前检查目标索引定义、`indisvalid` 与预期摘要；已存在且有效、定义匹配时只补历史；无效的同名索引先删除再重建；定义不匹配则拒绝并要求运维修复。索引成功后登记历史，崩溃重启走上述核验，不能直接重发裸 CREATE。已知版本校验内嵌 checksum；未知更高版本只有在支持范围和兼容发布约定内才允许读取，不伪称已核验未知文件 checksum。发布 CI 验证 N-1 镜像在 N 的 expand schema 上读写与启动，以及超范围/contract 后明确拒绝。
@@ -800,7 +800,7 @@ P5/P9 claim 存储：`claim_generation` 在首次认领/接管时原子自增，
 
 ### 7.3 不能声称的事
 
-不能声称"恢复备份后活动数据库会话可恢复"——开发计划的发布门槛原文即"管理员能恢复服务元数据，活动数据库会话不声称可恢复"（[开发计划 §11 P7](../../development/platform-development-plan.md#11-p7单实例团队-web-服务)）；不能声称 schema 回退能撤销已经发生的外部数据库写入（回退只回退服务端镜像）；不能声称恢复过程会"继续"任何未完成任务（恢复后进入核验态）；不能声称查询历史是隐私安全的——`history.sqlite` 明文存 SQL 与错误信息是既定事实（[持久化存储 §1.3](../backend/store.md#13-查询历史明文)），备份必须按敏感审计日志对待。
+不能声称"恢复备份后活动数据库会话可恢复"——开发计划的发布门槛原文即"管理员能恢复服务元数据，活动数据库会话不声称可恢复"（[开发计划 §11 P7](../../archive/development/platform-development-plan.md#11-p7单实例团队-web-服务)）；不能声称 schema 回退能撤销已经发生的外部数据库写入（回退只回退服务端镜像）；不能声称恢复过程会"继续"任何未完成任务（恢复后进入核验态）；不能声称查询历史是隐私安全的——`history.sqlite` 明文存 SQL 与错误信息是既定事实（[持久化存储 §1.3](../backend/store.md#13-查询历史明文)），备份必须按敏感审计日志对待。
 
 本文也不规定 RPO / RTO 数值，这属于部署文档（[团队服务 §14](team-server-and-auth.md#14-部署形态)）与组织自身策略。
 
@@ -861,14 +861,14 @@ P5 Job 引用的计划/输入 Artifact 另有保留锁：接受 Job 与建立引
 
 ## 9. 验收映射
 
-用例编号与标题逐字取自 [连接 §16.7](connection-management.md#167-补充契约与边界用例)（含括号里的层标记，**不改写标题**）；「首次落地阶段」取自[开发计划 §17：补充契约的阶段归属](../../development/platform-development-plan.md#17-补充契约的阶段归属)，该表未单列的用例按计划中首次列出它的阶段门槛标注。本表只列**本文负责的那一层**：标 P7/P8 的行是本文为 W1 断言提供的落点，标更早阶段的行是本文为那些阶段提供的 schema / 列语义落点；两者都不得据此把整条用例计入 P7/P8 门槛——P7/P8 承接的补充契约以[开发计划 §17](../../development/platform-development-plan.md#17-补充契约的阶段归属) 的 P7/P8 行为准（当前为 CM-59、CM-63、CM-68、CM-70、CM-72 的 W1 断言），P7 的其余门槛见[开发计划 §11 P7](../../development/platform-development-plan.md#11-p7单实例团队-web-服务)，服务端侧的逐条落点在[团队服务 §16](team-server-and-auth.md#16-验收映射)。
+用例编号与标题逐字取自 [连接 §16.7](connection-management.md#167-补充契约与边界用例)（含括号里的层标记，**不改写标题**）；「首次落地阶段」取自[开发计划 §17：补充契约的阶段归属](../../archive/development/platform-development-plan.md#17-补充契约的阶段归属)，该表未单列的用例按计划中首次列出它的阶段门槛标注。本表只列**本文负责的那一层**：标 P7/P8 的行是本文为 W1 断言提供的落点，标更早阶段的行是本文为那些阶段提供的 schema / 列语义落点；两者都不得据此把整条用例计入 P7/P8 门槛——P7/P8 承接的补充契约以[开发计划 §17](../../archive/development/platform-development-plan.md#17-补充契约的阶段归属) 的 P7/P8 行为准（当前为 CM-59、CM-63、CM-68、CM-70、CM-72 的 W1 断言），P7 的其余门槛见[开发计划 §11 P7](../../archive/development/platform-development-plan.md#11-p7单实例团队-web-服务)，服务端侧的逐条落点在[团队服务 §16](team-server-and-auth.md#16-验收映射)。
 
 | ①用例（[连接 §16.7](connection-management.md#167-补充契约与边界用例) 原标题） | ②首次落地阶段 | ③本文负责的层与断言落点 |
 | --- | --- | --- |
-| CM-05 跨用户/组织资源访问（H/W） | P1（[开发计划 §5 P1](../../development/platform-development-plan.md#5-p1抽取共享应用边界和前端传输契约) 门槛含 CM-01、03～07）；本文的 schema 断言随 P7 首批迁移落地 | **schema 层**：§3.1、§3.2 —— 全部主键以 `organization_id` 打头；跨组织查询在存储层查不到 |
+| CM-05 跨用户/组织资源访问（H/W） | P1（[开发计划 §5 P1](../../archive/development/platform-development-plan.md#5-p1抽取共享应用边界和前端传输契约) 门槛含 CM-01、03～07）；本文的 schema 断言随 P7 首批迁移落地 | **schema 层**：§3.1、§3.2 —— 全部主键以 `organization_id` 打头；跨组织查询在存储层查不到 |
 | CM-06 前端伪造 owner（H/W） | P1（同上）；schema 断言随 P7 | **schema 层**：§3.3、§3.4、§4.3 —— `owner_principal_id` / `client_instance_id` 由服务端按 `RequestContext` 填充，不接受客户端自报；`organizationId` 不是连接配置属性 |
-| CM-07 目标缺失与冲突（H/D） | P0（[开发计划 §4 P0](../../development/platform-development-plan.md#4-p0现状基线与契约测试夹具) 门槛含 CM-01、04、07）与 P1 | **schema 层**：§2.3 规则三、§3.3、§4.2 —— `requested_target` / `initial_namespace` 落库前归一化；不存在层级非 null、required null 在执行前拒绝 |
-| CM-59 登出/权限撤销/CSRF（W） | P7/P8（§17：CM-59 的 W1 断言；[开发计划 §11 P7](../../development/platform-development-plan.md#11-p7单实例团队-web-服务) 门槛中的组织隔离与单实例认证部分） | **schema 层**：§2.1 W14/W15、§3.10、§4.3 —— 登录会话行、成员关系、固定角色与 ACL 可落库（字段语义见 [团队服务 §4.3](team-server-and-auth.md#43-服务端登录会话)、[§6.1](team-server-and-auth.md#61-角色与资源-acl)、[§6.3](team-server-and-auth.md#63-撤销传播)，`external_subject` 是 IdP `sub` 唯一落库处）；IdP 令牌副本与 attachment 令牌不落库；撤权将实际授权变更与 `permission_version` 递增同事务提交，提交后使缓存与池键失效；删除会话行等价于强制重新登录。CSRF 拒绝与订阅/排队的时机本身不在本文 |
+| CM-07 目标缺失与冲突（H/D） | P0（[开发计划 §4 P0](../../archive/development/platform-development-plan.md#4-p0现状基线与契约测试夹具) 门槛含 CM-01、04、07）与 P1 | **schema 层**：§2.3 规则三、§3.3、§4.2 —— `requested_target` / `initial_namespace` 落库前归一化；不存在层级非 null、required null 在执行前拒绝 |
+| CM-59 登出/权限撤销/CSRF（W） | P7/P8（§17：CM-59 的 W1 断言；[开发计划 §11 P7](../../archive/development/platform-development-plan.md#11-p7单实例团队-web-服务) 门槛中的组织隔离与单实例认证部分） | **schema 层**：§2.1 W14/W15、§3.10、§4.3 —— 登录会话行、成员关系、固定角色与 ACL 可落库（字段语义见 [团队服务 §4.3](team-server-and-auth.md#43-服务端登录会话)、[§6.1](team-server-and-auth.md#61-角色与资源-acl)、[§6.3](team-server-and-auth.md#63-撤销传播)，`external_subject` 是 IdP `sub` 唯一落库处）；IdP 令牌副本与 attachment 令牌不落库；撤权将实际授权变更与 `permission_version` 递增同事务提交，提交后使缓存与池键失效；删除会话行等价于强制重新登录。CSRF 拒绝与订阅/排队的时机本身不在本文 |
 | CM-61 持久化白名单与临时结果恢复（H/F） | P0/P1（§17：类型与 schema 断言）；P3 的 H、P4 的 F 不在本文 | **schema / 落库断言层**：§2.1、§2.2、§2.5、§3.4、§6.1、§6.2、§8.3 —— 落盘结构无 `dbSessionId`/`SessionHandle`/`resourceBindingId`/lease/cancel 句柄（§2.5 三条断言）；普通表可重新授权后写、临时结果只读、同配置新 session 不能接替原绑定 |
 | CM-62 命名空间规范化矩阵（H/D） | P0/P1（§17：类型与 schema 断言）；P2 的 D 断言不在本文 | **schema 层**：§2.3 规则三、§3.3、§4.2 —— 缓存、权限、driver 与落库使用同一 `CanonicalTarget`；无文件路径误用 |
 | CM-63 Attachment、TTL 与竞态（H/F/W1） | P3（§17：CM-61～74 的 H 断言）；**P7/P8（§17：W1 断言）** | **W1 层**：§2.2 F8、§3.2「不存在的表」、§3.5 不落盘行、§7.2 attachment 行 —— `attachmentToken` 与哈希不落盘；恢复后全部失效、同 principal 无令牌重附着拒绝；仅 `openSession` / 上下文替换的指纹与令牌绑定 owner `runtimeEpoch`（[团队服务 §10.4](team-server-and-auth.md#104-幂等回执存储)），TTL 与竞态取值以 [连接 §6.4](connection-management.md#64-attachment-与超期处理) 为准 |
@@ -885,7 +885,7 @@ P5 Job 引用的计划/输入 Artifact 另有保留锁：接受 Job 与建立引
 - **不重复定义迁移运行方式**。何时执行、失败是否启动、是否与回退镜像配合由 [团队服务 §13](team-server-and-auth.md#13-schema-migration-运行方式) 定义；本文给版本策略、文件格式、expand/contract 判据与回滚边界，二者必须一致读。
 - **沿用仓库已有先例**：`schema_migrations` / `schema_version` 版本表、`has_column` 探测式升级、legacy JSON 的 rename-aside 导入、`SyncTask` 的 `skip_serializing` 会话 id、收藏迁移的归档表护栏、`migration_run_history` 的禁列名断言。本文是把这些做法推广到服务端管理库，不是发明新机制。
 - **扩展 [持久化存储（现状）](../backend/store.md)**：那份文档描述已实现的桌面本地存储，本地加密文件格式与主密钥后端细节也在那里与 [`store/key_store.rs`](../../../crates/datazen-desktop/src/store/key_store.rs)；本文描述目标的服务端管理库与两者的映射，两者对同一主题的不同层次不构成冲突。
-- **扩写 [概要 §5 统一领域对象](system-overview.md#5-统一领域对象)** 的"持久化：是/否"列：本文把"是"展开成具体表与列，把"否"展开成禁持久化清单与断言；并补齐 [开发计划](../../development/platform-development-plan.md) P1 与 P7 的交付项——P1 的"所有持久化路径排除运行时句柄"由 §2.2 + §2.5 落地，P7 的"ProfileRepository / JobRepository / Audit / ArtifactRepository 的服务端实现和 schema migration"由 §3、§5、§6 落地。
+- **扩写 [概要 §5 统一领域对象](system-overview.md#5-统一领域对象)** 的"持久化：是/否"列：本文把"是"展开成具体表与列，把"否"展开成禁持久化清单与断言；并补齐 [开发计划](../../archive/development/platform-development-plan.md) P1 与 P7 的交付项——P1 的"所有持久化路径排除运行时句柄"由 §2.2 + §2.5 落地，P7 的"ProfileRepository / JobRepository / Audit / ArtifactRepository 的服务端实现和 schema migration"由 §3、§5、§6 落地。
 - **本文不覆盖**：会话、lease、预算的**行为算法**（[连接 §6](connection-management.md#6-状态机与并发) 与 [§9](connection-management.md#9-连接池预算与清理)）；服务端进程形态、中间件链、OIDC、CSRF、404 不可见策略与 SSE 实现细节（[团队服务 §3–§9](team-server-and-auth.md#3-请求中间件链)）；Artifact 字节存储与出站网络策略的具体实现（[团队服务 §11](team-server-and-auth.md#11-artifactrepository-服务端实现)、[§12](team-server-and-auth.md#12-出站网络策略)）；包边界、依赖护栏与 CI 门禁（[共享边界 §2](shared-boundaries-and-ports.md#2-包边界与依赖矩阵)、[§8](shared-boundaries-and-ports.md#8-依赖护栏与-ci-门禁)）；fake resource、故障注入与基准 harness（[P0 夹具详细设计](fake-runtime-fixtures.md)）。
 - **产物 TTL 的具体时长**、RPO / RTO 数值、组织级留存策略：权威文档未给出默认值，本文显式不写死常量，交由部署配置与运维策略决定。
 - 任何把 `dbSessionId` 恢复到磁盘、或让恢复出来的记录继续代表物理资源的方案。本文对此的立场是不可协商：落盘的是事实与来源，不是继续执行的资格。
