@@ -368,6 +368,10 @@ mod tests {
         rows: Vec<Vec<Option<Value>>>,
         streamed_sql: Arc<std::sync::Mutex<Vec<String>>>,
         stream_calls: Arc<AtomicUsize>,
+        /// Test seam: when false, `stream_query` emits `Rows` without a
+        /// preceding `StatementStart`, so the exporter's header fallback
+        /// (item 3a) can be exercised.
+        emit_start: bool,
     }
 
     impl StubSource {
@@ -385,6 +389,7 @@ mod tests {
                 rows,
                 streamed_sql: Arc::new(std::sync::Mutex::new(Vec::new())),
                 stream_calls: Arc::new(AtomicUsize::new(0)),
+                emit_start: true,
             }
         }
     }
@@ -407,11 +412,13 @@ mod tests {
         ) -> Result<(), ExportError> {
             self.streamed_sql.lock().unwrap().push(sql.to_string());
             self.stream_calls.fetch_add(1, Ordering::Relaxed);
-            callback(QueryStreamEvent::StatementStart {
-                index: 0,
-                sql: sql.to_string(),
-                columns: self.columns.clone(),
-            });
+            if self.emit_start {
+                callback(QueryStreamEvent::StatementStart {
+                    index: 0,
+                    sql: sql.to_string(),
+                    columns: self.columns.clone(),
+                });
+            }
             if !self.rows.is_empty() {
                 callback(QueryStreamEvent::Rows {
                     index: 0,
@@ -1079,6 +1086,738 @@ mod tests {
             matches!(err, ExportError::Validation(_)),
             "unexpected error: {err:?}"
         );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    // --- Item 3a: new text formats (TSV / Markdown / SQL UPDATE) ---------
+
+    #[tokio::test]
+    async fn write_data_file_tsv_flattens_tabs_and_newlines() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Tsv,
+            vec![table_item(
+                "t",
+                TableDataSource::Provided {
+                    columns: two_cols(),
+                    rows: vec![
+                        vec![
+                            Some(Value::Integer(1)),
+                            Some(Value::String("a\tb\nc".into())),
+                        ],
+                        vec![Some(Value::Integer(2)), Some(Value::Null)],
+                    ],
+                },
+            )],
+        );
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.tsv");
+        let n = write_data_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Tsv,
+            None,
+            &dest,
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 2);
+        assert_eq!(
+            std::fs::read_to_string(&dest).unwrap(),
+            "id\tname\n1\ta b c\n2\t\n"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn write_data_file_markdown_escapes_pipes_and_breaks() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Markdown,
+            vec![table_item(
+                "t",
+                TableDataSource::Provided {
+                    columns: two_cols(),
+                    rows: vec![vec![
+                        Some(Value::Integer(1)),
+                        Some(Value::String("a|b\nc\\d".into())),
+                    ]],
+                },
+            )],
+        );
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.md");
+        write_data_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Markdown,
+            None,
+            &dest,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&dest).unwrap(),
+            "| id | name |\n| --- | --- |\n| 1 | a\\|b<br>c\\\\d |\n"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn write_data_file_sql_update_uses_primary_key() {
+        let mut item = table_item(
+            "users",
+            TableDataSource::Provided {
+                columns: two_cols(),
+                rows: two_rows(),
+            },
+        );
+        item.primary_key = Some("id".into());
+        let req = request(ExportMode::DataOnly, DataFormat::SqlUpdate, vec![item]);
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.sql");
+        write_data_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::SqlUpdate,
+            None,
+            &dest,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&dest).unwrap(),
+            // The sqlite mock driver renders string literals as CAST(X'…'
+            // AS TEXT); the UPDATE shape (SET … WHERE pk = …) is what this
+            // test pins, not the dialect's literal style.
+            "BEGIN;\nUPDATE \"users\" SET \"name\" = CAST(X'61' AS TEXT) WHERE \"id\" = 1;\nUPDATE \"users\" SET \"name\" = NULL WHERE \"id\" = 2;\nCOMMIT;\n"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn write_data_file_sql_update_falls_back_to_first_column() {
+        // No primary_key supplied: the first column is the key, as in the
+        // frontend sql_update branch.
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::SqlUpdate,
+            vec![table_item(
+                "users",
+                TableDataSource::Provided {
+                    columns: two_cols(),
+                    rows: two_rows(),
+                },
+            )],
+        );
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.sql");
+        write_data_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::SqlUpdate,
+            None,
+            &dest,
+        )
+        .await
+        .unwrap();
+        assert!(
+            std::fs::read_to_string(&dest)
+                .unwrap()
+                .contains("WHERE \"id\" = 1;"),
+            "first column is the fallback key"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn write_data_file_sql_update_single_column_is_rejected() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::SqlUpdate,
+            vec![table_item(
+                "only_id",
+                TableDataSource::Provided {
+                    columns: vec![col("id", "int4")],
+                    rows: vec![vec![Some(Value::Integer(1))]],
+                },
+            )],
+        );
+        let source = StubSource::new(false, false, vec![col("id", "int4")], vec![]);
+        let dest = temp_file("out.sql");
+        let err = write_data_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::SqlUpdate,
+            None,
+            &dest,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Validation(ref m) if m.contains("non-key column")),
+            "unexpected error: {err:?}"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[test]
+    fn build_file_plans_sql_update_structure_merges_into_one_sql_file() {
+        // Like SqlInsert: DDL is a prefix in the same .sql file, so the DDL
+        // plan and the data plan never collide on "{table}.sql".
+        let mut item = table_item("users", TableDataSource::Table);
+        item.ddl = Some("CREATE TABLE users (id INT);".into());
+        let req = request(
+            ExportMode::DataAndStructure,
+            DataFormat::SqlUpdate,
+            vec![item],
+        );
+        let plans = build_file_plans(&req).unwrap();
+        assert_eq!(plans.len(), 1);
+        assert_eq!(plans[0].filename(), "users.sql");
+        match &plans[0] {
+            FilePlan::Data { ddl_prefix, .. } => {
+                assert!(ddl_prefix.as_deref().unwrap().contains("CREATE TABLE"));
+            }
+            other => panic!("expected a data plan, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn data_format_extensions_and_binary_flag() {
+        assert_eq!(DataFormat::Csv.extension(), "csv");
+        assert_eq!(DataFormat::Tsv.extension(), "tsv");
+        assert_eq!(DataFormat::Json.extension(), "json");
+        assert_eq!(DataFormat::Markdown.extension(), "md");
+        assert_eq!(DataFormat::SqlInsert.extension(), "sql");
+        assert_eq!(DataFormat::SqlUpdate.extension(), "sql");
+        assert_eq!(DataFormat::Xlsx.extension(), "xlsx");
+        assert!(DataFormat::Xlsx.is_binary());
+        for format in [
+            DataFormat::Csv,
+            DataFormat::Tsv,
+            DataFormat::Json,
+            DataFormat::Markdown,
+            DataFormat::SqlInsert,
+            DataFormat::SqlUpdate,
+        ] {
+            assert!(!format.is_binary(), "{format:?} must be text");
+        }
+        // Serde names are the snake_case wire names the frontend sends.
+        assert_eq!(
+            serde_json::to_string(&DataFormat::SqlUpdate).unwrap(),
+            "\"sql_update\""
+        );
+        assert_eq!(
+            serde_json::from_str::<DataFormat>("\"xlsx\"").unwrap(),
+            DataFormat::Xlsx
+        );
+    }
+
+    #[test]
+    fn validate_export_path_accepts_new_extensions() {
+        for ext in ["tsv", "md", "xlsx", "csv", "json", "sql", "zip"] {
+            let path = std::path::PathBuf::from(format!("export.{ext}"));
+            assert!(
+                crate::export::validate_export_path(&path).is_ok(),
+                ".{ext} must be allowed"
+            );
+        }
+        assert!(
+            crate::export::validate_export_path(std::path::Path::new("export.parquet")).is_err()
+        );
+    }
+
+    // --- Item 3a: binary dispatch + multi-plan guard ----------------------
+
+    #[tokio::test]
+    async fn write_data_file_rejects_binary_format() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Xlsx,
+            vec![table_item("t", TableDataSource::Table)],
+        );
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.xlsx");
+        let err = write_data_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Xlsx,
+            None,
+            &dest,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Validation(ref m) if m.contains("write_binary_file")),
+            "unexpected error: {err:?}"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn write_binary_file_rejects_text_format() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Csv,
+            vec![table_item("t", TableDataSource::Table)],
+        );
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.csv");
+        let err = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Csv,
+            &dest,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Validation(ref m) if m.contains("write_data_file")),
+            "unexpected error: {err:?}"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn write_binary_file_provided_source_writes_xlsx_without_backend() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Xlsx,
+            vec![table_item(
+                "provided",
+                TableDataSource::Provided {
+                    columns: two_cols(),
+                    rows: two_rows(),
+                },
+            )],
+        );
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.xlsx");
+        let n = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Xlsx,
+            &dest,
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 2);
+        assert_eq!(source.stream_calls.load(Ordering::Relaxed), 0);
+        assert!(dest.exists(), "xlsx file written");
+        let file = std::fs::File::open(&dest).unwrap();
+        let mut zip = zip::ZipArchive::new(file).unwrap();
+        assert!(zip.by_name("xl/worksheets/sheet1.xml").is_ok());
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[test]
+    fn prepare_export_forces_zip_for_multi_plan_xlsx() {
+        let req = request(
+            ExportMode::DataAndStructure,
+            DataFormat::Xlsx,
+            vec![table_item("users", TableDataSource::Table)],
+        );
+        let (plans, use_zip) = prepare_export(&req).unwrap();
+        assert_eq!(plans.len(), 2);
+        assert!(use_zip, "DDL .sql + data .xlsx must zip");
+    }
+
+    #[tokio::test]
+    async fn run_single_export_refuses_binary_multi_plan() {
+        // Defence in depth: even a direct caller bypassing prepare_export
+        // must never get concatenated XLSX bytes.
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Xlsx,
+            vec![
+                table_item("a", TableDataSource::Table),
+                table_item("b", TableDataSource::Table),
+            ],
+        );
+        let plans = build_file_plans(&req).unwrap();
+        assert_eq!(plans.len(), 2);
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.xlsx");
+        let err = crate::export::run_single_export(&NoopEvents, &source, &req, &plans, &dest)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Validation(ref m) if m.contains("zip")),
+            "unexpected error: {err:?}"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn run_zip_export_writes_xlsx_entries() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Xlsx,
+            vec![
+                table_item(
+                    "a",
+                    TableDataSource::Provided {
+                        columns: two_cols(),
+                        rows: two_rows(),
+                    },
+                ),
+                table_item(
+                    "b",
+                    TableDataSource::Provided {
+                        columns: two_cols(),
+                        rows: two_rows(),
+                    },
+                ),
+            ],
+        );
+        let plans = build_file_plans(&req).unwrap();
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.zip");
+        let n = crate::export::run_zip_export(&NoopEvents, &source, &req, &plans, &dest)
+            .await
+            .unwrap();
+        assert_eq!(n, 4);
+        let file = std::fs::File::open(&dest).unwrap();
+        let zip = zip::ZipArchive::new(file).unwrap();
+        let names: Vec<String> = zip.file_names().map(str::to_string).collect();
+        assert_eq!(names, vec!["a.xlsx".to_string(), "b.xlsx".to_string()]);
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    // --- Item 3a coverage: dispatch, fallbacks, defensive arms -----------
+
+    #[tokio::test]
+    async fn write_data_file_sql_update_sqlserver_transaction_header() {
+        // The SqlInsert/SqlUpdate header shares the sqlserver branch.
+        let mut item = table_item(
+            "users",
+            TableDataSource::Provided {
+                columns: two_cols(),
+                rows: two_rows(),
+            },
+        );
+        item.primary_key = Some("id".into());
+        let mut req = request(ExportMode::DataOnly, DataFormat::SqlUpdate, vec![item]);
+        req.database_type = Some("sqlserver".into());
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.sql");
+        write_data_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::SqlUpdate,
+            None,
+            &dest,
+        )
+        .await
+        .unwrap();
+        let text = std::fs::read_to_string(&dest).unwrap();
+        assert!(text.starts_with("BEGIN TRANSACTION;\n"), "{text}");
+        assert!(text.ends_with("COMMIT;\n"), "{text}");
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[test]
+    fn stream_formatter_xlsx_header_is_empty_by_construction() {
+        // Binary formats never go through the text formatter (write_data_file
+        // rejects them first); the Xlsx arms in StreamFormatter only exist
+        // so construction cannot panic if one is ever routed here.
+        let mut f =
+            crate::export::StreamFormatter::new(DataFormat::Xlsx, "t".into(), None, test_driver());
+        assert_eq!(f.header(&["id".to_string()]), "");
+    }
+
+    #[tokio::test]
+    async fn write_binary_file_begin_failure_is_reported() {
+        let wide: Vec<ColumnInfo> = (0..16_385).map(|i| col(&format!("c{i}"), "text")).collect();
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Xlsx,
+            vec![table_item(
+                "wide",
+                TableDataSource::Provided {
+                    columns: wide,
+                    rows: vec![],
+                },
+            )],
+        );
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.xlsx");
+        let err = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Xlsx,
+            &dest,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Validation(ref m) if m.contains("16385 columns")),
+            "unexpected error: {err:?}"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn write_binary_file_rows_before_start_fall_back_to_requested_columns() {
+        // A stream that skips StatementStart still gets a header, from the
+        // requested column names — and from col_0… when none were requested.
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Xlsx,
+            vec![TableExportInput {
+                table_name: "t".into(),
+                schema: None,
+                columns: vec!["id".into(), "name".into()],
+                ddl: None,
+                primary_key: None,
+                source: TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            }],
+        );
+        let mut source = StubSource::new(false, false, two_cols(), two_rows());
+        source.emit_start = false;
+        let dest = temp_file("fallback.xlsx");
+        let n = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Xlsx,
+            &dest,
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 2);
+        let text = {
+            let file = std::fs::File::open(&dest).unwrap();
+            let mut zip = zip::ZipArchive::new(file).unwrap();
+            let mut out = String::new();
+            for name in ["xl/worksheets/sheet1.xml", "xl/sharedStrings.xml"] {
+                if let Ok(mut entry) = zip.by_name(name) {
+                    use std::io::Read as _;
+                    let mut s = String::new();
+                    entry.read_to_string(&mut s).unwrap();
+                    out.push_str(&s);
+                }
+            }
+            out
+        };
+        assert!(
+            text.contains("id") && text.contains("name"),
+            "fallback header: {text}"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+
+        // No requested columns either: col_0 / col_1 stand in.
+        let req2 = request(
+            ExportMode::DataOnly,
+            DataFormat::Xlsx,
+            vec![table_item(
+                "t",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        let mut source2 = StubSource::new(false, false, two_cols(), two_rows());
+        source2.emit_start = false;
+        let dest2 = temp_file("fallback2.xlsx");
+        crate::export::write_binary_file(
+            &NoopEvents,
+            &source2,
+            &req2,
+            &req2.tables[0],
+            DataFormat::Xlsx,
+            &dest2,
+        )
+        .await
+        .unwrap();
+        let file = std::fs::File::open(&dest2).unwrap();
+        let mut zip = zip::ZipArchive::new(file).unwrap();
+        let mut entry = zip.by_name("xl/worksheets/sheet1.xml").unwrap();
+        let mut text = String::new();
+        use std::io::Read as _;
+        entry.read_to_string(&mut text).unwrap();
+        assert!(
+            text.contains("col_0") && text.contains("col_1"),
+            "col_N header: {text}"
+        );
+        let _ = std::fs::remove_dir_all(dest2.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn write_binary_file_row_wider_than_excel_columns_is_rejected() {
+        // The canned row is wider than the schema: the library's column
+        // limit surfaces as a friendly Validation error, not a panic.
+        let wide_row: Vec<Option<Value>> = (0..17_000).map(|i| Some(Value::Integer(i))).collect();
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Xlsx,
+            vec![table_item(
+                "t",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        let source = StubSource::new(false, false, two_cols(), vec![wide_row]);
+        let dest = temp_file("wide.xlsx");
+        let err = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Xlsx,
+            &dest,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Validation(ref m) if m.contains("worksheet limits")),
+            "unexpected error: {err:?}"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn write_plan_data_file_rejects_ddl_prefix_for_binary() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Xlsx,
+            vec![table_item("t", TableDataSource::Table)],
+        );
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.xlsx");
+        let err = crate::export::write_plan_data_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Xlsx,
+            Some("CREATE TABLE t (id INT);"),
+            &dest,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Validation(ref m) if m.contains("DDL prefix")),
+            "unexpected error: {err:?}"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn run_single_export_single_csv_plan_goes_through_dispatch() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Csv,
+            vec![table_item("users", TableDataSource::Table)],
+        );
+        let plans = build_file_plans(&req).unwrap();
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.csv");
+        let n = crate::export::run_single_export(&NoopEvents, &source, &req, &plans, &dest)
+            .await
+            .unwrap();
+        assert_eq!(n, 2);
+        assert_eq!(
+            std::fs::read_to_string(&dest).unwrap(),
+            "id,name\n1,a\n2,\n"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn run_single_export_merges_text_plans_with_banners() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Csv,
+            vec![
+                table_item("a", TableDataSource::Table),
+                table_item("b", TableDataSource::Table),
+            ],
+        );
+        let plans = build_file_plans(&req).unwrap();
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.csv");
+        let n = crate::export::run_single_export(&NoopEvents, &source, &req, &plans, &dest)
+            .await
+            .unwrap();
+        assert_eq!(n, 4);
+        let text = std::fs::read_to_string(&dest).unwrap();
+        assert!(text.contains("-- ===== a.csv ====="), "{text}");
+        assert!(text.contains("-- ===== b.csv ====="), "{text}");
+        assert_eq!(text.matches("id,name").count(), 2, "{text}");
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn run_single_export_single_ddl_plan_writes_text() {
+        let mut item = table_item("users", TableDataSource::Table);
+        item.ddl = Some("CREATE TABLE users (id INT);".into());
+        let req = request(ExportMode::StructureOnly, DataFormat::Csv, vec![item]);
+        let plans = build_file_plans(&req).unwrap();
+        assert_eq!(plans.len(), 1);
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.sql");
+        let n = crate::export::run_single_export(&NoopEvents, &source, &req, &plans, &dest)
+            .await
+            .unwrap();
+        assert_eq!(n, 0);
+        assert_eq!(
+            std::fs::read_to_string(&dest).unwrap(),
+            "CREATE TABLE users (id INT);"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn run_zip_export_writes_csv_entries() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Csv,
+            vec![
+                table_item("a", TableDataSource::Table),
+                table_item("b", TableDataSource::Table),
+            ],
+        );
+        let plans = build_file_plans(&req).unwrap();
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.zip");
+        let n = crate::export::run_zip_export(&NoopEvents, &source, &req, &plans, &dest)
+            .await
+            .unwrap();
+        assert_eq!(n, 4);
+        let file = std::fs::File::open(&dest).unwrap();
+        let mut zip = zip::ZipArchive::new(file).unwrap();
+        assert_eq!(zip.file_names().collect::<Vec<_>>(), vec!["a.csv", "b.csv"]);
+        let mut entry = zip.by_name("a.csv").unwrap();
+        let mut text = String::new();
+        use std::io::Read as _;
+        entry.read_to_string(&mut text).unwrap();
+        assert_eq!(text, "id,name\n1,a\n2,\n");
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 }
