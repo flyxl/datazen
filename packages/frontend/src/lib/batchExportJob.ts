@@ -103,6 +103,12 @@ export interface SingleTableExportOptions {
    */
   exportTables?: (request: ExportTablesRequest) => Promise<ExportTablesResult | null>;
   /**
+   * Injectable cancel for tests; defaults to the tables-exporter port.
+   * Threaded through to the `SqlDataFetcher` so a test that injects
+   * `exportTables` can observe the cancel call without binding a platform.
+   */
+  cancelExport?: (token: string) => Promise<boolean>;
+  /**
    * Injectable for tests; defaults to `onExportProgress`
    * (`batch-export-progress`). Threaded through to the `SqlDataFetcher`
    * so a test that injects `exportTables` need not bind a platform.
@@ -144,6 +150,7 @@ export async function exportSingleTableViaRust(
     sql,
     primaryKey,
     exportTables,
+    cancelExport,
     subscribeProgress,
     onCancelHandle,
   } = options;
@@ -165,6 +172,7 @@ export async function exportSingleTableViaRust(
     },
     {
       ...(exportTables ? { exportTables } : {}),
+      ...(cancelExport ? { cancelExport } : {}),
       ...(subscribeProgress ? { subscribeProgress } : {}),
     },
   );
@@ -317,6 +325,13 @@ export async function runBatchExportJob(
       columns: meta.columns.map((c) => c.name),
       ddl: meta.ddl ?? undefined,
     });
+  }
+
+  // A cancel that lands during the last table's metadata load has no
+  // further loop iteration to catch it — check again before the
+  // exporter is called, so the batch never starts after a cancel.
+  if (cancelRequested) {
+    return { status: 'aborted', partialDeleted: true };
   }
 
   const request: ExportTablesRequest = {
