@@ -766,3 +766,100 @@ describe('DataExportDialog web format supply (task 6, plan §2.8)', () => {
     await waitFor(() => expect(getByText('export.success')).toBeInTheDocument());
   });
 });
+
+describe('DataExportDialog column selection (item 1a)', () => {
+  function renderDialog(extra: Partial<Parameters<typeof DataExportDialog>[0]> = {}) {
+    return render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[
+          [1, 'a'],
+          [2, 'b'],
+        ]}
+        tableName="users"
+        dbSessionId="c1"
+        primaryKeyColumns={['id']}
+        {...extra}
+      />,
+    );
+  }
+
+  it('renders the shared picker with the columns in display order and a PK badge', () => {
+    renderDialog();
+    const list = screen.getByTestId('export-columns-list');
+    const labels = Array.from(list.querySelectorAll('label')).map(
+      (label) => label.textContent,
+    );
+    expect(labels).toEqual(['idPKinteger', 'namevarchar']);
+    expect(screen.getByTestId('export-column-id')).toBeChecked();
+    expect(screen.getByTestId('export-column-name')).toBeChecked();
+  });
+
+  it('exports only the checked columns on the provided path', async () => {
+    const { getByText } = renderDialog();
+    fireEvent.click(screen.getByTestId('export-column-name'));
+    fireEvent.click(getByText('export.export'));
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1));
+    expect(downloadBlobMock).toHaveBeenCalledWith('id\n1\n2', 'users.csv', 'text/csv');
+    expect(exportTablesStream).not.toHaveBeenCalled();
+  });
+
+  it('clear-all disables the export button and reset-to-default re-enables it', () => {
+    const { getByText } = renderDialog();
+    const exportBtn = screen.getByRole('button', { name: 'export.export' });
+    expect(exportBtn).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId('export-columns-clear-all'));
+    expect(exportBtn).toBeDisabled();
+    fireEvent.click(screen.getByTestId('export-columns-reset-default'));
+    expect(exportBtn).not.toBeDisabled();
+    expect(screen.getByTestId('export-column-id')).toBeChecked();
+    expect(screen.getByTestId('export-column-name')).toBeChecked();
+  });
+
+  it('sends only the picked columns to Rust for the entire-table scope', async () => {
+    envState.desktop = true;
+    const { getByText } = renderDialog({
+      totalRows: 100,
+      initialScope: 'entire_table',
+    });
+    fireEvent.click(screen.getByTestId('export-column-name'));
+    fireEvent.click(getByText('export.export'));
+    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
+    const request = exportTablesStream.mock.calls[0]![0] as {
+      tables: { columns: string[] }[];
+    };
+    expect(request.tables[0]!.columns).toEqual(['id']);
+  });
+
+  it('resets the selection to every column when the dialog re-opens', () => {
+    const { rerender } = renderDialog();
+    fireEvent.click(screen.getByTestId('export-column-name'));
+    expect(screen.getByTestId('export-column-name')).not.toBeChecked();
+    rerender(
+      <DataExportDialog
+        open={false}
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dbSessionId="c1"
+        primaryKeyColumns={['id']}
+      />,
+    );
+    rerender(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dbSessionId="c1"
+        primaryKeyColumns={['id']}
+      />,
+    );
+    expect(screen.getByTestId('export-column-id')).toBeChecked();
+    expect(screen.getByTestId('export-column-name')).toBeChecked();
+  });
+});

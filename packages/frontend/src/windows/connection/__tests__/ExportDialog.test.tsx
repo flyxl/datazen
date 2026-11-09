@@ -463,3 +463,44 @@ describe('ExportDialog web format supply (task 6, plan §2.8)', () => {
     await waitFor(() => expect(screen.getByText('export.success')).toBeInTheDocument());
   });
 });
+
+describe('ExportDialog shared column picker (item 1a)', () => {
+  const COLS2: ColumnSchema[] = [
+    { name: 'id', dataType: 'int', nullable: false, isPrimaryKey: true, isAutoIncrement: false },
+    { name: 'name', dataType: 'text', nullable: true, isPrimaryKey: false, isAutoIncrement: false },
+  ];
+
+  it('renders the shared picker with a PK badge on the key column', () => {
+    renderDialog({ columns: COLS2 });
+    const list = screen.getByTestId('export-columns-list');
+    const labels = Array.from(list.querySelectorAll('label')).map(
+      (label) => label.textContent,
+    );
+    expect(labels).toEqual(['idPKint', 'nametext']);
+    expect(screen.getByTestId('export-column-id')).toBeChecked();
+    expect(screen.getByTestId('export-column-name')).toBeChecked();
+  });
+
+  it('reset-to-default restores every column after toggling one off', () => {
+    renderDialog({ columns: COLS2 });
+    fireEvent.click(screen.getByTestId('export-column-name'));
+    expect(screen.getByTestId('export-column-name')).not.toBeChecked();
+    expect(screen.getByRole('button', { name: 'export.export' })).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId('export-column-name'));
+    fireEvent.click(screen.getByTestId('export-columns-clear-all'));
+    expect(screen.getByRole('button', { name: 'export.export' })).toBeDisabled();
+    fireEvent.click(screen.getByTestId('export-columns-reset-default'));
+    expect(screen.getByRole('button', { name: 'export.export' })).not.toBeDisabled();
+    expect(screen.getByTestId('export-column-id')).toBeChecked();
+    expect(screen.getByTestId('export-column-name')).toBeChecked();
+  });
+
+  it('exports only the checked columns through the shared picker', async () => {
+    renderDialog({ columns: COLS2 });
+    fireEvent.click(screen.getByTestId('export-column-name'));
+    fireEvent.click(screen.getByRole('button', { name: 'export.export' }));
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1));
+    expect(downloadBlobMock).toHaveBeenCalledWith('id\n1\n2', 'users.csv', 'text/csv');
+    expect(exportTablesStream).not.toHaveBeenCalled();
+  });
+});
