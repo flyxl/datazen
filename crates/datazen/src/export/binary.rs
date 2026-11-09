@@ -434,6 +434,89 @@ mod tests {
     }
 
     #[test]
+    fn xlsx_calamine_readback_matches_written_values() {
+        // Real-parser acceptance: the file the Rust writer produces must
+        // round-trip through calamine, not just string-match sheet XML.
+        // Numbers come back as Float (XLSX stores numbers as f64);
+        // Bytes come back as the bare hex string; the over-limit integer
+        // comes back as a string, not a rounded number.
+        let dest = temp_xlsx("calamine.xlsx");
+        let mut fmt = XlsxFormatter::new("users", dest.clone());
+        fmt.begin(&[
+            col("id", "int8"),
+            col("score", "float8"),
+            col("name", "text"),
+            col("active", "bool"),
+            col("payload", "bytea"),
+            col("created", "timestamp"),
+            col("meta", "jsonb"),
+            col("note", "text"),
+            col("big", "int8"),
+        ])
+        .unwrap();
+        fmt.rows(&[vec![
+            Some(Value::Integer(42)),
+            Some(Value::Float(1.5)),
+            Some(Value::String("a,b".into())),
+            Some(Value::Bool(true)),
+            Some(Value::Bytes(vec![0x00, 0xff])),
+            Some(Value::Timestamp("2026-11-09 12:00:00".into())),
+            Some(Value::Json(serde_json::json!({"k": 1}))),
+            None,
+            Some(Value::Integer(1_000_000_000_000_000)),
+        ]])
+        .unwrap();
+        fmt.finish().unwrap();
+
+        let mut workbook: calamine::Xlsx<_> =
+            calamine::open_workbook(&dest).expect("calamine opens the produced file");
+        use calamine::{DataType, Reader};
+        let range = workbook
+            .worksheet_range("users")
+            .expect("sheet users exists");
+        let rows: Vec<&[calamine::Data]> = range.rows().collect();
+        assert_eq!(rows.len(), 2, "header + one data row");
+        let header: Vec<String> = rows[0]
+            .iter()
+            .map(|c| c.as_string().expect("header is a string"))
+            .collect();
+        assert_eq!(
+            header,
+            ["id", "score", "name", "active", "payload", "created", "meta", "note", "big"]
+        );
+        let row = rows[1];
+        assert_eq!(row[0], calamine::Data::Float(42.0), "integer read back");
+        assert_eq!(row[1], calamine::Data::Float(1.5), "float read back");
+        assert_eq!(
+            row[2],
+            calamine::Data::String("a,b".to_string()),
+            "string read back"
+        );
+        assert_eq!(row[3], calamine::Data::Bool(true), "bool read back");
+        assert_eq!(
+            row[4],
+            calamine::Data::String("00ff".to_string()),
+            "bytes read back as bare hex"
+        );
+        assert_eq!(
+            row[5],
+            calamine::Data::String("2026-11-09 12:00:00".to_string()),
+            "timestamp read back as string"
+        );
+        assert_eq!(
+            row[6],
+            calamine::Data::String("{\"k\":1}".to_string()),
+            "json read back as string"
+        );
+        assert_eq!(row[7], calamine::Data::Empty, "null read back as empty");
+        assert_eq!(
+            row[8],
+            calamine::Data::String("1000000000000000".to_string()),
+            "over-limit integer read back as a string, not a rounded number"
+        );
+    }
+
+    #[test]
     fn xlsx_big_integers_become_strings_not_rounded_numbers() {
         let dest = temp_xlsx("bigint.xlsx");
         let mut fmt = XlsxFormatter::new("t", dest.clone());
