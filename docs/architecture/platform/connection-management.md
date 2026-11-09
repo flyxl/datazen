@@ -1,8 +1,8 @@
 # DataZen 连接管理详细设计
 
-> 状态：桌面 P3–P5 已落地，P6 进行中，P7–P10 仍为开发契约。基线：2026-09-30，`8592b0fe1`。桌面侧的 SessionRegistry、DesktopSessionBackend、Runtime 资源/预算与迁移三件套 Job 已按本文契约实现；P6 的消费者迁移仍有真实驱动旅程待验收，标为目标设计的服务端、多实例与跨实例协调部分尚未实现。
+> 状态：桌面 P3–P6 已落地（P6 消费者迁移/命令薄壳化于 2026-11-04 核实收口）。P7 团队 Web 服务已随 W8（2026-11-06 至 11-09）交付：`crates/datazen-server/` axum 宿主 `/healthz` `/readyz` + `/api/v1` 十五域全亮（112 域客户端方法 / 108 路由，契约 v1.10.1）+ 浏览器壳 `packages/web/`；服务端管理库首版按 WR-D2 裁决落 SQLite（`crates/datazen-server/src/storage/`）。多实例协调与桌面团队认证（P8/P9 范畴）仍为目标设计，标为目标设计的相关部分不代表已实现。基线：2026-09-30，`8592b0fe1`。桌面侧的 SessionRegistry、DesktopSessionBackend、Runtime 资源/预算与迁移三件套 Job 已按本文契约实现。
 > 读者：第一次参与 DataZen 的开发者。按“类型 → fake driver → 资源 → 会话 → 网关 → UI → Job → Web”顺序实现，不从修改 UI 当前库开始。
-> 配套：[系统概要](system-overview.md)、[开发计划](../../development/platform-development-plan.md)。
+> 配套：[系统概要](system-overview.md)、[开发计划（已归档）](../../archive/development/platform-development-plan.md)。
 
 ## 1. 开发前先理解的六个对象
 
@@ -23,10 +23,10 @@
 | --- | --- | --- |
 | [Runtime session use cases](../../../crates/datazen/src/execution/application/mod.rs) | session 身份、授权、执行与活动期限 | 应用层协调 session actor、directory 与 backend |
 | [Runtime transaction use cases](../../../crates/datazen/src/execution/application/transactions.rs) | begin、commit、rollback 与事务状态 | actor 按 session handle 串行控制并拥有事务句柄 |
-| [DesktopSessionBackend](../../../src-tauri/src/platform/session_backend.rs) | 连接资源的打开、执行与释放 | Runtime resource provider 的桌面实现 |
-| [driver_command](../../../src-tauri/src/commands/driver_command/mod.rs) | Command 网关 | 通过 Runtime ExecutionGateway 执行 |
-| [query.rs](../../../src-tauri/src/commands/query.rs) | 查询与事务 IPC 适配 | 将操作委托给 Runtime，不保存连接或事务句柄 |
-| [connection.rs](../../../src-tauri/src/commands/connection.rs) | connection 与 dbSession 生命周期命令 | 通过 Runtime 管理 session，配置仍由 Store 持久化 |
+| [DesktopSessionBackend](../../../crates/datazen-desktop/src/platform/session_backend.rs) | 连接资源的打开、执行与释放 | Runtime resource provider 的桌面实现 |
+| [driver_command](../../../crates/datazen-desktop/src/commands/driver_command/mod.rs) | Command 网关 | 通过 Runtime ExecutionGateway 执行 |
+| [query.rs](../../../crates/datazen-desktop/src/commands/query.rs) | 查询与事务 IPC 适配 | 将操作委托给 Runtime，不保存连接或事务句柄 |
+| [connection.rs](../../../crates/datazen-desktop/src/commands/connection.rs) | connection 与 dbSession 生命周期命令 | 通过 Runtime 管理 session，配置仍由 Store 持久化 |
 | [driver traits](../../../crates/datazen-driver-api/src/traits.rs) | connect、query、Command、事务 | 驱动保留领域能力；Runtime 管理物理资源生命周期 |
 | [activeConnectionStore](../../../src/stores/activeConnectionStore.ts) | connectionId 索引的连接状态 | 连接可达性与编辑器 session 状态分开 |
 | [QuerySidebarSection](../../../src/windows/connection/query/QuerySidebarSection.tsx) | SQL 推测上下文 | 仅做补全/浏览推测，实际上下文由后端更新 |
@@ -689,7 +689,7 @@ PostgreSQL 已实现按同一 profile、server endpoint、登录身份和 SSL �
 
 PoolKey 使用类型化结构等值比较，不能用随意字符串拼接。policyIsolationKey 在共享 DB 账号但权限不同的用户之间必须不同。已建立 session 保存建连时版本，不因配置更新改变底层身份；管理员按 drain/force 明确处理旧资源。effectiveIdentity 变化须先重新授权，不得在未匹配的池内直接切换角色。
 
-`executionIdentityKey` 的桌面实现是 `src-tauri/src/platform/execution_identity.rs` 的 `DesktopIdentityResolver`：派生输入只有 `(organizationId, connectionId, policyIsolationKey)` 加一把服务端持有的固定盐（宿主主密钥经 HMAC 域分离派生的子钥），因此**同一三元组恒得同一键**（跨进程重启不变，INV-02 的会话连续性与池复用依赖这一点），而凭据轮换只推进 `credentialRevision`、不动该键。委托走独立入口 `resolve_delegation`：域标签与输入集都与本人路径不同（额外绑定委托 id 与授权作用域），委托身份因此不可能等于本人身份，校验不过失败关闭、不降级为调用者权限（CM-06）；**`resolve` 在委托上下文上一律拒绝**——委托身份只能由 `resolve_delegation` 产出。客户端传入的用户名、角色与 `principal` 不参与派生（CM §4.1）。详见[共享边界 §4.3](shared-boundaries-and-ports.md#43-持久化与授权端口)。
+`executionIdentityKey` 的桌面实现是 `crates/datazen-desktop/src/platform/execution_identity.rs` 的 `DesktopIdentityResolver`：派生输入只有 `(organizationId, connectionId, policyIsolationKey)` 加一把服务端持有的固定盐（宿主主密钥经 HMAC 域分离派生的子钥），因此**同一三元组恒得同一键**（跨进程重启不变，INV-02 的会话连续性与池复用依赖这一点），而凭据轮换只推进 `credentialRevision`、不动该键。委托走独立入口 `resolve_delegation`：域标签与输入集都与本人路径不同（额外绑定委托 id 与授权作用域），委托身份因此不可能等于本人身份，校验不过失败关闭、不降级为调用者权限（CM-06）；**`resolve` 在委托上下文上一律拒绝**——委托身份只能由 `resolve_delegation` 产出。客户端传入的用户名、角色与 `principal` 不参与派生（CM §4.1）。详见[共享边界 §4.3](shared-boundaries-and-ports.md#43-持久化与授权端口)。
 
 SchemaCache key 为组织、executionIdentityKey、policyIsolationKey、connectionId、config/credential/capabilityRevision、CanonicalTarget、Command/参数指纹；临时元数据只进绑定 runtime handle 的内存缓存。缓存 TTL 默认 60 秒，配置/授权/DDL 事件即时失效；刷新使用独立 cacheRevision 防止慢结果回填，它不是 session 代次。不能仅靠 TTL 延迟权限撤销。
 
@@ -855,7 +855,7 @@ Agent 不打开、读取、解析、source 或打印 `.env` / `.env.test` 内容
 | 层 | 落点 | 覆盖 |
 | --- | --- | --- |
 | runtime 单元/集成 | 新 runtime crate 内 | fake 资源、actor、预算、生命周期 |
-| Host 集成 | `src-tauri` 通用测试 | IPC 与用例、身份/Job consumer |
+| Host 集成 | `crates/datazen-desktop` 通用测试 | IPC 与用例、身份/Job consumer |
 | driver Rust | `crates/drivers/<id>/tests/` 或同文件 | 真实协议、USE、事务、清理、快照 |
 | driver UI | `crates/drivers/<id>/ui/__tests__/` | driver 专属界面 |
 | 前端 Vitest | Host/SDK 对应测试目录 | backend 选择、事件投影、tab 旅程 |
@@ -1111,7 +1111,7 @@ CM-60 使用 release 构建、无数据库网络、单进程固定 fake command 
 - 步骤：关闭 S，再尝试编辑旧结果。
 - 断言：SessionLost；不在新 session 建同名对象或写普通表；结果本身按策略仍可阅读。
 
-**首版执行结果（2026-10）**：断言的前半（"可写结果在会话替换后失效"）在本版**没有可触发的真实状态**，因为 `WritableMapping::Verified` 只在 `context_before.confidence == Confirmed` 时产生（`src-tauri/src/platform/session_backend/execution.rs`），而确认要求驱动声明 `ContextObservation::Full`（`crates/datazen-driver-api/src/capabilities.rs::confirms_context`）——当前没有任何内置驱动声明它（postgres / mysql / sqlite / redis 为 `Partial`，其余 `Unsupported`）。真实 UI 层因此只断言可达的一半：单关系 `SELECT *` 结果只读、替换会话后仍可阅读且仍不可编辑（`e2e/specs/journeys/temporary-result-writeback-journey.ts`，实测通过）；前半留在组件层（`src/windows/connection/result-workspace/__tests__/ResultTableView.test.tsx`，CM-36/61 同条）。某个驱动能确证上下文后，前半才重新具备 F 层可验证性。
+**首版执行结果（2026-10）**：断言的前半（"可写结果在会话替换后失效"）在本版**没有可触发的真实状态**，因为 `WritableMapping::Verified` 只在 `context_before.confidence == Confirmed` 时产生（`crates/datazen-desktop/src/platform/session_backend/execution.rs`），而确认要求驱动声明 `ContextObservation::Full`（`crates/datazen-driver-api/src/capabilities.rs::confirms_context`）——当前没有任何内置驱动声明它（postgres / mysql / sqlite / redis 为 `Partial`，其余 `Unsupported`）。真实 UI 层因此只断言可达的一半：单关系 `SELECT *` 结果只读、替换会话后仍可阅读且仍不可编辑（`e2e/specs/journeys/temporary-result-writeback-journey.ts`，实测通过）；前半留在组件层（`src/windows/connection/result-workspace/__tests__/ResultTableView.test.tsx`，CM-36/61 同条）。某个驱动能确证上下文后，前半才重新具备 F 层可验证性。
 
 **CM-37 缓存竞态与权限隔离（H）**
 
@@ -1306,7 +1306,7 @@ CM-60 使用 release 构建、无数据库网络、单进程固定 fake command 
 - 步骤：轮流浏览 A/B；轮换凭据、路由和 ACL；慢缓存结果晚到；推进 idle TTL。
 - 断言（H）：按 database/policy 分 key；总 socket 不越预算；旧 idle 停发并关闭；旧缓存不能回填，撤权即时生效；空 pool 元数据受 LRU 上限约束。
 
-**首版执行结果（2026-10）**：生产类型是 `ProductionLeaseManager`（`crates/datazen/src/execution/runtime/resource/production.rs`），由桌面 session backend 持有并驱动开/执行/归池/关闭（`src-tauri/src/platform/session_backend.rs`）；池策略在 `crates/datazen/src/execution/runtime/resource/pool.rs`，台账在 `resource/table.rs`。
+**首版执行结果（2026-10）**：生产类型是 `ProductionLeaseManager`（`crates/datazen/src/execution/runtime/resource/production.rs`），由桌面 session backend 持有并驱动开/执行/归池/关闭（`crates/datazen-desktop/src/platform/session_backend.rs`）；池策略在 `crates/datazen/src/execution/runtime/resource/pool.rs`，台账在 `resource/table.rs`。
 
 - **H 层：已实现并验证。** `cargo test -p datazen_desktop --test resource_rotation_and_disable --test pool_capacity_budget --test resource_return_to_pool` → 6 / 8 / 14 passed，0 failed，EXIT=0。逐条对应：分池与容量守恒 `pool_idle_capacity_never_drifts_from_the_budget_ledger`；轮换后旧代 idle 停发并关闭 `a_credential_rotation_retires_the_idle_leases_of_the_previous_generation`；旧代请求被拒 `a_lease_request_pinned_to_retired_material_is_refused`；慢缓存不回填 `a_slow_cache_result_from_the_previous_generation_cannot_backfill_the_new_generation`；撤权即时生效 `disabling_a_connection_drops_queued_requests_and_records_the_actual_cancellation`；空闲 TTL 到期关闭 `an_idle_lease_is_closed_once_the_idle_ttl_expires`。空池元数据 LRU 是 `datazen` 的 lib 单测 `empty_pool_metadata_stays_within_the_documented_lru_limit`（`crates/datazen/src/execution/runtime/resource/journey_tests.rs`；`cargo test -p datazen --lib` → 509 passed / 0 failed，EXIT=0），不在上面三个集成测试文件里。
 - **D 层：两条断言在首版真实驱动上不可观测，记为发布限制而不是待办。** 全部 path 驱动（含 postgres / mysql / sqlite / redis）一律声明 `ResetForReuse::Unsupported`，宿主归池准入把该声明判为 `DriverResetUnsupported`——不进池、直接关闭（`crates/datazen/src/execution/runtime/resource/cleanup.rs`），因此空闲池在真实驱动上**恒为空**，「旧 idle 停发并关闭」与「空 pool 元数据受 LRU 上限约束」没有可触发的状态，用真实驱动写这两条断言只会写出永远为真的空断言。只有某个驱动声明 `ResetForReuse::Verified` 并证明复位基线后，它们才重新具备 D 层可验证性。

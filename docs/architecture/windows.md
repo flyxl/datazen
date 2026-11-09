@@ -67,7 +67,7 @@ E2E：`e2e/specs/journeys/onboarding-journey.ts`（`pnpm e2e:onboarding`）；�
 
 ## 2. Rust 端窗口创建
 
-子窗口通过 Rust 命令 `create_sub_window`（`src-tauri/src/commands/window.rs`）创建：
+子窗口通过 Rust 命令 `create_sub_window`（`crates/datazen-desktop/src/commands/window.rs`）创建：
 
 ```rust
 #[tauri::command]

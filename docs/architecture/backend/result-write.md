@@ -8,10 +8,10 @@
 
 | 事实 | 代码位置 |
 |---|---|
-| 结果网格**只能**用窄通道写回：`commitQueryResultCell` | `src-tauri/src/commands/result_write.rs`、`src/stores/panelStore.ts` 的 `updateResultCell` |
+| 结果网格**只能**用窄通道写回：`commitQueryResultCell` | `crates/datazen-desktop/src/commands/result_write.rs`、`src/stores/panelStore.ts` 的 `updateResultCell` |
 | origin 通道（驱动自述来源 → 逐列可写 → 预览 → 提交）**被常量关闭** | `src/lib/resultEditability.ts` 的 `RESULT_ORIGIN_WRITE_BACK_ENABLED = false` |
-| 来源判定 `resolve_result_origin` 仍然每次都调，但它的肯定答复**不能**授予写权限；它只能「拒绝」和「解释」 | `src-tauri/src/commands/result_origin.rs`、`src/lib/resultEditability.ts` 的 `resolveResultWriteBack` |
-| 「写到的还是不是原来那张表」由**写入前**的关系重比保证，不由 `WriteTarget` 保证 | `src-tauri/src/commands/result_write.rs`、`crates/datazen/src/table_editing/result_edit/mod.rs` 的 `WriteTarget` 文档注释 |
+| 来源判定 `resolve_result_origin` 仍然每次都调，但它的肯定答复**不能**授予写权限；它只能「拒绝」和「解释」 | `crates/datazen-desktop/src/commands/result_origin.rs`、`src/lib/resultEditability.ts` 的 `resolveResultWriteBack` |
+| 「写到的还是不是原来那张表」由**写入前**的关系重比保证，不由 `WriteTarget` 保证 | `crates/datazen-desktop/src/commands/result_write.rs`、`crates/datazen/src/table_editing/result_edit/mod.rs` 的 `WriteTarget` 文档注释 |
 | 一次执行只能改**一格**；改完必须重跑查询才能再改 | `src/stores/panelStore.ts` 的 `updateResultCell` 末尾 `runtimeBinding: null` |
 | 判定与写入**都没有**「批量」形态：请求里的 `row_count` 必须是 1 | `crates/datazen/src/table_editing/result_edit/mod.rs` 的 `validate_result_cell_request` |
 
@@ -22,7 +22,7 @@
 窄通道的输入只有「关系 + 行标识 + 列 + 新值」，全部由宿主侧的映射探测得出：
 
 1. 执行语句时，宿主随执行做一次映射探测（`mapping_probe`）；`verified_source` 拿这份探测结果与本次执行的观测上下文比对。
-2. 探测成功且**逐列对齐**时（`verify_result_mapping`，`src-tauri/src/commands/result_mapping.rs`），`verified_source(...)` 返回 `StatementResultSource`：`execution_id`、`statement_index`、`context`、`relation`、`writable_mapping: Verified`。这条 source 随语句元数据一起发给前端。
+2. 探测成功且**逐列对齐**时（`verify_result_mapping`，`crates/datazen-desktop/src/commands/result_mapping.rs`），`verified_source(...)` 返回 `StatementResultSource`：`execution_id`、`statement_index`、`context`、`relation`、`writable_mapping: Verified`。这条 source 随语句元数据一起发给前端。
 3. 前端把 `writableMapping === 'verified'` 与 `runtimeBinding` 一起当作「这一页可能能写」。两者缺一即只读。
 4. 用户改一格 → `updateResultCell` → `commitQueryResultCell({ binding, statementIndex, rowIndex, column, value })`。
 5. 宿主重新走一遍判定（不信任前端的缓存判定），拼一条带主键 `WHERE` 的 `UPDATE`，执行，校验受影响行数。
@@ -152,7 +152,7 @@ pub struct WriteTarget {
 
 ## 8. 能力探测不是前置条件
 
-`verified_source(...)`（`src-tauri/src/platform/session_backend/execution.rs`）决定**这一条语句的结果能不能带着来源信息发给前端**。它是探测，不是前置条件：任何一条失败路径都返回 `None` 并写一条 debug 日志，**绝不中断执行**。
+`verified_source(...)`（`crates/datazen-desktop/src/platform/session_backend/execution.rs`）决定**这一条语句的结果能不能带着来源信息发给前端**。它是探测，不是前置条件：任何一条失败路径都返回 `None` 并写一条 debug 日志，**绝不中断执行**。
 
 失败路径逐一（顺序即代码顺序）：
 

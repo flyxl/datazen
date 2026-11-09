@@ -1,6 +1,8 @@
 # 多 worker 路由、认领与全局预算详细设计
 
 > 状态：P9 目标设计，2026-10-02。本文补齐 [概要 §9.2](system-overview.md#92-p9-协调与失租协议目标设计) 的实施协议；不表示当前已有集群。P5 的 Job claim fencing 先实现，P9 增加跨实例调度和全局预算。
+>
+> 现状注记（W8 后）：P7 团队 Web 服务已按**单实例**交付（`crates/datazen-server/`，管理库首版 SQLite）；本协议描述的多 worker 协调、PostgreSQL 管理库与全局预算仍未实现。单实例下 operations 层的部分原语（配置 CAS、配额、撤销、TTL——`crates/datazen-server/src/operations/`）已随 W8 落地，跨实例语义仍以本文为目标设计。
 
 ## 1. 选型与安全前提
 

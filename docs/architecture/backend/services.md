@@ -1,6 +1,6 @@
 # Backend Services
 
-> Source of truth: `crates/datazen/src/services/`（共享规则）与 `src-tauri/src/services/`（桌面绑定）。
+> Source of truth: `crates/datazen/src/services/`（共享规则）与 `crates/datazen-desktop/src/services/`（桌面绑定）。
 
 Services 是 DataZen backend 中复用性的运行时服务层，不承担 Tauri IPC 的参数边界，也不承担具体 Driver 方言实现。
 
@@ -9,12 +9,12 @@ Services 是 DataZen backend 中复用性的运行时服务层，不承担 Tauri
 | 服务 | 位置 | 职责 |
 |---|---|---|
 | Runtime sessions/resources | `crates/datazen/src/execution/application/`, `registry/`, `resource/` | session 状态、owner、空闲期限、物理资源、预算与释放 |
-| DesktopSessionBackend | `src-tauri/src/platform/session_backend.rs` | Store / DriverRegistry 的桌面适配，打开和关闭 Runtime 物理资源，持有隧道生命周期 |
+| DesktopSessionBackend | `crates/datazen-desktop/src/platform/session_backend.rs` | Store / DriverRegistry 的桌面适配，打开和关闭 Runtime 物理资源，持有隧道生命周期 |
 | QueryExecutor | `crates/datazen/src/table_browsing/executor/`（`datazen::services::query_executor` 为其再导出） | 查询参数、过滤、排序和执行辅助 |
-| Schema metadata | `src-tauri/src/services/schema_metadata.rs` | 精确关系身份、列批量读取与缓存刷新 |
+| Schema metadata | `crates/datazen-desktop/src/services/schema_metadata.rs` | 精确关系身份、列批量读取与缓存刷新 |
 | DbTools | `crates/datazen/src/ai/application/db_tools.rs` | 共享 database tools 及 Runtime 执行端口 |
-| JobRegistry | `src-tauri/src/services/job_registry.rs` | 兼容长任务的进程内生命周期与取消注册 |
-| Runtime 事务 | `modules` 的 `session_transaction` / `session_transaction_status` | 会话级事务控制、句柄与状态；Host 不再持有事务表（见 [2.3](#23-事务与隧道边界)） |
+| JobRegistry | `crates/datazen-desktop/src/services/job_registry.rs` | 兼容长任务的进程内生命周期与取消注册 |
+| Runtime 事务 | 共享层 `crates/datazen` 的 `session_transaction` / `session_transaction_status` | 会话级事务控制、句柄与状态；Host 不再持有事务表（见 [2.3](#23-事务与隧道边界)） |
 
 ## 2. Runtime 连接与会话生命周期
 
@@ -47,7 +47,7 @@ Runtime 默认会话空闲期限为 30 分钟，默认扫描间隔为 3 分钟�
 | DataTable、表导出 | 调用方 session 或专用 export session | Runtime execution / bounded output；session close 按 Runtime 结果确认 |
 | Schema Diff、Data Sync、Data Transfer | 持久化 profile 与 job 的明确端点 | Job adapter 使用专用 Runtime session；Job 生命周期独立于窗口 |
 | Workflow v1 | 配置 connectionId 与既有 step target | 保留 v1 命令与结果传递；底层执行走 Runtime resource path |
-| MCP / AI database tools | 工具参数中的 connectionId | modules Runtime execution port；不借用 GUI 的事务 session |
+| MCP / AI database tools | 工具参数中的 connectionId | 共享层 Runtime execution port；不借用 GUI 的事务 session |
 | Wapp | Bridge 的 connectionId / host 解析出的当前会话 | 执行仍经受控 Driver Command 与 Runtime backend |
 | Monitor | 已保存 grant / workflow target | 共享 Workflow / Runtime scheduler 路径 |
 
@@ -59,7 +59,7 @@ Runtime 默认会话空闲期限为 30 分钟，默认扫描间隔为 3 分钟�
 
 | 取消表 | key | 粒度 | 归属校验 | 生命周期 | 位置 |
 |---|---|---|---|---|---|
-| 查询流执行注册表 | `QueryExecutionId` | 单次流式查询执行 | **有**：发起会话与执行记录不一致直接拒绝（`belongs to a different db session`） | 进程内；条目在每个流的终态路径上被移除，未知或已过期的 ID 报 `unknown or stale` | `AppState.query_executions`（`commands/mod.rs:88-142`） |
+| 查询流执行注册表 | `QueryExecutionId` | 单次流式查询执行 | **有**：发起会话与执行记录不一致直接拒绝（`belongs to a different db session`） | 进程内；条目在每个流的终态路径上被移除，未知或已过期的 ID 报 `unknown or stale` | `AppState.query_executions`（`crates/datazen-desktop/src/commands/mod.rs`） |
 | Legacy job registry | `jobId` | 仍使用兼容执行路径的旧任务 | 只有 job ID，不按 `connectionId` / `dbSessionId` 归类 | 进程内静态表；`cancel_job` 先置位再返回，支持先取消后开始；重启失效 | `services/job_registry.rs`（全局 `static JOBS`） |
 | Migration Job state | `jobId` | Schema Diff、Data Sync、Data Transfer 的 prepare/apply | 本机 JobHost 的 RequestContext / 仓储校验 | cancel intent 和 Job 结果保存在 `{appData}/datazen.sqlite`；关闭窗口后继续当前进程里的 handler。重启只标记恢复候选，不复用旧 worker/session 或自动重放 | `AppState.desktop_job_host`、`store/app_db/jobs/` |
 | AI 调用取消注册表 | AI 调用 ID（`request_id`） | 单次 AI 调用（含流式） | **无**：只按调用 ID 查找 | 进程内；开始时登记、结束时注销，取消一个从未登记或已注销的调用返回 `false` 且无副作用 | `ai/cancel.rs` |

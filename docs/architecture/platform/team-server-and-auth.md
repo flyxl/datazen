@@ -1,10 +1,10 @@
 # DataZen 团队 Web 服务：Server Host、认证授权与安全设计
 
-> 状态：P7 团队 Web 服务仍是目标设计，`crates/datazen-server/` 团队服务 host、认证授权与 PostgreSQL adapters 尚未实现。`crates/datazen/src/platform_api`、`modules`、`packages/backend-client` 等共享契约已存在；桌面 P5 迁移三件套已接入本机 AppDb `JobHost`，但它不是团队服务仓储，也不提供多用户或多 worker 语义。本文以下定义服务端目标，不表示这些服务端能力已落地。
+> 状态：**P7 单实例团队 Web 服务已随 W8（2026-11-09）交付**：`crates/datazen-server/` axum 宿主（认证中间件链 + `/healthz` `/readyz` + `/api/v1` 十五域全亮，112 域客户端方法 / 108 路由，契约 v1.10.1）与浏览器壳 `packages/web/` 均已落地，`packages/backend-client` 域客户端是 HTTP 面契约的唯一来源。两处**已记录的交付差异**：管理库首版按 WR-D2 用户裁决落 **SQLite**（`crates/datazen-server/src/storage/`，单 `Mutex<Connection>` + `spawn_blocking`，expand-only 迁移链至 V15；PostgreSQL 适配器是后续生产化切片，本文 §3 的 PostgreSQL DDL 仍为其目标设计）；server 形态无 AI 供应商注册表，交互面按执行器默认错误策略 fail-closed。仍未实现：桌面团队认证（P8——契约 §5 在账目标，router 无 desktop 挂载）、多 worker 协调与全局预算（P9）、任意 SQL 会话故障转移。本文的中间件链、认证授权、SSE、限流与错误映射要求是已落地实现的验收基准；其余标为目标设计的段落仍以目标为准。
 > 读者：负责《分阶段开发计划》P7 的实现者。本文定义**怎么组、怎么鉴权、怎么限流、怎么映射错误**；连接 DTO 与错误码表以[连接与会话管理](connection-management.md)为权威，管理库表结构以[持久化模型](persistence-model.md)为权威，出现时一律以链接为准。
-> 配套：[系统概要设计](system-overview.md)（分层、领域对象、v1 HTTP 路由表、安全总纲）、[连接与会话管理](connection-management.md)（DTO、错误表、幂等、CM-01～74）、[持久化模型](persistence-model.md)（管理库表结构与迁移策略）、[共享应用边界与端口](shared-boundaries-and-ports.md)（端口签名与装配差异）、[P0 runtime fake 夹具](fake-runtime-fixtures.md)（transport-neutral fake 资源、故障/竞态注入与 CM-60 基准 harness）、[分阶段开发计划 §11 P7](../../development/platform-development-plan.md#11-p7单实例团队-web-服务)（阶段交付与退出门槛）。
+> 配套：[系统概要设计](system-overview.md)（分层、领域对象、v1 HTTP 路由表、安全总纲）、[连接与会话管理](connection-management.md)（DTO、错误表、幂等、CM-01～74）、[持久化模型](persistence-model.md)（管理库表结构与迁移策略）、[共享应用边界与端口](shared-boundaries-and-ports.md)（端口签名与装配差异）、[P0 runtime fake 夹具](fake-runtime-fixtures.md)（transport-neutral fake 资源、故障/竞态注入与 CM-60 基准 harness）、[分阶段开发计划 §11 P7](../../archive/development/platform-development-plan.md#11-p7单实例团队-web-服务)（阶段交付与退出门槛）。
 
-> **2026-10-24 装配目标更新**：按 [DDD 模块化指南](../../development/ddd-refactor-plan.md)，本文旧称 `crates/datazen-server/` / `datazen-server` 的目标宿主统一采用 `web/` / `datazen-web`，目前仍未实现。Web 直接使用各功能的 `datazen::<功能>::application`，实现相应领域 Repository 并自行选择功能；不再依赖一个全量独立 application crate，也不另建与 web 并存的 server 宿主。本文认证、授权、隔离、限流、错误和恢复要求不变。
+> **2026-10-24 装配目标更新（已被实际落地取代）**：曾按 [DDD 模块化指南（已归档）](../../archive/development/ddd-refactor-plan.md) 计划把服务端宿主统一为 `web/` / `datazen-web`、不另建与 web 并存的 server 宿主。**实际落地回归了本文原始形态**：服务端 HTTP 宿主为 `crates/datazen-server/`（crate `datazen-server`），浏览器壳为 `packages/web/`（纯 TS 传输适配，不含 Rust），两者并存且互不依赖，都直接使用 `crates/datazen` 各域 application 并实现相应领域 Repository。本文认证、授权、隔离、限流、错误和恢复要求不变。
 
 ---
 
@@ -29,14 +29,14 @@
 
 ### 2.1 目标目录与模块树
 
-`server` 是 Cargo workspace 的新成员（crate 名 `datazen-server`，目录 `crates/datazen-server/`，两者目前都不存在），与 `src-tauri` 平级、互不依赖。目标结构：
+`server` 是 Cargo workspace 的成员（crate 名 `datazen-server`，目录 `crates/datazen-server/`，**已随 W8 落地**），与桌面宿主 `crates/datazen-desktop/` 平级、互不依赖。下表是本文的原始目标结构；**as-built 差异**：域 handler 收敛为 `http/domains/`（每域一文件），服务端 adapters 落为 `storage/`（SQLite 首版）与各域子目录（`workflow/` `dashboard/` `sync/` `schema_diff/` `mcp/` `execution/` `operations/` `transfer/`），CSRF/限流在 `http/middleware/` 内；以代码为准：
 
 ```text
 server/
 ├── Cargo.toml
 ├── migrations/                    展开/收缩 SQL，按 version 单调应用（版本表见持久化模型 §3.9）
 └── src/
-    ├── main.rs                    进程入口：子命令解析 → bootstrap（对齐 src-tauri/src/main.rs 的 headless 形态）
+    ├── main.rs                    进程入口：子命令解析 → bootstrap（对齐 crates/datazen-desktop/src/main.rs 的 headless 形态）
     ├── bootstrap.rs               唯一 composition root；migration.rs 是 migrate / check-schema 子命令入口
     ├── config.rs / logging.rs     ServerConfig 校验（不回显凭据）、tracing 与脱敏接入
     ├── http/
@@ -54,7 +54,7 @@ server/
     └── tests/                     身份/权限/CSRF/SSE/Artifact 集成测试
 ```
 
-沿用现有仓库的模块纪律：单文件不超过 800 行、生产路径不出现裸 `unwrap()`/`expect()`、错误类型以 `thiserror` 分层、观测统一走 `tracing`。现有 `src-tauri/src/commands/error.rs` 的 `CommandError` 是 **IPC 层**错误，server 侧对应物是 `ApiError`，两者不共用类型（见 [§9](#9-请求限制与错误映射)）。
+沿用现有仓库的模块纪律：单文件不超过 800 行、生产路径不出现裸 `unwrap()`/`expect()`、错误类型以 `thiserror` 分层、观测统一走 `tracing`。现有 `crates/datazen-desktop/src/commands/error.rs` 的 `CommandError` 是 **IPC 层**错误，server 侧对应物是 `ApiError`，两者不共用类型（见 [§9](#9-请求限制与错误映射)）。
 
 ### 2.2 Cargo 依赖方向与禁止闭包
 
@@ -110,7 +110,7 @@ flowchart TD
 
 ### 2.4 进程模式
 
-沿用 `src-tauri/src/main.rs` 的「一个二进制、按参数选择模式」形态，`server` 首版提供三个子命令：
+沿用 `crates/datazen-desktop/src/main.rs` 的「一个二进制、按参数选择模式」形态，`server` 首版提供三个子命令：
 
 | 子命令 | 用途 | 是否监听端口 |
 | --- | --- | --- |
@@ -491,7 +491,7 @@ CM-05 的断言即由本节保证：跨组织读取、执行、关闭、取消�
 2. 组织 `permission_version` 未变化（变化则对 `streamId` 内的资源集合重新求值）；
 3. 底层会话/job 归属未变（会话失效时对应流关闭）。
 
-任一不满足：先发一条终态事件说明原因（`auth_required` / `permission_revoked` / `session_lost`），**然后关闭流**。客户端收到 `auth_required` 必须先 `close()` 掉 `EventSource` 再跳转登录，否则浏览器会自动重连形成登录风暴；服务端对此以 204 响应抑制自动重连（CM-56、CM-59 的 **W** 断言）。`W` 是上位泛称，阶段性落点按[开发计划 §17](../../development/platform-development-plan.md#17-补充契约的阶段归属) 判定：CM-59 落在该节 P7/P8 行的「CM-59 的 W1 断言」；CM-56 无独立表行，落在该节收尾段「P3/P4 必须完成 CM-54～56 的 runtime/前端部分；P7 完成单实例适配部分」，即其单实例（W1）适配部分随 P7 落地，H/F 部分在 P3/P4。
+任一不满足：先发一条终态事件说明原因（`auth_required` / `permission_revoked` / `session_lost`），**然后关闭流**。客户端收到 `auth_required` 必须先 `close()` 掉 `EventSource` 再跳转登录，否则浏览器会自动重连形成登录风暴；服务端对此以 204 响应抑制自动重连（CM-56、CM-59 的 **W** 断言）。`W` 是上位泛称，阶段性落点按[开发计划 §17](../../archive/development/platform-development-plan.md#17-补充契约的阶段归属) 判定：CM-59 落在该节 P7/P8 行的「CM-59 的 W1 断言」；CM-56 无独立表行，落在该节收尾段「P3/P4 必须完成 CM-54～56 的 runtime/前端部分；P7 完成单实例适配部分」，即其单实例（W1）适配部分随 P7 落地，H/F 部分在 P3/P4。
 
 ### 8.5 断开与取消的边界
 
@@ -583,11 +583,11 @@ CM-05 的断言即由本节保证：跨组织读取、执行、关闭、取消�
 
 | port | server 首版实现 | 存储 | 与桌面/现状的差异 |
 | --- | --- | --- | --- |
-| `ProfileRepository` | PostgreSQL，按 `organization_id` 限定查询，`expectedRevision` CAS | 管理库 | 桌面现为 `src-tauri/src/store/connections.rs` 的本地库；服务端多组织隔离且无本地用户边界 |
+| `ProfileRepository` | PostgreSQL，按 `organization_id` 限定查询，`expectedRevision` CAS | 管理库 | 桌面现为 `crates/datazen-desktop/src/store/connections.rs` 的本地库；服务端多组织隔离且无本地用户边界 |
 | `JobRepository` | PostgreSQL，claim/renew 用条件更新 + 租约 | 管理库 | 桌面 P5 三件套已由 `AppDb` SQLite 持久化 Job / receipt / checkpoint / 结果；服务端 `JobRepository` 尚未接入。桌面重启只把旧 Job 置为 NotExecuted 或 PendingVerification，不重放 handler |
 | `Audit` | 追加写表，应用角色无 UPDATE/DELETE 授权 | 管理库 | 桌面只写本地日志；服务端审计是安全资产 |
-| `ArtifactRepository` | 字节存储 + 元数据表 | 对象存储/受控目录 + 管理库 | 桌面走 `src-tauri/src/commands/file.rs` 的本地路径与扩展名白名单；服务端不接受路径（见 §11） |
-| `SecretProvider` | 服务端密钥管理适配 | KMS/外部密钥服务 | 桌面 `src-tauri/src/store/key_store.rs` + `platform_vault.rs` 的 OS 钥匙串路径在服务端**不适用**（无用户钥匙串） |
+| `ArtifactRepository` | 字节存储 + 元数据表 | 对象存储/受控目录 + 管理库 | 桌面走 `crates/datazen-desktop/src/commands/file.rs` 的本地路径与扩展名白名单；服务端不接受路径（见 §11） |
+| `SecretProvider` | 服务端密钥管理适配 | KMS/外部密钥服务 | 桌面 `crates/datazen-desktop/src/store/key_store.rs` + `platform_vault.rs` 的 OS 钥匙串路径在服务端**不适用**（无用户钥匙串） |
 | `SessionDirectory` | **单进程内存** | 内存 | 禁止落盘/快照/追加日志；多实例归 P9 |
 | `BudgetCoordinator` | **单实例**实现 | 内存 + 组织/用户/数据库额度取自管理库 | 多 worker 全局预算归 P9 |
 | `SubmissionTokenIssuer` | 签名密钥由配置/KMS 提供 | 不落库 | 密钥保留期 ≥ 已发令牌全部过期时间；未知 `keyVersion` 一律拒绝 |
@@ -650,7 +650,7 @@ flowchart LR
 | 共享语义 | 共享 SQL 文件**不授予**结果读取权；结果默认私有 |
 | 路径 | **不接受任何服务器绝对路径**；导出/下载只用 `artifactId`；备份产物由 Job 生成后进 ArtifactRepository |
 
-受控上传（`POST /api/v1/artifacts/uploads`）的额外约束：扩展名白名单（对齐 `src-tauri/src/commands/file.rs` 的 `ALLOWED_EXTENSIONS` 口径）、组织产物配额、路径遍历防护；上传内容按不可信数据处理，不自动解压执行。
+受控上传（`POST /api/v1/artifacts/uploads`）的额外约束：扩展名白名单（对齐 `crates/datazen-desktop/src/commands/file.rs` 的 `ALLOWED_EXTENSIONS` 口径）、组织产物配额、路径遍历防护；上传内容按不可信数据处理，不自动解压执行。
 
 ---
 
@@ -722,7 +722,7 @@ flowchart TB
 | --- | --- |
 | 管理数据库 | **PostgreSQL**（[概要 §6.4](system-overview.md#64-repositories-与环境-ports) 已给结论：管理组织、配置版本、任务、审计和额度，不与用户业务数据库混用），独立实例/独立库 |
 | TLS | 进程内 rustls 或前置代理终止；**同源 HTTPS**，浏览器只看到一个 origin（Wapp 静态资源除外） |
-| rustls 初始化 | 进程级 `CryptoProvider` 选择与 `crates/datazen/src/tunnel/crypto.rs` 同源（宿主 `src-tauri/src/tls.rs` 只是再导出与宿主接线守卫），但 server 独立初始化（不能依赖桌面 host 的入口） |
+| rustls 初始化 | 进程级 `CryptoProvider` 选择与 `crates/datazen/src/tunnel/crypto.rs` 同源（宿主 `crates/datazen-desktop/src/tls.rs` 只是再导出与宿主接线守卫），但 server 独立初始化（不能依赖桌面 host 的入口） |
 | 资源额度 | 组织/用户/数据库三级 + 控制与 cluster 资源统计，进程内会计 |
 | 客户端一致性 | 同一用例经 IPC（桌面）与 HTTP（Web）运行，断言结果与错误语义一致（CI 门禁） |
 | 不承诺 | 会话无损故障转移、跨服务器原子事务、浏览器代理数据库流量、驱动后端直迁 |
@@ -739,7 +739,7 @@ Web 场景下 Wapp iframe 使用**独立受限 origin**（与主应用不同源�
 
 | 校验项 | 桌面（`datazen://`） | Web（独立受限 origin） |
 | --- | --- | --- |
-| iframe 沙箱 | 自定义 scheme + `ASSET_CSP`（`connect-src 'none'` 等，见 `src-tauri/src/wapps/protocol.rs`） | `sandbox="allow-scripts allow-forms allow-same-origin"`；独立 Wapp origin 必须与主应用不同源且不共享登录 cookie，禁止 top-navigation/popups/modals；CSP `connect-src 'none'`，`frame-ancestors` 仅列主应用精确 HTTPS origin |
+| iframe 沙箱 | 自定义 scheme + `ASSET_CSP`（`connect-src 'none'` 等，见 `crates/datazen-desktop/src/wapps/protocol.rs`） | `sandbox="allow-scripts allow-forms allow-same-origin"`；独立 Wapp origin 必须与主应用不同源且不共享登录 cookie，禁止 top-navigation/popups/modals；CSP `connect-src 'none'`，`frame-ancestors` 仅列主应用精确 HTTPS origin |
 | `event.source` | 必须是该 iframe 的 `contentWindow`（对齐 `src/lib/wappBridge.ts`） | 同上，且必须匹配已注册 iframe |
 | `event.origin` | 不透明 origin，无法按名匹配 | **必须等值于配置中登记的 Wapp origin**，否则丢弃 |
 | 一次性 nonce | 依赖 scheme 不可被外部页面引用 | 创建 iframe 时交换，握手后立即失效，重放被拒 |
@@ -773,7 +773,7 @@ Web 场景下 Wapp iframe 使用**独立受限 origin**（与主应用不同源�
 
 1. **服务端安装不需要改写内核逻辑，只需要换一个存储根目录。** 安装、校验、回滚、存储读写已全部按 `wapps_dir` 参数化，adapter 传入不同的 `wapps_dir` 即可。唯一必须由 adapter 承担的是**隔离口径**：桌面是单机单用户，服务端必须把根目录切到 `(organizationId, principalId, wappId)` 三元组之下，否则同组织内不同用户会共享 `storage:local` 数据。
 2. **「插件自定义资源 schema」在服务端没有需要翻译的对象。** manifest 中承载自定义资源的字段是 `backend`，而该字段在**安装时即被显式拒绝**（`crates/datazen/src/wapps/manifest.rs`，注释 `Rule 3b: backend plugins are reserved for P2`，错误文本为「manifest.backend is not supported by this host; 需要更新版本的 DataZen」）。全仓检索 `.backend` 只命中这一处拒绝点，没有任何解释器消费它。因此 v1 不存在需要跨形态搬运的自定义资源 schema；P2 若要落地，必须**只在共享内核实现一次**，再由桌面 adapter 与服务端 adapter 分别供给运行环境，不得为服务端另写一份解释器。
-3. **真正随形态变化的是资源地址，不是 schema。** 桌面用 `datazen://` 自定义 scheme 承载 iframe 入口与静态资源，并用 `ASSET_CSP` 锁死来源（`connect-src 'none'` 等，见 `src-tauri/src/wapps/protocol.rs`）。Web 侧静态资源必须改由 HTTPS origin 提供，`WappManifest` 的 `entry` / `icon` / theme 资源路径需按目标 origin 重写。这一步是 **adapter 的职责**，必须留在 adapter：内核一旦开始感知 origin 就不再形态中立，服务端接入时即构成破坏性变更（见[共享边界 F-12](./shared-boundaries-and-ports.md)）。
+3. **真正随形态变化的是资源地址，不是 schema。** 桌面用 `datazen://` 自定义 scheme 承载 iframe 入口与静态资源，并用 `ASSET_CSP` 锁死来源（`connect-src 'none'` 等，见 `crates/datazen-desktop/src/wapps/protocol.rs`）。Web 侧静态资源必须改由 HTTPS origin 提供，`WappManifest` 的 `entry` / `icon` / theme 资源路径需按目标 origin 重写。这一步是 **adapter 的职责**，必须留在 adapter：内核一旦开始感知 origin 就不再形态中立，服务端接入时即构成破坏性变更（见[共享边界 F-12](./shared-boundaries-and-ports.md)）。
 
 另有两处进程级状态在服务端必须重新定义归属，不能沿用桌面形态：`WappManager` 当前是启动时从 `AppState` 装载的**进程全局单例**，启用态由包目录内的 `.enabled` 标记文件记录；服务端须改为按 `(organizationId, principalId)` 解析，且安装类操作先过 §5 RBAC 词表中的 `wapp` 资源 ACL（`write` verb）再落盘。
 
@@ -801,7 +801,7 @@ Web 场景下 Wapp iframe 使用**独立受限 origin**（与主应用不同源�
 | CM-54 超时与幂等写 | [§10.4](#104-幂等回执存储)、[§9.2](#92-apierror--http-映射表) | 指纹冲突与过期的判定发生在服务端 |
 | CM-55 重复/乱序/大 revision 事件 | [§8.2](#82-last-event-id-回放) | sequence 连续；`Counter` 不转 JS Number；超窗口发 `streamResetRequired` |
 | CM-56 断网与事务 TTL | [§4.3](#43-服务端登录会话)、[§8.4](#84-权限复核与登录过期) | 登录空闲/绝对期在服务端裁定；SSE 定时复核 |
-| CM-59 登出/权限撤销/CSRF（**阶段归属见[开发计划 §17](../../development/platform-development-plan.md#17-补充契约的阶段归属) 的 P7/P8 行「CM-59 的 W1 断言」**，故本节断言属 P7/P8 门槛范围） | [§5](#5-csrf)、[§4.5](#45-登出与会话撤销)、[§6.3](#63-撤销传播)、[§8.4](#84-权限复核与登录过期) | 跨站变更被拒；旧订阅关闭；排队不执行；运行中按实际结果记录 |
+| CM-59 登出/权限撤销/CSRF（**阶段归属见[开发计划 §17](../../archive/development/platform-development-plan.md#17-补充契约的阶段归属) 的 P7/P8 行「CM-59 的 W1 断言」**，故本节断言属 P7/P8 门槛范围） | [§5](#5-csrf)、[§4.5](#45-登出与会话撤销)、[§6.3](#63-撤销传播)、[§8.4](#84-权限复核与登录过期) | 跨站变更被拒；旧订阅关闭；排队不执行；运行中按实际结果记录 |
 | CM-60 资源压力与 drain（单实例部分） | [§9.1](#91-请求限制)、[§10.3](#103-sessiondirectory-与-budgetcoordinator单实例)、[§14](#14-部署形态) | 总量/控制保留/逻辑会话/队列上限生效；性能门禁在单实例形态下测量。owner 路由、worker 分区、跨节点预算归 P9 |
 | CM-63 的 **W1** 断言 | [§10.4](#104-幂等回执存储) | 会话回执仅内存、绑定 `runtimeEpoch`、owner 丢失不重建 |
 | CM-68 的 **W1** 断言 | [§10.3](#103-sessiondirectory-与-budgetcoordinator单实例) | 候选替换 `prepared` 不可路由；提交原子；丢响应返回同结果 |
@@ -828,8 +828,8 @@ Web 场景下 Wapp iframe 使用**独立受限 origin**（与主应用不同源�
 - 本文是 [系统概要设计 §6.3、§9.1、§10](system-overview.md#63-首版-http-映射) 的实施级展开，不改变其中的路由表、状态码与安全总纲；如有冲突以概要设计为准。
 - DTO、服务接口、错误码表、幂等与会话规则以 [连接与会话管理](connection-management.md) 为权威，本文只描述它们在 HTTP 宿主上的落地方式。
 - 管理库表结构以 [持久化模型](persistence-model.md) 为权威；本文的 [§10](#10-服务端仓储与-ports-实现) 与 [§13](#13-schema-migration-运行方式) 只描述运行行为。本文 [§4.3](#43-服务端登录会话) 的登录会话行与 [§6.1](#6-授权模型) 的成员关系 / ACL / 权限版本已由该文档 [§3.10 认证与授权表](persistence-model.md#310-认证与授权表) 登记为 `login_sessions` / `memberships` / `acl_entries` / `permission_versions`（固定角色用 CHECK 表达，不建 `roles` 表）。
-- 阶段交付与退出门槛以 [平台开发计划 §11](../../development/platform-development-plan.md#11-p7单实例团队-web-服务) 为准；P9 的多 worker 与全局预算不在本文范围。
-- 现有 `src-tauri` 的 store/keyring/file 能力是**桌面**实现，服务端不复用其存储形态（见 [§10.1](#101-实现矩阵)），但沿用其错误分类、日志脱敏与安全约定（`CommandError`、`datazen_infra::redaction`、路径遍历防护、扩展名白名单）。
+- 阶段交付与退出门槛以 [平台开发计划 §11](../../archive/development/platform-development-plan.md#11-p7单实例团队-web-服务) 为准；P9 的多 worker 与全局预算不在本文范围。
+- 桌面宿主（`crates/datazen-desktop`）的 store/keyring/file 能力是**桌面**实现，服务端不复用其存储形态（见 [§10.1](#101-实现矩阵)），但沿用其错误分类、日志脱敏与安全约定（`CommandError`、`datazen_infra::redaction`、路径遍历防护、扩展名白名单）。
 - 现有 Wapp 桥接在 `datazen://` 不透明 origin 下必须使用 `'*'` target origin；Web 场景 origin 已知，因此本文**收紧**为精确 origin，这是有意的差异而非不一致（[§15.1](#151-wapp-iframe-与桥接)）。
 
 ## 18. 本文不覆盖什么

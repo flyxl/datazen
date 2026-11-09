@@ -71,7 +71,7 @@
 | `GET /api/v1/auth/login`、`GET /api/v1/auth/callback`、`POST /api/v1/auth/logout` | OIDC 登录三步 | team-server §4 |
 | `POST /api/v1/auth/desktop/start`、`POST /api/v1/auth/desktop/exchange` | 桌面团队认证（P8） | 同上 §4.6 |
 | `GET /healthz`、`GET /readyz` | 存活/就绪探针 | 同上 §2.4 |
-| `GET /wapps/{wapp id}/{package-relative path}` | wapp 资产 origin 静态面（WR-F4 web 形态的 server 半边；浏览器原生 iframe/img/script 直取，不经 MethodMap——无方法背书要求，`/mcp` 同款非域面先例） | [w8-knife4 设计档](../../development/w8-knife4-wapp-static-design.md) + [wapps.md](../backend/wapps.md) |
+| `GET /wapps/{wapp id}/{package-relative path}` | wapp 资产 origin 静态面（WR-F4 web 形态的 server 半边；浏览器原生 iframe/img/script 直取，不经 MethodMap——无方法背书要求，`/mcp` 同款非域面先例） | [w8-knife4 设计档](../../archive/development/w8-knife4-wapp-static-design.md) + [wapps.md](../backend/wapps.md) |
 
 ## 6. 逐域路由表
 
@@ -526,7 +526,7 @@ WR-D 落地时的机器核对（WR-C3 接管）：同用例双传输测试逐方
 | [team-server-and-auth](team-server-and-auth.md) §3–§9、§11 | 中间件、认证、CSRF、SSE、错误映射、产物实现的权威；本文不重述，只引用 |
 | [connection-management](connection-management.md) §4.1、§13.1 | 连接域 DTO 与幂等令牌期限的权威 |
 | [shared-boundaries-and-ports](shared-boundaries-and-ports.md) | `MethodMap` 与域客户端的边界设计（F3） |
-| web-ready-plan WR-C2 | 本文的立项来源与验收口径 |
+| [web-ready-plan WR-C2（已归档）](../../archive/development/web-ready-plan.md) | 本文的立项来源与验收口径 |
 
 ## 11. 变更记录
 

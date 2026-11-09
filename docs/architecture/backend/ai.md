@@ -254,7 +254,7 @@ groups:
 
 实现要点（Tauri 适配在 `crates/datazen-desktop/src/commands/ai/chat.rs`，共享工具定义与循环在 `crates/datazen/src/ai/`）：
 
-- MCP 工具面已端口化：共享消费者端口 `McpToolBroker` 定义在 `crates/datazen/src/ai/application/ports.rs`，`mcp_tools.rs` 负责 qualified 命名、`ToolDefinition` 映射、策略过滤与 `String` 执行契约；桌面实现位于 `crates/datazen-desktop/src/services/feature_ports.rs`，stdio 子进程发现与生命周期仍在 `McpClientManager`。web 形态可用 HTTP/SSE 实现同一端口（见[边界方案 §8 M3](../../development/host-boundary-followups.md#8-跨形态一致性收敛m-系列)）。
+- MCP 工具面已端口化：共享消费者端口 `McpToolBroker` 定义在 `crates/datazen/src/ai/application/ports.rs`，`mcp_tools.rs` 负责 qualified 命名、`ToolDefinition` 映射、策略过滤与 `String` 执行契约；桌面实现位于 `crates/datazen-desktop/src/services/feature_ports.rs`，stdio 子进程发现与生命周期仍在 `McpClientManager`。web 形态可用 HTTP/SSE 实现同一端口（见[边界方案 §8 M3](../../archive/development/host-boundary-followups.md#8-跨形态一致性收敛m-系列)）。
 - `ai/chat_request.rs` 组装通用 Chat 请求与工具定义；`ai/tool_loop.rs` 识别 `mcp/` 前缀并经 `AiToolLoopHost` 调用 MCP，DB tool 与 MCP tool 可在同一轮对话中交替执行。
 - Agent 未连接 MCP Server 时只暴露 DB tools；Ask 始终只有 `ask_questions`，不会因为配置了 MCP 或启用了插件而获得工具。
 
@@ -375,4 +375,4 @@ Agent 永不直接执行写语句。`propose_write` 生成一个**可审阅、�
 - MCP 审批与桥接审批都要求 Allow once；5 分钟超时/Stop 均拒绝。审计写入 `mcp-audit.jsonl`，只含 who/when/connection/tool/rowCount/decision/requestId，不写 SQL/参数/凭据；写入失败只告警，不阻断调用。
 - T25 组织记忆审计与 T24 写入审计都使用结构化字段，不复用含正文的日志。
 
-> 本轮 T26 只折叠实现结论，不删除 `docs/development/` 下的 implementation/progress/test-report/bugs；这些过程文件待最终验收后由负责人清理。
+> T26 只折叠实现结论；其过程文档（含 `ai-assistant-parity-prd.md`）已于 W8 收官后移入 `docs/archive/development/`，结论以本节为准。
