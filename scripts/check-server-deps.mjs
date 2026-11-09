@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Server 依赖闭包门禁（team-server-and-auth §2.2；web-ready WR-D1 随 server
+ * Server 依赖闭包门禁（web-server-host §2.2；web-ready WR-D1 随 server
  * crate 一并新增，与 check-module-layers / check-driver-import-boundaries 并列，
  * 不塞进它们的既有职责）。
  *
@@ -128,7 +128,7 @@ function main(argv) {
     fail(
       `${violations.length} forbidden crate(s). The server host must depend on the shared ` +
         `kernel (datazen), never on the desktop host (datazen_desktop) or any UI/WebView layer — ` +
-        `see docs/architecture/platform/team-server-and-auth.md §2.2.`,
+        `see docs/architecture/platform/web-server-host.md §2.2.`,
     );
     return 1;
   }

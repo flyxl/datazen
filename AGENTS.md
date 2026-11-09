@@ -28,7 +28,7 @@ deploy/                  服务端部署：Dockerfile / docker-compose 与 dev/ 
 - `crates/datazen/` 是唯一业务内核 crate（package `datazen`），按功能组织 `application` / `domain`；共享契约在 `src/shared/`。
 - `crates/datazen-desktop` 是 Desktop 宿主（crate `datazen_desktop`）；`crates/datazen-server/` 是团队 Web 服务宿主（crate `datazen-server`，W8 已交付十五域）；`packages/web/` 是浏览器壳（已落地，`src/platform/web/` 只做 HTTP/SSE 传输适配）。两个宿主互不依赖，都只依赖内核；server 的依赖闭包由 CI 门禁 `pnpm test:server-deps` 强制无 tauri/UI。
 - Repository trait 由所属 domain 定义，Desktop/Server infrastructure 实现；不建立全局仓储全集。
-- 宿主边界（command 与 HTTP handler）只做请求接线、DTO 与错误映射，不直接访问 Store、AppDb、Driver、Runtime internals；同一用例在 Tauri command 与 HTTP handler 是两个薄绑定，契约唯一来源是 `packages/backend-client` 的域客户端（`docs/architecture/platform/http-api-contract.md`）。
+- 宿主边界（command 与 HTTP handler）只做请求接线、DTO 与错误映射，不直接访问 Store、AppDb、Driver、Runtime internals；同一用例在 Tauri command 与 HTTP handler 是两个薄绑定，契约唯一来源是 `packages/backend-client` 的域客户端（`docs/architecture/platform/web-http-api.md`）。
 - `execution::runtime` 承载 actor、lease、队列、等待、资源回收；`execution::application` 编排用例；Job 归 `jobs`。
 - 保持 `connectionId`、`dbSessionId`、`executionId` 语义不混用，以及 owner、scope、epoch、revision、事务、取消、幂等、artifact、恢复语义。
 - 不提交空壳 Service、`todo!()`、DummyRepository 或重复状态；新增临时兼容导出必须写明消费者和删除阶段。
@@ -91,3 +91,4 @@ E2E 必须使用 `pnpm tauri:build:webdriver` 或 `pnpm e2e` 的构建流程，�
 - 不新增 PRD、方案评审、Bug List、进度报告类长期文件；已实现结论改写进对应架构文档。
 - 修改路径、IPC、命令、驱动数量或测试事实前先核对代码；文档链接必须人工检查可达。
 - CodeGraph 存在时优先 `codegraph explore`；否则使用专用搜索/读取工具，编辑前先读当前文件。
+

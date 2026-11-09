@@ -1,4 +1,4 @@
-//! L1（前半）：`Content-Length` 字节闸（team-server §3.1 的「Content-Length +
+//! L1（前半）：`Content-Length` 字节闸（web-server-host §3.1 的「Content-Length +
 //! 流式」中的 Content-Length 半边）。
 //!
 //! 带显式长度的请求在进 handler **之前**按 413 拒绝，wire 体走

@@ -50,12 +50,12 @@
 - [迁移三件套与 JobRuntime](platform/data-migration-jobs.md)
 - [Workflow 资源模型](platform/workflow-resource-model.md)
 - [AI/MCP/Wapp 与辅助任务接入](platform/consumer-adapters.md)
-- [团队服务与认证](platform/team-server-and-auth.md)
+- [团队服务与认证](platform/web-server-host.md)
 - [多 worker 协调](platform/multi-worker-coordination.md)
 - [团队服务部署、升级与恢复](../development/team-service-operations.md)
 - [分阶段开发计划（已归档）](../archive/development/platform-development-plan.md)
 
-P1（共享边界）、P3（Runtime 会话/资源/网关）、P4（桌面会话迁移）、P5（JobRuntime 与迁移三件套）与 P6（消费者迁移/命令薄壳化，2026-11-04 核实收口）已经落地；**P7 单实例团队 Web 服务已随 W8（2026-11-09）交付**：`crates/datazen-server/` 十五域全亮（112 域客户端方法 / 108 路由，[契约](platform/http-api-contract.md) v1.10.1）+ `packages/web/` 浏览器壳 + `deploy/dev` 一键开发栈；P8 桌面团队认证、P9 多实例协调与 P10 全驱动发布验收仍属目标设计。已完成部分应继续按实现事实维护，未完成部分继续服从目标设计。
+P1（共享边界）、P3（Runtime 会话/资源/网关）、P4（桌面会话迁移）、P5（JobRuntime 与迁移三件套）与 P6（消费者迁移/命令薄壳化，2026-11-04 核实收口）已经落地；**P7 单实例团队 Web 服务已随 W8（2026-11-09）交付**：`crates/datazen-server/` 十五域全亮（112 域客户端方法 / 108 路由，[契约](platform/web-http-api.md) v1.10.1）+ `packages/web/` 浏览器壳 + `deploy/dev` 一键开发栈；P8 桌面团队认证、P9 多实例协调与 P10 全驱动发布验收仍属目标设计。已完成部分应继续按实现事实维护，未完成部分继续服从目标设计。
 
 > 除上述明确请求的设计外，本目录只描述 **已落地** 的实现。方案草稿、RFC 与实施计划不长期留在 `architecture/`：
 > 结论落地后改写为本目录的事实条目，未落地的提案不入库。演进方向的公开叙述见 [blogs/](../blogs/README.md)。
@@ -108,7 +108,7 @@ packages/web/
 
 依赖方向是单向的：内核 crate（`crates/datazen/`）内 `shared` 契约层不依赖上层；各领域包的 `application` 依赖 `shared` 与 `driver-api`。`crates/datazen-desktop` 与 `crates/datazen-server/` 是两个组装根，彼此不依赖。`scripts/check-platform-crate-boundaries.mjs` 与 `scripts/check-server-deps.mjs` 对 Tauri/HTTP/UI 依赖做硬门禁。
 
-桌面 GUI 仍通过 Tauri IPC 进入 Rust。团队 Web 的 HTTP 宿主和浏览器壳已在仓库里，`/api/v1` 十五域已全亮（112 域客户端方法 / 108 路由），HTTP 面以 [HTTP API 契约](platform/http-api-contract.md)（v1.10.1）为唯一权威；契约「排除」行的桌面专属能力（文件对话框、文件系统语义等）不得写成 web 形态可用。
+桌面 GUI 仍通过 Tauri IPC 进入 Rust。团队 Web 的 HTTP 宿主和浏览器壳已在仓库里，`/api/v1` 十五域已全亮（112 域客户端方法 / 108 路由），HTTP 面以 [HTTP API 契约](platform/web-http-api.md)（v1.10.1）为唯一权威；契约「排除」行的桌面专属能力（文件对话框、文件系统语义等）不得写成 web 形态可用。
 
 ## 2. Driver 架构
 
@@ -248,3 +248,4 @@ React 前端使用 Zustand。主要 Store 位于 `src/stores/`：
 测试分布在 Driver、Host Rust、共享 crate、Frontend Vitest 和 E2E 五层。Driver-specific 行为放在 `crates/drivers/<id>/`；Host 不复制 Driver 方言测试。E2E 主要覆盖真实窗口流程和 IPC contract。
 
 详细测试策略见 [testing.md](testing.md)。
+

@@ -1,6 +1,6 @@
 //! `SessionDirectory` 的服务端适配器：**单进程内存**实现（WR-D4，v1 形态）。
 //!
-//! [team-server §10.1/§10.3](../../../../../docs/architecture/platform/team-server-and-auth.md)
+//! [web-server-host §10.1/§10.3](../../../../../docs/architecture/platform/web-server-host.md)
 //! 的「单进程内存」首版：与 `MemoryEventSink` 同一条登记口径——团队服务首版
 //! 是单实例（API + admin + worker 同进程），本实现即 v1 形态的物理会话目录，
 //! 多实例共享目录归 P9。

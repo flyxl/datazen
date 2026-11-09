@@ -655,7 +655,7 @@ async fn expired_registrations_answer_404() {
 
 // ── WR-G2 冻结验收：SSE Origin 校验的故障注入补钉 ─────────────────────
 // （真实故障源 = 真 HTTP 请求头组合，不是 mock——每个变体都是浏览器/
-// 代理在跨源/重定向场景实际发出的头形。权威：team-server §8.1 的
+// 代理在跨源/重定向场景实际发出的头形。权威：web-server-host §8.1 的
 // 「存在必须等值、缺失要求 same-origin、null/cross-site 不豁免」。）
 
 /// §8.1「存在必须**等值**于配置 origin」的边界钉：尾斜杠、大小写变体、

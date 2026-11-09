@@ -69,14 +69,14 @@ CREATE INDEX idx_connection_profile_list
 ///   ——后者的复合外键引用 `(organization_id, principal_id)`；同一迁移
 ///   事务内后建的表不能作为外键目标（§5.5 fail-closed，起不来即暴露）。
 /// - **没有 `roles` 表**：六个固定角色由 `ck_membership_role` 的 CHECK
-///   表达（team-server §6.1：首版不可由管理员自定义；P9 引入自定义角色时
+///   表达（web-server-host §6.1：首版不可由管理员自定义；P9 引入自定义角色时
 ///   再补表与外键）。
 /// - `acl_entries.resource_id` 用空串表示**组织级**条目（主键列不能为
 ///   NULL）；`ck_acl_resource` 不含 `wapp`（persistence-model §3.10 的
-///   CHECK 权威——与 team-server §6.1 词表的一处登记差异，wapp 安装闸走
+///   CHECK 权威——与 web-server-host §6.1 词表的一处登记差异，wapp 安装闸走
 ///   角色基线，ACL 行不可落 wapp）。
 /// - `permission_versions` 每组织一行、只增不减、永不删除；授权变更与
-///   版本递增同事务（team-server §6.3），由 `policy::version` 的事务
+///   版本递增同事务（web-server-host §6.3），由 `policy::version` 的事务
 ///   helper 保证，DDL 只兜底 `>= 1`。
 /// - 部分索引照抄：`idx_memberships_role ... WHERE enabled`、
 ///   `idx_login_sessions_owner / _sweep ... WHERE revoked_at IS NULL`。
@@ -715,7 +715,7 @@ CREATE TABLE expired_artifact (
 ///   nonce + 密文 + 完整性 tag 三列，全部 base64），明文永不入库——与
 ///   v1 `secret_ref` 的「只存引用」纪律一致，材料这半边由本迁移补齐。
 ///   版本行按 `(organization_id, secret_ref, revision)` 建键；
-///   `read_versioned` 的历史回读（team-server §10.2）由旧版本行承接，
+///   `read_versioned` 的历史回读（web-server-host §10.2）由旧版本行承接，
 ///   `rotate` 删除全部旧版本行实现「旧版本材料立即失效」。
 /// - **`connection_catalog` / `connection_catalog_group`**（`ConnectionRepository`
 ///   的服务端落地）：表单词汇（`ConnectionConfig`）的**净化投影**落

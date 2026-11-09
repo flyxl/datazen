@@ -20,7 +20,7 @@
 //! - 端口不做重试、不做缓存、不做授权。缓存与版本计算是端口**提供方**的责任
 //!   （例如 `SecretProvider` 负责 `credentialRevision`）。
 //! - `PortError::ArtifactExpired` 是端口取值，**HTTP 状态码由 server host 决定**，
-//!   不构成端口契约（team-server 出于防 ID 枚举把它与 `NotFound` 一起映射成 404）。
+//!   不构成端口契约（web-server-host 出于防 ID 枚举把它与 `NotFound` 一起映射成 404）。
 //! - 执行终态错误走 `ExecutionErrorCode`，与 `ApiError.code` 是两个独立命名空间。
 //!
 //! **`PortError` 刻意不实现 serde**（§4.1 的目标设计只 `derive(Debug, thiserror::Error)`）。

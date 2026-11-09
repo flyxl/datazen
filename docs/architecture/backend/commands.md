@@ -42,7 +42,7 @@ Driver / Store / runtime
 
 进入 `service / domain module` 之前，SQL 会先过安全门网：注释剥离、主关键字分类、只读 / Safe Mode 校验与参数绑定。该门网实现在共享层 `crates/datazen/src/execution/domain/sql_guard/`，宿主 command 以 `datazen::execution::…` 方式调用，服务端 HTTP 入口已复用同一份实现（`crates/datazen-server/`）。
 
-命令层已完成**薄壳化**（W8 前 WR-A2 核实收口：`_impl` 115 → 21，剩余为文档化共享入口 / 测试夹具，无 1:1 转发残留）：command 只做请求接线与转发，编排归 `crates/datazen` 各域 application。同一用例因此有两个薄绑定——桌面 Tauri command 与 server HTTP handler；`packages/backend-client` 的域客户端是契约唯一来源，HTTP 面逐方法镜像见 [HTTP API 契约](../platform/http-api-contract.md)。
+命令层已完成**薄壳化**（W8 前 WR-A2 核实收口：`_impl` 115 → 21，剩余为文档化共享入口 / 测试夹具，无 1:1 转发残留）：command 只做请求接线与转发，编排归 `crates/datazen` 各域 application。同一用例因此有两个薄绑定——桌面 Tauri command 与 server HTTP handler；`packages/backend-client` 的域客户端是契约唯一来源，HTTP 面逐方法镜像见 [HTTP API 契约](../platform/web-http-api.md)。
 
 ## 3. 连接 ID 参数约定
 

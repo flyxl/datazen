@@ -299,7 +299,7 @@ W8 刀3c 把本域点亮到团队 Web 服务（P7 服务端半边）：`crates/d
 | `schedule_grant.rs` | `ServerScheduleGrantReader`：从定义 YAML 与 profile `config_revision` **确定性派生授权单**；拒绝事实一律 `Ok(None)`，不虚构授权 |
 | `scheduler.rs` | `ServerScheduleHost` + `ServerWorkflowScheduler`：owner 组织核对（fail-closed）+ 审计日志 + 服务身份执行上下文 |
 
-- **契约**（[HTTP API 契约](../platform/http-api-contract.md) §6.14，十一路由）：定义 CRUD 五 + from-yaml + 同步 `execute`（**200 全量结果**，桌面 IPC 同语义——长跑工作流是调用方的重试策略问题，不在本域发明 202/job 语义）+ `reload`（**库后端 no-op**，桌面同语义）+ 运行历史三。存储是服务端管理库 V13 双表（`workflows` / `workflow_run_history`，组织复合主键）。
+- **契约**（[HTTP API 契约](../platform/web-http-api.md) §6.14，十一路由）：定义 CRUD 五 + from-yaml + 同步 `execute`（**200 全量结果**，桌面 IPC 同语义——长跑工作流是调用方的重试策略问题，不在本域发明 202/job 语义）+ `reload`（**库后端 no-op**，桌面同语义）+ 运行历史三。存储是服务端管理库 V13 双表（`workflows` / `workflow_run_history`，组织复合主键）。
 - **组织归属闸**：请求组织 ≠ 宿主组织 ⇒ 404 合并口径（CM-05，防枚举）；带体写面（save / save-yaml / execute）核 `saveUserAsset` 令牌在场性与 `idempotencyKey` 绑定。
 - **`getWorkflowDir` 不进 HTTP**：工作流目录路径是文件系统语义，桌面专属——服务端定义是库行，无目录可给。
 - **AI 步骤 fail-closed**：server 形态没有 AI 供应商注册表。交互执行按执行器默认错误策略应答（200 + `success:false` + 步骤拒绝文案，步骤失败不是命令错误）；调度面被授权单派生更早拒绝。

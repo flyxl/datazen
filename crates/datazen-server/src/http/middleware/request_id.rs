@@ -1,4 +1,4 @@
-//! L0：分配 / 透传 `requestId`（team-server §3.1 的最外层）。
+//! L0：分配 / 透传 `requestId`（web-server-host §3.1 的最外层）。
 //!
 //! 职责（§3.1）：请求进来先拿关联 id——上游带了 `x-request-id` 就透传
 //! （网关链路保持关联），没带就铸造 UUID v4；id 注入请求扩展（后续层的

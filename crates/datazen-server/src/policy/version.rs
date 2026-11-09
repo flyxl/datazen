@@ -1,6 +1,6 @@
 //! 权限版本（`permission_versions`）：每组织单调只增的授权时钟。
 //!
-//! 规则（team-server §6.3 / persistence-model §3.10）：
+//! 规则（web-server-host §6.3 / persistence-model §3.10）：
 //!
 //! - 组织持有一个单调递增的 `permission_version`；成员关系、角色、ACL、
 //!   委托**任一变更即自增**，且必须与实际授权变更**同事务**提交——仅增加

@@ -79,7 +79,7 @@ async fn unknown_non_api_path_is_404_not_found() {
     assert_eq!(json["code"], "notFound");
     // NotFound 的 disposition 断言**共享词汇表的运行时真值** safeRead
     // （`datazen::shared::error` 的 `retry_disposition`，modules 测试钉住）。
-    // 注意 team-server §9.2 的 404 行写的是 never——两处不一致是既有
+    // 注意 web-server-host §9.2 的 404 行写的是 never——两处不一致是既有
     // 文档与代码的出入，留给 WR-D4 的错误映射逐行确认裁决，本测试只断
     // 言 wire 上实际出现的值（server 复用同一份词汇，不自行改写）。
     assert_eq!(json["retryDisposition"], "safeRead");
@@ -108,7 +108,7 @@ async fn request_id_is_passed_through_when_upstream_sends_one() {
 
 #[tokio::test]
 async fn body_over_the_limit_is_rejected_before_handlers() {
-    // 8 MiB 上限（team-server §9.1）+ 1 字节 = 413。Content-Length 路径
+    // 8 MiB 上限（web-server-host §9.1）+ 1 字节 = 413。Content-Length 路径
     // （L1a）：自研闸在进 handler 之前拒绝，wire 体是 ApiError。
     let oversized = vec![0u8; 8 * 1024 * 1024 + 1];
     let response = app()

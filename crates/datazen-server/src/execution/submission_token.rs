@@ -1,6 +1,6 @@
 //! `SubmissionTokenIssuer` 的服务端适配器：HMAC-SHA256 签名提交令牌（WR-D4）。
 //!
-//! [team-server §10.1](../../../../../docs/architecture/platform/team-server-and-auth.md)
+//! [web-server-host §10.1](../../../../../docs/architecture/platform/web-server-host.md)
 //! 的「签名密钥由配置/KMS 提供，不落库」：密钥原料由构造参数注入（
 //! `ServerSecret` 字节；不落库、不进日志——`Debug` 手写脱敏），签名是
 //! **HMAC-SHA256**（与 `csrf.rs` 同款原语）。令牌形态：

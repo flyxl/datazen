@@ -1,6 +1,6 @@
 //! 受控上传（WR-D7 第三刀）：分块上传 → SHA-256 完整性 → `ServerArtifacts`。
 //!
-//! 契约位置：http-api-contract §6.5 的在账端点
+//! 契约位置：web-http-api §6.5 的在账端点
 //! `POST /api/v1/artifacts/uploads`（分块受控上传；收口动作随 web 导出流
 //! 立项——本模块提供的是 handler 级函数，路由接线归主线）。
 //!

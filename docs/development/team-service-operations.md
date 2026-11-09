@@ -2,7 +2,7 @@
 
 > 状态：P7/P8/P9 目标运维流程，2026-10-02。当前仓库尚未提供本文描述的完整服务部署形态；目标命令、探针和配置契约须随对应阶段实现后改写为可直接执行的操作说明。本文不使用假命令声称服务已可部署。
 
-认证、HTTP 与进程边界以 [团队服务设计](../architecture/platform/team-server-and-auth.md) 为准；schema 与备份数据以 [持久化模型](../architecture/platform/persistence-model.md) 为准；集群关闭证明以 [多 worker 设计](../architecture/platform/multi-worker-coordination.md) 为准。
+认证、HTTP 与进程边界以 [团队服务设计](../architecture/platform/web-server-host.md) 为准；schema 与备份数据以 [持久化模型](../architecture/platform/persistence-model.md) 为准；集群关闭证明以 [多 worker 设计](../architecture/platform/multi-worker-coordination.md) 为准。
 
 ## 1. 发布包与支持范围
 

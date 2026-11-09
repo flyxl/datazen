@@ -1,7 +1,7 @@
-//! v1 路由表（team-server §2.3 的 M/N 步）。
+//! v1 路由表（web-server-host §2.3 的 M/N 步）。
 //!
 //! D1 骨架只挂机器面（`/healthz` / `/readyz`）；`/api/v1` 的域路由按
-//! WR-C2 冻结的契约表（`docs/architecture/platform/http-api-contract.md`）
+//! WR-C2 冻结的契约表（`docs/architecture/platform/web-http-api.md`）
 //! 随 WR-D2（仓储 + 逐域 handler）、WR-D4（执行接线）、WR-D5（SSE）点亮。
 //! 在此之前，一切 `/api/` 路径统一回答 501 `capabilityUnsupported`
 //! （契约 §7：`not-implemented` 类 → 501），非 `/api/` 的未知路径回答
@@ -44,7 +44,7 @@ use datazen::shared::id::{
 use crate::http::middleware;
 use crate::http::response::ApiErrorResponse;
 
-/// 请求体字节上限：team-server §9.1 首版权威值（8 MiB，L1 物理闸 → 413）。
+/// 请求体字节上限：web-server-host §9.1 首版权威值（8 MiB，L1 物理闸 → 413）。
 pub const MAX_BODY_BYTES: usize = 8 * 1024 * 1024;
 
 /// L1a 的 from_fn 形状适配：上限取本模块常量，逻辑在 `middleware::body_limit`。
@@ -257,7 +257,7 @@ pub fn build_router_with_auth(deps: AuthDeps) -> Result<Router, crate::error::Se
     Ok(router)
 }
 
-/// 存活探针：进程在服务即 200（team-server §2.4 / §5）。
+/// 存活探针：进程在服务即 200（web-server-host §2.4 / §5）。
 async fn healthz() -> impl IntoResponse {
     (StatusCode::OK, "ok")
 }

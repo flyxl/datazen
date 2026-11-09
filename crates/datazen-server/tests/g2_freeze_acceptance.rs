@@ -146,7 +146,7 @@ fn every_authorization_entry_point_setup(tag: &str) -> (PolicyService, PathBuf) 
     (service, path)
 }
 
-/// 冻结项 1（team-server §6.3 / persistence-model §3.10 / 平台计划 §11）：
+/// 冻结项 1（web-server-host §6.3 / persistence-model §3.10 / 平台计划 §11）：
 /// 「实际授权变更与 permissionVersion 同事务提交」「不存在只改授权不递增
 /// 版本的入口」。真实管理库（SQLite 文件）上逐个驱动**每一个**管理入口
 /// （grant / deny / revoke / disable / enable），断言授权效果与版本递增

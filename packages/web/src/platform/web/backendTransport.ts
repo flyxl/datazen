@@ -2,7 +2,7 @@
  * Web 后端传输（WR-E2）——HTTP/SSE `WebClient` 实现，替换 WR-E1 的
  * all-throw stub。上方消费面（assembly → facade → 域客户端）零改动。
  *
- * **覆盖账目**（对照 `docs/architecture/platform/http-api-contract.md` §4
+ * **覆盖账目**（对照 `docs/architecture/platform/web-http-api.md` §4
  * 总账与 §6.1–§6.9 逐域表；分发表本体在 `./httpRoutes`）：
  *
  * - call 面 **42/43**：43 个域客户端 call 方法中 42 个上 HTTP（分发表 42 条，
@@ -18,7 +18,7 @@
  *   （42 call + subscribeEvents；
  *   `createEventSubscription` 是流水线的登记步，无 `MethodMap` 键）。
  *
- * HTTP 约定（契约 §3 + team-server §3–§9）：
+ * HTTP 约定（契约 §3 + web-server-host §3–§9）：
  *
  * - base URL 默认同源相对路径 `/api/v1`（创建选项可注入覆盖，测试用）；
  *   `fetch` 一律 `credentials: 'include'`（`__Host-dz_session` cookie，§4.4）；
@@ -30,7 +30,7 @@
  * - **成功侧**：2xx 解析 JSON；空体（§6.8 `commitQueryResultCell` 的 200
  *   空体）归 `undefined`；`readArtifact` 双模式解码在 `./httpRoutes`；
  * - **错误侧**：非 2xx 的四字段体 `{code, message, requestId,
- *   retryDisposition}`（team-server §9.2 / 概要 §6.3 wire 形状）经
+ *   retryDisposition}`（web-server-host §9.2 / 概要 §6.3 wire 形状）经
  *   `deserializeApiError` 归一为 `ApiError`；网络层失败按同函数归一为
  *   `ServiceUnavailable`；
  * - **SSE**：`./eventStreamSource`；**cancel**：`EventSource` 走登记表
@@ -62,7 +62,7 @@ export const WEB_BACKEND_ID = 'web';
 /** 默认同源相对基路径（契约路由全部在 /api/v1 下）。 */
 const DEFAULT_BASE_URL = '/api/v1';
 
-/** CSRF 令牌的公开半边 cookie（team-server §4.4；server `CSRF_COOKIE` 同名）。 */
+/** CSRF 令牌的公开半边 cookie（web-server-host §4.4；server `CSRF_COOKIE` 同名）。 */
 const CSRF_COOKIE_NAME = '__Host-dz_csrf';
 
 /** CSRF 请求头（server `crates/datazen-server/src/csrf.rs` 的 `CSRF_HEADER`；双提交 header 半边）。 */

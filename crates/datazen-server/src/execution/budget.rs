@@ -1,6 +1,6 @@
 //! `BudgetCoordinator` 的服务端适配器：单实例内存额度账（WR-D4，v1 形态）。
 //!
-//! [team-server §10.3](../../../../../docs/architecture/platform/team-server-and-auth.md)
+//! [web-server-host §10.3](../../../../../docs/architecture/platform/web-server-host.md)
 //! 的「`BudgetCoordinator` 首版为单实例实现」：进程重启后额度归零是单实例
 //! 形态的自洽前提（旧物理连接已随进程终止）；持久化分配账
 //! （persistence-model §3.11 `budget_allocations`）是 P9 全局预算的增量，

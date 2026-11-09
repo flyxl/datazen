@@ -76,7 +76,7 @@ Wapp 继续通过宿主桥调用 Driver Command，沙箱不持有 BackendClient�
 
 桥请求信封由 host 记录 instanceNonce、requestId、method 与稳定目标，response 回显 requestId。重复 requestId 的输入摘要不同即拒绝；同摘要映射原 receipt。iframe 重新加载建立新 instanceNonce，旧响应和旧取消不能作用于新实例。
 
-Web 的 origin/source/nonce 校验和隔离部署以 [团队服务 §15](team-server-and-auth.md) 为准。Desktop opaque origin 只在匹配 frame source 与 nonce 后允许桥消息；不得向 `*` 发送敏感信息。
+Web 的 origin/source/nonce 校验和隔离部署以 [团队服务 §15](web-server-host.md) 为准。Desktop opaque origin 只在匹配 frame source 与 nonce 后允许桥消息；不得向 `*` 发送敏感信息。
 
 默认 command 为短操作。确需连续事务的 Wapp 必须由 manifest 声明相应 capability、由用户显式批准，再由 host 创建该实例独占的 session；对沙箱仍只暴露实例绑定的逻辑引用。未声明能力、引用过期或实例结束都拒绝，不能降级为共享编辑器 session。
 

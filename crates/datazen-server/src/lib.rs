@@ -1,6 +1,6 @@
 //! `datazen-server` —— 团队 Web 服务宿主（P7 / web-ready WR-D）。
 //!
-//! 一个二进制、三个子命令（serve | migrate | check-schema，team-server
+//! 一个二进制、三个子命令（serve | migrate | check-schema，web-server-host
 //! §2.4）。`bootstrap::serve` 是唯一的 composition root：任何模块都不得在其
 //! 之外隐式构造全局单例（§2.3），失败策略 fail-closed。
 //!
@@ -10,7 +10,7 @@
 //! 平级的两个宿主：编排逻辑只存在于 `datazen`（modules）的 application 层，
 //! 宿主只做「取 repository → 组 request → 调用例」的薄绑定。桌面绑 Tauri
 //! IPC，本 crate 绑 HTTP；HTTP 面镜像的是 backend-client 域客户端面
-//! （`docs/architecture/platform/http-api-contract.md`），不镜像 IPC 命令面。
+//! （`docs/architecture/platform/web-http-api.md`），不镜像 IPC 命令面。
 //!
 //! # 依赖闭包（§2.2，CI 强制）
 //!

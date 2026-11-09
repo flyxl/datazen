@@ -136,7 +136,7 @@ Driver 方言/类型规则属于对应 Driver，不在 Host 重复实现。
 
 ## 服务端形态（W8）
 
-W8 刀3e 把本域全域点亮：`crates/datazen-server/src/sync/` 七件（assets / execution / host / sobs / sessions / runtime_state / jobs）+ `http/domains/` 的域路由，契约 §6.16 **二十二路由 = 资产与读面十三 + 执行面九**（inspect / revalidate / compare / prepare / apply / execute / SQL 预览 / 冲突检查 / 恢复核验；[HTTP API 契约](../platform/http-api-contract.md)）。
+W8 刀3e 把本域全域点亮：`crates/datazen-server/src/sync/` 七件（assets / execution / host / sobs / sessions / runtime_state / jobs）+ `http/domains/` 的域路由，契约 §6.16 **二十二路由 = 资产与读面十三 + 执行面九**（inspect / revalidate / compare / prepare / apply / execute / SQL 预览 / 冲突检查 / 恢复核验；[HTTP API 契约](../platform/web-http-api.md)）。
 
 - **任务/档案资产 + 配对分类 + 迁移历史**：任务与档案是组织级资产（服务端管理库 V15 双表）；迁移历史复用 V12 `migration_run_history`（Data Sync / Schema Diff / Data Transfer 三类运行共用，`operation` 区分）——schemaDiff 留账的 `getMigrationRun` / `listMigrationRuns` 两读面按契约登记**归入本域**收口（顶层资源 `/api/v1/migration-runs`，跨域历史的共享读面）。
 - **compare 的 durable 语义**：`compareDataSync` 由 durable prepare Job 冻结 ChangeSet 后**等终态读复核投影**（桌面 `run_comparison` 同链）；长比较占住请求，只要受理回执的调用方应改用 `startDataSyncPrepareJob`（202 + 轮询读回）。

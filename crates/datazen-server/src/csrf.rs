@@ -1,4 +1,4 @@
-//! CSRF：会话绑定的**签名双提交令牌**（team-server §5.1 的纯逻辑半边）。
+//! CSRF：会话绑定的**签名双提交令牌**（web-server-host §5.1 的纯逻辑半边）。
 //!
 //! 令牌结构（§5.1 逐字）：
 //!
@@ -45,7 +45,7 @@ pub const CSRF_COOKIE: &str = "__Host-dz_csrf";
 
 /// CSRF 令牌的请求头名。
 ///
-/// team-server §5 只约定了「前端经统一 `BackendClient` 封装注入令牌」，
+/// web-server-host §5 只约定了「前端经统一 `BackendClient` 封装注入令牌」，
 /// 未冻结 header 字面名；`x-dz-csrf-token` 是本实现的注册名，wire 冻结
 /// 随 web shell 的 `BackendClient` 切片一起落契约表（模块报告已登记）。
 pub const CSRF_HEADER: &str = "x-dz-csrf-token";

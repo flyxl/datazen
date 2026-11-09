@@ -1,6 +1,6 @@
 //! 幂等提交流程（WR-D7 第二刀）：签名提交令牌 → 提交前闸门 → 幂等受理。
 //!
-//! [team-server §13.1](../../../../../docs/architecture/platform/team-server-and-auth.md)
+//! [web-server-host §13.1](../../../../../docs/architecture/platform/web-server-host.md)
 //! 与[连接 §13.1](../../../../../docs/architecture/platform/connection-management.md)
 //! 的提交语义在宿主侧的落地——流程是**四个严格有序的判定**，任何一个失败
 //! 都在失败点截断并出审计事件：

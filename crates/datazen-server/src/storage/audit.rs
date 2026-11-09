@@ -1,7 +1,7 @@
 //! `AuditSink` 的服务端适配器（WR-D3 第一刀）：跨形态审计 envelope →
 //! `audit_events` 行（v6 迁移）。
 //!
-//! 三条纪律（team-server §10.1 实现矩阵的 `Audit` 行）：
+//! 三条纪律（web-server-host §10.1 实现矩阵的 `Audit` 行）：
 //!
 //! 1. **append-only**：本模块对 `audit_events` 只有 INSERT 与 SELECT——
 //!    没有 update/delete 代码路径（PostgreSQL 生产化时由应用角色授权再
@@ -11,7 +11,7 @@
 //!    `shared::audit::AuditPayload` 的类型层被白名单约束；本层只把
 //!    结构化字段序列化成 JSON 投影（`JSONB → TEXT`，v6 迁移的登记口径）。
 //! 3. **失败如实上报**：落库失败返回 `PortError::BackendUnavailable`，
-//!    由调用方按 team-server §3.2 处置（不吞业务响应、触发告警）。
+//!    由调用方按 web-server-host §3.2 处置（不吞业务响应、触发告警）。
 //!
 //! 异步边界：端口是同步的（`shared::audit` 模块头的裁决），SQLite 写入
 //! 在 [`AdminStore`] 的单连接互斥锁后是亚毫秒操作；宿主若需线程池隔离，

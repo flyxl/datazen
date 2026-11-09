@@ -1,4 +1,4 @@
-//! `ServerConfig`：环境变量加载 + fail-closed 校验（team-server §2.3 的 C 步）。
+//! `ServerConfig`：环境变量加载 + fail-closed 校验（web-server-host §2.3 的 C 步）。
 //!
 //! D1 骨架只认两个键；OIDC / 管理库 / UI origin / TLS 等部署面随对应切片
 //! （WR-D2 管理库、WR-D3 认证与同源 HTTPS）进入同一结构体，**不另开配置
@@ -20,7 +20,7 @@ use crate::error::ServerError;
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
     /// 监听地址。D1 默认 `127.0.0.1:8080`：生产监听是 `:8443` + TLS
-    /// （team-server §2.3 的 N 步），随 WR-D3 的同源 HTTPS 一起切换；
+    /// （web-server-host §2.3 的 N 步），随 WR-D3 的同源 HTTPS 一起切换；
     /// 骨架期只允许显式指定地址，不允许伪装成生产形态。
     pub listen_addr: SocketAddr,
 

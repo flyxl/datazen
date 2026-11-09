@@ -16,7 +16,7 @@
 
 ### 🚀 新功能（Added）
 
-**团队 Web 服务（P7，W8 交付）**：`crates/datazen-server/` axum HTTP 宿主 `/api/v1` 十五域全亮——settings、identity、connection、session、execution、job、artifact、events（SSE）、tableData、driverGateway（过渡）、queryAssets、schemaDiff、workflow、dashboard、dataSync，合计 **112 个域客户端方法 / 108 条路由**，契约见 [HTTP API 契约](docs/architecture/platform/http-api-contract.md)（v1.10.1）。要点：
+**团队 Web 服务（P7，W8 交付）**：`crates/datazen-server/` axum HTTP 宿主 `/api/v1` 十五域全亮——settings、identity、connection、session、execution、job、artifact、events（SSE）、tableData、driverGateway（过渡）、queryAssets、schemaDiff、workflow、dashboard、dataSync，合计 **112 个域客户端方法 / 108 条路由**，契约见 [HTTP API 契约](docs/architecture/platform/web-http-api.md)（v1.10.1）。要点：
 
 - `packages/backend-client` 域客户端是 HTTP 面的唯一契约来源；桌面 Tauri command 与 server HTTP handler 是同一用例的两个薄绑定，桌面 IPC wire 逐字节不变。
 - `packages/web/` 浏览器壳落地（HTTP transport、SSE 事件流、108 键路由分发）；web 不支持名单收敛至 134 个 legacy 桌面命令（`webUnsupportedMethods.ts`，文件系统/对话框等桌面专属语义留表）。

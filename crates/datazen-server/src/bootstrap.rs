@@ -1,4 +1,4 @@
-//! 唯一 composition root（team-server §2.3）。
+//! 唯一 composition root（web-server-host §2.3）。
 //!
 //! 组装顺序是设计裁决（§2.3 的 A → N 步）：
 //!

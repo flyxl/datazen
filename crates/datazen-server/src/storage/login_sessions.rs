@@ -1,6 +1,6 @@
 //! 登录会话存储（WR-D3 第一刀）：`login_sessions` 表（v5）的宿主侧仓储。
 //!
-//! 会话是**服务端行**，不是自包含令牌（team-server §4.3）：登出、撤销与
+//! 会话是**服务端行**，不是自包含令牌（web-server-host §4.3）：登出、撤销与
 //! 权限变更因此可以立即生效。本模块实现三个动词：
 //!
 //! - [`LoginSessions::create`]：登录成功后落行（绝对/空闲过期、权限版本
@@ -61,7 +61,7 @@ impl LoginSessionMode {
     }
 }
 
-/// 撤销原因（§4.3 `revoke_reason` CHECK 取值，与 team-server §4.5 逐字一致）。
+/// 撤销原因（§4.3 `revoke_reason` CHECK 取值，与 web-server-host §4.5 逐字一致）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RevokeReason {
     /// 用户登出。
@@ -365,7 +365,7 @@ impl LoginSessions {
     }
 
     /// 只读校验：与 [`Self::validate`] 同一套拒绝面（撤销/绝对窗/空闲窗），
-    /// 但**不写回空闲窗**。SSE 心跳周期的权限复核用这一条——team-server
+    /// 但**不写回空闲窗**。SSE 心跳周期的权限复核用这一条——web-server-host
     /// §8.3 明文：心跳不刷新登录空闲期（`SessionDirectory::touch` 只更新
     /// 业务活动时间；登录空闲期只由入站业务请求顺延）。
     pub fn peek(

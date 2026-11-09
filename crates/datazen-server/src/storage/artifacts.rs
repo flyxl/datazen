@@ -2,7 +2,7 @@
 //!
 //! 字节半边是构造时给定的**受控目录**（`<root>/<artifact_id>/<index>.chunk`，
 //! 打开期 0o700），元数据半边是管理库的 `artifact_metadata` 表——即
-//! [team-server §10.1](../../../../../docs/architecture/platform/team-server-and-auth.md)
+//! [web-server-host §10.1](../../../../../docs/architecture/platform/web-server-host.md)
 //! 的「字节存储 + 元数据表」组合。语义与内核 `FileArtifactRepository`
 //! **逐方法对齐**（同一端口、另一适配器）：
 //!

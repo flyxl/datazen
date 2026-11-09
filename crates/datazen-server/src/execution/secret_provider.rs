@@ -1,6 +1,6 @@
 //! `SecretProvider` 的服务端适配器 + 版本化秘密材料的存储半边（WR-D4）。
 //!
-//! [team-server §10.2](../../../../../docs/architecture/platform/team-server-and-auth.md)
+//! [web-server-host §10.2](../../../../../docs/architecture/platform/web-server-host.md)
 //! 的「服务端密钥管理适配」：桌面钥匙串路径在服务端不适用（无用户钥匙串），
 //! 材料落管理库的 `stored_secret` / `stored_secret_version` 两表（v7），
 //! **行内只有密文**。加密原语沿用本 crate 既有依赖（sha2 + hmac，与

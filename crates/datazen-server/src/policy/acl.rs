@@ -1,4 +1,4 @@
-//! 资源 ACL 求值（team-server §6.1 求值顺序的纯函数半边）。
+//! 资源 ACL 求值（web-server-host §6.1 求值顺序的纯函数半边）。
 //!
 //! [`evaluate`] 吃的是**快照**（角色 + ACL 行），不是连接——数据库读取
 //! 与组织边界检查在 [`crate::policy::PolicyService::authorize`]，这里只

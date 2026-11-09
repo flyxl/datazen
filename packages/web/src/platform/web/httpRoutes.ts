@@ -1,5 +1,5 @@
 /**
- * Web HTTP 分发表（WR-E2）——`docs/architecture/platform/http-api-contract.md`
+ * Web HTTP 分发表（WR-E2）——`docs/architecture/platform/web-http-api.md`
  * §6.1–§6.9 冻结的域面路由。本表是 web 形态「方法 → { HTTP 方法、路径模板、
  * 请求体形状 }」的唯一定点；逐条对照契约各域表，execution/job 两域用概要
  * §6.3 的骨架表（契约 §10 声明其被收编）。
@@ -414,7 +414,7 @@ const connectionCommandsQuery = (payload: unknown): string =>
   scalarQuery([['dbSessionId', field(payload, 'dbSessionId')]]);
 
 /* ------------------------------------------------------------------ */
-/* readArtifact：三模式互斥的查询参数 + 双模式响应解码（§6.5 / team-server §11）。 */
+/* readArtifact：三模式互斥的查询参数 + 双模式响应解码（§6.5 / web-server-host §11）。 */
 /* ------------------------------------------------------------------ */
 
 const readArtifactQuery = (payload: unknown): string => {
@@ -437,7 +437,7 @@ const readArtifactQuery = (payload: unknown): string => {
   );
 };
 
-/** 信封补充字段的服务端响应头（WR-D2 落地前按 team-server §11 语义约定的键名）。 */
+/** 信封补充字段的服务端响应头（WR-D2 落地前按 web-server-host §11 语义约定的键名）。 */
 const ARTIFACT_HEADER_TOTAL_CHUNKS = 'x-dz-total-chunks';
 const ARTIFACT_HEADER_PUBLISHED_CHUNKS = 'x-dz-published-chunk-count';
 const ARTIFACT_HEADER_PUBLISHED_BYTES = 'x-dz-published-byte-length';
@@ -553,7 +553,7 @@ export const HTTP_ROUTES: Partial<Record<keyof MethodMap, RouteSpec>> = {
     pathId: pathSessionId,
   },
 
-  // ── execution（概要 §6.3 骨架；异步接受 202 + 稳定 ID，team-server §9.3）──
+  // ── execution（概要 §6.3 骨架；异步接受 202 + 稳定 ID，web-server-host §9.3）──
   executeInSession: {
     httpMethod: 'POST',
     pathTemplate: '/sessions/{id}/executions',

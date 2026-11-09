@@ -1,6 +1,6 @@
 //! 服务端管理库（WR-D2 第一片）：SQLite 落地与迁移执行器。
 //!
-//! 权威与计划的一处已记录差异：[team-server §10.1](../../../../../docs/architecture/platform/team-server-and-auth.md)
+//! 权威与计划的一处已记录差异：[web-server-host §10.1](../../../../../docs/architecture/platform/web-server-host.md)
 //! 与[系统概要 §6.4](../../../../../docs/architecture/platform/system-overview.md)
 //! **推荐**生产首版用 PostgreSQL 管理库；web-ready 计划（WR-D2，用户已确认）
 //! 裁决服务端**首版先落 SQLite**——同一 domain trait、另一适配器，先把

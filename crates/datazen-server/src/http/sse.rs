@@ -1,4 +1,4 @@
-//! WR-D5：`EventSink` 的 SSE 适配（team-server §8 的 server 落地）。
+//! WR-D5：`EventSink` 的 SSE 适配（web-server-host §8 的 server 落地）。
 //!
 //! 端口侧（[`MemoryEventSink`]，WR-D5 前置刀）只做「事件事实的中继」；本模块
 //! 承接它模块头登记的全部 SSE 层职责：
