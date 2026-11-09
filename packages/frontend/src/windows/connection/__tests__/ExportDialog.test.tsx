@@ -287,11 +287,42 @@ describe('ExportDialog column selection, schema prefetch and session guards', ()
     expect(exportTablesStream).not.toHaveBeenCalled();
   });
 
-  it('shows Missing connection for loaded rows without a session', async () => {
+  it('exports loaded rows without a session (task 4: provided needs no session)', async () => {
     renderDialog({ dbSessionId: undefined });
     fireEvent.click(screen.getByRole('button', { name: 'export.export' }));
-    await waitFor(() => expect(screen.getByText('Missing connection')).toBeInTheDocument());
-    expect(downloadBlobMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1));
+    expect(downloadBlobMock).toHaveBeenCalledWith(
+      'id\n1\n2',
+      'users.csv',
+      'text/csv',
+    );
+    expect(exportTablesStream).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByText('export.success')).toBeInTheDocument());
+  });
+
+  it('exports selected rows without a session', async () => {
+    renderDialog({
+      dbSessionId: undefined,
+      rows: [
+        { id: 1 },
+        { id: 2 },
+        { id: 3 },
+      ],
+      selectedRows: new Set([2]),
+      defaultScope: 'selected',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'export.export' }));
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1));
+    expect(downloadBlobMock).toHaveBeenCalledWith('id\n3', 'users.csv', 'text/csv');
+    expect(exportTablesStream).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByText('export.success')).toBeInTheDocument());
+  });
+
+  it('hides the entire_table scope without a session', () => {
+    renderDialog({ dbSessionId: undefined });
+    const values = Array.from(scopeSelect().options).map((o) => o.value);
+    expect(values).toContain('current_page');
+    expect(values).not.toContain('entire_table');
   });
 
   it('changes scope through the range select', async () => {

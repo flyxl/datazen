@@ -448,6 +448,77 @@ describe('DataExportDialog filtered scope (DB-15)', () => {
   });
 });
 
+describe('DataExportDialog without a session (task 4)', () => {
+  it('exports the current page without dbSessionId, via the frontend formatter', async () => {
+    const { getByText } = render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[
+          [1, 'a'],
+          [2, 'b'],
+        ]}
+        tableName="users"
+      />,
+    );
+    fireEvent.click(getByText('export.export'));
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1));
+    expect(downloadBlobMock).toHaveBeenCalledWith(
+      'id,name\n1,a\n2,b',
+      'users.csv',
+      'text/csv',
+    );
+    expect(exportTablesStream).not.toHaveBeenCalled();
+    await waitFor(() => expect(getByText('export.success')).toBeInTheDocument());
+  });
+
+  it('exports selected rows without dbSessionId', async () => {
+    const { getByText } = render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[
+          [1, 'a'],
+          [2, 'b'],
+          [3, 'c'],
+        ]}
+        selectedRows={new Set([2])}
+        tableName="users"
+        initialScope="selected"
+      />,
+    );
+    fireEvent.click(getByText('export.export'));
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1));
+    expect(downloadBlobMock).toHaveBeenCalledWith(
+      'id,name\n3,c',
+      'users.csv',
+      'text/csv',
+    );
+    expect(exportTablesStream).not.toHaveBeenCalled();
+  });
+
+  it('hides entire/filtered scopes without dbSessionId', () => {
+    render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        totalRows={100}
+        onBuildFilteredExportSql={vi.fn().mockResolvedValue('SELECT 1;')}
+      />,
+    );
+    const range = document.querySelectorAll('select')[1]!;
+    const values = Array.from(range.options).map((o) => o.value);
+    expect(values).toContain('current_page');
+    expect(values).not.toContain('entire_table');
+    expect(values).not.toContain('filtered_table');
+  });
+});
+
 describe('DataExportDialog entire-table scope (item 3b)', () => {
   it('offers xlsx for entire tables and routes them to Rust as a table source', async () => {
     const { getByText } = render(
