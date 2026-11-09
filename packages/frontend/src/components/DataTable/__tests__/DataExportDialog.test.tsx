@@ -28,6 +28,7 @@ vi.mock('../../ui/Select', () => ({
 }));
 
 const exportTablesStream = vi.fn();
+const cancelExportTablesMock = vi.fn();
 
 const downloadBlobMock = vi.hoisted(() => vi.fn());
 vi.mock('../../../platform/blobTablesExporter', async (importOriginal) => {
@@ -59,6 +60,8 @@ function bindFakeExporter(): void {
     },
     tablesExporter: {
       exportTables: (...args: unknown[]) => exportTablesStream(...(args as [never])),
+      cancelExportTables: (...args: unknown[]) =>
+        cancelExportTablesMock(...(args as [never])),
     },
   });
 }
@@ -78,6 +81,7 @@ beforeEach(() => {
   envState.desktop = false;
   bindFakeExporter();
   exportTablesStream.mockResolvedValue({ Saved: 2 });
+  cancelExportTablesMock.mockResolvedValue(true);
 });
 
 describe('DataExportDialog', () => {
@@ -586,6 +590,96 @@ describe('DataExportDialog entire-table scope (item 3b)', () => {
     fireEvent.click(getByText('export.export'));
     await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
     expect(queryByText('export.success')).not.toBeInTheDocument();
+  });
+});
+
+describe('DataExportDialog cancellation (item 1b)', () => {
+  function renderEntireTable() {
+    envState.desktop = true;
+    return render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dbSessionId="c1"
+        totalRows={100}
+        initialScope="entire_table"
+      />,
+    );
+  }
+
+  it('disables the cancel button before the export starts', () => {
+    const { getByText } = renderEntireTable();
+    expect(getByText('export.cancelExport')).toBeInTheDocument();
+    expect(getByText('export.cancelExport')).toBeDisabled();
+  });
+
+  it('cancels mid-flight and reports the partial file deleted', async () => {
+    let resolveExport!: (result: unknown) => void;
+    exportTablesStream.mockImplementation(
+      () => new Promise((resolve) => { resolveExport = resolve; }),
+    );
+    const { getByText, getByTestId, queryByText } = renderEntireTable();
+    fireEvent.click(getByText('export.export'));
+    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
+
+    const cancelButton = getByText('export.cancelExport');
+    expect(cancelButton).toBeEnabled();
+    fireEvent.click(cancelButton);
+    // While the cancel is in flight the button shows the cancelling
+    // label and cannot be pressed again.
+    expect(getByText('export.cancelling')).toBeInTheDocument();
+    expect(getByText('export.cancelling')).toBeDisabled();
+    const request = exportTablesStream.mock.calls[0]![0] as {
+      cancelToken?: string;
+    };
+    expect(cancelExportTablesMock).toHaveBeenCalledTimes(1);
+    expect(cancelExportTablesMock).toHaveBeenCalledWith(request.cancelToken);
+
+    resolveExport({ Aborted: { partialDeleted: true } });
+    await waitFor(() =>
+      expect(getByTestId('export-aborted-panel')).toBeInTheDocument(),
+    );
+    expect(getByText('export.cancelledPartialDeleted')).toBeInTheDocument();
+    expect(queryByText('export.success')).not.toBeInTheDocument();
+    // The aborted panel leaves only Close in the footer.
+    expect(getByText('common.close')).toBeInTheDocument();
+    expect(queryByText('export.export')).not.toBeInTheDocument();
+  });
+
+  it('reports the partial file kept when the backend could not delete it', async () => {
+    let resolveExport!: (result: unknown) => void;
+    exportTablesStream.mockImplementation(
+      () => new Promise((resolve) => { resolveExport = resolve; }),
+    );
+    const { getByText, getByTestId } = renderEntireTable();
+    fireEvent.click(getByText('export.export'));
+    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
+    fireEvent.click(getByText('export.cancelExport'));
+    resolveExport({ Aborted: { partialDeleted: false } });
+    await waitFor(() =>
+      expect(getByTestId('export-aborted-panel')).toBeInTheDocument(),
+    );
+    expect(getByText('export.cancelledPartialKept')).toBeInTheDocument();
+  });
+
+  it('offers no cancel button for the provided (current-page) scope', () => {
+    envState.desktop = true;
+    const { queryByText } = render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dbSessionId="c1"
+      />,
+    );
+    // Current page is a one-shot provided export — nothing to cancel.
+    expect(queryByText('export.cancelExport')).not.toBeInTheDocument();
+    expect(queryByText('export.cancelling')).not.toBeInTheDocument();
   });
 });
 

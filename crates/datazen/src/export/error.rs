@@ -61,3 +61,14 @@ impl From<ExportError> for crate::feature_error::FeatureError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn string_converts_to_internal_error() {
+        let error = ExportError::from("boom".to_string());
+        assert!(matches!(error, ExportError::Internal(message) if message == "boom"));
+    }
+}

@@ -106,6 +106,107 @@ describe('runBatchExportJob', () => {
   });
 });
 
+describe('runBatchExportJob cancellation (item 1b)', () => {
+  const loadTableExportData = vi.fn();
+  const exportTables = vi.fn();
+  const cancelExport = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    exportTables.mockResolvedValue({ Saved: 42 });
+    cancelExport.mockResolvedValue(true);
+    loadTableExportData.mockImplementation(async (name: string) => {
+      if (name === 'users') return users;
+      if (name === 'orders') return orders;
+      throw new Error(`unknown table ${name}`);
+    });
+  });
+
+  function base(extra: Partial<RunBatchExportJobOptions> = {}): RunBatchExportJobOptions {
+    return {
+      tableNames: ['users'],
+      mode: 'data_and_structure',
+      dataFormat: 'csv',
+      outputMode: 'zip',
+      dbSessionId: 'c1',
+      databaseType: 'postgres',
+      loadTableExportData,
+      exportTables,
+      cancelExport,
+      ...extra,
+    };
+  }
+
+  it('delivers the cancel handle before loading metadata', async () => {
+    let handle: (() => void) | null = null;
+    const pending = runBatchExportJob(
+      base({ onCancelHandle: (cancel) => { handle = cancel; } }),
+    );
+    // The handle is out synchronously with the call — while metadata is
+    // still loading and before the exporter is ever called — so a cancel
+    // during metadata loading can stop the batch.
+    expect(handle).toBeTypeOf('function');
+    expect(exportTables).not.toHaveBeenCalled();
+    await pending;
+  });
+
+  it('cancel during metadata loading stops the batch without calling the exporter', async () => {
+    let resolveLoad!: (value: typeof users) => void;
+    loadTableExportData.mockImplementation(
+      () => new Promise((resolve) => { resolveLoad = resolve; }),
+    );
+    let handle!: () => void;
+    const pending = runBatchExportJob(
+      base({ onCancelHandle: (cancel) => { handle = cancel; } }),
+    );
+    await vi.waitFor(() => expect(loadTableExportData).toHaveBeenCalled());
+    handle();
+    resolveLoad(users);
+    await expect(pending).resolves.toEqual({ status: 'aborted', partialDeleted: true });
+    expect(exportTables).not.toHaveBeenCalled();
+    expect(cancelExport).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancel mid-export calls cancelExport with the request token', async () => {
+    let resolveExport!: (result: unknown) => void;
+    exportTables.mockImplementation(
+      () => new Promise((resolve) => { resolveExport = resolve; }),
+    );
+    let handle!: () => void;
+    const pending = runBatchExportJob(
+      base({ onCancelHandle: (cancel) => { handle = cancel; } }),
+    );
+    await vi.waitFor(() => expect(exportTables).toHaveBeenCalled());
+    handle();
+    const request = exportTables.mock.calls[0]![0] as ExportTablesRequest;
+    expect(cancelExport).toHaveBeenCalledTimes(1);
+    expect(cancelExport).toHaveBeenCalledWith(request.cancelToken);
+    expect(typeof request.cancelToken).toBe('string');
+    resolveExport({ Aborted: { partialDeleted: true } });
+    await expect(pending).resolves.toEqual({ status: 'aborted', partialDeleted: true });
+  });
+
+  it('maps Aborted from the exporter and reports the partial kept', async () => {
+    exportTables.mockResolvedValue({ Aborted: { partialDeleted: false } });
+    await expect(runBatchExportJob(base())).resolves.toEqual({
+      status: 'aborted',
+      partialDeleted: false,
+    });
+  });
+
+  it('cancel handle is idempotent — the command is invoked at most once', async () => {
+    let handle!: () => void;
+    const pending = runBatchExportJob(
+      base({ onCancelHandle: (cancel) => { handle = cancel; } }),
+    );
+    handle();
+    handle();
+    handle();
+    expect(cancelExport).toHaveBeenCalledTimes(1);
+    await expect(pending).resolves.toEqual({ status: 'aborted', partialDeleted: true });
+  });
+});
+
 describe('exportSingleTableViaRust (item 3b)', () => {
   const exportTables = vi.fn();
 
@@ -181,6 +282,34 @@ describe('exportSingleTableViaRust (item 3b)', () => {
     const request = exportTables.mock.calls[0]![0] as ExportTablesRequest;
     expect(request.database).toBe('appdb');
     expect(request.schema).toBe('public');
+  });
+
+  it('delivers the cancel handle before fetching and maps Aborted', async () => {
+    const cancelExport = vi.fn().mockResolvedValue(true);
+    let resolveExport!: (result: unknown) => void;
+    exportTables.mockImplementation(
+      () => new Promise((resolve) => { resolveExport = resolve; }),
+    );
+    let handle: (() => void) | null = null;
+    const pending = exportSingleTableViaRust(
+      base({ cancelExport, onCancelHandle: (cancel) => { handle = cancel; } }),
+    );
+    await vi.waitFor(() => expect(exportTables).toHaveBeenCalled());
+    expect(handle).toBeTypeOf('function');
+    handle!();
+    const request = exportTables.mock.calls[0]![0] as ExportTablesRequest;
+    expect(cancelExport).toHaveBeenCalledTimes(1);
+    expect(cancelExport).toHaveBeenCalledWith(request.cancelToken);
+    resolveExport({ Aborted: { partialDeleted: true } });
+    await expect(pending).resolves.toEqual({ status: 'aborted', partialDeleted: true });
+  });
+
+  it('maps Aborted with partialDeleted false and reports the partial kept', async () => {
+    exportTables.mockResolvedValue({ Aborted: { partialDeleted: false } });
+    await expect(exportSingleTableViaRust(base())).resolves.toEqual({
+      status: 'aborted',
+      partialDeleted: false,
+    });
   });
 });
 

@@ -6,6 +6,7 @@ import type { ColumnSchema } from '../../../types';
 
 // Item 3b: the entire-table scope rides the tables-exporter port.
 const exportTablesStream = vi.fn();
+const cancelExportTablesMock = vi.fn();
 
 // Task 3: the loaded scopes ride ProvidedDataFetcher, which Blob-downloads
 // on this (non-desktop) test build instead of touching the Rust exporter.
@@ -39,6 +40,8 @@ function bindFakeExporter(): void {
     },
     tablesExporter: {
       exportTables: (...args: unknown[]) => exportTablesStream(...(args as [never])),
+      cancelExportTables: (...args: unknown[]) =>
+        cancelExportTablesMock(...(args as [never])),
     },
   });
 }
@@ -107,6 +110,7 @@ beforeEach(() => {
   envState.desktop = false;
   bindFakeExporter();
   exportTablesStream.mockResolvedValue({ Saved: 2 });
+  cancelExportTablesMock.mockResolvedValue(true);
 });
 
 /** The scope `<Select>` is the second combobox rendered (format first, scope second). */
@@ -224,6 +228,46 @@ describe('ExportDialog entire-table scope (item 3b)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'export.export' }));
     await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
     expect(screen.queryByText('export.success')).not.toBeInTheDocument();
+  });
+});
+
+describe('ExportDialog cancellation (item 1b)', () => {
+  it('cancels mid-flight and reports the partial file deleted', async () => {
+    envState.desktop = true;
+    let resolveExport!: (result: unknown) => void;
+    exportTablesStream.mockImplementation(
+      () => new Promise((resolve) => { resolveExport = resolve; }),
+    );
+    renderDialog({ defaultScope: 'entire_table' });
+    fireEvent.click(screen.getByRole('button', { name: 'export.export' }));
+    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
+
+    const cancelButton = screen.getByRole('button', { name: 'export.cancelExport' });
+    expect(cancelButton).toBeEnabled();
+    fireEvent.click(cancelButton);
+    expect(screen.getByText('export.cancelling')).toBeInTheDocument();
+    expect(screen.getByText('export.cancelling')).toBeDisabled();
+    const request = exportTablesStream.mock.calls[0]![0] as {
+      cancelToken?: string;
+    };
+    expect(cancelExportTablesMock).toHaveBeenCalledTimes(1);
+    expect(cancelExportTablesMock).toHaveBeenCalledWith(request.cancelToken);
+
+    resolveExport({ Aborted: { partialDeleted: true } });
+    await waitFor(() =>
+      expect(screen.getByTestId('export-aborted-panel')).toBeInTheDocument(),
+    );
+    expect(screen.getByText('export.cancelledPartialDeleted')).toBeInTheDocument();
+    expect(screen.queryByText('export.success')).not.toBeInTheDocument();
+    expect(screen.getByText('common.close')).toBeInTheDocument();
+  });
+
+  it('offers no cancel button for the provided (current-page) scope', () => {
+    envState.desktop = true;
+    renderDialog({ defaultScope: 'current_page' });
+    expect(
+      screen.queryByRole('button', { name: 'export.cancelExport' }),
+    ).not.toBeInTheDocument();
   });
 });
 

@@ -99,8 +99,8 @@ mod tests {
     use super::*;
     use crate::export::{
         build_file_plans, prepare_export, write_data_file, DataFormat, ExportError, ExportEvents,
-        ExportMode, ExportProgressEvent, ExportSource, ExportTablesRequest, FilePlan, OutputMode,
-        TableDataSource, TableExportInput,
+        ExportMode, ExportProgressEvent, ExportSource, ExportTablesRequest, ExportTablesResult,
+        FilePlan, OutputMode, TableDataSource, TableExportInput,
     };
     use crate::jobs::CancelToken;
     use datazen_driver_api::mock_driver::{MockDriver, MockDriverOptions};
@@ -228,6 +228,108 @@ mod tests {
     }
 
     struct NoopEvents;
+
+    /// Test seam: replays two row batches, cancelling the shared token
+    /// between them — the second batch must never be written, and the
+    /// stream still returns `Ok` (a source that keeps delivering after
+    /// the cancel), so the writer's own checks are what stop the run.
+    struct CancellingSource {
+        driver: Arc<dyn DatabaseDriver>,
+        columns: Vec<ColumnInfo>,
+        first: Vec<Vec<Option<Value>>>,
+        second: Vec<Vec<Option<Value>>>,
+        token: CancelToken,
+    }
+
+    impl CancellingSource {
+        fn new(
+            columns: Vec<ColumnInfo>,
+            first: Vec<Vec<Option<Value>>>,
+            second: Vec<Vec<Option<Value>>>,
+            token: CancelToken,
+        ) -> Self {
+            Self {
+                driver: test_driver(),
+                columns,
+                first,
+                second,
+                token,
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl ExportSource for CancellingSource {
+        async fn resolve_source(
+            &self,
+            _session_id: &str,
+        ) -> Result<(Arc<dyn DatabaseDriver>, bool, bool), ExportError> {
+            Ok((self.driver.clone(), false, false))
+        }
+
+        async fn stream_query(
+            &self,
+            _session_id: &str,
+            sql: &str,
+            _target: datazen_driver_api::SqlTarget<'_>,
+            callback: QueryStreamCallback,
+        ) -> Result<(), ExportError> {
+            callback(QueryStreamEvent::StatementStart {
+                index: 0,
+                sql: sql.to_string(),
+                columns: self.columns.clone(),
+            });
+            callback(QueryStreamEvent::Rows {
+                index: 0,
+                rows: self.first.clone(),
+            });
+            self.token.cancel();
+            callback(QueryStreamEvent::Rows {
+                index: 0,
+                rows: self.second.clone(),
+            });
+            callback(QueryStreamEvent::StatementEnd {
+                index: 0,
+                rows_affected: None,
+                execution_time_ms: 0,
+                truncated: false,
+            });
+            callback(QueryStreamEvent::Done { total_time_ms: 0 });
+            Ok(())
+        }
+    }
+
+    /// Test seam: a well-behaved source that cancels the shared token
+    /// when its first stream finishes — the next table must never start.
+    struct CancelAfterFirstStreamSource {
+        inner: StubSource,
+        token: CancelToken,
+    }
+
+    #[async_trait::async_trait]
+    impl ExportSource for CancelAfterFirstStreamSource {
+        async fn resolve_source(
+            &self,
+            session_id: &str,
+        ) -> Result<(Arc<dyn DatabaseDriver>, bool, bool), ExportError> {
+            self.inner.resolve_source(session_id).await
+        }
+
+        async fn stream_query(
+            &self,
+            session_id: &str,
+            sql: &str,
+            target: datazen_driver_api::SqlTarget<'_>,
+            callback: QueryStreamCallback,
+        ) -> Result<(), ExportError> {
+            let result = self
+                .inner
+                .stream_query(session_id, sql, target, callback)
+                .await;
+            self.token.cancel();
+            result
+        }
+    }
 
     impl ExportEvents for NoopEvents {
         fn progress_callback(&self) -> Arc<dyn Fn(ExportProgressEvent) + Send + Sync> {
@@ -1971,6 +2073,368 @@ mod tests {
         use std::io::Read as _;
         entry.read_to_string(&mut text).unwrap();
         assert_eq!(text, "id,name\n1,a\n2,\n");
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    // --- Cancellation -------------------------------------------------------
+
+    #[test]
+    fn export_tables_result_aborted_reports_partial_deleted_honestly() {
+        let deleted = serde_json::to_value(ExportTablesResult::Aborted {
+            partial_deleted: true,
+        })
+        .unwrap();
+        assert_eq!(
+            deleted,
+            serde_json::json!({"Aborted": {"partialDeleted": true}})
+        );
+        let kept = serde_json::to_value(ExportTablesResult::Aborted {
+            partial_deleted: false,
+        })
+        .unwrap();
+        assert_eq!(
+            kept,
+            serde_json::json!({"Aborted": {"partialDeleted": false}})
+        );
+        // The wire shape must stay the TS mirror: PascalCase variants.
+        let saved = serde_json::to_value(ExportTablesResult::Saved(3)).unwrap();
+        assert_eq!(saved, serde_json::json!({"Saved": 3}));
+        let cancelled = serde_json::to_value(ExportTablesResult::Cancelled).unwrap();
+        assert_eq!(cancelled, serde_json::json!("Cancelled"));
+    }
+
+    #[test]
+    fn export_tables_request_cancel_token_defaults_to_none() {
+        let req: ExportTablesRequest = serde_json::from_value(serde_json::json!({
+            "dbSessionId": "s",
+            "mode": "data_only",
+            "dataFormat": "csv",
+            "outputMode": "single",
+            "tables": [],
+        }))
+        .unwrap();
+        assert_eq!(req.cancel_token, None);
+        let req: ExportTablesRequest = serde_json::from_value(serde_json::json!({
+            "dbSessionId": "s",
+            "cancelToken": "tok-1",
+            "mode": "data_only",
+            "dataFormat": "csv",
+            "outputMode": "single",
+            "tables": [],
+        }))
+        .unwrap();
+        assert_eq!(req.cancel_token.as_deref(), Some("tok-1"));
+    }
+
+    fn one_row(value: i64, name: &str) -> Vec<Vec<Option<Value>>> {
+        vec![vec![
+            Some(Value::Integer(value)),
+            Some(Value::String(name.into())),
+        ]]
+    }
+
+    #[tokio::test]
+    async fn write_data_file_precancelled_token_writes_nothing() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Csv,
+            vec![table_item("t", TableDataSource::Table)],
+        );
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.csv");
+        let token = CancelToken::new();
+        token.cancel();
+        let err = write_data_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Csv,
+            None,
+            &dest,
+            &token,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Cancelled),
+            "unexpected error: {err:?}"
+        );
+        assert!(
+            !dest.exists(),
+            "a cancelled export must not create its file"
+        );
+        assert_eq!(
+            source.stream_calls.load(Ordering::Relaxed),
+            0,
+            "a pre-cancelled run must not stream at all"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn write_data_file_cancels_mid_stream_and_writes_no_further_rows() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Csv,
+            vec![table_item("t", TableDataSource::Table)],
+        );
+        let token = CancelToken::new();
+        let source =
+            CancellingSource::new(two_cols(), one_row(1, "a"), one_row(2, "b"), token.clone());
+        let dest = temp_file("out.csv");
+        let err = write_data_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Csv,
+            None,
+            &dest,
+            &token,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Cancelled),
+            "unexpected error: {err:?}"
+        );
+        // The sink buffers below the 64KB flush watermark, so the first
+        // batch may still sit in memory when the run stops — what matters
+        // is that the batch delivered after the cancel never reaches disk
+        // (and the caller removes the partial file; see the
+        // run_single_export test below).
+        assert!(
+            !std::fs::read_to_string(&dest).unwrap().contains("2,b"),
+            "the batch delivered after the cancel must not be written"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn write_binary_file_precancelled_token_writes_nothing() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Xlsx,
+            vec![table_item("t", TableDataSource::Table)],
+        );
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.xlsx");
+        let token = CancelToken::new();
+        token.cancel();
+        let err = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Xlsx,
+            &dest,
+            &token,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Cancelled),
+            "unexpected error: {err:?}"
+        );
+        assert!(
+            !dest.exists(),
+            "a cancelled export must not create its file"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn write_binary_file_cancels_mid_stream() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Xlsx,
+            vec![table_item("t", TableDataSource::Table)],
+        );
+        let token = CancelToken::new();
+        let source =
+            CancellingSource::new(two_cols(), one_row(1, "a"), one_row(2, "b"), token.clone());
+        let dest = temp_file("out.xlsx");
+        let err = crate::export::write_binary_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Xlsx,
+            &dest,
+            &token,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Cancelled),
+            "unexpected error: {err:?}"
+        );
+        // The binary formatter owns the file from begin(); the run (not
+        // the writer) removes the partial file — covered by the
+        // run_single_export xlsx test below.
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn run_single_export_cancels_mid_stream_and_removes_partial_file() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Csv,
+            vec![table_item("t", TableDataSource::Table)],
+        );
+        let plans = build_file_plans(&req).unwrap();
+        let token = CancelToken::new();
+        let source =
+            CancellingSource::new(two_cols(), one_row(1, "a"), one_row(2, "b"), token.clone());
+        let dest = temp_file("out.csv");
+        let err =
+            crate::export::run_single_export(&NoopEvents, &source, &req, &plans, &dest, &token)
+                .await
+                .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Cancelled),
+            "unexpected error: {err:?}"
+        );
+        assert!(
+            !dest.exists(),
+            "a cancelled export must not leave a partial file"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn run_single_export_cancels_mid_stream_and_removes_partial_xlsx() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Xlsx,
+            vec![table_item("t", TableDataSource::Table)],
+        );
+        let plans = build_file_plans(&req).unwrap();
+        let token = CancelToken::new();
+        let source =
+            CancellingSource::new(two_cols(), one_row(1, "a"), one_row(2, "b"), token.clone());
+        let dest = temp_file("out.xlsx");
+        let err =
+            crate::export::run_single_export(&NoopEvents, &source, &req, &plans, &dest, &token)
+                .await
+                .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Cancelled),
+            "unexpected error: {err:?}"
+        );
+        assert!(
+            !dest.exists(),
+            "a cancelled export must not leave a partial file"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn run_single_export_precancelled_token_writes_nothing() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Csv,
+            vec![table_item("t", TableDataSource::Table)],
+        );
+        let plans = build_file_plans(&req).unwrap();
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.csv");
+        let token = CancelToken::new();
+        token.cancel();
+        let err =
+            crate::export::run_single_export(&NoopEvents, &source, &req, &plans, &dest, &token)
+                .await
+                .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Cancelled),
+            "unexpected error: {err:?}"
+        );
+        assert!(
+            !dest.exists(),
+            "a cancelled export must not create its file"
+        );
+        assert_eq!(
+            source.stream_calls.load(Ordering::Relaxed),
+            0,
+            "a pre-cancelled run must not stream at all"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    fn table_with_ddl(name: &str) -> TableExportInput {
+        TableExportInput {
+            table_name: name.into(),
+            schema: None,
+            columns: vec!["id".into()],
+            ddl: Some(format!("CREATE TABLE {name} (id INT);")),
+            source: TableDataSource::Table,
+            primary_key: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn run_single_export_stops_between_tables_on_cancel() {
+        let req = request(
+            ExportMode::DataAndStructure,
+            DataFormat::Csv,
+            vec![table_with_ddl("a"), table_with_ddl("b")],
+        );
+        let plans = build_file_plans(&req).unwrap();
+        assert_eq!(plans.len(), 4, "ddl + data per table");
+        let token = CancelToken::new();
+        let inner = StubSource::new(false, false, two_cols(), two_rows());
+        let calls = Arc::clone(&inner.stream_calls);
+        let source = CancelAfterFirstStreamSource {
+            inner,
+            token: token.clone(),
+        };
+        let dest = temp_file("out.csv");
+        let err =
+            crate::export::run_single_export(&NoopEvents, &source, &req, &plans, &dest, &token)
+                .await
+                .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Cancelled),
+            "unexpected error: {err:?}"
+        );
+        assert!(
+            !dest.exists(),
+            "a cancelled export must not leave a partial file"
+        );
+        assert_eq!(
+            calls.load(Ordering::Relaxed),
+            1,
+            "the second table must never start streaming"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn run_zip_export_cancels_mid_stream_and_removes_target() {
+        let mut req = request(
+            ExportMode::DataAndStructure,
+            DataFormat::Csv,
+            vec![table_with_ddl("a")],
+        );
+        req.output_mode = OutputMode::Zip;
+        let plans = build_file_plans(&req).unwrap();
+        assert_eq!(plans.len(), 2, "ddl + data for one table");
+        let token = CancelToken::new();
+        let source =
+            CancellingSource::new(two_cols(), one_row(1, "a"), one_row(2, "b"), token.clone());
+        let dest = temp_file("out.zip");
+        let err = crate::export::run_zip_export(&NoopEvents, &source, &req, &plans, &dest, &token)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Cancelled),
+            "unexpected error: {err:?}"
+        );
+        assert!(
+            !dest.exists(),
+            "a cancelled export must not leave a partial archive"
+        );
         let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 }
