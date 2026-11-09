@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 import { render, fireEvent, waitFor, cleanup, screen } from '@testing-library/react';
+import * as XLSX from 'xlsx';
 import { DataExportDialog } from '../DataExportDialog';
 
 vi.mock('../../../hooks/useI18n', () => ({
@@ -27,6 +28,13 @@ vi.mock('../../ui/Select', () => ({
 }));
 
 const exportTablesStream = vi.fn();
+
+const downloadBlobMock = vi.hoisted(() => vi.fn());
+vi.mock('../../../platform/blobTablesExporter', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../../../platform/blobTablesExporter')>();
+  return { ...actual, downloadBlob: (...args: unknown[]) => downloadBlobMock(...args) };
+});
 
 import { configurePlatform, clearPlatform } from '../../../platform/contracts';
 
@@ -110,7 +118,14 @@ describe('DataExportDialog', () => {
     );
     fireEvent.click(getByText('export.export'));
     await waitFor(() => {
-      expect(exportTablesStream).toHaveBeenCalled();
+      // Current page is a provided export now: formatted in the frontend
+      // and Blob-downloaded, never sent to the Rust exporter.
+      expect(downloadBlobMock).toHaveBeenCalledWith(
+        'id,name\n1,a',
+        'users.csv',
+        'text/csv',
+      );
+      expect(exportTablesStream).not.toHaveBeenCalled();
       expect(getByText('export.success')).toBeInTheDocument();
     });
     expect(onClose).not.toHaveBeenCalled();
@@ -118,7 +133,7 @@ describe('DataExportDialog', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('exports current page as a provided source (item 3c)', async () => {
+  it('exports current page via the frontend formatter, never the Rust exporter', async () => {
     const { getByText } = render(
       <DataExportDialog
         open
@@ -133,33 +148,17 @@ describe('DataExportDialog', () => {
       />,
     );
     fireEvent.click(getByText('export.export'));
-    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
-    const request = exportTablesStream.mock.calls[0]![0] as {
-      dataFormat: string;
-      tables: { tableName: string; columns: string[]; source: unknown }[];
-    };
-    expect(request.dataFormat).toBe('csv');
-    expect(request.tables).toEqual([
-      {
-        tableName: 'users',
-        columns: ['id', 'name'],
-        source: {
-          type: 'provided',
-          columns: [
-            { name: 'id', dataType: 'integer', nullable: true },
-            { name: 'name', dataType: 'varchar', nullable: true },
-          ],
-          rows: [
-            [1, 'a'],
-            [2, 'b'],
-          ],
-        },
-      },
-    ]);
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1));
+    expect(downloadBlobMock).toHaveBeenCalledWith(
+      'id,name\n1,a\n2,b',
+      'users.csv',
+      'text/csv',
+    );
+    expect(exportTablesStream).not.toHaveBeenCalled();
     await waitFor(() => expect(getByText('export.success')).toBeInTheDocument());
   });
 
-  it('exports selected rows only, as a provided source (item 3c)', async () => {
+  it('exports selected rows only, via the frontend formatter', async () => {
     const { getByText } = render(
       <DataExportDialog
         open
@@ -177,12 +176,13 @@ describe('DataExportDialog', () => {
       />,
     );
     fireEvent.click(getByText('export.export'));
-    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
-    const request = exportTablesStream.mock.calls[0]![0] as {
-      tables: { source: { type: string; rows: unknown[][] } }[];
-    };
-    expect(request.tables[0]!.source.type).toBe('provided');
-    expect(request.tables[0]!.source.rows).toEqual([[3, 'c']]);
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1));
+    expect(downloadBlobMock).toHaveBeenCalledWith(
+      'id,name\n3,c',
+      'users.csv',
+      'text/csv',
+    );
+    expect(exportTablesStream).not.toHaveBeenCalled();
   });
 
   it('offers sql_update in the format list (item 3d)', () => {
@@ -209,7 +209,7 @@ describe('DataExportDialog', () => {
     ]);
   });
 
-  it('exports xlsx through the Rust exporter, not the old binary path', async () => {
+  it('exports xlsx through the frontend formatter, not the Rust exporter', async () => {
     const { getByText } = render(
       <DataExportDialog
         open
@@ -224,14 +224,24 @@ describe('DataExportDialog', () => {
     fireEvent.change(selects[0], { target: { value: 'xlsx' } });
     fireEvent.click(getByText('export.export'));
     await waitFor(() => {
-      expect(exportTablesStream).toHaveBeenCalledTimes(1);
+      expect(downloadBlobMock).toHaveBeenCalledTimes(1);
     });
-    const request = exportTablesStream.mock.calls[0]![0] as {
-      dataFormat: string;
-      tables: { source: { type: string } }[];
-    };
-    expect(request.dataFormat).toBe('xlsx');
-    expect(request.tables[0]!.source.type).toBe('provided');
+    const [bytes, filename, mimeType] = downloadBlobMock.mock.calls[0]!;
+    expect(filename).toBe('users.xlsx');
+    expect(mimeType).toBe(
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    expect(bytes).toBeInstanceOf(Uint8Array);
+    const wb = XLSX.read(bytes as Uint8Array, { type: 'array' });
+    const matrix = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets['Sheet1']!, {
+      header: 1,
+      defval: null,
+    });
+    expect(matrix).toEqual([
+      ['id', 'name'],
+      [1, 'a'],
+    ]);
+    expect(exportTablesStream).not.toHaveBeenCalled();
   });
 
   it('shows error when export fails', async () => {
@@ -242,7 +252,10 @@ describe('DataExportDialog', () => {
         onClose={vi.fn()}
         columns={COLS}
         rows={[[1, 'a']]}
+        tableName="users"
         dbSessionId="c1"
+        totalRows={100}
+        initialScope="entire_table"
       />,
     );
     fireEvent.click(getByText('export.export'));
@@ -255,7 +268,16 @@ describe('DataExportDialog', () => {
     exportTablesStream.mockResolvedValue({ Cancelled: null });
     const onClose = vi.fn();
     const { getByText } = render(
-      <DataExportDialog open onClose={onClose} columns={COLS} rows={[[1, 'a']]} dbSessionId="c1" />,
+      <DataExportDialog
+        open
+        onClose={onClose}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dbSessionId="c1"
+        totalRows={100}
+        initialScope="entire_table"
+      />,
     );
     fireEvent.click(getByText('export.export'));
     await waitFor(() => expect(exportTablesStream).toHaveBeenCalled());

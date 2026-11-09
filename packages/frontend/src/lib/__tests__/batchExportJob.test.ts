@@ -1,17 +1,15 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import {
-  exportProvidedRowsViaRust,
   exportSingleTableStructureViaRust,
   exportSingleTableViaRust,
   runBatchExportJob,
-  toExportWireValue,
   type BatchExportTableInput,
-  type ProvidedRowsExportOptions,
   type RunBatchExportJobOptions,
   type SingleTableExportOptions,
   type SingleTableStructureExportOptions,
 } from '../batchExportJob';
 import type { ExportTablesRequest } from '../../commands/file';
+import { configurePlatform, clearPlatform } from '../../platform/contracts';
 
 const users: BatchExportTableInput = {
   tableName: 'users',
@@ -124,6 +122,9 @@ describe('exportSingleTableViaRust (item 3b)', () => {
       columns: ['id', 'name'],
       dataFormat: 'csv',
       exportTables,
+      // The fetcher subscribes to batch-export-progress by default; the
+      // stub keeps these tests off the (unbound here) platform event bus.
+      subscribeProgress: async () => () => {},
       ...extra,
     };
   }
@@ -180,93 +181,6 @@ describe('exportSingleTableViaRust (item 3b)', () => {
     const request = exportTables.mock.calls[0]![0] as ExportTablesRequest;
     expect(request.database).toBe('appdb');
     expect(request.schema).toBe('public');
-  });
-});
-
-describe('exportProvidedRowsViaRust (item 3c)', () => {
-  const exportTables = vi.fn();
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    exportTables.mockResolvedValue({ Saved: 2 });
-  });
-
-  function base(extra: Partial<ProvidedRowsExportOptions> = {}): ProvidedRowsExportOptions {
-    return {
-      dbSessionId: 'c1',
-      databaseType: 'postgres',
-      tableName: 'users',
-      columns: [
-        { name: 'id', dataType: 'int', nullable: false },
-        { name: 'name', dataType: 'text', nullable: true },
-      ],
-      rows: [
-        [1, 'a'],
-        [2, null],
-      ],
-      dataFormat: 'csv',
-      exportTables,
-      ...extra,
-    };
-  }
-
-  it('sends rows + schema as a provided source, never a SQL translation', async () => {
-    const result = await exportProvidedRowsViaRust(base({ dataFormat: 'xlsx' }));
-    expect(result).toBe('saved');
-    expect(exportTables).toHaveBeenCalledTimes(1);
-    const request = exportTables.mock.calls[0]![0] as ExportTablesRequest;
-    expect(request.mode).toBe('data_only');
-    expect(request.dataFormat).toBe('xlsx');
-    expect(request.outputMode).toBe('single');
-    expect(request.tables).toEqual([
-      {
-        tableName: 'users',
-        columns: ['id', 'name'],
-        source: {
-          type: 'provided',
-          columns: [
-            { name: 'id', dataType: 'int', nullable: false },
-            { name: 'name', dataType: 'text', nullable: true },
-          ],
-          rows: [
-            [1, 'a'],
-            [2, null],
-          ],
-        },
-        primaryKey: undefined,
-      },
-    ]);
-  });
-
-  it('maps values onto the wire Value shape', async () => {
-    await exportProvidedRowsViaRust(
-      base({
-        columns: [
-          { name: 'b', dataType: 'bytea', nullable: true },
-          { name: 'n', dataType: 'float8', nullable: true },
-          { name: 'j', dataType: 'jsonb', nullable: true },
-          { name: 'u', dataType: 'text', nullable: true },
-        ],
-        rows: [[new Uint8Array([0, 255]), Number.NaN, { k: 1 }, undefined]],
-        primaryKey: 'b',
-      }),
-    );
-    const request = exportTables.mock.calls[0]![0] as ExportTablesRequest;
-    const source = request.tables[0]!.source as {
-      type: string;
-      rows: unknown[][];
-    };
-    expect(source.type).toBe('provided');
-    expect(source.rows).toEqual([[[0, 255], null, { k: 1 }, null]]);
-    expect(request.tables[0]!.primaryKey).toBe('b');
-  });
-
-  it('reports cancelled and throws without a session', async () => {
-    exportTables.mockResolvedValue({ Cancelled: null });
-    await expect(exportProvidedRowsViaRust(base())).resolves.toBe('cancelled');
-    await expect(exportProvidedRowsViaRust(base({ dbSessionId: '' }))).rejects.toThrow(
-      'Missing connection',
-    );
   });
 });
 
@@ -341,21 +255,49 @@ describe('exportSingleTableStructureViaRust (item 6: G merged into C)', () => {
   });
 });
 
-describe('toExportWireValue', () => {
-  it('passes scalars through and maps edge cases', () => {
-    expect(toExportWireValue(null)).toBeNull();
-    expect(toExportWireValue(undefined)).toBeNull();
-    expect(toExportWireValue(true)).toBe(true);
-    expect(toExportWireValue('x')).toBe('x');
-    expect(toExportWireValue(1)).toBe(1);
-    expect(toExportWireValue(1.5)).toBe(1.5);
-    expect(toExportWireValue(Number.NaN)).toBeNull();
-    expect(toExportWireValue(Number.POSITIVE_INFINITY)).toBeNull();
-    expect(toExportWireValue(10n)).toBe(10);
-    expect(toExportWireValue(2n ** 100n)).toBe((2n ** 100n).toString());
-    expect(toExportWireValue(new Uint8Array([1, 2]))).toEqual([1, 2]);
-    expect(toExportWireValue([1, 2])).toEqual([1, 2]);
-    expect(toExportWireValue({ a: 1 })).toEqual({ a: 1 });
+describe('default tables exporter (platform binding)', () => {
+  const exportTables = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    exportTables.mockResolvedValue({ Saved: 1 });
+    configurePlatform({
+      services: {} as never,
+      windows: {} as never,
+      events: {
+        emitCrossWindow: async () => {},
+        listenCrossWindow: async () => () => {},
+      },
+      tablesExporter: { exportTables },
+    });
+  });
+
+  afterEach(() => {
+    clearPlatform();
+  });
+
+  it('runBatchExportJob uses the bound exporter when none is injected', async () => {
+    const loadTableExportData = vi.fn().mockResolvedValue(users);
+    const result = await runBatchExportJob({
+      tableNames: ['users'],
+      mode: 'data_only',
+      dataFormat: 'csv',
+      outputMode: 'single',
+      dbSessionId: 'c1',
+      loadTableExportData,
+    });
+    expect(result).toEqual({ status: 'saved' });
+    expect(exportTables).toHaveBeenCalledTimes(1);
+  });
+
+  it('exportSingleTableStructureViaRust uses the bound exporter when none is injected', async () => {
+    const result = await exportSingleTableStructureViaRust({
+      dbSessionId: 'c1',
+      tableName: 'users',
+      ddl: 'CREATE TABLE users (id INT);',
+    });
+    expect(result).toBe('saved');
+    expect(exportTables).toHaveBeenCalledTimes(1);
   });
 });
 

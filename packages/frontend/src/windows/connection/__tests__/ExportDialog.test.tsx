@@ -1,10 +1,20 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ExportDialog } from '../ExportDialog';
+import { getCachedTableSchema } from '../../../lib/schemaCache';
 import type { ColumnSchema } from '../../../types';
 
 // Item 3b: the entire-table scope rides the tables-exporter port.
 const exportTablesStream = vi.fn();
+
+// Task 3: the loaded scopes ride ProvidedDataFetcher, which Blob-downloads
+// on this (non-desktop) test build instead of touching the Rust exporter.
+const downloadBlobMock = vi.hoisted(() => vi.fn());
+vi.mock('../../../platform/blobTablesExporter', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../../../platform/blobTablesExporter')>();
+  return { ...actual, downloadBlob: (...args: unknown[]) => downloadBlobMock(...args) };
+});
 
 import { configurePlatform, clearPlatform } from '../../../platform/contracts';
 
@@ -117,25 +127,13 @@ describe('ExportDialog export capability', () => {
   });
 });
 
-describe('ExportDialog loaded scope (item 3c)', () => {
+describe('ExportDialog loaded scope (task 3: ProvidedDataFetcher)', () => {
   const COLS2: ColumnSchema[] = [
     { name: 'id', dataType: 'int', nullable: false, isPrimaryKey: true, isAutoIncrement: false },
     { name: 'name', dataType: 'text', nullable: true, isPrimaryKey: false, isAutoIncrement: false },
   ];
 
-  function request() {
-    return exportTablesStream.mock.calls[0]![0] as {
-      dataFormat: string;
-      tables: {
-        tableName: string;
-        columns: string[];
-        source: { type: string; columns: unknown; rows: unknown[][] };
-        primaryKey: unknown;
-      }[];
-    };
-  }
-
-  it('exports the current page as a provided source with positional rows', async () => {
+  it('exports the current page via the frontend formatter, never the Rust exporter', async () => {
     renderDialog({
       columns: COLS2,
       rows: [
@@ -146,21 +144,13 @@ describe('ExportDialog loaded scope (item 3c)', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'export.export' }));
 
-    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
-    const req = request();
-    expect(req.dataFormat).toBe('csv');
-    expect(req.tables[0]!.tableName).toBe('users');
-    expect(req.tables[0]!.columns).toEqual(['id', 'name']);
-    expect(req.tables[0]!.source.type).toBe('provided');
-    expect(req.tables[0]!.source.columns).toEqual([
-      { name: 'id', dataType: 'int', nullable: false },
-      { name: 'name', dataType: 'text', nullable: true },
-    ]);
-    expect(req.tables[0]!.source.rows).toEqual([
-      [1, 'a'],
-      [2, 'b'],
-    ]);
-    expect(req.tables[0]!.primaryKey).toBe('id');
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1));
+    expect(downloadBlobMock).toHaveBeenCalledWith(
+      'id,name\n1,a\n2,b',
+      'users.csv',
+      'text/csv',
+    );
+    expect(exportTablesStream).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getByText('export.success')).toBeInTheDocument());
   });
 
@@ -177,10 +167,13 @@ describe('ExportDialog loaded scope (item 3c)', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'export.export' }));
 
-    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
-    const req = request();
-    expect(req.tables[0]!.source.type).toBe('provided');
-    expect(req.tables[0]!.source.rows).toEqual([[3, 'c']]);
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1));
+    expect(downloadBlobMock).toHaveBeenCalledWith(
+      'id,name\n3,c',
+      'users.csv',
+      'text/csv',
+    );
+    expect(exportTablesStream).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.getByText('export.success')).toBeInTheDocument());
   });
 });
@@ -218,5 +211,111 @@ describe('ExportDialog entire-table scope (item 3b)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'export.export' }));
     await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
     expect(screen.queryByText('export.success')).not.toBeInTheDocument();
+  });
+});
+
+describe('ExportDialog column selection, schema prefetch and session guards', () => {
+  const PREFETCHED: ColumnSchema[] = [
+    { name: 'id', dataType: 'int', nullable: false, isPrimaryKey: true, isAutoIncrement: false },
+    { name: 'name', dataType: 'text', nullable: true, isPrimaryKey: false, isAutoIncrement: false },
+  ];
+
+  it('toggles one column off and on again via its checkbox', async () => {
+    renderDialog({
+      columns: PREFETCHED,
+      rows: [
+        { id: 1, name: 'a' },
+        { id: 2, name: 'b' },
+      ],
+    });
+    const boxes = screen.getAllByRole('checkbox');
+    expect(boxes).toHaveLength(2);
+    fireEvent.click(boxes[1]!);
+    expect(screen.getByRole('button', { name: 'common.selectAll' })).toBeInTheDocument();
+    fireEvent.click(boxes[1]!);
+    expect(screen.getByRole('button', { name: 'common.deselectAll' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'export.export' }));
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1));
+    expect(downloadBlobMock).toHaveBeenCalledWith(
+      'id,name\n1,a\n2,b',
+      'users.csv',
+      'text/csv',
+    );
+  });
+
+  it('exports only the checked columns', async () => {
+    renderDialog({ columns: PREFETCHED });
+    fireEvent.click(screen.getAllByRole('checkbox')[1]!);
+    fireEvent.click(screen.getByRole('button', { name: 'export.export' }));
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1));
+    expect(downloadBlobMock).toHaveBeenCalledWith('id\n1\n2', 'users.csv', 'text/csv');
+    expect(exportTablesStream).not.toHaveBeenCalled();
+  });
+
+  it('deselect-all disables export, select-all re-enables it', () => {
+    renderDialog({ columns: PREFETCHED });
+    const exportBtn = screen.getByRole('button', { name: 'export.export' });
+    expect(exportBtn).not.toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'common.deselectAll' }));
+    expect(exportBtn).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'common.selectAll' }));
+    expect(exportBtn).not.toBeDisabled();
+  });
+
+  it('prefetches the table schema when a database is bound', async () => {
+    vi.mocked(getCachedTableSchema).mockResolvedValueOnce({
+      tableName: 'users',
+      columns: PREFETCHED,
+      primaryKeys: ['id'],
+      indexes: [],
+      foreignKeys: [],
+    });
+    renderDialog({ columns: [PREFETCHED[0]!], database: 'appdb' });
+    await waitFor(() => expect(screen.getByText('name')).toBeInTheDocument());
+    expect(getCachedTableSchema).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(getCachedTableSchema).mock.calls[0]!.slice(0, 3)).toEqual([
+      'c1',
+      'users',
+      'appdb',
+    ]);
+  });
+
+  it('shows Missing connection for entire_table without a session', async () => {
+    renderDialog({ dbSessionId: undefined, defaultScope: 'entire_table' });
+    fireEvent.click(screen.getByRole('button', { name: 'export.export' }));
+    await waitFor(() => expect(screen.getByText('Missing connection')).toBeInTheDocument());
+    expect(exportTablesStream).not.toHaveBeenCalled();
+  });
+
+  it('shows Missing connection for loaded rows without a session', async () => {
+    renderDialog({ dbSessionId: undefined });
+    fireEvent.click(screen.getByRole('button', { name: 'export.export' }));
+    await waitFor(() => expect(screen.getByText('Missing connection')).toBeInTheDocument());
+    expect(downloadBlobMock).not.toHaveBeenCalled();
+  });
+
+  it('changes scope through the range select', async () => {
+    renderDialog();
+    fireEvent.change(scopeSelect(), { target: { value: 'entire_table' } });
+    expect(scopeSelect()).toHaveValue('entire_table');
+    fireEvent.click(screen.getByRole('button', { name: 'export.export' }));
+    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByText('export.success')).toBeInTheDocument());
+  });
+
+  it('does not prefetch the schema when closed', () => {
+    render(
+      <ExportDialog
+        open={false}
+        onClose={vi.fn()}
+        tableName="users"
+        columns={COLS}
+        rows={[{ id: 1 }, { id: 2 }]}
+        selectedRows={new Set()}
+        dbSessionId="c1"
+        database="appdb"
+      />,
+    );
+    expect(getCachedTableSchema).not.toHaveBeenCalled();
   });
 });
