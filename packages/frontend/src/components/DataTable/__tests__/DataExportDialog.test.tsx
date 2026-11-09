@@ -185,6 +185,30 @@ describe('DataExportDialog', () => {
     expect(request.tables[0]!.source.rows).toEqual([[3, 'c']]);
   });
 
+  it('offers sql_update in the format list (item 3d)', () => {
+    render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dbSessionId="c1"
+      />,
+    );
+    const selects = document.querySelectorAll('select');
+    const formatOptions = Array.from(selects[0]!.options).map((o) => o.value);
+    expect(formatOptions).toEqual([
+      'csv',
+      'tsv',
+      'json',
+      'markdown',
+      'xlsx',
+      'sql_insert',
+      'sql_update',
+    ]);
+  });
+
   it('exports xlsx through the Rust exporter, not the old binary path', async () => {
     const { getByText } = render(
       <DataExportDialog

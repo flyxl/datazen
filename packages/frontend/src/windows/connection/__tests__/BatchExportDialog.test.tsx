@@ -76,6 +76,46 @@ beforeEach(() => {
   exportTablesStream.mockResolvedValue({ Saved: 1 });
 });
 
+describe('BatchExportDialog formats (item 3d)', () => {
+  function renderDialog() {
+    const loadTableExportData = vi.fn(async (name: string) => mockTable(name));
+    render(
+      <BatchExportDialog
+        open
+        onClose={vi.fn()}
+        dbSessionId="c1"
+        databaseType="postgres"
+        tables={['users']}
+        initialSelected={['users']}
+        loadTableExportData={loadTableExportData}
+      />,
+    );
+    return { loadTableExportData };
+  }
+
+  it('offers every format the Rust exporter supports', () => {
+    renderDialog();
+    const values = Array.from(
+      (screen.getByTestId('data-format') as HTMLSelectElement).options,
+    ).map((o) => o.value);
+    expect(values).toEqual(['csv', 'tsv', 'json', 'markdown', 'xlsx', 'sql_insert', 'sql_update']);
+  });
+
+  it.each([['xlsx'], ['sql_update'], ['tsv'], ['markdown']] as const)(
+    'routes %s through the Rust batch exporter',
+    async (format) => {
+      renderDialog();
+      fireEvent.change(screen.getByTestId('data-format'), { target: { value: format } });
+      fireEvent.click(screen.getByText('batchExport.export'));
+
+      await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
+      const request = exportTablesStream.mock.calls[0]![0] as { dataFormat: string };
+      expect(request.dataFormat).toBe(format);
+      await waitFor(() => expect(screen.getByText('batchExport.success')).toBeInTheDocument());
+    },
+  );
+});
+
 describe('BatchExportDialog', () => {
   it('selects all tables and clears selection', () => {
     render(
