@@ -321,6 +321,31 @@ function escapeTsvField(value: unknown): string {
 }
 
 /**
+ * CSV formula-injection guard — the same rule the Rust `StreamFormatter`
+ * applies (`apply_csv_formula_guard` in `crates/datazen/src/export/format.rs`)
+ * and the web blob exporter reuses through this function, so all three CSV
+ * paths emit byte-identical output for the same rows.
+ *
+ * Runs on the already-escaped field text, just before writing: a field
+ * whose text starts with `=`, `+`, `-` or `@` would reach a spreadsheet
+ * as a live formula, so it is quoted even when it contains no delimiter.
+ * A value the standard rule already quoted (delimiter, quote or line
+ * break inside) starts with `"` and is left alone — no double wrap.
+ * Negative numbers (`-5`) keep the quoting the rule gives them; that is
+ * deliberate, matching the web exporter byte for byte.
+ *
+ * This must NOT live in `escapeCsvField` (`gridClipboard.ts`): copy/paste
+ * treats a formula prefix as inert text; the guard belongs to the CSV
+ * export layer only.
+ */
+export function applyCsvFormulaGuard(escaped: string): string {
+  if (/^[=+\-@]/.test(escaped) && !escaped.startsWith('"')) {
+    return `"${escaped}"`;
+  }
+  return escaped;
+}
+
+/**
  * Format already-loaded rows as text. Row values are the `unknown[][]`
  * positional shape over `columns`; a missing cell reads
  * as `null`, an over-long row's extras are ignored.
@@ -333,9 +358,11 @@ export function formatRowsAsText(options: FormatRowsTextOptions): TextExportResu
 
   switch (format) {
     case 'csv': {
-      const header = cols.map((col) => escapeCsvField(col)).join(',');
+      const header = cols.map((col) => applyCsvFormulaGuard(escapeCsvField(col))).join(',');
       const body = rows.map((row) =>
-        cols.map((_, i) => escapeCsvField(cellAt(row, i))).join(','),
+        cols
+          .map((_, i) => applyCsvFormulaGuard(escapeCsvField(cellAt(row, i))))
+          .join(','),
       );
       return { content: [header, ...body].join('\n'), extension, mimeType };
     }
