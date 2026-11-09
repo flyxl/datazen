@@ -67,7 +67,10 @@ pub enum RawWhereRejection {
     /// host's own grouping early; an unclosed `(` is the position reported.
     UnbalancedParenthesis { position: usize },
     /// A statement verb or statement-shaping clause outside quotes.
-    ForbiddenKeyword { keyword: &'static str, position: usize },
+    ForbiddenKeyword {
+        keyword: &'static str,
+        position: usize,
+    },
     /// A `$` outside quotes: dollar-quoting is a string syntax this scanner
     /// does not model, and a `$1` placeholder binds to nothing here.
     DollarSign { position: usize },
@@ -301,7 +304,9 @@ pub fn validate_raw_where(input: &str) -> Result<(), RawWhereRejection> {
     flush_word(&mut word, word_start)?;
 
     if let Some(position) = open_parens.first() {
-        return Err(RawWhereRejection::UnbalancedParenthesis { position: *position });
+        return Err(RawWhereRejection::UnbalancedParenthesis {
+            position: *position,
+        });
     }
     Ok(())
 }

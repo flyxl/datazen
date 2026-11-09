@@ -987,12 +987,10 @@ fn expression_driver() -> Arc<MockDriver> {
 /// placeholder literal the three-state contract requires in `current_values`.
 fn update_change_with_expression(id: i64) -> PendingRowChange {
     let mut change = update_change(id, "old", "new");
-    change
-        .expression_values
-        .insert(
-            "name".into(),
-            datazen_driver_api::WriteExpression::CurrentTimestamp,
-        );
+    change.expression_values.insert(
+        "name".into(),
+        datazen_driver_api::WriteExpression::CurrentTimestamp,
+    );
     change
 }
 
@@ -1031,7 +1029,11 @@ fn plan_renders_staged_expression_inline_without_bound_parameter() {
     )
     .unwrap();
     assert!(bound.sql.contains("CURRENT_TIMESTAMP"));
-    assert_eq!(bound.parameters.len(), 1, "only the PK binds, got: {bound:?}");
+    assert_eq!(
+        bound.parameters.len(),
+        1,
+        "only the PK binds, got: {bound:?}"
+    );
     assert!(matches!(&bound.parameters[0], Value::Integer(7)));
 }
 
@@ -1052,7 +1054,10 @@ fn plan_refuses_an_expression_the_driver_never_declared() {
         message.contains("grid.write.expressionUnsupported"),
         "the refusal must carry its contract code, got: {message}"
     );
-    assert!(message.contains("name"), "it must name the column, got: {message}");
+    assert!(
+        message.contains("name"),
+        "it must name the column, got: {message}"
+    );
 }
 
 #[test]
@@ -1062,12 +1067,10 @@ fn insert_drafts_stage_expressions_the_same_way() {
         ("name", Some(Value::String("ada".into()))),
         ("note", Some(Value::String("n".into()))),
     ]);
-    draft
-        .expression_values
-        .insert(
-            "note".into(),
-            datazen_driver_api::WriteExpression::CurrentTimestamp,
-        );
+    draft.expression_values.insert(
+        "note".into(),
+        datazen_driver_api::WriteExpression::CurrentTimestamp,
+    );
     let plan = build_row_change_plan(
         expression_driver().as_ref(),
         table,
@@ -1118,12 +1121,10 @@ fn an_expression_changes_the_fingerprint_and_its_absence_does_not() {
 #[test]
 fn canonicalize_drops_an_expression_for_a_column_the_change_does_not_write() {
     let mut change = update_change(7, "old", "new");
-    change
-        .expression_values
-        .insert(
-            "note".into(),
-            datazen_driver_api::WriteExpression::CurrentTimestamp,
-        );
+    change.expression_values.insert(
+        "note".into(),
+        datazen_driver_api::WriteExpression::CurrentTimestamp,
+    );
     let canonical = canonicalize_changes(&[change]).unwrap();
     // `note` is not in changed_columns: its stray expression is dropped, not
     // guessed into a write.
@@ -1131,6 +1132,10 @@ fn canonicalize_drops_an_expression_for_a_column_the_change_does_not_write() {
     // And the dropped expression cannot change the fingerprint of the write.
     assert_eq!(
         changes_fingerprint(&table_context("c1", "s1"), &canonical).unwrap(),
-        changes_fingerprint(&table_context("c1", "s1"), &[update_change(7, "old", "new")]).unwrap(),
+        changes_fingerprint(
+            &table_context("c1", "s1"),
+            &[update_change(7, "old", "new")]
+        )
+        .unwrap(),
     );
 }

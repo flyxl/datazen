@@ -332,18 +332,15 @@ pub fn build_row_change_plan(
             .iter()
             .map(|column| {
                 let expression = change.expression_values.get(column);
-                let value = match expression {
-                    Some(expression) => SetColumnValue::Expression(native_write_expression_sql(
-                        driver, column, *expression,
-                    )?),
-                    None => SetColumnValue::Literal(
-                        change
-                            .current_values
-                            .get(column)
-                            .cloned()
-                            .unwrap_or(None),
-                    ),
-                };
+                let value =
+                    match expression {
+                        Some(expression) => SetColumnValue::Expression(
+                            native_write_expression_sql(driver, column, *expression)?,
+                        ),
+                        None => SetColumnValue::Literal(
+                            change.current_values.get(column).cloned().unwrap_or(None),
+                        ),
+                    };
                 (column.as_str(), value)
             })
             .collect();
@@ -536,18 +533,16 @@ pub fn bound_statement_for_plan(
         .map(|column| {
             let value = match planned.expression_values.get(column) {
                 Some(expression) => SetColumnValue::Expression(native_write_expression_sql(
-                    driver, column, *expression,
+                    driver,
+                    column,
+                    *expression,
                 )?),
                 None => SetColumnValue::Literal(
-                    planned
-                        .current_values
-                        .get(column)
-                        .cloned()
-                        .ok_or_else(|| {
-                            FeatureError::Validation(format!(
-                                "Missing current value for changed column '{column}'"
-                            ))
-                        })?,
+                    planned.current_values.get(column).cloned().ok_or_else(|| {
+                        FeatureError::Validation(format!(
+                            "Missing current value for changed column '{column}'"
+                        ))
+                    })?,
                 ),
             };
             Ok((column.as_str(), value))

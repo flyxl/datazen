@@ -130,7 +130,7 @@ mod offset_statement_is_unchanged {
             50,
             0,
             None,
-        None,
+            None,
         )
         .unwrap();
         assert_eq!(
@@ -147,7 +147,7 @@ mod offset_statement_is_unchanged {
             50,
             0,
             None,
-        None,
+            None,
         )
         .unwrap();
         assert_eq!(
@@ -177,7 +177,7 @@ mod offset_statement_is_unchanged {
             50,
             0,
             Some("or"),
-        None,
+            None,
         )
         .unwrap();
         assert_eq!(
@@ -220,8 +220,8 @@ mod seek_statement {
             50,
             0,
             Some("or"),
-        // The raw filter channel (DBR-04) has no part in these fixtures.
-        None,
+            // The raw filter channel (DBR-04) has no part in these fixtures.
+            None,
         )
         .unwrap();
         assert_eq!(
@@ -256,8 +256,8 @@ mod seek_statement {
             50,
             0,
             None,
-        // The raw filter channel (DBR-04) has no part in these fixtures.
-        None,
+            // The raw filter channel (DBR-04) has no part in these fixtures.
+            None,
         )
         .unwrap();
         assert!(
@@ -282,8 +282,8 @@ mod seek_statement {
             50,
             1500,
             None,
-        // The raw filter channel (DBR-04) has no part in these fixtures.
-        None,
+            // The raw filter channel (DBR-04) has no part in these fixtures.
+            None,
         )
         .unwrap();
         assert!(
@@ -308,8 +308,8 @@ mod seek_statement {
             50,
             0,
             None,
-        // The raw filter channel (DBR-04) has no part in these fixtures.
-        None,
+            // The raw filter channel (DBR-04) has no part in these fixtures.
+            None,
         )
         .unwrap();
         assert!(

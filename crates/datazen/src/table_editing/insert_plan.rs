@@ -164,21 +164,17 @@ fn resolved_insert_values<'a>(
         .map(|column| {
             let value = match expressions.get(column) {
                 Some(expression) => SetColumnValue::Expression(native_write_expression_sql(
-                    driver, column, *expression,
+                    driver,
+                    column,
+                    *expression,
                 )?),
-                None => SetColumnValue::Literal(
-                    values
-                        .get(column)
-                        .cloned()
-                        .ok_or_else(|| {
-                            FeatureError::Validation(format!(
-                                "Missing current value for changed column '{column}'"
-                            ))
-                        })?,
-                ),
+                None => SetColumnValue::Literal(values.get(column).cloned().ok_or_else(|| {
+                    FeatureError::Validation(format!(
+                        "Missing current value for changed column '{column}'"
+                    ))
+                })?),
             };
             Ok((column.as_str(), value))
         })
         .collect()
 }
-

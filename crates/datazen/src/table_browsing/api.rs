@@ -1344,7 +1344,9 @@ mod tests {
 
     #[tokio::test]
     async fn a_raw_predicate_is_spliced_into_the_read_and_the_count_alike() {
-        let runner = ScriptedRunner { outputs: vec![schema_output()] };
+        let runner = ScriptedRunner {
+            outputs: vec![schema_output()],
+        };
         let driver = raw_where_driver();
         let preview = preview_table_read(
             driver.as_ref(),
@@ -1358,12 +1360,16 @@ mod tests {
         // The predicate appears in parentheses, as the first condition of the
         // WHERE, in both statements the read would run (DBR-04).
         assert!(
-            preview.data_sql.contains("WHERE (total > 100 AND status = 'paid')"),
+            preview
+                .data_sql
+                .contains("WHERE (total > 100 AND status = 'paid')"),
             "the data statement must carry the raw predicate, got: {}",
             preview.data_sql
         );
         assert!(
-            preview.exact_count_sql.contains("WHERE (total > 100 AND status = 'paid')"),
+            preview
+                .exact_count_sql
+                .contains("WHERE (total > 100 AND status = 'paid')"),
             "the count must ask the same question, got: {}",
             preview.exact_count_sql
         );
@@ -1380,15 +1386,9 @@ mod tests {
         let driver = raw_where_driver();
         let mut read = read_request();
         read.raw_where = Some("total > 100".into());
-        let result = read_table_page(
-            driver.as_ref(),
-            read,
-            Counter::ZERO,
-            context(),
-            &capture,
-        )
-        .await
-        .expect("read");
+        let result = read_table_page(driver.as_ref(), read, Counter::ZERO, context(), &capture)
+            .await
+            .expect("read");
         assert_eq!(result.rows.len(), 1);
 
         let preview = preview_table_read(
@@ -1396,7 +1396,9 @@ mod tests {
             preview_request(Some("total > 100")),
             Counter::ZERO,
             context(),
-            &ScriptedRunner { outputs: vec![schema_output()] },
+            &ScriptedRunner {
+                outputs: vec![schema_output()],
+            },
         )
         .await
         .expect("preview");
@@ -1409,7 +1411,10 @@ mod tests {
             .to_string();
         // The batch is `count;\nselect`; the select must be byte for byte
         // the statement the preview showed.
-        let select = batch.rsplit_once(";\n").map(|(_, tail)| tail).unwrap_or(&batch);
+        let select = batch
+            .rsplit_once(";\n")
+            .map(|(_, tail)| tail)
+            .unwrap_or(&batch);
         assert_eq!(select, preview.data_sql);
     }
 
@@ -1424,7 +1429,9 @@ mod tests {
             .await
             .expect_err("undeclared channel");
         assert!(matches!(error, TableReadError::Validation(_)));
-        assert!(error.to_string().contains("grid.filter.rawWhereUnsupported"));
+        assert!(error
+            .to_string()
+            .contains("grid.filter.rawWhereUnsupported"));
     }
 
     #[tokio::test]
@@ -1463,15 +1470,10 @@ mod tests {
         for empty in ["", "   \t "] {
             let mut request = read_request();
             request.raw_where = Some(empty.into());
-            let result = read_table_page(
-                driver.as_ref(),
-                request,
-                Counter::ZERO,
-                context(),
-                &runner,
-            )
-            .await
-            .expect("read without a raw filter");
+            let result =
+                read_table_page(driver.as_ref(), request, Counter::ZERO, context(), &runner)
+                    .await
+                    .expect("read without a raw filter");
             assert_eq!(result.rows.len(), 1);
         }
     }

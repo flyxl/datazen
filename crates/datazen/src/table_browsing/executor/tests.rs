@@ -122,8 +122,9 @@ fn mock_driver() -> Arc<MockDriver> {
 /// (`SELECT *` with no columns), because T-SQL `OFFSET … FETCH` requires one.
 #[test]
 fn tsql_pagination_emits_offset_fetch_and_never_limit() {
-    let sql = QueryExecutor::build_select_sql("events", &[], None, None, &[], &TSQL, 25, 75, None, None)
-        .unwrap();
+    let sql =
+        QueryExecutor::build_select_sql("events", &[], None, None, &[], &TSQL, 25, 75, None, None)
+            .unwrap();
     assert!(
         sql.contains("OFFSET 75 ROWS FETCH NEXT 25 ROWS ONLY"),
         "expected T-SQL paging clause, got: {sql}"
@@ -150,7 +151,7 @@ fn tsql_pagination_keeps_pk_order_without_fallback() {
         50,
         0,
         None,
-    None,
+        None,
     )
     .unwrap();
     assert!(sql.contains("ORDER BY \"id\" ASC"), "got: {sql}");
@@ -180,7 +181,7 @@ fn no_explicit_sort_uses_primary_key_order() {
         50,
         0,
         None,
-    None,
+        None,
     )
     .unwrap();
     assert!(
@@ -210,7 +211,7 @@ fn no_explicit_sort_composite_pk_uses_all_pk_columns() {
         50,
         0,
         None,
-    None,
+        None,
     )
     .unwrap();
     assert!(
@@ -237,7 +238,7 @@ fn explicit_sort_overrides_default_pk_order() {
         50,
         0,
         None,
-    None,
+        None,
     )
     .unwrap();
     assert!(
@@ -285,7 +286,7 @@ fn multi_column_sort_builds_order_by_in_caller_order() {
         50,
         0,
         None,
-    None,
+        None,
     )
     .unwrap();
     assert!(
@@ -312,7 +313,7 @@ fn no_pk_no_explicit_sort_still_has_order_by_first_column() {
         50,
         0,
         None,
-    None,
+        None,
     )
     .unwrap();
     assert!(
@@ -340,7 +341,7 @@ fn filter_literals_use_dialect_formatter() {
         10,
         0,
         None,
-    None,
+        None,
     )
     .unwrap();
     assert!(
@@ -359,7 +360,8 @@ fn build_count_sql_with_eq_filter() {
         connector: None,
     }];
     let sql =
-        QueryExecutor::build_count_sql("users", &columns, &Some(filters), &DEFAULT, None, None).unwrap();
+        QueryExecutor::build_count_sql("users", &columns, &Some(filters), &DEFAULT, None, None)
+            .unwrap();
     assert!(sql.contains("WHERE \"status\" = 'active'"));
 }
 
@@ -506,7 +508,7 @@ fn build_select_sql_joins_filters_with_or() {
         10,
         0,
         Some("or"),
-    None,
+        None,
     )
     .unwrap();
     assert!(
@@ -532,9 +534,15 @@ fn build_count_sql_joins_filters_with_or() {
             connector: None,
         },
     ];
-    let sql =
-        QueryExecutor::build_count_sql("users", &columns, &Some(filters), &DEFAULT, Some("OR"), None)
-            .unwrap();
+    let sql = QueryExecutor::build_count_sql(
+        "users",
+        &columns,
+        &Some(filters),
+        &DEFAULT,
+        Some("OR"),
+        None,
+    )
+    .unwrap();
     assert!(
         sql.contains("WHERE \"status\" = 'active' OR \"role\" = 'admin'"),
         "got: {sql}"
@@ -561,7 +569,7 @@ fn build_select_sql_without_offset_when_unsupported() {
         25,
         0,
         None,
-    None,
+        None,
     )
     .unwrap();
     assert!(sql.contains("LIMIT 25"));
@@ -611,7 +619,7 @@ fn incomplete_eq_filter_is_rejected() {
         50,
         0,
         None,
-    None,
+        None,
     )
     .expect_err("an incomplete filter must be refused, not skipped");
     assert!(
@@ -654,7 +662,7 @@ fn one_incomplete_filter_rejects_the_whole_query() {
         50,
         0,
         Some("and"),
-    None,
+        None,
     )
     .expect_err("the incomplete condition must not be silently dropped");
     let message = rejection.contract_message();
@@ -693,12 +701,18 @@ fn count_and_select_share_one_where() {
         50,
         0,
         Some("and"),
-    None,
+        None,
     )
     .unwrap();
-    let count =
-        QueryExecutor::build_count_sql("users", &columns, &Some(filters), &DEFAULT, Some("and"), None)
-            .unwrap();
+    let count = QueryExecutor::build_count_sql(
+        "users",
+        &columns,
+        &Some(filters),
+        &DEFAULT,
+        Some("and"),
+        None,
+    )
+    .unwrap();
     let where_of = |sql: &str| {
         sql.split(" WHERE ")
             .nth(1)
@@ -738,7 +752,7 @@ fn mixed_connectors_are_parenthesised_in_both_statements() {
         50,
         0,
         Some("and"),
-    None,
+        None,
     )
     .unwrap();
     // The OR is the outermost operator here, so it needs no parentheses: the
@@ -781,7 +795,7 @@ fn mixed_connectors_are_parenthesised_in_both_statements() {
         50,
         0,
         Some("and"),
-    None,
+        None,
     )
     .unwrap();
     assert!(
