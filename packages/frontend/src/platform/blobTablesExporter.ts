@@ -14,6 +14,7 @@
  * `batchExportJob` and the export UI cannot tell them apart.
  */
 
+import { escapeCsvField } from '../lib/gridClipboard';
 import type { TablesExporterPort, TablesExportRequest } from './contracts';
 
 /** One page of a table, as the injected reader answers it. */
@@ -50,14 +51,25 @@ export type TablePageReader = (
   context: TablePageRequestContext,
 ) => Promise<TablePage>;
 
+/**
+ * One cell as a CSV field: the standard escaping from `gridClipboard`
+ * (`escapeCsvField` — RFC 4180 quoting, objects via JSON, null as empty),
+ * plus the formula-injection guard this exporter has always applied and the
+ * standard does not: a field whose text starts with `=`, `+`, `-` or `@`
+ * would reach a spreadsheet as a live formula, so it is quoted even when it
+ * contains no delimiter. The guard runs on the escaped text, so a value the
+ * standard already quoted (delimiter, quote or line break inside) is left
+ * alone, and negative numbers keep the quoting the previous hand-rolled rule
+ * gave them. Dropping the guard would silently turn exported data into
+ * executable spreadsheet formulas — that is why it stays here instead of in
+ * the shared kernel, where copy/paste treats a formula prefix as inert text.
+ */
 function csvCell(value: unknown): string {
-  if (value === null || value === undefined) return '';
-  const text = typeof value === 'string' ? value : JSON.stringify(value);
-  // Quote when the value could re-enter the grid as two fields or a formula.
-  if (/[",\n\r]/.test(text) || /^[=+\-@]/.test(text)) {
-    return `"${text.replace(/"/g, '""')}"`;
+  const escaped = escapeCsvField(value);
+  if (/^[=+\-@]/.test(escaped) && !escaped.startsWith('"')) {
+    return `"${escaped}"`;
   }
-  return text;
+  return escaped;
 }
 
 /**
