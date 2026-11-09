@@ -162,8 +162,10 @@ export function createBlobTablesExporter(
       for (const table of request.tables) {
         // Item 3c: a `sql` source cannot run here at all — refuse honestly
         // rather than export the unfiltered table. The desktop Rust
-        // exporter handles it properly.
-        if (table.source?.type === 'sql') {
+        // exporter handles it properly. `structure_only` plans no data
+        // file, so it is exempt here: planning decides it via
+        // `ddl_for_structure` (explicit `ddl` required, as on desktop).
+        if (request.mode !== 'structure_only' && table.source?.type === 'sql') {
           throw new Error('filtered export is not supported by the web exporter');
         }
       }
