@@ -14,17 +14,28 @@
  *   never touches a session or DTO. Only the two save-dialog commands
  *   (`save_text_with_dialog` / `save_base64_with_dialog`, which take
  *   already-formatted content and open a native dialog) are allowed.
- * - `SqlDataFetcher`: task 3. The resolver throws an explicit not-wired
- *   error for SQL scopes with a session until then — no fake
- *   implementation is built here.
+ * - `SqlDataFetcher`: task 3. A thin wrapper over the Rust batch exporter:
+ *   it builds the same single-table `ExportTablesRequest` the old
+ *   `exportSingleTableViaRust` built, subscribes to `onExportProgress`
+ *   (`batch-export-progress`) and forwards it as `ExportProgress`
+ *   (`rowsTotal` unknown for streaming), then invokes
+ *   `export_tables_stream` through the tables-exporter port. It never
+ *   touches rows in JS, never formats, never runs the guard — all of that
+ *   stays in Rust.
  *
  * Progress is a single start/end pair (`rowsWritten: 0` then `total`,
  * `rowsTotal` known from `rows.length`); a cancelled save emits no end
  * event, because nothing was written.
  */
 
-import { fileCommands } from '../commands/file';
-import type { ExportTableSource } from '../commands/file';
+import { fileCommands, onExportProgress } from '../commands/file';
+import type {
+  ExportProgressEvent,
+  ExportTablesRequest,
+  ExportTablesResult,
+  ExportTableSource,
+} from '../commands/file';
+import { requireTablesExporter } from '../platform/contracts';
 import { downloadBlob } from '../platform/blobTablesExporter';
 import { IS_DESKTOP_BUILD } from '../platform/env';
 import { validateTableSource } from '../platform/exportPlan';
@@ -63,6 +74,8 @@ export interface ExportContext {
   tableName: string;
   scope: ExportScope;
   columns?: ExportColumn[];
+  /** Column names only (the SQL path needs no types/nullability). */
+  columnNames?: string[];
   rows?: unknown[][];
   dbSessionId?: string;
   database?: string;
@@ -193,6 +206,117 @@ export class ProvidedDataFetcher implements DataFetcher {
   }
 }
 
+/**
+ * Injectable seams for `SqlDataFetcher` (tests; production uses the
+ * defaults): the tables-exporter port's `exportTables` and the
+ * `batch-export-progress` subscription. Both defaults are the same calls
+ * the old `exportSingleTableViaRust` made.
+ */
+export interface SqlDataFetcherDeps {
+  exportTables?: (
+    request: ExportTablesRequest,
+  ) => Promise<ExportTablesResult | null>;
+  subscribeProgress?: (
+    handler: (event: ExportProgressEvent) => void,
+  ) => Promise<() => void>;
+}
+
+/**
+ * SQL-backed export (plan §2.3): a thin wrapper over the Rust batch
+ * exporter. `fetch()` builds the same single-table `ExportTablesRequest`
+ * `exportSingleTableViaRust` built, subscribes to `onExportProgress` and
+ * forwards it as `ExportProgress` (`rowsTotal` unknown — streaming), then
+ * invokes `export_tables_stream` and maps the result to
+ * `'saved' | 'cancelled'`. No rows are touched in JS, no formatting, no
+ * guard — all of that stays in Rust. The subscription is released in a
+ * `finally`, whether the export saves, cancels, or throws.
+ */
+export class SqlDataFetcher implements DataFetcher {
+  readonly needsBackend = true;
+
+  private readonly ctx: ExportContext;
+  private readonly handlers = new Set<(p: ExportProgress) => void>();
+  private readonly exportTables: (
+    request: ExportTablesRequest,
+  ) => Promise<ExportTablesResult | null>;
+  private readonly subscribeProgress: (
+    handler: (event: ExportProgressEvent) => void,
+  ) => Promise<() => void>;
+
+  constructor(ctx: ExportContext, deps: SqlDataFetcherDeps = {}) {
+    this.ctx = ctx;
+    this.exportTables =
+      deps.exportTables ??
+      ((request: ExportTablesRequest) => requireTablesExporter().exportTables(request));
+    this.subscribeProgress = deps.subscribeProgress ?? onExportProgress;
+  }
+
+  onProgress(handler: (p: ExportProgress) => void): () => void {
+    this.handlers.add(handler);
+    return () => {
+      this.handlers.delete(handler);
+    };
+  }
+
+  private emit(progress: ExportProgress): void {
+    for (const handler of [...this.handlers]) {
+      handler(progress);
+    }
+  }
+
+  async fetch(): Promise<'saved' | 'cancelled'> {
+    const {
+      dbSessionId,
+      databaseType,
+      database,
+      schema,
+      tableName,
+      dataFormat,
+      sql,
+      primaryKey,
+    } = this.ctx;
+
+    if (!dbSessionId) {
+      throw new Error('Missing connection');
+    }
+
+    const columns = this.ctx.columnNames ?? this.ctx.columns?.map((c) => c.name) ?? [];
+    const request: ExportTablesRequest = {
+      dbSessionId,
+      databaseType: databaseType ?? undefined,
+      database: database ?? undefined,
+      schema: schema ?? undefined,
+      mode: this.ctx.mode ?? 'data_only',
+      dataFormat,
+      outputMode: this.ctx.outputMode ?? 'single',
+      tables: [
+        {
+          tableName,
+          schema: schema ?? undefined,
+          columns,
+          source: sql ? { type: 'sql', sql } : { type: 'table' },
+          primaryKey: primaryKey ?? undefined,
+          // DDL travels only when the caller carries one (structure
+          // modes); a data-only request keeps the old shape exactly.
+          ...(this.ctx.ddl !== undefined && this.ctx.ddl !== null
+            ? { ddl: this.ctx.ddl }
+            : {}),
+        },
+      ],
+    };
+
+    const unlisten = await this.subscribeProgress((event) =>
+      this.emit({ table: event.table, rowsWritten: event.rowsWritten }),
+    );
+    try {
+      const result = await this.exportTables(request);
+      return result && 'Saved' in result ? 'saved' : 'cancelled';
+    } finally {
+      unlisten();
+    }
+  }
+}
+
 /** Base64 → bytes for the web Blob download (desktop hands base64 to Rust instead). */
 function base64ToBytes(dataBase64: string): Uint8Array<ArrayBuffer> {
   const binary = atob(dataBase64);
@@ -212,9 +336,8 @@ function base64ToBytes(dataBase64: string): Uint8Array<ArrayBuffer> {
  * - `entire_table` / `filtered_table` without a session → unresolvable
  *   (permanent: dialogs hide those scopes, the three session-less
  *   surfaces only ever walk the provided path).
- * - `entire_table` / `filtered_table` with a session → `SqlDataFetcher`,
- *   wired by task 3; until then an explicit not-wired error, never a
- *   fake implementation.
+ * - `entire_table` / `filtered_table` with a session → `SqlDataFetcher`
+ *   (task 3).
  * - Provided scope without rows → defensive error (must not happen).
  */
 export function resolveDataFetcher(ctx: ExportContext): DataFetcher {
@@ -234,8 +357,5 @@ export function resolveDataFetcher(ctx: ExportContext): DataFetcher {
         `(scope '${ctx.scope}'): entire-table and filtered exports need a database session`,
     );
   }
-  throw new Error(
-    `SqlDataFetcher is not wired yet (frontend-DataFetcher plan task 3): ` +
-      `table '${ctx.tableName}' (scope '${ctx.scope}') needs a SQL-backed export`,
-  );
+  return new SqlDataFetcher(ctx);
 }

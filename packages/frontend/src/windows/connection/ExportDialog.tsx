@@ -9,10 +9,8 @@ import {
   OBJECT_EXPORT_FORMAT_OPTIONS,
   buildExportScopeOptions,
 } from '../../lib/exportDialogShared';
-import {
-  exportProvidedRowsViaRust,
-  exportSingleTableViaRust,
-} from '../../lib/batchExportJob';
+import { exportSingleTableViaRust } from '../../lib/batchExportJob';
+import { resolveDataFetcher } from '../../lib/dataFetcher';
 import { supportsFullTableExport, type DataExportCapability } from '../../lib/exportCapability';
 import type { ColumnSchema } from '../../types';
 import { useI18n } from '../../hooks/useI18n';
@@ -168,10 +166,10 @@ export function ExportDialog({
         return;
       }
 
-      // Item 3c: current-page / selected rows travel to the Rust batch
-      // exporter as a `provided` source (rows + schema the caller already
-      // holds) — the backend never re-queries, and selected rows are never
-      // translated back into SQL.
+      // Task 3: current-page / selected rows are exported by
+      // `ProvidedDataFetcher` (pure frontend: formatted in memory, saved
+      // via the save dialog / Blob download — no Rust `provided` source
+      // any more). The session guard above stays: dropping it is task 4.
       if (!dbSessionId) {
         throw new Error('Missing connection');
       }
@@ -180,18 +178,17 @@ export function ExportDialog({
         scope === 'selected' && selectedRows.size > 0
           ? rows.filter((_, i) => selectedRows.has(i))
           : rows;
-      const result = await exportProvidedRowsViaRust({
-        dbSessionId,
-        databaseType,
-        database,
+      const result = await resolveDataFetcher({
         tableName,
+        scope,
         columns: loadedColumns
           .filter((c) => selectedCols.has(c.name))
           .map((c) => ({ name: c.name, dataType: c.dataType, nullable: c.nullable })),
         rows: scopedRows.map((row) => colNames.map((col) => row[col])),
         dataFormat: format,
+        databaseType,
         primaryKey: pkName,
-      });
+      }).fetch();
       if (result === 'cancelled') {
         setStatus('form');
         setExporting(false);

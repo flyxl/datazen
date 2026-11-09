@@ -9,10 +9,8 @@ import {
   ARRAY_EXPORT_FORMAT_OPTIONS,
   buildExportScopeOptions,
 } from '../../lib/exportDialogShared';
-import {
-  exportProvidedRowsViaRust,
-  exportSingleTableViaRust,
-} from '../../lib/batchExportJob';
+import { exportSingleTableViaRust } from '../../lib/batchExportJob';
+import { resolveDataFetcher } from '../../lib/dataFetcher';
 import { supportsFullTableExport, type DataExportCapability } from '../../lib/exportCapability';
 import { useI18n } from '../../hooks/useI18n';
 import type { ColumnDef } from './TableHeader';
@@ -165,18 +163,18 @@ export function DataExportDialog({
         return;
       }
 
-      // Item 3c: current-page / selected rows travel to the Rust batch
-      // exporter as a `provided` source (rows + schema the caller already
-      // holds) — the backend never re-queries, and selected rows are never
-      // translated back into SQL.
+      // Task 3: current-page / selected rows are exported by
+      // `ProvidedDataFetcher` (pure frontend: formatted in memory, saved
+      // via the save dialog / Blob download — no Rust `provided` source
+      // any more). The session guard above stays: dropping it is task 4.
       if (!dbSessionId) throw new Error('Missing connection');
       const scopedRows =
         scope === 'selected' && selectedRows.size > 0
           ? rows.filter((_, i) => selectedRows.has(i))
           : rows;
-      const result = await exportProvidedRowsViaRust({
-        dbSessionId,
+      const result = await resolveDataFetcher({
         tableName,
+        scope,
         columns: columns.map((c) => ({
           name: c.name,
           dataType: c.type ?? 'text',
@@ -186,7 +184,7 @@ export function DataExportDialog({
         dataFormat: format,
         databaseType,
         primaryKey: primaryKeyColumns?.[0],
-      });
+      }).fetch();
       if (result === 'cancelled') {
         setStatus('form');
         setExporting(false);

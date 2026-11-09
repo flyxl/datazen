@@ -3,12 +3,13 @@
  *
  * Item 3c retired the in-memory export implementation that used to live
  * here (`generateExport` / `generateExportFromArrays` and the SQL/CSV
- * helpers): every scope — current page, selected rows, entire table,
- * filtered table — now goes through the Rust batch exporter
- * (`export_tables_stream`) via `batchExportJob` (`exportSingleTableViaRust`
- * for table/SQL sources, `exportProvidedRowsViaRust` for already-loaded
- * rows). The only frontend XLSX writer left is the import side
- * (`importData.parseXLSX`); the SheetJS export branch is gone.
+ * helpers). The frontend-DataFetcher plan (task 3) retired the Rust
+ * `provided` source next: already-loaded rows now go through
+ * `ProvidedDataFetcher` (`lib/dataFetcher.ts`, formatted in memory by
+ * `exportFormat.ts`), while entire/filtered rows go through
+ * `SqlDataFetcher` / `exportSingleTableViaRust` (`lib/batchExportJob.ts`,
+ * `export_tables_stream`). The only frontend XLSX writer left is the
+ * import side (`importData.parseXLSX`); the SheetJS export branch is gone.
  *
  * The escaping kernels themselves were never here: `gridClipboard` owns
  * the TSV/CSV/Markdown serializers (clipboard and export shared them),
