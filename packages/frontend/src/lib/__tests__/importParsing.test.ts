@@ -221,7 +221,10 @@ describe('parseJsonImport', () => {
   it('accepts an array of objects and unions their keys', () => {
     const parsed = parseJsonImport('[{"a":1},{"b":"x"}]');
     expect(parsed.columns.sort()).toEqual(['a', 'b']);
-    expect(parsed.rows).toEqual([{ a: 1, b: null }, { a: null, b: 'x' }]);
+    expect(parsed.rows).toEqual([
+      { a: 1, b: null },
+      { a: null, b: 'x' },
+    ]);
   });
 
   it('accepts a single object as one row', () => {

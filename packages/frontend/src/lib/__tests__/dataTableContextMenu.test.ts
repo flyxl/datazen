@@ -1033,7 +1033,6 @@ describe('buildDataTableContextMenuItems column stats entry (DB-12)', () => {
   });
 });
 
-
 describe('row copy/paste entries (DBR-02)', () => {
   const rowHandlers = {
     onCopySelectedRows: vi.fn(),
@@ -1110,7 +1109,12 @@ describe('row copy/paste entries (DBR-02)', () => {
       canPasteSelection: true,
       canFilterByValue: false,
     });
-    expect(rootItemIds(items)).toEqual(['copy', 'copy-row', 'copy-selected-cells', 'paste-selected-cells']);
+    expect(rootItemIds(items)).toEqual([
+      'copy',
+      'copy-row',
+      'copy-selected-cells',
+      'paste-selected-cells',
+    ]);
     const copyAs = findSubmenu(items, 'copy-selected-cells-as');
     expect(copyAs).toBeTruthy();
     expect(copyAs?.items.filter((i) => i.kind === 'item').map((i) => i.id)).toContain(

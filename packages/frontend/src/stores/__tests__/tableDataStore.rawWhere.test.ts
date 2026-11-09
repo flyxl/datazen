@@ -100,7 +100,7 @@ describe('tableDataStore DBR-04 filter channels', () => {
     const before = mockDatabaseCommands.getTableData.mock.calls.length;
     const store = useTableDataStore.getState();
     store.setAnyColumnDraft(PANEL, 'gold');
-    store.setRawWhereDraft(PANEL, "total > 100");
+    store.setRawWhereDraft(PANEL, 'total > 100');
     store.setFilterMode(PANEL, 'rawSql');
     store.setFilterMode(PANEL, 'anyColumn');
     store.setFilterMode(PANEL, 'structured');
@@ -116,9 +116,7 @@ describe('tableDataStore DBR-04 filter channels', () => {
   it('applying the raw predicate replaces the structured channel and resets the page', async () => {
     await createPanel();
     const store = useTableDataStore.getState();
-    store.setFilters(PANEL, [
-      { column: 'status', operator: 'eq', value: 'paid' },
-    ]);
+    store.setFilters(PANEL, [{ column: 'status', operator: 'eq', value: 'paid' }]);
     await vi.waitFor(() => {
       expect(panelOf(useTableDataStore).filters).toHaveLength(1);
     });
@@ -146,9 +144,9 @@ describe('tableDataStore DBR-04 filter channels', () => {
     await vi.waitFor(() => {
       expect(panelOf(useTableDataStore).rawWhere).toBe('total > 100');
     });
-    useTableDataStore.getState().setFilters(PANEL, [
-      { column: 'status', operator: 'eq', value: 'paid' },
-    ]);
+    useTableDataStore
+      .getState()
+      .setFilters(PANEL, [{ column: 'status', operator: 'eq', value: 'paid' }]);
     await vi.waitFor(() => {
       expect(panelOf(useTableDataStore).filters).toHaveLength(1);
     });
@@ -190,9 +188,7 @@ describe('tableDataStore DBR-04 filter channels', () => {
   it('an empty Any Column expansion clears the filter', async () => {
     await createPanel();
     const store = useTableDataStore.getState();
-    store.setFilters(PANEL, [
-      { column: 'status', operator: 'eq', value: 'paid' },
-    ]);
+    store.setFilters(PANEL, [{ column: 'status', operator: 'eq', value: 'paid' }]);
     await vi.waitFor(() => {
       expect(panelOf(useTableDataStore).filters).toHaveLength(1);
     });

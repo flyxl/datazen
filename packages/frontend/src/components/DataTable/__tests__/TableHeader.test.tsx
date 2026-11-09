@@ -187,16 +187,12 @@ describe('TableHeader sort interaction (DBR-SORT, Navicat-aligned)', () => {
   it('carries aria-sort for the ARIA grid semantics', () => {
     const sorts: SortCondition[] = [{ column: 'name', descending: false }];
     const { container } = render(
-      <TableHeader
-        columns={COLS}
-        sorts={sorts}
-        onSort={() => {}}
-        sortable
-        gridSemantics
-      />,
+      <TableHeader columns={COLS} sorts={sorts} onSort={() => {}} sortable gridSemantics />,
     );
     const headers = [...container.querySelectorAll('[data-col-header]')];
-    expect(headers.find((h) => h.getAttribute('data-col-header') === 'id')!.getAttribute('aria-sort')).toBeNull();
+    expect(
+      headers.find((h) => h.getAttribute('data-col-header') === 'id')!.getAttribute('aria-sort'),
+    ).toBeNull();
     expect(
       headers.find((h) => h.getAttribute('data-col-header') === 'name')!.getAttribute('aria-sort'),
     ).toBe('ascending');

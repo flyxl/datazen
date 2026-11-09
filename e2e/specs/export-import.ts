@@ -497,7 +497,9 @@ describe('导出和导入 (EI-001~EI-006)', () => {
 
       // The refusal is visible (the static prefix of the parse-failed
       // message) and no mapping table ever renders.
-      const parseFailedPrefix = t('import.parseFailed', { message: 'SENTINEL' }).split('SENTINEL')[0];
+      const parseFailedPrefix = t('import.parseFailed', { message: 'SENTINEL' }).split(
+        'SENTINEL',
+      )[0];
       const body = await $('body').getText();
       expect(body).toContain(parseFailedPrefix);
       const mapping = await $('[data-testid="import-mapping-table"]');

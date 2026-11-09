@@ -371,13 +371,15 @@ const pack = {
   'valueSearch.types.text': 'Текст и перечисления',
   'valueSearch.types.textNumber': 'Текст, перечисления и числа (текстовое совпадение)',
   'valueSearch.types.textDatetime': 'Текст, перечисления и даты (текстовое совпадение)',
-  'valueSearch.types.textNumberDatetime': 'Текст, перечисления, числа и даты (текстовое совпадение)',
+  'valueSearch.types.textNumberDatetime':
+    'Текст, перечисления, числа и даты (текстовое совпадение)',
   'valueSearch.types.note':
     'Числовые столбцы и даты сопоставляются по текстовому представлению (42, 2023-01-02), а не по типу.',
   'valueSearch.zeroHits': 'Таблиц без совпадений: {count}',
   'valueSearch.locate': 'Открыть и найти',
   'valueSearch.locateNoColumns': 'В этой таблице нет столбцов для поиска',
-  'valueSearch.doneNote': 'Просканировано таблиц: {count} за {seconds} с — минимум один запрос на таблицу.',
+  'valueSearch.doneNote':
+    'Просканировано таблиц: {count} за {seconds} с — минимум один запрос на таблицу.',
   'resultFind.open': 'Найти в результатах',
   'resultFind.openLabel': 'Находить',
   'resultFind.placeholder': 'Найти в загруженных строках…',
@@ -434,9 +436,11 @@ const pack = {
   'filter.anyColumnPlaceholder': 'Искать во всех доступных для поиска столбцах…',
   'filter.anyColumnScope': 'Поиск по {searchable} столбцам; пропущено {skipped} (не текстовые)',
   'filter.rawPlaceholder': "Предикат WHERE, напр. total > 100 AND status = 'paid'",
-  'filter.rawHint': 'Продвинутое: одно булево выражение WHERE. Проверяется и собирается сервером; без DML/DDL, без нескольких инструкций, без ORDER BY/LIMIT.',
+  'filter.rawHint':
+    'Продвинутое: одно булево выражение WHERE. Проверяется и собирается сервером; без DML/DDL, без нескольких инструкций, без ORDER BY/LIMIT.',
   'filter.rawBadge': 'SQL',
-  'filter.rawQueryContext': 'Выполняется для {context}. Продвинутое: одно булево выражение WHERE, проверяется и собирается сервером; без DML/DDL, без нескольких инструкций, без ORDER BY/LIMIT.',
+  'filter.rawQueryContext':
+    'Выполняется для {context}. Продвинутое: одно булево выражение WHERE, проверяется и собирается сервером; без DML/DDL, без нескольких инструкций, без ORDER BY/LIMIT.',
   'filter.rawAppliedSummary': 'SQL: {predicate}',
   'filter.editCondition': 'Изменить фильтр',
   'filter.eq': '=',

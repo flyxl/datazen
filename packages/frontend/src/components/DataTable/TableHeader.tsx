@@ -99,7 +99,11 @@ export function TableHeader({
    * semantics — the Navicat behaviour the click cycle also implements — while
    * the right-click menu keeps its multi-column builder; the two never mix.
    */
-  const openSortMenu = (event: React.MouseEvent<HTMLButtonElement>, column: string, sorted: 'asc' | 'desc' | 'none') => {
+  const openSortMenu = (
+    event: React.MouseEvent<HTMLButtonElement>,
+    column: string,
+    sorted: 'asc' | 'desc' | 'none',
+  ) => {
     event.stopPropagation();
     const rect = event.currentTarget.getBoundingClientRect();
     void showNativeContextMenu(

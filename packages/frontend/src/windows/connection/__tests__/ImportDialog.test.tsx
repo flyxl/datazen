@@ -11,10 +11,12 @@ import type { ImportRunResult } from '../../../lib/importExecution';
  */
 
 vi.mock('../../../hooks/useI18n', () => ({
-  useI18n: () => ({ t: (key: string, params?: Record<string, string | number>) => {
-    if (params == null) return key;
-    return `${key}:${Object.values(params).join(',')}`;
-  } }),
+  useI18n: () => ({
+    t: (key: string, params?: Record<string, string | number>) => {
+      if (params == null) return key;
+      return `${key}:${Object.values(params).join(',')}`;
+    },
+  }),
 }));
 
 vi.mock('../../../lib/schemaCache', () => ({
@@ -184,7 +186,9 @@ describe('ImportDialog wizard (DBR-01)', () => {
     await pickCsvFile();
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /import\.start/i }).getAttribute('disabled')).toBeNull();
+      expect(
+        screen.getByRole('button', { name: /import\.start/i }).getAttribute('disabled'),
+      ).toBeNull();
     });
     fireEvent.click(screen.getByRole('button', { name: /import\.start/i }));
 
@@ -220,7 +224,9 @@ describe('ImportDialog wizard (DBR-01)', () => {
     await pickCsvFile();
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /import\.start/i }).getAttribute('disabled')).toBeNull();
+      expect(
+        screen.getByRole('button', { name: /import\.start/i }).getAttribute('disabled'),
+      ).toBeNull();
     });
     fireEvent.click(screen.getByRole('button', { name: /import\.start/i }));
 

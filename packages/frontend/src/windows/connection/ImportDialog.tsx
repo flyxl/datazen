@@ -59,7 +59,11 @@ interface ImportDialogProps {
   /** Connection id, for the relation-schema cache key. */
   connectionId?: string;
   /** Called after a finished import; a rejection becomes "refresh failed". */
-  onImported: (target: { table: string; schema?: string | null; database?: string | null }) => void | Promise<void>;
+  onImported: (target: {
+    table: string;
+    schema?: string | null;
+    database?: string | null;
+  }) => void | Promise<void>;
   databaseType?: string;
 }
 
@@ -205,7 +209,17 @@ export function ImportDialog({
         message: error instanceof Error ? error.message : String(error),
       });
     }
-  }, [file, format, encoding, delimiter, quoteChar, firstRowIsHeader, emptyUnquotedAs, sheetName, t]);
+  }, [
+    file,
+    format,
+    encoding,
+    delimiter,
+    quoteChar,
+    firstRowIsHeader,
+    emptyUnquotedAs,
+    sheetName,
+    t,
+  ]);
 
   // Load the target table's columns whenever the target changes.
   useEffect(() => {
@@ -228,7 +242,10 @@ export function ImportDialog({
         );
         if (cancelled) return;
         setTargets({
-          columns: loaded.columns.map((column) => ({ name: column.name, dataType: column.dataType })),
+          columns: loaded.columns.map((column) => ({
+            name: column.name,
+            dataType: column.dataType,
+          })),
           loading: false,
           error: null,
         });
@@ -328,7 +345,21 @@ export function ImportDialog({
       });
       setPhase('done');
     }
-  }, [parsed, canStart, targets.columns, targetTable, mappedPairs, dbSessionId, database, schema, databaseType, onError, commitMode, onImported, progress]);
+  }, [
+    parsed,
+    canStart,
+    targets.columns,
+    targetTable,
+    mappedPairs,
+    dbSessionId,
+    database,
+    schema,
+    databaseType,
+    onError,
+    commitMode,
+    onImported,
+    progress,
+  ]);
 
   const handleCancelImport = useCallback(() => {
     signalRef.current.aborted = true;
@@ -395,7 +426,15 @@ export function ImportDialog({
               variant="primary"
               onClick={() => void handleStart()}
               disabled={!canStart}
-              title={!canStart && parsed != null && parsed.rows.length > 0 && mappingPlan != null && !mappingIsExecutable(mappingPlan) ? t('import.needsMapping') : undefined}
+              title={
+                !canStart &&
+                parsed != null &&
+                parsed.rows.length > 0 &&
+                mappingPlan != null &&
+                !mappingIsExecutable(mappingPlan)
+                  ? t('import.needsMapping')
+                  : undefined
+              }
             >
               {parsed && parsed.rows.length > 0
                 ? t('import.start', { count: parsed.rows.length })
@@ -409,7 +448,12 @@ export function ImportDialog({
         {/* ── 文件与格式 ─────────────────────────────────────────── */}
         <section className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="secondary" className="h-8 text-xs" onClick={() => void handlePickFile()} disabled={busy}>
+            <Button
+              variant="secondary"
+              className="h-8 text-xs"
+              onClick={() => void handlePickFile()}
+              disabled={busy}
+            >
               <FileText className="h-3.5 w-3.5" />
               {file ? file.name.split('/').pop() : t('import.selectFile')}
             </Button>
@@ -419,7 +463,12 @@ export function ImportDialog({
               </span>
             )}
             {file && (
-              <Button variant="secondary" className="h-8 text-xs" onClick={() => void handlePickFile()} disabled={busy}>
+              <Button
+                variant="secondary"
+                className="h-8 text-xs"
+                onClick={() => void handlePickFile()}
+                disabled={busy}
+              >
                 {t('import.replaceFile')}
               </Button>
             )}
@@ -579,7 +628,10 @@ export function ImportDialog({
 
             {targets.columns && mappingPlan && (
               <div className="max-h-56 overflow-auto rounded-md border border-edge">
-                <table className="w-full border-collapse text-xs" data-testid="import-mapping-table">
+                <table
+                  className="w-full border-collapse text-xs"
+                  data-testid="import-mapping-table"
+                >
                   <thead className="sticky top-0">
                     <tr className="bg-surface-alt">
                       <th className="border-b border-edge px-2 py-1.5 text-left font-medium text-fg-secondary">
@@ -601,7 +653,9 @@ export function ImportDialog({
                         .find((value) => value !== null && value !== undefined);
                       return (
                         <tr key={entry.source} className={cn(entry.target == null && 'opacity-60')}>
-                          <td className="border-b border-edge px-2 py-1 font-mono">{entry.source}</td>
+                          <td className="border-b border-edge px-2 py-1 font-mono">
+                            {entry.source}
+                          </td>
                           <td className="border-b border-edge px-2 py-1">
                             <Select
                               className="h-6 w-48"
@@ -648,11 +702,16 @@ export function ImportDialog({
             )}
 
             {mappingPlan && mappingPlan.conflicts.length > 0 && (
-              <div className="flex items-start gap-2 rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400" data-testid="import-conflict-warning">
+              <div
+                className="flex items-start gap-2 rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400"
+                data-testid="import-conflict-warning"
+              >
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <span>
                   {t('import.conflictWarning', { count: mappingPlan.conflicts.length })}{' '}
-                  {mappingPlan.conflicts.map((c) => `${c.target} ← ${c.sources.join(', ')}`).join('；')}
+                  {mappingPlan.conflicts
+                    .map((c) => `${c.target} ← ${c.sources.join(', ')}`)
+                    .join('；')}
                 </span>
               </div>
             )}
@@ -664,7 +723,11 @@ export function ImportDialog({
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 <span>
                   {t('import.duplicateColumnWarning', {
-                    columns: [...new Set(duplicates.map((d) => (d.kind === 'duplicate-column' ? d.column : '')))]
+                    columns: [
+                      ...new Set(
+                        duplicates.map((d) => (d.kind === 'duplicate-column' ? d.column : '')),
+                      ),
+                    ]
                       .filter(Boolean)
                       .join(', '),
                   })}
@@ -742,7 +805,9 @@ export function ImportDialog({
         {parsed && parsed.rows.length > 0 && phase === 'config' && targets.columns && (
           <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <fieldset className="space-y-1">
-              <legend className="mb-1 text-xs font-medium text-fg-secondary">{t('import.conflictStrategy')}</legend>
+              <legend className="mb-1 text-xs font-medium text-fg-secondary">
+                {t('import.conflictStrategy')}
+              </legend>
               {(['stop', 'skip'] as const).map((value) => (
                 <label key={value} className="flex items-center gap-1.5 text-xs">
                   <input
@@ -757,7 +822,9 @@ export function ImportDialog({
               ))}
             </fieldset>
             <fieldset className="space-y-1">
-              <legend className="mb-1 text-xs font-medium text-fg-secondary">{t('import.commitMode')}</legend>
+              <legend className="mb-1 text-xs font-medium text-fg-secondary">
+                {t('import.commitMode')}
+              </legend>
               {(['transaction', 'autocommit'] as const).map((value) => (
                 <label key={value} className="flex items-center gap-1.5 text-xs">
                   <input
@@ -771,7 +838,9 @@ export function ImportDialog({
                 </label>
               ))}
               <p className="text-[11px] text-fg-muted">
-                {commitMode === 'transaction' ? t('import.transactionNote') : t('import.autocommitNote')}
+                {commitMode === 'transaction'
+                  ? t('import.transactionNote')
+                  : t('import.autocommitNote')}
               </p>
             </fieldset>
           </section>
@@ -779,7 +848,10 @@ export function ImportDialog({
 
         {/* ── 进度与结果 ─────────────────────────────────────────── */}
         {busy && progress && (
-          <div className="rounded-md border border-edge bg-surface px-3 py-2 text-xs text-fg-secondary" data-testid="import-progress">
+          <div
+            className="rounded-md border border-edge bg-surface px-3 py-2 text-xs text-fg-secondary"
+            data-testid="import-progress"
+          >
             {t('import.progress', {
               processed: progress.processedRows,
               committed: progress.committedRows,
@@ -815,17 +887,23 @@ export function ImportDialog({
                 <table className="w-full border-collapse text-xs">
                   <thead className="sticky top-0">
                     <tr className="bg-surface-alt">
-                      <th className="border-b border-edge px-2 py-1 text-left font-medium text-fg-secondary">#</th>
+                      <th className="border-b border-edge px-2 py-1 text-left font-medium text-fg-secondary">
+                        #
+                      </th>
                       <th className="border-b border-edge px-2 py-1 text-left font-medium text-fg-secondary">
                         {t('import.sourceLine')}
                       </th>
-                      <th className="border-b border-edge px-2 py-1 text-left font-medium text-fg-secondary">Error</th>
+                      <th className="border-b border-edge px-2 py-1 text-left font-medium text-fg-secondary">
+                        Error
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {result.failedRows.map((failure) => (
                       <tr key={failure.rowIndex}>
-                        <td className="border-b border-edge px-2 py-1 font-mono">{failure.rowIndex + 1}</td>
+                        <td className="border-b border-edge px-2 py-1 font-mono">
+                          {failure.rowIndex + 1}
+                        </td>
                         <td className="border-b border-edge px-2 py-1 font-mono">
                           {failure.sourceLine ?? '—'}
                         </td>

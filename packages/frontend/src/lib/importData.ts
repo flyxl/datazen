@@ -126,8 +126,7 @@ function scanDelimited(
     endCell();
     // A record made of nothing but one unquoted cell of whitespace between
     // two row breaks is a blank line: formatting noise, not a row of spaces.
-    const isBlankLine =
-      cells.length === 1 && !cells[0].quoted && cells[0].value.trim() === '';
+    const isBlankLine = cells.length === 1 && !cells[0].quoted && cells[0].value.trim() === '';
     if (!isBlankLine) records.push({ cells, line: recordLine });
     cells = [];
   };
@@ -223,10 +222,7 @@ function autoColumnName(index: number): string {
   return `column_${index + 1}`;
 }
 
-function dedupeColumns(
-  raw: string[],
-  diagnostics: ImportDiagnostic[],
-): string[] {
+function dedupeColumns(raw: string[], diagnostics: ImportDiagnostic[]): string[] {
   const seen = new Set<string>();
   return raw.map((name, index) => {
     const trimmed = name.trim();
@@ -335,7 +331,9 @@ export function parseJsonImport(text: string, _options: JsonParseOptions = {}): 
     parsed = [parsed];
   }
   const arr = parsed as Record<string, unknown>[];
-  const nonNullRows = arr.filter((row) => row != null && typeof row === 'object' && !Array.isArray(row));
+  const nonNullRows = arr.filter(
+    (row) => row != null && typeof row === 'object' && !Array.isArray(row),
+  );
   if (nonNullRows.length !== arr.length) {
     throw new ImportParseError('json-shape', 'JSON array items must all be objects');
   }
@@ -392,9 +390,8 @@ export function parseXlsxImport(base64: string, options: XlsxParseOptions = {}):
   if (sheetNames.length === 0) {
     throw new ImportParseError('unsupported-sheet', 'The workbook has no worksheets');
   }
-  const chosen = options.sheetName && sheetNames.includes(options.sheetName)
-    ? options.sheetName
-    : sheetNames[0];
+  const chosen =
+    options.sheetName && sheetNames.includes(options.sheetName) ? options.sheetName : sheetNames[0];
   if (options.sheetName && options.sheetName !== chosen) {
     throw new ImportParseError('unsupported-sheet', `No worksheet named "${options.sheetName}"`);
   }
@@ -486,7 +483,11 @@ export function decodeImportBase64(dataBase64: string, encoding: string = 'utf-8
  * forbids one giant SQL string); this stays for direct SQL preview callers.
  * Values use the dialect-aware escaper, identifiers the dialect-aware quoter.
  */
-export function generateInsertSQL(tableName: string, data: ParsedData, databaseType?: string): string {
+export function generateInsertSQL(
+  tableName: string,
+  data: ParsedData,
+  databaseType?: string,
+): string {
   if (data.rows.length === 0) return '';
   const escape = getEscapeSqlValue(databaseType);
   const colList = data.columns.map((c) => ident(c, databaseType)).join(', ');

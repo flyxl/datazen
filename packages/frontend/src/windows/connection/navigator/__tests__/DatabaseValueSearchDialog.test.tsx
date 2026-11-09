@@ -232,9 +232,7 @@ describe('DatabaseValueSearchDialog type scope (DBR-03)', () => {
     renderDialog({ driverType: 'postgresql' });
 
     const types = screen.getByTestId('value-search-types') as HTMLSelectElement;
-    expect([...types.querySelectorAll('option')].map((option) => option.value)).toEqual([
-      'text',
-    ]);
+    expect([...types.querySelectorAll('option')].map((option) => option.value)).toEqual(['text']);
   });
 
   it('offers the declared groups to a driver that can match them as text', () => {
@@ -279,19 +277,13 @@ describe('DatabaseValueSearchDialog answers (DBR-03)', () => {
     expect(results.textContent).toContain('orders');
     expect(results.textContent).not.toContain('customers');
 
-    expect(screen.getByTestId('value-search-zero-hits-summary').textContent).toContain(
-      '"count":1',
-    );
-    expect(screen.getByTestId('value-search-errors-summary').textContent).toContain(
-      '"count":1',
-    );
+    expect(screen.getByTestId('value-search-zero-hits-summary').textContent).toContain('"count":1');
+    expect(screen.getByTestId('value-search-errors-summary').textContent).toContain('"count":1');
     // The measured cost, no invented ETA.
-    expect(screen.getByTestId('value-search-done-note').textContent).toContain(
-      '"seconds":1',
-    );
+    expect(screen.getByTestId('value-search-done-note').textContent).toContain('"seconds":1');
   });
 
-  it('locates with the scan\'s own question — value, mode and the searched columns', () => {
+  it("locates with the scan's own question — value, mode and the searched columns", () => {
     const { onLocate, onClose } = renderDialog();
 
     fireEvent.change(screen.getByTestId('value-search-input'), {
@@ -306,9 +298,7 @@ describe('DatabaseValueSearchDialog answers (DBR-03)', () => {
       status: 'done',
       completed: 1,
       total: 1,
-      results: [
-        { table: 'orders', schema: 'sales', matches: 5, columns: ['name', 'email'] },
-      ],
+      results: [{ table: 'orders', schema: 'sales', matches: 5, columns: ['name', 'email'] }],
       elapsedMs: 100,
     });
 

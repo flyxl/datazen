@@ -795,17 +795,7 @@ export function useGridClipboard(options: UseGridClipboardOptions): UseGridClipb
     const drafts = rowsToDraftValues(payload.columnNames, payload.rows, columns);
     if (drafts.length > 0) addDraftRows(drafts);
     return true;
-  }, [
-    addDraftRows,
-    columns,
-    confirm,
-    context,
-    isEditable,
-    report,
-    showReadOnlyTip,
-    t,
-    tableLabel,
-  ]);
+  }, [addDraftRows, columns, confirm, context, isEditable, report, showReadOnlyTip, t, tableLabel]);
 
   const handlers = useMemo<GridClipboardHandlers>(
     () => ({

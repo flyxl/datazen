@@ -37,11 +37,7 @@ import type { ColumnSchema, FilterCondition, FilterOperator, TableInfo } from '.
  * only where the driver declared it can text-match them (see
  * {@link valueSearchTypeGroupsFor}).
  */
-const BASE_SEARCHABLE_CELL_TYPES: ReadonlySet<string> = new Set([
-  'text',
-  'enum',
-  'unknown',
-]);
+const BASE_SEARCHABLE_CELL_TYPES: ReadonlySet<string> = new Set(['text', 'enum', 'unknown']);
 
 /** A driver-declared extra type group of the value search (DBR-03). */
 export type ValueSearchTypeGroup = 'number' | 'datetime';
@@ -69,9 +65,12 @@ export function valueSearchTypeGroupsFor(
   driverType: string | null | undefined,
 ): readonly ValueSearchTypeGroup[] {
   const declared = driverType
-    ? (DB_REGISTRY as Record<string, { dataGrid?: { valueSearchExtraTypes?: readonly ValueSearchTypeGroup[] } } | undefined>)[
-        driverType
-      ]?.dataGrid?.valueSearchExtraTypes
+    ? (
+        DB_REGISTRY as Record<
+          string,
+          { dataGrid?: { valueSearchExtraTypes?: readonly ValueSearchTypeGroup[] } } | undefined
+        >
+      )[driverType]?.dataGrid?.valueSearchExtraTypes
     : undefined;
   return declared ?? [];
 }
@@ -272,8 +271,7 @@ export class ValueSearchDriver {
       total: this.total,
       current: this.current,
       results: this.results,
-      elapsedMs:
-        this.startedAt === null ? null : (this.endedAt ?? Date.now()) - this.startedAt,
+      elapsedMs: this.startedAt === null ? null : (this.endedAt ?? Date.now()) - this.startedAt,
     };
   }
 

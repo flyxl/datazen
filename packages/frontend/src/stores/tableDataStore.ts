@@ -123,10 +123,7 @@ interface TableDataStore
    * driver's searchable-type declaration) and replaces the applied filter,
    * exactly like any other structured apply.
    */
-  applyAnyColumn: (
-    panelId: string,
-    expansion: { conditions: FilterCondition[] },
-  ) => void;
+  applyAnyColumn: (panelId: string, expansion: { conditions: FilterCondition[] }) => void;
   /**
    * Apply the Raw SQL draft: the predicate replaces the applied filter
    * (structured conditions are cleared — at most one channel is applied at a

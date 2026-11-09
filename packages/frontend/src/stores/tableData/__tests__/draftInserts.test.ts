@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { emptyTableState } from '../connectionState';
-import { draftInsertCount, orderedDrafts, withDraftRowsFromCopy, withNewDraft } from '../draftInserts';
+import {
+  draftInsertCount,
+  orderedDrafts,
+  withDraftRowsFromCopy,
+  withNewDraft,
+} from '../draftInserts';
 import {
   draftsForWire,
   hasPendingWork,
@@ -19,7 +24,9 @@ const CONTEXT: TableChangeContext = {
   table: 'users',
 };
 
-function stateWith(...drafts: { draftId: string; values: Record<string, string | number | null> }[]) {
+function stateWith(
+  ...drafts: { draftId: string; values: Record<string, string | number | null> }[]
+) {
   const base: TableState = emptyTableState(CONTEXT);
   const draftInserts = new Map(base.draftInserts);
   for (const draft of drafts) {
@@ -130,7 +137,6 @@ describe('draft rows (store layer)', () => {
     expect(next.draftInserts.get('draft-2')?.values).toEqual({});
   });
 });
-
 
 describe('draft rows from a row copy (DBR-02)', () => {
   it('appends prefilled drafts in copy order, preserving NULL vs absent keys', () => {

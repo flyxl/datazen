@@ -161,7 +161,8 @@ const pack = {
   'binaryViewer.bytes': '{count}バイト',
   'binaryViewer.saveAsFile': 'ファイルとして保存…',
   'binaryViewer.imagePreview': '埋め込まれた画像のプレビュー',
-  'binaryViewer.hexTruncated': '{total} 個の 16 進行のうち {shown} を表示しています。ファイルとして保存して残りを検査する',
+  'binaryViewer.hexTruncated':
+    '{total} 個の 16 進行のうち {shown} を表示しています。ファイルとして保存して残りを検査する',
   'tableData.noPrimaryKey': 'コミットできません: テーブルに主キーがありません',
   'tableData.commitFailed': '変更をコミットできませんでした',
   'tableData.deleteFailed': '行の削除に失敗しました',
@@ -206,7 +207,8 @@ const pack = {
   'columnStats.avg': '平均',
   'columnStats.loading': 'サーバー上でコンピューティングしています…',
   'columnStats.error': '列統計クエリが失敗しました。',
-  'columnStats.avgUnsupported': 'この列タイプでは平均は計算されません (平均できるのは数値タイプのみです)。',
+  'columnStats.avgUnsupported':
+    'この列タイプでは平均は計算されません (平均できるのは数値タイプのみです)。',
   'dataTable.selectRow': '行を選択',
   'dataTable.copyRow': '行をコピー',
   'dataTable.moreActions': 'その他の操作',
@@ -401,10 +403,12 @@ const pack = {
   'filter.value': '値',
   'filter.apply': '適用',
   'filter.exportFiltered': '輸出…',
-  'filter.exportFilteredHint': '現在のフィルター結果 (テーブル全体、ストリーミング) を直接エクスポートします。',
+  'filter.exportFilteredHint':
+    '現在のフィルター結果 (テーブル全体、ストリーミング) を直接エクスポートします。',
   'filter.previewSqlHint': 'この読み取りによって送信される SQL ステートメントを表示します',
   'filter.previewSqlTitle': 'SQL プレビュー',
-  'filter.previewSqlDescription': 'まさに製品が送信するステートメントであり、ステートメントを実行するのと同じコードによって組み立てられます。',
+  'filter.previewSqlDescription':
+    'まさに製品が送信するステートメントであり、ステートメントを実行するのと同じコードによって組み立てられます。',
   'filter.previewSqlData': 'データステートメント',
   'filter.previewSqlCount': 'カウントステートメント',
   'filter.previewSqlExactCount': 'フィルタリングされたテーブルの正確な COUNT',
@@ -424,9 +428,11 @@ const pack = {
   'filter.anyColumnPlaceholder': '検索可能なすべての列を検索…',
   'filter.anyColumnScope': '{searchable} 列を検索、{skipped} 列をスキップ（テキスト検索不可）',
   'filter.rawPlaceholder': "WHERE 述語（例: total > 100 AND status = 'paid'）",
-  'filter.rawHint': '上級者向け：単一の WHERE ブール式。サーバーが検証して組み立てます。DML/DDL、複数ステートメント、ORDER BY/LIMIT は禁止です。',
+  'filter.rawHint':
+    '上級者向け：単一の WHERE ブール式。サーバーが検証して組み立てます。DML/DDL、複数ステートメント、ORDER BY/LIMIT は禁止です。',
   'filter.rawBadge': 'SQL',
-  'filter.rawQueryContext': '{context} に対して実行されます。上級者向け：単一の WHERE ブール式。サーバーが検証して組み立てます。DML/DDL、複数ステートメント、ORDER BY/LIMIT は禁止です。',
+  'filter.rawQueryContext':
+    '{context} に対して実行されます。上級者向け：単一の WHERE ブール式。サーバーが検証して組み立てます。DML/DDL、複数ステートメント、ORDER BY/LIMIT は禁止です。',
   'filter.rawAppliedSummary': 'SQL: {predicate}',
   'filter.editCondition': 'フィルタを編集',
   'filter.eq': '=',
@@ -511,7 +517,8 @@ const pack = {
   'export.selectedRows': '選択された行',
   'export.entireTable': 'テーブル全体',
   'export.filteredTable': '現在のフィルター結果 (テーブル全体、ストリーミング)',
-  'export.filteredScopeUnavailable': 'フィルタリングされたエクスポート ステートメントを構築できませんでした。ページまたはテーブル全体は引き続き利用可能です。',
+  'export.filteredScopeUnavailable':
+    'フィルタリングされたエクスポート ステートメントを構築できませんでした。ページまたはテーブル全体は引き続き利用可能です。',
   'export.selectColumns': '列の選択',
   'export.willExport': '{rows} 行、{cols} 列をエクスポートします',
   'export.formatAs': 'として',

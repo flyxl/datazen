@@ -551,11 +551,14 @@ const pack = {
   'filter.modeAnyColumn': 'Any Column',
   'filter.modeRawSql': 'Raw SQL',
   'filter.anyColumnPlaceholder': 'Search every searchable column…',
-  'filter.anyColumnScope': 'Searches {searchable} column(s); {skipped} skipped (cannot be searched as text)',
+  'filter.anyColumnScope':
+    'Searches {searchable} column(s); {skipped} skipped (cannot be searched as text)',
   'filter.rawPlaceholder': "WHERE predicate, e.g. total > 100 AND status = 'paid'",
-  'filter.rawHint': 'Advanced: one boolean WHERE expression. Validated and assembled by the server; no DML/DDL, no multi-statement, no ORDER BY/LIMIT.',
+  'filter.rawHint':
+    'Advanced: one boolean WHERE expression. Validated and assembled by the server; no DML/DDL, no multi-statement, no ORDER BY/LIMIT.',
   'filter.rawBadge': 'SQL',
-  'filter.rawQueryContext': 'Runs against {context}. Advanced: one boolean WHERE expression, validated and assembled by the server; no DML/DDL, no multi-statement, no ORDER BY/LIMIT.',
+  'filter.rawQueryContext':
+    'Runs against {context}. Advanced: one boolean WHERE expression, validated and assembled by the server; no DML/DDL, no multi-statement, no ORDER BY/LIMIT.',
   'filter.rawAppliedSummary': 'SQL: {predicate}',
   'filter.editCondition': 'Edit filter',
   'filter.eq': '=',

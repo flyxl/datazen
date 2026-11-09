@@ -6,7 +6,11 @@ import {
   recordRowCopy,
   rowCopyForClipboardText,
 } from '../../lib/gridPastePlan';
-import { rowsToDraftValues, useGridClipboard, type UseGridClipboardResult } from '../useGridClipboard';
+import {
+  rowsToDraftValues,
+  useGridClipboard,
+  type UseGridClipboardResult,
+} from '../useGridClipboard';
 import type { ColumnSchema, Value } from '../../types';
 import type { CellPasteWrite } from '../../lib/tableChanges';
 import type { StagePasteWritesResult } from '../../stores/tableData/pendingEditActions';
@@ -92,10 +96,20 @@ afterEach(() => {
 describe('row copy payload (gridPastePlan)', () => {
   it('round-trips a recorded row copy through its clipboard text', () => {
     recordRowCopy(
-      { tableKey: '["c","db","","t"]', columnNames: ['id', 'name'], rows: [[1, 'a'], [2, null]] },
+      {
+        tableKey: '["c","db","","t"]',
+        columnNames: ['id', 'name'],
+        rows: [
+          [1, 'a'],
+          [2, null],
+        ],
+      },
       '1\ta\n2\t',
     );
-    expect(rowCopyForClipboardText('1\ta\n2\t')?.rows).toEqual([[1, 'a'], [2, null]]);
+    expect(rowCopyForClipboardText('1\ta\n2\t')?.rows).toEqual([
+      [1, 'a'],
+      [2, null],
+    ]);
     expect(peekRowCopy()).not.toBeNull();
   });
 
@@ -105,10 +119,7 @@ describe('row copy payload (gridPastePlan)', () => {
   });
 
   it('CRLF from the OS clipboard still verifies (Windows rewrites the final newline)', () => {
-    recordRowCopy(
-      { tableKey: 'k', columnNames: ['a', 'b'], rows: [['x', 'y']] },
-      'x\ty',
-    );
+    recordRowCopy({ tableKey: 'k', columnNames: ['a', 'b'], rows: [['x', 'y']] }, 'x\ty');
     // The OS rewrote the trailing newline of the copy; CRLF normalization on
     // both sides keeps the claim verifiable.
     recordRowCopy({ tableKey: 'k', columnNames: ['a', 'b'], rows: [['x', 'y']] }, 'x\ty\n');
@@ -129,7 +140,14 @@ describe('rowsToDraftValues', () => {
   });
 
   it('preserves explicit NULLs and real values verbatim', () => {
-    const drafts = rowsToDraftValues(['name', 'id'], [['a', 1], [null, 2]], columns);
+    const drafts = rowsToDraftValues(
+      ['name', 'id'],
+      [
+        ['a', 1],
+        [null, 2],
+      ],
+      columns,
+    );
     expect(drafts).toEqual([{ name: 'a' }, { name: null }]);
   });
 
@@ -164,7 +182,10 @@ describe('useGridClipboard row features (DBR-02)', () => {
     // The payload keeps the full matrix — PK stripping happens when the rows
     // become drafts, not at copy time (the clipboard stays faithful).
     expect(payload?.columnNames).toEqual(['id', 'name']);
-    expect(payload?.rows).toEqual([[1, 'alpha'], [2, null]]);
+    expect(payload?.rows).toEqual([
+      [1, 'alpha'],
+      [2, null],
+    ]);
   });
 
   it('pasteRowsAsDrafts pastes a same-table copy without confirmation', async () => {
@@ -253,10 +274,7 @@ describe('useGridClipboard row features (DBR-02)', () => {
 
   it('pasteRowsAsDrafts reports when no copied column can be written', async () => {
     // Only the PK column was copied: nothing writable.
-    recordRowCopy(
-      { tableKey: '["c","db","","t"]', columnNames: ['id'], rows: [[7]] },
-      '7',
-    );
+    recordRowCopy({ tableKey: '["c","db","","t"]', columnNames: ['id'], rows: [[7]] }, '7');
     readClipboard.mockResolvedValue('7');
     const hook = mountClipboard(new Set([2]));
     let consumed = false;

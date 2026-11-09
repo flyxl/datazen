@@ -177,10 +177,7 @@ describe('executeImport', () => {
   });
 
   it('stop strategy: a failed chunk stops the run and names the failing row', async () => {
-    const transport = scriptedTransport([
-      { resolve: 4 },
-      { reject: new Error('[INSERT …] boom') },
-    ]);
+    const transport = scriptedTransport([{ resolve: 4 }, { reject: new Error('[INSERT …] boom') }]);
     const result = await executeImport({
       ...baseExecuteOptions,
       rows: fakeRows(8),
@@ -213,9 +210,7 @@ describe('executeImport', () => {
     expect(result.status).toBe('completed');
     expect(result.committedRows).toBe(4); // 2 retried + chunk 2's 2 rows
     // rowOrigins[1] is 3: the failing retried row names its source line.
-    expect(result.failedRows).toEqual([
-      { rowIndex: 1, sourceLine: 3, message: 'row bad' },
-    ]);
+    expect(result.failedRows).toEqual([{ rowIndex: 1, sourceLine: 3, message: 'row bad' }]);
   });
 
   it('transaction mode: a failed chunk rolls back and stop reports zero for it', async () => {

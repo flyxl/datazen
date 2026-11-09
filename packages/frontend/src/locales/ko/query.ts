@@ -159,7 +159,8 @@ const pack = {
   'binaryViewer.bytes': '{count}바이트',
   'binaryViewer.saveAsFile': '파일로 저장…',
   'binaryViewer.imagePreview': '삽입된 이미지 미리보기',
-  'binaryViewer.hexTruncated': '{total}개의 16진수 행 중 {shown} 표시 중; 나머지를 검사하려면 파일로 저장하세요.',
+  'binaryViewer.hexTruncated':
+    '{total}개의 16진수 행 중 {shown} 표시 중; 나머지를 검사하려면 파일로 저장하세요.',
   'tableData.noPrimaryKey': '커밋할 수 없음: 테이블에 기본 키가 없습니다.',
   'tableData.commitFailed': '변경 사항을 커밋하지 못했습니다.',
   'tableData.deleteFailed': '행 삭제에 실패했습니다',
@@ -204,7 +205,8 @@ const pack = {
   'columnStats.avg': '평균',
   'columnStats.loading': '서버에서 컴퓨팅 중…',
   'columnStats.error': '열 통계 쿼리가 실패했습니다.',
-  'columnStats.avgUnsupported': '이 열 유형에 대해서는 평균이 계산되지 않습니다(숫자 유형만 평균화할 수 있음).',
+  'columnStats.avgUnsupported':
+    '이 열 유형에 대해서는 평균이 계산되지 않습니다(숫자 유형만 평균화할 수 있음).',
   'dataTable.selectRow': '행 선택',
   'dataTable.copyRow': '행 복사',
   'dataTable.moreActions': '더 많은 작업',
@@ -401,7 +403,8 @@ const pack = {
   'filter.exportFilteredHint': '현재 필터 결과(테이블 전체, 스트리밍)를 직접 내보내기',
   'filter.previewSqlHint': '이 읽기가 보낼 SQL 문을 표시합니다.',
   'filter.previewSqlTitle': 'SQL 미리보기',
-  'filter.previewSqlDescription': '제품이 보내는 정확한 명령문 — 이를 실행하는 동일한 코드로 조합됩니다.',
+  'filter.previewSqlDescription':
+    '제품이 보내는 정확한 명령문 — 이를 실행하는 동일한 코드로 조합됩니다.',
   'filter.previewSqlData': '데이터 명세서',
   'filter.previewSqlCount': '계산서',
   'filter.previewSqlExactCount': '필터링된 테이블의 정확한 COUNT',
@@ -421,9 +424,11 @@ const pack = {
   'filter.anyColumnPlaceholder': '검색 가능한 모든 열에서 찾기…',
   'filter.anyColumnScope': '{searchable}개 열 검색, {skipped}개 열 건너뜀(텍스트 검색 불가)',
   'filter.rawPlaceholder': "WHERE 조건자, 예: total > 100 AND status = 'paid'",
-  'filter.rawHint': '고급: 단일 WHERE 불리언 식입니다. 서버가 검증하고 조립하며 DML/DDL, 다중 문, ORDER BY/LIMIT은 금지됩니다.',
+  'filter.rawHint':
+    '고급: 단일 WHERE 불리언 식입니다. 서버가 검증하고 조립하며 DML/DDL, 다중 문, ORDER BY/LIMIT은 금지됩니다.',
   'filter.rawBadge': 'SQL',
-  'filter.rawQueryContext': '{context}에서 실행됩니다. 고급: 단일 WHERE 불리언 식입니다. 서버가 검증하고 조립하며 DML/DDL, 다중 문, ORDER BY/LIMIT은 금지됩니다.',
+  'filter.rawQueryContext':
+    '{context}에서 실행됩니다. 고급: 단일 WHERE 불리언 식입니다. 서버가 검증하고 조립하며 DML/DDL, 다중 문, ORDER BY/LIMIT은 금지됩니다.',
   'filter.rawAppliedSummary': 'SQL: {predicate}',
   'filter.editCondition': '필터 편집',
   'filter.eq': '=',
@@ -507,7 +512,8 @@ const pack = {
   'export.selectedRows': '선택한 행',
   'export.entireTable': '전체 테이블',
   'export.filteredTable': '현재 필터 결과(테이블 전체, 스트리밍됨)',
-  'export.filteredScopeUnavailable': '필터링된 내보내기 문을 작성할 수 없습니다. 페이지 또는 전체 테이블을 계속 사용할 수 있습니다.',
+  'export.filteredScopeUnavailable':
+    '필터링된 내보내기 문을 작성할 수 없습니다. 페이지 또는 전체 테이블을 계속 사용할 수 있습니다.',
   'export.selectColumns': '열 선택',
   'export.willExport': '{rows} 행, {cols} 열을 내보냅니다.',
   'export.formatAs': '~처럼',

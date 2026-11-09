@@ -125,8 +125,8 @@ export function planImportChunks(options: PlanImportChunksOptions): ImportChunk[
 
   const escape = getEscapeSqlValue(databaseType);
   const columnList = targetColumns.map((column) => ident(column, databaseType)).join(', ');
-  const prefixLength =
-    `INSERT INTO ${ident(table, databaseType)} (${columnList}) VALUES\n  `.length;
+  const prefixLength = `INSERT INTO ${ident(table, databaseType)} (${columnList}) VALUES\n  `
+    .length;
 
   const batches: ImportBatch[] = [];
   let batchStart = 0;

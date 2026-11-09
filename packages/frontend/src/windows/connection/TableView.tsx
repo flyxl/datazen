@@ -11,7 +11,10 @@ import { tableManualHandle } from '../../lib/session/tableSession';
 import { databaseCommands } from '../../commands/database';
 import { FilterSqlPreviewDialog } from '../../components/filter/FilterSqlPreviewDialog';
 import type { TableReadPreviewSql } from '@datazen/backend-client';
-import { normalizeSelectionRange, EMPTY_GRID_SELECTION } from '../../stores/tableData/gridSelection';
+import {
+  normalizeSelectionRange,
+  EMPTY_GRID_SELECTION,
+} from '../../stores/tableData/gridSelection';
 import { hasPendingWork } from '../../stores/tableData/pendingChanges';
 import { selectDirtyRow } from '../../stores/tableData/dirtyIndex';
 import { displayedColumnNames } from '../../stores/tableData/selectionActions';
@@ -468,9 +471,11 @@ export function TableView({
     // editor and the structured filter read (`tableEditing` resolves the
     // same field), so the Any Column scope can never disagree with them.
     const hints = databaseType
-      ? (DB_REGISTRY[databaseType as DatabaseType] as
-          | { cellTypes?: import('../../lib/cellTypes').CellTypeHints }
-          | undefined)?.cellTypes
+      ? (
+          DB_REGISTRY[databaseType as DatabaseType] as
+            | { cellTypes?: import('../../lib/cellTypes').CellTypeHints }
+            | undefined
+        )?.cellTypes
       : undefined;
     return expandAnyColumnFilter(columns, anyColumnDraft, {
       groups: valueSearchTypeGroupsFor(databaseType ?? null),
@@ -828,7 +833,10 @@ export function TableView({
   const handleMenuPasteSelectedCells = useCallback(() => {
     const gridSelection = ts?.gridSelection;
     if (!gridSelection || gridSelection.mode !== 'cell') return;
-    const anchor = normalizeSelectionRange(gridSelection, displayedColumns.map((c) => c.name));
+    const anchor = normalizeSelectionRange(
+      gridSelection,
+      displayedColumns.map((c) => c.name),
+    );
     if (!anchor) return;
     clipboard.handlers.onPasteFromClipboard?.({
       rowIndex: anchor.start.rowIndex,
@@ -876,8 +884,10 @@ export function TableView({
           gridSelection != null &&
           (gridSelection.mode === 'row'
             ? selectedRows.size > 0
-            : normalizeSelectionRange(gridSelection, displayedColumns.map((c) => c.name)) !=
-              null);
+            : normalizeSelectionRange(
+                gridSelection,
+                displayedColumns.map((c) => c.name),
+              ) != null);
         if (!hasRealRowSelection) return;
         event.preventDefault();
         clipboard.copyRowsAsDrafts();
@@ -1050,9 +1060,11 @@ export function TableView({
         onAnyColumnValueChange={actions.setAnyColumnDraft}
         onApplyAnyColumn={(value) => {
           const hints = databaseType
-            ? (DB_REGISTRY[databaseType as DatabaseType] as
-                | { cellTypes?: import('../../lib/cellTypes').CellTypeHints }
-                | undefined)?.cellTypes
+            ? (
+                DB_REGISTRY[databaseType as DatabaseType] as
+                  | { cellTypes?: import('../../lib/cellTypes').CellTypeHints }
+                  | undefined
+              )?.cellTypes
             : undefined;
           const expansion = expandAnyColumnFilter(columns, value, {
             groups: valueSearchTypeGroupsFor(databaseType ?? null),
@@ -1069,7 +1081,9 @@ export function TableView({
         // Where the predicate runs (DBR-04): the panel's own database and
         // schema, so the user can see the target the statement will read.
         filterRawWhereContext={
-          rawWhereSupported ? [database || null, schema ?? null].filter(Boolean).join(' · ') || null : null
+          rawWhereSupported
+            ? [database || null, schema ?? null].filter(Boolean).join(' · ') || null
+            : null
         }
         filterOperators={filterOperators}
         filterLikeCaseInsensitive={filterLikeCaseInsensitive}

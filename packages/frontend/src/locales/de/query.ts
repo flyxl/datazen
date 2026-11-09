@@ -464,7 +464,8 @@ const pack = {
   'valueSearch.zeroHits': '{count} Tabelle(n) ohne Treffer',
   'valueSearch.locate': 'Öffnen und anzeigen',
   'valueSearch.locateNoColumns': 'Diese Tabelle hat keine durchsuchbare Spalte',
-  'valueSearch.doneNote': '{count} Tabelle(n) in {seconds}s durchsucht — mindestens eine Abfrage pro Tabelle.',
+  'valueSearch.doneNote':
+    '{count} Tabelle(n) in {seconds}s durchsucht — mindestens eine Abfrage pro Tabelle.',
   'resultFind.open': 'Finden Sie in Ergebnissen',
   'resultFind.openLabel': 'Finden',
   'resultFind.placeholder': 'In geladenen Zeilen suchen…',
@@ -519,11 +520,14 @@ const pack = {
   'filter.modeAnyColumn': 'Alle Spalten',
   'filter.modeRawSql': 'Raw SQL',
   'filter.anyColumnPlaceholder': 'Alle durchsuchbaren Spalten durchsuchen…',
-  'filter.anyColumnScope': 'Durchsucht {searchable} Spalte(n); {skipped} übersprungen (nicht textdurchsuchbar)',
+  'filter.anyColumnScope':
+    'Durchsucht {searchable} Spalte(n); {skipped} übersprungen (nicht textdurchsuchbar)',
   'filter.rawPlaceholder': "WHERE-Ausdruck, z. B. total > 100 AND status = 'paid'",
-  'filter.rawHint': 'Fortgeschritten: Ein einzelner boolescher WHERE-Ausdruck. Vom Server validiert und zusammengesetzt; kein DML/DDL, keine Mehrfachanweisungen, kein ORDER BY/LIMIT.',
+  'filter.rawHint':
+    'Fortgeschritten: Ein einzelner boolescher WHERE-Ausdruck. Vom Server validiert und zusammengesetzt; kein DML/DDL, keine Mehrfachanweisungen, kein ORDER BY/LIMIT.',
   'filter.rawBadge': 'SQL',
-  'filter.rawQueryContext': 'Läuft gegen {context}. Fortgeschritten: Ein einzelner boolescher WHERE-Ausdruck, vom Server validiert und zusammengesetzt; kein DML/DDL, keine Mehrfachanweisungen, kein ORDER BY/LIMIT.',
+  'filter.rawQueryContext':
+    'Läuft gegen {context}. Fortgeschritten: Ein einzelner boolescher WHERE-Ausdruck, vom Server validiert und zusammengesetzt; kein DML/DDL, keine Mehrfachanweisungen, kein ORDER BY/LIMIT.',
   'filter.rawAppliedSummary': 'SQL: {predicate}',
   'filter.editCondition': 'Filter bearbeiten',
   'filter.eq': '=',

@@ -3,10 +3,7 @@ import { useI18n } from '../../hooks/useI18n';
 import { cn } from '../../lib/cn';
 import { DefaultOrderSelect } from '../../components/DataTable/DefaultOrderSelect';
 import type { DefaultOrderOverride } from '../../lib/defaultSort';
-import {
-  TableFilterToolbar,
-  type NamedViewMenuConfig,
-} from './TableFilterToolbar';
+import { TableFilterToolbar, type NamedViewMenuConfig } from './TableFilterToolbar';
 import type { ColumnSchema, FilterCondition } from '../../types';
 
 export interface TableToolbarProps {

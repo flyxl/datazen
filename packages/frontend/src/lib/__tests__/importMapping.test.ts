@@ -96,7 +96,9 @@ describe('planImportMapping: overrides and conflicts', () => {
       targetColumns: ['id'],
       mode: 'auto',
     });
-    expect(plan.conflicts).toEqual([{ target: 'id', sources: expect.arrayContaining(['id', 'ID']) }]);
+    expect(plan.conflicts).toEqual([
+      { target: 'id', sources: expect.arrayContaining(['id', 'ID']) },
+    ]);
     expect(mappingIsExecutable(plan)).toBe(false);
   });
 

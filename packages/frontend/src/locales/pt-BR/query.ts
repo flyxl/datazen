@@ -372,13 +372,15 @@ const pack = {
   'valueSearch.types.text': 'Texto e enumeração',
   'valueSearch.types.textNumber': 'Texto, enumeração e números (correspondência de texto)',
   'valueSearch.types.textDatetime': 'Texto, enumeração e datas (correspondência de texto)',
-  'valueSearch.types.textNumberDatetime': 'Texto, enumeração, números e datas (correspondência de texto)',
+  'valueSearch.types.textNumberDatetime':
+    'Texto, enumeração, números e datas (correspondência de texto)',
   'valueSearch.types.note':
     'Colunas numéricas e de data/hora são casadas pela representação de texto (42, 2023-01-02), não de forma tipada.',
   'valueSearch.zeroHits': '{count} tabela(s) sem correspondência',
   'valueSearch.locate': 'Abrir e localizar',
   'valueSearch.locateNoColumns': 'Esta tabela não tem colunas pesquisáveis',
-  'valueSearch.doneNote': '{count} tabela(s) escaneada(s) em {seconds}s — pelo menos uma consulta por tabela.',
+  'valueSearch.doneNote':
+    '{count} tabela(s) escaneada(s) em {seconds}s — pelo menos uma consulta por tabela.',
   'resultFind.open': 'Encontrar nos resultados',
   'resultFind.openLabel': 'Encontrar',
   'resultFind.placeholder': 'Encontre nas linhas carregadas…',
@@ -433,11 +435,14 @@ const pack = {
   'filter.modeAnyColumn': 'Qualquer coluna',
   'filter.modeRawSql': 'Raw SQL',
   'filter.anyColumnPlaceholder': 'Pesquisar em todas as colunas pesquisáveis…',
-  'filter.anyColumnScope': 'Pesquisa em {searchable} coluna(s); {skipped} ignorada(s) (não pesquisáveis como texto)',
+  'filter.anyColumnScope':
+    'Pesquisa em {searchable} coluna(s); {skipped} ignorada(s) (não pesquisáveis como texto)',
   'filter.rawPlaceholder': "Predicado WHERE, ex. total > 100 AND status = 'paid'",
-  'filter.rawHint': 'Avançado: uma única expressão booleana WHERE. Validada e montada pelo servidor; sem DML/DDL, sem múltiplas instruções, sem ORDER BY/LIMIT.',
+  'filter.rawHint':
+    'Avançado: uma única expressão booleana WHERE. Validada e montada pelo servidor; sem DML/DDL, sem múltiplas instruções, sem ORDER BY/LIMIT.',
   'filter.rawBadge': 'SQL',
-  'filter.rawQueryContext': 'Executa em {context}. Avançado: uma única expressão booleana WHERE, validada e montada pelo servidor; sem DML/DDL, sem múltiplas instruções, sem ORDER BY/LIMIT.',
+  'filter.rawQueryContext':
+    'Executa em {context}. Avançado: uma única expressão booleana WHERE, validada e montada pelo servidor; sem DML/DDL, sem múltiplas instruções, sem ORDER BY/LIMIT.',
   'filter.rawAppliedSummary': 'SQL: {predicate}',
   'filter.editCondition': 'Editar filtro',
   'filter.eq': '=',

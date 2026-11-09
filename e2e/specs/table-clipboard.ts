@@ -160,18 +160,16 @@ describe('表数据剪贴板复制与粘贴 (DB-03)', () => {
   async function dispatchGridKey(key: string, withMeta = false): Promise<void> {
     await browser.execute(
       (k: string, meta: boolean) => {
-        document
-          .querySelector('[data-dt-surface]')
-          ?.dispatchEvent(
-            new KeyboardEvent('keydown', {
-              key: k,
-              code: k.length === 1 ? `Key${k.toUpperCase()}` : k,
-              metaKey: meta,
-              ctrlKey: meta,
-              bubbles: true,
-              cancelable: true,
-            }),
-          );
+        document.querySelector('[data-dt-surface]')?.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key: k,
+            code: k.length === 1 ? `Key${k.toUpperCase()}` : k,
+            metaKey: meta,
+            ctrlKey: meta,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
       },
       key,
       withMeta,

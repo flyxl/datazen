@@ -245,8 +245,7 @@ export function Pagination({
           })}`
         : `${from}-${to} / ${t('pagination.rowCountUnknown')}`;
 
-  const estimateTooltip =
-    view.kind === 'estimated' ? t('pagination.estimateTooltip') : undefined;
+  const estimateTooltip = view.kind === 'estimated' ? t('pagination.estimateTooltip') : undefined;
 
   // The estimate may be smaller than the real count, so the user can walk past
   // the end of the data. Say so instead of showing an empty grid.
@@ -374,9 +373,7 @@ export function Pagination({
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <div className="w-[120px] truncate text-center tabular-nums">
-            {pageLabel}
-          </div>
+          <div className="w-[120px] truncate text-center tabular-nums">{pageLabel}</div>
           <Button
             variant="secondary"
             className="h-8 w-8 px-0"

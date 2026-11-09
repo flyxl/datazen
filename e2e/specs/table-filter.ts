@@ -565,7 +565,7 @@ describe('表数据筛选 (TF-001~TF-010)', () => {
       await (await $('[data-testid="filter-mode-rawSql"]')).click();
       await browser.pause(300);
     }
-    await input.setValue("score > 1; DROP TABLE _e2e_filter_test");
+    await input.setValue('score > 1; DROP TABLE _e2e_filter_test');
     await $('[data-testid="raw-where-apply"]').click();
     await browser.pause(1200);
     const body = await $('body').getText();

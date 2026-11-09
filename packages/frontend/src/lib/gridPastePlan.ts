@@ -318,7 +318,11 @@ export function planPaste(options: PastePlanOptions): PastePlan {
   const sourceKey = options.source?.tableKey ?? null;
   const targetKey = options.context ? tableChangeKey(options.context) : null;
   const crossTable = sourceKey === null || targetKey === null ? null : sourceKey !== targetKey;
-  const requiresConfirmation = !(sourceKey !== null && targetKey !== null && sourceKey === targetKey);
+  const requiresConfirmation = !(
+    sourceKey !== null &&
+    targetKey !== null &&
+    sourceKey === targetKey
+  );
 
   plan.alignment = alignment;
   plan.crossTable = crossTable;
@@ -335,7 +339,9 @@ export function planPaste(options: PastePlanOptions): PastePlan {
 
   const columnByName = new Map(columns.map((column) => [column.name, column]));
   const rightEdge =
-    overflow === 'clip' && region ? columnOrder.indexOf(region.rightColumn) : columnOrder.length - 1;
+    overflow === 'clip' && region
+      ? columnOrder.indexOf(region.rightColumn)
+      : columnOrder.length - 1;
   const bottomEdge =
     overflow === 'clip' && region ? Math.min(region.bottomRow, pageRowCount - 1) : pageRowCount - 1;
 

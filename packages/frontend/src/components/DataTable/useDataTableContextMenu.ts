@@ -480,7 +480,10 @@ export function useDataTableContextMenu(
                 }
               : undefined,
             onCopySelectedCellsAs: canCopySelection
-              ? (format: SerializeCellsOptions['format'], options?: { includeHeader?: boolean }) => {
+              ? (
+                  format: SerializeCellsOptions['format'],
+                  options?: { includeHeader?: boolean },
+                ) => {
                   onCopySelectedCellsAs?.(format, options);
                 }
               : undefined,

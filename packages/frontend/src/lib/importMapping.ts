@@ -134,9 +134,7 @@ export function planImportMapping({
   const untargeted = targetColumns.filter((target) => !usedTargets.has(target));
 
   // Keep the entries in source order — the mapping table mirrors the file.
-  entries.sort(
-    (a, b) => sourceColumns.indexOf(a.source) - sourceColumns.indexOf(b.source),
-  );
+  entries.sort((a, b) => sourceColumns.indexOf(a.source) - sourceColumns.indexOf(b.source));
 
   return { entries, conflicts, unmapped, untargeted };
 }

@@ -503,9 +503,10 @@ describe('usePanelHandlers.handleSelectTable keys a tab by schema too (DBR-03)',
     // Two schemas, two tabs — the bare-name match used to land the second
     // click on the first tab, silently showing the wrong table.
     expect(tables).toHaveLength(2);
-    expect(tables.map((p) => (p as { tableSchema: string | null }).tableSchema).sort()).toEqual(
-      ['archive', 'sales'],
-    );
+    expect(tables.map((p) => (p as { tableSchema: string | null }).tableSchema).sort()).toEqual([
+      'archive',
+      'sales',
+    ]);
   });
 
   it('reuses the tab of the very schema the caller named', async () => {

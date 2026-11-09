@@ -119,17 +119,16 @@ describe('searchableColumns', () => {
     // The base scope never grows by itself.
     expect(searchableColumns(schema, cellTypesForScope('text'))).toEqual(['name']);
     // A declared group joins as text-representation matching.
-    expect(searchableColumns(schema, cellTypesForScope('text+number'))).toEqual([
-      'name',
-      'age',
-    ]);
+    expect(searchableColumns(schema, cellTypesForScope('text+number'))).toEqual(['name', 'age']);
     expect(searchableColumns(schema, cellTypesForScope('text+datetime'))).toEqual([
       'name',
       'created_at',
     ]);
-    expect(
-      searchableColumns(schema, cellTypesForScope('text+number+datetime')),
-    ).toEqual(['name', 'age', 'created_at']);
+    expect(searchableColumns(schema, cellTypesForScope('text+number+datetime'))).toEqual([
+      'name',
+      'age',
+      'created_at',
+    ]);
   });
 });
 

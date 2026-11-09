@@ -321,7 +321,8 @@ const pack = {
   'valueSearch.start': '搜尋',
   'valueSearch.pause': '暫停',
   'valueSearch.resume': '恢復',
-  'valueSearch.costNote': '對此資料庫的每個 {count} 表執行一個查詢，這可能需要一段時間並增加伺服器的負載。',
+  'valueSearch.costNote':
+    '對此資料庫的每個 {count} 表執行一個查詢，這可能需要一段時間並增加伺服器的負載。',
   'valueSearch.scanning': '正在搜尋 {table}...',
   'valueSearch.status.running': '正在尋找...',
   'valueSearch.status.paused': '已暫停 — 恢復繼續',
@@ -402,9 +403,11 @@ const pack = {
   'filter.anyColumnPlaceholder': '在所有可搜尋欄位中查找…',
   'filter.anyColumnScope': '將搜尋 {searchable} 欄；跳過 {skipped} 欄（不支援文字比對）',
   'filter.rawPlaceholder': "WHERE 述詞，如 total > 100 AND status = 'paid'",
-  'filter.rawHint': '進階功能：單一 WHERE 布林運算式。由伺服器校驗並組裝；禁止 DML/DDL、多語句與 ORDER BY/LIMIT。',
+  'filter.rawHint':
+    '進階功能：單一 WHERE 布林運算式。由伺服器校驗並組裝；禁止 DML/DDL、多語句與 ORDER BY/LIMIT。',
   'filter.rawBadge': 'SQL',
-  'filter.rawQueryContext': '在 {context} 上執行。進階功能：單一 WHERE 布林運算式，由伺服器校驗並組裝；禁止 DML/DDL、多語句與 ORDER BY/LIMIT。',
+  'filter.rawQueryContext':
+    '在 {context} 上執行。進階功能：單一 WHERE 布林運算式，由伺服器校驗並組裝；禁止 DML/DDL、多語句與 ORDER BY/LIMIT。',
   'filter.rawAppliedSummary': 'SQL：{predicate}',
   'filter.editCondition': '編輯篩選',
   'filter.eq': '=',

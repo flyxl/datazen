@@ -161,7 +161,7 @@ const pack = {
   'jsonViewer.collapse': 'Effondrement',
   'binaryViewer.bytes': '{count} octets',
   'binaryViewer.saveAsFile': 'Enregistrer sous forme de fichier…',
-  'binaryViewer.imagePreview': 'Aperçu de l\'image intégrée',
+  'binaryViewer.imagePreview': "Aperçu de l'image intégrée",
   'binaryViewer.hexTruncated':
     'Affichage de {shown} sur {total} lignes hexadécimales ; enregistrer sous forme de fichier pour inspecter le reste',
   'tableData.noPrimaryKey': "Impossible de valider : la table n'a pas de clé primaire",
@@ -209,7 +209,7 @@ const pack = {
   'columnStats.loading': 'Informatique sur le serveur…',
   'columnStats.error': 'La requête de statistiques de colonne a échoué.',
   'columnStats.avgUnsupported':
-    'La moyenne n\'est pas calculée pour ce type de colonne (seuls les types numériques peuvent faire l\'objet d\'une moyenne).',
+    "La moyenne n'est pas calculée pour ce type de colonne (seuls les types numériques peuvent faire l'objet d'une moyenne).",
   'dataTable.selectRow': 'Sélectionner une ligne',
   'dataTable.copyRow': 'Copier la ligne',
   'dataTable.moreActions': 'Plus d’actions',
@@ -364,7 +364,7 @@ const pack = {
   'valueSearch.status.idle': '',
   'valueSearch.mostLikely': 'Tableaux les plus probables',
   'valueSearch.noHits': 'Aucune table ne contient cette valeur.',
-  'valueSearch.errors': 'La ou les tables {count} n\'ont pas pu être recherchées',
+  'valueSearch.errors': "La ou les tables {count} n'ont pas pu être recherchées",
   'valueSearch.noTables': 'Cette base de données ne montre aucune table dans laquelle rechercher.',
   'valueSearch.mode.notContains': 'Ne contient pas',
   'valueSearch.scopeLabel': 'Portée',
@@ -377,18 +377,20 @@ const pack = {
   'valueSearch.types.text': 'Texte et énumération',
   'valueSearch.types.textNumber': 'Texte, énumération et nombres (correspondance texte)',
   'valueSearch.types.textDatetime': 'Texte, énumération et dates (correspondance texte)',
-  'valueSearch.types.textNumberDatetime': 'Texte, énumération, nombres et dates (correspondance texte)',
+  'valueSearch.types.textNumberDatetime':
+    'Texte, énumération, nombres et dates (correspondance texte)',
   'valueSearch.types.note':
     'Les colonnes numériques et date/heure sont appariées sur leur représentation texte (42, 2023-01-02), pas de façon typée.',
   'valueSearch.zeroHits': '{count} table(s) sans correspondance',
   'valueSearch.locate': 'Ouvrir et localiser',
   'valueSearch.locateNoColumns': 'Cette table n’a aucune colonne interrogeable',
-  'valueSearch.doneNote': '{count} table(s) parcourue(s) en {seconds}s — au moins une requête par table.',
+  'valueSearch.doneNote':
+    '{count} table(s) parcourue(s) en {seconds}s — au moins une requête par table.',
   'resultFind.open': 'Rechercher dans les résultats',
   'resultFind.openLabel': 'Trouver',
   'resultFind.placeholder': 'Rechercher dans les lignes chargées…',
   'resultFind.columnLabel': 'Colonne',
-  'resultFind.anyColumn': 'N\'importe quelle colonne',
+  'resultFind.anyColumn': "N'importe quelle colonne",
   'resultFind.operatorLabel': 'Correspondre',
   'resultFind.operator.contains': 'Contient',
   'resultFind.operator.notContains': 'Ne contient pas',
@@ -437,11 +439,14 @@ const pack = {
   'filter.modeAnyColumn': 'Toutes colonnes',
   'filter.modeRawSql': 'Raw SQL',
   'filter.anyColumnPlaceholder': 'Rechercher dans toutes les colonnes recherchables…',
-  'filter.anyColumnScope': 'Recherche dans {searchable} colonne(s) ; {skipped} ignorée(s) (non recherchables en texte)',
+  'filter.anyColumnScope':
+    'Recherche dans {searchable} colonne(s) ; {skipped} ignorée(s) (non recherchables en texte)',
   'filter.rawPlaceholder': "Prédicat WHERE, ex. total > 100 AND status = 'paid'",
-  'filter.rawHint': 'Avancé : une seule expression booléenne WHERE. Validée et assemblée par le serveur ; pas de DML/DDL, ni multi-instructions, ni ORDER BY/LIMIT.',
+  'filter.rawHint':
+    'Avancé : une seule expression booléenne WHERE. Validée et assemblée par le serveur ; pas de DML/DDL, ni multi-instructions, ni ORDER BY/LIMIT.',
   'filter.rawBadge': 'SQL',
-  'filter.rawQueryContext': "S'exécute sur {context}. Avancé : une seule expression booléenne WHERE, validée et assemblée par le serveur ; pas de DML/DDL, ni multi-instructions, ni ORDER BY/LIMIT.",
+  'filter.rawQueryContext':
+    "S'exécute sur {context}. Avancé : une seule expression booléenne WHERE, validée et assemblée par le serveur ; pas de DML/DDL, ni multi-instructions, ni ORDER BY/LIMIT.",
   'filter.rawAppliedSummary': 'SQL : {predicate}',
   'filter.editCondition': 'Modifier le filtre',
   'filter.eq': '=',
@@ -528,7 +533,7 @@ const pack = {
   'export.entireTable': 'Table entière',
   'export.filteredTable': 'Résultats du filtre actuel (table entière, streaming)',
   'export.filteredScopeUnavailable':
-    'L\'instruction d\'exportation filtrée n\'a pas pu être créée ; la page ou le tableau entier reste disponible.',
+    "L'instruction d'exportation filtrée n'a pas pu être créée ; la page ou le tableau entier reste disponible.",
   'export.selectColumns': 'Sélectionner des colonnes',
   'export.willExport': 'Exportera {rows} lignes, {cols} colonnes',
   'export.formatAs': 'comme',

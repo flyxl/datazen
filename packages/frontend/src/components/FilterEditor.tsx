@@ -349,9 +349,7 @@ export function FilterEditor({
                   ...(onApplyAnyColumn != null
                     ? ([['anyColumn', 'filter.modeAnyColumn']] as const)
                     : []),
-                  ...(rawWhereSupported
-                    ? ([['rawSql', 'filter.modeRawSql']] as const)
-                    : []),
+                  ...(rawWhereSupported ? ([['rawSql', 'filter.modeRawSql']] as const) : []),
                 ] as const
               ).map(([value, labelKey]) => (
                 <button
@@ -452,194 +450,197 @@ export function FilterEditor({
             </div>
           ) : (
             <>
-          <div className="mb-1.5 flex flex-nowrap items-center gap-1.5">
-            <div className="inline-flex shrink-0 rounded border border-edge">
-              <button
-                type="button"
-                className={cn(
-                  'px-1.5 py-0.5 text-[11px]',
-                  draftLogic === 'and' ? 'bg-accent/15 text-accent' : 'text-fg-secondary',
-                )}
-                onClick={() => onLogicChange('and')}
-                disabled={loading || perConditionLogic}
-                title={perConditionLogic ? t('filter.globalLogicDisabledHint') : undefined}
-                data-testid="filter-logic-and"
-              >
-                {t('filter.and')}
-              </button>
-              <button
-                type="button"
-                className={cn(
-                  'px-1.5 py-0.5 text-[11px]',
-                  draftLogic === 'or' ? 'bg-accent/15 text-accent' : 'text-fg-secondary',
-                )}
-                onClick={() => onLogicChange('or')}
-                disabled={loading || perConditionLogic}
-                title={perConditionLogic ? t('filter.globalLogicDisabledHint') : undefined}
-                data-testid="filter-logic-or"
-              >
-                {t('filter.or')}
-              </button>
-            </div>
-            {perConditionLogic && (
-              <button
-                type="button"
-                className="shrink-0 rounded px-1.5 py-0.5 text-[11px] text-fg-secondary hover:text-fg"
-                onClick={resetConnectors}
-                disabled={loading}
-                data-testid="filter-connector-reset"
-              >
-                {t('filter.connectorReset', { logic: draftLogic.toUpperCase() })}
-              </button>
-            )}
-            <Button
-              variant="ghost"
-              className="h-6 shrink-0 gap-1 px-1.5 text-xs"
-              onClick={addEmpty}
-              disabled={columns.length === 0 || loading}
-              data-testid="filter-add"
-            >
-              <Plus className="h-3 w-3" />
-              {t('filter.add')}
-            </Button>
-            <div className="ml-auto flex shrink-0 items-center gap-1.5">
-              {onExportFiltered && (
-                <Button
-                  variant="ghost"
-                  className="h-6 shrink-0 gap-1 px-2 text-xs"
-                  onClick={onExportFiltered}
-                  disabled={loading}
-                  data-testid="filter-export-filtered"
-                  title={t('filter.exportFilteredHint')}
-                >
-                  <Download className="h-3 w-3" />
-                  {t('filter.exportFiltered')}
-                </Button>
-              )}
-              {onPreviewSql && (
-                <Button
-                  variant="ghost"
-                  className="h-6 shrink-0 gap-1 px-2 font-mono text-xs"
-                  onClick={onPreviewSql}
-                  disabled={loading}
-                  data-testid="filter-preview-sql"
-                  title={t('filter.previewSqlHint')}
-                >
-                  <Terminal className="h-3 w-3" />
-                  SQL
-                </Button>
-              )}
-              <Button
-                variant="ghost"
-                className="h-6 px-2 text-xs"
-                onClick={() => onOpenChange(false)}
-                disabled={loading}
-                data-testid="filter-collapse"
-              >
-                {t('filter.collapse')}
-              </Button>
-              <Button
-                className="h-6 px-2.5 text-xs"
-                disabled={!dirty || loading || incomplete !== undefined}
-                data-testid="filter-apply"
-                title={
-                  incomplete
-                    ? t('filter.errorIncomplete', { column: incomplete.column })
-                    : undefined
-                }
-                onClick={() => {
-                  setEditingIndex(null);
-                  onApply();
-                }}
-              >
-                {t('filter.apply')}
-              </Button>
-            </div>
-          </div>
-
-          <div
-            className={cn(
-              'flex flex-wrap content-start gap-1.5 overflow-y-auto overflow-x-hidden',
-              FILTER_LIST_MAX_HEIGHT_CLASS,
-            )}
-          >
-            {applyError && (
-              <ErrorBanner className="basis-full px-1 py-1" data-testid="filter-error">
-                {applyError}
-              </ErrorBanner>
-            )}
-            {incomplete && (
-              <ErrorBanner className="basis-full px-1 py-1" data-testid="filter-incomplete-error">
-                {t('filter.errorIncomplete', { column: incomplete.column })}
-              </ErrorBanner>
-            )}
-            {draftFilters.length === 0 ? (
-              <div className="px-1 py-1 text-xs text-fg-muted">{t('filter.noActive')}</div>
-            ) : (
-              draftFilters.map((f, idx) => {
-                const complete = isCompleteFilter(f);
-                const expanded = !complete || editingIndex === idx;
-                const isLast = idx === draftFilters.length - 1;
-                // The first condition has no predecessor: its own connector
-                // would be meaningless, so no badge is rendered for it.
-                const connector = idx > 0 ? (f.connector ?? draftLogic) : null;
-                const explicit = f.connector !== undefined;
-
-                return (
-                  <div
-                    key={`${f.column}-${f.operator}-${idx}`}
-                    ref={isLast ? lastItemRef : undefined}
-                    className="flex max-w-full flex-nowrap items-center gap-1"
-                    data-filter-index={idx}
+              <div className="mb-1.5 flex flex-nowrap items-center gap-1.5">
+                <div className="inline-flex shrink-0 rounded border border-edge">
+                  <button
+                    type="button"
+                    className={cn(
+                      'px-1.5 py-0.5 text-[11px]',
+                      draftLogic === 'and' ? 'bg-accent/15 text-accent' : 'text-fg-secondary',
+                    )}
+                    onClick={() => onLogicChange('and')}
+                    disabled={loading || perConditionLogic}
+                    title={perConditionLogic ? t('filter.globalLogicDisabledHint') : undefined}
+                    data-testid="filter-logic-and"
                   >
-                    {connector && (
-                      <FilterConnectorToggle
-                        index={idx}
-                        value={connector}
-                        explicit={explicit}
-                        differsFromGlobal={explicit && connector !== draftLogic}
-                        disabled={loading}
-                        onSelect={(next) => setConnector(idx, next)}
-                        t={t}
-                      />
+                    {t('filter.and')}
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(
+                      'px-1.5 py-0.5 text-[11px]',
+                      draftLogic === 'or' ? 'bg-accent/15 text-accent' : 'text-fg-secondary',
                     )}
-                    {expanded ? (
-                      <FilterConditionEditor
-                        filter={f}
-                        index={idx}
-                        columns={columns}
-                        supportedOperators={operators}
-                        cellTypeHints={cellTypeHints}
-                        likeCaseInsensitive={likeCaseInsensitive}
-                        onChange={onChange}
-                        onRemove={onRemove}
-                        onCollapse={() => setEditingIndex(null)}
-                        autoFocusValue={!complete || editingIndex === idx}
-                        disabled={loading}
-                        t={t}
-                      />
-                    ) : (
-                      <FilterConditionChip
-                        filter={f}
-                        onEdit={() => setEditingIndex(idx)}
-                        onRemove={() => onRemove(idx)}
-                        disabled={loading}
-                        t={t}
-                      />
-                    )}
-                    {!complete && (
-                      <span
-                        className="ml-1 rounded bg-warning/15 px-1 py-px text-[10px] text-warning"
-                        data-testid="filter-incomplete"
+                    onClick={() => onLogicChange('or')}
+                    disabled={loading || perConditionLogic}
+                    title={perConditionLogic ? t('filter.globalLogicDisabledHint') : undefined}
+                    data-testid="filter-logic-or"
+                  >
+                    {t('filter.or')}
+                  </button>
+                </div>
+                {perConditionLogic && (
+                  <button
+                    type="button"
+                    className="shrink-0 rounded px-1.5 py-0.5 text-[11px] text-fg-secondary hover:text-fg"
+                    onClick={resetConnectors}
+                    disabled={loading}
+                    data-testid="filter-connector-reset"
+                  >
+                    {t('filter.connectorReset', { logic: draftLogic.toUpperCase() })}
+                  </button>
+                )}
+                <Button
+                  variant="ghost"
+                  className="h-6 shrink-0 gap-1 px-1.5 text-xs"
+                  onClick={addEmpty}
+                  disabled={columns.length === 0 || loading}
+                  data-testid="filter-add"
+                >
+                  <Plus className="h-3 w-3" />
+                  {t('filter.add')}
+                </Button>
+                <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                  {onExportFiltered && (
+                    <Button
+                      variant="ghost"
+                      className="h-6 shrink-0 gap-1 px-2 text-xs"
+                      onClick={onExportFiltered}
+                      disabled={loading}
+                      data-testid="filter-export-filtered"
+                      title={t('filter.exportFilteredHint')}
+                    >
+                      <Download className="h-3 w-3" />
+                      {t('filter.exportFiltered')}
+                    </Button>
+                  )}
+                  {onPreviewSql && (
+                    <Button
+                      variant="ghost"
+                      className="h-6 shrink-0 gap-1 px-2 font-mono text-xs"
+                      onClick={onPreviewSql}
+                      disabled={loading}
+                      data-testid="filter-preview-sql"
+                      title={t('filter.previewSqlHint')}
+                    >
+                      <Terminal className="h-3 w-3" />
+                      SQL
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    className="h-6 px-2 text-xs"
+                    onClick={() => onOpenChange(false)}
+                    disabled={loading}
+                    data-testid="filter-collapse"
+                  >
+                    {t('filter.collapse')}
+                  </Button>
+                  <Button
+                    className="h-6 px-2.5 text-xs"
+                    disabled={!dirty || loading || incomplete !== undefined}
+                    data-testid="filter-apply"
+                    title={
+                      incomplete
+                        ? t('filter.errorIncomplete', { column: incomplete.column })
+                        : undefined
+                    }
+                    onClick={() => {
+                      setEditingIndex(null);
+                      onApply();
+                    }}
+                  >
+                    {t('filter.apply')}
+                  </Button>
+                </div>
+              </div>
+
+              <div
+                className={cn(
+                  'flex flex-wrap content-start gap-1.5 overflow-y-auto overflow-x-hidden',
+                  FILTER_LIST_MAX_HEIGHT_CLASS,
+                )}
+              >
+                {applyError && (
+                  <ErrorBanner className="basis-full px-1 py-1" data-testid="filter-error">
+                    {applyError}
+                  </ErrorBanner>
+                )}
+                {incomplete && (
+                  <ErrorBanner
+                    className="basis-full px-1 py-1"
+                    data-testid="filter-incomplete-error"
+                  >
+                    {t('filter.errorIncomplete', { column: incomplete.column })}
+                  </ErrorBanner>
+                )}
+                {draftFilters.length === 0 ? (
+                  <div className="px-1 py-1 text-xs text-fg-muted">{t('filter.noActive')}</div>
+                ) : (
+                  draftFilters.map((f, idx) => {
+                    const complete = isCompleteFilter(f);
+                    const expanded = !complete || editingIndex === idx;
+                    const isLast = idx === draftFilters.length - 1;
+                    // The first condition has no predecessor: its own connector
+                    // would be meaningless, so no badge is rendered for it.
+                    const connector = idx > 0 ? (f.connector ?? draftLogic) : null;
+                    const explicit = f.connector !== undefined;
+
+                    return (
+                      <div
+                        key={`${f.column}-${f.operator}-${idx}`}
+                        ref={isLast ? lastItemRef : undefined}
+                        className="flex max-w-full flex-nowrap items-center gap-1"
+                        data-filter-index={idx}
                       >
-                        {t('filter.incomplete')}
-                      </span>
-                    )}
-                  </div>
-                );
-              })
-            )}
-          </div>
+                        {connector && (
+                          <FilterConnectorToggle
+                            index={idx}
+                            value={connector}
+                            explicit={explicit}
+                            differsFromGlobal={explicit && connector !== draftLogic}
+                            disabled={loading}
+                            onSelect={(next) => setConnector(idx, next)}
+                            t={t}
+                          />
+                        )}
+                        {expanded ? (
+                          <FilterConditionEditor
+                            filter={f}
+                            index={idx}
+                            columns={columns}
+                            supportedOperators={operators}
+                            cellTypeHints={cellTypeHints}
+                            likeCaseInsensitive={likeCaseInsensitive}
+                            onChange={onChange}
+                            onRemove={onRemove}
+                            onCollapse={() => setEditingIndex(null)}
+                            autoFocusValue={!complete || editingIndex === idx}
+                            disabled={loading}
+                            t={t}
+                          />
+                        ) : (
+                          <FilterConditionChip
+                            filter={f}
+                            onEdit={() => setEditingIndex(idx)}
+                            onRemove={() => onRemove(idx)}
+                            disabled={loading}
+                            t={t}
+                          />
+                        )}
+                        {!complete && (
+                          <span
+                            className="ml-1 rounded bg-warning/15 px-1 py-px text-[10px] text-warning"
+                            data-testid="filter-incomplete"
+                          >
+                            {t('filter.incomplete')}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </>
           )}
         </div>

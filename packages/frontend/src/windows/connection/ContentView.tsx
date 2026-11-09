@@ -460,13 +460,15 @@ export function ContentView({
   const handleImportCompleted = useCallback(
     async (target: { table: string; schema?: string | null; database?: string | null }) => {
       await handlers.handleRefresh();
-      const panels = usePanelStore.getState().panels.filter(
-        (panel) =>
-          panel.type === 'table' &&
-          panel.tableName === target.table &&
-          (target.database == null || panel.database === target.database) &&
-          (target.schema == null || panel.tableSchema === target.schema),
-      );
+      const panels = usePanelStore
+        .getState()
+        .panels.filter(
+          (panel) =>
+            panel.type === 'table' &&
+            panel.tableName === target.table &&
+            (target.database == null || panel.database === target.database) &&
+            (target.schema == null || panel.tableSchema === target.schema),
+        );
       for (const panel of panels) {
         useTableDataStore.getState().reloadPanel(panel.id);
       }

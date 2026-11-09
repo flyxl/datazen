@@ -711,8 +711,7 @@ export const ConnectionNavigatorTree = forwardRef<
       // narrowed list would render the seeded condition as an error banner
       // instead of a filter (the meta is a hint; the back end still refuses).
       const declared =
-        DB_REGISTRY[connection.databaseType as keyof typeof DB_REGISTRY]?.dataGrid
-          ?.filterOperators;
+        DB_REGISTRY[connection.databaseType as keyof typeof DB_REGISTRY]?.dataGrid?.filterOperators;
       const conditions = locateConditions(intent).filter((condition) =>
         operatorsForDriver(declared).includes(condition.operator),
       );

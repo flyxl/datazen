@@ -399,8 +399,7 @@ const pack = {
   'dataTable.copyRowsAsNewRows': '复制为新增行',
   'dataTable.pasteRowsNotRowData':
     '剪贴板中没有 DataZen 复制的行数据。请先在 DataZen 中复制行；外部数据请使用“粘贴到选中的单元格”。',
-  'dataTable.pasteRowsNoWritableColumn':
-    '复制的列中没有可写入本表的列（主键与自增列不会被复制）。',
+  'dataTable.pasteRowsNoWritableColumn': '复制的列中没有可写入本表的列（主键与自增列不会被复制）。',
   'dataTable.pasteRowsCrossTableTitle': '将行粘贴到另一张表？',
   'dataTable.pasteRowsCrossTableBody':
     '从 {source} 复制的行将作为新增行加入 {target}。{total} 列中有 {matched} 列按名称匹配并写入。',
@@ -577,9 +576,11 @@ const pack = {
   'filter.anyColumnPlaceholder': '在所有可搜索列中查找…',
   'filter.anyColumnScope': '将搜索 {searchable} 列；跳过 {skipped} 列（不支持文本匹配）',
   'filter.rawPlaceholder': "WHERE 谓词，如 total > 100 AND status = 'paid'",
-  'filter.rawHint': '高级功能：单个 WHERE 布尔表达式。由服务端校验并组装；禁止 DML/DDL、多语句与 ORDER BY/LIMIT。',
+  'filter.rawHint':
+    '高级功能：单个 WHERE 布尔表达式。由服务端校验并组装；禁止 DML/DDL、多语句与 ORDER BY/LIMIT。',
   'filter.rawBadge': 'SQL',
-  'filter.rawQueryContext': '在 {context} 上执行。高级功能：单个 WHERE 布尔表达式，由服务端校验并组装；禁止 DML/DDL、多语句与 ORDER BY/LIMIT。',
+  'filter.rawQueryContext':
+    '在 {context} 上执行。高级功能：单个 WHERE 布尔表达式，由服务端校验并组装；禁止 DML/DDL、多语句与 ORDER BY/LIMIT。',
   'filter.rawAppliedSummary': 'SQL：{predicate}',
   'filter.editCondition': '编辑筛选',
   'filter.eq': '=',
@@ -677,10 +678,12 @@ const pack = {
   'import.sourceLine': '源文件行',
   'import.dontImport': '不导入',
   'import.previewFirstRows': '预览：前 {count} 行（共 {total} 行）',
-  'import.summary': '{sources} 个源列 · {mapped} 个已映射 · {skipped} 个不导入 · {unwritten} 个目标列保持默认值',
+  'import.summary':
+    '{sources} 个源列 · {mapped} 个已映射 · {skipped} 个不导入 · {unwritten} 个目标列保持默认值',
   'import.conflictWarning': '{count} 个目标列会收到多个源列的数据。请先解决冲突再导入。',
   'import.duplicateColumnWarning': '文件中存在重复的列名：{columns}。',
-  'import.raggedRowWarning': '{count} 行的字段数与列名不一致（首行在第 {line} 行）。多余字段被丢弃；缺失字段按空字段策略处理。',
+  'import.raggedRowWarning':
+    '{count} 行的字段数与列名不一致（首行在第 {line} 行）。多余字段被丢弃；缺失字段按空字段策略处理。',
   'import.unmappedColumns': '不导入：{columns}',
   'import.loadingTargets': '正在读取目标表列…',
   'import.loadTargetsFailed': '读取目标表列失败：{message}',
@@ -696,7 +699,8 @@ const pack = {
   'import.cancelImport': '取消导入',
   'import.progress': '已处理 {processed} · 已提交 {committed} · 已失败 {failed}',
   'import.result.completed': '导入完成：已导入 {committed} 行。',
-  'import.result.stopped': '导入因错误停止，此前已提交 {committed} 行。首个出错行（源文件第 {line} 行）：{message}',
+  'import.result.stopped':
+    '导入因错误停止，此前已提交 {committed} 行。首个出错行（源文件第 {line} 行）：{message}',
   'import.result.cancelled': '导入已取消，此前已提交 {committed} 行。',
   'import.result.failedRows': '失败行（{count}）',
   'import.refreshFailed': '导入已完成，但刷新表格数据失败。请手动重新加载该表以查看新数据。',

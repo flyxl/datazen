@@ -78,7 +78,9 @@ vi.mock('../../../lib/databaseTypes', () => ({
 
 const tableController = vi.hoisted(() => ({
   snapshot: { state: 'ready' },
-  refresh: vi.fn().mockResolvedValue({ state: 'ready', observedContext: { transactionState: 'none' } }),
+  refresh: vi
+    .fn()
+    .mockResolvedValue({ state: 'ready', observedContext: { transactionState: 'none' } }),
   execute: vi.fn().mockResolvedValue({ executionId: 'table-tx' }),
   getExecution: vi.fn().mockResolvedValue({ state: 'succeeded' }),
 }));

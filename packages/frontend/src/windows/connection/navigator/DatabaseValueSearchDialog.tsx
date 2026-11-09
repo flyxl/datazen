@@ -185,9 +185,7 @@ export function DatabaseValueSearchDialog({
   const pickerRows = useMemo(() => {
     const needle = pickerFilter.trim().toLowerCase();
     if (!needle) return allTargets;
-    return allTargets.filter((target) =>
-      targetKey(target).toLowerCase().includes(needle),
-    );
+    return allTargets.filter((target) => targetKey(target).toLowerCase().includes(needle));
   }, [allTargets, pickerFilter]);
 
   const toggleTarget = useCallback((key: string) => {
@@ -226,9 +224,7 @@ export function DatabaseValueSearchDialog({
         disabled={result.columns.length === 0}
         onClick={() => locate(result)}
         title={
-          result.columns.length === 0
-            ? t('valueSearch.locateNoColumns')
-            : t('valueSearch.locate')
+          result.columns.length === 0 ? t('valueSearch.locateNoColumns') : t('valueSearch.locate')
         }
       >
         <Locate className="h-3 w-3" />
@@ -373,16 +369,17 @@ export function DatabaseValueSearchDialog({
                       onChange={() => toggleTarget(key)}
                     />
                     {target.schema && (
-                      <span className="shrink-0 text-[10px] text-fg-muted">
-                        {target.schema}.
-                      </span>
+                      <span className="shrink-0 text-[10px] text-fg-muted">{target.schema}.</span>
                     )}
                     <span className="truncate text-fg">{target.table}</span>
                   </label>
                 );
               })}
               {pickerRows.length === 0 && (
-                <p className="px-1 py-1 text-[10px] text-fg-muted" data-testid="value-search-picker-empty">
+                <p
+                  className="px-1 py-1 text-[10px] text-fg-muted"
+                  data-testid="value-search-picker-empty"
+                >
                   {t('valueSearch.pickerEmpty')}
                 </p>
               )}

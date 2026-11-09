@@ -16,7 +16,10 @@ import enQuery from '../../../locales/en/query';
 const EMPTY = new Set<string>();
 
 const bridge = (overrides: Partial<TableClipboardBridge> = {}): TableClipboardBridge => ({
-  dataTableProps: { clipboard: {} as TableClipboardBridge['dataTableProps']['clipboard'], cellErrors: EMPTY },
+  dataTableProps: {
+    clipboard: {} as TableClipboardBridge['dataTableProps']['clipboard'],
+    cellErrors: EMPTY,
+  },
   handlers: {} as TableClipboardBridge['handlers'],
   cellErrors: EMPTY,
   problems: [],
@@ -57,9 +60,7 @@ describe('TableClipboardStatus', () => {
     // Pasting the original values back: nothing staged, nothing skipped, but two staged
     // changes are gone. The line used to disappear entirely for this outcome.
     render(
-      <TableClipboardStatus
-        bridge={bridge({ lastPaste: summary({ overwrittenPending: 2 }) })}
-      />,
+      <TableClipboardStatus bridge={bridge({ lastPaste: summary({ overwrittenPending: 2 }) })} />,
     );
 
     expect(screen.getByTestId('table-clipboard-status')).toBeInTheDocument();
