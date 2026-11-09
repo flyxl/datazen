@@ -249,6 +249,7 @@ async fn journey(prefix: &str, driver_id: &str) {
                     schema: config.schema.clone(),
                     columns: vec!["id".into()],
                     ddl: None,
+                    source: TableDataSource::Table,
                 }],
             };
             let operation = Arc::new(Operation {

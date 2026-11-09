@@ -5,6 +5,11 @@
 //! in batches (CSV / JSON / SQL INSERT) and writes them straight to disk —
 //! avoiding holding the whole table in memory and the JS↔Rust data round-trip.
 //!
+//! Each item's rows come from a [`DataFetcher`](fetcher::DataFetcher)
+//! (see `fetcher.rs`): the named table, one arbitrary SQL statement, or
+//! caller-provided rows with their schema. All three feed the same internal
+//! row stream (`StatementStart` + batched `Rows`) into the formatters.
+//!
 //! Product behavior:
 //! - Output is a single file or a ZIP archive (multiple files).
 //! - ZIP/multi-file: each file is written to a temp dir, then zipped, then the
@@ -18,7 +23,9 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use datazen_driver_api::{DatabaseDriver, QueryStreamCallback, QueryStreamEvent};
+use datazen_driver_api::{
+    ColumnInfo, DatabaseDriver, QueryStreamCallback, QueryStreamEvent, Value,
+};
 use serde::{Deserialize, Serialize};
 
 use zip::write::SimpleFileOptions;
@@ -67,6 +74,63 @@ pub struct TableExportInput {
     /// DDL text (CREATE TABLE …); used when the mode includes structure.
     #[serde(default)]
     pub ddl: Option<String>,
+    /// Where this item's rows come from. Defaults to the named table, so
+    /// requests written before data sources existed keep parsing unchanged.
+    /// The `type` tag is explicit and serializable so the frontend (item 3)
+    /// can send SQL / provided-data sources over the same IPC shape.
+    #[serde(default)]
+    pub source: TableDataSource,
+}
+
+/// Where one export item's rows come from.
+///
+/// Serialized with an explicit `type` tag (`{"type":"table"}`,
+/// `{"type":"sql","sql":"..."}`, `{"type":"provided","columns":[...],
+/// "rows":[...]}`) so callers and the frontend can tell the sources apart
+/// without guessing from the other fields.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "type")]
+pub enum TableDataSource {
+    /// Default: the named table, exported as `SELECT *` (or the selected
+    /// columns). Implemented as a SQL source — see `fetcher.rs`.
+    Table,
+    /// One arbitrary read-only SQL statement (e.g. a filtered export),
+    /// executed against the backend. `sql_guard` applies at fetch time.
+    Sql { sql: String },
+    /// Rows already loaded by the caller, with their schema. Never touches
+    /// the backend or `sql_guard`; validated for schema/row shape instead.
+    Provided {
+        columns: Vec<ColumnInfo>,
+        rows: Vec<Vec<Option<Value>>>,
+    },
+}
+
+impl Default for TableDataSource {
+    fn default() -> Self {
+        Self::Table
+    }
+}
+
+impl TableDataSource {
+    /// Fail fast on a malformed source, before any file is planned or
+    /// written. SQL emptiness is checked here; the full `sql_guard` check
+    /// needs backend flags and runs at fetch time instead.
+    pub fn validate(&self, name: &str) -> Result<(), ExportError> {
+        match self {
+            TableDataSource::Table => Ok(()),
+            TableDataSource::Sql { sql } => {
+                if sql.trim().is_empty() {
+                    return Err(ExportError::Validation(format!(
+                        "SQL data source '{name}' must not be empty"
+                    )));
+                }
+                Ok(())
+            }
+            TableDataSource::Provided { columns, rows } => {
+                fetcher::validate_provided_data(name, columns, rows)
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
@@ -140,9 +204,13 @@ pub struct ExportProgressEvent {
 }
 
 pub mod error;
+pub mod fetcher;
 pub mod file_job;
 pub mod format;
 pub use error::ExportError;
+pub use fetcher::{
+    fetcher_for_table, validate_provided_data, DataFetcher, ProvidedDataFetcher, SqlDataFetcher,
+};
 pub use file_job::{FileArtifactJob, FileJobOperation, FileJobOutput};
 pub use format::*;
 
@@ -189,7 +257,9 @@ impl FileSink {
 }
 
 // ---------------------------------------------------------------------------
-// File planning (mirrors src/lib/batchExport.ts buildBatchExportFiles)
+// File planning for the Rust batch export. This module is the single source
+// of truth for export file layout; the old TS buildBatchExportFiles builder
+// was deleted in the export cleanup — do not reintroduce a second planner.
 // ---------------------------------------------------------------------------
 
 /// A planned output file.
@@ -222,7 +292,43 @@ pub fn resolve_ddl(table: &TableExportInput) -> String {
     }
 }
 
-pub fn build_file_plans(request: &ExportTablesRequest) -> Vec<FilePlan<'_>> {
+/// DDL text for a structure-mode plan.
+///
+/// DDL semantics, by source (chosen deliberately — see below):
+///
+/// * **Table source**: DDL comes from `table.ddl` when the caller supplied
+///   it, else the `"-- DDL unavailable …"` placeholder. A real table exists,
+///   so the file at least names what could not be retrieved.
+/// * **SQL / provided-data source**: there is no table whose DDL could be
+///   merged, so a generated file would be fake DDL. Structure modes
+///   therefore require the caller to supply explicit `ddl` text for these
+///   items (the `ddl` field already exists for exactly this); without it,
+///   planning fails with a clear `Validation` error instead of emitting a
+///   placeholder that pretends to be a table definition.
+///
+/// The alternative — refusing structure modes for non-table sources
+/// outright — was rejected: a filtered SQL export whose caller knows the
+/// table's DDL is a legitimate structure export, and the explicit-`ddl`
+/// rule keeps that working without inventing DDL.
+pub fn ddl_for_structure(table: &TableExportInput) -> Result<String, CommandError> {
+    match &table.source {
+        TableDataSource::Table => Ok(resolve_ddl(table)),
+        _ => match table.ddl.as_deref() {
+            Some(d) if !d.trim().is_empty() => Ok(d.to_string()),
+            _ => Err(CommandError::Validation(format!(
+                "structure export for non-table source '{}' needs an explicit ddl: \
+                 SQL and provided-data sources have no table DDL to include",
+                table.table_name
+            ))),
+        },
+    }
+}
+
+pub fn build_file_plans(request: &ExportTablesRequest) -> Result<Vec<FilePlan<'_>>, CommandError> {
+    // Fail fast on malformed sources before any file is planned.
+    for table in &request.tables {
+        table.source.validate(&table.table_name)?;
+    }
     let mut seen = HashSet::new();
     let mut plans = Vec::new();
     for table in &request.tables {
@@ -231,7 +337,7 @@ pub fn build_file_plans(request: &ExportTablesRequest) -> Vec<FilePlan<'_>> {
             ExportMode::StructureOnly => {
                 plans.push(FilePlan::Ddl {
                     filename: unique_filename(&mut seen, format!("{base}.sql")),
-                    text: resolve_ddl(table),
+                    text: ddl_for_structure(table)?,
                 });
             }
             ExportMode::DataOnly => {
@@ -248,12 +354,12 @@ pub fn build_file_plans(request: &ExportTablesRequest) -> Vec<FilePlan<'_>> {
                         filename: unique_filename(&mut seen, format!("{base}.sql")),
                         table,
                         format: DataFormat::SqlInsert,
-                        ddl_prefix: Some(resolve_ddl(table)),
+                        ddl_prefix: Some(ddl_for_structure(table)?),
                     });
                 } else {
                     plans.push(FilePlan::Ddl {
                         filename: unique_filename(&mut seen, format!("{base}.sql")),
-                        text: resolve_ddl(table),
+                        text: ddl_for_structure(table)?,
                     });
                     plans.push(FilePlan::Data {
                         filename: format!("{base}.{}", request.data_format.extension()),
@@ -265,14 +371,14 @@ pub fn build_file_plans(request: &ExportTablesRequest) -> Vec<FilePlan<'_>> {
             }
         }
     }
-    plans
+    Ok(plans)
 }
 
 /// Plan the output container before the host chooses its destination.
 pub fn prepare_export(
     request: &ExportTablesRequest,
 ) -> Result<(Vec<FilePlan<'_>>, bool), CommandError> {
-    let plans = build_file_plans(request);
+    let plans = build_file_plans(request)?;
     if plans.is_empty() {
         return Err(CommandError::Validation("no tables selected".into()));
     }
@@ -352,7 +458,13 @@ pub fn lock_export_stream<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     })
 }
 
-/// Stream a table's data to `dest`, formatted as `format`. Returns row count.
+/// Stream an item's data to `dest`, formatted as `format`. Returns row count.
+///
+/// Rows come from the item's [`DataFetcher`](fetcher::DataFetcher) — the
+/// named table (as a SQL source), one SQL statement, or caller-provided
+/// rows — all feeding the same `QueryStreamEvent` stream into the callback
+/// below. `sql_guard` runs inside the SQL fetcher; provided data is
+/// validated for schema/row shape when its fetcher is built.
 pub async fn write_data_file(
     app: &dyn ExportEvents,
     state: &dyn ExportSource,
@@ -362,15 +474,13 @@ pub async fn write_data_file(
     ddl_prefix: Option<&str>,
     dest: &Path,
 ) -> Result<u64, CommandError> {
-    let sql = build_select_sql(
-        &table.table_name,
-        &table.columns,
-        request.database_type.as_deref(),
-    );
+    let fetcher = fetcher_for_table(request, table)?;
 
-    let (driver, read_only, safe_mode) = state.resolve_source(&request.db_session_id).await?;
-    crate::execution::domain::sql_guard::check_sql(&sql, read_only, safe_mode)
-        .map_err(CommandError::Validation)?;
+    // The driver fetched here only feeds StreamFormatter's SQL-literal
+    // dialect (SQL INSERT rendering); the SQL fetcher resolves its own
+    // source for guard flags + streaming, and provided-data fetchers
+    // ignore the backend entirely.
+    let (driver, _read_only, _safe_mode) = state.resolve_source(&request.db_session_id).await?;
 
     let mut sink = FileSink::create(dest)?;
     if let Some(prefix) = ddl_prefix {
@@ -467,21 +577,8 @@ pub async fn write_data_file(
 
     // Capture column type errors from formatting writes if the driver is not
     // streaming rows (they are written inside the callback above).
-    //
-    // The statement carries its target: PostgreSQL cannot reference another
-    // database in one statement, so a bare `query_stream` would have streamed
-    // from the session's own database (the "second database exports the first
-    // database's rows" bug). A per-table schema wins over the request default.
-    state
-        .stream_query(
-            &request.db_session_id,
-            &sql,
-            datazen_driver_api::SqlTarget::new(
-                request.database.as_deref(),
-                table.schema.as_deref().or(request.schema.as_deref()),
-            ),
-            callback,
-        )
+    fetcher
+        .fetch(state, &request.db_session_id, &callback)
         .await?;
 
     if let Some(error) = lock_export(&format_error)?.take() {
