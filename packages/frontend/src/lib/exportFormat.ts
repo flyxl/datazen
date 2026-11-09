@@ -11,17 +11,30 @@
  *
  * Shared escaping kernels live where they always did and are reused, not
  * re-implemented: CSV field escaping and the Markdown table serializer in
- * `gridClipboard.ts`, identifier quoting and SQL literal rendering in
- * `databaseTypes.ts` (per-`databaseType` driver meta). File extensions and
- * per-table filenames come from `exportPlan.ts` (`formatExtension`,
+ * `gridClipboard.ts`. SQL identifier quoting and literal rendering are the
+ * one exception — they live here, as a static per-dialect table, and must
+ * NOT be imported from `databaseTypes.ts`: this module has to stay a leaf.
+ * `blobTablesExporter` (re-exported from the platform-contracts entry,
+ * which the test setup imports) uses it, and anything that reaches
+ * `extensions/generated` from setup defeats test-file mocks of the driver
+ * set and pre-evaluates `@codemirror/view` (its `browser.mac` is read at
+ * module load) before macOS platform stubs run. `databaseTypes.ts` builds
+ * `DB_REGISTRY` from the generated driver metas and calls into
+ * `@datazen/extension-points` (whose index re-exports the sql-editor graph,
+ * hence CodeMirror), so importing it here would drag all of that into
+ * setup. The table below mirrors the driver metas
+ * (`crates/drivers/<id>/ui/meta.ts`: `quoteChar`, `escapeSqlValue`) and is
+ * pinned against `DB_REGISTRY` by the registry test in
+ * `__tests__/exportFormat.test.ts` — a meta change that moves a quote char
+ * or escaper fails that test instead of silently drifting. File extensions
+ * and per-table filenames come from `exportPlan.ts` (`formatExtension`,
  * `{table}.{ext}` — the `build_file_plans` data-only rule).
  */
 
 import * as XLSX from 'xlsx';
-import type { ColumnInfo, DatabaseType } from '../types';
+import type { ColumnInfo } from '../types';
 import { formatExtension } from '../platform/exportPlan';
 import { escapeCsvField, serializeCells } from './gridClipboard';
-import { escapeIdent, getEscapeSqlValue } from './databaseTypes';
 import type { ExportFormat } from './exportData';
 
 /** Text formats handled by {@link formatRowsAsText}; XLSX is binary. */
@@ -97,12 +110,74 @@ function cellAt(row: unknown[], index: number): unknown {
   return row[index] ?? null;
 }
 
+// MySQL-family drivers quote identifiers with backticks and escape string
+// literals with backslashes (`mysqlEscapeSqlValue` in `mysql/ui/meta.ts`).
+const BACKTICK_DIALECTS: ReadonlySet<string> = new Set([
+  'mysql',
+  'mariadb',
+  'doris',
+  'starrocks',
+  'manticore',
+  'ob_oracle',
+]);
+// SQL Server brackets identifiers; the no-SQL drivers below leave
+// identifiers bare; everything else double-quotes (also the fallback for
+// unknown types, matching `databaseTypes.escapeIdent`'s `?? '"'`).
+const NO_QUOTE_DIALECTS: ReadonlySet<string> = new Set([
+  'elasticsearch',
+  'hbase',
+  'influxdb',
+  'mongodb',
+  'redis',
+  'vector',
+  'victoriametrics',
+]);
+
+function sqlQuoteChar(databaseType?: string): '`' | '"' | '[' | '' {
+  if (!databaseType) return '"';
+  if (BACKTICK_DIALECTS.has(databaseType)) return '`';
+  if (databaseType === 'sqlserver') return '[';
+  if (NO_QUOTE_DIALECTS.has(databaseType)) return '';
+  return '"';
+}
+
 function escapeSqlIdent(name: string, databaseType?: string): string {
-  return escapeIdent(name, databaseType as DatabaseType | undefined);
+  const q = sqlQuoteChar(databaseType);
+  if (q === '`') return `\`${name.replaceAll('`', '``')}\``;
+  if (q === '"') return `"${name.replaceAll('"', '""')}"`;
+  if (q === '[') return `[${name.replaceAll(']', ']]')}]`;
+  return name;
+}
+
+/**
+ * Default SQL literal escaper (PostgreSQL-style), as in
+ * `databaseTypes.defaultEscapeSqlValue`.
+ */
+function defaultEscapeSqlLiteral(value: unknown): string {
+  if (value === null || value === undefined) return 'NULL';
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
+  const str = typeof value === 'object' ? JSON.stringify(value) : String(value);
+  return `'${str.replaceAll("'", "''")}'`;
+}
+
+/**
+ * MySQL-family literal escaper, as in `mysql/ui/meta.ts`: backslash escapes
+ * in three passes — `\` → `\\`, `"` → `\"`, `'` → `''`.
+ */
+function mysqlEscapeSqlLiteral(value: unknown): string {
+  if (value === null || value === undefined) return 'NULL';
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
+  const str = typeof value === 'object' ? JSON.stringify(value) : String(value);
+  return `'${str.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replaceAll("'", "''")}'`;
 }
 
 function escapeSqlLiteral(value: unknown, databaseType?: string): string {
-  return getEscapeSqlValue(databaseType)(value);
+  if (databaseType && BACKTICK_DIALECTS.has(databaseType)) {
+    return mysqlEscapeSqlLiteral(value);
+  }
+  return defaultEscapeSqlLiteral(value);
 }
 
 function sqlBeginTransaction(databaseType?: string): string {
