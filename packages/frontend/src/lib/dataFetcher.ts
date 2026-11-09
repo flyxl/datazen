@@ -194,7 +194,7 @@ export class ProvidedDataFetcher implements DataFetcher {
 }
 
 /** Base64 → bytes for the web Blob download (desktop hands base64 to Rust instead). */
-function base64ToBytes(dataBase64: string): Uint8Array {
+function base64ToBytes(dataBase64: string): Uint8Array<ArrayBuffer> {
   const binary = atob(dataBase64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) {
