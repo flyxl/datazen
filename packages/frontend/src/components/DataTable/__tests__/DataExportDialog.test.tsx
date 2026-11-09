@@ -723,19 +723,50 @@ describe('DataExportDialog web format supply (task 6, plan §2.8)', () => {
     ]);
   });
 
-  it('offers CSV only for the entire-table scope on web', () => {
+  it('disables every non-CSV format with its reasons for the entire-table scope on web', () => {
     renderWebDialog({ initialScope: 'entire_table' });
     expect(scopeSelect()).toHaveValue('entire_table');
-    expect(formatValues()).toEqual(['csv']);
+    expect(formatValues()).toEqual([
+      'csv',
+      'tsv',
+      'json',
+      'markdown',
+      'xlsx',
+      'sql_insert',
+      'sql_update',
+    ]);
+    const disabled = new Map(
+      Array.from(formatSelect().options).map((o) => [o.value, o.disabled]),
+    );
+    expect(disabled.get('csv')).toBe(false);
+    for (const value of ['tsv', 'json', 'markdown', 'xlsx', 'sql_insert', 'sql_update']) {
+      expect(disabled.get(value)).toBe(true);
+    }
+    // No key column is passed here, so both reasons show: the web rule for
+    // the streaming scope and the no-key rule for SQL UPDATE.
+    expect(
+      screen.getAllByTestId('export-format-disabled-reason').map((el) => el.textContent),
+    ).toEqual(['export.formatDisabledWebSqlScope', 'export.formatDisabledNoKey']);
   });
 
-  it('offers CSV only for the filtered scope on web', () => {
+  it('disables every non-CSV format with its reasons for the filtered scope on web', () => {
     renderWebDialog({
       initialScope: 'filtered_table',
       onBuildFilteredExportSql: vi.fn().mockResolvedValue('SELECT id, name FROM users;'),
     });
     expect(scopeSelect()).toHaveValue('filtered_table');
-    expect(formatValues()).toEqual(['csv']);
+    expect(formatValues()).toEqual([
+      'csv',
+      'tsv',
+      'json',
+      'markdown',
+      'xlsx',
+      'sql_insert',
+      'sql_update',
+    ]);
+    expect(
+      screen.getAllByTestId('export-format-disabled-reason').map((el) => el.textContent),
+    ).toEqual(['export.formatDisabledWebSqlScope', 'export.formatDisabledNoKey']);
   });
 
   it('resets a non-CSV format to CSV when switching to an entire-table scope on web', () => {
@@ -745,7 +776,19 @@ describe('DataExportDialog web format supply (task 6, plan §2.8)', () => {
     fireEvent.change(scopeSelect(), { target: { value: 'entire_table' } });
     expect(scopeSelect()).toHaveValue('entire_table');
     expect(formatSelect()).toHaveValue('csv');
-    expect(formatValues()).toEqual(['csv']);
+    // The disabled formats stay listed (greyed out) instead of vanishing.
+    expect(formatValues()).toEqual([
+      'csv',
+      'tsv',
+      'json',
+      'markdown',
+      'xlsx',
+      'sql_insert',
+      'sql_update',
+    ]);
+    expect(
+      Array.from(formatSelect().options).find((o) => o.value === 'xlsx')?.disabled,
+    ).toBe(true);
   });
 
   it('exports the current page as JSON on web via the frontend formatter', async () => {
@@ -807,7 +850,7 @@ describe('DataExportDialog column selection (item 1a)', () => {
   });
 
   it('clear-all disables the export button and reset-to-default re-enables it', () => {
-    const { getByText } = renderDialog();
+    renderDialog();
     const exportBtn = screen.getByRole('button', { name: 'export.export' });
     expect(exportBtn).not.toBeDisabled();
     fireEvent.click(screen.getByTestId('export-columns-clear-all'));

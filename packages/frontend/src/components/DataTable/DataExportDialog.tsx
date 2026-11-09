@@ -8,8 +8,8 @@ import { ExportColumnPicker } from '../export/ExportColumnPicker';
 import type { ExportFormat, ExportScope } from '../../lib/exportData';
 import {
   ARRAY_EXPORT_FORMAT_OPTIONS,
+  buildExportFormatOptions,
   buildExportScopeOptions,
-  formatOptionsForScope,
 } from '../../lib/exportDialogShared';
 import { IS_DESKTOP_BUILD } from '../../platform/env';
 import { exportSingleTableViaRust } from '../../lib/batchExportJob';
@@ -156,28 +156,53 @@ export function DataExportDialog({
     [t, rows.length, selectedRows.size, allowEntire, allowFiltered, totalRows],
   );
 
-  // Task 6 (plan §2.8): on web, entire/filtered scopes can only be CSV —
-  // they go through the web exporter, which has no SQL path — while the
-  // provided scopes format in JS, so every format stays available there.
-  // Desktop offers every format for every scope.
-  const formatOptions = formatOptionsForScope(
-    ARRAY_EXPORT_FORMAT_OPTIONS,
-    scope,
-    IS_DESKTOP_BUILD,
+  // DBR-06, restored for the new architecture: the format list carries its
+  // own availability — SQL UPDATE needs a key column, web streaming scopes
+  // (entire table / filter results) only serve CSV — and an unavailable
+  // format falls back to CSV instead of keeping a disabled selection. The
+  // disabled option stays visible with its reason. XLSX is never disabled
+  // any more: JS SheetJS and the Rust BinaryFormatter both serve it.
+  const hasKeyColumn = (primaryKeyColumns?.length ?? 0) > 0;
+  const formatOptions = useMemo(
+    () =>
+      buildExportFormatOptions({
+        options: ARRAY_EXPORT_FORMAT_OPTIONS,
+        scope,
+        isDesktop: IS_DESKTOP_BUILD,
+        hasKeyColumn,
+      }),
+    [scope, hasKeyColumn],
   );
 
-  // A format picked for a provided scope must not survive a switch to a
-  // web SQL scope, where it could not be served (the Select would point
-  // at a missing option). Desktop never resets: every format is served.
+  // An unavailable format (scope became streaming, or no key column) falls
+  // back to CSV instead of keeping a disabled selection — the disabled
+  // option stays visible with its reason.
   useEffect(() => {
-    if (
-      !IS_DESKTOP_BUILD &&
-      (scope === 'entire_table' || scope === 'filtered_table') &&
-      format !== 'csv'
-    ) {
-      setFormat('csv');
-    }
-  }, [scope, format]);
+    if (formatOptions.find((o) => o.value === format)?.disabled) setFormat('csv');
+  }, [formatOptions, format]);
+
+  /** The reasons of the currently disabled formats, each shown once. */
+  const disabledFormatReasons = useMemo(
+    () => [
+      ...new Set(
+        formatOptions.flatMap((o) =>
+          o.disabled && o.disabledReasonKey ? [o.disabledReasonKey] : [],
+        ),
+      ),
+    ],
+    [formatOptions],
+  );
+
+  const handleFormatChange = useCallback(
+    (v: string) => {
+      const next = v as ExportFormat;
+      // A disabled option can still arrive from keyboard input on the raw
+      // select — ignore it.
+      if (formatOptions.find((o) => o.value === next)?.disabled) return;
+      setFormat(next);
+    },
+    [formatOptions],
+  );
 
   const handleScopeChange = useCallback((v: string) => {
     setScope(v as ExportScope);
@@ -369,11 +394,20 @@ export function DataExportDialog({
             <label className="mb-1 block text-xs font-medium text-fg-secondary">
               {t('export.format')}
             </label>
-            <Select
-              value={format}
-              options={formatOptions}
-              onChange={(v) => setFormat(v as ExportFormat)}
-            />
+            <Select value={format} options={formatOptions} onChange={handleFormatChange} />
+            {/* Disabled with reason (DBR-06): an unavailable format stays
+             * listed and greyed out, and its reason is on screen the whole
+             * time the range makes it unavailable — not only while it is
+             * selected. */}
+            {disabledFormatReasons.map((reasonKey) => (
+              <p
+                key={reasonKey}
+                data-testid="export-format-disabled-reason"
+                className="mt-1 text-xs text-fg-muted"
+              >
+                {t(reasonKey)}
+              </p>
+            ))}
           </div>
 
           <div>

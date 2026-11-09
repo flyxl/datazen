@@ -2,55 +2,132 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ARRAY_EXPORT_FORMAT_OPTIONS,
-  formatOptionsForScope,
+  buildExportFormatOptions,
   OBJECT_EXPORT_FORMAT_OPTIONS,
 } from '../exportDialogShared';
 import type { ExportScope } from '../exportData';
 
 /**
- * Task 6 (plan §2.8): the format list a scope may offer depends on the
- * form. Desktop serves every format for every scope; web has no SQL path,
- * so entire/filtered scopes offer CSV only, while the provided scopes
- * format in JS and keep every format.
+ * DBR-06, restored for the frontend-DataFetcher architecture
+ * (plan §2.8, task 6): the format list carries its own availability.
+ * Desktop serves every format for every scope; web has no SQL path, so
+ * the streaming scopes disable every non-CSV format with its reason
+ * instead of hiding them; SQL UPDATE needs a key column. XLSX is never
+ * disabled — SheetJS (frontend) and the Rust BinaryFormatter both serve
+ * it now.
  */
 
 const ALL_ARRAY = ['csv', 'tsv', 'json', 'markdown', 'xlsx', 'sql_insert', 'sql_update'];
 const ALL_OBJECT = ['csv', 'json', 'markdown', 'xlsx', 'sql_insert', 'sql_update'];
 
-describe('formatOptionsForScope', () => {
+describe('buildExportFormatOptions', () => {
   it.each(['current_page', 'selected', 'entire_table', 'filtered_table'] as const)(
-    'on desktop offers every format for the %s scope',
+    'on desktop enables every format for the %s scope when a key column exists',
     (scope: ExportScope) => {
       expect(
-        formatOptionsForScope(ARRAY_EXPORT_FORMAT_OPTIONS, scope, true).map((o) => o.value),
+        buildExportFormatOptions({
+          options: ARRAY_EXPORT_FORMAT_OPTIONS,
+          scope,
+          isDesktop: true,
+          hasKeyColumn: true,
+        }).map((o) => o.value),
       ).toEqual(ALL_ARRAY);
       expect(
-        formatOptionsForScope(OBJECT_EXPORT_FORMAT_OPTIONS, scope, true).map((o) => o.value),
+        buildExportFormatOptions({
+          options: OBJECT_EXPORT_FORMAT_OPTIONS,
+          scope,
+          isDesktop: true,
+          hasKeyColumn: true,
+        }).map((o) => o.value),
       ).toEqual(ALL_OBJECT);
+      for (const options of [ARRAY_EXPORT_FORMAT_OPTIONS, OBJECT_EXPORT_FORMAT_OPTIONS]) {
+        expect(
+          buildExportFormatOptions({ options, scope, isDesktop: true, hasKeyColumn: true }).filter(
+            (o) => o.disabled,
+          ),
+        ).toEqual([]);
+      }
     },
   );
 
-  it.each(['current_page', 'selected'] as const)(
-    'on web offers every format for the provided %s scope',
+  it.each(['current_page', 'selected', 'entire_table', 'filtered_table'] as const)(
+    'on desktop disables only SQL UPDATE without a key column, for the %s scope',
     (scope: ExportScope) => {
-      expect(
-        formatOptionsForScope(ARRAY_EXPORT_FORMAT_OPTIONS, scope, false).map((o) => o.value),
-      ).toEqual(ALL_ARRAY);
-      expect(
-        formatOptionsForScope(OBJECT_EXPORT_FORMAT_OPTIONS, scope, false).map((o) => o.value),
-      ).toEqual(ALL_OBJECT);
+      for (const options of [ARRAY_EXPORT_FORMAT_OPTIONS, OBJECT_EXPORT_FORMAT_OPTIONS]) {
+        const result = buildExportFormatOptions({
+          options,
+          scope,
+          isDesktop: true,
+          hasKeyColumn: false,
+        });
+        expect(result.filter((o) => o.disabled).map((o) => o.value)).toEqual(['sql_update']);
+        expect(
+          result.find((o) => o.value === 'sql_update')?.disabledReasonKey,
+        ).toBe('export.formatDisabledNoKey');
+      }
+    },
+  );
+
+  it('never disables XLSX on desktop, even for the streaming scopes', () => {
+    for (const scope of ['entire_table', 'filtered_table'] as const) {
+      const result = buildExportFormatOptions({
+        options: ARRAY_EXPORT_FORMAT_OPTIONS,
+        scope,
+        isDesktop: true,
+        hasKeyColumn: true,
+      });
+      expect(result.find((o) => o.value === 'xlsx')?.disabled).toBeFalsy();
+    }
+  });
+
+  it.each(['current_page', 'selected'] as const)(
+    'on web enables every format for the provided %s scope when a key column exists',
+    (scope: ExportScope) => {
+      for (const options of [ARRAY_EXPORT_FORMAT_OPTIONS, OBJECT_EXPORT_FORMAT_OPTIONS]) {
+        expect(
+          buildExportFormatOptions({ options, scope, isDesktop: false, hasKeyColumn: true }).filter(
+            (o) => o.disabled,
+          ),
+        ).toEqual([]);
+      }
     },
   );
 
   it.each(['entire_table', 'filtered_table'] as const)(
-    'on web offers CSV only for the SQL %s scope',
+    'on web disables every non-CSV format with the web reason for the SQL %s scope',
     (scope: ExportScope) => {
-      expect(
-        formatOptionsForScope(ARRAY_EXPORT_FORMAT_OPTIONS, scope, false).map((o) => o.value),
-      ).toEqual(['csv']);
-      expect(
-        formatOptionsForScope(OBJECT_EXPORT_FORMAT_OPTIONS, scope, false).map((o) => o.value),
-      ).toEqual(['csv']);
+      for (const options of [ARRAY_EXPORT_FORMAT_OPTIONS, OBJECT_EXPORT_FORMAT_OPTIONS]) {
+        const result = buildExportFormatOptions({
+          options,
+          scope,
+          isDesktop: false,
+          hasKeyColumn: true,
+        });
+        expect(result.filter((o) => !o.disabled).map((o) => o.value)).toEqual(['csv']);
+        expect(
+          new Set(result.filter((o) => o.disabled).map((o) => o.disabledReasonKey)),
+        ).toEqual(new Set(['export.formatDisabledWebSqlScope']));
+      }
     },
   );
+
+  it('on a web streaming scope without a key column, SQL UPDATE carries the no-key reason', () => {
+    const result = buildExportFormatOptions({
+      options: ARRAY_EXPORT_FORMAT_OPTIONS,
+      scope: 'entire_table',
+      isDesktop: false,
+      hasKeyColumn: false,
+    });
+    expect(result.find((o) => o.value === 'sql_update')?.disabledReasonKey).toBe(
+      'export.formatDisabledNoKey',
+    );
+    expect(result.find((o) => o.value === 'xlsx')?.disabledReasonKey).toBe(
+      'export.formatDisabledWebSqlScope',
+    );
+    expect(
+      new Set(result.filter((o) => o.disabled).map((o) => o.disabledReasonKey)),
+    ).toEqual(
+      new Set(['export.formatDisabledWebSqlScope', 'export.formatDisabledNoKey']),
+    );
+  });
 });

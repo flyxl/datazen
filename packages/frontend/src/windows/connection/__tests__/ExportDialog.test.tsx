@@ -429,10 +429,28 @@ describe('ExportDialog web format supply (task 6, plan §2.8)', () => {
     ]);
   });
 
-  it('offers CSV only for the entire-table scope on web', () => {
+  it('disables every non-CSV format with its reason for the entire-table scope on web', () => {
     renderDialog({ defaultScope: 'entire_table' });
     expect(scopeSelect()).toHaveValue('entire_table');
-    expect(formatValues()).toEqual(['csv']);
+    expect(formatValues()).toEqual([
+      'csv',
+      'json',
+      'markdown',
+      'xlsx',
+      'sql_insert',
+      'sql_update',
+    ]);
+    const disabled = new Map(
+      Array.from(formatSelect().options).map((o) => [o.value, o.disabled]),
+    );
+    expect(disabled.get('csv')).toBe(false);
+    for (const value of ['json', 'markdown', 'xlsx', 'sql_insert', 'sql_update']) {
+      expect(disabled.get(value)).toBe(true);
+    }
+    // The fixture column carries a primary key, so only the web reason shows.
+    expect(
+      screen.getAllByTestId('export-format-disabled-reason').map((el) => el.textContent),
+    ).toEqual(['export.formatDisabledWebSqlScope']);
   });
 
   it('resets a non-CSV format to CSV when switching to the entire-table scope on web', () => {
@@ -442,7 +460,18 @@ describe('ExportDialog web format supply (task 6, plan §2.8)', () => {
     fireEvent.change(scopeSelect(), { target: { value: 'entire_table' } });
     expect(scopeSelect()).toHaveValue('entire_table');
     expect(formatSelect()).toHaveValue('csv');
-    expect(formatValues()).toEqual(['csv']);
+    // The disabled formats stay listed (greyed out) instead of vanishing.
+    expect(formatValues()).toEqual([
+      'csv',
+      'json',
+      'markdown',
+      'xlsx',
+      'sql_insert',
+      'sql_update',
+    ]);
+    expect(
+      Array.from(formatSelect().options).find((o) => o.value === 'xlsx')?.disabled,
+    ).toBe(true);
   });
 
   it('exports the current page as JSON on web via the frontend formatter', async () => {

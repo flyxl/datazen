@@ -538,6 +538,8 @@ const pack = {
   'export.formatDisabledStream':
     'Для XLSX нужны все строки в памяти, поэтому он недоступен для потокового экспорта (вся таблица / результаты фильтра).',
   'export.formatDisabledNoKey': 'SQL UPDATE нужен столбец первичного ключа для предложения WHERE.',
+  'export.formatDisabledWebSqlScope':
+    'В веб-версии экспорт всей таблицы и отфильтрованных результатов поддерживает только CSV — пути экспорта SQL нет.',
   'export.progressRows': 'Записано строк: {rows}…',
   'export.cancelExport': 'Отменить экспорт',
   'export.cancelling': 'Отмена…',

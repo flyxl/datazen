@@ -730,6 +730,8 @@ const pack = {
   'export.formatDisabledStream':
     'XLSX needs every row in memory, so it is unavailable for streamed exports (entire table / filter results).',
   'export.formatDisabledNoKey': 'SQL UPDATE needs a primary key column to build its WHERE clause.',
+  'export.formatDisabledWebSqlScope':
+    'On the web, entire-table and filtered exports only support CSV — there is no SQL export path.',
   'export.progressRows': '{rows} rows written…',
   'export.cancelExport': 'Cancel Export',
   'export.cancelling': 'Cancelling…',

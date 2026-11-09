@@ -546,6 +546,8 @@ const pack = {
     'XLSX nécessite toutes les lignes en mémoire ; il est indisponible pour les exports en flux (table entière / résultats filtrés).',
   'export.formatDisabledNoKey':
     "SQL UPDATE a besoin d'une colonne clé primaire pour sa clause WHERE.",
+  'export.formatDisabledWebSqlScope':
+    'Sur le web, les exports de table entière et de résultats filtrés ne prennent en charge que le CSV — il n’existe pas de chemin d’export SQL.',
   'export.progressRows': '{rows} lignes écrites…',
   'export.cancelExport': "Annuler l'export",
   'export.cancelling': 'Annulation…',
