@@ -39,6 +39,9 @@ export type GridErrorCode =
   | 'grid.result.rowNotAddressable'
   | 'grid.result.multiRowNotAllowed'
   | 'grid.result.writeDenied'
+  // ── DBR-05 (typed write expressions). Append only: the driver refusing a
+  // staged database-native expression (e.g. NOW()) it does not support. ──
+  | 'grid.write.expressionUnsupported'
   | 'grid.paging.keysetUnavailable'
   | 'grid.paging.cursorInvalidated'
   | 'grid.paging.cursorTooDeep'
@@ -128,6 +131,10 @@ export const GRID_ERROR_CODES: readonly GridErrorCode[] = [
   'grid.result.rowNotAddressable',
   'grid.result.multiRowNotAllowed',
   'grid.result.writeDenied',
+  // DBR-05: the typed write expression (Set Value → 数据库原生时间表达式) is
+  // refused by drivers that declare no support for it — produced by
+  // `table_editing::change_set` on the Rust side.
+  'grid.write.expressionUnsupported',
   'grid.paging.keysetUnavailable',
   'grid.paging.cursorInvalidated',
   'grid.paging.cursorTooDeep',
