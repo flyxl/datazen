@@ -337,10 +337,21 @@ describe('ExportDialog column selection, schema prefetch and session guards', ()
     ]);
   });
 
-  it('shows Missing connection for entire_table without a session', async () => {
+  it('falls back to the current page instead of Missing connection for entire_table without a session', async () => {
+    // Task 3: the scope correction drops an entire_table default the
+    // driver cannot serve, so the dialog can no longer sit on a scope its
+    // own option list does not offer — the export below is a provided
+    // current-page export, not a Missing connection error.
     renderDialog({ dbSessionId: undefined, defaultScope: 'entire_table' });
+    expect(scopeSelect()).toHaveValue('current_page');
     fireEvent.click(screen.getByRole('button', { name: 'export.export' }));
-    await waitFor(() => expect(screen.getByText('Missing connection')).toBeInTheDocument());
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1));
+    expect(downloadBlobMock).toHaveBeenCalledWith(
+      'id\n1\n2',
+      'users.csv',
+      'text/csv',
+    );
+    expect(screen.queryByText('Missing connection')).not.toBeInTheDocument();
     expect(exportTablesStream).not.toHaveBeenCalled();
   });
 

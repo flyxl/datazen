@@ -117,6 +117,13 @@ export function ExportDialog({
     setSelectedCols(new Set(loadedColumns.map((c) => c.name)));
   }, [loadedColumns]);
 
+  // A preferred scope the driver does not serve would leave the select
+  // pointing at a missing option; fall back to the page scope, which every
+  // driver serves (same correction as DataExportDialog).
+  useEffect(() => {
+    if (scope === 'entire_table' && !allowEntire) setScope('current_page');
+  }, [allowEntire, scope]);
+
   const rowCount = useMemo(() => {
     if (scope === 'entire_table') return totalRows ?? rows.length;
     if (scope === 'selected' && selectedRows.size > 0) return selectedRows.size;
