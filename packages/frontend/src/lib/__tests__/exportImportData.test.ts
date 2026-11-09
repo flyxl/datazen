@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
+import { formatRowsAsText } from '../exportFormat';
 import { parseXLSX } from '../importData';
 
 /**
@@ -38,46 +39,57 @@ describe('xlsx roundtrip via parseXLSX', () => {
   });
 });
 
-describe('generateExportFromArrays column selection (DBR-06)', () => {
+/**
+ * Column selection (DBR-06), ported after the main merge: the cases used to
+ * call the retired `generateExportFromArrays`. The frontend formatter is
+ * now `formatRowsAsText` (`exportFormat.ts`) and the caller passes the
+ * picked columns (in display order) — there is no `selectedColumns`
+ * subset parameter any more, so these cases assert the formatter emits
+ * exactly the columns it is given, in order, and that SQL UPDATE uses the
+ * declared primary key.
+ */
+describe('formatRowsAsText column selection (DBR-06)', () => {
   it("exports only the selected columns, in the caller's display order", () => {
-    const result = generateExportFromArrays({
-      columnNames: ['id', 'name', 'status'],
-      rows: [
-        [1, 'Alice', 'active'],
-        [2, 'Bob', 'pending'],
-      ],
-      selectedColumns: ['status', 'name'],
-      format: 'csv',
+    const result = formatRowsAsText({
       tableName: 'users',
+      columns: [
+        { name: 'status', dataType: 'text', nullable: true },
+        { name: 'name', dataType: 'text', nullable: true },
+      ],
+      rows: [
+        ['active', 'Alice'],
+        ['pending', 'Bob'],
+      ],
+      format: 'csv',
     });
-    expect(result.kind).toBe('text');
-    if (result.kind !== 'text') return;
     expect(result.content.trim()).toBe('status,name\nactive,Alice\npending,Bob');
   });
 
   it('defaults to every column when no subset is given', () => {
-    const result = generateExportFromArrays({
-      columnNames: ['a', 'b'],
+    const result = formatRowsAsText({
+      tableName: 'users',
+      columns: [
+        { name: 'a', dataType: 'text', nullable: true },
+        { name: 'b', dataType: 'text', nullable: true },
+      ],
       rows: [[1, 2]],
       format: 'csv',
     });
-    expect(result.kind).toBe('text');
-    if (result.kind !== 'text') return;
     expect(result.content.trim()).toBe('a,b\n1,2');
   });
 
   it('builds SQL UPDATE from the declared primary key, not column 0', () => {
-    const result = generateExportFromArrays({
-      columnNames: ['name', 'id'],
-      rows: [['Alice', 7]],
-      primaryKeyColumns: ['id'],
-      format: 'sql_update',
+    const result = formatRowsAsText({
       tableName: 'users',
+      columns: [
+        { name: 'name', dataType: 'text', nullable: true },
+        { name: 'id', dataType: 'int4', nullable: false, isPrimaryKey: true },
+      ],
+      rows: [['Alice', 7]],
+      format: 'sql_update',
     });
-    expect(result.kind).toBe('text');
-    if (result.kind !== 'text') return;
     // The WHERE must target the id column even though it is the second one.
     expect(result.content).toContain('WHERE "id" = 7');
-    expect(result.content).toContain('SET "name" = \'Alice\'');
+    expect(result.content).toContain(`SET "name" = 'Alice'`);
   });
 });
