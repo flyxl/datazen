@@ -287,6 +287,18 @@ impl XlsxFormatter {
     pub(crate) fn test_sheet_name(&self) -> &str {
         &self.sheet_name
     }
+
+    /// Move the write cursor (test-only): lets the 1,048,576-row limit be
+    /// exercised without writing a million rows.
+    pub(crate) fn test_set_next_row(&mut self, row: u32) {
+        self.next_row = row;
+    }
+
+    /// Current write cursor (test-only): 0 before begin(), 1 once the
+    /// header row is written.
+    pub(crate) fn test_next_row(&self) -> u32 {
+        self.next_row
+    }
 }
 
 #[cfg(test)]
@@ -501,6 +513,22 @@ mod tests {
         let err = wide.begin(&cols).unwrap_err();
         assert!(
             matches!(err, ExportError::Validation(ref m) if m.contains("16384")),
+            "unexpected: {err:?}"
+        );
+    }
+
+    #[test]
+    fn xlsx_row_limit_counts_header_and_rejects_row_1048577() {
+        let dest = temp_xlsx("rowlimit.xlsx");
+        let mut fmt = XlsxFormatter::new("t", dest.clone());
+        fmt.begin(&[col("id", "int4")]).unwrap();
+        // begin() writes the header at row 0, so the next data row is 1.
+        assert_eq!(fmt.test_next_row(), 1, "header occupies row 0");
+        fmt.test_set_next_row(XLSX_MAX_ROWS - 1);
+        fmt.rows(&[vec![Some(Value::Integer(1))]]).unwrap();
+        let err = fmt.rows(&[vec![Some(Value::Integer(2))]]).unwrap_err();
+        assert!(
+            matches!(err, ExportError::Validation(ref m) if m.contains("1048576")),
             "unexpected: {err:?}"
         );
     }
