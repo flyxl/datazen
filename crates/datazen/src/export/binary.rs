@@ -151,7 +151,9 @@ impl XlsxFormatter {
                 Ok(())
             }
             Some(Value::Integer(n)) => {
-                if n.abs() <= XLSX_MAX_EXACT_INTEGER {
+                // Range check, not abs(): n.abs() panics on i64::MIN in
+                // debug builds (and wraps in release).
+                if *n >= -XLSX_MAX_EXACT_INTEGER && *n <= XLSX_MAX_EXACT_INTEGER {
                     worksheet
                         .write_number(row, col, *n as f64)
                         .map_err(xlsx_error)?;
