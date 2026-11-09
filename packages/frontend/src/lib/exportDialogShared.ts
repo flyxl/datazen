@@ -15,7 +15,9 @@ export const OBJECT_EXPORT_FORMAT_OPTIONS: { value: ExportFormat; label: string 
   { value: 'sql_update', label: 'SQL UPDATE' },
 ];
 
-/** DataTable export (array rows) — includes TSV, no SQL UPDATE. */
+/** DataTable export (array rows). Item 3d: SQL UPDATE is offered — both
+ * dialogs pass the primary key when known, and the Rust exporter falls
+ * back to the first column otherwise (the old frontend rule). */
 export const ARRAY_EXPORT_FORMAT_OPTIONS: { value: ExportFormat; label: string }[] = [
   { value: 'csv', label: 'CSV' },
   { value: 'tsv', label: 'TSV' },
@@ -23,6 +25,7 @@ export const ARRAY_EXPORT_FORMAT_OPTIONS: { value: ExportFormat; label: string }
   { value: 'markdown', label: 'Markdown' },
   { value: 'xlsx', label: 'Excel (XLSX)' },
   { value: 'sql_insert', label: 'SQL INSERT' },
+  { value: 'sql_update', label: 'SQL UPDATE' },
 ];
 
 export function buildExportScopeOptions(

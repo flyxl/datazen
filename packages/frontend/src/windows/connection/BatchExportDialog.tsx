@@ -49,8 +49,12 @@ export interface BatchExportDialogProps {
 
 const DATA_FORMAT_OPTIONS: { value: BatchExportDataFormat; label: string }[] = [
   { value: 'csv', label: 'CSV' },
+  { value: 'tsv', label: 'TSV' },
   { value: 'json', label: 'JSON' },
+  { value: 'markdown', label: 'Markdown' },
+  { value: 'xlsx', label: 'Excel (XLSX)' },
   { value: 'sql_insert', label: 'SQL INSERT' },
+  { value: 'sql_update', label: 'SQL UPDATE' },
 ];
 
 export function BatchExportDialog({
