@@ -609,3 +609,50 @@ describe('ExportDialog format availability (item 1c)', () => {
     expect(screen.queryByTestId('export-format-disabled-reason')).not.toBeInTheDocument();
   });
 });
+
+describe('ExportDialog default scope correction (item 3)', () => {
+  it('falls back to the current page when entire_table is the default but no session serves it', () => {
+    renderDialog({ dbSessionId: undefined, defaultScope: 'entire_table' });
+    const values = Array.from(scopeSelect().options).map((o) => o.value);
+    expect(values).not.toContain('entire_table');
+    expect(scopeSelect()).toHaveValue('current_page');
+  });
+
+  it('keeps entire_table when a session serves it', () => {
+    renderDialog({ defaultScope: 'entire_table' });
+    expect(scopeSelect()).toHaveValue('entire_table');
+  });
+
+  it('opens on the current page without a session and no preferred scope', () => {
+    renderDialog({ dbSessionId: undefined, rows: [] });
+    expect(scopeSelect()).toHaveValue('current_page');
+  });
+
+  it('falls back when the driver capability forbids entire-table export', () => {
+    renderDialog({ defaultScope: 'entire_table', dataExportCapability: 'loaded_only' });
+    expect(scopeSelect()).toHaveValue('current_page');
+  });
+
+  it('falls back when export is disabled for the driver', () => {
+    renderDialog({ defaultScope: 'entire_table', dataExportCapability: 'none' });
+    expect(scopeSelect()).toHaveValue('current_page');
+  });
+
+  it('falls back when the session disappears after opening on entire_table', () => {
+    const { rerender } = renderDialog({ defaultScope: 'entire_table' });
+    expect(scopeSelect()).toHaveValue('entire_table');
+    rerender(
+      <ExportDialog
+        open
+        onClose={vi.fn()}
+        tableName="users"
+        columns={COLS}
+        rows={[{ id: 1 }, { id: 2 }]}
+        selectedRows={new Set()}
+        dbSessionId={undefined}
+        defaultScope="entire_table"
+      />,
+    );
+    expect(scopeSelect()).toHaveValue('current_page');
+  });
+});
