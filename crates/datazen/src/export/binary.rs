@@ -550,8 +550,7 @@ mod tests {
         fmt.finish().unwrap();
         let text = xlsx_cell_text(&dest);
         assert!(
-            text.contains("-9223372036854775808")
-                && !text.contains("<v>-9223372036854775808</v>"),
+            text.contains("-9223372036854775808") && !text.contains("<v>-9223372036854775808</v>"),
             "i64::MIN stored as string, not a number: {text}"
         );
         assert!(
