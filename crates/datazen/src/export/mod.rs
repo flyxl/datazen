@@ -7,10 +7,11 @@
 //! writes them straight to disk — avoiding holding the whole table in memory
 //! and the JS↔Rust data round-trip.
 //!
-//! Each item's rows come from a [`DataFetcher`](fetcher::DataFetcher)
-//! (see `fetcher.rs`): the named table, one arbitrary SQL statement, or
-//! caller-provided rows with their schema. All three feed the same internal
-//! row stream (`StatementStart` + batched `Rows`) into the formatters.
+//! Each item's rows come from one SQL statement, streamed through
+//! [`stream_sql_source`](fetcher::stream_sql_source) (see `fetcher.rs`):
+//! the named table (as a `SELECT *` / selected-columns query) or one
+//! arbitrary SQL statement. Both feed the same internal row stream
+//! (`StatementStart` + batched `Rows`) into the formatters.
 //!
 //! Product behavior:
 //! - Output is a single file or a ZIP archive (multiple files).
@@ -25,9 +26,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use datazen_driver_api::{
-    ColumnInfo, DatabaseDriver, QueryStreamCallback, QueryStreamEvent, Value,
-};
+use datazen_driver_api::{ColumnInfo, DatabaseDriver, QueryStreamCallback, QueryStreamEvent};
 use serde::{Deserialize, Serialize};
 
 use zip::write::SimpleFileOptions;
@@ -85,7 +84,9 @@ pub struct TableExportInput {
     /// Where this item's rows come from. Defaults to the named table, so
     /// requests written before data sources existed keep parsing unchanged.
     /// The `type` tag is explicit and serializable so the frontend (item 3)
-    /// can send SQL / provided-data sources over the same IPC shape.
+    /// can send SQL sources over the same IPC shape. Rows the caller
+    /// already holds never reach Rust: they are formatted and saved in the
+    /// frontend, so there is no provided-data variant here.
     #[serde(default)]
     pub source: TableDataSource,
 }
@@ -93,9 +94,8 @@ pub struct TableExportInput {
 /// Where one export item's rows come from.
 ///
 /// Serialized with an explicit `type` tag (`{"type":"table"}`,
-/// `{"type":"sql","sql":"..."}`, `{"type":"provided","columns":[...],
-/// "rows":[...]}`) so callers and the frontend can tell the sources apart
-/// without guessing from the other fields.
+/// `{"type":"sql","sql":"..."}`) so callers and the frontend can tell the
+/// sources apart without guessing from the other fields.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "type")]
 pub enum TableDataSource {
@@ -105,12 +105,6 @@ pub enum TableDataSource {
     /// One arbitrary read-only SQL statement (e.g. a filtered export),
     /// executed against the backend. `sql_guard` applies at fetch time.
     Sql { sql: String },
-    /// Rows already loaded by the caller, with their schema. Never touches
-    /// the backend or `sql_guard`; validated for schema/row shape instead.
-    Provided {
-        columns: Vec<ColumnInfo>,
-        rows: Vec<Vec<Option<Value>>>,
-    },
 }
 
 impl Default for TableDataSource {
@@ -133,9 +127,6 @@ impl TableDataSource {
                     )));
                 }
                 Ok(())
-            }
-            TableDataSource::Provided { columns, rows } => {
-                fetcher::validate_provided_data(name, columns, rows)
             }
         }
     }
@@ -231,9 +222,7 @@ pub mod file_job;
 pub mod format;
 pub use binary::{sanitize_sheet_name, BinaryFormatter, XlsxFormatter};
 pub use error::ExportError;
-pub use fetcher::{
-    fetcher_for_table, validate_provided_data, DataFetcher, ProvidedDataFetcher, SqlDataFetcher,
-};
+pub use fetcher::stream_sql_source;
 pub use file_job::{FileArtifactJob, FileJobOperation, FileJobOutput};
 pub use format::*;
 
@@ -323,12 +312,12 @@ pub fn resolve_ddl(table: &TableExportInput) -> String {
 /// * **Table source**: DDL comes from `table.ddl` when the caller supplied
 ///   it, else the `"-- DDL unavailable …"` placeholder. A real table exists,
 ///   so the file at least names what could not be retrieved.
-/// * **SQL / provided-data source**: there is no table whose DDL could be
-///   merged, so a generated file would be fake DDL. Structure modes
-///   therefore require the caller to supply explicit `ddl` text for these
-///   items (the `ddl` field already exists for exactly this); without it,
-///   planning fails with a clear `Validation` error instead of emitting a
-///   placeholder that pretends to be a table definition.
+/// * **SQL source**: there is no table whose DDL could be merged, so a
+///   generated file would be fake DDL. Structure modes therefore require
+///   the caller to supply explicit `ddl` text for these items (the `ddl`
+///   field already exists for exactly this); without it, planning fails
+///   with a clear `Validation` error instead of emitting a placeholder
+///   that pretends to be a table definition.
 ///
 /// The alternative — refusing structure modes for non-table sources
 /// outright — was rejected: a filtered SQL export whose caller knows the
@@ -341,7 +330,7 @@ pub fn ddl_for_structure(table: &TableExportInput) -> Result<String, CommandErro
             Some(d) if !d.trim().is_empty() => Ok(d.to_string()),
             _ => Err(CommandError::Validation(format!(
                 "structure export for non-table source '{}' needs an explicit ddl: \
-                 SQL and provided-data sources have no table DDL to include",
+                 SQL sources have no table DDL to include",
                 table.table_name
             ))),
         },
@@ -491,11 +480,11 @@ pub fn lock_export_stream<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 
 /// Stream an item's data to `dest`, formatted as `format`. Returns row count.
 ///
-/// Rows come from the item's [`DataFetcher`](fetcher::DataFetcher) — the
-/// named table (as a SQL source), one SQL statement, or caller-provided
-/// rows — all feeding the same `QueryStreamEvent` stream into the callback
-/// below. `sql_guard` runs inside the SQL fetcher; provided data is
-/// validated for schema/row shape when its fetcher is built.
+/// Rows come from the item's SQL source — the named table (as a SQL
+/// source) or one SQL statement — resolved by
+/// [`fetcher::resolve_sql_source`] and streamed by
+/// [`fetcher::stream_sql_source`] into the callback below. `sql_guard`
+/// runs inside the SQL stream.
 pub async fn write_data_file(
     app: &dyn ExportEvents,
     state: &dyn ExportSource,
@@ -510,12 +499,11 @@ pub async fn write_data_file(
             "{format:?} is a binary format; use write_binary_file"
         )));
     }
-    let fetcher = fetcher_for_table(request, table)?;
+    let (sql, database, schema) = fetcher::resolve_sql_source(request, table)?;
 
     // The driver fetched here only feeds StreamFormatter's SQL-literal
-    // dialect (SQL INSERT rendering); the SQL fetcher resolves its own
-    // source for guard flags + streaming, and provided-data fetchers
-    // ignore the backend entirely.
+    // dialect (SQL INSERT rendering); the SQL stream resolves its own
+    // source for guard flags + streaming.
     let (driver, _read_only, _safe_mode) = state.resolve_source(&request.db_session_id).await?;
 
     let mut sink = FileSink::create(dest)?;
@@ -616,9 +604,15 @@ pub async fn write_data_file(
 
     // Capture column type errors from formatting writes if the driver is not
     // streaming rows (they are written inside the callback above).
-    fetcher
-        .fetch(state, &request.db_session_id, &callback)
-        .await?;
+    fetcher::stream_sql_source(
+        state,
+        &request.db_session_id,
+        &sql,
+        database.as_deref(),
+        schema.as_deref(),
+        &callback,
+    )
+    .await?;
 
     if let Some(error) = lock_export(&format_error)?.take() {
         return Err(CommandError::Validation(format!(
@@ -640,11 +634,11 @@ pub async fn write_data_file(
 }
 
 /// Stream an item's data to `dest` as a binary format (item 3a: XLSX).
-/// Parallel branch to [`write_data_file`]: same fetcher row stream and
+/// Parallel branch to [`write_data_file`]: same SQL row stream and
 /// progress events, but the formatter owns the destination file and no
 /// text sink is involved. Binary formatters need no SQL-literal dialect,
-/// so no driver is resolved here — the SQL fetcher resolves its own source
-/// inside `fetch`, and provided-data fetchers never touch the backend.
+/// so no driver is resolved here — the SQL stream resolves its own source
+/// inside `stream_sql_source`.
 pub async fn write_binary_file(
     app: &dyn ExportEvents,
     state: &dyn ExportSource,
@@ -658,7 +652,7 @@ pub async fn write_binary_file(
             "{format:?} is a text format; use write_data_file"
         )));
     }
-    let fetcher = fetcher_for_table(request, table)?;
+    let (sql, database, schema) = fetcher::resolve_sql_source(request, table)?;
 
     let formatter: Box<dyn BinaryFormatter> = match format {
         DataFormat::Xlsx => Box::new(XlsxFormatter::new(&table.table_name, dest.to_path_buf())),
@@ -769,9 +763,15 @@ pub async fn write_binary_file(
         QueryStreamEvent::StatementEnd { .. } => {}
     });
 
-    fetcher
-        .fetch(state, &request.db_session_id, &callback)
-        .await?;
+    fetcher::stream_sql_source(
+        state,
+        &request.db_session_id,
+        &sql,
+        database.as_deref(),
+        schema.as_deref(),
+        &callback,
+    )
+    .await?;
 
     if let Some(error) = lock_export(&format_error)?.take() {
         return Err(CommandError::Validation(format!(

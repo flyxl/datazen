@@ -1,313 +1,96 @@
-//! Unified export data source (`DataFetcher`).
+//! SQL-only export data source.
 //!
-//! A batch export item can get its rows in two ways:
+//! A batch export item gets its rows from exactly one place: the backend.
+//! The caller passes one SQL statement — either a filtered export's
+//! arbitrary read, or the `SELECT *` / selected-columns query built by
+//! [`build_select_sql`](super::build_select_sql) for a named table — and
+//! [`stream_sql_source`] streams it back through `sql_guard`.
 //!
-//! * (a) **caller-provided data** — the caller already holds the rows and
-//!   their schema (e.g. the current page / selected rows);
-//! * (b) **backend query** — the caller passes one SQL statement (a filtered
-//!   export, an arbitrary read) and the backend streams it back.
+//! This function is the Rust counterpart of the frontend `SqlDataFetcher`
+//! (`packages/frontend/src/lib/dataFetcher.ts`): the frontend decides the
+//! source and the SQL, Rust only executes it. There is no trait and no
+//! second source: rows the caller already holds ("provided" data) are
+//! formatted and saved entirely in the frontend and never reach this
+//! module, so a request carrying a provided source fails to deserialize
+//! (see [`TableDataSource`](super::TableDataSource)).
 //!
-//! The historical third shape — "export this table" — is not a separate
-//! fetch path: a table source is expressed as a SQL source whose statement
-//! is the `SELECT *` / selected-columns query built by
-//! [`build_select_sql`](super::build_select_sql) (`SqlDataFetcher::for_table`).
-//! There is exactly one way to pull rows from the backend.
+//! The row stream into the caller's callback is always the same shape:
+//! one `StatementStart` carrying the full [`ColumnInfo`] (not just
+//! names), `Rows` events in batches of at most
+//! [`QUERY_STREAM_BATCH_SIZE`], then `StatementEnd` and `Done`. The text
+//! and binary formatters consume that stream unchanged.
 //!
-//! Whatever the origin, a fetcher emits the same internal row stream into
-//! the caller's callback: one `StatementStart` carrying the full
-//! [`ColumnInfo`] (not just names), `Rows` events in batches of at most
-//! [`QUERY_STREAM_BATCH_SIZE`], then `StatementEnd` and `Done`. The existing
-//! text formatters consume that stream unchanged, so no formatter knows
-//! where its rows came from.
-//!
-//! Validation is split by source, deliberately:
-//!
-//! * SQL sources go through `sql_guard` (read-only / safe-mode rules) at
-//!   fetch time, when the backend flags are known. An empty statement is
-//!   rejected before it reaches the backend.
-//! * Provided-data sources never touch `sql_guard` — there is no SQL to
-//!   guard. Instead the schema and the row shapes are validated up front
-//!   (non-empty schema, unique column names, every row as long as the
-//!   schema). A cell whose [`Value`] variant is a poor fit for the column's
-//!   declared `data_type` (e.g. a non-numeric string in an `int` column)
-//!   is still exported as-is — the `Value` variants are the permissive
-//!   wire type — but the first such mismatch per column is recorded with
-//!   `tracing::warn` so a bad caller schema does not fail silently.
+//! SQL sources go through `sql_guard` (read-only / safe-mode rules) at
+//! fetch time, when the backend flags are known. An empty statement is
+//! rejected before it reaches the backend.
 
 use std::sync::Arc;
 
-use datazen_driver_api::{
-    ColumnInfo, QueryStreamCallback, QueryStreamEvent, SqlTarget, Value, QUERY_STREAM_BATCH_SIZE,
-};
+use datazen_driver_api::{QueryStreamCallback, SqlTarget};
 
 use super::{
     build_select_sql, ExportError, ExportSource, ExportTablesRequest, TableDataSource,
     TableExportInput,
 };
 
-/// One way to supply rows to an export item.
+/// Stream one SQL statement against the backend, guarded and targeted.
 ///
-/// Implementations must emit the full row stream into `callback`:
-/// `StatementStart` (full [`ColumnInfo`]) → `Rows` batches → `StatementEnd`
-/// → `Done`. `source` / `session_id` are only used by backend-querying
-/// fetchers; in-memory fetchers ignore them.
-#[async_trait::async_trait]
-pub trait DataFetcher: Send + Sync {
-    async fn fetch(
-        &self,
-        source: &dyn ExportSource,
-        session_id: &str,
-        callback: &QueryStreamCallback,
-    ) -> Result<(), ExportError>;
-}
-
-/// A fetcher that runs one SQL statement against the backend and streams
-/// the result back. Also the single implementation behind table exports:
-/// [`SqlDataFetcher::for_table`] builds the table's `SELECT` for it.
-#[derive(Debug)]
-pub struct SqlDataFetcher {
-    /// Display name used in error messages (table name or SQL-source label).
-    name: String,
-    sql: String,
-    database: Option<String>,
-    schema: Option<String>,
-}
-
-impl SqlDataFetcher {
-    pub fn new(
-        name: impl Into<String>,
-        sql: impl Into<String>,
-        database: Option<String>,
-        schema: Option<String>,
-    ) -> Self {
-        Self {
-            name: name.into(),
-            sql: sql.into(),
-            database,
-            schema,
-        }
+/// This is the single row source for exports and the Rust counterpart of
+/// the frontend `SqlDataFetcher`: the caller supplies the statement plus
+/// its database / schema target, Rust runs `sql_guard` with the session's
+/// flags and streams the result into `callback`.
+///
+/// `database` / `schema` are carried as the statement's target:
+/// PostgreSQL cannot reference another database in one statement, so a
+/// bare `query_stream` would have streamed from the session's own database
+/// (the "second database exports the first database's rows" bug).
+pub async fn stream_sql_source(
+    source: &dyn ExportSource,
+    session_id: &str,
+    sql: &str,
+    database: Option<&str>,
+    schema: Option<&str>,
+    callback: &QueryStreamCallback,
+) -> Result<(), ExportError> {
+    if sql.trim().is_empty() {
+        return Err(ExportError::Validation(
+            "SQL data source must not be empty".into(),
+        ));
     }
+    let (_driver, read_only, safe_mode) = source.resolve_source(session_id).await?;
+    crate::execution::domain::sql_guard::check_sql(sql, read_only, safe_mode)
+        .map_err(ExportError::Validation)?;
+    source
+        .stream_query(
+            session_id,
+            sql,
+            SqlTarget::new(database, schema),
+            Arc::clone(callback),
+        )
+        .await
+}
 
-    /// The table source, expressed as a SQL source: `SELECT *` (or the
-    /// selected columns) for the named table.
-    pub fn for_table(request: &ExportTablesRequest, table: &TableExportInput) -> Self {
-        Self::new(
-            table.table_name.clone(),
+/// Resolve one export item to the SQL statement to stream, plus its
+/// database / schema target. A named table is expressed as a SQL source
+/// (`SELECT *` or the selected columns); an arbitrary-SQL item streams
+/// its statement as-is. A per-table schema wins over the request default.
+pub(crate) fn resolve_sql_source(
+    request: &ExportTablesRequest,
+    table: &TableExportInput,
+) -> Result<(String, Option<String>, Option<String>), ExportError> {
+    let database = request.database.clone();
+    let schema = table.schema.clone().or(request.schema.clone());
+    match &table.source {
+        TableDataSource::Table => Ok((
             build_select_sql(
                 &table.table_name,
                 &table.columns,
                 request.database_type.as_deref(),
             ),
-            request.database.clone(),
-            // A per-table schema wins over the request default. The database
-            // is carried as the statement's target: PostgreSQL cannot
-            // reference another database in one statement, so a bare
-            // `query_stream` would have streamed from the session's own
-            // database (the "second database exports the first database's
-            // rows" bug).
-            table.schema.clone().or(request.schema.clone()),
-        )
-    }
-
-    pub fn sql(&self) -> &str {
-        &self.sql
-    }
-}
-
-#[async_trait::async_trait]
-impl DataFetcher for SqlDataFetcher {
-    async fn fetch(
-        &self,
-        source: &dyn ExportSource,
-        session_id: &str,
-        callback: &QueryStreamCallback,
-    ) -> Result<(), ExportError> {
-        if self.sql.trim().is_empty() {
-            return Err(ExportError::Validation(format!(
-                "SQL data source '{}' must not be empty",
-                self.name
-            )));
-        }
-        let (_driver, read_only, safe_mode) = source.resolve_source(session_id).await?;
-        crate::execution::domain::sql_guard::check_sql(&self.sql, read_only, safe_mode)
-            .map_err(ExportError::Validation)?;
-        source
-            .stream_query(
-                session_id,
-                &self.sql,
-                SqlTarget::new(self.database.as_deref(), self.schema.as_deref()),
-                Arc::clone(callback),
-            )
-            .await
-    }
-}
-
-/// A fetcher over rows the caller already holds, plus their schema.
-///
-/// Validation happens in [`ProvidedDataFetcher::new`], so a malformed
-/// payload fails before any file is planned or written; [`DataFetcher::fetch`]
-/// only replays the validated rows as stream events.
-#[derive(Debug)]
-pub struct ProvidedDataFetcher {
-    name: String,
-    columns: Vec<ColumnInfo>,
-    rows: Vec<Vec<Option<Value>>>,
-}
-
-impl ProvidedDataFetcher {
-    pub fn new(
-        name: impl Into<String>,
-        columns: Vec<ColumnInfo>,
-        rows: Vec<Vec<Option<Value>>>,
-    ) -> Result<Self, ExportError> {
-        let name = name.into();
-        validate_provided_data(&name, &columns, &rows)?;
-        Ok(Self {
-            name,
-            columns,
-            rows,
-        })
-    }
-
-    pub fn columns(&self) -> &[ColumnInfo] {
-        &self.columns
-    }
-
-    pub fn row_count(&self) -> usize {
-        self.rows.len()
-    }
-
-    /// Record (once per column, at `warn` level) the cells whose `Value`
-    /// variant plainly contradicts the column's declared `data_type`.
-    /// The values are still exported as-is; this only makes a bad caller
-    /// schema visible instead of silently accepted.
-    fn warn_type_mismatches(&self) {
-        let mut warned: Vec<bool> = vec![false; self.columns.len()];
-        for (row_index, row) in self.rows.iter().enumerate() {
-            for (col_index, cell) in row.iter().enumerate() {
-                if warned[col_index] {
-                    continue;
-                }
-                if let Some(Value::String(text)) = cell {
-                    let declared = self.columns[col_index].data_type.to_ascii_lowercase();
-                    let mismatch = if declared.contains("int") {
-                        text.trim().parse::<i64>().is_err()
-                    } else if declared.contains("float")
-                        || declared.contains("double")
-                        || declared.contains("decimal")
-                        || declared.contains("numeric")
-                        || declared.contains("real")
-                    {
-                        text.trim().parse::<f64>().is_err()
-                    } else if declared == "bool" || declared == "boolean" {
-                        !matches!(text.trim().to_ascii_lowercase().as_str(), "true" | "false")
-                    } else {
-                        false
-                    };
-                    if mismatch {
-                        warned[col_index] = true;
-                        tracing::warn!(
-                            source = "provided-data",
-                            table = %self.name,
-                            column = %self.columns[col_index].name,
-                            declared_type = %self.columns[col_index].data_type,
-                            row = row_index,
-                            "provided row value does not match the declared column type; exporting it as-is"
-                        );
-                    }
-                }
-            }
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl DataFetcher for ProvidedDataFetcher {
-    async fn fetch(
-        &self,
-        _source: &dyn ExportSource,
-        _session_id: &str,
-        callback: &QueryStreamCallback,
-    ) -> Result<(), ExportError> {
-        self.warn_type_mismatches();
-        callback(QueryStreamEvent::StatementStart {
-            index: 0,
-            sql: String::new(),
-            columns: self.columns.clone(),
-        });
-        for chunk in self.rows.chunks(QUERY_STREAM_BATCH_SIZE) {
-            callback(QueryStreamEvent::Rows {
-                index: 0,
-                rows: chunk.to_vec(),
-            });
-        }
-        callback(QueryStreamEvent::StatementEnd {
-            index: 0,
-            rows_affected: Some(self.rows.len() as u64),
-            execution_time_ms: 0,
-            truncated: false,
-        });
-        callback(QueryStreamEvent::Done { total_time_ms: 0 });
-        Ok(())
-    }
-}
-
-/// Validate caller-provided rows against their schema. This is the
-/// provided-data counterpart of `sql_guard`: there is no SQL to guard, so
-/// shape is what gets checked — a non-empty schema, unique column names
-/// (duplicate names would collapse in JSON output and confuse CSV), and
-/// every row exactly as long as the schema.
-pub fn validate_provided_data(
-    name: &str,
-    columns: &[ColumnInfo],
-    rows: &[Vec<Option<Value>>],
-) -> Result<(), ExportError> {
-    if columns.is_empty() {
-        return Err(ExportError::Validation(format!(
-            "provided data source '{name}' has no columns (empty schema)"
-        )));
-    }
-    for (i, column) in columns.iter().enumerate() {
-        if columns[..i].iter().any(|c| c.name == column.name) {
-            return Err(ExportError::Validation(format!(
-                "provided data source '{name}' has a duplicate column name '{}'",
-                column.name
-            )));
-        }
-    }
-    for (i, row) in rows.iter().enumerate() {
-        if row.len() != columns.len() {
-            return Err(ExportError::Validation(format!(
-                "provided data source '{name}' row {i} has {} values but the schema has {} columns",
-                row.len(),
-                columns.len()
-            )));
-        }
-    }
-    Ok(())
-}
-
-/// Build the fetcher for one export item from its declared source.
-/// SQL sources are validated for emptiness here only in the sense that
-/// [`SqlDataFetcher::fetch`] rejects them (plus `sql_guard`); provided
-/// data is fully validated now, so planning fails fast on a bad payload.
-pub fn fetcher_for_table(
-    request: &ExportTablesRequest,
-    table: &TableExportInput,
-) -> Result<Box<dyn DataFetcher>, ExportError> {
-    match &table.source {
-        TableDataSource::Table => Ok(Box::new(SqlDataFetcher::for_table(request, table))),
-        TableDataSource::Sql { sql } => Ok(Box::new(SqlDataFetcher::new(
-            table.table_name.clone(),
-            sql.clone(),
-            request.database.clone(),
-            table.schema.clone().or(request.schema.clone()),
-        ))),
-        TableDataSource::Provided { columns, rows } => Ok(Box::new(ProvidedDataFetcher::new(
-            table.table_name.clone(),
-            columns.clone(),
-            rows.clone(),
-        )?)),
+            database,
+            schema,
+        )),
+        TableDataSource::Sql { sql } => Ok((sql.clone(), database, schema)),
     }
 }
 
@@ -358,7 +141,8 @@ mod tests {
         MockDriver::new("sqlite", MockDriverOptions::default())
     }
 
-    /// Stub backend: records the SQL it was asked to stream and replays
+    /// Stub backend: records the SQL it was asked to stream (and the
+    /// database / schema target it was asked to stream it from) and replays
     /// canned columns/rows as stream events.
     struct StubSource {
         driver: Arc<dyn DatabaseDriver>,
@@ -367,6 +151,7 @@ mod tests {
         columns: Vec<ColumnInfo>,
         rows: Vec<Vec<Option<Value>>>,
         streamed_sql: Arc<std::sync::Mutex<Vec<String>>>,
+        streamed_targets: Arc<std::sync::Mutex<Vec<(Option<String>, Option<String>)>>>,
         stream_calls: Arc<AtomicUsize>,
         /// Test seam: when false, `stream_query` emits `Rows` without a
         /// preceding `StatementStart`, so the exporter's header fallback
@@ -388,6 +173,7 @@ mod tests {
                 columns,
                 rows,
                 streamed_sql: Arc::new(std::sync::Mutex::new(Vec::new())),
+                streamed_targets: Arc::new(std::sync::Mutex::new(Vec::new())),
                 stream_calls: Arc::new(AtomicUsize::new(0)),
                 emit_start: true,
             }
@@ -407,10 +193,14 @@ mod tests {
             &self,
             _session_id: &str,
             sql: &str,
-            _target: datazen_driver_api::SqlTarget<'_>,
+            target: datazen_driver_api::SqlTarget<'_>,
             callback: QueryStreamCallback,
         ) -> Result<(), ExportError> {
             self.streamed_sql.lock().unwrap().push(sql.to_string());
+            self.streamed_targets.lock().unwrap().push((
+                target.database.map(str::to_string),
+                target.schema.map(str::to_string),
+            ));
             self.stream_calls.fetch_add(1, Ordering::Relaxed);
             if self.emit_start {
                 callback(QueryStreamEvent::StatementStart {
@@ -479,152 +269,22 @@ mod tests {
         dir.join(name)
     }
 
-    // --- ProvidedDataFetcher: event shape ---------------------------------
+    // --- stream_sql_source: guard + streaming -----------------------------
 
     #[tokio::test]
-    async fn provided_fetcher_emits_full_stream_in_batches() {
-        let rows: Vec<Vec<Option<Value>>> = (0..1200)
-            .map(|i| vec![Some(Value::Integer(i)), Some(Value::String("x".into()))])
-            .collect();
-        let fetcher = ProvidedDataFetcher::new("t", two_cols(), rows).expect("valid provided data");
-        let (callback, events) = collect_events();
-        let source = StubSource::new(false, false, vec![], vec![]);
-        fetcher.fetch(&source, "s", &callback).await.unwrap();
-
-        let events = events.lock().unwrap();
-        // StatementStart carries the full ColumnInfo, not just names.
-        assert!(matches!(
-            &events[0],
-            QueryStreamEvent::StatementStart { columns, .. } if *columns == two_cols()
-        ));
-        let row_events: Vec<&Vec<Vec<Option<Value>>>> = events
-            .iter()
-            .filter_map(|e| match e {
-                QueryStreamEvent::Rows { rows, .. } => Some(rows),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(
-            row_events.iter().map(|r| r.len()).collect::<Vec<_>>(),
-            vec![500, 500, 200],
-            "rows are batched at QUERY_STREAM_BATCH_SIZE"
-        );
-        assert!(matches!(
-            &events[events.len() - 2],
-            QueryStreamEvent::StatementEnd {
-                rows_affected: Some(1200),
-                ..
-            }
-        ));
-        assert!(matches!(
-            events[events.len() - 1],
-            QueryStreamEvent::Done { .. }
-        ));
-        assert_eq!(source.stream_calls.load(Ordering::Relaxed), 0);
-    }
-
-    // --- ProvidedDataFetcher: validation ----------------------------------
-
-    #[test]
-    fn provided_data_rejects_row_length_mismatch() {
-        let err = ProvidedDataFetcher::new("t", two_cols(), vec![vec![Some(Value::Integer(1))]])
-            .unwrap_err();
-        assert!(
-            matches!(err, ExportError::Validation(ref m) if m.contains("row 0") && m.contains("1 values") && m.contains("2 columns")),
-            "unexpected error: {err:?}"
-        );
-    }
-
-    #[test]
-    fn provided_data_rejects_empty_schema() {
-        let err = ProvidedDataFetcher::new("t", vec![], vec![]).unwrap_err();
-        assert!(
-            matches!(err, ExportError::Validation(ref m) if m.contains("no columns")),
-            "unexpected error: {err:?}"
-        );
-    }
-
-    #[test]
-    fn provided_data_rejects_duplicate_column_names() {
-        let err = ProvidedDataFetcher::new("t", vec![col("id", "int4"), col("id", "text")], vec![])
-            .unwrap_err();
-        assert!(
-            matches!(err, ExportError::Validation(ref m) if m.contains("duplicate column")),
-            "unexpected error: {err:?}"
-        );
-    }
-
-    #[tokio::test]
-    async fn provided_data_type_mismatch_is_lenient_not_rejected() {
-        // A non-numeric string in an int column is still exported as-is;
-        // the mismatch is only recorded (warn), never a hard failure.
-        let fetcher = ProvidedDataFetcher::new(
-            "t",
-            vec![col("id", "int4")],
-            vec![vec![Some(Value::String("abc".into()))]],
-        )
-        .expect("lenient by design");
-        let (callback, events) = collect_events();
-        let source = StubSource::new(false, false, vec![], vec![]);
-        fetcher.fetch(&source, "s", &callback).await.unwrap();
-        let events = events.lock().unwrap();
-        assert!(events.iter().any(|e| matches!(
-            e,
-            QueryStreamEvent::Rows { rows, .. }
-                if rows == &[vec![Some(Value::String("abc".into()))]]
-        )));
-    }
-
-    #[tokio::test]
-    async fn provided_data_type_mismatch_float_and_bool_are_lenient() {
-        // Same leniency for the float / bool branches of the mismatch
-        // recorder: non-numeric strings are still exported as-is.
-        let fetcher = ProvidedDataFetcher::new(
-            "t",
-            vec![col("amount", "float8"), col("flag", "bool")],
-            vec![
-                vec![
-                    Some(Value::String("abc".into())),
-                    Some(Value::String("maybe".into())),
-                ],
-                // Second bad row in the same columns: already warned, so the
-                // per-column "warn once" skip is exercised too.
-                vec![
-                    Some(Value::String("def".into())),
-                    Some(Value::String("nope".into())),
-                ],
-            ],
-        )
-        .expect("lenient by design");
-        let (callback, events) = collect_events();
-        let source = StubSource::new(false, false, vec![], vec![]);
-        fetcher.fetch(&source, "s", &callback).await.unwrap();
-        assert!(events
-            .lock()
-            .unwrap()
-            .iter()
-            .any(|e| matches!(e, QueryStreamEvent::Rows { .. })));
-    }
-
-    #[test]
-    fn fetcher_accessors_expose_sql_columns_and_row_count() {
-        let sql = SqlDataFetcher::new("q", "SELECT 1", None, None);
-        assert_eq!(sql.sql(), "SELECT 1");
-        let provided =
-            ProvidedDataFetcher::new("t", two_cols(), two_rows()).expect("valid provided data");
-        assert_eq!(provided.columns(), two_cols().as_slice());
-        assert_eq!(provided.row_count(), 2);
-    }
-
-    // --- SqlDataFetcher: guard + streaming --------------------------------
-
-    #[tokio::test]
-    async fn sql_fetcher_streams_valid_sql() {
+    async fn sql_source_streams_valid_sql() {
         let source = StubSource::new(true, true, two_cols(), two_rows());
-        let fetcher =
-            SqlDataFetcher::new("q", "SELECT id, name FROM users WHERE id > 1", None, None);
         let (callback, events) = collect_events();
-        fetcher.fetch(&source, "s", &callback).await.unwrap();
+        stream_sql_source(
+            &source,
+            "s",
+            "SELECT id, name FROM users WHERE id > 1",
+            None,
+            None,
+            &callback,
+        )
+        .await
+        .unwrap();
         assert_eq!(
             *source.streamed_sql.lock().unwrap(),
             vec!["SELECT id, name FROM users WHERE id > 1".to_string()]
@@ -633,11 +293,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sql_fetcher_rejects_drop_under_guard() {
+    async fn sql_source_rejects_drop_under_guard() {
         let source = StubSource::new(true, true, two_cols(), two_rows());
-        let fetcher = SqlDataFetcher::new("q", "DROP TABLE users", None, None);
         let (callback, _) = collect_events();
-        let err = fetcher.fetch(&source, "s", &callback).await.unwrap_err();
+        let err = stream_sql_source(&source, "s", "DROP TABLE users", None, None, &callback)
+            .await
+            .unwrap_err();
         assert!(
             matches!(err, ExportError::Validation(_)),
             "unexpected error: {err:?}"
@@ -646,11 +307,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sql_fetcher_rejects_where_less_delete_in_safe_mode() {
+    async fn sql_source_rejects_where_less_delete_in_safe_mode() {
         let source = StubSource::new(true, true, two_cols(), two_rows());
-        let fetcher = SqlDataFetcher::new("q", "DELETE FROM users", None, None);
         let (callback, _) = collect_events();
-        let err = fetcher.fetch(&source, "s", &callback).await.unwrap_err();
+        let err = stream_sql_source(&source, "s", "DELETE FROM users", None, None, &callback)
+            .await
+            .unwrap_err();
         assert!(
             matches!(err, ExportError::Validation(_)),
             "unexpected: {err:?}"
@@ -659,11 +321,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sql_fetcher_rejects_empty_sql() {
+    async fn sql_source_rejects_empty_sql() {
         let source = StubSource::new(false, false, two_cols(), two_rows());
-        let fetcher = SqlDataFetcher::new("q", "   ", None, None);
         let (callback, _) = collect_events();
-        let err = fetcher.fetch(&source, "s", &callback).await.unwrap_err();
+        let err = stream_sql_source(&source, "s", "   ", None, None, &callback)
+            .await
+            .unwrap_err();
         assert!(
             matches!(err, ExportError::Validation(_)),
             "unexpected: {err:?}"
@@ -672,19 +335,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sql_fetcher_guard_only_applies_under_read_only_or_safe_mode() {
+    async fn sql_source_guard_only_applies_under_read_only_or_safe_mode() {
         // Same DROP passes the guard when neither flag is set: check_sql is
         // a no-op there, so the statement reaches the backend.
         let source = StubSource::new(false, false, two_cols(), two_rows());
-        let fetcher = SqlDataFetcher::new("q", "DROP TABLE users", None, None);
         let (callback, _) = collect_events();
-        fetcher.fetch(&source, "s", &callback).await.unwrap();
+        stream_sql_source(&source, "s", "DROP TABLE users", None, None, &callback)
+            .await
+            .unwrap();
         assert_eq!(source.stream_calls.load(Ordering::Relaxed), 1);
     }
 
     #[tokio::test]
-    async fn table_source_is_a_sql_source_with_built_select() {
-        let req = request(
+    async fn table_source_resolves_to_sql_source_with_built_select() {
+        let mut req = request(
             ExportMode::DataOnly,
             DataFormat::Csv,
             vec![TableExportInput {
@@ -696,12 +360,23 @@ mod tests {
                 primary_key: None,
             }],
         );
-        let mut req = req;
         req.database_type = Some("mysql".into());
-        let fetcher = fetcher_for_table(&req, &req.tables[0]).expect("table fetcher");
+        let (sql, database, schema) = resolve_sql_source(&req, &req.tables[0]).unwrap();
+        assert_eq!(sql, "SELECT `id`, `name` FROM `users`");
+        assert_eq!(database, None);
+        assert_eq!(schema, None);
         let source = StubSource::new(false, false, two_cols(), two_rows());
         let (callback, _) = collect_events();
-        fetcher.fetch(&source, "s", &callback).await.unwrap();
+        stream_sql_source(
+            &source,
+            "s",
+            &sql,
+            database.as_deref(),
+            schema.as_deref(),
+            &callback,
+        )
+        .await
+        .unwrap();
         assert_eq!(
             *source.streamed_sql.lock().unwrap(),
             vec!["SELECT `id`, `name` FROM `users`".to_string()]
@@ -724,7 +399,7 @@ mod tests {
     }
 
     #[test]
-    fn sql_and_provided_sources_round_trip_with_explicit_type_tag() {
+    fn sql_source_round_trips_with_explicit_type_tag() {
         let sql = TableDataSource::Sql {
             sql: "SELECT 1".into(),
         };
@@ -738,18 +413,14 @@ mod tests {
             "dataFormat": "json",
             "outputMode": "single",
             "tables": [{
-                "tableName": "provided",
-                "source": {
-                    "type": "provided",
-                    "columns": [{ "name": "id", "dataType": "int4", "nullable": false }],
-                    "rows": [[1], [2]],
-                },
+                "tableName": "q",
+                "source": { "type": "sql", "sql": "SELECT 1" },
             }],
         });
         let req: ExportTablesRequest = serde_json::from_value(json).unwrap();
         assert!(matches!(
             req.tables[0].source,
-            TableDataSource::Provided { .. }
+            TableDataSource::Sql { ref sql } if sql == "SELECT 1"
         ));
     }
 
@@ -811,24 +482,6 @@ mod tests {
         let plans = build_file_plans(&req).unwrap();
         assert_eq!(plans.len(), 1);
         assert_eq!(plans[0].filename(), "q.sql");
-    }
-
-    #[test]
-    fn build_file_plans_provided_source_data_only_needs_no_ddl() {
-        let req = request(
-            ExportMode::DataOnly,
-            DataFormat::Json,
-            vec![table_item(
-                "provided",
-                TableDataSource::Provided {
-                    columns: two_cols(),
-                    rows: two_rows(),
-                },
-            )],
-        );
-        let plans = build_file_plans(&req).unwrap();
-        assert_eq!(plans.len(), 1);
-        assert_eq!(plans[0].filename(), "provided.json");
     }
 
     #[test]
@@ -894,381 +547,11 @@ mod tests {
             vec![table_item("q", TableDataSource::Sql { sql: "  ".into() })],
         );
         assert!(prepare_export(&bad_sql).is_err());
-        let bad_rows = request(
-            ExportMode::DataOnly,
-            DataFormat::Csv,
-            vec![table_item(
-                "p",
-                TableDataSource::Provided {
-                    columns: two_cols(),
-                    rows: vec![vec![Some(Value::Integer(1))]],
-                },
-            )],
-        );
-        assert!(prepare_export(&bad_rows).is_err());
         let empty = request(ExportMode::DataOnly, DataFormat::Csv, vec![]);
         assert!(matches!(
             prepare_export(&empty).unwrap_err(),
             ExportError::Validation(_)
         ));
-    }
-
-    // --- write_data_file end to end ----------------------------------------
-
-    #[tokio::test]
-    async fn write_data_file_sql_source_writes_csv() {
-        let req = request(
-            ExportMode::DataOnly,
-            DataFormat::Csv,
-            vec![table_item(
-                "filtered",
-                TableDataSource::Sql {
-                    sql: "SELECT id, name FROM users WHERE id > 1".into(),
-                },
-            )],
-        );
-        let source = StubSource::new(false, false, two_cols(), two_rows());
-        let dest = temp_file("out.csv");
-        let n = write_data_file(
-            &NoopEvents,
-            &source,
-            &req,
-            &req.tables[0],
-            DataFormat::Csv,
-            None,
-            &dest,
-        )
-        .await
-        .unwrap();
-        assert_eq!(n, 2);
-        assert_eq!(
-            *source.streamed_sql.lock().unwrap(),
-            vec!["SELECT id, name FROM users WHERE id > 1".to_string()]
-        );
-        assert_eq!(
-            std::fs::read_to_string(&dest).unwrap(),
-            "id,name\n1,a\n2,\n"
-        );
-        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
-    }
-
-    #[tokio::test]
-    async fn write_data_file_provided_source_never_queries_backend() {
-        let req = request(
-            ExportMode::DataOnly,
-            DataFormat::Json,
-            vec![table_item(
-                "provided",
-                TableDataSource::Provided {
-                    columns: two_cols(),
-                    rows: two_rows(),
-                },
-            )],
-        );
-        let source = StubSource::new(false, false, two_cols(), two_rows());
-        let dest = temp_file("out.json");
-        let n = write_data_file(
-            &NoopEvents,
-            &source,
-            &req,
-            &req.tables[0],
-            DataFormat::Json,
-            None,
-            &dest,
-        )
-        .await
-        .unwrap();
-        assert_eq!(n, 2);
-        assert_eq!(source.stream_calls.load(Ordering::Relaxed), 0);
-        let parsed: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(&dest).unwrap()).unwrap();
-        assert_eq!(
-            parsed,
-            serde_json::json!([{ "id": 1, "name": "a" }, { "id": 2, "name": null }])
-        );
-        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
-    }
-
-    #[tokio::test]
-    async fn write_data_file_table_source_regression() {
-        let req = request(
-            ExportMode::DataOnly,
-            DataFormat::Csv,
-            vec![table_item("users", TableDataSource::Table)],
-        );
-        let source = StubSource::new(false, false, two_cols(), two_rows());
-        let dest = temp_file("out.csv");
-        let n = write_data_file(
-            &NoopEvents,
-            &source,
-            &req,
-            &req.tables[0],
-            DataFormat::Csv,
-            None,
-            &dest,
-        )
-        .await
-        .unwrap();
-        assert_eq!(n, 2);
-        assert_eq!(
-            *source.streamed_sql.lock().unwrap(),
-            vec!["SELECT * FROM \"users\"".to_string()]
-        );
-        assert_eq!(
-            std::fs::read_to_string(&dest).unwrap(),
-            "id,name\n1,a\n2,\n"
-        );
-        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
-    }
-
-    #[tokio::test]
-    async fn write_data_file_illegal_sql_is_rejected() {
-        let req = request(
-            ExportMode::DataOnly,
-            DataFormat::Csv,
-            vec![table_item(
-                "q",
-                TableDataSource::Sql {
-                    sql: "DROP TABLE users".into(),
-                },
-            )],
-        );
-        let source = StubSource::new(true, true, two_cols(), two_rows());
-        let dest = temp_file("out.csv");
-        let err = write_data_file(
-            &NoopEvents,
-            &source,
-            &req,
-            &req.tables[0],
-            DataFormat::Csv,
-            None,
-            &dest,
-        )
-        .await
-        .unwrap_err();
-        assert!(
-            matches!(err, ExportError::Validation(_)),
-            "unexpected error: {err:?}"
-        );
-        assert_eq!(source.stream_calls.load(Ordering::Relaxed), 0);
-        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
-    }
-
-    #[tokio::test]
-    async fn write_data_file_provided_source_with_bad_rows_is_rejected() {
-        // Malformed provided data fails while building the fetcher, before
-        // any row is written (prepare_export would reject it even earlier).
-        let req = request(
-            ExportMode::DataOnly,
-            DataFormat::Csv,
-            vec![table_item(
-                "p",
-                TableDataSource::Provided {
-                    columns: two_cols(),
-                    rows: vec![vec![Some(Value::Integer(1))]],
-                },
-            )],
-        );
-        let source = StubSource::new(false, false, two_cols(), two_rows());
-        let dest = temp_file("out.csv");
-        let err = write_data_file(
-            &NoopEvents,
-            &source,
-            &req,
-            &req.tables[0],
-            DataFormat::Csv,
-            None,
-            &dest,
-        )
-        .await
-        .unwrap_err();
-        assert!(
-            matches!(err, ExportError::Validation(_)),
-            "unexpected error: {err:?}"
-        );
-        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
-    }
-
-    // --- Item 3a: new text formats (TSV / Markdown / SQL UPDATE) ---------
-
-    #[tokio::test]
-    async fn write_data_file_tsv_flattens_tabs_and_newlines() {
-        let req = request(
-            ExportMode::DataOnly,
-            DataFormat::Tsv,
-            vec![table_item(
-                "t",
-                TableDataSource::Provided {
-                    columns: two_cols(),
-                    rows: vec![
-                        vec![
-                            Some(Value::Integer(1)),
-                            Some(Value::String("a\tb\nc".into())),
-                        ],
-                        vec![Some(Value::Integer(2)), Some(Value::Null)],
-                    ],
-                },
-            )],
-        );
-        let source = StubSource::new(false, false, two_cols(), two_rows());
-        let dest = temp_file("out.tsv");
-        let n = write_data_file(
-            &NoopEvents,
-            &source,
-            &req,
-            &req.tables[0],
-            DataFormat::Tsv,
-            None,
-            &dest,
-        )
-        .await
-        .unwrap();
-        assert_eq!(n, 2);
-        assert_eq!(
-            std::fs::read_to_string(&dest).unwrap(),
-            "id\tname\n1\ta b c\n2\t\n"
-        );
-        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
-    }
-
-    #[tokio::test]
-    async fn write_data_file_markdown_escapes_pipes_and_breaks() {
-        let req = request(
-            ExportMode::DataOnly,
-            DataFormat::Markdown,
-            vec![table_item(
-                "t",
-                TableDataSource::Provided {
-                    columns: two_cols(),
-                    rows: vec![vec![
-                        Some(Value::Integer(1)),
-                        Some(Value::String("a|b\nc\\d".into())),
-                    ]],
-                },
-            )],
-        );
-        let source = StubSource::new(false, false, two_cols(), two_rows());
-        let dest = temp_file("out.md");
-        write_data_file(
-            &NoopEvents,
-            &source,
-            &req,
-            &req.tables[0],
-            DataFormat::Markdown,
-            None,
-            &dest,
-        )
-        .await
-        .unwrap();
-        assert_eq!(
-            std::fs::read_to_string(&dest).unwrap(),
-            "| id | name |\n| --- | --- |\n| 1 | a\\|b<br>c\\\\d |\n"
-        );
-        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
-    }
-
-    #[tokio::test]
-    async fn write_data_file_sql_update_uses_primary_key() {
-        let mut item = table_item(
-            "users",
-            TableDataSource::Provided {
-                columns: two_cols(),
-                rows: two_rows(),
-            },
-        );
-        item.primary_key = Some("id".into());
-        let req = request(ExportMode::DataOnly, DataFormat::SqlUpdate, vec![item]);
-        let source = StubSource::new(false, false, two_cols(), two_rows());
-        let dest = temp_file("out.sql");
-        write_data_file(
-            &NoopEvents,
-            &source,
-            &req,
-            &req.tables[0],
-            DataFormat::SqlUpdate,
-            None,
-            &dest,
-        )
-        .await
-        .unwrap();
-        assert_eq!(
-            std::fs::read_to_string(&dest).unwrap(),
-            // The sqlite mock driver renders string literals as CAST(X'…'
-            // AS TEXT); the UPDATE shape (SET … WHERE pk = …) is what this
-            // test pins, not the dialect's literal style.
-            "BEGIN;\nUPDATE \"users\" SET \"name\" = CAST(X'61' AS TEXT) WHERE \"id\" = 1;\nUPDATE \"users\" SET \"name\" = NULL WHERE \"id\" = 2;\nCOMMIT;\n"
-        );
-        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
-    }
-
-    #[tokio::test]
-    async fn write_data_file_sql_update_falls_back_to_first_column() {
-        // No primary_key supplied: the first column is the key, as in the
-        // frontend sql_update branch.
-        let req = request(
-            ExportMode::DataOnly,
-            DataFormat::SqlUpdate,
-            vec![table_item(
-                "users",
-                TableDataSource::Provided {
-                    columns: two_cols(),
-                    rows: two_rows(),
-                },
-            )],
-        );
-        let source = StubSource::new(false, false, two_cols(), two_rows());
-        let dest = temp_file("out.sql");
-        write_data_file(
-            &NoopEvents,
-            &source,
-            &req,
-            &req.tables[0],
-            DataFormat::SqlUpdate,
-            None,
-            &dest,
-        )
-        .await
-        .unwrap();
-        assert!(
-            std::fs::read_to_string(&dest)
-                .unwrap()
-                .contains("WHERE \"id\" = 1;"),
-            "first column is the fallback key"
-        );
-        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
-    }
-
-    #[tokio::test]
-    async fn write_data_file_sql_update_single_column_is_rejected() {
-        let req = request(
-            ExportMode::DataOnly,
-            DataFormat::SqlUpdate,
-            vec![table_item(
-                "only_id",
-                TableDataSource::Provided {
-                    columns: vec![col("id", "int4")],
-                    rows: vec![vec![Some(Value::Integer(1))]],
-                },
-            )],
-        );
-        let source = StubSource::new(false, false, vec![col("id", "int4")], vec![]);
-        let dest = temp_file("out.sql");
-        let err = write_data_file(
-            &NoopEvents,
-            &source,
-            &req,
-            &req.tables[0],
-            DataFormat::SqlUpdate,
-            None,
-            &dest,
-        )
-        .await
-        .unwrap_err();
-        assert!(
-            matches!(err, ExportError::Validation(ref m) if m.contains("non-key column")),
-            "unexpected error: {err:?}"
-        );
-        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
     }
 
     #[test]
@@ -1338,6 +621,305 @@ mod tests {
         );
     }
 
+    // --- write_data_file end to end ----------------------------------------
+
+    #[tokio::test]
+    async fn write_data_file_sql_source_writes_csv() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Csv,
+            vec![table_item(
+                "filtered",
+                TableDataSource::Sql {
+                    sql: "SELECT id, name FROM users WHERE id > 1".into(),
+                },
+            )],
+        );
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.csv");
+        let n = write_data_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Csv,
+            None,
+            &dest,
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 2);
+        assert_eq!(
+            *source.streamed_sql.lock().unwrap(),
+            vec!["SELECT id, name FROM users WHERE id > 1".to_string()]
+        );
+        assert_eq!(
+            std::fs::read_to_string(&dest).unwrap(),
+            "id,name\n1,a\n2,\n"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn write_data_file_table_source_regression() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Csv,
+            vec![table_item("users", TableDataSource::Table)],
+        );
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.csv");
+        let n = write_data_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Csv,
+            None,
+            &dest,
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 2);
+        assert_eq!(
+            *source.streamed_sql.lock().unwrap(),
+            vec!["SELECT * FROM \"users\"".to_string()]
+        );
+        assert_eq!(
+            std::fs::read_to_string(&dest).unwrap(),
+            "id,name\n1,a\n2,\n"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn write_data_file_illegal_sql_is_rejected() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Csv,
+            vec![table_item(
+                "q",
+                TableDataSource::Sql {
+                    sql: "DROP TABLE users".into(),
+                },
+            )],
+        );
+        let source = StubSource::new(true, true, two_cols(), two_rows());
+        let dest = temp_file("out.csv");
+        let err = write_data_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Csv,
+            None,
+            &dest,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Validation(_)),
+            "unexpected error: {err:?}"
+        );
+        assert_eq!(source.stream_calls.load(Ordering::Relaxed), 0);
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    // --- Item 3a: new text formats (TSV / Markdown / SQL UPDATE) ---------
+    // These used to carry their rows as a provided source; the rows now
+    // come from the stub backend over a SQL source, so the formatter
+    // behaviour they pin is unchanged.
+
+    #[tokio::test]
+    async fn write_data_file_tsv_flattens_tabs_and_newlines() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Tsv,
+            vec![table_item(
+                "t",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        let source = StubSource::new(
+            false,
+            false,
+            two_cols(),
+            vec![
+                vec![
+                    Some(Value::Integer(1)),
+                    Some(Value::String("a\tb\nc".into())),
+                ],
+                vec![Some(Value::Integer(2)), Some(Value::Null)],
+            ],
+        );
+        let dest = temp_file("out.tsv");
+        let n = write_data_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Tsv,
+            None,
+            &dest,
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 2);
+        assert_eq!(
+            std::fs::read_to_string(&dest).unwrap(),
+            "id\tname\n1\ta b c\n2\t\n"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn write_data_file_markdown_escapes_pipes_and_breaks() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Markdown,
+            vec![table_item(
+                "t",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        let source = StubSource::new(
+            false,
+            false,
+            two_cols(),
+            vec![vec![
+                Some(Value::Integer(1)),
+                Some(Value::String("a|b\nc\\d".into())),
+            ]],
+        );
+        let dest = temp_file("out.md");
+        write_data_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Markdown,
+            None,
+            &dest,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&dest).unwrap(),
+            "| id | name |\n| --- | --- |\n| 1 | a\\|b<br>c\\\\d |\n"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn write_data_file_sql_update_uses_primary_key() {
+        let mut item = table_item(
+            "users",
+            TableDataSource::Sql {
+                sql: "SELECT 1".into(),
+            },
+        );
+        item.primary_key = Some("id".into());
+        let req = request(ExportMode::DataOnly, DataFormat::SqlUpdate, vec![item]);
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.sql");
+        write_data_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::SqlUpdate,
+            None,
+            &dest,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&dest).unwrap(),
+            // The sqlite mock driver renders string literals as CAST(X'…'
+            // AS TEXT); the UPDATE shape (SET … WHERE pk = …) is what this
+            // test pins, not the dialect's literal style.
+            "BEGIN;\nUPDATE \"users\" SET \"name\" = CAST(X'61' AS TEXT) WHERE \"id\" = 1;\nUPDATE \"users\" SET \"name\" = NULL WHERE \"id\" = 2;\nCOMMIT;\n"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn write_data_file_sql_update_falls_back_to_first_column() {
+        // No primary_key supplied: the first column is the key, as in the
+        // frontend sql_update branch.
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::SqlUpdate,
+            vec![table_item(
+                "users",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.sql");
+        write_data_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::SqlUpdate,
+            None,
+            &dest,
+        )
+        .await
+        .unwrap();
+        assert!(
+            std::fs::read_to_string(&dest)
+                .unwrap()
+                .contains("WHERE \"id\" = 1;"),
+            "first column is the fallback key"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn write_data_file_sql_update_single_column_is_rejected() {
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::SqlUpdate,
+            vec![table_item(
+                "only_id",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        let source = StubSource::new(
+            false,
+            false,
+            vec![col("id", "int4")],
+            vec![vec![Some(Value::Integer(1))]],
+        );
+        let dest = temp_file("out.sql");
+        let err = write_data_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::SqlUpdate,
+            None,
+            &dest,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(err, ExportError::Validation(ref m) if m.contains("non-key column")),
+            "unexpected error: {err:?}"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
     // --- Item 3a: binary dispatch + multi-plan guard ----------------------
 
     #[tokio::test]
@@ -1394,15 +976,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn write_binary_file_provided_source_writes_xlsx_without_backend() {
+    async fn write_binary_file_sql_source_writes_xlsx() {
         let req = request(
             ExportMode::DataOnly,
             DataFormat::Xlsx,
             vec![table_item(
-                "provided",
-                TableDataSource::Provided {
-                    columns: two_cols(),
-                    rows: two_rows(),
+                "t",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
                 },
             )],
         );
@@ -1419,7 +1000,7 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(n, 2);
-        assert_eq!(source.stream_calls.load(Ordering::Relaxed), 0);
+        assert_eq!(source.stream_calls.load(Ordering::Relaxed), 1);
         assert!(dest.exists(), "xlsx file written");
         let file = std::fs::File::open(&dest).unwrap();
         let mut zip = zip::ZipArchive::new(file).unwrap();
@@ -1471,20 +1052,8 @@ mod tests {
             ExportMode::DataOnly,
             DataFormat::Xlsx,
             vec![
-                table_item(
-                    "a",
-                    TableDataSource::Provided {
-                        columns: two_cols(),
-                        rows: two_rows(),
-                    },
-                ),
-                table_item(
-                    "b",
-                    TableDataSource::Provided {
-                        columns: two_cols(),
-                        rows: two_rows(),
-                    },
-                ),
+                table_item("a", TableDataSource::Table),
+                table_item("b", TableDataSource::Table),
             ],
         );
         let plans = build_file_plans(&req).unwrap();
@@ -1508,9 +1077,8 @@ mod tests {
         // The SqlInsert/SqlUpdate header shares the sqlserver branch.
         let mut item = table_item(
             "users",
-            TableDataSource::Provided {
-                columns: two_cols(),
-                rows: two_rows(),
+            TableDataSource::Sql {
+                sql: "SELECT 1".into(),
             },
         );
         item.primary_key = Some("id".into());
@@ -1547,19 +1115,20 @@ mod tests {
 
     #[tokio::test]
     async fn write_binary_file_begin_failure_is_reported() {
+        // The 16_385-column schema arrives over the SQL stream's
+        // StatementStart, so the binary formatter's begin still fails.
         let wide: Vec<ColumnInfo> = (0..16_385).map(|i| col(&format!("c{i}"), "text")).collect();
         let req = request(
             ExportMode::DataOnly,
             DataFormat::Xlsx,
             vec![table_item(
                 "wide",
-                TableDataSource::Provided {
-                    columns: wide,
-                    rows: vec![],
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
                 },
             )],
         );
-        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let source = StubSource::new(false, false, wide, vec![]);
         let dest = temp_file("out.xlsx");
         let err = crate::export::write_binary_file(
             &NoopEvents,
