@@ -92,6 +92,11 @@ pub struct AuthDeps {
     pub domains: Option<DomainState>,
     /// WR-F2：MCP streamable HTTP 传输态（None = 不挂 `/mcp`）。
     pub mcp: Option<crate::mcp::http::HttpMcpState>,
+    /// W8 刀4：wapp 资产 origin 静态面（`/wapps/*`，设计档 §3.4——WR-F4
+    /// 冻结 URL 约定的 server 半边；非域面服务路由，面公开无会话门，
+    /// 见 `http::wapps_static` 模块头。None = 不挂——骨架腿与最小部署
+    /// 形态显式，未装配时 `/wapps/*` 走 fallback 404）。
+    pub wapp_assets: Option<crate::http::wapps_static::WappStaticState>,
     /// WR-C2 §6 读侧域路由片段（settings/identity/connections/sessions；
     /// composition root 预装配，None = 不挂——最小部署形态显式）。
     pub domain_routers: Option<Vec<Router>>,
@@ -207,6 +212,12 @@ pub fn build_router_with_auth(deps: AuthDeps) -> Result<Router, crate::error::Se
         // WR-F2：MCP streamable HTTP（`/mcp`，认证链内——传输层会话由
         // 登录会话背书，工具分发走 modules application 面）。
         router = router.merge(crate::mcp::http::mcp_router(mcp_state));
+    }
+    if let Some(state) = deps.wapp_assets.clone() {
+        // W8 刀4：wapp 资产 origin 静态面（`/wapps/*`，非域面服务路由——
+        // 契约 §5；面公开无会话门，文法/安全头单家在内核，见
+        // `http::wapps_static` 模块头）。
+        router = router.merge(crate::http::wapps_static::wapps_static_router(state));
     }
     if let Some(extra) = deps.domain_routers.clone() {
         // WR-C2 §6 读侧域路由（settings/identity/connections/sessions——

@@ -63,6 +63,21 @@
 - 响应头固定注入 CSP `default-src 'self' datazen:; script-src 'self' datazen:; …; connect-src 'none'` 与 nosniff。**必须双源**：macOS WebKit 对自定义 scheme 文档不匹配 `'self'`（BUG-F9-04），Windows 映射形态只有 `'self'` 能匹配
 - `datazen://{wappId}/open?page=…&params=…` 深链 → 宿主事件 `wapps:open-page`
 
+## Web 形态（同源 `/wapps/` 静态面，W8 刀4）
+
+web 形态把资产服务换成**同源静态路径约定**（WR-F4 冻结；设计档 [w8-knife4](../../development/w8-knife4-wapp-static-design.md)）：datazen-server 在
+
+```
+{origin}/wapps/{wapp id}/{package-relative path}?{query}
+```
+
+伺服包文件（`/api/v1` 之外的非域面服务路由，契约 §5）。入口 URL 带 `?v=<manifest version>` 缓存破坏符、贡献图标不带（前端 `wappAssetOrigin.ts` 的 `WEB_WAPP_ASSET_RESOLVER` 是唯一拼装点；桌面 `datazen://` 形零改动）。路径文法、拒绝语义（隐藏分量 / 穿越 / 反斜杠 / NUL）、宽松 percent-decode、MIME 白名单与启用闸全部复用共享内核（`workspace_apps::protocol` 的 origin 形入口 `parse_wapp_origin_path` + `route_datazen_request` 单家判定，server 面零第二份路径规则）；每条应答注入 CSP + `nosniff` + `Cache-Control: no-cache`（错误应答空体），禁用 wapp ⇒ 403、未知 id / 非法扩展 / 隐藏文件 ⇒ 404，`open` 深链受理为 204（web 无宿主事件通道，深链消费方是前端 `parseWappAssetTarget`）。
+
+- **单源 CSP**：`ORIGIN_ASSET_CSP`（= 前端冻结字面量 `WAPP_ASSET_CSP`）——与桌面 `ASSET_CSP` **同指令集、每条源列表去掉 `datazen:`**。web 形态资产 URL 是真实 https origin（tuple origin），`'self'` 有明确匹配物；桌面必须点名 `datazen:` 的根因是自定义 scheme 的 URL origin 本身是 opaque origin（BUG-F9-04）——`'self'` 无可匹配物。`connect-src 'none'`（插件离线）与 `data:` 仅限图片的语义两形态一致。
+- **sandbox 禁 `allow-same-origin`（同源形）**：`WappPageShell` 的 iframe 保持 `sandbox="allow-scripts"`。同源形下加 `allow-same-origin` 等于把宿主 SPA 的 DOM、`document.cookie`（含 CSRF cookie）暴露给第三方 wapp 代码——sandbox 拆除。[team-server-and-auth §15.1](../platform/team-server-and-auth.md) 旧独立 origin 案的 `allow-same-origin` 处方只在那种形态下无害，**不得**误用于同源形（该文档已加调和注记）。
+- **公开面裁决（v1 无会话门）**：`/wapps/` 面公开——未登录访问与登录态同答（无 401 分支）。依据：`sandbox="allow-scripts"`（无 `allow-same-origin`）下 wapp 文档运行在 opaque origin，其子资源请求（`<script>`/`<img>`/`<link>`，全为包内相对路径）按 site-for-cookies 语义拿不到 `SameSite=Lax` cookie，会话门会「入口 200、子资源全 401」；桌面 `datazen://` 协议宿主本就零认证（OS 用户边界即边界）。wapp 字节是静态 UI 资产不是机密（机密不进包是打包纪律；桥接面的机密在宿主侧）。加固路线：v1.1 HTML 入口会话门（只对 `text/html` 应答核对会话 cookie——跨站第三方嵌入被 401 挡住、子资源保持公开；设计档 §6.1）。
+- **服务端存储根**：`DATAZEN_SERVER_WAPPS_DIR`（默认 `data/wapps`，相对 cwd；生产由部署注入卷内绝对路径）。v1 **无 HTTP 安装面**：包由运维落盘、重启扫描生效（`WappManager::load_from_disk`，非法包 warn 跳过不阻断启动——桌面装配同语义）；上传安装（§6.5 uploads envelope 的关系）、热加载与管理写面另立项（设计档 O6）。
+
 ## 桥接协议（src/lib/wappBridge.ts）
 
 信封 `{ch:'datazen-wapp', type, reqId, target}`（兼容 `datazen-extension`）；握手 `wapp.ready → host.ready(apiVersion/locale/dark/tokens)`；响应 `${type}.ok|.err` 回显 reqId。路由表 own-property 查找（原型链键一律 E_NOT_FOUND，BUG-F6-01）。

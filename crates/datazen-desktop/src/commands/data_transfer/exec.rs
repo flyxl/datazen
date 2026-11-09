@@ -674,5 +674,4 @@ mod tests {
             &results, false, true, false
         ));
     }
-
-        }
+}

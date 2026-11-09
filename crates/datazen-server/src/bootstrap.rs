@@ -971,6 +971,20 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         _ => None,
     };
 
+    // W8 刀4：wapp 资产静态面。目录缺失则建（空面全 404）；非法包 warn
+    // 跳过不阻断启动（桌面 app_state.rs:163-170 同语义）。
+    std::fs::create_dir_all(&config.wapps_dir).map_err(|source| {
+        ServerError::Serve(format!(
+            "wapp asset root '{}': {source}",
+            config.wapps_dir.display()
+        ))
+    })?;
+    let wapp_manager = std::sync::Arc::new(datazen::workspace_apps::manager::WappManager::new(
+        config.wapps_dir.clone(),
+    ));
+    let wapp_count = wapp_manager.load_from_disk();
+    tracing::info!(wapps = wapp_count, "wapp asset face armed");
+
     let app = http::router::build_router_with_auth(http::router::AuthDeps {
         store: store.clone(),
         policy,
@@ -981,6 +995,9 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
         oidc,
         domains: Some(domains),
         mcp: mcp_state,
+        wapp_assets: Some(crate::http::wapps_static::WappStaticState {
+            manager: wapp_manager,
+        }),
         domain_routers: Some(domain_routers),
     })?;
 
@@ -1015,10 +1032,18 @@ async fn run(config: ServerConfig) -> Result<(), ServerError> {
 
     tracing::info!(addr = %config.listen_addr, "datazen-server listening (healthz/readyz live; /api/v1 domains arrive with WR-D2/D4+)");
 
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .map_err(|error| ServerError::Serve(error.to_string()))?;
+    // W8 刀4 §6.3：L5 限流的未认证回退键是客户端 IP（`ConnectInfo<SocketAddr>`
+    // 扩展）——装配点必须经 into_make_service_with_connect_info 提供该扩展，
+    // 否则无会话扩展的请求全落 "unattributed" 归并桶：公开的 /wapps/* 静态
+    // 面会共享一个桶（等于全局互斥），OIDC 豁免面（/api/v1/auth/*）的未认证
+    // 请求同样如此（ratelimit.rs 模块头自注的装配欠账，本刀顺带修复）。
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await
+    .map_err(|error| ServerError::Serve(error.to_string()))?;
     // serve 返回（drain 完成）后停车：空闲回收驱动器在下一轮循环边界退出
     // （幂等）；`idle_reclaimer` 离开作用域时 Drop 兜底（stop + abort）。
     idle_reclaimer.stop();

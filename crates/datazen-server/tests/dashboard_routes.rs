@@ -452,6 +452,7 @@ async fn wired_fixture() -> WireFixture {
         oidc: None,
         domains: None,
         mcp: None,
+        wapp_assets: None,
         domain_routers: Some(vec![
             datazen_server::http::domains::workflow::workflow_router(
                 datazen_server::http::domains::workflow::WorkflowState {
