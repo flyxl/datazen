@@ -898,6 +898,187 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn write_data_file_sql_insert_batches_rows() {
+        // SqlInsert had no write-path test: header BEGIN, one INSERT
+        // batch per flush, tail COMMIT.
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::SqlInsert,
+            vec![table_item(
+                "users",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        let source = StubSource::new(false, false, two_cols(), two_rows());
+        let dest = temp_file("out.sql");
+        let n = write_data_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::SqlInsert,
+            None,
+            &dest,
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 2);
+        assert_eq!(
+            std::fs::read_to_string(&dest).unwrap(),
+            "BEGIN;\nINSERT INTO \"users\" (\"id\", \"name\") VALUES\n  (1, CAST(X'61' AS TEXT)),\n  (2, NULL);\nCOMMIT;\n"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn write_data_file_json_renders_all_value_kinds() {
+        // Every json_value arm: bool / float / bytes marker / timestamp /
+        // bytes-typed JSON marker / plain JSON, plus a null row.
+        let columns = vec![
+            col("n", "int4"),
+            col("f", "float8"),
+            col("b", "bool"),
+            col("s", "text"),
+            col("by", "bytea"),
+            col("ts", "timestamptz"),
+            col("j", "jsonb"),
+            col("p", "jsonb"),
+        ];
+        let marker = serde_json::json!({
+            "$datazenType": "bytes",
+            "encoding": "hex",
+            "value": "00",
+        });
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Json,
+            vec![table_item(
+                "t",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        let source = StubSource::new(
+            false,
+            false,
+            columns,
+            vec![
+                vec![
+                    Some(Value::Integer(7)),
+                    Some(Value::Float(1.5)),
+                    Some(Value::Bool(true)),
+                    Some(Value::String("x".into())),
+                    Some(Value::Bytes(vec![0xde, 0xad])),
+                    Some(Value::Timestamp("2026-11-09T16:00:00Z".into())),
+                    Some(Value::Json(marker.clone())),
+                    Some(Value::Json(serde_json::json!({"k": 1}))),
+                ],
+                vec![None, None, None, None, None, None, None, None],
+            ],
+        );
+        let dest = temp_file("out.json");
+        let n = write_data_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Json,
+            None,
+            &dest,
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 2);
+        let parsed: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&dest).unwrap()).unwrap();
+        assert_eq!(
+            parsed,
+            serde_json::json!([
+                {
+                    "n": 7,
+                    "f": 1.5,
+                    "b": true,
+                    "s": "x",
+                    "by": { "$datazenType": "bytes", "encoding": "hex", "value": "dead" },
+                    "ts": "2026-11-09T16:00:00Z",
+                    "j": { "$datazenType": "json", "value": marker },
+                    "p": { "k": 1 },
+                },
+                {
+                    "n": null,
+                    "f": null,
+                    "b": null,
+                    "s": null,
+                    "by": null,
+                    "ts": null,
+                    "j": null,
+                    "p": null,
+                },
+            ])
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
+    async fn write_data_file_csv_renders_all_value_kinds() {
+        // Every value_as_string arm plus the quoting branch and the
+        // reserved-prefix branch (a timestamp that already starts with
+        // the marker prefix is re-prefixed, never mistaken for bytes).
+        let columns = vec![
+            col("b", "bool"),
+            col("f", "float8"),
+            col("s", "text"),
+            col("by", "bytea"),
+            col("ts", "text"),
+            col("j", "jsonb"),
+        ];
+        let req = request(
+            ExportMode::DataOnly,
+            DataFormat::Csv,
+            vec![table_item(
+                "t",
+                TableDataSource::Sql {
+                    sql: "SELECT 1".into(),
+                },
+            )],
+        );
+        let source = StubSource::new(
+            false,
+            false,
+            columns,
+            vec![vec![
+                Some(Value::Bool(true)),
+                Some(Value::Float(1.5)),
+                Some(Value::String("a,\"b\"".into())),
+                Some(Value::Bytes(vec![0xde, 0xad])),
+                Some(Value::Timestamp("datazen:text:hi".into())),
+                Some(Value::Json(serde_json::json!({"k": 1}))),
+            ]],
+        );
+        let dest = temp_file("out.csv");
+        let n = write_data_file(
+            &NoopEvents,
+            &source,
+            &req,
+            &req.tables[0],
+            DataFormat::Csv,
+            None,
+            &dest,
+        )
+        .await
+        .unwrap();
+        assert_eq!(n, 1);
+        assert_eq!(
+            std::fs::read_to_string(&dest).unwrap(),
+            "b,f,s,by,ts,j\ntrue,1.5,\"a,\"\"b\"\"\",datazen:bytes:hex:dead,datazen:text:datazen:text:hi,\"{\"\"k\"\":1}\"\n"
+        );
+        let _ = std::fs::remove_dir_all(dest.parent().unwrap());
+    }
+
+    #[tokio::test]
     async fn write_data_file_table_source_regression() {
         let req = request(
             ExportMode::DataOnly,
