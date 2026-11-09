@@ -313,7 +313,7 @@ pub async fn finish_save(token: String) -> Result<(), CommandError> {
     let SaveSession {
         final_path,
         part_path,
-        file,
+        mut file,
     } = session;
     let flush_result = file.flush().await;
     // The handle must be closed before the rename (Windows keeps an open file
