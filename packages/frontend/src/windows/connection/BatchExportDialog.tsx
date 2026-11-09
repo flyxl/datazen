@@ -4,13 +4,15 @@ import { CopyableError } from '../../components/ui/CopyableError';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { useI18n } from '../../hooks/useI18n';
-import type {
-  BatchExportDataFormat,
-  BatchExportMode,
-  BatchExportTableInput,
-} from '../../lib/batchExport';
-import { runBatchExportJob, type BatchExportOutputMode } from '../../lib/batchExportJob';
+import {
+  runBatchExportJob,
+  type BatchExportDataFormat,
+  type BatchExportMode,
+  type BatchExportOutputMode,
+  type BatchExportTableInput,
+} from '../../lib/batchExportJob';
 import { requireTablesExporter } from '../../platform/contracts';
+import { IS_DESKTOP_BUILD } from '../../platform/env';
 import { supportsFullTableExport, type DataExportCapability } from '../../lib/exportCapability';
 import { Spinner } from '../../components/ui/Spinner';
 
@@ -48,8 +50,12 @@ export interface BatchExportDialogProps {
 
 const DATA_FORMAT_OPTIONS: { value: BatchExportDataFormat; label: string }[] = [
   { value: 'csv', label: 'CSV' },
+  { value: 'tsv', label: 'TSV' },
   { value: 'json', label: 'JSON' },
+  { value: 'markdown', label: 'Markdown' },
+  { value: 'xlsx', label: 'Excel (XLSX)' },
   { value: 'sql_insert', label: 'SQL INSERT' },
+  { value: 'sql_update', label: 'SQL UPDATE' },
 ];
 
 export function BatchExportDialog({
@@ -70,7 +76,12 @@ export function BatchExportDialog({
   const [selected, setSelected] = useState<Set<string>>(() => new Set(initialSelected ?? []));
   const [mode, setMode] = useState<BatchExportMode>('data_and_structure');
   const [dataFormat, setDataFormat] = useState<BatchExportDataFormat>('csv');
-  const [outputMode, setOutputMode] = useState<BatchExportOutputMode>('zip');
+  // Task 6 (plan §2.8): batch export is always a SQL-scope export, so on
+  // web it stays under the web exporter's limits — CSV only, no zip (the
+  // browser build has no zip writer). Desktop keeps every format and zip.
+  const [outputMode, setOutputMode] = useState<BatchExportOutputMode>(
+    IS_DESKTOP_BUILD ? 'zip' : 'single',
+  );
   const [status, setStatus] = useState<'form' | 'exporting' | 'success'>('form');
   const [progress, setProgress] = useState<{
     current: number;
@@ -87,7 +98,7 @@ export function BatchExportDialog({
     setSelected(new Set(initialSelected ?? []));
     setMode('data_and_structure');
     setDataFormat('csv');
-    setOutputMode('zip');
+    setOutputMode(IS_DESKTOP_BUILD ? 'zip' : 'single');
     setStatus('form');
     setProgress(null);
     setError(null);
@@ -122,6 +133,12 @@ export function BatchExportDialog({
   );
 
   const formatDisabled = mode === 'structure_only';
+
+  // Task 6 (plan §2.8): batch export is always a SQL-scope export, so on
+  // web only CSV is offered — the web exporter cannot serve the rest.
+  const formatOptions = IS_DESKTOP_BUILD
+    ? DATA_FORMAT_OPTIONS
+    : DATA_FORMAT_OPTIONS.filter((option) => option.value === 'csv');
 
   const handleExport = useCallback(async () => {
     if (batchExportLocked) return;
@@ -358,7 +375,7 @@ export function BatchExportDialog({
               </label>
               <Select
                 value={dataFormat}
-                options={DATA_FORMAT_OPTIONS}
+                options={formatOptions}
                 onChange={(v) => setDataFormat(v as BatchExportDataFormat)}
               />
             </div>
@@ -387,6 +404,7 @@ export function BatchExportDialog({
                 value="zip"
                 checked={outputMode === 'zip'}
                 onChange={() => setOutputMode('zip')}
+                disabled={!IS_DESKTOP_BUILD}
                 className="accent-accent"
               />
               <span className="text-xs text-fg-secondary">{t('batchExport.outputZip')}</span>

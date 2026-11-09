@@ -258,6 +258,22 @@ describe('ResultTableView', () => {
     );
   });
 
+  it('threads the producing session to DataTable so query-result export reaches Rust', () => {
+    // Item 3c: the export dialog routes every scope through the Rust batch
+    // exporter, which needs the live session that produced these rows.
+    render(<ResultTableView result={writableResult()} />);
+    expect(dataTableMock.render).toHaveBeenCalledWith(
+      expect.objectContaining({ exportTableName: 'query_result', dbSessionId: 'session-1' }),
+    );
+  });
+
+  it('passes no session when the result has no runtime binding', () => {
+    render(<ResultTableView result={result([[1]])} />);
+    expect(dataTableMock.render).toHaveBeenCalledWith(
+      expect.objectContaining({ exportTableName: 'query_result', dbSessionId: undefined }),
+    );
+  });
+
   it('renders ExecutionSummaryCard instead of DataTable for mutation executions (e.g. INSERT)', () => {
     const insertResult: StatementResult = {
       sql: "INSERT INTO users (name) VALUES ('Alice')",

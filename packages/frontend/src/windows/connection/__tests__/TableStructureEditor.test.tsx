@@ -586,6 +586,24 @@ describe('TableStructureEditor branches', () => {
     expect(screen.queryByText('structEditor.exportUnsupported')).not.toBeInTheDocument();
   });
 
+  it('passes the table schema through to the structure export', async () => {
+    mockExportTableStructureToFile.mockResolvedValue('saved');
+    await mountAndLoad({ mode: 'alter', tableName: 'users', schema: 'panel_schema' });
+
+    fireEvent.click(screen.getByTestId('struct-editor-export-structure'));
+
+    await waitFor(() => {
+      expect(mockExportTableStructureToFile).toHaveBeenCalledTimes(1);
+    });
+    expect(mockExportTableStructureToFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dbSessionId: 'conn-1',
+        tableName: 'users',
+        schema: 'panel_schema',
+      }),
+    );
+  });
+
   it('hides export structure when driver exportScope is none', async () => {
     mockGetTableSchema.mockResolvedValueOnce(ALTER_SCHEMA);
     render(<TableStructureEditor {...baseProps('alter', { databaseType: 'kiwi' })} />);

@@ -17,10 +17,9 @@ import {
   Panel,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { toPng, toSvg } from 'html-to-image';
 import { Download, Search } from 'lucide-react';
 import { databaseCommands } from '../../commands/database';
-import { fileCommands } from '../../commands/file';
+import { exportElementAsPng, exportElementAsSvg } from '../../lib/chart/export';
 import { Button } from '../../components/ui/Button';
 import { CopyableError } from '../../components/ui/CopyableError';
 import { useI18n } from '../../hooks/useI18n';
@@ -357,12 +356,10 @@ function ErDiagramInner({
     const viewport = document.querySelector('.react-flow__viewport') as HTMLElement;
     if (!viewport) return;
     try {
-      const dataUrl = await toPng(viewport, {
+      await exportElementAsPng(viewport, `er-diagram-${database}`, {
         backgroundColor: '#1a1a2e',
         quality: 1,
       });
-      const base64 = dataUrl.includes(',') ? dataUrl.split(',')[1]! : dataUrl;
-      await fileCommands.saveBase64WithDialog(base64, `er-diagram-${database}.png`, 'PNG', ['png']);
     } catch (e) {
       console.error('Export failed:', e);
     }
@@ -372,20 +369,9 @@ function ErDiagramInner({
     const viewport = document.querySelector('.react-flow__viewport') as HTMLElement;
     if (!viewport) return;
     try {
-      const dataUrl = await toSvg(viewport, {
+      await exportElementAsSvg(viewport, `er-diagram-${database}`, {
         backgroundColor: '#1a1a2e',
       });
-      let svgContent: string;
-      if (dataUrl.startsWith('data:image/svg+xml;base64,')) {
-        svgContent = atob(dataUrl.slice('data:image/svg+xml;base64,'.length));
-      } else if (dataUrl.startsWith('data:image/svg+xml,')) {
-        svgContent = decodeURIComponent(dataUrl.slice(dataUrl.indexOf(',') + 1));
-      } else {
-        svgContent = dataUrl;
-      }
-      await fileCommands.saveTextWithDialog(svgContent, `er-diagram-${database}.svg`, 'SVG', [
-        'svg',
-      ]);
     } catch (e) {
       console.error('Export failed:', e);
     }

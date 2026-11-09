@@ -336,7 +336,9 @@ export interface DataTableProps {
   /** Enable data export (button + context menu). Provide a table name for the filename. */
   exportTableName?: string;
   databaseType?: string;
-  /** Live DB session — enables entire-table streaming export. */
+  /** Live DB session — the Rust batch exporter requires it for every export
+   * scope (item 3c), not just entire-table: without it the dialog cannot
+   * export even the already-loaded rows. */
   dbSessionId?: string;
   /**
    * Data-export capability, threaded to the export dialog. Omit for `full_table`.

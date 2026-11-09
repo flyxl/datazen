@@ -46,24 +46,57 @@ vi.mock('../../../lib/nativeContextMenu', () => ({
   showNativeContextMenu: (...args: unknown[]) => showNativeContextMenu(...args),
 }));
 
+// The provided export downloads a Blob on web (task 4: frontend-only,
+// never the Rust exporter) — spy the download, keep the rest real.
+const downloadBlobMock = vi.hoisted(() => vi.fn());
+vi.mock('../../../platform/blobTablesExporter', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../../../platform/blobTablesExporter')>();
+  return { ...actual, downloadBlob: (...args: unknown[]) => downloadBlobMock(...args) };
+});
+
 const COLS = [
   { id: 'id', name: 'id', type: 'integer' },
   { id: 'name', name: 'name', type: 'varchar' },
 ];
 
-const saveTextWithDialog = vi.fn().mockResolvedValue(true);
-
+// The file commands stay stubbed for DetailPanel and for the desktop
+// provided-export save (`save_text_with_dialog` via ProvidedDataFetcher);
+// this suite runs the web branch, so the export below asserts the Blob
+// download instead.
 vi.mock('../../../commands/file', () => ({
   fileCommands: {
-    saveTextWithDialog: (...args: unknown[]) => saveTextWithDialog(...args),
+    saveTextWithDialog: vi.fn().mockResolvedValue(true),
     saveBase64WithDialog: vi.fn().mockResolvedValue(true),
   },
 }));
 
-afterEach(cleanup);
+// The export dialog's SQL path calls the bound tables exporter
+// (`export_tables_stream`). Bind the fake over the suite platform; the
+// provided path no longer uses it (frontend-only since task 4) — the
+// context-menu export journey below asserts the Blob download instead.
+const exportTablesStream = vi.fn();
+
+import { configurePlatform, testPlatform } from '../../../test/setup';
+
+function bindFakeExporter(): void {
+  configurePlatform({
+    ...testPlatform,
+    tablesExporter: {
+      exportTables: (...args: unknown[]) => exportTablesStream(...(args as [never])),
+    },
+  });
+}
+
+afterEach(() => {
+  cleanup();
+  configurePlatform(testPlatform);
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
+  bindFakeExporter();
+  exportTablesStream.mockResolvedValue({ Saved: 2 });
 });
 
 describe('DataTable', () => {
@@ -250,6 +283,7 @@ describe('DataTable', () => {
         onCellEdit={onCellEdit}
         enableSetNull
         exportTableName="users"
+        dbSessionId="session-1"
       />,
     );
     const cell = container.querySelector('[data-dt-row="0"][data-dt-col="name"]');
@@ -283,7 +317,18 @@ describe('DataTable', () => {
     await waitFor(() => expect(getByText('common.exportData')).toBeInTheDocument());
     const dialogExportBtns = getAllByText('export.export');
     fireEvent.click(dialogExportBtns[dialogExportBtns.length - 1]);
-    await waitFor(() => expect(saveTextWithDialog).toHaveBeenCalled());
+    // Provided export is frontend-only since task 4: the loaded rows are
+    // formatted in JS and Blob-downloaded, never sent to the Rust batch
+    // exporter — so `exportTablesStream` stays silent and the download
+    // carries the current page.
+    await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledTimes(1));
+    expect(downloadBlobMock).toHaveBeenCalledWith(
+      'id,name\n1,Alice\n2,Bob',
+      'users.csv',
+      'text/csv',
+    );
+    expect(exportTablesStream).not.toHaveBeenCalled();
+    await waitFor(() => expect(getByText('export.success')).toBeInTheDocument());
   });
 
   it('copies selected rows without cell hit', async () => {

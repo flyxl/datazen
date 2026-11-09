@@ -9,7 +9,7 @@ import type {
   TableSchema,
   Value,
 } from '../types';
-import type { BatchExportTableInput } from './batchExport';
+import type { BatchExportTableInput } from './batchExportJob';
 import { getCachedDDL, getCachedTableSchema } from './schemaCache';
 import { useSchemaStore } from '../stores/schemaStore';
 import { getSqlDialect, type SqlDialectStrategy } from './sqlDialects';

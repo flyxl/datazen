@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
 import { render, fireEvent, waitFor, cleanup, screen } from '@testing-library/react';
 import { BatchExportDialog } from '../BatchExportDialog';
-import type { BatchExportTableInput } from '../../../lib/batchExport';
+import type { BatchExportTableInput } from '../../../lib/batchExportJob';
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
@@ -32,6 +32,17 @@ vi.mock('../../../components/ui/Select', () => ({
       ))}
     </select>
   ),
+}));
+
+// Task 6: `IS_DESKTOP_BUILD` flips through the getter mock (the pattern in
+// `lib/__tests__/dataFetcher.test.ts`). Desktop is the default here — the
+// existing tests pin the Rust batch routing — and the web describe below
+// flips it to false per test.
+const envState = vi.hoisted(() => ({ desktop: true }));
+vi.mock('../../../platform/env', () => ({
+  get IS_DESKTOP_BUILD() {
+    return envState.desktop;
+  },
 }));
 
 // Form-split F4: the export flow rides the dual-flow port; the test binds a
@@ -72,8 +83,49 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  envState.desktop = true;
   bindFakeExporter();
   exportTablesStream.mockResolvedValue({ Saved: 1 });
+});
+
+describe('BatchExportDialog formats (item 3d)', () => {
+  function renderDialog() {
+    const loadTableExportData = vi.fn(async (name: string) => mockTable(name));
+    render(
+      <BatchExportDialog
+        open
+        onClose={vi.fn()}
+        dbSessionId="c1"
+        databaseType="postgres"
+        tables={['users']}
+        initialSelected={['users']}
+        loadTableExportData={loadTableExportData}
+      />,
+    );
+    return { loadTableExportData };
+  }
+
+  it('offers every format the Rust exporter supports', () => {
+    renderDialog();
+    const values = Array.from(
+      (screen.getByTestId('data-format') as HTMLSelectElement).options,
+    ).map((o) => o.value);
+    expect(values).toEqual(['csv', 'tsv', 'json', 'markdown', 'xlsx', 'sql_insert', 'sql_update']);
+  });
+
+  it.each([['xlsx'], ['sql_update'], ['tsv'], ['markdown']] as const)(
+    'routes %s through the Rust batch exporter',
+    async (format) => {
+      renderDialog();
+      fireEvent.change(screen.getByTestId('data-format'), { target: { value: format } });
+      fireEvent.click(screen.getByText('batchExport.export'));
+
+      await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
+      const request = exportTablesStream.mock.calls[0]![0] as { dataFormat: string };
+      expect(request.dataFormat).toBe(format);
+      await waitFor(() => expect(screen.getByText('batchExport.success')).toBeInTheDocument());
+    },
+  );
 });
 
 describe('BatchExportDialog', () => {
@@ -114,6 +166,46 @@ describe('BatchExportDialog', () => {
     );
     expect((screen.getByLabelText('orders') as HTMLInputElement).checked).toBe(true);
     expect((screen.getByLabelText('users') as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('toggles one table off and back on from its checkbox', () => {
+    render(
+      <BatchExportDialog
+        open
+        onClose={vi.fn()}
+        dbSessionId="c1"
+        tables={TABLES}
+        initialSelected={['users']}
+        loadTableExportData={vi.fn()}
+      />,
+    );
+    const checkbox = screen.getByLabelText('users') as HTMLInputElement;
+    expect(checkbox.checked).toBe(true);
+    expect(screen.getByText('batchExport.export')).not.toBeDisabled();
+
+    fireEvent.click(checkbox);
+    expect(checkbox.checked).toBe(false);
+    expect(screen.getByText('batchExport.export')).toBeDisabled();
+
+    fireEvent.click(checkbox);
+    expect(checkbox.checked).toBe(true);
+    expect(screen.getByText('batchExport.export')).not.toBeDisabled();
+  });
+
+  it('shows the driver lock warning and disables export when capability is none', () => {
+    render(
+      <BatchExportDialog
+        open
+        onClose={vi.fn()}
+        dbSessionId="c1"
+        tables={TABLES}
+        initialSelected={['users']}
+        loadTableExportData={vi.fn()}
+        dataExportCapability="none"
+      />,
+    );
+    expect(screen.getByText('batchExport.disabledByDriver')).toBeInTheDocument();
+    expect(screen.getByText('batchExport.export')).toBeDisabled();
   });
 
   it('switches mode and hides format for structure_only', () => {
@@ -282,5 +374,76 @@ describe('BatchExportDialog', () => {
       expect(screen.queryByText('batchExport.success')).not.toBeInTheDocument();
       expect(onClose).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('BatchExportDialog web limits (task 6, plan §2.8)', () => {
+  beforeEach(() => {
+    envState.desktop = false;
+  });
+
+  function renderWebDialog(onExport?: (opts: {
+    selectedTables: string[];
+    mode: string;
+    dataFormat: string;
+    outputMode: string;
+  }) => Promise<void>) {
+    const loadTableExportData = vi.fn(async (name: string) => mockTable(name));
+    render(
+      <BatchExportDialog
+        open
+        onClose={vi.fn()}
+        dbSessionId="c1"
+        databaseType="postgres"
+        tables={['users']}
+        initialSelected={['users']}
+        loadTableExportData={loadTableExportData}
+        onExport={onExport}
+      />,
+    );
+    return { loadTableExportData };
+  }
+
+  function outputRadio(value: 'single' | 'zip'): HTMLInputElement {
+    return document.querySelector(
+      `input[name="batch-export-output"][value="${value}"]`,
+    ) as HTMLInputElement;
+  }
+
+  it('offers CSV only: batch export is always a SQL-scope export on web', () => {
+    renderWebDialog();
+    const values = Array.from(
+      (screen.getByTestId('data-format') as HTMLSelectElement).options,
+    ).map((o) => o.value);
+    expect(values).toEqual(['csv']);
+  });
+
+  it('disables zip output and defaults to single-file on web', async () => {
+    const onExport = vi.fn().mockResolvedValue(undefined);
+    renderWebDialog(onExport);
+
+    expect(outputRadio('zip').disabled).toBe(true);
+    expect(outputRadio('single').disabled).toBe(false);
+    expect(outputRadio('single').checked).toBe(true);
+
+    fireEvent.click(screen.getByText('batchExport.export'));
+    await waitFor(() => expect(onExport).toHaveBeenCalledTimes(1));
+    expect(onExport).toHaveBeenCalledWith(
+      expect.objectContaining({ dataFormat: 'csv', outputMode: 'single' }),
+    );
+  });
+
+  it('still routes a web CSV batch through the tables exporter', async () => {
+    renderWebDialog();
+    fireEvent.click(screen.getByText('batchExport.export'));
+
+    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
+    const request = exportTablesStream.mock.calls[0]![0] as {
+      dataFormat: string;
+      outputMode: string;
+    };
+    expect(request.dataFormat).toBe('csv');
+    expect(request.outputMode).toBe('single');
+    await waitFor(() => expect(screen.getByText('batchExport.success')).toBeInTheDocument());
   });
 });

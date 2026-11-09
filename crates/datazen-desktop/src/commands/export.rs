@@ -387,6 +387,8 @@ mod tests {
             schema: None,
             columns: vec!["id".into()],
             ddl,
+            source: TableDataSource::Table,
+            primary_key: None,
         };
         // data_and_structure + csv -> structure.sql + data.csv
         let req = ExportTablesRequest {
@@ -399,7 +401,7 @@ mod tests {
             output_mode: OutputMode::Zip,
             tables: vec![mk("users", Some("CREATE TABLE ...;".into()))],
         };
-        let plans = build_file_plans(&req);
+        let plans = build_file_plans(&req).unwrap();
         assert_eq!(plans.len(), 2);
         assert_eq!(plans[0].filename(), "users.sql");
         assert_eq!(plans[1].filename(), "users.csv");
@@ -409,7 +411,7 @@ mod tests {
             data_format: DataFormat::SqlInsert,
             ..req
         };
-        let plans2 = build_file_plans(&req2);
+        let plans2 = build_file_plans(&req2).unwrap();
         assert_eq!(plans2.len(), 1);
         assert_eq!(plans2[0].filename(), "users.sql");
     }
@@ -421,6 +423,8 @@ mod tests {
             schema: None,
             columns: vec![],
             ddl: None,
+            source: TableDataSource::Table,
+            primary_key: None,
         };
         assert!(resolve_ddl(&t).contains("DDL unavailable"));
         let t2 = TableExportInput {
@@ -428,6 +432,8 @@ mod tests {
             schema: None,
             columns: vec![],
             ddl: Some("CREATE TABLE;".into()),
+            source: TableDataSource::Table,
+            primary_key: None,
         };
         assert_eq!(resolve_ddl(&t2), "CREATE TABLE;");
     }

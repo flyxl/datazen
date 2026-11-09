@@ -402,7 +402,9 @@ describe('web 装配 WR-E3 绑定面', () => {
     expect(text).toContain('0,row-0');
     expect(text).toContain(`${WEB_EXPORT_PAGE_SIZE},last`);
     const anchor = createdElements.find((element) => element.tag === 'a');
-    expect(anchor!.download).toBe('users.csv');
+    // Item 5: the download name follows the shared default-name rule
+    // (desktop `default_export_name`), not the old `{first}.csv`.
+    expect(anchor!.download).toMatch(/^export_data_\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.csv$/);
     expect(anchor!.href).toBe('blob:fake-0');
     expect(revokedUrls).toContain('blob:fake-0');
   });

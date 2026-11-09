@@ -1,37 +1,56 @@
 import { describe, expect, it } from 'vitest';
-import { buildExportFormatOptions, EXPORT_FORMAT_OPTIONS } from '../exportDialogShared';
 
-describe('buildExportFormatOptions (DBR-06)', () => {
-  it('keeps the one unified list for page scopes with a key column', () => {
-    const options = buildExportFormatOptions({ streamingScope: false, hasKeyColumn: true });
-    expect(options.map((o) => o.value)).toEqual(EXPORT_FORMAT_OPTIONS.map((o) => o.value));
-    expect(options.every((o) => !o.disabled)).toBe(true);
-  });
+import {
+  ARRAY_EXPORT_FORMAT_OPTIONS,
+  formatOptionsForScope,
+  OBJECT_EXPORT_FORMAT_OPTIONS,
+} from '../exportDialogShared';
+import type { ExportScope } from '../exportData';
 
-  it('offers tsv and sql_update from the same list for both entry points', () => {
-    const values = EXPORT_FORMAT_OPTIONS.map((o) => o.value);
-    // 网格与表级此前一个缺 SQL UPDATE、一个缺 TSV；统一后同一张表从
-    // 两个入口能选的格式必须一致。
-    expect(values).toContain('tsv');
-    expect(values).toContain('sql_update');
-  });
+/**
+ * Task 6 (plan §2.8): the format list a scope may offer depends on the
+ * form. Desktop serves every format for every scope; web has no SQL path,
+ * so entire/filtered scopes offer CSV only, while the provided scopes
+ * format in JS and keep every format.
+ */
 
-  it('disables xlsx with the streaming reason for streaming scopes', () => {
-    const options = buildExportFormatOptions({ streamingScope: true, hasKeyColumn: true });
-    const xlsx = options.find((o) => o.value === 'xlsx')!;
-    expect(xlsx.disabled).toBe(true);
-    expect(xlsx.disabledReasonKey).toBe('export.formatDisabledStream');
-    // The rest of the list stays enabled — a disabled format never hides
-    // its neighbours (禁用并解释原因，而非移除).
-    expect(options.filter((o) => !o.disabled).map((o) => o.value)).toEqual(
-      expect.arrayContaining(['csv', 'tsv', 'json', 'markdown', 'sql_insert', 'sql_update']),
-    );
-  });
+const ALL_ARRAY = ['csv', 'tsv', 'json', 'markdown', 'xlsx', 'sql_insert', 'sql_update'];
+const ALL_OBJECT = ['csv', 'json', 'markdown', 'xlsx', 'sql_insert', 'sql_update'];
 
-  it('disables sql_update without a key column', () => {
-    const options = buildExportFormatOptions({ streamingScope: false, hasKeyColumn: false });
-    const sqlUpdate = options.find((o) => o.value === 'sql_update')!;
-    expect(sqlUpdate.disabled).toBe(true);
-    expect(sqlUpdate.disabledReasonKey).toBe('export.formatDisabledNoKey');
-  });
+describe('formatOptionsForScope', () => {
+  it.each(['current_page', 'selected', 'entire_table', 'filtered_table'] as const)(
+    'on desktop offers every format for the %s scope',
+    (scope: ExportScope) => {
+      expect(
+        formatOptionsForScope(ARRAY_EXPORT_FORMAT_OPTIONS, scope, true).map((o) => o.value),
+      ).toEqual(ALL_ARRAY);
+      expect(
+        formatOptionsForScope(OBJECT_EXPORT_FORMAT_OPTIONS, scope, true).map((o) => o.value),
+      ).toEqual(ALL_OBJECT);
+    },
+  );
+
+  it.each(['current_page', 'selected'] as const)(
+    'on web offers every format for the provided %s scope',
+    (scope: ExportScope) => {
+      expect(
+        formatOptionsForScope(ARRAY_EXPORT_FORMAT_OPTIONS, scope, false).map((o) => o.value),
+      ).toEqual(ALL_ARRAY);
+      expect(
+        formatOptionsForScope(OBJECT_EXPORT_FORMAT_OPTIONS, scope, false).map((o) => o.value),
+      ).toEqual(ALL_OBJECT);
+    },
+  );
+
+  it.each(['entire_table', 'filtered_table'] as const)(
+    'on web offers CSV only for the SQL %s scope',
+    (scope: ExportScope) => {
+      expect(
+        formatOptionsForScope(ARRAY_EXPORT_FORMAT_OPTIONS, scope, false).map((o) => o.value),
+      ).toEqual(['csv']);
+      expect(
+        formatOptionsForScope(OBJECT_EXPORT_FORMAT_OPTIONS, scope, false).map((o) => o.value),
+      ).toEqual(['csv']);
+    },
+  );
 });

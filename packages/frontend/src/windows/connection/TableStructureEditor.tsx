@@ -432,6 +432,7 @@ export function TableStructureEditor({
         tableName: initialTableName,
         database: database ?? '',
         databaseType,
+        schema: tableSchema,
       });
       if (result === 'unsupported') {
         setError(t('structEditor.exportUnsupported'));
@@ -443,7 +444,7 @@ export function TableStructureEditor({
     } finally {
       setExportingStructure(false);
     }
-  }, [mode, initialTableName, dbSessionId, databaseType, t]);
+  }, [mode, initialTableName, dbSessionId, databaseType, tableSchema, t]);
 
   const canAddColumn =
     mode === 'create' ? capEnabled(caps, 'createTable') : capEnabled(caps, 'addColumn');

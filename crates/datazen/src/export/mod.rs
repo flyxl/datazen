@@ -2,8 +2,16 @@
 //!
 //! After the user picks a destination file, this module streams each selected
 //! table's query directly on the Rust side (`driver.query_stream`), formats rows
-//! in batches (CSV / JSON / SQL INSERT) and writes them straight to disk —
-//! avoiding holding the whole table in memory and the JS↔Rust data round-trip.
+//! in batches (CSV / TSV / JSON / Markdown / SQL INSERT / SQL UPDATE, or XLSX
+//! via the parallel [`BinaryFormatter`](binary::BinaryFormatter) branch) and
+//! writes them straight to disk — avoiding holding the whole table in memory
+//! and the JS↔Rust data round-trip.
+//!
+//! Each item's rows come from one SQL statement, streamed through
+//! [`stream_sql_source`](fetcher::stream_sql_source) (see `fetcher.rs`):
+//! the named table (as a `SELECT *` / selected-columns query) or one
+//! arbitrary SQL statement. Both feed the same internal row stream
+//! (`StatementStart` + batched `Rows`) into the formatters.
 //!
 //! Product behavior:
 //! - Output is a single file or a ZIP archive (multiple files).
@@ -18,7 +26,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use datazen_driver_api::{DatabaseDriver, QueryStreamCallback, QueryStreamEvent};
+use datazen_driver_api::{ColumnInfo, DatabaseDriver, QueryStreamCallback, QueryStreamEvent};
 use serde::{Deserialize, Serialize};
 
 use zip::write::SimpleFileOptions;
@@ -51,7 +59,7 @@ pub trait ExportEvents: Send + Sync {
 
 pub const SQL_INSERT_BATCH_SIZE: usize = 500;
 const APPEND_FLUSH_BYTES: usize = 64 * 1024;
-pub const ALLOWED_EXPORT_EXTS: &[&str] = &["sql", "csv", "json", "zip"];
+pub const ALLOWED_EXPORT_EXTS: &[&str] = &["sql", "csv", "tsv", "json", "md", "xlsx", "zip"];
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -67,6 +75,61 @@ pub struct TableExportInput {
     /// DDL text (CREATE TABLE …); used when the mode includes structure.
     #[serde(default)]
     pub ddl: Option<String>,
+    /// Key column for `sql_update` output (`UPDATE … SET … WHERE <pk> = …`).
+    /// The caller supplies the primary key when it knows one; when absent
+    /// or not among the exported columns, the first column is used (the
+    /// same fallback the frontend `sql_update` branch uses).
+    #[serde(default)]
+    pub primary_key: Option<String>,
+    /// Where this item's rows come from. Defaults to the named table, so
+    /// requests written before data sources existed keep parsing unchanged.
+    /// The `type` tag is explicit and serializable so the frontend (item 3)
+    /// can send SQL sources over the same IPC shape. Rows the caller
+    /// already holds never reach Rust: they are formatted and saved in the
+    /// frontend, so there is no provided-data variant here.
+    #[serde(default)]
+    pub source: TableDataSource,
+}
+
+/// Where one export item's rows come from.
+///
+/// Serialized with an explicit `type` tag (`{"type":"table"}`,
+/// `{"type":"sql","sql":"..."}`) so callers and the frontend can tell the
+/// sources apart without guessing from the other fields.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "type")]
+pub enum TableDataSource {
+    /// Default: the named table, exported as `SELECT *` (or the selected
+    /// columns). Implemented as a SQL source — see `fetcher.rs`.
+    Table,
+    /// One arbitrary read-only SQL statement (e.g. a filtered export),
+    /// executed against the backend. `sql_guard` applies at fetch time.
+    Sql { sql: String },
+}
+
+impl Default for TableDataSource {
+    fn default() -> Self {
+        Self::Table
+    }
+}
+
+impl TableDataSource {
+    /// Fail fast on a malformed source, before any file is planned or
+    /// written. SQL emptiness is checked here; the full `sql_guard` check
+    /// needs backend flags and runs at fetch time instead.
+    pub fn validate(&self, name: &str) -> Result<(), ExportError> {
+        match self {
+            TableDataSource::Table => Ok(()),
+            TableDataSource::Sql { sql } => {
+                if sql.trim().is_empty() {
+                    return Err(ExportError::Validation(format!(
+                        "SQL data source '{name}' must not be empty"
+                    )));
+                }
+                Ok(())
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
@@ -77,21 +140,34 @@ pub enum ExportMode {
     DataAndStructure,
 }
 
-#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum DataFormat {
     Csv,
+    Tsv,
     Json,
+    Markdown,
     SqlInsert,
+    SqlUpdate,
+    Xlsx,
 }
 
 impl DataFormat {
     pub fn extension(self) -> &'static str {
         match self {
             DataFormat::Csv => "csv",
+            DataFormat::Tsv => "tsv",
             DataFormat::Json => "json",
-            DataFormat::SqlInsert => "sql",
+            DataFormat::Markdown => "md",
+            DataFormat::SqlInsert | DataFormat::SqlUpdate => "sql",
+            DataFormat::Xlsx => "xlsx",
         }
+    }
+
+    /// Binary formats go through the parallel [`BinaryFormatter`](binary::BinaryFormatter)
+    /// branch (`write_binary_file`); they can never be concatenated as text.
+    pub fn is_binary(self) -> bool {
+        matches!(self, DataFormat::Xlsx)
     }
 }
 
@@ -139,10 +215,14 @@ pub struct ExportProgressEvent {
     pub rows_written: u64,
 }
 
+pub mod binary;
 pub mod error;
+pub mod fetcher;
 pub mod file_job;
 pub mod format;
+pub use binary::{sanitize_sheet_name, BinaryFormatter, XlsxFormatter};
 pub use error::ExportError;
+pub use fetcher::stream_sql_source;
 pub use file_job::{FileArtifactJob, FileJobOperation, FileJobOutput};
 pub use format::*;
 
@@ -189,10 +269,13 @@ impl FileSink {
 }
 
 // ---------------------------------------------------------------------------
-// File planning (mirrors src/lib/batchExport.ts buildBatchExportFiles)
+// File planning for the Rust batch export. This module is the single source
+// of truth for export file layout; the old TS buildBatchExportFiles builder
+// was deleted in the export cleanup — do not reintroduce a second planner.
 // ---------------------------------------------------------------------------
 
 /// A planned output file.
+#[derive(Debug)]
 pub enum FilePlan<'a> {
     Ddl {
         filename: String,
@@ -222,7 +305,43 @@ pub fn resolve_ddl(table: &TableExportInput) -> String {
     }
 }
 
-pub fn build_file_plans(request: &ExportTablesRequest) -> Vec<FilePlan<'_>> {
+/// DDL text for a structure-mode plan.
+///
+/// DDL semantics, by source (chosen deliberately — see below):
+///
+/// * **Table source**: DDL comes from `table.ddl` when the caller supplied
+///   it, else the `"-- DDL unavailable …"` placeholder. A real table exists,
+///   so the file at least names what could not be retrieved.
+/// * **SQL source**: there is no table whose DDL could be merged, so a
+///   generated file would be fake DDL. Structure modes therefore require
+///   the caller to supply explicit `ddl` text for these items (the `ddl`
+///   field already exists for exactly this); without it, planning fails
+///   with a clear `Validation` error instead of emitting a placeholder
+///   that pretends to be a table definition.
+///
+/// The alternative — refusing structure modes for non-table sources
+/// outright — was rejected: a filtered SQL export whose caller knows the
+/// table's DDL is a legitimate structure export, and the explicit-`ddl`
+/// rule keeps that working without inventing DDL.
+pub fn ddl_for_structure(table: &TableExportInput) -> Result<String, CommandError> {
+    match &table.source {
+        TableDataSource::Table => Ok(resolve_ddl(table)),
+        _ => match table.ddl.as_deref() {
+            Some(d) if !d.trim().is_empty() => Ok(d.to_string()),
+            _ => Err(CommandError::Validation(format!(
+                "structure export for non-table source '{}' needs an explicit ddl: \
+                 SQL sources have no table DDL to include",
+                table.table_name
+            ))),
+        },
+    }
+}
+
+pub fn build_file_plans(request: &ExportTablesRequest) -> Result<Vec<FilePlan<'_>>, CommandError> {
+    // Fail fast on malformed sources before any file is planned.
+    for table in &request.tables {
+        table.source.validate(&table.table_name)?;
+    }
     let mut seen = HashSet::new();
     let mut plans = Vec::new();
     for table in &request.tables {
@@ -231,7 +350,7 @@ pub fn build_file_plans(request: &ExportTablesRequest) -> Vec<FilePlan<'_>> {
             ExportMode::StructureOnly => {
                 plans.push(FilePlan::Ddl {
                     filename: unique_filename(&mut seen, format!("{base}.sql")),
-                    text: resolve_ddl(table),
+                    text: ddl_for_structure(table)?,
                 });
             }
             ExportMode::DataOnly => {
@@ -243,17 +362,24 @@ pub fn build_file_plans(request: &ExportTablesRequest) -> Vec<FilePlan<'_>> {
                 });
             }
             ExportMode::DataAndStructure => {
-                if request.data_format == DataFormat::SqlInsert {
+                // SQL data formats carry their DDL as a prefix in the same
+                // `.sql` file (one file, no name collision between the DDL
+                // plan and the data plan, which would otherwise both be
+                // `{table}.sql`); every other format splits DDL and data.
+                if matches!(
+                    request.data_format,
+                    DataFormat::SqlInsert | DataFormat::SqlUpdate
+                ) {
                     plans.push(FilePlan::Data {
                         filename: unique_filename(&mut seen, format!("{base}.sql")),
                         table,
-                        format: DataFormat::SqlInsert,
-                        ddl_prefix: Some(resolve_ddl(table)),
+                        format: request.data_format,
+                        ddl_prefix: Some(ddl_for_structure(table)?),
                     });
                 } else {
                     plans.push(FilePlan::Ddl {
                         filename: unique_filename(&mut seen, format!("{base}.sql")),
-                        text: resolve_ddl(table),
+                        text: ddl_for_structure(table)?,
                     });
                     plans.push(FilePlan::Data {
                         filename: format!("{base}.{}", request.data_format.extension()),
@@ -265,14 +391,14 @@ pub fn build_file_plans(request: &ExportTablesRequest) -> Vec<FilePlan<'_>> {
             }
         }
     }
-    plans
+    Ok(plans)
 }
 
 /// Plan the output container before the host chooses its destination.
 pub fn prepare_export(
     request: &ExportTablesRequest,
 ) -> Result<(Vec<FilePlan<'_>>, bool), CommandError> {
-    let plans = build_file_plans(request);
+    let plans = build_file_plans(request)?;
     if plans.is_empty() {
         return Err(CommandError::Validation("no tables selected".into()));
     }
@@ -352,7 +478,13 @@ pub fn lock_export_stream<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     })
 }
 
-/// Stream a table's data to `dest`, formatted as `format`. Returns row count.
+/// Stream an item's data to `dest`, formatted as `format`. Returns row count.
+///
+/// Rows come from the item's SQL source — the named table (as a SQL
+/// source) or one SQL statement — resolved by
+/// [`fetcher::resolve_sql_source`] and streamed by
+/// [`fetcher::stream_sql_source`] into the callback below. `sql_guard`
+/// runs inside the SQL stream.
 pub async fn write_data_file(
     app: &dyn ExportEvents,
     state: &dyn ExportSource,
@@ -362,15 +494,17 @@ pub async fn write_data_file(
     ddl_prefix: Option<&str>,
     dest: &Path,
 ) -> Result<u64, CommandError> {
-    let sql = build_select_sql(
-        &table.table_name,
-        &table.columns,
-        request.database_type.as_deref(),
-    );
+    if format.is_binary() {
+        return Err(CommandError::Validation(format!(
+            "{format:?} is a binary format; use write_binary_file"
+        )));
+    }
+    let (sql, database, schema) = fetcher::resolve_sql_source(request, table)?;
 
-    let (driver, read_only, safe_mode) = state.resolve_source(&request.db_session_id).await?;
-    crate::execution::domain::sql_guard::check_sql(&sql, read_only, safe_mode)
-        .map_err(CommandError::Validation)?;
+    // The driver fetched here only feeds StreamFormatter's SQL-literal
+    // dialect (SQL INSERT rendering); the SQL stream resolves its own
+    // source for guard flags + streaming.
+    let (driver, _read_only, _safe_mode) = state.resolve_source(&request.db_session_id).await?;
 
     let mut sink = FileSink::create(dest)?;
     if let Some(prefix) = ddl_prefix {
@@ -379,12 +513,15 @@ pub async fn write_data_file(
     }
     sink.flush()?;
     let sink = Arc::new(Mutex::new(sink));
-    let formatter = Arc::new(Mutex::new(StreamFormatter::new(
-        format,
-        table.table_name.clone(),
-        request.database_type.clone(),
-        driver.clone(),
-    )));
+    let formatter = Arc::new(Mutex::new(
+        StreamFormatter::new(
+            format,
+            table.table_name.clone(),
+            request.database_type.clone(),
+            driver.clone(),
+        )
+        .with_primary_key(table.primary_key.clone()),
+    ));
 
     let columns = Arc::new(Mutex::new(table.columns.clone()));
     let header_done = Arc::new(Mutex::new(false));
@@ -467,22 +604,15 @@ pub async fn write_data_file(
 
     // Capture column type errors from formatting writes if the driver is not
     // streaming rows (they are written inside the callback above).
-    //
-    // The statement carries its target: PostgreSQL cannot reference another
-    // database in one statement, so a bare `query_stream` would have streamed
-    // from the session's own database (the "second database exports the first
-    // database's rows" bug). A per-table schema wins over the request default.
-    state
-        .stream_query(
-            &request.db_session_id,
-            &sql,
-            datazen_driver_api::SqlTarget::new(
-                request.database.as_deref(),
-                table.schema.as_deref().or(request.schema.as_deref()),
-            ),
-            callback,
-        )
-        .await?;
+    fetcher::stream_sql_source(
+        state,
+        &request.db_session_id,
+        &sql,
+        database.as_deref(),
+        schema.as_deref(),
+        &callback,
+    )
+    .await?;
 
     if let Some(error) = lock_export(&format_error)?.take() {
         return Err(CommandError::Validation(format!(
@@ -501,6 +631,186 @@ pub async fn write_data_file(
     lock_export(&sink)?.flush()?;
 
     Ok(rows_written.load(Ordering::Relaxed))
+}
+
+/// Stream an item's data to `dest` as a binary format (item 3a: XLSX).
+/// Parallel branch to [`write_data_file`]: same SQL row stream and
+/// progress events, but the formatter owns the destination file and no
+/// text sink is involved. Binary formatters need no SQL-literal dialect,
+/// so no driver is resolved here — the SQL stream resolves its own source
+/// inside `stream_sql_source`.
+pub async fn write_binary_file(
+    app: &dyn ExportEvents,
+    state: &dyn ExportSource,
+    request: &ExportTablesRequest,
+    table: &TableExportInput,
+    format: DataFormat,
+    dest: &Path,
+) -> Result<u64, CommandError> {
+    if !format.is_binary() {
+        return Err(CommandError::Validation(format!(
+            "{format:?} is a text format; use write_data_file"
+        )));
+    }
+    let (sql, database, schema) = fetcher::resolve_sql_source(request, table)?;
+
+    let formatter: Box<dyn BinaryFormatter> = match format {
+        DataFormat::Xlsx => Box::new(XlsxFormatter::new(&table.table_name, dest.to_path_buf())),
+        _ => {
+            return Err(CommandError::Validation(format!(
+                "{format:?} is marked binary but has no binary formatter"
+            )));
+        }
+    };
+    let formatter = Arc::new(Mutex::new(formatter));
+
+    // Full ColumnInfo (not just names): the binary formatter needs it for
+    // the header row, and a future Parquet formatter needs data types.
+    let columns = Arc::new(Mutex::new(Vec::<ColumnInfo>::new()));
+    let begun = Arc::new(Mutex::new(false));
+    let finished = Arc::new(AtomicU64::new(0));
+    let rows_written = Arc::new(AtomicU64::new(0));
+    let last_emit_rows = Arc::new(AtomicU64::new(0));
+    let format_error = Arc::new(Mutex::new(None::<String>));
+
+    let cb_fmt = Arc::clone(&formatter);
+    let cb_cols = Arc::clone(&columns);
+    let cb_begun = Arc::clone(&begun);
+    let cb_finished = Arc::clone(&finished);
+    let cb_rows = Arc::clone(&rows_written);
+    let cb_last_emit = Arc::clone(&last_emit_rows);
+    let cb_format_error = Arc::clone(&format_error);
+    let cb_app = app.progress_callback();
+    let cb_table = table.table_name.clone();
+    let cb_fallback_cols = table.columns.clone();
+
+    let callback: QueryStreamCallback = Arc::new(move |event: QueryStreamEvent| match event {
+        QueryStreamEvent::ExecutionStarted { .. } => {}
+        QueryStreamEvent::StatementStart { columns: cols, .. } => {
+            {
+                let mut cur = lock_export_stream(&cb_cols);
+                if cur.is_empty() {
+                    *cur = cols;
+                }
+            }
+            let cols = lock_export_stream(&cb_cols).clone();
+            if !*lock_export_stream(&cb_begun) {
+                match lock_export_stream(&cb_fmt).begin(&cols) {
+                    Ok(()) => *lock_export_stream(&cb_begun) = true,
+                    Err(error) => {
+                        *lock_export_stream(&cb_format_error) = Some(error.to_string());
+                    }
+                }
+            }
+        }
+        QueryStreamEvent::Rows { rows, .. } => {
+            // A stream that skips StatementStart still gets a header: fall
+            // back to the requested column names, as the text path does.
+            if !*lock_export_stream(&cb_begun) {
+                let fallback: Vec<ColumnInfo> = if cb_fallback_cols.is_empty() {
+                    rows.first()
+                        .map(|row| {
+                            (0..row.len())
+                                .map(|i| ColumnInfo {
+                                    name: format!("col_{i}"),
+                                    data_type: "text".into(),
+                                    nullable: true,
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default()
+                } else {
+                    cb_fallback_cols
+                        .iter()
+                        .map(|name| ColumnInfo {
+                            name: name.clone(),
+                            data_type: "text".into(),
+                            nullable: true,
+                        })
+                        .collect()
+                };
+                match lock_export_stream(&cb_fmt).begin(&fallback) {
+                    Ok(()) => *lock_export_stream(&cb_begun) = true,
+                    Err(error) => {
+                        *lock_export_stream(&cb_format_error) = Some(error.to_string());
+                    }
+                }
+            }
+            if let Err(error) = lock_export_stream(&cb_fmt).rows(&rows) {
+                *lock_export_stream(&cb_format_error) = Some(error.to_string());
+            }
+            let total = cb_rows.fetch_add(rows.len() as u64, Ordering::Relaxed) + rows.len() as u64;
+            if total >= cb_last_emit.load(Ordering::Relaxed) + 5000 || total < 5000 {
+                cb_last_emit.store(total, Ordering::Relaxed);
+                cb_app(ExportProgressEvent {
+                    table: cb_table.clone(),
+                    rows_written: total,
+                });
+            }
+        }
+        QueryStreamEvent::Done { .. } => {
+            let total = cb_rows.load(Ordering::Relaxed);
+            cb_app(ExportProgressEvent {
+                table: cb_table.clone(),
+                rows_written: total,
+            });
+            if cb_finished.fetch_add(1, Ordering::Relaxed) == 0 {
+                if let Err(error) = lock_export_stream(&cb_fmt).finish() {
+                    *lock_export_stream(&cb_format_error) = Some(error.to_string());
+                }
+            }
+        }
+        QueryStreamEvent::StatementEnd { .. } => {}
+    });
+
+    fetcher::stream_sql_source(
+        state,
+        &request.db_session_id,
+        &sql,
+        database.as_deref(),
+        schema.as_deref(),
+        &callback,
+    )
+    .await?;
+
+    if let Some(error) = lock_export(&format_error)?.take() {
+        return Err(CommandError::Validation(format!(
+            "binary export failed: {error}"
+        )));
+    }
+
+    // Ensure finish runs even if no Done event fired (same tail fallback
+    // as the text path); the formatter itself guards against a second call.
+    if finished.load(Ordering::Relaxed) == 0 {
+        lock_export(&formatter)?.finish()?;
+    }
+
+    Ok(rows_written.load(Ordering::Relaxed))
+}
+
+/// One entry point for a planned data file: text formats stream through
+/// [`write_data_file`], binary formats through [`write_binary_file`]. A DDL
+/// prefix only ever accompanies a SQL (text) format — a binary file cannot
+/// carry one, so requesting it is a programming error.
+pub async fn write_plan_data_file(
+    app: &dyn ExportEvents,
+    state: &dyn ExportSource,
+    request: &ExportTablesRequest,
+    table: &TableExportInput,
+    format: DataFormat,
+    ddl_prefix: Option<&str>,
+    dest: &Path,
+) -> Result<u64, CommandError> {
+    if format.is_binary() {
+        if ddl_prefix.is_some() {
+            return Err(CommandError::Validation(format!(
+                "{format:?} export cannot carry a DDL prefix"
+            )));
+        }
+        write_binary_file(app, state, request, table, format, dest).await
+    } else {
+        write_data_file(app, state, request, table, format, ddl_prefix, dest).await
+    }
 }
 
 #[allow(clippy::type_complexity)]
@@ -560,7 +870,7 @@ pub async fn run_zip_export(
                 format,
                 ddl_prefix,
                 ..
-            } => match write_data_file(
+            } => match write_plan_data_file(
                 app,
                 state,
                 request,
@@ -650,7 +960,7 @@ pub async fn run_single_export(
                 ddl_prefix,
                 ..
             } => {
-                write_data_file(
+                write_plan_data_file(
                     app,
                     state,
                     request,
@@ -662,6 +972,19 @@ pub async fn run_single_export(
                 .await
             }
         };
+    }
+
+    // Binary + multiple plans must never reach the text-merge branch below:
+    // concatenating XLSX bytes would corrupt the file. `prepare_export`
+    // already routes every multi-plan non-SQL export to zip; this guard is
+    // the second line of defence for direct callers.
+    if plans
+        .iter()
+        .any(|plan| matches!(plan, FilePlan::Data { format, .. } if format.is_binary()))
+    {
+        return Err(CommandError::Validation(
+            "binary export with multiple files must use zip output".into(),
+        ));
     }
 
     // Multiple files -> combine into one target, streaming each table's temp
@@ -682,7 +1005,7 @@ pub async fn run_single_export(
                 ..
             } => {
                 let tmp = temp_export_dir();
-                let n = match write_data_file(
+                let n = match write_plan_data_file(
                     app,
                     state,
                     request,

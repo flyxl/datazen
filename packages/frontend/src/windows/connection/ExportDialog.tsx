@@ -1,27 +1,24 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Dialog } from '../../components/ui/Dialog';
 import { CopyableError } from '../../components/ui/CopyableError';
 import { Button } from '../../components/ui/Button';
 import { Select } from '../../components/ui/Select';
 import { ExportSuccessPanel } from '../../components/export/ExportSuccessPanel';
-import { ExportColumnPicker } from '../../components/export/ExportColumnPicker';
-import { generateExport } from '../../lib/exportData';
 import type { ExportFormat, ExportScope } from '../../lib/exportData';
 import {
-  buildExportFormatOptions,
+  OBJECT_EXPORT_FORMAT_OPTIONS,
   buildExportScopeOptions,
-  EXPORT_FORMAT_OPTIONS,
-  saveExportResultWithDialog,
+  formatOptionsForScope,
 } from '../../lib/exportDialogShared';
-import {
-  isStreamableExportFormat,
-  streamTableExportToSaveDialog,
-  type TableExportRunHandle,
-} from '../../lib/exportStream';
+import { IS_DESKTOP_BUILD } from '../../platform/env';
+import { exportSingleTableViaRust } from '../../lib/batchExportJob';
+import { resolveDataFetcher } from '../../lib/dataFetcher';
 import { supportsFullTableExport, type DataExportCapability } from '../../lib/exportCapability';
 import type { ColumnSchema } from '../../types';
 import { useI18n } from '../../hooks/useI18n';
+import { cn } from '../../lib/cn';
 import { getCachedTableSchema } from '../../lib/schemaCache';
+import { dataTypeTextClass } from '../../lib/dataTypeColors';
 import { useSchemaStore } from '../../stores/schemaStore';
 
 interface ExportDialogProps {
@@ -75,18 +72,9 @@ export function ExportDialog({
   const [selectedCols, setSelectedCols] = useState<Set<string>>(
     () => new Set(columns.map((c) => c.name)),
   );
-  const [status, setStatus] = useState<'form' | 'exporting' | 'success' | 'aborted'>('form');
   const [exporting, setExporting] = useState(false);
-  /** The cancel was asked for; the run is winding down (DBR-06). */
-  const [cancelling, setCancelling] = useState(false);
-  /** Rows written so far by a streaming export (DBR-06 行数进度). */
-  const [rowsWritten, setRowsWritten] = useState(0);
-  /** Whether the aborted run's partial file was deleted (reported honestly). */
-  const [partialDeleted, setPartialDeleted] = useState(false);
+  const [status, setStatus] = useState<'form' | 'exporting' | 'success'>('form');
   const [error, setError] = useState<string | null>(null);
-  const runHandleRef = useRef<TableExportRunHandle | null>(null);
-
-  const isStreamingScope = scope === 'entire_table';
 
   useEffect(() => {
     setLoadedColumns(columns);
@@ -94,16 +82,12 @@ export function ExportDialog({
     if (!open) return;
     setStatus('form');
     setError(null);
-    setCancelling(false);
-    setRowsWritten(0);
     if (!dbSessionId || !database) return;
     let cancelled = false;
     void getCachedTableSchema(dbSessionId, tableName, database, tableSchema)
       .then((schema) => {
         if (cancelled || schema.columns.length === 0) return;
         setLoadedColumns(schema.columns);
-        // The schema arrives after open: the column default is still "every
-        // column" (DBR-06 恢复默认) — the fuller list, freshly selected.
         setSelectedCols(new Set(schema.columns.map((c) => c.name)));
       })
       .catch(() => undefined);
@@ -112,25 +96,21 @@ export function ExportDialog({
     };
   }, [open, dbSessionId, database, tableName, columns, tableSchema]);
 
-  const selectedColumnNames = useMemo(
-    () => loadedColumns.map((c) => c.name).filter((n) => selectedCols.has(n)),
-    [loadedColumns, selectedCols],
-  );
+  const toggleColumn = useCallback((col: string) => {
+    setSelectedCols((prev) => {
+      const next = new Set(prev);
+      if (next.has(col)) next.delete(col);
+      else next.add(col);
+      return next;
+    });
+  }, []);
 
-  // DBR-06 格式统一: the same list, gating and reasons as the grid dialog;
-  // SQL UPDATE needs a key column instead of silently using column 0.
-  const hasKeyColumn = loadedColumns.some((c) => c.isPrimaryKey);
-  const formatOptions = useMemo(
-    () => buildExportFormatOptions({ streamingScope: isStreamingScope, hasKeyColumn }),
-    [isStreamingScope, hasKeyColumn],
-  );
-
-  // An unavailable format (scope became streaming, or no key column) falls
-  // back to CSV instead of keeping a disabled selection (DBR-06) — the
-  // disabled option stays visible with its reason.
-  useEffect(() => {
-    if (formatOptions.find((o) => o.value === format)?.disabled) setFormat('csv');
-  }, [formatOptions, format]);
+  const toggleAll = useCallback(() => {
+    setSelectedCols((prev) => {
+      if (prev.size === loadedColumns.length) return new Set();
+      return new Set(loadedColumns.map((c) => c.name));
+    });
+  }, [loadedColumns]);
 
   const rowCount = useMemo(() => {
     if (scope === 'entire_table') return totalRows ?? rows.length;
@@ -149,103 +129,82 @@ export function ExportDialog({
     [t, rows.length, selectedRows.size, allowEntire, totalRows],
   );
 
-  const handleScopeChange = useCallback(
-    (v: string) => {
-      const next = v as ExportScope;
-      setScope(next);
-      setRowsWritten(0);
-      if (next === 'entire_table' && !isStreamableExportFormat(format)) {
-        setFormat('csv');
-      }
-    },
-    [format],
+  // Task 6 (plan §2.8): on web, the entire-table scope can only be CSV —
+  // it goes through the web exporter, which has no SQL path — while the
+  // provided scopes format in JS, so every format stays available there.
+  // Desktop offers every format for every scope.
+  const formatOptions = formatOptionsForScope(
+    OBJECT_EXPORT_FORMAT_OPTIONS,
+    scope,
+    IS_DESKTOP_BUILD,
   );
 
-  const handleFormatChange = useCallback(
-    (v: string) => {
-      const next = v as ExportFormat;
-      if (formatOptions.find((o) => o.value === next)?.disabled) return;
-      setFormat(next);
-    },
-    [formatOptions],
-  );
+  // A format picked for a provided scope must not survive a switch to the
+  // web entire-table scope, where it could not be served (the Select would
+  // point at a missing option). Desktop never resets: every format is served.
+  useEffect(() => {
+    if (!IS_DESKTOP_BUILD && scope === 'entire_table' && format !== 'csv') {
+      setFormat('csv');
+    }
+  }, [scope, format]);
 
-  const toggleColumn = useCallback((col: string) => {
-    setSelectedCols((prev) => {
-      const next = new Set(prev);
-      if (next.has(col)) next.delete(col);
-      else next.add(col);
-      return next;
-    });
+  const handleScopeChange = useCallback((v: string) => {
+    setScope(v as ExportScope);
   }, []);
-
-  const resetColumnsToDefault = useCallback(() => {
-    setSelectedCols(new Set(loadedColumns.map((c) => c.name)));
-  }, [loadedColumns]);
-
-  const handleCancelExport = useCallback(() => {
-    if (cancelling) return;
-    setCancelling(true);
-    runHandleRef.current?.cancel();
-  }, [cancelling]);
 
   const handleExport = useCallback(async () => {
     setError(null);
     setExporting(true);
     setStatus('exporting');
-    setCancelling(false);
-    setRowsWritten(0);
-    runHandleRef.current = null;
     try {
-      const colNames = selectedColumnNames;
+      const colNames = loadedColumns.map((c) => c.name).filter((n) => selectedCols.has(n));
       if (scope === 'entire_table') {
         if (!dbSessionId) {
           throw new Error('Missing connection');
         }
-        if (!isStreamableExportFormat(format)) {
-          throw new Error('xlsx');
-        }
         const pkName = loadedColumns.find((c) => c.isPrimaryKey)?.name;
-        const result = await streamTableExportToSaveDialog({
+        // Item 3b: entire-table rows stream through the Rust batch
+        // exporter (single-table request) — no frontend streaming path.
+        const result = await exportSingleTableViaRust({
           dbSessionId,
-          tableName,
-          // DBR-06: only the picked columns, in display (schema) order.
-          columns: colNames,
-          format,
           databaseType,
-          pkName,
-          onProgress: (written) => setRowsWritten(written),
-          onRunStart: (handle) => {
-            runHandleRef.current = handle;
-          },
+          database,
+          tableName,
+          columns: colNames,
+          dataFormat: format,
+          primaryKey: pkName,
         });
-        if (result.status === 'cancelled') {
+        if (result === 'cancelled') {
           setStatus('form');
           setExporting(false);
-          return;
-        }
-        if (result.status === 'aborted') {
-          setPartialDeleted(result.partialDeleted);
-          setStatus('aborted');
           return;
         }
         setStatus('success');
         return;
       }
 
-      const result = generateExport({
+      // Task 4: current-page / selected rows are exported by
+      // `ProvidedDataFetcher` (pure frontend: formatted in memory, saved
+      // via the save dialog / Blob download — no Rust `provided` source
+      // any more). No session is needed on this path, so the guard that
+      // used to sit here is gone; entire-table above still requires one.
+      const pkName = loadedColumns.find((c) => c.isPrimaryKey)?.name;
+      const scopedRows =
+        scope === 'selected' && selectedRows.size > 0
+          ? rows.filter((_, i) => selectedRows.has(i))
+          : rows;
+      const result = await resolveDataFetcher({
         tableName,
-        columns: loadedColumns,
-        rows,
-        selectedRows,
         scope,
-        selectedColumns: colNames,
-        format,
+        columns: loadedColumns
+          .filter((c) => selectedCols.has(c.name))
+          .map((c) => ({ name: c.name, dataType: c.dataType, nullable: c.nullable })),
+        rows: scopedRows.map((row) => colNames.map((col) => row[col])),
+        dataFormat: format,
         databaseType,
-      });
-
-      const saved = await saveExportResultWithDialog(result, tableName, format);
-      if (!saved) {
+        primaryKey: pkName,
+      }).fetch();
+      if (result === 'cancelled') {
         setStatus('form');
         setExporting(false);
         return;
@@ -259,7 +218,7 @@ export function ExportDialog({
     }
   }, [
     loadedColumns,
-    selectedColumnNames,
+    selectedCols,
     tableName,
     rows,
     selectedRows,
@@ -267,6 +226,7 @@ export function ExportDialog({
     format,
     databaseType,
     dbSessionId,
+    onClose,
   ]);
 
   return (
@@ -276,21 +236,12 @@ export function ExportDialog({
       description={t('export.description', { table: tableName })}
       onClose={onClose}
       footer={
-        status === 'success' || status === 'aborted' ? (
+        status === 'success' ? (
           <Button variant="primary" onClick={onClose}>
             {t('common.close')}
           </Button>
         ) : (
           <>
-            {isStreamingScope && (
-              <Button
-                variant="secondary"
-                onClick={handleCancelExport}
-                disabled={!exporting || cancelling}
-              >
-                {cancelling ? t('export.cancelling') : t('export.cancelExport')}
-              </Button>
-            )}
             <Button variant="secondary" onClick={onClose} disabled={exporting}>
               {t('common.cancel')}
             </Button>
@@ -309,15 +260,6 @@ export function ExportDialog({
     >
       {status === 'success' ? (
         <ExportSuccessPanel message={t('export.success')} />
-      ) : status === 'aborted' ? (
-        // DBR-06: the cancel reports what happened to the partial file, as
-        // the backend answered — deleted or kept are two different messages.
-        <div
-          data-testid="export-aborted-panel"
-          className="rounded-md border border-edge bg-surface px-3 py-2 text-xs text-fg-secondary"
-        >
-          {partialDeleted ? t('export.cancelledPartialDeleted') : t('export.cancelledPartialKept')}
-        </div>
       ) : (
         <div className="space-y-4">
           {exportLocked && (
@@ -329,20 +271,11 @@ export function ExportDialog({
             <label className="mb-1 block text-xs font-medium text-fg-secondary">
               {t('export.format')}
             </label>
-            <Select value={format} options={formatOptions} onChange={handleFormatChange} />
-            {/* 禁用并解释原因（DBR-06）：an unavailable format stays listed and
-             * greyed out, and its reason is on screen the whole time the
-             * range makes it unavailable — not only while it is selected. */}
-            {isStreamingScope && (
-              <p data-testid="export-format-disabled-reason" className="mt-1 text-xs text-fg-muted">
-                {t('export.formatDisabledStream')}
-              </p>
-            )}
-            {!hasKeyColumn && (
-              <p data-testid="export-format-disabled-reason" className="mt-1 text-xs text-fg-muted">
-                {t('export.formatDisabledNoKey')}
-              </p>
-            )}
+            <Select
+              value={format}
+              options={formatOptions}
+              onChange={(v) => setFormat(v as ExportFormat)}
+            />
           </div>
 
           <div>
@@ -352,35 +285,49 @@ export function ExportDialog({
             <Select value={scope} options={scopeOptions} onChange={handleScopeChange} />
           </div>
 
-          <ExportColumnPicker
-            columns={loadedColumns.map((c) => ({
-              name: c.name,
-              type: c.dataType,
-              isPrimaryKey: c.isPrimaryKey,
-            }))}
-            selected={selectedCols}
-            onToggle={toggleColumn}
-            onSelectAll={() => setSelectedCols(new Set(loadedColumns.map((c) => c.name)))}
-            onClearAll={() => setSelectedCols(new Set())}
-            onResetDefault={resetColumnsToDefault}
-          />
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <label className="text-xs font-medium text-fg-secondary">
+                {t('export.selectColumns')}
+              </label>
+              <button
+                type="button"
+                className="text-xs text-accent hover:underline"
+                onClick={toggleAll}
+              >
+                {selectedCols.size === loadedColumns.length
+                  ? t('common.deselectAll')
+                  : t('common.selectAll')}
+              </button>
+            </div>
+            <div className="max-h-40 overflow-y-auto rounded-md border border-edge bg-surface p-2">
+              {loadedColumns.map((col) => (
+                <label
+                  key={col.name}
+                  className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-surface-raised"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedCols.has(col.name)}
+                    onChange={() => toggleColumn(col.name)}
+                    className="accent-accent"
+                  />
+                  <span className="text-xs text-fg-secondary">{col.name}</span>
+                  <span className={cn('text-[10px]', dataTypeTextClass(col.dataType))}>
+                    {col.dataType}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
 
           <div className="rounded-md border border-edge bg-surface px-3 py-2 text-xs text-fg-muted">
             {t('export.willExport', { rows: rowCount, cols: selectedCols.size })},{' '}
             {t('export.formatAs')}{' '}
             <span className="font-medium text-fg-secondary">
-              {EXPORT_FORMAT_OPTIONS.find((o) => o.value === format)?.label}
+              {OBJECT_EXPORT_FORMAT_OPTIONS.find((o) => o.value === format)?.label}
             </span>
           </div>
-
-          {exporting && isStreamingScope && rowsWritten > 0 && (
-            <div
-              data-testid="export-progress"
-              className="rounded-md border border-edge bg-surface px-3 py-2 text-xs text-fg-secondary"
-            >
-              {t('export.progressRows', { rows: rowsWritten })}
-            </div>
-          )}
 
           {error && (
             <CopyableError
