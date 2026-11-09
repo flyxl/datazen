@@ -446,6 +446,7 @@ async fn cm68_a_committed_replacement_publishes_the_candidate_and_retires_the_ol
         oidc: None,
         domains: None,
         mcp: None,
+        wapp_assets: None,
         domain_routers: Some(vec![sessions_router(SessionsState {
             sessions: cases.clone(),
             directory: directory.clone() as Arc<dyn SessionDirectory>,

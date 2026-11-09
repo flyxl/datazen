@@ -242,6 +242,7 @@ async fn shared_fixture() -> SharedFixture {
         oidc: None,
         domains: None,
         mcp: None,
+        wapp_assets: None,
         domain_routers: Some(vec![driver_gateway_router(state.clone())]),
     })
     .expect("router");

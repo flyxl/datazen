@@ -734,6 +734,7 @@ async fn unauthenticated_requests_are_rejected() {
         oidc: None,
         domains: None,
         mcp: None,
+        wapp_assets: None,
         domain_routers: Some(vec![datazen_server::http::domains::sync::sync_router(
             sync_state(&store),
         )]),
@@ -928,6 +929,7 @@ async fn execution_routes_require_authentication() {
         oidc: None,
         domains: None,
         mcp: None,
+        wapp_assets: None,
         domain_routers: Some(vec![datazen_server::http::domains::sync::sync_router(
             sync_state(&store),
         )]),

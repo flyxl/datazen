@@ -569,6 +569,7 @@ async fn live_fixture(opts: MockDriverOptions) -> LiveFixture {
         oidc: None,
         domains: None,
         mcp: None,
+        wapp_assets: None,
         domain_routers: Some(vec![table_data_router(TableDataState {
             store: store.clone(),
             registry,

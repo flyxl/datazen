@@ -76,6 +76,13 @@ pub struct ServerConfig {
     pub rate_max_entries: usize,
     /// WR-D7 受控上传的产物落盘根。
     pub artifact_root: PathBuf,
+    /// W8 刀4 wapp 资产静态面存储根（`/wapps/{id}/{path}` 的落盘根，
+    /// `workspace_apps::WappManager` 的扫描目录）。对照 `artifact_root`：
+    /// `PathBuf` + 默认值而非 `Option`——空目录 = 全 404 即天然的
+    /// 「无 wapps」形态，不需要 Option 语义（w8-knife4 设计档 §4.1
+    /// 裁决表；`web_root` 用 `Option` 是因为存在独立 origin/CDN 承载
+    /// 的替代部署形，wapps 面没有）。
+    pub wapps_dir: PathBuf,
     /// WR-D6 结果 TTL 清扫周期（秒）。
     pub artifact_ttl_sweep_secs: u64,
     /// WR-D4/D6 预算协调器节点额度。
@@ -115,6 +122,7 @@ pub const ENV_RATE_STRICT_CAPACITY: &str = "DATAZEN_SERVER_RATE_STRICT_CAPACITY"
 pub const ENV_RATE_STRICT_REFILL: &str = "DATAZEN_SERVER_RATE_STRICT_REFILL";
 pub const ENV_RATE_MAX_ENTRIES: &str = "DATAZEN_SERVER_RATE_MAX_ENTRIES";
 pub const ENV_ARTIFACT_ROOT: &str = "DATAZEN_SERVER_ARTIFACT_ROOT";
+pub const ENV_WAPPS_DIR: &str = "DATAZEN_SERVER_WAPPS_DIR";
 pub const ENV_ARTIFACT_TTL_SWEEP_SECS: &str = "DATAZEN_SERVER_ARTIFACT_TTL_SWEEP_SECS";
 pub const ENV_BUDGET_NODE_LIMIT: &str = "DATAZEN_SERVER_BUDGET_NODE_LIMIT";
 pub const ENV_BUDGET_ORGANIZATION_LIMIT: &str = "DATAZEN_SERVER_BUDGET_ORGANIZATION_LIMIT";
@@ -147,6 +155,8 @@ pub const DEFAULT_RATE_STRICT_REFILL: f64 = 1.0;
 pub const DEFAULT_RATE_MAX_ENTRIES: usize = 65_536;
 /// WR-D7 受控上传的产物落盘根（相对 cwd；部署显式注入绝对路径）。
 pub const DEFAULT_ARTIFACT_ROOT: &str = "data/artifacts";
+/// W8 刀4 wapp 资产静态面存储根（相对 cwd；部署注入卷内绝对路径）。
+pub const DEFAULT_WAPPS_DIR: &str = "data/wapps";
 /// WR-D6 结果 TTL 清扫周期（与 `operations::ttl` 登记值一致）。
 pub const DEFAULT_ARTIFACT_TTL_SWEEP_SECS: u64 = 300;
 /// WR-D4/D6 预算协调器的首版额度起点（部署可调；非协议常量）。
@@ -249,6 +259,12 @@ impl ServerConfig {
             Some(raw) if !raw.trim().is_empty() => PathBuf::from(raw.trim().to_string()),
             _ => PathBuf::from(DEFAULT_ARTIFACT_ROOT),
         };
+        // W8 刀4：wapp 资产静态面存储根（artifact_root 同款；空/未设取
+        // 默认——空目录 = 全 404，是合法的「无 wapps」形态而非缺配置）。
+        let wapps_dir = match std::env::var(ENV_WAPPS_DIR).ok() {
+            Some(raw) if !raw.trim().is_empty() => PathBuf::from(raw.trim().to_string()),
+            _ => PathBuf::from(DEFAULT_WAPPS_DIR),
+        };
         let artifact_ttl_sweep_secs = parse_seconds(
             ENV_ARTIFACT_TTL_SWEEP_SECS,
             std::env::var(ENV_ARTIFACT_TTL_SWEEP_SECS).ok(),
@@ -320,6 +336,7 @@ impl ServerConfig {
             rate_strict_refill_per_second,
             rate_max_entries,
             artifact_root,
+            wapps_dir,
             artifact_ttl_sweep_secs,
             budget_node_limit,
             budget_organization_limit,
@@ -584,5 +601,28 @@ mod tests {
     fn the_dev_secret_is_never_rendered_by_debug() {
         let rendered = format!("{:?}", ServerSecret::dev_default());
         assert_eq!(rendered, "ServerSecret(<redacted>)");
+    }
+
+    /// W8 刀4：`wapps_dir` 的解析镜像 `artifact_root`——未设 ⇒ 默认值、
+    /// 设置 ⇒ trim 后透传、空白 ⇒ 回落默认。
+    ///
+    /// SAFETY（测试进程内一次性注入）：仓库既有 config 解析测试同款模式
+    /// （tests/idle_reclaimer_wiring.rs 的 t5）——lib 测试二进制内仅本
+    /// 测试触达 DATAZEN_SERVER_* 环境键。
+    #[test]
+    fn wapps_dir_parsing_defaults_when_unset_and_passes_through_when_set() {
+        std::env::remove_var(ENV_WAPPS_DIR);
+        let config = ServerConfig::from_env().expect("unset falls back to default");
+        assert_eq!(config.wapps_dir, PathBuf::from(DEFAULT_WAPPS_DIR));
+        assert_eq!(config.wapps_dir, PathBuf::from("data/wapps"));
+
+        std::env::set_var(ENV_WAPPS_DIR, "/var/lib/datazen/wapps");
+        let config = ServerConfig::from_env().expect("set passes through");
+        assert_eq!(config.wapps_dir, PathBuf::from("/var/lib/datazen/wapps"));
+
+        std::env::set_var(ENV_WAPPS_DIR, "   ");
+        let config = ServerConfig::from_env().expect("blank falls back to default");
+        assert_eq!(config.wapps_dir, PathBuf::from(DEFAULT_WAPPS_DIR));
+        std::env::remove_var(ENV_WAPPS_DIR);
     }
 }
