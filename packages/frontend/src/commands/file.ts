@@ -55,16 +55,6 @@ export const fileCommands = {
    */
   exportTablesStream: (request: ExportTablesRequest) =>
     invoke<ExportTablesResult | null>('export_tables_stream', { request }),
-
-  /**
-   * Flip the cancellation token of a running `export_tables_stream`
-   * (`cancelToken` from the request). Returns whether a live run was
-   * found; a token cancelled before its run registers still aborts that
-   * run when it starts. Desktop only — the web exporter has no Rust run
-   * to cancel, so callers go through the tables-exporter port instead.
-   */
-  cancelExportTables: (token: string) =>
-    invoke<boolean>('cancel_export_tables', { token }),
 };
 
 export type ExportMode = 'structure_only' | 'data_only' | 'data_and_structure';
