@@ -1,8 +1,10 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import {
+  exportSingleTableViaRust,
   runBatchExportJob,
   type BatchExportTableInput,
   type RunBatchExportJobOptions,
+  type SingleTableExportOptions,
 } from '../batchExportJob';
 import type { ExportTablesRequest } from '../../commands/file';
 
@@ -98,6 +100,81 @@ describe('runBatchExportJob', () => {
   it('propagates load errors', async () => {
     loadTableExportData.mockRejectedValue(new Error('ddl failed'));
     await expect(runBatchExportJob(base())).rejects.toThrow('ddl failed');
+  });
+});
+
+describe('exportSingleTableViaRust (item 3b)', () => {
+  const exportTables = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    exportTables.mockResolvedValue({ Saved: 3 });
+  });
+
+  function base(extra: Partial<SingleTableExportOptions> = {}): SingleTableExportOptions {
+    return {
+      dbSessionId: 'c1',
+      databaseType: 'postgres',
+      tableName: 'users',
+      columns: ['id', 'name'],
+      dataFormat: 'csv',
+      exportTables,
+      ...extra,
+    };
+  }
+
+  it('sends a single-table request with a table source for entire tables', async () => {
+    const result = await exportSingleTableViaRust(base());
+    expect(result).toBe('saved');
+    expect(exportTables).toHaveBeenCalledTimes(1);
+    const request = exportTables.mock.calls[0]![0] as ExportTablesRequest;
+    expect(request.mode).toBe('data_only');
+    expect(request.outputMode).toBe('single');
+    expect(request.dataFormat).toBe('csv');
+    expect(request.tables).toEqual([
+      {
+        tableName: 'users',
+        columns: ['id', 'name'],
+        source: { type: 'table' },
+        primaryKey: undefined,
+      },
+    ]);
+  });
+
+  it('sends a SQL source carrying the caller-built statement for filtered tables', async () => {
+    const sql = 'SELECT "id" FROM "users" WHERE "status" = \'active\'';
+    await exportSingleTableViaRust(base({ sql, dataFormat: 'xlsx', primaryKey: 'id' }));
+    const request = exportTables.mock.calls[0]![0] as ExportTablesRequest;
+    expect(request.dataFormat).toBe('xlsx');
+    expect(request.tables).toEqual([
+      {
+        tableName: 'users',
+        columns: ['id', 'name'],
+        source: { type: 'sql', sql },
+        primaryKey: 'id',
+      },
+    ]);
+  });
+
+  it('reports cancelled when the Rust command returns Cancelled or null', async () => {
+    exportTables.mockResolvedValue({ Cancelled: null });
+    await expect(exportSingleTableViaRust(base())).resolves.toBe('cancelled');
+    exportTables.mockResolvedValue(null);
+    await expect(exportSingleTableViaRust(base())).resolves.toBe('cancelled');
+  });
+
+  it('throws when dbSessionId is missing', async () => {
+    await expect(exportSingleTableViaRust(base({ dbSessionId: '' }))).rejects.toThrow(
+      'Missing connection',
+    );
+    expect(exportTables).not.toHaveBeenCalled();
+  });
+
+  it('forwards database and schema hints', async () => {
+    await exportSingleTableViaRust(base({ database: 'appdb', schema: 'public' }));
+    const request = exportTables.mock.calls[0]![0] as ExportTablesRequest;
+    expect(request.database).toBe('appdb');
+    expect(request.schema).toBe('public');
   });
 });
 

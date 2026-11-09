@@ -28,26 +28,31 @@ vi.mock('../../ui/Select', () => ({
 
 const saveTextWithDialog = vi.fn();
 const saveBase64WithDialog = vi.fn();
-const beginSaveWithDialog = vi.fn();
-const appendSaveText = vi.fn();
-const finishSave = vi.fn();
-const abortSave = vi.fn();
-const executeQueryStream = vi.fn();
+// Item 3b: entire/filtered scopes ride the tables-exporter port
+// (export_tables_stream); the old streaming save session and query stream
+// are gone, so their mocks go with them.
+const exportTablesStream = vi.fn();
+
+import { configurePlatform, clearPlatform } from '../../../platform/contracts';
+
+function bindFakeExporter(): void {
+  configurePlatform({
+    services: {} as never,
+    windows: {} as never,
+    events: {
+      emitCrossWindow: async () => {},
+      listenCrossWindow: async () => () => {},
+    },
+    tablesExporter: {
+      exportTables: (...args: unknown[]) => exportTablesStream(...(args as [never])),
+    },
+  });
+}
 
 vi.mock('../../../commands/file', () => ({
   fileCommands: {
     saveTextWithDialog: (...args: unknown[]) => saveTextWithDialog(...args),
     saveBase64WithDialog: (...args: unknown[]) => saveBase64WithDialog(...args),
-    beginSaveWithDialog: (...args: unknown[]) => beginSaveWithDialog(...args),
-    appendSaveText: (...args: unknown[]) => appendSaveText(...args),
-    finishSave: (...args: unknown[]) => finishSave(...args),
-    abortSave: (...args: unknown[]) => abortSave(...args),
-  },
-}));
-
-vi.mock('../../../commands/query', () => ({
-  queryCommands: {
-    executeQueryStream: (...args: unknown[]) => executeQueryStream(...args),
   },
 }));
 
@@ -56,24 +61,17 @@ const COLS = [
   { id: 'name', name: 'name', type: 'varchar' },
 ];
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  clearPlatform();
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
+  bindFakeExporter();
   saveTextWithDialog.mockResolvedValue(true);
   saveBase64WithDialog.mockResolvedValue(true);
-  // The streaming save session: a file token, chunks appended, then done.
-  beginSaveWithDialog.mockResolvedValue('save-token');
-  appendSaveText.mockResolvedValue(undefined);
-  finishSave.mockResolvedValue(undefined);
-  abortSave.mockResolvedValue(undefined);
-  // The stream query: immediately end-of-stream, no rows.
-  executeQueryStream.mockImplementation(
-    (_dbSessionId: string, _sql: string, onData: (event: unknown) => void) => {
-      onData({ type: 'end' });
-      return Promise.resolve();
-    },
-  );
+  exportTablesStream.mockResolvedValue({ Saved: 2 });
 });
 
 describe('DataExportDialog', () => {
@@ -287,10 +285,10 @@ describe('DataExportDialog filtered scope (DB-15)', () => {
     expect(Array.from(range.options).map((o) => o.value)).toContain('filtered_table');
   });
 
-  it('opens with the filtered scope preselected and streams its statement', async () => {
+  it('opens with the filtered scope preselected and routes its statement to Rust', async () => {
     const filteredSql = 'SELECT "id" FROM "users" WHERE "status" = \'active\';';
     const onBuildFilteredExportSql = vi.fn().mockResolvedValue(filteredSql);
-    render(
+    const { getByText } = render(
       <DataExportDialog
         open
         onClose={vi.fn()}
@@ -309,12 +307,15 @@ describe('DataExportDialog filtered scope (DB-15)', () => {
 
     await waitFor(() => {
       expect(onBuildFilteredExportSql).toHaveBeenCalledOnce();
-      expect(executeQueryStream).toHaveBeenCalledOnce();
+      expect(exportTablesStream).toHaveBeenCalledTimes(1);
     });
     // The streamed statement is the backend's own filtered read, not a
-    // SELECT the exporter built on its own.
-    expect((executeQueryStream.mock.calls[0] as unknown[])[1]).toBe(filteredSql);
-    await waitFor(() => expect(finishSave).toHaveBeenCalled());
+    // SELECT the exporter built on its own — carried as a SQL source.
+    const request = exportTablesStream.mock.calls[0]![0] as {
+      tables: { source: unknown }[];
+    };
+    expect(request.tables[0]!.source).toEqual({ type: 'sql', sql: filteredSql });
+    await waitFor(() => expect(getByText('export.success')).toBeInTheDocument());
   });
 
   it('falls back to the page scope when the preferred filtered scope cannot be served', () => {
@@ -331,5 +332,62 @@ describe('DataExportDialog filtered scope (DB-15)', () => {
     // No dbSessionId and no builder: the scope must not point at a missing option.
     const range = document.querySelectorAll('select')[1]!;
     expect(range).toHaveValue('current_page');
+  });
+});
+
+describe('DataExportDialog entire-table scope (item 3b)', () => {
+  it('offers xlsx for entire tables and routes them to Rust as a table source', async () => {
+    const { getByText } = render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dbSessionId="c1"
+        totalRows={100}
+        initialScope="entire_table"
+      />,
+    );
+    const selects = document.querySelectorAll('select');
+    const formatOptions = Array.from(selects[0]!.options).map((o) => o.value);
+    expect(formatOptions).toContain('xlsx');
+    fireEvent.change(selects[0]!, { target: { value: 'xlsx' } });
+    fireEvent.change(selects[1]!, { target: { value: 'entire_table' } });
+    fireEvent.click(getByText('export.export'));
+
+    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
+    const request = exportTablesStream.mock.calls[0]![0] as {
+      mode: string;
+      dataFormat: string;
+      outputMode: string;
+      tables: { tableName: string; source: unknown }[];
+    };
+    expect(request.mode).toBe('data_only');
+    expect(request.dataFormat).toBe('xlsx');
+    expect(request.outputMode).toBe('single');
+    expect(request.tables).toEqual([
+      { tableName: 'users', columns: ['id', 'name'], source: { type: 'table' } },
+    ]);
+    await waitFor(() => expect(getByText('export.success')).toBeInTheDocument());
+  });
+
+  it('returns to the form when the Rust export is cancelled', async () => {
+    exportTablesStream.mockResolvedValue({ Cancelled: null });
+    const { getByText, queryByText } = render(
+      <DataExportDialog
+        open
+        onClose={vi.fn()}
+        columns={COLS}
+        rows={[[1, 'a']]}
+        tableName="users"
+        dbSessionId="c1"
+        totalRows={100}
+        initialScope="entire_table"
+      />,
+    );
+    fireEvent.click(getByText('export.export'));
+    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
+    expect(queryByText('export.success')).not.toBeInTheDocument();
   });
 });

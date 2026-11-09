@@ -1,7 +1,26 @@
 import { describe, expect, it, vi, afterEach, beforeEach } from 'vitest';
-import { render, cleanup, screen } from '@testing-library/react';
+import { render, cleanup, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ExportDialog } from '../ExportDialog';
 import type { ColumnSchema } from '../../../types';
+
+// Item 3b: the entire-table scope rides the tables-exporter port.
+const exportTablesStream = vi.fn();
+
+import { configurePlatform, clearPlatform } from '../../../platform/contracts';
+
+function bindFakeExporter(): void {
+  configurePlatform({
+    services: {} as never,
+    windows: {} as never,
+    events: {
+      emitCrossWindow: async () => {},
+      listenCrossWindow: async () => () => {},
+    },
+    tablesExporter: {
+      exportTables: (...args: unknown[]) => exportTablesStream(...(args as [never])),
+    },
+  });
+}
 
 vi.mock('../../../hooks/useI18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
@@ -57,10 +76,15 @@ function renderDialog(overrides: Partial<Parameters<typeof ExportDialog>[0]> = {
   );
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  clearPlatform();
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
+  bindFakeExporter();
+  exportTablesStream.mockResolvedValue({ Saved: 2 });
 });
 
 /** The scope `<Select>` is the second combobox rendered (format first, scope second). */
@@ -90,5 +114,41 @@ describe('ExportDialog export capability', () => {
     expect(exportBtn).toBeDisabled();
     const values = Array.from(scopeSelect().options).map((o) => o.value);
     expect(values).not.toContain('entire_table');
+  });
+});
+
+describe('ExportDialog entire-table scope (item 3b)', () => {
+  it('offers xlsx for entire tables and routes them to Rust as a table source', async () => {
+    renderDialog({ defaultScope: 'entire_table' });
+    const combos = screen.getAllByRole('combobox');
+    const formatSelect = combos[0] as HTMLSelectElement;
+    expect(Array.from(formatSelect.options).map((o) => o.value)).toContain('xlsx');
+    fireEvent.change(formatSelect, { target: { value: 'xlsx' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'export.export' }));
+
+    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
+    const request = exportTablesStream.mock.calls[0]![0] as {
+      mode: string;
+      dataFormat: string;
+      outputMode: string;
+      tables: { tableName: string; columns: string[]; source: unknown; primaryKey: unknown }[];
+    };
+    expect(request.mode).toBe('data_only');
+    expect(request.dataFormat).toBe('xlsx');
+    expect(request.outputMode).toBe('single');
+    expect(request.tables[0]!.tableName).toBe('users');
+    expect(request.tables[0]!.columns).toEqual(['id']);
+    expect(request.tables[0]!.source).toEqual({ type: 'table' });
+    expect(request.tables[0]!.primaryKey).toBe('id');
+    await waitFor(() => expect(screen.getByText('export.success')).toBeInTheDocument());
+  });
+
+  it('returns to the form when the Rust export is cancelled', async () => {
+    exportTablesStream.mockResolvedValue({ Cancelled: null });
+    renderDialog({ defaultScope: 'entire_table' });
+    fireEvent.click(screen.getByRole('button', { name: 'export.export' }));
+    await waitFor(() => expect(exportTablesStream).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('export.success')).not.toBeInTheDocument();
   });
 });
