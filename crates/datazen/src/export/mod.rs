@@ -263,6 +263,7 @@ impl FileSink {
 // ---------------------------------------------------------------------------
 
 /// A planned output file.
+#[derive(Debug)]
 pub enum FilePlan<'a> {
     Ddl {
         filename: String,
